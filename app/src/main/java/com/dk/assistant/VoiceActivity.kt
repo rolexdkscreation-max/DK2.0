@@ -141,7 +141,7 @@ class VoiceActivity : AppCompatActivity() {
                     Toast.makeText(this, "सेटिंग्स → Accessibility में ${Prefs.assistantName(this)} ON करें", Toast.LENGTH_LONG).show()
                 }
             }
-            !DKState.live -> svc.startLive()
+            else -> svc.startLive()     // wake word wala chhota Live chal raha ho to use pakka karo
         }
     }
 

@@ -139,6 +139,7 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
     @Volatile var idleExitMs = 0L
     @Volatile private var lastAct = 0L
     @Volatile private var idleExit = false
+    @Volatile private var modelCache: Triple<Int, Long, List<String>>? = null
 
     fun stop() {
         stopped = true
@@ -265,7 +266,10 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
     /** Is key par kaun se Live models hain (bidiGenerateContent) - sabse naya/tez pehle */
     private fun discoverModels(key: String): List<String> {
         val found = mutableListOf<String>()
-        try {
+        // wake word par har baar list mat mango (deri) - 1 ghante tak yaad rakho
+        val cache = modelCache
+        if (cache != null && cache.first == key.hashCode() && System.currentTimeMillis() - cache.second < 3600_000L) found.addAll(cache.third)
+        else try {
             val c = OkHttpClient.Builder().callTimeout(8, TimeUnit.SECONDS).build()
             val req = Request.Builder().url("https://generativelanguage.googleapis.com/v1beta/models?pageSize=1000")
                 .header("x-goog-api-key", key).build()
@@ -279,6 +283,7 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
                         found.add(m.optString("name").removePrefix("models/"))
                 }
             }
+            if (found.isNotEmpty()) modelCache = Triple(key.hashCode(), System.currentTimeMillis(), found.toList())
         } catch (e: Fatal) { throw e } catch (e: Exception) { log("models list nahi aayi: ${e.message}") }
         fun ver(m: String) = Regex("(\\d+(?:\\.\\d+)?)").find(m)?.value?.toDoubleOrNull() ?: 0.0
         // translate/transcribe = sirf anuvaad/likhne wale model, baatcheet nahi karte -> inhe mat chuno
@@ -367,6 +372,9 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
             firstText?.let { t ->
                 firstText = null
                 try {
+                    // "आप:" line me wahi baat (wake word ke baad jo bola) - jawab ke turn me judegi
+                    startTurn(); turnUser = t; userDone = false
+                    DKState.user("$t…")
                     ws?.send(JSONObject().put("realtimeInput", JSONObject().put("text", t)).toString())
                     log("पहली बात भेजी: $t")
                 } catch (_: Exception) {}
