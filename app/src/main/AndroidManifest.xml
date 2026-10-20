@@ -56,7 +56,7 @@
         <activity
             android:name=".ChatActivity"
             android:exported="false"
-            android:windowSoftInputMode="adjustResize" />
+            android:windowSoftInputMode="adjustResize|stateAlwaysVisible" />
 
         <activity
             android:name=".VoiceActivity"
@@ -67,6 +67,12 @@
             android:name=".MemoryActivity"
             android:exported="false"
             android:windowSoftInputMode="adjustResize" />
+
+        <!-- Coding agent (GitHub) - settings se chalu -->
+        <activity
+            android:name=".CodingActivity"
+            android:exported="false"
+            android:windowSoftInputMode="adjustResize|stateAlwaysVisible" />
 
         <activity
             android:name=".SettingsActivity"

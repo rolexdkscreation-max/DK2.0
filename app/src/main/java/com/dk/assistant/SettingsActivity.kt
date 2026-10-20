@@ -93,6 +93,7 @@ class SettingsActivity : AppCompatActivity() {
             "perms" -> { title.text = "परमिशन"; secPerms() }
             "update" -> { title.text = "अपडेट"; secUpdate() }
             "debug" -> { title.text = "डिबग लॉग"; bar.visibility = View.GONE; secDebug() }
+            "coder" -> { title.text = "कोडिंग एजेंट"; secCoder() }
         }
         space(container, 8)
     }
@@ -107,6 +108,7 @@ class SettingsActivity : AppCompatActivity() {
             Triple("orb", "ओर्ब और चेहरा", "पृथ्वी, गैलेक्सी, एटम, DNA, छल्ला, पुरुष/महिला चेहरा"),
             Triple("access", "Accessibility", (if (Setup.accessibilityOn(this)) "✓ चालू" else "✗ बंद") + " • फ़ोन कंट्रोल • हमेशा सुनना • कॉल • बैटरी"),
             Triple("perms", "परमिशन", "माइक • स्क्रीन देखना • नोटिफ़िकेशन • कॉल • ऐप इंस्टॉल"),
+            Triple("coder", "कोडिंग एजेंट", (if (Prefs.coderOn(this)) "✓ चालू" else "✗ बंद") + " • GitHub से जुड़ें • कोड लिखें/बदलें/हटाएँ • push • अलग AI key"),
             Triple("update", "अपडेट", "अभी: ${Updater.displayVersion(this)} • नया version चेक करें"),
             Triple("debug", "डिबग लॉग", "माइक, कनेक्शन, देरी और गलतियों का पूरा हाल")
         )
@@ -666,6 +668,125 @@ class SettingsActivity : AppCompatActivity() {
             .show()
     }
 
+    // ------------------------------------------------------------ coding agent + GitHub
+    private lateinit var swCoder: SwitchCompat
+    private lateinit var swAutoPush: SwitchCompat
+    private lateinit var edGhToken: EditText
+    private lateinit var edGhRepo: EditText
+    private lateinit var edGhBranch: EditText
+    private lateinit var rgCoder: RadioGroup
+    private lateinit var edCoderKey: EditText
+    private lateinit var edCoderModel: EditText
+    private lateinit var edCoderBase: EditText
+    private val coderIds get() = listOf("same") + Providers.all.map { it.id }
+
+    private fun secCoder() {
+        card("कोडिंग एजेंट", "आपके GitHub repo में कोड लिखता, बदलता, हटाता और push करता है") { box ->
+            swCoder = switch(box, "कोडिंग एजेंट चालू करें", Prefs.coderOn(this))
+            hint(box, "बंद रहने पर यह कुछ नहीं करता। चालू करके नीचे GitHub और AI भरें, फिर \"एजेंट खोलें\" दबाएँ।")
+            row(box, button("एजेंट खोलें") {
+                save(false)
+                if (!Prefs.coderOn(this)) { toast("पहले \"कोडिंग एजेंट चालू करें\" ON करें"); return@button }
+                startActivity(android.content.Intent(this, CodingActivity::class.java))
+            })
+        }
+        card("GitHub कनेक्टर", "Personal Access Token से जुड़ता है (फ़ोन में ही रहता है)") { box ->
+            edGhToken = field(box, "GitHub Token", Prefs.ghToken(this), "github_pat_… या ghp_…", secret = true)
+            edGhRepo = field(box, "Repo (owner/naam)", Prefs.ghRepo(this), "जैसे: rolexdkscreation-max/DK2.0")
+            edGhBranch = field(box, "Branch", Prefs.ghBranch(this), "main")
+            val res = TextView(this).apply { setTextColor(0xB3FFFFFF.toInt()); textSize = 13f; setPadding((4 * dp).toInt(), (6 * dp).toInt(), 0, 0) }
+            row(box,
+                button("जाँचें") {
+                    save(false)
+                    val gh = GitHub.fromPrefs(this) ?: run { res.text = "पहले token डालें"; return@button }
+                    res.text = "जाँच रहा हूँ…"
+                    lifecycleScope.launch {
+                        res.text = try {
+                            val (who, br) = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                                val w = gh.me()
+                                val repo = Prefs.ghRepo(this@SettingsActivity)
+                                w to (if (repo.contains('/')) gh.defaultBranch(repo) else "")
+                            }
+                            "✓ जुड़ गया: $who" + if (br.isNotBlank()) " • repo मिला (मुख्य branch: $br)" else " • अब repo चुनें"
+                        } catch (e: Exception) { "✗ " + (e.message ?: "गलती").take(160) }
+                    }
+                },
+                button("रिपो चुनें") {
+                    save(false)
+                    val gh = GitHub.fromPrefs(this) ?: run { res.text = "पहले token डालें"; return@button }
+                    res.text = "Repos ला रहा हूँ…"
+                    lifecycleScope.launch {
+                        try {
+                            val repos = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { gh.repos() }
+                            res.text = "${repos.size} repo मिले"
+                            if (isFinishing || isDestroyed || repos.isEmpty()) return@launch
+                            android.app.AlertDialog.Builder(this@SettingsActivity, android.R.style.Theme_DeviceDefault_Dialog_Alert)
+                                .setTitle("Repo चुनें")
+                                .setItems(repos.map { it.fullName + if (it.private) "  (private)" else "" }.toTypedArray()) { _, i ->
+                                    edGhRepo.setText(repos[i].fullName); edGhBranch.setText(repos[i].branch); save(false)
+                                }
+                                .setNegativeButton("बंद करें", null).show()
+                        } catch (e: Exception) { res.text = "✗ " + (e.message ?: "गलती").take(160) }
+                    }
+                },
+                button("Token बनाएँ") { Setup.openUrl(this, GitHub.TOKEN_URL) })
+            box.addView(res)
+            hint(box, "Token बनाते समय: Repository access → अपना repo चुनें • Permissions → Contents: Read and write। बस इतना काफ़ी है।")
+            swAutoPush = switch(box, "बिना पूछे push करो (बंद = पहले बदलाव दिखाओ, फिर \"Push करें\" दबाने पर)", Prefs.coderAutoPush(this))
+        }
+        card("कोडिंग की AI", "चाहें तो कोडिंग के लिए अलग API key — बातचीत वाली key की limit बची रहे") { box ->
+            val cur = Prefs.coderProvider(this)
+            rgCoder = RadioGroup(this).apply { orientation = RadioGroup.VERTICAL }
+            coderIds.forEachIndexed { i, id ->
+                val p = Providers.byId(id)
+                rgCoder.addView(RadioButton(this).apply {
+                    this.id = 4000 + i
+                    text = if (p == null) "वही AI जो बातचीत में (AI दिमाग)" else p.name + if (p.free) "   • फ्री" else "   • पेड"
+                    setTextColor(0xFFFFFFFF.toInt()); textSize = 15f
+                    isChecked = cur == id || (i == 0 && Providers.byId(cur) == null)
+                    setPadding((6 * dp).toInt(), (6 * dp).toInt(), 0, (6 * dp).toInt())
+                })
+            }
+            box.addView(rgCoder)
+            edCoderKey = field(box, "कोडिंग की API Key (खाली = AI दिमाग वाली उसी कंपनी की key)", Prefs.coderKey(this), "अलग key यहाँ पेस्ट करें", secret = true)
+            edCoderModel = field(box, "मॉडल (खाली = उस कंपनी का चुना मॉडल)", Prefs.coderModel(this), "जैसे: openai/gpt-oss-120b")
+            edCoderBase = field(box, "Base URL (सिर्फ़ Custom API के लिए)", Prefs.coderBase(this), "https://.../v1")
+            val info = TextView(this).apply { setTextColor(0xB3FFFFFF.toInt()); textSize = 13f; setPadding((4 * dp).toInt(), (6 * dp).toInt(), 0, 0) }
+            fun sel(): Provider? = Providers.byId(coderIds.getOrNull(rgCoder.checkedRadioButtonId - 4000) ?: "same")
+            row(box,
+                button("मॉडल चुनें") {
+                    val p = sel() ?: run { toast("\"वही AI\" में मॉडल AI दिमाग से आता है"); return@button }
+                    val k = edCoderKey.text.toString().trim().ifBlank { Prefs.key(this, p.id) }
+                    val base = edCoderBase.text.toString().trim().ifBlank { Prefs.baseUrl(this, p.id) }
+                    if (k.length < 12) { info.text = "पहले ${p.name} की key डालें"; return@button }
+                    info.text = "मॉडल ला रहा हूँ…"
+                    lifecycleScope.launch {
+                        try {
+                            val list = ModelLister.fetch(p, k, base)
+                            info.text = "${list.size} मॉडल"
+                            if (list.isNotEmpty() && !isFinishing) pickModel(p, edCoderModel, list)
+                        } catch (e: Exception) { info.text = "✗ " + BrainManager(this@SettingsActivity).explain(e).take(160) }
+                    }
+                },
+                button("टेस्ट करें") {
+                    save(false)
+                    val ai = CoderAi.fromPrefs(this) ?: run { info.text = "✗ key/मॉडल नहीं मिला"; return@button }
+                    info.text = "टेस्ट: ${ai.label}…"
+                    lifecycleScope.launch {
+                        info.text = try {
+                            val r = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                                ai.chat("Reply with exactly: OK", listOf("user" to "Say OK"))
+                            }
+                            "✓ चल रहा है: ${ai.label} → ${r.take(40)}"
+                        } catch (e: Exception) { "✗ ${ai.label}: " + (e.message ?: "").take(160) }
+                    }
+                },
+                button("Key लें") { sel()?.keyUrl?.takeIf { it.isNotBlank() }?.let { Setup.openUrl(this, it) } ?: toast("ऊपर कोई कंपनी चुनें") })
+            box.addView(info)
+            hint(box, "फ्री में अच्छा: Gemini (aistudio.google.com) या Groq (console.groq.com)। OpenRouter पर \":free\" वाले coder मॉडल भी चुन सकते हैं।")
+        }
+    }
+
     // ------------------------------------------------------------ save
     private fun save(showToast: Boolean) {
         if (section == null || section == "orb") return
@@ -697,6 +818,17 @@ class SettingsActivity : AppCompatActivity() {
                 putString("voice_style", radioValue(rgStyle, VoiceCatalog.STYLES.map { it.first }, 2300))
                 putString("listen_engine", radioValue(rgListen, listOf("auto", "classic", "google"), 2200))
                 putFloat("tts_pitch", seekValue(sbPitch))
+            }
+            if (::swCoder.isInitialized) {
+                putBoolean("coder_on", swCoder.isChecked)
+                putBoolean("coder_autopush", swAutoPush.isChecked)
+                putString("gh_token", edGhToken.text.toString().trim())
+                putString("gh_repo", edGhRepo.text.toString().trim().removePrefix("https://github.com/").removeSuffix(".git").trim('/'))
+                putString("gh_branch", edGhBranch.text.toString().trim())
+                putString("coder_provider", coderIds.getOrNull(rgCoder.checkedRadioButtonId - 4000) ?: "same")
+                putString("coder_key", edCoderKey.text.toString().trim())
+                putString("coder_model", edCoderModel.text.toString().trim())
+                putString("coder_base", edCoderBase.text.toString().trim())
             }
             keyFields.forEach { (id, e) -> putString("key_$id", e.text.toString().trim()) }
             modelFields.forEach { (id, e) -> putString("model_$id", e.text.toString().trim()) }

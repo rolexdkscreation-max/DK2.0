@@ -25,6 +25,7 @@ class ChatActivity : AppCompatActivity() {
     private lateinit var scroll: ScrollView
     private lateinit var status: TextView
     private lateinit var swSpeak: SwitchCompat
+    private lateinit var edt: EditText
     private var shown = 0
     private val dp get() = resources.displayMetrics.density
     private val listener: () -> Unit = { render() }
@@ -32,7 +33,9 @@ class ChatActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        window.setSoftInputMode(android.view.WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE)
+        // likhne ki jagah hamesha khuli rahe (keyboard turant, bhejne ke baad bhi)
+        window.setSoftInputMode(android.view.WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE or
+            android.view.WindowManager.LayoutParams.SOFT_INPUT_STATE_ALWAYS_VISIBLE)
         val root = FrameLayout(this).apply { setBackgroundColor(getColor(R.color.bg)) }
         root.addView(AuroraView(this), FrameLayout.LayoutParams(-1, -1))
         val col = LinearLayout(this).apply {
@@ -76,7 +79,7 @@ class ChatActivity : AppCompatActivity() {
             setBackgroundResource(R.drawable.glass_pill)
             setPadding((18 * dp).toInt(), 0, (6 * dp).toInt(), 0)
         }
-        val edt = EditText(this).apply {
+        edt = EditText(this).apply {
             hint = "कुछ भी लिखिए… (जैसे: WhatsApp खोलो, आज का मौसम?)"
             setHintTextColor(0x66FFFFFF); setTextColor(0xFFFFFFFF.toInt()); textSize = 15f
             background = null; maxLines = 4
@@ -95,10 +98,22 @@ class ChatActivity : AppCompatActivity() {
         val doSend = {
             val t = edt.text.toString().trim()
             if (t.isNotEmpty()) { edt.setText(""); sendText(t) }
+            keepTyping()
         }
         send.setOnClickListener { doSend() }
         edt.setOnEditorActionListener { _, id, _ -> if (id == EditorInfo.IME_ACTION_SEND) { doSend(); true } else false }
         setContentView(root)
+        keepTyping()
+    }
+
+    /** Cursor + keyboard hamesha likhne ki jagah par - har message ke baad dobara tap na karna pade */
+    private fun keepTyping() {
+        edt.requestFocus()
+        edt.post {
+            edt.requestFocus()
+            getSystemService(android.view.inputmethod.InputMethodManager::class.java)
+                ?.showSoftInput(edt, android.view.inputmethod.InputMethodManager.SHOW_IMPLICIT)
+        }
     }
 
     private fun sendText(t: String) {
@@ -136,6 +151,7 @@ class ChatActivity : AppCompatActivity() {
         super.onResume()
         DKState.listen(listener)
         render()
+        keepTyping()
     }
 
     override fun onPause() {
@@ -163,7 +179,7 @@ class ChatActivity : AppCompatActivity() {
         if (live.isNotBlank()) {
             val v = liveView
             if (v == null) { bubble("d", live, keep = false); liveView = placeholder as? TextView; placeholder = null }
-            else { v.text = live; scroll.post { scroll.fullScroll(View.FOCUS_DOWN) } }
+            else { v.text = live; scroll.post { scroll.smoothScrollTo(0, list.height) } }
         }
     }
 
@@ -186,6 +202,6 @@ class ChatActivity : AppCompatActivity() {
         }
         list.addView(tv, lp)
         if (!keep) placeholder = tv
-        scroll.post { scroll.fullScroll(View.FOCUS_DOWN) }
+        scroll.post { scroll.smoothScrollTo(0, list.height) }
     }
 }

@@ -109,6 +109,19 @@ object Prefs {
     /** Sawaal ka sahi/taaza jawab Google Search se (Gemini key ho to) */
     fun webAnswers(c: Context) = sp(c).getBoolean("web_answers", true)
 
+    // ---- coding agent (default BAND) + GitHub connector
+    fun coderOn(c: Context) = sp(c).getBoolean("coder_on", false)
+    fun ghToken(c: Context) = sp(c).getString("gh_token", "") ?: ""
+    fun ghRepo(c: Context) = sp(c).getString("gh_repo", "") ?: ""
+    fun ghBranch(c: Context) = (sp(c).getString("gh_branch", "") ?: "").ifBlank { "main" }
+    /** "same" = wahi AI jo baatcheet me; warna provider id (alag key) */
+    fun coderProvider(c: Context) = sp(c).getString("coder_provider", "same") ?: "same"
+    fun coderKey(c: Context) = sp(c).getString("coder_key", "") ?: ""
+    fun coderModel(c: Context) = sp(c).getString("coder_model", "") ?: ""
+    fun coderBase(c: Context) = sp(c).getString("coder_base", "") ?: ""
+    /** true = bina pooche push (default: pehle dikhao, phir "Push" dabane par) */
+    fun coderAutoPush(c: Context) = sp(c).getBoolean("coder_autopush", false)
+
     // ---- provider ke models ki list (cache)
     fun models(c: Context, id: String): List<String> =
         (sp(c).getString("models_$id", "") ?: "").split('\n').filter { it.isNotBlank() }
