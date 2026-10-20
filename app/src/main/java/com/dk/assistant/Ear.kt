@@ -19,16 +19,25 @@ import kotlin.math.sqrt
  * Jab aap bolte ho (awaaz tez hoti hai) recording shuru, chup hote hi (0.8 sec) recording khatam.
  * Sirf aapki baat ka hissa text banane bheja jaata hai.
  */
-class Ear(private val ctx: Context, private val muted: () -> Boolean = { false }) {
+class Ear(
+    private val ctx: Context,
+    private val muted: () -> Boolean = { false },
+    /** Aapne bolna shuru kiya (jaise: ghanti baj rahi ho to ringtone dheemi karo) */
+    private val onSpeechStart: () -> Unit = {}
+) {
 
     companion object {
         const val RATE = 16000
         private const val FRAME = 480                 // 30 ms
         private const val START_FRAMES = 3            // 90 ms awaaz = bolna shuru
-        private const val END_SILENCE_FRAMES = 20     // ~0.6 sec chup = bolna khatam (tez jawab)
-        private const val MAX_FRAMES = 15 * 1000 / 30 // 15 sec max
-        private const val MIN_SPEECH_FRAMES = 12      // 0.36 sec se chhota = shor
-        private const val PRE_ROLL = 10               // shuru se pehle ka 0.3 sec bhi rakho
+        // Chhoti baat ("हाँ", "उठाओ") ke baad 0.7 sec chup = khatam (tez jawab).
+        // Lambi baat me beech ka saans/ruk-ruk kar bolna na kate -> 1.1 sec tak intezaar.
+        private const val END_SILENCE_SHORT = 23      // ~0.7 sec
+        private const val END_SILENCE_LONG = 37       // ~1.1 sec
+        private const val LONG_AFTER = 50             // 1.5 sec se zyada bole = lambi baat
+        private const val MAX_FRAMES = 25 * 1000 / 30 // 25 sec max (lamba sawaal bhi poora suno)
+        private const val MIN_SPEECH_FRAMES = 8       // 0.24 sec se chhota = shor ("हाँ" bhi pakdo)
+        private const val PRE_ROLL = 12               // shuru se pehle ka 0.36 sec bhi rakho (pehla shabd na kate)
     }
 
     private var rec: AudioRecord? = null
@@ -81,8 +90,9 @@ class Ear(private val ctx: Context, private val muted: () -> Boolean = { false }
                 // DK khud bol raha hai -> apni awaaz mat suno
                 if (muted()) { talking = false; speech.reset(); pre.clear(); loud = 0; warm = 4; DKState.level = 0f; continue }
                 if (warm > 0) { noise = noise * 0.7 + rms * 0.3; warm--; continue }
-                val startTh = maxOf(noise * 2.6, 420.0)
-                val stopTh = maxOf(noise * 1.7, 300.0)
+                // dheemi awaaz bhi pakdo, par pankhe/TV ka shor nahi
+                val startTh = maxOf(noise * 2.3, 380.0)
+                val stopTh = maxOf(noise * 1.5, 260.0)
 
                 if (!talking) {
                     DKState.level = 0f
@@ -94,13 +104,15 @@ class Ear(private val ctx: Context, private val muted: () -> Boolean = { false }
                         pre.forEach { writeShorts(speech, it, it.size) }
                         pre.clear()
                         frames = 0; silent = 0; speechFrames = loud
+                        try { onSpeechStart() } catch (_: Exception) {}
                     }
                 } else {
                     DKState.level = (rms / 3500.0).toFloat().coerceIn(0f, 1f)
                     writeShorts(speech, buf, n)
                     frames++
                     if (rms < stopTh) silent++ else { silent = 0; speechFrames++ }
-                    if (silent >= END_SILENCE_FRAMES || frames >= MAX_FRAMES) {
+                    val endAfter = if (speechFrames > LONG_AFTER) END_SILENCE_LONG else END_SILENCE_SHORT
+                    if (silent >= endAfter || frames >= MAX_FRAMES) {
                         if (speechFrames >= MIN_SPEECH_FRAMES) return@withContext speech.toByteArray()
                         // bahut chhota = khaansi/khatak -> phir se suno
                         talking = false; speech.reset(); loud = 0

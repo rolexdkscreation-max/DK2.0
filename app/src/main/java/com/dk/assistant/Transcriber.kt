@@ -46,7 +46,7 @@ object Transcriber {
             .addFormDataPart("file", "speech.wav", wav.toRequestBody("audio/wav".toMediaType()))
             .addFormDataPart("model", "whisper-large-v3-turbo")
             .addFormDataPart("language", "hi")
-            .addFormDataPart("prompt", "यह हिंदी और English मिली हुई बातचीत है। जैसे: यूट्यूब खोलो, WhatsApp पर message भेजो।")
+            .addFormDataPart("prompt", "यह हिंदी और English मिली हुई बातचीत है। जैसे: यूट्यूब खोलो, WhatsApp पर message भेजो, कॉल उठाओ, कॉल काट दो, आवाज़ बढ़ाओ, स्वारगेट का रास्ता दिखाओ, पुणे से मुंबई कितनी दूर है, याद रखो।")
             .addFormDataPart("response_format", "json")
             .addFormDataPart("temperature", "0")
             .build()

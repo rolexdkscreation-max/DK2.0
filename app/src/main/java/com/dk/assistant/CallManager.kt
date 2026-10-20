@@ -42,8 +42,13 @@ class CallManager(private val ctx: Context, private val onRinging: (String) -> U
         val am = ctx.getSystemService(AudioManager::class.java) ?: return
         try {
             if (savedRing < 0) savedRing = am.getStreamVolume(AudioManager.STREAM_RING)
-            if (savedRing > 1) am.setStreamVolume(AudioManager.STREAM_RING, 1, 0)
-        } catch (e: Exception) { DKLog.d("ringer: ${e.message}") }
+            if (am.getStreamVolume(AudioManager.STREAM_RING) > 1) am.setStreamVolume(AudioManager.STREAM_RING, 1, 0)
+        } catch (e: Exception) {
+            // kuch phone seedha set nahi karne dete -> ek-ek step kam karo (0 tak nahi = DND ki zarurat nahi)
+            DKLog.d("ringer: ${e.message}")
+            try { repeat(10) { if (am.getStreamVolume(AudioManager.STREAM_RING) > 1) am.adjustStreamVolume(AudioManager.STREAM_RING, AudioManager.ADJUST_LOWER, 0) } }
+            catch (_: Exception) {}
+        }
     }
     fun restoreRinger() {
         if (savedRing < 0) return

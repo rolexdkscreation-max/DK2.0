@@ -43,6 +43,26 @@ object QuickCommands {
         }
         if (has("किसका कॉल", "किसका फोन", "किसका फ़ोन", "कौन कॉल", "who is calling")) return Quick(a("who_calls"), "")
         if (has("कॉल", "call")) return null          // "राहुल को कॉल करो" jaisi baat AI karega
+
+        // ---- maps: rasta, navigation, doori, paas ki jagah (turant, bina AI)
+        Maps.parse(t)?.let { return it }
+
+        // ---- volume number ke saath: "आवाज़ 50 करो", "वॉल्यूम 70 परसेंट"
+        if (has("आवाज़", "आवाज", "वॉल्यूम", "volume", "साउंड", "रिंगटोन", "ringtone", "घंटी")) {
+            val ring = has("रिंगटोन", "ringtone", "घंटी", "रिंग")
+            Regex("([0-9०-९]{1,3})").find(t)?.let { m ->
+                val lvl = m.groupValues[1].toInt().coerceIn(0, 100)
+                return Quick(a("volume", "direction" to "set", "level" to lvl, "stream" to (if (ring) "ring" else "")), "")
+            }
+            if (ring) {
+                val dir = when {
+                    has("बढ़ा", "बढा", "तेज़", "तेज", "ज़्यादा", "ज्यादा", "up") -> "up"
+                    has("बंद", "म्यूट", "mute", "चुप") -> "mute"
+                    else -> "down"
+                }
+                return Quick(a("volume", "direction" to dir, "stream" to "ring"), if (dir == "up") "रिंगटोन तेज़ कर दी" else "रिंगटोन धीमी कर दी")
+            }
+        }
         if (has("ब्लॉक", "block")) return null
         val padded = " $t "
         if (MULTI.any { if (it.startsWith(" ")) padded.contains(it) else t.contains(it) }) return null

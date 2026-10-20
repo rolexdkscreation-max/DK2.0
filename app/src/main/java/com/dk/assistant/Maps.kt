@@ -1,0 +1,186 @@
+package com.dk.assistant
+
+import android.content.Context
+import android.content.Intent
+import android.net.Uri
+import org.json.JSONObject
+
+/**
+ * Google Maps:
+ *  - kisi jagah ka rasta dikhana (directions)
+ *  - navigation shuru karna (navigate)
+ *  - jagah / paas ki cheezein dikhana (map_search)
+ *  - doori naapna (distance) - Maps ka rasta khol kar screen se km + samay padhta hai
+ */
+object Maps {
+    private const val PKG = "com.google.android.apps.maps"
+
+    private fun installed(c: Context) = try { c.packageManager.getPackageInfo(PKG, 0); true } catch (_: Exception) { false }
+
+    private fun start(c: Context, uri: String, preferMaps: Boolean = true): Boolean = try {
+        val i = Intent(Intent.ACTION_VIEW, Uri.parse(uri)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        if (preferMaps && installed(c)) i.setPackage(PKG)
+        c.startActivity(i); true
+    } catch (e: Exception) { DKLog.d("Maps: ${e.message}"); false }
+
+    private fun webMode(mode: String) = when (mode.lowercase()) {
+        "walking", "walk" -> "walking"
+        "transit", "bus", "train" -> "transit"
+        "two_wheeler", "two-wheeler", "bike" -> "two-wheeler"
+        "bicycling", "cycle" -> "bicycling"
+        else -> "driving"
+    }
+
+    private fun navMode(mode: String) = when (webMode(mode)) {
+        "walking" -> "w"; "two-wheeler" -> "l"; "bicycling" -> "b"; else -> "d"
+    }
+
+    fun directions(c: Context, to: String, from: String = "", mode: String = "driving"): String {
+        if (to.isBlank()) return "ERROR: jagah ka naam nahi mila"
+        val sb = StringBuilder("https://www.google.com/maps/dir/?api=1")
+        if (from.isNotBlank()) sb.append("&origin=").append(Uri.encode(from))
+        sb.append("&destination=").append(Uri.encode(to)).append("&travelmode=").append(webMode(mode))
+        return if (start(c, sb.toString())) "maps route opened: ${if (from.isBlank()) "my location" else from} -> $to (${webMode(mode)})"
+        else "ERROR: maps nahi khula"
+    }
+
+    fun navigate(c: Context, to: String, mode: String = "driving"): String {
+        if (to.isBlank()) return "ERROR: jagah ka naam nahi mila"
+        if (start(c, "google.navigation:q=${Uri.encode(to)}&mode=${navMode(mode)}")) return "navigation started to $to"
+        return directions(c, to, "", mode)
+    }
+
+    fun search(c: Context, query: String): String {
+        if (query.isBlank()) return if (start(c, "geo:0,0")) "maps opened" else "ERROR: maps nahi khula"
+        if (start(c, "geo:0,0?q=${Uri.encode(query)}")) return "map showing '$query'"
+        return if (start(c, "https://www.google.com/maps/search/?api=1&query=${Uri.encode(query)}", false)) "map showing '$query'"
+        else "ERROR: maps nahi khula"
+    }
+
+    // ------------------------------------------------------------ Maps screen se doori/samay padhna
+    private val KM = Regex("(\\d+(?:[.,]\\d+)?)\\s*(km|किमी|कि\\.?\\s?मी\\.?|कि॰\\s?मी॰|किलोमीटर)", RegexOption.IGNORE_CASE)
+    private val METER = Regex("(?<![\\d.])(\\d{2,4})\\s*(m|मी॰|मी\\.|मीटर)(?![a-zA-Z])")
+    private val TIME = Regex("((\\d+)\\s*(?:hr|h|घं॰|घं\\.|घंटे|घंटा|घं)\\s*)?(\\d+)\\s*(?:min|मिनट|मि॰|मि\\.)", RegexOption.IGNORE_CASE)
+    private val HOURS_ONLY = Regex("(\\d+)\\s*(?:hr|h|घं॰|घंटे|घंटा)(?![a-zA-Z])", RegexOption.IGNORE_CASE)
+
+    /** Screen ke text me pehli doori + samay. null = abhi nahi dikha. */
+    fun readDistance(screenText: String): String? {
+        // har line alag dekho - pehli line jisme km/m ho
+        val lines = screenText.lines()
+        var dist: String? = null; var time: String? = null
+        for (l in lines) {
+            if (dist == null) {
+                KM.find(l)?.let { dist = it.groupValues[1].replace(',', '.') + " किलोमीटर" }
+                    ?: METER.find(l)?.let { dist = it.groupValues[1] + " मीटर" }
+            }
+            if (time == null) {
+                TIME.find(l)?.let { m ->
+                    val h = m.groupValues[2]; val mi = m.groupValues[3]
+                    time = (if (h.isNotBlank()) "$h घंटे " else "") + "$mi मिनट"
+                } ?: HOURS_ONLY.find(l)?.let { time = it.groupValues[1] + " घंटे" }
+            }
+            if (dist != null && time != null) break
+        }
+        if (dist == null) return null
+        return if (time != null) "$dist, लगभग $time" else dist
+    }
+
+    // ------------------------------------------------------------ bolkar map commands (bina AI, turant)
+    private val NOISE = listOf("मुझे ", "ज़रा ", "जरा ", "प्लीज़ ", "please ", "गूगल मैप में ", "गूगल मैप पर ", "google map पर ",
+        "google maps पर ")
+
+    private fun modeOf(t: String): String = when {
+        listOf("बाइक", "स्कूटी", "स्कूटर", "टू व्हीलर", "two wheeler", "bike", "मोटरसाइकिल").any { t.contains(it) } -> "two_wheeler"
+        listOf("पैदल", "walking", "walk").any { t.contains(it) } -> "walking"
+        listOf("बस से", "ट्रेन से", "मेट्रो", "transit").any { t.contains(it) } -> "transit"
+        else -> "driving"
+    }
+
+    private val MODE_WORDS = Regex("(बाइक से|स्कूटी से|स्कूटर से|पैदल|कार से|गाड़ी से|गाडी से|बस से|ट्रेन से|मेट्रो से|टू व्हीलर से)")
+    private val SUFFIX = listOf(" का", " की", " के", " तक", " से", " को", " पर", " में")
+    private val PREFIX = listOf("यहाँ से ", "यहां से ", "मुझे ", "अभी ", "जरा ", "ज़रा ")
+
+    private fun cleanPlace(p: String): String {
+        var s = p.replace(MODE_WORDS, " ").replace(Regex("\\s+"), " ").trim(' ', ',', '.', '।', '?')
+        var changed = true
+        while (changed) {
+            changed = false
+            SUFFIX.forEach { w -> if (s.endsWith(w)) { s = s.removeSuffix(w).trim(); changed = true } }
+            PREFIX.forEach { w -> if (s.startsWith(w)) { s = s.removePrefix(w).trim(); changed = true } }
+        }
+        return s
+    }
+
+    private fun isHere(p: String) = p.isBlank() || listOf("यहाँ", "यहां", "here", "मेरी लोकेशन", "मेरी जगह", "मैं जहाँ हूँ", "अभी जहाँ", "current location", "my location")
+        .any { p.trim() == it || p.contains(it) }
+
+    private fun a(type: String, vararg kv: Pair<String, Any>): JSONObject {
+        val o = JSONObject().put("type", type); kv.forEach { o.put(it.first, it.second) }; return o
+    }
+
+    fun parse(raw: String): QuickCommands.Quick? {
+        var t = raw.lowercase().trim().trim('.', '।', '!', '?', ',')
+        NOISE.forEach { t = t.replace(it, " ") }
+        t = t.replace(Regex("\\s+"), " ").trim()
+        if (listOf(" और ", " फिर ", " then ", " उसके बाद ").any { " $t ".contains(it) }) return null
+        if (t.contains("कॉल") || t.contains("मैसेज") || t.contains("whatsapp")) return null
+        val mode = modeOf(t)
+
+        // ---- doori: "A से B की दूरी", "B कितनी दूर है", "यहाँ से B कितने किलोमीटर"
+        val distWords = "(?:की दूरी|का डिस्टेंस|की डिस्टेंस|कितनी दूर|कितना दूर|कितने किलोमीटर|कितना किलोमीटर|कितने km|distance)"
+        if (Regex(distWords).containsMatchIn(t) || t.contains("दूरी")) {
+            Regex("^(.+?) से (.+?) (?:तक )?(?:की )?$distWords").find(t)?.let { m ->
+                val from = cleanPlace(m.groupValues[1]); val to = cleanPlace(m.groupValues[2])
+                if (to.isNotBlank()) return QuickCommands.Quick(a("distance", "from" to (if (isHere(from)) "" else from), "to" to to, "mode" to mode), "")
+            }
+            Regex("^(.+?) (?:तक )?(?:की )?$distWords").find(t)?.let { m ->
+                val to = cleanPlace(m.groupValues[1])
+                if (to.isNotBlank() && !isHere(to)) return QuickCommands.Quick(a("distance", "from" to "", "to" to to, "mode" to mode), "")
+            }
+            Regex("(?:दूरी|distance) (?:नापो|बताओ|नाप दो|बता दो)?\\s*(.+?) (?:तक|की)$").find(t)?.let { m ->
+                val to = cleanPlace(m.groupValues[1])
+                if (to.isNotBlank()) return QuickCommands.Quick(a("distance", "from" to "", "to" to to, "mode" to mode), "")
+            }
+            return null
+        }
+
+        // ---- paas ki jagah: "पास में पेट्रोल पंप", "नज़दीकी ATM", "near me hospital"
+        if (listOf("पास में", "पास का", "पास की", "पास के", "नज़दीक", "नजदीक", "नज़दीकी", "नजदीकी", "near me", "nearby", "आसपास", "आस पास").any { t.contains(it) }) {
+            val q = t.replace(Regex("(पास में|पास का|पास की|पास के|नज़दीकी|नजदीकी|नज़दीक|नजदीक|near me|nearby|आसपास|आस पास|कहाँ है|कहां है|कोई|दिखाओ|बताओ|ढूंढो|ढूँढो|सर्च करो|खोजो|मैप|map|है|हैं)"), " ")
+                .replace(Regex("\\s+"), " ").trim()
+            if (q.isNotBlank()) return QuickCommands.Quick(a("map_search", "query" to "$q near me"), "मैप पर दिखा रहा हूँ।")
+        }
+
+        // ---- navigation: "B ले चलो", "B के लिए नेविगेशन चालू करो", "नेविगेशन B"
+        Regex("^(.+?) (?:ले चलो|लेकर चलो|ले के चलो|पहुँचाओ|पहुंचाओ|पहुंचा दो|पहुँचा दो)$").find(t)?.let { m ->
+            val to = cleanPlace(m.groupValues[1]); if (to.isNotBlank()) return QuickCommands.Quick(a("navigate", "to" to to, "mode" to mode), "$to का नेविगेशन शुरू कर रहा हूँ।")
+        }
+        if (t.contains("नेविगेशन") || t.contains("navigation") || t.contains("नेविगेट")) {
+            val to = cleanPlace(t.replace(Regex("(के लिए|के लिये|नेविगेशन|navigation|नेविगेट|चालू करो|चालू कर दो|शुरू करो|शुरू कर दो|स्टार्ट करो|start|करो|लगाओ|लगा दो|पर)"), " "))
+            if (to.isNotBlank()) return QuickCommands.Quick(a("navigate", "to" to to, "mode" to mode), "$to का नेविगेशन शुरू कर रहा हूँ।")
+            return null
+        }
+
+        // ---- rasta / map: "B का रास्ता दिखाओ", "B का मैप लगाओ", "मुझे B जाना है"
+        Regex("^(.+?) (?:का|की|के) (?:रास्ता|रस्ता|मैप|map|नक्शा|लोकेशन|location|route|रूट)(?: .*)?$").find(t)?.let { m ->
+            val to = cleanPlace(m.groupValues[1])
+            if (to.isNotBlank() && !isHere(to)) {
+                val start = listOf("चालू", "शुरू", "स्टार्ट", "start").any { t.contains(it) }
+                return if (start) QuickCommands.Quick(a("navigate", "to" to to, "mode" to mode), "$to का नेविगेशन शुरू कर रहा हूँ।")
+                else QuickCommands.Quick(a("directions", "to" to to, "from" to "", "mode" to mode), "$to का रास्ता मैप पर खोल दिया।")
+            }
+        }
+        Regex("^(.+?) (?:से|से लेकर) (.+?) (?:तक )?(?:का |की )?(?:रास्ता|रस्ता|मैप|route|रूट)(?: .*)?$").find(t)?.let { m ->
+            val from = cleanPlace(m.groupValues[1]); val to = cleanPlace(m.groupValues[2])
+            if (to.isNotBlank()) return QuickCommands.Quick(a("directions", "to" to to, "from" to (if (isHere(from)) "" else from), "mode" to mode), "$to का रास्ता मैप पर खोल दिया।")
+        }
+        Regex("^(.+?) (?:जाना है|जाना हैं|कैसे जाऊँ|कैसे जाऊं|कैसे जाएं|कैसे जाएँ|कैसे पहुंचूं|कैसे पहुँचूँ)$").find(t)?.let { m ->
+            val to = cleanPlace(m.groupValues[1])
+            if (to.isNotBlank() && to.split(' ').size <= 6) return QuickCommands.Quick(a("directions", "to" to to, "from" to "", "mode" to mode), "$to का रास्ता मैप पर खोल दिया।")
+        }
+        Regex("^(.+?) (?:मैप|map|नक्शे) (?:में|पर) (?:दिखाओ|खोलो|ढूंढो|ढूँढो|सर्च करो|खोजो)$").find(t)?.let { m ->
+            val q = cleanPlace(m.groupValues[1]); if (q.isNotBlank()) return QuickCommands.Quick(a("map_search", "query" to q), "मैप पर दिखा रहा हूँ।")
+        }
+        return null
+    }
+}

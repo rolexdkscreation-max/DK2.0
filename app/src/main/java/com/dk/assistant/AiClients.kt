@@ -11,6 +11,9 @@ import java.util.concurrent.TimeUnit
 
 data class Turn(val role: String, val text: String)   // role = "user" ya "model"
 
+/** Internet search ka jawab + sources (title, link) */
+data class SearchResult(val text: String, val sources: List<Pair<String, String>>)
+
 class AiException(val code: Int, message: String) : IOException(message)
 
 /** Har AI company se baat karne ka ek hi tareeka. */
@@ -50,6 +53,8 @@ class GeminiClient(private val key: String, private val model: String) : AiClien
     companion object {
         // Inki free limit alag-alag hoti hai - ek ki khatam ho to dusra chal jata hai
         val BACKUP_MODELS = listOf("gemini-3.5-flash-lite", "gemini-3.1-flash-lite", "gemini-3.8-flash", "gemini-2.5-flash")
+        /** Mushkil sawaal (research) ke liye zyada samajhdar model pehle */
+        val DEEP_MODELS = listOf("gemini-3.8-flash", "gemini-2.5-flash")
     }
 
     override fun complete(system: String, history: List<Turn>, prompt: String, imageB64: String?): String {
@@ -73,18 +78,27 @@ class GeminiClient(private val key: String, private val model: String) : AiClien
     }
 
     /** Google Search se taaza/sahi jawab (grounding). Sirf text. */
-    fun searchAnswer(system: String, history: List<Turn>, question: String): String {
+    fun searchAnswer(system: String, history: List<Turn>, question: String): String =
+        search(system, history, question, deep = false).text
+
+    /**
+     * Google Search se jawab + kahan se mila (sources).
+     * deep = mushkil sawaal: zyada sochne wala model, kai sources se jaanch, lamba jawab.
+     */
+    fun search(system: String, history: List<Turn>, question: String, deep: Boolean): SearchResult {
         var last: AiException? = null
-        for (m in (listOf(model) + BACKUP_MODELS).distinct()) {
+        val order = if (deep) (DEEP_MODELS + listOf(model) + BACKUP_MODELS).distinct() else (listOf(model) + BACKUP_MODELS).distinct()
+        for (m in order) {
             try {
                 val contents = JSONArray()
-                history.takeLast(6).forEach {
+                history.takeLast(if (deep) 8 else 6).forEach {
                     contents.put(JSONObject().put("role", if (it.role == "user") "user" else "model")
                         .put("parts", JSONArray().put(JSONObject().put("text", it.text))))
                 }
                 contents.put(JSONObject().put("role", "user").put("parts", JSONArray().put(JSONObject().put("text", question))))
-                val gen = JSONObject().put("maxOutputTokens", 1024)
-                if (m.startsWith("gemini-3") && !m.contains("lite")) gen.put("thinkingConfig", JSONObject().put("thinkingLevel", "low"))
+                val gen = JSONObject().put("maxOutputTokens", if (deep) 3000 else 1024)
+                if (m.startsWith("gemini-3") && !m.contains("lite")) gen.put("thinkingConfig", JSONObject().put("thinkingLevel", if (deep) "medium" else "low"))
+                if (m.startsWith("gemini-2.5")) gen.put("thinkingConfig", JSONObject().put("thinkingBudget", if (deep) 2048 else 0))
                 val body = JSONObject()
                     .put("system_instruction", JSONObject().put("parts", JSONArray().put(JSONObject().put("text", system))))
                     .put("contents", contents)
@@ -94,12 +108,20 @@ class GeminiClient(private val key: String, private val model: String) : AiClien
                     .url("https://generativelanguage.googleapis.com/v1beta/models/$m:generateContent")
                     .header("x-goog-api-key", key)
                     .post(body.toString().toRequestBody(JSON_TYPE)).build()
-                val p = JSONObject(execute(req)).optJSONArray("candidates")?.optJSONObject(0)
-                    ?.optJSONObject("content")?.optJSONArray("parts") ?: throw AiException(0, "khali jawab")
+                val cand = JSONObject(execute(req)).optJSONArray("candidates")?.optJSONObject(0)
+                val p = cand?.optJSONObject("content")?.optJSONArray("parts") ?: throw AiException(0, "khali jawab")
                 val sb = StringBuilder()
                 for (i in 0 until p.length()) { val o = p.optJSONObject(i) ?: continue; if (!o.optBoolean("thought")) sb.append(o.optString("text")) }
+                // kin websites se jaankari mili
+                val sources = mutableListOf<Pair<String, String>>()
+                val chunks = cand.optJSONObject("groundingMetadata")?.optJSONArray("groundingChunks")
+                for (i in 0 until (chunks?.length() ?: 0)) {
+                    val w = chunks!!.optJSONObject(i)?.optJSONObject("web") ?: continue
+                    val title = w.optString("title").ifBlank { w.optString("domain") }
+                    if (title.isNotBlank() && sources.none { it.first == title }) sources.add(title to w.optString("uri"))
+                }
                 label = "Gemini+Search ($m)"
-                return sb.toString()
+                return SearchResult(sb.toString(), sources.take(5))
             } catch (e: AiException) {
                 last = e
                 if (e.code == 401 || e.code == 403) throw e

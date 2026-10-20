@@ -97,21 +97,37 @@ object DeviceActions {
         catch (e: Exception) { openSettings(ctx, name) }
     }
 
-    fun volume(ctx: Context, dir: String, level: Int = -1): String {
+    /** stream: "music" (gaana/video/DK), "ring" (ringtone), "call" (baat karte waqt) */
+    fun volume(ctx: Context, dir: String, level: Int = -1, stream: String = "music"): String {
         val am = ctx.getSystemService(AudioManager::class.java) ?: return "ERROR"
-        val s = AudioManager.STREAM_MUSIC
-        val max = am.getStreamMaxVolume(s)
-        when (dir.lowercase()) {
-            "up" -> repeat(2) { am.adjustStreamVolume(s, AudioManager.ADJUST_RAISE, AudioManager.FLAG_SHOW_UI) }
-            "down" -> repeat(2) { am.adjustStreamVolume(s, AudioManager.ADJUST_LOWER, AudioManager.FLAG_SHOW_UI) }
-            "mute" -> am.adjustStreamVolume(s, AudioManager.ADJUST_MUTE, AudioManager.FLAG_SHOW_UI)
-            "unmute" -> am.adjustStreamVolume(s, AudioManager.ADJUST_UNMUTE, AudioManager.FLAG_SHOW_UI)
-            "max" -> am.setStreamVolume(s, max, AudioManager.FLAG_SHOW_UI)
-            "set" -> am.setStreamVolume(s, (max * level.coerceIn(0, 100) / 100), AudioManager.FLAG_SHOW_UI)
-            "silent" -> try { am.ringerMode = AudioManager.RINGER_MODE_VIBRATE } catch (_: Exception) {}
-            "ring", "normal" -> try { am.ringerMode = AudioManager.RINGER_MODE_NORMAL } catch (_: Exception) {}
+        val s = when (stream.lowercase()) {
+            "ring", "ringtone" -> AudioManager.STREAM_RING
+            "call", "voice" -> AudioManager.STREAM_VOICE_CALL
+            "alarm" -> AudioManager.STREAM_ALARM
+            else -> AudioManager.STREAM_MUSIC
         }
-        return "volume ${am.getStreamVolume(s) * 100 / max}%"
+        val max = am.getStreamMaxVolume(s).coerceAtLeast(1)
+        try {
+            when (dir.lowercase()) {
+                "up" -> repeat(2) { am.adjustStreamVolume(s, AudioManager.ADJUST_RAISE, AudioManager.FLAG_SHOW_UI) }
+                "down" -> repeat(2) { am.adjustStreamVolume(s, AudioManager.ADJUST_LOWER, AudioManager.FLAG_SHOW_UI) }
+                "mute" -> if (s == AudioManager.STREAM_RING) am.setStreamVolume(s, 1, AudioManager.FLAG_SHOW_UI)
+                          else am.adjustStreamVolume(s, AudioManager.ADJUST_MUTE, AudioManager.FLAG_SHOW_UI)
+                "unmute" -> am.adjustStreamVolume(s, AudioManager.ADJUST_UNMUTE, AudioManager.FLAG_SHOW_UI)
+                "max" -> am.setStreamVolume(s, max, AudioManager.FLAG_SHOW_UI)
+                "set" -> {
+                    var v = (max * level.coerceIn(0, 100) + 50) / 100
+                    if (s == AudioManager.STREAM_RING && v < 1) v = 1   // 0 = DND ki permission chahiye
+                    am.setStreamVolume(s, v, AudioManager.FLAG_SHOW_UI)
+                }
+                "silent" -> am.ringerMode = AudioManager.RINGER_MODE_VIBRATE
+                "ring", "normal" -> am.ringerMode = AudioManager.RINGER_MODE_NORMAL
+            }
+        } catch (e: SecurityException) {
+            return "ERROR: is awaaz ko badalne ki ijazat nahi (Do Not Disturb permission)"
+        } catch (e: Exception) { return "ERROR: ${e.message}" }
+        val name = when (s) { AudioManager.STREAM_RING -> "ringtone"; AudioManager.STREAM_VOICE_CALL -> "call"; AudioManager.STREAM_ALARM -> "alarm"; else -> "volume" }
+        return "$name ${am.getStreamVolume(s) * 100 / max}%"
     }
 
     fun media(ctx: Context, key: String): String {

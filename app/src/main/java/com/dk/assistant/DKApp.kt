@@ -14,6 +14,7 @@ class DKApp : Application() {
 
     override fun onCreate() {
         super.onCreate()
+        DKState.init(this)
         val prev = Thread.getDefaultUncaughtExceptionHandler()
         Thread.setDefaultUncaughtExceptionHandler { t, e ->
             try {

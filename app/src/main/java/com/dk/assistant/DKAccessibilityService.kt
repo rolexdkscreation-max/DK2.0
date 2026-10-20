@@ -72,7 +72,8 @@ class DKAccessibilityService : AccessibilityService() {
         instance = this
         speaker = Speaker(this)
         listener = VoiceListener(this)
-        ear = Ear(this) { speaker.busy }
+        // aap bolna shuru karo aur ghanti baj rahi ho -> ringtone turant dheemi (taaki DK saaf sune)
+        ear = Ear(this, { speaker.busy }) { if (::calls.isInitialized && calls.ringing) calls.quietRinger() }
         agent = AgentRunner(this, scope, speaker)
         calls = CallManager(this) { who -> scope.launch { onIncomingCall(who) } }
         calls.start()
@@ -176,7 +177,9 @@ class DKAccessibilityService : AccessibilityService() {
             listener.muteBeep = true
             var misses = 0
             while (isActive && (DKState.live || Prefs.wakeMode(this@DKAccessibilityService))) {
-                if (agent.isBusy || DKState.mode == Mode.SPEAKING) { delay(250); continue }
+                if (agent.isBusy || DKState.mode == Mode.SPEAKING || callAnnouncing) { delay(250); continue }
+                // call chal rahi hai: mic call ka hai - DK ka mic chhod do (warna saamne wale ko awaaz nahi jaati)
+                if (calls.inCall && !calls.ringing) { ear.release(); listener.release(); DKState.set(Mode.IDLE); delay(1000); continue }
                 DKState.set(Mode.LISTENING)
                 val heard = hear()
                 if (DKState.mode == Mode.LISTENING || DKState.mode == Mode.THINKING) DKState.set(Mode.IDLE)
@@ -191,6 +194,12 @@ class DKAccessibilityService : AccessibilityService() {
                 }
                 misses = 0
                 val low = heard.lowercase().trim()
+
+                // ghanti baj rahi hai -> jo bhi bolo woh call ka jawab (wake word ki zarurat nahi)
+                if (calls.ringing || callPending) {
+                    if (handleCallReply(heard)) continue
+                    if (calls.ringing) continue      // call ke dauraan baaki baatein nahi
+                }
 
                 if (DKState.live) {
                     if (low.trim(' ', '.', '।').length < 2) continue
@@ -344,7 +353,12 @@ class DKAccessibilityService : AccessibilityService() {
                 "torch" -> DeviceActions.torch(this, if (a.has("on")) a.optBoolean("on") else null)
                 "open_settings" -> DeviceActions.openSettings(this, a.optString("page"))
                 "panel" -> DeviceActions.panel(this, a.optString("name", "internet"))
-                "volume" -> DeviceActions.volume(this, a.optString("direction", "up"), a.optInt("level", -1))
+                "volume" -> DeviceActions.volume(this, a.optString("direction", "up"), a.optInt("level", -1),
+                    a.optString("stream").ifBlank { if (calls.ringing) "ring" else if (calls.inCall) "call" else "music" })
+                "directions" -> Maps.directions(this, a.optString("to"), a.optString("from"), a.optString("mode", "driving"))
+                "navigate" -> Maps.navigate(this, a.optString("to"), a.optString("mode", "driving"))
+                "map_search" -> Maps.search(this, a.optString("query"))
+                "distance" -> distance(a.optString("to"), a.optString("from"), a.optString("mode", "driving"))
                 "media" -> DeviceActions.media(this, a.optString("key", "play_pause"))
                 "lock" -> if (Build.VERSION.SDK_INT >= 28) global(GLOBAL_ACTION_LOCK_SCREEN) else "ERROR: Android 9+ chahiye"
                 "screenshot_save" -> if (Build.VERSION.SDK_INT >= 28) global(GLOBAL_ACTION_TAKE_SCREENSHOT) else "ERROR"
@@ -445,33 +459,107 @@ class DKAccessibilityService : AccessibilityService() {
     }
 
     // ---------------------------------------------------------------- calls
-    /** Call aate hi: "<naam> का कॉल आ रहा है" bolo, phir jawab suno (उठा लो / काट दो). */
+    /** Call ka elaan chal raha hai (tab sunne wala loop ruka rahe, DK apni hi awaaz na sune) */
+    @Volatile private var callAnnouncing = false
+    /** Call aayi aur abhi jawab (उठाओ / काटो) nahi mila */
+    @Volatile private var callPending = false
+
+    /**
+     * Call aate hi:
+     *  1. ringtone dheemi (taaki DK ki awaaz aur aapki baat dono saaf)
+     *  2. "<naam> का कॉल आ रहा है। उठाऊँ या काट दूँ?"
+     *  3. aapka jawab suno (wake word ki zarurat nahi) -> uthao / kaato / speaker / ringtone band
+     */
     private suspend fun onIncomingCall(who0: String) {
         if (!Prefs.announceCalls(this)) return
-        delay(900)
+        callPending = true
+        agent.stop()
+        calls.quietRinger()
+        delay(500)
         var who = who0
         if (who.isBlank()) who = callerFromScreen()
-        agent.stop()
-        calls.quietRinger()   // ringtone dheemi, taaki DK aapki baat sun sake
+        if (!calls.ringing && calls.known) { callPending = false; return }
         val msg = if (who.isNotBlank()) "$who का कॉल आ रहा है। उठाऊँ या काट दूँ?" else "किसी का कॉल आ रहा है। उठाऊँ या काट दूँ?"
         DKState.reply(msg)
-        speaker.speak(msg)
-        // live mode band ho tab bhi ek baar jawab suno
-        if (loopJob?.isActive != true) {
-            repeat(2) {
-                if (!calls.ringing) return
+        callAnnouncing = true
+        try { speaker.speakQuick(msg) } finally { callAnnouncing = false }   // phone ki apni awaaz = bina der
+
+        // Sunne wala loop chalu hai to wahi jawab sambhalega. Nahi to yahin suno (jab tak ghanti baje, max ~30 sec)
+        if (loopJob?.isActive == true) {
+            scope.launch { while (calls.ringing) delay(500); callPending = false }
+            return
+        }
+        val until = System.currentTimeMillis() + 30_000
+        var asked = 1
+        try {
+            while (calls.ringing && callPending && System.currentTimeMillis() < until) {
                 DKState.set(Mode.LISTENING)
                 val ans = hear()
                 DKState.set(Mode.IDLE)
-                if (ans != null) {
-                    val q = QuickCommands.parse(ans, Prefs.wakeWords(this))
-                    if (q != null) { agent.runQuick(q); return }
-                    val l = ans.lowercase()
-                    if (l.contains("हाँ") || l.contains("हां") || l.contains("yes")) { agent.runQuick(QuickCommands.parse("कॉल उठा लो", emptyList())!!); return }
-                    if (l.contains("नहीं") || l.contains("no")) { agent.runQuick(QuickCommands.parse("कॉल काट दो", emptyList())!!); return }
+                if (!calls.ringing) break
+                if (ans == null) {
+                    // chup hain -> ek baar aur poochho
+                    if (asked < 2 && System.currentTimeMillis() > until - 18_000) {
+                        asked++; callAnnouncing = true
+                        try { speaker.speakQuick("कॉल उठाऊँ?") } finally { callAnnouncing = false }
+                    }
+                    continue
                 }
+                if (handleCallReply(ans)) break
+            }
+        } finally { callPending = false; DKState.set(Mode.IDLE) }
+    }
+
+    /** Ghanti ke dauraan boli baat: true = samajh kar kaam kar diya. */
+    private suspend fun handleCallReply(heard: String): Boolean {
+        val l = " " + heard.lowercase().trim().trim('.', '।', '!', '?') + " "
+        fun has(vararg w: String) = w.any { l.contains(it) }
+        DKState.user(heard)
+        val speakerOn = has("स्पीकर", "speaker", "लाउड")
+        val pick = has("उठा", "रिसीव", "receive", "answer", "पिक", "pick", "accept", "स्वीकार", "बात करा", "बात करनी", "जोड़ो", "जोड़ दो") ||
+            Regex("(^| )(हाँ|हां|हा|हम्म|yes|yeah|ok|ओके|ठीक है|जी|जी हाँ|जी हां|बिलकुल|बिल्कुल|उठाओ)( |$)").containsMatchIn(l.trim())
+        val cut = has("काट", "कट ", "कट", "reject", "decline", "मना", "रख दो", "बाद में", "अभी नहीं", "नहीं उठा", "मत उठा", "बिज़ी", "busy") ||
+            Regex("(^| )(नहीं|नही|ना|no|nahi)( |$)").containsMatchIn(l.trim())
+        val quiet = has("चुप", "साइलेंट", "silent", "ringtone बंद", "रिंगटोन बंद", "घंटी बंद", "आवाज़ बंद", "आवाज बंद", "आवाज़ कम", "आवाज कम", "धीरे")
+        val who = has("कौन", "किसका", "who")
+        return when {
+            // "मत उठाओ" / "नहीं उठाना" = kaato (pehle check)
+            has("मत उठा", "नहीं उठा", "ना उठा") -> { agent.runQuick(QuickCommands.Quick(JSONObject().put("type", "end_call"), "कॉल काट दिया")).join(); callPending = false; true }
+            pick && !has("काट", "reject") -> {
+                agent.runQuick(QuickCommands.Quick(JSONObject().put("type", "answer_call").put("speaker", speakerOn),
+                    if (speakerOn) "कॉल उठा कर स्पीकर पर डाल रहा हूँ" else "कॉल उठा रहा हूँ")).join()
+                callPending = false; true
+            }
+            cut -> { agent.runQuick(QuickCommands.Quick(JSONObject().put("type", "end_call"), "कॉल काट दिया")).join(); callPending = false; true }
+            quiet -> {
+                DeviceActions.volume(this, "set", 0, "ring")
+                DKState.reply("रिंगटोन धीमी कर दी।"); speaker.speakQuick("रिंगटोन धीमी कर दी।"); false
+            }
+            who -> {
+                val name = calls.caller.ifBlank { callerFromScreen() }
+                val m = if (name.isNotBlank()) "$name का कॉल है। उठाऊँ?" else "नंबर पता नहीं चला। उठाऊँ?"
+                DKState.reply(m); speaker.speakQuick(m); false
+            }
+            else -> {
+                // "आवाज़ बढ़ाओ" jaisi seedhi command chalne do
+                val q = QuickCommands.parse(heard, Prefs.wakeWords(this))
+                if (q != null) { agent.runQuick(q).join(); q.action.optString("type") in listOf("answer_call", "end_call") } else false
             }
         }
+    }
+
+    /** Doori naapo: Maps me rasta kholo, phir screen se km + samay padho. */
+    private suspend fun distance(to: String, from: String, mode: String): String {
+        val r = Maps.directions(this, to, from, mode)
+        if (r.startsWith("ERROR")) return r
+        val until = System.currentTimeMillis() + 12_000
+        delay(2500)
+        while (System.currentTimeMillis() < until) {
+            val sc = readScreen()
+            if (sc.packageName.contains("maps")) Maps.readDistance(sc.text)?.let { return "DISTANCE: $it" }
+            delay(800)
+        }
+        return "maps route opened, distance screen par dikh rahi hai par padh nahi paya"
     }
 
     /** Call wali screen se naam padho (contacts permission na ho tab). */
@@ -548,6 +636,8 @@ class DKAccessibilityService : AccessibilityService() {
             delay(800)
             ok = ok || (calls.known && calls.inCall)
         }
+        // 4) ek baar aur seedha tareeka (kuch phone pehli baar me nahi uthate)
+        if (calls.known && !calls.inCall && calls.ringing) { calls.answer(); delay(900) }
         calls.restoreRinger()
         if (calls.known) ok = calls.inCall
         if (!ok) return if (!calls.canAnswer()) "ERROR_CALL_PERM" else "ERROR: call nahi uthi"

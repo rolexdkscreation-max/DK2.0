@@ -68,6 +68,19 @@ class AgentRunner(
             if (r == "ERROR_CALL_PERM") { sayQuick("कॉल संभालने की परमिशन नहीं है। सेटिंग्स में \"कॉल/कॉन्टैक्ट परमिशन दें\" दबाइए।"); return true }
             if (r.startsWith("ERROR")) { sayQuick(if (type == "answer_call") "कॉल नहीं उठ पाया, स्क्रीन पर खुद उठा लीजिए।" else "कॉल नहीं कटा।"); return true }
         }
+        if (type == "distance") {
+            val to = q.action.optString("to"); val from = q.action.optString("from")
+            val m = if (r.startsWith("DISTANCE:")) {
+                val d = r.removePrefix("DISTANCE:").trim()
+                if (from.isBlank()) "$to यहाँ से $d दूर है।" else "$from से $to $d दूर है।"
+            } else if (r.startsWith("ERROR")) "मैप नहीं खुल पाया।"
+            else if (brain.canSearch()) try {
+                brain.searchAnswer(if (from.isBlank()) "$to कितनी दूर है (सड़क से दूरी और समय)" else "$from से $to सड़क से कितनी दूर है और कितना समय लगता है")
+            } catch (_: Exception) { "रास्ता मैप पर खोल दिया है, दूरी वहीं दिख रही है।" }
+            else "रास्ता मैप पर खोल दिया है, दूरी वहीं दिख रही है।"
+            DKState.reply(m); if (!silent) speaker.speak(m)
+            return true
+        }
         if (r.startsWith("ERROR")) return false
         val msg = when {
             type == "who_calls" -> if (r.startsWith("CALLER:")) r.removePrefix("CALLER:").trim() + " का कॉल है।" else "पता नहीं चला किसका कॉल है।"
@@ -89,11 +102,46 @@ class AgentRunner(
         return w.any { t.contains(it) }
     }
 
+    /** Mushkil / vistaar wala sawaal? -> internet par kai sources se jaanch (research) */
+    private fun needsResearch(t: String): Boolean {
+        val w = listOf("विस्तार से", "पूरी जानकारी", "पूरी डिटेल", "डिटेल में", "detail", "रिसर्च", "research", "जांच कर", "जाँच कर",
+            "समझाओ", "समझा दो", "तुलना", "compare", "फर्क", "फ़र्क", "अंतर", "difference", "फायदे", "फ़ायदे", "नुकसान",
+            "कौन सा बेहतर", "कौनसा बेहतर", "कौन सा अच्छा", "कौनसा अच्छा", "सबसे अच्छा", "best", "इलाज", "बीमारी", "दवा", "दवाई",
+            "लक्षण", "कानून", "धारा", "नियम", "योजना", "scheme", "टैक्स", "tax", "निवेश", "invest", "लोन", "loan", "ब्याज",
+            "इतिहास", "history", "कैसे काम", "क्यों होता", "क्यों होती", "कैसे बनता", "कैसे बनती", "प्रक्रिया", "process", "आवेदन", "apply")
+        if (w.any { t.contains(it) }) return true
+        val q = listOf("क्या", "क्यों", "कैसे", "कौन", "कब", "कहाँ", "कितना", "कितने", "what", "why", "how")
+        return t.split(' ').size >= 14 && q.any { t.contains(it) }
+    }
+
+    /** "याद रखो ..." / "... भूल जाओ" / "क्या याद है" */
+    private suspend fun memoryCommand(goal: String): Boolean {
+        val m = Memory.parse(goal) ?: return false
+        when (m.kind) {
+            "remember" -> { Memory.addFact(svc, m.text); say("ठीक है, याद रख लिया।") }
+            "forget" -> {
+                val n = Memory.forget(svc, m.text)
+                say(if (n > 0) "ठीक है, वो बात भूल गया।" else "इस बारे में मुझे कुछ याद नहीं था।")
+            }
+            "forget_all" -> { Memory.clearFacts(svc); brain.reset(); say("ठीक है, सारी यादें मिटा दीं।") }
+            "recall" -> {
+                val f = Memory.facts(svc)
+                if (f.isEmpty()) say("अभी आपने मुझे कुछ याद रखने को नहीं कहा है। बोलिए, याद रखो, और बात बताइए।")
+                else {
+                    DKState.reply("मुझे याद है:\n" + f.joinToString("\n") { "• $it" })
+                    if (!silent) speaker.speak("मुझे ${f.size} बातें याद हैं। " + f.takeLast(5).joinToString("। "))
+                }
+            }
+        }
+        return true
+    }
+
     private suspend fun execute(goal: String) {
         DKLog.d("Command: $goal")
         DKState.user(goal)
         val lower = goal.lowercase().trim()
         if (lower in listOf("stop", "रुको", "बस", "ruko", "cancel")) { speaker.stop(); return }
+        if (memoryCommand(goal)) return
         if (lower.contains("नई बात") || lower.contains("new chat") || lower.contains("भूल जाओ")) {
             brain.reset(); say("ठीक है, नई बातचीत शुरू करते हैं।"); return
         }
@@ -113,7 +161,10 @@ class AgentRunner(
         var chatMode = !looksLikePhoneTask(lower)
         var step = 0
 
-        // 2) Taaza/sahi jawab chahiye -> "पता करके बताता हूँ" + Google Search
+        // 2) Mushkil sawaal -> research (kai sources se jaanch). Taaza jawab -> Google Search. Baaki -> seedha AI (turant)
+        if (chatMode && brain.canSearch() && needsResearch(lower)) {
+            if (searchAndSay(goal, deep = true)) return
+        }
         if (chatMode && brain.canSearch() && needsSearch(lower)) {
             if (searchAndSay(goal)) return
         }
@@ -162,8 +213,11 @@ class AgentRunner(
             // filler shuru nahi hua to rok do; bol raha ho to poora hone do (beech me na kate)
             if (filler != null) { if (filler.isActive && System.currentTimeMillis() - t0 < 1300) filler.cancel() else filler.join() }
 
-            if (chatMode && resp.optBoolean("need_search", false)) {
-                if (searchAndSay(goal, fillerSaid = filler != null && !filler.isCancelled)) return
+            resp.optString("remember").takeIf { it.isNotBlank() }?.let { Memory.addFact(svc, it) }
+
+            if (chatMode && (resp.optBoolean("need_research", false) || resp.optBoolean("need_search", false))) {
+                if (searchAndSay(goal, fillerSaid = filler != null && !filler.isCancelled,
+                        deep = resp.optBoolean("need_research", false))) return
             }
 
             if (chatMode && resp.optBoolean("need_screen", false)) {
@@ -212,16 +266,23 @@ class AgentRunner(
         say("बहुत सारे स्टेप हो गए, मैंने काम यहीं रोक दिया।")
     }
 
-    private suspend fun searchAndSay(goal: String, fillerSaid: Boolean = false): Boolean {
+    private suspend fun searchAndSay(goal: String, fillerSaid: Boolean = false, deep: Boolean = false): Boolean {
         DKState.set(Mode.THINKING)
         val f = if (!fillerSaid) scope.launch {
-            val t = listOf("पता करके बताता हूँ।", "एक सेकंड, देखकर बताता हूँ।").random()
+            val t = if (deep) listOf("अच्छा सवाल है, सही जानकारी जाँचकर बताता हूँ।", "एक मिनट, अलग-अलग जगह से पक्का करके बताता हूँ।").random()
+                    else listOf("पता करके बताता हूँ।", "एक सेकंड, देखकर बताता हूँ।").random()
             sayQuick(t)
         } else null
         return try {
-            val ans = brain.searchAnswer(goal)
+            val r = brain.search(goal, deep)
             f?.join()
-            if (ans.isBlank()) false else { say(ans); true }
+            if (r.text.isBlank()) false else {
+                // screen par jawab + kahan se mila; bolkar sirf jawab
+                val src = if (r.sources.isNotEmpty()) "\n\nस्रोत: " + r.sources.joinToString(", ") { it.first } else ""
+                DKState.reply(r.text + src)
+                if (!silent) speaker.speak(r.text)
+                true
+            }
         } catch (e: Exception) {
             DKLog.d("Search fail: ${e.message}")
             f?.join(); false

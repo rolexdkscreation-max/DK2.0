@@ -37,7 +37,18 @@ object DKState {
         if (t.isNotBlank()) { messages.add(Msg("d", t)); trim() }
         emit()
     }
-    private fun trim() { while (messages.size > 200) messages.removeAt(0) }
+    private fun trim() { while (messages.size > 200) messages.removeAt(0); persist() }
+
+    // ---- chat phone me save (app band/restart ke baad bhi baatcheet dikhe)
+    @Volatile private var appCtx: android.content.Context? = null
+    private val saver = Runnable { appCtx?.let { c -> Thread { Memory.saveChat(c, messages.toList()) }.start() } }
+    fun init(c: android.content.Context) {
+        if (appCtx != null) return
+        appCtx = c.applicationContext
+        if (messages.isEmpty()) try { messages.addAll(Memory.loadChat(c)) } catch (_: Exception) {}
+    }
+    private fun persist() { main.removeCallbacks(saver); main.postDelayed(saver, 1500) }
+    fun clearChat() { messages.clear(); persist(); emit() }
 
     fun listen(l: () -> Unit) { synchronized(listeners) { listeners.add(l) } }
     fun unlisten(l: () -> Unit) { synchronized(listeners) { listeners.remove(l) } }

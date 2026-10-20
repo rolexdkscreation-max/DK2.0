@@ -11,11 +11,12 @@ import org.json.JSONObject
  */
 class BrainManager(private val ctx: Context) {
 
-    private val history = mutableListOf<Turn>()
+    /** Pichhli baatcheet - phone me save rehti hai (app band hone par bhi DK ko yaad) */
+    private val history: MutableList<Turn> = try { Memory.loadHistory(ctx) } catch (_: Exception) { mutableListOf() }
     var lastUsed: String = ""
         private set
 
-    fun reset() = history.clear()
+    fun reset() { history.clear(); Memory.saveHistory(ctx, history) }
 
     private fun clientFor(p: Provider): AiClient? {
         val key = Prefs.key(ctx, p.id)
@@ -92,18 +93,39 @@ class BrainManager(private val ctx: Context) {
     fun canSearch() = Prefs.webAnswers(ctx) && Prefs.key(ctx, "gemini").isNotBlank()
 
     /** Internet (Google Search) se pata karke sahi jawab - bolne layak chhota text. */
-    suspend fun searchAnswer(question: String): String = withContext(Dispatchers.IO) {
+    suspend fun searchAnswer(question: String): String = search(question, deep = false).text
+
+    /**
+     * Internet se jaanch kar jawab.
+     * deep = false: taaza jaankari (mausam, bhav, score) - 1-3 vakya, turant.
+     * deep = true : mushkil/vistaar wala sawaal - kai sources se milakar, sirf pakki jaankari, 3-7 vakya.
+     */
+    suspend fun search(question: String, deep: Boolean): SearchResult = withContext(Dispatchers.IO) {
         val client = GeminiClient(Prefs.key(ctx, "gemini"), Prefs.model(ctx, "gemini"))
         val name = Prefs.assistantName(ctx); val user = Prefs.userName(ctx)
-        val sys = "You are $name, a Hindi voice assistant" + (if (user.isNotBlank()) " talking to $user" else "") +
-            ". Use Google Search to find correct, up-to-date facts. Today is " +
-            java.text.SimpleDateFormat("d MMMM yyyy", java.util.Locale.ENGLISH).format(java.util.Date()) +
-            ". Answer in natural spoken Hindi (Devanagari), 1-3 short sentences, no markdown, no links, no lists. " +
-            "Numbers/prices with units. If unsure, say so." + Prefs.personality(ctx).let { if (it.isNotBlank()) " Extra: $it" else "" }
-        val ans = client.searchAnswer(sys, history, question).replace(Regex("[*#`]"), "").trim()
+        val today = java.text.SimpleDateFormat("d MMMM yyyy, EEEE", java.util.Locale.ENGLISH).format(java.util.Date())
+        val sys = buildString {
+            append("You are $name, a Hindi voice assistant")
+            if (user.isNotBlank()) append(" talking to $user")
+            append(". Today is $today. ALWAYS use Google Search before answering.")
+            if (deep) {
+                append(" This is a detailed/complex question: research it properly. Check several reliable sources")
+                append(" (official sites, government, well-known news/reference sites) and compare them.")
+                append(" Only state facts that the sources agree on; if sources disagree or something is uncertain, say that clearly.")
+                append(" Never guess numbers, dates or names. Answer in natural spoken Hindi (Devanagari), 3-7 short sentences,")
+                append(" most important point first, simple words, no markdown, no links, no bullet lists.")
+            } else {
+                append(" Find correct, up-to-date facts. Answer in natural spoken Hindi (Devanagari), 1-3 short sentences,")
+                append(" no markdown, no links, no lists. Numbers/prices with units. If unsure, say so.")
+            }
+            Prefs.personality(ctx).let { if (it.isNotBlank()) append(" Extra: $it") }
+            append(Memory.factsBlock(ctx))
+        }
+        val r = client.search(sys, history, question, deep)
+        val ans = r.text.replace(Regex("[*#`]"), "").replace(Regex("\\[\\d+(,\\s*\\d+)*\\]"), "").trim()
         lastUsed = client.label
         remember("USER SAYS: $question", JSONObject().put("say", ans).put("done", true).toString())
-        ans
+        SearchResult(ans, r.sources)
     }
 
     /** Settings me "टेस्ट" button ke liye. */
@@ -124,6 +146,7 @@ class BrainManager(private val ctx: Context) {
         history.add(Turn("model", answer.take(1500)))
         while (history.size > 24) history.removeAt(0)
         if (history.firstOrNull()?.role == "model") history.removeAt(0)
+        try { Memory.saveHistory(ctx, history.toList()) } catch (_: Exception) {}
     }
 
     private fun parseJson(text: String): JSONObject {
@@ -143,7 +166,11 @@ class BrainManager(private val ctx: Context) {
             append("\nReply with ONLY JSON: {\"say\": \"<natural spoken Hindi in Devanagari, 1-3 short sentences, no markdown>\", \"done\": true}")
             append("\nIf the user wants something DONE on the phone (open/click/type/send/call/settings/shopping etc.) reply exactly {\"need_screen\": true}.")
             append("\nIf the question needs current or exact facts (news, prices, weather, scores, dates, recent events) and the input says SEARCH AVAILABLE, reply exactly {\"need_search\": true}.")
+            append("\nIf it is a complex/detailed question (how/why, comparisons, health, law, money, history, technical, 'पूरी जानकारी') where a wrong answer would mislead, and SEARCH AVAILABLE, reply exactly {\"need_research\": true}.")
+            append("\nSimple talk (hello, how are you, jokes, simple general knowledge) -> answer immediately yourself, short and warm.")
+            append("\nIf the user tells you a personal fact or preference worth remembering (names, numbers, likes, plans), add \"remember\": \"<the fact in short Hindi>\" to the JSON.")
             append("\nToday: " + java.text.SimpleDateFormat("d MMMM yyyy, EEEE", java.util.Locale.ENGLISH).format(java.util.Date()))
+            append(Memory.factsBlock(ctx))
         }
     }
 
@@ -155,6 +182,7 @@ class BrainManager(private val ctx: Context) {
             append("You are $name, a friendly voice assistant that fully controls the user's Android phone.\n")
             if (user.isNotBlank()) append("The user's name is $user. Address them by name occasionally, warmly.\n")
             if (persona.isNotBlank()) append("Personality / extra instructions from the user: $persona\n")
+            append(Memory.factsBlock(ctx)).append("\n")
         }
         return intro + BASE_PROMPT
     }
@@ -194,6 +222,10 @@ Available actions:
 {"type":"close_app"}                              close the current/last app
 {"type":"close_all_apps"}                         clear all recent apps
 {"type":"screenshot_save"}                        take & save a screenshot
+{"type":"directions","to":"<place>","from":"<place or empty = my location>","mode":"driving|two_wheeler|walking|transit"}  open Google Maps route
+{"type":"navigate","to":"<place>","mode":"driving|two_wheeler|walking"}   start turn-by-turn navigation in Google Maps
+{"type":"map_search","query":"<place / 'petrol pump near me'>"}         show a place or nearby places on the map
+{"type":"distance","to":"<place>","from":"<place or empty = my location>","mode":"driving"}  measure road distance + travel time (result comes back as text)
 {"type":"wait","ms":1500}
 {"type":"ask","question":"..."}                   ask the user by voice; their answer arrives next turn
 {"type":"look"}                                   you need a SCREENSHOT to understand the screen; it arrives next turn
@@ -221,6 +253,9 @@ Rules:
     If the question needs current or exact facts you may not know (news, prices, weather, scores, dates, recent events,
     "सही बताओ", "पता करके") and the input says SEARCH AVAILABLE, reply exactly {"need_search": true}.
 11. Only use "look" when the element list is not enough (images, games, unclear screen).
+15. Maps: "<जगह> का मैप/रास्ता दिखाओ" = directions. "<जगह> ले चलो / नेविगेशन चालू करो" = navigate.
+    "<जगह> कितनी दूर है / <A> से <B> की दूरी" = distance, then tell the distance and time from the result.
+    "पास में पेट्रोल पंप/ATM/होटल" = map_search. Use full place names with city if the user said it.
 """.trimIndent()
     }
 }
