@@ -144,6 +144,17 @@ Available actions:
 {"type":"tap","x":X,"y":Y}                        tap screen pixel (use only if no element fits)
 {"type":"swipe","x1":X,"y1":Y,"x2":X,"y2":Y}
 {"type":"back"} {"type":"home"} {"type":"recents"} {"type":"notifications"} {"type":"quick_settings"}
+{"type":"shop_search","app":"flipkart","query":"..."}  search inside a shopping/grocery app (flipkart, amazon, meesho, myntra, blinkit, zepto, bigbasket, jiomart, instamart, swiggy...)
+{"type":"torch","on":true}                        flashlight on/off (omit "on" = toggle)
+{"type":"open_settings","page":"wifi"}            open a phone settings page by name (wifi, bluetooth, hotspot, display, sound, battery, location, apps, storage, about, date, language, security, notifications, mobile data, developer...). Unknown page -> main settings, then use its search box
+{"type":"panel","name":"internet|volume|wifi"}    quick popup panel
+{"type":"volume","direction":"up|down|mute|unmute|max|set|silent|ring","level":50}
+{"type":"media","key":"play_pause|next|previous"}  control music/video playing in any app
+{"type":"lock"}                                   lock the phone (screen off)
+{"type":"unlock"}                                 wake screen + open swipe lock (if PIN/fingerprint is set, tell user to unlock; never type a PIN)
+{"type":"close_app"}                              close the current/last app
+{"type":"close_all_apps"}                         clear all recent apps
+{"type":"screenshot_save"}                        take & save a screenshot
 {"type":"wait","ms":1500}
 {"type":"ask","question":"..."}                   ask the user by voice; their answer arrives next turn
 {"type":"look"}                                   you need a SCREENSHOT to understand the screen; it arrives next turn
@@ -158,6 +169,12 @@ Rules:
 5. To play something on YouTube: youtube_search, then click the first video result (not ads/shorts if possible).
 6. Facebook post: open_app Facebook, tap the "What's on your mind?" box, type the text, confirm with ask, then tap Post.
 7. Gallery/photos: open_app Gallery (or Photos), long_click photos to select, tap Delete, confirm with ask first.
+12. Shopping/grocery: use shop_search (or open_app then its search box), then open the right product. To add to cart
+    tap "Add to cart"/"Add"/"कार्ट में डालें"/"ADD" and tell the user the product name + price. NEVER tap "Buy now",
+    "Place order", "Pay"/payment or change address without asking the user with "ask" first.
+    Indian app names: Zepto, Blinkit, Swiggy Instamart, Flipkart, Amazon, Meesho, Myntra, BigBasket, JioMart.
+13. "स्क्रीन पर क्या है / देखो" = describe the current screen briefly from the element list (use "look" if needed).
+14. "लाइट/टॉर्च जलाओ" = torch on. "फ़ोन लॉक करो" = lock. "फ़ोन खोलो/अनलॉक" = unlock. "ऐप बंद करो" = close_app.
 8. If something fails, try another way (scroll, back, search inside app). If stuck, say so and set done true.
 9. Keep "say" very short (1 sentence) while working. When done, briefly tell the result.
 10. CHAT MODE: if the input says "CHAT MODE" you get no screen info. Answer normal talk/questions directly

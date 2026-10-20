@@ -49,6 +49,11 @@ class SettingsActivity : AppCompatActivity() {
     private val keyFields = mutableMapOf<String, EditText>()
     private val modelFields = mutableMapOf<String, EditText>()
     private val baseFields = mutableMapOf<String, EditText>()
+    private lateinit var rgGender: RadioGroup
+    private lateinit var rgEngine: RadioGroup
+    private lateinit var rgListen: RadioGroup
+    private lateinit var txtVoice: TextView
+    private val fetchedFor = mutableMapOf<String, String>()   // provider -> key jiske models la chuke
 
     private val dp get() = resources.displayMetrics.density
 
@@ -161,17 +166,44 @@ class SettingsActivity : AppCompatActivity() {
         Providers.all.forEach { p -> providerCard(p) }
 
         // ---- Voice
-        card("आवाज़", "फ्री Google आवाज़ (TTS)") { box ->
+        card("आवाज़", "महिला या पुरुष — दोनों फ्री") { box ->
+            label(box, "किसकी आवाज़ में बोले?")
+            rgGender = radios(box, listOf("female" to "महिला (Female)", "male" to "पुरुष (Male)"), Prefs.voiceGender(this), 2000)
+            label(box, "आवाज़ का प्रकार")
+            rgEngine = radios(box, listOf(
+                "google" to "फ़ोन की Google आवाज़ — फ्री, कोई लिमिट नहीं, तेज़",
+                "gemini" to "Gemini नेचुरल आवाज़ — सबसे इंसानी (Gemini key से, रोज़ की लिमिट)"),
+                Prefs.voiceEngine(this), 2100)
+            txtVoice = TextView(this).apply {
+                textSize = 13f; setTextColor(0xB3FFFFFF.toInt())
+                setPadding((4 * dp).toInt(), (6 * dp).toInt(), 0, 0)
+            }
+            box.addView(txtVoice)
+            updateVoiceText()
+            rgGender.setOnCheckedChangeListener { _, _ ->
+                // gender badla to purani chuni hui awaaz hatao (naye gender ki sabse achhi awaaz)
+                Prefs.edit(this) { putString("google_voice", ""); putString("gemini_voice", "") }
+                save(false); updateVoiceText()
+            }
+            rgEngine.setOnCheckedChangeListener { _, _ -> save(false); updateVoiceText() }
+            row(box,
+                button("आवाज़ चुनें") { chooseVoice() },
+                button("आवाज़ सुनें") { testVoice() })
             label(box, "बोलने की स्पीड")
             sbRate = seek(box, Prefs.ttsRate(this))
-            label(box, "आवाज़ की पिच (ऊँची/नीची)")
+            label(box, "आवाज़ की पिच (ऊँची/नीची) — सिर्फ़ Google आवाज़")
             sbPitch = seek(box, Prefs.ttsPitch(this))
-            row(box,
-                button("आवाज़ सुनें") { testVoice() },
-                button("आवाज़ बदलें") {
-                    if (!Setup.openTts(this)) toast("TTS सेटिंग नहीं खुली")
-                })
-            hint(box, "सबसे नेचुरल आवाज़: Play Store से \"Speech Services by Google\" अपडेट करें → आवाज़ बदलें → हिन्दी → मनपसंद voice चुनें।")
+            hint(box, "Google आवाज़ ज़्यादा नेचुरल चाहिए तो: Play Store से \"Speech Services by Google\" अपडेट करें, फिर \"आवाज़ चुनें\" में \"ऑनलाइन\" वाली आवाज़ लें। Gemini आवाज़ की लिमिट खत्म हो तो DK अपने-आप Google आवाज़ में बोलेगा।")
+            row(box, button("फ़ोन की TTS सेटिंग") { if (!Setup.openTts(this)) toast("TTS सेटिंग नहीं खुली") })
+        }
+
+        // ---- Listening
+        card("सुनना (माइक)", "लगातार सुनना — बिना बीप की आवाज़") { box ->
+            rgListen = radios(box, listOf(
+                "auto" to "बिना बीप — DK खुद सुनेगा (Groq या Gemini key चाहिए)",
+                "google" to "Google माइक — बिना key, पर हर बार बीप आ सकती है"),
+                Prefs.listenEngine(this), 2200)
+            hint(box, "बिना बीप वाले मोड में सबसे तेज़ और सही हिंदी पहचान के लिए Groq की फ्री key डालें (Whisper)। Groq key न हो तो Gemini key से काम चलेगा।")
         }
 
         // ---- Options
@@ -197,12 +229,59 @@ class SettingsActivity : AppCompatActivity() {
             }
             val key = field(box, "API Key", Prefs.key(this, p.id), "यहाँ key पेस्ट करें", secret = true)
             keyFields[p.id] = key
-            modelFields[p.id] = field(box, "मॉडल", Prefs.model(this, p.id), p.defaultModel.ifBlank { "model-name" })
+            val model = field(box, "मॉडल", Prefs.model(this, p.id), p.defaultModel.ifBlank { "model-name" })
+            modelFields[p.id] = model
             val result = TextView(this).apply {
                 setTextColor(0xB3FFFFFF.toInt()); textSize = 13f
                 visibility = View.GONE
                 setPadding(0, (6 * dp).toInt(), 0, 0)
             }
+            val mInfo = TextView(this).apply {
+                setTextColor(0xB3FFFFFF.toInt()); textSize = 13f
+                setPadding((4 * dp).toInt(), (6 * dp).toInt(), 0, 0)
+                val cached = Prefs.models(this@SettingsActivity, p.id)
+                text = if (cached.isNotEmpty()) "${cached.size} मॉडल उपलब्ध — \"मॉडल चुनें\" दबाएँ" else "Key डालते ही इस कंपनी के सारे मॉडल यहाँ आ जाएँगे"
+            }
+            box.addView(mInfo)
+            fun loadModels(openPicker: Boolean) {
+                val k = key.text.toString().trim()
+                if (k.length < 12) { mInfo.text = "पहले सही API key डालें"; return }
+                val base = baseFields[p.id]?.text?.toString()?.trim()?.ifBlank { null } ?: Prefs.baseUrl(this, p.id)
+                if (base.isBlank() && !p.isGemini) { mInfo.text = "पहले Base URL डालें"; return }
+                mInfo.text = "मॉडल लोड हो रहे हैं…"
+                lifecycleScope.launch {
+                    try {
+                        val list = ModelLister.fetch(p, k, base)
+                        fetchedFor[p.id] = k
+                        Prefs.edit(this@SettingsActivity) { putString("models_${p.id}", list.joinToString("\n")) }
+                        mInfo.text = "✓ ${list.size} मॉडल मिले — \"मॉडल चुनें\" दबाएँ"
+                        if (openPicker && list.isNotEmpty()) pickModel(p, model, list)
+                    } catch (e: Exception) {
+                        mInfo.text = "मॉडल नहीं आए: " + BrainManager(this@SettingsActivity).explain(e).take(160)
+                    }
+                }
+            }
+            // key paste/likhte hi (1.2 sec ruk kar) models apne-aap
+            val h = android.os.Handler(mainLooper)
+            var pendingFetch: Runnable? = null
+            key.addTextChangedListener(object : TextWatcher {
+                override fun beforeTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) {}
+                override fun onTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) {}
+                override fun afterTextChanged(s: Editable?) {
+                    val k = s?.toString()?.trim() ?: ""
+                    pendingFetch?.let { h.removeCallbacks(it) }
+                    if (k.length >= 20 && fetchedFor[p.id] != k) {
+                        pendingFetch = Runnable { save(false); loadModels(true) }.also { h.postDelayed(it, 1200) }
+                    }
+                }
+            })
+            row(box,
+                button("मॉडल चुनें") {
+                    val cached = Prefs.models(this, p.id)
+                    if (cached.isNotEmpty() && fetchedFor[p.id] == key.text.toString().trim()) pickModel(p, model, cached)
+                    else loadModels(true)
+                },
+                button("लिस्ट रीफ़्रेश") { loadModels(false) })
             val buttons = mutableListOf<View>()
             buttons.add(button("दिखाओ") { v ->
                 val show = key.inputType != (InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_VISIBLE_PASSWORD)
@@ -223,6 +302,20 @@ class SettingsActivity : AppCompatActivity() {
         }
     }
 
+    private fun pickModel(p: Provider, target: EditText, list: List<String>) {
+        val current = target.text.toString().trim()
+        val items = list.toTypedArray()
+        val sel = items.indexOf(current)
+        android.app.AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
+            .setTitle("${p.name} — मॉडल चुनें (${items.size})")
+            .setSingleChoiceItems(items, sel) { d, which ->
+                target.setText(items[which]); save(false)
+                toast("मॉडल: ${items[which]}"); d.dismiss()
+            }
+            .setNegativeButton("बंद करें", null)
+            .show()
+    }
+
     // ------------------------------------------------------------ save
     private fun save(showToast: Boolean) {
         if (!::rgProvider.isInitialized) return
@@ -239,6 +332,9 @@ class SettingsActivity : AppCompatActivity() {
             putBoolean("screenshot", swShot.isChecked)
             putBoolean("auto_update", swAutoUpd.isChecked)
             putFloat("tts_rate", seekValue(sbRate))
+            putString("voice_gender", radioValue(rgGender, listOf("female", "male"), 2000))
+            putString("voice_engine", radioValue(rgEngine, listOf("google", "gemini"), 2100))
+            putString("listen_engine", radioValue(rgListen, listOf("auto", "google"), 2200))
             putFloat("tts_pitch", seekValue(sbPitch))
             keyFields.forEach { (id, e) -> putString("key_$id", e.text.toString().trim()) }
             modelFields.forEach { (id, e) -> putString("model_$id", e.text.toString().trim()) }
@@ -256,9 +352,91 @@ class SettingsActivity : AppCompatActivity() {
     override fun onPause() { save(false); super.onPause() }
     override fun onDestroy() { speaker?.shutdown(); super.onDestroy() }
 
+    private fun radios(box: LinearLayout, items: List<Pair<String, String>>, current: String, base: Int): RadioGroup {
+        val g = RadioGroup(this).apply { orientation = RadioGroup.VERTICAL }
+        items.forEachIndexed { i, (v, t) ->
+            g.addView(RadioButton(this).apply {
+                id = base + i; text = t; textSize = 14f; setTextColor(0xFFFFFFFF.toInt())
+                setPadding((6 * dp).toInt(), (5 * dp).toInt(), 0, (5 * dp).toInt())
+            })
+            if (v == current) g.check(base + i)
+        }
+        if (g.checkedRadioButtonId == -1) g.check(base)
+        box.addView(g)
+        return g
+    }
+
+    private fun radioValue(g: RadioGroup, values: List<String>, base: Int) =
+        values.getOrElse(g.checkedRadioButtonId - base) { values.first() }
+
+    private fun sp(): Speaker = speaker ?: Speaker(this).also { speaker = it }
+
+    private fun updateVoiceText() {
+        if (!::txtVoice.isInitialized) return
+        val engine = radioValue(rgEngine, listOf("google", "gemini"), 2100)
+        if (engine == "gemini") {
+            txtVoice.text = "चुनी हुई आवाज़: ${Prefs.geminiVoice(this)}" +
+                if (Prefs.key(this, "gemini").isBlank()) "  (Gemini key नहीं डाली — तब तक Google आवाज़)" else ""
+        } else {
+            lifecycleScope.launch {
+                val voices = sp().hindiVoices()
+                val name = Prefs.googleVoice(this@SettingsActivity)
+                val v = voices.firstOrNull { it.name == name } ?: VoiceCatalog.pickGoogle(voices, Prefs.voiceGender(this@SettingsActivity))
+                txtVoice.text = if (v == null) "फ़ोन में हिंदी आवाज़ नहीं मिली — \"फ़ोन की TTS सेटिंग\" से हिंदी डाउनलोड करें"
+                else "चुनी हुई आवाज़: " + VoiceCatalog.label(v, voices.indexOf(v)) + "  •  कुल ${voices.size} हिंदी आवाज़ें"
+            }
+        }
+    }
+
+    /** Saari awaazon ki list: tap = suno + chuno. */
+    private fun chooseVoice() {
+        save(false)
+        val gender = Prefs.voiceGender(this)
+        val sample = "नमस्ते, मैं ${Prefs.assistantName(this)} हूँ। क्या मैं आपकी मदद करूँ?"
+        if (Prefs.voiceEngine(this) == "gemini") {
+            val f = VoiceCatalog.GEMINI_FEMALE.map { it to "महिला • $it" }
+            val m = VoiceCatalog.GEMINI_MALE.map { it to "पुरुष • $it" }
+            val all = if (gender == "male") m + f else f + m
+            android.app.AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
+                .setTitle("Gemini आवाज़ चुनें (टैप = सुनें)")
+                .setItems(all.map { it.second }.toTypedArray()) { _, i ->
+                    val name = all[i].first
+                    val g = if (name in VoiceCatalog.GEMINI_MALE) "male" else "female"
+                    Prefs.edit(this) { putString("gemini_voice", name); putString("voice_gender", g) }
+                    rgGender.check(if (g == "male") 2001 else 2000)
+                    Prefs.edit(this) { putString("gemini_voice", name) }
+                    updateVoiceText()
+                    toast("सुनाई दे रही है: $name …")
+                    lifecycleScope.launch { sp().previewGemini(name, sample)?.let { toast(it) } }
+                }
+                .setNegativeButton("बंद करें", null).show()
+        } else {
+            lifecycleScope.launch {
+                val voices = sp().hindiVoices()
+                if (voices.isEmpty()) { toast("हिंदी आवाज़ नहीं मिली — TTS सेटिंग से हिंदी डाउनलोड करें"); Setup.openTts(this@SettingsActivity); return@launch }
+                val labels = voices.mapIndexed { i, v -> VoiceCatalog.label(v, i) }.toTypedArray()
+                android.app.AlertDialog.Builder(this@SettingsActivity, android.R.style.Theme_DeviceDefault_Dialog_Alert)
+                    .setTitle("Google आवाज़ चुनें (टैप = सुनें)")
+                    .setItems(labels) { _, i ->
+                        val v = voices[i]
+                        val g = VoiceCatalog.googleGender(v)
+                        Prefs.edit(this@SettingsActivity) {
+                            putString("google_voice", v.name)
+                            if (g != null) putString("voice_gender", g)
+                        }
+                        if (g != null) { rgGender.setOnCheckedChangeListener(null); rgGender.check(if (g == "male") 2001 else 2000)
+                            rgGender.setOnCheckedChangeListener { _, _ -> Prefs.edit(this@SettingsActivity) { putString("google_voice", ""); putString("gemini_voice", "") }; save(false); updateVoiceText() } }
+                        updateVoiceText()
+                        lifecycleScope.launch { sp().speakGoogle(sample, v.name) }
+                    }
+                    .setNegativeButton("बंद करें", null).show()
+            }
+        }
+    }
+
     private fun testVoice() {
         save(false)
-        val sp = speaker ?: Speaker(this).also { speaker = it }
+        val sp = sp()
         val user = Prefs.userName(this)
         lifecycleScope.launch {
             sp.speak("नमस्ते${if (user.isNotBlank()) " $user" else ""}, मैं ${Prefs.assistantName(this@SettingsActivity)} हूँ। मेरी आवाज़ कैसी लगी?")

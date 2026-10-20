@@ -39,9 +39,13 @@ class VoiceListener(private val context: Context) {
         recognizer = null
     }
 
+    /** DK ne aakhri baar kab bola (uske turant baad music "active" dikhta hai, par woh DK ki hi awaaz hai) */
+    @Volatile var lastSpokeAt = 0L
+
     private fun mute(on: Boolean) {
         if (on == muted) return
-        if (on && audio.isMusicActive) return   // gaana/video chal raha ho to awaaz mat chheduo
+        val ownVoice = System.currentTimeMillis() - lastSpokeAt < 3000
+        if (on && audio.isMusicActive && !ownVoice) return   // gaana/video chal raha ho to awaaz mat chheduo
         val dir = if (on) AudioManager.ADJUST_MUTE else AudioManager.ADJUST_UNMUTE
         for (stream in intArrayOf(AudioManager.STREAM_MUSIC, AudioManager.STREAM_NOTIFICATION, AudioManager.STREAM_SYSTEM)) {
             try { audio.adjustStreamVolume(stream, dir, 0) } catch (_: Exception) {}
@@ -66,7 +70,7 @@ class VoiceListener(private val context: Context) {
                     lastError = err
                     listening = false
                     // khatam hone wali beep ke baad awaaz wapas
-                    main.postDelayed({ if (!listening) mute(false) }, 350)
+                    main.postDelayed({ if (!listening) mute(false) }, 600)
                     // in errors ke baad recognizer naya banao
                     if (err == SpeechRecognizer.ERROR_CLIENT || err == SpeechRecognizer.ERROR_RECOGNIZER_BUSY ||
                         err == SpeechRecognizer.ERROR_SERVER || err == 11 /*SERVER_DISCONNECTED*/) reset()

@@ -56,6 +56,8 @@ class DKAccessibilityService : AccessibilityService() {
         private set
     lateinit var agent: AgentRunner
         private set
+    lateinit var ear: Ear
+        private set
 
     private var bubble: OrbView? = null
     private var wakeLoopRunning = false
@@ -66,7 +68,8 @@ class DKAccessibilityService : AccessibilityService() {
         instance = this
         speaker = Speaker(this)
         listener = VoiceListener(this)
-        agent = AgentRunner(this, scope, speaker, listener)
+        ear = Ear(this)
+        agent = AgentRunner(this, scope, speaker)
         showBubble()
         DKLog.d("DK accessibility service chalu ho gaya")
         val user = Prefs.userName(this)
@@ -87,6 +90,7 @@ class DKAccessibilityService : AccessibilityService() {
         removeBubble()
         DKState.setLive(false)
         listener.release()
+        ear.release()
         speaker.shutdown()
         scope.cancel()
         super.onDestroy()
@@ -114,6 +118,7 @@ class DKAccessibilityService : AccessibilityService() {
         agent.stop()
         loopJob?.cancel(); loopJob = null
         listener.release()
+        ear.release()
         DKState.set(Mode.IDLE)
         scope.launch { speaker.speak("ठीक है, माइक बंद।") }
     }
@@ -129,6 +134,26 @@ class DKAccessibilityService : AccessibilityService() {
 
     private var loopJob: kotlinx.coroutines.Job? = null
 
+    /** Bina beep wala tareeka chalega? (Groq ya Gemini key chahiye) */
+    fun silentEar(): Boolean = Prefs.listenEngine(this) != "google" && Transcriber.available(this)
+
+    /** Ek baat suno -> text. Bina beep (apna mic + Groq/Gemini) ya Google mic. */
+    suspend fun hear(): String? {
+        if (!silentEar()) {
+            listener.lastSpokeAt = speaker.lastSpokeAt
+            return listener.listenOnce()
+        }
+        // DK ki apni awaaz ki goonj na sune
+        val since = System.currentTimeMillis() - speaker.lastSpokeAt
+        if (since < 350) delay(350 - since)
+        val pcm = ear.nextUtterance() ?: run { delay(800); return null }
+        DKState.set(Mode.THINKING)
+        DKState.user("…")
+        val text = Transcriber.transcribe(this, pcm)
+        if (text != null) DKState.user(text)
+        return text
+    }
+
     /** Ek hi sunne wala loop: live mode me har baat command hai, wake mode me sirf wake word ke baad. */
     private fun ensureLoop() {
         val wanted = DKState.live || Prefs.wakeMode(this)
@@ -140,8 +165,8 @@ class DKAccessibilityService : AccessibilityService() {
             while (isActive && (DKState.live || Prefs.wakeMode(this@DKAccessibilityService))) {
                 if (agent.isBusy || DKState.mode == Mode.SPEAKING) { delay(250); continue }
                 DKState.set(Mode.LISTENING)
-                val heard = listener.listenOnce()
-                if (DKState.mode == Mode.LISTENING) DKState.set(Mode.IDLE)
+                val heard = hear()
+                if (DKState.mode == Mode.LISTENING || DKState.mode == Mode.THINKING) DKState.set(Mode.IDLE)
                 if (listener.lastError == android.speech.SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS) {
                     DKState.reply("माइक की परमिशन नहीं है। ऐप खोलकर माइक की इजाज़त दीजिए।")
                     break
@@ -155,11 +180,21 @@ class DKAccessibilityService : AccessibilityService() {
                 val low = heard.lowercase().trim()
 
                 if (DKState.live) {
+                    if (low.trim(' ', '.', '।').length < 2) continue
                     if (low.contains("माइक बंद") || low.contains("सुनना बंद") || low.contains("mic off") ||
                         low.contains("stop listening") || low == "बंद करो") {
                         stopLive(); break
                     }
-                    agent.run(heard).join()
+                    // gaana/video chal raha ho to sirf naam ("DK ...") ke saath boli baat command maano
+                    val am = getSystemService(android.media.AudioManager::class.java)
+                    val othersPlaying = am?.isMusicActive == true && System.currentTimeMillis() - speaker.lastSpokeAt > 2500
+                    var cmdText = heard
+                    if (othersPlaying) {
+                        val w = Prefs.wakeWords(this@DKAccessibilityService).firstOrNull { low.contains(it) } ?: continue
+                        cmdText = heard.substring((low.indexOf(w) + w.length).coerceAtMost(heard.length)).trim(' ', ',', '.', '!')
+                        if (cmdText.isBlank()) continue
+                    }
+                    agent.run(cmdText).join()
                 } else {
                     // wake word mode
                     val wake = Prefs.wakeWords(this@DKAccessibilityService).firstOrNull { low.contains(it) } ?: continue
@@ -168,7 +203,7 @@ class DKAccessibilityService : AccessibilityService() {
                     if (cmd.isBlank()) {
                         speaker.speak("हाँ, बोलिए।")
                         DKState.set(Mode.LISTENING)
-                        cmd = listener.listenOnce() ?: ""
+                        cmd = hear() ?: ""
                         DKState.set(Mode.IDLE)
                     }
                     if (cmd.isNotBlank()) agent.run(cmd).join()
@@ -292,6 +327,18 @@ class DKAccessibilityService : AccessibilityService() {
                 "recents" -> global(GLOBAL_ACTION_RECENTS)
                 "notifications" -> global(GLOBAL_ACTION_NOTIFICATIONS)
                 "quick_settings" -> global(GLOBAL_ACTION_QUICK_SETTINGS)
+                "shop_search" -> AppLauncher.shopSearch(this, a.optString("app"), a.optString("query"))
+                "torch" -> DeviceActions.torch(this, if (a.has("on")) a.optBoolean("on") else null)
+                "open_settings" -> DeviceActions.openSettings(this, a.optString("page"))
+                "panel" -> DeviceActions.panel(this, a.optString("name", "internet"))
+                "volume" -> DeviceActions.volume(this, a.optString("direction", "up"), a.optInt("level", -1))
+                "media" -> DeviceActions.media(this, a.optString("key", "play_pause"))
+                "lock" -> if (Build.VERSION.SDK_INT >= 28) global(GLOBAL_ACTION_LOCK_SCREEN) else "ERROR: Android 9+ chahiye"
+                "screenshot_save" -> if (Build.VERSION.SDK_INT >= 28) global(GLOBAL_ACTION_TAKE_SCREENSHOT) else "ERROR"
+                "power_menu" -> global(GLOBAL_ACTION_POWER_DIALOG)
+                "unlock", "wake" -> unlock()
+                "close_app" -> closeApp()
+                "close_all_apps" -> closeAllApps()
                 "wait" -> { delay(a.optLong("ms", 1000).coerceIn(100, 8000)); "waited" }
                 else -> "ERROR: unknown action ${a.optString("type")}"
             }
@@ -354,6 +401,58 @@ class DKAccessibilityService : AccessibilityService() {
             else -> false
         }
         return if (ok) "scrolled $dir" else "ERROR scroll"
+    }
+
+    /** Screen jagao; swipe-lock ho to khol do. PIN/pattern/fingerprint user khud dalega (suraksha). */
+    @Suppress("DEPRECATION")
+    private suspend fun unlock(): String {
+        val pm = getSystemService(android.os.PowerManager::class.java)
+        if (pm != null && !pm.isInteractive) {
+            try {
+                val wl = pm.newWakeLock(android.os.PowerManager.SCREEN_BRIGHT_WAKE_LOCK or
+                    android.os.PowerManager.ACQUIRE_CAUSES_WAKEUP, "dk:wake")
+                wl.acquire(4000)
+            } catch (e: Exception) { DKLog.d("wake: ${e.message}") }
+            delay(700)
+        }
+        val km = getSystemService(android.app.KeyguardManager::class.java)
+        if (km == null || !km.isKeyguardLocked) return "screen on hai, phone pehle se unlocked hai"
+        val dm = resources.displayMetrics
+        swipe(dm.widthPixels / 2f, dm.heightPixels * 0.88f, dm.widthPixels / 2f, dm.heightPixels * 0.3f, 300)
+        delay(700)
+        return when {
+            !km.isKeyguardLocked -> "phone unlock ho gaya"
+            km.isKeyguardSecure -> "screen on, lock screen PIN/pattern/fingerprint maang rahi hai - user ko bolo ki khud khole (DK PIN nahi daalta)"
+            else -> "lock screen khuli"
+        }
+    }
+
+    /** Abhi wala app band karo: recents me card upar fenko. */
+    private suspend fun closeApp(): String {
+        val pkg = rootInActiveWindow?.packageName?.toString()
+        if (!performGlobalAction(GLOBAL_ACTION_RECENTS)) return "ERROR recents"
+        delay(900)
+        val dm = resources.displayMetrics
+        swipe(dm.widthPixels / 2f, dm.heightPixels * 0.5f, dm.widthPixels / 2f, dm.heightPixels * 0.05f, 220)
+        delay(500)
+        performGlobalAction(GLOBAL_ACTION_HOME)
+        return "closed recent app ${pkg ?: ""}"
+    }
+
+    /** Sab apps band: recents me "Clear all / सभी बंद करें" dabao. */
+    private suspend fun closeAllApps(): String {
+        if (!performGlobalAction(GLOBAL_ACTION_RECENTS)) return "ERROR recents"
+        delay(1000)
+        val root = rootInActiveWindow ?: return "ERROR recents screen"
+        val words = listOf("clear all", "close all", "सभी साफ़", "सब हटाएँ", "सभी बंद", "सभी हटाएं", "सभी साफ करें", "x")
+        for (w in words) {
+            val n = root.findAccessibilityNodeInfosByText(w).firstOrNull { it.isClickable || it.parent?.isClickable == true }
+            if (n != null) {
+                (if (n.isClickable) n else n.parent).performAction(AccessibilityNodeInfo.ACTION_CLICK)
+                return "cleared all recent apps"
+            }
+        }
+        return "recents khula hai, 'Clear all' button nahi mila - screen dekh kar dabao"
     }
 
     private fun global(action: Int): String = if (performGlobalAction(action)) "ok" else "ERROR"

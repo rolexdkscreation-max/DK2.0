@@ -14,8 +14,7 @@ import kotlin.coroutines.coroutineContext
 class AgentRunner(
     private val svc: DKAccessibilityService,
     private val scope: CoroutineScope,
-    private val speaker: Speaker,
-    private val listener: VoiceListener
+    private val speaker: Speaker
 ) {
     private val brain = BrainManager(svc)
     private var job: Job? = null
@@ -118,7 +117,7 @@ class AgentRunner(
                         speakJob?.join()
                         say(a.optString("question", "क्या मैं आगे बढ़ूँ?"))
                         DKState.set(Mode.LISTENING)
-                        val ans = listener.listenOnce() ?: "(user ne kuch nahi bola)"
+                        val ans = svc.hear() ?: "(user ne kuch nahi bola)"
                         DKState.user(ans)
                         DKLog.d("User answer: $ans")
                         results.append("ask -> USER ANSWERED: \"$ans\"\n")
@@ -152,7 +151,12 @@ class AgentRunner(
             "फेसबुक", "facebook", "व्हाट्सएप", "whatsapp", "इंस्टा", "insta", "ऐप", "app", "स्क्रीन", "screen", "नोटिफिकेशन",
             "notification", "डाउनलोड", "download", "इंस्टॉल", "install", "अलार्म", "alarm", "रिमाइंडर", "मैप", "map",
             "रास्ता", "chrome", "क्रोम", "गूगल पर", "लाइक", "like", "सब्सक्राइब", "subscribe", "कमेंट", "comment",
-            "रिप्लाई", "reply", "पढ़ो", "read", "दिखा", "show", "select", "सेलेक्ट", "कॉपी", "copy", "पेस्ट", "paste"
+            "रिप्लाई", "reply", "पढ़ो", "read", "दिखा", "show", "select", "सेलेक्ट", "कॉपी", "copy", "पेस्ट", "paste",
+            "लाइट", "light", "फ्लैशलाइट", "लॉक", "lock", "अनलॉक", "unlock", "क्लोज", "close", "कार्ट", "cart", "खरीद",
+            "buy", "ऑर्डर", "order", "फ्लिपकार्ट", "flipkart", "अमेज़न", "अमेजन", "amazon", "मीशो", "meesho", "ज़ेप्टो",
+            "जेप्टो", "zepto", "ब्लिंक", "blinkit", "इंस्टामार्ट", "instamart", "स्विगी", "swiggy", "ज़ोमैटो", "zomato",
+            "देख", "क्या लिखा", "क्या है स्क्रीन", "जाओ", "जा ", "रोक", "pause", "अगला", "next", "आवाज़ बढ़ा", "आवाज़ कम",
+            "साइलेंट", "silent", "स्क्रीनशॉट", "screenshot", "हटाओ", "जोड़", "add"
         )
         return words.any { t.contains(it) }
     }

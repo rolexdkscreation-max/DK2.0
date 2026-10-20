@@ -55,6 +55,24 @@ object Prefs {
     fun ttsRate(c: Context) = sp(c).getFloat("tts_rate", 1.05f)
     fun ttsPitch(c: Context) = sp(c).getFloat("tts_pitch", 1.0f)
 
+    // ---- awaaz (mahila/purush)
+    fun voiceGender(c: Context) = sp(c).getString("voice_gender", "female") ?: "female"
+    /** "google" = phone ki awaaz, "gemini" = sabse natural (Gemini key se) */
+    fun voiceEngine(c: Context) = sp(c).getString("voice_engine", "google") ?: "google"
+    fun googleVoice(c: Context) = sp(c).getString("google_voice", "") ?: ""
+    fun geminiVoice(c: Context): String {
+        val g = voiceGender(c)
+        val v = sp(c).getString("gemini_voice", "") ?: ""
+        return if (v.isNotBlank() && v in VoiceCatalog.geminiFor(g)) v else VoiceCatalog.geminiFor(g).first()
+    }
+
+    // ---- sunna: "auto" = bina beep (Groq/Gemini key ho to), "google" = Google mic (beep aa sakti hai)
+    fun listenEngine(c: Context) = sp(c).getString("listen_engine", "auto") ?: "auto"
+
+    // ---- provider ke models ki list (cache)
+    fun models(c: Context, id: String): List<String> =
+        (sp(c).getString("models_$id", "") ?: "").split('\n').filter { it.isNotBlank() }
+
     fun edit(c: Context, block: SharedPreferences.Editor.() -> Unit) {
         val e = sp(c).edit(); e.block(); e.commit()   // commit = turant disk par save
     }
