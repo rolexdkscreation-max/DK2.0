@@ -192,6 +192,11 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
                         ready = false
                         log("setup fail [$model] code=$code reason=$reason")
                         val r = reason.lowercase()
+                        // dobara judte waqt purani baatcheet (resume handle) na chale to turant nayi baatcheet - fail mat gino
+                        if (!stopped && handle != null && code != 401 && code != 403 && !r.contains("api key") && !r.contains("quota")) {
+                            log("पुरानी बातचीत जारी नहीं हो पाई - नई बातचीत से जुड़ रहा हूँ")
+                            handle = null; continue
+                        }
                         when {
                             stopped -> break
                             r.contains("api key") || r.contains("api_key") || code == 401 || code == 403 ->
@@ -232,7 +237,8 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
                     try { ws?.close(1000, "reconnect") } catch (_: Exception) {}
                     goAway = false
                     reconnects++
-                    log("connection टूटा (code=$code, $reason) - दोबारा जुड़ रहा हूँ #$reconnects")
+                    log("connection टूटा (code=$code, ${reason.ifBlank { "-" }}, ${(System.currentTimeMillis() - upAt) / 1000}s चला) - दोबारा जुड़ रहा हूँ #$reconnects" +
+                        if (handle != null) " (बातचीत वहीं से)" else " (नई बातचीत)")
                     if (reason.lowercase().contains("api key")) throw Fatal("Gemini key बंद हो गई")
                     if (reason.lowercase().let { it.contains("quota") || it.contains("exhausted") }) throw Fatal("Gemini Live की फ्री लिमिट खत्म")
                     if (turnActive) finishTurn()
