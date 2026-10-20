@@ -14,7 +14,8 @@ android {
         // GitHub har build par VERSION_CODE badhata hai -> app ko pata chalta hai ki update naya hai
         val vc = (System.getenv("VERSION_CODE") ?: "3").toInt()
         versionCode = vc
-        versionName = "3.0.$vc"
+        // Sirf version (3.1 / 3.1.1) - build number nahi. GitHub workflow update ke prakar se banata hai
+        versionName = System.getenv("VERSION_NAME") ?: file("../version.txt").readText().trim()
     }
 
     // Hamesha ek hi key se sign -> purane app ke upar naya update install ho sake
