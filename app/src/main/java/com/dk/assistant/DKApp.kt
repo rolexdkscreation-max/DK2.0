@@ -22,7 +22,28 @@ class DKApp : Application() {
                     java.text.SimpleDateFormat("dd MMM HH:mm:ss", java.util.Locale.US).format(java.util.Date()) +
                         " [${t.name}] version ${Updater.currentName(this)}\n" + e.stackTraceToString().take(4000))
             } catch (_: Exception) {}
+            // Background thread ki galti se poora app (aur Accessibility) band na ho.
+            // Baar-baar crash hone par Android khud Accessibility OFF kar deta tha.
+            if (t !== android.os.Looper.getMainLooper().thread) {
+                DKLog.d("Background galti sambhali: ${e.message}")
+                return@setDefaultUncaughtExceptionHandler
+            }
             prev?.uncaughtException(t, e)
+        }
+        // Main thread par galti: crash ki jagah log karke chalte raho (max 20 baar)
+        android.os.Handler(android.os.Looper.getMainLooper()).post {
+            var saved = 0
+            while (true) {
+                try { android.os.Looper.loop() } catch (e: Throwable) {
+                    saved++
+                    try {
+                        File(filesDir, "last_crash.txt").writeText(
+                            java.text.SimpleDateFormat("dd MMM HH:mm:ss", java.util.Locale.US).format(java.util.Date()) +
+                                " [main, sambhala gaya] version ${Updater.currentName(this)}\n" + e.stackTraceToString().take(4000))
+                    } catch (_: Exception) {}
+                    if (saved > 20) throw e
+                }
+            }
         }
 
         registerActivityLifecycleCallbacks(object : ActivityLifecycleCallbacks {

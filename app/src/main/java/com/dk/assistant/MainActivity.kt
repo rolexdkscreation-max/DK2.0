@@ -4,7 +4,6 @@ import android.Manifest
 import android.content.Intent
 import android.os.Build
 import android.os.Bundle
-import android.widget.EditText
 import android.widget.ImageButton
 import android.widget.TextView
 import android.widget.Toast
@@ -19,7 +18,6 @@ class MainActivity : AppCompatActivity() {
     private lateinit var txtHello: TextView
     private lateinit var txtName: TextView
     private lateinit var txtState: TextView
-    private lateinit var txtYou: TextView
     private lateinit var txtDk: TextView
     private lateinit var chipAccess: TextView
     private lateinit var chipMic: TextView
@@ -34,28 +32,25 @@ class MainActivity : AppCompatActivity() {
         txtHello = findViewById(R.id.txtHello)
         txtName = findViewById(R.id.txtName)
         txtState = findViewById(R.id.txtState)
-        txtYou = findViewById(R.id.txtYou)
         txtDk = findViewById(R.id.txtDk)
         chipAccess = findViewById(R.id.chipAccess)
         chipMic = findViewById(R.id.chipMic)
         chipAi = findViewById(R.id.chipAi)
-        val edt = findViewById<EditText>(R.id.edtCmd)
-
         findViewById<ImageButton>(R.id.btnSettings).setOnClickListener { openSettings() }
-        findViewById<OrbView>(R.id.orb).setOnClickListener { talk() }
-        findViewById<ImageButton>(R.id.btnMic).setOnClickListener { talk() }
-
-        // Yeh screen sirf AAWAAZ ke liye. Likhkar baat = alag Chat screen.
-        edt.isFocusable = false
-        edt.isFocusableInTouchMode = false
-        edt.hint = "चैट खोलें — लिखकर बात करें"
-        edt.setOnClickListener { openChat() }
-        findViewById<ImageButton>(R.id.btnSend).setOnClickListener { openChat() }
-        findViewById<android.view.View>(R.id.cardTalk).setOnClickListener { openChat() }
+        // orb par tap = chehra dikh raha ho to hatao, warna live awaaz screen
+        findViewById<OrbView>(R.id.orb).setOnClickListener {
+            if (System.currentTimeMillis() < DKState.faceUntil) DKState.hideFace() else openVoice()
+        }
+        findViewById<android.view.View>(R.id.btnChat).setOnClickListener { openChat() }
+        findViewById<android.view.View>(R.id.btnVoice).setOnClickListener { openVoice() }
+        findViewById<android.view.View>(R.id.btnMemory).setOnClickListener {
+            startActivity(Intent(this, MemoryActivity::class.java))
+        }
+        Setup.selfEnableAccessibility(this)
 
         chipMic.setOnClickListener { askPerms() }
         chipAccess.setOnClickListener {
-            if (!Setup.accessibilityOn()) {
+            if (!Setup.accessibilityOn(this)) {
                 Toast.makeText(this, "Installed/Downloaded apps में ${Prefs.assistantName(this)} ON करें", Toast.LENGTH_LONG).show()
                 Setup.openAccessibility(this)
             }
@@ -99,7 +94,7 @@ class MainActivity : AppCompatActivity() {
                 Toast.makeText(this, "पहले सेटिंग्स में API key डालकर सेव करें", Toast.LENGTH_LONG).show()
                 openSettings(); return false
             }
-            !Setup.accessibilityOn() -> {
+            !Setup.accessibilityOn() && !Setup.selfEnableAccessibility(this) && !Setup.enabledInSettings(this) -> {
                 Toast.makeText(this, "Accessibility में ${Prefs.assistantName(this)} ON करें", Toast.LENGTH_LONG).show()
                 Setup.openAccessibility(this); return false
             }
@@ -107,9 +102,8 @@ class MainActivity : AppCompatActivity() {
         return true
     }
 
-    private fun talk() {
-        if (DKState.live) DKAccessibilityService.instance?.stopLive()
-        else if (ready()) DKAccessibilityService.instance?.startLive()
+    private fun openVoice() {
+        if (ready()) startActivity(Intent(this, VoiceActivity::class.java))
     }
 
     override fun onResume() {
@@ -147,22 +141,19 @@ class MainActivity : AppCompatActivity() {
         txtName.text = name
         txtHello.text = if (user.isBlank()) "नमस्ते" else "नमस्ते, $user"
 
-        chipAccess.text = (if (Setup.accessibilityOn()) "✓ " else "✗ ") + "फ़ोन कंट्रोल"
+        chipAccess.text = (if (Setup.accessibilityOn(this)) "✓ " else "✗ ") + "फ़ोन कंट्रोल"
         chipMic.text = (if (Setup.hasMic(this)) "✓ " else "✗ ") + "माइक"
         val p = Providers.byId(Prefs.activeProvider(this))
         chipAi.text = (if (Prefs.hasAnyKey(this)) "✓ " else "✗ ") + (p?.name ?: "AI")
 
         val live = DKState.live
-        findViewById<ImageButton>(R.id.btnMic).setBackgroundResource(
-            if (live) R.drawable.btn_live_circle else R.drawable.btn_accent_circle)
         txtState.text = when (DKState.mode) {
-            Mode.IDLE -> if (live) "माइक चालू है • बंद करने के लिए टैप करें" else "एक बार टैप करें • लगातार सुनूँगा"
+            Mode.IDLE -> if (live) "माइक चालू है • आवाज़ स्क्रीन खोलें" else "ओर्ब या \"आवाज़\" दबाकर बात करें"
             Mode.LISTENING -> if (live) "सुन रहा हूँ… (बंद: टैप या \"माइक बंद\")" else "सुन रहा हूँ…"
             Mode.THINKING -> "सोच रहा हूँ…"
             Mode.WORKING -> "काम कर रहा हूँ…"
             Mode.SPEAKING -> "बोल रहा हूँ…"
         }
-        txtYou.text = "आप: " + DKState.lastUser.ifBlank { "—" }
-        txtDk.text = "$name: " + DKState.lastReply.ifBlank { "—" }
+        txtDk.text = if (DKState.lastReply.isBlank()) "" else "$name: " + DKState.lastReply
     }
 }

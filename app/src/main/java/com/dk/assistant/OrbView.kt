@@ -10,61 +10,88 @@ import android.os.SystemClock
 import android.util.AttributeSet
 import android.view.View
 import kotlin.math.PI
+import kotlin.math.atan2
 import kotlin.math.cos
 import kotlin.math.pow
 import kotlin.math.sin
-import kotlin.math.sqrt
+import kotlin.random.Random
 
 /**
- * 3D orb: chhote-chhote dots se bana gola, prithvi ki tarah ghoomta hai (23.4° jhuka hua),
- * "mahadweep" wale dots zyada chamakte hain, aur chaaron taraf satellite orbit ghoomte hain.
- * Rang aur speed DK ki haalat ke hisaab se badalte hain:
- *  neela = taiyaar, laal = sun raha, baingani/narangi = soch raha, hara = kaam kar raha, firozi = bol raha
+ * 3D orb: chhote-chhote dots se bane aakaar (prithvi, galaxy, atom, DNA, chhalla, purush/mahila chehra).
+ * Aakaar badalne par dots bikhar kar ude aur naya aakaar banate hain ("apna chehra dikhao" animation).
+ * Rang DK ki haalat se: neela = taiyaar, laal = sun raha, baingani = soch raha, hara = kaam, firozi = bol raha
  */
 class OrbView @JvmOverloads constructor(
     context: Context, attrs: AttributeSet? = null
 ) : View(context, attrs) {
 
     var mini = false
-        set(v) { field = v; build(if (v) 320 else 1400) }
+        set(v) { field = v; alloc(if (v) 320 else 1400) }
+
+    /** Settings me preview ke liye - null ho to Prefs wala aakaar */
+    var previewStyle: String? = null
 
     private var n = 0
-    private var bx = FloatArray(0); private var by = FloatArray(0); private var bz = FloatArray(0)
-    private var land = BooleanArray(0)
+    // from (purana aakaar) -> to (naya aakaar)
+    private var fx = FloatArray(0); private var fy = FloatArray(0); private var fz = FloatArray(0)
+    private var mx = FloatArray(0); private var my = FloatArray(0); private var mz = FloatArray(0)
+    private var kFrom = ByteArray(0)
+    private var delay = FloatArray(0)
+    private var sx = FloatArray(0); private var sy = FloatArray(0); private var sz = FloatArray(0)
+    private var cloud: Cloud = Shapes.earth(1)
+    private var target = ""
+    private var morphStart = 0L
+    private var angStart = 0f; private var tiltFrom = 0.41f
 
     private val dot = Paint(Paint.ANTI_ALIAS_FLAG)
     private val glow = Paint(Paint.ANTI_ALIAS_FLAG)
     private val rim = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE }
 
-    private var rotY = 0f
+    private var ang = 0f
+    private var tilt = 0.41f
     private var lastT = 0L
     private var lvl = 0f
     private var colA = Color.parseColor("#2979FF")
     private var colB = Color.parseColor("#00E5FF")
-    private val tilt = (23.4 * PI / 180).toFloat()
+    private var styleCache = "earth"; private var genderCache = "female"; private var cacheT = 0L
 
-    init { build(1400) }
+    var onFaceShown: (() -> Unit)? = null
 
-    private fun build(count: Int) {
+    init { alloc(1400) }
+
+    private fun alloc(count: Int) {
         n = count
-        bx = FloatArray(n); by = FloatArray(n); bz = FloatArray(n); land = BooleanArray(n)
-        val golden = (PI * (3 - sqrt(5.0))).toFloat()
-        for (i in 0 until n) {
-            val y = 1f - 2f * (i + 0.5f) / n
-            val r = sqrt(1f - y * y)
-            val th = golden * i
-            bx[i] = cos(th) * r; by[i] = y; bz[i] = sin(th) * r
-            land[i] = continents(bx[i], by[i], bz[i])
-        }
+        fx = FloatArray(n); fy = FloatArray(n); fz = FloatArray(n)
+        mx = FloatArray(n); my = FloatArray(n); mz = FloatArray(n)
+        sx = FloatArray(n); sy = FloatArray(n); sz = FloatArray(n)
+        kFrom = ByteArray(n)
+        val r = Random(3)
+        delay = FloatArray(n) { r.nextFloat() }
+        cloud = Shapes.earth(n)
+        for (i in 0 until n) { mx[i] = cloud.x[i]; my[i] = cloud.y[i]; mz[i] = cloud.z[i]; kFrom[i] = cloud.kind[i] }
+        target = "earth"; morphStart = 0L; tilt = cloud.tilt
     }
 
-    /** Nakli "mahadweep" - 3D lehron ka mel, taaki gola prithvi jaisa lage. */
-    private fun continents(x: Float, y: Float, z: Float): Boolean {
-        val v = sin(2.7f * x + 1.3f) * cos(2.2f * y - 0.4f) +
-            0.7f * sin(3.6f * z + 0.8f + 1.5f * y) +
-            0.35f * sin(6.1f * x + 4.3f * z) +
-            0.25f * cos(7.3f * y + 2.1f * x)
-        return v > 0.1f && kotlin.math.abs(y) < 0.93f
+    private fun wanted(): String {
+        if (mini) return "earth"
+        previewStyle?.let { return it }
+        val now = System.currentTimeMillis()
+        if (now - cacheT > 700) {
+            cacheT = now
+            styleCache = Prefs.orbStyle(context); genderCache = Prefs.voiceGender(context)
+        }
+        if (now < DKState.faceUntil) return if (genderCache == "male") "face_male" else "face_female"
+        return styleCache
+    }
+
+    private fun morphTo(style: String) {
+        for (i in 0 until n) { fx[i] = mx[i]; fy[i] = my[i]; fz[i] = mz[i] }
+        val old = cloud
+        for (i in 0 until n) kFrom[i] = old.kind[i]
+        cloud = Shapes.make(style, n)
+        target = style
+        morphStart = SystemClock.uptimeMillis()
+        angStart = atan2(sin(ang), cos(ang)); tiltFrom = tilt
     }
 
     private fun targetColors(m: Mode): Pair<Int, Int> = when (m) {
@@ -83,6 +110,7 @@ class OrbView @JvmOverloads constructor(
     }
 
     private fun withAlpha(c: Int, a: Int) = (a.coerceIn(0, 255) shl 24) or (c and 0x00FFFFFF)
+    private fun ease(x: Float): Float = if (x < 0.5f) 4 * x * x * x else 1 - (-2 * x + 2).pow(3) / 2
 
     override fun onDraw(c: Canvas) {
         super.onDraw(c)
@@ -92,110 +120,189 @@ class OrbView @JvmOverloads constructor(
         val t = now / 1000f
         val mode = DKState.mode
 
+        val want = wanted()
+        if (want != target) morphTo(want)
+        val cl = cloud
+        val isFace = cl.sway
+        val morphMs = if (isFace) 2300f else 1600f
+        val p = if (morphStart == 0L) 1f else ((now - morphStart) / morphMs).coerceIn(0f, 1f)
+        val morphing = p < 1f
+        val ep = ease(p)
+        if (!morphing && morphStart != 0L) { morphStart = 0L; if (isFace) onFaceShown?.invoke() }
+
         val speed = when (mode) {
             Mode.IDLE -> 0.28f; Mode.LISTENING -> 0.55f; Mode.THINKING -> 1.8f
             Mode.WORKING -> 1.1f; Mode.SPEAKING -> 0.7f
         }
-        rotY += speed * dt
+        if (cl.sway) {
+            val sw = 0.38f * sin(t * 0.45f) + 0.08f * sin(t * 1.3f)
+            ang = if (morphing) angStart + (sw - angStart) * ep else sw
+            val nod = 0.06f * sin(t * 0.6f)
+            tilt = if (morphing) tiltFrom + (nod - tiltFrom) * ep else nod
+        } else {
+            ang += speed * cl.spin * dt
+            tilt = if (morphing) tiltFrom + (cl.tilt - tiltFrom) * ep else cl.tilt
+        }
         lvl += (DKState.level - lvl) * 0.25f
         val (ta, tb) = targetColors(mode)
         colA = lerpColor(colA, ta, 0.08f); colB = lerpColor(colB, tb, 0.08f)
+        val female = target == "face_female"
+        val tint = if (female) Color.parseColor("#FF5CC8") else Color.parseColor("#4FC3FF")
+        val faceA = if (isFace) lerpColor(colA, tint, 0.35f) else colA
+        val faceB = if (isFace) lerpColor(colB, Color.WHITE, 0.2f) else colB
 
         val w = width.toFloat(); val h = height.toFloat()
         val cx = w / 2f; val cy = h / 2f
-        val baseR = minOf(w, h) * (if (mini) 0.36f else 0.30f)
+        val baseR = minOf(w, h) * (if (mini) 0.36f else if (isFace) 0.40f else 0.30f) *
+            (if (morphing && isFace) 0.75f + 0.25f * ep else 1f)
         val breathe = 1f + 0.025f * sin(t * 1.6f)
-        val pulse = when (mode) {
-            Mode.LISTENING -> 1f + lvl * 0.14f
-            Mode.SPEAKING -> 1f + 0.04f * sin(t * 9f)
+        val pulse = when {
+            isFace -> 1f
+            mode == Mode.LISTENING -> 1f + lvl * 0.14f
+            mode == Mode.SPEAKING -> 1f + 0.04f * sin(t * 9f)
             else -> 1f
         }
         val R = baseR * breathe * pulse
 
-        // ---- glow (pichhe ki roshni)
+        // ---- glow
         glow.shader = RadialGradient(cx, cy, R * 1.75f,
-            intArrayOf(withAlpha(colA, 120), withAlpha(colA, 40), Color.TRANSPARENT),
+            intArrayOf(withAlpha(faceA, if (isFace) 70 else 120), withAlpha(faceA, 30), Color.TRANSPARENT),
             floatArrayOf(0.25f, 0.6f, 1f), Shader.TileMode.CLAMP)
         c.drawCircle(cx, cy, R * 1.75f, glow)
 
-        val cosA = cos(rotY); val sinA = sin(rotY)
+        val cosA = cos(ang); val sinA = sin(ang)
         val cosT = cos(tilt); val sinT = sin(tilt)
-        val dotR = (if (mini) 1.6f else 2.3f) * resources.displayMetrics.density * (baseR / (if (mini) 90f else 330f)).coerceIn(0.6f, 1.6f)
-        val wave = when (mode) {
+        val dotR = (if (mini) 1.6f else 2.3f) * resources.displayMetrics.density * (baseR / (if (mini) 90f else 330f)).coerceIn(0.6f, 1.6f) *
+            (if (isFace) 0.8f else 1f)
+        val wave = if (isFace) 0f else when (mode) {
             Mode.THINKING -> 0.05f; Mode.SPEAKING -> 0.035f; Mode.LISTENING -> lvl * 0.06f; else -> 0.0f
         }
+        // chehra: palak jhapakna + bolte waqt muh khulna
+        val blinkPh = (t % 4.2f)
+        val blink = if (blinkPh < 0.14f) (1f - sin(blinkPh / 0.14f * PI.toFloat())).coerceAtLeast(0.08f) else 1f
+        val talk = if (mode == Mode.SPEAKING) (0.5f + 0.5f * sin(t * 13f)) * (0.6f + 0.4f * sin(t * 3.7f)).coerceAtLeast(0.2f)
+            else if (mode == Mode.LISTENING) 0.05f else 0f
 
-        // ---- satellite orbit ka peeche wala hissa (gole ke peeche)
-        if (!mini) drawOrbits(c, cx, cy, R, dotR, front = false)
+        val satOn = !mini && target == "earth"
+        val satAlpha = if (satOn) (if (morphing) ep else 1f) else 0f
+        if (satAlpha > 0f) drawOrbits(c, cx, cy, R, dotR, front = false, alpha = satAlpha)
+        if (target == "atom" && !mini) drawElectrons(c, cx, cy, R, dotR, cosA, sinA, cosT, sinT, t, front = false)
 
-        // ---- sphere dots: pehle peeche wale, phir aage wale
+        // ---- dots ka hisaab
+        for (i in 0 until n) {
+            val e = if (!morphing) 1f else ease(((p - delay[i] * 0.35f) / 0.65f).coerceIn(0f, 1f))
+            var x0 = fx[i] + (cl.x[i] - fx[i]) * e
+            var y0 = fy[i] + (cl.y[i] - fy[i]) * e
+            var z0 = fz[i] + (cl.z[i] - fz[i]) * e
+            if (isFace && e > 0.95f) {
+                val k = cl.kind[i].toInt()
+                if (k == 2) y0 = cl.anc[i] + (y0 - cl.anc[i]) * blink
+                else if (k == 3) y0 += if (cl.lower[i]) -talk * 0.05f else talk * 0.012f
+            }
+            mx[i] = x0; my[i] = y0; mz[i] = z0
+            if (morphing) {
+                // bikhar kar udna (burst) + ghoomte hue jagah par aana
+                val burst = 1f + 0.75f * sin(PI.toFloat() * e) * (0.6f + 0.8f * delay[i])
+                val sw = (1f - e) * e * 5f * (if (i % 2 == 0) 1f else -1f)
+                val cs = cos(sw); val sn = sin(sw)
+                val rx = x0 * cs + z0 * sn; val rz = -x0 * sn + z0 * cs
+                x0 = rx * burst; y0 *= burst; z0 = rz * burst
+            }
+            val x1 = x0 * cosA + z0 * sinA
+            val z1 = -x0 * sinA + z0 * cosA
+            val y2 = y0 * cosT - z1 * sinT
+            val z2 = y0 * sinT + z1 * cosT
+            val rr = 1f + wave * sin(7f * y0 + 5f * x0 + t * 5f)
+            val persp = 4f / (4f - z2.coerceIn(-3f, 2.5f))
+            sx[i] = cx + x1 * R * rr * persp
+            sy[i] = cy - y2 * R * rr * persp
+            sz[i] = z2
+        }
+        // ---- pehle peeche wale, phir aage wale dots
         for (pass in 0..1) {
             for (i in 0 until n) {
-                val x0 = bx[i]; val y0 = by[i]; val z0 = bz[i]
-                val x1 = x0 * cosA + z0 * sinA
-                val z1 = -x0 * sinA + z0 * cosA
-                val y2 = y0 * cosT - z1 * sinT
-                val z2 = y0 * sinT + z1 * cosT
+                val z2 = sz[i]
                 if ((z2 >= 0f) != (pass == 1)) continue
-                val rr = 1f + wave * sin(7f * y0 + 5f * x0 + t * 5f)
-                val persp = 4f / (4f - z2)
-                val sx = cx + x1 * R * rr * persp
-                val sy = cy - y2 * R * rr * persp
-                val depth = (z2 + 1f) / 2f
-                val isLand = land[i]
-                val a = ((if (isLand) 80 else 18) + (if (isLand) 175 else 100) * depth.pow(1.6f)).toInt()
-                dot.color = withAlpha(if (isLand) lerpColor(colB, Color.WHITE, 0.25f * depth) else colA, a)
-                val r = dotR * (0.45f + 0.75f * depth) * (if (isLand) 1.25f else 0.7f)
-                c.drawCircle(sx, sy, r, dot)
+                val depth = ((z2 + 1f) / 2f).coerceIn(0f, 1f)
+                val e = if (!morphing) 1f else ((p - delay[i] * 0.35f) / 0.65f).coerceIn(0f, 1f)
+                val k = (if (e > 0.5f) cl.kind[i] else kFrom[i]).toInt()
+                val a: Int; val col: Int; val sc: Float
+                when (k) {
+                    1 -> { a = (80 + 175 * depth.pow(1.6f)).toInt(); col = lerpColor(faceB, Color.WHITE, 0.25f * depth); sc = 1.25f }
+                    2 -> { a = (150 + 105 * depth).toInt(); col = lerpColor(faceB, Color.WHITE, 0.6f); sc = 1.15f }
+                    3 -> { a = (120 + 135 * depth).toInt(); col = lerpColor(faceB, tint, 0.5f); sc = 1.15f }
+                    4 -> { a = (45 + 150 * depth.pow(1.3f)).toInt(); col = lerpColor(faceA, faceB, 0.35f); sc = 0.8f }
+                    else -> {
+                        a = if (isFace && !morphing) (30 + 150 * depth.pow(1.4f)).toInt() else (18 + 100 * depth.pow(1.6f)).toInt()
+                        col = faceA; sc = 0.7f
+                    }
+                }
+                dot.color = withAlpha(col, a)
+                c.drawCircle(sx[i], sy[i], dotR * (0.45f + 0.75f * depth) * sc, dot)
             }
         }
 
-        // ---- kinare ki patli chamak
-        rim.strokeWidth = dotR * 0.6f
-        rim.color = withAlpha(colB, 50)
-        c.drawCircle(cx, cy, R * 1.0f, rim)
-
-        // ---- satellite orbit ka aage wala hissa
-        if (!mini) drawOrbits(c, cx, cy, R, dotR, front = true)
+        if (!isFace) {
+            rim.strokeWidth = dotR * 0.6f
+            rim.color = withAlpha(colB, if (target == "earth") 50 else 22)
+            c.drawCircle(cx, cy, R * 1.0f, rim)
+        }
+        if (satAlpha > 0f) drawOrbits(c, cx, cy, R, dotR, front = true, alpha = satAlpha)
+        if (target == "atom" && !mini) drawElectrons(c, cx, cy, R, dotR, cosA, sinA, cosT, sinT, t, front = true)
 
         if (mini && mode == Mode.IDLE) postInvalidateDelayed(60) else postInvalidateOnAnimation()
     }
 
-    private fun drawOrbits(c: Canvas, cx: Float, cy: Float, R: Float, dotR: Float, front: Boolean) {
-        drawOrbit(c, cx, cy, R * 1.22f, 0.45f, 0.35f, rotY * 1.6f + 1f, 72, dotR, front)
-        drawOrbit(c, cx, cy, R * 1.36f, -0.9f, 1.1f, -rotY * 1.1f, 90, dotR, front)
+    /** Atom ke chhallon par daudte electron */
+    private fun drawElectrons(c: Canvas, cx: Float, cy: Float, R: Float, dotR: Float,
+                              cosA: Float, sinA: Float, cosT: Float, sinT: Float, t: Float, front: Boolean) {
+        for (ring in 0 until 3) {
+            val (x0, y0, z0) = Shapes.ringPoint(ring, t * (1.6f + ring * 0.35f) + ring * 2f, 0.95f)
+            val x1 = x0 * cosA + z0 * sinA
+            val z1 = -x0 * sinA + z0 * cosA
+            val y2 = y0 * cosT - z1 * sinT
+            val z2 = y0 * sinT + z1 * cosT
+            if ((z2 >= 0f) != front) continue
+            val persp = 4f / (4f - z2)
+            val px = cx + x1 * R * persp; val py = cy - y2 * R * persp
+            dot.color = withAlpha(colB, 70); c.drawCircle(px, py, dotR * 4.5f, dot)
+            dot.color = withAlpha(Color.WHITE, 230); c.drawCircle(px, py, dotR * 2f, dot)
+        }
+    }
+
+    private fun drawOrbits(c: Canvas, cx: Float, cy: Float, R: Float, dotR: Float, front: Boolean, alpha: Float) {
+        drawOrbit(c, cx, cy, R * 1.22f, 0.45f, 0.35f, ang * 1.6f + 1f, 72, dotR, front, alpha)
+        drawOrbit(c, cx, cy, R * 1.36f, -0.9f, 1.1f, -ang * 1.1f, 90, dotR, front, alpha)
     }
 
     private fun drawOrbit(c: Canvas, cx: Float, cy: Float, radius: Float, incl: Float, node: Float,
-                          phase: Float, count: Int, dotR: Float, front: Boolean) {
+                          phase: Float, count: Int, dotR: Float, front: Boolean, alpha: Float) {
         val ci = cos(incl); val si = sin(incl); val cn = cos(node); val sn = sin(node)
         for (k in 0..count) {
             val th = (2 * PI * k / count).toFloat()
             val sat = k == count
-            val ang = if (sat) phase else th
-            var x = cos(ang); var y = 0f; var z = sin(ang)
-            // jhukao (inclination) X-axis par
+            val a = if (sat) phase else th
+            var x = cos(a); var y = 0f; var z = sin(a)
             val y1 = y * ci - z * si; val z1 = y * si + z * ci
             y = y1; z = z1
-            // ghumao Y-axis par
             val x2 = x * cn + z * sn; val z2 = -x * sn + z * cn
             x = x2; z = z2
             if ((z >= 0f) != front) continue
             val persp = 6f / (6f - z)
-            val sx = cx + x * radius * persp
-            val sy = cy - y * radius * persp
+            val px = cx + x * radius * persp
+            val py = cy - y * radius * persp
             val depth = (z + 1f) / 2f
             if (sat) {
-                dot.color = withAlpha(Color.WHITE, (140 + 115 * depth).toInt())
-                c.drawCircle(sx, sy, dotR * 2.2f, dot)
-                dot.color = withAlpha(colB, 70)
-                c.drawCircle(sx, sy, dotR * 4.5f, dot)
+                dot.color = withAlpha(Color.WHITE, ((140 + 115 * depth) * alpha).toInt())
+                c.drawCircle(px, py, dotR * 2.2f, dot)
+                dot.color = withAlpha(colB, (70 * alpha).toInt())
+                c.drawCircle(px, py, dotR * 4.5f, dot)
             } else {
-                dot.color = withAlpha(colB, (25 + 90 * depth).toInt())
-                c.drawCircle(sx, sy, dotR * 0.45f, dot)
+                dot.color = withAlpha(colB, ((25 + 90 * depth) * alpha).toInt())
+                c.drawCircle(px, py, dotR * 0.45f, dot)
             }
         }
     }
 
-    override fun onAttachedToWindow() { super.onAttachedToWindow(); lastT = 0L; invalidate() }
+    override fun onAttachedToWindow() { super.onAttachedToWindow(); lastT = 0L; cacheT = 0L; invalidate() }
 }

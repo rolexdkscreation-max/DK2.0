@@ -329,6 +329,16 @@ class DKAccessibilityService : AccessibilityService() {
     suspend fun perform(a: JSONObject): String {
         return try {
             when (a.optString("type")) {
+                "show_face" -> {
+                    DKState.showFace()
+                    try {
+                        startActivity(android.content.Intent(this, VoiceActivity::class.java)
+                            .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK or android.content.Intent.FLAG_ACTIVITY_SINGLE_TOP)
+                            .putExtra("face", true))
+                    } catch (_: Exception) {}
+                    "ok"
+                }
+                "screen_view" -> { Prefs.edit(this) { putBoolean("screenshot", a.optBoolean("on", true)) }; "ok" }
                 "open_app" -> AppLauncher.open(this, a.optString("name"))
                 "youtube_search" -> AppLauncher.youtubeSearch(this, a.optString("query"))
                 "web_search" -> AppLauncher.webSearch(this, a.optString("query"))

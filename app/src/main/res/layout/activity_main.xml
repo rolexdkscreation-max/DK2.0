@@ -110,81 +110,142 @@
                 android:textSize="14sp" />
         </FrameLayout>
 
-        <!-- baatcheet card (tap = chat screen) -->
+        <!-- aakhri baat (chhoti line) -->
+        <TextView
+            android:id="@+id/txtDk"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:ellipsize="end"
+            android:gravity="center"
+            android:maxLines="2"
+            android:textColor="@color/text2"
+            android:textSize="13sp" />
+
+        <!-- 3 bade button: chat, awaaz, memory -->
         <LinearLayout
-            android:id="@+id/cardTalk"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="12dp"
-            android:background="@drawable/glass_card"
-            android:orientation="vertical"
-            android:padding="16dp">
-
-            <TextView
-                android:id="@+id/txtYou"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:maxLines="2"
-                android:ellipsize="end"
-                android:text="आप: —"
-                android:textColor="@color/text2"
-                android:textSize="14sp" />
-
-            <TextView
-                android:id="@+id/txtDk"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="6dp"
-                android:maxLines="4"
-                android:ellipsize="end"
-                android:text="DK: —"
-                android:textColor="@color/text"
-                android:textSize="16sp" />
-        </LinearLayout>
-
-        <!-- likhne wali bar -->
-        <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="60dp"
-            android:layout_marginTop="12dp"
-            android:background="@drawable/glass_pill"
-            android:gravity="center_vertical"
-            android:orientation="horizontal"
-            android:paddingStart="18dp"
-            android:paddingEnd="6dp">
-
-            <EditText
-                android:id="@+id/edtCmd"
+            android:orientation="horizontal">
+            <LinearLayout
+                android:id="@+id/btnChat"
                 android:layout_width="0dp"
-                android:layout_height="match_parent"
+                android:layout_height="wrap_content"
                 android:layout_weight="1"
-                android:background="@android:color/transparent"
-                android:hint="लिखकर कमांड दीजिए…"
-                android:imeOptions="actionSend"
-                android:inputType="text"
-                android:textColor="@color/text"
-                android:textColorHint="@color/text3"
-                android:textSize="15sp" />
+                
+                android:background="@drawable/glass_card"
+                android:clickable="true"
+                android:focusable="true"
+                android:foreground="?android:attr/selectableItemBackground"
+                android:gravity="center"
+                android:orientation="vertical"
+                android:paddingTop="16dp"
+                android:paddingBottom="14dp">
 
-            <ImageButton
-                android:id="@+id/btnSend"
-                android:layout_width="44dp"
-                android:layout_height="44dp"
-                android:background="@android:color/transparent"
-                android:contentDescription="भेजें"
-                android:padding="10dp"
-                android:scaleType="fitCenter"
-                android:src="@drawable/ic_send" />
+                <ImageView
+                    android:layout_width="50dp"
+                    android:layout_height="50dp"
+                    android:background="@drawable/glass_circle"
+                    android:padding="13dp"
+                    android:src="@drawable/ic_chat"
+                    android:importantForAccessibility="no" />
 
-            <ImageButton
-                android:id="@+id/btnMic"
-                android:layout_width="48dp"
-                android:layout_height="48dp"
-                android:background="@drawable/btn_accent_circle"
-                android:contentDescription="बोलें"
-                android:padding="12dp"
-                android:scaleType="fitCenter"
-                android:src="@drawable/ic_mic" />
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp"
+                    android:text="चैट"
+                    android:textColor="@color/text"
+                    android:textSize="16sp"
+                    android:textStyle="bold" />
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="लिखकर बात"
+                    android:textColor="@color/text3"
+                    android:textSize="11sp" />
+            </LinearLayout>
+            <LinearLayout
+                android:id="@+id/btnVoice"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:layout_marginStart="10dp"
+                android:layout_marginEnd="10dp"
+                android:background="@drawable/glass_card"
+                android:clickable="true"
+                android:focusable="true"
+                android:foreground="?android:attr/selectableItemBackground"
+                android:gravity="center"
+                android:orientation="vertical"
+                android:paddingTop="16dp"
+                android:paddingBottom="14dp">
+
+                <ImageView
+                    android:layout_width="50dp"
+                    android:layout_height="50dp"
+                    android:background="@drawable/btn_accent_circle"
+                    android:padding="13dp"
+                    android:src="@drawable/ic_mic"
+                    android:importantForAccessibility="no" />
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp"
+                    android:text="आवाज़"
+                    android:textColor="@color/text"
+                    android:textSize="16sp"
+                    android:textStyle="bold" />
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="लाइव बातचीत"
+                    android:textColor="@color/text3"
+                    android:textSize="11sp" />
+            </LinearLayout>
+            <LinearLayout
+                android:id="@+id/btnMemory"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                
+                android:background="@drawable/glass_card"
+                android:clickable="true"
+                android:focusable="true"
+                android:foreground="?android:attr/selectableItemBackground"
+                android:gravity="center"
+                android:orientation="vertical"
+                android:paddingTop="16dp"
+                android:paddingBottom="14dp">
+
+                <ImageView
+                    android:layout_width="50dp"
+                    android:layout_height="50dp"
+                    android:background="@drawable/glass_circle"
+                    android:padding="13dp"
+                    android:src="@drawable/ic_memory"
+                    android:importantForAccessibility="no" />
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp"
+                    android:text="मेमोरी"
+                    android:textColor="@color/text"
+                    android:textSize="16sp"
+                    android:textStyle="bold" />
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="यादें देखें"
+                    android:textColor="@color/text3"
+                    android:textSize="11sp" />
+            </LinearLayout>
         </LinearLayout>
     </LinearLayout>
 </FrameLayout>

@@ -15,6 +15,51 @@ object Setup {
 
     fun accessibilityOn() = DKAccessibilityService.instance != null
 
+    /** System settings me DK ki accessibility ON hai? (service abhi restart ho rahi ho tab bhi true) */
+    fun accessibilityOn(c: Context): Boolean = DKAccessibilityService.instance != null || enabledInSettings(c)
+
+    private fun component(c: Context) = android.content.ComponentName(c, DKAccessibilityService::class.java).flattenToString()
+
+    fun enabledInSettings(c: Context): Boolean = try {
+        val list = Settings.Secure.getString(c.contentResolver, Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES) ?: ""
+        val me = component(c); val short = me.replace(c.packageName + "/" + c.packageName, c.packageName + "/")
+        list.split(':').any { it.equals(me, true) || it.equals(short, true) }
+    } catch (e: Exception) { false }
+
+    /** adb se "WRITE_SECURE_SETTINGS" mili ho to DK khud apni accessibility ON kar leta hai */
+    fun canWriteSecure(c: Context) =
+        ContextCompat.checkSelfPermission(c, "android.permission.WRITE_SECURE_SETTINGS") == PackageManager.PERMISSION_GRANTED
+
+    fun selfEnableAccessibility(c: Context): Boolean {
+        if (DKAccessibilityService.instance != null) return true
+        if (!canWriteSecure(c)) return false
+        return try {
+            val cr = c.contentResolver
+            val me = component(c)
+            val list = (Settings.Secure.getString(cr, Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES) ?: "")
+                .split(':').filter { it.isNotBlank() && !it.startsWith(c.packageName + "/") }
+            // band karke dobara ON = Android service ko phir se jod deta hai
+            Settings.Secure.putString(cr, Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES, list.joinToString(":"))
+            Settings.Secure.putString(cr, Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES, (list + me).joinToString(":"))
+            Settings.Secure.putString(cr, Settings.Secure.ACCESSIBILITY_ENABLED, "1")
+            DKLog.d("Accessibility khud ON kiya"); true
+        } catch (e: Exception) { DKLog.d("selfEnable: ${e.message}"); false }
+    }
+
+    // ---- battery: Android DK ko band na kare
+    fun batteryExempt(c: Context): Boolean = try {
+        (c.getSystemService(Context.POWER_SERVICE) as android.os.PowerManager).isIgnoringBatteryOptimizations(c.packageName)
+    } catch (e: Exception) { false }
+
+    fun requestBatteryExempt(c: Context) {
+        try {
+            c.startActivity(Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS, Uri.parse("package:" + c.packageName))
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+        } catch (e: Exception) {
+            try { c.startActivity(Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) } catch (_: Exception) {}
+        }
+    }
+
     fun openAccessibility(c: Context) =
         c.startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
 

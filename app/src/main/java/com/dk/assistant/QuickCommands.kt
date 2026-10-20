@@ -30,6 +30,15 @@ object QuickCommands {
         val onW = has("जला", "चालू", "ऑन", " on", "on ", "खोल", "स्टार्ट", "start", "जगा")
         val offW = has("बंद", "ऑफ", " off", "off ", "बुझा", "हटा")
 
+        // ---- "apna chehra dikhao" -> dots se chehra banta hai
+        if (has("चेहरा", "चेहरे", "फेस", "फ़ेस", "face", "शक्ल", "सूरत", "chehra") &&
+            has("दिखा", "दिखाओ", "show", "dikha", "देखना", "देखूं", "देखूँ", "बताओ कैसे") && !has("मेरा चेहरा", "मेरी शक्ल", "फेसबुक", "facebook"))
+            return Quick(a("show_face"), "ये रहा मेरा चेहरा")
+        // ---- screen dekhna (AI ko screenshot) chalu / band
+        if (has("स्क्रीन", "screen") && has("देखना", "देखने", "देखो", "शेयर", "share", "दिखाना", "दिखाने") && (onW || offW) && words <= 8)
+            return if (offW) Quick(a("screen_view", "on" to false), "ठीक है, अब मैं आपकी स्क्रीन नहीं देखूँगा")
+                else Quick(a("screen_view", "on" to true), "ठीक है, अब मैं स्क्रीन देखकर काम करूँगा")
+
         // ---- calls (sabse pehle)
         if (has("कॉल", "call", "फोन", "फ़ोन") || has("उठा", "रिसीव", "receive", "answer")) {
             if (has("उठा", "रिसीव", "receive", "answer", "पिक", "pick", "उठाओ")) {

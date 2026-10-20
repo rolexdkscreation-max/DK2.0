@@ -76,8 +76,56 @@ class SettingsActivity : AppCompatActivity() {
     private lateinit var swAutoUpd: SwitchCompat
     private var pendingRelease: Updater.Release? = null
 
+    private val section: String? get() = intent.getStringExtra("section")
+
     private fun build() {
-        // ---- Update
+        val title = findViewById<TextView>(R.id.txtTitle)
+        val bar = findViewById<View>(R.id.saveBar)
+        when (section) {
+            null -> { title.text = "सेटिंग्स"; bar.visibility = View.GONE; menu() }
+            "profile" -> { title.text = "प्रोफ़ाइल"; secProfile() }
+            "brain" -> { title.text = "AI दिमाग"; secBrain() }
+            "voice" -> { title.text = "आवाज़"; secVoice() }
+            "orb" -> { title.text = "ओर्ब और चेहरा"; bar.visibility = View.GONE; secOrb() }
+            "access" -> { title.text = "Accessibility"; secAccess() }
+            "perms" -> { title.text = "परमिशन"; secPerms() }
+            "update" -> { title.text = "अपडेट"; secUpdate() }
+        }
+        space(container, 8)
+    }
+
+    // ------------------------------------------------------------ mukhya menu
+    private fun menu() {
+        val name = Prefs.assistantName(this)
+        val items = listOf(
+            Triple("profile", "प्रोफ़ाइल", "आपका नाम • असिस्टेंट का नाम ($name) • बात करने का तरीका"),
+            Triple("brain", "AI दिमाग", "AI कंपनी चुनें • API keys • मॉडल • इंटरनेट से जवाब"),
+            Triple("voice", "आवाज़", "महिला / पुरुष • आवाज़ चुनें • स्पीड • सुनने का तरीका"),
+            Triple("orb", "ओर्ब और चेहरा", "पृथ्वी, गैलेक्सी, एटम, DNA, छल्ला, पुरुष/महिला चेहरा"),
+            Triple("access", "Accessibility", (if (Setup.accessibilityOn(this)) "✓ चालू" else "✗ बंद") + " • फ़ोन कंट्रोल • हमेशा सुनना • कॉल • बैटरी"),
+            Triple("perms", "परमिशन", "माइक • स्क्रीन देखना • नोटिफ़िकेशन • कॉल • ऐप इंस्टॉल"),
+            Triple("update", "अपडेट", "अभी: ${Updater.currentName(this)} • नया version चेक करें")
+        )
+        items.forEach { (id, t, sub) ->
+            val box = LinearLayout(this).apply {
+                orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
+                setBackgroundResource(R.drawable.glass_card)
+                val pd = (18 * dp).toInt(); setPadding(pd, pd, pd, pd)
+                isClickable = true
+                setOnClickListener { startActivity(android.content.Intent(this@SettingsActivity, SettingsActivity::class.java).putExtra("section", id)) }
+            }
+            val txt = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+            txt.addView(TextView(this).apply { text = t; textSize = 18f; setTypeface(typeface, Typeface.BOLD); setTextColor(0xFFFFFFFF.toInt()) })
+            txt.addView(TextView(this).apply { text = sub; textSize = 13f; setTextColor(0x99FFFFFF.toInt()); setPadding(0, (3 * dp).toInt(), 0, 0) })
+            box.addView(txt, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+            box.addView(TextView(this).apply { text = "›"; textSize = 28f; setTextColor(0x99FFFFFF.toInt()) })
+            val lp = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
+            lp.topMargin = (12 * dp).toInt()
+            container.addView(box, lp)
+        }
+    }
+
+    private fun secUpdate() {
         card("अपडेट", "अभी का version: ${Updater.currentName(this)} (build ${Updater.currentCode(this)})") { box ->
             val status = TextView(this).apply {
                 text = "अपडेट चेक करने के लिए बटन दबाएँ"; textSize = 14f; setTextColor(0xFFFFFFFF.toInt())
@@ -140,16 +188,20 @@ class SettingsActivity : AppCompatActivity() {
             btnCheck.performClick()
         }
 
-        // ---- Profile
-        card("प्रोफ़ाइल", "आपका और असिस्टेंट का नाम") {
+    }
+
+    private fun secProfile() {
+        card("प्रोफ़ाइल", "आपका नाम, असिस्टेंट का नाम और बात करने का तरीका") {
             edUser = field(it, "आपका नाम", Prefs.userName(this), "जैसे: दीपक")
             edName = field(it, "असिस्टेंट का नाम", Prefs.assistantName(this), "DK")
-            edPersona = field(it, "पर्सनैलिटी / खास निर्देश", Prefs.personality(this),
+            edPersona = field(it, "बात करने का तरीका (पर्सनैलिटी)", Prefs.personality(this),
                 "जैसे: दोस्त की तरह मज़ेदार बात करो, जवाब छोटे रखो", multiLine = true)
             edWake = field(it, "जगाने वाले शब्द (कॉमा से अलग)", Prefs.wakeWordsRaw(this), "डीके, dk")
         }
 
-        // ---- AI brain
+    }
+
+    private fun secBrain() {
         card("AI दिमाग", "कौन सी AI कंपनी इस्तेमाल करनी है") { box ->
             rgProvider = RadioGroup(this).apply { orientation = RadioGroup.VERTICAL }
             Providers.all.forEachIndexed { i, p ->
@@ -164,12 +216,16 @@ class SettingsActivity : AppCompatActivity() {
             }
             box.addView(rgProvider)
             swFallback = switch(box, "मुख्य AI फेल हो तो दूसरी AI अपने-आप इस्तेमाल करो", Prefs.fallback(this))
+            swWeb = switch(box, "ज़रूरी सवालों का जवाब इंटरनेट (Google Search) से पता करके दो — Gemini key से", Prefs.webAnswers(this))
+            hint(box, "नीचे जिस कंपनी को इस्तेमाल करना है उसकी API key डालें — key डालते ही मॉडल अपने-आप आ जाएँगे।")
         }
 
         Providers.all.forEach { p -> providerCard(p) }
 
-        // ---- Voice
-        card("आवाज़", "महिला या पुरुष — दोनों फ्री") { box ->
+    }
+
+    private fun secVoice() {
+        card("आवाज़", "महिला या पुरुष — दोनों फ्री • DK का चेहरा भी इसी आवाज़ के हिसाब से बनेगा") { box ->
             label(box, "किसकी आवाज़ में बोले?")
             rgGender = radios(box, listOf("female" to "महिला (Female)", "male" to "पुरुष (Male)"), Prefs.voiceGender(this), 2000)
             label(box, "आवाज़ का प्रकार")
@@ -212,19 +268,86 @@ class SettingsActivity : AppCompatActivity() {
             hint(box, "बिना बीप वाले मोड में सबसे तेज़ और सही हिंदी पहचान के लिए Groq की फ्री key डालें (Whisper)। Groq key न हो तो Gemini key से काम चलेगा।")
         }
 
-        // ---- Options
-        card("विकल्प", null) { box ->
+    }
+
+    // ------------------------------------------------------------ orb + chehra
+    private fun secOrb() {
+        val styles = Shapes.STYLES
+        lateinit var preview: OrbView
+        var chosen = Prefs.orbStyle(this)
+        card("झलक", "ओर्ब पर टैप = चेहरा बनने वाला एनीमेशन") { box ->
+            preview = OrbView(this).apply {
+                previewStyle = chosen
+                setOnClickListener { playFace(this, chosen) }
+            }
+            box.addView(preview, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, (260 * dp).toInt()))
+        }
+        card("ओर्ब का आकार", "सब छोटे-छोटे 3D डॉट से बने हैं — जो पसंद हो चुनें") { box ->
+            val g = radios(box, styles, chosen, 2400)
+            g.setOnCheckedChangeListener { _, id ->
+                chosen = styles.getOrNull(id - 2400)?.first ?: "earth"
+                Prefs.edit(this) { putString("orb_style", chosen) }
+                preview.previewStyle = chosen
+            }
+        }
+        card("DK का चेहरा", "\"अपना चेहरा दिखाओ\" बोलने पर डॉट निकलकर चेहरा बनता है — आवाज़ महिला हो तो महिला चेहरा, पुरुष हो तो पुरुष") { box ->
+            row(box,
+                button("चेहरा दिखाओ") { playFace(preview, chosen) },
+                button("बड़ी स्क्रीन पर") {
+                    startActivity(android.content.Intent(this, VoiceActivity::class.java).putExtra("face", true))
+                })
+            hint(box, "अभी की आवाज़: " + (if (Prefs.voiceGender(this) == "male") "पुरुष" else "महिला") + " — बदलने के लिए सेटिंग्स → आवाज़")
+        }
+    }
+
+    private fun playFace(v: OrbView, back: String) {
+        val face = if (Prefs.voiceGender(this) == "male") "face_male" else "face_female"
+        if (v.previewStyle == face && back != face) { v.previewStyle = back; return }
+        v.previewStyle = face
+        v.postDelayed({ if (v.previewStyle == face && back != face) v.previewStyle = back }, 9000)
+    }
+
+    // ------------------------------------------------------------ accessibility
+    private var accStatus: TextView? = null
+    private var batStatus: TextView? = null
+    private var secStatus: TextView? = null
+
+    private fun secAccess() {
+        card("फ़ोन कंट्रोल (Accessibility)", "एक बार ON करें — फिर ON ही रहेगा") { box ->
+            accStatus = TextView(this).apply { textSize = 15f; setTextColor(0xFFFFFFFF.toInt()); setPadding((4 * dp).toInt(), (6 * dp).toInt(), 0, 0) }
+            box.addView(accStatus)
+            row(box,
+                button("Accessibility ON करें") { Setup.openAccessibility(this) },
+                button("App info") { Setup.openAppInfo(this) })
+            hint(box, "Android 13+: अगर Accessibility में DK धुंधला दिखे तो App info → ऊपर ⋮ → \"Allow restricted settings\" करें, फिर ON करें।")
+        }
+        card("बार-बार बंद न हो", "Android बैटरी बचाने के लिए DK को बंद कर देता है — यह रोकें") { box ->
+            batStatus = TextView(this).apply { textSize = 14f; setTextColor(0xFFFFFFFF.toInt()); setPadding((4 * dp).toInt(), (6 * dp).toInt(), 0, 0) }
+            box.addView(batStatus)
+            row(box, button("बैटरी रोक हटाएँ") { Setup.requestBatteryExempt(this) })
+            hint(box, "Xiaomi/Redmi/Poco: App info → Autostart ON, Battery saver → No restrictions। Vivo/Oppo/Realme: Battery → Allow background activity। Recent apps में DK पर लॉक लगाएँ।")
+            label(box, "हमेशा ON (सबसे पक्का तरीका — एक बार कंप्यूटर से)")
+            secStatus = TextView(this).apply { textSize = 13f; setTextColor(0xB3FFFFFF.toInt()); setPadding((4 * dp).toInt(), 0, 0, 0) }
+            box.addView(secStatus)
+            val cmd = "adb shell pm grant $packageName android.permission.WRITE_SECURE_SETTINGS"
+            box.addView(TextView(this).apply {
+                text = cmd; textSize = 12f; setTextColor(0xFF00E5FF.toInt()); setTextIsSelectable(true)
+                setPadding((4 * dp).toInt(), (6 * dp).toInt(), 0, 0)
+            })
+            row(box, button("कमांड कॉपी करें") {
+                val cm = getSystemService(android.content.ClipboardManager::class.java)
+                cm.setPrimaryClip(android.content.ClipData.newPlainText("adb", cmd)); toast("कॉपी हो गया")
+            })
+            hint(box, "USB debugging ON करके कंप्यूटर से यह कमांड एक बार चलाएँ। उसके बाद अगर Android कभी DK की Accessibility बंद भी कर दे, तो DK खुद उसे वापस ON कर लेगा।")
+        }
+        card("सुनना और कॉल", null) { box ->
             swWake = switch(box, "हमेशा सुनो (जगाने वाला शब्द बोलकर कमांड)", Prefs.wakeMode(this))
-            swShot = switch(box, "स्क्रीनशॉट भी AI को भेजो (ज़्यादा समझदार, ज़्यादा डेटा)", Prefs.screenshot(this))
-            swCalls = switch(box, "कॉल आने पर बताओ किसका कॉल है (\"उठा लो\" / \"काट दो\" बोलें)", Prefs.announceCalls(this))
-            swWeb = switch(box, "ज़रूरी सवालों का जवाब इंटरनेट (Google Search) से पता करके दो — Gemini key से", Prefs.webAnswers(this))
+            swCalls = switch(box, "कॉल आने पर पहले बताओ किसका कॉल है (\"उठा लो\" / \"काट दो\" बोलें)", Prefs.announceCalls(this))
             row(box, button("कॉल/कॉन्टैक्ट परमिशन दें") {
                 androidx.core.app.ActivityCompat.requestPermissions(this, CallManager.PERMS, 11)
             })
             hint(box, "कॉल के दौरान Android दूसरे ऐप्स को माइक नहीं देता — कॉल काटने के लिए स्क्रीन पर तैरता DK बुलबुला एक बार दबाएँ।")
         }
-
-        // ---- Crash report
         val crash = DKApp.lastCrash(this)
         if (crash.isNotBlank()) card("गड़बड़ी रिपोर्ट", "पिछली बार DK किस वजह से बंद हुआ") { box ->
             box.addView(TextView(this).apply {
@@ -238,14 +361,61 @@ class SettingsActivity : AppCompatActivity() {
                 button("हटाएँ") { DKApp.clearCrash(this); toast("हटा दिया") })
         }
 
-        // ---- Permissions
-        card("परमिशन", "फ़ोन कंट्रोल के लिए ज़रूरी") { box ->
-            row(box,
-                button("Accessibility ON") { Setup.openAccessibility(this) },
-                button("App info") { Setup.openAppInfo(this) })
-            hint(box, "Android 13+: अगर Accessibility में DK धुंधला दिखे तो App info → ऊपर ⋮ → \"Allow restricted settings\" करें। Xiaomi/Vivo/Oppo पर Battery → No restrictions और Autostart ON करें।")
+        refreshAccess()
+    }
+
+    private fun refreshAccess() {
+        accStatus?.text = when {
+            Setup.accessibilityOn() -> "✓ चालू है — DK फ़ोन चला सकता है"
+            Setup.enabledInSettings(this) -> "⟳ ON है, सर्विस दोबारा शुरू हो रही है… (न हो तो एक बार OFF-ON करें)"
+            else -> "✗ बंद है — नीचे बटन दबाकर Installed/Downloaded apps में ${Prefs.assistantName(this)} ON करें"
         }
-        space(container, 8)
+        batStatus?.text = if (Setup.batteryExempt(this)) "✓ बैटरी रोक हटी हुई है" else "✗ Android DK को बैटरी बचाने के लिए बंद कर सकता है"
+        secStatus?.text = if (Setup.canWriteSecure(this)) "✓ चालू — DK अपनी Accessibility खुद ON रखेगा" else "अभी नहीं दिया गया (ज़रूरी नहीं, पर सबसे पक्का)"
+    }
+
+    // ------------------------------------------------------------ permissions
+    private var permStatus: TextView? = null
+
+    private fun secPerms() {
+        card("स्क्रीन देखना", "DK आपकी स्क्रीन देखकर काम करे (स्क्रीनशॉट AI को जाता है)") { box ->
+            swShot = switch(box, "स्क्रीन देखना / शेयर करना", Prefs.screenshot(this))
+            swShot.setOnCheckedChangeListener { _, on ->
+                Prefs.edit(this) { putBoolean("screenshot", on) }
+                toast(if (on) "अब DK स्क्रीन देख सकता है" else "स्क्रीन देखना बंद")
+            }
+            hint(box, "बोलकर भी कर सकते हैं: \"डीके, स्क्रीन देखना चालू करो\" / \"स्क्रीन देखना बंद करो\"। बंद रहने पर DK सिर्फ़ स्क्रीन का लिखा हुआ पढ़ता है।")
+        }
+        card("ज़रूरी परमिशन", null) { box ->
+            permStatus = TextView(this).apply { textSize = 14f; setTextColor(0xFFFFFFFF.toInt()); setPadding((4 * dp).toInt(), (6 * dp).toInt(), 0, 0) }
+            box.addView(permStatus)
+            row(box, button("माइक + नोटिफ़िकेशन") {
+                val perms = mutableListOf(android.Manifest.permission.RECORD_AUDIO)
+                if (android.os.Build.VERSION.SDK_INT >= 33) perms.add(android.Manifest.permission.POST_NOTIFICATIONS)
+                androidx.core.app.ActivityCompat.requestPermissions(this, perms.toTypedArray(), 12)
+            }, button("कॉल/कॉन्टैक्ट") {
+                androidx.core.app.ActivityCompat.requestPermissions(this, CallManager.PERMS, 11)
+            })
+            row(box, button("ऐप इंस्टॉल (अपडेट के लिए)") { Updater.askInstallPermission(this) },
+                button("App info") { Setup.openAppInfo(this) })
+        }
+        refreshPerms()
+    }
+
+    private fun refreshPerms() {
+        fun ok(p: String) = androidx.core.content.ContextCompat.checkSelfPermission(this, p) == android.content.pm.PackageManager.PERMISSION_GRANTED
+        val notif = android.os.Build.VERSION.SDK_INT < 33 || ok(android.Manifest.permission.POST_NOTIFICATIONS)
+        val calls = CallManager.PERMS.all { ok(it) }
+        permStatus?.text = (if (Setup.hasMic(this)) "✓" else "✗") + " माइक\n" +
+            (if (notif) "✓" else "✗") + " नोटिफ़िकेशन\n" +
+            (if (calls) "✓" else "✗") + " कॉल / कॉन्टैक्ट\n" +
+            (if (Updater.canInstall(this)) "✓" else "✗") + " ऐप इंस्टॉल (अपडेट)"
+    }
+
+    override fun onResume() {
+        super.onResume()
+        refreshAccess(); refreshPerms()
+        if (section == null && container.childCount > 0) { container.removeAllViews(); menu(); space(container, 8) }
     }
 
     private fun providerCard(p: Provider) {
@@ -344,27 +514,36 @@ class SettingsActivity : AppCompatActivity() {
 
     // ------------------------------------------------------------ save
     private fun save(showToast: Boolean) {
-        if (!::rgProvider.isInitialized) return
-        val checked = rgProvider.checkedRadioButtonId
-        val active = Providers.all.getOrNull(checked - 1000)?.id ?: Prefs.activeProvider(this)
+        if (section == null || section == "orb") return
+        val active = if (::rgProvider.isInitialized)
+            Providers.all.getOrNull(rgProvider.checkedRadioButtonId - 1000)?.id ?: Prefs.activeProvider(this)
+        else Prefs.activeProvider(this)
         Prefs.edit(this) {
-            putString("user_name", edUser.text.toString().trim())
-            putString("assistant_name", edName.text.toString().trim().ifBlank { "DK" })
-            putString("personality", edPersona.text.toString().trim())
-            putString("wake_words", edWake.text.toString().trim())
-            putString("active_provider", active)
-            putBoolean("fallback", swFallback.isChecked)
-            putBoolean("wake_mode", swWake.isChecked)
-            putBoolean("screenshot", swShot.isChecked)
-            putBoolean("announce_calls", swCalls.isChecked)
-            putBoolean("web_answers", swWeb.isChecked)
-            putBoolean("auto_update", swAutoUpd.isChecked)
-            putFloat("tts_rate", seekValue(sbRate))
-            putString("voice_gender", radioValue(rgGender, listOf("female", "male"), 2000))
-            putString("voice_engine", radioValue(rgEngine, listOf("google", "gemini"), 2100))
-            putString("voice_style", radioValue(rgStyle, VoiceCatalog.STYLES.map { it.first }, 2300))
-            putString("listen_engine", radioValue(rgListen, listOf("auto", "google"), 2200))
-            putFloat("tts_pitch", seekValue(sbPitch))
+            if (::edUser.isInitialized) {
+                putString("user_name", edUser.text.toString().trim())
+                putString("assistant_name", edName.text.toString().trim().ifBlank { "DK" })
+                putString("personality", edPersona.text.toString().trim())
+                putString("wake_words", edWake.text.toString().trim())
+            }
+            if (::rgProvider.isInitialized) {
+                putString("active_provider", active)
+                putBoolean("fallback", swFallback.isChecked)
+                putBoolean("web_answers", swWeb.isChecked)
+            }
+            if (::swWake.isInitialized) {
+                putBoolean("wake_mode", swWake.isChecked)
+                putBoolean("announce_calls", swCalls.isChecked)
+            }
+            if (::swShot.isInitialized) putBoolean("screenshot", swShot.isChecked)
+            if (::swAutoUpd.isInitialized) putBoolean("auto_update", swAutoUpd.isChecked)
+            if (::rgGender.isInitialized) {
+                putFloat("tts_rate", seekValue(sbRate))
+                putString("voice_gender", radioValue(rgGender, listOf("female", "male"), 2000))
+                putString("voice_engine", radioValue(rgEngine, listOf("google", "gemini"), 2100))
+                putString("voice_style", radioValue(rgStyle, VoiceCatalog.STYLES.map { it.first }, 2300))
+                putString("listen_engine", radioValue(rgListen, listOf("auto", "google"), 2200))
+                putFloat("tts_pitch", seekValue(sbPitch))
+            }
             keyFields.forEach { (id, e) -> putString("key_$id", e.text.toString().trim()) }
             modelFields.forEach { (id, e) -> putString("model_$id", e.text.toString().trim()) }
             baseFields.forEach { (id, e) -> putString("base_$id", e.text.toString().trim()) }
@@ -373,7 +552,7 @@ class SettingsActivity : AppCompatActivity() {
         txtSaved.text = "✓ सेव हो गया"
         if (showToast) {
             val active2 = Providers.byId(active)
-            val warn = if (Prefs.key(this, active).isBlank()) " (पर ${active2?.name} की key खाली है)" else ""
+            val warn = if (::rgProvider.isInitialized && Prefs.key(this, active).isBlank()) " (पर ${active2?.name} की key खाली है)" else ""
             toast("सेटिंग्स सेव हो गईं$warn")
         }
     }
@@ -381,6 +560,8 @@ class SettingsActivity : AppCompatActivity() {
     override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
         DKAccessibilityService.instance?.calls?.start()
+        refreshPerms()
+        if (requestCode == 12) Setup.startKeepAlive(this)
         if (requestCode == 11) toast(if (grantResults.all { it == android.content.pm.PackageManager.PERMISSION_GRANTED }) "✓ कॉल परमिशन मिल गई"
             else "कुछ परमिशन नहीं मिलीं — App info → Permissions से दें (Android 13+: पहले ⋮ → Allow restricted settings)")
     }

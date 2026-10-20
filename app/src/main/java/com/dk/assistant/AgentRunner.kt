@@ -17,6 +17,7 @@ class AgentRunner(
     private val speaker: Speaker
 ) {
     private val brain = BrainManager(svc)
+
     private var job: Job? = null
 
     val isBusy: Boolean get() = job?.isActive == true
@@ -114,6 +115,19 @@ class AgentRunner(
         return t.split(' ').size >= 14 && q.any { t.contains(it) }
     }
 
+    /** Kisne banaya / boss kaun - sirf tab jab koi poochhe */
+    private fun asksCreator(t: String): Boolean {
+        val who = listOf("किसने", "किस ने", "कौन", "who", "kisne", "kaun")
+        val made = listOf("बनाया", "बनाई", "बनाए", "बनाये", "डेवलप", "develop", "made", "create", "built", "build", "banaya", "invent")
+        if (who.any { t.contains(it) } && made.any { t.contains(it) } &&
+            (listOf("तुम्हें", "तुम्हे", "तुमको", "तुझे", "तुझको", "आपको", "इस ऐप", "इस असिस्टेंट").any { t.contains(it) } ||
+                Regex("\\b(you|tumhe|tumko|aapko)\\b").containsMatchIn(t))) return true
+        val boss = listOf("तुम्हारा बॉस", "तुम्हारे बॉस", "आपका बॉस", "आपके बॉस", "तेरा बॉस", "बॉस कौन", "मालिक कौन", "तुम्हारा मालिक",
+            "आपका मालिक", "बनाने वाला", "बनाने वाले", "निर्माता", "तुम्हारा निर्माता", "your boss", "your owner", "your creator",
+            "who is your boss", "who owns you", "creator कौन", "डेवलपर कौन", "developer कौन", "tumhara boss", "tumhe kisne")
+        return boss.any { t.contains(it) }
+    }
+
     /** "याद रखो ..." / "... भूल जाओ" / "क्या याद है" */
     private suspend fun memoryCommand(goal: String): Boolean {
         val m = Memory.parse(goal) ?: return false
@@ -142,6 +156,8 @@ class AgentRunner(
         val lower = goal.lowercase().trim()
         if (lower in listOf("stop", "रुको", "बस", "ruko", "cancel")) { speaker.stop(); return }
         if (memoryCommand(goal)) return
+        // "tumhe kisne banaya?" - sirf poochhne par
+        if (asksCreator(lower)) { say(CREATOR_ANSWER); return }
         if (lower.contains("नई बात") || lower.contains("new chat") || lower.contains("भूल जाओ")) {
             brain.reset(); say("ठीक है, नई बातचीत शुरू करते हैं।"); return
         }
@@ -157,6 +173,7 @@ class AgentRunner(
 
         var feedback = "USER GOAL: $goal"
         var wantShot = false
+        var shotWarned = false
         // Normal baatcheet ho to screen padhe bina seedha jawab = bahut tez
         var chatMode = !looksLikePhoneTask(lower)
         var step = 0
@@ -179,6 +196,10 @@ class AgentRunner(
                 prompt = "CHAT MODE (no screen info).\nUSER SAYS: $goal"
             } else {
                 val screen = svc.readScreen()
+                if (wantShot && !Prefs.screenshot(svc) && !shotWarned) {
+                    shotWarned = true
+                    DKState.reply("स्क्रीन देखना बंद है। चालू करने के लिए बोलिए \"स्क्रीन देखना चालू करो\" या सेटिंग्स → परमिशन में ऑन करें।")
+                }
                 if (Prefs.screenshot(svc) && (wantShot || screen.count < 4)) shot = svc.screenshotBase64()
                 wantShot = false
                 prompt = buildString {
@@ -311,5 +332,8 @@ class AgentRunner(
         return words.any { t.contains(it) }
     }
 
-    companion object { const val MAX_STEPS = 20 }
+    companion object {
+        const val MAX_STEPS = 20
+        const val CREATOR_ANSWER = "मुझे धीरज कुमार सिंह जी ने बनाया है। मैं धीरज सर के लिए काम करता हूँ, वही मेरे बॉस हैं।"
+    }
 }

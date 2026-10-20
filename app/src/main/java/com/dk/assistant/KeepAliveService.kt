@@ -48,6 +48,7 @@ class KeepAliveService : Service() {
             stopSelf()
             return START_NOT_STICKY
         }
+        Setup.selfEnableAccessibility(this)
         DKAccessibilityService.instance?.startWakeLoopIfEnabled()
         return START_STICKY
     }

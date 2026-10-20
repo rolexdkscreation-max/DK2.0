@@ -21,6 +21,11 @@ object DKState {
     private val main = Handler(Looper.getMainLooper())
     private val listeners = mutableSetOf<() -> Unit>()
 
+    /** "apna chehra dikhao" - is samay tak orb chehra banega */
+    @Volatile var faceUntil: Long = 0L
+    fun showFace(ms: Long = 12000) { faceUntil = System.currentTimeMillis() + ms; emit() }
+    fun hideFace() { faceUntil = 0L; emit() }
+
     fun set(m: Mode) { mode = m; if (m != Mode.LISTENING) level = 0f; emit() }
     fun setLive(on: Boolean) { live = on; emit() }
     /** Chat screen ke liye poori baatcheet (role "u" = aap, "d" = DK) */

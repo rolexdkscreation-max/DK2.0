@@ -61,6 +61,18 @@ object Memory {
 
     fun clearFacts(c: Context) = writeArr(c, "dk_facts.json", JSONArray())
 
+    /** Memory screen se ek baat hatao */
+    fun removeFact(c: Context, fact: String) {
+        val list = facts(c).toMutableList()
+        list.remove(fact)
+        writeArr(c, "dk_facts.json", JSONArray(list))
+    }
+
+    /** AI ki pichhli baatcheet (context) mitao */
+    @Volatile var historyEpoch = 0
+        private set
+    fun clearHistory(c: Context) { writeArr(c, "dk_history.json", JSONArray()); historyEpoch++ }
+
     /** AI ke prompt me jodne ke liye. */
     fun factsBlock(c: Context): String {
         val f = facts(c)

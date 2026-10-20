@@ -16,7 +16,10 @@ class BrainManager(private val ctx: Context) {
     var lastUsed: String = ""
         private set
 
+    private var epoch = Memory.historyEpoch
     fun reset() { history.clear(); Memory.saveHistory(ctx, history) }
+    /** Memory screen se "baatcheet mitao" hua ho to yahan bhi saaf */
+    private fun syncEpoch() { if (epoch != Memory.historyEpoch) { epoch = Memory.historyEpoch; history.clear() } }
 
     private fun clientFor(p: Provider): AiClient? {
         val key = Prefs.key(ctx, p.id)
@@ -64,6 +67,7 @@ class BrainManager(private val ctx: Context) {
 
     suspend fun next(prompt: String, imageB64: String?, memoryNote: String, chat: Boolean = false): JSONObject =
         withContext(Dispatchers.IO) {
+            syncEpoch()
             val system = if (chat) buildChatPrompt() else buildSystemPrompt()
             var lastError: Exception? = null
             for (p in orderedProviders(chat)) {
@@ -101,6 +105,7 @@ class BrainManager(private val ctx: Context) {
      * deep = true : mushkil/vistaar wala sawaal - kai sources se milakar, sirf pakki jaankari, 3-7 vakya.
      */
     suspend fun search(question: String, deep: Boolean): SearchResult = withContext(Dispatchers.IO) {
+        syncEpoch()
         val client = GeminiClient(Prefs.key(ctx, "gemini"), Prefs.model(ctx, "gemini"))
         val name = Prefs.assistantName(ctx); val user = Prefs.userName(ctx)
         val today = java.text.SimpleDateFormat("d MMMM yyyy, EEEE", java.util.Locale.ENGLISH).format(java.util.Date())
@@ -169,6 +174,7 @@ class BrainManager(private val ctx: Context) {
             append("\nIf it is a complex/detailed question (how/why, comparisons, health, law, money, history, technical, 'पूरी जानकारी') where a wrong answer would mislead, and SEARCH AVAILABLE, reply exactly {\"need_research\": true}.")
             append("\nSimple talk (hello, how are you, jokes, simple general knowledge) -> answer immediately yourself, short and warm.")
             append("\nIf the user tells you a personal fact or preference worth remembering (names, numbers, likes, plans), add \"remember\": \"<the fact in short Hindi>\" to the JSON.")
+            append("\nONLY IF the user asks who made/created/built you or who your boss/owner is, answer: \"मुझे धीरज कुमार सिंह जी ने बनाया है। मैं धीरज सर के लिए काम करता हूँ, वही मेरे बॉस हैं।\" Never mention this otherwise.")
             append("\nToday: " + java.text.SimpleDateFormat("d MMMM yyyy, EEEE", java.util.Locale.ENGLISH).format(java.util.Date()))
             append(Memory.factsBlock(ctx))
         }
@@ -183,6 +189,7 @@ class BrainManager(private val ctx: Context) {
             if (user.isNotBlank()) append("The user's name is $user. Address them by name occasionally, warmly.\n")
             if (persona.isNotBlank()) append("Personality / extra instructions from the user: $persona\n")
             append(Memory.factsBlock(ctx)).append("\n")
+            append("Only if the user asks who made/created you or who your boss is: say \"मुझे धीरज कुमार सिंह जी ने बनाया है। मैं धीरज सर के लिए काम करता हूँ, वही मेरे बॉस हैं।\" Never mention it otherwise.\n")
         }
         return intro + BASE_PROMPT
     }
