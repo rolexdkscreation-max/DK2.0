@@ -33,9 +33,9 @@ class AgentRunner(
 
     fun run(command: String, speak: Boolean = true): Job {
         job?.cancel()
+        silent = !speak
         val j = scope.launch {
-            silent = !speak
-            try { execute(command) } finally { DKState.set(Mode.IDLE); silent = false }
+            try { execute(command) } finally { if (job === coroutineContext[Job]) { DKState.set(Mode.IDLE); silent = false } }
         }
         job = j
         return j
@@ -94,25 +94,13 @@ class AgentRunner(
         return true
     }
 
-    /** Kya sawaal ko internet se taaza jawab chahiye? */
+    /** Kya sawaal ko internet se taaza jawab chahiye? (sirf sach me badalne wali jaankari - baaki AI turant) */
     private fun needsSearch(t: String): Boolean {
-        val w = listOf("आज", "अभी का", "ताज़ा", "ताजा", "लेटेस्ट", "latest", "न्यूज़", "न्यूज", "news", "खबर", "ख़बर", "मौसम", "weather",
-            "तापमान", "भाव", "रेट", "rate", "price", "कीमत", "दाम", "स्कोर", "score", "मैच", "match", "किसने जीता", "कौन जीता",
-            "पता करो", "पता करके", "सर्च करके", "सही बताओ", "सही जानकारी", "करेक्ट", "correct", "शेयर प्राइस", "stock", "सोने का",
-            "चांदी", "पेट्रोल", "डीज़ल", "रिजल्ट", "result", "चुनाव", "election", "कब है", "कब रिलीज", "release", "अपडेट क्या", "2025", "2026")
+        val w = listOf("आज का", "आज की", "आज के", "अभी का", "अभी की", "ताज़ा", "ताजा", "लेटेस्ट", "latest", "न्यूज़", "न्यूज", "news",
+            "खबर", "ख़बर", "समाचार", "मौसम", "weather", "तापमान", "बारिश होगी", "भाव", "price", "कीमत", "दाम", "स्कोर", "score",
+            "मैच", "match", "किसने जीता", "कौन जीता", "शेयर प्राइस", "stock", "सोने का", "चांदी", "पेट्रोल", "डीज़ल", "डीजल",
+            "रिजल्ट", "result", "चुनाव", "election", "कब रिलीज", "ट्रेन का स्टेटस", "pnr", "डॉलर", "dollar", "सेंसेक्स", "निफ्टी")
         return w.any { t.contains(it) }
-    }
-
-    /** Mushkil / vistaar wala sawaal? -> internet par kai sources se jaanch (research) */
-    private fun needsResearch(t: String): Boolean {
-        val w = listOf("विस्तार से", "पूरी जानकारी", "पूरी डिटेल", "डिटेल में", "detail", "रिसर्च", "research", "जांच कर", "जाँच कर",
-            "समझाओ", "समझा दो", "तुलना", "compare", "फर्क", "फ़र्क", "अंतर", "difference", "फायदे", "फ़ायदे", "नुकसान",
-            "कौन सा बेहतर", "कौनसा बेहतर", "कौन सा अच्छा", "कौनसा अच्छा", "सबसे अच्छा", "best", "इलाज", "बीमारी", "दवा", "दवाई",
-            "लक्षण", "कानून", "धारा", "नियम", "योजना", "scheme", "टैक्स", "tax", "निवेश", "invest", "लोन", "loan", "ब्याज",
-            "इतिहास", "history", "कैसे काम", "क्यों होता", "क्यों होती", "कैसे बनता", "कैसे बनती", "प्रक्रिया", "process", "आवेदन", "apply")
-        if (w.any { t.contains(it) }) return true
-        val q = listOf("क्या", "क्यों", "कैसे", "कौन", "कब", "कहाँ", "कितना", "कितने", "what", "why", "how")
-        return t.split(' ').size >= 14 && q.any { t.contains(it) }
     }
 
     /** User ne saaf kaha "सर्च/रिसर्च करो"? (YouTube/Amazon jaise app me search wali command nahi) */
@@ -196,10 +184,8 @@ class AgentRunner(
         var chatMode = !looksLikePhoneTask(lower)
         var step = 0
 
-        // 2) Mushkil sawaal -> research (kai sources se jaanch). Taaza jawab -> Google Search. Baaki -> seedha AI (turant)
-        if (chatMode && brain.canSearch() && needsResearch(lower)) {
-            if (searchAndSay(goal, deep = true)) return
-        }
+        // 2) Taaza jaankari (mausam/bhav/score/news) -> Google Search (tez). Baaki sab -> seedha AI = turant jawab.
+        //    Gehri research sirf tab jab user khud bole "सर्च/रिसर्च करो" (upar).
         if (chatMode && brain.canSearch() && needsSearch(lower)) {
             if (searchAndSay(goal)) return
         }
@@ -250,8 +236,8 @@ class AgentRunner(
             resp.optString("remember").takeIf { it.isNotBlank() }?.let { Memory.addFact(svc, it) }
 
             if (chatMode && (resp.optBoolean("need_research", false) || resp.optBoolean("need_search", false))) {
-                if (searchAndSay(goal, fillerSaid = filler != null && !filler.isCancelled,
-                        deep = resp.optBoolean("need_research", false))) return
+                // AI ko taaza jaankari chahiye -> tez search (gehri research nahi)
+                if (searchAndSay(goal, fillerSaid = filler != null && !filler.isCancelled, deep = false)) return
             }
 
             if (chatMode && resp.optBoolean("need_screen", false)) {
@@ -303,10 +289,8 @@ class AgentRunner(
     private suspend fun searchAndSay(goal: String, fillerSaid: Boolean = false, deep: Boolean = false, thorough: Boolean = false): Boolean {
         // "पता करके बताता हूँ" jaisa kuch nahi - chupchap khojo, seedha jawab (orb soch-raha rang dikhata hai)
         DKState.set(Mode.THINKING)
-        val f: kotlinx.coroutines.Job? = null
         return try {
             val r = brain.search(goal, deep, thorough)
-            f?.join()
             if (r.text.isBlank()) false else {
                 // screen par jawab + kahan se mila; bolkar sirf jawab
                 val src = if (r.sources.isNotEmpty()) "\n\nस्रोत: " + r.sources.joinToString(", ") { it.first } else ""
@@ -316,7 +300,7 @@ class AgentRunner(
             }
         } catch (e: Exception) {
             DKLog.d("Search fail: ${e.message}")
-            f?.join(); false
+            false
         }
     }
 

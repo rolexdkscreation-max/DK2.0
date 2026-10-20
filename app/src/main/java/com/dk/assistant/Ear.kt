@@ -32,12 +32,12 @@ class Ear(
         private const val START_FRAMES = 3            // 90 ms awaaz = bolna shuru
         // Chhoti baat ("हाँ", "उठाओ") ke baad 0.7 sec chup = khatam (tez jawab).
         // Lambi baat me beech ka saans/ruk-ruk kar bolna na kate -> 1.1 sec tak intezaar.
-        private const val END_SILENCE_SHORT = 23      // ~0.7 sec
-        private const val END_SILENCE_LONG = 37       // ~1.1 sec
+        private const val END_SILENCE_SHORT = 27      // ~0.8 sec
+        private const val END_SILENCE_LONG = 42       // ~1.25 sec (beech me saans le kar bolo to baat na kate)
         private const val LONG_AFTER = 50             // 1.5 sec se zyada bole = lambi baat
         private const val MAX_FRAMES = 25 * 1000 / 30 // 25 sec max (lamba sawaal bhi poora suno)
         private const val MIN_SPEECH_FRAMES = 8       // 0.24 sec se chhota = shor ("हाँ" bhi pakdo)
-        private const val PRE_ROLL = 12               // shuru se pehle ka 0.36 sec bhi rakho (pehla shabd na kate)
+        private const val PRE_ROLL = 15               // shuru se pehle ka 0.36 sec bhi rakho (pehla shabd na kate)
     }
 
     private var rec: AudioRecord? = null
@@ -91,8 +91,8 @@ class Ear(
                 if (muted()) { talking = false; speech.reset(); pre.clear(); loud = 0; warm = 4; DKState.level = 0f; continue }
                 if (warm > 0) { noise = noise * 0.7 + rms * 0.3; warm--; continue }
                 // dheemi awaaz bhi pakdo, par pankhe/TV ka shor nahi
-                val startTh = maxOf(noise * 2.3, 380.0)
-                val stopTh = maxOf(noise * 1.5, 260.0)
+                val startTh = maxOf(noise * 2.1, 320.0)
+                val stopTh = maxOf(noise * 1.4, 220.0)
 
                 if (!talking) {
                     DKState.level = 0f

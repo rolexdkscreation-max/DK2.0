@@ -84,6 +84,7 @@
 
         <!-- beech me ORB -->
         <FrameLayout
+            android:id="@+id/orbBox"
             android:layout_width="match_parent"
             android:layout_height="0dp"
             android:layout_weight="1">
@@ -93,6 +94,19 @@
                 android:layout_width="match_parent"
                 android:layout_height="match_parent"
                 android:contentDescription="बोलने के लिए टैप करें" />
+
+            <!-- orb chhota/bada karne ka button -->
+            <ImageButton
+                android:id="@+id/btnOrbMin"
+                android:layout_width="40dp"
+                android:layout_height="40dp"
+                android:layout_gravity="top|end"
+                android:layout_marginTop="6dp"
+                android:background="@drawable/glass_circle"
+                android:contentDescription="ओर्ब छोटा करें"
+                android:padding="10dp"
+                android:scaleType="fitCenter"
+                android:src="@drawable/ic_minimize" />
 
             <TextView
                 android:id="@+id/txtState"

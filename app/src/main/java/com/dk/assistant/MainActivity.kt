@@ -41,6 +41,11 @@ class MainActivity : AppCompatActivity() {
         findViewById<OrbView>(R.id.orb).setOnClickListener {
             if (System.currentTimeMillis() < DKState.faceUntil) DKState.hideFace() else openVoice()
         }
+        findViewById<ImageButton>(R.id.btnOrbMin).setOnClickListener {
+            Prefs.edit(this) { putBoolean("orb_min", !Prefs.orbMin(this@MainActivity)) }
+            applyOrbMin()
+        }
+        applyOrbMin()
         findViewById<android.view.View>(R.id.btnChat).setOnClickListener { openChat() }
         findViewById<android.view.View>(R.id.btnVoice).setOnClickListener { openVoice() }
         findViewById<android.view.View>(R.id.btnMemory).setOnClickListener {
@@ -66,6 +71,28 @@ class MainActivity : AppCompatActivity() {
             getSharedPreferences("dk_prefs", MODE_PRIVATE).edit().putBoolean("call_perm_asked", true).apply()
             askPerms()
         }
+    }
+
+    /** Orb chhota = upar chhoti jagah, DK ka aakhri jawab zyada dikhe. Bada = poori jagah. */
+    private fun applyOrbMin() {
+        val min = Prefs.orbMin(this)
+        val dp = resources.displayMetrics.density
+        val box = findViewById<android.view.View>(R.id.orbBox)
+        box.layoutParams = (box.layoutParams as android.widget.LinearLayout.LayoutParams).apply {
+            if (min) { height = (140 * dp).toInt(); weight = 0f } else { height = 0; weight = 1f }
+        }
+        txtDk.layoutParams = (txtDk.layoutParams as android.widget.LinearLayout.LayoutParams).apply {
+            if (min) { height = 0; weight = 1f } else { height = android.widget.LinearLayout.LayoutParams.WRAP_CONTENT; weight = 0f }
+        }
+        txtDk.maxLines = if (min) 200 else 2
+        txtDk.ellipsize = if (min) null else android.text.TextUtils.TruncateAt.END
+        txtDk.gravity = if (min) android.view.Gravity.TOP or android.view.Gravity.START else android.view.Gravity.CENTER
+        txtDk.movementMethod = if (min) android.text.method.ScrollingMovementMethod.getInstance() else null
+        findViewById<ImageButton>(R.id.btnOrbMin).apply {
+            setImageResource(if (min) R.drawable.ic_maximize else R.drawable.ic_minimize)
+            contentDescription = if (min) "ओर्ब बड़ा करें" else "ओर्ब छोटा करें"
+        }
+        box.requestLayout()
     }
 
     private fun openChat() = startActivity(Intent(this, ChatActivity::class.java))
@@ -150,7 +177,7 @@ class MainActivity : AppCompatActivity() {
         txtState.text = when (DKState.mode) {
             Mode.IDLE -> if (live) "माइक चालू है • आवाज़ स्क्रीन खोलें" else "ओर्ब या \"आवाज़\" दबाकर बात करें"
             Mode.LISTENING -> if (live) "सुन रहा हूँ… (बंद: टैप या \"माइक बंद\")" else "सुन रहा हूँ…"
-            Mode.THINKING -> "सोच रहा हूँ…"
+            Mode.THINKING -> "जवाब आ रहा है…"
             Mode.WORKING -> "काम कर रहा हूँ…"
             Mode.SPEAKING -> "बोल रहा हूँ…"
         }

@@ -24,6 +24,8 @@ class VoiceActivity : AppCompatActivity() {
     private lateinit var you: TextView
     private lateinit var dk: TextView
     private lateinit var mic: ImageButton
+    private lateinit var orbBox: FrameLayout
+    private lateinit var minBtn: ImageButton
     private val dp get() = resources.displayMetrics.density
     private val listener: () -> Unit = { render() }
 
@@ -63,7 +65,18 @@ class VoiceActivity : AppCompatActivity() {
                 if (System.currentTimeMillis() < DKState.faceUntil) DKState.hideFace() else toggleLive()
             }
         }
-        col.addView(orb, LinearLayout.LayoutParams(-1, 0, 1f))
+        // orb + kone me minimize button
+        orbBox = FrameLayout(this)
+        orbBox.addView(orb, FrameLayout.LayoutParams(-1, -1))
+        minBtn = ImageButton(this).apply {
+            setBackgroundResource(R.drawable.glass_circle)
+            val p = (10 * dp).toInt(); setPadding(p, p, p, p); scaleType = android.widget.ImageView.ScaleType.FIT_CENTER
+            setOnClickListener { setOrbMin(!Prefs.orbMin(this@VoiceActivity)) }
+        }
+        orbBox.addView(minBtn, FrameLayout.LayoutParams((40 * dp).toInt(), (40 * dp).toInt(), Gravity.TOP or Gravity.END).apply {
+            topMargin = (6 * dp).toInt()
+        })
+        col.addView(orbBox, LinearLayout.LayoutParams(-1, 0, 1f))
 
         state = TextView(this).apply {
             setBackgroundResource(R.drawable.glass_pill); setTextColor(0xFFFFFFFF.toInt()); textSize = 14f
@@ -97,6 +110,7 @@ class VoiceActivity : AppCompatActivity() {
         col.addView(bar, LinearLayout.LayoutParams(-1, -2).apply { topMargin = (14 * dp).toInt() })
 
         setContentView(root)
+        applyOrbMin()
 
         onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
             override fun handleOnBackPressed() {
@@ -131,6 +145,35 @@ class VoiceActivity : AppCompatActivity() {
         }
     }
 
+    /** Orb chhota/bada. Chhota = upar chhota orb, neeche zyada likha hua dikhe. */
+    private fun setOrbMin(min: Boolean) {
+        Prefs.edit(this) { putBoolean("orb_min", min) }
+        applyOrbMin()
+    }
+
+    private fun applyOrbMin() {
+        val min = Prefs.orbMin(this)
+        orbBox.layoutParams = (orbBox.layoutParams as LinearLayout.LayoutParams).apply {
+            if (min) { height = (130 * dp).toInt(); weight = 0f } else { height = 0; weight = 1f }
+        }
+        // chhota orb ho to baatcheet ka card bada (bache hue jagah me)
+        (you.parent as? android.view.View)?.let { card ->
+            card.layoutParams = (card.layoutParams as LinearLayout.LayoutParams).apply {
+                if (min) { height = 0; weight = 1f } else { height = -2; weight = 0f }
+            }
+        }
+        you.maxLines = if (min) 4 else 2
+        dk.maxLines = if (min) 200 else 5
+        dk.ellipsize = if (min) null else android.text.TextUtils.TruncateAt.END
+        dk.movementMethod = if (min) android.text.method.ScrollingMovementMethod.getInstance() else null
+        dk.layoutParams = (dk.layoutParams as LinearLayout.LayoutParams).apply {
+            if (min) { height = 0; weight = 1f } else { height = -2; weight = 0f }
+        }
+        minBtn.setImageResource(if (min) R.drawable.ic_maximize else R.drawable.ic_minimize)
+        minBtn.contentDescription = if (min) "ओर्ब बड़ा करें" else "ओर्ब छोटा करें"
+        orbBox.requestLayout()
+    }
+
     private fun toggleLive() {
         if (DKState.live) DKAccessibilityService.instance?.stopLive() else startLiveIfReady()
     }
@@ -145,7 +188,7 @@ class VoiceActivity : AppCompatActivity() {
         state.text = when (DKState.mode) {
             Mode.IDLE -> if (live) "माइक चालू है • बोलिए" else "माइक बंद • ओर्ब या माइक दबाइए"
             Mode.LISTENING -> "सुन रहा हूँ…"
-            Mode.THINKING -> "सोच रहा हूँ…"
+            Mode.THINKING -> "जवाब आ रहा है…"
             Mode.WORKING -> "काम कर रहा हूँ…"
             Mode.SPEAKING -> "बोल रहा हूँ…"
         }

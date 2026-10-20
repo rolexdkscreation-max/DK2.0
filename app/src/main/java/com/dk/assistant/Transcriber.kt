@@ -41,13 +41,24 @@ object Transcriber {
         t
     }
 
-    private fun groqWhisper(key: String, wav: ByteArray): String {
+    @Volatile private var groqModel = "whisper-large-v3"
+
+    private fun groqWhisper(key: String, wav: ByteArray): String = try { groqWhisper(key, wav, groqModel) } catch (e: AiException) {
+        // model band/limit -> turbo
+        if (groqModel != "whisper-large-v3-turbo" && (e.code == 404 || e.code == 400 || e.code == 429)) {
+            groqModel = "whisper-large-v3-turbo"; groqWhisper(key, wav, groqModel)
+        } else throw e
+    }
+
+    private fun groqWhisper(key: String, wav: ByteArray, model: String): String {
         val body = MultipartBody.Builder().setType(MultipartBody.FORM)
             .addFormDataPart("file", "speech.wav", wav.toRequestBody("audio/wav".toMediaType()))
-            .addFormDataPart("model", "whisper-large-v3-turbo")
+            // large-v3 (turbo nahi) = Hindi/Hinglish me sabse sahi; Groq par phir bhi ~1 sec
+            .addFormDataPart("model", model)
             .addFormDataPart("language", "hi")
-            .addFormDataPart("prompt", "यह हिंदी और English मिली हुई बातचीत है। जैसे: यूट्यूब खोलो, WhatsApp पर message भेजो, कॉल उठाओ, कॉल काट दो, आवाज़ बढ़ाओ, स्वारगेट का रास्ता दिखाओ, पुणे से मुंबई कितनी दूर है, याद रखो।")
-            .addFormDataPart("response_format", "json")
+            // chhota sa ishaara: lamba prompt Whisper shor par khud "bol" deta hai
+            .addFormDataPart("prompt", "हिंदी और English मिली बातचीत, देवनागरी में।")
+            .addFormDataPart("response_format", "verbose_json")
             .addFormDataPart("temperature", "0")
             .build()
         val req = Request.Builder().url("https://api.groq.com/openai/v1/audio/transcriptions")
@@ -55,19 +66,34 @@ object Transcriber {
         http.newCall(req).execute().use { r ->
             val s = r.body?.string() ?: ""
             if (!r.isSuccessful) throw AiException(r.code, s.take(200))
-            return JSONObject(s).optString("text")
+            val o = JSONObject(s)
+            val segs = o.optJSONArray("segments") ?: return o.optString("text")
+            // sirf asli boli hui baat - shor/khaali hisse (no_speech) chhod do
+            val sb = StringBuilder()
+            for (i in 0 until segs.length()) {
+                val g = segs.optJSONObject(i) ?: continue
+                val noSpeech = g.optDouble("no_speech_prob", 0.0)
+                val logp = g.optDouble("avg_logprob", 0.0)
+                if (noSpeech > 0.6 && logp < -0.8) continue
+                if (logp < -2.0) continue   // bilkul ulta-pulta (shor)
+                sb.append(g.optString("text"))
+            }
+            return sb.toString()
         }
     }
+
+    @Volatile private var gemModel: String? = null
 
     private fun gemini(key: String, wav: ByteArray): String {
         val parts = JSONArray()
             .put(JSONObject().put("text", "Transcribe this audio exactly as spoken. Write Hindi in Devanagari and English words in English. " +
+                "Only the main speaker's words; skip background noise, TV and cut-off fragments. " +
                 "Output ONLY the transcript text. If there is no clear human speech, output nothing."))
             .put(JSONObject().put("inline_data", JSONObject().put("mime_type", "audio/wav")
                 .put("data", Base64.encodeToString(wav, Base64.NO_WRAP))))
         val body = JSONObject().put("contents", JSONArray().put(JSONObject().put("role", "user").put("parts", parts)))
         var last: Exception? = null
-        for (m in listOf("gemini-3.5-flash-lite", "gemini-3.1-flash-lite", "gemini-2.5-flash-lite")) {
+        for (m in (listOfNotNull(gemModel) + listOf("gemini-3.5-flash-lite", "gemini-3.1-flash-lite", "gemini-2.5-flash-lite")).distinct()) {
             try {
                 val req = Request.Builder().url("https://generativelanguage.googleapis.com/v1beta/models/$m:generateContent")
                     .header("x-goog-api-key", key)
@@ -75,6 +101,7 @@ object Transcriber {
                 http.newCall(req).execute().use { r ->
                     val s = r.body?.string() ?: ""
                     if (!r.isSuccessful) throw AiException(r.code, s.take(200))
+                    gemModel = m
                     val p = JSONObject(s).optJSONArray("candidates")?.optJSONObject(0)?.optJSONObject("content")?.optJSONArray("parts")
                     return (0 until (p?.length() ?: 0)).joinToString("") { p!!.optJSONObject(it)?.optString("text") ?: "" }
                 }

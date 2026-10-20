@@ -19,9 +19,20 @@ import kotlin.coroutines.resume
  */
 class VoiceListener(private val context: Context) {
 
+    companion object {
+        /** Beep dabane ke liye humne awaaz mute ki hai? (Speaker bolne se pehle isse wapas kholta hai) */
+        @Volatile var beepMuted = false
+            private set
+        private val STREAMS = intArrayOf(AudioManager.STREAM_MUSIC, AudioManager.STREAM_NOTIFICATION, AudioManager.STREAM_SYSTEM)
+        fun forceUnmute(audio: AudioManager) {
+            if (!beepMuted) return
+            for (st in STREAMS) try { audio.adjustStreamVolume(st, AudioManager.ADJUST_UNMUTE, 0) } catch (_: Exception) {}
+            beepMuted = false
+        }
+    }
+
     private var recognizer: SpeechRecognizer? = null
     private val audio = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
-    private var muted = false
     private var listening = false
     private val main = android.os.Handler(android.os.Looper.getMainLooper())
 
@@ -43,14 +54,14 @@ class VoiceListener(private val context: Context) {
     @Volatile var lastSpokeAt = 0L
 
     private fun mute(on: Boolean) {
-        if (on == muted) return
+        if (on == beepMuted) return
         val ownVoice = System.currentTimeMillis() - lastSpokeAt < 3000
         if (on && audio.isMusicActive && !ownVoice) return   // gaana/video chal raha ho to awaaz mat chheduo
         val dir = if (on) AudioManager.ADJUST_MUTE else AudioManager.ADJUST_UNMUTE
-        for (stream in intArrayOf(AudioManager.STREAM_MUSIC, AudioManager.STREAM_NOTIFICATION, AudioManager.STREAM_SYSTEM)) {
+        for (stream in STREAMS) {
             try { audio.adjustStreamVolume(stream, dir, 0) } catch (_: Exception) {}
         }
-        muted = on
+        beepMuted = on
     }
 
     fun release() {
@@ -64,13 +75,15 @@ class VoiceListener(private val context: Context) {
         suspendCancellableCoroutine { cont ->
             val r = obtain()
             val finished = AtomicBoolean(false)
+            // Google kabhi aakhri result nahi deta (NO_MATCH/timeout) jabki beech me sun chuka hota hai -> woh baat mat khoo
+            var partial: String? = null
 
             fun finish(result: String?, err: Int = 0) {
                 if (finished.compareAndSet(false, true)) {
                     lastError = err
                     listening = false
-                    // khatam hone wali beep ke baad awaaz wapas
-                    main.postDelayed({ if (!listening) mute(false) }, 600)
+                    // khatam hone wali beep ke baad awaaz wapas (DK bolega to Speaker turant khol deta hai)
+                    main.postDelayed({ if (!listening) mute(false) }, 350)
                     // in errors ke baad recognizer naya banao
                     if (err == SpeechRecognizer.ERROR_CLIENT || err == SpeechRecognizer.ERROR_RECOGNIZER_BUSY ||
                         err == SpeechRecognizer.ERROR_SERVER || err == 11 /*SERVER_DISCONNECTED*/) reset()
@@ -81,12 +94,14 @@ class VoiceListener(private val context: Context) {
             r.setRecognitionListener(object : RecognitionListener {
                 override fun onResults(results: Bundle?) {
                     val text = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)?.firstOrNull()
-                    finish(text?.takeIf { it.isNotBlank() })
+                    finish(text?.takeIf { it.isNotBlank() } ?: partial)
                 }
                 override fun onError(error: Int) {
                     if (error != SpeechRecognizer.ERROR_NO_MATCH && error != SpeechRecognizer.ERROR_SPEECH_TIMEOUT)
                         DKLog.d("Mic error code: $error")
-                    finish(null, error)
+                    val keep = if (error == SpeechRecognizer.ERROR_NO_MATCH || error == SpeechRecognizer.ERROR_SPEECH_TIMEOUT ||
+                        error == SpeechRecognizer.ERROR_NETWORK_TIMEOUT || error == 11) partial else null
+                    finish(keep, if (keep != null) 0 else error)
                 }
                 override fun onReadyForSpeech(params: Bundle?) {}
                 override fun onBeginningOfSpeech() {}
@@ -97,7 +112,7 @@ class VoiceListener(private val context: Context) {
                 override fun onEndOfSpeech() {}
                 override fun onPartialResults(partialResults: Bundle?) {
                     partialResults?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)?.firstOrNull()
-                        ?.takeIf { it.isNotBlank() }?.let { DKState.user("$it…") }
+                        ?.takeIf { it.isNotBlank() }?.let { partial = it; DKState.user("$it…") }
                 }
                 override fun onEvent(eventType: Int, params: Bundle?) {}
             })
@@ -107,11 +122,13 @@ class VoiceListener(private val context: Context) {
                 putExtra(RecognizerIntent.EXTRA_LANGUAGE, "hi-IN")
                 putExtra(RecognizerIntent.EXTRA_LANGUAGE_PREFERENCE, "hi-IN")
                 putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 3)
+                // Hindi + English mili baat (Hinglish) dono samjho
+                putExtra("android.speech.extra.EXTRA_ADDITIONAL_LANGUAGES", arrayOf("en-IN"))
                 putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
                 putExtra(RecognizerIntent.EXTRA_CALLING_PACKAGE, context.packageName)
                 // bolna band karte hi jaldi khatam karo (tez jawab)
-                putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, 1300L)
-                putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS, 1000L)
+                putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, 1500L)
+                putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS, 1200L)
                 putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_MINIMUM_LENGTH_MILLIS, 400L)
             }
             listening = true

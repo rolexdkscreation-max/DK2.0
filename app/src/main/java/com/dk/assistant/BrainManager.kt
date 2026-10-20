@@ -77,7 +77,8 @@ class BrainManager(private val ctx: Context) {
                     if (client is GeminiClient) client.fast = chat
                     if (client is OpenAiCompatClient) client.fast = chat
                     val answer = try {
-                        client.complete(system, history, prompt, img)
+                        // baatcheet me sirf haal ki baatein bhejo = kam data = tez jawab
+                        client.complete(system, if (chat) history.takeLast(10) else history, prompt, img)
                     } catch (e: AiException) {
                         // kuch model photo nahi lete - bina photo dobara try
                         if (img != null && e.code == 400) client.complete(system, history, prompt, null) else throw e
@@ -179,8 +180,7 @@ class BrainManager(private val ctx: Context) {
             append("\nReply with ONLY JSON: {\"say\": \"<natural spoken Hindi in Devanagari, 1-3 short sentences, no markdown>\", \"done\": true}")
             append("\nIf the user wants something DONE on the phone (open/click/type/send/call/settings/shopping etc.) reply exactly {\"need_screen\": true}.")
             append("\nIf the question needs current or exact facts (news, prices, weather, scores, dates, recent events) and the input says SEARCH AVAILABLE, reply exactly {\"need_search\": true}.")
-            append("\nIf it is a complex/detailed question (how/why, comparisons, health, law, money, history, technical, 'पूरी जानकारी') where a wrong answer would mislead, and SEARCH AVAILABLE, reply exactly {\"need_research\": true}.")
-            append("\nSimple talk (hello, how are you, jokes, simple general knowledge) -> answer immediately yourself, short and warm.")
+            append("\nEverything else (talk, general knowledge, how/why, advice, explanations, maths) -> answer IMMEDIATELY yourself from your own knowledge, short and warm. Do NOT ask for search for things you already know.")
             append("\nIf the user tells you a personal fact or preference worth remembering (names, numbers, likes, plans), add \"remember\": \"<the fact in short Hindi>\" to the JSON.")
             append("\nONLY IF the user asks who made/created/built you or who your boss/owner is, answer: \"मुझे धीरज कुमार सिंह जी ने बनाया है। मैं धीरज सर के लिए काम करता हूँ, वही मेरे बॉस हैं।\" Never mention this otherwise.")
             append("\nToday: " + java.text.SimpleDateFormat("d MMMM yyyy, EEEE", java.util.Locale.ENGLISH).format(java.util.Date()))

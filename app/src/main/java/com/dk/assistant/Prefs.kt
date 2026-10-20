@@ -52,6 +52,8 @@ object Prefs {
     fun lastUpdateCheck(c: Context) = sp(c).getLong("upd_checked", 0L)
     fun liveMode(c: Context) = sp(c).getBoolean("live_mode", false)
     /** orb ka aakaar: earth, galaxy, atom, dna, torus, face_male, face_female */
+    /** Beech ka orb chhota (minimize) kiya hua hai? */
+    fun orbMin(c: Context) = sp(c).getBoolean("orb_min", false)
     fun orbStyle(c: Context) = sp(c).getString("orb_style", "earth") ?: "earth"
     fun screenshot(c: Context) = sp(c).getBoolean("screenshot", true)
     fun ttsRate(c: Context) = sp(c).getFloat("tts_rate", 1.05f)

@@ -8,6 +8,7 @@ import android.speech.tts.TextToSpeech
 import android.speech.tts.UtteranceProgressListener
 import android.speech.tts.Voice
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.launch
@@ -44,7 +45,17 @@ class Speaker(context: Context) : TextToSpeech.OnInitListener {
             DKLog.d("TTS start nahi hua (status=$status)")
             ready.complete(false); return
         }
-        tts.language = Locale("hi", "IN")
+        // Hindi awaaz na ho to bhi chup mat raho - jo bhasha phone me hai usme bolo
+        val lr = try { tts.setLanguage(Locale("hi", "IN")) } catch (_: Exception) { TextToSpeech.LANG_NOT_SUPPORTED }
+        if (lr == TextToSpeech.LANG_MISSING_DATA || lr == TextToSpeech.LANG_NOT_SUPPORTED) {
+            DKLog.d("Hindi TTS awaaz phone me nahi hai ($lr) - default bhasha")
+            try { tts.setLanguage(Locale.getDefault()) } catch (_: Exception) {}
+        }
+        try {
+            tts.setAudioAttributes(AudioAttributes.Builder()
+                .setUsage(AudioAttributes.USAGE_MEDIA)
+                .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH).build())
+        } catch (_: Exception) {}
         tts.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
             override fun onStart(utteranceId: String?) {}
             override fun onDone(utteranceId: String?) { utteranceId?.let { pending.remove(it)?.complete(Unit) } }
@@ -78,6 +89,7 @@ class Speaker(context: Context) : TextToSpeech.OnInitListener {
         val prev = DKState.mode
         DKState.set(Mode.SPEAKING)
         busy = true
+        ensureAudible()
         try {
             var ok = false
             val key = Prefs.key(appCtx, "gemini")
@@ -154,8 +166,33 @@ class Speaker(context: Context) : TextToSpeech.OnInitListener {
         val id = UUID.randomUUID().toString()
         val done = CompletableDeferred<Unit>()
         pending[id] = done
-        tts.speak(text, TextToSpeech.QUEUE_FLUSH, null, id)
-        withTimeoutOrNull(60_000) { done.await() }
+        val r = tts.speak(text, TextToSpeech.QUEUE_FLUSH, null, id)
+        if (r != TextToSpeech.SUCCESS) {
+            pending.remove(id)
+            DKLog.d("TTS speak fail ($r) - dobara koshish")
+            delay(300)
+            if (tts.speak(text, TextToSpeech.QUEUE_FLUSH, null, id) != TextToSpeech.SUCCESS) return
+            pending[id] = done
+        }
+        // lamba jawab: har ~12 akshar/sec + 8 sec
+        withTimeoutOrNull(8_000L + text.length * 120L) { done.await() }
+    }
+
+    private val audio = appCtx.getSystemService(Context.AUDIO_SERVICE) as android.media.AudioManager
+
+    /**
+     * Bolne se pehle pakka karo ki awaaz sunai de:
+     *  - sunte samay "beep" dabane ke liye media mute hua tha -> turant unmute
+     *  - media volume 0 hai -> thoda badha do (warna jawab sirf likha dikhta, awaaz nahi)
+     */
+    private fun ensureAudible() {
+        try {
+            VoiceListener.forceUnmute(audio)
+            val s = android.media.AudioManager.STREAM_MUSIC
+            if (Build.VERSION.SDK_INT >= 23 && audio.isStreamMute(s)) audio.adjustStreamVolume(s, android.media.AudioManager.ADJUST_UNMUTE, 0)
+            val max = audio.getStreamMaxVolume(s)
+            if (audio.getStreamVolume(s) == 0 && max > 0) audio.setStreamVolume(s, (max * 0.5).toInt().coerceAtLeast(1), 0)
+        } catch (e: Exception) { DKLog.d("awaaz unmute: ${e.message}") }
     }
 
     /** Turant bolne wali awaaz (Gemini cache me ho to wahi, warna Google) - filler/ack ke liye. */
@@ -164,6 +201,7 @@ class Speaker(context: Context) : TextToSpeech.OnInitListener {
         if (text.isBlank()) return
         val prev = DKState.mode
         busy = true
+        ensureAudible()
         try {
             val key = Prefs.key(appCtx, "gemini")
             val voice = Prefs.geminiVoice(appCtx)
@@ -202,7 +240,7 @@ class Speaker(context: Context) : TextToSpeech.OnInitListener {
             stopPlayer()
             val mp = MediaPlayer()
             mp.setAudioAttributes(AudioAttributes.Builder()
-                .setUsage(AudioAttributes.USAGE_ASSISTANT)
+                .setUsage(AudioAttributes.USAGE_MEDIA)
                 .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH).build())
             try { mp.setDataSource(f.absolutePath) } catch (e: Exception) { done.complete(Unit); mp.release(); return@withContext }
             mp.setOnCompletionListener { done.complete(Unit) }
