@@ -61,7 +61,9 @@ class MainActivity : AppCompatActivity() {
             }
         }
         chipAi.setOnClickListener { openSettings() }
-        findViewById<TextView>(R.id.chipUpdate).setOnClickListener { openSettings() }
+        findViewById<TextView>(R.id.chipUpdate).setOnClickListener {
+            startActivity(Intent(this, SettingsActivity::class.java).putExtra("section", "update"))
+        }
 
         val callPermsMissing = CallManager.PERMS.any {
             androidx.core.content.ContextCompat.checkSelfPermission(this, it) != android.content.pm.PackageManager.PERMISSION_GRANTED
@@ -169,19 +171,57 @@ class MainActivity : AppCompatActivity() {
         checkUpdate()
     }
 
-    /** App khulte hi (har 3 ghante me max ek baar) GitHub par naya version dekho. */
+    /** App khulte hi (har 3 ghante me max ek baar) GitHub par naya version dekho; mila to background me download. */
     private fun checkUpdate() {
+        showWhatsNew()
         if (!Prefs.autoUpdate(this)) return
         val chip = findViewById<TextView>(R.id.chipUpdate)
+        val sp = getSharedPreferences("dk_prefs", MODE_PRIVATE)
+        fun chipFor(rel: Updater.Release?) {
+            if (rel == null) { chip.visibility = android.view.View.GONE; return }
+            chip.text = when {
+                Updater.downloaded(this, rel) != null -> "⬆ ${rel.typeLabel} तैयार — इंस्टॉल करें"
+                Updater.isDownloading(rel) -> "⬆ ${rel.typeLabel} डाउनलोड हो रहा है"
+                else -> "⬆ ${rel.typeLabel} • DK ${rel.version}"
+            }
+            chip.visibility = android.view.View.VISIBLE
+        }
         if (System.currentTimeMillis() - Prefs.lastUpdateCheck(this) < 3 * 60 * 60 * 1000L) {
-            val latest = getSharedPreferences("dk_prefs", MODE_PRIVATE).getInt("upd_latest", 0)
-            chip.visibility = if (latest > Updater.currentCode(this)) android.view.View.VISIBLE else android.view.View.GONE
+            val latest = sp.getInt("upd_latest", 0)
+            if (latest <= Updater.currentCode(this)) { chip.visibility = android.view.View.GONE; return }
+            chip.text = "⬆ " + (if (sp.getString("upd_type", "") == "security") "सिक्योरिटी पैच" else "सॉफ़्टवेयर अपडेट") +
+                " • DK " + sp.getString("upd_version", "")
+            chip.visibility = android.view.View.VISIBLE
             return
         }
         lifecycleScope.launch {
             val rel = try { Updater.check(this@MainActivity) } catch (e: Exception) { null }
-            chip.visibility = if (rel != null) android.view.View.VISIBLE else android.view.View.GONE
-            if (rel != null) Toast.makeText(this@MainActivity, "DK का नया अपडेट आया है — सेटिंग्स → अपडेट", Toast.LENGTH_LONG).show()
+            if (rel != null) Updater.startDownload(this@MainActivity, rel)     // chupchap background me
+            chipFor(rel)
+            if (rel != null) Toast.makeText(this@MainActivity,
+                "DK ${rel.version} का ${rel.typeLabel} आया है (${rel.sizeMb}) — बैकग्राउंड में डाउनलोड हो रहा है", Toast.LENGTH_LONG).show()
+        }
+    }
+
+    /** Update hone ke baad pehli baar: kya-kya naya aaya */
+    private fun showWhatsNew() {
+        val sp = getSharedPreferences("dk_prefs", MODE_PRIVATE)
+        val cur = Updater.currentCode(this)
+        val seen = sp.getInt("upd_seen_code", 0)
+        if (seen >= cur) return
+        sp.edit().putInt("upd_seen_code", cur).apply()
+        Updater.cleanup(this); Updater.clearNotification(this)
+        val pi = packageManager.getPackageInfo(packageName, 0)
+        if (pi.firstInstallTime == pi.lastUpdateTime) return               // pehli baar install - update nahi
+        lifecycleScope.launch {
+            val rel = Updater.byCode(cur)
+            val notes = rel?.notes?.takeIf { it.isNotBlank() } ?: sp.getString("upd_notes_$cur", "").orEmpty()
+            val label = rel?.typeLabel ?: "अपडेट"
+            android.app.AlertDialog.Builder(this@MainActivity, android.R.style.Theme_DeviceDefault_Dialog_Alert)
+                .setTitle("${Updater.displayVersion(this@MainActivity)} • $label इंस्टॉल हो गया")
+                .setMessage("क्या नया है:\n\n" + notes.take(2500).ifBlank { "सुधार और नए फ़ीचर" })
+                .setPositiveButton("ठीक है", null)
+                .show()
         }
     }
 

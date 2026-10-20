@@ -105,7 +105,7 @@ class SettingsActivity : AppCompatActivity() {
             Triple("orb", "ओर्ब और चेहरा", "पृथ्वी, गैलेक्सी, एटम, DNA, छल्ला, पुरुष/महिला चेहरा"),
             Triple("access", "Accessibility", (if (Setup.accessibilityOn(this)) "✓ चालू" else "✗ बंद") + " • फ़ोन कंट्रोल • हमेशा सुनना • कॉल • बैटरी"),
             Triple("perms", "परमिशन", "माइक • स्क्रीन देखना • नोटिफ़िकेशन • कॉल • ऐप इंस्टॉल"),
-            Triple("update", "अपडेट", "अभी: ${Updater.currentName(this)} • नया version चेक करें"),
+            Triple("update", "अपडेट", "अभी: ${Updater.displayVersion(this)} • नया version चेक करें"),
             Triple("debug", "डिबग लॉग", "माइक, कनेक्शन, देरी और गलतियों का पूरा हाल")
         )
         items.forEach { (id, t, sub) ->
@@ -155,12 +155,17 @@ class SettingsActivity : AppCompatActivity() {
     }
 
     private fun secUpdate() {
-        card("अपडेट", "अभी का version: ${Updater.currentName(this)} (build ${Updater.currentCode(this)})") { box ->
+        card("अपडेट", "अभी का version: ${Updater.displayVersion(this)}") { box ->
             val status = TextView(this).apply {
-                text = "अपडेट चेक करने के लिए बटन दबाएँ"; textSize = 14f; setTextColor(0xFFFFFFFF.toInt())
-                setPadding((4 * dp).toInt(), (6 * dp).toInt(), 0, (4 * dp).toInt())
+                text = "अपडेट चेक करने के लिए बटन दबाएँ"; textSize = 15f; setTextColor(0xFFFFFFFF.toInt())
+                setPadding((4 * dp).toInt(), (6 * dp).toInt(), 0, (2 * dp).toInt())
             }
             box.addView(status)
+            val info = TextView(this).apply {
+                textSize = 13f; setTextColor(0xFF7FDBFF.toInt()); visibility = View.GONE
+                setPadding((4 * dp).toInt(), 0, 0, (4 * dp).toInt())
+            }
+            box.addView(info)
             val notes = TextView(this).apply {
                 textSize = 13f; setTextColor(0xB3FFFFFF.toInt()); visibility = View.GONE
                 setPadding((4 * dp).toInt(), (4 * dp).toInt(), 0, (4 * dp).toInt())
@@ -170,49 +175,88 @@ class SettingsActivity : AppCompatActivity() {
                 max = 100; visibility = View.GONE
             }
             box.addView(bar, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, (10 * dp).toInt()))
-            lateinit var btnInstall: Button
+            lateinit var btnAct: Button
+            var watch: kotlinx.coroutines.Job? = null
+
+            /** Button aur status: डाउनलोड करें -> डाउनलोड हो रहा है x% -> इंस्टॉल करें */
+            fun show(rel: Updater.Release?) {
+                if (rel == null) {
+                    status.text = "✓ आपके पास सबसे नया version है"
+                    info.visibility = View.GONE; notes.visibility = View.GONE; bar.visibility = View.GONE; btnAct.visibility = View.GONE
+                    return
+                }
+                status.text = "${rel.typeLabel} आया है"
+                info.text = "नया version: DK ${rel.version}  •  साइज़: ${rel.sizeMb}"
+                info.visibility = View.VISIBLE
+                notes.text = "क्या नया है:\n" + rel.notes.take(1200).ifBlank { if (rel.isSecurity) "गड़बड़ियाँ ठीक की गईं" else "नए फ़ीचर और सुधार" }
+                notes.visibility = View.VISIBLE
+                btnAct.visibility = View.VISIBLE
+                when {
+                    Updater.downloaded(this, rel) != null -> {
+                        bar.visibility = View.GONE
+                        btnAct.text = "इंस्टॉल करें"; btnAct.isEnabled = true
+                        status.text = "✓ ${rel.typeLabel} डाउनलोड हो चुका है"
+                    }
+                    Updater.isDownloading(rel) -> {
+                        bar.visibility = View.VISIBLE; bar.progress = Updater.progress
+                        btnAct.text = "डाउनलोड हो रहा है… ${Updater.progress}%"; btnAct.isEnabled = false
+                    }
+                    else -> {
+                        bar.visibility = View.GONE
+                        btnAct.text = "डाउनलोड करें (${rel.sizeMb})"; btnAct.isEnabled = true
+                        Updater.lastError?.let { status.text = "डाउनलोड रुक गया: $it — फिर दबाएँ, जहाँ रुका वहीं से आगे होगा" }
+                    }
+                }
+            }
+
+            /** Download chalte samay har 300ms screen taaza (download khud background me chalta hai) */
+            fun follow(rel: Updater.Release) {
+                watch?.cancel()
+                watch = lifecycleScope.launch {
+                    while (true) {
+                        show(rel)
+                        if (!Updater.isDownloading(rel)) break
+                        kotlinx.coroutines.delay(300)
+                    }
+                    show(rel)
+                }
+            }
+
             val btnCheck = button("अपडेट चेक करें") {
                 status.text = "चेक हो रहा है…"
                 lifecycleScope.launch {
                     try {
                         val rel = Updater.check(this@SettingsActivity)
                         pendingRelease = rel
-                        if (rel == null) {
-                            status.text = "✓ आपके पास सबसे नया version है"
-                            notes.visibility = View.GONE; btnInstall.visibility = View.GONE
-                        } else {
-                            status.text = "नया अपडेट आया है: ${rel.name}  (${rel.size / 1024 / 1024} MB)"
-                            notes.text = rel.notes.take(600).ifBlank { "सुधार और नए फ़ीचर" }
-                            notes.visibility = View.VISIBLE; btnInstall.visibility = View.VISIBLE
-                        }
+                        show(rel)
+                        if (rel != null && Updater.isDownloading(rel)) follow(rel)
                     } catch (e: Exception) {
                         status.text = "चेक नहीं हो पाया: ${e.message}. इंटरनेट देखें।"
                     }
                 }
             }
-            btnInstall = button("डाउनलोड करके अपडेट करें") {
+            btnAct = button("डाउनलोड करें") {
                 val rel = pendingRelease ?: return@button
-                if (!Updater.canInstall(this)) {
-                    toast("DK को \"ऐप इंस्टॉल करने\" की इजाज़त दें, फिर वापस आकर दोबारा दबाएँ")
-                    Updater.askInstallPermission(this); return@button
-                }
-                bar.visibility = View.VISIBLE; bar.progress = 0
-                status.text = "डाउनलोड हो रहा है…"
-                lifecycleScope.launch {
-                    try {
-                        Updater.downloadAndInstall(this@SettingsActivity, rel) { p ->
-                            bar.progress = p; status.text = "डाउनलोड: $p%"
-                        }
-                        status.text = "इंस्टॉल स्क्रीन पर \"Update / Install\" दबाएँ"
-                    } catch (e: Exception) {
-                        status.text = "डाउनलोड नहीं हुआ: ${e.message}"
-                        bar.visibility = View.GONE
+                if (Updater.downloaded(this, rel) != null) {
+                    if (!Updater.canInstall(this)) {
+                        toast("DK को \"ऐप इंस्टॉल करने\" की इजाज़त दें, फिर वापस आकर दोबारा दबाएँ")
+                        Updater.askInstallPermission(this); return@button
                     }
+                    status.text = "इंस्टॉल स्क्रीन पर \"Update / Install\" दबाएँ"
+                    lifecycleScope.launch {
+                        try { Updater.install(this@SettingsActivity, rel) }
+                        catch (e: Exception) { status.text = "इंस्टॉल नहीं हुआ: ${e.message}" }
+                    }
+                } else {
+                    Updater.startDownload(this, rel)
+                    toast("डाउनलोड बैकग्राउंड में चल रहा है — ऐप बंद कर सकते हैं, पूरा होने पर सूचना आएगी")
+                    follow(rel)
                 }
             }.apply { visibility = View.GONE }
             row(box, btnCheck)
-            row(box, btnInstall)
-            swAutoUpd = switch(box, "ऐप खुलते ही अपडेट चेक करो", Prefs.autoUpdate(this))
+            row(box, btnAct)
+            swAutoUpd = switch(box, "ऐप खुलते ही अपडेट चेक करो और बैकग्राउंड में डाउनलोड करो", Prefs.autoUpdate(this))
+            hint(box, "सॉफ़्टवेयर अपडेट = नया डिज़ाइन / नए फ़ीचर  •  सिक्योरिटी पैच = गड़बड़ियाँ और सुरक्षा ठीक")
             // Settings khulte hi ek baar chupchap check
             btnCheck.performClick()
         }
@@ -341,6 +385,9 @@ class SettingsActivity : AppCompatActivity() {
                 setPadding((4 * dp).toInt(), (6 * dp).toInt(), 0, 0)
             }
             box.addView(txtVoice)
+            // Gemini chuna ho to yahin saari awaazein (mahila chuna = sirf mahila, purush = sirf purush). Tap = chuno + suno
+            gemList = RadioGroup(this).apply { orientation = RadioGroup.VERTICAL; setPadding((4 * dp).toInt(), (4 * dp).toInt(), 0, 0) }
+            box.addView(gemList)
             updateVoiceText()
             rgGender.setOnCheckedChangeListener { _, _ ->
                 // gender badla to purani chuni hui awaaz hatao (naye gender ki sabse achhi awaaz)
@@ -693,12 +740,48 @@ class SettingsActivity : AppCompatActivity() {
 
     private fun sp(): Speaker = speaker ?: Speaker(this).also { speaker = it }
 
+    private lateinit var gemList: RadioGroup
+
+    /** Gemini ki awaazein - sirf chune hue gender ki (mahila/purush), har ek ka vivaran; tap = chuno + suno */
+    private fun fillGeminiList() {
+        if (!::gemList.isInitialized) return
+        gemList.setOnCheckedChangeListener(null)
+        gemList.removeAllViews()
+        val gender = Prefs.voiceGender(this)
+        val list = VoiceCatalog.geminiFor(gender)
+        val cur = Prefs.geminiVoice(this)
+        list.forEachIndexed { i, name ->
+            gemList.addView(RadioButton(this).apply {
+                id = 2500 + i
+                text = "$name — ${VoiceCatalog.GEMINI_INFO[name].orEmpty()}"
+                textSize = 14f; setTextColor(0xFFFFFFFF.toInt())
+                buttonTintList = android.content.res.ColorStateList.valueOf(0xFF7FDBFF.toInt())
+            })
+        }
+        gemList.check(2500 + list.indexOf(cur).coerceAtLeast(0))
+        gemList.setOnCheckedChangeListener { _, id ->
+            val name = list.getOrNull(id - 2500) ?: return@setOnCheckedChangeListener
+            Prefs.edit(this) { putString("gemini_voice", name) }
+            txtVoice.text = geminiVoiceLine()
+            toast("सुनाई दे रही है: $name …")
+            val sample = "नमस्ते, मैं ${Prefs.assistantName(this)} हूँ। क्या मैं आपकी मदद करूँ?"
+            lifecycleScope.launch { sp().previewGemini(name, sample)?.let { toast(it) } }
+        }
+    }
+
+    private fun geminiVoiceLine(): String {
+        val g = if (Prefs.voiceGender(this) == "male") "पुरुष" else "महिला"
+        return "चुनी हुई आवाज़: ${Prefs.geminiVoice(this)}  •  $g की ${VoiceCatalog.geminiFor(Prefs.voiceGender(this)).size} आवाज़ें — नीचे टैप करके सुनें और चुनें" +
+            if (Prefs.key(this, "gemini").isBlank()) "\n(Gemini key नहीं डाली — तब तक Google आवाज़)" else ""
+    }
+
     private fun updateVoiceText() {
         if (!::txtVoice.isInitialized) return
         val engine = radioValue(rgEngine, listOf("google", "gemini"), 2100)
+        if (::gemList.isInitialized) gemList.visibility = if (engine == "gemini") View.VISIBLE else View.GONE
         if (engine == "gemini") {
-            txtVoice.text = "चुनी हुई आवाज़: ${Prefs.geminiVoice(this)}" +
-                if (Prefs.key(this, "gemini").isBlank()) "  (Gemini key नहीं डाली — तब तक Google आवाज़)" else ""
+            txtVoice.text = geminiVoiceLine()
+            fillGeminiList()
         } else {
             lifecycleScope.launch {
                 val voices = sp().hindiVoices()
@@ -718,9 +801,9 @@ class SettingsActivity : AppCompatActivity() {
         if (Prefs.voiceEngine(this) == "gemini") {
             val f = VoiceCatalog.GEMINI_FEMALE.map { it to "महिला • $it — ${VoiceCatalog.GEMINI_INFO[it]}" }
             val m = VoiceCatalog.GEMINI_MALE.map { it to "पुरुष • $it — ${VoiceCatalog.GEMINI_INFO[it]}" }
-            val all = if (gender == "male") m + f else f + m
+            val all = if (gender == "male") m else f        // jo gender chuna, usi ki awaazein
             android.app.AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
-                .setTitle("Gemini आवाज़ चुनें (टैप = सुनें)")
+                .setTitle((if (gender == "male") "पुरुष" else "महिला") + " Gemini आवाज़ चुनें (टैप = सुनें)")
                 .setItems(all.map { it.second }.toTypedArray()) { _, i ->
                     val name = all[i].first
                     val g = if (name in VoiceCatalog.GEMINI_MALE) "male" else "female"
