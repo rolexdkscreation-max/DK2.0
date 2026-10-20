@@ -1,0 +1,4 @@
+<resources>
+    <string name="app_name">DK</string>
+    <string name="accessibility_desc">DK आपकी आवाज़ से फ़ोन कंट्रोल करता है: स्क्रीन पढ़ना, क्लिक, टाइप, स्क्रॉल और ऐप खोलना।</string>
+</resources>

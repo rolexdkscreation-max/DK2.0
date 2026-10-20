@@ -1,0 +1,105 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:padding="20dp">
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="DK Assistant"
+            android:textSize="28sp"
+            android:textStyle="bold" />
+
+        <TextView
+            android:id="@+id/txtStatus"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:textSize="15sp" />
+
+        <EditText
+            android:id="@+id/edtApiKey"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="16dp"
+            android:hint="Gemini API Key (aistudio.google.com)"
+            android:inputType="textPassword" />
+
+        <EditText
+            android:id="@+id/edtModel"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:hint="Model (jaise gemini-3.1-flash-lite)"
+            android:inputType="text" />
+
+        <CheckBox
+            android:id="@+id/chkWake"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Hamesha suno (wake word: DK / डीके)" />
+
+        <CheckBox
+            android:id="@+id/chkScreenshot"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:checked="true"
+            android:text="Screenshot bhi AI ko bhejo (Android 11+)" />
+
+        <Button
+            android:id="@+id/btnSave"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="1. Settings Save karo" />
+
+        <Button
+            android:id="@+id/btnPerms"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="2. Mic aur Notification permission do" />
+
+        <Button
+            android:id="@+id/btnAccess"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="3. Accessibility me DK ON karo" />
+
+        <Button
+            android:id="@+id/btnStart"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="4. DK Start karo" />
+
+        <Button
+            android:id="@+id/btnTts"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Awaaz test karo / Voice settings" />
+
+        <EditText
+            android:id="@+id/edtTest"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="16dp"
+            android:hint="Bina bole test: command yahan likho" />
+
+        <Button
+            android:id="@+id/btnRun"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Command chalao" />
+
+        <TextView
+            android:id="@+id/txtLog"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="12dp"
+            android:fontFamily="monospace"
+            android:textSize="12sp" />
+    </LinearLayout>
+</ScrollView>
