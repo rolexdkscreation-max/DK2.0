@@ -76,6 +76,7 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
     @Volatile private var ready = false
     @Volatile private var stopped = true
     @Volatile private var goAway = false
+    @Volatile private var goAwayDrop = false          // server ne khud naya connection maanga (galti nahi)
     private var handle: String? = null
     private var useSearch = true
 
@@ -133,6 +134,7 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
         val models = discoverModels(key)
         log("models: ${models.joinToString()}")
         var mi = 0; var fails = 0
+        var quickDrops = 0                               // judne ke turant baad baar-baar tootna
         startPlayer()
         coroutineScope {
             val mic = launch(Dispatchers.IO) { micLoop() }
@@ -171,13 +173,14 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
                         continue
                     }
                     fails = 0
+                    val upAt = System.currentTimeMillis()
                     log("जुड़ गया [$model] ${System.currentTimeMillis() - t0} ms" + if (handle != null) " (पुरानी बातचीत जारी)" else "")
                     Prefs.edit(svc) { putString("live_model", model) }
                     if (!turnActive && !isPlaying()) DKState.set(Mode.LISTENING)
                     // ab chalne do jab tak band/toote/goAway/call
                     while (!stopped && isActive) {
                         if (closed.isCompleted) break
-                        if (goAway && !turnActive && !isPlaying()) { log("goAway - नया connection"); break }
+                        if (goAway && !turnActive && !isPlaying()) { log("goAway - नया connection"); goAwayDrop = true; break }
                         if (svc.callBusy()) { try { ws?.close(1000, "call") } catch (_: Exception) {}; return@coroutineScope }
                         if (System.currentTimeMillis() % 10_000 < 200) { updateStats(); log(stats) }
                         delay(200)
@@ -192,7 +195,14 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
                     if (reason.lowercase().contains("api key")) throw Fatal("Gemini key बंद हो गई")
                     if (reason.lowercase().let { it.contains("quota") || it.contains("exhausted") }) throw Fatal("Gemini Live की फ्री लिमिट खत्म")
                     if (turnActive) finishTurn()
-                    delay(250)
+                    // 20 sec se pehle toota = network/server dikkat -> har baar zyada ruko (battery bachao)
+                    val lasted = System.currentTimeMillis() - upAt
+                    if (goAwayDrop || lasted >= 20_000) quickDrops = 0 else quickDrops++
+                    goAwayDrop = false
+                    if (quickDrops >= 6) throw Fatal("Gemini Live बार-बार टूट रहा है - नेटवर्क देखें")
+                    val wait = if (quickDrops == 0) 250L else minOf(15_000L, 500L shl quickDrops)   // 1s,2s,4s,8s,15s
+                    if (quickDrops > 0) log("जल्दी टूटा (${lasted / 1000}s) - $wait ms रुककर दोबारा (#$quickDrops)")
+                    delay(wait)
                 }
             } finally {
                 stopped = true
