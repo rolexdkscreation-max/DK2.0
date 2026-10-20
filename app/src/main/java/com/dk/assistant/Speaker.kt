@@ -11,6 +11,7 @@ import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.async
 import kotlinx.coroutines.withTimeoutOrNull
 import java.io.File
 import java.util.Locale
@@ -31,6 +32,9 @@ class Speaker(context: Context) : TextToSpeech.OnInitListener {
 
     @Volatile private var player: MediaPlayer? = null
     @Volatile private var playDone: CompletableDeferred<Unit>? = null
+    /** Abhi bol raha hai? (tab mic apni awaaz nahi sunta) */
+    @Volatile var busy = false
+        private set
     @Volatile var lastSpokeAt = 0L
         private set
     @Volatile private var geminiCooldownUntil = 0L
@@ -73,6 +77,7 @@ class Speaker(context: Context) : TextToSpeech.OnInitListener {
         if (text.isBlank()) return
         val prev = DKState.mode
         DKState.set(Mode.SPEAKING)
+        busy = true
         try {
             var ok = false
             val key = Prefs.key(appCtx, "gemini")
@@ -81,6 +86,7 @@ class Speaker(context: Context) : TextToSpeech.OnInitListener {
             }
             if (!ok) speakGoogle(text)
         } finally {
+            busy = false
             lastSpokeAt = System.currentTimeMillis()
             if (DKState.mode == Mode.SPEAKING) DKState.set(if (prev == Mode.SPEAKING) Mode.IDLE else prev)
         }
@@ -95,18 +101,48 @@ class Speaker(context: Context) : TextToSpeech.OnInitListener {
         return File(dir, "$h.wav")
     }
 
-    private suspend fun speakGemini(key: String, text: String, voice: String): Boolean {
-        return try {
-            val cf = cacheFile(voice, text)
-            val wav = if (cf != null && cf.exists() && cf.length() > 100) withContext(Dispatchers.IO) { cf.readBytes() }
-            else withContext(Dispatchers.IO) { GeminiTts.synthesize(key, text, voice).also { w -> cf?.writeBytes(w) } }
-            playWav(wav); true
+    /** Lamba jawab -> chhote vakya. Pehla vakya banate hi bolna shuru, baaki peeche-peeche bante rehte hain. */
+    private fun sentences(text: String): List<String> {
+        val parts = Regex("(?<=[।.!?\\n])\\s+").split(text.trim()).map { it.trim() }.filter { it.isNotBlank() }
+        val out = mutableListOf<String>()
+        val sb = StringBuilder()
+        for (p in parts) {
+            if (sb.isNotEmpty() && sb.length + p.length > 160) { out.add(sb.toString()); sb.clear() }
+            if (sb.isNotEmpty()) sb.append(' ')
+            sb.append(p)
+            // pehla tukda chhota rakho = jaldi awaaz
+            if (out.isEmpty() && sb.length >= 25) { out.add(sb.toString()); sb.clear() }
+        }
+        if (sb.isNotEmpty()) out.add(sb.toString())
+        return out.ifEmpty { listOf(text) }
+    }
+
+    private suspend fun synth(key: String, text: String, voice: String): ByteArray {
+        val cf = cacheFile(voice, text)
+        if (cf != null && cf.exists() && cf.length() > 100) return withContext(Dispatchers.IO) { cf.readBytes() }
+        return withContext(Dispatchers.IO) { GeminiTts.synthesize(key, text, voice, Prefs.voiceStyle(appCtx)).also { w -> cf?.writeBytes(w) } }
+    }
+
+    private suspend fun speakGemini(key: String, text: String, voice: String): Boolean = kotlinx.coroutines.coroutineScope {
+        val chunks = sentences(text)
+        var spoken = 0
+        try {
+            var next = async(Dispatchers.IO) { synth(key, chunks[0], voice) }
+            for (i in chunks.indices) {
+                val wav = next.await()
+                if (i + 1 < chunks.size) next = async(Dispatchers.IO) { synth(key, chunks[i + 1], voice) }
+                playWav(wav); spoken++
+            }
+            true
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
         } catch (e: Exception) {
             val code = (e as? AiException)?.code ?: 0
-            // limit khatam / error -> 10 minute tak Google awaaz
+            // limit khatam / error -> kuch der Google awaaz
             geminiCooldownUntil = System.currentTimeMillis() + if (code == 429) 10 * 60_000L else 2 * 60_000L
             DKLog.d("Gemini awaaz nahi chali ($code): ${e.message} - Google awaaz use kar raha hoon")
-            false
+            // jo hissa bacha hai woh Google awaaz me
+            if (spoken > 0) { speakGoogle(chunks.drop(spoken).joinToString(" ")); true } else false
         }
     }
 
@@ -127,6 +163,7 @@ class Speaker(context: Context) : TextToSpeech.OnInitListener {
     suspend fun speakQuick(text: String) {
         if (text.isBlank()) return
         val prev = DKState.mode
+        busy = true
         try {
             val key = Prefs.key(appCtx, "gemini")
             val voice = Prefs.geminiVoice(appCtx)
@@ -137,10 +174,11 @@ class Speaker(context: Context) : TextToSpeech.OnInitListener {
                 // pehli baar: Google se turant bolo, peeche Gemini awaaz cache me bana lo
                 speakGoogle(text)
                 kotlinx.coroutines.GlobalScope.launch(Dispatchers.IO) {
-                    try { cf?.writeBytes(GeminiTts.synthesize(key, text, voice)) } catch (_: Exception) {}
+                    try { cf?.writeBytes(GeminiTts.synthesize(key, text, voice, Prefs.voiceStyle(appCtx))) } catch (_: Exception) {}
                 }
             } else speakGoogle(text)
         } finally {
+            busy = false
             lastSpokeAt = System.currentTimeMillis()
             if (DKState.mode == Mode.SPEAKING) DKState.set(prev)
         }
@@ -151,7 +189,7 @@ class Speaker(context: Context) : TextToSpeech.OnInitListener {
         val key = Prefs.key(appCtx, "gemini")
         if (key.isBlank()) return "पहले Gemini की API key डालें"
         return try {
-            val wav = withContext(Dispatchers.IO) { GeminiTts.synthesize(key, text, voice) }
+            val wav = withContext(Dispatchers.IO) { GeminiTts.synthesize(key, text, voice, Prefs.voiceStyle(appCtx)) }
             playWav(wav); null
         } catch (e: Exception) { "Gemini आवाज़ नहीं चली: ${e.message?.take(120)}" }
     }
@@ -166,10 +204,10 @@ class Speaker(context: Context) : TextToSpeech.OnInitListener {
             mp.setAudioAttributes(AudioAttributes.Builder()
                 .setUsage(AudioAttributes.USAGE_ASSISTANT)
                 .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH).build())
-            mp.setDataSource(f.absolutePath)
+            try { mp.setDataSource(f.absolutePath) } catch (e: Exception) { done.complete(Unit); mp.release(); return@withContext }
             mp.setOnCompletionListener { done.complete(Unit) }
             mp.setOnErrorListener { _, _, _ -> done.complete(Unit); true }
-            mp.prepare()
+            try { mp.prepare() } catch (e: Exception) { DKLog.d("play: ${e.message}"); done.complete(Unit); mp.release(); return@withContext }
             if (Build.VERSION.SDK_INT >= 23) {
                 try { mp.playbackParams = mp.playbackParams.setSpeed(Prefs.ttsRate(appCtx).coerceIn(0.6f, 1.8f)) } catch (_: Exception) {}
             }

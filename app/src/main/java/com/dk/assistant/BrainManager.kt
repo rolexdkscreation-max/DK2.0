@@ -30,10 +30,16 @@ class BrainManager(private val ctx: Context) {
     }
 
     /** Pehle chuna hua provider, phir (fallback ON ho to) baaki. */
-    private fun orderedProviders(): List<Provider> {
+    private fun orderedProviders(chat: Boolean = false): List<Provider> {
         val active = Providers.byId(Prefs.activeProvider(ctx))
         val rest = Providers.all.filter { it.id != active?.id }
-        return if (Prefs.fallback(ctx)) listOfNotNull(active) + rest else listOfNotNull(active)
+        val list = if (Prefs.fallback(ctx)) listOfNotNull(active) + rest else listOfNotNull(active)
+        // baatcheet ke liye Groq sabse tez hai (key ho to pehle)
+        if (chat && Prefs.fallback(ctx) && Prefs.key(ctx, "groq").isNotBlank()) {
+            val g = Providers.byId("groq")!!
+            return listOf(g) + list.filter { it.id != "groq" }
+        }
+        return list
     }
 
     fun hasUsableProvider() = orderedProviders().any { clientFor(it) != null }
@@ -55,14 +61,16 @@ class BrainManager(private val ctx: Context) {
         }
     }
 
-    suspend fun next(prompt: String, imageB64: String?, memoryNote: String): JSONObject =
+    suspend fun next(prompt: String, imageB64: String?, memoryNote: String, chat: Boolean = false): JSONObject =
         withContext(Dispatchers.IO) {
-            val system = buildSystemPrompt()
+            val system = if (chat) buildChatPrompt() else buildSystemPrompt()
             var lastError: Exception? = null
-            for (p in orderedProviders()) {
+            for (p in orderedProviders(chat)) {
                 val client = clientFor(p) ?: continue
                 val img = if (p.vision) imageB64 else null
                 try {
+                    if (client is GeminiClient) client.fast = chat
+                    if (client is OpenAiCompatClient) client.fast = chat
                     val answer = try {
                         client.complete(system, history, prompt, img)
                     } catch (e: AiException) {
@@ -123,6 +131,20 @@ class BrainManager(private val ctx: Context) {
         if (s < 0 || e <= s) return JSONObject().put("say", text.trim()).put("done", true)
         return try { JSONObject(text.substring(s, e + 1)) }
         catch (ex: Exception) { JSONObject().put("say", text.trim()).put("done", true) }
+    }
+
+    /** Baatcheet ke liye chhota prompt = tez jawab. */
+    private fun buildChatPrompt(): String {
+        val name = Prefs.assistantName(ctx); val user = Prefs.userName(ctx); val persona = Prefs.personality(ctx)
+        return buildString {
+            append("You are $name, a friendly Hindi voice assistant on the user's Android phone.")
+            if (user.isNotBlank()) append(" The user's name is $user.")
+            if (persona.isNotBlank()) append(" Personality: $persona.")
+            append("\nReply with ONLY JSON: {\"say\": \"<natural spoken Hindi in Devanagari, 1-3 short sentences, no markdown>\", \"done\": true}")
+            append("\nIf the user wants something DONE on the phone (open/click/type/send/call/settings/shopping etc.) reply exactly {\"need_screen\": true}.")
+            append("\nIf the question needs current or exact facts (news, prices, weather, scores, dates, recent events) and the input says SEARCH AVAILABLE, reply exactly {\"need_search\": true}.")
+            append("\nToday: " + java.text.SimpleDateFormat("d MMMM yyyy, EEEE", java.util.Locale.ENGLISH).format(java.util.Date()))
+        }
     }
 
     private fun buildSystemPrompt(): String {

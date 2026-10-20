@@ -36,10 +36,17 @@ class KeepAliveService : Service() {
             .setOngoing(true)
             .build()
 
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            startForeground(1, notif, ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE)
-        } else {
-            startForeground(1, notif)
+        // Android 14: background se mic wali service shuru karna mana hai -> crash na ho (isi se DK band hota tha)
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                startForeground(1, notif, ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE)
+            } else {
+                startForeground(1, notif)
+            }
+        } catch (e: Exception) {
+            DKLog.d("KeepAlive start nahi hua: ${e.message}")
+            stopSelf()
+            return START_NOT_STICKY
         }
         DKAccessibilityService.instance?.startWakeLoopIfEnabled()
         return START_STICKY

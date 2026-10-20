@@ -47,7 +47,9 @@ class DKAccessibilityService : AccessibilityService() {
     data class Element(val id: Int, val node: AccessibilityNodeInfo, val bounds: Rect)
     data class Screen(val text: String, val packageName: String, val width: Int, val height: Int, val count: Int)
 
-    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
+    // Kisi bhi kaam me galti ho to sirf log karo - service crash na ho (crash = Android Accessibility band kar deta hai)
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main +
+        kotlinx.coroutines.CoroutineExceptionHandler { _, e -> DKLog.d("Galti (sambhal li): ${e.javaClass.simpleName} ${e.message}") })
     private var elements: List<Element> = emptyList()
 
     lateinit var speaker: Speaker
@@ -70,11 +72,13 @@ class DKAccessibilityService : AccessibilityService() {
         instance = this
         speaker = Speaker(this)
         listener = VoiceListener(this)
-        ear = Ear(this)
+        ear = Ear(this) { speaker.busy }
         agent = AgentRunner(this, scope, speaker)
         calls = CallManager(this) { who -> scope.launch { onIncomingCall(who) } }
         calls.start()
         showBubble()
+        AppVisible.onChange = { inApp -> bubble?.visibility = if (inApp) android.view.View.GONE else android.view.View.VISIBLE }
+        bubble?.visibility = if (AppVisible.visible) android.view.View.GONE else android.view.View.VISIBLE
         DKLog.d("DK accessibility service chalu ho gaya")
         val user = Prefs.userName(this)
         scope.launch {
@@ -87,10 +91,16 @@ class DKAccessibilityService : AccessibilityService() {
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) { /* zarurat nahi, hum on-demand padhte hain */ }
 
+    override fun onUnbind(intent: android.content.Intent?): Boolean {
+        DKLog.d("Accessibility service unbind hua")
+        return super.onUnbind(intent)
+    }
+
     override fun onInterrupt() { agent.stop() }
 
     override fun onDestroy() {
         instance = null
+        AppVisible.onChange = null
         removeBubble()
         DKState.setLive(false)
         listener.release()
@@ -132,7 +142,7 @@ class DKAccessibilityService : AccessibilityService() {
     fun listenAndRun() = toggleLive()
 
     /** Text command (app ki likhne wali bar se). */
-    fun runCommand(text: String) { agent.run(text) }
+    fun runCommand(text: String, speak: Boolean = true) { agent.run(text, speak) }
 
     /** Settings save hone par: "hamesha suno (wake word)" mode chalu/band. */
     fun startWakeLoopIfEnabled() { ensureLoop() }
@@ -154,9 +164,7 @@ class DKAccessibilityService : AccessibilityService() {
         val pcm = ear.nextUtterance() ?: run { delay(800); return null }
         DKState.set(Mode.THINKING)
         DKState.user("…")
-        val text = Transcriber.transcribe(this, pcm)
-        if (text != null) DKState.user(text)
-        return text
+        return Transcriber.transcribe(this, pcm)
     }
 
     /** Ek hi sunne wala loop: live mode me har baat command hai, wake mode me sirf wake word ke baad. */
@@ -444,6 +452,7 @@ class DKAccessibilityService : AccessibilityService() {
         var who = who0
         if (who.isBlank()) who = callerFromScreen()
         agent.stop()
+        calls.quietRinger()   // ringtone dheemi, taaki DK aapki baat sun sake
         val msg = if (who.isNotBlank()) "$who का कॉल आ रहा है। उठाऊँ या काट दूँ?" else "किसी का कॉल आ रहा है। उठाऊँ या काट दूँ?"
         DKState.reply(msg)
         speaker.speak(msg)
@@ -481,9 +490,16 @@ class DKAccessibilityService : AccessibilityService() {
         } catch (e: Exception) { "" }
     }
 
+    /** Saari windows (notification popup, call screen) me button dhoondo aur dabao. */
+    private fun allRoots(): List<AccessibilityNodeInfo> {
+        val out = mutableListOf<AccessibilityNodeInfo>()
+        try { windows.forEach { w -> w.root?.let { out.add(it) } } } catch (_: Exception) {}
+        rootInActiveWindow?.let { if (out.none { r -> r == it }) out.add(0, it) }
+        return out
+    }
+
     private fun clickByText(vararg words: String): Boolean {
-        val root = rootInActiveWindow ?: return false
-        for (w in words) {
+        for (root in allRoots()) for (w in words) {
             for (n in root.findAccessibilityNodeInfosByText(w)) {
                 var c: AccessibilityNodeInfo? = n; var depth = 0
                 while (c != null && !c.isClickable && depth < 4) { c = c.parent; depth++ }
@@ -493,23 +509,63 @@ class DKAccessibilityService : AccessibilityService() {
         return false
     }
 
-    private suspend fun answerCall(speakerOn: Boolean): String {
-        if (!calls.ringing && !calls.inCall) return "abhi koi call nahi aa rahi"
-        var ok = calls.answer()
-        if (!ok) ok = clickByText("Answer", "Accept", "उत्तर दें", "उत्तर", "स्वीकार", "जवाब दें", "रिसीव")
-        if (!ok) { // swipe-to-answer wali screen
-            val dm = resources.displayMetrics
-            swipe(dm.widthPixels / 2f, dm.heightPixels * 0.82f, dm.widthPixels / 2f, dm.heightPixels * 0.45f, 350)
-            ok = true
+    /** View-id se (jaise "answer_button") button dabao. */
+    private fun clickById(vararg parts: String): Boolean {
+        fun walk(n: AccessibilityNodeInfo?, d: Int): Boolean {
+            if (n == null || d > 30) return false
+            val id = n.viewIdResourceName?.lowercase() ?: ""
+            val desc = n.contentDescription?.toString()?.lowercase() ?: ""
+            if (parts.any { id.contains(it) || desc.contains(it) }) {
+                var c: AccessibilityNodeInfo? = n; var k = 0
+                while (c != null && !c.isClickable && k < 3) { c = c.parent; k++ }
+                if (c?.performAction(AccessibilityNodeInfo.ACTION_CLICK) == true) return true
+            }
+            for (i in 0 until n.childCount) if (walk(n.getChild(i), d + 1)) return true
+            return false
         }
-        if (speakerOn) { delay(1800); setSpeaker(true) }
-        return if (ok) "call utha li" + (if (speakerOn) " aur speaker on" else "") else "ERROR: call nahi uthi"
+        return allRoots().any { walk(it, 0) }
+    }
+
+    private suspend fun answerCall(speakerOn: Boolean): String {
+        if (calls.inCall && !calls.ringing) {
+            if (speakerOn) setSpeaker(true)
+            return "call pehle se chal rahi hai" + if (speakerOn) ", speaker on" else ""
+        }
+        // 1) Android ka seedha tareeka (permission chahiye)
+        var ok = calls.answer()
+        delay(700)
+        if (calls.known && calls.inCall) ok = true
+        // 2) Call popup / call screen ka "Answer" button
+        if (!(calls.known && calls.inCall)) {
+            ok = clickByText("Answer", "Accept", "ANSWER", "उत्तर दें", "उत्तर", "स्वीकार करें", "स्वीकार", "जवाब दें", "रिसीव", "उठाएं") ||
+                clickById("answer", "accept", "incoming_call_accept") || ok
+            delay(700)
+        }
+        // 3) "Swipe up to answer" wali screen
+        if (!(calls.known && calls.inCall) && isCallScreen()) {
+            val dm = resources.displayMetrics
+            swipe(dm.widthPixels / 2f, dm.heightPixels * 0.85f, dm.widthPixels / 2f, dm.heightPixels * 0.35f, 300)
+            delay(800)
+            ok = ok || (calls.known && calls.inCall)
+        }
+        calls.restoreRinger()
+        if (calls.known) ok = calls.inCall
+        if (!ok) return if (!calls.canAnswer()) "ERROR_CALL_PERM" else "ERROR: call nahi uthi"
+        if (speakerOn) { delay(1500); setSpeaker(true) }
+        return "call utha li" + (if (speakerOn) " aur speaker on" else "")
+    }
+
+    private fun isCallScreen(): Boolean {
+        val p = rootInActiveWindow?.packageName?.toString()?.lowercase() ?: return false
+        return listOf("dialer", "incall", "telecom", "phone", "contacts").any { p.contains(it) }
     }
 
     private suspend fun endCall(): String {
+        calls.restoreRinger()
         if (calls.end()) return "call kaat di"
-        if (clickByText("End call", "Decline", "Reject", "कॉल समाप्त", "समाप्त", "अस्वीकार", "काटें", "कट करें", "Hang up")) return "call kaat di"
-        return "ERROR: call nahi kati - Phone permission (कॉल मैनेज करें) dijiye"
+        if (clickByText("End call", "Decline", "Reject", "DECLINE", "कॉल समाप्त करें", "कॉल समाप्त", "समाप्त", "अस्वीकार करें", "अस्वीकार", "काटें", "कट करें", "Hang up") ||
+            clickById("decline", "reject", "end_call", "endcall", "hangup")) return "call kaat di"
+        return if (!calls.canAnswer()) "ERROR_CALL_PERM" else "ERROR: call nahi kati"
     }
 
     private suspend fun setSpeaker(on: Boolean): String {

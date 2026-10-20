@@ -54,6 +54,7 @@ class SettingsActivity : AppCompatActivity() {
     private lateinit var rgGender: RadioGroup
     private lateinit var rgEngine: RadioGroup
     private lateinit var rgListen: RadioGroup
+    private lateinit var rgStyle: RadioGroup
     private lateinit var txtVoice: TextView
     private val fetchedFor = mutableMapOf<String, String>()   // provider -> key jiske models la chuke
 
@@ -174,7 +175,7 @@ class SettingsActivity : AppCompatActivity() {
             label(box, "आवाज़ का प्रकार")
             rgEngine = radios(box, listOf(
                 "google" to "फ़ोन की Google आवाज़ — फ्री, कोई लिमिट नहीं, तेज़",
-                "gemini" to "Gemini नेचुरल आवाज़ — सबसे इंसानी (Gemini key से, रोज़ की लिमिट)"),
+                "gemini" to "Gemini नेचुरल आवाज़ — 30 इंसानी आवाज़ें (Gemini key से, रोज़ की लिमिट, थोड़ी धीमी)"),
                 Prefs.voiceEngine(this), 2100)
             txtVoice = TextView(this).apply {
                 textSize = 13f; setTextColor(0xB3FFFFFF.toInt())
@@ -188,6 +189,9 @@ class SettingsActivity : AppCompatActivity() {
                 save(false); updateVoiceText()
             }
             rgEngine.setOnCheckedChangeListener { _, _ -> save(false); updateVoiceText() }
+            label(box, "बोलने का अंदाज़ (Gemini आवाज़)")
+            rgStyle = radios(box, VoiceCatalog.STYLES, Prefs.voiceStyle(this), 2300)
+            rgStyle.setOnCheckedChangeListener { _, _ -> save(false) }
             row(box,
                 button("आवाज़ चुनें") { chooseVoice() },
                 button("आवाज़ सुनें") { testVoice() })
@@ -218,6 +222,20 @@ class SettingsActivity : AppCompatActivity() {
                 androidx.core.app.ActivityCompat.requestPermissions(this, CallManager.PERMS, 11)
             })
             hint(box, "कॉल के दौरान Android दूसरे ऐप्स को माइक नहीं देता — कॉल काटने के लिए स्क्रीन पर तैरता DK बुलबुला एक बार दबाएँ।")
+        }
+
+        // ---- Crash report
+        val crash = DKApp.lastCrash(this)
+        if (crash.isNotBlank()) card("गड़बड़ी रिपोर्ट", "पिछली बार DK किस वजह से बंद हुआ") { box ->
+            box.addView(TextView(this).apply {
+                text = crash.take(1200); textSize = 11f; setTextColor(0xB3FFFFFF.toInt()); setTextIsSelectable(true)
+            })
+            row(box,
+                button("कॉपी करें") {
+                    val cm = getSystemService(android.content.ClipboardManager::class.java)
+                    cm.setPrimaryClip(android.content.ClipData.newPlainText("DK crash", crash)); toast("कॉपी हो गया — मुझे भेज दें")
+                },
+                button("हटाएँ") { DKApp.clearCrash(this); toast("हटा दिया") })
         }
 
         // ---- Permissions
@@ -344,6 +362,7 @@ class SettingsActivity : AppCompatActivity() {
             putFloat("tts_rate", seekValue(sbRate))
             putString("voice_gender", radioValue(rgGender, listOf("female", "male"), 2000))
             putString("voice_engine", radioValue(rgEngine, listOf("google", "gemini"), 2100))
+            putString("voice_style", radioValue(rgStyle, VoiceCatalog.STYLES.map { it.first }, 2300))
             putString("listen_engine", radioValue(rgListen, listOf("auto", "google"), 2200))
             putFloat("tts_pitch", seekValue(sbPitch))
             keyFields.forEach { (id, e) -> putString("key_$id", e.text.toString().trim()) }
@@ -411,8 +430,8 @@ class SettingsActivity : AppCompatActivity() {
         val gender = Prefs.voiceGender(this)
         val sample = "नमस्ते, मैं ${Prefs.assistantName(this)} हूँ। क्या मैं आपकी मदद करूँ?"
         if (Prefs.voiceEngine(this) == "gemini") {
-            val f = VoiceCatalog.GEMINI_FEMALE.map { it to "महिला • $it" }
-            val m = VoiceCatalog.GEMINI_MALE.map { it to "पुरुष • $it" }
+            val f = VoiceCatalog.GEMINI_FEMALE.map { it to "महिला • $it — ${VoiceCatalog.GEMINI_INFO[it]}" }
+            val m = VoiceCatalog.GEMINI_MALE.map { it to "पुरुष • $it — ${VoiceCatalog.GEMINI_INFO[it]}" }
             val all = if (gender == "male") m + f else f + m
             android.app.AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
                 .setTitle("Gemini आवाज़ चुनें (टैप = सुनें)")

@@ -19,13 +19,13 @@ import kotlin.math.sqrt
  * Jab aap bolte ho (awaaz tez hoti hai) recording shuru, chup hote hi (0.8 sec) recording khatam.
  * Sirf aapki baat ka hissa text banane bheja jaata hai.
  */
-class Ear(private val ctx: Context) {
+class Ear(private val ctx: Context, private val muted: () -> Boolean = { false }) {
 
     companion object {
         const val RATE = 16000
         private const val FRAME = 480                 // 30 ms
         private const val START_FRAMES = 3            // 90 ms awaaz = bolna shuru
-        private const val END_SILENCE_FRAMES = 27     // ~0.8 sec chup = bolna khatam
+        private const val END_SILENCE_FRAMES = 20     // ~0.6 sec chup = bolna khatam (tez jawab)
         private const val MAX_FRAMES = 15 * 1000 / 30 // 15 sec max
         private const val MIN_SPEECH_FRAMES = 12      // 0.36 sec se chhota = shor
         private const val PRE_ROLL = 10               // shuru se pehle ka 0.3 sec bhi rakho
@@ -78,6 +78,8 @@ class Ear(private val ctx: Context) {
                 for (i in 0 until n) { val s = buf[i].toDouble(); sum += s * s }
                 val rms = sqrt(sum / n)
 
+                // DK khud bol raha hai -> apni awaaz mat suno
+                if (muted()) { talking = false; speech.reset(); pre.clear(); loud = 0; warm = 4; DKState.level = 0f; continue }
                 if (warm > 0) { noise = noise * 0.7 + rms * 0.3; warm--; continue }
                 val startTh = maxOf(noise * 2.6, 420.0)
                 val stopTh = maxOf(noise * 1.7, 300.0)

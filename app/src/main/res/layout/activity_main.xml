@@ -110,8 +110,9 @@
                 android:textSize="14sp" />
         </FrameLayout>
 
-        <!-- baatcheet card -->
+        <!-- baatcheet card (tap = chat screen) -->
         <LinearLayout
+            android:id="@+id/cardTalk"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="12dp"

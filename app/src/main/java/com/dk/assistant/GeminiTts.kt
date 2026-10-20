@@ -24,12 +24,12 @@ object GeminiTts {
 
     @Volatile private var workingModel: String? = null
 
-    fun synthesize(key: String, text: String, voice: String): ByteArray {
+    fun synthesize(key: String, text: String, voice: String, style: String = ""): ByteArray {
         val order = (listOfNotNull(workingModel) + NEW_MODELS + OLD_MODELS).distinct()
         var last: Exception? = null
         for (m in order) {
             try {
-                val wav = if (m in OLD_MODELS) legacy(key, m, text, voice) else interactions(key, m, text, voice)
+                val wav = if (m in OLD_MODELS) legacy(key, m, text, voice, style) else interactions(key, m, text, voice, style)
                 workingModel = m
                 return wav
             } catch (e: AiException) {
@@ -55,10 +55,10 @@ object GeminiTts {
     }
 
     /** Naya Interactions API. */
-    private fun interactions(key: String, model: String, text: String, voice: String): ByteArray {
+    private fun interactions(key: String, model: String, text: String, voice: String, style: String): ByteArray {
         val content = JSONArray().put(JSONObject().put("type", "text").put("text", text)
             .put("annotations", JSONArray().put(JSONObject().put("type", "speech_metadata")
-                .put("style", "warm, natural, friendly conversational Hindi"))))
+                .put("style", styleText(style)))))
         val body = JSONObject()
             .put("model", model)
             .put("input", JSONArray().put(JSONObject().put("type", "user_input").put("content", content)))
@@ -82,9 +82,9 @@ object GeminiTts {
     }
 
     /** Purana generateContent tareeka (PCM 24kHz). */
-    private fun legacy(key: String, model: String, text: String, voice: String): ByteArray {
+    private fun legacy(key: String, model: String, text: String, voice: String, style: String): ByteArray {
         val body = JSONObject()
-            .put("contents", JSONArray().put(JSONObject().put("parts", JSONArray().put(JSONObject().put("text", text)))))
+            .put("contents", JSONArray().put(JSONObject().put("parts", JSONArray().put(JSONObject().put("text", "Say in a ${styleText(style)} way: $text")))))
             .put("generationConfig", JSONObject()
                 .put("responseModalities", JSONArray().put("AUDIO"))
                 .put("speechConfig", JSONObject().put("voiceConfig",
@@ -99,6 +99,15 @@ object GeminiTts {
             return if (isWav(bytes)) bytes else pcmToWav(bytes, rate)
         }
         throw AiException(0, "audio nahi mila")
+    }
+
+    fun styleText(s: String) = when (s) {
+        "cheerful" -> "cheerful, happy and energetic natural Hindi"
+        "calm" -> "calm, soft and soothing natural Hindi"
+        "friend" -> "casual, friendly like a close friend, natural Hindi"
+        "pro" -> "clear, confident and professional natural Hindi"
+        "sweet" -> "sweet, gentle and caring natural Hindi"
+        else -> "warm, natural, friendly conversational Hindi, normal speed"
     }
 
     private fun isWav(b: ByteArray) = b.size > 12 && b[0] == 'R'.code.toByte() && b[1] == 'I'.code.toByte() &&

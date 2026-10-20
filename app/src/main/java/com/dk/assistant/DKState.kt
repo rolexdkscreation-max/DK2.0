@@ -23,8 +23,21 @@ object DKState {
 
     fun set(m: Mode) { mode = m; if (m != Mode.LISTENING) level = 0f; emit() }
     fun setLive(on: Boolean) { live = on; emit() }
-    fun user(t: String) { lastUser = t; emit() }
-    fun reply(t: String) { lastReply = t; emit() }
+    /** Chat screen ke liye poori baatcheet (role "u" = aap, "d" = DK) */
+    data class Msg(val role: String, val text: String, val time: Long = System.currentTimeMillis())
+    val messages = java.util.concurrent.CopyOnWriteArrayList<Msg>()
+
+    fun user(t: String) {
+        lastUser = t
+        if (!t.endsWith("…") && t.isNotBlank()) { messages.add(Msg("u", t)); trim() }
+        emit()
+    }
+    fun reply(t: String) {
+        lastReply = t
+        if (t.isNotBlank()) { messages.add(Msg("d", t)); trim() }
+        emit()
+    }
+    private fun trim() { while (messages.size > 200) messages.removeAt(0) }
 
     fun listen(l: () -> Unit) { synchronized(listeners) { listeners.add(l) } }
     fun unlisten(l: () -> Unit) { synchronized(listeners) { listeners.remove(l) } }

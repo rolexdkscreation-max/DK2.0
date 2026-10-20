@@ -27,10 +27,14 @@ class AgentRunner(
         DKState.set(Mode.IDLE)
     }
 
-    fun run(command: String): Job {
+    /** Chat screen se likha sawaal: jawab sirf likh kar (bolkar nahi), agar user ne aisa chuna ho */
+    @Volatile private var silent = false
+
+    fun run(command: String, speak: Boolean = true): Job {
         job?.cancel()
         val j = scope.launch {
-            try { execute(command) } finally { DKState.set(Mode.IDLE) }
+            silent = !speak
+            try { execute(command) } finally { DKState.set(Mode.IDLE); silent = false }
         }
         job = j
         return j
@@ -38,7 +42,12 @@ class AgentRunner(
 
     private suspend fun say(text: String) {
         DKState.reply(text)
-        speaker.speak(text)
+        if (!silent) speaker.speak(text)
+    }
+
+    private suspend fun sayQuick(text: String) {
+        DKState.reply(text)
+        if (!silent) speaker.speakQuick(text)
     }
 
     /** Seedhi command turant (AI ke bina). */
@@ -54,8 +63,12 @@ class AgentRunner(
         val t0 = System.currentTimeMillis()
         val r = svc.perform(q.action)
         DKLog.d("TURANT ${q.action} -> $r (${System.currentTimeMillis() - t0}ms)")
-        if (r.startsWith("ERROR")) return false
         val type = q.action.optString("type")
+        if (type == "answer_call" || type == "end_call") {
+            if (r == "ERROR_CALL_PERM") { sayQuick("कॉल संभालने की परमिशन नहीं है। सेटिंग्स में \"कॉल/कॉन्टैक्ट परमिशन दें\" दबाइए।"); return true }
+            if (r.startsWith("ERROR")) { sayQuick(if (type == "answer_call") "कॉल नहीं उठ पाया, स्क्रीन पर खुद उठा लीजिए।" else "कॉल नहीं कटा।"); return true }
+        }
+        if (r.startsWith("ERROR")) return false
         val msg = when {
             type == "who_calls" -> if (r.startsWith("CALLER:")) r.removePrefix("CALLER:").trim() + " का कॉल है।" else "पता नहीं चला किसका कॉल है।"
             type == "unlock" -> if (r.contains("PIN")) "स्क्रीन चालू है, PIN या फिंगरप्रिंट से खोलिए।" else ""
@@ -63,7 +76,7 @@ class AgentRunner(
             else -> q.ack
         }
         DKState.reply(msg.ifBlank { "✓ ${q.action.optString("name", type)}" })
-        if (msg.isNotBlank()) speaker.speakQuick(msg)
+        if (msg.isNotBlank() && !silent) speaker.speakQuick(msg)
         return true
     }
 
@@ -132,18 +145,17 @@ class AgentRunner(
                 delay(1300)
                 val f = if (chatMode) listOf("सोचकर बताता हूँ।", "एक सेकंड, सोच रहा हूँ।").random()
                         else listOf("हाँ, देख रहा हूँ।", "ठीक है, कर रहा हूँ।").random()
-                DKState.reply(f)
-                speaker.speakQuick(f)
+                sayQuick(f)
             } else null
             val resp: JSONObject = try {
                 brain.next(prompt + if (chatMode && brain.canSearch()) "\nSEARCH AVAILABLE" else "", shot,
-                    memoryNote = if (chatMode) "USER SAYS: $goal" else feedback)
+                    memoryNote = if (chatMode) "USER SAYS: $goal" else feedback, chat = chatMode)
             } catch (e: Exception) {
                 filler?.cancel()
                 DKLog.d("AI error: ${e.javaClass.simpleName} ${e.message}")
                 val msg = brain.explain(e)
                 DKState.reply(msg + "\n(" + (e.message ?: e.javaClass.simpleName).take(160) + ")")
-                speaker.speak(msg)
+                if (!silent) speaker.speak(msg)
                 return
             }
             DKLog.d("AI ${System.currentTimeMillis() - t0}ms (${brain.lastUsed}): $resp")
@@ -188,13 +200,13 @@ class AgentRunner(
                     val r = svc.perform(a)
                     DKLog.d("Action ${a.optString("type")} -> $r")
                     results.append("${a.optString("type")} -> $r\n")
-                    delay(400)
+                    delay(250)
                 }
             }
 
             if (done) { speakJob?.join(); return }
             if (chatMode) chatMode = false   // AI ne actions diye - ab screen dekh kar kaam karo
-            delay(900) // screen ko badalne ka time do
+            delay(650) // screen ko badalne ka time do
             feedback = "USER GOAL (same task, continue): $goal\nRESULTS OF YOUR LAST ACTIONS:\n$results"
         }
         say("बहुत सारे स्टेप हो गए, मैंने काम यहीं रोक दिया।")
@@ -204,7 +216,7 @@ class AgentRunner(
         DKState.set(Mode.THINKING)
         val f = if (!fillerSaid) scope.launch {
             val t = listOf("पता करके बताता हूँ।", "एक सेकंड, देखकर बताता हूँ।").random()
-            DKState.reply(t); speaker.speakQuick(t)
+            sayQuick(t)
         } else null
         return try {
             val ans = brain.searchAnswer(goal)

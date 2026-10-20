@@ -25,7 +25,31 @@ class CallManager(private val ctx: Context, private val onRinging: (String) -> U
 
     private fun granted(p: String) = ContextCompat.checkSelfPermission(ctx, p) == PackageManager.PERMISSION_GRANTED
 
-    val ringing get() = state == TelephonyManager.CALL_STATE_RINGING
+    /** Call ki haalat pata hai? (phone permission ho tab) */
+    val known get() = listener != null
+    fun canAnswer() = Build.VERSION.SDK_INT >= 26 && granted(Manifest.permission.ANSWER_PHONE_CALLS)
+
+    val ringing get() = state == TelephonyManager.CALL_STATE_RINGING || (!known && telecomRinging())
+
+    @SuppressLint("MissingPermission")
+    private fun telecomRinging(): Boolean = try {
+        ctx.getSystemService(TelecomManager::class.java)?.isInCall == true
+    } catch (_: Exception) { false }
+
+    // ---- ringtone dheemi (DK ko aapki baat sunai de), call khatam hote hi wapas
+    private var savedRing = -1
+    fun quietRinger() {
+        val am = ctx.getSystemService(AudioManager::class.java) ?: return
+        try {
+            if (savedRing < 0) savedRing = am.getStreamVolume(AudioManager.STREAM_RING)
+            if (savedRing > 1) am.setStreamVolume(AudioManager.STREAM_RING, 1, 0)
+        } catch (e: Exception) { DKLog.d("ringer: ${e.message}") }
+    }
+    fun restoreRinger() {
+        if (savedRing < 0) return
+        try { ctx.getSystemService(AudioManager::class.java)?.setStreamVolume(AudioManager.STREAM_RING, savedRing, 0) } catch (_: Exception) {}
+        savedRing = -1
+    }
     val inCall get() = state == TelephonyManager.CALL_STATE_OFFHOOK
 
     @Suppress("DEPRECATION")
@@ -41,7 +65,8 @@ class CallManager(private val ctx: Context, private val onRinging: (String) -> U
                     caller = nameFor(number)
                     onRinging(caller)
                 }
-                if (s == TelephonyManager.CALL_STATE_IDLE) caller = ""
+                if (s == TelephonyManager.CALL_STATE_IDLE) { caller = ""; restoreRinger() }
+                if (s == TelephonyManager.CALL_STATE_OFFHOOK) restoreRinger()
             }
         }
         try {

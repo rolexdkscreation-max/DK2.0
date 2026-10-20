@@ -59,6 +59,7 @@ object Prefs {
     fun voiceGender(c: Context) = sp(c).getString("voice_gender", "female") ?: "female"
     /** "google" = phone ki awaaz, "gemini" = sabse natural (Gemini key se) */
     fun voiceEngine(c: Context) = sp(c).getString("voice_engine", "google") ?: "google"
+    fun voiceStyle(c: Context) = sp(c).getString("voice_style", "natural") ?: "natural"
     fun googleVoice(c: Context) = sp(c).getString("google_voice", "") ?: ""
     fun geminiVoice(c: Context): String {
         val g = voiceGender(c)

@@ -42,6 +42,8 @@ private fun execute(req: Request): String = http.newCall(req).execute().use { r 
 
 /** Google Gemini (apna alag format). Ek model fail ho to dusre Gemini model try karta hai. */
 class GeminiClient(private val key: String, private val model: String) : AiClient {
+    /** true = baatcheet: sabse kam sochna, chhota jawab = tez */
+    var fast = false
     override var label = "Gemini ($model)"
         private set
 
@@ -118,10 +120,11 @@ class GeminiClient(private val key: String, private val model: String) : AiClien
             JSONObject().put("mime_type", "image/jpeg").put("data", imageB64)))
         contents.put(JSONObject().put("role", "user").put("parts", parts))
 
-        val gen = JSONObject().put("responseMimeType", "application/json").put("maxOutputTokens", 2048)
-        // Bade Flash model zyada "sochte" hain = dheere. Kam sochne ko bolo.
-        val heavy = m.startsWith("gemini-3") && !m.contains("lite")
-        if (thinking && heavy) gen.put("thinkingConfig", JSONObject().put("thinkingLevel", "low"))
+        val gen = JSONObject().put("responseMimeType", "application/json").put("maxOutputTokens", if (fast) 600 else 2048)
+        // Gemini 3 model "sochte" hain = dheere. Baatcheet me sabse kam (minimal), kaam me low.
+        val heavy = m.startsWith("gemini-3")
+        if (thinking && heavy) gen.put("thinkingConfig", JSONObject().put("thinkingLevel", if (fast) "minimal" else "low"))
+        if (thinking && m.startsWith("gemini-2.5")) gen.put("thinkingConfig", JSONObject().put("thinkingBudget", if (fast) 0 else 512))
 
         val body = JSONObject()
             .put("system_instruction", JSONObject().put("parts", JSONArray().put(JSONObject().put("text", system))))
@@ -134,7 +137,7 @@ class GeminiClient(private val key: String, private val model: String) : AiClien
             .post(body.toString().toRequestBody(JSON_TYPE))
             .build()
         val raw = try { execute(req) } catch (e: AiException) {
-            if (e.code == 400 && thinking && heavy && (e.message ?: "").contains("thinking", true))
+            if (e.code == 400 && thinking && (e.message ?: "").contains("think", true))
                 return call(m, system, history, prompt, imageB64, thinking = false)
             throw e
         }
@@ -159,6 +162,7 @@ class OpenAiCompatClient(
     private val model: String
 ) : AiClient {
     override val label = "$name ($model)"
+    var fast = false
 
     override fun complete(system: String, history: List<Turn>, prompt: String, imageB64: String?): String {
         val msgs = JSONArray().put(JSONObject().put("role", "system").put("content", system))
@@ -175,6 +179,8 @@ class OpenAiCompatClient(
             msgs.put(JSONObject().put("role", "user").put("content", prompt))
         }
         val body = JSONObject().put("model", model).put("messages", msgs)
+        // gpt-oss jaise "sochne wale" model: baatcheet me kam socho = tez
+        if (model.contains("gpt-oss")) body.put("reasoning_effort", if (fast) "low" else "medium")
 
         val req = Request.Builder()
             .url(baseUrl.trimEnd('/') + "/chat/completions")

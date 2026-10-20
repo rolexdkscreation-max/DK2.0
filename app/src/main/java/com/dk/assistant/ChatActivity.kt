@@ -1,0 +1,170 @@
+package com.dk.assistant
+
+import android.graphics.Typeface
+import android.os.Bundle
+import android.text.InputType
+import android.view.Gravity
+import android.view.View
+import android.view.ViewGroup
+import android.view.inputmethod.EditorInfo
+import android.widget.EditText
+import android.widget.FrameLayout
+import android.widget.ImageButton
+import android.widget.LinearLayout
+import android.widget.ScrollView
+import android.widget.TextView
+import androidx.appcompat.app.AppCompatActivity
+import androidx.appcompat.widget.SwitchCompat
+import androidx.lifecycle.lifecycleScope
+import kotlinx.coroutines.launch
+
+/** Likhkar baat karne wali alag screen (WhatsApp jaisi). Phone ke kaam bhi yahin se likhkar karwa sakte hain. */
+class ChatActivity : AppCompatActivity() {
+
+    private lateinit var list: LinearLayout
+    private lateinit var scroll: ScrollView
+    private lateinit var status: TextView
+    private lateinit var swSpeak: SwitchCompat
+    private var shown = 0
+    private val dp get() = resources.displayMetrics.density
+    private val listener: () -> Unit = { render() }
+    private var localBrain: BrainManager? = null
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        window.setSoftInputMode(android.view.WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE)
+        val root = FrameLayout(this).apply { setBackgroundColor(getColor(R.color.bg)) }
+        root.addView(AuroraView(this), FrameLayout.LayoutParams(-1, -1))
+        val col = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            val p = (14 * dp).toInt(); setPadding(p, p, p, p)
+        }
+        root.addView(col, FrameLayout.LayoutParams(-1, -1))
+
+        // ---- upar
+        val top = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
+        top.addView(ImageButton(this).apply {
+            setImageResource(R.drawable.ic_back); setBackgroundResource(R.drawable.glass_circle)
+            val p = (12 * dp).toInt(); setPadding(p, p, p, p); scaleType = android.widget.ImageView.ScaleType.FIT_CENTER
+            setOnClickListener { finish() }
+        }, LinearLayout.LayoutParams((46 * dp).toInt(), (46 * dp).toInt()))
+        val titles = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding((12 * dp).toInt(), 0, 0, 0) }
+        titles.addView(TextView(this).apply {
+            text = "${Prefs.assistantName(this@ChatActivity)} चैट"; textSize = 20f
+            setTypeface(typeface, Typeface.BOLD); setTextColor(0xFFFFFFFF.toInt())
+        })
+        status = TextView(this).apply { textSize = 12f; setTextColor(0x99FFFFFF.toInt()) }
+        titles.addView(status)
+        top.addView(titles, LinearLayout.LayoutParams(0, -2, 1f))
+        swSpeak = SwitchCompat(this).apply {
+            text = "बोलकर भी"; textSize = 12f; setTextColor(0xCCFFFFFF.toInt())
+            isChecked = getSharedPreferences("dk_prefs", MODE_PRIVATE).getBoolean("chat_speak", false)
+            setOnCheckedChangeListener { _, on -> getSharedPreferences("dk_prefs", MODE_PRIVATE).edit().putBoolean("chat_speak", on).apply() }
+        }
+        top.addView(swSpeak)
+        col.addView(top)
+
+        // ---- baatcheet
+        scroll = ScrollView(this).apply { isFillViewport = true }
+        list = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(0, (8 * dp).toInt(), 0, (8 * dp).toInt()) }
+        scroll.addView(list)
+        col.addView(scroll, LinearLayout.LayoutParams(-1, 0, 1f).apply { topMargin = (10 * dp).toInt() })
+
+        // ---- neeche likhne ki bar
+        val bar = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
+            setBackgroundResource(R.drawable.glass_pill)
+            setPadding((18 * dp).toInt(), 0, (6 * dp).toInt(), 0)
+        }
+        val edt = EditText(this).apply {
+            hint = "कुछ भी लिखिए… (जैसे: WhatsApp खोलो, आज का मौसम?)"
+            setHintTextColor(0x66FFFFFF); setTextColor(0xFFFFFFFF.toInt()); textSize = 15f
+            background = null; maxLines = 4
+            inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_MULTI_LINE or InputType.TYPE_TEXT_FLAG_CAP_SENTENCES
+            imeOptions = EditorInfo.IME_ACTION_SEND
+        }
+        bar.addView(edt, LinearLayout.LayoutParams(0, -2, 1f).apply { topMargin = (6 * dp).toInt(); bottomMargin = (6 * dp).toInt() })
+        val send = ImageButton(this).apply {
+            setImageResource(R.drawable.ic_send); setBackgroundResource(R.drawable.btn_accent_circle)
+            val p = (11 * dp).toInt(); setPadding(p, p, p, p); scaleType = android.widget.ImageView.ScaleType.FIT_CENTER
+            contentDescription = "भेजें"
+        }
+        bar.addView(send, LinearLayout.LayoutParams((46 * dp).toInt(), (46 * dp).toInt()))
+        col.addView(bar, LinearLayout.LayoutParams(-1, -2).apply { topMargin = (8 * dp).toInt() })
+
+        val doSend = {
+            val t = edt.text.toString().trim()
+            if (t.isNotEmpty()) { edt.setText(""); sendText(t) }
+        }
+        send.setOnClickListener { doSend() }
+        edt.setOnEditorActionListener { _, id, _ -> if (id == EditorInfo.IME_ACTION_SEND) { doSend(); true } else false }
+        setContentView(root)
+    }
+
+    private fun sendText(t: String) {
+        if (!Prefs.hasAnyKey(this)) { bubble("d", "पहले सेटिंग्स में किसी AI की API key डालकर सेव कीजिए।"); return }
+        val svc = DKAccessibilityService.instance
+        if (svc != null) { svc.runCommand(t, speak = swSpeak.isChecked); return }
+        // Accessibility band hai -> sirf baatcheet (phone ke kaam nahi)
+        DKState.user(t)
+        DKState.set(Mode.THINKING)
+        val b = localBrain ?: BrainManager(this).also { localBrain = it }
+        lifecycleScope.launch {
+            try {
+                val r = b.next("CHAT MODE (no screen info).\nUSER SAYS: $t", null, "USER SAYS: $t", chat = true)
+                val say = r.optString("say")
+                DKState.reply(if (r.optBoolean("need_screen")) "फ़ोन पर काम करने के लिए पहले Accessibility में DK चालू करें।"
+                    else say.ifBlank { "…" })
+            } catch (e: Exception) {
+                DKState.reply(b.explain(e))
+            } finally { DKState.set(Mode.IDLE) }
+        }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        DKState.listen(listener)
+        render()
+    }
+
+    override fun onPause() {
+        DKState.unlisten(listener)
+        super.onPause()
+    }
+
+    private fun render() {
+        status.text = when (DKState.mode) {
+            Mode.THINKING -> "सोच रहा है…"
+            Mode.WORKING -> "काम कर रहा है…"
+            Mode.SPEAKING -> "बोल रहा है…"
+            Mode.LISTENING -> "सुन रहा है…"
+            else -> if (DKAccessibilityService.instance != null) "ऑनलाइन • फ़ोन कंट्रोल चालू" else "सिर्फ़ बातचीत • फ़ोन कंट्रोल बंद"
+        }
+        val msgs = DKState.messages
+        if (msgs.size < shown) { list.removeAllViews(); shown = 0 }
+        if (shown == 0 && msgs.isEmpty()) {
+            bubble("d", "नमस्ते${Prefs.userName(this).let { if (it.isNotBlank()) " $it" else "" }}! यहाँ लिखकर कुछ भी पूछिए या कोई काम बोलिए।", keep = false)
+        }
+        while (shown < msgs.size) { val m = msgs[shown]; bubble(m.role, m.text); shown++ }
+    }
+
+    private var placeholder: View? = null
+
+    private fun bubble(role: String, text: String, keep: Boolean = true) {
+        placeholder?.let { list.removeView(it); placeholder = null }
+        val mine = role == "u"
+        val tv = TextView(this).apply {
+            this.text = text; textSize = 15f; setTextColor(0xFFFFFFFF.toInt()); setTextIsSelectable(true)
+            setBackgroundResource(if (mine) R.drawable.btn_accent else R.drawable.glass_card)
+            val ph = (14 * dp).toInt(); val pv = (10 * dp).toInt(); setPadding(ph, pv, ph, pv)
+            maxWidth = (resources.displayMetrics.widthPixels * 0.78).toInt()
+        }
+        val lp = LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
+            gravity = if (mine) Gravity.END else Gravity.START
+            topMargin = (8 * dp).toInt()
+        }
+        list.addView(tv, lp)
+        if (!keep) placeholder = tv
+        scroll.post { scroll.fullScroll(View.FOCUS_DOWN) }
+    }
+}

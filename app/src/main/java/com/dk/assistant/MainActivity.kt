@@ -4,7 +4,6 @@ import android.Manifest
 import android.content.Intent
 import android.os.Build
 import android.os.Bundle
-import android.view.inputmethod.EditorInfo
 import android.widget.EditText
 import android.widget.ImageButton
 import android.widget.TextView
@@ -46,15 +45,13 @@ class MainActivity : AppCompatActivity() {
         findViewById<OrbView>(R.id.orb).setOnClickListener { talk() }
         findViewById<ImageButton>(R.id.btnMic).setOnClickListener { talk() }
 
-        val send = {
-            val cmd = edt.text.toString().trim()
-            if (cmd.isNotEmpty() && ready()) {
-                DKAccessibilityService.instance?.runCommand(cmd)
-                edt.setText("")
-            }
-        }
-        findViewById<ImageButton>(R.id.btnSend).setOnClickListener { send() }
-        edt.setOnEditorActionListener { _, id, _ -> if (id == EditorInfo.IME_ACTION_SEND) { send(); true } else false }
+        // Yeh screen sirf AAWAAZ ke liye. Likhkar baat = alag Chat screen.
+        edt.isFocusable = false
+        edt.isFocusableInTouchMode = false
+        edt.hint = "चैट खोलें — लिखकर बात करें"
+        edt.setOnClickListener { openChat() }
+        findViewById<ImageButton>(R.id.btnSend).setOnClickListener { openChat() }
+        findViewById<android.view.View>(R.id.cardTalk).setOnClickListener { openChat() }
 
         chipMic.setOnClickListener { askPerms() }
         chipAccess.setOnClickListener {
@@ -75,6 +72,8 @@ class MainActivity : AppCompatActivity() {
             askPerms()
         }
     }
+
+    private fun openChat() = startActivity(Intent(this, ChatActivity::class.java))
 
     private fun openSettings() = startActivity(Intent(this, SettingsActivity::class.java))
 

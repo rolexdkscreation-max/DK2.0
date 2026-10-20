@@ -32,6 +32,7 @@ object Setup {
     } catch (e: Exception) { false }
 
     fun startKeepAlive(c: Context) {
-        if (hasMic(c)) ContextCompat.startForegroundService(c, Intent(c, KeepAliveService::class.java))
+        if (hasMic(c)) try { ContextCompat.startForegroundService(c, Intent(c, KeepAliveService::class.java)) }
+        catch (e: Exception) { DKLog.d("KeepAlive: ${e.message}") }
     }
 }
