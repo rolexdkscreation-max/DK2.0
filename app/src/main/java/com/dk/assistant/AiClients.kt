@@ -128,7 +128,7 @@ class GeminiClient(private val key: String, private val model: String) : AiClien
         /** Mushkil sawaal (research) ke liye zyada samajhdar model pehle */
         val DEEP_MODELS = listOf("gemini-3.8-flash", "gemini-2.5-flash")
         /** Sabse mushkil sawaal (gehri soch): sabse taakatwar model pehle, na chale to agla */
-        val THINK_MODELS = listOf("gemini-4-argon", "gemini-3.8-pro", "gemini-3.8-flash", "gemini-2.5-pro", "gemini-2.5-flash")
+        val THINK_MODELS = listOf("gemini-4-argon", "gemini-3.1-pro-preview", "gemini-3.8-flash")   // argon/pro = paid key; free key par 3.8 Flash (high thinking)
     }
 
     override fun complete(system: String, history: List<Turn>, prompt: String, imageB64: String?): String {
