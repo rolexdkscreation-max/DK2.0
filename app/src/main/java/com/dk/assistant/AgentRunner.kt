@@ -352,6 +352,7 @@ class AgentRunner(
         var mode = 0            // 0 = abhi pata nahi, 1 = saada jawab, 2 = [SCREEN]/[SEARCH], 3 = JSON
         var tag = ""
         var sentCount = 0
+        val t0 = System.currentTimeMillis()
 
         fun emit(raw: String) {
             var x = raw.trim()
@@ -364,6 +365,7 @@ class AgentRunner(
             shown.append(x).append(' ')
             synchronized(currentAnswer) { currentAnswer.append(x).append(' ') }
             DKState.replyLive(shown.toString().trim())
+            if (sentCount == 0) DKLog.d("Deri: AI ka pehla vakya ${System.currentTimeMillis() - t0} ms")
             sentCount++
             if (!silent) {
                 ch.trySend(x)

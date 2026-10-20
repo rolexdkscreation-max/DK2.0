@@ -53,7 +53,7 @@ class DKAccessibilityService : AccessibilityService() {
     data class Screen(val text: String, val packageName: String, val width: Int, val height: Int, val count: Int)
 
     // Kisi bhi kaam me galti ho to sirf log karo - service crash na ho (crash = Android Accessibility band kar deta hai)
-    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main +
+    val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main +
         kotlinx.coroutines.CoroutineExceptionHandler { _, e -> DKLog.d("Galti (sambhal li): ${e.javaClass.simpleName} ${e.message}") })
     private var elements: List<Element> = emptyList()
 
@@ -137,6 +137,7 @@ class DKAccessibilityService : AccessibilityService() {
     fun stopLive() {
         DKState.setLive(false)
         Prefs.edit(this) { putBoolean("live_mode", false) }
+        gemLive.stop()
         agent.stop()
         loopJob?.cancel(); loopJob = null
         listener.release()
@@ -160,6 +161,13 @@ class DKAccessibilityService : AccessibilityService() {
     @Volatile private var googleUntil = 0L
     private var micFails = 0
     private val warnedAt = HashMap<String, Long>()
+
+    /** Gemini Live (aawaz se aawaz, real-time) - sabse tez tareeka */
+    val gemLive by lazy { GeminiLive(this, agent) }
+    @Volatile private var liveOffUntil = 0L
+    fun callBusy() = calls.ringing || callPending || callAnnouncing || calls.inCall
+    fun useGeminiLive(): Boolean = DKState.live && Prefs.listenEngine(this) == "auto" &&
+        GeminiLive.available(this) && System.currentTimeMillis() > liveOffUntil
 
     /** Bina beep wala tareeka chalega? (Groq ya Gemini key chahiye) */
     fun silentEar(): Boolean = Prefs.listenEngine(this) != "google" && Transcriber.available(this) &&
@@ -226,7 +234,9 @@ class DKAccessibilityService : AccessibilityService() {
         micFails = 0
         DKState.set(Mode.THINKING)
         DKState.user("…")
+        val sttT0 = System.currentTimeMillis()
         val text = Transcriber.transcribe(this, pcm)
+        DKLog.d("Deri: bolna khatam -> STT ${System.currentTimeMillis() - sttT0} ms (${pcm.size / 32} ms awaaz)")
         if (text == null && Transcriber.lastError != null) {
             // sunne wali key nahi chali: aapki baat kho gayi - batao aur Google mic par chalo (2 min)
             googleUntil = System.currentTimeMillis() + 2 * 60_000L
@@ -317,6 +327,24 @@ class DKAccessibilityService : AccessibilityService() {
                 if (agent.isBusy || speaker.busy || DKState.mode == Mode.SPEAKING || callAnnouncing) { delay(250); continue }
                 // call chal rahi hai: mic call ka hai - DK ka mic chhod do (warna saamne wale ko awaaz nahi jaati)
                 if (calls.inCall && !calls.ringing) { ear.release(); listener.release(); DKState.set(Mode.IDLE); delay(1000); continue }
+                // Gemini Live: mic ki awaaz lagatar stream, jawab ki awaaz turant stream (sabse kam deri)
+                if (useGeminiLive() && !callBusy()) {
+                    if (!checkMic()) { delay(2000); continue }
+                    ear.release(); listener.release()
+                    try {
+                        val r = gemLive.run()
+                        DKLog.d("Gemini Live ruka: $r")
+                    } catch (e: GeminiLive.Fatal) {
+                        liveOffUntil = System.currentTimeMillis() + 10 * 60_000L
+                        DKState.set(Mode.IDLE)
+                        warn("live", "Gemini Live नहीं चला: ${e.message}। अभी पुराने तरीके से सुन रहा हूँ।")
+                    } catch (e: kotlinx.coroutines.CancellationException) { throw e
+                    } catch (e: Exception) {
+                        liveOffUntil = System.currentTimeMillis() + 2 * 60_000L
+                        DKLog.d("Gemini Live गलती: ${e.javaClass.simpleName} ${e.message}")
+                    }
+                    continue
+                }
                 val heard = hear()
                 if (DKState.mode == Mode.LISTENING || DKState.mode == Mode.THINKING) DKState.set(Mode.IDLE)
                 if (listener.lastError == android.speech.SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS) {

@@ -13,11 +13,14 @@ object DKLog {
     @Synchronized
     fun d(msg: String) {
         Log.d("DK", msg)
-        lines.addLast(msg)
-        while (lines.size > 60) lines.removeFirst()
+        lines.addLast(java.text.SimpleDateFormat("HH:mm:ss.SSS", java.util.Locale.US).format(java.util.Date()) + " " + msg)
+        while (lines.size > 300) lines.removeFirst()
         val all = lines.joinToString("\n")
         main.post { listener?.invoke(all) }
     }
+
+    @Synchronized
+    fun clear() { lines.clear(); main.post { listener?.invoke("") } }
 
     @Synchronized
     fun all(): String = lines.joinToString("\n")

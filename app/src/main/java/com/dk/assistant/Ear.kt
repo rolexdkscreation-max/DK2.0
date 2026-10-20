@@ -32,8 +32,8 @@ class Ear(
         private const val START_FRAMES = 3            // 90 ms awaaz = bolna shuru
         // Chhoti baat ("हाँ", "उठाओ") ke baad 0.7 sec chup = khatam (tez jawab).
         // Lambi baat me beech ka saans/ruk-ruk kar bolna na kate -> 1.1 sec tak intezaar.
-        private const val END_SILENCE_SHORT = 27      // ~0.8 sec
-        private const val END_SILENCE_LONG = 42       // ~1.25 sec (beech me saans le kar bolo to baat na kate)
+        private const val END_SILENCE_SHORT = 20      // ~0.6 sec (pehle 0.8 - jawab der se shuru hota tha)
+        private const val END_SILENCE_LONG = 27       // ~0.8 sec (pehle 1.25 sec) (beech me saans le kar bolo to baat na kate)
         private const val LONG_AFTER = 50             // 1.5 sec se zyada bole = lambi baat
         private const val MAX_FRAMES = 25 * 1000 / 30 // 25 sec max (lamba sawaal bhi poora suno)
         private const val MIN_SPEECH_FRAMES = 8       // 0.24 sec se chhota = shor ("हाँ" bhi pakdo)

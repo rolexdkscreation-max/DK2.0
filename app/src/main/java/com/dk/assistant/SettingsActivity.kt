@@ -90,6 +90,7 @@ class SettingsActivity : AppCompatActivity() {
             "access" -> { title.text = "Accessibility"; secAccess() }
             "perms" -> { title.text = "परमिशन"; secPerms() }
             "update" -> { title.text = "अपडेट"; secUpdate() }
+            "debug" -> { title.text = "डिबग लॉग"; bar.visibility = View.GONE; secDebug() }
         }
         space(container, 8)
     }
@@ -104,7 +105,8 @@ class SettingsActivity : AppCompatActivity() {
             Triple("orb", "ओर्ब और चेहरा", "पृथ्वी, गैलेक्सी, एटम, DNA, छल्ला, पुरुष/महिला चेहरा"),
             Triple("access", "Accessibility", (if (Setup.accessibilityOn(this)) "✓ चालू" else "✗ बंद") + " • फ़ोन कंट्रोल • हमेशा सुनना • कॉल • बैटरी"),
             Triple("perms", "परमिशन", "माइक • स्क्रीन देखना • नोटिफ़िकेशन • कॉल • ऐप इंस्टॉल"),
-            Triple("update", "अपडेट", "अभी: ${Updater.currentName(this)} • नया version चेक करें")
+            Triple("update", "अपडेट", "अभी: ${Updater.currentName(this)} • नया version चेक करें"),
+            Triple("debug", "डिबग लॉग", "माइक, कनेक्शन, देरी और गलतियों का पूरा हाल")
         )
         items.forEach { (id, t, sub) ->
             val box = LinearLayout(this).apply {
@@ -122,6 +124,33 @@ class SettingsActivity : AppCompatActivity() {
             val lp = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
             lp.topMargin = (12 * dp).toInt()
             container.addView(box, lp)
+        }
+    }
+
+    /** App ka "console": har galti/chetavni, mic ke aankde, Live connection, deri (ms) */
+    private fun secDebug() {
+        card("Gemini Live हाल", "माइक से भेजे टुकड़े, गिरे टुकड़े, दोबारा जुड़ना, देरी") { box ->
+            val st = TextView(this).apply { textSize = 13f; setTextColor(0xFFFFFFFF.toInt()); setPadding((4 * dp).toInt(), (6 * dp).toInt(), 0, 0) }
+            box.addView(st)
+            fun upd() { st.text = GeminiLive.stats + "\nमाइक परमिशन: " + (if (Setup.hasMic(this)) "मिली है" else "नहीं मिली") +
+                "\nसुनने का तरीका: " + Prefs.listenEngine(this) + " • Gemini key: " + (if (GeminiLive.available(this)) "है" else "नहीं") }
+            upd()
+            row(box, button("ताज़ा करें") { upd() })
+        }
+        card("लॉग", "सबसे नई लाइन नीचे • 300 लाइन तक") { box ->
+            val tv = TextView(this).apply {
+                textSize = 11f; typeface = Typeface.MONOSPACE; setTextColor(0xE6FFFFFF.toInt()); setTextIsSelectable(true)
+                text = DKLog.all().ifBlank { "अभी कोई लॉग नहीं" }
+            }
+            box.addView(tv)
+            DKLog.listener = { all -> tv.text = all }
+            row(box,
+                button("कॉपी करें") {
+                    val cm = getSystemService(android.content.ClipboardManager::class.java)
+                    cm?.setPrimaryClip(android.content.ClipData.newPlainText("DK log", GeminiLive.stats + "\n\n" + DKLog.all()))
+                    toast("लॉग कॉपी हो गया")
+                },
+                button("साफ़ करें") { DKLog.clear() })
         }
     }
 
@@ -336,7 +365,8 @@ class SettingsActivity : AppCompatActivity() {
         // ---- Listening
         card("सुनना (माइक)", "लगातार सुनना — बिना बीप की आवाज़") { box ->
             rgListen = radios(box, listOf(
-                "auto" to "बिना बीप — DK खुद सुनेगा (Groq या Gemini key चाहिए)",
+                "auto" to "सबसे तेज़ — Gemini Live, आवाज़ से आवाज़ (Gemini key से); न चले तो बिना बीप",
+                "classic" to "बिना बीप — DK खुद सुनेगा: Whisper + AI + आवाज़ (Groq या Gemini key)",
                 "google" to "Google माइक — बिना key, पर हर बार बीप आ सकती है"),
                 Prefs.listenEngine(this), 2200)
             hint(box, "बिना बीप वाले मोड में सबसे तेज़ और सही हिंदी पहचान के लिए Groq की फ्री key डालें (Whisper)। Groq key न हो तो Gemini key से काम चलेगा।")
@@ -616,7 +646,7 @@ class SettingsActivity : AppCompatActivity() {
                 putString("voice_gender", radioValue(rgGender, listOf("female", "male"), 2000))
                 putString("voice_engine", radioValue(rgEngine, listOf("google", "gemini"), 2100))
                 putString("voice_style", radioValue(rgStyle, VoiceCatalog.STYLES.map { it.first }, 2300))
-                putString("listen_engine", radioValue(rgListen, listOf("auto", "google"), 2200))
+                putString("listen_engine", radioValue(rgListen, listOf("auto", "classic", "google"), 2200))
                 putFloat("tts_pitch", seekValue(sbPitch))
             }
             keyFields.forEach { (id, e) -> putString("key_$id", e.text.toString().trim()) }
@@ -642,7 +672,7 @@ class SettingsActivity : AppCompatActivity() {
     }
 
     override fun onPause() { save(false); super.onPause() }
-    override fun onDestroy() { speaker?.shutdown(); super.onDestroy() }
+    override fun onDestroy() { if (section == "debug") DKLog.listener = null; speaker?.shutdown(); super.onDestroy() }
 
     private fun radios(box: LinearLayout, items: List<Pair<String, String>>, current: String, base: Int): RadioGroup {
         val g = RadioGroup(this).apply { orientation = RadioGroup.VERTICAL }

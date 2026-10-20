@@ -97,8 +97,11 @@ object Prefs {
         return if (v.isNotBlank() && v in VoiceCatalog.geminiFor(g)) v else VoiceCatalog.geminiFor(g).first()
     }
 
-    // ---- sunna: "auto" = bina beep (Groq/Gemini key ho to), "google" = Google mic (beep aa sakti hai)
+    // ---- sunna: "auto" = Gemini Live (key ho to) warna bina beep, "classic" = Whisper+AI+TTS, "google" = Google mic (beep aa sakti hai)
     fun listenEngine(c: Context) = sp(c).getString("listen_engine", "auto") ?: "auto"
+
+    /** Pichhli baar jo Gemini Live model chala */
+    fun liveModel(c: Context) = sp(c).getString("live_model", "") ?: ""
 
     fun micDeniedOnce(c: Context) = sp(c).getBoolean("mic_denied", false)
 
