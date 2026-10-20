@@ -115,6 +115,20 @@ class AgentRunner(
         return t.split(' ').size >= 14 && q.any { t.contains(it) }
     }
 
+    /** User ne saaf kaha "सर्च/रिसर्च करो"? (YouTube/Amazon jaise app me search wali command nahi) */
+    private fun explicitResearch(t: String): Boolean {
+        val apps = listOf("यूट्यूब", "youtube", "अमेज़न", "अमेजन", "amazon", "फ्लिपकार्ट", "flipkart", "इंस्टाग्राम", "instagram",
+            "व्हाट्सएप", "whatsapp", "मैप", "map", "स्पॉटिफाई", "spotify", "प्ले स्टोर", "play store", "playstore", "कॉन्टैक्ट", "contact",
+            "गैलरी", "gallery", "फोटो", "photo", "गाना", "song", "वीडियो", "video", "मीशो", "meesho", "मिंत्रा", "myntra", "ज़ोमैटो", "zomato", "स्विगी", "swiggy")
+        if (apps.any { t.contains(it) }) return false
+        val strong = listOf("रिसर्च", "research", "डीप रिसर्च", "deep research", "खंगाल", "गहराई से", "गहराई में", "अच्छे से पता", "अच्छी तरह पता",
+            "पूरी जानकारी निकाल", "पूरी जानकारी खोज", "रिसर्च करके", "डीटेल में पता", "डिटेल में पता")
+        if (strong.any { t.contains(it) }) return true
+        val ask = listOf("सर्च करो", "सर्च कर", "सर्च करके", "search करो", "search kar", "search karo", "खोजो", "खोज कर", "खोजकर", "खोज के",
+            "ढूंढकर बताओ", "ढूँढकर बताओ", "ढूंढ कर बताओ", "ढूँढ कर बताओ", "पता करके बताओ", "पता करो", "पता लगाओ", "इंटरनेट पर देख", "गूगल पर देख", "गूगल करके")
+        return ask.any { t.contains(it) }
+    }
+
     /** Kisne banaya / boss kaun - sirf tab jab koi poochhe */
     private fun asksCreator(t: String): Boolean {
         val who = listOf("किसने", "किस ने", "कौन", "who", "kisne", "kaun")
@@ -158,6 +172,10 @@ class AgentRunner(
         if (memoryCommand(goal)) return
         // "tumhe kisne banaya?" - sirf poochhne par
         if (asksCreator(lower)) { say(CREATOR_ANSWER); return }
+        // "सर्च करो / रिसर्च करो / डीप रिसर्च करो" -> poori gehri khoj, phir vistaar se pakka jawab
+        if (explicitResearch(lower) && brain.canSearch()) {
+            if (searchAndSay(goal, deep = true, thorough = true)) return
+        }
         if (lower.contains("नई बात") || lower.contains("new chat") || lower.contains("भूल जाओ")) {
             brain.reset(); say("ठीक है, नई बातचीत शुरू करते हैं।"); return
         }
@@ -212,13 +230,8 @@ class AgentRunner(
             }
 
             val t0 = System.currentTimeMillis()
-            // jawab 1.3 sec me na aaye to bolo "सोचकर बताता हूँ" / "हाँ, देख रहा हूँ" (sirf pehle step par)
-            val filler = if (step == 1) scope.launch {
-                delay(1300)
-                val f = if (chatMode) listOf("सोचकर बताता हूँ।", "एक सेकंड, सोच रहा हूँ।").random()
-                        else listOf("हाँ, देख रहा हूँ।", "ठीक है, कर रहा हूँ।").random()
-                sayQuick(f)
-            } else null
+            // Baatcheet me "सोचकर बताता हूँ" jaisa kuch nahi bolna - seedha jawab. Phone ke kaam me 1.5 sec baad sirf "ठीक है।"
+            val filler = if (step == 1 && !chatMode) scope.launch { delay(1500); sayQuick("ठीक है।") } else null
             val resp: JSONObject = try {
                 brain.next(prompt + if (chatMode && brain.canSearch()) "\nSEARCH AVAILABLE" else "", shot,
                     memoryNote = if (chatMode) "USER SAYS: $goal" else feedback, chat = chatMode)
@@ -287,15 +300,12 @@ class AgentRunner(
         say("बहुत सारे स्टेप हो गए, मैंने काम यहीं रोक दिया।")
     }
 
-    private suspend fun searchAndSay(goal: String, fillerSaid: Boolean = false, deep: Boolean = false): Boolean {
+    private suspend fun searchAndSay(goal: String, fillerSaid: Boolean = false, deep: Boolean = false, thorough: Boolean = false): Boolean {
+        // "पता करके बताता हूँ" jaisa kuch nahi - chupchap khojo, seedha jawab (orb soch-raha rang dikhata hai)
         DKState.set(Mode.THINKING)
-        val f = if (!fillerSaid) scope.launch {
-            val t = if (deep) listOf("अच्छा सवाल है, सही जानकारी जाँचकर बताता हूँ।", "एक मिनट, अलग-अलग जगह से पक्का करके बताता हूँ।").random()
-                    else listOf("पता करके बताता हूँ।", "एक सेकंड, देखकर बताता हूँ।").random()
-            sayQuick(t)
-        } else null
+        val f: kotlinx.coroutines.Job? = null
         return try {
-            val r = brain.search(goal, deep)
+            val r = brain.search(goal, deep, thorough)
             f?.join()
             if (r.text.isBlank()) false else {
                 // screen par jawab + kahan se mila; bolkar sirf jawab

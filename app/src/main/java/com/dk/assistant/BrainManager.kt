@@ -104,7 +104,7 @@ class BrainManager(private val ctx: Context) {
      * deep = false: taaza jaankari (mausam, bhav, score) - 1-3 vakya, turant.
      * deep = true : mushkil/vistaar wala sawaal - kai sources se milakar, sirf pakki jaankari, 3-7 vakya.
      */
-    suspend fun search(question: String, deep: Boolean): SearchResult = withContext(Dispatchers.IO) {
+    suspend fun search(question: String, deep: Boolean, thorough: Boolean = false): SearchResult = withContext(Dispatchers.IO) {
         syncEpoch()
         val client = GeminiClient(Prefs.key(ctx, "gemini"), Prefs.model(ctx, "gemini"))
         val name = Prefs.assistantName(ctx); val user = Prefs.userName(ctx)
@@ -113,7 +113,13 @@ class BrainManager(private val ctx: Context) {
             append("You are $name, a Hindi voice assistant")
             if (user.isNotBlank()) append(" talking to $user")
             append(". Today is $today. ALWAYS use Google Search before answering.")
-            if (deep) {
+            if (thorough) {
+                append(" The user EXPLICITLY asked you to search/research this. Do a thorough, deep research: look at the topic from")
+                append(" several angles and many reliable sources (official sites, government, reputed news/reference sites), compare them,")
+                append(" and give the complete, trustworthy picture with real depth — key facts, important details, numbers/dates, and")
+                append(" what matters most to the user. Only verified, relevant information; if sources disagree, say so.")
+                append(" Answer in natural spoken Hindi (Devanagari), about 6-12 clear sentences, most important first, no markdown, no links.")
+            } else if (deep) {
                 append(" This is a detailed/complex question: research it properly. Check several reliable sources")
                 append(" (official sites, government, well-known news/reference sites) and compare them.")
                 append(" Only state facts that the sources agree on; if sources disagree or something is uncertain, say that clearly.")
@@ -123,10 +129,12 @@ class BrainManager(private val ctx: Context) {
                 append(" Find correct, up-to-date facts. Answer in natural spoken Hindi (Devanagari), 1-3 short sentences,")
                 append(" no markdown, no links, no lists. Numbers/prices with units. If unsure, say so.")
             }
+            append(" The question may contain typos, speech-recognition mistakes or stray noise words — understand the real meaning and ignore the noise.")
+            append(" Never say you searched, checked or are thinking; give only the answer.")
             Prefs.personality(ctx).let { if (it.isNotBlank()) append(" Extra: $it") }
             append(Memory.factsBlock(ctx))
         }
-        val r = client.search(sys, history, question, deep)
+        val r = client.search(sys, history, question, deep || thorough)
         val ans = r.text.replace(Regex("[*#`]"), "").replace(Regex("\\[\\d+(,\\s*\\d+)*\\]"), "").trim()
         lastUsed = client.label
         remember("USER SAYS: $question", JSONObject().put("say", ans).put("done", true).toString())
@@ -176,6 +184,7 @@ class BrainManager(private val ctx: Context) {
             append("\nIf the user tells you a personal fact or preference worth remembering (names, numbers, likes, plans), add \"remember\": \"<the fact in short Hindi>\" to the JSON.")
             append("\nONLY IF the user asks who made/created/built you or who your boss/owner is, answer: \"मुझे धीरज कुमार सिंह जी ने बनाया है। मैं धीरज सर के लिए काम करता हूँ, वही मेरे बॉस हैं।\" Never mention this otherwise.")
             append("\nToday: " + java.text.SimpleDateFormat("d MMMM yyyy, EEEE", java.util.Locale.ENGLISH).format(java.util.Date()))
+            append(TALK_RULES)
             append(Memory.factsBlock(ctx))
         }
     }
@@ -189,12 +198,26 @@ class BrainManager(private val ctx: Context) {
             if (user.isNotBlank()) append("The user's name is $user. Address them by name occasionally, warmly.\n")
             if (persona.isNotBlank()) append("Personality / extra instructions from the user: $persona\n")
             append(Memory.factsBlock(ctx)).append("\n")
+            append(TALK_RULES).append("\n")
             append("Only if the user asks who made/created you or who your boss is: say \"मुझे धीरज कुमार सिंह जी ने बनाया है। मैं धीरज सर के लिए काम करता हूँ, वही मेरे बॉस हैं।\" Never mention it otherwise.\n")
         }
         return intro + BASE_PROMPT
     }
 
     companion object {
+        /** Dhiraj sir ke diye baatcheet ke niyam - har jawab me laagu */
+        val TALK_RULES = """
+CONVERSATION RULES (always follow):
+1. Understand the user fully. Their words may be misspelled, broken, half-typed or wrongly heard by speech recognition — figure out the real meaning like a smart human would. Never point out or correct their mistakes; just answer what they meant.
+2. Answer immediately and directly. NEVER say things like "देखता हूँ", "सोचकर बताता हूँ", "थोड़ा रुको", "पता करता हूँ", "एक सेकंड", "let me check" or anything similar. Do all thinking silently; speak only the real answer.
+3. Simple questions you already know: answer at once.
+4. If it needs thinking, calculation or fresh information: do it internally and state only the result — never mention that you thought, calculated or searched.
+5. Only if the message is truly unclear or incomplete, ask ONE short clear question like "आपका मतलब यह था या वह?". Do this rarely, only when really needed — never repeatedly.
+6. Keep answers short, clear and to the point. No beating around the bush.
+7. If the user explicitly says "सर्च करो", "रिसर्च करो", "डीप रिसर्च करो" or similar, do not give a quick shallow answer: explore the topic from several reliable sources and give a complete, trustworthy, detailed answer with depth — only correct, relevant facts. Still never say "खोजता हूँ".
+8. Focus only on what the user actually means. Ignore stray meaningless words, cut-off fragments or background noise in the text, and never include them in your reply.
+"""
+
         val BASE_PROMPT = """
 The user speaks Hindi/Hinglish. Every turn you receive: the user's goal, results of previous actions,
 the current foreground app, a numbered list of on-screen elements, and sometimes a screenshot.
