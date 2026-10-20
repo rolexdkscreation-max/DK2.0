@@ -287,13 +287,17 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
         } catch (e: Fatal) { throw e } catch (e: Exception) { log("models list nahi aayi: ${e.message}") }
         fun ver(m: String) = Regex("(\\d+(?:\\.\\d+)?)").find(m)?.value?.toDoubleOrNull() ?: 0.0
         // translate/transcribe = sirf anuvaad/likhne wale model, baatcheet nahi karte -> inhe mat chuno
-        val good = found.filter { !it.contains("translat") && !it.contains("transcri") }
+        // robotics = robot wala model, baatcheet ke liye nahi
+        val good = found.filter { !it.contains("translat") && !it.contains("transcri") && !it.contains("robotic") }
             .sortedWith(compareBy<String> { if (it.contains("thinking")) 1 else 0 }
                 .thenBy { if (it.contains("live") || it.contains("native-audio")) 0 else 1 }
                 .thenByDescending { ver(it) })
+        // pichhla chala model tabhi pehle jab woh sabse naye jitna naya ho (warna purana 2.5 hamesha chipka rehta)
         val last = Prefs.liveModel(svc)
-        return (listOfNotNull(last.takeIf { it.isNotBlank() && !it.contains("transcri") && !it.contains("translat") && (found.isEmpty() || it in found) }) +
-            good + FALLBACK_MODELS).distinct()
+        val best = good.firstOrNull()?.let { ver(it) } ?: 0.0
+        val keepLast = last.isNotBlank() && !last.contains("transcri") && !last.contains("translat") && !last.contains("robotic") &&
+            (found.isEmpty() || last in found) && ver(last) >= best
+        return (listOfNotNull(last.takeIf { keepLast }) + good + FALLBACK_MODELS).distinct()
     }
 
     private fun setupJson(m: String): String {
@@ -632,6 +636,7 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
             val bytes = ByteArray(CHUNK_SAMPLES * 2)
             val zeros = ByteArray(CHUNK_SAMPLES * 2)
             var last = 0L; var zeroRun = 0; var echo = 0.0; var loud = 0; var barge = false; var errRun = 0
+            var playSince = 0L
             while (isActive && !stopped) {
                 // poora 40ms tukda padho (beech ka khaali hissa = gap)
                 var got = 0
@@ -663,13 +668,17 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
                 if (sum == 0.0) { if (++zeroRun == 75) log("माइक से 3 सेकंड से बिल्कुल आवाज़ नहीं (कोई दूसरा ऐप माइक ले रहा है?)") } else zeroRun = 0
                 // DK bol raha ho: apni goonj Gemini ko na bhejo (warna woh khud ko tok deta), par user tez bole to bhejo (barge-in)
                 val out = if (isPlaying()) {
+                    if (playSince == 0L) playSince = now
                     if (!barge) {
-                        if (rms > maxOf(echo * 2.2, 900.0)) loud++ else { loud = 0; echo = if (echo == 0.0) rms else echo * 0.9 + rms * 0.1 }
-                        if (loud >= 4) { barge = true; barging = true; log("बीच में बोलना पकड़ा (rms=${rms.toInt()}, goonj=${echo.toInt()})") }
+                        // DK ki awaaz shuru hote hi goonj dheere-dheere badhti hai: pehle 700ms sirf goonj seekho (galat "toka" nahi)
+                        if (now - playSince < 700) { loud = 0; echo = maxOf(echo * 0.8, rms) }
+                        else if (rms > maxOf(echo * 2.5, 1200.0)) loud++
+                        else { loud = 0; echo = if (echo == 0.0) rms else echo * 0.9 + rms * 0.1 }
+                        if (loud >= 5) { barge = true; barging = true; log("बीच में बोलना पकड़ा (rms=${rms.toInt()}, goonj=${echo.toInt()})") }
                     }
                     if (barge) bytes else zeros
                 } else {
-                    barge = false; loud = 0; barging = false
+                    barge = false; loud = 0; barging = false; playSince = 0L; echo = 0.0
                     if (DKState.mode == Mode.LISTENING) DKState.level = (rms / 3500.0).toFloat().coerceIn(0f, 1f)
                     bytes
                 }
