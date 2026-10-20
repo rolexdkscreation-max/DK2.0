@@ -156,12 +156,16 @@ class Speaker(context: Context) : TextToSpeech.OnInitListener {
             val pendingWav = HashMap<String, kotlinx.coroutines.Deferred<ByteArray?>>()
             val bg = kotlinx.coroutines.CoroutineScope(Dispatchers.IO + kotlinx.coroutines.SupervisorJob())
             fun prefetch(t: String) {
+                if (gem && System.currentTimeMillis() <= geminiCooldownUntil) gem = false
                 if (gem && !pendingWav.containsKey(t)) pendingWav[t] = bg.async {
                     try { if (quick) cacheFile(voice, t)?.takeIf { it.exists() }?.readBytes() else synth(key, t, voice) }
                     catch (e: Exception) {
                         val code = (e as? AiException)?.code ?: 0
-                        geminiCooldownUntil = System.currentTimeMillis() + if (code == 429) 10 * 60_000L else 2 * 60_000L
-                        DKLog.d("Gemini awaaz nahi chali ($code) - Google awaaz"); null
+                        val until = if (code == 429) maxOf(System.currentTimeMillis() + 10 * 60_000L, GeminiTts.allBlockedUntil())
+                            else System.currentTimeMillis() + 2 * 60_000L
+                        val first = System.currentTimeMillis() > geminiCooldownUntil
+                        geminiCooldownUntil = maxOf(geminiCooldownUntil, until)
+                        if (first) DKLog.d("Gemini awaaz nahi chali ($code) - ${(geminiCooldownUntil - System.currentTimeMillis()) / 60_000} मिनट तक Google awaaz"); null
                     }
                 }
             }

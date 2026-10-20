@@ -133,6 +133,13 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
 
     private val toolJobs = ConcurrentHashMap<String, Job>()
 
+    /** Wake word se Live shuru hua: pehli baat (text) jo DK ko turant samajhni hai */
+    @Volatile var firstText: String? = null
+    /** >0 = itni der koi baat na ho to Live khud band (wake mode me wapas) */
+    @Volatile var idleExitMs = 0L
+    @Volatile private var lastAct = 0L
+    @Volatile private var idleExit = false
+
     fun stop() {
         stopped = true
         try { ws?.close(1000, "user stop") } catch (_: Exception) {}
@@ -152,7 +159,7 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
      * Fatal = Live chal hi nahi sakta.
      */
     suspend fun run(): String = withContext(Dispatchers.IO) {
-        stopped = false; goAway = false
+        stopped = false; goAway = false; idleExit = false; lastAct = System.currentTimeMillis()
         sent = 0; sentBytes = 0; dropped = 0; gaps = 0; readErr = 0; recvAudio = 0; reconnects = 0
         if (!Setup.hasMic(svc)) throw Fatal("माइक की परमिशन नहीं है")
         val key = key(svc).ifBlank { throw Fatal("Gemini की key नहीं है") }
@@ -208,6 +215,11 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
                     // ab chalne do jab tak band/toote/goAway/call
                     while (!stopped && isActive) {
                         if (closed.isCompleted) break
+                        if (idleExitMs > 0 && !turnActive && !isPlaying() && toolJobs.isEmpty() &&
+                            System.currentTimeMillis() - lastAct > idleExitMs) {
+                            log("${idleExitMs / 1000}s से कोई बात नहीं - Live बंद, wake word पर वापस")
+                            idleExit = true; stopped = true; break
+                        }
                         if (goAway && !turnActive && !isPlaying()) { log("goAway - नया connection"); goAwayDrop = true; break }
                         if (svc.callBusy()) { try { ws?.close(1000, "call") } catch (_: Exception) {}; return@coroutineScope }
                         if (System.currentTimeMillis() % 10_000 < 200) { updateStats(); log(stats) }
@@ -247,7 +259,7 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
                 updateStats(); log("बंद • $stats")
             }
         }
-        if (svc.callBusy()) "call" else "stopped"
+        if (svc.callBusy()) "call" else if (idleExit) "idle" else "stopped"
     }
 
     /** Is key par kaun se Live models hain (bidiGenerateContent) - sabse naya/tez pehle */
@@ -350,7 +362,18 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
     // ================================================================ server ke sandesh
     private fun onServer(msg: String, setup: CompletableDeferred<Unit>) {
         val o = try { JSONObject(msg) } catch (e: Exception) { log("JSON नहीं समझा: ${msg.take(80)}"); return }
-        if (o.has("setupComplete")) { ready = true; setup.complete(Unit); flushPending(); return }
+        if (o.has("setupComplete")) {
+            ready = true; setup.complete(Unit); flushPending()
+            firstText?.let { t ->
+                firstText = null
+                try {
+                    ws?.send(JSONObject().put("realtimeInput", JSONObject().put("text", t)).toString())
+                    log("पहली बात भेजी: $t")
+                } catch (_: Exception) {}
+            }
+            return
+        }
+        lastAct = System.currentTimeMillis()
         o.optJSONObject("sessionResumptionUpdate")?.let {
             if (it.optBoolean("resumable") && it.optString("newHandle").isNotBlank()) handle = it.optString("newHandle")
         }
@@ -455,6 +478,7 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
 
     /** Caption se turant shabd - "आप:" line */
     private fun onCaption(t: String, final: Boolean) {
+        lastAct = System.currentTimeMillis()
         // DK bol raha hai aur user ke asli shabd aaye (mic DK bolte samay sirf tez awaaz bhejta hai) -> DK chup
         if (isPlaying() && !generating) stopForUser("caption")
         DKState.user("$t…")

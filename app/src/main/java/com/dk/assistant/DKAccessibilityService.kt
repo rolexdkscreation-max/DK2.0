@@ -127,7 +127,12 @@ class DKAccessibilityService : AccessibilityService() {
     }
 
     fun startLive() {
-        if (DKState.live) return
+        if (DKState.live) {
+            // wake word se thodi der ka Live chal raha tha -> ab pakka Live (khud band nahi hoga)
+            if (wakeLive) { wakeLive = false; gemLive.idleExitMs = 0; Prefs.edit(this) { putBoolean("live_mode", true) } }
+            return
+        }
+        wakeLive = false; gemLive.idleExitMs = 0
         Setup.startKeepAlive(this)
         DKState.setLive(true)
         Prefs.edit(this) { putBoolean("live_mode", true) }
@@ -135,6 +140,7 @@ class DKAccessibilityService : AccessibilityService() {
     }
 
     fun stopLive() {
+        wakeLive = false; gemLive.idleExitMs = 0
         DKState.setLive(false)
         Prefs.edit(this) { putBoolean("live_mode", false) }
         gemLive.stop()
@@ -143,7 +149,11 @@ class DKAccessibilityService : AccessibilityService() {
         listener.release()
         ear.release()
         DKState.set(Mode.IDLE)
-        scope.launch { speaker.speak("ठीक है, माइक बंद।") }
+        scope.launch {
+            speaker.speak("ठीक है, माइक बंद।")
+            // "hamesha suno" chalu hai to wake word wala sunna wapas shuru
+            delay(600); ensureLoop()
+        }
     }
 
     /** Purana naam - ab live mode toggle karta hai. */
@@ -166,8 +176,20 @@ class DKAccessibilityService : AccessibilityService() {
     val gemLive by lazy { GeminiLive(this, agent) }
     @Volatile private var liveOffUntil = 0L
     fun callBusy() = calls.ringing || callPending || callAnnouncing || calls.inCall
-    fun useGeminiLive(): Boolean = DKState.live && Prefs.listenEngine(this) == "auto" &&
+    fun useGeminiLive(): Boolean = DKState.live && liveReady()
+    /** Gemini Live chal sakta hai? (sunne ka tareeka "auto" + Gemini key + abhi ruka nahi) */
+    fun liveReady(): Boolean = Prefs.listenEngine(this) == "auto" &&
         GeminiLive.available(this) && System.currentTimeMillis() > liveOffUntil
+    /** Live kyun nahi chal raha - log me saaf likho */
+    private fun liveWhyNot(): String = when {
+        Prefs.listenEngine(this) != "auto" -> "सेटिंग में सुनने का तरीका '${Prefs.listenEngine(this)}' है (Gemini Live के लिए 'अपने आप' चुनें)"
+        !GeminiLive.available(this) -> "Gemini key नहीं है"
+        System.currentTimeMillis() <= liveOffUntil -> "पिछली गलती के बाद ${(liveOffUntil - System.currentTimeMillis()) / 1000}s रुका है"
+        else -> "-"
+    }
+    /** Wake word sunke thodi der ke liye Live chalu kiya (chup rahne par wapas wake mode) */
+    @Volatile private var wakeLive = false
+    private var lastWhyNot = ""
 
     /** Bina beep wala tareeka chalega? (Groq ya Gemini key chahiye) */
     fun silentEar(): Boolean = Prefs.listenEngine(this) != "google" && Transcriber.available(this) &&
@@ -320,7 +342,7 @@ class DKAccessibilityService : AccessibilityService() {
         val wanted = DKState.live || Prefs.wakeMode(this)
         if (!wanted || loopJob?.isActive == true) return
         loopJob = scope.launch {
-            DKLog.d("Sunna shuru (live=${DKState.live})")
+            DKLog.d("Sunna shuru (live=${DKState.live}, wake=${Prefs.wakeMode(this@DKAccessibilityService)}, Gemini Live=${if (liveReady()) "तैयार" else "नहीं: " + liveWhyNot()})")
             listener.muteBeep = true
             var misses = 0
             while (isActive && (DKState.live || Prefs.wakeMode(this@DKAccessibilityService))) {
@@ -331,19 +353,34 @@ class DKAccessibilityService : AccessibilityService() {
                 if (useGeminiLive() && !callBusy()) {
                     if (!checkMic()) { delay(2000); continue }
                     ear.release(); listener.release()
+                    lastWhyNot = ""
+                    var failed = false
                     try {
                         val r = gemLive.run()
                         DKLog.d("Gemini Live ruka: $r")
                     } catch (e: GeminiLive.Fatal) {
+                        failed = true
                         liveOffUntil = System.currentTimeMillis() + 10 * 60_000L
                         DKState.set(Mode.IDLE)
                         warn("live", "Gemini Live नहीं चला: ${e.message}। अभी पुराने तरीके से सुन रहा हूँ।")
                     } catch (e: kotlinx.coroutines.CancellationException) { throw e
                     } catch (e: Exception) {
+                        failed = true
                         liveOffUntil = System.currentTimeMillis() + 2 * 60_000L
                         DKLog.d("Gemini Live गलती: ${e.javaClass.simpleName} ${e.message}")
                     }
+                    if (wakeLive) {
+                        // wake word wala chhota Live khatam -> wapas wake word sunna
+                        wakeLive = false; gemLive.idleExitMs = 0
+                        DKState.setLive(false); DKState.set(Mode.IDLE)
+                        val left = gemLive.firstText; gemLive.firstText = null
+                        if (failed && !left.isNullOrBlank()) agent.run(left).join()   // Live nahi chala to purane tareeke se jawab
+                    }
                     continue
+                }
+                if (DKState.live) {
+                    val why = liveWhyNot()
+                    if (why != lastWhyNot) { lastWhyNot = why; DKLog.d("Gemini Live इस्तेमाल नहीं हो रहा: $why") }
                 }
                 val heard = hear()
                 if (DKState.mode == Mode.LISTENING || DKState.mode == Mode.THINKING) DKState.set(Mode.IDLE)
@@ -388,6 +425,16 @@ class DKAccessibilityService : AccessibilityService() {
                     val wake = Prefs.wakeWords(this@DKAccessibilityService).firstOrNull { low.contains(it) } ?: continue
                     var cmd = heard.substring((low.indexOf(wake) + wake.length).coerceAtMost(heard.length))
                         .trim(' ', ',', '.', '!')
+                    // naam suna -> Gemini Live (asli awaaz, turant jawab); 45s chup = wapas wake word
+                    if (liveReady() && !callBusy() && checkMic()) {
+                        DKLog.d("Wake word suna -> Gemini Live" + if (cmd.isNotBlank()) " (बात: $cmd)" else "")
+                        wakeLive = true
+                        gemLive.idleExitMs = 45_000
+                        gemLive.firstText = cmd.ifBlank { null }
+                        if (cmd.isBlank()) DKState.set(Mode.LISTENING)
+                        DKState.setLive(true)
+                        continue
+                    }
                     if (cmd.isBlank()) {
                         speaker.speak("हाँ, बोलिए।")
                         DKState.set(Mode.LISTENING)

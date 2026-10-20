@@ -24,8 +24,38 @@ object GeminiTts {
 
     @Volatile private var workingModel: String? = null
 
+    /** Model -> kab tak band (429 limit). Free tier: 10 awaaz/din har model - khatam ho to baar-baar mat maango */
+    private val blockedUntil = java.util.concurrent.ConcurrentHashMap<String, Long>()
+    private val missing = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
+
+    /** Sab model band hain to kab khulenge (0 = koi khula hai) */
+    fun allBlockedUntil(): Long {
+        val now = System.currentTimeMillis()
+        val all = (NEW_MODELS + OLD_MODELS).filter { it !in missing }
+        if (all.isEmpty()) return now + 6 * 3600_000L
+        val times = all.map { blockedUntil[it] ?: 0L }
+        return if (times.all { it > now }) times.min() else 0L
+    }
+
+    /** "Please retry in 13h22m27.5s" / "retryDelay":"48s" -> ms */
+    internal fun retryMs(msg: String): Long {
+        val m = Regex("""retry in\s*(?:(\d+)h)?\s*(?:(\d+)m(?!s))?\s*(?:([\d.]+)s)?""", RegexOption.IGNORE_CASE).find(msg)
+        if (m != null) {
+            val h = m.groupValues[1].toLongOrNull() ?: 0; val mi = m.groupValues[2].toLongOrNull() ?: 0
+            val sec = m.groupValues[3].toDoubleOrNull() ?: 0.0
+            val t = h * 3600_000 + mi * 60_000 + (sec * 1000).toLong()
+            if (t > 0) return t + 5_000
+        }
+        Regex("""retryDelay"?\s*:?\s*"?(\d+)s""").find(msg)?.let { return it.groupValues[1].toLong() * 1000 + 5_000 }
+        val low = msg.lowercase()
+        return if (low.contains("per day") || low.contains("perday") || low.contains("daily")) 3 * 3600_000L else 60_000L
+    }
+
     fun synthesize(key: String, text: String, voice: String, style: String = ""): ByteArray {
+        val now = System.currentTimeMillis()
         val order = (listOfNotNull(workingModel) + NEW_MODELS + OLD_MODELS).distinct()
+            .filter { it !in missing && (blockedUntil[it] ?: 0L) <= now }
+        if (order.isEmpty()) throw AiException(429, "Gemini TTS की आज की फ्री लिमिट खत्म")
         var last: Exception? = null
         for (m in order) {
             try {
@@ -34,8 +64,17 @@ object GeminiTts {
                 return wav
             } catch (e: AiException) {
                 last = e
-                DKLog.d("Gemini TTS $m -> ${e.code} ${e.message}")
-                if (e.code == 401 || e.code == 403) throw e
+                if (e.code == 401 || e.code == 403) { DKLog.d("Gemini TTS $m -> ${e.code} ${e.message}"); throw e }
+                when (e.code) {
+                    429 -> {
+                        val ms = retryMs(e.message ?: "")
+                        blockedUntil[m] = System.currentTimeMillis() + ms
+                        if (workingModel == m) workingModel = null
+                        DKLog.d("Gemini TTS $m -> 429 लिमिट, ${ms / 60_000} मिनट तक नहीं माँगूँगा")
+                    }
+                    404 -> { missing.add(m); if (workingModel == m) workingModel = null; DKLog.d("Gemini TTS $m -> 404 (मॉडल नहीं)") }
+                    else -> DKLog.d("Gemini TTS $m -> ${e.code} ${e.message}")
+                }
             }
         }
         throw last ?: AiException(0, "Gemini TTS fail")
