@@ -41,6 +41,41 @@ class AgentRunner(
         speaker.speak(text)
     }
 
+    /** Seedhi command turant (AI ke bina). */
+    fun runQuick(q: QuickCommands.Quick): Job {
+        job?.cancel()
+        val j = scope.launch { try { doQuick(q) } finally { DKState.set(Mode.IDLE) } }
+        job = j
+        return j
+    }
+
+    private suspend fun doQuick(q: QuickCommands.Quick): Boolean {
+        DKState.set(Mode.WORKING)
+        val t0 = System.currentTimeMillis()
+        val r = svc.perform(q.action)
+        DKLog.d("TURANT ${q.action} -> $r (${System.currentTimeMillis() - t0}ms)")
+        if (r.startsWith("ERROR")) return false
+        val type = q.action.optString("type")
+        val msg = when {
+            type == "who_calls" -> if (r.startsWith("CALLER:")) r.removePrefix("CALLER:").trim() + " का कॉल है।" else "पता नहीं चला किसका कॉल है।"
+            type == "unlock" -> if (r.contains("PIN")) "स्क्रीन चालू है, PIN या फिंगरप्रिंट से खोलिए।" else ""
+            type == "open_app" -> ""
+            else -> q.ack
+        }
+        DKState.reply(msg.ifBlank { "✓ ${q.action.optString("name", type)}" })
+        if (msg.isNotBlank()) speaker.speakQuick(msg)
+        return true
+    }
+
+    /** Kya sawaal ko internet se taaza jawab chahiye? */
+    private fun needsSearch(t: String): Boolean {
+        val w = listOf("आज", "अभी का", "ताज़ा", "ताजा", "लेटेस्ट", "latest", "न्यूज़", "न्यूज", "news", "खबर", "ख़बर", "मौसम", "weather",
+            "तापमान", "भाव", "रेट", "rate", "price", "कीमत", "दाम", "स्कोर", "score", "मैच", "match", "किसने जीता", "कौन जीता",
+            "पता करो", "पता करके", "सर्च करके", "सही बताओ", "सही जानकारी", "करेक्ट", "correct", "शेयर प्राइस", "stock", "सोने का",
+            "चांदी", "पेट्रोल", "डीज़ल", "रिजल्ट", "result", "चुनाव", "election", "कब है", "कब रिलीज", "release", "अपडेट क्या", "2025", "2026")
+        return w.any { t.contains(it) }
+    }
+
     private suspend fun execute(goal: String) {
         DKLog.d("Command: $goal")
         DKState.user(goal)
@@ -48,6 +83,11 @@ class AgentRunner(
         if (lower in listOf("stop", "रुको", "बस", "ruko", "cancel")) { speaker.stop(); return }
         if (lower.contains("नई बात") || lower.contains("new chat") || lower.contains("भूल जाओ")) {
             brain.reset(); say("ठीक है, नई बातचीत शुरू करते हैं।"); return
+        }
+        // 1) Seedhi command? -> turant, bina AI
+        QuickCommands.parse(goal, Prefs.wakeWords(svc))?.let { q ->
+            if (doQuick(q)) return
+            // open_app fail (app nahi mila) -> AI sambhalega
         }
         if (!brain.hasUsableProvider()) {
             say("पहले सेटिंग्स में किसी AI की API key डालकर सेव कीजिए।")
@@ -59,6 +99,11 @@ class AgentRunner(
         // Normal baatcheet ho to screen padhe bina seedha jawab = bahut tez
         var chatMode = !looksLikePhoneTask(lower)
         var step = 0
+
+        // 2) Taaza/sahi jawab chahiye -> "पता करके बताता हूँ" + Google Search
+        if (chatMode && brain.canSearch() && needsSearch(lower)) {
+            if (searchAndSay(goal)) return
+        }
         while (step < MAX_STEPS) {
             step++
             coroutineContext.ensureActive()
@@ -82,9 +127,19 @@ class AgentRunner(
             }
 
             val t0 = System.currentTimeMillis()
+            // jawab 1.3 sec me na aaye to bolo "सोचकर बताता हूँ" / "हाँ, देख रहा हूँ" (sirf pehle step par)
+            val filler = if (step == 1) scope.launch {
+                delay(1300)
+                val f = if (chatMode) listOf("सोचकर बताता हूँ।", "एक सेकंड, सोच रहा हूँ।").random()
+                        else listOf("हाँ, देख रहा हूँ।", "ठीक है, कर रहा हूँ।").random()
+                DKState.reply(f)
+                speaker.speakQuick(f)
+            } else null
             val resp: JSONObject = try {
-                brain.next(prompt, shot, memoryNote = if (chatMode) "USER SAYS: $goal" else feedback)
+                brain.next(prompt + if (chatMode && brain.canSearch()) "\nSEARCH AVAILABLE" else "", shot,
+                    memoryNote = if (chatMode) "USER SAYS: $goal" else feedback)
             } catch (e: Exception) {
+                filler?.cancel()
                 DKLog.d("AI error: ${e.javaClass.simpleName} ${e.message}")
                 val msg = brain.explain(e)
                 DKState.reply(msg + "\n(" + (e.message ?: e.javaClass.simpleName).take(160) + ")")
@@ -92,6 +147,12 @@ class AgentRunner(
                 return
             }
             DKLog.d("AI ${System.currentTimeMillis() - t0}ms (${brain.lastUsed}): $resp")
+            // filler shuru nahi hua to rok do; bol raha ho to poora hone do (beech me na kate)
+            if (filler != null) { if (filler.isActive && System.currentTimeMillis() - t0 < 1300) filler.cancel() else filler.join() }
+
+            if (chatMode && resp.optBoolean("need_search", false)) {
+                if (searchAndSay(goal, fillerSaid = filler != null && !filler.isCancelled)) return
+            }
 
             if (chatMode && resp.optBoolean("need_screen", false)) {
                 chatMode = false; step--
@@ -137,6 +198,22 @@ class AgentRunner(
             feedback = "USER GOAL (same task, continue): $goal\nRESULTS OF YOUR LAST ACTIONS:\n$results"
         }
         say("बहुत सारे स्टेप हो गए, मैंने काम यहीं रोक दिया।")
+    }
+
+    private suspend fun searchAndSay(goal: String, fillerSaid: Boolean = false): Boolean {
+        DKState.set(Mode.THINKING)
+        val f = if (!fillerSaid) scope.launch {
+            val t = listOf("पता करके बताता हूँ।", "एक सेकंड, देखकर बताता हूँ।").random()
+            DKState.reply(t); speaker.speakQuick(t)
+        } else null
+        return try {
+            val ans = brain.searchAnswer(goal)
+            f?.join()
+            if (ans.isBlank()) false else { say(ans); true }
+        } catch (e: Exception) {
+            DKLog.d("Search fail: ${e.message}")
+            f?.join(); false
+        }
     }
 
     /** Kya yeh phone par kuch karne ki command hai? (nahi to normal baatcheet) */

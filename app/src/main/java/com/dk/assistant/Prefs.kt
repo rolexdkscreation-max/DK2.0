@@ -69,6 +69,10 @@ object Prefs {
     // ---- sunna: "auto" = bina beep (Groq/Gemini key ho to), "google" = Google mic (beep aa sakti hai)
     fun listenEngine(c: Context) = sp(c).getString("listen_engine", "auto") ?: "auto"
 
+    fun announceCalls(c: Context) = sp(c).getBoolean("announce_calls", true)
+    /** Sawaal ka sahi/taaza jawab Google Search se (Gemini key ho to) */
+    fun webAnswers(c: Context) = sp(c).getBoolean("web_answers", true)
+
     // ---- provider ke models ki list (cache)
     fun models(c: Context, id: String): List<String> =
         (sp(c).getString("models_$id", "") ?: "").split('\n').filter { it.isNotBlank() }

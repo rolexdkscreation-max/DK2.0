@@ -10,6 +10,7 @@ import android.speech.tts.Voice
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
 import java.io.File
 import java.util.Locale
@@ -85,9 +86,20 @@ class Speaker(context: Context) : TextToSpeech.OnInitListener {
         }
     }
 
+    /** Chhote, baar-baar bole jaane wale vakya (ठीक है, सोचकर बताता हूँ...) ki awaaz save - agli baar turant. */
+    private fun cacheFile(voice: String, text: String): File? {
+        if (text.length > 60) return null
+        val h = java.security.MessageDigest.getInstance("MD5").digest("$voice|$text".toByteArray())
+            .joinToString("") { "%02x".format(it) }
+        val dir = File(appCtx.cacheDir, "tts_cache").apply { mkdirs() }
+        return File(dir, "$h.wav")
+    }
+
     private suspend fun speakGemini(key: String, text: String, voice: String): Boolean {
         return try {
-            val wav = withContext(Dispatchers.IO) { GeminiTts.synthesize(key, text, voice) }
+            val cf = cacheFile(voice, text)
+            val wav = if (cf != null && cf.exists() && cf.length() > 100) withContext(Dispatchers.IO) { cf.readBytes() }
+            else withContext(Dispatchers.IO) { GeminiTts.synthesize(key, text, voice).also { w -> cf?.writeBytes(w) } }
             playWav(wav); true
         } catch (e: Exception) {
             val code = (e as? AiException)?.code ?: 0
@@ -108,6 +120,30 @@ class Speaker(context: Context) : TextToSpeech.OnInitListener {
         pending[id] = done
         tts.speak(text, TextToSpeech.QUEUE_FLUSH, null, id)
         withTimeoutOrNull(60_000) { done.await() }
+    }
+
+    /** Turant bolne wali awaaz (Gemini cache me ho to wahi, warna Google) - filler/ack ke liye. */
+    @OptIn(kotlinx.coroutines.DelicateCoroutinesApi::class)
+    suspend fun speakQuick(text: String) {
+        if (text.isBlank()) return
+        val prev = DKState.mode
+        try {
+            val key = Prefs.key(appCtx, "gemini")
+            val voice = Prefs.geminiVoice(appCtx)
+            val cf = cacheFile(voice, text)
+            if (Prefs.voiceEngine(appCtx) == "gemini" && key.isNotBlank() && cf != null && cf.exists()) {
+                playWav(withContext(Dispatchers.IO) { cf.readBytes() })
+            } else if (Prefs.voiceEngine(appCtx) == "gemini" && key.isNotBlank() && System.currentTimeMillis() > geminiCooldownUntil) {
+                // pehli baar: Google se turant bolo, peeche Gemini awaaz cache me bana lo
+                speakGoogle(text)
+                kotlinx.coroutines.GlobalScope.launch(Dispatchers.IO) {
+                    try { cf?.writeBytes(GeminiTts.synthesize(key, text, voice)) } catch (_: Exception) {}
+                }
+            } else speakGoogle(text)
+        } finally {
+            lastSpokeAt = System.currentTimeMillis()
+            if (DKState.mode == Mode.SPEAKING) DKState.set(prev)
+        }
     }
 
     /** Settings me awaaz sunne ke liye. */

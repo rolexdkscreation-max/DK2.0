@@ -66,13 +66,21 @@ class MainActivity : AppCompatActivity() {
         chipAi.setOnClickListener { openSettings() }
         findViewById<TextView>(R.id.chipUpdate).setOnClickListener { openSettings() }
 
-        if (!Setup.hasMic(this)) askPerms()
+        val callPermsMissing = CallManager.PERMS.any {
+            androidx.core.content.ContextCompat.checkSelfPermission(this, it) != android.content.pm.PackageManager.PERMISSION_GRANTED
+        }
+        val asked = getSharedPreferences("dk_prefs", MODE_PRIVATE).getBoolean("call_perm_asked", false)
+        if (!Setup.hasMic(this) || (callPermsMissing && !asked)) {
+            getSharedPreferences("dk_prefs", MODE_PRIVATE).edit().putBoolean("call_perm_asked", true).apply()
+            askPerms()
+        }
     }
 
     private fun openSettings() = startActivity(Intent(this, SettingsActivity::class.java))
 
     private fun askPerms() {
         val perms = mutableListOf(Manifest.permission.RECORD_AUDIO)
+        perms.addAll(CallManager.PERMS)
         if (Build.VERSION.SDK_INT >= 33) perms.add(Manifest.permission.POST_NOTIFICATIONS)
         ActivityCompat.requestPermissions(this, perms.toTypedArray(), 10)
     }
@@ -80,6 +88,7 @@ class MainActivity : AppCompatActivity() {
     override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
         Setup.startKeepAlive(this)
+        DKAccessibilityService.instance?.calls?.start()
         render()
     }
 

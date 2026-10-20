@@ -44,6 +44,8 @@ class SettingsActivity : AppCompatActivity() {
     private lateinit var swFallback: SwitchCompat
     private lateinit var swWake: SwitchCompat
     private lateinit var swShot: SwitchCompat
+    private lateinit var swCalls: SwitchCompat
+    private lateinit var swWeb: SwitchCompat
     private lateinit var sbRate: SeekBar
     private lateinit var sbPitch: SeekBar
     private val keyFields = mutableMapOf<String, EditText>()
@@ -210,6 +212,12 @@ class SettingsActivity : AppCompatActivity() {
         card("विकल्प", null) { box ->
             swWake = switch(box, "हमेशा सुनो (जगाने वाला शब्द बोलकर कमांड)", Prefs.wakeMode(this))
             swShot = switch(box, "स्क्रीनशॉट भी AI को भेजो (ज़्यादा समझदार, ज़्यादा डेटा)", Prefs.screenshot(this))
+            swCalls = switch(box, "कॉल आने पर बताओ किसका कॉल है (\"उठा लो\" / \"काट दो\" बोलें)", Prefs.announceCalls(this))
+            swWeb = switch(box, "ज़रूरी सवालों का जवाब इंटरनेट (Google Search) से पता करके दो — Gemini key से", Prefs.webAnswers(this))
+            row(box, button("कॉल/कॉन्टैक्ट परमिशन दें") {
+                androidx.core.app.ActivityCompat.requestPermissions(this, CallManager.PERMS, 11)
+            })
+            hint(box, "कॉल के दौरान Android दूसरे ऐप्स को माइक नहीं देता — कॉल काटने के लिए स्क्रीन पर तैरता DK बुलबुला एक बार दबाएँ।")
         }
 
         // ---- Permissions
@@ -330,6 +338,8 @@ class SettingsActivity : AppCompatActivity() {
             putBoolean("fallback", swFallback.isChecked)
             putBoolean("wake_mode", swWake.isChecked)
             putBoolean("screenshot", swShot.isChecked)
+            putBoolean("announce_calls", swCalls.isChecked)
+            putBoolean("web_answers", swWeb.isChecked)
             putBoolean("auto_update", swAutoUpd.isChecked)
             putFloat("tts_rate", seekValue(sbRate))
             putString("voice_gender", radioValue(rgGender, listOf("female", "male"), 2000))
@@ -347,6 +357,13 @@ class SettingsActivity : AppCompatActivity() {
             val warn = if (Prefs.key(this, active).isBlank()) " (पर ${active2?.name} की key खाली है)" else ""
             toast("सेटिंग्स सेव हो गईं$warn")
         }
+    }
+
+    override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        DKAccessibilityService.instance?.calls?.start()
+        if (requestCode == 11) toast(if (grantResults.all { it == android.content.pm.PackageManager.PERMISSION_GRANTED }) "✓ कॉल परमिशन मिल गई"
+            else "कुछ परमिशन नहीं मिलीं — App info → Permissions से दें (Android 13+: पहले ⋮ → Allow restricted settings)")
     }
 
     override fun onPause() { save(false); super.onPause() }

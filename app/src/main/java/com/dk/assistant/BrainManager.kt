@@ -81,6 +81,23 @@ class BrainManager(private val ctx: Context) {
             throw lastError ?: AiException(-1, "NO_KEY")
         }
 
+    fun canSearch() = Prefs.webAnswers(ctx) && Prefs.key(ctx, "gemini").isNotBlank()
+
+    /** Internet (Google Search) se pata karke sahi jawab - bolne layak chhota text. */
+    suspend fun searchAnswer(question: String): String = withContext(Dispatchers.IO) {
+        val client = GeminiClient(Prefs.key(ctx, "gemini"), Prefs.model(ctx, "gemini"))
+        val name = Prefs.assistantName(ctx); val user = Prefs.userName(ctx)
+        val sys = "You are $name, a Hindi voice assistant" + (if (user.isNotBlank()) " talking to $user" else "") +
+            ". Use Google Search to find correct, up-to-date facts. Today is " +
+            java.text.SimpleDateFormat("d MMMM yyyy", java.util.Locale.ENGLISH).format(java.util.Date()) +
+            ". Answer in natural spoken Hindi (Devanagari), 1-3 short sentences, no markdown, no links, no lists. " +
+            "Numbers/prices with units. If unsure, say so." + Prefs.personality(ctx).let { if (it.isNotBlank()) " Extra: $it" else "" }
+        val ans = client.searchAnswer(sys, history, question).replace(Regex("[*#`]"), "").trim()
+        lastUsed = client.label
+        remember("USER SAYS: $question", JSONObject().put("say", ans).put("done", true).toString())
+        ans
+    }
+
     /** Settings me "टेस्ट" button ke liye. */
     suspend fun test(p: Provider): String = withContext(Dispatchers.IO) {
         val client = clientFor(p) ?: return@withContext "पहले API key और model डालिए"
@@ -179,6 +196,8 @@ Rules:
 9. Keep "say" very short (1 sentence) while working. When done, briefly tell the result.
 10. CHAT MODE: if the input says "CHAT MODE" you get no screen info. Answer normal talk/questions directly
     (done true). If the user actually wants something done on the phone, reply exactly {"need_screen": true}.
+    If the question needs current or exact facts you may not know (news, prices, weather, scores, dates, recent events,
+    "सही बताओ", "पता करके") and the input says SEARCH AVAILABLE, reply exactly {"need_search": true}.
 11. Only use "look" when the element list is not enough (images, games, unclear screen).
 """.trimIndent()
     }

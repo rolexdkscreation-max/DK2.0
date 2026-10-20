@@ -70,6 +70,42 @@ class GeminiClient(private val key: String, private val model: String) : AiClien
         throw last ?: AiException(0, "Gemini fail")
     }
 
+    /** Google Search se taaza/sahi jawab (grounding). Sirf text. */
+    fun searchAnswer(system: String, history: List<Turn>, question: String): String {
+        var last: AiException? = null
+        for (m in (listOf(model) + BACKUP_MODELS).distinct()) {
+            try {
+                val contents = JSONArray()
+                history.takeLast(6).forEach {
+                    contents.put(JSONObject().put("role", if (it.role == "user") "user" else "model")
+                        .put("parts", JSONArray().put(JSONObject().put("text", it.text))))
+                }
+                contents.put(JSONObject().put("role", "user").put("parts", JSONArray().put(JSONObject().put("text", question))))
+                val gen = JSONObject().put("maxOutputTokens", 1024)
+                if (m.startsWith("gemini-3") && !m.contains("lite")) gen.put("thinkingConfig", JSONObject().put("thinkingLevel", "low"))
+                val body = JSONObject()
+                    .put("system_instruction", JSONObject().put("parts", JSONArray().put(JSONObject().put("text", system))))
+                    .put("contents", contents)
+                    .put("tools", JSONArray().put(JSONObject().put("google_search", JSONObject())))
+                    .put("generationConfig", gen)
+                val req = Request.Builder()
+                    .url("https://generativelanguage.googleapis.com/v1beta/models/$m:generateContent")
+                    .header("x-goog-api-key", key)
+                    .post(body.toString().toRequestBody(JSON_TYPE)).build()
+                val p = JSONObject(execute(req)).optJSONArray("candidates")?.optJSONObject(0)
+                    ?.optJSONObject("content")?.optJSONArray("parts") ?: throw AiException(0, "khali jawab")
+                val sb = StringBuilder()
+                for (i in 0 until p.length()) { val o = p.optJSONObject(i) ?: continue; if (!o.optBoolean("thought")) sb.append(o.optString("text")) }
+                label = "Gemini+Search ($m)"
+                return sb.toString()
+            } catch (e: AiException) {
+                last = e
+                if (e.code == 401 || e.code == 403) throw e
+            }
+        }
+        throw last ?: AiException(0, "search fail")
+    }
+
     private fun call(m: String, system: String, history: List<Turn>, prompt: String, imageB64: String?,
                      thinking: Boolean = true): String {
         val contents = JSONArray()

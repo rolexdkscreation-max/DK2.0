@@ -1,0 +1,113 @@
+package com.dk.assistant
+
+import org.json.JSONObject
+
+/**
+ * Seedhi-saadi commands bina AI ke, turant (0.1 sec):
+ * "WhatsApp खोलो", "टॉर्च जलाओ", "वापस जाओ", "फ़ोन लॉक करो", "कॉल उठा लो", "आवाज़ बढ़ाओ" ...
+ * Lambi / kai-step wali baat (aur, फिर, भेजो, सर्च...) -> null (AI karega).
+ */
+object QuickCommands {
+    data class Quick(val action: JSONObject, val ack: String)
+
+    private fun a(type: String, vararg kv: Pair<String, Any>): JSONObject {
+        val o = JSONObject().put("type", type); kv.forEach { o.put(it.first, it.second) }; return o
+    }
+
+    private val FILLER = listOf("प्लीज़", "please", "प्लीज", "ज़रा", "जरा", "जल्दी", "अभी", "तुरंत", "भाई", "यार", "जी", "ना")
+
+    private val MULTI = listOf(" और ", " फिर ", " then ", " and ", " उसके बाद", "भेज", "मैसेज", "message", "सर्च", "search",
+        "ढूंढ", "ढूँढ", " कार्ट", " cart", "पोस्ट", "डिलीट", "delete", "टाइप", "लिख", "बता", "क्या", "कैसे", "क्यों", "कौन", "किसका")
+
+    fun parse(raw: String, wakeWords: List<String>): Quick? {
+        var t = " " + raw.lowercase().trim().trim('.', '।', '!', '?', ',') + " "
+        wakeWords.forEach { w -> if (w.length >= 2) t = t.replace(" $w ", " ").replace(" $w,", " ") }
+        FILLER.forEach { t = t.replace(" $it ", " ") }
+        t = t.replace(Regex("\\s+"), " ").trim()
+        if (t.isEmpty()) return null
+        fun has(vararg w: String) = w.any { t.contains(it) }
+        val words = t.split(' ').size
+        val onW = has("जला", "चालू", "ऑन", " on", "on ", "खोल", "स्टार्ट", "start", "जगा")
+        val offW = has("बंद", "ऑफ", " off", "off ", "बुझा", "हटा")
+
+        // ---- calls (sabse pehle)
+        if (has("कॉल", "call", "फोन", "फ़ोन") || has("उठा", "रिसीव", "receive", "answer")) {
+            if (has("उठा", "रिसीव", "receive", "answer", "पिक", "pick", "उठाओ")) {
+                val spk = has("स्पीकर", "speaker", "लाउड")
+                return Quick(a("answer_call", "speaker" to spk), if (spk) "कॉल उठा कर स्पीकर पर डाल रहा हूँ" else "कॉल उठा रहा हूँ")
+            }
+            if (has("कट", "काट", "reject", "end", "रख दो", "रखो", "डिक्लाइन", "decline", "मना")) return Quick(a("end_call"), "कॉल काट दिया")
+        }
+        if (has("स्पीकर", "speaker") && words <= 5) {
+            return if (offW) Quick(a("speaker", "on" to false), "स्पीकर बंद") else Quick(a("speaker", "on" to true), "स्पीकर चालू")
+        }
+        if (has("किसका कॉल", "किसका फोन", "किसका फ़ोन", "कौन कॉल", "who is calling")) return Quick(a("who_calls"), "")
+        if (has("कॉल", "call")) return null          // "राहुल को कॉल करो" jaisi baat AI karega
+        if (has("ब्लॉक", "block")) return null
+        val padded = " $t "
+        if (MULTI.any { if (it.startsWith(" ")) padded.contains(it) else t.contains(it) }) return null
+        if (words > 6) return null
+
+        // ---- torch
+        if (has("टॉर्च", "torch", "फ्लैश", "flash", "लाइट", "light", "बत्ती")) {
+            if (offW) return Quick(a("torch", "on" to false), "टॉर्च बंद")
+            if (onW || words <= 2) return Quick(a("torch", "on" to true), "टॉर्च चालू")
+        }
+        // ---- lock / unlock
+        if (has("अनलॉक", "unlock") || t == "फोन खोलो" || t == "फ़ोन खोलो" || has("स्क्रीन चालू", "स्क्रीन ऑन", "screen on"))
+            return Quick(a("unlock"), "")
+        if (has("लॉक", "lock") && !has("अनलॉक", "unlock", "सेटिंग")) return Quick(a("lock"), "")
+        if (has("स्क्रीन बंद", "स्क्रीन ऑफ", "screen off")) return Quick(a("lock"), "")
+
+        // ---- navigation
+        if (has("होम स्क्रीन", "होम पर", "होम जा", "home") || t == "होम") return Quick(a("home"), "")
+        if (has("वापस", "बैक", "back", "पीछे जा", "पीछे चल")) return Quick(a("back"), "")
+        if (has("रीसेंट", "recent")) return Quick(a("recents"), "")
+        if (has("नोटिफिकेशन", "notification")) return Quick(a("notifications"), "")
+        if (has("क्विक सेटिंग", "quick setting")) return Quick(a("quick_settings"), "")
+        if (has("स्क्रॉल", "scroll") || t == "नीचे करो" || t == "ऊपर करो" || t == "नीचे जाओ" || t == "ऊपर जाओ") {
+            val dir = when { has("ऊपर", "up") -> "up"; has("बाएँ", "बाएं", "left") -> "left"; has("दाएँ", "दाएं", "right") -> "right"; else -> "down" }
+            return Quick(a("scroll", "direction" to dir), "")
+        }
+        if (has("स्क्रीनशॉट", "screenshot")) return Quick(a("screenshot_save"), "स्क्रीनशॉट ले लिया")
+        if (has("सारे ऐप", "सब ऐप", "सभी ऐप", "clear all", "close all", "सारे app", "सब app")) return Quick(a("close_all_apps"), "सारे ऐप बंद कर दिए")
+        if ((has("ऐप", "app", "एप") && offW) || t == "बंद करो इसे" || t == "इसे बंद करो") return Quick(a("close_app"), "ऐप बंद कर दिया")
+
+        // ---- volume / media
+        if (has("आवाज़", "आवाज", "वॉल्यूम", "volume", "साउंड", "sound")) {
+            return when {
+                has("बढ़ा", "बढा", "तेज़", "तेज", "ज़्यादा", "ज्यादा", "up", "ऊँची") -> Quick(a("volume", "direction" to "up"), "")
+                has("कम", "घटा", "धीमी", "down", "नीची") -> Quick(a("volume", "direction" to "down"), "")
+                has("फुल", "full", "max", "पूरी") -> Quick(a("volume", "direction" to "max"), "")
+                has("म्यूट", "mute") || offW -> Quick(a("volume", "direction" to "mute"), "")
+                else -> null
+            }
+        }
+        if (has("साइलेंट", "silent", "वाइब्रेट", "vibrate")) return Quick(a("volume", "direction" to "silent"), "फ़ोन साइलेंट पर")
+        if (has("अगला गाना", "अगला वीडियो", "next song", "next")) return Quick(a("media", "key" to "next"), "")
+        if (has("पिछला गाना", "पिछला वीडियो", "previous")) return Quick(a("media", "key" to "previous"), "")
+        if (has("गाना रोको", "वीडियो रोको", "pause", "पॉज़", "पॉज")) return Quick(a("media", "key" to "pause"), "")
+        if (t == "गाना चलाओ" || t == "वीडियो चलाओ" || t == "resume" || has("रिज़्यूम")) return Quick(a("media", "key" to "play"), "")
+
+        // ---- settings page
+        if (has("सेटिंग", "setting")) {
+            val page = t.replace(Regex("(की |का |के )?(सेटिंग्स|सेटिंग्ज़|सेटिंग|settings|setting)"), " ")
+                .replace(Regex("(खोलो|खोल दो|खोलिए|ओपन करो|ओपन|open|दिखाओ|में जाओ|पर जाओ|जाओ|करो)"), " ").trim()
+            return Quick(a("open_settings", "page" to page.ifBlank { "main" }), "")
+        }
+        if (has("वाईफाई", "वाई-फाई", "wifi", "wi-fi")) return Quick(a("panel", "name" to "wifi"), "वाईफाई पैनल खोल दिया, यहाँ से चालू-बंद करें")
+        if (has("ब्लूटूथ", "bluetooth")) return Quick(a("open_settings", "page" to "bluetooth"), "")
+        if (has("हॉटस्पॉट", "hotspot")) return Quick(a("open_settings", "page" to "hotspot"), "")
+        if (has("इंटरनेट", "मोबाइल डेटा", "data")) return Quick(a("panel", "name" to "internet"), "")
+
+        // ---- app kholna:  "<app> खोलो" / "open <app>"
+        val m = Regex("^(?:open\\s+|ओपन\\s+)?(.+?)(?:\\s+(?:ऐप|app|एप))?\\s*(खोलो|खोल दो|खोलिए|खोल|ओपन करो|ओपन कर दो|open करो|open|ओपन|चालू करो|स्टार्ट करो|लगाओ)$").find(t)
+            ?: Regex("^(?:open|ओपन)\\s+(.+)$").find(t)
+        if (m != null) {
+            val app = m.groupValues[1].trim()
+            if (app.isNotBlank() && app.split(' ').size <= 3 && listOf(" पर ", " में ", " को ", " से ").none { " $app ".contains(it) })
+                return Quick(a("open_app", "name" to app), "")
+        }
+        return null
+    }
+}

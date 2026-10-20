@@ -60,6 +60,8 @@ class DKAccessibilityService : AccessibilityService() {
         private set
 
     private var bubble: OrbView? = null
+    lateinit var calls: CallManager
+        private set
     private var wakeLoopRunning = false
 
     // ---------------------------------------------------------------- lifecycle
@@ -70,6 +72,8 @@ class DKAccessibilityService : AccessibilityService() {
         listener = VoiceListener(this)
         ear = Ear(this)
         agent = AgentRunner(this, scope, speaker)
+        calls = CallManager(this) { who -> scope.launch { onIncomingCall(who) } }
+        calls.start()
         showBubble()
         DKLog.d("DK accessibility service chalu ho gaya")
         val user = Prefs.userName(this)
@@ -91,6 +95,7 @@ class DKAccessibilityService : AccessibilityService() {
         DKState.setLive(false)
         listener.release()
         ear.release()
+        calls.stop()
         speaker.shutdown()
         scope.cancel()
         super.onDestroy()
@@ -337,6 +342,10 @@ class DKAccessibilityService : AccessibilityService() {
                 "screenshot_save" -> if (Build.VERSION.SDK_INT >= 28) global(GLOBAL_ACTION_TAKE_SCREENSHOT) else "ERROR"
                 "power_menu" -> global(GLOBAL_ACTION_POWER_DIALOG)
                 "unlock", "wake" -> unlock()
+                "answer_call" -> answerCall(a.optBoolean("speaker", false))
+                "end_call" -> endCall()
+                "speaker" -> setSpeaker(a.optBoolean("on", true))
+                "who_calls" -> whoCalls()
                 "close_app" -> closeApp()
                 "close_all_apps" -> closeAllApps()
                 "wait" -> { delay(a.optLong("ms", 1000).coerceIn(100, 8000)); "waited" }
@@ -427,6 +436,95 @@ class DKAccessibilityService : AccessibilityService() {
         }
     }
 
+    // ---------------------------------------------------------------- calls
+    /** Call aate hi: "<naam> का कॉल आ रहा है" bolo, phir jawab suno (उठा लो / काट दो). */
+    private suspend fun onIncomingCall(who0: String) {
+        if (!Prefs.announceCalls(this)) return
+        delay(900)
+        var who = who0
+        if (who.isBlank()) who = callerFromScreen()
+        agent.stop()
+        val msg = if (who.isNotBlank()) "$who का कॉल आ रहा है। उठाऊँ या काट दूँ?" else "किसी का कॉल आ रहा है। उठाऊँ या काट दूँ?"
+        DKState.reply(msg)
+        speaker.speak(msg)
+        // live mode band ho tab bhi ek baar jawab suno
+        if (loopJob?.isActive != true) {
+            repeat(2) {
+                if (!calls.ringing) return
+                DKState.set(Mode.LISTENING)
+                val ans = hear()
+                DKState.set(Mode.IDLE)
+                if (ans != null) {
+                    val q = QuickCommands.parse(ans, Prefs.wakeWords(this))
+                    if (q != null) { agent.runQuick(q); return }
+                    val l = ans.lowercase()
+                    if (l.contains("हाँ") || l.contains("हां") || l.contains("yes")) { agent.runQuick(QuickCommands.parse("कॉल उठा लो", emptyList())!!); return }
+                    if (l.contains("नहीं") || l.contains("no")) { agent.runQuick(QuickCommands.parse("कॉल काट दो", emptyList())!!); return }
+                }
+            }
+        }
+    }
+
+    /** Call wali screen se naam padho (contacts permission na ho tab). */
+    private fun callerFromScreen(): String {
+        return try {
+            val root = rootInActiveWindow ?: return ""
+            val texts = mutableListOf<String>()
+            fun walk(n: AccessibilityNodeInfo?, d: Int) {
+                if (n == null || d > 25) return
+                n.text?.toString()?.trim()?.let { if (it.length in 2..40) texts.add(it) }
+                for (i in 0 until n.childCount) walk(n.getChild(i), d + 1)
+            }
+            walk(root, 0)
+            val skip = listOf("incoming", "call", "कॉल", "answer", "decline", "उत्तर", "अस्वीकार", "message", "मैसेज", "reply", "remind", "swipe", "स्वाइप", "mobile", "मोबाइल", "sim", "hd")
+            texts.firstOrNull { t -> skip.none { t.lowercase().contains(it) } && !t.contains(":") } ?: ""
+        } catch (e: Exception) { "" }
+    }
+
+    private fun clickByText(vararg words: String): Boolean {
+        val root = rootInActiveWindow ?: return false
+        for (w in words) {
+            for (n in root.findAccessibilityNodeInfosByText(w)) {
+                var c: AccessibilityNodeInfo? = n; var depth = 0
+                while (c != null && !c.isClickable && depth < 4) { c = c.parent; depth++ }
+                if (c != null && c.isClickable && c.performAction(AccessibilityNodeInfo.ACTION_CLICK)) return true
+            }
+        }
+        return false
+    }
+
+    private suspend fun answerCall(speakerOn: Boolean): String {
+        if (!calls.ringing && !calls.inCall) return "abhi koi call nahi aa rahi"
+        var ok = calls.answer()
+        if (!ok) ok = clickByText("Answer", "Accept", "उत्तर दें", "उत्तर", "स्वीकार", "जवाब दें", "रिसीव")
+        if (!ok) { // swipe-to-answer wali screen
+            val dm = resources.displayMetrics
+            swipe(dm.widthPixels / 2f, dm.heightPixels * 0.82f, dm.widthPixels / 2f, dm.heightPixels * 0.45f, 350)
+            ok = true
+        }
+        if (speakerOn) { delay(1800); setSpeaker(true) }
+        return if (ok) "call utha li" + (if (speakerOn) " aur speaker on" else "") else "ERROR: call nahi uthi"
+    }
+
+    private suspend fun endCall(): String {
+        if (calls.end()) return "call kaat di"
+        if (clickByText("End call", "Decline", "Reject", "कॉल समाप्त", "समाप्त", "अस्वीकार", "काटें", "कट करें", "Hang up")) return "call kaat di"
+        return "ERROR: call nahi kati - Phone permission (कॉल मैनेज करें) dijiye"
+    }
+
+    private suspend fun setSpeaker(on: Boolean): String {
+        // Pehle call screen ka "Speaker" button (sabse pakka), phir system tareeka
+        val clicked = clickByText("Speaker", "स्पीकर", "Speakerphone", "लाउडस्पीकर")
+        if (!clicked) calls.speakerApi(on)
+        return "speaker ${if (on) "on" else "off"}"
+    }
+
+    private fun whoCalls(): String {
+        if (!calls.ringing && !calls.inCall) return "abhi koi call nahi hai"
+        val who = calls.caller.ifBlank { callerFromScreen() }
+        return if (who.isBlank()) "caller ka naam pata nahi chala" else "CALLER: $who"
+    }
+
     /** Abhi wala app band karo: recents me card upar fenko. */
     private suspend fun closeApp(): String {
         val pkg = rootInActiveWindow?.packageName?.toString()
@@ -501,7 +599,11 @@ class DKAccessibilityService : AccessibilityService() {
                     params.x = startX + dx.toInt(); params.y = startY + dy.toInt()
                     wm.updateViewLayout(v, params)
                 }
-                MotionEvent.ACTION_UP -> if (!moved) toggleLive()
+                MotionEvent.ACTION_UP -> if (!moved) {
+                    // call chal rahi ho to bubble tap = call kaato (call ke dauraan Android mic nahi deta)
+                    if (calls.inCall || calls.ringing) scope.launch { perform(JSONObject().put("type", "end_call")) }
+                    else toggleLive()
+                }
             }
             true
         }
