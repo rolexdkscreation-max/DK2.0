@@ -221,7 +221,15 @@ class BrainManager(private val ctx: Context) {
      * deep = false: taaza jaankari (mausam, bhav, score) - 1-3 vakya, turant.
      * deep = true : mushkil/vistaar wala sawaal - kai sources se milakar, sirf pakki jaankari, 3-7 vakya.
      */
-    suspend fun search(question: String, deep: Boolean, thorough: Boolean = false): SearchResult = withContext(Dispatchers.IO) {
+    /**
+     * Gehri soch: mushkil sawaal (ganit, logic, coding, tulna, planning, "kyon/kaise" ka vistaar).
+     * Sabse taakatwar Gemini model + zyada sochna + zaroorat ho to Google Search.
+     */
+    suspend fun think(question: String): SearchResult = search(question, deep = true, think = true)
+
+    fun canThink() = Prefs.key(ctx, "gemini").isNotBlank()
+
+    suspend fun search(question: String, deep: Boolean, thorough: Boolean = false, think: Boolean = false): SearchResult = withContext(Dispatchers.IO) {
         syncEpoch()
         val client = GeminiClient(Prefs.key(ctx, "gemini"), Prefs.model(ctx, "gemini"))
         val name = Prefs.assistantName(ctx); val user = Prefs.userName(ctx)
@@ -229,8 +237,17 @@ class BrainManager(private val ctx: Context) {
         val sys = buildString {
             append("You are $name, a Hindi voice assistant")
             if (user.isNotBlank()) append(" talking to $user")
-            append(". Today is $today. ALWAYS use Google Search before answering.")
-            if (thorough) {
+            append(". Today is $today.")
+            if (think) append(" Use Google Search whenever facts, numbers or recent information matter.")
+            else append(" ALWAYS use Google Search before answering.")
+            if (think) {
+                append(" This is a HARD question. Think it through carefully step by step before answering: understand exactly what is asked,")
+                append(" break it into parts, work out each part, double-check every calculation, fact and logic, and consider edge cases.")
+                append(" For maths show the key steps briefly and the final number with units. For code, give correct working code.")
+                append(" For advice or plans, give concrete, practical, specific steps tailored to the user. If something is uncertain, say so honestly.")
+                append(" Answer in natural spoken Hindi (Devanagari; English technical words ok), clear and complete but not padded — usually 3-10 sentences,")
+                append(" final answer first, then the short reasoning. No markdown symbols.")
+            } else if (thorough) {
                 append(" The user EXPLICITLY asked you to search/research this. Do a thorough, deep research: look at the topic from")
                 append(" several angles and many reliable sources (official sites, government, reputed news/reference sites), compare them,")
                 append(" and give the complete, trustworthy picture with real depth — key facts, important details, numbers/dates, and")
@@ -251,7 +268,7 @@ class BrainManager(private val ctx: Context) {
             Prefs.personality(ctx).let { if (it.isNotBlank()) append(" Extra: $it") }
             append(Memory.factsBlock(ctx))
         }
-        val r = client.search(sys, history, question, deep || thorough)
+        val r = client.search(sys, history, question, deep || thorough, think)
         val ans = r.text.replace(Regex("[*#`]"), "").replace(Regex("\\[\\d+(,\\s*\\d+)*\\]"), "").trim()
         lastUsed = client.label
         remember("USER SAYS: $question", JSONObject().put("say", ans).put("done", true).toString())
@@ -318,6 +335,7 @@ class BrainManager(private val ctx: Context) {
             append("\nSPECIAL replies (the whole reply is only the tag):")
             append("\n- The user wants something DONE on the phone (open/click/type/send/call/settings/shopping/maps...): reply exactly [SCREEN]")
             append("\n- The question needs CURRENT facts you cannot know (today's news, live prices, weather, scores, recent results) and the input says SEARCH AVAILABLE: reply exactly [SEARCH]")
+            append("\n- The question is genuinely HARD and needs careful multi-step reasoning (multi-step maths/word problems, logic puzzles, writing or fixing code, detailed comparison, planning, deep why/how explanation, exam-level questions) and the input says THINK AVAILABLE: reply exactly [THINK]. Do NOT use it for simple chat or easy facts.")
             append("\nLEARN from the user every day: if they tell a personal fact, preference, habit, or how they like answers, add at the very end a new line: [YAAD] <that fact in short Hindi>")
             append("\nONLY IF the user asks who made/created/built you or who your boss/owner is, answer: \"मुझे धीरज कुमार सिंह जी ने बनाया है। मैं धीरज सर के लिए काम करता हूँ, वही मेरे बॉस हैं।\" Never mention this otherwise.")
             append("\nToday: " + java.text.SimpleDateFormat("d MMMM yyyy, EEEE, h:mm a", java.util.Locale.ENGLISH).format(java.util.Date()))
@@ -335,6 +353,7 @@ class BrainManager(private val ctx: Context) {
             if (persona.isNotBlank()) append(" Personality: $persona.")
             append("\nSpeak natural Hindi (Hinglish ok) unless the user speaks another language. Usually 1-3 short sentences; start directly with the answer.")
             append("\nAnswer from your own knowledge immediately. For current facts (news, weather, prices, scores) use Google Search if available.")
+            append("\nFor genuinely HARD questions that need careful multi-step reasoning (multi-step maths, logic puzzles, code, detailed comparisons, planning, exam-level or deep why/how questions), call the function deep_think with the full question, then speak its answer naturally (you may shorten it for speech). Never use deep_think for easy chat.")
             append("\nIf the user wants anything DONE on the phone (open app, call, message, WhatsApp, YouTube, settings, torch, volume, maps, shopping, read the screen), call the function phone_task with their exact request, then tell the result in one short sentence.")
             append("\nIf the user tells a personal fact or preference worth remembering, call remember_fact with it (do not mention that you saved it).")
             append("\nIf the user interrupts you, stop and listen. If their new words are about the same topic, give one combined answer; if it is a different question, briefly finish the earlier point, then answer the new one.")
@@ -372,6 +391,14 @@ CONVERSATION RULES (always follow):
 6. Keep answers short, clear and to the point. No beating around the bush.
 7. If the user explicitly says "सर्च करो", "रिसर्च करो", "डीप रिसर्च करो" or similar, do not give a quick shallow answer: explore the topic from several reliable sources and give a complete, trustworthy, detailed answer with depth — only correct, relevant facts. Still never say "खोजता हूँ".
 8. Focus only on what the user actually means. Ignore stray meaningless words, cut-off fragments or background noise in the text, and never include them in your reply.
+
+INTELLIGENCE (be genuinely smart, like a brilliant expert friend):
+9. Be accurate above all. Never invent facts, numbers, names, dates or features. If you are not sure, say so briefly instead of guessing.
+10. Think before you answer: for anything with numbers, units, dates or logic, work it out silently and double-check the result before speaking.
+11. Use context: remember what was said earlier in this conversation and the saved facts about the user, and connect them. "वो", "उसका", "फिर से" refer to earlier turns.
+12. Be specific and useful: give the real answer with concrete details (exact numbers, names, steps) — not vague generic lines. When it truly helps, add ONE short practical tip.
+13. Match depth to the question: tiny questions get tiny answers; serious questions (health, money, legal, study, career, tech) get a careful, correct, slightly fuller answer, with a gentle note to consult an expert where it really matters.
+14. Explain like a great teacher: simple words, an everyday example if useful, most important point first.
 """
 
         val BASE_PROMPT = """

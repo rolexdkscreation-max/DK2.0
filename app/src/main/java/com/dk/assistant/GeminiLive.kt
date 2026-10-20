@@ -287,6 +287,11 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
                 .put("parameters", JSONObject().put("type", "OBJECT")
                     .put("properties", JSONObject().put("request", JSONObject().put("type", "STRING").put("description", "The user's request in their own words")))
                     .put("required", JSONArray().put("request"))))
+            .put(JSONObject().put("name", "deep_think")
+                .put("description", "Solve a genuinely HARD question with a much stronger reasoning model (multi-step maths, logic puzzles, code, detailed comparisons, planning, exam-level or deep why/how questions). Returns a carefully reasoned answer in Hindi to speak.")
+                .put("parameters", JSONObject().put("type", "OBJECT")
+                    .put("properties", JSONObject().put("question", JSONObject().put("type", "STRING").put("description", "The complete question with all details the user gave")))
+                    .put("required", JSONArray().put("question"))))
             .put(JSONObject().put("name", "remember_fact")
                 .put("description", "Save a personal fact or preference the user told about themselves.")
                 .put("parameters", JSONObject().put("type", "OBJECT")
@@ -523,10 +528,20 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
                         DKState.lastReply.takeIf { it != before && it.isNotBlank() } ?: "done"
                     }
                     "remember_fact" -> { Memory.addFact(svc, args.optString("fact")); "saved" }
+                    "deep_think" -> {
+                        DKState.set(Mode.THINKING)
+                        try {
+                            withTimeoutOrNull(45_000) { BrainManager(svc).think(args.optString("question")).text }
+                                ?.takeIf { it.isNotBlank() } ?: "Deep thinking timed out - answer it yourself carefully."
+                        } catch (e: Exception) {
+                            log("deep_think fail: ${e.message}")
+                            "Deep thinking unavailable - answer it yourself carefully."
+                        }
+                    }
                     else -> "unknown function"
                 }
                 val resp = JSONObject().put("toolResponse", JSONObject().put("functionResponses", JSONArray().put(
-                    JSONObject().put("id", id).put("name", name).put("response", JSONObject().put("result", result.take(1500))))))
+                    JSONObject().put("id", id).put("name", name).put("response", JSONObject().put("result", result.take(if (name == "deep_think") 4000 else 1500))))))
                 if (ws?.send(resp.toString()) != true) log("tool जवाब नहीं भेज पाया")
                 toolJobs.remove(id)
             }

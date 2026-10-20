@@ -127,6 +127,8 @@ class GeminiClient(private val key: String, private val model: String) : AiClien
         val BACKUP_MODELS = listOf("gemini-3.5-flash-lite", "gemini-3.1-flash-lite", "gemini-3.8-flash", "gemini-2.5-flash")
         /** Mushkil sawaal (research) ke liye zyada samajhdar model pehle */
         val DEEP_MODELS = listOf("gemini-3.8-flash", "gemini-2.5-flash")
+        /** Sabse mushkil sawaal (gehri soch): sabse taakatwar model pehle, na chale to agla */
+        val THINK_MODELS = listOf("gemini-4-argon", "gemini-3.8-pro", "gemini-3.8-flash", "gemini-2.5-pro", "gemini-2.5-flash")
     }
 
     override fun complete(system: String, history: List<Turn>, prompt: String, imageB64: String?): String {
@@ -217,10 +219,16 @@ class GeminiClient(private val key: String, private val model: String) : AiClien
      * Google Search se jawab + kahan se mila (sources).
      * deep = mushkil sawaal: zyada sochne wala model, kai sources se jaanch, lamba jawab.
      */
-    fun search(system: String, history: List<Turn>, question: String, deep: Boolean): SearchResult {
+    fun search(system: String, history: List<Turn>, question: String, deep: Boolean, think: Boolean = false): SearchResult {
         var last: AiException? = null
-        val order = if (deep) (DEEP_MODELS + listOf(model) + BACKUP_MODELS).distinct() else (listOf(model) + BACKUP_MODELS).distinct()
+        val order = when {
+            think -> (THINK_MODELS + DEEP_MODELS + listOf(model) + BACKUP_MODELS).distinct()
+            deep -> (DEEP_MODELS + listOf(model) + BACKUP_MODELS).distinct()
+            else -> (listOf(model) + BACKUP_MODELS).distinct()
+        }
         for (m in order) {
+          var withThinking = true
+          for (attempt in 0..1) {
             try {
                 val contents = JSONArray()
                 history.takeLast(if (deep) 8 else 6).forEach {
@@ -228,9 +236,12 @@ class GeminiClient(private val key: String, private val model: String) : AiClien
                         .put("parts", JSONArray().put(JSONObject().put("text", it.text))))
                 }
                 contents.put(JSONObject().put("role", "user").put("parts", JSONArray().put(JSONObject().put("text", question))))
-                val gen = JSONObject().put("maxOutputTokens", if (deep) 3000 else 1024)
-                if (m.startsWith("gemini-3") && !m.contains("lite")) gen.put("thinkingConfig", JSONObject().put("thinkingLevel", if (deep) "medium" else "low"))
-                if (m.startsWith("gemini-2.5")) gen.put("thinkingConfig", JSONObject().put("thinkingBudget", if (deep) 2048 else 0))
+                val gen = JSONObject().put("maxOutputTokens", if (think) 6000 else if (deep) 3000 else 1024)
+                if (withThinking) {
+                    val lvl = if (think) "high" else if (deep) "medium" else "low"
+                    if ((m.startsWith("gemini-3") || m.startsWith("gemini-4")) && !m.contains("lite")) gen.put("thinkingConfig", JSONObject().put("thinkingLevel", lvl))
+                    if (m.startsWith("gemini-2.5")) gen.put("thinkingConfig", JSONObject().put("thinkingBudget", if (think) 8192 else if (deep) 2048 else 0))
+                }
                 val body = JSONObject()
                     .put("system_instruction", JSONObject().put("parts", JSONArray().put(JSONObject().put("text", system))))
                     .put("contents", contents)
@@ -252,12 +263,19 @@ class GeminiClient(private val key: String, private val model: String) : AiClien
                     val title = w.optString("title").ifBlank { w.optString("domain") }
                     if (title.isNotBlank() && sources.none { it.first == title }) sources.add(title to w.optString("uri"))
                 }
-                label = "Gemini+Search ($m)"
+                label = (if (think) "Gemini गहरी सोच" else "Gemini+Search") + " ($m)"
+                if (sb.isBlank()) throw AiException(0, "khali jawab")
                 return SearchResult(sb.toString(), sources.take(5))
             } catch (e: AiException) {
                 last = e
-                if (e.code == 401 || e.code == 403) throw e
+                val msg = (e.message ?: "").lowercase()
+                // galat key = sab model fail honge -> ruko. (403 "model ki ijazat nahi" = agla model try karo)
+                if (e.code == 401 || (e.code == 403 && (msg.contains("api key") || msg.contains("api_key")))) throw e
+                // is model ko sochne ki setting pasand nahi -> bina uske ek baar aur
+                if (e.code == 400 && withThinking && msg.contains("think")) { withThinking = false; continue }
+                break
             }
+          }
         }
         throw last ?: AiException(0, "search fail")
     }

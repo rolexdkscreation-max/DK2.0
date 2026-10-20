@@ -234,6 +234,7 @@ class AgentRunner(
             when (chatStream(goal, note)) {
                 ChatOut.DONE -> return
                 ChatOut.SEARCH -> { if (brain.canSearch() && searchAndSay(goal)) return }
+                ChatOut.THINK -> { if (brain.canThink() && thinkAndSay(goal)) return; if (chatStream(goal, "Deep thinking is unavailable right now: do NOT reply [THINK]. Answer it yourself, carefully and correctly.") != ChatOut.SCREEN) return; chatMode = false }
                 ChatOut.SCREEN -> chatMode = false
             }
         }
@@ -334,7 +335,7 @@ class AgentRunner(
         say("बहुत सारे स्टेप हो गए, मैंने काम यहीं रोक दिया।")
     }
 
-    private enum class ChatOut { DONE, SCREEN, SEARCH }
+    private enum class ChatOut { DONE, SCREEN, SEARCH, THINK }
 
     /**
      * Baatcheet ka jawab streaming se: AI jaise-jaise likhta hai, pehla vakya poora hote hi DK bolna shuru.
@@ -342,7 +343,8 @@ class AgentRunner(
      */
     private suspend fun chatStream(goal: String, note: String): ChatOut {
         DKState.set(Mode.THINKING)
-        val prompt = (if (note.isNotBlank()) "$note\n\n" else "") + "USER SAYS: $goal" + (if (brain.canSearch()) "\nSEARCH AVAILABLE" else "")
+        val prompt = (if (note.isNotBlank()) "$note\n\n" else "") + "USER SAYS: $goal" +
+            (if (brain.canSearch()) "\nSEARCH AVAILABLE" else "") + (if (brain.canThink()) "\nTHINK AVAILABLE" else "")
         val ch = Channel<String>(Channel.UNLIMITED)
         var speakJob: Job? = null
         val buf = StringBuilder()
@@ -359,7 +361,7 @@ class AgentRunner(
             if (x.isEmpty()) return
             val yi = x.indexOf("[YAAD")
             if (yi >= 0) { x.substring(yi).substringAfter("]").trim().takeIf { it.isNotBlank() }?.let { facts.add(it) }; x = x.substring(0, yi).trim() }
-            for (t in listOf("[SCREEN]", "[SEARCH]")) if (x.contains(t)) { if (shown.isEmpty()) tag = t; x = x.replace(t, "").trim() }
+            for (t in listOf("[SCREEN]", "[SEARCH]", "[THINK]")) if (x.contains(t)) { if (shown.isEmpty()) tag = t; x = x.replace(t, "").trim() }
             x = x.replace(Regex("[*#`]"), "").trim()
             if (x.isEmpty()) return
             shown.append(x).append(' ')
@@ -405,7 +407,7 @@ class AgentRunner(
                             val close = t.indexOf(']')
                             if (close < 0 && t.length < 12) return@streamChat
                             val tg = if (close > 0) t.substring(0, close + 1).uppercase() else ""
-                            if (tg == "[SCREEN]" || tg == "[SEARCH]") { mode = 2; tag = tg } else { mode = 1; feed(t) }
+                            if (tg == "[SCREEN]" || tg == "[SEARCH]" || tg == "[THINK]") { mode = 2; tag = tg } else { mode = 1; feed(t) }
                         } else if (t[0] == '{') mode = 3
                         else { mode = 1; feed(t) }
                     }
@@ -441,7 +443,7 @@ class AgentRunner(
         facts.forEach { Memory.addFact(svc, it) }
         if (mode == 2 || (tag.isNotEmpty() && shown.isEmpty())) {
             speakJob?.join()
-            return if (tag == "[SCREEN]") ChatOut.SCREEN else ChatOut.SEARCH
+            return when (tag) { "[SCREEN]" -> ChatOut.SCREEN; "[THINK]" -> ChatOut.THINK; else -> ChatOut.SEARCH }
         }
         val answer = shown.toString().trim()
         if (answer.isEmpty()) {
@@ -453,6 +455,24 @@ class AgentRunner(
         if (note.isBlank()) LocalBrain.learn(svc, goal, answer)
         speakJob?.join()
         return ChatOut.DONE
+    }
+
+    /** Mushkil sawaal: sabse taakatwar model se soch-samajhkar jawab (orb "soch raha" rang dikhata hai) */
+    private suspend fun thinkAndSay(goal: String): Boolean {
+        DKState.set(Mode.THINKING)
+        return try {
+            val r = brain.think(goal)
+            if (r.text.isBlank()) false else {
+                val src = if (r.sources.isNotEmpty()) "\n\nस्रोत: " + r.sources.joinToString(", ") { it.first } else ""
+                DKState.reply(r.text + src)
+                if (!silent) speaker.speak(r.text)
+                LocalBrain.learn(svc, goal, r.text)
+                true
+            }
+        } catch (e: Exception) {
+            DKLog.d("Gehri soch fail: ${e.message}")
+            false
+        }
     }
 
     private suspend fun searchAndSay(goal: String, fillerSaid: Boolean = false, deep: Boolean = false, thorough: Boolean = false): Boolean {
