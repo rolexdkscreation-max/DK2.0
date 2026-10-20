@@ -45,7 +45,7 @@ class DKAccessibilityService : AccessibilityService() {
     }
 
     data class Element(val id: Int, val node: AccessibilityNodeInfo, val bounds: Rect)
-    data class Screen(val text: String, val packageName: String, val width: Int, val height: Int)
+    data class Screen(val text: String, val packageName: String, val width: Int, val height: Int, val count: Int)
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
     private var elements: List<Element> = emptyList()
@@ -75,7 +75,7 @@ class DKAccessibilityService : AccessibilityService() {
             DKState.reply(hello)
             speaker.speak(hello)
         }
-        startWakeLoopIfEnabled()
+        if (Prefs.liveMode(this)) startLive() else ensureLoop()
     }
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) { /* zarurat nahi, hum on-demand padhte hain */ }
@@ -85,56 +85,97 @@ class DKAccessibilityService : AccessibilityService() {
     override fun onDestroy() {
         instance = null
         removeBubble()
+        DKState.setLive(false)
+        listener.release()
         speaker.shutdown()
         scope.cancel()
         super.onDestroy()
     }
 
     // ---------------------------------------------------------------- voice entry points
-    /** Bubble tap: ek command suno aur chalao. */
-    fun listenAndRun() {
-        if (agent.isBusy) { agent.stop(); return }
-        scope.launch {
-            speaker.stop()
-            DKState.set(Mode.LISTENING)
-            val text = listener.listenOnce()
-            DKState.set(Mode.IDLE)
-            if (text.isNullOrBlank()) {
-                speaker.speak("मुझे कुछ सुनाई नहीं दिया।")
-            } else {
-                agent.run(text)
-            }
-        }
+    /**
+     * Orb / mic tap = LIVE MODE ON/OFF.
+     * ON hone par DK lagatar sunta rehta hai: aap bolo -> kaam/jawab -> phir se sunna... jab tak aap band na karo.
+     */
+    fun toggleLive() {
+        if (DKState.live) stopLive() else startLive()
     }
 
-    /** Text command (app ke test box se). */
+    fun startLive() {
+        if (DKState.live) return
+        DKState.setLive(true)
+        Prefs.edit(this) { putBoolean("live_mode", true) }
+        ensureLoop()
+    }
+
+    fun stopLive() {
+        DKState.setLive(false)
+        Prefs.edit(this) { putBoolean("live_mode", false) }
+        agent.stop()
+        loopJob?.cancel(); loopJob = null
+        listener.release()
+        DKState.set(Mode.IDLE)
+        scope.launch { speaker.speak("ठीक है, माइक बंद।") }
+    }
+
+    /** Purana naam - ab live mode toggle karta hai. */
+    fun listenAndRun() = toggleLive()
+
+    /** Text command (app ki likhne wali bar se). */
     fun runCommand(text: String) { agent.run(text) }
 
-    /** "Hamesha suno" mode: wake word "DK" bolne par command leta hai. */
-    fun startWakeLoopIfEnabled() {
-        if (wakeLoopRunning || !Prefs.wakeMode(this)) return
-        wakeLoopRunning = true
-        scope.launch {
-            DKLog.d("Wake word mode ON")
-            while (isActive && Prefs.wakeMode(this@DKAccessibilityService)) {
-                if (agent.isBusy) { delay(500); continue }
+    /** Settings save hone par: "hamesha suno (wake word)" mode chalu/band. */
+    fun startWakeLoopIfEnabled() { ensureLoop() }
+
+    private var loopJob: kotlinx.coroutines.Job? = null
+
+    /** Ek hi sunne wala loop: live mode me har baat command hai, wake mode me sirf wake word ke baad. */
+    private fun ensureLoop() {
+        val wanted = DKState.live || Prefs.wakeMode(this)
+        if (!wanted || loopJob?.isActive == true) return
+        loopJob = scope.launch {
+            DKLog.d("Sunna shuru (live=${DKState.live})")
+            listener.muteBeep = true
+            var misses = 0
+            while (isActive && (DKState.live || Prefs.wakeMode(this@DKAccessibilityService))) {
+                if (agent.isBusy || DKState.mode == Mode.SPEAKING) { delay(250); continue }
+                DKState.set(Mode.LISTENING)
                 val heard = listener.listenOnce()
-                if (heard == null) { delay(300); continue }
-                val low = heard.lowercase()
-                val wake = Prefs.wakeWords(this@DKAccessibilityService).firstOrNull { low.contains(it) }
-                if (wake == null) continue
-                var cmd = heard.substring((low.indexOf(wake) + wake.length).coerceAtMost(heard.length))
-                    .trim(' ', ',', '.', '!')
-                if (cmd.isBlank()) {
-                    speaker.speak("हाँ, बोलिए।")
-                    DKState.set(Mode.LISTENING)
-                    cmd = listener.listenOnce() ?: ""
-                    DKState.set(Mode.IDLE)
+                if (DKState.mode == Mode.LISTENING) DKState.set(Mode.IDLE)
+                if (listener.lastError == android.speech.SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS) {
+                    DKState.reply("माइक की परमिशन नहीं है। ऐप खोलकर माइक की इजाज़त दीजिए।")
+                    break
                 }
-                if (cmd.isNotBlank()) agent.run(cmd).join()
+                if (heard == null) {
+                    misses++
+                    delay(if (misses > 20) 600 else 150)   // chup hai to thoda aaram
+                    continue
+                }
+                misses = 0
+                val low = heard.lowercase().trim()
+
+                if (DKState.live) {
+                    if (low.contains("माइक बंद") || low.contains("सुनना बंद") || low.contains("mic off") ||
+                        low.contains("stop listening") || low == "बंद करो") {
+                        stopLive(); break
+                    }
+                    agent.run(heard).join()
+                } else {
+                    // wake word mode
+                    val wake = Prefs.wakeWords(this@DKAccessibilityService).firstOrNull { low.contains(it) } ?: continue
+                    var cmd = heard.substring((low.indexOf(wake) + wake.length).coerceAtMost(heard.length))
+                        .trim(' ', ',', '.', '!')
+                    if (cmd.isBlank()) {
+                        speaker.speak("हाँ, बोलिए।")
+                        DKState.set(Mode.LISTENING)
+                        cmd = listener.listenOnce() ?: ""
+                        DKState.set(Mode.IDLE)
+                    }
+                    if (cmd.isNotBlank()) agent.run(cmd).join()
+                }
             }
-            wakeLoopRunning = false
-            DKLog.d("Wake word mode OFF")
+            listener.muteBeep = false
+            DKLog.d("Sunna band")
         }
     }
 
@@ -155,11 +196,11 @@ class DKAccessibilityService : AccessibilityService() {
 
         val dm = resources.displayMetrics
         val pkg = rootInActiveWindow?.packageName?.toString() ?: "unknown"
-        return Screen(sb.toString(), pkg, dm.widthPixels, dm.heightPixels)
+        return Screen(sb.toString(), pkg, dm.widthPixels, dm.heightPixels, list.size)
     }
 
     private fun walk(node: AccessibilityNodeInfo, out: MutableList<Element>, sb: StringBuilder, depth: Int) {
-        if (out.size >= 220 || depth > 40) return
+        if (out.size >= 140 || depth > 40) return
         if (node.isVisibleToUser) {
             val text = node.text?.toString()?.trim().orEmpty()
             val desc = node.contentDescription?.toString()?.trim().orEmpty()
@@ -181,8 +222,8 @@ class DKAccessibilityService : AccessibilityService() {
                         if (node.isFocused) add("focused")
                     }.joinToString(",")
                     sb.append("[").append(id).append("] ").append(cls)
-                    if (text.isNotEmpty()) sb.append(" \"").append(text.take(70)).append("\"")
-                    if (desc.isNotEmpty() && desc != text) sb.append(" (").append(desc.take(70)).append(")")
+                    if (text.isNotEmpty()) sb.append(" \"").append(text.take(50)).append("\"")
+                    if (desc.isNotEmpty() && desc != text) sb.append(" (").append(desc.take(50)).append(")")
                     if (flags.isNotEmpty()) sb.append(" {").append(flags).append("}")
                     sb.append(" @").append(r.centerX()).append(",").append(r.centerY()).append("\n")
                 }
@@ -361,7 +402,7 @@ class DKAccessibilityService : AccessibilityService() {
                     params.x = startX + dx.toInt(); params.y = startY + dy.toInt()
                     wm.updateViewLayout(v, params)
                 }
-                MotionEvent.ACTION_UP -> if (!moved) listenAndRun()
+                MotionEvent.ACTION_UP -> if (!moved) toggleLive()
             }
             true
         }

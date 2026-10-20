@@ -56,34 +56,48 @@ class AgentRunner(
         }
 
         var feedback = "USER GOAL: $goal"
-        for (step in 1..MAX_STEPS) {
+        var wantShot = false
+        // Normal baatcheet ho to screen padhe bina seedha jawab = bahut tez
+        var chatMode = !looksLikePhoneTask(lower)
+        var step = 0
+        while (step < MAX_STEPS) {
+            step++
             coroutineContext.ensureActive()
             DKState.set(Mode.THINKING)
 
-            val screen = svc.readScreen()
-            val shot = if (Prefs.screenshot(svc)) svc.screenshotBase64() else null
-            val prompt = buildString {
-                append(feedback)
-                append("\n\nSTEP: $step\nFOREGROUND APP: ${screen.packageName}")
-                append("\nSCREEN SIZE: ${screen.width}x${screen.height}")
-                append("\nSCREEN ELEMENTS:\n")
-                append(screen.text.ifBlank { "(kuch nahi mila)" })
+            val prompt: String
+            var shot: String? = null
+            if (chatMode) {
+                prompt = "CHAT MODE (no screen info).\nUSER SAYS: $goal"
+            } else {
+                val screen = svc.readScreen()
+                if (Prefs.screenshot(svc) && (wantShot || screen.count < 4)) shot = svc.screenshotBase64()
+                wantShot = false
+                prompt = buildString {
+                    append(feedback)
+                    append("\n\nSTEP: $step\nFOREGROUND APP: ${screen.packageName}")
+                    append("\nSCREEN SIZE: ${screen.width}x${screen.height}")
+                    append("\nSCREEN ELEMENTS:\n")
+                    append(screen.text.ifBlank { "(kuch nahi mila)" })
+                }
             }
 
+            val t0 = System.currentTimeMillis()
             val resp: JSONObject = try {
-                brain.next(prompt, shot, memoryNote = feedback)
+                brain.next(prompt, shot, memoryNote = if (chatMode) "USER SAYS: $goal" else feedback)
             } catch (e: Exception) {
-                DKLog.d("AI error: ${e.message}")
-                val code = (e as? AiException)?.code ?: 0
-                val msg = when (code) {
-                    429 -> "फ्री लिमिट खत्म हो गई है। थोड़ी देर बाद कोशिश कीजिए या सेटिंग्स में दूसरी AI की key डालिए।"
-                    401, 403 -> "API key गलत लग रही है। सेटिंग्स में key चेक कीजिए।"
-                    else -> "माफ़ कीजिए, AI से जवाब नहीं मिला। इंटरनेट और API key चेक कीजिए।"
-                }
-                say(msg)
+                DKLog.d("AI error: ${e.javaClass.simpleName} ${e.message}")
+                val msg = brain.explain(e)
+                DKState.reply(msg + "\n(" + (e.message ?: e.javaClass.simpleName).take(160) + ")")
+                speaker.speak(msg)
                 return
             }
-            DKLog.d("AI: $resp")
+            DKLog.d("AI ${System.currentTimeMillis() - t0}ms (${brain.lastUsed}): $resp")
+
+            if (chatMode && resp.optBoolean("need_screen", false)) {
+                chatMode = false; step--
+                continue
+            }
 
             val sayText = resp.optString("say", "")
             val actions = resp.optJSONArray("actions")
@@ -99,6 +113,7 @@ class AgentRunner(
                 for (i in 0 until actions!!.length()) {
                     coroutineContext.ensureActive()
                     val a = actions.optJSONObject(i) ?: continue
+                    if (a.optString("type") == "look") { wantShot = true; done = false; continue }
                     if (a.optString("type") == "ask") {
                         speakJob?.join()
                         say(a.optString("question", "क्या मैं आगे बढ़ूँ?"))
@@ -118,10 +133,28 @@ class AgentRunner(
             }
 
             if (done) { speakJob?.join(); return }
-            delay(1200) // screen ko badalne ka time do
+            if (chatMode) chatMode = false   // AI ne actions diye - ab screen dekh kar kaam karo
+            delay(900) // screen ko badalne ka time do
             feedback = "USER GOAL (same task, continue): $goal\nRESULTS OF YOUR LAST ACTIONS:\n$results"
         }
         say("बहुत सारे स्टेप हो गए, मैंने काम यहीं रोक दिया।")
+    }
+
+    /** Kya yeh phone par kuch karne ki command hai? (nahi to normal baatcheet) */
+    private fun looksLikePhoneTask(t: String): Boolean {
+        val words = listOf(
+            "खोल", "open", "चला", "play", "बजा", "सर्च", "search", "ढूंढ", "ढूँढ", "भेज", "send", "मैसेज", "message",
+            "कॉल", "call", "फोन लगा", "डिलीट", "delete", "हटा", "मिटा", "पोस्ट", "post", "शेयर", "share", "टाइप", "type",
+            "लिखो", "लिख दो", "क्लिक", "click", "दबा", "टैप", "tap", "स्क्रॉल", "scroll", "नीचे", "ऊपर", "वापस", "back",
+            "होम", "home", "बंद कर", "चालू कर", "on कर", "off कर", "ऑन", "ऑफ", "वाईफाई", "वाई-फाई", "wifi", "wi-fi",
+            "ब्लूटूथ", "bluetooth", "टॉर्च", "torch", "फ्लैश", "वॉल्यूम", "volume", "ब्राइटनेस", "brightness", "सेटिंग", "setting",
+            "फोटो", "photo", "गैलरी", "gallery", "कैमरा", "camera", "वीडियो", "video", "गाना", "song", "यूट्यूब", "youtube",
+            "फेसबुक", "facebook", "व्हाट्सएप", "whatsapp", "इंस्टा", "insta", "ऐप", "app", "स्क्रीन", "screen", "नोटिफिकेशन",
+            "notification", "डाउनलोड", "download", "इंस्टॉल", "install", "अलार्म", "alarm", "रिमाइंडर", "मैप", "map",
+            "रास्ता", "chrome", "क्रोम", "गूगल पर", "लाइक", "like", "सब्सक्राइब", "subscribe", "कमेंट", "comment",
+            "रिप्लाई", "reply", "पढ़ो", "read", "दिखा", "show", "select", "सेलेक्ट", "कॉपी", "copy", "पेस्ट", "paste"
+        )
+        return words.any { t.contains(it) }
     }
 
     companion object { const val MAX_STEPS = 20 }

@@ -97,7 +97,8 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun talk() {
-        if (ready()) DKAccessibilityService.instance?.listenAndRun()
+        if (DKState.live) DKAccessibilityService.instance?.stopLive()
+        else if (ready()) DKAccessibilityService.instance?.startLive()
     }
 
     override fun onResume() {
@@ -123,9 +124,12 @@ class MainActivity : AppCompatActivity() {
         val p = Providers.byId(Prefs.activeProvider(this))
         chipAi.text = (if (Prefs.hasAnyKey(this)) "✓ " else "✗ ") + (p?.name ?: "AI")
 
+        val live = DKState.live
+        findViewById<ImageButton>(R.id.btnMic).setBackgroundResource(
+            if (live) R.drawable.btn_live_circle else R.drawable.btn_accent_circle)
         txtState.text = when (DKState.mode) {
-            Mode.IDLE -> "ओर्ब पर टैप करके बोलिए"
-            Mode.LISTENING -> "सुन रहा हूँ…"
+            Mode.IDLE -> if (live) "माइक चालू है • बंद करने के लिए टैप करें" else "एक बार टैप करें • लगातार सुनूँगा"
+            Mode.LISTENING -> if (live) "सुन रहा हूँ… (बंद: टैप या \"माइक बंद\")" else "सुन रहा हूँ…"
             Mode.THINKING -> "सोच रहा हूँ…"
             Mode.WORKING -> "काम कर रहा हूँ…"
             Mode.SPEAKING -> "बोल रहा हूँ…"

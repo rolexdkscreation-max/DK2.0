@@ -20,8 +20,10 @@ interface AiClient {
 }
 
 private val http = OkHttpClient.Builder()
-    .connectTimeout(20, TimeUnit.SECONDS)
-    .readTimeout(90, TimeUnit.SECONDS)
+    .connectTimeout(10, TimeUnit.SECONDS)
+    .readTimeout(30, TimeUnit.SECONDS)
+    .callTimeout(35, TimeUnit.SECONDS)      // 35 sec se zyada wait nahi - phir dusra AI
+    .retryOnConnectionFailure(true)
     .build()
 
 private val JSON_TYPE = "application/json".toMediaType()
@@ -38,11 +40,38 @@ private fun execute(req: Request): String = http.newCall(req).execute().use { r 
     body
 }
 
-/** Google Gemini (apna alag format). */
+/** Google Gemini (apna alag format). Ek model fail ho to dusre Gemini model try karta hai. */
 class GeminiClient(private val key: String, private val model: String) : AiClient {
-    override val label = "Gemini ($model)"
+    override var label = "Gemini ($model)"
+        private set
+
+    companion object {
+        // Inki free limit alag-alag hoti hai - ek ki khatam ho to dusra chal jata hai
+        val BACKUP_MODELS = listOf("gemini-3.5-flash-lite", "gemini-3.1-flash-lite", "gemini-3.8-flash", "gemini-2.5-flash")
+    }
 
     override fun complete(system: String, history: List<Turn>, prompt: String, imageB64: String?): String {
+        val models = (listOf(model) + BACKUP_MODELS).distinct()
+        var last: AiException? = null
+        for (m in models) {
+            try {
+                val r = call(m, system, history, prompt, imageB64)
+                label = "Gemini ($m)"
+                return r
+            } catch (e: AiException) {
+                last = e
+                val tryNext = e.code == 404 || e.code == 429 || e.code >= 500 ||
+                    (e.code == 400 && (e.message ?: "").contains("model", ignoreCase = true) &&
+                        !(e.message ?: "").contains("API key", ignoreCase = true))
+                DKLog.d("Gemini $m -> ${e.code} ${e.message}")
+                if (!tryNext) throw e
+            }
+        }
+        throw last ?: AiException(0, "Gemini fail")
+    }
+
+    private fun call(m: String, system: String, history: List<Turn>, prompt: String, imageB64: String?,
+                     thinking: Boolean = true): String {
         val contents = JSONArray()
         history.forEach {
             contents.put(JSONObject().put("role", if (it.role == "user") "user" else "model")
@@ -53,19 +82,30 @@ class GeminiClient(private val key: String, private val model: String) : AiClien
             JSONObject().put("mime_type", "image/jpeg").put("data", imageB64)))
         contents.put(JSONObject().put("role", "user").put("parts", parts))
 
+        val gen = JSONObject().put("responseMimeType", "application/json").put("maxOutputTokens", 2048)
+        // Bade Flash model zyada "sochte" hain = dheere. Kam sochne ko bolo.
+        val heavy = m.startsWith("gemini-3") && !m.contains("lite")
+        if (thinking && heavy) gen.put("thinkingConfig", JSONObject().put("thinkingLevel", "low"))
+
         val body = JSONObject()
             .put("system_instruction", JSONObject().put("parts", JSONArray().put(JSONObject().put("text", system))))
             .put("contents", contents)
-            .put("generationConfig", JSONObject().put("responseMimeType", "application/json"))
+            .put("generationConfig", gen)
 
         val req = Request.Builder()
-            .url("https://generativelanguage.googleapis.com/v1beta/models/$model:generateContent")
+            .url("https://generativelanguage.googleapis.com/v1beta/models/$m:generateContent")
             .header("x-goog-api-key", key)
             .post(body.toString().toRequestBody(JSON_TYPE))
             .build()
-        val resp = JSONObject(execute(req))
+        val raw = try { execute(req) } catch (e: AiException) {
+            if (e.code == 400 && thinking && heavy && (e.message ?: "").contains("thinking", true))
+                return call(m, system, history, prompt, imageB64, thinking = false)
+            throw e
+        }
+        val resp = JSONObject(raw)
         val p = resp.optJSONArray("candidates")?.optJSONObject(0)?.optJSONObject("content")?.optJSONArray("parts")
-            ?: throw AiException(0, "Gemini ne khali jawab diya")
+            ?: throw AiException(0, "Gemini ne khali jawab diya: " +
+                (resp.optJSONObject("promptFeedback")?.optString("blockReason") ?: ""))
         val sb = StringBuilder()
         for (i in 0 until p.length()) {
             val o = p.optJSONObject(i) ?: continue

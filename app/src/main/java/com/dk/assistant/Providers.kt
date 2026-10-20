@@ -17,7 +17,7 @@ data class Provider(
 object Providers {
     val all = listOf(
         Provider("gemini", "Google Gemini", true, "फ्री • बिना कार्ड • स्क्रीनशॉट समझता है",
-            "", "gemini-3.1-flash-lite", true, "https://aistudio.google.com/apikey", isGemini = true),
+            "", "gemini-3.5-flash-lite", true, "https://aistudio.google.com/apikey", isGemini = true),
         Provider("groq", "Groq", true, "फ्री • बहुत तेज़ • सिर्फ़ टेक्स्ट",
             "https://api.groq.com/openai/v1", "openai/gpt-oss-120b", false, "https://console.groq.com/keys"),
         Provider("openrouter", "OpenRouter", true, "फ्री मॉडल • रोज़ ~50 रिक्वेस्ट",

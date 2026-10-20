@@ -48,6 +48,7 @@ object Prefs {
 
     // ---- options
     fun wakeMode(c: Context) = sp(c).getBoolean("wake_mode", false)
+    fun liveMode(c: Context) = sp(c).getBoolean("live_mode", false)
     fun screenshot(c: Context) = sp(c).getBoolean("screenshot", true)
     fun ttsRate(c: Context) = sp(c).getFloat("tts_rate", 1.05f)
     fun ttsPitch(c: Context) = sp(c).getFloat("tts_pitch", 1.0f)

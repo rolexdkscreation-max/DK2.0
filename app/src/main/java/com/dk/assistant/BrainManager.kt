@@ -38,6 +38,23 @@ class BrainManager(private val ctx: Context) {
 
     fun hasUsableProvider() = orderedProviders().any { clientFor(it) != null }
 
+    /** Galti ko aasaan Hindi me samjhao (bolne + screen par dikhane ke liye). */
+    fun explain(e: Exception): String {
+        val msg = e.message ?: ""
+        val code = (e as? AiException)?.code ?: 0
+        return when {
+            e is java.net.UnknownHostException -> "इंटरनेट नहीं मिल रहा। नेट चालू करके फिर बोलिए।"
+            e is java.net.SocketTimeoutException || e is java.io.InterruptedIOException ->
+                "AI बहुत देर लगा रहा है। इंटरनेट धीमा है या सर्वर व्यस्त है, फिर से बोलिए।"
+            code == 429 -> "फ्री लिमिट खत्म हो गई है। थोड़ी देर बाद कोशिश कीजिए, या सेटिंग्स में दूसरी AI की key डालिए।"
+            code == 401 || code == 403 || msg.contains("API key", true) ->
+                "API key गलत है या उसे इजाज़त नहीं है। सेटिंग्स में key दोबारा पेस्ट करके टेस्ट कीजिए।"
+            code == 404 -> "यह मॉडल नहीं मिला। सेटिंग्स में मॉडल का नाम ठीक कीजिए।"
+            msg == "NO_KEY" -> "पहले सेटिंग्स में किसी AI की API key डालकर सेव कीजिए।"
+            else -> "AI से जवाब नहीं मिला (गलती $code)।"
+        }
+    }
+
     suspend fun next(prompt: String, imageB64: String?, memoryNote: String): JSONObject =
         withContext(Dispatchers.IO) {
             val system = buildSystemPrompt()
@@ -129,6 +146,7 @@ Available actions:
 {"type":"back"} {"type":"home"} {"type":"recents"} {"type":"notifications"} {"type":"quick_settings"}
 {"type":"wait","ms":1500}
 {"type":"ask","question":"..."}                   ask the user by voice; their answer arrives next turn
+{"type":"look"}                                   you need a SCREENSHOT to understand the screen; it arrives next turn
 
 Rules:
 1. Work step by step. After actions that change the screen, set "done": false so you can see the new screen.
@@ -142,6 +160,9 @@ Rules:
 7. Gallery/photos: open_app Gallery (or Photos), long_click photos to select, tap Delete, confirm with ask first.
 8. If something fails, try another way (scroll, back, search inside app). If stuck, say so and set done true.
 9. Keep "say" very short (1 sentence) while working. When done, briefly tell the result.
+10. CHAT MODE: if the input says "CHAT MODE" you get no screen info. Answer normal talk/questions directly
+    (done true). If the user actually wants something done on the phone, reply exactly {"need_screen": true}.
+11. Only use "look" when the element list is not enough (images, games, unclear screen).
 """.trimIndent()
     }
 }

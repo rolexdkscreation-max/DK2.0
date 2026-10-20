@@ -9,6 +9,9 @@ enum class Mode { IDLE, LISTENING, THINKING, WORKING, SPEAKING }
 object DKState {
     @Volatile var mode: Mode = Mode.IDLE
         private set
+    /** Live mode: ek baar ON = lagatar sunna, jab tak band na karo */
+    @Volatile var live: Boolean = false
+        private set
     @Volatile var level: Float = 0f          // mic ki awaaz (0..1) - orb uchhalta hai
     @Volatile var lastUser: String = ""
         private set
@@ -19,6 +22,7 @@ object DKState {
     private val listeners = mutableSetOf<() -> Unit>()
 
     fun set(m: Mode) { mode = m; if (m != Mode.LISTENING) level = 0f; emit() }
+    fun setLive(on: Boolean) { live = on; emit() }
     fun user(t: String) { lastUser = t; emit() }
     fun reply(t: String) { lastReply = t; emit() }
 
