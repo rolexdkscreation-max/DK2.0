@@ -106,6 +106,14 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
     @Volatile private var caption: LiveCaption? = null
     /** DK ne jawab shuru kiya us waqt tak user ne jo bola (caption se) */
     @Volatile private var turnUser = ""
+    /** Is baari ki user line chat me pakki ho chuki (der se aaya text ab us line ko theek karega) */
+    @Volatile private var userDone = false
+    /** Is baari ka jawab (awaaz) shuru ho chuka - ginti dobara shuru nahi karni */
+    @Volatile private var replyStarted = false
+    /** Gemini abhi jawab bana raha hai (turnComplete nahi aaya) */
+    @Volatile private var generating = false
+    /** DK bol raha hai aur user sach me bol raha hai (mic asli awaaz bhej raha hai) */
+    @Volatile private var barging = false
     /** DK ka text uski awaaz ke saath: kitni awaaz aayi / kitni baj chuki */
     @Volatile private var turnRecvBytes = 0L
     @Volatile private var turnPlayedBytes = 0L
@@ -153,7 +161,7 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
         var mi = 0; var fails = 0
         var quickDrops = 0                               // judne ke turant baad baar-baar tootna
         startPlayer()
-        caption = LiveCaption(key) { t -> onCaption(t) }.also { it.start() }
+        caption = LiveCaption(key, onText = { t, fin -> onCaption(t, fin) }, onLate = { t -> onLateCaption(t) }, isNewSpeech = { barging }).also { it.start() }
         coroutineScope {
             val mic = launch(Dispatchers.IO) { micLoop() }
             // DK ka text awaaz ke saath-saath (har 80ms)
@@ -343,7 +351,11 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
         }
         o.optJSONObject("goAway")?.let { log("goAway: ${it.optString("timeLeft")} बाकी"); goAway = true }
         o.optJSONObject("voiceActivity")?.optString("type")?.let { t ->
-            if (t == "ACTIVITY_START") { if (!isPlaying()) DKState.set(Mode.LISTENING) }
+            if (t == "ACTIVITY_START") {
+                // jawab ban chuka (turnComplete) par awaaz abhi baj rahi hai aur user bolne laga -> server "interrupted" nahi bhejta, khud chup ho
+                if (isPlaying() && !generating) stopForUser("ACTIVITY_START")
+                else if (!isPlaying()) DKState.set(Mode.LISTENING)
+            }
             if (t == "ACTIVITY_END") { eosAt = System.currentTimeMillis(); firstAudioAt = 0; if (!isPlaying()) DKState.set(Mode.THINKING) }
         }
         o.optJSONObject("toolCall")?.optJSONArray("functionCalls")?.let { runTools(it) }
@@ -368,6 +380,7 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
         }
         sc.optJSONObject("modelTurn")?.optJSONArray("parts")?.let { parts ->
             if (!turnActive) startTurn()
+            generating = true
             for (i in 0 until parts.length()) {
                 val p = parts.optJSONObject(i) ?: continue
                 val inline = p.optJSONObject("inlineData") ?: continue
@@ -376,13 +389,16 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
                 val pcm = try { Base64.decode(inline.optString("data"), Base64.DEFAULT) } catch (e: Exception) { log("audio decode गलती"); continue }
                 if (pcm.isEmpty()) continue
                 recvAudio += pcm.size
-                if (firstAudioAt == 0L) {
-                    firstAudioAt = System.currentTimeMillis()
+                if (!replyStarted) {
+                    replyStarted = true
                     // naya jawab: pichhla (agar abhi bhi baj raha tha) poora likho, ginti shuru se
                     commitPending(true)
                     turnRecvBytes = 0; turnPlayedBytes = 0; shownReply = ""
                     // user ki baat yahin tak - aage jo bole woh nayi baat
-                    caption?.let { c -> c.text().takeIf { it.isNotBlank() }?.let { turnUser = it }; c.newUtterance() }
+                    caption?.closeUtterance()?.takeIf { it.isNotBlank() }?.let { turnUser = it; userDone = false }
+                }
+                if (firstAudioAt == 0L) {
+                    firstAudioAt = System.currentTimeMillis()
                     if (eosAt > 0) { lastLatency = firstAudioAt - eosAt; log("देरी: बोलना खत्म → पहली आवाज़ = $lastLatency ms") }
                 }
                 turnRecvBytes += pcm.size
@@ -391,13 +407,15 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
         }
         sc.optJSONObject("outputTranscription")?.optString("text")?.takeIf { it.isNotBlank() }?.let { t ->
             if (!turnActive) startTurn()
+            generating = true
             // screen par abhi nahi - revealTick() awaaz ke saath-saath dikhata hai
             synchronized(turnLock) { replyText.append(t) }
         }
         if (sc.optBoolean("interrupted")) {
             log("user ने बीच में टोका - आवाज़ रोकी")
             flushPlayback()
-            if (turnActive && replyText.isNotBlank()) finishTurn()
+            // close=false: user abhi bol raha hai (toka hai) - uski nayi baat band mat karo
+            if (turnActive) finishTurn(close = false)
             commitPending(false)          // jitna bola utna hi likha rahe
             DKState.set(Mode.LISTENING)
         }
@@ -409,28 +427,47 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
         synchronized(turnLock) { userText.clear(); replyText.clear() }
     }
 
-    private fun finishTurn() {
-        turnActive = false
+    private fun finishTurn(close: Boolean = true) {
+        turnActive = false; generating = false
         val (mu, r) = synchronized(turnLock) {
             (userText.toString().trim() to replyText.toString().trim()).also { userText.clear(); replyText.clear() }
         }
         // caption ka text (jo user ne sach me bola, turant likha) pehle; na ho to Live model ka
-        val u = turnUser.ifBlank { mu }
-        turnUser = ""
-        caption?.newUtterance()
+        // awaaz wala jawab: baat pehli awaaz par band ho chuki. Bina awaaz (sirf tool) wala: abhi band karo
+        val snap = if (close && !replyStarted) caption?.closeUtterance().orEmpty() else ""
+        val cur = if (!userDone) turnUser else ""               // pichhli baari ka text dobara na lo
+        val u = cur.ifBlank { snap }.ifBlank { mu }
+        turnUser = u; userDone = true                           // der se aaya pakka text isi line ko theek karega
         if (u.isNotBlank()) DKState.user(u)
         // jawab: awaaz abhi baj rahi hai to revealTick() saath-saath poora karega
         if (r.isNotBlank()) synchronized(turnLock) { pendingReply = r }
-        firstAudioAt = 0
+        firstAudioAt = 0; replyStarted = false
         if (!isPlaying()) DKState.set(Mode.LISTENING)
     }
 
-    private fun captionOn() = caption?.let { it.ready && it.text().isNotBlank() } == true
+    /** Caption is key par chal raha hai -> "आप:" sirf usi se (Live model ka der se aaya text screen par nahi, warna text aage-peeche hota) */
+    private fun captionOn() = caption?.let { it.ready && it.working } == true
 
     /** Caption se turant shabd - "आप:" line */
-    private fun onCaption(t: String) {
+    private fun onCaption(t: String, final: Boolean) {
+        // DK bol raha hai aur user ke asli shabd aaye (mic DK bolte samay sirf tez awaaz bhejta hai) -> DK chup
+        if (isPlaying() && !generating) stopForUser("caption")
         DKState.user("$t…")
+        if (final) checkMicOff(t)        // andaze (interim) par mic band nahi - "माइक बंद मत करो" bhi ho sakta hai
+    }
+
+    /** Pichhli baat ka pakka text der se aaya - wahi line theek karo, nayi line nahi */
+    private fun onLateCaption(t: String) {
+        if (!userDone) { turnUser = t; DKState.user("$t…") } else DKState.fixLastUser(t)
         checkMicOff(t)
+    }
+
+    /** DK ki bachi awaaz rokkar user ko suno; jitna bola utna hi text */
+    private fun stopForUser(why: String) {
+        log("user बोलने लगा ($why) - बची आवाज़ रोकी")
+        flushPlayback()
+        commitPending(false)
+        DKState.set(Mode.LISTENING)
     }
 
     @Volatile private var micOffSent = false
@@ -581,11 +618,11 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
                 val out = if (isPlaying()) {
                     if (!barge) {
                         if (rms > maxOf(echo * 2.2, 900.0)) loud++ else { loud = 0; echo = if (echo == 0.0) rms else echo * 0.9 + rms * 0.1 }
-                        if (loud >= 4) { barge = true; log("बीच में बोलना पकड़ा (rms=${rms.toInt()}, goonj=${echo.toInt()})") }
+                        if (loud >= 4) { barge = true; barging = true; log("बीच में बोलना पकड़ा (rms=${rms.toInt()}, goonj=${echo.toInt()})") }
                     }
                     if (barge) bytes else zeros
                 } else {
-                    barge = false; loud = 0
+                    barge = false; loud = 0; barging = false
                     if (DKState.mode == Mode.LISTENING) DKState.level = (rms / 3500.0).toFloat().coerceIn(0f, 1f)
                     bytes
                 }

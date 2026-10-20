@@ -26,10 +26,16 @@ import java.util.concurrent.TimeUnit
  */
 class LiveCaption(
     private val key: String,
-    private val onText: (String) -> Unit,
+    /** (abhi ki baat, isme pakka text aaya?) */
+    private val onText: (String, Boolean) -> Unit,
+    /** Band ho chuki baat ka der se aaya (pakka) text - pichhli line theek karo */
+    private val onLate: (String) -> Unit,
+    /** DK bolte samay user sach me bol raha hai? (tab naya text = nayi baat, pichhli ka der se aaya nahi) */
+    private val isNewSpeech: () -> Boolean = { false },
 ) {
     companion object {
         val MODELS = listOf("gemini-3.5-transcribe-live", "gemini-3.5-transcribe-live-preview")
+        private const val LATE_MS = 2000L
         private const val URL = "wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent"
     }
 
@@ -52,6 +58,17 @@ class LiveCaption(
     private val committed = StringBuilder()
     private var interim = ""
     @Volatile private var fresh = true           // agla shabd = nayi baat (purana text hatao)
+    /** Kam se kam ek baar sach me text aaya = caption is key par chal raha hai */
+    @Volatile var working = false
+        private set
+
+    // band hui baat: model uska pakka text thoda der se bhejta hai (DK bolna shuru kar chuka hota hai)
+    private var closedCommitted = ""
+    private var closedInterim = ""
+    @Volatile private var closedAt = 0L
+
+    // judte samay ki awaaz (1 sec tak) - shuru ke shabd na chhootein
+    private val pending = ArrayDeque<String>()
 
     /** Abhi tak ki baat (pakka + andaza) */
     fun text(): String = synchronized(lock) { if (fresh) "" else join(committed.toString(), interim) }
@@ -73,16 +90,36 @@ class LiveCaption(
         ws = null
     }
 
-    /** DK ne jawab dena shuru kiya - agli baar user bole to naya text */
-    fun newUtterance() { fresh = true }
+    /**
+     * DK ne jawab dena shuru kiya: abhi ki baat band karo aur use lauta do.
+     * Agli baar user bole to naya text. Do baar bulao to doosri baar "" (pehli baat dobara band nahi hoti).
+     */
+    fun closeUtterance(): String = synchronized(lock) {
+        if (fresh) return@synchronized ""
+        val t = join(committed.toString(), interim)
+        closedCommitted = committed.toString().trim(); closedInterim = interim.trim()
+        closedAt = System.currentTimeMillis()
+        fresh = true
+        t
+    }
 
     /** Mic ka 16 kHz PCM16 tukda */
     fun send(pcm: ByteArray) {
-        val w = ws ?: return
-        if (!ready) return
+        if (dead || stopped) return
+        val msg = "{\"realtimeInput\":{\"audio\":{\"mimeType\":\"audio/pcm;rate=${GeminiLive.IN_RATE}\",\"data\":\"" +
+            Base64.encodeToString(pcm, Base64.NO_WRAP) + "\"}}}"
+        val w = ws
+        if (w == null || !ready) {
+            synchronized(pending) { pending.addLast(msg); while (pending.size > 25) pending.removeFirst() }   // 25 x 40ms = 1 sec
+            return
+        }
         if (w.queueSize() > 128 * 1024) return       // network dheema - caption ke liye purani awaaz chhodo
-        w.send("{\"realtimeInput\":{\"audio\":{\"mimeType\":\"audio/pcm;rate=${GeminiLive.IN_RATE}\",\"data\":\"" +
-            Base64.encodeToString(pcm, Base64.NO_WRAP) + "\"}}}")
+        w.send(msg)
+    }
+
+    private fun flushPending(w: WebSocket) {
+        val list = synchronized(pending) { pending.toList().also { pending.clear() } }
+        list.forEach { w.send(it) }
     }
 
     private fun setupJson(m: String): String {
@@ -144,20 +181,38 @@ class LiveCaption(
     private fun onServer(msg: String, m: String) {
         val o = try { JSONObject(msg) } catch (_: Exception) { return }
         if (o.has("setupComplete")) {
-            ready = true; upAt = System.currentTimeMillis()
+            ready = true; upAt = System.currentTimeMillis(); fails = 0
             log("जुड़ गया [$m]")
+            ws?.let { flushPending(it) }
             return
         }
-        if (o.has("goAway")) {                   // server naya connection chahta hai
-            try { ws?.close(1000, "goAway") } catch (_: Exception) {}
+        if (o.has("goAway")) {
+            // server naya connection chahta hai. Khud band karne par onClosing nahi aata -> yahin dobara judo
+            val old = ws
+            ws = null; ready = false
+            try { old?.close(1000, "goAway") } catch (_: Exception) {}
+            log("goAway - नया connection")
+            if (!stopped) connect()
             return
         }
         val sc = o.optJSONObject("serverContent") ?: return
         val fin = sc.optJSONObject("inputTranscription")?.optString("text").orEmpty()
         val tmp = sc.optJSONObject("interimInputTranscription")?.optString("text").orEmpty()
         if (fin.isBlank() && tmp.isBlank()) return
+        working = true
+        var late: String? = null
         val shown = synchronized(lock) {
-            if (fresh) { committed.clear(); interim = ""; fresh = false }
+            if (fresh) {
+                // band hone ke 2 sec ke andar aaya text = usi pichhli baat ka (der se), nayi baat nahi.
+                // (DK bolte samay mic se khaamoshi jaati hai, isliye itni jaldi nayi baat lagbhag kabhi nahi hoti)
+                if (closedAt > 0 && System.currentTimeMillis() - closedAt < LATE_MS && !isNewSpeech()) {
+                    if (fin.isNotBlank()) { closedCommitted = join(closedCommitted, fin); closedInterim = "" }
+                    else closedInterim = tmp
+                    late = join(closedCommitted, closedInterim)
+                    return@synchronized ""
+                }
+                committed.clear(); interim = ""; fresh = false; closedAt = 0
+            }
             if (fin.isNotBlank()) {                 // pakka text jeetta hai
                 if (committed.isNotEmpty()) committed.append(' ')
                 committed.append(fin.trim())
@@ -165,6 +220,7 @@ class LiveCaption(
             } else interim = tmp
             join(committed.toString(), interim)
         }
-        if (shown.isNotBlank()) onText(shown)
+        late?.let { if (it.isNotBlank()) onLate(it); return }
+        if (shown.isNotBlank()) onText(shown, fin.isNotBlank())
     }
 }

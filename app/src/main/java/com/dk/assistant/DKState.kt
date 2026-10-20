@@ -38,6 +38,14 @@ object DKState {
         if (!t.endsWith("…") && t.isNotBlank()) { messages.add(Msg("u", t)); trim() }
         emit()
     }
+    /** Aakhri "aap" line ka text badlo (baad me aaya pakka text) - nayi line nahi */
+    fun fixLastUser(t: String) {
+        if (t.isBlank()) return
+        lastUser = t
+        val i = messages.indexOfLast { it.role == "u" }
+        if (i >= 0) { messages[i] = messages[i].copy(text = t); persist() }
+        emit()
+    }
     /** Abhi ban raha (streaming) jawab - chat screen par turant dikhta hai */
     @Volatile var liveReply: String = ""
         private set
