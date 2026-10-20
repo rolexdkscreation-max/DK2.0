@@ -192,7 +192,16 @@ class VoiceActivity : AppCompatActivity() {
             Mode.WORKING -> "काम कर रहा हूँ…"
             Mode.SPEAKING -> "Speaking • बोल रहा हूँ…"
         }
-        you.text = "आप: " + DKState.lastUser.ifBlank { "—" }
-        dk.text = "$name: " + DKState.lastReply.ifBlank { "—" }
+        // bolte-bolte naye shabd aakhir me judte hain - lamba ho to aakhri hissa dikhao (naye shabd chhupe nahi)
+        val min = Prefs.orbMin(this)
+        you.text = "आप: " + tail(DKState.lastUser, if (min) 400 else 90).ifBlank { "—" }
+        dk.text = "$name: " + tail(DKState.lastReply, if (min) 100_000 else 200).ifBlank { "—" }
+    }
+
+    private fun tail(t: String, max: Int): String {
+        if (t.length <= max) return t
+        val cut = t.substring(t.length - max)
+        val sp = cut.indexOf(' ')
+        return "…" + if (sp in 0..20) cut.substring(sp + 1) else cut
     }
 }

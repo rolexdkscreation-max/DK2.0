@@ -14,7 +14,7 @@ android {
         // GitHub har build par VERSION_CODE badhata hai -> app ko pata chalta hai ki update naya hai
         val vc = (System.getenv("VERSION_CODE") ?: "3").toInt()
         versionCode = vc
-        versionName = "2.9.$vc"
+        versionName = "3.0.$vc"
     }
 
     // Hamesha ek hi key se sign -> purane app ke upar naya update install ho sake
