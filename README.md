@@ -7,6 +7,14 @@ DK एक Android ऐप है जो:
 - खुद click, type, scroll, swipe, back/home करता है
 - फ्री, नेचुरल आवाज़ में जवाब देता है (Android/Google TTS, कोई पैसा नहीं)
 
+
+## नया (v2.0)
+- लिक्विड ग्लास UI, बीच में 3D ओर्ब (छोटे बिंदुओं से बना पृथ्वी जैसा गोला, घूमते सैटेलाइट; रंग बताते हैं DK सुन/सोच/बोल रहा है)
+- सेटिंग्स पैनल: आपका नाम, असिस्टेंट का नाम, पर्सनैलिटी, जगाने वाले शब्द, आवाज़ की स्पीड/पिच
+- कई AI: Gemini, Groq, OpenRouter, Mistral, Z.ai (फ्री) + OpenAI, xAI Grok (पेड) + Custom API
+- हर AI के लिए API key, मॉडल, "टेस्ट करें" बटन; एक फेल हो तो दूसरी अपने-आप
+- नीचे हमेशा दिखने वाला "सेव करें" बटन + अपने-आप सेव
+
 ## यह कैसे काम करता है
 
 ```
@@ -46,7 +54,12 @@ DK/
             ├── MainActivity.kt          ← सेटअप स्क्रीन
             ├── DKAccessibilityService.kt← आँख + हाथ + फ्लोटिंग बबल
             ├── AgentRunner.kt           ← देखो → सोचो → करो लूप
-            ├── GeminiBrain.kt           ← AI दिमाग (Gemini API)
+            ├── BrainManager.kt          ← AI दिमाग (कई कंपनियाँ + fallback)
+            ├── AiClients.kt             ← Gemini / OpenAI-जैसे API कॉल
+            ├── Providers.kt             ← AI कंपनियों की लिस्ट
+            ├── SettingsActivity.kt      ← ग्लास सेटिंग्स पैनल
+            ├── OrbView.kt               ← 3D बिंदुओं वाला ओर्ब
+            ├── AuroraView.kt            ← चलता हुआ रंगीन बैकग्राउंड
             ├── AppLauncher.kt           ← ऐप खोलना, YouTube/Google search
             ├── Speaker.kt               ← फ्री नेचुरल TTS
             ├── VoiceListener.kt         ← फ्री speech-to-text

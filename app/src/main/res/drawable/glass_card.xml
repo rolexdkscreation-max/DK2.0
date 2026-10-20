@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Liquid glass: upar se chamakta kinara + halka paardarshi andar -->
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item>
+        <shape android:shape="rectangle">
+            <corners android:radius="26dp" />
+            <gradient android:angle="270" android:startColor="#66FFFFFF" android:centerColor="#1AFFFFFF" android:endColor="#33FFFFFF" />
+        </shape>
+    </item>
+    <item android:left="1dp" android:top="1dp" android:right="1dp" android:bottom="1dp">
+        <shape android:shape="rectangle">
+            <corners android:radius="25dp" />
+            <gradient android:angle="300" android:startColor="#E6141A3A" android:endColor="#CC0B1030" />
+        </shape>
+    </item>
+    <item android:left="1dp" android:top="1dp" android:right="1dp" android:bottom="1dp">
+        <shape android:shape="rectangle">
+            <corners android:radius="25dp" />
+            <gradient android:angle="270" android:startColor="#22FFFFFF" android:centerColor="#08FFFFFF" android:endColor="#05FFFFFF" />
+        </shape>
+    </item>
+</layer-list>

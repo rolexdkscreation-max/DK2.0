@@ -2,115 +2,135 @@ package com.dk.assistant
 
 import android.Manifest
 import android.content.Intent
-import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
-import android.provider.Settings
-import android.widget.Button
-import android.widget.CheckBox
+import android.view.inputmethod.EditorInfo
 import android.widget.EditText
+import android.widget.ImageButton
 import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
-import androidx.core.content.ContextCompat
 
-/** Setup screen: API key, permissions, accessibility ON, start. */
+/** Mukhya screen: beech me 3D orb, upar status, neeche baatcheet aur likhne ki bar. */
 class MainActivity : AppCompatActivity() {
 
-    private lateinit var txtStatus: TextView
-    private lateinit var txtLog: TextView
+    private lateinit var txtHello: TextView
+    private lateinit var txtName: TextView
+    private lateinit var txtState: TextView
+    private lateinit var txtYou: TextView
+    private lateinit var txtDk: TextView
+    private lateinit var chipAccess: TextView
+    private lateinit var chipMic: TextView
+    private lateinit var chipAi: TextView
+
+    private val stateListener: () -> Unit = { render() }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
 
-        txtStatus = findViewById(R.id.txtStatus)
-        txtLog = findViewById(R.id.txtLog)
-        val edtKey = findViewById<EditText>(R.id.edtApiKey)
-        val edtModel = findViewById<EditText>(R.id.edtModel)
-        val chkWake = findViewById<CheckBox>(R.id.chkWake)
-        val chkShot = findViewById<CheckBox>(R.id.chkScreenshot)
-        val edtTest = findViewById<EditText>(R.id.edtTest)
+        txtHello = findViewById(R.id.txtHello)
+        txtName = findViewById(R.id.txtName)
+        txtState = findViewById(R.id.txtState)
+        txtYou = findViewById(R.id.txtYou)
+        txtDk = findViewById(R.id.txtDk)
+        chipAccess = findViewById(R.id.chipAccess)
+        chipMic = findViewById(R.id.chipMic)
+        chipAi = findViewById(R.id.chipAi)
+        val edt = findViewById<EditText>(R.id.edtCmd)
 
-        edtKey.setText(Prefs.apiKey(this))
-        edtModel.setText(Prefs.model(this))
-        chkWake.isChecked = Prefs.wakeMode(this)
-        chkShot.isChecked = Prefs.screenshot(this)
+        findViewById<ImageButton>(R.id.btnSettings).setOnClickListener { openSettings() }
+        findViewById<OrbView>(R.id.orb).setOnClickListener { talk() }
+        findViewById<ImageButton>(R.id.btnMic).setOnClickListener { talk() }
 
-        findViewById<Button>(R.id.btnSave).setOnClickListener {
-            Prefs.save(this, edtKey.text.toString(), edtModel.text.toString(), chkWake.isChecked, chkShot.isChecked)
-            Toast.makeText(this, "Save ho gaya", Toast.LENGTH_SHORT).show()
-            DKAccessibilityService.instance?.startWakeLoopIfEnabled()
-            refresh()
-        }
-
-        findViewById<Button>(R.id.btnPerms).setOnClickListener {
-            val perms = mutableListOf(Manifest.permission.RECORD_AUDIO)
-            if (Build.VERSION.SDK_INT >= 33) perms.add(Manifest.permission.POST_NOTIFICATIONS)
-            ActivityCompat.requestPermissions(this, perms.toTypedArray(), 10)
-        }
-
-        findViewById<Button>(R.id.btnAccess).setOnClickListener {
-            Toast.makeText(this, "Installed apps / Downloaded apps me 'DK' ON karo", Toast.LENGTH_LONG).show()
-            startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
-        }
-
-        findViewById<Button>(R.id.btnStart).setOnClickListener {
-            if (!hasMic()) {
-                Toast.makeText(this, "Pehle mic permission do (button 2)", Toast.LENGTH_LONG).show()
-                return@setOnClickListener
-            }
-            ContextCompat.startForegroundService(this, Intent(this, KeepAliveService::class.java))
-            if (DKAccessibilityService.instance == null) {
-                Toast.makeText(this, "Accessibility me DK ON karo (button 3)", Toast.LENGTH_LONG).show()
-            } else {
-                Toast.makeText(this, "DK chalu hai. Bubble par tap karke bolo", Toast.LENGTH_LONG).show()
-            }
-            refresh()
-        }
-
-        findViewById<Button>(R.id.btnTts).setOnClickListener {
-            try {
-                startActivity(Intent("com.android.settings.TTS_SETTINGS"))
-            } catch (e: Exception) {
-                Toast.makeText(this, "TTS settings nahi khuli", Toast.LENGTH_SHORT).show()
+        val send = {
+            val cmd = edt.text.toString().trim()
+            if (cmd.isNotEmpty() && ready()) {
+                DKAccessibilityService.instance?.runCommand(cmd)
+                edt.setText("")
             }
         }
+        findViewById<ImageButton>(R.id.btnSend).setOnClickListener { send() }
+        edt.setOnEditorActionListener { _, id, _ -> if (id == EditorInfo.IME_ACTION_SEND) { send(); true } else false }
 
-        findViewById<Button>(R.id.btnRun).setOnClickListener {
-            val cmd = edtTest.text.toString().trim()
-            val svc = DKAccessibilityService.instance
-            when {
-                cmd.isEmpty() -> Toast.makeText(this, "Command likho", Toast.LENGTH_SHORT).show()
-                svc == null -> Toast.makeText(this, "Pehle Accessibility me DK ON karo", Toast.LENGTH_LONG).show()
-                else -> svc.runCommand(cmd)
+        chipMic.setOnClickListener { askPerms() }
+        chipAccess.setOnClickListener {
+            if (!Setup.accessibilityOn()) {
+                Toast.makeText(this, "Installed/Downloaded apps में ${Prefs.assistantName(this)} ON करें", Toast.LENGTH_LONG).show()
+                Setup.openAccessibility(this)
             }
         }
+        chipAi.setOnClickListener { openSettings() }
+
+        if (!Setup.hasMic(this)) askPerms()
+    }
+
+    private fun openSettings() = startActivity(Intent(this, SettingsActivity::class.java))
+
+    private fun askPerms() {
+        val perms = mutableListOf(Manifest.permission.RECORD_AUDIO)
+        if (Build.VERSION.SDK_INT >= 33) perms.add(Manifest.permission.POST_NOTIFICATIONS)
+        ActivityCompat.requestPermissions(this, perms.toTypedArray(), 10)
+    }
+
+    override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        Setup.startKeepAlive(this)
+        render()
+    }
+
+    /** Sab taiyaar hai? Nahi to sahi jagah bhejo. */
+    private fun ready(): Boolean {
+        when {
+            !Setup.hasMic(this) -> { askPerms(); return false }
+            !Prefs.hasAnyKey(this) -> {
+                Toast.makeText(this, "पहले सेटिंग्स में API key डालकर सेव करें", Toast.LENGTH_LONG).show()
+                openSettings(); return false
+            }
+            !Setup.accessibilityOn() -> {
+                Toast.makeText(this, "Accessibility में ${Prefs.assistantName(this)} ON करें", Toast.LENGTH_LONG).show()
+                Setup.openAccessibility(this); return false
+            }
+        }
+        return true
+    }
+
+    private fun talk() {
+        if (ready()) DKAccessibilityService.instance?.listenAndRun()
     }
 
     override fun onResume() {
         super.onResume()
-        DKLog.listener = { txtLog.text = it }
-        txtLog.text = DKLog.all()
-        refresh()
+        DKState.listen(stateListener)
+        Setup.startKeepAlive(this)
+        render()
     }
 
     override fun onPause() {
-        DKLog.listener = null
+        DKState.unlisten(stateListener)
         super.onPause()
     }
 
-    private fun hasMic() = ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) ==
-        PackageManager.PERMISSION_GRANTED
+    private fun render() {
+        val name = Prefs.assistantName(this)
+        val user = Prefs.userName(this)
+        txtName.text = name
+        txtHello.text = if (user.isBlank()) "नमस्ते" else "नमस्ते, $user"
 
-    private fun refresh() {
-        val ok = "✔"; val no = "✘"
-        txtStatus.text = buildString {
-            append(if (Prefs.apiKey(this@MainActivity).isNotBlank()) ok else no).append(" API key\n")
-            append(if (hasMic()) ok else no).append(" Mic permission\n")
-            append(if (DKAccessibilityService.instance != null) ok else no).append(" Accessibility service\n")
-            append("Model: ").append(Prefs.model(this@MainActivity))
+        chipAccess.text = (if (Setup.accessibilityOn()) "✓ " else "✗ ") + "फ़ोन कंट्रोल"
+        chipMic.text = (if (Setup.hasMic(this)) "✓ " else "✗ ") + "माइक"
+        val p = Providers.byId(Prefs.activeProvider(this))
+        chipAi.text = (if (Prefs.hasAnyKey(this)) "✓ " else "✗ ") + (p?.name ?: "AI")
+
+        txtState.text = when (DKState.mode) {
+            Mode.IDLE -> "ओर्ब पर टैप करके बोलिए"
+            Mode.LISTENING -> "सुन रहा हूँ…"
+            Mode.THINKING -> "सोच रहा हूँ…"
+            Mode.WORKING -> "काम कर रहा हूँ…"
+            Mode.SPEAKING -> "बोल रहा हूँ…"
         }
+        txtYou.text = "आप: " + DKState.lastUser.ifBlank { "—" }
+        txtDk.text = "$name: " + DKState.lastReply.ifBlank { "—" }
     }
 }

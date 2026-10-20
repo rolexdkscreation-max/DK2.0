@@ -4,7 +4,6 @@ import android.accessibilityservice.AccessibilityService
 import android.accessibilityservice.GestureDescription
 import android.annotation.SuppressLint
 import android.graphics.Bitmap
-import android.graphics.Color
 import android.graphics.Path
 import android.graphics.PixelFormat
 import android.graphics.Rect
@@ -18,7 +17,6 @@ import android.view.WindowManager
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
 import android.view.accessibility.AccessibilityWindowInfo
-import android.widget.TextView
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -32,8 +30,6 @@ import java.io.ByteArrayOutputStream
 import kotlin.coroutines.resume
 import kotlin.math.abs
 
-enum class BubbleState { IDLE, LISTENING, THINKING, WORKING }
-
 /**
  * DK ka "haath aur aankh":
  *  - screen ke saare buttons/text padhta hai (aankh)
@@ -46,7 +42,6 @@ class DKAccessibilityService : AccessibilityService() {
     companion object {
         @Volatile var instance: DKAccessibilityService? = null
             private set
-        private val WAKE_WORDS = listOf("डीके", "दीके", "डी के", "dk", "d k", "deke", "dekay", "डी.के")
     }
 
     data class Element(val id: Int, val node: AccessibilityNodeInfo, val bounds: Rect)
@@ -62,7 +57,7 @@ class DKAccessibilityService : AccessibilityService() {
     lateinit var agent: AgentRunner
         private set
 
-    private var bubble: TextView? = null
+    private var bubble: OrbView? = null
     private var wakeLoopRunning = false
 
     // ---------------------------------------------------------------- lifecycle
@@ -74,7 +69,12 @@ class DKAccessibilityService : AccessibilityService() {
         agent = AgentRunner(this, scope, speaker, listener)
         showBubble()
         DKLog.d("DK accessibility service chalu ho gaya")
-        scope.launch { speaker.speak("डीके तैयार है।") }
+        val user = Prefs.userName(this)
+        scope.launch {
+            val hello = "${Prefs.assistantName(this@DKAccessibilityService)} तैयार है" + (if (user.isNotBlank()) ", $user" else "") + "।"
+            DKState.reply(hello)
+            speaker.speak(hello)
+        }
         startWakeLoopIfEnabled()
     }
 
@@ -96,9 +96,9 @@ class DKAccessibilityService : AccessibilityService() {
         if (agent.isBusy) { agent.stop(); return }
         scope.launch {
             speaker.stop()
-            setBubbleState(BubbleState.LISTENING)
+            DKState.set(Mode.LISTENING)
             val text = listener.listenOnce()
-            setBubbleState(BubbleState.IDLE)
+            DKState.set(Mode.IDLE)
             if (text.isNullOrBlank()) {
                 speaker.speak("मुझे कुछ सुनाई नहीं दिया।")
             } else {
@@ -121,15 +121,15 @@ class DKAccessibilityService : AccessibilityService() {
                 val heard = listener.listenOnce()
                 if (heard == null) { delay(300); continue }
                 val low = heard.lowercase()
-                val wake = WAKE_WORDS.firstOrNull { low.startsWith(it) || low.contains(" $it ") || low.contains(it) }
+                val wake = Prefs.wakeWords(this@DKAccessibilityService).firstOrNull { low.contains(it) }
                 if (wake == null) continue
                 var cmd = heard.substring((low.indexOf(wake) + wake.length).coerceAtMost(heard.length))
                     .trim(' ', ',', '.', '!')
                 if (cmd.isBlank()) {
                     speaker.speak("हाँ, बोलिए।")
-                    setBubbleState(BubbleState.LISTENING)
+                    DKState.set(Mode.LISTENING)
                     cmd = listener.listenOnce() ?: ""
-                    setBubbleState(BubbleState.IDLE)
+                    DKState.set(Mode.IDLE)
                 }
                 if (cmd.isNotBlank()) agent.run(cmd).join()
             }
@@ -337,7 +337,7 @@ class DKAccessibilityService : AccessibilityService() {
     @SuppressLint("ClickableViewAccessibility")
     private fun showBubble() {
         val wm = getSystemService(WINDOW_SERVICE) as WindowManager
-        val size = (64 * resources.displayMetrics.density).toInt()
+        val size = (76 * resources.displayMetrics.density).toInt()
         val params = WindowManager.LayoutParams(
             size, size,
             WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY,
@@ -348,13 +348,7 @@ class DKAccessibilityService : AccessibilityService() {
             x = resources.displayMetrics.widthPixels - size - 20
             y = resources.displayMetrics.heightPixels / 3
         }
-        val v = TextView(this).apply {
-            text = "DK"
-            textSize = 20f
-            setTextColor(Color.WHITE)
-            gravity = Gravity.CENTER
-            setBackgroundResource(R.drawable.bubble_bg)
-        }
+        val v = OrbView(this).apply { mini = true }
         var downX = 0f; var downY = 0f; var startX = 0; var startY = 0; var moved = false
         v.setOnTouchListener { _, ev ->
             when (ev.action) {
@@ -378,26 +372,5 @@ class DKAccessibilityService : AccessibilityService() {
     private fun removeBubble() {
         bubble?.let { (getSystemService(WINDOW_SERVICE) as WindowManager).removeView(it) }
         bubble = null
-    }
-
-    fun setBubbleState(state: BubbleState) {
-        scope.launch(Dispatchers.Main) {
-            bubble?.apply {
-                text = when (state) {
-                    BubbleState.IDLE -> "DK"
-                    BubbleState.LISTENING -> "◉"
-                    BubbleState.THINKING -> "..."
-                    BubbleState.WORKING -> "⚙"
-                }
-                background.mutate().setTint(
-                    when (state) {
-                        BubbleState.IDLE -> Color.parseColor("#1E88E5")
-                        BubbleState.LISTENING -> Color.parseColor("#E53935")
-                        BubbleState.THINKING -> Color.parseColor("#FB8C00")
-                        BubbleState.WORKING -> Color.parseColor("#43A047")
-                    }
-                )
-            }
-        }
     }
 }

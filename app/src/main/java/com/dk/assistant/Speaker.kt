@@ -16,6 +16,8 @@ import java.util.concurrent.ConcurrentHashMap
  */
 class Speaker(context: Context) : TextToSpeech.OnInitListener {
 
+    private val appCtx = context.applicationContext
+
     private val ready = CompletableDeferred<Boolean>()
     private val pending = ConcurrentHashMap<String, CompletableDeferred<Unit>>()
     private val tts = TextToSpeech(context.applicationContext, this)
@@ -32,8 +34,6 @@ class Speaker(context: Context) : TextToSpeech.OnInitListener {
             tts.voice = it
             DKLog.d("Voice: ${it.name} (quality=${it.quality}, network=${it.isNetworkConnectionRequired})")
         }
-        tts.setSpeechRate(1.05f)
-        tts.setPitch(1.0f)
         tts.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
             override fun onStart(utteranceId: String?) {}
             override fun onDone(utteranceId: String?) {
@@ -63,11 +63,16 @@ class Speaker(context: Context) : TextToSpeech.OnInitListener {
     /** Bolta hai aur bolna khatam hone tak wait karta hai. */
     suspend fun speak(text: String) {
         if (text.isBlank() || !ready.await()) return
+        tts.setSpeechRate(Prefs.ttsRate(appCtx))
+        tts.setPitch(Prefs.ttsPitch(appCtx))
+        val prev = DKState.mode
+        DKState.set(Mode.SPEAKING)
         val id = UUID.randomUUID().toString()
         val done = CompletableDeferred<Unit>()
         pending[id] = done
         tts.speak(text, TextToSpeech.QUEUE_FLUSH, null, id)
         withTimeoutOrNull(60_000) { done.await() }
+        if (DKState.mode == Mode.SPEAKING) DKState.set(if (prev == Mode.SPEAKING) Mode.IDLE else prev)
     }
 
     fun stop() {
