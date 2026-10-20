@@ -5,9 +5,14 @@ on:
     branches: [ main ]
   workflow_dispatch:
 
+permissions:
+  contents: write   # Release banane ke liye
+
 jobs:
   build:
     runs-on: ubuntu-latest
+    env:
+      VERSION_CODE: ${{ github.run_number }}
     steps:
       - name: Code checkout
         uses: actions/checkout@v4
@@ -23,11 +28,37 @@ jobs:
         with:
           gradle-version: '8.7'
 
-      - name: APK build
-        run: gradle assembleDebug --no-daemon
+      - name: Signing key (hamesha ek hi)
+        env:
+          KS_B64: ${{ secrets.DK_KEYSTORE_B64 }}
+        run: |
+          if [ -n "$KS_B64" ]; then
+            echo "$KS_B64" | base64 -d > "$RUNNER_TEMP/dk.jks"
+            echo "DK_KEYSTORE=$RUNNER_TEMP/dk.jks" >> "$GITHUB_ENV"
+          else
+            echo "::warning::DK_KEYSTORE_B64 secret nahi mila - debug key se sign hoga"
+          fi
 
-      - name: APK upload
+      - name: APK build
+        env:
+          DK_KS_PASS: ${{ secrets.DK_KS_PASS }}
+          DK_KEY_ALIAS: dk
+        run: |
+          gradle assembleRelease --no-daemon
+          cp app/build/outputs/apk/release/app-release.apk DK.apk
+
+      - name: APK upload (Actions artifact)
         uses: actions/upload-artifact@v4
         with:
           name: DK-apk
-          path: app/build/outputs/apk/debug/app-debug.apk
+          path: DK.apk
+
+      - name: GitHub Release (app ke andar update ke liye)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          NOTES="$(git log -1 --pretty=%B)"
+          gh release create "v${VERSION_CODE}" DK.apk \
+            --title "DK 2.2.${VERSION_CODE}" \
+            --notes "$NOTES" \
+            --latest

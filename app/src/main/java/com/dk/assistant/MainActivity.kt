@@ -11,6 +11,8 @@ import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
+import androidx.lifecycle.lifecycleScope
+import kotlinx.coroutines.launch
 
 /** Mukhya screen: beech me 3D orb, upar status, neeche baatcheet aur likhne ki bar. */
 class MainActivity : AppCompatActivity() {
@@ -62,6 +64,7 @@ class MainActivity : AppCompatActivity() {
             }
         }
         chipAi.setOnClickListener { openSettings() }
+        findViewById<TextView>(R.id.chipUpdate).setOnClickListener { openSettings() }
 
         if (!Setup.hasMic(this)) askPerms()
     }
@@ -106,6 +109,23 @@ class MainActivity : AppCompatActivity() {
         DKState.listen(stateListener)
         Setup.startKeepAlive(this)
         render()
+        checkUpdate()
+    }
+
+    /** App khulte hi (har 3 ghante me max ek baar) GitHub par naya version dekho. */
+    private fun checkUpdate() {
+        if (!Prefs.autoUpdate(this)) return
+        val chip = findViewById<TextView>(R.id.chipUpdate)
+        if (System.currentTimeMillis() - Prefs.lastUpdateCheck(this) < 3 * 60 * 60 * 1000L) {
+            val latest = getSharedPreferences("dk_prefs", MODE_PRIVATE).getInt("upd_latest", 0)
+            chip.visibility = if (latest > Updater.currentCode(this)) android.view.View.VISIBLE else android.view.View.GONE
+            return
+        }
+        lifecycleScope.launch {
+            val rel = try { Updater.check(this@MainActivity) } catch (e: Exception) { null }
+            chip.visibility = if (rel != null) android.view.View.VISIBLE else android.view.View.GONE
+            if (rel != null) Toast.makeText(this@MainActivity, "DK का नया अपडेट आया है — सेटिंग्स → अपडेट", Toast.LENGTH_LONG).show()
+        }
     }
 
     override fun onPause() {

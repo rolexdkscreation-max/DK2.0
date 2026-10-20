@@ -11,13 +11,30 @@ android {
         applicationId = "com.dk.assistant"
         minSdk = 26
         targetSdk = 34
-        versionCode = 3
-        versionName = "2.1"
+        // GitHub har build par VERSION_CODE badhata hai -> app ko pata chalta hai ki update naya hai
+        val vc = (System.getenv("VERSION_CODE") ?: "3").toInt()
+        versionCode = vc
+        versionName = "2.2.$vc"
+    }
+
+    // Hamesha ek hi key se sign -> purane app ke upar naya update install ho sake
+    val ksPath = System.getenv("DK_KEYSTORE")
+    signingConfigs {
+        create("dk") {
+            if (ksPath != null && file(ksPath).exists()) {
+                storeFile = file(ksPath)
+                storePassword = System.getenv("DK_KS_PASS")
+                keyAlias = System.getenv("DK_KEY_ALIAS") ?: "dk"
+                keyPassword = System.getenv("DK_KS_PASS")
+            }
+        }
     }
 
     buildTypes {
         release {
             isMinifyEnabled = false
+            signingConfig = if (ksPath != null && file(ksPath).exists())
+                signingConfigs.getByName("dk") else signingConfigs.getByName("debug")
         }
     }
     compileOptions {

@@ -48,6 +48,8 @@ object Prefs {
 
     // ---- options
     fun wakeMode(c: Context) = sp(c).getBoolean("wake_mode", false)
+    fun autoUpdate(c: Context) = sp(c).getBoolean("auto_update", true)
+    fun lastUpdateCheck(c: Context) = sp(c).getLong("upd_checked", 0L)
     fun liveMode(c: Context) = sp(c).getBoolean("live_mode", false)
     fun screenshot(c: Context) = sp(c).getBoolean("screenshot", true)
     fun ttsRate(c: Context) = sp(c).getFloat("tts_rate", 1.05f)

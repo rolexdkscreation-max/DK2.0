@@ -65,7 +65,73 @@ class SettingsActivity : AppCompatActivity() {
     }
 
     // ------------------------------------------------------------ UI build
+    private lateinit var swAutoUpd: SwitchCompat
+    private var pendingRelease: Updater.Release? = null
+
     private fun build() {
+        // ---- Update
+        card("अपडेट", "अभी का version: ${Updater.currentName(this)} (build ${Updater.currentCode(this)})") { box ->
+            val status = TextView(this).apply {
+                text = "अपडेट चेक करने के लिए बटन दबाएँ"; textSize = 14f; setTextColor(0xFFFFFFFF.toInt())
+                setPadding((4 * dp).toInt(), (6 * dp).toInt(), 0, (4 * dp).toInt())
+            }
+            box.addView(status)
+            val notes = TextView(this).apply {
+                textSize = 13f; setTextColor(0xB3FFFFFF.toInt()); visibility = View.GONE
+                setPadding((4 * dp).toInt(), (4 * dp).toInt(), 0, (4 * dp).toInt())
+            }
+            box.addView(notes)
+            val bar = android.widget.ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal).apply {
+                max = 100; visibility = View.GONE
+            }
+            box.addView(bar, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, (10 * dp).toInt()))
+            lateinit var btnInstall: Button
+            val btnCheck = button("अपडेट चेक करें") {
+                status.text = "चेक हो रहा है…"
+                lifecycleScope.launch {
+                    try {
+                        val rel = Updater.check(this@SettingsActivity)
+                        pendingRelease = rel
+                        if (rel == null) {
+                            status.text = "✓ आपके पास सबसे नया version है"
+                            notes.visibility = View.GONE; btnInstall.visibility = View.GONE
+                        } else {
+                            status.text = "नया अपडेट आया है: ${rel.name}  (${rel.size / 1024 / 1024} MB)"
+                            notes.text = rel.notes.take(600).ifBlank { "सुधार और नए फ़ीचर" }
+                            notes.visibility = View.VISIBLE; btnInstall.visibility = View.VISIBLE
+                        }
+                    } catch (e: Exception) {
+                        status.text = "चेक नहीं हो पाया: ${e.message}. इंटरनेट देखें।"
+                    }
+                }
+            }
+            btnInstall = button("डाउनलोड करके अपडेट करें") {
+                val rel = pendingRelease ?: return@button
+                if (!Updater.canInstall(this)) {
+                    toast("DK को \"ऐप इंस्टॉल करने\" की इजाज़त दें, फिर वापस आकर दोबारा दबाएँ")
+                    Updater.askInstallPermission(this); return@button
+                }
+                bar.visibility = View.VISIBLE; bar.progress = 0
+                status.text = "डाउनलोड हो रहा है…"
+                lifecycleScope.launch {
+                    try {
+                        Updater.downloadAndInstall(this@SettingsActivity, rel) { p ->
+                            bar.progress = p; status.text = "डाउनलोड: $p%"
+                        }
+                        status.text = "इंस्टॉल स्क्रीन पर \"Update / Install\" दबाएँ"
+                    } catch (e: Exception) {
+                        status.text = "डाउनलोड नहीं हुआ: ${e.message}"
+                        bar.visibility = View.GONE
+                    }
+                }
+            }.apply { visibility = View.GONE }
+            row(box, btnCheck)
+            row(box, btnInstall)
+            swAutoUpd = switch(box, "ऐप खुलते ही अपडेट चेक करो", Prefs.autoUpdate(this))
+            // Settings khulte hi ek baar chupchap check
+            btnCheck.performClick()
+        }
+
         // ---- Profile
         card("प्रोफ़ाइल", "आपका और असिस्टेंट का नाम") {
             edUser = field(it, "आपका नाम", Prefs.userName(this), "जैसे: दीपक")
@@ -171,6 +237,7 @@ class SettingsActivity : AppCompatActivity() {
             putBoolean("fallback", swFallback.isChecked)
             putBoolean("wake_mode", swWake.isChecked)
             putBoolean("screenshot", swShot.isChecked)
+            putBoolean("auto_update", swAutoUpd.isChecked)
             putFloat("tts_rate", seekValue(sbRate))
             putFloat("tts_pitch", seekValue(sbPitch))
             keyFields.forEach { (id, e) -> putString("key_$id", e.text.toString().trim()) }
