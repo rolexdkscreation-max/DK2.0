@@ -1,5 +1,6 @@
 package com.dk.assistant
 
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -31,14 +32,44 @@ class AgentRunner(
     /** Chat screen se likha sawaal: jawab sirf likh kar (bolkar nahi), agar user ne aisa chuna ho */
     @Volatile private var silent = false
 
-    fun run(command: String, speak: Boolean = true): Job {
+    /** Abhi kis sawaal par kaam chal raha hai + ab tak kya jawab bana (beech me tokne par kaam aata hai) */
+    @Volatile var currentGoal: String? = null
+        private set
+    private val currentAnswer = StringBuilder()
+
+    fun run(command: String, speak: Boolean = true, note: String = ""): Job {
         job?.cancel()
         silent = !speak
         val j = scope.launch {
-            try { execute(command) } finally { if (job === coroutineContext[Job]) { DKState.set(Mode.IDLE); silent = false } }
+            try { execute(command, note) } finally { if (job === coroutineContext[Job]) { DKState.set(Mode.IDLE); silent = false; currentGoal = null } }
         }
         job = j
         return j
+    }
+
+    /**
+     * User ne DK ke bolte/sochte waqt beech me kuch kaha:
+     * pehle uski baat suni (ho chuki), ab purana kaam roko aur dono baaton ko milakar naya jawab.
+     */
+    fun interrupt(newText: String): Job {
+        val prev = currentGoal
+        val wasActive = job?.isActive == true
+        val said = speaker.spokenSoFar()
+        val planned = synchronized(currentAnswer) { currentAnswer.toString().trim() }
+        speaker.stop()
+        val note = if (wasActive && !prev.isNullOrBlank()) {
+            if (said.isBlank()) "NOTE: While you were still preparing the answer to the user's previous message \"$prev\", " +
+                "the user added the message below. Treat both together as ONE request. If the new message is a separate question, " +
+                "answer the earlier one briefly first, then the new one."
+            else "NOTE: The user INTERRUPTED you while you were answering their previous question: \"$prev\". " +
+                "You had already spoken: \"${said.takeLast(500)}\"." +
+                (if (planned.length > said.length + 10) " Your full planned answer was: \"${planned.take(700)}\"." else "") +
+                " Listen to the new message below. If it is about the SAME topic (a correction, addition or follow-up), give ONE fresh " +
+                "combined answer. If it is a DIFFERENT question, first finish the earlier answer in 1-2 short sentences (only what was " +
+                "not yet said), then answer the new question. Never repeat what you already said."
+        } else ""
+        DKLog.d("Beech me toka: \"$newText\" (pehle: $prev)")
+        return run(newText, true, note)
     }
 
     private suspend fun say(text: String) {
@@ -152,11 +183,16 @@ class AgentRunner(
         return true
     }
 
-    private suspend fun execute(goal: String) {
+    private suspend fun execute(goal: String, note: String = "") {
         DKLog.d("Command: $goal")
         DKState.user(goal)
+        currentGoal = goal
+        synchronized(currentAnswer) { currentAnswer.clear() }
         val lower = goal.lowercase().trim()
-        if (lower in listOf("stop", "रुको", "बस", "ruko", "cancel")) { speaker.stop(); return }
+        val bare = lower.trim(' ', '.', '!', '।', ',')
+        if (bare in listOf("stop", "रुको", "बस", "ruko", "cancel", "चुप", "चुप हो जाओ", "बस करो", "रुक जाओ", "ठीक है बस", "बस बस", "रहने दो", "chup")) {
+            speaker.stop(); DKState.reply("ठीक है।"); return
+        }
         if (memoryCommand(goal)) return
         // "tumhe kisne banaya?" - sirf poochhne par
         if (asksCreator(lower)) { say(CREATOR_ANSWER); return }
@@ -172,12 +208,15 @@ class AgentRunner(
             if (doQuick(q)) return
             // open_app fail (app nahi mila) -> AI sambhalega
         }
+        // DK ka apna dimaag: samay, tareekh, battery, namaste, hisaab = ek pal me (bina internet)
+        if (note.isBlank()) LocalBrain.instant(svc, goal)?.let { say(it); return }
         if (!brain.hasUsableProvider()) {
+            LocalBrain.recall(svc, goal, exact = false)?.let { say(it); return }
             say("पहले सेटिंग्स में किसी AI की API key डालकर सेव कीजिए।")
             return
         }
 
-        var feedback = "USER GOAL: $goal"
+        var feedback = (if (note.isNotBlank()) "$note\n" else "") + "USER GOAL: $goal"
         var wantShot = false
         var shotWarned = false
         // Normal baatcheet ho to screen padhe bina seedha jawab = bahut tez
@@ -188,6 +227,15 @@ class AgentRunner(
         //    Gehri research sirf tab jab user khud bole "सर्च/रिसर्च करो" (upar).
         if (chatMode && brain.canSearch() && needsSearch(lower)) {
             if (searchAndSay(goal)) return
+        }
+        // 3) Normal baatcheet: pehle sikha hua (wahi sawaal pehle poocha tha) = turant; warna AI se TUKDON me jawab
+        if (chatMode) {
+            if (note.isBlank()) LocalBrain.recall(svc, goal, exact = true)?.let { DKLog.d("Seekha hua jawab"); say(it); return }
+            when (chatStream(goal, note)) {
+                ChatOut.DONE -> return
+                ChatOut.SEARCH -> { if (brain.canSearch() && searchAndSay(goal)) return }
+                ChatOut.SCREEN -> chatMode = false
+            }
         }
         while (step < MAX_STEPS) {
             step++
@@ -264,7 +312,7 @@ class AgentRunner(
                         speakJob?.join()
                         say(a.optString("question", "क्या मैं आगे बढ़ूँ?"))
                         DKState.set(Mode.LISTENING)
-                        val ans = svc.hear() ?: "(user ne kuch nahi bola)"
+                        val ans = svc.hearForAgent() ?: "(user ne kuch nahi bola)"
                         DKState.user(ans)
                         DKLog.d("User answer: $ans")
                         results.append("ask -> USER ANSWERED: \"$ans\"\n")
@@ -284,6 +332,125 @@ class AgentRunner(
             feedback = "USER GOAL (same task, continue): $goal\nRESULTS OF YOUR LAST ACTIONS:\n$results"
         }
         say("बहुत सारे स्टेप हो गए, मैंने काम यहीं रोक दिया।")
+    }
+
+    private enum class ChatOut { DONE, SCREEN, SEARCH }
+
+    /**
+     * Baatcheet ka jawab streaming se: AI jaise-jaise likhta hai, pehla vakya poora hote hi DK bolna shuru.
+     * Kai keys ho to sabse tez/chalti hui (BrainManager race karata hai). Sab fail = DK khud bolkar kaaran batata hai.
+     */
+    private suspend fun chatStream(goal: String, note: String): ChatOut {
+        DKState.set(Mode.THINKING)
+        val prompt = (if (note.isNotBlank()) "$note\n\n" else "") + "USER SAYS: $goal" + (if (brain.canSearch()) "\nSEARCH AVAILABLE" else "")
+        val ch = Channel<String>(Channel.UNLIMITED)
+        var speakJob: Job? = null
+        val buf = StringBuilder()
+        val pend = StringBuilder()
+        val shown = StringBuilder()
+        val facts = mutableListOf<String>()
+        var mode = 0            // 0 = abhi pata nahi, 1 = saada jawab, 2 = [SCREEN]/[SEARCH], 3 = JSON
+        var tag = ""
+        var sentCount = 0
+
+        fun emit(raw: String) {
+            var x = raw.trim()
+            if (x.isEmpty()) return
+            val yi = x.indexOf("[YAAD")
+            if (yi >= 0) { x.substring(yi).substringAfter("]").trim().takeIf { it.isNotBlank() }?.let { facts.add(it) }; x = x.substring(0, yi).trim() }
+            for (t in listOf("[SCREEN]", "[SEARCH]")) if (x.contains(t)) { if (shown.isEmpty()) tag = t; x = x.replace(t, "").trim() }
+            x = x.replace(Regex("[*#`]"), "").trim()
+            if (x.isEmpty()) return
+            shown.append(x).append(' ')
+            synchronized(currentAnswer) { currentAnswer.append(x).append(' ') }
+            DKState.replyLive(shown.toString().trim())
+            sentCount++
+            if (!silent) {
+                ch.trySend(x)
+                if (speakJob == null) speakJob = scope.launch { speaker.speakStream(ch) }
+            }
+        }
+
+        /** Tukdon ko vakya me todo: pehla vakya chhota (jaldi awaaz), baaki ~160 akshar tak */
+        fun feed(d: String) {
+            pend.append(d)
+            while (true) {
+                var cut = -1
+                for (i in pend.indices) {
+                    val c = pend[i]
+                    if (c == '।' || c == '?' || c == '!' || c == '\n') { cut = i; break }
+                    if (c == '.' && i + 1 < pend.length && pend[i + 1].isWhitespace()) { cut = i; break }
+                }
+                if (cut < 0) {
+                    val limit = if (sentCount == 0) 70 else 170
+                    if (pend.length > limit) {
+                        val c2 = pend.lastIndexOf(",").takeIf { it > 20 } ?: pend.lastIndexOf(" ").takeIf { it > 20 } ?: return
+                        cut = c2
+                    } else return
+                }
+                emit(pend.substring(0, cut + 1)); pend.delete(0, cut + 1)
+            }
+        }
+
+        val full = try {
+            brain.streamChat(prompt, "USER SAYS: $goal") { d ->
+                buf.append(d)
+                when (mode) {
+                    0 -> {
+                        val t = buf.toString().trimStart()
+                        if (t.isEmpty()) return@streamChat
+                        if (t[0] == '[') {
+                            val close = t.indexOf(']')
+                            if (close < 0 && t.length < 12) return@streamChat
+                            val tg = if (close > 0) t.substring(0, close + 1).uppercase() else ""
+                            if (tg == "[SCREEN]" || tg == "[SEARCH]") { mode = 2; tag = tg } else { mode = 1; feed(t) }
+                        } else if (t[0] == '{') mode = 3
+                        else { mode = 1; feed(t) }
+                    }
+                    1 -> feed(d)
+                }
+            }
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            ch.close(); throw e
+        } catch (e: Exception) {
+            DKLog.d("Chat stream fail: ${e.message}")
+            if (mode == 1) feed("\n")
+            ch.close()
+            speakJob?.join()
+            if (shown.isNotEmpty()) { DKState.reply(shown.toString().trim()); return ChatOut.DONE }
+            // AI nahi chala: pehle seekha hua milta-julta jawab, warna DK khud bataye kya dikkat hai
+            LocalBrain.recall(svc, goal, exact = false)?.let { say(it); return ChatOut.DONE }
+            val why = brain.explainAll(e)
+            DKState.reply(why); if (!silent) speaker.speak(why)
+            return ChatOut.DONE
+        }
+
+        if (mode == 3) {
+            val o = try { JSONObject(full.substring(full.indexOf('{'), full.lastIndexOf('}') + 1)) } catch (_: Exception) { JSONObject().put("say", full) }
+            when {
+                o.optBoolean("need_screen") -> { ch.close(); return ChatOut.SCREEN }
+                o.optBoolean("need_search") || o.optBoolean("need_research") -> { ch.close(); return ChatOut.SEARCH }
+            }
+            o.optString("remember").takeIf { it.isNotBlank() }?.let { facts.add(it) }
+            speaker.sentences(o.optString("say")).forEach { emit(it) }
+        } else if (mode == 1) feed("\n")
+        if (mode == 0 && full.isNotBlank()) speaker.sentences(full).forEach { emit(it) }
+        ch.close()
+        facts.forEach { Memory.addFact(svc, it) }
+        if (mode == 2 || (tag.isNotEmpty() && shown.isEmpty())) {
+            speakJob?.join()
+            return if (tag == "[SCREEN]") ChatOut.SCREEN else ChatOut.SEARCH
+        }
+        val answer = shown.toString().trim()
+        if (answer.isEmpty()) {
+            val m = "माफ़ कीजिए, जवाब खाली आया। एक बार फिर बोलिए।"
+            DKState.reply(m); if (!silent) speaker.speak(m); return ChatOut.DONE
+        }
+        DKState.reply(answer)
+        // roz seekho: agli baar yahi sawaal = turant jawab
+        if (note.isBlank()) LocalBrain.learn(svc, goal, answer)
+        speakJob?.join()
+        return ChatOut.DONE
     }
 
     private suspend fun searchAndSay(goal: String, fillerSaid: Boolean = false, deep: Boolean = false, thorough: Boolean = false): Boolean {

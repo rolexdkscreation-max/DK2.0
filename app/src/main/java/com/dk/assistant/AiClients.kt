@@ -20,6 +20,74 @@ class AiException(val code: Int, message: String) : IOException(message)
 interface AiClient {
     val label: String
     fun complete(system: String, history: List<Turn>, prompt: String, imageB64: String?): String
+
+    /**
+     * Jawab tukdon me (jaise-jaise AI likhta hai) - pehla vakya aate hi DK bolna shuru kar deta hai.
+     * onDelta har naye tukde ke saath. Poora text return.
+     */
+    fun stream(system: String, history: List<Turn>, prompt: String, onDelta: (String) -> Unit): String {
+        val t = complete(system, history, prompt, null); onDelta(t); return t
+    }
+}
+
+/** Race me haar gaya (dusri key ne pehle jawab de diya) - chupchap band */
+class LoserException : RuntimeException("loser")
+
+/** Baatcheet ke liye: jaldi haar maano, dusri key try karo */
+private val fastHttp = OkHttpClient.Builder()
+    .connectTimeout(6, TimeUnit.SECONDS)
+    .readTimeout(12, TimeUnit.SECONDS)
+    .callTimeout(40, TimeUnit.SECONDS)
+    .retryOnConnectionFailure(true)
+    .build()
+
+/** SSE (data: ...) lines padho. */
+private fun sse(req: Request, onData: (String) -> Unit) {
+    val call = fastHttp.newCall(req)
+    call.execute().use { r ->
+        if (!r.isSuccessful) {
+            val body = r.body?.string() ?: ""
+            val msg = try { JSONObject(body).optJSONObject("error")?.optString("message")?.takeIf { it.isNotBlank() } ?: body.take(250) }
+                catch (e: Exception) { body.take(250) }
+            throw AiException(r.code, msg)
+        }
+        val src = r.body?.source() ?: throw AiException(0, "khali stream")
+        try {
+            while (true) {
+                val line = src.readUtf8Line() ?: break
+                if (!line.startsWith("data:")) continue
+                val d = line.removePrefix("data:").trim()
+                if (d == "[DONE]") break
+                if (d.isNotEmpty()) onData(d)
+            }
+        } catch (e: LoserException) { call.cancel(); throw e }
+    }
+}
+
+/** <think>...</think> wala hissa (sochne wale model) bolna nahi */
+private class ThinkFilter {
+    private var inThink = false
+    private val pend = StringBuilder()
+    fun feed(s: String): String {
+        pend.append(s)
+        val out = StringBuilder()
+        while (true) {
+            if (inThink) {
+                val e = pend.indexOf("</think>")
+                if (e < 0) { if (pend.length > 8) pend.delete(0, pend.length - 8); return out.toString() }
+                pend.delete(0, e + 8); inThink = false
+            } else {
+                val b = pend.indexOf("<think>")
+                if (b < 0) {
+                    // adhoora "<thi" bacha ke rakho
+                    val keep = (1..6).firstOrNull { k -> pend.length >= k && "<think>".startsWith(pend.substring(pend.length - k)) } ?: 0
+                    out.append(pend, 0, pend.length - keep); pend.delete(0, pend.length - keep)
+                    return out.toString()
+                }
+                out.append(pend, 0, b); pend.delete(0, b + 7); inThink = true
+            }
+        }
+    }
 }
 
 private val http = OkHttpClient.Builder()
@@ -75,6 +143,66 @@ class GeminiClient(private val key: String, private val model: String) : AiClien
             }
         }
         throw last ?: AiException(0, "Gemini fail")
+    }
+
+    override fun stream(system: String, history: List<Turn>, prompt: String, onDelta: (String) -> Unit): String {
+        // chuna hua model + ek backup (zyada nahi - warna der hoti hai; dusri key race me hai)
+        val models = (listOf(model) + BACKUP_MODELS).distinct().take(3)
+        var last: AiException? = null
+        for (m in models) {
+            var thinking = true
+            var attempt = 0
+            while (attempt < 2) {
+                attempt++
+                var gotAny = false
+                try {
+                    val full = StringBuilder()
+                    streamOnce(m, system, history, prompt, thinking) { d -> gotAny = true; full.append(d); onDelta(d) }
+                    label = "Gemini ($m)"
+                    return full.toString()
+                } catch (e: AiException) {
+                    if (gotAny) throw e
+                    last = e
+                    DKLog.d("Gemini stream $m -> ${e.code} ${e.message}")
+                    // "thinking" na samjhe to bina uske dobara (wahi model)
+                    if (e.code == 400 && thinking && (e.message ?: "").contains("think", true)) { thinking = false; continue }
+                    val tryNext = e.code == 404 || e.code == 429 || e.code >= 500 ||
+                        (e.code == 400 && (e.message ?: "").contains("model", true) && !(e.message ?: "").contains("API key", true))
+                    if (!tryNext) throw e
+                    break   // agla model
+                }
+            }
+        }
+        throw last ?: AiException(0, "Gemini fail")
+    }
+
+    private fun streamOnce(m: String, system: String, history: List<Turn>, prompt: String, thinking: Boolean, onDelta: (String) -> Unit) {
+        val contents = JSONArray()
+        history.forEach {
+            contents.put(JSONObject().put("role", if (it.role == "user") "user" else "model")
+                .put("parts", JSONArray().put(JSONObject().put("text", it.text))))
+        }
+        contents.put(JSONObject().put("role", "user").put("parts", JSONArray().put(JSONObject().put("text", prompt))))
+        val gen = JSONObject().put("maxOutputTokens", 700)
+        if (thinking && m.startsWith("gemini-3")) gen.put("thinkingConfig", JSONObject().put("thinkingLevel", "minimal"))
+        if (thinking && m.startsWith("gemini-2.5")) gen.put("thinkingConfig", JSONObject().put("thinkingBudget", 0))
+        val body = JSONObject()
+            .put("system_instruction", JSONObject().put("parts", JSONArray().put(JSONObject().put("text", system))))
+            .put("contents", contents)
+            .put("generationConfig", gen)
+        val req = Request.Builder()
+            .url("https://generativelanguage.googleapis.com/v1beta/models/$m:streamGenerateContent?alt=sse")
+            .header("x-goog-api-key", key)
+            .post(body.toString().toRequestBody(JSON_TYPE)).build()
+        sse(req) { d ->
+            val o = try { JSONObject(d) } catch (_: Exception) { return@sse }
+            o.optJSONObject("error")?.let { throw AiException(it.optInt("code", 0), it.optString("message")) }
+            val p = o.optJSONArray("candidates")?.optJSONObject(0)?.optJSONObject("content")?.optJSONArray("parts") ?: return@sse
+            for (i in 0 until p.length()) {
+                val x = p.optJSONObject(i) ?: continue
+                if (!x.optBoolean("thought", false)) x.optString("text").takeIf { it.isNotEmpty() }?.let(onDelta)
+            }
+        }
     }
 
     /** Google Search se taaza/sahi jawab (grounding). Sirf text. */
@@ -221,5 +349,29 @@ class OpenAiCompatClient(
             else -> ""
         }
         return text.replace(Regex("(?s)<think>.*?</think>"), "").trim()
+    }
+
+    override fun stream(system: String, history: List<Turn>, prompt: String, onDelta: (String) -> Unit): String {
+        val msgs = JSONArray().put(JSONObject().put("role", "system").put("content", system))
+        history.forEach { msgs.put(JSONObject().put("role", if (it.role == "user") "user" else "assistant").put("content", it.text)) }
+        msgs.put(JSONObject().put("role", "user").put("content", prompt))
+        val body = JSONObject().put("model", model).put("messages", msgs).put("stream", true).put("max_tokens", 900)
+        if (model.contains("gpt-oss")) body.put("reasoning_effort", "low")
+        val req = Request.Builder()
+            .url(baseUrl.trimEnd('/') + "/chat/completions")
+            .header("Authorization", "Bearer $key")
+            .header("HTTP-Referer", "https://github.com/dk-assistant")
+            .header("X-Title", "DK Assistant")
+            .post(body.toString().toRequestBody(JSON_TYPE)).build()
+        val full = StringBuilder()
+        val tf = ThinkFilter()
+        sse(req) { d ->
+            val o = try { JSONObject(d) } catch (_: Exception) { return@sse }
+            o.optJSONObject("error")?.let { throw AiException(it.optInt("code", 0), it.optString("message")) }
+            val c = o.optJSONArray("choices")?.optJSONObject(0)?.optJSONObject("delta")?.opt("content")
+            val txt = if (c is String) c else ""
+            if (txt.isNotEmpty()) { val clean = tf.feed(txt); if (clean.isNotEmpty()) { full.append(clean); onDelta(clean) } }
+        }
+        return full.toString()
     }
 }

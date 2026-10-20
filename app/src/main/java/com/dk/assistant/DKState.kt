@@ -42,6 +42,8 @@ object DKState {
         if (t.isNotBlank()) { messages.add(Msg("d", t)); trim() }
         emit()
     }
+    /** Jawab abhi ban raha hai (tukdon me) - screen par dikhao, chat list me abhi mat jodo */
+    fun replyLive(t: String) { lastReply = t; emit() }
     private fun trim() { while (messages.size > 200) messages.removeAt(0); persist() }
 
     // ---- chat phone me save (app band/restart ke baad bhi baatcheet dikhe)

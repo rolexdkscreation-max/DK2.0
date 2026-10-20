@@ -12,6 +12,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.async
 import kotlinx.coroutines.withTimeoutOrNull
 import java.io.File
@@ -59,6 +60,9 @@ class Speaker(context: Context) : TextToSpeech.OnInitListener {
         tts.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
             override fun onStart(utteranceId: String?) {}
             override fun onDone(utteranceId: String?) { utteranceId?.let { pending.remove(it)?.complete(Unit) } }
+            // QUEUE_FLUSH / stop() se kata vakya: onDone nahi aata - warna DK atka rehta (aur agla jawab bolta hi nahi)
+            override fun onStop(utteranceId: String?, interrupted: Boolean) { utteranceId?.let { pending.remove(it)?.complete(Unit) } }
+            override fun onError(utteranceId: String?, errorCode: Int) { DKLog.d("TTS error $errorCode"); utteranceId?.let { pending.remove(it)?.complete(Unit) } }
             @Deprecated("Deprecated in Java")
             override fun onError(utteranceId: String?) { utteranceId?.let { pending.remove(it)?.complete(Unit) } }
         })
@@ -83,28 +87,154 @@ class Speaker(context: Context) : TextToSpeech.OnInitListener {
         if (v != null && tts.voice?.name != v.name) tts.voice = v
     }
 
+    // ================================================================ bolna (ek samay me ek hi awaaz)
+    private val mutex = kotlinx.coroutines.sync.Mutex()
+    @Volatile private var paused = false
+    @Volatile private var aborted = false
+    @Volatile private var resumeSignal: CompletableDeferred<Boolean>? = null
+    /** Is baar jitna bol chuka (beech me tokne par AI ko batate hain) */
+    private val spoken = StringBuilder()
+    /** Abhi kaunsa vakya bol raha hai (apni hi goonj pehchanne ke liye) */
+    @Volatile var currentChunk: String = ""
+        private set
+
+    fun spokenSoFar(): String = synchronized(spoken) { spoken.toString().trim() }
+
     /** Bolta hai aur bolna khatam hone tak wait karta hai. */
     suspend fun speak(text: String) {
         if (text.isBlank()) return
+        val ch = kotlinx.coroutines.channels.Channel<String>(kotlinx.coroutines.channels.Channel.UNLIMITED)
+        sentences(text).forEach { ch.trySend(it) }
+        ch.close()
+        speakStream(ch)
+    }
+
+    /** Turant bolne wali chhoti baat (ठीक है / कॉल उठाऊँ?) - Gemini ki saved awaaz ho to wahi, warna Google. */
+    suspend fun speakQuick(text: String) {
+        if (text.isBlank()) return
+        val ch = kotlinx.coroutines.channels.Channel<String>(1)
+        ch.trySend(text.trim()); ch.close()
+        speakStream(ch, quick = true)
+    }
+
+    /**
+     * Vakya jaise-jaise aate hain (AI abhi likh hi raha ho), waise-waise bolta hai.
+     * Beech me user bole -> pause() ; goonj thi -> resume() (wahi vakya dobara) ; asli baat -> stop().
+     */
+    suspend fun speakStream(ch: kotlinx.coroutines.channels.ReceiveChannel<String>, quick: Boolean = false) {
+        mutex.lock()
         val prev = DKState.mode
-        DKState.set(Mode.SPEAKING)
-        busy = true
-        ensureAudible()
         try {
-            var ok = false
+            aborted = false; paused = false
+            synchronized(spoken) { spoken.clear() }
+            busy = true
+            DKState.set(Mode.SPEAKING)
+            ensureAudible()
             val key = Prefs.key(appCtx, "gemini")
-            if (Prefs.voiceEngine(appCtx) == "gemini" && key.isNotBlank() && System.currentTimeMillis() > geminiCooldownUntil) {
-                ok = speakGemini(key, text, Prefs.geminiVoice(appCtx))
+            val voice = Prefs.geminiVoice(appCtx)
+            var gem = Prefs.voiceEngine(appCtx) == "gemini" && key.isNotBlank() && System.currentTimeMillis() > geminiCooldownUntil
+            if (!quick) applyGoogleVoiceSafe()
+            val pendingWav = HashMap<String, kotlinx.coroutines.Deferred<ByteArray?>>()
+            val bg = kotlinx.coroutines.CoroutineScope(Dispatchers.IO + kotlinx.coroutines.SupervisorJob())
+            fun prefetch(t: String) {
+                if (gem && !pendingWav.containsKey(t)) pendingWav[t] = bg.async {
+                    try { if (quick) cacheFile(voice, t)?.takeIf { it.exists() }?.readBytes() else synth(key, t, voice) }
+                    catch (e: Exception) {
+                        val code = (e as? AiException)?.code ?: 0
+                        geminiCooldownUntil = System.currentTimeMillis() + if (code == 429) 10 * 60_000L else 2 * 60_000L
+                        DKLog.d("Gemini awaaz nahi chali ($code) - Google awaaz"); null
+                    }
+                }
             }
-            if (!ok) speakGoogle(text)
+            val ahead = ArrayDeque<String>()
+            try {
+                while (!aborted) {
+                    val chunk = ahead.removeFirstOrNull() ?: ch.receiveCatching().getOrNull() ?: break
+                    prefetch(chunk)
+                    // aage ke 2 vakya ki awaaz pehle se bana lo (beech me ruke bina)
+                    while (ahead.size < 2) { val n = ch.tryReceive().getOrNull() ?: break; ahead.addLast(n); prefetch(n) }
+                    var replay = true
+                    while (replay && !aborted) {
+                        replay = false
+                        currentChunk = chunk
+                        var played = false
+                        if (gem) {
+                            // Gemini awaaz 3.5 sec me na bane to Google awaaz (der nahi)
+                            val wav = withTimeoutOrNull(if (quick) 400L else 3500L) { pendingWav[chunk]?.await() }
+                            if (wav != null) { playWav(wav); played = true }
+                            else if (!quick) { gem = false; geminiCooldownUntil = maxOf(geminiCooldownUntil, System.currentTimeMillis() + 60_000L) }
+                        }
+                        if (!played && !aborted) googleSay(chunk)
+                        if (paused && !aborted) {
+                            // user bol raha hai - sun lo; goonj nikli to wahi vakya dobara
+                            DKState.set(Mode.LISTENING)
+                            val go = withTimeoutOrNull(20_000) { resumeSignal?.await() } ?: false
+                            paused = false
+                            if (go && !aborted) { DKState.set(Mode.SPEAKING); ensureAudible(); replay = true } else aborted = true
+                        }
+                    }
+                    if (!aborted) synchronized(spoken) { spoken.append(chunk).append(' ') }
+                }
+            } finally {
+                bg.cancel()
+            }
         } finally {
             busy = false
+            paused = false
+            currentChunk = ""
             lastSpokeAt = System.currentTimeMillis()
-            if (DKState.mode == Mode.SPEAKING) DKState.set(if (prev == Mode.SPEAKING) Mode.IDLE else prev)
+            if (DKState.mode == Mode.SPEAKING || DKState.mode == Mode.LISTENING)
+                DKState.set(if (prev == Mode.SPEAKING || prev == Mode.LISTENING) Mode.IDLE else prev)
+            mutex.unlock()
         }
     }
 
-    /** Chhote, baar-baar bole jaane wale vakya (ठीक है, सोचकर बताता हूँ...) ki awaaz save - agli baar turant. */
+    /** User beech me bolne laga: turant chup (par bolna khatam nahi - goonj nikli to resume) */
+    fun pause() {
+        if (!busy || paused) return
+        resumeSignal = CompletableDeferred()
+        paused = true
+        haltAudio()
+    }
+
+    /** Goonj/shor tha - wahi vakya dobara se bolo */
+    fun resume() {
+        if (!paused) return
+        resumeSignal?.complete(true)
+    }
+
+    val isPaused get() = paused
+
+    private suspend fun applyGoogleVoiceSafe() { try { if (ready.await()) applyGoogleVoice() } catch (_: Exception) {} }
+
+    /** Ek vakya Google awaaz me (session ke andar) */
+    private suspend fun googleSay(text: String) {
+        if (!ready.await()) return
+        tts.setSpeechRate(Prefs.ttsRate(appCtx))
+        tts.setPitch(Prefs.ttsPitch(appCtx))
+        val id = UUID.randomUUID().toString()
+        val done = CompletableDeferred<Unit>()
+        pending[id] = done
+        var r = tts.speak(text, TextToSpeech.QUEUE_FLUSH, null, id)
+        if (r != TextToSpeech.SUCCESS) {
+            DKLog.d("TTS speak fail ($r) - dobara")
+            delay(250)
+            r = tts.speak(text, TextToSpeech.QUEUE_FLUSH, null, id)
+            if (r != TextToSpeech.SUCCESS) { pending.remove(id); return }
+        }
+        withTimeoutOrNull(8_000L + text.length * 120L) { done.await() }
+        pending.remove(id)
+    }
+
+    /** Settings me Google awaaz sunne ke liye (seedha) */
+    suspend fun speakGoogle(text: String, voiceName: String? = null) {
+        if (!ready.await()) return
+        applyGoogleVoice(voiceName)
+        ensureAudible()
+        googleSay(text)
+    }
+
+    /** Chhote, baar-baar bole jaane wale vakya ki awaaz save - agli baar turant. */
     private fun cacheFile(voice: String, text: String): File? {
         if (text.length > 60) return null
         val h = java.security.MessageDigest.getInstance("MD5").digest("$voice|$text".toByteArray())
@@ -113,8 +243,8 @@ class Speaker(context: Context) : TextToSpeech.OnInitListener {
         return File(dir, "$h.wav")
     }
 
-    /** Lamba jawab -> chhote vakya. Pehla vakya banate hi bolna shuru, baaki peeche-peeche bante rehte hain. */
-    private fun sentences(text: String): List<String> {
+    /** Lamba jawab -> chhote vakya. Pehla tukda chhota = jaldi awaaz. */
+    fun sentences(text: String): List<String> {
         val parts = Regex("(?<=[।.!?\\n])\\s+").split(text.trim()).map { it.trim() }.filter { it.isNotBlank() }
         val out = mutableListOf<String>()
         val sb = StringBuilder()
@@ -122,7 +252,6 @@ class Speaker(context: Context) : TextToSpeech.OnInitListener {
             if (sb.isNotEmpty() && sb.length + p.length > 160) { out.add(sb.toString()); sb.clear() }
             if (sb.isNotEmpty()) sb.append(' ')
             sb.append(p)
-            // pehla tukda chhota rakho = jaldi awaaz
             if (out.isEmpty() && sb.length >= 25) { out.add(sb.toString()); sb.clear() }
         }
         if (sb.isNotEmpty()) out.add(sb.toString())
@@ -135,49 +264,6 @@ class Speaker(context: Context) : TextToSpeech.OnInitListener {
         return withContext(Dispatchers.IO) { GeminiTts.synthesize(key, text, voice, Prefs.voiceStyle(appCtx)).also { w -> cf?.writeBytes(w) } }
     }
 
-    private suspend fun speakGemini(key: String, text: String, voice: String): Boolean = kotlinx.coroutines.coroutineScope {
-        val chunks = sentences(text)
-        var spoken = 0
-        try {
-            var next = async(Dispatchers.IO) { synth(key, chunks[0], voice) }
-            for (i in chunks.indices) {
-                val wav = next.await()
-                if (i + 1 < chunks.size) next = async(Dispatchers.IO) { synth(key, chunks[i + 1], voice) }
-                playWav(wav); spoken++
-            }
-            true
-        } catch (e: kotlinx.coroutines.CancellationException) {
-            throw e
-        } catch (e: Exception) {
-            val code = (e as? AiException)?.code ?: 0
-            // limit khatam / error -> kuch der Google awaaz
-            geminiCooldownUntil = System.currentTimeMillis() + if (code == 429) 10 * 60_000L else 2 * 60_000L
-            DKLog.d("Gemini awaaz nahi chali ($code): ${e.message} - Google awaaz use kar raha hoon")
-            // jo hissa bacha hai woh Google awaaz me
-            if (spoken > 0) { speakGoogle(chunks.drop(spoken).joinToString(" ")); true } else false
-        }
-    }
-
-    suspend fun speakGoogle(text: String, voiceName: String? = null) {
-        if (!ready.await()) return
-        applyGoogleVoice(voiceName)
-        tts.setSpeechRate(Prefs.ttsRate(appCtx))
-        tts.setPitch(Prefs.ttsPitch(appCtx))
-        val id = UUID.randomUUID().toString()
-        val done = CompletableDeferred<Unit>()
-        pending[id] = done
-        val r = tts.speak(text, TextToSpeech.QUEUE_FLUSH, null, id)
-        if (r != TextToSpeech.SUCCESS) {
-            pending.remove(id)
-            DKLog.d("TTS speak fail ($r) - dobara koshish")
-            delay(300)
-            if (tts.speak(text, TextToSpeech.QUEUE_FLUSH, null, id) != TextToSpeech.SUCCESS) return
-            pending[id] = done
-        }
-        // lamba jawab: har ~12 akshar/sec + 8 sec
-        withTimeoutOrNull(8_000L + text.length * 120L) { done.await() }
-    }
-
     private val audio = appCtx.getSystemService(Context.AUDIO_SERVICE) as android.media.AudioManager
 
     /**
@@ -185,41 +271,17 @@ class Speaker(context: Context) : TextToSpeech.OnInitListener {
      *  - sunte samay "beep" dabane ke liye media mute hua tha -> turant unmute
      *  - media volume 0 hai -> thoda badha do (warna jawab sirf likha dikhta, awaaz nahi)
      */
-    private fun ensureAudible() {
+    fun ensureAudible() {
         try {
             VoiceListener.forceUnmute(audio)
             val s = android.media.AudioManager.STREAM_MUSIC
+            // pichhli baar app band hote waqt mute reh gayi awaaz bhi kholo
+            if (Build.VERSION.SDK_INT >= 23) for (st in intArrayOf(android.media.AudioManager.STREAM_NOTIFICATION, android.media.AudioManager.STREAM_SYSTEM))
+                try { if (audio.isStreamMute(st)) audio.adjustStreamVolume(st, android.media.AudioManager.ADJUST_UNMUTE, 0) } catch (_: Exception) {}
             if (Build.VERSION.SDK_INT >= 23 && audio.isStreamMute(s)) audio.adjustStreamVolume(s, android.media.AudioManager.ADJUST_UNMUTE, 0)
             val max = audio.getStreamMaxVolume(s)
             if (audio.getStreamVolume(s) == 0 && max > 0) audio.setStreamVolume(s, (max * 0.5).toInt().coerceAtLeast(1), 0)
         } catch (e: Exception) { DKLog.d("awaaz unmute: ${e.message}") }
-    }
-
-    /** Turant bolne wali awaaz (Gemini cache me ho to wahi, warna Google) - filler/ack ke liye. */
-    @OptIn(kotlinx.coroutines.DelicateCoroutinesApi::class)
-    suspend fun speakQuick(text: String) {
-        if (text.isBlank()) return
-        val prev = DKState.mode
-        busy = true
-        ensureAudible()
-        try {
-            val key = Prefs.key(appCtx, "gemini")
-            val voice = Prefs.geminiVoice(appCtx)
-            val cf = cacheFile(voice, text)
-            if (Prefs.voiceEngine(appCtx) == "gemini" && key.isNotBlank() && cf != null && cf.exists()) {
-                playWav(withContext(Dispatchers.IO) { cf.readBytes() })
-            } else if (Prefs.voiceEngine(appCtx) == "gemini" && key.isNotBlank() && System.currentTimeMillis() > geminiCooldownUntil) {
-                // pehli baar: Google se turant bolo, peeche Gemini awaaz cache me bana lo
-                speakGoogle(text)
-                kotlinx.coroutines.GlobalScope.launch(Dispatchers.IO) {
-                    try { cf?.writeBytes(GeminiTts.synthesize(key, text, voice, Prefs.voiceStyle(appCtx))) } catch (_: Exception) {}
-                }
-            } else speakGoogle(text)
-        } finally {
-            busy = false
-            lastSpokeAt = System.currentTimeMillis()
-            if (DKState.mode == Mode.SPEAKING) DKState.set(prev)
-        }
     }
 
     /** Settings me awaaz sunne ke liye. */
@@ -262,11 +324,20 @@ class Speaker(context: Context) : TextToSpeech.OnInitListener {
         playDone?.complete(Unit); playDone = null
     }
 
-    fun stop() {
-        tts.stop()
+    /** Abhi chal rahi awaaz turant band */
+    private fun haltAudio() {
+        try { tts.stop() } catch (_: Exception) {}
         pending.values.forEach { it.complete(Unit) }
         pending.clear()
         android.os.Handler(android.os.Looper.getMainLooper()).post { stopPlayer() }
+        playDone?.complete(Unit)
+    }
+
+    /** Bolna poori tarah band (naya sawaal / "रुको") */
+    fun stop() {
+        aborted = true
+        resumeSignal?.complete(false)
+        haltAudio()
     }
 
     fun shutdown() {

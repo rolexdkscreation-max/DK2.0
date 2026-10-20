@@ -18,6 +18,11 @@ import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
 import android.view.accessibility.AccessibilityWindowInfo
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.async
+import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.selects.select
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
@@ -168,6 +173,74 @@ class DKAccessibilityService : AccessibilityService() {
         return Transcriber.transcribe(this, pcm)
     }
 
+    /** Agent ne "ask" se sawaal poocha hai aur jawab sun raha hai (tab beech-me-tokne wala kaan chup) */
+    @Volatile private var agentHearing = false
+    @Volatile private var bargeListen: kotlinx.coroutines.Deferred<String?>? = null
+
+    suspend fun hearForAgent(): String? {
+        agentHearing = true
+        try {
+            bargeListen?.cancelAndJoin()
+            return hear()
+        } finally { agentHearing = false }
+    }
+
+    /** Suni hui baat DK ki apni hi awaaz (goonj) to nahi? */
+    private fun isEcho(heard: String): Boolean {
+        val dk = (speaker.currentChunk + " " + speaker.spokenSoFar().takeLast(300)).let { LocalBrain.norm(it) }
+        if (dk.isBlank()) return false
+        val dkWords = dk.split(' ').filter { it.length > 1 }.toSet()
+        val hw = LocalBrain.norm(heard).split(' ').filter { it.length > 1 }
+        if (hw.isEmpty()) return true
+        val same = hw.count { it in dkWords }
+        return if (hw.size <= 2) same == hw.size else same >= hw.size * 0.6
+    }
+
+    /** DK bol/soch raha hai - us dauraan bhi suno. User bole to DK chup, baat suno, phir dono milakar jawab. */
+    private suspend fun listenBarge(): String? {
+        if (silentEar()) {
+            val pcm = ear.nextUtterance(barge = true, onStart = { if (speaker.busy) speaker.pause() }, onDiscard = { speaker.resume() })
+                ?: run { speaker.resume(); delay(300); return null }
+            val text = Transcriber.transcribe(this, pcm)
+            if (text.isNullOrBlank() || text.trim(' ', '.', '।', ',').length < 2 || isEcho(text)) {
+                DKLog.d("Beech ki awaaz goonj/shor thi: $text"); speaker.resume(); return null
+            }
+            return text
+        }
+        // Google mic: pehle apne kaan se pata karo ki user bolne laga, phir Google se suno
+        ear.nextUtterance(barge = true, vadOnly = true, onStart = { if (speaker.busy) speaker.pause() }) ?: run { delay(300); return null }
+        ear.release()
+        listener.lastSpokeAt = speaker.lastSpokeAt
+        val text = listener.listenOnce()
+        if (text.isNullOrBlank() || isEcho(text)) { speaker.resume(); return null }
+        return text
+    }
+
+    /** Kaam/jawab chalne do, saath me suno - beech me toka to naya (milaya hua) jawab. */
+    private suspend fun runWithBarge(first: kotlinx.coroutines.Job) {
+        var job = first
+        while (job.isActive) {
+            if (!DKState.live || agentHearing || callAnnouncing || calls.ringing || calls.inCall) {
+                withTimeoutOrNull(300) { job.join() }; continue
+            }
+            val heard: String? = coroutineScope {
+                val l = async { listenBarge() }
+                bargeListen = l
+                try {
+                    select<String?> {
+                        l.onAwait { it }
+                        // kaam khatam - par user beech me bol raha ho to uski baat poori suno
+                        job.onJoin { if (ear.capturing) l.await() else { l.cancel(); null } }
+                    }
+                } finally { bargeListen = null }
+            }
+            if (heard == null) continue
+            val low = heard.lowercase()
+            if (low.contains("माइक बंद") || low.contains("सुनना बंद") || low.contains("mic off")) { stopLive(); return }
+            job = agent.interrupt(heard)
+        }
+    }
+
     /** Ek hi sunne wala loop: live mode me har baat command hai, wake mode me sirf wake word ke baad. */
     private fun ensureLoop() {
         val wanted = DKState.live || Prefs.wakeMode(this)
@@ -216,7 +289,7 @@ class DKAccessibilityService : AccessibilityService() {
                         cmdText = heard.substring((low.indexOf(w) + w.length).coerceAtMost(heard.length)).trim(' ', ',', '.', '!')
                         if (cmdText.isBlank()) continue
                     }
-                    agent.run(cmdText).join()
+                    runWithBarge(agent.run(cmdText))
                 } else {
                     // wake word mode
                     val wake = Prefs.wakeWords(this@DKAccessibilityService).firstOrNull { low.contains(it) } ?: continue

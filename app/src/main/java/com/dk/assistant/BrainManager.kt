@@ -1,9 +1,17 @@
 package com.dk.assistant
 
 import android.content.Context
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.cancelChildren
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
+
+/** Saari keys fail - har key ka kaaran */
+class AllFailedException(val errors: List<Pair<Provider, Exception>>) : java.io.IOException("all failed")
 
 /**
  * DK ka dimaag. Aapki chuni hui AI company ko pehle try karta hai,
@@ -48,6 +56,108 @@ class BrainManager(private val ctx: Context) {
 
     fun hasUsableProvider() = orderedProviders().any { clientFor(it) != null }
 
+    /** Baatcheet: jinki key hai, unme chalti hui + sabse tez pehle. Limit/galti wali sabse aakhir me. */
+    private fun rankedForChat(): List<Provider> {
+        val withKey = Providers.all.filter { clientFor(it) != null }
+            .filter { Prefs.fallback(ctx) || it.id == Prefs.activeProvider(ctx) }
+        val active = Prefs.activeProvider(ctx)
+        val (good, bad) = withKey.partition { ProviderHealth.usable(it.id) }
+        return good.sortedBy { ProviderHealth.speed(it.id) - (if (it.id == active) 150 else 0) } + bad
+    }
+
+    /**
+     * Baatcheet ka jawab TUKDON me (streaming): pehla vakya aate hi bolna shuru.
+     * Kai keys ho to: sabse tez wali se shuru; 1.5 sec me pehla shabd na aaye to agli key bhi saath me -
+     * jo pehle jawab de, wahi jeetegi. Fail ho to turant agli key.
+     */
+    suspend fun streamChat(prompt: String, note: String, onDelta: (String) -> Unit): String = withContext(Dispatchers.IO) {
+        syncEpoch()
+        val system = buildChatStreamPrompt()
+        // purane JSON jawab ko saada text bana ke bhejo (AI saada text hi likhe)
+        val hist = history.takeLast(10).map { t ->
+            if (t.role == "model" && t.text.trimStart().startsWith("{"))
+                Turn("model", try { JSONObject(t.text).optString("say").ifBlank { "(phone par kaam kiya)" } } catch (_: Exception) { t.text })
+            else t
+        }
+        val cands = rankedForChat().mapNotNull { p -> clientFor(p)?.let { c ->
+            if (c is GeminiClient) c.fast = true
+            if (c is OpenAiCompatClient) c.fast = true
+            p to c } }
+        if (cands.isEmpty()) throw AiException(-1, "NO_KEY")
+
+        val lock = Any()
+        var winner: String? = null
+        var next = 0; var running = 0
+        val errors = mutableListOf<Pair<Provider, Exception>>()
+        val result = CompletableDeferred<String>()
+
+        coroutineScope {
+            val scope = this
+            fun start() {
+                val pc = synchronized(lock) {
+                    if (winner != null || next >= cands.size || result.isCompleted) null else { running++; cands[next++] }
+                } ?: return
+                val (p, client) = pc
+                scope.launch(Dispatchers.IO) {
+                    val t0 = System.currentTimeMillis()
+                    var first = true
+                    try {
+                        val full = client.stream(system, hist, prompt) { d ->
+                            synchronized(lock) {
+                                if (winner == null) winner = p.id
+                                if (winner != p.id) throw LoserException()
+                            }
+                            if (first) { first = false; ProviderHealth.ok(p.id, System.currentTimeMillis() - t0)
+                                DKLog.d("Pehla shabd ${System.currentTimeMillis() - t0}ms: ${client.label}") }
+                            onDelta(d)
+                        }
+                        val won = synchronized(lock) { running--; if (winner == null && full.isNotBlank()) winner = p.id; winner == p.id }
+                        if (won) { lastUsed = client.label; result.complete(full) }
+                        else if (full.isBlank()) throw AiException(0, "khali jawab")
+                    } catch (e: LoserException) {
+                        synchronized(lock) { running-- }
+                    } catch (e: kotlinx.coroutines.CancellationException) {
+                        throw e
+                    } catch (e: Exception) {
+                        DKLog.d("${client.label} fail: ${e.message}")
+                        ProviderHealth.fail(p.id, e)
+                        val (wasWinner, noneLeft) = synchronized(lock) {
+                            if (winner != p.id) { errors.add(p to e); running-- }
+                            Pair(winner == p.id, winner == null && next >= cands.size && running == 0)
+                        }
+                        when {
+                            wasWinner -> result.completeExceptionally(e)   // beech me toota - jitna bola utna hi
+                            noneLeft -> result.completeExceptionally(AllFailedException(errors.toList()))
+                            else -> start()                                // turant agli key
+                        }
+                    }
+                }
+            }
+            start()
+            launch { delay(1500); start(); delay(2500); start() }   // dheemi ho to saath me agli key
+            try {
+                val text = result.await()
+                remember(if (note.isNotBlank()) note else "USER SAYS: $prompt", text)
+                text
+            } finally { scope.coroutineContext.cancelChildren() }
+        }
+    }
+
+    /** Sab key fail - DK khud bolkar bataye kya dikkat hai. */
+    fun explainAll(e: Exception): String {
+        if (e is AllFailedException) {
+            if (e.errors.any { it.second is java.net.UnknownHostException }) return "इंटरनेट नहीं मिल रहा। नेट चालू करके फिर बोलिए।"
+            val parts = e.errors.distinctBy { it.first.id }.joinToString("। ") { (p, x) -> "${p.name.removePrefix("Google ")}: ${ProviderHealth.short(x)}" }
+            val fix = when {
+                e.errors.all { (it.second as? AiException)?.code == 429 } -> "थोड़ी देर बाद पूछिए, या सेटिंग्स में कोई दूसरी फ्री key डालिए, जैसे Groq।"
+                e.errors.any { val c = (it.second as? AiException)?.code; c == 401 || c == 403 } -> "सेटिंग्स में key दोबारा डालकर टेस्ट दबाइए।"
+                else -> "फिर से बोलिए।"
+            }
+            return "जवाब नहीं आ पाया। $parts। $fix"
+        }
+        return explain(e)
+    }
+
     /** Galti ko aasaan Hindi me samjhao (bolne + screen par dikhane ke liye). */
     fun explain(e: Exception): String {
         val msg = e.message ?: ""
@@ -70,7 +180,9 @@ class BrainManager(private val ctx: Context) {
             syncEpoch()
             val system = if (chat) buildChatPrompt() else buildSystemPrompt()
             var lastError: Exception? = null
-            for (p in orderedProviders(chat)) {
+            // limit/galti wali key ko peeche karo (warna har baar wahi pehle fail hoti hai = der)
+            val (good, bad) = orderedProviders(chat).partition { ProviderHealth.usable(it.id) }
+            for (p in good + bad) {
                 val client = clientFor(p) ?: continue
                 val img = if (p.vision) imageB64 else null
                 try {
@@ -85,10 +197,12 @@ class BrainManager(private val ctx: Context) {
                     }
                     lastUsed = client.label
                     DKLog.d("AI: ${client.label}")
+                    ProviderHealth.ok(p.id, 1000)
                     remember(memoryNote, answer)
                     return@withContext parseJson(answer)
                 } catch (e: Exception) {
                     DKLog.d("${client.label} fail: ${e.message}")
+                    ProviderHealth.fail(p.id, e)
                     lastError = e
                 }
             }
@@ -184,6 +298,27 @@ class BrainManager(private val ctx: Context) {
             append("\nIf the user tells you a personal fact or preference worth remembering (names, numbers, likes, plans), add \"remember\": \"<the fact in short Hindi>\" to the JSON.")
             append("\nONLY IF the user asks who made/created/built you or who your boss/owner is, answer: \"मुझे धीरज कुमार सिंह जी ने बनाया है। मैं धीरज सर के लिए काम करता हूँ, वही मेरे बॉस हैं।\" Never mention this otherwise.")
             append("\nToday: " + java.text.SimpleDateFormat("d MMMM yyyy, EEEE", java.util.Locale.ENGLISH).format(java.util.Date()))
+            append(TALK_RULES)
+            append(Memory.factsBlock(ctx))
+        }
+    }
+
+    /** Baatcheet (streaming) ka prompt: saada bola jaane wala text, JSON nahi = pehla shabd turant. */
+    private fun buildChatStreamPrompt(): String {
+        val name = Prefs.assistantName(ctx); val user = Prefs.userName(ctx); val persona = Prefs.personality(ctx)
+        return buildString {
+            append("You are $name, a smart, warm Hindi voice assistant on the user's Android phone, talking like a real person.")
+            if (user.isNotBlank()) append(" The user's name is $user.")
+            if (persona.isNotBlank()) append(" Personality: $persona.")
+            append("\nReply in PLAIN spoken Hindi (Devanagari; common English words ok). No JSON, no markdown, no lists, no emojis.")
+            append(" Usually 1-3 short sentences; start directly with the answer. Even if earlier turns look like JSON, reply as plain text.")
+            append("\nAnswer from your own knowledge immediately: talk, general knowledge, how/why, advice, explanations, maths, stories.")
+            append("\nSPECIAL replies (the whole reply is only the tag):")
+            append("\n- The user wants something DONE on the phone (open/click/type/send/call/settings/shopping/maps...): reply exactly [SCREEN]")
+            append("\n- The question needs CURRENT facts you cannot know (today's news, live prices, weather, scores, recent results) and the input says SEARCH AVAILABLE: reply exactly [SEARCH]")
+            append("\nLEARN from the user every day: if they tell a personal fact, preference, habit, or how they like answers, add at the very end a new line: [YAAD] <that fact in short Hindi>")
+            append("\nONLY IF the user asks who made/created/built you or who your boss/owner is, answer: \"मुझे धीरज कुमार सिंह जी ने बनाया है। मैं धीरज सर के लिए काम करता हूँ, वही मेरे बॉस हैं।\" Never mention this otherwise.")
+            append("\nToday: " + java.text.SimpleDateFormat("d MMMM yyyy, EEEE, h:mm a", java.util.Locale.ENGLISH).format(java.util.Date()))
             append(TALK_RULES)
             append(Memory.factsBlock(ctx))
         }

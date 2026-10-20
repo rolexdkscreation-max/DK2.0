@@ -44,6 +44,11 @@ class Ear(
     private var aec: AcousticEchoCanceler? = null
     private var ns: NoiseSuppressor? = null
     private var noise = 300.0
+    /** DK ki apni awaaz mic me kitni aati hai (bolte waqt) */
+    private var echo = 0.0
+    /** Abhi user ki baat record ho rahi hai? */
+    @Volatile var capturing = false
+        private set
 
     @SuppressLint("MissingPermission")
     private fun open(): AudioRecord? {
@@ -69,7 +74,12 @@ class Ear(
     }
 
     /** Agli baat ka PCM (16kHz mono 16-bit). null = mic error. */
-    suspend fun nextUtterance(): ByteArray? = withContext(Dispatchers.IO) {
+    /**
+     * barge = DK bol raha ho tab bhi suno (beech me tokna). DK ki awaaz (goonj) se upar wali awaaz hi user maani jaati hai.
+     * vadOnly = sirf pata karo ki user bolne laga (Google mic wale tareeke ke liye) - turant khaali array.
+     */
+    suspend fun nextUtterance(barge: Boolean = false, vadOnly: Boolean = false, onStart: (() -> Unit)? = null,
+                              onDiscard: (() -> Unit)? = null): ByteArray? = withContext(Dispatchers.IO) {
         val r = open() ?: return@withContext null
         try { r.startRecording() } catch (e: Exception) { release(); return@withContext null }
         val buf = ShortArray(FRAME)
@@ -87,24 +97,29 @@ class Ear(
                 for (i in 0 until n) { val s = buf[i].toDouble(); sum += s * s }
                 val rms = sqrt(sum / n)
 
-                // DK khud bol raha hai -> apni awaaz mat suno
-                if (muted()) { talking = false; speech.reset(); pre.clear(); loud = 0; warm = 4; DKState.level = 0f; continue }
-                if (warm > 0) { noise = noise * 0.7 + rms * 0.3; warm--; continue }
-                // dheemi awaaz bhi pakdo, par pankhe/TV ka shor nahi
-                val startTh = maxOf(noise * 2.1, 320.0)
+                val dkTalking = muted()
+                // DK khud bol raha hai -> (normal sunne me) apni awaaz mat suno
+                if (dkTalking && !barge) { talking = false; speech.reset(); pre.clear(); loud = 0; warm = 4; DKState.level = 0f; continue }
+                if (warm > 0) { if (!dkTalking) noise = noise * 0.7 + rms * 0.3; warm--; continue }
+                if (dkTalking && !talking) echo = if (echo == 0.0) rms else echo * 0.85 + rms * 0.15
+                // dheemi awaaz bhi pakdo, par pankhe/TV ka shor nahi. DK bol raha ho to uski goonj se kaafi upar.
+                val startTh = if (barge && dkTalking) maxOf(noise * 2.5, echo * 1.9, 750.0) else maxOf(noise * 2.1, 320.0)
                 val stopTh = maxOf(noise * 1.4, 220.0)
+                val startFrames = if (barge && dkTalking) 7 else START_FRAMES
 
                 if (!talking) {
                     DKState.level = 0f
                     val copy = buf.copyOf(n)
                     pre.addLast(copy); if (pre.size > PRE_ROLL) pre.removeFirst()
-                    if (rms > startTh) loud++ else { loud = 0; noise = noise * 0.97 + rms * 0.03 }
-                    if (loud >= START_FRAMES) {
-                        talking = true
+                    if (rms > startTh) loud++ else { loud = 0; if (!dkTalking) noise = noise * 0.97 + rms * 0.03 }
+                    if (loud >= startFrames) {
+                        talking = true; capturing = true
                         pre.forEach { writeShorts(speech, it, it.size) }
                         pre.clear()
                         frames = 0; silent = 0; speechFrames = loud
                         try { onSpeechStart() } catch (_: Exception) {}
+                        try { onStart?.invoke() } catch (_: Exception) {}
+                        if (vadOnly) return@withContext ByteArray(0)
                     }
                 } else {
                     DKState.level = (rms / 3500.0).toFloat().coerceIn(0f, 1f)
@@ -115,13 +130,15 @@ class Ear(
                     if (silent >= endAfter || frames >= MAX_FRAMES) {
                         if (speechFrames >= MIN_SPEECH_FRAMES) return@withContext speech.toByteArray()
                         // bahut chhota = khaansi/khatak -> phir se suno
-                        talking = false; speech.reset(); loud = 0
+                        talking = false; capturing = false; speech.reset(); loud = 0
+                        try { onDiscard?.invoke() } catch (_: Exception) {}
                     }
                 }
             }
             @Suppress("UNREACHABLE_CODE") null
         } finally {
             try { r.stop() } catch (_: Exception) {}
+            capturing = false
             DKState.level = 0f
         }
     }
