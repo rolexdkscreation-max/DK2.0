@@ -46,6 +46,32 @@ object Prefs {
     }
     fun hasAnyKey(c: Context) = Providers.all.any { key(c, it.id).isNotBlank() }
 
+    /** Auto-setup ne jo free models sabse tez paaye (tez pehle) - backup ke liye */
+    fun fastModels(c: Context, id: String): List<String> =
+        (sp(c).getString("fast_$id", "") ?: "").split('\n').filter { it.isNotBlank() }
+
+    // ---- AAWAZ (sunna/bolna) ki ALAG key - taaki jawab wali key ki limit se takraav na ho
+    fun voiceKey(c: Context) = sp(c).getString("voice_key", "") ?: ""
+    fun voiceProvider(c: Context) = sp(c).getString("voice_provider", "") ?: ""
+
+    /** Sunne (awaaz -> text) ke liye keys, kram se: pehle alag awaaz wali key, phir jawab wali Groq/Gemini key */
+    fun sttKeys(c: Context): List<Pair<String, String>> {
+        val out = mutableListOf<Pair<String, String>>()
+        val vk = voiceKey(c)
+        val vp = voiceProvider(c).ifBlank { KeySetup.detect(vk) ?: "" }
+        if (vk.isNotBlank() && (vp == "groq" || vp == "gemini")) out.add(vp to vk)
+        key(c, "groq").takeIf { it.isNotBlank() }?.let { out.add("groq" to it) }
+        key(c, "gemini").takeIf { it.isNotBlank() }?.let { out.add("gemini" to it) }
+        return out.distinctBy { it.second }
+    }
+
+    /** Gemini awaaz (bolna) ke liye key: alag awaaz wali Gemini key ho to wahi, warna jawab wali */
+    fun ttsGeminiKey(c: Context): String {
+        val vk = voiceKey(c)
+        val vp = voiceProvider(c).ifBlank { KeySetup.detect(vk) ?: "" }
+        return if (vk.isNotBlank() && vp == "gemini") vk else key(c, "gemini")
+    }
+
     // ---- options
     fun wakeMode(c: Context) = sp(c).getBoolean("wake_mode", false)
     fun autoUpdate(c: Context) = sp(c).getBoolean("auto_update", true)
@@ -73,6 +99,8 @@ object Prefs {
 
     // ---- sunna: "auto" = bina beep (Groq/Gemini key ho to), "google" = Google mic (beep aa sakti hai)
     fun listenEngine(c: Context) = sp(c).getString("listen_engine", "auto") ?: "auto"
+
+    fun micDeniedOnce(c: Context) = sp(c).getBoolean("mic_denied", false)
 
     fun announceCalls(c: Context) = sp(c).getBoolean("announce_calls", true)
     /** Sawaal ka sahi/taaza jawab Google Search se (Gemini key ho to) */

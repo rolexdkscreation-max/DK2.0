@@ -30,7 +30,12 @@ class Speaker(context: Context) : TextToSpeech.OnInitListener {
     private val appCtx = context.applicationContext
     private val ready = CompletableDeferred<Boolean>()
     private val pending = ConcurrentHashMap<String, CompletableDeferred<Unit>>()
-    private val tts = TextToSpeech(appCtx, this, "com.google.android.tts")
+    @Volatile private var tts = TextToSpeech(appCtx, this, "com.google.android.tts")
+    /** Google TTS na chale to phone ka default TTS engine */
+    @Volatile private var triedDefault = false
+    /** Kaunse vakya sach me bolne lage (onStart aaya) */
+    private val startedIds: MutableSet<String> = ConcurrentHashMap.newKeySet()
+    @Volatile private var lastVoiceWarn = 0L
 
     @Volatile private var player: MediaPlayer? = null
     @Volatile private var playDone: CompletableDeferred<Unit>? = null
@@ -44,6 +49,15 @@ class Speaker(context: Context) : TextToSpeech.OnInitListener {
     override fun onInit(status: Int) {
         if (status != TextToSpeech.SUCCESS) {
             DKLog.d("TTS start nahi hua (status=$status)")
+            if (!triedDefault) {
+                // Google TTS nahi chala -> phone ka apna TTS engine try karo (warna jawab sirf likha aata)
+                triedDefault = true
+                android.os.Handler(android.os.Looper.getMainLooper()).post {
+                    try { tts.shutdown() } catch (_: Exception) {}
+                    tts = TextToSpeech(appCtx, this)
+                }
+                return
+            }
             ready.complete(false); return
         }
         // Hindi awaaz na ho to bhi chup mat raho - jo bhasha phone me hai usme bolo
@@ -58,7 +72,11 @@ class Speaker(context: Context) : TextToSpeech.OnInitListener {
                 .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH).build())
         } catch (_: Exception) {}
         tts.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
-            override fun onStart(utteranceId: String?) {}
+            override fun onStart(utteranceId: String?) {
+                utteranceId?.let { startedIds.add(it) }
+                // ab sach me awaaz nikal rahi hai -> "बोल रहा हूँ"
+                if (busy && !paused && DKState.mode != Mode.SPEAKING) DKState.set(Mode.SPEAKING)
+            }
             override fun onDone(utteranceId: String?) { utteranceId?.let { pending.remove(it)?.complete(Unit) } }
             // QUEUE_FLUSH / stop() se kata vakya: onDone nahi aata - warna DK atka rehta (aur agla jawab bolta hi nahi)
             override fun onStop(utteranceId: String?, interrupted: Boolean) { utteranceId?.let { pending.remove(it)?.complete(Unit) } }
@@ -128,9 +146,10 @@ class Speaker(context: Context) : TextToSpeech.OnInitListener {
             aborted = false; paused = false
             synchronized(spoken) { spoken.clear() }
             busy = true
-            DKState.set(Mode.SPEAKING)
+            // "बोल रहा हूँ" tabhi jab sach me awaaz nikle (pehle vakya ka intezaar = "जवाब आ रहा है")
+            if (prev != Mode.THINKING && prev != Mode.WORKING) DKState.set(Mode.THINKING)
             ensureAudible()
-            val key = Prefs.key(appCtx, "gemini")
+            val key = Prefs.ttsGeminiKey(appCtx)
             val voice = Prefs.geminiVoice(appCtx)
             var gem = Prefs.voiceEngine(appCtx) == "gemini" && key.isNotBlank() && System.currentTimeMillis() > geminiCooldownUntil
             if (!quick) applyGoogleVoiceSafe()
@@ -161,10 +180,16 @@ class Speaker(context: Context) : TextToSpeech.OnInitListener {
                         if (gem) {
                             // Gemini awaaz 3.5 sec me na bane to Google awaaz (der nahi)
                             val wav = withTimeoutOrNull(if (quick) 400L else 3500L) { pendingWav[chunk]?.await() }
-                            if (wav != null) { playWav(wav); played = true }
+                            if (wav != null) { DKState.set(Mode.SPEAKING); playWav(wav); played = true }
                             else if (!quick) { gem = false; geminiCooldownUntil = maxOf(geminiCooldownUntil, System.currentTimeMillis() + 60_000L) }
                         }
-                        if (!played && !aborted) googleSay(chunk)
+                        if (!played && !aborted) played = googleSay(chunk)
+                        // phone ki awaaz nahi chali -> Gemini awaaz se bolo (key ho to), warna user ko batao
+                        if (!played && !aborted && !paused) {
+                            val wav = if (key.isNotBlank() && System.currentTimeMillis() > geminiCooldownUntil)
+                                withTimeoutOrNull(7000) { try { synth(key, chunk, voice) } catch (e: Exception) { null } } else null
+                            if (wav != null) { DKState.set(Mode.SPEAKING); playWav(wav) } else warnNoVoice()
+                        }
                         if (paused && !aborted) {
                             // user bol raha hai - sun lo; goonj nikli to wahi vakya dobara
                             DKState.set(Mode.LISTENING)
@@ -184,7 +209,7 @@ class Speaker(context: Context) : TextToSpeech.OnInitListener {
             currentChunk = ""
             lastSpokeAt = System.currentTimeMillis()
             if (DKState.mode == Mode.SPEAKING || DKState.mode == Mode.LISTENING)
-                DKState.set(if (prev == Mode.SPEAKING || prev == Mode.LISTENING) Mode.IDLE else prev)
+                DKState.set(if (prev == Mode.WORKING) prev else Mode.IDLE)
             mutex.unlock()
         }
     }
@@ -207,9 +232,9 @@ class Speaker(context: Context) : TextToSpeech.OnInitListener {
 
     private suspend fun applyGoogleVoiceSafe() { try { if (ready.await()) applyGoogleVoice() } catch (_: Exception) {} }
 
-    /** Ek vakya Google awaaz me (session ke andar) */
-    private suspend fun googleSay(text: String) {
-        if (!ready.await()) return
+    /** Ek vakya Google awaaz me. true = sach me bola (awaaz shuru hui), false = TTS ne nahi bola */
+    private suspend fun googleSay(text: String): Boolean {
+        if (!withTimeoutOrNull(6000) { ready.await() }.let { it == true }) return false
         tts.setSpeechRate(Prefs.ttsRate(appCtx))
         tts.setPitch(Prefs.ttsPitch(appCtx))
         val id = UUID.randomUUID().toString()
@@ -220,10 +245,33 @@ class Speaker(context: Context) : TextToSpeech.OnInitListener {
             DKLog.d("TTS speak fail ($r) - dobara")
             delay(250)
             r = tts.speak(text, TextToSpeech.QUEUE_FLUSH, null, id)
-            if (r != TextToSpeech.SUCCESS) { pending.remove(id); return }
+            if (r != TextToSpeech.SUCCESS) { pending.remove(id); return false }
+        }
+        // awaaz sach me shuru hui? (3.5 sec me nahi = TTS atka/kharab)
+        val started = withTimeoutOrNull(3500) {
+            while (id !in startedIds && !done.isCompleted) delay(40)
+            id in startedIds
+        }
+        if (started != true) {
+            if (aborted || paused) { pending.remove(id); return true }
+            DKLog.d("TTS ne bola hi nahi")
+            try { tts.stop() } catch (_: Exception) {}
+            pending.remove(id); startedIds.remove(id); return false
         }
         withTimeoutOrNull(8_000L + text.length * 120L) { done.await() }
-        pending.remove(id)
+        pending.remove(id); startedIds.remove(id)
+        return true
+    }
+
+    private fun warnNoVoice() {
+        val now = System.currentTimeMillis()
+        if (now - lastVoiceWarn < 5 * 60_000L) return
+        lastVoiceWarn = now
+        android.os.Handler(android.os.Looper.getMainLooper()).post {
+            try {
+                android.widget.Toast.makeText(appCtx, "आवाज़ नहीं चल रही — सेटिंग्स → आवाज़ → \"फ़ोन की TTS सेटिंग\" में Google इंजन चुनें और हिंदी आवाज़ डाउनलोड करें", android.widget.Toast.LENGTH_LONG).show()
+            } catch (_: Exception) {}
+        }
     }
 
     /** Settings me Google awaaz sunne ke liye (seedha) */
@@ -231,7 +279,7 @@ class Speaker(context: Context) : TextToSpeech.OnInitListener {
         if (!ready.await()) return
         applyGoogleVoice(voiceName)
         ensureAudible()
-        googleSay(text)
+        if (!googleSay(text)) warnNoVoice()
     }
 
     /** Chhote, baar-baar bole jaane wale vakya ki awaaz save - agli baar turant. */
@@ -286,7 +334,7 @@ class Speaker(context: Context) : TextToSpeech.OnInitListener {
 
     /** Settings me awaaz sunne ke liye. */
     suspend fun previewGemini(voice: String, text: String): String? {
-        val key = Prefs.key(appCtx, "gemini")
+        val key = Prefs.ttsGeminiKey(appCtx)
         if (key.isBlank()) return "पहले Gemini की API key डालें"
         return try {
             val wav = withContext(Dispatchers.IO) { GeminiTts.synthesize(key, text, voice, Prefs.voiceStyle(appCtx)) }

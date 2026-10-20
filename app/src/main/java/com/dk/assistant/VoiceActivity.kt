@@ -187,10 +187,10 @@ class VoiceActivity : AppCompatActivity() {
         mic.setBackgroundResource(if (live) R.drawable.btn_live_circle else R.drawable.btn_accent_circle)
         state.text = when (DKState.mode) {
             Mode.IDLE -> if (live) "माइक चालू है • बोलिए" else "माइक बंद • ओर्ब या माइक दबाइए"
-            Mode.LISTENING -> "सुन रहा हूँ…"
+            Mode.LISTENING -> "Listening • सुन रहा हूँ…"
             Mode.THINKING -> "जवाब आ रहा है…"
             Mode.WORKING -> "काम कर रहा हूँ…"
-            Mode.SPEAKING -> "बोल रहा हूँ…"
+            Mode.SPEAKING -> "Speaking • बोल रहा हूँ…"
         }
         you.text = "आप: " + DKState.lastUser.ifBlank { "—" }
         dk.text = "$name: " + DKState.lastReply.ifBlank { "—" }

@@ -202,6 +202,7 @@ class SettingsActivity : AppCompatActivity() {
     }
 
     private fun secBrain() {
+        quickSetupCard()
         card("AI दिमाग", "कौन सी AI कंपनी इस्तेमाल करनी है") { box ->
             rgProvider = RadioGroup(this).apply { orientation = RadioGroup.VERTICAL }
             Providers.all.forEachIndexed { i, p ->
@@ -222,6 +223,79 @@ class SettingsActivity : AppCompatActivity() {
 
         Providers.all.forEach { p -> providerCard(p) }
 
+    }
+
+    /**
+     * Sabse aasaan: koi bhi FREE key paste karo -> DK khud company pehchaane, free models laaye,
+     * sabse tez chune, save kare aur baat shuru. Jawab (text) aur awaaz (sunna) ki key ALAG = takraav nahi.
+     */
+    private fun quickSetupCard() {
+        card("तुरंत सेटअप — कोई भी फ्री key डालें", "DK खुद पहचानेगा कि key किस कंपनी की है, उसके फ्री मॉडल जाँचकर सबसे तेज़ चुनेगा और बात शुरू कर देगा") { box ->
+            val edText = field(box, "1. जवाब (टेक्स्ट) के लिए key", "", "Groq / Gemini / OpenRouter / Mistral / Z.ai — कोई भी", secret = true)
+            val res1 = TextView(this).apply { setTextColor(0xB3FFFFFF.toInt()); textSize = 13f; setPadding((4 * dp).toInt(), (6 * dp).toInt(), 0, 0) }
+            val cur = Prefs.activeProvider(this).let { id -> if (Prefs.key(this, id).isNotBlank()) "अभी: ${KeySetup.name(id)} • ${Prefs.model(this, id)}" else "अभी कोई key नहीं" }
+            res1.text = cur
+            row(box, button("जोड़ें और सबसे तेज़ चुनें") {
+                val k = edText.text.toString().trim()
+                if (k.isBlank()) { res1.text = "पहले key पेस्ट करें"; return@button }
+                res1.text = "key पहचान रहा हूँ और फ्री मॉडल जाँच रहा हूँ…"
+                lifecycleScope.launch {
+                    val r = KeySetup.setupText(this@SettingsActivity, k)
+                    res1.text = r.msg
+                    if (r.ok) {
+                        edText.setText("")
+                        // neeche wale company card bhi naye hisaab se (warna save() purani key likh deta)
+                        keyFields[r.provider]?.setText(Prefs.key(this@SettingsActivity, r.provider))
+                        modelFields[r.provider]?.setText(r.model)
+                        fetchedFor[r.provider] = Prefs.key(this@SettingsActivity, r.provider)
+                        Providers.all.indexOfFirst { it.id == r.provider }.takeIf { it >= 0 }?.let { rgProvider.check(1000 + it) }
+                        if (::swFallback.isInitialized) swFallback.isChecked = true
+                        save(false)
+                        startTalking()
+                    }
+                }
+            }, button("Groq key लें") { Setup.openUrl(this, "https://console.groq.com/keys") })
+            box.addView(res1)
+
+            space(box, 10)
+            val edVoice = field(box, "2. आवाज़ (सुनने) के लिए अलग key — Groq या Gemini", "", "खाली छोड़ें = जवाब वाली key से ही सुनेगा", secret = true)
+            val res2 = TextView(this).apply { setTextColor(0xB3FFFFFF.toInt()); textSize = 13f; setPadding((4 * dp).toInt(), (6 * dp).toInt(), 0, 0) }
+            res2.text = voiceStatus()
+            row(box, button("आवाज़ key जोड़ें") {
+                val k = edVoice.text.toString().trim()
+                if (k.isBlank()) { res2.text = "पहले Groq या Gemini की key पेस्ट करें"; return@button }
+                res2.text = "आवाज़ वाली key जाँच रहा हूँ…"
+                lifecycleScope.launch {
+                    val r = KeySetup.setupVoice(this@SettingsActivity, k)
+                    res2.text = r.msg
+                    if (r.ok) { edVoice.setText(""); DKAccessibilityService.instance?.startWakeLoopIfEnabled() }
+                }
+            }, button("हटाएँ") {
+                lifecycleScope.launch { res2.text = KeySetup.setupVoice(this@SettingsActivity, "").msg }
+            })
+            box.addView(res2)
+            hint(box, "सलाह: जवाब के लिए एक key (जैसे Gemini) और आवाज़ के लिए दूसरी (जैसे Groq) डालें — दोनों फ्री हैं, और एक की लिमिट दूसरी को नहीं रोकेगी। सिर्फ़ फ्री मॉडल चुने जाते हैं।")
+        }
+    }
+
+    private fun voiceStatus(): String {
+        val vk = Prefs.voiceKey(this)
+        val stt = Prefs.sttKeys(this)
+        return when {
+            vk.isNotBlank() -> "अभी: आवाज़ के लिए अलग ${KeySetup.name(Prefs.voiceProvider(this).ifBlank { KeySetup.detect(vk) ?: "" })} key लगी है"
+            stt.isNotEmpty() -> "अभी: जवाब वाली ${KeySetup.name(stt.first().first)} key से सुन रहा है (अलग key डालें तो तेज़ और बिना टकराव)"
+            else -> "अभी: Google माइक से सुन रहा है (बीप आ सकती है) — Groq की फ्री key डालें"
+        }
+    }
+
+    /** Key jud gayi -> seedha baatcheet shuru */
+    private fun startTalking() {
+        val svc = DKAccessibilityService.instance
+        if (svc == null) { toast("✓ Key तैयार — अब Accessibility में DK चालू करें, फिर ओर्ब दबाकर बोलिए"); return }
+        if (!Setup.hasMic(this)) { requestPermissions(arrayOf(android.Manifest.permission.RECORD_AUDIO), 12); return }
+        svc.startLive()
+        toast("✓ तैयार — बोलिए, DK सुन रहा है")
+        try { startActivity(android.content.Intent(this, VoiceActivity::class.java)) } catch (_: Exception) {}
     }
 
     private fun secVoice() {
@@ -266,6 +340,7 @@ class SettingsActivity : AppCompatActivity() {
                 "google" to "Google माइक — बिना key, पर हर बार बीप आ सकती है"),
                 Prefs.listenEngine(this), 2200)
             hint(box, "बिना बीप वाले मोड में सबसे तेज़ और सही हिंदी पहचान के लिए Groq की फ्री key डालें (Whisper)। Groq key न हो तो Gemini key से काम चलेगा।")
+            hint(box, voiceStatus() + "\nआवाज़ के लिए अलग key: सेटिंग्स → AI दिमाग → \"तुरंत सेटअप\" में दूसरा खाना।")
         }
 
     }

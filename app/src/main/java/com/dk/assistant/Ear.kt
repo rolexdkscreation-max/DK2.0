@@ -49,20 +49,24 @@ class Ear(
     /** Abhi user ki baat record ho rahi hai? */
     @Volatile var capturing = false
         private set
+    /** Mic me kya dikkat aayi: "perm" = permission nahi, "busy" = mic nahi khula (koi aur app?), "silent" = mic se bilkul awaaz nahi aa rahi */
+    @Volatile var problem: String? = null
+        private set
 
     @SuppressLint("MissingPermission")
     private fun open(): AudioRecord? {
         rec?.let { return it }
+        if (!Setup.hasMic(ctx)) { problem = "perm"; return null }
         return try {
             val min = AudioRecord.getMinBufferSize(RATE, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT)
             val r = AudioRecord(MediaRecorder.AudioSource.VOICE_RECOGNITION, RATE,
                 AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT, maxOf(min, FRAME * 2 * 8))
-            if (r.state != AudioRecord.STATE_INITIALIZED) { r.release(); return null }
+            if (r.state != AudioRecord.STATE_INITIALIZED) { r.release(); problem = "busy"; return null }
             try { if (AcousticEchoCanceler.isAvailable()) aec = AcousticEchoCanceler.create(r.audioSessionId)?.apply { enabled = true } } catch (_: Exception) {}
             try { if (NoiseSuppressor.isAvailable()) ns = NoiseSuppressor.create(r.audioSessionId)?.apply { enabled = true } } catch (_: Exception) {}
             rec = r; r
         } catch (e: Exception) {
-            DKLog.d("Mic nahi khula: ${e.message}"); null
+            DKLog.d("Mic nahi khula: ${e.message}"); problem = if (e is SecurityException) "perm" else "busy"; null
         }
     }
 
@@ -81,7 +85,10 @@ class Ear(
     suspend fun nextUtterance(barge: Boolean = false, vadOnly: Boolean = false, onStart: (() -> Unit)? = null,
                               onDiscard: (() -> Unit)? = null): ByteArray? = withContext(Dispatchers.IO) {
         val r = open() ?: return@withContext null
-        try { r.startRecording() } catch (e: Exception) { release(); return@withContext null }
+        try { r.startRecording() } catch (e: Exception) { release(); problem = "busy"; return@withContext null }
+        if (r.recordingState != AudioRecord.RECORDSTATE_RECORDING) { release(); problem = "busy"; return@withContext null }
+        problem = null
+        var zeroRun = 0
         val buf = ShortArray(FRAME)
         val pre = ArrayDeque<ShortArray>()
         val speech = ByteArrayOutputStream()
@@ -96,6 +103,8 @@ class Ear(
                 var sum = 0.0
                 for (i in 0 until n) { val s = buf[i].toDouble(); sum += s * s }
                 val rms = sqrt(sum / n)
+                // bilkul 0 awaaz 3 sec tak = Android ne mic kisi aur ko de diya (call/dusra app) -> batao
+                if (sum == 0.0) { if (++zeroRun > 100 && !talking) { problem = "silent"; return@withContext null } } else zeroRun = 0
 
                 val dkTalking = muted()
                 // DK khud bol raha hai -> (normal sunne me) apni awaaz mat suno
@@ -103,8 +112,8 @@ class Ear(
                 if (warm > 0) { if (!dkTalking) noise = noise * 0.7 + rms * 0.3; warm--; continue }
                 if (dkTalking && !talking) echo = if (echo == 0.0) rms else echo * 0.85 + rms * 0.15
                 // dheemi awaaz bhi pakdo, par pankhe/TV ka shor nahi. DK bol raha ho to uski goonj se kaafi upar.
-                val startTh = if (barge && dkTalking) maxOf(noise * 2.5, echo * 1.9, 750.0) else maxOf(noise * 2.1, 320.0)
-                val stopTh = maxOf(noise * 1.4, 220.0)
+                val startTh = if (barge && dkTalking) maxOf(noise * 2.5, echo * 1.9, 750.0) else maxOf(noise * 2.0, 260.0)
+                val stopTh = maxOf(noise * 1.4, 190.0)
                 val startFrames = if (barge && dkTalking) 7 else START_FRAMES
 
                 if (!talking) {

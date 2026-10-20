@@ -26,6 +26,11 @@ object ModelLister {
         sorted.ifEmpty { list }
     }
 
+    /** Bina chhante poori list (key sahi hai ya nahi + whisper hai ya nahi) */
+    suspend fun fetchRaw(p: Provider, key: String, baseUrl: String): List<String> = withContext(Dispatchers.IO) {
+        if (p.isGemini) gemini(key) else openAi(baseUrl.trimEnd('/'), key)
+    }
+
     private fun get(url: String, headers: Map<String, String>): JSONObject {
         val b = Request.Builder().url(url)
         headers.forEach { (k, v) -> b.header(k, v) }

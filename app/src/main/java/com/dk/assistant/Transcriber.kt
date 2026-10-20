@@ -26,16 +26,34 @@ object Transcriber {
     private val JUNK = listOf("धन्यवाद", "शुक्रिया", "thank you", "thanks for watching", "सब्सक्राइब", "subscribe",
         "please subscribe", "you", "बाय", "ok.", "...", "।")
 
-    fun available(c: Context) = Prefs.key(c, "groq").isNotBlank() || Prefs.key(c, "gemini").isNotBlank()
+    fun available(c: Context) = Prefs.sttKeys(c).isNotEmpty()
+
+    /** Pichhli baar sunne me key ki galti (null = sab theek / bas chup tha). DK isse bolkar batata hai. */
+    @Volatile var lastError: String? = null
+        private set
+    /** limit/galti wali key kuch der aaram kare (key -> kab tak) */
+    private val cool = java.util.concurrent.ConcurrentHashMap<String, Long>()
 
     suspend fun transcribe(c: Context, pcm: ByteArray): String? = withContext(Dispatchers.IO) {
         val wav = GeminiTts.pcmToWav(pcm, Ear.RATE)
         val seconds = pcm.size / 2.0 / Ear.RATE
-        val groq = Prefs.key(c, "groq")
-        val gem = Prefs.key(c, "gemini")
         var text: String? = null
-        if (groq.isNotBlank()) text = try { groqWhisper(groq, wav) } catch (e: Exception) { DKLog.d("Groq STT: ${e.message}"); null }
-        if (text == null && gem.isNotBlank()) text = try { gemini(gem, wav) } catch (e: Exception) { DKLog.d("Gemini STT: ${e.message}"); null }
+        val errs = mutableListOf<String>()
+        val now = System.currentTimeMillis()
+        val keys = Prefs.sttKeys(c).sortedBy { (cool[it.second] ?: 0L) > now }   // aaram wali key aakhir me
+        for ((pid, k) in keys) {
+            text = try {
+                if (pid == "groq") groqWhisper(k, wav) else gemini(k, wav, Prefs.fastModels(c, "gemini"))
+            } catch (e: Exception) {
+                DKLog.d("$pid STT: ${e.message}")
+                val code = (e as? AiException)?.code ?: 0
+                cool[k] = System.currentTimeMillis() + when (code) { 401, 403 -> 30 * 60_000L; 429 -> 60_000L; else -> 15_000L }
+                errs.add((if (pid == "groq") "Groq" else "Gemini") + ": " + ProviderHealth.short(e))
+                null
+            }
+            if (text != null) break
+        }
+        lastError = if (text == null && errs.isNotEmpty()) errs.joinToString(", ") else null
         val t = text?.trim()?.trim('"')?.takeIf { it.isNotBlank() } ?: return@withContext null
         if (seconds < 2.0 && JUNK.any { t.lowercase().trim(' ', '.', '!') == it.trim('.') }) return@withContext null
         t
@@ -84,7 +102,7 @@ object Transcriber {
 
     @Volatile private var gemModel: String? = null
 
-    private fun gemini(key: String, wav: ByteArray): String {
+    private fun gemini(key: String, wav: ByteArray, extra: List<String> = emptyList()): String {
         val parts = JSONArray()
             .put(JSONObject().put("text", "Transcribe this audio exactly as spoken. Write Hindi in Devanagari and English words in English. " +
                 "Only the main speaker's words; skip background noise, TV and cut-off fragments. " +
@@ -93,7 +111,7 @@ object Transcriber {
                 .put("data", Base64.encodeToString(wav, Base64.NO_WRAP))))
         val body = JSONObject().put("contents", JSONArray().put(JSONObject().put("role", "user").put("parts", parts)))
         var last: Exception? = null
-        for (m in (listOfNotNull(gemModel) + listOf("gemini-3.5-flash-lite", "gemini-3.1-flash-lite", "gemini-2.5-flash-lite")).distinct()) {
+        for (m in (listOfNotNull(gemModel) + extra.take(2) + listOf("gemini-3.5-flash-lite", "gemini-3.1-flash-lite", "gemini-2.5-flash-lite")).distinct()) {
             try {
                 val req = Request.Builder().url("https://generativelanguage.googleapis.com/v1beta/models/$m:generateContent")
                     .header("x-goog-api-key", key)

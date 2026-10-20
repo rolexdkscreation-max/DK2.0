@@ -115,6 +115,10 @@ private fun execute(req: Request): String = http.newCall(req).execute().use { r 
 class GeminiClient(private val key: String, private val model: String) : AiClient {
     /** true = baatcheet: sabse kam sochna, chhota jawab = tez */
     var fast = false
+    /** true = sirf yahi model (auto-setup me naapne ke liye) */
+    var only = false
+    /** Auto-setup ke paaye tez free models (purane naam ki jagah) */
+    var backups: List<String> = BACKUP_MODELS
     override var label = "Gemini ($model)"
         private set
 
@@ -126,7 +130,7 @@ class GeminiClient(private val key: String, private val model: String) : AiClien
     }
 
     override fun complete(system: String, history: List<Turn>, prompt: String, imageB64: String?): String {
-        val models = (listOf(model) + BACKUP_MODELS).distinct()
+        val models = if (only) listOf(model) else (listOf(model) + backups).distinct()
         var last: AiException? = null
         for (m in models) {
             try {
@@ -147,7 +151,7 @@ class GeminiClient(private val key: String, private val model: String) : AiClien
 
     override fun stream(system: String, history: List<Turn>, prompt: String, onDelta: (String) -> Unit): String {
         // chuna hua model + ek backup (zyada nahi - warna der hoti hai; dusri key race me hai)
-        val models = (listOf(model) + BACKUP_MODELS).distinct().take(3)
+        val models = if (only) listOf(model) else (listOf(model) + backups).distinct().take(3)
         var last: AiException? = null
         for (m in models) {
             var thinking = true

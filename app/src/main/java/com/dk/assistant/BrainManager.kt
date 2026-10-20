@@ -34,7 +34,9 @@ class BrainManager(private val ctx: Context) {
         if (key.isBlank()) return null
         val model = Prefs.model(ctx, p.id)
         if (model.isBlank()) return null
-        return if (p.isGemini) GeminiClient(key, model)
+        return if (p.isGemini) GeminiClient(key, model).apply {
+            Prefs.fastModels(ctx, "gemini").takeIf { it.isNotEmpty() }?.let { backups = it + GeminiClient.BACKUP_MODELS }
+        }
         else {
             val base = Prefs.baseUrl(ctx, p.id)
             if (base.isBlank()) null else OpenAiCompatClient(p.name, base, key, model)

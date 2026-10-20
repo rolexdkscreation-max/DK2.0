@@ -105,18 +105,29 @@ class ChatActivity : AppCompatActivity() {
         if (!Prefs.hasAnyKey(this)) { bubble("d", "पहले सेटिंग्स में किसी AI की API key डालकर सेव कीजिए।"); return }
         val svc = DKAccessibilityService.instance
         if (svc != null) { svc.runCommand(t, speak = swSpeak.isChecked); return }
-        // Accessibility band hai -> sirf baatcheet (phone ke kaam nahi)
+        // Accessibility band hai -> sirf baatcheet (phone ke kaam nahi) - jawab tukdon me turant dikhe
         DKState.user(t)
         DKState.set(Mode.THINKING)
         val b = localBrain ?: BrainManager(this).also { localBrain = it }
         lifecycleScope.launch {
             try {
-                val r = b.next("CHAT MODE (no screen info).\nUSER SAYS: $t", null, "USER SAYS: $t", chat = true)
-                val say = r.optString("say")
-                DKState.reply(if (r.optBoolean("need_screen")) "फ़ोन पर काम करने के लिए पहले Accessibility में DK चालू करें।"
-                    else say.ifBlank { "…" })
+                LocalBrain.instant(this@ChatActivity, t)?.let { DKState.reply(it); return@launch }
+                val sb = StringBuilder()
+                fun clean(x: String) = x.replace(Regex("\\[(SCREEN|SEARCH)\\]"), "").substringBefore("[YAAD").replace(Regex("[*#`]"), "").trim()
+                val full = b.streamChat("USER SAYS: $t", "USER SAYS: $t") { d ->
+                    sb.append(d)
+                    val c = clean(sb.toString())
+                    if (c.isNotBlank() && !c.startsWith("{")) DKState.replyLive(c)
+                }
+                val c = clean(full)
+                DKState.reply(when {
+                    full.contains("[SCREEN]") || full.contains("need_screen") -> "फ़ोन पर काम करने के लिए पहले Accessibility में DK चालू करें।"
+                    c.startsWith("{") -> try { org.json.JSONObject(c.substring(0, c.lastIndexOf('}') + 1)).optString("say") } catch (_: Exception) { c }.ifBlank { "…" }
+                    else -> c.ifBlank { "…" }
+                })
+            } catch (e: kotlinx.coroutines.CancellationException) { throw e
             } catch (e: Exception) {
-                DKState.reply(b.explain(e))
+                DKState.reply(b.explainAll(e))
             } finally { DKState.set(Mode.IDLE) }
         }
     }
@@ -134,10 +145,10 @@ class ChatActivity : AppCompatActivity() {
 
     private fun render() {
         status.text = when (DKState.mode) {
-            Mode.THINKING -> "सोच रहा है…"
+            Mode.THINKING -> "जवाब आ रहा है…"
             Mode.WORKING -> "काम कर रहा है…"
-            Mode.SPEAKING -> "बोल रहा है…"
-            Mode.LISTENING -> "सुन रहा है…"
+            Mode.SPEAKING -> "Speaking • बोल रहा है…"
+            Mode.LISTENING -> "Listening • सुन रहा है…"
             else -> if (DKAccessibilityService.instance != null) "ऑनलाइन • फ़ोन कंट्रोल चालू" else "सिर्फ़ बातचीत • फ़ोन कंट्रोल बंद"
         }
         val msgs = DKState.messages
@@ -145,8 +156,18 @@ class ChatActivity : AppCompatActivity() {
         if (shown == 0 && msgs.isEmpty()) {
             bubble("d", "नमस्ते${Prefs.userName(this).let { if (it.isNotBlank()) " $it" else "" }}! यहाँ लिखकर कुछ भी पूछिए या कोई काम बोलिए।", keep = false)
         }
+        if (shown < msgs.size) { liveView?.let { list.removeView(it) }; liveView = null }
         while (shown < msgs.size) { val m = msgs[shown]; bubble(m.role, m.text); shown++ }
+        // jawab ban raha hai -> wahi tukde turant dikhao (poora hone ka intezaar nahi)
+        val live = DKState.liveReply
+        if (live.isNotBlank()) {
+            val v = liveView
+            if (v == null) { bubble("d", live, keep = false); liveView = placeholder as? TextView; placeholder = null }
+            else { v.text = live; scroll.post { scroll.fullScroll(View.FOCUS_DOWN) } }
+        }
     }
+
+    private var liveView: TextView? = null
 
     private var placeholder: View? = null
 

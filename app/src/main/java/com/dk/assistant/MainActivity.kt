@@ -106,8 +106,34 @@ class MainActivity : AppCompatActivity() {
         ActivityCompat.requestPermissions(this, perms.toTypedArray(), 10)
     }
 
+    private var micAsked = false
+
+    /** Har baar app khulne par mic permission jaancho - nahi hai to maango (mana kiya ho to App info kholo) */
+    private fun checkMicPerm(force: Boolean = false) {
+        if (Setup.hasMic(this)) { micAsked = false; return }
+        if (micAsked && !force) return
+        micAsked = true
+        val canAsk = !Prefs.micDeniedOnce(this) || shouldShowRequestPermissionRationale(Manifest.permission.RECORD_AUDIO)
+        if (canAsk) askPerms()
+        else {
+            Toast.makeText(this, "माइक की परमिशन बंद है — App info → Permissions → Microphone → Allow करें", Toast.LENGTH_LONG).show()
+            Setup.openAppInfo(this)
+        }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        if (intent.getBooleanExtra("ask_mic", false)) checkMicPerm(force = true)
+    }
+
     override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        val i = permissions.indexOf(Manifest.permission.RECORD_AUDIO)
+        if (i >= 0) {
+            val ok = grantResults.getOrNull(i) == android.content.pm.PackageManager.PERMISSION_GRANTED
+            if (!ok) Prefs.edit(this) { putBoolean("mic_denied", true) }
+            Toast.makeText(this, if (ok) "✓ माइक की परमिशन मिल गई — अब DK सुन सकता है" else "माइक की परमिशन नहीं मिली — इसके बिना DK सुन नहीं सकता", Toast.LENGTH_LONG).show()
+        }
         Setup.startKeepAlive(this)
         DKAccessibilityService.instance?.calls?.start()
         render()
@@ -118,8 +144,8 @@ class MainActivity : AppCompatActivity() {
         when {
             !Setup.hasMic(this) -> { askPerms(); return false }
             !Prefs.hasAnyKey(this) -> {
-                Toast.makeText(this, "पहले सेटिंग्स में API key डालकर सेव करें", Toast.LENGTH_LONG).show()
-                openSettings(); return false
+                Toast.makeText(this, "पहले कोई भी फ्री API key डालें — DK खुद सबसे तेज़ फ्री मॉडल चुन लेगा", Toast.LENGTH_LONG).show()
+                startActivity(Intent(this, SettingsActivity::class.java).putExtra("section", "brain")); return false
             }
             !Setup.accessibilityOn() && !Setup.selfEnableAccessibility(this) && !Setup.enabledInSettings(this) -> {
                 Toast.makeText(this, "Accessibility में ${Prefs.assistantName(this)} ON करें", Toast.LENGTH_LONG).show()
@@ -137,6 +163,8 @@ class MainActivity : AppCompatActivity() {
         super.onResume()
         DKState.listen(stateListener)
         Setup.startKeepAlive(this)
+        checkMicPerm(force = intent?.getBooleanExtra("ask_mic", false) == true)
+        intent?.removeExtra("ask_mic")
         render()
         checkUpdate()
     }
@@ -176,10 +204,10 @@ class MainActivity : AppCompatActivity() {
         val live = DKState.live
         txtState.text = when (DKState.mode) {
             Mode.IDLE -> if (live) "माइक चालू है • आवाज़ स्क्रीन खोलें" else "ओर्ब या \"आवाज़\" दबाकर बात करें"
-            Mode.LISTENING -> if (live) "सुन रहा हूँ… (बंद: टैप या \"माइक बंद\")" else "सुन रहा हूँ…"
+            Mode.LISTENING -> if (live) "Listening • सुन रहा हूँ… (बंद: टैप या \"माइक बंद\")" else "Listening • सुन रहा हूँ…"
             Mode.THINKING -> "जवाब आ रहा है…"
             Mode.WORKING -> "काम कर रहा हूँ…"
-            Mode.SPEAKING -> "बोल रहा हूँ…"
+            Mode.SPEAKING -> "Speaking • बोल रहा हूँ…"
         }
         txtDk.text = if (DKState.lastReply.isBlank()) "" else "$name: " + DKState.lastReply
     }

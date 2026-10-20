@@ -128,6 +128,7 @@ class DKAccessibilityService : AccessibilityService() {
 
     fun startLive() {
         if (DKState.live) return
+        Setup.startKeepAlive(this)
         DKState.setLive(true)
         Prefs.edit(this) { putBoolean("live_mode", true) }
         ensureLoop()
@@ -155,22 +156,85 @@ class DKAccessibilityService : AccessibilityService() {
 
     private var loopJob: kotlinx.coroutines.Job? = null
 
-    /** Bina beep wala tareeka chalega? (Groq ya Gemini key chahiye) */
-    fun silentEar(): Boolean = Prefs.listenEngine(this) != "google" && Transcriber.available(this)
+    /** Silent kaan (apna mic) ya uski key kuch der ke liye kharab -> tab tak Google mic se suno */
+    @Volatile private var googleUntil = 0L
+    private var micFails = 0
+    private val warnedAt = HashMap<String, Long>()
 
-    /** Ek baat suno -> text. Bina beep (apna mic + Groq/Gemini) ya Google mic. */
-    suspend fun hear(): String? {
-        if (!silentEar()) {
-            listener.lastSpokeAt = speaker.lastSpokeAt
-            return listener.listenOnce()
+    /** Bina beep wala tareeka chalega? (Groq ya Gemini key chahiye) */
+    fun silentEar(): Boolean = Prefs.listenEngine(this) != "google" && Transcriber.available(this) &&
+        System.currentTimeMillis() > googleUntil
+
+    /** Ek hi dikkat baar-baar na bole (5 min me ek baar) - screen par likho + bolkar batao */
+    private suspend fun warn(id: String, msg: String) {
+        val now = System.currentTimeMillis()
+        if (now - (warnedAt[id] ?: 0L) < 5 * 60_000L) return
+        warnedAt[id] = now
+        DKLog.d("Chetavni: $msg")
+        DKState.reply(msg)
+        speaker.speak(msg)
+    }
+
+    /** Mic ki permission hai? Nahi to batao aur app khol kar permission maango. */
+    private suspend fun checkMic(): Boolean {
+        if (Setup.hasMic(this)) return true
+        DKState.set(Mode.IDLE)
+        warn("perm", "माइक की परमिशन नहीं है, इसलिए मैं सुन नहीं पा रहा। ऐप खुल रहा है — वहाँ माइक की इजाज़त दीजिए।")
+        try {
+            startActivity(android.content.Intent(this, MainActivity::class.java)
+                .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK or android.content.Intent.FLAG_ACTIVITY_SINGLE_TOP)
+                .putExtra("ask_mic", true))
+        } catch (e: Exception) { DKLog.d("app nahi khula: ${e.message}") }
+        return false
+    }
+
+    /** Google mic se ek baat (silent kaan na chale tab) */
+    private suspend fun hearGoogle(): String? {
+        ear.release()
+        if (!android.speech.SpeechRecognizer.isRecognitionAvailable(this)) {
+            warn("norec", "फ़ोन में Google का सुनने वाला ऐप नहीं मिला। Groq की फ्री key डालिए, तो मैं खुद सुनूँगा।")
+            delay(3000); return null
         }
+        listener.lastSpokeAt = speaker.lastSpokeAt
+        DKState.set(Mode.LISTENING)
+        return listener.listenOnce()
+    }
+
+    /** Ek baat suno -> text. Bina beep (apna mic + Groq/Gemini) ya Google mic. Har dikkat DK bolkar batata hai. */
+    suspend fun hear(): String? {
+        if (!checkMic()) { delay(2000); return null }
+        if (!silentEar()) return hearGoogle()
         // DK ki apni awaaz ki goonj na sune
         val since = System.currentTimeMillis() - speaker.lastSpokeAt
         if (since < 350) delay(350 - since)
-        val pcm = ear.nextUtterance() ?: run { delay(800); return null }
+        DKState.set(Mode.LISTENING)
+        val pcm = ear.nextUtterance()
+        if (pcm == null) {
+            val prob = ear.problem
+            ear.release()
+            if (prob == "perm") { checkMic(); return null }
+            micFails++
+            if (micFails >= 3) {
+                micFails = 0
+                googleUntil = System.currentTimeMillis() + 2 * 60_000L
+                warn("mic_" + prob, if (prob == "silent") "मेरे माइक में आवाज़ नहीं आ रही — शायद कोई दूसरा ऐप माइक इस्तेमाल कर रहा है। अभी Google माइक से सुन रहा हूँ।"
+                    else "मेरा माइक नहीं खुल रहा, इसलिए अभी Google माइक से सुन रहा हूँ।")
+                return hearGoogle()
+            }
+            delay(400); return null
+        }
+        micFails = 0
         DKState.set(Mode.THINKING)
         DKState.user("…")
-        return Transcriber.transcribe(this, pcm)
+        val text = Transcriber.transcribe(this, pcm)
+        if (text == null && Transcriber.lastError != null) {
+            // sunne wali key nahi chali: aapki baat kho gayi - batao aur Google mic par chalo (2 min)
+            googleUntil = System.currentTimeMillis() + 2 * 60_000L
+            DKState.user("")
+            warn("stt", "सुनने वाली key अभी नहीं चली (${Transcriber.lastError}). अभी Google माइक से सुन रहा हूँ, एक बार फिर बोलिए।")
+            return null
+        }
+        return text
     }
 
     /** Agent ne "ask" se sawaal poocha hai aur jawab sun raha hai (tab beech-me-tokne wala kaan chup) */
@@ -250,15 +314,16 @@ class DKAccessibilityService : AccessibilityService() {
             listener.muteBeep = true
             var misses = 0
             while (isActive && (DKState.live || Prefs.wakeMode(this@DKAccessibilityService))) {
-                if (agent.isBusy || DKState.mode == Mode.SPEAKING || callAnnouncing) { delay(250); continue }
+                if (agent.isBusy || speaker.busy || DKState.mode == Mode.SPEAKING || callAnnouncing) { delay(250); continue }
                 // call chal rahi hai: mic call ka hai - DK ka mic chhod do (warna saamne wale ko awaaz nahi jaati)
                 if (calls.inCall && !calls.ringing) { ear.release(); listener.release(); DKState.set(Mode.IDLE); delay(1000); continue }
-                DKState.set(Mode.LISTENING)
                 val heard = hear()
                 if (DKState.mode == Mode.LISTENING || DKState.mode == Mode.THINKING) DKState.set(Mode.IDLE)
                 if (listener.lastError == android.speech.SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS) {
-                    DKState.reply("माइक की परमिशन नहीं है। ऐप खोलकर माइक की इजाज़त दीजिए।")
-                    break
+                    // Google mic ko permission nahi (Google app ki) - apne kaan par wapas
+                    googleUntil = 0L
+                    if (!silentEar()) warn("gperm", "Google माइक को परमिशन नहीं मिली। Google ऐप को माइक की इजाज़त दीजिए, या Groq की फ्री key डालिए।")
+                    delay(1500)
                 }
                 if (heard == null) {
                     misses++
