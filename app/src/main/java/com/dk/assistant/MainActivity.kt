@@ -187,11 +187,10 @@ class MainActivity : AppCompatActivity() {
             chip.visibility = android.view.View.VISIBLE
         }
         if (System.currentTimeMillis() - Prefs.lastUpdateCheck(this) < 3 * 60 * 60 * 1000L) {
-            val latest = sp.getInt("upd_latest", 0)
-            if (latest <= Updater.currentCode(this)) { chip.visibility = android.view.View.GONE; return }
-            chip.text = "⬆ " + (if (sp.getString("upd_type", "") == "security") "सिक्योरिटी पैच" else "सॉफ़्टवेयर अपडेट") +
-                " • DK " + sp.getString("upd_version", "")
-            chip.visibility = android.view.View.VISIBLE
+            // 3 ghante ke andar dobara GitHub nahi - yaad rakha hua update; adhoora download ho to aage badhao
+            val rel = Updater.cached(this)
+            if (rel != null && Updater.downloaded(this, rel) == null) Updater.startDownload(this, rel)
+            chipFor(rel)
             return
         }
         lifecycleScope.launch {
@@ -217,6 +216,7 @@ class MainActivity : AppCompatActivity() {
             val rel = Updater.byCode(cur)
             val notes = rel?.notes?.takeIf { it.isNotBlank() } ?: sp.getString("upd_notes_$cur", "").orEmpty()
             val label = rel?.typeLabel ?: "अपडेट"
+            if (isFinishing || isDestroyed) return@launch
             android.app.AlertDialog.Builder(this@MainActivity, android.R.style.Theme_DeviceDefault_Dialog_Alert)
                 .setTitle("${Updater.displayVersion(this@MainActivity)} • $label इंस्टॉल हो गया")
                 .setMessage("क्या नया है:\n\n" + notes.take(2500).ifBlank { "सुधार और नए फ़ीचर" })

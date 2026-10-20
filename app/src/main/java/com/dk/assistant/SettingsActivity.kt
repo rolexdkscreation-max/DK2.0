@@ -29,6 +29,8 @@ import kotlinx.coroutines.launch
  *  Awaaz (speed, pitch, test), Options, Permissions
  *  Neeche hamesha dikhne wala "सेव करें" button + auto-save.
  */
+private const val GEM_ID = 3000   // Gemini awaazon ke radio id (doosre radio groups se alag)
+
 class SettingsActivity : AppCompatActivity() {
 
     private lateinit var container: LinearLayout
@@ -741,6 +743,15 @@ class SettingsActivity : AppCompatActivity() {
     private fun sp(): Speaker = speaker ?: Speaker(this).also { speaker = it }
 
     private lateinit var gemList: RadioGroup
+    /** Ek samay me ek hi awaaz sunao - jaldi-jaldi tap karo to pichhli rok do (warna purani baad me bajti thi) */
+    private var previewJob: kotlinx.coroutines.Job? = null
+
+    private fun preview(name: String) {
+        previewJob?.cancel()
+        sp().stop()
+        val sample = "नमस्ते, मैं ${Prefs.assistantName(this)} हूँ। क्या मैं आपकी मदद करूँ?"
+        previewJob = lifecycleScope.launch { sp().previewGemini(name, sample)?.let { toast(it) } }
+    }
 
     /** Gemini ki awaazein - sirf chune hue gender ki (mahila/purush), har ek ka vivaran; tap = chuno + suno */
     private fun fillGeminiList() {
@@ -752,20 +763,19 @@ class SettingsActivity : AppCompatActivity() {
         val cur = Prefs.geminiVoice(this)
         list.forEachIndexed { i, name ->
             gemList.addView(RadioButton(this).apply {
-                id = 2500 + i
+                id = GEM_ID + i
                 text = "$name — ${VoiceCatalog.GEMINI_INFO[name].orEmpty()}"
                 textSize = 14f; setTextColor(0xFFFFFFFF.toInt())
                 buttonTintList = android.content.res.ColorStateList.valueOf(0xFF7FDBFF.toInt())
             })
         }
-        gemList.check(2500 + list.indexOf(cur).coerceAtLeast(0))
+        gemList.check(GEM_ID + list.indexOf(cur).coerceAtLeast(0))
         gemList.setOnCheckedChangeListener { _, id ->
-            val name = list.getOrNull(id - 2500) ?: return@setOnCheckedChangeListener
+            val name = list.getOrNull(id - GEM_ID) ?: return@setOnCheckedChangeListener
             Prefs.edit(this) { putString("gemini_voice", name) }
             txtVoice.text = geminiVoiceLine()
-            toast("सुनाई दे रही है: $name …")
-            val sample = "नमस्ते, मैं ${Prefs.assistantName(this)} हूँ। क्या मैं आपकी मदद करूँ?"
-            lifecycleScope.launch { sp().previewGemini(name, sample)?.let { toast(it) } }
+            toast(if (DKState.live) "चुनी: $name — चालू बातचीत में अगली बार माइक चालू करने पर" else "सुनाई दे रही है: $name …")
+            preview(name)
         }
     }
 
@@ -812,7 +822,7 @@ class SettingsActivity : AppCompatActivity() {
                     Prefs.edit(this) { putString("gemini_voice", name) }
                     updateVoiceText()
                     toast("सुनाई दे रही है: $name …")
-                    lifecycleScope.launch { sp().previewGemini(name, sample)?.let { toast(it) } }
+                    preview(name)
                 }
                 .setNegativeButton("बंद करें", null).show()
         } else {

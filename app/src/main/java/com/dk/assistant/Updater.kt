@@ -117,8 +117,20 @@ object Updater {
             putString("upd_type", rel.type)
             putString("upd_version", rel.version)
             putString("upd_notes_${rel.code}", rel.notes.take(3000))
+            // poora release yaad rakho: bina internet ke bhi chip/download/install sahi chale
+            putString("upd_url", rel.apkUrl); putLong("upd_size", rel.size); putString("upd_name", rel.name)
         }
         return if (rel.code > currentCode(c)) rel else null
+    }
+
+    /** Pichhli baar mila naya update (internet ke bina). null = koi naya nahi */
+    fun cached(c: Context): Release? {
+        val sp = c.getSharedPreferences("dk_prefs", Context.MODE_PRIVATE)
+        val code = sp.getInt("upd_latest", 0)
+        val url = sp.getString("upd_url", "").orEmpty()
+        if (code <= currentCode(c) || url.isBlank()) return null
+        return Release(code, sp.getString("upd_name", "").orEmpty(), sp.getString("upd_notes_$code", "").orEmpty(), url,
+            sp.getLong("upd_size", 0L), "", sp.getString("upd_type", "software") ?: "software", sp.getString("upd_version", "").orEmpty())
     }
 
     fun canInstall(c: Context) =
@@ -166,9 +178,13 @@ object Updater {
      * Background me download shuru (pehle se chal raha/ho chuka ho to kuch nahi).
      * Beech me toota to agli baar wahin se aage (Range).
      */
+    @Synchronized
     fun startDownload(c0: Context, rel: Release) {
         val c = c0.applicationContext
         if (downloaded(c, rel) != null || isDownloading(rel)) return
+        if (job?.isActive == true) job?.cancel()          // purane version ka download chal raha tha -> naya hi lo
+        // purane (chhode hue) version ki files hatao - jagah na bhare
+        dir(c).listFiles()?.forEach { f -> if (!f.name.startsWith("DK-v${rel.code}.")) f.delete() }
         lastError = null; progress = 0; downloadingCode = rel.code
         job = scope.launch {
             val pm = c.getSystemService(Context.POWER_SERVICE) as android.os.PowerManager
@@ -205,6 +221,7 @@ object Updater {
                         }
                     }
                 }
+                if (!isActive) return@launch
                 if (rel.size > 0 && part.length() != rel.size) throw java.io.IOException("अधूरा download (${part.length()}/${rel.size})")
                 val apk = apkFile(c, rel.code)
                 apk.delete(); part.renameTo(apk)
@@ -212,12 +229,12 @@ object Updater {
                 DKLog.d("Update v${rel.code} download पूरा")
                 notifyReady(c, rel)
             } catch (e: Exception) {
-                if (e is kotlinx.coroutines.CancellationException) throw e
+                if (e is kotlinx.coroutines.CancellationException) { clearNotification(c); throw e }
                 lastError = e.message ?: e.javaClass.simpleName
                 DKLog.d("Update download fail: $lastError")
                 notifyFail(c, rel)
             } finally {
-                downloadingCode = 0
+                if (downloadingCode == rel.code) downloadingCode = 0
                 try { if (wl.isHeld) wl.release() } catch (_: Exception) {}
                 try { wifi?.release() } catch (_: Exception) {}
             }

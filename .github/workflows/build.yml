@@ -75,7 +75,8 @@ jobs:
             echo "TYPE: $TYPE"
             echo "VERSION: $NEW"
             echo "---"
-            git log --pretty='• %s' $RANGE | sed -E 's/\[(software|security)\] *//I' | head -40
+            NOTES="$(git log --pretty='• %s' $RANGE | sed -E 's/\[(software|security)\] *//I' | head -40)"
+            if [ -n "$NOTES" ]; then echo "$NOTES"; else echo "• छोटे सुधार"; fi
           } > release_notes.txt
           echo "Prakar: $TYPE  •  Version: $NEW  (pichhla: ${PREV_VER:-koi nahi}, $RANGE)"
           cat release_notes.txt
