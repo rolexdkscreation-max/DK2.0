@@ -53,7 +53,8 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
         private const val CHUNK_SAMPLES = IN_RATE * CHUNK_MS / 1000      // 640 samples = 1280 bytes
         private const val URL = "wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent"
         /** Docs (Oct 2026): gemini-3.8-live = default; 3.1 flash live = purana preview */
-        val FALLBACK_MODELS = listOf("gemini-3.8-live", "gemini-3.1-flash-live-preview", "gemini-2.5-flash-native-audio-preview-09-2025")
+        val FALLBACK_MODELS = listOf("gemini-3.8-live", "gemini-3.1-flash-live-preview",
+            "gemini-2.5-flash-native-audio-preview-12-2025", "gemini-2.5-flash-native-audio-preview-09-2025")
 
         fun key(c: android.content.Context) = Prefs.ttsGeminiKey(c)
         fun available(c: android.content.Context) = key(c).isNotBlank()
@@ -238,12 +239,14 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
             }
         } catch (e: Fatal) { throw e } catch (e: Exception) { log("models list nahi aayi: ${e.message}") }
         fun ver(m: String) = Regex("(\\d+(?:\\.\\d+)?)").find(m)?.value?.toDoubleOrNull() ?: 0.0
-        val good = found.filter { !it.contains("translat") }
+        // translate/transcribe = sirf anuvaad/likhne wale model, baatcheet nahi karte -> inhe mat chuno
+        val good = found.filter { !it.contains("translat") && !it.contains("transcri") }
             .sortedWith(compareBy<String> { if (it.contains("thinking")) 1 else 0 }
                 .thenBy { if (it.contains("live") || it.contains("native-audio")) 0 else 1 }
                 .thenByDescending { ver(it) })
         val last = Prefs.liveModel(svc)
-        return (listOfNotNull(last.takeIf { it.isNotBlank() && (found.isEmpty() || it in found) }) + good + FALLBACK_MODELS).distinct()
+        return (listOfNotNull(last.takeIf { it.isNotBlank() && !it.contains("transcri") && !it.contains("translat") && (found.isEmpty() || it in found) }) +
+            good + FALLBACK_MODELS).distinct()
     }
 
     private fun setupJson(m: String): String {
