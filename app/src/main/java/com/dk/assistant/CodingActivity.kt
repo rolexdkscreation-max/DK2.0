@@ -52,8 +52,9 @@ object CoderSession {
         val ai = CoderAi.fromPrefs(c) ?: return null
         val repo = Prefs.ghRepo(c); val br = Prefs.ghBranch(c)
         val a = agent
-        if (a != null && a.repo == repo && a.branch == br) return a
-        return CodingAgent(gh, repo, br, ai).also { agent = it }
+        // baseBranch = aapki chuni (main); kaam wali feature branch alag ho sakti hai
+        if (a != null && a.repo == repo && a.baseBranch == br) return a.also { if (it.pr == null) it.safePr = Prefs.coderSafePr(c) }
+        return CodingAgent(gh, repo, br, ai).also { it.safePr = Prefs.coderSafePr(c); agent = it }
     }
 }
 
@@ -156,12 +157,16 @@ class CodingActivity : AppCompatActivity() {
         return if (problems.isEmpty() && Prefs.coderTeam(this))
             "नमस्ते। कोडिंग टीम तैयार है — ${Prefs.ghRepo(this)} (${Prefs.ghBranch(this)}).\n" +
                 "एक बार बताइए (लिखकर या 🎤 से) क्या बनाना है। बिल्डर लिखेगा → रिव्यूअर खुद जाँचेगा → गड़बड़ी हो तो वापस ठीक → अपने-आप push → GitHub build जाँच → पूरा होने पर बताऊँगा।\n" +
-                "कोई अतिरिक्त चीज़ ज़रूरी लगी तो खुद नहीं जोड़ूँगा — आपसे पूछूँगा।"
+                "कोई अतिरिक्त चीज़ ज़रूरी लगी तो खुद नहीं जोड़ूँगा — आपसे पूछूँगा।" + safeNote()
         else if (problems.isEmpty())
             "नमस्ते। मैं ${Prefs.ghRepo(this)} (${Prefs.ghBranch(this)}) पर काम करूँगा।\nबताइए क्या बनाना/बदलना/हटाना है। मैं पहले बदलाव दिखाऊँगा, फिर \"Push करें\" दबाने पर GitHub पर भेजूँगा" +
-                (if (Prefs.coderAutoPush(this)) " (अभी: बिना पूछे push चालू)।" else "।")
+                (if (Prefs.coderAutoPush(this)) " (अभी: बिना पूछे push चालू)।" else "।") + safeNote()
         else "पहले ये ठीक करें (सेटिंग्स → कोडिंग एजेंट):\n• " + problems.joinToString("\n• ")
     }
+
+    private fun safeNote() = if (Prefs.coderSafePr(this))
+        "\n🔒 सुरक्षित PR मोड: ${Prefs.ghBranch(this)} पर सीधे push नहीं — नई feature branch → Pull Request → tests + build → आप review करके \"Merge करें\" दबाएँ।"
+    else "\n⚠ सुरक्षित PR मोड बंद है — बदलाव सीधे ${Prefs.ghBranch(this)} पर जाएँगे।"
 
     private fun problems(): List<String> = CoderSession.problems(this)
 
@@ -245,7 +250,7 @@ class CodingActivity : AppCompatActivity() {
         try {
             val n = a.staged.size
             val url = a.push(CoderSession.lastCommit)
-            CoderSession.add("d", "Push हो गया ($n फ़ाइल) → ${a.branch}\n$url")
+            CoderSession.add("d", "Push हो गया ($n फ़ाइल) → ${a.branch}\n$url" + prLine(a))
             DKLog.d("Coder push: $url")
         } catch (e: Exception) {
             CoderSession.add("e", "Push नहीं हुआ: " + (e.message ?: "").take(300))
@@ -254,6 +259,30 @@ class CodingActivity : AppCompatActivity() {
         if (Prefs.coderBuildFix(c)) try { watchAndFix(c, round) }
             catch (e: kotlinx.coroutines.CancellationException) { CoderSession.add("s", "Build देखना रोका।"); throw e }
             catch (e: Exception) { CoderSession.add("e", "Build जाँच/सुधार में गलती: " + (e.message ?: e.javaClass.simpleName).take(300)) }
+    }
+
+    private fun prLine(a: CodingAgent): String = when {
+        a.pr != null -> "\n🔀 PR #${a.pr!!.number} (${a.branch} → ${a.baseBranch}): ${a.pr!!.url}"
+        a.safePr && a.prError.isNotBlank() -> "\n⚠ PR नहीं बना: ${a.prError}"
+        else -> ""
+    }
+
+    /** Review ke baad: pakka poochho, phir merge (sirf build/tests paas hon to) */
+    private fun confirmMerge(a: CodingAgent) {
+        val p = a.pr ?: return
+        android.app.AlertDialog.Builder(this, Glass.DIALOG)
+            .setTitle("PR #${p.number} merge करें?")
+            .setMessage("${a.branch} → ${a.baseBranch}\n\nक्या आपने GitHub पर बदलाव review कर लिए? Merge तभी होगा जब PR के unit tests + build पास हों।")
+            .setPositiveButton("Merge करें") { _, _ ->
+                CoderSession.job = CoderSession.scope.launch {
+                    CoderSession.add("s", "PR #${p.number} की जाँच (tests/build/conflict) करके merge कर रहा हूँ…")
+                    try { CoderSession.add("d", a.mergePr()) }
+                    catch (e: Exception) { CoderSession.add("e", "Merge नहीं हुआ: " + (e.message ?: e.javaClass.simpleName).take(300)) }
+                    CoderSession.listener?.invoke()
+                }
+                render()
+            }
+            .setNegativeButton("अभी नहीं", null).show()
     }
 
     /** Push ke baad GitHub Actions build dekho; fail ho to log padhkar agent khud theek kare (3 baar tak) */
@@ -344,7 +373,7 @@ class CodingActivity : AppCompatActivity() {
     private fun render() {
         val a = CoderSession.agent
         val ai = CoderAi.fromPrefs(this)
-        sub.text = "${Prefs.ghRepo(this).ifBlank { "repo नहीं चुना" }} • ${Prefs.ghBranch(this)} • ${ai?.label ?: "AI नहीं"}" +
+        sub.text = "${Prefs.ghRepo(this).ifBlank { "repo नहीं चुना" }} • ${a?.branch ?: Prefs.ghBranch(this)} • ${ai?.label ?: "AI नहीं"}" +
             if (CoderSession.busy) " • काम चल रहा है…" else ""
         send.setImageResource(if (CoderSession.busy) android.R.drawable.ic_media_pause else R.drawable.ic_send)
         send.contentDescription = if (CoderSession.busy) "रोकें" else "भेजें"
@@ -368,7 +397,9 @@ class CodingActivity : AppCompatActivity() {
             row.addView(smallBtn("Push करें", accent = true) {
                 android.app.AlertDialog.Builder(this, Glass.DIALOG)
                     .setTitle("GitHub पर push करें?")
-                    .setMessage("${a.repo} • ${a.branch}\n\n${a.changeList()}\n\nCommit: ${CoderSession.lastCommit.ifBlank { "DK: code changes" }}")
+                    .setMessage("${a.repo} • " + (if (a.safePr && a.pr == null) "नई branch (feature/dk-…) → PR → ${a.baseBranch}" else a.branch) +
+                        "\n\n${a.changeList()}\n\nCommit: ${CoderSession.lastCommit.ifBlank { "DK: code changes" }}" +
+                        SafePr.protectedIn(a.staged.keys).let { if (it.isEmpty()) "" else "\n\n⚠ संवेदनशील फ़ाइलें: " + it.joinToString() })
                     .setPositiveButton("Push करें") { _, _ -> CoderSession.job = CoderSession.scope.launch { push(applicationContext); CoderSession.listener?.invoke() }; render() }
                     .setNegativeButton("रुको", null).show()
             }, LinearLayout.LayoutParams(0, (40 * dp).toInt(), 1f).apply { marginEnd = (8 * dp).toInt() })
@@ -376,6 +407,23 @@ class CodingActivity : AppCompatActivity() {
             row.addView(smallBtn("हटाओ") {
                 a.discard(); CoderSession.add("s", "सारे बदलाव हटा दिए (GitHub पर कुछ नहीं बदला)")
             }, LinearLayout.LayoutParams(0, (40 * dp).toInt(), 1f))
+            changes.addView(row)
+        } else if (a != null && a.pr != null && !CoderSession.busy) {
+            // PR तैयार: review करें, फिर Merge
+            val p = a.pr!!
+            changes.visibility = View.VISIBLE
+            changes.addView(TextView(this).apply {
+                text = "🔀 PR #${p.number} review के लिए तैयार"; textSize = 14f
+                setTypeface(typeface, Typeface.BOLD); setTextColor(0xFFFFFFFF.toInt())
+            })
+            changes.addView(TextView(this).apply {
+                text = "${a.branch} → ${a.baseBranch}\nGitHub पर बदलाव देखें; tests + build पास हों तो Merge करें। और बदलाव चाहिए तो बस लिखिए — उसी PR में जुड़ेंगे।"
+                textSize = 12f; setTextColor(0xCCFFFFFF.toInt()); setPadding(0, (4 * dp).toInt(), 0, (6 * dp).toInt())
+            })
+            val row = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+            row.addView(smallBtn("PR खोलें") { Setup.openUrl(this, p.url) },
+                LinearLayout.LayoutParams(0, (40 * dp).toInt(), 1f).apply { marginEnd = (8 * dp).toInt() })
+            row.addView(smallBtn("Merge करें", accent = true) { confirmMerge(a) }, LinearLayout.LayoutParams(0, (40 * dp).toInt(), 1f))
             changes.addView(row)
         } else changes.visibility = View.GONE
     }
