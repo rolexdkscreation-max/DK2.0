@@ -126,6 +126,8 @@ object Prefs {
     /** true = bina pooche push (default: pehle dikhao, phir "Push" dabane par) */
     fun coderAutoPush(c: Context) = sp(c).getBoolean("coder_autopush", false)
     fun coderBuildFix(c: Context) = sp(c).getBoolean("coder_buildfix", true)
+    /** सुरक्षित PR मोड (default चालू): main पर सीधे push नहीं - नई feature branch → PR → tests/build → आप review करके Merge */
+    fun coderSafePr(c: Context) = sp(c).getBoolean("coder_safe_pr", true)
     /** Multi-agent coding team (Builder -> Reviewer -> Coordinator), ek baar bolo baaki apne-aap */
     fun coderTeam(c: Context) = sp(c).getBoolean("coder_team", true)
     /** User bole to peeche ka gaana/video dheema (~20%), jawab ke baad wapas */

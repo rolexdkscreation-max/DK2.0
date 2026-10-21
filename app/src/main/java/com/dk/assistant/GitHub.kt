@@ -12,7 +12,8 @@ import java.util.concurrent.TimeUnit
 /**
  * GitHub connector (REST API + aapka Personal Access Token).
  * Padhna, file likhna/badalna/mitana aur ek hi commit me push (Git Data API).
- * Token: github.com -> Settings -> Developer settings -> Fine-grained token -> Contents: Read and write.
+ * Token: github.com -> Settings -> Developer settings -> Fine-grained token -> Contents: Read and write,
+ * Pull requests: Read and write (सुरक्षित PR मोड), Actions: Read (build/tests देखना).
  */
 class GitHub(private val token: String) {
 
@@ -144,7 +145,8 @@ class GitHub(private val token: String) {
             val lines = log.lines().map { it.replace(Regex("^\\S+Z\\s"), "") }       // timestamp hatao
             val key = lines.withIndex().filter { (_, l) ->
                 l.startsWith("e: ") || l.contains("error:", true) || l.contains("What went wrong") || l.contains("FAILURE:") ||
-                    l.contains("Unresolved reference") || l.contains("Exception") || l.startsWith("> ") || l.contains("##[error]")
+                    l.contains("Unresolved reference") || l.contains("Exception") || l.startsWith("> ") || l.contains("##[error]") ||
+                    l.contains(" FAILED") || l.contains("AssertionError") || l.contains("tests completed")
             }.map { it.index }
             val pick = sortedSetOf<Int>()
             key.take(60).forEach { k -> for (x in (k - 1)..(k + 3)) if (x in lines.indices) pick.add(x) }
@@ -153,6 +155,42 @@ class GitHub(private val token: String) {
         }
         return sb.toString().ifBlank { "(build fail hua par log nahi mila)" }
     }
+
+    private fun put(path: String, body: JSONObject) = run(req(path).put(body.toString().toRequestBody(JSON)))
+    private fun delete(path: String) = run(req(path).delete())
+
+    data class Pull(val number: Int, val url: String, val head: String, val base: String)
+
+    private fun pull(o: JSONObject) = Pull(o.optInt("number"), o.optString("html_url"),
+        o.optJSONObject("head")?.optString("ref").orEmpty(), o.optJSONObject("base")?.optString("ref").orEmpty())
+
+    /** Pull Request banao (head branch -> base). Token me "Pull requests: Read and write" chahiye */
+    fun createPull(repo: String, head: String, base: String, title: String, body: String): Pull =
+        pull(JSONObject(post("/repos/$repo/pulls", JSONObject().put("title", title.take(120)).put("head", head)
+            .put("base", base).put("body", body).put("maintainer_can_modify", true))))
+
+    /** Is branch ka khula PR (agar pehle se bana ho) */
+    fun openPullFor(repo: String, head: String): Pull? {
+        val owner = repo.substringBefore('/')
+        val a = JSONArray(get("/repos/$repo/pulls?state=open&per_page=5&head=" + java.net.URLEncoder.encode("$owner:$head", "UTF-8")))
+        return if (a.length() == 0) null else pull(a.getJSONObject(0))
+    }
+
+    /** PR ki halat: state (open/closed), merged, mergeable (null = GitHub abhi hisaab laga raha) aur head sha */
+    data class PullState(val open: Boolean, val merged: Boolean, val mergeable: Boolean?, val headSha: String)
+
+    fun pullState(repo: String, number: Int): PullState {
+        val o = JSONObject(get("/repos/$repo/pulls/$number"))
+        return PullState(o.optString("state") == "open", o.optBoolean("merged"),
+            if (o.isNull("mergeable")) null else o.optBoolean("mergeable"), o.optJSONObject("head")?.optString("sha").orEmpty())
+    }
+
+    /** PR merge (squash = main par ek saaf commit). @return merge commit sha */
+    fun mergePull(repo: String, number: Int, title: String, method: String = "squash"): String =
+        JSONObject(put("/repos/$repo/pulls/$number/merge", JSONObject().put("merge_method", method).put("commit_title", title.take(120))))
+            .optString("sha")
+
+    fun deleteBranch(repo: String, branch: String) { delete("/repos/$repo/git/refs/heads/${enc(branch)}") }
 
     fun createBranch(repo: String, newBranch: String, from: String) {
         val sha = JSONObject(get("/repos/$repo/git/ref/heads/${enc(from)}")).getJSONObject("object").getString("sha")

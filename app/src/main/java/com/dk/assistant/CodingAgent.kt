@@ -110,6 +110,21 @@ class CoderAi(val provider: Provider, private val key: String, val model: String
  */
 class CodingAgent(private val gh: GitHub, var repo: String, var branch: String, private val ai: CoderAi) {
 
+    /** User ki chuni hui (main) branch. Surakshit PR mode me kaam hamesha alag feature branch par, PR isi me */
+    val baseBranch = branch
+    /** सुरक्षित PR मोड: main par seedha push kabhi nahi -> feature branch -> PR -> build/tests -> user Merge */
+    var safePr = false
+    /** Is kaam ka khula PR (null = abhi nahi bana) */
+    var pr: GitHub.Pull? = null
+        private set
+    /** PR nahi ban paya to wajah (token permission etc.) */
+    var prError = ""
+        private set
+    private var lastTask = ""
+    private var lastSummary = ""
+    /** AGENTS.md + workflows - Reviewer ko bhi dikhate hain */
+    private var projectCtx = ""
+
     data class Outcome(val summary: String, val commit: String, val question: Boolean)
     data class Build(val ok: Boolean, val url: String, val log: String)
     data class Call(val o: JSONObject, val file: String?, val finds: List<String>, val replaces: List<String>)
@@ -133,7 +148,10 @@ class CodingAgent(private val gh: GitHub, var repo: String, var branch: String, 
     var lastSha = ""
         private set
 
-    fun reset() { staged.clear(); original.clear(); msgs.clear(); files = null; snap = null; checkWarned = false }
+    fun reset() {
+        staged.clear(); original.clear(); msgs.clear(); files = null; snap = null; checkWarned = false
+        branch = baseBranch; pr = null; prError = ""; lastTask = ""; lastSummary = ""; projectCtx = ""
+    }
 
     private fun system() = """
 You are DK Coder, an expert software engineer working DIRECTLY on the GitHub repository "$repo" (branch "$branch") through tools.
@@ -172,7 +190,32 @@ Rules:
 - NEVER add features, settings, files or behaviour the user did not ask for. If you think something extra is needed or useful, use "suggest" (max 2 per task, only if it really matters) and do NOT implement it.
 - If the user only asks a question about the code, read what you need and answer in "done" summary with commit "".
 - If a task says the BUILD FAILED, read the exact files/lines from the log, fix the real cause, and do not change unrelated code.
+- Do NOT touch existing working features: change only the files/lines the task needs. No refactors, renames, reformatting or "cleanups" of other code.
+- Protected files (.github/workflows/*, AGENTS.md, gradle.properties, settings.gradle*, gradlew, keystores): change them ONLY if the user explicitly asked for it.${safeRules()}
 """.trimIndent()
+
+    private fun safeRules() = if (!safePr) "" else """
+
+SAFE PR MODE (always follow):
+- Work flow: understand the repo first (PROJECT CONTEXT: AGENTS.md rules, existing agents, GitHub Actions workflows) -> change code -> "diff" self-check -> done.
+- Your changes are NEVER pushed to "$baseBranch". The app commits them to a NEW feature branch (feature/dk-…), opens a Pull Request to "$baseBranch",
+  and GitHub Actions runs the unit tests + debug build on that PR. If it fails you get the log and fix it on the same branch.
+- Only the user merges the PR after review. Never say it is merged or released.
+- If you add logic that can be unit tested without Android (pure Kotlin), add/extend a JUnit test in app/src/test/java/... in the same style."""
+
+    /** Repo ki pehchaan: AGENTS.md, workflows, maujooda agents (snapshot na mile to API se) */
+    private fun loadProjectContext(): String = try {
+        SafePr.projectContext(snap ?: contextFromApi())
+    } catch (e: Exception) { DKLog.d("Coder: project context nahi mila: ${e.message}"); "" }
+
+    private fun contextFromApi(): Map<String, String> {
+        val all = (files ?: emptyList()).map { it.path }
+        val want = all.filter { it == "AGENTS.md" || (it.startsWith(".github/workflows/") && (it.endsWith(".yml") || it.endsWith(".yaml"))) }.take(8)
+        val out = LinkedHashMap<String, String>()
+        all.filter { it.endsWith(".kt") }.forEach { out[it] = "" }
+        want.forEach { out[it] = gh.read(repo, it, baseBranch).orEmpty() }
+        return out
+    }
 
     /** Ek kaam chalao (ya pichhle "ask" ka jawab). onStep = UI ke liye chhoti line */
     suspend fun run(task: String, onStep: (String) -> Unit): Outcome = withContext(Dispatchers.IO) {
@@ -184,10 +227,18 @@ Rules:
             val list = files!!.take(500).joinToString("\n") { it.path }
             msgs.add("user" to "Repository files (${files!!.size}):\n$list" + (if (files!!.size > 500) "\n…(more, use list)" else ""))
             msgs.add("model" to "{\"tool\":\"list\",\"path\":\"\"}")
+            projectCtx = loadProjectContext()
+            if (projectCtx.isNotBlank()) {
+                onStep("repo के नियम, agents और GitHub Actions समझ लिए")
+                msgs.add("user" to "PROJECT CONTEXT (read and follow before any change):\n$projectCtx")
+                msgs.add("model" to "{\"tool\":\"diff\"}")
+                msgs.add("user" to "RESULT (diff):\n(no staged changes)")
+            }
             msgs.add("user" to "OK. Waiting for the task.")
             msgs.add("model" to "{\"tool\":\"ask\",\"question\":\"क्या करना है?\"}")
         }
         checkWarned = false
+        if (!task.startsWith("BUILD FAILED") && !task.startsWith("REVIEWER") && !task.startsWith("Coordinator:")) lastTask = task
         msgs.add("user" to "TASK FROM USER: $task" +
             if (staged.isNotEmpty()) "\n(Already staged, not pushed: ${staged.keys.joinToString()})" else "")
         var step = 0
@@ -220,6 +271,7 @@ Rules:
                         "Fix them (read the file again), or call done again if you are sure they are false alarms.")
                     continue
                 }
+                if (staged.isNotEmpty()) lastSummary = o.optString("summary")
                 return@withContext Outcome(o.optString("summary").ifBlank { "हो गया।" },
                     o.optString("commit").ifBlank { if (staged.isEmpty()) "" else "DK: code changes" }, false)
             }
@@ -517,6 +569,8 @@ The Builder agent has STAGED changes (not pushed) for the user's task. Your job,
 2. "Test" by tracing execution: walk through the feature step by step (normal path, empty/null input, errors, threads/coroutines, Android lifecycle, permissions). You cannot run code - reason carefully like a debugger.
 3. Find: compile errors, bugs, logic mistakes, crashes, missing pieces of the task, and ANY change the user did not ask for (unrequested extras are an issue).
 4. Do not nitpick style. Only real problems that would break the build, the feature, or existing behaviour.
+5. Existing working features must stay untouched: any edit to code unrelated to the task, or to protected files
+   (.github/workflows/*, AGENTS.md, gradle.properties, settings.gradle*, gradlew, keystores) that the user did not explicitly ask for, is an issue.
 Reply with EXACTLY ONE tool call per message (JSON on the first line, no other text):
 {"tool":"list","path":""}  {"tool":"read","path":"..."}  {"tool":"read","paths":["...","..."]}  {"tool":"read","path":"...","start":1,"end":80}
 {"tool":"grep","pattern":"...","path":"","regex":false}  {"tool":"diff"}
@@ -537,6 +591,8 @@ pass=true ONLY if you are confident it compiles and the task works completely.
         val d = diffAll().let { if (it.length > 30_000) it.take(30_000) + "\n…(diff cut - use read)" else it }
         rmsgs.add("user" to "REVIEW ROUND $round\nUSER TASK: $task\n" +
             (if (acceptance.isNotEmpty()) "ACCEPTANCE CRITERIA:\n" + acceptance.joinToString("\n") { "- $it" } + "\n" else "") +
+            (if (projectCtx.isNotBlank()) "PROJECT RULES:\n${projectCtx.take(5000)}\n" else "") +
+            SafePr.protectedIn(staged.keys).let { if (it.isEmpty()) "" else "PROTECTED FILES CHANGED: ${it.joinToString()} (issue unless the task explicitly asks)\n" } +
             "STATIC CHECK: " + static.ifBlank { "OK (brackets/XML/JSON fine)" } + "\n\nSTAGED DIFF:\n$d")
         var bad = 0
         for (step in 1..REVIEW_STEPS) {
@@ -568,9 +624,33 @@ pass=true ONLY if you are confident it compiles and the task works completely.
     }
 
     // ---------------------------------------------------------------- push + build
-    /** Push: saare staged ek commit me */
+    /**
+     * Push: saare staged ek commit me.
+     * Surakshit PR mode: main par kabhi nahi -> pehli baar nayi feature branch banti hai, phir PR (ya pehle wala PR update).
+     */
     suspend fun push(message: String): String = withContext(Dispatchers.IO) {
-        val url = gh.commit(repo, branch, staged.toMap(), message.ifBlank { "DK: code changes" })
+        val msg = message.ifBlank { "DK: code changes" }
+        val changeText = changeList()
+        val prot = SafePr.protectedIn(staged.keys)
+        // PR GitHub par hi merge/band ho gaya ho -> purani branch nahi, nayi branch + naya PR
+        pr?.let { old ->
+            val open = try { gh.pullState(repo, old.number).open } catch (_: Exception) { true }
+            if (!open) { pr = null; branch = baseBranch }
+        }
+        if (safePr && SafePr.isBlocked(branch, baseBranch)) {
+            var name = SafePr.branchName(lastTask.ifBlank { msg })
+            try { gh.createBranch(repo, name, baseBranch) } catch (e: GitHub.Err) {
+                // isi minute me isi naam ki branch pehle se (422) -> naam ke aage chhota number
+                if (e.code != 422) throw e
+                name = "$name-" + (System.currentTimeMillis() / 1000 % 100000)
+                gh.createBranch(repo, name, baseBranch)
+            }
+            branch = name
+            msgs.add("user" to "NOTE: working branch is now \"$name\" (created from $baseBranch). All pushes go here; a PR goes to $baseBranch.")
+            msgs.add("model" to "{\"tool\":\"ask\",\"question\":\"ठीक है\"}")
+        }
+        if (safePr && SafePr.isBlocked(branch, baseBranch)) throw IllegalStateException("सुरक्षित PR मोड: $branch पर सीधे push मना है")
+        val url = gh.commit(repo, branch, staged.toMap(), msg)
         lastSha = url.substringAfterLast('/')
         // ab GitHub par yahi naya code hai (repo ki copy bhi)
         val m = snap?.toMutableMap()
@@ -579,7 +659,43 @@ pass=true ONLY if you are confident it compiles and the task works completely.
         staged.clear()
         msgs.add("user" to "PUSHED to $branch: $url. The repository now contains these changes.")
         msgs.add("model" to "{\"tool\":\"ask\",\"question\":\"और कुछ?\"}")
+        if (safePr && pr == null) {
+            prError = ""
+            pr = try {
+                gh.openPullFor(repo, branch) ?: gh.createPull(repo, branch, baseBranch, msg, SafePr.prBody(lastSummary, changeText, prot))
+            } catch (e: Exception) {
+                prError = (e.message ?: e.javaClass.simpleName).take(200) +
+                    " — token में Pull requests: Read and write दें, या GitHub पर $branch से PR खुद बनाएँ"
+                DKLog.d("Coder: PR nahi bana: $prError"); null
+            }
+        }
         url
+    }
+
+    /**
+     * Review ke baad user ka "Merge": sirf tab jab PR khula ho, takraav na ho, aur aakhri commit ke
+     * saare GitHub Actions (unit tests + build) safal hon. Merge ke baad branch hatao aur agent main par wapas.
+     * @return Hindi nateeja
+     */
+    suspend fun mergePr(): String = withContext(Dispatchers.IO) {
+        val p = pr ?: return@withContext "कोई PR नहीं है"
+        val st = gh.pullState(repo, p.number)
+        if (st.merged) { reset(); return@withContext "PR #${p.number} पहले ही merge हो चुका है" }
+        if (!st.open) return@withContext "PR #${p.number} बंद है — GitHub पर देखें"
+        if (st.mergeable == false) return@withContext "PR में $baseBranch से टकराव (conflict) है — पहले उसे ठीक करें"
+        val runs = try { gh.runsFor(repo, st.headSha) } catch (e: GitHub.Err) {
+            return@withContext "Build/tests नहीं देख पाया (${e.message}) — token में Actions: Read दें"
+        }
+        if (runs.isEmpty()) return@withContext "इस PR पर अभी कोई build/tests नहीं चला — थोड़ी देर बाद फिर कोशिश करें"
+        if (runs.any { it.status != "completed" }) return@withContext "Build/tests अभी चल रहे हैं — पूरे होने दें"
+        runs.firstOrNull { it.conclusion !in listOf("success", "skipped", "neutral") }?.let {
+            return@withContext "Build/tests fail हैं (${it.name}) — merge नहीं किया\n${it.url}"
+        }
+        val sha = gh.mergePull(repo, p.number, "${lastTask.ifBlank { "DK changes" }.take(90)} (#${p.number})")
+        val br = branch
+        try { gh.deleteBranch(repo, br) } catch (_: Exception) {}
+        reset()
+        "✓ PR #${p.number} $baseBranch में merge हो गया (${sha.take(7)}), branch $br हटा दी"
     }
 
     /**

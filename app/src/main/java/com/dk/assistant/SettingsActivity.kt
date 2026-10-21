@@ -793,6 +793,7 @@ class SettingsActivity : AppCompatActivity() {
     private lateinit var swCoder: SwitchCompat
     private lateinit var swAutoPush: SwitchCompat
     private lateinit var swBuildFix: SwitchCompat
+    private lateinit var swSafePr: SwitchCompat
     private lateinit var swTeam: SwitchCompat
     private lateinit var edGhToken: EditText
     private lateinit var edGhRepo: EditText
@@ -857,9 +858,11 @@ class SettingsActivity : AppCompatActivity() {
                 },
                 button("Token बनाएँ") { Setup.openUrl(this, GitHub.TOKEN_URL) })
             box.addView(res)
-            hint(box, "Token बनाते समय: Repository access → अपना repo चुनें • Permissions → Contents: Read and write, और Actions: Read (build जाँचने के लिए)।")
+            hint(box, "Token बनाते समय: Repository access → अपना repo चुनें • Permissions → Contents: Read and write, Pull requests: Read and write (सुरक्षित PR मोड), और Actions: Read (build/tests जाँचने के लिए)।")
             swAutoPush = switch(box, "बिना पूछे push करो (बंद = पहले बदलाव दिखाओ, फिर \"Push करें\" दबाने पर)", Prefs.coderAutoPush(this))
             swBuildFix = switch(box, "Push के बाद build जाँचो, fail हो तो खुद ठीक करो (3 बार तक)", Prefs.coderBuildFix(this))
+            swSafePr = switch(box, "सुरक्षित PR मोड: main पर सीधे push नहीं — नई branch → PR → tests/build → आप review करके Merge", Prefs.coderSafePr(this))
+            hint(box, "चालू (सुझाया): हर काम feature/dk-… branch में, फिर Pull Request; GitHub Actions के unit tests + build पास होने के बाद कोडिंग स्क्रीन पर \"Merge करें\" दबाने पर ही main में जाता है। Token में Pull requests: Read and write भी दें।")
         }
         card("कोडिंग की AI", "चाहें तो कोडिंग के लिए अलग API key — बातचीत वाली key की limit बची रहे") { box ->
             val cur = Prefs.coderProvider(this)
@@ -950,6 +953,7 @@ class SettingsActivity : AppCompatActivity() {
                 putBoolean("coder_on", swCoder.isChecked)
                 putBoolean("coder_autopush", swAutoPush.isChecked)
                 putBoolean("coder_buildfix", swBuildFix.isChecked)
+                putBoolean("coder_safe_pr", swSafePr.isChecked)
                 putBoolean("coder_team", swTeam.isChecked)
                 putString("gh_token", edGhToken.text.toString().trim())
                 putString("gh_repo", edGhRepo.text.toString().trim().removePrefix("https://github.com/").removeSuffix(".git").trim('/'))

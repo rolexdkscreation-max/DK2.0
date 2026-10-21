@@ -117,14 +117,21 @@ object CoderTeam {
             say("s", "कोऑर्डिनेटर: GitHub पर push…")
             val n = a.staged.size
             val url = a.push(commit)
-            say("d", "Push हो गया ($n फ़ाइल)\n$url")
+            say("d", "Push हो गया ($n फ़ाइल) → ${a.branch}\n$url" + when {
+                a.pr != null -> "\n🔀 PR #${a.pr!!.number} → ${a.baseBranch}: ${a.pr!!.url}"
+                a.safePr && a.prError.isNotBlank() -> "\n⚠ PR नहीं बना: ${a.prError}"
+                else -> ""
+            })
             say("s", "कोऑर्डिनेटर: GitHub build देख रहा हूँ…")
             val b = a.watchBuild(a.lastSha) { st -> step(st) }
             if (b == null) {
                 finish(c, summary + "\n\n✓ रिव्यूअर पास • ✓ Push\n⚠ GitHub build की जानकारी नहीं मिली (token में Actions: Read दें) — build अलग से देखें।", ok = true)
                 return
             }
-            if (b.ok) { finish(c, summary + "\n\n✓ रिव्यूअर पास • ✓ Push • ✓ GitHub build सफल\n${b.url}", ok = true); return }
+            if (b.ok) {
+                val prNote = a.pr?.let { "\n🔀 PR #${it.number} review के लिए तैयार — GitHub पर देखकर कोडिंग स्क्रीन पर \"Merge करें\" दबाएँ (main में अभी कुछ नहीं गया)\n${it.url}" } ?: ""
+                finish(c, summary + "\n\n✓ रिव्यूअर पास • ✓ Push • ✓ GitHub tests + build सफल\n${b.url}$prNote", ok = true); return
+            }
             buildRound++
             say("e", "Build fail ✗ (${buildRound}/$MAX_BUILD_ROUNDS)\n${b.url}")
             if (buildRound >= MAX_BUILD_ROUNDS) { finish(c, "$MAX_BUILD_ROUNDS बार ठीक करने के बाद भी build fail。\n${b.url}", ok = false); return }
@@ -197,7 +204,9 @@ acceptance must only cover what the user asked. suggestions: ONLY things the use
         say(if (ok) "d" else "e", (if (ok) "✅ " else "⚠ ") + text)
         val head = title ?: if (ok) "कोडिंग टीम: काम पूरा" else "कोडिंग टीम: काम अधूरा"
         notifyUser(c, head, text.lines().first().take(120))
-        val spoken = if (ok) "कोडिंग का काम पूरा हो गया, बॉस। जाँच और build दोनों हो गए।" else "कोडिंग का काम पूरा नहीं हो पाया। कोडिंग स्क्रीन पर वजह लिखी है."
+        val prReady = CoderSession.agent?.pr != null
+        val spoken = if (ok && prReady) "कोडिंग का काम पूरा हो गया, बॉस। जाँच और build हो गए, PR आपके review के लिए तैयार है।"
+            else if (ok) "कोडिंग का काम पूरा हो गया, बॉस। जाँच और build दोनों हो गए।" else "कोडिंग का काम पूरा नहीं हो पाया। कोडिंग स्क्रीन पर वजह लिखी है."
         
         DKState.reply(spoken)
         
