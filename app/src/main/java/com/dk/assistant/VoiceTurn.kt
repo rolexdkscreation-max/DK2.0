@@ -38,6 +38,9 @@ class TurnDetector(
     /** Aakhri baar asli awaaz kab thi (ms, feed() ke `now` ke hisaab se) - deri naapne ke liye */
     var lastVoiceAt = 0L
         private set
+    /** Pichhli poori baat kitni lambi thi (SPEECH_END par) - chhoti khatak par "jawab kahan?" mat poochho */
+    var lastSpeechMs = 0
+        private set
 
     fun reset() { inSpeech = false; startRun = 0; speechMs = 0; silenceMs = 0 }
 
@@ -65,6 +68,7 @@ class TurnDetector(
         silenceMs += chunkMs
         if (silenceMs < endSilenceMs) return Event.NONE
         val real = speechMs >= minSpeechMs
+        lastSpeechMs = speechMs
         reset()
         return if (real) Event.SPEECH_END else Event.NONE
     }
@@ -200,4 +204,41 @@ class BargeGate(
             return words.size >= 2 && hit * 10 >= words.size * 8
         }
     }
+}
+
+/**
+ * v3.9.1: "bola par jawab nahi aaya" pakadna.
+ * Log (15:59-16:01) me: phone ne ~15 baar "बोलना खत्म → audioStreamEnd" bheja, Gemini ne sirf 3 baar jawab diya -
+ * server ne baaki baaton ko suna hi nahi (na ACTIVITY_START, na text, na awaaz). Tab DK chup baitha rehta tha.
+ * Yeh class sirf hisaab rakhti hai: asli baat khatam -> [timeoutMs] tak server se koi nishaani nahi = "nahi suna".
+ * (GeminiLive phir caption ka text Gemini ko seedha bhejta hai.) Android import nahi -> unit test me chalti hai.
+ */
+class ReplyWatchdog(
+    /** Itni der me server se kuch na aaye (audioStreamEnd ke baad) = nahi suna */
+    private val timeoutMs: Long = 2500,
+    /** Itni chhoti awaaz (khaansi/khatak) par nahi */
+    private val minSpeechMs: Int = 400,
+) {
+    @Volatile private var heard = false
+    @Volatile private var deadline = 0L
+
+    /** User bolne laga - nayi baat, ab tak server ne kuch nahi suna */
+    fun onSpeechStart() { heard = false; deadline = 0L }
+
+    /** Server ne is baat ka kuch bheja (ACTIVITY_START/END, text, tool, awaaz) - woh sun raha hai */
+    fun onServerHeard() { heard = true; deadline = 0L }
+
+    /** Phone ne pakda: baat khatam */
+    fun onEndOfSpeech(now: Long, speechMs: Int) {
+        deadline = if (!heard && speechMs >= minSpeechMs) now + timeoutMs else 0L
+    }
+
+    /** true = (sirf ek baar) server ne is baat ko nahi suna */
+    fun due(now: Long): Boolean {
+        if (deadline == 0L || heard || now < deadline) return false
+        deadline = 0L
+        return true
+    }
+
+    fun reset() { heard = false; deadline = 0L }
 }
