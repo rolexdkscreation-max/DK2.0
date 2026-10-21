@@ -61,6 +61,9 @@ abstract class LiquidGlassDrawable(private val s: Spec) : Drawable() {
     private val hairPath = Path()
     private val hiPath = Path()
     private val loPath = Path()
+    /** parchhai ki parten: pehle se kaati hui (kaanch wala hissa hata kar) - har frame clip nahi karna padta */
+    private val shadowRings = List(4) { Path() }
+    private val shadowAlpha = IntArray(4)
 
     private val pShadow = Paint(Paint.ANTI_ALIAS_FLAG)
     private val pBody = Paint(Paint.ANTI_ALIAS_FLAG)
@@ -123,8 +126,17 @@ abstract class LiquidGlassDrawable(private val s: Spec) : Drawable() {
         shapePath(rimPath, glass, 0.5f * d)
         shapePath(hairPath, glass, 1.6f * d)
 
-        // 1. parchhai: gehra neela (kaala nahi) - DK ke aasman se mel khata
+        // 1. parchhai: gehra neela (kaala nahi) - DK ke aasman se mel khata.
+        // Sirf kaanch ke BAAHAR wala hissa (Path.op DIFFERENCE) - ek baar yahin, draw me koi clip nahi (GPU halka).
         pShadow.color = 0xFF061846.toInt()
+        if (s.shadow > 0f) for (i in 0 until 4) {
+            val k = (i + 1) / 4f
+            val ring = shadowRings[i]
+            ring.reset()
+            path.offset(0f, k * (s.shadowBottomDp - 0.6f) * d, ring)
+            ring.op(path, Path.Op.DIFFERENCE)
+            shadowAlpha[i] = ((0x1A * s.shadow) * (1.15f - k)).toInt().coerceIn(0, 255)
+        }
 
         // 2. paardarshi kaanch
         pBody.shader = LinearGradient(0f, T, 0f, B, s.bodyTop, s.bodyBottom, Shader.TileMode.CLAMP)
@@ -233,36 +245,23 @@ abstract class LiquidGlassDrawable(private val s: Spec) : Drawable() {
         if (bounds.isEmpty || glass.width() <= 0f) return
         val layer = if (alphaAll < 255) c.saveLayerAlpha(RectF(bounds), alphaAll) else -1
 
-        // 1. parchhai - sirf kaanch ke bahar (clipOut), taaki paardarshi kaanch ke andar andhera na aaye
-        if (s.shadow > 0f) {
-            c.save()
-            c.clipOutPath(path)
-            val steps = 4
-            for (i in steps downTo 1) {
-                val k = i / steps.toFloat()
-                pShadow.alpha = ((0x1A * s.shadow) * (1.15f - k)).toInt().coerceIn(0, 255)
-                c.save()
-                c.translate(0f, k * (s.shadowBottomDp - 0.6f) * d)
-                c.drawPath(path, pShadow)
-                c.restore()
-            }
-            c.restore()
+        // 1. parchhai (pehle se kaati hui - kaanch ke andar andhera nahi)
+        if (s.shadow > 0f) for (i in 3 downTo 0) {
+            pShadow.alpha = shadowAlpha[i]
+            c.drawPath(shadowRings[i], pShadow)
         }
 
         // 2. kaanch
         c.drawPath(path, if (pressed && !s.recessed) pBodyPress else pBody)
-
-        c.save()
-        c.clipPath(path)
+        // (har parat isi shape ka fill hai - alag se clip ki zaroorat nahi)
         if (s.recessed) c.drawPath(path, pInner)
-        // 3. frost + specular (dabaane par thoda zyada roshan - jaise kaanch par ungli se roshni)
+        // 3. frost + specular (dabaane par thoda zyada roshan)
         pFrost.alpha = if (pressed) 255 else 215
         c.drawPath(path, pFrost)
         pSpec.alpha = if (pressed) 255 else 230
         c.drawPath(path, pSpec)
         // 4. neeche ki mudi roshni
         c.drawPath(path, pCaustic)
-        c.restore()
 
         // 5-6. kinare
         val ring = s.focusRing && focused
