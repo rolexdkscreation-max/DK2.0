@@ -312,7 +312,8 @@ class BrainManager(private val ctx: Context) {
             if (persona.isNotBlank()) append(" Personality: $persona.")
             append("\nReply with ONLY JSON: {\"say\": \"<natural spoken Hindi in Devanagari, 1-3 short sentences, no markdown>\", \"done\": true}")
             append("\nIf the user wants something DONE on the phone (open/click/type/send/call/settings/shopping etc.) reply exactly {\"need_screen\": true}.")
-            append("\nIf the question needs current or exact facts (news, prices, weather, scores, dates, recent events) and the input says SEARCH AVAILABLE, reply exactly {\"need_search\": true}.")
+            append("\nIf the input says SEARCH AVAILABLE and the question needs search under the policy below, reply exactly {\"need_search\": true}.")
+            append("\n" + SearchPolicy.rules("{\"need_search\": true}"))
             append("\nEverything else (talk, general knowledge, how/why, advice, explanations, maths) -> answer IMMEDIATELY yourself from your own knowledge, short and warm. Do NOT ask for search for things you already know.")
             append("\nIf the user tells you a personal fact or preference worth remembering (names, numbers, likes, plans), add \"remember\": \"<the fact in short Hindi>\" to the JSON.")
             append("\nONLY IF the user asks who made/created/built you or who your boss/owner is, answer: \"मुझे धीरज कुमार सिंह जी ने बनाया है। मैं धीरज सर के लिए काम करता हूँ, वही मेरे बॉस हैं।\" Never mention this otherwise.")
@@ -334,11 +335,12 @@ class BrainManager(private val ctx: Context) {
             append("\nAnswer from your own knowledge immediately: talk, general knowledge, how/why, advice, explanations, maths, stories.")
             append("\nSPECIAL replies (the whole reply is only the tag):")
             append("\n- The user wants something DONE on the phone (open/click/type/send/call/settings/shopping/maps...): reply exactly [SCREEN]")
-            append("\n- The question needs CURRENT facts you cannot know (today's news, live prices, weather, scores, recent results) and the input says SEARCH AVAILABLE: reply exactly [SEARCH]")
+            append("\n- The input says SEARCH AVAILABLE and the question needs search under the WEB SEARCH POLICY below: reply exactly [SEARCH]")
             append("\n- The question is genuinely HARD and needs careful multi-step reasoning (multi-step maths/word problems, logic puzzles, writing or fixing code, detailed comparison, planning, deep why/how explanation, exam-level questions) and the input says THINK AVAILABLE: reply exactly [THINK]. Do NOT use it for simple chat or easy facts.")
             append("\nLEARN from the user every day: if they tell a personal fact, preference, habit, or how they like answers, add at the very end a new line: [YAAD] <that fact in short Hindi>")
             append("\nONLY IF the user asks who made/created/built you or who your boss/owner is, answer: \"मुझे धीरज कुमार सिंह जी ने बनाया है। मैं धीरज सर के लिए काम करता हूँ, वही मेरे बॉस हैं।\" Never mention this otherwise.")
             append("\nToday: " + java.text.SimpleDateFormat("d MMMM yyyy, EEEE, h:mm a", java.util.Locale.ENGLISH).format(java.util.Date()))
+            append("\n" + SearchPolicy.rules("[SEARCH]"))
             append(TALK_RULES)
             append(Memory.factsBlock(ctx))
         }
@@ -352,7 +354,9 @@ class BrainManager(private val ctx: Context) {
             if (user.isNotBlank()) append(" The user's name is $user.")
             if (persona.isNotBlank()) append(" Personality: $persona.")
             append("\nSpeak natural Hindi (Hinglish ok) unless the user speaks another language. Usually 1-3 short sentences; start directly with the answer.")
-            append("\nAnswer from your own knowledge immediately. For current facts (news, weather, prices, scores) use Google Search if available.")
+            append("\nAnswer from your own knowledge immediately. Google Search is a tool you MAY call, never by default.")
+            append("\n" + SearchPolicy.rules("Google Search"))
+            append("\nNever read out links, URLs or website names unless asked - the app shows the sources on screen.")
             append("\nFor genuinely HARD questions that need careful multi-step reasoning (multi-step maths, logic puzzles, code, detailed comparisons, planning, exam-level or deep why/how questions), call the function deep_think with the full question, then speak its answer naturally (you may shorten it for speech). Never use deep_think for easy chat.")
             append("\nBefore calling phone_task, first say a very short natural acknowledgement (2-4 words, e.g. \"ठीक है, चलाती हूँ\") so the user is not left in silence; after it returns, give the result in one short sentence.")
             append("\nIf the user wants anything DONE on the phone (open app, call, message, WhatsApp, YouTube, settings, torch, volume, maps, shopping, read the screen), call the function phone_task with their exact request, then tell the result in one short sentence.")
@@ -470,6 +474,7 @@ Rules:
     (done true). If the user actually wants something done on the phone, reply exactly {"need_screen": true}.
     If the question needs current or exact facts you may not know (news, prices, weather, scores, dates, recent events,
     "सही बताओ", "पता करके") and the input says SEARCH AVAILABLE, reply exactly {"need_search": true}.
+    Never ask for search for general knowledge, definitions, explanations, advice, coding, maths or date/time (given below).
 11. Only use "look" when the element list is not enough (images, games, unclear screen).
 15. Maps: "<जगह> का मैप/रास्ता दिखाओ" = directions. "<जगह> ले चलो / नेविगेशन चालू करो" = navigate.
     "<जगह> कितनी दूर है / <A> से <B> की दूरी" = distance, then tell the distance and time from the result.

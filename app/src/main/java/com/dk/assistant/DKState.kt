@@ -17,6 +17,9 @@ object DKState {
         private set
     @Volatile var lastReply: String = ""
         private set
+    /** Aakhri jawab ke sources (voice screen ke caption ke neeche) - khali = apne gyaan se jawab */
+    @Volatile var lastSources: List<Pair<String, String>> = emptyList()
+        private set
 
     private val main = Handler(Looper.getMainLooper())
     private val listeners = mutableSetOf<() -> Unit>()
@@ -29,7 +32,9 @@ object DKState {
     fun set(m: Mode) { mode = m; if (m != Mode.LISTENING) level = 0f; emit() }
     fun setLive(on: Boolean) { live = on; emit() }
     /** Chat screen ke liye poori baatcheet (role "u" = aap, "d" = DK) */
-    data class Msg(val role: String, val text: String, val time: Long = System.currentTimeMillis())
+    data class Msg(val role: String, val text: String, val time: Long = System.currentTimeMillis(),
+                   /** Web search ke sources (title, url) - sirf jab jawab sach me search se aaya; warna khali */
+                   val src: List<Pair<String, String>> = emptyList())
     val messages = java.util.concurrent.CopyOnWriteArrayList<Msg>()
 
     fun user(t: String) {
@@ -63,7 +68,7 @@ object DKState {
     @Volatile var failedAt = 0L
         private set
     fun replyFailed(t: String) {
-        lastReply = t; liveReply = ""; hintText = ""
+        lastReply = t; liveReply = ""; hintText = ""; lastSources = emptyList()
         val m = Msg("d", t); failedAt = m.time
         messages.add(m); trim()
         emit()
@@ -83,13 +88,13 @@ object DKState {
     @Volatile var hintText: String = ""
         private set
     fun hint(t: String) { hintText = t; emit() }
-    fun reply(t: String) {
-        lastReply = t; liveReply = ""; hintText = ""
-        if (t.isNotBlank()) { messages.add(Msg("d", t)); trim() }
+    fun reply(t: String, sources: List<Pair<String, String>> = emptyList()) {
+        lastReply = t; liveReply = ""; hintText = ""; lastSources = sources
+        if (t.isNotBlank()) { messages.add(Msg("d", t, src = sources)); trim() }
         emit()
     }
     /** Jawab abhi ban raha hai (tukdon me) - screen par dikhao, chat list me abhi mat jodo */
-    fun replyLive(t: String) { lastReply = t; liveReply = t; emit() }
+    fun replyLive(t: String) { if (liveReply.isEmpty()) lastSources = emptyList(); lastReply = t; liveReply = t; emit() }
     private fun trim() { while (messages.size > 200) messages.removeAt(0); persist() }
 
     // ---- chat phone me save (app band/restart ke baad bhi baatcheet dikhe)

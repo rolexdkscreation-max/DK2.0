@@ -256,16 +256,11 @@ class GeminiClient(private val key: String, private val model: String) : AiClien
                 val sb = StringBuilder()
                 for (i in 0 until p.length()) { val o = p.optJSONObject(i) ?: continue; if (!o.optBoolean("thought")) sb.append(o.optString("text")) }
                 // kin websites se jaankari mili
-                val sources = mutableListOf<Pair<String, String>>()
-                val chunks = cand.optJSONObject("groundingMetadata")?.optJSONArray("groundingChunks")
-                for (i in 0 until (chunks?.length() ?: 0)) {
-                    val w = chunks!!.optJSONObject(i)?.optJSONObject("web") ?: continue
-                    val title = w.optString("title").ifBlank { w.optString("domain") }
-                    if (title.isNotBlank() && sources.none { it.first == title }) sources.add(title to w.optString("uri"))
-                }
+                // sirf tab jab sach me search hua (groundingMetadata) - warna khali = koi source nahi dikhega
+                val sources = Grounding.sources(cand.optJSONObject("groundingMetadata"))
                 label = (if (think) "Gemini गहरी सोच" else "Gemini+Search") + " ($m)"
                 if (sb.isBlank()) throw AiException(0, "khali jawab")
-                return SearchResult(sb.toString(), sources.take(5))
+                return SearchResult(sb.toString(), sources)
             } catch (e: AiException) {
                 last = e
                 val msg = (e.message ?: "").lowercase()
