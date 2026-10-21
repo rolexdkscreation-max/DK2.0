@@ -6,6 +6,8 @@
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CAMERA" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.VIBRATE" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
@@ -110,9 +112,16 @@
             android:foregroundServiceType="microphone" />
 
         <!-- Anti-Theft Guard Service -->
+        <!-- Android 14+: foregroundServiceType zaroori. camera = ghuspaithiye ki photo,
+             specialUse = camera permission/foreground na ho tab bhi guard chalta rahe -->
         <service
             android:name=".antitheft.GuardService"
-            android:exported="false" />
+            android:exported="false"
+            android:foregroundServiceType="camera|specialUse">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="Anti-theft guard: watches screen-on / wrong PIN to warn and lock the phone" />
+        </service>
 
         <!-- Anti-Theft Device Admin Receiver -->
         <receiver
