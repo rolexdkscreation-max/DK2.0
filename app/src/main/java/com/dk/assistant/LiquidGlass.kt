@@ -170,31 +170,56 @@ abstract class LiquidGlassDrawable(private val s: Spec) : Drawable() {
             intArrayOf((0x3A * ra).toInt() shl 24 or 0xFFFFFF, 0x00FFFFFF, 0x00102E70, (0x30 * ra).toInt() shl 24 or 0x0A2463),
             floatArrayOf(0f, 0.3f, 0.6f, 1f), Shader.TileMode.CLAMP)
 
-        // 6b. kone ki chamak ki lakeer: upar-baayan kona + upar ka kinara (dheere gayab)
+        // 6b. kone ki chamak ki lakeer: upar-baayan kona (tez) + neeche-daayan kona (halki reflection).
+        // Lakeer ke dono sire dheere-dheere gayab - gradient ka "0" theek dono siro ko jodne wali line par.
         hiPath.reset(); loPath.reset()
         val ins = 1.1f * d
         val g = RectF(L + ins, T + ins, R - ins, B - ins)
+        val hiA: FloatArray; val hiB: FloatArray; val hiM: FloatArray
+        val loA: FloatArray; val loB: FloatArray; val loM: FloatArray
         if (s.oval) {
-            hiPath.addArc(g, 168f, 112f)
-            loPath.addArc(g, 0f, 80f)
+            hiPath.addArc(g, 160f, 125f); loPath.addArc(g, -5f, 95f)
+            hiA = onOval(g, 160f); hiB = onOval(g, 285f); hiM = onOval(g, 222f)
+            loA = onOval(g, -5f); loB = onOval(g, 90f); loM = onOval(g, 42f)
         } else {
             val rr = radiiPx(glass, ins)
-            val tl = rr[0]; val br = rr[4]
-            hiPath.moveTo(g.left, g.top + tl + h * 0.18f)
-            hiPath.lineTo(g.left, g.top + tl)
+            val tl = rr[0]; val tr = rr[2]; val br = rr[4]; val bl = rr[6]
+            val leftStraight = (g.height() - tl - bl).coerceAtLeast(0f)
+            val topStraight = (g.width() - tl - tr).coerceAtLeast(0f)
+            val rightStraight = (g.height() - tr - br).coerceAtLeast(0f)
+            val bottomStraight = (g.width() - bl - br).coerceAtLeast(0f)
+            val y1 = g.top + tl + minOf(h * 0.22f, leftStraight * 0.6f)
+            val x2 = g.left + tl + topStraight * 0.55f
+            hiPath.moveTo(g.left, y1); hiPath.lineTo(g.left, g.top + tl)
             if (tl > 0f) hiPath.arcTo(RectF(g.left, g.top, g.left + 2 * tl, g.top + 2 * tl), 180f, 90f, false)
-            hiPath.lineTo(g.left + tl + (g.width() - 2 * tl) * 0.55f, g.top)
-            loPath.moveTo(g.right, g.bottom - br - h * 0.12f)
-            loPath.lineTo(g.right, g.bottom - br)
+            hiPath.lineTo(x2, g.top)
+            hiA = floatArrayOf(g.left, y1); hiB = floatArrayOf(x2, g.top); hiM = floatArrayOf(g.left, g.top)
+            val y3 = g.bottom - br - minOf(h * 0.16f, rightStraight * 0.5f)
+            val x4 = g.right - br - bottomStraight * 0.32f
+            loPath.moveTo(g.right, y3); loPath.lineTo(g.right, g.bottom - br)
             if (br > 0f) loPath.arcTo(RectF(g.right - 2 * br, g.bottom - 2 * br, g.right, g.bottom), 0f, 90f, false)
-            loPath.lineTo(g.right - br - (g.width() - 2 * br) * 0.3f, g.bottom)
+            loPath.lineTo(x4, g.bottom)
+            loA = floatArrayOf(g.right, y3); loB = floatArrayOf(x4, g.bottom); loM = floatArrayOf(g.right, g.bottom)
         }
         pHi.strokeWidth = 1.3f * d
-        pHi.shader = LinearGradient(L, T, L + w * 0.62f, T + h * 0.5f,
-            intArrayOf(wa(1f), wa(0.55f), 0x00FFFFFF), floatArrayOf(0f, 0.45f, 1f), Shader.TileMode.CLAMP)
+        pHi.shader = fadeTo(hiM, hiA, hiB, intArrayOf(wa(1f), wa(0.6f), 0x00FFFFFF), floatArrayOf(0f, 0.55f, 1f))
         pLo.strokeWidth = 1f * d
-        pLo.shader = LinearGradient(R, B, R - w * 0.42f, B - h * 0.5f,
-            intArrayOf(wa(0.55f), 0x00FFFFFF), null, Shader.TileMode.CLAMP)
+        pLo.shader = fadeTo(loM, loA, loB, intArrayOf(wa(0.6f), wa(0.25f), 0x00FFFFFF), floatArrayOf(0f, 0.5f, 1f))
+    }
+
+    private fun onOval(r: RectF, deg: Float): FloatArray {
+        val a = Math.toRadians(deg.toDouble())
+        return floatArrayOf(r.centerX() + r.width() / 2f * Math.cos(a).toFloat(), r.centerY() + r.height() / 2f * Math.sin(a).toFloat())
+    }
+
+    /** M par sabse tez, A-B wali line par bilkul gayab (lakeer ke sire kat-te nahi dikhte) */
+    private fun fadeTo(m: FloatArray, a: FloatArray, b: FloatArray, colors: IntArray, pos: FloatArray): Shader {
+        val dx = b[0] - a[0]; val dy = b[1] - a[1]
+        var nx = -dy; var ny = dx
+        val len = Math.hypot(nx.toDouble(), ny.toDouble()).toFloat().coerceAtLeast(0.001f)
+        nx /= len; ny /= len
+        val dist = (a[0] - m[0]) * nx + (a[1] - m[1]) * ny
+        return LinearGradient(m[0], m[1], m[0] + nx * dist, m[1] + ny * dist, colors, pos, Shader.TileMode.CLAMP)
     }
 
     override fun getOutline(outline: Outline) {
