@@ -326,7 +326,7 @@ class SettingsActivity : AppCompatActivity() {
      */
     private fun quickSetupCard() {
         card("तुरंत सेटअप — कोई भी फ्री key डालें", "DK खुद पहचानेगा कि key किस कंपनी की है, उसके फ्री मॉडल जाँचकर सबसे तेज़ चुनेगा और बात शुरू कर देगा") { box ->
-            val edText = field(box, "1. जवाब (टेक्स्ट) के लिए key", "", "Groq / Gemini / OpenRouter / Mistral / Z.ai — कोई भी", secret = true)
+            val edText = field(box, "1. जवाब (टेक्स्ट) के लिए key", "", "Gemini / Groq / OpenRouter — कोई भी", secret = true)
             val res1 = TextView(this).apply { setTextColor(0xB3FFFFFF.toInt()); textSize = 13f; setPadding((4 * dp).toInt(), (6 * dp).toInt(), 0, 0) }
             val cur = Prefs.activeProvider(this).let { id -> if (Prefs.key(this, id).isNotBlank()) "अभी: ${KeySetup.name(id)} • ${Prefs.model(this, id)}" else "अभी कोई key नहीं" }
             res1.text = cur

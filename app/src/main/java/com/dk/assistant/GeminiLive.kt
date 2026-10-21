@@ -380,10 +380,11 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
                 .put("automaticActivityDetection", JSONObject()
                     .put("disabled", false)
                     .put("startOfSpeechSensitivity", "START_SENSITIVITY_HIGH")
-                    // HIGH = chup hote hi jaldi "bolna khatam" (tez jawab); 600ms = docs ki salaah (500-800ms)
+                    // HIGH = chup hote hi jaldi "bolna khatam" (tez jawab); 500ms = docs ki salaah (500-800ms) ka sabse tez
                     .put("endOfSpeechSensitivity", "END_SENSITIVITY_HIGH")
-                    .put("prefixPaddingMs", 80)
-                    .put("silenceDurationMs", 600))
+                    // 20ms = pehla shabd (chhota haan bhi) turant pakdo
+                    .put("prefixPaddingMs", 20)
+                    .put("silenceDurationMs", 500))
                 .put("activityHandling", "START_OF_ACTIVITY_INTERRUPTS"))
             .put("inputAudioTranscription", JSONObject())
             .put("outputAudioTranscription", JSONObject())
@@ -703,6 +704,9 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
         return null
     }
 
+    /** Dheere bolne par bhi saaf awaaz Gemini tak (v3.7) */
+    private val boost = MicBoost()
+
     private suspend fun micLoop() = coroutineScope {
         var r = openMic() ?: throw Fatal("माइक नहीं खुला (कोई दूसरा ऐप माइक इस्तेमाल कर रहा है?)")
         try {
@@ -736,11 +740,14 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
                 if (last > 0 && now - last > CHUNK_MS * 3) { gaps++; if (gaps % 20 == 1L) log("माइक में ${now - last} ms का गैप (#$gaps)") }
                 last = now
                 var sum = 0.0
+                for (i in 0 until CHUNK_SAMPLES) { val s = buf[i].toInt(); sum += (s * s).toDouble() }
+                val rms = sqrt(sum / CHUNK_SAMPLES)
+                // dheemi awaaz tez (v3.7): DK chup ho tab hi - DK ki apni goonj ko tez nahi karna
+                if (!isPlaying()) boost.apply(buf, CHUNK_SAMPLES)
                 for (i in 0 until CHUNK_SAMPLES) {
-                    val s = buf[i].toInt(); sum += (s * s).toDouble()
+                    val s = buf[i].toInt()
                     bytes[i * 2] = (s and 0xff).toByte(); bytes[i * 2 + 1] = (s shr 8 and 0xff).toByte()   // little-endian
                 }
-                val rms = sqrt(sum / CHUNK_SAMPLES)
                 if (sum == 0.0) { if (++zeroRun == 75) log("माइक से 3 सेकंड से बिल्कुल आवाज़ नहीं (कोई दूसरा ऐप माइक ले रहा है?)") } else zeroRun = 0
                 // DK bol raha ho: apni goonj Gemini ko na bhejo (warna woh khud ko tok deta), par user tez bole to bhejo (barge-in)
                 val out = if (isPlaying()) {
@@ -748,9 +755,9 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
                     if (!barge) {
                         // DK ki awaaz shuru hote hi goonj dheere-dheere badhti hai: pehle 700ms sirf goonj seekho (galat "toka" nahi)
                         if (now - playSince < 700) { loud = 0; echo = maxOf(echo * 0.8, rms) }
-                        else if (rms > maxOf(echo * 2.5, 1200.0)) loud++
+                        else if (rms > maxOf(echo * 2.2, 900.0)) loud++
                         else { loud = 0; echo = if (echo == 0.0) rms else echo * 0.9 + rms * 0.1 }
-                        if (loud >= 5) { barge = true; barging = true; log("बीच में बोलना पकड़ा (rms=${rms.toInt()}, goonj=${echo.toInt()})") }
+                        if (loud >= 4) { barge = true; barging = true; log("बीच में बोलना पकड़ा (rms=${rms.toInt()}, goonj=${echo.toInt()})") }
                     }
                     if (barge) bytes else zeros
                 } else {

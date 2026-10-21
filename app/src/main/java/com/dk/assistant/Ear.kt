@@ -32,8 +32,8 @@ class Ear(
         private const val START_FRAMES = 3            // 90 ms awaaz = bolna shuru
         // Chhoti baat ("हाँ", "उठाओ") ke baad 0.7 sec chup = khatam (tez jawab).
         // Lambi baat me beech ka saans/ruk-ruk kar bolna na kate -> 1.1 sec tak intezaar.
-        private const val END_SILENCE_SHORT = 20      // ~0.6 sec (pehle 0.8 - jawab der se shuru hota tha)
-        private const val END_SILENCE_LONG = 27       // ~0.8 sec (pehle 1.25 sec) (beech me saans le kar bolo to baat na kate)
+        private const val END_SILENCE_SHORT = 15      // ~0.45 sec (v3.7: pehle 0.6) - chhoti baat ke baad turant jawab
+        private const val END_SILENCE_LONG = 22       // ~0.66 sec (v3.7: pehle 0.8) (beech me saans le kar bolo to baat na kate)
         private const val LONG_AFTER = 50             // 1.5 sec se zyada bole = lambi baat
         private const val MAX_FRAMES = 25 * 1000 / 30 // 25 sec max (lamba sawaal bhi poora suno)
         private const val MIN_SPEECH_FRAMES = 8       // 0.24 sec se chhota = shor ("हाँ" bhi pakdo)
@@ -43,7 +43,11 @@ class Ear(
     private var rec: AudioRecord? = null
     private var aec: AcousticEchoCanceler? = null
     private var ns: NoiseSuppressor? = null
-    private var noise = 300.0
+    private var noise = 150.0
+    /** Pehli baar hi shor naapne ka lamba intezaar; baad me turant sunna (pehla shabd na kate) */
+    private var warmed = false
+    /** Asli sunne wala caption (Gemini key ho to): bolte-bolte shabd screen par (v3.7) */
+    @Volatile var onFrame: ((ShortArray, Int) -> Unit)? = null
     /** DK ki apni awaaz mic me kitni aati hai (bolte waqt) */
     private var echo = 0.0
     /** Abhi user ki baat record ho rahi hai? */
@@ -94,7 +98,8 @@ class Ear(
         val speech = ByteArrayOutputStream()
         var loud = 0; var silent = 0; var frames = 0; var speechFrames = 0
         var talking = false
-        var warm = 8 // pehle 240ms me sirf shor naapo
+        // pehli baar 240ms shor naapo; baad me sirf 60ms (v3.7: pehle har baar 240ms - shuru ka shabd kat jaata tha)
+        var warm = if (warmed) 2 else 8; warmed = true
         try {
             while (true) {
                 coroutineContext.ensureActive()
@@ -109,21 +114,28 @@ class Ear(
                 val dkTalking = muted()
                 // DK khud bol raha hai -> (normal sunne me) apni awaaz mat suno
                 if (dkTalking && !barge) { talking = false; speech.reset(); pre.clear(); loud = 0; warm = 4; DKState.level = 0f; continue }
-                if (warm > 0) { if (!dkTalking) noise = noise * 0.7 + rms * 0.3; warm--; continue }
+                if (warm > 0) {
+                    // naapte waqt bhi awaaz rakh lo (pehle shabd ke liye), aur boli hui baat ko shor mat maano
+                    pre.addLast(buf.copyOf(n)); if (pre.size > PRE_ROLL) pre.removeFirst()
+                    if (!dkTalking && rms < noise * 2.5) noise = noise * 0.7 + rms * 0.3
+                    warm--; continue
+                }
                 if (dkTalking && !talking) echo = if (echo == 0.0) rms else echo * 0.85 + rms * 0.15
                 // dheemi awaaz bhi pakdo, par pankhe/TV ka shor nahi. DK bol raha ho to uski goonj se kaafi upar.
-                val startTh = if (barge && dkTalking) maxOf(noise * 2.5, echo * 1.9, 750.0) else maxOf(noise * 2.0, 260.0)
-                val stopTh = maxOf(noise * 1.4, 190.0)
+                // v3.7: dheemi awaaz ke liye kam seema (pehle noise*2.0 / 260) - dheere bolo tab bhi pakde
+                val startTh = if (barge && dkTalking) maxOf(noise * 2.3, echo * 1.8, 650.0) else maxOf(noise * 1.7, 150.0)
+                val stopTh = maxOf(noise * 1.3, 120.0)
                 val startFrames = if (barge && dkTalking) 7 else START_FRAMES
 
                 if (!talking) {
                     DKState.level = 0f
                     val copy = buf.copyOf(n)
                     pre.addLast(copy); if (pre.size > PRE_ROLL) pre.removeFirst()
-                    if (rms > startTh) loud++ else { loud = 0; if (!dkTalking) noise = noise * 0.97 + rms * 0.03 }
+                    // shor: neeche jaldi, upar bahut dheere (dheemi baat se seema na badhe)
+                    if (rms > startTh) loud++ else { loud = 0; if (!dkTalking) noise = if (rms < noise) noise * 0.9 + rms * 0.1 else noise * 0.995 + rms * 0.005 }
                     if (loud >= startFrames) {
                         talking = true; capturing = true
-                        pre.forEach { writeShorts(speech, it, it.size) }
+                        pre.forEach { writeShorts(speech, it, it.size); try { onFrame?.invoke(it, it.size) } catch (_: Exception) {} }
                         pre.clear()
                         frames = 0; silent = 0; speechFrames = loud
                         try { onSpeechStart() } catch (_: Exception) {}
@@ -133,11 +145,13 @@ class Ear(
                 } else {
                     DKState.level = (rms / 3500.0).toFloat().coerceIn(0f, 1f)
                     writeShorts(speech, buf, n)
+                    try { onFrame?.invoke(buf, n) } catch (_: Exception) {}
                     frames++
                     if (rms < stopTh) silent++ else { silent = 0; speechFrames++ }
                     val endAfter = if (speechFrames > LONG_AFTER) END_SILENCE_LONG else END_SILENCE_SHORT
                     if (silent >= endAfter || frames >= MAX_FRAMES) {
-                        if (speechFrames >= MIN_SPEECH_FRAMES) return@withContext speech.toByteArray()
+                        // dheemi baat ko theek level tak (Whisper ko saaf sunaai de)
+                        if (speechFrames >= MIN_SPEECH_FRAMES) return@withContext MicBoost.normalize(speech.toByteArray())
                         // bahut chhota = khaansi/khatak -> phir se suno
                         talking = false; capturing = false; speech.reset(); loud = 0
                         try { onDiscard?.invoke() } catch (_: Exception) {}

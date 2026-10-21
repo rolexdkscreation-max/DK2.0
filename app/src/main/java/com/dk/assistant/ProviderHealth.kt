@@ -12,7 +12,7 @@ object ProviderHealth {
     private fun h(id: String) = map.getOrPut(id) { H() }
 
     /** pehli baar ka andaza (ms) - Groq sabse tez */
-    private fun prior(id: String) = when (id) { "groq" -> 700.0; "gemini" -> 1300.0; "mistral" -> 1600.0; else -> 2200.0 }
+    private fun prior(id: String) = when (id) { "groq" -> 700.0; "gemini" -> 1300.0; else -> 2200.0 }
 
     fun usable(id: String) = System.currentTimeMillis() > h(id).until
     fun speed(id: String): Double = h(id).let { if (it.ok == 0) prior(id) else it.ema }

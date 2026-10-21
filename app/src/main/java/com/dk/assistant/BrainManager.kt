@@ -136,7 +136,7 @@ class BrainManager(private val ctx: Context) {
                 }
             }
             start()
-            launch { delay(1500); start(); delay(2500); start() }   // dheemi ho to saath me agli key
+            launch { delay(1000); start(); delay(2000); start() }   // dheemi ho to saath me agli key (v3.7: 1 sec)
             try {
                 val text = result.await()
                 remember(if (note.isNotBlank()) note else "USER SAYS: $prompt", text)
