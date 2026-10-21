@@ -32,11 +32,12 @@ import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import kotlinx.coroutines.launch
 
 object AntiTheftGuard {
 
     const val PREF_GUARD_ON = "anti_theft_guard_on"
-    private const val CHANNEL_ID = "anti_theft_guard_channel"
+    const val CHANNEL_ID = "anti_theft_guard_channel"
     private const val NOTIF_ID = 9999
 
     fun isOn(c: Context): Boolean = c.getSharedPreferences("dk_prefs", Context.MODE_PRIVATE).getBoolean(PREF_GUARD_ON, false)
@@ -73,13 +74,21 @@ object AntiTheftGuard {
         val low = cmd.lowercase(Locale.ROOT)
         if (low.contains("guard on") || low.contains("गार्ड ऑन") || low.contains("गार्ड चालू") || low.contains("anti theft on")) {
             setOn(c, true)
-            DKAccessibilityService.instance?.speaker?.speak("गार्ड मोड चालू कर दिया गया है। 10 सेकंड में एक्टिव हो जाएगा।")
+            DKAccessibilityService.instance?.let { svc ->
+                svc.scope.launch {
+                    try { svc.speaker.speak("गार्ड मोड चालू कर दिया गया है। 10 सेकंड में एक्टिव हो जाएगा।") } catch (_: Exception) {}
+                }
+            }
             return true
         }
         if (low.contains("guard off") || low.contains("गार्ड ऑफ") || low.contains("गार्ड बंद") || low.contains("anti theft off")) {
             setOn(c, false)
             GuardService.stopAllWarnings(c)
-            DKAccessibilityService.instance?.speaker?.speak("गार्ड मोड बंद कर दिया गया है।")
+            DKAccessibilityService.instance?.let { svc ->
+                svc.scope.launch {
+                    try { svc.speaker.speak("गार्ड मोड बंद कर दिया गया है।") } catch (_: Exception) {}
+                }
+            }
             return true
         }
         if (low.contains("कौन फ़ोन छू रहा था") || low.contains("who touched") || low.contains("intruder photos") || low.contains("फ़ोन किसने छुआ")) {
@@ -93,7 +102,11 @@ object AntiTheftGuard {
         val photos = listPhotos(c)
         val count = photos.size
         val msg = if (count == 0) "वेलकम बॉस, किसी ने फ़ोन नहीं छुआ।" else "वेलकम बॉस, किसी ने फ़ोन छुआ था। $count फ़ोटो ली गई हैं।"
-        DKAccessibilityService.instance?.speaker?.speak(msg)
+        DKAccessibilityService.instance?.let { svc ->
+            svc.scope.launch {
+                try { svc.speaker.speak(msg) } catch (_: Exception) {}
+            }
+        }
         Toast.makeText(c, msg, Toast.LENGTH_LONG).show()
         val intent = Intent(c, SettingsActivity::class.java).putExtra("section", "guard_photos")
         intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
@@ -194,8 +207,12 @@ class GuardService : Service() {
         DKLog.d("Guard: Level 1 triggered")
         takeIntruderPhoto("level1")
         val text = "This is Boss's phone, please put it down."
-        DKAccessibilityService.instance?.speaker?.speak(text)
-        Toast.makeText(this, "⚠️ एंटी-थिफ्ट गार्ड: किसी ने फ़ोन छुआ!", Toast.LENGTH_LONG)
+        DKAccessibilityService.instance?.let { svc ->
+            svc.scope.launch {
+                try { svc.speaker.speak(text) } catch (_: Exception) {}
+            }
+        }
+        Toast.makeText(this, "⚠️ एंटी-थिफ्ट गार्ड: किसी ने फ़ोन छुआ!", Toast.LENGTH_LONG).show()
 
         handler.postDelayed({
             if (isRunning && level == 1) {
@@ -208,7 +225,11 @@ class GuardService : Service() {
         level = 2
         DKLog.d("Guard: Level 2 triggered")
         val text = "चेतावनी! यह बॉस का फ़ोन है, तुरंत नीचे रख दो वरना पुलिस को सूचित किया जाएगा।"
-        DKAccessibilityService.instance?.speaker?.speak(text)
+        DKAccessibilityService.instance?.let { svc ->
+            svc.scope.launch {
+                try { svc.speaker.speak(text) } catch (_: Exception) {}
+            }
+        }
         try {
             val tone = ToneGenerator(AudioManager.STREAM_ALARM, 100)
             tone.startTone(ToneGenerator.TONE_CDMA_ALERT_CALL_GUARD, 2000)
@@ -286,7 +307,7 @@ class GuardService : Service() {
     private fun createNotificationChannel() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val channel = NotificationChannel(
-                CHANNEL_ID,
+                AntiTheftGuard.CHANNEL_ID,
                 "Anti-Theft Guard Service",
                 NotificationManager.IMPORTANCE_LOW
             )
@@ -299,7 +320,7 @@ class GuardService : Service() {
         val intent = Intent(this, SettingsActivity::class.java).putExtra("section", "perms")
         val pi = PendingIntent.getActivity(this, 0, intent, PendingIntent.FLAG_IMMUTABLE)
         return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            Notification.Builder(this, CHANNEL_ID)
+            Notification.Builder(this, AntiTheftGuard.CHANNEL_ID)
                 .setContentTitle("DK Anti-Theft Guard")
                 .setContentText(text)
                 .setSmallIcon(R.drawable.ic_dk)
@@ -327,7 +348,11 @@ class GuardService : Service() {
                         stopAllWarnings(context)
                         AntiTheftGuard.setOn(context, false)
                         val prompt = "वेलकम बॉस, किसी ने फ़ोन छुआ था। फ़ोटो देखनी है?"
-                        DKAccessibilityService.instance?.speaker?.speak(prompt)
+                        DKAccessibilityService.instance?.let { svc ->
+                            svc.scope.launch {
+                                try { svc.speaker.speak(prompt) } catch (_: Exception) {}
+                            }
+                        }
                         Toast.makeText(context, prompt, Toast.LENGTH_LONG).show()
                     }
                 }
