@@ -110,6 +110,7 @@ class SettingsActivity : AppCompatActivity() {
             Triple("access", "Accessibility", (if (Setup.accessibilityOn(this)) "✓ चालू" else "✗ बंद") + " • फ़ोन कंट्रोल • हमेशा सुनना • कॉल • बैटरी"),
             Triple("perms", "परमिशन", "माइक • स्क्रीन देखना • नोटिफ़िकेशन • कॉल • ऐप इंस्टॉल"),
             Triple("coder", "कोडिंग एजेंट", (if (Prefs.coderOn(this)) "✓ चालू" else "✗ बंद") + " • GitHub से जुड़ें • कोड लिखें/बदलें/हटाएँ • push • अलग AI key"),
+            Triple("story", "स्टोरी राइटर एजेंट", "लंबी हिंदी कहानियाँ (10–30 मिनट) • भाग-दर-भाग • कॉपी • फ़ोन में सेव"),
             Triple("update", "अपडेट", "अभी: ${Updater.displayVersion(this)} • नया version चेक करें"),
             Triple("debug", "डिबग लॉग", "माइक, कनेक्शन, देरी और गलतियों का पूरा हाल")
         )
@@ -119,7 +120,11 @@ class SettingsActivity : AppCompatActivity() {
                 setBackgroundResource(R.drawable.glass_card)
                 val pd = (18 * dp).toInt(); setPadding(pd, pd, pd, pd)
                 isClickable = true
-                setOnClickListener { startActivity(android.content.Intent(this@SettingsActivity, SettingsActivity::class.java).putExtra("section", id)) }
+                setOnClickListener {
+                    // Story Writer: seedha apni screen (iski koi settings nahi)
+                    if (id == "story") startActivity(android.content.Intent(this@SettingsActivity, StoryWriterActivity::class.java))
+                    else startActivity(android.content.Intent(this@SettingsActivity, SettingsActivity::class.java).putExtra("section", id))
+                }
             }
             // har section ka apna rangeen icon (rang neele background se alag) glass gole me
             box.addView(android.widget.ImageView(this).apply {
@@ -145,6 +150,7 @@ class SettingsActivity : AppCompatActivity() {
         "access" -> R.drawable.ic_s_access
         "perms" -> R.drawable.ic_s_perms
         "coder" -> R.drawable.ic_s_coder
+        "story" -> R.drawable.ic_s_story
         "update" -> R.drawable.ic_s_update
         else -> R.drawable.ic_s_debug
     }
