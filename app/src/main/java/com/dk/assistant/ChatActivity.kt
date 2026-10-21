@@ -103,6 +103,7 @@ class ChatActivity : AppCompatActivity() {
         send.setOnClickListener { doSend() }
         edt.setOnEditorActionListener { _, id, _ -> if (id == EditorInfo.IME_ACTION_SEND) { doSend(); true } else false }
         setContentView(root)
+        Glass.install(this)
         keepTyping()
     }
 
@@ -192,7 +193,7 @@ class ChatActivity : AppCompatActivity() {
         val mine = role == "u"
         val tv = TextView(this).apply {
             this.text = text; textSize = 15f; setTextColor(0xFFFFFFFF.toInt()); setTextIsSelectable(true)
-            setBackgroundResource(if (mine) R.drawable.btn_accent else R.drawable.glass_card)
+            setBackgroundResource(if (mine) R.drawable.glass_bubble_me else R.drawable.glass_bubble_dk)
             val ph = (14 * dp).toInt(); val pv = (10 * dp).toInt(); setPadding(ph, pv, ph, pv)
             maxWidth = (resources.displayMetrics.widthPixels * 0.78).toInt()
         }

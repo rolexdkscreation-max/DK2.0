@@ -28,6 +28,7 @@ class MainActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
+        Glass.install(this)
 
         txtHello = findViewById(R.id.txtHello)
         txtName = findViewById(R.id.txtName)
@@ -217,7 +218,7 @@ class MainActivity : AppCompatActivity() {
             val notes = rel?.notes?.takeIf { it.isNotBlank() } ?: sp.getString("upd_notes_$cur", "").orEmpty()
             val label = rel?.typeLabel ?: "अपडेट"
             if (isFinishing || isDestroyed) return@launch
-            android.app.AlertDialog.Builder(this@MainActivity, android.R.style.Theme_DeviceDefault_Dialog_Alert)
+            android.app.AlertDialog.Builder(this@MainActivity, Glass.DIALOG)
                 .setTitle("${Updater.displayVersion(this@MainActivity)} • $label इंस्टॉल हो गया")
                 .setMessage("क्या नया है:\n\n" + notes.take(2500).ifBlank { "सुधार और नए फ़ीचर" })
                 .setPositiveButton("ठीक है", null)

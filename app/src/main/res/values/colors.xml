@@ -1,8 +1,13 @@
 <resources>
-    <color name="bg">#070A1C</color>
+    <!-- Liquid Glass: soft neele aasman par safed paardarshi kaanch -->
+    <color name="bg">#1E4A9E</color>
+    <color name="bg_top">#163A86</color>
+    <color name="bg_mid">#2A5FC0</color>
+    <color name="bg_bottom">#3E78D6</color>
     <color name="text">#FFFFFFFF</color>
-    <color name="text2">#B3FFFFFF</color>
-    <color name="text3">#73FFFFFF</color>
-    <color name="accent">#00E5FF</color>
-    <color name="accent2">#7C4DFF</color>
+    <color name="text2">#D9FFFFFF</color>
+    <color name="text3">#A6FFFFFF</color>
+    <color name="accent">#9FD3FF</color>
+    <color name="accent2">#3D7BFF</color>
+    <color name="dialog_bg">#F2244F9E</color>
 </resources>

@@ -87,6 +87,7 @@ class MemoryActivity : AppCompatActivity() {
         })
 
         setContentView(root)
+        Glass.install(this)
         refresh()
     }
 
@@ -104,7 +105,7 @@ class MemoryActivity : AppCompatActivity() {
         facts.reversed().forEach { f ->
             val r = LinearLayout(this).apply {
                 orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
-                setBackgroundResource(R.drawable.glass_pill)
+                setBackgroundResource(R.drawable.glass_row)
                 val p = (12 * dp).toInt(); setPadding(p + (4 * dp).toInt(), p / 2, p / 2, p / 2)
             }
             r.addView(TextView(this).apply { text = f; textSize = 15f; setTextColor(0xFFFFFFFF.toInt()) },

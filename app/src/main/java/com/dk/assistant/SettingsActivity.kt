@@ -66,6 +66,7 @@ class SettingsActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         window.setSoftInputMode(android.view.WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE)
         setContentView(R.layout.activity_settings)
+        Glass.install(this)
         container = findViewById(R.id.container)
         txtSaved = findViewById(R.id.txtSaved)
         findViewById<OrbView>(R.id.miniOrb).mini = true
@@ -166,7 +167,7 @@ class SettingsActivity : AppCompatActivity() {
             }
             box.addView(status)
             val info = TextView(this).apply {
-                textSize = 13f; setTextColor(0xFF7FDBFF.toInt()); visibility = View.GONE
+                textSize = 13f; setTextColor(Glass.ACCENT); visibility = View.GONE
                 setPadding((4 * dp).toInt(), 0, 0, (4 * dp).toInt())
             }
             box.addView(info)
@@ -487,7 +488,7 @@ class SettingsActivity : AppCompatActivity() {
             box.addView(secStatus)
             val cmd = "adb shell pm grant $packageName android.permission.WRITE_SECURE_SETTINGS"
             box.addView(TextView(this).apply {
-                text = cmd; textSize = 12f; setTextColor(0xFF00E5FF.toInt()); setTextIsSelectable(true)
+                text = cmd; textSize = 12f; setTextColor(Glass.ACCENT); setTextIsSelectable(true)
                 setPadding((4 * dp).toInt(), (6 * dp).toInt(), 0, 0)
             })
             row(box, button("कमांड कॉपी करें") {
@@ -658,7 +659,7 @@ class SettingsActivity : AppCompatActivity() {
         val current = target.text.toString().trim()
         val items = list.toTypedArray()
         val sel = items.indexOf(current)
-        android.app.AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
+        android.app.AlertDialog.Builder(this, Glass.DIALOG)
             .setTitle("${p.name} — मॉडल चुनें (${items.size})")
             .setSingleChoiceItems(items, sel) { d, which ->
                 target.setText(items[which]); save(false)
@@ -721,7 +722,7 @@ class SettingsActivity : AppCompatActivity() {
                             val repos = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { gh.repos() }
                             res.text = "${repos.size} repo मिले"
                             if (isFinishing || isDestroyed || repos.isEmpty()) return@launch
-                            android.app.AlertDialog.Builder(this@SettingsActivity, android.R.style.Theme_DeviceDefault_Dialog_Alert)
+                            android.app.AlertDialog.Builder(this@SettingsActivity, Glass.DIALOG)
                                 .setTitle("Repo चुनें")
                                 .setItems(repos.map { it.fullName + if (it.private) "  (private)" else "" }.toTypedArray()) { _, i ->
                                     edGhRepo.setText(repos[i].fullName); edGhBranch.setText(repos[i].branch); save(false)
@@ -901,7 +902,7 @@ class SettingsActivity : AppCompatActivity() {
                 id = GEM_ID + i
                 text = "$name — ${VoiceCatalog.GEMINI_INFO[name].orEmpty()}"
                 textSize = 14f; setTextColor(0xFFFFFFFF.toInt())
-                buttonTintList = android.content.res.ColorStateList.valueOf(0xFF7FDBFF.toInt())
+                buttonTintList = android.content.res.ColorStateList.valueOf(Glass.ACCENT)
             })
         }
         gemList.check(GEM_ID + list.indexOf(cur).coerceAtLeast(0))
@@ -947,7 +948,7 @@ class SettingsActivity : AppCompatActivity() {
             val f = VoiceCatalog.GEMINI_FEMALE.map { it to "महिला • $it — ${VoiceCatalog.GEMINI_INFO[it]}" }
             val m = VoiceCatalog.GEMINI_MALE.map { it to "पुरुष • $it — ${VoiceCatalog.GEMINI_INFO[it]}" }
             val all = if (gender == "male") m else f        // jo gender chuna, usi ki awaazein
-            android.app.AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
+            android.app.AlertDialog.Builder(this, Glass.DIALOG)
                 .setTitle((if (gender == "male") "पुरुष" else "महिला") + " Gemini आवाज़ चुनें (टैप = सुनें)")
                 .setItems(all.map { it.second }.toTypedArray()) { _, i ->
                     val name = all[i].first
@@ -965,7 +966,7 @@ class SettingsActivity : AppCompatActivity() {
                 val voices = sp().hindiVoices()
                 if (voices.isEmpty()) { toast("हिंदी आवाज़ नहीं मिली — TTS सेटिंग से हिंदी डाउनलोड करें"); Setup.openTts(this@SettingsActivity); return@launch }
                 val labels = voices.mapIndexed { i, v -> VoiceCatalog.label(v, i) }.toTypedArray()
-                android.app.AlertDialog.Builder(this@SettingsActivity, android.R.style.Theme_DeviceDefault_Dialog_Alert)
+                android.app.AlertDialog.Builder(this@SettingsActivity, Glass.DIALOG)
                     .setTitle("Google आवाज़ चुनें (टैप = सुनें)")
                     .setItems(labels) { _, i ->
                         val v = voices[i]
