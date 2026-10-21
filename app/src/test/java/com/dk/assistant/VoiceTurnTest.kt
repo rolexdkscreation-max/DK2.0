@@ -72,7 +72,7 @@ class VoiceTurnTest {
         assertTrue(d2.noise < 200)
     }
 
-    @Test fun bargeInDetectedWithin120msOfUserSpeech() {
+    @Test fun bargeSuspectedWithin280msOfUserSpeech() {
         val b = BargeDetector()
         var t = 0L
         // DK bol raha hai: goonj ~1100 (seekhna)
@@ -81,7 +81,8 @@ class VoiceTurnTest {
         var hitAt = -1L
         repeat(10) { if (b.feed(4200.0, t) && hitAt < 0) hitAt = t; t += chunk }
         assertTrue(b.triggered)
-        assertTrue("hit=${hitAt - userStart}", hitAt - userStart in 0..120)
+        // v3.9: 240ms = sirf "shak" (DK turant dheema); rokna caption ke pakke shabdon par
+        assertTrue("hit=${hitAt - userStart}", hitAt - userStart in 0..280)
     }
 
     @Test fun echoAloneNeverTriggersBarge() {

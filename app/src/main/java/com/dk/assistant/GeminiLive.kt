@@ -59,7 +59,7 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
         /** Phone ka VAD: itni der chup = turant audioStreamEnd (server ka intezaar nahi) */
         const val CLIENT_END_MS = 500
         /** Bolna shuru pakadne se pehle itni awaaz - chhota = pehla shabd turant (bahut chhota = DK ki goonj se galat "toka") */
-        const val PREFIX_PADDING_MS = 40
+        const val PREFIX_PADDING_MS = 100
         /** Wake word wala Live chup hone par connection itni der garam rakho */
         private const val PARK_MS = 5 * 60_000L
         /** DK bolte samay (gate mode) user ki awaaz pakdi -> usse pehle ka itna hissa bhi bhejo (pehla shabd na kate) */
@@ -161,8 +161,20 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
     @Volatile private var droppedOld = 0L
     /** Echo-cancel chalu hai -> DK bolte samay bhi mic ki asli awaaz Gemini ko (sach me full-duplex) */
     @Volatile private var aecOn = false
-    /** Apni hi awaaz se 2 baar ruka -> DK bolte samay sirf user ki pakdi awaaz bhejo (gate) */
-    @Volatile private var fullDuplex = true
+    /**
+     * v3.9: band. Log (15:37) me dikha: lagatar asli mic = peeche ka shor bhi Gemini tak -> server sochta raha user bol raha hai
+     * -> jawab 8-16s der se / aaya hi nahi. Ab DK bolte samay Gemini ko sirf PAKKE user shabd (BargeGate) jaate hain.
+     */
+    @Volatile private var fullDuplex = false
+    /** DK bolte samay "user bola?" - shak -> caption se shabd -> pakka (shor par jawab chalta rahe) */
+    private val bargeGate = BargeGate()
+    /** Shak ke dauran ki awaaz (pakka hone par Gemini ko yahi pehle jaati hai) */
+    private val bargeBuf = ArrayDeque<ByteArray>()
+    @Volatile private var falseAlarms = 0
+    @Volatile private var realBarges = 0
+    @Volatile private var gatedChunks = 0L
+    /** 2.5 model ka "sochna" band (pehle awaaz tez) - setup mana kare to wapas */
+    @Volatile private var thinkOff = true
     @Volatile private var falseInterrupts = 0
     @Volatile private var suspectAt = 0L
     @Volatile private var localBargeAt = 0L
@@ -230,7 +242,8 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
         stats = "मॉडल: ${model.ifBlank { "-" }} • जुड़ा: ${if (ready) "हाँ" else "नहीं"} • भेजे टुकड़े: $sent (${sentBytes / 1024} KB)" +
             " • गिरे: $dropped • मिक गैप: $gaps • पढ़ने की गलती: $readErr • आई आवाज़: ${recvAudio / 1024} KB" +
             " • दोबारा जुड़ा: $reconnects • गर्म connection दोबारा: $warmReuses" +
-            " • बीच में टोकना: ${if (fullDuplex && aecOn) "full-duplex (AEC)" else "gate"}" +
+            " • बीच में टोकना: सिर्फ़ पक्के शब्द (असली $realBarges, शोर अनदेखा $falseAlarms)" +
+            " • शोर-गेट: ${gatedChunks * CHUNK_MS / 1000}s शोर नहीं भेजा" +
             (if (droppedOld > 0) " • पुराने जवाब के फेंके टुकड़े: $droppedOld" else "") +
             (if (lastLatency >= 0) " • पिछली देरी: $lastLatency ms" else "") +
             (if (lastBreakdown.isNotBlank()) " • $lastBreakdown" else "")
@@ -253,7 +266,8 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
         startPlayer()
         caption = LiveCaption(key, onText = { t, fin -> onCaption(t, fin) }, onLate = { t -> onLateCaption(t) },
             isNewSpeech = { barging || System.currentTimeMillis() < bargeUntil }).also { it.start() }
-        turnDet.reset(); bargeDet.reset(); trace.reset(); dropOld = false; suspectAt = 0L
+        turnDet.reset(); bargeDet.reset(); bargeGate.reset(); synchronized(bargeBuf) { bargeBuf.clear() }
+        trace.reset(); dropOld = false; suspectAt = 0L
         coroutineScope {
             val mic = launch(Dispatchers.IO) { micLoop() }
             // DK ka text awaaz ke saath-saath (har 80ms)
@@ -302,6 +316,7 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
                                 if (mi + 1 < models.size) { mi++; handle = null; continue } else throw Fatal("Gemini Live की फ्री लिमिट अभी खत्म है")
                             }
                             useSearch && (r.contains("search") || r.contains("tool")) -> { useSearch = false; continue }
+                            thinkOff && r.contains("think") -> { thinkOff = false; log("यह मॉडल thinkingBudget नहीं लेता - उसके बिना"); continue }
                             handle != null && (r.contains("handle") || r.contains("resum") || r.contains("session")) -> { handle = null; continue }
                             r.contains("model") || r.contains("not found") || r.contains("not supported") || code == 1008 || code == 404 || code == 1007 ->
                                 if (mi + 1 < models.size) { mi++; handle = null; continue } else throw Fatal("Live वाला कोई मॉडल नहीं चला ($reason)")
@@ -501,6 +516,11 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
             .put("model", "models/$m")
             .put("generationConfig", JSONObject()
                 .put("responseModalities", JSONArray().put("AUDIO"))
+                .apply {
+                    // v3.9: 2.5 native-audio pehle "sochta" hai (der). Baatcheet me band - mushkil sawaal deep_think tool se.
+                    // (3.1 ka default "minimal" hai; 3.8-live me thinking setting dena mana hai)
+                    if (thinkOff && m.startsWith("gemini-2.5")) put("thinkingConfig", JSONObject().put("thinkingBudget", 0))
+                }
                 .put("speechConfig", JSONObject().put("voiceConfig", JSONObject()
                     .put("prebuiltVoiceConfig", JSONObject().put("voiceName", Prefs.geminiVoice(svc))))))
             .put("systemInstruction", JSONObject().put("parts", JSONArray().put(JSONObject().put("text", brain.liveSystemPrompt()))))
@@ -508,11 +528,12 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
             .put("realtimeInputConfig", JSONObject()
                 .put("automaticActivityDetection", JSONObject()
                     .put("disabled", false)
-                    .put("startOfSpeechSensitivity", "START_SENSITIVITY_HIGH")
+                    // v3.9: LOW = halki/door ki awaaz (TV, log) ko "user bolne laga" na samjhe; phone ka gate pehle hi shor rokta hai
+                    .put("startOfSpeechSensitivity", "START_SENSITIVITY_LOW")
                     // HIGH = chup hote hi jaldi "bolna khatam" (tez jawab); 500ms = docs ki salaah (500-800ms) ka sabse tez.
                     // (server ka default ~800ms tha.) Phone khud bhi 500ms chup par audioStreamEnd bhejta hai (hybrid VAD).
                     .put("endOfSpeechSensitivity", "END_SENSITIVITY_HIGH")
-                    // 40ms = pehla shabd turant pakdo, par DK ki halki goonj par galat "toka" na ho
+                    // 100ms = pehla shabd na kate (phone 320ms pehle ki awaaz bhi bhejta hai), khatak/thak par "bolna shuru" nahi
                     .put("prefixPaddingMs", PREFIX_PADDING_MS)
                     .put("silenceDurationMs", SERVER_SILENCE_MS))
                 .put("activityHandling", "START_OF_ACTIVITY_INTERRUPTS"))
@@ -708,7 +729,12 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
         // (caption ko DK bolte samay sirf phone ki pakdi user-awaaz jaati hai). Jawab abhi ban raha ho to
         // yeh pichhli baat ka der se aaya text ho sakta hai - tab phone/server ka barge-in hi rokega
         suspectAt = 0L
-        if (isPlaying() && !generating) bargeIn("caption")
+        if (bargeGate.state == BargeGate.State.TENTATIVE) {
+            val dkNow = synchronized(turnLock) { replyText.toString() + " " + (pendingReply ?: "") }
+            // DK ki apni awaaz ya pichhli baat ka der se aaya text = user ka naya bolna nahi
+            if (BargeGate.isEcho(t, turnUser) || !bargeGate.onText(t, dkNow)) { log("caption: \"${t.take(40)}\" - पक्का नहीं, जवाब जारी"); return }
+            confirmBarge("caption: ${t.take(30)}")
+        } else if (isPlaying()) return        // DK bol raha hai aur shak nahi = shor/goonj ka text, dikhao bhi mat
         DKState.user("$t…")
         if (final) checkMicOff(t)        // andaze (interim) par mic band nahi - "माइक बंद मत करो" bhi ho sakta hai
     }
@@ -861,7 +887,7 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
                 val agc = try { AutomaticGainControl.isAvailable() && AutomaticGainControl.create(sid)?.apply { enabled = true } != null } catch (_: Exception) { false }
                 aecOn = aec
                 log("माइक: ${r.sampleRate} Hz, mono, PCM16, source=$src, AEC=$aec NS=$ns AGC=$agc, buffer=${min}B" +
-                    " • DK बोलते समय: " + if (aec && fullDuplex) "mic की असली आवाज़ (full-duplex)" else "सिर्फ़ पकड़ी गई user आवाज़ (gate)")
+                    " • शोर-गेट चालू: Gemini को सिर्फ़ यूज़र की आवाज़; DK बोलते समय सिर्फ़ पक्के शब्दों पर रुकेगा")
                 return r
             } catch (e: Exception) { log("माइक source $src: ${e.message}") }
         }
@@ -887,6 +913,22 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
         if (!isPlaying() && DKState.mode != Mode.WORKING) setMode(Mode.THINKING)
     }
 
+    @Volatile private var loudMs = 0L
+
+    /**
+     * PAKKA: user sach me bol raha hai (caption me asli shabd / caption band ho to lagatar awaaz).
+     * Ab DK chup + purane tukde phenko + user ki awaaz (shak ke samay se) Gemini ko -> server generation rokta hai.
+     */
+    private fun confirmBarge(why: String) {
+        realBarges++
+        log("यूज़र सच में बोल रहा ($why) - DK चुप, सुन रहा हूँ")
+        val buf = synchronized(bargeBuf) { bargeBuf.toList().also { bargeBuf.clear() } }
+        bargeIn(why)
+        track?.let { try { it.setVolume(1f) } catch (_: Exception) {} }
+        turnDet.forceSpeech(System.currentTimeMillis())     // gate khula: user ki baaki baat bhi jaye
+        buf.forEach { sendAudio(it) }
+    }
+
     /** Dheere bolne par bhi saaf awaaz Gemini tak (v3.7) */
     private val boost = MicBoost()
 
@@ -901,6 +943,7 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
             // DK bolte samay (gate mode) ki pichhli 320ms asli awaaz - user ki pakdi awaaz ka shuru ka hissa na kate
             val preroll = ArrayDeque<ByteArray>()
             var last = 0L; var zeroRun = 0; var errRun = 0
+            loudMs = 0L
             while (isActive && !stopped) {
                 // poora 40ms tukda padho (beech ka khaali hissa = gap). Koi jama nahi: har 40ms turant bhejo
                 var got = 0
@@ -936,35 +979,58 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
                 if (sum == 0.0) { if (++zeroRun == 75) log("माइक से 3 सेकंड से बिल्कुल आवाज़ नहीं (कोई दूसरा ऐप माइक ले रहा है?)") } else zeroRun = 0
                 val chunk = bytes.copyOf()
                 if (playing) {
-                    // ---- DK bol raha hai: mic band NAHI. Har 40ms user ki awaaz dhoondo (DK ki goonj se alag)
+                    // ---- DK bol raha hai: mic band NAHI, har 40ms suno. Par Gemini ko sirf PAKKE user shabd.
                     turnDet.reset()
-                    val duplex = fullDuplex && aecOn
-                    if (bargeDet.feed(rms, now)) {
-                        barging = true
-                        log("बीच में बोलना पकड़ा (rms=${rms.toInt()}, goonj=${bargeDet.echoLevel().toInt()}) - आवाज़ तुरंत रोकी")
-                        // gate mode: pakdi awaaz se pehle ka hissa bhi bhejo (server VAD ko shuru se awaaz mile)
-                        if (!duplex) { preroll.forEach { sendAudio(it) } }
-                        preroll.forEach { caption?.send(it) }
-                        preroll.clear()
-                        bargeIn("फ़ोन ने आवाज़ पकड़ी")
-                        sendAudio(chunk); caption?.send(chunk)
-                    } else if (bargeDet.triggered) {
-                        sendAudio(chunk); caption?.send(chunk)
-                    } else {
-                        preroll.addLast(chunk); while (preroll.size > PREROLL_CHUNKS) preroll.removeFirst()
-                        // full-duplex (echo-cancel): asli awaaz lagatar Gemini ko -> server khud generation rokta hai.
-                        // gate: DK ki goonj Gemini ko mat bhejo (warna woh khud ko tok deta) - khaamoshi bhejo
-                        sendAudio(if (duplex) chunk else zeros.copyOf())
-                        caption?.send(zeros.copyOf())
+                    if (bargeDet.ambient == 0.0) bargeDet.ambient = turnDet.noise
+                    when (bargeGate.state) {
+                        BargeGate.State.IDLE -> {
+                            if (bargeDet.feed(rms, now)) {
+                                // SHAK: tez awaaz. DK ki awaaz halki (rokna nahi), caption model ko suno - shabd hain?
+                                bargeGate.suspect(now); barging = true; loudMs = 0L
+                                track?.let { try { it.setVolume(0.3f) } catch (_: Exception) {} }
+                                log("तेज़ आवाज़ (rms=${rms.toInt()}, गूँज=${bargeDet.echoLevel().toInt()}, शोर=${bargeDet.ambient.toInt()}) - यूज़र है? शब्द सुन रहा हूँ, DK धीमा")
+                                synchronized(bargeBuf) { bargeBuf.clear(); bargeBuf.addAll(preroll); bargeBuf.addLast(chunk) }
+                                preroll.forEach { caption?.send(it) }; preroll.clear()
+                                caption?.send(chunk)
+                            } else {
+                                preroll.addLast(chunk); while (preroll.size > PREROLL_CHUNKS) preroll.removeFirst()
+                                caption?.send(zeros.copyOf())
+                            }
+                            sendAudio(zeros.copyOf()); gatedChunks++
+                        }
+                        BargeGate.State.TENTATIVE -> {
+                            loudMs = if (rms > maxOf(bargeDet.ambient * 2.5, 800.0)) loudMs + CHUNK_MS else 0L
+                            synchronized(bargeBuf) { bargeBuf.addLast(chunk); while (bargeBuf.size > 50) bargeBuf.removeFirst() }
+                            caption?.send(chunk)
+                            sendAudio(zeros.copyOf()); gatedChunks++
+                            if (bargeGate.expired(now, captionOn(), loudMs)) {
+                                // shabd nahi aaye = shor/TV/log. DK ka jawab poori awaaz me chalta rahe
+                                falseAlarms++
+                                log("शब्द नहीं मिले - पीछे का शोर था, जवाब जारी (#$falseAlarms)")
+                                track?.let { try { it.setVolume(1f) } catch (_: Exception) {} }
+                                bargeDet.rearm(rms); barging = false
+                                synchronized(bargeBuf) { bargeBuf.clear() }
+                            } else if (bargeGate.state == BargeGate.State.CONFIRMED) confirmBarge("लगातार आवाज़ (caption बंद)")
+                        }
+                        BargeGate.State.CONFIRMED -> { sendAudio(chunk); caption?.send(chunk) }
                     }
                 } else {
-                    // ---- DK chup: sab awaaz bhejo + phone par hi "bolna shuru / khatam" pakdo
+                    // ---- DK chup: phone par hi "bolna shuru / khatam" + SHOR-GATE:
+                    // Gemini/caption ko sirf user ki awaaz (320ms pehle se); baaki samay khaamoshi.
+                    // (Peeche ka lagatar shor bhejne par server "user abhi bol raha" maan kar jawab rokta tha.)
                     if (barging) bargeUntil = now + 1500
-                    barging = false; bargeDet.reset(); preroll.clear()
+                    barging = false; bargeDet.reset(); bargeDet.ambient = 0.0
+                    if (bargeGate.state != BargeGate.State.IDLE) { bargeGate.reset(); track?.let { try { it.setVolume(1f) } catch (_: Exception) {} } }
                     if (DKState.mode == Mode.LISTENING) DKState.level = (rms / 3500.0).toFloat().coerceIn(0f, 1f)
-                    sendAudio(chunk)
-                    caption?.send(chunk)
-                    when (turnDet.feed(rms, now)) {
+                    val ev = turnDet.feed(rms, now)
+                    if (ev == TurnDetector.Event.SPEECH_START) { preroll.forEach { sendAudio(it); caption?.send(it) }; preroll.clear() }
+                    // bolte samay + baat khatam hone tak (aakhri 500ms chup bhi) asli awaaz; warna khaamoshi
+                    if (turnDet.inSpeech || ev == TurnDetector.Event.SPEECH_END) { sendAudio(chunk); caption?.send(chunk) }
+                    else {
+                        preroll.addLast(chunk); while (preroll.size > PREROLL_CHUNKS) preroll.removeFirst()
+                        sendAudio(zeros.copyOf()); caption?.send(zeros.copyOf()); gatedChunks++
+                    }
+                    when (ev) {
                         TurnDetector.Event.SPEECH_START -> {
                             lastAct = now; trace.reset()
                             // user bolne laga -> turant Listening (Thinking/Idle se bhi; phone ka kaam chal raha ho to nahi)

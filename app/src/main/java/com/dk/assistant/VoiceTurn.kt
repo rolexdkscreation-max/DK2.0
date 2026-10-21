@@ -21,6 +21,9 @@ class TurnDetector(
     private val minSpeechMs: Int = 200,
     /** Itni der lagatar awaaz = bolna shuru */
     private val startMs: Int = 80,
+    /** Shor se kitna tez = bolna (v3.9: thoda neecha - dheemi awaaz bhi; shor seekha jaata hai) */
+    private val startFactor: Double = 2.5,
+    private val startMin: Double = 300.0,
 ) {
     enum class Event { NONE, SPEECH_START, SPEECH_END }
 
@@ -38,8 +41,11 @@ class TurnDetector(
 
     fun reset() { inSpeech = false; startRun = 0; speechMs = 0; silenceMs = 0 }
 
+    /** DK ko toka (pakka) - user pehle se bol raha hai: seedha "bol raha" haalat (gate khula rahe) */
+    fun forceSpeech(now: Long) { inSpeech = true; startRun = 0; speechMs = minSpeechMs; silenceMs = 0; lastVoiceAt = now }
+
     fun feed(rms: Double, now: Long): Event {
-        val startThr = max(noise * 2.8, 420.0)
+        val startThr = max(noise * startFactor, startMin)
         // bolte samay dheemi awaaz (shabd ke aakhri hisse) ko chup mat samjho: neecha darwaza (hysteresis)
         val keepThr = max(noise * 1.6, 220.0)
         if (!inSpeech) {
@@ -71,8 +77,12 @@ class TurnDetector(
 class BargeDetector(
     /** DK ki awaaz shuru hote hi goonj badhti hai - itni der sirf seekho */
     private val learnMs: Long = 400,
-    private val needChunks: Int = 3,
+    /** v3.9: 6 x 40ms = 240ms lagatar tez awaaz (thak/khatak/door ki awaaz nahi) */
+    private val needChunks: Int = 6,
+    private val minRms: Double = 1200.0,
 ) {
+    /** DK bolne se pehle kamre ka shor (TurnDetector.noise) - isse kaafi tez hi user maana jaye */
+    var ambient = 0.0
     private var echo = 0.0
     private var loud = 0
     private var since = 0L
@@ -81,12 +91,15 @@ class BargeDetector(
 
     fun reset() { echo = 0.0; loud = 0; since = 0L; triggered = false }
 
+    /** Galat alarm tha (shor): dobara suno, par ab is shor ko "goonj" maan kar (wahi shor dobara na roke) */
+    fun rearm(noiseRms: Double) { loud = 0; triggered = false; echo = max(echo, noiseRms * 0.6) }
+
     /** true = abhi-abhi user ki awaaz pakdi (sirf ek baar, jab tak reset na ho) */
     fun feed(rms: Double, now: Long): Boolean {
         if (triggered) return false
         if (since == 0L) since = now
         if (now - since < learnMs) { loud = 0; echo = max(echo * 0.8, rms); return false }
-        if (rms > max(echo * 2.2, 900.0)) loud++
+        if (rms > maxOf(echo * 2.5, ambient * 3.5, minRms)) loud++
         else { loud = 0; echo = if (echo == 0.0) rms else echo * 0.9 + rms * 0.1 }
         if (loud >= needChunks) { triggered = true; return true }
         return false
@@ -129,5 +142,62 @@ class LatencyTrace {
         val gen = if (firstChunkAt > 0) firstChunkAt - (if (endpointAt > 0) endpointAt else speechEndAt) else 0
         val play = if (firstChunkAt > 0) firstPlayAt - firstChunkAt else 0
         return listOf("STT/turn" to ep, "generation/network" to gen, "playback" to play).maxBy { it.second }.first
+    }
+}
+
+/**
+ * v3.9: DK bolte samay "user sach me bol raha hai?" - pakki jaanch.
+ * Tez awaaz (BargeDetector) = sirf SHAK: DK ki awaaz halki karo, caption model ko suno.
+ * Caption me asli shabd aaye (DK ke apne jawab ki goonj nahi) = PAKKA -> DK chup, Gemini ko user ki awaaz.
+ * Shabd nahi aaye (TV/log/khatak) = galat alarm -> DK ki awaaz wapas, jawab chalta rahe.
+ */
+class BargeGate(
+    /** Itni der me shabd na aaye to shor tha */
+    private val confirmMs: Long = 1500,
+    /** Caption band ho to: itni der lagatar tez awaaz = pakka */
+    private val noCaptionMs: Long = 700,
+) {
+    enum class State { IDLE, TENTATIVE, CONFIRMED }
+    var state = State.IDLE
+        private set
+    var since = 0L
+        private set
+
+    fun reset() { state = State.IDLE; since = 0L }
+
+    /** BargeDetector ne tez awaaz pakdi */
+    fun suspect(now: Long) { if (state == State.IDLE) { state = State.TENTATIVE; since = now } }
+
+    /** Caption ka text aaya - asli user shabd? true = abhi pakka hua */
+    fun onText(text: String, dkReply: String): Boolean {
+        if (state != State.TENTATIVE) return false
+        if (!realWords(text) || isEcho(text, dkReply)) return false
+        state = State.CONFIRMED; return true
+    }
+
+    /** Har 40ms: true = galat alarm, ab chhodo. loudNow = abhi bhi tez awaaz hai */
+    fun expired(now: Long, captionOn: Boolean, loudMs: Long): Boolean {
+        if (state != State.TENTATIVE) return false
+        if (!captionOn && loudMs >= noCaptionMs) { state = State.CONFIRMED; return false }
+        if (now - since >= confirmMs) { state = State.IDLE; return true }
+        return false
+    }
+
+    fun confirmedByLength(): Boolean = state == State.CONFIRMED
+
+    companion object {
+        private val LETTER = Regex("[\\p{L}\\p{M}]")
+        private val WS = Regex("[\\s,.!?।]+")
+        /** Kam se kam 2 akshar wala ek shabd ("हाँ", "ruko") - khaali/ek akshar/aawaaz-chinh nahi */
+        fun realWords(t: String): Boolean = t.split(WS).any { w -> LETTER.findAll(w).count() >= 2 }
+        /** Caption ne DK ki apni awaaz likh di? (adhiktar shabd DK ke jawab me) */
+        fun isEcho(t: String, reply: String): Boolean {
+            if (reply.isBlank()) return false
+            val words = t.lowercase().split(WS).filter { LETTER.findAll(it).count() >= 2 }
+            if (words.isEmpty()) return true
+            val r = reply.lowercase()
+            val hit = words.count { r.contains(it) }
+            return words.size >= 2 && hit * 10 >= words.size * 8
+        }
     }
 }
