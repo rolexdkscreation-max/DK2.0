@@ -185,6 +185,16 @@ class AgentRunner(
         return true
     }
 
+    /** "कोडिंग एजेंट, X बनाओ" / "कोडर ..." / "coding agent ..." -> X ; warna null */
+    private fun codingTask(goal: String): String? {
+        val low = goal.lowercase()
+        val keys = listOf("कोडिंग एजेंट", "कोडिंग टीम", "कोडिंग वाले", "कोडर", "coding agent", "coding team", "coder", "कोड एजेंट")
+        val k = keys.firstOrNull { low.contains(it) } ?: return null
+        val rest = goal.substring((low.indexOf(k) + k.length).coerceAtMost(goal.length))
+            .trim(' ', ',', '.', '!', '।', ':', '-').removePrefix("से ").removePrefix("को ").trim()
+        return rest.takeIf { it.length >= 4 }
+    }
+
     private suspend fun execute(goal: String, note: String = "") {
         DKLog.d("Command: $goal")
         DKState.user(goal)
@@ -196,6 +206,16 @@ class AgentRunner(
             speaker.stop(); DKState.reply("ठीक है।"); return
         }
         if (memoryCommand(goal)) return
+        // कोडिंग टीम: "सुझाव जोड़ दो / नहीं" और "कोडिंग एजेंट, ... बनाओ"
+        if (Prefs.coderOn(svc)) {
+            CoderTeam.voiceDecision(svc, goal)?.let { say(it); return }
+            codingTask(goal)?.let { task ->
+                if (!Prefs.coderTeam(svc)) { say("कोडिंग टीम सेटिंग्स में बंद है। सेटिंग्स → कोडिंग एजेंट में टीम चालू करें।"); return }
+                val err = CoderTeam.start(svc, task, fromVoice = true)
+                say(err ?: "ठीक है, कोडिंग टीम काम शुरू कर रही है। बिल्डर लिखेगा, रिव्यूअर जाँचेगा, और पूरा होने पर मैं बताऊँगी।")
+                return
+            }
+        }
         // "tumhe kisne banaya?" - sirf poochhne par
         if (asksCreator(lower)) { say(CREATOR_ANSWER); return }
         // "सर्च करो / रिसर्च करो / डीप रिसर्च करो" -> poori gehri khoj, phir vistaar se pakka jawab

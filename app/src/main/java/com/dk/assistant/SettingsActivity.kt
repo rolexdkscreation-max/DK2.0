@@ -422,6 +422,9 @@ class SettingsActivity : AppCompatActivity() {
                 "google" to "Google माइक — बिना key, पर हर बार बीप आ सकती है"),
                 Prefs.listenEngine(this), 2200)
             hint(box, "बिना बीप वाले मोड में सबसे तेज़ और सही हिंदी पहचान के लिए Groq की फ्री key डालें (Whisper)। Groq key न हो तो Gemini key से काम चलेगा।")
+            switch(box, "बोलते समय पीछे का गाना/वीडियो धीमा करो (करीब 20%), जवाब के बाद धीरे-धीरे वापस", Prefs.duckMedia(this))
+                .setOnCheckedChangeListener { _, on -> Prefs.edit(this) { putBoolean("duck_media", on) }; if (!on) Ducker.releaseNow() }
+            hint(box, "आवाज़ धीरे से (fade) कम-ज़्यादा होती है। फ़ोन की volume नहीं बदलती। कुछ ऐप (जैसे podcast) धीमे होने की जगह थोड़ी देर रुक जाते हैं।")
             hint(box, voiceStatus() + "\nआवाज़ के लिए अलग key: सेटिंग्स → AI दिमाग → \"तुरंत सेटअप\" में दूसरा खाना।")
         }
 
@@ -673,6 +676,7 @@ class SettingsActivity : AppCompatActivity() {
     private lateinit var swCoder: SwitchCompat
     private lateinit var swAutoPush: SwitchCompat
     private lateinit var swBuildFix: SwitchCompat
+    private lateinit var swTeam: SwitchCompat
     private lateinit var edGhToken: EditText
     private lateinit var edGhRepo: EditText
     private lateinit var edGhBranch: EditText
@@ -686,6 +690,9 @@ class SettingsActivity : AppCompatActivity() {
         card("कोडिंग एजेंट", "आपके GitHub repo में कोड लिखता, बदलता, हटाता और push करता है") { box ->
             swCoder = switch(box, "कोडिंग एजेंट चालू करें", Prefs.coderOn(this))
             hint(box, "बंद रहने पर यह कुछ नहीं करता। चालू करके नीचे GitHub और AI भरें, फिर \"एजेंट खोलें\" दबाएँ।")
+            swTeam = switch(box, "मल्टी-एजेंट टीम: बिल्डर → रिव्यूअर → कोऑर्डिनेटर (एक बार बोलो, बाकी सब अपने-आप)", Prefs.coderTeam(this))
+            hint(box, "चालू: बिल्डर कोड लिखता है → रिव्यूअर खुद जाँचता है (बग/गलती/लॉजिक, ब्रैकेट/XML) → गड़बड़ी हो तो बिल्डर को वापस → सही होने पर अपने-आप push → GitHub build देखकर fail हो तो फिर ठीक → पूरा होने पर बताता है। " +
+                "कोई अतिरिक्त चीज़ ज़रूरी लगे तो टीम खुद नहीं जोड़ती — आपसे पूछती है (हाँ/नहीं)। आवाज़ से: \"कोडिंग एजेंट, … बनाओ\"। बंद: पुराना तरीका (एक एजेंट, आप push दबाएँ)।")
             row(box, button("एजेंट खोलें") {
                 save(false)
                 if (!Prefs.coderOn(this)) { toast("पहले \"कोडिंग एजेंट चालू करें\" ON करें"); return@button }
@@ -826,6 +833,7 @@ class SettingsActivity : AppCompatActivity() {
                 putBoolean("coder_on", swCoder.isChecked)
                 putBoolean("coder_autopush", swAutoPush.isChecked)
                 putBoolean("coder_buildfix", swBuildFix.isChecked)
+                putBoolean("coder_team", swTeam.isChecked)
                 putString("gh_token", edGhToken.text.toString().trim())
                 putString("gh_repo", edGhRepo.text.toString().trim().removePrefix("https://github.com/").removeSuffix(".git").trim('/'))
                 putString("gh_branch", edGhBranch.text.toString().trim())

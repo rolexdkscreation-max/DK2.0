@@ -37,6 +37,24 @@ object CoderSession {
     @Volatile var listener: (() -> Unit)? = null
     fun add(role: String, t: String) { lines.add(Line(role, t)); if (lines.size > 300) lines.removeAt(0); listener?.invoke() }
     val busy get() = job?.isActive == true
+
+    /** Kya kami hai (screen aur awaaz dono ke liye) */
+    fun problems(c: Context): List<String> = buildList {
+        if (!Prefs.coderOn(c)) add("कोडिंग एजेंट बंद है — चालू करें")
+        if (Prefs.ghToken(c).isBlank()) add("GitHub token नहीं डाला")
+        if (!Prefs.ghRepo(c).contains('/')) add("Repo चुनें (owner/naam)")
+        if (CoderAi.fromPrefs(c) == null) add("कोडिंग के लिए AI key नहीं मिली")
+    }
+
+    /** Ek hi agent (staged badlaav + baatcheet) - screen ho ya awaaz */
+    fun agentFor(c: Context): CodingAgent? {
+        val gh = GitHub.fromPrefs(c) ?: return null
+        val ai = CoderAi.fromPrefs(c) ?: return null
+        val repo = Prefs.ghRepo(c); val br = Prefs.ghBranch(c)
+        val a = agent
+        if (a != null && a.repo == repo && a.branch == br) return a
+        return CodingAgent(gh, repo, br, ai).also { agent = it }
+    }
 }
 
 class CodingActivity : AppCompatActivity() {
@@ -47,6 +65,11 @@ class CodingActivity : AppCompatActivity() {
     private lateinit var edt: EditText
     private lateinit var send: ImageButton
     private lateinit var changes: LinearLayout
+    private lateinit var sugBox: LinearLayout
+    private val speech = registerForActivityResult(androidx.activity.result.contract.ActivityResultContracts.StartActivityForResult()) { r ->
+        val t = r.data?.getStringArrayListExtra(android.speech.RecognizerIntent.EXTRA_RESULTS)?.firstOrNull()?.trim()
+        if (r.resultCode == RESULT_OK && !t.isNullOrBlank()) { edt.setText(t); doSend() }
+    }
     private var shown = 0
     private val dp get() = resources.displayMetrics.density
 
@@ -86,6 +109,13 @@ class CodingActivity : AppCompatActivity() {
         }
         col.addView(changes, LinearLayout.LayoutParams(-1, -2).apply { topMargin = (6 * dp).toInt() })
 
+        // टीम के सुझाव (जो आपने नहीं माँगे) - हाँ/नहीं
+        sugBox = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL; setBackgroundResource(R.drawable.glass_card)
+            val p = (12 * dp).toInt(); setPadding(p, p, p, p); visibility = View.GONE
+        }
+        col.addView(sugBox, LinearLayout.LayoutParams(-1, -2).apply { topMargin = (6 * dp).toInt() })
+
         val bar = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
             setBackgroundResource(R.drawable.glass_pill); setPadding((18 * dp).toInt(), 0, (6 * dp).toInt(), 0)
@@ -98,6 +128,13 @@ class CodingActivity : AppCompatActivity() {
             imeOptions = EditorInfo.IME_ACTION_SEND
         }
         bar.addView(edt, LinearLayout.LayoutParams(0, -2, 1f).apply { topMargin = (6 * dp).toInt(); bottomMargin = (6 * dp).toInt() })
+        // 🎤 बोलकर काम बताओ (फ़ोन की आवाज़-पहचान; बोलते ही भेज देता है)
+        bar.addView(ImageButton(this).apply {
+            setImageResource(R.drawable.ic_mic); setBackgroundResource(R.drawable.glass_circle)
+            val p = (11 * dp).toInt(); setPadding(p, p, p, p); scaleType = android.widget.ImageView.ScaleType.FIT_CENTER
+            contentDescription = "बोलकर बताएँ"
+            setOnClickListener { voiceInput() }
+        }, LinearLayout.LayoutParams((42 * dp).toInt(), (42 * dp).toInt()).apply { marginEnd = (6 * dp).toInt() })
         send = ImageButton(this).apply {
             setImageResource(R.drawable.ic_send); setBackgroundResource(R.drawable.btn_accent_circle)
             val p = (11 * dp).toInt(); setPadding(p, p, p, p); scaleType = android.widget.ImageView.ScaleType.FIT_CENTER
@@ -116,18 +153,17 @@ class CodingActivity : AppCompatActivity() {
 
     private fun welcome(): String {
         val problems = problems()
-        return if (problems.isEmpty())
+        return if (problems.isEmpty() && Prefs.coderTeam(this))
+            "नमस्ते। कोडिंग टीम तैयार है — ${Prefs.ghRepo(this)} (${Prefs.ghBranch(this)}).\n" +
+                "एक बार बताइए (लिखकर या 🎤 से) क्या बनाना है। बिल्डर लिखेगा → रिव्यूअर खुद जाँचेगा → गड़बड़ी हो तो वापस ठीक → अपने-आप push → GitHub build जाँच → पूरा होने पर बताऊँगा।\n" +
+                "कोई अतिरिक्त चीज़ ज़रूरी लगी तो खुद नहीं जोड़ूँगा — आपसे पूछूँगा।"
+        else if (problems.isEmpty())
             "नमस्ते। मैं ${Prefs.ghRepo(this)} (${Prefs.ghBranch(this)}) पर काम करूँगा।\nबताइए क्या बनाना/बदलना/हटाना है। मैं पहले बदलाव दिखाऊँगा, फिर \"Push करें\" दबाने पर GitHub पर भेजूँगा" +
                 (if (Prefs.coderAutoPush(this)) " (अभी: बिना पूछे push चालू)।" else "।")
         else "पहले ये ठीक करें (सेटिंग्स → कोडिंग एजेंट):\n• " + problems.joinToString("\n• ")
     }
 
-    private fun problems(): List<String> = buildList {
-        if (!Prefs.coderOn(this@CodingActivity)) add("कोडिंग एजेंट बंद है — चालू करें")
-        if (Prefs.ghToken(this@CodingActivity).isBlank()) add("GitHub token नहीं डाला")
-        if (!Prefs.ghRepo(this@CodingActivity).contains('/')) add("Repo चुनें (owner/naam)")
-        if (CoderAi.fromPrefs(this@CodingActivity) == null) add("कोडिंग के लिए AI key नहीं मिली")
-    }
+    private fun problems(): List<String> = CoderSession.problems(this)
 
     /** Keyboard + cursor hamesha likhne ki jagah par */
     private fun keepTyping() {
@@ -138,14 +174,7 @@ class CodingActivity : AppCompatActivity() {
         }
     }
 
-    private fun agent(): CodingAgent? {
-        val gh = GitHub.fromPrefs(this) ?: return null
-        val ai = CoderAi.fromPrefs(this) ?: return null
-        val repo = Prefs.ghRepo(this); val br = Prefs.ghBranch(this)
-        val a = CoderSession.agent
-        if (a != null && a.repo == repo && a.branch == br) return a
-        return CodingAgent(gh, repo, br, ai).also { CoderSession.agent = it }
-    }
+    private fun agent(): CodingAgent? = CoderSession.agentFor(this)
 
     private fun doSend() {
         val t = edt.text.toString().trim()
@@ -154,6 +183,8 @@ class CodingActivity : AppCompatActivity() {
         keepTyping()
         val p = problems()
         if (p.isNotEmpty()) { CoderSession.add("u", t); CoderSession.add("e", "पहले ठीक करें:\n• " + p.joinToString("\n• ")); return }
+        // टीम मोड: बिल्डर -> रिव्यूअर -> कोऑर्डिनेटर, सब अपने-आप
+        if (Prefs.coderTeam(this)) { CoderTeam.start(this, t)?.let { CoderSession.add("e", it) }; render(); return }
         val a = agent() ?: return
         CoderSession.add("u", t)
         CoderSession.job = CoderSession.scope.launch {
@@ -173,6 +204,39 @@ class CodingActivity : AppCompatActivity() {
     }
 
     private fun stopJob() { CoderSession.job?.cancel() }
+
+    private fun voiceInput() {
+        val i = android.content.Intent(android.speech.RecognizerIntent.ACTION_RECOGNIZE_SPEECH)
+            .putExtra(android.speech.RecognizerIntent.EXTRA_LANGUAGE_MODEL, android.speech.RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+            .putExtra(android.speech.RecognizerIntent.EXTRA_LANGUAGE, "hi-IN")
+            .putExtra(android.speech.RecognizerIntent.EXTRA_PROMPT, "क्या बनाना है? बोलिए…")
+        try { speech.launch(i) } catch (_: Exception) { toast("फ़ोन में आवाज़-पहचान नहीं मिली") }
+    }
+
+    /** Pending सुझाव: क्या, क्यों, और हाँ/नहीं */
+    private fun renderSuggestions() {
+        sugBox.removeAllViews()
+        val list = CoderTeam.pending
+        if (list.isEmpty()) { sugBox.visibility = View.GONE; return }
+        sugBox.visibility = View.VISIBLE
+        sugBox.addView(TextView(this).apply {
+            text = "💡 टीम का सुझाव (आपने नहीं माँगा था — हाँ कहें तभी जोड़ेंगे)"; textSize = 13f
+            setTypeface(typeface, Typeface.BOLD); setTextColor(0xFFFFFFFF.toInt())
+        })
+        list.take(3).forEach { sg ->
+            sugBox.addView(TextView(this).apply {
+                text = sg.title; textSize = 15f; setTypeface(typeface, Typeface.BOLD); setTextColor(0xFFFFFFFF.toInt())
+                setPadding(0, (8 * dp).toInt(), 0, 0)
+            })
+            if (sg.why.isNotBlank()) sugBox.addView(TextView(this).apply { text = sg.why; textSize = 13f; setTextColor(0xD9FFFFFF.toInt()) })
+            val row = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; setPadding(0, (6 * dp).toInt(), 0, 0) }
+            row.addView(smallBtn("हाँ, जोड़ो", accent = true) { CoderTeam.decide(applicationContext, sg.id, true); render() },
+                LinearLayout.LayoutParams(0, (38 * dp).toInt(), 1f).apply { marginEnd = (8 * dp).toInt() })
+            row.addView(smallBtn("नहीं") { CoderTeam.decide(applicationContext, sg.id, false); render() },
+                LinearLayout.LayoutParams(0, (38 * dp).toInt(), 1f))
+            sugBox.addView(row)
+        }
+    }
 
     private suspend fun push(c: Context, round: Int = 0) {
         val a = CoderSession.agent ?: return
@@ -242,6 +306,7 @@ class CodingActivity : AppCompatActivity() {
     private fun newSession() {
         if (CoderSession.busy) { toast("पहले चल रहा काम रोकें"); return }
         CoderSession.agent?.reset(); CoderSession.agent = null
+        CoderTeam.suggestions.clear()
         CoderSession.lines.clear(); shown = 0; list.removeAllViews()
         CoderSession.add("d", welcome())
     }
@@ -286,6 +351,7 @@ class CodingActivity : AppCompatActivity() {
         val lines = CoderSession.lines
         if (lines.size < shown) { list.removeAllViews(); shown = 0 }
         while (shown < lines.size) { bubble(lines[shown]); shown++ }
+        renderSuggestions()
         // badlaav card
         changes.removeAllViews()
         if (a != null && a.staged.isNotEmpty() && !CoderSession.busy) {

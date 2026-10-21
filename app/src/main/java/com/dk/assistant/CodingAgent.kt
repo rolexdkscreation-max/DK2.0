@@ -113,6 +113,13 @@ class CodingAgent(private val gh: GitHub, var repo: String, var branch: String, 
     data class Outcome(val summary: String, val commit: String, val question: Boolean)
     data class Build(val ok: Boolean, val url: String, val log: String)
     data class Call(val o: JSONObject, val file: String?, val finds: List<String>, val replaces: List<String>)
+    /** Reviewer ka faisla */
+    data class Review(val pass: Boolean, val issues: List<String>, val tested: String, val complete: Boolean = true)
+
+    /** Team mode: Builder kabhi user se nahi poochta (khud sahi andaza), aur extra cheez sirf "suggest" karta hai */
+    var teamMode = false
+    /** Builder/Reviewer ko koi zaroori/faydemand cheez dikhi jo user ne nahi maangi -> (title, kyun, kaam) */
+    var onSuggest: ((String, String, String) -> Unit)? = null
 
     /** path -> naya content (null = mitana) - abhi push nahi hua */
     val staged = LinkedHashMap<String, String?>()
@@ -153,7 +160,8 @@ new text
 REPLACE>>>
 {"tool":"delete","path":"file/path.ext"}                   -> delete a file
 {"tool":"diff"}                                            -> see all your staged changes as a diff (review before done)
-{"tool":"ask","question":"Hindi question"}                 -> ONLY if the request is truly unclear; waits for the user
+{"tool":"ask","question":"Hindi question"}                 -> ONLY if the request is truly unclear; waits for the user${if (teamMode) " (TEAM MODE: do NOT use ask - make the most reasonable assumption and mention it in the summary)" else ""}
+{"tool":"suggest","title":"short Hindi title","why":"simple Hindi: why it is needed/useful","task":"exact English task to implement it"} -> PROPOSE something the user did NOT ask for but that is technically needed or clearly better (missing permission, crash risk, security, data loss, obvious UX gap). It is NOT implemented; the user decides later. Then continue the main task.
 {"tool":"done","summary":"Hindi summary (short bullet lines)","commit":"short English commit message"}
 
 Rules:
@@ -161,6 +169,7 @@ Rules:
 - Changes are only STAGED; the app pushes them as one commit after "done". Never claim it is pushed.
 - Before "done" with changes, call "diff" once and check your own work (imports, names, brackets, unused leftovers).
 - Never put secrets/API keys in code. Do not delete files unless the user asked or it is clearly required.
+- NEVER add features, settings, files or behaviour the user did not ask for. If you think something extra is needed or useful, use "suggest" (max 2 per task, only if it really matters) and do NOT implement it.
 - If the user only asks a question about the code, read what you need and answer in "done" summary with commit "".
 - If a task says the BUILD FAILED, read the exact files/lines from the log, fix the real cause, and do not change unrelated code.
 """.trimIndent()
@@ -299,6 +308,13 @@ Rules:
                 if (current(path) == null) return "NOT FOUND: $path"
                 remember(path); staged[path] = null
                 onStep("हटाया: $path"); return "OK staged delete $path"
+            }
+            "suggest" -> {
+                val t = o.optString("title").trim(); val w = o.optString("why").trim(); val tk = o.optString("task").trim()
+                if (t.isBlank() || tk.isBlank()) return "ERROR: suggest needs title, why and task"
+                onSuggest?.invoke(t, w, tk)
+                onStep("सुझाव: $t")
+                return "OK, suggestion sent to the user. Do NOT implement it now. Continue the main task."
             }
             "diff" -> {
                 onStep("अपने बदलाव जाँच रहा हूँ…")
@@ -493,6 +509,64 @@ Rules:
         }
     }
 
+    // ---------------------------------------------------------------- Reviewer agent
+    private fun reviewerSystem() = """
+You are DK Reviewer, a strict senior code reviewer AND tester for repository "$repo" (branch "$branch").
+The Builder agent has STAGED changes (not pushed) for the user's task. Your job, without asking anyone:
+1. Read the diff and the surrounding code. Use grep to confirm every function/class/field/import the new code uses really exists with that signature.
+2. "Test" by tracing execution: walk through the feature step by step (normal path, empty/null input, errors, threads/coroutines, Android lifecycle, permissions). You cannot run code - reason carefully like a debugger.
+3. Find: compile errors, bugs, logic mistakes, crashes, missing pieces of the task, and ANY change the user did not ask for (unrequested extras are an issue).
+4. Do not nitpick style. Only real problems that would break the build, the feature, or existing behaviour.
+Reply with EXACTLY ONE tool call per message (JSON on the first line, no other text):
+{"tool":"list","path":""}  {"tool":"read","path":"..."}  {"tool":"read","paths":["...","..."]}  {"tool":"read","path":"...","start":1,"end":80}
+{"tool":"grep","pattern":"...","path":"","regex":false}  {"tool":"diff"}
+{"tool":"suggest","title":"Hindi","why":"Hindi","task":"English"}   -> something important the user did not ask for (not an issue, just a proposal)
+{"tool":"verdict","pass":true,"issues":[],"tested":"Hindi: what you checked/traced"}
+{"tool":"verdict","pass":false,"issues":["path:line - problem - exact fix"],"tested":"Hindi: what you checked"}
+pass=true ONLY if you are confident it compiles and the task works completely.
+""".trimIndent()
+
+    /**
+     * Reviewer: staged badlaav ko bina user se pooche jaanchta hai (padhta, grep, raasta trace) aur faisla deta hai.
+     * Static jaanch (bracket/XML/JSON) pehle se jod di jaati hai.
+     */
+    suspend fun review(task: String, acceptance: List<String>, round: Int, onStep: (String) -> Unit): Review = withContext(Dispatchers.IO) {
+        if (staged.isEmpty()) return@withContext Review(true, emptyList(), "कोई बदलाव नहीं था", true)
+        val rmsgs = mutableListOf<Pair<String, String>>()
+        val static = check()
+        val d = diffAll().let { if (it.length > 30_000) it.take(30_000) + "\n…(diff cut - use read)" else it }
+        rmsgs.add("user" to "REVIEW ROUND $round\nUSER TASK: $task\n" +
+            (if (acceptance.isNotEmpty()) "ACCEPTANCE CRITERIA:\n" + acceptance.joinToString("\n") { "- $it" } + "\n" else "") +
+            "STATIC CHECK: " + static.ifBlank { "OK (brackets/XML/JSON fine)" } + "\n\nSTAGED DIFF:\n$d")
+        var bad = 0
+        for (step in 1..REVIEW_STEPS) {
+            ensureActive()
+            val reply = try { ai.chat(reviewerSystem(), rmsgs) } catch (e: AiException) { throw AiException(e.code, "Reviewer ${ai.label}: ${e.message}") }
+            rmsgs.add("model" to reply)
+            val call = parse(reply)
+            if (call == null) {
+                if (++bad >= 3) break
+                rmsgs.add("user" to "ERROR: reply with exactly one JSON tool call."); continue
+            }
+            bad = 0
+            val o = call.o; val tool = o.optString("tool"); val path = o.optString("path").trim().trimStart('/')
+            if (tool == "verdict") {
+                val arr = o.optJSONArray("issues") ?: JSONArray()
+                val issues = (0 until arr.length()).map { arr.optString(it) }.filter { it.isNotBlank() }
+                val pass = o.optBoolean("pass", issues.isEmpty()) && issues.isEmpty() && static.isBlank()
+                val allIssues = if (static.isNotBlank()) issues + static.lines().filter { it.isNotBlank() }.map { it.removePrefix("- ") } else issues
+                return@withContext Review(pass, allIssues, o.optString("tested"), true)
+            }
+            val result = when (tool) {
+                "list", "read", "grep", "search", "diff", "suggest" -> try { runTool(tool, path, call) { st -> onStep("रिव्यूअर: $st") } } catch (e: GitHub.Err) { "GITHUB ERROR: ${e.message}" }
+                else -> "ERROR: reviewer is READ-ONLY. Use list/read/grep/diff, then verdict."
+            }
+            rmsgs.add("user" to "RESULT ($tool${if (path.isNotBlank()) " $path" else ""}):\n" + result.take(50_000))
+        }
+        // Reviewer faisla nahi de paya: static jaanch hi aadhaar
+        Review(static.isBlank(), static.lines().filter { it.isNotBlank() }.map { it.removePrefix("- ") }, "रिव्यूअर पूरा जवाब नहीं दे पाया — सिर्फ़ static जाँच हुई", false)
+    }
+
     // ---------------------------------------------------------------- push + build
     /** Push: saare staged ek commit me */
     suspend fun push(message: String): String = withContext(Dispatchers.IO) {
@@ -561,6 +635,7 @@ Rules:
 
     companion object {
         const val MAX_STEPS = 60
+        const val REVIEW_STEPS = 25
 
         /** Pehli line ka JSON + <<<FILE / FIND / REPLACE>>> blocks (kai FIND/REPLACE jode ho sakte hain) */
         fun parse(reply: String): Call? {

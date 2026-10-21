@@ -296,6 +296,7 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
                 stopPlayer()
                 if (turnActive) finishTurn()
                 commitPending(true)
+                Ducker.releaseNow()
                 updateStats(); log("बंद • $stats")
             }
         }
@@ -356,6 +357,11 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
                 .put("parameters", JSONObject().put("type", "OBJECT")
                     .put("properties", JSONObject().put("question", JSONObject().put("type", "STRING").put("description", "The complete question with all details the user gave")))
                     .put("required", JSONArray().put("question"))))
+            .put(JSONObject().put("name", "coding_task")
+                .put("description", "Give a programming task to the user's coding team (Builder + Reviewer + Coordinator) that works on their GitHub repo - e.g. build/change/fix a feature in the app. Also use it when the user approves or rejects a coding suggestion (\"सुझाव जोड़ दो\" / \"सुझाव नहीं\"). It starts in the background; tell the user it has started.")
+                .put("parameters", JSONObject().put("type", "OBJECT")
+                    .put("properties", JSONObject().put("task", JSONObject().put("type", "STRING").put("description", "The full coding task (or the suggestion decision) in the user's words")))
+                    .put("required", JSONArray().put("task"))))
             .put(JSONObject().put("name", "remember_fact")
                 .put("description", "Save a personal fact or preference the user told about themselves.")
                 .put("parameters", JSONObject().put("type", "OBJECT")
@@ -451,6 +457,7 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
         val sc = o.optJSONObject("serverContent") ?: return
         sc.optJSONObject("inputTranscription")?.optString("text")?.takeIf { it.isNotBlank() }?.let { t ->
             if (!turnActive) startTurn()
+            Ducker.duck(svc, "Live: user बोल रहा")
             val u = synchronized(turnLock) { userText.append(t); userText.toString().trim() }
             eosAt = System.currentTimeMillis()
             // caption chal raha hai to woh pehle hi turant likh chuka - yeh der se aaya text screen par mat daalo
@@ -459,6 +466,7 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
         }
         // kuch Live model khud bhi bolte-bolte (interim) text dete hain - caption na ho to wahi dikhao
         sc.optJSONObject("interimInputTranscription")?.optString("text")?.takeIf { it.isNotBlank() }?.let { t ->
+            Ducker.duck(svc, "Live: user बोल रहा")
             if (!captionOn()) {
                 val u = synchronized(turnLock) { userText.toString().trim() }
                 DKState.user((if (turnActive) "$u $t" else t).trim() + "…")
@@ -505,7 +513,11 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
             commitPending(false)          // jitna bola utna hi likha rahe
             DKState.set(Mode.LISTENING)
         }
-        if (sc.optBoolean("turnComplete")) finishTurn()
+        if (sc.optBoolean("turnComplete")) {
+            finishTurn()
+            // jawab poora bana; jab DK ki awaaz bajna band ho uske ~1.2s baad peeche ki awaaz dheere-dheere wapas
+            Ducker.releaseWhenQuiet({ !isPlaying() && !generating })
+        }
     }
 
     private fun startTurn() {
@@ -537,6 +549,7 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
     /** Caption se turant shabd - "आप:" line */
     private fun onCaption(t: String, final: Boolean) {
         lastAct = System.currentTimeMillis()
+        if (t.isNotBlank()) Ducker.duck(svc, "Live: user बोल रहा")   // user ke shabd aaye -> peeche ka gaana/video dheema
         // DK bol raha hai aur user ke asli shabd aaye (mic DK bolte samay sirf tez awaaz bhejta hai) -> DK chup
         if (isPlaying() && !generating) stopForUser("caption")
         DKState.user("$t…")
@@ -615,6 +628,15 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
                         DKState.lastReply.takeIf { it != before && it.isNotBlank() } ?: "done"
                     }
                     "remember_fact" -> { Memory.addFact(svc, args.optString("fact")); "saved" }
+                    "coding_task" -> {
+                        val t = args.optString("task")
+                        CoderTeam.voiceDecision(svc, t) ?: when {
+                            !Prefs.coderOn(svc) -> "Coding agent is OFF in settings - tell the user to turn it on (सेटिंग्स → कोडिंग एजेंट)."
+                            !Prefs.coderTeam(svc) -> "Coding team is OFF in settings (सेटिंग्स → कोडिंग एजेंट → टीम)."
+                            else -> CoderTeam.start(svc, t, fromVoice = true)?.let { "Could not start: $it" }
+                                ?: "Started. Builder writes, Reviewer checks, Coordinator pushes and will notify when done."
+                        }
+                    }
                     "deep_think" -> {
                         DKState.set(Mode.THINKING)
                         try {

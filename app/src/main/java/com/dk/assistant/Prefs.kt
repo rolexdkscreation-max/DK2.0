@@ -122,6 +122,10 @@ object Prefs {
     /** true = bina pooche push (default: pehle dikhao, phir "Push" dabane par) */
     fun coderAutoPush(c: Context) = sp(c).getBoolean("coder_autopush", false)
     fun coderBuildFix(c: Context) = sp(c).getBoolean("coder_buildfix", true)
+    /** Multi-agent coding team (Builder -> Reviewer -> Coordinator), ek baar bolo baaki apne-aap */
+    fun coderTeam(c: Context) = sp(c).getBoolean("coder_team", true)
+    /** User bole to peeche ka gaana/video dheema (~20%), jawab ke baad wapas */
+    fun duckMedia(c: Context) = sp(c).getBoolean("duck_media", true)
 
     // ---- provider ke models ki list (cache)
     fun models(c: Context, id: String): List<String> =

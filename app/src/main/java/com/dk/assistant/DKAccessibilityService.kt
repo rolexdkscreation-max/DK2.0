@@ -420,12 +420,16 @@ class DKAccessibilityService : AccessibilityService() {
                         cmdText = heard.substring((low.indexOf(w) + w.length).coerceAtMost(heard.length)).trim(' ', ',', '.', '!')
                         if (cmdText.isBlank()) continue
                     }
+                    Ducker.duck(this@DKAccessibilityService, "बात शुरू")
                     runWithBarge(agent.run(cmdText))
+                    Ducker.releaseWhenQuiet({ !speaker.busy })
                 } else {
                     // wake word mode
                     val wake = Prefs.wakeWords(this@DKAccessibilityService).firstOrNull { low.contains(it) } ?: continue
                     var cmd = heard.substring((low.indexOf(wake) + wake.length).coerceAtMost(heard.length))
                         .trim(' ', ',', '.', '!')
+                    // naam suna = user DK se baat kar raha hai -> peeche ka gaana/video dheema (Live ho to jawab ke baad wahi wapas badhayega)
+                    Ducker.duck(this@DKAccessibilityService, "wake word")
                     // naam suna -> Gemini Live (asli awaaz, turant jawab); 45s chup = wapas wake word
                     if (liveReady() && !callBusy() && checkMic()) {
                         DKLog.d("Wake word suna -> Gemini Live" + if (cmd.isNotBlank()) " (बात: $cmd)" else "")
@@ -443,6 +447,7 @@ class DKAccessibilityService : AccessibilityService() {
                         DKState.set(Mode.IDLE)
                     }
                     if (cmd.isNotBlank()) agent.run(cmd).join()
+                    Ducker.releaseWhenQuiet({ !speaker.busy })
                 }
             }
             listener.muteBeep = false
