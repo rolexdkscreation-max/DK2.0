@@ -201,10 +201,13 @@ acceptance must only cover what the user asked. suggestions: ONLY things the use
         say(if (ok) "d" else "e", (if (ok) "✅ " else "⚠ ") + text)
         val head = title ?: if (ok) "कोडिंग टीम: काम पूरा" else "कोडिंग टीम: काम अधूरा"
         notifyUser(c, head, text.lines().first().take(120))
+        val spoken = if (ok) "कोडिंग का काम पूरा हो गया, बॉस। जाँच और build दोनों हो गए।" else "कोडिंग का काम पूरा नहीं हो पाया। कोडिंग स्क्रीन पर वजह लिखी है."
+        
+        // Notify DK state / live / main chat so DK tells the user directly
+        DKState.reply(spoken)
+        
         val svc = DKAccessibilityService.instance
-        val spoken = if (ok) "कोडिंग का काम पूरा हो गया, बॉस। जाँच और build दोनों हो गए।" else "कोडिंग का काम पूरा नहीं हो पाया। कोडिंग स्क्रीन पर वजह लिखी है।"
         if (svc != null && !DKState.live) svc.scope.launch { try { svc.speaker.speak(if (title != null) "कोडिंग वाला जवाब तैयार है।" else spoken) } catch (_: Exception) {} }
-        else DKState.reply(spoken)
     }
 
     private fun notifyUser(c: Context, title: String, text: String) = try {
