@@ -39,7 +39,7 @@ object AntiTheftGuard {
     private const val CHANNEL_ID = "anti_theft_guard_channel"
     private const val NOTIF_ID = 9999
 
-    fun isOn(c: Context): Boolean = Prefs.prefs(c).getBoolean(PREF_GUARD_ON, false)
+    fun isOn(c: Context): Boolean = c.getSharedPreferences("dk_prefs", Context.MODE_PRIVATE).getBoolean(PREF_GUARD_ON, false)
 
     fun setOn(c: Context, on: Boolean) {
         Prefs.edit(c) { putBoolean(PREF_GUARD_ON, on) }

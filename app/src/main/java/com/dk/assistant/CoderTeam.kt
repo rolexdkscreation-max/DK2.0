@@ -107,17 +107,19 @@ object CoderTeam {
             for (round in 1..MAX_REVIEW_ROUNDS) {
                 say("s", "रिव्यूअर: जाँच शुरू (राउंड $round)…")
                 r = a.review(task, plan.second, round) { st -> step(st) }
-                if (r.pass) { say("d", "रिव्यूअर ✓ पास (राउंड $round)\n${r.tested.take(400)}"); break }
-                say("e", "रिव्यूअर ✗ ${r.issues.size} गड़बड़ी (राउंड $round)\n" + r.issues.take(6).joinToString("\n") { "• ${it.take(200)}" })
+                val currentR = r
+                if (currentR?.pass == true) { say("d", "रिव्यूअर ✓ पास (राउंड $round)\n${currentR.tested.take(400)}"); break }
+                say("e", "रिव्यूअर ✗ ${currentR?.issues?.size ?: 0} गड़बड़ी (राउंड $round)\n" + (currentR?.issues ?: emptyList()).take(6).joinToString("\n") { "• ${it.take(200)}" })
                 if (round == MAX_REVIEW_ROUNDS) break
                 say("s", "कोऑर्डिनेटर: बिल्डर को ठीक करने भेजा")
                 val fix = a.run("REVIEWER (round $round) found these problems in your staged changes. Fix every one properly; change nothing unrelated:\n" +
-                    r.issues.joinToString("\n") { "- $it" }) { st -> step("बिल्डर: $st") }
+                    (currentR?.issues ?: emptyList()).joinToString("\n") { "- $it" }) { st -> step("बिल्डर: $st") }
                 if (fix.commit.isNotBlank()) commit = fix.commit
             }
-            if (r?.pass != true) {
+            val finalR = r
+            if (finalR?.pass != true) {
                 finish(c, "$MAX_REVIEW_ROUNDS राउंड के बाद भी रिव्यूअर संतुष्ट नहीं। बदलाव push नहीं किए — नीचे \"फ़र्क देखें\" से देखें।\nबाकी गड़बड़ी:\n" +
-                    (r?.issues ?: emptyList()).take(5).joinToString("\n") { "• ${it.take(160)}" }, ok = false)
+                    (finalR?.issues ?: emptyList()).take(5).joinToString("\n") { "• ${it.take(160)}" }, ok = false)
                 return
             }
 
