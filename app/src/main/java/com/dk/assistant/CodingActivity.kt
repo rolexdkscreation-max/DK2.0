@@ -109,6 +109,7 @@ class CodingActivity : AppCompatActivity() {
         send.setOnClickListener { if (CoderSession.busy) stopJob() else doSend() }
         edt.setOnEditorActionListener { _, id, _ -> if (id == EditorInfo.IME_ACTION_SEND) { doSend(); true } else false }
         setContentView(root)
+        Glass.install(this)
         if (CoderSession.lines.isEmpty()) CoderSession.add("d", welcome())
         keepTyping()
     }
@@ -234,7 +235,7 @@ class CodingActivity : AppCompatActivity() {
         }
         val hs = android.widget.HorizontalScrollView(this).apply { addView(tv) }
         val vs = ScrollView(this).apply { addView(hs) }
-        android.app.AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
+        android.app.AlertDialog.Builder(this, Glass.DIALOG)
             .setTitle("बदलाव (${a.staged.size} फ़ाइल)").setView(vs).setPositiveButton("ठीक है", null).show()
     }
 
@@ -254,7 +255,7 @@ class CodingActivity : AppCompatActivity() {
                 if (isFinishing || isDestroyed) return@launch
                 if (repos.isEmpty()) { toast("कोई repo नहीं मिला"); return@launch }
                 val names = repos.map { it.fullName + if (it.private) "  (private)" else "" }.toTypedArray()
-                android.app.AlertDialog.Builder(this@CodingActivity, android.R.style.Theme_DeviceDefault_Dialog_Alert)
+                android.app.AlertDialog.Builder(this@CodingActivity, Glass.DIALOG)
                     .setTitle("Repo चुनें")
                     .setItems(names) { _, i ->
                         val r = repos[i]
@@ -299,7 +300,7 @@ class CodingActivity : AppCompatActivity() {
             })
             val row = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
             row.addView(smallBtn("Push करें", accent = true) {
-                android.app.AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
+                android.app.AlertDialog.Builder(this, Glass.DIALOG)
                     .setTitle("GitHub पर push करें?")
                     .setMessage("${a.repo} • ${a.branch}\n\n${a.changeList()}\n\nCommit: ${CoderSession.lastCommit.ifBlank { "DK: code changes" }}")
                     .setPositiveButton("Push करें") { _, _ -> CoderSession.job = CoderSession.scope.launch { push(applicationContext); CoderSession.listener?.invoke() }; render() }
@@ -321,7 +322,7 @@ class CodingActivity : AppCompatActivity() {
                 "s" -> { textSize = 12f; setTextColor(0x99FFFFFF.toInt()); setPadding((6 * dp).toInt(), (2 * dp).toInt(), 0, 0) }
                 else -> {
                     textSize = 15f; setTextColor(if (l.role == "e") 0xFFFFB4B4.toInt() else 0xFFFFFFFF.toInt())
-                    setBackgroundResource(if (mine) R.drawable.btn_accent else R.drawable.glass_card)
+                    setBackgroundResource(if (mine) R.drawable.glass_bubble_me else R.drawable.glass_bubble_dk)
                     val ph = (14 * dp).toInt(); val pv = (10 * dp).toInt(); setPadding(ph, pv, ph, pv)
                     maxWidth = (resources.displayMetrics.widthPixels * 0.82).toInt()
                 }

@@ -110,6 +110,7 @@ class VoiceActivity : AppCompatActivity() {
         col.addView(bar, LinearLayout.LayoutParams(-1, -2).apply { topMargin = (14 * dp).toInt() })
 
         setContentView(root)
+        Glass.install(this)
         applyOrbMin()
 
         onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {

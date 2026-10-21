@@ -1,15 +1,24 @@
 <?xml version="1.0" encoding="utf-8"?>
-<selector xmlns:android="http://schemas.android.com/apk/res/android">
+<!-- Mukhya glossy button: gehra neela kaanch + upar safed chamak -->
+<selector xmlns:android="http://schemas.android.com/apk/res/android" android:exitFadeDuration="160">
     <item android:state_pressed="true">
-        <shape android:shape="rectangle">
-            <corners android:radius="999dp" />
-            <gradient android:angle="0" android:startColor="#5E35B1" android:endColor="#00ACC1" />
-        </shape>
+        <layer-list>
+            <item><shape android:shape="rectangle"><corners android:radius="999dp" /><solid android:color="#FFFFFFFF" /></shape></item>
+            <item android:left="1dp" android:top="1dp" android:right="1dp" android:bottom="1dp">
+                <shape android:shape="rectangle"><corners android:radius="999dp" />
+                    <gradient android:angle="270" android:startColor="#FF2F67E8" android:endColor="#FF1D4FCB" /></shape></item>
+        </layer-list>
     </item>
     <item>
-        <shape android:shape="rectangle">
-            <corners android:radius="999dp" />
-            <gradient android:angle="0" android:startColor="#7C4DFF" android:endColor="#00E5FF" />
-        </shape>
+        <layer-list>
+            <item><shape android:shape="rectangle"><corners android:radius="999dp" />
+                <gradient android:angle="270" android:startColor="#FFFFFFFF" android:endColor="#99CFE4FF" /></shape></item>
+            <item android:left="1dp" android:top="1dp" android:right="1dp" android:bottom="1dp">
+                <shape android:shape="rectangle"><corners android:radius="999dp" />
+                    <gradient android:angle="270" android:startColor="#FF4C8DFF" android:centerColor="#FF2F6BEB" android:endColor="#FF2257D6" /></shape></item>
+            <item android:left="1dp" android:top="1dp" android:right="1dp" android:bottom="1dp">
+                <shape android:shape="rectangle"><corners android:radius="999dp" />
+                    <gradient android:angle="270" android:startColor="#4DFFFFFF" android:centerColor="#00FFFFFF" android:endColor="#00FFFFFF" /></shape></item>
+        </layer-list>
     </item>
 </selector>

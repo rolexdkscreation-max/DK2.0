@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Mera sandesh: glossy neela kaanch, neeche-daayan kona chhota (chat bubble) -->
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item><shape android:shape="rectangle">
+        <corners android:topLeftRadius="22dp" android:topRightRadius="22dp" android:bottomLeftRadius="22dp" android:bottomRightRadius="6dp" />
+        <gradient android:angle="270" android:startColor="#FFFFFFFF" android:endColor="#8CCFE4FF" /></shape></item>
+    <item android:left="1dp" android:top="1dp" android:right="1dp" android:bottom="1dp"><shape android:shape="rectangle">
+        <corners android:topLeftRadius="21dp" android:topRightRadius="21dp" android:bottomLeftRadius="21dp" android:bottomRightRadius="5dp" />
+        <gradient android:angle="270" android:startColor="#FF4C8DFF" android:endColor="#FF2257D6" /></shape></item>
+    <item android:left="1dp" android:top="1dp" android:right="1dp" android:bottom="1dp"><shape android:shape="rectangle">
+        <corners android:topLeftRadius="21dp" android:topRightRadius="21dp" android:bottomLeftRadius="21dp" android:bottomRightRadius="5dp" />
+        <gradient android:angle="270" android:startColor="#40FFFFFF" android:centerColor="#00FFFFFF" android:endColor="#00FFFFFF" /></shape></item>
+</layer-list>
