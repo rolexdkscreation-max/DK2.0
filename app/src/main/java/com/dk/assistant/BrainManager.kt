@@ -385,7 +385,7 @@ class BrainManager(private val ctx: Context) {
     }
 
     companion object {
-        /** Dhiraj sir ke diye baatcheet ke niyam - har jawab me laagu */
+        /** App ke maalik ke diye baatcheet ke niyam - har jawab me laagu */
         val TALK_RULES = """
 CONVERSATION RULES (always follow):
 1. Understand the user fully. Their words may be misspelled, broken, half-typed or wrongly heard by speech recognition — figure out the real meaning like a smart human would. Never point out or correct their mistakes; just answer what they meant.

@@ -718,7 +718,7 @@ class SettingsActivity : AppCompatActivity() {
         }
         card("GitHub कनेक्टर", "Personal Access Token से जुड़ता है (फ़ोन में ही रहता है)") { box ->
             edGhToken = field(box, "GitHub Token", Prefs.ghToken(this), "github_pat_… या ghp_…", secret = true)
-            edGhRepo = field(box, "Repo (owner/naam)", Prefs.ghRepo(this), "जैसे: rolexdkscreation-max/DK2.0")
+            edGhRepo = field(box, "Repo (owner/naam)", Prefs.ghRepo(this), "जैसे: username/my-repo")
             edGhBranch = field(box, "Branch", Prefs.ghBranch(this), "main")
             val res = TextView(this).apply { setTextColor(0xB3FFFFFF.toInt()); textSize = 13f; setPadding((4 * dp).toInt(), (6 * dp).toInt(), 0, 0) }
             row(box,

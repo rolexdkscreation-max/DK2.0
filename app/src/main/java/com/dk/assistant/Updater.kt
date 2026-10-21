@@ -23,7 +23,7 @@ import java.util.concurrent.TimeUnit
 
 /**
  * App ke andar se update (v3.1):
- *  GitHub Releases (rolexdkscreation-max/DK2.0) me naya version dekho -> background me APK download -> "इंस्टॉल करें".
+ *  GitHub Releases (REPO = is app ka apna release repo) me naya version dekho -> background me APK download -> "इंस्टॉल करें".
  *  Har build ka tag "v<versionCode>". Release ke text me GitHub workflow likhta hai:
  *     TYPE: software | security      (UI badla = सॉफ़्टवेयर अपडेट, sirf sudhaar = सिक्योरिटी पैच)
  *     VERSION: 3.1                   (dikhane wala version, build number nahi)
@@ -32,6 +32,7 @@ import java.util.concurrent.TimeUnit
  *  Download wake-lock ke saath chalta hai: screen band ho ya DK band karo, tab bhi poora hota hai.
  */
 object Updater {
+    /** Sirf update ka source (UI me kahin nahi dikhta). Coding agent ka repo alag hai: Prefs.ghRepo (default khaali) */
     const val REPO = "rolexdkscreation-max/DK2.0"
     private const val CH = "dk_update"
     private const val NOTIF_ID = 4201
