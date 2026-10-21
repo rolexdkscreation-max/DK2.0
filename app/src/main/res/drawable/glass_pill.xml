@@ -1,24 +1,3 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Glass pill (button/chip/likhne ki bar): dabaane par zyada roshan -->
-<selector xmlns:android="http://schemas.android.com/apk/res/android" android:exitFadeDuration="160">
-    <item android:state_pressed="true">
-        <layer-list>
-            <item><shape android:shape="rectangle"><corners android:radius="999dp" /><solid android:color="#E6FFFFFF" /></shape></item>
-            <item android:left="1dp" android:top="1dp" android:right="1dp" android:bottom="1dp">
-                <shape android:shape="rectangle"><corners android:radius="999dp" />
-                    <gradient android:angle="270" android:startColor="#FF5C8FE0" android:endColor="#FF4277D2" /></shape></item>
-        </layer-list>
-    </item>
-    <item>
-        <layer-list>
-            <item><shape android:shape="rectangle"><corners android:radius="999dp" />
-                <gradient android:angle="270" android:startColor="#CCFFFFFF" android:centerColor="#4DFFFFFF" android:endColor="#80FFFFFF" /></shape></item>
-            <item android:left="1dp" android:top="1dp" android:right="1dp" android:bottom="1dp">
-                <shape android:shape="rectangle"><corners android:radius="999dp" />
-                    <gradient android:angle="270" android:startColor="#FF4A7FD6" android:centerColor="#FF3B70C8" android:endColor="#FF3A6DC4" /></shape></item>
-            <item android:left="1dp" android:top="1dp" android:right="1dp" android:bottom="1dp">
-                <shape android:shape="rectangle"><corners android:radius="999dp" />
-                    <gradient android:angle="270" android:startColor="#38FFFFFF" android:centerColor="#0DFFFFFF" android:endColor="#14FFFFFF" /></shape></item>
-        </layer-list>
-    </item>
-</selector>
+<!-- Premium Liquid Glass: parchhai, paardarshi neela kaanch, frost, specular chamak, chamakta kinara (dekhein LiquidGlass.kt) -->
+<drawable xmlns:android="http://schemas.android.com/apk/res/android" class="com.dk.assistant.GlassPillDrawable" />

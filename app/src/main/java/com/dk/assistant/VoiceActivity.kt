@@ -103,7 +103,7 @@ class VoiceActivity : AppCompatActivity() {
         }
         bar.addView(mic, LinearLayout.LayoutParams((76 * dp).toInt(), (76 * dp).toInt()))
         bar.addView(TextView(this).apply {
-            text = "✕"; textSize = 24f; gravity = Gravity.CENTER; setTextColor(0xFFFFFFFF.toInt())
+            text = "✕"; textSize = 24f; gravity = Gravity.CENTER; setTextColor(0xFFFFAE94.toInt())
             setBackgroundResource(R.drawable.glass_circle); contentDescription = "बंद करें"
             setOnClickListener { DKAccessibilityService.instance?.stopLive("✕ बटन"); finish() }
         }, LinearLayout.LayoutParams((60 * dp).toInt(), (60 * dp).toInt()).apply { marginStart = (28 * dp).toInt() })
@@ -186,6 +186,8 @@ class VoiceActivity : AppCompatActivity() {
         val name = Prefs.assistantName(this)
         val live = DKState.live
         mic.setBackgroundResource(if (live) R.drawable.btn_live_circle else R.drawable.btn_accent_circle)
+        // laal (Live) kaanch par gulabi icon na dikhe - tab safed; warna apna rang
+        mic.imageTintList = if (live) android.content.res.ColorStateList.valueOf(0xFFFFFFFF.toInt()) else null
         state.text = when (DKState.mode) {
             Mode.IDLE -> if (live) "माइक चालू है • बोलिए" else "माइक बंद • ओर्ब या माइक दबाइए"
             Mode.LISTENING -> "Listening • सुन रहा हूँ…"
