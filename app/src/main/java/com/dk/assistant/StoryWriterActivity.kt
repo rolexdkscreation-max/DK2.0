@@ -139,32 +139,39 @@ class StoryWriterActivity : AppCompatActivity() {
         actions.addView(pill("पूरी कहानी कॉपी") { copy(StorySession.fullText(), "पूरी कहानी कॉपी हो गई") }, LinearLayout.LayoutParams(0, (44 * dp).toInt(), 1f).apply { marginEnd = (6 * dp).toInt() })
         actions.addView(pill("सेव करें") { save() }, LinearLayout.LayoutParams(0, (44 * dp).toInt(), 1f).apply { marginEnd = (6 * dp).toInt() })
         actions.addView(pill("डिलीट") {
-            val savedParts = ArrayList(StorySession.parts)
-            val savedTitle = StorySession.title
-            val savedTotal = StorySession.total
-            val savedTopic = StorySession.topic
-            val savedMinutes = StorySession.minutes
+            android.app.AlertDialog.Builder(this)
+                .setTitle("कहानी डिलीट करें?")
+                .setMessage("क्या आप वाकई इस कहानी को डिलीट करना चाहते हैं?")
+                .setPositiveButton("हाँ, डिलीट करें") { _, _ ->
+                    val savedParts = ArrayList(StorySession.parts)
+                    val savedTitle = StorySession.title
+                    val savedTotal = StorySession.total
+                    val savedTopic = StorySession.topic
+                    val savedMinutes = StorySession.minutes
 
-            StorySession.parts.clear()
-            StorySession.title = ""
-            StorySession.total = 0
-            StorySession.error = null
-            shown = 0
-            partsBox.removeAllViews()
-            titleView.visibility = View.GONE
-            status.visibility = View.GONE
-            actions.visibility = View.GONE
+                    StorySession.parts.clear()
+                    StorySession.title = ""
+                    StorySession.total = 0
+                    StorySession.error = null
+                    shown = 0
+                    partsBox.removeAllViews()
+                    titleView.visibility = View.GONE
+                    status.visibility = View.GONE
+                    actions.visibility = View.GONE
 
-            com.google.android.material.snackbar.Snackbar.make(scroll, "कहानी डिलीट कर दी गई", com.google.android.material.snackbar.Snackbar.LENGTH_LONG)
-                .setAction("वापस लाएँ (Undo)") {
-                    StorySession.parts.addAll(savedParts)
-                    StorySession.title = savedTitle
-                    StorySession.total = savedTotal
-                    StorySession.topic = savedTopic
-                    StorySession.minutes = savedMinutes
-                    render()
-                    toast("कहानी वापस आ गई")
-                }.show()
+                    com.google.android.material.snackbar.Snackbar.make(scroll, "कहानी डिलीट कर दी गई", com.google.android.material.snackbar.Snackbar.LENGTH_LONG)
+                        .setAction("वापस लाएँ (Undo)") {
+                            StorySession.parts.addAll(savedParts)
+                            StorySession.title = savedTitle
+                            StorySession.total = savedTotal
+                            StorySession.topic = savedTopic
+                            StorySession.minutes = savedMinutes
+                            render()
+                            toast("कहानी वापस आ गई")
+                        }.show()
+                }
+                .setNegativeButton("रुको", null)
+                .show()
         }, LinearLayout.LayoutParams(0, (44 * dp).toInt(), 1f))
         body.addView(actions, LinearLayout.LayoutParams(-1, -2))
 
