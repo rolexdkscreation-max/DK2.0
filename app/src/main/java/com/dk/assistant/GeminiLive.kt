@@ -143,6 +143,11 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
     @Volatile private var turnPlayedBytes = 0L
     /** Jawab poora aa gaya par awaaz abhi baj rahi hai */
     @Volatile private var pendingReply: String? = null
+    /** v3.9: is baari Google Search hua to uske sources (groundingMetadata) - sirf screen par, bole nahi jaate */
+    private var turnSources: List<Pair<String, String>> = emptyList()
+    private var pendingSources: List<Pair<String, String>> = emptyList()
+    /** deep_think tool ne search kiya ho to uske sources (agle jawab ke saath) */
+    @Volatile private var toolSources: List<Pair<String, String>> = emptyList()
     @Volatile private var shownReply = ""
     @Volatile private var eosAt = 0L
     @Volatile private var firstAudioAt = 0L
@@ -635,6 +640,14 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
             // screen par abhi nahi - revealTick() awaaz ke saath-saath dikhata hai
             synchronized(turnLock) { replyText.append(t) }
         }
+        // v3.9: Gemini ne sach me Google Search kiya -> sources (title, url) is baari ke jawab ke saath
+        (sc.optJSONObject("groundingMetadata") ?: o.optJSONObject("groundingMetadata"))?.let { gm ->
+            val add = Grounding.sources(gm)
+            if (add.isNotEmpty()) {
+                synchronized(turnLock) { turnSources = Grounding.merge(turnSources, add) }
+                log("Google Search हुआ - ${add.size} स्रोत: ${add.joinToString { Grounding.host(it.second).ifBlank { it.first } }}")
+            }
+        }
         if (sc.optBoolean("interrupted")) {
             val now = System.currentTimeMillis()
             log("server: generation रुकी (interrupted) - आवाज़ रोकी" + if (localBargeAt > 0 && now - localBargeAt < 2000) " (फ़ोन ने ${now - localBargeAt} ms पहले ही रोक दी थी)" else "")
@@ -660,7 +673,7 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
 
     private fun startTurn() {
         turnActive = true
-        synchronized(turnLock) { userText.clear(); replyText.clear() }
+        synchronized(turnLock) { userText.clear(); replyText.clear(); turnSources = emptyList() }
     }
 
     private fun finishTurn(close: Boolean = true) {
@@ -676,7 +689,10 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
         turnUser = u; userDone = true                           // der se aaya pakka text isi line ko theek karega
         if (u.isNotBlank()) DKState.user(u)
         // jawab: awaaz abhi baj rahi hai to revealTick() saath-saath poora karega
-        if (r.isNotBlank()) synchronized(turnLock) { pendingReply = r }
+        synchronized(turnLock) {
+            if (r.isNotBlank()) { pendingReply = r; pendingSources = Grounding.merge(turnSources, toolSources); toolSources = emptyList() }
+            turnSources = emptyList()
+        }
         firstAudioAt = 0; replyStarted = false
         if (!isPlaying()) setMode(Mode.LISTENING)
     }
@@ -746,10 +762,14 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
 
     /** Ruka hua jawab chat me pakka karo. full=false: sirf jitna bola gaya (beech me toka) */
     private fun commitPending(full: Boolean) {
-        val text = synchronized(turnLock) { pendingReply.also { pendingReply = null } } ?: return
+        val (text, src) = synchronized(turnLock) {
+            (pendingReply to pendingSources).also { pendingReply = null; pendingSources = emptyList() }
+        }
+        if (text == null) return
         val out = if (full || shownReply.isBlank()) text else "$shownReply…"
         shownReply = ""
-        DKState.reply(out)
+        // search hua = chat/caption me click hone wale sources; nahi hua = khali (koi "Sources" nahi)
+        DKState.reply(out, src)
     }
 
     // ================================================================ phone ke kaam (function calling)
@@ -781,8 +801,10 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
                     "deep_think" -> {
                         DKState.set(Mode.THINKING)
                         try {
-                            withTimeoutOrNull(45_000) { BrainManager(svc).think(args.optString("question")).text }
-                                ?.takeIf { it.isNotBlank() } ?: "Deep thinking timed out - answer it yourself carefully."
+                            withTimeoutOrNull(45_000) { BrainManager(svc).think(args.optString("question")) }
+                                ?.takeIf { it.text.isNotBlank() }
+                                ?.also { if (it.sources.isNotEmpty()) toolSources = Grounding.merge(toolSources, it.sources) }
+                                ?.text ?: "Deep thinking timed out - answer it yourself carefully."
                         } catch (e: Exception) {
                             log("deep_think fail: ${e.message}")
                             "Deep thinking unavailable - answer it yourself carefully."

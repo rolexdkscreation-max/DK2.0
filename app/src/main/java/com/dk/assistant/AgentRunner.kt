@@ -129,14 +129,8 @@ class AgentRunner(
         return true
     }
 
-    /** Kya sawaal ko internet se taaza jawab chahiye? (sirf sach me badalne wali jaankari - baaki AI turant) */
-    private fun needsSearch(t: String): Boolean {
-        val w = listOf("आज का", "आज की", "आज के", "अभी का", "अभी की", "ताज़ा", "ताजा", "लेटेस्ट", "latest", "न्यूज़", "न्यूज", "news",
-            "खबर", "ख़बर", "समाचार", "मौसम", "weather", "तापमान", "बारिश होगी", "भाव", "price", "कीमत", "दाम", "स्कोर", "score",
-            "मैच", "match", "किसने जीता", "कौन जीता", "शेयर प्राइस", "stock", "सोने का", "चांदी", "पेट्रोल", "डीज़ल", "डीजल",
-            "रिजल्ट", "result", "चुनाव", "election", "कब रिलीज", "ट्रेन का स्टेटस", "pnr", "डॉलर", "dollar", "सेंसेक्स", "निफ्टी")
-        return w.any { t.contains(it) }
-    }
+    /** Kya sawaal ko internet se taaza jawab chahiye? (sirf sach me badalne wali jaankari - baaki AI apne gyaan se) */
+    private fun needsSearch(t: String): Boolean = SearchPolicy.needsSearch(t)
 
     /** User ne saaf kaha "सर्च/रिसर्च करो"? (YouTube/Amazon jaise app me search wali command nahi) */
     private fun explicitResearch(t: String): Boolean {
@@ -513,10 +507,11 @@ class AgentRunner(
         return try {
             val r = brain.think(goal)
             if (r.text.isBlank()) false else {
-                val src = if (r.sources.isNotEmpty()) "\n\nस्रोत: " + r.sources.joinToString(", ") { it.first } else ""
-                DKState.reply(r.text + src)
+                // sources sirf screen par (click ho sakne wale), awaaz me sirf jawab. Search nahi hua = sources khali
+                DKState.reply(r.text, r.sources)
                 if (!silent) speaker.speak(r.text)
-                LocalBrain.learn(svc, goal, r.text)
+                // taaza (search wala) jawab yaad mat karo - kal purana ho jayega
+                if (r.sources.isEmpty()) LocalBrain.learn(svc, goal, r.text)
                 true
             }
         } catch (e: Exception) {
@@ -531,9 +526,8 @@ class AgentRunner(
         return try {
             val r = brain.search(goal, deep, thorough)
             if (r.text.isBlank()) false else {
-                // screen par jawab + kahan se mila; bolkar sirf jawab
-                val src = if (r.sources.isNotEmpty()) "\n\nस्रोत: " + r.sources.joinToString(", ") { it.first } else ""
-                DKState.reply(r.text + src)
+                // screen par jawab + kahan se mila (click ho sakne wale links); bolkar sirf jawab
+                DKState.reply(r.text, r.sources)
                 if (!silent) speaker.speak(r.text)
                 true
             }

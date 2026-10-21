@@ -279,6 +279,10 @@ class ChatActivity : AppCompatActivity() {
         if (shown < msgs.size) { liveView?.let { list.removeView(it) }; liveView = null }
         while (shown < msgs.size) {
             val m = msgs[shown]; bubble(m.role, m.text); shown++
+            // web search se aaya jawab -> uske theek neeche chhote, click hone wale sources (apne gyaan wale par kuch nahi)
+            if (m.role == "d" && m.src.isNotEmpty()) SourcesView.build(this, m.src)?.let { v ->
+                list.addView(v, LinearLayout.LayoutParams(-2, -2).apply { gravity = Gravity.START; topMargin = (5 * dp).toInt() })
+            }
             // jawab nahi aa paya -> wahi message dobara bhejne ka button
             if (m.role == "d" && m.time == DKState.failedAt && retryFor != m.time && lastSent.isNotBlank()) { retryFor = m.time; addRetry(lastSent) }
         }

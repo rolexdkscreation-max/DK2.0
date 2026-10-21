@@ -58,4 +58,6 @@ dependencies {
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.8.4")
     testImplementation("junit:junit:4.13.2")
+    // Android ka org.json unit test me khali (stub) hota hai - asli wala
+    testImplementation("org.json:json:20240303")
 }
