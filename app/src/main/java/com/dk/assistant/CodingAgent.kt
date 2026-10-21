@@ -24,16 +24,31 @@ class CoderAi(val provider: Provider, private val key: String, val model: String
         if (provider.isGemini) gemini(system, msgs) else openAi(system, msgs, 16000)
 
     private fun gemini(system: String, msgs: List<Pair<String, String>>): String {
-        val order = (listOf(model) + GeminiClient.BACKUP_MODELS).distinct()
-        var last: Exception? = null
+        // चुना मॉडल -> 3.8 Flash (coding के लिए सबसे अच्छा) -> बाकी नए मॉडल. 2.5 वाले backup नहीं (नए users के लिए बंद)
+        val order = GeminiModels.order(model, listOf(GeminiModels.CODER) + GeminiClient.BACKUP_MODELS)
+        val errs = mutableListOf<Pair<String, AiException>>()
         for (m in order) {
-            try { return geminiOnce(m, system, msgs) } catch (e: AiException) {
-                last = e
-                if (e.code !in listOf(404, 429, 500, 503)) throw e
-                DKLog.d("Coder: $m -> ${e.code}, अगला मॉडल")
+            var waited = false
+            while (true) {
+                try { return geminiOnce(m, system, msgs) } catch (e: AiException) {
+                    if (e.code !in listOf(404, 429, 500, 503)) throw e
+                    val w = GeminiModels.waitBeforeRetry(e.code, e.retryAfter)
+                    if (!waited && w > 0) {
+                        waited = true
+                        DKLog.d("Coder: $m -> ${e.code}, ${w}s रुककर दोबारा")
+                        Thread.sleep(w * 1000L + 500)
+                        continue
+                    }
+                    errs.add(m to e)
+                    DKLog.d("Coder: $m -> ${e.code} ${e.message?.take(120)}, अगला मॉडल")
+                    break
+                }
             }
         }
-        throw last ?: AiException(0, "Gemini fail")
+        // सबसे काम की वजह दिखाओ (पहले सिर्फ़ आखिरी - "2.5 बंद है" - दिखती थी और असली वजह छिप जाती थी)
+        val (bm, be) = GeminiModels.best(errs, { it.code }, { it.message.orEmpty() }) ?: throw AiException(0, "Gemini fail")
+        val tried = errs.joinToString { "${it.first}: ${it.second.code}" }
+        throw AiException(be.code, "$bm — " + GeminiModels.hindi(be.code, be.message.orEmpty()) + "\n(आज़माए: $tried)", be.retryAfter)
     }
 
     private fun geminiOnce(m: String, system: String, msgs: List<Pair<String, String>>): String {
@@ -79,7 +94,7 @@ class CoderAi(val provider: Provider, private val key: String, val model: String
         val s = r.body?.string() ?: ""
         if (!r.isSuccessful) {
             val m = try { JSONObject(s).optJSONObject("error")?.optString("message") ?: s.take(200) } catch (_: Exception) { s.take(200) }
-            throw AiException(r.code, m)
+            throw AiException(r.code, m, GeminiModels.retryDelaySec(s))
         }
         s
     }

@@ -111,7 +111,7 @@ object Transcriber {
                 .put("data", Base64.encodeToString(wav, Base64.NO_WRAP))))
         val body = JSONObject().put("contents", JSONArray().put(JSONObject().put("role", "user").put("parts", parts)))
         var last: Exception? = null
-        for (m in (listOfNotNull(gemModel) + extra.take(2) + listOf("gemini-3.5-flash-lite", "gemini-3.1-flash-lite", "gemini-2.5-flash-lite")).distinct()) {
+        for (m in (listOfNotNull(gemModel) + extra.take(2) + listOf("gemini-3.5-flash-lite", "gemini-3.1-flash-lite")).distinct()) {
             try {
                 val req = Request.Builder().url("https://generativelanguage.googleapis.com/v1beta/models/$m:generateContent")
                     .header("x-goog-api-key", key)

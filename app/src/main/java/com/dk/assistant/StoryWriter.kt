@@ -101,10 +101,10 @@ class StoryAi(val provider: Provider, private val key: String, val model: String
         if (provider.isGemini) gemini(system, msgs) else openAi(system, msgs, 6000)
 
     private fun gemini(system: String, msgs: List<Pair<String, String>>): Out {
-        var last: Exception? = null
-        for (m in (listOf(model) + GeminiClient.BACKUP_MODELS).distinct()) {
+        var last: AiException? = null
+        for (m in GeminiModels.order(model, GeminiClient.BACKUP_MODELS)) {
             try { return geminiOnce(m, system, msgs) } catch (e: AiException) {
-                last = e
+                if (last == null || GeminiModels.isGone(last.code, last.message.orEmpty())) last = e
                 if (e.code !in listOf(404, 429, 500, 503)) throw e
                 DKLog.d("Story: $m -> ${e.code}, अगला मॉडल")
             }
