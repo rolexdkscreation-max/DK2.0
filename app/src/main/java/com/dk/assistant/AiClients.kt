@@ -14,7 +14,8 @@ data class Turn(val role: String, val text: String)   // role = "user" ya "model
 /** Internet search ka jawab + sources (title, link) */
 data class SearchResult(val text: String, val sources: List<Pair<String, String>>)
 
-class AiException(val code: Int, message: String) : IOException(message)
+/** retryAfter = Google ne kitne second baad dobara bola (429), 0 = pata nahi */
+class AiException(val code: Int, message: String, val retryAfter: Int = 0) : IOException(message)
 
 /** Har AI company se baat karne ka ek hi tareeka. */
 interface AiClient {
@@ -106,7 +107,7 @@ private fun execute(req: Request): String = http.newCall(req).execute().use { r 
             val o = JSONObject(body)
             o.optJSONObject("error")?.optString("message")?.takeIf { it.isNotBlank() } ?: body.take(250)
         } catch (e: Exception) { body.take(250) }
-        throw AiException(r.code, msg)
+        throw AiException(r.code, msg, GeminiModels.retryDelaySec(body))
     }
     body
 }
@@ -124,15 +125,16 @@ class GeminiClient(private val key: String, private val model: String) : AiClien
 
     companion object {
         // Inki free limit alag-alag hoti hai - ek ki khatam ho to dusra chal jata hai
-        val BACKUP_MODELS = listOf("gemini-3.5-flash-lite", "gemini-3.1-flash-lite", "gemini-3.8-flash", "gemini-2.5-flash")
+        // 2.5 वाले नए users के लिए बंद (404 "no longer available to new users") - इसलिए backup में नहीं
+        val BACKUP_MODELS = listOf("gemini-3.5-flash-lite", "gemini-3.1-flash-lite", "gemini-3.8-flash")
         /** Mushkil sawaal (research) ke liye zyada samajhdar model pehle */
-        val DEEP_MODELS = listOf("gemini-3.8-flash", "gemini-2.5-flash")
+        val DEEP_MODELS = listOf("gemini-3.8-flash")
         /** Sabse mushkil sawaal (gehri soch): sabse taakatwar model pehle, na chale to agla */
         val THINK_MODELS = listOf("gemini-4-argon", "gemini-3.1-pro-preview", "gemini-3.8-flash")   // argon/pro = paid key; free key par 3.8 Flash (high thinking)
     }
 
     override fun complete(system: String, history: List<Turn>, prompt: String, imageB64: String?): String {
-        val models = if (only) listOf(model) else (listOf(model) + backups).distinct()
+        val models = if (only) listOf(model) else GeminiModels.order(model, backups)
         var last: AiException? = null
         for (m in models) {
             try {
@@ -140,7 +142,8 @@ class GeminiClient(private val key: String, private val model: String) : AiClien
                 label = "Gemini ($m)"
                 return r
             } catch (e: AiException) {
-                last = e
+                // "मॉडल बंद" वाली गलती असली वजह (जैसे 429) को न छिपाए
+                if (last == null || GeminiModels.isGone(last.code, last.message.orEmpty())) last = e
                 val tryNext = e.code == 404 || e.code == 429 || e.code >= 500 ||
                     (e.code == 400 && (e.message ?: "").contains("model", ignoreCase = true) &&
                         !(e.message ?: "").contains("API key", ignoreCase = true))
@@ -153,7 +156,7 @@ class GeminiClient(private val key: String, private val model: String) : AiClien
 
     override fun stream(system: String, history: List<Turn>, prompt: String, onDelta: (String) -> Unit): String {
         // chuna hua model + ek backup (zyada nahi - warna der hoti hai; dusri key race me hai)
-        val models = if (only) listOf(model) else (listOf(model) + backups).distinct().take(3)
+        val models = if (only) listOf(model) else GeminiModels.order(model, backups).take(3)
         var last: AiException? = null
         for (m in models) {
             var thinking = true
@@ -168,7 +171,7 @@ class GeminiClient(private val key: String, private val model: String) : AiClien
                     return full.toString()
                 } catch (e: AiException) {
                     if (gotAny) throw e
-                    last = e
+                    if (last == null || GeminiModels.isGone(last.code, last.message.orEmpty())) last = e
                     DKLog.d("Gemini stream $m -> ${e.code} ${e.message}")
                     // "thinking" na samjhe to bina uske dobara (wahi model)
                     if (e.code == 400 && thinking && (e.message ?: "").contains("think", true)) { thinking = false; continue }
@@ -222,9 +225,9 @@ class GeminiClient(private val key: String, private val model: String) : AiClien
     fun search(system: String, history: List<Turn>, question: String, deep: Boolean, think: Boolean = false): SearchResult {
         var last: AiException? = null
         val order = when {
-            think -> (THINK_MODELS + DEEP_MODELS + listOf(model) + BACKUP_MODELS).distinct()
-            deep -> (DEEP_MODELS + listOf(model) + BACKUP_MODELS).distinct()
-            else -> (listOf(model) + BACKUP_MODELS).distinct()
+            think -> (THINK_MODELS + DEEP_MODELS + GeminiModels.order(model, BACKUP_MODELS)).distinct()
+            deep -> (DEEP_MODELS + GeminiModels.order(model, BACKUP_MODELS)).distinct()
+            else -> GeminiModels.order(model, BACKUP_MODELS)
         }
         for (m in order) {
           var withThinking = true
@@ -262,7 +265,7 @@ class GeminiClient(private val key: String, private val model: String) : AiClien
                 if (sb.isBlank()) throw AiException(0, "khali jawab")
                 return SearchResult(sb.toString(), sources)
             } catch (e: AiException) {
-                last = e
+                if (last == null || GeminiModels.isGone(last.code, last.message.orEmpty())) last = e
                 val msg = (e.message ?: "").lowercase()
                 // galat key = sab model fail honge -> ruko. (403 "model ki ijazat nahi" = agla model try karo)
                 if (e.code == 401 || (e.code == 403 && (msg.contains("api key") || msg.contains("api_key")))) throw e
