@@ -92,6 +92,68 @@ class GitHub(private val token: String) {
         return (0 until a.length()).map { a.getJSONObject(it).optString("path") }
     }
 
+    /**
+     * Poore repo ki ek copy (zip) - har file alag-alag API se maangne ki jagah EK request.
+     * Sirf text files (binary / 400 KB se badi chhod di). path -> content
+     */
+    fun snapshot(repo: String, branch: String): Map<String, String> {
+        val out = LinkedHashMap<String, String>()
+        val r = zipHttp.newCall(req("/repos/$repo/zipball/${enc(branch)}").get().build()).execute()
+        r.use { resp ->
+            if (!resp.isSuccessful) throw Err(resp.code, "repo zip नहीं मिला (${resp.code})")
+            val zin = java.util.zip.ZipInputStream(resp.body!!.byteStream())
+            var e = zin.nextEntry
+            var total = 0L
+            while (e != null) {
+                if (!e.isDirectory) {
+                    val path = e.name.substringAfter('/')           // "owner-repo-sha/" hatao
+                    val bytes = zin.readBytes()
+                    total += bytes.size
+                    if (path.isNotBlank() && bytes.size <= 400_000 && !bytes.take(4000).contains(0.toByte()))
+                        out[path] = String(bytes, Charsets.UTF_8)
+                }
+                if (total > 40_000_000L) break                        // bahut bada repo - baaki API se
+                e = zin.nextEntry
+            }
+        }
+        return out
+    }
+
+    data class Run(val id: Long, val name: String, val status: String, val conclusion: String, val url: String)
+
+    /** Is commit par chale GitHub Actions (build) */
+    fun runsFor(repo: String, sha: String): List<Run> {
+        val o = JSONObject(get("/repos/$repo/actions/runs?head_sha=$sha&per_page=10"))
+        val a = o.optJSONArray("workflow_runs") ?: JSONArray()
+        return (0 until a.length()).map { a.getJSONObject(it) }.map {
+            Run(it.optLong("id"), it.optString("name"), it.optString("status"), it.optString("conclusion"), it.optString("html_url"))
+        }
+    }
+
+    /** Fail hue build ki asli galtiyan (Kotlin "e: ...", "error:", Gradle "What went wrong") - chhota hissa */
+    fun failureLog(repo: String, runId: Long): String {
+        val jobs = JSONObject(get("/repos/$repo/actions/runs/$runId/jobs?per_page=30")).optJSONArray("jobs") ?: JSONArray()
+        val sb = StringBuilder()
+        for (i in 0 until jobs.length()) {
+            val j = jobs.getJSONObject(i)
+            if (j.optString("conclusion") != "failure") continue
+            val steps = j.optJSONArray("steps") ?: JSONArray()
+            val failedStep = (0 until steps.length()).map { steps.getJSONObject(it) }.firstOrNull { it.optString("conclusion") == "failure" }?.optString("name") ?: "?"
+            sb.append("JOB: ${j.optString("name")} • FAILED STEP: $failedStep\n")
+            val log = try { get("/repos/$repo/actions/jobs/${j.optLong("id")}/logs") } catch (e: Exception) { "" }
+            val lines = log.lines().map { it.replace(Regex("^\\S+Z\\s"), "") }       // timestamp hatao
+            val key = lines.withIndex().filter { (_, l) ->
+                l.startsWith("e: ") || l.contains("error:", true) || l.contains("What went wrong") || l.contains("FAILURE:") ||
+                    l.contains("Unresolved reference") || l.contains("Exception") || l.startsWith("> ") || l.contains("##[error]")
+            }.map { it.index }
+            val pick = sortedSetOf<Int>()
+            key.take(60).forEach { k -> for (x in (k - 1)..(k + 3)) if (x in lines.indices) pick.add(x) }
+            val body = if (pick.isEmpty()) lines.takeLast(80) else pick.map { lines[it] }
+            sb.append(body.joinToString("\n").take(9000)).append("\n")
+        }
+        return sb.toString().ifBlank { "(build fail hua par log nahi mila)" }
+    }
+
     fun createBranch(repo: String, newBranch: String, from: String) {
         val sha = JSONObject(get("/repos/$repo/git/ref/heads/${enc(from)}")).getJSONObject("object").getString("sha")
         post("/repos/$repo/git/refs", JSONObject().put("ref", "refs/heads/$newBranch").put("sha", sha))
@@ -121,6 +183,8 @@ class GitHub(private val token: String) {
     companion object {
         private val http = OkHttpClient.Builder()
             .connectTimeout(15, TimeUnit.SECONDS).readTimeout(40, TimeUnit.SECONDS).callTimeout(60, TimeUnit.SECONDS).build()
+        private val zipHttp = OkHttpClient.Builder()
+            .connectTimeout(15, TimeUnit.SECONDS).readTimeout(60, TimeUnit.SECONDS).callTimeout(120, TimeUnit.SECONDS).build()
         const val TOKEN_URL = "https://github.com/settings/personal-access-tokens/new"
         fun fromPrefs(c: android.content.Context): GitHub? = Prefs.ghToken(c).takeIf { it.isNotBlank() }?.let { GitHub(it) }
     }

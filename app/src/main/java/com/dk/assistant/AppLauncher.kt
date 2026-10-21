@@ -156,6 +156,41 @@ object AppLauncher {
         }
     }
 
+    private val ytHttp by lazy {
+        okhttp3.OkHttpClient.Builder().connectTimeout(5, java.util.concurrent.TimeUnit.SECONDS)
+            .callTimeout(7, java.util.concurrent.TimeUnit.SECONDS).build()
+    }
+
+    /**
+     * YouTube par sabse upar wala video (bina API key): results page se pehla "videoRenderer" videoId.
+     * Network - IO thread par chalao. null = nahi mila.
+     */
+    fun youtubeFirstVideo(q: String): String? = try {
+        val req = okhttp3.Request.Builder()
+            .url("https://www.youtube.com/results?search_query=" + Uri.encode(q) + "&hl=hi&gl=IN")
+            .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36")
+            .header("Accept-Language", "hi-IN,hi;q=0.9,en;q=0.8")
+            .header("Cookie", "CONSENT=YES+1")
+            .build()
+        ytHttp.newCall(req).execute().use { r ->
+            val html = r.body?.string() ?: ""
+            Regex("\"videoRenderer\":\\{\"videoId\":\"([A-Za-z0-9_-]{11})\"").find(html)?.groupValues?.get(1)
+        }
+    } catch (e: Exception) { DKLog.d("YouTube video id nahi mila: ${e.message}"); null }
+
+    /** Seedha video chalao (search page + click ki zarurat nahi = ~10-20 sec bachte hain) */
+    fun youtubePlay(ctx: Context, q: String, videoId: String?): String {
+        if (videoId == null) return youtubeSearch(ctx, q) + " - direct play nahi hua, ab pehle video result par click karo"
+        return try {
+            ctx.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("vnd.youtube:$videoId"))
+                .setPackage("com.google.android.youtube").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+            "PLAYING: YouTube par '$q' ka video chal gaya (kaam pura, done=true)"
+        } catch (e: Exception) {
+            openUrl(ctx, "https://www.youtube.com/watch?v=$videoId")
+            "PLAYING: '$q' ka video browser/YouTube me khola (kaam pura, done=true)"
+        }
+    }
+
     fun webSearch(ctx: Context, q: String): String {
         return try {
             ctx.startActivity(

@@ -173,7 +173,7 @@ class CodingActivity : AppCompatActivity() {
 
     private fun stopJob() { CoderSession.job?.cancel() }
 
-    private suspend fun push(c: Context) {
+    private suspend fun push(c: Context, round: Int = 0) {
         val a = CoderSession.agent ?: return
         if (a.staged.isEmpty()) return
         CoderSession.add("s", "GitHub पर push कर रहा हूँ…")
@@ -184,7 +184,58 @@ class CodingActivity : AppCompatActivity() {
             DKLog.d("Coder push: $url")
         } catch (e: Exception) {
             CoderSession.add("e", "Push नहीं हुआ: " + (e.message ?: "").take(300))
+            return
         }
+        if (Prefs.coderBuildFix(c)) try { watchAndFix(c, round) }
+            catch (e: kotlinx.coroutines.CancellationException) { CoderSession.add("s", "Build देखना रोका।"); throw e }
+            catch (e: Exception) { CoderSession.add("e", "Build जाँच/सुधार में गलती: " + (e.message ?: e.javaClass.simpleName).take(300)) }
+    }
+
+    /** Push ke baad GitHub Actions build dekho; fail ho to log padhkar agent khud theek kare (3 baar tak) */
+    private suspend fun watchAndFix(c: Context, round: Int) {
+        val a = CoderSession.agent ?: return
+        CoderSession.add("s", "GitHub पर build देख रहा हूँ…")
+        val b = a.watchBuild(a.lastSha) { st -> CoderSession.scope.launch { CoderSession.add("s", st) } }
+        if (b == null) { CoderSession.add("s", "इस repo के build की जानकारी नहीं मिली"); return }
+        if (b.ok) { CoderSession.add("d", "Build सफल ✓\n${b.url}"); return }
+        CoderSession.add("e", "Build fail हुआ ✗\n${b.url}\n\n" + b.log.lines().filter { it.startsWith("e: ") || it.contains("error", true) }.take(6).joinToString("\n").take(700))
+        if (round >= 3) { CoderSession.add("e", "3 बार ठीक करने के बाद भी build fail है। ऊपर की गलती देखकर बताइए क्या करना है।"); return }
+        CoderSession.add("s", "Build की गलती खुद ठीक कर रहा हूँ (कोशिश ${round + 1}/3)…")
+        val out = a.run("BUILD FAILED on GitHub Actions after your last push (commit ${a.lastSha.take(7)}). " +
+            "Find the real cause in this log, read the mentioned files/lines, fix ONLY what is needed, then done.\nBUILD LOG:\n${b.log}") { step ->
+            CoderSession.scope.launch { CoderSession.add("s", step) }
+        }
+        CoderSession.add("d", out.summary)
+        CoderSession.lastCommit = out.commit.ifBlank { "Fix build" }
+        if (out.question || a.staged.isEmpty()) return
+        if (Prefs.coderAutoPush(c)) push(c, round + 1)
+        else CoderSession.add("s", "Build ठीक करने वाले बदलाव तैयार हैं — नीचे \"Push करें\" दबाइए")
+    }
+
+    /** Staged badlaav ka rangeen diff (+ hara, − laal) */
+    private fun showDiff(a: CodingAgent) {
+        val d = a.diffAll().ifBlank { "(कोई बदलाव नहीं)" }.take(120_000)
+        val sp = android.text.SpannableStringBuilder()
+        d.lines().forEach { l ->
+            val st = sp.length
+            sp.append(l).append('\n')
+            val col = when {
+                l.startsWith("+++") || l.startsWith("---") || l.startsWith("===") -> 0xFF8AB4FF.toInt()
+                l.startsWith("@@") -> 0xFFB39DDB.toInt()
+                l.startsWith("+") -> 0xFF7EE787.toInt()
+                l.startsWith("-") -> 0xFFFF8A80.toInt()
+                else -> 0xB3FFFFFF.toInt()
+            }
+            sp.setSpan(android.text.style.ForegroundColorSpan(col), st, sp.length, android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+        }
+        val tv = TextView(this).apply {
+            text = sp; textSize = 11f; typeface = Typeface.MONOSPACE; setTextIsSelectable(true)
+            val p = (12 * dp).toInt(); setPadding(p, p, p, p)
+        }
+        val hs = android.widget.HorizontalScrollView(this).apply { addView(tv) }
+        val vs = ScrollView(this).apply { addView(hs) }
+        android.app.AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
+            .setTitle("बदलाव (${a.staged.size} फ़ाइल)").setView(vs).setPositiveButton("ठीक है", null).show()
     }
 
     private fun newSession() {
@@ -254,6 +305,7 @@ class CodingActivity : AppCompatActivity() {
                     .setPositiveButton("Push करें") { _, _ -> CoderSession.job = CoderSession.scope.launch { push(applicationContext); CoderSession.listener?.invoke() }; render() }
                     .setNegativeButton("रुको", null).show()
             }, LinearLayout.LayoutParams(0, (40 * dp).toInt(), 1f).apply { marginEnd = (8 * dp).toInt() })
+            row.addView(smallBtn("फ़र्क देखें") { showDiff(a) }, LinearLayout.LayoutParams(0, (40 * dp).toInt(), 1f).apply { marginEnd = (8 * dp).toInt() })
             row.addView(smallBtn("हटाओ") {
                 a.discard(); CoderSession.add("s", "सारे बदलाव हटा दिए (GitHub पर कुछ नहीं बदला)")
             }, LinearLayout.LayoutParams(0, (40 * dp).toInt(), 1f))

@@ -59,7 +59,8 @@ object DKState {
     private fun trim() { while (messages.size > 200) messages.removeAt(0); persist() }
 
     // ---- chat phone me save (app band/restart ke baad bhi baatcheet dikhe)
-    @Volatile private var appCtx: android.content.Context? = null
+    @Volatile var appCtx: android.content.Context? = null
+        private set
     private val saver = Runnable { appCtx?.let { c -> Thread { Memory.saveChat(c, messages.toList()) }.start() } }
     fun init(c: android.content.Context) {
         if (appCtx != null) return

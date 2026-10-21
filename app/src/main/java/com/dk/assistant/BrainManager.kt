@@ -354,6 +354,7 @@ class BrainManager(private val ctx: Context) {
             append("\nSpeak natural Hindi (Hinglish ok) unless the user speaks another language. Usually 1-3 short sentences; start directly with the answer.")
             append("\nAnswer from your own knowledge immediately. For current facts (news, weather, prices, scores) use Google Search if available.")
             append("\nFor genuinely HARD questions that need careful multi-step reasoning (multi-step maths, logic puzzles, code, detailed comparisons, planning, exam-level or deep why/how questions), call the function deep_think with the full question, then speak its answer naturally (you may shorten it for speech). Never use deep_think for easy chat.")
+            append("\nBefore calling phone_task, first say a very short natural acknowledgement (2-4 words, e.g. \"ठीक है, चलाती हूँ\") so the user is not left in silence; after it returns, give the result in one short sentence.")
             append("\nIf the user wants anything DONE on the phone (open app, call, message, WhatsApp, YouTube, settings, torch, volume, maps, shopping, read the screen), call the function phone_task with their exact request, then tell the result in one short sentence.")
             append("\nIf the user tells a personal fact or preference worth remembering, call remember_fact with it (do not mention that you saved it).")
             append("\nIf the user interrupts you, stop and listen. If their new words are about the same topic, give one combined answer; if it is a different question, briefly finish the earlier point, then answer the new one.")
@@ -412,6 +413,7 @@ Reply with ONLY one JSON object (no markdown, no extra text):
 
 Available actions:
 {"type":"open_app","name":"YouTube"}            open an installed app by its name (English name)
+{"type":"youtube_play","query":"..."}            PLAY the top YouTube video for the query directly (best for "चलाओ/play/लगाओ/दिखाओ"); usually done=true after it
 {"type":"youtube_search","query":"..."}          open YouTube search results directly
 {"type":"web_search","query":"..."}              Google search
 {"type":"open_url","url":"https://..."}
@@ -450,7 +452,10 @@ Rules:
 3. Before irreversible actions (delete, post/publish, send message, payment, uninstall, call) you MUST
    use "ask" to confirm, unless the user already clearly confirmed. If the user says no, stop.
 4. If the request is just conversation or a question, answer in "say", no actions, "done": true.
-5. To play something on YouTube: youtube_search, then click the first video result (not ads/shorts if possible).
+5. To play something on YouTube: use youtube_play with the query (done true). Only if its result says direct play failed,
+   click the first video result on the search screen (not ads/shorts). Just to browse/search: youtube_search.
+   After open_app / youtube_search the app may still be loading: if FOREGROUND APP is still the old app, use {"type":"wait","ms":1200}
+   instead of opening it again.
 6. Facebook post: open_app Facebook, tap the "What's on your mind?" box, type the text, confirm with ask, then tap Post.
 7. Gallery/photos: open_app Gallery (or Photos), long_click photos to select, tap Delete, confirm with ask first.
 12. Shopping/grocery: use shop_search (or open_app then its search box), then open the right product. To add to cart

@@ -2,6 +2,7 @@ package com.dk.assistant
 
 import android.content.Context
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
 import okhttp3.MediaType.Companion.toMediaType
@@ -103,69 +104,88 @@ class CoderAi(val provider: Provider, private val key: String, val model: String
 }
 
 /**
- * Coding agent: GitHub repo padhta hai, files likhta/badalta/mitata hai (pehle \"staged\"),
- * phir ek commit me push. Har kadam UI ko batata hai.
+ * Coding agent (v2): poora repo EK zip se phone me (tez padhna + asli grep line number ke saath),
+ * ek baar me kai files padhna, kai edit ek saath, whitespace-sahansheel edit, diff se khud jaanch,
+ * "done" se pehle syntax jaanch (bracket / XML / JSON), aur push ke baad GitHub Actions build dekhkar galti khud theek.
  */
 class CodingAgent(private val gh: GitHub, var repo: String, var branch: String, private val ai: CoderAi) {
 
     data class Outcome(val summary: String, val commit: String, val question: Boolean)
+    data class Build(val ok: Boolean, val url: String, val log: String)
+    data class Call(val o: JSONObject, val file: String?, val finds: List<String>, val replaces: List<String>)
 
     /** path -> naya content (null = mitana) - abhi push nahi hua */
     val staged = LinkedHashMap<String, String?>()
     private val original = HashMap<String, String?>()
     private val msgs = mutableListOf<Pair<String, String>>()
     private var files: List<GitHub.Entry>? = null
+    /** Poore repo ki copy (zip se) - null = nahi mili, tab har file API se */
+    private var snap: Map<String, String>? = null
+    private var checkWarned = false
+    /** Aakhri push ka commit sha (build dekhne ke liye) */
+    var lastSha = ""
+        private set
 
-    fun reset() { staged.clear(); original.clear(); msgs.clear(); files = null }
+    fun reset() { staged.clear(); original.clear(); msgs.clear(); files = null; snap = null; checkWarned = false }
 
     private fun system() = """
 You are DK Coder, an expert software engineer working DIRECTLY on the GitHub repository "$repo" (branch "$branch") through tools.
-The user speaks Hindi/Hinglish. Think carefully, read the relevant files before changing them, keep the existing style, and make complete, compiling changes.
+The user speaks Hindi/Hinglish. Think carefully, read the relevant code before changing it, keep the existing style, and make complete, COMPILING changes.
+If this is an Android/Kotlin project it is built by GitHub Actions after push: every import, type, parameter and bracket must be correct.
 
 Reply with EXACTLY ONE tool call per message: a JSON object on the first line, optionally followed by content blocks. No other text.
 Tools:
-{"tool":"list","path":"optional/folder"}            -> list files (all files if path empty)
-{"tool":"read","path":"file/path.ext"}              -> read a file (shows staged version if you changed it)
-{"tool":"search","query":"words"}                   -> search code in the repo
-{"tool":"write","path":"file/path.ext"}             -> create or fully replace a file; put the COMPLETE new content after it:
+{"tool":"list","path":"optional/folder"}                  -> list files (all if path empty)
+{"tool":"read","path":"a/File.kt"}                         -> read one file
+{"tool":"read","paths":["a/A.kt","b/B.kt"]}                -> read up to 6 files at once (faster - prefer this)
+{"tool":"read","path":"a/Big.kt","start":200,"end":320}    -> read only these lines (shown with line numbers; do NOT copy the "123| " prefix into edits)
+{"tool":"grep","pattern":"words or regex","path":"optional/folder","regex":false} -> search ALL files, returns path:line: text
+{"tool":"write","path":"file/path.ext"}                    -> create or fully replace a file; COMPLETE new content after it:
 <<<FILE
 ...entire file content...
 FILE>>>
-{"tool":"edit","path":"file/path.ext"}              -> replace one exact unique snippet (preferred for small changes in big files):
+{"tool":"edit","path":"file/path.ext"}                     -> replace exact unique snippet(s); you may give SEVERAL FIND/REPLACE pairs in one edit (applied in order):
 <<<FIND
-exact existing text (copy it exactly, enough lines to be unique)
+exact existing text (enough lines to be unique)
 FIND>>>
 <<<REPLACE
 new text
 REPLACE>>>
-{"tool":"delete","path":"file/path.ext"}            -> delete a file
-{"tool":"ask","question":"Hindi question"}          -> ONLY if the request is truly unclear; waits for the user
-{"tool":"done","summary":"Hindi summary of what you changed and why (short bullet lines)","commit":"short English commit message"}
+{"tool":"delete","path":"file/path.ext"}                   -> delete a file
+{"tool":"diff"}                                            -> see all your staged changes as a diff (review before done)
+{"tool":"ask","question":"Hindi question"}                 -> ONLY if the request is truly unclear; waits for the user
+{"tool":"done","summary":"Hindi summary (short bullet lines)","commit":"short English commit message"}
 
 Rules:
+- Work fast: grep to find code, read several files in one call, make several edits in one call.
 - Changes are only STAGED; the app pushes them as one commit after "done". Never claim it is pushed.
+- Before "done" with changes, call "diff" once and check your own work (imports, names, brackets, unused leftovers).
 - Never put secrets/API keys in code. Do not delete files unless the user asked or it is clearly required.
 - If the user only asks a question about the code, read what you need and answer in "done" summary with commit "".
-- Keep each write/edit focused. For big files prefer several "edit" calls over one huge "write".
+- If a task says the BUILD FAILED, read the exact files/lines from the log, fix the real cause, and do not change unrelated code.
 """.trimIndent()
 
     /** Ek kaam chalao (ya pichhle "ask" ka jawab). onStep = UI ke liye chhoti line */
     suspend fun run(task: String, onStep: (String) -> Unit): Outcome = withContext(Dispatchers.IO) {
         if (msgs.isEmpty()) {
-            onStep("$repo ($branch) की फ़ाइलें देख रहा हूँ…")
-            files = gh.tree(repo, branch)
+            onStep("$repo ($branch) की फ़ाइलें ला रहा हूँ…")
+            snap = try { gh.snapshot(repo, branch).also { onStep("पूरा repo फ़ोन में आ गया (${it.size} फ़ाइलें)") } }
+                   catch (e: Exception) { DKLog.d("Coder: zip nahi mila (${e.message}) - har file API se"); null }
+            files = snap?.let { m -> m.map { GitHub.Entry(it.key, it.value.length) } } ?: gh.tree(repo, branch)
             val list = files!!.take(500).joinToString("\n") { it.path }
             msgs.add("user" to "Repository files (${files!!.size}):\n$list" + (if (files!!.size > 500) "\n…(more, use list)" else ""))
             msgs.add("model" to "{\"tool\":\"list\",\"path\":\"\"}")
             msgs.add("user" to "OK. Waiting for the task.")
             msgs.add("model" to "{\"tool\":\"ask\",\"question\":\"क्या करना है?\"}")
         }
+        checkWarned = false
         msgs.add("user" to "TASK FROM USER: $task" +
             if (staged.isNotEmpty()) "\n(Already staged, not pushed: ${staged.keys.joinToString()})" else "")
         var step = 0
+        var bad = 0
         while (true) {
             ensureActive()
-            if (++step > 40) return@withContext Outcome("40 कदम हो गए, यहीं रोका। अब तक के बदलाव नीचे हैं।", "DK: partial changes", false)
+            if (++step > MAX_STEPS) return@withContext Outcome("$MAX_STEPS कदम हो गए, यहीं रोका। अब तक के बदलाव नीचे हैं।", "DK: partial changes", false)
             trimContext()
             val reply = try { ai.chat(system(), msgs) } catch (e: AiException) {
                 throw AiException(e.code, "${ai.label}: ${e.message}")
@@ -173,79 +193,292 @@ Rules:
             msgs.add("model" to reply)
             val call = parse(reply)
             if (call == null) {
+                if (++bad >= 4) return@withContext Outcome("AI सही तरीके से जवाब नहीं दे रहा (4 बार)। दूसरा मॉडल चुनकर फिर कोशिश करें।", "", false)
                 onStep("…")
                 msgs.add("user" to "ERROR: your reply had no valid JSON tool call on the first line. Reply with exactly one tool call.")
                 continue
             }
-            val (o, blocks) = call
+            bad = 0
+            val o = call.o
             val tool = o.optString("tool"); val path = o.optString("path").trim().trimStart('/')
             if (tool == "ask") return@withContext Outcome(o.optString("question").ifBlank { "थोड़ा और बताइए?" }, "", true)
-            if (tool == "done") return@withContext Outcome(o.optString("summary").ifBlank { "हो गया।" },
-                o.optString("commit").ifBlank { if (staged.isEmpty()) "" else "DK: code changes" }, false)
-            val result = try { runTool(tool, path, o, blocks, onStep) } catch (e: GitHub.Err) { "GITHUB ERROR: ${e.message}" }
+            if (tool == "done") {
+                val problems = check()
+                if (problems.isNotEmpty() && !checkWarned) {
+                    checkWarned = true
+                    onStep("जाँच में दिक्कत मिली, ठीक करवा रहा हूँ…")
+                    msgs.add("user" to "CHECK FAILED before done (these would likely break the build):\n$problems\n" +
+                        "Fix them (read the file again), or call done again if you are sure they are false alarms.")
+                    continue
+                }
+                return@withContext Outcome(o.optString("summary").ifBlank { "हो गया।" },
+                    o.optString("commit").ifBlank { if (staged.isEmpty()) "" else "DK: code changes" }, false)
+            }
+            val result = try { runTool(tool, path, call, onStep) } catch (e: GitHub.Err) { "GITHUB ERROR: ${e.message}" }
             msgs.add("user" to "RESULT ($tool${if (path.isNotBlank()) " $path" else ""}):\n$result")
         }
         Outcome("", "", false)
     }
 
-    private fun runTool(tool: String, path: String, o: JSONObject, blocks: Map<String, String>, onStep: (String) -> Unit): String {
+    private fun allPaths(): List<String> {
+        val gone = staged.filterValues { it == null }.keys
+        val base = files?.map { it.path } ?: snap?.keys?.toList() ?: emptyList()
+        return (base + staged.filterValues { it != null }.keys).distinct().filter { it !in gone }
+    }
+
+    private fun runTool(tool: String, path: String, c: Call, onStep: (String) -> Unit): String {
+        val o = c.o
         when (tool) {
             "list" -> {
                 onStep("फ़ाइलें देखीं: ${path.ifBlank { "/" }}")
-                val all = files ?: gh.tree(repo, branch).also { files = it }
-                val gone = staged.filterValues { it == null }.keys
-                val names = (all.map { it.path } + staged.filterValues { it != null }.keys).distinct()
-                    .filter { it !in gone }
-                    .filter { path.isBlank() || it.startsWith(path.trimEnd('/') + "/") || it == path }
-                return names.take(800).joinToString("\n").ifBlank { "(no files)" }
+                if (files == null) files = gh.tree(repo, branch)
+                return allPaths().filter { path.isBlank() || it.startsWith(path.trimEnd('/') + "/") || it == path }
+                    .take(800).joinToString("\n").ifBlank { "(no files)" }
             }
             "read" -> {
+                val many = o.optJSONArray("paths")
+                if (many != null && many.length() > 0) {
+                    val ps = (0 until many.length()).map { many.optString(it).trim().trimStart('/') }.filter { it.isNotBlank() }.take(6)
+                    onStep("पढ़ रहा हूँ: " + ps.joinToString(", ") { it.substringAfterLast('/') })
+                    val per = 60_000 / ps.size.coerceAtLeast(1)
+                    return ps.joinToString("\n\n") { p ->
+                        val t = current(p)
+                        "===== $p =====\n" + when {
+                            t == null -> "NOT FOUND"
+                            t.length > per -> t.take(per) + "\n…(cut; read this file alone or with start/end)"
+                            else -> t
+                        }
+                    }
+                }
+                val t = current(path) ?: return "NOT FOUND: $path" + similar(path)
+                val start = o.optInt("start", 0); val end = o.optInt("end", 0)
+                if (start > 0 || end > 0) {
+                    val lines = t.lines()
+                    val a = start.coerceIn(1, lines.size.coerceAtLeast(1)); val b = (if (end > 0) end else a + 150).coerceIn(a, lines.size)
+                    onStep("पढ़ रहा हूँ: $path ($a-$b)")
+                    return "(${lines.size} lines total)\n" + (a..b).joinToString("\n") { "$it| ${lines[it - 1]}" }
+                }
                 onStep("पढ़ रहा हूँ: $path")
-                val t = current(path) ?: return "NOT FOUND: $path"
-                return if (t.length > 60_000) t.take(60_000) + "\n…(file cut at 60000 chars; use edit with exact snippets)" else t
+                return if (t.length > 60_000) t.take(60_000) + "\n…(file cut at 60000 chars; read with start/end for the rest)" else t
             }
-            "search" -> {
-                val q = o.optString("query")
+            "grep", "search" -> {
+                val q = o.optString("pattern").ifBlank { o.optString("query") }
+                if (q.isBlank()) return "ERROR: pattern missing"
                 onStep("खोज: $q")
-                val r = try { gh.search(repo, q) } catch (e: Exception) { emptyList() }
-                // GitHub search kabhi-kabhi khaali deta hai -> file naam me bhi dekho
-                val byName = (files ?: emptyList()).map { it.path }.filter { it.contains(q, true) }
-                return (r + byName).distinct().take(40).joinToString("\n").ifBlank { "No results. Try list/read." }
+                return grep(q, path, o.optBoolean("regex", false))
             }
             "write" -> {
                 if (path.isBlank()) return "ERROR: path missing"
-                val c = blocks["FILE"] ?: return "ERROR: missing <<<FILE ... FILE>>> block"
+                val content = c.file ?: return "ERROR: missing <<<FILE ... FILE>>> block"
                 remember(path)
-                staged[path] = c
-                onStep("लिखा: $path (${c.lines().size} लाइन)")
-                return "OK staged $path (${c.length} chars)"
+                staged[path] = content
+                onStep("लिखा: $path (${content.lines().size} लाइन)")
+                return "OK staged $path (${content.length} chars)"
             }
             "edit" -> {
-                val f = blocks["FIND"]; val r = blocks["REPLACE"]
-                if (f == null || r == null) return "ERROR: need <<<FIND ... FIND>>> and <<<REPLACE ... REPLACE>>> blocks"
-                val cur = current(path) ?: return "NOT FOUND: $path"
-                val n = cur.split(f).size - 1
-                return when {
-                    f.isEmpty() -> "ERROR: FIND is empty"
-                    n == 0 -> "ERROR: FIND text not found exactly in $path. Read the file again and copy the exact text."
-                    n > 1 -> "ERROR: FIND text occurs $n times in $path. Include more surrounding lines."
-                    else -> { remember(path); staged[path] = cur.replace(f, r); onStep("बदला: $path"); "OK edited $path" }
+                if (c.finds.isEmpty() || c.finds.size != c.replaces.size)
+                    return "ERROR: need matching <<<FIND ... FIND>>> and <<<REPLACE ... REPLACE>>> blocks (${c.finds.size} FIND, ${c.replaces.size} REPLACE)"
+                var cur = current(path) ?: return "NOT FOUND: $path" + similar(path)
+                val notes = mutableListOf<String>()
+                for ((k, f) in c.finds.withIndex()) {
+                    val r = c.replaces[k]
+                    if (f.isEmpty()) return "ERROR: FIND #${k + 1} is empty. Nothing applied."
+                    val n = cur.split(f).size - 1
+                    cur = when {
+                        n == 1 -> cur.replace(f, r)
+                        n > 1 -> return "ERROR: FIND #${k + 1} occurs $n times in $path. Include more surrounding lines. Nothing applied."
+                        else -> fuzzyReplace(cur, f, r)?.also { notes.add("#${k + 1} matched ignoring indentation") }
+                            ?: return "ERROR: FIND #${k + 1} not found in $path. Read the file again (use start/end) and copy the exact text. Nothing applied." + near(cur, f)
+                    }
                 }
+                remember(path); staged[path] = cur
+                onStep("बदला: $path" + if (c.finds.size > 1) " (${c.finds.size} जगह)" else "")
+                return "OK edited $path (${c.finds.size} change${if (c.finds.size > 1) "s" else ""})" + if (notes.isNotEmpty()) " - " + notes.joinToString() else ""
             }
             "delete" -> {
                 if (current(path) == null) return "NOT FOUND: $path"
                 remember(path); staged[path] = null
                 onStep("हटाया: $path"); return "OK staged delete $path"
             }
+            "diff" -> {
+                onStep("अपने बदलाव जाँच रहा हूँ…")
+                return diffAll().ifBlank { "(no staged changes)" }.let { if (it.length > 40_000) it.take(40_000) + "\n…(diff cut)" else it }
+            }
             else -> return "ERROR: unknown tool '$tool'"
         }
     }
 
-    /** Staged ho to wahi, warna GitHub se */
+    // ---------------------------------------------------------------- files
+    /** Staged ho to wahi, phir repo ki copy, warna GitHub se */
     private fun current(path: String): String? =
-        if (staged.containsKey(path)) staged[path] else original.getOrPut(path) { gh.read(repo, path, branch) }
+        if (staged.containsKey(path)) staged[path]
+        else original.getOrPut(path) { snap?.get(path) ?: if (snap != null && files?.none { it.path == path } == true) null else gh.read(repo, path, branch) }
 
-    private fun remember(path: String) { if (!original.containsKey(path)) original[path] = try { gh.read(repo, path, branch) } catch (_: Exception) { null } }
+    private fun remember(path: String) { if (!original.containsKey(path)) original[path] = try { snap?.get(path) ?: gh.read(repo, path, branch) } catch (_: Exception) { null } }
+
+    private fun similar(path: String): String {
+        val name = path.substringAfterLast('/')
+        val hits = allPaths().filter { it.endsWith("/$name") || it.substringAfterLast('/').equals(name, true) }.take(5)
+        return if (hits.isEmpty()) "" else "\nDid you mean: " + hits.joinToString()
+    }
+
+    /** Saari files me khojo: path:line: text */
+    private fun grep(q: String, folder: String, regex: Boolean): String {
+        val rx = if (regex) try { Regex(q) } catch (e: Exception) { return "ERROR: bad regex: ${e.message}" } else null
+        val out = StringBuilder(); var hits = 0; var filesHit = 0
+        val paths = allPaths().filter { folder.isBlank() || it.startsWith(folder.trimEnd('/') + "/") }
+        if (snap == null && staged.isEmpty()) {
+            // repo ki copy nahi hai -> GitHub search (kam bharosemand)
+            val r = try { gh.search(repo, q) } catch (_: Exception) { emptyList() }
+            val byName = paths.filter { it.contains(q, true) }
+            return (r + byName).distinct().take(40).joinToString("\n").ifBlank { "No results." }
+        }
+        for (p in paths) {
+            val t = (if (staged.containsKey(p)) staged[p] else snap?.get(p)) ?: continue
+            var inFile = 0
+            t.lineSequence().forEachIndexed { i, line ->
+                val m = if (rx != null) rx.containsMatchIn(line) else line.contains(q, true)
+                if (m && hits < 120 && inFile < 25) { out.append("$p:${i + 1}: ${line.trim().take(220)}\n"); hits++; inFile++ }
+            }
+            if (inFile > 0) filesHit++
+            if (p.contains(q, true) && inFile == 0) out.append("$p (file name matches)\n")
+        }
+        return if (out.isEmpty()) "No results for '$q'." else (if (hits >= 120) "(first 120 matches)\n" else "") + out.toString()
+    }
+
+    /** FIND exact nahi mila: har line ke aage-peeche ke space chhodkar milao (sirf ek jagah mile to) */
+    private fun fuzzyReplace(cur: String, find: String, rep: String): String? {
+        val fl = find.lines().map { it.trim() }.dropWhile { it.isEmpty() }.dropLastWhile { it.isEmpty() }
+        if (fl.isEmpty()) return null
+        val cl = cur.lines()
+        val hits = (0..cl.size - fl.size).filter { s -> fl.indices.all { cl[s + it].trim() == fl[it] } }
+        if (hits.size != 1) return null
+        val s = hits[0]
+        return (cl.subList(0, s) + rep.lines() + cl.subList(s + fl.size, cl.size)).joinToString("\n")
+    }
+
+    /** FIND na mile to sabse milti-julti jagah dikhao (model ko sahi text copy karne me madad) */
+    private fun near(cur: String, find: String): String {
+        val first = find.lines().map { it.trim() }.firstOrNull { it.length > 6 } ?: return ""
+        val cl = cur.lines()
+        val i = cl.indexOfFirst { it.trim() == first }.takeIf { it >= 0 } ?: cl.indexOfFirst { it.contains(first.take(25)) }.takeIf { it >= 0 } ?: return ""
+        return "\nClosest place (lines ${i + 1}-${minOf(cl.size, i + 8)}):\n" + (i until minOf(cl.size, i + 8)).joinToString("\n") { cl[it] }
+    }
+
+    // ---------------------------------------------------------------- jaanch
+    /** Push se pehle: bracket balance (Kotlin/Java), XML aur JSON sahi hai? */
+    fun check(): String {
+        val sb = StringBuilder()
+        staged.forEach { (p, c) ->
+            if (c == null) return@forEach
+            val ext = p.substringAfterLast('.', "").lowercase()
+            val err = when (ext) {
+                "kt", "kts", "java", "gradle" -> brackets(c)
+                "xml" -> try {
+                    javax.xml.parsers.DocumentBuilderFactory.newInstance().newDocumentBuilder().parse(c.byteInputStream()); null
+                } catch (e: Exception) { "XML error: ${e.message?.take(200)}" }
+                "json" -> try { if (c.trimStart().startsWith("[")) JSONArray(c) else JSONObject(c); null } catch (e: Exception) { "JSON error: ${e.message?.take(200)}" }
+                else -> null
+            }
+            if (err != null) sb.append("- $p: $err\n")
+            if (c.contains("<<<FIND") || c.contains("FIND>>>") || c.contains("<<<FILE") || c.contains("REPLACE>>>"))
+                sb.append("- $p: contains leftover <<<FIND/FILE markers\n")
+        }
+        return sb.toString()
+    }
+
+    /** Kotlin/Java: {} () [] ka hisaab (string/comment ke andar wale chhodkar). null = theek */
+    private fun brackets(src: String): String? {
+        val stack = ArrayDeque<Pair<Char, Int>>()
+        var i = 0; var line = 1
+        val n = src.length
+        val pairs = mapOf('}' to '{', ')' to '(', ']' to '[')
+        while (i < n) {
+            val ch = src[i]
+            when {
+                ch == '\n' -> line++
+                src.startsWith("//", i) -> { while (i < n && src[i] != '\n') i++; continue }
+                src.startsWith("/*", i) -> { val e = src.indexOf("*/", i + 2); if (e < 0) return "unclosed /* comment (line $line)"; line += src.substring(i, e).count { it == '\n' }; i = e + 2; continue }
+                src.startsWith("\"\"\"", i) -> { val e = src.indexOf("\"\"\"", i + 3); if (e < 0) return "unclosed \"\"\" string (line $line)"; line += src.substring(i, e).count { it == '\n' }; i = e + 3; while (i < n && src[i] == '"') i++; continue }
+                ch == '"' -> {
+                    // saada string: \ escape; ${ ... } ke andar ke quotes ko bhi sambhalo
+                    i++; var depth = 0
+                    while (i < n) {
+                        val c = src[i]
+                        if (c == '\\') { i += 2; continue }
+                        if (c == '\n' && depth == 0) return "string not closed on line $line"
+                        if (c == '$' && i + 1 < n && src[i + 1] == '{') { depth++; i += 2; continue }
+                        if (depth > 0 && c == '}') { depth--; i++; continue }
+                        if (depth > 0 && c == '"') { val e = src.indexOf('"', i + 1); if (e < 0) break; i = e + 1; continue }
+                        if (c == '"' && depth == 0) break
+                        i++
+                    }
+                }
+                ch == '\'' -> {
+                    val e = if (i + 1 < n && src[i + 1] == '\\') src.indexOf('\'', i + 2) else i + 2
+                    if (e in (i + 1)..(i + 8) && e < n && src[e] == '\'') { i = e + 1; continue }
+                }
+                ch == '{' || ch == '(' || ch == '[' -> stack.addLast(ch to line)
+                ch == '}' || ch == ')' || ch == ']' -> {
+                    val top = stack.removeLastOrNull() ?: return "extra '$ch' on line $line"
+                    if (top.first != pairs[ch]) return "'${top.first}' from line ${top.second} closed by '$ch' on line $line"
+                }
+            }
+            i++
+        }
+        return stack.lastOrNull()?.let { "'${it.first}' opened on line ${it.second} is never closed" }
+    }
+
+    // ---------------------------------------------------------------- diff
+    /** Saare staged badlaav unified diff jaise (2 line context) */
+    fun diffAll(): String = staged.entries.joinToString("\n") { (p, c) ->
+        val o = original[p]
+        when {
+            c == null -> "--- $p (DELETED, ${o?.lines()?.size ?: 0} lines)"
+            o == null -> "+++ $p (NEW FILE, ${c.lines().size} lines)\n" + c.lines().take(400).joinToString("\n") { "+$it" }
+            else -> "=== $p\n" + diff(o, c)
+        }
+    }
+
+    private fun diff(a0: String, b0: String): String {
+        val a = a0.lines(); val b = b0.lines()
+        var pre = 0
+        while (pre < a.size && pre < b.size && a[pre] == b[pre]) pre++
+        var suf = 0
+        while (suf < a.size - pre && suf < b.size - pre && a[a.size - 1 - suf] == b[b.size - 1 - suf]) suf++
+        val am = a.subList(pre, a.size - suf); val bm = b.subList(pre, b.size - suf)
+        // (line no, op, text)  op: ' ' '-' '+'
+        val ops = ArrayList<Triple<Int, Char, String>>()
+        if (am.size.toLong() * bm.size <= 2_500_000L) {
+            val n = am.size; val m = bm.size
+            val dp = Array(n + 1) { IntArray(m + 1) }
+            for (i in n - 1 downTo 0) for (j in m - 1 downTo 0)
+                dp[i][j] = if (am[i] == bm[j]) dp[i + 1][j + 1] + 1 else maxOf(dp[i + 1][j], dp[i][j + 1])
+            var i = 0; var j = 0
+            while (i < n || j < m) {
+                when {
+                    i < n && j < m && am[i] == bm[j] -> { ops.add(Triple(pre + j + 1, ' ', am[i])); i++; j++ }
+                    j < m && (i >= n || dp[i][j + 1] >= dp[i + 1][j]) -> { ops.add(Triple(pre + j + 1, '+', bm[j])); j++ }
+                    else -> { ops.add(Triple(pre + j + 1, '-', am[i])); i++ }
+                }
+            }
+        } else {
+            am.forEach { ops.add(Triple(pre + 1, '-', it)) }
+            bm.forEachIndexed { k, t -> ops.add(Triple(pre + k + 1, '+', t)) }
+        }
+        val ctxBefore = a.subList(maxOf(0, pre - 2), pre).mapIndexed { k, t -> Triple(maxOf(0, pre - 2) + k + 1, ' ', t) }
+        val ctxAfter = b.subList(b.size - suf, minOf(b.size, b.size - suf + 2)).mapIndexed { k, t -> Triple(b.size - suf + k + 1, ' ', t) }
+        val all = ctxBefore + ops + ctxAfter
+        // sirf badlaav ke aas-paas ki 2 line
+        val keep = BooleanArray(all.size)
+        all.forEachIndexed { k, t -> if (t.second != ' ') for (x in (k - 2)..(k + 2)) if (x in all.indices) keep[x] = true }
+        val sb = StringBuilder(); var gap = false
+        all.forEachIndexed { k, t ->
+            if (keep[k]) { if (gap) sb.append("@@ line ${t.first}\n"); gap = false; sb.append(t.second).append(t.third).append('\n') }
+            else gap = true
+        }
+        return sb.toString().trimEnd()
+    }
 
     /** Badlaav ki chhoti list: "+ naya", "- hataya", "~ badla (+a -b)" */
     fun changeList(): String = staged.entries.joinToString("\n") { (p, c) ->
@@ -254,21 +487,56 @@ Rules:
             c == null -> "−  $p (हटाया)"
             o == null -> "+  $p (नई, ${c.lines().size} लाइन)"
             else -> {
-                val a = o.lines().toHashSet(); val b = c.lines().toHashSet()
-                "~  $p (+${c.lines().count { it !in a }} −${o.lines().count { it !in b }})"
+                val d = diff(o, c).lines()
+                "~  $p (+${d.count { it.startsWith("+") }} −${d.count { it.startsWith("-") }})"
             }
         }
     }
 
+    // ---------------------------------------------------------------- push + build
     /** Push: saare staged ek commit me */
     suspend fun push(message: String): String = withContext(Dispatchers.IO) {
         val url = gh.commit(repo, branch, staged.toMap(), message.ifBlank { "DK: code changes" })
-        // ab GitHub par yahi naya code hai
-        staged.forEach { (p, c) -> original[p] = c }
-        staged.clear(); files = null
+        lastSha = url.substringAfterLast('/')
+        // ab GitHub par yahi naya code hai (repo ki copy bhi)
+        val m = snap?.toMutableMap()
+        staged.forEach { (p, c) -> original[p] = c; if (m != null) { if (c == null) m.remove(p) else m[p] = c } }
+        if (m != null) { snap = m; files = m.map { GitHub.Entry(it.key, it.value.length) } } else files = null
+        staged.clear()
         msgs.add("user" to "PUSHED to $branch: $url. The repository now contains these changes.")
         msgs.add("model" to "{\"tool\":\"ask\",\"question\":\"और कुछ?\"}")
         url
+    }
+
+    /**
+     * Push ke baad GitHub Actions build ka intezaar. null = is repo me build (workflow) nahi / dekh nahi paya.
+     */
+    suspend fun watchBuild(sha: String, onStep: (String) -> Unit): Build? = withContext(Dispatchers.IO) {
+        if (sha.isBlank()) return@withContext null
+        val t0 = System.currentTimeMillis()
+        var said = ""
+        delay(8_000)
+        while (System.currentTimeMillis() - t0 < 20 * 60_000L) {
+            ensureActive()
+            val runs = try { gh.runsFor(repo, sha) } catch (e: GitHub.Err) {
+                onStep(if (e.code == 403 || e.code == 404) "Build नहीं देख पाया — token में Actions: Read की इजाज़त दें" else "Build नहीं देख पाया: ${e.message}")
+                return@withContext null
+            } catch (e: Exception) { delay(10_000); continue }
+            if (runs.isEmpty()) {
+                if (System.currentTimeMillis() - t0 > 90_000) return@withContext null
+                delay(8_000); continue
+            }
+            if (runs.all { it.status == "completed" }) {
+                val bad = runs.firstOrNull { it.conclusion !in listOf("success", "skipped", "neutral") }
+                    ?: return@withContext Build(true, runs.first().url, "")
+                val log = try { gh.failureLog(repo, bad.id) } catch (e: Exception) { "(log नहीं मिला: ${e.message})" }
+                return@withContext Build(false, bad.url, log)
+            }
+            val st = runs.joinToString { "${it.name}: " + if (it.status == "in_progress") "चल रहा" else "कतार में" }
+            if (st != said) { said = st; onStep("Build: $st (${(System.currentTimeMillis() - t0) / 1000}s)") }
+            delay(12_000)
+        }
+        null
     }
 
     fun discard() {
@@ -292,9 +560,11 @@ Rules:
     }
 
     companion object {
-        /** Pehli line ka JSON + <<<NAAM ... NAAM>>> blocks */
-        fun parse(reply: String): Pair<JSONObject, Map<String, String>>? {
-            val txt = reply.replace(Regex("^```(?:json)?\\s*"), "")
+        const val MAX_STEPS = 60
+
+        /** Pehli line ka JSON + <<<FILE / FIND / REPLACE>>> blocks (kai FIND/REPLACE jode ho sakte hain) */
+        fun parse(reply: String): Call? {
+            val txt = reply.trim().replace(Regex("^```(?:json)?\\s*"), "")
             val head = txt.substringBefore("<<<")
             val s = head.indexOf('{'); if (s < 0) return null
             var depth = 0; var inStr = false; var esc = false; var end = -1
@@ -305,9 +575,8 @@ Rules:
             }
             if (end < 0) return null
             val o = try { JSONObject(head.substring(s, end + 1)) } catch (_: Exception) { return null }
-            val blocks = HashMap<String, String>()
-            Regex("(?s)<<<(FILE|FIND|REPLACE)\\r?\\n(.*?)\\r?\\n?\\1>>>").findAll(txt).forEach { blocks[it.groupValues[1]] = it.groupValues[2] }
-            return o to blocks
+            fun all(tag: String) = Regex("(?s)<<<$tag\\r?\\n(.*?)\\r?\\n?$tag>>>").findAll(txt).map { it.groupValues[1] }.toList()
+            return Call(o, all("FILE").firstOrNull(), all("FIND"), all("REPLACE"))
         }
     }
 }

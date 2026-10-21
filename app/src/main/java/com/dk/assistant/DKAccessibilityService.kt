@@ -123,10 +123,11 @@ class DKAccessibilityService : AccessibilityService() {
      * ON hone par DK lagatar sunta rehta hai: aap bolo -> kaam/jawab -> phir se sunna... jab tak aap band na karo.
      */
     fun toggleLive() {
-        if (DKState.live) stopLive() else startLive()
+        if (DKState.live) stopLive("ओर्ब/माइक टैप") else startLive()
     }
 
     fun startLive() {
+        DKLog.d("Live चालू (live=${DKState.live}, wake=$wakeLive)")
         if (DKState.live) {
             // wake word se thodi der ka Live chal raha tha -> ab pakka Live (khud band nahi hoga)
             if (wakeLive) { wakeLive = false; gemLive.idleExitMs = 0; Prefs.edit(this) { putBoolean("live_mode", true) } }
@@ -139,11 +140,12 @@ class DKAccessibilityService : AccessibilityService() {
         ensureLoop()
     }
 
-    fun stopLive() {
+    fun stopLive(why: String = "?") {
+        DKLog.d("Live बंद किया: $why")
         wakeLive = false; gemLive.idleExitMs = 0
         DKState.setLive(false)
         Prefs.edit(this) { putBoolean("live_mode", false) }
-        gemLive.stop()
+        gemLive.stop(why)
         agent.stop()
         loopJob?.cancel(); loopJob = null
         listener.release()
@@ -332,7 +334,7 @@ class DKAccessibilityService : AccessibilityService() {
             }
             if (heard == null) continue
             val low = heard.lowercase()
-            if (low.contains("माइक बंद") || low.contains("सुनना बंद") || low.contains("mic off")) { stopLive(); return }
+            if (GeminiLive.micOffCommand(low)) { stopLive("बोला: ${heard.take(60)}"); return }
             job = agent.interrupt(heard)
         }
     }
@@ -406,9 +408,8 @@ class DKAccessibilityService : AccessibilityService() {
 
                 if (DKState.live) {
                     if (low.trim(' ', '.', '।').length < 2) continue
-                    if (low.contains("माइक बंद") || low.contains("सुनना बंद") || low.contains("mic off") ||
-                        low.contains("stop listening") || low == "बंद करो") {
-                        stopLive(); break
+                    if (GeminiLive.micOffCommand(low) || low.contains("stop listening") || low == "बंद करो") {
+                        stopLive("बोला: ${heard.take(60)}"); break
                     }
                     // gaana/video chal raha ho to sirf naam ("DK ...") ke saath boli baat command maano
                     val am = getSystemService(android.media.AudioManager::class.java)
@@ -450,6 +451,28 @@ class DKAccessibilityService : AccessibilityService() {
     }
 
     // ---------------------------------------------------------------- screen reading (aankh)
+    fun currentPackage(): String = try { rootInActiveWindow?.packageName?.toString() ?: "" } catch (_: Exception) { "" }
+
+    /**
+     * Action ke baad screen ke thamne ka intezaar (pehle seedha 650ms tha - YouTube jaisa app tab tak khulta bhi nahi tha,
+     * AI ko purani screen dikhti thi aur woh app dobara kholta tha = 10-20 sec bekaar).
+     * newApp=true: jab tak naya app saamne na aaye; phir jab tak screen ke elements badalna band na ho.
+     */
+    suspend fun waitSettle(prevPkg: String, newApp: Boolean, maxMs: Long = 4000L) {
+        val t0 = System.currentTimeMillis()
+        delay(if (newApp) 450 else 300)
+        var last = Int.MIN_VALUE
+        while (System.currentTimeMillis() - t0 < maxMs) {
+            val pkg = currentPackage()
+            if (newApp && (pkg.isBlank() || pkg == prevPkg || pkg == packageName)) { delay(200); continue }
+            val sig = try { readScreen().text.hashCode() } catch (_: Exception) { 0 }
+            if (sig == last) break
+            last = sig
+            delay(250)
+        }
+        DKLog.d("Screen thami ${System.currentTimeMillis() - t0} ms (${currentPackage()})")
+    }
+
     fun readScreen(): Screen {
         val list = mutableListOf<Element>()
         val sb = StringBuilder()
@@ -554,6 +577,11 @@ class DKAccessibilityService : AccessibilityService() {
                 "screen_view" -> { Prefs.edit(this) { putBoolean("screenshot", a.optBoolean("on", true)) }; "ok" }
                 "open_app" -> AppLauncher.open(this, a.optString("name"))
                 "youtube_search" -> AppLauncher.youtubeSearch(this, a.optString("query"))
+                "youtube_play" -> {
+                    val q = a.optString("query")
+                    val id = kotlinx.coroutines.withContext(Dispatchers.IO) { AppLauncher.youtubeFirstVideo(q) }
+                    AppLauncher.youtubePlay(this, q, id)
+                }
                 "web_search" -> AppLauncher.webSearch(this, a.optString("query"))
                 "open_url" -> AppLauncher.openUrl(this, a.optString("url"))
                 "dial" -> AppLauncher.dial(this, a.optString("number"))

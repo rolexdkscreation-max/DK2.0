@@ -671,6 +671,7 @@ class SettingsActivity : AppCompatActivity() {
     // ------------------------------------------------------------ coding agent + GitHub
     private lateinit var swCoder: SwitchCompat
     private lateinit var swAutoPush: SwitchCompat
+    private lateinit var swBuildFix: SwitchCompat
     private lateinit var edGhToken: EditText
     private lateinit var edGhRepo: EditText
     private lateinit var edGhBranch: EditText
@@ -731,8 +732,9 @@ class SettingsActivity : AppCompatActivity() {
                 },
                 button("Token बनाएँ") { Setup.openUrl(this, GitHub.TOKEN_URL) })
             box.addView(res)
-            hint(box, "Token बनाते समय: Repository access → अपना repo चुनें • Permissions → Contents: Read and write। बस इतना काफ़ी है।")
+            hint(box, "Token बनाते समय: Repository access → अपना repo चुनें • Permissions → Contents: Read and write, और Actions: Read (build जाँचने के लिए)।")
             swAutoPush = switch(box, "बिना पूछे push करो (बंद = पहले बदलाव दिखाओ, फिर \"Push करें\" दबाने पर)", Prefs.coderAutoPush(this))
+            swBuildFix = switch(box, "Push के बाद build जाँचो, fail हो तो खुद ठीक करो (3 बार तक)", Prefs.coderBuildFix(this))
         }
         card("कोडिंग की AI", "चाहें तो कोडिंग के लिए अलग API key — बातचीत वाली key की limit बची रहे") { box ->
             val cur = Prefs.coderProvider(this)
@@ -822,6 +824,7 @@ class SettingsActivity : AppCompatActivity() {
             if (::swCoder.isInitialized) {
                 putBoolean("coder_on", swCoder.isChecked)
                 putBoolean("coder_autopush", swAutoPush.isChecked)
+                putBoolean("coder_buildfix", swBuildFix.isChecked)
                 putString("gh_token", edGhToken.text.toString().trim())
                 putString("gh_repo", edGhRepo.text.toString().trim().removePrefix("https://github.com/").removeSuffix(".git").trim('/'))
                 putString("gh_branch", edGhBranch.text.toString().trim())

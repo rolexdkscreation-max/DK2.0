@@ -105,7 +105,7 @@ class VoiceActivity : AppCompatActivity() {
         bar.addView(TextView(this).apply {
             text = "✕"; textSize = 24f; gravity = Gravity.CENTER; setTextColor(0xFFFFFFFF.toInt())
             setBackgroundResource(R.drawable.glass_circle); contentDescription = "बंद करें"
-            setOnClickListener { DKAccessibilityService.instance?.stopLive(); finish() }
+            setOnClickListener { DKAccessibilityService.instance?.stopLive("✕ बटन"); finish() }
         }, LinearLayout.LayoutParams((60 * dp).toInt(), (60 * dp).toInt()).apply { marginStart = (28 * dp).toInt() })
         col.addView(bar, LinearLayout.LayoutParams(-1, -2).apply { topMargin = (14 * dp).toInt() })
 
@@ -175,7 +175,7 @@ class VoiceActivity : AppCompatActivity() {
     }
 
     private fun toggleLive() {
-        if (DKState.live) DKAccessibilityService.instance?.stopLive() else startLiveIfReady()
+        if (DKState.live) DKAccessibilityService.instance?.stopLive("आवाज़ स्क्रीन का माइक बटन") else startLiveIfReady()
     }
 
     override fun onResume() { super.onResume(); DKState.listen(listener); render() }

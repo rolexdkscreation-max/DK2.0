@@ -121,6 +121,7 @@ object Prefs {
     fun coderBase(c: Context) = sp(c).getString("coder_base", "") ?: ""
     /** true = bina pooche push (default: pehle dikhao, phir "Push" dabane par) */
     fun coderAutoPush(c: Context) = sp(c).getBoolean("coder_autopush", false)
+    fun coderBuildFix(c: Context) = sp(c).getBoolean("coder_buildfix", true)
 
     // ---- provider ke models ki list (cache)
     fun models(c: Context, id: String): List<String> =

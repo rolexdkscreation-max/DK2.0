@@ -56,6 +56,15 @@ object QuickCommands {
         // ---- maps: rasta, navigation, doori, paas ki jagah (turant, bina AI)
         Maps.parse(t)?.let { return it }
 
+        // ---- "YouTube पर <X> चलाओ" -> seedha pehla video (bina AI, bina search page) ~1 sec
+        if (has("यूट्यूब", "यू ट्यूब", "youtube") && has("चला", "play", "प्ले", "लगा", "बजा", "सुना", "दिखा") &&
+            !has(" और ", " फिर ", " then ", "भेज", "शेयर", "share", "डाउनलोड", "download", "सब्सक्राइब", "subscribe", "लाइक", "like", "कमेंट")) {
+            val q = t.replace(Regex("(यूट्यूब|यू ट्यूब|youtube)\\s*(पर|पे|में|मे|me|par|pe|on)?"), " ")
+                .replace(Regex("(चलाओ|चला दो|चलाइए|चलाना|चलाएं|चलाओं|चला|प्ले करो|प्ले कर दो|प्ले|play करो|play|लगाओ|लगा दो|लगा|बजाओ|बजा दो|बजा|सुनाओ|सुना दो|दिखाओ|दिखा दो|दिखा)"), " ")
+                .replace(Regex("\\s+"), " ").trim().trim(',', '.')
+            if (q.length >= 2) return Quick(a("youtube_play", "query" to q), "वीडियो चला दिया")
+        }
+
         // ---- volume number ke saath: "आवाज़ 50 करो", "वॉल्यूम 70 परसेंट"
         if (has("आवाज़", "आवाज", "वॉल्यूम", "volume", "साउंड", "रिंगटोन", "ringtone", "घंटी")) {
             val ring = has("रिंगटोन", "ringtone", "घंटी", "रिंग")

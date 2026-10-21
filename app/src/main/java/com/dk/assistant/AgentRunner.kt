@@ -114,6 +114,8 @@ class AgentRunner(
             return true
         }
         if (r.startsWith("ERROR")) return false
+        // seedha video nahi chala (search page khula) -> AI pehla video click karega
+        if (type == "youtube_play" && !r.startsWith("PLAYING")) return false
         val msg = when {
             type == "who_calls" -> if (r.startsWith("CALLER:")) r.removePrefix("CALLER:").trim() + " का कॉल है।" else "पता नहीं चला किसका कॉल है।"
             type == "unlock" -> if (r.contains("PIN")) "स्क्रीन चालू है, PIN या फिंगरप्रिंट से खोलिए।" else ""
@@ -303,6 +305,8 @@ class AgentRunner(
             val speakJob = if (sayText.isNotBlank()) scope.launch { say(sayText) } else null
 
             val results = StringBuilder()
+            val prevPkg = svc.currentPackage()
+            var opensApp = false
             if (hasActions) {
                 DKState.set(Mode.WORKING)
                 for (i in 0 until actions!!.length()) {
@@ -320,8 +324,10 @@ class AgentRunner(
                         done = false
                         break
                     }
+                    if (a.optString("type") in APP_OPENERS) opensApp = true
                     val r = svc.perform(a)
                     DKLog.d("Action ${a.optString("type")} -> $r")
+                    if (a.optString("type") == "youtube_play" && r.startsWith("PLAYING")) done = true
                     results.append("${a.optString("type")} -> $r\n")
                     delay(250)
                 }
@@ -329,7 +335,7 @@ class AgentRunner(
 
             if (done) { speakJob?.join(); return }
             if (chatMode) chatMode = false   // AI ne actions diye - ab screen dekh kar kaam karo
-            delay(650) // screen ko badalne ka time do
+            svc.waitSettle(prevPkg, opensApp) // naya app khule + screen tham jaye, tab agla kadam
             feedback = "USER GOAL (same task, continue): $goal\nRESULTS OF YOUR LAST ACTIONS:\n$results"
         }
         say("बहुत सारे स्टेप हो गए, मैंने काम यहीं रोक दिया।")
@@ -517,6 +523,9 @@ class AgentRunner(
 
     companion object {
         const val MAX_STEPS = 20
+        /** Ye actions naya app/screen kholte hain - agle kadam se pehle uske khulne ka intezaar */
+        val APP_OPENERS = setOf("open_app", "youtube_search", "youtube_play", "web_search", "open_url", "shop_search",
+            "directions", "navigate", "map_search", "open_settings", "dial")
         const val CREATOR_ANSWER = "मुझे धीरज कुमार सिंह जी ने बनाया है। मैं धीरज सर के लिए काम करता हूँ, वही मेरे बॉस हैं।"
     }
 }

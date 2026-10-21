@@ -60,6 +60,14 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
             "gemini-2.5-flash-native-audio-preview-12-2025", "gemini-2.5-flash-native-audio-preview-09-2025")
 
         fun key(c: android.content.Context) = Prefs.ttsGeminiKey(c)
+
+        /** "माइक बंद करो" = haan; "माइक बंद मत करो" / "माइक बंद नहीं" = nahi */
+        fun micOffCommand(t: String): Boolean {
+            val low = t.lowercase()
+            val i = listOf("माइक बंद", "सुनना बंद", "mic off", "mic band").map { low.indexOf(it) }.filter { it >= 0 }.minOrNull() ?: return false
+            val after = low.substring(i).take(30)
+            return listOf("मत", "नहीं", "नही", "ना करो", "न करो", "don't", "mat ").none { after.contains(it) }
+        }
         fun available(c: android.content.Context) = key(c).isNotBlank()
 
         /** Debug screen ke liye taaza aankde */
@@ -141,10 +149,27 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
     @Volatile private var idleExit = false
     @Volatile private var modelCache: Triple<Int, Long, List<String>>? = null
 
-    fun stop() {
+    fun stop(why: String = "user stop") {
         stopped = true
-        try { ws?.close(1000, "user stop") } catch (_: Exception) {}
+        closeWs(ws, why)
     }
+
+    /** Kaun se connection HUMNE band kiye (aur kyun) - log me "server ने बंद किया" galat na likha jaye */
+    private val ourClose = ConcurrentHashMap<WebSocket, String>()
+    private fun closeWs(w: WebSocket?, why: String) {
+        if (w == null) return
+        ourClose[w] = why
+        try { w.close(1000, "bye") } catch (_: Exception) {}      // reason ASCII hi (123 byte se zyada = close hi nahi hota)
+    }
+
+    /** Quota khatam wala model: aaj dobara mat maango (pehli baar 30 min, dobara = Pacific aadhi raat tak) */
+    private fun blockModel(m: String, why: String) {
+        val n = Cooldown.strike("live:$m")
+        val ms = if (n <= 1) 30 * 60_000L else Cooldown.msToQuotaReset()
+        Cooldown.block("live:$m", ms)
+        log("$m की limit खत्म ($why) - ${ms / 60_000} मिनट तक यह मॉडल नहीं माँगूँगा")
+    }
+    private fun isQuota(code: Int, r: String) = r.contains("quota") || r.contains("exhausted") || r.contains("rate limit") || code == 429
 
     private fun log(m: String) = DKLog.d("Live: $m")
 
@@ -188,6 +213,7 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
                     } ?: false
                     if (!ok) {
                         val (code, reason) = if (closed.isCompleted) closed.await() else 0 to "setup का जवाब 12 सेकंड में नहीं आया"
+                        ws?.let { ourClose[it] = "setup fail" }
                         try { ws?.cancel() } catch (_: Exception) {}
                         ready = false
                         log("setup fail [$model] code=$code reason=$reason")
@@ -201,8 +227,10 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
                             stopped -> break
                             r.contains("api key") || r.contains("api_key") || code == 401 || code == 403 ->
                                 throw Fatal("Gemini key गलत है या Live की इजाज़त नहीं")
-                            r.contains("quota") || r.contains("exhausted") || r.contains("rate") || code == 429 ->
+                            isQuota(code, r) || r.contains("rate") -> {
+                                blockModel(model, "setup")
                                 if (mi + 1 < models.size) { mi++; handle = null; continue } else throw Fatal("Gemini Live की फ्री लिमिट अभी खत्म है")
+                            }
                             useSearch && (r.contains("search") || r.contains("tool")) -> { useSearch = false; continue }
                             handle != null && (r.contains("handle") || r.contains("resum") || r.contains("session")) -> { handle = null; continue }
                             r.contains("model") || r.contains("not found") || r.contains("not supported") || code == 1008 || code == 404 || code == 1007 ->
@@ -217,6 +245,7 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
                     val upAt = System.currentTimeMillis()
                     log("जुड़ गया [$model] ${System.currentTimeMillis() - t0} ms" + if (handle != null) " (पुरानी बातचीत जारी)" else "")
                     Prefs.edit(svc) { putString("live_model", model) }
+                    Cooldown.clear("live:$model")
                     if (!turnActive && !isPlaying()) DKState.set(Mode.LISTENING)
                     // ab chalne do jab tak band/toote/goAway/call
                     while (!stopped && isActive) {
@@ -227,20 +256,24 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
                             idleExit = true; stopped = true; break
                         }
                         if (goAway && !turnActive && !isPlaying()) { log("goAway - नया connection"); goAwayDrop = true; break }
-                        if (svc.callBusy()) { try { ws?.close(1000, "call") } catch (_: Exception) {}; return@coroutineScope }
+                        if (svc.callBusy()) { closeWs(ws, "call आया"); return@coroutineScope }
                         if (System.currentTimeMillis() % 10_000 < 200) { updateStats(); log(stats) }
                         delay(200)
                     }
                     ready = false
                     if (stopped) break
                     val (code, reason) = if (closed.isCompleted) closed.await() else 1000 to "goAway"
-                    try { ws?.close(1000, "reconnect") } catch (_: Exception) {}
+                    closeWs(ws, "reconnect")
                     goAway = false
                     reconnects++
                     log("connection टूटा (code=$code, ${reason.ifBlank { "-" }}, ${(System.currentTimeMillis() - upAt) / 1000}s चला) - दोबारा जुड़ रहा हूँ #$reconnects" +
                         if (handle != null) " (बातचीत वहीं से)" else " (नई बातचीत)")
                     if (reason.lowercase().contains("api key")) throw Fatal("Gemini key बंद हो गई")
-                    if (reason.lowercase().let { it.contains("quota") || it.contains("exhausted") }) throw Fatal("Gemini Live की फ्री लिमिट खत्म")
+                    if (isQuota(code, reason.lowercase())) {
+                        blockModel(model, "बातचीत के बीच")
+                        if (turnActive) finishTurn()
+                        if (mi + 1 < models.size) { mi++; handle = null; continue } else throw Fatal("Gemini Live की फ्री लिमिट खत्म")
+                    }
                     if (turnActive) finishTurn()
                     // 20 sec se pehle toota = network/server dikkat -> har baar zyada ruko (battery bachao)
                     val lasted = System.currentTimeMillis() - upAt
@@ -254,7 +287,7 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
             } finally {
                 stopped = true
                 ready = false
-                try { ws?.close(1000, "bye") } catch (_: Exception) {}
+                closeWs(ws, "bye")
                 ws = null
                 caption?.stop(); caption = null
                 reveal.cancel()
@@ -303,7 +336,11 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
         val best = good.firstOrNull()?.let { ver(it) } ?: 0.0
         val keepLast = last.isNotBlank() && !last.contains("transcri") && !last.contains("translat") && !last.contains("robotic") &&
             (found.isEmpty() || last in found) && ver(last) >= best
-        return (listOfNotNull(last.takeIf { keepLast }) + good + FALLBACK_MODELS).distinct()
+        val all = (listOfNotNull(last.takeIf { keepLast }) + good + FALLBACK_MODELS).distinct()
+        // limit khatam wale model (aaj) chhodo - har baar 2 bekaar connection = ~1.5s deri + mic ke tukde gire
+        val (skip, ok) = all.partition { Cooldown.blocked("live:$it") }
+        if (skip.isNotEmpty()) log("limit खत्म, छोड़े: ${skip.joinToString()}")
+        return ok.ifEmpty { all }
     }
 
     private fun setupJson(m: String): String {
@@ -360,14 +397,17 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
             // Gemini JSON ko binary frame me bhi bhejta hai
             override fun onMessage(webSocket: WebSocket, bytes: ByteString) { if (webSocket === ws) onServer(bytes.utf8(), setup) }
             override fun onClosing(webSocket: WebSocket, code: Int, reason: String) {
-                log("server ने बंद किया code=$code reason=$reason")
+                val ours = ourClose.remove(webSocket)
+                if (ours != null) log("हमने बंद किया ($ours) code=$code")
+                else log("server ने बंद किया code=$code reason=${reason.ifBlank { "-" }}")
                 closed.complete(code to reason)
                 try { webSocket.close(1000, null) } catch (_: Exception) {}
             }
-            override fun onClosed(webSocket: WebSocket, code: Int, reason: String) { closed.complete(code to reason) }
+            override fun onClosed(webSocket: WebSocket, code: Int, reason: String) { ourClose.remove(webSocket); closed.complete(code to reason) }
             override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
                 val body = try { response?.body?.string()?.take(200) } catch (_: Exception) { null }
                 val why = (t.javaClass.simpleName + ": " + (t.message ?: "")) + (body?.let { " | $it" } ?: "")
+                ourClose.remove(webSocket)
                 log("connection गलती: http=${response?.code} $why")
                 closed.complete((response?.code ?: 0) to why)
             }
@@ -519,12 +559,16 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
 
     @Volatile private var micOffSent = false
     private fun checkMicOff(t: String) {
-        val low = t.lowercase()
-        if (!micOffSent && (low.contains("माइक बंद") || low.contains("सुनना बंद") || low.contains("mic off"))) {
-            micOffSent = true
-            android.os.Handler(android.os.Looper.getMainLooper()).post { svc.stopLive(); micOffSent = false }
+        if (micOffSent || !micOffCommand(t)) return
+        // DK khud bol raha tha / abhi bola ("ठीक है, माइक बंद") - apni hi awaaz ko hukm mat samjho
+        val now = System.currentTimeMillis()
+        if (isPlaying() || now - playEnd < 1500 || svc.speaker.busy || now - svc.speaker.lastSpokeAt < 2500) {
+            log("'माइक बंद' सुना पर DK खुद बोल रहा था - अनदेखा: $t"); return
         }
+        micOffSent = true
+        android.os.Handler(android.os.Looper.getMainLooper()).post { svc.stopLive("user ने कहा: ${t.takeLast(60)}"); micOffSent = false }
     }
+
 
     /**
      * DK ka text uski awaaz ke saath: jitni awaaz baj chuki, utne shabd.
@@ -560,6 +604,7 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
             val fc = calls.optJSONObject(i) ?: continue
             val id = fc.optString("id"); val name = fc.optString("name"); val args = fc.optJSONObject("args") ?: JSONObject()
             log("tool: $name $args")
+            val tStart = System.currentTimeMillis()
             val j = svc.scope.launch {
                 val result = when (name) {
                     "phone_task" -> {
@@ -584,6 +629,9 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
                 }
                 val resp = JSONObject().put("toolResponse", JSONObject().put("functionResponses", JSONArray().put(
                     JSONObject().put("id", id).put("name", name).put("response", JSONObject().put("result", result.take(if (name == "deep_think") 4000 else 1500))))))
+                log("tool $name ${(System.currentTimeMillis() - tStart)} ms: ${result.take(80)}")
+                // ab se deri ginti: tool ka jawab bheja -> pehli awaaz (tool ka samay alag dikhta hai)
+                eosAt = System.currentTimeMillis(); firstAudioAt = 0
                 if (ws?.send(resp.toString()) != true) log("tool जवाब नहीं भेज पाया")
                 toolJobs.remove(id)
             }
@@ -603,7 +651,7 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
     private fun sendAudio(pcm: ByteArray) {
         val w = ws
         if (w == null || !ready) {
-            synchronized(pending) { pending.addLast(pcm); while (pending.size > 1000 / CHUNK_MS) { pending.removeFirst(); dropped++ } }
+            synchronized(pending) { pending.addLast(pcm); while (pending.size > 2000 / CHUNK_MS) { pending.removeFirst(); dropped++ } }
             return
         }
         // network dheema: 256KB se zyada atka = purani awaaz chhodo (warna der badhti jaati)

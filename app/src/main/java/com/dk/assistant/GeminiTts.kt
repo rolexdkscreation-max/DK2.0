@@ -33,7 +33,7 @@ object GeminiTts {
         val now = System.currentTimeMillis()
         val all = (NEW_MODELS + OLD_MODELS).filter { it !in missing }
         if (all.isEmpty()) return now + 6 * 3600_000L
-        val times = all.map { blockedUntil[it] ?: 0L }
+        val times = all.map { maxOf(blockedUntil[it] ?: 0L, Cooldown.until("tts:$it")) }
         return if (times.all { it > now }) times.min() else 0L
     }
 
@@ -54,7 +54,7 @@ object GeminiTts {
     fun synthesize(key: String, text: String, voice: String, style: String = ""): ByteArray {
         val now = System.currentTimeMillis()
         val order = (listOfNotNull(workingModel) + NEW_MODELS + OLD_MODELS).distinct()
-            .filter { it !in missing && (blockedUntil[it] ?: 0L) <= now }
+            .filter { it !in missing && (blockedUntil[it] ?: 0L) <= now && !Cooldown.blocked("tts:$it") }
         if (order.isEmpty()) throw AiException(429, "Gemini TTS की आज की फ्री लिमिट खत्म")
         var last: Exception? = null
         for (m in order) {
@@ -69,6 +69,7 @@ object GeminiTts {
                     429 -> {
                         val ms = retryMs(e.message ?: "")
                         blockedUntil[m] = System.currentTimeMillis() + ms
+                        Cooldown.block("tts:$m", ms)          // app band-chalu hone par bhi yaad (har baar 4 model maangkar 1.5s deri nahi)
                         if (workingModel == m) workingModel = null
                         DKLog.d("Gemini TTS $m -> 429 लिमिट, ${ms / 60_000} मिनट तक नहीं माँगूँगा")
                     }
