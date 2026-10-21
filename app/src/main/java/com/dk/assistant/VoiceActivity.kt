@@ -23,6 +23,8 @@ class VoiceActivity : AppCompatActivity() {
     private lateinit var state: TextView
     private lateinit var you: TextView
     private lateinit var dk: TextView
+    private lateinit var srcBox: FrameLayout
+    private var srcShown: List<Pair<String, String>>? = null
     private lateinit var mic: ImageButton
     private lateinit var orbBox: FrameLayout
     private lateinit var minBtn: ImageButton
@@ -92,6 +94,9 @@ class VoiceActivity : AppCompatActivity() {
         you = TextView(this).apply { textSize = 14f; setTextColor(0xB3FFFFFF.toInt()); maxLines = 2; ellipsize = android.text.TextUtils.TruncateAt.END }
         dk = TextView(this).apply { textSize = 16f; setTextColor(0xFFFFFFFF.toInt()); maxLines = 5; ellipsize = android.text.TextUtils.TruncateAt.END }
         card.addView(you); card.addView(dk, LinearLayout.LayoutParams(-1, -2).apply { topMargin = (6 * dp).toInt() })
+        // v3.9: jawab web search se aaya ho to caption ke neeche sources (bole nahi jaate, sirf dikhte/click hote hain)
+        srcBox = FrameLayout(this)
+        card.addView(srcBox, LinearLayout.LayoutParams(-1, -2).apply { topMargin = (8 * dp).toInt() })
         col.addView(card, LinearLayout.LayoutParams(-1, -2).apply { topMargin = (12 * dp).toInt() })
 
         // ---- neeche: mic + band
@@ -199,6 +204,13 @@ class VoiceActivity : AppCompatActivity() {
         val min = Prefs.orbMin(this)
         you.text = "आप: " + tail(DKState.lastUser, if (min) 400 else 90).ifBlank { "—" }
         dk.text = "$name: " + tail(DKState.lastReply, if (min) 100_000 else 200).ifBlank { "—" }
+        val src = DKState.lastSources
+        if (src != srcShown) {
+            srcShown = src
+            srcBox.removeAllViews()
+            SourcesView.build(this, src)?.let { srcBox.addView(it) }
+            srcBox.visibility = if (src.isEmpty()) android.view.View.GONE else android.view.View.VISIBLE
+        }
     }
 
     private fun tail(t: String, max: Int): String {

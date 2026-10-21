@@ -105,13 +105,21 @@ object Memory {
     fun loadChat(c: Context): List<DKState.Msg> {
         val a = readArr(c, "dk_chat.json")
         return (0 until a.length()).mapNotNull { i ->
-            a.optJSONObject(i)?.let { DKState.Msg(it.optString("r"), it.optString("t"), it.optLong("w")) }
+            a.optJSONObject(i)?.let { o ->
+                val sa = o.optJSONArray("s")
+                val src = (0 until (sa?.length() ?: 0)).mapNotNull { k -> sa!!.optJSONArray(k)?.let { it.optString(0) to it.optString(1) } }
+                DKState.Msg(o.optString("r"), o.optString("t"), o.optLong("w"), src)
+            }
         }
     }
 
     fun saveChat(c: Context, msgs: List<DKState.Msg>) {
         val a = JSONArray()
-        msgs.takeLast(MAX_CHAT).forEach { a.put(JSONObject().put("r", it.role).put("t", it.text).put("w", it.time)) }
+        msgs.takeLast(MAX_CHAT).forEach { m ->
+            val o = JSONObject().put("r", m.role).put("t", m.text).put("w", m.time)
+            if (m.src.isNotEmpty()) o.put("s", JSONArray().apply { m.src.forEach { put(JSONArray().put(it.first).put(it.second)) } })
+            a.put(o)
+        }
         writeArr(c, "dk_chat.json", a)
     }
 

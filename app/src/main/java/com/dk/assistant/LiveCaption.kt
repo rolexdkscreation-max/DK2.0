@@ -117,6 +117,13 @@ class LiveCaption(
         w.send(msg)
     }
 
+    /** Phone ne pakda ki user chup ho gaya (v3.8) -> caption model turant pakka text bheje (chup-intezaar nahi) */
+    fun endOfSpeech() {
+        val w = ws ?: return
+        if (!ready || dead || stopped) return
+        try { w.send("{\"realtimeInput\":{\"audioStreamEnd\":true}}") } catch (_: Exception) {}
+    }
+
     private fun flushPending(w: WebSocket) {
         val list = synchronized(pending) { pending.toList().also { pending.clear() } }
         list.forEach { w.send(it) }

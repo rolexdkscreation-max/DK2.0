@@ -17,6 +17,9 @@ object DKState {
         private set
     @Volatile var lastReply: String = ""
         private set
+    /** Aakhri jawab ke sources (voice screen ke caption ke neeche) - khali = apne gyaan se jawab */
+    @Volatile var lastSources: List<Pair<String, String>> = emptyList()
+        private set
 
     private val main = Handler(Looper.getMainLooper())
     private val listeners = mutableSetOf<() -> Unit>()
@@ -29,13 +32,45 @@ object DKState {
     fun set(m: Mode) { mode = m; if (m != Mode.LISTENING) level = 0f; emit() }
     fun setLive(on: Boolean) { live = on; emit() }
     /** Chat screen ke liye poori baatcheet (role "u" = aap, "d" = DK) */
-    data class Msg(val role: String, val text: String, val time: Long = System.currentTimeMillis())
+    data class Msg(val role: String, val text: String, val time: Long = System.currentTimeMillis(),
+                   /** Web search ke sources (title, url) - sirf jab jawab sach me search se aaya; warna khali */
+                   val src: List<Pair<String, String>> = emptyList())
     val messages = java.util.concurrent.CopyOnWriteArrayList<Msg>()
 
     fun user(t: String) {
         lastUser = t
         if (t.isBlank()) { emit(); return }
+        // chat screen ne yahi message "Send" dabate hi khud dikha diya tha (optimistic) - dobara mat jodo
+        val opt = optimistic
+        if (opt != null && opt.first == t && System.currentTimeMillis() - opt.second < 15_000) { optimistic = null; emit(); return }
         if (!t.endsWith("…") && t.isNotBlank()) { messages.add(Msg("u", t)); trim() }
+        emit()
+    }
+
+    /** v3.8 chat: "Send" dabate hi apna message TURANT list me (server/AI ka intezaar nahi). Main thread se hi bulao. */
+    @Volatile private var optimistic: Pair<String, Long>? = null
+    /** Aakhri message kab bheja (deri naapne ke liye: Send -> AI request -> pehla shabd) */
+    @Volatile var sentAt = 0L
+        private set
+    fun userNow(t: String) {
+        if (t.isBlank()) return
+        hintText = ""
+        lastUser = t
+        sentAt = System.currentTimeMillis()
+        optimistic = t to sentAt
+        messages.add(Msg("u", t)); trim()
+        mode = Mode.THINKING; level = 0f      // typing indicator turant (listener seedha, post ka intezaar nahi)
+        val copy = synchronized(listeners) { listeners.toList() }
+        if (Looper.myLooper() == Looper.getMainLooper()) copy.forEach { it() } else main.post { copy.forEach { it() } }
+    }
+
+    /** Jawab nahi aa paya (network/AI galti) - chat screen "फिर से भेजें" dikhaye. Value = us DK message ka time */
+    @Volatile var failedAt = 0L
+        private set
+    fun replyFailed(t: String) {
+        lastReply = t; liveReply = ""; hintText = ""; lastSources = emptyList()
+        val m = Msg("d", t); failedAt = m.time
+        messages.add(m); trim()
         emit()
     }
     /** Aakhri "aap" line ka text badlo (baad me aaya pakka text) - nayi line nahi */
@@ -49,13 +84,17 @@ object DKState {
     /** Abhi ban raha (streaming) jawab - chat screen par turant dikhta hai */
     @Volatile var liveReply: String = ""
         private set
-    fun reply(t: String) {
-        lastReply = t; liveReply = ""
-        if (t.isNotBlank()) { messages.add(Msg("d", t)); trim() }
+    /** Chat ke typing indicator me kya likhen (khoj/gehri soch = lamba samay theek hai) */
+    @Volatile var hintText: String = ""
+        private set
+    fun hint(t: String) { hintText = t; emit() }
+    fun reply(t: String, sources: List<Pair<String, String>> = emptyList()) {
+        lastReply = t; liveReply = ""; hintText = ""; lastSources = sources
+        if (t.isNotBlank()) { messages.add(Msg("d", t, src = sources)); trim() }
         emit()
     }
     /** Jawab abhi ban raha hai (tukdon me) - screen par dikhao, chat list me abhi mat jodo */
-    fun replyLive(t: String) { lastReply = t; liveReply = t; emit() }
+    fun replyLive(t: String) { if (liveReply.isEmpty()) lastSources = emptyList(); lastReply = t; liveReply = t; emit() }
     private fun trim() { while (messages.size > 200) messages.removeAt(0); persist() }
 
     // ---- chat phone me save (app band/restart ke baad bhi baatcheet dikhe)
