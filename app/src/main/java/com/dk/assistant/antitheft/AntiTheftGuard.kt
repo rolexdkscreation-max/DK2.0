@@ -268,10 +268,13 @@ class GuardService : Service() {
 
     fun onPhonePickedUpOrScreenOn() {
         if (!isRunning || !armed || level > 0) return
-        // Phone lock nahi (ya lock-timeout ke andar) = malik ke haath me
         if (!isLocked()) return
+        // Ensure we don't double schedule or miss checking if screen turned on
+        handler.removeCallbacksAndMessages(null)
         handler.postDelayed({
-            if (isRunning && armed && level == 0 && isLocked()) escalateToLevel1()
+            if (isRunning && armed && level == 0 && isLocked()) {
+                escalateToLevel1()
+            }
         }, UNLOCK_GRACE_MS)
     }
 
