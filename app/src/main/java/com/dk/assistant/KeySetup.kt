@@ -26,10 +26,6 @@ object KeySetup {
             k.startsWith("AIza") -> "gemini"
             k.startsWith("gsk_") -> "groq"
             k.startsWith("sk-or-") -> "openrouter"
-            k.startsWith("xai-") -> "xai"
-            k.startsWith("sk-") -> "openai"
-            Regex("^[0-9a-fA-F]{32}\\.[A-Za-z0-9]{8,}$").matches(k) -> "zai"
-            Regex("^[A-Za-z0-9]{32}$").matches(k) -> "mistral"
             else -> null
         }
     }
@@ -38,7 +34,7 @@ object KeySetup {
 
     /** Pehchaan na ho to har company se poochho (jo models de de, key usi ki) */
     private suspend fun identify(k: String): String? = coroutineScope {
-        val tries = listOf("gemini", "groq", "openrouter", "mistral", "zai").mapNotNull { Providers.byId(it) }.map { p ->
+        val tries = listOf("gemini", "groq", "openrouter").mapNotNull { Providers.byId(it) }.map { p ->
             async(Dispatchers.IO) {
                 withTimeoutOrNull(10_000) { try { ModelLister.fetch(p, k, p.baseUrl); p.id } catch (_: Exception) { null } }
             }
@@ -69,13 +65,6 @@ object KeySetup {
                 val fastWords = listOf("flash", "mini", "small", "nano", "lite", "instant", "fast", "8b", "9b", "7b", "12b")
                 (free.sortedBy { m -> if (fastWords.any { m.lowercase().contains(it) }) 0 else 1 }.take(4) + "openrouter/free").distinct()
             }
-            "mistral" -> {
-                val pref = listOf("mistral-small-latest", "ministral-8b-latest", "ministral-3b-latest", "open-mistral-nemo", "mistral-medium-latest")
-                (pref.filter { it in ok }.ifEmpty { pref.take(2) }).take(4)
-            }
-            "zai" -> ok.filter { it.contains("flash") }.sortedByDescending { ver(it) }.ifEmpty { listOf("glm-4.7-flash", "glm-4.5-flash") }.take(3)
-            "openai" -> listOf("gpt-5-nano", "gpt-4.1-nano", "gpt-5-mini", "gpt-4o-mini").filter { l.isEmpty() || it in l }.take(3)
-            "xai" -> ok.filter { it.contains("fast") || it.contains("mini") }.ifEmpty { ok }.take(3)
             else -> ok.take(3)
         }
     }
@@ -99,7 +88,7 @@ object KeySetup {
         val key = key0.trim().trim('"', '\'')
         if (key.length < 16) return@withContext Result(false, "", "", 0, "यह key बहुत छोटी है, पूरी key पेस्ट करें।")
         val id = detect(key) ?: identify(key)
-            ?: return@withContext Result(false, "", "", 0, "यह key किसी जानी-पहचानी कंपनी की नहीं लगी (या गलत है)।")
+            ?: return@withContext Result(false, "", "", 0, "यह key Google Gemini, Groq या OpenRouter की नहीं लगी (या गलत है)। किसी और कंपनी की key हो तो Custom API में Base URL के साथ डालें।")
         val p = Providers.byId(id) ?: return@withContext Result(false, id, "", 0, "कंपनी नहीं मिली")
         val list = try { ModelLister.fetch(p, key, p.baseUrl) } catch (e: Exception) {
             val code = (e as? AiException)?.code ?: 0

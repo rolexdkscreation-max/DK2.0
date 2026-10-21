@@ -232,6 +232,25 @@ class DKAccessibilityService : AccessibilityService() {
         return listener.listenOnce()
     }
 
+    /**
+     * v3.7: purane (bina beep) tareeke me bhi bolte-bolte shabd screen par.
+     * Gemini key ho to mic ki awaaz (sirf jab aap bol rahe ho) tez caption model ko bhi jaati hai.
+     */
+    private var earCaption: LiveCaption? = null
+    @Volatile private var earShowing = false
+    private fun earCaptionOn() {
+        val key = GeminiLive.key(this)
+        if (key.isBlank()) { ear.onFrame = null; return }
+        val c = earCaption ?: LiveCaption(key, onText = { t, _ -> if (earShowing && t.isNotBlank()) DKState.user("$t…") }, onLate = { })
+            .also { it.start(); earCaption = it }
+        ear.onFrame = { b, n ->
+            val out = ByteArray(n * 2)
+            for (i in 0 until n) { val v = b[i].toInt(); out[i * 2] = (v and 0xff).toByte(); out[i * 2 + 1] = (v shr 8 and 0xff).toByte() }
+            c.send(out)
+        }
+    }
+    private fun earCaptionOff() { ear.onFrame = null; earCaption?.stop(); earCaption = null }
+
     /** Ek baat suno -> text. Bina beep (apna mic + Groq/Gemini) ya Google mic. Har dikkat DK bolkar batata hai. */
     suspend fun hear(): String? {
         if (!checkMic()) { delay(2000); return null }
@@ -240,8 +259,12 @@ class DKAccessibilityService : AccessibilityService() {
         val since = System.currentTimeMillis() - speaker.lastSpokeAt
         if (since < 350) delay(350 - since)
         DKState.set(Mode.LISTENING)
-        val pcm = ear.nextUtterance()
+        earCaptionOn()
+        earCaption?.closeUtterance()          // pichhli (beech me toki) baat ka text saaf
+        earShowing = true
+        val pcm = try { ear.nextUtterance() } catch (e: Exception) { earShowing = false; throw e }
         if (pcm == null) {
+            earShowing = false
             val prob = ear.problem
             ear.release()
             if (prob == "perm") { checkMic(); return null }
@@ -257,9 +280,14 @@ class DKAccessibilityService : AccessibilityService() {
         }
         micFails = 0
         DKState.set(Mode.THINKING)
-        DKState.user("…")
+        // caption ne bolte-bolte jo likha woh screen par rehne do (pehle "…" se mit jaata tha)
+        val capNow = earCaption?.text().orEmpty()
+        if (capNow.isBlank()) DKState.user("…")
         val sttT0 = System.currentTimeMillis()
-        val text = Transcriber.transcribe(this, pcm)
+        val text0 = try { Transcriber.transcribe(this, pcm) } finally { earShowing = false }
+        val capText = earCaption?.closeUtterance().orEmpty()
+        // Whisper ne kuch na diya par caption ne suna -> wahi lo (baat na khoye)
+        val text = text0 ?: capText.trim().takeIf { it.length >= 2 }
         DKLog.d("Deri: bolna khatam -> STT ${System.currentTimeMillis() - sttT0} ms (${pcm.size / 32} ms awaaz)")
         if (text == null && Transcriber.lastError != null) {
             // sunne wali key nahi chali: aapki baat kho gayi - batao aur Google mic par chalo (2 min)
@@ -354,7 +382,7 @@ class DKAccessibilityService : AccessibilityService() {
                 // Gemini Live: mic ki awaaz lagatar stream, jawab ki awaaz turant stream (sabse kam deri)
                 if (useGeminiLive() && !callBusy()) {
                     if (!checkMic()) { delay(2000); continue }
-                    ear.release(); listener.release()
+                    ear.release(); listener.release(); earCaptionOff()
                     lastWhyNot = ""
                     var failed = false
                     try {
@@ -451,6 +479,7 @@ class DKAccessibilityService : AccessibilityService() {
                 }
             }
             listener.muteBeep = false
+            earCaptionOff()
             DKLog.d("Sunna band")
         }
     }

@@ -326,7 +326,7 @@ class GeminiClient(private val key: String, private val model: String) : AiClien
     }
 }
 
-/** OpenAI, Grok, Groq, OpenRouter, Mistral, Z.ai, Custom - sab OpenAI jaisa format use karte hain. */
+/** Groq, OpenRouter, Custom - sab OpenAI jaisa format use karte hain. */
 class OpenAiCompatClient(
     private val name: String,
     private val baseUrl: String,

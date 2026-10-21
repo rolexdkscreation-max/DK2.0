@@ -33,7 +33,11 @@ object Prefs {
     fun wakeWordsRaw(c: Context) = sp(c).getString("wake_words", "डीके, दीके, डी के, dk, d k") ?: ""
 
     // ---- AI providers
-    fun activeProvider(c: Context) = sp(c).getString("active_provider", "gemini") ?: "gemini"
+    /** Hata di gayi company (Mistral, Z.ai, OpenAI, xAI) chuni thi to Gemini */
+    fun activeProvider(c: Context): String {
+        val id = sp(c).getString("active_provider", "gemini") ?: "gemini"
+        return if (Providers.byId(id) != null) id else "gemini"
+    }
     fun fallback(c: Context) = sp(c).getBoolean("fallback", true)
     fun key(c: Context, id: String) = sp(c).getString("key_$id", "") ?: ""
     fun model(c: Context, id: String): String {

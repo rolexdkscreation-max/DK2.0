@@ -412,9 +412,11 @@ class AgentRunner(
                     if (c == '.' && i + 1 < pend.length && pend[i + 1].isWhitespace()) { cut = i; break }
                 }
                 if (cut < 0) {
-                    val limit = if (sentCount == 0) 70 else 170
+                    // v3.7: pehla tukda aur chhota (45) = awaaz jaldi shuru
+                    val limit = if (sentCount == 0) 45 else 170
+                    val minCut = if (sentCount == 0) 12 else 20
                     if (pend.length > limit) {
-                        val c2 = pend.lastIndexOf(",").takeIf { it > 20 } ?: pend.lastIndexOf(" ").takeIf { it > 20 } ?: return
+                        val c2 = pend.lastIndexOf(",").takeIf { it > minCut } ?: pend.lastIndexOf(" ").takeIf { it > minCut } ?: return
                         cut = c2
                     } else return
                 }
