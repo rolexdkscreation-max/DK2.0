@@ -53,11 +53,22 @@ object CoderTeam {
         CoderSession.job = CoderSession.scope.launch {
             try {
                 var t: String? = task
-                while (t != null) { pipeline(c, a, t); t = queue.removeFirstOrNull() }
-            } catch (e: CancellationException) { say("e", "टीम का काम रोक दिया।")
+                while (t != null) {
+                    kotlinx.coroutines.withTimeout(10 * 60 * 1000L) { // 10 minutes timeout per task
+                        pipeline(c, a, t)
+                    }
+                    t = queue.removeFirstOrNull()
+                }
+            } catch (e: kotlinx.coroutines.TimeoutCancellationException) {
+                val msg = "कोडिंग का काम तय समय (10 मिनट) में पूरा नहीं हो पाया।"
+                say("e", msg)
+                finish(c, msg, ok = false, title = "कोडिंग टीम: टाइमआउट")
+            } catch (e: CancellationException) {
+                say("e", "टीम का काम रोक दिया।")
             } catch (e: Exception) {
                 val msg = (e.message ?: e.javaClass.simpleName).take(300)
-                say("e", "गलती: $msg"); notifyUser(c, "कोडिंग टीम रुक गई", msg)
+                say("e", "गलती: $msg")
+                finish(c, "कोडिंग टीम में त्रुटि आई: $msg", ok = false, title = "कोडिंग टीम: विफलता")
             } finally { a.teamMode = false; a.onSuggest = null; CoderSession.listener?.invoke() }
         }
         CoderSession.listener?.invoke()
