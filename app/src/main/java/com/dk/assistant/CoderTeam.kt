@@ -45,7 +45,7 @@ object CoderTeam {
         }
         val a = CoderSession.agentFor(c) ?: return "GitHub या AI सेटअप नहीं मिला"
         say("u", (if (fromVoice) "🎤 " else "") + task)
-        CoderSession.job = CoderSession.scope.launch {
+        CoderSession.launch(c) {
             try {
                 var currentTask: String? = task
                 while (currentTask != null) {
@@ -129,7 +129,8 @@ object CoderTeam {
                 return
             }
             if (b.ok) {
-                val prNote = a.pr?.let { "\n🔀 PR #${it.number} review के लिए तैयार — GitHub पर देखकर कोडिंग स्क्रीन पर \"Merge करें\" दबाएँ (main में अभी कुछ नहीं गया)\n${it.url}" } ?: ""
+                val prNote = a.pr?.let { "\n🔀 PR #${it.number} review के लिए तैयार — GitHub पर देखकर कोडिंग स्क्रीन पर \"Merge करें\" दबाएँ या DK से बोलें \"PR merge कर दो\"। Merge होते ही GitHub Actions नई APK release बनाएगा (main में अभी कुछ नहीं गया)\n${it.url}" }
+                    ?: if (a.canRetryPr) "\n⚠ PR नहीं बना, इसलिए Merge का बटन नहीं है: ${a.prError}\nकोडिंग स्क्रीन पर \"PR फिर बनाएँ\" दबाएँ।" else ""
                 finish(c, summary + "\n\n✓ रिव्यूअर पास • ✓ Push • ✓ GitHub tests + build सफल\n${b.url}$prNote", ok = true); return
             }
             buildRound++
@@ -140,6 +141,51 @@ object CoderTeam {
             commit = fix.commit.ifBlank { "Fix build" }
             if (a.staged.isEmpty()) { finish(c, "बिल्डर build की गलती नहीं ढूँढ पाया。\n${b.url}", ok = false); return }
         }
+    }
+
+    /**
+     * Review ke baad Merge (screen ka button ya awaaz "PR merge कर दो"):
+     * PR khula + conflict nahi + saare tests/build hare -> merge -> main par "Build DK APK" release dekhna -> user ko batana.
+     * @return null = shuru ho gaya; warna wajah (Hindi)
+     */
+    fun merge(ctx: Context, fromVoice: Boolean = false): String? {
+        val c = ctx.applicationContext
+        val p0 = CoderSession.problems(c)
+        if (p0.isNotEmpty()) return "कोडिंग एजेंट तैयार नहीं: " + p0.joinToString(", ")
+        if (CoderSession.busy) return "अभी कोडिंग का काम चल रहा है — पूरा होने के बाद merge कर दूँगी।"
+        val a = CoderSession.agentFor(c) ?: return "GitHub या AI सेटअप नहीं मिला"
+        val p = a.pr ?: return if (a.canRetryPr) "PR बना ही नहीं था: ${a.prError}" else "अभी merge के लिए कोई PR तैयार नहीं है।"
+        val repo = a.repo; val base = a.baseBranch
+        if (fromVoice) say("u", "🎤 PR #${p.number} merge करो")
+        CoderSession.launch(c) {
+            say("s", "PR #${p.number} की जाँच (tests/build/conflict) करके merge कर रहा हूँ…")
+            val res = try { a.mergePr() } catch (e: CancellationException) { throw e } catch (e: Exception) {
+                val m = (e.message ?: e.javaClass.simpleName).take(300)
+                finish(c, "PR #${p.number} merge नहीं हुआ: $m", ok = false, title = "कोडिंग टीम: merge नहीं हुआ",
+                    spoken = "PR merge नहीं हो पाया। कोडिंग स्क्रीन पर वजह लिखी है।")
+                return@launch
+            }
+            val sha = a.lastMergeSha
+            if (sha.isBlank()) {
+                finish(c, res, ok = false, title = "कोडिंग टीम: merge रुका", spoken = "PR अभी merge नहीं किया। " + res.lines().first().take(120))
+                return@launch
+            }
+            say("d", res)
+            say("s", "$base पर GitHub Actions की release build (APK) देख रहा हूँ…")
+            val b = try { a.watchBuild(sha) { st -> step(st) } } catch (e: CancellationException) { throw e } catch (_: Exception) { null }
+            val rel = "https://github.com/$repo/releases/latest"
+            when {
+                b == null -> finish(c, "PR #${p.number} merge हो गया। Release build की जानकारी नहीं मिली — GitHub पर Actions देखें।\n$rel",
+                    ok = true, title = "कोडिंग टीम: merge हो गया", spoken = "PR merge हो गया, बॉस। Release build GitHub पर देख लीजिए।")
+                b.ok -> finish(c, "PR #${p.number} merge हो गया और नई APK release बन गई ✓\nSettings → अपडेट से install करें।\n$rel",
+                    ok = true, title = "कोडिंग टीम: नई APK release तैयार",
+                    spoken = "PR merge हो गया, बॉस। नई APK release बन गई है, सेटिंग्स में अपडेट से install कर लीजिए।")
+                else -> finish(c, "PR #${p.number} merge हो गया, पर release build fail हुआ ✗\n${b.url}",
+                    ok = false, title = "कोडिंग टीम: release build fail", spoken = "PR merge हो गया, पर release build fail हो गया। कोडिंग स्क्रीन पर लिंक है।")
+            }
+        }
+        CoderSession.listener?.invoke()
+        return null
     }
 
     private suspend fun plan(c: Context, task: String): Pair<String, List<String>> = withContext(Dispatchers.IO) {
@@ -190,6 +236,11 @@ acceptance must only cover what the user asked. suggestions: ONLY things the use
     }
 
     fun voiceDecision(c: Context, text: String): String? {
+        // "PR merge कर दो" -> jaanch ke baad merge + release APK
+        SafePr.mergeIntent(text)?.let { yes ->
+            if (!yes) return "ठीक है, PR अभी merge नहीं करूँगी।"
+            return merge(c, fromVoice = true) ?: "ठीक है, PR के tests और build देखकर merge कर रही हूँ। नई APK release बनते ही बताऊँगी।"
+        }
         val low = text.lowercase()
         if (!(low.contains("सुझाव") || low.contains("suggestion") || low.contains("sujhav"))) return null
         val sg = pending.lastOrNull() ?: return "अभी कोई सुझाव बाकी नहीं है।"
@@ -200,18 +251,18 @@ acceptance must only cover what the user asked. suggestions: ONLY things the use
         return if (yes && !no) "ठीक है, \"${sg.title}\" भी जोड़ दूँगी।" else "ठीक है, \"${sg.title}\" नहीं जोड़ूँगी।"
     }
 
-    private fun finish(c: Context, text: String, ok: Boolean, title: String? = null) {
+    private fun finish(c: Context, text: String, ok: Boolean, title: String? = null, spoken: String? = null) {
         say(if (ok) "d" else "e", (if (ok) "✅ " else "⚠ ") + text)
         val head = title ?: if (ok) "कोडिंग टीम: काम पूरा" else "कोडिंग टीम: काम अधूरा"
         notifyUser(c, head, text.lines().first().take(120))
         val prReady = CoderSession.agent?.pr != null
-        val spoken = if (ok && prReady) "कोडिंग का काम पूरा हो गया, बॉस। जाँच और build हो गए, PR आपके review के लिए तैयार है।"
+        val voice = spoken ?: if (ok && prReady) "कोडिंग का काम पूरा हो गया, बॉस। जाँच और build हो गए, PR आपके review के लिए तैयार है। Merge करना हो तो बोलिए, PR merge कर दो।"
             else if (ok) "कोडिंग का काम पूरा हो गया, बॉस। जाँच और build दोनों हो गए।" else "कोडिंग का काम पूरा नहीं हो पाया। कोडिंग स्क्रीन पर वजह लिखी है."
-        
-        DKState.reply(spoken)
-        
+
+        DKState.reply(voice)
+
         val svc = DKAccessibilityService.instance
-        if (svc != null && !DKState.live) svc.scope.launch { try { svc.speaker.speak(if (title != null) "कोडिंग वाला जवाब तैयार है।" else spoken) } catch (_: Exception) {} }
+        if (svc != null && !DKState.live) svc.scope.launch { try { svc.speaker.speak(if (title != null && spoken == null) "कोडिंग वाला जवाब तैयार है।" else voice) } catch (_: Exception) {} }
     }
 
     private fun notifyUser(c: Context, title: String, text: String) = try {

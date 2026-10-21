@@ -56,6 +56,28 @@ object SafePr {
         return sb.toString().trim()
     }
 
+    private val prWords = listOf("पीआर", "पी आर", "pull request", "पुल रिक्वेस्ट")
+    private val noWords = setOf("मत", "नहीं", "नही", "mat", "nahi", "nahin", "dont", "cancel", "रद्द", "no")
+    private val doWords = setOf("कर", "करो", "करें", "करना", "कीजिए", "करिए", "दो", "दीजिए", "दें", "dijiye", "kar", "karo", "karen", "kardo", "do", "it", "now")
+
+    /** "merge" / "मर्ज" (पर "मर्ज़ी"/"मर्ज़" = बीमारी नहीं) */
+    private fun isMergeWord(t: String) = t.startsWith("merge") || t == "मर्ज" || t == "मर्ग"
+
+    /**
+     * Awaaz/likhai me "PR merge कर दो" jaisa hukm?
+     * null = merge ki baat nahi (normal kaam, jaise "merge sort banao" ya "आपकी मर्ज़ी"); true = merge karo; false = mat karo.
+     */
+    fun mergeIntent(text: String): Boolean? {
+        val low = text.lowercase(Locale.ROOT).trim()
+        val tokens = low.split(Regex("[\\s,.!?।:;\"'()-]+")).filter { it.isNotBlank() }
+        if (tokens.none { isMergeWord(it) }) return null
+        val pr = tokens.any { it == "pr" || it.startsWith("pr#") } || prWords.any { low.contains(it) }
+        val no = tokens.any { it in noWords } || low.contains("अभी नहीं") || low.contains("abhi nahi")
+        // PR का नाम न लिया हो तो सिर्फ़ छोटा, साफ़ हुक्म ("merge कर दो", "मर्ज करो") माना जाए
+        if (!pr && (tokens.size > 4 || tokens.any { !isMergeWord(it) && it !in doWords && it !in noWords })) return null
+        return !no
+    }
+
     /** PR ka description (Hindi) */
     fun prBody(summary: String, changes: String, protected: List<String>): String = buildString {
         append("DK कोडिंग एजेंट ने यह PR बनाया (सुरक्षित PR मोड)।\n\n")

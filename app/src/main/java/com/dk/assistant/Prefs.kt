@@ -130,6 +130,12 @@ object Prefs {
     fun coderSafePr(c: Context) = sp(c).getBoolean("coder_safe_pr", true)
     /** Multi-agent coding team (Builder -> Reviewer -> Coordinator), ek baar bolo baaki apne-aap */
     fun coderTeam(c: Context) = sp(c).getBoolean("coder_team", true)
+    /** Coding agent ka khula PR (app restart ke baad bhi "Merge करें" card ke liye) */
+    fun coderPrRepo(c: Context) = sp(c).getString("coder_pr_repo", "") ?: ""
+    fun coderPrBase(c: Context) = sp(c).getString("coder_pr_base", "") ?: ""
+    fun coderPrNum(c: Context) = sp(c).getInt("coder_pr_num", 0)
+    fun coderPrUrl(c: Context) = sp(c).getString("coder_pr_url", "") ?: ""
+    fun coderPrHead(c: Context) = sp(c).getString("coder_pr_head", "") ?: ""
     /** User bole to peeche ka gaana/video dheema (~20%), jawab ke baad wapas */
     fun duckMedia(c: Context) = sp(c).getBoolean("duck_media", true)
 
