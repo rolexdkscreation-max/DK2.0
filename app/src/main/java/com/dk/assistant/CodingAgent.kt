@@ -638,8 +638,13 @@ pass=true ONLY if you are confident it compiles and the task works completely.
             if (!open) { pr = null; branch = baseBranch }
         }
         if (safePr && SafePr.isBlocked(branch, baseBranch)) {
-            val name = SafePr.branchName(lastTask.ifBlank { msg })
-            gh.createBranch(repo, name, baseBranch)
+            var name = SafePr.branchName(lastTask.ifBlank { msg })
+            try { gh.createBranch(repo, name, baseBranch) } catch (e: GitHub.Err) {
+                // isi minute me isi naam ki branch pehle se (422) -> naam ke aage chhota number
+                if (e.code != 422) throw e
+                name = "$name-" + (System.currentTimeMillis() / 1000 % 100000)
+                gh.createBranch(repo, name, baseBranch)
+            }
             branch = name
             msgs.add("user" to "NOTE: working branch is now \"$name\" (created from $baseBranch). All pushes go here; a PR goes to $baseBranch.")
             msgs.add("model" to "{\"tool\":\"ask\",\"question\":\"ठीक है\"}")
