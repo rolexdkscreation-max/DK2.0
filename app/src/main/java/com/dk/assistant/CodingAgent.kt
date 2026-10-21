@@ -120,6 +120,12 @@ class CodingAgent(private val gh: GitHub, var repo: String, var branch: String, 
     /** PR nahi ban paya to wajah (token permission etc.) */
     var prError = ""
         private set
+    /** Aakhri merge ka commit sha (main par release APK build dekhne ke liye) */
+    var lastMergeSha = ""
+        private set
+    /** PR dobara banane ke liye (pehli baar token ki wajah se na bana ho) */
+    private var lastPushMsg = ""
+    private var lastChangeText = ""
     private var lastTask = ""
     private var lastSummary = ""
     /** AGENTS.md + workflows - Reviewer ko bhi dikhate hain */
@@ -151,6 +157,32 @@ class CodingAgent(private val gh: GitHub, var repo: String, var branch: String, 
     fun reset() {
         staged.clear(); original.clear(); msgs.clear(); files = null; snap = null; checkWarned = false
         branch = baseBranch; pr = null; prError = ""; lastTask = ""; lastSummary = ""; projectCtx = ""
+        lastPushMsg = ""; lastChangeText = ""
+    }
+
+    /** App restart ke baad pichhla khula PR wapas (Merge card ke liye). GitHub par band/merge mila to mergePr/push khud saaf karte hain */
+    fun restorePr(p: GitHub.Pull) {
+        if (!safePr || SafePr.isBlocked(p.head, baseBranch)) return
+        pr = p; branch = p.head; prError = ""
+    }
+
+    /** Push ho gaya (feature branch) par PR nahi bana -> screen par "PR फिर बनाएँ" */
+    val canRetryPr get() = safePr && pr == null && prError.isNotBlank() && !SafePr.isBlocked(branch, baseBranch)
+
+    /** PR dobara banao (token ki ijazat theek karne ke baad) */
+    suspend fun retryPr(): String = withContext(Dispatchers.IO) {
+        pr?.let { return@withContext "PR #${it.number} पहले से बना है: ${it.url}" }
+        if (!safePr || SafePr.isBlocked(branch, baseBranch)) return@withContext "अभी कोई feature branch push नहीं हुई"
+        prError = ""
+        pr = try {
+            gh.openPullFor(repo, branch) ?: gh.createPull(repo, branch, baseBranch, lastPushMsg.ifBlank { "DK: code changes" },
+                SafePr.prBody(lastSummary, lastChangeText, emptyList()))
+        } catch (e: Exception) {
+            prError = (e.message ?: e.javaClass.simpleName).take(200) +
+                " — token में Pull requests: Read and write दें, या GitHub पर $branch से PR खुद बनाएँ"
+            null
+        }
+        pr?.let { "✓ PR #${it.number} बन गया — tests + build पूरे होने पर \"Merge करें\" दबाएँ\n${it.url}" } ?: "PR फिर नहीं बना: $prError"
     }
 
     private fun system() = """
@@ -652,6 +684,7 @@ pass=true ONLY if you are confident it compiles and the task works completely.
         if (safePr && SafePr.isBlocked(branch, baseBranch)) throw IllegalStateException("सुरक्षित PR मोड: $branch पर सीधे push मना है")
         val url = gh.commit(repo, branch, staged.toMap(), msg)
         lastSha = url.substringAfterLast('/')
+        lastPushMsg = msg; lastChangeText = changeText
         // ab GitHub par yahi naya code hai (repo ki copy bhi)
         val m = snap?.toMutableMap()
         staged.forEach { (p, c) -> original[p] = c; if (m != null) { if (c == null) m.remove(p) else m[p] = c } }
@@ -678,10 +711,11 @@ pass=true ONLY if you are confident it compiles and the task works completely.
      * @return Hindi nateeja
      */
     suspend fun mergePr(): String = withContext(Dispatchers.IO) {
+        lastMergeSha = ""
         val p = pr ?: return@withContext "कोई PR नहीं है"
         val st = gh.pullState(repo, p.number)
         if (st.merged) { reset(); return@withContext "PR #${p.number} पहले ही merge हो चुका है" }
-        if (!st.open) return@withContext "PR #${p.number} बंद है — GitHub पर देखें"
+        if (!st.open) { reset(); return@withContext "PR #${p.number} GitHub पर बंद कर दिया गया है — अगला काम नई branch और नए PR में होगा" }
         if (st.mergeable == false) return@withContext "PR में $baseBranch से टकराव (conflict) है — पहले उसे ठीक करें"
         val runs = try { gh.runsFor(repo, st.headSha) } catch (e: GitHub.Err) {
             return@withContext "Build/tests नहीं देख पाया (${e.message}) — token में Actions: Read दें"
@@ -691,7 +725,8 @@ pass=true ONLY if you are confident it compiles and the task works completely.
         runs.firstOrNull { it.conclusion !in listOf("success", "skipped", "neutral") }?.let {
             return@withContext "Build/tests fail हैं (${it.name}) — merge नहीं किया\n${it.url}"
         }
-        val sha = gh.mergePull(repo, p.number, "${lastTask.ifBlank { "DK changes" }.take(90)} (#${p.number})")
+        val sha = gh.mergePull(repo, p.number, "${lastTask.ifBlank { p.head.ifBlank { "DK changes" } }.take(90)} (#${p.number})")
+        lastMergeSha = sha
         val br = branch
         try { gh.deleteBranch(repo, br) } catch (_: Exception) {}
         reset()

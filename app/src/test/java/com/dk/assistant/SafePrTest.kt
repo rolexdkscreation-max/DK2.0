@@ -2,6 +2,7 @@ package com.dk.assistant
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.util.Calendar
@@ -47,5 +48,30 @@ class SafePrTest {
         assertTrue(ctx.contains(".github/workflows/check.yml"))
         assertTrue(ctx.contains("CodingAgent.kt"))
         assertFalse(ctx.contains("Speaker.kt"))
+    }
+
+    // ---- आवाज़ से "PR merge कर दो"
+    @Test fun mergeIntent_hindiWithPr() {
+        assertEquals(true, SafePr.mergeIntent("PR merge कर दो"))
+        assertEquals(true, SafePr.mergeIntent("कोडिंग एजेंट, पीआर मर्ज कर दो।"))
+        assertEquals(true, SafePr.mergeIntent("PR #12 को main में merge करो"))
+    }
+
+    @Test fun mergeIntent_shortCommand() {
+        assertEquals(true, SafePr.mergeIntent("merge कर दो"))
+        assertEquals(true, SafePr.mergeIntent("मर्ज करो"))
+        assertEquals(true, SafePr.mergeIntent("merge karo"))
+    }
+
+    @Test fun mergeIntent_negative() {
+        assertEquals(false, SafePr.mergeIntent("PR अभी merge मत करो"))
+        assertEquals(false, SafePr.mergeIntent("merge nahi karo"))
+    }
+
+    @Test fun mergeIntent_notAMergeCommand() {
+        assertNull(SafePr.mergeIntent("Settings में dark mode switch जोड़ो"))
+        assertNull(SafePr.mergeIntent("merge sort वाला function बनाओ"))
+        assertNull(SafePr.mergeIntent("जैसी आपकी मर्ज़ी"))
+        assertNull(SafePr.mergeIntent("दो lists को merge करने वाला code लिखो"))
     }
 }

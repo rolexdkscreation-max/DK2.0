@@ -37,6 +37,39 @@ object CoderSession {
     @Volatile var listener: (() -> Unit)? = null
     fun add(role: String, t: String) { lines.add(Line(role, t)); if (lines.size > 300) lines.removeAt(0); listener?.invoke() }
     val busy get() = job?.isActive == true
+    @Volatile private var appCtx: Context? = null
+
+    /**
+     * Har kaam isi se chalao. Kaam KHATAM hone ke baad (busy = false) screen dobara banti hai —
+     * pehle listener kaam ke andar hi chalta tha (tab busy = true), isliye "Merge करें" card chhupa reh jaata tha.
+     */
+    fun launch(c: Context, block: suspend CoroutineScope.() -> Unit): Job {
+        appCtx = c.applicationContext
+        val j = scope.launch(block = block)
+        job = j
+        j.invokeOnCompletion { scope.launch { savePr(appCtx); listener?.invoke() } }
+        return j
+    }
+
+    /** Khula PR yaad rakho - app band/restart hone par bhi "Merge करें" wapas mile */
+    fun savePr(c: Context?) {
+        val ctx = c ?: return
+        val a = agent ?: return
+        val p = a.pr
+        Prefs.edit(ctx) {
+            if (p != null) {
+                putString("coder_pr_repo", a.repo); putString("coder_pr_base", a.baseBranch)
+                putInt("coder_pr_num", p.number); putString("coder_pr_url", p.url); putString("coder_pr_head", a.branch)
+            } else { remove("coder_pr_repo"); remove("coder_pr_base"); remove("coder_pr_num"); remove("coder_pr_url"); remove("coder_pr_head") }
+        }
+    }
+
+    private fun restorePr(c: Context, a: CodingAgent) {
+        if (!a.safePr || Prefs.coderPrRepo(c) != a.repo || Prefs.coderPrBase(c) != a.baseBranch) return
+        val n = Prefs.coderPrNum(c); val head = Prefs.coderPrHead(c)
+        if (n <= 0 || SafePr.isBlocked(head, a.baseBranch)) return
+        a.restorePr(GitHub.Pull(n, Prefs.coderPrUrl(c), head, a.baseBranch))
+    }
 
     /** Kya kami hai (screen aur awaaz dono ke liye) */
     fun problems(c: Context): List<String> = buildList {
@@ -54,7 +87,7 @@ object CoderSession {
         val a = agent
         // baseBranch = aapki chuni (main); kaam wali feature branch alag ho sakti hai
         if (a != null && a.repo == repo && a.baseBranch == br) return a.also { if (it.pr == null) it.safePr = Prefs.coderSafePr(c) }
-        return CodingAgent(gh, repo, br, ai).also { it.safePr = Prefs.coderSafePr(c); agent = it }
+        return CodingAgent(gh, repo, br, ai).also { it.safePr = Prefs.coderSafePr(c); restorePr(c, it); agent = it }
     }
 }
 
@@ -156,7 +189,7 @@ class CodingActivity : AppCompatActivity() {
         val problems = problems()
         return if (problems.isEmpty() && Prefs.coderTeam(this))
             "नमस्ते। कोडिंग टीम तैयार है — ${Prefs.ghRepo(this)} (${Prefs.ghBranch(this)}).\n" +
-                "एक बार बताइए (लिखकर या 🎤 से) क्या बनाना है। बिल्डर लिखेगा → रिव्यूअर खुद जाँचेगा → गड़बड़ी हो तो वापस ठीक → अपने-आप push → GitHub build जाँच → पूरा होने पर बताऊँगा।\n" +
+                "एक बार बताइए (लिखकर या 🎤 से) क्या बनाना है। बिल्डर लिखेगा → रिव्यूअर खुद जाँचेगा → गड़बड़ी हो तो वापस ठीक → अपने-आप push → GitHub tests + build जाँच → पूरा होने पर बताऊँगा और \"Merge करें\" बटन दिखेगा (merge होते ही नई APK release)।\n" +
                 "कोई अतिरिक्त चीज़ ज़रूरी लगी तो खुद नहीं जोड़ूँगा — आपसे पूछूँगा।" + safeNote()
         else if (problems.isEmpty())
             "नमस्ते। मैं ${Prefs.ghRepo(this)} (${Prefs.ghBranch(this)}) पर काम करूँगा।\nबताइए क्या बनाना/बदलना/हटाना है। मैं पहले बदलाव दिखाऊँगा, फिर \"Push करें\" दबाने पर GitHub पर भेजूँगा" +
@@ -192,7 +225,7 @@ class CodingActivity : AppCompatActivity() {
         if (Prefs.coderTeam(this)) { CoderTeam.start(this, t)?.let { CoderSession.add("e", it) }; render(); return }
         val a = agent() ?: return
         CoderSession.add("u", t)
-        CoderSession.job = CoderSession.scope.launch {
+        CoderSession.launch(this) {
             try {
                 val out = a.run(t) { step -> CoderSession.scope.launch { CoderSession.add("s", step) } }
                 CoderSession.add("d", out.summary)
@@ -274,12 +307,8 @@ class CodingActivity : AppCompatActivity() {
             .setTitle("PR #${p.number} merge करें?")
             .setMessage("${a.branch} → ${a.baseBranch}\n\nक्या आपने GitHub पर बदलाव review कर लिए? Merge तभी होगा जब PR के unit tests + build पास हों।")
             .setPositiveButton("Merge करें") { _, _ ->
-                CoderSession.job = CoderSession.scope.launch {
-                    CoderSession.add("s", "PR #${p.number} की जाँच (tests/build/conflict) करके merge कर रहा हूँ…")
-                    try { CoderSession.add("d", a.mergePr()) }
-                    catch (e: Exception) { CoderSession.add("e", "Merge नहीं हुआ: " + (e.message ?: e.javaClass.simpleName).take(300)) }
-                    CoderSession.listener?.invoke()
-                }
+                // जाँच (tests/build/conflict) → merge → main पर release APK build देखना → बताना
+                CoderTeam.merge(this)?.let { CoderSession.add("e", it) }
                 render()
             }
             .setNegativeButton("अभी नहीं", null).show()
@@ -334,7 +363,7 @@ class CodingActivity : AppCompatActivity() {
 
     private fun newSession() {
         if (CoderSession.busy) { toast("पहले चल रहा काम रोकें"); return }
-        CoderSession.agent?.reset(); CoderSession.agent = null
+        CoderSession.agent?.reset(); CoderSession.savePr(this); CoderSession.agent = null
         CoderTeam.suggestions.clear()
         CoderSession.lines.clear(); shown = 0; list.removeAllViews()
         CoderSession.add("d", welcome())
@@ -365,6 +394,8 @@ class CodingActivity : AppCompatActivity() {
     override fun onResume() {
         super.onResume()
         CoderSession.listener = { runOnUiThread { render() } }
+        // app दोबारा खुली हो तो पिछला खुला PR (Merge card) वापस लाओ
+        if (CoderSession.agent == null && problems().isEmpty()) CoderSession.agentFor(this)
         render(); keepTyping()
     }
 
@@ -400,7 +431,7 @@ class CodingActivity : AppCompatActivity() {
                     .setMessage("${a.repo} • " + (if (a.safePr && a.pr == null) "नई branch (feature/dk-…) → PR → ${a.baseBranch}" else a.branch) +
                         "\n\n${a.changeList()}\n\nCommit: ${CoderSession.lastCommit.ifBlank { "DK: code changes" }}" +
                         SafePr.protectedIn(a.staged.keys).let { if (it.isEmpty()) "" else "\n\n⚠ संवेदनशील फ़ाइलें: " + it.joinToString() })
-                    .setPositiveButton("Push करें") { _, _ -> CoderSession.job = CoderSession.scope.launch { push(applicationContext); CoderSession.listener?.invoke() }; render() }
+                    .setPositiveButton("Push करें") { _, _ -> CoderSession.launch(this) { push(applicationContext) }; render() }
                     .setNegativeButton("रुको", null).show()
             }, LinearLayout.LayoutParams(0, (40 * dp).toInt(), 1f).apply { marginEnd = (8 * dp).toInt() })
             row.addView(smallBtn("फ़र्क देखें") { showDiff(a) }, LinearLayout.LayoutParams(0, (40 * dp).toInt(), 1f).apply { marginEnd = (8 * dp).toInt() })
@@ -417,13 +448,36 @@ class CodingActivity : AppCompatActivity() {
                 setTypeface(typeface, Typeface.BOLD); setTextColor(0xFFFFFFFF.toInt())
             })
             changes.addView(TextView(this).apply {
-                text = "${a.branch} → ${a.baseBranch}\nGitHub पर बदलाव देखें; tests + build पास हों तो Merge करें। और बदलाव चाहिए तो बस लिखिए — उसी PR में जुड़ेंगे।"
+                text = "${a.branch} → ${a.baseBranch}\nGitHub पर बदलाव देखें; tests + build पास हों तो Merge करें (या DK से बोलें: \"PR merge कर दो\")। Merge होते ही नई APK release बनेगी। और बदलाव चाहिए तो बस लिखिए — उसी PR में जुड़ेंगे।"
                 textSize = 12f; setTextColor(0xCCFFFFFF.toInt()); setPadding(0, (4 * dp).toInt(), 0, (6 * dp).toInt())
             })
             val row = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
             row.addView(smallBtn("PR खोलें") { Setup.openUrl(this, p.url) },
                 LinearLayout.LayoutParams(0, (40 * dp).toInt(), 1f).apply { marginEnd = (8 * dp).toInt() })
             row.addView(smallBtn("Merge करें", accent = true) { confirmMerge(a) }, LinearLayout.LayoutParams(0, (40 * dp).toInt(), 1f))
+            changes.addView(row)
+        } else if (a != null && a.canRetryPr && !CoderSession.busy) {
+            // Push हो गया पर PR नहीं बना (अक्सर token की इजाज़त) - वजह + दोबारा कोशिश, ताकि Merge तक पहुँचें
+            changes.visibility = View.VISIBLE
+            changes.addView(TextView(this).apply {
+                text = "⚠ PR नहीं बना — इसलिए Merge का बटन नहीं है"; textSize = 14f
+                setTypeface(typeface, Typeface.BOLD); setTextColor(0xFFFFFFFF.toInt())
+            })
+            changes.addView(TextView(this).apply {
+                text = "${a.branch} → ${a.baseBranch}\n${a.prError}"
+                textSize = 12f; setTextColor(0xCCFFFFFF.toInt()); setPadding(0, (4 * dp).toInt(), 0, (6 * dp).toInt())
+            })
+            val row = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+            row.addView(smallBtn("PR फिर बनाएँ", accent = true) {
+                CoderSession.launch(this) {
+                    CoderSession.add("s", "PR दोबारा बना रहा हूँ…")
+                    try { val r = a.retryPr(); CoderSession.add(if (a.pr != null) "d" else "e", r) }
+                    catch (e: Exception) { CoderSession.add("e", "PR नहीं बना: " + (e.message ?: e.javaClass.simpleName).take(300)) }
+                }
+                render()
+            }, LinearLayout.LayoutParams(0, (40 * dp).toInt(), 1f).apply { marginEnd = (8 * dp).toInt() })
+            row.addView(smallBtn("GitHub पर बनाएँ") { Setup.openUrl(this, "https://github.com/${a.repo}/compare/${a.baseBranch}...${a.branch}?expand=1") },
+                LinearLayout.LayoutParams(0, (40 * dp).toInt(), 1f))
             changes.addView(row)
         } else changes.visibility = View.GONE
     }
