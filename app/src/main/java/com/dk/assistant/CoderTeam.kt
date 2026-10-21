@@ -18,10 +18,10 @@ import org.json.JSONObject
  *  1. BUILDER   (CodingAgent.run)    - user ki baat sunkar code likhta/badalta hai
  *  2. REVIEWER  (CodingAgent.review) - bina pooche khud jaanchta hai: bug, compile galti, logic, adhoora kaam, bina maange badlaav
  *  3. COORDINATOR (yeh object)       - yojana banata hai, kab kisko kaam dena / wapas bhejna, push, GitHub build dekhna,
- *                                      sujhav user se poochna, aur kaam khatam hone par user ko batana (chat + awaaz + notification)
+ *                                      sujhav user से पूछना, aur kaam khatam hone par user ko batana (chat + awaaz + notification)
  *
  * User ek baar bolta/likhta hai; baaki chakra (Builder ⇄ Reviewer, phir push + build ⇄ fix) khud chalta hai.
- * Sujhav (jo user ne nahi maanga) kabhi khud nahi jode jaate - "हाँ" milne par hi agla kaam bante hain.
+ * Sujhav (jo user ने नहीं मांगा) कभी खुद नहीं जोड़े जाते - "हाँ" मिलने पर ही अगले काम बनते हैं।
  */
 object CoderTeam {
     const val MAX_REVIEW_ROUNDS = 5
@@ -30,21 +30,16 @@ object CoderTeam {
     data class Suggestion(val id: Int, val title: String, val why: String, val task: String, var state: String = "pending") // pending/yes/no/done
     val suggestions = mutableListOf<Suggestion>()
     private var nextId = 1
-    /** "हाँ" mile sujhav - mukhya kaam ke baad isi team se banenge */
     private val queue = ArrayDeque<String>()
 
     private fun say(role: String, t: String) = CoderSession.add(role, t)
     private fun step(t: String) { CoderSession.scope.launch { CoderSession.add("s", t) } }
 
-    /**
-     * Naya kaam (screen ya awaaz se). Jawab: null = shuru ho gaya, warna kya theek karna hai.
-     */
     fun start(ctx: Context, task: String, fromVoice: Boolean = false): String? {
         val c = ctx.applicationContext
         val p = CoderSession.problems(c)
         if (p.isNotEmpty()) return "कोडिंग एजेंट तैयार नहीं: " + p.joinToString(", ")
         if (CoderSession.busy) {
-            // pehle wala chal raha hai -> line me lagao (rokna nahi)
             queue.addLast(task); say("u", task); say("s", "कोऑर्डिनेटर: अभी का काम पूरा होते ही यह शुरू होगा (कतार में ${queue.size})")
             return null
         }
@@ -52,12 +47,13 @@ object CoderTeam {
         say("u", (if (fromVoice) "🎤 " else "") + task)
         CoderSession.job = CoderSession.scope.launch {
             try {
-                var t: String? = task
-                while (t != null) {
-                    kotlinx.coroutines.withTimeout(10 * 60 * 1000L) { // 10 minutes timeout per task
-                        pipeline(c, a, t)
+                var currentTask: String? = task
+                while (currentTask != null) {
+                    val taskToRun = currentTask
+                    kotlinx.coroutines.withTimeout(10 * 60 * 1000L) {
+                        pipeline(c, a, taskToRun)
                     }
-                    t = queue.removeFirstOrNull()
+                    currentTask = queue.removeFirstOrNull()
                 }
             } catch (e: kotlinx.coroutines.TimeoutCancellationException) {
                 val msg = "कोडिंग का काम तय समय (10 मिनट) में पूरा नहीं हो पाया।"
@@ -75,22 +71,18 @@ object CoderTeam {
         return null
     }
 
-    // ================================================================ coordinator ka poora chakra
     private suspend fun pipeline(c: Context, a: CodingAgent, task: String) {
         a.teamMode = true
         a.onSuggest = { t, w, tk -> CoderSession.scope.launch { addSuggestion(c, t, w, tk) } }
 
-        // 1) yojana: lakshya + "kab maana jaye ki kaam pura" (Reviewer isi se jaanchega)
         say("s", "कोऑर्डिनेटर: काम समझ रहा हूँ…")
         val plan = plan(c, task)
         if (plan.second.isNotEmpty()) say("s", "कोऑर्डिनेटर: पूरा होने की शर्तें —\n" + plan.second.joinToString("\n") { "• $it" })
 
-        // 2) Builder
         say("s", "बिल्डर: काम शुरू…")
         var out = a.run(task + if (plan.first.isNotBlank()) "\n(Coordinator brief: ${plan.first})" else "") { st -> step("बिल्डर: $st") }
         var asked = 0
         while (out.question && asked < 2) {
-            // team mode me user ko beech me nahi rokte - sabse sahi andaza lagwao
             asked++
             say("s", "कोऑर्डिनेटर: बिल्डर ने पूछा \"${out.summary.take(120)}\" — सबसे सही अंदाज़े से आगे बढ़ने को कहा")
             out = a.run("Coordinator: do not wait for the user. Choose the most reasonable option yourself, note the assumption in the summary, and finish the task.") { st -> step("बिल्डर: $st") }
@@ -100,7 +92,6 @@ object CoderTeam {
         var commit = out.commit.ifBlank { "DK: ${task.take(60)}" }
         val summary = out.summary.ifBlank { "काम हो गया।" }
 
-        // 3) Builder ⇄ Reviewer jab tak sahi na ho
         var buildRound = 0
         while (true) {
             var r: CodingAgent.Review? = null
@@ -123,7 +114,6 @@ object CoderTeam {
                 return
             }
 
-            // 4) push (team mode: apne-aap) + GitHub build = asli compile/test
             say("s", "कोऑर्डिनेटर: GitHub पर push…")
             val n = a.staged.size
             val url = a.push(commit)
@@ -137,16 +127,14 @@ object CoderTeam {
             if (b.ok) { finish(c, summary + "\n\n✓ रिव्यूअर पास • ✓ Push • ✓ GitHub build सफल\n${b.url}", ok = true); return }
             buildRound++
             say("e", "Build fail ✗ (${buildRound}/$MAX_BUILD_ROUNDS)\n${b.url}")
-            if (buildRound >= MAX_BUILD_ROUNDS) { finish(c, "$MAX_BUILD_ROUNDS बार ठीक करने के बाद भी build fail।\n${b.url}", ok = false); return }
+            if (buildRound >= MAX_BUILD_ROUNDS) { finish(c, "$MAX_BUILD_ROUNDS बार ठीक करने के बाद भी build fail。\n${b.url}", ok = false); return }
             say("s", "कोऑर्डिनेटर: build की गलती बिल्डर को भेजी")
             val fix = a.run("BUILD FAILED on GitHub Actions after the last push (commit ${a.lastSha.take(7)}). Find the real cause, read the mentioned files/lines, fix ONLY that.\nBUILD LOG:\n${b.log}") { st -> step("बिल्डर: $st") }
             commit = fix.commit.ifBlank { "Fix build" }
-            if (a.staged.isEmpty()) { finish(c, "बिल्डर build की गलती नहीं ढूँढ पाया।\n${b.url}", ok = false); return }
-            // dobara Reviewer -> push -> build
+            if (a.staged.isEmpty()) { finish(c, "बिल्डर build की गलती नहीं ढूँढ पाया。\n${b.url}", ok = false); return }
         }
     }
 
-    /** Coordinator ki chhoti yojana: (brief, acceptance criteria) + zaroori sujhav */
     private suspend fun plan(c: Context, task: String): Pair<String, List<String>> = withContext(Dispatchers.IO) {
         val ai = CoderAi.fromPrefs(c) ?: return@withContext "" to emptyList()
         val sys = """
@@ -171,13 +159,11 @@ acceptance must only cover what the user asked. suggestions: ONLY things the use
         } catch (e: Exception) { DKLog.d("Coordinator plan nahi bana: ${e.message}"); "" to emptyList() }
     }
 
-    // ================================================================ sujhav (proactive suggestions)
     private fun addSuggestion(c: Context, title: String, why: String, task: String) {
         if (suggestions.any { it.title.equals(title, true) || it.task.equals(task, true) }) return
         val sg = Suggestion(nextId++, title.take(80), why.take(300), task.take(600))
         suggestions.add(sg)
         say("s", "💡 सुझाव: ${sg.title} — नीचे हाँ/नहीं चुनें (काम चलता रहेगा)")
-        // awaaz se bhi bata do (chhota) - mukhya kaam nahi rukta
         val svc = DKAccessibilityService.instance
         if (svc != null && !DKState.live) svc.scope.launch { try { svc.speaker.speak("एक सुझाव है: ${sg.title}। जोड़ना हो तो बोलिए, सुझाव जोड़ दो।") } catch (_: Exception) {} }
         CoderSession.listener?.invoke()
@@ -185,7 +171,6 @@ acceptance must only cover what the user asked. suggestions: ONLY things the use
 
     val pending get() = suggestions.filter { it.state == "pending" }
 
-    /** User ka faisla. yes = mukhya kaam ke baad (ya abhi, agar khaali) team isse banayegi */
     fun decide(c: Context, id: Int, yes: Boolean) {
         val sg = suggestions.firstOrNull { it.id == id && it.state == "pending" } ?: return
         sg.state = if (yes) "yes" else "no"
@@ -197,7 +182,6 @@ acceptance must only cover what the user asked. suggestions: ONLY things the use
         CoderSession.listener?.invoke()
     }
 
-    /** Awaaz se: "सुझाव जोड़ दो" / "सुझाव नहीं" - true = sambhal liya */
     fun voiceDecision(c: Context, text: String): String? {
         val low = text.lowercase()
         if (!(low.contains("सुझाव") || low.contains("suggestion") || low.contains("sujhav"))) return null
@@ -209,14 +193,12 @@ acceptance must only cover what the user asked. suggestions: ONLY things the use
         return if (yes && !no) "ठीक है, \"${sg.title}\" भी जोड़ दूँगी।" else "ठीक है, \"${sg.title}\" नहीं जोड़ूँगी।"
     }
 
-    // ================================================================ user ko batana
     private fun finish(c: Context, text: String, ok: Boolean, title: String? = null) {
         say(if (ok) "d" else "e", (if (ok) "✅ " else "⚠ ") + text)
         val head = title ?: if (ok) "कोडिंग टीम: काम पूरा" else "कोडिंग टीम: काम अधूरा"
         notifyUser(c, head, text.lines().first().take(120))
         val spoken = if (ok) "कोडिंग का काम पूरा हो गया, बॉस। जाँच और build दोनों हो गए।" else "कोडिंग का काम पूरा नहीं हो पाया। कोडिंग स्क्रीन पर वजह लिखी है."
         
-        // Notify DK state / live / main chat so DK tells the user directly
         DKState.reply(spoken)
         
         val svc = DKAccessibilityService.instance

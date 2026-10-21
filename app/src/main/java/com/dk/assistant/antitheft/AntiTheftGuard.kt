@@ -38,7 +38,7 @@ object AntiTheftGuard {
 
     const val PREF_GUARD_ON = "anti_theft_guard_on"
     const val CHANNEL_ID = "anti_theft_guard_channel"
-    private const val NOTIF_ID = 9999
+    const val NOTIF_ID = 9999
 
     fun isOn(c: Context): Boolean = c.getSharedPreferences("dk_prefs", Context.MODE_PRIVATE).getBoolean(PREF_GUARD_ON, false)
 
@@ -147,7 +147,7 @@ class GuardService : Service() {
         activeInstance = this
         createNotificationChannel()
         val notif = buildNotification("एंटी-थिफ्ट गार्ड सक्रिय है (रक्षक चालू)")
-        startForeground(NOTIF_ID, notif)
+        startForeground(AntiTheftGuard.NOTIF_ID, notif)
 
         val pm = getSystemService(Context.POWER_SERVICE) as PowerManager
         wakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "DK::GuardWakeLock").apply {
