@@ -34,8 +34,12 @@ run() {
   adb install -r -g "$apk"
   adb logcat -c
   adb shell am start -S -W -n $PKG/.MainActivity;                          shot ${tag}_01_home 12
+  shot ${tag}_01b_home_late 14
   adb shell input keyevent KEYCODE_BACK; sleep 1
   adb shell am start -S -W -n $PKG/.SettingsActivity;                      shot ${tag}_02_settings 4
+  # dabaane ki haalat (pressed): pehle card ko 3 sec dabaye rakho aur beech me screenshot
+  (adb shell input swipe 540 560 540 560 3000 &) ; sleep 1.2;               shot ${tag}_02b_pressed 0
+  sleep 3; adb shell input keyevent KEYCODE_BACK; sleep 1
   adb shell am start -S -W -n $PKG/.SettingsActivity --es section voice;   shot ${tag}_03_settings_voice 4
   adb shell am start -S -W -n $PKG/.SettingsActivity --es section profile; shot ${tag}_04_settings_profile 4
   adb shell am force-stop $PKG
