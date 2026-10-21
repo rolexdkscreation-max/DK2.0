@@ -202,6 +202,7 @@ class AgentRunner(
             speaker.stop(); DKState.reply("ठीक है।"); return
         }
         if (memoryCommand(goal)) return
+        if (com.dk.assistant.antitheft.AntiTheftGuard.handleVoiceCommand(svc, goal)) return
         // कोडिंग टीम: "सुझाव जोड़ दो / नहीं" और "कोडिंग एजेंट, ... बनाओ"
         if (Prefs.coderOn(svc)) {
             CoderTeam.voiceDecision(svc, goal)?.let { say(it); return }

@@ -16,6 +16,7 @@
     <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
+    <uses-permission android:name="android.permission.CAMERA" />
     <!-- adb se di jaaye to DK apni Accessibility khud ON rakhta hai -->
     <uses-permission android:name="android.permission.WRITE_SECURE_SETTINGS" tools:ignore="ProtectedPermissions" />
 
@@ -107,5 +108,24 @@
             android:name=".KeepAliveService"
             android:exported="false"
             android:foregroundServiceType="microphone" />
+
+        <!-- Anti-Theft Guard Service -->
+        <service
+            android:name=".antitheft.GuardService"
+            android:exported="false" />
+
+        <!-- Anti-Theft Device Admin Receiver -->
+        <receiver
+            android:name=".antitheft.GuardDeviceAdminReceiver"
+            android:permission="android.permission.BIND_DEVICE_ADMIN"
+            android:exported="true">
+            <meta-data
+                android:name="android.app.device_admin"
+                android:resource="@xml/device_admin" />
+            <intent-filter>
+                <action android:name="android.app.action.DEVICE_ADMIN_ENABLED" />
+                <action android:name="android.app.action.ACTION_PASSWORD_FAILED" />
+            </intent-filter>
+        </receiver>
     </application>
 </manifest>

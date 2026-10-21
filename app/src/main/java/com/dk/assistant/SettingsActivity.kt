@@ -95,8 +95,26 @@ class SettingsActivity : AppCompatActivity() {
             "update" -> { title.text = "अपडेट"; secUpdate() }
             "debug" -> { title.text = "डिबग लॉग"; bar.visibility = View.GONE; secDebug() }
             "coder" -> { title.text = "कोडिंग एजेंट"; secCoder() }
+            "guard_photos" -> { title.text = "गार्ड फ़ोटो"; secGuardPhotos() }
         }
         space(container, 8)
+    }
+
+    private fun secGuardPhotos() {
+        card("गार्ड फ़ोटो", "घुसपैठियों की ली गई फ़ोटो") { box ->
+            val photos = com.dk.assistant.antitheft.AntiTheftGuard.listPhotos(this)
+            if (photos.isEmpty()) {
+                box.addView(TextView(this).apply { text = "कोई फ़ोटो नहीं है"; setPadding(20, 20, 20, 20) })
+            } else {
+                photos.forEach { file ->
+                    row(box, TextView(this).apply { text = file.name; setPadding(10, 10, 10, 10) }, button("हटाएँ") {
+                        file.delete()
+                        finish()
+                        startActivity(intent)
+                    })
+                }
+            }
+        }
     }
 
     // ------------------------------------------------------------ mukhya menu
@@ -111,6 +129,7 @@ class SettingsActivity : AppCompatActivity() {
             Triple("perms", "परमिशन", "माइक • स्क्रीन देखना • नोटिफ़िकेशन • कॉल • ऐप इंस्टॉल"),
             Triple("coder", "कोडिंग एजेंट", (if (Prefs.coderOn(this)) "✓ चालू" else "✗ बंद") + " • GitHub से जुड़ें • कोड लिखें/बदलें/हटाएँ • push • अलग AI key"),
             Triple("story", "स्टोरी राइटर एजेंट", "लंबी हिंदी कहानियाँ (10–30 मिनट) • भाग-दर-भाग • कॉपी • फ़ोन में सेव"),
+            Triple("guard", "एंटी-थिफ्ट गार्ड", (if (com.dk.assistant.antitheft.AntiTheftGuard.isOn(this)) "✓ चालू" else "✗ बंद") + " • चोरी से सुरक्षा • फ़ोटो गैलरी"),
             Triple("update", "अपडेट", "अभी: ${Updater.displayVersion(this)} • नया version चेक करें"),
             Triple("debug", "डिबग लॉग", "माइक, कनेक्शन, देरी और गलतियों का पूरा हाल")
         )
@@ -123,6 +142,7 @@ class SettingsActivity : AppCompatActivity() {
                 setOnClickListener {
                     // Story Writer: seedha apni screen (iski koi settings nahi)
                     if (id == "story") startActivity(android.content.Intent(this@SettingsActivity, StoryWriterActivity::class.java))
+                    else if (id == "guard") showGuardSettingsDialog()
                     else startActivity(android.content.Intent(this@SettingsActivity, SettingsActivity::class.java).putExtra("section", id))
                 }
             }
@@ -151,8 +171,82 @@ class SettingsActivity : AppCompatActivity() {
         "perms" -> R.drawable.ic_s_perms
         "coder" -> R.drawable.ic_s_coder
         "story" -> R.drawable.ic_s_story
+        "guard" -> R.drawable.ic_s_debug
         "update" -> R.drawable.ic_s_update
         else -> R.drawable.ic_s_debug
+    }
+
+    private fun showGuardSettingsDialog() {
+        val dialogView = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            val pad = (20 * dp).toInt()
+            setPadding(pad, pad, pad, pad)
+        }
+        val sw = SwitchCompat(this).apply {
+            text = "एंटी-थिफ्ट गार्ड मोड"
+            isChecked = com.dk.assistant.antitheft.AntiTheftGuard.isOn(this@SettingsActivity)
+            textSize = 16f
+            setTextColor(0xFFFFFFFF.toInt())
+        }
+        dialogView.addView(sw)
+
+        val btnPhotos = button("गार्ड फ़ोटो देखें") {
+            startActivity(android.content.Intent(this, SettingsActivity::class.java).putExtra("section", "guard_photos"))
+        }
+        dialogView.addView(btnPhotos, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = 12 })
+
+        val btnAdmin = button("डिवाइस एडमिन (Screen Lock) चालू करें") {
+            val intent = android.content.Intent(android.app.admin.DevicePolicyManager.ACTION_ADD_DEVICE_ADMIN).apply {
+                putExtra(android.app.admin.DevicePolicyManager.EXTRA_DEVICE_ADMIN, android.content.ComponentName(this@SettingsActivity, com.dk.assistant.antitheft.GuardDeviceAdminReceiver::class.java))
+                putExtra(android.app.admin.DevicePolicyManager.EXTRA_ADD_EXPLANATION, "DK को स्क्रीन लॉक करने और गलत PIN प्रयासों को गिनने के लिए डिवाइस एडमिन की आवश्यकता है।")
+            }
+            startActivity(intent)
+        }
+        dialogView.addView(btnAdmin, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = 12 })
+
+        val btnPerms = button("परमिशन और निर्देश (Camera / Battery)") {
+            android.app.AlertDialog.Builder(this, Glass.DIALOG)
+                .setTitle("एंटी-थिफ्ट गार्ड निर्देश")
+                .setMessage("1. कैमरा परमिशन: घुसपैठिए की फ़ोटो लेने के लिए ज़रूरी है।\n2. बैटरी ऑप्टिमाइज़ेशन: गार्ड सेवा को बैकग्राउंड में चालू रखने के लिए इग्नोर करें।\n3. डिवाइस एडमिन: लेवल 3 पर स्क्रीन लॉक करने के लिए ज़रूरी है।")
+                .setPositiveButton("कैमरा परमिशन दें") { _, _ ->
+                    androidx.core.app.ActivityCompat.requestPermissions(this, arrayOf(android.Manifest.permission.CAMERA), 200)
+                }
+                .setNeutralButton("बैटरी छूट दें") { _, _ ->
+                    Setup.requestBatteryExempt(this)
+                }
+                .setNegativeButton("बंद करें", null)
+                .show()
+        }
+        dialogView.addView(btnPerms, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = 12 })
+
+        android.app.AlertDialog.Builder(this, Glass.DIALOG)
+            .setTitle("एंटी-थिफ्ट गार्ड सेटिंग्स")
+            .setView(dialogView)
+            .setPositiveButton("सहेजें") { _, _ ->
+                val on = sw.isChecked
+                if (on) {
+                    if (androidx.core.content.ContextCompat.checkSelfPermission(this, android.Manifest.permission.CAMERA) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+                        toast("कृपया पहले कैमरा परमिशन दें")
+                        androidx.core.app.ActivityCompat.requestPermissions(this, arrayOf(android.Manifest.permission.CAMERA), 200)
+                        return@setPositiveButton
+                    }
+                    val dpm = getSystemService(android.app.DevicePolicyManager::class.java)
+                    val comp = android.content.ComponentName(this, com.dk.assistant.antitheft.GuardDeviceAdminReceiver::class.java)
+                    if (dpm != null && !dpm.isAdminActive(comp)) {
+                        toast("कृपया डिवाइस एडमिन चालू करें ताकि स्क्रीन लॉक हो सके")
+                        val intent = android.content.Intent(android.app.admin.DevicePolicyManager.ACTION_ADD_DEVICE_ADMIN).apply {
+                            putExtra(android.app.admin.DevicePolicyManager.EXTRA_DEVICE_ADMIN, comp)
+                            putExtra(android.app.admin.DevicePolicyManager.EXTRA_ADD_EXPLANATION, "DK को स्क्रीन लॉक करने के लिए डिवाइस एडमिन की आवश्यकता है।")
+                        }
+                        startActivity(intent)
+                        return@setPositiveButton
+                    }
+                }
+                com.dk.assistant.antitheft.AntiTheftGuard.setOn(this, on)
+                toast(if (on) "एंटी-थिफ्ट गार्ड चालू कर दिया गया है" else "एंटी-थिफ्ट गार्ड बंद कर दिया गया है")
+            }
+            .setNegativeButton("वापस", null)
+            .show()
     }
 
     /** App ka "console": har galti/chetavni, mic ke aankde, Live connection, deri (ms) */
