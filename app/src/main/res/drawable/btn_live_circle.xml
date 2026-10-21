@@ -1,9 +1,3 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Live chalu: glossy laal kaanch (matlab wahi - "sun raha hai") -->
-<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
-    <item><shape android:shape="oval"><solid android:color="#FFFFFFFF" /></shape></item>
-    <item android:left="2dp" android:top="2dp" android:right="2dp" android:bottom="2dp">
-        <shape android:shape="oval"><gradient android:angle="270" android:startColor="#FFFF6B7F" android:endColor="#FFE8304F" /></shape></item>
-    <item android:left="7dp" android:top="3dp" android:right="7dp" android:bottom="24dp">
-        <shape android:shape="oval"><gradient android:angle="270" android:startColor="#66FFFFFF" android:endColor="#00FFFFFF" /></shape></item>
-</layer-list>
+<!-- Premium Liquid Glass: parchhai, paardarshi neela kaanch, frost, specular chamak, chamakta kinara (dekhein LiquidGlass.kt) -->
+<drawable xmlns:android="http://schemas.android.com/apk/res/android" class="com.dk.assistant.GlassLiveCircleDrawable" />

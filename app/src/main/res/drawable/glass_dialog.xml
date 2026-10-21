@@ -1,15 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Glass dialog: chamakta kinara + neela frosted kaanch (Android 12+ par peeche asli blur) -->
+<!-- Glass dialog: Liquid Glass kinara + gehra neela kaanch (Android 12+ par peeche asli blur) -->
 <inset xmlns:android="http://schemas.android.com/apk/res/android"
     android:insetLeft="18dp" android:insetRight="18dp" android:insetTop="24dp" android:insetBottom="24dp">
-    <layer-list>
-        <item><shape android:shape="rectangle"><corners android:radius="28dp" />
-            <gradient android:angle="300" android:startColor="#E6FFFFFF" android:centerColor="#59FFFFFF" android:endColor="#99FFFFFF" /></shape></item>
-        <item android:left="1dp" android:top="1dp" android:right="1dp" android:bottom="1dp">
-            <shape android:shape="rectangle"><corners android:radius="27dp" />
-                <gradient android:angle="270" android:startColor="@color/dialog_bg" android:endColor="#F21F4590" /></shape></item>
-        <item android:left="1dp" android:top="1dp" android:right="1dp" android:bottom="1dp">
-            <shape android:shape="rectangle"><corners android:radius="27dp" />
-                <gradient android:angle="270" android:startColor="#33FFFFFF" android:centerColor="#08FFFFFF" android:endColor="#00FFFFFF" /></shape></item>
-    </layer-list>
+    <drawable class="com.dk.assistant.GlassDialogDrawable" />
 </inset>

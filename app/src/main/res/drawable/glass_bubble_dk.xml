@@ -1,13 +1,3 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- DK ka jawab: frosted safed-neela kaanch, neeche-baayan kona chhota -->
-<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
-    <item><shape android:shape="rectangle">
-        <corners android:topLeftRadius="22dp" android:topRightRadius="22dp" android:bottomLeftRadius="6dp" android:bottomRightRadius="22dp" />
-        <gradient android:angle="300" android:startColor="#B3FFFFFF" android:centerColor="#40FFFFFF" android:endColor="#73FFFFFF" /></shape></item>
-    <item android:left="1dp" android:top="1dp" android:right="1dp" android:bottom="1dp"><shape android:shape="rectangle">
-        <corners android:topLeftRadius="21dp" android:topRightRadius="21dp" android:bottomLeftRadius="5dp" android:bottomRightRadius="21dp" />
-        <gradient android:angle="270" android:startColor="#F2386FCB" android:endColor="#E62B5BB3" /></shape></item>
-    <item android:left="1dp" android:top="1dp" android:right="1dp" android:bottom="1dp"><shape android:shape="rectangle">
-        <corners android:topLeftRadius="21dp" android:topRightRadius="21dp" android:bottomLeftRadius="5dp" android:bottomRightRadius="21dp" />
-        <gradient android:angle="270" android:startColor="#33FFFFFF" android:centerColor="#0AFFFFFF" android:endColor="#05FFFFFF" /></shape></item>
-</layer-list>
+<!-- Premium Liquid Glass: parchhai, paardarshi neela kaanch, frost, specular chamak, chamakta kinara (dekhein LiquidGlass.kt) -->
+<drawable xmlns:android="http://schemas.android.com/apk/res/android" class="com.dk.assistant.GlassBubbleDkDrawable" />

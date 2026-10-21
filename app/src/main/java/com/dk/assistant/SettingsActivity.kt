@@ -121,6 +121,11 @@ class SettingsActivity : AppCompatActivity() {
                 isClickable = true
                 setOnClickListener { startActivity(android.content.Intent(this@SettingsActivity, SettingsActivity::class.java).putExtra("section", id)) }
             }
+            // har section ka apna rangeen icon (rang neele background se alag) glass gole me
+            box.addView(android.widget.ImageView(this).apply {
+                setImageResource(menuIcon(id)); setBackgroundResource(R.drawable.glass_circle)
+                val ip = (10 * dp).toInt(); setPadding(ip, ip, ip, ip); importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
+            }, LinearLayout.LayoutParams((44 * dp).toInt(), (44 * dp).toInt()).apply { marginEnd = (14 * dp).toInt() })
             val txt = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
             txt.addView(TextView(this).apply { text = t; textSize = 18f; setTypeface(typeface, Typeface.BOLD); setTextColor(0xFFFFFFFF.toInt()) })
             txt.addView(TextView(this).apply { text = sub; textSize = 13f; setTextColor(0x99FFFFFF.toInt()); setPadding(0, (3 * dp).toInt(), 0, 0) })
@@ -130,6 +135,18 @@ class SettingsActivity : AppCompatActivity() {
             lp.topMargin = (12 * dp).toInt()
             container.addView(box, lp)
         }
+    }
+
+    private fun menuIcon(id: String) = when (id) {
+        "profile" -> R.drawable.ic_s_profile
+        "brain" -> R.drawable.ic_s_brain
+        "voice" -> R.drawable.ic_s_voice
+        "orb" -> R.drawable.ic_s_orb
+        "access" -> R.drawable.ic_s_access
+        "perms" -> R.drawable.ic_s_perms
+        "coder" -> R.drawable.ic_s_coder
+        "update" -> R.drawable.ic_s_update
+        else -> R.drawable.ic_s_debug
     }
 
     /** App ka "console": har galti/chetavni, mic ke aankde, Live connection, deri (ms) */

@@ -1,37 +1,3 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Liquid glass card: chamakta kinara (upar tez, neeche halka) + frosted safed andar + upar ki roshni ki patti -->
-<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
-    <!-- naram parchhai -->
-    <item android:top="3dp" android:left="2dp" android:right="2dp">
-        <shape android:shape="rectangle">
-            <corners android:radius="28dp" />
-            <solid android:color="#1A0A1E50" />
-        </shape>
-    </item>
-    <!-- kinara -->
-    <item android:bottom="2dp">
-        <shape android:shape="rectangle">
-            <corners android:radius="28dp" />
-            <gradient android:angle="300" android:startColor="#B3FFFFFF" android:centerColor="#40FFFFFF" android:endColor="#73FFFFFF" />
-        </shape>
-    </item>
-    <!-- andar ka frosted kaanch -->
-    <item android:left="1dp" android:top="1dp" android:right="1dp" android:bottom="3dp">
-        <shape android:shape="rectangle">
-            <corners android:radius="27dp" />
-            <gradient android:angle="270" android:startColor="#F2386FCB" android:centerColor="#EB2F63BD" android:endColor="#E62B5BB3" />
-        </shape>
-    </item>
-    <item android:left="1dp" android:top="1dp" android:right="1dp" android:bottom="3dp">
-        <shape android:shape="rectangle">
-            <corners android:radius="27dp" />
-            <gradient android:angle="270" android:startColor="#3DFFFFFF" android:centerColor="#14FFFFFF" android:endColor="#0AFFFFFF" />
-        </shape>
-    </item>
-    <!-- upar ki chamak -->
-    <item android:left="18dp" android:right="18dp" android:top="1dp" android:gravity="top" android:height="1dp">
-        <shape android:shape="rectangle">
-            <gradient android:angle="0" android:startColor="#00FFFFFF" android:centerColor="#FFFFFFFF" android:endColor="#00FFFFFF" />
-        </shape>
-    </item>
-</layer-list>
+<!-- Premium Liquid Glass: parchhai, paardarshi neela kaanch, frost, specular chamak, chamakta kinara (dekhein LiquidGlass.kt) -->
+<drawable xmlns:android="http://schemas.android.com/apk/res/android" class="com.dk.assistant.GlassCardDrawable" />
