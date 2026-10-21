@@ -134,10 +134,29 @@ class StoryWriterActivity : AppCompatActivity() {
         partsBox = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         body.addView(partsBox, LinearLayout.LayoutParams(-1, -2))
 
-        // poori kahani: copy + save
+        // poori kahani: copy + save + delete
         actions = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; visibility = View.GONE; setPadding(0, (12 * dp).toInt(), 0, 0) }
-        actions.addView(pill("पूरी कहानी कॉपी करें") { copy(StorySession.fullText(), "पूरी कहानी कॉपी हो गई") }, LinearLayout.LayoutParams(0, (44 * dp).toInt(), 1f).apply { marginEnd = (8 * dp).toInt() })
-        actions.addView(pill("सेव करें") { save() }, LinearLayout.LayoutParams(0, (44 * dp).toInt(), 1f))
+        actions.addView(pill("पूरी कहानी कॉपी") { copy(StorySession.fullText(), "पूरी कहानी कॉपी हो गई") }, LinearLayout.LayoutParams(0, (44 * dp).toInt(), 1f).apply { marginEnd = (6 * dp).toInt() })
+        actions.addView(pill("सेव करें") { save() }, LinearLayout.LayoutParams(0, (44 * dp).toInt(), 1f).apply { marginEnd = (6 * dp).toInt() })
+        actions.addView(pill("डिलीट") {
+            android.app.AlertDialog.Builder(this)
+                .setTitle("कहानी डिलीट करें?")
+                .setMessage("क्या आप इस कहानी को हटाना चाहते हैं?")
+                .setPositiveButton("हाँ, डिलीट करें") { _, _ ->
+                    StorySession.parts.clear()
+                    StorySession.title = ""
+                    StorySession.total = 0
+                    StorySession.error = null
+                    shown = 0
+                    partsBox.removeAllViews()
+                    titleView.visibility = View.GONE
+                    status.visibility = View.GONE
+                    actions.visibility = View.GONE
+                    toast("कहानी डिलीट कर दी गई")
+                }
+                .setNegativeButton("रुको", null)
+                .show()
+        }, LinearLayout.LayoutParams(0, (44 * dp).toInt(), 1f))
         body.addView(actions, LinearLayout.LayoutParams(-1, -2))
 
         setContentView(root)
