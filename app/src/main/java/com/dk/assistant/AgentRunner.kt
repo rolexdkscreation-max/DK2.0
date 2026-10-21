@@ -2,10 +2,12 @@ package com.dk.assistant
 
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import org.json.JSONObject
 import kotlin.coroutines.coroutineContext
 
@@ -252,7 +254,8 @@ class AgentRunner(
         }
         // 3) Normal baatcheet: pehle sikha hua (wahi sawaal pehle poocha tha) = turant; warna AI se TUKDON me jawab
         if (chatMode) {
-            if (note.isBlank()) LocalBrain.recall(svc, goal, exact = true)?.let { DKLog.d("Seekha hua jawab"); say(it); return }
+            // file padhna main thread par nahi (v3.8) - Send ke baad request me deri na ho
+            if (note.isBlank()) withContext(Dispatchers.IO) { LocalBrain.recall(svc, goal, exact = true) }?.let { DKLog.d("Seekha hua jawab"); say(it); return }
             when (chatStream(goal, note)) {
                 ChatOut.DONE -> return
                 ChatOut.SEARCH -> { if (brain.canSearch() && searchAndSay(goal)) return }
@@ -296,7 +299,7 @@ class AgentRunner(
                 filler?.cancel()
                 DKLog.d("AI error: ${e.javaClass.simpleName} ${e.message}")
                 val msg = brain.explain(e)
-                DKState.reply(msg + "\n(" + (e.message ?: e.javaClass.simpleName).take(160) + ")")
+                DKState.replyFailed(msg + "\n(" + (e.message ?: e.javaClass.simpleName).take(160) + ")")
                 if (!silent) speaker.speak(msg)
                 return
             }
@@ -392,12 +395,28 @@ class AgentRunner(
             if (x.isEmpty()) return
             shown.append(x).append(' ')
             synchronized(currentAnswer) { currentAnswer.append(x).append(' ') }
-            DKState.replyLive(shown.toString().trim())
+            // saada jawab (mode 1) screen par har shabd ke saath showLive() dikhata hai; yahan sirf baaki (JSON) ke liye
+            if (mode != 1) DKState.replyLive(shown.toString().trim())
             if (sentCount == 0) DKLog.d("Deri: AI ka pehla vakya ${System.currentTimeMillis() - t0} ms")
             sentCount++
             if (!silent) {
                 ch.trySend(x)
                 if (speakJob == null) speakJob = scope.launch { speaker.speakStream(ch) }
+            }
+        }
+
+        // v3.8: chat me jawab SHABD-SHABD (token) dikhe - poora vakya banne ka intezaar nahi.
+        // (Awaaz ke liye vakya-tukde feed() hi banata hai.) YAAD / SCREEN jaise tag screen par na aayen.
+        var lastShown = ""
+        fun showLive() {
+            var x = shown.toString() + pend.toString()
+            x.indexOf("[YAAD").takeIf { it >= 0 }?.let { x = x.substring(0, it) }
+            for (t in listOf("[SCREEN]", "[SEARCH]", "[THINK]")) x = x.replace(t, "")
+            val ob = x.lastIndexOf('['); if (ob >= 0 && x.indexOf(']', ob) < 0) x = x.substring(0, ob)   // aadha tag
+            x = x.replace(Regex("[*#`]"), "").replace(Regex("\\s+"), " ").trim()
+            if (x.isNotEmpty() && x != lastShown) {
+                if (lastShown.isEmpty()) DKLog.d("Deri: Send → स्क्रीन पर पहला शब्द ${System.currentTimeMillis() - (DKState.sentAt.takeIf { it > 0 && System.currentTimeMillis() - it < 120_000 } ?: t0)} ms")
+                lastShown = x; DKState.replyLive(x)
             }
         }
 
@@ -424,6 +443,9 @@ class AgentRunner(
             }
         }
 
+        DKState.sentAt.takeIf { it > 0 && System.currentTimeMillis() - it < 120_000 }?.let {
+            DKLog.d("Deri: Send → AI request ${System.currentTimeMillis() - it} ms (बीच की जाँचें)")
+        }
         val full = try {
             brain.streamChat(prompt, "USER SAYS: $goal") { d ->
                 buf.append(d)
@@ -435,11 +457,11 @@ class AgentRunner(
                             val close = t.indexOf(']')
                             if (close < 0 && t.length < 12) return@streamChat
                             val tg = if (close > 0) t.substring(0, close + 1).uppercase() else ""
-                            if (tg == "[SCREEN]" || tg == "[SEARCH]" || tg == "[THINK]") { mode = 2; tag = tg } else { mode = 1; feed(t) }
+                            if (tg == "[SCREEN]" || tg == "[SEARCH]" || tg == "[THINK]") { mode = 2; tag = tg } else { mode = 1; feed(t); showLive() }
                         } else if (t[0] == '{') mode = 3
-                        else { mode = 1; feed(t) }
+                        else { mode = 1; feed(t); showLive() }
                     }
-                    1 -> feed(d)
+                    1 -> { feed(d); showLive() }
                 }
             }
         } catch (e: kotlinx.coroutines.CancellationException) {
@@ -453,7 +475,7 @@ class AgentRunner(
             // AI nahi chala: pehle seekha hua milta-julta jawab, warna DK khud bataye kya dikkat hai
             LocalBrain.recall(svc, goal, exact = false)?.let { say(it); return ChatOut.DONE }
             val why = brain.explainAll(e)
-            DKState.reply(why); if (!silent) speaker.speak(why)
+            DKState.replyFailed(why); if (!silent) speaker.speak(why)
             return ChatOut.DONE
         }
 
@@ -480,14 +502,14 @@ class AgentRunner(
         }
         DKState.reply(answer)
         // roz seekho: agli baar yahi sawaal = turant jawab
-        if (note.isBlank()) LocalBrain.learn(svc, goal, answer)
+        if (note.isBlank()) scope.launch(Dispatchers.IO) { LocalBrain.learn(svc, goal, answer) }
         speakJob?.join()
         return ChatOut.DONE
     }
 
     /** Mushkil sawaal: sabse taakatwar model se soch-samajhkar jawab (orb "soch raha" rang dikhata hai) */
     private suspend fun thinkAndSay(goal: String): Boolean {
-        DKState.set(Mode.THINKING)
+        DKState.set(Mode.THINKING); DKState.hint("गहराई से सोच रहा है…")
         return try {
             val r = brain.think(goal)
             if (r.text.isBlank()) false else {
@@ -505,7 +527,7 @@ class AgentRunner(
 
     private suspend fun searchAndSay(goal: String, fillerSaid: Boolean = false, deep: Boolean = false, thorough: Boolean = false): Boolean {
         // "पता करके बताता हूँ" jaisa kuch nahi - chupchap khojo, seedha jawab (orb soch-raha rang dikhata hai)
-        DKState.set(Mode.THINKING)
+        DKState.set(Mode.THINKING); DKState.hint(if (deep) "इंटरनेट पर गहराई से खोज रहा है…" else "इंटरनेट पर खोज रहा है…")
         return try {
             val r = brain.search(goal, deep, thorough)
             if (r.text.isBlank()) false else {

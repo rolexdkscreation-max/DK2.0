@@ -145,7 +145,9 @@ class OrbView @JvmOverloads constructor(
         }
         lvl += (DKState.level - lvl) * 0.25f
         val (ta, tb) = targetColors(mode)
-        colA = lerpColor(colA, ta, 0.08f); colB = lerpColor(colB, tb, 0.08f)
+        // v3.8: haalat ka rang ~150ms me (pehle ~600ms lagte the - purani haalat atki si lagti thi)
+        val k = (1f - kotlin.math.exp(-dt * 20f)).coerceIn(0.08f, 1f)
+        colA = lerpColor(colA, ta, k); colB = lerpColor(colB, tb, k)
         val female = target == "face_female"
         val tint = if (female) Color.parseColor("#FF5CC8") else Color.parseColor("#4FC3FF")
         val faceA = if (isFace) lerpColor(colA, tint, 0.35f) else colA
@@ -160,13 +162,17 @@ class OrbView @JvmOverloads constructor(
             isFace -> 1f
             mode == Mode.LISTENING -> 1f + lvl * 0.14f
             mode == Mode.SPEAKING -> 1f + 0.04f * sin(t * 9f)
+            // v3.8: soch raha hai - halka dheema pulse (~1.1s), sannata na lage
+            mode == Mode.THINKING -> 1f + 0.045f * (0.5f + 0.5f * sin(t * 5.6f))
             else -> 1f
         }
         val R = baseR * breathe * pulse
+        // thinking me glow bhi saath-saath halka tez-dheema
+        val glowA = if (mode == Mode.THINKING && !isFace) (105 + 60 * (0.5f + 0.5f * sin(t * 5.6f))).toInt() else if (isFace) 70 else 120
 
         // ---- glow
         glow.shader = RadialGradient(cx, cy, R * 1.75f,
-            intArrayOf(withAlpha(faceA, if (isFace) 70 else 120), withAlpha(faceA, 30), Color.TRANSPARENT),
+            intArrayOf(withAlpha(faceA, glowA), withAlpha(faceA, 30), Color.TRANSPARENT),
             floatArrayOf(0.25f, 0.6f, 1f), Shader.TileMode.CLAMP)
         c.drawCircle(cx, cy, R * 1.75f, glow)
 
