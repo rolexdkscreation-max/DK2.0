@@ -291,10 +291,10 @@ class GeminiClient(private val key: String, private val model: String) : AiClien
         contents.put(JSONObject().put("role", "user").put("parts", parts))
 
         val gen = JSONObject().put("responseMimeType", "application/json").put("maxOutputTokens", if (fast) 600 else 2048)
-        // Gemini 3 model "sochte" hain = dheere. Baatcheet me sabse kam (minimal), kaam me low.
-        val heavy = m.startsWith("gemini-3")
-        if (thinking && heavy) gen.put("thinkingConfig", JSONObject().put("thinkingLevel", if (fast) "minimal" else "low"))
-        if (thinking && m.startsWith("gemini-2.5")) gen.put("thinkingConfig", JSONObject().put("thinkingBudget", if (fast) 0 else 512))
+        // Gemini 3/4 model "sochte" hain = dheere. Response speed badhane ke liye thinking level ko "minimal" ya "off" rakhein.
+        val heavy = m.startsWith("gemini-3") || m.startsWith("gemini-4")
+        if (thinking && heavy) gen.put("thinkingConfig", JSONObject().put("thinkingLevel", "minimal"))
+        if (thinking && m.startsWith("gemini-2.5")) gen.put("thinkingConfig", JSONObject().put("thinkingBudget", 0))
 
         val body = JSONObject()
             .put("system_instruction", JSONObject().put("parts", JSONArray().put(JSONObject().put("text", system))))
