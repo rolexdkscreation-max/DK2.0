@@ -230,7 +230,7 @@ class SettingsActivity : AppCompatActivity() {
                         androidx.core.app.ActivityCompat.requestPermissions(this, arrayOf(android.Manifest.permission.CAMERA), 200)
                         return@setPositiveButton
                     }
-                    val dpm = getSystemService(Context.DEVICE_POLICY_SERVICE) as android.app.admin.DevicePolicyManager
+                    val dpm = getSystemService(android.content.Context.DEVICE_POLICY_SERVICE) as android.app.admin.DevicePolicyManager
                     val comp = android.content.ComponentName(this, com.dk.assistant.antitheft.GuardDeviceAdminReceiver::class.java)
                     if (dpm != null && !dpm.isAdminActive(comp)) {
                         toast("कृपया डिवाइस एडमिन चालू करें ताकि स्क्रीन लॉक हो सके")
