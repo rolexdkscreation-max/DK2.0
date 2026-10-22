@@ -40,21 +40,10 @@ class BrainManager(private val ctx: Context) {
         }
     }
 
-    private fun clientFor(p: Provider): AiClient? {
-        val key = Prefs.key(ctx, p.id)
-        if (key.isBlank()) return null
-        val model = Prefs.model(ctx, p.id)
-        if (model.isBlank()) return null
-        return if (p.isGemini) GeminiClient(key, model).apply {
-            Prefs.fastModels(ctx, "gemini").takeIf { it.isNotEmpty() }?.let { backups = it + GeminiClient.BACKUP_MODELS }
-        }
-        else {
-            val base = Prefs.baseUrl(ctx, p.id)
-            if (base.isBlank()) null else OpenAiCompatClient(p.name, base, key, model)
-        }
-    }
+    /** DK चैट की अपनी key (हर हिस्से की अलग - देखें [ApiScopes]); limit पर उसी key के दूसरे मॉडल */
+    private fun clientFor(p: Provider, scope: String = ApiScopes.CHAT): AiClient? = scopedClient(ctx, p, scope)
 
-    /** Pehle chuna hua provider, phir (fallback ON ho to) baaki. */
+    /** सिर्फ़ चुनी हुई कंपनी (दूसरी कंपनी पर अपने-आप जाना बंद - [Prefs.fallback]). */
     private fun orderedProviders(chat: Boolean = false): List<Provider> {
         val active = Providers.byId(Prefs.activeProvider(ctx))
         val rest = Providers.all.filter { it.id != active?.id }
@@ -288,8 +277,8 @@ class BrainManager(private val ctx: Context) {
     }
 
     /** Settings me "टेस्ट" button ke liye. */
-    suspend fun test(p: Provider): String = withContext(Dispatchers.IO) {
-        val client = clientFor(p) ?: return@withContext "पहले API key और model डालिए"
+    suspend fun test(p: Provider, scope: String = ApiScopes.CHAT): String = withContext(Dispatchers.IO) {
+        val client = clientFor(p, scope) ?: return@withContext "पहले API key और model डालिए"
         try {
             val r = client.complete("Reply in one short Hindi sentence.", emptyList(), "नमस्ते, क्या तुम काम कर रहे हो?", null)
             "✓ चल रहा है: ${r.take(80)}"
@@ -497,5 +486,23 @@ Rules:
     "<जगह> कितनी दूर है / <A> से <B> की दूरी" = distance, then tell the distance and time from the result.
     "पास में पेट्रोल पंप/ATM/होटल" = map_search. Use full place names with city if the user said it.
 """.trimIndent()
+    }
+}
+
+/**
+ * किसी हिस्से (DK चैट / कोडिंग / कंप्यूटर / लाइव) की उस कंपनी का client - सिर्फ़ उसी हिस्से की key.
+ * Gemini: GeminiClient खुद उसी key के दूसरे मॉडल आज़माता है; Groq/OpenRouter/Custom: [OpenAiCompatClient.backups].
+ */
+fun scopedClient(ctx: Context, p: Provider, scope: String): AiClient? {
+    val key = Prefs.scopeKey(ctx, scope, p.id)
+    if (key.isBlank()) return null
+    val model = Prefs.scopeModel(ctx, scope, p.id)
+    if (model.isBlank()) return null
+    return if (p.isGemini) GeminiClient(key, model).apply {
+        Prefs.fastModels(ctx, "gemini").takeIf { it.isNotEmpty() }?.let { backups = it + GeminiClient.BACKUP_MODELS }
+    }
+    else {
+        val base = Prefs.scopeBase(ctx, scope, p.id)
+        if (base.isBlank()) null else OpenAiCompatClient(p.name, base, key, model).apply { backups = Prefs.scopeBackups(ctx, scope, p.id) }
     }
 }

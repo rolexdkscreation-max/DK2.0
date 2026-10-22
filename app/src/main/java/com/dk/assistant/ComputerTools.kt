@@ -51,8 +51,8 @@ object ComputerTools {
     /** Search; एक fail हो तो अगला. [onIssue] = रिपोर्ट के लिए (दिक्कत, हल) */
     fun search(c: Context, query: String, n: Int, onIssue: (String, String) -> Unit): SearchOut {
         val order = searchOrder(Prefs.computerSearch(c), Prefs.tavilyKey(c).isNotBlank(), Prefs.braveKey(c).isNotBlank(),
-            Prefs.key(c, "gemini").isNotBlank())
-        if (order.isEmpty()) throw IllegalStateException("Search के लिए कोई key नहीं — Settings → DK कंप्यूटर में Tavily/Brave key या AI दिमाग में Gemini key डालें")
+            Prefs.scopeKey(c, ApiScopes.PC, "gemini").isNotBlank())
+        if (order.isEmpty()) throw IllegalStateException("Search के लिए कोई key नहीं — Settings → DK कंप्यूटर में Tavily/Brave key या AI दिमाग → DK कंप्यूटर में Gemini key डालें")
         var last: Exception? = null
         for ((i, s) in order.withIndex()) {
             try {
@@ -99,7 +99,7 @@ object ComputerTools {
     }
 
     private fun gemini(c: Context, q: String): SearchOut {
-        val r = GeminiClient(Prefs.key(c, "gemini"), Prefs.model(c, "gemini")).search(
+        val r = GeminiClient(Prefs.scopeKey(c, ApiScopes.PC, "gemini"), Prefs.scopeModel(c, ApiScopes.PC, "gemini")).search(
             "You are a web research tool. Search Google and return a dense factual summary (facts, numbers, dates, names) for the query. " +
                 "Keep the language of the query. No chit-chat.", emptyList(), q, deep = false)
         return SearchOut("Google (Gemini)", r.sources.map { (t, u) -> Hit(t, u, "") }, r.text)
