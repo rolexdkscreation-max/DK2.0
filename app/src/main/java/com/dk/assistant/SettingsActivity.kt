@@ -155,30 +155,35 @@ class SettingsActivity : AppCompatActivity() {
         }
     }
 
-    /** v3.30: DK के जवाब की भाषा - चुनते ही सेव और लागू */
+    /** v3.30: भाषा सेटिंग — UI और DK के जवाब की भाषा (हिंदी, इंग्लिश, हिंग्लिश) */
     private fun secLang() {
-        card("DK किस भाषा में जवाब दे", "DK लाइव, DK चैट, बिना-Live आवाज़, DK कंप्यूटर और कोडिंग एजेंट — सब पर एक साथ") { box ->
+        card("Language / भाषा सेटिंग", "पूरे ऐप की भाषा और DK के जवाब") { box ->
             val rg = RadioGroup(this).apply { orientation = RadioGroup.VERTICAL }
-            val cur = Prefs.replyLang(this)
-            Lang.ALL.forEachIndexed { i, (code, label) ->
+            val langs = listOf(
+                Triple("hinglish", "Hinglish (Default)", "हिन्दी + English"),
+                Triple("hi", "हिंदी", "शुद्ध हिंदी"),
+                Triple("en", "English", "Pure English")
+            )
+            val currentLang = Prefs.replyLang(this).ifBlank { "hinglish" }
+            langs.forEachIndexed { i, (code, label, desc) ->
                 rg.addView(RadioButton(this).apply {
-                    id = 3000 + i
-                    text = label
+                    id = 4000 + i
+                    text = "$label — $desc"
                     setTextColor(0xFFFFFFFF.toInt())
                     textSize = 15f
-                    isChecked = code == cur
+                    isChecked = code == currentLang || (currentLang.isEmpty() && code == "hinglish")
                     setPadding((6 * dp).toInt(), (8 * dp).toInt(), 0, (8 * dp).toInt())
                 })
             }
             rg.setOnCheckedChangeListener { _, idc ->
-                val code = Lang.ALL.getOrNull(idc - 3000)?.first ?: return@setOnCheckedChangeListener
+                val idx = idc - 4000
+                val code = langs.getOrNull(idx)?.first ?: "hinglish"
                 Prefs.edit(this) { putString(Lang.KEY, code) }
                 Prefs.loadLang(this)
-                toast("भाषा: ${Lang.short(code)} — अगले जवाब से लागू")
+                toast("Language updated! ऐप रीस्टार्ट करें या अगली बातचीत से लागू होगा।")
             }
             box.addView(rg)
-            hint(box, "ऐप के बटन और Settings हिंदी में ही रहेंगे। DK लाइव चल रहा हो तो नई भाषा अगली बार जुड़ने पर (लाइव बंद करके फिर चालू करें)। " +
-                "किसी एक जवाब के लिए आप बोलकर दूसरी भाषा माँग सकते हैं।")
+            hint(box, "यहाँ से भाषा बदलने पर ऐप के विकल्प, सेटिंग्स और DK के जवाब उसी भाषा में काम करेंगे। बायडिफ़ॉल्ट Hinglish चुना होता है।")
         }
     }
 
