@@ -78,12 +78,79 @@ object SafePr {
         return !no
     }
 
-    /** PR ka description (Hindi) */
-    fun prBody(summary: String, changes: String, protected: List<String>): String = buildString {
+    /** PR ka description (Hindi). backup = पुराने फ़ीचर को बदलने/हटाने से पहले बनी backup branch; rootCause = bug/build की असली जड़ */
+    fun prBody(summary: String, changes: String, protected: List<String>, backup: String = "", rootCause: String = ""): String = buildString {
         append("DK कोडिंग एजेंट ने यह PR बनाया (सुरक्षित PR मोड)।\n\n")
         append("## क्या बदला\n").append(summary.trim().ifBlank { "-" }).append("\n\n")
+        if (rootCause.isNotBlank()) append("## समस्या की जड़ (root cause)\n").append(rootCause.trim()).append("\n\n")
         append("## फ़ाइलें\n```\n").append(changes.trim()).append("\n```\n\n")
         if (protected.isNotEmpty()) append("## ⚠ संवेदनशील फ़ाइलें बदलीं\n").append(protected.joinToString("\n") { "- `$it`" }).append("\n\n")
+        if (backup.isNotBlank()) append("## 🗂 बैकअप (पुराना फ़ीचर जानबूझकर बदला/हटाया)\n")
+            .append("बदलाव से पहले का पूरा code branch `$backup` में सुरक्षित है। वापस लाना हो तो: GitHub पर `$backup` से `main` के लिए PR बनाएँ, ")
+            .append("या DK से बोलें \"$backup से पुराना फ़ीचर वापस लाओ\"।\n\n")
+        append("## पुराने features की सुरक्षा\n- सारे पुराने unit tests इसी PR पर दोबारा चलते हैं; कोई test हटाया या कमज़ोर नहीं किया जाता (जब तक आपने न कहा हो)\n")
+            .append("- `main` को अभी हाथ नहीं लगाया गया — merge आपकी मंज़ूरी से ही होगा\n\n")
         append("## Merge से पहले\n- [ ] PR build check (unit tests + debug APK) हरा है\n- [ ] बदलाव पढ़ लिए, पुराने features नहीं छेड़े गए\n- [ ] ज़रूरत हो तो debug APK फ़ोन पर चलाकर देखा\n")
+    }
+
+    // ---------------------------------------------------------------- पुराना फ़ीचर बदलना/हटाना → पहले बैकअप
+
+    private val removeWords = listOf("हटा", "निकाल दो", "निकालो", "मिटा", "खत्म कर", "ख़त्म कर",
+        "remove", "delete", "get rid", "hatao", "hata do", "hatado", "mitao")
+    private val changeWords = listOf("बदल", "की जगह", "replace", "rename", "rewrite", "redesign", "change the existing", "badal")
+
+    /** User ने किसी मौजूदा फ़ीचर/हिस्से को हटाने को कहा (तब उसके tests हटाना भी जायज़) */
+    fun removesOldFeature(task: String): Boolean {
+        val low = task.lowercase(Locale.ROOT)
+        return removeWords.any { low.contains(it) }
+    }
+
+    /**
+     * User ने खुद किसी मौजूदा (पुराने) फ़ीचर को बदलने/हटाने को कहा? तब यह जानबूझकर बदलाव है (नया-फ़ीचर जोखिम नहीं) -
+     * पहले बैकअप, फिर बदलाव. "नया … बनाओ/जोड़ो" अकेला ऐसा नहीं माना जाता.
+     * (गलती से हाँ भी हो तो नुकसान नहीं - बस एक सस्ती backup branch बनती है)
+     */
+    fun changesOldFeature(task: String): Boolean {
+        val low = task.lowercase(Locale.ROOT)
+        return removesOldFeature(task) || changeWords.any { low.contains(it) }
+    }
+
+    /** Backup branch ka naam: backup/dk-<shabd>-<MMdd-HHmm> */
+    fun backupName(task: String, now: Date = Date()): String = "backup/dk-" + branchName(task, now).removePrefix(PREFIX)
+
+    // ---------------------------------------------------------------- bug / गलती → पहले जड़
+
+    private val bugWords = listOf("bug", "fix", "error", "crash", "exception", "not working", "doesn't work", "broken", "fail",
+        "बग", "गलती", "ग़लती", "त्रुटि", "एरर", "दिक्कत", "समस्या", "ठीक कर", "ठीक करो", "काम नहीं", "नहीं चल", "नहीं हो रहा", "बंद हो जा", "क्रैश", "अटक")
+
+    /** काम bug/गलती ठीक करने का है? (user का बताया bug, reviewer की गड़बड़ी, या fail build/test) - तब पहले root cause */
+    fun isFixTask(task: String): Boolean {
+        if (task.startsWith("BUILD FAILED") || task.startsWith("REVIEWER")) return true
+        val low = task.lowercase(Locale.ROOT)
+        return bugWords.any { low.contains(it) }
+    }
+
+    // ---------------------------------------------------------------- पुराने tests की सुरक्षा
+
+    private fun isTestFile(p: String) = (p.contains("/src/test/") || p.contains("/src/androidTest/")) && (p.endsWith(".kt") || p.endsWith(".java"))
+    private fun testCount(src: String) = Regex("@Test\\b").findAll(src).count()
+
+    /**
+     * नया काम पुराने features को चुपके से न तोड़े: मौजूदा test फ़ाइल हटाना या उसके @Test कम करना = गड़बड़ी
+     * (test पास कराने के लिए test ही हटा देना). allowed = user ने खुद पुराना फ़ीचर हटाने/बदलने को कहा.
+     * staged: path -> नया content (null = हटाई), original: path -> पुराना (null = नई फ़ाइल)
+     * @return Hindi/English गलतियाँ (खाली = ठीक)
+     */
+    fun testGuard(staged: Map<String, String?>, original: Map<String, String?>, allowed: Boolean): List<String> {
+        if (allowed) return emptyList()
+        val out = mutableListOf<String>()
+        staged.forEach { (p, now) ->
+            if (!isTestFile(p)) return@forEach
+            val before = original[p] ?: return@forEach          // नई test फ़ाइल - ठीक
+            if (now == null) { out.add("$p: existing test file deleted - old features lose their tests (restore it; fix the code instead)"); return@forEach }
+            val b = testCount(before); val a = testCount(now)
+            if (a < b) out.add("$p: @Test count dropped $b -> $a - do not delete/weaken existing tests to make the build pass; fix the code instead")
+        }
+        return out
     }
 }

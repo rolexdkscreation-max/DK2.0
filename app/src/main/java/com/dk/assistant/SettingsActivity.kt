@@ -792,7 +792,6 @@ class SettingsActivity : AppCompatActivity() {
     private lateinit var swAutoPush: SwitchCompat
     private lateinit var edCoderSteps: EditText
     private lateinit var swBuildFix: SwitchCompat
-    private lateinit var swSafePr: SwitchCompat
     private lateinit var swTeam: SwitchCompat
     private lateinit var edGhToken: EditText
     private lateinit var edGhRepo: EditText
@@ -861,9 +860,10 @@ class SettingsActivity : AppCompatActivity() {
             swAutoPush = switch(box, "बिना पूछे push करो (बंद = पहले बदलाव दिखाओ, फिर \"Push करें\" दबाने पर)", Prefs.coderAutoPush(this))
             edCoderSteps = field(box, "एक काम में ज़्यादा से ज़्यादा कदम (3–30)", Prefs.coderMaxSteps(this).toString(),
                 "5 (सुझाया) — कम कदम = कम API खर्च, limit/413 कम").apply { inputType = InputType.TYPE_CLASS_NUMBER }
-            swBuildFix = switch(box, "Push के बाद build जाँचो, fail हो तो खुद ठीक करो (3 बार तक)", Prefs.coderBuildFix(this))
-            swSafePr = switch(box, "सुरक्षित PR मोड: main पर सीधे push नहीं — नई branch → PR → tests/build → आप review करके Merge", Prefs.coderSafePr(this))
-            hint(box, "चालू (सुझाया): हर काम feature/dk-… branch में, फिर Pull Request; GitHub Actions के unit tests + build पास होने के बाद कोडिंग स्क्रीन पर \"Merge करें\" दबाने पर ही main में जाता है। Token में Pull requests: Read and write भी दें।")
+            swBuildFix = switch(box, "Push के बाद tests + build जाँचो, fail हो तो पहले जड़ ढूँढकर खुद ठीक करो (पास होने तक)", Prefs.coderBuildFix(this))
+            hint(box, "🔒 सुरक्षित PR मोड हमेशा चालू: हर काम पहले main से नई feature/dk-… branch में, फिर Pull Request; सारे पुराने + नए unit tests और build पास होने के बाद " +
+                "आपकी मंज़ूरी (\"Merge करें\" / \"PR merge कर दो\") से ही main में जाता है। पुराना फ़ीचर बदलने/हटाने से पहले backup/dk-… branch बनती है। " +
+                "Token में Pull requests: Read and write दें; Actions: Read and write देंगे तो GitHub की नेटवर्क दिक्कत पर build अपने-आप दोबारा चलेगा।")
         }
         card("कोडिंग की AI", "चाहें तो कोडिंग के लिए अलग API key — बातचीत वाली key की limit बची रहे") { box ->
             val cur = Prefs.coderProvider(this)
@@ -955,7 +955,6 @@ class SettingsActivity : AppCompatActivity() {
                 putBoolean("coder_autopush", swAutoPush.isChecked)
                 putString("coder_max_steps", (edCoderSteps.text.toString().trim().toIntOrNull() ?: CodingAgent.DEFAULT_STEPS).coerceIn(3, 30).toString())
                 putBoolean("coder_buildfix", swBuildFix.isChecked)
-                putBoolean("coder_safe_pr", swSafePr.isChecked)
                 putBoolean("coder_team", swTeam.isChecked)
                 putString("gh_token", edGhToken.text.toString().trim())
                 putString("gh_repo", edGhRepo.text.toString().trim().removePrefix("https://github.com/").removeSuffix(".git").trim('/'))

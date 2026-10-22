@@ -129,7 +129,9 @@ object Prefs {
     fun coderMaxSteps(c: Context) = (sp(c).getString("coder_max_steps", null)?.trim()?.toIntOrNull() ?: CodingAgent.DEFAULT_STEPS).coerceIn(3, 30)
     fun coderBuildFix(c: Context) = sp(c).getBoolean("coder_buildfix", true)
     /** सुरक्षित PR मोड (default चालू): main पर सीधे push नहीं - नई feature branch → PR → tests/build → आप review करके Merge */
-    fun coderSafePr(c: Context) = sp(c).getBoolean("coder_safe_pr", true)
+    /** सुरक्षित PR मोड अब हमेशा चालू: main पर कभी सीधे push नहीं (पुरानी "बंद" setting भी नज़रअंदाज़) */
+    @Suppress("UNUSED_PARAMETER")
+    fun coderSafePr(c: Context) = true
     /** Multi-agent coding team (Builder -> Reviewer -> Coordinator), ek baar bolo baaki apne-aap */
     fun coderTeam(c: Context) = sp(c).getBoolean("coder_team", true)
     /** Coding agent ka khula PR (app restart ke baad bhi "Merge करें" card ke liye) */
