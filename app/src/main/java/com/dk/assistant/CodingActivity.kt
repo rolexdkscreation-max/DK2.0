@@ -33,6 +33,10 @@ object CoderSession {
     var agent: CodingAgent? = null
     var job: Job? = null
     var lastCommit = ""
+    /** 7-एजेंट: टोकन/रिपो की दिक्कत पर रुका काम - "नॉर्मल मोड में करो" का विकल्प */
+    @Volatile var offerNormal: String? = null
+    /** 7-एजेंट नॉर्मल मोड: पिछले जवाबों की फ़ाइलें (अगले संदेश में आगे काम के लिए) */
+    val normalFiles = LinkedHashMap<String, String>()
     val scope = CoroutineScope(Dispatchers.Main + SupervisorJob())
     @Volatile var listener: (() -> Unit)? = null
     fun add(role: String, t: String) {
@@ -136,7 +140,7 @@ class CodingActivity : AppCompatActivity() {
         sub = TextView(this).apply { textSize = 12f; setTextColor(0x99FFFFFF.toInt()); maxLines = 2 }
         titles.addView(sub)
         top.addView(titles, LinearLayout.LayoutParams(0, -2, 1f))
-        top.addView(smallBtn("रिपो") { chooseRepo() })
+        top.addView(smallBtn("रिपो") { if (Prefs.coderSeven(this)) sevenPicker() else chooseRepo() })
         top.addView(smallBtn("नया") { newSession() }, LinearLayout.LayoutParams(-2, -2).apply { marginStart = (6 * dp).toInt() })
         col.addView(top)
 
@@ -195,6 +199,9 @@ class CodingActivity : AppCompatActivity() {
     }
 
     private fun welcome(): String {
+        if (Prefs.coderSeven(this)) return "नमस्ते। 7 एजेंट वाली टीम तैयार है: मैनेजर → गिट → प्लानर → कोडर → रिव्यूअर → टेस्टर → डिबगर।\n" + sevenModeLine() +
+            "\nबताइए क्या बनाना/ठीक करना है। GitHub मोड में: backup branch, नई branch, टेस्ट, PR — merge सिर्फ़ आपकी मंज़ूरी से।" +
+            " नॉर्मल मोड में: कोड हर फ़ाइल के नाम के साथ अलग मिलेगा (कॉपी बटन के साथ)। अपना कोड ```घेरे``` में भेजें तो उसी पर काम होगा।"
         val problems = problems()
         return if (problems.isEmpty() && Prefs.coderTeam(this))
             "नमस्ते। कोडिंग टीम तैयार है — ${Prefs.ghRepo(this)} (${Prefs.ghBranch(this)}).\n" +
@@ -228,6 +235,8 @@ class CodingActivity : AppCompatActivity() {
         if (t.isEmpty() || CoderSession.busy) return
         edt.setText("")
         keepTyping()
+        // 7 एजेंट वाला नया सिस्टम (चालू हो तो): GitHub मोड / नॉर्मल मोड खुद तय करता है
+        if (Prefs.coderSeven(this)) { SevenRunner.start(this, t)?.let { CoderSession.add("u", t); CoderSession.add("e", it) }; render(); return }
         val p = problems()
         if (p.isNotEmpty()) { CoderSession.add("u", t); CoderSession.add("e", "पहले ठीक करें:\n• " + p.joinToString("\n• ")); return }
         // टीम मोड: बिल्डर -> रिव्यूअर -> कोऑर्डिनेटर, सब अपने-आप
@@ -406,6 +415,106 @@ class CodingActivity : AppCompatActivity() {
         CoderSession.add("d", welcome())
     }
 
+    // ---------------------------------------------------------------- 7-एजेंट: मोड + रिपो/branch चुनना
+    private fun sevenModeLine(): String {
+        val repo = Prefs.ghRepo(this)
+        return when {
+            Prefs.ghToken(this).isBlank() -> "मोड: नॉर्मल (GitHub नहीं जुड़ा — Settings → कोडिंग एजेंट में token डालें तो GitHub मोड)"
+            Prefs.coderNormal(this) -> "मोड: नॉर्मल (आपने चुना) — ऊपर \"रिपो\" से रिपो चुनें तो GitHub मोड"
+            !repo.contains('/') -> "मोड: नॉर्मल (कोई रिपो नहीं चुना) — ऊपर \"रिपो\" से चुनें"
+            else -> "मोड: GitHub — $repo (${Prefs.ghBranch(this)}) • बदलने के लिए ऊपर \"रिपो\""
+        }
+    }
+
+    private var pickerShown = false
+
+    /** token से खुलने वाले सारे रिपो (खोज के साथ) + नॉर्मल मोड; फिर branch */
+    private fun sevenPicker() {
+        val gh = GitHub.fromPrefs(this)
+        if (gh == null) {
+            android.app.AlertDialog.Builder(this, Glass.DIALOG).setTitle("GitHub नहीं जुड़ा")
+                .setMessage("नॉर्मल मोड में काम होगा (गिट एजेंट बंद)। GitHub मोड के लिए Settings → कोडिंग एजेंट में token डालें।")
+                .setPositiveButton("Settings खोलें") { _, _ -> startActivity(android.content.Intent(this, SettingsActivity::class.java).putExtra("section", "coder")) }
+                .setNegativeButton("ठीक है", null).show()
+            return
+        }
+        toast("रिपो ला रहा हूँ…")
+        CoderSession.scope.launch {
+            val repos = try { withContext(Dispatchers.IO) { gh.reposAll() } } catch (e: GitHub.Err) {
+                if (isFinishing || isDestroyed) return@launch
+                val msg = if (e.code == 401) "GitHub टोकन गलत है या expire हो गया (401)।" else "रिपो नहीं ला पाया: ${e.message?.take(120)}"
+                android.app.AlertDialog.Builder(this@CodingActivity, Glass.DIALOG).setTitle("GitHub की दिक्कत").setMessage("$msg\n\nनॉर्मल मोड में काम करें?")
+                    .setPositiveButton("नॉर्मल मोड") { _, _ -> setNormal(true) }
+                    .setNegativeButton("बंद करें", null).show()
+                return@launch
+            } catch (e: Exception) { toast((e.message ?: "नेटवर्क गलती").take(120)); return@launch }
+            if (isFinishing || isDestroyed) return@launch
+            val box = LinearLayout(this@CodingActivity).apply { orientation = LinearLayout.VERTICAL; val p = (16 * dp).toInt(); setPadding(p, (8 * dp).toInt(), p, 0) }
+            val search = EditText(this@CodingActivity).apply {
+                hint = "रिपो खोजें (${repos.size})"; setTextColor(0xFFFFFFFF.toInt()); setHintTextColor(0x88FFFFFF.toInt()); isSingleLine = true
+            }
+            box.addView(search)
+            val lv = android.widget.ListView(this@CodingActivity)
+            box.addView(lv, LinearLayout.LayoutParams(-1, (resources.displayMetrics.heightPixels * 0.5).toInt()))
+            val normalLabel = "📝 नॉर्मल मोड (बिना GitHub / बिना रिपो)"
+            fun items(q: String) = listOf(normalLabel) + repos.filter { q.isBlank() || it.fullName.contains(q.trim(), true) }
+                .map { (if (it.fullName == Prefs.ghRepo(this@CodingActivity) && !Prefs.coderNormal(this@CodingActivity)) "✓ " else "") + it.fullName + if (it.private) "  🔒" else "" }
+            val ad = android.widget.ArrayAdapter(this@CodingActivity, android.R.layout.simple_list_item_1, items("").toMutableList())
+            lv.adapter = ad
+            val dlg = android.app.AlertDialog.Builder(this@CodingActivity, Glass.DIALOG).setTitle("रिपो चुनें").setView(box)
+                .setNegativeButton("बंद करें", null).show()
+            search.addTextChangedListener(object : android.text.TextWatcher {
+                override fun afterTextChanged(e: android.text.Editable?) { ad.clear(); ad.addAll(items(e?.toString().orEmpty())); ad.notifyDataSetChanged() }
+                override fun beforeTextChanged(a: CharSequence?, b: Int, c: Int, d: Int) {}
+                override fun onTextChanged(a: CharSequence?, b: Int, c: Int, d: Int) {}
+            })
+            lv.setOnItemClickListener { _, _, pos, _ ->
+                val label = ad.getItem(pos) ?: return@setOnItemClickListener
+                dlg.dismiss()
+                if (label == normalLabel) { setNormal(true); return@setOnItemClickListener }
+                val name = label.removePrefix("✓ ").substringBefore("  ").trim()
+                val r = repos.firstOrNull { it.fullName == name } ?: return@setOnItemClickListener
+                pickBranch(gh, r)
+            }
+        }
+    }
+
+    private fun pickBranch(gh: GitHub, r: GitHub.Repo) {
+        CoderSession.scope.launch {
+            val brs = try { withContext(Dispatchers.IO) { gh.branches(r.fullName) } } catch (e: Exception) { listOf(r.branch) }
+            if (isFinishing || isDestroyed) return@launch
+            val start = if ("main" in brs) "main" else r.branch
+            val ordered = (listOf(start) + brs).distinct().filter { it.isNotBlank() }
+            android.app.AlertDialog.Builder(this@CodingActivity, Glass.DIALOG).setTitle("${r.fullName} — branch चुनें (शुरुआत: $start)")
+                .setItems(ordered.map { if (it == start) "$it  (शुरुआती)" else it }.toTypedArray()) { _, i ->
+                    if (CoderSession.agent?.staged?.isNotEmpty() == true) toast("पुराने रिपो के बिना push बदलाव हटा दिए")
+                    Prefs.edit(this@CodingActivity) { putString("gh_repo", r.fullName); putString("gh_branch", ordered[i]); putBoolean("coder_normal", false) }
+                    newSession()
+                    CoderSession.offerNormal?.let { t -> CoderSession.offerNormal = null; CoderSession.add("s", "अब GitHub मोड: ${r.fullName} (${ordered[i]}) — काम दोबारा भेजें: $t".take(300)) }
+                }.setNegativeButton("बंद करें", null).show()
+        }
+    }
+
+    private fun setNormal(on: Boolean) {
+        Prefs.edit(this) { putBoolean("coder_normal", on) }
+        CoderSession.add("s", if (on) "📝 नॉर्मल मोड चुना — गिट एजेंट बंद, कोड फ़ाइल-नाम के साथ मिलेगा" else "🌿 GitHub मोड")
+        CoderSession.offerNormal?.let { t -> CoderSession.offerNormal = null; if (on) SevenRunner.start(this, t, forceNormal = true)?.let { CoderSession.add("e", it) } }
+        render()
+    }
+
+    /** टोकन/रिपो की दिक्कत पर रुका काम: नॉर्मल मोड का विकल्प */
+    private var offerShownFor: String? = null
+    private fun maybeOfferNormal() {
+        val t = CoderSession.offerNormal ?: return
+        if (CoderSession.busy || offerShownFor == t) return
+        offerShownFor = t
+        android.app.AlertDialog.Builder(this, Glass.DIALOG).setTitle("GitHub मोड में दिक्कत")
+            .setMessage((CoderSession.lines.lastOrNull { it.role == "e" }?.text ?: "") + "\n\nक्या करें?")
+            .setPositiveButton("नॉर्मल मोड में करो") { _, _ -> CoderSession.offerNormal = null; SevenRunner.start(this, t, forceNormal = true)?.let { CoderSession.add("e", it) }; render() }
+            .setNeutralButton("रिपो बदलो") { _, _ -> sevenPicker() }
+            .setNegativeButton("रुको", null).show()
+    }
+
     private fun chooseRepo() {
         val gh = GitHub.fromPrefs(this) ?: run { toast("पहले सेटिंग्स में GitHub token डालें"); return }
         toast("Repos ला रहा हूँ…")
@@ -434,6 +543,10 @@ class CodingActivity : AppCompatActivity() {
         // app दोबारा खुली हो तो पिछला खुला PR (Merge card) वापस लाओ
         if (CoderSession.agent == null && problems().isEmpty()) CoderSession.agentFor(this)
         render(); keepTyping()
+        // 7-एजेंट: बीच में GitHub जोड़ा (token है, रिपो नहीं, नॉर्मल खुद नहीं चुना) → रिपो चुनने का विकल्प
+        if (Prefs.coderSeven(this) && !pickerShown && Prefs.ghToken(this).isNotBlank() && !Prefs.ghRepo(this).contains('/') && !Prefs.coderNormal(this)) {
+            pickerShown = true; sevenPicker()
+        }
     }
 
     override fun onPause() { CoderSession.listener = null; super.onPause() }
@@ -441,8 +554,10 @@ class CodingActivity : AppCompatActivity() {
     private fun render() {
         val a = CoderSession.agent
         val ai = CoderAi.fromPrefs(this)
-        sub.text = "${Prefs.ghRepo(this).ifBlank { "repo नहीं चुना" }} • ${a?.branch ?: Prefs.ghBranch(this)} • ${ai?.label ?: "AI नहीं"}" +
+        sub.text = (if (Prefs.coderSeven(this)) "7 एजेंट • " + sevenModeLine().substringBefore(" — ").substringBefore(" •").removePrefix("मोड: ") + " • ${ai?.label ?: "AI नहीं"}"
+            else "${Prefs.ghRepo(this).ifBlank { "repo नहीं चुना" }} • ${a?.branch ?: Prefs.ghBranch(this)} • ${ai?.label ?: "AI नहीं"}") +
             if (CoderSession.busy) " • काम चल रहा है…" else ""
+        maybeOfferNormal()
         send.setImageResource(if (CoderSession.busy) android.R.drawable.ic_media_pause else R.drawable.ic_send)
         send.contentDescription = if (CoderSession.busy) "रोकें" else "भेजें"
         val lines = CoderSession.lines
@@ -519,7 +634,33 @@ class CodingActivity : AppCompatActivity() {
         } else changes.visibility = View.GONE
     }
 
+    /** नॉर्मल मोड की फ़ाइल: नाम + कोड + कॉपी बटन (पहली लाइन = फ़ाइल का नाम) */
+    private fun fileCard(l: CoderSession.Line) {
+        val path = l.text.substringBefore('\n'); val code = l.text.substringAfter('\n', "")
+        val card = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL; setBackgroundResource(R.drawable.glass_card)
+            val p = (10 * dp).toInt(); setPadding(p, p, p, p)
+        }
+        val head = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
+        head.addView(TextView(this).apply { text = "📄 $path"; textSize = 14f; setTypeface(typeface, Typeface.BOLD); setTextColor(0xFFFFFFFF.toInt()) },
+            LinearLayout.LayoutParams(0, -2, 1f))
+        head.addView(smallBtn("कॉपी") {
+            val cm = getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+            cm.setPrimaryClip(android.content.ClipData.newPlainText(path, code)); toast("$path कॉपी हो गया")
+        })
+        card.addView(head)
+        val hs = android.widget.HorizontalScrollView(this)
+        hs.addView(TextView(this).apply {
+            text = code; textSize = 12f; typeface = Typeface.MONOSPACE; setTextColor(0xE6FFFFFF.toInt()); setTextIsSelectable(true)
+            setPadding(0, (6 * dp).toInt(), 0, 0)
+        })
+        card.addView(hs)
+        list.addView(card, LinearLayout.LayoutParams(-1, -2).apply { topMargin = (8 * dp).toInt() })
+        scroll.post { scroll.smoothScrollTo(0, list.height) }
+    }
+
     private fun bubble(l: CoderSession.Line) {
+        if (l.role == "f") { fileCard(l); return }
         val mine = l.role == "u"
         val tv = TextView(this).apply {
             text = l.text; setTextIsSelectable(true)

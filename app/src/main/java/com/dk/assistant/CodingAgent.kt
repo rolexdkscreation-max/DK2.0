@@ -393,6 +393,28 @@ class CodingAgent(private val gh: GitHub, var repo: String, var branch: String, 
         name
     }
 
+    // ---------------------------------------------------------------- 7-एजेंट सिस्टम के हाथ (पुराना एजेंट इन्हें इस्तेमाल नहीं करता)
+    /** true = नया PR draft बने (7-एजेंट: टेस्ट के लिए draft, पास होने पर ही review के लिए तैयार). पुराना एजेंट: false */
+    @Volatile var draftPr = false
+
+    /** रिपो की फ़ाइलें फ़ोन में (पहले से हों तो कुछ नहीं) */
+    suspend fun teamLoad(onStep: (String) -> Unit) = withContext(Dispatchers.IO) {
+        if (files != null || snap != null) return@withContext
+        onStep("$repo ($branch) की फ़ाइलें ला रहा हूँ…")
+        snap = try { gh.snapshot(repo, branch).also { onStep("पूरा रिपो फ़ोन में आ गया (${it.size} फ़ाइलें)") } } catch (e: Exception) { null }
+        files = snap?.let { m -> m.map { GitHub.Entry(it.key, it.value.length) } } ?: gh.tree(repo, branch)
+    }
+    fun teamList(): List<String> = allPaths()
+    fun teamRead(path: String): String? = try { current(path) } catch (e: GitHub.Err) { if (e.code == 404) null else throw e }
+    fun teamStage(path: String, content: String?) { remember(path); staged[path] = content }
+    /** PR के विवरण के लिए: काम, क्या बदला, जड़ */
+    fun teamInfo(task: String, summary: String, root: String) { lastTask = task; lastSummary = summary; rootCause = root }
+    /** टेस्ट पास: draft PR → review के लिए तैयार. @return "" = ठीक, वरना वजह */
+    suspend fun teamReady(): String = withContext(Dispatchers.IO) {
+        val p = pr ?: return@withContext "PR नहीं है"
+        try { if (gh.isDraft(repo, p.number)) gh.markReady(repo, p.number); "" } catch (e: Exception) { e.message ?: "draft नहीं हटा" }
+    }
+
     /** काम में कुछ push नहीं हुआ (सिर्फ़ सवाल/fail) -> बनी हुई खाली feature branch हटा दो, GitHub साफ़ रहे */
     suspend fun dropEmptyBranch() = withContext(Dispatchers.IO) {
         if (!safePr || pushedToBranch || pr != null || staged.isNotEmpty() || SafePr.isBlocked(branch, baseBranch)) return@withContext
@@ -1021,7 +1043,8 @@ pass=true ONLY if you are confident it compiles and the task works completely.${
         if (safePr && pr == null) {
             prError = ""
             pr = try {
-                gh.openPullFor(repo, branch) ?: gh.createPull(repo, branch, baseBranch, msg, SafePr.prBody(lastSummary, changeText, prot, backupBranch, rootCause))
+                gh.openPullFor(repo, branch) ?: if (draftPr) gh.createDraftPull(repo, branch, baseBranch, msg, SafePr.prBody(lastSummary, changeText, prot, backupBranch, rootCause))
+                else gh.createPull(repo, branch, baseBranch, msg, SafePr.prBody(lastSummary, changeText, prot, backupBranch, rootCause))
             } catch (e: Exception) {
                 prError = (e.message ?: e.javaClass.simpleName).take(200) +
                     " — token में Pull requests: Read and write दें, या GitHub पर $branch से PR खुद बनाएँ"

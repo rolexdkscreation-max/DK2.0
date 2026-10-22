@@ -846,6 +846,7 @@ class SettingsActivity : AppCompatActivity() {
     private lateinit var edCoderSteps: EditText
     private lateinit var swBuildFix: SwitchCompat
     private lateinit var swTeam: SwitchCompat
+    private lateinit var swSeven: SwitchCompat
     private lateinit var edGhToken: EditText
     private lateinit var edGhRepo: EditText
     private lateinit var edGhBranch: EditText
@@ -857,6 +858,9 @@ class SettingsActivity : AppCompatActivity() {
             swTeam = switch(box, "मल्टी-एजेंट टीम: बिल्डर → रिव्यूअर → कोऑर्डिनेटर (एक बार बोलो, बाकी सब अपने-आप)", Prefs.coderTeam(this))
             hint(box, "चालू: बिल्डर कोड लिखता है → रिव्यूअर खुद जाँचता है (बग/गलती/लॉजिक, ब्रैकेट/XML) → गड़बड़ी हो तो बिल्डर को वापस → सही होने पर अपने-आप push → GitHub build देखकर fail हो तो फिर ठीक → पूरा होने पर बताता है। " +
                 "कोई अतिरिक्त चीज़ ज़रूरी लगे तो टीम खुद नहीं जोड़ती — आपसे पूछती है (हाँ/नहीं)। आवाज़ से: \"कोडिंग एजेंट, … बनाओ\"। बंद: पुराना तरीका (एक एजेंट, आप push दबाएँ)।")
+            swSeven = switch(box, "7 एजेंट वाला नया सिस्टम: मैनेजर → गिट → प्लानर → कोडर → रिव्यूअर → टेस्टर → डिबगर", Prefs.coderSeven(this))
+            hint(box, "चालू: GitHub token + चुना रिपो = GitHub मोड (backup, नई branch, PR, मंज़ूरी से merge); token/रिपो नहीं = नॉर्मल मोड (कोड फ़ाइल-नाम के साथ स्क्रीन पर)। " +
+                "हर बदलाव FIND/REPLACE में, लागू होने से पहले रिव्यूअर जाँचता है। बंद: पुराना एजेंट/टीम जैसी की तैसी।")
             row(box, button("एजेंट खोलें") {
                 save(false)
                 if (!Prefs.coderOn(this)) { toast("पहले \"कोडिंग एजेंट चालू करें\" ON करें"); return@button }
@@ -964,6 +968,7 @@ class SettingsActivity : AppCompatActivity() {
                 putString("coder_max_steps", (edCoderSteps.text.toString().trim().toIntOrNull() ?: CodingAgent.DEFAULT_STEPS).coerceIn(3, 30).toString())
                 putBoolean("coder_buildfix", swBuildFix.isChecked)
                 putBoolean("coder_team", swTeam.isChecked)
+                putBoolean("coder_seven", swSeven.isChecked)
                 putString("gh_token", edGhToken.text.toString().trim())
                 putString("gh_repo", edGhRepo.text.toString().trim().removePrefix("https://github.com/").removeSuffix(".git").trim('/'))
                 putString("gh_branch", edGhBranch.text.toString().trim())

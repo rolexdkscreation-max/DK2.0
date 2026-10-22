@@ -44,6 +44,8 @@ object CoderTeam {
 
     fun start(ctx: Context, task: String, fromVoice: Boolean = false, queued: Boolean = false): String? {
         val c = ctx.applicationContext
+        // 7 एजेंट वाला नया सिस्टम चालू हो तो (आवाज़ से भी) वही; बंद = पुरानी टीम जैसी की तैसी
+        if (Prefs.coderSeven(c) && !queued) return SevenRunner.start(c, task, fromVoice)
         val p = CoderSession.problems(c)
         if (p.isNotEmpty()) return "कोडिंग एजेंट तैयार नहीं: " + p.joinToString(", ")
         if (CoderSession.busy) {
@@ -407,6 +409,14 @@ acceptance must only cover what the user asked. suggestions: ONLY things the use
 
         val svc = DKAccessibilityService.instance
         if (svc != null && !DKState.live) svc.scope.launch { try { svc.speaker.speak(if (title != null && spoken == null) "कोडिंग वाला जवाब तैयार है।" else voice) } catch (_: Exception) {} }
+    }
+
+    /** 7-एजेंट सिस्टम: notification + आवाज़ (रिपोर्ट स्क्रीन पर पहले ही लिखी जा चुकी) */
+    fun announce(c: Context, title: String, text: String, voice: String) {
+        notifyUser(c, title, text.lines().first().take(120))
+        DKState.reply(voice)
+        val svc = DKAccessibilityService.instance
+        if (svc != null && !DKState.live) svc.scope.launch { try { svc.speaker.speak(voice) } catch (_: Exception) {} }
     }
 
     private fun notifyUser(c: Context, title: String, text: String) = try {

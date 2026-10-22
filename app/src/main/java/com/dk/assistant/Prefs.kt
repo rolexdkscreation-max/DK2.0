@@ -162,6 +162,10 @@ object Prefs {
     fun coderSafePr(c: Context) = true
     /** Multi-agent coding team (Builder -> Reviewer -> Coordinator), ek baar bolo baaki apne-aap */
     fun coderTeam(c: Context) = sp(c).getBoolean("coder_team", true)
+    /** 7 एजेंट वाला नया सिस्टम (मैनेजर/प्लानर/कोडर/रिव्यूअर/टेस्टर/डिबगर/गिट). बंद = पुराना एजेंट/टीम जैसी की तैसी */
+    fun coderSeven(c: Context) = sp(c).getBoolean("coder_seven", false)
+    /** user ने खुद नॉर्मल मोड चुना (GitHub होते हुए भी गिट के बिना) */
+    fun coderNormal(c: Context) = sp(c).getBoolean("coder_normal", false)
     /** Coding agent ka khula PR (app restart ke baad bhi "Merge करें" card ke liye) */
     fun coderPrRepo(c: Context) = sp(c).getString("coder_pr_repo", "") ?: ""
     fun coderPrBase(c: Context) = sp(c).getString("coder_pr_base", "") ?: ""

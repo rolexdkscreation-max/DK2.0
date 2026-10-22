@@ -67,3 +67,12 @@ existing feature, first create a `backup/dk-*` branch of `main`, then change it.
 root cause first, fix only that, re-test, and repeat until green (stop and report if the same error returns 3 times or after 8 rounds).
 Transient failures (network/5xx/runner) are auto-retried up to 3 attempts before reporting. Merge only after the user approves a green PR;
 if `main` moved, update the branch and re-run tests first. Merging to `main` triggers the APK release.
+
+
+## 7. 7 एजेंट वाला नया सिस्टम (Settings → कोडिंग एजेंट, बंद हो तो पुराना एजेंट)
+- फ़ाइलें: `SevenCore.kt` (नियम, prompts, FIND/REPLACE जाँच, मोड), `SevenTeam.kt` (क्रम), `SevenRunner.kt` (ऐप से जोड़)
+- मैनेजर (समझना + रणनीति + रिपोर्ट) → गिट (backup + नई branch) → प्लानर (फ़ाइलें पढ़कर छोटे कदम) → कोडर (एक कदम, FIND+REPLACE) →
+  रिव्यूअर (पहले पक्की जाँच, फिर AI) → टेस्टर (CI या ड्राई-रन) → डिबगर (जड़) → … → गिट (PR तैयार) → मंज़ूरी → merge
+- बग: मैनेजर → गिट → डिबगर → प्लानर → कोडर → रिव्यूअर → टेस्टर
+- GitHub मोड: token + चुना रिपो. नॉर्मल मोड: गिट बंद, कोड फ़ाइल-नाम के साथ. token गलत/रिपो not found = रुककर बताओ + नॉर्मल मोड का विकल्प
+- कोई रिपो कोड में तय नहीं; रिपो/branch screen पर चुने जाते हैं
