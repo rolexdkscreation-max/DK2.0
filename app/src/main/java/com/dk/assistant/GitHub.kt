@@ -202,6 +202,16 @@ class GitHub(private val token: String) {
         }
     }
 
+    /** सबसे नई release (डिप्लॉयमेंट एजेंट: APK सच में बनी?). null = कोई release नहीं */
+    fun latestRelease(repo: String): SevenPlus.Deploy.Rel? {
+        val s = try { get("/repos/$repo/releases/latest") } catch (e: Err) { if (e.code == 404) return null else throw e }
+        val o = JSONObject(s)
+        val a = o.optJSONArray("assets") ?: JSONArray()
+        val ms = try { java.time.Instant.parse(o.optString("published_at")).toEpochMilli() } catch (_: Exception) { 0L }
+        return SevenPlus.Deploy.Rel(o.optString("tag_name"), o.optString("name"), o.optString("target_commitish"),
+            (0 until a.length()).map { a.getJSONObject(it).optString("name") }, o.optString("html_url"), ms)
+    }
+
     /** workflow (जिसमें workflow_dispatch हो) को किसी branch पर चलाओ - PR से पहले build. token में Actions: Read and write चाहिए */
     fun dispatchWorkflow(repo: String, workflowFile: String, ref: String) {
         post("/repos/$repo/actions/workflows/${enc(workflowFile)}/dispatches", JSONObject().put("ref", ref))

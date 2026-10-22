@@ -1138,6 +1138,35 @@ pass=true ONLY if you are confident it compiles and the task works completely.${
      */
     suspend fun watchBuild(sha: String, onStep: (String) -> Unit): Build? = watchBuildFor(sha, null, onStep)
 
+    /**
+     * डिप्लॉयमेंट एजेंट: merge (sha) के बाद APK release.
+     * push से build चला और नई release बनी = ठीक. नहीं चला / release पुरानी = release workflow खुद चलाओ (एक बार) और फिर जाँचो.
+     * @return (build नतीजा या null, release या null, "" = release पक्की वरना कमी)
+     */
+    suspend fun deployRelease(sha: String, mergedMs: Long, onStep: (String) -> Unit): Triple<Build?, SevenPlus.Deploy.Rel?, String> {
+        var b = watchBuild(sha, onStep)
+        if (b != null && !b.ok) return Triple(b, null, "release build fail")
+        var rel = withContext(Dispatchers.IO) { try { gh.latestRelease(repo) } catch (_: Exception) { null } }
+        var why = SevenPlus.Deploy.verify(rel, sha, mergedMs)
+        if (why.isBlank()) return Triple(b, rel, "")
+        val wfs = withContext(Dispatchers.IO) {
+            try {
+                gh.tree(repo, baseBranch).map { it.path }
+                    .filter { it.startsWith(".github/workflows/") && (it.endsWith(".yml") || it.endsWith(".yaml")) }
+                    .mapNotNull { p -> gh.read(repo, p, baseBranch)?.let { p.substringAfterLast('/') to it } }
+            } catch (_: Exception) { emptyList() }
+        }
+        val wf = SevenPlus.Deploy.releaseWorkflow(wfs) ?: return Triple(b, rel, "$why — release बनाने वाला workflow नहीं मिला")
+        onStep("🚀 डिप्लॉयमेंट: $why — APK build अपने-आप नहीं चला, $wf खुद चला रहा हूँ ($baseBranch)")
+        val e = withContext(Dispatchers.IO) { try { gh.dispatchWorkflow(repo, wf, baseBranch); "" } catch (x: Exception) { x.message ?: x.javaClass.simpleName } }
+        if (e.isNotBlank()) return Triple(b, rel, "$why — $wf नहीं चला पाया: ${e.take(150)} (token में Actions: Read and write दें)")
+        b = watchBuildFor(sha, "workflow_dispatch", onStep) ?: return Triple(null, rel, "$why — हाथ से चलाए build का नतीजा नहीं दिखा")
+        if (!b.ok) return Triple(b, null, "release build fail")
+        rel = withContext(Dispatchers.IO) { try { gh.latestRelease(repo) } catch (_: Exception) { null } }
+        why = SevenPlus.Deploy.verify(rel, sha, mergedMs)
+        return Triple(b, rel, why)
+    }
+
     /** event = सिर्फ़ इस तरह से चले runs ("pull_request" / "workflow_dispatch"); null = सब */
     suspend fun watchBuildFor(sha: String, event: String?, onStep: (String) -> Unit): Build? = withContext(Dispatchers.IO) {
         if (sha.isBlank()) return@withContext null

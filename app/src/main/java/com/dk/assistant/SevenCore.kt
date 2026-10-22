@@ -13,13 +13,18 @@ import org.json.JSONObject
  *  5. टेस्टर   - सारे कदम के बाद test + build
  *  6. डिबगर    - user का बग या fail test: पहले असली जड़, फिर न्यूनतम सुधार
  *  7. गिट      - (सिर्फ़ GitHub मोड) backup branch, नई branch, PR, मंज़ूरी के बाद ही merge
+ *  8. प्रॉम्प्ट इंजीनियर - user की हिंदी/Hinglish/आवाज़ वाली बात को साफ़ spec में बदले; समझ user को दिखाकर "हाँ" का इंतज़ार
+ *  9. परफॉरमेंस - बदले code में UI जाम, leak, बेवजह बार-बार चलने वाला काम पकड़े
+ * 10. QA       - build पास होने के बाद: हर शर्त सच में पूरी? अधूरा/नकली code नहीं? पुराने फ़ीचर सलामत?
+ * 11. डिप्लॉयमेंट - user की "हाँ" के बाद: दोबारा जाँच → merge → APK build → release में APK पक्का
  */
 object Seven {
 
     // ------------------------------------------------------------------ एजेंट
     enum class Agent(val hi: String, val icon: String) {
         MANAGER("मैनेजर", "👔"), PLANNER("प्लानर", "🗺"), CODER("कोडर", "⌨"), REVIEWER("रिव्यूअर", "🔍"),
-        TESTER("टेस्टर", "🧪"), DEBUGGER("डिबगर", "🐞"), GIT("गिट", "🌿")
+        TESTER("टेस्टर", "🧪"), DEBUGGER("डिबगर", "🐞"), GIT("गिट", "🌿"),
+        PROMPT("प्रॉम्प्ट इंजीनियर", "✍"), PERF("परफॉरमेंस", "⚡"), QA("QA", "✅"), DEPLOY("डिप्लॉयमेंट", "🚀")
     }
 
     /** हर एजेंट का अलग छोटा system prompt - उसका एक ही काम */
@@ -31,8 +36,10 @@ You also own the final report: never call the work "done" before the build/PR ch
 
         val PLANNER = """You are the PLANNER. Your ONLY job: read the relevant files and split the work into small steps. Never write code.
 To read files reply ONLY: {"read":["path", ...]} (max 8 paths, exactly as in the file list). You will get their full content.
+To FIND where something is (a screen text, function, variable, id, setting) reply ONLY: {"search":["word", ...]} (max 6). You get every matching path:line in the whole repository.
+WHERE: never guess the file from its name. Use the REPO MAP and search, then READ the file before you plan a change in it. The "anchor" must be text you have SEEN in that file - it is checked, and a plan with a wrong anchor is sent back.
 When you have read enough reply ONLY:
-{"steps":[{"file":"path","action":"edit|create|delete","change":"ONE precise change in English","anchor":"short exact text from the file near the change (edit only)","uses":["path: name"]}],"risks":["Hindi: old feature that could break and why"]}
+{"steps":[{"file":"path","action":"edit|create|delete","change":"ONE precise change in English","anchor":"short exact text from the file near the change (edit only)","why":"which function/screen this is and why the change belongs exactly here","uses":["path: name"]}],"risks":["Hindi: old feature that could break and why"]}
 Rules: one step = one file + one change. Max 10 steps. Change only what the task needs. Keep every old feature working.
 NAMES: for every function, class, property or variable from ANOTHER file (or another class) that a step will use, put it in that step's "uses" as "path: name".
 List ONLY names you have actually READ in that file. Never guess a name from memory - if you have not read the file that defines it, read it first.
@@ -80,9 +87,31 @@ For a failed build/check: start from the EXACT error lines of the log (file:line
 Reply ONLY JSON: {"commit":"short English commit message","title":"short PR title (Hindi or English)"}
 (The app opens the PR only after the build passes, and never merges without the user's approval.)"""
 
+        val PROMPT = """You are the PROMPT ENGINEER. Your ONLY job: turn the user's request (often Hindi / Hinglish / spoken, short or messy) into a precise task that the team cannot misunderstand. Never write code.
+Work out what the user REALLY means (the intent, not only the words). Find WHERE in this repository it belongs: use the REPO MAP, and if you are not sure reply ONLY {"search":["word", ...]} (names, screen texts, ids; max 6) or {"read":["path", ...]} (max 6) - you will get the results.
+When you understand, reply ONLY JSON:
+{"understood":"Hindi, 2-5 simple lines: what the user wants, in which screen/feature, and what will change for them","spec":"English: exact behaviour, the screen/feature and the files/functions where it belongs, edge cases, what must NOT change","acceptance":["2-6 short Hindi checks that prove it is done"],"not_touch":["Hindi: existing features that must stay exactly as they are"],"area":["path - why"],"questions":["Hindi question"]}
+"questions": ONLY if something important is really unclear and you cannot decide it from the code (max 3, simple Hindi, each with the options you see). If it is clear, give an empty list - do not ask for the sake of asking."""
+
+        val PERF = """You are the PERFORMANCE agent. Your ONLY job: check the changed code for speed / battery / memory problems. Never rewrite features.
+Look only at the NEW / CHANGED lines: network or disk work on the main (UI) thread, Thread.sleep / runBlocking on the UI thread, loops or timers that never stop (Handler / delay loop without stop on pause/destroy), listeners / callbacks / coroutines that are never removed or cancelled (leaks), work repeated without need (e.g. reading the same file or calling the network in a loop), very large in-memory copies.
+Reply ONLY JSON: {"pass":true|false,"must":["Hindi: real problem that will hurt the user + file + English fix"],"should":["Hindi: small improvement (optional)"]}
+Put something in "must" only if it is a real problem in the new code, not a style wish."""
+
+        val QA = """You are the QA (quality assurance) agent. Your ONLY job: after the build/tests passed, check that the task is REALLY and COMPLETELY done the way the user meant.
+You get: the user's request, the prompt engineer's spec, the acceptance checks, and the full diff. For EVERY acceptance check decide: done or not, with the file/line that proves it.
+Reject if: a check is not met; the code only pretends (fake progress, hard-coded result, a function that is never called / never wired to the UI, a button with no action); something was left half-done (TODO, empty handler); an existing feature was changed or removed without the user asking.
+Reply ONLY JSON: {"pass":true|false,"checks":["Hindi: शर्त → ✓/✗ + सबूत (file:line)"],"missing":["Hindi: what is missing / wrong + file"],"fix":"English: the minimal change that would make it complete"}"""
+
+        val DEPLOY = """You are the DEPLOYMENT agent. Your ONLY job: release a new APK ONLY after the user said yes.
+Checklist (done by the app, in this order): PR still open and without conflict -> if main moved, update the branch and run all tests again -> every check on the last commit green -> merge -> the release workflow (Build DK APK) runs on main (start it by hand if it did not start by itself) -> wait for it -> the newest GitHub release is from this merge and contains the APK -> tell the user the version and how to install.
+Never merge or release without the user's yes. Never say "released" before the release with the APK really exists.
+If asked, reply ONLY JSON: {"notes":"Hindi: 1-3 lines what is new for the user in this APK"}"""
+
         fun of(a: Agent) = when (a) {
             Agent.MANAGER -> MANAGER; Agent.PLANNER -> PLANNER; Agent.CODER -> CODER; Agent.REVIEWER -> REVIEWER
             Agent.TESTER -> TESTER; Agent.DEBUGGER -> DEBUGGER; Agent.GIT -> GIT
+            Agent.PROMPT -> PROMPT; Agent.PERF -> PERF; Agent.QA -> QA; Agent.DEPLOY -> DEPLOY
         }
     }
 
@@ -135,7 +164,7 @@ Reply ONLY JSON: {"commit":"short English commit message","title":"short PR titl
     fun strings(a: JSONArray?): List<String> = (0 until (a?.length() ?: 0)).mapNotNull { a!!.optString(it).trim().takeIf { s -> s.isNotBlank() } }
 
     // ------------------------------------------------------------------ प्लान
-    data class Step(val file: String, val action: String, val change: String, val anchor: String = "", val uses: List<String> = emptyList())
+    data class Step(val file: String, val action: String, val change: String, val anchor: String = "", val uses: List<String> = emptyList(), val why: String = "")
     data class Plan(val steps: List<Step>, val risks: List<String>)
 
     const val MAX_STEPS = 10
@@ -151,7 +180,7 @@ Reply ONLY JSON: {"commit":"short English commit message","title":"short PR titl
             val f = s.optString("file").trim().removePrefix("/").removePrefix("./")
             val act = s.optString("action", "edit").trim().lowercase().let { if (it in listOf("edit", "create", "delete")) it else "edit" }
             val ch = s.optString("change").trim()
-            if (f.isBlank() || ch.isBlank() && act != "delete") null else Step(f, act, ch, s.optString("anchor").trim(), strings(s.optJSONArray("uses")).take(12))
+            if (f.isBlank() || ch.isBlank() && act != "delete") null else Step(f, act, ch, s.optString("anchor").trim(), strings(s.optJSONArray("uses")).take(12), s.optString("why").trim())
         }
         if (steps.isEmpty()) return null
         return Plan(steps.take(MAX_STEPS), strings(o.optJSONArray("risks")))

@@ -237,8 +237,8 @@ class CodingActivity : AppCompatActivity() {
     }
 
     private fun welcome(): String {
-        if (Prefs.coderSeven(this)) return "नमस्ते। 7 एजेंट वाली टीम तैयार है: मैनेजर → गिट → प्लानर → कोडर → रिव्यूअर → टेस्टर → डिबगर।\n" + sevenModeLine() +
-            "\nबताइए क्या बनाना/ठीक करना है। GitHub मोड में: backup branch, नई branch, टेस्ट, PR — merge सिर्फ़ आपकी मंज़ूरी से।" +
+        if (Prefs.coderSeven(this)) return "नमस्ते। 11 एजेंट वाली टीम तैयार है: मैनेजर → प्रॉम्प्ट इंजीनियर → गिट → प्लानर → कोडर → रिव्यूअर → परफॉरमेंस → टेस्टर → डिबगर → QA → डिप्लॉयमेंट।\n" + sevenModeLine() +
+            "\nबताइए क्या बनाना/ठीक करना है। पहले मैं बताऊँगा कि मैंने क्या समझा — आपकी \"हाँ\" के बाद ही code छुआ जाएगा। GitHub मोड में: backup branch, नई branch, टेस्ट, QA, PR — merge और APK release सिर्फ़ आपकी मंज़ूरी से।" +
             " नॉर्मल मोड में: कोड हर फ़ाइल के नाम के साथ अलग मिलेगा (कॉपी बटन के साथ)। अपना कोड ```घेरे``` में भेजें तो उसी पर काम होगा।"
         val problems = problems()
         return if (problems.isEmpty() && Prefs.coderTeam(this))
@@ -448,7 +448,7 @@ class CodingActivity : AppCompatActivity() {
     private fun newSession() {
         if (CoderSession.busy) { toast("पहले चल रहा काम रोकें"); return }
         CoderSession.agent?.reset(); CoderSession.savePr(this); CoderSession.agent = null
-        CoderTeam.suggestions.clear()
+        CoderTeam.suggestions.clear(); SevenRunner.pending = null
         CoderSession.lines.clear(); shown = 0; list.removeAllViews()
         CoderSession.add("d", welcome())
     }
@@ -604,7 +604,7 @@ class CodingActivity : AppCompatActivity() {
     private fun render() {
         val a = CoderSession.agent
         val ai = CoderAi.fromPrefs(this)
-        sub.text = (if (Prefs.coderSeven(this)) "7 एजेंट • " + sevenModeLine().substringBefore(" — ").substringBefore(" •").removePrefix("मोड: ") + " • ${ai?.label ?: "AI नहीं"}"
+        sub.text = (if (Prefs.coderSeven(this)) "11 एजेंट • " + sevenModeLine().substringBefore(" — ").substringBefore(" •").removePrefix("मोड: ") + " • ${ai?.label ?: "AI नहीं"}"
             else "${Prefs.ghRepo(this).ifBlank { "repo नहीं चुना" }} • ${a?.branch ?: Prefs.ghBranch(this)} • ${ai?.label ?: "AI नहीं"}") +
             if (CoderSession.busy) " • काम चल रहा है…" else ""
         maybeOfferNormal()

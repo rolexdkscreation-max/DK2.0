@@ -15,6 +15,19 @@ import kotlinx.coroutines.withContext
  */
 object SevenRunner {
 
+    /** प्रॉम्प्ट इंजीनियर की समझ जो user की "हाँ" का इंतज़ार कर रही है */
+    data class Pending(val task: String, val u: SevenPlus.Understanding, val forceNormal: Boolean)
+
+    /** null = कोई समझ इंतज़ार में नहीं */
+    @Volatile var pending: Pending? = null
+
+    /**
+     * user का नया संदेश + इंतज़ार वाली समझ -> (असली काम, मंज़ूर समझ या null, नॉर्मल?), या null = रद्द.
+     * "हाँ" = वही काम, मंज़ूर समझ के साथ. सवालों का जवाब / सुधार = काम + जवाब, फिर से समझना.
+     */
+    private fun resolve(input: String, p: Pending?, forceNormal: Boolean): Triple<String, SevenPlus.Understanding?, Boolean>? =
+        SevenPlus.resolve(input, p?.task, p?.u, p?.forceNormal == true, forceNormal)
+
     /** कोडिंग एजेंट की अपनी API (Settings → AI दिमाग → कोडिंग एजेंट); limit पर उसी key के दूसरे मॉडल - CoderAi खुद */
     private class Ai(private val ai: CoderAi) : TeamAi {
         override suspend fun ask(agent: Seven.Agent, system: String, msgs: List<Pair<String, String>>): String =
@@ -95,13 +108,28 @@ object SevenRunner {
     private fun say(role: String, t: String) = CoderSession.add(role, t)
 
     /** @return null = शुरू हो गया, वरना वजह */
-    fun start(ctx: Context, task: String, fromVoice: Boolean = false, forceNormal: Boolean = false): String? {
+    fun start(ctx: Context, input: String, fromVoice: Boolean = false, forceNormal: Boolean = false): String? {
         val c = ctx.applicationContext
         if (!Prefs.coderOn(c)) return "कोडिंग एजेंट बंद है — Settings में चालू करें"
         val ai = CoderAi.fromPrefs(c) ?: return "कोडिंग एजेंट की AI key नहीं — Settings → AI दिमाग → कोडिंग एजेंट में डालें"
         if (CoderSession.busy) return "अभी एक काम चल रहा है — पूरा होने दें या रोकें"
         CoderSession.offerNormal = null
-        say("u", (if (fromVoice) "🎤 " else "") + task)
+        // PR तैयार है और user ने "हाँ" / "merge करो" कहा = डिप्लॉयमेंट (दोबारा जाँच → merge → APK release)
+        if (pending == null && CoderSession.agent?.pr != null) {
+            val m = SafePr.mergeIntent(input)
+            if (m == false) { say("u", (if (fromVoice) "🎤 " else "") + input); say("s", "ठीक है, PR अभी merge नहीं करूँगा।"); return null }
+            if (m == true || SevenPlus.reply(input) == SevenPlus.Reply.YES) {
+                if (!fromVoice) say("u", input)
+                return CoderTeam.merge(c, fromVoice)
+            }
+        }
+        say("u", (if (fromVoice) "🎤 " else "") + input)
+        // पहले समझ → user की "हाँ" → तभी काम. जवाब/सुधार आया तो दोबारा समझो
+        val r = resolve(input, pending, forceNormal)
+        pending = null
+        if (r == null) { say("s", "ठीक है — यह काम रद्द। कुछ भी नहीं बदला।"); CoderSession.listener?.invoke(); return null }
+        val (task, approved, normal) = r
+        if (approved != null) say("s", "✅ आपकी मंज़ूरी मिली — अब 11 एजेंट काम शुरू कर रहे हैं")
         CoderSession.launch(c, task) {
             var agent: CodingAgent? = null
             try {
@@ -109,7 +137,7 @@ object SevenRunner {
                     // 0. मोड चुनो
                     val token = Prefs.ghToken(c).isNotBlank()
                     val repo = Prefs.ghRepo(c)
-                    val wantNormal = forceNormal || Prefs.coderNormal(c)
+                    val wantNormal = normal || Prefs.coderNormal(c)
                     val gh = GitHub.fromPrefs(c)
                     var tokOk: Boolean? = null; var repoOk: Boolean? = null
                     if (token && !wantNormal && gh != null) withContext(Dispatchers.IO) {
@@ -133,7 +161,7 @@ object SevenRunner {
                         a.safePr = true; a.draftPr = true; a.prLater = true
                         say("s", "🌿 GitHub मोड: $repo (${Prefs.ghBranch(c)}) — backup, नई branch, PR, और आपकी मंज़ूरी से merge")
                         a.teamLoad { say("s", it) }
-                        team = SevenTeam(Ai(ai), RepoFiles(a), Git(a, task)) { ag, t -> say("s", "${ag.icon} ${ag.hi}: $t") }
+                        team = SevenTeam(Ai(ai), RepoFiles(a), Git(a, task), full = true) { ag, t -> say("s", "${ag.icon} ${ag.hi}: $t") }
                     } else {
                         say("s", "📝 नॉर्मल मोड" + when {
                             wantNormal -> " (आपने चुना)"
@@ -142,9 +170,21 @@ object SevenRunner {
                         } + " — गिट एजेंट बंद; रिव्यू, टेस्ट, डिबग वही। कोड फ़ाइल-नाम के साथ मिलेगा।")
                         val start = LinkedHashMap(CoderSession.normalFiles).apply { putAll(Seven.filesFromMessage(task)) }
                         if (start.isNotEmpty()) say("s", "फ़ाइलें: " + start.keys.joinToString())
-                        team = SevenTeam(Ai(ai), MemoryFiles(start), null) { ag, t -> say("s", "${ag.icon} ${ag.hi}: $t") }
+                        team = SevenTeam(Ai(ai), MemoryFiles(start), null, full = true) { ag, t -> say("s", "${ag.icon} ${ag.hi}: $t") }
                     }
-                    val out = team.run(task)
+                    if (approved == null) {
+                        // चरण 1: सिर्फ़ समझ (कोई branch / बदलाव नहीं) - user को दिखाकर "हाँ" का इंतज़ार
+                        val u = team.understand(task)
+                        if (u.answer.isNotBlank()) { say("d", u.answer); return@withTimeout }
+                        pending = Pending(task, u, normal)
+                        say("d", u.hindi())
+                        CoderTeam.announce(c, if (u.needsAnswer) "कोडिंग टीम: एक सवाल है" else "कोडिंग टीम: आपकी मंज़ूरी चाहिए",
+                            u.understood.ifBlank { u.brief }.take(120),
+                            if (u.needsAnswer) "बॉस, काम शुरू करने से पहले एक बात साफ़ कीजिए: " + u.questions.first().take(200)
+                            else "बॉस, मैंने काम ऐसे समझा: " + u.understood.ifBlank { u.brief }.take(220) + "। सही है तो हाँ बोलिए, वरना बताइए क्या बदलना है।")
+                        return@withTimeout
+                    }
+                    val out = team.run(task, approved)
                     if (out.answerOnly) { say("d", out.report); return@withTimeout }
                     say(if (out.testOk == true) "d" else "e", out.report)
                     if (out.mode == Seven.Mode.NORMAL) out.files.forEach { (p, content) ->
@@ -152,17 +192,17 @@ object SevenRunner {
                         if (content != null) CoderSession.normalFiles[p] = content else CoderSession.normalFiles.remove(p)
                     }
                     val ok = out.testOk == true
-                    CoderTeam.announce(c, if (ok) "7-एजेंट टीम: काम पूरा" else "7-एजेंट टीम: रुकी", out.report.lines().getOrNull(1).orEmpty(),
-                        if (ok && out.mode == Seven.Mode.GITHUB) "कोडिंग का काम पूरा हो गया, बॉस। टेस्ट पास हैं, PR आपकी मंज़ूरी का इंतज़ार कर रहा है।"
+                    CoderTeam.announce(c, if (ok) "11-एजेंट टीम: काम पूरा" else "11-एजेंट टीम: रुकी", out.report.lines().getOrNull(1).orEmpty(),
+                        if (ok && out.mode == Seven.Mode.GITHUB) "कोडिंग का काम पूरा हो गया, बॉस। टेस्ट पास हैं, PR आपकी मंज़ूरी का इंतज़ार कर रहा है। हाँ बोलें तो merge करके APK release कर दूँगा।"
                         else if (ok) "कोडिंग का काम पूरा हो गया, बॉस। कोड स्क्रीन पर फ़ाइल-नाम के साथ है।"
                         else "कोडिंग का काम पूरा नहीं हो पाया। कोडिंग स्क्रीन पर वजह लिखी है।")
                 }
             } catch (e: kotlinx.coroutines.TimeoutCancellationException) {
-                say("e", "7-एजेंट टीम: तय समय (${CoderTeam.TASK_TIMEOUT_MIN} मिनट) में काम पूरा नहीं हुआ। main अछूता है।")
+                say("e", "11-एजेंट टीम: तय समय (${CoderTeam.TASK_TIMEOUT_MIN} मिनट) में काम पूरा नहीं हुआ। main अछूता है।")
             } catch (e: kotlinx.coroutines.CancellationException) {
-                say("e", "7-एजेंट टीम का काम रोक दिया।")
+                say("e", "11-एजेंट टीम का काम रोक दिया।")
             } catch (e: Exception) {
-                say("e", "7-एजेंट टीम रुकी: " + (e.message ?: e.javaClass.simpleName).take(400) + "\n(API/नेटवर्क की गलती पर 3 बार अपने-आप कोशिश हो चुकी)")
+                say("e", "11-एजेंट टीम रुकी: " + (e.message ?: e.javaClass.simpleName).take(400) + "\n(API/नेटवर्क की गलती पर 3 बार अपने-आप कोशिश हो चुकी)")
             } finally {
                 agent?.let { a ->
                     a.draftPr = false; a.prLater = false

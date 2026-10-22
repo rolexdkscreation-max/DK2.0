@@ -147,7 +147,7 @@ class SevenCoreTest {
 
     @Test fun everyAgentHasOwnShortPrompt() {
         val all = Seven.Agent.values().map { Seven.Prompts.of(it) }
-        assertEquals(7, all.distinct().size)
+        assertEquals(11, all.distinct().size)          // 7 पुराने + प्रॉम्प्ट इंजीनियर, परफॉरमेंस, QA, डिप्लॉयमेंट
         Seven.Agent.values().forEach { assertTrue(it.name, Seven.Prompts.of(it).contains("ONLY job")) }
         assertTrue(Seven.Prompts.CODER.contains("NEVER send REPLACE without FIND"))
     }

@@ -263,8 +263,8 @@ class AgentRunner(
                 val seven = Prefs.coderSeven(svc)
                 if (!seven && !Prefs.coderTeam(svc)) { say("कोडिंग टीम सेटिंग्स में बंद है। सेटिंग्स → कोडिंग एजेंट में टीम चालू करें।"); return }
                 val err = CoderTeam.start(svc, task, fromVoice = true)
-                say(err ?: if (seven) Lang.pick("ठीक है, 7 एजेंट वाली टीम काम शुरू कर रही है। हर कदम असली होगा, और चेक पास होने पर ही बताऊँगी कि काम पूरा हुआ।",
-                    "Okay, the 7-agent team is starting. I'll tell you it's done only after the check passes.")
+                say(err ?: if (seven) Lang.pick("ठीक है, 11 एजेंट वाली टीम पहले आपकी बात समझकर बताएगी, आपकी हाँ के बाद ही काम शुरू होगा।",
+                    "Okay, the 11-agent team will first tell you what it understood; work starts only after your yes.")
                     else "ठीक है, कोडिंग टीम काम शुरू कर रही है। बिल्डर लिखेगा, रिव्यूअर जाँचेगा, और पूरा होने पर मैं बताऊँगी।")
                 return
             }
