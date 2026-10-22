@@ -746,12 +746,15 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
         }
         val sc = o.optJSONObject("serverContent") ?: return
         lastServerAt = System.currentTimeMillis()
-        timeline.event(lastServerAt)
+        // dropOld = user ne toka, yeh PURANE jawab ke bache tukde hain (phenke jaate hain) - inhe nayi baat ka
+        // "jawab aaya" mat gino, warna nayi baat ka watchdog band ho jaata aur server na sune to DK chup rehta
+        val oldReply = dropOld
+        if (!oldReply || sc.has("inputTranscription")) timeline.event(lastServerAt)
         if (sc.has("inputTranscription")) replyWatch.onServerHeard()
         // docs: model jawab nahi bana raha kyunki use lagta hai user aage bolega (diagnostics - sirf log)
         if (sc.optBoolean("waitingForInput") && !waitingLogged) { waitingLogged = true; log("server: waitingForInput (मॉडल मान रहा है user आगे बोलेगा) • ${timeline.summary()}") }
         if (sc.optBoolean("generationComplete")) timeline.genDone(System.currentTimeMillis())
-        if (sc.has("modelTurn") || sc.has("outputTranscription")) replyWatch.onServerAnswered()
+        if (!oldReply && (sc.has("modelTurn") || sc.has("outputTranscription"))) replyWatch.onServerAnswered()
         sc.optJSONObject("inputTranscription")?.optString("text")?.takeIf { it.isNotBlank() }?.let { t ->
             if (!turnActive) startTurn()
             Ducker.duck(svc, "Live: user बोल रहा")
@@ -824,7 +827,9 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
             // phone ne user ki awaaz nahi pakdi -> shayad DK ki apni goonj; 2 sec me user ka text na aaye to gino
             if (now - localBargeAt > 1500 && fullDuplex && aecOn) suspectAt = now
             dropOld = false               // purana generation khatam - ab aane wala audio NAYE jawab ka hai
-            if (timeline.active) { timeline.done(now); log("turn (interrupted): ${timeline.summary()}") }
+            // sirf toka gaya (purana) turn band karo - toka-ke-boli nayi baat ki samay-rekha (barge ke baad shuru) chalti rahe
+            val newAfterBarge = localBargeAt > 0 && now - localBargeAt < 10_000 && timeline.speechEndAt > localBargeAt
+            if (timeline.active && !newAfterBarge) { timeline.done(now); log("turn (interrupted): ${timeline.summary()}") }
             if (trace.firstPlayAt == 0L) trace.firstChunkAt = 0L
             flushPlayback()
             // close=false: user abhi bol raha hai (toka hai) - uski nayi baat band mat karo

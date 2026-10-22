@@ -387,12 +387,15 @@ class DKAccessibilityService : AccessibilityService() {
                     ear.release(); listener.release(); earCaptionOff()
                     lastWhyNot = ""
                     var failed = false
+                    val liveStart = System.currentTimeMillis()
                     try {
                         val r = gemLive.run()
                         liveSoftFails = 0
                         DKLog.d("Gemini Live ruka: $r")
                     } catch (e: GeminiLive.Fatal) {
                         failed = true
+                        // 5 min+ theek chala tha = purani dikkatein ginti se hatao (backoff shuru se)
+                        if (System.currentTimeMillis() - liveStart > 5 * 60_000L) liveSoftFails = 0
                         // key/limit/model = asli rukawat (10 min). Network/mic busy = thodi der: 15s, 30s, 60s ... 5 min tak
                         // (pehle har baar 10 min ke liye Live band = "kabhi chalta hai kabhi nahi", beech me purana dheema tareeka)
                         val offMs = LiveRetry.offMs(e.recoverable, liveSoftFails)
