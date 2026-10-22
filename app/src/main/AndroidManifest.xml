@@ -6,8 +6,6 @@
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
-    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CAMERA" />
-    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.VIBRATE" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
@@ -111,30 +109,5 @@
             android:exported="false"
             android:foregroundServiceType="microphone" />
 
-        <!-- Anti-Theft Guard Service -->
-        <!-- Android 14+: foregroundServiceType zaroori. camera = ghuspaithiye ki photo,
-             specialUse = camera permission/foreground na ho tab bhi guard chalta rahe -->
-        <service
-            android:name=".antitheft.GuardService"
-            android:exported="false"
-            android:foregroundServiceType="camera|specialUse">
-            <property
-                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
-                android:value="Anti-theft guard: watches screen-on / wrong PIN to warn and lock the phone" />
-        </service>
-
-        <!-- Anti-Theft Device Admin Receiver -->
-        <receiver
-            android:name=".antitheft.GuardDeviceAdminReceiver"
-            android:permission="android.permission.BIND_DEVICE_ADMIN"
-            android:exported="true">
-            <meta-data
-                android:name="android.app.device_admin"
-                android:resource="@xml/device_admin" />
-            <intent-filter>
-                <action android:name="android.app.action.DEVICE_ADMIN_ENABLED" />
-                <action android:name="android.app.action.ACTION_PASSWORD_FAILED" />
-            </intent-filter>
-        </receiver>
     </application>
 </manifest>
