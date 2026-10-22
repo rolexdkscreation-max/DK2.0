@@ -44,6 +44,8 @@ object CoderTeam {
 
     fun start(ctx: Context, task: String, fromVoice: Boolean = false, queued: Boolean = false): String? {
         val c = ctx.applicationContext
+        // रिपो डॉक्टर: "रिपो चेक करो" / "PR #N ठीक करो" / "PR #N merge करो" / उसकी योजना की हाँ
+        if (!queued) RepoDoctorRunner.intercept(c, task, fromVoice)?.let { return it.err }
         // 7 एजेंट वाला नया सिस्टम चालू हो तो (आवाज़ से भी) वही; बंद = पुरानी टीम जैसी की तैसी
         if (Prefs.coderSeven(c) && !queued) return SevenRunner.start(c, task, fromVoice)
         val p = CoderSession.problems(c)
@@ -277,45 +279,54 @@ object CoderTeam {
         if (CoderSession.busy) return "अभी कोडिंग का काम चल रहा है — पूरा होने के बाद merge कर दूँगी।"
         val a = CoderSession.agentFor(c) ?: return "GitHub या AI सेटअप नहीं मिला"
         val p = a.pr ?: return if (a.canRetryPr) "PR बना ही नहीं था: ${a.prError}" else "अभी merge के लिए कोई PR तैयार नहीं है।"
-        val repo = a.repo; val base = a.baseBranch
         if (fromVoice) say("u", "🎤 PR #${p.number} merge करो")
         CoderSession.launch(c) {
-            CoderReport.begin()
-            say("s", "🚀 डिप्लॉयमेंट: PR #${p.number} की दोबारा जाँच (tests/build/conflict, main आगे बढ़ा तो update + tests) करके merge कर रहा हूँ…")
-            val mergedMs = System.currentTimeMillis()
-            val res = try { a.mergePr { st -> step(st) } } catch (e: CancellationException) { throw e } catch (e: Exception) {
-                val m = (e.message ?: e.javaClass.simpleName).take(300)
-                finish(c, "PR #${p.number} merge नहीं हुआ: $m", ok = false, title = "कोडिंग टीम: merge नहीं हुआ",
-                    spoken = "PR merge नहीं हो पाया। कोडिंग स्क्रीन पर वजह लिखी है।")
-                return@launch
-            }
-            val sha = a.lastMergeSha
-            if (sha.isBlank()) {
-                finish(c, res, ok = false, title = "कोडिंग टीम: merge रुका", spoken = "PR अभी merge नहीं किया। " + res.lines().first().take(120))
-                return@launch
-            }
-            say("d", res)
-            say("s", "🚀 डिप्लॉयमेंट: $base पर release build (APK) देख रहा हूँ — अपने-आप न चले तो खुद चलाऊँगा…")
-            val (b, rl, why) = try { a.deployRelease(sha, mergedMs) { st -> step(st) } } catch (e: CancellationException) { throw e }
-                catch (e: Exception) { Triple(null, null, (e.message ?: e.javaClass.simpleName).take(200)) }
-            val rel = rl?.url?.ifBlank { null } ?: "https://github.com/$repo/releases/latest"
-            when {
-                b != null && !b.ok -> finish(c, "PR #${p.number} merge हो गया, पर release build fail हुआ ✗\n${b.url}",
-                    ok = false, title = "कोडिंग टीम: release build fail", spoken = "PR merge हो गया, पर release build fail हो गया। कोडिंग स्क्रीन पर लिंक है।")
-                why.isBlank() && rl != null -> finish(c, "PR #${p.number} merge हो गया और नई APK release पक्की बन गई ✓\n" +
-                    "Release: ${rl.name.ifBlank { rl.tag }} (${rl.tag}) — APK: ${rl.assets.firstOrNull { it.endsWith(".apk", true) }.orEmpty()}\n" +
-                    "Settings → अपडेट से install करें।\n$rel",
-                    ok = true, title = "कोडिंग टीम: नई APK release तैयार",
-                    spoken = "PR merge हो गया, बॉस। नई APK ${rl.name.ifBlank { rl.tag }} release हो गई है, सेटिंग्स में अपडेट से install कर लीजिए।")
-                else -> finish(c, "PR #${p.number} merge हो गया, पर नई APK release पक्की नहीं हुई: $why\nGitHub पर देखें: https://github.com/$repo/actions\n$rel",
-                    ok = false, title = "कोडिंग टीम: merge हुआ, release नहीं",
-                    spoken = "PR merge हो गया, पर नई APK release पक्की नहीं हुई। कोडिंग स्क्रीन पर वजह लिखी है।")
-            }
+            mergeAndRelease(c, a, p)
         }
         // merge के दौरान कतार में जुड़े काम merge के बाद चलें (पहले वे कभी शुरू नहीं होते थे)
         CoderSession.job?.let { runQueueAfter(c, it) }
         CoderSession.listener?.invoke()
         return null
+    }
+
+    /**
+     * डिप्लॉयमेंट: PR की दोबारा जाँच → merge → APK release (पक्का). रिपो डॉक्टर भी अपने काम के अंदर यही चलाता है.
+     * @return true = merge हुआ और नई APK release पक्की
+     */
+    suspend fun mergeAndRelease(c: Context, a: CodingAgent, p: GitHub.Pull): Boolean {
+        val repo = a.repo; val base = a.baseBranch
+        CoderReport.begin()
+        say("s", "🚀 डिप्लॉयमेंट: PR #${p.number} की दोबारा जाँच (tests/build/conflict, main आगे बढ़ा तो update + tests) करके merge कर रहा हूँ…")
+        val mergedMs = System.currentTimeMillis()
+        val res = try { a.mergePr { st -> step(st) } } catch (e: CancellationException) { throw e } catch (e: Exception) {
+            val m = (e.message ?: e.javaClass.simpleName).take(300)
+            finish(c, "PR #${p.number} merge नहीं हुआ: $m", ok = false, title = "कोडिंग टीम: merge नहीं हुआ",
+                spoken = "PR merge नहीं हो पाया। कोडिंग स्क्रीन पर वजह लिखी है।")
+            return false
+        }
+        val sha = a.lastMergeSha
+        if (sha.isBlank()) {
+            finish(c, res, ok = false, title = "कोडिंग टीम: merge रुका", spoken = "PR अभी merge नहीं किया। " + res.lines().first().take(120))
+            return false
+        }
+        say("d", res)
+        say("s", "🚀 डिप्लॉयमेंट: $base पर release build (APK) देख रहा हूँ — अपने-आप न चले तो खुद चलाऊँगा…")
+        val (b, rl, why) = try { a.deployRelease(sha, mergedMs) { st -> step(st) } } catch (e: CancellationException) { throw e }
+            catch (e: Exception) { Triple(null, null, (e.message ?: e.javaClass.simpleName).take(200)) }
+        val rel = rl?.url?.ifBlank { null } ?: "https://github.com/$repo/releases/latest"
+        when {
+            b != null && !b.ok -> finish(c, "PR #${p.number} merge हो गया, पर release build fail हुआ ✗\n${b.url}",
+                ok = false, title = "कोडिंग टीम: release build fail", spoken = "PR merge हो गया, पर release build fail हो गया। कोडिंग स्क्रीन पर लिंक है।")
+            why.isBlank() && rl != null -> finish(c, "PR #${p.number} merge हो गया और नई APK release पक्की बन गई ✓\n" +
+                "Release: ${rl.name.ifBlank { rl.tag }} (${rl.tag}) — APK: ${rl.assets.firstOrNull { it.endsWith(".apk", true) }.orEmpty()}\n" +
+                "Settings → अपडेट से install करें।\n$rel",
+                ok = true, title = "कोडिंग टीम: नई APK release तैयार",
+                spoken = "PR merge हो गया, बॉस। नई APK ${rl.name.ifBlank { rl.tag }} release हो गई है, सेटिंग्स में अपडेट से install कर लीजिए।")
+            else -> finish(c, "PR #${p.number} merge हो गया, पर नई APK release पक्की नहीं हुई: $why\nGitHub पर देखें: https://github.com/$repo/actions\n$rel",
+                ok = false, title = "कोडिंग टीम: merge हुआ, release नहीं",
+                spoken = "PR merge हो गया, पर नई APK release पक्की नहीं हुई। कोडिंग स्क्रीन पर वजह लिखी है।")
+        }
+        return b?.ok != false && why.isBlank() && rl != null
     }
 
     /** आखिरी योजना में कोऑर्डिनेटर ने माना कि user मौजूदा फ़ीचर बदलना/हटाना चाहता है */
@@ -384,6 +395,8 @@ acceptance must only cover what the user asked. suggestions: ONLY things the use
     }
 
     fun voiceDecision(c: Context, text: String): String? {
+        // रिपो डॉक्टर पहले: दूसरे नंबर का PR merge, रिपो की हालत, उसकी योजना की हाँ
+        RepoDoctorRunner.intercept(c, text, true)?.let { return it.err ?: it.voice.ifBlank { "ठीक है।" } }
         // "PR merge कर दो" -> jaanch ke baad merge + release APK
         SafePr.mergeIntent(text)?.let { yes ->
             if (!yes) return "ठीक है, PR अभी merge नहीं करूँगी।"

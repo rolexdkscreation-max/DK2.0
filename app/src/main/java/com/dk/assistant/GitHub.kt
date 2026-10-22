@@ -202,6 +202,55 @@ class GitHub(private val token: String) {
         }
     }
 
+    // ---------------------------------------------------------------- रिपो डॉक्टर: पूरे रिपो की हालत
+    private fun iso(t: String): Long = try { java.time.Instant.parse(t).toEpochMilli() } catch (_: Exception) { 0L }
+
+    /** सारे खुले PR (सबसे नए पहले) */
+    fun openPulls(repo: String, max: Int = 30): List<RepoDoctor.Pr> {
+        val a = JSONArray(get("/repos/$repo/pulls?state=open&per_page=${max.coerceIn(1, 100)}&sort=updated&direction=desc"))
+        return (0 until a.length()).map { a.getJSONObject(it) }.map { o ->
+            RepoDoctor.Pr(o.optInt("number"), o.optString("title"), o.optString("html_url"),
+                o.optJSONObject("head")?.optString("ref").orEmpty(), o.optJSONObject("base")?.optString("ref").orEmpty(),
+                o.optBoolean("draft"), o.optJSONObject("head")?.optString("sha").orEmpty(),
+                o.optJSONObject("user")?.optString("login").orEmpty(), iso(o.optString("updated_at")))
+        }
+    }
+
+    /** एक PR (अपनाने के लिए). null = नहीं मिला */
+    fun pullInfo(repo: String, number: Int): RepoDoctor.Pr? {
+        val o = try { JSONObject(get("/repos/$repo/pulls/$number")) } catch (e: Err) { if (e.code == 404) return null else throw e }
+        return RepoDoctor.Pr(o.optInt("number"), o.optString("title"), o.optString("html_url"),
+            o.optJSONObject("head")?.optString("ref").orEmpty(), o.optJSONObject("base")?.optString("ref").orEmpty(),
+            o.optBoolean("draft"), o.optJSONObject("head")?.optString("sha").orEmpty(),
+            o.optJSONObject("user")?.optString("login").orEmpty(), iso(o.optString("updated_at")),
+            if (o.isNull("mergeable")) null else o.optBoolean("mergeable"), open = o.optString("state") == "open")
+    }
+
+    /** रिपो के सबसे नए GitHub Actions runs (हर branch के) */
+    fun recentRuns(repo: String, n: Int = 40): List<RepoDoctor.RunI> {
+        val o = JSONObject(get("/repos/$repo/actions/runs?per_page=${n.coerceIn(1, 100)}"))
+        val a = o.optJSONArray("workflow_runs") ?: JSONArray()
+        return (0 until a.length()).map { a.getJSONObject(it) }.map {
+            RepoDoctor.RunI(it.optLong("id"), it.optString("name"), it.optString("status"), it.optString("conclusion"),
+                it.optString("html_url"), it.optString("event"), it.optString("head_branch"), it.optString("head_sha"),
+                iso(it.optString("run_started_at").ifBlank { it.optString("created_at") }), it.optString("path").substringAfterLast('/'))
+        }
+    }
+
+    /** commit कब बना (ms) */
+    fun commitTimeMs(repo: String, sha: String): Long =
+        iso(JSONObject(get("/repos/$repo/commits/$sha")).optJSONObject("commit")?.optJSONObject("committer")?.optString("date").orEmpty())
+
+    /** head branch, base से कितने commit आगे है */
+    fun aheadBy(repo: String, base: String, head: String): Int =
+        JSONObject(get("/repos/$repo/compare/${enc(base)}...${enc(head)}")).optInt("ahead_by", 0)
+
+    /** फँसा हुआ run रोको */
+    fun cancelRun(repo: String, runId: Long) { post("/repos/$repo/actions/runs/$runId/cancel", JSONObject()) }
+
+    /** पूरा run दोबारा (cancel हुआ/फँसा run - rerun-failed-jobs सिर्फ़ fail पर चलता है) */
+    fun rerunAll(repo: String, runId: Long) { post("/repos/$repo/actions/runs/$runId/rerun", JSONObject()) }
+
     /** सबसे नई release (डिप्लॉयमेंट एजेंट: APK सच में बनी?). null = कोई release नहीं */
     fun latestRelease(repo: String): SevenPlus.Deploy.Rel? {
         val s = try { get("/repos/$repo/releases/latest") } catch (e: Err) { if (e.code == 404) return null else throw e }
