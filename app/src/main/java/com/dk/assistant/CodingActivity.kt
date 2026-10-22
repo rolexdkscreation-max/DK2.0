@@ -35,7 +35,11 @@ object CoderSession {
     var lastCommit = ""
     val scope = CoroutineScope(Dispatchers.Main + SupervisorJob())
     @Volatile var listener: (() -> Unit)? = null
-    fun add(role: String, t: String) { lines.add(Line(role, t)); if (lines.size > 300) lines.removeAt(0); listener?.invoke() }
+    fun add(role: String, t: String) {
+        // एक ही संदेश दो बार नहीं (हर कदम पर वही चेतावनी/गलती)
+        if (lines.takeLast(3).any { it.role == role && it.text == t }) return
+        lines.add(Line(role, t)); if (lines.size > 300) lines.removeAt(0); listener?.invoke()
+    }
     val busy get() = job?.isActive == true
     @Volatile private var appCtx: Context? = null
 
@@ -80,7 +84,9 @@ object CoderSession {
     }
 
     /** Ek hi agent (staged badlaav + baatcheet) - screen ho ya awaaz */
-    fun agentFor(c: Context): CodingAgent? {
+    fun agentFor(c: Context): CodingAgent? = applySteps(c, agentOrNew(c))
+
+    private fun agentOrNew(c: Context): CodingAgent? {
         val gh = GitHub.fromPrefs(c) ?: return null
         val ai = CoderAi.fromPrefs(c) ?: return null
         val repo = Prefs.ghRepo(c); val br = Prefs.ghBranch(c)
@@ -89,6 +95,9 @@ object CoderSession {
         if (a != null && a.repo == repo && a.baseBranch == br) return a.also { if (it.pr == null) it.safePr = Prefs.coderSafePr(c) }
         return CodingAgent(gh, repo, br, ai).also { it.safePr = Prefs.coderSafePr(c); restorePr(c, it); agent = it }
     }
+
+    /** Settings वाले कदम हर काम से पहले (agent पहले से बना हो तो भी) */
+    private fun applySteps(c: Context, a: CodingAgent?): CodingAgent? = a?.also { it.maxSteps = Prefs.coderMaxSteps(c) }
 }
 
 class CodingActivity : AppCompatActivity() {
@@ -229,14 +238,24 @@ class CodingActivity : AppCompatActivity() {
             try {
                 CoderReport.begin()
                 val out = a.run(t) { step -> CoderSession.scope.launch { CoderSession.add("s", step) } }
-                CoderSession.add("d", out.summary + "\n\n" + CoderReport.text())
                 CoderSession.lastCommit = out.commit
-                if (!out.question && a.staged.isNotEmpty() && Prefs.coderAutoPush(applicationContext)) push(applicationContext)
+                if (out.stopped) {
+                    // एजेंट खुद रुका: अपने-आप push नहीं, वजह एक बार रिपोर्ट में
+                    CoderSession.add("e", "⚠ काम अधूरा\n\n" + CoderReport.final(false, out.summary + "\n(बदलाव push नहीं किए)"))
+                } else {
+                    val partial = out.commit == "DK: partial changes"
+                    CoderSession.add("d", when {
+                        out.question -> out.summary
+                        partial -> "⚠ काम अधूरा\n\n" + CoderReport.final(false, out.summary)
+                        else -> out.summary + "\n\n" + CoderReport.final(true, out.summary)
+                    })
+                    if (!out.question && a.staged.isNotEmpty() && Prefs.coderAutoPush(applicationContext)) push(applicationContext)
+                }
             } catch (e: kotlinx.coroutines.CancellationException) {
                 CoderSession.add("e", "रोक दिया।")
             } catch (e: Exception) {
                 val m = (e.message ?: e.javaClass.simpleName).take(300)
-                CoderSession.add("e", "गलती: $m\n\n" + CoderReport.text(m))
+                CoderSession.add("e", "⚠ काम अधूरा\n\n" + CoderReport.final(false, m))
                 DKLog.d("Coder गलती: ${e.javaClass.simpleName} ${e.message}")
             } finally { CoderSession.listener?.invoke() }
         }

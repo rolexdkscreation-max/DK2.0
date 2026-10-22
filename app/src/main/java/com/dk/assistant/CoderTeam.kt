@@ -33,6 +33,8 @@ object CoderTeam {
     val suggestions = mutableListOf<Suggestion>()
     private var nextId = 1
     private val queue = ArrayDeque<String>()
+    /** limit खत्म होने पर रोके गए कतार के काम - अगले नए काम के बाद फिर कतार में */
+    private val held = ArrayDeque<String>()
 
     private fun say(role: String, t: String) = CoderSession.add(role, t)
     private fun step(t: String) { CoderSession.scope.launch { CoderSession.add("s", t) } }
@@ -46,6 +48,8 @@ object CoderTeam {
             return null
         }
         val a = CoderSession.agentFor(c) ?: return "GitHub या AI सेटअप नहीं मिला"
+        // limit की वजह से रुके काम: इस नए काम के बाद फिर चलेंगे
+        if (held.isNotEmpty()) { queue.addAll(held); held.clear() }
         // कतार वाला काम पहले ही (कतार में डालते समय) दिखा था - दोबारा नहीं
         if (queued) say("s", "कोऑर्डिनेटर: कतार का अगला काम शुरू — ${task.take(80)}")
         else say("u", (if (fromVoice) "🎤 " else "") + task)
@@ -58,14 +62,15 @@ object CoderTeam {
                     val err = runOne(c, a, currentTask)
                     currentTask = queue.removeFirstOrNull()
                     if (currentTask != null && err != null && isLimit(err)) {
-                        say("s", "कोऑर्डिनेटर: AI की limit खत्म थी — ${LIMIT_PAUSE_SEC} सेकंड रुककर कतार का अगला काम (बाकी ${queue.size + 1})")
-                        delay(LIMIT_PAUSE_SEC * 1000L)
+                        // सारी keys की limit खत्म - अगला काम भेजना = फिर वही 429. लगातार कोशिश नहीं: कतार रोको, user को बताओ
+                        held.addLast(currentTask); held.addAll(queue); queue.clear(); currentTask = null
+                        say("s", "कोऑर्डिनेटर: AI की limit खत्म है, इसलिए कतार के ${held.size} काम रोक दिए (हटाए नहीं)। " +
+                            "limit लौटने पर कोई भी नया काम भेजें — कतार उसके बाद अपने-आप चलेगी।")
                     }
                     if (currentTask != null) say("s", "कोऑर्डिनेटर: कतार का अगला काम शुरू — ${currentTask.take(80)}")
                 }
             } catch (e: kotlinx.coroutines.TimeoutCancellationException) {
                 val msg = "कोडिंग का काम तय समय (10 मिनट) में पूरा नहीं हो पाया।"
-                say("e", msg)
                 finish(c, msg, ok = false, title = "कोडिंग टीम: टाइमआउट")
             } catch (e: CancellationException) {
                 say("e", "टीम का काम रोक दिया।")
@@ -88,7 +93,6 @@ object CoderTeam {
         null
     } catch (e: kotlinx.coroutines.TimeoutCancellationException) {
         val msg = "कोडिंग का काम तय समय (10 मिनट) में पूरा नहीं हो पाया।"
-        say("e", msg)
         finish(c, msg, ok = false, title = "कोडिंग टीम: टाइमआउट")
         msg
     } catch (e: CancellationException) {
@@ -102,9 +106,9 @@ object CoderTeam {
 
     /** रोकें दबाया - कतार के काम भी हटाओ (वरना अगला नया काम खत्म होते ही पुराने अपने-आप चल पड़ते) */
     private fun clearQueue() {
-        val n = queue.size
+        val n = queue.size + held.size
         if (n == 0) return
-        queue.clear()
+        queue.clear(); held.clear()
         say("s", "कोऑर्डिनेटर: कतार के $n काम भी हटा दिए")
     }
 
@@ -126,8 +130,6 @@ object CoderTeam {
     /** AI की limit/कोटा वाली गलती? (तब अगला काम तुरंत भेजने से वह भी fail होगा) */
     fun isLimit(err: String): Boolean = err.contains("429") || err.contains("quota", true) || err.contains("कोटा")
 
-    private const val LIMIT_PAUSE_SEC = 60
-
     private suspend fun pipeline(c: Context, a: CodingAgent, task: String) {
         a.teamMode = true
         CoderReport.begin()
@@ -145,6 +147,8 @@ object CoderTeam {
             say("s", "कोऑर्डिनेटर: बिल्डर ने पूछा \"${out.summary.take(120)}\" — सबसे सही अंदाज़े से आगे बढ़ने को कहा")
             out = a.run("Coordinator: do not wait for the user. Choose the most reasonable option yourself, note the assumption in the summary, and finish the task.") { st -> step("बिल्डर: $st") }
         }
+        // एक ही चेतावनी 2 बार -> बिल्डर रुका; कुछ push नहीं, वजह user को
+        if (out.stopped) { finish(c, out.summary, ok = false, title = "कोडिंग टीम: रुक गया"); return }
         if (out.question) { finish(c, "बिल्डर को जानकारी चाहिए: ${out.summary}", ok = false); return }
         if (a.staged.isEmpty()) { finish(c, out.summary.ifBlank { "कोई बदलाव ज़रूरी नहीं था।" }, ok = true, title = "जवाब तैयार"); return }
         var commit = out.commit.ifBlank { "DK: ${task.take(60)}" }
@@ -171,6 +175,7 @@ object CoderTeam {
                 say("s", "कोऑर्डिनेटर: बिल्डर को ठीक करने भेजा")
                 val fix = a.run("REVIEWER (round $round) found these problems in your staged changes. Fix every one properly; change nothing unrelated:\n" +
                     (currentR?.issues ?: emptyList()).joinToString("\n") { "- $it" }) { st -> step("बिल्डर: $st") }
+                if (fix.stopped) { finish(c, fix.summary + "\n(बदलाव push नहीं किए)", ok = false, title = "कोडिंग टीम: रुक गया"); return }
                 if (fix.commit.isNotBlank()) commit = fix.commit
             }
             val finalR = r
@@ -206,6 +211,7 @@ object CoderTeam {
             if (buildRound >= MAX_BUILD_ROUNDS) { finish(c, "$MAX_BUILD_ROUNDS बार ठीक करने के बाद भी build fail。\n${b.url}", ok = false); return }
             say("s", "कोऑर्डिनेटर: build की गलती बिल्डर को भेजी")
             val fix = a.run("BUILD FAILED on GitHub Actions after the last push (commit ${a.lastSha.take(7)}). Find the real cause, read the mentioned files/lines, fix ONLY that.\nBUILD LOG:\n${b.log}") { st -> step("बिल्डर: $st") }
+            if (fix.stopped) { finish(c, fix.summary + "\n(build fix push नहीं किया)\n${b.url}", ok = false, title = "कोडिंग टीम: रुक गया"); return }
             commit = fix.commit.ifBlank { "Fix build" }
             if (a.staged.isEmpty()) { finish(c, "बिल्डर build की गलती नहीं ढूँढ पाया。\n${b.url}", ok = false); return }
         }
@@ -324,7 +330,9 @@ acceptance must only cover what the user asked. suggestions: ONLY things the use
 
     private fun finish(c: Context, text: String, ok: Boolean, title: String? = null, spoken: String? = null) {
         // हर काम के बाद छोटी रिपोर्ट: क्या दिक्कत आई (bug/error/limit) और कैसे ठीक हुई
-        say(if (ok) "d" else "e", (if (ok) "✅ " else "⚠ ") + text + "\n\n" + CoderReport.text(if (ok) null else text))
+        // एक ही बात दो बार नहीं: fail पर गलती सिर्फ़ रिपोर्ट के "क्या नहीं हुआ" में
+        say(if (ok) "d" else "e", if (ok) "✅ " + text + "\n\n" + CoderReport.final(true, text)
+            else "⚠ काम अधूरा\n\n" + CoderReport.final(false, text))
         val head = title ?: if (ok) "कोडिंग टीम: काम पूरा" else "कोडिंग टीम: काम अधूरा"
         notifyUser(c, head, text.lines().first().take(120))
         val prReady = CoderSession.agent?.pr != null
