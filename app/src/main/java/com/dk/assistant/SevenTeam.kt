@@ -17,10 +17,21 @@ interface TeamFiles {
     suspend fun original(path: String): String?
     suspend fun stage(path: String, content: String?)
     fun staged(): Map<String, String?>
+    /** पूरा workspace (नाम-जाँच के लिए): path -> content, बदलाव समेत. null = नहीं दे सकते */
+    suspend fun all(): Map<String, String>? = null
+    /** all() पूरा रिपो है (GitHub मोड)? false = user की भेजी कुछ फ़ाइलें */
+    val whole: Boolean get() = false
 }
 
 /** टेस्ट/बिल्ड का नतीजा. ok = null: नतीजा देख नहीं पाए (जैसे token में Actions की इजाज़त नहीं) */
-data class TeamTest(val ok: Boolean?, val log: String, val url: String = "", val note: String = "")
+data class TeamTest(val ok: Boolean?, val log: String, val url: String = "", val note: String = "", val stage: String = "") {
+    companion object {
+        /** PR से पहले, सिर्फ़ branch पर चला build (पास हो तभी PR) */
+        const val BRANCH = "branch"
+        /** PR का अपना चेक */
+        const val PR = "pr"
+    }
+}
 
 /** गिट एजेंट के हाथ (सिर्फ़ GitHub मोड) */
 interface TeamGit {
@@ -33,6 +44,10 @@ interface TeamGit {
     /** टेस्ट पास: PR को review के लिए तैयार (draft हटाओ). merge कभी नहीं - वह सिर्फ़ user की मंज़ूरी से */
     suspend fun ready(): String
     val prUrl: String
+    /** branch पर build पास होने के बाद PR खोलो (पहले नहीं). @return PR url, "" = नहीं बना (वजह prNote में) */
+    suspend fun openPr(): String = prUrl
+    /** PR क्यों नहीं बना / किस हाल में है */
+    val prNote: String get() = ""
 }
 
 /**
@@ -57,6 +72,9 @@ class SevenTeam(
     private var brief = ""
     private var acceptance = listOf<String>()
     private var passNote = ""
+    private var lastTest: TeamTest? = null
+    private var noCi = false
+    private var commitMsg: Pair<String, String>? = null
 
     companion object {
         const val FILE_CHARS = 40_000          // एक फ़ाइल इससे बड़ी = anchor के आस-पास का हिस्सा
@@ -108,27 +126,38 @@ class SevenTeam(
         val sigs = mutableListOf<String>()
         while (true) {
             val t = test(rootCause)
+            lastTest = t
             if (t.ok == true) {
                 passNote = t.note
-                ev(Agent.TESTER, "✓ टेस्ट + बिल्ड पास" + if (t.url.isNotBlank()) "\n${t.url}" else "")
+                ev(Agent.TESTER, (if (t.stage == TeamTest.BRANCH) "✓ PR से पहले branch पर build + tests पास" else if (t.stage == TeamTest.PR) "✓ PR का चेक पास" else "✓ टेस्ट + बिल्ड पास") +
+                    if (t.url.isNotBlank()) "\n${t.url}" else "")
+                // गिट: build पास होने के बाद ही PR (पहले नहीं); फिर उसी PR का अपना चेक भी देखो
+                val g = git
+                if (g != null && g.prUrl.isBlank()) {
+                    val url = g.openPr()
+                    if (url.isBlank()) return finish(null, "build पास है पर PR नहीं बन पाया" + if (g.prNote.isNotBlank()) ": ${g.prNote}" else "", "")
+                    ev(Agent.GIT, "build पास होने के बाद PR बनाया: $url")
+                    if (t.stage == TeamTest.BRANCH) { ev(Agent.TESTER, "अब PR का अपना चेक देख रहा हूँ…"); continue }
+                }
                 break
             }
-            if (t.ok == null) return finish(null, t.note.ifBlank { "टेस्ट का नतीजा नहीं मिला" }, t.url)
-            ev(Agent.TESTER, "✗ फ़ेल — पूरा एरर डिबगर को दिया" + if (t.url.isNotBlank()) "\n${t.url}" else "")
+            if (t.ok == null) return finish(null, t.note.ifBlank { "टेस्ट का नतीजा नहीं मिला" })
+            val errs = errorLines(t.log)
+            ev(Agent.TESTER, "✗ फ़ेल — log पढ़कर असली एरर डिबगर को दिया" + (if (errs.isNotBlank()) "\nअसली एरर:\n$errs" else "") + if (t.url.isNotBlank()) "\n${t.url}" else "")
             sigs.add(FixLoop.signature(t.log))
             when (FixLoop.next(sigs)) {
-                FixLoop.Next.STOP_CAP -> return finish(false, "${sigs.size} बार जड़ ढूँढकर ठीक करने के बाद भी टेस्ट फ़ेल: ${sigs.last().take(200)}", t.url)
-                FixLoop.Next.STOP_STUCK -> return finish(false, "वही गलती ${FixLoop.SAME_LIMIT} बार लौटी, रणनीति बदलकर भी नहीं गई: ${sigs.last().take(200)}", t.url)
+                FixLoop.Next.STOP_CAP -> return finish(false, "${sigs.size} बार जड़ ढूँढकर ठीक करने के बाद भी टेस्ट फ़ेल: ${sigs.last().take(200)}")
+                FixLoop.Next.STOP_STUCK -> return finish(false, "वही गलती ${FixLoop.SAME_LIMIT} बार लौटी, रणनीति बदलकर भी नहीं गई: ${sigs.last().take(200)}")
                 FixLoop.Next.FIX_AGAIN -> {}
             }
             val repeat = sigs.size >= 2 && sigs[sigs.size - 1] == sigs[sigs.size - 2]
             if (repeat) ev(Agent.MANAGER, "वही गलती दोबारा आई — रणनीति बदल रहा हूँ: डिबगर दूसरी जड़ देखेगा, कोडर पूरी फ़ाइल दोबारा लिखेगा")
-            val d = debug("TEST/BUILD FAILED:\n${t.log.take(12_000)}", repeat)
-                ?: return finish(false, "डिबगर टेस्ट फ़ेल होने की जड़ नहीं ढूँढ पाया", t.url)
+            val d = debug("TEST/BUILD FAILED.\n" + (if (errs.isNotBlank()) "EXACT ERROR LINES FROM THE LOG:\n$errs\n\n" else "") + "FULL LOG (important part):\n${t.log.take(12_000)}", repeat)
+                ?: return finish(false, "डिबगर टेस्ट फ़ेल होने की जड़ नहीं ढूँढ पाया")
             rootCause = d.second
             val fix = makePlan("MINIMAL FIX for the failed test/build.\nROOT CAUSE: ${d.second}\nFIX: ${d.third}", d.first.files)
-                ?: return finish(false, "प्लानर सुधार का प्लान नहीं बना पाया: $lastBlock", t.url)
-            if (!execute(fix, if (repeat) fix.steps.map { it.file }.toSet() else emptySet())) return finish(false, lastBlock, t.url)
+                ?: return finish(false, "प्लानर सुधार का प्लान नहीं बना पाया: $lastBlock")
+            if (!execute(fix, if (repeat) fix.steps.map { it.file }.toSet() else emptySet())) return finish(false, lastBlock)
         }
 
         // 5. गिट: PR तैयार (merge नहीं)
@@ -155,6 +184,7 @@ class SevenTeam(
             (if (hint.isNotEmpty()) "DEBUGGER SAYS THESE FILES: ${hint.joinToString()}\n" else "") +
             (if (changes.isNotEmpty()) "ALREADY CHANGED IN THIS TASK: ${changes.keys.joinToString()}\n" else "") +
             "FILE LIST (${list.size}):\n" + list.take(LIST_MAX).joinToString("\n") + if (list.isEmpty()) "(empty - create new files)" else ""))
+        var usesFixed = false
         for (round in 0..3) {
             val reply = ai.ask(Agent.PLANNER, Seven.Prompts.PLANNER, msgs)
             val reads = Seven.planReads(reply)
@@ -164,6 +194,18 @@ class SevenTeam(
                 continue
             }
             val plan = Seven.parsePlan(reply)
+            // प्लानर ने जो नाम (uses) बताए - उनकी फ़ाइल खोलकर पक्का: सच में हैं?
+            if (plan != null && round < 3 && !usesFixed) {
+                val bad = badUses(plan)
+                if (bad.isNotEmpty()) {
+                    usesFixed = true
+                    ev(Agent.PLANNER, "प्लान के ये नाम फ़ाइल में नहीं मिले — फ़ाइल पढ़कर प्लान ठीक कर रहा हूँ:\n" + bad.joinToString("\n") { "• $it" })
+                    msgs.add("model" to reply)
+                    msgs.add("user" to "These \"uses\" entries are WRONG (the name is not in that file):\n" + bad.joinToString("\n") { "- $it" } +
+                        "\nRead the right files ({\"read\":[…]}) and send the corrected JSON plan with only names that really exist.")
+                    continue
+                }
+            }
             if (plan != null) {
                 ev(Agent.PLANNER, "प्लान: ${plan.steps.size} कदम\n" + plan.steps.mapIndexed { i, s -> "${i + 1}. ${s.file} — ${s.action}: ${s.change.take(120)}" }.joinToString("\n") +
                     if (plan.risks.isNotEmpty()) "\n⚠ पुराने फ़ीचर का ख़तरा:\n" + plan.risks.joinToString("\n") { "• $it" } else "")
@@ -255,16 +297,24 @@ class SevenTeam(
         var misses = 0
         var strat = if (forceRewrite && cur != null && cur.length <= Seven.REWRITE_MAX_CHARS) Seven.Strategy.REWRITE else Seven.Strategy.FIND
         if (strat == Seven.Strategy.REWRITE) ev(Agent.MANAGER, "रणनीति: ${s.file} पूरी पढ़कर पूरी दोबारा लिखवा रहा हूँ" + if (backup.isNotBlank()) " (backup: $backup)" else " (पुरानी फ़ाइल याद रखी है)")
-        var msgs = mutableListOf("user" to coderBrief(s, cur, strat))
+        val defs = definitions(s)
+        var msgs = mutableListOf("user" to coderBrief(s, cur, strat, defs))
         for (attempt in 1..Seven.STEP_ATTEMPTS) {
             val sys = Seven.Prompts.CODER + if (strat == Seven.Strategy.REWRITE) "\n\n" + Seven.Prompts.CODER_REWRITE else ""
             val reply = ai.ask(Agent.CODER, sys, msgs)
             val edit = Seven.parseEdit(reply, s.file)
             val chk = Seven.check(edit, s, cur, allowRewrite = strat == Seven.Strategy.REWRITE || cur == null)
             var problems = chk.problems
-            if (chk.ok) {
-                // रिव्यूअर (AI): पुराना फ़ीचर / compile / कदम पूरा?
-                val r = review(s, cur, edit, chk.content)
+            var forCoder = ""
+            // रिव्यूअर की पक्की नाम-जाँच: नया code जो function/class/variable बुलाता है, वह सच में है?
+            val miss = if (chk.ok && chk.content != null) names(s.file, cur, chk.content) else emptyList()
+            val sure = miss.filter { it.sure }
+            if (sure.isNotEmpty()) {
+                problems = sure.map { "नाम मौजूद नहीं: " + it.hindi() }
+                forCoder = "\nNAME CHECK FAILED (these names do not exist - read the definitions and use the real names):\n" + sure.joinToString("\n") { "- " + it.english() }
+            } else if (chk.ok) {
+                // रिव्यूअर (AI): पुराना फ़ीचर / compile / कदम पूरा? (+ जो नाम पक्के नहीं, उनका सबूत)
+                val r = review(s, cur, edit, chk.content, miss)
                 if (r.isEmpty()) {
                     files.stage(s.file, chk.content)
                     changes[s.file] = (changes[s.file]?.let { "$it; " } ?: "") + s.change.take(160)
@@ -282,10 +332,10 @@ class SevenTeam(
                 strat = next
                 ev(Agent.MANAGER, "एक ही गलती बार-बार / FIND नहीं बन रहा — तरीका बदला: ${s.file} पूरी पढ़कर पूरी दोबारा लिखवा रहा हूँ" +
                     if (backup.isNotBlank()) " (backup: $backup)" else "")
-                msgs = mutableListOf("user" to coderBrief(s, cur, strat))
+                msgs = mutableListOf("user" to coderBrief(s, cur, strat, defs) + forCoder)
             } else {
                 msgs.add("model" to reply)
-                msgs.add("user" to "REVIEWER REJECTED (the change was NOT applied):\n" + problems.joinToString("\n") { "- $it" } +
+                msgs.add("user" to "REVIEWER REJECTED (the change was NOT applied):\n" + problems.joinToString("\n") { "- $it" } + forCoder +
                     (if (chk.findMiss && cur != null) "\nHere is the exact current file again - copy FIND character-for-character:\n" + fileBlock(s, cur) else "") +
                     "\nSend the corrected change in the same format.")
             }
@@ -309,13 +359,14 @@ class SevenTeam(
         return "----- BEGIN ${s.file}${if (body.length < cur.length) " (PART around the change)" else ""} -----\n$body\n----- END ${s.file} -----"
     }
 
-    private fun coderBrief(s: Seven.Step, cur: String?, strat: Seven.Strategy) = "TASK: $task\nSTEP (${s.action}): ${s.change}\nFILE: ${s.file}\n" +
+    private fun coderBrief(s: Seven.Step, cur: String?, strat: Seven.Strategy, defs: String = "") = "TASK: $task\nSTEP (${s.action}): ${s.change}\nFILE: ${s.file}\n" +
+        (if (defs.isNotBlank()) "DEFINITIONS (real, read from the files - use exactly these names/signatures):\n$defs\n" else "") +
         (if (cur == null) "(new file - send FILE: ${s.file} and <<<FILE … FILE>>>)" else if (strat == Seven.Strategy.REWRITE)
             "FULL CURRENT FILE (rewrite it completely, keep everything else exactly):\n----- BEGIN ${s.file} -----\n$cur\n----- END ${s.file} -----"
         else fileBlock(s, cur))
 
     /** @return समस्याएँ (खाली = पास) */
-    private suspend fun review(s: Seven.Step, cur: String?, e: Seven.Edit, after: String?): List<String> {
+    private suspend fun review(s: Seven.Step, cur: String?, e: Seven.Edit, after: String?, unsure: List<SevenSymbols.Miss> = emptyList()): List<String> {
         val change = when {
             e.full != null && cur == null -> "NEW FILE ${s.file}:\n" + e.full.take(20_000)
             e.full != null -> "FULL REWRITE of ${s.file}. Lines before: ${cur!!.lines().size}, after: ${after?.lines()?.size}.\nREMOVED LINES:\n" +
@@ -325,7 +376,9 @@ class SevenTeam(
         }
         val ctx = if (cur != null && e.full == null) "\nFILE CONTEXT:\n" + (if (cur.length <= 12_000) cur else Seven.window(cur, e.pairs.first().first.lines().first(), 60)) else ""
         for (t in 0..1) {
-            val o = askJson(Agent.REVIEWER, "TASK: $task\nSTEP: ${s.change}\nFILE: ${s.file}\nCHANGE:\n$change$ctx") ?: continue
+            val nameCheck = if (unsure.isEmpty()) "" else "\nNAME CHECK (not found in this repository - only valid if it really exists in the external parent class / SDK):\n" +
+                unsure.joinToString("\n") { "- " + it.english() }
+            val o = askJson(Agent.REVIEWER, "TASK: $task\nSTEP: ${s.change}\nFILE: ${s.file}\nCHANGE:\n$change$ctx$nameCheck") ?: continue
             if (o.optBoolean("pass", false)) return emptyList()
             return Seven.strings(o.optJSONArray("problems")).ifEmpty { listOf("रिव्यूअर ने बदलाव ठीक नहीं माना (वजह नहीं बताई)") }
         }
@@ -347,12 +400,16 @@ class SevenTeam(
         if (staged.isEmpty()) return TeamTest(false, "NOTHING CHANGED: no file was changed for the task")
         val g = git
         if (g != null) {
-            val o = askJson(Agent.GIT, "TASK: $task\nCHANGES:\n" + changes.entries.joinToString("\n") { "${it.key}: ${it.value}" })
-            val commit = o?.optString("commit").orEmpty().ifBlank { "DK: " + task.take(60) }
-            val title = o?.optString("title").orEmpty().ifBlank { task.take(80) }
-            ev(Agent.GIT, "branch पर push, टेस्ट के लिए draft PR…")
+            val cm = commitMsg ?: run {
+                val o = askJson(Agent.GIT, "TASK: $task\nCHANGES:\n" + changes.entries.joinToString("\n") { "${it.key}: ${it.value}" })
+                (o?.optString("commit").orEmpty().ifBlank { "DK: " + task.take(60) } to o?.optString("title").orEmpty().ifBlank { task.take(80) })
+                    .also { commitMsg = it }
+            }
+            val commit = cm.first; val title = cm.second
+            ev(Agent.GIT, if (g.prUrl.isBlank()) "branch पर push — PR अभी नहीं, पहले build/tests" else "उसी PR की branch पर push, PR का चेक…")
             val r = g.pushAndTest(commit, title, changes.entries.joinToString("\n") { "• ${it.key} — ${it.value}" }, rootCause) { ev(Agent.TESTER, it) }
             if (r.ok == null && r.log == NO_CI) {
+                noCi = true
                 ev(Agent.TESTER, "इस रिपो में GitHub Actions का कोई test/build नहीं — syntax जाँच + ड्राई-रन से जाँच रहा हूँ")
                 return dryRun(staged, "रिपो में CI नहीं: syntax जाँच + ड्राई-रन")
             }
@@ -372,6 +429,43 @@ class SevenTeam(
         else TeamTest(false, "DRY-RUN TEST FAILED: " + o.optString("error").ifBlank { "tester found a failing case" })
     }
 
+    // ------------------------------------------------------------------ नाम-जाँच (फ़ाइल पढ़कर, अंदाज़े से नहीं)
+    private suspend fun workspace(): Map<String, String> = files.all() ?: run {
+        val m = LinkedHashMap<String, String>()
+        for (p in files.list().take(400)) files.read(p)?.let { m[p] = it }
+        m
+    }
+
+    private suspend fun names(path: String, before: String?, after: String): List<SevenSymbols.Miss> = try {
+        val ws = HashMap(workspace()); ws[path] = after
+        SevenSymbols.check(path, before, after, ws, files.whole)
+    } catch (e: Exception) { emptyList() }
+
+    private suspend fun readMap(paths: Collection<String>): Map<String, String?> {
+        val m = HashMap<String, String?>()
+        for (p in paths) m[p] = try { files.read(p) } catch (_: Exception) { null }
+        return m
+    }
+
+    private suspend fun badUses(plan: Seven.Plan): List<String> {
+        val uses = plan.steps.flatMap { it.uses }.distinct()
+        if (uses.isEmpty()) return emptyList()
+        val m = readMap(uses.map { it.substringBefore(':').trim() }.distinct())
+        return SevenSymbols.badUses(uses) { m[it] }
+    }
+
+    private suspend fun definitions(s: Seven.Step): String {
+        if (s.uses.isEmpty()) return ""
+        val m = readMap(s.uses.map { it.substringBefore(':').trim() }.distinct())
+        return SevenSymbols.signatures(s.uses) { m[it] }
+    }
+
+    /** log से असली एरर लाइनें (Kotlin "e: file:line", error:, FAILED, Exception) */
+    private fun errorLines(log: String): String = log.lines().map { it.trim() }.filter { l ->
+        l.startsWith("e: ") || l.contains("error:", true) || l.contains("Unresolved reference") || l.contains("FAILED") ||
+            l.contains("AssertionError") || l.contains("Exception:") || l.startsWith("STATIC CHECK") || l.startsWith("DRY-RUN")
+    }.distinct().take(8).joinToString("\n") { it.take(240) }
+
     // ------------------------------------------------------------------ मदद
     private suspend fun askJson(a: Agent, user: String): JSONObject? {
         val msgs = mutableListOf("user" to user)
@@ -385,8 +479,17 @@ class SevenTeam(
 
     private fun finish(testOk: Boolean?, problem: String, pr: String = git?.prUrl.orEmpty()): Outcome {
         if (problem.isNotBlank()) ev(Agent.MANAGER, (if (testOk == null) "⚠ " else "✗ ") + problem)
+        val lt = lastTest
+        val chk = when {
+            git == null -> null
+            noCi -> Seven.CheckState.NONE
+            testOk == true -> Seven.CheckState.PASS
+            lt == null -> Seven.CheckState.NONE
+            lt.ok == false -> Seven.CheckState.FAIL
+            else -> Seven.CheckState.RUNNING
+        }
         var rep = Seven.report(task, mode, changes.entries.map { it.key to it.value }, bugs, testOk,
-            if (testOk == true) passNote else problem.take(300), pr, backup)
+            if (testOk == true) passNote else problem.take(300), pr, backup, chk, lt?.url.orEmpty(), git?.prNote.orEmpty())
         if (testOk != true && problem.isNotBlank()) rep += "\n\n• रुकने की वजह: $problem" +
             if (mode == Seven.Mode.GITHUB) "\n• main अछूता है${if (backup.isNotBlank()) ", backup: $backup" else ""}। आगे क्या करूँ, बताइए।" else ""
         return Outcome(rep, files.staged(), testOk, mode)
@@ -402,4 +505,7 @@ class MemoryFiles(initial: Map<String, String>) : TeamFiles {
     override suspend fun original(path: String) = orig[path]
     override suspend fun stage(path: String, content: String?) { stagedMap[path] = content }
     override fun staged(): Map<String, String?> = LinkedHashMap(stagedMap)
+    override suspend fun all(): Map<String, String> = LinkedHashMap<String, String>().apply {
+        putAll(orig); stagedMap.forEach { (p, c) -> if (c == null) remove(p) else put(p, c) }
+    }
 }

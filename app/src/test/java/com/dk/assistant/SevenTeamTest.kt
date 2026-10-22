@@ -205,4 +205,91 @@ REPLACE>>>"""
         assertTrue(ai.calls.contains(Agent.DEBUGGER))
         assertNull(out.files["app/src/test/CalcTest.kt"]?.let { if (Regex("@Test").findAll(it).count() < 2) "kam" else null })
     }
+
+    // ---------------------------------------------------------------- user का नियम: build पास होने पर ही PR
+    /** असली Git जैसा: पहले PR नहीं; branch build -> openPr -> PR का चेक */
+    class LaterGit(private val tests: ArrayDeque<TeamTest>) : TeamGit {
+        val log = mutableListOf<String>()
+        private var url = ""
+        override suspend fun backup(task: String) = "backup/dk-1022-1500".also { log.add("backup") }
+        override suspend fun branch(task: String) = "feature/dk-y".also { log.add("branch") }
+        override suspend fun pushAndTest(commit: String, title: String, summary: String, rootCause: String, onStep: (String) -> Unit): TeamTest {
+            val t = tests.removeFirst()
+            log.add((if (url.isBlank()) "branch-build:" else "pr-check:") + t.ok); return t
+        }
+        override suspend fun ready() = url.also { log.add("ready") }
+        override val prUrl: String get() = url
+        override suspend fun openPr(): String { log.add("openPr"); url = "https://github.com/u/r/pull/9"; return url }
+    }
+
+    @Test fun prOpenedOnlyAfterBranchBuildPasses_thenPrCheckWatched() = runBlocking {
+        val ai = FakeAi(Agent.MANAGER to managerFeature, Agent.PLANNER to planRead, Agent.PLANNER to planOne,
+            Agent.CODER to goodEdit, Agent.REVIEWER to pass, Agent.GIT to gitMsg)
+        val git = LaterGit(ArrayDeque(listOf(TeamTest(true, "", "https://ci/branch", stage = TeamTest.BRANCH), TeamTest(true, "", "https://ci/pr", stage = TeamTest.PR))))
+        val out = SevenTeam(ai, files(), git) { _, _ -> }.run("Calc में sub() फ़ंक्शन जोड़ो")
+        assertEquals(listOf("backup", "branch", "branch-build:true", "openPr", "pr-check:true", "ready"), git.log)
+        assertEquals(1, ai.calls.count { it == Agent.GIT })          // commit message एक ही बार
+        assertTrue(out.report.contains("✅ काम पूरा हुआ"))
+        assertTrue(out.report.contains("PR: https://github.com/u/r/pull/9"))
+        assertTrue(out.report.contains("चेक की हालत: ✅ पास — https://ci/pr"))
+    }
+
+    @Test fun branchBuildFails_noPr_noDoneInReport() = runBlocking {
+        val dbg = """{"root_cause":"src/Calc.kt:5 - same failure each time","where":"src/Calc.kt:5","fix":"x","files":["src/Calc.kt"]}"""
+        val fixPlan = """{"steps":[{"file":"src/Calc.kt","action":"edit","change":"fix","anchor":"fun sub"}]}"""
+        fun fixEdit(n: Int) = "FILE: src/Calc.kt\n<<<FIND\n    return a - b${if (n == 0) "" else " // $n"}\nFIND>>>\n<<<REPLACE\n    return a - b // ${n + 1}\nREPLACE>>>"
+        val script = mutableListOf(Agent.MANAGER to managerFeature, Agent.PLANNER to planOne, Agent.CODER to goodEdit, Agent.REVIEWER to pass, Agent.GIT to gitMsg)
+        for (n in 0 until 3) script += listOf(Agent.DEBUGGER to dbg, Agent.PLANNER to fixPlan, Agent.CODER to fixEdit(n), Agent.REVIEWER to pass)
+        val ai = FakeAi(*script.toTypedArray())
+        val fail = TeamTest(false, "e: file:///w/src/Calc.kt:5:9 Unresolved reference: speak", "https://ci/b", stage = TeamTest.BRANCH)
+        val git = LaterGit(ArrayDeque(List(6) { fail }))
+        val events = mutableListOf<String>()
+        val out = SevenTeam(ai, files(), git) { _, t -> events.add(t) }.run("Calc में sub() फ़ंक्शन जोड़ो")
+        assertFalse(git.log.contains("openPr"))
+        assertFalse(out.report.contains("✅ काम पूरा हुआ"))
+        assertTrue(out.report.contains("PR: अभी नहीं बना"))
+        assertTrue(out.report.contains("चेक की हालत: ❌ फ़ेल"))
+        assertFalse(out.report.contains("merge कर दूँ"))
+        // टेस्टर ने log से असली एरर लाइन निकाली
+        assertTrue(events.any { it.contains("असली एरर") && it.contains("Unresolved reference: speak") })
+        assertTrue(ai.lastUser[Agent.DEBUGGER].orEmpty().contains("EXACT ERROR LINES"))
+    }
+
+    @Test fun everyAgentPromptHasItsShareOfTheRule() {
+        assertTrue(Seven.Prompts.PLANNER.contains("Never guess a name"))
+        assertTrue(Seven.Prompts.CODER.contains("Never invent or guess a name"))
+        assertTrue(Seven.Prompts.REVIEWER.contains("NAME CHECK"))
+        assertTrue(Seven.Prompts.TESTER.contains("a PR is opened only after it passes"))
+        assertTrue(Seven.Prompts.DEBUGGER.contains("EXACT error lines"))
+        assertTrue(Seven.Prompts.MANAGER.contains("never call the work \"done\" before"))
+        assertTrue(Seven.Prompts.GIT.contains("opens the PR only after the build passes"))
+    }
+
+    @Test fun plannerWrongUses_sentBackToReadFiles() = runBlocking {
+        val badPlan = planOne.replace("\"anchor\":\"fun add\"}", "\"anchor\":\"fun add\",\"uses\":[\"src/Calc.kt: multiply\"]}")
+        val goodPlan = planOne.replace("\"anchor\":\"fun add\"}", "\"anchor\":\"fun add\",\"uses\":[\"src/Calc.kt: add\"]}")
+        val ai = FakeAi(Agent.MANAGER to managerFeature, Agent.PLANNER to planRead, Agent.PLANNER to badPlan, Agent.PLANNER to goodPlan,
+            Agent.CODER to goodEdit, Agent.REVIEWER to pass, Agent.GIT to gitMsg)
+        val git = FakeGit(ArrayDeque(listOf(TeamTest(true, "", "https://ci/1"))))
+        SevenTeam(ai, files(), git) { _, _ -> }.run("Calc में sub() फ़ंक्शन जोड़ो")
+        assertTrue(ai.lastUser[Agent.CODER].orEmpty().contains("DEFINITIONS"))
+        assertTrue(ai.lastUser[Agent.CODER].orEmpty().contains("fun add(a: Int, b: Int): Int"))
+        assertEquals(3, ai.calls.count { it == Agent.PLANNER })
+    }
+
+    @Test fun coderInventsName_rejectedByNameCheck_neverApplied() = runBlocking {
+        val repo = mapOf("src/Calc.kt" to calc, "src/Speaker.kt" to "package app\nclass Speaker {\n    fun speak(t: String) {}\n}\n",
+            "src/Svc.kt" to "package app\nclass Svc {\n    val speaker = Speaker()\n}\n")
+        val f = object : TeamFiles by MemoryFiles(repo) { override val whole = true }
+        val inv = "FILE: src/Calc.kt\n<<<FIND\nfun add(a: Int, b: Int): Int {\nFIND>>>\n<<<REPLACE\nfun hi(svc: Svc) = svc.speak(\"x\")\n\nfun add(a: Int, b: Int): Int {\nREPLACE>>>"
+        val fixed = inv.replace("svc.speak(", "svc.speaker.speak(")
+        val ai = FakeAi(Agent.MANAGER to managerFeature, Agent.PLANNER to planRead, Agent.PLANNER to planOne,
+            Agent.CODER to inv, Agent.CODER to fixed, Agent.REVIEWER to pass, Agent.GIT to gitMsg)
+        val git = FakeGit(ArrayDeque(listOf(TeamTest(true, "", "https://ci/1"))))
+        val out = SevenTeam(ai, f, git) { _, _ -> }.run("Calc में hi() जोड़ो")
+        assertTrue(ai.lastUser[Agent.CODER].orEmpty().contains("NAME CHECK FAILED"))
+        assertEquals(1, ai.calls.count { it == Agent.REVIEWER })     // गलत नाम वाला AI रिव्यू तक भी नहीं गया
+        assertTrue(out.files["src/Calc.kt"].orEmpty().contains("svc.speaker.speak("))
+        assertFalse(out.files["src/Calc.kt"].orEmpty().contains("svc.speak("))
+    }
 }

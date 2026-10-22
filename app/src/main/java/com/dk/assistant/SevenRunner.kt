@@ -41,6 +41,8 @@ object SevenRunner {
             withContext(Dispatchers.IO) { a.teamStage(path, content) }
         }
         override fun staged(): Map<String, String?> = LinkedHashMap(mine)
+        override suspend fun all(): Map<String, String>? = a.teamSnapshot()
+        override val whole: Boolean get() = a.teamSnapshot() != null
     }
 
     /** गिट एजेंट के हाथ = CodingAgent की सुरक्षित PR वाली सुविधाएँ */
@@ -53,12 +55,35 @@ object SevenRunner {
                 a.push(commit)
                 if (a.prError.isNotBlank()) onStep("PR: ${a.prError.take(200)}")
             }
-            val hasCi = withContext(Dispatchers.IO) { a.teamList().any { it.startsWith(".github/workflows/") && (it.endsWith(".yml") || it.endsWith(".yaml")) } }
-            if (!hasCi) return TeamTest(null, SevenTeam.NO_CI, a.pr?.url.orEmpty())
-            val b = a.watchBuild(a.lastSha, onStep)
-                ?: return TeamTest(null, "", a.pr?.url.orEmpty(), "GitHub Actions का नतीजा नहीं दिखा — token में Actions: Read की इजाज़त दें, या GitHub पर PR के checks देखें")
-            return TeamTest(b.ok, b.log, b.url)
+            val wfs = withContext(Dispatchers.IO) { a.teamWorkflows() }
+            if (wfs.isEmpty()) return TeamTest(null, SevenTeam.NO_CI, a.pr?.url.orEmpty())
+            if (a.pr == null) {
+                // नियम: PR बनाने से पहले build. फ़ोन पर compile नहीं -> GitHub पर इसी branch का build (PR के बिना)
+                val wf = Seven.dispatchable(wfs)
+                if (wf != null) {
+                    val why = a.teamDispatch(wf)
+                    if (why.isBlank()) {
+                        onStep("PR से पहले इसी branch (${a.branch}) पर build/tests चला दिए ($wf) — पास होने पर ही PR बनेगा")
+                        val b = a.watchBuildFor(a.lastSha, "workflow_dispatch", onStep)
+                            ?: return TeamTest(null, "", "", "branch वाले build का नतीजा नहीं दिखा — token में Actions: Read की इजाज़त दें. code branch ${a.branch} पर है", TeamTest.BRANCH)
+                        return TeamTest(b.ok, b.log, b.url, if (b.ok) "PR से पहले branch build ($wf) पास" else "", TeamTest.BRANCH)
+                    }
+                    onStep("branch पर build नहीं चला पाया (${why.take(120)}) — token में Actions: Read and write दें. अभी: draft PR पर build, पास होने पर ही असली PR")
+                } else onStep("इस रिपो का build सिर्फ़ PR पर चलता है — draft PR पर build चलेगा, पास होने पर ही वह असली (ready) PR बनेगा")
+                val e = a.teamOpenPr(draft = true)
+                if (e.isNotBlank()) return TeamTest(null, "", "", "build के लिए draft PR नहीं बना: ${e.take(200)}", TeamTest.PR)
+                onStep("draft PR (सिर्फ़ build के लिए): ${a.pr?.url.orEmpty()}")
+            }
+            // PR का अपना चेक (pull_request); न मिले तो इस commit के सारे checks
+            val b = a.watchBuildFor(a.lastSha, "pull_request", onStep) ?: a.watchBuild(a.lastSha, onStep)
+                ?: return TeamTest(null, "", a.pr?.url.orEmpty(), "PR के चेक का नतीजा नहीं दिखा — token में Actions: Read की इजाज़त दें, या GitHub पर PR के checks देखें", TeamTest.PR)
+            return TeamTest(b.ok, b.log, b.url, if (b.ok) "PR का चेक पास" else "", TeamTest.PR)
         }
+        override suspend fun openPr(): String {
+            val e = a.teamOpenPr(draft = false)
+            return if (e.isBlank()) a.pr?.url.orEmpty() else ""
+        }
+        override val prNote: String get() = a.prError.ifBlank { if (a.pr == null && a.branch.isNotBlank()) "code branch ${a.branch} पर है" else "" }
         override suspend fun ready(): String {
             val why = a.teamReady()
             val url = a.pr?.url.orEmpty()
@@ -77,7 +102,7 @@ object SevenRunner {
         if (CoderSession.busy) return "अभी एक काम चल रहा है — पूरा होने दें या रोकें"
         CoderSession.offerNormal = null
         say("u", (if (fromVoice) "🎤 " else "") + task)
-        CoderSession.launch(c) {
+        CoderSession.launch(c, task) {
             var agent: CodingAgent? = null
             try {
                 kotlinx.coroutines.withTimeout(CoderTeam.TASK_TIMEOUT_MIN * 60 * 1000L) {
@@ -105,7 +130,7 @@ object SevenRunner {
                         // नया काम = साफ़ शुरुआत (नया backup + नई branch). पिछला PR अभी खुला (merge नहीं) हो तो यह काम उसी में जुड़ता है
                         val open = a.pr
                         if (open == null) a.reset() else say("s", "🌿 पिछला PR #${open.number} अभी खुला है (merge नहीं हुआ) — यह काम उसी branch (${a.branch}) में जुड़ेगा")
-                        a.safePr = true; a.draftPr = true
+                        a.safePr = true; a.draftPr = true; a.prLater = true
                         say("s", "🌿 GitHub मोड: $repo (${Prefs.ghBranch(c)}) — backup, नई branch, PR, और आपकी मंज़ूरी से merge")
                         a.teamLoad { say("s", it) }
                         team = SevenTeam(Ai(ai), RepoFiles(a), Git(a, task)) { ag, t -> say("s", "${ag.icon} ${ag.hi}: $t") }
@@ -127,7 +152,7 @@ object SevenRunner {
                         if (content != null) CoderSession.normalFiles[p] = content else CoderSession.normalFiles.remove(p)
                     }
                     val ok = out.testOk == true
-                    CoderTeam.announce(c, if (ok) "7-एजेंट टीम: काम पूरा" else "7-एजेंट टीम: रुकी", out.report.lines().drop(2).firstOrNull().orEmpty(),
+                    CoderTeam.announce(c, if (ok) "7-एजेंट टीम: काम पूरा" else "7-एजेंट टीम: रुकी", out.report.lines().getOrNull(1).orEmpty(),
                         if (ok && out.mode == Seven.Mode.GITHUB) "कोडिंग का काम पूरा हो गया, बॉस। टेस्ट पास हैं, PR आपकी मंज़ूरी का इंतज़ार कर रहा है।"
                         else if (ok) "कोडिंग का काम पूरा हो गया, बॉस। कोड स्क्रीन पर फ़ाइल-नाम के साथ है।"
                         else "कोडिंग का काम पूरा नहीं हो पाया। कोडिंग स्क्रीन पर वजह लिखी है।")
@@ -140,7 +165,7 @@ object SevenRunner {
                 say("e", "7-एजेंट टीम रुकी: " + (e.message ?: e.javaClass.simpleName).take(400) + "\n(API/नेटवर्क की गलती पर 3 बार अपने-आप कोशिश हो चुकी)")
             } finally {
                 agent?.let { a ->
-                    a.draftPr = false
+                    a.draftPr = false; a.prLater = false
                     withContext(NonCancellable) { try { a.dropEmptyBranch() } catch (_: Exception) {} }
                 }
             }

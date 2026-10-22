@@ -396,6 +396,8 @@ class CodingAgent(private val gh: GitHub, var repo: String, var branch: String, 
     // ---------------------------------------------------------------- 7-एजेंट सिस्टम के हाथ (पुराना एजेंट इन्हें इस्तेमाल नहीं करता)
     /** true = नया PR draft बने (7-एजेंट: टेस्ट के लिए draft, पास होने पर ही review के लिए तैयार). पुराना एजेंट: false */
     @Volatile var draftPr = false
+    /** true = push पर PR नहीं (7-एजेंट: पहले branch पर build, पास हो तभी teamOpenPr). पुराना एजेंट: false */
+    @Volatile var prLater = false
 
     /** रिपो की फ़ाइलें फ़ोन में (पहले से हों तो कुछ नहीं) */
     suspend fun teamLoad(onStep: (String) -> Unit) = withContext(Dispatchers.IO) {
@@ -409,6 +411,37 @@ class CodingAgent(private val gh: GitHub, var repo: String, var branch: String, 
     fun teamStage(path: String, content: String?) { remember(path); staged[path] = content }
     /** PR के विवरण के लिए: काम, क्या बदला, जड़ */
     fun teamInfo(task: String, summary: String, root: String) { lastTask = task; lastSummary = summary; rootCause = root }
+    /** पूरा रिपो (बदलाव समेत) - नाम-जाँच के लिए. null = snapshot नहीं (बड़ा रिपो) */
+    fun teamSnapshot(): Map<String, String>? = snap?.let { m ->
+        HashMap(m).apply { staged.forEach { (p, c) -> if (c == null) remove(p) else put(p, c) } }
+    }
+
+    /** रिपो के GitHub Actions workflows: (फ़ाइल का नाम, content) */
+    fun teamWorkflows(): List<Pair<String, String>> = allPaths()
+        .filter { it.startsWith(".github/workflows/") && (it.endsWith(".yml") || it.endsWith(".yaml")) }
+        .mapNotNull { p -> (try { current(p) } catch (_: Exception) { null })?.let { p.substringAfterLast('/') to it } }
+
+    /** इस branch पर workflow चलाओ (PR से पहले build). @return "" = चल गया, वरना वजह */
+    suspend fun teamDispatch(workflowFile: String): String = withContext(Dispatchers.IO) {
+        try { gh.dispatchWorkflow(repo, workflowFile, branch); "" } catch (e: Exception) { e.message ?: e.javaClass.simpleName }
+    }
+
+    /** build पास होने के बाद PR खोलो. @return "" = बना (pr में), वरना वजह */
+    suspend fun teamOpenPr(draft: Boolean): String = withContext(Dispatchers.IO) {
+        if (pr != null) return@withContext ""
+        val prot = SafePr.protectedIn(staged.keys)
+        val body = SafePr.prBody(lastSummary, lastChangeText, prot, backupBranch, rootCause)
+        val title = lastPushMsg.ifBlank { lastTask.take(80) }
+        try {
+            pr = gh.openPullFor(repo, branch) ?: if (draft) gh.createDraftPull(repo, branch, baseBranch, title, body)
+                else gh.createPull(repo, branch, baseBranch, title, body)
+            prError = ""; ""
+        } catch (e: Exception) {
+            prError = (e.message ?: e.javaClass.simpleName).take(200) + " — token में Pull requests: Read and write दें, या GitHub पर $branch से PR खुद बनाएँ"
+            prError
+        }
+    }
+
     /** टेस्ट पास: draft PR → review के लिए तैयार. @return "" = ठीक, वरना वजह */
     suspend fun teamReady(): String = withContext(Dispatchers.IO) {
         val p = pr ?: return@withContext "PR नहीं है"
@@ -1040,7 +1073,7 @@ pass=true ONLY if you are confident it compiles and the task works completely.${
         staged.clear()
         msgs.add("user" to "PUSHED to $branch: $url. The repository now contains these changes.")
         msgs.add("model" to "{\"tool\":\"ask\",\"question\":\"और कुछ?\"}")
-        if (safePr && pr == null) {
+        if (safePr && pr == null && !prLater) {
             prError = ""
             pr = try {
                 gh.openPullFor(repo, branch) ?: if (draftPr) gh.createDraftPull(repo, branch, baseBranch, msg, SafePr.prBody(lastSummary, changeText, prot, backupBranch, rootCause))
@@ -1103,7 +1136,10 @@ pass=true ONLY if you are confident it compiles and the task works completely.${
     /**
      * Push ke baad GitHub Actions build ka intezaar. null = is repo me build (workflow) nahi / dekh nahi paya.
      */
-    suspend fun watchBuild(sha: String, onStep: (String) -> Unit): Build? = withContext(Dispatchers.IO) {
+    suspend fun watchBuild(sha: String, onStep: (String) -> Unit): Build? = watchBuildFor(sha, null, onStep)
+
+    /** event = सिर्फ़ इस तरह से चले runs ("pull_request" / "workflow_dispatch"); null = सब */
+    suspend fun watchBuildFor(sha: String, event: String?, onStep: (String) -> Unit): Build? = withContext(Dispatchers.IO) {
         if (sha.isBlank()) return@withContext null
         val t0 = System.currentTimeMillis()
         var said = ""
@@ -1111,7 +1147,7 @@ pass=true ONLY if you are confident it compiles and the task works completely.${
         delay(8_000)
         while (System.currentTimeMillis() - t0 < 20 * 60_000L) {
             ensureActive()
-            val runs = try { gh.runsFor(repo, sha) } catch (e: GitHub.Err) {
+            val runs = try { gh.runsFor(repo, sha).filter { event == null || it.event == event } } catch (e: GitHub.Err) {
                 onStep(if (e.code == 403 || e.code == 404) "Build नहीं देख पाया — token में Actions: Read की इजाज़त दें" else "Build नहीं देख पाया: ${e.message}")
                 return@withContext null
             } catch (e: Exception) { delay(10_000); continue }

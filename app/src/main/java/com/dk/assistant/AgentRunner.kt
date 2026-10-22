@@ -226,9 +226,13 @@ class AgentRunner(
         if (Prefs.coderOn(svc)) {
             CoderTeam.voiceDecision(svc, goal)?.let { say(it); return }
             codingTask(goal)?.let { task ->
-                if (!Prefs.coderTeam(svc)) { say("कोडिंग टीम सेटिंग्स में बंद है। सेटिंग्स → कोडिंग एजेंट में टीम चालू करें।"); return }
+                // 7-एजेंट सिस्टम चालू = पुराना "मल्टी-एजेंट टीम" switch ज़रूरी नहीं (CoderTeam.start खुद 7-एजेंट पर भेजता है)
+                val seven = Prefs.coderSeven(svc)
+                if (!seven && !Prefs.coderTeam(svc)) { say("कोडिंग टीम सेटिंग्स में बंद है। सेटिंग्स → कोडिंग एजेंट में टीम चालू करें।"); return }
                 val err = CoderTeam.start(svc, task, fromVoice = true)
-                say(err ?: "ठीक है, कोडिंग टीम काम शुरू कर रही है। बिल्डर लिखेगा, रिव्यूअर जाँचेगा, और पूरा होने पर मैं बताऊँगी।")
+                say(err ?: if (seven) Lang.pick("ठीक है, 7 एजेंट वाली टीम काम शुरू कर रही है। हर कदम असली होगा, और चेक पास होने पर ही बताऊँगी कि काम पूरा हुआ।",
+                    "Okay, the 7-agent team is starting. I'll tell you it's done only after the check passes.")
+                    else "ठीक है, कोडिंग टीम काम शुरू कर रही है। बिल्डर लिखेगा, रिव्यूअर जाँचेगा, और पूरा होने पर मैं बताऊँगी।")
                 return
             }
         }

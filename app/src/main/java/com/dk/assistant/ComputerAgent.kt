@@ -39,7 +39,10 @@ object ComputerSession {
     class Ask(val text: String, val answer: CompletableDeferred<Boolean>)
     @Volatile var ask: Ask? = null
 
-    fun add(role: String, t: String) { lines.add(Line(role, t)); while (lines.size > 400) lines.removeAt(0); listener?.invoke() }
+    fun add(role: String, t: String) {
+        lines.add(Line(role, t)); while (lines.size > 400) lines.removeAt(0); listener?.invoke()
+        if (role == "s") TaskStatus.step(TaskStatus.PC, t)      // असली कदम (live status)
+    }
 
     /** काम शुरू करो (या कतार में). null = शुरू/कतार, वरना वजह */
     fun start(c: Context, task: String, background: Boolean = false, voice: Boolean = false): String? {
@@ -52,6 +55,7 @@ object ComputerSession {
             return null
         }
         add("u", (if (voice) "🎤 " else "") + task)
+        TaskStatus.start(TaskStatus.PC, "DK कंप्यूटर", "DK Computer", task)
         voiceRunning = voice
         val a = agent ?: ComputerAgent(ctx).also { agent = it }
         val j = scope.launch {
@@ -59,14 +63,17 @@ object ComputerSession {
                 val out = a.run(task, background)
                 out.files.forEach { add("f", it) }
                 add("d", out.text + "\n\n" + out.report)
+                TaskStatus.end(TaskStatus.PC, if (out.question) TaskStatus.State.WAITING else TaskStatus.State.DONE, out.text)
                 if (!visible || background) notifyUser(ctx, if (out.question) "DK कंप्यूटर को जानकारी चाहिए" else "DK कंप्यूटर: काम पूरा", out.text.take(300))
                 if (voice) speak(ComputerVoice.spoken(out.text, out.files.size, out.question))
             } catch (e: CancellationException) {
                 add("e", "काम रोक दिया।")
+                TaskStatus.end(TaskStatus.PC, TaskStatus.State.CANCELLED, "काम रोक दिया")
                 throw e
             } catch (e: Exception) {
                 val m = (e.message ?: e.javaClass.simpleName).take(500)
                 add("e", "गलती: $m\n\n" + a.reportText(m))
+                TaskStatus.end(TaskStatus.PC, TaskStatus.State.FAILED, m)
                 if (!visible || background) notifyUser(ctx, "DK कंप्यूटर: काम रुका", m.take(200))
                 if (voice) speak("DK कंप्यूटर का काम पूरा नहीं हो पाया। वजह स्क्रीन में लिखी है।")
             }
@@ -104,7 +111,9 @@ object ComputerSession {
         listener?.invoke()
         if (!visible) notifyUser(c, "DK कंप्यूटर: इजाज़त चाहिए", text.take(200))
         if (voiceRunning) speak("DK कंप्यूटर को इजाज़त चाहिए: ${text.take(160)}। बोलिए हाँ या नहीं।")
+        TaskStatus.waiting(TaskStatus.PC, "इजाज़त चाहिए: $text")
         val r = withTimeoutOrNull(3 * 60_000L) { a.answer.await() } ?: false
+        TaskStatus.step(TaskStatus.PC, if (r) "इजाज़त मिली" else "इजाज़त नहीं मिली")
         ask = null
         listener?.invoke()
         return r

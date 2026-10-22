@@ -43,6 +43,7 @@ object CoderSession {
         // एक ही संदेश दो बार नहीं (हर कदम पर वही चेतावनी/गलती)
         if (lines.takeLast(3).any { it.role == role && it.text == t }) return
         lines.add(Line(role, t)); if (lines.size > 300) lines.removeAt(0); listener?.invoke()
+        if (role == "s") TaskStatus.step(TaskStatus.CODER, t)      // असली कदम (live status)
     }
     val busy get() = job?.isActive == true
     @Volatile private var appCtx: Context? = null
@@ -51,11 +52,21 @@ object CoderSession {
      * Har kaam isi se chalao. Kaam KHATAM hone ke baad (busy = false) screen dobara banti hai —
      * pehle listener kaam ke andar hi chalta tha (tab busy = true), isliye "Merge करें" card chhupa reh jaata tha.
      */
-    fun launch(c: Context, block: suspend CoroutineScope.() -> Unit): Job {
+    fun launch(c: Context, task: String? = null, block: suspend CoroutineScope.() -> Unit): Job {
         appCtx = c.applicationContext
+        // task = कोडिंग का असली काम (live status में दिखे). merge/push जैसे छोटे काम: null
+        if (task != null) TaskStatus.start(TaskStatus.CODER, "कोडिंग टीम", "the coding team", task)
+        val from = lines.size
         val j = scope.launch(block = block)
         job = j
-        j.invokeOnCompletion { scope.launch { savePr(appCtx); listener?.invoke() } }
+        j.invokeOnCompletion { cause ->
+            if (task != null) {
+                val last = lines.drop(from.coerceAtMost(lines.size)).lastOrNull { it.role == "d" || it.role == "e" }
+                TaskStatus.end(TaskStatus.CODER, TaskStatus.coderState(last?.role, last?.text, cause is kotlinx.coroutines.CancellationException),
+                    last?.text.orEmpty().lines().filter { it.isNotBlank() }.take(4).joinToString(" • "))
+            }
+            scope.launch { savePr(appCtx); listener?.invoke() }
+        }
         return j
     }
 
