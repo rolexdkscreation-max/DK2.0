@@ -87,5 +87,6 @@ object SearchPolicy {
         "(weather, stock/crypto/gold/fuel prices, live scores, match results), today's schedules/status (trains, flights, results, releases), " +
         "or facts that change over time where your knowledge may be outdated (current office holders, latest product versions/prices, new rules or laws).\n" +
         "- The current date and time are given below: answer date/time questions from them, never search for them.\n" +
-        "- If you are not sure your knowledge is still current for such a changing fact, then use $searchName; otherwise do not."
+        "- If you are not sure your knowledge is still current for such a changing fact, then use $searchName; otherwise do not.\n" +
+        "- If you simply do not know the answer, or are not sure it is correct, do NOT guess or make it up - use $searchName."
 }

@@ -162,6 +162,12 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
     private val replyWatch = ReplyWatchdog()
     @Volatile private var unheard = 0
     @Volatile private var rescued = 0
+    /** v3.29: suna par jawab shuru nahi kiya -> wahi baat text me dobara (kitni baar) */
+    @Volatile private var stalledN = 0
+    /** v3.29: baat khatam hote hi seedha kaam (Gemini se pehle) + Gemini ka phone_task dohraav na kare */
+    private val fastMemo = LiveFast.Memo()
+    @Volatile private var fastJob: Job? = null
+    @Volatile private var fastN = 0
     /** User ne toka: purane jawab ke jo tukde ab bhi aa rahe hain unhe mat bajao (interrupted/turnComplete tak) */
     @Volatile private var dropOld = false
     @Volatile private var droppedOld = 0L
@@ -251,6 +257,8 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
             " • बीच में टोकना: सिर्फ़ पक्के शब्द (असली $realBarges, शोर अनदेखा $falseAlarms)" +
             " • शोर-गेट: ${gatedChunks * CHUNK_MS / 1000}s शोर नहीं भेजा" +
             (if (unheard > 0) " • Gemini ने नहीं सुना: $unheard (caption से भेजा $rescued)" else "") +
+            (if (stalledN > 0) " • सुना पर जवाब अटका: $stalledN (दोबारा भेजा)" else "") +
+            (if (fastN > 0) " • तुरंत किए काम: $fastN" else "") +
             (if (droppedOld > 0) " • पुराने जवाब के फेंके टुकड़े: $droppedOld" else "") +
             (if (lastLatency >= 0) " • पिछली देरी: $lastLatency ms" else "") +
             (if (lastBreakdown.isNotBlank()) " • $lastBreakdown" else "")
@@ -368,6 +376,7 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
                             }
                         }
                         if (replyWatch.due(now)) onNoReply()
+                        if (replyWatch.stalled(now)) onStalled()
                         delay(100)
                     }
                     ready = false
@@ -406,6 +415,7 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
                 ready = false
                 ws = null; curClosed = null
                 caption?.stop(); caption = null
+                fastJob?.cancel(); fastJob = null; fastMemo.reset()
                 toolJobs.values.forEach { it.cancel() }; toolJobs.clear()
                 stopPlayer()
                 if (turnActive) finishTurn()
@@ -616,12 +626,13 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
                 firstAudioAt = 0; if (!isPlaying()) setMode(Mode.THINKING)
             }
         }
-        o.optJSONObject("toolCall")?.optJSONArray("functionCalls")?.let { replyWatch.onServerHeard(); runTools(it) }
+        o.optJSONObject("toolCall")?.optJSONArray("functionCalls")?.let { replyWatch.onServerAnswered(); runTools(it) }
         o.optJSONObject("toolCallCancellation")?.optJSONArray("ids")?.let { a ->
             for (i in 0 until a.length()) toolJobs.remove(a.optString(i))?.cancel()
         }
         val sc = o.optJSONObject("serverContent") ?: return
-        if (sc.has("inputTranscription") || sc.has("modelTurn") || sc.has("outputTranscription")) replyWatch.onServerHeard()
+        if (sc.has("inputTranscription")) replyWatch.onServerHeard()
+        if (sc.has("modelTurn") || sc.has("outputTranscription")) replyWatch.onServerAnswered()
         sc.optJSONObject("inputTranscription")?.optString("text")?.takeIf { it.isNotBlank() }?.let { t ->
             if (!turnActive) startTurn()
             Ducker.duck(svc, "Live: user बोल रहा")
@@ -826,13 +837,7 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
             val j = svc.scope.launch(start = CoroutineStart.LAZY) {
               try {
                 val result = try { when (name) {
-                    "phone_task" -> {
-                        DKState.set(Mode.WORKING)
-                        val before = DKState.lastReply
-                        val job = agent.run(args.optString("request"), speak = false)
-                        withTimeoutOrNull(60_000) { job.join() } ?: run { job.cancel(); null }
-                        DKState.lastReply.takeIf { it != before && it.isNotBlank() } ?: "done"
-                    }
+                    "phone_task" -> phoneTask(args.optString("request"))
                     "remember_fact" -> { Memory.addFact(svc, args.optString("fact")); "saved" }
                     "computer_task" -> {
                         val t = args.optString("task").trim()
@@ -895,6 +900,56 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
         }
     }
 
+    /**
+     * v3.29: phone_task तेज़ + सच्चा.
+     * Gemini Live का tool call रुकने वाला है (मॉडल जवाब आने तक चुप) - इसलिए यहाँ देर = DK की चुप्पी.
+     * 1) बात खत्म होते ही वही काम हो चुका (scheduleFast) -> तुरंत "हो चुका"
+     * 2) सीधा काम (QuickCommands) -> खुद, ~0.1-1s
+     * 3) बाकी AgentRunner; 20s में पूरा न हो तो Gemini को सच ("अभी चल रहा") और पूरा होने पर उसे बताओ
+     * पहले: 60s तक इंतज़ार और नतीजा न मिले तो "done" (झूठा "हो गया").
+     */
+    private suspend fun phoneTask(req: String): String {
+        val wake = Prefs.wakeWords(svc)
+        val q = LiveFast.pick(req, wake)
+        var same = fastMemo.same(q, System.currentTimeMillis())
+        if (same != LiveFast.Memo.NOT_SAME) {
+            val until = System.currentTimeMillis() + 4000
+            while (same == null && System.currentTimeMillis() < until) { delay(80); same = fastMemo.same(q, System.currentTimeMillis()) }
+            log("phone_task = अभी-अभी किया काम, दोबारा नहीं: $req")
+            val r = same
+            if (r != null && r != LiveFast.Memo.NOT_SAME) {
+                if (LiveFast.ok(q!!.action.optString("type"), r)) return LiveFast.quickResult(q, r, already = true)
+                // तुरंत वाला नहीं चला (ऐप नहीं मिला / वीडियो सीधे नहीं चला) -> AgentRunner संभाले
+            } else if (r == null) return "STARTED just now and still opening. Tell the user in 2-5 words."
+        } else if (q != null && fastMemo.begin(q, System.currentTimeMillis())) {
+            DKState.set(Mode.WORKING)
+            val r = try { svc.perform(q.action) } catch (e: CancellationException) { throw e } catch (e: Exception) { "ERROR ${e.message}" }
+            fastMemo.finish(q, r)
+            log("phone_task सीधे (बिना AI): ${q.action} = ${r.take(60)}")
+            if (LiveFast.ok(q.action.optString("type"), r)) return LiveFast.quickResult(q, r, already = false)
+        }
+        DKState.set(Mode.WORKING)
+        val before = DKState.lastReply
+        val job = agent.run(req, speak = false)
+        val finished = withTimeoutOrNull(20_000) { job.join() } != null
+        val reply = DKState.lastReply.takeIf { it != before && it.isNotBlank() }
+        if (!finished) {
+            log("phone_task 20s में पूरा नहीं - Gemini को सच बताया (चल रहा है), पूरा होने पर बताऊँगा")
+            svc.scope.launch {
+                val done = withTimeoutOrNull(120_000) { job.join() } != null
+                if (!done) job.cancel()
+                val rep = DKState.lastReply.takeIf { it != before && it.isNotBlank() }
+                    ?: if (!done) "It could not be finished in time and was stopped." else null
+                // DK बोल रहा हो तो बीच में नहीं - चुप होने तक (10s तक) रुको
+                withTimeoutOrNull(10_000) { while (isPlaying() || generating) delay(150) }
+                if (stopped || !ready) return@launch
+                try { ws?.send(JSONObject().put("realtimeInput", JSONObject().put("text", LiveFast.lateNote(req, rep))).toString()) } catch (_: Exception) {}
+                log("phone_task बाद में पूरा (${if (done) "हुआ" else "रोका"}) - Gemini को बताया")
+            }
+        }
+        return LiveFast.agentResult(finished, reply)
+    }
+
     // ================================================================ mic -> stream
     private val pending = ArrayDeque<ByteArray>()       // judne/dobara judne ke beech ki baat (1 sec tak)
 
@@ -953,7 +1008,8 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
         if (ready && w != null) { try { w.send("{\"realtimeInput\":{\"audioStreamEnd\":true}}") } catch (_: Exception) {} }
         caption?.endOfSpeech()
         // DK abhi jawab bana/bol raha hai = server sun chuka; warna 2.5s me kuch na aaye to "nahi suna"
-        if (generating || isPlaying()) replyWatch.onServerHeard() else replyWatch.onEndOfSpeech(now, turnDet.lastSpeechMs)
+        if (generating || isPlaying()) replyWatch.onServerAnswered() else replyWatch.onEndOfSpeech(now, turnDet.lastSpeechMs)
+        scheduleFast()
         log("फ़ोन: बोलना खत्म (${now - trace.speechEndAt} ms चुप) → audioStreamEnd भेजा" +
             if (trace.backlogBytes > 16 * 1024) " • नेटवर्क में ${trace.backlogBytes / 1024}KB अटका (upload धीमा)" else "")
         // sochne ka halka pulse - sannata na lage
@@ -978,11 +1034,50 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
         }
         val now = System.currentTimeMillis()
         eosAt = now; firstAudioAt = 0; trace.reset(); trace.speechEndAt = now; trace.endpointAt = now
-        replyWatch.onServerHeard()           // ek baat ke liye ek hi baar
+        replyWatch.onRescued()               // ek baat ke liye ek hi baar (atka-nudge bhi nahi)
         val ok = try { ws?.send(JSONObject().put("realtimeInput", JSONObject().put("text", t)).toString()) == true } catch (_: Exception) { false }
         if (ok) rescued++
         log("Gemini ने आवाज़ नहीं सुनी (2.5s में कुछ नहीं) - caption का text सीधे भेजा: \"${t.take(60)}\"" + if (ok) "" else " (भेज नहीं पाया)")
         if (DKState.mode != Mode.WORKING) setMode(Mode.THINKING)
+    }
+
+    /**
+     * v3.29: Gemini ne baat SUNI (text aaya) par 4.5s tak jawab shuru nahi kiya (na awaaz, na tool).
+     * Pehle: kuch nahi - 12s baad sirf "Listening", user ko jawab hi nahi milta tha ("सुनता है पर जवाब नहीं देता").
+     * Ab: wahi baat (caption ka text) ek baar text me dobara - jawab pakka shuru ho.
+     */
+    private fun onStalled() {
+        if (!ready || generating || isPlaying() || toolJobs.isNotEmpty() || turnDet.inSpeech) return
+        val t = caption?.text().orEmpty().trim().ifBlank { synchronized(turnLock) { userText.toString().trim() } }
+        if (!BargeGate.realWords(t)) return
+        val now = System.currentTimeMillis()
+        eosAt = now; firstAudioAt = 0; trace.reset(); trace.speechEndAt = now; trace.endpointAt = now
+        val ok = try { ws?.send(JSONObject().put("realtimeInput", JSONObject().put("text", t)).toString()) == true } catch (_: Exception) { false }
+        if (ok) stalledN++
+        log("Gemini ने सुना पर 4.5s में जवाब शुरू नहीं किया - वही बात text में दोबारा भेजी: \"${t.take(60)}\"" + if (ok) "" else " (भेज नहीं पाया)")
+        if (DKState.mode != Mode.WORKING) setMode(Mode.THINKING)
+    }
+
+    /**
+     * v3.29: बात खत्म -> caption का text 650ms में स्थिर हो और सीधा काम हो (ऐप खोलो, टॉर्च, आवाज़, YouTube पर चलाओ…)
+     * तो Gemini के सोचने/tool call का इंतज़ार किए बिना तुरंत करो. Gemini बाद में वही phone_task माँगे तो दोबारा नहीं (Memo).
+     * (अधूरे text पर नहीं: "टॉर्च" सुनकर जला दे और पूरी बात "टॉर्च बंद करो" हो - इसलिए दो बार देखकर ही)
+     */
+    private fun scheduleFast() {
+        if (ComputerSession.ask != null) return
+        fastJob?.cancel()
+        fastJob = svc.scope.launch {
+            fun cur() = caption?.text().orEmpty().trim().ifBlank { if (!userDone) turnUser.trim() else "" }
+            delay(300); val a = cur()
+            delay(350); val b = cur()
+            if (b.isBlank() || a != b || turnDet.inSpeech || isPlaying() || stopped) return@launch
+            val q = LiveFast.pick(b, Prefs.wakeWords(svc)) ?: return@launch
+            if (!fastMemo.begin(q, System.currentTimeMillis())) return@launch
+            val t0 = System.currentTimeMillis()
+            val r = try { svc.perform(q.action) } catch (e: CancellationException) { throw e } catch (e: Exception) { "ERROR ${e.message}" }
+            fastMemo.finish(q, r); fastN++
+            log("तुरंत काम (Gemini से पहले) \"${b.take(40)}\" -> ${q.action} = ${r.take(60)} (${System.currentTimeMillis() - t0} ms)")
+        }
     }
 
     @Volatile private var loudMs = 0L

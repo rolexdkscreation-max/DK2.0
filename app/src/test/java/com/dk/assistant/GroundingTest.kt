@@ -82,5 +82,6 @@ class GroundingTest {
         assertTrue(r.contains("coding") && r.contains("maths") && r.contains("recent news") && r.contains("weather"))
         assertTrue(r.contains("never search for them"))
         assertTrue(r.contains("not sure your knowledge is still current"))
+        assertTrue("पता न हो तो अंदाज़ा नहीं, सर्च", r.contains("do NOT guess"))
     }
 }

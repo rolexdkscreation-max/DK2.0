@@ -1,0 +1,88 @@
+package com.dk.assistant
+
+import org.json.JSONObject
+
+/**
+ * v3.29: DK लाइव में फ़ोन के सीधे काम (ऐप खोलो, टॉर्च, आवाज़, YouTube पर चलाओ…) तुरंत.
+ *
+ * जड़: Gemini Live में tool call "रुकने वाला" (blocking) है - Google docs: मॉडल tool का जवाब आने तक बोलता नहीं.
+ * पहले phone_task हर बार पूरा AgentRunner (60s तक) चलाता था और Gemini चुप इंतज़ार करता था.
+ * अब: (1) बात खत्म होते ही caption का पक्का text सीधे QuickCommands से - Gemini के सोचने से पहले काम हो जाता है;
+ * (2) फिर Gemini जो phone_task माँगे वह उसी काम का दोहराव हो तो तुरंत "हो गया" (दोबारा नहीं करते);
+ * (3) सीधा काम न हो तो भी QuickCommands पहले, AgentRunner बाद में; ज़्यादा देर हो तो Gemini को सच बताओ - "अभी चल रहा है".
+ *
+ * Android import नहीं (सिर्फ़ org.json) -> JVM unit test.
+ */
+object LiveFast {
+    /** इनका नतीजा बोलकर बताना है (दूरी, किसका कॉल) - Gemini/AgentRunner के रास्ते से */
+    private val SKIP = setOf("distance", "who_calls")
+
+    /** बात का पक्का text -> तुरंत करने लायक सीधा काम (या null) */
+    fun pick(text: String, wakeWords: List<String>): QuickCommands.Quick? {
+        val t = text.trim()
+        if (t.length < 2) return null
+        val q = QuickCommands.parse(t, wakeWords) ?: return null
+        return q.takeUnless { it.action.optString("type") in SKIP }
+    }
+
+    fun ok(type: String, r: String) = !r.startsWith("ERROR") && !(type == "youtube_play" && !r.startsWith("PLAYING"))
+
+    /** Gemini को tool का सच्चा नतीजा (कभी "done" झूठ नहीं) */
+    fun quickResult(q: QuickCommands.Quick, r: String, already: Boolean): String {
+        val type = q.action.optString("type")
+        val what = q.ack.ifBlank { describe(q.action) }
+        return if (ok(type, r)) (if (already) "ALREADY DONE just now (do not repeat it): " else "DONE: ") + "$what. Tell the user in 2-5 words."
+        else "FAILED: could not do it ($what, ${r.take(80)}). Tell the user honestly it did not work."
+    }
+
+    fun describe(a: JSONObject): String = when (a.optString("type")) {
+        "open_app" -> "opened ${a.optString("name")}"
+        "youtube_play" -> "playing \"${a.optString("query")}\" on YouTube"
+        "torch" -> if (a.optBoolean("on", true)) "torch on" else "torch off"
+        "volume" -> "volume ${a.optString("direction")}" + if (a.has("level")) " ${a.optInt("level")}%" else ""
+        else -> a.optString("type").replace('_', ' ')
+    }
+
+    /** phone_task (AgentRunner) का सच्चा नतीजा */
+    fun agentResult(finished: Boolean, reply: String?): String = when {
+        !finished -> "STILL RUNNING in the background - it is NOT finished yet. Tell the user honestly that you are doing it and will tell them when it is done. Do not say it is done."
+        !reply.isNullOrBlank() -> "FINISHED. Result: $reply"
+        else -> "FINISHED the steps, but there is no confirmation message. Do not claim more than that."
+    }
+
+    /** काम बाद में पूरा हुआ - Gemini को (user की बात नहीं) बताओ ताकि वह एक वाक्य में बोले */
+    fun lateNote(request: String, reply: String?): String =
+        "SYSTEM NOTE (this is not the user speaking): the phone task \"${request.take(120)}\" has now finished. " +
+            (if (reply.isNullOrBlank()) "There is no confirmation message." else "Result: ${reply.take(300)}") +
+            " Tell the user in one short honest sentence."
+
+    /** बात खत्म होते ही किया गया सीधा काम - Gemini उसी को दोबारा माँगे तो दोहराना नहीं */
+    class Memo(private val windowMs: Long = 15_000) {
+        private data class Done(val key: String, val type: String, val at: Long, @Volatile var result: String?)
+        @Volatile private var last: Done? = null
+
+        /** true = नया काम (करो); false = वही काम अभी-अभी शुरू/पूरा हो चुका */
+        @Synchronized fun begin(q: QuickCommands.Quick, now: Long): Boolean {
+            val key = q.action.toString(); val l = last
+            if (l != null && l.key == key && now - l.at < windowMs) return false
+            last = Done(key, q.action.optString("type"), now, null)
+            return true
+        }
+
+        fun finish(q: QuickCommands.Quick, r: String) { last?.takeIf { it.key == q.action.toString() }?.result = r }
+
+        /**
+         * Gemini का phone_task इसी काम का दोहराव है? हाँ = उसका नतीजा (null = अभी चल रहा), नहीं = NOT_SAME.
+         * वही action, या वही किस्म (Gemini ने शब्द बदले) 15s के अंदर.
+         */
+        fun same(q: QuickCommands.Quick?, now: Long): String? {
+            val l = last ?: return NOT_SAME
+            if (q == null || now - l.at >= windowMs) return NOT_SAME
+            return if (l.key == q.action.toString() || l.type == q.action.optString("type")) l.result else NOT_SAME
+        }
+
+        fun reset() { last = null }
+
+        companion object { const val NOT_SAME = "\u0000not-same" }
+    }
+}
