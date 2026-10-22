@@ -410,7 +410,10 @@ Your FIRST tool call of every task must also carry "plan": one short Hindi sente
 Rules:
 - Work like a careful senior engineer: FIRST understand (read the exact code where the problem/feature lives, find the real cause),
   THEN make the COMPLETE change in every place it is needed (not half; no TODOs), THEN done. Never edit code you have not read.
-- You have ONLY $maxSteps tool calls for this task. Plan: 1) read/grep the needed files together in ONE call, 2) ONE edit with all FIND/REPLACE pairs (or write), 3) done. "diff" is optional.
+- Steps are limited ($maxSteps, plus 1 extra for every file you successfully change). Be efficient: read/grep the needed files together in ONE call,
+  then change EVERY file the task needs (one edit/write per file, all FIND/REPLACE pairs of that file together), then done. "diff" is optional.
+- COMPLETE means wired in: if you create a new class/file, also update all callers/places that must use it (grep for them). A new file that nothing uses is NOT done.
+- If the task names several files/features (e.g. A, B and C must use X), change ALL of them before done.
 - Large files are shown in numbered chunks; read only the chunk/lines you need (start/end), not the whole file again.
 - Changes are only STAGED; the app pushes them to GitHub (API commit) automatically AFTER "done". Do NOT try to push, and never claim it is pushed. Call done when the edits are staged.
 - Check your own work before done (imports, names, brackets, unused leftovers).
@@ -480,10 +483,12 @@ SAFE PR MODE (always follow):
                 "आगे: काम को छोटे और साफ़ हिस्से में लिखकर फिर भेजें (कौन-सी फ़ाइल, क्या बदलना है)।", "", false, stopped = true)
         var looks = 0          // बदलाव से पहले के पढ़ने वाले कदम (समझने का हिस्सा)
         var changed = false
+        var unusedWarned = false
+        val changedFiles = mutableSetOf<String>()   // हर बदली फ़ाइल = 1 अतिरिक्त कदम (कई फ़ाइलों वाला काम आधा न रहे)
         while (true) {
             ensureActive()
             // पहले समझना: बदलाव से पहले के 2 पढ़ने वाले कदम सीमा में नहीं गिने जाते
-            if (++step > maxSteps + minOf(looks, READ_BONUS)) return@withContext Outcome("$maxSteps कदम हो गए, यहीं रोका। अब तक के बदलाव नीचे हैं। " +
+            if (++step > stepLimit(maxSteps, looks, changedFiles.size)) return@withContext Outcome("$maxSteps कदम हो गए, यहीं रोका। अब तक के बदलाव नीचे हैं। " +
                 "(ज़्यादा कदम चाहिए तो Settings → कोडिंग एजेंट → \"एक काम में ज़्यादा से ज़्यादा कदम\")", "DK: partial changes", false)
             // हर कदम के बीच थोड़ा रुको (free API की प्रति-मिनट limit जल्दी खत्म न हो)
             if (step > 1) delay(STEP_DELAY_MS)
@@ -519,6 +524,16 @@ SAFE PR MODE (always follow):
                         "Fix them (read the file again), or call done again if you are sure they are false alarms.")
                     continue
                 }
+                // नई फ़ाइल बनी पर कहीं इस्तेमाल नहीं = काम अधूरा (एक बार याद दिलाओ)
+                val unused = unusedNewFiles(staged.filter { (p, c) -> c != null && original.containsKey(p) && original[p] == null }.mapValues { it.value!! },
+                    staged.filterValues { it != null }.mapValues { it.value!! })
+                if (unused.isNotEmpty() && !unusedWarned) {
+                    unusedWarned = true
+                    onStep("नई फ़ाइल अभी कहीं इस्तेमाल नहीं हुई — बाकी जगह भी जोड़ने को कहा")
+                    msgs.add("user" to "INCOMPLETE before done: you created ${unused.joinToString { "${it.first} (${it.second})" }} but no other changed file uses it. " +
+                        "Grep for the places the task mentions and update them to use it now. Call done again only if the task really asked for just this file.")
+                    continue
+                }
                 if (staged.isNotEmpty()) lastSummary = o.optString("summary")
                 return@withContext Outcome(o.optString("summary").ifBlank { "हो गया।" },
                     o.optString("commit").ifBlank { if (staged.isEmpty()) "" else "DK: code changes" }, false)
@@ -528,7 +543,7 @@ SAFE PR MODE (always follow):
                 repeated("$tool: $result")?.let { onStep("चेतावनी दोबारा आई — रुक गया"); return@withContext it }
             } else {
                 guard.ok()
-                if (tool in listOf("write", "edit", "delete")) changed = true
+                if (tool in listOf("write", "edit", "delete")) { changed = true; changedFiles.add(path) }
                 else if (!changed && tool in listOf("list", "read", "grep", "search")) looks++
             }
             msgs.add("user" to "RESULT ($tool${if (path.isNotBlank()) " $path" else ""}):\n$result")
@@ -1026,6 +1041,22 @@ pass=true ONLY if you are confident it compiles and the task works completely.
         const val STEP_DELAY_MS = 1500L
         /** बदलाव से पहले समझने (पढ़ने) के लिए अलग कदम */
         const val READ_BONUS = 2
+
+        /** कुल कदम: Settings वाले + समझने के (ज़्यादा से ज़्यादा 2) + हर बदली फ़ाइल का 1 (ज़्यादा से ज़्यादा 8) */
+        fun stepLimit(maxSteps: Int, looks: Int, changedFiles: Int): Int = maxSteps + minOf(looks, READ_BONUS) + minOf(changedFiles, 8)
+
+        /**
+         * नई Kotlin/Java फ़ाइलें जिनका मुख्य नाम (class/object/interface) किसी और बदली फ़ाइल में नहीं आता.
+         * @return (path, नाम)
+         */
+        fun unusedNewFiles(newFiles: Map<String, String>, allChanged: Map<String, String>): List<Pair<String, String>> =
+            newFiles.mapNotNull { (p, c) ->
+                if (!(p.endsWith(".kt") || p.endsWith(".java")) || p.contains("/test/")) return@mapNotNull null
+                val name = Regex("""(?m)^\s*(?:(?:public|internal|private|data|enum|sealed|abstract|open|final)\s+)*(?:class|object|interface)\s+([A-Za-z_]\w*)""")
+                    .find(c)?.groupValues?.get(1) ?: return@mapNotNull null
+                val used = allChanged.any { (op, oc) -> op != p && Regex("\\b" + Regex.escape(name) + "\\b").containsMatchIn(oc) }
+                if (used) null else p to name
+            }
 
         /** AI ने "plan" नहीं दी तो पहले कदम से हिंदी योजना: "पहले … पढ़ रहा हूँ, फिर …" */
         fun autoPlan(tool: String, path: String, paths: List<String>, pattern: String): String {

@@ -158,6 +158,13 @@ object CoderTeam {
         // एक ही चेतावनी 2 बार -> बिल्डर रुका; कुछ push नहीं, वजह user को
         if (out.stopped) { finish(c, out.summary, ok = false, title = "कोडिंग टीम: रुक गया"); return }
         if (out.question) { finish(c, "बिल्डर को जानकारी चाहिए: ${out.summary}", ok = false); return }
+        // कदम खत्म हुए और काम आधा -> रिव्यू से पहले एक बार और: बाकी हिस्से पूरे करो
+        if (out.commit == "DK: partial changes") {
+            say("s", "कोऑर्डिनेटर: बिल्डर के कदम खत्म हुए, काम आधा था — बाकी हिस्से पूरे करने भेजा")
+            out = a.run("Coordinator: you ran out of steps before finishing. Staged so far: ${a.staged.keys.joinToString()}. " +
+                "Now finish EVERY remaining part of the original task (all files/places it needs), then done.") { st -> step("बिल्डर: $st") }
+            if (out.stopped) { finish(c, out.summary, ok = false, title = "कोडिंग टीम: रुक गया"); return }
+        }
         if (a.staged.isEmpty()) { finish(c, out.summary.ifBlank { "कोई बदलाव ज़रूरी नहीं था।" }, ok = true, title = "जवाब तैयार"); return }
         var commit = out.commit.ifBlank { "DK: ${task.take(60)}" }
         val summary = out.summary.ifBlank { "काम हो गया।" }
@@ -178,7 +185,7 @@ object CoderTeam {
                     break
                 }
                 currentR?.issues?.let { iss -> iss.firstOrNull()?.let { if (reviewFound == null) reviewFound = "${iss.size} — " + it.take(140) } }
-                say("e", "रिव्यूअर ✗ ${currentR?.issues?.size ?: 0} गड़बड़ी (राउंड $round)\n" + (currentR?.issues ?: emptyList()).take(6).joinToString("\n") { "• ${it.take(200)}" })
+                say("e", "रिव्यूअर ✗ ${currentR?.issues?.size ?: 0} गड़बड़ी (राउंड $round)\n" + (currentR?.issues ?: emptyList()).take(6).joinToString("\n") { "• ${it.take(600)}" })
                 if (round == MAX_REVIEW_ROUNDS) break
                 say("s", "कोऑर्डिनेटर: बिल्डर को ठीक करने भेजा")
                 val fix = a.run("REVIEWER (round $round) found these problems in your staged changes. Fix every one properly; change nothing unrelated:\n" +
