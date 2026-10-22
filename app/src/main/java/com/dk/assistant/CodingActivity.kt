@@ -98,7 +98,6 @@ object CoderSession {
 
     /** Settings वाले कदम हर काम से पहले (agent पहले से बना हो तो भी) */
     private fun applySteps(c: Context, a: CodingAgent?): CodingAgent? = a?.also { it.maxSteps = Prefs.coderMaxSteps(c) }
-    }
 }
 
 class CodingActivity : AppCompatActivity() {
