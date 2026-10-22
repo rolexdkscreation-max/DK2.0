@@ -18,6 +18,13 @@
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
     <uses-permission android:name="android.permission.CAMERA" />
+    <!-- v3.33 (वैकल्पिक): "राहुल को कॉल करो" = सीधी कॉल (न दें तो डायलर में नंबर भरता है) -->
+    <uses-permission android:name="android.permission.CALL_PHONE" />
+    <!-- v3.33 (वैकल्पिक): "सबसे नई फ़ोटो दिखाओ" (न दें तो सिर्फ़ गैलरी खुलती है). सिर्फ़ फ़ोटो पढ़ना - मिटाना नहीं -->
+    <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
+    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="32" />
+    <!-- CALL_PHONE से Android "फ़ोन वाला डिवाइस ज़रूरी" मान लेता है - टैबलेट पर भी चले -->
+    <uses-feature android:name="android.hardware.telephony" android:required="false" />
     <!-- adb se di jaaye to DK apni Accessibility khud ON rakhta hai -->
     <uses-permission android:name="android.permission.WRITE_SECURE_SETTINGS" tools:ignore="ProtectedPermissions" />
 
