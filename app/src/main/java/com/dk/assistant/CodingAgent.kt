@@ -169,6 +169,18 @@ class CodingAgent(private val gh: GitHub, var repo: String, var branch: String, 
     var lastSha = ""
         private set
 
+    /** Verify all local branches are pushed to remote before testing */
+    suspend fun verifyRemotePush(): Boolean = withContext(Dispatchers.IO) {
+        try {
+            val local = gh.localBranchSha(branch)
+            val remote = gh.remoteBranchSha(repo, branch)
+            local == remote
+        } catch (e: Exception) {
+            DKLog.d("Coder: push verification failed: ${e.message}")
+            false
+        }
+    }
+
     fun reset() {
         staged.clear(); original.clear(); msgs.clear(); files = null; snap = null; checkWarned = false
         branch = baseBranch; pr = null; prError = ""; lastTask = ""; lastSummary = ""; projectCtx = ""
@@ -316,6 +328,16 @@ SAFE PR MODE (always follow):
                     onStep("जाँच में दिक्कत मिली, ठीक करवा रहा हूँ…")
                     msgs.add("user" to "CHECK FAILED before done (these would likely break the build):\n$problems\n" +
                         "Fix them (read the file again), or call done again if you are sure they are false alarms.")
+                    continue
+                }
+                if (staged.isNotEmpty()) {
+                    onStep("चेतावनी: कुछ बदलाव staged हैं पर push नहीं हुए।")
+                    msgs.add("user" to "ERROR: You have staged changes that are not pushed. Please push them before finishing.")
+                    continue
+                }
+                if (safePr && !verifyRemotePush()) {
+                    onStep("चेतावनी: स्थानीय बदलाव रिमोट पर पुश नहीं हुए हैं।")
+                    msgs.add("user" to "ERROR: Local changes are not pushed to remote. Please push your changes before finishing.")
                     continue
                 }
                 if (staged.isNotEmpty()) lastSummary = o.optString("summary")
