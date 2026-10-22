@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- DK कंप्यूटर की बनाई फ़ाइलें खोलने/शेयर करने के लिए -->
+<paths>
+    <external-files-path name="computer" path="computer/" />
+    <files-path name="computer_internal" path="computer/" />
+</paths>

@@ -139,6 +139,21 @@ object Prefs {
     /** User bole to peeche ka gaana/video dheema (~20%), jawab ke baad wapas */
     fun duckMedia(c: Context) = sp(c).getBoolean("duck_media", true)
 
+    // ---- DK कंप्यूटर (कई कदम वाला एजेंट: search, वेब पढ़ना, कोड, फ़ाइलें, फ़ोन, कोडिंग, रिमाइंडर)
+    fun computerOn(c: Context) = sp(c).getBoolean("pc_on", true)
+    /** "same" = वही AI जो बातचीत में; वरना provider id */
+    fun computerProvider(c: Context) = sp(c).getString("pc_provider", "same") ?: "same"
+    fun computerModel(c: Context) = sp(c).getString("pc_model", "") ?: ""
+    /** auto | tavily | brave | gemini */
+    fun computerSearch(c: Context) = sp(c).getString("pc_search", "auto") ?: "auto"
+    fun tavilyKey(c: Context) = sp(c).getString("key_tavily", "") ?: ""
+    fun braveKey(c: Context) = sp(c).getString("key_brave", "") ?: ""
+    /** मैसेज/कॉल/पेमेंट जैसे फ़ोन के काम से पहले पूछो (default चालू) */
+    fun computerConfirm(c: Context) = sp(c).getBoolean("pc_confirm", true)
+    fun computerMaxSteps(c: Context) = sp(c).getInt("pc_max_steps", 25).coerceIn(5, 60)
+    /** कौन-से टूल चालू (default सब) */
+    fun computerTool(c: Context, id: String) = sp(c).getBoolean("pc_tool_$id", true)
+
     // ---- provider ke models ki list (cache)
     fun models(c: Context, id: String): List<String> =
         (sp(c).getString("models_$id", "") ?: "").split('\n').filter { it.isNotBlank() }

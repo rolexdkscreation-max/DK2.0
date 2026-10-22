@@ -75,6 +75,9 @@
                 <TextView android:id="@+id/chipAccess" style="@style/DKChip" />
                 <TextView android:id="@+id/chipMic" style="@style/DKChip" />
                 <TextView android:id="@+id/chipAi" style="@style/DKChip" />
+                <TextView android:id="@+id/chipComputer" style="@style/DKChip"
+                    android:text="🖥 DK कंप्यूटर"
+                    android:contentDescription="DK कंप्यूटर खोलें" />
                 <TextView android:id="@+id/chipUpdate" style="@style/DKChip"
                     android:background="@drawable/btn_accent"
                     android:text="⬆ नया अपडेट"

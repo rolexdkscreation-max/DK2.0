@@ -19,7 +19,9 @@ import java.util.concurrent.TimeUnit
  */
 class CoderAi(val provider: Provider, private val key: String, val model: String, private val base: String,
               /** Doosre API (Groq/OpenRouter/Custom/doosri Gemini key) - limit khatm ho to inpar apne aap */
-              private val fallbacks: List<CoderAi> = emptyList(), note: String = "") {
+              private val fallbacks: List<CoderAi> = emptyList(), note: String = "",
+              /** रिपोर्ट कहाँ जाए (कोडिंग टीम = CoderReport, DK कंप्यूटर = उसकी अपनी रिपोर्ट) */
+              private val sink: (String, String) -> Unit = { p, f -> CoderReport.add(p, f) }) {
     private val selfLabel = "${provider.name} ($model$note)"
     /** Abhi jo AI chal rahi hai (limit par switch hua ho to wahi dikhe) */
     val label: String get() = sticky()?.takeIf { l -> fallbacks.any { it.selfLabel == l } } ?: selfLabel
@@ -40,7 +42,7 @@ class CoderAi(val provider: Provider, private val key: String, val model: String
                     if (ai.selfLabel != prev) {
                         val why = errs.lastOrNull()?.let { (who, e) -> "${who.selfLabel}: ${reason(e)}" } ?: "$prev अब नहीं चल रहा था"
                         DKLog.d("Coder: $why -> ${ai.selfLabel} पर स्विच")
-                        CoderReport.add(why, "अपने आप ${ai.selfLabel} पर स्विच किया, काम बिना रुके जारी रहा")
+                        sink(why, "अपने आप ${ai.selfLabel} पर स्विच किया, काम बिना रुके जारी रहा")
                     }
                     setSticky(if (ai === this) null else ai.selfLabel)
                     return r
@@ -52,7 +54,7 @@ class CoderAi(val provider: Provider, private val key: String, val model: String
             }
             val wait = quotaWaitSec(errs.map { ((it.second as? AiException)?.code ?: -1) to ((it.second as? AiException)?.retryAfter ?: 0) })
             if (attempt == 0 && wait > 0) {
-                CoderReport.add("सारे मॉडल/API की limit एक साथ खत्म (429)", "${wait} सेकंड रुककर दोबारा कोशिश की")
+                sink("सारे मॉडल/API की limit एक साथ खत्म (429)", "${wait} सेकंड रुककर दोबारा कोशिश की")
                 DKLog.d("Coder: सब 429 - ${wait}s रुककर फिर")
                 Thread.sleep(wait * 1000L)
                 continue
@@ -84,7 +86,7 @@ class CoderAi(val provider: Provider, private val key: String, val model: String
                 try {
                     val r = geminiOnce(m, system, msgs)
                     if (m != model && errs.isNotEmpty())
-                        CoderReport.add("Gemini ${errs.joinToString { it.first }}: ${reason(errs.last().second)}", "उसी API के $m मॉडल पर अपने आप स्विच किया")
+                        sink("Gemini ${errs.joinToString { it.first }}: ${reason(errs.last().second)}", "उसी API के $m मॉडल पर अपने आप स्विच किया")
                     return r
                 } catch (e: AiException) {
                     if (e.code !in listOf(404, 429, 500, 503)) throw e
@@ -164,6 +166,34 @@ class CoderAi(val provider: Provider, private val key: String, val model: String
         private val JSON = "application/json".toMediaType()
         private val http = OkHttpClient.Builder().connectTimeout(15, TimeUnit.SECONDS)
             .readTimeout(150, TimeUnit.SECONDS).callTimeout(180, TimeUnit.SECONDS).build()
+
+        /**
+         * DK कंप्यूटर की AI: Settings → DK कंप्यूटर (या "same" = बातचीत वाली), बाकी keys fallback में.
+         * [sink] = कंप्यूटर की अपनी रिपोर्ट.
+         */
+        fun forComputer(c: Context, sink: (String, String) -> Unit): CoderAi? {
+            val pid = Prefs.computerProvider(c)
+            val p = Providers.byId(if (pid == "same" || Providers.byId(pid) == null) Prefs.activeProvider(c) else pid) ?: return null
+            val key = Prefs.key(c, p.id)
+            val model = Prefs.computerModel(c).ifBlank { Prefs.model(c, p.id) }
+            val base = Prefs.baseUrl(c, p.id)
+            if (key.isBlank() || model.isBlank() || (!p.isGemini && base.isBlank())) {
+                // चुनी हुई में key नहीं - जो भी key पड़ी हो उससे चलाओ
+                val any = Providers.all.firstOrNull { q -> Prefs.key(c, q.id).isNotBlank() && Prefs.model(c, q.id).isNotBlank() && (q.isGemini || Prefs.baseUrl(c, q.id).isNotBlank()) } ?: return null
+                return build(c, any, Prefs.key(c, any.id), Prefs.model(c, any.id), Prefs.baseUrl(c, any.id), sink)
+            }
+            return build(c, p, key, model, base, sink)
+        }
+
+        private fun build(c: Context, p: Provider, key: String, model: String, base: String, sink: (String, String) -> Unit): CoderAi {
+            val fb = if (!Prefs.fallback(c)) emptyList() else Providers.all.mapNotNull { q ->
+                val k = Prefs.key(c, q.id); val m = Prefs.model(c, q.id); val b = Prefs.baseUrl(c, q.id)
+                if (k.isBlank() || m.isBlank() || (!q.isGemini && b.isBlank())) null
+                else if (q.id == p.id && k == key) null
+                else CoderAi(q, k, m, b, note = if (q.id == p.id) ", दूसरी key" else "", sink = sink)
+            }
+            return CoderAi(p, key, model, base, fb, sink = sink)
+        }
 
         /** Settings se coding wali AI. null = key nahi */
         fun fromPrefs(c: Context): CoderAi? {

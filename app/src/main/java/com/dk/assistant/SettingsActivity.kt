@@ -95,6 +95,7 @@ class SettingsActivity : AppCompatActivity() {
             "update" -> { title.text = "अपडेट"; secUpdate() }
             "debug" -> { title.text = "डिबग लॉग"; bar.visibility = View.GONE; secDebug() }
             "coder" -> { title.text = "कोडिंग एजेंट"; secCoder() }
+            "computer" -> { title.text = "DK कंप्यूटर"; secComputer() }
         }
         space(container, 8)
     }
@@ -110,6 +111,7 @@ class SettingsActivity : AppCompatActivity() {
             Triple("orb", "ओर्ब और चेहरा", "पृथ्वी, गैलेक्सी, एटम, DNA, छल्ला, पुरुष/महिला चेहरा"),
             Triple("access", "Accessibility", (if (Setup.accessibilityOn(this)) "✓ चालू" else "✗ बंद") + " • फ़ोन कंट्रोल • हमेशा सुनना • कॉल • बैटरी"),
             Triple("perms", "परमिशन", "माइक • स्क्रीन देखना • नोटिफ़िकेशन • कॉल • ऐप इंस्टॉल"),
+            Triple("computer", "DK कंप्यूटर", (if (Prefs.computerOn(this)) "✓ चालू" else "✗ बंद") + " • कोई भी काम: खोज, रिसर्च, फ़ाइल/PDF, हिसाब, फ़ोन, रिमाइंडर"),
             Triple("coder", "कोडिंग एजेंट", (if (Prefs.coderOn(this)) "✓ चालू" else "✗ बंद") + " • GitHub से जुड़ें • कोड लिखें/बदलें/हटाएँ • push • अलग AI key"),
             Triple("story", "स्टोरी राइटर एजेंट", "लंबी हिंदी कहानियाँ (10–30 मिनट) • भाग-दर-भाग • कॉपी • फ़ोन में सेव"),
             Triple("update", "अपडेट", "अभी: ${Updater.displayVersion(this)} • नया version चेक करें"),
@@ -151,6 +153,7 @@ class SettingsActivity : AppCompatActivity() {
         "access" -> R.drawable.ic_s_access
         "perms" -> R.drawable.ic_s_perms
         "coder" -> R.drawable.ic_s_coder
+        "computer" -> R.drawable.ic_s_computer
         "story" -> R.drawable.ic_s_story
         "update" -> R.drawable.ic_s_update
         else -> R.drawable.ic_s_debug
@@ -703,6 +706,76 @@ class SettingsActivity : AppCompatActivity() {
             .show()
     }
 
+    // ------------------------------------------------------------ DK कंप्यूटर
+    private lateinit var swPc: SwitchCompat
+    private lateinit var swPcConfirm: SwitchCompat
+    private lateinit var rgPcAi: RadioGroup
+    private lateinit var edPcModel: EditText
+    private lateinit var rgPcSearch: RadioGroup
+    private lateinit var edTavily: EditText
+    private lateinit var edBrave: EditText
+    private lateinit var edPcSteps: EditText
+    private val pcTools = mutableMapOf<String, SwitchCompat>()
+    private val pcAiIds get() = listOf("same") + Providers.all.map { it.id }
+    private val pcSearchIds = listOf("auto", "tavily", "brave", "gemini")
+
+    private fun secComputer() {
+        card("DK कंप्यूटर", "कोई भी काम कदम-दर-कदम: इंटरनेट पर खोज, वेबसाइट पढ़ना, हिसाब (कोड), फ़ाइल/PDF, फ़ोन के काम, कोडिंग, रिमाइंडर") { box ->
+            swPc = switch(box, "DK कंप्यूटर चालू करें", Prefs.computerOn(this))
+            swPcConfirm = switch(box, "मैसेज, कॉल, पेमेंट, डिलीट जैसे फ़ोन के काम से पहले मुझसे पूछो", Prefs.computerConfirm(this))
+            edPcSteps = field(box, "एक काम में ज़्यादा से ज़्यादा कदम (5–60)", Prefs.computerMaxSteps(this).toString(), "25")
+            edPcSteps.inputType = InputType.TYPE_CLASS_NUMBER
+            row(box, button("कंप्यूटर खोलें") {
+                save(false)
+                if (!Prefs.computerOn(this)) { toast("पहले \"DK कंप्यूटर चालू करें\" ON करें"); return@button }
+                startActivity(android.content.Intent(this, ComputerActivity::class.java))
+            })
+        }
+        card("कंप्यूटर की AI", "API keys \"AI दिमाग\" वाली ही; limit खत्म हो तो अपने-आप दूसरे मॉडल/API पर") { box ->
+            val cur = Prefs.computerProvider(this)
+            rgPcAi = RadioGroup(this).apply { orientation = RadioGroup.VERTICAL }
+            pcAiIds.forEachIndexed { i, id ->
+                val p = Providers.byId(id)
+                rgPcAi.addView(RadioButton(this).apply {
+                    this.id = 5000 + i
+                    text = if (p == null) "वही AI जो बातचीत में (AI दिमाग)" else p.name + if (Prefs.key(this@SettingsActivity, p.id).isBlank()) "   • key नहीं" else "   • ✓ key"
+                    setTextColor(0xFFFFFFFF.toInt()); textSize = 15f
+                    isChecked = cur == id || (i == 0 && Providers.byId(cur) == null)
+                    setPadding((6 * dp).toInt(), (6 * dp).toInt(), 0, (6 * dp).toInt())
+                })
+            }
+            box.addView(rgPcAi)
+            edPcModel = field(box, "मॉडल (खाली = उस कंपनी का चुना मॉडल)", Prefs.computerModel(this), "जैसे: gemini-3.8-flash")
+            hint(box, "API key डालने/बदलने के लिए: Settings → AI दिमाग। वहाँ जितनी कंपनियों की key होंगी, सब fallback में काम आएँगी।")
+            row(box, button("AI दिमाग खोलें") { startActivity(android.content.Intent(this, SettingsActivity::class.java).putExtra("section", "brain")) })
+        }
+        card("वेब search", "Gemini key से Google search फ्री; Tavily / Brave की key डालें तो उनसे (Groq/OpenRouter वालों के लिए भी)") { box ->
+            val cur = Prefs.computerSearch(this)
+            val names = mapOf("auto" to "अपने-आप (Tavily → Brave → Gemini, जो key हो)", "tavily" to "Tavily", "brave" to "Brave Search", "gemini" to "Google (Gemini key से)")
+            rgPcSearch = RadioGroup(this).apply { orientation = RadioGroup.VERTICAL }
+            pcSearchIds.forEachIndexed { i, id ->
+                rgPcSearch.addView(RadioButton(this).apply {
+                    this.id = 5100 + i; text = names[id]; setTextColor(0xFFFFFFFF.toInt()); textSize = 15f
+                    isChecked = cur == id; setPadding((6 * dp).toInt(), (6 * dp).toInt(), 0, (6 * dp).toInt())
+                })
+            }
+            box.addView(rgPcSearch)
+            edTavily = field(box, "Tavily API Key", Prefs.tavilyKey(this), "tvly-…", secret = true)
+            row(box, button("Tavily key बनाएँ") { Setup.openUrl(this, "https://app.tavily.com/home") })
+            edBrave = field(box, "Brave Search API Key", Prefs.braveKey(this), "BSA…", secret = true)
+            row(box, button("Brave key बनाएँ") { Setup.openUrl(this, "https://api-dashboard.search.brave.com/app/keys") })
+            hint(box, "Keys सिर्फ़ इसी फ़ोन में रहती हैं। एक search fail हो तो DK अपने-आप अगला आज़माता है।")
+        }
+        card("कंप्यूटर के टूल", "जो बंद करेंगे, वह DK कंप्यूटर इस्तेमाल नहीं करेगा") { box ->
+            val names = mapOf("web_search" to "इंटरनेट पर खोज", "read_url" to "वेबसाइट पढ़ना", "run_js" to "कोड चलाना (हिसाब/डेटा)",
+                "write_file" to "फ़ाइल बनाना", "make_pdf" to "PDF बनाना", "read_file" to "अपनी फ़ाइलें पढ़ना", "list_files" to "फ़ाइलों की लिस्ट",
+                "phone_task" to "फ़ोन कंट्रोल (ऐप, मैसेज, कॉल)", "coding_task" to "कोडिंग टीम को काम देना", "remember" to "बातें याद रखना",
+                "schedule" to "बाद में काम / रिमाइंडर")
+            pcTools.clear()
+            ComputerAgent.TOOL_IDS.forEach { id -> pcTools[id] = switch(box, names[id] ?: id, Prefs.computerTool(this, id)) }
+        }
+    }
+
     // ------------------------------------------------------------ coding agent + GitHub
     private lateinit var swCoder: SwitchCompat
     private lateinit var swAutoPush: SwitchCompat
@@ -876,6 +949,17 @@ class SettingsActivity : AppCompatActivity() {
                 putString("coder_key", edCoderKey.text.toString().trim())
                 putString("coder_model", edCoderModel.text.toString().trim())
                 putString("coder_base", edCoderBase.text.toString().trim())
+            }
+            if (::swPc.isInitialized) {
+                putBoolean("pc_on", swPc.isChecked)
+                putBoolean("pc_confirm", swPcConfirm.isChecked)
+                putInt("pc_max_steps", (edPcSteps.text.toString().trim().toIntOrNull() ?: 25).coerceIn(5, 60))
+                putString("pc_provider", pcAiIds.getOrNull(rgPcAi.checkedRadioButtonId - 5000) ?: "same")
+                putString("pc_model", edPcModel.text.toString().trim())
+                putString("pc_search", pcSearchIds.getOrNull(rgPcSearch.checkedRadioButtonId - 5100) ?: "auto")
+                putString("key_tavily", edTavily.text.toString().trim())
+                putString("key_brave", edBrave.text.toString().trim())
+                pcTools.forEach { (id, sw) -> putBoolean("pc_tool_$id", sw.isChecked) }
             }
             keyFields.forEach { (id, e) -> putString("key_$id", e.text.toString().trim()) }
             modelFields.forEach { (id, e) -> putString("model_$id", e.text.toString().trim()) }
