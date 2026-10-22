@@ -26,13 +26,16 @@ object Seven {
     object Prompts {
         val MANAGER = """You are the MANAGER of a 7-agent coding team. Your ONLY job now: understand the user's request.
 Decide: "feature" (new feature or requested change), "bug" (something is broken / error / crash), or "question" (no code change needed).
-Reply ONLY JSON: {"kind":"feature|bug|question","brief":"1-3 English lines: exactly what must be done","acceptance":["2-5 short Hindi checks that prove it is done"],"answer":"Hindi answer ONLY if kind=question"}"""
+Reply ONLY JSON: {"kind":"feature|bug|question","brief":"1-3 English lines: exactly what must be done","acceptance":["2-5 short Hindi checks that prove it is done"],"answer":"Hindi answer ONLY if kind=question"}
+You also own the final report: never call the work "done" before the build/PR check has passed; the report always has the PR link and the check status."""
 
         val PLANNER = """You are the PLANNER. Your ONLY job: read the relevant files and split the work into small steps. Never write code.
 To read files reply ONLY: {"read":["path", ...]} (max 8 paths, exactly as in the file list). You will get their full content.
 When you have read enough reply ONLY:
-{"steps":[{"file":"path","action":"edit|create|delete","change":"ONE precise change in English","anchor":"short exact text from the file near the change (edit only)"}],"risks":["Hindi: old feature that could break and why"]}
+{"steps":[{"file":"path","action":"edit|create|delete","change":"ONE precise change in English","anchor":"short exact text from the file near the change (edit only)","uses":["path: name"]}],"risks":["Hindi: old feature that could break and why"]}
 Rules: one step = one file + one change. Max 10 steps. Change only what the task needs. Keep every old feature working.
+NAMES: for every function, class, property or variable from ANOTHER file (or another class) that a step will use, put it in that step's "uses" as "path: name".
+List ONLY names you have actually READ in that file. Never guess a name from memory - if you have not read the file that defines it, read it first.
 Never delete or weaken existing tests. Never plan changes to .github/workflows, gradle wrapper, signing/keystore files unless the task says so."""
 
         val CODER = """You are the CODER. Your ONLY job: implement ONE plan step in ONE file. No explanations.
@@ -45,6 +48,8 @@ FIND>>>
 the new lines
 REPLACE>>>
 (max 3 FIND/REPLACE pairs, each FIND followed by its REPLACE). NEVER send REPLACE without FIND. Keep indentation exactly.
+Use ONLY functions, classes, properties and variables that you can SEE in the file content or in DEFINITIONS given to you (or that you add in this same change).
+Never invent or guess a name (e.g. do not write svc.speak() unless speak really exists on that type). If what you need is missing, create it in this step.
 For a NEW file reply: FILE: <path> then <<<FILE on its own line, the complete content, then FILE>>> on its own line.
 To DELETE a file reply: DELETE: <path>"""
 
@@ -57,19 +62,23 @@ FILE>>>"""
         val REVIEWER = """You are the REVIEWER. Your ONLY job: check ONE proposed change BEFORE it is applied.
 Automatic checks already passed (FIND and REPLACE present, FIND matches the file exactly and once, brackets/syntax).
 Check: 1) it does the step correctly and completely 2) it cannot break an existing feature (removed/renamed code still used elsewhere, changed behaviour, deleted tests)
-3) compile errors (missing import, wrong types, undefined names, wrong API).
+3) compile errors (missing import, wrong types, undefined names, wrong API)
+4) NAME CHECK: every function/class/variable the new code calls must really exist. If a NAME CHECK section lists a name that was not found, reject unless you are 100% sure it exists (e.g. a real Android/Java SDK method of the parent class).
 Reply ONLY JSON: {"pass":true|false,"problems":["exact problem + how to fix"]}"""
 
         val TESTER = """You are the TESTER. Your ONLY job: decide whether the changed code works for the task.
 You cannot run the code, so trace it carefully: list the important test cases (normal + edge) and walk through the code for each.
-Reply ONLY JSON: {"pass":true|false,"cases":["Hindi: case → result"],"error":"if fail: the exact failing case, file and line, and the wrong result"}"""
+Reply ONLY JSON: {"pass":true|false,"cases":["Hindi: case → result"],"error":"if fail: the exact failing case, file and line, and the wrong result"}
+Say pass only if EVERY case passes. (In GitHub mode the real build runs on the branch first; a PR is opened only after it passes.)"""
 
         val DEBUGGER = """You are the DEBUGGER. Your ONLY job: find the REAL root cause of a reported bug or a failed test/build. Never guess, never patch the symptom.
 To read files reply ONLY: {"read":["path", ...]} (max 8). When you are sure reply ONLY:
-{"root_cause":"file:line - what is wrong and WHY it happens","bug":"Hindi: बग क्या था","where":"file:line","fix":"the MINIMAL fix in English: which file, what change","files":["paths to change"]}"""
+{"root_cause":"file:line - what is wrong and WHY it happens","bug":"Hindi: बग क्या था","where":"file:line","fix":"the MINIMAL fix in English: which file, what change","files":["paths to change"]}
+For a failed build/check: start from the EXACT error lines of the log (file:line + message); your root cause must explain THAT error. Read the files it points to before deciding."""
 
         val GIT = """You are the GIT agent. Your ONLY job: write a short commit message and PR title for the finished change.
-Reply ONLY JSON: {"commit":"short English commit message","title":"short PR title (Hindi or English)"}"""
+Reply ONLY JSON: {"commit":"short English commit message","title":"short PR title (Hindi or English)"}
+(The app opens the PR only after the build passes, and never merges without the user's approval.)"""
 
         fun of(a: Agent) = when (a) {
             Agent.MANAGER -> MANAGER; Agent.PLANNER -> PLANNER; Agent.CODER -> CODER; Agent.REVIEWER -> REVIEWER
@@ -126,7 +135,7 @@ Reply ONLY JSON: {"commit":"short English commit message","title":"short PR titl
     fun strings(a: JSONArray?): List<String> = (0 until (a?.length() ?: 0)).mapNotNull { a!!.optString(it).trim().takeIf { s -> s.isNotBlank() } }
 
     // ------------------------------------------------------------------ प्लान
-    data class Step(val file: String, val action: String, val change: String, val anchor: String = "")
+    data class Step(val file: String, val action: String, val change: String, val anchor: String = "", val uses: List<String> = emptyList())
     data class Plan(val steps: List<Step>, val risks: List<String>)
 
     const val MAX_STEPS = 10
@@ -142,7 +151,7 @@ Reply ONLY JSON: {"commit":"short English commit message","title":"short PR titl
             val f = s.optString("file").trim().removePrefix("/").removePrefix("./")
             val act = s.optString("action", "edit").trim().lowercase().let { if (it in listOf("edit", "create", "delete")) it else "edit" }
             val ch = s.optString("change").trim()
-            if (f.isBlank() || ch.isBlank() && act != "delete") null else Step(f, act, ch, s.optString("anchor").trim())
+            if (f.isBlank() || ch.isBlank() && act != "delete") null else Step(f, act, ch, s.optString("anchor").trim(), strings(s.optJSONArray("uses")).take(12))
         }
         if (steps.isEmpty()) return null
         return Plan(steps.take(MAX_STEPS), strings(o.optJSONArray("risks")))
@@ -330,10 +339,33 @@ Reply ONLY JSON: {"commit":"short English commit message","title":"short PR titl
     // ------------------------------------------------------------------ रिपोर्ट
     data class Bug(val what: String, val where: String, val rootCause: String, val fix: String)
 
-    /** आख़िरी रिपोर्ट - user के माँगे ढाँचे में */
+    /**
+     * PR से पहले branch पर चलाने लायक workflow: जो PR पर चलता है (pull_request) और हाथ से भी चल सकता है (workflow_dispatch).
+     * @return workflow फ़ाइल का नाम, या null (तब draft PR पर build, पास होने पर ही असली PR)
+     */
+    fun dispatchable(workflows: List<Pair<String, String>>): String? = workflows.firstOrNull { (_, y) ->
+        val t = y.lines().filterNot { it.trimStart().startsWith("#") }.joinToString("\n")
+        Regex("\\bworkflow_dispatch\\b").containsMatchIn(t) && Regex("\\bpull_request\\b").containsMatchIn(t)
+    }?.first
+
+    /** चेक (GitHub Actions) की हालत - रिपोर्ट में हमेशा */
+    enum class CheckState(val hi: String) { PASS("✅ पास"), FAIL("❌ फ़ेल"), RUNNING("⏳ नतीजा अभी नहीं मिला"), NONE("— नहीं चला") }
+
+    /**
+     * आख़िरी रिपोर्ट - user के माँगे ढाँचे में.
+     * नियम (user): चेक पास होने से पहले "काम पूरा हुआ" नहीं; GitHub मोड में PR का लिंक और चेक की हालत हमेशा.
+     */
     fun report(task: String, mode: Mode, changes: List<Pair<String, String>>, bugs: List<Bug>, testOk: Boolean?, testNote: String,
-               prUrl: String, backup: String): String = buildString {
-        append("📋 रिपोर्ट (${if (mode == Mode.GITHUB) "GitHub मोड" else "नॉर्मल मोड"})\n\n")
+               prUrl: String, backup: String, check: CheckState? = null, checkUrl: String = "", prNote: String = ""): String = buildString {
+        val gh = mode == Mode.GITHUB
+        val chk = check ?: when (testOk) { true -> if (gh) CheckState.PASS else CheckState.NONE; false -> CheckState.FAIL; null -> CheckState.RUNNING }
+        val done = testOk == true && (!gh || (chk == CheckState.PASS && prUrl.isNotBlank()))
+        append("📋 रिपोर्ट (${if (gh) "GitHub मोड" else "नॉर्मल मोड"})\n")
+        append(when {
+            done -> "✅ काम पूरा हुआ"
+            testOk == false || chk == CheckState.FAIL -> "❌ काम अभी पूरा नहीं हुआ (टेस्ट/चेक फ़ेल)"
+            else -> "⏳ काम अभी पूरा नहीं हुआ (चेक का नतीजा नहीं मिला)"
+        }).append("\n\n")
         append("• काम क्या था: ").append(task.trim().take(300)).append("\n\n")
         append("• क्या हुआ:\n")
         if (changes.isEmpty()) append("  - कोई फ़ाइल नहीं बदली\n") else changes.forEach { (f, w) -> append("  - $f — $w\n") }
@@ -346,11 +378,14 @@ Reply ONLY JSON: {"commit":"short English commit message","title":"short PR titl
         append("\n• टेस्ट का नतीजा: ").append(when (testOk) { true -> "✅ पास"; false -> "❌ फ़ेल"; null -> "—" })
         if (testNote.isNotBlank()) append(" ($testNote)")
         append("\n")
+        if (gh) {
+            append("• PR: ").append(prUrl.ifBlank { "अभी नहीं बना" + if (prNote.isNotBlank()) " — $prNote" else " — build पास होने पर ही बनता है" }).append("\n")
+            append("• चेक की हालत: ${chk.hi}").append(if (checkUrl.isNotBlank()) " — $checkUrl" else "").append("\n")
+        }
         if (backup.isNotBlank()) append("\n• बैकअप: $backup\n")
-        if (mode == Mode.GITHUB && prUrl.isNotBlank()) {
-            append("• PR: $prUrl\n")
-            if (testOk == true) append("\n• मंज़ूरी: क्या मैं PR को merge कर दूँ?")
-            else append("\n• main को हाथ नहीं लगाया — PR merge नहीं होगा जब तक टेस्ट पास न हों")
+        if (gh) {
+            if (done) append("\n• मंज़ूरी: क्या मैं PR को merge कर दूँ?")
+            else append("\n• main को हाथ नहीं लगाया — PR merge नहीं होगा जब तक चेक पास न हो")
         }
     }
 }

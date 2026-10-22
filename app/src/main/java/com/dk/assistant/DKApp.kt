@@ -16,6 +16,7 @@ class DKApp : Application() {
         super.onCreate()
         DKState.init(this)
         Prefs.loadLang(this)
+        StatusNotify.install(this)
         removeLegacyAntiTheftState()
         val prev = Thread.getDefaultUncaughtExceptionHandler()
         Thread.setDefaultUncaughtExceptionHandler { t, e ->

@@ -191,15 +191,20 @@ class GitHub(private val token: String) {
         return out
     }
 
-    data class Run(val id: Long, val name: String, val status: String, val conclusion: String, val url: String)
+    data class Run(val id: Long, val name: String, val status: String, val conclusion: String, val url: String, val event: String = "")
 
     /** Is commit par chale GitHub Actions (build) */
     fun runsFor(repo: String, sha: String): List<Run> {
         val o = JSONObject(get("/repos/$repo/actions/runs?head_sha=$sha&per_page=10"))
         val a = o.optJSONArray("workflow_runs") ?: JSONArray()
         return (0 until a.length()).map { a.getJSONObject(it) }.map {
-            Run(it.optLong("id"), it.optString("name"), it.optString("status"), it.optString("conclusion"), it.optString("html_url"))
+            Run(it.optLong("id"), it.optString("name"), it.optString("status"), it.optString("conclusion"), it.optString("html_url"), it.optString("event"))
         }
+    }
+
+    /** workflow (जिसमें workflow_dispatch हो) को किसी branch पर चलाओ - PR से पहले build. token में Actions: Read and write चाहिए */
+    fun dispatchWorkflow(repo: String, workflowFile: String, ref: String) {
+        post("/repos/$repo/actions/workflows/${enc(workflowFile)}/dispatches", JSONObject().put("ref", ref))
     }
 
     /** Fail hue build ki asli galtiyan (Kotlin "e: ...", "error:", Gradle "What went wrong") - chhota hissa */

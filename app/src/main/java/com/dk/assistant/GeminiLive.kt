@@ -105,6 +105,19 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
     @Volatile private var ws: WebSocket? = null
     @Volatile private var ready = false
     @Volatile private var stopped = true
+
+    /** v3.31: DK कंप्यूटर / कोडिंग टीम का काम सच में खत्म हो -> DK लाइव को असली नतीजा (वही बोले). नकली progress नहीं */
+    private val statusListener = TaskStatus.Listener { job, ended ->
+        if (!ended || stopped) return@Listener
+        svc.scope.launch {
+            // DK बोल रहा हो तो बीच में नहीं - चुप होने तक (10s तक) रुको
+            withTimeoutOrNull(10_000) { while (isPlaying() || generating) delay(150) }
+            if (stopped || !ready) return@launch
+            try { ws?.send(JSONObject().put("realtimeInput", JSONObject().put("text", TaskStatus.endNote(job))).toString()) } catch (_: Exception) {}
+            log("${job.whoEn} का काम खत्म (${job.state.en}) - Gemini को असली नतीजा बताया")
+        }
+    }
+    init { TaskStatus.listen(statusListener) }
     @Volatile private var goAway = false
     @Volatile private var goAwayDrop = false          // server ne khud naya connection maanga (galti nahi)
     private var handle: String? = null
@@ -529,6 +542,9 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
                 .put("parameters", JSONObject().put("type", "OBJECT")
                     .put("properties", JSONObject().put("task", JSONObject().put("type", "STRING").put("description", "The full task in the user's words, with all details (or just हाँ / नहीं for a permission)")))
                     .put("required", JSONArray().put("task"))))
+            .put(JSONObject().put("name", "task_status")
+                .put("description", "Get the REAL current status of background work given to DK Computer or the coding team (state, real steps done, latest step, result). Call it whenever the user asks how far a task has got / is it done (काम कहाँ तक पहुँचा, हुआ या नहीं). Tell ONLY what it returns - never guess progress or percentages.")
+                .put("parameters", JSONObject().put("type", "OBJECT").put("properties", JSONObject())))
             .put(JSONObject().put("name", "remember_fact")
                 .put("description", "Save a personal fact or preference the user told about themselves.")
                 .put("parameters", JSONObject().put("type", "OBJECT")
@@ -838,6 +854,7 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
               try {
                 val result = try { when (name) {
                     "phone_task" -> phoneTask(args.optString("request"))
+                    "task_status" -> TaskStatus.summary()
                     "remember_fact" -> { Memory.addFact(svc, args.optString("fact")); "saved" }
                     "computer_task" -> {
                         val t = args.optString("task").trim()
@@ -860,9 +877,11 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
                         when {
                             !Prefs.coderOn(svc) -> "Coding agent is OFF in settings - tell the user to turn it on (सेटिंग्स → कोडिंग एजेंट)."
                             else -> CoderTeam.voiceDecision(svc, t) ?: when {
-                                !Prefs.coderTeam(svc) -> "Coding team is OFF in settings (सेटिंग्स → कोडिंग एजेंट → टीम)."
+                                // 7-एजेंट चालू = पुराना टीम switch ज़रूरी नहीं
+                                !Prefs.coderSeven(svc) && !Prefs.coderTeam(svc) -> "Coding team is OFF in settings (सेटिंग्स → कोडिंग एजेंट → टीम)."
                                 else -> CoderTeam.start(svc, t, fromVoice = true)?.let { "Could not start: $it" }
-                                    ?: "Started. Builder writes, Reviewer checks, Coordinator pushes and will notify when done."
+                                    ?: if (Prefs.coderSeven(svc)) "Started (7-agent team). It is NOT done yet - real progress: call task_status. You will get a SYSTEM NOTE when it really finishes; never say it is done before that."
+                                    else "Started. Builder writes, Reviewer checks, Coordinator pushes and will notify when done. It is NOT done yet - real progress: call task_status."
                             }
                         }
                     }

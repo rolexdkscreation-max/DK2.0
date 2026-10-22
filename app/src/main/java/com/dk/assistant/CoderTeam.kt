@@ -58,7 +58,7 @@ object CoderTeam {
         // कतार वाला काम पहले ही (कतार में डालते समय) दिखा था - दोबारा नहीं
         if (queued) say("s", "कोऑर्डिनेटर: कतार का अगला काम शुरू — ${task.take(80)}")
         else say("u", (if (fromVoice) "🎤 " else "") + task)
-        CoderSession.launch(c) {
+        CoderSession.launch(c, task) {
             coroutineContext[Job]?.let { runQueueAfter(c, it) }
             try {
                 var currentTask: String? = task
