@@ -31,6 +31,28 @@ class CoderAi(val provider: Provider, private val key: String, val model: String
      * Pehle chuna hua, phir baaki API. Sab ki limit ek saath khatm ho to ek baar thoda rukkar dobara.
      */
     fun chat(system: String, msgs: List<Pair<String, String>>): String {
+        var attempt = 1
+        while (true) {
+            try {
+                val r = chatChain(system, msgs)
+                if (attempt > 1) sink("AI API अस्थायी गलती (नेटवर्क/सर्वर)", "अपने-आप दोबारा कोशिश की ($attempt/${Retry.ATTEMPTS}) — सफल")
+                return r
+            } catch (e: java.io.IOException) {
+                // सारी keys की limit (429) या key/मॉडल की गलती (4xx) = दोबारा कोशिश बेकार, तुरंत रिपोर्ट
+                val code = (e as? AiException)?.code ?: -1
+                if (attempt >= Retry.ATTEMPTS || !Retry.isTransient(code, e.message.orEmpty())) {
+                    if (attempt > 1) sink("AI API $attempt बार fail (${reason(e)})", "${Retry.ATTEMPTS} बार अपने-आप कोशिश के बाद भी नहीं चला — आपको रिपोर्ट किया")
+                    throw e
+                }
+                DKLog.d("Coder: AI ${reason(e)} - अपने-आप दोबारा (${attempt + 1}/${Retry.ATTEMPTS})")
+                Thread.sleep(Retry.backoffMs(attempt) * 2)
+                attempt++
+            }
+        }
+    }
+
+    /** एक बार पूरी chain: चुनी API → बाकी API (limit/server गलती पर अगली) */
+    private fun chatChain(system: String, msgs: List<Pair<String, String>>): String {
         val chain = listOf(this) + fallbacks
         val ordered = orderChain(chain.map { it.selfLabel }, sticky()).map { l -> chain.first { it.selfLabel == l } }
         val errs = mutableListOf<Pair<CoderAi, java.io.IOException>>()
@@ -295,7 +317,17 @@ class CodingAgent(private val gh: GitHub, var repo: String, var branch: String, 
     /** User ki chuni hui (main) branch. Surakshit PR mode me kaam hamesha alag feature branch par, PR isi me */
     val baseBranch = branch
     /** सुरक्षित PR मोड: main par seedha push kabhi nahi -> feature branch -> PR -> build/tests -> user Merge */
-    var safePr = false
+    var safePr = true
+    /** User ने खुद पुराना फ़ीचर बदलने/हटाने को कहा (जानबूझकर बदलाव) - तब पहले backup, फिर बदलाव */
+    var intentional = false
+    /** पुराने फ़ीचर वाले हिस्से का backup (branch) - ज़रूरत पड़ने पर वापस लाने के लिए */
+    var backupBranch = ""
+        private set
+    /** Bug/build की असली जड़ (root cause) - PR और रिपोर्ट में */
+    var rootCause = ""
+        private set
+    /** इस feature branch पर अब तक कुछ push हुआ? (नहीं = खाली branch, काम के बाद हटा दो) */
+    private var pushedToBranch = false
     /** Is kaam ka khula PR (null = abhi nahi bana) */
     var pr: GitHub.Pull? = null
         private set
@@ -348,12 +380,70 @@ class CodingAgent(private val gh: GitHub, var repo: String, var branch: String, 
         staged.clear(); original.clear(); msgs.clear(); files = null; snap = null; checkWarned = false
         branch = baseBranch; pr = null; prError = ""; lastTask = ""; lastSummary = ""; projectCtx = ""
         lastPushMsg = ""; lastChangeText = ""
+        intentional = false; backupBranch = ""; rootCause = ""; pushedToBranch = false
     }
 
     /** App restart ke baad pichhla khula PR wapas (Merge card ke liye). GitHub par band/merge mila to mergePr/push khud saaf karte hain */
     fun restorePr(p: GitHub.Pull) {
         if (!safePr || SafePr.isBlocked(p.head, baseBranch)) return
-        pr = p; branch = p.head; prError = ""
+        pr = p; branch = p.head; prError = ""; pushedToBranch = true
+    }
+
+    /**
+     * काम शुरू होते ही (कोड बदलने से पहले): main से नई feature branch. सारा काम, push और टेस्ट इसी में;
+     * main को merge तक हाथ नहीं लगता. पहले से खुला PR/feature branch हो तो वही.
+     * @return branch का नाम
+     */
+    suspend fun ensureBranch(task: String): String = withContext(Dispatchers.IO) {
+        if (!safePr) return@withContext branch
+        // PR GitHub पर ही merge/बंद हो गया हो -> पुरानी branch नहीं, नई
+        pr?.let { old ->
+            val open = try { gh.pullState(repo, old.number).open } catch (_: Exception) { true }
+            if (!open) { pr = null; branch = baseBranch; pushedToBranch = false }
+        }
+        if (!SafePr.isBlocked(branch, baseBranch)) return@withContext branch
+        var name = SafePr.branchName(task)
+        try { gh.createBranch(repo, name, baseBranch) } catch (e: GitHub.Err) {
+            // isi minute me isi naam ki branch pehle se (422) -> naam ke aage chhota number
+            if (e.code != 422) throw e
+            name = "$name-" + (System.currentTimeMillis() / 1000 % 100000)
+            gh.createBranch(repo, name, baseBranch)
+        }
+        branch = name; pushedToBranch = false
+        // पहली बार (msgs खाली) system prompt में ही branch है; बाद में बताओ
+        if (msgs.isNotEmpty()) {
+            msgs.add("user" to "NOTE: working branch is now \"$name\" (created from $baseBranch). All work and pushes go here; a PR goes to $baseBranch.")
+            msgs.add("model" to "{\"tool\":\"ask\",\"question\":\"ठीक है\"}")
+        }
+        name
+    }
+
+    /** काम में कुछ push नहीं हुआ (सिर्फ़ सवाल/fail) -> बनी हुई खाली feature branch हटा दो, GitHub साफ़ रहे */
+    suspend fun dropEmptyBranch() = withContext(Dispatchers.IO) {
+        if (!safePr || pushedToBranch || pr != null || staged.isNotEmpty() || SafePr.isBlocked(branch, baseBranch)) return@withContext
+        val br = branch
+        try { gh.deleteBranch(repo, br); DKLog.d("Coder: खाली branch $br हटाई") } catch (e: Exception) { DKLog.d("Coder: खाली branch नहीं हटी: ${e.message}") }
+        branch = baseBranch
+    }
+
+    /**
+     * पुराना फ़ीचर जानबूझकर बदलना/हटाना: बदलाव push होने से पहले main की अभी की हालत backup branch में
+     * (backup/dk-…). ज़रूरत हो तो उसी से पुराना फ़ीचर वापस. एक काम में एक बार.
+     * @return backup branch, या "" (नहीं बना - वजह log में; काम फिर भी PR में ही रहता है, main सुरक्षित)
+     */
+    suspend fun backupOld(task: String): String = withContext(Dispatchers.IO) {
+        if (backupBranch.isNotBlank()) return@withContext backupBranch
+        var name = SafePr.backupName(task)
+        try {
+            try { gh.createBranch(repo, name, baseBranch) } catch (e: GitHub.Err) {
+                if (e.code != 422) throw e
+                name = "$name-" + (System.currentTimeMillis() / 1000 % 100000)
+                gh.createBranch(repo, name, baseBranch)
+            }
+            backupBranch = name
+            pr?.let { p -> try { gh.editPullBody(repo, p.number, SafePr.prBody(lastSummary, changeList().ifBlank { lastChangeText }, SafePr.protectedIn(staged.keys), backupBranch, rootCause)) } catch (_: Exception) {} }
+            name
+        } catch (e: Exception) { DKLog.d("Coder: backup branch नहीं बनी: ${e.message}"); "" }
     }
 
     /** Push ho gaya (feature branch) par PR nahi bana -> screen par "PR फिर बनाएँ" */
@@ -366,7 +456,7 @@ class CodingAgent(private val gh: GitHub, var repo: String, var branch: String, 
         prError = ""
         pr = try {
             gh.openPullFor(repo, branch) ?: gh.createPull(repo, branch, baseBranch, lastPushMsg.ifBlank { "DK: code changes" },
-                SafePr.prBody(lastSummary, lastChangeText, emptyList()))
+                SafePr.prBody(lastSummary, lastChangeText, emptyList(), backupBranch, rootCause))
         } catch (e: Exception) {
             prError = (e.message ?: e.javaClass.simpleName).take(200) +
                 " — token में Pull requests: Read and write दें, या GitHub पर $branch से PR खुद बनाएँ"
@@ -405,7 +495,7 @@ REPLACE>>>
 Your FIRST tool call of every task must also carry "plan": one short Hindi sentence in this style -
   "पहले <कौन-सा कोड> पढ़ रहा हूँ (<क्या ढूँढ रहा हूँ: X, Y कहाँ होते हैं>), फिर <क्या ठीक/बनाऊँगा>" e.g.
   {"tool":"read","paths":["a/A.kt","b/B.kt"],"plan":"पहले कोडिंग एजेंट का कोड पढ़ रहा हूँ (push, loop और retry कहाँ होते हैं), फिर सब एक साथ ठीक करूँगा"}
-{"tool":"done","summary":"Hindi summary (short bullet lines; if this fixed a bug/error also add: दिक्कत: <real cause>  हल: <what you changed>)","commit":"short English commit message"}
+{"tool":"done","summary":"Hindi summary (short bullet lines; if this fixed a bug/error also add: दिक्कत: <real cause>  हल: <what you changed>)","commit":"short English commit message","root_cause":"ONLY for bug/error/build/test fixes: file:line - what was really wrong and why"}
 
 Rules:
 - Work like a careful senior engineer: FIRST understand (read the exact code where the problem/feature lives, find the real cause),
@@ -421,6 +511,8 @@ Rules:
 - NEVER add features, settings, files or behaviour the user did not ask for. If you think something extra is needed or useful, use "suggest" (max 2 per task, only if it really matters) and do NOT implement it.
 - If the user only asks a question about the code, read what you need and answer in "done" summary with commit "".
 - If a task says the BUILD FAILED, read the exact files/lines from the log, fix the real cause, and do not change unrelated code.
+- ROOT CAUSE FIRST for every bug, error, failed build or failed test (also bugs the user reports): read the code/log, find WHY it happens,
+  then fix that cause (not the symptom), and give "root_cause" in done. Never delete, skip or weaken existing tests to make them pass.
 - Do NOT touch existing working features: change only the files/lines the task needs. No refactors, renames, reformatting or "cleanups" of other code.
 - Protected files (.github/workflows/*, AGENTS.md, gradle.properties, settings.gradle*, gradlew, keystores): change them ONLY if the user explicitly asked for it.${safeRules()}
 """.trimIndent()
@@ -432,7 +524,10 @@ SAFE PR MODE (always follow):
 - Your changes are NEVER pushed to "$baseBranch". The app commits them to a NEW feature branch (feature/dk-…), opens a Pull Request to "$baseBranch",
   and GitHub Actions runs the unit tests + debug build on that PR. If it fails you get the log and fix it on the same branch.
 - Only the user merges the PR after review. Never say it is merged or released.
-- If you add logic that can be unit tested without Android (pure Kotlin), add/extend a JUnit test in app/src/test/java/... in the same style."""
+- If you add logic that can be unit tested without Android (pure Kotlin), add/extend a JUnit test in app/src/test/java/... in the same style.
+- Old features must keep working: the PR runs ALL existing unit tests. Do not delete or weaken existing tests.${if (intentional) """
+- INTENTIONAL CHANGE: the user explicitly asked to change/remove an EXISTING feature. That is allowed (a backup of $baseBranch was taken first).
+  Change/remove exactly that feature (and its now-obsolete tests if it is removed) and nothing else.""" else ""}"""
 
     /** Repo ki pehchaan: AGENTS.md, workflows, maujooda agents (snapshot na mile to API se) */
     private fun loadProjectContext(): String = try {
@@ -484,6 +579,8 @@ SAFE PR MODE (always follow):
         var looks = 0          // बदलाव से पहले के पढ़ने वाले कदम (समझने का हिस्सा)
         var changed = false
         var unusedWarned = false
+        val fixTask = SafePr.isFixTask(task)
+        var rootWarned = false
         val changedFiles = mutableSetOf<String>()   // हर बदली फ़ाइल = 1 अतिरिक्त कदम (कई फ़ाइलों वाला काम आधा न रहे)
         while (true) {
             ensureActive()
@@ -534,6 +631,17 @@ SAFE PR MODE (always follow):
                         "Grep for the places the task mentions and update them to use it now. Call done again only if the task really asked for just this file.")
                     continue
                 }
+                // bug / reviewer / build की गलती: पहले असली जड़ (root cause), तभी fix माना जाए
+                val rc = o.optString("root_cause").trim()
+                if (fixTask && staged.isNotEmpty() && rc.length < 8 && !rootWarned) {
+                    rootWarned = true
+                    onStep("पहले समस्या की जड़ (root cause) बताने को कहा")
+                    msgs.add("user" to "ROOT CAUSE REQUIRED before done: this task fixes a bug/failure. First make sure you found the REAL cause " +
+                        "(read the exact code/log lines). Then call done again with \"root_cause\": \"file:line - what was wrong and why\". " +
+                        "If your change only hides the symptom, fix the real cause first.")
+                    continue
+                }
+                if (rc.isNotBlank()) { rootCause = rc.take(400); CoderReport.add("जड़ (root cause): ${rc.take(200)}", "बिल्डर ने यही असली वजह ठीक की") }
                 if (staged.isNotEmpty()) lastSummary = o.optString("summary")
                 return@withContext Outcome(o.optString("summary").ifBlank { "हो गया।" },
                     o.optString("commit").ifBlank { if (staged.isEmpty()) "" else "DK: code changes" }, false)
@@ -730,6 +838,9 @@ SAFE PR MODE (always follow):
             if (c.contains("<<<FIND") || c.contains("FIND>>>") || c.contains("<<<FILE") || c.contains("REPLACE>>>"))
                 sb.append("- $p: contains leftover <<<FIND/FILE markers\n")
         }
+        // पुराने features के tests चुपके से हटाए/कम नहीं (user ने खुद फ़ीचर हटाने को न कहा हो)
+        SafePr.testGuard(staged, staged.keys.associateWith { original[it] ?: snap?.get(it) }, intentional && SafePr.removesOldFeature(lastTask))
+            .forEach { sb.append("- $it\n") }
         return sb.toString()
     }
 
@@ -855,7 +966,8 @@ Reply with EXACTLY ONE tool call per message (JSON on the first line, no other t
 {"tool":"suggest","title":"Hindi","why":"Hindi","task":"English"}   -> something important the user did not ask for (not an issue, just a proposal)
 {"tool":"verdict","pass":true,"issues":[],"tested":"Hindi: what you checked/traced"}
 {"tool":"verdict","pass":false,"issues":["path:line - problem - exact fix"],"tested":"Hindi: what you checked"}
-pass=true ONLY if you are confident it compiles and the task works completely.
+6. Regression: old features must keep working. A deleted/weakened existing test, or a fix that hides a symptom instead of the real cause, is an issue.
+pass=true ONLY if you are confident it compiles and the task works completely.${if (intentional) "\nINTENTIONAL CHANGE: the user explicitly asked to change/remove an existing feature (backup taken). Changing/removing exactly that feature is NOT an issue." else ""}
 """.trimIndent()
 
     /**
@@ -911,23 +1023,8 @@ pass=true ONLY if you are confident it compiles and the task works completely.
         val msg = message.ifBlank { "DK: code changes" }
         val changeText = changeList()
         val prot = SafePr.protectedIn(staged.keys)
-        // PR GitHub par hi merge/band ho gaya ho -> purani branch nahi, nayi branch + naya PR
-        pr?.let { old ->
-            val open = try { gh.pullState(repo, old.number).open } catch (_: Exception) { true }
-            if (!open) { pr = null; branch = baseBranch }
-        }
-        if (safePr && SafePr.isBlocked(branch, baseBranch)) {
-            var name = SafePr.branchName(lastTask.ifBlank { msg })
-            try { gh.createBranch(repo, name, baseBranch) } catch (e: GitHub.Err) {
-                // isi minute me isi naam ki branch pehle se (422) -> naam ke aage chhota number
-                if (e.code != 422) throw e
-                name = "$name-" + (System.currentTimeMillis() / 1000 % 100000)
-                gh.createBranch(repo, name, baseBranch)
-            }
-            branch = name
-            msgs.add("user" to "NOTE: working branch is now \"$name\" (created from $baseBranch). All pushes go here; a PR goes to $baseBranch.")
-            msgs.add("model" to "{\"tool\":\"ask\",\"question\":\"ठीक है\"}")
-        }
+        // काम की feature branch (आमतौर पर काम शुरू होते ही बन चुकी; न बनी हो तो अब). PR बंद/merge हो गया हो तो नई
+        ensureBranch(lastTask.ifBlank { msg })
         if (safePr && SafePr.isBlocked(branch, baseBranch)) throw IllegalStateException("सुरक्षित PR मोड: $branch पर सीधे push मना है")
         // token में Contents: Read and write है? (एक बार) - न हो तो साफ़ बताओ क्या बदलना है
         if (!writeChecked) {
@@ -936,6 +1033,7 @@ pass=true ONLY if you are confident it compiles and the task works completely.
         }
         // GitHub API से सीधा commit (git push नहीं); commit() खुद पक्का करता है कि branch नए commit पर पहुँची
         val url = gh.commit(repo, branch, staged.toMap(), msg)
+        pushedToBranch = true
         lastSha = url.substringAfterLast('/')
         lastPushMsg = msg; lastChangeText = changeText
         // ab GitHub par yahi naya code hai (repo ki copy bhi)
@@ -948,7 +1046,7 @@ pass=true ONLY if you are confident it compiles and the task works completely.
         if (safePr && pr == null) {
             prError = ""
             pr = try {
-                gh.openPullFor(repo, branch) ?: gh.createPull(repo, branch, baseBranch, msg, SafePr.prBody(lastSummary, changeText, prot))
+                gh.openPullFor(repo, branch) ?: gh.createPull(repo, branch, baseBranch, msg, SafePr.prBody(lastSummary, changeText, prot, backupBranch, rootCause))
             } catch (e: Exception) {
                 prError = (e.message ?: e.javaClass.simpleName).take(200) +
                     " — token में Pull requests: Read and write दें, या GitHub पर $branch से PR खुद बनाएँ"
@@ -963,10 +1061,28 @@ pass=true ONLY if you are confident it compiles and the task works completely.
      * saare GitHub Actions (unit tests + build) safal hon. Merge ke baad branch hatao aur agent main par wapas.
      * @return Hindi nateeja
      */
-    suspend fun mergePr(): String = withContext(Dispatchers.IO) {
+    suspend fun mergePr(onStep: (String) -> Unit = {}): String = withContext(Dispatchers.IO) {
         lastMergeSha = ""
         val p = pr ?: return@withContext "कोई PR नहीं है"
-        val st = gh.pullState(repo, p.number)
+        var st = gh.pullState(repo, p.number)
+        // PR के tests के बाद main आगे बढ़ गया? तो पुराने tests पर merge नहीं: branch को नए main से update करो,
+        // सारे tests फिर चलाओ (पुराने + नए features साथ), पास हों तभी merge
+        if (st.open && !st.merged && st.mergeable != false) {
+            val behind = try { gh.behindBy(repo, baseBranch, p.head.ifBlank { branch }) } catch (_: Exception) { 0 }
+            if (behind > 0) {
+                onStep("$baseBranch $behind commit आगे बढ़ गया — PR branch update करके tests दोबारा चला रहा हूँ…")
+                try { gh.updateBranch(repo, p.number, st.headSha) } catch (e: GitHub.Err) {
+                    return@withContext "$baseBranch आगे बढ़ गया है और PR branch update नहीं हो पाई (${e.message}) — merge नहीं किया"
+                }
+                // GitHub नया head commit बनाता है - उसका इंतज़ार, फिर उसी के tests
+                var newSha = st.headSha
+                for (i in 0 until 20) { delay(3_000); newSha = try { gh.pullState(repo, p.number).headSha } catch (_: Exception) { newSha }; if (newSha != st.headSha) break }
+                if (newSha == st.headSha) return@withContext "PR branch update हो रही है — थोड़ी देर बाद फिर \"merge कर दो\" कहें"
+                val b = watchBuild(newSha, onStep) ?: return@withContext "नए $baseBranch के साथ tests का नतीजा नहीं मिला — merge नहीं किया, थोड़ी देर बाद फिर कहें"
+                if (!b.ok) return@withContext "नए $baseBranch के साथ tests fail हुए — merge नहीं किया (पुराना और नया code साथ नहीं चल रहा)\n${b.url}"
+                st = gh.pullState(repo, p.number)
+            }
+        }
         if (st.merged) { reset(); return@withContext "PR #${p.number} पहले ही merge हो चुका है" }
         if (!st.open) { reset(); return@withContext "PR #${p.number} GitHub पर बंद कर दिया गया है — अगला काम नई branch और नए PR में होगा" }
         if (st.mergeable == false) return@withContext "PR में $baseBranch से टकराव (conflict) है — पहले उसे ठीक करें"
@@ -993,6 +1109,7 @@ pass=true ONLY if you are confident it compiles and the task works completely.
         if (sha.isBlank()) return@withContext null
         val t0 = System.currentTimeMillis()
         var said = ""
+        var reruns = 0
         delay(8_000)
         while (System.currentTimeMillis() - t0 < 20 * 60_000L) {
             ensureActive()
@@ -1008,6 +1125,16 @@ pass=true ONLY if you are confident it compiles and the task works completely.
                 val bad = runs.firstOrNull { it.conclusion !in listOf("success", "skipped", "neutral") }
                     ?: return@withContext Build(true, runs.first().url, "")
                 val log = try { gh.failureLog(repo, bad.id) } catch (e: Exception) { "(log नहीं मिला: ${e.message})" }
+                // GitHub की अपनी दिक्कत (नेटवर्क/runner) - code नहीं बदलना; वही job अपने-आप दोबारा (2 बार तक)
+                if (Retry.isInfraFailure(log) && reruns < Retry.ATTEMPTS - 1) {
+                    reruns++
+                    val ok = try { gh.rerunFailed(repo, bad.id); true } catch (e: Exception) { DKLog.d("Coder: rerun नहीं हुआ: ${e.message}"); false }
+                    if (ok) {
+                        onStep("Build GitHub की नेटवर्क/runner दिक्कत से fail — अपने-आप दोबारा चला रहा हूँ ($reruns/${Retry.ATTEMPTS - 1})")
+                        CoderReport.add("GitHub Actions नेटवर्क/runner दिक्कत से fail (code की गलती नहीं)", "वही job अपने-आप दोबारा चलाई")
+                        said = ""; delay(15_000); continue
+                    }
+                }
                 return@withContext Build(false, bad.url, log)
             }
             val st = runs.joinToString { "${it.name}: " + if (it.status == "in_progress") "चल रहा" else "कतार में" }

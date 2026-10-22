@@ -33,14 +33,34 @@ class GitHub(private val token: String) {
     /** आखिरी जवाब का X-OAuth-Scopes (सिर्फ़ classic token भेजता है; fine-grained = null) */
     @Volatile private var lastScopes: String? = null
 
-    private fun run(b: Request.Builder): String = http.newCall(b.build()).execute().use { r ->
+    /**
+     * हर GitHub API कॉल: अस्थायी गलती (नेटवर्क, 5xx, secondary rate limit) पर अपने-आप 2 बार और (कुल [Retry.ATTEMPTS]),
+     * तब भी fail हो तभी गलती आगे (user को रिपोर्ट). 4xx (token/इजाज़त/नहीं मिला) पर दोबारा कोशिश नहीं.
+     */
+    private fun run(b: Request.Builder): String {
+        var attempt = 1
+        while (true) {
+            try { return runOnce(b) } catch (e: Err) {
+                if (attempt >= Retry.ATTEMPTS || !Retry.isTransient(e.code, e.message.orEmpty())) throw e
+                DKLog.d("GitHub ${e.code}: ${e.message?.take(80)} - अपने-आप दोबारा (${attempt + 1}/${Retry.ATTEMPTS})")
+            } catch (e: java.io.IOException) {
+                if (attempt >= Retry.ATTEMPTS || !Retry.isNetwork(e)) throw e
+                DKLog.d("GitHub नेटवर्क (${e.javaClass.simpleName}) - अपने-आप दोबारा (${attempt + 1}/${Retry.ATTEMPTS})")
+            }
+            Thread.sleep(Retry.backoffMs(attempt))
+            attempt++
+        }
+    }
+
+    private fun runOnce(b: Request.Builder): String = http.newCall(b.build()).execute().use { r ->
         val s = r.body?.string() ?: ""
         lastScopes = r.header("X-OAuth-Scopes")
         if (!r.isSuccessful) {
             val m = try { JSONObject(s).optString("message") } catch (_: Exception) { s.take(160) }
             throw Err(r.code, when (r.code) {
                 401 -> "GitHub token गलत है या expire हो गया"
-                403 -> if (m.contains("rate limit", true)) "GitHub की limit खत्म, थोड़ी देर बाद"
+                403 -> if (m.contains("secondary rate limit", true)) "GitHub secondary rate limit ($m)"
+                    else if (m.contains("rate limit", true)) "GitHub की limit खत्म, थोड़ी देर बाद"
                     else permissionAdvice(403, r.header("X-Accepted-GitHub-Permissions"), lastScopes, m, "")
                 404 -> "नहीं मिला (repo/file/branch का नाम देखें, या token को इस repo की इजाज़त दें)"
                 409 -> "Repo खाली है या टकराव ($m)"
@@ -170,9 +190,31 @@ class GitHub(private val token: String) {
         o.optJSONObject("head")?.optString("ref").orEmpty(), o.optJSONObject("base")?.optString("ref").orEmpty())
 
     /** Pull Request banao (head branch -> base). Token me "Pull requests: Read and write" chahiye */
-    fun createPull(repo: String, head: String, base: String, title: String, body: String): Pull =
+    fun createPull(repo: String, head: String, base: String, title: String, body: String): Pull = try {
         pull(JSONObject(post("/repos/$repo/pulls", JSONObject().put("title", title.take(120)).put("head", head)
             .put("base", base).put("body", body).put("maintainer_can_modify", true))))
+    } catch (e: Err) {
+        // ऑटो-रिट्राई में पहली कोशिश से PR बन चुका था (422 already exists) -> वही PR लो, दूसरा नहीं
+        if (e.code == 422 && e.message.orEmpty().contains("already exists", true)) openPullFor(repo, head) ?: throw e else throw e
+    }
+
+    /** PR का विवरण बदलो (जैसे बैकअप/जड़ की जानकारी जोड़ना) */
+    fun editPullBody(repo: String, number: Int, body: String) { patch("/repos/$repo/pulls/$number", JSONObject().put("body", body)) }
+
+    /** head branch base से कितने commit पीछे है (base में नया काम आया जो PR के tests में नहीं चला) */
+    fun behindBy(repo: String, base: String, head: String): Int =
+        JSONObject(get("/repos/$repo/compare/${enc(base)}...${enc(head)}")).optInt("behind_by", 0)
+
+    /** PR branch में नया base (main) लाओ - GitHub नया merge commit बनाता है और PR के tests फिर चलते हैं */
+    fun updateBranch(repo: String, number: Int, expectedHeadSha: String) {
+        put("/repos/$repo/pulls/$number/update-branch", JSONObject().put("expected_head_sha", expectedHeadSha))
+    }
+
+    /**
+     * GitHub की अपनी दिक्कत (नेटवर्क/runner) से fail हुई jobs दोबारा चलाओ (code वही).
+     * Token में Actions: Read and write चाहिए; न हो तो Err 403.
+     */
+    fun rerunFailed(repo: String, runId: Long) { post("/repos/$repo/actions/runs/$runId/rerun-failed-jobs", JSONObject()) }
 
     /** Is branch ka khula PR (agar pehle se bana ho) */
     fun openPullFor(repo: String, head: String): Pull? {

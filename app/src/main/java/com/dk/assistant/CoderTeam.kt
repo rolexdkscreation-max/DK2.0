@@ -27,7 +27,10 @@ import org.json.JSONObject
  */
 object CoderTeam {
     const val MAX_REVIEW_ROUNDS = 5
-    const val MAX_BUILD_ROUNDS = 3
+    /** Build/test fail → जड़ → fix → फिर test: तब तक जब तक पास न हो (अटकने/सुरक्षा-सीमा पर रुककर रिपोर्ट, देखें [FixLoop]) */
+    const val MAX_BUILD_ROUNDS = FixLoop.HARD_CAP
+    /** एक काम की कुल समय-सीमा (पहले 10 मिनट = सिर्फ़ 1-2 build-fix राउंड; अब "पास होने तक" वाले चक्र के लिए जगह) */
+    const val TASK_TIMEOUT_MIN = 40L
 
     data class Suggestion(val id: Int, val title: String, val why: String, val task: String, var state: String = "pending") // pending/yes/no/done
     val suggestions = mutableListOf<Suggestion>()
@@ -70,7 +73,7 @@ object CoderTeam {
                     if (currentTask != null) say("s", "कोऑर्डिनेटर: कतार का अगला काम शुरू — ${currentTask.take(80)}")
                 }
             } catch (e: kotlinx.coroutines.TimeoutCancellationException) {
-                val msg = "कोडिंग का काम तय समय (10 मिनट) में पूरा नहीं हो पाया।"
+                val msg = "कोडिंग का काम तय समय ($TASK_TIMEOUT_MIN मिनट) में पूरा नहीं हो पाया।"
                 finish(c, msg, ok = false, title = "कोडिंग टीम: टाइमआउट")
             } catch (e: CancellationException) {
                 say("e", "टीम का काम रोक दिया।")
@@ -89,10 +92,10 @@ object CoderTeam {
      * @return null = ठीक, वरना गलती का संदेश. रोकें (cancel) दबाया तो कतार भी साफ़ और आगे फेंको.
      */
     private suspend fun runOne(c: Context, a: CodingAgent, task: String): String? = try {
-        kotlinx.coroutines.withTimeout(10 * 60 * 1000L) { pipeline(c, a, task) }
+        kotlinx.coroutines.withTimeout(TASK_TIMEOUT_MIN * 60 * 1000L) { pipeline(c, a, task) }
         null
     } catch (e: kotlinx.coroutines.TimeoutCancellationException) {
-        val msg = "कोडिंग का काम तय समय (10 मिनट) में पूरा नहीं हो पाया।"
+        val msg = "कोडिंग का काम तय समय ($TASK_TIMEOUT_MIN मिनट) में पूरा नहीं हो पाया।"
         finish(c, msg, ok = false, title = "कोडिंग टीम: टाइमआउट")
         msg
     } catch (e: CancellationException) {
@@ -102,7 +105,11 @@ object CoderTeam {
         val msg = (e.message ?: e.javaClass.simpleName).take(500)
         finish(c, "कोडिंग टीम में त्रुटि आई: $msg", ok = false, title = "कोडिंग टीम: विफलता")
         msg
-    } finally { a.teamMode = false; a.onSuggest = null }
+    } finally {
+        a.teamMode = false; a.onSuggest = null
+        // कुछ push नहीं हुआ (सिर्फ़ जवाब / fail) -> काम की शुरुआत में बनी खाली branch हटाओ
+        withContext(kotlinx.coroutines.NonCancellable) { try { a.dropEmptyBranch() } catch (_: Exception) {} }
+    }
 
     /** रोकें दबाया - कतार के काम भी हटाओ (वरना अगला नया काम खत्म होते ही पुराने अपने-आप चल पड़ते) */
     private fun clearQueue() {
@@ -141,14 +148,25 @@ object CoderTeam {
 
         say("s", "कोऑर्डिनेटर: काम समझ रहा हूँ…")
         val plan = plan(c, task)
+        val plan4 = lastPlanChangesExisting
         // काम से पहले user को बताओ: पहले क्या पढ़/समझ रहे हैं, फिर क्या करेंगे
         val intro = plan.third.ifBlank { firstPlan(a.safePr) }
         say("s", "कोऑर्डिनेटर: $intro")
         CoderReport.plan(intro)
         if (plan.second.isNotEmpty()) say("s", "कोऑर्डिनेटर: पूरा होने की शर्तें —\n" + plan.second.joinToString("\n") { "• $it" })
 
+        // 1) main पर कभी सीधे काम नहीं: कोड छूने से पहले main से नई feature branch
+        if (a.safePr) {
+            val br = a.ensureBranch(task)
+            say("s", "कोऑर्डिनेटर: काम की branch $br (${a.baseBranch} से अलग) — सारा काम, push और टेस्ट इसी में; ${a.baseBranch} merge तक अछूता")
+        }
+        // 2) user ने खुद पुराना फ़ीचर बदलने/हटाने को कहा = जानबूझकर बदलाव: पहले backup, फिर बदलाव
+        a.intentional = plan4 || SafePr.changesOldFeature(task)
+        if (a.intentional) backup(a, task, "पुराना फ़ीचर बदलने/हटाने से पहले")
+
         say("s", "बिल्डर: काम शुरू…")
-        var out = a.run(task + if (plan.first.isNotBlank()) "\n(Coordinator brief: ${plan.first})" else "") { st -> step("बिल्डर: $st") }
+        var out = a.run(task + (if (plan.first.isNotBlank()) "\n(Coordinator brief: ${plan.first})" else "") +
+            (if (a.intentional) "\n(Coordinator: the user explicitly wants this EXISTING feature changed/removed; backup of ${a.baseBranch} is taken. Do exactly that, nothing else.)" else "")) { st -> step("बिल्डर: $st") }
         var asked = 0
         while (out.question && asked < 2) {
             asked++
@@ -170,6 +188,7 @@ object CoderTeam {
         val summary = out.summary.ifBlank { "काम हो गया।" }
 
         var buildRound = 0
+        val failSigs = mutableListOf<String>()   // हर fail की पहचान - वही गलती बार-बार = अटक गए
         var reviewFound: String? = null     // report: reviewer ki pehli pakdi galti (theek hone par jodte hain)
         var buildErr: String? = null        // report: build kyon fail hua
         while (true) {
@@ -200,6 +219,8 @@ object CoderTeam {
                 return
             }
 
+            // कोई मौजूदा फ़ाइल हटाई जा रही है और backup नहीं बना -> पहले backup
+            if (a.backupBranch.isBlank() && a.staged.any { it.value == null }) backup(a, task, "मौजूदा फ़ाइल हटने से पहले")
             say("s", "कोऑर्डिनेटर: GitHub पर push…")
             val n = a.staged.size
             val url = a.push(commit)
@@ -218,14 +239,24 @@ object CoderTeam {
                 buildErr?.let { CoderReport.add("GitHub build fail हुआ ($buildRound बार): $it", "बिल्डर ने build log पढ़कर असली वजह ठीक की — अब tests + build सफल") }
                 val prNote = a.pr?.let { "\n🔀 PR #${it.number} review के लिए तैयार — GitHub पर देखकर कोडिंग स्क्रीन पर \"Merge करें\" दबाएँ या DK से बोलें \"PR merge कर दो\"। Merge होते ही GitHub Actions नई APK release बनाएगा (main में अभी कुछ नहीं गया)\n${it.url}" }
                     ?: if (a.canRetryPr) "\n⚠ PR नहीं बना, इसलिए Merge का बटन नहीं है: ${a.prError}\nकोडिंग स्क्रीन पर \"PR फिर बनाएँ\" दबाएँ।" else ""
-                finish(c, summary + "\n\n✓ रिव्यूअर पास • ✓ Push • ✓ GitHub tests + build सफल\n${b.url}$prNote", ok = true); return
+                val backupNote = if (a.backupBranch.isBlank()) "" else "\n🗂 पुराने फ़ीचर का backup: ${a.backupBranch} (ज़रूरत हो तो वापस ला सकते हैं)"
+                finish(c, summary + "\n\n✓ रिव्यूअर पास • ✓ Push • ✓ GitHub tests + build सफल (पुराने tests भी)\n${b.url}$backupNote$prNote", ok = true); return
             }
             buildRound++
             if (buildErr == null) buildErr = b.log.lines().firstOrNull { it.startsWith("e: ") || it.contains("error", true) }?.trim()?.take(140) ?: "build log में गलती"
-            say("e", "Build fail ✗ (${buildRound}/$MAX_BUILD_ROUNDS)\n${b.url}")
-            if (buildRound >= MAX_BUILD_ROUNDS) { finish(c, "$MAX_BUILD_ROUNDS बार ठीक करने के बाद भी build fail。\n${b.url}", ok = false); return }
-            say("s", "कोऑर्डिनेटर: build की गलती बिल्डर को भेजी")
-            val fix = a.run("BUILD FAILED on GitHub Actions after the last push (commit ${a.lastSha.take(7)}). Find the real cause, read the mentioned files/lines, fix ONLY that.\nBUILD LOG:\n${b.log}") { st -> step("बिल्डर: $st") }
+            failSigs.add(FixLoop.signature(b.log))
+            say("e", "Tests/build fail ✗ (राउंड $buildRound)\n${b.url}")
+            when (FixLoop.next(failSigs)) {
+                FixLoop.Next.STOP_CAP -> { finish(c, "$buildRound बार जड़ ढूँढकर ठीक करने के बाद भी tests/build fail — सुरक्षा-सीमा पूरी, आगे आपकी राय चाहिए।\nआखिरी गलती: ${failSigs.last().take(200)}\n${b.url}\nआगे: PR खुला है, main अछूता है — गलती देखकर बताइए या काम छोटे हिस्सों में भेजें।", ok = false); return }
+                FixLoop.Next.STOP_STUCK -> { finish(c, "वही गलती ${FixLoop.SAME_LIMIT} बार लगातार लौटी — बिल्डर अटक गया, इसलिए रोका।\nगलती: ${failSigs.last().take(200)}\n${b.url}\nआगे: PR खुला है, main अछूता है — इस गलती के बारे में और जानकारी दें।", ok = false); return }
+                FixLoop.Next.FIX_AGAIN -> {}
+            }
+            say("s", "कोऑर्डिनेटर: पहले जड़ ढूँढने, फिर ठीक करने भेजा (उसके बाद tests दोबारा)")
+            val repeat = failSigs.size >= 2 && failSigs[failSigs.size - 1] == failSigs[failSigs.size - 2]
+            val fix = a.run("BUILD FAILED on GitHub Actions after the last push (commit ${a.lastSha.take(7)}). STEP 1: find the ROOT CAUSE - read the exact files/lines " +
+                "the log mentions and understand WHY it fails. STEP 2: fix ONLY that cause (never delete/skip/weaken tests). Give root_cause in done." +
+                (if (repeat) "\nNOTE: this SAME error came back after your previous fix - your last fix did not address the real cause. Re-read the code and try a different, correct fix." else "") +
+                "\nBUILD LOG:\n${b.log}") { st -> step("बिल्डर: $st") }
             if (fix.stopped) { finish(c, fix.summary + "\n(build fix push नहीं किया)\n${b.url}", ok = false, title = "कोडिंग टीम: रुक गया"); return }
             commit = fix.commit.ifBlank { "Fix build" }
             if (a.staged.isEmpty()) { finish(c, "बिल्डर build की गलती नहीं ढूँढ पाया。\n${b.url}", ok = false); return }
@@ -249,7 +280,7 @@ object CoderTeam {
         CoderSession.launch(c) {
             CoderReport.begin()
             say("s", "PR #${p.number} की जाँच (tests/build/conflict) करके merge कर रहा हूँ…")
-            val res = try { a.mergePr() } catch (e: CancellationException) { throw e } catch (e: Exception) {
+            val res = try { a.mergePr { st -> step(st) } } catch (e: CancellationException) { throw e } catch (e: Exception) {
                 val m = (e.message ?: e.javaClass.simpleName).take(300)
                 finish(c, "PR #${p.number} merge नहीं हुआ: $m", ok = false, title = "कोडिंग टीम: merge नहीं हुआ",
                     spoken = "PR merge नहीं हो पाया। कोडिंग स्क्रीन पर वजह लिखी है।")
@@ -280,14 +311,28 @@ object CoderTeam {
         return null
     }
 
+    /** आखिरी योजना में कोऑर्डिनेटर ने माना कि user मौजूदा फ़ीचर बदलना/हटाना चाहता है */
+    @Volatile private var lastPlanChangesExisting = false
+
+    /** Backup बनाओ और user को बताओ (न बने तो भी काम PR में ही - main सुरक्षित) */
+    private suspend fun backup(a: CodingAgent, task: String, why: String) {
+        val b = a.backupOld(task)
+        if (b.isNotBlank()) {
+            say("s", "कोऑर्डिनेटर: $why ${a.baseBranch} का backup लिया → $b (ज़रूरत हो तो इसी से वापस)")
+            CoderReport.add("पुराना फ़ीचर जानबूझकर बदला/हटाया जा रहा था", "पहले backup branch $b बनाई, फिर बदलाव")
+        } else say("e", "कोऑर्डिनेटर: backup branch नहीं बन पाई — फिर भी बदलाव सिर्फ़ PR में है, ${a.baseBranch} अछूता")
+    }
+
     /** @return (English brief, Hindi शर्तें, Hindi योजना "पहले … पढ़ रहा हूँ, फिर …") */
     private suspend fun plan(c: Context, task: String): Triple<String, List<String>, String> = withContext(Dispatchers.IO) {
+        lastPlanChangesExisting = false
         val ai = CoderAi.fromPrefs(c) ?: return@withContext Triple("", emptyList(), "")
         val sys = """
 You are DK Coordinator for a coding team (Builder + Reviewer). Read the user's task (Hindi/Hinglish) and reply with ONLY one JSON object:
 {"brief":"one English sentence: what exactly to build/change",
  "plan_hi":"one short Hindi sentence telling the user what the team does FIRST and THEN, e.g. पहले कोडिंग एजेंट का कोड पढ़ रहा हूँ (push, कदम-loop, context और retry कहाँ होते हैं), फिर एक नई PR में सब ठीक करूँगा",
  "acceptance":["3-6 short Hindi checks that prove the task is fully done"],
+ "changes_existing":true/false (true ONLY if the user explicitly asks to change, replace or remove an EXISTING feature),
  "suggestions":[{"title":"Hindi","why":"simple Hindi reason","task":"English task"}]}
 acceptance must only cover what the user asked. suggestions: ONLY things the user did not mention but that are technically required or clearly important
 (e.g. a needed Android permission, crash/security/data-loss risk). Usually []. Never put them into acceptance.
@@ -303,6 +348,7 @@ acceptance must only cover what the user asked. suggestions: ONLY things the use
                     if (t.isNotBlank() && tk.isNotBlank()) withContext(Dispatchers.Main) { addSuggestion(c, t, sg.optString("why"), tk) }
                 }
             }
+            lastPlanChangesExisting = o.optBoolean("changes_existing", false)
             Triple(o.optString("brief"), acc.take(6), o.optString("plan_hi").trim().take(300))
         } catch (e: Exception) { DKLog.d("Coordinator plan nahi bana: ${e.message}"); Triple("", emptyList(), "") }
     }

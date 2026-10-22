@@ -237,6 +237,11 @@ class CodingActivity : AppCompatActivity() {
         CoderSession.launch(this) {
             try {
                 CoderReport.begin()
+                // main पर कभी सीधे नहीं: कोड छूने से पहले नई feature branch; पुराना फ़ीचर बदलना/हटाना = पहले backup
+                if (a.safePr) a.ensureBranch(t)
+                a.intentional = SafePr.changesOldFeature(t)
+                if (a.intentional) a.backupOld(t).takeIf { it.isNotBlank() }?.let { CoderSession.add("s", "पुराने फ़ीचर का backup लिया → $it") }
+                fixSigs.clear()
                 val out = a.run(t) { step -> CoderSession.scope.launch { CoderSession.add("s", step) } }
                 CoderSession.lastCommit = out.commit
                 if (out.stopped) {
@@ -257,10 +262,16 @@ class CodingActivity : AppCompatActivity() {
                 val m = (e.message ?: e.javaClass.simpleName).take(300)
                 CoderSession.add("e", "⚠ काम अधूरा\n\n" + CoderReport.final(false, m))
                 DKLog.d("Coder गलती: ${e.javaClass.simpleName} ${e.message}")
-            } finally { CoderSession.listener?.invoke() }
+            } finally {
+                withContext(kotlinx.coroutines.NonCancellable) { try { a.dropEmptyBranch() } catch (_: Exception) {} }
+                CoderSession.listener?.invoke()
+            }
         }
         render()
     }
+
+    /** इस काम में build/test fail की पहचान (वही गलती बार-बार = अटक गए) */
+    private val fixSigs = mutableListOf<String>()
 
     private fun stopJob() { CoderSession.job?.cancel() }
 
@@ -335,7 +346,7 @@ class CodingActivity : AppCompatActivity() {
             .setNegativeButton("अभी नहीं", null).show()
     }
 
-    /** Push ke baad GitHub Actions build dekho; fail ho to log padhkar agent khud theek kare (3 baar tak) */
+    /** Push ke baad GitHub Actions build dekho; fail ho to jad (root cause) dhundhkar agent khud theek kare - paas hone tak (atke to ruke, dekhें FixLoop) */
     private suspend fun watchAndFix(c: Context, round: Int) {
         val a = CoderSession.agent ?: return
         CoderSession.add("s", "GitHub पर build देख रहा हूँ…")
@@ -343,10 +354,15 @@ class CodingActivity : AppCompatActivity() {
         if (b == null) { CoderSession.add("s", "इस repo के build की जानकारी नहीं मिली"); return }
         if (b.ok) { CoderSession.add("d", "Build सफल ✓\n${b.url}"); return }
         CoderSession.add("e", "Build fail हुआ ✗\n${b.url}\n\n" + b.log.lines().filter { it.startsWith("e: ") || it.contains("error", true) }.take(6).joinToString("\n").take(700))
-        if (round >= 3) { CoderSession.add("e", "3 बार ठीक करने के बाद भी build fail है। ऊपर की गलती देखकर बताइए क्या करना है।"); return }
-        CoderSession.add("s", "Build की गलती खुद ठीक कर रहा हूँ (कोशिश ${round + 1}/3)…")
+        fixSigs.add(FixLoop.signature(b.log))
+        when (FixLoop.next(fixSigs)) {
+            FixLoop.Next.STOP_CAP -> { CoderSession.add("e", "${fixSigs.size} बार जड़ ढूँढकर ठीक करने के बाद भी build/tests fail हैं। ऊपर की गलती देखकर बताइए क्या करना है।"); return }
+            FixLoop.Next.STOP_STUCK -> { CoderSession.add("e", "वही गलती ${FixLoop.SAME_LIMIT} बार लगातार लौटी — एजेंट अटक गया, इसलिए रोका। इस गलती के बारे में और बताइए।"); return }
+            FixLoop.Next.FIX_AGAIN -> {}
+        }
+        CoderSession.add("s", "पहले गलती की जड़ ढूँढ रहा हूँ, फिर ठीक करके दोबारा test (राउंड ${round + 1})…")
         val out = a.run("BUILD FAILED on GitHub Actions after your last push (commit ${a.lastSha.take(7)}). " +
-            "Find the real cause in this log, read the mentioned files/lines, fix ONLY what is needed, then done.\nBUILD LOG:\n${b.log}") { step ->
+            "STEP 1: find the ROOT CAUSE in this log (read the mentioned files/lines, understand WHY). STEP 2: fix ONLY that cause, never delete/weaken tests, give root_cause in done.\nBUILD LOG:\n${b.log}") { step ->
             CoderSession.scope.launch { CoderSession.add("s", step) }
         }
         CoderSession.add("d", out.summary)
