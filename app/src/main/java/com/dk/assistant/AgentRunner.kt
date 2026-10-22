@@ -4,6 +4,7 @@ import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.async
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.launch
@@ -542,10 +543,17 @@ class AgentRunner(
     }
 
     private suspend fun searchAndSay(goal: String, fillerSaid: Boolean = false, deep: Boolean = false, thorough: Boolean = false): Boolean {
-        // "पता करके बताता हूँ" jaisa kuch nahi - chupchap khojo, seedha jawab (orb soch-raha rang dikhata hai)
+        // v3.29 (user ki maang): search karna pade to sach bolo - "एक सेकंड, सर्च करके बताता हूँ" (search saath-saath chalta hai, deri nahi)
         DKState.set(Mode.THINKING); DKState.hint(if (deep) "इंटरनेट पर गहराई से खोज रहा है…" else "इंटरनेट पर खोज रहा है…")
         return try {
-            val r = brain.search(goal, deep, thorough)
+            val r = kotlinx.coroutines.coroutineScope {
+                val d = async(Dispatchers.IO) { brain.search(goal, deep, thorough) }
+                if (!silent && !fillerSaid) {
+                    val ack = "एक सेकंड, सर्च करके " + (if (Prefs.voiceGender(svc) != "male") "बताती हूँ।" else "बताता हूँ।")
+                    try { speaker.speakQuick(ack) } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (_: Exception) {}
+                }
+                d.await()
+            }
             if (r.text.isBlank()) false else {
                 // screen par jawab + kahan se mila (click ho sakne wale links); bolkar sirf jawab
                 DKState.reply(r.text, r.sources)

@@ -218,19 +218,41 @@ class ReplyWatchdog(
     private val timeoutMs: Long = 2500,
     /** Itni chhoti awaaz (khaansi/khatak) par nahi */
     private val minSpeechMs: Int = 400,
+    /**
+     * v3.29: server ne SUNA (text aaya) par itni der tak jawab shuru nahi kiya (na awaaz, na tool) = atka.
+     * Pehle yahan kuch nahi hota tha: 12s baad bas "Listening" - user ko jawab hi nahi milta tha.
+     */
+    private val answerTimeoutMs: Long = 4500,
 ) {
     @Volatile private var heard = false
     @Volatile private var deadline = 0L
+    @Volatile private var answered = false
+    @Volatile private var answerDeadline = 0L
+    @Volatile private var nudged = false
 
     /** User bolne laga - nayi baat, ab tak server ne kuch nahi suna */
-    fun onSpeechStart() { heard = false; deadline = 0L }
+    fun onSpeechStart() { heard = false; deadline = 0L; answered = false; answerDeadline = 0L; nudged = false }
 
     /** Server ne is baat ka kuch bheja (ACTIVITY_START/END, text, tool, awaaz) - woh sun raha hai */
     fun onServerHeard() { heard = true; deadline = 0L }
 
+    /** Server ne jawab shuru kiya (awaaz / jawab ka text / tool call) */
+    fun onServerAnswered() { heard = true; deadline = 0L; answered = true; answerDeadline = 0L }
+
+    /** Humne khud text bhej diya (nahi suna tha) - is baat par dobara "atka" nudge nahi */
+    fun onRescued() { heard = true; deadline = 0L; nudged = true; answerDeadline = 0L }
+
     /** Phone ne pakda: baat khatam */
     fun onEndOfSpeech(now: Long, speechMs: Int) {
         deadline = if (!heard && speechMs >= minSpeechMs) now + timeoutMs else 0L
+        answerDeadline = if (!answered && !nudged && speechMs >= minSpeechMs) now + answerTimeoutMs else 0L
+    }
+
+    /** true = (sirf ek baar) server ne suna par jawab shuru nahi kiya */
+    fun stalled(now: Long): Boolean {
+        if (answerDeadline == 0L || answered || nudged || !heard || now < answerDeadline) return false
+        answerDeadline = 0L; nudged = true
+        return true
     }
 
     /** true = (sirf ek baar) server ne is baat ko nahi suna */
@@ -240,5 +262,5 @@ class ReplyWatchdog(
         return true
     }
 
-    fun reset() { heard = false; deadline = 0L }
+    fun reset() { heard = false; deadline = 0L; answered = false; answerDeadline = 0L; nudged = false }
 }

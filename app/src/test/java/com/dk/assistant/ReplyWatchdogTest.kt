@@ -58,4 +58,36 @@ class ReplyWatchdogTest {
         assertTrue("len=${d.lastSpeechMs}", d.lastSpeechMs in 1100..1300)
         assertEquals(false, d.inSpeech)
     }
+
+    // v3.29: सुना (text आया) पर जवाब शुरू नहीं हुआ -> एक बार "अटका"
+    @Test fun heardButNoAnswerIsStalledOnce() {
+        val w = ReplyWatchdog(answerTimeoutMs = 4500)
+        w.onSpeechStart(); w.onServerHeard()
+        w.onEndOfSpeech(10_000, 1200)
+        assertFalse(w.due(13_000))
+        assertFalse(w.stalled(14_000))
+        assertTrue(w.stalled(14_500))
+        assertFalse("सिर्फ़ एक बार", w.stalled(20_000))
+    }
+
+    @Test fun answerStartedIsNotStalled() {
+        val w = ReplyWatchdog()
+        w.onSpeechStart(); w.onServerHeard(); w.onEndOfSpeech(0, 1200)
+        w.onServerAnswered()
+        assertFalse(w.stalled(10_000))
+    }
+
+    @Test fun rescuedTextIsNotNudgedAgain() {
+        val w = ReplyWatchdog()
+        w.onSpeechStart(); w.onEndOfSpeech(0, 1200)
+        assertTrue(w.due(2_500))
+        w.onRescued()
+        assertFalse(w.stalled(10_000))
+    }
+
+    @Test fun notHeardIsNotStalledButDue() {
+        val w = ReplyWatchdog()
+        w.onSpeechStart(); w.onEndOfSpeech(0, 1200)
+        assertFalse("नहीं सुना = stalled नहीं (due संभालता है)", w.stalled(10_000))
+    }
 }
