@@ -116,6 +116,32 @@ class AgentRunner(
             DKState.reply(m); if (!silent) speaker.speak(m)
             return true
         }
+        // v3.33: कई कॉन्टैक्ट मिले -> पूछो (कॉल नहीं), जवाब सुनकर उसी नाम से फिर ढूँढो - AI के बिना
+        if (type == "call_contact" && LocalRouter.needsUser(r) && !silent) {
+            sayQuick(LocalRouter.userText(r) ?: "किसे कॉल करूँ?")
+            DKState.set(Mode.LISTENING)
+            val ans = svc.hearForAgent()?.trim().orEmpty()
+            DKState.set(Mode.WORKING)
+            if (ans.isBlank() || ComputerVoice.yesNo(ans) == false || LocalRouter.negated(" $ans ") ||
+                ans.lowercase().trim('.', '।', ' ') in listOf("रहने दो", "कैंसल", "cancel", "stop", "रुको", "मत करो", "नहीं")) {
+                sayQuick("ठीक है, कॉल नहीं किया।"); return true
+            }
+            DKState.user(ans)
+            val name = (LocalRouter.single(LocalRouter.normalize(ans, Prefs.wakeWords(svc)), Prefs.wakeWords(svc))
+                ?.action?.takeIf { it.optString("type") == "call_contact" }?.optString("name")) ?: ans
+            val r2 = svc.perform(JSONObject().put("type", "call_contact").put("name", name))
+            DKLog.d("TURANT call_contact (दूसरी बार) -> ${r2.substringBefore(':')}")
+            sayQuick(LocalRouter.userText(r2) ?: if (r2.startsWith("ERROR")) "कॉल नहीं हो पाई।" else "ठीक है।")
+            return true
+        }
+        // v3.33: फ़ोन ने खुद जाँचा हुआ सच्चा नतीजा (ऐप नहीं है / डायलर खुला / वीडियो खुला पर चलना पक्का नहीं ...) - AI को नहीं
+        LocalRouter.userText(r)?.let { m ->
+            if (LiveFast.ok(type, r) || LocalRouter.final(r)) {
+                if (r.startsWith("ERROR") || r.startsWith("STEP_FAILED")) DKState.replyFailed(m) else DKState.reply(m)
+                if (!silent) speaker.speakQuick(m)
+                return true
+            }
+        }
         if (r.startsWith("ERROR")) return false
         // seedha video nahi chala (search page khula) -> AI pehla video click karega
         if (type == "youtube_play" && !r.startsWith("PLAYING")) return false
@@ -123,6 +149,8 @@ class AgentRunner(
             type == "who_calls" -> if (r.startsWith("CALLER:")) r.removePrefix("CALLER:").trim() + " का कॉल है।" else "पता नहीं चला किसका कॉल है।"
             type == "unlock" -> if (r.contains("PIN")) "स्क्रीन चालू है, PIN या फिंगरप्रिंट से खोलिए।" else ""
             type == "open_app" -> ""
+            type == "youtube_play" -> if (r.contains("verified: playing")) "वीडियो चल रहा है" else "वीडियो खोल दिया"
+            type == "call_log" -> "कॉल लिस्ट खोल दी"
             else -> Lang.say(q.ack)
         }
         DKState.reply(msg.ifBlank { "✓ ${q.action.optString("name", type)}" })
@@ -207,8 +235,13 @@ class AgentRunner(
         return rest.takeIf { it.length >= 4 }
     }
 
-    private suspend fun execute(goal: String, note: String = "") {
+    /** v3.33: आवाज़ पहचान (STT) पूरी होने का समय - "सुनना पूरा -> काम" की देरी लॉग में */
+    @Volatile var heardAt = 0L
+
+    private suspend fun execute(goal: String, note0: String = "") {
+        var note = note0
         DKLog.d("Command: $goal")
+        heardAt.takeIf { it > 0 && System.currentTimeMillis() - it < 30_000 }?.let { DKLog.d("Deri: सुनना पूरा → रूटर ${System.currentTimeMillis() - it} ms"); heardAt = 0L }
         DKState.user(goal)
         currentGoal = goal
         synchronized(currentAnswer) { currentAnswer.clear() }
@@ -240,18 +273,43 @@ class AgentRunner(
         ComputerVoice.parse(goal)?.let { cmd -> if (computerFromVoice(cmd)) return }
         // "tumhe kisne banaya?" - sirf poochhne par
         if (asksCreator(lower)) { say(CREATOR_ANSWER); return }
+        // v3.33: Local-first - फ़ोन पर ही समझ आए ऐसा काम (ऐप खोलो, कॉल, YouTube/शॉपिंग सर्च, फ़ोटो, कई कदम) AI से पहले.
+        // (पहले QuickCommands रिसर्च के बाद था - "zepto पर दूध सर्च करो" गहरी AI रिसर्च बन जाता था)
+        if (!note.contains(LocalRouter.DONE_NOTE)) {
+            val tc = System.nanoTime()
+            val sp = LocalRouter.split(goal, Prefs.wakeWords(svc), svc.currentPackage())
+            val ms = (System.nanoTime() - tc) / 1_000_000
+            val local = sp.local
+            DKLog.d("रूटर ($ms ms): " + when {
+                local == null -> "फ़ोन पर सीधा नहीं - आगे (AI/बाकी)"
+                sp.rest == null -> "पूरा फ़ोन पर: ${local.action.optString("type")} (AI नहीं)"
+                else -> "पहला हिस्सा फ़ोन पर: ${local.action.optString("type")}, बाकी AI"
+            })
+            if (local != null && sp.rest == null) {
+                if (doQuick(local)) return
+                // open_app fail (app nahi mila) -> AI sambhalega
+            } else if (local != null) {
+                DKState.set(Mode.WORKING)
+                val t0 = System.currentTimeMillis()
+                val r = svc.perform(local.action)
+                DKLog.d("TURANT (पहला हिस्सा) ${local.action.optString("type")} -> ${r.take(80)} (${System.currentTimeMillis() - t0}ms)")
+                if (LocalRouter.final(r) && !LiveFast.ok(local.action.optString("type"), r)) {
+                    val m = LocalRouter.userText(r) ?: "यह नहीं हो पाया।"
+                    DKState.replyFailed(m); if (!silent) speaker.speakQuick(m); return
+                }
+                note = (if (note.isNotBlank()) "$note\n" else "") + LocalRouter.DONE_NOTE + " " + LiveFast.describe(local.action) +
+                    " -> " + r.take(160) + "\nContinue the rest of the user's goal from the CURRENT screen."
+                svc.waitSettle("", false, 2500)
+            }
+        }
         // "सर्च करो / रिसर्च करो / डीप रिसर्च करो" -> poori gehri khoj, phir vistaar se pakka jawab
-        if (explicitResearch(lower) && brain.canSearch()) {
+        if (!note.contains(LocalRouter.DONE_NOTE) && explicitResearch(lower) && brain.canSearch()) {
             if (searchAndSay(goal, deep = true, thorough = true)) return
         }
         if (lower.contains("नई बात") || lower.contains("new chat") || lower.contains("भूल जाओ")) {
             brain.reset(); say("ठीक है, नई बातचीत शुरू करते हैं।"); return
         }
-        // 1) Seedhi command? -> turant, bina AI
-        QuickCommands.parse(goal, Prefs.wakeWords(svc))?.let { q ->
-            if (doQuick(q)) return
-            // open_app fail (app nahi mila) -> AI sambhalega
-        }
+        // 1) Seedhi command -> upar LocalRouter (QuickCommands usi ke andar pehle chalta hai)
         // DK ka apna dimaag: samay, tareekh, battery, namaste, hisaab = ek pal me (bina internet)
         if (note.isBlank()) LocalBrain.instant(svc, goal)?.let { say(it); return }
         if (!brain.hasUsableProvider()) {
@@ -261,6 +319,11 @@ class AgentRunner(
         }
 
         var feedback = (if (note.isNotBlank()) "$note\n" else "") + "USER GOAL: $goal"
+        // v3.33: कार्ट - सही प्रोडक्ट पक्का करके ही "Add", और स्क्रीन पर पुष्टि दिखे तभी "जोड़ दिया"
+        val cartGoal = LocalRouter.isCartGoal(goal)
+        if (cartGoal) feedback += "\nCART RULE: Before tapping Add to cart, check the open product matches the user's request " +
+            "(name, size/variant, price limit). If unsure, use ask. Say it was added ONLY if the screen shows a confirmation " +
+            "(e.g. 'Added to cart', 'Go to cart'). Never tap Buy now / Place order / Pay."
         var wantShot = false
         var shotWarned = false
         // Normal baatcheet ho to screen padhe bina seedha jawab = bahut tez
@@ -344,8 +407,10 @@ class AgentRunner(
             val hasActions = actions != null && actions.length() > 0
             var done = resp.optBoolean("done", !hasActions)
 
+            // v3.33: कार्ट वाला काम "पूरा" बताने से पहले स्क्रीन पर पुष्टि देखो (बोलना जाँच के बाद)
+            val cartCheck = cartGoal && done && !chatMode
             // Bolna aur kaam saath-saath
-            val speakJob = if (sayText.isNotBlank()) scope.launch { say(sayText) } else null
+            val speakJob = if (sayText.isNotBlank() && !cartCheck) scope.launch { say(sayText) } else null
 
             val results = StringBuilder()
             val prevPkg = svc.currentPackage()
@@ -376,6 +441,19 @@ class AgentRunner(
                 }
             }
 
+            if (done && cartCheck) {
+                val tv = System.currentTimeMillis()
+                if (hasActions) svc.waitSettle(prevPkg, false, 3000)
+                val ok = LocalRouter.cartConfirmed(svc.readScreen().text)
+                DKLog.d("जाँच: कार्ट ${if (ok) "में जुड़ना स्क्रीन पर दिखा" else "की पुष्टि स्क्रीन पर नहीं दिखी"} (${System.currentTimeMillis() - tv} ms)")
+                val claims = Regex("(?i)cart|कार्ट|जोड़|डाल दिया|added").containsMatchIn(sayText)
+                say(when {
+                    ok -> sayText.ifBlank { "कार्ट में जोड़ दिया।" }
+                    claims || sayText.isBlank() -> "मैंने कोशिश की, पर स्क्रीन पर कार्ट में जुड़ने की पुष्टि नहीं दिखी। एक बार कार्ट खोलकर देख लीजिए।"
+                    else -> sayText
+                })
+                return
+            }
             if (done) { speakJob?.join(); return }
             if (chatMode) chatMode = false   // AI ne actions diye - ab screen dekh kar kaam karo
             svc.waitSettle(prevPkg, opensApp) // naya app khule + screen tham jaye, tab agla kadam

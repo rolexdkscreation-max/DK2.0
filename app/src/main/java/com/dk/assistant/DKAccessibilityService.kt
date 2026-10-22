@@ -437,6 +437,7 @@ class DKAccessibilityService : AccessibilityService() {
                     continue
                 }
                 misses = 0
+                agent.heardAt = System.currentTimeMillis()
                 val low = heard.lowercase().trim()
 
                 // ghanti baj rahi hai -> jo bhi bolo woh call ka jawab (wake word ki zarurat nahi)
@@ -497,6 +498,79 @@ class DKAccessibilityService : AccessibilityService() {
 
     // ---------------------------------------------------------------- screen reading (aankh)
     fun currentPackage(): String = try { rootInActiveWindow?.packageName?.toString() ?: "" } catch (_: Exception) { "" }
+
+    /** v3.33: काम हुआ या नहीं की जाँच - [maxMs] तक सामने वाला ऐप देखो (main thread नहीं रुकता, सिर्फ़ यह coroutine) */
+    suspend fun waitForeground(maxMs: Long, ok: (String) -> Boolean): Boolean {
+        val t0 = System.currentTimeMillis()
+        while (System.currentTimeMillis() - t0 < maxMs) {
+            if (ok(currentPackage())) return true
+            delay(150)
+        }
+        return false
+    }
+
+    /** DK खुद बोल रहा है? (तब "गाना बज रहा" की जाँच भरोसे लायक नहीं) */
+    private fun selfAudio(): Boolean = try { speaker.busy || gemLive.isPlaying() } catch (_: Exception) { false }
+
+    /**
+     * v3.33: YouTube वीडियो सच में चला? - YouTube सामने हो और फ़ोन पर media आवाज़ चल रही हो (DK की अपनी आवाज़ नहीं).
+     * "खोल दिया" को "चल रहा है" नहीं कहते.
+     */
+    private suspend fun verifyYoutube(r: String): String {
+        if (!r.startsWith("PLAYING")) return r
+        val t0 = System.currentTimeMillis()
+        val am = getSystemService(android.media.AudioManager::class.java)
+        var front = false
+        while (System.currentTimeMillis() - t0 < 5000) {
+            if (currentPackage() == LocalRouter.YT_PKG) front = true
+            if (front && am?.isMusicActive == true && !selfAudio()) {
+                DKLog.d("जाँच: YouTube वीडियो चल रहा है (${System.currentTimeMillis() - t0} ms)")
+                return "$r (verified: playing)"
+            }
+            delay(200)
+        }
+        DKLog.d("जाँच: YouTube ${if (front) "सामने खुला, पर आवाज़ नहीं मिली" else "सामने नहीं दिखा"} (${System.currentTimeMillis() - t0} ms)")
+        return if (front) "VIDEO_OPENED: YouTube पर वीडियो खोल दिया, पर चलना शुरू हुआ या नहीं - पक्का नहीं दिखा।"
+        else "VIDEO_OPENED: वीडियो खोलने को कह दिया, पर YouTube सामने खुला नहीं दिखा।"
+    }
+
+    /** v3.33: ऐप सच में सामने आया? (नतीजे पर निशान; न दिखे तो भी झूठा "खुल गया" नहीं) */
+    private suspend fun verifyOpen(r: String): String {
+        if (!r.startsWith("opened")) return r
+        val pkg = AppLauncher.lastPkg
+        if (pkg.isBlank()) return r
+        val t0 = System.currentTimeMillis()
+        val ok = waitForeground(2500) { it == pkg }
+        DKLog.d("जाँच: ऐप ${if (ok) "सामने आ गया" else "सामने नहीं दिखा"} (${System.currentTimeMillis() - t0} ms)")
+        return if (ok) "$r (verified)" else "$r (not confirmed on screen)"
+    }
+
+    /**
+     * v3.33: कई कदम एक-एक करके; हर कदम के बाद जाँच, कोई कदम न हो / पूछना पड़े तो वहीं रुको (आगे झूठा "हो गया" नहीं).
+     * सिर्फ़ तय action types (nested "steps" नहीं), ज़्यादा से ज़्यादा 6.
+     */
+    private suspend fun performSteps(arr: org.json.JSONArray?): String {
+        if (arr == null || arr.length() == 0) return "ERROR: steps khali"
+        if (arr.length() > 6) return "ERROR: bahut saare steps"
+        val done = mutableListOf<String>()
+        var last = ""
+        for (i in 0 until arr.length()) {
+            val st = arr.optJSONObject(i) ?: return "ERROR: step ${i + 1} galat"
+            val type = st.optString("type")
+            if (type == "steps") return "ERROR: nested steps nahi"
+            val prev = currentPackage()
+            val r = perform(st)
+            DKLog.d("कदम ${i + 1}/${arr.length()} $type -> ${r.take(80)}")
+            if (r.startsWith("ASK:") || r.startsWith("ERROR")) {
+                val why = LocalRouter.userText(r) ?: r.take(100)
+                return if (r.startsWith("ASK:")) r
+                else "STEP_FAILED: ${if (done.isEmpty()) "" else done.joinToString(", ") + " हो गया, पर "}कदम ${i + 1} ($type) नहीं हुआ: $why"
+            }
+            done.add(LiveFast.describe(st)); last = r
+            if (i < arr.length() - 1 && type in listOf("open_app", "shop_search", "youtube_search", "open_url", "web_search")) waitSettle(prev, true, 3500)
+        }
+        return "STEPS_DONE: " + done.joinToString(", ") + "। " + (LocalRouter.userText(last) ?: "")
+    }
 
     /**
      * Action ke baad screen ke thamne ka intezaar (pehle seedha 650ms tha - YouTube jaisa app tab tak khulta bhi nahi tha,
@@ -620,13 +694,19 @@ class DKAccessibilityService : AccessibilityService() {
                     "ok"
                 }
                 "screen_view" -> { Prefs.edit(this) { putBoolean("screenshot", a.optBoolean("on", true)) }; "ok" }
-                "open_app" -> AppLauncher.open(this, a.optString("name"))
+                "open_app" -> verifyOpen(AppLauncher.open(this, a.optString("name")))
                 "youtube_search" -> AppLauncher.youtubeSearch(this, a.optString("query"))
                 "youtube_play" -> {
                     val q = a.optString("query")
                     val id = kotlinx.coroutines.withContext(Dispatchers.IO) { AppLauncher.youtubeFirstVideo(q) }
-                    AppLauncher.youtubePlay(this, q, id)
+                    verifyYoutube(AppLauncher.youtubePlay(this, q, id))
                 }
+                // v3.33: फ़ोन के सीधे काम (बिना AI)
+                "call_contact" -> PhoneActions.callContact(this, a.optString("name"))
+                "call_log" -> PhoneActions.callLog(this)
+                "open_dialer" -> PhoneActions.openDialer(this)
+                "gallery_latest" -> PhoneActions.latestPhoto(this)
+                "steps" -> performSteps(a.optJSONArray("steps"))
                 "web_search" -> AppLauncher.webSearch(this, a.optString("query"))
                 "open_url" -> AppLauncher.openUrl(this, a.optString("url"))
                 "dial" -> AppLauncher.dial(this, a.optString("number"))
