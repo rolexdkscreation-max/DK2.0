@@ -10,7 +10,7 @@ package com.dk.assistant
 class UiText(entries: Map<String, String>) {
 
     private val exact = entries
-    /** छोटे शब्द (\"का\", \"है\") बीच में नहीं बदलते - सिर्फ़ पूरा text हो तब */
+    /** दो अक्षर वाले छोटे शब्द ("का", "है") बीच में नहीं बदलते - सिर्फ़ पूरा text हो तब */
     private val parts = entries.entries.filter { it.key.length >= MIN_PART && it.key.any { c -> dev(c) } }.sortedByDescending { it.key.length }
     private val cache = object : LinkedHashMap<String, String>(256, 0.75f, true) {
         override fun removeEldestEntry(e: MutableMap.MutableEntry<String, String>?) = size > 1500
@@ -48,7 +48,7 @@ class UiText(entries: Map<String, String>) {
     }
 
     companion object {
-        const val MIN_PART = 4
+        const val MIN_PART = 3
         fun dev(c: Char) = c in '\u0900'..'\u097F'
 
         /** \"हिंदी<TAB>English\" लाइनें; # = टिप्पणी */
