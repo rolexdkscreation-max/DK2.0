@@ -108,7 +108,7 @@ class MemoryActivity : AppCompatActivity() {
                 setBackgroundResource(R.drawable.glass_row)
                 val p = (12 * dp).toInt(); setPadding(p + (4 * dp).toInt(), p / 2, p / 2, p / 2)
             }
-            r.addView(TextView(this).apply { text = f; textSize = 15f; setTextColor(0xFFFFFFFF.toInt()) },
+            r.addView(TextView(this).apply { text = f; textSize = 15f; setTextColor(0xFFFFFFFF.toInt()); UiLang.keep(this) },
                 LinearLayout.LayoutParams(0, -2, 1f))
             r.addView(TextView(this).apply {
                 text = "✕"; textSize = 18f; gravity = Gravity.CENTER; setTextColor(0xCCFFFFFF.toInt())
@@ -140,8 +140,8 @@ class MemoryActivity : AppCompatActivity() {
     }
 
     private fun confirm(q: String, yes: () -> Unit) {
-        AlertDialog.Builder(this).setMessage(q).setPositiveButton("हाँ") { _, _ -> yes() }.setNegativeButton("नहीं", null).show()
+        UiDialog(this).setMessage(q).setPositiveButton("हाँ") { _, _ -> yes() }.setNegativeButton("नहीं", null).show()
     }
 
-    private fun toast(t: String) = Toast.makeText(this, t, Toast.LENGTH_SHORT).show()
+    private fun toast(t: String) = UiLang.toast(this, t, Toast.LENGTH_SHORT).show()
 }

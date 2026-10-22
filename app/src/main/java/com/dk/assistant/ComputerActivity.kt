@@ -140,14 +140,14 @@ class ComputerActivity : AppCompatActivity() {
     private fun showFiles() {
         val fs = ComputerTools.list(this)
         if (fs.isEmpty()) { toast("अभी कोई फ़ाइल नहीं बनी"); return }
-        android.app.AlertDialog.Builder(this, Glass.DIALOG)
+        UiDialog(this, Glass.DIALOG)
             .setTitle("DK कंप्यूटर की फ़ाइलें")
             .setItems(fs.map { "${it.name}  (${maxOf(1, it.length() / 1024)} KB)" }.toTypedArray()) { _, i -> fileMenu(fs[i]) }
             .setNegativeButton("बंद करें", null).show()
     }
 
     private fun fileMenu(f: File) {
-        android.app.AlertDialog.Builder(this, Glass.DIALOG)
+        UiDialog(this, Glass.DIALOG)
             .setTitle(f.name)
             .setItems(arrayOf("खोलें", "शेयर करें", "हटाएँ")) { _, w ->
                 try {
@@ -235,5 +235,5 @@ class ComputerActivity : AppCompatActivity() {
         setOnClickListener { onClick() }
     }
 
-    private fun toast(t: String) = Toast.makeText(this, t, Toast.LENGTH_SHORT).show()
+    private fun toast(t: String) = UiLang.toast(this, t, Toast.LENGTH_SHORT).show()
 }

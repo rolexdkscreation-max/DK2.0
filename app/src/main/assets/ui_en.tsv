@@ -1,0 +1,747 @@
+# DK UI: हिंदी<TAB>English (UiLang). एक लाइन = एक टुकड़ा
+⏳ डीके एजेंट काम कर रहा है	⏳ DK agent is working
+Listening • सुन रहा है…	Listening…
+Speaking • बोल रहा है…	Speaking…
+ऑनलाइन • फ़ोन कंट्रोल चालू	Online • Phone control on
+काम कर रहा है…	Working…
+कुछ भी लिखिए… (जैसे: WhatsApp खोलो, आज का मौसम?)	Type anything… (e.g. open WhatsApp, today's weather?)
+चैट	Chat
+जवाब आने में बहुत देर हो रही है (	The reply is taking too long (
+जवाब लिखा जा रहा है	Writing the reply
+नेटवर्क धीमा है… जवाब आ रहा है	Network is slow… reply is coming
+पहले सेटिंग्स में किसी AI की API key डालकर सेव कीजिए।	First add and save an AI API key in Settings.
+फ़ोन पर काम कर रहा है…	Working on the phone…
+फ़ोन पर काम करने के लिए पहले Accessibility में DK चालू करें।	To work on the phone, first turn on DK in Accessibility.
+फिर से भेजें	Send again
+बोलकर भी	Voice too
+सिर्फ़ बातचीत • फ़ोन कंट्रोल बंद	Chat only • Phone control off
+सेकंड) - नेटवर्क धीमा लगता है। नीचे "फिर से भेजें" दबाइए।	seconds) - the network seems slow. Tap "Send again" below.
+↻  फिर से भेजें	↻  Send again
+(अभी: बिना पूछे push चालू)।	(now: push without asking is on).
+(कोई बदलाव नहीं)	(no changes)
+(बदलाव push नहीं किए)	(changes not pushed)
+(शुरुआती)	(default)
+) पर काम करूँगा।	) I'll work on it.
+) — काम दोबारा भेजें:	) — send the task again:
+) • बदलने के लिए ऊपर "रिपो"	) • to change, use "Repo" at the top
+11 एजेंट •	11 agents •
+Build fail हुआ ✗	Build failed ✗
+Build जाँच/सुधार में गलती:	Error while checking/fixing the build:
+Build ठीक करने वाले बदलाव तैयार हैं — नीचे "Push करें" दबाइए	Changes that fix the build are ready — tap "Push" below
+Build देखना रोका।	Stopped watching the build.
+Build सफल ✓	Build succeeded ✓
+Coder गलती:	Coder error:
+GitHub token नहीं डाला	No GitHub token added
+GitHub की दिक्कत	GitHub problem
+GitHub टोकन गलत है या expire हो गया (401)।	GitHub token is wrong or expired (401).
+GitHub नहीं जुड़ा	GitHub not connected
+GitHub पर build देख रहा हूँ…	Watching the build on GitHub…
+GitHub पर push कर रहा हूँ…	Pushing to GitHub…
+GitHub पर push करें?	Push to GitHub?
+GitHub पर बदलाव देखें; tests + build पास हों तो Merge करें (या DK से बोलें: "PR merge कर दो")। Merge होते ही नई APK release बनेगी। और बदलाव चाहिए तो बस लिखिए — उसी PR में जुड़ेंगे।	Check the changes on GitHub; Merge when tests + build pass (or tell DK: "merge the PR"). A new APK release is made as soon as it is merged. Need more changes? Just type — they will go into the same PR.
+GitHub पर बनाएँ	Create on GitHub
+GitHub मोड में दिक्कत	Problem in GitHub mode
+Merge करें	Merge
+PR खोलें	Open PR
+PR दोबारा बना रहा हूँ…	Creating the PR again…
+PR नहीं बना:	PR not created:
+PR फिर बनाएँ	Create PR again
+Push करें	Push
+Push नहीं हुआ:	Push failed:
+Push हो गया (	Pushed (
+Repo चुनें (owner/naam)	Choose repo (owner/name)
+Settings खोलें	Open Settings
+merge करें?	Merge?
+review के लिए तैयार	ready for review
+अब GitHub मोड:	Now GitHub mode:
+अभी नहीं	Not now
+इस repo के build की जानकारी नहीं मिली	No build info found for this repo
+एक बार बताइए (लिखकर या 🎤 से) क्या बनाना है। बिल्डर लिखेगा → रिव्यूअर खुद जाँचेगा → गड़बड़ी हो तो वापस ठीक → अपने-आप push → GitHub tests + build जाँच → पूरा होने पर बताऊँगा और "Merge करें" बटन दिखेगा (merge होते ही नई APK release)।	Tell me once (type or use 🎤) what to build. The builder writes → the reviewer checks → fixes if anything is wrong → pushes automatically → GitHub tests + build → I'll tell you when done and show the "Merge" button (a new APK release is made on merge).
+काम कर रहा है...	Working...
+कॉपी	Copy
+कोई repo नहीं मिला	No repo found
+कोई अतिरिक्त चीज़ ज़रूरी लगी तो खुद नहीं जोड़ूँगा — आपसे पूछूँगा।	If something extra seems needed, I won't add it myself — I'll ask you.
+कोडिंग एजेंट बंद है — चालू करें	Coding agent is off — turn it on
+कोडिंग के लिए AI key नहीं मिली — Settings → AI दिमाग → कोडिंग एजेंट में डालें	No AI key for coding — add it in Settings → AI brain → Coding agent
+कोडिंग टीम	Coding team
+क्या आपने GitHub पर बदलाव review कर लिए? Merge तभी होगा जब PR के unit tests + build पास हों।	Have you reviewed the changes on GitHub? Merge happens only if the PR's unit tests + build pass.
+क्या करें?	What to do?
+क्या चल रहा है / रिपो चेक करो	What's going on / check the repo
+क्या बदलना है? (जैसे: Settings में dark mode switch जोड़ो)	What should change? (e.g. add a dark mode switch in Settings)
+क्या बनाना है? बोलिए…	What should I build? Speak…
+ठीक है	OK
+नई branch (feature/dk-…) → PR →	New branch (feature/dk-…) → PR →
+नमस्ते। 11 एजेंट वाली टीम तैयार है: मैनेजर → प्रॉम्प्ट इंजीनियर → गिट → प्लानर → कोडर → रिव्यूअर → परफॉरमेंस → टेस्टर → डिबगर → QA → डिप्लॉयमेंट।	Hello. The 11-agent team is ready: Manager → Prompt engineer → Git → Planner → Coder → Reviewer → Performance → Tester → Debugger → QA → Deployment.
+नमस्ते। कोडिंग टीम तैयार है —	Hello. The coding team is ready —
+नमस्ते। मैं	Hello. I am
+नया	New
+नेटवर्क गलती	Network error
+नॉर्मल मोड	Normal mode
+नॉर्मल मोड में करो	Do it in normal mode
+नॉर्मल मोड में काम करें?	Work in normal mode?
+नॉर्मल मोड में काम होगा (गिट एजेंट बंद)। GitHub मोड के लिए Settings → कोडिंग एजेंट में token डालें।	Work will be done in normal mode (Git agent off). For GitHub mode, add a token in Settings → Coding agent.
+नॉर्मल मोड में: कोड हर फ़ाइल के नाम के साथ अलग मिलेगा (कॉपी बटन के साथ)। अपना कोड ```घेरे``` में भेजें तो उसी पर काम होगा।	In normal mode: code comes separately with each file name (with a copy button). Send your code inside ```fences``` to work on it.
+पर जाएँगे।	will go to.
+पर सीधे push नहीं — नई feature branch → Pull Request → tests + build → आप review करके "Merge करें" दबाएँ।	is not pushed directly — new feature branch → Pull Request → tests + build → you review and tap "Merge".
+पहले गलती की जड़ ढूँढ रहा हूँ, फिर ठीक करके दोबारा test (राउंड	First finding the root cause of the error, then fixing and testing again (round
+पहले चल रहा काम रोकें	Stop the running task first
+पहले ठीक करें:	Fix these first:
+पहले ये ठीक करें (सेटिंग्स → कोडिंग एजेंट):	Fix these first (Settings → Coding agent):
+पहले सेटिंग्स में GitHub token डालें	First add a GitHub token in Settings
+पुराने repo के बिना push बदलाव हटा दिए	Removed unpushed changes of the old repo
+पुराने फ़ीचर का backup लिया →	Backup of the old feature taken →
+पुराने रिपो के बिना push बदलाव हटा दिए	Removed unpushed changes of the old repo
+फ़र्क देखें	View diff
+फ़ाइल	file
+फ़ाइल)	file)
+फ़ाइल) →	file) →
+फ़ोन में आवाज़-पहचान नहीं मिली	No speech recognition on this phone
+बताइए क्या बनाना/ठीक करना है। पहले मैं बताऊँगा कि मैंने क्या समझा — आपकी "हाँ" के बाद ही code छुआ जाएगा। GitHub मोड में: backup branch, नई branch, टेस्ट, QA, PR — merge और APK release सिर्फ़ आपकी मंज़ूरी से।	Tell me what to build/fix. First I'll explain what I understood — code is touched only after your "yes". In GitHub mode: backup branch, new branch, tests, QA, PR — merge and APK release only with your approval.
+बताइए क्या बनाना/बदलना/हटाना है। मैं पहले बदलाव दिखाऊँगा, फिर "Push करें" दबाने पर GitHub पर भेजूँगा	Tell me what to build/change/remove. I'll show the changes first, then send them to GitHub when you tap "Push"
+बदलाव (	Changes (
+बदलाव (अभी push नहीं हुए) —	Changes (not pushed yet) —
+बार जड़ ढूँढकर ठीक करने के बाद भी build/tests fail हैं। ऊपर की गलती देखकर बताइए क्या करना है।	times the root cause was fixed, but build/tests still fail. Look at the error above and tell me what to do.
+बार लगातार लौटी — एजेंट अटक गया, इसलिए रोका। इस गलती के बारे में और बताइए।	times in a row it came back — the agent got stuck, so it was stopped. Tell me more about this error.
+बोलकर बताएँ	Speak it
+भेजें	Send
+मोड:	Mode:
+मोड: GitHub —	Mode: GitHub —
+मोड: नॉर्मल (GitHub नहीं जुड़ा — Settings → कोडिंग एजेंट में token डालें तो GitHub मोड)	Mode: normal (GitHub not connected — add a token in Settings → Coding agent for GitHub mode)
+मोड: नॉर्मल (आपने चुना) — ऊपर "रिपो" से रिपो चुनें तो GitHub मोड	Mode: normal (your choice) — choose a repo with "Repo" at the top for GitHub mode
+मोड: नॉर्मल (कोई रिपो नहीं चुना) — ऊपर "रिपो" से चुनें	Mode: normal (no repo chosen) — choose one with "Repo" at the top
+रिपो	Repo
+रिपो खोजें (	Search repos (
+रिपो नहीं ला पाया:	Couldn't load repos:
+रिपो बदलो	Change repo
+रिपो ला रहा हूँ…	Loading repos…
+रुको	Wait
+रोक दिया।	Stopped.
+रोकें	Stop
+वही गलती	Same error
+सारे बदलाव हटा दिए (GitHub पर कुछ नहीं बदला)	All changes removed (nothing changed on GitHub)
+हटाओ	Remove
+हाँ, जोड़ो	Yes, add it
+।	.
+— branch चुनें (शुरुआत:	— choose branch (default:
+• काम चल रहा है…	• Working…
+⚠ PR नहीं बना — इसलिए Merge का बटन नहीं है	⚠ PR not created — so there is no Merge button
+⚠ PR नहीं बना:	⚠ PR not created:
+⚠ काम अधूरा	⚠ Task incomplete
+⚠ संवेदनशील फ़ाइलें:	⚠ Sensitive files:
+⚠ सुरक्षित PR मोड बंद है — बदलाव सीधे	⚠ Safe PR mode is off — changes go directly to
+🌿 GitHub मोड	🌿 GitHub mode
+💡 टीम का सुझाव (आपने नहीं माँगा था — हाँ कहें तभी जोड़ेंगे)	💡 Team suggestion (you didn't ask for it — added only if you say yes)
+📝 नॉर्मल मोड (बिना GitHub / बिना रिपो)	📝 Normal mode (no GitHub / no repo)
+📝 नॉर्मल मोड चुना — गिट एजेंट बंद, कोड फ़ाइल-नाम के साथ मिलेगा	📝 Normal mode chosen — Git agent off, code comes with file names
+🔒 सुरक्षित PR मोड:	🔒 Safe PR mode:
+DK कंप्यूटर की फ़ाइलें	DK Computer files
+DK कंप्यूटर बंद है — Settings → DK कंप्यूटर में चालू करें।	DK Computer is off — turn it on in Settings → DK Computer.
+search नहीं	no search
+} • खोज:	} • search:
+अभी कोई फ़ाइल नहीं बनी	No files created yet
+आवाज़-पहचान उपलब्ध नहीं	Speech recognition not available
+उदाहरण: "आज की भारत की 5 बड़ी टेक खबरें स्रोत के साथ", "₹15 लाख के होम लोन की EMI 8.5% पर 20 साल", "शाम 6 बजे मुझे पानी पीने की याद दिलाना"	Examples: "Today's 5 big tech news in India with sources", "EMI of a ₹15 lakh home loan at 8.5% for 20 years", "Remind me to drink water at 6 pm"
+कंप्यूटर	Computer
+कंप्यूटर हूँ — कोई भी काम दीजिए, मैं कदम-दर-कदम पूरा करूँगा और आखिर में रिपोर्ट दूँगा।	Computer — give me any task, I'll finish it step by step and give a report at the end.
+काम बताइए…	Describe the task…
+कोई भी काम बताइए… (जैसे: Nashik के 5 अच्छे स्कूलों की फ़ीस की PDF रिपोर्ट बनाओ)	Describe any task… (e.g. make a PDF report of fees of 5 good schools in Nashik)
+खोलें	Open
+नहीं खुली:	couldn't open:
+पहले Settings → AI दिमाग → DK कंप्यूटर में API key डालें (Gemini / Groq / OpenRouter / Custom)।	First add an API key in Settings → AI brain → DK Computer (Gemini / Groq / OpenRouter / Custom).
+फ़ाइल अब मौजूद नहीं	File no longer exists
+फ़ाइलें	Files
+मैं कर सकता हूँ:	I can:
+शेयर करें	Share
+हटा दी	deleted
+हाँ, करो	Yes, do it
+— खोलें / शेयर	— open / share
+• GitHub पर कोड बदलवाना (कोडिंग टीम)	• Change code on GitHub (coding team)
+• इंटरनेट पर खोज और वेबसाइटें पढ़कर रिसर्च (स्रोत के लिंक के साथ)	• Search the internet and read websites for research (with source links)
+• फ़ोन के काम (ऐप खोलना, मैसेज, कॉल — पहले आपसे पूछकर)	• Phone tasks (open apps, messages, calls — asking you first)
+• बातें याद रखना, बाद में काम चलाना / रिमाइंडर	• Remember things, run tasks later / reminders
+• रिपोर्ट, लिस्ट, टेबल — Markdown / CSV / HTML / PDF फ़ाइल	• Reports, lists, tables — Markdown / CSV / HTML / PDF file
+• हिसाब, डेटा, तुलना (कोड चलाकर)	• Calculations, data, comparisons (by running code)
+❓ इजाज़त चाहिए	❓ Permission needed
+गोल ओर्ब पर टैप करके बोलिए	Tap the round orb and speak
+चालू है	is on
+(ध्यान दें: यह कंपनी पेड है)	(note: this provider is paid)
+Gemini Live, Gemini आवाज़ और सुनना इसी key से	Gemini Live, Gemini voice and listening use this key
+key जुड़ गई •	key connected •
+आवाज़ (सुनने) के लिए Groq या Gemini की key चाहिए — दोनों फ्री हैं। Groq सबसे तेज़ है।	For voice (listening) you need a Groq or Gemini key — both are free. Groq is the fastest.
+इस Groq key पर सुनने वाला (Whisper) मॉडल नहीं मिला।	No listening (Whisper) model found on this Groq key.
+कंपनी नहीं मिली	Provider not found
+की key DK चैट में जुड़ गई	key connected to DK Chat
+की key गलत है या बंद है — नई key बनाकर डालें।	key is wrong or disabled — create a new key and add it.
+की key नहीं चली:	key didn't work:
+की key से कोई फ्री मॉडल नहीं चला:	key couldn't run any free model:
+नमस्ते, कैसे हो?	Hello, how are you?
+पहले Gemini या Groq की key पेस्ट करें	First paste a Gemini or Groq key
+में भी लगाई (वहाँ खाली थी)	also set there (it was empty)
+मॉडल चले	models work
+यह key Google Gemini, Groq या OpenRouter की नहीं लगी (या गलत है)। किसी और कंपनी की key हो तो Custom API में Base URL के साथ डालें।	This key doesn't look like a Google Gemini, Groq or OpenRouter key (or it is wrong). For another provider, add it in Custom API with a Base URL.
+यह key बहुत छोटी है, पूरी key पेस्ट करें।	This key is too short, paste the full key.
+सुनना Groq Whisper से (सबसे तेज़)	Listening via Groq Whisper (fastest)
+• यही key	• the same key
+• सबसे तेज़ मॉडल:	• Fastest model:
+✓ DK लाइव में	✓ in DK Live
+English — सिर्फ़ अंग्रेज़ी	English — English only
+Hinglish — हिंदी + English मिलाकर (शुरुआती)	Hinglish — Hindi + English mixed (default)
+ऐप बंद कर दिया	App closed
+कॉल उठा कर स्पीकर पर डाल रहा हूँ	Answering the call on speaker
+कॉल उठा रहा हूँ	Answering the call
+कॉल काट दिया	Call ended
+टॉर्च चालू	Torch on
+टॉर्च बंद	Torch off
+ठीक है, अब मैं आपकी स्क्रीन नहीं देखूँगा	Okay, I won't look at your screen now
+ठीक है, अब मैं स्क्रीन देखकर काम करूँगा	Okay, I'll look at the screen and work now
+फ़ोन साइलेंट पर	Phone on silent
+ये रहा मेरा चेहरा	Here's my face
+रिंगटोन तेज़ कर दी	Ringtone louder
+रिंगटोन धीमी कर दी	Ringtone quieter
+वाईफाई पैनल खोल दिया, यहाँ से चालू-बंद करें	Opened the Wi-Fi panel, turn it on/off here
+वीडियो चला दिया	Played the video
+सारे ऐप बंद कर दिए	Closed all apps
+स्क्रीनशॉट ले लिया	Took a screenshot
+स्पीकर चालू	Speaker on
+स्पीकर बंद	Speaker off
+हिंदी — शुद्ध, आसान हिंदी	Hindi — pure, simple Hindi
+आज	Today
+आज मौसम	Today's weather
+आज मौसम कैसा	How is the weather today
+इस key पर लाइव कैप्शन नहीं चलता - पुराना तरीका चलेगा	Live captions don't work on this key - the old way will be used
+बार-बार टूट रहा है - कैप्शन बंद	Keeps disconnecting - captions off
+) — बैकग्राउंड में डाउनलोड हो रहा है	) — downloading in the background
+Accessibility में	in Accessibility
+Installed/Downloaded apps में	in Installed/Downloaded apps
+Listening • सुन रहा हूँ…	Listening…
+Listening • सुन रहा हूँ… (बंद: टैप या "माइक बंद")	Listening… (stop: tap or say "mic off")
+Speaking • बोल रहा हूँ…	Speaking…
+आया है (	is available (
+इंस्टॉल हो गया	Installed
+ओर्ब छोटा करें	Shrink orb
+ओर्ब बड़ा करें	Enlarge orb
+ओर्ब या "आवाज़" दबाकर बात करें	Tap the orb or "Voice" to talk
+का	of
+काम कर रहा हूँ…	Working…
+जवाब आ रहा है…	Reply is coming…
+डाउनलोड हो रहा है	Downloading
+तैयार — इंस्टॉल करें	Ready — install
+नमस्ते,	Hello,
+पहले कोई भी फ्री API key डालें — DK खुद सबसे तेज़ फ्री मॉडल चुन लेगा	First add any free API key — DK will pick the fastest free model itself
+फ़ोन कंट्रोल	Phone control
+माइक की परमिशन नहीं मिली — इसके बिना DK सुन नहीं सकता	Microphone permission not granted — DK can't listen without it
+माइक की परमिशन बंद है — App info → Permissions → Microphone → Allow करें	Microphone permission is off — App info → Permissions → Microphone → Allow
+माइक चालू है • आवाज़ स्क्रीन खोलें	Mic is on • open the voice screen
+सुधार और नए फ़ीचर	Fixes and new features
+✓ माइक की परमिशन मिल गई — अब DK सुन सकता है	✓ Microphone permission granted — DK can listen now
+अभी कुछ याद नहीं है। ऊपर लिखकर जोड़िए या बोलिए "याद रखो …"	Nothing remembered yet. Add above by typing or say "remember …"
+किसी बात को हटाने के लिए ✕ दबाइए	Tap ✕ to remove something
+चैट की बातचीत मिटाएँ	Clear the chat conversation
+चैट मैसेज	Chat messages
+चैट साफ़	Chat cleared
+चैट स्क्रीन की पूरी बातचीत मिटा दें?	Clear the whole chat screen conversation?
+जैसे: मेरी बहन का नाम प्रिया है	e.g. My sister's name is Priya
+जोड़ें	Add
+ठीक है, अब नई बातचीत शुरू	OK, a new conversation has started
+थोड़ा और लिखिए	Write a little more
+नई बात याद कराएँ	Teach something new
+नई बातचीत (AI पिछली बातें भूले)	New conversation (AI forgets earlier talk)
+बातें याद •	things remembered •
+मुझे ये बातें याद हैं	I remember these things
+मेमोरी	Memory
+या बोलिए: "याद रखो मेरी गाड़ी का नंबर …"	or say: "remember my car number is …"
+याद रख लिया	Remembered
+याद रखो	Remember
+सारी याद रखी बातें मिटा दें?	Delete everything remembered?
+सारी यादें मिटा दीं	All memories deleted
+सारी यादें मिटाएँ	Delete all memories
+हाँ	Yes
+key गलत है या बंद है	key is wrong or disabled
+इंटरनेट नहीं मिल रहा	No internet
+कोई key नहीं डली	No key added
+जवाब नहीं आया	No reply
+फ्री लिमिट अभी खत्म है	Free limit is used up for now
+मॉडल का नाम गलत है	Model name is wrong
+मॉडल ने सवाल नहीं लिया	The model didn't accept the request
+सर्वर बहुत धीमा है	Server is very slow
+सर्वर में दिक्कत है	Server problem
+"अपना चेहरा दिखाओ" बोलने पर डॉट निकलकर चेहरा बनता है — आवाज़ महिला हो तो महिला चेहरा, पुरुष हो तो पुरुष	Saying "show your face" turns the dots into a face — female face for a female voice, male face for a male voice
+(AI दिमाग → DK लाइव में Gemini key नहीं डाली — तब तक Google आवाज़)	(No Gemini key in AI brain → DK Live — Google voice until then)
+(पर	(but
+) • बात करने का तरीका	) • Talking style
+. इंटरनेट देखें।	. Check the internet.
+11 एजेंट वाला नया सिस्टम: मैनेजर → प्रॉम्प्ट इंजीनियर (समझ + आपकी हाँ) → गिट → प्लानर → कोडर → रिव्यूअर → परफॉरमेंस → टेस्टर → डिबगर → QA → डिप्लॉयमेंट	New 11-agent system: Manager → Prompt engineer (understanding + your yes) → Git → Planner → Coder → Reviewer → Performance → Tester → Debugger → QA → Deployment
+5 (सुझाया) — कम कदम = कम API खर्च, limit/413 कम	5 (suggested) — fewer steps = lower API cost, fewer limit/413 errors
+AI दिमाग	AI brain
+AI दिमाग • DK कंप्यूटर	AI brain • DK Computer
+AI दिमाग • DK चैट	AI brain • DK Chat
+AI दिमाग • DK लाइव	AI brain • DK Live
+AI दिमाग • कोडिंग एजेंट	AI brain • Coding agent
+AIza… यहाँ पेस्ट करें	AIza… paste here
+API key अब AI दिमाग →	API key is now in AI brain →
+Accessibility ON करें	Turn on Accessibility
+Android 13+: अगर Accessibility में DK धुंधला दिखे तो App info → ऊपर ⋮ → "Allow restricted settings" करें, फिर ON करें।	Android 13+: if DK looks greyed out in Accessibility, go to App info → ⋮ at top → "Allow restricted settings", then turn it on.
+Android बैटरी बचाने के लिए DK को बंद कर देता है — यह रोकें	Android stops DK to save battery — prevent this
+Brave key बनाएँ	Create Brave key
+DK आपकी स्क्रीन देखकर काम करे (स्क्रीनशॉट AI को जाता है)	DK works by looking at your screen (screenshot is sent to the AI)
+DK कंप्यूटर	DK Computer
+DK कंप्यूटर के काम और उसकी web search	DK Computer tasks and its web search
+DK कंप्यूटर चालू करें	Turn on DK Computer
+DK का चेहरा	DK's face
+DK को "ऐप इंस्टॉल करने" की इजाज़त दें, फिर वापस आकर दोबारा दबाएँ	Allow DK to "install apps", then come back and tap again
+DK खुद पहचानेगा कि key किस कंपनी की है, उसके फ्री मॉडल जाँचकर सबसे तेज़ चुनेगा और बात शुरू कर देगा	DK will detect which provider the key belongs to, test its free models, pick the fastest and start talking
+DK चैट	DK Chat
+DK चैट की AI	DK Chat's AI
+DK लाइव	DK Live
+DK लाइव — Google Gemini	DK Live — Google Gemini
+DK लाइव • DK चैट • कोडिंग एजेंट • DK कंप्यूटर — हर एक की अपनी API key	DK Live • DK Chat • Coding agent • DK Computer — each has its own API key
+Gemini / Groq / OpenRouter — कोई भी	Gemini / Groq / OpenRouter — any
+Gemini API Key (DK लाइव की अपनी)	Gemini API Key (DK Live's own)
+Gemini Live बातचीत, Gemini नेचुरल आवाज़ और सुनना — सिर्फ़ इसी key से	Gemini Live conversation, Gemini natural voice and listening — only with this key
+Gemini Live हाल	Gemini Live status
+Gemini key से Google search फ्री; Tavily / Brave की key डालें तो उनसे (Groq/OpenRouter वालों के लिए भी)	Google search is free with a Gemini key; add a Tavily / Brave key to use them (also for Groq/OpenRouter users)
+Gemini आवाज़ चुनें (टैप = सुनें)	Choose Gemini voice (tap = listen)
+Gemini नेचुरल आवाज़ — 30 इंसानी आवाज़ें (Gemini key से, रोज़ की लिमिट, थोड़ी धीमी)	Gemini natural voice — 30 human voices (with Gemini key, daily limit, a bit slower)
+Gemini से सुन रहा है	Listening via Gemini
+GitHub कनेक्टर	GitHub connector
+Google (Gemini key से)	Google (with Gemini key)
+Google आवाज़ चुनें (टैप = सुनें)	Choose Google voice (tap = listen)
+Google आवाज़ ज़्यादा नेचुरल चाहिए तो: Play Store से "Speech Services by Google" अपडेट करें, फिर "आवाज़ चुनें" में "ऑनलाइन" वाली आवाज़ लें। Gemini आवाज़ की लिमिट खत्म हो तो DK अपने-आप Google आवाज़ में बोलेगा।	For a more natural Google voice: update "Speech Services by Google" from the Play Store, then pick an "online" voice in "Choose voice". If the Gemini voice limit runs out, DK will speak in the Google voice automatically.
+Google माइक से सुन रहा है (फ्री, बीप आ सकती है)	Listening via Google mic (free, may beep)
+Google माइक — बिना key, पर हर बार बीप आ सकती है	Google mic — no key, but may beep every time
+Groq API Key (सिर्फ़ सुनने के लिए)	Groq API Key (only for listening)
+Groq Whisper सबसे तेज़ सुनता है। खाली छोड़ें = ऊपर वाली Gemini key से सुनेगा	Groq Whisper listens fastest. Leave empty = listen with the Gemini key above
+Groq Whisper से सुन रहा है	Listening via Groq Whisper
+Groq key लें	Get Groq key
+Key डालते ही इस कंपनी के सारे मॉडल यहाँ आ जाएँगे	As soon as you add a key, all models of this provider appear here
+Key लें	Get key
+Keys सिर्फ़ इसी फ़ोन में रहती हैं। एक search fail हो तो DK अपने-आप अगला आज़माता है।	Keys stay only on this phone. If one search fails, DK tries the next automatically.
+Language / भाषा सेटिंग	Language
+Language updated! ऐप रीस्टार्ट करें या अगली बातचीत से लागू होगा।	Language updated.
+Limit खत्म हो तो इसी key के दूसरे Gemini Live / आवाज़ मॉडल पर अपने-आप। DK चैट या किसी और हिस्से की key यहाँ इस्तेमाल नहीं होती।	When the limit runs out, it switches to another Gemini Live / voice model of the same key. Keys of DK Chat or other parts are not used here.
+ON करें	Turn on
+PDF बनाना	Making PDFs
+Personal Access Token से जुड़ता है (फ़ोन में ही रहता है)	Connects with a Personal Access Token (stays on the phone)
+Push के बाद tests + build जाँचो, fail हो तो पहले जड़ ढूँढकर खुद ठीक करो (पास होने तक)	After push, check tests + build; if it fails, find the root cause and fix it yourself (until it passes)
+Repo चुनें	Choose repo
+Repos ला रहा हूँ…	Loading repos…
+TTS सेटिंग नहीं खुली	Couldn't open TTS settings
+Tavily key बनाएँ	Create Tavily key
+Token बनाएँ	Create token
+Token बनाते समय: Repository access → अपना repo चुनें • Permissions → Contents: Read and write, Pull requests: Read and write (सुरक्षित PR मोड), और Actions: Read (build/tests जाँचने के लिए)।	When creating the token: Repository access → choose your repo • Permissions → Contents: Read and write, Pull requests: Read and write (safe PR mode), and Actions: Read (to check build/tests).
+Token में Pull requests: Read and write दें; Actions: Read and write देंगे तो GitHub की नेटवर्क दिक्कत पर build अपने-आप दोबारा चलेगा।	Give the token Pull requests: Read and write; with Actions: Read and write the build re-runs automatically on GitHub network problems.
+USB debugging ON करके कंप्यूटर से यह कमांड एक बार चलाएँ। उसके बाद अगर Android कभी DK की Accessibility बंद भी कर दे, तो DK खुद उसे वापस ON कर लेगा।	Turn on USB debugging and run this command once from a computer. After that, even if Android turns off DK's Accessibility, DK will turn it back on itself.
+Xiaomi/Redmi/Poco: App info → Autostart ON, Battery saver → No restrictions। Vivo/Oppo/Realme: Battery → Allow background activity। Recent apps में DK पर लॉक लगाएँ।	Xiaomi/Redmi/Poco: App info → Autostart ON, Battery saver → No restrictions. Vivo/Oppo/Realme: Battery → Allow background activity. Lock DK in Recent apps.
+github_pat_… या ghp_…	github_pat_… or ghp_…
+gsk_… (ज़रूरी नहीं)	gsk_… (optional)
+key पहचान रहा हूँ और फ्री मॉडल जाँच रहा हूँ…	Detecting the key and testing free models…
+repo मिले	repos found
+अपडेट	Update
+अपडेट चेक करने के लिए बटन दबाएँ	Tap the button to check for updates
+अपडेट चेक करें	Check for updates
+अपनी फ़ाइलें पढ़ना	Reading its own files
+अपने-आप (Tavily → Brave → Gemini, जो key हो)	Automatic (Tavily → Brave → Gemini, whichever key exists)
+अब DK स्क्रीन देख सकता है	DK can see the screen now
+अभी का version:	Current version:
+अभी की आवाज़:	Current voice:
+अभी कोई key नहीं	No key yet
+अभी कोई काम तय नहीं है। बोलिए: "डीके कंप्यूटर, 30 मिनट बाद मुझे पानी पीने की याद दिलाना"	No tasks scheduled yet. Say: "DK Computer, remind me to drink water in 30 minutes"
+अभी कोई लॉग नहीं	No logs yet
+अभी नहीं दिया गया (ज़रूरी नहीं, पर सबसे पक्का)	Not given yet (optional, but most reliable)
+अभी:	Now:
+अलग key डालनी हो तो AI दिमाग → उस हिस्से में डालें। सिर्फ़ फ्री मॉडल चुने जाते हैं।	To use a different key, add it in AI brain → that section. Only free models are chosen.
+असिस्टेंट का नाम	Assistant's name
+आपका नाम	Your name
+आपका नाम • असिस्टेंट का नाम (	Your name • Assistant's name (
+आपका नाम, असिस्टेंट का नाम और बात करने का तरीका	Your name, assistant's name and talking style
+आपकी मंज़ूरी ("Merge करें" / "PR merge कर दो") से ही main में जाता है। पुराना फ़ीचर बदलने/हटाने से पहले backup/dk-… branch बनती है।	goes to main only with your approval ("Merge" / "merge the PR"). A backup/dk-… branch is created before an old feature is changed/removed.
+आपके GitHub repo में कोड लिखता, बदलता, हटाता और push करता है	Writes, changes, removes and pushes code in your GitHub repo
+आया है	is available
+आवाज़	Voice
+आवाज़ का प्रकार	Voice type
+आवाज़ की keys (Gemini Live, बोलना, सुनना): सेटिंग्स → AI दिमाग → DK लाइव। अभी:	Voice keys (Gemini Live, speaking, listening): Settings → AI brain → DK Live. Now:
+आवाज़ की पिच (ऊँची/नीची) — सिर्फ़ Google आवाज़	Voice pitch (high/low) — Google voice only
+आवाज़ चुनें	Choose voice
+आवाज़ धीरे से (fade) कम-ज़्यादा होती है। फ़ोन की volume नहीं बदलती। कुछ ऐप (जैसे podcast) धीमे होने की जगह थोड़ी देर रुक जाते हैं।	Audio fades in/out gently. Phone volume doesn't change. Some apps (like podcasts) pause briefly instead of getting quieter.
+आवाज़ सुनें	Listen to voice
+आवाज़ से बातचीत (Gemini Live), बोलना, सुनना	Voice conversation (Gemini Live), speaking, listening
+आवाज़ें — नीचे टैप करके सुनें और चुनें	Voices — tap below to listen and choose
+इंटरनेट पर खोज	Internet search
+इंस्टॉल करें	Install
+इंस्टॉल नहीं हुआ:	Not installed:
+इंस्टॉल स्क्रीन पर "Update / Install" दबाएँ	Tap "Update / Install" on the install screen
+एक काम में ज़्यादा से ज़्यादा कदम (3–30)	Max steps per task (3–30)
+एक काम में ज़्यादा से ज़्यादा कदम (5–60)	Max steps per task (5–60)
+एक बार ON करें — फिर ON ही रहेगा	Turn on once — it stays on
+एजेंट खोलें	Open agent
+ऐप इंस्टॉल (अपडेट के लिए)	Install apps (for updates)
+ऐप इंस्टॉल (अपडेट)	Install apps (update)
+ऐप खुलते ही अपडेट चेक करो और बैकग्राउंड में डाउनलोड करो	Check for updates when the app opens and download in the background
+ओर्ब और चेहरा	Orb and face
+ओर्ब का आकार	Orb size
+ओर्ब पर टैप = चेहरा बनने वाला एनीमेशन	Tap the orb = face-forming animation
+कंप्यूटर के टूल	Computer tools
+कंप्यूटर खोलें	Open Computer
+कमांड कॉपी करें	Copy command
+काम रद्द किए	Tasks cancelled
+किसकी आवाज़ में बोले?	Which voice should it speak in?
+किसी मॉडल का फ्री कोटा खत्म (limit) हो तो उसी key के दूसरे फ्री मॉडल पर अपने-आप स्विच होता है। दूसरी कंपनी पर नहीं जाता।	If a model's free quota (limit) runs out, it switches to another free model of the same key automatically. It does not switch provider.
+की	of
+की AI	AI
+की API खोलें	Open API of
+की key खाली है)	key is empty)
+की key नहीं	no key
+कुछ परमिशन नहीं मिलीं — App info → Permissions से दें (Android 13+: पहले ⋮ → Allow restricted settings)	Some permissions were not granted — give them from App info → Permissions (Android 13+: first ⋮ → Allow restricted settings)
+कुछ फ़ोन (Xiaomi, Oppo, Vivo, Realme) में Settings → Apps → DK → Autostart चालू करना पड़ता है, तभी restart के बाद काम चलते हैं।	On some phones (Xiaomi, Oppo, Vivo, Realme) you must turn on Settings → Apps → DK → Autostart, so tasks work after a restart.
+कैमरा permission यहाँ सिर्फ़ टॉर्च चालू/बंद करने के लिए है; DK फ़ोटो नहीं लेता।	Camera permission here is only to turn the torch on/off; DK doesn't take photos.
+कॉपी करें	Copy
+कॉपी हो गया	Copied
+कॉपी हो गया — मुझे भेज दें	Copied — send it to me
+कॉल / कॉन्टैक्ट	Calls / Contacts
+कॉल आने पर पहले बताओ किसका कॉल है ("उठा लो" / "काट दो" बोलें)	When a call comes, first tell me who is calling (say "answer" / "reject")
+कॉल के दौरान Android दूसरे ऐप्स को माइक नहीं देता — कॉल काटने के लिए स्क्रीन पर तैरता DK बुलबुला एक बार दबाएँ।	During a call Android doesn't give the mic to other apps — tap the floating DK bubble once to end the call.
+कॉल/कॉन्टैक्ट	Calls/Contacts
+कॉल/कॉन्टैक्ट परमिशन दें	Give calls/contacts permission
+कोई अतिरिक्त चीज़ ज़रूरी लगे तो टीम खुद नहीं जोड़ती — आपसे पूछती है (हाँ/नहीं)। आवाज़ से: "कोडिंग एजेंट, … बनाओ"। बंद: पुराना तरीका (एक एजेंट, आप push दबाएँ)।	If something extra seems needed, the team doesn't add it itself — it asks you (yes/no). By voice: "coding agent, build …". Off: the old way (one agent, you tap push).
+कोई भी काम कदम-दर-कदम: इंटरनेट पर खोज, वेबसाइट पढ़ना, हिसाब (कोड), फ़ाइल/PDF, फ़ोन के काम, कोडिंग, रिमाइंडर	Any task step by step: internet search, reading websites, calculations (code), files/PDF, phone tasks, coding, reminders
+कोड चलाना (हिसाब/डेटा)	Running code (calculations/data)
+कोडिंग एजेंट	Coding agent
+कोडिंग एजेंट चालू करें	Turn on coding agent
+कोडिंग टीम को काम देना	Giving tasks to the coding team
+कोडिंग टीम: बिल्डर, रिव्यूअर, कोऑर्डिनेटर	Coding team: builder, reviewer, coordinator
+क्या नया है:	What's new:
+खाली है — सुनना Gemini key से होगा	Empty — listening will use the Gemini key
+गड़बड़ियाँ ठीक की गईं	Bugs fixed
+गड़बड़ी रिपोर्ट	Crash report
+गलती	Error
+चालू: GitHub token + चुना रिपो = GitHub मोड (backup, नई branch, PR, मंज़ूरी से merge); token/रिपो नहीं = नॉर्मल मोड (कोड फ़ाइल-नाम के साथ स्क्रीन पर)।	On: GitHub token + chosen repo = GitHub mode (backup, new branch, PR, merge with approval); no token/repo = normal mode (code shown on screen with file names).
+चालू: बिल्डर कोड लिखता है → रिव्यूअर खुद जाँचता है (बग/गलती/लॉजिक, ब्रैकेट/XML) → गड़बड़ी हो तो बिल्डर को वापस → सही होने पर अपने-आप push → GitHub build देखकर fail हो तो फिर ठीक → पूरा होने पर बताता है।	On: the builder writes code → the reviewer checks it (bugs/errors/logic, brackets/XML) → back to the builder if something is wrong → pushes automatically when correct → watches the GitHub build and fixes again if it fails → tells you when done.
+चुनी हुई आवाज़:	Chosen voice:
+चुनी:	Chosen:
+चेक नहीं हो पाया:	Couldn't check:
+चेक हो रहा है…	Checking…
+चेहरा दिखाओ	Show face
+चैट, आम जवाब, बिना-Live आवाज़ मोड का जवाब, search, गहरी सोच और कहानी — सिर्फ़ इसी की key से	Chat, general replies, non-Live voice mode replies, search, deep thinking and stories — only with this key
+छुपाओ	Hide
+जगाने वाले शब्द (कॉमा से अलग)	Wake words (comma separated)
+ज़रूरी परमिशन	Required permissions
+ज़रूरी सवालों का जवाब इंटरनेट (Google Search) से पता करके दो — Gemini key से	Answer important questions using the internet (Google Search) — with the Gemini key
+जाँच रहा हूँ…	Checking…
+जाँचें	Check
+जैसे: username/my-repo	e.g. username/my-repo
+जैसे: दीपक	e.g. Deepak
+जैसे: दोस्त की तरह मज़ेदार बात करो, जवाब छोटे रखो	e.g. talk in a fun, friendly way, keep replies short
+जो कंपनी चुनेंगे, सिर्फ़ वही कॉल होगी। उसके किसी मॉडल की limit खत्म हो तो उसी key के दूसरे फ्री मॉडल पर अपने-आप।	Only the provider you choose will be called. If one of its models hits the limit, it switches to another free model of the same key.
+जो बंद करेंगे, वह DK कंप्यूटर इस्तेमाल नहीं करेगा	Whatever you turn off, DK Computer won't use
+जोड़ें और सबसे तेज़ चुनें	Add and pick the fastest
+झलक	Preview
+टेस्ट करें	Test
+टेस्ट हो रहा है…	Testing…
+टॉर्च (कैमरा permission)	Torch (camera permission)
+टॉर्च की permission दें	Give torch permission
+डाउनलोड करें	Download
+डाउनलोड करें (	Download (
+डाउनलोड बैकग्राउंड में चल रहा है — ऐप बंद कर सकते हैं, पूरा होने पर सूचना आएगी	Download is running in the background — you can close the app, you'll get a notification when it's done
+डाउनलोड रुक गया:	Download stopped:
+डाउनलोड हो चुका है	Already downloaded
+डाउनलोड हो रहा है…	Downloading…
+डिबग लॉग	Debug log
+डीके, dk	DK, dk
+तय किए काम	Scheduled tasks
+ताज़ा करें	Refresh
+तुरंत सेटअप — कोई भी फ्री key डालें	Quick setup — add any free key
+दिखाओ	Show
+नए फ़ीचर और सुधार	New features and fixes
+नमस्ते	Hello
+नमस्ते, मैं	Hello, I am
+नया version: DK	New version: DK
+नहीं	No
+नहीं मिली	not found
+नीचे जिस कंपनी को इस्तेमाल करना है उसकी API key डालें — key डालते ही मॉडल अपने-आप आ जाएँगे।	Add the API key of the provider you want to use below — models appear automatically once the key is added.
+नोटिफ़िकेशन	Notifications
+परमिशन	Permissions
+पहले "DK कंप्यूटर चालू करें" ON करें	First turn on "Turn on DK Computer"
+पहले "कोडिंग एजेंट चालू करें" ON करें	First turn on "Turn on coding agent"
+पहले Base URL डालें	First enter the Base URL
+पहले key पेस्ट करें	First paste a key
+पहले token डालें	First enter a token
+पहले सही API key डालें	First enter a correct API key
+पिछली बार DK किस वजह से बंद हुआ	Why DK stopped last time
+पुरुष	Male
+पुरुष (Male)	Male
+पुरुष •	Male •
+पूरे ऐप की भाषा और DK के जवाब	Whole app language and DK's replies
+पृथ्वी, गैलेक्सी, एटम, DNA, छल्ला, पुरुष/महिला चेहरा	Earth, galaxy, atom, DNA, ring, male/female face
+प्रोफ़ाइल	Profile
+फ़ाइल बनाना	Creating files
+फ़ाइलों की लिस्ट	File list
+फ़ोटो (सबसे नई फ़ोटो खोलना)	Photos (open the newest photo)
+फ़ोन कंट्रोल (Accessibility)	Phone control (Accessibility)
+फ़ोन कंट्रोल (ऐप, मैसेज, कॉल)	Phone control (apps, messages, calls)
+फ़ोन की Google आवाज़ — फ्री, कोई लिमिट नहीं, तेज़	Phone's Google voice — free, no limit, fast
+फ़ोन की TTS सेटिंग	Phone TTS settings
+फ़ोन में हिंदी आवाज़ नहीं मिली — "फ़ोन की TTS सेटिंग" से हिंदी डाउनलोड करें	No Hindi voice on the phone — download Hindi from "Phone TTS settings"
+बंद करें	Turn off
+बंद रहने पर यह कुछ नहीं करता। चालू करके नीचे GitHub और AI भरें, फिर "एजेंट खोलें" दबाएँ।	When off, it does nothing. Turn it on, fill in GitHub and AI below, then tap "Open agent".
+बड़ी स्क्रीन पर	On a big screen
+बदलाव सेव नहीं हुए — सेव दबाएँ	Changes not saved — tap Save
+बात करने का तरीका (पर्सनैलिटी)	Talking style (personality)
+बातें याद रखना	Remembering things
+बाद में काम / रिमाइंडर	Later tasks / reminders
+बार-बार बंद न हो	Don't get stopped repeatedly
+बिना पूछे push करो (बंद = पहले बदलाव दिखाओ, फिर "Push करें" दबाने पर)	Push without asking (off = show changes first, then push when you tap "Push")
+बिना बीप वाले मोड में सबसे तेज़ और सही हिंदी पहचान के लिए Groq की फ्री key डालें (Whisper)। Groq key न हो तो Gemini key से काम चलेगा।	For the fastest and most accurate Hindi recognition in no-beep mode, add a free Groq key (Whisper). Without a Groq key the Gemini key will be used.
+बिना बीप — DK खुद सुनेगा (DK लाइव की Groq/Gemini key) + जवाब DK चैट की API से	No beep — DK listens itself (DK Live's Groq/Gemini key) + replies via DK Chat's API
+बैटरी रोक हटाएँ	Remove battery restriction
+बोलकर भी कर सकते हैं: "डीके, स्क्रीन देखना चालू करो" / "स्क्रीन देखना बंद करो"। बंद रहने पर DK सिर्फ़ स्क्रीन का लिखा हुआ पढ़ता है।	You can also say: "DK, turn on screen viewing" / "turn off screen viewing". When off, DK only reads the text on the screen.
+बोलते समय पीछे का गाना/वीडियो धीमा करो (करीब 20%), जवाब के बाद धीरे-धीरे वापस	Lower background music/video while speaking (about 20%), then back slowly after the reply
+बोलने का अंदाज़ (Gemini आवाज़)	Speaking style (Gemini voice)
+बोलने की स्पीड	Speaking speed
+भाषा / Language	Language
+मल्टी-एजेंट टीम: बिल्डर → रिव्यूअर → कोऑर्डिनेटर (एक बार बोलो, बाकी सब अपने-आप)	Multi-agent team: Builder → Reviewer → Coordinator (say it once, the rest is automatic)
+महिला	Female
+महिला (Female)	Female
+महिला / पुरुष • आवाज़ चुनें • स्पीड • सुनने का तरीका	Female / Male • Choose voice • Speed • Listening mode
+महिला या पुरुष — दोनों फ्री • DK का चेहरा भी इसी आवाज़ के हिसाब से बनेगा	Female or male — both free • DK's face also follows this voice
+महिला •	Female •
+माइक	Mic
+माइक + नोटिफ़िकेशन	Mic + Notifications
+माइक परमिशन:	Mic permission:
+माइक से भेजे टुकड़े, गिरे टुकड़े, दोबारा जुड़ना, देरी	Chunks sent from the mic, dropped chunks, reconnects, delay
+माइक • स्क्रीन देखना • नोटिफ़िकेशन • कॉल • ऐप इंस्टॉल	Mic • Screen viewing • Notifications • Calls • App install
+माइक, कनेक्शन, देरी और गलतियों का पूरा हाल	Full status of mic, connection, delay and errors
+मिली है	granted
+में — सिर्फ़ इसी की अपनी	in — only its own
+मैसेज, कॉल, पेमेंट, डिलीट जैसे फ़ोन के काम से पहले मुझसे पूछो	Ask me before phone actions like messages, calls, payments, deleting
+मॉडल	Model
+मॉडल उपलब्ध — "मॉडल चुनें" दबाएँ	models available — tap "Choose model"
+मॉडल चुनें	Choose model
+मॉडल नहीं आए:	Models didn't load:
+मॉडल मिले — "मॉडल चुनें" दबाएँ	models found — tap "Choose model"
+मॉडल लोड हो रहे हैं…	Loading models…
+मॉडल:	Model:
+यह Groq की key नहीं लगती — Gemini key ऊपर वाले खाने में डालें	This doesn't look like a Groq key — put the Gemini key in the box above
+यह key DK चैट में लगती है, और DK लाइव / कोडिंग एजेंट / DK कंप्यूटर में भी — पर सिर्फ़ वहाँ जहाँ अभी उस कंपनी की key खाली है।	This key is set in DK Chat, and also in DK Live / Coding agent / DK Computer — but only where that provider's key is empty now.
+यहाँ key पेस्ट करें	Paste key here
+यहाँ से भाषा बदलने पर ऐप के विकल्प, सेटिंग्स और DK के जवाब उसी भाषा में काम करेंगे। बायडिफ़ॉल्ट Hinglish चुना होता है।	Choose the language of the app screens and of DK's replies.
+रिपो चुनें	Choose repo
+रिमाइंडर और बाद में चलने वाले काम — फ़ोन restart होने पर भी याद रहते हैं	Reminders and later tasks — remembered even after the phone restarts
+लंबी हिंदी कहानियाँ (10–30 मिनट) • भाग-दर-भाग • कॉपी • फ़ोन में सेव	Long Hindi stories (10–30 minutes) • part by part • copy • save on phone
+लगातार सुनना — बिना बीप की आवाज़	Continuous listening — no beep
+लिखकर चैट, जवाब, Google search, गहरी सोच, कहानी	Typed chat, replies, Google search, deep thinking, stories
+लिस्ट रीफ़्रेश	Refresh list
+लॉग	Log
+लॉग कॉपी हो गया	Log copied
+वेब search	Web search
+वेबसाइट पढ़ना	Reading websites
+शुद्ध हिंदी	Pure Hindi
+सब छोटे-छोटे 3D डॉट से बने हैं — जो पसंद हो चुनें	All made of tiny 3D dots — pick what you like
+सबसे तेज़ — Gemini Live, आवाज़ से आवाज़ (DK लाइव की Gemini key से); न चले तो बिना बीप	Fastest — Gemini Live, voice to voice (with DK Live's Gemini key); falls back to no-beep
+सबसे नई लाइन नीचे • 300 लाइन तक	Newest line at the bottom • up to 300 lines
+साफ़ करें	Clear
+सारे तय काम रद्द करें	Cancel all scheduled tasks
+सिर्फ़ चुनी हुई कंपनी कॉल होगी। उसके किसी मॉडल की limit खत्म हो तो उसी key के दूसरे फ्री मॉडल पर अपने-आप — दूसरी कंपनी पर नहीं।	Only the chosen provider will be called. If one of its models hits the limit, it switches to another free model of the same key — not to another provider.
+सिर्फ़ यहाँ डाली key से चलेगा — DK चैट या किसी और की key नहीं	Runs only with the key added here — not DK Chat's or anyone else's key
+सीधी कॉल (न हो तो डायलर खुलता है)	Direct call (otherwise the dialer opens)
+सीधी कॉल + फ़ोटो	Direct call + photos
+सुनना (आवाज़ → text) — Groq, चाहें तो	Listening (voice → text) — Groq, optional
+सुनना (माइक)	Listening (mic)
+सुनना और कॉल	Listening and calls
+सुनने का तरीका:	Listening mode:
+सुनाई दे रही है:	Can be heard:
+सेटिंग्स	Settings
+सेटिंग्स सेव हो गईं	Settings saved
+सेव करें	Save
+सॉफ़्टवेयर अपडेट = नया डिज़ाइन / नए फ़ीचर  •  सिक्योरिटी पैच = गड़बड़ियाँ और सुरक्षा ठीक	Software update = new design / new features  •  Security patch = bug and security fixes
+स्क्रीन देखना	Screen viewing
+स्क्रीन देखना / शेयर करना	Screen viewing / sharing
+स्क्रीन देखना बंद	Screen viewing off
+स्टोरी राइटर एजेंट	Story writer agent
+हटा दिया	Removed
+हटाएँ	Remove
+हमेशा ON (सबसे पक्का तरीका — एक बार कंप्यूटर से)	Always ON (most reliable — once from a computer)
+हमेशा सुनो (जगाने वाला शब्द बोलकर कमांड)	Always listen (command after the wake word)
+हर बदलाव FIND/REPLACE में, लागू होने से पहले रिव्यूअर जाँचता है। बंद: पुराना एजेंट/टीम जैसी की तैसी।	Every change is FIND/REPLACE, checked by the reviewer before it is applied. Off: the old agent/team as it was.
+हर हिस्सा सिर्फ़ अपनी डाली हुई key से जवाब लेता है — किसी दूसरे की key इस्तेमाल नहीं करता	Each part answers only with its own key — it never uses another part's key
+हर हिस्से की अपनी API	Each part has its own API
+हिंदी	Hindi
+हिंदी आवाज़ नहीं मिली — TTS सेटिंग से हिंदी डाउनलोड करें	No Hindi voice found — download Hindi from TTS settings
+हिंदी आवाज़ें	Hindi voices
+हिन्दी + English	Hindi + English
+हूँ। क्या मैं आपकी मदद करूँ?	. How can I help you?
+हूँ। मेरी आवाज़ कैसी लगी?	. How does my voice sound?
+है	is
+— चालू बातचीत में अगली बार माइक चालू करने पर	— the next time you turn on the mic in the running conversation
+— फिर दबाएँ, जहाँ रुका वहीं से आगे होगा	— tap again, it will continue from where it stopped
+— बदलने के लिए सेटिंग्स → आवाज़	— to change, go to Settings → Voice
+— मॉडल चुनें (	— choose model (
+•  कुल	•  total
+•  साइज़:	•  size:
+• GitHub से जुड़ें • कोड लिखें/बदलें/हटाएँ • push • अलग AI key	• Connect GitHub • write/change/remove code • push • separate AI key
+• Hinglish / हिंदी / English — DK के सारे जवाब और आवाज़	• Hinglish / Hindi / English — all of DK's replies and voice
+• key नहीं	• no key
+• repo मिला (मुख्य branch:	• repo found (main branch:
+• अपनी अलग key	• its own key
+• अब repo चुनें	• now choose a repo
+• कोई भी काम: खोज, रिसर्च, फ़ाइल/PDF, हिसाब, फ़ोन, रिमाइंडर	• Any task: search, research, files/PDF, calculations, phone, reminders
+• नया version चेक करें	• Check for a new version
+• पेड	• paid
+• फ़ोन कंट्रोल • हमेशा सुनना • कॉल • बैटरी	• Phone control • Always listen • Calls • Battery
+• फ्री	• free
+• बिना-Live आवाज़ मोड में जवाब का text DK चैट की API से बनता है।	• In non-Live voice mode the reply text is made by DK Chat's API.
+• सिर्फ़ Gemini	• Gemini only
+• ✓ सुनने के लिए Groq	• ✓ Groq for listening
+…और	…and
+✓ Key तैयार — अब Accessibility में DK चालू करें, फिर ओर्ब दबाकर बोलिए	✓ Key ready — now turn on DK in Accessibility, then tap the orb and speak
+✓ आपके पास सबसे नया version है	✓ You have the latest version
+✓ कॉल परमिशन मिल गई	✓ Call permission granted
+✓ चालू	✓ On
+✓ चालू है — DK फ़ोन चला सकता है	✓ On — DK can control the phone
+✓ चालू — DK अपनी Accessibility खुद ON रखेगा	✓ On — DK will keep its Accessibility on itself
+✓ जुड़ गया:	✓ Connected:
+✓ तैयार — बोलिए, DK सुन रहा है	✓ Ready — speak, DK is listening
+✓ बैटरी रोक हटी हुई है	✓ Battery restriction removed
+✓ सेव हो गया	✓ Saved
+✗ Android DK को बैटरी बचाने के लिए बंद कर सकता है	✗ Android may stop DK to save battery
+✗ Gemini key नहीं	✗ No Gemini key
+✗ बंद	✗ Off
+✗ बंद है — नीचे बटन दबाकर Installed/Downloaded apps में	✗ Off — tap the button below and, in Installed/Downloaded apps,
+⟳ ON है, सर्विस दोबारा शुरू हो रही है… (न हो तो एक बार OFF-ON करें)	⟳ It is ON, the service is restarting… (if not, turn it OFF and ON once)
+🔒 सुरक्षित PR मोड हमेशा चालू: हर काम पहले main से नई feature/dk-… branch में, फिर Pull Request; सारे पुराने + नए unit tests और build पास होने के बाद	🔒 Safe PR mode is always on: every task first goes to a new feature/dk-… branch from main, then a Pull Request; after all old + new unit tests and the build pass
+DK काम की हालत	DK task status
+AI key नहीं — सेटिंग्स → AI दिमाग	No AI key — Settings → AI brain
+Story सेव गलती:	Story save error:
+अभी वाली कहानी स्क्रीन से हट जाएगी। चाहिए तो पहले 'सेव करें' दबाएँ।	The current story will be removed from the screen. Tap 'Save' first if you need it.
+कहानी	Story
+कहानी कितनी लंबी हो?	How long should the story be?
+कहानी डिलीट कर दी गई	Story deleted
+कहानी डिलीट करें?	Delete the story?
+कहानी लिखो	Write story
+कहानी वापस आ गई	Story restored
+कहानी सेव हो गई	Story saved
+किस बारे में कहानी लिखूँ?	What should the story be about?
+क्या आप वाकई इस कहानी को डिलीट करना चाहते हैं?	Do you really want to delete this story?
+जैसे: बूढ़े पिता और शहर गए बेटे की कहानी (खाली छोड़ें तो एजेंट खुद विषय चुनेगा)	e.g. a story of an old father and his son who moved to the city (leave empty and the agent picks a topic)
+डिलीट	Delete
+नई कहानी लिखें?	Write a new story?
+पहले के	earlier
+पहले सेटिंग्स → AI दिमाग → DK चैट में AI key डालें	First add an AI key in Settings → AI brain → DK Chat
+पूरी कहानी कॉपी	Copy whole story
+पूरी कहानी कॉपी हो गई	Whole story copied
+फ़ाइल नहीं खुली	Couldn't open the file
+फ़ाइल नहीं बनी	File not created
+भाग	Part
+भाग 3 / 9	Part 3 / 9
+भाग सुरक्षित हैं।	parts are safe.
+भाग, लगभग	parts, about
+मिनट	minutes
+मिनट की कहानी)	minute story)
+मिनट)	minutes)
+यह भाग कॉपी करें	Copy this part
+यह भाग फिर से लिखो	Rewrite this part
+लिख रहा हूँ… (	Writing… (
+वापस	Back
+वापस लाएँ (Undo)	Undo
+शब्द (~	words (~
+सिर्फ़ text •	text only •
+से आगे लिखो	continue from
+सेव नहीं हुई:	Not saved:
+सेव हो गई: Download/DK Stories/	Saved: Download/DK Stories/
+हाँ, डिलीट करें	Yes, delete
+हाँ, नई लिखो	Yes, write a new one
+✓ कहानी पूरी —	✓ Story complete —
+आपकी इजाज़त/जवाब का इंतज़ार	Waiting for your permission/answer
+कदम •	steps •
+खत्म, पर काम पूरा नहीं	Ended, but the task is not complete
+चल रहा है	Running
+पूरा हुआ	Done
+रुका / फ़ेल	Stopped / failed
+रोक दिया गया	Stopped
+सेकंड	seconds
+हर 2 सेकंड 25%	25% every 2 seconds
+⏳ काम अभी पूरा नहीं	⏳ Task not complete yet
+✅ काम पूरा हुआ	✅ Task complete
+DK अपडेट	DK update
+download पूरा	download complete
+अधूरा download (	Incomplete download (
+अपडेट डाउनलोड रुक गया • DK	Update download stopped • DK
+अपडेट नहीं हुआ:	Update failed:
+अपडेट हो गया	Updated
+इंटरनेट आने पर टैप करें — जहाँ रुका था वहीं से आगे होगा	Tap when the internet is back — it will continue from where it stopped
+क्या नया है	What's new
+डाउनलोड हो गया — इंस्टॉल करने के लिए टैप करें	Downloaded — tap to install
+डाउनलोड हो रहा है • DK	Downloading • DK
+तैयार • DK	Ready • DK
+पहले डाउनलोड करें	Download first
+पुराना DK अलग key वाला है — एक बार पुराना हटाकर नया इंस्टॉल करें। उसके बाद अपडेट अपने-आप होंगे।	The old DK has a different signing key — uninstall the old one once and install the new one. After that updates will be automatic.
+सिक्योरिटी पैच	Security patch
+सॉफ़्टवेयर अपडेट	Software update
+— बैकग्राउंड में चल रहा है	— running in the background
+आप:	You:
+आवाज़ स्क्रीन का माइक बटन	Mic button of the voice screen
+ओर्ब	Orb
+पीछे से सुनता रहेगा • बंद करने के लिए ✕ या "माइक बंद"	Keeps listening in the background • to stop, tap ✕ or say "mic off"
+बोलिए, मैं सुन रहा हूँ — जैसे आमने-सामने बात	Speak, I'm listening — like talking face to face
+माइक की परमिशन दीजिए (सेटिंग्स → परमिशन)	Please give microphone permission (Settings → Permissions)
+माइक चालू है • बोलिए	Mic is on • speak
+माइक चालू/बंद	Mic on/off
+माइक बंद • ओर्ब या माइक दबाइए	Mic off • tap the orb or the mic
+सेटिंग्स → Accessibility में	in Settings → Accessibility
+• आवाज़	• Voice
+✕ बटन	✕ button
+आत्मविश्वासी	Confident
+आरामदायक	Relaxed
+ऑनलाइन • ज़्यादा नेचुरल	Online • more natural
+ऑफ़लाइन	Offline
+कोमल, प्यारी	Soft, sweet
+खुशमिज़ाज	Cheerful
+गर्मजोशी भरी	Warm
+चमकदार	Bright
+चमकदार, साफ़	Bright, clear
+जवान, ताज़ी	Young, fresh
+ज़िंदादिल	Lively
+जानकार, समझाने वाली	Knowledgeable, explaining
+जानकारी देने वाली	Informative
+जोशीली	Energetic
+ज्ञानी	Wise
+दोस्त जैसी	Friend-like
+दोस्ताना	Friendly
+धीमी, साँस भरी	Slow, breathy
+नेचुरल (सामान्य)	Natural (normal)
+परिपक्व	Mature
+प्यारी, कोमल	Sweet, soft
+प्रोफेशनल	Professional
+बहुत नरम	Very soft
+बेफ़िक्र, कैज़ुअल	Easygoing, casual
+भारी, खरखरी	Deep, gravelly
+मज़बूत	Strong
+मज़बूत, साफ़	Strong, clear
+मुलायम, स्मूद	Soft, smooth
+शांत, मुलायम	Calm, soft
+संतुलित	Balanced
+साफ़	Clear
+स्मूद	Smooth
+हल्की, खुली	Light, open
+DK कंप्यूटर खोलें	Open DK Computer
+ओर्ब पर टैप करके बोलिए	Tap the orb and speak
+बोलने के लिए टैप करें	Tap to speak
+यादें देखें	View memories
+लाइव बातचीत	Live conversation
+लिखकर बात	Type to talk
+⬆ नया अपडेट	⬆ New update
+🖥 DK कंप्यूटर	🖥 DK Computer
+बदलाव अपने-आप भी सेव होते हैं	Changes are also saved automatically
+यहाँ लिखकर कुछ भी पूछिए या कोई काम बोलिए।	Type anything here — ask a question or give a task.
+DK किस भाषा में जवाब दे	DK's reply language
+DK लाइव चल रहा हो तो नई भाषा अगली बार जुड़ने पर (लाइव बंद करके फिर चालू करें)।	If DK Live is running, the new language applies on the next connection (turn Live off and on).
+DK लाइव, DK चैट, बिना-Live आवाज़, DK कंप्यूटर और कोडिंग एजेंट — सब पर एक साथ	DK Live, DK Chat, non-Live voice, DK Computer and coding agent — all at once
+DK के जवाब:	DK replies:
+ऐप की भाषा (स्क्रीन)	App language (screens)
+ऐप:	App:
+किसी एक जवाब के लिए आप बोलकर दूसरी भाषा माँग सकते हैं।	For a single reply you can ask for another language by voice.
+चुनते ही पूरे ऐप की स्क्रीनें इसी भाषा में। DK के जवाब की भाषा नीचे अलग से चुनें। बातचीत, कोड और कहानियाँ जैसी लिखी हैं वैसी ही दिखती हैं।	All app screens switch to this language right away. Choose DK's reply language separately below. Conversations, code and stories are shown as they were written.
+पूरे ऐप के बटन, Settings, संदेश — English या हिंदी	Buttons, Settings and messages of the whole app — English or Hindi
+भाषा:	Language:
+— अगले जवाब से लागू	— applies from the next reply
+भाषा / Language	Language
+से जवाब नहीं - timeout	no reply - timeout

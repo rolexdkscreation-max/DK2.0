@@ -34,6 +34,7 @@ class MainActivity : AppCompatActivity() {
         txtName = findViewById(R.id.txtName)
         txtState = findViewById(R.id.txtState)
         txtDk = findViewById(R.id.txtDk)
+        UiLang.keep(txtDk)    // DK का जवाब (content) - UI भाषा से नहीं बदलता
         chipAccess = findViewById(R.id.chipAccess)
         chipMic = findViewById(R.id.chipMic)
         chipAi = findViewById(R.id.chipAi)
@@ -57,7 +58,7 @@ class MainActivity : AppCompatActivity() {
         chipMic.setOnClickListener { askPerms() }
         chipAccess.setOnClickListener {
             if (!Setup.accessibilityOn(this)) {
-                Toast.makeText(this, "Installed/Downloaded apps में ${Prefs.assistantName(this)} ON करें", Toast.LENGTH_LONG).show()
+                UiLang.toast(this, "Installed/Downloaded apps में ${Prefs.assistantName(this)} ON करें", Toast.LENGTH_LONG).show()
                 Setup.openAccessibility(this)
             }
         }
@@ -121,7 +122,7 @@ class MainActivity : AppCompatActivity() {
         val canAsk = !Prefs.micDeniedOnce(this) || shouldShowRequestPermissionRationale(Manifest.permission.RECORD_AUDIO)
         if (canAsk) askPerms()
         else {
-            Toast.makeText(this, "माइक की परमिशन बंद है — App info → Permissions → Microphone → Allow करें", Toast.LENGTH_LONG).show()
+            UiLang.toast(this, "माइक की परमिशन बंद है — App info → Permissions → Microphone → Allow करें", Toast.LENGTH_LONG).show()
             Setup.openAppInfo(this)
         }
     }
@@ -137,7 +138,7 @@ class MainActivity : AppCompatActivity() {
         if (i >= 0) {
             val ok = grantResults.getOrNull(i) == android.content.pm.PackageManager.PERMISSION_GRANTED
             if (!ok) Prefs.edit(this) { putBoolean("mic_denied", true) }
-            Toast.makeText(this, if (ok) "✓ माइक की परमिशन मिल गई — अब DK सुन सकता है" else "माइक की परमिशन नहीं मिली — इसके बिना DK सुन नहीं सकता", Toast.LENGTH_LONG).show()
+            UiLang.toast(this, if (ok) "✓ माइक की परमिशन मिल गई — अब DK सुन सकता है" else "माइक की परमिशन नहीं मिली — इसके बिना DK सुन नहीं सकता", Toast.LENGTH_LONG).show()
         }
         Setup.startKeepAlive(this)
         DKAccessibilityService.instance?.calls?.start()
@@ -149,11 +150,11 @@ class MainActivity : AppCompatActivity() {
         when {
             !Setup.hasMic(this) -> { askPerms(); return false }
             !Prefs.hasAnyKey(this) -> {
-                Toast.makeText(this, "पहले कोई भी फ्री API key डालें — DK खुद सबसे तेज़ फ्री मॉडल चुन लेगा", Toast.LENGTH_LONG).show()
+                UiLang.toast(this, "पहले कोई भी फ्री API key डालें — DK खुद सबसे तेज़ फ्री मॉडल चुन लेगा", Toast.LENGTH_LONG).show()
                 startActivity(Intent(this, SettingsActivity::class.java).putExtra("section", "brain")); return false
             }
             !Setup.accessibilityOn() && !Setup.selfEnableAccessibility(this) && !Setup.enabledInSettings(this) -> {
-                Toast.makeText(this, "Accessibility में ${Prefs.assistantName(this)} ON करें", Toast.LENGTH_LONG).show()
+                UiLang.toast(this, "Accessibility में ${Prefs.assistantName(this)} ON करें", Toast.LENGTH_LONG).show()
                 Setup.openAccessibility(this); return false
             }
         }
@@ -200,7 +201,7 @@ class MainActivity : AppCompatActivity() {
             val rel = try { Updater.check(this@MainActivity) } catch (e: Exception) { null }
             if (rel != null) Updater.startDownload(this@MainActivity, rel)     // chupchap background me
             chipFor(rel)
-            if (rel != null) Toast.makeText(this@MainActivity,
+            if (rel != null) UiLang.toast(this@MainActivity,
                 "DK ${rel.version} का ${rel.typeLabel} आया है (${rel.sizeMb}) — बैकग्राउंड में डाउनलोड हो रहा है", Toast.LENGTH_LONG).show()
         }
     }
@@ -220,7 +221,7 @@ class MainActivity : AppCompatActivity() {
             val notes = rel?.notes?.takeIf { it.isNotBlank() } ?: sp.getString("upd_notes_$cur", "").orEmpty()
             val label = rel?.typeLabel ?: "अपडेट"
             if (isFinishing || isDestroyed) return@launch
-            android.app.AlertDialog.Builder(this@MainActivity, Glass.DIALOG)
+            UiDialog(this@MainActivity, Glass.DIALOG)
                 .setTitle("${Updater.displayVersion(this@MainActivity)} • $label इंस्टॉल हो गया")
                 .setMessage("क्या नया है:\n\n" + notes.take(2500).ifBlank { "सुधार और नए फ़ीचर" })
                 .setPositiveButton("ठीक है", null)

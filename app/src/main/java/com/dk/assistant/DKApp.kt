@@ -16,6 +16,7 @@ class DKApp : Application() {
         super.onCreate()
         DKState.init(this)
         Prefs.loadLang(this)
+        UiLang.load(this)     // स्क्रीनों की भाषा (शुरुआती English)
         StatusNotify.install(this)
         removeLegacyAntiTheftState()
         val prev = Thread.getDefaultUncaughtExceptionHandler()
@@ -50,7 +51,7 @@ class DKApp : Application() {
         }
 
         registerActivityLifecycleCallbacks(object : ActivityLifecycleCallbacks {
-            override fun onActivityResumed(a: Activity) { AppVisible.set(true) }
+            override fun onActivityResumed(a: Activity) { AppVisible.set(true); try { UiLang.onResumed(a) } catch (_: Exception) {} }
             override fun onActivityPaused(a: Activity) { AppVisible.set(false) }
             override fun onActivityCreated(a: Activity, b: Bundle?) {}
             override fun onActivityStarted(a: Activity) {}

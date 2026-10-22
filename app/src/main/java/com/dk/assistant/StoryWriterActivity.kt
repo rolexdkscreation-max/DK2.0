@@ -139,7 +139,7 @@ class StoryWriterActivity : AppCompatActivity() {
         actions.addView(pill("पूरी कहानी कॉपी") { copy(StorySession.fullText(), "पूरी कहानी कॉपी हो गई") }, LinearLayout.LayoutParams(0, (44 * dp).toInt(), 1f).apply { marginEnd = (6 * dp).toInt() })
         actions.addView(pill("सेव करें") { save() }, LinearLayout.LayoutParams(0, (44 * dp).toInt(), 1f).apply { marginEnd = (6 * dp).toInt() })
         actions.addView(pill("डिलीट") {
-            android.app.AlertDialog.Builder(this)
+            UiDialog(this)
                 .setTitle("कहानी डिलीट करें?")
                 .setMessage("क्या आप वाकई इस कहानी को डिलीट करना चाहते हैं?")
                 .setPositiveButton("हाँ, डिलीट करें") { _, _ ->
@@ -192,7 +192,7 @@ class StoryWriterActivity : AppCompatActivity() {
         }
         val go = { shown = 0; partsBox.removeAllViews(); s.start(this, edtTopic.text.toString(), minutes) }
         if (s.parts.isNotEmpty()) {
-            android.app.AlertDialog.Builder(this).setTitle("नई कहानी लिखें?")
+            UiDialog(this).setTitle("नई कहानी लिखें?")
                 .setMessage("अभी वाली कहानी स्क्रीन से हट जाएगी। चाहिए तो पहले 'सेव करें' दबाएँ।")
                 .setPositiveButton("हाँ, नई लिखो") { _, _ -> go() }.setNegativeButton("रुको", null).show()
         } else go()
@@ -279,7 +279,7 @@ class StoryWriterActivity : AppCompatActivity() {
             }
             val uri = contentResolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, cv) ?: throw IllegalStateException("फ़ाइल नहीं बनी")
             contentResolver.openOutputStream(uri)?.use { it.write(s.fullText().toByteArray()) } ?: throw IllegalStateException("फ़ाइल नहीं खुली")
-            Toast.makeText(this, "सेव हो गई: Download/DK Stories/$name", Toast.LENGTH_LONG).show()
+            UiLang.toast(this, "सेव हो गई: Download/DK Stories/$name", Toast.LENGTH_LONG).show()
         } catch (e: Exception) {
             DKLog.d("Story सेव गलती: ${e.message}")
             createDoc.launch(name)          // MediaStore na chale to user khud jagah chune
@@ -306,5 +306,5 @@ class StoryWriterActivity : AppCompatActivity() {
         setOnClickListener(onClick)
     }
 
-    private fun toast(t: String) = Toast.makeText(this, t, Toast.LENGTH_SHORT).show()
+    private fun toast(t: String) = UiLang.toast(this, t, Toast.LENGTH_SHORT).show()
 }

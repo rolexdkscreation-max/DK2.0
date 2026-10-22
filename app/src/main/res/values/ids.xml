@@ -1,3 +1,5 @@
 <resources>
     <item name="glass_press" type="id" />
+    <item name="ui_keep" type="id" />
+    <item name="ui_stamp" type="id" />
 </resources>

@@ -91,8 +91,8 @@ class VoiceActivity : AppCompatActivity() {
             orientation = LinearLayout.VERTICAL; setBackgroundResource(R.drawable.glass_card)
             val p = (16 * dp).toInt(); setPadding(p, p, p, p)
         }
-        you = TextView(this).apply { textSize = 14f; setTextColor(0xB3FFFFFF.toInt()); maxLines = 2; ellipsize = android.text.TextUtils.TruncateAt.END }
-        dk = TextView(this).apply { textSize = 16f; setTextColor(0xFFFFFFFF.toInt()); maxLines = 5; ellipsize = android.text.TextUtils.TruncateAt.END }
+        you = TextView(this).apply { textSize = 14f; setTextColor(0xB3FFFFFF.toInt()); maxLines = 2; ellipsize = android.text.TextUtils.TruncateAt.END; UiLang.keep(this) }
+        dk = TextView(this).apply { textSize = 16f; setTextColor(0xFFFFFFFF.toInt()); maxLines = 5; ellipsize = android.text.TextUtils.TruncateAt.END; UiLang.keep(this) }
         card.addView(you); card.addView(dk, LinearLayout.LayoutParams(-1, -2).apply { topMargin = (6 * dp).toInt() })
         // v3.9: jawab web search se aaya ho to caption ke neeche sources (bole nahi jaate, sirf dikhte/click hote hain)
         srcBox = FrameLayout(this)
@@ -120,7 +120,7 @@ class VoiceActivity : AppCompatActivity() {
 
         onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
             override fun handleOnBackPressed() {
-                if (DKState.live) Toast.makeText(this@VoiceActivity,
+                if (DKState.live) UiLang.toast(this@VoiceActivity,
                     "${Prefs.assistantName(this@VoiceActivity)} पीछे से सुनता रहेगा • बंद करने के लिए ✕ या \"माइक बंद\"", Toast.LENGTH_LONG).show()
                 finish()
             }
@@ -141,10 +141,10 @@ class VoiceActivity : AppCompatActivity() {
     private fun startLiveIfReady() {
         val svc = DKAccessibilityService.instance
         when {
-            !Setup.hasMic(this) -> Toast.makeText(this, "माइक की परमिशन दीजिए (सेटिंग्स → परमिशन)", Toast.LENGTH_LONG).show()
+            !Setup.hasMic(this) -> UiLang.toast(this, "माइक की परमिशन दीजिए (सेटिंग्स → परमिशन)", Toast.LENGTH_LONG).show()
             svc == null -> {
                 if (!Setup.selfEnableAccessibility(this)) {
-                    Toast.makeText(this, "सेटिंग्स → Accessibility में ${Prefs.assistantName(this)} ON करें", Toast.LENGTH_LONG).show()
+                    UiLang.toast(this, "सेटिंग्स → Accessibility में ${Prefs.assistantName(this)} ON करें", Toast.LENGTH_LONG).show()
                 }
             }
             else -> svc.startLive()     // wake word wala chhota Live chal raha ho to use pakka karo
@@ -202,7 +202,7 @@ class VoiceActivity : AppCompatActivity() {
         }
         // bolte-bolte naye shabd aakhir me judte hain - lamba ho to aakhri hissa dikhao (naye shabd chhupe nahi)
         val min = Prefs.orbMin(this)
-        you.text = "आप: " + tail(DKState.lastUser, if (min) 400 else 90).ifBlank { "—" }
+        you.text = UiLang.s("आप:") + " " + tail(DKState.lastUser, if (min) 400 else 90).ifBlank { "—" }
         dk.text = "$name: " + tail(DKState.lastReply, if (min) 100_000 else 200).ifBlank { "—" }
         val src = DKState.lastSources
         if (src != srcShown) {
