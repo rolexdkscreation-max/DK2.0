@@ -119,7 +119,7 @@ object Prefs {
 
     // ---- awaaz (mahila/purush)
     /** v3.30: DK के जवाब की भाषा - "hinglish" (शुरुआती) / "hi" / "en" (Lang) */
-    fun replyLang(c: Context) = Lang.norm(sp(c).getString(Lang.KEY, Lang.HINGLISH))
+    fun replyLang(c: Context) = Lang.norm(sp(c).getString(Lang.KEY, Lang.HINGLISH) ?: Lang.HINGLISH)
     fun loadLang(c: Context) { Lang.current = replyLang(c) }
     fun voiceGender(c: Context) = sp(c).getString("voice_gender", "female") ?: "female"
     /** "google" = phone ki awaaz, "gemini" = sabse natural (Gemini key se) */
