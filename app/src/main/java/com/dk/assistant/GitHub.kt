@@ -89,6 +89,52 @@ class GitHub(private val token: String) {
 
     fun defaultBranch(repo: String): String = JSONObject(get("/repos/$repo")).optString("default_branch", "main")
 
+    // ---------------------------------------------------------------- 7-एजेंट सिस्टम: रिपो/branch चुनना, draft PR
+    /** token से खुलने वाले सारे रिपो (अपने + साथी + organization), नए पहले. maxPages × 100 तक */
+    fun reposAll(maxPages: Int = 10): List<Repo> {
+        val out = mutableListOf<Repo>()
+        for (page in 1..maxPages) {
+            val a = JSONArray(get("/user/repos?per_page=100&page=$page&sort=updated&affiliation=owner,collaborator,organization_member"))
+            (0 until a.length()).map { a.getJSONObject(it) }
+                .forEach { out.add(Repo(it.optString("full_name"), it.optString("default_branch", "main"), it.optBoolean("private"))) }
+            if (a.length() < 100) break
+        }
+        return out.distinctBy { it.fullName }
+    }
+
+    /** रिपो की branches (default पहले) */
+    fun branches(repo: String, maxPages: Int = 5): List<String> {
+        val out = mutableListOf<String>()
+        for (page in 1..maxPages) {
+            val a = JSONArray(get("/repos/$repo/branches?per_page=100&page=$page"))
+            (0 until a.length()).forEach { out.add(a.getJSONObject(it).optString("name")) }
+            if (a.length() < 100) break
+        }
+        return out.filter { it.isNotBlank() }
+    }
+
+    /** Draft PR: टेस्ट चलाने के लिए (GitHub Actions pull_request पर चलते हैं); पास होने पर ही review के लिए तैयार */
+    fun createDraftPull(repo: String, head: String, base: String, title: String, body: String): Pull = try {
+        pull(JSONObject(post("/repos/$repo/pulls", JSONObject().put("title", title.take(120)).put("head", head)
+            .put("base", base).put("body", body).put("maintainer_can_modify", true).put("draft", true))))
+    } catch (e: Err) {
+        if (e.code == 422 && e.message.orEmpty().contains("already exists", true)) openPullFor(repo, head) ?: throw e
+        // कुछ रिपो/plan में draft नहीं चलता -> साधारण PR (merge फिर भी सिर्फ़ मंज़ूरी से)
+        else if (e.code == 422 && e.message.orEmpty().contains("draft", true)) createPull(repo, head, base, title, body) else throw e
+    }
+
+    /** PR draft है? */
+    fun isDraft(repo: String, number: Int): Boolean = JSONObject(get("/repos/$repo/pulls/$number")).optBoolean("draft", false)
+
+    /** Draft PR → "Ready for review" (REST में नहीं, GraphQL से) */
+    fun markReady(repo: String, number: Int) {
+        val node = JSONObject(get("/repos/$repo/pulls/$number")).optString("node_id")
+        if (node.isBlank()) throw Err(404, "PR का node id नहीं मिला")
+        val q = "mutation(${'$'}id:ID!){markPullRequestReadyForReview(input:{pullRequestId:${'$'}id}){pullRequest{isDraft}}}"
+        val r = JSONObject(post("/graphql", JSONObject().put("query", q).put("variables", JSONObject().put("id", node))))
+        r.optJSONArray("errors")?.takeIf { it.length() > 0 }?.let { throw Err(422, it.getJSONObject(0).optString("message")) }
+    }
+
     /** Repo ki saari files (sirf files, folder nahi) */
     fun tree(repo: String, branch: String): List<Entry> {
         val o = JSONObject(get("/repos/$repo/git/trees/${enc(branch)}?recursive=1"))
