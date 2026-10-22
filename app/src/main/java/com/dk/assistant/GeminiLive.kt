@@ -68,6 +68,12 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
         private const val PREROLL_CHUNKS = 8          // 8 x 40ms = 320ms
         /** Itni der "Thinking" aur kuch na aaye -> wapas "Listening" (purani haalat atki na rahe) */
         private const val THINK_STUCK_MS = 12_000L
+        /**
+         * Jawab "ban raha" (generating) tha par itni der server se ek bhi sandesh nahi aur awaaz bhi nahi baj rahi =
+         * turnComplete kho gaya / stream atak gaya. Tab turn band (stream ya connection nahi kaata - aage kuch aaye to
+         * naya turn shuru hota hai). Audio stream me tukde lagatar aate hain, tool ka samay alag (toolJobs) - 15s kaafi hai.
+         */
+        private const val GEN_STALL_MS = 15_000L
         /** AudioTrack me likhi par abhi na baji awaaz (~150ms) */
         private const val LEAD_BYTES = OUT_RATE * 2 * 150 / 1000
         private val WS = Regex("\\s+")
@@ -93,8 +99,11 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
             private set
     }
 
-    /** Live nahi chal sakta (key galat / limit / model nahi) - purane tareeke par jao */
-    class Fatal(msg: String) : Exception(msg)
+    /**
+     * Live nahi chal sakta (key galat / limit / model nahi) - purane tareeke par jao.
+     * recoverable = network / mic thodi der busy jaisi dikkat: thodi der baad Live dobara (10 min ka lamba ruk nahi)
+     */
+    class Fatal(msg: String, val recoverable: Boolean = false) : Exception(msg)
 
     private val http = OkHttpClient.Builder()
         .connectTimeout(10, TimeUnit.SECONDS)
@@ -171,6 +180,26 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
     private val turnDet = TurnDetector(CHUNK_MS, endSilenceMs = CLIENT_END_MS)
     private val bargeDet = BargeDetector()
     private val trace = LatencyTrace()
+    /** Har baari ki poori samay-rekha (end of speech -> upload -> pehla event -> audio -> awaaz -> turn khatam) */
+    private val timeline = TurnTimeline()
+    @Volatile private var waitingLogged = false
+    @Volatile private var noReplyTurns = 0
+    /** Khaamoshi me upload band (Live socket / caption socket alag-alag) */
+    private val liveGate = SilenceStreamGate(CHUNK_MS)
+    private val capGate = SilenceStreamGate(CHUNK_MS)
+    @Volatile private var silenceSkipped = 0L
+    /**
+     * Audio bhejne ka ek hi kram: mic thread, caption thread (barge pakka) aur OkHttp thread (judte samay ki
+     * awaaz) teeno bhejte hain - bina lock ke purane tukde naye ke BAAD pahunch sakte the (ulti-pulti awaaz).
+     */
+    private val sendLock = Any()
+    /** Server ka aakhri sandesh (koi bhi) - atka stream pakadne ke liye */
+    @Volatile private var lastServerAt = 0L
+    @Volatile private var genStalls = 0
+    @Volatile private var handlerErrors = 0
+    /** Connection tootne se pehle ki baat jiska jawab shuru nahi hua tha - judte hi ek baar text me */
+    @Volatile private var resendText: String? = null
+    @Volatile private var resentN = 0
     /** v3.9.1: bola par Gemini ne suna hi nahi -> caption ka text seedha bhejo */
     private val replyWatch = ReplyWatchdog()
     @Volatile private var unheard = 0
@@ -272,6 +301,11 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
             (if (unheard > 0) " • Gemini ने नहीं सुना: $unheard (caption से भेजा $rescued)" else "") +
             (if (stalledN > 0) " • सुना पर जवाब अटका: $stalledN (दोबारा भेजा)" else "") +
             (if (fastN > 0) " • तुरंत किए काम: $fastN" else "") +
+            " • चुप्पी में upload बंद: ${silenceSkipped * CHUNK_MS / 1000}s" +
+            (if (noReplyTurns > 0) " • बात पर server से कुछ नहीं: $noReplyTurns" else "") +
+            (if (genStalls > 0) " • अटका जवाब (turnComplete नहीं): $genStalls" else "") +
+            (if (resentN > 0) " • टूटने के बाद दोबारा भेजी बात: $resentN" else "") +
+            (if (handlerErrors > 0) " • server संदेश की गलती: $handlerErrors" else "") +
             (if (droppedOld > 0) " • पुराने जवाब के फेंके टुकड़े: $droppedOld" else "") +
             (if (lastLatency >= 0) " • पिछली देरी: $lastLatency ms" else "") +
             (if (lastBreakdown.isNotBlank()) " • $lastBreakdown" else "")
@@ -296,6 +330,7 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
             isNewSpeech = { barging || System.currentTimeMillis() < bargeUntil }).also { it.start() }
         turnDet.reset(); bargeDet.reset(); bargeGate.reset(); synchronized(bargeBuf) { bargeBuf.clear() }
         trace.reset(); dropOld = false; suspectAt = 0L; replyWatch.reset()
+        timeline.reset(); liveGate.reset(); capGate.reset(); resendText = null; lastServerAt = 0L
         coroutineScope {
             val mic = launch(Dispatchers.IO) { micLoop() }
             // DK ka text awaaz ke saath-saath (har 80ms)
@@ -313,9 +348,10 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
                     curClosed = closed
                     val t0 = System.currentTimeMillis()
                     if (reuse) {
-                        ws = pk!!.ws; ready = true; warmReuses++
+                        ws = pk!!.ws; warmReuses++
+                        synchronized(sendLock) { ready = true; flushPending() }
                         log("गर्म connection फिर से [$model] - जुड़ने में 0 ms (${(t0 - pk.at) / 1000}s से standby में था)")
-                        flushPending(); sendFirstText()
+                        sendFirstText(); sendResend()
                     } else {
                     val setup = CompletableDeferred<Unit>()
                     connect(key, model, closed, setup)
@@ -350,7 +386,7 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
                                 if (mi + 1 < models.size) { mi++; handle = null; continue } else throw Fatal("Live वाला कोई मॉडल नहीं चला ($reason)")
                         }
                         fails++
-                        if (fails >= 4) throw Fatal("Gemini Live से जुड़ नहीं पाया: ${reason.take(80)}")
+                        if (fails >= 4) throw Fatal("Gemini Live से जुड़ नहीं पाया: ${reason.take(80)}", recoverable = true)
                         delay(minOf(8000L, 500L shl fails))       // 1s, 2s, 4s, 8s
                         continue
                     }
@@ -390,11 +426,31 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
                         }
                         if (replyWatch.due(now)) onNoReply()
                         if (replyWatch.stalled(now)) onStalled()
+                        // samay-rekha: bheja hua sab input audio phone se nikal gaya?
+                        if (timeline.active && timeline.uploadAt == 0L && (ws?.queueSize() ?: 1L) == 0L) timeline.upload(now)
+                        // jawab "ban raha" tha par server 15s se bilkul chup (turnComplete kho gaya) -> turn band, warna
+                        // generating=true hamesha atka rehta aur agli har baat par watchdog band rehta (jawab nahi = chup DK)
+                        if (generating && !isPlaying() && toolJobs.isEmpty() && lastServerAt > 0 && now - lastServerAt > GEN_STALL_MS) {
+                            genStalls++
+                            log("जवाब बन रहा था पर server ${(now - lastServerAt) / 1000}s से चुप (turnComplete नहीं आया) - turn बंद, फिर सुन रहा हूँ • ${timeline.summary()}")
+                            dropOld = false; timeline.done(now)
+                            finishTurn(); setMode(Mode.LISTENING)
+                        }
                         delay(100)
                     }
                     ready = false
                     if (stopped) break
                     val (code, reason) = if (closed.isCompleted) closed.await() else 1000 to "goAway"
+                    // user ki baat khatam ho chuki thi par jawab shuru nahi hua aur connection toot gaya -> woh baat
+                    // chupchaap kho jaati thi. Dobara judte hi ek baar text me bhejo.
+                    val dropAt = System.currentTimeMillis()
+                    if (resendText == null && replyWatch.unanswered(dropAt)) {
+                        val t = caption?.text().orEmpty().trim()
+                            .ifBlank { if (!userDone) turnUser.trim() else "" }
+                            .ifBlank { synchronized(turnLock) { userText.toString().trim() } }
+                        if (BargeGate.realWords(t)) { resendText = t; replyWatch.onResent() }
+                        log("connection टूटा जब बात का जवाब बाकी था • ${timeline.summary()}" + if (resendText != null) " - जुड़ते ही दोबारा भेजूँगा" else "")
+                    }
                     closeWs(ws, "reconnect")
                     goAway = false
                     reconnects++
@@ -411,7 +467,7 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
                     val lasted = System.currentTimeMillis() - upAt
                     if (goAwayDrop || lasted >= 20_000) quickDrops = 0 else quickDrops++
                     goAwayDrop = false
-                    if (quickDrops >= 6) throw Fatal("Gemini Live बार-बार टूट रहा है - नेटवर्क देखें")
+                    if (quickDrops >= 6) throw Fatal("Gemini Live बार-बार टूट रहा है - नेटवर्क देखें", recoverable = true)
                     val wait = if (quickDrops == 0) 250L else minOf(15_000L, 500L shl quickDrops)   // 1s,2s,4s,8s,15s
                     if (quickDrops > 0) log("जल्दी टूटा (${lasted / 1000}s) - $wait ms रुककर दोबारा (#$quickDrops)")
                     delay(wait)
@@ -462,9 +518,35 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
             DKState.user("$t…")
             setMode(Mode.THINKING)
             eosAt = System.currentTimeMillis(); trace.reset(); trace.speechEndAt = eosAt; trace.endpointAt = eosAt
+            beginTimeline(eosAt, eosAt, "wake word की बात (text)")
             ws?.send(JSONObject().put("realtimeInput", JSONObject().put("text", t)).toString())
             log("पहली बात भेजी: $t")
         } catch (_: Exception) {}
+    }
+
+    /** Tootne se pehle ki unanswered baat - naye connection par ek baar text me (UI line dobara nahi) */
+    private fun sendResend() {
+        val t = resendText ?: return
+        resendText = null
+        val w = ws ?: return
+        val now = System.currentTimeMillis()
+        eosAt = now; firstAudioAt = 0; trace.reset(); trace.speechEndAt = now; trace.endpointAt = now
+        beginTimeline(now, now, "टूटने के बाद दोबारा")
+        val ok = try { w.send(JSONObject().put("realtimeInput", JSONObject().put("text", t)).toString()) } catch (_: Exception) { false }
+        if (ok) { resentN++; if (DKState.mode != Mode.WORKING) setMode(Mode.THINKING) }
+        log("टूटने से पहले की बात (${t.length} अक्षर) नए connection पर text में भेजी" + if (ok) "" else " (भेज नहीं पाया)")
+    }
+
+    /**
+     * Nayi baat ki samay-rekha shuru. Pichhli baat par server se kuch bhi nahi aaya tha (na event, na awaaz) to
+     * woh mamla log me - "bola par jawab nahi" agli baar bhi dikhe (pakad me aaye).
+     */
+    private fun beginTimeline(speechEnd: Long, endpoint: Long, why: String) {
+        if (timeline.active && timeline.eventAt == 0L && timeline.audioAt == 0L && toolJobs.isEmpty()) {
+            noReplyTurns++
+            log("पिछली बात पर Gemini से कुछ नहीं आया (#$noReplyTurns) • ${timeline.summary()}")
+        }
+        timeline.begin(speechEnd, endpoint, why); waitingLogged = false
     }
 
     /**
@@ -615,12 +697,25 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
     }
 
     // ================================================================ server ke sandesh
+    /**
+     * OkHttp ke listener se koi exception bahar gaya to OkHttp poora WebSocket fail kar deta hai (onFailure) =
+     * chalta jawab beech me kho jata aur reconnect. Ek sandesh ki gadbad se session mat todo - log karo, aage chalo.
+     */
     private fun onServer(msg: String, setup: CompletableDeferred<Unit>) {
-        val o = try { JSONObject(msg) } catch (e: Exception) { log("JSON नहीं समझा: ${msg.take(80)}"); return }
+        try { handleServer(msg, setup) } catch (e: Exception) {
+            handlerErrors++
+            log("server संदेश संभालने में गलती #$handlerErrors (${e.javaClass.simpleName}: ${e.message?.take(80)}) - connection चालू रखा")
+        }
+    }
+
+    private fun handleServer(msg: String, setup: CompletableDeferred<Unit>) {
+        val o = try { JSONObject(msg) } catch (e: Exception) { log("JSON नहीं समझा (${msg.length} bytes)"); return }
         if (o.has("setupComplete")) {
             if (setupSentAt > 0) { trace.rttMs = System.currentTimeMillis() - setupSentAt; log("setup का जवाब ${trace.rttMs} ms (network RTT + server)") }
-            ready = true; setup.complete(Unit); flushPending()
-            sendFirstText()
+            // ready + purani (judte samay ki) awaaz ek saath, lock me: mic ka naya tukda purane se pehle na nikle
+            synchronized(sendLock) { ready = true; flushPending() }
+            setup.complete(Unit)
+            sendFirstText(); sendResend()
             return
         }
         lastAct = System.currentTimeMillis()
@@ -637,18 +732,29 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
             if (t == "ACTIVITY_END") {
                 val now = System.currentTimeMillis()
                 // phone ne is baari "khatam" nahi pakda (dheemi awaaz) -> server ka pakadna hi endpoint
-                if (trace.endpointAt == 0L || now - trace.endpointAt > 5000) { trace.reset(); trace.endpointAt = now; trace.speechEndAt = now }
+                if (trace.endpointAt == 0L || now - trace.endpointAt > 5000) {
+                    trace.reset(); trace.endpointAt = now; trace.speechEndAt = now
+                    beginTimeline(now, now, "server VAD")
+                }
                 if (eosAt == 0L || now - eosAt > 3000) eosAt = now
                 firstAudioAt = 0; if (!isPlaying()) setMode(Mode.THINKING)
             }
         }
-        o.optJSONObject("toolCall")?.optJSONArray("functionCalls")?.let { replyWatch.onServerAnswered(); runTools(it) }
+        o.optJSONObject("toolCall")?.optJSONArray("functionCalls")?.let { lastServerAt = System.currentTimeMillis(); timeline.event(lastServerAt); replyWatch.onServerAnswered(); runTools(it) }
         o.optJSONObject("toolCallCancellation")?.optJSONArray("ids")?.let { a ->
             for (i in 0 until a.length()) toolJobs.remove(a.optString(i))?.cancel()
         }
         val sc = o.optJSONObject("serverContent") ?: return
+        lastServerAt = System.currentTimeMillis()
+        // dropOld = user ne toka, yeh PURANE jawab ke bache tukde hain (phenke jaate hain) - inhe nayi baat ka
+        // "jawab aaya" mat gino, warna nayi baat ka watchdog band ho jaata aur server na sune to DK chup rehta
+        val oldReply = dropOld
+        if (!oldReply || sc.has("inputTranscription")) timeline.event(lastServerAt)
         if (sc.has("inputTranscription")) replyWatch.onServerHeard()
-        if (sc.has("modelTurn") || sc.has("outputTranscription")) replyWatch.onServerAnswered()
+        // docs: model jawab nahi bana raha kyunki use lagta hai user aage bolega (diagnostics - sirf log)
+        if (sc.optBoolean("waitingForInput") && !waitingLogged) { waitingLogged = true; log("server: waitingForInput (मॉडल मान रहा है user आगे बोलेगा) • ${timeline.summary()}") }
+        if (sc.optBoolean("generationComplete")) timeline.genDone(System.currentTimeMillis())
+        if (!oldReply && (sc.has("modelTurn") || sc.has("outputTranscription"))) replyWatch.onServerAnswered()
         sc.optJSONObject("inputTranscription")?.optString("text")?.takeIf { it.isNotBlank() }?.let { t ->
             if (!turnActive) startTurn()
             Ducker.duck(svc, "Live: user बोल रहा")
@@ -689,6 +795,7 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
                     // user ki baat yahin tak - aage jo bole woh nayi baat
                     caption?.closeUtterance()?.takeIf { it.isNotBlank() }?.let { turnUser = it; userDone = false }
                 }
+                timeline.audio(System.currentTimeMillis())
                 if (firstAudioAt == 0L) {
                     firstAudioAt = System.currentTimeMillis()
                     if (trace.firstChunkAt == 0L) trace.firstChunkAt = firstAudioAt
@@ -715,10 +822,14 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
         }
         if (sc.optBoolean("interrupted")) {
             val now = System.currentTimeMillis()
+            replyWatch.onServerHeard()    // server ne user ki awaaz pakdi tabhi roka - "nahi suna" rescue mat bhejo
             log("server: generation रुकी (interrupted) - आवाज़ रोकी" + if (localBargeAt > 0 && now - localBargeAt < 2000) " (फ़ोन ने ${now - localBargeAt} ms पहले ही रोक दी थी)" else "")
             // phone ne user ki awaaz nahi pakdi -> shayad DK ki apni goonj; 2 sec me user ka text na aaye to gino
             if (now - localBargeAt > 1500 && fullDuplex && aecOn) suspectAt = now
             dropOld = false               // purana generation khatam - ab aane wala audio NAYE jawab ka hai
+            // sirf toka gaya (purana) turn band karo - toka-ke-boli nayi baat ki samay-rekha (barge ke baad shuru) chalti rahe
+            val newAfterBarge = localBargeAt > 0 && now - localBargeAt < 10_000 && timeline.speechEndAt > localBargeAt
+            if (timeline.active && !newAfterBarge) { timeline.done(now); log("turn (interrupted): ${timeline.summary()}") }
             if (trace.firstPlayAt == 0L) trace.firstChunkAt = 0L
             flushPlayback()
             // close=false: user abhi bol raha hai (toka hai) - uski nayi baat band mat karo
@@ -729,6 +840,7 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
         if (sc.optBoolean("turnComplete")) {
             val wasDropping = dropOld
             dropOld = false
+            if (timeline.active) { timeline.done(System.currentTimeMillis()); log("turn पूरा: ${timeline.summary()}") }
             finishTurn()
             if (wasDropping) commitPending(false)   // toka hua jawab: sirf jitna bola utna hi chat me
             // jawab poora bana; jab DK ki awaaz bajna band ho uske ~1.2s baad peeche ki awaaz dheere-dheere wapas
@@ -775,9 +887,13 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
         suspectAt = 0L
         if (bargeGate.state == BargeGate.State.TENTATIVE) {
             val dkNow = synchronized(turnLock) { replyText.toString() + " " + (pendingReply ?: "") }
-            // DK ki apni awaaz ya pichhli baat ka der se aaya text = user ka naya bolna nahi
-            if (BargeGate.isEcho(t, turnUser) || !bargeGate.onText(t, dkNow)) { log("caption: \"${t.take(40)}\" - पक्का नहीं, जवाब जारी"); return }
-            confirmBarge("caption: ${t.take(30)}")
+            // sendLock: CONFIRMED hote hi mic thread naya tukda bhejta hai - pehle shak ke samay ki (purani) awaaz jaye
+            val ok = synchronized(sendLock) {
+                // DK ki apni awaaz ya pichhli baat ka der se aaya text = user ka naya bolna nahi
+                if (BargeGate.isEcho(t, turnUser) || !bargeGate.onText(t, dkNow)) false
+                else { confirmBarge("caption: ${t.take(30)}"); true }
+            }
+            if (!ok) { log("caption: \"${t.take(40)}\" - पक्का नहीं, जवाब जारी"); return }
         } else if (isPlaying()) return        // DK bol raha hai aur shak nahi = shor/goonj ka text, dikhao bhi mat
         DKState.user("$t…")
         if (final) checkMicOff(t)        // andaze (interim) par mic band nahi - "माइक बंद मत करो" bhi ho sakta hai
@@ -847,7 +963,7 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
         for (i in 0 until calls.length()) {
             val fc = calls.optJSONObject(i) ?: continue
             val id = fc.optString("id"); val name = fc.optString("name"); val args = fc.optJSONObject("args") ?: JSONObject()
-            log("tool: $name $args")
+            log("tool: $name ${args.toString().take(80)}")
             val tStart = System.currentTimeMillis()
             // LAZY: pehle map me darj, phir shuru - warna tez tool (remember_fact) map me aane se pehle hi remove() kar deta tha
             val j = svc.scope.launch(start = CoroutineStart.LAZY) {
@@ -972,23 +1088,50 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
     // ================================================================ mic -> stream
     private val pending = ArrayDeque<ByteArray>()       // judne/dobara judne ke beech ki baat (1 sec tak)
 
-    private fun flushPending() {
+    /** sendLock ke andar hi bulao (setupComplete / garam connection) */
+    private fun flushPending() = synchronized(sendLock) {
         val list = synchronized(pending) { pending.toList().also { pending.clear() } }
         list.forEach { sendAudio(it) }
         if (list.isNotEmpty()) log("जुड़ते समय की ${list.size * CHUNK_MS} ms आवाज़ भेजी")
     }
 
-    private fun sendAudio(pcm: ByteArray) {
+    /**
+     * silent=true: khaamoshi (shoonya) ka tukda - SilenceStreamGate tay karta hai bhejna hai ya nahi.
+     * sendLock: teen thread yahan bhejte hain - ek hi kram me jaye.
+     */
+    private fun sendAudio(pcm: ByteArray, silent: Boolean = false) = synchronized(sendLock) {
+        var end = false
+        if (silent) {
+            when (liveGate.onSilence()) {
+                SilenceStreamGate.Action.SKIP -> { silenceSkipped++; return@synchronized }
+                SilenceStreamGate.Action.SEND_THEN_END -> end = true
+                SilenceStreamGate.Action.SEND -> {}
+            }
+        } else liveGate.onReal()
         val w = ws
         if (w == null || !ready) {
             synchronized(pending) { pending.addLast(pcm); while (pending.size > 2000 / CHUNK_MS) { pending.removeFirst(); dropped++ } }
-            return
+            return@synchronized
         }
-        // network dheema: 256KB se zyada atka = purani awaaz chhodo (warna der badhti jaati)
-        if (w.queueSize() > 256 * 1024) { dropped++; return }
+        // network dheema: line me atka data. Pehle khaamoshi chhodo (32KB), asli awaaz sirf bahut atakne par (256KB) -
+        // OkHttp ki line se purana nahi hata sakte, isliye pehle asli baat ke naye tukde hi gir jaate the.
+        if (w.queueSize() > (if (silent) 32 * 1024 else 256 * 1024)) { dropped++; return@synchronized }
         val msg = "{\"realtimeInput\":{\"audio\":{\"mimeType\":\"audio/pcm;rate=$IN_RATE\",\"data\":\"" +
             Base64.encodeToString(pcm, Base64.NO_WRAP) + "\"}}}"
         if (w.send(msg)) { sent++; sentBytes += pcm.size } else dropped++
+        // 1s khaamoshi bheji -> stream band (docs: audioStreamEnd), ab asli awaaz aane tak upload nahi
+        if (end) try { w.send("{\"realtimeInput\":{\"audioStreamEnd\":true}}") } catch (_: Exception) {}
+    }
+
+    /** Caption socket: asli awaaz hamesha; khaamoshi 1s tak, phir audioStreamEnd aur band */
+    private fun capSend(pcm: ByteArray, silent: Boolean = false) {
+        val c = caption ?: return
+        if (!silent) { capGate.onReal(); c.send(pcm); return }
+        when (capGate.onSilence()) {
+            SilenceStreamGate.Action.SEND -> c.send(pcm)
+            SilenceStreamGate.Action.SEND_THEN_END -> { c.send(pcm); c.endOfSpeech() }
+            SilenceStreamGate.Action.SKIP -> {}
+        }
     }
 
     @SuppressLint("MissingPermission")
@@ -1024,10 +1167,14 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
         trace.firstChunkAt = 0; trace.firstPlayAt = 0
         eosAt = trace.speechEndAt; firstAudioAt = 0
         trace.backlogBytes = w?.queueSize() ?: 0
+        beginTimeline(trace.speechEndAt, now, "फ़ोन VAD")
+        if (trace.backlogBytes == 0L) timeline.upload(now)
         if (ready && w != null) { try { w.send("{\"realtimeInput\":{\"audioStreamEnd\":true}}") } catch (_: Exception) {} }
         caption?.endOfSpeech()
-        // DK abhi jawab bana/bol raha hai = server sun chuka; warna 2.5s me kuch na aaye to "nahi suna"
-        if (generating || isPlaying()) replyWatch.onServerAnswered() else replyWatch.onEndOfSpeech(now, turnDet.lastSpeechMs)
+        // DK abhi jawab bana/bol raha hai = server sun chuka; warna 2.5s me kuch na aaye to "nahi suna".
+        // dropOld = user ne purana jawab toka tha: woh "generating" PURANE jawab ka hai, is nayi baat ka nahi -
+        // pehle yahan watchdog band ho jaata tha aur toka-ke-boli baat ko server na sune to DK chup reh jaata.
+        if ((generating && !dropOld) || isPlaying()) replyWatch.onServerAnswered() else replyWatch.onEndOfSpeech(now, turnDet.lastSpeechMs)
         scheduleFast()
         log("फ़ोन: बोलना खत्म (${now - trace.speechEndAt} ms चुप) → audioStreamEnd भेजा" +
             if (trace.backlogBytes > 16 * 1024) " • नेटवर्क में ${trace.backlogBytes / 1024}KB अटका (upload धीमा)" else "")
@@ -1042,7 +1189,7 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
      * Shabd nahi = shor tha -> Listening + peeche ki awaaz wapas (pehle 40-80s dheemi atki rehti thi).
      */
     private fun onNoReply() {
-        if (!ready || generating || isPlaying() || toolJobs.isNotEmpty() || turnDet.inSpeech) return
+        if (!ready || (generating && !dropOld) || isPlaying() || toolJobs.isNotEmpty() || turnDet.inSpeech) return
         val t = caption?.text().orEmpty().trim()
         unheard++
         if (!BargeGate.realWords(t)) {
@@ -1053,6 +1200,8 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
         }
         val now = System.currentTimeMillis()
         eosAt = now; firstAudioAt = 0; trace.reset(); trace.speechEndAt = now; trace.endpointAt = now
+        log("आवाज़ वाली बात की समय-रेखा: ${timeline.summary()}")
+        timeline.begin(now, now, "caption text (नहीं सुना था)"); waitingLogged = false
         replyWatch.onRescued()               // ek baat ke liye ek hi baar (atka-nudge bhi nahi)
         val ok = try { ws?.send(JSONObject().put("realtimeInput", JSONObject().put("text", t)).toString()) == true } catch (_: Exception) { false }
         if (ok) rescued++
@@ -1066,11 +1215,13 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
      * Ab: wahi baat (caption ka text) ek baar text me dobara - jawab pakka shuru ho.
      */
     private fun onStalled() {
-        if (!ready || generating || isPlaying() || toolJobs.isNotEmpty() || turnDet.inSpeech) return
+        if (!ready || (generating && !dropOld) || isPlaying() || toolJobs.isNotEmpty() || turnDet.inSpeech) return
         val t = caption?.text().orEmpty().trim().ifBlank { synchronized(turnLock) { userText.toString().trim() } }
         if (!BargeGate.realWords(t)) return
         val now = System.currentTimeMillis()
         eosAt = now; firstAudioAt = 0; trace.reset(); trace.speechEndAt = now; trace.endpointAt = now
+        log("अटकी बात की समय-रेखा: ${timeline.summary()}")
+        timeline.begin(now, now, "अटका - text में दोबारा"); waitingLogged = false
         val ok = try { ws?.send(JSONObject().put("realtimeInput", JSONObject().put("text", t)).toString()) == true } catch (_: Exception) { false }
         if (ok) stalledN++
         log("Gemini ने सुना पर 4.5s में जवाब शुरू नहीं किया - वही बात text में दोबारा भेजी: \"${t.take(60)}\"" + if (ok) "" else " (भेज नहीं पाया)")
@@ -1108,21 +1259,25 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
     private fun confirmBarge(why: String) {
         realBarges++
         log("यूज़र सच में बोल रहा ($why) - DK चुप, सुन रहा हूँ")
-        val buf = synchronized(bargeBuf) { bargeBuf.toList().also { bargeBuf.clear() } }
-        bargeIn(why)
-        track?.let { try { it.setVolume(1f) } catch (_: Exception) {} }
-        turnDet.forceSpeech(System.currentTimeMillis())     // gate khula: user ki baaki baat bhi jaye
-        buf.forEach { sendAudio(it) }
+        // sendLock: shak ke samay ki (purani) awaaz pehle, mic ka naya tukda uske baad (ulti-pulti awaaz = server na samjhe)
+        synchronized(sendLock) {
+            val buf = synchronized(bargeBuf) { bargeBuf.toList().also { bargeBuf.clear() } }
+            bargeIn(why)
+            track?.let { try { it.setVolume(1f) } catch (_: Exception) {} }
+            turnDet.forceSpeech(System.currentTimeMillis())     // gate khula: user ki baaki baat bhi jaye
+            replyWatch.onSpeechStart()                         // nayi baat: iska apna "suna / jawab" hisaab
+            buf.forEach { sendAudio(it) }
+        }
     }
 
     /** Dheere bolne par bhi saaf awaaz Gemini tak (v3.7) */
     private val boost = MicBoost()
 
     private suspend fun micLoop() = coroutineScope {
-        var r = openMic() ?: throw Fatal("माइक नहीं खुला (कोई दूसरा ऐप माइक इस्तेमाल कर रहा है?)")
+        var r = openMic() ?: throw Fatal("माइक नहीं खुला (कोई दूसरा ऐप माइक इस्तेमाल कर रहा है?)", recoverable = true)
         try {
             r.startRecording()
-            if (r.recordingState != AudioRecord.RECORDSTATE_RECORDING) throw Fatal("माइक रिकॉर्डिंग शुरू नहीं हुई")
+            if (r.recordingState != AudioRecord.RECORDSTATE_RECORDING) throw Fatal("माइक रिकॉर्डिंग शुरू नहीं हुई", recoverable = true)
             val buf = ShortArray(CHUNK_SAMPLES)
             val bytes = ByteArray(CHUNK_SAMPLES * 2)
             val zeros = ByteArray(CHUNK_SAMPLES * 2)
@@ -1143,7 +1298,7 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
                     if (errRun >= 5) {           // mic atak gaya -> dobara kholo
                         try { r.stop() } catch (_: Exception) {}; r.release()
                         delay(300)
-                        r = openMic() ?: throw Fatal("माइक दोबारा नहीं खुला")
+                        r = openMic() ?: throw Fatal("माइक दोबारा नहीं खुला", recoverable = true)
                         r.startRecording(); errRun = 0
                     }
                     continue
@@ -1176,19 +1331,19 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
                                 track?.let { try { it.setVolume(0.3f) } catch (_: Exception) {} }
                                 log("तेज़ आवाज़ (rms=${rms.toInt()}, गूँज=${bargeDet.echoLevel().toInt()}, शोर=${bargeDet.ambient.toInt()}) - यूज़र है? शब्द सुन रहा हूँ, DK धीमा")
                                 synchronized(bargeBuf) { bargeBuf.clear(); bargeBuf.addAll(preroll); bargeBuf.addLast(chunk) }
-                                preroll.forEach { caption?.send(it) }; preroll.clear()
-                                caption?.send(chunk)
+                                preroll.forEach { capSend(it) }; preroll.clear()
+                                capSend(chunk)
                             } else {
                                 preroll.addLast(chunk); while (preroll.size > PREROLL_CHUNKS) preroll.removeFirst()
-                                caption?.send(zeros.copyOf())
+                                capSend(zeros, silent = true)
                             }
-                            sendAudio(zeros.copyOf()); gatedChunks++
+                            sendAudio(zeros, silent = true); gatedChunks++
                         }
                         BargeGate.State.TENTATIVE -> {
                             loudMs = if (rms > maxOf(bargeDet.ambient * 2.5, 800.0)) loudMs + CHUNK_MS else 0L
                             synchronized(bargeBuf) { bargeBuf.addLast(chunk); while (bargeBuf.size > 50) bargeBuf.removeFirst() }
-                            caption?.send(chunk)
-                            sendAudio(zeros.copyOf()); gatedChunks++
+                            capSend(chunk)
+                            sendAudio(zeros, silent = true); gatedChunks++
                             if (bargeGate.expired(now, captionOn(), loudMs)) {
                                 // shabd nahi aaye = shor/TV/log. DK ka jawab poori awaaz me chalta rahe
                                 falseAlarms++
@@ -1198,7 +1353,7 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
                                 synchronized(bargeBuf) { bargeBuf.clear() }
                             } else if (bargeGate.state == BargeGate.State.CONFIRMED) confirmBarge("लगातार आवाज़ (caption बंद)")
                         }
-                        BargeGate.State.CONFIRMED -> { sendAudio(chunk); caption?.send(chunk) }
+                        BargeGate.State.CONFIRMED -> { sendAudio(chunk); capSend(chunk) }
                     }
                 } else {
                     // ---- DK chup: phone par hi "bolna shuru / khatam" + SHOR-GATE:
@@ -1209,12 +1364,13 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
                     if (bargeGate.state != BargeGate.State.IDLE) { bargeGate.reset(); track?.let { try { it.setVolume(1f) } catch (_: Exception) {} } }
                     if (DKState.mode == Mode.LISTENING) DKState.level = (rms / 3500.0).toFloat().coerceIn(0f, 1f)
                     val ev = turnDet.feed(rms, now)
-                    if (ev == TurnDetector.Event.SPEECH_START) { preroll.forEach { sendAudio(it); caption?.send(it) }; preroll.clear() }
+                    if (ev == TurnDetector.Event.SPEECH_START) { preroll.forEach { sendAudio(it); capSend(it) }; preroll.clear() }
                     // bolte samay + baat khatam hone tak (aakhri 500ms chup bhi) asli awaaz; warna khaamoshi
-                    if (turnDet.inSpeech || ev == TurnDetector.Event.SPEECH_END) { sendAudio(chunk); caption?.send(chunk) }
+                    // (khaamoshi 1s tak jaati hai, phir audioStreamEnd aur upload band - SilenceStreamGate)
+                    if (turnDet.inSpeech || ev == TurnDetector.Event.SPEECH_END) { sendAudio(chunk); capSend(chunk) }
                     else {
                         preroll.addLast(chunk); while (preroll.size > PREROLL_CHUNKS) preroll.removeFirst()
-                        sendAudio(zeros.copyOf()); caption?.send(zeros.copyOf()); gatedChunks++
+                        sendAudio(zeros, silent = true); capSend(zeros, silent = true); gatedChunks++
                     }
                     when (ev) {
                         TurnDetector.Event.SPEECH_START -> {
@@ -1275,6 +1431,7 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
                     off += n
                     if (g == gen) turnPlayedBytes += n
                 }
+                if (off > 0) timeline.play(System.currentTimeMillis())
                 if (trace.firstChunkAt > 0 && trace.firstPlayAt == 0L && off > 0) {
                     trace.firstPlayAt = System.currentTimeMillis()
                     trace.summary()?.let { sm ->
