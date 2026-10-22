@@ -80,6 +80,26 @@
             android:exported="false"
             android:windowSoftInputMode="adjustResize|stateAlwaysVisible" />
 
+        <!-- DK कंप्यूटर: कई कदम वाला एजेंट (search, वेब, कोड, फ़ाइलें, फ़ोन, कोडिंग, रिमाइंडर) -->
+        <activity
+            android:name=".ComputerActivity"
+            android:exported="false"
+            android:windowSoftInputMode="adjustResize" />
+
+        <receiver
+            android:name=".ComputerAlarm"
+            android:exported="false" />
+
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.files"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/computer_files" />
+        </provider>
+
         <activity
             android:name=".SettingsActivity"
             android:exported="false"
