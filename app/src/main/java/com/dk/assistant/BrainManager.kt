@@ -25,9 +25,20 @@ class BrainManager(private val ctx: Context) {
         private set
 
     private var epoch = Memory.historyEpoch
-    fun reset() { history.clear(); Memory.saveHistory(ctx, history) }
-    /** Memory screen se "baatcheet mitao" hua ho to yahan bhi saaf */
-    private fun syncEpoch() { if (epoch != Memory.historyEpoch) { epoch = Memory.historyEpoch; history.clear() } }
+    private var ver = Memory.historyVersion
+    /** Clear ho to SAB BrainManager saaf (epoch badhta hai) - pehle sirf apni copy saaf hoti thi */
+    fun reset() { history.clear(); Memory.clearHistory(ctx); epoch = Memory.historyEpoch; ver = Memory.historyVersion }
+    /** Memory screen se "baatcheet mitao" hua ho to yahan bhi saaf; kisi aur BrainManager ne nayi baat save ki ho to dobara padho */
+    private fun syncEpoch() {
+        if (epoch != Memory.historyEpoch) { epoch = Memory.historyEpoch; history.clear() }
+        if (ver != Memory.historyVersion) reload()
+    }
+    private fun reload() {
+        synchronized(Memory.historyLock) {
+            val fresh = try { Memory.loadHistory(ctx) } catch (_: Exception) { return }
+            history.clear(); history.addAll(fresh); ver = Memory.historyVersion
+        }
+    }
 
     private fun clientFor(p: Provider): AiClient? {
         val key = Prefs.key(ctx, p.id)
@@ -103,6 +114,7 @@ class BrainManager(private val ctx: Context) {
                 scope.launch(Dispatchers.IO) {
                     val t0 = System.currentTimeMillis()
                     var first = true
+                    var counted = false   // running-- sirf EK baar (khali jawab par do baar ghatne se await hamesha atak jaata tha)
                     try {
                         val full = client.stream(system, hist, prompt) { d ->
                             synchronized(lock) {
@@ -113,18 +125,18 @@ class BrainManager(private val ctx: Context) {
                                 DKLog.d("Pehla shabd ${System.currentTimeMillis() - t0}ms: ${client.label}") }
                             onDelta(d)
                         }
-                        val won = synchronized(lock) { running--; if (winner == null && full.isNotBlank()) winner = p.id; winner == p.id }
+                        val won = synchronized(lock) { running--; counted = true; if (winner == null && full.isNotBlank()) winner = p.id; winner == p.id }
                         if (won) { lastUsed = client.label; result.complete(full) }
                         else if (full.isBlank()) throw AiException(0, "khali jawab")
                     } catch (e: LoserException) {
-                        synchronized(lock) { running-- }
+                        synchronized(lock) { if (!counted) { running--; counted = true } }
                     } catch (e: kotlinx.coroutines.CancellationException) {
                         throw e
                     } catch (e: Exception) {
                         DKLog.d("${client.label} fail: ${e.message}")
                         ProviderHealth.fail(p.id, e)
                         val (wasWinner, noneLeft) = synchronized(lock) {
-                            if (winner != p.id) { errors.add(p to e); running-- }
+                            if (winner != p.id) { errors.add(p to e); if (!counted) { running--; counted = true } }
                             Pair(winner == p.id, winner == null && next >= cands.size && running == 0)
                         }
                         when {
@@ -289,11 +301,16 @@ class BrainManager(private val ctx: Context) {
     }
 
     private fun remember(note: String, answer: String) {
-        history.add(Turn("user", note.take(1500)))
-        history.add(Turn("model", answer.take(1500)))
-        while (history.size > 24) history.removeAt(0)
-        if (history.firstOrNull()?.role == "model") history.removeAt(0)
-        try { Memory.saveHistory(ctx, history.toList()) } catch (_: Exception) {}
+        // File se taaza history lekar usme jodo - warna doosre BrainManager (chat/Live/deep_think) ki baatein mit jaati thi
+        synchronized(Memory.historyLock) {
+            if (ver != Memory.historyVersion) try { val fresh = Memory.loadHistory(ctx); history.clear(); history.addAll(fresh) } catch (_: Exception) {}
+            history.add(Turn("user", note.take(1500)))
+            history.add(Turn("model", answer.take(1500)))
+            while (history.size > 24) history.removeAt(0)
+            if (history.firstOrNull()?.role == "model") history.removeAt(0)
+            try { Memory.saveHistory(ctx, history.toList()) } catch (_: Exception) {}
+            ver = Memory.historyVersion
+        }
     }
 
     private fun parseJson(text: String): JSONObject {

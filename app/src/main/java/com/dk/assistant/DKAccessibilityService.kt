@@ -945,9 +945,25 @@ class DKAccessibilityService : AccessibilityService() {
 
     private suspend fun setSpeaker(on: Boolean): String {
         // Pehle call screen ka "Speaker" button (sabse pakka), phir system tareeka
-        val clicked = clickByText("Speaker", "स्पीकर", "Speakerphone", "लाउडस्पीकर")
-        if (!clicked) calls.speakerApi(on)
+        // Button TOGGLE hai - bina haalat dekhe dabane se "speaker off" par speaker ON ho jaata tha
+        val btn = speakerButton()
+        if (btn == null) { calls.speakerApi(on); return "speaker ${if (on) "on" else "off"}" }
+        val now: Boolean? = if (btn.isCheckable) btn.isChecked else calls.speakerIsOn()
+        if (now == on) return "speaker pehle se ${if (on) "on" else "off"} hai"
+        if (now == null || !btn.performAction(AccessibilityNodeInfo.ACTION_CLICK)) calls.speakerApi(on)
         return "speaker ${if (on) "on" else "off"}"
+    }
+
+    /** Call screen ka "Speaker" button (clickable node) - na mile to null */
+    private fun speakerButton(): AccessibilityNodeInfo? {
+        for (root in allRoots()) for (w in listOf("Speaker", "स्पीकर", "Speakerphone", "लाउडस्पीकर")) {
+            for (n in root.findAccessibilityNodeInfosByText(w)) {
+                var c: AccessibilityNodeInfo? = n; var depth = 0
+                while (c != null && !c.isClickable && depth < 4) { c = c.parent; depth++ }
+                if (c != null && c.isClickable) return c
+            }
+        }
+        return null
     }
 
     private fun whoCalls(): String {

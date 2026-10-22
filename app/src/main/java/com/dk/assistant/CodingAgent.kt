@@ -17,21 +17,82 @@ import java.util.concurrent.TimeUnit
  * Coding ke liye alag AI (lambe jawab, lamba timeout). Settings me alag key/model ho to woh,
  * warna wahi AI jo baatcheet me chal rahi hai.
  */
-class CoderAi(val provider: Provider, private val key: String, val model: String, private val base: String) {
-    val label get() = "${provider.name} ($model)"
+class CoderAi(val provider: Provider, private val key: String, val model: String, private val base: String,
+              /** Doosre API (Groq/OpenRouter/Custom/doosri Gemini key) - limit khatm ho to inpar apne aap */
+              private val fallbacks: List<CoderAi> = emptyList(), note: String = "") {
+    private val selfLabel = "${provider.name} ($model$note)"
+    /** Abhi jo AI chal rahi hai (limit par switch hua ho to wahi dikhe) */
+    val label: String get() = sticky()?.takeIf { l -> fallbacks.any { it.selfLabel == l } } ?: selfLabel
 
-    fun chat(system: String, msgs: List<Pair<String, String>>): String =
+    /**
+     * Ek API ki limit/quota (429) ya server dikkat ho to agla model/API - kaam beech me na ruke.
+     * Pehle chuna hua, phir baaki API. Sab ki limit ek saath khatm ho to ek baar thoda rukkar dobara.
+     */
+    fun chat(system: String, msgs: List<Pair<String, String>>): String {
+        val chain = listOf(this) + fallbacks
+        for (attempt in 0..1) {
+            val ordered = orderChain(chain.map { it.selfLabel }, sticky()).map { l -> chain.first { it.selfLabel == l } }
+            val errs = mutableListOf<Pair<CoderAi, java.io.IOException>>()
+            for (ai in ordered) {
+                try {
+                    val r = ai.chatOne(system, msgs)
+                    val prev = sticky() ?: selfLabel
+                    if (ai.selfLabel != prev) {
+                        val why = errs.lastOrNull()?.let { (who, e) -> "${who.selfLabel}: ${reason(e)}" } ?: "$prev अब नहीं चल रहा था"
+                        DKLog.d("Coder: $why -> ${ai.selfLabel} पर स्विच")
+                        CoderReport.add(why, "अपने आप ${ai.selfLabel} पर स्विच किया, काम बिना रुके जारी रहा")
+                    }
+                    setSticky(if (ai === this) null else ai.selfLabel)
+                    return r
+                } catch (e: java.io.IOException) {
+                    // AiException (429/5xx/401...) ya network timeout - agla API
+                    errs.add(ai to e)
+                    if (chain.size > 1) DKLog.d("Coder: ${ai.selfLabel} -> ${reason(e)}, अगला API")
+                }
+            }
+            val wait = quotaWaitSec(errs.map { ((it.second as? AiException)?.code ?: -1) to ((it.second as? AiException)?.retryAfter ?: 0) })
+            if (attempt == 0 && wait > 0) {
+                CoderReport.add("सारे मॉडल/API की limit एक साथ खत्म (429)", "${wait} सेकंड रुककर दोबारा कोशिश की")
+                DKLog.d("Coder: सब 429 - ${wait}s रुककर फिर")
+                Thread.sleep(wait * 1000L)
+                continue
+            }
+            // पहले चुने API की असली वजह, साथ में बाकी API का हाल
+            val main = errs.firstOrNull { it.first === this } ?: errs.first()
+            val others = errs.filter { it !== main }.joinToString { "${it.first.provider.name}: ${(it.second as? AiException)?.code ?: "network"}" }
+            val e = main.second
+            val msg = (e.message ?: e.javaClass.simpleName) + if (others.isNotBlank()) "\n(दूसरे API भी नहीं चले: $others)" else
+                if (fallbacks.isEmpty()) "\n(सुझाव: Settings में Groq या OpenRouter की फ्री key भी डालें - limit खत्म होने पर एजेंट अपने आप उस पर चला जाएगा)" else ""
+            throw if (e is AiException) AiException(e.code, msg, e.retryAfter) else java.io.IOException(msg, e)
+        }
+        throw AiException(0, "AI fail")
+    }
+
+    private fun chatOne(system: String, msgs: List<Pair<String, String>>): String =
         if (provider.isGemini) gemini(system, msgs) else openAi(system, msgs, 16000)
 
     private fun gemini(system: String, msgs: List<Pair<String, String>>): String {
         // चुना मॉडल -> 3.8 Flash (coding के लिए सबसे अच्छा) -> बाकी नए मॉडल. 2.5 वाले backup नहीं (नए users के लिए बंद)
-        val order = GeminiModels.order(model, listOf(GeminiModels.CODER) + GeminiClient.BACKUP_MODELS)
+        val all = GeminiModels.order(model, listOf(GeminiModels.CODER) + GeminiClient.BACKUP_MODELS)
+        // jis model ki limit abhi khatm hui thi use thodi der chhodo (har kadam par wahi 429 dobara na khaayein)
+        val now = System.currentTimeMillis()
+        val order = all.filter { (cool["${key.takeLast(6)}|$it"] ?: 0L) < now }.ifEmpty { all }
         val errs = mutableListOf<Pair<String, AiException>>()
         for (m in order) {
             var waited = false
             while (true) {
-                try { return geminiOnce(m, system, msgs) } catch (e: AiException) {
+                try {
+                    val r = geminiOnce(m, system, msgs)
+                    if (m != model && errs.isNotEmpty())
+                        CoderReport.add("Gemini ${errs.joinToString { it.first }}: ${reason(errs.last().second)}", "उसी API के $m मॉडल पर अपने आप स्विच किया")
+                    return r
+                } catch (e: AiException) {
                     if (e.code !in listOf(404, 429, 500, 503)) throw e
+                    if (e.code == 429) {
+                        // limit: rukne ki jagah turant agla model (sab khatm ho to chat() ek baar rukta hai)
+                        cool["${key.takeLast(6)}|$m"] = System.currentTimeMillis() + (e.retryAfter.coerceIn(30, 600) * 1000L)
+                        errs.add(m to e); DKLog.d("Coder: $m -> 429, अगला मॉडल"); break
+                    }
                     val w = GeminiModels.waitBeforeRetry(e.code, e.retryAfter)
                     if (!waited && w > 0) {
                         waited = true
@@ -113,7 +174,47 @@ class CoderAi(val provider: Provider, private val key: String, val model: String
             val model = (if (same) "" else Prefs.coderModel(c)).ifBlank { Prefs.model(c, p.id) }
             val base = (if (same) "" else Prefs.coderBase(c)).ifBlank { Prefs.baseUrl(c, p.id) }
             if (key.isBlank() || model.isBlank() || (!p.isGemini && base.isBlank())) return null
-            return CoderAi(p, key, model, base)
+            // baaki API jinki key padi hai (Settings -> "fallback" chalu ho to) - ek ki limit khatm, doosre par kaam jaari
+            val fb = if (!Prefs.fallback(c)) emptyList() else Providers.all.mapNotNull { q ->
+                val k = Prefs.key(c, q.id); val m = Prefs.model(c, q.id); val b = Prefs.baseUrl(c, q.id)
+                if (k.isBlank() || m.isBlank() || (!q.isGemini && b.isBlank())) null
+                else if (q.id == p.id && k == key) null          // wahi API + wahi key = koi fayda nahi
+                else CoderAi(q, k, m, b, note = if (q.id == p.id) ", दूसरी key" else "")
+            }
+            return CoderAi(p, key, model, base, fb)
+        }
+
+        /** Gemini model ki limit kab tak (key ke aakhri 6 akshar|model -> time) */
+        private val cool = java.util.concurrent.ConcurrentHashMap<String, Long>()
+        @Volatile private var stickyLabel: String? = null
+        @Volatile private var stickyUntil = 0L
+        /** Switch ke baad 10 minute usi API par (har kadam par pehle wala 429 na de); phir pehle wale ko dobara mauka */
+        private fun sticky(): String? = stickyLabel?.takeIf { System.currentTimeMillis() < stickyUntil }
+        private fun setSticky(l: String?) { stickyLabel = l; stickyUntil = if (l == null) 0L else System.currentTimeMillis() + 10 * 60_000L }
+
+        /** Jo abhi chal raha (sticky) woh pehle, baaki apne kram me */
+        fun orderChain(labels: List<String>, sticky: String?): List<String> =
+            if (sticky == null || sticky !in labels) labels else listOf(sticky) + labels.filter { it != sticky }
+
+        /** Sab fail aur SAB 429 (limit) -> kitna rukein (sec), 0 = mat ruko. Google ka retryDelay ho to woh (20..90), warna 60 */
+        fun quotaWaitSec(errs: List<Pair<Int, Int>>): Int {
+            if (errs.isEmpty() || errs.any { it.first != 429 }) return 0
+            val hinted = errs.map { it.second }.filter { it > 0 }
+            return if (hinted.isEmpty()) 60 else hinted.minOrNull()!!.coerceIn(20, 90)
+        }
+
+        /** Chhoti Hindi wajah report ke liye */
+        fun reason(e: Exception): String {
+            val code = (e as? AiException)?.code
+            return when (code) {
+                429 -> "free limit / कोटा खत्म (429)"
+                401, 403 -> "key गलत या इजाज़त नहीं ($code)"
+                404 -> "मॉडल नहीं मिला (404)"
+                413 -> "बात बहुत लंबी, इस API की सीमा से बड़ी (413)"
+                500, 502, 503, 504 -> "सर्वर पर भीड़/दिक्कत ($code)"
+                null -> "नेटवर्क दिक्कत (${e.javaClass.simpleName})"
+                else -> "गलती $code: ${e.message?.lineSequence()?.firstOrNull()?.take(80)}"
+            }
         }
     }
 }
@@ -239,7 +340,7 @@ REPLACE>>>
 {"tool":"diff"}                                            -> see all your staged changes as a diff (review before done)
 {"tool":"ask","question":"Hindi question"}                 -> ONLY if the request is truly unclear; waits for the user${if (teamMode) " (TEAM MODE: do NOT use ask - make the most reasonable assumption and mention it in the summary)" else ""}
 {"tool":"suggest","title":"short Hindi title","why":"simple Hindi: why it is needed/useful","task":"exact English task to implement it"} -> PROPOSE something the user did NOT ask for but that is technically needed or clearly better (missing permission, crash risk, security, data loss, obvious UX gap). It is NOT implemented; the user decides later. Then continue the main task.
-{"tool":"done","summary":"Hindi summary (short bullet lines)","commit":"short English commit message"}
+{"tool":"done","summary":"Hindi summary (short bullet lines; if this fixed a bug/error also add: दिक्कत: <real cause>  हल: <what you changed>)","commit":"short English commit message"}
 
 Rules:
 - Work fast: grep to find code, read several files in one call, make several edits in one call.

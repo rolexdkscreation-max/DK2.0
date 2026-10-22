@@ -62,8 +62,8 @@ object CoderTeam {
             } catch (e: CancellationException) {
                 say("e", "टीम का काम रोक दिया।")
             } catch (e: Exception) {
-                val msg = (e.message ?: e.javaClass.simpleName).take(300)
-                say("e", "गलती: $msg")
+                val msg = (e.message ?: e.javaClass.simpleName).take(500)
+                // ek hi baar dikhao (pehle "गलती:" + "त्रुटि आई:" dono me wahi baat do baar aati thi)
                 finish(c, "कोडिंग टीम में त्रुटि आई: $msg", ok = false, title = "कोडिंग टीम: विफलता")
             } finally { a.teamMode = false; a.onSuggest = null; CoderSession.listener?.invoke() }
         }
@@ -73,6 +73,7 @@ object CoderTeam {
 
     private suspend fun pipeline(c: Context, a: CodingAgent, task: String) {
         a.teamMode = true
+        CoderReport.begin()
         a.onSuggest = { t, w, tk -> CoderSession.scope.launch { addSuggestion(c, t, w, tk) } }
 
         say("s", "कोऑर्डिनेटर: काम समझ रहा हूँ…")
@@ -93,13 +94,21 @@ object CoderTeam {
         val summary = out.summary.ifBlank { "काम हो गया।" }
 
         var buildRound = 0
+        var reviewFound: String? = null     // report: reviewer ki pehli pakdi galti (theek hone par jodte hain)
+        var buildErr: String? = null        // report: build kyon fail hua
         while (true) {
             var r: CodingAgent.Review? = null
             for (round in 1..MAX_REVIEW_ROUNDS) {
                 say("s", "रिव्यूअर: जाँच शुरू (राउंड $round)…")
                 r = a.review(task, plan.second, round) { st -> step(st) }
                 val currentR = r
-                if (currentR?.pass == true) { say("d", "रिव्यूअर ✓ पास (राउंड $round)\n${currentR.tested.take(400)}"); break }
+                if (currentR?.pass == true) {
+                    say("d", "रिव्यूअर ✓ पास (राउंड $round)\n${currentR.tested.take(400)}")
+                    reviewFound?.let { CoderReport.add("रिव्यूअर को गड़बड़ी मिली: $it", "बिल्डर ने ठीक की, राउंड $round में रिव्यूअर पास") }
+                    reviewFound = null
+                    break
+                }
+                currentR?.issues?.let { iss -> iss.firstOrNull()?.let { if (reviewFound == null) reviewFound = "${iss.size} — " + it.take(140) } }
                 say("e", "रिव्यूअर ✗ ${currentR?.issues?.size ?: 0} गड़बड़ी (राउंड $round)\n" + (currentR?.issues ?: emptyList()).take(6).joinToString("\n") { "• ${it.take(200)}" })
                 if (round == MAX_REVIEW_ROUNDS) break
                 say("s", "कोऑर्डिनेटर: बिल्डर को ठीक करने भेजा")
@@ -129,11 +138,13 @@ object CoderTeam {
                 return
             }
             if (b.ok) {
+                buildErr?.let { CoderReport.add("GitHub build fail हुआ ($buildRound बार): $it", "बिल्डर ने build log पढ़कर असली वजह ठीक की — अब tests + build सफल") }
                 val prNote = a.pr?.let { "\n🔀 PR #${it.number} review के लिए तैयार — GitHub पर देखकर कोडिंग स्क्रीन पर \"Merge करें\" दबाएँ या DK से बोलें \"PR merge कर दो\"। Merge होते ही GitHub Actions नई APK release बनाएगा (main में अभी कुछ नहीं गया)\n${it.url}" }
                     ?: if (a.canRetryPr) "\n⚠ PR नहीं बना, इसलिए Merge का बटन नहीं है: ${a.prError}\nकोडिंग स्क्रीन पर \"PR फिर बनाएँ\" दबाएँ।" else ""
                 finish(c, summary + "\n\n✓ रिव्यूअर पास • ✓ Push • ✓ GitHub tests + build सफल\n${b.url}$prNote", ok = true); return
             }
             buildRound++
+            if (buildErr == null) buildErr = b.log.lines().firstOrNull { it.startsWith("e: ") || it.contains("error", true) }?.trim()?.take(140) ?: "build log में गलती"
             say("e", "Build fail ✗ (${buildRound}/$MAX_BUILD_ROUNDS)\n${b.url}")
             if (buildRound >= MAX_BUILD_ROUNDS) { finish(c, "$MAX_BUILD_ROUNDS बार ठीक करने के बाद भी build fail。\n${b.url}", ok = false); return }
             say("s", "कोऑर्डिनेटर: build की गलती बिल्डर को भेजी")
@@ -158,6 +169,7 @@ object CoderTeam {
         val repo = a.repo; val base = a.baseBranch
         if (fromVoice) say("u", "🎤 PR #${p.number} merge करो")
         CoderSession.launch(c) {
+            CoderReport.begin()
             say("s", "PR #${p.number} की जाँच (tests/build/conflict) करके merge कर रहा हूँ…")
             val res = try { a.mergePr() } catch (e: CancellationException) { throw e } catch (e: Exception) {
                 val m = (e.message ?: e.javaClass.simpleName).take(300)
@@ -252,7 +264,8 @@ acceptance must only cover what the user asked. suggestions: ONLY things the use
     }
 
     private fun finish(c: Context, text: String, ok: Boolean, title: String? = null, spoken: String? = null) {
-        say(if (ok) "d" else "e", (if (ok) "✅ " else "⚠ ") + text)
+        // हर काम के बाद छोटी रिपोर्ट: क्या दिक्कत आई (bug/error/limit) और कैसे ठीक हुई
+        say(if (ok) "d" else "e", (if (ok) "✅ " else "⚠ ") + text + "\n\n" + CoderReport.text(if (ok) null else text))
         val head = title ?: if (ok) "कोडिंग टीम: काम पूरा" else "कोडिंग टीम: काम अधूरा"
         notifyUser(c, head, text.lines().first().take(120))
         val prReady = CoderSession.agent?.pr != null
