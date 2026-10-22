@@ -774,6 +774,17 @@ class SettingsActivity : AppCompatActivity() {
             pcTools.clear()
             ComputerAgent.TOOL_IDS.forEach { id -> pcTools[id] = switch(box, names[id] ?: id, Prefs.computerTool(this, id)) }
         }
+        card("तय किए काम", "रिमाइंडर और बाद में चलने वाले काम — फ़ोन restart होने पर भी याद रहते हैं") { box ->
+            val jobs = ComputerJobs.all(this)
+            val fmt = java.text.SimpleDateFormat("d MMM, HH:mm", java.util.Locale("hi", "IN"))
+            hint(box, if (jobs.isEmpty()) "अभी कोई काम तय नहीं है। बोलिए: \"डीके कंप्यूटर, 30 मिनट बाद मुझे पानी पीने की याद दिलाना\""
+                else jobs.take(10).joinToString("\n") { "⏰ " + fmt.format(java.util.Date(it.at)) + " — " + it.task.take(70) } +
+                    if (jobs.size > 10) "\n…और ${jobs.size - 10}" else "")
+            if (jobs.isNotEmpty()) row(box, button("सारे तय काम रद्द करें") {
+                val n = ComputerJobs.cancelAll(this); toast("$n काम रद्द किए"); recreate()
+            })
+            hint(box, "कुछ फ़ोन (Xiaomi, Oppo, Vivo, Realme) में Settings → Apps → DK → Autostart चालू करना पड़ता है, तभी restart के बाद काम चलते हैं।")
+        }
     }
 
     // ------------------------------------------------------------ coding agent + GitHub

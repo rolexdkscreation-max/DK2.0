@@ -514,6 +514,11 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
                 .put("parameters", JSONObject().put("type", "OBJECT")
                     .put("properties", JSONObject().put("task", JSONObject().put("type", "STRING").put("description", "The full coding task (or the suggestion decision) in the user's words")))
                     .put("required", JSONArray().put("task"))))
+            .put(JSONObject().put("name", "computer_task")
+                .put("description", "Give a multi-step task to DK Computer, the user's autonomous agent: web research, reading websites, calculations, making files/PDF/tables/reports, reminders or tasks at a later time (survive phone restart), and chains of phone actions. Use it when the user says DK कंप्यूटर / कंप्यूटर से, or asks to research and make a PDF/file/report/table, or to remind/do something later. Also use it to pass the user's हाँ/नहीं when DK Computer asked for permission (task = the user's words). It runs in the background, shows each step on the DK कंप्यूटर screen and notifies when done; tell the user it has started.")
+                .put("parameters", JSONObject().put("type", "OBJECT")
+                    .put("properties", JSONObject().put("task", JSONObject().put("type", "STRING").put("description", "The full task in the user's words, with all details (or just हाँ / नहीं for a permission)")))
+                    .put("required", JSONArray().put("task"))))
             .put(JSONObject().put("name", "remember_fact")
                 .put("description", "Save a personal fact or preference the user told about themselves.")
                 .put("parameters", JSONObject().put("type", "OBJECT")
@@ -829,6 +834,21 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
                         DKState.lastReply.takeIf { it != before && it.isNotBlank() } ?: "done"
                     }
                     "remember_fact" -> { Memory.addFact(svc, args.optString("fact")); "saved" }
+                    "computer_task" -> {
+                        val t = args.optString("task").trim()
+                        val yn = if (ComputerSession.ask != null) ComputerVoice.yesNo(t) else null
+                        when {
+                            yn != null -> { ComputerSession.answer(yn); if (yn) "Permission given - DK Computer continues." else "Permission refused - DK Computer will not do it." }
+                            !Prefs.computerOn(svc) -> "DK Computer is OFF in settings - tell the user to turn it on (सेटिंग्स → DK कंप्यूटर)."
+                            t.length < 3 -> "Ask the user what DK Computer should do."
+                            else -> {
+                                val wasBusy = ComputerSession.busy
+                                ComputerSession.start(svc, t, voice = true)?.let { "Could not start: $it" }
+                                    ?: if (wasBusy) "Queued - DK Computer will start it after the current task."
+                                    else "Started. DK Computer shows each step on its screen and will notify when done (result also in the notification)."
+                            }
+                        }
+                    }
                     "coding_task" -> {
                         val t = args.optString("task")
                         // pehle setting jaancho - band ho to merge/sujhav ka faisla bhi nahi (AgentRunner jaisa)

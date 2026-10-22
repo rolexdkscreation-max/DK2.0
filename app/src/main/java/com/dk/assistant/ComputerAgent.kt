@@ -31,7 +31,9 @@ object ComputerSession {
     @Volatile var visible = false
     val busy get() = job?.isActive == true
     private var agent: ComputerAgent? = null
-    private val queue = ArrayDeque<Pair<String, Boolean>>()
+    private val queue = ArrayDeque<Triple<String, Boolean, Boolean>>()
+    /** अभी वाला काम आवाज़ से आया? (तो पूरा होने पर / इजाज़त के लिए बोलकर बताओ) */
+    @Volatile var voiceRunning = false
 
     /** फ़ोन का संवेदनशील काम करने से पहले पूछना */
     class Ask(val text: String, val answer: CompletableDeferred<Boolean>)
@@ -40,16 +42,17 @@ object ComputerSession {
     fun add(role: String, t: String) { lines.add(Line(role, t)); while (lines.size > 400) lines.removeAt(0); listener?.invoke() }
 
     /** काम शुरू करो (या कतार में). null = शुरू/कतार, वरना वजह */
-    fun start(c: Context, task: String, background: Boolean = false): String? {
+    fun start(c: Context, task: String, background: Boolean = false, voice: Boolean = false): String? {
         val ctx = c.applicationContext
         if (!Prefs.computerOn(ctx)) return "DK कंप्यूटर बंद है — Settings → DK कंप्यूटर में चालू करें"
         if (CoderAi.forComputer(ctx) { _, _ -> } == null) return "कोई AI key नहीं मिली — Settings → AI दिमाग में key डालें"
         if (busy) {
-            queue.addLast(task to background)
-            add("u", task); add("s", "कतार में रखा (${queue.size}) — अभी वाला काम पूरा होते ही शुरू होगा")
+            queue.addLast(Triple(task, background, voice))
+            add("u", (if (voice) "🎤 " else "") + task); add("s", "कतार में रखा (${queue.size}) — अभी वाला काम पूरा होते ही शुरू होगा")
             return null
         }
-        add("u", task)
+        add("u", (if (voice) "🎤 " else "") + task)
+        voiceRunning = voice
         val a = agent ?: ComputerAgent(ctx).also { agent = it }
         val j = scope.launch {
             try {
@@ -57,6 +60,7 @@ object ComputerSession {
                 out.files.forEach { add("f", it) }
                 add("d", out.text + "\n\n" + out.report)
                 if (!visible || background) notifyUser(ctx, if (out.question) "DK कंप्यूटर को जानकारी चाहिए" else "DK कंप्यूटर: काम पूरा", out.text.take(300))
+                if (voice) speak(ComputerVoice.spoken(out.text, out.files.size, out.question))
             } catch (e: CancellationException) {
                 add("e", "काम रोक दिया।")
                 throw e
@@ -64,25 +68,26 @@ object ComputerSession {
                 val m = (e.message ?: e.javaClass.simpleName).take(500)
                 add("e", "गलती: $m\n\n" + a.reportText(m))
                 if (!visible || background) notifyUser(ctx, "DK कंप्यूटर: काम रुका", m.take(200))
+                if (voice) speak("DK कंप्यूटर का काम पूरा नहीं हो पाया। वजह स्क्रीन में लिखी है।")
             }
         }
         job = j
         j.invokeOnCompletion { cause ->
             scope.launch {
-                ask?.answer?.complete(false); ask = null
+                ask?.answer?.complete(false); ask = null; voiceRunning = false
                 if (cause is CancellationException) { if (queue.isNotEmpty()) add("s", "कतार के ${queue.size} काम भी हटा दिए"); queue.clear() }
                 listener?.invoke()
-                if (!busy) queue.removeFirstOrNull()?.let { (t, bg) -> runQueued(ctx, t, bg) }
+                if (!busy) queue.removeFirstOrNull()?.let { (t, bg, v) -> runQueued(ctx, t, bg, v) }
             }
         }
         listener?.invoke()
         return null
     }
 
-    private fun runQueued(c: Context, t: String, bg: Boolean) {
+    private fun runQueued(c: Context, t: String, bg: Boolean, v: Boolean) {
         // कतार वाला काम पहले ही "आप" वाली लाइन में दिख चुका - दोबारा नहीं
         val before = lines.size
-        start(c, t, bg)?.let { add("e", it) }
+        start(c, t, bg, v)?.let { add("e", it) }
         if (lines.size > before && lines.getOrNull(before)?.role == "u") lines.removeAt(before)
         add("s", "कतार का अगला काम शुरू — ${t.take(80)}")
     }
@@ -98,6 +103,7 @@ object ComputerSession {
         ask = a
         listener?.invoke()
         if (!visible) notifyUser(c, "DK कंप्यूटर: इजाज़त चाहिए", text.take(200))
+        if (voiceRunning) speak("DK कंप्यूटर को इजाज़त चाहिए: ${text.take(160)}। बोलिए हाँ या नहीं।")
         val r = withTimeoutOrNull(3 * 60_000L) { a.answer.await() } ?: false
         ask = null
         listener?.invoke()
@@ -106,7 +112,14 @@ object ComputerSession {
 
     fun answer(yes: Boolean) { ask?.answer?.complete(yes) }
 
-    private fun notifyUser(c: Context, title: String, text: String) = try {
+    /** आवाज़ से काम आया हो तो DK बोलकर बताए (Live बातचीत चल रही हो तो नहीं - वहाँ notification) */
+    private fun speak(t: String) {
+        val svc = DKAccessibilityService.instance ?: return
+        if (DKState.live || t.isBlank()) return
+        svc.scope.launch { try { svc.speaker.speak(t) } catch (_: Exception) {} }
+    }
+
+    fun notifyUser(c: Context, title: String, text: String) = try {
         val nm = c.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
         if (Build.VERSION.SDK_INT >= 26 && nm.getNotificationChannel("dk_computer") == null)
             nm.createNotificationChannel(NotificationChannel("dk_computer", "DK कंप्यूटर", NotificationManager.IMPORTANCE_DEFAULT))
@@ -318,7 +331,7 @@ ${if (facts.isNotBlank()) "\nWHAT YOU KNOW ABOUT THE USER:\n$facts" else ""}
             "phone_task" to "phone_task {\"request\":\"Hindi command, e.g. YouTube खोलकर lofi songs चलाओ\"} — control the phone (apps, messages, calls, settings)",
             "coding_task" to "coding_task {\"task\":\"...\"} — give a code change to DK's coding team (user's GitHub repo); runs in background",
             "remember" to "remember {\"fact\":\"...\"} — save a long-term fact about the user",
-            "schedule" to "schedule {\"task\":\"...\",\"minutes\":30} or {\"task\":\"...\",\"at\":\"18:30\"} — run a DK Computer task later (reminders, later checks)"
+            "schedule" to "schedule {\"task\":\"...\",\"minutes\":30} or {\"task\":\"...\",\"at\":\"18:30\"} — run a DK Computer task later (reminders, later checks); saved on the phone, survives restart"
         )
 
         /** AI का जवाब -> टूल कॉल (```json fence, आगे-पीछे का text, "answer" बिना tool भी चलेगा) */

@@ -1,15 +1,12 @@
 package com.dk.assistant
 
 import android.annotation.SuppressLint
-import android.app.AlarmManager
-import android.app.PendingIntent
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.graphics.Color
 import android.graphics.Typeface
 import android.graphics.pdf.PdfDocument
-import android.os.Build
 import android.text.Layout
 import android.text.StaticLayout
 import android.text.TextPaint
@@ -310,21 +307,22 @@ object ComputerTools {
     }
 
     fun schedule(c: Context, task: String, at: Long): String {
-        val am = c.getSystemService(AlarmManager::class.java) ?: return "ERROR: AlarmManager नहीं"
-        val id = (at / 1000 % 100000).toInt() + 20000
-        val pi = PendingIntent.getBroadcast(c, id, Intent(c, ComputerAlarm::class.java).putExtra("task", task),
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
-        // exact alarm की इजाज़त ज़रूरी नहीं - कुछ मिनट आगे-पीछे चल सकता है
-        if (Build.VERSION.SDK_INT >= 23) am.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, at, pi) else am.set(AlarmManager.RTC_WAKEUP, at, pi)
+        // फ़ोन में सेव -> restart/update के बाद ComputerBoot फिर से लगाता है
+        ComputerJobs.add(c, at, task)
         val t = java.text.SimpleDateFormat("d MMM, HH:mm", java.util.Locale("hi", "IN")).format(java.util.Date(at))
-        return "तय हो गया: $t पर यह काम चलेगा — \"${task.take(80)}\" (फ़ोन restart हुआ तो रद्द हो जाएगा)"
+        return "तय हो गया: $t पर यह काम चलेगा — \"${task.take(80)}\" (फ़ोन restart होने पर भी याद रहेगा)"
     }
 }
 
 /** तय समय पर DK कंप्यूटर का काम चलाओ (नतीजा notification + कंप्यूटर स्क्रीन में) */
 class ComputerAlarm : BroadcastReceiver() {
     override fun onReceive(c: Context, i: Intent) {
+        val ctx = c.applicationContext
+        val id = i.getIntExtra("id", -1)
+        if (id >= 0) try { ComputerJobs.remove(ctx, id) } catch (_: Exception) {}
         val t = i.getStringExtra("task")?.takeIf { it.isNotBlank() } ?: return
-        ComputerSession.start(c.applicationContext, "⏰ तय किया हुआ काम: $t", background = true)
+        val late = if (i.getBooleanExtra("late", false)) " (फ़ोन बंद/restart था, इसलिए देर से चला)" else ""
+        ComputerSession.start(ctx, "⏰ तय किया हुआ काम$late: $t", background = true)
+            ?.let { ComputerSession.notifyUser(ctx, "DK कंप्यूटर: तय काम नहीं चला", it) }
     }
 }

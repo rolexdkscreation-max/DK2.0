@@ -9,6 +9,7 @@
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.VIBRATE" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <uses-permission android:name="android.permission.READ_PHONE_STATE" />
     <uses-permission android:name="android.permission.READ_CALL_LOG" />
     <uses-permission android:name="android.permission.READ_CONTACTS" />
@@ -89,6 +90,17 @@
         <receiver
             android:name=".ComputerAlarm"
             android:exported="false" />
+
+        <!-- फ़ोन restart / ऐप update के बाद DK कंप्यूटर के तय काम फिर से लगाना -->
+        <receiver
+            android:name=".ComputerBoot"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+                <action android:name="android.intent.action.QUICKBOOT_POWERON" />
+            </intent-filter>
+        </receiver>
 
         <provider
             android:name="androidx.core.content.FileProvider"
