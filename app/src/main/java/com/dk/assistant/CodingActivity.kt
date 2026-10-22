@@ -155,6 +155,53 @@ class CodingActivity : AppCompatActivity() {
         top.addView(smallBtn("नया") { newSession() }, LinearLayout.LayoutParams(-2, -2).apply { marginStart = (6 * dp).toInt() })
         col.addView(top)
 
+        // Loading / Pulsing animation jab coder busy ho
+        val loadingBar = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
+            setBackgroundResource(R.drawable.glass_card)
+            val p = (10 * dp).toInt(); setPadding(p, (6 * dp).toInt(), p, (6 * dp).toInt())
+            visibility = View.GONE
+        }
+        val spinnerTv = TextView(this).apply {
+            text = "⏳ डीके एजेंट काम कर रहा है..."
+            textSize = 13f; setTextColor(0xFF00E676.toInt())
+        }
+        loadingBar.addView(spinnerTv)
+        col.addView(loadingBar, LinearLayout.LayoutParams(-1, -2).apply { topMargin = (6 * dp).toInt() })
+
+        val animHandler = android.os.Handler(android.os.Looper.getMainLooper())
+        var animDotCount = 0
+        val animRunnable = object : Runnable {
+            override fun run() {
+                if (CoderSession.busy) {
+                    loadingBar.visibility = View.VISIBLE
+                    send.setImageResource(android.R.drawable.ic_menu_close_clear_cancel)
+                    animDotCount = (animDotCount + 1) % 4
+                    val dots = ".".repeat(animDotCount)
+                    spinnerTv.text = "⏳ डीके एजेंट काम कर रहा है$dots"
+                    animHandler.postDelayed(this, 500)
+                } else {
+                    loadingBar.visibility = View.GONE
+                    send.setImageResource(R.drawable.ic_send)
+                    animHandler.removeCallbacks(this)
+                }
+            }
+        }
+        CoderSession.listener = {
+            refresh()
+            if (CoderSession.busy) {
+                animHandler.removeCallbacks(animRunnable)
+                animHandler.post(animRunnable)
+            } else {
+                animHandler.removeCallbacks(animRunnable)
+                loadingBar.visibility = View.GONE
+                send.setImageResource(R.drawable.ic_send)
+            }
+        }
+        if (CoderSession.busy) {
+            animHandler.post(animRunnable)
+        }
+
         scroll = ScrollView(this).apply { isFillViewport = true }
         list = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(0, (8 * dp).toInt(), 0, (8 * dp).toInt()) }
         scroll.addView(list)
