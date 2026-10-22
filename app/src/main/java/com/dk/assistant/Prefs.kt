@@ -166,7 +166,12 @@ object Prefs {
     /** Multi-agent coding team (Builder -> Reviewer -> Coordinator), ek baar bolo baaki apne-aap */
     fun coderTeam(c: Context) = sp(c).getBoolean("coder_team", true)
     /** 7 एजेंट वाला नया सिस्टम (मैनेजर/प्लानर/कोडर/रिव्यूअर/टेस्टर/डिबगर/गिट). बंद = पुराना एजेंट/टीम जैसी की तैसी */
-    fun coderSeven(c: Context) = sp(c).getBoolean("coder_seven", false)
+    fun coderSeven(c: Context): Boolean {
+        val p = sp(c)
+        // 11-एजेंट सिस्टम अब default चालू (एक बार, user के कहने पर). बाद में Settings से बंद किया तो बंद ही रहेगा
+        if (!p.getBoolean("eleven_default_v1", false)) p.edit().putBoolean("coder_seven", true).putBoolean("eleven_default_v1", true).apply()
+        return p.getBoolean("coder_seven", true)
+    }
     /** user ने खुद नॉर्मल मोड चुना (GitHub होते हुए भी गिट के बिना) */
     fun coderNormal(c: Context) = sp(c).getBoolean("coder_normal", false)
     /** Coding agent ka khula PR (app restart ke baad bhi "Merge करें" card ke liye) */

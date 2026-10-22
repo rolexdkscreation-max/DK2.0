@@ -59,6 +59,8 @@ class SevenTeam(
     private val ai: TeamAi,
     private val files: TeamFiles,
     private val git: TeamGit?,
+    /** true = 11-एजेंट (प्रॉम्प्ट इंजीनियर, नक्शा+खोज, जगह-जाँच, परफॉरमेंस, QA). false = पुराना 7-एजेंट क्रम जैसा का तैसा */
+    private val full: Boolean = false,
     private val ev: (Agent, String) -> Unit
 ) {
     data class Outcome(val report: String, val files: Map<String, String?>, val testOk: Boolean?, val mode: Seven.Mode, val answerOnly: Boolean = false)
@@ -75,6 +77,16 @@ class SevenTeam(
     private var lastTest: TeamTest? = null
     private var noCi = false
     private var commitMsg: Pair<String, String>? = null
+    // 11-एजेंट
+    private var spec = ""
+    private var notTouch = listOf<String>()
+    private var area = listOf<String>()
+    private var repoMap: String? = null
+    private var qaOk = false
+    private var qaRounds = 0
+    private var qaFix = ""
+    private var qaChecks = listOf<String>()
+    private val perfNotes = mutableListOf<String>()
 
     companion object {
         const val FILE_CHARS = 40_000          // एक फ़ाइल इससे बड़ी = anchor के आस-पास का हिस्सा
@@ -82,24 +94,91 @@ class SevenTeam(
         const val LIST_MAX = 800
         /** गिट: रिपो में GitHub Actions का कोई workflow नहीं */
         const val NO_CI = "NO_CI"
+        /** QA कितनी बार काम वापस भेज सकता है (फिर रुककर user को रिपोर्ट) */
+        const val QA_ROUNDS = 2
     }
 
-    suspend fun run(userTask: String): Outcome {
+    // ------------------------------------------------------------------ समझ (मैनेजर + प्रॉम्प्ट इंजीनियर) - code छूने से पहले
+    /**
+     * मैनेजर काम का प्रकार पहचाने, प्रॉम्प्ट इंजीनियर user की बात को साफ़ spec में बदले (नक्शा + खोज से जगह ढूँढकर).
+     * यहाँ कोई branch / बदलाव नहीं. नतीजा user को दिखाकर "हाँ" का इंतज़ार - फिर run(task, समझ).
+     */
+    suspend fun understand(userTask: String): SevenPlus.Understanding {
         task = userTask
-        // 1. मैनेजर: काम समझो
         ev(Agent.MANAGER, "काम समझ रहा हूँ…")
         val fileList = files.list()
         val m = askJson(Agent.MANAGER, "USER REQUEST:\n$task\n\nMODE: $mode\nFILES IN WORKSPACE (${fileList.size}):\n" + fileList.take(150).joinToString("\n"))
         val kind = Seven.kindOf(m?.optString("kind"), task)
+        val brief0 = m?.optString("brief").orEmpty().trim()
+        val acc0 = Seven.strings(m?.optJSONArray("acceptance"))
         if (kind == Seven.Kind.QUESTION) {
             val ans = m?.optString("answer").orEmpty().trim()
             if (ans.isNotBlank()) {
                 ev(Agent.MANAGER, "यह सवाल है — कोड बदलने की ज़रूरत नहीं")
-                return Outcome(ans, emptyMap(), null, mode, answerOnly = true)
+                return SevenPlus.Understanding(kind, brief0, "", "", emptyList(), emptyList(), emptyList(), emptyList(), ans)
             }
         }
-        brief = m?.optString("brief").orEmpty().trim()
-        acceptance = Seven.strings(m?.optJSONArray("acceptance"))
+        val k = if (kind == Seven.Kind.QUESTION) Seven.Kind.FEATURE else kind
+        ev(Agent.MANAGER, if (k == Seven.Kind.BUG) "यह बग ठीक करने का काम लगता है → प्रॉम्प्ट इंजीनियर साफ़ करेगा, फिर डिबगर जड़ ढूँढेगा"
+            else "यह नया फ़ीचर/बदलाव लगता है → प्रॉम्प्ट इंजीनियर साफ़ करेगा कि ठीक-ठीक क्या और कहाँ")
+        ev(Agent.PROMPT, "आपकी बात को साफ़ काम में बदल रहा हूँ — रिपो का नक्शा देखकर जगह भी ढूँढ रहा हूँ…")
+        val ws = try { workspace() } catch (_: Exception) { emptyMap() }
+        val msgs = mutableListOf("user" to ("USER REQUEST (user's own words):\n$task\n\nMANAGER: kind=${k.name.lowercase()}" +
+            (if (brief0.isNotBlank()) "; brief=$brief0" else "") + "\nMODE: $mode\n" +
+            "REPO MAP (file: classes / functions / ids):\n" + map(ws) + "\nFILE LIST (${fileList.size}):\n" + fileList.take(400).joinToString("\n")))
+        for (round in 0..4) {
+            val reply = ai.ask(Agent.PROMPT, Seven.Prompts.PROMPT, msgs)
+            val terms = SevenPlus.RepoSearch.terms(reply)
+            val reads = Seven.planReads(reply)
+            if (round < 4 && terms != null) {
+                ev(Agent.PROMPT, "रिपो में खोज रहा हूँ: " + terms.joinToString())
+                msgs.add("model" to reply); msgs.add("user" to SevenPlus.RepoSearch.search(ws, terms) + "\nNow reply with the JSON, or search/read more.")
+                continue
+            }
+            if (round < 4 && reads != null) {
+                ev(Agent.PROMPT, "पढ़ रहा हूँ: " + reads.joinToString())
+                msgs.add("model" to reply); msgs.add("user" to readFiles(reads) + "\nNow reply with the JSON, or search/read more.")
+                continue
+            }
+            val o = Seven.json(reply)
+            if (o != null && (o.has("understood") || o.has("spec"))) {
+                val u = SevenPlus.Understanding.parse(o, k, brief0, acc0)
+                ev(Agent.PROMPT, if (u.needsAnswer) "कुछ बातें साफ़ नहीं — आपसे पूछ रहा हूँ" else "समझ तैयार — आपकी मंज़ूरी का इंतज़ार")
+                return u
+            }
+            msgs.add("model" to reply); msgs.add("user" to "Reply ONLY the JSON {\"understood\":…,\"spec\":…,\"acceptance\":[…],\"not_touch\":[…],\"area\":[…],\"questions\":[…]}")
+        }
+        ev(Agent.PROMPT, "पूरा spec नहीं बना — मैनेजर की समझ दिखा रहा हूँ")
+        return SevenPlus.Understanding(k, brief0, brief0.ifBlank { task.take(300) }, brief0, acc0, emptyList(), emptyList(), emptyList())
+    }
+
+    private fun map(ws: Map<String, String>): String = repoMap ?: SevenPlus.RepoMap.build(ws).also { repoMap = it }
+
+    /** @param pre user की मंज़ूर की हुई समझ (11-एजेंट). null = मैनेजर यहीं समझेगा (पुराना क्रम) */
+    suspend fun run(userTask: String, pre: SevenPlus.Understanding? = null): Outcome {
+        task = userTask
+        val kind: Seven.Kind
+        if (pre != null) {
+            // 1. मैनेजर: समझ user ने मंज़ूर कर दी - वही spec सबको
+            kind = pre.kind
+            spec = pre.spec; brief = pre.spec.ifBlank { pre.brief }; acceptance = pre.acceptance; notTouch = pre.notTouch; area = pre.area
+            ev(Agent.MANAGER, "आपकी मंज़ूरी मिली — मंज़ूर की हुई समझ के हिसाब से काम सौंप रहा हूँ")
+        } else {
+            // 1. मैनेजर: काम समझो
+            ev(Agent.MANAGER, "काम समझ रहा हूँ…")
+            val fileList = files.list()
+            val m = askJson(Agent.MANAGER, "USER REQUEST:\n$task\n\nMODE: $mode\nFILES IN WORKSPACE (${fileList.size}):\n" + fileList.take(150).joinToString("\n"))
+            kind = Seven.kindOf(m?.optString("kind"), task)
+            if (kind == Seven.Kind.QUESTION) {
+                val ans = m?.optString("answer").orEmpty().trim()
+                if (ans.isNotBlank()) {
+                    ev(Agent.MANAGER, "यह सवाल है — कोड बदलने की ज़रूरत नहीं")
+                    return Outcome(ans, emptyMap(), null, mode, answerOnly = true)
+                }
+            }
+            brief = m?.optString("brief").orEmpty().trim()
+            acceptance = Seven.strings(m?.optJSONArray("acceptance"))
+        }
         val bug = kind == Seven.Kind.BUG
         ev(Agent.MANAGER, (if (bug) "यह बग ठीक करने का काम है → डिबगर पहले जड़ ढूँढेगा" else "यह नया फ़ीचर/बदलाव है → प्लानर पहले फ़ाइलें पढ़ेगा") +
             if (acceptance.isNotEmpty()) "\nपूरा होने की शर्तें:\n" + acceptance.joinToString("\n") { "• $it" } else "")
@@ -114,13 +193,15 @@ class SevenTeam(
         // 3. प्लान (बग: पहले डिबगर)
         var rootCause = ""
         val plan = if (bug) {
-            val d = debug("USER BUG REPORT:\n$task", repeat = false)
+            val d = debug("USER BUG REPORT:\n$task" + if (spec.isNotBlank()) "\nSPEC (approved by the user): $spec" else "", repeat = false)
                 ?: return finish(false, "डिबगर बग की जड़ नहीं ढूँढ पाया — थोड़ी और जानकारी दें (कब होता है, क्या एरर दिखता है)")
             rootCause = d.second
             makePlan("MINIMAL FIX for this bug.\nROOT CAUSE: ${d.second}\nFIX: ${d.third}", d.first.files)
         } else makePlan(task + if (brief.isNotBlank()) "\n(Manager brief: $brief)" else "", emptyList())
         plan ?: return finish(false, "प्लानर प्लान नहीं बना पाया: $lastBlock")
         if (!execute(plan, emptySet())) return finish(false, lastBlock)
+        // 3b. परफॉरमेंस: बदले code में UI जाम / leak / बेवजह का काम
+        if (full) perf()
 
         // 4. टेस्टर ⇄ डिबगर चक्र
         val sigs = mutableListOf<String>()
@@ -128,6 +209,21 @@ class SevenTeam(
             val t = test(rootCause)
             lastTest = t
             if (t.ok == true) {
+                // QA: build पास - पर क्या काम सच में और पूरा हुआ? (PR से पहले)
+                if (full && !qaOk) {
+                    val miss = qa()
+                    if (miss.isNotEmpty()) {
+                        qaRounds++
+                        if (qaRounds > QA_ROUNDS) return finish(false, "QA ने $QA_ROUNDS बार सुधार के बाद भी काम पूरा नहीं माना: " + miss.joinToString("; ").take(300))
+                        ev(Agent.MANAGER, "QA ने कमी बताई — प्लानर से सुधार करवा रहा हूँ (राउंड $qaRounds/$QA_ROUNDS)")
+                        val fix = makePlan("QA FOUND THE TASK INCOMPLETE OR WRONG.\nMISSING:\n" + miss.joinToString("\n") { "- $it" } +
+                            (if (qaFix.isNotBlank()) "\nQA SUGGESTED FIX: $qaFix" else ""), files.staged().keys.toList())
+                            ?: return finish(false, "QA की बताई कमी का प्लान नहीं बना: $lastBlock")
+                        if (!execute(fix, emptySet())) return finish(false, lastBlock)
+                        continue
+                    }
+                    qaOk = true
+                }
                 passNote = t.note
                 ev(Agent.TESTER, (if (t.stage == TeamTest.BRANCH) "✓ PR से पहले branch पर build + tests पास" else if (t.stage == TeamTest.PR) "✓ PR का चेक पास" else "✓ टेस्ट + बिल्ड पास") +
                     if (t.url.isNotBlank()) "\n${t.url}" else "")
@@ -183,19 +279,30 @@ class SevenTeam(
             (if (acceptance.isNotEmpty()) "ACCEPTANCE:\n" + acceptance.joinToString("\n") { "- $it" } + "\n" else "") +
             (if (hint.isNotEmpty()) "DEBUGGER SAYS THESE FILES: ${hint.joinToString()}\n" else "") +
             (if (changes.isNotEmpty()) "ALREADY CHANGED IN THIS TASK: ${changes.keys.joinToString()}\n" else "") +
+            (if (full && notTouch.isNotEmpty()) "DO NOT CHANGE (user's existing features): " + notTouch.joinToString("; ") + "\n" else "") +
+            (if (full && area.isNotEmpty()) "PROMPT ENGINEER - LIKELY AREA (verify by reading):\n" + area.joinToString("\n") { "- $it" } + "\n" else "") +
+            (if (full) "REPO MAP (file: classes / functions / ids):\n" + map(ws()) + "\n" else "") +
             "FILE LIST (${list.size}):\n" + list.take(LIST_MAX).joinToString("\n") + if (list.isEmpty()) "(empty - create new files)" else ""))
         var usesFixed = false
-        for (round in 0..3) {
+        var whereFixed = 0
+        val last = if (full) 6 else 3
+        for (round in 0..last) {
             val reply = ai.ask(Agent.PLANNER, Seven.Prompts.PLANNER, msgs)
+            val terms = SevenPlus.RepoSearch.terms(reply)
+            if (terms != null && round < last) {
+                ev(Agent.PLANNER, "रिपो में खोज रहा हूँ (कहाँ लिखना है): " + terms.joinToString())
+                msgs.add("model" to reply); msgs.add("user" to SevenPlus.RepoSearch.search(ws(), terms) + "\nNow READ the right files ({\"read\":[…]}) or reply with the JSON plan.")
+                continue
+            }
             val reads = Seven.planReads(reply)
-            if (reads != null && round < 3) {
+            if (reads != null && round < last) {
                 ev(Agent.PLANNER, "पूरी फ़ाइलें पढ़ रहा हूँ: " + reads.joinToString())
                 msgs.add("model" to reply); msgs.add("user" to readFiles(reads) + "\nNow reply with the JSON plan, or read more files.")
                 continue
             }
             val plan = Seven.parsePlan(reply)
             // प्लानर ने जो नाम (uses) बताए - उनकी फ़ाइल खोलकर पक्का: सच में हैं?
-            if (plan != null && round < 3 && !usesFixed) {
+            if (plan != null && round < last && !usesFixed) {
                 val bad = badUses(plan)
                 if (bad.isNotEmpty()) {
                     usesFixed = true
@@ -206,8 +313,22 @@ class SevenTeam(
                     continue
                 }
             }
+            // जगह-जाँच (11-एजेंट): हर कदम की anchor फ़ाइल में सच में है? नई फ़ाइल पहले से तो नहीं?
+            if (full && plan != null && round < last && whereFixed < 2) {
+                val m = readMap(plan.steps.map { it.file }.distinct())
+                val bad = SevenPlus.Where.problems(plan) { m[it] }
+                if (bad.isNotEmpty()) {
+                    whereFixed++
+                    ev(Agent.PLANNER, "प्लान की जगह गलत निकली — खोजकर/पढ़कर सही जगह ढूँढ रहा हूँ:\n" + bad.joinToString("\n") { "• $it" })
+                    msgs.add("model" to reply)
+                    msgs.add("user" to "WHERE CHECK FAILED (the plan points to the wrong place):\n" + bad.joinToString("\n") { "- $it" } +
+                        "\nUse {\"search\":[…]} and {\"read\":[…]} to find the exact place, then send the corrected JSON plan. The anchor must be copied from the file.")
+                    continue
+                }
+            }
             if (plan != null) {
-                ev(Agent.PLANNER, "प्लान: ${plan.steps.size} कदम\n" + plan.steps.mapIndexed { i, s -> "${i + 1}. ${s.file} — ${s.action}: ${s.change.take(120)}" }.joinToString("\n") +
+                ev(Agent.PLANNER, "प्लान: ${plan.steps.size} कदम\n" + plan.steps.mapIndexed { i, s -> "${i + 1}. ${s.file} — ${s.action}: ${s.change.take(120)}" +
+                    if (s.why.isNotBlank()) "\n   ↳ यहाँ क्यों: ${s.why.take(140)}" else "" }.joinToString("\n") +
                     if (plan.risks.isNotEmpty()) "\n⚠ पुराने फ़ीचर का ख़तरा:\n" + plan.risks.joinToString("\n") { "• $it" } else "")
                 return plan
             }
@@ -246,6 +367,12 @@ class SevenTeam(
         var warned = false
         for (round in 0..4) {
             val reply = ai.ask(Agent.DEBUGGER, Seven.Prompts.DEBUGGER, msgs)
+            val terms = if (full) SevenPlus.RepoSearch.terms(reply) else null
+            if (terms != null && round < 4) {
+                ev(Agent.DEBUGGER, "रिपो में खोज रहा हूँ: " + terms.joinToString())
+                msgs.add("model" to reply); msgs.add("user" to SevenPlus.RepoSearch.search(ws(), terms) + "\nRead the files ({\"read\":[…]}) or reply with the root cause JSON.")
+                continue
+            }
             val reads = Seven.planReads(reply)
             if (reads != null && round < 4) {
                 ev(Agent.DEBUGGER, "पढ़ रहा हूँ: " + reads.joinToString())
@@ -429,6 +556,73 @@ class SevenTeam(
         else TeamTest(false, "DRY-RUN TEST FAILED: " + o.optString("error").ifBlank { "tester found a failing case" })
     }
 
+    // ------------------------------------------------------------------ परफॉरमेंस एजेंट
+    private suspend fun perf() {
+        val staged = files.staged()
+        if (staged.isEmpty()) return
+        ev(Agent.PERF, "बदले code में UI जाम / leak / बेवजह का काम देख रहा हूँ…")
+        val hard = mutableListOf<String>()
+        staged.forEach { (p, c) -> if (c != null) hard.addAll(SevenPlus.Perf.scan(p, files.original(p), c)) }
+        val o = askJson(Agent.PERF, "TASK: $task\nCHANGED CODE (only new/changed lines matter):\n" + diffText(staged, 30_000))
+        val must = (hard + Seven.strings(o?.optJSONArray("must"))).distinct()
+        perfNotes.addAll(Seven.strings(o?.optJSONArray("should")).take(5))
+        if (must.isEmpty()) { ev(Agent.PERF, "✓ परफॉरमेंस ठीक" + if (perfNotes.isNotEmpty()) " (छोटे सुझाव रिपोर्ट में)" else ""); return }
+        ev(Agent.PERF, "✗ ठीक करना ज़रूरी:\n" + must.joinToString("\n") { "• ${it.take(200)}" })
+        val fix = makePlan("PERFORMANCE FIX - keep the behaviour exactly the same, change only this:\n" + must.joinToString("\n") { "- $it" }, staged.keys.toList())
+        if (fix == null || !execute(fix, emptySet())) {
+            perfNotes.addAll(0, must.map { "(ठीक नहीं हो पाया) $it" })
+            ev(Agent.PERF, "⚠ परफॉरमेंस सुधार लागू नहीं हुआ — रिपोर्ट में लिखा, बाकी काम जारी")
+            return
+        }
+        val left = mutableListOf<String>()
+        files.staged().forEach { (p, c) -> if (c != null) left.addAll(SevenPlus.Perf.scan(p, files.original(p), c)) }
+        if (left.isEmpty()) ev(Agent.PERF, "✓ परफॉरमेंस सुधार लागू") else { perfNotes.addAll(0, left); ev(Agent.PERF, "⚠ कुछ बाकी — रिपोर्ट में") }
+    }
+
+    // ------------------------------------------------------------------ QA एजेंट
+    /** @return कमियाँ (खाली = काम पूरा और सही) */
+    private suspend fun qa(): List<String> {
+        val staged = files.staged()
+        ev(Agent.QA, "build पास — अब जाँच रहा हूँ कि हर शर्त सच में पूरी हुई, कुछ नकली/अधूरा तो नहीं, पुराने फ़ीचर सलामत हैं…")
+        val hard = mutableListOf<String>()
+        staged.forEach { (p, c) -> if (c != null) hard.addAll(SevenPlus.Qa.scan(p, files.original(p), c)) }
+        val o = askJson(Agent.QA, "USER REQUEST:\n$task\n" + (if (spec.isNotBlank()) "SPEC (approved by the user):\n$spec\n" else if (brief.isNotBlank()) "BRIEF: $brief\n" else "") +
+            "ACCEPTANCE:\n" + acceptance.joinToString("\n") { "- $it" } + "\n" +
+            (if (notTouch.isNotEmpty()) "MUST STAY UNCHANGED:\n" + notTouch.joinToString("\n") { "- $it" } + "\n" else "") +
+            "DIFF:\n" + diffText(staged, 25_000) + "\n\nCHANGED FILES NOW:\n" +
+            staged.entries.joinToString("\n\n") { (p, c) -> "----- $p -----\n" + (c ?: "(deleted)").take(15_000) }.take(45_000))
+        qaChecks = Seven.strings(o?.optJSONArray("checks"))
+        qaFix = o?.optString("fix").orEmpty().trim()
+        if (qaChecks.isNotEmpty()) ev(Agent.QA, qaChecks.take(8).joinToString("\n") { "• $it" })
+        val miss = hard.toMutableList()
+        if (o != null && !o.optBoolean("pass", false)) miss.addAll(Seven.strings(o.optJSONArray("missing")).ifEmpty { listOf("QA ने काम अधूरा माना (वजह नहीं बताई)") })
+        if (o == null && hard.isEmpty()) ev(Agent.QA, "AI QA का जवाब नहीं मिला — पक्की जाँच (अधूरा/नकली code नहीं) पास")
+        if (miss.isEmpty()) ev(Agent.QA, "✓ QA पास — काम पूरा और सही") else ev(Agent.QA, "✗ कमी:\n" + miss.joinToString("\n") { "• ${it.take(200)}" })
+        return miss.distinct()
+    }
+
+    /** हर बदली फ़ाइल: हटाई / जोड़ी लाइनें */
+    private suspend fun diffText(staged: Map<String, String?>, max: Int): String = buildString {
+        for ((p, c) in staged) {
+            val before = files.original(p)
+            append("=== ").append(p).append(if (before == null) " (NEW)" else if (c == null) " (DELETED)" else "").append(" ===\n")
+            val b = before?.lines().orEmpty(); val a = c?.lines().orEmpty()
+            val bs = b.toHashSet(); val asSet = a.toHashSet()
+            b.filter { it !in asSet && it.isNotBlank() }.take(80).forEach { append("- ").append(it).append('\n') }
+            a.filter { it !in bs && it.isNotBlank() }.take(200).forEach { append("+ ").append(it).append('\n') }
+            if (length > max) break
+        }
+    }.take(max)
+
+    private var wsCache: Map<String, String>? = null
+    /** पूरा workspace (खोज/नक्शे के लिए) - इस काम के बदलाव समेत */
+    private suspend fun ws(): Map<String, String> {
+        val base = wsCache ?: (try { workspace() } catch (_: Exception) { emptyMap() }).also { wsCache = it }
+        val st = files.staged()
+        if (st.isEmpty()) return base
+        return HashMap(base).apply { st.forEach { (p, c) -> if (c == null) remove(p) else put(p, c) } }
+    }
+
     // ------------------------------------------------------------------ नाम-जाँच (फ़ाइल पढ़कर, अंदाज़े से नहीं)
     private suspend fun workspace(): Map<String, String> = files.all() ?: run {
         val m = LinkedHashMap<String, String>()
@@ -490,6 +684,12 @@ class SevenTeam(
         }
         var rep = Seven.report(task, mode, changes.entries.map { it.key to it.value }, bugs, testOk,
             if (testOk == true) passNote else problem.take(300), pr, backup, chk, lt?.url.orEmpty(), git?.prNote.orEmpty())
+        if (full) {
+            if (qaChecks.isNotEmpty()) rep += "\n\n✅ QA की जाँच:\n" + qaChecks.take(8).joinToString("\n") { "• $it" }
+            if (perfNotes.isNotEmpty()) rep += "\n\n⚡ परफॉरमेंस के सुझाव (ज़रूरी नहीं):\n" + perfNotes.take(5).joinToString("\n") { "• $it" }
+            if (testOk == true && git != null) rep += "\n\n🚀 डिप्लॉयमेंट: \"हाँ, merge करो\" / \"Merge करें\" कहने पर ही — PR दोबारा जाँच → merge → APK build → " +
+                "release में APK सच में है, यह पक्का करके version बताऊँगा। आपकी हाँ के बिना कुछ merge या release नहीं होगा।"
+        }
         if (testOk != true && problem.isNotBlank()) rep += "\n\n• रुकने की वजह: $problem" +
             if (mode == Seven.Mode.GITHUB) "\n• main अछूता है${if (backup.isNotBlank()) ", backup: $backup" else ""}। आगे क्या करूँ, बताइए।" else ""
         return Outcome(rep, files.staged(), testOk, mode)

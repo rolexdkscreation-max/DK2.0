@@ -281,7 +281,8 @@ object CoderTeam {
         if (fromVoice) say("u", "🎤 PR #${p.number} merge करो")
         CoderSession.launch(c) {
             CoderReport.begin()
-            say("s", "PR #${p.number} की जाँच (tests/build/conflict) करके merge कर रहा हूँ…")
+            say("s", "🚀 डिप्लॉयमेंट: PR #${p.number} की दोबारा जाँच (tests/build/conflict, main आगे बढ़ा तो update + tests) करके merge कर रहा हूँ…")
+            val mergedMs = System.currentTimeMillis()
             val res = try { a.mergePr { st -> step(st) } } catch (e: CancellationException) { throw e } catch (e: Exception) {
                 val m = (e.message ?: e.javaClass.simpleName).take(300)
                 finish(c, "PR #${p.number} merge नहीं हुआ: $m", ok = false, title = "कोडिंग टीम: merge नहीं हुआ",
@@ -294,17 +295,21 @@ object CoderTeam {
                 return@launch
             }
             say("d", res)
-            say("s", "$base पर GitHub Actions की release build (APK) देख रहा हूँ…")
-            val b = try { a.watchBuild(sha) { st -> step(st) } } catch (e: CancellationException) { throw e } catch (_: Exception) { null }
-            val rel = "https://github.com/$repo/releases/latest"
+            say("s", "🚀 डिप्लॉयमेंट: $base पर release build (APK) देख रहा हूँ — अपने-आप न चले तो खुद चलाऊँगा…")
+            val (b, rl, why) = try { a.deployRelease(sha, mergedMs) { st -> step(st) } } catch (e: CancellationException) { throw e }
+                catch (e: Exception) { Triple(null, null, (e.message ?: e.javaClass.simpleName).take(200)) }
+            val rel = rl?.url?.ifBlank { null } ?: "https://github.com/$repo/releases/latest"
             when {
-                b == null -> finish(c, "PR #${p.number} merge हो गया। Release build की जानकारी नहीं मिली — GitHub पर Actions देखें।\n$rel",
-                    ok = true, title = "कोडिंग टीम: merge हो गया", spoken = "PR merge हो गया, बॉस। Release build GitHub पर देख लीजिए।")
-                b.ok -> finish(c, "PR #${p.number} merge हो गया और नई APK release बन गई ✓\nSettings → अपडेट से install करें।\n$rel",
-                    ok = true, title = "कोडिंग टीम: नई APK release तैयार",
-                    spoken = "PR merge हो गया, बॉस। नई APK release बन गई है, सेटिंग्स में अपडेट से install कर लीजिए।")
-                else -> finish(c, "PR #${p.number} merge हो गया, पर release build fail हुआ ✗\n${b.url}",
+                b != null && !b.ok -> finish(c, "PR #${p.number} merge हो गया, पर release build fail हुआ ✗\n${b.url}",
                     ok = false, title = "कोडिंग टीम: release build fail", spoken = "PR merge हो गया, पर release build fail हो गया। कोडिंग स्क्रीन पर लिंक है।")
+                why.isBlank() && rl != null -> finish(c, "PR #${p.number} merge हो गया और नई APK release पक्की बन गई ✓\n" +
+                    "Release: ${rl.name.ifBlank { rl.tag }} (${rl.tag}) — APK: ${rl.assets.firstOrNull { it.endsWith(".apk", true) }.orEmpty()}\n" +
+                    "Settings → अपडेट से install करें।\n$rel",
+                    ok = true, title = "कोडिंग टीम: नई APK release तैयार",
+                    spoken = "PR merge हो गया, बॉस। नई APK ${rl.name.ifBlank { rl.tag }} release हो गई है, सेटिंग्स में अपडेट से install कर लीजिए।")
+                else -> finish(c, "PR #${p.number} merge हो गया, पर नई APK release पक्की नहीं हुई: $why\nGitHub पर देखें: https://github.com/$repo/actions\n$rel",
+                    ok = false, title = "कोडिंग टीम: merge हुआ, release नहीं",
+                    spoken = "PR merge हो गया, पर नई APK release पक्की नहीं हुई। कोडिंग स्क्रीन पर वजह लिखी है।")
             }
         }
         // merge के दौरान कतार में जुड़े काम merge के बाद चलें (पहले वे कभी शुरू नहीं होते थे)
