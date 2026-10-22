@@ -8,6 +8,8 @@ import android.content.Intent
 import android.os.Build
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
@@ -35,7 +37,7 @@ object CoderTeam {
     private fun say(role: String, t: String) = CoderSession.add(role, t)
     private fun step(t: String) { CoderSession.scope.launch { CoderSession.add("s", t) } }
 
-    fun start(ctx: Context, task: String, fromVoice: Boolean = false): String? {
+    fun start(ctx: Context, task: String, fromVoice: Boolean = false, queued: Boolean = false): String? {
         val c = ctx.applicationContext
         val p = CoderSession.problems(c)
         if (p.isNotEmpty()) return "कोडिंग एजेंट तैयार नहीं: " + p.joinToString(", ")
@@ -44,16 +46,22 @@ object CoderTeam {
             return null
         }
         val a = CoderSession.agentFor(c) ?: return "GitHub या AI सेटअप नहीं मिला"
-        say("u", (if (fromVoice) "🎤 " else "") + task)
+        // कतार वाला काम पहले ही (कतार में डालते समय) दिखा था - दोबारा नहीं
+        if (queued) say("s", "कोऑर्डिनेटर: कतार का अगला काम शुरू — ${task.take(80)}")
+        else say("u", (if (fromVoice) "🎤 " else "") + task)
         CoderSession.launch(c) {
+            coroutineContext[Job]?.let { runQueueAfter(c, it) }
             try {
                 var currentTask: String? = task
                 while (currentTask != null) {
-                    val taskToRun = currentTask
-                    kotlinx.coroutines.withTimeout(10 * 60 * 1000L) {
-                        pipeline(c, a, taskToRun)
-                    }
+                    // एक काम fail/timeout हो तो भी कतार के बाकी काम चलते रहें (पहले पूरी कतार अटक जाती थी)
+                    val err = runOne(c, a, currentTask)
                     currentTask = queue.removeFirstOrNull()
+                    if (currentTask != null && err != null && isLimit(err)) {
+                        say("s", "कोऑर्डिनेटर: AI की limit खत्म थी — ${LIMIT_PAUSE_SEC} सेकंड रुककर कतार का अगला काम (बाकी ${queue.size + 1})")
+                        delay(LIMIT_PAUSE_SEC * 1000L)
+                    }
+                    if (currentTask != null) say("s", "कोऑर्डिनेटर: कतार का अगला काम शुरू — ${currentTask.take(80)}")
                 }
             } catch (e: kotlinx.coroutines.TimeoutCancellationException) {
                 val msg = "कोडिंग का काम तय समय (10 मिनट) में पूरा नहीं हो पाया।"
@@ -70,6 +78,55 @@ object CoderTeam {
         CoderSession.listener?.invoke()
         return null
     }
+
+    /**
+     * एक काम चलाओ; गलती/टाइमआउट यहीं संभालो ताकि कतार न रुके.
+     * @return null = ठीक, वरना गलती का संदेश. रोकें (cancel) दबाया तो कतार भी साफ़ और आगे फेंको.
+     */
+    private suspend fun runOne(c: Context, a: CodingAgent, task: String): String? = try {
+        kotlinx.coroutines.withTimeout(10 * 60 * 1000L) { pipeline(c, a, task) }
+        null
+    } catch (e: kotlinx.coroutines.TimeoutCancellationException) {
+        val msg = "कोडिंग का काम तय समय (10 मिनट) में पूरा नहीं हो पाया।"
+        say("e", msg)
+        finish(c, msg, ok = false, title = "कोडिंग टीम: टाइमआउट")
+        msg
+    } catch (e: CancellationException) {
+        clearQueue()
+        throw e
+    } catch (e: Exception) {
+        val msg = (e.message ?: e.javaClass.simpleName).take(500)
+        finish(c, "कोडिंग टीम में त्रुटि आई: $msg", ok = false, title = "कोडिंग टीम: विफलता")
+        msg
+    } finally { a.teamMode = false; a.onSuggest = null }
+
+    /** रोकें दबाया - कतार के काम भी हटाओ (वरना अगला नया काम खत्म होते ही पुराने अपने-आप चल पड़ते) */
+    private fun clearQueue() {
+        val n = queue.size
+        if (n == 0) return
+        queue.clear()
+        say("s", "कोऑर्डिनेटर: कतार के $n काम भी हटा दिए")
+    }
+
+    /**
+     * यह job (टीम का काम या merge) खत्म हो तो कतार में पड़ा अगला काम शुरू करो.
+     * पहले: merge के दौरान या आखिरी पल में जुड़ा काम कभी शुरू नहीं होता था.
+     */
+    private fun runQueueAfter(c: Context, j: Job) {
+        j.invokeOnCompletion { cause ->
+            CoderSession.scope.launch {
+                if (cause is CancellationException) { clearQueue(); return@launch }
+                if (CoderSession.busy) return@launch
+                val next = queue.removeFirstOrNull() ?: return@launch
+                start(c, next, queued = true)?.let { why -> say("e", "कतार का काम शुरू नहीं हुआ: $why") }
+            }
+        }
+    }
+
+    /** AI की limit/कोटा वाली गलती? (तब अगला काम तुरंत भेजने से वह भी fail होगा) */
+    fun isLimit(err: String): Boolean = err.contains("429") || err.contains("quota", true) || err.contains("कोटा")
+
+    private const val LIMIT_PAUSE_SEC = 60
 
     private suspend fun pipeline(c: Context, a: CodingAgent, task: String) {
         a.teamMode = true
@@ -184,6 +241,8 @@ object CoderTeam {
                     ok = false, title = "कोडिंग टीम: release build fail", spoken = "PR merge हो गया, पर release build fail हो गया। कोडिंग स्क्रीन पर लिंक है।")
             }
         }
+        // merge के दौरान कतार में जुड़े काम merge के बाद चलें (पहले वे कभी शुरू नहीं होते थे)
+        CoderSession.job?.let { runQueueAfter(c, it) }
         CoderSession.listener?.invoke()
         return null
     }
