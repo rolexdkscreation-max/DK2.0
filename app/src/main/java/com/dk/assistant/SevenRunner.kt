@@ -107,6 +107,36 @@ object SevenRunner {
 
     private fun say(role: String, t: String) = CoderSession.add(role, t)
 
+    /**
+     * रिपो डॉक्टर: fail हुए check को 11 एजेंट से ठीक करवाना (user की हाँ रिपो डॉक्टर में मिल चुकी).
+     * pr != null = उसी PR की branch पर सुधार (नया PR नहीं); null = main से नई branch + PR.
+     * यह पहले से चल रहे काम (CoderSession.launch) के अंदर बुलाया जाता है.
+     * @return टीम का नतीजा (testOk = true तभी जब सारे checks पास)
+     */
+    suspend fun fixWithTeam(c: Context, a: CodingAgent, pr: GitHub.Pull?, task: String, title: String): SevenTeam.Outcome? {
+        val ai = CoderAi.fromPrefs(c) ?: run { say("e", "कोडिंग एजेंट की AI key नहीं — Settings में डालें"); return null }
+        a.reset()
+        a.safePr = true; a.draftPr = true; a.prLater = true
+        if (pr != null) {
+            a.restorePr(pr)
+            if (a.pr?.number != pr.number) { say("e", "PR #${pr.number} को अपना नहीं पाया (branch ${pr.head} सुरक्षित नहीं/base अलग)"); return null }
+            say("s", "🌿 PR #${pr.number} की branch (${pr.head}) पर ही सुधार होगा — नया PR नहीं")
+        }
+        try {
+            a.teamLoad { say("s", it) }
+            val team = SevenTeam(Ai(ai), RepoFiles(a), Git(a, task), full = true) { ag, t -> say("s", "${ag.icon} ${ag.hi}: $t") }
+            val u = SevenPlus.Understanding(Seven.Kind.BUG, title, "रिपो डॉक्टर: $title — जड़ ढूँढकर ठीक करना, ताकि सारे checks पास हों", task,
+                listOf("जो check fail था वह पास हो", "बाकी सारे checks और पुराने tests पास हों", "कोई पुराना फ़ीचर न बदले"),
+                listOf("सारे मौजूदा फ़ीचर और tests"), emptyList(), emptyList())
+            val out = team.run(task, u)
+            say(if (out.testOk == true) "d" else "e", out.report)
+            return out
+        } finally {
+            a.draftPr = false; a.prLater = false
+            withContext(NonCancellable) { try { a.dropEmptyBranch() } catch (_: Exception) {} }
+        }
+    }
+
     /** @return null = शुरू हो गया, वरना वजह */
     fun start(ctx: Context, input: String, fromVoice: Boolean = false, forceNormal: Boolean = false): String? {
         val c = ctx.applicationContext

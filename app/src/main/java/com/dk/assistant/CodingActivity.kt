@@ -270,9 +270,12 @@ class CodingActivity : AppCompatActivity() {
 
     private fun doSend() {
         val t = edt.text.toString().trim()
-        if (t.isEmpty() || CoderSession.busy) return
+        // काम चलते समय भी "क्या चल रहा है / रिपो चेक करो" पूछा जा सकता है (सिर्फ़ पढ़ना)
+        if (t.isEmpty() || CoderSession.busy && !RepoDoctor.isStatusAsk(t)) return
         edt.setText("")
         keepTyping()
+        // रिपो डॉक्टर: रिपो की हालत / किसी PR को ठीक या merge करना / उसकी योजना की हाँ
+        RepoDoctorRunner.intercept(this, t, false)?.let { r -> r.err?.let { CoderSession.add("e", it) }; render(); return }
         // 7 एजेंट वाला नया सिस्टम (चालू हो तो): GitHub मोड / नॉर्मल मोड खुद तय करता है
         if (Prefs.coderSeven(this)) { SevenRunner.start(this, t)?.let { CoderSession.add("u", t); CoderSession.add("e", it) }; render(); return }
         val p = problems()
@@ -448,7 +451,7 @@ class CodingActivity : AppCompatActivity() {
     private fun newSession() {
         if (CoderSession.busy) { toast("पहले चल रहा काम रोकें"); return }
         CoderSession.agent?.reset(); CoderSession.savePr(this); CoderSession.agent = null
-        CoderTeam.suggestions.clear(); SevenRunner.pending = null
+        CoderTeam.suggestions.clear(); SevenRunner.pending = null; RepoDoctorRunner.pending = null
         CoderSession.lines.clear(); shown = 0; list.removeAllViews()
         CoderSession.add("d", welcome())
     }
