@@ -127,6 +127,10 @@ object CoderTeam {
         }
     }
 
+    /** Coordinator की योजना न बने तो भी पहले बताओ */
+    fun firstPlan(safePr: Boolean): String =
+        "पहले कोड पढ़कर समझ रहा हूँ कि यह काम/दिक्कत कहाँ होती है, फिर " + (if (safePr) "एक नई PR में " else "") + "पूरा काम ठीक करूँगा"
+
     /** AI की limit/कोटा वाली गलती? (तब अगला काम तुरंत भेजने से वह भी fail होगा) */
     fun isLimit(err: String): Boolean = err.contains("429") || err.contains("quota", true) || err.contains("कोटा")
 
@@ -137,6 +141,10 @@ object CoderTeam {
 
         say("s", "कोऑर्डिनेटर: काम समझ रहा हूँ…")
         val plan = plan(c, task)
+        // काम से पहले user को बताओ: पहले क्या पढ़/समझ रहे हैं, फिर क्या करेंगे
+        val intro = plan.third.ifBlank { firstPlan(a.safePr) }
+        say("s", "कोऑर्डिनेटर: $intro")
+        CoderReport.plan(intro)
         if (plan.second.isNotEmpty()) say("s", "कोऑर्डिनेटर: पूरा होने की शर्तें —\n" + plan.second.joinToString("\n") { "• $it" })
 
         say("s", "बिल्डर: काम शुरू…")
@@ -265,11 +273,14 @@ object CoderTeam {
         return null
     }
 
-    private suspend fun plan(c: Context, task: String): Pair<String, List<String>> = withContext(Dispatchers.IO) {
-        val ai = CoderAi.fromPrefs(c) ?: return@withContext "" to emptyList()
+    /** @return (English brief, Hindi शर्तें, Hindi योजना "पहले … पढ़ रहा हूँ, फिर …") */
+    private suspend fun plan(c: Context, task: String): Triple<String, List<String>, String> = withContext(Dispatchers.IO) {
+        val ai = CoderAi.fromPrefs(c) ?: return@withContext Triple("", emptyList(), "")
         val sys = """
 You are DK Coordinator for a coding team (Builder + Reviewer). Read the user's task (Hindi/Hinglish) and reply with ONLY one JSON object:
-{"brief":"one English sentence: what exactly to build/change","acceptance":["3-6 short Hindi checks that prove the task is fully done"],
+{"brief":"one English sentence: what exactly to build/change",
+ "plan_hi":"one short Hindi sentence telling the user what the team does FIRST and THEN, e.g. पहले कोडिंग एजेंट का कोड पढ़ रहा हूँ (push, कदम-loop, context और retry कहाँ होते हैं), फिर एक नई PR में सब ठीक करूँगा",
+ "acceptance":["3-6 short Hindi checks that prove the task is fully done"],
  "suggestions":[{"title":"Hindi","why":"simple Hindi reason","task":"English task"}]}
 acceptance must only cover what the user asked. suggestions: ONLY things the user did not mention but that are technically required or clearly important
 (e.g. a needed Android permission, crash/security/data-loss risk). Usually []. Never put them into acceptance.
@@ -285,8 +296,8 @@ acceptance must only cover what the user asked. suggestions: ONLY things the use
                     if (t.isNotBlank() && tk.isNotBlank()) withContext(Dispatchers.Main) { addSuggestion(c, t, sg.optString("why"), tk) }
                 }
             }
-            o.optString("brief") to acc.take(6)
-        } catch (e: Exception) { DKLog.d("Coordinator plan nahi bana: ${e.message}"); "" to emptyList() }
+            Triple(o.optString("brief"), acc.take(6), o.optString("plan_hi").trim().take(300))
+        } catch (e: Exception) { DKLog.d("Coordinator plan nahi bana: ${e.message}"); Triple("", emptyList(), "") }
     }
 
     private fun addSuggestion(c: Context, title: String, why: String, task: String) {
