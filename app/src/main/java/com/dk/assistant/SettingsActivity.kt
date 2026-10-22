@@ -155,8 +155,33 @@ class SettingsActivity : AppCompatActivity() {
         }
     }
 
-    /** v3.30: DK के जवाब की भाषा - चुनते ही सेव और लागू */
+    /** v3.30: DK के जवाब की भाषा और UI की भाषा - चुनते ही सेव और लागू */
     private fun secLang() {
+        card("ऐप और यूआई (UI) की भाषा", "DK ऐप के सारे बटन, मेनू और सेटिंग्स किस भाषा में दिखें") { box ->
+            val rgUi = RadioGroup(this).apply { orientation = RadioGroup.VERTICAL }
+            val uiLangs = listOf("en" to "English (Default)", "hi" to "हिंदी (Hindi)")
+            val curUi = Prefs.uiLang(this).ifBlank { "en" }
+            uiLangs.forEachIndexed { i, (code, label) ->
+                rgUi.addView(RadioButton(this).apply {
+                    id = 4000 + i
+                    text = label
+                    setTextColor(0xFFFFFFFF.toInt())
+                    textSize = 15f
+                    isChecked = code == curUi
+                    setPadding((6 * dp).toInt(), (8 * dp).toInt(), 0, (8 * dp).toInt())
+                })
+            }
+            rgUi.setOnCheckedChangeListener { _, idc ->
+                val code = uiLangs.getOrNull(idc - 4000)?.first ?: return@setOnCheckedChangeListener
+                Prefs.edit(this) { putString(Prefs.KEY_UI_LANG, code) }
+                Prefs.loadUiLang(this)
+                toast("UI Lang changed! Reloading...")
+                recreate()
+            }
+            box.addView(rgUi)
+            hint(box, "By default, the app UI is in English. You can switch to Hindi here.")
+        }
+
         card("DK किस भाषा में जवाब दे", "DK लाइव, DK चैट, बिना-Live आवाज़, DK कंप्यूटर और कोडिंग एजेंट — सब पर एक साथ") { box ->
             val rg = RadioGroup(this).apply { orientation = RadioGroup.VERTICAL }
             val cur = Prefs.replyLang(this)
@@ -177,7 +202,7 @@ class SettingsActivity : AppCompatActivity() {
                 toast("भाषा: ${Lang.short(code)} — अगले जवाब से लागू")
             }
             box.addView(rg)
-            hint(box, "ऐप के बटन और Settings हिंदी में ही रहेंगे। DK लाइव चल रहा हो तो नई भाषा अगली बार जुड़ने पर (लाइव बंद करके फिर चालू करें)। " +
+            hint(box, "DK लाइव चल रहा हो तो नई भाषा अगली बार जुड़ने पर (लाइव बंद करके फिर चालू करें)। " +
                 "किसी एक जवाब के लिए आप बोलकर दूसरी भाषा माँग सकते हैं।")
         }
     }

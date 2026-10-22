@@ -118,8 +118,8 @@ object Prefs {
     fun ttsPitch(c: Context) = sp(c).getFloat("tts_pitch", 1.0f)
 
     // ---- awaaz (mahila/purush)
-    /** v3.30: DK के जवाब की भाषा - "hinglish" (शुरुआती) / "hi" / "en" (Lang) */
-    fun replyLang(c: Context) = Lang.norm(sp(c).getString(Lang.KEY, Lang.HINGLISH))
+    /** v3.30: DK के जवाब की भाषा - "en" (default English) / "hinglish" / "hi" (Lang) */
+    fun replyLang(c: Context) = Lang.norm(sp(c).getString(Lang.KEY, Lang.ENGLISH))
     fun loadLang(c: Context) { Lang.current = replyLang(c) }
     fun voiceGender(c: Context) = sp(c).getString("voice_gender", "female") ?: "female"
     /** "google" = phone ki awaaz, "gemini" = sabse natural (Gemini key se) */

@@ -20,10 +20,10 @@ object Lang {
         ENGLISH to "English — सिर्फ़ अंग्रेज़ी",
     )
 
-    /** अभी चुनी भाषा (DKApp/Settings से भरी जाती है) */
-    @Volatile var current: String = HINGLISH
+    /** अभी चुनी भाषा (DKApp/Settings से भरी जाती है) - बाय डिफ़ॉल्ट English */
+    @Volatile var current: String = ENGLISH
 
-    fun norm(v: String?): String = if (v == HINDI || v == ENGLISH || v == HINGLISH) v else HINGLISH
+    fun norm(v: String?): String = if (v == HINDI || v == ENGLISH || v == HINGLISH) v else ENGLISH
 
     fun short(code: String = current) = when (norm(code)) { HINDI -> "हिंदी"; ENGLISH -> "English"; else -> "Hinglish" }
 
