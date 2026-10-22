@@ -15,6 +15,7 @@ import android.widget.EditText
 import android.widget.FrameLayout
 import android.widget.ImageButton
 import android.widget.LinearLayout
+import android.widget.ProgressBar
 import android.widget.ScrollView
 import android.widget.TextView
 import android.widget.Toast
@@ -124,6 +125,20 @@ class CodingActivity : AppCompatActivity() {
     private lateinit var send: ImageButton
     private lateinit var changes: LinearLayout
     private lateinit var sugBox: LinearLayout
+    // काम चलते समय: चलती पट्टी + "काम कर रहा है..." (बिंदु बढ़ते हैं)
+    private lateinit var busyBar: LinearLayout
+    private lateinit var busyText: TextView
+    private val busyHandler = android.os.Handler(android.os.Looper.getMainLooper())
+    private var busyStep = 0
+    private var busyOn = false
+    private val busyTick = object : Runnable {
+        override fun run() {
+            if (!CoderSession.busy) { showBusy(false); return }
+            busyStep++
+            busyText.text = BusyLabel.text(busyStep)
+            busyHandler.postDelayed(this, BusyLabel.TICK_MS)
+        }
+    }
     private val speech = registerForActivityResult(androidx.activity.result.contract.ActivityResultContracts.StartActivityForResult()) { r ->
         val t = r.data?.getStringArrayListExtra(android.speech.RecognizerIntent.EXTRA_RESULTS)?.firstOrNull()?.trim()
         if (r.resultCode == RESULT_OK && !t.isNullOrBlank()) { edt.setText(t); doSend() }
@@ -154,6 +169,18 @@ class CodingActivity : AppCompatActivity() {
         top.addView(smallBtn("रिपो") { if (Prefs.coderSeven(this)) sevenPicker() else chooseRepo() })
         top.addView(smallBtn("नया") { newSession() }, LinearLayout.LayoutParams(-2, -2).apply { marginStart = (6 * dp).toInt() })
         col.addView(top)
+
+        busyBar = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setBackgroundResource(R.drawable.glass_card)
+            val p = (10 * dp).toInt(); setPadding(p, (6 * dp).toInt(), p, (6 * dp).toInt())
+            visibility = View.GONE
+        }
+        busyText = TextView(this).apply { text = BusyLabel.text(0); textSize = 13f; setTextColor(0xFF00E676.toInt()) }
+        busyBar.addView(busyText)
+        busyBar.addView(ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal).apply { isIndeterminate = true },
+            LinearLayout.LayoutParams(-1, (4 * dp).toInt()).apply { topMargin = (4 * dp).toInt() })
+        col.addView(busyBar, LinearLayout.LayoutParams(-1, -2).apply { topMargin = (6 * dp).toInt() })
 
         scroll = ScrollView(this).apply { isFillViewport = true }
         list = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(0, (8 * dp).toInt(), 0, (8 * dp).toInt()) }
@@ -560,7 +587,19 @@ class CodingActivity : AppCompatActivity() {
         }
     }
 
-    override fun onPause() { CoderSession.listener = null; super.onPause() }
+    override fun onPause() { CoderSession.listener = null; showBusy(false); super.onPause() }
+
+    /** चलती पट्टी दिखाओ/छिपाओ. एक ही tick चलता है (दोबारा start नहीं होता). */
+    private fun showBusy(on: Boolean) {
+        if (on == busyOn) return
+        busyOn = on
+        busyHandler.removeCallbacks(busyTick)
+        if (on) {
+            busyStep = 0; busyText.text = BusyLabel.text(0)
+            busyBar.visibility = View.VISIBLE
+            busyHandler.postDelayed(busyTick, BusyLabel.TICK_MS)
+        } else busyBar.visibility = View.GONE
+    }
 
     private fun render() {
         val a = CoderSession.agent
@@ -571,6 +610,7 @@ class CodingActivity : AppCompatActivity() {
         maybeOfferNormal()
         send.setImageResource(if (CoderSession.busy) android.R.drawable.ic_media_pause else R.drawable.ic_send)
         send.contentDescription = if (CoderSession.busy) "रोकें" else "भेजें"
+        showBusy(CoderSession.busy)
         val lines = CoderSession.lines
         if (lines.size < shown) { list.removeAllViews(); shown = 0 }
         while (shown < lines.size) { bubble(lines[shown]); shown++ }
