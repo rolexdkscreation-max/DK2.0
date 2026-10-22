@@ -32,8 +32,28 @@ object CoderReport {
             .append("\n  हल: ठीक नहीं हो पाया — ").append(advice(error))
     }.trimEnd()
 
+    /**
+     * आखिरी छोटी रिपोर्ट, तीन हिस्से: क्या हुआ / क्या नहीं हुआ / आगे आपको क्या करना है.
+     * ok=false पर [text] (गलती) सिर्फ़ यहीं एक बार; उसमें "आगे:" हो तो वह तीसरे हिस्से में जाता है.
+     */
+    fun final(ok: Boolean, text: String, list: List<Item> = items(), next: String? = null): String = buildString {
+        append("📋 रिपोर्ट\n✔ क्या हुआ:\n")
+        if (ok) append("• काम पूरा हुआ\n")
+        if (list.isEmpty() && ok) append("• कोई दिक्कत या एरर नहीं आया\n")
+        list.forEach { append("• दिक्कत: ").append(it.problem).append(" → हल: ").append(it.fix).append('\n') }
+        if (!ok && list.isEmpty()) append("• कुछ खास नहीं — काम बीच में रुका\n")
+        val body = text.substringBefore("आगे:").trim()
+        val ahead = next ?: text.substringAfter("आगे:", "").trim().takeIf { it.isNotBlank() }
+        append("✘ क्या नहीं हुआ:\n")
+        if (ok) append("• कुछ बाकी नहीं\n") else append(body.lines().filter { it.isNotBlank() }.take(8).joinToString("\n") { "• " + it.trim().take(300) }).append('\n')
+        append("➜ आगे आपको क्या करना है:\n• ")
+        append(ahead ?: if (ok) (if (text.contains("PR #")) "PR देखकर Merge करें (ऊपर लिखा है)" else "कुछ नहीं") else advice(text))
+    }.trimEnd()
+
     /** Ruke hue kaam ke liye seedha sujhav */
     fun advice(error: String): String = when {
+        error.contains("Developer settings") -> "ऊपर बताए तरीके से GitHub token की इजाज़त बदलें, फिर काम दोबारा भेजें।"
+        error.contains("Push पक्का नहीं") -> "थोड़ी देर बाद \"फिर से push\" करें; GitHub पर branch देखें।"
         error.contains("429") || error.contains("limit", true) || error.contains("कोटा") ->
             "सारी keys की free limit खत्म है। थोड़ी देर बाद फिर भेजें, या Settings में दूसरी API (Groq / OpenRouter) की key डालें।"
         error.contains("401") || error.contains("403") -> "Settings में API key / GitHub token जाँचें।"

@@ -30,13 +30,18 @@ class GitHub(private val token: String) {
         .header("X-GitHub-Api-Version", "2022-11-28")
         .header("User-Agent", "DK-Assistant")
 
+    /** आखिरी जवाब का X-OAuth-Scopes (सिर्फ़ classic token भेजता है; fine-grained = null) */
+    @Volatile private var lastScopes: String? = null
+
     private fun run(b: Request.Builder): String = http.newCall(b.build()).execute().use { r ->
         val s = r.body?.string() ?: ""
+        lastScopes = r.header("X-OAuth-Scopes")
         if (!r.isSuccessful) {
             val m = try { JSONObject(s).optString("message") } catch (_: Exception) { s.take(160) }
             throw Err(r.code, when (r.code) {
                 401 -> "GitHub token गलत है या expire हो गया"
-                403 -> if (m.contains("rate limit", true)) "GitHub की limit खत्म, थोड़ी देर बाद" else "इस token को इजाज़त नहीं ($m) — token में Contents: Read and write दें"
+                403 -> if (m.contains("rate limit", true)) "GitHub की limit खत्म, थोड़ी देर बाद"
+                    else permissionAdvice(403, r.header("X-Accepted-GitHub-Permissions"), lastScopes, m, "")
                 404 -> "नहीं मिला (repo/file/branch का नाम देखें, या token को इस repo की इजाज़त दें)"
                 409 -> "Repo खाली है या टकराव ($m)"
                 422 -> "GitHub ने मना किया: $m"
@@ -197,7 +202,31 @@ class GitHub(private val token: String) {
         post("/repos/$repo/git/refs", JSONObject().put("ref", "refs/heads/$newBranch").put("sha", sha))
     }
 
-    fun localBranchSha(branch: String): String = "" // Not applicable for mobile agent
+    /**
+     * Push से पहले: क्या इस token से इस repo में लिख सकते हैं (Contents: Read and write)?
+     * @return null = ठीक है; वरना साफ़ हिंदी में कि token में क्या बदलना है
+     */
+    fun checkWrite(repo: String): String? {
+        val info = try { JSONObject(get("/repos/$repo")) } catch (e: Err) {
+            return if (e.code == 404) permissionAdvice(404, null, lastScopes, "", repo) else if (e.code == 401) e.message else null
+        }
+        val scopes = lastScopes
+        // classic token: repo scope चाहिए
+        if (!scopes.isNullOrBlank() && !scopes.split(',').map { it.trim() }.any { it == "repo" || (it == "public_repo" && !info.optBoolean("private")) })
+            return permissionAdvice(403, null, scopes, "", repo)
+        // आपका GitHub account ही इस repo में लिख नहीं सकता
+        if (info.optJSONObject("permissions")?.optBoolean("push", true) == false)
+            return "आपके GitHub account को $repo में लिखने (push) की इजाज़त नहीं है — repo के मालिक से Write access माँगें।"
+        // fine-grained token: एक छोटा blob बनाकर असली इजाज़त जाँचो (commit नहीं बनता, कुछ नहीं बदलता)
+        return try {
+            post("/repos/$repo/git/blobs", JSONObject().put("content", "dk").put("encoding", "utf-8")); null
+        } catch (e: Err) {
+            when (e.code) {
+                403, 404 -> permissionAdvice(e.code, null, scopes, "", repo)
+                else -> null // नेटवर्क/दूसरी दिक्कत - असली commit में पता चलेगा
+            }
+        }
+    }
 
     fun remoteBranchSha(repo: String, branch: String): String =
         JSONObject(get("/repos/$repo/git/ref/heads/${enc(branch)}")).getJSONObject("object").getString("sha")
@@ -208,6 +237,14 @@ class GitHub(private val token: String) {
      */
     fun commit(repo: String, branch: String, changes: Map<String, String?>, message: String): String {
         require(changes.isNotEmpty()) { "कोई बदलाव नहीं" }
+        return try { commitOnce(repo, branch, changes, message) } catch (e: Err) {
+            // बीच में branch पर कोई और commit आ गया (fast forward नहीं) -> नए head पर एक बार और
+            if (e.code != 422 || !e.message.orEmpty().contains("fast forward", true)) throw e
+            commitOnce(repo, branch, changes, message)
+        }
+    }
+
+    private fun commitOnce(repo: String, branch: String, changes: Map<String, String?>, message: String): String {
         val head = JSONObject(get("/repos/$repo/git/ref/heads/${enc(branch)}")).getJSONObject("object").getString("sha")
         val baseTree = JSONObject(get("/repos/$repo/git/commits/$head")).getJSONObject("tree").getString("sha")
         val items = JSONArray()
@@ -219,7 +256,11 @@ class GitHub(private val token: String) {
         val tree = JSONObject(post("/repos/$repo/git/trees", JSONObject().put("base_tree", baseTree).put("tree", items))).getString("sha")
         val c = JSONObject(post("/repos/$repo/git/commits", JSONObject().put("message", message)
             .put("tree", tree).put("parents", JSONArray().put(head))))
-        patch("/repos/$repo/git/refs/heads/${enc(branch)}", JSONObject().put("sha", c.getString("sha")).put("force", false))
+        val sha = c.getString("sha")
+        patch("/repos/$repo/git/refs/heads/${enc(branch)}", JSONObject().put("sha", sha).put("force", false))
+        // पक्का करो: GitHub पर branch सच में नए commit पर है - तभी "push हो गया"
+        val now = try { remoteBranchSha(repo, branch) } catch (_: Exception) { sha }
+        if (now != sha) throw Err(409, "Push पक्का नहीं हुआ: $branch अभी भी ${now.take(7)} पर है, नया commit ${sha.take(7)} नहीं पहुँचा — फिर से push करें")
         return c.optString("html_url").ifBlank { "https://github.com/$repo/commit/${c.getString("sha")}" }
     }
 
@@ -229,6 +270,25 @@ class GitHub(private val token: String) {
         private val zipHttp = OkHttpClient.Builder()
             .connectTimeout(15, TimeUnit.SECONDS).readTimeout(60, TimeUnit.SECONDS).callTimeout(120, TimeUnit.SECONDS).build()
         const val TOKEN_URL = "https://github.com/settings/personal-access-tokens/new"
+        /**
+         * 403/404 पर साफ़ हिंदी: token में क्या बदलना है.
+         * accepted = X-Accepted-GitHub-Permissions (fine-grained), scopes = X-OAuth-Scopes (classic).
+         */
+        fun permissionAdvice(code: Int, accepted: String?, scopes: String?, msg: String, repo: String): String {
+            val r = if (repo.isBlank()) "इस repo" else repo
+            val need = accepted?.split(',', ';')?.map { it.trim() }?.filter { it.isNotBlank() }
+                ?.joinToString { p -> p.substringBefore('=').replace('_', ' ').replaceFirstChar { it.uppercase() } + ": " + if (p.endsWith("write")) "Read and write" else "Read" }
+            return when {
+                !scopes.isNullOrBlank() -> "GitHub token (classic) में \"repo\" scope नहीं है (अभी: $scopes)। " +
+                    "github.com → Settings → Developer settings → Personal access tokens → Tokens (classic) → token खोलें → \"repo\" पर ✔ लगाएँ → Update token।"
+                code == 404 -> "Token को $r दिखता ही नहीं। github.com → Settings → Developer settings → Fine-grained tokens → token खोलें → " +
+                    "Repository access में \"$r\" चुनें, और Repository permissions → Contents: Read and write दें → Save।"
+                else -> "Token को $r में लिखने की इजाज़त नहीं${if (msg.isBlank()) "" else " ($msg)"}। " +
+                    "github.com → Settings → Developer settings → Fine-grained tokens → token खोलें → Repository access में यह repo, " +
+                    "Repository permissions → ${need?.takeIf { it.isNotBlank() } ?: "Contents: Read and write"} दें → Save। फिर काम दोबारा भेजें।"
+            }
+        }
+
         fun fromPrefs(c: android.content.Context): GitHub? = Prefs.ghToken(c).takeIf { it.isNotBlank() }?.let { GitHub(it) }
     }
 }

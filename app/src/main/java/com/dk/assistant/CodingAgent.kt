@@ -32,46 +32,69 @@ class CoderAi(val provider: Provider, private val key: String, val model: String
      */
     fun chat(system: String, msgs: List<Pair<String, String>>): String {
         val chain = listOf(this) + fallbacks
-        for (attempt in 0..1) {
-            val ordered = orderChain(chain.map { it.selfLabel }, sticky()).map { l -> chain.first { it.selfLabel == l } }
-            val errs = mutableListOf<Pair<CoderAi, java.io.IOException>>()
-            for (ai in ordered) {
-                try {
-                    val r = ai.chatOne(system, msgs)
-                    val prev = sticky() ?: selfLabel
-                    if (ai.selfLabel != prev) {
-                        val why = errs.lastOrNull()?.let { (who, e) -> "${who.selfLabel}: ${reason(e)}" } ?: "$prev अब नहीं चल रहा था"
-                        DKLog.d("Coder: $why -> ${ai.selfLabel} पर स्विच")
-                        sink(why, "अपने आप ${ai.selfLabel} पर स्विच किया, काम बिना रुके जारी रहा")
-                    }
-                    setSticky(if (ai === this) null else ai.selfLabel)
-                    return r
-                } catch (e: java.io.IOException) {
-                    // AiException (429/5xx/401...) ya network timeout - agla API
-                    errs.add(ai to e)
-                    if (chain.size > 1) DKLog.d("Coder: ${ai.selfLabel} -> ${reason(e)}, अगला API")
+        val ordered = orderChain(chain.map { it.selfLabel }, sticky()).map { l -> chain.first { it.selfLabel == l } }
+        val errs = mutableListOf<Pair<CoderAi, java.io.IOException>>()
+        var n429 = 0
+        for (ai in ordered) {
+            // 429 के बाद: थोड़ा रुककर (2s, 4s, 8s) अगला मॉडल/API - एक साथ सब पर धावा नहीं
+            if (n429 > 0 && (errs.lastOrNull()?.second as? AiException)?.code == 429) Thread.sleep(CoderContext.backoffMs(n429))
+            try {
+                val r = ai.chatOne(system, msgs)
+                val prev = sticky() ?: selfLabel
+                if (ai.selfLabel != prev) {
+                    val why = errs.lastOrNull()?.let { (who, e) -> "${who.selfLabel}: ${reason(e)}" } ?: "$prev अब नहीं चल रहा था"
+                    DKLog.d("Coder: $why -> ${ai.selfLabel} पर स्विच")
+                    sink(why, "अपने आप ${ai.selfLabel} पर स्विच किया, काम बिना रुके जारी रहा")
                 }
+                setSticky(if (ai === this) null else ai.selfLabel)
+                return r
+            } catch (e: java.io.IOException) {
+                // AiException (429/413/5xx/401...) ya network timeout - agla API
+                errs.add(ai to e)
+                if ((e as? AiException)?.code == 429) n429++
+                if (chain.size > 1) DKLog.d("Coder: ${ai.selfLabel} -> ${reason(e)}, अगला API")
             }
-            val wait = quotaWaitSec(errs.map { ((it.second as? AiException)?.code ?: -1) to ((it.second as? AiException)?.retryAfter ?: 0) })
-            if (attempt == 0 && wait > 0) {
-                sink("सारे मॉडल/API की limit एक साथ खत्म (429)", "${wait} सेकंड रुककर दोबारा कोशिश की")
-                DKLog.d("Coder: सब 429 - ${wait}s रुककर फिर")
-                Thread.sleep(wait * 1000L)
-                continue
-            }
-            // पहले चुने API की असली वजह, साथ में बाकी API का हाल
-            val main = errs.firstOrNull { it.first === this } ?: errs.first()
-            val others = errs.filter { it !== main }.joinToString { "${it.first.provider.name}: ${(it.second as? AiException)?.code ?: "network"}" }
-            val e = main.second
-            val msg = (e.message ?: e.javaClass.simpleName) + if (others.isNotBlank()) "\n(दूसरे API भी नहीं चले: $others)" else
-                if (fallbacks.isEmpty()) "\n(सुझाव: Settings में Groq या OpenRouter की फ्री key भी डालें - limit खत्म होने पर एजेंट अपने आप उस पर चला जाएगा)" else ""
-            throw if (e is AiException) AiException(e.code, msg, e.retryAfter) else java.io.IOException(msg, e)
         }
-        throw AiException(0, "AI fail")
+        // सब fail. सब की limit (429) खत्म = लगातार कोशिश नहीं - रुककर user को बताओ
+        val wait = quotaWaitSec(errs.map { ((it.second as? AiException)?.code ?: -1) to ((it.second as? AiException)?.retryAfter ?: 0) })
+        val tried = errs.joinToString { "${it.first.provider.name}: ${(it.second as? AiException)?.code ?: "network"}" }
+        if (wait > 0) {
+            sink("सारी API keys और मॉडल की limit एक साथ खत्म (429)", "लगातार कोशिश नहीं की — काम रोककर आपको बताया")
+            throw AiException(429, allLimitsMessage(wait, tried, fallbacks.isEmpty()), wait)
+        }
+        // पहले चुने API की असली वजह, साथ में बाकी API का हाल
+        val main = errs.firstOrNull { it.first === this } ?: errs.first()
+        val others = errs.filter { it !== main }.joinToString { "${it.first.provider.name}: ${(it.second as? AiException)?.code ?: "network"}" }
+        val e = main.second
+        val msg = (e.message ?: e.javaClass.simpleName) + if (others.isNotBlank()) "\n(दूसरे API भी नहीं चले: $others)" else
+            if (fallbacks.isEmpty()) "\n(सुझाव: Settings में Groq या OpenRouter की फ्री key भी डालें - limit खत्म होने पर एजेंट अपने आप उस पर चला जाएगा)" else ""
+        throw if (e is AiException) AiException(e.code, msg, e.retryAfter) else java.io.IOException(msg, e)
     }
 
-    private fun chatOne(system: String, msgs: List<Pair<String, String>>): String =
-        if (provider.isGemini) gemini(system, msgs) else openAi(system, msgs, 16000)
+    /**
+     * एक API पर request. 413 / "बहुत बड़ी" मिले तो वही request दोबारा नहीं - इतिहास छोटा करके (ज़्यादा से ज़्यादा 2 बार)
+     * और इस मॉडल की सीमा याद रखो ताकि अगले कदम पहले से छोटे जाएँ.
+     */
+    private fun chatOne(system: String, msgs: List<Pair<String, String>>): String {
+        val k = "${provider.id}|${key.takeLast(6)}|$model"
+        var (budget, maxTok) = sizeCap[k] ?: (CoderContext.DEFAULT_BUDGET to 16000)
+        var shrinks = 0
+        while (true) {
+            val room = (budget - system.length).coerceAtLeast(CoderContext.MIN_BUDGET)
+            val send = if (CoderContext.total(msgs) > room) CoderContext.compact(msgs, room) else msgs
+            try {
+                return if (provider.isGemini) gemini(system, send) else openAi(system, send, maxTok)
+            } catch (e: AiException) {
+                if (!CoderContext.tooLarge(e.code, e.message.orEmpty()) || shrinks >= 2) throw e
+                shrinks++
+                val (c2, t2) = CoderContext.shrink(CoderContext.total(send) + system.length, maxTok, e.message.orEmpty())
+                budget = c2; maxTok = t2
+                sizeCap[k] = budget to maxTok
+                DKLog.d("Coder: $selfLabel -> ${e.code} request बड़ी, अब $budget अक्षर / $maxTok tokens")
+                sink("$selfLabel: request बहुत बड़ी (${e.code})", "पुराना इतिहास और बड़ी फ़ाइलें छोटी करके ${budget / 1000}k अक्षर की request भेजी — वही बड़ी request दोबारा नहीं")
+            }
+        }
+    }
 
     private fun gemini(system: String, msgs: List<Pair<String, String>>): String {
         // चुना मॉडल -> 3.8 Flash (coding के लिए सबसे अच्छा) -> बाकी नए मॉडल. 2.5 वाले backup नहीं (नए users के लिए बंद)
@@ -93,7 +116,10 @@ class CoderAi(val provider: Provider, private val key: String, val model: String
                     if (e.code == 429) {
                         // limit: rukne ki jagah turant agla model (sab khatm ho to chat() ek baar rukta hai)
                         cool["${key.takeLast(6)}|$m"] = System.currentTimeMillis() + (e.retryAfter.coerceIn(30, 600) * 1000L)
-                        errs.add(m to e); DKLog.d("Coder: $m -> 429, अगला मॉडल"); break
+                        errs.add(m to e); DKLog.d("Coder: $m -> 429, अगला मॉडल")
+                        // अगले मॉडल से पहले छोटा इंतज़ार (backoff)
+                        if (m != order.last()) Thread.sleep(1500)
+                        break
                     }
                     val w = GeminiModels.waitBeforeRetry(e.code, e.retryAfter)
                     if (!waited && w > 0) {
@@ -214,6 +240,16 @@ class CoderAi(val provider: Provider, private val key: String, val model: String
             return CoderAi(p, key, model, base, fb)
         }
 
+        /** 413 के बाद हर API/मॉडल की request सीमा (अक्षर, maxTokens) - अगली बार पहले से छोटी */
+        private val sizeCap = java.util.concurrent.ConcurrentHashMap<String, Pair<Int, Int>>()
+
+        /** सारी keys की limit खत्म: साफ़ हिंदी - क्या हुआ और आगे क्या करें */
+        fun allLimitsMessage(waitSec: Int, tried: String, noFallback: Boolean): String =
+            "सारी API keys और मॉडल की limit अभी खत्म है (429), इसलिए काम रोक दिया — लगातार कोशिश नहीं की।\n" +
+                "आगे: लगभग ${if (waitSec >= 60) "${waitSec / 60} मिनट" else "$waitSec सेकंड"} बाद काम फिर भेजें" +
+                (if (noFallback) ", या Settings → AI दिमाग में Groq / OpenRouter की फ्री key भी जोड़ें" else "") + "।" +
+                if (tried.isNotBlank()) "\n(आज़माए: $tried)" else ""
+
         /** Gemini model ki limit kab tak (key ke aakhri 6 akshar|model -> time) */
         private val cool = java.util.concurrent.ConcurrentHashMap<String, Long>()
         @Volatile private var stickyLabel: String? = null
@@ -277,7 +313,8 @@ class CodingAgent(private val gh: GitHub, var repo: String, var branch: String, 
     /** AGENTS.md + workflows - Reviewer ko bhi dikhate hain */
     private var projectCtx = ""
 
-    data class Outcome(val summary: String, val commit: String, val question: Boolean)
+    /** stopped = एजेंट खुद रुका (एक ही चेतावनी बार-बार) - बदलाव push नहीं करने, user को वजह बतानी */
+    data class Outcome(val summary: String, val commit: String, val question: Boolean, val stopped: Boolean = false)
     data class Build(val ok: Boolean, val url: String, val log: String)
     data class Call(val o: JSONObject, val file: String?, val finds: List<String>, val replaces: List<String>)
     /** Reviewer ka faisla */
@@ -300,17 +337,10 @@ class CodingAgent(private val gh: GitHub, var repo: String, var branch: String, 
     var lastSha = ""
         private set
 
-    /** Verify all local branches are pushed to remote before testing */
-    suspend fun verifyRemotePush(): Boolean = withContext(Dispatchers.IO) {
-        try {
-            val local = gh.localBranchSha(branch)
-            val remote = gh.remoteBranchSha(repo, branch)
-            local == remote
-        } catch (e: Exception) {
-            DKLog.d("Coder: push verification failed: ${e.message}")
-            false
-        }
-    }
+    /** एक काम में ज़्यादा से ज़्यादा कदम (Settings → कोडिंग एजेंट; default 5) */
+    var maxSteps = DEFAULT_STEPS
+    /** इस repo में लिखने की इजाज़त एक बार जाँच ली (हर push पर नहीं) */
+    private var writeChecked = false
 
     fun reset() {
         staged.clear(); original.clear(); msgs.clear(); files = null; snap = null; checkWarned = false
@@ -373,9 +403,10 @@ REPLACE>>>
 {"tool":"done","summary":"Hindi summary (short bullet lines; if this fixed a bug/error also add: दिक्कत: <real cause>  हल: <what you changed>)","commit":"short English commit message"}
 
 Rules:
-- Work fast: grep to find code, read several files in one call, make several edits in one call.
-- Changes are only STAGED; the app pushes them as one commit after "done". Never claim it is pushed.
-- Before "done" with changes, call "diff" once and check your own work (imports, names, brackets, unused leftovers).
+- You have ONLY $maxSteps tool calls for this task. Plan: 1) read/grep the needed files together in ONE call, 2) ONE edit with all FIND/REPLACE pairs (or write), 3) done. "diff" is optional.
+- Large files are shown in numbered chunks; read only the chunk/lines you need (start/end), not the whole file again.
+- Changes are only STAGED; the app pushes them to GitHub (API commit) automatically AFTER "done". Do NOT try to push, and never claim it is pushed. Call done when the edits are staged.
+- Check your own work before done (imports, names, brackets, unused leftovers).
 - Never put secrets/API keys in code. Do not delete files unless the user asked or it is clearly required.
 - NEVER add features, settings, files or behaviour the user did not ask for. If you think something extra is needed or useful, use "suggest" (max 2 per task, only if it really matters) and do NOT implement it.
 - If the user only asks a question about the code, read what you need and answer in "done" summary with commit "".
@@ -414,13 +445,14 @@ SAFE PR MODE (always follow):
             snap = try { gh.snapshot(repo, branch).also { onStep("पूरा repo फ़ोन में आ गया (${it.size} फ़ाइलें)") } }
                    catch (e: Exception) { DKLog.d("Coder: zip nahi mila (${e.message}) - har file API se"); null }
             files = snap?.let { m -> m.map { GitHub.Entry(it.key, it.value.length) } } ?: gh.tree(repo, branch)
-            val list = files!!.take(500).joinToString("\n") { it.path }
-            msgs.add("user" to "Repository files (${files!!.size}):\n$list" + (if (files!!.size > 500) "\n…(more, use list)" else ""))
+            // पूरी list नहीं - सिर्फ़ ज़रूरी (code/res/build) फ़ाइलें; बाकी list/grep से
+            val list = importantPaths(files!!.map { it.path }, 250).joinToString("\n")
+            msgs.add("user" to "Repository files (${files!!.size}, showing the important ones):\n$list" + (if (files!!.size > 250) "\n…(more: use list with a folder, or grep)" else ""))
             msgs.add("model" to "{\"tool\":\"list\",\"path\":\"\"}")
             projectCtx = loadProjectContext()
             if (projectCtx.isNotBlank()) {
                 onStep("repo के नियम, agents और GitHub Actions समझ लिए")
-                msgs.add("user" to "PROJECT CONTEXT (read and follow before any change):\n$projectCtx")
+                msgs.add("user" to "PROJECT CONTEXT (read and follow before any change):\n" + projectCtx.take(6000))
                 msgs.add("model" to "{\"tool\":\"diff\"}")
                 msgs.add("user" to "RESULT (diff):\n(no staged changes)")
             }
@@ -432,27 +464,35 @@ SAFE PR MODE (always follow):
         msgs.add("user" to "TASK FROM USER: $task" +
             if (staged.isNotEmpty()) "\n(Already staged, not pushed: ${staged.keys.joinToString()})" else "")
         var step = 0
-        var bad = 0
+        val guard = WarnGuard(2)
+        /** एक ही चेतावनी लगातार 2 बार -> रुककर वजह बताओ (बार-बार का चक्र नहीं) */
+        fun repeated(w: String): Outcome? = if (!guard.hit(w)) null else
+            Outcome("एजेंट रुक गया: एक ही चेतावनी लगातार 2 बार आई —\n\"${w.lineSequence().first().take(200)}\"\n" +
+                "आगे: काम को छोटे और साफ़ हिस्से में लिखकर फिर भेजें (कौन-सी फ़ाइल, क्या बदलना है)।", "", false, stopped = true)
         while (true) {
             ensureActive()
-            if (++step > MAX_STEPS) return@withContext Outcome("$MAX_STEPS कदम हो गए, यहीं रोका। अब तक के बदलाव नीचे हैं।", "DK: partial changes", false)
-            trimContext()
-            val reply = try { ai.chat(system(), msgs) } catch (e: AiException) {
+            if (++step > maxSteps) return@withContext Outcome("$maxSteps कदम हो गए, यहीं रोका। अब तक के बदलाव नीचे हैं। " +
+                "(ज़्यादा कदम चाहिए तो Settings → कोडिंग एजेंट → \"एक काम में ज़्यादा से ज़्यादा कदम\")", "DK: partial changes", false)
+            // हर कदम के बीच थोड़ा रुको (free API की प्रति-मिनट limit जल्दी खत्म न हो)
+            if (step > 1) delay(STEP_DELAY_MS)
+            val reply = try { ai.chat(system(), view()) } catch (e: AiException) {
                 throw AiException(e.code, "${ai.label}: ${e.message}")
             }
             msgs.add("model" to reply)
             val call = parse(reply)
             if (call == null) {
-                if (++bad >= 4) return@withContext Outcome("AI सही तरीके से जवाब नहीं दे रहा (4 बार)। दूसरा मॉडल चुनकर फिर कोशिश करें।", "", false)
+                val w = "ERROR: your reply had no valid JSON tool call on the first line. Reply with exactly one tool call."
+                repeated(w)?.let { onStep("चेतावनी: AI ने दो बार गलत जवाब दिया — रुक गया"); return@withContext it }
                 onStep("…")
-                msgs.add("user" to "ERROR: your reply had no valid JSON tool call on the first line. Reply with exactly one tool call.")
+                msgs.add("user" to w)
                 continue
             }
-            bad = 0
             val o = call.o
             val tool = o.optString("tool"); val path = o.optString("path").trim().trimStart('/')
             if (tool == "ask") return@withContext Outcome(o.optString("question").ifBlank { "थोड़ा और बताइए?" }, "", true)
             if (tool == "done") {
+                // staged बदलाव यहाँ push नहीं होते - "done" के बाद ऐप GitHub API से एक commit में भेजता है.
+                // (पहले यहाँ "staged हैं पर push नहीं हुए" वाली जाँच थी: done हर बार लौट जाता था = अंतहीन चक्र)
                 val problems = check()
                 if (problems.isNotEmpty() && !checkWarned) {
                     checkWarned = true
@@ -461,21 +501,14 @@ SAFE PR MODE (always follow):
                         "Fix them (read the file again), or call done again if you are sure they are false alarms.")
                     continue
                 }
-                if (staged.isNotEmpty()) {
-                    onStep("चेतावनी: कुछ बदलाव staged हैं पर push नहीं हुए।")
-                    msgs.add("user" to "ERROR: You have staged changes that are not pushed. Please push them before finishing.")
-                    continue
-                }
-                if (safePr && !verifyRemotePush()) {
-                    onStep("चेतावनी: स्थानीय बदलाव रिमोट पर पुश नहीं हुए हैं।")
-                    msgs.add("user" to "ERROR: Local changes are not pushed to remote. Please push your changes before finishing.")
-                    continue
-                }
                 if (staged.isNotEmpty()) lastSummary = o.optString("summary")
                 return@withContext Outcome(o.optString("summary").ifBlank { "हो गया।" },
                     o.optString("commit").ifBlank { if (staged.isEmpty()) "" else "DK: code changes" }, false)
             }
             val result = try { runTool(tool, path, call, onStep) } catch (e: GitHub.Err) { "GITHUB ERROR: ${e.message}" }
+            if (result.startsWith("ERROR") || result.startsWith("NOT FOUND") || result.startsWith("GITHUB ERROR")) {
+                repeated("$tool: $result")?.let { onStep("चेतावनी दोबारा आई — रुक गया"); return@withContext it }
+            } else guard.ok()
             msgs.add("user" to "RESULT ($tool${if (path.isNotBlank()) " $path" else ""}):\n$result")
         }
         Outcome("", "", false)
@@ -501,12 +534,12 @@ SAFE PR MODE (always follow):
                 if (many != null && many.length() > 0) {
                     val ps = (0 until many.length()).map { many.optString(it).trim().trimStart('/') }.filter { it.isNotBlank() }.take(6)
                     onStep("पढ़ रहा हूँ: " + ps.joinToString(", ") { it.substringAfterLast('/') })
-                    val per = 60_000 / ps.size.coerceAtLeast(1)
+                    val per = (CoderContext.CHUNK_CHARS * 2) / ps.size.coerceAtLeast(1)
                     return ps.joinToString("\n\n") { p ->
                         val t = current(p)
                         "===== $p =====\n" + when {
                             t == null -> "NOT FOUND"
-                            t.length > per -> t.take(per) + "\n…(cut; read this file alone or with start/end)"
+                            t.length > per -> CoderContext.chunk(t, 1, per, p)
                             else -> t
                         }
                     }
@@ -517,10 +550,13 @@ SAFE PR MODE (always follow):
                     val lines = t.lines()
                     val a = start.coerceIn(1, lines.size.coerceAtLeast(1)); val b = (if (end > 0) end else a + 150).coerceIn(a, lines.size)
                     onStep("पढ़ रहा हूँ: $path ($a-$b)")
-                    return "(${lines.size} lines total)\n" + (a..b).joinToString("\n") { "$it| ${lines[it - 1]}" }
+                    val part = "(${lines.size} lines total)\n" + (a..b).joinToString("\n") { "$it| ${lines[it - 1]}" }
+                    // बहुत लंबी range भी एक हिस्से (chunk) से बड़ी नहीं
+                    return if (part.length > CoderContext.CHUNK_CHARS) CoderContext.chunk(t, a, path = path) else part
                 }
                 onStep("पढ़ रहा हूँ: $path")
-                return if (t.length > 60_000) t.take(60_000) + "\n…(file cut at 60000 chars; read with start/end for the rest)" else t
+                // बड़ी फ़ाइल पूरी नहीं - हिस्सों में (हर हिस्सा line नंबर के साथ, अगला हिस्सा कैसे पढ़ें)
+                return if (t.length > CoderContext.CHUNK_CHARS) CoderContext.chunk(t, 1, path = path) else t
             }
             "grep", "search" -> {
                 val q = o.optString("pattern").ifBlank { o.optString("query") }
@@ -788,16 +824,17 @@ pass=true ONLY if you are confident it compiles and the task works completely.
         if (staged.isEmpty()) return@withContext Review(true, emptyList(), "कोई बदलाव नहीं था", true)
         val rmsgs = mutableListOf<Pair<String, String>>()
         val static = check()
-        val d = diffAll().let { if (it.length > 30_000) it.take(30_000) + "\n…(diff cut - use read)" else it }
+        val d = diffAll().let { if (it.length > 20_000) it.take(20_000) + "\n…(diff cut - use read)" else it }
         rmsgs.add("user" to "REVIEW ROUND $round\nUSER TASK: $task\n" +
             (if (acceptance.isNotEmpty()) "ACCEPTANCE CRITERIA:\n" + acceptance.joinToString("\n") { "- $it" } + "\n" else "") +
             (if (projectCtx.isNotBlank()) "PROJECT RULES:\n${projectCtx.take(5000)}\n" else "") +
             SafePr.protectedIn(staged.keys).let { if (it.isEmpty()) "" else "PROTECTED FILES CHANGED: ${it.joinToString()} (issue unless the task explicitly asks)\n" } +
             "STATIC CHECK: " + static.ifBlank { "OK (brackets/XML/JSON fine)" } + "\n\nSTAGED DIFF:\n$d")
         var bad = 0
-        for (step in 1..REVIEW_STEPS) {
+        for (step in 1..(maxSteps + 2)) {
             ensureActive()
-            val reply = try { ai.chat(reviewerSystem(), rmsgs) } catch (e: AiException) { throw AiException(e.code, "Reviewer ${ai.label}: ${e.message}") }
+            if (step > 1) delay(STEP_DELAY_MS)
+            val reply = try { ai.chat(reviewerSystem(), if (CoderContext.total(rmsgs) > CoderContext.DEFAULT_BUDGET) CoderContext.compact(rmsgs) else rmsgs) } catch (e: AiException) { throw AiException(e.code, "Reviewer ${ai.label}: ${e.message}") }
             rmsgs.add("model" to reply)
             val call = parse(reply)
             if (call == null) {
@@ -817,7 +854,7 @@ pass=true ONLY if you are confident it compiles and the task works completely.
                 "list", "read", "grep", "search", "diff", "suggest" -> try { runTool(tool, path, call) { st -> onStep("रिव्यूअर: $st") } } catch (e: GitHub.Err) { "GITHUB ERROR: ${e.message}" }
                 else -> "ERROR: reviewer is READ-ONLY. Use list/read/grep/diff, then verdict."
             }
-            rmsgs.add("user" to "RESULT ($tool${if (path.isNotBlank()) " $path" else ""}):\n" + result.take(50_000))
+            rmsgs.add("user" to "RESULT ($tool${if (path.isNotBlank()) " $path" else ""}):\n" + result.take(CoderContext.CHUNK_CHARS))
         }
         // Reviewer faisla nahi de paya: static jaanch hi aadhaar
         Review(static.isBlank(), static.lines().filter { it.isNotBlank() }.map { it.removePrefix("- ") }, "रिव्यूअर पूरा जवाब नहीं दे पाया — सिर्फ़ static जाँच हुई", false)
@@ -850,6 +887,12 @@ pass=true ONLY if you are confident it compiles and the task works completely.
             msgs.add("model" to "{\"tool\":\"ask\",\"question\":\"ठीक है\"}")
         }
         if (safePr && SafePr.isBlocked(branch, baseBranch)) throw IllegalStateException("सुरक्षित PR मोड: $branch पर सीधे push मना है")
+        // token में Contents: Read and write है? (एक बार) - न हो तो साफ़ बताओ क्या बदलना है
+        if (!writeChecked) {
+            gh.checkWrite(repo)?.let { throw IllegalStateException(it) }
+            writeChecked = true
+        }
+        // GitHub API से सीधा commit (git push नहीं); commit() खुद पक्का करता है कि branch नए commit पर पहुँची
         val url = gh.commit(repo, branch, staged.toMap(), msg)
         lastSha = url.substringAfterLast('/')
         lastPushMsg = msg; lastChangeText = changeText
@@ -938,23 +981,31 @@ pass=true ONLY if you are confident it compiles and the task works completely.
         msgs.add("model" to "{\"tool\":\"ask\",\"question\":\"ठीक है, क्या बदलूँ?\"}")
     }
 
-    /** Purane lambe nateeje chhote karo (free models ka context chhota hota hai) */
-    private fun trimContext() {
-        var total = msgs.sumOf { it.second.length }
-        var i = 4
-        while (total > 140_000 && i < msgs.size - 6) {
-            val (r, t) = msgs[i]
-            if (t.length > 1500) {
-                val short = t.take(400) + "\n…(old content removed to save space; read again if needed)"
-                total -= t.length - short.length; msgs[i] = r to short
-            }
-            i++
-        }
+    /**
+     * AI को भेजने वाला छोटा इतिहास: शुरू की repo list + अभी का काम + पिछले कुछ संदेश (पूरा chat history हर बार नहीं).
+     * staged फ़ाइलों का नाम हमेशा साथ, ताकि छोटा करने पर भी एजेंट को पता रहे कि क्या बदल चुका.
+     */
+    private fun view(): List<Pair<String, String>> {
+        // repo के नियम (AGENTS.md आदि) छोटा करने पर भी साथ रहें - पर तभी जब वे पुराने हिस्से में चले गए हों
+        val rules = if (projectCtx.isBlank() || msgs.size <= CoderContext.KEEP_TAIL + 6) "" else "PROJECT RULES (short):\n" + projectCtx.take(3000) + "\n\n"
+        val st = if (staged.isEmpty()) "" else "STAGED (not pushed yet, the app pushes after done): " + staged.keys.joinToString()
+        return CoderContext.compact(msgs, CoderContext.DEFAULT_BUDGET, CoderContext.KEEP_TAIL, (rules + st).trim())
     }
 
     companion object {
-        const val MAX_STEPS = 60
-        const val REVIEW_STEPS = 25
+        /** एक काम में default कदम (Settings में 3-30) */
+        const val DEFAULT_STEPS = 5
+        /** हर कदम के बीच रुकना (ms) */
+        const val STEP_DELAY_MS = 1500L
+
+        /** शुरू में भेजी जाने वाली फ़ाइलें: पहले code/res/build की, फिर बाकी; [max] तक */
+        fun importantPaths(all: List<String>, max: Int): List<String> {
+            val skip = listOf(".png", ".jpg", ".jpeg", ".webp", ".gif", ".ico", ".jar", ".zip", ".apk", ".so", ".ttf", ".otf", ".mp3", ".wav")
+            val code = listOf(".kt", ".java", ".kts", ".gradle", ".xml", ".md", ".yml", ".yaml", ".json", ".toml", ".properties", ".txt")
+            val ok = all.filter { p -> skip.none { p.endsWith(it, true) } }
+            val first = ok.filter { p -> code.any { p.endsWith(it, true) } }
+            return (first + ok.filter { it !in first }).take(max)
+        }
 
         /** Pehli line ka JSON + <<<FILE / FIND / REPLACE>>> blocks (kai FIND/REPLACE jode ho sakte hain) */
         fun parse(reply: String): Call? {
