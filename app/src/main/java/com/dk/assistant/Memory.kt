@@ -71,7 +71,12 @@ object Memory {
     /** AI ki pichhli baatcheet (context) mitao */
     @Volatile var historyEpoch = 0
         private set
-    fun clearHistory(c: Context) { writeArr(c, "dk_history.json", JSONArray()); historyEpoch++ }
+    fun clearHistory(c: Context) { synchronized(historyLock) { writeArr(c, "dk_history.json", JSONArray()); historyEpoch++; historyVersion++ } }
+    /** Har save par badhta hai - doosre BrainManager (chat/Live/deep_think) jaan lete hain ki file badli, dobara padho */
+    @Volatile var historyVersion = 0
+        private set
+    /** History padhna-jodna-likhna ek saath (kai BrainManager ek doosre ki baatein na mitayein) */
+    val historyLock = Any()
 
     /** AI ke prompt me jodne ke liye. */
     fun factsBlock(c: Context): String {
@@ -98,7 +103,7 @@ object Memory {
     fun saveHistory(c: Context, h: List<Turn>) {
         val a = JSONArray()
         h.takeLast(MAX_HISTORY).forEach { a.put(JSONObject().put("r", it.role).put("t", it.text)) }
-        writeArr(c, "dk_history.json", a)
+        synchronized(historyLock) { writeArr(c, "dk_history.json", a); historyVersion++ }
     }
 
     // ------------------------------------------------------------ chat screen

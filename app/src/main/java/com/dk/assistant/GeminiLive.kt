@@ -10,7 +10,9 @@ import android.media.audiofx.AcousticEchoCanceler
 import android.media.audiofx.AutomaticGainControl
 import android.media.audiofx.NoiseSuppressor
 import android.util.Base64
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
@@ -815,8 +817,10 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
             val id = fc.optString("id"); val name = fc.optString("name"); val args = fc.optJSONObject("args") ?: JSONObject()
             log("tool: $name $args")
             val tStart = System.currentTimeMillis()
-            val j = svc.scope.launch {
-                val result = when (name) {
+            // LAZY: pehle map me darj, phir shuru - warna tez tool (remember_fact) map me aane se pehle hi remove() kar deta tha
+            val j = svc.scope.launch(start = CoroutineStart.LAZY) {
+              try {
+                val result = try { when (name) {
                     "phone_task" -> {
                         DKState.set(Mode.WORKING)
                         val before = DKState.lastReply
@@ -827,11 +831,14 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
                     "remember_fact" -> { Memory.addFact(svc, args.optString("fact")); "saved" }
                     "coding_task" -> {
                         val t = args.optString("task")
-                        CoderTeam.voiceDecision(svc, t) ?: when {
+                        // pehle setting jaancho - band ho to merge/sujhav ka faisla bhi nahi (AgentRunner jaisa)
+                        when {
                             !Prefs.coderOn(svc) -> "Coding agent is OFF in settings - tell the user to turn it on (सेटिंग्स → कोडिंग एजेंट)."
-                            !Prefs.coderTeam(svc) -> "Coding team is OFF in settings (सेटिंग्स → कोडिंग एजेंट → टीम)."
-                            else -> CoderTeam.start(svc, t, fromVoice = true)?.let { "Could not start: $it" }
-                                ?: "Started. Builder writes, Reviewer checks, Coordinator pushes and will notify when done."
+                            else -> CoderTeam.voiceDecision(svc, t) ?: when {
+                                !Prefs.coderTeam(svc) -> "Coding team is OFF in settings (सेटिंग्स → कोडिंग एजेंट → टीम)."
+                                else -> CoderTeam.start(svc, t, fromVoice = true)?.let { "Could not start: $it" }
+                                    ?: "Started. Builder writes, Reviewer checks, Coordinator pushes and will notify when done."
+                            }
                         }
                     }
                     "deep_think" -> {
@@ -847,6 +854,10 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
                         }
                     }
                     else -> "unknown function"
+                } } catch (e: CancellationException) { throw e } catch (e: Exception) {
+                    // tool toota - phir bhi Gemini ko jawab bhejo, warna model hamesha intezaar karta
+                    log("tool $name fail: ${e.message}")
+                    "Tool failed (${e.javaClass.simpleName}) - tell the user it could not be done."
                 }
                 val resp = JSONObject().put("toolResponse", JSONObject().put("functionResponses", JSONArray().put(
                     JSONObject().put("id", id).put("name", name).put("response", JSONObject().put("result", result.take(if (name == "deep_think") 4000 else 1500))))))
@@ -854,9 +865,13 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
                 // ab se deri ginti: tool ka jawab bheja -> pehli awaaz (tool ka samay alag dikhta hai)
                 eosAt = System.currentTimeMillis(); firstAudioAt = 0
                 if (ws?.send(resp.toString()) != true) log("tool जवाब नहीं भेज पाया")
-                toolJobs.remove(id)
+              } finally {
+                // hamesha hatao (fail/cancel par bhi) - warna idle-exit aur watchdog band rehte
+                coroutineContext[Job]?.let { me -> toolJobs.remove(id, me) }
+              }
             }
             toolJobs[id] = j
+            j.start()
         }
     }
 
