@@ -15,6 +15,7 @@ class DKApp : Application() {
     override fun onCreate() {
         super.onCreate()
         DKState.init(this)
+        removeLegacyAntiTheftState()
         val prev = Thread.getDefaultUncaughtExceptionHandler()
         Thread.setDefaultUncaughtExceptionHandler { t, e ->
             try {
@@ -55,6 +56,24 @@ class DKApp : Application() {
             override fun onActivitySaveInstanceState(a: Activity, b: Bundle) {}
             override fun onActivityDestroyed(a: Activity) {}
         })
+    }
+
+    /** Existing installs may still have the old guard's device-admin flag and notification channel. */
+    private fun removeLegacyAntiTheftState() {
+        getSharedPreferences("dk_prefs", MODE_PRIVATE).edit().remove("anti_theft_guard_on").apply()
+        try {
+            if (android.os.Build.VERSION.SDK_INT >= 26) {
+                getSystemService(android.app.NotificationManager::class.java)
+                    ?.deleteNotificationChannel("anti_theft_guard_channel")
+            }
+        } catch (_: Exception) {}
+        try {
+            val oldAdmin = android.content.ComponentName(
+                packageName, "$packageName.antitheft.GuardDeviceAdminReceiver"
+            )
+            val dpm = getSystemService(android.app.admin.DevicePolicyManager::class.java)
+            if (dpm?.isAdminActive(oldAdmin) == true) dpm.removeActiveAdmin(oldAdmin)
+        } catch (_: Exception) {}
     }
 
     companion object {
