@@ -45,7 +45,7 @@ object ComputerSession {
     fun start(c: Context, task: String, background: Boolean = false, voice: Boolean = false): String? {
         val ctx = c.applicationContext
         if (!Prefs.computerOn(ctx)) return "DK कंप्यूटर बंद है — Settings → DK कंप्यूटर में चालू करें"
-        if (CoderAi.forComputer(ctx) { _, _ -> } == null) return "कोई AI key नहीं मिली — Settings → AI दिमाग में key डालें"
+        if (CoderAi.forComputer(ctx) { _, _ -> } == null) return "DK कंप्यूटर की AI key नहीं मिली — Settings → AI दिमाग → DK कंप्यूटर में key डालें"
         if (busy) {
             queue.addLast(Triple(task, background, voice))
             add("u", (if (voice) "🎤 " else "") + task); add("s", "कतार में रखा (${queue.size}) — अभी वाला काम पूरा होते ही शुरू होगा")

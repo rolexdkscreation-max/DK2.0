@@ -187,7 +187,7 @@ class StoryWriterActivity : AppCompatActivity() {
         val s = StorySession
         if (s.busy) { s.stop(); return }
         if (StoryAi.fromPrefs(this) == null) {
-            toast("पहले सेटिंग्स → AI दिमाग में AI key डालें")
+            toast("पहले सेटिंग्स → AI दिमाग → DK चैट में AI key डालें")
             startActivity(Intent(this, SettingsActivity::class.java).putExtra("section", "brain")); return
         }
         val go = { shown = 0; partsBox.removeAllViews(); s.start(this, edtTopic.text.toString(), minutes) }

@@ -108,7 +108,7 @@ class ComputerActivity : AppCompatActivity() {
     private fun welcome(): String {
         val ai = CoderAi.forComputer(this) { _, _ -> }
         if (!Prefs.computerOn(this)) return "DK कंप्यूटर बंद है — Settings → DK कंप्यूटर में चालू करें।"
-        if (ai == null) return "पहले Settings → AI दिमाग में कोई API key डालें (Gemini / Groq / OpenRouter / Custom)।"
+        if (ai == null) return "पहले Settings → AI दिमाग → DK कंप्यूटर में API key डालें (Gemini / Groq / OpenRouter / Custom)।"
         return "नमस्ते। मैं ${Prefs.assistantName(this)} कंप्यूटर हूँ — कोई भी काम दीजिए, मैं कदम-दर-कदम पूरा करूँगा और आखिर में रिपोर्ट दूँगा।\n\n" +
             "मैं कर सकता हूँ:\n• इंटरनेट पर खोज और वेबसाइटें पढ़कर रिसर्च (स्रोत के लिंक के साथ)\n• हिसाब, डेटा, तुलना (कोड चलाकर)\n" +
             "• रिपोर्ट, लिस्ट, टेबल — Markdown / CSV / HTML / PDF फ़ाइल\n• फ़ोन के काम (ऐप खोलना, मैसेज, कॉल — पहले आपसे पूछकर)\n" +
@@ -172,7 +172,7 @@ class ComputerActivity : AppCompatActivity() {
     private fun render() {
         val ai = CoderAi.forComputer(this) { _, _ -> }
         val src = ComputerTools.searchOrder(Prefs.computerSearch(this), Prefs.tavilyKey(this).isNotBlank(), Prefs.braveKey(this).isNotBlank(),
-            Prefs.key(this, "gemini").isNotBlank()).firstOrNull() ?: "search नहीं"
+            Prefs.scopeKey(this, ApiScopes.PC, "gemini").isNotBlank()).firstOrNull() ?: "search नहीं"
         sub.text = "${ai?.label ?: "AI नहीं"} • खोज: $src" + if (ComputerSession.busy) " • काम चल रहा है…" else ""
         send.setImageResource(if (ComputerSession.busy) android.R.drawable.ic_media_pause else R.drawable.ic_send)
         send.contentDescription = if (ComputerSession.busy) "रोकें" else "भेजें"

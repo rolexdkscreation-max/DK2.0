@@ -333,8 +333,30 @@ class OpenAiCompatClient(
 ) : AiClient {
     override val label = "$name ($model)"
     var fast = false
+    /** उसी key के बैकअप मॉडल: मुख्य की limit (429) खत्म / मॉडल बंद (404) / सर्वर गलती हो तो अपने-आप इन पर - दूसरी कंपनी पर नहीं */
+    var backups: List<String> = emptyList()
+    /** आखिरी जवाब किस मॉडल से आया */
+    @Volatile var usedModel: String = model
+        private set
+
+    private fun tryNext(e: AiException) = e.code == 404 || e.code == 429 || e.code == 413 || e.code >= 500 ||
+        (e.code == 400 && (e.message.orEmpty().contains("model", true) || e.message.orEmpty().contains("decommission", true)))
+
+    private fun models() = (listOf(model) + backups).distinct()
 
     override fun complete(system: String, history: List<Turn>, prompt: String, imageB64: String?): String {
+        var last: AiException? = null
+        for (m in models()) {
+            try { return completeOnce(m, system, history, prompt, imageB64).also { usedModel = m } } catch (e: AiException) {
+                last = e
+                if (!tryNext(e)) throw e
+                DKLog.d("$name: $m ${e.code} - उसी key के अगले मॉडल पर")
+            }
+        }
+        throw last ?: AiException(0, "$name: कोई मॉडल नहीं चला")
+    }
+
+    private fun completeOnce(model: String, system: String, history: List<Turn>, prompt: String, imageB64: String?): String {
         val msgs = JSONArray().put(JSONObject().put("role", "system").put("content", system))
         history.forEach {
             msgs.put(JSONObject().put("role", if (it.role == "user") "user" else "assistant").put("content", it.text))
@@ -372,6 +394,22 @@ class OpenAiCompatClient(
     }
 
     override fun stream(system: String, history: List<Turn>, prompt: String, onDelta: (String) -> Unit): String {
+        var last: AiException? = null
+        for (m in models()) {
+            var sent = false
+            try {
+                return streamOnce(m, system, history, prompt) { sent = true; onDelta(it) }.also { usedModel = m }
+            } catch (e: AiException) {
+                last = e
+                // आधा जवाब बोल चुके हों तो दूसरे मॉडल से दोबारा नहीं (दोहराव)
+                if (sent || !tryNext(e)) throw e
+                DKLog.d("$name: $m ${e.code} - उसी key के अगले मॉडल पर")
+            }
+        }
+        throw last ?: AiException(0, "$name: कोई मॉडल नहीं चला")
+    }
+
+    private fun streamOnce(model: String, system: String, history: List<Turn>, prompt: String, onDelta: (String) -> Unit): String {
         val msgs = JSONArray().put(JSONObject().put("role", "system").put("content", system))
         history.forEach { msgs.put(JSONObject().put("role", if (it.role == "user") "user" else "assistant").put("content", it.text)) }
         msgs.put(JSONObject().put("role", "user").put("content", prompt))

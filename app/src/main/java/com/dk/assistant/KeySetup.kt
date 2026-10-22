@@ -113,20 +113,41 @@ object KeySetup {
             putString("fast_$id", good.map { it.first }.joinToString("\n"))
             if (list.isNotEmpty()) putString("models_$id", list.joinToString("\n"))
             putString("active_provider", id)
-            putBoolean("fallback", true)
         }
+        // बाकी हिस्सों (DK लाइव / कोडिंग / कंप्यूटर) में भी - पर सिर्फ़ जहाँ अभी उस कंपनी की key नहीं (उनकी अपनी key नहीं बदलती)
+        val filled = fillEmptyScopes(ctx, id, key, best)
         ProviderHealth.ok(id, ms)
         val paid = if (!p.free) " (ध्यान दें: यह कंपनी पेड है)" else ""
-        Result(true, id, best, ms, "✓ ${p.name} की key जुड़ गई$paid • सबसे तेज़ मॉडल: $best (${"%.1f".format(ms / 1000.0)} सेकंड) • ${good.size} मॉडल चले")
+        val also = if (filled.isEmpty()) "" else " • यही key " + filled.joinToString(", ") { ApiScopes.title(it) } + " में भी लगाई (वहाँ खाली थी)"
+        Result(true, id, best, ms, "✓ ${p.name} की key DK चैट में जुड़ गई$paid • सबसे तेज़ मॉडल: $best (${"%.1f".format(ms / 1000.0)} सेकंड) • ${good.size} मॉडल चले$also")
+    }
+
+    /**
+     * तुरंत सेटअप की key: जिन हिस्सों में इस कंपनी की key खाली है, वहाँ भी. DK लाइव सिर्फ़ Gemini (और सुनने के लिए Groq).
+     * हिस्से की मुख्य कंपनी की key खाली हो तो मुख्य भी यही बना दो (ताकि वह हिस्सा तुरंत चले).
+     * @return जिन हिस्सों में key लगाई
+     */
+    fun fillEmptyScopes(ctx: Context, id: String, key: String, model: String): List<String> {
+        val done = mutableListOf<String>()
+        Prefs.edit(ctx) {
+            for (scope in listOf(ApiScopes.LIVE, ApiScopes.CODER, ApiScopes.PC)) {
+                if (id !in ApiScopes.providers(scope)) continue
+                if (Prefs.scopeKey(ctx, scope, id).isNotBlank()) continue
+                putString(ApiScopes.pref(scope, "key", id), key)
+                if (scope != ApiScopes.LIVE) {
+                    putString(ApiScopes.pref(scope, "model", id), model)
+                    if (Prefs.scopeKey(ctx, scope, Prefs.scopeActive(ctx, scope)).isBlank()) putString(ApiScopes.activePref(scope), id)
+                }
+                done.add(scope)
+            }
+        }
+        return done
     }
 
     /** AAWAZ wali key (sunna): sirf Groq (Whisper) ya Gemini - dono free */
     suspend fun setupVoice(ctx: Context, key0: String): Result = withContext(Dispatchers.IO) {
         val key = key0.trim().trim('"', '\'')
-        if (key.isBlank()) {
-            Prefs.edit(ctx) { putString("voice_key", ""); putString("voice_provider", "") }
-            return@withContext Result(true, "", "", 0, "आवाज़ वाली अलग key हटा दी — अब जवाब वाली key से सुनेगा।")
-        }
+        if (key.isBlank()) return@withContext Result(false, "", "", 0, "पहले Gemini या Groq की key पेस्ट करें")
         val id = detect(key) ?: identify(key)
         if (id != "groq" && id != "gemini")
             return@withContext Result(false, id ?: "", "", 0, "आवाज़ (सुनने) के लिए Groq या Gemini की key चाहिए — दोनों फ्री हैं। Groq सबसे तेज़ है।")
@@ -136,11 +157,12 @@ object KeySetup {
         }
         if (id == "groq" && list.none { it.contains("whisper") })
             return@withContext Result(false, id, "", 0, "इस Groq key पर सुनने वाला (Whisper) मॉडल नहीं मिला।")
+        // DK लाइव की अपनी key (Gemini = Live + बोलना + सुनना; Groq = सिर्फ़ सुनना)
         Prefs.edit(ctx) {
-            putString("voice_key", key); putString("voice_provider", id)
+            putString(ApiScopes.pref(ApiScopes.LIVE, "key", id), key)
             putString("listen_engine", "auto")
         }
-        val what = if (id == "groq") "Groq Whisper से सुनेगा (सबसे तेज़)" else "Gemini से सुनेगा, और Gemini आवाज़ भी इसी key से"
-        Result(true, id, "", 0, "✓ आवाज़ के लिए अलग ${p.name} key जुड़ गई • $what • अब जवाब वाली key से टकराव नहीं होगा")
+        val what = if (id == "groq") "सुनना Groq Whisper से (सबसे तेज़)" else "Gemini Live, Gemini आवाज़ और सुनना इसी key से"
+        Result(true, id, "", 0, "✓ DK लाइव में ${p.name} key जुड़ गई • $what")
     }
 }

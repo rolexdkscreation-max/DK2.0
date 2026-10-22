@@ -17,8 +17,38 @@ object Prefs {
                 remove("api_key"); remove("model")
             }.apply()
         }
+        // पहली बार: पुरानी साझा keys से DK लाइव / कोडिंग / कंप्यूटर की अपनी-अपनी keys (चैट = पुरानी ही)
+        if (!scopesDone) synchronized(this) {
+            if (!scopesDone) {
+                val add = ApiScopes.migrate { k -> if (p.contains(k)) p.all[k]?.toString() else null }
+                if (add.isNotEmpty()) p.edit().apply { add.forEach { (k, v) -> if (!p.contains(k) || k == ApiScopes.MIGRATED) putString(k, v) } }.commit()
+                scopesDone = true
+            }
+        }
         return p
     }
+    @Volatile private var scopesDone = false
+
+    // ---- हर हिस्से (DK लाइव / DK चैट / कोडिंग एजेंट / DK कंप्यूटर) की अपनी API - देखें [ApiScopes]
+    /** इस हिस्से की मुख्य कंपनी (DK लाइव = हमेशा Gemini) */
+    fun scopeActive(c: Context, scope: String): String {
+        if (scope == ApiScopes.LIVE) return "gemini"
+        if (scope == ApiScopes.CHAT) return activeProvider(c)
+        val id = sp(c).getString(ApiScopes.activePref(scope), "") ?: ""
+        return if (Providers.byId(id) != null) id else activeProvider(c)
+    }
+    fun scopeKey(c: Context, scope: String, id: String) = (sp(c).getString(ApiScopes.pref(scope, "key", id), "") ?: "").trim()
+    fun scopeModel(c: Context, scope: String, id: String): String {
+        val def = Providers.byId(id)?.defaultModel ?: ""
+        return (sp(c).getString(ApiScopes.pref(scope, "model", id), def) ?: def).ifBlank { def }
+    }
+    fun scopeBase(c: Context, scope: String, id: String): String {
+        val def = Providers.byId(id)?.baseUrl ?: ""
+        return (sp(c).getString(ApiScopes.pref(scope, "base", id), def) ?: def).ifBlank { def }
+    }
+    /** उसी key के बैकअप मॉडल (limit खत्म हो तो) - दूसरी कंपनी नहीं */
+    fun scopeBackups(c: Context, scope: String, id: String): List<String> =
+        ApiScopes.backupModels(id, scopeModel(c, scope, id), fastModels(c, id), models(c, id))
 
     // ---- profile
     fun userName(c: Context) = sp(c).getString("user_name", "") ?: ""
@@ -38,7 +68,12 @@ object Prefs {
         val id = sp(c).getString("active_provider", "gemini") ?: "gemini"
         return if (Providers.byId(id) != null) id else "gemini"
     }
-    fun fallback(c: Context) = sp(c).getBoolean("fallback", true)
+    /**
+     * दूसरी कंपनी की API पर अपने-आप जाना: अब हमेशा बंद - हर हिस्सा सिर्फ़ अपनी चुनी API से जवाब लेता है
+     * (limit खत्म हो तो उसी key के दूसरे मॉडल पर). पुरानी "चालू" setting नज़रअंदाज़.
+     */
+    @Suppress("UNUSED_PARAMETER")
+    fun fallback(c: Context) = false
     fun key(c: Context, id: String) = sp(c).getString("key_$id", "") ?: ""
     fun model(c: Context, id: String): String {
         val def = Providers.byId(id)?.defaultModel ?: ""
@@ -58,23 +93,16 @@ object Prefs {
     fun voiceKey(c: Context) = sp(c).getString("voice_key", "") ?: ""
     fun voiceProvider(c: Context) = sp(c).getString("voice_provider", "") ?: ""
 
-    /** Sunne (awaaz -> text) ke liye keys, kram se: pehle alag awaaz wali key, phir jawab wali Groq/Gemini key */
+    /** सुनने (आवाज़ → text) की keys - सिर्फ़ DK लाइव की अपनी: Groq (Whisper, तेज़) फिर Gemini */
     fun sttKeys(c: Context): List<Pair<String, String>> {
         val out = mutableListOf<Pair<String, String>>()
-        val vk = voiceKey(c)
-        val vp = voiceProvider(c).ifBlank { KeySetup.detect(vk) ?: "" }
-        if (vk.isNotBlank() && (vp == "groq" || vp == "gemini")) out.add(vp to vk)
-        key(c, "groq").takeIf { it.isNotBlank() }?.let { out.add("groq" to it) }
-        key(c, "gemini").takeIf { it.isNotBlank() }?.let { out.add("gemini" to it) }
+        scopeKey(c, ApiScopes.LIVE, "groq").takeIf { it.isNotBlank() }?.let { out.add("groq" to it) }
+        scopeKey(c, ApiScopes.LIVE, "gemini").takeIf { it.isNotBlank() }?.let { out.add("gemini" to it) }
         return out.distinctBy { it.second }
     }
 
-    /** Gemini awaaz (bolna) ke liye key: alag awaaz wali Gemini key ho to wahi, warna jawab wali */
-    fun ttsGeminiKey(c: Context): String {
-        val vk = voiceKey(c)
-        val vp = voiceProvider(c).ifBlank { KeySetup.detect(vk) ?: "" }
-        return if (vk.isNotBlank() && vp == "gemini") vk else key(c, "gemini")
-    }
+    /** Gemini Live और Gemini आवाज़ (बोलना) की key - सिर्फ़ DK लाइव की अपनी Gemini key */
+    fun ttsGeminiKey(c: Context): String = scopeKey(c, ApiScopes.LIVE, "gemini")
 
     // ---- options
     fun wakeMode(c: Context) = sp(c).getBoolean("wake_mode", false)

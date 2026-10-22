@@ -43,7 +43,6 @@ class SettingsActivity : AppCompatActivity() {
     private lateinit var edPersona: EditText
     private lateinit var edWake: EditText
     private lateinit var rgProvider: RadioGroup
-    private lateinit var swFallback: SwitchCompat
     private lateinit var swWake: SwitchCompat
     private lateinit var swShot: SwitchCompat
     private lateinit var swCalls: SwitchCompat
@@ -87,7 +86,11 @@ class SettingsActivity : AppCompatActivity() {
         when (section) {
             null -> { title.text = "सेटिंग्स"; bar.visibility = View.GONE; menu() }
             "profile" -> { title.text = "प्रोफ़ाइल"; secProfile() }
-            "brain" -> { title.text = "AI दिमाग"; secBrain() }
+            "brain" -> { title.text = "AI दिमाग"; bar.visibility = View.GONE; secBrainMenu() }
+            "brain_live" -> { title.text = "AI दिमाग • DK लाइव"; secBrainLive() }
+            "brain_chat" -> { title.text = "AI दिमाग • DK चैट"; secBrain() }
+            "brain_coder" -> { title.text = "AI दिमाग • कोडिंग एजेंट"; secBrainScope(ApiScopes.CODER) }
+            "brain_pc" -> { title.text = "AI दिमाग • DK कंप्यूटर"; secBrainScope(ApiScopes.PC) }
             "voice" -> { title.text = "आवाज़"; secVoice() }
             "orb" -> { title.text = "ओर्ब और चेहरा"; bar.visibility = View.GONE; secOrb() }
             "access" -> { title.text = "Accessibility"; secAccess() }
@@ -106,7 +109,7 @@ class SettingsActivity : AppCompatActivity() {
         val name = Prefs.assistantName(this)
         val items = listOf(
             Triple("profile", "प्रोफ़ाइल", "आपका नाम • असिस्टेंट का नाम ($name) • बात करने का तरीका"),
-            Triple("brain", "AI दिमाग", "AI कंपनी चुनें • API keys • मॉडल • इंटरनेट से जवाब"),
+            Triple("brain", "AI दिमाग", "DK लाइव • DK चैट • कोडिंग एजेंट • DK कंप्यूटर — हर एक की अपनी API key"),
             Triple("voice", "आवाज़", "महिला / पुरुष • आवाज़ चुनें • स्पीड • सुनने का तरीका"),
             Triple("orb", "ओर्ब और चेहरा", "पृथ्वी, गैलेक्सी, एटम, DNA, छल्ला, पुरुष/महिला चेहरा"),
             Triple("access", "Accessibility", (if (Setup.accessibilityOn(this)) "✓ चालू" else "✗ बंद") + " • फ़ोन कंट्रोल • हमेशा सुनना • कॉल • बैटरी"),
@@ -117,7 +120,12 @@ class SettingsActivity : AppCompatActivity() {
             Triple("update", "अपडेट", "अभी: ${Updater.displayVersion(this)} • नया version चेक करें"),
             Triple("debug", "डिबग लॉग", "माइक, कनेक्शन, देरी और गलतियों का पूरा हाल")
         )
-        items.forEach { (id, t, sub) ->
+        items.forEach { (id, t, sub) -> menuRow(id, t, sub) }
+    }
+
+    /** मेनू की एक पंक्ति (icon + नाम + विवरण + ›) - दबाने पर वह section */
+    private fun menuRow(id: String, t: String, sub: String, icon: String = id) {
+        run {
             val box = LinearLayout(this).apply {
                 orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
                 setBackgroundResource(R.drawable.glass_card)
@@ -131,7 +139,7 @@ class SettingsActivity : AppCompatActivity() {
             }
             // har section ka apna rangeen icon (rang neele background se alag) glass gole me
             box.addView(android.widget.ImageView(this).apply {
-                setImageResource(menuIcon(id)); setBackgroundResource(R.drawable.glass_circle)
+                setImageResource(menuIcon(icon)); setBackgroundResource(R.drawable.glass_circle)
                 val ip = (10 * dp).toInt(); setPadding(ip, ip, ip, ip); importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
             }, LinearLayout.LayoutParams((44 * dp).toInt(), (44 * dp).toInt()).apply { marginEnd = (14 * dp).toInt() })
             val txt = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
@@ -307,9 +315,98 @@ class SettingsActivity : AppCompatActivity() {
 
     }
 
+    // ------------------------------------------------------------ AI दिमाग: 4 अलग हिस्से, हर एक की अपनी API
+    private fun scopeStatus(scope: String): String {
+        if (scope == ApiScopes.LIVE) {
+            val g = Prefs.scopeKey(this, scope, "gemini").isNotBlank(); val q = Prefs.scopeKey(this, scope, "groq").isNotBlank()
+            return (if (g) "✓ Gemini key" else "✗ Gemini key नहीं") + (if (q) " • ✓ सुनने के लिए Groq" else "") + " • सिर्फ़ Gemini"
+        }
+        val id = Prefs.scopeActive(this, scope)
+        val ok = Prefs.scopeKey(this, scope, id).isNotBlank()
+        return (if (ok) "✓ " else "✗ ") + KeySetup.name(id) + (if (ok) " • ${Prefs.scopeModel(this, scope, id)}" else " की key नहीं") + " • अपनी अलग key"
+    }
+
+    private fun secBrainMenu() {
+        card("हर हिस्से की अपनी API", "हर हिस्सा सिर्फ़ अपनी डाली हुई key से जवाब लेता है — किसी दूसरे की key इस्तेमाल नहीं करता") { box ->
+            hint(box, "किसी मॉडल का फ्री कोटा खत्म (limit) हो तो उसी key के दूसरे फ्री मॉडल पर अपने-आप स्विच होता है। दूसरी कंपनी पर नहीं जाता।")
+        }
+        menuRow("brain_live", "DK लाइव", scopeStatus(ApiScopes.LIVE) + "\nआवाज़ से बातचीत (Gemini Live), बोलना, सुनना", "voice")
+        menuRow("brain_chat", "DK चैट", scopeStatus(ApiScopes.CHAT) + "\nलिखकर चैट, जवाब, Google search, गहरी सोच, कहानी", "brain")
+        menuRow("brain_coder", "कोडिंग एजेंट", scopeStatus(ApiScopes.CODER) + "\nकोडिंग टीम: बिल्डर, रिव्यूअर, कोऑर्डिनेटर", "coder")
+        menuRow("brain_pc", "DK कंप्यूटर", scopeStatus(ApiScopes.PC) + "\nDK कंप्यूटर के काम और उसकी web search", "computer")
+    }
+
+    /** DK लाइव: सिर्फ़ Google Gemini (Live + बोलना + सुनना) और सुनने के लिए चाहें तो Groq */
+    private fun secBrainLive() {
+        card("DK लाइव — Google Gemini", "Gemini Live बातचीत, Gemini नेचुरल आवाज़ और सुनना — सिर्फ़ इसी key से") { box ->
+            val ed = field(box, "Gemini API Key (DK लाइव की अपनी)", Prefs.scopeKey(this, ApiScopes.LIVE, "gemini"), "AIza… यहाँ पेस्ट करें", secret = true)
+            keyFields[ApiScopes.pref(ApiScopes.LIVE, "key", "gemini")] = ed
+            val res = TextView(this).apply { setTextColor(0xB3FFFFFF.toInt()); textSize = 13f; setPadding((4 * dp).toInt(), (6 * dp).toInt(), 0, 0) }
+            row(box, showButton(ed), button("टेस्ट करें") {
+                save(false); res.text = "टेस्ट हो रहा है…"
+                lifecycleScope.launch { res.text = BrainManager(this@SettingsActivity).test(Providers.byId("gemini")!!, ApiScopes.LIVE) }
+            }, button("Key लें") { Setup.openUrl(this, Providers.byId("gemini")!!.keyUrl) })
+            box.addView(res)
+            hint(box, "Limit खत्म हो तो इसी key के दूसरे Gemini Live / आवाज़ मॉडल पर अपने-आप। DK चैट या किसी और हिस्से की key यहाँ इस्तेमाल नहीं होती।")
+        }
+        card("सुनना (आवाज़ → text) — Groq, चाहें तो", "Groq Whisper सबसे तेज़ सुनता है। खाली छोड़ें = ऊपर वाली Gemini key से सुनेगा") { box ->
+            val ed = field(box, "Groq API Key (सिर्फ़ सुनने के लिए)", Prefs.scopeKey(this, ApiScopes.LIVE, "groq"), "gsk_… (ज़रूरी नहीं)", secret = true)
+            keyFields[ApiScopes.pref(ApiScopes.LIVE, "key", "groq")] = ed
+            val res = TextView(this).apply { setTextColor(0xB3FFFFFF.toInt()); textSize = 13f; setPadding((4 * dp).toInt(), (6 * dp).toInt(), 0, 0) }
+            row(box, showButton(ed), button("जाँचें") {
+                val k = ed.text.toString().trim()
+                if (k.isBlank()) { res.text = "खाली है — सुनना Gemini key से होगा"; return@button }
+                if (ApiScopes.detect(k).let { it != null && it != "groq" }) { res.text = "यह Groq की key नहीं लगती — Gemini key ऊपर वाले खाने में डालें"; return@button }
+                res.text = "जाँच रहा हूँ…"
+                lifecycleScope.launch {
+                    val r = KeySetup.setupVoice(this@SettingsActivity, k)
+                    res.text = r.msg
+                    if (r.ok) DKAccessibilityService.instance?.startWakeLoopIfEnabled()
+                }
+            }, button("Groq key लें") { Setup.openUrl(this, "https://console.groq.com/keys") })
+            box.addView(res)
+            hint(box, "अभी: " + when {
+                Prefs.scopeKey(this, ApiScopes.LIVE, "groq").isNotBlank() -> "Groq Whisper से सुन रहा है"
+                Prefs.scopeKey(this, ApiScopes.LIVE, "gemini").isNotBlank() -> "Gemini से सुन रहा है"
+                else -> "Google माइक से सुन रहा है (फ्री, बीप आ सकती है)"
+            } + " • बिना-Live आवाज़ मोड में जवाब का text DK चैट की API से बनता है।")
+        }
+    }
+
+    private fun showButton(key: EditText) = button("दिखाओ") { v ->
+        val show = key.inputType != (InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_VISIBLE_PASSWORD)
+        key.inputType = if (show) InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_VISIBLE_PASSWORD
+        else InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD
+        key.setSelection(key.text.length)
+        (v as Button).text = if (show) "छुपाओ" else "दिखाओ"
+    }
+
+    /** कोडिंग एजेंट / DK कंप्यूटर की अपनी API: मुख्य कंपनी चुनें + हर कंपनी का अपना key कार्ड */
+    private val scopeRadios = mutableMapOf<String, RadioGroup>()
+    private fun scopeRadioBase(scope: String) = if (scope == ApiScopes.CODER) 6000 else 6100
+
+    private fun secBrainScope(scope: String) {
+        card("${ApiScopes.title(scope)} की AI", "${ApiScopes.title(scope)} सिर्फ़ यहाँ डाली key से चलेगा — DK चैट या किसी और की key नहीं") { box ->
+            val cur = Prefs.scopeActive(this, scope)
+            val rg = RadioGroup(this).apply { orientation = RadioGroup.VERTICAL }
+            Providers.all.forEachIndexed { i, p ->
+                rg.addView(RadioButton(this).apply {
+                    id = scopeRadioBase(scope) + i
+                    text = p.name + (if (p.free) "   • फ्री" else "   • पेड") + if (Prefs.scopeKey(this@SettingsActivity, scope, p.id).isBlank()) "   • key नहीं" else "   • ✓ key"
+                    setTextColor(0xFFFFFFFF.toInt()); textSize = 15f
+                    isChecked = cur == p.id
+                    setPadding((6 * dp).toInt(), (6 * dp).toInt(), 0, (6 * dp).toInt())
+                })
+            }
+            box.addView(rg); scopeRadios[scope] = rg
+            hint(box, "जो कंपनी चुनेंगे, सिर्फ़ वही कॉल होगी। उसके किसी मॉडल की limit खत्म हो तो उसी key के दूसरे फ्री मॉडल पर अपने-आप।")
+        }
+        Providers.all.forEach { p -> providerCard(p, scope) }
+    }
+
     private fun secBrain() {
         quickSetupCard()
-        card("AI दिमाग", "कौन सी AI कंपनी इस्तेमाल करनी है") { box ->
+        card("DK चैट की AI", "चैट, आम जवाब, बिना-Live आवाज़ मोड का जवाब, search, गहरी सोच और कहानी — सिर्फ़ इसी की key से") { box ->
             rgProvider = RadioGroup(this).apply { orientation = RadioGroup.VERTICAL }
             Providers.all.forEachIndexed { i, p ->
                 rgProvider.addView(RadioButton(this).apply {
@@ -322,7 +419,7 @@ class SettingsActivity : AppCompatActivity() {
                 })
             }
             box.addView(rgProvider)
-            swFallback = switch(box, "मुख्य AI फेल हो तो दूसरी AI अपने-आप इस्तेमाल करो", Prefs.fallback(this))
+            hint(box, "सिर्फ़ चुनी हुई कंपनी कॉल होगी। उसके किसी मॉडल की limit खत्म हो तो उसी key के दूसरे फ्री मॉडल पर अपने-आप — दूसरी कंपनी पर नहीं।")
             swWeb = switch(box, "ज़रूरी सवालों का जवाब इंटरनेट (Google Search) से पता करके दो — Gemini key से", Prefs.webAnswers(this))
             hint(box, "नीचे जिस कंपनी को इस्तेमाल करना है उसकी API key डालें — key डालते ही मॉडल अपने-आप आ जाएँगे।")
         }
@@ -337,7 +434,7 @@ class SettingsActivity : AppCompatActivity() {
      */
     private fun quickSetupCard() {
         card("तुरंत सेटअप — कोई भी फ्री key डालें", "DK खुद पहचानेगा कि key किस कंपनी की है, उसके फ्री मॉडल जाँचकर सबसे तेज़ चुनेगा और बात शुरू कर देगा") { box ->
-            val edText = field(box, "1. जवाब (टेक्स्ट) के लिए key", "", "Gemini / Groq / OpenRouter — कोई भी", secret = true)
+            val edText = field(box, "API key", "", "Gemini / Groq / OpenRouter — कोई भी", secret = true)
             val res1 = TextView(this).apply { setTextColor(0xB3FFFFFF.toInt()); textSize = 13f; setPadding((4 * dp).toInt(), (6 * dp).toInt(), 0, 0) }
             val cur = Prefs.activeProvider(this).let { id -> if (Prefs.key(this, id).isNotBlank()) "अभी: ${KeySetup.name(id)} • ${Prefs.model(this, id)}" else "अभी कोई key नहीं" }
             res1.text = cur
@@ -351,11 +448,10 @@ class SettingsActivity : AppCompatActivity() {
                     if (r.ok) {
                         edText.setText("")
                         // neeche wale company card bhi naye hisaab se (warna save() purani key likh deta)
-                        keyFields[r.provider]?.setText(Prefs.key(this@SettingsActivity, r.provider))
-                        modelFields[r.provider]?.setText(r.model)
-                        fetchedFor[r.provider] = Prefs.key(this@SettingsActivity, r.provider)
+                        keyFields[ApiScopes.pref(ApiScopes.CHAT, "key", r.provider)]?.setText(Prefs.key(this@SettingsActivity, r.provider))
+                        modelFields[ApiScopes.pref(ApiScopes.CHAT, "model", r.provider)]?.setText(r.model)
+                        fetchedFor[ApiScopes.pref(ApiScopes.CHAT, "key", r.provider)] = Prefs.key(this@SettingsActivity, r.provider)
                         Providers.all.indexOfFirst { it.id == r.provider }.takeIf { it >= 0 }?.let { rgProvider.check(1000 + it) }
-                        if (::swFallback.isInitialized) swFallback.isChecked = true
                         save(false)
                         startTalking()
                     }
@@ -363,34 +459,8 @@ class SettingsActivity : AppCompatActivity() {
             }, button("Groq key लें") { Setup.openUrl(this, "https://console.groq.com/keys") })
             box.addView(res1)
 
-            space(box, 10)
-            val edVoice = field(box, "2. आवाज़ (सुनने) के लिए अलग key — Groq या Gemini", "", "खाली छोड़ें = जवाब वाली key से ही सुनेगा", secret = true)
-            val res2 = TextView(this).apply { setTextColor(0xB3FFFFFF.toInt()); textSize = 13f; setPadding((4 * dp).toInt(), (6 * dp).toInt(), 0, 0) }
-            res2.text = voiceStatus()
-            row(box, button("आवाज़ key जोड़ें") {
-                val k = edVoice.text.toString().trim()
-                if (k.isBlank()) { res2.text = "पहले Groq या Gemini की key पेस्ट करें"; return@button }
-                res2.text = "आवाज़ वाली key जाँच रहा हूँ…"
-                lifecycleScope.launch {
-                    val r = KeySetup.setupVoice(this@SettingsActivity, k)
-                    res2.text = r.msg
-                    if (r.ok) { edVoice.setText(""); DKAccessibilityService.instance?.startWakeLoopIfEnabled() }
-                }
-            }, button("हटाएँ") {
-                lifecycleScope.launch { res2.text = KeySetup.setupVoice(this@SettingsActivity, "").msg }
-            })
-            box.addView(res2)
-            hint(box, "सलाह: जवाब के लिए एक key (जैसे Gemini) और आवाज़ के लिए दूसरी (जैसे Groq) डालें — दोनों फ्री हैं, और एक की लिमिट दूसरी को नहीं रोकेगी। सिर्फ़ फ्री मॉडल चुने जाते हैं।")
-        }
-    }
-
-    private fun voiceStatus(): String {
-        val vk = Prefs.voiceKey(this)
-        val stt = Prefs.sttKeys(this)
-        return when {
-            vk.isNotBlank() -> "अभी: आवाज़ के लिए अलग ${KeySetup.name(Prefs.voiceProvider(this).ifBlank { KeySetup.detect(vk) ?: "" })} key लगी है"
-            stt.isNotEmpty() -> "अभी: जवाब वाली ${KeySetup.name(stt.first().first)} key से सुन रहा है (अलग key डालें तो तेज़ और बिना टकराव)"
-            else -> "अभी: Google माइक से सुन रहा है (बीप आ सकती है) — Groq की फ्री key डालें"
+            hint(box, "यह key DK चैट में लगती है, और DK लाइव / कोडिंग एजेंट / DK कंप्यूटर में भी — पर सिर्फ़ वहाँ जहाँ अभी उस कंपनी की key खाली है। " +
+                "अलग key डालनी हो तो AI दिमाग → उस हिस्से में डालें। सिर्फ़ फ्री मॉडल चुने जाते हैं।")
         }
     }
 
@@ -445,15 +515,15 @@ class SettingsActivity : AppCompatActivity() {
         // ---- Listening
         card("सुनना (माइक)", "लगातार सुनना — बिना बीप की आवाज़") { box ->
             rgListen = radios(box, listOf(
-                "auto" to "सबसे तेज़ — Gemini Live, आवाज़ से आवाज़ (Gemini key से); न चले तो बिना बीप",
-                "classic" to "बिना बीप — DK खुद सुनेगा: Whisper + AI + आवाज़ (Groq या Gemini key)",
+                "auto" to "सबसे तेज़ — Gemini Live, आवाज़ से आवाज़ (DK लाइव की Gemini key से); न चले तो बिना बीप",
+                "classic" to "बिना बीप — DK खुद सुनेगा (DK लाइव की Groq/Gemini key) + जवाब DK चैट की API से",
                 "google" to "Google माइक — बिना key, पर हर बार बीप आ सकती है"),
                 Prefs.listenEngine(this), 2200)
             hint(box, "बिना बीप वाले मोड में सबसे तेज़ और सही हिंदी पहचान के लिए Groq की फ्री key डालें (Whisper)। Groq key न हो तो Gemini key से काम चलेगा।")
             switch(box, "बोलते समय पीछे का गाना/वीडियो धीमा करो (करीब 20%), जवाब के बाद धीरे-धीरे वापस", Prefs.duckMedia(this))
                 .setOnCheckedChangeListener { _, on -> Prefs.edit(this) { putBoolean("duck_media", on) }; if (!on) Ducker.releaseNow() }
             hint(box, "आवाज़ धीरे से (fade) कम-ज़्यादा होती है। फ़ोन की volume नहीं बदलती। कुछ ऐप (जैसे podcast) धीमे होने की जगह थोड़ी देर रुक जाते हैं।")
-            hint(box, voiceStatus() + "\nआवाज़ के लिए अलग key: सेटिंग्स → AI दिमाग → \"तुरंत सेटअप\" में दूसरा खाना।")
+            hint(box, "आवाज़ की keys (Gemini Live, बोलना, सुनना): सेटिंग्स → AI दिमाग → DK लाइव। अभी: " + scopeStatus(ApiScopes.LIVE))
         }
 
     }
@@ -610,17 +680,20 @@ class SettingsActivity : AppCompatActivity() {
         super.onResume()
         refreshAccess(); refreshPerms()
         if (section == null && container.childCount > 0) { container.removeAllViews(); menu(); space(container, 8) }
+        if (section == "brain" && container.childCount > 0) { container.removeAllViews(); secBrainMenu(); space(container, 8) }
     }
 
-    private fun providerCard(p: Provider) {
-        card(p.name, p.note) { box ->
+    /** एक कंपनी का key कार्ड - [scope] = किस हिस्से की key (हर हिस्से की अलग setting) */
+    private fun providerCard(p: Provider, scope: String = ApiScopes.CHAT) {
+        val kName = ApiScopes.pref(scope, "key", p.id); val mName = ApiScopes.pref(scope, "model", p.id); val bName = ApiScopes.pref(scope, "base", p.id)
+        card(p.name + if (scope == ApiScopes.CHAT) "" else " — ${ApiScopes.title(scope)}", p.note) { box ->
             if (p.isCustom) {
-                baseFields[p.id] = field(box, "Base URL", Prefs.baseUrl(this, p.id), "https://.../v1")
+                baseFields[bName] = field(box, "Base URL", Prefs.scopeBase(this, scope, p.id), "https://.../v1")
             }
-            val key = field(box, "API Key", Prefs.key(this, p.id), "यहाँ key पेस्ट करें", secret = true)
-            keyFields[p.id] = key
-            val model = field(box, "मॉडल", Prefs.model(this, p.id), p.defaultModel.ifBlank { "model-name" })
-            modelFields[p.id] = model
+            val key = field(box, "API Key", Prefs.scopeKey(this, scope, p.id), "यहाँ key पेस्ट करें", secret = true)
+            keyFields[kName] = key
+            val model = field(box, "मॉडल", Prefs.scopeModel(this, scope, p.id), p.defaultModel.ifBlank { "model-name" })
+            modelFields[mName] = model
             val result = TextView(this).apply {
                 setTextColor(0xB3FFFFFF.toInt()); textSize = 13f
                 visibility = View.GONE
@@ -636,13 +709,13 @@ class SettingsActivity : AppCompatActivity() {
             fun loadModels(openPicker: Boolean) {
                 val k = key.text.toString().trim()
                 if (k.length < 12) { mInfo.text = "पहले सही API key डालें"; return }
-                val base = baseFields[p.id]?.text?.toString()?.trim()?.ifBlank { null } ?: Prefs.baseUrl(this, p.id)
+                val base = baseFields[bName]?.text?.toString()?.trim()?.ifBlank { null } ?: Prefs.scopeBase(this, scope, p.id)
                 if (base.isBlank() && !p.isGemini) { mInfo.text = "पहले Base URL डालें"; return }
                 mInfo.text = "मॉडल लोड हो रहे हैं…"
                 lifecycleScope.launch {
                     try {
                         val list = ModelLister.fetch(p, k, base)
-                        fetchedFor[p.id] = k
+                        fetchedFor[kName] = k
                         Prefs.edit(this@SettingsActivity) { putString("models_${p.id}", list.joinToString("\n")) }
                         mInfo.text = "✓ ${list.size} मॉडल मिले — \"मॉडल चुनें\" दबाएँ"
                         if (openPicker && list.isNotEmpty()) pickModel(p, model, list)
@@ -660,7 +733,7 @@ class SettingsActivity : AppCompatActivity() {
                 override fun afterTextChanged(s: Editable?) {
                     val k = s?.toString()?.trim() ?: ""
                     pendingFetch?.let { h.removeCallbacks(it) }
-                    if (k.length >= 20 && fetchedFor[p.id] != k) {
+                    if (k.length >= 20 && fetchedFor[kName] != k) {
                         pendingFetch = Runnable { save(false); loadModels(true) }.also { h.postDelayed(it, 1200) }
                     }
                 }
@@ -668,7 +741,7 @@ class SettingsActivity : AppCompatActivity() {
             row(box,
                 button("मॉडल चुनें") {
                     val cached = Prefs.models(this, p.id)
-                    if (cached.isNotEmpty() && fetchedFor[p.id] == key.text.toString().trim()) pickModel(p, model, cached)
+                    if (cached.isNotEmpty() && fetchedFor[kName] == key.text.toString().trim()) pickModel(p, model, cached)
                     else loadModels(true)
                 },
                 button("लिस्ट रीफ़्रेश") { loadModels(false) })
@@ -684,7 +757,7 @@ class SettingsActivity : AppCompatActivity() {
                 save(false)
                 result.visibility = View.VISIBLE
                 result.text = "टेस्ट हो रहा है…"
-                lifecycleScope.launch { result.text = BrainManager(this@SettingsActivity).test(p) }
+                lifecycleScope.launch { result.text = BrainManager(this@SettingsActivity).test(p, scope) }
             })
             if (p.keyUrl.isNotBlank()) buttons.add(button("Key लें") { Setup.openUrl(this, p.keyUrl) })
             row(box, *buttons.toTypedArray())
@@ -709,14 +782,11 @@ class SettingsActivity : AppCompatActivity() {
     // ------------------------------------------------------------ DK कंप्यूटर
     private lateinit var swPc: SwitchCompat
     private lateinit var swPcConfirm: SwitchCompat
-    private lateinit var rgPcAi: RadioGroup
-    private lateinit var edPcModel: EditText
     private lateinit var rgPcSearch: RadioGroup
     private lateinit var edTavily: EditText
     private lateinit var edBrave: EditText
     private lateinit var edPcSteps: EditText
     private val pcTools = mutableMapOf<String, SwitchCompat>()
-    private val pcAiIds get() = listOf("same") + Providers.all.map { it.id }
     private val pcSearchIds = listOf("auto", "tavily", "brave", "gemini")
 
     private fun secComputer() {
@@ -731,24 +801,7 @@ class SettingsActivity : AppCompatActivity() {
                 startActivity(android.content.Intent(this, ComputerActivity::class.java))
             })
         }
-        card("कंप्यूटर की AI", "API keys \"AI दिमाग\" वाली ही; limit खत्म हो तो अपने-आप दूसरे मॉडल/API पर") { box ->
-            val cur = Prefs.computerProvider(this)
-            rgPcAi = RadioGroup(this).apply { orientation = RadioGroup.VERTICAL }
-            pcAiIds.forEachIndexed { i, id ->
-                val p = Providers.byId(id)
-                rgPcAi.addView(RadioButton(this).apply {
-                    this.id = 5000 + i
-                    text = if (p == null) "वही AI जो बातचीत में (AI दिमाग)" else p.name + if (Prefs.key(this@SettingsActivity, p.id).isBlank()) "   • key नहीं" else "   • ✓ key"
-                    setTextColor(0xFFFFFFFF.toInt()); textSize = 15f
-                    isChecked = cur == id || (i == 0 && Providers.byId(cur) == null)
-                    setPadding((6 * dp).toInt(), (6 * dp).toInt(), 0, (6 * dp).toInt())
-                })
-            }
-            box.addView(rgPcAi)
-            edPcModel = field(box, "मॉडल (खाली = उस कंपनी का चुना मॉडल)", Prefs.computerModel(this), "जैसे: gemini-3.8-flash")
-            hint(box, "API key डालने/बदलने के लिए: Settings → AI दिमाग। वहाँ जितनी कंपनियों की key होंगी, सब fallback में काम आएँगी।")
-            row(box, button("AI दिमाग खोलें") { startActivity(android.content.Intent(this, SettingsActivity::class.java).putExtra("section", "brain")) })
-        }
+        apiLinkCard(ApiScopes.PC, "brain_pc")
         card("वेब search", "Gemini key से Google search फ्री; Tavily / Brave की key डालें तो उनसे (Groq/OpenRouter वालों के लिए भी)") { box ->
             val cur = Prefs.computerSearch(this)
             val names = mapOf("auto" to "अपने-आप (Tavily → Brave → Gemini, जो key हो)", "tavily" to "Tavily", "brave" to "Brave Search", "gemini" to "Google (Gemini key से)")
@@ -796,11 +849,6 @@ class SettingsActivity : AppCompatActivity() {
     private lateinit var edGhToken: EditText
     private lateinit var edGhRepo: EditText
     private lateinit var edGhBranch: EditText
-    private lateinit var rgCoder: RadioGroup
-    private lateinit var edCoderKey: EditText
-    private lateinit var edCoderModel: EditText
-    private lateinit var edCoderBase: EditText
-    private val coderIds get() = listOf("same") + Providers.all.map { it.id }
 
     private fun secCoder() {
         card("कोडिंग एजेंट", "आपके GitHub repo में कोड लिखता, बदलता, हटाता और push करता है") { box ->
@@ -865,56 +913,17 @@ class SettingsActivity : AppCompatActivity() {
                 "आपकी मंज़ूरी (\"Merge करें\" / \"PR merge कर दो\") से ही main में जाता है। पुराना फ़ीचर बदलने/हटाने से पहले backup/dk-… branch बनती है। " +
                 "Token में Pull requests: Read and write दें; Actions: Read and write देंगे तो GitHub की नेटवर्क दिक्कत पर build अपने-आप दोबारा चलेगा।")
         }
-        card("कोडिंग की AI", "चाहें तो कोडिंग के लिए अलग API key — बातचीत वाली key की limit बची रहे") { box ->
-            val cur = Prefs.coderProvider(this)
-            rgCoder = RadioGroup(this).apply { orientation = RadioGroup.VERTICAL }
-            coderIds.forEachIndexed { i, id ->
-                val p = Providers.byId(id)
-                rgCoder.addView(RadioButton(this).apply {
-                    this.id = 4000 + i
-                    text = if (p == null) "वही AI जो बातचीत में (AI दिमाग)" else p.name + if (p.free) "   • फ्री" else "   • पेड"
-                    setTextColor(0xFFFFFFFF.toInt()); textSize = 15f
-                    isChecked = cur == id || (i == 0 && Providers.byId(cur) == null)
-                    setPadding((6 * dp).toInt(), (6 * dp).toInt(), 0, (6 * dp).toInt())
-                })
-            }
-            box.addView(rgCoder)
-            edCoderKey = field(box, "कोडिंग की API Key (खाली = AI दिमाग वाली उसी कंपनी की key)", Prefs.coderKey(this), "अलग key यहाँ पेस्ट करें", secret = true)
-            edCoderModel = field(box, "मॉडल (खाली = उस कंपनी का चुना मॉडल)", Prefs.coderModel(this), "जैसे: openai/gpt-oss-120b")
-            edCoderBase = field(box, "Base URL (सिर्फ़ Custom API के लिए)", Prefs.coderBase(this), "https://.../v1")
-            val info = TextView(this).apply { setTextColor(0xB3FFFFFF.toInt()); textSize = 13f; setPadding((4 * dp).toInt(), (6 * dp).toInt(), 0, 0) }
-            fun sel(): Provider? = Providers.byId(coderIds.getOrNull(rgCoder.checkedRadioButtonId - 4000) ?: "same")
-            row(box,
-                button("मॉडल चुनें") {
-                    val p = sel() ?: run { toast("\"वही AI\" में मॉडल AI दिमाग से आता है"); return@button }
-                    val k = edCoderKey.text.toString().trim().ifBlank { Prefs.key(this, p.id) }
-                    val base = edCoderBase.text.toString().trim().ifBlank { Prefs.baseUrl(this, p.id) }
-                    if (k.length < 12) { info.text = "पहले ${p.name} की key डालें"; return@button }
-                    info.text = "मॉडल ला रहा हूँ…"
-                    lifecycleScope.launch {
-                        try {
-                            val list = ModelLister.fetch(p, k, base)
-                            info.text = "${list.size} मॉडल"
-                            if (list.isNotEmpty() && !isFinishing) pickModel(p, edCoderModel, list)
-                        } catch (e: Exception) { info.text = "✗ " + BrainManager(this@SettingsActivity).explain(e).take(160) }
-                    }
-                },
-                button("टेस्ट करें") {
-                    save(false)
-                    val ai = CoderAi.fromPrefs(this) ?: run { info.text = "✗ key/मॉडल नहीं मिला"; return@button }
-                    info.text = "टेस्ट: ${ai.label}…"
-                    lifecycleScope.launch {
-                        info.text = try {
-                            val r = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
-                                ai.chat("Reply with exactly: OK", listOf("user" to "Say OK"))
-                            }
-                            "✓ चल रहा है: ${ai.label} → ${r.take(40)}"
-                        } catch (e: Exception) { "✗ ${ai.label}: " + (e.message ?: "").take(160) }
-                    }
-                },
-                button("Key लें") { sel()?.keyUrl?.takeIf { it.isNotBlank() }?.let { Setup.openUrl(this, it) } ?: toast("ऊपर कोई कंपनी चुनें") })
-            box.addView(info)
-            hint(box, "फ्री में अच्छा: Gemini (aistudio.google.com) या Groq (console.groq.com)। OpenRouter पर \":free\" वाले coder मॉडल भी चुन सकते हैं।")
+        apiLinkCard(ApiScopes.CODER, "brain_coder")
+    }
+
+    /** कोडिंग / कंप्यूटर स्क्रीन पर: उनकी API अब AI दिमाग में उनके अपने विकल्प में */
+    private fun apiLinkCard(scope: String, section: String) {
+        card("${ApiScopes.title(scope)} की AI", "API key अब AI दिमाग → ${ApiScopes.title(scope)} में — सिर्फ़ इसी की अपनी") { box ->
+            hint(box, "अभी: " + scopeStatus(scope))
+            row(box, button("${ApiScopes.title(scope)} की API खोलें") {
+                save(false)
+                startActivity(android.content.Intent(this, SettingsActivity::class.java).putExtra("section", section))
+            })
         }
     }
 
@@ -933,7 +942,6 @@ class SettingsActivity : AppCompatActivity() {
             }
             if (::rgProvider.isInitialized) {
                 putString("active_provider", active)
-                putBoolean("fallback", swFallback.isChecked)
                 putBoolean("web_answers", swWeb.isChecked)
             }
             if (::swWake.isInitialized) {
@@ -959,25 +967,23 @@ class SettingsActivity : AppCompatActivity() {
                 putString("gh_token", edGhToken.text.toString().trim())
                 putString("gh_repo", edGhRepo.text.toString().trim().removePrefix("https://github.com/").removeSuffix(".git").trim('/'))
                 putString("gh_branch", edGhBranch.text.toString().trim())
-                putString("coder_provider", coderIds.getOrNull(rgCoder.checkedRadioButtonId - 4000) ?: "same")
-                putString("coder_key", edCoderKey.text.toString().trim())
-                putString("coder_model", edCoderModel.text.toString().trim())
-                putString("coder_base", edCoderBase.text.toString().trim())
             }
             if (::swPc.isInitialized) {
                 putBoolean("pc_on", swPc.isChecked)
                 putBoolean("pc_confirm", swPcConfirm.isChecked)
                 putInt("pc_max_steps", (edPcSteps.text.toString().trim().toIntOrNull() ?: 25).coerceIn(5, 60))
-                putString("pc_provider", pcAiIds.getOrNull(rgPcAi.checkedRadioButtonId - 5000) ?: "same")
-                putString("pc_model", edPcModel.text.toString().trim())
                 putString("pc_search", pcSearchIds.getOrNull(rgPcSearch.checkedRadioButtonId - 5100) ?: "auto")
                 putString("key_tavily", edTavily.text.toString().trim())
                 putString("key_brave", edBrave.text.toString().trim())
                 pcTools.forEach { (id, sw) -> putBoolean("pc_tool_$id", sw.isChecked) }
             }
-            keyFields.forEach { (id, e) -> putString("key_$id", e.text.toString().trim()) }
-            modelFields.forEach { (id, e) -> putString("model_$id", e.text.toString().trim()) }
-            baseFields.forEach { (id, e) -> putString("base_$id", e.text.toString().trim()) }
+            // हर हिस्से की अपनी setting (नाम ApiScopes.pref से: key_gemini, coder_key_groq, live_key_gemini …)
+            keyFields.forEach { (name, e) -> putString(name, e.text.toString().trim()) }
+            modelFields.forEach { (name, e) -> putString(name, e.text.toString().trim()) }
+            baseFields.forEach { (name, e) -> putString(name, e.text.toString().trim()) }
+            scopeRadios.forEach { (scope, rg) ->
+                Providers.all.getOrNull(rg.checkedRadioButtonId - scopeRadioBase(scope))?.let { putString(ApiScopes.activePref(scope), it.id) }
+            }
         }
         DKAccessibilityService.instance?.startWakeLoopIfEnabled()
         txtSaved.text = "✓ सेव हो गया"
@@ -1059,7 +1065,7 @@ class SettingsActivity : AppCompatActivity() {
     private fun geminiVoiceLine(): String {
         val g = if (Prefs.voiceGender(this) == "male") "पुरुष" else "महिला"
         return "चुनी हुई आवाज़: ${Prefs.geminiVoice(this)}  •  $g की ${VoiceCatalog.geminiFor(Prefs.voiceGender(this)).size} आवाज़ें — नीचे टैप करके सुनें और चुनें" +
-            if (Prefs.key(this, "gemini").isBlank()) "\n(Gemini key नहीं डाली — तब तक Google आवाज़)" else ""
+            if (Prefs.ttsGeminiKey(this).isBlank()) "\n(AI दिमाग → DK लाइव में Gemini key नहीं डाली — तब तक Google आवाज़)" else ""
     }
 
     private fun updateVoiceText() {

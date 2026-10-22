@@ -89,7 +89,7 @@ class CoderAi(val provider: Provider, private val key: String, val model: String
         val others = errs.filter { it !== main }.joinToString { "${it.first.provider.name}: ${(it.second as? AiException)?.code ?: "network"}" }
         val e = main.second
         val msg = (e.message ?: e.javaClass.simpleName) + if (others.isNotBlank()) "\n(दूसरे API भी नहीं चले: $others)" else
-            if (fallbacks.isEmpty()) "\n(सुझाव: Settings में Groq या OpenRouter की फ्री key भी डालें - limit खत्म होने पर एजेंट अपने आप उस पर चला जाएगा)" else ""
+            if (fallbacks.isEmpty()) "\n(सुझाव: Settings → AI दिमाग में इसी हिस्से की दूसरी फ्री key (जैसे Groq / OpenRouter) डालकर उसे मुख्य चुनें)" else ""
         throw if (e is AiException) AiException(e.code, msg, e.retryAfter) else java.io.IOException(msg, e)
     }
 
@@ -215,51 +215,26 @@ class CoderAi(val provider: Provider, private val key: String, val model: String
         private val http = OkHttpClient.Builder().connectTimeout(15, TimeUnit.SECONDS)
             .readTimeout(150, TimeUnit.SECONDS).callTimeout(180, TimeUnit.SECONDS).build()
 
+        /** DK कंप्यूटर की AI: सिर्फ़ Settings → AI दिमाग → DK कंप्यूटर की अपनी key. [sink] = कंप्यूटर की अपनी रिपोर्ट. */
+        fun forComputer(c: Context, sink: (String, String) -> Unit): CoderAi? = forScope(c, ApiScopes.PC, sink)
+
+        /** कोडिंग एजेंट की AI: सिर्फ़ Settings → AI दिमाग → कोडिंग एजेंट की अपनी key. null = key नहीं */
+        fun fromPrefs(c: Context): CoderAi? = forScope(c, ApiScopes.CODER) { p, f -> CoderReport.add(p, f) }
+
         /**
-         * DK कंप्यूटर की AI: Settings → DK कंप्यूटर (या "same" = बातचीत वाली), बाकी keys fallback में.
-         * [sink] = कंप्यूटर की अपनी रिपोर्ट.
+         * एक हिस्से की AI: उसकी चुनी कंपनी + उसी की key. दूसरी कंपनी/दूसरे हिस्से की key पर कभी नहीं.
+         * Limit (429) / मॉडल बंद: Gemini अपने अंदर उसी key के दूसरे मॉडल; Groq/OpenRouter/Custom के लिए
+         * उसी key के बैकअप मॉडल fallback में.
          */
-        fun forComputer(c: Context, sink: (String, String) -> Unit): CoderAi? {
-            val pid = Prefs.computerProvider(c)
-            val p = Providers.byId(if (pid == "same" || Providers.byId(pid) == null) Prefs.activeProvider(c) else pid) ?: return null
-            val key = Prefs.key(c, p.id)
-            val model = Prefs.computerModel(c).ifBlank { Prefs.model(c, p.id) }
-            val base = Prefs.baseUrl(c, p.id)
-            if (key.isBlank() || model.isBlank() || (!p.isGemini && base.isBlank())) {
-                // चुनी हुई में key नहीं - जो भी key पड़ी हो उससे चलाओ
-                val any = Providers.all.firstOrNull { q -> Prefs.key(c, q.id).isNotBlank() && Prefs.model(c, q.id).isNotBlank() && (q.isGemini || Prefs.baseUrl(c, q.id).isNotBlank()) } ?: return null
-                return build(c, any, Prefs.key(c, any.id), Prefs.model(c, any.id), Prefs.baseUrl(c, any.id), sink)
-            }
-            return build(c, p, key, model, base, sink)
-        }
-
-        private fun build(c: Context, p: Provider, key: String, model: String, base: String, sink: (String, String) -> Unit): CoderAi {
-            val fb = if (!Prefs.fallback(c)) emptyList() else Providers.all.mapNotNull { q ->
-                val k = Prefs.key(c, q.id); val m = Prefs.model(c, q.id); val b = Prefs.baseUrl(c, q.id)
-                if (k.isBlank() || m.isBlank() || (!q.isGemini && b.isBlank())) null
-                else if (q.id == p.id && k == key) null
-                else CoderAi(q, k, m, b, note = if (q.id == p.id) ", दूसरी key" else "", sink = sink)
-            }
-            return CoderAi(p, key, model, base, fb, sink = sink)
-        }
-
-        /** Settings se coding wali AI. null = key nahi */
-        fun fromPrefs(c: Context): CoderAi? {
-            val pid = Prefs.coderProvider(c)
-            val same = pid == "same" || Providers.byId(pid) == null
-            val p = Providers.byId(if (same) Prefs.activeProvider(c) else pid) ?: return null
-            val key = (if (same) "" else Prefs.coderKey(c)).ifBlank { Prefs.key(c, p.id) }
-            val model = (if (same) "" else Prefs.coderModel(c)).ifBlank { Prefs.model(c, p.id) }
-            val base = (if (same) "" else Prefs.coderBase(c)).ifBlank { Prefs.baseUrl(c, p.id) }
+        fun forScope(c: Context, scope: String, sink: (String, String) -> Unit): CoderAi? {
+            val p = Providers.byId(Prefs.scopeActive(c, scope)) ?: return null
+            val key = Prefs.scopeKey(c, scope, p.id)
+            val model = Prefs.scopeModel(c, scope, p.id)
+            val base = Prefs.scopeBase(c, scope, p.id)
             if (key.isBlank() || model.isBlank() || (!p.isGemini && base.isBlank())) return null
-            // baaki API jinki key padi hai (Settings -> "fallback" chalu ho to) - ek ki limit khatm, doosre par kaam jaari
-            val fb = if (!Prefs.fallback(c)) emptyList() else Providers.all.mapNotNull { q ->
-                val k = Prefs.key(c, q.id); val m = Prefs.model(c, q.id); val b = Prefs.baseUrl(c, q.id)
-                if (k.isBlank() || m.isBlank() || (!q.isGemini && b.isBlank())) null
-                else if (q.id == p.id && k == key) null          // wahi API + wahi key = koi fayda nahi
-                else CoderAi(q, k, m, b, note = if (q.id == p.id) ", दूसरी key" else "")
-            }
-            return CoderAi(p, key, model, base, fb)
+            val fb = if (p.isGemini) emptyList() else Prefs.scopeBackups(c, scope, p.id)
+                .map { m -> CoderAi(p, key, m, base, note = ", उसी key का दूसरा मॉडल", sink = sink) }
+            return CoderAi(p, key, model, base, fb, sink = sink)
         }
 
         /** 413 के बाद हर API/मॉडल की request सीमा (अक्षर, maxTokens) - अगली बार पहले से छोटी */
@@ -269,7 +244,7 @@ class CoderAi(val provider: Provider, private val key: String, val model: String
         fun allLimitsMessage(waitSec: Int, tried: String, noFallback: Boolean): String =
             "सारी API keys और मॉडल की limit अभी खत्म है (429), इसलिए काम रोक दिया — लगातार कोशिश नहीं की।\n" +
                 "आगे: लगभग ${if (waitSec >= 60) "${waitSec / 60} मिनट" else "$waitSec सेकंड"} बाद काम फिर भेजें" +
-                (if (noFallback) ", या Settings → AI दिमाग में Groq / OpenRouter की फ्री key भी जोड़ें" else "") + "।" +
+                (if (noFallback) ", या Settings → AI दिमाग में इसी हिस्से की मुख्य API बदलकर दूसरी फ्री key (जैसे Groq / OpenRouter) डालें" else "") + "।" +
                 if (tried.isNotBlank()) "\n(आज़माए: $tried)" else ""
 
         /** Gemini model ki limit kab tak (key ke aakhri 6 akshar|model -> time) */

@@ -80,7 +80,7 @@ object CoderSession {
         if (!Prefs.coderOn(c)) add("कोडिंग एजेंट बंद है — चालू करें")
         if (Prefs.ghToken(c).isBlank()) add("GitHub token नहीं डाला")
         if (!Prefs.ghRepo(c).contains('/')) add("Repo चुनें (owner/naam)")
-        if (CoderAi.fromPrefs(c) == null) add("कोडिंग के लिए AI key नहीं मिली")
+        if (CoderAi.fromPrefs(c) == null) add("कोडिंग के लिए AI key नहीं मिली — Settings → AI दिमाग → कोडिंग एजेंट में डालें")
     }
 
     /** Ek hi agent (staged badlaav + baatcheet) - screen ho ya awaaz */

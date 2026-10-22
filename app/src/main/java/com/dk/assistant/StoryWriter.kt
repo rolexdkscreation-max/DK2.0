@@ -205,7 +205,7 @@ object StorySession {
         error = null; stopped = false
         job = scope.launch {
             try {
-                val ai = StoryAi.fromPrefs(app) ?: run { error = "कहानी के लिए AI key नहीं मिली — सेटिंग्स → AI दिमाग में key डालें"; return@launch }
+                val ai = StoryAi.fromPrefs(app) ?: run { error = "कहानी के लिए AI key नहीं मिली — सेटिंग्स → AI दिमाग → DK चैट में key डालें"; return@launch }
                 while (parts.size < total) {
                     val n = parts.size + 1
                     notifyUi()
