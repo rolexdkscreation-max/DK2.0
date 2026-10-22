@@ -197,6 +197,11 @@ class GitHub(private val token: String) {
         post("/repos/$repo/git/refs", JSONObject().put("ref", "refs/heads/$newBranch").put("sha", sha))
     }
 
+    fun localBranchSha(branch: String): String = "" // Not applicable for mobile agent
+
+    fun remoteBranchSha(repo: String, branch: String): String =
+        JSONObject(get("/repos/$repo/git/ref/heads/${enc(branch)}")).getJSONObject("object").getString("sha")
+
     /**
      * Saare badlaav EK commit me push. changes: path -> naya content (null = file mitao).
      * @return commit ka link
