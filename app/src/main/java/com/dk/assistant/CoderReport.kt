@@ -7,9 +7,14 @@ package com.dk.assistant
 object CoderReport {
     data class Item(val problem: String, val fix: String)
     private val items = mutableListOf<Item>()
+    /** काम शुरू करने से पहले बताई योजना ("पहले … पढ़ रहा हूँ, फिर …") */
+    @Volatile private var planText = ""
 
     /** Naya kaam shuru - purani report saaf */
-    fun begin() = synchronized(items) { items.clear() }
+    fun begin() = synchronized(items) { items.clear(); planText = "" }
+
+    fun plan(text: String) { planText = text.trim().take(300) }
+    fun plan(): String = planText
 
     fun add(problem: String, fix: String) = synchronized(items) {
         val p = problem.trim().take(220); val f = fix.trim().take(220)
@@ -36,8 +41,10 @@ object CoderReport {
      * आखिरी छोटी रिपोर्ट, तीन हिस्से: क्या हुआ / क्या नहीं हुआ / आगे आपको क्या करना है.
      * ok=false पर [text] (गलती) सिर्फ़ यहीं एक बार; उसमें "आगे:" हो तो वह तीसरे हिस्से में जाता है.
      */
-    fun final(ok: Boolean, text: String, list: List<Item> = items(), next: String? = null): String = buildString {
-        append("📋 रिपोर्ट\n✔ क्या हुआ:\n")
+    fun final(ok: Boolean, text: String, list: List<Item> = items(), next: String? = null, plan: String = plan()): String = buildString {
+        append("📋 रिपोर्ट\n")
+        if (plan.isNotBlank()) append("🧭 योजना: ").append(plan).append('\n')
+        append("✔ क्या हुआ:\n")
         if (ok) append("• काम पूरा हुआ\n")
         if (list.isEmpty() && ok) append("• कोई दिक्कत या एरर नहीं आया\n")
         list.forEach { append("• दिक्कत: ").append(it.problem).append(" → हल: ").append(it.fix).append('\n') }

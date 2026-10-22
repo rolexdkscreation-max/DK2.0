@@ -333,6 +333,8 @@ class CodingAgent(private val gh: GitHub, var repo: String, var branch: String, 
     /** Poore repo ki copy (zip se) - null = nahi mili, tab har file API se */
     private var snap: Map<String, String>? = null
     private var checkWarned = false
+    /** इस काम में कौन-सी फ़ाइलें पढ़ीं - बिना पढ़े पूरी फ़ाइल दोबारा नहीं लिखनी */
+    private val readInTask = mutableSetOf<String>()
     /** Aakhri push ka commit sha (build dekhne ke liye) */
     var lastSha = ""
         private set
@@ -400,9 +402,14 @@ REPLACE>>>
 {"tool":"diff"}                                            -> see all your staged changes as a diff (review before done)
 {"tool":"ask","question":"Hindi question"}                 -> ONLY if the request is truly unclear; waits for the user${if (teamMode) " (TEAM MODE: do NOT use ask - make the most reasonable assumption and mention it in the summary)" else ""}
 {"tool":"suggest","title":"short Hindi title","why":"simple Hindi: why it is needed/useful","task":"exact English task to implement it"} -> PROPOSE something the user did NOT ask for but that is technically needed or clearly better (missing permission, crash risk, security, data loss, obvious UX gap). It is NOT implemented; the user decides later. Then continue the main task.
+Your FIRST tool call of every task must also carry "plan": one short Hindi sentence in this style -
+  "पहले <कौन-सा कोड> पढ़ रहा हूँ (<क्या ढूँढ रहा हूँ: X, Y कहाँ होते हैं>), फिर <क्या ठीक/बनाऊँगा>" e.g.
+  {"tool":"read","paths":["a/A.kt","b/B.kt"],"plan":"पहले कोडिंग एजेंट का कोड पढ़ रहा हूँ (push, loop और retry कहाँ होते हैं), फिर सब एक साथ ठीक करूँगा"}
 {"tool":"done","summary":"Hindi summary (short bullet lines; if this fixed a bug/error also add: दिक्कत: <real cause>  हल: <what you changed>)","commit":"short English commit message"}
 
 Rules:
+- Work like a careful senior engineer: FIRST understand (read the exact code where the problem/feature lives, find the real cause),
+  THEN make the COMPLETE change in every place it is needed (not half; no TODOs), THEN done. Never edit code you have not read.
 - You have ONLY $maxSteps tool calls for this task. Plan: 1) read/grep the needed files together in ONE call, 2) ONE edit with all FIND/REPLACE pairs (or write), 3) done. "diff" is optional.
 - Large files are shown in numbered chunks; read only the chunk/lines you need (start/end), not the whole file again.
 - Changes are only STAGED; the app pushes them to GitHub (API commit) automatically AFTER "done". Do NOT try to push, and never claim it is pushed. Call done when the edits are staged.
@@ -460,6 +467,8 @@ SAFE PR MODE (always follow):
             msgs.add("model" to "{\"tool\":\"ask\",\"question\":\"क्या करना है?\"}")
         }
         checkWarned = false
+        readInTask.clear()
+        var planShown = false
         if (!task.startsWith("BUILD FAILED") && !task.startsWith("REVIEWER") && !task.startsWith("Coordinator:")) lastTask = task
         msgs.add("user" to "TASK FROM USER: $task" +
             if (staged.isNotEmpty()) "\n(Already staged, not pushed: ${staged.keys.joinToString()})" else "")
@@ -469,9 +478,12 @@ SAFE PR MODE (always follow):
         fun repeated(w: String): Outcome? = if (!guard.hit(w)) null else
             Outcome("एजेंट रुक गया: एक ही चेतावनी लगातार 2 बार आई —\n\"${w.lineSequence().first().take(200)}\"\n" +
                 "आगे: काम को छोटे और साफ़ हिस्से में लिखकर फिर भेजें (कौन-सी फ़ाइल, क्या बदलना है)।", "", false, stopped = true)
+        var looks = 0          // बदलाव से पहले के पढ़ने वाले कदम (समझने का हिस्सा)
+        var changed = false
         while (true) {
             ensureActive()
-            if (++step > maxSteps) return@withContext Outcome("$maxSteps कदम हो गए, यहीं रोका। अब तक के बदलाव नीचे हैं। " +
+            // पहले समझना: बदलाव से पहले के 2 पढ़ने वाले कदम सीमा में नहीं गिने जाते
+            if (++step > maxSteps + minOf(looks, READ_BONUS)) return@withContext Outcome("$maxSteps कदम हो गए, यहीं रोका। अब तक के बदलाव नीचे हैं। " +
                 "(ज़्यादा कदम चाहिए तो Settings → कोडिंग एजेंट → \"एक काम में ज़्यादा से ज़्यादा कदम\")", "DK: partial changes", false)
             // हर कदम के बीच थोड़ा रुको (free API की प्रति-मिनट limit जल्दी खत्म न हो)
             if (step > 1) delay(STEP_DELAY_MS)
@@ -489,6 +501,12 @@ SAFE PR MODE (always follow):
             }
             val o = call.o
             val tool = o.optString("tool"); val path = o.optString("path").trim().trimStart('/')
+            // पहले बताओ क्या करने वाला है (एक बार): AI की "plan" लाइन, न हो तो पहले कदम से बनी
+            if (!planShown && tool != "ask") {
+                planShown = true
+                val pl = o.optString("plan").trim().take(300).ifBlank { autoPlan(tool, path, o.optJSONArray("paths")?.let { a -> (0 until a.length()).map { a.optString(it) } } ?: emptyList(), o.optString("pattern")) }
+                if (pl.isNotBlank()) { onStep("योजना: $pl"); if (CoderReport.plan().isBlank()) CoderReport.plan(pl) }
+            }
             if (tool == "ask") return@withContext Outcome(o.optString("question").ifBlank { "थोड़ा और बताइए?" }, "", true)
             if (tool == "done") {
                 // staged बदलाव यहाँ push नहीं होते - "done" के बाद ऐप GitHub API से एक commit में भेजता है.
@@ -508,7 +526,11 @@ SAFE PR MODE (always follow):
             val result = try { runTool(tool, path, call, onStep) } catch (e: GitHub.Err) { "GITHUB ERROR: ${e.message}" }
             if (result.startsWith("ERROR") || result.startsWith("NOT FOUND") || result.startsWith("GITHUB ERROR")) {
                 repeated("$tool: $result")?.let { onStep("चेतावनी दोबारा आई — रुक गया"); return@withContext it }
-            } else guard.ok()
+            } else {
+                guard.ok()
+                if (tool in listOf("write", "edit", "delete")) changed = true
+                else if (!changed && tool in listOf("list", "read", "grep", "search")) looks++
+            }
             msgs.add("user" to "RESULT ($tool${if (path.isNotBlank()) " $path" else ""}):\n$result")
         }
         Outcome("", "", false)
@@ -534,6 +556,7 @@ SAFE PR MODE (always follow):
                 if (many != null && many.length() > 0) {
                     val ps = (0 until many.length()).map { many.optString(it).trim().trimStart('/') }.filter { it.isNotBlank() }.take(6)
                     onStep("पढ़ रहा हूँ: " + ps.joinToString(", ") { it.substringAfterLast('/') })
+                    readInTask.addAll(ps)
                     val per = (CoderContext.CHUNK_CHARS * 2) / ps.size.coerceAtLeast(1)
                     return ps.joinToString("\n\n") { p ->
                         val t = current(p)
@@ -545,6 +568,7 @@ SAFE PR MODE (always follow):
                     }
                 }
                 val t = current(path) ?: return "NOT FOUND: $path" + similar(path)
+                readInTask.add(path)
                 val start = o.optInt("start", 0); val end = o.optInt("end", 0)
                 if (start > 0 || end > 0) {
                     val lines = t.lines()
@@ -567,6 +591,9 @@ SAFE PR MODE (always follow):
             "write" -> {
                 if (path.isBlank()) return "ERROR: path missing"
                 val content = c.file ?: return "ERROR: missing <<<FILE ... FILE>>> block"
+                // पहले समझो, फिर बदलो: मौजूदा फ़ाइल को बिना पढ़े पूरा नहीं बदलना (नई फ़ाइल ठीक है)
+                if (path !in readInTask && !staged.containsKey(path) && current(path) != null)
+                    return "ERROR: $path already exists and you have not read it in this task. Read it first (or use edit with FIND/REPLACE). Nothing staged."
                 remember(path)
                 staged[path] = content
                 onStep("लिखा: $path (${content.lines().size} लाइन)")
@@ -997,6 +1024,22 @@ pass=true ONLY if you are confident it compiles and the task works completely.
         const val DEFAULT_STEPS = 5
         /** हर कदम के बीच रुकना (ms) */
         const val STEP_DELAY_MS = 1500L
+        /** बदलाव से पहले समझने (पढ़ने) के लिए अलग कदम */
+        const val READ_BONUS = 2
+
+        /** AI ने "plan" नहीं दी तो पहले कदम से हिंदी योजना: "पहले … पढ़ रहा हूँ, फिर …" */
+        fun autoPlan(tool: String, path: String, paths: List<String>, pattern: String): String {
+            val names = (paths.ifEmpty { listOf(path) }).map { it.substringAfterLast('/') }.filter { it.isNotBlank() }.distinct()
+            val what = when (tool) {
+                "read" -> if (names.isEmpty()) "" else "पहले ${names.take(4).joinToString(", ")} का कोड पढ़ रहा हूँ"
+                "grep", "search" -> if (pattern.isBlank()) "" else "पहले कोड में \"${pattern.take(40)}\" कहाँ है, ढूँढ रहा हूँ"
+                "list" -> "पहले repo की फ़ाइलें देख रहा हूँ"
+                "edit", "write", "delete" -> if (names.isEmpty()) "" else "${names.first()} में बदलाव कर रहा हूँ"
+                else -> ""
+            }
+            if (what.isBlank()) return ""
+            return if (tool in listOf("edit", "write", "delete")) "$what, फिर जाँचकर काम पूरा करूँगा" else "$what, फिर समझकर पूरा काम ठीक करूँगा"
+        }
 
         /** शुरू में भेजी जाने वाली फ़ाइलें: पहले code/res/build की, फिर बाकी; [max] तक */
         fun importantPaths(all: List<String>, max: Int): List<String> {
