@@ -109,6 +109,31 @@ object DKState {
     private fun persist() { main.removeCallbacks(saver); main.postDelayed(saver, 1500) }
     fun clearChat() { messages.clear(); persist(); emit() }
 
+    /** Reset chat history, active states and clear workspace memory to fresh state on reset trigger */
+    fun resetToFresh() {
+        messages.clear()
+        lastUser = ""
+        lastReply = ""
+        liveReply = ""
+        hintText = ""
+        lastSources = emptyList()
+        failedAt = 0L
+        sentAt = 0L
+        live = false
+        mode = Mode.IDLE
+        level = 0f
+        faceUntil = 0L
+        optimistic = null
+        appCtx?.let { c ->
+            Thread {
+                try {
+                    Memory.saveChat(c, emptyList())
+                } catch (_: Exception) {}
+            }.start()
+        }
+        emit()
+    }
+
     fun listen(l: () -> Unit) { synchronized(listeners) { listeners.add(l) } }
     fun unlisten(l: () -> Unit) { synchronized(listeners) { listeners.remove(l) } }
 
