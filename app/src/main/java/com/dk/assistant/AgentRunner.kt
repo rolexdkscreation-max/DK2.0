@@ -181,6 +181,21 @@ class AgentRunner(
         return true
     }
 
+    /** आवाज़ से DK कंप्यूटर. false = DK कंप्यूटर बंद, आम रास्ते से चलने दो */
+    private suspend fun computerFromVoice(cmd: ComputerVoice.Cmd): Boolean {
+        if (!Prefs.computerOn(svc)) return false
+        if (cmd.open) {
+            try { svc.startActivity(android.content.Intent(svc, ComputerActivity::class.java).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)) } catch (_: Exception) {}
+            say("DK कंप्यूटर खोल दिया। बोलिए या लिखिए, क्या काम करना है।")
+            return true
+        }
+        val wasBusy = ComputerSession.busy
+        val err = ComputerSession.start(svc, cmd.task, voice = true)
+        say(err ?: if (wasBusy) "ठीक है, यह काम DK कंप्यूटर की कतार में रख दिया। पहले वाला पूरा होते ही शुरू होगा।"
+            else "ठीक है, DK कंप्यूटर काम शुरू कर रहा है। हर कदम DK कंप्यूटर स्क्रीन में दिखेगा, और पूरा होने पर मैं बताऊँगी।")
+        return true
+    }
+
     /** "कोडिंग एजेंट, X बनाओ" / "कोडर ..." / "coding agent ..." -> X ; warna null */
     private fun codingTask(goal: String): String? {
         val low = goal.lowercase()
@@ -198,6 +213,10 @@ class AgentRunner(
         synchronized(currentAnswer) { currentAnswer.clear() }
         val lower = goal.lowercase().trim()
         val bare = lower.trim(' ', '.', '!', '।', ',')
+        // DK कंप्यूटर इजाज़त माँग रहा हो: "हाँ" / "नहीं"
+        if (ComputerSession.ask != null) ComputerVoice.yesNo(goal)?.let { yes ->
+            ComputerSession.answer(yes); say(if (yes) "ठीक है, कर रही हूँ।" else "ठीक है, नहीं करूँगी।"); return
+        }
         if (bare in listOf("stop", "रुको", "बस", "ruko", "cancel", "चुप", "चुप हो जाओ", "बस करो", "रुक जाओ", "ठीक है बस", "बस बस", "रहने दो", "chup")) {
             speaker.stop(); DKState.reply("ठीक है।"); return
         }
@@ -212,6 +231,8 @@ class AgentRunner(
                 return
             }
         }
+        // "डीके कंप्यूटर, ... करो" / "रिसर्च करके PDF बनाओ" -> DK कंप्यूटर (कदम-दर-कदम, फ़ाइलें, रिपोर्ट)
+        ComputerVoice.parse(goal)?.let { cmd -> if (computerFromVoice(cmd)) return }
         // "tumhe kisne banaya?" - sirf poochhne par
         if (asksCreator(lower)) { say(CREATOR_ANSWER); return }
         // "सर्च करो / रिसर्च करो / डीप रिसर्च करो" -> poori gehri khoj, phir vistaar se pakka jawab
