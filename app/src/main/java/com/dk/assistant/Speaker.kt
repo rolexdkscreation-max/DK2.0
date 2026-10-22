@@ -328,7 +328,9 @@ class Speaker(context: Context) : TextToSpeech.OnInitListener {
             VoiceListener.forceUnmute(audio)
             val s = android.media.AudioManager.STREAM_MUSIC
             // pichhli baar app band hote waqt mute reh gayi awaaz bhi kholo
-            if (Build.VERSION.SDK_INT >= 23) for (st in intArrayOf(android.media.AudioManager.STREAM_NOTIFICATION, android.media.AudioManager.STREAM_SYSTEM))
+            // Sirf NORMAL ringer me - silent/vibrate (user ya "volume silent" command) me notification/system ko mat chhuo,
+            // warna DK ke bolte hi phone wapas ring mode me chala jaata tha
+            if (Build.VERSION.SDK_INT >= 23 && audio.ringerMode == android.media.AudioManager.RINGER_MODE_NORMAL) for (st in intArrayOf(android.media.AudioManager.STREAM_NOTIFICATION, android.media.AudioManager.STREAM_SYSTEM))
                 try { if (audio.isStreamMute(st)) audio.adjustStreamVolume(st, android.media.AudioManager.ADJUST_UNMUTE, 0) } catch (_: Exception) {}
             if (Build.VERSION.SDK_INT >= 23 && audio.isStreamMute(s)) audio.adjustStreamVolume(s, android.media.AudioManager.ADJUST_UNMUTE, 0)
             val max = audio.getStreamMaxVolume(s)

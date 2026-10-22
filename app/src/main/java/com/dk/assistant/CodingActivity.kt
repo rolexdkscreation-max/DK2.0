@@ -227,14 +227,16 @@ class CodingActivity : AppCompatActivity() {
         CoderSession.add("u", t)
         CoderSession.launch(this) {
             try {
+                CoderReport.begin()
                 val out = a.run(t) { step -> CoderSession.scope.launch { CoderSession.add("s", step) } }
-                CoderSession.add("d", out.summary)
+                CoderSession.add("d", out.summary + "\n\n" + CoderReport.text())
                 CoderSession.lastCommit = out.commit
                 if (!out.question && a.staged.isNotEmpty() && Prefs.coderAutoPush(applicationContext)) push(applicationContext)
             } catch (e: kotlinx.coroutines.CancellationException) {
                 CoderSession.add("e", "रोक दिया।")
             } catch (e: Exception) {
-                CoderSession.add("e", "गलती: " + (e.message ?: e.javaClass.simpleName).take(300))
+                val m = (e.message ?: e.javaClass.simpleName).take(300)
+                CoderSession.add("e", "गलती: $m\n\n" + CoderReport.text(m))
                 DKLog.d("Coder गलती: ${e.javaClass.simpleName} ${e.message}")
             } finally { CoderSession.listener?.invoke() }
         }

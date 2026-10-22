@@ -134,6 +134,17 @@ class CallManager(private val ctx: Context, private val onRinging: (String) -> U
         } catch (e: Exception) { DKLog.d("speaker: ${e.message}") }
     }
 
+    /** Speaker abhi chalu hai? (pata na chale to null) */
+    @Suppress("DEPRECATION")
+    fun speakerIsOn(): Boolean? {
+        val am = ctx.getSystemService(AudioManager::class.java) ?: return null
+        return try {
+            if (Build.VERSION.SDK_INT >= 31) am.communicationDevice?.let { it.type == AudioDeviceInfo.TYPE_BUILTIN_SPEAKER }
+                ?: am.isSpeakerphoneOn
+            else am.isSpeakerphoneOn
+        } catch (e: Exception) { null }
+    }
+
     companion object {
         val PERMS = arrayOf(Manifest.permission.READ_PHONE_STATE, Manifest.permission.READ_CALL_LOG,
             Manifest.permission.READ_CONTACTS, Manifest.permission.ANSWER_PHONE_CALLS)
