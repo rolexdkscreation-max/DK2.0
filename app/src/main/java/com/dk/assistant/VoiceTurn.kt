@@ -229,15 +229,17 @@ class ReplyWatchdog(
     @Volatile private var answered = false
     @Volatile private var answerDeadline = 0L
     @Volatile private var nudged = false
+    /** Asli baat kab khatam hui jiska jawab abhi shuru nahi hua (0 = koi baat jawab ka intezaar nahi kar rahi) */
+    @Volatile private var pendingSince = 0L
 
     /** User bolne laga - nayi baat, ab tak server ne kuch nahi suna */
-    fun onSpeechStart() { heard = false; deadline = 0L; answered = false; answerDeadline = 0L; nudged = false }
+    fun onSpeechStart() { heard = false; deadline = 0L; answered = false; answerDeadline = 0L; nudged = false; pendingSince = 0L }
 
     /** Server ne is baat ka kuch bheja (ACTIVITY_START/END, text, tool, awaaz) - woh sun raha hai */
     fun onServerHeard() { heard = true; deadline = 0L }
 
     /** Server ne jawab shuru kiya (awaaz / jawab ka text / tool call) */
-    fun onServerAnswered() { heard = true; deadline = 0L; answered = true; answerDeadline = 0L }
+    fun onServerAnswered() { heard = true; deadline = 0L; answered = true; answerDeadline = 0L; pendingSince = 0L }
 
     /** Humne khud text bhej diya (nahi suna tha) - is baat par dobara "atka" nudge nahi */
     fun onRescued() { heard = true; deadline = 0L; nudged = true; answerDeadline = 0L }
@@ -246,7 +248,18 @@ class ReplyWatchdog(
     fun onEndOfSpeech(now: Long, speechMs: Int) {
         deadline = if (!heard && speechMs >= minSpeechMs) now + timeoutMs else 0L
         answerDeadline = if (!answered && !nudged && speechMs >= minSpeechMs) now + answerTimeoutMs else 0L
+        if (!answered && speechMs >= minSpeechMs) pendingSince = now
     }
+
+    /**
+     * Connection toota: kya user ki koi asli baat (pichhle [maxAgeMs] me) abhi bhi jawab ka intezaar kar rahi thi?
+     * (Tab dobara judne ke baad wahi baat ek baar text me bhejni hai - warna woh baat chupchaap kho jaati thi.)
+     */
+    fun unanswered(now: Long, maxAgeMs: Long = 20_000): Boolean =
+        pendingSince > 0 && !answered && now - pendingSince <= maxAgeMs
+
+    /** Dobara bhej di - is baat ke liye phir se nahi */
+    fun onResent() { pendingSince = 0L; heard = true; deadline = 0L; nudged = true; answerDeadline = 0L }
 
     /** true = (sirf ek baar) server ne suna par jawab shuru nahi kiya */
     fun stalled(now: Long): Boolean {
@@ -262,5 +275,94 @@ class ReplyWatchdog(
         return true
     }
 
-    fun reset() { heard = false; deadline = 0L; answered = false; answerDeadline = 0L; nudged = false }
+    fun reset() { heard = false; deadline = 0L; answered = false; answerDeadline = 0L; nudged = false; pendingSince = 0L }
+}
+
+/**
+ * Khaamoshi ke samay upload band (Live API docs: stream 1s se zyada ruke to `audioStreamEnd` bhejo, client kabhi bhi
+ * dobara audio bhej sakta hai).
+ * Pehle chup rehne par bhi har 40ms shoonya (0) ka tukda dono socket (Live + caption) par jaata tha = ~85 KB/s
+ * (~700 kbps) lagatar upload. Kamzor mobile data par user ki asli baat isi khaamoshi ke peeche line me atakti thi.
+ * Ab: asli awaaz ke baad [keepMs] tak khaamoshi (server VAD ko "chup" dikhane ke liye, 500ms se zyada), phir ek
+ * `audioStreamEnd` aur upload band - jab tak asli awaaz phir na aaye. Android import nahi -> unit test.
+ */
+class SilenceStreamGate(private val chunkMs: Int = 40, private val keepMs: Int = 1000) {
+    enum class Action { SEND, SEND_THEN_END, SKIP }
+    private var silentMs = 0
+    /** true = abhi upload ruka hai (khaamoshi) */
+    var paused = false
+        private set
+
+    /** Asli awaaz ja rahi hai - stream khula */
+    fun onReal() { silentMs = 0; paused = false }
+
+    /** Khaamoshi ka tukda: bhejo / bhejo + audioStreamEnd (phir band) / mat bhejo */
+    fun onSilence(): Action {
+        if (paused) return Action.SKIP
+        silentMs += chunkMs
+        if (silentMs >= keepMs) { paused = true; return Action.SEND_THEN_END }
+        return Action.SEND
+    }
+
+    fun reset() { silentMs = 0; paused = false }
+}
+
+/**
+ * Ek baari ki poori samay-rekha (diagnostics) - "jawab der se / aaya hi nahi" ka agla mamla log me saaf dikhe.
+ * Sab samay [speechEndAt] (user ki aakhri asli awaaz) se ginte hain:
+ *  endpoint  = audioStreamEnd bheja / server ACTIVITY_END
+ *  upload    = WebSocket ki bheji line khaali (sab input audio phone se nikal gaya)
+ *  event     = server ka pehla sandesh (is baat ke baad)
+ *  audio     = pehla jawab-audio tukda aaya
+ *  play      = pehla tukda speaker me likha
+ *  genDone   = server: generationComplete
+ *  done      = server: turnComplete / interrupted
+ * Android import nahi -> unit test.
+ */
+class TurnTimeline {
+    @Volatile var speechEndAt = 0L; private set
+    @Volatile var endpointAt = 0L; private set
+    @Volatile var uploadAt = 0L; private set
+    @Volatile var eventAt = 0L; private set
+    @Volatile var audioAt = 0L; private set
+    @Volatile var playAt = 0L; private set
+    @Volatile var genDoneAt = 0L; private set
+    @Volatile var doneAt = 0L; private set
+    @Volatile var why = ""; private set
+
+    /** Abhi koi baat jawab ka intezaar / jawab chal raha hai */
+    val active get() = speechEndAt > 0 && doneAt == 0L
+
+    fun begin(speechEnd: Long, endpoint: Long, reason: String) {
+        speechEndAt = speechEnd; endpointAt = endpoint; why = reason
+        uploadAt = 0; eventAt = 0; audioAt = 0; playAt = 0; genDoneAt = 0; doneAt = 0
+    }
+    fun upload(now: Long) { if (active && uploadAt == 0L) uploadAt = now }
+    fun event(now: Long) { if (active && eventAt == 0L) eventAt = now }
+    fun audio(now: Long) { if (active && audioAt == 0L) audioAt = now }
+    fun play(now: Long) { if (speechEndAt > 0 && audioAt > 0 && playAt == 0L) playAt = now }
+    fun genDone(now: Long) { if (active && genDoneAt == 0L) genDoneAt = now }
+    fun done(now: Long) { if (active) doneAt = now }
+    fun reset() { speechEndAt = 0; endpointAt = 0; uploadAt = 0; eventAt = 0; audioAt = 0; playAt = 0; genDoneAt = 0; doneAt = 0; why = "" }
+
+    /** "endpoint +520 • upload +540 • event +900 • audio +1100 • play +1180 • genDone +3000 • done +5200" */
+    fun summary(): String {
+        if (speechEndAt == 0L) return "-"
+        fun f(n: String, t: Long) = if (t > 0) "$n +${t - speechEndAt}ms" else "$n -"
+        return listOf(f("endpoint", endpointAt), f("upload खाली", uploadAt), f("पहला server event", eventAt),
+            f("पहला ऑडियो", audioAt), f("पहली आवाज़", playAt), f("generationComplete", genDoneAt), f("turn खत्म", doneAt))
+            .joinToString(" • ") + " [$why]"
+    }
+}
+
+/**
+ * Live ruka to kitni der baad dobara (DKAccessibilityService). Pehle har Fatal = 10 min band.
+ * Asli rukawat (key galat / limit / model nahi) = 10 min. Thodi-der wali (network / mic busy) = 15s, 30s, 60s,
+ * 120s, 240s, phir 5 min par ruk jaata hai - anant tez retry nahi. Android import nahi -> unit test.
+ */
+object LiveRetry {
+    const val HARD_MS = 10 * 60_000L
+    const val SOFT_MAX_MS = 5 * 60_000L
+    fun offMs(recoverable: Boolean, softFails: Int): Long =
+        if (!recoverable) HARD_MS else minOf(SOFT_MAX_MS, 15_000L shl softFails.coerceIn(0, 5))
 }

@@ -177,6 +177,8 @@ class DKAccessibilityService : AccessibilityService() {
     /** Gemini Live (aawaz se aawaz, real-time) - sabse tez tareeka */
     val gemLive by lazy { GeminiLive(this, agent) }
     @Volatile private var liveOffUntil = 0L
+    /** Lagatar kitni baar Live network/mic ki thodi-der wali dikkat se ruka (backoff ke liye) */
+    @Volatile private var liveSoftFails = 0
     fun callBusy() = calls.ringing || callPending || callAnnouncing || calls.inCall
     fun useGeminiLive(): Boolean = DKState.live && liveReady()
     /** Gemini Live chal sakta hai? (sunne ka tareeka "auto" + Gemini key + abhi ruka nahi) */
@@ -385,12 +387,21 @@ class DKAccessibilityService : AccessibilityService() {
                     ear.release(); listener.release(); earCaptionOff()
                     lastWhyNot = ""
                     var failed = false
+                    val liveStart = System.currentTimeMillis()
                     try {
                         val r = gemLive.run()
+                        liveSoftFails = 0
                         DKLog.d("Gemini Live ruka: $r")
                     } catch (e: GeminiLive.Fatal) {
                         failed = true
-                        liveOffUntil = System.currentTimeMillis() + 10 * 60_000L
+                        // 5 min+ theek chala tha = purani dikkatein ginti se hatao (backoff shuru se)
+                        if (System.currentTimeMillis() - liveStart > 5 * 60_000L) liveSoftFails = 0
+                        // key/limit/model = asli rukawat (10 min). Network/mic busy = thodi der: 15s, 30s, 60s ... 5 min tak
+                        // (pehle har baar 10 min ke liye Live band = "kabhi chalta hai kabhi nahi", beech me purana dheema tareeka)
+                        val offMs = LiveRetry.offMs(e.recoverable, liveSoftFails)
+                        if (e.recoverable) liveSoftFails++
+                        liveOffUntil = System.currentTimeMillis() + offMs
+                        DKLog.d("Gemini Live ruka (${if (e.recoverable) "थोड़ी देर की दिक्कत #$liveSoftFails" else "असली रुकावट"}) - ${offMs / 1000}s बाद फिर कोशिश: ${e.message}")
                         DKState.set(Mode.IDLE)
                         warn("live", "Gemini Live नहीं चला: ${e.message}। अभी पुराने तरीके से सुन रहा हूँ।")
                     } catch (e: kotlinx.coroutines.CancellationException) { throw e
