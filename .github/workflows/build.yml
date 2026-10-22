@@ -1,7 +1,9 @@
-name: Build DK APK
+name: Build DK APK & UAAG Android Emulator Check
 
 on:
   push:
+    branches: [ main ]
+  pull_request:
     branches: [ main ]
   workflow_dispatch:
 
@@ -54,8 +56,6 @@ jobs:
           MSGS="$(git log --pretty=%B $RANGE)"
           FILES="$(git diff --name-only $RANGE)"
           NEWKT="$(git diff --diff-filter=A --name-only $RANGE | grep -E '\.kt$' || true)"
-          # commit me [software] / [security] likha ho to wahi; warna badli files se:
-          # design (layout/drawable/values/Activity/View) ya naya feature file = सॉफ़्टवेयर अपडेट, baaki = सिक्योरिटी पैच
           if echo "$MSGS" | grep -qi '\[software\]'; then TYPE=software
           elif echo "$MSGS" | grep -qi '\[security\]'; then TYPE=security
           elif echo "$FILES" | grep -qE '^app/src/main/res/(layout|drawable|values|mipmap|anim|font|xml)/|Activity\.kt$|View\.kt$' || [ -n "$NEWKT" ]; then TYPE=software
@@ -65,7 +65,6 @@ jobs:
           else
             IFS=. read -r MA MI PA <<< "$PREV_VER"; MI=${MI:-0}; PA=${PA:-0}
             if [ "$TYPE" = software ]; then NEW="$MA.$((MI+1))"; else NEW="$MA.$MI.$((PA+1))"; fi
-            # version.txt haath se bada kiya (jaise 4.0) to wahi
             TOP="$(printf '%s\n%s\n' "$NEW" "$BASE" | sort -V | tail -1)"
             if [ "$TOP" = "$BASE" ] && [ "$BASE" != "$NEW" ]; then NEW="$BASE"; fi
           fi
@@ -81,7 +80,7 @@ jobs:
           echo "Prakar: $TYPE  •  Version: $NEW  (pichhla: ${PREV_VER:-koi nahi}, $RANGE)"
           cat release_notes.txt
 
-      - name: APK build
+      - name: APK build (Release)
         env:
           DK_KS_PASS: ${{ secrets.DK_KS_PASS }}
           DK_KEY_ALIAS: dk
@@ -95,7 +94,34 @@ jobs:
           name: DK-apk
           path: DK.apk
 
+      - name: UAAG Android Emulator & Screenshots Test
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 29
+          target: default
+          arch: x86_64
+          profile: pixel_4
+          script: |
+            echo "UAAG Emulator successfully start ho gaya hai!"
+            adb devices
+            mkdir -p screenshots
+            # App install check
+            adb install -r DK.apk
+            # App launch test
+            adb shell am start -n com.dk.app/.MainActivity || true
+            sleep 5
+            # Screenshot capture
+            adb exec-out screencap -p > screenshots/uaag_screen.png
+            echo "Screenshot successfully capture ho gaya hai!"
+
+      - name: Screenshots upload (Artifacts)
+        uses: actions/upload-artifact@v4
+        with:
+          name: uaag-screenshots
+          path: screenshots/
+
       - name: GitHub Release (app ke andar update ke liye)
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
