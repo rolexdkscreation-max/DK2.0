@@ -273,7 +273,7 @@ class Speaker(context: Context) : TextToSpeech.OnInitListener {
         lastVoiceWarn = now
         android.os.Handler(android.os.Looper.getMainLooper()).post {
             try {
-                android.widget.Toast.makeText(appCtx, "आवाज़ नहीं चल रही — सेटिंग्स → आवाज़ → \"फ़ोन की TTS सेटिंग\" में Google इंजन चुनें और हिंदी आवाज़ डाउनलोड करें", android.widget.Toast.LENGTH_LONG).show()
+                UiLang.toast(appCtx, "आवाज़ नहीं चल रही — सेटिंग्स → आवाज़ → \"फ़ोन की TTS सेटिंग\" में Google इंजन चुनें और हिंदी आवाज़ डाउनलोड करें", android.widget.Toast.LENGTH_LONG).show()
             } catch (_: Exception) {}
         }
     }

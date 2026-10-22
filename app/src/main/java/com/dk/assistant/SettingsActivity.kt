@@ -110,7 +110,7 @@ class SettingsActivity : AppCompatActivity() {
         val name = Prefs.assistantName(this)
         val items = listOf(
             Triple("profile", "प्रोफ़ाइल", "आपका नाम • असिस्टेंट का नाम ($name) • बात करने का तरीका"),
-            Triple("lang", "भाषा / Language", "अभी: ${Lang.short(Prefs.replyLang(this))} • Hinglish / हिंदी / English — DK के सारे जवाब और आवाज़"),
+            Triple("lang", "भाषा / Language", "ऐप: ${if (UiLang.en()) "English" else "हिंदी"} • DK के जवाब: ${Lang.short(Prefs.replyLang(this))}"),
             Triple("brain", "AI दिमाग", "DK लाइव • DK चैट • कोडिंग एजेंट • DK कंप्यूटर — हर एक की अपनी API key"),
             Triple("voice", "आवाज़", "महिला / पुरुष • आवाज़ चुनें • स्पीड • सुनने का तरीका"),
             Triple("orb", "ओर्ब और चेहरा", "पृथ्वी, गैलेक्सी, एटम, DNA, छल्ला, पुरुष/महिला चेहरा"),
@@ -155,35 +155,55 @@ class SettingsActivity : AppCompatActivity() {
         }
     }
 
-    /** v3.30: भाषा सेटिंग — UI और DK के जवाब की भाषा (हिंदी, इंग्लिश, हिंग्लिश) */
+    /**
+     * भाषा: (1) ऐप की स्क्रीनों की भाषा - English (शुरुआती) / हिंदी, पूरे ऐप के बटन, Settings, संदेश, सूचनाएँ;
+     * (2) DK के जवाब की भाषा (v3.30) - Hinglish / हिंदी / English, पहले जैसी.
+     */
     private fun secLang() {
-        card("Language / भाषा सेटिंग", "पूरे ऐप की भाषा और DK के जवाब") { box ->
+        card("ऐप की भाषा (स्क्रीन)", "पूरे ऐप के बटन, Settings, संदेश — English या हिंदी") { box ->
             val rg = RadioGroup(this).apply { orientation = RadioGroup.VERTICAL }
-            val langs = listOf(
-                Triple("hinglish", "Hinglish (Default)", "हिन्दी + English"),
-                Triple("hi", "हिंदी", "शुद्ध हिंदी"),
-                Triple("en", "English", "Pure English")
-            )
-            val currentLang = Prefs.replyLang(this).ifBlank { "hinglish" }
-            langs.forEachIndexed { i, (code, label, desc) ->
+            val ui = listOf(UiLang.EN to "English (default)", UiLang.HI to "हिंदी (Hindi)")
+            ui.forEachIndexed { i, (code, label) ->
                 rg.addView(RadioButton(this).apply {
-                    id = 4000 + i
-                    text = "$label — $desc"
+                    id = 3100 + i; text = label; setTextColor(0xFFFFFFFF.toInt()); textSize = 15f
+                    isChecked = code == UiLang.code
+                    setPadding((6 * dp).toInt(), (8 * dp).toInt(), 0, (8 * dp).toInt())
+                    UiLang.keep(this)     // भाषा के नाम हर भाषा में वैसे ही
+                })
+            }
+            rg.setOnCheckedChangeListener { _, idc ->
+                val code = ui.getOrNull(idc - 3100)?.first ?: return@setOnCheckedChangeListener
+                if (code == UiLang.code) return@setOnCheckedChangeListener
+                UiLang.set(this, code)
+                toast(if (code == UiLang.EN) "App language: English" else "ऐप की भाषा: हिंदी")
+                // यह screen अभी नई बने; पीछे खुली screens लौटते ही अपने-आप नई भाषा में
+                recreate()
+            }
+            box.addView(rg)
+            hint(box, "चुनते ही पूरे ऐप की स्क्रीनें इसी भाषा में। DK के जवाब की भाषा नीचे अलग से चुनें। बातचीत, कोड और कहानियाँ जैसी लिखी हैं वैसी ही दिखती हैं।")
+        }
+        card("DK किस भाषा में जवाब दे", "DK लाइव, DK चैट, बिना-Live आवाज़, DK कंप्यूटर और कोडिंग एजेंट — सब पर एक साथ") { box ->
+            val rg = RadioGroup(this).apply { orientation = RadioGroup.VERTICAL }
+            val cur = Prefs.replyLang(this)
+            Lang.ALL.forEachIndexed { i, (code, label) ->
+                rg.addView(RadioButton(this).apply {
+                    id = 3000 + i
+                    text = label
                     setTextColor(0xFFFFFFFF.toInt())
                     textSize = 15f
-                    isChecked = code == currentLang || (currentLang.isEmpty() && code == "hinglish")
+                    isChecked = code == cur
                     setPadding((6 * dp).toInt(), (8 * dp).toInt(), 0, (8 * dp).toInt())
                 })
             }
             rg.setOnCheckedChangeListener { _, idc ->
-                val idx = idc - 4000
-                val code = langs.getOrNull(idx)?.first ?: "hinglish"
+                val code = Lang.ALL.getOrNull(idc - 3000)?.first ?: return@setOnCheckedChangeListener
                 Prefs.edit(this) { putString(Lang.KEY, code) }
                 Prefs.loadLang(this)
-                toast("Language updated! ऐप रीस्टार्ट करें या अगली बातचीत से लागू होगा।")
+                toast("भाषा: ${Lang.short(code)} — अगले जवाब से लागू")
             }
             box.addView(rg)
-            hint(box, "यहाँ से भाषा बदलने पर ऐप के विकल्प, सेटिंग्स और DK के जवाब उसी भाषा में काम करेंगे। बायडिफ़ॉल्ट Hinglish चुना होता है।")
+            hint(box, "DK लाइव चल रहा हो तो नई भाषा अगली बार जुड़ने पर (लाइव बंद करके फिर चालू करें)। " +
+                "किसी एक जवाब के लिए आप बोलकर दूसरी भाषा माँग सकते हैं।")
         }
     }
 
@@ -809,7 +829,7 @@ class SettingsActivity : AppCompatActivity() {
         val current = target.text.toString().trim()
         val items = list.toTypedArray()
         val sel = items.indexOf(current)
-        android.app.AlertDialog.Builder(this, Glass.DIALOG)
+        UiDialog(this, Glass.DIALOG)
             .setTitle("${p.name} — मॉडल चुनें (${items.size})")
             .setSingleChoiceItems(items, sel) { d, which ->
                 target.setText(items[which]); save(false)
@@ -937,7 +957,7 @@ class SettingsActivity : AppCompatActivity() {
                             val repos = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { gh.repos() }
                             res.text = "${repos.size} repo मिले"
                             if (isFinishing || isDestroyed || repos.isEmpty()) return@launch
-                            android.app.AlertDialog.Builder(this@SettingsActivity, Glass.DIALOG)
+                            UiDialog(this@SettingsActivity, Glass.DIALOG)
                                 .setTitle("Repo चुनें")
                                 .setItems(repos.map { it.fullName + if (it.private) "  (private)" else "" }.toTypedArray()) { _, i ->
                                     edGhRepo.setText(repos[i].fullName); edGhBranch.setText(repos[i].branch); save(false)
@@ -1140,7 +1160,7 @@ class SettingsActivity : AppCompatActivity() {
             val f = VoiceCatalog.GEMINI_FEMALE.map { it to "महिला • $it — ${VoiceCatalog.GEMINI_INFO[it]}" }
             val m = VoiceCatalog.GEMINI_MALE.map { it to "पुरुष • $it — ${VoiceCatalog.GEMINI_INFO[it]}" }
             val all = if (gender == "male") m else f        // jo gender chuna, usi ki awaazein
-            android.app.AlertDialog.Builder(this, Glass.DIALOG)
+            UiDialog(this, Glass.DIALOG)
                 .setTitle((if (gender == "male") "पुरुष" else "महिला") + " Gemini आवाज़ चुनें (टैप = सुनें)")
                 .setItems(all.map { it.second }.toTypedArray()) { _, i ->
                     val name = all[i].first
@@ -1158,7 +1178,7 @@ class SettingsActivity : AppCompatActivity() {
                 val voices = sp().hindiVoices()
                 if (voices.isEmpty()) { toast("हिंदी आवाज़ नहीं मिली — TTS सेटिंग से हिंदी डाउनलोड करें"); Setup.openTts(this@SettingsActivity); return@launch }
                 val labels = voices.mapIndexed { i, v -> VoiceCatalog.label(v, i) }.toTypedArray()
-                android.app.AlertDialog.Builder(this@SettingsActivity, Glass.DIALOG)
+                UiDialog(this@SettingsActivity, Glass.DIALOG)
                     .setTitle("Google आवाज़ चुनें (टैप = सुनें)")
                     .setItems(labels) { _, i ->
                         val v = voices[i]
@@ -1282,5 +1302,5 @@ class SettingsActivity : AppCompatActivity() {
 
     private fun space(box: LinearLayout, h: Int) = box.addView(View(this), LinearLayout.LayoutParams(1, (h * dp).toInt()))
 
-    private fun toast(t: String) = Toast.makeText(this, t, Toast.LENGTH_SHORT).show()
+    private fun toast(t: String) = UiLang.toast(this, t, Toast.LENGTH_SHORT).show()
 }

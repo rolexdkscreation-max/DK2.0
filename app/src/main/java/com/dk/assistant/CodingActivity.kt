@@ -385,7 +385,7 @@ class CodingActivity : AppCompatActivity() {
     /** Review ke baad: pakka poochho, phir merge (sirf build/tests paas hon to) */
     private fun confirmMerge(a: CodingAgent) {
         val p = a.pr ?: return
-        android.app.AlertDialog.Builder(this, Glass.DIALOG)
+        UiDialog(this, Glass.DIALOG)
             .setTitle("PR #${p.number} merge करें?")
             .setMessage("${a.branch} → ${a.baseBranch}\n\nक्या आपने GitHub पर बदलाव review कर लिए? Merge तभी होगा जब PR के unit tests + build पास हों।")
             .setPositiveButton("Merge करें") { _, _ ->
@@ -444,7 +444,7 @@ class CodingActivity : AppCompatActivity() {
         }
         val hs = android.widget.HorizontalScrollView(this).apply { addView(tv) }
         val vs = ScrollView(this).apply { addView(hs) }
-        android.app.AlertDialog.Builder(this, Glass.DIALOG)
+        UiDialog(this, Glass.DIALOG)
             .setTitle("बदलाव (${a.staged.size} फ़ाइल)").setView(vs).setPositiveButton("ठीक है", null).show()
     }
 
@@ -473,7 +473,7 @@ class CodingActivity : AppCompatActivity() {
     private fun sevenPicker() {
         val gh = GitHub.fromPrefs(this)
         if (gh == null) {
-            android.app.AlertDialog.Builder(this, Glass.DIALOG).setTitle("GitHub नहीं जुड़ा")
+            UiDialog(this, Glass.DIALOG).setTitle("GitHub नहीं जुड़ा")
                 .setMessage("नॉर्मल मोड में काम होगा (गिट एजेंट बंद)। GitHub मोड के लिए Settings → कोडिंग एजेंट में token डालें।")
                 .setPositiveButton("Settings खोलें") { _, _ -> startActivity(android.content.Intent(this, SettingsActivity::class.java).putExtra("section", "coder")) }
                 .setNegativeButton("ठीक है", null).show()
@@ -484,7 +484,7 @@ class CodingActivity : AppCompatActivity() {
             val repos = try { withContext(Dispatchers.IO) { gh.reposAll() } } catch (e: GitHub.Err) {
                 if (isFinishing || isDestroyed) return@launch
                 val msg = if (e.code == 401) "GitHub टोकन गलत है या expire हो गया (401)।" else "रिपो नहीं ला पाया: ${e.message?.take(120)}"
-                android.app.AlertDialog.Builder(this@CodingActivity, Glass.DIALOG).setTitle("GitHub की दिक्कत").setMessage("$msg\n\nनॉर्मल मोड में काम करें?")
+                UiDialog(this@CodingActivity, Glass.DIALOG).setTitle("GitHub की दिक्कत").setMessage("$msg\n\nनॉर्मल मोड में काम करें?")
                     .setPositiveButton("नॉर्मल मोड") { _, _ -> setNormal(true) }
                     .setNegativeButton("बंद करें", null).show()
                 return@launch
@@ -502,7 +502,7 @@ class CodingActivity : AppCompatActivity() {
                 .map { (if (it.fullName == Prefs.ghRepo(this@CodingActivity) && !Prefs.coderNormal(this@CodingActivity)) "✓ " else "") + it.fullName + if (it.private) "  🔒" else "" }
             val ad = android.widget.ArrayAdapter(this@CodingActivity, android.R.layout.simple_list_item_1, items("").toMutableList())
             lv.adapter = ad
-            val dlg = android.app.AlertDialog.Builder(this@CodingActivity, Glass.DIALOG).setTitle("रिपो चुनें").setView(box)
+            val dlg = UiDialog(this@CodingActivity, Glass.DIALOG).setTitle("रिपो चुनें").setView(box)
                 .setNegativeButton("बंद करें", null).show()
             search.addTextChangedListener(object : android.text.TextWatcher {
                 override fun afterTextChanged(e: android.text.Editable?) { ad.clear(); ad.addAll(items(e?.toString().orEmpty())); ad.notifyDataSetChanged() }
@@ -526,7 +526,7 @@ class CodingActivity : AppCompatActivity() {
             if (isFinishing || isDestroyed) return@launch
             val start = if ("main" in brs) "main" else r.branch
             val ordered = (listOf(start) + brs).distinct().filter { it.isNotBlank() }
-            android.app.AlertDialog.Builder(this@CodingActivity, Glass.DIALOG).setTitle("${r.fullName} — branch चुनें (शुरुआत: $start)")
+            UiDialog(this@CodingActivity, Glass.DIALOG).setTitle("${r.fullName} — branch चुनें (शुरुआत: $start)")
                 .setItems(ordered.map { if (it == start) "$it  (शुरुआती)" else it }.toTypedArray()) { _, i ->
                     if (CoderSession.agent?.staged?.isNotEmpty() == true) toast("पुराने रिपो के बिना push बदलाव हटा दिए")
                     Prefs.edit(this@CodingActivity) { putString("gh_repo", r.fullName); putString("gh_branch", ordered[i]); putBoolean("coder_normal", false) }
@@ -549,7 +549,7 @@ class CodingActivity : AppCompatActivity() {
         val t = CoderSession.offerNormal ?: return
         if (CoderSession.busy || offerShownFor == t) return
         offerShownFor = t
-        android.app.AlertDialog.Builder(this, Glass.DIALOG).setTitle("GitHub मोड में दिक्कत")
+        UiDialog(this, Glass.DIALOG).setTitle("GitHub मोड में दिक्कत")
             .setMessage((CoderSession.lines.lastOrNull { it.role == "e" }?.text ?: "") + "\n\nक्या करें?")
             .setPositiveButton("नॉर्मल मोड में करो") { _, _ -> CoderSession.offerNormal = null; SevenRunner.start(this, t, forceNormal = true)?.let { CoderSession.add("e", it) }; render() }
             .setNeutralButton("रिपो बदलो") { _, _ -> sevenPicker() }
@@ -565,7 +565,7 @@ class CodingActivity : AppCompatActivity() {
                 if (isFinishing || isDestroyed) return@launch
                 if (repos.isEmpty()) { toast("कोई repo नहीं मिला"); return@launch }
                 val names = repos.map { it.fullName + if (it.private) "  (private)" else "" }.toTypedArray()
-                android.app.AlertDialog.Builder(this@CodingActivity, Glass.DIALOG)
+                UiDialog(this@CodingActivity, Glass.DIALOG)
                     .setTitle("Repo चुनें")
                     .setItems(names) { _, i ->
                         val r = repos[i]
@@ -632,7 +632,7 @@ class CodingActivity : AppCompatActivity() {
             })
             val row = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
             row.addView(smallBtn("Push करें", accent = true) {
-                android.app.AlertDialog.Builder(this, Glass.DIALOG)
+                UiDialog(this, Glass.DIALOG)
                     .setTitle("GitHub पर push करें?")
                     .setMessage("${a.repo} • " + (if (a.safePr && a.pr == null) "नई branch (feature/dk-…) → PR → ${a.baseBranch}" else a.branch) +
                         "\n\n${a.changeList()}\n\nCommit: ${CoderSession.lastCommit.ifBlank { "DK: code changes" }}" +
@@ -745,5 +745,5 @@ class CodingActivity : AppCompatActivity() {
         setOnClickListener { onClick() }
     }
 
-    private fun toast(t: String) = Toast.makeText(this, t, Toast.LENGTH_SHORT).show()
+    private fun toast(t: String) = UiLang.toast(this, t, Toast.LENGTH_SHORT).show()
 }

@@ -289,22 +289,22 @@ object Updater {
 
     private fun notifyProgress(c: Context, rel: Release, p: Int) = try {
         nm(c).notify(NOTIF_ID, builder(c)
-            .setContentTitle("${rel.typeLabel} डाउनलोड हो रहा है • DK ${rel.version}")
-            .setContentText("$p% • ${rel.sizeMb} — बैकग्राउंड में चल रहा है")
+            .setContentTitle(UiLang.s("${rel.typeLabel} डाउनलोड हो रहा है • DK ${rel.version}"))
+            .setContentText(UiLang.s("$p% • ${rel.sizeMb} — बैकग्राउंड में चल रहा है"))
             .setProgress(100, p, p == 0).setOngoing(true).setOnlyAlertOnce(true).build())
     } catch (_: Exception) {}
 
     private fun notifyReady(c: Context, rel: Release) = try {
         nm(c).notify(NOTIF_ID, builder(c).setSmallIcon(android.R.drawable.stat_sys_download_done)
-            .setContentTitle("${rel.typeLabel} तैयार • DK ${rel.version}")
-            .setContentText("डाउनलोड हो गया — इंस्टॉल करने के लिए टैप करें")
+            .setContentTitle(UiLang.s("${rel.typeLabel} तैयार • DK ${rel.version}"))
+            .setContentText(UiLang.s("डाउनलोड हो गया — इंस्टॉल करने के लिए टैप करें"))
             .setAutoCancel(true).build())
     } catch (_: Exception) {}
 
     private fun notifyFail(c: Context, rel: Release) = try {
         nm(c).notify(NOTIF_ID, builder(c).setSmallIcon(android.R.drawable.stat_notify_error)
-            .setContentTitle("अपडेट डाउनलोड रुक गया • DK ${rel.version}")
-            .setContentText("इंटरनेट आने पर टैप करें — जहाँ रुका था वहीं से आगे होगा")
+            .setContentTitle(UiLang.s("अपडेट डाउनलोड रुक गया • DK ${rel.version}"))
+            .setContentText(UiLang.s("इंटरनेट आने पर टैप करें — जहाँ रुका था वहीं से आगे होगा"))
             .setAutoCancel(true).build())
     } catch (_: Exception) {}
 
@@ -322,14 +322,14 @@ class InstallReceiver : BroadcastReceiver() {
                 else i.getParcelableExtra(Intent.EXTRA_INTENT)
                 confirm?.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)?.let { c.startActivity(it) }
             }
-            PackageInstaller.STATUS_SUCCESS -> Toast.makeText(c, "अपडेट हो गया", Toast.LENGTH_LONG).show()
+            PackageInstaller.STATUS_SUCCESS -> UiLang.toast(c, "अपडेट हो गया", Toast.LENGTH_LONG).show()
             else -> {
                 val msg = i.getStringExtra(PackageInstaller.EXTRA_STATUS_MESSAGE) ?: ""
                 DKLog.d("Install fail $status $msg")
                 val hint = if (status == PackageInstaller.STATUS_FAILURE_CONFLICT || msg.contains("signature", true))
                     "पुराना DK अलग key वाला है — एक बार पुराना हटाकर नया इंस्टॉल करें। उसके बाद अपडेट अपने-आप होंगे।"
                 else "अपडेट नहीं हुआ: $msg"
-                Toast.makeText(c, hint, Toast.LENGTH_LONG).show()
+                UiLang.toast(c, hint, Toast.LENGTH_LONG).show()
             }
         }
     }

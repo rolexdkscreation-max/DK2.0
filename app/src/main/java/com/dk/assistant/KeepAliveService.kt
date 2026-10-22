@@ -29,8 +29,8 @@ class KeepAliveService : Service() {
         val builder = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O)
             Notification.Builder(this, "dk") else @Suppress("DEPRECATION") Notification.Builder(this)
         val notif = builder
-            .setContentTitle(Prefs.assistantName(this) + " चालू है")
-            .setContentText("गोल ओर्ब पर टैप करके बोलिए")
+            .setContentTitle(Prefs.assistantName(this) + " " + UiLang.s("चालू है"))
+            .setContentText(UiLang.s("गोल ओर्ब पर टैप करके बोलिए"))
             .setSmallIcon(R.drawable.ic_dk)
             .setContentIntent(open)
             .setOngoing(true)
