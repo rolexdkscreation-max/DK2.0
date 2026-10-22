@@ -546,7 +546,7 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
                 }
                 .put("speechConfig", JSONObject().put("voiceConfig", JSONObject()
                     .put("prebuiltVoiceConfig", JSONObject().put("voiceName", Prefs.geminiVoice(svc))))))
-            .put("systemInstruction", JSONObject().put("parts", JSONArray().put(JSONObject().put("text", brain.liveSystemPrompt()))))
+            .put("systemInstruction", JSONObject().put("parts", JSONArray().put(JSONObject().put("text", Lang.sys(brain.liveSystemPrompt())))))
             .put("tools", tools)
             .put("realtimeInputConfig", JSONObject()
                 .put("automaticActivityDetection", JSONObject()

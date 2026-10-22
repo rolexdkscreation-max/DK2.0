@@ -15,6 +15,7 @@ class DKApp : Application() {
     override fun onCreate() {
         super.onCreate()
         DKState.init(this)
+        Prefs.loadLang(this)
         removeLegacyAntiTheftState()
         val prev = Thread.getDefaultUncaughtExceptionHandler()
         Thread.setDefaultUncaughtExceptionHandler { t, e ->

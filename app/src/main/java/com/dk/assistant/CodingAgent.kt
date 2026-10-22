@@ -169,7 +169,7 @@ class CoderAi(val provider: Provider, private val key: String, val model: String
                 .put("parts", JSONArray().put(JSONObject().put("text", t))))
         }
         val body = JSONObject()
-            .put("system_instruction", JSONObject().put("parts", JSONArray().put(JSONObject().put("text", system))))
+            .put("system_instruction", JSONObject().put("parts", JSONArray().put(JSONObject().put("text", Lang.sys(system)))))
             .put("contents", contents)
             .put("generationConfig", JSONObject().put("maxOutputTokens", 32000).put("temperature", 0.2))
         val req = Request.Builder().url("https://generativelanguage.googleapis.com/v1beta/models/$m:generateContent")
@@ -183,7 +183,7 @@ class CoderAi(val provider: Provider, private val key: String, val model: String
     }
 
     private fun openAi(system: String, msgs: List<Pair<String, String>>, maxTok: Int): String {
-        val arr = JSONArray().put(JSONObject().put("role", "system").put("content", system))
+        val arr = JSONArray().put(JSONObject().put("role", "system").put("content", Lang.sys(system)))
         msgs.forEach { (r, t) -> arr.put(JSONObject().put("role", if (r == "user") "user" else "assistant").put("content", t)) }
         val body = JSONObject().put("model", model).put("messages", arr).put("max_tokens", maxTok).put("temperature", 0.2)
         if (model.contains("gpt-oss")) body.put("reasoning_effort", "medium")

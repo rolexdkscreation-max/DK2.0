@@ -123,7 +123,7 @@ class AgentRunner(
             type == "who_calls" -> if (r.startsWith("CALLER:")) r.removePrefix("CALLER:").trim() + " का कॉल है।" else "पता नहीं चला किसका कॉल है।"
             type == "unlock" -> if (r.contains("PIN")) "स्क्रीन चालू है, PIN या फिंगरप्रिंट से खोलिए।" else ""
             type == "open_app" -> ""
-            else -> q.ack
+            else -> Lang.say(q.ack)
         }
         DKState.reply(msg.ifBlank { "✓ ${q.action.optString("name", type)}" })
         if (msg.isNotBlank() && !silent) speaker.speakQuick(msg)
@@ -549,7 +549,7 @@ class AgentRunner(
             val r = kotlinx.coroutines.coroutineScope {
                 val d = async(Dispatchers.IO) { brain.search(goal, deep, thorough) }
                 if (!silent && !fillerSaid) {
-                    val ack = "एक सेकंड, सर्च करके " + (if (Prefs.voiceGender(svc) != "male") "बताती हूँ।" else "बताता हूँ।")
+                    val ack = Lang.pick("एक सेकंड, सर्च करके " + (if (Prefs.voiceGender(svc) != "male") "बताती हूँ।" else "बताता हूँ।"), "One second, let me search and tell you.")
                     try { speaker.speakQuick(ack) } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (_: Exception) {}
                 }
                 d.await()

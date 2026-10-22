@@ -86,6 +86,7 @@ class SettingsActivity : AppCompatActivity() {
         when (section) {
             null -> { title.text = "सेटिंग्स"; bar.visibility = View.GONE; menu() }
             "profile" -> { title.text = "प्रोफ़ाइल"; secProfile() }
+            "lang" -> { title.text = "भाषा / Language"; secLang() }
             "brain" -> { title.text = "AI दिमाग"; bar.visibility = View.GONE; secBrainMenu() }
             "brain_live" -> { title.text = "AI दिमाग • DK लाइव"; secBrainLive() }
             "brain_chat" -> { title.text = "AI दिमाग • DK चैट"; secBrain() }
@@ -109,6 +110,7 @@ class SettingsActivity : AppCompatActivity() {
         val name = Prefs.assistantName(this)
         val items = listOf(
             Triple("profile", "प्रोफ़ाइल", "आपका नाम • असिस्टेंट का नाम ($name) • बात करने का तरीका"),
+            Triple("lang", "भाषा / Language", "अभी: ${Lang.short(Prefs.replyLang(this))} • Hinglish / हिंदी / English — DK के सारे जवाब और आवाज़"),
             Triple("brain", "AI दिमाग", "DK लाइव • DK चैट • कोडिंग एजेंट • DK कंप्यूटर — हर एक की अपनी API key"),
             Triple("voice", "आवाज़", "महिला / पुरुष • आवाज़ चुनें • स्पीड • सुनने का तरीका"),
             Triple("orb", "ओर्ब और चेहरा", "पृथ्वी, गैलेक्सी, एटम, DNA, छल्ला, पुरुष/महिला चेहरा"),
@@ -153,8 +155,36 @@ class SettingsActivity : AppCompatActivity() {
         }
     }
 
+    /** v3.30: DK के जवाब की भाषा - चुनते ही सेव और लागू */
+    private fun secLang() {
+        card("DK किस भाषा में जवाब दे", "DK लाइव, DK चैट, बिना-Live आवाज़, DK कंप्यूटर और कोडिंग एजेंट — सब पर एक साथ") { box ->
+            val rg = RadioGroup(this).apply { orientation = RadioGroup.VERTICAL }
+            val cur = Prefs.replyLang(this)
+            Lang.ALL.forEachIndexed { i, (code, label) ->
+                rg.addView(RadioButton(this).apply {
+                    id = 3000 + i
+                    text = label
+                    setTextColor(0xFFFFFFFF.toInt())
+                    textSize = 15f
+                    isChecked = code == cur
+                    setPadding((6 * dp).toInt(), (8 * dp).toInt(), 0, (8 * dp).toInt())
+                })
+            }
+            rg.setOnCheckedChangeListener { _, idc ->
+                val code = Lang.ALL.getOrNull(idc - 3000)?.first ?: return@setOnCheckedChangeListener
+                Prefs.edit(this) { putString(Lang.KEY, code) }
+                Prefs.loadLang(this)
+                toast("भाषा: ${Lang.short(code)} — अगले जवाब से लागू")
+            }
+            box.addView(rg)
+            hint(box, "ऐप के बटन और Settings हिंदी में ही रहेंगे। DK लाइव चल रहा हो तो नई भाषा अगली बार जुड़ने पर (लाइव बंद करके फिर चालू करें)। " +
+                "किसी एक जवाब के लिए आप बोलकर दूसरी भाषा माँग सकते हैं।")
+        }
+    }
+
     private fun menuIcon(id: String) = when (id) {
         "profile" -> R.drawable.ic_s_profile
+        "lang" -> R.drawable.ic_s_lang
         "brain" -> R.drawable.ic_s_brain
         "voice" -> R.drawable.ic_s_voice
         "orb" -> R.drawable.ic_s_orb

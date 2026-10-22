@@ -196,7 +196,7 @@ class GeminiClient(private val key: String, private val model: String) : AiClien
         if (thinking && m.startsWith("gemini-3")) gen.put("thinkingConfig", JSONObject().put("thinkingLevel", "minimal"))
         if (thinking && m.startsWith("gemini-2.5")) gen.put("thinkingConfig", JSONObject().put("thinkingBudget", 0))
         val body = JSONObject()
-            .put("system_instruction", JSONObject().put("parts", JSONArray().put(JSONObject().put("text", system))))
+            .put("system_instruction", JSONObject().put("parts", JSONArray().put(JSONObject().put("text", Lang.sys(system)))))
             .put("contents", contents)
             .put("generationConfig", gen)
         val req = Request.Builder()
@@ -246,7 +246,7 @@ class GeminiClient(private val key: String, private val model: String) : AiClien
                     if (m.startsWith("gemini-2.5")) gen.put("thinkingConfig", JSONObject().put("thinkingBudget", if (think) 8192 else if (deep) 2048 else 0))
                 }
                 val body = JSONObject()
-                    .put("system_instruction", JSONObject().put("parts", JSONArray().put(JSONObject().put("text", system))))
+                    .put("system_instruction", JSONObject().put("parts", JSONArray().put(JSONObject().put("text", Lang.sys(system)))))
                     .put("contents", contents)
                     .put("tools", JSONArray().put(JSONObject().put("google_search", JSONObject())))
                     .put("generationConfig", gen)
@@ -297,7 +297,7 @@ class GeminiClient(private val key: String, private val model: String) : AiClien
         if (thinking && m.startsWith("gemini-2.5")) gen.put("thinkingConfig", JSONObject().put("thinkingBudget", 0))
 
         val body = JSONObject()
-            .put("system_instruction", JSONObject().put("parts", JSONArray().put(JSONObject().put("text", system))))
+            .put("system_instruction", JSONObject().put("parts", JSONArray().put(JSONObject().put("text", Lang.sys(system)))))
             .put("contents", contents)
             .put("generationConfig", gen)
 
@@ -357,7 +357,7 @@ class OpenAiCompatClient(
     }
 
     private fun completeOnce(model: String, system: String, history: List<Turn>, prompt: String, imageB64: String?): String {
-        val msgs = JSONArray().put(JSONObject().put("role", "system").put("content", system))
+        val msgs = JSONArray().put(JSONObject().put("role", "system").put("content", Lang.sys(system)))
         history.forEach {
             msgs.put(JSONObject().put("role", if (it.role == "user") "user" else "assistant").put("content", it.text))
         }
@@ -410,7 +410,7 @@ class OpenAiCompatClient(
     }
 
     private fun streamOnce(model: String, system: String, history: List<Turn>, prompt: String, onDelta: (String) -> Unit): String {
-        val msgs = JSONArray().put(JSONObject().put("role", "system").put("content", system))
+        val msgs = JSONArray().put(JSONObject().put("role", "system").put("content", Lang.sys(system)))
         history.forEach { msgs.put(JSONObject().put("role", if (it.role == "user") "user" else "assistant").put("content", it.text)) }
         msgs.put(JSONObject().put("role", "user").put("content", prompt))
         val body = JSONObject().put("model", model).put("messages", msgs).put("stream", true).put("max_tokens", 900)
