@@ -17,20 +17,40 @@ object LiveFast {
     /** इनका नतीजा बोलकर बताना है (दूरी, किसका कॉल) - Gemini/AgentRunner के रास्ते से */
     private val SKIP = setOf("distance", "who_calls")
 
-    /** बात का पक्का text -> तुरंत करने लायक सीधा काम (या null) */
-    fun pick(text: String, wakeWords: List<String>): QuickCommands.Quick? {
+    /**
+     * v3.33: बात खत्म होते ही caption से (Gemini से पहले) ये नहीं करते - वापस न होने वाले काम.
+     * caption में एक शब्द गलत सुना = गलत आदमी को कॉल. ये Gemini के phone_task से (उसने पूरी आवाज़ सुनी) - फिर भी फ़ोन पर, बिना AgentRunner.
+     */
+    private val NOT_SPECULATIVE = setOf("call_contact")
+
+    /**
+     * बात का पक्का text -> तुरंत करने लायक सीधा काम (या null).
+     * v3.33: QuickCommands की जगह LocalRouter (उसी से शुरू होता है + कॉल/सर्च/फ़ोटो/कई कदम). fast = caption वाला रास्ता.
+     */
+    fun pick(text: String, wakeWords: List<String>, fg: String = "", fast: Boolean = false): QuickCommands.Quick? {
         val t = text.trim()
         if (t.length < 2) return null
-        val q = QuickCommands.parse(t, wakeWords) ?: return null
-        return q.takeUnless { it.action.optString("type") in SKIP }
+        val q = LocalRouter.route(t, wakeWords, fg) ?: return null
+        val type = q.action.optString("type")
+        if (type in SKIP) return null
+        if (fast && (type in NOT_SPECULATIVE || (type == "steps" && q.action.toString().let { s -> NOT_SPECULATIVE.any { s.contains("\"$it\"") } }))) return null
+        return q
     }
 
-    fun ok(type: String, r: String) = !r.startsWith("ERROR") && !(type == "youtube_play" && !r.startsWith("PLAYING"))
+    fun ok(type: String, r: String) = !r.startsWith("ERROR") && !r.startsWith("ASK:") && !r.startsWith("STEP_FAILED") &&
+        !(type == "youtube_play" && !r.startsWith("PLAYING") && !r.startsWith("VIDEO_OPENED"))
 
     /** Gemini को tool का सच्चा नतीजा (कभी "done" झूठ नहीं) */
     fun quickResult(q: QuickCommands.Quick, r: String, already: Boolean): String {
         val type = q.action.optString("type")
         val what = q.ack.ifBlank { describe(q.action) }
+        val said = LocalRouter.userText(r)
+        // v3.33: user से पूछना है (कई कॉन्टैक्ट / कई ऐप) - Gemini वही सवाल पूछे, खुद कुछ न करे
+        if (r.startsWith("ASK:")) return "NEEDS USER CHOICE (nothing was done yet): ${said ?: r}. Ask the user exactly this in their language. Do NOT call, open or do anything until they answer."
+        // सच्चा नतीजा, जो फ़ोन ने खुद जाँचा ("डायलर खोला" = कॉल लगी नहीं, "वीडियो खोला" = चल रहा पक्का नहीं)
+        if (said != null && ok(type, r)) return (if (already) "ALREADY DONE just now (do not repeat it): " else "DONE: ") +
+            "$what. Phone says: \"$said\". Tell the user this honestly in a few words; do not claim more than it says."
+        if (said != null) return "FAILED: $said Tell the user honestly; do not try another way unless they ask."
         return if (ok(type, r)) (if (already) "ALREADY DONE just now (do not repeat it): " else "DONE: ") + "$what. Tell the user in 2-5 words."
         else "FAILED: could not do it ($what, ${r.take(80)}). Tell the user honestly it did not work."
     }
@@ -40,6 +60,12 @@ object LiveFast {
         "youtube_play" -> "playing \"${a.optString("query")}\" on YouTube"
         "torch" -> if (a.optBoolean("on", true)) "torch on" else "torch off"
         "volume" -> "volume ${a.optString("direction")}" + if (a.has("level")) " ${a.optInt("level")}%" else ""
+        "youtube_search" -> "searched \"${a.optString("query")}\" on YouTube"
+        "shop_search" -> "searched \"${a.optString("query")}\" in ${a.optString("app")}"
+        "call_contact" -> "call ${a.optString("name")}"
+        "call_log" -> "opened recent calls"
+        "gallery_latest" -> "opened the latest photo"
+        "steps" -> a.optJSONArray("steps")?.let { arr -> (0 until arr.length()).mapNotNull { arr.optJSONObject(it)?.let { o -> describe(o) } }.joinToString(", then ") } ?: "steps"
         else -> a.optString("type").replace('_', ' ')
     }
 

@@ -1045,7 +1045,10 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
      */
     private suspend fun phoneTask(req: String): String {
         val wake = Prefs.wakeWords(svc)
-        val q = LiveFast.pick(req, wake)
+        val fg = svc.currentPackage()
+        val tc = System.nanoTime()
+        val q = LiveFast.pick(req, wake, fg)
+        log("रूटर: phone_task \"${req.take(30)}\" -> ${q?.action?.optString("type") ?: "फ़ोन पर पूरा नहीं"} (${(System.nanoTime() - tc) / 1_000_000} ms)")
         var same = fastMemo.same(q, System.currentTimeMillis())
         if (same != LiveFast.Memo.NOT_SAME) {
             val until = System.currentTimeMillis() + 4000
@@ -1053,7 +1056,7 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
             log("phone_task = अभी-अभी किया काम, दोबारा नहीं: $req")
             val r = same
             if (r != null && r != LiveFast.Memo.NOT_SAME) {
-                if (LiveFast.ok(q!!.action.optString("type"), r)) return LiveFast.quickResult(q, r, already = true)
+                if (LiveFast.ok(q!!.action.optString("type"), r) || LocalRouter.final(r)) return LiveFast.quickResult(q, r, already = true)
                 // तुरंत वाला नहीं चला (ऐप नहीं मिला / वीडियो सीधे नहीं चला) -> AgentRunner संभाले
             } else if (r == null) return "STARTED just now and still opening. Tell the user in 2-5 words."
         } else if (q != null && fastMemo.begin(q, System.currentTimeMillis())) {
@@ -1061,11 +1064,26 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
             val r = try { svc.perform(q.action) } catch (e: CancellationException) { throw e } catch (e: Exception) { "ERROR ${e.message}" }
             fastMemo.finish(q, r)
             log("phone_task सीधे (बिना AI): ${q.action} = ${r.take(60)}")
-            if (LiveFast.ok(q.action.optString("type"), r)) return LiveFast.quickResult(q, r, already = false)
+            // v3.33: ऐप है ही नहीं / कॉन्टैक्ट नहीं / user से पूछना है = AI से कुछ नहीं सुधरेगा -> सीधे सच
+            if (LiveFast.ok(q.action.optString("type"), r) || LocalRouter.final(r)) return LiveFast.quickResult(q, r, already = false)
         }
         DKState.set(Mode.WORKING)
+        // v3.33: आधा काम फ़ोन पर ("Flipkart खोलो, X सर्च करो") + बाकी ("पहला प्रोडक्ट कार्ट में डालो") AgentRunner को
+        var note = ""
+        if (q == null) {
+            val sp = LocalRouter.split(req, wake, fg)
+            val pre = sp.local
+            if (pre != null && sp.rest != null && fastMemo.begin(pre, System.currentTimeMillis())) {
+                val r = try { svc.perform(pre.action) } catch (e: CancellationException) { throw e } catch (e: Exception) { "ERROR ${e.message}" }
+                fastMemo.finish(pre, r)
+                log("phone_task: पहला हिस्सा फ़ोन पर (${pre.action.optString("type")}) = ${r.take(60)}, बाकी AgentRunner")
+                if (!LiveFast.ok(pre.action.optString("type"), r) && LocalRouter.final(r)) return LiveFast.quickResult(pre, r, already = false)
+                note = LocalRouter.DONE_NOTE + " " + LiveFast.describe(pre.action) + " -> " + r.take(160) +
+                    "\nContinue the rest of the user's goal from the CURRENT screen."
+            }
+        }
         val before = DKState.lastReply
-        val job = agent.run(req, speak = false)
+        val job = agent.run(req, speak = false, note = note)
         val finished = withTimeoutOrNull(20_000) { job.join() } != null
         val reply = DKState.lastReply.takeIf { it != before && it.isNotBlank() }
         if (!finished) {
@@ -1241,12 +1259,15 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
             delay(300); val a = cur()
             delay(350); val b = cur()
             if (b.isBlank() || a != b || turnDet.inSpeech || isPlaying() || stopped) return@launch
-            val q = LiveFast.pick(b, Prefs.wakeWords(svc)) ?: return@launch
+            val tc = System.nanoTime()
+            val q = LiveFast.pick(b, Prefs.wakeWords(svc), svc.currentPackage(), fast = true)
+            val classMs = (System.nanoTime() - tc) / 1_000_000
+            if (q == null) { log("रूटर: \"${b.take(30)}\" फ़ोन पर सीधा नहीं - Gemini संभालेगा (वर्गीकरण $classMs ms)"); return@launch }
             if (!fastMemo.begin(q, System.currentTimeMillis())) return@launch
             val t0 = System.currentTimeMillis()
             val r = try { svc.perform(q.action) } catch (e: CancellationException) { throw e } catch (e: Exception) { "ERROR ${e.message}" }
             fastMemo.finish(q, r); fastN++
-            log("तुरंत काम (Gemini से पहले) \"${b.take(40)}\" -> ${q.action} = ${r.take(60)} (${System.currentTimeMillis() - t0} ms)")
+            log("तुरंत काम (Gemini से पहले) \"${b.take(40)}\" -> ${q.action.optString("type")} = ${r.take(60)} (वर्गीकरण $classMs ms, काम+जाँच ${System.currentTimeMillis() - t0} ms)")
         }
     }
 

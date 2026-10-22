@@ -684,6 +684,9 @@ class SettingsActivity : AppCompatActivity() {
             }, button("कॉल/कॉन्टैक्ट") {
                 androidx.core.app.ActivityCompat.requestPermissions(this, CallManager.PERMS, 11)
             })
+            row(box, button("सीधी कॉल + फ़ोटो") {
+                androidx.core.app.ActivityCompat.requestPermissions(this, PhoneActions.EXTRA_PERMS, 14)
+            })
             row(box, button("ऐप इंस्टॉल (अपडेट के लिए)") { Updater.askInstallPermission(this) },
                 button("App info") { Setup.openAppInfo(this) })
             row(box, button("टॉर्च की permission दें") {
@@ -703,6 +706,8 @@ class SettingsActivity : AppCompatActivity() {
             (if (notif) "✓" else "✗") + " नोटिफ़िकेशन\n" +
             (if (calls) "✓" else "✗") + " कॉल / कॉन्टैक्ट\n" +
             (if (camera) "✓" else "✗") + " टॉर्च (कैमरा permission)\n" +
+            (if (ok(PhoneActions.CALL_PERM)) "✓" else "✗") + " सीधी कॉल (न हो तो डायलर खुलता है)\n" +
+            (if (ok(PhoneActions.PHOTO_PERM)) "✓" else "✗") + " फ़ोटो (सबसे नई फ़ोटो खोलना)\n" +
             (if (Updater.canInstall(this)) "✓" else "✗") + " ऐप इंस्टॉल (अपडेट)"
     }
 
