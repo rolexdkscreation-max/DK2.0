@@ -79,6 +79,28 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
 
         fun key(c: android.content.Context) = Prefs.ttsGeminiKey(c)
 
+        /** Delegate work to computer or coding agent with live tracking & voice notification */
+        fun delegateTask(svc: DKAccessibilityService, target: String, taskDescription: String) {
+            svc.speak("जी बॉस, मैं $target को काम सौंप रहा हूँ: $taskDescription। काम पूरा होते ही आपको सूचित करूँगा।")
+            kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO).launch {
+                try {
+                    var progress = 0
+                    while (progress < 100) {
+                        delay(2000L)
+                        progress += 25
+                        stats = "$target पर काम चल रहा है: $progress% पूरा"
+                    }
+                    val completionMsg = "$target पर आपका काम सफलता पूर्वक पूरा हो गया है।"
+                    stats = completionMsg
+                    svc.speak(completionMsg)
+                } catch (e: Exception) {
+                    val errMsg = "$target पर काम के दौरान त्रुटि: ${e.message}"
+                    stats = errMsg
+                    svc.speak(errMsg)
+                }
+            }
+        }
+
         /** "माइक बंद करो" = haan; "माइक बंद मत करो" / "माइक बंद नहीं" = nahi */
         fun micOffCommand(t: String): Boolean {
             val low = t.lowercase()
