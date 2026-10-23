@@ -202,4 +202,73 @@ class SevenDebugTest {
         assertTrue(f.staged()["src/Big.kt"]!!.contains("    val extra = 1"))
         assertEquals(true, out.testOk)
     }
+
+    // ------------------------------------------------------------------ गायब कोड (जैसे Bluetooth माइक) + अंतहीन खोज + डिबगर अटके तो दूसरा रास्ता
+    private val ear = "package app\n\nclass Ear {\n    fun start() {\n        val r = AudioRecord(MediaRecorder.AudioSource.VOICE_RECOGNITION)\n    }\n}\n"
+    private val earFiles = mapOf("app/src/main/java/com/dk/assistant/Ear.kt" to ear, "app/src/main/java/com/dk/assistant/Speaker.kt" to "class Speaker {\n    fun speak() {}\n}\n")
+    private val earPath = "app/src/main/java/com/dk/assistant/Ear.kt"
+    private val btUnderstood = """{"understood":"Bluetooth जुड़ा हो तो उसी के माइक से सुनना","spec":"use the Bluetooth headset microphone when connected","acceptance":["Bluetooth जुड़ा हो तो उसी माइक से सुनता है"],"not_touch":[],"area":[],"questions":[]}"""
+    private val btPlan = """{"steps":[{"file":"$earPath","action":"edit","change":"route mic to bluetooth SCO before recording","anchor":"fun start() {"}]}"""
+    private val btEdit = "FILE: $earPath\n<<<FIND\n    fun start() {\nFIND>>>\n<<<REPLACE\n    fun start() {\n        val useBt = true\nREPLACE>>>"
+    private fun rest() = arrayOf(Agent.CODER to btEdit, Agent.REVIEWER to """{"pass":true,"problems":[]}""", Agent.PERF to """{"pass":true,"must":[]}""",
+        Agent.TESTER to """{"pass":true}""", Agent.QA to """{"pass":true,"checks":[],"missing":[]}""")
+
+    @Test fun resolve_shortNameToRealPath() {
+        val keys = listOf("app/src/main/java/com/dk/assistant/Ear.kt", "app/src/test/java/com/dk/assistant/Ear.kt", "a/X.kt", "b/X.kt")
+        assertEquals("app/src/main/java/com/dk/assistant/Ear.kt", SevenDebug.resolve("Ear.kt", keys))       // test वाली नहीं, असली
+        assertEquals("app/src/main/java/com/dk/assistant/Ear.kt", SevenDebug.resolve("assistant/Ear.kt", keys))
+        assertNull(SevenDebug.resolve("X.kt", keys))                                                         // दो फ़ाइलें = पक्का नहीं
+        assertNull(SevenDebug.resolve("Nope.kt", keys))
+    }
+
+    @Test fun compact_shortensOldBigResults_keepsTaskAndRecent() {
+        val big = "----- BEGIN src/A.kt (900 lines) -----\n" + "x\n".repeat(5000) + "----- END src/A.kt -----"
+        val msgs = mutableListOf("user" to "TASK " + "t".repeat(5000), "model" to "{}", "user" to big, "model" to "{}", "user" to big, "model" to "{}", "user" to big)
+        SevenDebug.compact(msgs, keepLast = 2)
+        assertTrue(msgs[0].second.startsWith("TASK") && msgs[0].second.length > 5000)    // काम कभी छोटा नहीं
+        assertTrue(msgs[2].second, msgs[2].second.startsWith("(EARLIER RESULT") && msgs[2].second.contains("src/A.kt (900 lines)"))
+        assertEquals(big, msgs[6].second)                                                  // आख़िरी नतीजा पूरा
+    }
+
+    @Test fun missingFeature_endlessSearchIsStopped_shortPathResolved_plannerAddsMissingCode() = runBlocking {
+        val script = mutableListOf<Pair<Agent, String>>()
+        repeat(3) { script += Agent.DEBUGGER to """{"search":["bluetooth"]}""" }
+        script += Agent.DEBUGGER to """{"read":["Ear.kt"]}"""                                   // छोटा नाम -> असली path
+        repeat(7) { script += Agent.DEBUGGER to """{"search":["sco"]}""" }                     // आख़िरी खोज रोकी जाती है
+        script += Agent.DEBUGGER to """{"kind":"missing","root_cause":"Ear.kt:5 - AudioRecord starts without routing to the Bluetooth SCO mic; no Bluetooth code exists anywhere","bug":"Bluetooth माइक कभी चालू नहीं होता","where":"Ear.kt:5","fix":"start Bluetooth SCO before AudioRecord in Ear.start","files":["Ear.kt"]}"""
+        script += Agent.PLANNER to btPlan
+        script += rest()
+        val ai = FakeAi(*script.toTypedArray())
+        val events = mutableListOf<String>()
+        val pre = SevenPlus.Understanding.parse(Seven.json(btUnderstood), Seven.Kind.BUG, "", emptyList())
+        val f = MemoryFiles(earFiles)
+        val out = SevenTeam(ai, f, null, full = true) { a, t -> events.add("${a.name}:$t") }.run("Bluetooth जुड़ा हो तब भी फ़ोन के माइक से सुनता है, ठीक करो", pre)
+        assertEquals(12, ai.calls.count { it == Agent.DEBUGGER })
+        assertTrue(events.any { it.startsWith("MANAGER:") && it.contains("बहुत देर से खोज") })
+        assertTrue(events.any { it.startsWith("DEBUGGER:") && it.contains("लिखा ही नहीं") })
+        assertTrue(ai.lastUser[Agent.PLANNER]!!.contains("ADD THE MISSING CODE"))
+        assertTrue(ai.lastUser[Agent.PLANNER]!!.contains(earPath))                       // डिबगर की फ़ाइल असली path में
+        assertTrue(out.report, out.report.contains("जड़ कहाँ थी: $earPath:5"))
+        assertTrue(f.staged()[earPath]!!.contains("useBt"))
+        assertEquals(true, out.testOk)
+    }
+
+    @Test fun debuggerNeverAnswers_managerSwitchesToPlanner_noDeadEnd() = runBlocking {
+        val script = mutableListOf<Pair<Agent, String>>()
+        script += Agent.DEBUGGER to """{"read":["$earPath"]}"""
+        repeat(4) { script += Agent.DEBUGGER to "I think the bluetooth part is not there." }   // JSON नहीं
+        script += Agent.PLANNER to btPlan
+        script += rest()
+        val ai = FakeAi(*script.toTypedArray())
+        val events = mutableListOf<String>()
+        val pre = SevenPlus.Understanding.parse(Seven.json(btUnderstood), Seven.Kind.BUG, "", emptyList())
+        val f = MemoryFiles(earFiles)
+        val out = SevenTeam(ai, f, null, full = true) { a, t -> events.add("${a.name}:$t") }.run("Bluetooth माइक नहीं चलता", pre)
+        assertTrue(events.any { it.startsWith("MANAGER:") && it.contains("रणनीति बदल रहा हूँ: प्लानर") })
+        val pu = ai.lastUser[Agent.PLANNER]!!
+        assertTrue(pu, pu.contains("could not pin") && pu.contains("DEBUGGER SAYS THESE FILES: $earPath"))
+        assertFalse(out.report.contains("थोड़ी और जानकारी दें"))
+        assertTrue(f.staged()[earPath]!!.contains("useBt"))
+        assertEquals(true, out.testOk)
+    }
 }

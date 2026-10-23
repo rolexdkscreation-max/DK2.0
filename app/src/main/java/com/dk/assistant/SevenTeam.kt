@@ -96,6 +96,9 @@ class SevenTeam(
         const val NO_CI = "NO_CI"
         /** QA कितनी बार काम वापस भेज सकता है (फिर रुककर user को रिपोर्ट) */
         const val QA_ROUNDS = 2
+        /** 11-एजेंट डिबगर: कुल राउंड, और आख़िरी कितने राउंड में खोज/पढ़ाई बंद (सिर्फ़ फ़ैसला) */
+        const val DEBUG_ROUNDS = 14
+        const val FORCE_ROUNDS = 3
     }
 
     // ------------------------------------------------------------------ समझ (मैनेजर + प्रॉम्प्ट इंजीनियर) - code छूने से पहले
@@ -194,9 +197,21 @@ class SevenTeam(
         var rootCause = ""
         val plan = if (bug) {
             val d = debug("USER BUG REPORT:\n$task" + if (spec.isNotBlank()) "\nSPEC (approved by the user): $spec" else "", repeat = false)
-                ?: return finish(false, "डिबगर बग की जड़ नहीं ढूँढ पाया — थोड़ी और जानकारी दें (कब होता है, क्या एरर दिखता है)")
-            rootCause = d.second
-            makePlan("MINIMAL FIX for this bug.\nROOT CAUSE: ${d.second}\nFIX: ${d.third}", d.first.files)
+            if (d == null && !full) return finish(false, "डिबगर बग की जड़ नहीं ढूँढ पाया — थोड़ी और जानकारी दें (कब होता है, क्या एरर दिखता है)")
+            if (d == null) {
+                // मैनेजर: डिबगर अटका - रुककर user से पूछने की जगह दूसरा रास्ता: प्लानर डिबगर की पढ़ी फ़ाइलों से खुद जगह ढूँढकर सुधार बनाए
+                val readByDebugger = debugSeen?.paths().orEmpty().toList()
+                ev(Agent.MANAGER, "डिबगर एक पक्की लाइन तक नहीं पहुँचा — रणनीति बदल रहा हूँ: प्लानर खुद खोजकर/पढ़कर सुधार की जगह ढूँढेगा" +
+                    if (readByDebugger.isNotEmpty()) " (डिबगर की पढ़ी फ़ाइलें: ${readByDebugger.joinToString()})" else "")
+                bugs.add(Seven.Bug("जड़ की एक पक्की लाइन नहीं मिली", "-", "डिबगर ने ${readByDebugger.size} फ़ाइलें पढ़ीं, पर एक पक्की लाइन तय नहीं कर पाया", "प्लानर ने खोजकर सुधार बनाया"))
+                makePlan("FIX THIS USER PROBLEM (the debugger could not pin one exact line - the needed code may be MISSING, not broken).\n" +
+                    "USER PROBLEM: $task\n" + (if (spec.isNotBlank()) "SPEC: $spec\n" else "") +
+                    "Search and read to find where the behaviour is (or must be) implemented, then plan the smallest complete change.", readByDebugger)
+            } else {
+                rootCause = d.second
+                makePlan((if (d.first.missing) "ADD THE MISSING CODE for this user problem (it is not implemented anywhere yet) - smallest complete change, wired to the place given.\n"
+                    else "MINIMAL FIX for this bug.\n") + "ROOT CAUSE: ${d.second}\nFIX: ${d.third}", d.first.files)
+            }
         } else makePlan(task + if (brief.isNotBlank()) "\n(Manager brief: $brief)" else "", emptyList())
         plan ?: return finish(false, "प्लानर प्लान नहीं बना पाया: $lastBlock")
         if (!execute(plan, emptySet())) return finish(false, lastBlock)
@@ -289,6 +304,7 @@ class SevenTeam(
         val sys = Seven.Prompts.PLANNER + if (full) "\n" + SevenDebug.PLANNER_EXTRA else ""
         val seen = SevenDebug.Seen()
         for (round in 0..last) {
+            if (full) SevenDebug.compact(msgs)
             val reply = ai.ask(Agent.PLANNER, sys, msgs)
             val terms = SevenPlus.RepoSearch.terms(reply)
             if (terms != null && round < last) {
@@ -358,55 +374,75 @@ class SevenTeam(
             "FILE LIST (${list.size}):\n" + list.take(LIST_MAX).joinToString("\n")))
         val sys = Seven.Prompts.DEBUGGER + "\n" + SevenDebug.EXTRA
         val seen = SevenDebug.Seen()
+        debugSeen = seen
+        val keys = (w.keys + list).toSet()
+        val resolve: (String) -> String? = { SevenDebug.resolve(it, keys) }
         var rejected = 0
-        var asked = false
-        val last = 9
+        var nudged = 0
+        val last = DEBUG_ROUNDS - 1
         for (round in 0..last) {
+            val left = last - round
+            SevenDebug.compact(msgs)
             val reply = ai.ask(Agent.DEBUGGER, sys, msgs)
             val terms = SevenPlus.RepoSearch.terms(reply)
-            if (terms != null && round < last) {
-                ev(Agent.DEBUGGER, "रिपो में खोज रहा हूँ: " + terms.joinToString())
-                msgs.add("model" to reply); msgs.add("user" to SevenPlus.RepoSearch.search(ws(), terms) + "\nNow READ the right files/parts ({\"read\":[…]}) or search more.")
+            val reads = Seven.planReads(reply)
+            if ((terms != null || reads != null) && left <= FORCE_ROUNDS) {
+                // खोज/पढ़ाई का हिस्सा ख़त्म: अब जो पढ़ा उसी से फ़ैसला (वरना अंतहीन खोज और आख़िर में कुछ नहीं)
+                ev(Agent.MANAGER, "डिबगर बहुत देर से खोज रहा है — अब जो पढ़ा उसी से जड़ बताने को कह रहा हूँ")
+                msgs.add("model" to reply)
+                msgs.add("user" to "NO MORE SEARCH / READ - the reading budget is used. Decide NOW from what you have read. If the needed behaviour is not implemented anywhere, that IS the root cause (\"kind\":\"missing\"). Reply ONLY the final root cause JSON." + SevenDebug.roundsLeft(left))
                 continue
             }
-            val reads = Seven.planReads(reply)
-            if (reads != null && round < last) {
+            if (terms != null) {
+                ev(Agent.DEBUGGER, "रिपो में खोज रहा हूँ: " + terms.joinToString())
+                msgs.add("model" to reply); msgs.add("user" to SevenPlus.RepoSearch.search(ws(), terms) + "\nNow READ the right files/parts ({\"read\":[…]}) or search more." + SevenDebug.roundsLeft(left))
+                continue
+            }
+            if (reads != null) {
                 ev(Agent.DEBUGGER, "पढ़ रहा हूँ (लाइन नंबर के साथ): " + reads.joinToString())
-                msgs.add("model" to reply); msgs.add("user" to readNumbered(reads, seen) + "\nReply with the root cause JSON, or search/read more.")
+                msgs.add("model" to reply); msgs.add("user" to readNumbered(reads, seen, keys) + "\nReply with the root cause JSON, or search/read more." + SevenDebug.roundsLeft(left))
                 continue
             }
             val o = Seven.json(reply)
             val root = o?.optString("root_cause").orEmpty().trim()
             if (o != null && root.length >= 8) {
-                val probs = SevenDebug.verify(o, seen) { p -> w[p]?.lines()?.size }
-                if (probs.isNotEmpty() && rejected < SevenDebug.VERIFY_ROUNDS && round < last) {
+                val probs = SevenDebug.verify(o, seen, { p -> w[p]?.lines()?.size }, resolve)
+                if (probs.isNotEmpty() && rejected < SevenDebug.VERIFY_ROUNDS && left > FORCE_ROUNDS) {
                     rejected++
                     ev(Agent.DEBUGGER, "बताई जड़ पक्की नहीं — कोड पढ़कर दोबारा जाँच रहा हूँ:\n" + probs.joinToString("\n") { "• ${it.take(200)}" })
                     msgs.add("model" to reply)
                     msgs.add("user" to "ROOT CAUSE NOT VERIFIED (checked against the real files):\n" + probs.joinToString("\n") { "- $it" } +
-                        "\nSearch/read what is needed, then reply with the corrected root cause JSON.")
+                        "\nSearch/read what is needed, then reply with the corrected root cause JSON." + SevenDebug.roundsLeft(left))
                     continue
                 }
-                val where = o.optString("where").trim()
+                val missing = o.optString("kind").trim().equals("missing", true)
+                val where = o.optString("where").trim().let { wh -> SevenDebug.location(wh)?.let { (p, l) -> resolve(p)?.let { rp -> if (l != null) "$rp:$l" else rp } } ?: wh }
                 val fix = o.optString("fix").trim()
                 if (probs.isNotEmpty()) ev(Agent.DEBUGGER, "⚠ जड़ पूरी तरह पक्की नहीं हो पाई (${probs.first().take(150)}) — फिर भी आगे बढ़ रहा हूँ, टेस्ट से पता चलेगा")
                 bugs.add(Seven.Bug(o.optString("bug").trim().ifBlank { root.take(150) }, where, root, fix.ifBlank { "-" }))
-                ev(Agent.DEBUGGER, "जड़ मिली: ${where.ifBlank { "-" }}\n$root\nसुधार: ${fix.take(200)}")
-                return Triple(Diag(Seven.strings(o.optJSONArray("files"))), root, fix)
+                ev(Agent.DEBUGGER, (if (missing) "जड़ मिली (यह काम कोड में कहीं लिखा ही नहीं है): " else "जड़ मिली: ") + "${where.ifBlank { "-" }}\n$root\nसुधार: ${fix.take(200)}")
+                val fl = Seven.strings(o.optJSONArray("files")).map { resolve(it) ?: it }
+                return Triple(Diag(fl, missing), root, fix)
             }
-            if (asked && round >= last - 1) break
-            asked = true
-            msgs.add("model" to reply); msgs.add("user" to "ROOT CAUSE REQUIRED. Reply ONLY JSON {\"root_cause\":\"file:line - what and why\",\"bug\":…,\"where\":\"file:line\",\"fix\":…,\"files\":[…]} or {\"search\":[…]} or {\"read\":[…]}.")
+            if (nudged >= 3) break
+            nudged++
+            msgs.add("model" to reply); msgs.add("user" to "ROOT CAUSE REQUIRED. Reply ONLY JSON {\"kind\":\"bug|missing\",\"root_cause\":\"file:line - what and why\",\"bug\":…,\"where\":\"file:line\",\"fix\":…,\"files\":[…]}" +
+                (if (left > FORCE_ROUNDS) " or {\"search\":[…]} or {\"read\":[…]}." else ".") + SevenDebug.roundsLeft(left))
         }
         return null
     }
+
+    /** डिबगर ने जो फ़ाइलें पढ़ीं (डिबगर अटके तो प्लानर को यही दी जाती हैं) */
+    private var debugSeen: SevenDebug.Seen? = null
 
     /** प्लानर के लिए (11-एजेंट): बिना लाइन नंबर (anchor सीधे कॉपी हो), "path:START-END" वाले हिस्से भी, बड़ी फ़ाइल के साथ रूपरेखा; जो दिखा वह seen में */
     private suspend fun readParts(entries: List<String>, seen: SevenDebug.Seen): String {
         var budget = READ_BUDGET
         val out = mutableListOf<String>()
+        val keys = files.list()
         for (e in entries) {
-            val r = SevenDebug.parseRead(e)
+            val r0 = SevenDebug.parseRead(e)
+            val r = SevenDebug.resolve(r0.path, keys)?.let { r0.copy(path = it) } ?: r0
             val b = SevenDebug.block(r, try { files.read(r.path) } catch (_: Exception) { null }, budget, FILE_CHARS, numbers = false)
             budget -= b.chars
             seen.add(b.path, b.from, b.to)
@@ -416,11 +452,12 @@ class SevenTeam(
     }
 
     /** डिबगर के लिए: लाइन नंबर के साथ, "path:START-END" वाले हिस्से भी; जो दिखा वह seen में */
-    private suspend fun readNumbered(entries: List<String>, seen: SevenDebug.Seen): String {
-        var budget = READ_BUDGET
+    private suspend fun readNumbered(entries: List<String>, seen: SevenDebug.Seen, keys: Collection<String>): String {
+        var budget = SevenDebug.DEBUG_READ_BUDGET
         val out = mutableListOf<String>()
         for (e in entries) {
-            val r = SevenDebug.parseRead(e)
+            val r0 = SevenDebug.parseRead(e)
+            val r = SevenDebug.resolve(r0.path, keys)?.let { r0.copy(path = it) } ?: r0
             val b = SevenDebug.block(r, try { files.read(r.path) } catch (_: Exception) { null }, budget, FILE_CHARS)
             budget -= b.chars
             seen.add(b.path, b.from, b.to)
@@ -445,7 +482,8 @@ class SevenTeam(
     }
 
     // ------------------------------------------------------------------ डिबगर
-    data class Diag(val files: List<String>)
+    /** @param missing डिबगर: यह काम कोड में कहीं लिखा ही नहीं (टूटी लाइन नहीं, गायब हिस्सा) */
+    data class Diag(val files: List<String>, val missing: Boolean = false)
 
     /** @return (फ़ाइलें, root cause, fix) */
     private suspend fun debug(problem: String, repeat: Boolean): Triple<Diag, String, String>? {
@@ -775,7 +813,8 @@ class SevenTeam(
             else -> Seven.CheckState.RUNNING
         }
         var rep = Seven.report(task, mode, changes.entries.map { it.key to it.value }, bugs, testOk,
-            if (testOk == true) passNote else problem.take(300), pr, backup, chk, lt?.url.orEmpty(), git?.prNote.orEmpty())
+            if (testOk == true) passNote else problem.take(300), pr, backup, chk, lt?.url.orEmpty(),
+            if (changes.isEmpty() && pr.isBlank()) "कोई code नहीं बदला, इसलिए PR नहीं बना" else git?.prNote.orEmpty())
         if (full) {
             if (qaChecks.isNotEmpty()) rep += "\n\n✅ QA की जाँच:\n" + qaChecks.take(8).joinToString("\n") { "• $it" }
             if (perfNotes.isNotEmpty()) rep += "\n\n⚡ परफॉरमेंस के सुझाव (ज़रूरी नहीं):\n" + perfNotes.take(5).joinToString("\n") { "• $it" }
