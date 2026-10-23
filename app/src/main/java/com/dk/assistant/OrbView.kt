@@ -25,8 +25,9 @@ class OrbView @JvmOverloads constructor(
     context: Context, attrs: AttributeSet? = null
 ) : View(context, attrs) {
 
+    /** chhota bubble (sab apps ke upar tairta): kam bindu; v3.41 se max ~30 frame/sec (pehle 60 - poore phone me lag) */
     var mini = false
-        set(v) { field = v; alloc(if (v) 320 else 1400) }
+        set(v) { field = v; alloc(if (v) MINI_DOTS else FULL_DOTS) }
 
     /** Settings me preview ke liye - null ho to Prefs wala aakaar */
     var previewStyle: String? = null
@@ -45,6 +46,9 @@ class OrbView @JvmOverloads constructor(
 
     private val dot = Paint(Paint.ANTI_ALIAS_FLAG)
     private val glow = Paint(Paint.ANTI_ALIAS_FLAG)
+    private val glowM = android.graphics.Matrix()
+    private var glowCol = 0
+    private var glowAlpha = -1
     private val rim = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE }
 
     private var ang = 0f
@@ -57,7 +61,7 @@ class OrbView @JvmOverloads constructor(
 
     var onFaceShown: (() -> Unit)? = null
 
-    init { alloc(1400) }
+    init { alloc(FULL_DOTS) }
 
     private fun alloc(count: Int) {
         n = count
@@ -108,6 +112,11 @@ class OrbView @JvmOverloads constructor(
         val bl = (Color.blue(a) + (Color.blue(b) - Color.blue(a)) * t).toInt()
         return Color.rgb(r, g, bl)
     }
+
+    // v3.41: har bindu, har frame Math.pow (1400 x 60/sec) ki jagah pehle se bani taalika
+    private fun pw16(d: Float) = P16[(d * LUT).toInt().coerceIn(0, LUT)]
+    private fun pw14(d: Float) = P14[(d * LUT).toInt().coerceIn(0, LUT)]
+    private fun pw13(d: Float) = P13[(d * LUT).toInt().coerceIn(0, LUT)]
 
     private fun withAlpha(c: Int, a: Int) = (a.coerceIn(0, 255) shl 24) or (c and 0x00FFFFFF)
     private fun ease(x: Float): Float = if (x < 0.5f) 4 * x * x * x else 1 - (-2 * x + 2).pow(3) / 2
@@ -171,9 +180,15 @@ class OrbView @JvmOverloads constructor(
         val glowA = if (mode == Mode.THINKING && !isFace) (105 + 60 * (0.5f + 0.5f * sin(t * 5.6f))).toInt() else if (isFace) 70 else 120
 
         // ---- glow
-        glow.shader = RadialGradient(cx, cy, R * 1.75f,
-            intArrayOf(withAlpha(faceA, glowA), withAlpha(faceA, 30), Color.TRANSPARENT),
-            floatArrayOf(0.25f, 0.6f, 1f), Shader.TileMode.CLAMP)
+        // v3.41: shader sirf rang/chamak badalne par naya (pehle har frame naya) - jagah/naap Matrix se
+        if (glowCol != faceA || glowAlpha != glowA || glow.shader == null) {
+            glowCol = faceA; glowAlpha = glowA
+            glow.shader = RadialGradient(0f, 0f, 1f,
+                intArrayOf(withAlpha(faceA, glowA), withAlpha(faceA, 30), Color.TRANSPARENT),
+                floatArrayOf(0.25f, 0.6f, 1f), Shader.TileMode.CLAMP)
+        }
+        glowM.setScale(R * 1.75f, R * 1.75f); glowM.postTranslate(cx, cy)
+        glow.shader.setLocalMatrix(glowM)
         c.drawCircle(cx, cy, R * 1.75f, glow)
 
         val cosA = cos(ang); val sinA = sin(ang)
@@ -234,12 +249,12 @@ class OrbView @JvmOverloads constructor(
                 val k = (if (e > 0.5f) cl.kind[i] else kFrom[i]).toInt()
                 val a: Int; val col: Int; val sc: Float
                 when (k) {
-                    1 -> { a = (80 + 175 * depth.pow(1.6f)).toInt(); col = lerpColor(faceB, Color.WHITE, 0.25f * depth); sc = 1.25f }
+                    1 -> { a = (80 + 175 * pw16(depth)).toInt(); col = lerpColor(faceB, Color.WHITE, 0.25f * depth); sc = 1.25f }
                     2 -> { a = (150 + 105 * depth).toInt(); col = lerpColor(faceB, Color.WHITE, 0.6f); sc = 1.15f }
                     3 -> { a = (120 + 135 * depth).toInt(); col = lerpColor(faceB, tint, 0.5f); sc = 1.15f }
-                    4 -> { a = (45 + 150 * depth.pow(1.3f)).toInt(); col = lerpColor(faceA, faceB, 0.35f); sc = 0.8f }
+                    4 -> { a = (45 + 150 * pw13(depth)).toInt(); col = lerpColor(faceA, faceB, 0.35f); sc = 0.8f }
                     else -> {
-                        a = if (isFace && !morphing) (30 + 150 * depth.pow(1.4f)).toInt() else (18 + 100 * depth.pow(1.6f)).toInt()
+                        a = if (isFace && !morphing) (30 + 150 * pw14(depth)).toInt() else (18 + 100 * pw16(depth)).toInt()
                         col = faceA; sc = 0.7f
                     }
                 }
@@ -256,7 +271,10 @@ class OrbView @JvmOverloads constructor(
         if (satAlpha > 0f) drawOrbits(c, cx, cy, R, dotR, front = true, alpha = satAlpha)
         if (target == "atom" && !mini) drawElectrons(c, cx, cy, R, dotR, cosA, sinA, cosT, sinT, t, front = true)
 
-        if (mini && mode == Mode.IDLE) postInvalidateDelayed(60) else postInvalidateOnAnimation()
+        when {
+            mini -> postInvalidateDelayed(if (mode == Mode.IDLE) 66 else 33)
+            else -> postInvalidateOnAnimation()
+        }
     }
 
     /** Atom ke chhallon par daudte electron */
@@ -311,4 +329,15 @@ class OrbView @JvmOverloads constructor(
     }
 
     override fun onAttachedToWindow() { super.onAttachedToWindow(); lastT = 0L; cacheT = 0L; invalidate() }
+    /** chhupa tha, phir dikha -> animation dobara (chhupe hue me koi kaam nahi) */
+    override fun onVisibilityAggregated(isVisible: Boolean) { super.onVisibilityAggregated(isVisible); if (isVisible) { lastT = 0L; invalidate() } }
+
+    companion object {
+        const val FULL_DOTS = 1400
+        const val MINI_DOTS = 320
+        private const val LUT = 64
+        private val P16 = FloatArray(LUT + 1) { (it / LUT.toFloat()).toDouble().pow(1.6).toFloat() }
+        private val P14 = FloatArray(LUT + 1) { (it / LUT.toFloat()).toDouble().pow(1.4).toFloat() }
+        private val P13 = FloatArray(LUT + 1) { (it / LUT.toFloat()).toDouble().pow(1.3).toFloat() }
+    }
 }

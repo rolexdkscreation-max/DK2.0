@@ -299,17 +299,17 @@ class VoiceActivity : AppCompatActivity() {
         if (::shareBtn.isInitialized) renderVision()
         // laal (Live) kaanch par gulabi icon na dikhe - tab safed; warna apna rang
         mic.imageTintList = if (live) android.content.res.ColorStateList.valueOf(0xFFFFFFFF.toInt()) else null
-        state.text = when (DKState.mode) {
+        UiLang.setText(state, when (DKState.mode) {
             Mode.IDLE -> if (live) "माइक चालू है • बोलिए" else "माइक बंद • ओर्ब या माइक दबाइए"
             Mode.LISTENING -> "Listening • सुन रहा हूँ…"
             Mode.THINKING -> "जवाब आ रहा है…"
             Mode.WORKING -> "काम कर रहा हूँ…"
             Mode.SPEAKING -> "Speaking • बोल रहा हूँ…"
-        }
+        })
         // bolte-bolte naye shabd aakhir me judte hain - lamba ho to aakhri hissa dikhao (naye shabd chhupe nahi)
         val min = Prefs.orbMin(this)
-        you.text = UiLang.s("आप:") + " " + tail(DKState.lastUser, if (min) 400 else 90).ifBlank { "—" }
-        dk.text = "$name: " + tail(DKState.lastReply, if (min) 100_000 else 200).ifBlank { "—" }
+        UiLang.setText(you, UiLang.s("आप:") + " " + tail(DKState.lastUser, if (min) 400 else 90).ifBlank { "—" })
+        UiLang.setText(dk, "$name: " + tail(DKState.lastReply, if (min) 100_000 else 200).ifBlank { "—" })
         val src = DKState.lastSources
         if (src != srcShown) {
             srcShown = src
