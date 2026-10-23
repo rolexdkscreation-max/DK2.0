@@ -57,9 +57,9 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
         const val OUT_RATE = 24000
         private const val CHUNK_MS = 40
         /** Server VAD: itni der chup = baat khatam (Google: 500-800ms; kam = baat beech me kat-ti hai) */
-        const val SERVER_SILENCE_MS = 800
+        const val SERVER_SILENCE_MS = 550
         /** Phone ka VAD: itni der chup = turant audioStreamEnd (server ka intezaar nahi) */
-        const val CLIENT_END_MS = 900
+        const val CLIENT_END_MS = 550
         /** Bolna shuru pakadne se pehle itni awaaz - chhota = pehla shabd turant (bahut chhota = DK ki goonj se galat "toka") */
         const val PREFIX_PADDING_MS = 100
         /** Wake word wala Live chup hone par connection itni der garam rakho */
