@@ -104,6 +104,14 @@ object Prefs {
     /** Gemini Live और Gemini आवाज़ (बोलना) की key - सिर्फ़ DK लाइव की अपनी Gemini key */
     fun ttsGeminiKey(c: Context): String = scopeKey(c, ApiScopes.LIVE, "gemini")
 
+    /**
+     * v3.41: "आप:" लिखने वाले (gemini-3.5-transcribe-live) की अपनी अलग key - बोलने वाले Live की free limit
+     * इसमें खर्च न हो. खाली = पुराना तरीका (DK लाइव वाली Gemini key ही).
+     */
+    const val CAPTION_KEY = "live_key_caption"
+    fun captionOwnKey(c: Context): String = sp(c).getString(CAPTION_KEY, "")?.trim() ?: ""
+    fun captionKey(c: Context): String = captionOwnKey(c).ifBlank { ttsGeminiKey(c) }
+
     // ---- options
     fun wakeMode(c: Context) = sp(c).getBoolean("wake_mode", false)
     fun autoUpdate(c: Context) = sp(c).getBoolean("auto_update", true)
@@ -137,6 +145,15 @@ object Prefs {
 
     /** Pichhli baar jo Gemini Live model chala */
     fun liveModel(c: Context) = sp(c).getString("live_model", "") ?: ""
+
+    /** v3.41: हर Live मॉडल का नापा जवाब-समय (ms) - सबसे तेज़ मॉडल पहले लगे */
+    fun liveLatency(c: Context): Map<String, Long> = LiveModelRank.decode(sp(c).getString("live_latency", "") ?: "")
+    fun recordLiveLatency(c: Context, model: String, ms: Long) {
+        val m = liveLatency(c).toMutableMap()
+        val v = LiveModelRank.blend(m[model], ms) ?: return
+        m[model] = v
+        edit(c) { putString("live_latency", LiveModelRank.encode(m)) }
+    }
 
     fun micDeniedOnce(c: Context) = sp(c).getBoolean("mic_denied", false)
 

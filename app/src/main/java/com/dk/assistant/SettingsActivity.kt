@@ -404,6 +404,27 @@ class SettingsActivity : AppCompatActivity() {
             box.addView(res)
             hint(box, "Limit खत्म हो तो इसी key के दूसरे Gemini Live / आवाज़ मॉडल पर अपने-आप। DK चैट या किसी और हिस्से की key यहाँ इस्तेमाल नहीं होती।")
         }
+        card("लिखना (\"आप:\" वाली लाइन) — अपनी अलग Gemini key", "आप जो बोलते हैं उसे लिखने वाला (gemini-3.5-transcribe-live) इसी key से चलेगा, ताकि बोलने वाले Live की free limit इसमें खर्च न हो") { box ->
+            val ed = field(box, "Gemini API Key (सिर्फ़ लिखने के लिए)", Prefs.captionOwnKey(this), "AIza… (ज़रूरी नहीं — दूसरे Google account की key बेहतर)", secret = true)
+            keyFields[Prefs.CAPTION_KEY] = ed
+            val res = TextView(this).apply { setTextColor(0xB3FFFFFF.toInt()); textSize = 13f; setPadding((4 * dp).toInt(), (6 * dp).toInt(), 0, 0) }
+            row(box, showButton(ed), button("जाँचें") {
+                val k = ed.text.toString().trim()
+                if (k.isBlank()) { res.text = "खाली है — लिखना ऊपर वाली DK लाइव key से होगा"; return@button }
+                if (ApiScopes.detect(k).let { it != null && it != "gemini" }) { res.text = "यह Gemini की key नहीं लगती (AIza… से शुरू होती है)"; return@button }
+                res.text = "जाँच रहा हूँ…"
+                lifecycleScope.launch {
+                    res.text = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { checkCaptionKey(k) }
+                    save(false)
+                }
+            }, button("Key लें") { Setup.openUrl(this, Providers.byId("gemini")!!.keyUrl) })
+            box.addView(res)
+            hint(box, "अभी: " + (if (Prefs.captionOwnKey(this).isNotBlank()) "लिखना अपनी अलग key से" else "लिखना DK लाइव वाली key से (अलग key नहीं डाली)") +
+                ". एक ही Google account की दो keys की limit अक्सर साझा होती है — limit सच में बचानी हो तो दूसरे account की key डालें।")
+            val lat = Prefs.liveLatency(this)
+            if (lat.isNotEmpty()) hint(box, "बोलने वाले मॉडल — नापी गई रफ़्तार (सबसे तेज़ अपने-आप पहले):\n" +
+                LiveModelRank.describe(LiveModelRank.order(lat.keys.toList(), emptyList(), lat), lat))
+        }
         card("सुनना (आवाज़ → text) — Groq, चाहें तो", "Groq Whisper सबसे तेज़ सुनता है। खाली छोड़ें = ऊपर वाली Gemini key से सुनेगा") { box ->
             val ed = field(box, "Groq API Key (सिर्फ़ सुनने के लिए)", Prefs.scopeKey(this, ApiScopes.LIVE, "groq"), "gsk_… (ज़रूरी नहीं)", secret = true)
             keyFields[ApiScopes.pref(ApiScopes.LIVE, "key", "groq")] = ed
@@ -427,6 +448,22 @@ class SettingsActivity : AppCompatActivity() {
             } + " • बिना-Live आवाज़ मोड में जवाब का text DK चैट की API से बनता है।")
         }
     }
+
+    /** v3.41: लिखने वाली key सच में चलती है? (models list + transcribe मॉडल) */
+    private fun checkCaptionKey(k: String): String = try {
+        val c = okhttp3.OkHttpClient.Builder().callTimeout(10, java.util.concurrent.TimeUnit.SECONDS).build()
+        val req = okhttp3.Request.Builder().url("https://generativelanguage.googleapis.com/v1beta/models?pageSize=1000").header("x-goog-api-key", k).build()
+        c.newCall(req).execute().use { r ->
+            val body = r.body?.string() ?: ""
+            when {
+                r.code == 400 || r.code == 401 || r.code == 403 -> "✗ key गलत है या बंद है"
+                r.code == 429 -> "✗ इस key की limit अभी खत्म है"
+                !r.isSuccessful -> "✗ Google से जवाब नहीं (${r.code})"
+                body.contains("transcribe") -> "✓ key सही है — लिखने वाला मॉडल मिला। DK लाइव दोबारा शुरू करें"
+                else -> "✓ key सही है (लिखने वाला मॉडल list में नहीं दिखा, फिर भी आज़माएगा)"
+            }
+        }
+    } catch (e: Exception) { "✗ जाँच नहीं हो पाई: ${e.message}" }
 
     private fun showButton(key: EditText) = button("दिखाओ") { v ->
         val show = key.inputType != (InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_VISIBLE_PASSWORD)
@@ -718,6 +755,8 @@ class SettingsActivity : AppCompatActivity() {
                 androidx.core.app.ActivityCompat.requestPermissions(this, arrayOf(android.Manifest.permission.CAMERA), 13)
             })
             hint(box, "कैमरा permission यहाँ सिर्फ़ टॉर्च चालू/बंद करने के लिए है; DK फ़ोटो नहीं लेता।")
+            row(box, button("Notification पढ़ने की इजाज़त") { DKNotifListener.openSettings(this) })
+            hint(box, "इससे DK लाइव चलते समय आए notification बता सकता है (\"क्या notification आया?\") और आपके कहने पर उनका reply भेज सकता है। notification सिर्फ़ फ़ोन की memory में रहते हैं।")
         }
         refreshPerms()
     }
@@ -731,6 +770,7 @@ class SettingsActivity : AppCompatActivity() {
             (if (notif) "✓" else "✗") + " नोटिफ़िकेशन\n" +
             (if (calls) "✓" else "✗") + " कॉल / कॉन्टैक्ट\n" +
             (if (camera) "✓" else "✗") + " टॉर्च (कैमरा permission)\n" +
+            (if (DKNotifListener.enabled(this)) "✓" else "✗") + " notification पढ़ना / reply\n" +
             (if (ok(PhoneActions.CALL_PERM)) "✓" else "✗") + " सीधी कॉल (न हो तो डायलर खुलता है)\n" +
             (if (ok(PhoneActions.PHOTO_PERM)) "✓" else "✗") + " फ़ोटो (सबसे नई फ़ोटो खोलना)\n" +
             (if (Updater.canInstall(this)) "✓" else "✗") + " ऐप इंस्टॉल (अपडेट)"

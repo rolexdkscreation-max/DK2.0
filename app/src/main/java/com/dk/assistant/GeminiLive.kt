@@ -80,6 +80,8 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
         private const val CHUNK_SAMPLES = IN_RATE * CHUNK_MS / 1000      // 640 samples = 1280 bytes
         private const val URL = "wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent"
         /** Docs (Oct 2026): gemini-3.8-live = default; 3.1 flash live = purana preview */
+        /** v3.41: phone_task ka lamba kaam (AgentRunner) - itni der baad Gemini ko "chal raha hai" */
+        const val AGENT_WAIT_MS = 7_000L
         val FALLBACK_MODELS = listOf("gemini-3.8-live", "gemini-3.1-flash-live-preview",
             "gemini-2.5-flash-native-audio-preview-12-2025", "gemini-2.5-flash-native-audio-preview-09-2025")
 
@@ -142,6 +144,8 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
     @Volatile private var recvAudio = 0L
     @Volatile private var reconnects = 0
     @Volatile private var lastLatency = -1L
+    /** v3.41: aakhri tool call kab aaya - tool wali baari ka samay model ki raftaar me mat gino */
+    @Volatile private var lastToolAt = 0L
     @Volatile private var model = ""
 
     // ---- baari (turn)
@@ -221,7 +225,8 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
     @Volatile private var resendText: String? = null
     @Volatile private var resentN = 0
     /** v3.9.1: bola par Gemini ne suna hi nahi -> caption ka text seedha bhejo */
-    private val replyWatch = ReplyWatchdog()
+    // v3.41: suna par jawab shuru nahi = 4.5s ki jagah 3.5s me bachao (atka sawaal jaldi dobara)
+    private val replyWatch = ReplyWatchdog(answerTimeoutMs = 3500)
     @Volatile private var unheard = 0
     @Volatile private var rescued = 0
     /** v3.29: suna par jawab shuru nahi kiya -> wahi baat text me dobara (kitni baar) */
@@ -295,12 +300,16 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
     fun muteMic(on: Boolean) { micMuted = on }
     /** call का आख़िरी काम (दो बार न हो: फ़ोन ने सुनकर उठाया, फिर Gemini ने भी phone_call माँगा) */
     @Volatile private var callDone: Pair<String, Long>? = null
+    private val callLock = Any()
+    /** v3.41: caption ka aakhri PAKKA text - scheduleFast doosri baar intezaar na kare */
+    @Volatile private var capFinal = ""
 
     /** घंटी: Gemini खुद बताए किसका कॉल है और पूछे. true = DK बोलने लगा */
     suspend fun announceCall(who: String): Boolean {
         if (!canTalk()) return false
         // tool का जवाब बाकी हो तब text = 1007 का ख़तरा -> थोड़ा रुको
-        withTimeoutOrNull(1500) { while (toolJobs.isNotEmpty()) delay(100) }
+        // v3.41: 1.5s -> 0.6s; tool chal raha ho to phone ki apni awaaz turant poochhti hai (call ka samay keemti)
+        withTimeoutOrNull(600) { while (toolJobs.isNotEmpty()) delay(100) }
         if (!canTalk() || toolJobs.isNotEmpty()) return false
         callDone = null
         if (isPlaying()) { flushPlayback(); commitPending(false) }
@@ -308,7 +317,8 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
         log("कॉल आया (${who.ifBlank { "नंबर पता नहीं" }}) - DK लाइव से पूछ रहा हूँ" + if (ok) "" else " (भेज नहीं पाया)")
         if (!ok) return false
         lastAct = System.currentTimeMillis()
-        withTimeoutOrNull(5_000) { while (!isPlaying()) delay(100) }
+        // v3.41: 5s -> 3s; na bole to phone ki awaaz (ghanti ke 25-30s me har second keemti)
+        withTimeoutOrNull(3_000) { while (!isPlaying()) delay(100) }
         return isPlaying()
     }
 
@@ -317,11 +327,16 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
         if (a !in CallReply.ACTIONS) return "Unknown action '$action' - use one of: ${CallReply.ACTIONS.joinToString()}"
         val now = System.currentTimeMillis()
         val pick = listOf(CallReply.ANSWER, CallReply.ANSWER_SPEAKER, CallReply.REJECT)
-        callDone?.let { (d, at) ->
-            if (now - at < 15_000 && d in pick && a in pick) return "Already done ($d) a moment ago - do not repeat it."
+        // v3.41: phone (caption) aur Gemini ek saath -> pehla jeete, doosra "ho gaya" (dono saath uthayein/kaatein nahi)
+        synchronized(callLock) {
+            callDone?.let { (d, at) ->
+                if (now - at < 15_000 && d in pick && a in pick) return "Already done ($d) a moment ago - do not repeat it."
+            }
+            if (a in pick) callDone = a to now
         }
         val r = svc.liveCallAction(a)
-        if (a != CallReply.WHO && !r.startsWith("ERROR") && r != "NO_CALL") callDone = a to now
+        if (a in pick && (r.startsWith("ERROR") || r == "NO_CALL")) synchronized(callLock) { if (callDone?.second == now) callDone = null }
+        if (a != CallReply.WHO && a !in pick && !r.startsWith("ERROR") && r != "NO_CALL") callDone = a to now
         log("कॉल ($from): $a -> $r")
         return if (a == CallReply.WHO) (if (r.startsWith("CALLER:")) r else "Caller name is not known.") else CallReply.resultNote(a, r)
     }
@@ -426,7 +441,10 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
         }
         log("आवाज़ का रास्ता: " + if (btOn) "Bluetooth headset (कॉल वाला तरीका)" else "फ़ोन का माइक + speaker")
         startPlayer()
-        caption = LiveCaption(key, onText = { t, fin -> onCaption(t, fin) }, onLate = { t -> onLateCaption(t) },
+        // v3.41: "aap:" likhne wala apni alag key se (Settings -> AI dimaag -> DK live) - bolne wale ki free limit bachi rahe
+        val capKey = Prefs.captionKey(svc)
+        log("लिखने वाला: " + if (Prefs.captionOwnKey(svc).isNotBlank()) "अपनी अलग key से" else "DK लाइव वाली key से (अलग key नहीं डाली)")
+        caption = LiveCaption(capKey, onText = { t, fin -> onCaption(t, fin) }, onLate = { t -> onLateCaption(t) },
             isNewSpeech = { barging || System.currentTimeMillis() < bargeUntil }).also { it.start() }
         turnDet.reset(); bargeDet.reset(); bargeGate.reset(); synchronized(bargeBuf) { bargeBuf.clear() }
         trace.reset(); dropOld = false; suspectAt = 0L; replyWatch.reset()
@@ -704,22 +722,13 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
             }
             if (found.isNotEmpty()) modelCache = Triple(key.hashCode(), System.currentTimeMillis(), found.toList())
         } catch (e: Fatal) { throw e } catch (e: Exception) { log("models list nahi aayi: ${e.message}") }
-        fun ver(m: String) = Regex("(\\d+(?:\\.\\d+)?)").find(m)?.value?.toDoubleOrNull() ?: 0.0
-        // translate/transcribe = sirf anuvaad/likhne wale model, baatcheet nahi karte -> inhe mat chuno
-        // robotics = robot wala model, baatcheet ke liye nahi
-        val good = found.filter { !it.contains("translat") && !it.contains("transcri") && !it.contains("robotic") }
-            .sortedWith(compareBy<String> { if (it.contains("thinking")) 1 else 0 }
-                .thenBy { if (it.contains("live") || it.contains("native-audio")) 0 else 1 }
-                .thenByDescending { ver(it) })
-        // pichhla chala model tabhi pehle jab woh sabse naye jitna naya ho (warna purana 2.5 hamesha chipka rehta)
-        val last = Prefs.liveModel(svc)
-        val best = good.firstOrNull()?.let { ver(it) } ?: 0.0
-        val keepLast = last.isNotBlank() && !last.contains("transcri") && !last.contains("translat") && !last.contains("robotic") &&
-            (found.isEmpty() || last in found) && ver(last) >= best
-        val all = (listOfNotNull(last.takeIf { keepLast }) + good + FALLBACK_MODELS).distinct()
+        // v3.41: sabse NAYA nahi, sabse TEZ pehle - phone par naapa jawab-samay (LiveModelRank)
+        val lat = Prefs.liveLatency(svc)
+        val all = LiveModelRank.order(found, FALLBACK_MODELS, lat)
         // limit khatam wale model (aaj) chhodo - har baar 2 bekaar connection = ~1.5s deri + mic ke tukde gire
         val (skip, ok) = all.partition { Cooldown.blocked("live:$it") }
         if (skip.isNotEmpty()) log("limit खत्म, छोड़े: ${skip.joinToString()}")
+        log("सबसे तेज़ क्रम: " + ok.take(3).joinToString { m -> m + (lat[m]?.let { " ${it}ms" } ?: "") })
         return ok.ifEmpty { all }
     }
 
@@ -766,6 +775,17 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
                     .put("properties", JSONObject().put("on", JSONObject().put("type", "BOOLEAN"))
                         .put("facing", JSONObject().put("type", "STRING").put("description", "back or front")))
                     .put("required", JSONArray().put("on"))))
+            .put(JSONObject().put("name", "notifications")
+                .put("description", "Read the phone's recent notifications (messages, WhatsApp, calls missed, apps). Call it when the user asks क्या notification आया / किसका मैसेज आया / क्या लिखा है / कोई मैसेज आया क्या. Optional app = app or sender name to filter (e.g. WhatsApp, Rahul). Tell the user briefly who sent what - only what it returns.")
+                .put("parameters", JSONObject().put("type", "OBJECT")
+                    .put("properties", JSONObject().put("app", JSONObject().put("type", "STRING").put("description", "Optional: app or sender name to filter")))))
+            .put(JSONObject().put("name", "notification_reply")
+                .put("description", "Send a reply to a notification directly from the notification (WhatsApp, SMS, Telegram, etc.), when the user asks to reply (इसको रिप्लाई कर दो / Rahul को जवाब दो कि ...). to = sender or app name from the notification, or empty for the latest one. message = exactly what the user wants to send, in their words. After it returns, tell the user in one short line what was sent and to whom.")
+                .put("parameters", JSONObject().put("type", "OBJECT")
+                    .put("properties", JSONObject()
+                        .put("to", JSONObject().put("type", "STRING").put("description", "Sender/app name, or empty for the newest notification"))
+                        .put("message", JSONObject().put("type", "STRING").put("description", "The reply text to send")))
+                    .put("required", JSONArray().put("message"))))
             .put(JSONObject().put("name", "remember_fact")
                 .put("description", "Save a personal fact or preference the user told about themselves.")
                 .put("parameters", JSONObject().put("type", "OBJECT")
@@ -880,7 +900,7 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
                 firstAudioAt = 0; if (!isPlaying()) setMode(Mode.THINKING)
             }
         }
-        o.optJSONObject("toolCall")?.optJSONArray("functionCalls")?.let { lastServerAt = System.currentTimeMillis(); timeline.event(lastServerAt); replyWatch.onServerAnswered(); runTools(it) }
+        o.optJSONObject("toolCall")?.optJSONArray("functionCalls")?.let { lastServerAt = System.currentTimeMillis(); timeline.event(lastServerAt); replyWatch.onServerAnswered(); lastToolAt = lastServerAt; runTools(it) }
         o.optJSONObject("toolCallCancellation")?.optJSONArray("ids")?.let { a ->
             for (i in 0 until a.length()) toolJobs.remove(a.optString(i))?.cancel()
         }
@@ -940,7 +960,11 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
                     firstAudioAt = System.currentTimeMillis()
                     if (trace.firstChunkAt == 0L) trace.firstChunkAt = firstAudioAt
                     val from = if (trace.speechEndAt > 0 && firstAudioAt - trace.speechEndAt < 30_000) trace.speechEndAt else eosAt
-                    if (from > 0) { lastLatency = firstAudioAt - from; log("देरी: बोलना खत्म → पहला ऑडियो चंक = $lastLatency ms") }
+                    if (from > 0) {
+                        lastLatency = firstAudioAt - from; log("देरी: बोलना खत्म → पहला ऑडियो चंक = $lastLatency ms")
+                        // v3.41: is model ki asli raftaar yaad - agli baar sabse tez model pehle (tool wali baari nahi)
+                        if (lastToolAt < from && toolJobs.isEmpty() && model.isNotBlank()) Prefs.recordLiveLatency(svc, model, lastLatency)
+                    }
                 }
                 turnRecvBytes += pcm.size
                 playQ.offer(pcm)
@@ -1037,6 +1061,11 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
         } else if (isPlaying()) return        // DK bol raha hai aur shak nahi = shor/goonj ka text, dikhao bhi mat
         DKState.user("$t…")
         if (final) checkMicOff(t)        // andaze (interim) par mic band nahi - "माइक बंद मत करो" bhi ho sakta hai
+        if (final) capFinal = t.trim()
+        // v3.41: ghanti baj rahi hai aur pakka text aaya ("उठा लो" / "काट दो") -> bolna-khatam ka intezaar bhi nahi, turant
+        if (final && svc.callRinging() && System.currentTimeMillis() - playEnd > 600 && !micMuted) {
+            CallReply.parse(t)?.takeIf { it != CallReply.WHO }?.let { act -> svc.scope.launch { callTool(act, "फ़ोन ने सुना (तुरंत): \"${t.take(30)}\"") } }
+        }
     }
 
     /** Pichhli baat ka pakka text der se aaya - wahi line theek karo, nayi line nahi */
@@ -1099,6 +1128,30 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
     }
 
     // ================================================================ phone ke kaam (function calling)
+    /** v3.41: फ़ोन के notification (DKNotifListener -> NotifStore) */
+    private fun notifTool(app: String): String {
+        if (!DKNotifListener.enabled(svc)) {
+            DKNotifListener.openSettings(svc)
+            return "Notification access is OFF. I opened the setting - tell the user to turn ON 'DK' in Notification access, then ask again."
+        }
+        return NotifStore.describe(NotifStore.recent(app = app.trim()), System.currentTimeMillis())
+    }
+
+    private fun notifReply(to: String, message: String): String {
+        val msg = message.trim()
+        if (msg.isBlank()) return "No message given - ask the user what to reply."
+        if (!DKNotifListener.enabled(svc)) {
+            DKNotifListener.openSettings(svc)
+            return "Notification access is OFF. I opened the setting - tell the user to turn ON 'DK' in Notification access."
+        }
+        val n = NotifStore.findForReply(to)
+            ?: return "No notification found that can be replied to" + (if (to.isNotBlank()) " for '$to'" else "") + ". Tell the user; offer to send it via phone_task instead."
+        val err = DKNotifListener.reply(svc, n.key, msg)
+        log("notification reply -> [${n.app}] ${n.title.take(20)}: " + (err ?: "भेज दिया"))
+        return if (err == null) "Sent to ${n.title.ifBlank { n.app }} on ${n.app}: \"$msg\""
+        else "Not sent: $err. Offer to send it via phone_task (open ${n.app})."
+    }
+
     private fun runTools(calls: JSONArray) {
         for (i in 0 until calls.length()) {
             val fc = calls.optJSONObject(i) ?: continue
@@ -1117,6 +1170,8 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
                     "screen_share" -> LiveVision.setScreen(svc, args.optBoolean("on", true))
                     "camera" -> LiveVision.setCamera(svc, args.optBoolean("on", true), args.optString("facing"))
                     "remember_fact" -> { Memory.addFact(svc, args.optString("fact")); "saved" }
+                    "notifications" -> notifTool(args.optString("app"))
+                    "notification_reply" -> notifReply(args.optString("to"), args.optString("message"))
                     "computer_task" -> {
                         val t = args.optString("task").trim()
                         val yn = if (ComputerSession.ask != null) ComputerVoice.yesNo(t) else null
@@ -1238,10 +1293,12 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
         }
         val before = DKState.lastReply
         val job = agent.run(req, speak = false, note = note)
-        val finished = withTimeoutOrNull(20_000) { job.join() } != null
+        // v3.41: 20s -> 7s. Gemini tool ke jawab tak CHUP rehta hai - 20s chuppi = "sun hi nahi raha". Ab 7s me
+        // "kar raha hoon" bolta hai; kaam peeche chalta rehta hai aur poora hote hi lateNote se batata hai.
+        val finished = withTimeoutOrNull(AGENT_WAIT_MS) { job.join() } != null
         val reply = DKState.lastReply.takeIf { it != before && it.isNotBlank() }
         if (!finished) {
-            log("phone_task 20s में पूरा नहीं - Gemini को सच बताया (चल रहा है), पूरा होने पर बताऊँगा")
+            log("phone_task ${AGENT_WAIT_MS / 1000}s में पूरा नहीं - Gemini को सच बताया (चल रहा है), पूरा होने पर बताऊँगा")
             svc.scope.launch {
                 val done = withTimeoutOrNull(120_000) { job.join() } != null
                 if (!done) job.cancel()
@@ -1416,8 +1473,10 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
         fastJob?.cancel()
         fastJob = svc.scope.launch {
             fun cur() = caption?.text().orEmpty().trim().ifBlank { if (!userDone) turnUser.trim() else "" }
-            delay(300); val a = cur()
-            delay(350); val b = cur()
+            // v3.41: 300+350 ms -> ghanti me 150 ms; baaki 200 ms (+250 sirf jab caption ne text pakka nahi kiya)
+            val ringing = svc.callRinging()
+            delay(if (ringing) 150 else 200); val a = cur()
+            val b = if (ringing || (a.isNotBlank() && a == capFinal)) a else { delay(250); cur() }
             if (b.isBlank() || a != b || turnDet.inSpeech || isPlaying() || stopped) return@launch
             // v3.40: घंटी बज रही है -> "हाँ / उठाओ / स्पीकर पर / काट दो" फ़ोन तुरंत करे (Gemini के tool का इंतज़ार नहीं)
             if (svc.callRinging()) {

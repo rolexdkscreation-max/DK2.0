@@ -302,7 +302,7 @@ class DKAccessibilityService : AccessibilityService() {
     private var earCaption: LiveCaption? = null
     @Volatile private var earShowing = false
     private fun earCaptionOn() {
-        val key = GeminiLive.key(this)
+        val key = Prefs.captionKey(this)   // v3.41: likhne ki apni key (ho to)
         if (key.isBlank()) { ear.onFrame = null; return }
         val c = earCaption ?: LiveCaption(key, onText = { t, _ -> if (earShowing && t.isNotBlank()) DKState.user("$t…") }, onLate = { })
             .also { it.start(); earCaption = it }
@@ -913,7 +913,7 @@ class DKAccessibilityService : AccessibilityService() {
         callPending = true
         agent.stop()
         calls.quietRinger()
-        delay(500)
+        delay(200)   // v3.41: 500 -> 200 ms (call screen aane bhar ka samay; naam phone ki list se pehle hi)
         var who = who0
         if (who.isBlank()) who = callerFromScreen()
         if (!calls.ringing && calls.known) { callPending = false; return }
@@ -1069,29 +1069,34 @@ class DKAccessibilityService : AccessibilityService() {
             if (speakerOn) setSpeaker(true)
             return "call pehle se chal rahi hai" + if (speakerOn) ", speaker on" else ""
         }
+        // v3.41: tay deri (700/700/800/900/1500 ms) ki jagah "uthi ya nahi" har 100 ms dekho - uthte hi aage
+        suspend fun answered(ms: Long) = withTimeoutOrNull(ms) { while (!(calls.known && calls.inCall)) delay(100) } != null
         // 1) Android ka seedha tareeka (permission chahiye)
         var ok = calls.answer()
-        delay(700)
-        if (calls.known && calls.inCall) ok = true
+        if (answered(1000)) ok = true
         // 2) Call popup / call screen ka "Answer" button
         if (!(calls.known && calls.inCall)) {
             ok = clickByText("Answer", "Accept", "ANSWER", "उत्तर दें", "उत्तर", "स्वीकार करें", "स्वीकार", "जवाब दें", "रिसीव", "उठाएं") ||
                 clickById("answer", "accept", "incoming_call_accept") || ok
-            delay(700)
+            answered(900)
         }
         // 3) "Swipe up to answer" wali screen
         if (!(calls.known && calls.inCall) && isCallScreen()) {
             val dm = resources.displayMetrics
             swipe(dm.widthPixels / 2f, dm.heightPixels * 0.85f, dm.widthPixels / 2f, dm.heightPixels * 0.35f, 300)
-            delay(800)
+            answered(900)
             ok = ok || (calls.known && calls.inCall)
         }
         // 4) ek baar aur seedha tareeka (kuch phone pehli baar me nahi uthate)
-        if (calls.known && !calls.inCall && calls.ringing) { calls.answer(); delay(900) }
+        if (calls.known && !calls.inCall && calls.ringing) { calls.answer(); answered(900) }
         calls.restoreRinger()
         if (calls.known) ok = calls.inCall
         if (!ok) return if (!calls.canAnswer()) "ERROR_CALL_PERM" else "ERROR: call nahi uthi"
-        if (speakerOn) { delay(1500); setSpeaker(true) }
+        if (speakerOn) {
+            // call screen ka Speaker button aane do (pehle 1.5s fixed), phir ek baar aur pakka (kuch phone shuru me speaker hata dete)
+            delay(400); setSpeaker(true)
+            scope.launch { delay(1500); if (calls.inCall && calls.speakerIsOn() != true) setSpeaker(true) }
+        }
         return "call utha li" + (if (speakerOn) " aur speaker on" else "")
     }
 
