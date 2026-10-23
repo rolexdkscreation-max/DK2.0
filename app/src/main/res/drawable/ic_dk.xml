@@ -1,9 +1,70 @@
 <?xml version="1.0" encoding="utf-8"?>
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
-    android:width="108dp" android:height="108dp"
-    android:viewportWidth="108" android:viewportHeight="108">
-    <path android:fillColor="#1E88E5"
-        android:pathData="M54,4a50,50 0,1 1,0 100a50,50 0,1 1,0 -100z" />
-    <path android:fillColor="#FFFFFF"
-        android:pathData="M54,26c-6,0 -10,4.5 -10,10v18c0,5.5 4,10 10,10s10,-4.5 10,-10V36c0,-5.5 -4,-10 -10,-10zM36,52h5c0,7.5 6,13 13,13s13,-5.5 13,-13h5c0,9.5 -7,17 -16,18v10h-4V70c-9,-1 -16,-8.5 -16,-18z" />
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    
+    <!-- Background: Deep navy/black futuristic gradient feel -->
+    <path
+        android:fillColor="#0B0E14"
+        android:pathData="M0,0h108v108h-108z" />
+
+    <!-- Ambient Glow / Tech Rings -->
+    <path
+        android:fillColor="#00E5FF"
+        android:fillAlpha="0.15"
+        android:pathData="M54,18a36,36 0,1 1,0 72a36,36 0,1 1,0 -72z" />
+    <path
+        android:fillColor="#7C4DFF"
+        android:fillAlpha="0.2"
+        android:pathData="M54,24a30,30 0,1 1,0 60a30,30 0,1 1,0 -60z" />
+
+    <!-- Circuit Accents -->
+    <path
+        android:strokeColor="#00E5FF"
+        android:strokeWidth="1"
+        android:strokeAlpha="0.6"
+        android:pathData="M24,54H36M72,54H84M54,24V36M54,72V84" />
+
+    <!-- Letter D (Metallic Shading & Neon Edges) -->
+    <!-- D Outer Metallic Body -->
+    <path
+        android:fillColor="#CFD8DC"
+        android:pathData="M32,32h14c11,0 18,7 18,18s-7,18 -18,18H32V32z" />
+    <!-- D Inner Cutout -->
+    <path
+        android:fillColor="#111722"
+        android:pathData="M38,38h8c6,0 10,4 10,12s-4,12 -10,12h-8V38z" />
+    <!-- D Electric Cyan Highlight Edge -->
+    <path
+        android:strokeColor="#00E5FF"
+        android:strokeWidth="2"
+        android:pathData="M32,32h14c11,0 18,7 18,18s-7,18 -18,18H32V32z" />
+
+    <!-- Letter K (Metallic Shading & Neon Edges) -->
+    <!-- K Vertical Stem -->
+    <path
+        android:fillColor="#E0E0E0"
+        android:pathData="M66,32h6v36h-6z" />
+    <!-- K Upper Diagonal -->
+    <path
+        android:fillColor="#B0BEC5"
+        android:pathData="M72,50L82,34h-6L68,46z" />
+    <!-- K Lower Diagonal -->
+    <path
+        android:fillColor="#90A4AE"
+        android:pathData="M68,52L77,68h6L72,52z" />
+    <!-- K Electric Blue Highlight Edge -->
+    <path
+        android:strokeColor="#2979FF"
+        android:strokeWidth="2"
+        android:pathData="M66,32h6v36h-6zM72,50L82,34h-6L68,46zM68,52L77,68h6L72,52z" />
+
+    <!-- Purple Neon Accent Glow on Center Intersect -->
+    <path
+        android:fillColor="#7C4DFF"
+        android:fillAlpha="0.6"
+        android:pathData="M60,46l8,8l-8,8z" />
+
 </vector>
