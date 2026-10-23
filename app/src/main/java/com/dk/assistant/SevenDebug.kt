@@ -187,7 +187,7 @@ In a big file the anchor must be text from a part you have READ (not only a sear
      * डिबगर का जवाब पक्का है? @return समस्याएँ (खाली = पास)
      * @param exists path -> फ़ाइल की लाइनें (null = रिपो में नहीं)
      */
-    fun verify(o: JSONObject, seen: Seen, exists: (String) -> Int?, resolve: (String) -> String? = { it }): List<String> {
+    fun verify(o: JSONObject, seen: Seen, resolve: (String) -> String? = { it }, exists: (String) -> Int?): List<String> {
         val root = o.optString("root_cause").trim()
         val where = o.optString("where").trim()
         val loc = location(where) ?: location(root)

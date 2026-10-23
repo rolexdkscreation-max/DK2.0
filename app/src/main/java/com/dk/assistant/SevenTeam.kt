@@ -406,7 +406,7 @@ class SevenTeam(
             val o = Seven.json(reply)
             val root = o?.optString("root_cause").orEmpty().trim()
             if (o != null && root.length >= 8) {
-                val probs = SevenDebug.verify(o, seen, { p -> w[p]?.lines()?.size }, resolve)
+                val probs = SevenDebug.verify(o, seen, resolve) { p -> w[p]?.lines()?.size }
                 if (probs.isNotEmpty() && rejected < SevenDebug.VERIFY_ROUNDS && left > FORCE_ROUNDS) {
                     rejected++
                     ev(Agent.DEBUGGER, "बताई जड़ पक्की नहीं — कोड पढ़कर दोबारा जाँच रहा हूँ:\n" + probs.joinToString("\n") { "• ${it.take(200)}" })
