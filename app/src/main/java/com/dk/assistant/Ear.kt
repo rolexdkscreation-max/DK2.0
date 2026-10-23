@@ -3,6 +3,7 @@ package com.dk.assistant
 import android.annotation.SuppressLint
 import android.content.Context
 import android.media.AudioFormat
+import android.media.AudioManager
 import android.media.AudioRecord
 import android.media.MediaRecorder
 import android.media.audiofx.AcousticEchoCanceler
@@ -59,9 +60,14 @@ class Ear(
 
     @SuppressLint("MissingPermission")
     private fun open(): AudioRecord? {
-        rec?.let { return it }
+        rec?.let { return inf@ it }
         if (!Setup.hasMic(ctx)) { problem = "perm"; return null }
         return try {
+            val audioManager = ctx.getSystemService(Context.AUDIO_SERVICE) as? AudioManager
+            audioManager?.mode = AudioManager.MODE_IN_COMMUNICATION
+            audioManager?.startBluetoothSco()
+            audioManager?.isBluetoothScoOn = true
+
             val min = AudioRecord.getMinBufferSize(RATE, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT)
             val r = AudioRecord(MediaRecorder.AudioSource.VOICE_RECOGNITION, RATE,
                 AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT, maxOf(min, FRAME * 2 * 8))
@@ -75,6 +81,12 @@ class Ear(
     }
 
     fun release() {
+        try {
+            val audioManager = ctx.getSystemService(Context.AUDIO_SERVICE) as? AudioManager
+            audioManager?.stopBluetoothSco()
+            audioManager?.isBluetoothScoOn = false
+            audioManager?.mode = AudioManager.MODE_NORMAL
+        } catch (_: Exception) {}
         try { rec?.stop() } catch (_: Exception) {}
         try { aec?.release(); ns?.release() } catch (_: Exception) {}
         try { rec?.release() } catch (_: Exception) {}
