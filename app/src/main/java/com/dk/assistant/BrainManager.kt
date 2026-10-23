@@ -327,7 +327,7 @@ class BrainManager(private val ctx: Context) {
             append(TALK_RULES)
             append(Memory.factsBlock(ctx))
             // v3.45: सच्चा दोस्त - लहजा + पिछली बातचीत की याद (आखिरी मुलाकात, सारांश, अधूरी बातें)
-            if (Prefs.friendMode(ctx)) append("\n" + FriendStyle.persona(f, user)).append(FriendTalk.block(ctx))
+            if (Prefs.friendMode(ctx)) append("\n" + FriendStyle.persona(Prefs.voiceGender(ctx) != "male", user)).append(FriendTalk.block(ctx))
         }
     }
 
