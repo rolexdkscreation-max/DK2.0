@@ -181,10 +181,10 @@ class GitHub(private val token: String) {
                     val path = e.name.substringAfter('/')           // "owner-repo-sha/" hatao
                     val bytes = zin.readBytes()
                     total += bytes.size
-                    if (path.isNotBlank() && bytes.size <= 400_000 && !bytes.take(4000).contains(0.toByte()))
+                    if (path.isNotBlank() && bytes.size <= 1_000_000 && !bytes.take(4000).contains(0.toByte()))
                         out[path] = String(bytes, Charsets.UTF_8)
                 }
-                if (total > 40_000_000L) break                        // bahut bada repo - baaki API se
+                if (total > 80_000_000L) break                        // bahut bada repo - baaki API se
                 e = zin.nextEntry
             }
         }
@@ -224,6 +224,40 @@ class GitHub(private val token: String) {
             o.optBoolean("draft"), o.optJSONObject("head")?.optString("sha").orEmpty(),
             o.optJSONObject("user")?.optString("login").orEmpty(), iso(o.optString("updated_at")),
             if (o.isNull("mergeable")) null else o.optBoolean("mergeable"), open = o.optString("state") == "open")
+    }
+
+    /** जाँचकर्ता: PR में कौन-सी फ़ाइलें बदलीं (patch समेत) */
+    fun pullFiles(repo: String, number: Int, max: Int = 300): List<RepoInspector.PFile> {
+        val out = mutableListOf<RepoInspector.PFile>()
+        var page = 1
+        while (out.size < max && page <= 3) {
+            val a = JSONArray(get("/repos/$repo/pulls/$number/files?per_page=100&page=$page"))
+            for (i in 0 until a.length()) { val o = a.getJSONObject(i)
+                out += RepoInspector.PFile(o.optString("filename"), o.optString("status"), o.optInt("additions"), o.optInt("deletions"), o.optString("patch")) }
+            if (a.length() < 100) break
+            page++
+        }
+        return out.take(max)
+    }
+
+    /** जाँचकर्ता: PR का विवरण (body) + merged या नहीं */
+    fun pullDetail(repo: String, number: Int): RepoInspector.PDetail? {
+        val o = try { JSONObject(get("/repos/$repo/pulls/$number")) } catch (e: Err) { if (e.code == 404) return null else throw e }
+        return RepoInspector.PDetail(o.optInt("number"), o.optString("title"), o.optString("html_url"), o.optString("body").let { if (it == "null") "" else it },
+            o.optString("state"), !o.isNull("merged_at") && o.optString("merged_at").isNotBlank(), o.optString("merged_at").let { if (it == "null") "" else it },
+            o.optJSONObject("head")?.optString("ref").orEmpty(), o.optJSONObject("head")?.optString("sha").orEmpty(),
+            if (o.isNull("mergeable")) null else o.optBoolean("mergeable"), o.optString("mergeable_state"),
+            o.optInt("changed_files"), o.optInt("additions"), o.optInt("deletions"), o.optInt("commits"))
+    }
+
+    /** जाँचकर्ता: हाल में बंद/merge हुए PR (सबसे नए पहले) */
+    fun closedPulls(repo: String, n: Int = 8): List<RepoInspector.PDetail> {
+        val a = JSONArray(get("/repos/$repo/pulls?state=closed&per_page=${n.coerceIn(1, 50)}&sort=updated&direction=desc"))
+        return (0 until a.length()).map { a.getJSONObject(it) }.map { o ->
+            RepoInspector.PDetail(o.optInt("number"), o.optString("title"), o.optString("html_url"), o.optString("body").let { if (it == "null") "" else it },
+                o.optString("state"), !o.isNull("merged_at") && o.optString("merged_at").isNotBlank(), o.optString("merged_at").let { if (it == "null") "" else it },
+                o.optJSONObject("head")?.optString("ref").orEmpty(), o.optJSONObject("head")?.optString("sha").orEmpty())
+        }
     }
 
     /** रिपो के सबसे नए GitHub Actions runs (हर branch के) */
@@ -284,9 +318,9 @@ class GitHub(private val token: String) {
                     l.contains(" FAILED") || l.contains("AssertionError") || l.contains("tests completed")
             }.map { it.index }
             val pick = sortedSetOf<Int>()
-            key.take(60).forEach { k -> for (x in (k - 1)..(k + 3)) if (x in lines.indices) pick.add(x) }
-            val body = if (pick.isEmpty()) lines.takeLast(80) else pick.map { lines[it] }
-            sb.append(body.joinToString("\n").take(9000)).append("\n")
+            key.take(200).forEach { k -> for (x in (k - 1)..(k + 3)) if (x in lines.indices) pick.add(x) }
+            val body = if (pick.isEmpty()) lines.takeLast(200) else pick.map { lines[it] }
+            sb.append(body.joinToString("\n").take(30_000)).append("\n")
         }
         return sb.toString().ifBlank { "(build fail hua par log nahi mila)" }
     }

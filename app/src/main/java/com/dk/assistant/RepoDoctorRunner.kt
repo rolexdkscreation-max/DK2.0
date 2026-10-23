@@ -44,8 +44,8 @@ object RepoDoctorRunner {
             say("u", shown)
             return Res(scan(c, focus = n, mergeNow = true), "PR #$n की जाँच करके merge और APK release कर रही हूँ।")
         }
-        if (n != null && RepoDoctor.isFixAsk(input)) { say("u", shown); return Res(scan(c, focus = n), "PR #$n की जाँच कर रही हूँ, योजना बताती हूँ।") }
-        if (RepoDoctor.isStatusAsk(input)) { say("u", shown); return Res(scan(c), "रिपो की जाँच कर रही हूँ — खुले PR, builds, release। नतीजा अभी बताती हूँ।") }
+        if (n != null && RepoDoctor.isFixAsk(input)) { say("u", shown); return Res(scan(c, focus = n, question = input), "PR #$n की जाँच कर रही हूँ, योजना बताती हूँ।") }
+        if (RepoDoctor.isStatusAsk(input)) { say("u", shown); return Res(scan(c, focus = n, question = input), "रिपो की जाँच कर रही हूँ — खुले PR, builds, release। नतीजा अभी बताती हूँ।") }
         return null
     }
 
@@ -53,7 +53,7 @@ object RepoDoctorRunner {
      * रिपो पढ़ो (कोई बदलाव नहीं) → रिपोर्ट → योजना pending.
      * mergeNow = user ने खुद "PR #N merge करो" कहा: PR हरा हो तो सीधे merge + release (वही उसकी हाँ है)
      */
-    fun scan(c: Context, focus: Int? = null, mergeNow: Boolean = false): String? {
+    fun scan(c: Context, focus: Int? = null, mergeNow: Boolean = false, question: String? = null): String? {
         val p0 = CoderSession.problems(c)
         if (p0.isNotEmpty()) return "कोडिंग एजेंट तैयार नहीं: " + p0.joinToString(", ")
         val gh = GitHub.fromPrefs(c) ?: return "GitHub token नहीं — Settings → कोडिंग एजेंट में डालें"
@@ -68,6 +68,8 @@ object RepoDoctorRunner {
                     items = items.filter { it.pr == focus }
                     if (items.isEmpty()) {
                         val info = withContext(Dispatchers.IO) { try { gh.pullInfo(repo, focus) } catch (_: Exception) { null } }
+                        // सवाल पूछा गया (जैसे "PR #50 merge हुआ? क्या बदला?") - बंद/merge PR भी जाँचकर्ता बताएगा
+                        if (question != null && !mergeNow && info != null) { inspect(c, gh, s, question, focus, RepoDoctor.report(s, emptyList())); return@launch }
                         say("e", if (info == null) "PR #$focus नहीं मिला।" else if (!info.open) "PR #$focus खुला नहीं है (merge/बंद हो चुका)।"
                             else "PR #$focus का base ${info.base} है — मैं सिर्फ़ $base वाले PR संभालता हूँ।")
                         return@launch
@@ -86,6 +88,7 @@ object RepoDoctorRunner {
                 }
                 say("d", rep)
                 if (acts.isNotEmpty()) pending = Plan(s, items)
+                if (question != null) inspect(c, gh, s, question, focus, rep)
                 val bad = items.count { it.act == RepoDoctor.Act.FIX || it.act == RepoDoctor.Act.RESTART }
                 val ready = items.count { it.act == RepoDoctor.Act.MERGE }
                 val running = items.count { it.act == RepoDoctor.Act.WAIT }
@@ -100,6 +103,41 @@ object RepoDoctorRunner {
             }
         }
         return null
+    }
+
+    /**
+     * 🔎 जाँचकर्ता: PR की बदली फ़ाइलें + patch, checks + fail log, हाल के merge, टीम का हाल - सब पढ़कर AI step-by-step हिंदी में बताए.
+     * सिर्फ़ पढ़ना - कुछ नहीं बदलता. AI key न हो / AI fail = रिपो डॉक्टर की रिपोर्ट ही काफ़ी (कोई गलती नहीं).
+     */
+    private suspend fun inspect(c: Context, gh: GitHub, s: RepoDoctor.Snap, question: String, focus: Int?, report: String) {
+        val ai = CoderAi.fromPrefs(c) ?: return
+        say("s", "${Seven.INSPECTOR_HI}: हर PR की बदली फ़ाइलें, checks और fail log ध्यान से पढ़ रहा हूँ…")
+        try {
+            val facts = withContext(Dispatchers.IO) {
+                val merged = try { gh.closedPulls(s.repo, 8) } catch (_: Exception) { emptyList() }
+                val nums = RepoInspector.pick(focus, s.prs.map { it.number }, merged.filter { it.merged }.map { it.number })
+                val deep = nums.mapNotNull { n ->
+                    val d = try { gh.pullDetail(s.repo, n) } catch (_: Exception) { null } ?: return@mapNotNull null
+                    val files = try { gh.pullFiles(s.repo, n) } catch (_: Exception) { emptyList() }
+                    val runs = if (d.headSha.isBlank()) emptyList() else
+                        s.runs.filter { it.sha == d.headSha }.ifEmpty { try { gh.runsFor(s.repo, d.headSha).map { r ->
+                            RepoDoctor.RunI(r.id, r.name, r.status, r.conclusion, r.url, r.event, d.head, d.headSha, 0L) } } catch (_: Exception) { emptyList() } }
+                    val bad = RepoDoctor.latest(runs).firstOrNull { it.failed && it.conclusion != "cancelled" }
+                    val log = bad?.let { try { gh.failureLog(s.repo, it.id) } catch (_: Exception) { "" } }.orEmpty()
+                    RepoInspector.Deep(d, files, runs, log)
+                }
+                val mainBad = RepoDoctor.latest(s.runs.filter { it.sha == s.mainSha && it.sha.isNotBlank() }).firstOrNull { it.failed && it.conclusion != "cancelled" }
+                val mainLog = mainBad?.let { try { gh.failureLog(s.repo, it.id) } catch (_: Exception) { "" } }.orEmpty()
+                val team = RepoInspector.team(CoderSession.busy, CoderSession.task, CoderSession.lines.toList().map { it.role to it.text })
+                RepoInspector.facts(question, s, report, deep, merged, mainLog, team, (ai.budget * 7 / 10).coerceAtLeast(40_000))
+            }
+            val ans = withContext(Dispatchers.IO) {
+                ai.chat(Seven.Prompts.INSPECTOR + "\n\n" + Seven.Prompts.RULES, listOf("user" to facts + "\n\nNow answer the USER QUESTION step by step in Hindi."))
+            }.trim()
+            if (ans.isNotBlank()) say("d", "${Seven.INSPECTOR_HI}:\n$ans")
+        } catch (e: CancellationException) { throw e } catch (e: Exception) {
+            say("s", "${Seven.INSPECTOR_HI}: गहरी जाँच नहीं हो पाई (${(e.message ?: e.javaClass.simpleName).take(160)}) — ऊपर रिपो डॉक्टर की रिपोर्ट देखें")
+        }
     }
 
     /** पूरे रिपो की हालत (सिर्फ़ पढ़ना) */

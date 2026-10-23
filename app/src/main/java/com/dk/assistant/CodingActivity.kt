@@ -47,6 +47,11 @@ object CoderSession {
         if (role == "s") TaskStatus.step(TaskStatus.CODER, t)      // असली कदम (live status)
     }
     val busy get() = job?.isActive == true
+    /** अभी चल रहा काम (जाँचकर्ता को बताने के लिए) */
+    @Volatile var task: String? = null
+    /** अगले संदेश के साथ जाने वाली फ़ोटो/वीडियो (typing bar के ऊपर दिखती हैं) + छोटी तस्वीर */
+    val media = mutableListOf<Pair<CoderMedia, android.graphics.Bitmap?>>()
+    fun takeMedia(): List<CoderMedia> = media.map { it.first }.also { media.clear() }
     @Volatile private var appCtx: Context? = null
 
     /**
@@ -57,6 +62,7 @@ object CoderSession {
         appCtx = c.applicationContext
         // task = कोडिंग का असली काम (live status में दिखे). merge/push जैसे छोटे काम: null
         if (task != null) TaskStatus.start(TaskStatus.CODER, "कोडिंग टीम", "the coding team", task)
+        this.task = task
         val from = lines.size
         val j = scope.launch(block = block)
         job = j
@@ -145,6 +151,12 @@ class CodingActivity : AppCompatActivity() {
     }
     private var shown = 0
     private val dp get() = resources.displayMetrics.density
+    // 📎 फ़ोटो/वीडियो: typing bar के ऊपर छोटी पट्टी (भेजने तक)
+    private lateinit var mediaScroll: android.widget.HorizontalScrollView
+    private lateinit var mediaRow: LinearLayout
+    private val pickMedia = registerForActivityResult(androidx.activity.result.contract.ActivityResultContracts.PickMultipleVisualMedia(CoderMedia.MAX_ITEMS)) { uris ->
+        addMedia(uris)
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -203,8 +215,15 @@ class CodingActivity : AppCompatActivity() {
 
         val bar = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
-            setBackgroundResource(R.drawable.glass_pill); setPadding((18 * dp).toInt(), 0, (6 * dp).toInt(), 0)
+            setBackgroundResource(R.drawable.glass_pill); setPadding((6 * dp).toInt(), 0, (6 * dp).toInt(), 0)
         }
+        // 📎 फ़ोटो / वीडियो जोड़ो - चुनने के बाद cursor वापस लिखने की जगह पर
+        bar.addView(ImageButton(this).apply {
+            setImageResource(R.drawable.ic_attach); setBackgroundResource(R.drawable.glass_circle)
+            val p = (10 * dp).toInt(); setPadding(p, p, p, p); scaleType = android.widget.ImageView.ScaleType.FIT_CENTER
+            contentDescription = "फ़ोटो या वीडियो जोड़ें"
+            setOnClickListener { openPicker() }
+        }, LinearLayout.LayoutParams((40 * dp).toInt(), (40 * dp).toInt()).apply { marginEnd = (8 * dp).toInt() })
         edt = EditText(this).apply {
             hint = "क्या बदलना है? (जैसे: Settings में dark mode switch जोड़ो)"
             setHintTextColor(0x66FFFFFF); setTextColor(0xFFFFFFFF.toInt()); textSize = 15f
@@ -226,6 +245,12 @@ class CodingActivity : AppCompatActivity() {
             contentDescription = "भेजें"
         }
         bar.addView(send, LinearLayout.LayoutParams((46 * dp).toInt(), (46 * dp).toInt()))
+        mediaRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
+        mediaScroll = android.widget.HorizontalScrollView(this).apply {
+            isHorizontalScrollBarEnabled = false; visibility = View.GONE
+            addView(mediaRow, ViewGroup.LayoutParams(-2, -2))
+        }
+        col.addView(mediaScroll, LinearLayout.LayoutParams(-1, -2).apply { topMargin = (6 * dp).toInt() })
         col.addView(bar, LinearLayout.LayoutParams(-1, -2).apply { topMargin = (8 * dp).toInt() })
 
         send.setOnClickListener { if (CoderSession.busy) stopJob() else doSend() }
@@ -233,7 +258,59 @@ class CodingActivity : AppCompatActivity() {
         setContentView(root)
         Glass.install(this)
         if (CoderSession.lines.isEmpty()) CoderSession.add("d", welcome())
+        renderMedia()
         keepTyping()
+    }
+
+    private fun openPicker() {
+        if (CoderSession.media.size >= CoderMedia.MAX_ITEMS) { Toast.makeText(this, "एक बार में ${CoderMedia.MAX_ITEMS} तक फ़ोटो/वीडियो", Toast.LENGTH_SHORT).show(); return }
+        try {
+            pickMedia.launch(androidx.activity.result.PickVisualMediaRequest(androidx.activity.result.contract.ActivityResultContracts.PickVisualMedia.ImageAndVideo))
+        } catch (e: Exception) { Toast.makeText(this, "गैलरी नहीं खुली: ${e.message}", Toast.LENGTH_SHORT).show() }
+    }
+
+    /** चुनी फ़ाइलें background में तैयार (फ़ोटो छोटी, वीडियो के frames) → पट्टी में; cursor लिखने की जगह पर */
+    private fun addMedia(uris: List<android.net.Uri>) {
+        keepTyping()
+        val free = CoderMedia.MAX_ITEMS - CoderSession.media.size
+        if (uris.isEmpty() || free <= 0) return
+        val app = applicationContext
+        Toast.makeText(this, "फ़ोटो/वीडियो तैयार कर रहा हूँ…", Toast.LENGTH_SHORT).show()
+        CoderSession.scope.launch {
+            var fail = 0
+            for (u in uris.take(free)) {
+                val n = CoderSession.media.size + 1
+                val p = withContext(Dispatchers.IO) { try { MediaPrep.prepare(app, u, n) } catch (_: Throwable) { null } }
+                if (p == null) fail++ else CoderSession.media.add(p.media to p.thumb)
+            }
+            if (isDestroyed) return@launch
+            if (fail > 0) Toast.makeText(this@CodingActivity, "$fail फ़ाइल नहीं पढ़ पाया", Toast.LENGTH_SHORT).show()
+            renderMedia(); keepTyping()
+        }
+    }
+
+    private fun renderMedia() {
+        mediaRow.removeAllViews()
+        mediaScroll.visibility = if (CoderSession.media.isEmpty()) View.GONE else View.VISIBLE
+        for ((i, pair) in CoderSession.media.withIndex()) {
+            val (m, thumb) = pair
+            val box = FrameLayout(this).apply { setBackgroundResource(R.drawable.glass_card) }
+            box.addView(android.widget.ImageView(this).apply {
+                scaleType = android.widget.ImageView.ScaleType.CENTER_CROP
+                if (thumb != null) setImageBitmap(thumb)
+                contentDescription = m.label
+            }, FrameLayout.LayoutParams((60 * dp).toInt(), (60 * dp).toInt()))
+            if (m.isVideo) box.addView(TextView(this).apply {
+                text = "🎬 " + (m.durationMs / 1000).let { "%d:%02d".format(it / 60, it % 60) }
+                textSize = 10f; setTextColor(0xFFFFFFFF.toInt()); setBackgroundColor(0x99000000.toInt()); setPadding((3 * dp).toInt(), 0, (3 * dp).toInt(), 0)
+            }, FrameLayout.LayoutParams(-2, -2, Gravity.BOTTOM or Gravity.START))
+            box.addView(TextView(this).apply {
+                text = "✕"; textSize = 12f; gravity = Gravity.CENTER; setTextColor(0xFFFFFFFF.toInt()); setBackgroundColor(0xAA000000.toInt())
+                contentDescription = "हटाएँ"
+                setOnClickListener { if (i < CoderSession.media.size) CoderSession.media.removeAt(i); renderMedia(); keepTyping() }
+            }, FrameLayout.LayoutParams((22 * dp).toInt(), (22 * dp).toInt(), Gravity.TOP or Gravity.END))
+            mediaRow.addView(box, LinearLayout.LayoutParams((60 * dp).toInt(), (60 * dp).toInt()).apply { marginEnd = (8 * dp).toInt() })
+        }
     }
 
     private fun welcome(): String {
@@ -269,15 +346,31 @@ class CodingActivity : AppCompatActivity() {
     private fun agent(): CodingAgent? = CoderSession.agentFor(this)
 
     private fun doSend() {
-        val t = edt.text.toString().trim()
+        val typed = edt.text.toString().trim()
+        val hasMedia = CoderSession.media.isNotEmpty()
         // काम चलते समय भी "क्या चल रहा है / रिपो चेक करो" पूछा जा सकता है (सिर्फ़ पढ़ना)
-        if (t.isEmpty() || CoderSession.busy && !RepoDoctor.isStatusAsk(t)) return
+        if (typed.isEmpty() && !hasMedia || CoderSession.busy && !RepoDoctor.isStatusAsk(typed)) return
+        // सिर्फ़ फ़ोटो/वीडियो भेजी: टीम उन्हें देखकर समझे
+        val t = typed.ifEmpty { "इस फ़ोटो/वीडियो को ध्यान से देखकर समझो कि क्या ठीक करना / बदलना है" }
         edt.setText("")
         keepTyping()
-        // रिपो डॉक्टर: रिपो की हालत / किसी PR को ठीक या merge करना / उसकी योजना की हाँ
-        RepoDoctorRunner.intercept(this, t, false)?.let { r -> r.err?.let { CoderSession.add("e", it) }; render(); return }
+        // रिपो डॉक्टर: रिपो की हालत / किसी PR को ठीक या merge करना / उसकी योजना की हाँ (फ़ोटो के साथ = नया काम)
+        if (!hasMedia) RepoDoctorRunner.intercept(this, t, false)?.let { r -> r.err?.let { CoderSession.add("e", it) }; render(); return }
         // 7 एजेंट वाला नया सिस्टम (चालू हो तो): GitHub मोड / नॉर्मल मोड खुद तय करता है
-        if (Prefs.coderSeven(this)) { SevenRunner.start(this, t)?.let { CoderSession.add("u", t); CoderSession.add("e", it) }; render(); return }
+        if (Prefs.coderSeven(this)) {
+            val taken = CoderSession.media.toList()
+            CoderSession.media.clear(); renderMedia()
+            SevenRunner.start(this, t, media = taken.map { it.first })?.let {
+                CoderSession.add("u", t); CoderSession.add("e", it)
+                CoderSession.media.addAll(taken); renderMedia()      // काम शुरू नहीं हुआ - फ़ोटो वापस पट्टी में
+            }
+            render(); return
+        }
+        if (hasMedia) {
+            CoderSession.media.clear(); renderMedia()
+            CoderSession.add("s", "📎 फ़ोटो/वीडियो सिर्फ़ 11-एजेंट टीम देखती है (Settings → कोडिंग एजेंट में चालू करें)। अभी सिर्फ़ आपका लिखा भेजा।")
+            if (typed.isEmpty()) { render(); return }
+        }
         val p = problems()
         if (p.isNotEmpty()) { CoderSession.add("u", t); CoderSession.add("e", "पहले ठीक करें:\n• " + p.joinToString("\n• ")); return }
         // टीम मोड: बिल्डर -> रिव्यूअर -> कोऑर्डिनेटर, सब अपने-आप
