@@ -80,6 +80,12 @@ class AgentRunner(
         if (!silent) speaker.speak(text)
     }
 
+    /** काम नहीं हुआ / पुष्टि नहीं - गलती के रूप में (Live को "FAILED" जाता है, "हो गया" नहीं) */
+    private suspend fun sayFailed(text: String) {
+        DKState.replyFailed(text)
+        if (!silent) speaker.speak(text)
+    }
+
     private suspend fun sayQuick(text: String) {
         DKState.reply(text)
         if (!silent) speaker.speakQuick(text)
@@ -321,6 +327,9 @@ class AgentRunner(
         var feedback = (if (note.isNotBlank()) "$note\n" else "") + "USER GOAL: $goal"
         // v3.33: कार्ट - सही प्रोडक्ट पक्का करके ही "Add", और स्क्रीन पर पुष्टि दिखे तभी "जोड़ दिया"
         val cartGoal = LocalRouter.isCartGoal(goal)
+        val deleteGoal = ActionCheck.isDeleteMessage(goal)
+        if (deleteGoal) feedback += "\nDELETE RULE: Long-press the exact message, tap Delete, then choose 'Delete for everyone' if the user wants it gone for both. " +
+            "Set done=true only after the screen shows 'This message was deleted' / 'You deleted this message'."
         if (cartGoal) feedback += "\nCART RULE: Before tapping Add to cart, check the open product matches the user's request " +
             "(name, size/variant, price limit). If unsure, use ask. Say it was added ONLY if the screen shows a confirmation " +
             "(e.g. 'Added to cart', 'Go to cart'). Never tap Buy now / Place order / Pay."
@@ -409,8 +418,10 @@ class AgentRunner(
 
             // v3.33: कार्ट वाला काम "पूरा" बताने से पहले स्क्रीन पर पुष्टि देखो (बोलना जाँच के बाद)
             val cartCheck = cartGoal && done && !chatMode
+            // v3.46: मैसेज डिलीट भी - स्क्रीन पर "This message was deleted" दिखे बिना "डिलीट हो गया" नहीं
+            val delCheck = deleteGoal && done && !chatMode && !cartCheck
             // Bolna aur kaam saath-saath
-            val speakJob = if (sayText.isNotBlank() && !cartCheck) scope.launch { say(sayText) } else null
+            val speakJob = if (sayText.isNotBlank() && !cartCheck && !delCheck) scope.launch { say(sayText) } else null
 
             val results = StringBuilder()
             val prevPkg = svc.currentPackage()
@@ -452,6 +463,16 @@ class AgentRunner(
                     claims || sayText.isBlank() -> "मैंने कोशिश की, पर स्क्रीन पर कार्ट में जुड़ने की पुष्टि नहीं दिखी। एक बार कार्ट खोलकर देख लीजिए।"
                     else -> sayText
                 })
+                return
+            }
+            if (done && delCheck) {
+                val tv = System.currentTimeMillis()
+                if (hasActions) svc.waitSettle(prevPkg, false, 3000)
+                var ok = ActionCheck.deleteConfirmed(svc.readScreen().text)
+                if (!ok) { delay(700); ok = ActionCheck.deleteConfirmed(svc.readScreen().text) }   // WhatsApp कभी थोड़ी देर में बदलता है
+                DKLog.d("जाँच: मैसेज ${if (ok) "डिलीट होना स्क्रीन पर दिखा" else "डिलीट होने की पुष्टि स्क्रीन पर नहीं दिखी"} (${System.currentTimeMillis() - tv} ms)")
+                if (ok) say(sayText.ifBlank { "मैसेज डिलीट हो गया, स्क्रीन पर पक्का दिखा।" })
+                else sayFailed("मैंने कोशिश की, पर स्क्रीन पर मैसेज डिलीट होने की पुष्टि नहीं दिखी। एक बार चैट खोलकर देख लीजिए।")
                 return
             }
             if (done) { speakJob?.join(); return }

@@ -339,16 +339,24 @@ class OpenAiCompatClient(
     @Volatile var usedModel: String = model
         private set
 
-    private fun tryNext(e: AiException) = e.code == 404 || e.code == 429 || e.code == 413 || e.code >= 500 ||
+    /** पूरे खाते की रोज़ की limit (OpenRouter free-models-per-day) = उसी key के बाकी मॉडल भी 429 देंगे - उन पर मत जाओ */
+    private fun tryNext(e: AiException) = !RateLimit.accountWide(e) && (e.code == 404 || e.code == 429 || e.code == 413 || e.code >= 500) ||
         (e.code == 400 && (e.message.orEmpty().contains("model", true) || e.message.orEmpty().contains("decommission", true)))
 
-    private fun models() = (listOf(model) + backups).distinct()
+    private fun mKey(m: String) = "m429_${name}_$m"
+    /** जिस मॉडल ने अभी 429 दिया, वह थोड़ी देर पीछे (सब रुके हों तो सब आज़माओ) */
+    private fun models(): List<String> {
+        val all = (listOf(model) + backups).distinct()
+        val (ok, wait) = all.partition { !Cooldown.blocked(mKey(it)) }
+        return ok + wait
+    }
+    private fun noteFail(m: String, e: AiException) { if (e.code == 429 && !RateLimit.accountWide(e)) Cooldown.block(mKey(m), RateLimit.backoffMs(1, e.retryAfter)) }
 
     override fun complete(system: String, history: List<Turn>, prompt: String, imageB64: String?): String {
         var last: AiException? = null
         for (m in models()) {
             try { return completeOnce(m, system, history, prompt, imageB64).also { usedModel = m } } catch (e: AiException) {
-                last = e
+                last = e; noteFail(m, e)
                 if (!tryNext(e)) throw e
                 DKLog.d("$name: $m ${e.code} - उसी key के अगले मॉडल पर")
             }
@@ -400,7 +408,7 @@ class OpenAiCompatClient(
             try {
                 return streamOnce(m, system, history, prompt) { sent = true; onDelta(it) }.also { usedModel = m }
             } catch (e: AiException) {
-                last = e
+                last = e; noteFail(m, e)
                 // आधा जवाब बोल चुके हों तो दूसरे मॉडल से दोबारा नहीं (दोहराव)
                 if (sent || !tryNext(e)) throw e
                 DKLog.d("$name: $m ${e.code} - उसी key के अगले मॉडल पर")

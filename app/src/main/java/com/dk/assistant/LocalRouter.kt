@@ -87,9 +87,12 @@ object LocalRouter {
 
     /** पूरा रास्ता: फ़ोन पर कितना हो सकता है + AI को क्या बचा */
     fun split(raw: String, wakeWords: List<String>, fg: String = ""): Split {
-        val t = normalize(raw, wakeWords)
-        if (t.length < 2 || negated(t)) return Split(null, raw)
-        val clauses = clausesOf(t)
+        val t0 = normalize(raw, wakeWords)
+        if (t0.length < 2 || negated(t0)) return Split(null, raw)
+        // "चलो ठीक है, होम स्क्रीन पे आओ": भराव वाला हिस्सा काम नहीं - उसकी वजह से पूरी बात Gemini को जाती थी
+        val t = Filler.stripLead(t0)
+        val clauses = clausesOf(t).filter { !Filler.isFiller(it) }.ifEmpty { clausesOf(t) }
+        if (clauses.size == 1 && clauses[0] != t) single(clauses[0], wakeWords, fg)?.let { return Split(it, null) }
         if (clauses.size >= 2) plan(clauses, wakeWords, fg)?.let { return it.copy(rest = it.rest?.let { raw }) }
         single(t, wakeWords, fg)?.let { return Split(it, null) }
         return Split(null, raw)

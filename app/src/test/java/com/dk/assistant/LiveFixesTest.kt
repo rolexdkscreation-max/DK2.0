@@ -52,7 +52,7 @@ class LiveFixesTest {
 
     @Test fun vadLimits_longerPauseAllowed() {
         assertEquals(550, GeminiLive.CLIENT_END_MS)
-        assertEquals(550, GeminiLive.SERVER_SILENCE_MS)
+        assertEquals(800, GeminiLive.SERVER_SILENCE_MS)   // v3.46: फ़ोन 550ms पर खुद भेजता है; सर्वर सिर्फ़ अधूरे वाक्य पर
     }
 
     // ------------------------------------------------------------------ 5) पीछे की आवाज़
