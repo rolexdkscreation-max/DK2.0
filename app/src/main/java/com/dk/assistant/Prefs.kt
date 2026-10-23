@@ -146,6 +146,14 @@ object Prefs {
     /** Pichhli baar jo Gemini Live model chala */
     fun liveModel(c: Context) = sp(c).getString("live_model", "") ?: ""
 
+    // ---- v3.45: सच्चा दोस्त
+    /** दोस्त वाला लहजा + पिछली बातचीत की याद system instruction में */
+    fun friendMode(c: Context) = sp(c).getBoolean("friend_mode", true)
+    /** ऐप खुलते ही DK खुद बात शुरू करे (DK लाइव चालू करके) */
+    fun friendOpener(c: Context) = sp(c).getBoolean("friend_opener", true)
+    /** स्थानीय खबर (Google Search) आखिरी बार कब - 3 घंटे में एक बार */
+    fun lastLocalNewsAt(c: Context) = sp(c).getLong("friend_local_news_at", 0L)
+
     /** v3.41: हर Live मॉडल का नापा जवाब-समय (ms) - सबसे तेज़ मॉडल पहले लगे */
     fun liveLatency(c: Context): Map<String, Long> = LiveModelRank.decode(sp(c).getString("live_latency", "") ?: "")
     fun recordLiveLatency(c: Context, model: String, ms: Long) {

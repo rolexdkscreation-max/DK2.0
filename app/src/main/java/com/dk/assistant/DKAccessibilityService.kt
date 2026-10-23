@@ -144,6 +144,33 @@ class DKAccessibilityService : AccessibilityService() {
         ensureLoop()
     }
 
+    /**
+     * v3.45: ऐप खुला - DK पहले बोले (सच्चा दोस्त). 20 मिनट में दोबारा नहीं. Live बंद हो तो चालू करता है.
+     * ताज़ा लोकेशन + मौसम पहले (9s तक), फिर Gemini को SYSTEM NOTE.
+     */
+    @Volatile private var greeting = false
+    fun friendOpen() {
+        if (greeting || !Prefs.friendOpener(this) || !Prefs.friendMode(this)) return
+        if (GeminiLive.key(this).isBlank() || !Setup.hasMic(this)) return
+        if (calls.ringing || calls.inCall) return
+        if (!FriendTalk.shouldGreet(this)) return
+        // अभी-अभी बात चल रही थी (Live खुला रहा, सारांश अभी बना नहीं) - बीच में "नमस्ते" नहीं
+        val lastMsg = DKState.messages.lastOrNull()?.time ?: 0L
+        if (System.currentTimeMillis() - lastMsg < 20 * 60_000L) return
+        greeting = true
+        FriendTalk.markGreeted(this)
+        scope.launch {
+            try {
+                val note = FriendTalk.openerNote(this@DKAccessibilityService)
+                if (!DKState.live) startLive()
+                else if (wakeLive) { wakeLive = false; gemLive.idleExitMs = 0 }
+                val sent = gemLive.greetNow(note)
+                DKLog.d("दोस्त: ऐप खुला - DK खुद बोलेगा" + if (sent) "" else " (जुड़ते ही)")
+            } catch (e: Exception) { DKLog.d("दोस्त: शुरुआत नहीं हो पाई: ${e.message}") }
+            finally { greeting = false }
+        }
+    }
+
     fun stopLive(why: String = "?") {
         DKLog.d("Live बंद किया: $why")
         wakeLive = false; gemLive.idleExitMs = 0
@@ -472,6 +499,8 @@ class DKAccessibilityService : AccessibilityService() {
                         liveOffUntil = System.currentTimeMillis() + 2 * 60_000L
                         DKLog.d("Gemini Live गलती: ${e.javaClass.simpleName} ${e.message}")
                     }
+                    // v3.45: बातचीत खत्म -> कब, कितनी देर, सारांश, अधूरी बातें (फ़ोन पर)
+                    try { FriendTalk.sessionEnd(this@DKAccessibilityService, liveStart, scope) } catch (_: Exception) {}
                     if (wakeLive) {
                         // wake word wala chhota Live khatam -> wapas wake word sunna
                         wakeLive = false; gemLive.idleExitMs = 0

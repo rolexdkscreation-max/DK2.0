@@ -132,8 +132,29 @@ class MainActivity : AppCompatActivity() {
         if (intent.getBooleanExtra("ask_mic", false)) checkMicPerm(force = true)
     }
 
+    /**
+     * v3.45: सच्चा दोस्त - ऐप खुलते ही DK खुद बोले. पहले ताज़ा लोकेशन की इजाज़त (हर बार खुलने पर, न हो तो),
+     * फिर DK (service) को बोलो कि बात शुरू करे. एक बार खुलने में एक ही बार पूछो (dialog बंद होने पर onResume दोबारा आता है).
+     */
+    private var friendAskedThisOpen = false
+    private fun friendOnOpen() {
+        if (!Prefs.friendMode(this) || !Prefs.friendOpener(this) || !Setup.hasMic(this)) return
+        if (!LocalInfo.hasPermission(this) && !friendAskedThisOpen) {
+            friendAskedThisOpen = true
+            ActivityCompat.requestPermissions(this, arrayOf(Manifest.permission.ACCESS_COARSE_LOCATION, Manifest.permission.ACCESS_FINE_LOCATION), 11)
+            return   // जवाब आने पर (onRequestPermissionsResult) बात शुरू
+        }
+        DKAccessibilityService.instance?.friendOpen()
+    }
+
+    override fun onStop() {
+        super.onStop()
+        friendAskedThisOpen = false
+    }
+
     override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if (requestCode == 11) { DKAccessibilityService.instance?.friendOpen(); return }
         val i = permissions.indexOf(Manifest.permission.RECORD_AUDIO)
         if (i >= 0) {
             val ok = grantResults.getOrNull(i) == android.content.pm.PackageManager.PERMISSION_GRANTED
@@ -171,6 +192,7 @@ class MainActivity : AppCompatActivity() {
         Setup.startKeepAlive(this)
         checkMicPerm(force = intent?.getBooleanExtra("ask_mic", false) == true)
         intent?.removeExtra("ask_mic")
+        friendOnOpen()
         render()
         checkUpdate()
     }

@@ -17,6 +17,7 @@ import androidx.appcompat.app.AppCompatActivity
 class MemoryActivity : AppCompatActivity() {
 
     private lateinit var list: LinearLayout
+    private lateinit var talkList: LinearLayout
     private lateinit var info: TextView
     private val dp get() = resources.displayMetrics.density
 
@@ -74,6 +75,14 @@ class MemoryActivity : AppCompatActivity() {
         list = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         listCard.addView(list)
 
+        // ---- v3.45: दोस्त वाली याद (आखिरी मुलाकात, बातचीत के सारांश, अधूरी बातें) - सिर्फ़ इसी फ़ोन पर
+        val talkCard = card(col, "बातचीत की याद", "हर बातचीत का छोटा सारांश, आखिरी मुलाकात और अधूरी बातें — सिर्फ़ इसी फ़ोन पर। बोलिए \"यह भूल जाओ\" तो मिट जाएगा। पासवर्ड/बैंक/कार्ड नंबर कभी सेव नहीं होते।")
+        talkList = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        talkCard.addView(talkList)
+        talkCard.addView(button("बातचीत की सारी याद मिटाएँ") {
+            confirm("सारे सारांश, आखिरी मुलाकात और अधूरी बातें मिटा दें?") { FriendTalk.clear(this); refresh(); toast("बातचीत की याद मिटा दी") }
+        })
+
         // ---- saaf karna
         val clean = card(col, "साफ़ करें", "")
         clean.addView(button("सारी यादें मिटाएँ") {
@@ -91,7 +100,30 @@ class MemoryActivity : AppCompatActivity() {
         refresh()
     }
 
+    private fun refreshTalk() {
+        talkList.removeAllViews()
+        val b = FriendTalk.load(this)
+        val now = System.currentTimeMillis()
+        val fmt = java.text.SimpleDateFormat("d MMM, h:mm a", java.util.Locale("hi", "IN"))
+        fun line(t: String, dim: Boolean = false) = talkList.addView(TextView(this).apply {
+            text = t; textSize = if (dim) 13f else 14f; setTextColor(if (dim) 0x99FFFFFF.toInt() else 0xFFFFFFFF.toInt())
+            setPadding(0, (4 * dp).toInt(), 0, (4 * dp).toInt()); UiLang.keep(this)
+        })
+        line("आखिरी मुलाकात: " + if (b.lastSeen > 0) "${fmt.format(java.util.Date(b.lastSeen))} (${b.gapText(now)})" else "अभी कोई नहीं")
+        if (b.mood.isNotBlank()) line("पिछली बार मूड: ${b.mood}", true)
+        if (b.threads.isNotEmpty()) {
+            line("अधूरी बातें (DK अगली बार पूछेगा):")
+            b.threads.reversed().forEach { line("• ${it.text}", true) }
+        }
+        val ss = b.sessions.filter { it.summary.isNotBlank() }.takeLast(8).reversed()
+        if (ss.isNotEmpty()) {
+            line("पिछली बातचीत:")
+            ss.forEach { line("• ${fmt.format(java.util.Date(it.start))} (${it.minutes} मिनट): ${it.summary}", true) }
+        }
+    }
+
     private fun refresh() {
+        refreshTalk()
         list.removeAllViews()
         val facts = Memory.facts(this)
         info.text = "${facts.size} बातें याद • ${DKState.messages.size} चैट मैसेज"

@@ -22,6 +22,9 @@
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
     <uses-permission android:name="android.permission.CAMERA" />
+    <!-- v3.45: सच्चा दोस्त - ऐप खुलते समय ताज़ा लोकेशन (मौसम/इलाके की खबर). कहीं सेव नहीं होती -->
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
     <!-- v3.33 (वैकल्पिक): "राहुल को कॉल करो" = सीधी कॉल (न दें तो डायलर में नंबर भरता है) -->
     <uses-permission android:name="android.permission.CALL_PHONE" />
     <!-- v3.33 (वैकल्पिक): "सबसे नई फ़ोटो दिखाओ" (न दें तो सिर्फ़ गैलरी खुलती है). सिर्फ़ फ़ोटो पढ़ना - मिटाना नहीं -->
