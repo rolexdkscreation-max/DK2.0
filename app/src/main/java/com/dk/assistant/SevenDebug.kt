@@ -24,7 +24,10 @@ HOW TO FIND THE ROOT CAUSE (follow this, do not guess):
 2) TRACE the flow: start where the user meets the bug (screen / button / voice command / setting) and follow the calls (search the called function names) until the line where the behaviour goes wrong.
 3) READ before deciding: {"read":["path"]} gives the file WITH LINE NUMBERS ("123| code"). A big file is cut and comes with an OUTLINE (every class/fun with its line). Read any part with {"read":["path:START-END"]} (max 600 lines per part).
 4) Your "where" MUST be "path:line" of a line you have READ, and the root cause must quote / describe the code on that line. It is checked automatically; a root cause in a file or line you did not read is sent back.
-5) If the DIFF of this task is given and a build/test failed, first check whether the new code caused it."""
+5) If the DIFF of this task is given and a build/test failed, first check whether the new code caused it.
+6) MISSING CODE IS A ROOT CAUSE TOO: often nothing is "broken" - the needed behaviour was simply never written (e.g. a search for the API/feature that would do it says NOT FOUND anywhere). Then reply with "kind":"missing": root_cause = "path:line - X is never done here, so <the user's problem>", where = the READ line where the new code must be connected (e.g. where the microphone / recording / screen / setting starts), fix = what must be added and where.
+7) Rounds are limited - the number of rounds left is shown after every result. Do not keep searching: after a few searches/reads, decide. When rounds are over you must answer from what you have read.
+FINAL JSON: {"kind":"bug|missing","root_cause":"path:line - what is wrong / missing and WHY","bug":"Hindi: बग क्या था","where":"path:line","fix":"minimal fix in English: which file, what change","files":["paths to change"]}"""
 
     /** 11-एजेंट मोड में प्लानर के prompt में जुड़ने वाले नियम (बड़ी फ़ाइलें) */
     const val PLANNER_EXTRA = """
@@ -61,6 +64,41 @@ In a big file the anchor must be text from a part you have READ (not only a sear
         }
         return out
     }
+
+    /** डिबगर एक बार में इतने अक्षर पढ़े (छोटे मॉडल का context न भरे) */
+    const val DEBUG_READ_BUDGET = 90_000
+
+    // ------------------------------------------------------------------ छोटा नाम -> असली path
+    /**
+     * AI अक्सर पूरा path नहीं, सिर्फ़ "Ear.kt" या "assistant/Ear.kt" लिखता है.
+     * @return रिपो का असली path (सटीक, या एक ही फ़ाइल जिसका path इसी पर ख़त्म हो), नहीं तो null
+     */
+    fun resolve(path: String, keys: Collection<String>): String? {
+        val p = path.trim().trim('`').removePrefix("./").removePrefix("/")
+        if (p.isBlank()) return null
+        if (p in keys) return p
+        val hits = keys.filter { it.endsWith("/$p") }
+        return hits.singleOrNull() ?: hits.filterNot { it.contains("/test/") }.singleOrNull()
+    }
+
+    // ------------------------------------------------------------------ बातचीत छोटी रखना
+    /**
+     * पुराने बड़े नतीजे (पढ़ी फ़ाइलें / खोज) छोटे कर दो - वरना हर राउंड में सब दोबारा जाता है और छोटे मॉडल का context भर जाता है.
+     * पहला संदेश (काम) और आख़िरी keepLast संदेश जैसे के तैसे. क्या पढ़ा था उसकी सूची बची रहती है.
+     */
+    fun compact(msgs: MutableList<Pair<String, String>>, keepLast: Int = 4, bigChars: Int = 3_000) {
+        for (i in 1 until (msgs.size - keepLast)) {
+            val (role, text) = msgs[i]
+            if (role != "user" || text.length <= bigChars || text.startsWith("(EARLIER RESULT")) continue
+            val heads = text.lines().filter { it.startsWith("----- BEGIN") || it.startsWith("=== SEARCH") || it.endsWith("NOT FOUND -----") }
+                .map { it.removePrefix("----- BEGIN ").removeSuffix(" -----").take(160) }
+            msgs[i] = role to ("(EARLIER RESULT - shortened to save space; you already saw: " +
+                heads.joinToString("; ").ifBlank { "a long result" } + ". Read it again only if you really need it.)")
+        }
+    }
+
+    /** बचे राउंड - हर नतीजे के बाद AI को */
+    fun roundsLeft(left: Int) = "\n(ROUNDS LEFT: $left" + if (left <= 2) " - stop searching, decide now)" else ")"
 
     // ------------------------------------------------------------------ पढ़ने की माँग
     data class ReadReq(val path: String, val from: Int? = null, val to: Int? = null)
@@ -149,12 +187,13 @@ In a big file the anchor must be text from a part you have READ (not only a sear
      * डिबगर का जवाब पक्का है? @return समस्याएँ (खाली = पास)
      * @param exists path -> फ़ाइल की लाइनें (null = रिपो में नहीं)
      */
-    fun verify(o: JSONObject, seen: Seen, exists: (String) -> Int?): List<String> {
+    fun verify(o: JSONObject, seen: Seen, resolve: (String) -> String? = { it }, exists: (String) -> Int?): List<String> {
         val root = o.optString("root_cause").trim()
         val where = o.optString("where").trim()
         val loc = location(where) ?: location(root)
             ?: return listOf("\"where\" must be \"path:line\" of the wrong line (no file path found in where/root_cause)")
-        val (path, line) = loc
+        val path = resolve(loc.first) ?: loc.first
+        val line = loc.second
         val lines = exists(path)
             ?: return listOf("$path does not exist in this repository - search for the real file ({\"search\":[…]}) and read it")
         val out = mutableListOf<String>()
@@ -162,7 +201,7 @@ In a big file the anchor must be text from a part you have READ (not only a sear
         else if (line == null) out.add("Give the exact line: \"where\":\"$path:LINE\" (line numbers are shown as \"123| code\")")
         else if (line < 1 || line > lines) out.add("$path has only $lines lines - line $line does not exist")
         else if (!seen.covers(path, line)) out.add("Line $line of $path was not in the part you read - read it ({\"read\":[\"$path:${maxOf(1, line - 40)}-${line + 40}\"]})")
-        val bad = Seven.strings(o.optJSONArray("files")).filter { exists(it.removePrefix("./").removePrefix("/")) == null && !it.endsWith("/") }
+        val bad = Seven.strings(o.optJSONArray("files")).filter { f -> exists(resolve(f) ?: f.removePrefix("./").removePrefix("/")) == null && !f.endsWith("/") }
         val fix = o.optString("fix")
         if (bad.isNotEmpty() && !fix.contains("create", true) && !fix.contains("new file", true))
             out.add("These \"files\" do not exist: ${bad.joinToString()} - use real paths (or say in \"fix\" that a new file must be created)")
