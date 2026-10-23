@@ -469,7 +469,7 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
                         ws = pk!!.ws; warmReuses++
                         synchronized(sendLock) { ready = true; flushPending() }
                         log("गर्म connection फिर से [$model] - जुड़ने में 0 ms (${(t0 - pk.at) / 1000}s से standby में था)")
-                        sendFirstText(); sendResend()
+                        if (firstText != null) openerText = null; sendFirstText(); sendResend(); sendOpener()
                     } else {
                     val setup = CompletableDeferred<Unit>()
                     connect(key, model, closed, setup)
@@ -649,6 +649,36 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
     }
 
     /** Wake word ke saath boli baat (text) - judte hi Gemini ko */
+    /** v3.45: ऐप खुला - DK खुद बात शुरू करे (SYSTEM NOTE, "आप:" line नहीं). जुड़ते ही / अभी जुड़ा हो तो तुरंत */
+    @Volatile var openerText: String? = null
+        set(v) { field = v; openerAt = System.currentTimeMillis() }
+    @Volatile private var openerAt = 0L
+
+    /** अभी बोल सकता है तो तुरंत, नहीं तो जुड़ते ही. true = अभी भेज दिया */
+    fun greetNow(note: String): Boolean {
+        openerText = note
+        if (!canTalk() || isPlaying() || turnDet.inSpeech || toolJobs.isNotEmpty()) return false
+        sendOpener()
+        return openerText == null
+    }
+
+    private fun sendOpener() {
+        val t = openerText ?: return
+        // 90s से पुराना (Live नहीं जुड़ा था) = बासी; अगली बार ऐप खुलने पर नया
+        if (System.currentTimeMillis() - openerAt > 90_000) { openerText = null; return }
+        if (toolJobs.isNotEmpty() || turnDet.inSpeech) return
+        openerText = null
+        try {
+            val now = System.currentTimeMillis()
+            eosAt = now; firstAudioAt = 0; trace.reset(); trace.speechEndAt = now; trace.endpointAt = now
+            beginTimeline(now, now, "DK ने खुद बात शुरू की")
+            setMode(Mode.THINKING)
+            ws?.tx(JSONObject().put("realtimeInput", JSONObject().put("text", t)).toString())
+            lastAct = now
+            log("DK ने खुद बात शुरू की (ऐप खुला)")
+        } catch (_: Exception) {}
+    }
+
     private fun sendFirstText() {
         val t = firstText ?: return
         firstText = null
@@ -786,6 +816,14 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
                         .put("to", JSONObject().put("type", "STRING").put("description", "Sender/app name, or empty for the newest notification"))
                         .put("message", JSONObject().put("type", "STRING").put("description", "The reply text to send")))
                     .put("required", JSONArray().put("message"))))
+            .put(JSONObject().put("name", "forget_memory")
+                .put("description", "When the user says to forget something (यह भूल जाओ / वो बात भूल जाओ / इसे मिटा दो), call this with what to forget - resolve 'यह/वो' from the conversation into the actual topic in a few words (e.g. 'इंटरव्यू', 'प्रिया का नंबर'). Deletes it from saved facts and conversation memory. Then confirm in one short line.")
+                .put("parameters", JSONObject().put("type", "OBJECT")
+                    .put("properties", JSONObject().put("about", JSONObject().put("type", "STRING").put("description", "The topic to forget, a few words")))
+                    .put("required", JSONArray().put("about"))))
+            .put(JSONObject().put("name", "local_info")
+                .put("description", "Get the user's CURRENT location (fresh GPS/network, city/area name) and live weather right now. Call it when the user asks about weather, their area, nearby events/news/traffic/pandals/melas, or anything 'here/आसपास/मेरे शहर'. For local news or events, then use Google Search with the city name.")
+                .put("parameters", JSONObject().put("type", "OBJECT").put("properties", JSONObject())))
             .put(JSONObject().put("name", "remember_fact")
                 .put("description", "Save a personal fact or preference the user told about themselves.")
                 .put("parameters", JSONObject().put("type", "OBJECT")
@@ -875,7 +913,7 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
             // ready + purani (judte samay ki) awaaz ek saath, lock me: mic ka naya tukda purane se pehle na nikle
             synchronized(sendLock) { ready = true; flushPending() }
             setup.complete(Unit)
-            sendFirstText(); sendResend()
+            if (firstText != null) openerText = null; sendFirstText(); sendResend(); sendOpener()
             return
         }
         lastAct = System.currentTimeMillis()
@@ -1128,6 +1166,13 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
     }
 
     // ================================================================ phone ke kaam (function calling)
+    /** v3.45: ताज़ा लोकेशन + मौसम (हर बार नई; कहीं सेव नहीं) */
+    private suspend fun localInfoTool(): String {
+        if (!LocalInfo.hasPermission(svc)) return "Location permission is OFF. Ask the user to allow location for DK (open the DK app; it asks), then try again."
+        val r = LocalInfo.now(svc) ?: return "Could not get the current location right now (GPS/location may be off). Tell the user honestly."
+        return "Current place: ${r.first.name.ifBlank { "unknown area (%.3f, %.3f)".format(java.util.Locale.US, r.first.lat, r.first.lon) }}. Weather now: ${r.second.substringAfter(" — ", r.second)}"
+    }
+
     /** v3.41: फ़ोन के notification (DKNotifListener -> NotifStore) */
     private fun notifTool(app: String): String {
         if (!DKNotifListener.enabled(svc)) {
@@ -1169,7 +1214,9 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
                     "phone_call" -> callTool(args.optString("action"), "Gemini")
                     "screen_share" -> LiveVision.setScreen(svc, args.optBoolean("on", true))
                     "camera" -> LiveVision.setCamera(svc, args.optBoolean("on", true), args.optString("facing"))
-                    "remember_fact" -> { Memory.addFact(svc, args.optString("fact")); "saved" }
+                    "remember_fact" -> if (Memory.addFact(svc, args.optString("fact"))) "saved" else "NOT saved: private info (passwords, PIN, OTP, bank/card/Aadhaar numbers) is never stored. If the user asked you to remember it, tell them gently you do not save such private details." 
+                    "forget_memory" -> { val n = Memory.forget(svc, args.optString("about")); if (n > 0) "Forgotten ($n place(s) deleted)." else "Nothing saved about that - tell the user it is not in memory." }
+                    "local_info" -> localInfoTool()
                     "notifications" -> notifTool(args.optString("app"))
                     "notification_reply" -> notifReply(args.optString("to"), args.optString("message"))
                     "computer_task" -> {

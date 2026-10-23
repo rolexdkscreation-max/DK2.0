@@ -37,6 +37,8 @@ object Memory {
     fun addFact(c: Context, fact: String): Boolean {
         val f = fact.trim().trim('.', '।', ' ').take(300)
         if (f.length < 3) return false
+        // v3.45: पासवर्ड / PIN / OTP / बैंक-कार्ड-आधार नंबर कभी याद नहीं
+        if (Sensitive.isSensitive(f)) { DKLog.d("याद नहीं रखा (निजी जानकारी)"); return false }
         val list = facts(c).toMutableList()
         if (list.any { it.equals(f, true) }) return true
         // same vishay (pehle 3 shabd same) -> purani hatao, nayi rakho (jaise naya number)
@@ -56,7 +58,8 @@ object Memory {
         val before = list.size
         list.removeAll { f -> val l = f.lowercase(); words.all { l.contains(it) } }
         writeArr(c, "dk_facts.json", JSONArray(list))
-        return before - list.size
+        // v3.45: बातचीत के सारांश + अधूरी बातों से भी मिटाओ
+        return before - list.size + FriendTalk.forget(c, about)
     }
 
     fun clearFacts(c: Context) = writeArr(c, "dk_facts.json", JSONArray())

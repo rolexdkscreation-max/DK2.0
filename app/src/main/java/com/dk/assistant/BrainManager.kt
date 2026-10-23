@@ -326,6 +326,8 @@ class BrainManager(private val ctx: Context) {
             append("\nToday: " + java.text.SimpleDateFormat("d MMMM yyyy, EEEE", java.util.Locale.ENGLISH).format(java.util.Date()))
             append(TALK_RULES)
             append(Memory.factsBlock(ctx))
+            // v3.45: सच्चा दोस्त - लहजा + पिछली बातचीत की याद (आखिरी मुलाकात, सारांश, अधूरी बातें)
+            if (Prefs.friendMode(ctx)) append("\n" + FriendStyle.persona(f, user)).append(FriendTalk.block(ctx))
         }
     }
 
@@ -353,6 +355,28 @@ class BrainManager(private val ctx: Context) {
     }
 
     /** Gemini Live (awaaz se awaaz) ke liye system instruction */
+    /**
+     * v3.45: एक सीधा सवाल -> पूरा जवाब (बातचीत का सारांश वगैरह). चैट वाले AI एक-एक करके; null = कोई नहीं चला.
+     * (system prompt / इतिहास नहीं - सिर्फ़ यही दो)
+     */
+    suspend fun quickText(system: String, prompt: String): String? = withContext(Dispatchers.IO) {
+        for (p in rankedForChat()) {
+            val c = clientFor(p) ?: continue
+            try {
+                val r = c.stream(system, emptyList(), prompt) { }
+                if (r.isNotBlank()) return@withContext r
+            } catch (e: kotlinx.coroutines.CancellationException) { throw e
+            } catch (e: Exception) { DKLog.d("quickText ${p.id}: ${e.message?.take(80)}") }
+        }
+        // चैट की key नहीं - DK लाइव वाली Gemini key से एक छोटा सवाल (सारांश बहुत छोटा होता है)
+        try {
+            val k = Prefs.ttsGeminiKey(ctx)
+            if (k.isBlank()) null
+            else GeminiClient(k, GeminiClient.BACKUP_MODELS.first()).apply { backups = GeminiClient.BACKUP_MODELS }
+                .stream(system, emptyList(), prompt) { }.takeIf { it.isNotBlank() }
+        } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (_: Exception) { null }
+    }
+
     fun liveSystemPrompt(): String {
         val name = Prefs.assistantName(ctx); val user = Prefs.userName(ctx); val persona = Prefs.personality(ctx)
         return buildString {
@@ -393,6 +417,7 @@ class BrainManager(private val ctx: Context) {
             if (persona.isNotBlank()) append("Personality / extra instructions from the user: $persona\n")
             append(Memory.factsBlock(ctx)).append("\n")
             append(TALK_RULES).append("\n")
+            if (Prefs.friendMode(ctx)) append(FriendStyle.persona(Prefs.voiceGender(ctx) != "male", user)).append(FriendTalk.block(ctx)).append("\n")
             append("Only if the user asks who made/created you or who your boss is: say \"मुझे धीरज कुमार सिंह जी ने बनाया है। मैं धीरज सर के लिए काम करता हूँ, वही मेरे बॉस हैं।\" Never mention it otherwise.\n")
         }
         return intro + BASE_PROMPT

@@ -618,6 +618,15 @@ class SettingsActivity : AppCompatActivity() {
             hint(box, "आवाज़ की keys (Gemini Live, बोलना, सुनना): सेटिंग्स → AI दिमाग → DK लाइव। अभी: " + scopeStatus(ApiScopes.LIVE))
         }
 
+        // ---- v3.45: सच्चा दोस्त
+        card("सच्चा दोस्त", "DK करीबी दोस्त की तरह अपनेपन से बात करे, पिछली बातें याद रखे") { box ->
+            switch(box, "दोस्त वाला अंदाज़ + पिछली बातचीत की याद (आखिरी मुलाकात, सारांश, अधूरी बातें)", Prefs.friendMode(this))
+                .setOnCheckedChangeListener { _, on -> Prefs.edit(this) { putBoolean("friend_mode", on) } }
+            switch(box, "ऐप खोलते ही DK खुद बात शुरू करे (अभिवादन, हालचाल, त्योहार, मौसम)", Prefs.friendOpener(this))
+                .setOnCheckedChangeListener { _, on -> Prefs.edit(this) { putBoolean("friend_opener", on) } }
+            hint(box, "ऐप खुलने पर DK लाइव अपने-आप चालू होकर पहले बोलेगा (20 मिनट में दोबारा नहीं)। मौसम और इलाके की बात के लिए हर बार ताज़ा लोकेशन लेता है — लोकेशन कहीं सेव नहीं होती। बातचीत की याद: सेटिंग्स → मेमोरी।")
+        }
+
     }
 
     // ------------------------------------------------------------ orb + chehra
