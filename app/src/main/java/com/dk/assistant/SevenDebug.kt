@@ -1,0 +1,135 @@
+package com.dk.assistant
+
+import org.json.JSONObject
+
+/**
+ * डिबगर की मदद (11-एजेंट मोड) - Android पर निर्भर नहीं, पूरी तरह unit test होती है.
+ *
+ *  - पढ़ना: फ़ाइल लाइन नंबर के साथ ("123| code"), बड़ी फ़ाइल का कोई भी हिस्सा ("path:800-1100"),
+ *           और कटी हुई बड़ी फ़ाइल के साथ उसकी रूपरेखा (हर class/fun किस लाइन पर) - ताकि सही हिस्सा माँग सके
+ *  - देखा हुआ: डिबगर ने कौन-सी फ़ाइल की कौन-सी लाइनें सच में देखीं
+ *  - जड़ की जाँच: बताई फ़ाइल रिपो में है? डिबगर ने पढ़ी? बताई लाइन फ़ाइल में है और पढ़े हिस्से में थी?
+ */
+object SevenDebug {
+
+    /** एक बार में एक हिस्से की ज़्यादा से ज़्यादा लाइनें */
+    const val RANGE_MAX_LINES = 600
+    /** जड़ की जाँच फ़ेल होने पर डिबगर को कितनी बार वापस भेजें */
+    const val VERIFY_ROUNDS = 2
+
+    /** 11-एजेंट मोड में डिबगर के prompt में जुड़ने वाले नियम */
+    const val EXTRA = """
+HOW TO FIND THE ROOT CAUSE (follow this, do not guess):
+1) FIND first: reply ONLY {"search":["word", ...]} (max 6: screen text, button text, setting name, function, variable, error message, log tag). You get every matching path:line in the WHOLE repository. Never pick a file only from its name.
+2) TRACE the flow: start where the user meets the bug (screen / button / voice command / setting) and follow the calls (search the called function names) until the line where the behaviour goes wrong.
+3) READ before deciding: {"read":["path"]} gives the file WITH LINE NUMBERS ("123| code"). A big file is cut and comes with an OUTLINE (every class/fun with its line). Read any part with {"read":["path:START-END"]} (max 600 lines per part).
+4) Your "where" MUST be "path:line" of a line you have READ, and the root cause must quote / describe the code on that line. It is checked automatically; a root cause in a file or line you did not read is sent back.
+5) If the DIFF of this task is given and a build/test failed, first check whether the new code caused it."""
+
+    // ------------------------------------------------------------------ पढ़ने की माँग
+    data class ReadReq(val path: String, val from: Int? = null, val to: Int? = null)
+
+    private val RANGE = Regex("""^(.+?)[:#]L?(\d+)\s*-\s*L?(\d+)$""")
+
+    /** "path" / "path:120-260" / "path#L120-L260" */
+    fun parseRead(entry: String): ReadReq {
+        val t = entry.trim().removePrefix("./").removePrefix("/")
+        val m = RANGE.find(t) ?: return ReadReq(t)
+        val a = m.groupValues[2].toInt(); val b = m.groupValues[3].toInt()
+        return ReadReq(m.groupValues[1].trim(), minOf(a, b).coerceAtLeast(1), maxOf(a, b))
+    }
+
+    /** लाइन नंबर के साथ (1 से गिनती). from..to दोनों शामिल */
+    fun numbered(src: String, from: Int = 1, to: Int = Int.MAX_VALUE): String {
+        val lines = src.lines()
+        val a = from.coerceAtLeast(1); val b = to.coerceAtMost(lines.size)
+        if (a > b) return ""
+        val w = b.toString().length
+        return (a..b).joinToString("\n") { n -> n.toString().padStart(w) + "| " + lines[n - 1] }
+    }
+
+    private val OUTLINE = Regex("""^\s*(?:(?:private|internal|public|protected|override|open|abstract|data|sealed|inline|suspend|enum|inner|companion|lateinit|const|operator)\s+)*(class|object|interface|fun)\s+(?:<[^>]*>\s*)?(?:[A-Za-z_][\w.]*\.)?([A-Za-z_]\w*)""")
+
+    /** फ़ाइल की रूपरेखा: हर class / object / fun किस लाइन पर */
+    fun outline(src: String, max: Int = 200): String = src.lines().withIndex().mapNotNull { (i, l) ->
+        val t = l.trimStart()
+        if (t.startsWith("//") || t.startsWith("*")) null
+        else OUTLINE.find(l)?.let { "${i + 1}: ${it.groupValues[1]} ${it.groupValues[2]}" }
+    }.take(max).joinToString("\n")
+
+    /** एक पढ़ाई का नतीजा: AI को दिखने वाला text + कौन-सी लाइनें दिखीं */
+    data class Block(val text: String, val path: String, val from: Int, val to: Int, val chars: Int)
+
+    /**
+     * @param content फ़ाइल (null = नहीं मिली)
+     * @param budget बचे हुए अक्षर
+     * @param maxChars पूरी फ़ाइल पढ़ने पर एक फ़ाइल की सीमा
+     */
+    fun block(req: ReadReq, content: String?, budget: Int, maxChars: Int): Block {
+        val p = req.path
+        if (content == null) return Block("----- $p : FILE NOT FOUND (use {\"search\":[…]} to find the right path) -----", p, 0, 0, 0)
+        if (budget <= 0) return Block("----- $p : (skipped, read budget used - ask for a smaller part \"$p:START-END\") -----", p, 0, 0, 0)
+        val lines = content.lines()
+        val total = lines.size
+        if (req.from != null) {
+            val a = req.from.coerceIn(1, maxOf(1, total))
+            val b = minOf(req.to ?: (a + RANGE_MAX_LINES - 1), a + RANGE_MAX_LINES - 1, total)
+            var body = numbered(content, a, b)
+            var end = b
+            if (body.length > budget) { body = body.take(budget).substringBeforeLast('\n'); end = a + body.lines().size - 1 }
+            return Block("----- BEGIN $p lines $a-$end of $total -----\n$body\n----- END $p -----", p, a, end, body.length)
+        }
+        val limit = minOf(budget, maxChars)
+        val full = numbered(content)
+        if (full.length <= limit) return Block("----- BEGIN $p ($total lines) -----\n$full\n----- END $p -----", p, 1, total, full.length)
+        val ol = outline(content).take(6_000)
+        val room = (limit - ol.length - 300).coerceAtLeast(limit / 2)
+        val part = full.take(room).substringBeforeLast('\n')
+        val end = part.lines().size
+        val text = "----- BEGIN $p lines 1-$end of $total (TRUNCATED - read other parts with {\"read\":[\"$p:START-END\"]}) -----\n$part\n" +
+            "----- OUTLINE of $p (line: declaration) -----\n$ol\n----- END $p -----"
+        return Block(text, p, 1, end, part.length + ol.length)
+    }
+
+    // ------------------------------------------------------------------ डिबगर ने क्या देखा
+    class Seen {
+        private val ranges = HashMap<String, MutableList<IntRange>>()
+        fun add(path: String, from: Int, to: Int) { if (from in 1..to) ranges.getOrPut(path) { mutableListOf() }.add(from..to) }
+        fun read(path: String) = ranges[path].orEmpty().isNotEmpty()
+        fun covers(path: String, line: Int) = ranges[path].orEmpty().any { line in it }
+        fun paths(): Set<String> = ranges.keys
+    }
+
+    // ------------------------------------------------------------------ जड़ की जाँच
+    private val LOC = Regex("""([\w./-]+\.[A-Za-z0-9]{1,6})(?::(\d+))?""")
+
+    /** "path:line - …" / "path:line" / "path" -> (path, line?) */
+    fun location(text: String): Pair<String, Int?>? {
+        val m = LOC.find(text.trim()) ?: return null
+        return m.groupValues[1].removePrefix("./").removePrefix("/") to m.groupValues[2].toIntOrNull()
+    }
+
+    /**
+     * डिबगर का जवाब पक्का है? @return समस्याएँ (खाली = पास)
+     * @param exists path -> फ़ाइल की लाइनें (null = रिपो में नहीं)
+     */
+    fun verify(o: JSONObject, seen: Seen, exists: (String) -> Int?): List<String> {
+        val root = o.optString("root_cause").trim()
+        val where = o.optString("where").trim()
+        val loc = location(where) ?: location(root)
+            ?: return listOf("\"where\" must be \"path:line\" of the wrong line (no file path found in where/root_cause)")
+        val (path, line) = loc
+        val lines = exists(path)
+            ?: return listOf("$path does not exist in this repository - search for the real file ({\"search\":[…]}) and read it")
+        val out = mutableListOf<String>()
+        if (!seen.read(path)) out.add("You did not READ $path - read it ({\"read\":[\"$path\"]}) and confirm the root cause in the real code")
+        else if (line == null) out.add("Give the exact line: \"where\":\"$path:LINE\" (line numbers are shown as \"123| code\")")
+        else if (line < 1 || line > lines) out.add("$path has only $lines lines - line $line does not exist")
+        else if (!seen.covers(path, line)) out.add("Line $line of $path was not in the part you read - read it ({\"read\":[\"$path:${maxOf(1, line - 40)}-${line + 40}\"]})")
+        val bad = Seven.strings(o.optJSONArray("files")).filter { exists(it.removePrefix("./").removePrefix("/")) == null && !it.endsWith("/") }
+        val fix = o.optString("fix")
+        if (bad.isNotEmpty() && !fix.contains("create", true) && !fix.contains("new file", true))
+            out.add("These \"files\" do not exist: ${bad.joinToString()} - use real paths (or say in \"fix\" that a new file must be created)")
+        return out
+    }
+}
