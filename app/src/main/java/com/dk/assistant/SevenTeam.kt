@@ -285,9 +285,11 @@ class SevenTeam(
             "FILE LIST (${list.size}):\n" + list.take(LIST_MAX).joinToString("\n") + if (list.isEmpty()) "(empty - create new files)" else ""))
         var usesFixed = false
         var whereFixed = 0
-        val last = if (full) 6 else 3
+        val last = if (full) 8 else 3
+        val sys = Seven.Prompts.PLANNER + if (full) "\n" + SevenDebug.PLANNER_EXTRA else ""
+        val seen = SevenDebug.Seen()
         for (round in 0..last) {
-            val reply = ai.ask(Agent.PLANNER, Seven.Prompts.PLANNER, msgs)
+            val reply = ai.ask(Agent.PLANNER, sys, msgs)
             val terms = SevenPlus.RepoSearch.terms(reply)
             if (terms != null && round < last) {
                 ev(Agent.PLANNER, "रिपो में खोज रहा हूँ (कहाँ लिखना है): " + terms.joinToString())
@@ -296,8 +298,8 @@ class SevenTeam(
             }
             val reads = Seven.planReads(reply)
             if (reads != null && round < last) {
-                ev(Agent.PLANNER, "पूरी फ़ाइलें पढ़ रहा हूँ: " + reads.joinToString())
-                msgs.add("model" to reply); msgs.add("user" to readFiles(reads) + "\nNow reply with the JSON plan, or read more files.")
+                ev(Agent.PLANNER, (if (full) "फ़ाइलें / हिस्से पढ़ रहा हूँ: " else "पूरी फ़ाइलें पढ़ रहा हूँ: ") + reads.joinToString())
+                msgs.add("model" to reply); msgs.add("user" to (if (full) readParts(reads, seen) else readFiles(reads)) + "\nNow reply with the JSON plan, or read more files.")
                 continue
             }
             val plan = Seven.parsePlan(reply)
@@ -314,9 +316,9 @@ class SevenTeam(
                 }
             }
             // जगह-जाँच (11-एजेंट): हर कदम की anchor फ़ाइल में सच में है? नई फ़ाइल पहले से तो नहीं?
-            if (full && plan != null && round < last && whereFixed < 2) {
+            if (full && plan != null && round < last && whereFixed < 3) {
                 val m = readMap(plan.steps.map { it.file }.distinct())
-                val bad = SevenPlus.Where.problems(plan) { m[it] }
+                val bad = SevenPlus.Where.problems(plan) { m[it] }.ifEmpty { SevenDebug.anchorsSeen(plan, { m[it] }, seen, FILE_CHARS) }
                 if (bad.isNotEmpty()) {
                     whereFixed++
                     ev(Agent.PLANNER, "प्लान की जगह गलत निकली — खोजकर/पढ़कर सही जगह ढूँढ रहा हूँ:\n" + bad.joinToString("\n") { "• $it" })
@@ -397,6 +399,20 @@ class SevenTeam(
             msgs.add("model" to reply); msgs.add("user" to "ROOT CAUSE REQUIRED. Reply ONLY JSON {\"root_cause\":\"file:line - what and why\",\"bug\":…,\"where\":\"file:line\",\"fix\":…,\"files\":[…]} or {\"search\":[…]} or {\"read\":[…]}.")
         }
         return null
+    }
+
+    /** प्लानर के लिए (11-एजेंट): बिना लाइन नंबर (anchor सीधे कॉपी हो), "path:START-END" वाले हिस्से भी, बड़ी फ़ाइल के साथ रूपरेखा; जो दिखा वह seen में */
+    private suspend fun readParts(entries: List<String>, seen: SevenDebug.Seen): String {
+        var budget = READ_BUDGET
+        val out = mutableListOf<String>()
+        for (e in entries) {
+            val r = SevenDebug.parseRead(e)
+            val b = SevenDebug.block(r, try { files.read(r.path) } catch (_: Exception) { null }, budget, FILE_CHARS, numbers = false)
+            budget -= b.chars
+            seen.add(b.path, b.from, b.to)
+            out.add(b.text)
+        }
+        return out.joinToString("\n\n")
     }
 
     /** डिबगर के लिए: लाइन नंबर के साथ, "path:START-END" वाले हिस्से भी; जो दिखा वह seen में */

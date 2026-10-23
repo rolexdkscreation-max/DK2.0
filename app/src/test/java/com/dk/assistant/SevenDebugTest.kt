@@ -148,4 +148,58 @@ class SevenDebugTest {
         assertEquals(1, ai.calls.count { it == Agent.DEBUGGER })               // पुराना क्रम: बिना पढ़े भी मान्य (जैसा पहले)
         assertFalse(ai.prompts[Agent.DEBUGGER]!!.contains("START-END"))
     }
+
+    // ------------------------------------------------------------------ प्लानर: बड़ी फ़ाइल के हिस्से
+    private val big = (1..3000).joinToString("\n") { if (it == 2500) "    fun deepBug() {}" else "    val v$it = $it" } + "\n"
+
+    @Test fun block_withoutNumbers_forPlanner_isExactText() {
+        val part = SevenDebug.block(SevenDebug.parseRead("Big.kt:2499-2501"), big, 150_000, 40_000, numbers = false)
+        assertTrue(part.text, part.text.contains("\n    val v2499 = 2499\n    fun deepBug() {}\n    val v2501 = 2501\n"))
+        assertFalse(part.text.contains("2500|"))
+        val cut = SevenDebug.block(SevenDebug.ReadReq("Big.kt"), big, 150_000, 40_000, numbers = false)
+        assertTrue(cut.text.contains("TRUNCATED") && cut.text.contains("2500: fun deepBug"))
+    }
+
+    @Test fun anchorLine_multiLineAndSpaces() {
+        assertEquals(2500, SevenDebug.anchorLine(big, "fun deepBug() {}\n    val v2501 = 2501"))
+        assertEquals(2500, SevenDebug.anchorLine(big, "fun   deepBug()   {}"))
+        assertNull(SevenDebug.anchorLine(big, "fun nothing()"))
+    }
+
+    @Test fun window_multiLineAnchor_showsTheRightPart() {
+        val w = Seven.window(big, "fun deepBug() {}\n    val v2501 = 2501")
+        assertTrue(w.contains("fun deepBug() {"))                              // पहले: फ़ाइल की शुरुआत दिखती थी
+        assertFalse(w.contains("val v5 = 5\n"))
+    }
+
+    @Test fun anchorsSeen_bigFileNeedsReadPart_smallFileNot() {
+        val plan = Seven.Plan(listOf(Seven.Step("Big.kt", "edit", "x", "fun deepBug() {")), emptyList())
+        val seen = SevenDebug.Seen().apply { add("Big.kt", 1, 1800) }
+        val probs = SevenDebug.anchorsSeen(plan, { if (it == "Big.kt") big else null }, seen, 40_000)
+        assertTrue(probs.toString(), probs.single().contains("line 2500") && probs.single().contains("Big.kt:2440-2560"))
+        seen.add("Big.kt", 2440, 2560)
+        assertTrue(SevenDebug.anchorsSeen(plan, { big }, seen, 40_000).isEmpty())
+        val small = Seven.Plan(listOf(Seven.Step("S.kt", "edit", "x", "fun a")), emptyList())
+        assertTrue(SevenDebug.anchorsSeen(small, { "fun a() {}" }, SevenDebug.Seen(), 40_000).isEmpty())
+    }
+
+    @Test fun fullPlanner_bigFile_unreadAnchorSentBack_thenReadsPart_coderGetsRightPlace() = runBlocking {
+        val plan = """{"steps":[{"file":"src/Big.kt","action":"edit","change":"add extra after deepBug","anchor":"fun deepBug() {"}]}"""
+        val edit = "FILE: src/Big.kt\n<<<FIND\n    fun deepBug() {}\n    val v2501 = 2501\nFIND>>>\n<<<REPLACE\n    fun deepBug() {}\n    val extra = 1\n    val v2501 = 2501\nREPLACE>>>"
+        val ai = FakeAi(Agent.PLANNER to """{"read":["src/Big.kt"]}""", Agent.PLANNER to plan,
+            Agent.PLANNER to """{"read":["src/Big.kt:2440-2560"]}""", Agent.PLANNER to plan,
+            Agent.CODER to edit, Agent.REVIEWER to """{"pass":true,"problems":[]}""", Agent.PERF to """{"pass":true,"must":[]}""",
+            Agent.TESTER to """{"pass":true}""", Agent.QA to """{"pass":true,"checks":[],"missing":[]}""")
+        val f = MemoryFiles(mapOf("src/Big.kt" to big))
+        val events = mutableListOf<String>()
+        val u = """{"understood":"x","spec":"add extra","acceptance":["extra है"],"not_touch":[],"area":[],"questions":[]}"""
+        val pre = SevenPlus.Understanding.parse(Seven.json(u), Seven.Kind.FEATURE, "", emptyList())
+        val out = SevenTeam(ai, f, null, full = true) { a, t -> events.add("${a.name}:$t") }.run("deepBug में extra जोड़ो", pre)
+        assertEquals(4, ai.calls.count { it == Agent.PLANNER })
+        assertTrue(events.any { it.startsWith("PLANNER:") && it.contains("जगह गलत") })
+        assertTrue(ai.prompts[Agent.PLANNER]!!.startsWith("You are the PLANNER") && ai.prompts[Agent.PLANNER]!!.contains("START-END"))
+        assertTrue(ai.lastUser[Agent.CODER]!!.contains("fun deepBug() {"))
+        assertTrue(f.staged()["src/Big.kt"]!!.contains("    val extra = 1"))
+        assertEquals(true, out.testOk)
+    }
 }

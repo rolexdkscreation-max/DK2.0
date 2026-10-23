@@ -322,7 +322,9 @@ If asked, reply ONLY JSON: {"notes":"Hindi: 1-3 lines what is new for the user i
     /** बड़ी फ़ाइल: anchor के आस-पास का हिस्सा (line नंबर बिना - FIND सीधे कॉपी हो सके) */
     fun window(src: String, anchor: String, radius: Int = 120): String {
         val lines = src.lines()
-        val at = if (anchor.isBlank()) -1 else lines.indexOfFirst { it.contains(anchor.trim()) }
+        // पहले पूरी anchor एक लाइन में; नहीं तो उसकी पहली लाइन (कई लाइन वाली anchor / spaces का फ़र्क)
+        val at = if (anchor.isBlank()) -1 else lines.indexOfFirst { it.contains(anchor.trim()) }.takeIf { it >= 0 }
+            ?: SevenDebug.anchorLine(src, anchor)?.minus(1) ?: -1
         if (at < 0) return lines.take(radius * 2).joinToString("\n")
         val a = (at - radius).coerceAtLeast(0); val b = (at + radius).coerceAtMost(lines.size)
         return lines.subList(a, b).joinToString("\n")

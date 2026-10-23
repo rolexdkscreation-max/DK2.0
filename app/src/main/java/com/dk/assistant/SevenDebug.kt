@@ -26,6 +26,42 @@ HOW TO FIND THE ROOT CAUSE (follow this, do not guess):
 4) Your "where" MUST be "path:line" of a line you have READ, and the root cause must quote / describe the code on that line. It is checked automatically; a root cause in a file or line you did not read is sent back.
 5) If the DIFF of this task is given and a build/test failed, first check whether the new code caused it."""
 
+    /** 11-एजेंट मोड में प्लानर के prompt में जुड़ने वाले नियम (बड़ी फ़ाइलें) */
+    const val PLANNER_EXTRA = """
+BIG FILES: a big file is cut ("TRUNCATED") and comes with an OUTLINE (line: class/fun). If the place you need is not in the part you got, read that part: {"read":["path:START-END"]} (max 600 lines per part; the text comes WITHOUT line numbers so you can copy the anchor exactly).
+In a big file the anchor must be text from a part you have READ (not only a search hit) - it is checked, and a step whose anchor you did not read is sent back."""
+
+    private fun norm(s: String) = s.replace(Regex("\\s+"), " ").trim()
+
+    /**
+     * anchor फ़ाइल की किस लाइन पर है (1 से गिनती). पहले पूरी पहली लाइन, फिर spaces अनदेखे करके. null = नहीं मिला
+     */
+    fun anchorLine(src: String, anchor: String): Int? {
+        val first = anchor.lines().map { it.trim() }.firstOrNull { it.isNotBlank() } ?: return null
+        val lines = src.lines()
+        lines.indexOfFirst { it.contains(first) }.takeIf { it >= 0 }?.let { return it + 1 }
+        val nf = norm(first)
+        lines.indexOfFirst { norm(it).contains(nf) }.takeIf { it >= 0 }?.let { return it + 1 }
+        return null
+    }
+
+    /**
+     * बड़ी फ़ाइल (bigChars से बड़ी) में हर edit कदम की anchor उस हिस्से में है जो प्लानर ने सच में पढ़ा?
+     * छोटी फ़ाइल पूरी पढ़ने को मिलती है - वहाँ पुरानी जगह-जाँच ही काफ़ी. @return समस्याएँ (खाली = ठीक)
+     */
+    fun anchorsSeen(plan: Seven.Plan, read: (String) -> String?, seen: Seen, bigChars: Int): List<String> {
+        val out = mutableListOf<String>()
+        for ((i, s) in plan.steps.withIndex()) {
+            if (s.action != "edit" || s.anchor.isBlank()) continue
+            val cur = read(s.file) ?: continue
+            if (cur.length <= bigChars) continue
+            val at = anchorLine(cur, s.anchor) ?: continue          // anchor ही गलत = पुरानी जगह-जाँच पकड़ती है
+            if (!seen.covers(s.file, at)) out.add("step ${i + 1}: the anchor is at line $at of ${s.file} (a big file), but you did not READ that part - " +
+                "read {\"read\":[\"${s.file}:${maxOf(1, at - 60)}-${at + 60}\"]} and check the change belongs exactly there")
+        }
+        return out
+    }
+
     // ------------------------------------------------------------------ पढ़ने की माँग
     data class ReadReq(val path: String, val from: Int? = null, val to: Int? = null)
 
@@ -65,7 +101,7 @@ HOW TO FIND THE ROOT CAUSE (follow this, do not guess):
      * @param budget बचे हुए अक्षर
      * @param maxChars पूरी फ़ाइल पढ़ने पर एक फ़ाइल की सीमा
      */
-    fun block(req: ReadReq, content: String?, budget: Int, maxChars: Int): Block {
+    fun block(req: ReadReq, content: String?, budget: Int, maxChars: Int, numbers: Boolean = true): Block {
         val p = req.path
         if (content == null) return Block("----- $p : FILE NOT FOUND (use {\"search\":[…]} to find the right path) -----", p, 0, 0, 0)
         if (budget <= 0) return Block("----- $p : (skipped, read budget used - ask for a smaller part \"$p:START-END\") -----", p, 0, 0, 0)
@@ -74,13 +110,13 @@ HOW TO FIND THE ROOT CAUSE (follow this, do not guess):
         if (req.from != null) {
             val a = req.from.coerceIn(1, maxOf(1, total))
             val b = minOf(req.to ?: (a + RANGE_MAX_LINES - 1), a + RANGE_MAX_LINES - 1, total)
-            var body = numbered(content, a, b)
+            var body = if (numbers) numbered(content, a, b) else lines.subList(a - 1, b).joinToString("\n")
             var end = b
             if (body.length > budget) { body = body.take(budget).substringBeforeLast('\n'); end = a + body.lines().size - 1 }
             return Block("----- BEGIN $p lines $a-$end of $total -----\n$body\n----- END $p -----", p, a, end, body.length)
         }
         val limit = minOf(budget, maxChars)
-        val full = numbered(content)
+        val full = if (numbers) numbered(content) else content
         if (full.length <= limit) return Block("----- BEGIN $p ($total lines) -----\n$full\n----- END $p -----", p, 1, total, full.length)
         val ol = outline(content).take(6_000)
         val room = (limit - ol.length - 300).coerceAtLeast(limit / 2)
