@@ -51,8 +51,8 @@ class LiveFixesTest {
     }
 
     @Test fun vadLimits_longerPauseAllowed() {
-        assertEquals(900, GeminiLive.CLIENT_END_MS)
-        assertEquals(800, GeminiLive.SERVER_SILENCE_MS)
+        assertEquals(550, GeminiLive.CLIENT_END_MS)
+        assertEquals(550, GeminiLive.SERVER_SILENCE_MS)
     }
 
     // ------------------------------------------------------------------ 5) पीछे की आवाज़
