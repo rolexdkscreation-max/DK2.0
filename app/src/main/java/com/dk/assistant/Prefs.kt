@@ -194,7 +194,7 @@ object Prefs {
     fun braveKey(c: Context) = sp(c).getString("key_brave", "") ?: ""
     /** मैसेज/कॉल/पेमेंट जैसे फ़ोन के काम से पहले पूछो (default चालू) */
     fun computerConfirm(c: Context) = sp(c).getBoolean("pc_confirm", true)
-    fun computerMaxSteps(c: Context) = sp(c).getInt("pc_max_steps", 25).coerceIn(5, 60)
+    fun computerMaxSteps(c: Context) = sp(c).getInt("pc_max_steps", 40).coerceIn(5, 60)
     /** कौन-से टूल चालू (default सब) */
     fun computerTool(c: Context, id: String) = sp(c).getBoolean("pc_tool_$id", true)
 

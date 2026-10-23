@@ -11,6 +11,7 @@ import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.async
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -32,6 +33,11 @@ object ComputerSession {
     val busy get() = job?.isActive == true
     private var agent: ComputerAgent? = null
     private val queue = ArrayDeque<Triple<String, Boolean, Boolean>>()
+    /** अभी की योजना + प्रगति (ऊपर की animation पट्टी और checklist) */
+    @Volatile var plan: ComputerPlan.Plan? = null
+    /** अभी का कदम (animation पट्टी में) */
+    @Volatile var now: String = ""
+    fun showPlan(p: ComputerPlan.Plan?) { plan = p; listener?.invoke() }
     /** अभी वाला काम आवाज़ से आया? (तो पूरा होने पर / इजाज़त के लिए बोलकर बताओ) */
     @Volatile var voiceRunning = false
 
@@ -41,7 +47,7 @@ object ComputerSession {
 
     fun add(role: String, t: String) {
         lines.add(Line(role, t)); while (lines.size > 400) lines.removeAt(0); listener?.invoke()
-        if (role == "s") TaskStatus.step(TaskStatus.PC, t)      // असली कदम (live status)
+        if (role == "s") { now = t; TaskStatus.step(TaskStatus.PC, t) }     // असली कदम (live status)
     }
 
     /** काम शुरू करो (या कतार में). null = शुरू/कतार, वरना वजह */
@@ -57,6 +63,7 @@ object ComputerSession {
         add("u", (if (voice) "🎤 " else "") + task)
         TaskStatus.start(TaskStatus.PC, "DK कंप्यूटर", "DK Computer", task)
         voiceRunning = voice
+        plan = null; now = "समझ रहा हूँ…"
         val a = agent ?: ComputerAgent(ctx).also { agent = it }
         val j = scope.launch {
             try {
@@ -147,7 +154,7 @@ object ComputerSession {
  * limit खत्म हो तो CoderAi अपने-आप दूसरे मॉडल/API पर जाता है.
  */
 class ComputerAgent(private val c: Context) {
-    data class Call(val tool: String, val args: JSONObject, val thought: String, val raw: String)
+    data class Call(val tool: String, val args: JSONObject, val thought: String, val raw: String, val step: Int? = null)
     data class Result(val text: String, val files: List<String>, val report: String, val question: Boolean = false)
 
     /** पूरी बातचीत (user = काम/टूल का नतीजा, model = AI का JSON) - आगे के सवाल इसी संदर्भ में */
@@ -170,14 +177,28 @@ class ComputerAgent(private val c: Context) {
         if (msgs.lastOrNull()?.first == "user") msgs[msgs.size - 1] = "user" to (msgs.last().second + "\n\n" + t) else msgs.add("user" to t)
     }
 
+    /** अभी की योजना (user को checklist, AI को याद) */
+    private var plan: ComputerPlan.Plan? = null
+    /** इस काम में चले टूल (जाँचकर्ता को सबूत) */
+    private val did = mutableListOf<String>()
+    /** मॉडल की पढ़ने की क्षमता (अक्षर) */
+    private var budget = CoderContext.DEFAULT_BUDGET
+
+    private fun setPlan(p: ComputerPlan.Plan?) { plan = p; ComputerSession.showPlan(p) }
+
     suspend fun run(task: String, background: Boolean): Result {
         synchronized(issues) { issues.clear() }
-        files.clear(); pendingFail = null
+        files.clear(); pendingFail = null; did.clear(); setPlan(null)
         val ai = CoderAi.forComputer(c) { p, f -> issue(p, f) } ?: throw IllegalStateException("AI key नहीं मिली")
-        addUser((if (msgs.isEmpty()) "TASK: " else "USER: ") + task + if (background) "\n(यह तय समय पर अपने-आप चला काम है — user अभी स्क्रीन पर नहीं है)" else "")
+        budget = ai.budget
+        val cap = ComputerPlan.resultCap(budget)
         step("🧠 ${ai.label} से काम शुरू…")
+        // 1) पहले योजना: क्या समझा, कौन-से कदम, आपको क्या मिलेगा
+        makePlan(ai, task)
+        addUser((if (msgs.isEmpty()) "TASK: " else "USER: ") + task + if (background) "\n(यह तय समय पर अपने-आप चला काम है — user अभी स्क्रीन पर नहीं है)" else "")
+        plan?.let { addUser(ComputerPlan.forAi(it)) }
         val max = Prefs.computerMaxSteps(c)
-        var bad = 0
+        var bad = 0; var tools = 0; var verifyRound = 0
         for (n in 1..max) {
             compact()
             val reply = withContext(Dispatchers.IO) { ai.chat(system(), msgs) }
@@ -187,23 +208,52 @@ class ComputerAgent(private val c: Context) {
                 msgs.add("model" to reply.take(4000))
                 if (bad >= 3) { issue("AI ने बार-बार गलत format में जवाब दिया", "उसी जवाब को आखिरी नतीजा माना"); return finish(reply.trim()) }
                 issue("AI ने गलत format (JSON नहीं) में जवाब दिया", "सही format में दोबारा माँगा")
-                addUser("FORMAT ERROR: reply with exactly ONE JSON object like {\"thought\":\"...\",\"tool\":\"...\",\"args\":{...}} and nothing else.")
+                addUser("FORMAT ERROR: reply with exactly ONE JSON object like {\"thought\":\"...\",\"step\":1,\"tool\":\"...\",\"args\":{...}} and nothing else.")
                 continue
             }
-            msgs.add("model" to call.raw.take(6000))
-            if (call.thought.isNotBlank()) step("💭 " + call.thought.take(200))
+            msgs.add("model" to call.raw.take(maxOf(6000, cap)))
+            plan?.let { p -> ComputerPlan.advance(p, call.step).takeIf { it != p }?.let { setPlan(it) } }
+            if (call.thought.isNotBlank()) step("💭 " + call.thought.take(300))
             when (call.tool) {
-                "done" -> return finish(call.args.optString("answer").ifBlank { call.args.optString("text") })
+                "done" -> {
+                    val ans = call.args.optString("answer").ifBlank { call.args.optString("text") }
+                    // 2) आख़िरी जाँच: काम सच में पूरा? कमी हो तो खुद आगे काम
+                    if (ComputerPlan.needsVerify(plan, tools, verifyRound)) {
+                        verifyRound++
+                        val miss = verify(ai, task, ans)
+                        if (miss.isNotEmpty() && n < max) {
+                            step("🧐 जाँच: अभी कमी है — " + miss.joinToString("; ").take(240) + " → पूरा कर रहा हूँ")
+                            addUser("QUALITY CHECK — the answer is NOT complete yet. Missing:\n" + miss.joinToString("\n") { "- $it" } +
+                                "\nContinue working with tools to fix exactly these points, then send done again with the COMPLETE final answer.")
+                            continue
+                        }
+                        step("🧐 जाँच: काम पूरा ✓")
+                    }
+                    return finish(ans)
+                }
                 "ask_user" -> return finish(call.args.optString("question").ifBlank { "कृपया और जानकारी दें।" }, question = true)
+                "update_plan" -> {
+                    val st = call.args.optJSONArray("steps")
+                    val list = if (st == null) emptyList() else (0 until st.length()).map { st.optString(it) }
+                    val p0 = plan
+                    val p1 = if (p0 == null) ComputerPlan.parse(JSONObject().put("steps", st ?: org.json.JSONArray()).toString()) else ComputerPlan.revise(p0, list)
+                    if (p1 != null && p1 != p0) {
+                        setPlan(p1)
+                        ComputerSession.add("p", "📋 योजना बदली:\n" + ComputerPlan.checklist(p1, title = false))
+                        addUser("PLAN UPDATED.\n" + ComputerPlan.forAi(p1))
+                    } else addUser("ERROR: update_plan needs {\"steps\":[\"...\"]}")
+                }
                 else -> {
+                    tools++
                     val res = try { runTool(call) } catch (e: CancellationException) { throw e } catch (e: Exception) {
                         "ERROR: " + (e.message ?: e.javaClass.simpleName).take(300)
                     }
+                    synchronized(did) { did.add("${call.tool} ${call.args.toString().take(160)} → " + if (res.startsWith("ERROR")) res.take(120) else "ok (${res.length} chars)") }
                     if (res.startsWith("ERROR")) {
                         step("⚠ ${call.tool}: " + res.removePrefix("ERROR:").trim().take(140))
                         pendingFail = "${call.tool} नहीं चला: " + res.removePrefix("ERROR:").trim().take(140)
                     } else pendingFail?.let { issue(it, "AI ने दूसरा तरीका अपनाया (${call.tool}) और काम आगे बढ़ा"); pendingFail = null }
-                    addUser("TOOL RESULT (${call.tool}) [step $n/$max]:\n" + res.take(7000))
+                    addUser("TOOL RESULT (${call.tool}) [step $n/$max]:\n" + res.take(cap) + if (res.length > cap) "\n…(नतीजा लंबा था — ज़रूरत हो तो छोटे हिस्सों में दोबारा माँगें)" else "")
                 }
             }
         }
@@ -216,18 +266,49 @@ class ComputerAgent(private val c: Context) {
         return finish(call?.args?.optString("answer")?.ifBlank { null } ?: last.trim())
     }
 
+    /** योजना बनाना - न बने तो पुराना तरीका (बिना checklist) चलता रहे */
+    private suspend fun makePlan(ai: CoderAi, task: String) {
+        step("📋 काम समझकर योजना बना रहा हूँ…")
+        val before = msgs.takeLast(6).joinToString("\n") { (r, t) -> (if (r == "user") "USER/TOOL: " else "DK: ") + t.take(600) }
+        val txt = try {
+            withContext(Dispatchers.IO) {
+                ai.chat(PLAN_SYS, listOf("user" to (if (before.isNotBlank()) "CONVERSATION SO FAR (short):\n$before\n\n" else "") +
+                    "NEW TASK FROM THE USER:\n$task\n\nTOOLS YOU WILL HAVE: " + TOOLS.filter { (id, _) -> Prefs.computerTool(c, if (id == "read_urls") "read_url" else id) }.joinToString { it.first } +
+                    "\nToday: " + java.text.SimpleDateFormat("d MMMM yyyy", java.util.Locale("hi", "IN")).format(java.util.Date())))
+            }
+        } catch (e: CancellationException) { throw e } catch (e: Exception) { issue("योजना नहीं बन पाई (${(e.message ?: "").take(80)})", "सीधे काम शुरू किया"); return }
+        val p = ComputerPlan.parse(txt) ?: return
+        setPlan(p)
+        ComputerSession.add("p", ComputerPlan.checklist(p))
+    }
+
+    /** जाँचकर्ता: जवाब काम के हर हिस्से को पूरा करता है? कमी = list (खाली = पास) */
+    private suspend fun verify(ai: CoderAi, task: String, answer: String): List<String> {
+        step("🧐 जाँच रहा हूँ कि काम सच में पूरा और सही है…")
+        val ev = synchronized(did) { did.takeLast(40).joinToString("\n") }
+        val txt = try {
+            withContext(Dispatchers.IO) {
+                ai.chat(VERIFY_SYS, listOf("user" to "TASK:\n$task\n\n" + (plan?.let { "PLAN:\n" + it.steps.mapIndexed { i, x -> "${i + 1}. $x" }.joinToString("\n") + "\nDELIVERABLE: ${it.deliverable}\n\n" } ?: "") +
+                    "TOOLS USED:\n${ev.ifBlank { "(none)" }}\n\nFILES CREATED: ${files.joinToString().ifBlank { "(none)" }}\n\nFINAL ANSWER:\n${answer.take(30_000)}"))
+            }
+        } catch (e: CancellationException) { throw e } catch (_: Exception) { return emptyList() }
+        return ComputerPlan.verdict(txt).missing
+    }
+
     private fun finish(text: String, question: Boolean = false): Result {
         pendingFail?.let { issue(it, "इसके बिना जितना हो सका उतना जवाब दिया") }; pendingFail = null
+        if (!question) plan?.let { setPlan(ComputerPlan.finishAll(it)) }
         return Result(text.ifBlank { "(खाली जवाब)" }, files.toList(), reportText(), question)
     }
 
-    /** पुराने टूल-नतीजे छोटे करो ताकि बातचीत AI की सीमा में रहे */
+    /** पुराने टूल-नतीजे छोटे करो ताकि बातचीत AI की सीमा में रहे (बड़े मॉडल पर बहुत बड़ी बातचीत भी पूरी) */
     private fun compact() {
+        val limit = ComputerPlan.compactAt(budget); val keep = ComputerPlan.keepOld(budget)
         var total = msgs.sumOf { it.second.length }
         var i = 0
-        while (total > 70_000 && i < msgs.size - 4) {
+        while (total > limit && i < msgs.size - 4) {
             val (r, t) = msgs[i]
-            if (t.length > 900) { msgs[i] = r to (t.take(700) + "\n…(पुराना नतीजा छोटा किया)"); total -= t.length - msgs[i].second.length }
+            if (t.length > keep + 200) { msgs[i] = r to (t.take(keep) + "\n…(पुराना नतीजा छोटा किया)"); total -= t.length - msgs[i].second.length }
             i++
         }
     }
@@ -239,12 +320,27 @@ class ComputerAgent(private val c: Context) {
             "web_search" -> {
                 val q = a.optString("query").ifBlank { return "ERROR: query खाली" }
                 step("🔎 खोज: $q")
-                withContext(Dispatchers.IO) { ComputerTools.formatSearch(ComputerTools.search(c, q, a.optInt("n", 6)) { p, f -> issue(p, f) }) }
+                withContext(Dispatchers.IO) { ComputerTools.formatSearch(ComputerTools.search(c, q, a.optInt("n", 6).coerceIn(1, 10)) { p, f -> issue(p, f) }) }
             }
             "read_url" -> {
                 val u = a.optString("url").ifBlank { return "ERROR: url खाली" }
-                step("🌐 पढ़ रहा हूँ: ${u.take(90)}")
-                withContext(Dispatchers.IO) { ComputerTools.readUrl(u) }
+                val from = a.optInt("from", 0).coerceAtLeast(0)
+                step("🌐 पढ़ रहा हूँ: ${u.take(90)}" + if (from > 0) " (आगे का हिस्सा)" else "")
+                withContext(Dispatchers.IO) { ComputerTools.readUrl(u, ComputerPlan.resultCap(budget), from) }
+            }
+            "read_urls" -> {
+                if (!Prefs.computerTool(c, "read_url")) return "ERROR: read_url टूल Settings में बंद है"
+                val arr = a.optJSONArray("urls") ?: return "ERROR: urls खाली"
+                val us = (0 until arr.length()).map { arr.optString(it).trim() }.filter { it.isNotBlank() }.distinct().take(4)
+                if (us.isEmpty()) return "ERROR: urls खाली"
+                step("🌐 ${us.size} पेज एक साथ पढ़ रहा हूँ")
+                val each = ComputerPlan.resultCap(budget) / us.size
+                withContext(Dispatchers.IO) {
+                    kotlinx.coroutines.coroutineScope {
+                        us.map { u -> async { try { ComputerTools.readUrl(u, each) } catch (e: Exception) { "URL: $u\nERROR: ${(e.message ?: "").take(120)}" } } }
+                            .map { it.await() }
+                    }
+                }.joinToString("\n\n========\n\n")
             }
             "run_js" -> { step("⚙ JavaScript चला रहा हूँ"); ComputerTools.runJs(c, a.optString("code")) }
             "write_file" -> {
@@ -257,7 +353,7 @@ class ComputerAgent(private val c: Context) {
                 if (f.name !in files) files.add(f.name)
                 step("📕 PDF बनाई: ${f.name}"); "saved ${f.name} (${f.length() / 1024} KB)"
             }
-            "read_file" -> withContext(Dispatchers.IO) { ComputerTools.read(c, a.optString("name")) }
+            "read_file" -> withContext(Dispatchers.IO) { ComputerTools.read(c, a.optString("name"), ComputerPlan.resultCap(budget)) }
             "list_files" -> ComputerTools.list(c).take(40).joinToString("\n") { "${it.name} (${it.length() / 1024} KB)" }.ifBlank { "(कोई फ़ाइल नहीं)" }
             "phone_task" -> phone(a.optString("request"))
             "coding_task" -> {
@@ -295,22 +391,25 @@ class ComputerAgent(private val c: Context) {
 
     private fun system(): String {
         val now = java.text.SimpleDateFormat("EEEE, d MMMM yyyy, HH:mm", java.util.Locale("hi", "IN")).format(java.util.Date())
-        val tools = TOOLS.filter { (id, _) -> Prefs.computerTool(c, id) }.joinToString("\n") { "- ${it.second}" }
+        val tools = TOOLS.filter { (id, _) -> Prefs.computerTool(c, if (id == "read_urls") "read_url" else id) }.joinToString("\n") { "- ${it.second}" }
         val facts = try { Memory.factsBlock(c) } catch (_: Exception) { "" }
         val name = Prefs.assistantName(c)
         return """
-You are "$name कंप्यूटर" (DK Computer), an autonomous agent running on the user's Android phone. You complete the user's task end-to-end, step by step, using tools, until it is FULLY done — like a careful human assistant with a computer.
+You are "$name कंप्यूटर" (DK Computer), an autonomous agent running on the user's Android phone. You complete ANY task the user gives (research, study, writing, business, money, health info, travel, shopping comparison, tech help, maths, data, files, phone actions, code) end-to-end, step by step, using tools, until it is FULLY done — like a careful expert of that field sitting at a computer.
 
 Reply with EXACTLY ONE JSON object and nothing else (no markdown fences):
-{"thought":"one short Hindi line: what you do now and why","tool":"<tool name>","args":{...}}
+{"thought":"1-2 simple Hindi lines for the user: what you do now and why","step":N,"tool":"<tool name>","args":{...}}
+("step" = number of the plan step you are working on now.)
 
 TOOLS:
 $tools
+- update_plan {"steps":["...","..."]} — change the plan when you learn something new (keeps done steps)
 - ask_user {"question":"..."} — only when you truly cannot continue without the user's input
 - done {"answer":"final answer"} — when the task is complete
 
 RULES:
-- Plan first, then act. Break big tasks into steps. Keep going until done; never stop half-way.
+- Follow YOUR PLAN step by step, carefully and precisely. Finish each step properly before the next. Keep going until done; never stop half-way.
+- Read sources COMPLETELY: if a page says "बाकी … अक्षर", continue with read_url "from" when the rest matters. Read several sources at once with read_urls.
 - Facts, prices, news, people, places: ALWAYS verify with web_search, then read_url the best sources for details. Never invent facts, numbers, links or quotes.
 - Do several searches for research tasks (different angles); compare sources; prefer official/primary sources.
 - If a tool returns ERROR, do not repeat the same call blindly — fix the arguments or use another tool/source.
@@ -318,7 +417,15 @@ RULES:
 - When the user asks for a document/report/list/file, create it with write_file (md/csv/html/json/txt) or make_pdf, and mention the file name in the answer.
 - Phone actions (open app, send message, call, settings) go through phone_task with a clear Hindi command. Never make purchases or payments.
 - Code changes in the user's GitHub repo go through coding_task.
-- Final answer: in the user's language (default Hindi, Devanagari), clear and well structured (short headings / bullets), with the important source links as [title](url). Be honest about anything you could not do.
+- GUIDE THE USER: if the task is something the user must do themselves (how-to, setup, a form, an app/website process, a government service, repair, study plan), give exact numbered steps: where to go / what to tap, what to type, what they will see, common mistakes, and what to do if a step fails. Check the CURRENT process with web_search first (apps and websites change).
+- Health / legal / money topics: give careful, sourced information and clearly say when a doctor / lawyer / expert must be consulted.
+- Final answer: in the user's language (default Hindi, Devanagari), clear and well structured:
+  "✅ नतीजा" — the direct answer in 1-3 lines first;
+  then details with short headings / bullets / tables;
+  "🪜 आगे आप क्या करें" — numbered steps when the user has something to do;
+  "🔗 स्रोत" — the important source links as [title](url);
+  "⚠ जो नहीं हो पाया" — honestly, if anything is left.
+- Before done, check yourself: every part of the task answered? numbers verified? requested file created? A quality checker will review your answer.
 - Today: $now (India time).
 ${if (facts.isNotBlank()) "\nWHAT YOU KNOW ABOUT THE USER:\n$facts" else ""}
 """.trim()
@@ -331,7 +438,8 @@ ${if (facts.isNotBlank()) "\nWHAT YOU KNOW ABOUT THE USER:\n$facts" else ""}
 
         private val TOOLS = listOf(
             "web_search" to "web_search {\"query\":\"...\",\"n\":6} — search the web; returns titles, URLs, snippets",
-            "read_url" to "read_url {\"url\":\"https://...\"} — read a web page as text",
+            "read_url" to "read_url {\"url\":\"https://...\",\"from\":0} — read a web page as text (long page: continue with from=<offset it tells you>)",
+            "read_urls" to "read_urls {\"urls\":[\"https://...\",\"https://...\"]} — read up to 4 pages at once (faster research)",
             "run_js" to "run_js {\"code\":\"...\"} — run JavaScript (no network/DOM); value of the last expression and console.log are returned",
             "write_file" to "write_file {\"name\":\"report.md\",\"content\":\"...\"} — save a file (.md .txt .csv .html .json); user can open/share it",
             "make_pdf" to "make_pdf {\"name\":\"report.pdf\",\"title\":\"...\",\"content\":\"markdown text\"} — create a PDF document",
@@ -342,6 +450,19 @@ ${if (facts.isNotBlank()) "\nWHAT YOU KNOW ABOUT THE USER:\n$facts" else ""}
             "remember" to "remember {\"fact\":\"...\"} — save a long-term fact about the user",
             "schedule" to "schedule {\"task\":\"...\",\"minutes\":30} or {\"task\":\"...\",\"at\":\"18:30\"} — run a DK Computer task later (reminders, later checks); saved on the phone, survives restart"
         )
+
+        /** योजना बनाने वाला */
+        const val PLAN_SYS = """You are the PLANNER of DK Computer (an AI agent on the user's Android phone with tools: web search, reading web pages, running JavaScript, creating files/PDF, phone control, coding team, reminders).
+Understand the user's NEW TASK exactly (use the conversation for context) and make a careful step-by-step plan.
+Reply ONLY JSON:
+{"understood":"Hindi, 1-3 simple lines: what the user wants","steps":["Hindi: concrete step 1","..."],"deliverable":"Hindi: what the user will get at the end (answer / file / phone action / guide)"}
+Rules: 2-10 concrete steps in order (what to search, which sources to read and compare, what to calculate, which file to create, what to verify, final answer with guidance). A simple greeting or chat = 1 step. Never plan purchases or payments."""
+
+        /** आख़िरी जाँच करने वाला */
+        const val VERIFY_SYS = """You are the QUALITY CHECKER of DK Computer. Check strictly whether the FINAL ANSWER completes the TASK.
+Check: every part of the task answered; facts / prices / dates backed by sources found with tools (not guessed); requested files created; numbers calculated (not guessed); if the user must do something, clear numbered steps are given; answer is in the user's language and well structured.
+Reply ONLY JSON: {"ok":true|false,"missing":["Hindi: exactly what is missing or wrong (max 5)"]}
+Be fair: if the task is simple and the answer is complete, ok=true with empty missing. Do not ask for things the user did not want."""
 
         /** AI का जवाब -> टूल कॉल (```json fence, आगे-पीछे का text, "answer" बिना tool भी चलेगा) */
         fun parse(reply: String): Call? {
@@ -357,7 +478,8 @@ ${if (facts.isNotBlank()) "\nWHAT YOU KNOW ABOUT THE USER:\n$facts" else ""}
             if (tool.isBlank()) return null
             // कुछ मॉडल args ऊपर ही रख देते हैं
             if (o.optJSONObject("args") == null) o.keys().forEach { k -> if (k != "tool" && k != "thought") args.put(k, o.get(k)) }
-            return Call(tool, args, o.optString("thought"), o.toString())
+            args.remove("step")
+            return Call(tool, args, o.optString("thought"), o.toString(), o.optInt("step", 0).takeIf { it > 0 })
         }
 
         /** मैसेज, कॉल, पेमेंट, पोस्ट, डिलीट जैसे काम = पहले पूछो */
