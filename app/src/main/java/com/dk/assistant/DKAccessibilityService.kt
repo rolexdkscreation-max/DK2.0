@@ -75,6 +75,20 @@ class DKAccessibilityService : AccessibilityService() {
     override fun onServiceConnected() {
         super.onServiceConnected()
         instance = this
+        
+        // Bluetooth SCO and audio focus investigation / setup for Bluetooth microphone recording
+        val audioManager = getSystemService(android.content.Context.AUDIO_SERVICE) as android.media.AudioManager
+        try {
+            audioManager.mode = android.media.AudioManager.MODE_IN_COMMUNICATION
+            if (audioManager.isBluetoothScoAvailableOffCall) {
+                audioManager.startBluetoothSco()
+                audioManager.isBluetoothScoOn = true
+                DKLog.d("Bluetooth SCO started for mic input support")
+            }
+        } catch (e: Exception) {
+            DKLog.d("Bluetooth SCO setup error: ${e.message}")
+        }
+
         speaker = Speaker(this)
         listener = VoiceListener(this)
         // aap bolna shuru karo aur ghanti baj rahi ho -> ringtone turant dheemi (taaki DK saaf sune)
