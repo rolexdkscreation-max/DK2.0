@@ -48,7 +48,10 @@ object LiveModelRank {
     fun order(found: List<String>, fallback: List<String>, latency: Map<String, Long>, blocked: (String) -> Boolean = { false }): List<String> {
         fun score(m: String) = latency[m]?.takeIf { it > 0 } ?: guessMs(m)
         fun fastFirst(l: List<String>) = l.filter { usable(it) }.distinct()
-            .sortedWith(compareBy<String> { score(it) }.thenByDescending { ver(it) })
+            .sortedWith(compareBy<String> { score(it) }
+                // बराबरी पर: नापा हुआ (इस key पर सच में चला) पहले, अंदाज़े वाला बाद में
+                .thenBy { if ((latency[it] ?: 0L) > 0) 0 else 1 }
+                .thenByDescending { ver(it) })
         // key पर सच में मिले मॉडल पहले; docs वाले (जो इस key पर शायद हों ही नहीं) बाद में - बेकार connection = देरी
         val sorted = (fastFirst(found) + fastFirst(fallback)).distinct()
         val (bad, ok) = sorted.partition(blocked)
