@@ -70,15 +70,20 @@ object LiveFast {
     }
 
     /** phone_task (AgentRunner) का सच्चा नतीजा */
-    fun agentResult(finished: Boolean, reply: String?): String = when {
+    fun agentResult(finished: Boolean, reply: String?, failed: Boolean = false): String = when {
         !finished -> "STILL RUNNING in the background - it is NOT finished yet. Tell the user honestly that you are doing it and will tell them when it is done. Do not say it is done."
+        // v3.46: गलती (AI limit / डिलीट की पुष्टि नहीं) पहले "FINISHED. Result: …" बनकर जाती थी - Gemini "हो गया" बोल देता था
+        failed -> "FAILED - the task was NOT done (or could not be confirmed). Reason: ${reply.orEmpty().ifBlank { "unknown" }}. " +
+            "Tell the user honestly in one short sentence that it did NOT happen and why. Never say it was done."
         !reply.isNullOrBlank() -> "FINISHED. Result: $reply"
         else -> "FINISHED the steps, but there is no confirmation message. Do not claim more than that."
     }
 
     /** काम बाद में पूरा हुआ - Gemini को (user की बात नहीं) बताओ ताकि वह एक वाक्य में बोले */
-    fun lateNote(request: String, reply: String?): String =
-        "SYSTEM NOTE (this is not the user speaking): the phone task \"${request.take(120)}\" has now finished. " +
+    fun lateNote(request: String, reply: String?, failed: Boolean = false): String =
+        if (failed) "SYSTEM NOTE (this is not the user speaking): the phone task \"${request.take(120)}\" FAILED - it was NOT done " +
+            "(or could not be confirmed). Reason: ${reply.orEmpty().take(300).ifBlank { "unknown" }}. Tell the user honestly in one short sentence; never say it was done."
+        else "SYSTEM NOTE (this is not the user speaking): the phone task \"${request.take(120)}\" has now finished. " +
             (if (reply.isNullOrBlank()) "There is no confirmation message." else "Result: ${reply.take(300)}") +
             " Tell the user in one short honest sentence."
 

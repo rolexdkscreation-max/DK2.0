@@ -64,8 +64,13 @@ class BrainManager(private val ctx: Context) {
             .filter { Prefs.fallback(ctx) || it.id == Prefs.activeProvider(ctx) }
         val active = Prefs.activeProvider(ctx)
         val (good, bad) = withKey.partition { ProviderHealth.usable(it.id) }
-        return good.sortedBy { ProviderHealth.speed(it.id) - (if (it.id == active) 150 else 0) } + bad
+        // रोज़ की limit / गलत key वाली को बिल्कुल मत आज़माओ (हर बार वही 429 = देर); थोड़ी देर वाली सिर्फ़ आख़िर में
+        return good.sortedBy { ProviderHealth.speed(it.id) - (if (it.id == active) 150 else 0) } + bad.filter { ProviderHealth.retryable(it.id) }
     }
+
+    /** कोई key आज़माने लायक नहीं बची - साफ़ कारण के साथ (बिना नेट पर गए) */
+    private fun exhausted(list: List<Provider>): AllFailedException =
+        AllFailedException(list.filter { clientFor(it) != null }.map { it to AiException(429, ProviderHealth.reason(it.id).ifBlank { "limit" }) })
 
     /**
      * Baatcheet ka jawab TUKDON me (streaming): pehla vakya aate hi bolna shuru.
@@ -85,7 +90,10 @@ class BrainManager(private val ctx: Context) {
             if (c is GeminiClient) c.fast = true
             if (c is OpenAiCompatClient) c.fast = true
             p to c } }
-        if (cands.isEmpty()) throw AiException(-1, "NO_KEY")
+        if (cands.isEmpty()) {
+            val all = Providers.all.filter { clientFor(it) != null }
+            throw if (all.isEmpty()) AiException(-1, "NO_KEY") else exhausted(all)
+        }
 
         val lock = Any()
         var winner: String? = null
@@ -150,8 +158,9 @@ class BrainManager(private val ctx: Context) {
     fun explainAll(e: Exception): String {
         if (e is AllFailedException) {
             if (e.errors.any { it.second is java.net.UnknownHostException }) return "इंटरनेट नहीं मिल रहा। नेट चालू करके फिर बोलिए।"
-            val parts = e.errors.distinctBy { it.first.id }.joinToString("। ") { (p, x) -> "${p.name.removePrefix("Google ")}: ${ProviderHealth.short(x)}" }
+            val parts = e.errors.distinctBy { it.first.id }.joinToString("। ") { (p, x) -> "${p.name.removePrefix("Google ")}: ${if (ProviderHealth.dailyOut(p.id)) ProviderHealth.reason(p.id) else ProviderHealth.short(x)}" }
             val fix = when {
+                e.errors.all { ProviderHealth.dailyOut(it.first.id) } -> "आज सब फ्री limit खत्म हैं। सेटिंग्स में कोई दूसरी फ्री key डालिए, जैसे Groq या Gemini।"
                 e.errors.all { (it.second as? AiException)?.code == 429 } -> "थोड़ी देर बाद पूछिए, या सेटिंग्स में कोई दूसरी फ्री key डालिए, जैसे Groq।"
                 e.errors.any { val c = (it.second as? AiException)?.code; c == 401 || c == 403 } -> "सेटिंग्स में key दोबारा डालकर टेस्ट दबाइए।"
                 else -> "फिर से बोलिए।"
@@ -169,6 +178,7 @@ class BrainManager(private val ctx: Context) {
             e is java.net.UnknownHostException -> "इंटरनेट नहीं मिल रहा। नेट चालू करके फिर बोलिए।"
             e is java.net.SocketTimeoutException || e is java.io.InterruptedIOException ->
                 "AI बहुत देर लगा रहा है। इंटरनेट धीमा है या सर्वर व्यस्त है, फिर से बोलिए।"
+            RateLimit.daily(e) -> "आज की फ्री लिमिट खत्म हो गई है, ${RateLimit.clock(RateLimit.nextUtcMidnight(System.currentTimeMillis()))} फिर मिलेगी। तब तक सेटिंग्स में दूसरी AI की key डालिए।"
             code == 429 -> "फ्री लिमिट खत्म हो गई है। थोड़ी देर बाद कोशिश कीजिए, या सेटिंग्स में दूसरी AI की key डालिए।"
             code == 401 || code == 403 || msg.contains("API key", true) ->
                 "API key गलत है या उसे इजाज़त नहीं है। सेटिंग्स में key दोबारा पेस्ट करके टेस्ट कीजिए।"
@@ -185,7 +195,9 @@ class BrainManager(private val ctx: Context) {
             var lastError: Exception? = null
             // limit/galti wali key ko peeche karo (warna har baar wahi pehle fail hoti hai = der)
             val (good, bad) = orderedProviders(chat).partition { ProviderHealth.usable(it.id) }
-            for (p in good + bad) {
+            val tryList = good + bad.filter { ProviderHealth.retryable(it.id) }
+            if (tryList.isEmpty() && bad.any { clientFor(it) != null }) throw exhausted(bad)
+            for (p in tryList) {
                 val client = clientFor(p) ?: continue
                 val img = if (p.vision) imageB64 else null
                 try {
@@ -404,6 +416,8 @@ class BrainManager(private val ctx: Context) {
             append("\nToday: " + java.text.SimpleDateFormat("d MMMM yyyy, EEEE, h:mm a", java.util.Locale.ENGLISH).format(java.util.Date()))
             append(TALK_RULES)
             append(Memory.factsBlock(ctx))
+            // v3.46: "सच्चा दोस्त" स्वभाव + बातचीत की याद अब आवाज़ (Live) में भी (पहले सिर्फ़ chat में जुड़ा था)
+            if (Prefs.friendMode(ctx)) append("\n").append(FriendStyle.persona(f, user)).append(FriendTalk.block(ctx))
         }
     }
 

@@ -24,8 +24,33 @@ class TurnDetector(
     /** Shor se kitna tez = bolna (v3.9: thoda neecha - dheemi awaaz bhi; shor seekha jaata hai) */
     private val startFactor: Double = 2.5,
     private val startMin: Double = 300.0,
+    /**
+     * तेज़ शोर/गाने में (seekha shor 600 → 1500) "bolna" का दरवाज़ा 2.5x से घटकर इतना गुना -
+     * पहले गाना चलते समय आम आवाज़ 2.5x तक नहीं पहुँचती थी = Gemini को सिर्फ़ खामोशी जाती थी.
+     * (= startFactor: बंद, पुराना तरीका)
+     */
+    private val loudNoiseFactor: Double = startFactor,
+    /** लंबी बात (इतने ms से ज़्यादा) में बीच के ठहराव पर बात न काटो (0 = बंद) */
+    private val longSpeechMs: Int = 0,
+    private val longEndSilenceMs: Int = 0,
+    /**
+     * गाना/पंखा पहले से तेज़ चल रहा हो तो वह "बोलना" मान लिया जाता था और कभी खत्म नहीं होता था (शोर सीखा ही नहीं जाता).
+     * इतनी देर लगातार एक-सी आवाज़ (बोलने जैसे उतार-चढ़ाव नहीं) = शोर: सीखो और "बोलना" बंद (0 = बंद)
+     */
+    private val steadyResetMs: Int = 0,
 ) {
+    private var sumRms = 0.0; private var frames = 0; private var lowFrames = 0
+    /** कितनी बार लगातार शोर को "बोलना" समझने से बचे (debug) */
+    var steadyResets = 0
+        private set
     enum class Event { NONE, SPEECH_START, SPEECH_END }
+
+    /** अभी के शोर पर "bolna" कितना गुना तेज़ हो */
+    fun factorFor(n: Double): Double = when {
+        loudNoiseFactor >= startFactor || n <= 600.0 -> startFactor
+        n >= 1500.0 -> loudNoiseFactor
+        else -> startFactor - (startFactor - loudNoiseFactor) * (n - 600.0) / 900.0
+    }
 
     /** Peeche ka shor (pankha/TV) - dheere-dheere seekhta hai */
     var noise = 250.0
@@ -42,13 +67,13 @@ class TurnDetector(
     var lastSpeechMs = 0
         private set
 
-    fun reset() { inSpeech = false; startRun = 0; speechMs = 0; silenceMs = 0 }
+    fun reset() { inSpeech = false; startRun = 0; speechMs = 0; silenceMs = 0; sumRms = 0.0; frames = 0; lowFrames = 0 }
 
     /** DK ko toka (pakka) - user pehle se bol raha hai: seedha "bol raha" haalat (gate khula rahe) */
     fun forceSpeech(now: Long) { inSpeech = true; startRun = 0; speechMs = minSpeechMs; silenceMs = 0; lastVoiceAt = now }
 
     fun feed(rms: Double, now: Long): Event {
-        val startThr = max(noise * startFactor, startMin)
+        val startThr = max(noise * factorFor(noise), startMin)
         // bolte samay dheemi awaaz (shabd ke aakhri hisse) ko chup mat samjho: neecha darwaza (hysteresis)
         val keepThr = max(noise * 1.6, 220.0)
         if (!inSpeech) {
@@ -64,9 +89,18 @@ class TurnDetector(
             }
             return Event.NONE
         }
+        if (steadyResetMs > 0) {
+            frames++; sumRms += rms
+            if (rms < 0.6 * (sumRms / frames)) lowFrames++
+            if (frames * chunkMs >= steadyResetMs && lowFrames < frames * 0.05) {
+                noise = (sumRms / frames * 0.9).coerceIn(50.0, 3000.0); steadyResets++
+                reset(); return Event.NONE
+            }
+        }
         if (rms > keepThr) { silenceMs = 0; speechMs += chunkMs; lastVoiceAt = now; return Event.NONE }
         silenceMs += chunkMs
-        if (silenceMs < endSilenceMs) return Event.NONE
+        val need = if (longEndSilenceMs > endSilenceMs && longSpeechMs > 0 && speechMs >= longSpeechMs) longEndSilenceMs else endSilenceMs
+        if (silenceMs < need) return Event.NONE
         val real = speechMs >= minSpeechMs
         lastSpeechMs = speechMs
         reset()
@@ -245,9 +279,31 @@ class ReplyWatchdog(
     @Volatile private var nudged = false
     /** Asli baat kab khatam hui jiska jawab abhi shuru nahi hua (0 = koi baat jawab ka intezaar nahi kar rahi) */
     @Volatile private var pendingSince = 0L
+    /** पिछला टुकड़ा जिसे सर्वर ने अभी तक नहीं सुना - अगले टुकड़े (शोर/आगे की बात) से वह खोए नहीं */
+    @Volatile private var carryMs = 0
+    @Volatile private var defers = 0
 
     /** User bolne laga - nayi baat, ab tak server ne kuch nahi suna */
-    fun onSpeechStart() { heard = false; deadline = 0L; answered = false; answerDeadline = 0L; nudged = false; pendingSince = 0L }
+    fun onSpeechStart() {
+        // पहले: हर नए टुकड़े पर सब साफ़ - बिना सुनी असली बात के बाद एक खटखट आई तो वह बात हमेशा के लिए खो जाती थी
+        carryMs = if (!heard && !answered && (deadline > 0L || pendingSince > 0L)) carryMs + lastMs else 0
+        heard = false; deadline = 0L; answered = false; answerDeadline = 0L; nudged = false; pendingSince = 0L; defers = 0
+    }
+    @Volatile private var lastMs = 0
+
+    /**
+     * बचाव का समय आया पर अभी भेज नहीं सकते (यूज़र फिर बोल रहा / फ़ोन का काम चल रहा / DK बोल रहा) -
+     * पहले यह मौका वहीं खत्म हो जाता था (बात खो जाती थी). अब थोड़ी देर बाद फिर (ज़्यादा से ज़्यादा ~20s).
+     */
+    fun defer(now: Long, ms: Long = 700): Boolean {
+        if (heard || defers >= 30) return false
+        defers++; deadline = now + ms; return true
+    }
+
+    fun deferAnswer(now: Long, ms: Long = 700): Boolean {
+        if (answered || defers >= 30) return false
+        defers++; nudged = false; answerDeadline = now + ms; return true
+    }
 
     /** Server ne is baat ka kuch bheja (ACTIVITY_START/END, text, tool, awaaz) - woh sun raha hai */
     fun onServerHeard() { heard = true; deadline = 0L }
@@ -259,7 +315,9 @@ class ReplyWatchdog(
     fun onRescued() { heard = true; deadline = 0L; nudged = true; answerDeadline = 0L }
 
     /** Phone ne pakda: baat khatam */
-    fun onEndOfSpeech(now: Long, speechMs: Int) {
+    fun onEndOfSpeech(now: Long, speechMs0: Int) {
+        lastMs = speechMs0
+        val speechMs = speechMs0 + carryMs
         deadline = if (!heard && speechMs >= minSpeechMs) now + timeoutMs else 0L
         answerDeadline = if (!answered && !nudged && speechMs >= minSpeechMs) now + answerTimeoutMs else 0L
         if (!answered && speechMs >= minSpeechMs) pendingSince = now

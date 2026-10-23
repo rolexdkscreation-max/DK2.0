@@ -37,6 +37,11 @@ object Ducker {
         }
     }
 
+    /** फ़ोन पर गाना/वीडियो अभी बज रहा है */
+    fun musicActive(c: Context): Boolean = try {
+        (am ?: c.applicationContext.getSystemService(AudioManager::class.java).also { am = it })?.isMusicActive == true
+    } catch (_: Exception) { false }
+
     /** User bolne laga / DK se baat shuru - peeche ki awaaz dheemi karo (pehle se dheemi ho to bas "wapas badhana" radd) */
     fun duck(c: Context, why: String) {
         h.post {
