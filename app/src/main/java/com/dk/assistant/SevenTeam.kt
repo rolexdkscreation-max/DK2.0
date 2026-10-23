@@ -285,9 +285,11 @@ class SevenTeam(
             "FILE LIST (${list.size}):\n" + list.take(LIST_MAX).joinToString("\n") + if (list.isEmpty()) "(empty - create new files)" else ""))
         var usesFixed = false
         var whereFixed = 0
-        val last = if (full) 6 else 3
+        val last = if (full) 8 else 3
+        val sys = Seven.Prompts.PLANNER + if (full) "\n" + SevenDebug.PLANNER_EXTRA else ""
+        val seen = SevenDebug.Seen()
         for (round in 0..last) {
-            val reply = ai.ask(Agent.PLANNER, Seven.Prompts.PLANNER, msgs)
+            val reply = ai.ask(Agent.PLANNER, sys, msgs)
             val terms = SevenPlus.RepoSearch.terms(reply)
             if (terms != null && round < last) {
                 ev(Agent.PLANNER, "रिपो में खोज रहा हूँ (कहाँ लिखना है): " + terms.joinToString())
@@ -296,8 +298,8 @@ class SevenTeam(
             }
             val reads = Seven.planReads(reply)
             if (reads != null && round < last) {
-                ev(Agent.PLANNER, "पूरी फ़ाइलें पढ़ रहा हूँ: " + reads.joinToString())
-                msgs.add("model" to reply); msgs.add("user" to readFiles(reads) + "\nNow reply with the JSON plan, or read more files.")
+                ev(Agent.PLANNER, (if (full) "फ़ाइलें / हिस्से पढ़ रहा हूँ: " else "पूरी फ़ाइलें पढ़ रहा हूँ: ") + reads.joinToString())
+                msgs.add("model" to reply); msgs.add("user" to (if (full) readParts(reads, seen) else readFiles(reads)) + "\nNow reply with the JSON plan, or read more files.")
                 continue
             }
             val plan = Seven.parsePlan(reply)
@@ -314,9 +316,9 @@ class SevenTeam(
                 }
             }
             // जगह-जाँच (11-एजेंट): हर कदम की anchor फ़ाइल में सच में है? नई फ़ाइल पहले से तो नहीं?
-            if (full && plan != null && round < last && whereFixed < 2) {
+            if (full && plan != null && round < last && whereFixed < 3) {
                 val m = readMap(plan.steps.map { it.file }.distinct())
-                val bad = SevenPlus.Where.problems(plan) { m[it] }
+                val bad = SevenPlus.Where.problems(plan) { m[it] }.ifEmpty { SevenDebug.anchorsSeen(plan, { m[it] }, seen, FILE_CHARS) }
                 if (bad.isNotEmpty()) {
                     whereFixed++
                     ev(Agent.PLANNER, "प्लान की जगह गलत निकली — खोजकर/पढ़कर सही जगह ढूँढ रहा हूँ:\n" + bad.joinToString("\n") { "• $it" })
@@ -336,6 +338,95 @@ class SevenTeam(
         }
         lastBlock = "प्लानर का जवाब JSON प्लान नहीं था"
         return null
+    }
+
+    /**
+     * 11-एजेंट डिबगर: पूरे रिपो में खोज + रिपो का नक्शा + प्रॉम्प्ट इंजीनियर की जगहें + इस काम का diff,
+     * फ़ाइलें लाइन नंबर के साथ (बड़ी फ़ाइल का कोई भी हिस्सा), और जड़ की पक्की जाँच (पढ़ी फ़ाइल / सही लाइन).
+     */
+    private suspend fun debugFull(problem: String, repeat: Boolean): Triple<Diag, String, String>? {
+        ev(Agent.DEBUGGER, if (repeat) "पिछला सुधार असली जड़ नहीं था — दूसरी वजह ढूँढ रहा हूँ…" else "असली जड़ ढूँढ रहा हूँ — पहले रिपो में खोजूँगा, फिर कोड पढ़कर पक्का करूँगा…")
+        val list = files.list()
+        val w = ws()
+        val staged = files.staged()
+        val msgs = mutableListOf("user" to ("TASK: $task\n$problem\n" +
+            (if (repeat) "NOTE FROM MANAGER: the SAME error came back after the previous fix. That fix did NOT address the real cause. Look for a different cause.\n" else "") +
+            (if (area.isNotEmpty()) "PROMPT ENGINEER - LIKELY AREA (verify by searching/reading):\n" + area.joinToString("\n") { "- $it" } + "\n" else "") +
+            (if (notTouch.isNotEmpty()) "DO NOT CHANGE (user's existing features): " + notTouch.joinToString("; ") + "\n" else "") +
+            (if (staged.isNotEmpty()) "DIFF OF THIS TASK (- removed, + added):\n" + diffText(staged, 12_000) + "\n" else "") +
+            "REPO MAP (file: classes / functions / ids):\n" + map(w) + "\n" +
+            "FILE LIST (${list.size}):\n" + list.take(LIST_MAX).joinToString("\n")))
+        val sys = Seven.Prompts.DEBUGGER + "\n" + SevenDebug.EXTRA
+        val seen = SevenDebug.Seen()
+        var rejected = 0
+        var asked = false
+        val last = 9
+        for (round in 0..last) {
+            val reply = ai.ask(Agent.DEBUGGER, sys, msgs)
+            val terms = SevenPlus.RepoSearch.terms(reply)
+            if (terms != null && round < last) {
+                ev(Agent.DEBUGGER, "रिपो में खोज रहा हूँ: " + terms.joinToString())
+                msgs.add("model" to reply); msgs.add("user" to SevenPlus.RepoSearch.search(ws(), terms) + "\nNow READ the right files/parts ({\"read\":[…]}) or search more.")
+                continue
+            }
+            val reads = Seven.planReads(reply)
+            if (reads != null && round < last) {
+                ev(Agent.DEBUGGER, "पढ़ रहा हूँ (लाइन नंबर के साथ): " + reads.joinToString())
+                msgs.add("model" to reply); msgs.add("user" to readNumbered(reads, seen) + "\nReply with the root cause JSON, or search/read more.")
+                continue
+            }
+            val o = Seven.json(reply)
+            val root = o?.optString("root_cause").orEmpty().trim()
+            if (o != null && root.length >= 8) {
+                val probs = SevenDebug.verify(o, seen) { p -> w[p]?.lines()?.size }
+                if (probs.isNotEmpty() && rejected < SevenDebug.VERIFY_ROUNDS && round < last) {
+                    rejected++
+                    ev(Agent.DEBUGGER, "बताई जड़ पक्की नहीं — कोड पढ़कर दोबारा जाँच रहा हूँ:\n" + probs.joinToString("\n") { "• ${it.take(200)}" })
+                    msgs.add("model" to reply)
+                    msgs.add("user" to "ROOT CAUSE NOT VERIFIED (checked against the real files):\n" + probs.joinToString("\n") { "- $it" } +
+                        "\nSearch/read what is needed, then reply with the corrected root cause JSON.")
+                    continue
+                }
+                val where = o.optString("where").trim()
+                val fix = o.optString("fix").trim()
+                if (probs.isNotEmpty()) ev(Agent.DEBUGGER, "⚠ जड़ पूरी तरह पक्की नहीं हो पाई (${probs.first().take(150)}) — फिर भी आगे बढ़ रहा हूँ, टेस्ट से पता चलेगा")
+                bugs.add(Seven.Bug(o.optString("bug").trim().ifBlank { root.take(150) }, where, root, fix.ifBlank { "-" }))
+                ev(Agent.DEBUGGER, "जड़ मिली: ${where.ifBlank { "-" }}\n$root\nसुधार: ${fix.take(200)}")
+                return Triple(Diag(Seven.strings(o.optJSONArray("files"))), root, fix)
+            }
+            if (asked && round >= last - 1) break
+            asked = true
+            msgs.add("model" to reply); msgs.add("user" to "ROOT CAUSE REQUIRED. Reply ONLY JSON {\"root_cause\":\"file:line - what and why\",\"bug\":…,\"where\":\"file:line\",\"fix\":…,\"files\":[…]} or {\"search\":[…]} or {\"read\":[…]}.")
+        }
+        return null
+    }
+
+    /** प्लानर के लिए (11-एजेंट): बिना लाइन नंबर (anchor सीधे कॉपी हो), "path:START-END" वाले हिस्से भी, बड़ी फ़ाइल के साथ रूपरेखा; जो दिखा वह seen में */
+    private suspend fun readParts(entries: List<String>, seen: SevenDebug.Seen): String {
+        var budget = READ_BUDGET
+        val out = mutableListOf<String>()
+        for (e in entries) {
+            val r = SevenDebug.parseRead(e)
+            val b = SevenDebug.block(r, try { files.read(r.path) } catch (_: Exception) { null }, budget, FILE_CHARS, numbers = false)
+            budget -= b.chars
+            seen.add(b.path, b.from, b.to)
+            out.add(b.text)
+        }
+        return out.joinToString("\n\n")
+    }
+
+    /** डिबगर के लिए: लाइन नंबर के साथ, "path:START-END" वाले हिस्से भी; जो दिखा वह seen में */
+    private suspend fun readNumbered(entries: List<String>, seen: SevenDebug.Seen): String {
+        var budget = READ_BUDGET
+        val out = mutableListOf<String>()
+        for (e in entries) {
+            val r = SevenDebug.parseRead(e)
+            val b = SevenDebug.block(r, try { files.read(r.path) } catch (_: Exception) { null }, budget, FILE_CHARS)
+            budget -= b.chars
+            seen.add(b.path, b.from, b.to)
+            out.add(b.text)
+        }
+        return out.joinToString("\n\n")
     }
 
     private suspend fun readFiles(paths: List<String>): String {
@@ -358,6 +449,7 @@ class SevenTeam(
 
     /** @return (फ़ाइलें, root cause, fix) */
     private suspend fun debug(problem: String, repeat: Boolean): Triple<Diag, String, String>? {
+        if (full) return debugFull(problem, repeat)
         ev(Agent.DEBUGGER, if (repeat) "पिछला सुधार असली जड़ नहीं था — दूसरी वजह ढूँढ रहा हूँ…" else "असली जड़ ढूँढ रहा हूँ…")
         val list = files.list()
         val msgs = mutableListOf("user" to ("TASK: $task\n$problem\n" +
