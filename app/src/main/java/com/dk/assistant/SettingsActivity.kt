@@ -853,7 +853,7 @@ class SettingsActivity : AppCompatActivity() {
         card("DK कंप्यूटर", "कोई भी काम कदम-दर-कदम: इंटरनेट पर खोज, वेबसाइट पढ़ना, हिसाब (कोड), फ़ाइल/PDF, फ़ोन के काम, कोडिंग, रिमाइंडर") { box ->
             swPc = switch(box, "DK कंप्यूटर चालू करें", Prefs.computerOn(this))
             swPcConfirm = switch(box, "मैसेज, कॉल, पेमेंट, डिलीट जैसे फ़ोन के काम से पहले मुझसे पूछो", Prefs.computerConfirm(this))
-            edPcSteps = field(box, "एक काम में ज़्यादा से ज़्यादा कदम (5–60)", Prefs.computerMaxSteps(this).toString(), "25")
+            edPcSteps = field(box, "एक काम में ज़्यादा से ज़्यादा कदम (5–60)", Prefs.computerMaxSteps(this).toString(), "40")
             edPcSteps.inputType = InputType.TYPE_CLASS_NUMBER
             row(box, button("कंप्यूटर खोलें") {
                 save(false)

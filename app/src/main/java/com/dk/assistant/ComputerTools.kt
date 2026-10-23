@@ -113,7 +113,16 @@ object ComputerTools {
     }.trimEnd()
 
     // ------------------------------------------------------------------ वेब पेज पढ़ना
-    fun readUrl(url: String, max: Int = 9000): String {
+    /** लंबा पेज: [from] से [max] अक्षर; बाकी हो तो बताओ कि आगे कैसे पढ़ें (कुछ भी अधूरा न छूटे) */
+    fun slice(u: String, text: String, from: Int, max: Int): String {
+        val f = from.coerceIn(0, text.length)
+        val part = text.substring(f, minOf(text.length, f + max))
+        val end = f + part.length
+        return "URL: $u" + (if (f > 0) " (अक्षर $f से)" else "") + "\n" + part +
+            if (end < text.length) "\n…(बाकी ${text.length - end} अक्षर — आगे पढ़ने को read_url {\"url\":\"$u\",\"from\":$end})" else ""
+    }
+
+    fun readUrl(url: String, max: Int = 9000, from: Int = 0): String {
         val u = url.trim().let { if (it.startsWith("http://") || it.startsWith("https://")) it else "https://$it" }
         val req = Request.Builder().url(u).header("User-Agent", UA).header("Accept", "text/html,application/json,text/plain,*/*").build()
         return http.newCall(req).execute().use { r ->
@@ -124,7 +133,7 @@ object ComputerTools {
                 return "(यह $type फ़ाइल है — पढ़ी नहीं जा सकती)"
             val s = String(bytes, Charsets.UTF_8)
             val text = if (type.contains("html") || s.trimStart().startsWith("<")) htmlToText(s) else s
-            "URL: $u\n" + text.take(max) + if (text.length > max) "\n…(बाकी ${text.length - max} अक्षर छोड़े)" else ""
+            slice(u, text, from, max)
         }
     }
 

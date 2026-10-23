@@ -31,6 +31,23 @@ class ComputerActivity : AppCompatActivity() {
     private lateinit var askBox: LinearLayout
     private var shown = 0
     private val dp get() = resources.displayMetrics.density
+    // ऊपर: "DK कंप्यूटर काम कर रहा है" - animation + अभी का कदम + प्रगति + योजना
+    private lateinit var workBox: LinearLayout
+    private lateinit var workOrb: ComputerWorkView
+    private lateinit var workBar: ComputerWorkView
+    private lateinit var workTitle: TextView
+    private lateinit var workNow: TextView
+    private lateinit var workPlan: TextView
+    private var planOpen = false
+    private var dots = 0
+    private val tick = android.os.Handler(android.os.Looper.getMainLooper())
+    private val dotTick = object : Runnable {
+        override fun run() {
+            if (!ComputerSession.busy) { renderWork(); return }
+            dots = (dots + 1) % 4; renderWork()
+            tick.postDelayed(this, 500)
+        }
+    }
     private val speech = registerForActivityResult(androidx.activity.result.contract.ActivityResultContracts.StartActivityForResult()) { r ->
         val t = r.data?.getStringArrayListExtra(android.speech.RecognizerIntent.EXTRA_RESULTS)?.firstOrNull()?.trim()
         if (r.resultCode == RESULT_OK && !t.isNullOrBlank()) { edt.setText(t); doSend() }
@@ -58,6 +75,7 @@ class ComputerActivity : AppCompatActivity() {
         top.addView(smallBtn("फ़ाइलें") { showFiles() })
         top.addView(smallBtn("नया") { newSession() }, LinearLayout.LayoutParams(-2, -2).apply { marginStart = (6 * dp).toInt() })
         col.addView(top)
+        col.addView(buildWork(), LinearLayout.LayoutParams(-1, -2).apply { topMargin = (10 * dp).toInt() })
 
         scroll = ScrollView(this).apply { isFillViewport = true }
         list = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(0, (8 * dp).toInt(), 0, (8 * dp).toInt()) }
@@ -105,11 +123,55 @@ class ComputerActivity : AppCompatActivity() {
         intent.getStringExtra("task")?.takeIf { it.isNotBlank() }?.let { ComputerSession.start(this, it)?.let { e -> ComputerSession.add("e", e) } }
     }
 
+    private fun buildWork(): View {
+        workBox = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL; setBackgroundResource(R.drawable.glass_card)
+            val p = (12 * dp).toInt(); setPadding(p, (10 * dp).toInt(), p, (10 * dp).toInt()); visibility = View.GONE
+            setOnClickListener { planOpen = !planOpen; renderWork() }
+        }
+        val row = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
+        workOrb = ComputerWorkView(this, bar = false)
+        row.addView(workOrb, LinearLayout.LayoutParams((58 * dp).toInt(), (58 * dp).toInt()))
+        val txt = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding((12 * dp).toInt(), 0, 0, 0) }
+        workTitle = TextView(this).apply { textSize = 15f; setTypeface(typeface, Typeface.BOLD); setTextColor(0xFFFFFFFF.toInt()) }
+        workNow = TextView(this).apply { textSize = 12.5f; setTextColor(0xCCFFFFFF.toInt()); maxLines = 3; setPadding(0, (2 * dp).toInt(), 0, 0) }
+        txt.addView(workTitle); txt.addView(workNow)
+        row.addView(txt, LinearLayout.LayoutParams(0, -2, 1f))
+        workBox.addView(row)
+        workBar = ComputerWorkView(this, bar = true)
+        workBox.addView(workBar, LinearLayout.LayoutParams(-1, (6 * dp).toInt()).apply { topMargin = (10 * dp).toInt() })
+        workPlan = TextView(this).apply { textSize = 12.5f; setTextColor(0xDDFFFFFF.toInt()); setPadding(0, (8 * dp).toInt(), 0, 0); setLineSpacing(0f, 1.15f) }
+        workBox.addView(workPlan)
+        return workBox
+    }
+
+    /** ऊपर की पट्टी: काम चले तब animation + "कदम 3/6: …" + checklist (छूकर पूरी देखें) */
+    private fun renderWork() {
+        val busy = ComputerSession.busy
+        if (!busy) {
+            if (workBox.visibility != View.GONE) workBox.visibility = View.GONE
+            workOrb.running = false; workBar.running = false
+            return
+        }
+        if (workBox.visibility != View.VISIBLE) workBox.visibility = View.VISIBLE
+        if (!workOrb.running) { workOrb.running = true; workBar.running = true }
+        val plan = ComputerSession.plan
+        val name = Prefs.assistantName(this)
+        UiLang.setText(workTitle, "$name कंप्यूटर काम कर रहा है" + ".".repeat(dots) + " ".repeat(3 - dots))
+        UiLang.setText(workNow, ComputerPlan.header(plan, ComputerSession.now))
+        workBar.fraction = plan?.fraction ?: 0f
+        if (plan == null) { workPlan.visibility = View.GONE; return }
+        workPlan.visibility = View.VISIBLE
+        val list = ComputerPlan.checklist(plan, title = false)
+        UiLang.setText(workPlan, if (planOpen) "$list\n▲ छोटा करें" else "📋 योजना: ${plan.doneCount}/${plan.total} कदम पूरे — पूरी देखने के लिए छुएँ ▼")
+    }
+
     private fun welcome(): String {
         val ai = CoderAi.forComputer(this) { _, _ -> }
         if (!Prefs.computerOn(this)) return "DK कंप्यूटर बंद है — Settings → DK कंप्यूटर में चालू करें।"
         if (ai == null) return "पहले Settings → AI दिमाग → DK कंप्यूटर में API key डालें (Gemini / Groq / OpenRouter / Custom)।"
         return "नमस्ते। मैं ${Prefs.assistantName(this)} कंप्यूटर हूँ — कोई भी काम दीजिए, मैं कदम-दर-कदम पूरा करूँगा और आखिर में रिपोर्ट दूँगा।\n\n" +
+            "कैसे काम करता हूँ:\n📋 पहले आपको योजना दिखाता हूँ (क्या समझा, कौन-से कदम, आपको क्या मिलेगा)\n▶ ऊपर हर पल दिखता है कि अभी कौन-सा कदम चल रहा है\n🧐 जवाब देने से पहले खुद जाँचता हूँ कि काम पूरा और सही है\n🪜 जो आपको खुद करना हो, उसके एक-एक कदम समझाता हूँ\n\n" +
             "मैं कर सकता हूँ:\n• इंटरनेट पर खोज और वेबसाइटें पढ़कर रिसर्च (स्रोत के लिंक के साथ)\n• हिसाब, डेटा, तुलना (कोड चलाकर)\n" +
             "• रिपोर्ट, लिस्ट, टेबल — Markdown / CSV / HTML / PDF फ़ाइल\n• फ़ोन के काम (ऐप खोलना, मैसेज, कॉल — पहले आपसे पूछकर)\n" +
             "• GitHub पर कोड बदलवाना (कोडिंग टीम)\n• बातें याद रखना, बाद में काम चलाना / रिमाइंडर\n\n" +
@@ -167,7 +229,7 @@ class ComputerActivity : AppCompatActivity() {
         render()
     }
 
-    override fun onPause() { ComputerSession.visible = false; ComputerSession.listener = null; super.onPause() }
+    override fun onPause() { ComputerSession.visible = false; ComputerSession.listener = null; tick.removeCallbacks(dotTick); workOrb.running = false; workBar.running = false; super.onPause() }
 
     private fun render() {
         val ai = CoderAi.forComputer(this) { _, _ -> }
@@ -180,6 +242,8 @@ class ComputerActivity : AppCompatActivity() {
         if (lines.size < shown) { list.removeAllViews(); shown = 0 }
         while (shown < lines.size) { bubble(lines[shown]); shown++ }
         renderAsk()
+        renderWork()
+        if (ComputerSession.busy) { tick.removeCallbacks(dotTick); tick.postDelayed(dotTick, 500) }
     }
 
     private fun renderAsk() {
@@ -202,6 +266,11 @@ class ComputerActivity : AppCompatActivity() {
             text = l.text; setTextIsSelectable(true)
             when (l.role) {
                 "s" -> { textSize = 12f; setTextColor(0x99FFFFFF.toInt()); setPadding((6 * dp).toInt(), (2 * dp).toInt(), 0, 0) }
+                "p" -> {
+                    textSize = 14f; setTextColor(0xFFE8F4FF.toInt()); setBackgroundResource(R.drawable.glass_card); setLineSpacing(0f, 1.15f)
+                    val ph = (14 * dp).toInt(); val pv = (10 * dp).toInt(); setPadding(ph, pv, ph, pv)
+                    maxWidth = (resources.displayMetrics.widthPixels * 0.9).toInt()
+                }
                 else -> {
                     textSize = 15f; setTextColor(if (l.role == "e") 0xFFFFB4B4.toInt() else 0xFFFFFFFF.toInt())
                     setBackgroundResource(if (mine) R.drawable.glass_bubble_me else R.drawable.glass_bubble_dk)
