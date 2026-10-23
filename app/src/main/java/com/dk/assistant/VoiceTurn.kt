@@ -315,12 +315,12 @@ class ReplyWatchdog(
     fun onRescued() { heard = true; deadline = 0L; nudged = true; answerDeadline = 0L }
 
     /** Phone ne pakda: baat khatam */
-    fun onEndOfSpeech(now: Long, speechMs0: Int) {
-        lastMs = speechMs0
-        val speechMs = speechMs0 + carryMs
-        deadline = if (!heard && speechMs >= minSpeechMs) now + timeoutMs else 0L
-        answerDeadline = if (!answered && !nudged && speechMs >= minSpeechMs) now + answerTimeoutMs else 0L
-        if (!answered && speechMs >= minSpeechMs) pendingSince = now
+    fun onEndOfSpeech(now: Long, speechMs: Int) {
+        lastMs = speechMs
+        val total = speechMs + carryMs
+        deadline = if (!heard && total >= minSpeechMs) now + timeoutMs else 0L
+        answerDeadline = if (!answered && !nudged && total >= minSpeechMs) now + answerTimeoutMs else 0L
+        if (!answered && total >= minSpeechMs) pendingSince = now
     }
 
     /**
