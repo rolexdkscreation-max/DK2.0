@@ -23,7 +23,7 @@ object ProviderHealth {
     fun dailyOut(id: String): Boolean {
         val x = h(id)
         if (x.daily && System.currentTimeMillis() < x.until) return true
-        val u = try { Cooldown.until(dayKey(id)) } catch (_: Exception) { 0L }
+        val u = try { Cooldown.until(dayKey(id)) } catch (_: Throwable) { 0L }   // unit test में Android नहीं
         if (u > System.currentTimeMillis()) { x.daily = true; x.until = maxOf(x.until, u); if (x.reason.isBlank()) x.reason = dailyReason(u); return true }
         return false
     }
@@ -47,7 +47,7 @@ object ProviderHealth {
         if (RateLimit.daily(e)) {
             val at = RateLimit.nextUtcMidnight(now)
             x.until = at; x.daily = true; x.reason = dailyReason(at)
-            try { Cooldown.block(dayKey(id), at - now) } catch (_: Exception) {}
+            try { Cooldown.block(dayKey(id), at - now) } catch (_: Throwable) {}
             x.ema = maxOf(x.ema, prior(id)) + 800
             return
         }
