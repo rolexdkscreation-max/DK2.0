@@ -57,9 +57,9 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
         const val OUT_RATE = 24000
         private const val CHUNK_MS = 40
         /** Server VAD: itni der chup = baat khatam (Google: 500-800ms; kam = baat beech me kat-ti hai) */
-        const val SERVER_SILENCE_MS = 500
+        const val SERVER_SILENCE_MS = 800
         /** Phone ka VAD: itni der chup = turant audioStreamEnd (server ka intezaar nahi) */
-        const val CLIENT_END_MS = 500
+        const val CLIENT_END_MS = 900
         /** Bolna shuru pakadne se pehle itni awaaz - chhota = pehla shabd turant (bahut chhota = DK ki goonj se galat "toka") */
         const val PREFIX_PADDING_MS = 100
         /** Wake word wala Live chup hone par connection itni der garam rakho */
@@ -120,9 +120,10 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
         if (!ended || stopped) return@Listener
         svc.scope.launch {
             // DK बोल रहा हो तो बीच में नहीं - चुप होने तक (10s तक) रुको
-            withTimeoutOrNull(10_000) { while (isPlaying() || generating) delay(150) }
+            // tool का जवाब बाकी हो तो भी नहीं (Gemini tool के जवाब का इंतज़ार कर रहा हो तब text = 1007 का ख़तरा)
+            withTimeoutOrNull(15_000) { while (isPlaying() || generating || toolJobs.isNotEmpty()) delay(150) }
             if (stopped || !ready) return@launch
-            try { ws?.send(JSONObject().put("realtimeInput", JSONObject().put("text", TaskStatus.endNote(job))).toString()) } catch (_: Exception) {}
+            try { ws?.tx(JSONObject().put("realtimeInput", JSONObject().put("text", TaskStatus.endNote(job))).toString()) } catch (_: Exception) {}
             log("${job.whoEn} का काम खत्म (${job.state.en}) - Gemini को असली नतीजा बताया")
         }
     }
@@ -193,6 +194,25 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
      * awaaz) teeno bhejte hain - bina lock ke purane tukde naye ke BAAD pahunch sakte the (ulti-pulti awaaz).
      */
     private val sendLock = Any()
+    /** v3.39: टूटने से पहले भेजे आख़िरी संदेश (किस्म + आकार) - 1007 की असली वजह लॉग में */
+    private val wire = SentTrace()
+    private val drop1007 = Drop1007()
+    /** "बात खत्म" (audioStreamEnd) एक बात पर एक ही बार */
+    private val endGate = StreamEndGate()
+    /** आख़िरी बार यूज़र बोला / DK बोला - पीछे की आवाज़ कब वापस (DuckWatch) */
+    @Volatile private var quietSince = 0L
+    @Volatile private var duckFreedAt = 0L
+    /** Bluetooth जुड़ा = कॉल वाला तरीका (BtAudio); हटा = speaker */
+    @Volatile private var btOn = false
+    @Volatile private var routeChanged = false
+    /** DK की अपनी आवाज़ कितनी तेज़ बज रही है (आख़िरी ~400ms) - गूँज पहचानने के लिए */
+    private val outLevels = ArrayDeque<Pair<Long, Double>>()
+    private fun outLevel(now: Long): Double = synchronized(outLevels) {
+        while (outLevels.isNotEmpty() && now - outLevels.first().first > 400) outLevels.removeFirst()
+        outLevels.maxOfOrNull { it.second } ?: 0.0
+    }
+    /** Live socket पर भेजो + दर्ज करो (टूटने पर लॉग) */
+    private fun WebSocket.tx(m: String): Boolean { wire.sent(m); return send(m) }
     /** Server ka aakhri sandesh (koi bhi) - atka stream pakadne ke liye */
     @Volatile private var lastServerAt = 0L
     @Volatile private var genStalls = 0
@@ -325,6 +345,17 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
         log("models: ${models.joinToString()}")
         var mi = 0; var fails = 0
         var quickDrops = 0                               // judne ke turant baad baar-baar tootna
+        // v3.39: Bluetooth headset जुड़ा = कॉल वाला तरीका (माइक+आवाज़ headset पर), नहीं तो speaker (पहले जैसा)
+        drop1007.reset(); endGate.reset(); quietSince = 0L; routeChanged = false
+        btOn = BtAudio.acquire(svc, this@GeminiLive) { bt ->
+            btOn = bt; routeChanged = true
+            // DK चुप हो तब आवाज़ का रास्ता बदलो (बोलते-बोलते आवाज़ न कटे)
+            svc.scope.launch(Dispatchers.IO) {
+                withTimeoutOrNull(6_000) { while (isPlaying()) delay(100) }
+                if (!stopped) { startPlayer(); log("आवाज़: " + if (bt) "Bluetooth headset (कॉल वाला तरीका)" else "फ़ोन का speaker") }
+            }
+        }
+        log("आवाज़ का रास्ता: " + if (btOn) "Bluetooth headset (कॉल वाला तरीका)" else "फ़ोन का माइक + speaker")
         startPlayer()
         caption = LiveCaption(key, onText = { t, fin -> onCaption(t, fin) }, onLate = { t -> onLateCaption(t) },
             isNewSpeech = { barging || System.currentTimeMillis() < bargeUntil }).also { it.start() }
@@ -454,6 +485,13 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
                     closeWs(ws, "reconnect")
                     goAway = false
                     reconnects++
+                    log("टूटने से पहले भेजे: ${wire.summary()}")
+                    if (code == 1007) {
+                        // सर्वर को कोई संदेश गलत लगा: उसी (टूटी) बातचीत से दोबारा जुड़ने पर फिर टूटता - नई बातचीत
+                        val a = drop1007.hit(System.currentTimeMillis(), useSearch)
+                        if (handle != null) { handle = null; log("1007: टूटी बातचीत से दोबारा नहीं - नई बातचीत (#${a.count})") }
+                        if (a.disableSearch) { useSearch = false; log("1007 दो मिनट में ${a.count} बार - इस Live में Google Search बंद (जाना-माना 1007 कारण)") }
+                    }
                     log("connection टूटा (code=$code, ${reason.ifBlank { "-" }}, ${(System.currentTimeMillis() - upAt) / 1000}s चला) - दोबारा जुड़ रहा हूँ #$reconnects" +
                         if (handle != null) " (बातचीत वहीं से)" else " (नई बातचीत)")
                     if (reason.lowercase().contains("api key")) throw Fatal("Gemini key बंद हो गई")
@@ -487,6 +525,7 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
                 fastJob?.cancel(); fastJob = null; fastMemo.reset()
                 toolJobs.values.forEach { it.cancel() }; toolJobs.clear()
                 stopPlayer()
+                BtAudio.release(this@GeminiLive); btOn = false
                 if (turnActive) finishTurn()
                 commitPending(true)
                 Ducker.releaseNow()
@@ -498,7 +537,7 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
 
     /** Wake word wala Live chup hone par: connection band nahi, 5 min standby (agli baar judne ki deri = 0) */
     private fun park(w: WebSocket, c: CompletableDeferred<Pair<Int, String>>) {
-        try { w.send("{\"realtimeInput\":{\"audioStreamEnd\":true}}") } catch (_: Exception) {}     // atki awaaz flush
+        try { w.tx("{\"realtimeInput\":{\"audioStreamEnd\":true}}") } catch (_: Exception) {}     // atki awaaz flush
         val p = Parked(w, c, model, System.currentTimeMillis())
         parked = p
         log("connection बंद नहीं किया - ${PARK_MS / 60_000} मिनट standby (अगली बार तुरंत जुड़ेगा)")
@@ -519,7 +558,7 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
             setMode(Mode.THINKING)
             eosAt = System.currentTimeMillis(); trace.reset(); trace.speechEndAt = eosAt; trace.endpointAt = eosAt
             beginTimeline(eosAt, eosAt, "wake word की बात (text)")
-            ws?.send(JSONObject().put("realtimeInput", JSONObject().put("text", t)).toString())
+            ws?.tx(JSONObject().put("realtimeInput", JSONObject().put("text", t)).toString())
             log("पहली बात भेजी: $t")
         } catch (_: Exception) {}
     }
@@ -532,7 +571,7 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
         val now = System.currentTimeMillis()
         eosAt = now; firstAudioAt = 0; trace.reset(); trace.speechEndAt = now; trace.endpointAt = now
         beginTimeline(now, now, "टूटने के बाद दोबारा")
-        val ok = try { w.send(JSONObject().put("realtimeInput", JSONObject().put("text", t)).toString()) } catch (_: Exception) { false }
+        val ok = try { w.tx(JSONObject().put("realtimeInput", JSONObject().put("text", t)).toString()) } catch (_: Exception) { false }
         if (ok) { resentN++; if (DKState.mode != Mode.WORKING) setMode(Mode.THINKING) }
         log("टूटने से पहले की बात (${t.length} अक्षर) नए connection पर text में भेजी" + if (ok) "" else " (भेज नहीं पाया)")
     }
@@ -673,7 +712,8 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
         ws = http.newWebSocket(req, object : WebSocketListener() {
             override fun onOpen(webSocket: WebSocket, response: Response) {
                 setupSentAt = System.currentTimeMillis()
-                if (!webSocket.send(setupJson(m))) closed.complete(0 to "setup नहीं भेज पाया")
+                wire.reset()
+                if (!webSocket.tx(setupJson(m))) closed.complete(0 to "setup नहीं भेज पाया")
             }
             override fun onMessage(webSocket: WebSocket, text: String) { if (webSocket === ws) onServer(text, setup) }
             // Gemini JSON ko binary frame me bhi bhejta hai
@@ -965,6 +1005,8 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
             val id = fc.optString("id"); val name = fc.optString("name"); val args = fc.optJSONObject("args") ?: JSONObject()
             log("tool: $name ${args.toString().take(80)}")
             val tStart = System.currentTimeMillis()
+            // v3.39: जिस जुड़ाव पर सवाल आया, जवाब सिर्फ़ उसी पर. बीच में दोबारा जुड़ा = पुराना id नए सत्र को अनजान -> 1007
+            val sock = ws
             // LAZY: pehle map me darj, phir shuru - warna tez tool (remember_fact) map me aane se pehle hi remove() kar deta tha
             val j = svc.scope.launch(start = CoroutineStart.LAZY) {
               try {
@@ -1024,7 +1066,16 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
                 log("tool $name ${(System.currentTimeMillis() - tStart)} ms: ${result.take(80)}")
                 // ab se deri ginti: tool ka jawab bheja -> pehli awaaz (tool ka samay alag dikhta hai)
                 eosAt = System.currentTimeMillis(); firstAudioAt = 0
-                if (ws?.send(resp.toString()) != true) log("tool जवाब नहीं भेज पाया")
+                val cur = ws
+                if (cur != null && cur === sock) { if (!cur.tx(resp.toString())) log("tool जवाब नहीं भेज पाया") }
+                else {
+                    log("tool $name का जवाब पुराने जुड़ाव का - नए जुड़ाव पर tool जवाब नहीं भेजा (1007 से बचाव)")
+                    if (cur != null && ready && name != "task_status" && name != "remember_fact") try {
+                        cur.tx(JSONObject().put("realtimeInput", JSONObject().put("text",
+                            "SYSTEM NOTE: the connection was renewed while the user's earlier request ($name) was running. Its result: \"" +
+                                result.take(600) + "\". Tell the user briefly only if it is still relevant. Do not invent details.")).toString())
+                    } catch (_: Exception) {}
+                }
               } finally {
                 // hamesha hatao (fail/cancel par bhi) - warna idle-exit aur watchdog band rehte
                 coroutineContext[Job]?.let { me -> toolJobs.remove(id, me) }
@@ -1094,9 +1145,9 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
                 val rep = DKState.lastReply.takeIf { it != before && it.isNotBlank() }
                     ?: if (!done) "It could not be finished in time and was stopped." else null
                 // DK बोल रहा हो तो बीच में नहीं - चुप होने तक (10s तक) रुको
-                withTimeoutOrNull(10_000) { while (isPlaying() || generating) delay(150) }
+                withTimeoutOrNull(15_000) { while (isPlaying() || generating || toolJobs.isNotEmpty()) delay(150) }
                 if (stopped || !ready) return@launch
-                try { ws?.send(JSONObject().put("realtimeInput", JSONObject().put("text", LiveFast.lateNote(req, rep))).toString()) } catch (_: Exception) {}
+                try { ws?.tx(JSONObject().put("realtimeInput", JSONObject().put("text", LiveFast.lateNote(req, rep))).toString()) } catch (_: Exception) {}
                 log("phone_task बाद में पूरा (${if (done) "हुआ" else "रोका"}) - Gemini को बताया")
             }
         }
@@ -1125,10 +1176,10 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
                 SilenceStreamGate.Action.SEND_THEN_END -> end = true
                 SilenceStreamGate.Action.SEND -> {}
             }
-        } else liveGate.onReal()
+        } else { liveGate.onReal(); endGate.onReal() }
         val w = ws
         if (w == null || !ready) {
-            synchronized(pending) { pending.addLast(pcm); while (pending.size > 2000 / CHUNK_MS) { pending.removeFirst(); dropped++ } }
+            synchronized(pending) { pending.addLast(pcm); while (pending.size > 3000 / CHUNK_MS) { pending.removeFirst(); dropped++ } }
             return@synchronized
         }
         // network dheema: line me atka data. Pehle khaamoshi chhodo (32KB), asli awaaz sirf bahut atakne par (256KB) -
@@ -1136,9 +1187,9 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
         if (w.queueSize() > (if (silent) 32 * 1024 else 256 * 1024)) { dropped++; return@synchronized }
         val msg = "{\"realtimeInput\":{\"audio\":{\"mimeType\":\"audio/pcm;rate=$IN_RATE\",\"data\":\"" +
             Base64.encodeToString(pcm, Base64.NO_WRAP) + "\"}}}"
-        if (w.send(msg)) { sent++; sentBytes += pcm.size } else dropped++
+        if (w.tx(msg)) { sent++; sentBytes += pcm.size } else dropped++
         // 1s khaamoshi bheji -> stream band (docs: audioStreamEnd), ab asli awaaz aane tak upload nahi
-        if (end) try { w.send("{\"realtimeInput\":{\"audioStreamEnd\":true}}") } catch (_: Exception) {}
+        if (end && endGate.onSilenceEnd()) try { w.tx("{\"realtimeInput\":{\"audioStreamEnd\":true}}") } catch (_: Exception) {}
     }
 
     /** Caption socket: asli awaaz hamesha; khaamoshi 1s tak, phir audioStreamEnd aur band */
@@ -1146,8 +1197,8 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
         val c = caption ?: return
         if (!silent) { capGate.onReal(); c.send(pcm); return }
         when (capGate.onSilence()) {
-            SilenceStreamGate.Action.SEND -> c.send(pcm)
-            SilenceStreamGate.Action.SEND_THEN_END -> { c.send(pcm); c.endOfSpeech() }
+            SilenceStreamGate.Action.SEND -> c.send(pcm, real = false)
+            SilenceStreamGate.Action.SEND_THEN_END -> { c.send(pcm, real = false); c.endOfSpeech() }
             SilenceStreamGate.Action.SKIP -> {}
         }
     }
@@ -1161,12 +1212,14 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
             try {
                 val r = AudioRecord(src, IN_RATE, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT, maxOf(min * 2, CHUNK_SAMPLES * 2 * 6))
                 if (r.state != AudioRecord.STATE_INITIALIZED) { r.release(); continue }
+                // Bluetooth जुड़ा = headset का माइक (कॉल वाला तरीका)
+                if (btOn) BtAudio.btInput?.let { d -> try { r.setPreferredDevice(d) } catch (_: Exception) {} }
                 val sid = r.audioSessionId
                 val aec = try { AcousticEchoCanceler.isAvailable() && AcousticEchoCanceler.create(sid)?.apply { enabled = true } != null } catch (_: Exception) { false }
                 val ns = try { NoiseSuppressor.isAvailable() && NoiseSuppressor.create(sid)?.apply { enabled = true } != null } catch (_: Exception) { false }
                 val agc = try { AutomaticGainControl.isAvailable() && AutomaticGainControl.create(sid)?.apply { enabled = true } != null } catch (_: Exception) { false }
                 aecOn = aec
-                log("माइक: ${r.sampleRate} Hz, mono, PCM16, source=$src, AEC=$aec NS=$ns AGC=$agc, buffer=${min}B" +
+                log("माइक: ${if (btOn) "Bluetooth headset" else "फ़ोन"} • ${r.sampleRate} Hz, mono, PCM16, source=$src, AEC=$aec NS=$ns AGC=$agc, buffer=${min}B" +
                     " • शोर-गेट चालू: Gemini को सिर्फ़ यूज़र की आवाज़; DK बोलते समय सिर्फ़ पक्के शब्दों पर रुकेगा")
                 return r
             } catch (e: Exception) { log("माइक source $src: ${e.message}") }
@@ -1187,14 +1240,17 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
         trace.backlogBytes = w?.queueSize() ?: 0
         beginTimeline(trace.speechEndAt, now, "फ़ोन VAD")
         if (trace.backlogBytes == 0L) timeline.upload(now)
-        if (ready && w != null) { try { w.send("{\"realtimeInput\":{\"audioStreamEnd\":true}}") } catch (_: Exception) {} }
+        // v3.39: एक बात पर एक ही "बात खत्म"; बहुत छोटी आवाज़ (खटखट) पर बिना caption शब्दों के नहीं - सर्वर का VAD संभाले
+        val words = BargeGate.realWords(caption?.text().orEmpty())
+        val endSent = ready && w != null && endGate.onSpeechEnd(turnDet.lastSpeechMs, words) &&
+            try { w.tx("{\"realtimeInput\":{\"audioStreamEnd\":true}}") } catch (_: Exception) { false }
         caption?.endOfSpeech()
         // DK abhi jawab bana/bol raha hai = server sun chuka; warna 2.5s me kuch na aaye to "nahi suna".
         // dropOld = user ne purana jawab toka tha: woh "generating" PURANE jawab ka hai, is nayi baat ka nahi -
         // pehle yahan watchdog band ho jaata tha aur toka-ke-boli baat ko server na sune to DK chup reh jaata.
         if ((generating && !dropOld) || isPlaying()) replyWatch.onServerAnswered() else replyWatch.onEndOfSpeech(now, turnDet.lastSpeechMs)
         scheduleFast()
-        log("फ़ोन: बोलना खत्म (${now - trace.speechEndAt} ms चुप) → audioStreamEnd भेजा" +
+        log("फ़ोन: बोलना खत्म (${now - trace.speechEndAt} ms चुप) → " + (if (endSent) "audioStreamEnd भेजा" else "audioStreamEnd नहीं (पहले भेजा जा चुका / बहुत छोटी आवाज़)") +
             if (trace.backlogBytes > 16 * 1024) " • नेटवर्क में ${trace.backlogBytes / 1024}KB अटका (upload धीमा)" else "")
         // sochne ka halka pulse - sannata na lage
         if (!isPlaying() && DKState.mode != Mode.WORKING) setMode(Mode.THINKING)
@@ -1221,7 +1277,7 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
         log("आवाज़ वाली बात की समय-रेखा: ${timeline.summary()}")
         timeline.begin(now, now, "caption text (नहीं सुना था)"); waitingLogged = false
         replyWatch.onRescued()               // ek baat ke liye ek hi baar (atka-nudge bhi nahi)
-        val ok = try { ws?.send(JSONObject().put("realtimeInput", JSONObject().put("text", t)).toString()) == true } catch (_: Exception) { false }
+        val ok = try { ws?.tx(JSONObject().put("realtimeInput", JSONObject().put("text", t)).toString()) == true } catch (_: Exception) { false }
         if (ok) rescued++
         log("Gemini ने आवाज़ नहीं सुनी (2.5s में कुछ नहीं) - caption का text सीधे भेजा: \"${t.take(60)}\"" + if (ok) "" else " (भेज नहीं पाया)")
         if (DKState.mode != Mode.WORKING) setMode(Mode.THINKING)
@@ -1240,7 +1296,7 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
         eosAt = now; firstAudioAt = 0; trace.reset(); trace.speechEndAt = now; trace.endpointAt = now
         log("अटकी बात की समय-रेखा: ${timeline.summary()}")
         timeline.begin(now, now, "अटका - text में दोबारा"); waitingLogged = false
-        val ok = try { ws?.send(JSONObject().put("realtimeInput", JSONObject().put("text", t)).toString()) == true } catch (_: Exception) { false }
+        val ok = try { ws?.tx(JSONObject().put("realtimeInput", JSONObject().put("text", t)).toString()) == true } catch (_: Exception) { false }
         if (ok) stalledN++
         log("Gemini ने सुना पर 4.5s में जवाब शुरू नहीं किया - वही बात text में दोबारा भेजी: \"${t.take(60)}\"" + if (ok) "" else " (भेज नहीं पाया)")
         if (DKState.mode != Mode.WORKING) setMode(Mode.THINKING)
@@ -1307,6 +1363,14 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
             var last = 0L; var zeroRun = 0; var errRun = 0
             loudMs = 0L
             while (isActive && !stopped) {
+                // v3.39: Bluetooth जुड़ा/हटा -> माइक नए रास्ते पर दोबारा खोलो
+                if (routeChanged) {
+                    routeChanged = false
+                    try { r.stop() } catch (_: Exception) {}; try { r.release() } catch (_: Exception) {}
+                    r = openMic() ?: throw Fatal("माइक दोबारा नहीं खुला (Bluetooth बदला)", recoverable = true)
+                    r.startRecording()
+                    log("माइक नए रास्ते पर: " + if (btOn) "Bluetooth headset" else "फ़ोन का माइक")
+                }
                 // poora 40ms tukda padho (beech ka khaali hissa = gap). Koi jama nahi: har 40ms turant bhejo
                 var got = 0
                 while (got < CHUNK_SAMPLES && isActive) {
@@ -1342,11 +1406,12 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
                 val chunk = bytes.copyOf()
                 if (playing) {
                     // ---- DK bol raha hai: mic band NAHI, har 40ms suno. Par Gemini ko sirf PAKKE user shabd.
+                    quietSince = now
                     turnDet.reset()
                     if (bargeDet.ambient == 0.0) bargeDet.ambient = turnDet.noise
                     when (bargeGate.state) {
                         BargeGate.State.IDLE -> {
-                            if (bargeDet.feed(rms, now)) {
+                            if (bargeDet.feed(rms, now, outLevel(now))) {
                                 // SHAK: tez awaaz. DK ki awaaz halki (rokna nahi), caption model ko suno - shabd hain?
                                 bargeGate.suspect(now); barging = true; loudMs = 0L
                                 track?.let { try { it.setVolume(0.3f) } catch (_: Exception) {} }
@@ -1385,6 +1450,12 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
                     if (bargeGate.state != BargeGate.State.IDLE) { bargeGate.reset(); track?.let { try { it.setVolume(1f) } catch (_: Exception) {} } }
                     if (DKState.mode == Mode.LISTENING) DKState.level = (rms / 3500.0).toFloat().coerceIn(0f, 1f)
                     val ev = turnDet.feed(rms, now)
+                    if (turnDet.inSpeech || generating || (turnActive && now - eosAt < 8_000)) quietSince = now
+                    // v3.39: पीछे की आवाज़ - यूज़र चुप, DK चुप, जवाब नहीं बन रहा, 3s शांत = वापस तेज़ (हर रास्ते पर)
+                    if (DuckWatch.shouldRelease(Ducker.active, turnDet.inSpeech, false, generating, quietSince, now) && now - duckFreedAt > 2_000) {
+                        duckFreedAt = now; Ducker.releaseNow()
+                        log("पीछे की आवाज़ वापस (3s से सब शांत)")
+                    }
                     if (ev == TurnDetector.Event.SPEECH_START) { preroll.forEach { sendAudio(it); capSend(it) }; preroll.clear() }
                     // bolte samay + baat khatam hone tak (aakhri 500ms chup bhi) asli awaaz; warna khaamoshi
                     // (khaamoshi 1s tak jaati hai, phir audioStreamEnd aur upload band - SilenceStreamGate)
@@ -1407,7 +1478,7 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
         } finally {
             try { r.stop() } catch (_: Exception) {}
             try { r.release() } catch (_: Exception) {}
-            try { if (ready) ws?.send("{\"realtimeInput\":{\"audioStreamEnd\":true}}") } catch (_: Exception) {}
+            try { if (ready) ws?.tx("{\"realtimeInput\":{\"audioStreamEnd\":true}}") } catch (_: Exception) {}
             DKState.level = 0f
         }
     }
@@ -1417,7 +1488,8 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
         stopPlayer()
         val min = AudioTrack.getMinBufferSize(OUT_RATE, AudioFormat.CHANNEL_OUT_MONO, AudioFormat.ENCODING_PCM_16BIT)
         val t = AudioTrack.Builder()
-            .setAudioAttributes(AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_MEDIA)
+            // Bluetooth = कॉल वाली आवाज़ (headset में, गूँज हटाना ठीक); नहीं तो पहले जैसा मीडिया (speaker)
+            .setAudioAttributes(AudioAttributes.Builder().setUsage(if (btOn) AudioAttributes.USAGE_VOICE_COMMUNICATION else AudioAttributes.USAGE_MEDIA)
                 .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH).build())
             .setAudioFormat(AudioFormat.Builder().setSampleRate(OUT_RATE).setChannelMask(AudioFormat.CHANNEL_OUT_MONO)
                 .setEncoding(AudioFormat.ENCODING_PCM_16BIT).build())
@@ -1426,7 +1498,7 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
             .build()
         t.play()
         track = t
-        log("स्पीकर: $OUT_RATE Hz PCM16 mono stream")
+        log((if (btOn) "आवाज़: Bluetooth headset" else "स्पीकर") + ": $OUT_RATE Hz PCM16 mono stream")
         playThread = Thread {
             var speakingSet = false
             while (!Thread.currentThread().isInterrupted) {
@@ -1445,6 +1517,8 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
                 if (first) { speakingSet = true; setMode(Mode.SPEAKING) }
                 val now = System.currentTimeMillis()
                 playEnd = maxOf(playEnd, now) + b.size * 1000L / (OUT_RATE * 2)
+                // DK की अपनी आवाज़ कितनी तेज़ (गूँज पहचानने के लिए - BargeDetector)
+                noteOutLevel(b, now)
                 var off = 0
                 while (off < b.size && g == gen) {
                     val n = try { tr.write(b, off, b.size - off) } catch (_: Exception) { -1 }
@@ -1473,6 +1547,13 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
         playQ.clear()
         playEnd = 0L
         track?.let { try { it.pause(); it.flush(); it.play() } catch (_: Exception) {} }
+    }
+
+    /** बजने वाले टुकड़े की तेज़ी (हर चौथा sample - सस्ता) */
+    private fun noteOutLevel(b: ByteArray, now: Long) {
+        var sq = 0.0; var k = 0; var i = 0
+        while (i + 1 < b.size) { val v = (b[i].toInt() and 0xff) or (b[i + 1].toInt() shl 8); sq += (v * v).toDouble(); k++; i += 8 }
+        if (k > 0) synchronized(outLevels) { outLevels.addLast(now to sqrt(sq / k)); while (outLevels.size > 40) outLevels.removeFirst() }
     }
 
     private fun stopPlayer() {

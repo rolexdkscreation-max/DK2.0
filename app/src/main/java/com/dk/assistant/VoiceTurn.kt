@@ -93,23 +93,37 @@ class BargeDetector(
     var triggered = false
         private set
 
-    fun reset() { echo = 0.0; loud = 0; since = 0L; triggered = false }
+    /** v3.39: माइक में गूँज ÷ DK की अपनी आवाज़ (जितना DK बजाता है, उसका कितना हिस्सा माइक में लौटता है) */
+    private var ratio = 0.0
+
+    fun reset() { echo = 0.0; loud = 0; since = 0L; triggered = false; ratio = 0.0 }
 
     /** Galat alarm tha (shor): dobara suno, par ab is shor ko "goonj" maan kar (wahi shor dobara na roke) */
     fun rearm(noiseRms: Double) { loud = 0; triggered = false; echo = max(echo, noiseRms * 0.6) }
 
     /** true = abhi-abhi user ki awaaz pakdi (sirf ek baar, jab tak reset na ho) */
-    fun feed(rms: Double, now: Long): Boolean {
+    /**
+     * @param out DK की अपनी आवाज़ अभी कितनी तेज़ बज रही है (आख़िरी ~400ms का सबसे ऊँचा; 0 = पता नहीं -> पुराना तरीका).
+     * DK ज़ोर से बोले तो गूँज भी ज़ोर से आती है - इसलिए "यूज़र" तभी जब माइक की आवाज़ उस पल की अनुमानित गूँज से 3 गुना हो.
+     */
+    fun feed(rms: Double, now: Long, out: Double = 0.0): Boolean {
         if (triggered) return false
         if (since == 0L) since = now
-        if (now - since < learnMs) { loud = 0; echo = max(echo * 0.8, rms); return false }
-        if (rms > maxOf(echo * 2.5, ambient * 3.5, minRms)) loud++
-        else { loud = 0; echo = if (echo == 0.0) rms else echo * 0.9 + rms * 0.1 }
+        if (now - since < learnMs) { loud = 0; echo = max(echo * 0.8, rms); learn(rms, out); return false }
+        val expected = if (out > 0.0 && ratio > 0.0) ratio * out * 3.0 else 0.0
+        if (rms > maxOf(echo * 2.5, ambient * 3.5, minRms, expected)) loud++
+        else { loud = 0; echo = if (echo == 0.0) rms else echo * 0.9 + rms * 0.1; learn(rms, out) }
         if (loud >= needChunks) { triggered = true; return true }
         return false
     }
 
     fun echoLevel() = echo
+
+    private fun learn(rms: Double, out: Double) {
+        if (out <= 300.0) return
+        val r = minOf(rms / out, 4.0)
+        ratio = if (ratio == 0.0) r else max(ratio * 0.97, r)
+    }
 }
 
 /**

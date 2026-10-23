@@ -70,7 +70,10 @@ object TaskStatus {
     fun end(key: String, state: State, result: String) {
         val j = synchronized(this) {
             val o = jobs[key]?.takeIf { it.active } ?: return
-            o.copy(state = state, result = clean(result, 400), ended = clock()).also { jobs[key] = it }
+            // WAITING = रुका है, खत्म नहीं: ended 0 (summary में "चल रहा/इंतज़ार" जैसा), नतीजा = क्या पूछा
+            if (state == State.WAITING) o.copy(state = state, last = clean(result), lastAt = clock(), result = clean(result, 400)).also { jobs[key] = it }
+            else o.copy(state = state, result = clean(result, 400), ended = clock())
+                .also { jobs[key] = it }
         }
         emit(j, true)
     }
@@ -88,20 +91,28 @@ object TaskStatus {
         val list = all().filter { it.active || now - it.ended < 60 * 60_000L }
         if (list.isEmpty()) return "No background task (DK Computer / coding team) has been started recently. Tell the user honestly that nothing is running."
         return list.joinToString("\n") { j ->
-            val head = "${j.whoEn} - task: \"${j.task}\" - ${j.state.en}"
+            // हालत सबसे पहले; काम का text साफ़ "निर्देश" (हालत नहीं) - v3.39: model निर्देश को ही नतीजा समझ लेता था
+            val head = "STATE: ${j.state.en} - ${j.whoEn}" + (if (j.active) " (NOT DONE YET)" else "") +
+                " - the request it was given (an instruction, NOT a status): \"${j.task}\""
             when {
-                j.active -> "$head for ${ago(now - j.started)}; ${j.steps} real steps so far" +
+                j.state == State.WAITING -> "$head; waiting for the user since ${ago(now - j.lastAt)}; it asked: \"${j.last.ifBlank { "-" }}\""
+                j.active -> "$head; running for ${ago(now - j.started)}; ${j.steps} real steps so far" +
                     (if (j.last.isNotBlank()) "; latest step (${ago(now - j.lastAt)} ago): \"${j.last}\"" else "; no step reported yet")
-                else -> "$head ${ago(now - j.ended)} ago after ${ago(j.ended - j.started)}; result: \"${j.result.ifBlank { "-" }}\""
+                else -> "$head; ended ${ago(now - j.ended)} ago after ${ago(j.ended - j.started)}; result: \"${j.result.ifBlank { "-" }}\""
             }
-        } + "\nTell the user ONLY these facts, briefly, in the reply language. Never invent progress, percentages or results. Say it is done ONLY if the state is FINISHED."
+        } + "\nTell the user ONLY these facts, briefly, in the reply language. Never invent progress, percentages or results. Say it is done ONLY if the STATE is FINISHED. Never say a PR is merged or an APK is ready/released unless the result says exactly that."
     }
 
     /** काम खत्म होने पर DK लाइव को (वही बोले, सच) */
     fun endNote(j: Job): String =
-        "SYSTEM NOTE: the background task given to ${j.whoEn} (\"${j.task}\") has now really ended - state: ${j.state.en}. " +
+        if (j.state == State.WAITING)
+            "SYSTEM NOTE: ${j.whoEn} is NOT done - it is WAITING FOR THE USER's approval/answer. It asked: \"${j.result.ifBlank { j.last }.ifBlank { "-" }}\". " +
+                "Tell the user briefly in the reply language what it understood and that it needs their \"हाँ\" (or a correction) to start. " +
+                "Do NOT say the work is complete, and do not say any APK is ready."
+        else "SYSTEM NOTE: the background task given to ${j.whoEn} (\"${j.task}\") has now really ended - state: ${j.state.en}. " +
             "Result: \"${j.result.ifBlank { "-" }}\". Tell the user this briefly in the reply language. " +
-            (if (j.state == State.DONE) "" else "Do NOT say the work is complete. ") + "Do not invent details."
+            (if (j.state == State.DONE) "" else "Do NOT say the work is complete. ") +
+            "Never say a PR is merged or an APK is ready/released unless the result says exactly that. Do not invent details."
 
     /** notification की लाइन (हिंदी) */
     fun line(j: Job, now: Long = clock()): String {
@@ -113,6 +124,8 @@ object TaskStatus {
     /** कोडिंग session की आख़िरी लाइन से सच्ची हालत (7-एजेंट रिपोर्ट: "✅ काम पूरा हुआ" सिर्फ़ चेक पास पर) */
     fun coderState(lastRole: String?, lastText: String?, cancelled: Boolean): State = when {
         cancelled -> State.CANCELLED
+        // v3.39: प्रॉम्प्ट इंजीनियर ने समझ बताई और "हाँ" का इंतज़ार - यह "पूरा" नहीं (पहले "d" = FINISHED गिना जाता था)
+        lastText.orEmpty().contains("मैंने आपकी बात ऐसे समझी") -> State.WAITING
         lastText.orEmpty().contains("⏳ काम अभी पूरा नहीं") -> State.NOT_DONE
         lastRole == "e" || lastText.orEmpty().contains("❌") -> State.FAILED
         lastRole == "d" -> State.DONE

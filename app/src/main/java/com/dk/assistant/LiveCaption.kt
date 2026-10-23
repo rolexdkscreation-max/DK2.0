@@ -53,6 +53,11 @@ class LiveCaption(
     @Volatile private var fails = 0
     @Volatile private var dead = false          // is key par chalta hi nahi
     @Volatile private var upAt = 0L
+    /** v3.39: आख़िरी असली आवाज़ कब भेजी (टूटने का लॉग + जुड़ाव कब बदलें) */
+    @Volatile private var lastRealAt = 0L
+    /** टूटने से पहले बन रहा नया जुड़ाव (तैयार होते ही पुराना चुपचाप बंद) */
+    @Volatile private var next: WebSocket? = null
+    @Volatile private var rotations = 0
 
     private val lock = Any()
     private val committed = StringBuilder()
@@ -87,7 +92,8 @@ class LiveCaption(
         stopped = true
         ready = false
         try { ws?.close(1000, "bye") } catch (_: Exception) {}
-        ws = null
+        try { next?.close(1000, "bye") } catch (_: Exception) {}
+        ws = null; next = null
     }
 
     /**
@@ -104,8 +110,9 @@ class LiveCaption(
     }
 
     /** Mic ka 16 kHz PCM16 tukda */
-    fun send(pcm: ByteArray) {
+    fun send(pcm: ByteArray, real: Boolean = true) {
         if (dead || stopped) return
+        if (real) lastRealAt = System.currentTimeMillis()
         val msg = "{\"realtimeInput\":{\"audio\":{\"mimeType\":\"audio/pcm;rate=${GeminiLive.IN_RATE}\",\"data\":\"" +
             Base64.encodeToString(pcm, Base64.NO_WRAP) + "\"}}}"
         val w = ws
@@ -143,20 +150,53 @@ class LiveCaption(
         ready = false
         val m = MODELS[mi.coerceIn(0, MODELS.size - 1)]
         val req = Request.Builder().url("$URL?key=$key").build()
-        ws = http.newWebSocket(req, object : WebSocketListener() {
-            override fun onOpen(webSocket: WebSocket, response: Response) {
-                webSocket.send(setupJson(m))
+        ws = http.newWebSocket(req, listener(m))
+    }
+
+    private fun listener(m: String) = object : WebSocketListener() {
+        override fun onOpen(webSocket: WebSocket, response: Response) {
+            webSocket.send(setupJson(m))
+        }
+        override fun onMessage(webSocket: WebSocket, text: String) = route(webSocket, text, m)
+        override fun onMessage(webSocket: WebSocket, bytes: ByteString) = route(webSocket, bytes.utf8(), m)
+        override fun onClosing(webSocket: WebSocket, code: Int, reason: String) {
+            try { webSocket.close(1000, null) } catch (_: Exception) {}
+            if (webSocket === ws) dropped(code, reason)
+            else if (webSocket === next) { next = null; log("नया जुड़ाव नहीं बना (code=$code) - पुराना चलता रहेगा") }
+        }
+        override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
+            if (webSocket === ws) dropped(response?.code ?: 0, t.message ?: t.javaClass.simpleName)
+            else if (webSocket === next) next = null
+        }
+    }
+
+    private fun route(webSocket: WebSocket, text: String, m: String) {
+        if (webSocket === ws) { onServer(text, m); return }
+        // बदलने वाला नया जुड़ाव तैयार: अब से वही, पुराना चुपचाप बंद (बीच में शब्द नहीं छूटते)
+        if (webSocket === next && text.contains("setupComplete")) {
+            val old = ws
+            ws = webSocket; next = null
+            ready = true; upAt = System.currentTimeMillis(); fails = 0; rotations++
+            try { old?.close(1000, "rotate") } catch (_: Exception) {}
+            log("जुड़ाव चुपचाप बदला (#$rotations, ${CaptionRotate.AT_MS / 1000}s पर - सर्वर ~61s पर काटता है)")
+            flushPending(webSocket)
+            scheduleRotate(webSocket, m)
+        }
+    }
+
+    /** v3.39: सर्वर ~61 सेकंड पर 1008 से काटता है - 50 सेकंड पर (यूज़र बोल न रहा हो तब) नया जुड़ाव */
+    private fun scheduleRotate(cur: WebSocket, m: String) {
+        Thread {
+            while (!stopped && ws === cur) {
+                try { Thread.sleep(1_000) } catch (_: InterruptedException) { return@Thread }
+                if (stopped || ws !== cur || next != null || !ready) continue
+                val now = System.currentTimeMillis()
+                if (CaptionRotate.now(now - upAt, if (lastRealAt == 0L) Long.MAX_VALUE else now - lastRealAt)) {
+                    next = http.newWebSocket(Request.Builder().url("$URL?key=$key").build(), listener(m))
+                    return@Thread
+                }
             }
-            override fun onMessage(webSocket: WebSocket, text: String) { if (webSocket === ws) onServer(text, m) }
-            override fun onMessage(webSocket: WebSocket, bytes: ByteString) { if (webSocket === ws) onServer(bytes.utf8(), m) }
-            override fun onClosing(webSocket: WebSocket, code: Int, reason: String) {
-                try { webSocket.close(1000, null) } catch (_: Exception) {}
-                if (webSocket === ws) dropped(code, reason)
-            }
-            override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
-                if (webSocket === ws) dropped(response?.code ?: 0, t.message ?: t.javaClass.simpleName)
-            }
-        })
+        }.apply { isDaemon = true; name = "dk-caption-rotate"; start() }
     }
 
     private fun dropped(code: Int, reason: String) {
@@ -165,7 +205,9 @@ class LiveCaption(
         ws = null
         if (stopped) return
         val r = reason.lowercase()
-        log("टूटा code=$code $reason")
+        val now = System.currentTimeMillis()
+        log("टूटा code=$code $reason • ${if (upAt > 0) (now - upAt) / 1000 else 0}s चला • आख़िरी असली आवाज़ " +
+            if (lastRealAt > 0) "${(now - lastRealAt) / 1000}s पहले" else "कभी नहीं")
         // setup hi nahi hua aur model/key ki dikkat -> agla model, phir band
         if (!wasReady && (r.contains("model") || r.contains("not found") || r.contains("not supported") ||
                 r.contains("permission") || r.contains("api key") || r.contains("quota") || r.contains("exhausted") ||
@@ -190,7 +232,7 @@ class LiveCaption(
         if (o.has("setupComplete")) {
             ready = true; upAt = System.currentTimeMillis(); fails = 0
             log("जुड़ गया [$m]")
-            ws?.let { flushPending(it) }
+            ws?.let { flushPending(it); scheduleRotate(it, m) }
             return
         }
         if (o.has("goAway")) {

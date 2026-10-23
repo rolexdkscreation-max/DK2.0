@@ -3,7 +3,6 @@ package com.dk.assistant
 import android.annotation.SuppressLint
 import android.content.Context
 import android.media.AudioFormat
-import android.media.AudioManager
 import android.media.AudioRecord
 import android.media.MediaRecorder
 import android.media.audiofx.AcousticEchoCanceler
@@ -60,18 +59,17 @@ class Ear(
 
     @SuppressLint("MissingPermission")
     private fun open(): AudioRecord? {
-        rec?.let { return inf@ it }
+        rec?.let { return it }
         if (!Setup.hasMic(ctx)) { problem = "perm"; return null }
         return try {
-            val audioManager = ctx.getSystemService(Context.AUDIO_SERVICE) as? AudioManager
-            audioManager?.mode = AudioManager.MODE_IN_COMMUNICATION
-            audioManager?.startBluetoothSco()
-            audioManager?.isBluetoothScoOn = true
-
+            // v3.39: Bluetooth headset जुड़ा हो तभी उसका माइक (साझा BtAudio); नहीं तो फ़ोन का - मोड को बेवजह हाथ नहीं
+            val bt = BtAudio.acquire(ctx, this) { routeChanged = true }
             val min = AudioRecord.getMinBufferSize(RATE, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT)
             val r = AudioRecord(MediaRecorder.AudioSource.VOICE_RECOGNITION, RATE,
                 AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT, maxOf(min, FRAME * 2 * 8))
             if (r.state != AudioRecord.STATE_INITIALIZED) { r.release(); problem = "busy"; return null }
+            if (bt) BtAudio.btInput?.let { d -> try { r.setPreferredDevice(d) } catch (_: Exception) {} }
+            DKLog.d("Ear माइक: " + if (bt) "Bluetooth headset" else "फ़ोन")
             try { if (AcousticEchoCanceler.isAvailable()) aec = AcousticEchoCanceler.create(r.audioSessionId)?.apply { enabled = true } } catch (_: Exception) {}
             try { if (NoiseSuppressor.isAvailable()) ns = NoiseSuppressor.create(r.audioSessionId)?.apply { enabled = true } } catch (_: Exception) {}
             rec = r; r
@@ -80,13 +78,15 @@ class Ear(
         }
     }
 
+    /** Bluetooth जुड़ा/हटा - माइक नए रास्ते पर दोबारा खुले */
+    @Volatile private var routeChanged = false
+
     fun release() {
-        try {
-            val audioManager = ctx.getSystemService(Context.AUDIO_SERVICE) as? AudioManager
-            audioManager?.stopBluetoothSco()
-            audioManager?.isBluetoothScoOn = false
-            audioManager?.mode = AudioManager.MODE_NORMAL
-        } catch (_: Exception) {}
+        closeRec()
+        BtAudio.release(this)
+    }
+
+    private fun closeRec() {
         try { rec?.stop() } catch (_: Exception) {}
         try { aec?.release(); ns?.release() } catch (_: Exception) {}
         try { rec?.release() } catch (_: Exception) {}
@@ -100,7 +100,8 @@ class Ear(
      */
     suspend fun nextUtterance(barge: Boolean = false, vadOnly: Boolean = false, onStart: (() -> Unit)? = null,
                               onDiscard: (() -> Unit)? = null): ByteArray? = withContext(Dispatchers.IO) {
-        val r = open() ?: return@withContext null
+        if (routeChanged) { routeChanged = false; closeRec() }
+        var r = open() ?: return@withContext null
         try { r.startRecording() } catch (e: Exception) { release(); problem = "busy"; return@withContext null }
         if (r.recordingState != AudioRecord.RECORDSTATE_RECORDING) { release(); problem = "busy"; return@withContext null }
         problem = null
@@ -115,6 +116,14 @@ class Ear(
         try {
             while (true) {
                 coroutineContext.ensureActive()
+                // Bluetooth जुड़ा/हटा (बात के बीच नहीं): माइक नए रास्ते पर
+                if (routeChanged && !talking) {
+                    routeChanged = false
+                    try { r.stop() } catch (_: Exception) {}
+                    closeRec()
+                    r = open() ?: return@withContext null
+                    try { r.startRecording() } catch (_: Exception) { release(); problem = "busy"; return@withContext null }
+                }
                 val n = r.read(buf, 0, FRAME)
                 if (n <= 0) { if (n < 0) return@withContext null; continue }
                 var sum = 0.0
