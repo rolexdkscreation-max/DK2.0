@@ -168,15 +168,24 @@ object SevenPlus {
         val notTouch: List<String>,
         val questions: List<String>,
         val area: List<String>,
-        val answer: String = ""
+        val answer: String = "",
+        /** user को क्या-क्या बदला हुआ मिलेगा */
+        val changes: List<String> = emptyList(),
+        /** टीम कैसे करेगी - कदम दर कदम */
+        val steps: List<String> = emptyList(),
+        /** फ़ोटो/वीडियो में प्रॉम्प्ट इंजीनियर ने क्या देखा (हर एजेंट को लिखा हुआ जाता है) */
+        val mediaNotes: String = ""
     ) {
         val needsAnswer get() = questions.isNotEmpty()
 
         /** user को दिखाने वाला संदेश */
         fun hindi(): String = buildString {
             append("✍ मैंने आपकी बात ऐसे समझी:\n").append(understood.ifBlank { brief }).append("\n")
-            append("\nकाम का प्रकार: ").append(when (kind) { Seven.Kind.BUG -> "बग ठीक करना (पहले जड़ ढूँढेंगे)"; Seven.Kind.QUESTION -> "सवाल"; else -> "नया फ़ीचर / बदलाव" }).append("\n")
-            if (area.isNotEmpty()) append("कहाँ बदलेगा (अंदाज़ा): ").append(area.take(6).joinToString()).append("\n")
+            append("\nकाम का प्रकार: ").append(when (kind) { Seven.Kind.BUG -> "बग ठीक करना (पहले जड़ ढूँढेंगे)"; Seven.Kind.QUESTION -> "सवाल"; Seven.Kind.STATUS -> "रिपो/PR की जाँच"; else -> "नया फ़ीचर / बदलाव" }).append("\n")
+            if (mediaNotes.isNotBlank()) append("\n🖼 आपकी फ़ोटो/वीडियो में मैंने देखा:\n").append(mediaNotes.trim().take(1500)).append("\n")
+            if (changes.isNotEmpty()) append("\n🔧 क्या-क्या बदलेगा:\n").append(changes.joinToString("\n") { "• $it" }).append("\n")
+            if (steps.isNotEmpty()) append("\n🪜 कैसे करेंगे (कदम दर कदम):\n").append(steps.mapIndexed { i, x -> "${i + 1}. $x" }.joinToString("\n")).append("\n")
+            if (area.isNotEmpty()) append("\n📂 कहाँ बदलेगा (अंदाज़ा): ").append(area.take(8).joinToString()).append("\n")
             if (acceptance.isNotEmpty()) append("\nकाम पूरा तब माना जाएगा जब:\n").append(acceptance.joinToString("\n") { "• $it" }).append("\n")
             if (notTouch.isNotEmpty()) append("\nइन्हें नहीं छेड़ा जाएगा:\n").append(notTouch.joinToString("\n") { "• $it" }).append("\n")
             if (questions.isNotEmpty()) {
@@ -192,7 +201,9 @@ object SevenPlus {
                     o?.optString("understood").orEmpty().trim(),
                     o?.optString("spec").orEmpty().trim().ifBlank { brief },
                     acc, Seven.strings(o?.optJSONArray("not_touch")), Seven.strings(o?.optJSONArray("questions")).take(4),
-                    Seven.strings(o?.optJSONArray("area")).take(8))
+                    Seven.strings(o?.optJSONArray("area")).take(8),
+                    changes = Seven.strings(o?.optJSONArray("changes")).take(12),
+                    steps = Seven.strings(o?.optJSONArray("steps")).take(10))
             }
         }
     }

@@ -23,6 +23,9 @@ class CoderAi(val provider: Provider, private val key: String, val model: String
               /** रिपोर्ट कहाँ जाए (कोडिंग टीम = CoderReport, DK कंप्यूटर = उसकी अपनी रिपोर्ट) */
               private val sink: (String, String) -> Unit = { p, f -> CoderReport.add(p, f) }) {
     private val selfLabel = "${provider.name} ($model$note)"
+    private fun capKey() = "${provider.id}|${key.takeLast(6)}|$model"
+    /** एक request में यह मॉडल कितने अक्षर पढ़ सकता है (413 के बाद जो सीमा याद हुई वही) - एजेंट इसी हिसाब से पूरी फ़ाइलें भेजते हैं */
+    val budget: Int get() = sizeCap[capKey()]?.first ?: CoderContext.budgetFor(provider.isGemini, model)
     /** Abhi jo AI chal rahi hai (limit par switch hua ho to wahi dikhe) */
     val label: String get() = sticky()?.takeIf { l -> fallbacks.any { it.selfLabel == l } } ?: selfLabel
 
@@ -30,11 +33,11 @@ class CoderAi(val provider: Provider, private val key: String, val model: String
      * Ek API ki limit/quota (429) ya server dikkat ho to agla model/API - kaam beech me na ruke.
      * Pehle chuna hua, phir baaki API. Sab ki limit ek saath khatm ho to ek baar thoda rukkar dobara.
      */
-    fun chat(system: String, msgs: List<Pair<String, String>>): String {
+    fun chat(system: String, msgs: List<Pair<String, String>>, media: List<CoderMedia> = emptyList()): String {
         var attempt = 1
         while (true) {
             try {
-                val r = chatChain(system, msgs)
+                val r = chatChain(system, msgs, media)
                 if (attempt > 1) sink("AI API अस्थायी गलती (नेटवर्क/सर्वर)", "अपने-आप दोबारा कोशिश की ($attempt/${Retry.ATTEMPTS}) — सफल")
                 return r
             } catch (e: java.io.IOException) {
@@ -52,7 +55,7 @@ class CoderAi(val provider: Provider, private val key: String, val model: String
     }
 
     /** एक बार पूरी chain: चुनी API → बाकी API (limit/server गलती पर अगली) */
-    private fun chatChain(system: String, msgs: List<Pair<String, String>>): String {
+    private fun chatChain(system: String, msgs: List<Pair<String, String>>, media: List<CoderMedia>): String {
         val chain = listOf(this) + fallbacks
         val ordered = orderChain(chain.map { it.selfLabel }, sticky()).map { l -> chain.first { it.selfLabel == l } }
         val errs = mutableListOf<Pair<CoderAi, java.io.IOException>>()
@@ -61,7 +64,7 @@ class CoderAi(val provider: Provider, private val key: String, val model: String
             // 429 के बाद: थोड़ा रुककर (2s, 4s, 8s) अगला मॉडल/API - एक साथ सब पर धावा नहीं
             if (n429 > 0 && (errs.lastOrNull()?.second as? AiException)?.code == 429) Thread.sleep(CoderContext.backoffMs(n429))
             try {
-                val r = ai.chatOne(system, msgs)
+                val r = ai.chatOne(system, msgs, media)
                 val prev = sticky() ?: selfLabel
                 if (ai.selfLabel != prev) {
                     val why = errs.lastOrNull()?.let { (who, e) -> "${who.selfLabel}: ${reason(e)}" } ?: "$prev अब नहीं चल रहा था"
@@ -97,16 +100,24 @@ class CoderAi(val provider: Provider, private val key: String, val model: String
      * एक API पर request. 413 / "बहुत बड़ी" मिले तो वही request दोबारा नहीं - इतिहास छोटा करके (ज़्यादा से ज़्यादा 2 बार)
      * और इस मॉडल की सीमा याद रखो ताकि अगले कदम पहले से छोटे जाएँ.
      */
-    private fun chatOne(system: String, msgs: List<Pair<String, String>>): String {
-        val k = "${provider.id}|${key.takeLast(6)}|$model"
-        var (budget, maxTok) = sizeCap[k] ?: (CoderContext.DEFAULT_BUDGET to 16000)
+    private fun chatOne(system: String, msgs: List<Pair<String, String>>, media: List<CoderMedia> = emptyList()): String {
+        val k = capKey()
+        var (budget, maxTok) = sizeCap[k] ?: (CoderContext.budgetFor(provider.isGemini, model) to 16000)
         var shrinks = 0
+        // फ़ोटो/वीडियो: Gemini = पूरा वीडियो (छोटा हो तो) या frames; बाकी = सिर्फ़ फ़ोटो/frames
+        var parts = CoderMedia.allParts(media, provider.isGemini)
         while (true) {
             val room = (budget - system.length).coerceAtLeast(CoderContext.MIN_BUDGET)
             val send = if (CoderContext.total(msgs) > room) CoderContext.compact(msgs, room) else msgs
             try {
-                return if (provider.isGemini) gemini(system, send) else openAi(system, send, maxTok)
+                return if (provider.isGemini) gemini(system, send, parts) else openAi(system, send, maxTok, parts)
             } catch (e: AiException) {
+                // यह मॉडल फ़ोटो/वीडियो नहीं ले सकता -> बिना फ़ोटो (लिखा विवरण साथ जाता है), काम न रुके
+                if (parts.isNotEmpty() && e.code in listOf(400, 413, 415, 422)) {
+                    parts = emptyList()
+                    sink("$selfLabel: फ़ोटो/वीडियो नहीं ले सका (${e.code})", "बिना फ़ोटो दोबारा भेजा — फ़ोटो का लिखा विवरण साथ गया")
+                    continue
+                }
                 if (!CoderContext.tooLarge(e.code, e.message.orEmpty()) || shrinks >= 2) throw e
                 shrinks++
                 val (c2, t2) = CoderContext.shrink(CoderContext.total(send) + system.length, maxTok, e.message.orEmpty())
@@ -118,7 +129,7 @@ class CoderAi(val provider: Provider, private val key: String, val model: String
         }
     }
 
-    private fun gemini(system: String, msgs: List<Pair<String, String>>): String {
+    private fun gemini(system: String, msgs: List<Pair<String, String>>, parts: List<Pair<String, String>> = emptyList()): String {
         // चुना मॉडल -> 3.8 Flash (coding के लिए सबसे अच्छा) -> बाकी नए मॉडल. 2.5 वाले backup नहीं (नए users के लिए बंद)
         val all = GeminiModels.order(model, listOf(GeminiModels.CODER) + GeminiClient.BACKUP_MODELS)
         // jis model ki limit abhi khatm hui thi use thodi der chhodo (har kadam par wahi 429 dobara na khaayein)
@@ -129,7 +140,7 @@ class CoderAi(val provider: Provider, private val key: String, val model: String
             var waited = false
             while (true) {
                 try {
-                    val r = geminiOnce(m, system, msgs)
+                    val r = geminiOnce(m, system, msgs, parts)
                     if (m != model && errs.isNotEmpty())
                         sink("Gemini ${errs.joinToString { it.first }}: ${reason(errs.last().second)}", "उसी API के $m मॉडल पर अपने आप स्विच किया")
                     return r
@@ -162,11 +173,14 @@ class CoderAi(val provider: Provider, private val key: String, val model: String
         throw AiException(be.code, "$bm — " + GeminiModels.hindi(be.code, be.message.orEmpty()) + "\n(आज़माए: $tried)", be.retryAfter)
     }
 
-    private fun geminiOnce(m: String, system: String, msgs: List<Pair<String, String>>): String {
+    private fun geminiOnce(m: String, system: String, msgs: List<Pair<String, String>>, media: List<Pair<String, String>> = emptyList()): String {
         val contents = JSONArray()
-        msgs.forEach { (r, t) ->
-            contents.put(JSONObject().put("role", if (r == "user") "user" else "model")
-                .put("parts", JSONArray().put(JSONObject().put("text", t))))
+        val at = msgs.indexOfFirst { it.first == "user" }
+        msgs.forEachIndexed { i, (r, t) ->
+            val ps = JSONArray().put(JSONObject().put("text", t))
+            // फ़ोटो/वीडियो पहले user संदेश (काम) के साथ
+            if (i == at) media.forEach { (mime, b64) -> ps.put(JSONObject().put("inline_data", JSONObject().put("mime_type", mime).put("data", b64))) }
+            contents.put(JSONObject().put("role", if (r == "user") "user" else "model").put("parts", ps))
         }
         val body = JSONObject()
             .put("system_instruction", JSONObject().put("parts", JSONArray().put(JSONObject().put("text", Lang.sys(system)))))
@@ -182,9 +196,17 @@ class CoderAi(val provider: Provider, private val key: String, val model: String
         return sb.toString()
     }
 
-    private fun openAi(system: String, msgs: List<Pair<String, String>>, maxTok: Int): String {
+    private fun openAi(system: String, msgs: List<Pair<String, String>>, maxTok: Int, media: List<Pair<String, String>> = emptyList()): String {
         val arr = JSONArray().put(JSONObject().put("role", "system").put("content", Lang.sys(system)))
-        msgs.forEach { (r, t) -> arr.put(JSONObject().put("role", if (r == "user") "user" else "assistant").put("content", t)) }
+        val at = msgs.indexOfFirst { it.first == "user" }
+        msgs.forEachIndexed { i, (r, t) ->
+            val content: Any = if (i == at && media.isNotEmpty()) JSONArray().put(JSONObject().put("type", "text").put("text", t)).also { a ->
+                media.filter { it.first.startsWith("image/") }.forEach { (mime, b64) ->
+                    a.put(JSONObject().put("type", "image_url").put("image_url", JSONObject().put("url", "data:$mime;base64,$b64")))
+                }
+            } else t
+            arr.put(JSONObject().put("role", if (r == "user") "user" else "assistant").put("content", content))
+        }
         val body = JSONObject().put("model", model).put("messages", arr).put("max_tokens", maxTok).put("temperature", 0.2)
         if (model.contains("gpt-oss")) body.put("reasoning_effort", "medium")
         val req = Request.Builder().url(base.trimEnd('/') + "/chat/completions")
@@ -193,7 +215,7 @@ class CoderAi(val provider: Provider, private val key: String, val model: String
             .post(body.toString().toRequestBody(JSON)).build()
         val raw = try { exec(req) } catch (e: AiException) {
             // kuch free models itne lambe jawab nahi dete -> chhota maango
-            if (e.code == 400 && maxTok > 4000 && (e.message ?: "").contains("token", true)) return openAi(system, msgs, maxTok / 2)
+            if (e.code == 400 && maxTok > 4000 && (e.message ?: "").contains("token", true)) return openAi(system, msgs, maxTok / 2, media)
             throw e
         }
         val msg = JSONObject(raw).optJSONArray("choices")?.optJSONObject(0)?.optJSONObject("message")

@@ -16,7 +16,7 @@ import kotlinx.coroutines.withContext
 object SevenRunner {
 
     /** प्रॉम्प्ट इंजीनियर की समझ जो user की "हाँ" का इंतज़ार कर रही है */
-    data class Pending(val task: String, val u: SevenPlus.Understanding, val forceNormal: Boolean)
+    data class Pending(val task: String, val u: SevenPlus.Understanding, val forceNormal: Boolean, val media: List<CoderMedia> = emptyList())
 
     /** null = कोई समझ इंतज़ार में नहीं */
     @Volatile var pending: Pending? = null
@@ -32,6 +32,9 @@ object SevenRunner {
     private class Ai(private val ai: CoderAi) : TeamAi {
         override suspend fun ask(agent: Seven.Agent, system: String, msgs: List<Pair<String, String>>): String =
             withContext(Dispatchers.IO) { ai.chat(system, msgs) }
+        override suspend fun askMedia(agent: Seven.Agent, system: String, msgs: List<Pair<String, String>>, media: List<CoderMedia>): String =
+            withContext(Dispatchers.IO) { ai.chat(system, msgs, media) }
+        override val budget: Int get() = ai.budget
     }
 
     /** GitHub मोड की फ़ाइलें: चुना रिपो/branch (CodingAgent की snapshot) */
@@ -137,8 +140,13 @@ object SevenRunner {
         }
     }
 
+    /** 🔎 जाँचकर्ता को सौंपो: रिपो डॉक्टर की पढ़ाई + गहरी जाँच + step-by-step जवाब */
+    private fun inspect(c: Context, task: String) {
+        RepoDoctorRunner.scan(c, focus = RepoDoctor.prNumber(task), question = task)?.let { say("e", "${Seven.INSPECTOR_HI}: $it") }
+    }
+
     /** @return null = शुरू हो गया, वरना वजह */
-    fun start(ctx: Context, input: String, fromVoice: Boolean = false, forceNormal: Boolean = false): String? {
+    fun start(ctx: Context, input: String, fromVoice: Boolean = false, forceNormal: Boolean = false, media: List<CoderMedia> = emptyList()): String? {
         val c = ctx.applicationContext
         if (!Prefs.coderOn(c)) return "कोडिंग एजेंट बंद है — Settings में चालू करें"
         val ai = CoderAi.fromPrefs(c) ?: return "कोडिंग एजेंट की AI key नहीं — Settings → AI दिमाग → कोडिंग एजेंट में डालें"
@@ -153,7 +161,9 @@ object SevenRunner {
                 return CoderTeam.merge(c, fromVoice)
             }
         }
-        say("u", (if (fromVoice) "🎤 " else "") + input)
+        say("u", (if (fromVoice) "🎤 " else "") + input + CoderMedia.chip(media).let { if (it.isEmpty()) "" else "\n$it" })
+        // फ़ोटो/वीडियो: पिछली समझ के साथ आई थीं तो वे भी (सुधार/हाँ के बाद भी टीम उन्हें देखे)
+        val allMedia = (pending?.media.orEmpty() + media).take(CoderMedia.MAX_ITEMS)
         // पहले समझ → user की "हाँ" → तभी काम. जवाब/सुधार आया तो दोबारा समझो
         val r = resolve(input, pending, forceNormal)
         pending = null
@@ -202,11 +212,14 @@ object SevenRunner {
                         if (start.isNotEmpty()) say("s", "फ़ाइलें: " + start.keys.joinToString())
                         team = SevenTeam(Ai(ai), MemoryFiles(start), null, full = true) { ag, t -> say("s", "${ag.icon} ${ag.hi}: $t") }
                     }
+                    team.media = allMedia
                     if (approved == null) {
                         // चरण 1: सिर्फ़ समझ (कोई branch / बदलाव नहीं) - user को दिखाकर "हाँ" का इंतज़ार
                         val u = team.understand(task)
                         if (u.answer.isNotBlank()) { say("d", u.answer); return@withTimeout }
-                        pending = Pending(task, u, normal)
+                        // मैनेजर: रिपो / PR / काम की हालत का सवाल → जाँचकर्ता (कोड नहीं छूता, मंज़ूरी की ज़रूरत नहीं)
+                        if (u.kind == Seven.Kind.STATUS) { inspect(c, task); return@withTimeout }
+                        pending = Pending(task, u, normal, allMedia)
                         say("d", u.hindi())
                         CoderTeam.announce(c, if (u.needsAnswer) "कोडिंग टीम: एक सवाल है" else "कोडिंग टीम: आपकी मंज़ूरी चाहिए",
                             u.understood.ifBlank { u.brief }.take(120),
@@ -215,6 +228,7 @@ object SevenRunner {
                         return@withTimeout
                     }
                     val out = team.run(task, approved)
+                    if (out.answerOnly && out.report == SevenTeam.STATUS_ASK) { inspect(c, task); return@withTimeout }
                     if (out.answerOnly) { say("d", out.report); return@withTimeout }
                     say(if (out.testOk == true) "d" else "e", out.report)
                     if (out.mode == Seven.Mode.NORMAL) out.files.forEach { (p, content) ->

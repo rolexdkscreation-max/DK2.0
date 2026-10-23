@@ -13,6 +13,20 @@ object CoderContext {
     /** हर AI request की सामान्य सीमा (अक्षर) - 413 मिलने पर उस मॉडल के लिए अपने-आप और छोटी */
     const val DEFAULT_BUDGET = 60_000
     const val MIN_BUDGET = 6_000
+    /** Gemini (1M token वाले मॉडल): एक request में इतने अक्षर - पूरी बड़ी फ़ाइलें एक साथ */
+    const val GEMINI_BUDGET = 500_000
+    /** बाकी (Groq/OpenRouter/Custom): शुरू इतने से; 413 मिले तो अपने-आप छोटा होकर याद रहता है */
+    const val OTHER_BUDGET = 160_000
+
+    /** मॉडल की असली पढ़ने की क्षमता (अक्षर) - पहले सबके लिए 60k था, इसलिए बड़ी फ़ाइलें अधूरी पढ़ी जाती थीं */
+    fun budgetFor(gemini: Boolean, model: String): Int {
+        val m = model.lowercase()
+        return when {
+            gemini -> GEMINI_BUDGET
+            m.contains("gemini") || m.contains("claude") || m.contains("gpt-4.1") || m.contains("gpt-5") -> 400_000
+            else -> OTHER_BUDGET
+        }
+    }
     /** पिछले कितने संदेश पूरे भेजें */
     const val KEEP_TAIL = 8
 
@@ -42,7 +56,7 @@ object CoderContext {
                 (if (r == "user") "← " else "→ ") + t.lineSequence().firstOrNull().orEmpty().take(140)
             }
             val sb = StringBuilder()
-            if (task != null) sb.append("CURRENT ").append(cap(task, 3000)).append("\n\n")
+            if (task != null) sb.append("CURRENT ").append(cap(task, maxOf(3000, b / 8))).append("\n\n")
             if (middle.isNotEmpty()) sb.append("EARLIER STEPS (shortened to save space - read files again if you need details):\n")
                 .append(lines.joinToString("\n")).append("\n\n")
             if (note.isNotBlank()) sb.append(note).append("\n\n")
@@ -50,7 +64,7 @@ object CoderContext {
             else tail.add(0, "user" to sb.toString().trimEnd())
         }
         // अब भी बड़ा? पुराने tail संदेश पहले छोटे करो, आखिरी सबसे बाद में
-        var each = CHUNK_CHARS
+        var each = maxOf(CHUNK_CHARS, b / 12)
         var out = head + tail.mapIndexed { i, (r, t) -> r to cap(t, if (i == tail.lastIndex) b / 2 else each) }
         while (total(out) > b && each > 600) {
             each /= 2

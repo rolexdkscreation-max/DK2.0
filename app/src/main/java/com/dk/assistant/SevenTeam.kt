@@ -6,6 +6,10 @@ import org.json.JSONObject
 /** एजेंटों की AI - हर कॉल में उस एजेंट का अपना छोटा system prompt (कोडिंग एजेंट की अपनी API key से) */
 interface TeamAi {
     suspend fun ask(agent: Agent, system: String, msgs: List<Pair<String, String>>): String
+    /** user की फ़ोटो/वीडियो के साथ (मॉडल न देख सके तो बिना - लिखा विवरण फिर भी जाता है) */
+    suspend fun askMedia(agent: Agent, system: String, msgs: List<Pair<String, String>>, media: List<CoderMedia>): String = ask(agent, system, msgs)
+    /** एक request में यह मॉडल कितने अक्षर पढ़ सकता है - सब एजेंट इसी हिसाब से पूरी फ़ाइलें / पूरे log भेजते हैं */
+    val budget: Int get() = CoderContext.DEFAULT_BUDGET
 }
 
 /** काम की फ़ाइलें: GitHub मोड = चुना रिपो/branch, नॉर्मल मोड = user के भेजे कोड + नई फ़ाइलें (फ़ोन की memory में) */
@@ -87,6 +91,31 @@ class SevenTeam(
     private var qaFix = ""
     private var qaChecks = listOf<String>()
     private val perfNotes = mutableListOf<String>()
+    /** user की भेजी फ़ोटो/वीडियो (प्रॉम्प्ट इंजीनियर, प्लानर, डिबगर, QA इन्हें खुद देखते हैं) */
+    var media: List<CoderMedia> = emptyList()
+    /** फ़ोटो/वीडियो में क्या दिखा - लिखा हुआ, हर एजेंट को */
+    private var mediaNotes = ""
+    /** अभी चल रहा पूरा प्लान (कोडर को पूरी तस्वीर) */
+    private var curPlan: Seven.Plan? = null
+
+    // ---- पढ़ने की क्षमता: मॉडल जितना पढ़ सकता है उसी हिसाब से (पहले हर मॉडल पर एक जैसी छोटी सीमा थी)
+    private val big get() = ai.budget.coerceAtLeast(CoderContext.MIN_BUDGET)
+    /** एक फ़ाइल इतनी तक पूरी (बड़े मॉडल पर पूरी बड़ी फ़ाइल) */
+    private val fileChars get() = maxOf(FILE_CHARS, big / 4)
+    private val readBudget get() = maxOf(READ_BUDGET, big * 6 / 10)
+    private val debugBudget get() = maxOf(SevenDebug.DEBUG_READ_BUDGET, big / 2)
+    private val listMax get() = maxOf(LIST_MAX, 2_000)
+    private val mapChars get() = maxOf(24_000, big / 8)
+    /** पुराने पढ़े नतीजे कितने बड़े तक वैसे ही रहें */
+    private fun compactOld(msgs: MutableList<Pair<String, String>>) =
+        SevenDebug.compact(msgs, keepLast = if (big >= 300_000) 8 else 4, bigChars = maxOf(3_000, big / 40))
+
+    /** हर एजेंट की AI कॉल: टीम के नियम (सावधानी, पूरा पढ़ना, पूरा समझाकर आगे देना) + फ़ोटो/वीडियो का विवरण; देखने वाले एजेंटों को असली फ़ोटो भी */
+    private suspend fun aiAsk(a: Agent, system: String, msgs: List<Pair<String, String>>): String {
+        val sys = system + "\n\n" + (if (a == Agent.CODER) Seven.Prompts.RULES_CODER else Seven.Prompts.RULES) +
+            if (mediaNotes.isNotBlank()) "\n\nUSER'S PHOTOS / VIDEO - what the prompt engineer saw in them (the user attached them to this task):\n$mediaNotes" else ""
+        return if (media.isNotEmpty() && a in SEES_MEDIA) ai.askMedia(a, sys, msgs, media) else ai.ask(a, sys, msgs)
+    }
 
     companion object {
         const val FILE_CHARS = 40_000          // एक फ़ाइल इससे बड़ी = anchor के आस-पास का हिस्सा
@@ -99,6 +128,10 @@ class SevenTeam(
         /** 11-एजेंट डिबगर: कुल राउंड, और आख़िरी कितने राउंड में खोज/पढ़ाई बंद (सिर्फ़ फ़ैसला) */
         const val DEBUG_ROUNDS = 14
         const val FORCE_ROUNDS = 3
+        /** ये एजेंट user की फ़ोटो/वीडियो खुद देखते हैं (बाकी को लिखा विवरण) */
+        val SEES_MEDIA = setOf(Agent.PROMPT, Agent.PLANNER, Agent.DEBUGGER, Agent.QA)
+        /** run() में मैनेजर ने कहा: यह रिपो/PR का सवाल है - जाँचकर्ता जवाब दे */
+        const val STATUS_ASK = "\u0000STATUS_ASK"
     }
 
     // ------------------------------------------------------------------ समझ (मैनेजर + प्रॉम्प्ट इंजीनियर) - code छूने से पहले
@@ -108,17 +141,23 @@ class SevenTeam(
      */
     suspend fun understand(userTask: String): SevenPlus.Understanding {
         task = userTask
+        if (media.isNotEmpty()) seeMedia()
         ev(Agent.MANAGER, "काम समझ रहा हूँ…")
         val fileList = files.list()
-        val m = askJson(Agent.MANAGER, "USER REQUEST:\n$task\n\nMODE: $mode\nFILES IN WORKSPACE (${fileList.size}):\n" + fileList.take(150).joinToString("\n"))
+        val m = askJson(Agent.MANAGER, "USER REQUEST:\n$task\n" + (if (media.isNotEmpty()) CoderMedia.describe(media) + "\n" else "") +
+            "\nMODE: $mode\nFILES IN WORKSPACE (${fileList.size}):\n" + fileList.take(listMax).joinToString("\n"))
         val kind = Seven.kindOf(m?.optString("kind"), task)
         val brief0 = m?.optString("brief").orEmpty().trim()
         val acc0 = Seven.strings(m?.optJSONArray("acceptance"))
+        if (kind == Seven.Kind.STATUS) {
+            ev(Agent.MANAGER, "यह रिपो / PR / काम की हालत का सवाल है → ${Seven.INSPECTOR_HI} को सौंप रहा हूँ (वह GitHub खुद जाँचकर बताएगा)")
+            return SevenPlus.Understanding(kind, brief0, "", "", emptyList(), emptyList(), emptyList(), emptyList(), mediaNotes = mediaNotes)
+        }
         if (kind == Seven.Kind.QUESTION) {
             val ans = m?.optString("answer").orEmpty().trim()
             if (ans.isNotBlank()) {
                 ev(Agent.MANAGER, "यह सवाल है — कोड बदलने की ज़रूरत नहीं")
-                return SevenPlus.Understanding(kind, brief0, "", "", emptyList(), emptyList(), emptyList(), emptyList(), ans)
+                return SevenPlus.Understanding(kind, brief0, "", "", emptyList(), emptyList(), emptyList(), emptyList(), ans, mediaNotes = mediaNotes)
             }
         }
         val k = if (kind == Seven.Kind.QUESTION) Seven.Kind.FEATURE else kind
@@ -126,11 +165,12 @@ class SevenTeam(
             else "यह नया फ़ीचर/बदलाव लगता है → प्रॉम्प्ट इंजीनियर साफ़ करेगा कि ठीक-ठीक क्या और कहाँ")
         ev(Agent.PROMPT, "आपकी बात को साफ़ काम में बदल रहा हूँ — रिपो का नक्शा देखकर जगह भी ढूँढ रहा हूँ…")
         val ws = try { workspace() } catch (_: Exception) { emptyMap() }
-        val msgs = mutableListOf("user" to ("USER REQUEST (user's own words):\n$task\n\nMANAGER: kind=${k.name.lowercase()}" +
+        val msgs = mutableListOf("user" to ("USER REQUEST (user's own words):\n$task\n" + (if (media.isNotEmpty()) CoderMedia.describe(media) + "\n" else "") +
+            "\nMANAGER: kind=${k.name.lowercase()}" +
             (if (brief0.isNotBlank()) "; brief=$brief0" else "") + "\nMODE: $mode\n" +
-            "REPO MAP (file: classes / functions / ids):\n" + map(ws) + "\nFILE LIST (${fileList.size}):\n" + fileList.take(400).joinToString("\n")))
+            "REPO MAP (file: classes / functions / ids):\n" + map(ws) + "\nFILE LIST (${fileList.size}):\n" + fileList.take(listMax).joinToString("\n")))
         for (round in 0..4) {
-            val reply = ai.ask(Agent.PROMPT, Seven.Prompts.PROMPT, msgs)
+            val reply = aiAsk(Agent.PROMPT, Seven.Prompts.PROMPT, msgs)
             val terms = SevenPlus.RepoSearch.terms(reply)
             val reads = Seven.planReads(reply)
             if (round < 4 && terms != null) {
@@ -145,17 +185,28 @@ class SevenTeam(
             }
             val o = Seven.json(reply)
             if (o != null && (o.has("understood") || o.has("spec"))) {
-                val u = SevenPlus.Understanding.parse(o, k, brief0, acc0)
+                val u = SevenPlus.Understanding.parse(o, k, brief0, acc0).copy(mediaNotes = mediaNotes)
                 ev(Agent.PROMPT, if (u.needsAnswer) "कुछ बातें साफ़ नहीं — आपसे पूछ रहा हूँ" else "समझ तैयार — आपकी मंज़ूरी का इंतज़ार")
                 return u
             }
             msgs.add("model" to reply); msgs.add("user" to "Reply ONLY the JSON {\"understood\":…,\"spec\":…,\"acceptance\":[…],\"not_touch\":[…],\"area\":[…],\"questions\":[…]}")
         }
         ev(Agent.PROMPT, "पूरा spec नहीं बना — मैनेजर की समझ दिखा रहा हूँ")
-        return SevenPlus.Understanding(k, brief0, brief0.ifBlank { task.take(300) }, brief0, acc0, emptyList(), emptyList(), emptyList())
+        return SevenPlus.Understanding(k, brief0, brief0.ifBlank { task.take(300) }, brief0, acc0, emptyList(), emptyList(), emptyList(), mediaNotes = mediaNotes)
     }
 
-    private fun map(ws: Map<String, String>): String = repoMap ?: SevenPlus.RepoMap.build(ws).also { repoMap = it }
+    /** प्रॉम्प्ट इंजीनियर पहले फ़ोटो/वीडियो ध्यान से देखे - जो दिखा वह लिखकर पूरी टीम को (जिनका मॉडल फ़ोटो न देख सके उन्हें भी) */
+    private suspend fun seeMedia() {
+        ev(Agent.PROMPT, "आपकी ${CoderMedia.chip(media).removePrefix("📎 ")} ध्यान से देख रहा हूँ" + if (media.any { it.isVideo }) " (वीडियो frame-दर-frame)…" else "…")
+        mediaNotes = try {
+            ai.askMedia(Agent.PROMPT, Seven.Prompts.MEDIA + "\n\n" + Seven.Prompts.RULES,
+                listOf("user" to "USER REQUEST:\n$task\n\n" + CoderMedia.describe(media) + "\nDescribe them completely now."), media).trim()
+        } catch (e: Exception) { if (e is kotlinx.coroutines.CancellationException) throw e; "" }
+        if (mediaNotes.isBlank()) { mediaNotes = CoderMedia.describe(media) + " (the model could not look at them)"; ev(Agent.PROMPT, "⚠ फ़ोटो/वीडियो नहीं देख पाया — सिर्फ़ आपके शब्दों से समझूँगा") }
+        else ev(Agent.PROMPT, "फ़ोटो/वीडियो में देखा:\n" + mediaNotes.take(600))
+    }
+
+    private fun map(ws: Map<String, String>): String = repoMap ?: SevenPlus.RepoMap.build(ws, mapChars).also { repoMap = it }
 
     /** @param pre user की मंज़ूर की हुई समझ (11-एजेंट). null = मैनेजर यहीं समझेगा (पुराना क्रम) */
     suspend fun run(userTask: String, pre: SevenPlus.Understanding? = null): Outcome {
@@ -165,13 +216,15 @@ class SevenTeam(
             // 1. मैनेजर: समझ user ने मंज़ूर कर दी - वही spec सबको
             kind = pre.kind
             spec = pre.spec; brief = pre.spec.ifBlank { pre.brief }; acceptance = pre.acceptance; notTouch = pre.notTouch; area = pre.area
+            if (pre.mediaNotes.isNotBlank()) mediaNotes = pre.mediaNotes
             ev(Agent.MANAGER, "आपकी मंज़ूरी मिली — मंज़ूर की हुई समझ के हिसाब से काम सौंप रहा हूँ")
         } else {
             // 1. मैनेजर: काम समझो
             ev(Agent.MANAGER, "काम समझ रहा हूँ…")
             val fileList = files.list()
-            val m = askJson(Agent.MANAGER, "USER REQUEST:\n$task\n\nMODE: $mode\nFILES IN WORKSPACE (${fileList.size}):\n" + fileList.take(150).joinToString("\n"))
+            val m = askJson(Agent.MANAGER, "USER REQUEST:\n$task\n\nMODE: $mode\nFILES IN WORKSPACE (${fileList.size}):\n" + fileList.take(listMax).joinToString("\n"))
             kind = Seven.kindOf(m?.optString("kind"), task)
+            if (kind == Seven.Kind.STATUS) return Outcome(STATUS_ASK, emptyMap(), null, mode, answerOnly = true)
             if (kind == Seven.Kind.QUESTION) {
                 val ans = m?.optString("answer").orEmpty().trim()
                 if (ans.isNotBlank()) {
@@ -263,7 +316,7 @@ class SevenTeam(
             }
             val repeat = sigs.size >= 2 && sigs[sigs.size - 1] == sigs[sigs.size - 2]
             if (repeat) ev(Agent.MANAGER, "वही गलती दोबारा आई — रणनीति बदल रहा हूँ: डिबगर दूसरी जड़ देखेगा, कोडर पूरी फ़ाइल दोबारा लिखेगा")
-            val d = debug("TEST/BUILD FAILED.\n" + (if (errs.isNotBlank()) "EXACT ERROR LINES FROM THE LOG:\n$errs\n\n" else "") + "FULL LOG (important part):\n${t.log.take(12_000)}", repeat)
+            val d = debug("TEST/BUILD FAILED.\n" + (if (errs.isNotBlank()) "EXACT ERROR LINES FROM THE LOG:\n$errs\n\n" else "") + "FULL LOG (important part):\n${t.log.take(maxOf(12_000, big / 8))}", repeat)
                 ?: return finish(false, "डिबगर टेस्ट फ़ेल होने की जड़ नहीं ढूँढ पाया")
             rootCause = d.second
             val fix = makePlan("MINIMAL FIX for the failed test/build.\nROOT CAUSE: ${d.second}\nFIX: ${d.third}", d.first.files)
@@ -297,15 +350,15 @@ class SevenTeam(
             (if (full && notTouch.isNotEmpty()) "DO NOT CHANGE (user's existing features): " + notTouch.joinToString("; ") + "\n" else "") +
             (if (full && area.isNotEmpty()) "PROMPT ENGINEER - LIKELY AREA (verify by reading):\n" + area.joinToString("\n") { "- $it" } + "\n" else "") +
             (if (full) "REPO MAP (file: classes / functions / ids):\n" + map(ws()) + "\n" else "") +
-            "FILE LIST (${list.size}):\n" + list.take(LIST_MAX).joinToString("\n") + if (list.isEmpty()) "(empty - create new files)" else ""))
+            "FILE LIST (${list.size}):\n" + list.take(listMax).joinToString("\n") + if (list.isEmpty()) "(empty - create new files)" else ""))
         var usesFixed = false
         var whereFixed = 0
         val last = if (full) 8 else 3
         val sys = Seven.Prompts.PLANNER + if (full) "\n" + SevenDebug.PLANNER_EXTRA else ""
         val seen = SevenDebug.Seen()
         for (round in 0..last) {
-            if (full) SevenDebug.compact(msgs)
-            val reply = ai.ask(Agent.PLANNER, sys, msgs)
+            if (full) compactOld(msgs)
+            val reply = aiAsk(Agent.PLANNER, sys, msgs)
             val terms = SevenPlus.RepoSearch.terms(reply)
             if (terms != null && round < last) {
                 ev(Agent.PLANNER, "रिपो में खोज रहा हूँ (कहाँ लिखना है): " + terms.joinToString())
@@ -334,7 +387,7 @@ class SevenTeam(
             // जगह-जाँच (11-एजेंट): हर कदम की anchor फ़ाइल में सच में है? नई फ़ाइल पहले से तो नहीं?
             if (full && plan != null && round < last && whereFixed < 3) {
                 val m = readMap(plan.steps.map { it.file }.distinct())
-                val bad = SevenPlus.Where.problems(plan) { m[it] }.ifEmpty { SevenDebug.anchorsSeen(plan, { m[it] }, seen, FILE_CHARS) }
+                val bad = SevenPlus.Where.problems(plan) { m[it] }.ifEmpty { SevenDebug.anchorsSeen(plan, { m[it] }, seen, fileChars) }
                 if (bad.isNotEmpty()) {
                     whereFixed++
                     ev(Agent.PLANNER, "प्लान की जगह गलत निकली — खोजकर/पढ़कर सही जगह ढूँढ रहा हूँ:\n" + bad.joinToString("\n") { "• $it" })
@@ -369,9 +422,9 @@ class SevenTeam(
             (if (repeat) "NOTE FROM MANAGER: the SAME error came back after the previous fix. That fix did NOT address the real cause. Look for a different cause.\n" else "") +
             (if (area.isNotEmpty()) "PROMPT ENGINEER - LIKELY AREA (verify by searching/reading):\n" + area.joinToString("\n") { "- $it" } + "\n" else "") +
             (if (notTouch.isNotEmpty()) "DO NOT CHANGE (user's existing features): " + notTouch.joinToString("; ") + "\n" else "") +
-            (if (staged.isNotEmpty()) "DIFF OF THIS TASK (- removed, + added):\n" + diffText(staged, 12_000) + "\n" else "") +
+            (if (staged.isNotEmpty()) "DIFF OF THIS TASK (- removed, + added):\n" + diffText(staged, maxOf(12_000, big / 10)) + "\n" else "") +
             "REPO MAP (file: classes / functions / ids):\n" + map(w) + "\n" +
-            "FILE LIST (${list.size}):\n" + list.take(LIST_MAX).joinToString("\n")))
+            "FILE LIST (${list.size}):\n" + list.take(listMax).joinToString("\n")))
         val sys = Seven.Prompts.DEBUGGER + "\n" + SevenDebug.EXTRA
         val seen = SevenDebug.Seen()
         debugSeen = seen
@@ -382,8 +435,8 @@ class SevenTeam(
         val last = DEBUG_ROUNDS - 1
         for (round in 0..last) {
             val left = last - round
-            SevenDebug.compact(msgs)
-            val reply = ai.ask(Agent.DEBUGGER, sys, msgs)
+            compactOld(msgs)
+            val reply = aiAsk(Agent.DEBUGGER, sys, msgs)
             val terms = SevenPlus.RepoSearch.terms(reply)
             val reads = Seven.planReads(reply)
             if ((terms != null || reads != null) && left <= FORCE_ROUNDS) {
@@ -437,13 +490,13 @@ class SevenTeam(
 
     /** प्लानर के लिए (11-एजेंट): बिना लाइन नंबर (anchor सीधे कॉपी हो), "path:START-END" वाले हिस्से भी, बड़ी फ़ाइल के साथ रूपरेखा; जो दिखा वह seen में */
     private suspend fun readParts(entries: List<String>, seen: SevenDebug.Seen): String {
-        var budget = READ_BUDGET
+        var budget = readBudget
         val out = mutableListOf<String>()
         val keys = files.list()
         for (e in entries) {
             val r0 = SevenDebug.parseRead(e)
             val r = SevenDebug.resolve(r0.path, keys)?.let { r0.copy(path = it) } ?: r0
-            val b = SevenDebug.block(r, try { files.read(r.path) } catch (_: Exception) { null }, budget, FILE_CHARS, numbers = false)
+            val b = SevenDebug.block(r, try { files.read(r.path) } catch (_: Exception) { null }, budget, fileChars, numbers = false)
             budget -= b.chars
             seen.add(b.path, b.from, b.to)
             out.add(b.text)
@@ -453,12 +506,12 @@ class SevenTeam(
 
     /** डिबगर के लिए: लाइन नंबर के साथ, "path:START-END" वाले हिस्से भी; जो दिखा वह seen में */
     private suspend fun readNumbered(entries: List<String>, seen: SevenDebug.Seen, keys: Collection<String>): String {
-        var budget = SevenDebug.DEBUG_READ_BUDGET
+        var budget = debugBudget
         val out = mutableListOf<String>()
         for (e in entries) {
             val r0 = SevenDebug.parseRead(e)
             val r = SevenDebug.resolve(r0.path, keys)?.let { r0.copy(path = it) } ?: r0
-            val b = SevenDebug.block(r, try { files.read(r.path) } catch (_: Exception) { null }, budget, FILE_CHARS)
+            val b = SevenDebug.block(r, try { files.read(r.path) } catch (_: Exception) { null }, budget, fileChars)
             budget -= b.chars
             seen.add(b.path, b.from, b.to)
             out.add(b.text)
@@ -467,14 +520,14 @@ class SevenTeam(
     }
 
     private suspend fun readFiles(paths: List<String>): String {
-        var budget = READ_BUDGET
+        var budget = readBudget
         val out = mutableListOf<String>()
         for (p in paths) {
             val c = files.read(p)
             out.add(when {
                 c == null -> "----- $p : FILE NOT FOUND -----"
                 budget <= 0 -> "----- $p : (skipped, read budget used) -----"
-                else -> { val part = c.take(minOf(budget, FILE_CHARS)); budget -= part.length
+                else -> { val part = c.take(minOf(budget, fileChars)); budget -= part.length
                     "----- BEGIN $p (${c.lines().size} lines)${if (part.length < c.length) " TRUNCATED" else ""} -----\n$part\n----- END $p -----" }
             })
         }
@@ -493,10 +546,10 @@ class SevenTeam(
         val msgs = mutableListOf("user" to ("TASK: $task\n$problem\n" +
             (if (repeat) "NOTE FROM MANAGER: the SAME error came back after the previous fix. That fix did NOT address the real cause. Look for a different cause.\n" else "") +
             (if (changes.isNotEmpty()) "FILES CHANGED IN THIS TASK: ${changes.keys.joinToString()}\n" else "") +
-            "FILE LIST (${list.size}):\n" + list.take(LIST_MAX).joinToString("\n")))
+            "FILE LIST (${list.size}):\n" + list.take(listMax).joinToString("\n")))
         var warned = false
         for (round in 0..4) {
-            val reply = ai.ask(Agent.DEBUGGER, Seven.Prompts.DEBUGGER, msgs)
+            val reply = aiAsk(Agent.DEBUGGER, Seven.Prompts.DEBUGGER, msgs)
             val terms = if (full) SevenPlus.RepoSearch.terms(reply) else null
             if (terms != null && round < 4) {
                 ev(Agent.DEBUGGER, "रिपो में खोज रहा हूँ: " + terms.joinToString())
@@ -527,6 +580,7 @@ class SevenTeam(
 
     // ------------------------------------------------------------------ कोडर ⇄ रिव्यूअर, कदम-दर-कदम
     private suspend fun execute(plan: Seven.Plan, rewrite: Set<String>): Boolean {
+        curPlan = plan
         plan.steps.forEachIndexed { i, s ->
             ev(Agent.CODER, "कदम ${i + 1}/${plan.steps.size}: ${s.file} — ${s.change.take(140)}")
             if (step(s, s.file in rewrite)) return@forEachIndexed
@@ -558,7 +612,7 @@ class SevenTeam(
         var msgs = mutableListOf("user" to coderBrief(s, cur, strat, defs))
         for (attempt in 1..Seven.STEP_ATTEMPTS) {
             val sys = Seven.Prompts.CODER + if (strat == Seven.Strategy.REWRITE) "\n\n" + Seven.Prompts.CODER_REWRITE else ""
-            val reply = ai.ask(Agent.CODER, sys, msgs)
+            val reply = aiAsk(Agent.CODER, sys, msgs)
             val edit = Seven.parseEdit(reply, s.file)
             val chk = Seven.check(edit, s, cur, allowRewrite = strat == Seven.Strategy.REWRITE || cur == null)
             var problems = chk.problems
@@ -602,7 +656,7 @@ class SevenTeam(
 
     private suspend fun deleteStep(s: Seven.Step, cur: String?): Boolean {
         if (cur == null) { lastBlock = "${s.file} मौजूद नहीं"; return false }
-        val o = askJson(Agent.REVIEWER, "TASK: $task\nSTEP: delete file ${s.file} — ${s.change}\nFILE LIST:\n" + files.list().take(300).joinToString("\n") +
+        val o = askJson(Agent.REVIEWER, "TASK: $task\nSTEP: delete file ${s.file} — ${s.change}\nFILE LIST:\n" + files.list().take(listMax).joinToString("\n") +
             "\nCould deleting it break an existing feature (is it still used)?")
         val probs = Seven.strings(o?.optJSONArray("problems"))
         if (o != null && !o.optBoolean("pass", false) && probs.isNotEmpty()) { lastBlock = probs.joinToString("; "); ev(Agent.REVIEWER, "✗ ${s.file} हटाना रोका: $lastBlock"); return false }
@@ -612,30 +666,46 @@ class SevenTeam(
     }
 
     private fun fileBlock(s: Seven.Step, cur: String): String {
-        val body = if (cur.length <= FILE_CHARS) cur else Seven.window(cur, s.anchor)
+        val body = if (cur.length <= fileChars) cur else Seven.window(cur, s.anchor)
         return "----- BEGIN ${s.file}${if (body.length < cur.length) " (PART around the change)" else ""} -----\n$body\n----- END ${s.file} -----"
     }
 
     private fun coderBrief(s: Seven.Step, cur: String?, strat: Seven.Strategy, defs: String = "") = "TASK: $task\nSTEP (${s.action}): ${s.change}\nFILE: ${s.file}\n" +
+        handOff(s) +
         (if (defs.isNotBlank()) "DEFINITIONS (real, read from the files - use exactly these names/signatures):\n$defs\n" else "") +
         (if (cur == null) "(new file - send FILE: ${s.file} and <<<FILE … FILE>>>)" else if (strat == Seven.Strategy.REWRITE)
             "FULL CURRENT FILE (rewrite it completely, keep everything else exactly):\n----- BEGIN ${s.file} -----\n$cur\n----- END ${s.file} -----"
         else fileBlock(s, cur))
 
+    /** पूरा समझाकर आगे देना: कोडर/रिव्यूअर को मंज़ूर spec, यह कदम क्यों, पूरा प्लान, शर्तें, क्या नहीं छेड़ना */
+    private fun handOff(s: Seven.Step): String = buildString {
+        if (s.why.isNotBlank()) append("WHY THIS STEP (planner): ").append(s.why).append('\n')
+        if (s.anchor.isNotBlank()) append("WHERE (anchor text near the change): ").append(s.anchor).append('\n')
+        if (s.uses.isNotEmpty()) append("USES (from other files): ").append(s.uses.joinToString("; ")).append('\n')
+        if (spec.isNotBlank()) append("SPEC (approved by the user):\n").append(spec).append('\n')
+        else if (brief.isNotBlank()) append("BRIEF: ").append(brief).append('\n')
+        curPlan?.takeIf { it.steps.size > 1 }?.let { p ->
+            append("WHOLE PLAN (for context - you do ONLY the STEP above):\n")
+            p.steps.forEachIndexed { i, x -> append(if (x === s) "-> " else "   ").append(i + 1).append(". ").append(x.file).append(" - ").append(x.change).append('\n') }
+        }
+        if (acceptance.isNotEmpty()) append("ACCEPTANCE (the whole task):\n").append(acceptance.joinToString("\n") { "- $it" }).append('\n')
+        if (notTouch.isNotEmpty()) append("DO NOT CHANGE (user's existing features): ").append(notTouch.joinToString("; ")).append('\n')
+    }
+
     /** @return समस्याएँ (खाली = पास) */
     private suspend fun review(s: Seven.Step, cur: String?, e: Seven.Edit, after: String?, unsure: List<SevenSymbols.Miss> = emptyList()): List<String> {
         val change = when {
-            e.full != null && cur == null -> "NEW FILE ${s.file}:\n" + e.full.take(20_000)
+            e.full != null && cur == null -> "NEW FILE ${s.file}:\n" + e.full.take(maxOf(20_000, fileChars))
             e.full != null -> "FULL REWRITE of ${s.file}. Lines before: ${cur!!.lines().size}, after: ${after?.lines()?.size}.\nREMOVED LINES:\n" +
-                (cur.lines().toSet() - (after ?: "").lines().toSet()).take(80).joinToString("\n") + "\nADDED LINES:\n" +
-                ((after ?: "").lines().toSet() - cur.lines().toSet()).take(120).joinToString("\n")
+                (cur.lines().toSet() - (after ?: "").lines().toSet()).take(400).joinToString("\n") + "\nADDED LINES:\n" +
+                ((after ?: "").lines().toSet() - cur.lines().toSet()).take(600).joinToString("\n")
             else -> e.pairs.mapIndexed { i, (f, r) -> "--- FIND #${i + 1}\n$f\n+++ REPLACE #${i + 1}\n$r" }.joinToString("\n")
         }
-        val ctx = if (cur != null && e.full == null) "\nFILE CONTEXT:\n" + (if (cur.length <= 12_000) cur else Seven.window(cur, e.pairs.first().first.lines().first(), 60)) else ""
+        val ctx = if (cur != null && e.full == null) "\nFILE CONTEXT:\n" + (if (cur.length <= fileChars) cur else Seven.window(cur, e.pairs.first().first.lines().first(), 60)) else ""
         for (t in 0..1) {
             val nameCheck = if (unsure.isEmpty()) "" else "\nNAME CHECK (not found in this repository - only valid if it really exists in the external parent class / SDK):\n" +
                 unsure.joinToString("\n") { "- " + it.english() }
-            val o = askJson(Agent.REVIEWER, "TASK: $task\nSTEP: ${s.change}\nFILE: ${s.file}\nCHANGE:\n$change$ctx$nameCheck") ?: continue
+            val o = askJson(Agent.REVIEWER, "TASK: $task\nSTEP: ${s.change}\nFILE: ${s.file}\n" + handOff(s) + "CHANGE:\n$change$ctx$nameCheck") ?: continue
             if (o.optBoolean("pass", false)) return emptyList()
             return Seven.strings(o.optJSONArray("problems")).ifEmpty { listOf("रिव्यूअर ने बदलाव ठीक नहीं माना (वजह नहीं बताई)") }
         }
@@ -677,7 +747,7 @@ class SevenTeam(
 
     /** फ़ोन पर build नहीं चलता: पक्की जाँच (हो चुकी) + टेस्टर का कोड को मन में चलाकर देखना */
     private suspend fun dryRun(staged: Map<String, String?>, note: String): TeamTest {
-        val body = staged.entries.joinToString("\n\n") { (p, c) -> "----- $p -----\n" + (c ?: "(deleted)").take(30_000) }
+        val body = staged.entries.joinToString("\n\n") { (p, c) -> "----- $p -----\n" + (c ?: "(deleted)").take(fileChars) }
         val o = askJson(Agent.TESTER, "TASK: $task\nACCEPTANCE:\n" + acceptance.joinToString("\n") + "\nCHANGED FILES:\n$body")
             ?: return TeamTest(true, "", note = "syntax जाँच पास; AI ड्राई-रन का जवाब नहीं मिला")
         val cases = Seven.strings(o.optJSONArray("cases"))
@@ -693,7 +763,7 @@ class SevenTeam(
         ev(Agent.PERF, "बदले code में UI जाम / leak / बेवजह का काम देख रहा हूँ…")
         val hard = mutableListOf<String>()
         staged.forEach { (p, c) -> if (c != null) hard.addAll(SevenPlus.Perf.scan(p, files.original(p), c)) }
-        val o = askJson(Agent.PERF, "TASK: $task\nCHANGED CODE (only new/changed lines matter):\n" + diffText(staged, 30_000))
+        val o = askJson(Agent.PERF, "TASK: $task\nCHANGED CODE (only new/changed lines matter):\n" + diffText(staged, maxOf(30_000, big / 4)))
         val must = (hard + Seven.strings(o?.optJSONArray("must"))).distinct()
         perfNotes.addAll(Seven.strings(o?.optJSONArray("should")).take(5))
         if (must.isEmpty()) { ev(Agent.PERF, "✓ परफॉरमेंस ठीक" + if (perfNotes.isNotEmpty()) " (छोटे सुझाव रिपोर्ट में)" else ""); return }
@@ -719,8 +789,8 @@ class SevenTeam(
         val o = askJson(Agent.QA, "USER REQUEST:\n$task\n" + (if (spec.isNotBlank()) "SPEC (approved by the user):\n$spec\n" else if (brief.isNotBlank()) "BRIEF: $brief\n" else "") +
             "ACCEPTANCE:\n" + acceptance.joinToString("\n") { "- $it" } + "\n" +
             (if (notTouch.isNotEmpty()) "MUST STAY UNCHANGED:\n" + notTouch.joinToString("\n") { "- $it" } + "\n" else "") +
-            "DIFF:\n" + diffText(staged, 25_000) + "\n\nCHANGED FILES NOW:\n" +
-            staged.entries.joinToString("\n\n") { (p, c) -> "----- $p -----\n" + (c ?: "(deleted)").take(15_000) }.take(45_000))
+            "DIFF:\n" + diffText(staged, maxOf(25_000, big / 5)) + "\n\nCHANGED FILES NOW:\n" +
+            staged.entries.joinToString("\n\n") { (p, c) -> "----- $p -----\n" + (c ?: "(deleted)").take(maxOf(15_000, big / 8)) }.take(maxOf(45_000, big / 3)))
         qaChecks = Seven.strings(o?.optJSONArray("checks"))
         qaFix = o?.optString("fix").orEmpty().trim()
         if (qaChecks.isNotEmpty()) ev(Agent.QA, qaChecks.take(8).joinToString("\n") { "• $it" })
@@ -738,8 +808,8 @@ class SevenTeam(
             append("=== ").append(p).append(if (before == null) " (NEW)" else if (c == null) " (DELETED)" else "").append(" ===\n")
             val b = before?.lines().orEmpty(); val a = c?.lines().orEmpty()
             val bs = b.toHashSet(); val asSet = a.toHashSet()
-            b.filter { it !in asSet && it.isNotBlank() }.take(80).forEach { append("- ").append(it).append('\n') }
-            a.filter { it !in bs && it.isNotBlank() }.take(200).forEach { append("+ ").append(it).append('\n') }
+            b.filter { it !in asSet && it.isNotBlank() }.take(400).forEach { append("- ").append(it).append('\n') }
+            a.filter { it !in bs && it.isNotBlank() }.take(1000).forEach { append("+ ").append(it).append('\n') }
             if (length > max) break
         }
     }.take(max)
@@ -756,7 +826,7 @@ class SevenTeam(
     // ------------------------------------------------------------------ नाम-जाँच (फ़ाइल पढ़कर, अंदाज़े से नहीं)
     private suspend fun workspace(): Map<String, String> = files.all() ?: run {
         val m = LinkedHashMap<String, String>()
-        for (p in files.list().take(400)) files.read(p)?.let { m[p] = it }
+        for (p in files.list().take(listMax)) files.read(p)?.let { m[p] = it }
         m
     }
 
@@ -794,7 +864,7 @@ class SevenTeam(
     private suspend fun askJson(a: Agent, user: String): JSONObject? {
         val msgs = mutableListOf("user" to user)
         for (t in 0..1) {
-            val reply = ai.ask(a, Seven.Prompts.of(a), msgs)
+            val reply = aiAsk(a, Seven.Prompts.of(a), msgs)
             Seven.json(reply)?.let { return it }
             msgs.add("model" to reply); msgs.add("user" to "Reply ONLY valid JSON in the required format.")
         }
