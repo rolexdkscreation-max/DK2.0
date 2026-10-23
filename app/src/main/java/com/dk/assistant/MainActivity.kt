@@ -237,22 +237,22 @@ class MainActivity : AppCompatActivity() {
     private fun render() {
         val name = Prefs.assistantName(this)
         val user = Prefs.userName(this)
-        txtName.text = name
-        txtHello.text = if (user.isBlank()) "नमस्ते" else "नमस्ते, $user"
+        UiLang.setText(txtName, name)
+        UiLang.setText(txtHello, if (user.isBlank()) "नमस्ते" else "नमस्ते, $user")
 
-        chipAccess.text = (if (Setup.accessibilityOn(this)) "✓ " else "✗ ") + "फ़ोन कंट्रोल"
-        chipMic.text = (if (Setup.hasMic(this)) "✓ " else "✗ ") + "माइक"
+        UiLang.setText(chipAccess, (if (Setup.accessibilityOn(this)) "✓ " else "✗ ") + "फ़ोन कंट्रोल")
+        UiLang.setText(chipMic, (if (Setup.hasMic(this)) "✓ " else "✗ ") + "माइक")
         val p = Providers.byId(Prefs.activeProvider(this))
-        chipAi.text = (if (Prefs.hasAnyKey(this)) "✓ " else "✗ ") + (p?.name ?: "AI")
+        UiLang.setText(chipAi, (if (Prefs.hasAnyKey(this)) "✓ " else "✗ ") + (p?.name ?: "AI"))
 
         val live = DKState.live
-        txtState.text = when (DKState.mode) {
+        UiLang.setText(txtState, when (DKState.mode) {
             Mode.IDLE -> if (live) "माइक चालू है • आवाज़ स्क्रीन खोलें" else "ओर्ब या \"आवाज़\" दबाकर बात करें"
             Mode.LISTENING -> if (live) "Listening • सुन रहा हूँ… (बंद: टैप या \"माइक बंद\")" else "Listening • सुन रहा हूँ…"
             Mode.THINKING -> "जवाब आ रहा है…"
             Mode.WORKING -> "काम कर रहा हूँ…"
             Mode.SPEAKING -> "Speaking • बोल रहा हूँ…"
-        }
-        txtDk.text = if (DKState.lastReply.isBlank()) "" else "$name: " + DKState.lastReply
+        })
+        UiLang.setText(txtDk, if (DKState.lastReply.isBlank()) "" else "$name: " + DKState.lastReply)
     }
 }

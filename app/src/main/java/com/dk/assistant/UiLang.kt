@@ -51,6 +51,20 @@ object UiLang {
 
     fun toast(c: Context, text: CharSequence, d: Int): Toast = Toast.makeText(c, t(text), d)
 
+    /**
+     * v3.41: वही text दोबारा लगाना = बेवजह पूरी screen का नया layout (+ अनुवाद की जाँच). बदला हो तभी लगाओ.
+     * (दिखने वाला text अनुवादित होता है, इसलिए असली (हिंदी) text tag में याद रखते हैं)
+     */
+    fun setText(v: TextView, s: CharSequence) {
+        val raw = s.toString()
+        if (v.getTag(R.id.ui_raw) == raw) {
+            val cur = v.text.toString()
+            if (cur == raw || cur == t(raw)?.toString()) return      // किसी और ने बीच में बदला हो तो फिर से लगाओ
+        }
+        v.setTag(R.id.ui_raw, raw)
+        v.text = s
+    }
+
     /** यह view (और अंदर का सब) अनुवाद नहीं होगा - बातचीत/यादें/कहानी */
     fun keep(v: View) { v.setTag(R.id.ui_keep, true) }
 

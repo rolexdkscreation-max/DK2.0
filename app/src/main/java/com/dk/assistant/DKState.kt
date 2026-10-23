@@ -137,8 +137,20 @@ object DKState {
     fun listen(l: () -> Unit) { synchronized(listeners) { listeners.add(l) } }
     fun unlisten(l: () -> Unit) { synchronized(listeners) { listeners.remove(l) } }
 
-    private fun emit() {
+    /**
+     * v3.41: DK बोलते समय हर टुकड़े पर (कई बार/सेकंड) हर screen पूरा render करती थी. अब कई बदलाव एक साथ:
+     * ज़्यादा से ज़्यादा ~30 बार/सेकंड (screen हमेशा आख़िरी हालत दिखाती है, कुछ छूटता नहीं).
+     */
+    private val emitPending = java.util.concurrent.atomic.AtomicBoolean(false)
+    @Volatile private var lastEmit = 0L
+    private val emitter = Runnable {
+        emitPending.set(false)
+        lastEmit = android.os.SystemClock.uptimeMillis()
         val copy = synchronized(listeners) { listeners.toList() }
-        main.post { copy.forEach { it() } }
+        copy.forEach { try { it() } catch (_: Exception) {} }
+    }
+    private fun emit() {
+        if (!emitPending.compareAndSet(false, true)) return
+        main.postDelayed(emitter, UiPace.emitWait(lastEmit, android.os.SystemClock.uptimeMillis()))
     }
 }

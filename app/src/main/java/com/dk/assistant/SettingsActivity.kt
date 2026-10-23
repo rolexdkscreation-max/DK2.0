@@ -277,30 +277,30 @@ class SettingsActivity : AppCompatActivity() {
             /** Button aur status: डाउनलोड करें -> डाउनलोड हो रहा है x% -> इंस्टॉल करें */
             fun show(rel: Updater.Release?) {
                 if (rel == null) {
-                    status.text = "✓ आपके पास सबसे नया version है"
+                    UiLang.setText(status, "✓ आपके पास सबसे नया version है")
                     info.visibility = View.GONE; notes.visibility = View.GONE; bar.visibility = View.GONE; btnAct.visibility = View.GONE
                     return
                 }
-                status.text = "${rel.typeLabel} आया है"
-                info.text = "नया version: DK ${rel.version}  •  साइज़: ${rel.sizeMb}"
+                UiLang.setText(status, "${rel.typeLabel} आया है")
+                UiLang.setText(info, "नया version: DK ${rel.version}  •  साइज़: ${rel.sizeMb}")
                 info.visibility = View.VISIBLE
-                notes.text = "क्या नया है:\n" + rel.notes.take(1200).ifBlank { if (rel.isSecurity) "गड़बड़ियाँ ठीक की गईं" else "नए फ़ीचर और सुधार" }
+                UiLang.setText(notes, "क्या नया है:\n" + rel.notes.take(1200).ifBlank { if (rel.isSecurity) "गड़बड़ियाँ ठीक की गईं" else "नए फ़ीचर और सुधार" })
                 notes.visibility = View.VISIBLE
                 btnAct.visibility = View.VISIBLE
                 when {
                     Updater.downloaded(this, rel) != null -> {
                         bar.visibility = View.GONE
-                        btnAct.text = "इंस्टॉल करें"; btnAct.isEnabled = true
-                        status.text = "✓ ${rel.typeLabel} डाउनलोड हो चुका है"
+                        UiLang.setText(btnAct, "इंस्टॉल करें"); btnAct.isEnabled = true
+                        UiLang.setText(status, "✓ ${rel.typeLabel} डाउनलोड हो चुका है")
                     }
                     Updater.isDownloading(rel) -> {
                         bar.visibility = View.VISIBLE; bar.progress = Updater.progress
-                        btnAct.text = "डाउनलोड हो रहा है… ${Updater.progress}%"; btnAct.isEnabled = false
+                        UiLang.setText(btnAct, "डाउनलोड हो रहा है… ${Updater.progress}%"); btnAct.isEnabled = false
                     }
                     else -> {
                         bar.visibility = View.GONE
-                        btnAct.text = "डाउनलोड करें (${rel.sizeMb})"; btnAct.isEnabled = true
-                        Updater.lastError?.let { status.text = "डाउनलोड रुक गया: $it — फिर दबाएँ, जहाँ रुका वहीं से आगे होगा" }
+                        UiLang.setText(btnAct, "डाउनलोड करें (${rel.sizeMb})"); btnAct.isEnabled = true
+                        Updater.lastError?.let { UiLang.setText(status, "डाउनलोड रुक गया: $it — फिर दबाएँ, जहाँ रुका वहीं से आगे होगा") }
                     }
                 }
             }
