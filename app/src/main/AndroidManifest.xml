@@ -6,6 +6,8 @@
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
+    <!-- v3.40: DK लाइव स्क्रीन शेयर (सिर्फ़ आपके कहने पर, बंद से शुरू) -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PROJECTION" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.VIBRATE" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
@@ -73,6 +75,19 @@
             android:name=".VoiceActivity"
             android:exported="false"
             android:launchMode="singleTop" />
+
+        <!-- v3.40: स्क्रीन शेयर की Android इजाज़त (पारदर्शी, बिना UI) + शेयर चलने तक service -->
+        <activity
+            android:name=".ScreenShareActivity"
+            android:exported="false"
+            android:excludeFromRecents="true"
+            android:noHistory="false"
+            android:theme="@android:style/Theme.Translucent.NoTitleBar" />
+
+        <service
+            android:name=".ScreenShareService"
+            android:exported="false"
+            android:foregroundServiceType="mediaProjection" />
 
         <activity
             android:name=".MemoryActivity"
