@@ -9,23 +9,22 @@ import android.os.Handler
 import android.os.Looper
 
 /**
- * v3.39: DK लाइव की आवाज़ का रास्ता - Bluetooth जुड़ा हो तो "फ़ोन कॉल वाला तरीका", नहीं तो speaker वाला (पहले जैसा).
+ * v3.39: DK के माइक/आवाज़ का रास्ता - एक ही जगह, सब (DK लाइव, wake word) इसी को इस्तेमाल करते हैं.
  *
- *  - Bluetooth headset (माइक वाला) जुड़ा -> फ़ोन "कॉल" मोड (MODE_IN_COMMUNICATION) + बात का डिवाइस = headset.
- *    तब माइक headset का, DK की आवाज़ headset में, और फ़ोन का गूँज हटाना ठीक से चलता है.
- *  - Bluetooth हटा / बंद -> मोड सामान्य, माइक फ़ोन का, आवाज़ speaker से (जैसा अब तक).
- *  - बीच में जुड़े/हटे -> अपने-आप बदलता है (onChange: माइक/आवाज़ दोबारा खुलती है).
+ *  - Bluetooth headset (माइक वाला) जुड़ा -> फ़ोन "कॉल वाला तरीका" (MODE_IN_COMMUNICATION) + बात का डिवाइस = headset.
+ *    माइक headset का, DK की आवाज़ headset में, फ़ोन का गूँज हटाना ठीक से चलता है.
+ *  - Bluetooth हटा / बंद -> मोड सामान्य, माइक फ़ोन का, आवाज़ speaker से (पहले जैसा).
+ *  - बीच में जुड़ा/हटा -> अपने-आप बदलता है (हर इस्तेमाल करने वाले को onChange: माइक/आवाज़ दोबारा खोलो).
  *
- * सिर्फ़ DK लाइव की बातचीत के समय चालू (wake word सुनते समय नहीं - वरना headset का गाना हर समय "कॉल" quality में रहता).
+ * गिनती (acquire/release): जब तक कोई भी (लाइव या wake word) इस्तेमाल कर रहा है, रास्ता बना रहता है - एक के छोड़ने से
+ * दूसरे का Bluetooth नहीं कटता. असली फ़ोन कॉल चल रहा हो (MODE_IN_CALL / घंटी) तो मोड को कभी हाथ नहीं लगाते.
+ * (PR #48 में Accessibility शुरू होते ही पूरा फ़ोन हमेशा "कॉल" मोड में चला जाता था - वह हटाया.)
  */
-class AudioRoute(
-    private val c: Context,
-    private val log: (String) -> Unit,
-    /** true = अब Bluetooth, false = अब speaker */
-    private val onChange: (Boolean) -> Unit,
-) {
-    private val am = c.getSystemService(AudioManager::class.java)
+object BtAudio {
     private val h = Handler(Looper.getMainLooper())
+    private val users = LinkedHashMap<Any, (Boolean) -> Unit>()
+    private var am: AudioManager? = null
+    private var watching = false
 
     /** अभी Bluetooth वाले रास्ते पर? */
     @Volatile var bluetooth = false
@@ -33,8 +32,8 @@ class AudioRoute(
     /** Bluetooth headset का माइक (AudioRecord.setPreferredDevice के लिए) */
     @Volatile var btInput: AudioDeviceInfo? = null
         private set
-    @Volatile private var running = false
-    private var oldMode = AudioManager.MODE_NORMAL
+
+    private fun log(m: String) = DKLog.d("आवाज़ का रास्ता: $m")
 
     private val recheck = Runnable { apply() }
     private val cb = object : AudioDeviceCallback() {
@@ -43,75 +42,84 @@ class AudioRoute(
     }
 
     /** headset जुड़ने/हटने की ख़बर कई बार आती है - 500ms रुककर एक बार जाँचो */
-    private fun soon() { if (running) { h.removeCallbacks(recheck); h.postDelayed(recheck, 500) } }
+    private fun soon() { h.removeCallbacks(recheck); h.postDelayed(recheck, 500) }
 
-    fun start() {
-        if (am == null || running) return
-        running = true
-        oldMode = try { am.mode } catch (_: Exception) { AudioManager.MODE_NORMAL }
-        try { am.registerAudioDeviceCallback(cb, h) } catch (e: Exception) { log("Bluetooth पर नज़र नहीं रख पाया: ${e.message}") }
-        apply()
+    /**
+     * @param owner कौन इस्तेमाल कर रहा है (लाइव / Ear)
+     * @param onChange true = अब Bluetooth, false = अब फ़ोन का माइक/speaker
+     * @return अभी Bluetooth पर?
+     */
+    @Synchronized fun acquire(c: Context, owner: Any, onChange: (Boolean) -> Unit): Boolean {
+        if (am == null) am = c.applicationContext.getSystemService(AudioManager::class.java)
+        users[owner] = onChange
+        if (!watching) {
+            watching = true
+            try { am?.registerAudioDeviceCallback(cb, h) } catch (e: Exception) { log("Bluetooth पर नज़र नहीं रख पाया: ${e.message}") }
+        }
+        apply(notify = false)
+        return bluetooth
     }
 
-    fun stop() {
-        if (!running) return
-        running = false
+    @Synchronized fun release(owner: Any) {
+        if (users.remove(owner) == null || users.isNotEmpty()) return
+        watching = false
         h.removeCallbacks(recheck)
         try { am?.unregisterAudioDeviceCallback(cb) } catch (_: Exception) {}
-        if (bluetooth) leave(notify = false)
+        if (bluetooth) leave()
     }
+
+    /** असली फ़ोन कॉल / घंटी = फ़ोन का अपना रास्ता, DK हाथ नहीं लगाता */
+    private fun phoneCall(m: AudioManager) = try { m.mode == AudioManager.MODE_IN_CALL || m.mode == AudioManager.MODE_RINGTONE } catch (_: Exception) { false }
 
     /** Bluetooth headset (माइक वाला) - बात करने के डिवाइसों में से */
-    private fun findBt(): AudioDeviceInfo? {
-        val m = am ?: return null
-        return try {
-            val list: List<AudioDeviceInfo> = if (Build.VERSION.SDK_INT >= 31) m.availableCommunicationDevices
-                else m.getDevices(AudioManager.GET_DEVICES_INPUTS).toList()
-            list.getOrNull(BtPick.pick(list.map { it.type }))
-        } catch (_: Exception) { null }
-    }
+    private fun findBt(m: AudioManager): AudioDeviceInfo? = try {
+        val list: List<AudioDeviceInfo> = if (Build.VERSION.SDK_INT >= 31) m.availableCommunicationDevices
+            else m.getDevices(AudioManager.GET_DEVICES_INPUTS).toList()
+        list.getOrNull(BtPick.pick(list.map { it.type }))
+    } catch (_: Exception) { null }
 
-    /** उस headset का माइक (इनपुट) - setPreferredDevice के लिए */
-    private fun inputFor(d: AudioDeviceInfo): AudioDeviceInfo? = try {
-        am?.getDevices(AudioManager.GET_DEVICES_INPUTS)?.let { ins ->
+    /** उस headset का माइक (इनपुट) */
+    private fun inputFor(m: AudioManager, d: AudioDeviceInfo): AudioDeviceInfo? = try {
+        m.getDevices(AudioManager.GET_DEVICES_INPUTS).let { ins ->
             ins.firstOrNull { it.type == d.type && it.address == d.address } ?: ins.firstOrNull { it.type == d.type }
         }
     } catch (_: Exception) { null }
 
-    @Synchronized private fun apply() {
-        if (!running) return
-        val d = findBt()
+    @Synchronized private fun apply(notify: Boolean = true) {
+        val m = am ?: return
+        if (users.isEmpty() || phoneCall(m)) return
+        val d = findBt(m)
+        val was = bluetooth
         when {
-            d != null && !bluetooth -> enter(d)
-            d == null && bluetooth -> { log("Bluetooth हट गया - फ़ोन के माइक और speaker पर वापस"); leave(notify = true) }
+            d != null && !bluetooth -> enter(m, d)
+            d == null && bluetooth -> { log("Bluetooth हट गया - फ़ोन के माइक और speaker पर वापस"); leave() }
         }
+        if (notify && was != bluetooth) users.values.toList().forEach { try { it(bluetooth) } catch (_: Exception) {} }
     }
 
     @Suppress("DEPRECATION")
-    private fun enter(d: AudioDeviceInfo) {
-        val m = am ?: return
+    private fun enter(m: AudioManager, d: AudioDeviceInfo) {
         val ok = try {
             m.mode = AudioManager.MODE_IN_COMMUNICATION
             if (Build.VERSION.SDK_INT >= 31) m.setCommunicationDevice(d)
             else { m.startBluetoothSco(); m.isBluetoothScoOn = true; true }
         } catch (e: Exception) { log("Bluetooth पर नहीं ले जा पाया: ${e.message}"); false }
-        if (!ok) { try { m.mode = oldMode } catch (_: Exception) {}; log("Bluetooth headset ने बात का रास्ता नहीं लिया - फ़ोन का माइक/speaker"); return }
+        if (!ok) { try { m.mode = AudioManager.MODE_NORMAL } catch (_: Exception) {}; log("Bluetooth headset ने बात का रास्ता नहीं लिया - फ़ोन का माइक/speaker"); return }
         bluetooth = true
-        btInput = inputFor(d)
+        btInput = inputFor(m, d)
         log("Bluetooth जुड़ा (${d.productName}) - कॉल वाला तरीका: माइक और आवाज़ headset पर")
-        onChange(true)
     }
 
     @Suppress("DEPRECATION")
-    private fun leave(notify: Boolean) {
+    private fun leave() {
         val m = am
-        try {
-            if (Build.VERSION.SDK_INT >= 31) m?.clearCommunicationDevice()
-            else { m?.isBluetoothScoOn = false; m?.stopBluetoothSco() }
-        } catch (_: Exception) {}
-        try { m?.mode = AudioManager.MODE_NORMAL } catch (_: Exception) {}
         bluetooth = false
         btInput = null
-        if (notify) onChange(false)
+        if (m == null || phoneCall(m)) return
+        try {
+            if (Build.VERSION.SDK_INT >= 31) m.clearCommunicationDevice()
+            else { m.isBluetoothScoOn = false; m.stopBluetoothSco() }
+        } catch (_: Exception) {}
+        try { if (m.mode == AudioManager.MODE_IN_COMMUNICATION) m.mode = AudioManager.MODE_NORMAL } catch (_: Exception) {}
     }
 }

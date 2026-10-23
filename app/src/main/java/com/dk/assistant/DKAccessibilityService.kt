@@ -75,19 +75,8 @@ class DKAccessibilityService : AccessibilityService() {
     override fun onServiceConnected() {
         super.onServiceConnected()
         instance = this
-        
-        // Bluetooth SCO and audio focus investigation / setup for Bluetooth microphone recording
-        val audioManager = getSystemService(android.content.Context.AUDIO_SERVICE) as android.media.AudioManager
-        try {
-            audioManager.mode = android.media.AudioManager.MODE_IN_COMMUNICATION
-            if (audioManager.isBluetoothScoAvailableOffCall) {
-                audioManager.startBluetoothSco()
-                audioManager.isBluetoothScoOn = true
-                DKLog.d("Bluetooth SCO started for mic input support")
-            }
-        } catch (e: Exception) {
-            DKLog.d("Bluetooth SCO setup error: ${e.message}")
-        }
+        // v3.39: Bluetooth माइक अब BtAudio से (सिर्फ़ headset जुड़ा हो तब, सुनते/बात करते समय). पहले (PR #48) यहाँ
+        // पूरा फ़ोन हमेशा के लिए "कॉल" मोड में चला जाता था - Bluetooth न हो तब भी, और कभी वापस नहीं.
 
         speaker = Speaker(this)
         listener = VoiceListener(this)

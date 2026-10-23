@@ -202,8 +202,7 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
     /** आख़िरी बार यूज़र बोला / DK बोला - पीछे की आवाज़ कब वापस (DuckWatch) */
     @Volatile private var quietSince = 0L
     @Volatile private var duckFreedAt = 0L
-    /** Bluetooth जुड़ा = कॉल वाला तरीका (AudioRoute); हटा = speaker */
-    private var route: AudioRoute? = null
+    /** Bluetooth जुड़ा = कॉल वाला तरीका (BtAudio); हटा = speaker */
     @Volatile private var btOn = false
     @Volatile private var routeChanged = false
     /** DK की अपनी आवाज़ कितनी तेज़ बज रही है (आख़िरी ~400ms) - गूँज पहचानने के लिए */
@@ -348,14 +347,15 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
         var quickDrops = 0                               // judne ke turant baad baar-baar tootna
         // v3.39: Bluetooth headset जुड़ा = कॉल वाला तरीका (माइक+आवाज़ headset पर), नहीं तो speaker (पहले जैसा)
         drop1007.reset(); endGate.reset(); quietSince = 0L; routeChanged = false
-        route = AudioRoute(svc, { m -> log(m) }) { bt ->
+        btOn = BtAudio.acquire(svc, this@GeminiLive) { bt ->
             btOn = bt; routeChanged = true
             // DK चुप हो तब आवाज़ का रास्ता बदलो (बोलते-बोलते आवाज़ न कटे)
             svc.scope.launch(Dispatchers.IO) {
                 withTimeoutOrNull(6_000) { while (isPlaying()) delay(100) }
                 if (!stopped) { startPlayer(); log("आवाज़: " + if (bt) "Bluetooth headset (कॉल वाला तरीका)" else "फ़ोन का speaker") }
             }
-        }.also { it.start(); btOn = it.bluetooth }
+        }
+        log("आवाज़ का रास्ता: " + if (btOn) "Bluetooth headset (कॉल वाला तरीका)" else "फ़ोन का माइक + speaker")
         startPlayer()
         caption = LiveCaption(key, onText = { t, fin -> onCaption(t, fin) }, onLate = { t -> onLateCaption(t) },
             isNewSpeech = { barging || System.currentTimeMillis() < bargeUntil }).also { it.start() }
@@ -525,7 +525,7 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
                 fastJob?.cancel(); fastJob = null; fastMemo.reset()
                 toolJobs.values.forEach { it.cancel() }; toolJobs.clear()
                 stopPlayer()
-                route?.stop(); route = null; btOn = false
+                BtAudio.release(this@GeminiLive); btOn = false
                 if (turnActive) finishTurn()
                 commitPending(true)
                 Ducker.releaseNow()
@@ -1213,7 +1213,7 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
                 val r = AudioRecord(src, IN_RATE, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT, maxOf(min * 2, CHUNK_SAMPLES * 2 * 6))
                 if (r.state != AudioRecord.STATE_INITIALIZED) { r.release(); continue }
                 // Bluetooth जुड़ा = headset का माइक (कॉल वाला तरीका)
-                if (btOn) route?.btInput?.let { d -> try { r.setPreferredDevice(d) } catch (_: Exception) {} }
+                if (btOn) BtAudio.btInput?.let { d -> try { r.setPreferredDevice(d) } catch (_: Exception) {} }
                 val sid = r.audioSessionId
                 val aec = try { AcousticEchoCanceler.isAvailable() && AcousticEchoCanceler.create(sid)?.apply { enabled = true } != null } catch (_: Exception) { false }
                 val ns = try { NoiseSuppressor.isAvailable() && NoiseSuppressor.create(sid)?.apply { enabled = true } != null } catch (_: Exception) { false }
