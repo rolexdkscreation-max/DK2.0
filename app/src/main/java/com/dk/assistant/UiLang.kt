@@ -54,19 +54,22 @@ object UiLang {
     /** यह view (और अंदर का सब) अनुवाद नहीं होगा - बातचीत/यादें/कहानी */
     fun keep(v: View) { v.setTag(R.id.ui_keep, true) }
 
-    fun apply(v: View) {
-        if (!en() || v.getTag(R.id.ui_keep) == true) return
+    /** true = कुछ text बदला (तब यह layout पुराने हिंदी नाप का था) */
+    fun apply(v: View): Boolean {
+        if (!en() || v.getTag(R.id.ui_keep) == true) return false
+        var changed = false
         if (v is TextView) {
-            if (v is EditText) { v.hint?.let { h -> t(h).let { if (it !== h && it != h) v.hint = it } } }
+            if (v is EditText) { v.hint?.let { h -> t(h).let { if (it !== h && it != h) { v.hint = it; changed = true } } } }
             else if (!v.isTextSelectable) {
                 val cur = v.text
                 val n = t(cur)
-                if (n !== cur && n.toString() != cur.toString()) v.text = n
-                v.hint?.let { h -> t(h).let { if (it.toString() != h.toString()) v.hint = it } }
+                if (n !== cur && n.toString() != cur.toString()) { v.text = n; changed = true }
+                v.hint?.let { h -> t(h).let { if (it.toString() != h.toString()) { v.hint = it; changed = true } } }
             }
         }
         v.contentDescription?.let { d -> t(d).let { if (it.toString() != d.toString()) v.contentDescription = it } }
-        if (v is ViewGroup) for (i in 0 until v.childCount) apply(v.getChildAt(i))
+        if (v is ViewGroup) for (i in 0 until v.childCount) if (apply(v.getChildAt(i))) changed = true
+        return changed
     }
 
     /** root पर अभी + हर नए layout पर (बाद में बदला text भी) */
@@ -75,7 +78,13 @@ object UiLang {
         root.setTag(R.id.ui_stamp, code)
         if (!en()) return
         apply(root)
-        root.viewTreeObserver.addOnGlobalLayoutListener { try { apply(root) } catch (_: Exception) {} }
+        // v3.40 (UI हिलना): code हिंदी text लगाता है -> layout हिंदी के नाप (ऊँची लाइनें/अलग wrap) से -> यहाँ English.
+        // पहले वही हिंदी-नाप वाला frame draw हो जाता था, अगले frame में English नाप = हर update (download %, DK बोले,
+        // कोडिंग/कंप्यूटर का कदम) पर पूरा card ऊपर-नीचे झटका. अब text बदला तो वह frame draw नहीं (Android अगला
+        // layout खुद करता है) - सिर्फ़ सही नाप वाला frame दिखता है.
+        val skip = DrawSkip()
+        root.viewTreeObserver.addOnGlobalLayoutListener { try { if (apply(root)) skip.changed() } catch (_: Exception) {} }
+        root.viewTreeObserver.addOnPreDrawListener { skip.draw() }
     }
 
     /** DKApp: हर screen पर. भाषा बदली हो तो screen नई बनती है (पुराने text वापस) */

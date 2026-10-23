@@ -29,6 +29,7 @@ class SentTrace(private val keep: Int = 6, private val clock: () -> Long = { Sys
                     listOfNotNull(NAME.find(msg)?.groupValues?.get(1), ID.find(msg)?.groupValues?.get(1)?.let { "id=$it" }).joinToString(" ") + ")"
                 head.contains("\"audioStreamEnd\"") -> "audioStreamEnd"
                 head.contains("\"audio\"") -> "audio"
+                head.contains("\"video\"") -> "video"
                 head.contains("\"realtimeInput\"") && head.contains("\"text\"") -> "text"
                 head.contains("\"clientContent\"") -> "clientContent"
                 else -> "other"
@@ -42,7 +43,7 @@ class SentTrace(private val keep: Int = 6, private val clock: () -> Long = { Sys
         val k = kind(msg)
         val now = clock()
         val last = items.lastOrNull()
-        if (last != null && last.kind == k && k == "audio") { last.count++; last.bytes += msg.length; last.at = now; return }
+        if (last != null && last.kind == k && (k == "audio" || k == "video")) { last.count++; last.bytes += msg.length; last.at = now; return }
         items.addLast(Item(k, 1, msg.length, now))
         while (items.size > keep) items.removeFirst()
     }

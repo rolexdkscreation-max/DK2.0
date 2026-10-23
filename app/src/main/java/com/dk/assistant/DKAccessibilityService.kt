@@ -131,6 +131,7 @@ class DKAccessibilityService : AccessibilityService() {
 
     fun startLive() {
         DKLog.d("Live चालू (live=${DKState.live}, wake=$wakeLive)")
+        calls.start()     // v3.40: Phone की इजाज़त बाद में दी हो तो भी अब call पता चले (पहले सिर्फ़ service शुरू होते समय)
         if (DKState.live) {
             // wake word se thodi der ka Live chal raha tha -> ab pakka Live (khud band nahi hoga)
             if (wakeLive) { wakeLive = false; gemLive.idleExitMs = 0; Prefs.edit(this) { putBoolean("live_mode", true) } }
@@ -183,6 +184,63 @@ class DKAccessibilityService : AccessibilityService() {
     /** Lagatar kitni baar Live network/mic ki thodi-der wali dikkat se ruka (backoff ke liye) */
     @Volatile private var liveSoftFails = 0
     fun callBusy() = calls.ringing || callPending || callAnnouncing || calls.inCall
+    /**
+     * v3.40: call उठ चुकी (चल रही) = माइक call का -> तभी DK लाइव रुकता है. घंटी के समय Live खुला रहता है:
+     * वही पूछता है "उठाऊँ या काट दूँ?" और आपके कहने पर उठाता / स्पीकर / काटता है (पहले घंटी बजते ही Live बंद हो जाता था).
+     */
+    fun callTakesMic() = calls.inCall && !calls.ringing
+    fun callRinging() = calls.ringing || callPending
+    fun callerName() = calls.caller.ifBlank { callerFromScreen() }
+
+    /** DK लाइव से call का काम (CallReply.ACTIONS). कोई call न हो तो कुछ नहीं दबाता ("Decline" जैसा कोई और बटन न दब जाए) */
+    suspend fun liveCallAction(action: String): String {
+        if (!calls.ringing && !calls.inCall && !callPending) return "NO_CALL"
+        val r = when (action) {
+            CallReply.ANSWER -> answerCall(false)
+            CallReply.ANSWER_SPEAKER -> answerCall(true)
+            CallReply.REJECT -> endCall()
+            CallReply.SPEAKER_ON -> if (calls.inCall) setSpeaker(true) else answerCall(true)
+            CallReply.SPEAKER_OFF -> setSpeaker(false)
+            CallReply.WHO -> whoCalls()
+            else -> "ERROR: unknown action $action"
+        }
+        if (action != CallReply.WHO && !r.startsWith("ERROR")) callPending = false
+        DKLog.d("Live: call $action -> $r")
+        return r
+    }
+
+    /** v3.40: स्क्रीन शेयर का Android popup - "Start / शुरू करें" खुद दबाओ (सिर्फ़ System UI में और popup DK ने खोला हो तभी) */
+    fun autoTapShareStart() {
+        scope.launch {
+            val words = setOf("start now", "start", "share screen", "शुरू करें", "अभी शुरू करें", "प्रारंभ करें", "स्क्रीन शेयर करें", "शेयर करें", "शुरू करो")
+            delay(700)
+            repeat(20) {
+                if (!LiveVision.asking || LiveVision.screenOn) return@launch
+                for (root in allRoots()) {
+                    val pkg = root.packageName?.toString().orEmpty()
+                    if (!pkg.contains("systemui") && pkg != "android") continue
+                    val n = exactClickable(root, words, 0) ?: continue
+                    if (n.performAction(AccessibilityNodeInfo.ACTION_CLICK)) {
+                        DKLog.d("स्क्रीन शेयर: '${n.text ?: n.contentDescription ?: ""}' खुद दबाया ($pkg)"); return@launch
+                    }
+                }
+                delay(400)
+            }
+            if (LiveVision.asking) DKLog.d("स्क्रीन शेयर: Start बटन खुद नहीं मिला - user दबाए")
+        }
+    }
+
+    private fun exactClickable(n: AccessibilityNodeInfo?, words: Set<String>, d: Int): AccessibilityNodeInfo? {
+        if (n == null || d > 25) return null
+        val t = (n.text ?: n.contentDescription)?.toString()?.trim()?.lowercase()
+        if (t != null && t in words) {
+            var c: AccessibilityNodeInfo? = n; var up = 0
+            while (c != null && !c.isClickable && up < 3) { c = c.parent; up++ }
+            if (c != null && c.isClickable && c.isEnabled) return c
+        }
+        for (i in 0 until n.childCount) exactClickable(n.getChild(i), words, d + 1)?.let { return it }
+        return null
+    }
     fun useGeminiLive(): Boolean = DKState.live && liveReady()
     /** Gemini Live chal sakta hai? (sunne ka tareeka "auto" + Gemini key + abhi ruka nahi) */
     fun liveReady(): Boolean = Prefs.listenEngine(this) == "auto" &&
@@ -375,6 +433,7 @@ class DKAccessibilityService : AccessibilityService() {
     /** Ek hi sunne wala loop: live mode me har baat command hai, wake mode me sirf wake word ke baad. */
     private fun ensureLoop() {
         val wanted = DKState.live || Prefs.wakeMode(this)
+        if (::calls.isInitialized) calls.start()      // इजाज़त बाद में मिली हो तो अब (पहले से चालू हो तो कुछ नहीं)
         if (!wanted || loopJob?.isActive == true) return
         loopJob = scope.launch {
             DKLog.d("Sunna shuru (live=${DKState.live}, wake=${Prefs.wakeMode(this@DKAccessibilityService)}, Gemini Live=${if (liveReady()) "तैयार" else "नहीं: " + liveWhyNot()})")
@@ -860,6 +919,18 @@ class DKAccessibilityService : AccessibilityService() {
         if (!calls.ringing && calls.known) { callPending = false; return }
         val msg = if (who.isNotBlank()) "$who का कॉल आ रहा है। उठाऊँ या काट दूँ?" else "किसी का कॉल आ रहा है। उठाऊँ या काट दूँ?"
         DKState.reply(msg)
+        // v3.40: DK लाइव (Gemini) जुड़ा है = वही पूछे और जवाब सुने (Live बंद नहीं होता, पुराने सुनने पर निर्भर नहीं)
+        if (DKState.live && gemLive.canTalk()) {
+            val spoke = gemLive.announceCall(who)
+            if (!spoke && calls.ringing) {
+                // Gemini ने 5s में बोलना शुरू नहीं किया -> फ़ोन की अपनी आवाज़ से पूछो; जवाब फिर भी Live सुनेगा
+                DKLog.d("Live ने कॉल नहीं बताया - फ़ोन की आवाज़ से पूछा")
+                gemLive.muteMic(true)
+                try { speaker.speakQuick(msg) } finally { gemLive.muteMic(false) }
+            }
+            scope.launch { while (calls.ringing) delay(500); callPending = false }
+            return
+        }
         callAnnouncing = true
         try { speaker.speakQuick(msg) } finally { callAnnouncing = false }   // phone ki apni awaaz = bina der
 

@@ -1,6 +1,8 @@
 package com.dk.assistant
 
 import android.content.Intent
+import android.content.pm.PackageManager
+import android.content.res.ColorStateList
 import android.graphics.Typeface
 import android.os.Bundle
 import android.view.Gravity
@@ -11,6 +13,7 @@ import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.OnBackPressedCallback
 import androidx.appcompat.app.AppCompatActivity
+import androidx.camera.view.PreviewView
 
 /**
  * Awaaz wali screen: khulte hi live baatcheet shuru (jaise insaan se baat karte hain).
@@ -28,6 +31,14 @@ class VoiceActivity : AppCompatActivity() {
     private lateinit var mic: ImageButton
     private lateinit var orbBox: FrameLayout
     private lateinit var minBtn: ImageButton
+    // v3.40: DK लाइव को दिखाना - स्क्रीन शेयर / कैमरा (दोनों बंद से शुरू)
+    private lateinit var shareBtn: ImageButton
+    private lateinit var camBtn: ImageButton
+    private lateinit var camBox: FrameLayout
+    private lateinit var camView: PreviewView
+    private var feed: CameraFeed? = null
+    private var camAsked = false
+    private val visionListener: () -> Unit = { renderVision(); syncCamera() }
     private val dp get() = resources.displayMetrics.density
     private val listener: () -> Unit = { render() }
 
@@ -52,6 +63,14 @@ class VoiceActivity : AppCompatActivity() {
             text = "बोलिए, मैं सुन रहा हूँ — जैसे आमने-सामने बात"; textSize = 12f; setTextColor(0x99FFFFFF.toInt())
         })
         top.addView(titles, LinearLayout.LayoutParams(0, -2, 1f))
+        fun topBtn(icon: Int, desc: String, click: () -> Unit) = ImageButton(this).apply {
+            setImageResource(icon); setBackgroundResource(R.drawable.glass_circle)
+            val p = (12 * dp).toInt(); setPadding(p, p, p, p); scaleType = android.widget.ImageView.ScaleType.FIT_CENTER
+            contentDescription = desc
+            setOnClickListener { click() }
+        }.also { top.addView(it, LinearLayout.LayoutParams((46 * dp).toInt(), (46 * dp).toInt()).apply { marginEnd = (8 * dp).toInt() }) }
+        shareBtn = topBtn(R.drawable.ic_screen_share, "स्क्रीन शेयर चालू/बंद") { onShareTap() }
+        camBtn = topBtn(R.drawable.ic_camera, "कैमरा चालू/बंद") { onCamTap() }
         top.addView(ImageButton(this).apply {
             setImageResource(R.drawable.ic_face); setBackgroundResource(R.drawable.glass_circle)
             val p = (13 * dp).toInt(); setPadding(p, p, p, p); scaleType = android.widget.ImageView.ScaleType.FIT_CENTER
@@ -78,6 +97,22 @@ class VoiceActivity : AppCompatActivity() {
         orbBox.addView(minBtn, FrameLayout.LayoutParams((40 * dp).toInt(), (40 * dp).toInt(), Gravity.TOP or Gravity.END).apply {
             topMargin = (6 * dp).toInt()
         })
+        // कैमरा चालू हो तो orb की जगह preview (जो DK देख रहा है वही आपको भी दिखे) + कैमरा बदलने का बटन
+        camBox = FrameLayout(this).apply {
+            visibility = android.view.View.GONE
+            setBackgroundResource(R.drawable.glass_card); clipToOutline = true
+        }
+        camView = PreviewView(this).apply { implementationMode = PreviewView.ImplementationMode.COMPATIBLE; scaleType = PreviewView.ScaleType.FILL_CENTER }
+        camBox.addView(camView, FrameLayout.LayoutParams(-1, -1))
+        camBox.addView(ImageButton(this).apply {
+            setImageResource(R.drawable.ic_flip); setBackgroundResource(R.drawable.glass_circle)
+            val p = (10 * dp).toInt(); setPadding(p, p, p, p); scaleType = android.widget.ImageView.ScaleType.FIT_CENTER
+            contentDescription = "कैमरा बदलें (आगे/पीछे)"
+            setOnClickListener { LiveVision.flipCamera(this@VoiceActivity) }
+        }, FrameLayout.LayoutParams((42 * dp).toInt(), (42 * dp).toInt(), Gravity.BOTTOM or Gravity.END).apply {
+            val m = (10 * dp).toInt(); setMargins(m, m, m, m)
+        })
+        orbBox.addView(camBox, 1, FrameLayout.LayoutParams(-1, -1).apply { val m = (8 * dp).toInt(); setMargins(m, m, m, m) })
         col.addView(orbBox, LinearLayout.LayoutParams(-1, 0, 1f))
 
         state = TextView(this).apply {
@@ -131,6 +166,7 @@ class VoiceActivity : AppCompatActivity() {
     override fun onNewIntent(intent: Intent) { super.onNewIntent(intent); handle(intent) }
 
     private fun handle(i: Intent?) {
+        if (i?.getBooleanExtra("camera", false) == true) { syncCamera(); return }   // Live ने कैमरा माँगा (Live पहले से चालू)
         if (i?.getBooleanExtra("face", false) == true) {
             if (System.currentTimeMillis() >= DKState.faceUntil) DKState.showFace()
             return     // chehra dekhne aaye hain: mic apne aap chalu nahi
@@ -184,13 +220,83 @@ class VoiceActivity : AppCompatActivity() {
         if (DKState.live) DKAccessibilityService.instance?.stopLive("आवाज़ स्क्रीन का माइक बटन") else startLiveIfReady()
     }
 
-    override fun onResume() { super.onResume(); DKState.listen(listener); render() }
-    override fun onPause() { DKState.unlisten(listener); super.onPause() }
+    override fun onResume() { super.onResume(); DKState.listen(listener); LiveVision.listen(visionListener); render(); renderVision(); syncCamera() }
+    override fun onPause() { DKState.unlisten(listener); LiveVision.unlisten(visionListener); super.onPause() }
+    override fun onStart() { super.onStart(); visible = true }
+    override fun onStop() {
+        visible = false
+        // screen छोड़ी = कैमरा बंद (Android पीछे कैमरा नहीं देता). permission popup पर onStop नहीं आता.
+        if (feed?.running == true || LiveVision.cameraWanted) { feed?.stop(); LiveVision.onCameraStopped("आवाज़ स्क्रीन छोड़ी") }
+        super.onStop()
+    }
+    override fun onDestroy() { feed?.release(); feed = null; super.onDestroy() }
+
+    // ---------------------------------------------------------------- v3.40: स्क्रीन शेयर / कैमरा
+    private fun onShareTap() {
+        if (!DKState.live || DKAccessibilityService.instance?.gemLive?.canTalk() != true) {
+            UiLang.toast(this, "पहले DK लाइव चालू करें (माइक दबाएँ) — स्क्रीन शेयर DK लाइव के साथ चलता है", Toast.LENGTH_LONG).show(); return
+        }
+        val turningOn = !(LiveVision.screenOn || LiveVision.asking)
+        val r = LiveVision.toggleScreen(this)
+        if (turningOn && r.startsWith("This Live model")) UiLang.toast(this, "यह Gemini Live मॉडल तस्वीर नहीं लेता — सेटिंग्स में दूसरा मॉडल चुनें", Toast.LENGTH_LONG).show()
+        else if (turningOn) UiLang.toast(this, "Android पूछेगा — \"Start / शुरू करें\" दबाते ही DK आपकी स्क्रीन देखेगा", Toast.LENGTH_SHORT).show()
+    }
+
+    private fun onCamTap() {
+        if (!DKState.live || DKAccessibilityService.instance?.gemLive?.canTalk() != true) {
+            UiLang.toast(this, "पहले DK लाइव चालू करें (माइक दबाएँ) — कैमरा DK लाइव के साथ चलता है", Toast.LENGTH_LONG).show(); return
+        }
+        camAsked = false
+        val r = LiveVision.toggleCamera(this)
+        if (r.startsWith("This Live model")) UiLang.toast(this, "यह Gemini Live मॉडल तस्वीर नहीं लेता — सेटिंग्स में दूसरा मॉडल चुनें", Toast.LENGTH_LONG).show()
+    }
+
+    private fun renderVision() {
+        fun on(b: ImageButton, active: Boolean) {
+            b.setBackgroundResource(if (active) R.drawable.btn_live_circle else R.drawable.glass_circle)
+            b.imageTintList = ColorStateList.valueOf(if (active) 0xFFFFFFFF.toInt() else 0xCCFFFFFF.toInt())
+            b.alpha = if (DKState.live) 1f else 0.55f
+        }
+        on(shareBtn, LiveVision.screenOn || LiveVision.asking)
+        on(camBtn, LiveVision.cameraWanted || LiveVision.cameraOn)
+        camBox.visibility = if (LiveVision.cameraWanted || LiveVision.cameraOn) android.view.View.VISIBLE else android.view.View.GONE
+    }
+
+    /** LiveVision की चाह -> असली कैमरा */
+    private fun syncCamera() {
+        if (isFinishing || isDestroyed) return
+        val f = feed
+        if (!LiveVision.cameraWanted) {
+            if (f?.running == true) { f.stop(); LiveVision.onCameraStopped("बंद किया") }
+            renderVision(); return
+        }
+        if (!visible) return
+        if (checkSelfPermission(android.Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) {
+            if (!camAsked) { camAsked = true; requestPermissions(arrayOf(android.Manifest.permission.CAMERA), REQ_CAM) }
+            return
+        }
+        if (f?.running == true && f.front == LiveVision.cameraFront) return
+        val feed2 = f ?: CameraFeed(this, camView).also { feed = it }
+        val front = LiveVision.cameraFront
+        feed2.start(front,
+            onOk = { LiveVision.onCameraStarted(front) },
+            onFail = { why -> UiLang.toast(this, "कैमरा नहीं खुला: $why", Toast.LENGTH_LONG).show(); LiveVision.onCameraStopped(why) })
+        renderVision()
+    }
+
+    @Deprecated("Deprecated in Java")
+    override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
+        @Suppress("DEPRECATION") super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if (requestCode != REQ_CAM) return
+        if (grantResults.firstOrNull() == PackageManager.PERMISSION_GRANTED) syncCamera()
+        else { UiLang.toast(this, "कैमरा की इजाज़त नहीं मिली", Toast.LENGTH_LONG).show(); LiveVision.onCameraStopped("कैमरा की इजाज़त नहीं") }
+    }
 
     private fun render() {
         val name = Prefs.assistantName(this)
         val live = DKState.live
         mic.setBackgroundResource(if (live) R.drawable.btn_live_circle else R.drawable.btn_accent_circle)
+        if (::shareBtn.isInitialized) renderVision()
         // laal (Live) kaanch par gulabi icon na dikhe - tab safed; warna apna rang
         mic.imageTintList = if (live) android.content.res.ColorStateList.valueOf(0xFFFFFFFF.toInt()) else null
         state.text = when (DKState.mode) {
@@ -211,6 +317,13 @@ class VoiceActivity : AppCompatActivity() {
             SourcesView.build(this, src)?.let { srcBox.addView(it) }
             srcBox.visibility = if (src.isEmpty()) android.view.View.GONE else android.view.View.VISIBLE
         }
+    }
+
+    companion object {
+        private const val REQ_CAM = 4209
+        /** आवाज़ स्क्रीन सामने है (कैमरा सिर्फ़ तभी) */
+        @Volatile var visible = false
+            private set
     }
 
     private fun tail(t: String, max: Int): String {

@@ -287,6 +287,74 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
         parked?.let { parked = null; closeWs(it.ws, why) }
     }
 
+    // ================================================================ v3.40: फ़ोन कॉल + स्क्रीन/कैमरा
+    /** Live जुड़ा है और अभी बोल-सुन सकता है */
+    fun canTalk() = !stopped && ready && ws != null
+    @Volatile private var micMuted = false
+    /** फ़ोन की अपनी आवाज़ (speakQuick) से कुछ बोलते समय वह आवाज़ Gemini को न जाए */
+    fun muteMic(on: Boolean) { micMuted = on }
+    /** call का आख़िरी काम (दो बार न हो: फ़ोन ने सुनकर उठाया, फिर Gemini ने भी phone_call माँगा) */
+    @Volatile private var callDone: Pair<String, Long>? = null
+
+    /** घंटी: Gemini खुद बताए किसका कॉल है और पूछे. true = DK बोलने लगा */
+    suspend fun announceCall(who: String): Boolean {
+        if (!canTalk()) return false
+        // tool का जवाब बाकी हो तब text = 1007 का ख़तरा -> थोड़ा रुको
+        withTimeoutOrNull(1500) { while (toolJobs.isNotEmpty()) delay(100) }
+        if (!canTalk() || toolJobs.isNotEmpty()) return false
+        callDone = null
+        if (isPlaying()) { flushPlayback(); commitPending(false) }
+        val ok = try { ws?.tx(JSONObject().put("realtimeInput", JSONObject().put("text", CallReply.liveNote(who))).toString()) == true } catch (_: Exception) { false }
+        log("कॉल आया (${who.ifBlank { "नंबर पता नहीं" }}) - DK लाइव से पूछ रहा हूँ" + if (ok) "" else " (भेज नहीं पाया)")
+        if (!ok) return false
+        lastAct = System.currentTimeMillis()
+        withTimeoutOrNull(5_000) { while (!isPlaying()) delay(100) }
+        return isPlaying()
+    }
+
+    private suspend fun callTool(action: String, from: String): String {
+        val a = action.trim().lowercase()
+        if (a !in CallReply.ACTIONS) return "Unknown action '$action' - use one of: ${CallReply.ACTIONS.joinToString()}"
+        val now = System.currentTimeMillis()
+        val pick = listOf(CallReply.ANSWER, CallReply.ANSWER_SPEAKER, CallReply.REJECT)
+        callDone?.let { (d, at) ->
+            if (now - at < 15_000 && d in pick && a in pick) return "Already done ($d) a moment ago - do not repeat it."
+        }
+        val r = svc.liveCallAction(a)
+        if (a != CallReply.WHO && !r.startsWith("ERROR") && r != "NO_CALL") callDone = a to now
+        log("कॉल ($from): $a -> $r")
+        return if (a == CallReply.WHO) (if (r.startsWith("CALLER:")) r else "Caller name is not known.") else CallReply.resultNote(a, r)
+    }
+
+    @Volatile private var lastFrameAt = 0L
+    @Volatile private var frames = 0
+    private val vision1007 = ArrayDeque<Long>()
+    /** यह Live मॉडल तस्वीर नहीं लेता (तस्वीर भेजते ही बार-बार 1007) */
+    @Volatile var visionBroken = false
+        private set
+
+    /** स्क्रीन / कैमरा की JPEG तस्वीर (~1 हर सेकंड). network भरा हो तो तस्वीर छोड़ो - आवाज़ पहले */
+    fun sendFrame(jpeg: ByteArray): Boolean {
+        if (visionBroken || stopped || !ready) return false
+        val w = ws ?: return false
+        if (w.queueSize() > 384 * 1024) return false
+        val msg = "{\"realtimeInput\":{\"video\":{\"mimeType\":\"image/jpeg\",\"data\":\"" +
+            Base64.encodeToString(jpeg, Base64.NO_WRAP) + "\"}}}"
+        val ok = w.tx(msg)
+        if (ok) { lastFrameAt = System.currentTimeMillis(); frames++ }
+        return ok
+    }
+
+    /** स्क्रीन/कैमरा चालू-बंद हुआ -> Gemini को बताओ (tool का जवाब बाकी हो तो उसके बाद) */
+    fun visionNote(t: String) {
+        svc.scope.launch {
+            withTimeoutOrNull(8_000) { while (toolJobs.isNotEmpty() || generating) delay(150) }
+            if (!canTalk()) return@launch
+            try { ws?.tx(JSONObject().put("realtimeInput", JSONObject().put("text", t)).toString()) } catch (_: Exception) {}
+            log("Gemini को बताया: ${t.take(70)}")
+        }
+    }
+
     /** Haalat badlo (Thinking kab se hai yaad rakho - atakne par wapas) */
     private fun setMode(m: Mode) {
         thinkingSince = if (m == Mode.THINKING) (if (DKState.mode == Mode.THINKING && thinkingSince > 0) thinkingSince else System.currentTimeMillis()) else 0L
@@ -347,6 +415,7 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
         var quickDrops = 0                               // judne ke turant baad baar-baar tootna
         // v3.39: Bluetooth headset जुड़ा = कॉल वाला तरीका (माइक+आवाज़ headset पर), नहीं तो speaker (पहले जैसा)
         drop1007.reset(); endGate.reset(); quietSince = 0L; routeChanged = false
+        visionBroken = false; synchronized(vision1007) { vision1007.clear() }; micMuted = false
         btOn = BtAudio.acquire(svc, this@GeminiLive) { bt ->
             btOn = bt; routeChanged = true
             // DK चुप हो तब आवाज़ का रास्ता बदलो (बोलते-बोलते आवाज़ न कटे)
@@ -368,7 +437,7 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
             val reveal = launch(Dispatchers.IO) { while (isActive && !stopped) { revealTick(); delay(80) } }
             try {
                 while (!stopped && isActive) {
-                    if (svc.callBusy()) return@coroutineScope
+                    if (svc.callTakesMic()) return@coroutineScope      // v3.40: घंटी पर नहीं, call उठने पर ही
                     model = models[mi]
                     // v3.8: wake word ke baad garam rakha connection abhi zinda hai -> naya mat banao (0 ms)
                     val pk = parked; parked = null
@@ -437,7 +506,7 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
                             idleExit = true; stopped = true; break
                         }
                         if (goAway && !turnActive && !isPlaying()) { log("goAway - नया connection"); goAwayDrop = true; break }
-                        if (svc.callBusy()) { closeWs(ws, "call आया"); return@coroutineScope }
+                        if (svc.callTakesMic()) { closeWs(ws, "call उठी - माइक call का"); return@coroutineScope }
                         if (System.currentTimeMillis() % 10_000 < 100) { updateStats(); log(stats) }
                         val now = System.currentTimeMillis()
                         // "Thinking" me atka (kuch nahi aaya) -> wapas Listening, purani haalat na rahe
@@ -486,6 +555,19 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
                     goAway = false
                     reconnects++
                     log("टूटने से पहले भेजे: ${wire.summary()}")
+                    if (code == 1007 && lastFrameAt > 0 && System.currentTimeMillis() - lastFrameAt < 6_000) {
+                        val n = synchronized(vision1007) {
+                            val t = System.currentTimeMillis(); vision1007.addLast(t)
+                            while (vision1007.isNotEmpty() && t - vision1007.first() > 120_000) vision1007.removeFirst()
+                            vision1007.size
+                        }
+                        log("1007 तस्वीर भेजने के तुरंत बाद (#$n)")
+                        if (n >= 2) {
+                            visionBroken = true
+                            log("यह Live मॉडल ($model) तस्वीर नहीं ले रहा - स्क्रीन/कैमरा बंद")
+                            LiveVision.onVisionBroken(svc)
+                        }
+                    }
                     if (code == 1007) {
                         // सर्वर को कोई संदेश गलत लगा: उसी (टूटी) बातचीत से दोबारा जुड़ने पर फिर टूटता - नई बातचीत
                         val a = drop1007.hit(System.currentTimeMillis(), useSearch)
@@ -526,6 +608,7 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
                 toolJobs.values.forEach { it.cancel() }; toolJobs.clear()
                 stopPlayer()
                 BtAudio.release(this@GeminiLive); btOn = false
+                LiveVision.onLiveEnded(svc)          // Live बंद = स्क्रीन शेयर / कैमरा भी बंद (कोई तस्वीर कहीं नहीं जाती)
                 if (turnActive) finishTurn()
                 commitPending(true)
                 Ducker.releaseNow()
@@ -666,6 +749,23 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
             .put(JSONObject().put("name", "task_status")
                 .put("description", "Get the REAL current status of background work given to DK Computer or the coding team (state, real steps done, latest step, result). Call it whenever the user asks how far a task has got / is it done (काम कहाँ तक पहुँचा, हुआ या नहीं). Tell ONLY what it returns - never guess progress or percentages.")
                 .put("parameters", JSONObject().put("type", "OBJECT").put("properties", JSONObject())))
+            .put(JSONObject().put("name", "phone_call")
+                .put("description", "Handle the phone call that is ringing now (or is in progress) - ONLY after the user told you what to do. action: answer = pick up; answer_speaker = pick up and put it on loudspeaker; reject = cut / decline / hang up; speaker_on / speaker_off during a call; who = who is calling. Never answer or reject a call on your own.")
+                .put("parameters", JSONObject().put("type", "OBJECT")
+                    .put("properties", JSONObject().put("action", JSONObject().put("type", "STRING")
+                        .put("description", "One of: answer, answer_speaker, reject, speaker_on, speaker_off, who")))
+                    .put("required", JSONArray().put("action"))))
+            .put(JSONObject().put("name", "screen_share")
+                .put("description", "Turn sharing of the user's phone screen with you ON or OFF (it is OFF by default). Only while it is ON you receive an image of the screen about once a second. If the user asks you to look at / read / check their screen and sharing is OFF, first ask 'स्क्रीन शेयर चालू करूँ?'; when they agree, or when they directly ask you to share or see the screen, call with on=true. Android then shows its own permission popup (DK tries to tap Start itself). Never describe the screen before you get the SYSTEM NOTE that sharing really started. Call with on=false when the user says to stop.")
+                .put("parameters", JSONObject().put("type", "OBJECT")
+                    .put("properties", JSONObject().put("on", JSONObject().put("type", "BOOLEAN")))
+                    .put("required", JSONArray().put("on"))))
+            .put(JSONObject().put("name", "camera")
+                .put("description", "Turn the phone camera ON or OFF so you can see what the user shows you (OFF by default). Only while it is ON you receive a camera image about once a second. Use when the user says कैमरा चालू करो / कैमरा से देखो / ये देखो क्या है (and the camera is off), or to turn it off. facing: back (default) or front (selfie).")
+                .put("parameters", JSONObject().put("type", "OBJECT")
+                    .put("properties", JSONObject().put("on", JSONObject().put("type", "BOOLEAN"))
+                        .put("facing", JSONObject().put("type", "STRING").put("description", "back or front")))
+                    .put("required", JSONArray().put("on"))))
             .put(JSONObject().put("name", "remember_fact")
                 .put("description", "Save a personal fact or preference the user told about themselves.")
                 .put("parameters", JSONObject().put("type", "OBJECT")
@@ -1013,6 +1113,9 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
                 val result = try { when (name) {
                     "phone_task" -> phoneTask(args.optString("request"))
                     "task_status" -> TaskStatus.summary()
+                    "phone_call" -> callTool(args.optString("action"), "Gemini")
+                    "screen_share" -> LiveVision.setScreen(svc, args.optBoolean("on", true))
+                    "camera" -> LiveVision.setCamera(svc, args.optBoolean("on", true), args.optString("facing"))
                     "remember_fact" -> { Memory.addFact(svc, args.optString("fact")); "saved" }
                     "computer_task" -> {
                         val t = args.optString("task").trim()
@@ -1168,7 +1271,8 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
      * silent=true: khaamoshi (shoonya) ka tukda - SilenceStreamGate tay karta hai bhejna hai ya nahi.
      * sendLock: teen thread yahan bhejte hain - ek hi kram me jaye.
      */
-    private fun sendAudio(pcm: ByteArray, silent: Boolean = false) = synchronized(sendLock) {
+    private fun sendAudio(pcm: ByteArray, silent: Boolean = false): Unit = synchronized(sendLock) {
+        if (micMuted && !silent) { sendAudio(ByteArray(pcm.size), true); return@synchronized }
         var end = false
         if (silent) {
             when (liveGate.onSilence()) {
@@ -1315,9 +1419,19 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
             delay(300); val a = cur()
             delay(350); val b = cur()
             if (b.isBlank() || a != b || turnDet.inSpeech || isPlaying() || stopped) return@launch
+            // v3.40: घंटी बज रही है -> "हाँ / उठाओ / स्पीकर पर / काट दो" फ़ोन तुरंत करे (Gemini के tool का इंतज़ार नहीं)
+            if (svc.callRinging()) {
+                val act = CallReply.parse(b)
+                if (act != null) { callTool(act, "फ़ोन ने सुना: \"${b.take(30)}\""); return@launch }
+            }
             val tc = System.nanoTime()
             val q = LiveFast.pick(b, Prefs.wakeWords(svc), svc.currentPackage(), fast = true)
             val classMs = (System.nanoTime() - tc) / 1_000_000
+            // "स्क्रीन शेयर करो / बंद करो" Live में = असली स्क्रीन शेयर (Gemini देखे), पुराना screenshot switch नहीं
+            if (q != null && q.action.optString("type") == "screen_view") {
+                val r = LiveVision.setScreen(svc, q.action.optBoolean("on", true))
+                log("तुरंत: स्क्रीन शेयर ${if (q.action.optBoolean("on", true)) "चालू" else "बंद"} -> ${r.take(60)}"); return@launch
+            }
             if (q == null) { log("रूटर: \"${b.take(30)}\" फ़ोन पर सीधा नहीं - Gemini संभालेगा (वर्गीकरण $classMs ms)"); return@launch }
             if (!fastMemo.begin(q, System.currentTimeMillis())) return@launch
             val t0 = System.currentTimeMillis()
