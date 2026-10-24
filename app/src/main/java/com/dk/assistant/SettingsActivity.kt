@@ -1146,6 +1146,8 @@ class SettingsActivity : AppCompatActivity() {
             }
             if (::swWake.isInitialized) {
                 putBoolean("wake_mode", swWake.isChecked)
+                // v3.59: "हमेशा सुनो" अभी-अभी चालू किया = आपने खुद माइक चालू करना चुना
+                if (swWake.isChecked && !Prefs.wakeMode(this@SettingsActivity)) putBoolean("mic_user_off", false)
                 putBoolean("announce_calls", swCalls.isChecked)
             }
             if (::swShot.isInitialized) putBoolean("screenshot", swShot.isChecked)

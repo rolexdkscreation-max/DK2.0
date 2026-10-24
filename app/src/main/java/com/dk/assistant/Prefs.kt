@@ -127,6 +127,8 @@ object Prefs {
     fun edgeGlow(c: Context) = sp(c).getBoolean("edge_glow", true)
     /** v3.58: पहली बार का परिचय पूरा/छोड़ा (पुराने उपयोगकर्ता पर अपने-आप true) */
     fun onboarded(c: Context) = sp(c).getBoolean("onboarded", false)
+    /** v3.59: यूज़र ने खुद माइक/लाइव बंद किया - जब तक वह खुद चालू न करे, माइक अपने-आप नहीं खुलेगा (wake word भी नहीं) */
+    fun micUserOff(c: Context) = sp(c).getBoolean("mic_user_off", false)
     fun screenshot(c: Context) = sp(c).getBoolean("screenshot", true)
     fun ttsRate(c: Context) = sp(c).getFloat("tts_rate", 1.05f)
     fun ttsPitch(c: Context) = sp(c).getFloat("tts_pitch", 1.0f)
