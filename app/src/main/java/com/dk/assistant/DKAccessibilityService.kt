@@ -1261,7 +1261,7 @@ class DKAccessibilityService : AccessibilityService() {
 
     private fun global(action: Int): String = if (performGlobalAction(action)) "ok" else "ERROR"
 
-    private suspend fun tap(x: Float, y: Float): Boolean = swipe(x, y, x, y, 60)
+    internal suspend fun tap(x: Float, y: Float): Boolean = swipe(x, y, x, y, 60)
 
     private suspend fun swipe(x1: Float, y1: Float, x2: Float, y2: Float, duration: Long): Boolean {
         val path = Path().apply { moveTo(x1, y1); lineTo(x2, y2) }
