@@ -701,6 +701,12 @@ class SettingsActivity : AppCompatActivity() {
                 Prefs.edit(this) { putString("orb_style", chosen) }
                 preview.previewStyle = chosen
             }
+            hint(box, "3D रोशनी का गोला: Android 13 या नए फ़ोन पर असली रोशनी और चमक वाला गोला (फ़ोन झुकाओ तो रोशनी घूमे)। पुराने फ़ोन पर पृथ्वी वाला ओर्ब दिखेगा।")
+        }
+        card("किनारों की चमक", "DK सुन या बोल रहा हो तो स्क्रीन के किनारे चमकें") { box ->
+            switch(box, "सुनते समय बैंगनी, बोलते समय गुलाबी चमक", Prefs.edgeGlow(this))
+                .setOnCheckedChangeListener { _, on -> Prefs.edit(this) { putBoolean("edge_glow", on) } }
+            hint(box, "चमक छूने पर कुछ नहीं करती — नीचे का ऐप वैसे ही चलता है। फ़ोन में animation बंद हों तो चमक स्थिर रहती है।")
         }
         card("DK का चेहरा", "\"अपना चेहरा दिखाओ\" बोलने पर डॉट निकलकर चेहरा बनता है — आवाज़ महिला हो तो महिला चेहरा, पुरुष हो तो पुरुष") { box ->
             row(box,

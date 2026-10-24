@@ -123,6 +123,8 @@ object Prefs {
     /** Beech ka orb chhota (minimize) kiya hua hai? */
     fun orbMin(c: Context) = sp(c).getBoolean("orb_min", false)
     fun orbStyle(c: Context) = sp(c).getString("orb_style", "earth") ?: "earth"
+    /** v3.57: DK सुन/बोल रहा हो तो स्क्रीन के किनारों पर चमक */
+    fun edgeGlow(c: Context) = sp(c).getBoolean("edge_glow", true)
     fun screenshot(c: Context) = sp(c).getBoolean("screenshot", true)
     fun ttsRate(c: Context) = sp(c).getFloat("tts_rate", 1.05f)
     fun ttsPitch(c: Context) = sp(c).getFloat("tts_pitch", 1.0f)

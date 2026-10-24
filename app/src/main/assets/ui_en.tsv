@@ -40,6 +40,12 @@ Speaking • बोल रहा है…	Speaking…
 (कोई बदलाव नहीं)	(no changes)
 (बदलाव push नहीं किए)	(changes not pushed)
 (शुरुआती)	(default)
+3D रोशनी का गोला (Android 13+)	3D light orb (Android 13+)
+3D रोशनी का गोला: Android 13 या नए फ़ोन पर असली रोशनी और चमक वाला गोला (फ़ोन झुकाओ तो रोशनी घूमे)। पुराने फ़ोन पर पृथ्वी वाला ओर्ब दिखेगा।	3D light orb: on Android 13 or newer, a sphere with real lighting and shine (tilt the phone and the light moves). Older phones show the Earth orb.
+किनारों की चमक	Edge glow
+DK सुन या बोल रहा हो तो स्क्रीन के किनारे चमकें	Screen edges glow while DK is listening or speaking
+सुनते समय बैंगनी, बोलते समय गुलाबी चमक	Violet while listening, pink while speaking
+चमक छूने पर कुछ नहीं करती — नीचे का ऐप वैसे ही चलता है। फ़ोन में animation बंद हों तो चमक स्थिर रहती है।	The glow ignores touches — the app underneath works normally. If animations are off on the phone, the glow stays still.
 ) पर काम करूँगा।	) I'll work on it.
 ) — काम दोबारा भेजें:	) — send the task again:
 ) • बदलने के लिए ऊपर "रिपो"	) • to change, use "Repo" at the top

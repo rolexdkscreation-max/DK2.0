@@ -87,9 +87,9 @@ Important context: the existing app is a mature **View/XML + Kotlin** app (≈31
 | Item | Status | Notes |
 |---|---|---|
 | Theme / glass design | EXISTS-PARTIAL | own "liquid glass" design (`Glass`, `LiquidGlass`, `Shapes`), not the "pearl of light" tokens |
-| Orb with styles | EXISTS-PARTIAL | `OrbView` Canvas (earth, galaxy, atom, dna, torus, faces); no AGSL shader |
-| Splash | EXISTS-OK | `DKSplash` |
-| Listening edge glow + overlay | MISSING | |
+| Orb with styles | DONE (Part 10) | old `OrbView` styles kept; new style `sphere3d` = AGSL `RuntimeShader` sphere (`fx/Sphere3D`: normals, fbm interior, diffuse+specular, fresnel rim, halo, tilt-following light via accelerometer low-pass, per-state palette/amplitude in `fx/OrbLook`). Android < 13 or shader failure → dot Earth orb. System animations off → frozen |
+| Splash | EXISTS-OK | `DKSplash` (once per process, skipped when animations are off) — unchanged |
+| Listening edge glow + overlay | DONE (Part 10) | `fx/EdgeGlowView` (~26dp, violet listening/thinking, pink speaking, red reserved for errors) added by the accessibility service as a non-touchable `TYPE_ACCESSIBILITY_OVERLAY` — covers DK's own screens and other apps, no extra overlay permission. Toggle: Settings → ओर्ब → किनारों की चमक (default on). Rules in `EdgeGlowRules` |
 | Home, Chat, Voice, Memory/History, Settings, Debug | EXISTS-OK | View-based |
 | Onboarding pager, Personality screen, Orb Style carousel, Permissions screen, Profile, Privacy, About | EXISTS-PARTIAL / MISSING | permissions + profile are Settings sections; no onboarding/about screen |
 
