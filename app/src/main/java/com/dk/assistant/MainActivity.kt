@@ -21,7 +21,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var txtDk: TextView
     private lateinit var chipAccess: TextView
     private lateinit var chipMic: TextView
-    private lateinit var chipAi: TextView
+    private lateinit var btnMute: ImageButton
 
     private val stateListener: () -> Unit = { render() }
 
@@ -38,7 +38,7 @@ class MainActivity : AppCompatActivity() {
         UiLang.keep(txtDk)    // DK का जवाब (content) - UI भाषा से नहीं बदलता
         chipAccess = findViewById(R.id.chipAccess)
         chipMic = findViewById(R.id.chipMic)
-        chipAi = findViewById(R.id.chipAi)
+        btnMute = findViewById(R.id.btnMute)
         findViewById<ImageButton>(R.id.btnSettings).setOnClickListener { openSettings() }
         // orb par tap = chehra dikh raha ho to hatao, warna live awaaz screen
         findViewById<OrbView>(R.id.orb).setOnClickListener {
@@ -54,6 +54,11 @@ class MainActivity : AppCompatActivity() {
         findViewById<android.view.View>(R.id.btnMemory).setOnClickListener {
             startActivity(Intent(this, MemoryActivity::class.java))
         }
+        btnMute.setOnClickListener {
+            val muted = !DKState.micMuted
+            DKState.setMicMuted(muted)
+            UiLang.toast(this, if (muted) "माइक म्यूट - DK अभी कुछ नहीं सुनेगा" else "माइक चालू - DK फिर से सुन रहा है", Toast.LENGTH_SHORT).show()
+        }
         Setup.selfEnableAccessibility(this)
 
         chipMic.setOnClickListener { askPerms() }
@@ -63,7 +68,6 @@ class MainActivity : AppCompatActivity() {
                 Setup.openAccessibility(this)
             }
         }
-        chipAi.setOnClickListener { openSettings() }
         // DK कंप्यूटर: कोई भी काम कदम-दर-कदम (खोज, फ़ाइलें, फ़ोन, कोडिंग…)
         findViewById<TextView>(R.id.chipComputer).setOnClickListener { startActivity(Intent(this, ComputerActivity::class.java)) }
         findViewById<TextView>(R.id.chipUpdate).setOnClickListener {
@@ -265,17 +269,20 @@ class MainActivity : AppCompatActivity() {
 
         UiLang.setText(chipAccess, (if (Setup.accessibilityOn(this)) "✓ " else "✗ ") + "फ़ोन कंट्रोल")
         UiLang.setText(chipMic, (if (Setup.hasMic(this)) "✓ " else "✗ ") + "माइक")
-        val p = Providers.byId(Prefs.activeProvider(this))
-        UiLang.setText(chipAi, (if (Prefs.hasAnyKey(this)) "✓ " else "✗ ") + (p?.name ?: "AI"))
 
         val live = DKState.live
-        UiLang.setText(txtState, when (DKState.mode) {
+        if (DKState.micMuted) UiLang.setText(txtState, "माइक म्यूट • ऊपर का बटन दबाकर चालू करें")
+        else UiLang.setText(txtState, when (DKState.mode) {
             Mode.IDLE -> if (live) "माइक चालू है • आवाज़ स्क्रीन खोलें" else "ओर्ब या \"आवाज़\" दबाकर बात करें"
             Mode.LISTENING -> if (live) "Listening • सुन रहा हूँ… (बंद: टैप या \"माइक बंद\")" else "Listening • सुन रहा हूँ…"
             Mode.THINKING -> "जवाब आ रहा है…"
             Mode.WORKING -> "काम कर रहा हूँ…"
             Mode.SPEAKING -> "Speaking • बोल रहा हूँ…"
         })
-        UiLang.setText(txtDk, if (DKState.lastReply.isBlank()) "" else "$name: " + DKState.lastReply)
+        btnMute.setImageResource(if (DKState.micMuted) R.drawable.ic_mic_off else R.drawable.ic_mic)
+        btnMute.contentDescription = UiLang.s(if (DKState.micMuted) "माइक चालू करें" else "माइक म्यूट करें")
+        val userText = DKState.lastUser.takeIf { it.isNotBlank() }?.let { "${user.ifBlank { "आप" }}: $it\n" } ?: ""
+        val dkText = if (DKState.lastReply.isBlank()) "" else "$name: " + DKState.lastReply
+        UiLang.setText(txtDk, userText + dkText)
     }
 }

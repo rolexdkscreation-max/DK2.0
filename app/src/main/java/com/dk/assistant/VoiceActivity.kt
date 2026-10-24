@@ -148,6 +148,25 @@ class VoiceActivity : AppCompatActivity() {
         }
         mic.visibility = android.view.View.GONE     // orb छूने से ही Live चालू/बंद
         bar.addView(mic, LinearLayout.LayoutParams((76 * dp).toInt(), (76 * dp).toInt()))
+        // DK AI: माइक म्यूट/चालू (होम वाले बटन जैसा ही - DKState.micMuted)
+        val muteBtn = ImageButton(this).apply {
+            fun show() {
+                setImageResource(if (DKState.micMuted) R.drawable.ic_mic_off else R.drawable.ic_mic)
+                contentDescription = UiLang.s(if (DKState.micMuted) "माइक चालू करें" else "माइक म्यूट करें")
+            }
+            show()
+            background = android.graphics.drawable.GradientDrawable().apply {
+                shape = android.graphics.drawable.GradientDrawable.OVAL
+                setColor(0x00000000); setStroke((1 * dp).toInt().coerceAtLeast(1), 0x66FFFFFF)
+            }
+            val p = (16 * dp).toInt(); setPadding(p, p, p, p); scaleType = android.widget.ImageView.ScaleType.FIT_CENTER
+            setOnClickListener {
+                val muted = !DKState.micMuted
+                DKState.setMicMuted(muted); show()
+                UiLang.toast(this@VoiceActivity, if (muted) "माइक म्यूट - DK अभी कुछ नहीं सुनेगा" else "माइक चालू - DK फिर से सुन रहा है", Toast.LENGTH_SHORT).show()
+            }
+        }
+        bar.addView(muteBtn, LinearLayout.LayoutParams((60 * dp).toInt(), (60 * dp).toInt()).apply { marginEnd = (16 * dp).toInt() })
         // बाहर निकलने का एक ही साफ़ बटन (काली स्क्रीन पर पतला सफ़ेद घेरा)
         bar.addView(ImageButton(this).apply {
             setImageResource(R.drawable.ic_close)
