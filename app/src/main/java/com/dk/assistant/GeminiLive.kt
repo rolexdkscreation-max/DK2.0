@@ -854,6 +854,11 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
                 .put("parameters", JSONObject().put("type", "OBJECT")
                     .put("properties", JSONObject().put("task", JSONObject().put("type", "STRING").put("description", "The full task in the user's words, with all details (or just हाँ / नहीं for a permission)")))
                     .put("required", JSONArray().put("task"))))
+            .put(JSONObject().put("name", "build_website")
+                .put("description", "DK Website Forge: build a complete animated 3D website from the user's description (e.g. 'DK, ek cafe ki website banao'). A live 3D build screen opens on the phone and the finished website is shown there. Use it ONLY when the user asks to build/create/make a website, web page or landing page - not for coding tasks on GitHub. It returns forge_started immediately; tell the user it has started and that they can watch it being built.")
+                .put("parameters", JSONObject().put("type", "OBJECT")
+                    .put("properties", JSONObject().put("prompt", JSONObject().put("type", "STRING").put("description", "What website to build, with every detail the user gave (business, name, sections, colours, language)")))
+                    .put("required", JSONArray().put("prompt"))))
             .put(JSONObject().put("name", "task_status")
                 .put("description", "Get the REAL current status of background work given to DK Computer or the coding team (state, real steps done, latest step, result). Call it whenever the user asks how far a task has got / is it done (काम कहाँ तक पहुँचा, हुआ या नहीं). Tell ONLY what it returns - never guess progress or percentages.")
                 .put("parameters", JSONObject().put("type", "OBJECT").put("properties", JSONObject())))
@@ -1342,6 +1347,7 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
                     "local_info" -> localInfoTool()
                     "notifications" -> notifTool(args.optString("app"))
                     "notification_reply" -> notifReply(args.optString("to"), args.optString("message"))
+                    "build_website" -> com.dk.assistant.forge.ForgeLauncher.fromVoice(svc, args.optString("prompt"))
                     "computer_task" -> {
                         val t = args.optString("task").trim()
                         val yn = if (ComputerSession.ask != null) ComputerVoice.yesNo(t) else null
