@@ -29,6 +29,7 @@ class MainActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
         Glass.install(this)
+        if (savedInstanceState == null) DKSplash.show(this)     // ऐप खुलते ही DK logo (overlay, ~1.2s)
 
         txtHello = findViewById(R.id.txtHello)
         txtName = findViewById(R.id.txtName)

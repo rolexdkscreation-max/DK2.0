@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- branding/gen_brand.py से बना - हाथ से मत बदलो -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:aapt="http://schemas.android.com/aapt"
+    android:width="288dp" android:height="288dp" android:viewportWidth="108" android:viewportHeight="108">
+    <path android:pathData="M0,0h108v108h-108z">
+        <aapt:attr name="android:fillColor">
+            <gradient android:type="radial" android:centerX="54" android:centerY="44.0" android:gradientRadius="30">
+                <item android:offset="0" android:color="#8C7A5CFF" />
+                <item android:offset="0.55" android:color="#227A5CFF" />
+                <item android:offset="1" android:color="#007A5CFF" />
+            </gradient>
+        </aapt:attr>
+    </path>
+    <path android:pathData="M32.40,40.00 h0.00 a2.20,2.20 0 0 1 2.20,2.20 v3.60 a2.20,2.20 0 0 1 -2.20,2.20 h-0.00 a2.20,2.20 0 0 1 -2.20,-2.20 v-3.60 a2.20,2.20 0 0 1 2.20,-2.20 z M39.60,36.50 h0.00 a2.20,2.20 0 0 1 2.20,2.20 v10.60 a2.20,2.20 0 0 1 -2.20,2.20 h-0.00 a2.20,2.20 0 0 1 -2.20,-2.20 v-10.60 a2.20,2.20 0 0 1 2.20,-2.20 z M46.80,32.00 h0.00 a2.20,2.20 0 0 1 2.20,2.20 v19.60 a2.20,2.20 0 0 1 -2.20,2.20 h-0.00 a2.20,2.20 0 0 1 -2.20,-2.20 v-19.60 a2.20,2.20 0 0 1 2.20,-2.20 z M54.00,28.50 h0.00 a2.20,2.20 0 0 1 2.20,2.20 v26.60 a2.20,2.20 0 0 1 -2.20,2.20 h-0.00 a2.20,2.20 0 0 1 -2.20,-2.20 v-26.60 a2.20,2.20 0 0 1 2.20,-2.20 z M61.20,34.50 h0.00 a2.20,2.20 0 0 1 2.20,2.20 v14.60 a2.20,2.20 0 0 1 -2.20,2.20 h-0.00 a2.20,2.20 0 0 1 -2.20,-2.20 v-14.60 a2.20,2.20 0 0 1 2.20,-2.20 z M68.40,31.00 h0.00 a2.20,2.20 0 0 1 2.20,2.20 v21.60 a2.20,2.20 0 0 1 -2.20,2.20 h-0.00 a2.20,2.20 0 0 1 -2.20,-2.20 v-21.60 a2.20,2.20 0 0 1 2.20,-2.20 z M75.60,38.50 h0.00 a2.20,2.20 0 0 1 2.20,2.20 v6.60 a2.20,2.20 0 0 1 -2.20,2.20 h-0.00 a2.20,2.20 0 0 1 -2.20,-2.20 v-6.60 a2.20,2.20 0 0 1 2.20,-2.20 z">
+        <aapt:attr name="android:fillColor">
+            <gradient android:type="linear" android:startX="28" android:startY="30" android:endX="80" android:endY="62">
+                <item android:offset="0" android:color="#2EC5FF" />
+                <item android:offset="0.5" android:color="#5B6CFF" />
+                <item android:offset="1" android:color="#B14DFF" />
+            </gradient>
+        </aapt:attr>
+    </path>
+    <path android:pathData="M43.80,66.00 v10.00 h3.20 a5.00,5.00 0 0 0 0,-10.00 z M56.60,66.00 v10.00 M64.20,66.00 L57.80,71.00 L64.20,76.00" android:strokeWidth="2.3" android:strokeLineCap="round" android:strokeLineJoin="round">
+        <aapt:attr name="android:strokeColor">
+            <gradient android:type="linear" android:startX="40" android:startY="66" android:endX="68" android:endY="77">
+                <item android:offset="0" android:color="#FFFFFF" />
+                <item android:offset="1" android:color="#CFC8FF" />
+            </gradient>
+        </aapt:attr>
+    </path>
+</vector>

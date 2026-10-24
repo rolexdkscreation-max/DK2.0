@@ -119,6 +119,8 @@ class VoiceActivity : AppCompatActivity() {
             setBackgroundResource(R.drawable.glass_pill); setTextColor(0xFFFFFFFF.toInt()); textSize = 14f
             val h = (18 * dp).toInt(); val v = (8 * dp).toInt(); setPadding(h, v, h, v)
         }
+        // सुनना (धीमी तरंग) / सोचना (घूमना) / बोलना (तेज़ तरंग) - DKWork से अपने-आप
+        col.addView(DKWorkingIndicator.row(this, voice = true, sizeDp = 32), LinearLayout.LayoutParams(-2, -2).apply { gravity = Gravity.CENTER_HORIZONTAL; bottomMargin = (6 * dp).toInt() })
         col.addView(state, LinearLayout.LayoutParams(-2, -2).apply { gravity = Gravity.CENTER_HORIZONTAL })
 
         // ---- live likha hua

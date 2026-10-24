@@ -251,6 +251,8 @@ class CodingActivity : AppCompatActivity() {
             addView(mediaRow, ViewGroup.LayoutParams(-2, -2))
         }
         col.addView(mediaScroll, LinearLayout.LayoutParams(-1, -2).apply { topMargin = (6 * dp).toInt() })
+        // कोडिंग टीम का बैकग्राउंड काम + अभी किस एजेंट का चरण (DKWork से अपने-आप)
+        col.addView(DKWorkingIndicator.row(this, focus = TaskStatus.CODER), LinearLayout.LayoutParams(-1, -2).apply { topMargin = (4 * dp).toInt() })
         col.addView(bar, LinearLayout.LayoutParams(-1, -2).apply { topMargin = (8 * dp).toInt() })
 
         send.setOnClickListener { if (CoderSession.busy) stopJob() else doSend() }
