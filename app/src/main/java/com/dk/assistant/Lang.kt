@@ -17,8 +17,8 @@ object Lang {
 
     /** Settings में क्रम + नाम */
     val ALL = listOf(
-        HINGLISH to "Hinglish — हिंदी + English मिलाकर (शुरुआती)",
-        HINDI to "हिंदी — शुद्ध, आसान हिंदी",
+        HINGLISH to "Hinglish — हिंदी + English मिलाकर",
+        HINDI to "हिंदी — शुद्ध, आसान हिंदी (शुरुआती)",
         ENGLISH to "English — सिर्फ़ अंग्रेज़ी",
     )
 
@@ -51,7 +51,8 @@ object Lang {
                 "in Devanagari; Hindi written in English letters (Hinglish) -> natural Hinglish (Hindi words in Devanagari, English words " +
                 "in English letters); English -> clear, simple English. If the user switches language, switch with them. " +
                 "Never translate or repeat back what the user said."
-            HINDI -> "reply in pure, simple Hindi written in Devanagari. Use English words only for names, app names or technical terms that have no common Hindi word."
+            HINDI -> "reply in pure, simple Hindi written in Devanagari. Use English words only for names, app names or technical terms that have no common Hindi word. " +
+                "Stay in Hindi even if the user mixes in English words; switch to another language only when the user clearly asks you to (e.g. \"English में बोलो\"), and then keep that language for the rest of this conversation until they ask again."
             ENGLISH -> "reply in clear, simple English (Indian English is fine), even when the user speaks Hindi or Hinglish."
             else -> "reply in Hinglish - natural everyday Hindi mixed with common English words, the way people in India really talk " +
                 "(e.g. \"ठीक है, मैंने alarm set कर दिया\"). Write Hindi words in Devanagari and English words in English letters."
