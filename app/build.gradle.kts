@@ -1,3 +1,5 @@
+import java.util.Properties
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
@@ -19,21 +21,32 @@ android {
     }
 
     // Hamesha ek hi key se sign -> purane app ke upar naya update install ho sake
-    val ksPath = System.getenv("DK_KEYSTORE")
+    // 1) GitHub: DK_KEYSTORE / DK_KS_PASS env (पहले जैसा)  2) अपने कंप्यूटर पर: keystore.properties (git-ignored, docs/RELEASE.md)
+    val ksProps = Properties().apply {
+        val f = rootProject.file("keystore.properties")
+        if (f.exists()) f.inputStream().use { input -> this.load(input) }
+    }
+    val ksPath = System.getenv("DK_KEYSTORE") ?: ksProps.getProperty("storeFile")
+    val ksPass = System.getenv("DK_KS_PASS") ?: ksProps.getProperty("storePassword")
+    val keyPass = System.getenv("DK_KS_PASS") ?: ksProps.getProperty("keyPassword") ?: ksPass
     signingConfigs {
         create("dk") {
             if (ksPath != null && file(ksPath).exists()) {
                 storeFile = file(ksPath)
-                storePassword = System.getenv("DK_KS_PASS")
-                keyAlias = System.getenv("DK_KEY_ALIAS") ?: "dk"
-                keyPassword = System.getenv("DK_KS_PASS")
+                storePassword = ksPass
+                keyAlias = System.getenv("DK_KEY_ALIAS") ?: ksProps.getProperty("keyAlias") ?: "dk"
+                keyPassword = keyPass
             }
         }
     }
 
     buildTypes {
         release {
-            isMinifyEnabled = false
+            // DK AI Part 15: R8 (छोटा APK) सिर्फ़ DK_MINIFY=1 पर - फ़ोन पर जाँचे बिना default नहीं बदला
+            val minify = System.getenv("DK_MINIFY") == "1"
+            isMinifyEnabled = minify
+            isShrinkResources = minify
+            proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
             signingConfig = if (ksPath != null && file(ksPath).exists())
                 signingConfigs.getByName("dk") else signingConfigs.getByName("debug")
         }
