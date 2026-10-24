@@ -136,7 +136,7 @@ Important context: the existing app is a mature **View/XML + Kotlin** app (≈31
 | JVM unit tests | EXISTS-OK | 47 test files, run on every PR |
 | Debug screen | EXISTS-OK | Settings → debug log (`DKLog`, `SevenDebug`) |
 | Release APK on GitHub Releases | EXISTS-OK | `build.yml` builds and publishes on every merge to `main` |
-| minify/shrink, docs/RELEASE.md | MISSING | |
+| minify/shrink, docs/RELEASE.md | DONE (Part 15) | `docs/RELEASE.md`; `app/proguard-rules.pro`; R8 + resource shrink opt-in with `DK_MINIFY=1` (default off until checked on a phone); local signing from git-ignored `keystore.properties` (CI env still wins) |
 
 ## Deviations decided for this repo
 1. Package stays `com.dk.assistant` (existing installs must keep updating).
