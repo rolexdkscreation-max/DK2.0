@@ -1,3 +1,5 @@
+import java.util.Properties
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
@@ -20,9 +22,9 @@ android {
 
     // Hamesha ek hi key se sign -> purane app ke upar naya update install ho sake
     // 1) GitHub: DK_KEYSTORE / DK_KS_PASS env (पहले जैसा)  2) अपने कंप्यूटर पर: keystore.properties (git-ignored, docs/RELEASE.md)
-    val ksProps = java.util.Properties().apply {
+    val ksProps = Properties().apply {
         val f = rootProject.file("keystore.properties")
-        if (f.exists()) f.inputStream().use { load(it) }
+        if (f.exists()) f.inputStream().use { input -> this.load(input) }
     }
     val ksPath = System.getenv("DK_KEYSTORE") ?: ksProps.getProperty("storeFile")
     val ksPass = System.getenv("DK_KS_PASS") ?: ksProps.getProperty("storePassword")
