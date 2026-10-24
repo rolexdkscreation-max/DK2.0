@@ -97,7 +97,13 @@ Important context: the existing app is a mature **View/XML + Kotlin** app (≈31
 | Item | Status | Notes |
 |---|---|---|
 | General screen agent that can drive any app | EXISTS-OK | `AgentRunner` (vision + accessibility), asks before risky actions |
-| ScreenDriver / TaskStateMachine / social task tools | MISSING | |
+| Agent core (`agent/core`): ScreenDriver, ScreenObservation, TargetResolver, BlockerDetector, UiActionExecutor, TaskStateMachine, ConfirmGate | BUILT | pure Kotlin, tested with `FakeScreenDriver` |
+| AccessibilityScreenDriver | BUILT | top app window only; stale observation = no tap; accessibility click, then gesture on element bounds |
+| Social tasks (`agent/social`): request parser, planner, runner, selectors (English + Hindi UI) | BUILT | Instagram post photo/video/reel/story, Facebook text/photo/video/story, WhatsApp send/read chat/search/mute/unmute/mark read |
+| Live tools `social_media_task`, `whatsapp_task`, `social_media_task_control` | BUILT | WhatsApp read_unread reuses the existing notifications tool (no second copy) |
+| Safety | BUILT | posting/sending needs the user's own "yes" after the question (checked against the real transcript); draft mode never posts; login/CAPTCHA/2FA/permission = DK waits for the user; unclear result = `submitted_unverified` |
+| Media | BUILT | only files the user shared to DK (Gallery → Share → "DK को दें"), copied to app storage |
+| On-device check against real Instagram/Facebook/WhatsApp screens | NOT VERIFIED | their layouts change often; selectors may need tuning on the phone |
 | WhatsApp unread via notification listener + reply | EXISTS-OK | `DKNotifListener`, `NotifStore`, `notification_reply` tool |
 
 ## Part 13 — Access-key licensing

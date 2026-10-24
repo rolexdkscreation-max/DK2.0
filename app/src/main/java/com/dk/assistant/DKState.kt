@@ -14,6 +14,8 @@ object DKState {
         private set
     @Volatile var level: Float = 0f          // mic ki awaaz (0..1) - orb uchhalta hai
     @Volatile var lastUser: String = ""
+    /** DK AI Part 12: यूज़र की आख़िरी बात कब आई (पोस्ट/भेजने से पहले "हाँ" पूछने के बाद आई हो) */
+    @Volatile var lastUserAt: Long = 0L
         private set
     @Volatile var lastReply: String = ""
         private set
@@ -43,6 +45,7 @@ object DKState {
 
     fun user(t: String) {
         lastUser = t
+        if (t.isNotBlank()) lastUserAt = System.currentTimeMillis()
         if (t.isBlank()) { emit(); return }
         // chat screen ne yahi message "Send" dabate hi khud dikha diya tha (optimistic) - dobara mat jodo
         val opt = optimistic

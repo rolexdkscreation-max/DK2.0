@@ -32,7 +32,7 @@ object PhoneActions {
     data class Person(val id: Long, val name: String, val number: String, val primary: Boolean, val mobile: Boolean)
 
     /** फ़ोन के कॉन्टैक्ट (नाम + एक नंबर) - IO thread */
-    private fun contacts(ctx: Context): List<Person> {
+    internal fun contacts(ctx: Context): List<Person> {
         val out = LinkedHashMap<Long, Person>()
         val proj = arrayOf(
             ContactsContract.CommonDataKinds.Phone.CONTACT_ID, ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME,
