@@ -139,8 +139,15 @@ class DKAccessibilityService : AccessibilityService() {
         }
         wakeLive = false; gemLive.idleExitMs = 0
         Setup.startKeepAlive(this)
+        // wake word wala loop hear() me atka ho (baat ka intezaar / STT) to Live tab tak shuru nahi hota tha -> use roko
+        val restart = LiveStart.restartLoop(loopJob?.isActive == true, wasLive = false)
         DKState.setLive(true)
         Prefs.edit(this) { putBoolean("live_mode", true) }
+        if (restart) {
+            DKLog.d("Live: wake word वाला सुनना रोका - Gemini Live तुरंत")
+            loopJob?.cancel(); loopJob = null
+            ear.release(); listener.release(); earCaptionOff()
+        }
         ensureLoop()
     }
 
@@ -342,7 +349,8 @@ class DKAccessibilityService : AccessibilityService() {
     private fun earCaptionOff() { ear.onFrame = null; earCaption?.stop(); earCaption = null }
 
     /** Ek baat suno -> text. Bina beep (apna mic + Groq/Gemini) ya Google mic. Har dikkat DK bolkar batata hai. */
-    suspend fun hear(): String? {
+    /** @param wakeGate wake word वाला सुनना (Live बंद): caption में DK का नाम न हो तो Groq को मत भेजो */
+    suspend fun hear(wakeGate: Boolean = false): String? {
         if (!checkMic()) { delay(2000); return null }
         if (!silentEar()) return hearGoogle()
         // DK ki apni awaaz ki goonj na sune
@@ -372,14 +380,34 @@ class DKAccessibilityService : AccessibilityService() {
         DKState.set(Mode.THINKING)
         // caption ne bolte-bolte jo likha woh screen par rehne do (pehle "…" se mit jaata tha)
         val capNow = earCaption?.text().orEmpty()
+        // wake mode: caption ne saaf baat suni aur usme DK ka naam nahi -> Groq par bhejna bekaar (deri + limit)
+        if (wakeGate && SttTiming.skipWakeStt(capNow, Prefs.wakeWords(this))) {
+            earShowing = false
+            earCaption?.closeUtterance()
+            if (capNow.isNotBlank()) DKState.user("")      // background ki baat screen par na rahe
+            DKState.set(Mode.IDLE)
+            DKLog.d("Wake: caption में DK का नाम नहीं - STT नहीं भेजा (${pcm.size / 32} ms awaaz)")
+            return null
+        }
         if (capNow.isBlank()) DKState.user("…")
         val sttT0 = System.currentTimeMillis()
-        val text0 = try { Transcriber.transcribe(this, pcm) } finally { earShowing = false }
+        // STT alag chalao: 3s me na aaye aur caption ke paas saaf shabd hon -> caption ka text (pehle 16-28s intezaar)
+        val stt = scope.async(Dispatchers.IO) { Transcriber.transcribe(this@DKAccessibilityService, pcm) }
+        var fromCaption: String? = null
+        val text0 = try {
+            val quick = withTimeoutOrNull(SttTiming.CAPTION_FALLBACK_MS) { stt.await() }
+            if (quick != null || stt.isCompleted) quick
+            else {
+                val cap = earCaption?.text().orEmpty().trim()
+                if (SttTiming.captionUsable(cap)) { fromCaption = cap; null } else stt.await()
+            }
+        } finally { earShowing = false }
         val capText = earCaption?.closeUtterance().orEmpty()
+        if (fromCaption != null) DKLog.d("STT ${SttTiming.CAPTION_FALLBACK_MS} ms में नहीं आया - caption का text लिया")
         // Whisper ne kuch na diya par caption ne suna -> wahi lo (baat na khoye)
-        val text = text0 ?: capText.trim().takeIf { it.length >= 2 }
+        val text = text0 ?: fromCaption ?: capText.trim().takeIf { it.length >= 2 }
         DKLog.d("Deri: bolna khatam -> STT ${System.currentTimeMillis() - sttT0} ms (${pcm.size / 32} ms awaaz)")
-        if (text == null && Transcriber.lastError != null) {
+        if (text == null && fromCaption == null && Transcriber.lastError != null) {
             // sunne wali key nahi chali: aapki baat kho gayi - batao aur Google mic par chalo (2 min)
             googleUntil = System.currentTimeMillis() + 2 * 60_000L
             DKState.user("")
@@ -514,8 +542,14 @@ class DKAccessibilityService : AccessibilityService() {
                     val why = liveWhyNot()
                     if (why != lastWhyNot) { lastWhyNot = why; DKLog.d("Gemini Live इस्तेमाल नहीं हो रहा: $why") }
                 }
-                val heard = hear()
+                val liveBefore = DKState.live
+                val heard = hear(wakeGate = !liveBefore)
                 if (DKState.mode == Mode.LISTENING || DKState.mode == Mode.THINKING) DKState.set(Mode.IDLE)
+                // sunte-sunte Live chalu hua: yeh baat Live se pehle ki (background) - command nahi, Gemini Live khud sunega
+                if (heard != null && LiveStart.staleHeard(liveBefore, DKState.live) && !wakeLive) {
+                    DKLog.d("Live से पहले की बात छोड़ी (command नहीं): \"${heard.take(40)}\"")
+                    continue
+                }
                 if (listener.lastError == android.speech.SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS) {
                     // Google mic ko permission nahi (Google app ki) - apne kaan par wapas
                     googleUntil = 0L

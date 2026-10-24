@@ -430,6 +430,7 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
         val key = key(svc).ifBlank { throw Fatal("Gemini की key नहीं है") }
         val models = discoverModels(key)
         log("models: ${models.joinToString()}")
+        if (stopped) return@withContext "जुड़ने से पहले बंद"
         var mi = 0; var fails = 0
         var quickDrops = 0                               // judne ke turant baad baar-baar tootna
         // v3.39: Bluetooth headset जुड़ा = कॉल वाला तरीका (माइक+आवाज़ headset पर), नहीं तो speaker (पहले जैसा)
@@ -738,28 +739,47 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
         stopForUser(why)
     }
 
+    /** Network se Live models ki list (aur cache memory + phone dono me) */
+    private fun fetchModels(key: String): List<String> {
+        val found = mutableListOf<String>()
+        val c = OkHttpClient.Builder().callTimeout(8, TimeUnit.SECONDS).build()
+        val req = Request.Builder().url("https://generativelanguage.googleapis.com/v1beta/models?pageSize=1000")
+            .header("x-goog-api-key", key).build()
+        c.newCall(req).execute().use { r ->
+            val s = r.body?.string() ?: ""
+            if (r.code == 400 || r.code == 401 || r.code == 403) throw Fatal("Gemini key गलत है")
+            val arr = JSONObject(s).optJSONArray("models")
+            for (i in 0 until (arr?.length() ?: 0)) {
+                val m = arr!!.optJSONObject(i) ?: continue
+                if (m.optJSONArray("supportedGenerationMethods")?.toString()?.contains("bidiGenerateContent") == true)
+                    found.add(m.optString("name").removePrefix("models/"))
+            }
+        }
+        if (found.isNotEmpty()) {
+            val now = System.currentTimeMillis()
+            modelCache = Triple(key.hashCode(), now, found.toList())
+            Prefs.saveLiveModelCache(svc, LiveModelCache.encode(key.hashCode(), now, found))
+        }
+        return found
+    }
+
     /** Is key par kaun se Live models hain (bidiGenerateContent) - sabse naya/tez pehle */
     private fun discoverModels(key: String): List<String> {
         val found = mutableListOf<String>()
-        // wake word par har baar list mat mango (deri) - 1 ghante tak yaad rakho
-        val cache = modelCache
-        if (cache != null && cache.first == key.hashCode() && System.currentTimeMillis() - cache.second < 3600_000L) found.addAll(cache.third)
-        else try {
-            val c = OkHttpClient.Builder().callTimeout(8, TimeUnit.SECONDS).build()
-            val req = Request.Builder().url("https://generativelanguage.googleapis.com/v1beta/models?pageSize=1000")
-                .header("x-goog-api-key", key).build()
-            c.newCall(req).execute().use { r ->
-                val s = r.body?.string() ?: ""
-                if (r.code == 400 || r.code == 401 || r.code == 403) throw Fatal("Gemini key गलत है")
-                val arr = JSONObject(s).optJSONArray("models")
-                for (i in 0 until (arr?.length() ?: 0)) {
-                    val m = arr!!.optJSONObject(i) ?: continue
-                    if (m.optJSONArray("supportedGenerationMethods")?.toString()?.contains("bidiGenerateContent") == true)
-                        found.add(m.optString("name").removePrefix("models/"))
+        // wake word par har baar list mat mango (deri). Cache ab phone me bhi save - app restart ke baad bhi
+        // connect se pehle 3-4s ki list wali deri nahi (log 07:51:50); 1 ghante se purani ho to nayi peeche se.
+        val kh = key.hashCode()
+        val cache = modelCache ?: LiveModelCache.decode(Prefs.liveModelCache(svc))?.also { modelCache = it }
+        when (LiveModelCache.plan(cache, kh, System.currentTimeMillis())) {
+            "use" -> found.addAll(cache!!.third)
+            "refresh" -> {
+                found.addAll(cache!!.third)
+                svc.scope.launch(Dispatchers.IO) {
+                    try { fetchModels(key) } catch (e: Exception) { log("models list (peeche se) nahi aayi: ${e.message}") }
                 }
             }
-            if (found.isNotEmpty()) modelCache = Triple(key.hashCode(), System.currentTimeMillis(), found.toList())
-        } catch (e: Fatal) { throw e } catch (e: Exception) { log("models list nahi aayi: ${e.message}") }
+            else -> try { found.addAll(fetchModels(key)) } catch (e: Fatal) { throw e } catch (e: Exception) { log("models list nahi aayi: ${e.message}") }
+        }
         // v3.41: sabse NAYA nahi, sabse TEZ pehle - phone par naapa jawab-samay (LiveModelRank)
         val lat = Prefs.liveLatency(svc)
         val all = LiveModelRank.order(found, FALLBACK_MODELS, lat)
