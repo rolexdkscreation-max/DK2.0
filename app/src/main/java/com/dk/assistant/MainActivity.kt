@@ -38,7 +38,7 @@ class MainActivity : AppCompatActivity() {
         UiLang.keep(txtDk)    // DK का जवाब (content) - UI भाषा से नहीं बदलता
         chipAccess = findViewById(R.id.chipAccess)
         chipMic = findViewById(R.id.chipMic)
-        chipAi = findViewById(R.id.chipAi)
+        btnMute = findViewById(R.id.btnMute)
         findViewById<ImageButton>(R.id.btnSettings).setOnClickListener { openSettings() }
         // orb par tap = chehra dikh raha ho to hatao, warna live awaaz screen
         findViewById<OrbView>(R.id.orb).setOnClickListener {
@@ -54,6 +54,12 @@ class MainActivity : AppCompatActivity() {
         findViewById<android.view.View>(R.id.btnMemory).setOnClickListener {
             startActivity(Intent(this, MemoryActivity::class.java))
         }
+        btnMute.setOnClickListener {
+            val muted = !DKState.muted
+            DKState.muted = muted
+            btnMute.setImageResource(if (muted) R.drawable.ic_mic_off else R.drawable.ic_mic)
+            UiLang.toast(this, if (muted) "माइक म्यूट कर दिया गया है" else "माइक अनम्यूट कर दिया गया है", Toast.LENGTH_SHORT).show()
+        }
         Setup.selfEnableAccessibility(this)
 
         chipMic.setOnClickListener { askPerms() }
@@ -63,7 +69,6 @@ class MainActivity : AppCompatActivity() {
                 Setup.openAccessibility(this)
             }
         }
-        chipAi.setOnClickListener { openSettings() }
         // DK कंप्यूटर: कोई भी काम कदम-दर-कदम (खोज, फ़ाइलें, फ़ोन, कोडिंग…)
         findViewById<TextView>(R.id.chipComputer).setOnClickListener { startActivity(Intent(this, ComputerActivity::class.java)) }
         findViewById<TextView>(R.id.chipUpdate).setOnClickListener {
@@ -265,8 +270,6 @@ class MainActivity : AppCompatActivity() {
 
         UiLang.setText(chipAccess, (if (Setup.accessibilityOn(this)) "✓ " else "✗ ") + "फ़ोन कंट्रोल")
         UiLang.setText(chipMic, (if (Setup.hasMic(this)) "✓ " else "✗ ") + "माइक")
-        val p = Providers.byId(Prefs.activeProvider(this))
-        UiLang.setText(chipAi, (if (Prefs.hasAnyKey(this)) "✓ " else "✗ ") + (p?.name ?: "AI"))
 
         val live = DKState.live
         UiLang.setText(txtState, when (DKState.mode) {
@@ -276,6 +279,8 @@ class MainActivity : AppCompatActivity() {
             Mode.WORKING -> "काम कर रहा हूँ…"
             Mode.SPEAKING -> "Speaking • बोल रहा हूँ…"
         })
-        UiLang.setText(txtDk, if (DKState.lastReply.isBlank()) "" else "$name: " + DKState.lastReply)
+        val userText = DKState.lastUserText.takeIf { it.isNotBlank() }?.let { "$user: $it\n" } ?: ""
+        val dkText = if (DKState.lastReply.isBlank()) "" else "$name: " + DKState.lastReply
+        UiLang.setText(txtDk, userText + dkText)
     }
 }
