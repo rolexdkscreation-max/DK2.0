@@ -110,6 +110,12 @@
             android:exported="false"
             android:foregroundServiceType="mediaProjection" />
 
+        <!-- v3.58: पहली बार का परिचय (सिर्फ़ नए install पर) -->
+        <activity
+            android:name=".onboard.OnboardingActivity"
+            android:exported="false"
+            android:windowSoftInputMode="adjustResize" />
+
         <activity
             android:name=".MemoryActivity"
             android:exported="false"

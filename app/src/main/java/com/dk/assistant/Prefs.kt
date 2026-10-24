@@ -125,6 +125,8 @@ object Prefs {
     fun orbStyle(c: Context) = sp(c).getString("orb_style", "earth") ?: "earth"
     /** v3.57: DK सुन/बोल रहा हो तो स्क्रीन के किनारों पर चमक */
     fun edgeGlow(c: Context) = sp(c).getBoolean("edge_glow", true)
+    /** v3.58: पहली बार का परिचय पूरा/छोड़ा (पुराने उपयोगकर्ता पर अपने-आप true) */
+    fun onboarded(c: Context) = sp(c).getBoolean("onboarded", false)
     fun screenshot(c: Context) = sp(c).getBoolean("screenshot", true)
     fun ttsRate(c: Context) = sp(c).getFloat("tts_rate", 1.05f)
     fun ttsPitch(c: Context) = sp(c).getFloat("tts_pitch", 1.0f)

@@ -92,6 +92,10 @@ Important context: the existing app is a mature **View/XML + Kotlin** app (≈31
 | Listening edge glow + overlay | DONE (Part 10) | `fx/EdgeGlowView` (~26dp, violet listening/thinking, pink speaking, red reserved for errors) added by the accessibility service as a non-touchable `TYPE_ACCESSIBILITY_OVERLAY` — covers DK's own screens and other apps, no extra overlay permission. Toggle: Settings → ओर्ब → किनारों की चमक (default on). Rules in `EdgeGlowRules` |
 | Home, Chat, Voice, Memory/History, Settings, Debug | EXISTS-OK | View-based |
 | Onboarding pager, Personality screen, Orb Style carousel, Permissions screen, Profile, Privacy, About | EXISTS-PARTIAL / MISSING | permissions + profile are Settings sections; no onboarding/about screen |
+| Onboarding (4 pages) | DONE (Part 11) | `onboard/OnboardingActivity` — who DK is, "try saying" cards, mic + Accessibility buttons with live ✓/✗, your name. Only on a fresh install without a saved name; existing users are marked done silently. Skip on every page; "View intro again" in About |
+| About + Privacy | DONE (Part 11) | Settings → ऐप के बारे में: name, tagline, version, `AssistantBrand.CREATED_BY` (धीरज कुमार सिंह), privacy facts that match the code (keys only on phone, `allowBackup=false`, screenshots only when screen viewing is on, notifications in memory, location not saved, camera = torch, social posts need "yes") |
+| Permissions screen | EXISTS-OK | Settings → परमिशन (live status) + Settings → Accessibility — not duplicated |
+| Home greeting by time | DONE (Part 11) | `Greeting` — सुप्रभात / नमस्ते / शुभ संध्या + user name |
 
 ## Part 12 — Instagram / Facebook / WhatsApp agent
 | Item | Status | Notes |
