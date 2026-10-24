@@ -48,10 +48,11 @@ class ComputerActivity : AppCompatActivity() {
             tick.postDelayed(this, 500)
         }
     }
-    private val speech = registerForActivityResult(androidx.activity.result.contract.ActivityResultContracts.StartActivityForResult()) { r ->
-        val t = r.data?.getStringArrayListExtra(android.speech.RecognizerIntent.EXTRA_RESULTS)?.firstOrNull()?.trim()
-        if (r.resultCode == RESULT_OK && !t.isNullOrBlank()) { edt.setText(t); doSend() }
-    }
+    // DK का काम = सूची के आख़िर में जवाब वाले बुलबुले के अंदर तरंग (नीचे अलग animation नहीं)
+    private lateinit var inline: DKInlineReply
+    private lateinit var composer: DKComposer
+    private var busySince = 0L
+    private var wasBusy = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -89,35 +90,15 @@ class ComputerActivity : AppCompatActivity() {
         }
         col.addView(askBox, LinearLayout.LayoutParams(-1, -2).apply { topMargin = (6 * dp).toInt() })
 
-        val bar = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
-            setBackgroundResource(R.drawable.glass_pill); setPadding((18 * dp).toInt(), 0, (6 * dp).toInt(), 0)
-        }
-        edt = EditText(this).apply {
-            hint = "कोई भी काम बताइए… (जैसे: Nashik के 5 अच्छे स्कूलों की फ़ीस की PDF रिपोर्ट बनाओ)"
-            setHintTextColor(0x66FFFFFF); setTextColor(0xFFFFFFFF.toInt()); textSize = 15f
-            background = null; maxLines = 5
-            inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_MULTI_LINE or InputType.TYPE_TEXT_FLAG_CAP_SENTENCES
-            imeOptions = EditorInfo.IME_ACTION_SEND
-        }
-        bar.addView(edt, LinearLayout.LayoutParams(0, -2, 1f).apply { topMargin = (6 * dp).toInt(); bottomMargin = (6 * dp).toInt() })
-        bar.addView(ImageButton(this).apply {
-            setImageResource(R.drawable.ic_mic); setBackgroundResource(R.drawable.glass_circle)
-            val p = (11 * dp).toInt(); setPadding(p, p, p, p); scaleType = android.widget.ImageView.ScaleType.FIT_CENTER
-            contentDescription = "बोलकर बताएँ"; setOnClickListener { voiceInput() }
-        }, LinearLayout.LayoutParams((42 * dp).toInt(), (42 * dp).toInt()).apply { marginEnd = (6 * dp).toInt() })
-        send = ImageButton(this).apply {
-            setImageResource(R.drawable.ic_send); setBackgroundResource(R.drawable.btn_accent_circle)
-            val p = (11 * dp).toInt(); setPadding(p, p, p, p); scaleType = android.widget.ImageView.ScaleType.FIT_CENTER
-            contentDescription = "भेजें"
-        }
-        bar.addView(send, LinearLayout.LayoutParams((46 * dp).toInt(), (46 * dp).toInt()))
-        // DK कंप्यूटर / फ़ोन का काम चलते समय (DKWork से अपने-आप)
-        col.addView(DKWorkingIndicator.row(this, focus = TaskStatus.PC), LinearLayout.LayoutParams(-1, -2).apply { topMargin = (4 * dp).toInt() })
-        col.addView(bar, LinearLayout.LayoutParams(-1, -2).apply { topMargin = (8 * dp).toInt() })
+        // साझा इनपुट बॉक्स (हल्के कोनों वाला आयत; 🎤 बार के अंदर बोलकर लिखना - Google पॉप-अप नहीं)
+        composer = DKComposer(this, "कोई भी काम बताइए… (जैसे: Nashik के 5 अच्छे स्कूलों की फ़ीस की PDF रिपोर्ट बनाओ)", maxLines = 5)
+        edt = composer.edt
+        send = composer.send
+        col.addView(composer, LinearLayout.LayoutParams(-1, -2).apply { topMargin = (8 * dp).toInt() })
+        inline = DKInlineReply(list, scroll, 0.86f)
+        composer.onSend = { doSend() }
 
         send.setOnClickListener { if (ComputerSession.busy) ComputerSession.stop() else doSend() }
-        edt.setOnEditorActionListener { _, id, _ -> if (id == EditorInfo.IME_ACTION_SEND) { doSend(); true } else false }
         setContentView(root)
         Glass.install(this)
         if (ComputerSession.lines.isEmpty()) ComputerSession.add("d", welcome())
@@ -133,8 +114,10 @@ class ComputerActivity : AppCompatActivity() {
         }
         val row = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
         workOrb = ComputerWorkView(this, bar = false)
+        // चलता गोला अब नहीं (DK की तरंग जवाब वाले बुलबुले में है) - यहाँ सिर्फ़ योजना + प्रगति
+        workOrb.visibility = View.GONE
         row.addView(workOrb, LinearLayout.LayoutParams((58 * dp).toInt(), (58 * dp).toInt()))
-        val txt = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding((12 * dp).toInt(), 0, 0, 0) }
+        val txt = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         workTitle = TextView(this).apply { textSize = 15f; setTypeface(typeface, Typeface.BOLD); setTextColor(0xFFFFFFFF.toInt()) }
         workNow = TextView(this).apply { textSize = 12.5f; setTextColor(0xCCFFFFFF.toInt()); maxLines = 3; setPadding(0, (2 * dp).toInt(), 0, 0) }
         txt.addView(workTitle); txt.addView(workNow)
@@ -156,10 +139,10 @@ class ComputerActivity : AppCompatActivity() {
             return
         }
         if (workBox.visibility != View.VISIBLE) workBox.visibility = View.VISIBLE
-        if (!workOrb.running) { workOrb.running = true; workBar.running = true }
+        if (!workBar.running) workBar.running = true
         val plan = ComputerSession.plan
-        val name = Prefs.assistantName(this)
-        UiLang.setText(workTitle, "$name कंप्यूटर काम कर रहा है" + ".".repeat(dots) + " ".repeat(3 - dots))
+        UiLang.setText(workTitle, "काम की प्रगति")
+        if (inline.active) inline.show(busyLabel(), WorkState.WORKING)
         UiLang.setText(workNow, ComputerPlan.header(plan, ComputerSession.now))
         workBar.fraction = plan?.fraction ?: 0f
         if (plan == null) { workPlan.visibility = View.GONE; return }
@@ -188,13 +171,9 @@ class ComputerActivity : AppCompatActivity() {
         render()
     }
 
-    private fun voiceInput() {
-        val i = android.content.Intent(android.speech.RecognizerIntent.ACTION_RECOGNIZE_SPEECH)
-            .putExtra(android.speech.RecognizerIntent.EXTRA_LANGUAGE_MODEL, android.speech.RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
-            .putExtra(android.speech.RecognizerIntent.EXTRA_LANGUAGE, "hi-IN")
-            .putExtra(android.speech.RecognizerIntent.EXTRA_PROMPT, "काम बताइए…")
-        try { speech.launch(i) } catch (_: Exception) { toast("आवाज़-पहचान उपलब्ध नहीं") }
-    }
+    /** बुलबुले में तरंग के बगल का संदेश: अभी का कदम, या असली रुकावट (दोबारा कोशिश / मॉडल / सीमा) */
+    private fun busyLabel(): String =
+        DKStatus.fresh(busySince) ?: ComputerSession.now.trim().lineSequence().firstOrNull().orEmpty().take(90)
 
     private fun newSession() {
         ComputerSession.reset(); shown = 0; list.removeAllViews()
@@ -241,8 +220,21 @@ class ComputerActivity : AppCompatActivity() {
         send.setImageResource(if (ComputerSession.busy) android.R.drawable.ic_media_pause else R.drawable.ic_send)
         send.contentDescription = if (ComputerSession.busy) "रोकें" else "भेजें"
         val lines = ComputerSession.lines
-        if (lines.size < shown) { list.removeAllViews(); shown = 0 }
-        while (shown < lines.size) { bubble(lines[shown]); shown++ }
+        val busy = ComputerSession.busy
+        if (busy && !wasBusy) busySince = System.currentTimeMillis()
+        wasBusy = busy
+        if (lines.size < shown) { inline.drop(); list.removeAllViews(); shown = 0 }
+        while (shown < lines.size) {
+            val l = lines[shown]; shown++
+            // जवाब/गलती = उसी बुलबुले में जहाँ तरंग चल रही थी (links भी छूने लायक)
+            if (l.role == "d" || l.role == "e") {
+                val b = inline.answer(l.text, if (l.role == "e") 0xFFFFB4B4.toInt() else 0xFFFFFFFF.toInt())
+                if (b != null) { b.body.setLinkTextColor(0xFF9FD2FF.toInt()); Linkify.addLinks(b.body, Linkify.WEB_URLS); continue }
+            }
+            bubble(l); inline.keepLast()
+        }
+        if (busy) inline.show(busyLabel(), WorkState.WORKING)
+        else if (inline.bubble?.isWorking == true) inline.hide()
         renderAsk()
         renderWork()
         if (ComputerSession.busy) { tick.removeCallbacks(dotTick); tick.postDelayed(dotTick, 500) }

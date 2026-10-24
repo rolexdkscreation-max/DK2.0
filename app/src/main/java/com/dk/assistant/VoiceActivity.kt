@@ -44,8 +44,8 @@ class VoiceActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        val root = FrameLayout(this).apply { setBackgroundColor(getColor(R.color.bg)) }
-        root.addView(AuroraView(this), FrameLayout.LayoutParams(-1, -1))
+        // आवाज़ स्क्रीन: पूरी काली - पीछे ऐप (aurora/चैट/बटन) नहीं, सिर्फ़ आवाज़ का चलता गोला + बाहर निकलने का बटन
+        val root = FrameLayout(this).apply { setBackgroundColor(0xFF000000.toInt()) }
         val col = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             val p = (18 * dp).toInt(); setPadding(p, p, p, p)
@@ -78,6 +78,7 @@ class VoiceActivity : AppCompatActivity() {
             setOnClickListener { if (System.currentTimeMillis() < DKState.faceUntil) DKState.hideFace() else DKState.showFace() }
         }, LinearLayout.LayoutParams((46 * dp).toInt(), (46 * dp).toInt()))
         col.addView(top)
+        top.visibility = android.view.View.GONE     // बटन/शीर्षक नहीं (स्क्रीन शेयर/कैमरा आवाज़ से अब भी चलते हैं)
 
         // ---- beech me orb
         orb = OrbView(this).apply {
@@ -97,6 +98,7 @@ class VoiceActivity : AppCompatActivity() {
         orbBox.addView(minBtn, FrameLayout.LayoutParams((40 * dp).toInt(), (40 * dp).toInt(), Gravity.TOP or Gravity.END).apply {
             topMargin = (6 * dp).toInt()
         })
+        minBtn.visibility = android.view.View.GONE
         // कैमरा चालू हो तो orb की जगह preview (जो DK देख रहा है वही आपको भी दिखे) + कैमरा बदलने का बटन
         camBox = FrameLayout(this).apply {
             visibility = android.view.View.GONE
@@ -119,8 +121,8 @@ class VoiceActivity : AppCompatActivity() {
             setBackgroundResource(R.drawable.glass_pill); setTextColor(0xFFFFFFFF.toInt()); textSize = 14f
             val h = (18 * dp).toInt(); val v = (8 * dp).toInt(); setPadding(h, v, h, v)
         }
-        // सुनना (धीमी तरंग) / सोचना (घूमना) / बोलना (तेज़ तरंग) - DKWork से अपने-आप
-        col.addView(DKWorkingIndicator.row(this, voice = true, sizeDp = 32), LinearLayout.LayoutParams(-2, -2).apply { gravity = Gravity.CENTER_HORIZONTAL; bottomMargin = (6 * dp).toInt() })
+        // सुनना/सोचना/बोलना अब orb खुद दिखाता है - अलग पट्टी/लेबल नहीं
+        state.visibility = android.view.View.GONE
         col.addView(state, LinearLayout.LayoutParams(-2, -2).apply { gravity = Gravity.CENTER_HORIZONTAL })
 
         // ---- live likha hua
@@ -134,6 +136,7 @@ class VoiceActivity : AppCompatActivity() {
         // v3.9: jawab web search se aaya ho to caption ke neeche sources (bole nahi jaate, sirf dikhte/click hote hain)
         srcBox = FrameLayout(this)
         card.addView(srcBox, LinearLayout.LayoutParams(-1, -2).apply { topMargin = (8 * dp).toInt() })
+        card.visibility = android.view.View.GONE    // पीछे चैट/लिखावट नहीं
         col.addView(card, LinearLayout.LayoutParams(-1, -2).apply { topMargin = (12 * dp).toInt() })
 
         // ---- neeche: mic + band
@@ -143,12 +146,19 @@ class VoiceActivity : AppCompatActivity() {
             scaleType = android.widget.ImageView.ScaleType.FIT_CENTER; contentDescription = "माइक चालू/बंद"
             setOnClickListener { toggleLive() }
         }
+        mic.visibility = android.view.View.GONE     // orb छूने से ही Live चालू/बंद
         bar.addView(mic, LinearLayout.LayoutParams((76 * dp).toInt(), (76 * dp).toInt()))
-        bar.addView(TextView(this).apply {
-            text = "✕"; textSize = 24f; gravity = Gravity.CENTER; setTextColor(0xFFFFAE94.toInt())
-            setBackgroundResource(R.drawable.glass_circle); contentDescription = "बंद करें"
+        // बाहर निकलने का एक ही साफ़ बटन (काली स्क्रीन पर पतला सफ़ेद घेरा)
+        bar.addView(ImageButton(this).apply {
+            setImageResource(R.drawable.ic_close)
+            background = android.graphics.drawable.GradientDrawable().apply {
+                shape = android.graphics.drawable.GradientDrawable.OVAL
+                setColor(0x26FFFFFF); setStroke((1 * dp).toInt().coerceAtLeast(1), 0x66FFFFFF)
+            }
+            val p = (16 * dp).toInt(); setPadding(p, p, p, p); scaleType = android.widget.ImageView.ScaleType.FIT_CENTER
+            contentDescription = "बंद करें"
             setOnClickListener { DKAccessibilityService.instance?.stopLive("✕ बटन"); finish() }
-        }, LinearLayout.LayoutParams((60 * dp).toInt(), (60 * dp).toInt()).apply { marginStart = (28 * dp).toInt() })
+        }, LinearLayout.LayoutParams((60 * dp).toInt(), (60 * dp).toInt()))
         col.addView(bar, LinearLayout.LayoutParams(-1, -2).apply { topMargin = (14 * dp).toInt() })
 
         setContentView(root)
@@ -196,7 +206,8 @@ class VoiceActivity : AppCompatActivity() {
     }
 
     private fun applyOrbMin() {
-        val min = Prefs.orbMin(this)
+        // आवाज़ स्क्रीन पर orb हमेशा बड़ा (नीचे लिखावट का card नहीं दिखता)
+        val min = false
         orbBox.layoutParams = (orbBox.layoutParams as LinearLayout.LayoutParams).apply {
             if (min) { height = (130 * dp).toInt(); weight = 0f } else { height = 0; weight = 1f }
         }

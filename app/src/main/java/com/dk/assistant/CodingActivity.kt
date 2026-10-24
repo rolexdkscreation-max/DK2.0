@@ -141,14 +141,15 @@ class CodingActivity : AppCompatActivity() {
         override fun run() {
             if (!CoderSession.busy) { showBusy(false); return }
             busyStep++
+            if (inline.active) inline.show(busyLabel(), WorkState.WORKING)
             busyText.text = BusyLabel.text(busyStep)
             busyHandler.postDelayed(this, BusyLabel.TICK_MS)
         }
     }
-    private val speech = registerForActivityResult(androidx.activity.result.contract.ActivityResultContracts.StartActivityForResult()) { r ->
-        val t = r.data?.getStringArrayListExtra(android.speech.RecognizerIntent.EXTRA_RESULTS)?.firstOrNull()?.trim()
-        if (r.resultCode == RESULT_OK && !t.isNullOrBlank()) { edt.setText(t); doSend() }
-    }
+    // DK का काम = सूची के आख़िर में जवाब वाले बुलबुले के अंदर तरंग (नीचे/ऊपर अलग animation नहीं)
+    private lateinit var inline: DKInlineReply
+    private lateinit var composer: DKComposer
+    private var busySince = 0L
     private var shown = 0
     private val dp get() = resources.displayMetrics.density
     // 📎 फ़ोटो/वीडियो: typing bar के ऊपर छोटी पट्टी (भेजने तक)
@@ -213,50 +214,22 @@ class CodingActivity : AppCompatActivity() {
         }
         col.addView(sugBox, LinearLayout.LayoutParams(-1, -2).apply { topMargin = (6 * dp).toInt() })
 
-        val bar = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
-            setBackgroundResource(R.drawable.glass_pill); setPadding((6 * dp).toInt(), 0, (6 * dp).toInt(), 0)
-        }
-        // 📎 फ़ोटो / वीडियो जोड़ो - चुनने के बाद cursor वापस लिखने की जगह पर
-        bar.addView(ImageButton(this).apply {
-            setImageResource(R.drawable.ic_attach); setBackgroundResource(R.drawable.glass_circle)
-            val p = (10 * dp).toInt(); setPadding(p, p, p, p); scaleType = android.widget.ImageView.ScaleType.FIT_CENTER
-            contentDescription = "फ़ोटो या वीडियो जोड़ें"
-            setOnClickListener { openPicker() }
-        }, LinearLayout.LayoutParams((40 * dp).toInt(), (40 * dp).toInt()).apply { marginEnd = (8 * dp).toInt() })
-        edt = EditText(this).apply {
-            hint = "क्या बदलना है? (जैसे: Settings में dark mode switch जोड़ो)"
-            setHintTextColor(0x66FFFFFF); setTextColor(0xFFFFFFFF.toInt()); textSize = 15f
-            background = null; maxLines = 5
-            inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_MULTI_LINE or InputType.TYPE_TEXT_FLAG_CAP_SENTENCES
-            imeOptions = EditorInfo.IME_ACTION_SEND
-        }
-        bar.addView(edt, LinearLayout.LayoutParams(0, -2, 1f).apply { topMargin = (6 * dp).toInt(); bottomMargin = (6 * dp).toInt() })
-        // 🎤 बोलकर काम बताओ (फ़ोन की आवाज़-पहचान; बोलते ही भेज देता है)
-        bar.addView(ImageButton(this).apply {
-            setImageResource(R.drawable.ic_mic); setBackgroundResource(R.drawable.glass_circle)
-            val p = (11 * dp).toInt(); setPadding(p, p, p, p); scaleType = android.widget.ImageView.ScaleType.FIT_CENTER
-            contentDescription = "बोलकर बताएँ"
-            setOnClickListener { voiceInput() }
-        }, LinearLayout.LayoutParams((42 * dp).toInt(), (42 * dp).toInt()).apply { marginEnd = (6 * dp).toInt() })
-        send = ImageButton(this).apply {
-            setImageResource(R.drawable.ic_send); setBackgroundResource(R.drawable.btn_accent_circle)
-            val p = (11 * dp).toInt(); setPadding(p, p, p, p); scaleType = android.widget.ImageView.ScaleType.FIT_CENTER
-            contentDescription = "भेजें"
-        }
-        bar.addView(send, LinearLayout.LayoutParams((46 * dp).toInt(), (46 * dp).toInt()))
+        // साझा इनपुट बॉक्स: 📎 फ़ोटो/वीडियो (चुनने के बाद cursor वापस), लिखना, 🎤 बार के अंदर बोलकर लिखना, भेजें/रोकें
+        composer = DKComposer(this, "क्या बदलना है? (जैसे: Settings में dark mode switch जोड़ो)", maxLines = 5, attach = { openPicker() })
+        edt = composer.edt
+        send = composer.send
         mediaRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
         mediaScroll = android.widget.HorizontalScrollView(this).apply {
             isHorizontalScrollBarEnabled = false; visibility = View.GONE
             addView(mediaRow, ViewGroup.LayoutParams(-2, -2))
         }
         col.addView(mediaScroll, LinearLayout.LayoutParams(-1, -2).apply { topMargin = (6 * dp).toInt() })
-        // कोडिंग टीम का बैकग्राउंड काम + अभी किस एजेंट का चरण (DKWork से अपने-आप)
-        col.addView(DKWorkingIndicator.row(this, focus = TaskStatus.CODER), LinearLayout.LayoutParams(-1, -2).apply { topMargin = (4 * dp).toInt() })
-        col.addView(bar, LinearLayout.LayoutParams(-1, -2).apply { topMargin = (8 * dp).toInt() })
+        col.addView(composer, LinearLayout.LayoutParams(-1, -2).apply { topMargin = (8 * dp).toInt() })
+        inline = DKInlineReply(list, scroll, 0.82f)
 
+        // बटन: काम चलते समय = रोकें; keyboard/माइक का भेजें = हमेशा भेजना (doSend खुद तय करता है)
         send.setOnClickListener { if (CoderSession.busy) stopJob() else doSend() }
-        edt.setOnEditorActionListener { _, id, _ -> if (id == EditorInfo.IME_ACTION_SEND) { doSend(); true } else false }
+        composer.onSend = { doSend() }
         setContentView(root)
         Glass.install(this)
         if (CoderSession.lines.isEmpty()) CoderSession.add("d", welcome())
@@ -420,13 +393,8 @@ class CodingActivity : AppCompatActivity() {
 
     private fun stopJob() { CoderSession.job?.cancel() }
 
-    private fun voiceInput() {
-        val i = android.content.Intent(android.speech.RecognizerIntent.ACTION_RECOGNIZE_SPEECH)
-            .putExtra(android.speech.RecognizerIntent.EXTRA_LANGUAGE_MODEL, android.speech.RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
-            .putExtra(android.speech.RecognizerIntent.EXTRA_LANGUAGE, "hi-IN")
-            .putExtra(android.speech.RecognizerIntent.EXTRA_PROMPT, "क्या बनाना है? बोलिए…")
-        try { speech.launch(i) } catch (_: Exception) { toast("फ़ोन में आवाज़-पहचान नहीं मिली") }
-    }
+    /** बुलबुले में तरंग के बगल का संदेश: असली रुकावट (दोबारा कोशिश / मॉडल बदला / सीमा) ही; कदम ऊपर सूची में दिखते हैं */
+    private fun busyLabel(): String = DKStatus.fresh(busySince).orEmpty()
 
     /** Pending सुझाव: क्या, क्यों, और हाँ/नहीं */
     private fun renderSuggestions() {
@@ -694,7 +662,9 @@ class CodingActivity : AppCompatActivity() {
         busyHandler.removeCallbacks(busyTick)
         if (on) {
             busyStep = 0; busyText.text = BusyLabel.text(0)
-            busyBar.visibility = View.VISIBLE
+            busySince = System.currentTimeMillis()
+            // ऊपर वाली चलती पट्टी अब नहीं - DK का काम जवाब वाले बुलबुले के अंदर तरंग से दिखता है
+            busyBar.visibility = View.GONE
             busyHandler.postDelayed(busyTick, BusyLabel.TICK_MS)
         } else busyBar.visibility = View.GONE
     }
@@ -710,8 +680,15 @@ class CodingActivity : AppCompatActivity() {
         send.contentDescription = if (CoderSession.busy) "रोकें" else "भेजें"
         showBusy(CoderSession.busy)
         val lines = CoderSession.lines
-        if (lines.size < shown) { list.removeAllViews(); shown = 0 }
-        while (shown < lines.size) { bubble(lines[shown]); shown++ }
+        if (lines.size < shown) { inline.drop(); list.removeAllViews(); shown = 0 }
+        while (shown < lines.size) {
+            val l = lines[shown]; shown++
+            // एजेंट का जवाब/गलती = उसी बुलबुले में जहाँ तरंग चल रही थी
+            if ((l.role == "d" || l.role == "e") && inline.answer(l.text, if (l.role == "e") 0xFFFFB4B4.toInt() else 0xFFFFFFFF.toInt()) != null) continue
+            bubble(l); inline.keepLast()
+        }
+        if (CoderSession.busy) inline.show(busyLabel(), WorkState.WORKING)
+        else if (inline.bubble?.isWorking == true) inline.hide()
         renderSuggestions()
         // badlaav card
         changes.removeAllViews()

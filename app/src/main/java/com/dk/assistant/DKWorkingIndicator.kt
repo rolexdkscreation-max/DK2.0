@@ -32,6 +32,13 @@ class DKWorkingIndicator(context: Context) : View(context) {
     var state: WorkState = WorkState.IDLE
         set(v) { if (field != v) { field = v; kick() } }
 
+    /**
+     * जवाब वाले बुलबुले के अंदर: सिर्फ़ वही 7 खड़ी बार (वही रंग, वही चाल) - पीछे कोई टाइल/चमक/घेरा नहीं,
+     * पूरी तरह पारदर्शी. घेरा न होने से सोचते/काम करते समय बार थोड़ा ज़्यादा हिलते हैं (वरना रुके लगते).
+     */
+    var bare = false
+        set(v) { if (field != v) { field = v; invalidate() } }
+
     private val dp = resources.displayMetrics.density
     private val tile = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = TILE }
     private val glow = Paint(Paint.ANTI_ALIAS_FLAG)
@@ -69,7 +76,13 @@ class DKWorkingIndicator(context: Context) : View(context) {
     }
 
     /** target मान - अवस्था के हिसाब से */
-    private fun targets(): FloatArray = when (state) {
+    private fun targets(): FloatArray = if (bare) when (state) {
+        WorkState.IDLE -> floatArrayOf(0f, 0f, 0f, 0f)
+        WorkState.LISTENING -> floatArrayOf(0.38f, 4.4f, 0f, 0f)
+        WorkState.THINKING -> floatArrayOf(0.38f, 6.0f, 0f, 0f)
+        WorkState.SPEAKING -> floatArrayOf(0.85f, 13.8f, 0f, 0f)
+        WorkState.WORKING -> floatArrayOf(0.42f, 6.5f, 0f, 0f)
+    } else when (state) {
         WorkState.IDLE -> floatArrayOf(0f, 0f, 0f, 0f)
         WorkState.LISTENING -> floatArrayOf(0.38f, 4.4f, 0f, 0f)      // धीमी तरंग (~0.7 Hz)
         WorkState.THINKING -> floatArrayOf(0.12f, 3.0f, 1f, 0f)       // घूमता घेरा
@@ -91,12 +104,14 @@ class DKWorkingIndicator(context: Context) : View(context) {
         val w = width.toFloat(); val h = height.toFloat()
         val s = minOf(w, h); val cx = w / 2f; val cy = h / 2f
         // टाइल (ऐप आइकन जैसी गहरी पृष्ठभूमि - नीले/काँच वाली screen पर भी साफ़ दिखे)
-        r.set(cx - s / 2, cy - s / 2, cx + s / 2, cy + s / 2)
-        c.drawRoundRect(r, s * 0.3f, s * 0.3f, tile)
-        // ग्लो: हमेशा हल्का, काम में धड़कता
         val beat = (0.5 + 0.5 * sin(pulsePhase)).toFloat()
-        glow.alpha = (255 * (0.35f + 0.25f * amp + 0.4f * pulse * beat)).toInt().coerceIn(0, 255)
-        c.drawCircle(cx, cy, s * (0.46f + 0.04f * pulse * beat), glow)
+        if (!bare) {
+            r.set(cx - s / 2, cy - s / 2, cx + s / 2, cy + s / 2)
+            c.drawRoundRect(r, s * 0.3f, s * 0.3f, tile)
+            // ग्लो: हमेशा हल्का, काम में धड़कता
+            glow.alpha = (255 * (0.35f + 0.25f * amp + 0.4f * pulse * beat)).toInt().coerceIn(0, 255)
+            c.drawCircle(cx, cy, s * (0.46f + 0.04f * pulse * beat), glow)
+        }
         // बार
         val n = H.size
         val step = s * 0.105f; val bw = s * 0.066f
@@ -110,7 +125,7 @@ class DKWorkingIndicator(context: Context) : View(context) {
             c.drawRoundRect(r, bw / 2, bw / 2, bar)
         }
         // घूमता घेरा (सोचना/काम)
-        if (ringA > 0.01f) {
+        if (!bare && ringA > 0.01f) {
             ring.alpha = (255 * ringA).toInt().coerceIn(0, 255)
             c.save(); c.rotate(angle, cx, cy)
             c.drawArc(ringBox, 0f, 250f, false, ring)

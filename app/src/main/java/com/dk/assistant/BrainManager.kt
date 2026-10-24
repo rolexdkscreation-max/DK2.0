@@ -139,7 +139,7 @@ class BrainManager(private val ctx: Context) {
                         when {
                             wasWinner -> result.completeExceptionally(e)   // beech me toota - jitna bola utna hi
                             noneLeft -> result.completeExceptionally(AllFailedException(errors.toList()))
-                            else -> start()                                // turant agli key
+                            else -> { DKStatus.post(DKStatus.forCode((e as? AiException)?.code ?: -1)); start() }   // turant agli key (बुलबुले में सच्चा संदेश)
                         }
                     }
                 }
@@ -219,6 +219,7 @@ class BrainManager(private val ctx: Context) {
                     DKLog.d("${client.label} fail: ${e.message}")
                     ProviderHealth.fail(p.id, e)
                     lastError = e
+                    DKStatus.post(DKStatus.forCode((e as? AiException)?.code ?: -1))
                 }
             }
             throw lastError ?: AiException(-1, "NO_KEY")

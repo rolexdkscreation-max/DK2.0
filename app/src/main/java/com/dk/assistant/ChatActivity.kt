@@ -26,6 +26,8 @@ class ChatActivity : AppCompatActivity() {
     private lateinit var status: TextView
     private lateinit var swSpeak: SwitchCompat
     private lateinit var edt: EditText
+    private lateinit var composer: DKComposer
+    private lateinit var inline: DKInlineReply
     private var shown = 0
     private val dp get() = resources.displayMetrics.density
     private val listener: () -> Unit = { render() }
@@ -73,37 +75,18 @@ class ChatActivity : AppCompatActivity() {
         scroll.addView(list)
         col.addView(scroll, LinearLayout.LayoutParams(-1, 0, 1f).apply { topMargin = (10 * dp).toInt() })
 
-        // ---- neeche likhne ki bar
-        val bar = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
-            setBackgroundResource(R.drawable.glass_pill)
-            setPadding((18 * dp).toInt(), 0, (6 * dp).toInt(), 0)
-        }
-        edt = EditText(this).apply {
-            hint = "कुछ भी लिखिए… (जैसे: WhatsApp खोलो, आज का मौसम?)"
-            setHintTextColor(0x66FFFFFF); setTextColor(0xFFFFFFFF.toInt()); textSize = 15f
-            background = null; maxLines = 4
-            inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_MULTI_LINE or InputType.TYPE_TEXT_FLAG_CAP_SENTENCES
-            imeOptions = EditorInfo.IME_ACTION_SEND
-        }
-        bar.addView(edt, LinearLayout.LayoutParams(0, -2, 1f).apply { topMargin = (6 * dp).toInt(); bottomMargin = (6 * dp).toInt() })
-        val send = ImageButton(this).apply {
-            setImageResource(R.drawable.ic_send); setBackgroundResource(R.drawable.btn_accent_circle)
-            val p = (11 * dp).toInt(); setPadding(p, p, p, p); scaleType = android.widget.ImageView.ScaleType.FIT_CENTER
-            contentDescription = "भेजें"
-        }
-        bar.addView(send, LinearLayout.LayoutParams((46 * dp).toInt(), (46 * dp).toInt()))
-        // DK का काम (सोचना/लिखना/खोज/फ़ोन का काम) - नीचे बाएँ, DKWork से अपने-आप
-        col.addView(DKWorkingIndicator.row(this), LinearLayout.LayoutParams(-1, -2).apply { topMargin = (4 * dp).toInt() })
-        col.addView(bar, LinearLayout.LayoutParams(-1, -2).apply { topMargin = (8 * dp).toInt() })
+        // ---- neeche likhne ki jagah: साझा इनपुट बॉक्स (हल्के कोनों वाला आयत, माइक बार के अंदर)
+        composer = DKComposer(this, "कुछ भी लिखिए… (जैसे: WhatsApp खोलो, आज का मौसम?)", maxLines = 4)
+        edt = composer.edt
+        // DK का सोचना/लिखना अब जवाब वाले बुलबुले के अंदर (नीचे अलग animation नहीं)
+        col.addView(composer, LinearLayout.LayoutParams(-1, -2).apply { topMargin = (8 * dp).toInt() })
+        inline = DKInlineReply(list, scroll, 0.78f)
 
-        val doSend = {
+        composer.onSend = {
             val t = edt.text.toString().trim()
             if (t.isNotEmpty()) { edt.setText(""); sendText(t) }
             keepTyping()
         }
-        send.setOnClickListener { doSend() }
-        edt.setOnEditorActionListener { _, id, _ -> if (id == EditorInfo.IME_ACTION_SEND) { doSend(); true } else false }
         setContentView(root)
         Glass.install(this)
         keepTyping()
@@ -162,9 +145,7 @@ class ChatActivity : AppCompatActivity() {
     private var awaiting = false
     private var awaitSince = 0L
     private var timedOut = false
-    private var typingView: TextView? = null
     private var retryFor = 0L
-    private var dotN = 0
     private val ui = android.os.Handler(android.os.Looper.getMainLooper())
     private val tick = object : Runnable {
         override fun run() { onTick(); ui.postDelayed(this, 380) }
@@ -190,24 +171,14 @@ class ChatActivity : AppCompatActivity() {
                 return
             }
         }
-        typingView?.let { v ->
-            dotN = (dotN + 1) % 4
-            v.text = typingText(dotN)
-        }
+        if (inline.bubble?.isWorking == true) inline.show(typingLabel(), typingState())
     }
 
-    private fun typingText(n: Int): String {
-        val dots = listOf("●  ○  ○", "○  ●  ○", "○  ○  ●", "○  ●  ○")[n]
-        val name = Prefs.assistantName(this).ifBlank { "D.K" }
-        val el = if (awaiting) System.currentTimeMillis() - awaitSince else 0L
-        val label = when {
-            DKState.hintText.isNotBlank() -> DKState.hintText
-            DKState.mode == Mode.WORKING -> "फ़ोन पर काम कर रहा है…"
-            el > 6000 -> "नेटवर्क धीमा है… जवाब आ रहा है"
-            else -> "$name is typing…"
-        }
-        return "$label   $dots"
-    }
+    /** बुलबुले में तरंग के बगल का हल्का संदेश ("" = सिर्फ़ तरंग; "DK is typing" नहीं) */
+    private fun typingLabel(): String =
+        DKStatus.label(if (awaiting) awaitSince else 0L, DKState.hintText, DKState.mode == Mode.WORKING)
+
+    private fun typingState(): WorkState = if (DKState.mode == Mode.WORKING) WorkState.WORKING else WorkState.THINKING
 
     /** Typing indicator chahiye? = message gaya, jawab ka pehla shabd abhi nahi */
     private fun needTyping(): Boolean {
@@ -217,21 +188,10 @@ class ChatActivity : AppCompatActivity() {
         return busy && DKState.messages.lastOrNull()?.role == "u"
     }
 
+    /** जवाब वाला बुलबुला: इंतज़ार = तरंग; न चाहिए और पाठ भी नहीं आया = स्मूद हटे */
     private fun showTyping(on: Boolean) {
-        typingView?.let { list.removeView(it) }
-        if (!on) { typingView = null; return }
-        val tv = typingView ?: TextView(this).apply {
-            textSize = 14f; setTextColor(0xCCFFFFFF.toInt())
-            setBackgroundResource(R.drawable.glass_bubble_dk)
-            val ph = (14 * dp).toInt(); val pv = (10 * dp).toInt(); setPadding(ph, pv, ph, pv)
-            contentDescription = "जवाब लिखा जा रहा है"
-        }
-        tv.text = typingText(dotN)
-        list.addView(tv, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
-            gravity = Gravity.START; topMargin = (8 * dp).toInt()
-        })
-        typingView = tv
-        scroll.post { scroll.smoothScrollTo(0, list.height) }
+        if (on) inline.show(typingLabel(), typingState())
+        else if (inline.bubble?.isWorking == true) inline.hide()
     }
 
     /** Jawab nahi aaya: "फिर से भेजें" - wahi message dobara */
@@ -272,15 +232,16 @@ class ChatActivity : AppCompatActivity() {
         }
         val msgs = DKState.messages
         if (awaiting && replyStarted()) awaiting = false
-        // typing indicator hamesha sabse neeche: pehle hatao, naye bubble ke baad wapas
-        typingView?.let { list.removeView(it) }
-        if (msgs.size < shown) { list.removeAllViews(); shown = 0; liveView = null; typingView = null }
+        if (msgs.size < shown) { inline.drop(); list.removeAllViews(); shown = 0 }
         if (shown == 0 && msgs.isEmpty()) {
             bubble("d", "नमस्ते${Prefs.userName(this).let { if (it.isNotBlank()) " $it" else "" }}! यहाँ लिखकर कुछ भी पूछिए या कोई काम बोलिए।", keep = false)
         }
-        if (shown < msgs.size) { liveView?.let { list.removeView(it) }; liveView = null }
         while (shown < msgs.size) {
-            val m = msgs[shown]; bubble(m.role, m.text); shown++
+            val m = msgs[shown]; shown++
+            placeholder?.let { list.removeView(it); placeholder = null }
+            // DK का जवाब = उसी बुलबुले में जहाँ तरंग चल रही थी (नया बुलबुला नहीं)
+            if (m.role == "d" && inline.answer(m.text) != null) Unit else bubble(m.role, m.text)
+            inline.keepLast()
             // web search se aaya jawab -> uske theek neeche chhote, click hone wale sources (apne gyaan wale par kuch nahi)
             if (m.role == "d" && m.src.isNotEmpty()) SourcesView.build(this, m.src)?.let { v ->
                 list.addView(v, LinearLayout.LayoutParams(-2, -2).apply { gravity = Gravity.START; topMargin = (5 * dp).toInt() })
@@ -290,15 +251,9 @@ class ChatActivity : AppCompatActivity() {
         }
         // jawab ban raha hai -> wahi tukde turant dikhao (poora hone ka intezaar nahi)
         val live = DKState.liveReply
-        if (live.isNotBlank()) {
-            val v = liveView
-            if (v == null) { bubble("d", live, keep = false); liveView = placeholder as? TextView; placeholder = null }
-            else { v.text = live; scroll.post { scroll.smoothScrollTo(0, list.height) } }
-        }
-        showTyping(needTyping())
+        if (live.isNotBlank()) inline.live(live)
+        else showTyping(needTyping())
     }
-
-    private var liveView: TextView? = null
 
     private var placeholder: View? = null
 

@@ -487,6 +487,19 @@ class DKAccessibilityService : AccessibilityService() {
         }
     }
 
+    /**
+     * इनपुट बार में बोलकर लिखना (DKMic): DK का अपना सुनना माइक छोड़ दे, वरना दोनों में से एक को आवाज़ नहीं मिलती.
+     * Live चालू हो तो GeminiLive का micLoop खुद माइक छोड़ता/वापस लेता है (session बना रहता है).
+     */
+    fun onDictation(on: Boolean) {
+        if (on) {
+            if (!DKState.live) {
+                loopJob?.cancel(); loopJob = null
+                ear.release(); listener.release(); earCaptionOff()
+            }
+        } else ensureLoop()
+    }
+
     /** Ek hi sunne wala loop: live mode me har baat command hai, wake mode me sirf wake word ke baad. */
     private fun ensureLoop() {
         val wanted = DKState.live || Prefs.wakeMode(this)
@@ -498,6 +511,8 @@ class DKAccessibilityService : AccessibilityService() {
             var misses = 0
             while (isActive && (DKState.live || Prefs.wakeMode(this@DKAccessibilityService))) {
                 if (agent.isBusy || speaker.busy || DKState.mode == Mode.SPEAKING || callAnnouncing) { delay(250); continue }
+                // आप इनपुट बार में बोलकर लिख रहे हैं - माइक आपका (DK यह बात command नहीं मानता)
+                if (DKMic.dictating && !useGeminiLive()) { ear.release(); listener.release(); delay(300); continue }
                 // call chal rahi hai: mic call ka hai - DK ka mic chhod do (warna saamne wale ko awaaz nahi jaati)
                 if (calls.inCall && !calls.ringing) { ear.release(); listener.release(); DKState.set(Mode.IDLE); delay(1000); continue }
                 // Gemini Live: mic ki awaaz lagatar stream, jawab ki awaaz turant stream (sabse kam deri)
