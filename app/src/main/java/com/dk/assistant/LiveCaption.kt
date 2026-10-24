@@ -80,6 +80,14 @@ class LiveCaption(
 
     private fun join(a: String, b: String) = (a.trim() + " " + b.trim()).trim()
 
+    /** v3.53: यह key पर चल सकता है (बंद/ख़राब नहीं) - फ़ोन की अपनी आवाज़ की जाँच इसी से */
+    val usable: Boolean get() = !dead && !stopped
+
+    /** v3.53: अभी का text फेंको (फ़ोन की अपनी आवाज़ थी) - न पिछली बात में जुड़े, न नई बात बने */
+    fun discard() = synchronized(lock) {
+        committed.setLength(0); interim = ""; fresh = true; closedAt = 0L
+    }
+
     private fun log(m: String) = DKLog.d("Caption: $m")
 
     fun start() {

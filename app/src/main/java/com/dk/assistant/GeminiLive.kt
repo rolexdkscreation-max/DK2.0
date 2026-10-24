@@ -263,6 +263,16 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
     @Volatile private var suspectAt = 0L
     @Volatile private var localBargeAt = 0L
     @Volatile private var bargeUntil = 0L
+    // v3.53: फ़ोन से निकली आवाज़ (वीडियो/गाना) - PhoneAudioGuard. ये सब mic thread के; guardOk caption thread लिखता है
+    @Volatile private var guardHeld = false          // अभी की आवाज़ रोकी हुई - caption में DK का नाम आने तक Gemini को नहीं
+    @Volatile private var guardOk = false            // रोकी हुई बात में नाम मिल गया = यूज़र
+    private var guardPass = false                    // नाम वाली बात अभी चल रही - इसे दोबारा मत रोको
+    private var guardEndAt = 0L                      // रोकी हुई बात खत्म कब हुई (देर से आते शब्दों का इंतज़ार)
+    private val guardBuf = ArrayDeque<ByteArray>()
+    @Volatile private var guardOn = false            // अभी गार्ड चालू (फ़ोन पर दूसरी आवाज़ बज रही)
+    private var mediaAt = 0L; private var mediaOn = false
+    @Volatile var phoneAudioIgnored = 0              // कितनी बार फ़ोन की अपनी आवाज़ छोड़ी (debug)
+        private set
     @Volatile private var thinkingSince = 0L
     @Volatile private var lastBreakdown = ""
     @Volatile private var warmReuses = 0
@@ -481,6 +491,7 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
         caption = LiveCaption(capKey, onText = { t, fin -> onCaption(t, fin) }, onLate = { t -> onLateCaption(t) },
             isNewSpeech = { barging || System.currentTimeMillis() < bargeUntil }).also { it.start() }
         turnDet.reset(); bargeDet.reset(); bargeGate.reset(); synchronized(bargeBuf) { bargeBuf.clear() }
+        guardHeld = false; guardOk = false; guardPass = false; guardEndAt = 0L; guardBuf.clear(); guardOn = false
         trace.reset(); dropOld = false; suspectAt = 0L; replyWatch.reset()
         timeline.reset(); liveGate.reset(); capGate.reset(); resendText = null; lastServerAt = 0L
         coroutineScope {
@@ -1154,6 +1165,12 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
 
     /** Caption se turant shabd - "आप:" line */
     private fun onCaption(t: String, final: Boolean) {
+        // v3.53: फ़ोन पर वीडियो/गाना बज रहा है और DK चुप - बिना DK के नाम वाले शब्द फ़ोन की अपनी आवाज़ (न दिखाओ, न धीमा करो)
+        if (guardOn && !isPlaying() && !guardOk) {
+            if (!(guardHeld && PhoneAudioGuard.hasName(t, Prefs.wakeWords(svc)))) return
+            guardOk = true
+            log("वीडियो/गाने के बीच DK का नाम सुना (\"${t.take(40)}\") - यूज़र की बात, Gemini को भेज रहा हूँ")
+        }
         lastAct = System.currentTimeMillis()
         if (t.isNotBlank()) Ducker.duck(svc, "Live: user बोल रहा")   // user ke shabd aaye -> peeche ka gaana/video dheema
         // DK bol raha hai aur user ke asli shabd aaye (mic DK bolte samay sirf tez awaaz bhejta hai) -> DK chup
@@ -1766,6 +1783,8 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
                     // ---- DK bol raha hai: mic band NAHI, har 40ms suno. Par Gemini ko sirf PAKKE user shabd.
                     quietSince = now
                     turnDet.reset()
+                    if (guardHeld) { guardHeld = false; guardEndAt = 0L; guardBuf.clear() }   // v3.53: DK बोलने लगा - रोकी आवाज़ छोड़ो
+                    guardPass = false
                     if (bargeDet.ambient == 0.0) bargeDet.ambient = turnDet.noise
                     when (bargeGate.state) {
                         BargeGate.State.IDLE -> {
@@ -1809,6 +1828,43 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
                     if (DKState.mode == Mode.LISTENING) DKState.level = (rms / 3500.0).toFloat().coerceIn(0f, 1f)
                     val ev = turnDet.feed(rms, now)
                     if (turnDet.inSpeech || generating || (turnActive && now - eosAt < 8_000)) quietSince = now
+                    // v3.53: फ़ोन पर दूसरे ऐप की आवाज़ (वीडियो/गाना) - हर 300ms देखो (DK की अपनी आवाज़ थमने के बाद ही भरोसा)
+                    if (now - mediaAt > 300) { mediaAt = now; mediaOn = Ducker.musicActive(svc) }
+                    guardOn = !svc.callRinging() && !callAudioOn && PhoneAudioGuard.active(mediaOn, now - playEnd)
+                    if (guardPass && (ev == TurnDetector.Event.SPEECH_END || !turnDet.inSpeech)) guardPass = false
+                    if (guardHeld || (guardOn && !guardPass && (ev == TurnDetector.Event.SPEECH_START || turnDet.inSpeech))) {
+                        if (!guardHeld) {
+                            // नई आवाज़ आई, पर फ़ोन पर वीडियो चल रहा है: पहले सिर्फ़ लिखने वाले को, Gemini को नहीं
+                            guardHeld = true; guardOk = false; guardEndAt = 0L; guardBuf.clear()
+                            caption?.discard()
+                            if (caption?.usable != true && phoneAudioIgnored == 0)
+                                log("वीडियो/गाना चल रहा है और लिखने वाला (caption) बंद - DK का नाम पहचान नहीं सकता, फ़ोन की आवाज़ अनसुनी रहेगी (बात के लिए वीडियो रोकें)")
+                            preroll.forEach { guardBuf.addLast(it); capSend(it) }; preroll.clear()
+                        }
+                        guardBuf.addLast(chunk); capSend(chunk)
+                        while (guardBuf.size > PhoneAudioGuard.MAX_HOLD_CHUNKS) guardBuf.removeFirst()
+                        if (ev == TurnDetector.Event.SPEECH_END) { guardEndAt = now; caption?.endOfSpeech() }
+                        if (guardOk) {
+                            // नाम मिला = यूज़र. रुकी आवाज़ Gemini को, फिर सामान्य रास्ता (बात चल रही या खत्म)
+                            guardHeld = false; guardPass = turnDet.inSpeech && guardEndAt == 0L
+                            synchronized(sendLock) { guardBuf.forEach { sendAudio(it) } }; guardBuf.clear()
+                            lastAct = now; trace.reset(); replyWatch.onSpeechStart(); rescueWaits = 0
+                            if (Ducker.musicActive(svc)) Ducker.duck(svc, "Live: वीडियो के बीच DK का नाम")
+                            if (DKState.mode != Mode.WORKING) setMode(Mode.LISTENING)
+                            if (guardEndAt > 0L || !turnDet.inSpeech) { guardEndAt = 0L; onLocalEndOfSpeech(now) }
+                            continue
+                        }
+                        val tooLong = guardBuf.size >= PhoneAudioGuard.MAX_HOLD_CHUNKS && turnDet.inSpeech
+                        if (PhoneAudioGuard.expired(guardEndAt, now) || tooLong || (!guardOn && !turnDet.inSpeech && guardEndAt == 0L)) {
+                            // नाम नहीं आया = फ़ोन से निकली आवाज़ (वीडियो की बात). छोड़ो - न जवाब, न धीमा, न स्क्रीन पर
+                            phoneAudioIgnored++
+                            if (phoneAudioIgnored % 10 == 1) log("फ़ोन से निकली आवाज़ (वीडियो/गाना) - DK का नाम नहीं, अनसुनी (#$phoneAudioIgnored)")
+                            guardHeld = false; guardEndAt = 0L; guardBuf.clear(); caption?.discard()
+                            if (tooLong) caption?.endOfSpeech()
+                        }
+                        sendAudio(zeros, silent = true); gatedChunks++
+                        continue
+                    }
                     // v3.39: पीछे की आवाज़ - यूज़र चुप, DK चुप, जवाब नहीं बन रहा, 3s शांत = वापस तेज़ (हर रास्ते पर)
                     if (DuckWatch.shouldRelease(Ducker.active, turnDet.inSpeech, false, generating, quietSince, now) && now - duckFreedAt > 2_000) {
                         duckFreedAt = now; Ducker.releaseNow()
