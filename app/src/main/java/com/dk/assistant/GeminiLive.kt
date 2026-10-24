@@ -1321,10 +1321,14 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
         else "Not sent: $err. Offer to send it via phone_task (open ${n.app})."
     }
 
+    /** DK AI: वही tool call id दोबारा आए तो काम दोबारा नहीं (दो बार call/मैसेज न जाए) */
+    private val toolDedup = ToolCallDeduplicator()
+
     private fun runTools(calls: JSONArray) {
         for (i in 0 until calls.length()) {
             val fc = calls.optJSONObject(i) ?: continue
             val id = fc.optString("id"); val name = fc.optString("name"); val args = fc.optJSONObject("args") ?: JSONObject()
+            if (!toolDedup.firstTime(id)) { log("tool: $name - यही call (id) पहले आ चुका, दोबारा नहीं"); continue }
             log("tool: $name ${args.toString().take(80)}")
             val tStart = System.currentTimeMillis()
             // v3.39: जिस जुड़ाव पर सवाल आया, जवाब सिर्फ़ उसी पर. बीच में दोबारा जुड़ा = पुराना id नए सत्र को अनजान -> 1007
@@ -1506,7 +1510,7 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
      * sendLock: teen thread yahan bhejte hain - ek hi kram me jaye.
      */
     private fun sendAudio(pcm: ByteArray, silent: Boolean = false): Unit = synchronized(sendLock) {
-        if (micMuted && !silent) { sendAudio(ByteArray(pcm.size), true); return@synchronized }
+        if ((micMuted || DKState.micMuted) && !silent) { sendAudio(ByteArray(pcm.size), true); return@synchronized }
         var end = false
         if (silent) {
             when (liveGate.onSilence()) {

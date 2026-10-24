@@ -17,7 +17,7 @@
         android:paddingEnd="20dp"
         android:paddingBottom="16dp">
 
-        <!-- upar: naam + settings -->
+        <!-- upar: naam + settings + mute button -->
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
@@ -50,6 +50,17 @@
             </LinearLayout>
 
             <ImageButton
+                android:id="@+id/btnMute"
+                android:layout_width="48dp"
+                android:layout_height="48dp"
+                android:layout_marginEnd="8dp"
+                android:background="@drawable/glass_circle"
+                android:contentDescription="म्यूट करें"
+                android:padding="12dp"
+                android:scaleType="fitCenter"
+                android:src="@drawable/ic_mic" />
+
+            <ImageButton
                 android:id="@+id/btnSettings"
                 android:layout_width="52dp"
                 android:layout_height="52dp"
@@ -74,7 +85,6 @@
 
                 <TextView android:id="@+id/chipAccess" style="@style/DKChip" />
                 <TextView android:id="@+id/chipMic" style="@style/DKChip" />
-                <TextView android:id="@+id/chipAi" style="@style/DKChip" />
                 <TextView android:id="@+id/chipComputer" style="@style/DKChip"
                     android:text="🖥 DK कंप्यूटर"
                     android:contentDescription="DK कंप्यूटर खोलें" />
@@ -153,7 +163,7 @@
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
-                android:background="@drawable/glass_card"
+                android:background="?attr/selectableItemBackground"
                 android:clickable="true"
                 android:focusable="true"
                 android:gravity="center"
@@ -192,7 +202,7 @@
                 android:layout_weight="1"
                 android:layout_marginStart="10dp"
                 android:layout_marginEnd="10dp"
-                android:background="@drawable/glass_card"
+                android:background="?attr/selectableItemBackground"
                 android:clickable="true"
                 android:focusable="true"
                 android:gravity="center"
@@ -229,7 +239,7 @@
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
-                android:background="@drawable/glass_card"
+                android:background="?attr/selectableItemBackground"
                 android:clickable="true"
                 android:focusable="true"
                 android:gravity="center"

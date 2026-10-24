@@ -354,6 +354,7 @@ class DKAccessibilityService : AccessibilityService() {
     /** @param wakeGate wake word वाला सुनना (Live बंद): caption में DK का नाम न हो तो Groq को मत भेजो */
     suspend fun hear(wakeGate: Boolean = false): String? {
         if (!checkMic()) { delay(2000); return null }
+        if (DKState.micMuted) { delay(800); return null }   // होम का म्यूट बटन: कुछ मत सुनो
         if (!silentEar()) return hearGoogle()
         // DK ki apni awaaz ki goonj na sune
         val since = System.currentTimeMillis() - speaker.lastSpokeAt

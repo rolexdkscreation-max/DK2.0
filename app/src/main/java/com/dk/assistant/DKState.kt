@@ -31,6 +31,10 @@ object DKState {
 
     fun set(m: Mode) { mode = m; if (m != Mode.LISTENING) level = 0f; emit() }
     fun setLive(on: Boolean) { live = on; emit() }
+    /** होम स्क्रीन का म्यूट बटन: true = DK का माइक कुछ नहीं भेजता/सुनता (Live में खामोशी जाती है), दोबारा दबाने तक */
+    @Volatile var micMuted: Boolean = false
+        private set
+    fun setMicMuted(on: Boolean) { micMuted = on; emit() }
     /** Chat screen ke liye poori baatcheet (role "u" = aap, "d" = DK) */
     data class Msg(val role: String, val text: String, val time: Long = System.currentTimeMillis(),
                    /** Web search ke sources (title, url) - sirf jab jawab sach me search se aaya; warna khali */
