@@ -15,7 +15,7 @@ import kotlin.math.cos
 import kotlin.math.sin
 
 /**
- * Liquid Glass ka peechhe ka background: naram neela aasman + dheere chalti safed/aasmaani roshni.
+ * Liquid Glass ka peechhe ka background: v3.61 se gehra graphite (lagbhag kaala) + dheere chalti halki rangeen roshni.
  *
  * v3.41 (UI lag ki jad): pehle har 50ms poori screen par 70px ka RenderEffect blur dobara banta tha aur har frame
  * 4 naye RadialGradient - upar ke saare kaanch wale card bhi har baar dobara jud kar draw hote the. Radial gradient
@@ -26,11 +26,13 @@ class AuroraView @JvmOverloads constructor(context: Context, attrs: AttributeSet
 
     private val sky = Paint()
     private val sheen = Paint()
+    // v3.61: गहरे ग्रेफ़ाइट पर धीमी, धुंधली रंगीन रोशनी (पहले सफ़ेद/आसमानी - उस पर सफ़ेद टेक्स्ट छिपता था).
+    // कम चमक (alpha) ताकि टेक्स्ट साफ़ रहे और ऊपर का कांच, उसकी चमक और किनारा अच्छे से दिखें
     private val blobs = listOf(
-        floatArrayOf(0.15f, 0.12f, 0.60f, 0.11f, 102f) to Color.parseColor("#FFFFFF"),
-        floatArrayOf(0.90f, 0.30f, 0.55f, 0.15f, 112f) to Color.parseColor("#9ED8FF"),
-        floatArrayOf(0.25f, 0.70f, 0.65f, 0.09f, 96f) to Color.parseColor("#A9B8FF"),
-        floatArrayOf(0.80f, 0.92f, 0.50f, 0.13f, 90f) to Color.parseColor("#E3F1FF")
+        floatArrayOf(0.15f, 0.12f, 0.60f, 0.11f, 70f) to Color.parseColor("#3D5A8C"),   // स्टील नीला
+        floatArrayOf(0.90f, 0.30f, 0.55f, 0.15f, 56f) to Color.parseColor("#5B4E8F"),   // हल्का बैंगनी
+        floatArrayOf(0.25f, 0.70f, 0.65f, 0.09f, 44f) to Color.parseColor("#2F6F73"),   // गहरा फ़िरोज़ी
+        floatArrayOf(0.80f, 0.92f, 0.50f, 0.13f, 26f) to Color.parseColor("#C9D3E6")    // बहुत हल्की धुंध
     )
     private val blobPaint = List(blobs.size) { Paint().apply { isDither = true } }
     private val blobR = FloatArray(blobs.size)
@@ -55,11 +57,11 @@ class AuroraView @JvmOverloads constructor(context: Context, attrs: AttributeSet
 
     private fun build(w: Float, h: Float) {
         sky.shader = LinearGradient(0f, 0f, 0f, h,
-            intArrayOf(Color.parseColor("#163A86"), Color.parseColor("#2A5FC0"), Color.parseColor("#3E78D6")),
+            intArrayOf(Color.parseColor("#0A0C10"), Color.parseColor("#13161D"), Color.parseColor("#1C2029")),   // v3.61: ग्रेफ़ाइट ढलान
             floatArrayOf(0f, 0.55f, 1f), Shader.TileMode.CLAMP)
         // tirchhi roshni ki patti (kaanch par padti dhoop jaisi)
         sheen.shader = LinearGradient(0f, h * 0.05f, w, h * 0.45f,
-            intArrayOf(Color.TRANSPARENT, 0x22FFFFFF, Color.TRANSPARENT), floatArrayOf(0.25f, 0.5f, 0.75f), Shader.TileMode.CLAMP)
+            intArrayOf(Color.TRANSPARENT, 0x14FFFFFF, Color.TRANSPARENT), floatArrayOf(0.25f, 0.5f, 0.75f), Shader.TileMode.CLAMP)
         blobs.forEachIndexed { i, (b, col) ->
             val r = w * b[2]; blobR[i] = r
             // (0,0) par ek baar; har frame sirf Matrix se khiskao (naya shader nahi)
