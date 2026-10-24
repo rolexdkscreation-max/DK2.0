@@ -60,6 +60,8 @@ jobs:
           elif echo "$MSGS" | grep -qi '\[security\]'; then TYPE=security
           elif echo "$FILES" | grep -qE '^app/src/main/res/(layout|drawable|values|mipmap|anim|font|xml)/|Activity\.kt$|View\.kt$' || [ -n "$NEWKT" ]; then TYPE=software
           else TYPE=security; fi
+          # Ensure new launcher icons are included in build workspace check
+          git status
           BASE="$(tr -d ' \n' < version.txt)"
           if [ -z "$PREV_VER" ]; then NEW="$BASE"
           else
