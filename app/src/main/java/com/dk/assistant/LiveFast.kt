@@ -75,8 +75,10 @@ object LiveFast {
         // v3.46: गलती (AI limit / डिलीट की पुष्टि नहीं) पहले "FINISHED. Result: …" बनकर जाती थी - Gemini "हो गया" बोल देता था
         failed -> "FAILED - the task was NOT done (or could not be confirmed). Reason: ${reply.orEmpty().ifBlank { "unknown" }}. " +
             "Tell the user honestly in one short sentence that it did NOT happen and why. Never say it was done."
-        !reply.isNullOrBlank() -> "FINISHED. Result: $reply"
-        else -> "FINISHED the steps, but there is no confirmation message. Do not claim more than that."
+        // v3.51: Result = phone agent ने खुद जो बोला; उससे ज़्यादा "कर दिया" नहीं
+        !reply.isNullOrBlank() -> "FINISHED. Result: $reply (report only this; do not claim anything more was done)"
+        else -> "FINISHED the steps, but there is no confirmation message - so it is NOT confirmed that it worked. " +
+            "Tell the user you tried but could not confirm it; never say it is done."
     }
 
     /** काम बाद में पूरा हुआ - Gemini को (user की बात नहीं) बताओ ताकि वह एक वाक्य में बोले */

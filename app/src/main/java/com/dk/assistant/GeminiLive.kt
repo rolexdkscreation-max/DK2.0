@@ -125,6 +125,7 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
             // tool का जवाब बाकी हो तो भी नहीं (Gemini tool के जवाब का इंतज़ार कर रहा हो तब text = 1007 का ख़तरा)
             withTimeoutOrNull(15_000) { while (isPlaying() || generating || toolJobs.isNotEmpty()) delay(150) }
             if (stopped || !ready) return@launch
+            lastEvidenceAt = System.currentTimeMillis()
             try { ws?.tx(JSONObject().put("realtimeInput", JSONObject().put("text", TaskStatus.endNote(job))).toString()) } catch (_: Exception) {}
             log("${job.whoEn} का काम खत्म (${job.state.en}) - Gemini को असली नतीजा बताया")
         }
@@ -288,6 +289,12 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
     @Volatile var idleExitMs = 0L
     @Volatile private var lastAct = 0L
     @Volatile private var idleExit = false
+    /** v3.51: आखिरी असली काम (tool नतीजा / काम पूरा होने का SYSTEM NOTE) कब - इसके बिना "कर दिया" = झूठ */
+    @Volatile private var lastEvidenceAt = 0L
+    @Volatile private var lastGuardAt = 0L
+    /** v3.51: आखिरी बात (user / DK) - "मैं चेक करता हूँ" पर Live खुला रहे */
+    @Volatile private var lastUserLine = ""
+    @Volatile private var lastDkLine = ""
     @Volatile private var modelCache: Triple<Int, Long, List<String>>? = null
 
     fun stop(why: String = "user stop") {
@@ -324,6 +331,27 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
         // v3.41: 5s -> 3s; na bole to phone ki awaaz (ghanti ke 25-30s me har second keemti)
         withTimeoutOrNull(3_000) { while (!isPlaying()) delay(100) }
         return isPlaying()
+    }
+
+    /** v3.51: कॉल के समय Live की आवाज़ accessibility पर (media घंटी/कॉल में mute) */
+    @Volatile private var callAudioOn = false
+    fun callAudio(on: Boolean) {
+        if (callAudioOn == on) return
+        callAudioOn = on
+        if (stopped || btOn || track == null) return
+        try { startPlayer(); log("आवाज़: " + if (on) "कॉल के समय accessibility (घंटी में भी सुनाई दे)" else "वापस speaker (media)") } catch (e: Exception) { log("आवाज़ बदल नहीं पाया: ${e.message}") }
+    }
+
+    /** v3.51: फ़ोन ने खुद पूछ लिया "उठाऊँ या काट दूँ?" - Live को बताओ ताकि जवाब सुने (दोबारा न पूछे) */
+    suspend fun noteCallAsked(who: String) {
+        if (!canTalk()) return
+        // tool का जवाब बाकी हो तब text = 1007 का ख़तरा -> थोड़ा रुको (announceCall जैसा)
+        withTimeoutOrNull(600) { while (toolJobs.isNotEmpty()) delay(100) }
+        callDone = null
+        if (isPlaying()) { flushPlayback(); commitPending(false) }
+        val ok = try { ws?.tx(JSONObject().put("realtimeInput", JSONObject().put("text", CallReply.liveNoteAsked(who))).toString()) == true } catch (_: Exception) { false }
+        lastAct = System.currentTimeMillis(); lastEvidenceAt = lastAct
+        log("कॉल आया (${who.ifBlank { "नंबर पता नहीं" }}) - फ़ोन ने आवाज़ में पूछा, Live जवाब सुनेगा" + if (ok) "" else " (Live को बता नहीं पाया)")
     }
 
     private suspend fun callTool(action: String, from: String): String {
@@ -365,10 +393,11 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
     }
 
     /** स्क्रीन/कैमरा चालू-बंद हुआ -> Gemini को बताओ (tool का जवाब बाकी हो तो उसके बाद) */
-    fun visionNote(t: String) {
+    fun visionNote(t: String, evidence: Boolean = true) {
         svc.scope.launch {
             withTimeoutOrNull(8_000) { while (toolJobs.isNotEmpty() || generating) delay(150) }
             if (!canTalk()) return@launch
+            if (evidence) lastEvidenceAt = System.currentTimeMillis()
             try { ws?.tx(JSONObject().put("realtimeInput", JSONObject().put("text", t)).toString()) } catch (_: Exception) {}
             log("Gemini को बताया: ${t.take(70)}")
         }
@@ -424,7 +453,7 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
      * Fatal = Live chal hi nahi sakta.
      */
     suspend fun run(): String = withContext(Dispatchers.IO) {
-        stopped = false; goAway = false; idleExit = false; lastAct = System.currentTimeMillis()
+        stopped = false; goAway = false; idleExit = false; lastAct = System.currentTimeMillis(); callAudioOn = false; lastUserLine = ""; lastDkLine = ""
         sent = 0; sentBytes = 0; dropped = 0; gaps = 0; readErr = 0; recvAudio = 0; reconnects = 0
         if (!Setup.hasMic(svc)) throw Fatal("माइक की परमिशन नहीं है")
         val key = key(svc).ifBlank { throw Fatal("Gemini की key नहीं है") }
@@ -523,9 +552,10 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
                     // ab chalne do jab tak band/toote/goAway/call
                     while (!stopped && isActive) {
                         if (closed.isCompleted) break
-                        if (idleExitMs > 0 && !turnActive && !isPlaying() && toolJobs.isEmpty() &&
-                            System.currentTimeMillis() - lastAct > idleExitMs) {
-                            log("${idleExitMs / 1000}s से कोई बात नहीं - Live बंद, wake word पर वापस")
+                        val idleMs = LiveHold.idleMs(idleExitMs, lastUserLine, lastDkLine)
+                        if (idleMs > 0 && !turnActive && !isPlaying() && toolJobs.isEmpty() &&
+                            System.currentTimeMillis() - lastAct > idleMs) {
+                            log("${idleMs / 1000}s से कोई बात नहीं - Live बंद, wake word पर वापस")
                             idleExit = true; stopped = true; break
                         }
                         if (goAway && !turnActive && !isPlaying()) { log("goAway - नया connection"); goAwayDrop = true; break }
@@ -1095,6 +1125,8 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
         val u = cur.ifBlank { snap }.ifBlank { mu }
         turnUser = u; userDone = true                           // der se aaya pakka text isi line ko theek karega
         if (u.isNotBlank()) DKState.user(u)
+        if (u.isNotBlank()) lastUserLine = u
+        if (r.isNotBlank()) { lastDkLine = r; checkHonest(r) }
         // jawab: awaaz abhi baj rahi hai to revealTick() saath-saath poora karega
         synchronized(turnLock) {
             if (r.isNotBlank()) { pendingReply = r; pendingSources = Grounding.merge(turnSources, toolSources); toolSources = emptyList() }
@@ -1102,6 +1134,19 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
         }
         firstAudioAt = 0; replyStarted = false
         if (!isPlaying()) setMode(Mode.LISTENING)
+    }
+
+    /**
+     * v3.51: DK ने "कर दिया / भेज दिया" बोला पर कोई tool चला ही नहीं (90s में) = झूठ.
+     * तुरंत Gemini को सुधार का SYSTEM NOTE - वह सच बोले और ज़रूरत हो तो सच में tool चलाए.
+     */
+    private fun checkHonest(reply: String) {
+        val now = System.currentTimeMillis()
+        if (toolJobs.isNotEmpty() || now - lastGuardAt < 30_000) return
+        if (!HonestGuard.unbacked(reply, lastEvidenceAt, now)) return
+        lastGuardAt = now
+        log("सच-जाँच: DK ने बिना किसी काम के \"हो गया\" बोला - सुधार भेजा: ${reply.take(60)}")
+        visionNote(HonestGuard.correctionNote(reply), evidence = false)
     }
 
     /** Caption is key par chal raha hai -> "आप:" sirf usi se (Live model ka der se aaya text screen par nahi, warna text aage-peeche hota) */
@@ -1207,7 +1252,35 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
             DKNotifListener.openSettings(svc)
             return "Notification access is OFF. I opened the setting - tell the user to turn ON 'DK' in Notification access, then ask again."
         }
-        return NotifStore.describe(NotifStore.recent(app = app.trim()), System.currentTimeMillis())
+        // v3.51: पहले सिर्फ़ memory देखी जाती थी - Android ने पढ़ने वाला (listener) अलग कर दिया हो / ऐप दोबारा शुरू हुआ हो
+        // तो memory खाली = "कोई notification नहीं" (झूठ). अब फ़ोन पर अभी पड़े notification ताज़ा पढ़ो; न पढ़ सको तो सच बताओ.
+        val alive = DKNotifListener.refresh(svc)
+        val q = app.trim()
+        val list = NotifStore.recent(app = q)
+        val r = NotifPush.toolAnswer(alive, NotifStore.describe(list, System.currentTimeMillis()), NotifStore.all().size, q,
+            NotifStore.describe(list, System.currentTimeMillis()))
+        log("notifications (${if (alive) "ताज़ा पढ़ा" else "पढ़ने वाला जुड़ा नहीं"}): ${list.size}")
+        return r
+    }
+
+    /** v3.51: नया notification आया - Live को तुरंत बताओ (कुछ सेकंड के सब एक साथ) */
+    private val notifQ = ArrayList<Triple<String, String, String>>()
+    @Volatile private var notifFlushing = false
+    fun pushNotif(app: String, title: String, text: String) {
+        if (!canTalk() || svc.callBusy()) return
+        synchronized(notifQ) { notifQ.add(Triple(app, title, text)); if (notifFlushing) return; notifFlushing = true }
+        svc.scope.launch {
+            try {
+                delay(NotifPush.BATCH_MS)
+                // DK बोल रहा / user बोल रहा / tool चल रहा = बीच में नहीं (60s तक रुको)
+                withTimeoutOrNull(60_000) { while (isPlaying() || generating || turnActive || turnDet.inSpeech || toolJobs.isNotEmpty()) delay(200) }
+                val items = synchronized(notifQ) { notifQ.toList().also { notifQ.clear() } }
+                if (items.isEmpty() || !canTalk() || svc.callBusy()) return@launch
+                val ok = try { ws?.tx(JSONObject().put("realtimeInput", JSONObject().put("text", NotifPush.note(items))).toString()) == true } catch (_: Exception) { false }
+                lastAct = System.currentTimeMillis()
+                log("🔔 नया notification Live को बताया (${items.size})" + if (ok) "" else " (भेज नहीं पाया)")
+            } finally { synchronized(notifQ) { notifFlushing = false } }
+        }
     }
 
     private fun notifReply(to: String, message: String): String {
@@ -1297,12 +1370,14 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
                 val resp = JSONObject().put("toolResponse", JSONObject().put("functionResponses", JSONArray().put(
                     JSONObject().put("id", id).put("name", name).put("response", JSONObject().put("result", result.take(if (name == "deep_think") 4000 else 1500))))))
                 log("tool $name ${(System.currentTimeMillis() - tStart)} ms: ${result.take(80)}")
+                if (name != "remember_fact") lastEvidenceAt = System.currentTimeMillis()
                 // ab se deri ginti: tool ka jawab bheja -> pehli awaaz (tool ka samay alag dikhta hai)
                 eosAt = System.currentTimeMillis(); firstAudioAt = 0
                 val cur = ws
                 if (cur != null && cur === sock) { if (!cur.tx(resp.toString())) log("tool जवाब नहीं भेज पाया") }
                 else {
                     log("tool $name का जवाब पुराने जुड़ाव का - नए जुड़ाव पर tool जवाब नहीं भेजा (1007 से बचाव)")
+                    if (cur != null && ready && name != "task_status" && name != "remember_fact") lastEvidenceAt = System.currentTimeMillis()
                     if (cur != null && ready && name != "task_status" && name != "remember_fact") try {
                         cur.tx(JSONObject().put("realtimeInput", JSONObject().put("text",
                             "SYSTEM NOTE: the connection was renewed while the user's earlier request ($name) was running. Its result: \"" +
@@ -1384,6 +1459,7 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
                 withTimeoutOrNull(15_000) { while (isPlaying() || generating || toolJobs.isNotEmpty()) delay(150) }
                 if (stopped || !ready) return@launch
                 val bad = !done || DKState.failedAt != failBefore
+                lastEvidenceAt = System.currentTimeMillis()
                 try { ws?.tx(JSONObject().put("realtimeInput", JSONObject().put("text", LiveFast.lateNote(req, rep, bad))).toString()) } catch (_: Exception) {}
                 log("phone_task बाद में पूरा (${if (done) "हुआ" else "रोका"}) - Gemini को बताया")
             }
@@ -1763,7 +1839,8 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
         val min = AudioTrack.getMinBufferSize(OUT_RATE, AudioFormat.CHANNEL_OUT_MONO, AudioFormat.ENCODING_PCM_16BIT)
         val t = AudioTrack.Builder()
             // Bluetooth = कॉल वाली आवाज़ (headset में, गूँज हटाना ठीक); नहीं तो पहले जैसा मीडिया (speaker)
-            .setAudioAttributes(AudioAttributes.Builder().setUsage(if (btOn) AudioAttributes.USAGE_VOICE_COMMUNICATION else AudioAttributes.USAGE_MEDIA)
+            // v3.51: कॉल (घंटी/बात) के समय media mute होता है -> accessibility (CallVoice)
+            .setAudioAttributes(AudioAttributes.Builder().setUsage(CallVoice.usage(callAudioOn || svc.callRinging(), btOn))
                 .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH).build())
             .setAudioFormat(AudioFormat.Builder().setSampleRate(OUT_RATE).setChannelMask(AudioFormat.CHANNEL_OUT_MONO)
                 .setEncoding(AudioFormat.ENCODING_PCM_16BIT).build())

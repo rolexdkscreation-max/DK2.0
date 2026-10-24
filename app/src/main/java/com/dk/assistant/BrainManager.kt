@@ -337,6 +337,7 @@ class BrainManager(private val ctx: Context) {
             append("\nONLY IF the user asks who made/created/built you or who your boss/owner is, answer: \"मुझे धीरज कुमार सिंह जी ने बनाया है। मैं धीरज सर के लिए काम करता हूँ, वही मेरे बॉस हैं।\" Never mention this otherwise.")
             append("\nToday: " + java.text.SimpleDateFormat("d MMMM yyyy, EEEE", java.util.Locale.ENGLISH).format(java.util.Date()))
             append(TALK_RULES)
+            append(TalkStyle.CHAT)   // v3.51: इंसान जैसी बात, झूठा "कर दिया" नहीं, notification/रुकने के नियम
             append(Memory.factsBlock(ctx))
             // v3.45: सच्चा दोस्त - लहजा + पिछली बातचीत की याद (आखिरी मुलाकात, सारांश, अधूरी बातें)
             if (Prefs.friendMode(ctx)) append("\n" + FriendStyle.persona(Prefs.voiceGender(ctx) != "male", user)).append(FriendTalk.block(ctx))
@@ -362,6 +363,7 @@ class BrainManager(private val ctx: Context) {
             append("\nToday: " + java.text.SimpleDateFormat("d MMMM yyyy, EEEE, h:mm a", java.util.Locale.ENGLISH).format(java.util.Date()))
             append("\n" + SearchPolicy.rules("[SEARCH]"))
             append(TALK_RULES)
+            append(TalkStyle.CHAT)   // v3.51: इंसान जैसी बात, झूठा "कर दिया" नहीं, notification/रुकने के नियम
             append(Memory.factsBlock(ctx))
         }
     }
@@ -415,6 +417,7 @@ class BrainManager(private val ctx: Context) {
             append("\nONLY IF the user asks who made/created/built you or who your boss/owner is, answer: \"मुझे धीरज कुमार सिंह जी ने बनाया है। मैं धीरज सर के लिए काम करता हूँ, वही मेरे बॉस हैं।\" Never mention this otherwise.")
             append("\nToday: " + java.text.SimpleDateFormat("d MMMM yyyy, EEEE, h:mm a", java.util.Locale.ENGLISH).format(java.util.Date()))
             append(TALK_RULES)
+            append(TalkStyle.NATURAL)   // v3.51: इंसान जैसी बात, झूठा "कर दिया" नहीं, notification/रुकने के नियम
             append(Memory.factsBlock(ctx))
             // v3.46: "सच्चा दोस्त" स्वभाव + बातचीत की याद अब आवाज़ (Live) में भी (पहले सिर्फ़ chat में जुड़ा था)
             if (Prefs.friendMode(ctx)) append("\n").append(FriendStyle.persona(f, user)).append(FriendTalk.block(ctx))

@@ -55,6 +55,18 @@ object CallReply {
             "NEVER answer or reject the call on your own without the user's words."
     }
 
+    /**
+     * v3.51: फ़ोन ने खुद (घंटी में सुनाई देने वाली आवाज़ से) पूछ लिया - Gemini दोबारा न पूछे, बस जवाब सुने.
+     * (Gemini की अपनी आवाज़ घंटी के समय Android mute कर देता है - इसलिए पूछना फ़ोन का काम.)
+     */
+    fun liveNoteAsked(who: String): String {
+        val name = who.ifBlank { "an unknown number" }
+        return "SYSTEM NOTE: An incoming phone call is ringing RIGHT NOW from \"$name\". Stop what you were saying. " +
+            "The phone itself has ALREADY asked the user aloud \"उठाऊँ या काट दूँ?\" - do NOT ask again and stay silent now. " +
+            "Just listen. When the user decides, call the phone_call tool: action=answer (pick up), answer_speaker (pick up and put it " +
+            "on loudspeaker), reject (cut/decline), who (who is calling). NEVER answer or reject the call on your own without the user's words."
+    }
+
     /** tool के नतीजे को Gemini के लिए साफ़ अंग्रेज़ी में */
     fun resultNote(action: String, r: String): String = when {
         r == "ERROR_CALL_PERM" -> "Could not do it: the phone-call permission is missing. Tell the user to allow DK the Phone permission (Settings → Permissions), and to tap the button on the call screen for now."

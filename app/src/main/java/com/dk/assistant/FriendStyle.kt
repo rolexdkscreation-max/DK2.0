@@ -76,6 +76,7 @@ FRIEND MODE - who you are (this sets your TONE; the honesty, safety and tool rul
             append("Fresh local info right now: $local. Mention ONE useful local thing casually, as if you noticed it yourself (e.g. rain -> \"छाता रख लेना!\"). ")
             if (searchLocalNews) append("You may do ONE quick Google Search for today's local news/events/festival crowd/traffic in that city and mention one notable thing (sad news gently, never as a joke). ")
         }
+        append(TalkStyle.OPENER)   // v3.51: खुलते ही "क्या काम है" नहीं
         append("Do not mention this note, the app, memory or that you were told to say this.")
     }
 

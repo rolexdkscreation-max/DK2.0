@@ -55,6 +55,22 @@ class DKNotifListener : NotificationListenerService() {
             } catch (e: Exception) { "reply नहीं गया: ${e.message}" }
         }
 
+        /**
+         * v3.51: फ़ोन पर अभी पड़े सारे notification ताज़ा पढ़ो (memory खाली/पुरानी हो तो भी सही जवाब).
+         * true = पढ़ने वाला जुड़ा है और पढ़ लिया; false = Android ने अलग कर रखा है (फिर से जोड़ने को कहा).
+         */
+        fun refresh(c: Context): Boolean {
+            val l = instance
+            if (l == null) {
+                try { if (android.os.Build.VERSION.SDK_INT >= 24) NotificationListenerService.requestRebind(ComponentName(c, DKNotifListener::class.java)) } catch (_: Exception) {}
+                return false
+            }
+            return try { l.activeNotifications?.forEach { l.take(it, push = false) }; true } catch (_: Exception) { false }
+        }
+
+        /** v3.51: पहले से देखे (key+text) - वही notification दोबारा (update) Live को फिर न बताओ */
+        private val seen = ArrayDeque<NotifPush.Seen>()
+
         private fun findReply(n: Notification): Notification.Action? =
             n.actions?.firstOrNull { a -> a.remoteInputs?.any { it.allowFreeFormInput } == true }
     }
@@ -62,20 +78,20 @@ class DKNotifListener : NotificationListenerService() {
     override fun onListenerConnected() {
         instance = this
         // पहले से पड़े notification भी ले लो (DK लाइव शुरू होने से पहले वाले)
-        try { activeNotifications?.forEach { take(it) } } catch (_: Exception) {}
+        try { activeNotifications?.forEach { take(it, push = false) } } catch (_: Exception) {}
     }
 
     override fun onListenerDisconnected() { if (instance === this) instance = null }
     override fun onDestroy() { if (instance === this) instance = null; super.onDestroy() }
 
-    override fun onNotificationPosted(sbn: StatusBarNotification?) { sbn?.let { take(it) } }
+    override fun onNotificationPosted(sbn: StatusBarNotification?) { sbn?.let { take(it, push = true) } }
 
     override fun onNotificationRemoved(sbn: StatusBarNotification?) {
         // हटाया गया notification: reply action बेकार; पर याद रखो (user पूछ सकता है "क्या आया था")
         sbn?.key?.let { replyActions.remove(it) }
     }
 
-    private fun take(sbn: StatusBarNotification) {
+    private fun take(sbn: StatusBarNotification, push: Boolean) {
         try {
             val n = sbn.notification ?: return
             val ongoing = (n.flags and Notification.FLAG_ONGOING_EVENT) != 0 || (n.flags and Notification.FLAG_FOREGROUND_SERVICE) != 0
@@ -94,6 +110,14 @@ class DKNotifListener : NotificationListenerService() {
             if (r != null) replyActions[sbn.key] = r else replyActions.remove(sbn.key)
             NotifStore.add(NotifStore.Item(sbn.key, sbn.packageName, app, title.trim(), text.trim(), sbn.postTime.takeIf { it > 0 } ?: System.currentTimeMillis(), r != null))
             if (DKState.live) DKLog.d("🔔 notification: [$app] ${title.take(30)}" + if (r != null) " (reply हो सकता है)" else "")
+            // v3.51: Live चालू है -> नया notification तुरंत DK को बताओ (पहले सिर्फ़ याद रखा जाता था, DK को पता नहीं चलता था)
+            val at = sbn.postTime.takeIf { it > 0 } ?: System.currentTimeMillis()
+            val isNew = synchronized(seen) {
+                val fresh = NotifPush.isNew(sbn.key, title, text, at, System.currentTimeMillis(), seen)
+                seen.addLast(NotifPush.Seen(sbn.key, text.trim())); while (seen.size > 60) seen.removeFirst()
+                fresh
+            }
+            if (push && isNew && DKState.live) DKAccessibilityService.instance?.gemLive?.pushNotif(app, title.trim(), text.trim())
         } catch (_: Exception) {}
     }
 }

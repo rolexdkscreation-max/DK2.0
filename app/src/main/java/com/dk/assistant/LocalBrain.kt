@@ -60,7 +60,7 @@ object LocalBrain {
             val how = listOf("कैसे हो", "कैसे हैं", "कैसा है", "क्या हाल", "how are you", "kaise ho")
             val n = if (user.isNotBlank()) " $user" else ""
             if (how.any { t.contains(it) }) return listOf("मैं बढ़िया हूँ$n, आप बताइए?", "एकदम ठीक हूँ$n, आप सुनाइए?").random()
-            if (greet.any { t == it || t.startsWith("$it ") || t.endsWith(" $it") }) return listOf("नमस्ते$n! बताइए, क्या करूँ?", "हाँ$n, बोलिए।").random()
+            if (greet.any { t == it || t.startsWith("$it ") || t.endsWith(" $it") }) return TalkStyle.greetReplies(n).random()   // v3.51: "क्या करूँ?" वाला दफ़्तरी सवाल नहीं
         }
         // chhota hisaab: "25 गुणा 4", "100 + 50"
         calc(raw.lowercase(Locale.ROOT).replace(Regex("[?।,!]"), " ").trim())?.let { return it }

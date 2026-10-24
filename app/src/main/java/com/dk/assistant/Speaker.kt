@@ -26,6 +26,23 @@ import java.util.concurrent.ConcurrentHashMap
  *  2. "gemini"  - Gemini ki bahut natural awaaz (Gemini key se). Limit khatam ho to apne-aap Google awaaz.
  */
 class Speaker(context: Context) : TextToSpeech.OnInitListener {
+    /** v3.51: कॉल (घंटी/बात) चल रही है? - तब media mute होता है, इसलिए accessibility वाली आवाज़ (CallVoice) */
+    @Volatile var callNow: () -> Boolean = { false }
+    @Volatile private var lastUsage = -1
+
+    private fun voiceAttrs(): AudioAttributes {
+        val call = try { callNow() } catch (_: Exception) { false }
+        return AudioAttributes.Builder().setUsage(CallVoice.usage(call))
+            .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH).build()
+    }
+
+    /** TTS की आवाज़ का usage कॉल के हिसाब से (बदला हो तभी) */
+    private fun applyVoiceUsage() {
+        val a = voiceAttrs()
+        if (a.usage == lastUsage) return
+        try { tts.setAudioAttributes(a); lastUsage = a.usage } catch (_: Exception) {}
+        if (a.usage == CallVoice.USAGE_ASSISTANCE_ACCESSIBILITY) DKLog.d("कॉल चल रही है - DK की आवाज़ accessibility पर (media कॉल में mute होता है)")
+    }
 
     private val appCtx = context.applicationContext
     private val ready = CompletableDeferred<Boolean>()
@@ -70,6 +87,7 @@ class Speaker(context: Context) : TextToSpeech.OnInitListener {
             tts.setAudioAttributes(AudioAttributes.Builder()
                 .setUsage(AudioAttributes.USAGE_MEDIA)
                 .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH).build())
+            lastUsage = AudioAttributes.USAGE_MEDIA
         } catch (_: Exception) {}
         tts.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
             override fun onStart(utteranceId: String?) {
@@ -149,6 +167,7 @@ class Speaker(context: Context) : TextToSpeech.OnInitListener {
             // "बोल रहा हूँ" tabhi jab sach me awaaz nikle (pehle vakya ka intezaar = "जवाब आ रहा है")
             if (prev != Mode.THINKING && prev != Mode.WORKING) DKState.set(Mode.THINKING)
             ensureAudible()
+            applyVoiceUsage()
             val key = Prefs.ttsGeminiKey(appCtx)
             val voice = Prefs.geminiVoice(appCtx)
             var gem = Prefs.voiceEngine(appCtx) == "gemini" && key.isNotBlank() && System.currentTimeMillis() > geminiCooldownUntil
@@ -335,6 +354,11 @@ class Speaker(context: Context) : TextToSpeech.OnInitListener {
             if (Build.VERSION.SDK_INT >= 23 && audio.isStreamMute(s)) audio.adjustStreamVolume(s, android.media.AudioManager.ADJUST_UNMUTE, 0)
             val max = audio.getStreamMaxVolume(s)
             if (audio.getStreamVolume(s) == 0 && max > 0) audio.setStreamVolume(s, (max * 0.5).toInt().coerceAtLeast(1), 0)
+            // v3.51: कॉल के समय accessibility वाली आवाज़ - वह 0 हो तो सुनाई नहीं देगी
+            if (Build.VERSION.SDK_INT >= 26 && (try { callNow() } catch (_: Exception) { false })) try {
+                val a = CallVoice.STREAM_ACCESSIBILITY; val am = audio.getStreamMaxVolume(a)
+                if (am > 0 && audio.getStreamVolume(a) < am / 2) audio.setStreamVolume(a, (am * 0.8).toInt().coerceAtLeast(1), 0)
+            } catch (_: Exception) {}
         } catch (e: Exception) { DKLog.d("awaaz unmute: ${e.message}") }
     }
 
@@ -355,9 +379,7 @@ class Speaker(context: Context) : TextToSpeech.OnInitListener {
         withContext(Dispatchers.Main) {
             stopPlayer()
             val mp = MediaPlayer()
-            mp.setAudioAttributes(AudioAttributes.Builder()
-                .setUsage(AudioAttributes.USAGE_MEDIA)
-                .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH).build())
+            mp.setAudioAttributes(voiceAttrs())
             try { mp.setDataSource(f.absolutePath) } catch (e: Exception) { done.complete(Unit); mp.release(); return@withContext }
             mp.setOnCompletionListener { done.complete(Unit) }
             mp.setOnErrorListener { _, _, _ -> done.complete(Unit); true }

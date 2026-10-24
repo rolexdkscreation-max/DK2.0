@@ -79,6 +79,8 @@ class DKAccessibilityService : AccessibilityService() {
         // पूरा फ़ोन हमेशा के लिए "कॉल" मोड में चला जाता था - Bluetooth न हो तब भी, और कभी वापस नहीं.
 
         speaker = Speaker(this)
+        // v3.51: घंटी/कॉल के समय Android media आवाज़ mute करता है -> DK तब accessibility आवाज़ में बोले
+        speaker.callNow = { try { calls.ringing || calls.inCall || callPending } catch (_: Exception) { false } }
         listener = VoiceListener(this)
         // aap bolna shuru karo aur ghanti baj rahi ho -> ringtone turant dheemi (taaki DK saaf sune)
         ear = Ear(this, { speaker.busy }) { if (::calls.isInitialized && calls.ringing) calls.quietRinger() }
@@ -984,14 +986,17 @@ class DKAccessibilityService : AccessibilityService() {
         DKState.reply(msg)
         // v3.40: DK लाइव (Gemini) जुड़ा है = वही पूछे और जवाब सुने (Live बंद नहीं होता, पुराने सुनने पर निर्भर नहीं)
         if (DKState.live && gemLive.canTalk()) {
-            val spoke = gemLive.announceCall(who)
-            if (!spoke && calls.ringing) {
-                // Gemini ने 5s में बोलना शुरू नहीं किया -> फ़ोन की अपनी आवाज़ से पूछो; जवाब फिर भी Live सुनेगा
-                DKLog.d("Live ने कॉल नहीं बताया - फ़ोन की आवाज़ से पूछा")
-                gemLive.muteMic(true)
-                try { speaker.speakQuick(msg) } finally { gemLive.muteMic(false) }
-            }
-            scope.launch { while (calls.ringing) delay(500); callPending = false }
+            // v3.51: पहले Gemini (Live) खुद पूछता था - पर उसकी आवाज़ media पर है और घंटी के समय Android उसे mute कर देता है:
+            // "बोल दिया" दिखता (isPlaying) पर सुनाई कुछ नहीं, फ़ोन वाली आवाज़ भी नहीं चलती थी = सिर्फ़ लिखा दिखता.
+            // अब फ़ोन खुद (accessibility आवाज़, घंटी में भी सुनाई दे) पूछता है; Live को बस बताया जाता है ताकि जवाब वही सुने.
+            gemLive.noteCallAsked(who)
+            gemLive.muteMic(true)
+            callAnnouncing = true
+            try { speaker.speakQuick(msg) } finally { callAnnouncing = false; gemLive.muteMic(false) }
+            // पूछने के बाद Live की आवाज़ भी घंटी में सुनाई दे ("उठा रहा हूँ" / "किसका है" का जवाब)
+            gemLive.callAudio(true)
+            DKLog.d("कॉल: फ़ोन की आवाज़ से पूछा (Live जवाब सुन रहा है)")
+            scope.launch { while (calls.ringing) delay(500); callPending = false; if (!calls.inCall) gemLive.callAudio(false) }
             return
         }
         callAnnouncing = true
