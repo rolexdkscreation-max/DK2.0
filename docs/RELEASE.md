@@ -56,10 +56,10 @@ gh release create v<नंबर> app/build/outputs/apk/release/app-release.apk#
 | `READ_CONTACTS` | नाम से कॉल/मैसेज |
 | `CAMERA` | सिर्फ़ टॉर्च |
 | `ACCESS_COARSE/FINE_LOCATION` | मौसम/इलाके की बात (सेव नहीं होती) |
-| `READ_MEDIA_IMAGES` | आपकी चुनी फ़ोटो पोस्ट/शेयर करना |
+| `READ_MEDIA_IMAGES` (वैकल्पिक) | "सबसे नई फ़ोटो दिखाओ" — सिर्फ़ पढ़ना, मिटाना नहीं |
 | `REQUEST_INSTALL_PACKAGES` | ऐप के अंदर से update install |
 | `REQUEST_IGNORE_BATTERY_OPTIMIZATIONS`, `WAKE_LOCK`, `RECEIVE_BOOT_COMPLETED` | पीछे चलते रहना, फ़ोन चालू होने पर तैयार |
-| `MODIFY_AUDIO_SETTINGS`, `BLUETOOTH` | बोलते समय पीछे की आवाज़ धीमी, headset |
+| `MODIFY_AUDIO_SETTINGS`, `BLUETOOTH` (Android 11 तक) | आवाज़ का रास्ता, Bluetooth headset का माइक |
 | `WRITE_SECURE_SETTINGS` (सिर्फ़ adb से दिया जाए तो) | Accessibility अपने-आप चालू रखना |
 
 ## 6. Release से पहले जाँच (असली फ़ोन पर)
