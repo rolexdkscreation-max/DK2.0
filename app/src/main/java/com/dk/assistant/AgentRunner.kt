@@ -421,7 +421,10 @@ class AgentRunner(
             // v3.46: मैसेज डिलीट भी - स्क्रीन पर "This message was deleted" दिखे बिना "डिलीट हो गया" नहीं
             val delCheck = deleteGoal && done && !chatMode && !cartCheck
             // Bolna aur kaam saath-saath
-            val speakJob = if (sayText.isNotBlank() && !cartCheck && !delCheck) scope.launch { say(sayText) } else null
+            // v3.51: "कर दिया/भेज दिया" वाली बात कदम चलने से पहले ही बोल दी जाती थी - कदम फेल हो तब भी (= झूठ).
+            // अब ऐसा दावा कदमों के नतीजे देखकर ही बोलो; "खोल रहा हूँ" जैसी बात पहले जैसी साथ-साथ.
+            val holdSay = done && hasActions && !cartCheck && !delCheck && HonestGuard.claimsDone(sayText)
+            val speakJob = if (sayText.isNotBlank() && !cartCheck && !delCheck && !holdSay) scope.launch { say(sayText) } else null
 
             val results = StringBuilder()
             val prevPkg = svc.currentPackage()
@@ -475,12 +478,20 @@ class AgentRunner(
                 else sayFailed("मैंने कोशिश की, पर स्क्रीन पर मैसेज डिलीट होने की पुष्टि नहीं दिखी। एक बार चैट खोलकर देख लीजिए।")
                 return
             }
+            if (holdSay && done) {
+                val failed = results.lines().any { HonestGuard.actionFailed(it.substringAfter("-> ", "")) }
+                if (!failed) { say(sayText); return }
+                DKLog.d("सच-जाँच: कदम फेल हुआ - \"${sayText.take(40)}\" नहीं बोला, AI से फिर देखने को कहा")
+                done = false
+                results.append("NOTE: an action above FAILED, so the task is NOT done yet. Fix it, or tell the user honestly that it could not be done - never say it is done.\n")
+            }
             if (done) { speakJob?.join(); return }
             if (chatMode) chatMode = false   // AI ne actions diye - ab screen dekh kar kaam karo
             svc.waitSettle(prevPkg, opensApp) // naya app khule + screen tham jaye, tab agla kadam
             feedback = "USER GOAL (same task, continue): $goal\nRESULTS OF YOUR LAST ACTIONS:\n$results"
         }
-        say("बहुत सारे स्टेप हो गए, मैंने काम यहीं रोक दिया।")
+        // v3.51: यह "पूरा" नहीं - Live को FAILED जाए ताकि वह "कर दिया" न बोले
+        sayFailed("बहुत सारे स्टेप हो गए, मैंने काम यहीं रोक दिया - काम पूरा नहीं हुआ।")
     }
 
     private enum class ChatOut { DONE, SCREEN, SEARCH, THINK }

@@ -1,0 +1,169 @@
+package com.dk.assistant
+
+/**
+ * v3.51: पाँच शिकायतों की जड़ से ठीक (Android import नहीं -> JVM unit test).
+ *
+ * 1. [CallVoice]  कॉल आने पर DK सिर्फ़ लिखता था, बोलता नहीं था: DK की सारी आवाज़ USAGE_MEDIA पर थी और
+ *    Android 11+ घंटी बजते/कॉल चलते समय दूसरे ऐप की media आवाज़ अपने-आप mute कर देता है.
+ *    कॉल के समय अब accessibility वाली आवाज़ (TalkBack जैसी) - वह घंटी के बीच भी सुनाई देती है.
+ * 2. [NotifPush]  नया notification आने पर Live को पता ही नहीं चलता था (सिर्फ़ memory में रखा जाता था);
+ *    अब तुरंत Live को SYSTEM NOTE. पूछने पर पढ़ने वाला बंद/टूटा हो तो "कोई नहीं आया" (झूठ) नहीं.
+ * 3. [HonestGuard] काम हुआ ही नहीं और DK "कर दिया" बोल देता था - बिना किसी tool के "कर दिया" पकड़ो.
+ * 4. [LiveHold]   "ठीक है, मैं चेक करता हूँ" के बाद 45s में Live बंद होकर wake word पर लौट जाता था,
+ *    फिर लौटकर बोली बात सुनी ही नहीं जाती थी (DK चुप). अब ऐसी बात पर Live कुछ मिनट रुका रहता है.
+ * 5. [TalkStyle]  खुलते ही / नाम सुनते ही "बताइए क्या काम है" जैसा दफ़्तरी सवाल नहीं - इंसान जैसी बात.
+ */
+object CallVoice {
+    // android.media.AudioAttributes के मान (JVM test में Android class नहीं)
+    const val USAGE_MEDIA = 1
+    const val USAGE_VOICE_COMMUNICATION = 2
+    const val USAGE_ASSISTANCE_ACCESSIBILITY = 11
+
+    /** android.media.AudioManager.STREAM_ACCESSIBILITY */
+    const val STREAM_ACCESSIBILITY = 10
+
+    /**
+     * DK की आवाज़ किस usage पर बजे.
+     * कॉल (घंटी/बात) = accessibility (media mute हो जाता है); Bluetooth = पहले जैसा कॉल वाला; बाकी पहले जैसा media.
+     */
+    fun usage(callActive: Boolean, bt: Boolean = false): Int = when {
+        bt -> USAGE_VOICE_COMMUNICATION
+        callActive -> USAGE_ASSISTANCE_ACCESSIBILITY
+        else -> USAGE_MEDIA
+    }
+}
+
+object NotifPush {
+    /** एक साथ कई notification = एक ही बार बताओ */
+    const val BATCH_MS = 2_500L
+    /** इतना पुराना notification (Live खुलने से पहले का) अपने-आप मत बताओ */
+    const val FRESH_MS = 60_000L
+
+    data class Seen(val key: String, val text: String)
+
+    /**
+     * यह notification Live को अभी बताना है?
+     * नया (key+text पहले नहीं देखा), ताज़ा (1 मिनट के अंदर), खाली नहीं.
+     */
+    fun isNew(key: String, title: String, text: String, postedAt: Long, now: Long, seen: Collection<Seen>): Boolean {
+        if (title.isBlank() && text.isBlank()) return false
+        if (now - postedAt > FRESH_MS) return false
+        return seen.none { it.key == key && it.text == text.trim() }
+    }
+
+    /** OTP/पासवर्ड वाला संदेश ज़ोर से नहीं - बस "OTP आया है" */
+    fun safeText(text: String): String =
+        if (Sensitive.isSensitive(text) || Regex("(?i)\\b(otp|one.time|verification code)\\b|ओटीपी").containsMatchIn(text)) "(a code/OTP or private info - do NOT read it aloud; just say a code/OTP message came)"
+        else text.take(160)
+
+    /** Gemini Live को SYSTEM NOTE */
+    fun note(items: List<Triple<String, String, String>>): String = buildString {
+        append("SYSTEM NOTE (this is not the user speaking): ")
+        append(if (items.size == 1) "a new notification JUST arrived on the phone: " else "${items.size} new notifications JUST arrived on the phone: ")
+        items.take(5).forEachIndexed { n, (app, title, text) ->
+            if (items.size > 1) append("${n + 1}) ")
+            append("[$app] ")
+            if (title.isNotBlank()) append("$title: ")
+            append(safeText(text)).append(". ")
+        }
+        append("If you are in the middle of answering, finish that first. Then tell the user in ONE short natural line who/which app sent it and the gist ")
+        append("(e.g. \"राहुल का WhatsApp आया है - पूछ रहा है कब मिलोगे\"). Do not read long messages fully unless asked. ")
+        append("Remember it: if the user later asks about notifications, this one DID arrive.")
+    }
+
+    /** notifications tool का जवाब - कभी झूठा "कोई नहीं" नहीं */
+    fun toolAnswer(listenerAlive: Boolean, filtered: String, totalStored: Int, app: String, describe: String): String = when {
+        !listenerAlive ->
+            "COULD NOT CHECK: Android has disconnected DK's notification reader right now (DK is reconnecting it). " +
+                "Tell the user honestly that you could not read notifications this moment and to ask again in a few seconds. " +
+                "Do NOT say that no notification came."
+        filtered == "No new notifications." && app.isNotBlank() && totalStored > 0 ->
+            "Checked just now: nothing from '$app'. But there are $totalStored other recent notification(s) - ask if they want those."
+        filtered == "No new notifications." ->
+            "Checked the phone just now: there are no notifications since DK started. Say so honestly in one short line."
+        else -> "Checked the phone just now. $describe"
+    }
+}
+
+object HonestGuard {
+    /** काम पूरा होने का दावा ("खोल दिया", "भेज दिया", "कर दिया", "सेट कर दिया", "done") */
+    private val CLAIM = Regex(
+        "(खोल|भेज|लगा|डाल|बंद|चालू|ऑन|ऑफ|सेट|सेव|डिलीट|मिटा|हटा|बजा|चला|कट|काट|उठा|कर|रख|जोड़|शेयर|बढ़ा|घटा|कम)\\s*(कर\\s*)?(दिया|दी|दिए|दिये|लिया|ली|चुका|चुकी)" +
+            "|काम\\s*(हो\\s*)?(गया|पूरा)|(?i)\\b(i have|i've|i just)\\s+(sent|opened|called|done|set|saved|turned|played|deleted)\\b|(?i)\\bdone\\b"
+    )
+    /** सवाल / इनकार / आगे करने की बात = दावा नहीं */
+    private val NOT_CLAIM = Regex("नहीं|नही|(^|\\s)(ना|मत)(\\s|$)|पाया|पाई|सकता|सकती|करूँ|करूं|दूँ|दूं|क्या|\\?|तुमने|आपने|तूने|उसने|उन्होंने|" +
+        "(?i)\\b(not|couldn't|could not|can't|cannot|shall i|should i|you)\\b")
+
+    /** DK की बात में "काम हो गया" का दावा है? (हर वाक्य अलग जाँचो) */
+    fun claimsDone(reply: String): Boolean =
+        reply.split(Regex("(?<=[।.!?\\n])")).any { s -> CLAIM.containsMatchIn(s) && !NOT_CLAIM.containsMatchIn(s) }
+
+    /** इतनी देर में कोई असली काम (tool / काम पूरा होने का SYSTEM NOTE) नहीं हुआ और दावा कर दिया = झूठ */
+    const val EVIDENCE_MS = 90_000L
+
+    fun unbacked(reply: String, lastEvidenceAt: Long, now: Long): Boolean =
+        claimsDone(reply) && now - lastEvidenceAt > EVIDENCE_MS
+
+    fun correctionNote(reply: String): String =
+        "SYSTEM NOTE (this is not the user speaking): you just told the user \"${reply.take(160)}\" as if something was DONE, " +
+            "but NO tool was called for it, so NOTHING was actually done on the phone. That was false. Right now say honestly in one " +
+            "short line that it has not been done yet (e.g. \"माफ़ करना, वो अभी हुआ नहीं था\"). If the user wanted it done, call phone_task " +
+            "(or the right tool) now and report only what the tool returns. Never claim a task is done without a DONE/FINISHED tool result."
+
+    /** AgentRunner: कदम का नतीजा गलती वाला है? (तब "कर दिया" नहीं बोलना) */
+    fun actionFailed(result: String): Boolean {
+        val r = result.trim()
+        return r.startsWith("ERROR") || r.startsWith("STEP_FAILED") || r.startsWith("FAILED") || r.startsWith("NOT_FOUND") ||
+            r.startsWith("NO_") || r.startsWith("ASK:")
+    }
+}
+
+object LiveHold {
+    /** "ठीक है, मैं चेक करता हूँ / देखता हूँ / रुको / एक मिनट" - user लौटकर बात करेगा */
+    private val HOLD = Regex(
+        "(चेक|check|देख|dekh|पता)\\s*(कर)?\\s*(के|ke)?\\s*(करता|करती|करते|करूँ|करूं|लेता|लेती|लूँ|लूं|लेंगे|ता|ती|बताता|बताती|बताऊँ|बताऊं|karta|karti|leta|leti|lu|lun)" +
+            "|रुको|रुकिए|रुक जा|एक मिनट|एक सेकंड|1 मिनट|दो मिनट|थोड़ी देर|अभी आता|अभी आती|wait|hold on|one minute|ek minute|ruko|abhi aata"
+    )
+
+    fun isHold(userText: String): Boolean = HOLD.containsMatchIn(userText.lowercase())
+
+    /** user ने रुकने को कहा: Live इतनी देर खुला रहे (wake word पर वापस न जाए) */
+    const val HOLD_MS = 5 * 60_000L
+    /** DK ने सवाल पूछा: जवाब सोचने का समय */
+    const val ASKED_MS = 2 * 60_000L
+
+    /** wake word वाले छोटे Live का असली idle समय (0 = कभी खुद बंद नहीं) */
+    fun idleMs(base: Long, lastUser: String, lastDk: String): Long = when {
+        base <= 0 -> base
+        isHold(lastUser) -> maxOf(base, HOLD_MS)
+        lastDk.trim().endsWith("?") -> maxOf(base, ASKED_MS)
+        else -> base
+    }
+}
+
+object TalkStyle {
+    /** Live system prompt में - इंसान जैसी बातचीत */
+    const val CHAT = "\nNATURAL TALK (very important): talk with the user like a real human friend in a normal conversation. " +
+        "NEVER open or reply with service-desk lines like \"बताइए क्या काम है\", \"क्या काम करना है\", \"मैं आपकी क्या मदद कर सकता हूँ\", " +
+        "\"क्या बात करनी है\", \"how can I help you\". If the user only says your name or hi, answer warmly and casually like a friend " +
+        "(e.g. \"हाँ बॉस, बोलो\" / \"हाँ, सुन रहा हूँ\") - no question about work. Stay on exactly the topic the user is talking about; do not bring up " +
+        "tasks, work, reminders or offers of help unless the user asks for something to be done." +
+        "\nWAITING: if the user says they will check / look / come back (\"ठीक है, मैं चेक करता हूँ\", \"रुको\", \"एक मिनट\"), reply in a few " +
+        "words (\"ठीक है, देख लो, मैं यहीं हूँ\") and wait. When they speak again, ALWAYS answer, continuing the same topic - never stay silent."
+
+    /** Live (tools वाला) - बातचीत + notification + झूठा "कर दिया" नहीं */
+    const val NATURAL = CHAT +
+        "\nNOTIFICATIONS: you get a SYSTEM NOTE when a new notification arrives - tell the user briefly. When the user asks about notifications/" +
+        "messages, ALWAYS call the notifications tool again right then (never answer from memory) and say only what it returns; never say none came " +
+        "unless the tool just said so." +
+        "\nNO FALSE DONE: you have no hands except your tools. If you did not call a tool, nothing happened - never say \"कर दिया / भेज दिया / " +
+        "खोल दिया\" without a DONE/FINISHED tool result in this conversation."
+
+    /** ऐप खुलने पर पहला वाक्य - काम मत पूछो */
+    const val OPENER = "Do NOT ask what work/task they have, do not offer help, and do not say things like \"बताइए क्या काम है\" or " +
+        "\"क्या बात करनी है\" - just start a warm, normal human conversation. "
+
+    /** पुराना LocalBrain अभिवादन (बिना AI) - दफ़्तरी "क्या करूँ?" नहीं */
+    fun greetReplies(n: String) = listOf("नमस्ते$n! कैसे हो?", "हाँ$n, बोलो।")
+}
