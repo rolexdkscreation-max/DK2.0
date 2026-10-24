@@ -835,7 +835,7 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
         val brain = BrainManager(svc)
         val tools = JSONArray().put(JSONObject().put("functionDeclarations", JSONArray()
             .put(JSONObject().put("name", "phone_task")
-                .put("description", "Do something on the user's Android phone: open apps, call, send messages, WhatsApp, YouTube, music, settings (wifi, bluetooth, torch, volume, brightness), maps/directions, shopping, read or tap the screen.")
+                .put("description", "Do something on the user's Android phone: open apps (including opening WhatsApp), call, SMS, YouTube, music, settings (wifi, bluetooth, torch, volume, brightness), maps/directions, shopping, read or tap the screen. NOT for sending WhatsApp messages - always use whatsapp_task (action=send_message) for that.")
                 .put("parameters", JSONObject().put("type", "OBJECT")
                     .put("properties", JSONObject().put("request", JSONObject().put("type", "STRING").put("description", "The user's request in their own words")))
                     .put("required", JSONArray().put("request"))))
@@ -870,7 +870,7 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
                         .put("mode", JSONObject().put("type", "STRING").put("enum", JSONArray().put("publish").put("draft"))))
                     .put("required", JSONArray().put("platform").put("action"))))
             .put(JSONObject().put("name", "whatsapp_task")
-                .put("description", "WhatsApp on the phone: read_unread (unread messages from notifications), send_message (contact + message; irreversible - wait for waiting_confirmation SYSTEM NOTE, ask the user, confirm only after a clear yes), read_chat (contact), search_chat (query), mute / unmute / mark_read (contact). If the contact is ambiguous you get contact_ambiguous - ask the user which one.")
+                .put("description", "WhatsApp on the phone - ALWAYS use this (never phone_task) to send a WhatsApp message: read_unread (unread messages from notifications), send_message (contact + message; irreversible - wait for waiting_confirmation SYSTEM NOTE, ask the user, confirm only after a clear yes), read_chat (contact), search_chat (query), mute / unmute / mark_read (contact). If the contact is ambiguous you get contact_ambiguous - ask the user which one.")
                 .put("parameters", JSONObject().put("type", "OBJECT")
                     .put("properties", JSONObject()
                         .put("action", JSONObject().put("type", "STRING").put("enum", JSONArray().put("read_unread").put("send_message").put("read_chat").put("search_chat").put("mute").put("unmute").put("mark_read")))
@@ -1462,6 +1462,11 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
      * पहले: 60s तक इंतज़ार और नतीजा न मिले तो "done" (झूठा "हो गया").
      */
     private suspend fun phoneTask(req: String): String {
+        // v3.59: WhatsApp मैसेज = whatsapp_task (पक्का भेजना + जाँच), phone_task नहीं
+        if (com.dk.assistant.agent.social.WaRoute.isWhatsAppSend(req)) {
+            log("रूटर: WhatsApp मैसेज -> whatsapp_task")
+            return com.dk.assistant.agent.social.WaRoute.redirect(req)
+        }
         val wake = Prefs.wakeWords(svc)
         val fg = svc.currentPackage()
         val tc = System.nanoTime()
@@ -1568,6 +1573,7 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
     /** Caption socket: asli awaaz hamesha; khaamoshi 1s tak, phir audioStreamEnd aur band */
     private fun capSend(pcm: ByteArray, silent: Boolean = false) {
         val c = caption ?: return
+        if (DKState.micMuted && !silent) return     // v3.59: म्यूट में लिखने वाले को भी आवाज़ नहीं
         if (!silent) { capGate.onReal(); c.send(pcm); return }
         when (capGate.onSilence()) {
             SilenceStreamGate.Action.SEND -> c.send(pcm, real = false)
@@ -1778,6 +1784,25 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
                     r = openMic() ?: throw Fatal("माइक दोबारा नहीं खुला (बोलकर लिखने के बाद)", recoverable = true)
                     r.startRecording(); last = 0L; errRun = 0
                     log("माइक वापस: बोलकर लिखना खत्म")
+                    continue
+                }
+                // v3.59: म्यूट बटन = माइक सच में बंद (Android का हरा माइक-निशान भी हटे)।
+                // जड़: पहले माइक खुला रहता था और सिर्फ़ Gemini को खाली आवाज़ जाती थी - पर caption वाले को असली
+                // आवाज़ जाती थी, बीच में टोकना (barge) भी चलता था, और फ़ोन "माइक चालू" ही दिखाता था।
+                if (DKState.micMuted) {
+                    try { r.stop() } catch (_: Exception) {}
+                    try { r.release() } catch (_: Exception) {}
+                    log("माइक म्यूट: माइक छोड़ दिया - अनम्यूट तक कुछ नहीं सुनूँगा")
+                    synchronized(sendLock) { try { ws?.tx("{\"realtimeInput\":{\"audioStreamEnd\":true}}") } catch (_: Exception) {} }
+                    try { caption?.endOfSpeech() } catch (_: Exception) {}
+                    synchronized(bargeBuf) { bargeBuf.clear() }
+                    preroll.clear(); turnDet.reset(); DKState.level = 0f
+                    while (isActive && !stopped && DKState.micMuted) delay(150)
+                    if (!isActive || stopped) break
+                    r = openMic() ?: throw Fatal("माइक दोबारा नहीं खुला (अनम्यूट के बाद)", recoverable = true)
+                    r.startRecording(); last = 0L; errRun = 0
+                    quietSince = System.currentTimeMillis()
+                    log("माइक अनम्यूट: फिर सुन रहा हूँ")
                     continue
                 }
                 // v3.39: Bluetooth जुड़ा/हटा -> माइक नए रास्ते पर दोबारा खोलो

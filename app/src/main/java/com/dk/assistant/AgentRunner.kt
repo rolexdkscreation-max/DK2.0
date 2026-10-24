@@ -191,7 +191,10 @@ class AgentRunner(
                 Regex("\\b(you|tumhe|tumko|aapko)\\b").containsMatchIn(t))) return true
         val boss = listOf("तुम्हारा बॉस", "तुम्हारे बॉस", "आपका बॉस", "आपके बॉस", "तेरा बॉस", "बॉस कौन", "मालिक कौन", "तुम्हारा मालिक",
             "आपका मालिक", "बनाने वाला", "बनाने वाले", "निर्माता", "तुम्हारा निर्माता", "your boss", "your owner", "your creator",
-            "who is your boss", "who owns you", "creator कौन", "डेवलपर कौन", "developer कौन", "tumhara boss", "tumhe kisne")
+            "who is your boss", "who owns you", "creator कौन", "डेवलपर कौन", "developer कौन", "tumhara boss", "tumhe kisne",
+            // v3.59: "किसके लिए काम करते हो / किसने सिखाया / तुम्हारा डेवलपर"
+            "किसके लिए काम", "किसके लिए कर", "kiske liye kaam", "किसने सिखाया", "किसने ट्रेन", "who trained you", "who taught you",
+            "who do you work for", "तुम्हारा डेवलपर", "तुम्हारे डेवलपर", "आपका डेवलपर", "your developer", "किसकी ai", "किसका ai", "किसका एआई", "किसकी एआई")
         return boss.any { t.contains(it) }
     }
 

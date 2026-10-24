@@ -149,6 +149,7 @@ class DKAccessibilityService : AccessibilityService() {
             return
         }
         wakeLive = false; gemLive.idleExitMs = 0
+        Prefs.edit(this) { putBoolean("mic_user_off", false) }    // v3.59: यूज़र ने खुद चालू किया
         Setup.startKeepAlive(this)
         // wake word wala loop hear() me atka ho (baat ka intezaar / STT) to Live tab tak shuru nahi hota tha -> use roko
         val restart = LiveStart.restartLoop(loopJob?.isActive == true, wasLive = false)
@@ -169,6 +170,8 @@ class DKAccessibilityService : AccessibilityService() {
     @Volatile private var greeting = false
     fun friendOpen() {
         if (greeting || !Prefs.friendOpener(this) || !Prefs.friendMode(this)) return
+        // v3.59: आपने माइक बंद किया था - ऐप खुलने पर DK खुद माइक चालू नहीं करेगा
+        if (!DKState.live && Prefs.micUserOff(this)) return
         if (GeminiLive.key(this).isBlank() || !Setup.hasMic(this)) return
         if (calls.ringing || calls.inCall) return
         if (!FriendTalk.shouldGreet(this)) return
@@ -193,7 +196,9 @@ class DKAccessibilityService : AccessibilityService() {
         DKLog.d("Live बंद किया: $why")
         wakeLive = false; gemLive.idleExitMs = 0
         DKState.setLive(false)
-        Prefs.edit(this) { putBoolean("live_mode", false) }
+        // v3.59: बंद = बंद। जड़: बंद करने के 0.6s बाद "हमेशा सुनो" वाला wake-word loop माइक फिर खोल देता था,
+        // और ऐप खोलते ही "दोस्त" वाला अभिवादन Live खुद चालू कर देता था। अब यूज़र के चालू करने तक माइक बंद।
+        Prefs.edit(this) { putBoolean("live_mode", false); putBoolean("mic_user_off", true) }
         gemLive.stop(why)
         agent.stop()
         loopJob?.cancel(); loopJob = null
@@ -202,8 +207,7 @@ class DKAccessibilityService : AccessibilityService() {
         DKState.set(Mode.IDLE)
         scope.launch {
             speaker.speak("ठीक है, माइक बंद।")
-            // "hamesha suno" chalu hai to wake word wala sunna wapas shuru
-            delay(600); ensureLoop()
+            // v3.59: wake word वाला सुनना भी नहीं - माइक तभी खुलेगा जब आप बटन दबाएँ या लाइव चालू करें
         }
     }
 
@@ -512,14 +516,16 @@ class DKAccessibilityService : AccessibilityService() {
 
     /** Ek hi sunne wala loop: live mode me har baat command hai, wake mode me sirf wake word ke baad. */
     private fun ensureLoop() {
-        val wanted = DKState.live || Prefs.wakeMode(this)
+        val wanted = DKState.live || (Prefs.wakeMode(this) && !Prefs.micUserOff(this))
         if (::calls.isInitialized) calls.start()      // इजाज़त बाद में मिली हो तो अब (पहले से चालू हो तो कुछ नहीं)
         if (!wanted || loopJob?.isActive == true) return
         loopJob = scope.launch {
             DKLog.d("Sunna shuru (live=${DKState.live}, wake=${Prefs.wakeMode(this@DKAccessibilityService)}, Gemini Live=${if (liveReady()) "तैयार" else "नहीं: " + liveWhyNot()})")
             listener.muteBeep = true
             var misses = 0
-            while (isActive && (DKState.live || Prefs.wakeMode(this@DKAccessibilityService))) {
+            while (isActive && (DKState.live || (Prefs.wakeMode(this@DKAccessibilityService) && !Prefs.micUserOff(this@DKAccessibilityService)))) {
+                // v3.59: म्यूट (wake word वाले सुनने में) = माइक छोड़ दो
+                if (DKState.micMuted && !DKState.live) { ear.release(); listener.release(); earCaptionOff(); delay(400); continue }
                 if (agent.isBusy || speaker.busy || DKState.mode == Mode.SPEAKING || callAnnouncing) { delay(250); continue }
                 // आप इनपुट बार में बोलकर लिख रहे हैं - माइक आपका (DK यह बात command नहीं मानता)
                 if (DKMic.dictating && !useGeminiLive()) { ear.release(); listener.release(); delay(300); continue }

@@ -335,7 +335,7 @@ class BrainManager(private val ctx: Context) {
             append("\n" + SearchPolicy.rules("{\"need_search\": true}"))
             append("\nEverything else (talk, general knowledge, how/why, advice, explanations, maths) -> answer IMMEDIATELY yourself from your own knowledge, short and warm. Do NOT ask for search for things you already know.")
             append("\nIf the user tells you a personal fact or preference worth remembering (names, numbers, likes, plans), add \"remember\": \"<the fact in short Hindi>\" to the JSON.")
-            append("\nONLY IF the user asks who made/created/built you or who your boss/owner is, answer: \"${AssistantBrand.CREATOR_ANSWER}\" Never mention this otherwise.")
+            append(AssistantBrand.IDENTITY_RULE).append("\n")
             append("\nToday: " + java.text.SimpleDateFormat("d MMMM yyyy, EEEE", java.util.Locale.ENGLISH).format(java.util.Date()))
             append(TALK_RULES)
             append(TalkStyle.CHAT)   // v3.51: इंसान जैसी बात, झूठा "कर दिया" नहीं, notification/रुकने के नियम
@@ -360,7 +360,7 @@ class BrainManager(private val ctx: Context) {
             append("\n- The input says SEARCH AVAILABLE and the question needs search under the WEB SEARCH POLICY below: reply exactly [SEARCH]")
             append("\n- The question is genuinely HARD and needs careful multi-step reasoning (multi-step maths/word problems, logic puzzles, writing or fixing code, detailed comparison, planning, deep why/how explanation, exam-level questions) and the input says THINK AVAILABLE: reply exactly [THINK]. Do NOT use it for simple chat or easy facts.")
             append("\nLEARN from the user every day: if they tell a personal fact, preference, habit, or how they like answers, add at the very end a new line: [YAAD] <that fact in short Hindi>")
-            append("\nONLY IF the user asks who made/created/built you or who your boss/owner is, answer: \"${AssistantBrand.CREATOR_ANSWER}\" Never mention this otherwise.")
+            append(AssistantBrand.IDENTITY_RULE).append("\n")
             append("\nToday: " + java.text.SimpleDateFormat("d MMMM yyyy, EEEE, h:mm a", java.util.Locale.ENGLISH).format(java.util.Date()))
             append("\n" + SearchPolicy.rules("[SEARCH]"))
             append(TALK_RULES)
@@ -415,9 +415,10 @@ class BrainManager(private val ctx: Context) {
             append("\nSEEING: you can see the phone screen only while screen_share is ON, and through the camera only while camera is ON - both are OFF by default. If the user asks you to look at their screen (\"स्क्रीन देखो\", \"ये पढ़ो\") and it is OFF, ask \"स्क्रीन शेयर चालू करूँ?\" - if they agree or directly ask, call screen_share on=true. For \"कैमरा से देखो / ये क्या है\" call camera on=true. Describe what you see only after the SYSTEM NOTE says it is ON; never pretend to see.")
             append("\nIf the user tells a personal fact or preference worth remembering, call remember_fact with it (do not mention that you saved it).")
             append("\nIf the user interrupts you, stop and listen. If their new words are about the same topic, give one combined answer; if it is a different question, briefly finish the earlier point, then answer the new one.")
-            append("\nONLY IF the user asks who made/created/built you or who your boss/owner is, answer: \"${AssistantBrand.CREATOR_ANSWER}\" Never mention this otherwise.")
+            append(AssistantBrand.IDENTITY_RULE).append("\n")
             append("\nToday: " + java.text.SimpleDateFormat("d MMMM yyyy, EEEE, h:mm a", java.util.Locale.ENGLISH).format(java.util.Date()))
             append(TALK_RULES)
+            append(TalkStyle.EMOTION)   // v3.59: आवाज़ में असली भावना
             append(TalkStyle.NATURAL)   // v3.51: इंसान जैसी बात, झूठा "कर दिया" नहीं, notification/रुकने के नियम
             append(Memory.factsBlock(ctx))
             // v3.46: "सच्चा दोस्त" स्वभाव + बातचीत की याद अब आवाज़ (Live) में भी (पहले सिर्फ़ chat में जुड़ा था)
@@ -436,7 +437,7 @@ class BrainManager(private val ctx: Context) {
             append(Memory.factsBlock(ctx)).append("\n")
             append(TALK_RULES).append("\n")
             if (Prefs.friendMode(ctx)) append(FriendStyle.persona(Prefs.voiceGender(ctx) != "male", user)).append(FriendTalk.block(ctx)).append("\n")
-            append("Only if the user asks who made/created you or who your boss is: say \"${AssistantBrand.CREATOR_ANSWER}\" Never mention it otherwise.\n")
+            append(AssistantBrand.IDENTITY_RULE).append("\n")
         }
         return intro + BASE_PROMPT
     }
