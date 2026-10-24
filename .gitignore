@@ -4,3 +4,9 @@ app/build/
 local.properties
 .idea/
 *.iml
+
+# DK AI Part 13: licensing backend config (never commit)
+app/src/main/assets/dk_license.json
+keystore.properties
+*.jks
+*.keystore

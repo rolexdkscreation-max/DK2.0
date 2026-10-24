@@ -82,6 +82,11 @@
                     android:background="@drawable/btn_accent"
                     android:text="⬆ नया अपडेट"
                     android:visibility="gone" />
+                <TextView android:id="@+id/chipKey" style="@style/DKChip"
+                    android:background="@drawable/btn_accent"
+                    android:text="🔑 Access key चालू नहीं"
+                    android:contentDescription="Access key की सेटिंग खोलें"
+                    android:visibility="gone" />
             </LinearLayout>
         </HorizontalScrollView>
 

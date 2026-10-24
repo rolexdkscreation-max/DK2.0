@@ -66,6 +66,7 @@ class MainActivity : AppCompatActivity() {
         chipAi.setOnClickListener { openSettings() }
         // DK कंप्यूटर: कोई भी काम कदम-दर-कदम (खोज, फ़ाइलें, फ़ोन, कोडिंग…)
         findViewById<TextView>(R.id.chipComputer).setOnClickListener { startActivity(Intent(this, ComputerActivity::class.java)) }
+        findViewById<TextView>(R.id.chipKey).setOnClickListener { startActivity(Intent(this, SettingsActivity::class.java)) }
         findViewById<TextView>(R.id.chipUpdate).setOnClickListener {
             startActivity(Intent(this, SettingsActivity::class.java).putExtra("section", "update"))
         }
@@ -196,6 +197,19 @@ class MainActivity : AppCompatActivity() {
         friendOnOpen()
         render()
         checkUpdate()
+        checkAccessKey()
+    }
+
+    /** DK AI Part 13: हर बार खुलने पर key की जाँच (3 घंटे में एक बार backend से; नेटवर्क गलती = पुरानी हालत) */
+    private fun checkAccessKey() {
+        val chip = findViewById<TextView>(R.id.chipKey)
+        lifecycleScope.launch {
+            val i = com.dk.assistant.license.AccessKeyManager.liveCheck(this@MainActivity)
+            if (!i.active && DKState.live) DKAccessibilityService.instance?.stopLive("access key चालू नहीं")
+            val show = i.status != com.dk.assistant.license.KeyStatus.NOT_CONFIGURED && !i.active
+            chip.visibility = if (show) android.view.View.VISIBLE else android.view.View.GONE
+            if (show) { chip.text = "🔑 " + i.statusText; chip.contentDescription = i.statusText }
+        }
     }
 
     /** App khulte hi (har 3 ghante me max ek baar) GitHub par naya version dekho; mila to background me download. */

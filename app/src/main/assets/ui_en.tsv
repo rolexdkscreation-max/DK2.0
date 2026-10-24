@@ -1,5 +1,22 @@
 # DK UI: हिंदी<TAB>English (UiLang). एक लाइन = एक टुकड़ा
 ⏳ डीके एजेंट काम कर रहा है	⏳ DK agent is working
+DK चलाने की key	Key to use DK
+एडमिन	Admin
+🔑 Access key चालू नहीं	🔑 Access key not active
+Access key की सेटिंग खोलें	Open access key settings
+आपकी access key	Your access key
+जैसे: DK-ABCD-1234	E.g. DK-ABCD-1234
+key चालू करें	Activate key
+अभी जाँचें	Check now
+key हटाएँ	Remove key
+जाँच हो रही है…	Checking…
+इस फ़ोन से key हटाएँ?	Remove the key from this phone?
+हटाने के बाद DK तब तक काम नहीं करेगा जब तक नई key न डालें।	After removing it, DK will not work until a new key is entered.
+लाइसेंस सर्वर इस ऐप में सेट नहीं है, इसलिए key की ज़रूरत नहीं।	No licence server is set up in this app, so no key is needed.
+key सही रूप में नहीं है (सिर्फ़ A-Z, 0-9 और -)	The key format is wrong (only A-Z, 0-9 and -)
+इंटरनेट/सर्वर से जुड़ नहीं पाया, थोड़ी देर बाद कोशिश करें	Could not reach the internet/server, try again later
+सर्वर का जवाब समझ नहीं आया	Could not understand the server reply
+रहने दो	Never mind
 Listening • सुन रहा है…	Listening…
 Speaking • बोल रहा है…	Speaking…
 ऑनलाइन • फ़ोन कंट्रोल चालू	Online • Phone control on

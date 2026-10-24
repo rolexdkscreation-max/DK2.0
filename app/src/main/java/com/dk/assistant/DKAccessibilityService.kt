@@ -133,6 +133,11 @@ class DKAccessibilityService : AccessibilityService() {
 
     fun startLive() {
         DKLog.d("Live चालू (live=${DKState.live}, wake=$wakeLive)")
+        // DK AI Part 13: access key चालू नहीं = लाइव शुरू नहीं (लाइसेंस सेट नहीं = पहले जैसा चलता है)
+        com.dk.assistant.license.AccessKeyManager.refusalOrNull(this)?.let { msg ->
+            DKLog.d("Live: access key चालू नहीं - शुरू नहीं किया")
+            DKState.reply(msg); return
+        }
         calls.start()     // v3.40: Phone की इजाज़त बाद में दी हो तो भी अब call पता चले (पहले सिर्फ़ service शुरू होते समय)
         if (DKState.live) {
             // wake word se thodi der ka Live chal raha tha -> ab pakka Live (khud band nahi hoga)
