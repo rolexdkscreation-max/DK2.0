@@ -1,12 +1,13 @@
 <resources>
-    <!-- Reference Image Daisy/Glass Theme Palette -->
-    <color name="bg">#E6F0FA</color>
-    <color name="bg_top">#D4E5FB</color>
-    <color name="bg_mid">#EAF2FC</color>
-    <color name="bg_bottom">#F2F6FE</color>
-    <color name="text">#1A2B4C</color>
-    <color name="text2">#4A5E7D</color>
-    <color name="text3">#7A8DA8</color>
+    <!-- v3.61: गहरा ग्रेफ़ाइट (लगभग काला) बैकग्राउंड - पहले हल्का आसमानी नीला था, उस पर सफ़ेद/नीला टेक्स्ट छिप जाता था.
+         ऊपर का नीला कांच (Liquid Glass) अब गहरे रंग पर साफ़ उभरता है. पूरा एक-सा रंग नहीं: ऊपर से नीचे हल्का ढलान + AuroraView की धीमी रोशनी -->
+    <color name="bg">#0E1015</color>
+    <color name="bg_top">#0A0C10</color>
+    <color name="bg_mid">#12151B</color>
+    <color name="bg_bottom">#191D25</color>
+    <color name="text">#F4F6FA</color>
+    <color name="text2">#C9D1DD</color>
+    <color name="text3">#98A3B4</color>
     <color name="accent">#1976D2</color>
     <color name="accent2">#42A5F5</color>
     <color name="dialog_bg">#E6FFFFFF</color>

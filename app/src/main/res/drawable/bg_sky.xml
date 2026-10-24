@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Window ka peechhe ka neela aasman (AuroraView se pehle bhi yahi dikhe - koi kaala jhatka nahi) -->
+<!-- Window ka peechhe ka background: v3.61 se gehra graphite dhalaan (AuroraView se pehle bhi yahi dikhe - koi jhatka nahi) -->
 <shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="rectangle">
     <gradient android:angle="270" android:startColor="@color/bg_top" android:centerColor="@color/bg_mid" android:endColor="@color/bg_bottom" />
 </shape>
