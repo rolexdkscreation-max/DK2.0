@@ -136,18 +136,36 @@ class VoiceActivity : AppCompatActivity() {
         // v3.9: jawab web search se aaya ho to caption ke neeche sources (bole nahi jaate, sirf dikhte/click hote hain)
         srcBox = FrameLayout(this)
         card.addView(srcBox, LinearLayout.LayoutParams(-1, -2).apply { topMargin = (8 * dp).toInt() })
-        card.visibility = android.view.View.GONE    // पीछे चैट/लिखावट नहीं
+        card.visibility = android.view.View.VISIBLE    // शो करें ताकि यूजर का ट्रांसक्रिप्ट और डीके का जवाब दिखे
         col.addView(card, LinearLayout.LayoutParams(-1, -2).apply { topMargin = (12 * dp).toInt() })
 
-        // ---- neeche: mic + band
+        // ---- neeche: mic + mute toggle + band
         val bar = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER }
         mic = ImageButton(this).apply {
-            setImageResource(R.drawable.ic_mic); val p = (20 * dp).toInt(); setPadding(p, p, p, p)
+            setImageResource(R.drawable.ic_mic); val p = (16 * dp).toInt(); setPadding(p, p, p, p)
             scaleType = android.widget.ImageView.ScaleType.FIT_CENTER; contentDescription = "माइक चालू/बंद"
+            setBackgroundResource(R.drawable.glass_circle)
             setOnClickListener { toggleLive() }
         }
-        mic.visibility = android.view.View.GONE     // orb छूने से ही Live चालू/बंद
-        bar.addView(mic, LinearLayout.LayoutParams((76 * dp).toInt(), (76 * dp).toInt()))
+        bar.addView(mic, LinearLayout.LayoutParams((52 * dp).toInt(), (52 * dp).toInt()).apply { marginEnd = (12 * dp).toInt() })
+
+        // Mic Mute / Unmute Toggle Button
+        val muteBtn = ImageButton(this).apply {
+            setImageResource(R.drawable.ic_mic)
+            background = android.graphics.drawable.GradientDrawable().apply {
+                shape = android.graphics.drawable.GradientDrawable.OVAL
+                setColor(0x26FFFFFF); setStroke((1 * dp).toInt().coerceAtLeast(1), 0x66FFFFFF)
+            }
+            val p = (14 * dp).toInt(); setPadding(p, p, p, p); scaleType = android.widget.ImageView.ScaleType.FIT_CENTER
+            contentDescription = "माइक म्यूट/अनम्यूट"
+            setOnClickListener {
+                val svc = DKAccessibilityService.instance
+                val muted = svc?.toggleMicMute() ?: false
+                UiLang.toast(this@VoiceActivity, if (muted) "माइक म्यूट कर दिया गया है" else "माइक अनम्यूट कर दिया गया है", Toast.LENGTH_SHORT).show()
+            }
+        }
+        bar.addView(muteBtn, LinearLayout.LayoutParams((52 * dp).toInt(), (52 * dp).toInt()).apply { marginEnd = (12 * dp).toInt() })
+
         // बाहर निकलने का एक ही साफ़ बटन (काली स्क्रीन पर पतला सफ़ेद घेरा)
         bar.addView(ImageButton(this).apply {
             setImageResource(R.drawable.ic_close)
@@ -158,7 +176,7 @@ class VoiceActivity : AppCompatActivity() {
             val p = (16 * dp).toInt(); setPadding(p, p, p, p); scaleType = android.widget.ImageView.ScaleType.FIT_CENTER
             contentDescription = "बंद करें"
             setOnClickListener { DKAccessibilityService.instance?.stopLive("✕ बटन"); finish() }
-        }, LinearLayout.LayoutParams((60 * dp).toInt(), (60 * dp).toInt()))
+        }, LinearLayout.LayoutParams((52 * dp).toInt(), (52 * dp).toInt()))
         col.addView(bar, LinearLayout.LayoutParams(-1, -2).apply { topMargin = (14 * dp).toInt() })
 
         setContentView(root)
