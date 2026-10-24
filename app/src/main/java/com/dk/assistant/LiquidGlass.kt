@@ -307,6 +307,9 @@ abstract class LiquidGlassDrawable(private val s: Spec) : Drawable() {
             shadowBottomDp = 2.4f)
         val BUBBLE_ME = Spec(radii = floatArrayOf(22f, 22f, 6f, 22f), bodyTop = 0xE65C9CFF.toInt(), bodyBottom = 0xF02254D6.toInt(),
             frost = 1.3f, spec = 1.25f, shadowBottomDp = 2.4f)
+        // इनपुट बार (DKComposer): PILL वाला ही काँच, पर हल्के गोल कोनों वाला आयत (ComposerShape.RADIUS_DP)
+        val COMPOSER = Spec(radii = all(ComposerShape.RADIUS_DP), bodyTop = 0xAC5089E2.toInt(), bodyBottom = 0xBE2856B2.toInt(),
+            spec = 1.1f, shadowBottomDp = 2.2f)
         val INPUT = Spec(radii = all(18f), bodyTop = 0xB8173C88.toInt(), bodyBottom = 0xAE2550A6.toInt(),
             frost = 0.35f, spec = 0.5f, rim = 0.62f, shadow = 0f, recessed = true, focusRing = true)
         val ROW = Spec(radii = all(18f), bodyTop = 0x2EFFFFFF, bodyBottom = 0x14FFFFFF,
@@ -326,5 +329,6 @@ class GlassLiveCircleDrawable : LiquidGlassDrawable(LiquidGlassDrawable.LIVE_CIR
 class GlassBubbleDkDrawable : LiquidGlassDrawable(LiquidGlassDrawable.BUBBLE_DK)
 class GlassBubbleMeDrawable : LiquidGlassDrawable(LiquidGlassDrawable.BUBBLE_ME)
 class GlassInputDrawable : LiquidGlassDrawable(LiquidGlassDrawable.INPUT)
+class GlassComposerDrawable : LiquidGlassDrawable(LiquidGlassDrawable.COMPOSER)
 class GlassRowDrawable : LiquidGlassDrawable(LiquidGlassDrawable.ROW)
 class GlassDialogDrawable : LiquidGlassDrawable(LiquidGlassDrawable.DIALOG)

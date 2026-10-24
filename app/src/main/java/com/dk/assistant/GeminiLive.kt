@@ -1710,6 +1710,17 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
             var last = 0L; var zeroRun = 0; var errRun = 0
             loudMs = 0L
             while (isActive && !stopped) {
+                // इनपुट बार में बोलकर लिखना: माइक छोड़ो (Google पहचान को आवाज़ मिले), खत्म होते ही वापस
+                if (DKMic.dictating) {
+                    try { r.stop() } catch (_: Exception) {}
+                    try { r.release() } catch (_: Exception) {}
+                    log("माइक छोड़ा: आप इनपुट बार में बोलकर लिख रहे हैं")
+                    while (isActive && !stopped && DKMic.dictating) delay(200)
+                    r = openMic() ?: throw Fatal("माइक दोबारा नहीं खुला (बोलकर लिखने के बाद)", recoverable = true)
+                    r.startRecording(); last = 0L; errRun = 0
+                    log("माइक वापस: बोलकर लिखना खत्म")
+                    continue
+                }
                 // v3.39: Bluetooth जुड़ा/हटा -> माइक नए रास्ते पर दोबारा खोलो
                 if (routeChanged) {
                     routeChanged = false

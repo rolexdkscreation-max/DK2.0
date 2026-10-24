@@ -1,0 +1,3 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- इनपुट बार: Liquid Glass, हल्के गोल कोनों वाला आयत (गोली नहीं) - दे. LiquidGlass.kt COMPOSER, ComposerShape.RADIUS_DP -->
+<drawable xmlns:android="http://schemas.android.com/apk/res/android" class="com.dk.assistant.GlassComposerDrawable" />

@@ -48,6 +48,7 @@ class CoderAi(val provider: Provider, private val key: String, val model: String
                     throw e
                 }
                 DKLog.d("Coder: AI ${reason(e)} - अपने-आप दोबारा (${attempt + 1}/${Retry.ATTEMPTS})")
+                DKStatus.post(DKStatus.Kind.RETRY)
                 Thread.sleep(Retry.backoffMs(attempt) * 2)
                 attempt++
             }
@@ -78,12 +79,14 @@ class CoderAi(val provider: Provider, private val key: String, val model: String
                 errs.add(ai to e)
                 if ((e as? AiException)?.code == 429) n429++
                 if (chain.size > 1) DKLog.d("Coder: ${ai.selfLabel} -> ${reason(e)}, अगला API")
+                if (ai !== ordered.last()) DKStatus.post(DKStatus.forCode((e as? AiException)?.code ?: -1))
             }
         }
         // सब fail. सब की limit (429) खत्म = लगातार कोशिश नहीं - रुककर user को बताओ
         val wait = quotaWaitSec(errs.map { ((it.second as? AiException)?.code ?: -1) to ((it.second as? AiException)?.retryAfter ?: 0) })
         val tried = errs.joinToString { "${it.first.provider.name}: ${(it.second as? AiException)?.code ?: "network"}" }
         if (wait > 0) {
+            DKStatus.post(DKStatus.Kind.LIMIT_ALL)
             sink("सारी API keys और मॉडल की limit एक साथ खत्म (429)", "लगातार कोशिश नहीं की — काम रोककर आपको बताया")
             throw AiException(429, allLimitsMessage(wait, tried, fallbacks.isEmpty()), wait)
         }
@@ -265,6 +268,7 @@ class CoderAi(val provider: Provider, private val key: String, val model: String
                 val kt = key.takeLast(6)
                 GeminiModels.replacementFor(model) { Cooldown.blocked(GeminiModels.goneKey(it, kt)) }?.let { nm ->
                     DKLog.d("Coder: Settings का मॉडल $model बंद है - $nm पर बदला")
+                    DKStatus.post(DKStatus.Kind.MODEL_CHANGE)
                     sink("$model मॉडल Google ने बंद कर दिया (404)", "Settings → ${ApiScopes.title(scope)} का मॉडल अपने-आप $nm किया")
                     Prefs.edit(c) { putString(ApiScopes.pref(scope, "model", p.id), nm) }
                     model = nm
