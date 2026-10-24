@@ -49,7 +49,8 @@ object Shapes {
         "dna" to "DNA",
         "torus" to "छल्ला (रिंग)",
         "face_male" to "पुरुष चेहरा",
-        "face_female" to "महिला चेहरा"
+        "face_female" to "महिला चेहरा",
+        "sphere3d" to "3D रोशनी का गोला (Android 13+)"
     )
 
     fun make(style: String, n: Int): Cloud = when (style) {

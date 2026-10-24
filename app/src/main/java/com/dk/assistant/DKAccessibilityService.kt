@@ -67,6 +67,8 @@ class DKAccessibilityService : AccessibilityService() {
         private set
 
     private var bubble: OrbView? = null
+    /** v3.57: सुनते/बोलते समय किनारों की चमक (छूने पर कुछ नहीं, नीचे का ऐप चलता रहे) */
+    private var edgeGlow: com.dk.assistant.fx.EdgeGlowView? = null
     lateinit var calls: CallManager
         private set
     private var wakeLoopRunning = false
@@ -87,6 +89,7 @@ class DKAccessibilityService : AccessibilityService() {
         agent = AgentRunner(this, scope, speaker)
         calls = CallManager(this) { who -> scope.launch { onIncomingCall(who) } }
         calls.start()
+        showEdgeGlow()
         showBubble()
         AppVisible.onChange = { inApp -> bubble?.visibility = if (inApp) android.view.View.GONE else android.view.View.VISIBLE }
         bubble?.visibility = if (AppVisible.visible) android.view.View.GONE else android.view.View.VISIBLE
@@ -113,6 +116,7 @@ class DKAccessibilityService : AccessibilityService() {
         instance = null
         AppVisible.onChange = null
         removeBubble()
+        removeEdgeGlow()
         DKState.setLive(false)
         listener.release()
         ear.release()
@@ -1315,6 +1319,27 @@ class DKAccessibilityService : AccessibilityService() {
         }
         wm.addView(v, params)
         bubble = v
+    }
+
+    private fun showEdgeGlow() {
+        try {
+            val wm = getSystemService(WINDOW_SERVICE) as WindowManager
+            val params = WindowManager.LayoutParams(
+                WindowManager.LayoutParams.MATCH_PARENT, WindowManager.LayoutParams.MATCH_PARENT,
+                WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY,
+                WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE or
+                    WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
+                PixelFormat.TRANSLUCENT
+            ).apply { gravity = Gravity.TOP or Gravity.START }
+            val v = com.dk.assistant.fx.EdgeGlowView(this)
+            wm.addView(v, params)
+            edgeGlow = v
+        } catch (e: Exception) { DKLog.d("Edge glow नहीं लगा: ${e.javaClass.simpleName}") }
+    }
+
+    private fun removeEdgeGlow() {
+        edgeGlow?.let { try { (getSystemService(WINDOW_SERVICE) as WindowManager).removeView(it) } catch (_: Exception) {} }
+        edgeGlow = null
     }
 
     private fun removeBubble() {

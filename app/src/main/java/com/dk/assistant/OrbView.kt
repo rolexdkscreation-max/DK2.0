@@ -32,6 +32,11 @@ class OrbView @JvmOverloads constructor(
     /** Settings me preview ke liye - null ho to Prefs wala aakaar */
     var previewStyle: String? = null
 
+    /** v3.57: shader वाला गोला (सिर्फ़ Android 13+, "sphere3d" चुना हो तो) */
+    private var sphere: com.dk.assistant.fx.Sphere3D? = null
+    /** shader एक बार फ़ेल हुआ तो इस view में दोबारा कोशिश नहीं - डॉट वाला ओर्ब */
+    private var sphereBroken = false
+
     private var n = 0
     // from (purana aakaar) -> to (naya aakaar)
     private var fx = FloatArray(0); private var fy = FloatArray(0); private var fz = FloatArray(0)
@@ -130,6 +135,17 @@ class OrbView @JvmOverloads constructor(
         val mode = DKState.mode
 
         val want = wanted()
+        // v3.57 (Part 10): असली रोशनी वाला 3D गोला (Android 13+); पुराने फ़ोन पर डॉट वाला पृथ्वी ओर्ब
+        if (want == com.dk.assistant.fx.OrbLook.STYLE && !mini && !sphereBroken && com.dk.assistant.fx.Motion.shaderOk) {
+            val sp = sphere ?: try { com.dk.assistant.fx.Sphere3D(context).also { sphere = it; it.start() } } catch (_: Throwable) { null }
+            if (sp != null) {
+                try {
+                    sp.draw(c, width.toFloat(), height.toFloat(), mode, DKState.level, t, dt)
+                    postInvalidateOnAnimation()
+                    return
+                } catch (_: Throwable) { sphere = null; sphereBroken = true }
+            }
+        } else if (sphere != null) { sphere?.stop(); sphere = null }
         if (want != target) morphTo(want)
         val cl = cloud
         val isFace = cl.sway
@@ -329,6 +345,7 @@ class OrbView @JvmOverloads constructor(
     }
 
     override fun onAttachedToWindow() { super.onAttachedToWindow(); lastT = 0L; cacheT = 0L; invalidate() }
+    override fun onDetachedFromWindow() { sphere?.stop(); sphere = null; super.onDetachedFromWindow() }
     /** chhupa tha, phir dikha -> animation dobara (chhupe hue me koi kaam nahi) */
     override fun onVisibilityAggregated(isVisible: Boolean) { super.onVisibilityAggregated(isVisible); if (isVisible) { lastT = 0L; invalidate() } }
 
