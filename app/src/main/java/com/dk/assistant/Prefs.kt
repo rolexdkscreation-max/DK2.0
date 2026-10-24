@@ -135,17 +135,20 @@ object Prefs {
 
     // ---- awaaz (mahila/purush)
     /** v3.30: DK के जवाब की भाषा - "hinglish" (शुरुआती) / "hi" / "en" (Lang) */
-    fun replyLang(c: Context) = Lang.norm(sp(c).getString(Lang.KEY, Lang.HINGLISH) ?: Lang.HINGLISH)
+    /** v3.59: कुछ न चुना हो तो हिंदी (पहले Hinglish). जिसने Settings में चुना, उसकी पसंद वैसी ही */
+    fun replyLang(c: Context) = Lang.norm(sp(c).getString(Lang.KEY, Lang.HINDI) ?: Lang.HINDI)
     fun loadLang(c: Context) { Lang.current = replyLang(c) }
     fun voiceGender(c: Context) = sp(c).getString("voice_gender", "female") ?: "female"
     /** "google" = phone ki awaaz, "gemini" = sabse natural (Gemini key se) */
     fun voiceEngine(c: Context) = sp(c).getString("voice_engine", "google") ?: "google"
     fun voiceStyle(c: Context) = sp(c).getString("voice_style", "natural") ?: "natural"
     fun googleVoice(c: Context) = sp(c).getString("google_voice", "") ?: ""
+    /** v3.59: किस मॉडल पर कौन-सी Live चीज़ (आवाज़/hi-IN/affective) setup तोड़ती है - अगली बार उसके बिना */
+    fun liveExtrasOff(c: Context): Set<String> = LiveVoice.parseOff(sp(c).getString(LiveVoice.OFF_KEY, ""))
+    fun addLiveExtrasOff(c: Context, entry: String) = edit(c) { putString(LiveVoice.OFF_KEY, LiveVoice.joinOff(liveExtrasOff(c) + entry)) }
     fun geminiVoice(c: Context): String {
-        val g = voiceGender(c)
-        val v = sp(c).getString("gemini_voice", "") ?: ""
-        return if (v.isNotBlank() && v in VoiceCatalog.geminiFor(g)) v else VoiceCatalog.geminiFor(g).first()
+        // v3.59: कुछ न चुना हो तो हमेशा Sulafat (LiveVoice) - पुरुष आवाज़ चुनी हो तो पुरुष सूची की पहली
+        return LiveVoice.pick(sp(c).getString("gemini_voice", "") ?: "", voiceGender(c))
     }
 
     // ---- sunna: "auto" = Gemini Live (key ho to) warna bina beep, "classic" = Whisper+AI+TTS, "google" = Google mic (beep aa sakti hai)

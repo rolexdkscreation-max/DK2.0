@@ -259,6 +259,16 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
     @Volatile private var gatedChunks = 0L
     /** 2.5 model ka "sochna" band (pehle awaaz tez) - setup mana kare to wapas */
     @Volatile private var thinkOff = true
+    /** v3.59: इस Live की आवाज़/भाषा/affective (setup पर एक बार तय - बीच में अपने-आप नहीं बदलती) */
+    @Volatile private var extras: LiveVoice.Extras? = null
+    @Volatile private var extrasModel = ""
+    @Volatile private var extrasChosen = ""
+    private fun extrasFor(m: String): LiveVoice.Extras {
+        val chosen = Prefs.geminiVoice(svc)
+        val cur = extras
+        if (cur != null && extrasModel == m && extrasChosen == chosen) return cur
+        return LiveVoice.start(m, chosen, Prefs.liveExtrasOff(svc)).also { extras = it; extrasModel = m; extrasChosen = chosen }
+    }
     @Volatile private var falseInterrupts = 0
     @Volatile private var suspectAt = 0L
     @Volatile private var localBargeAt = 0L
@@ -543,6 +553,14 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
                                 if (mi + 1 < models.size) { mi++; handle = null; continue } else throw Fatal("Gemini Live की फ्री लिमिट अभी खत्म है")
                             }
                             useSearch && (r.contains("search") || r.contains("tool")) -> { useSearch = false; continue }
+                            // v3.59: आवाज़ (Sulafat) / hi-IN / affective यह मॉडल न ले -> चुपचाप उसके बिना (Aoede), याद रखो
+                            LiveVoice.degrade(model, extrasFor(model), reason, code) != null -> {
+                                val st = LiveVoice.degrade(model, extrasFor(model), reason, code)!!
+                                extras = st.next; extrasModel = model
+                                Prefs.addLiveExtrasOff(svc, st.offEntry)
+                                log("यह मॉडल ${st.what} नहीं लेता - उसके बिना" + if (st.offEntry.contains("|voice:")) " (आवाज़ ${LiveVoice.FALLBACK})" else "")
+                                handle = null; continue
+                            }
                             thinkOff && r.contains("think") -> { thinkOff = false; log("यह मॉडल thinkingBudget नहीं लेता - उसके बिना"); continue }
                             handle != null && (r.contains("handle") || r.contains("resum") || r.contains("session")) -> { handle = null; continue }
                             r.contains("model") || r.contains("not found") || r.contains("not supported") || code == 1008 || code == 404 || code == 1007 ->
@@ -833,6 +851,7 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
 
     private fun setupJson(m: String): String {
         val brain = BrainManager(svc)
+        val ex = extrasFor(m)
         val tools = JSONArray().put(JSONObject().put("functionDeclarations", JSONArray()
             .put(JSONObject().put("name", "phone_task")
                 .put("description", "Do something on the user's Android phone: open apps (including opening WhatsApp), call, SMS, YouTube, music, settings (wifi, bluetooth, torch, volume, brightness), maps/directions, shopping, read or tap the screen. NOT for sending WhatsApp messages - always use whatsapp_task (action=send_message) for that.")
@@ -939,8 +958,10 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
                     // (3.1 ka default "minimal" hai; 3.8-live me thinking setting dena mana hai)
                     if (thinkOff && m.startsWith("gemini-2.5")) put("thinkingConfig", JSONObject().put("thinkingBudget", 0))
                 }
+                .apply { if (ex.affective) put("enableAffectiveDialog", true) }
                 .put("speechConfig", JSONObject().put("voiceConfig", JSONObject()
-                    .put("prebuiltVoiceConfig", JSONObject().put("voiceName", Prefs.geminiVoice(svc))))))
+                    .put("prebuiltVoiceConfig", JSONObject().put("voiceName", ex.voice)))
+                    .apply { if (ex.lang) put("languageCode", LiveVoice.LANGUAGE) }))
             .put("systemInstruction", JSONObject().put("parts", JSONArray().put(JSONObject().put("text", Lang.sys(brain.liveSystemPrompt())))))
             .put("tools", tools)
             .put("realtimeInputConfig", JSONObject()
