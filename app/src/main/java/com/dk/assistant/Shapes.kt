@@ -396,7 +396,7 @@ object Shapes {
             if (edges.add(key)) segs += floatArrayOf(v[a][0], v[a][1], v[a][2], v[b][0], v[b][1], v[b][2])
         }
         // चमकते जोड़ (vertex) - हर जोड़ पर 3 डॉट का छोटा गुच्छा
-        for (p in v) repeat(3) { c.add(p[0] * 1.0f + gauss(r) * 0.008f, p[1] + gauss(r) * 0.008f, p[2] + gauss(r) * 0.008f, 1) }
+        for (p in v) repeat(3) { if (c.count < n / 4) c.add(p[0] + gauss(r) * 0.008f, p[1] + gauss(r) * 0.008f, p[2] + gauss(r) * 0.008f, 1) }
         val core = n / 10
         repeat(core) { val g = norm(floatArrayOf(gauss(r), gauss(r), gauss(r))); val rr = 0.18f + 0.06f * r.nextFloat(); c.add(g[0] * rr, g[1] * rr, g[2] * rr, 1) }
         alongSegments(c, segs, n - c.count, 0, sphere = 1f)
@@ -417,7 +417,7 @@ object Shapes {
         val pv = verts.map { proj(it) }
         val segs = ArrayList<FloatArray>()
         for (i in 0 until 16) for (b in 0 until 4) { val j = i xor (1 shl b); if (j > i) segs += floatArrayOf(pv[i][0], pv[i][1], pv[i][2], pv[j][0], pv[j][1], pv[j][2]) }
-        for (p in pv) repeat(6) { c.add(p[0] + gauss(r) * 0.012f, p[1] + gauss(r) * 0.012f, p[2] + gauss(r) * 0.012f, 1) }
+        for (p in pv) repeat(6) { if (c.count < n / 4) c.add(p[0] + gauss(r) * 0.012f, p[1] + gauss(r) * 0.012f, p[2] + gauss(r) * 0.012f, 1) }
         val haze = n / 8
         alongSegments(c, segs, n - c.count - haze, 0)
         // बीच में हल्की ऊर्जा की धुंध
