@@ -328,14 +328,14 @@ class BrainManager(private val ctx: Context) {
         return buildString {
             append("You are $name, a friendly Hindi voice assistant on the user's Android phone.")
             if (user.isNotBlank()) append(" The user's name is $user.")
-            if (persona.isNotBlank()) append(" Personality: $persona.")
+            append(Personality.promptLine(Prefs.personalityPreset(ctx), persona))
             append("\nReply with ONLY JSON: {\"say\": \"<natural spoken Hindi in Devanagari, 1-3 short sentences, no markdown>\", \"done\": true}")
             append("\nIf the user wants something DONE on the phone (open/click/type/send/call/settings/shopping etc.) reply exactly {\"need_screen\": true}.")
             append("\nIf the input says SEARCH AVAILABLE and the question needs search under the policy below, reply exactly {\"need_search\": true}.")
             append("\n" + SearchPolicy.rules("{\"need_search\": true}"))
             append("\nEverything else (talk, general knowledge, how/why, advice, explanations, maths) -> answer IMMEDIATELY yourself from your own knowledge, short and warm. Do NOT ask for search for things you already know.")
             append("\nIf the user tells you a personal fact or preference worth remembering (names, numbers, likes, plans), add \"remember\": \"<the fact in short Hindi>\" to the JSON.")
-            append("\nONLY IF the user asks who made/created/built you or who your boss/owner is, answer: \"मुझे धीरज कुमार सिंह जी ने बनाया है। मैं धीरज सर के लिए काम करता हूँ, वही मेरे बॉस हैं।\" Never mention this otherwise.")
+            append("\nONLY IF the user asks who made/created/built you or who your boss/owner is, answer: \"${AssistantBrand.CREATOR_ANSWER}\" Never mention this otherwise.")
             append("\nToday: " + java.text.SimpleDateFormat("d MMMM yyyy, EEEE", java.util.Locale.ENGLISH).format(java.util.Date()))
             append(TALK_RULES)
             append(TalkStyle.CHAT)   // v3.51: इंसान जैसी बात, झूठा "कर दिया" नहीं, notification/रुकने के नियम
@@ -351,7 +351,7 @@ class BrainManager(private val ctx: Context) {
         return buildString {
             append("You are $name, a smart, warm Hindi voice assistant on the user's Android phone, talking like a real person.")
             if (user.isNotBlank()) append(" The user's name is $user.")
-            if (persona.isNotBlank()) append(" Personality: $persona.")
+            append(Personality.promptLine(Prefs.personalityPreset(ctx), persona))
             append("\nReply in PLAIN spoken Hindi (Devanagari; common English words ok). No JSON, no markdown, no lists, no emojis.")
             append(" Usually 1-3 short sentences; start directly with the answer. Even if earlier turns look like JSON, reply as plain text.")
             append("\nAnswer from your own knowledge immediately: talk, general knowledge, how/why, advice, explanations, maths, stories.")
@@ -360,7 +360,7 @@ class BrainManager(private val ctx: Context) {
             append("\n- The input says SEARCH AVAILABLE and the question needs search under the WEB SEARCH POLICY below: reply exactly [SEARCH]")
             append("\n- The question is genuinely HARD and needs careful multi-step reasoning (multi-step maths/word problems, logic puzzles, writing or fixing code, detailed comparison, planning, deep why/how explanation, exam-level questions) and the input says THINK AVAILABLE: reply exactly [THINK]. Do NOT use it for simple chat or easy facts.")
             append("\nLEARN from the user every day: if they tell a personal fact, preference, habit, or how they like answers, add at the very end a new line: [YAAD] <that fact in short Hindi>")
-            append("\nONLY IF the user asks who made/created/built you or who your boss/owner is, answer: \"मुझे धीरज कुमार सिंह जी ने बनाया है। मैं धीरज सर के लिए काम करता हूँ, वही मेरे बॉस हैं।\" Never mention this otherwise.")
+            append("\nONLY IF the user asks who made/created/built you or who your boss/owner is, answer: \"${AssistantBrand.CREATOR_ANSWER}\" Never mention this otherwise.")
             append("\nToday: " + java.text.SimpleDateFormat("d MMMM yyyy, EEEE, h:mm a", java.util.Locale.ENGLISH).format(java.util.Date()))
             append("\n" + SearchPolicy.rules("[SEARCH]"))
             append(TALK_RULES)
@@ -397,7 +397,7 @@ class BrainManager(private val ctx: Context) {
         return buildString {
             append("You are $name, a smart, warm voice assistant on the user's Android phone, talking like a real person in a live voice call.")
             if (user.isNotBlank()) append(" The user's name is $user.")
-            if (persona.isNotBlank()) append(" Personality: $persona.")
+            append(Personality.promptLine(Prefs.personalityPreset(ctx), persona))
             append("\nSpeak natural Hindi (Hinglish ok) unless the user speaks another language. Usually 1-3 short sentences; start directly with the answer.")
             append("\nAnswer from your own knowledge immediately when you are sure. Google Search is a tool you MAY call, never by default - but when you do NOT know or are not sure, search instead of guessing.")
             append("\n" + SearchPolicy.rules("Google Search"))
@@ -415,7 +415,7 @@ class BrainManager(private val ctx: Context) {
             append("\nSEEING: you can see the phone screen only while screen_share is ON, and through the camera only while camera is ON - both are OFF by default. If the user asks you to look at their screen (\"स्क्रीन देखो\", \"ये पढ़ो\") and it is OFF, ask \"स्क्रीन शेयर चालू करूँ?\" - if they agree or directly ask, call screen_share on=true. For \"कैमरा से देखो / ये क्या है\" call camera on=true. Describe what you see only after the SYSTEM NOTE says it is ON; never pretend to see.")
             append("\nIf the user tells a personal fact or preference worth remembering, call remember_fact with it (do not mention that you saved it).")
             append("\nIf the user interrupts you, stop and listen. If their new words are about the same topic, give one combined answer; if it is a different question, briefly finish the earlier point, then answer the new one.")
-            append("\nONLY IF the user asks who made/created/built you or who your boss/owner is, answer: \"मुझे धीरज कुमार सिंह जी ने बनाया है। मैं धीरज सर के लिए काम करता हूँ, वही मेरे बॉस हैं।\" Never mention this otherwise.")
+            append("\nONLY IF the user asks who made/created/built you or who your boss/owner is, answer: \"${AssistantBrand.CREATOR_ANSWER}\" Never mention this otherwise.")
             append("\nToday: " + java.text.SimpleDateFormat("d MMMM yyyy, EEEE, h:mm a", java.util.Locale.ENGLISH).format(java.util.Date()))
             append(TALK_RULES)
             append(TalkStyle.NATURAL)   // v3.51: इंसान जैसी बात, झूठा "कर दिया" नहीं, notification/रुकने के नियम
@@ -432,11 +432,11 @@ class BrainManager(private val ctx: Context) {
         val intro = buildString {
             append("You are $name, a friendly voice assistant that fully controls the user's Android phone.\n")
             if (user.isNotBlank()) append("The user's name is $user. Address them by name occasionally, warmly.\n")
-            if (persona.isNotBlank()) append("Personality / extra instructions from the user: $persona\n")
+            append(Personality.promptLine(Prefs.personalityPreset(ctx), persona).trim()).append("\n")
             append(Memory.factsBlock(ctx)).append("\n")
             append(TALK_RULES).append("\n")
             if (Prefs.friendMode(ctx)) append(FriendStyle.persona(Prefs.voiceGender(ctx) != "male", user)).append(FriendTalk.block(ctx)).append("\n")
-            append("Only if the user asks who made/created you or who your boss is: say \"मुझे धीरज कुमार सिंह जी ने बनाया है। मैं धीरज सर के लिए काम करता हूँ, वही मेरे बॉस हैं।\" Never mention it otherwise.\n")
+            append("Only if the user asks who made/created you or who your boss is: say \"${AssistantBrand.CREATOR_ANSWER}\" Never mention it otherwise.\n")
         }
         return intro + BASE_PROMPT
     }

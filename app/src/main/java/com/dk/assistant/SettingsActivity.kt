@@ -185,7 +185,7 @@ class SettingsActivity : AppCompatActivity() {
         card("DK किस भाषा में जवाब दे", "DK लाइव, DK चैट, बिना-Live आवाज़, DK कंप्यूटर और कोडिंग एजेंट — सब पर एक साथ") { box ->
             val rg = RadioGroup(this).apply { orientation = RadioGroup.VERTICAL }
             val cur = Prefs.replyLang(this)
-            Lang.ALL.forEachIndexed { i, (code, label) ->
+            Lang.CHOICES.forEachIndexed { i, (code, label) ->
                 rg.addView(RadioButton(this).apply {
                     id = 3000 + i
                     text = label
@@ -196,7 +196,7 @@ class SettingsActivity : AppCompatActivity() {
                 })
             }
             rg.setOnCheckedChangeListener { _, idc ->
-                val code = Lang.ALL.getOrNull(idc - 3000)?.first ?: return@setOnCheckedChangeListener
+                val code = Lang.CHOICES.getOrNull(idc - 3000)?.first ?: return@setOnCheckedChangeListener
                 Prefs.edit(this) { putString(Lang.KEY, code) }
                 Prefs.loadLang(this)
                 toast("भाषा: ${Lang.short(code)} — अगले जवाब से लागू")
@@ -363,9 +363,21 @@ class SettingsActivity : AppCompatActivity() {
         card("प्रोफ़ाइल", "आपका नाम, असिस्टेंट का नाम और बात करने का तरीका") {
             edUser = field(it, "आपका नाम", Prefs.userName(this), "जैसे: दीपक")
             edName = field(it, "असिस्टेंट का नाम", Prefs.assistantName(this), "DK")
-            edPersona = field(it, "बात करने का तरीका (पर्सनैलिटी)", Prefs.personality(this),
-                "जैसे: दोस्त की तरह मज़ेदार बात करो, जवाब छोटे रखो", multiLine = true)
+            edPersona = field(it, "बात करने का तरीका (अपनी तरफ़ से, चुनी पर्सनैलिटी के साथ जुड़ता है)", Prefs.personality(this),
+                "जैसे: जवाब छोटे रखो, मुझे सर कहकर बुलाओ", multiLine = true)
             edWake = field(it, "जगाने वाले शब्द (कॉमा से अलग)", Prefs.wakeWordsRaw(this), "डीके, dk")
+        }
+        // DK AI: 10 पर्सनैलिटी - चुनते ही सेव, अगले जवाब से लागू (DK लाइव: अगली बार जुड़ने पर)
+        card("पर्सनैलिटी", "DK किस अंदाज़ में बात करे - 10 में से चुनें") { box ->
+            val items = Personality.entries.map { it.name to "${it.icon}  ${it.displayName} — ${it.description}" }
+            val g = radios(box, items, Prefs.personalityPreset(this).name, 4100)
+            g.setOnCheckedChangeListener { _, idc ->
+                val p = Personality.entries.getOrNull(idc - 4100) ?: return@setOnCheckedChangeListener
+                Prefs.edit(this) { putString(Personality.PREF_KEY, p.name) }
+                toast("पर्सनैलिटी: ${p.displayName} — अगले जवाब से लागू")
+            }
+            hint(box, "DK लाइव चल रहा हो तो नई पर्सनैलिटी अगली बार जुड़ने पर (लाइव बंद करके फिर चालू करें)। " +
+                "Companion और GF Mode में भी DK खुद को इंसान नहीं बताता और कोई अश्लील बात नहीं करता।")
         }
 
     }

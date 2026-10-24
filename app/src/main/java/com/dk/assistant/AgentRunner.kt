@@ -43,6 +43,7 @@ class AgentRunner(
     fun run(command: String, speak: Boolean = true, note: String = ""): Job {
         job?.cancel()
         silent = !speak
+        Lang.noteUser(command)   // DK AI: "Auto" भाषा - यूज़र की इस बात की भाषा याद
         val j = scope.launch {
             try { execute(command, note) } finally { if (job === coroutineContext[Job]) { DKState.set(Mode.IDLE); silent = false; currentGoal = null } }
         }
@@ -707,6 +708,6 @@ class AgentRunner(
         /** Ye actions naya app/screen kholte hain - agle kadam se pehle uske khulne ka intezaar */
         val APP_OPENERS = setOf("open_app", "youtube_search", "youtube_play", "web_search", "open_url", "shop_search",
             "directions", "navigate", "map_search", "open_settings", "dial")
-        const val CREATOR_ANSWER = "मुझे धीरज कुमार सिंह जी ने बनाया है। मैं धीरज सर के लिए काम करता हूँ, वही मेरे बॉस हैं।"
+        const val CREATOR_ANSWER = AssistantBrand.CREATOR_ANSWER
     }
 }

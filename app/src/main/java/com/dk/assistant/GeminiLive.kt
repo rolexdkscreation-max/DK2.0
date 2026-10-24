@@ -1027,6 +1027,7 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
             Ducker.duck(svc, "Live: user बोल रहा")
             suspectAt = 0L                     // user ki baat ka text aaya = rokna sahi tha (goonj nahi)
             val u = synchronized(turnLock) { userText.append(t); userText.toString().trim() }
+            Lang.noteUser(u)                   // DK AI: "Auto" भाषा - यूज़र की भाषा याद (तय लाइनें उसी में)
             // phone ne "bolna khatam" pakda ho to deri wahin se ginti (der se aaye text se nahi)
             if (trace.speechEndAt == 0L || System.currentTimeMillis() - trace.speechEndAt > 5000) eosAt = System.currentTimeMillis()
             // caption chal raha hai to woh pehle hi turant likh chuka - yeh der se aaya text screen par mat daalo

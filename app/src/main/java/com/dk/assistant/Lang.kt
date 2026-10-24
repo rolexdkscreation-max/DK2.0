@@ -11,6 +11,8 @@ object Lang {
     const val HINGLISH = "hinglish"
     const val HINDI = "hi"
     const val ENGLISH = "en"
+    /** DK AI ब्रीफ़ Part 03: यूज़र जिस भाषा में बोले, हर बार उसी में जवाब (LanguageDetector) */
+    const val AUTO = "auto"
     const val KEY = "reply_lang"
 
     /** Settings में क्रम + नाम */
@@ -20,17 +22,35 @@ object Lang {
         ENGLISH to "English — सिर्फ़ अंग्रेज़ी",
     )
 
+    /** Settings में दिखने वाली सारी पसंद: ऊपर की तीन + Auto (आख़िर में, ताकि पुराने क्रम/ID न बदलें) */
+    val CHOICES = ALL + (AUTO to "Auto — आप जिस भाषा में बोलें, उसी में जवाब")
+
     /** अभी चुनी भाषा (DKApp/Settings से भरी जाती है) */
     @Volatile var current: String = HINGLISH
 
-    fun norm(v: String?): String = if (v == HINDI || v == ENGLISH || v == HINGLISH) v else HINGLISH
+    /** Auto में: यूज़र की पिछली बात किस भाषा में थी (शुरू में Hinglish) */
+    @Volatile var detected: String = HINGLISH
 
-    fun short(code: String = current) = when (norm(code)) { HINDI -> "हिंदी"; ENGLISH -> "English"; else -> "Hinglish" }
+    fun norm(v: String?): String = if (v == HINDI || v == ENGLISH || v == HINGLISH || v == AUTO) v else HINGLISH
+
+    /** Auto हो तो यूज़र की पहचानी भाषा, नहीं तो चुनी हुई */
+    fun effective(code: String = current): String = norm(code).let { if (it == AUTO) norm(detected).takeIf { d -> d != AUTO } ?: HINGLISH else it }
+
+    /** यूज़र की नई बात आई - Auto के लिए उसकी भाषा याद रखो (खाली/पता नहीं = पिछली ही) */
+    fun noteUser(text: String?) {
+        LanguageDetector.toLangCode(LanguageDetector.detect(text))?.let { detected = it }
+    }
+
+    fun short(code: String = current) = when (norm(code)) { HINDI -> "हिंदी"; ENGLISH -> "English"; AUTO -> "Auto"; else -> "Hinglish" }
 
     private const val MARK = "LANGUAGE (final rule"
 
     fun rule(code: String = current): String {
         val how = when (norm(code)) {
+            AUTO -> "reply in the SAME language the user used in their latest message, turn by turn: Devanagari Hindi -> pure, simple Hindi " +
+                "in Devanagari; Hindi written in English letters (Hinglish) -> natural Hinglish (Hindi words in Devanagari, English words " +
+                "in English letters); English -> clear, simple English. If the user switches language, switch with them. " +
+                "Never translate or repeat back what the user said."
             HINDI -> "reply in pure, simple Hindi written in Devanagari. Use English words only for names, app names or technical terms that have no common Hindi word."
             ENGLISH -> "reply in clear, simple English (Indian English is fine), even when the user speaks Hindi or Hinglish."
             else -> "reply in Hinglish - natural everyday Hindi mixed with common English words, the way people in India really talk " +
@@ -47,7 +67,7 @@ object Lang {
         if (system.contains(MARK)) system else system.trimEnd() + "\n\n" + rule(code)
 
     /** DK की तय (बिना AI) बोली जाने वाली छोटी लाइनें */
-    fun pick(hindi: String, english: String, code: String = current): String = if (norm(code) == ENGLISH) english else hindi
+    fun pick(hindi: String, english: String, code: String = current): String = if (effective(code) == ENGLISH) english else hindi
 
     /** फ़ोन के सीधे कामों (QuickCommands) की तय लाइनें - English चुनी हो तो English में */
     private val EN = mapOf(
@@ -71,5 +91,5 @@ object Lang {
         "स्पीकर बंद" to "Speaker off",
     )
 
-    fun say(hindi: String, code: String = current): String = if (norm(code) == ENGLISH) EN[hindi.trim()] ?: hindi else hindi
+    fun say(hindi: String, code: String = current): String = if (effective(code) == ENGLISH) EN[hindi.trim()] ?: hindi else hindi
 }
