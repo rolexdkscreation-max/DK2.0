@@ -1,13 +1,13 @@
 <resources>
-    <!-- Liquid Glass: soft neele aasman par safed paardarshi kaanch -->
-    <color name="bg">#1E4A9E</color>
-    <color name="bg_top">#163A86</color>
-    <color name="bg_mid">#2A5FC0</color>
-    <color name="bg_bottom">#3E78D6</color>
-    <color name="text">#FFFFFFFF</color>
-    <color name="text2">#D9FFFFFF</color>
-    <color name="text3">#A6FFFFFF</color>
-    <color name="accent">#9FD3FF</color>
-    <color name="accent2">#3D7BFF</color>
-    <color name="dialog_bg">#F2244F9E</color>
+    <!-- Reference Image Daisy/Glass Theme Palette -->
+    <color name="bg">#E6F0FA</color>
+    <color name="bg_top">#D4E5FB</color>
+    <color name="bg_mid">#EAF2FC</color>
+    <color name="bg_bottom">#F2F6FE</color>
+    <color name="text">#1A2B4C</color>
+    <color name="text2">#4A5E7D</color>
+    <color name="text3">#7A8DA8</color>
+    <color name="accent">#1976D2</color>
+    <color name="accent2">#42A5F5</color>
+    <color name="dialog_bg">#E6FFFFFF</color>
 </resources>
