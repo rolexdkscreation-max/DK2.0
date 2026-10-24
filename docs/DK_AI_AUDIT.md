@@ -49,7 +49,7 @@ Important context: the existing app is a mature **View/XML + Kotlin** app (≈31
 | Live model discovery with fallbacks | EXISTS-OK | `discoverModels` + `LiveModelRank` (better than one constant) |
 | Tool calls + toolResponse | EXISTS-OK | 13 tools (`phone_task`, `deep_think`, `coding_task`, `computer_task`, …) |
 | ToolCallDeduplicator | MISSING | |
-| `build_website` tool | MISSING | Part 14 |
+| `build_website` tool | BUILT (Part 14) | `GeminiLive` tool -> `ForgeLauncher.fromVoice` |
 
 ## Part 05 — Mic, speaker, echo guard
 | Item | Status | Notes |
@@ -81,7 +81,7 @@ Important context: the existing app is a mature **View/XML + Kotlin** app (≈31
 |---|---|---|
 | Typed chat with the same personality | EXISTS-OK | `ChatActivity` + `BrainManager.streamChat` (several AI providers, not only Gemini) |
 | Copy / retry / speak, streaming reveal | EXISTS-OK | `DKChatUi` |
-| Forge intent from chat | MISSING | Part 14 |
+| Forge intent from chat | BUILT (Part 14) | `ForgeIntent` in `AgentRunner.execute` (chat + voice) |
 
 ## Part 09–11b — Design system, 3D orb, screens
 | Item | Status | Notes |
@@ -108,7 +108,16 @@ Important context: the existing app is a mature **View/XML + Kotlin** app (≈31
 ## Part 14 — Website Forge
 | Item | Status | Notes |
 |---|---|---|
-| Whole feature (client, controller, 3D scene, HUD, result viewer) | MISSING | |
+| Gemini SSE client (`WebsiteForgeClient`) | BUILT | model from ListModels (plain flash first), `thinkingBudget 0` only on 2.5, cancel = HTTP cancel, key only in header, never logged |
+| HTML clean / repair / safety net (`ForgeHtml`, `SseParser`) | BUILT | fence strip, truncated repair, one-time opacity safety net, Hindi error text (503 = "व्यस्त") |
+| Stage detection (`ForgeStageDetector`) | BUILT | Structure → Layout → Styling → Content → Motion → Finish, section names for the HUD |
+| Controller (`ForgeController`) | BUILT | one build at a time, edit/retry/cancel, saves to app files `Websites/`, "ready" notification when screen hidden, offline + missing-key checks |
+| 3D scene (`assets/forge/forge.html`, `forge.js`, three.js r160 bundled, MIT licence included) | BUILT | glyph stream + section slabs + bloom, reveal with 2.6 s safety timeout; checked in headless Chromium |
+| Low-RAM / no-WebGL fallback (`ForgeFallbackView`) | BUILT | plain Canvas progress view |
+| Result viewer (`ForgeActivity`) | BUILT | sandboxed WebView (no file access, JS only), Save (system file picker), Share / Open in browser via FileProvider, Edit, My websites, delete with confirmation |
+| Entry points | BUILT | DK Live `build_website`, chat/voice intent, Home chip "🌐 वेबसाइट" |
+| Tests | BUILT | `forge/ForgeTest.kt` (SSE, HTML, stages, intent, model choice) |
+| On-device check of WebGL performance | NOT VERIFIED | needs a real phone |
 
 ## Part 15 — Tests, debug, release
 | Item | Status | Notes |

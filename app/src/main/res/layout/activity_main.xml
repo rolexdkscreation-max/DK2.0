@@ -78,6 +78,9 @@
                 <TextView android:id="@+id/chipComputer" style="@style/DKChip"
                     android:text="🖥 DK कंप्यूटर"
                     android:contentDescription="DK कंप्यूटर खोलें" />
+                <TextView android:id="@+id/chipForge" style="@style/DKChip"
+                    android:text="🌐 वेबसाइट"
+                    android:contentDescription="वेबसाइट बनाने वाला Forge खोलें" />
                 <TextView android:id="@+id/chipUpdate" style="@style/DKChip"
                     android:background="@drawable/btn_accent"
                     android:text="⬆ नया अपडेट"

@@ -3,4 +3,6 @@
 <paths>
     <external-files-path name="computer" path="computer/" />
     <files-path name="computer_internal" path="computer/" />
+    <!-- DK AI Website Forge की बनी वेबसाइटें (filesDir/Websites) -->
+    <files-path name="websites" path="Websites/" />
 </paths>

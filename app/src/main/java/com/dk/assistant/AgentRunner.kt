@@ -262,6 +262,10 @@ class AgentRunner(
             speaker.stop(); DKState.reply("ठीक है।"); return
         }
         if (memoryCommand(goal)) return
+        // DK AI Website Forge: "ek cafe ki website banao" -> लाइव 3D build स्क्रीन (कोडिंग एजेंट वाली बात यहाँ नहीं पकड़ी जाती)
+        com.dk.assistant.forge.ForgeIntent.extract(goal)?.let { p ->
+            say(com.dk.assistant.forge.ForgeLauncher.launch(svc, p).second); return
+        }
         // कोडिंग टीम: "सुझाव जोड़ दो / नहीं" और "कोडिंग एजेंट, ... बनाओ"
         if (Prefs.coderOn(svc)) {
             CoderTeam.voiceDecision(svc, goal)?.let { say(it); return }

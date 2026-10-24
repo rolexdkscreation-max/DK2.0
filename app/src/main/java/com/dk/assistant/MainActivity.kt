@@ -66,6 +66,7 @@ class MainActivity : AppCompatActivity() {
         chipAi.setOnClickListener { openSettings() }
         // DK कंप्यूटर: कोई भी काम कदम-दर-कदम (खोज, फ़ाइलें, फ़ोन, कोडिंग…)
         findViewById<TextView>(R.id.chipComputer).setOnClickListener { startActivity(Intent(this, ComputerActivity::class.java)) }
+        findViewById<TextView>(R.id.chipForge).setOnClickListener { startActivity(Intent(this, com.dk.assistant.forge.ForgeActivity::class.java)) }
         findViewById<TextView>(R.id.chipUpdate).setOnClickListener {
             startActivity(Intent(this, SettingsActivity::class.java).putExtra("section", "update"))
         }
