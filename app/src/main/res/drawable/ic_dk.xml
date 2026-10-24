@@ -5,66 +5,118 @@
     android:viewportWidth="108"
     android:viewportHeight="108">
     
-    <!-- Background: Deep navy/black futuristic gradient feel -->
+    <!-- Dark textured rounded square background with deep navy/black gradient feel -->
     <path
-        android:fillColor="#0B0E14"
-        android:pathData="M0,0h108v108h-108z" />
+        android:fillColor="#080A0F"
+        android:pathData="M18,6h72c6.6,0 12,5.4 12,12v72c0,6.6 -5.4,12 -12,12H18c-6.6,0 -12,-5.4 -12,-12V18c0,-6.6 5.4,-12 12,-12z" />
 
-    <!-- Ambient Glow / Tech Rings -->
+    <!-- Golden outer border glow -->
+    <path
+        android:strokeColor="#FFD700"
+        android:strokeWidth="3"
+        android:strokeAlpha="0.9"
+        android:fillColor="#00000000"
+        android:pathData="M18,8h72c5.5,0 10,4.5 10,10v72c0,5.5 -4.5,10 -10,10H18c-5.5,0 -10,-4.5 -10,-10V18c0,-5.5 4.5,-10 10,-10z" />
+    <path
+        android:strokeColor="#FF8C00"
+        android:strokeWidth="1"
+        android:strokeAlpha="0.5"
+        android:fillColor="#00000000"
+        android:pathData="M16,6h76c5.5,0 10,4.5 10,10v76c0,5.5 -4.5,10 -10,10H16c-5.5,0 -10,-4.5 -10,-10V16c0,-5.5 4.5,-10 10,-10z" />
+
+    <!-- Ambient Neon Backlight for Microphone -->
+    <path
+        android:fillColor="#7C4DFF"
+        android:fillAlpha="0.3"
+        android:pathData="M54,22a22,22 0,1 1,0 44a22,22 0,1 1,0 -44z" />
     <path
         android:fillColor="#00E5FF"
-        android:fillAlpha="0.15"
-        android:pathData="M54,18a36,36 0,1 1,0 72a36,36 0,1 1,0 -72z" />
-    <path
-        android:fillColor="#7C4DFF"
         android:fillAlpha="0.2"
-        android:pathData="M54,24a30,30 0,1 1,0 60a30,30 0,1 1,0 -60z" />
+        android:pathData="M54,26a18,18 0,1 1,0 36a18,18 0,1 1,0 -36z" />
 
-    <!-- Circuit Accents -->
+    <!-- Equalizer Sound Wave Bars (Left Side - Blue & Purple Neon) -->
+    <!-- Bar 1 (outer left) -->
     <path
-        android:strokeColor="#00E5FF"
-        android:strokeWidth="1"
-        android:strokeAlpha="0.6"
-        android:pathData="M24,54H36M72,54H84M54,24V36M54,72V84" />
-
-    <!-- Letter D (Metallic Shading & Neon Edges) -->
-    <!-- D Outer Metallic Body -->
-    <path
-        android:fillColor="#CFD8DC"
-        android:pathData="M32,32h14c11,0 18,7 18,18s-7,18 -18,18H32V32z" />
-    <!-- D Inner Cutout -->
-    <path
-        android:fillColor="#111722"
-        android:pathData="M38,38h8c6,0 10,4 10,12s-4,12 -10,12h-8V38z" />
-    <!-- D Electric Cyan Highlight Edge -->
-    <path
-        android:strokeColor="#00E5FF"
-        android:strokeWidth="2"
-        android:pathData="M32,32h14c11,0 18,7 18,18s-7,18 -18,18H32V32z" />
-
-    <!-- Letter K (Metallic Shading & Neon Edges) -->
-    <!-- K Vertical Stem -->
-    <path
-        android:fillColor="#E0E0E0"
-        android:pathData="M66,32h6v36h-6z" />
-    <!-- K Upper Diagonal -->
-    <path
-        android:fillColor="#B0BEC5"
-        android:pathData="M72,50L82,34h-6L68,46z" />
-    <!-- K Lower Diagonal -->
-    <path
-        android:fillColor="#90A4AE"
-        android:pathData="M68,52L77,68h6L72,52z" />
-    <!-- K Electric Blue Highlight Edge -->
-    <path
-        android:strokeColor="#2979FF"
-        android:strokeWidth="2"
-        android:pathData="M66,32h6v36h-6zM72,50L82,34h-6L68,46zM68,52L77,68h6L72,52z" />
-
-    <!-- Purple Neon Accent Glow on Center Intersect -->
+        android:fillColor="#00E5FF"
+        android:pathData="M22,46h4v18h-4z" />
+    <!-- Bar 2 -->
     <path
         android:fillColor="#7C4DFF"
-        android:fillAlpha="0.6"
-        android:pathData="M60,46l8,8l-8,8z" />
+        android:pathData="M28,38h4v34h-4z" />
+    <!-- Bar 3 -->
+    <path
+        android:fillColor="#00E5FF"
+        android:pathData="M34,30h4v50h-4z" />
+    <!-- Bar 4 (inner left) -->
+    <path
+        android:fillColor="#E040FB"
+        android:pathData="M40,36h4v38h-4z" />
+
+    <!-- Equalizer Sound Wave Bars (Right Side - Magenta & Cyan Neon) -->
+    <!-- Bar 4 (inner right) -->
+    <path
+        android:fillColor="#E040FB"
+        android:pathData="M64,36h4v38h-4z" />
+    <!-- Bar 3 -->
+    <path
+        android:fillColor="#00E5FF"
+        android:pathData="M70,30h4v50h-4z" />
+    <!-- Bar 2 -->
+    <path
+        android:fillColor="#7C4DFF"
+        android:pathData="M76,38h4v34h-4z" />
+    <!-- Bar 1 (outer right) -->
+    <path
+        android:fillColor="#00E5FF"
+        android:pathData="M82,46h4v18h-4z" />
+
+    <!-- Central 3D Microphone Body -->
+    <!-- Outer Golden Stand / Outer Ring -->
+    <path
+        android:strokeColor="#FFD700"
+        android:strokeWidth="2.5"
+        android:fillColor="#111116"
+        android:pathData="M46,32c0,-4.4 3.6,-8 8,-8s8,3.6 8,8v18c0,4.4 -3.6,8 -8,8s-8,-3.6 -8,-8z" />
+    <!-- Microphone Inner Metallic Grille Mesh Lines -->
+    <path
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="1"
+        android:strokeAlpha="0.8"
+        android:pathData="M48,28h12M47,34h14M47,40h14M48,46h12" />
+    <path
+        android:strokeColor="#00E5FF"
+        android:strokeWidth="1.5"
+        android:strokeAlpha="0.9"
+        android:pathData="M54,24v34" />
+
+    <!-- Microphone U-Shaped Outer Holder Bracket (Golden 3D) -->
+    <path
+        android:strokeColor="#FFC107"
+        android:strokeWidth="3.5"
+        android:strokeLineCap="round"
+        android:fillColor="#00000000"
+        android:pathData="M44,35v12c0,5.5 4.5,10 10,10s10,-4.5 10,-10V35" />
+
+    <!-- Microphone Stand Stem and Base -->
+    <path
+        android:strokeColor="#FFD700"
+        android:strokeWidth="3"
+        android:strokeLineCap="round"
+        android:pathData="M54,57v14" />
+    <path
+        android:fillColor="#FFD700"
+        android:pathData="M46,71h16v3h-16z" />
+
+    <!-- Vibrant Neon Highlights on Microphone Edge (Cyan & Magenta Glow) -->
+    <path
+        android:strokeColor="#00E5FF"
+        android:strokeWidth="1.5"
+        android:strokeAlpha="0.9"
+        android:pathData="M46,32c0,-4.4 3.6,-8 8,-8" />
+    <path
+        android:strokeColor="#E040FB"
+        android:strokeWidth="1.5"
+        android:strokeAlpha="0.9"
+        android:pathData="M54,24c4.4,0 8,3.6 8,8" />
 
 </vector>
