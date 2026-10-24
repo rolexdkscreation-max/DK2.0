@@ -155,6 +155,10 @@ object Prefs {
     fun lastLocalNewsAt(c: Context) = sp(c).getLong("friend_local_news_at", 0L)
 
     /** v3.41: हर Live मॉडल का नापा जवाब-समय (ms) - सबसे तेज़ मॉडल पहले लगे */
+    /** Gemini Live models ki list ka cache (LiveModelCache.encode) - app restart ke baad bhi turant jode */
+    fun liveModelCache(c: Context): String = sp(c).getString("live_models_cache", "") ?: ""
+    fun saveLiveModelCache(c: Context, v: String) = edit(c) { putString("live_models_cache", v) }
+
     fun liveLatency(c: Context): Map<String, Long> = LiveModelRank.decode(sp(c).getString("live_latency", "") ?: "")
     fun recordLiveLatency(c: Context, model: String, ms: Long) {
         val m = liveLatency(c).toMutableMap()

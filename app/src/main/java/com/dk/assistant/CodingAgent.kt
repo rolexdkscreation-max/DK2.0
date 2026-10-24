@@ -131,7 +131,11 @@ class CoderAi(val provider: Provider, private val key: String, val model: String
 
     private fun gemini(system: String, msgs: List<Pair<String, String>>, parts: List<Pair<String, String>> = emptyList()): String {
         // चुना मॉडल -> 3.8 Flash (coding के लिए सबसे अच्छा) -> बाकी नए मॉडल. 2.5 वाले backup नहीं (नए users के लिए बंद)
-        val all = GeminiModels.order(model, listOf(GeminiModels.CODER) + GeminiClient.BACKUP_MODELS)
+        // 404 "no longer available" दे चुके मॉडल (phone में याद) दोबारा नहीं - पहले हर कदम पर 2.5-pro का 404
+        val kt = key.takeLast(6)
+        val all = GeminiModels.orderSkippingGone(model, listOf(GeminiModels.CODER) + GeminiClient.BACKUP_MODELS) {
+            Cooldown.blocked(GeminiModels.goneKey(it, kt))
+        }
         // jis model ki limit abhi khatm hui thi use thodi der chhodo (har kadam par wahi 429 dobara na khaayein)
         val now = System.currentTimeMillis()
         val order = all.filter { (cool["${key.takeLast(6)}|$it"] ?: 0L) < now }.ifEmpty { all }
@@ -162,6 +166,10 @@ class CoderAi(val provider: Provider, private val key: String, val model: String
                         continue
                     }
                     errs.add(m to e)
+                    if (GeminiModels.isGone(e.code, e.message.orEmpty())) {
+                        Cooldown.block(GeminiModels.goneKey(m, kt), GeminiModels.GONE_MS)
+                        DKLog.d("Coder: $m बंद है (${e.code}) - 7 दिन तक नहीं आज़माएँगे")
+                    }
                     DKLog.d("Coder: $m -> ${e.code} ${e.message?.take(120)}, अगला मॉडल")
                     break
                 }
@@ -251,7 +259,17 @@ class CoderAi(val provider: Provider, private val key: String, val model: String
         fun forScope(c: Context, scope: String, sink: (String, String) -> Unit): CoderAi? {
             val p = Providers.byId(Prefs.scopeActive(c, scope)) ?: return null
             val key = Prefs.scopeKey(c, scope, p.id)
-            val model = Prefs.scopeModel(c, scope, p.id)
+            var model = Prefs.scopeModel(c, scope, p.id)
+            // Settings का चुना Gemini मॉडल बंद हो चुका (404) -> setting खुद 3.8 Flash पर (हर बार 404 नहीं)
+            if (p.isGemini && key.isNotBlank()) {
+                val kt = key.takeLast(6)
+                GeminiModels.replacementFor(model) { Cooldown.blocked(GeminiModels.goneKey(it, kt)) }?.let { nm ->
+                    DKLog.d("Coder: Settings का मॉडल $model बंद है - $nm पर बदला")
+                    sink("$model मॉडल Google ने बंद कर दिया (404)", "Settings → ${ApiScopes.title(scope)} का मॉडल अपने-आप $nm किया")
+                    Prefs.edit(c) { putString(ApiScopes.pref(scope, "model", p.id), nm) }
+                    model = nm
+                }
+            }
             val base = Prefs.scopeBase(c, scope, p.id)
             if (key.isBlank() || model.isBlank() || (!p.isGemini && base.isBlank())) return null
             val fb = if (p.isGemini) emptyList() else Prefs.scopeBackups(c, scope, p.id)

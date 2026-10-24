@@ -18,6 +18,23 @@ object GeminiModels {
     fun order(chosen: String, backups: List<String>): List<String> =
         (listOf(chosen.trim()) + backups.map { it.trim() }.filterNot { isLegacy(it) }).filter { it.isNotBlank() }.distinct()
 
+    /** Cooldown की चाबी: यह मॉडल इस key पर 404 "no longer available" दे चुका (phone में याद, 7 दिन) */
+    fun goneKey(model: String, keyTail: String = "") = "gemini-gone:$keyTail|" + model.trim().removePrefix("models/")
+    const val GONE_MS = 7 * 24 * 3_600_000L
+
+    /**
+     * जड़ (log 07:51:29 / 07:53:02 / 07:53:17): Settings में gemini-2.5-pro चुना था - हर कदम पर पहले वही, हर बार 404.
+     * बंद हो चुके मॉडल क्रम से हटाओ (सब बंद हों तो पूरा क्रम, ताकि असली गलती दिखे).
+     */
+    fun orderSkippingGone(chosen: String, backups: List<String>, gone: (String) -> Boolean): List<String> {
+        val all = order(chosen, backups)
+        return all.filterNot(gone).ifEmpty { all }
+    }
+
+    /** Settings का चुना मॉडल बंद हो चुका -> नया coder मॉडल (null = बदलना नहीं) */
+    fun replacementFor(chosen: String, gone: (String) -> Boolean): String? =
+        if (chosen.isNotBlank() && chosen.trim() != CODER && gone(chosen.trim())) CODER else null
+
     /** मॉडल हटाया/बंद (अगला मॉडल आज़माओ, पर यह असली वजह नहीं) */
     fun isGone(code: Int, msg: String): Boolean =
         code == 404 || msg.contains("no longer available", true) || msg.contains("not found for API version", true)

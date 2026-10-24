@@ -37,13 +37,15 @@ object Transcriber {
     suspend fun transcribe(c: Context, pcm: ByteArray): String? = withContext(Dispatchers.IO) {
         val wav = GeminiTts.pcmToWav(pcm, Ear.RATE)
         val seconds = pcm.size / 2.0 / Ear.RATE
+        val audioMs = (seconds * 1000).toLong()
         var text: String? = null
         val errs = mutableListOf<String>()
         val now = System.currentTimeMillis()
         val keys = Prefs.sttKeys(c).sortedBy { (cool[it.second] ?: 0L) > now }   // aaram wali key aakhir me
         for ((pid, k) in keys) {
             text = try {
-                if (pid == "groq") groqWhisper(k, wav) else gemini(k, wav, Prefs.fastModels(c, "gemini"))
+                if (pid == "groq") groqWhisper(k, wav, clientFor(SttTiming.groqTimeoutMs(audioMs)))
+                else gemini(k, wav, Prefs.fastModels(c, "gemini"), clientFor(SttTiming.geminiTimeoutMs(audioMs)))
             } catch (e: Exception) {
                 DKLog.d("$pid STT: ${e.message}")
                 val code = (e as? AiException)?.code ?: 0
@@ -59,16 +61,25 @@ object Transcriber {
         t
     }
 
+    /**
+     * आवाज़ की लंबाई के हिसाब से छोटा timeout (पहले हर बार 22s - Groq अटका तो 22s बाद ही Gemini, कुल ~28s).
+     * newBuilder = वही connection pool, नया client सस्ता.
+     */
+    private fun clientFor(callMs: Long): OkHttpClient = http.newBuilder()
+        .connectTimeout(minOf(callMs, 4_000L), TimeUnit.MILLISECONDS)
+        .readTimeout(callMs, TimeUnit.MILLISECONDS)
+        .callTimeout(callMs, TimeUnit.MILLISECONDS).build()
+
     @Volatile private var groqModel = "whisper-large-v3"
 
-    private fun groqWhisper(key: String, wav: ByteArray): String = try { groqWhisper(key, wav, groqModel) } catch (e: AiException) {
+    private fun groqWhisper(key: String, wav: ByteArray, client: OkHttpClient = http): String = try { groqWhisper(key, wav, groqModel, client) } catch (e: AiException) {
         // model band/limit -> turbo
         if (groqModel != "whisper-large-v3-turbo" && (e.code == 404 || e.code == 400 || e.code == 429)) {
-            groqModel = "whisper-large-v3-turbo"; groqWhisper(key, wav, groqModel)
+            groqModel = "whisper-large-v3-turbo"; groqWhisper(key, wav, groqModel, client)
         } else throw e
     }
 
-    private fun groqWhisper(key: String, wav: ByteArray, model: String): String {
+    private fun groqWhisper(key: String, wav: ByteArray, model: String, client: OkHttpClient): String {
         val body = MultipartBody.Builder().setType(MultipartBody.FORM)
             .addFormDataPart("file", "speech.wav", wav.toRequestBody("audio/wav".toMediaType()))
             // large-v3 (turbo nahi) = Hindi/Hinglish me sabse sahi; Groq par phir bhi ~1 sec
@@ -81,7 +92,7 @@ object Transcriber {
             .build()
         val req = Request.Builder().url("https://api.groq.com/openai/v1/audio/transcriptions")
             .header("Authorization", "Bearer $key").post(body).build()
-        http.newCall(req).execute().use { r ->
+        client.newCall(req).execute().use { r ->
             val s = r.body?.string() ?: ""
             if (!r.isSuccessful) throw AiException(r.code, s.take(200))
             val o = JSONObject(s)
@@ -102,7 +113,7 @@ object Transcriber {
 
     @Volatile private var gemModel: String? = null
 
-    private fun gemini(key: String, wav: ByteArray, extra: List<String> = emptyList()): String {
+    private fun gemini(key: String, wav: ByteArray, extra: List<String> = emptyList(), client: OkHttpClient = http): String {
         val parts = JSONArray()
             .put(JSONObject().put("text", "Transcribe this audio exactly as spoken. Write Hindi in Devanagari and English words in English. " +
                 "Only the main speaker's words; skip background noise, TV and cut-off fragments. " +
@@ -116,7 +127,7 @@ object Transcriber {
                 val req = Request.Builder().url("https://generativelanguage.googleapis.com/v1beta/models/$m:generateContent")
                     .header("x-goog-api-key", key)
                     .post(body.toString().toRequestBody("application/json".toMediaType())).build()
-                http.newCall(req).execute().use { r ->
+                client.newCall(req).execute().use { r ->
                     val s = r.body?.string() ?: ""
                     if (!r.isSuccessful) throw AiException(r.code, s.take(200))
                     gemModel = m
