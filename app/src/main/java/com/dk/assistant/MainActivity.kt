@@ -21,7 +21,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var txtDk: TextView
     private lateinit var chipAccess: TextView
     private lateinit var chipMic: TextView
-    private lateinit var chipAi: TextView
+    private lateinit var btnMute: ImageButton
 
     private val stateListener: () -> Unit = { render() }
 
