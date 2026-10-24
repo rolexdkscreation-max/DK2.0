@@ -100,6 +100,7 @@ class SettingsActivity : AppCompatActivity() {
             "debug" -> { title.text = "डिबग लॉग"; bar.visibility = View.GONE; secDebug() }
             "coder" -> { title.text = "कोडिंग एजेंट"; secCoder() }
             "computer" -> { title.text = "DK कंप्यूटर"; secComputer() }
+            "about" -> { title.text = "ऐप के बारे में"; bar.visibility = View.GONE; secAbout() }
         }
         space(container, 8)
     }
@@ -120,7 +121,8 @@ class SettingsActivity : AppCompatActivity() {
             Triple("coder", "कोडिंग एजेंट", (if (Prefs.coderOn(this)) "✓ चालू" else "✗ बंद") + " • GitHub से जुड़ें • कोड लिखें/बदलें/हटाएँ • push • अलग AI key"),
             Triple("story", "स्टोरी राइटर एजेंट", "लंबी हिंदी कहानियाँ (10–30 मिनट) • भाग-दर-भाग • कॉपी • फ़ोन में सेव"),
             Triple("update", "अपडेट", "अभी: ${Updater.displayVersion(this)} • नया version चेक करें"),
-            Triple("debug", "डिबग लॉग", "माइक, कनेक्शन, देरी और गलतियों का पूरा हाल")
+            Triple("debug", "डिबग लॉग", "माइक, कनेक्शन, देरी और गलतियों का पूरा हाल"),
+            Triple("about", "ऐप के बारे में", "version • बनाने वाले • निजता (privacy)")
         )
         items.forEach { (id, t, sub) -> menuRow(id, t, sub) }
     }
@@ -219,6 +221,7 @@ class SettingsActivity : AppCompatActivity() {
         "computer" -> R.drawable.ic_s_computer
         "story" -> R.drawable.ic_s_story
         "update" -> R.drawable.ic_s_update
+        "about" -> R.drawable.ic_s_profile
         else -> R.drawable.ic_s_debug
     }
 
@@ -680,6 +683,31 @@ class SettingsActivity : AppCompatActivity() {
             hint(box, "ऐप खुलने पर DK लाइव अपने-आप चालू होकर पहले बोलेगा (20 मिनट में दोबारा नहीं)। मौसम और इलाके की बात के लिए हर बार ताज़ा लोकेशन लेता है — लोकेशन कहीं सेव नहीं होती। बातचीत की याद: सेटिंग्स → मेमोरी।")
         }
 
+    }
+
+    // ------------------------------------------------------------ v3.58 (Part 11): About + निजता
+    private fun secAbout() {
+        card(AssistantBrand.FULL_NAME, AssistantBrand.TAGLINE) { box ->
+            hint(box, "Version: " + Updater.displayVersion(this))
+            box.addView(TextView(this).apply {
+                text = AssistantBrand.CREATED_BY; textSize = 17f; setTypeface(typeface, Typeface.BOLD); setTextColor(0xFFFFFFFF.toInt())
+                setPadding((4 * dp).toInt(), (14 * dp).toInt(), 0, (4 * dp).toInt())
+            })
+            hint(box, "असिस्टेंट का नाम: " + Prefs.assistantName(this) + " (बदलने के लिए सेटिंग्स → प्रोफ़ाइल)")
+        }
+        card("निजता (Privacy)", "आपका डेटा कहाँ जाता है") { box ->
+            hint(box, "• आपकी API keys और सेटिंग्स सिर्फ़ इस फ़ोन में सेव रहती हैं (फ़ोन के backup में भी नहीं जातीं)। हर key सिर्फ़ अपनी सेवा को भेजी जाती है, और आपका सवाल उसी AI सेवा को जाता है जिसकी key आपने डाली है।")
+            hint(box, "• स्क्रीन देखना चालू हो तभी स्क्रीनशॉट AI को जाता है (सेटिंग्स → परमिशन)।")
+            hint(box, "• Notification सिर्फ़ फ़ोन की memory में रहते हैं।")
+            hint(box, "• मौसम/इलाके के लिए ली गई लोकेशन कहीं सेव नहीं होती।")
+            hint(box, "• कैमरा permission सिर्फ़ टॉर्च के लिए है; DK फ़ोटो नहीं लेता।")
+            hint(box, "• Instagram / Facebook / WhatsApp पर पोस्ट या मैसेज भेजने से पहले DK आपसे \"हाँ\" पूछता है।")
+        }
+        card("और विकल्प", null) { box ->
+            row(box,
+                button("परिचय दोबारा देखें") { startActivity(android.content.Intent(this, com.dk.assistant.onboard.OnboardingActivity::class.java)) },
+                button("परमिशन") { startActivity(android.content.Intent(this, SettingsActivity::class.java).putExtra("section", "perms")) })
+        }
     }
 
     // ------------------------------------------------------------ orb + chehra

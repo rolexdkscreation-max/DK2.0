@@ -30,6 +30,7 @@ class MainActivity : AppCompatActivity() {
         setContentView(R.layout.activity_main)
         Glass.install(this)
         if (savedInstanceState == null) DKSplash.show(this)     // ऐप खुलते ही DK logo (overlay, ~1.2s)
+        if (savedInstanceState == null) com.dk.assistant.onboard.OnboardingActivity.maybeShow(this)   // v3.58: सिर्फ़ नए install पर परिचय
 
         txtHello = findViewById(R.id.txtHello)
         txtName = findViewById(R.id.txtName)
@@ -280,7 +281,8 @@ class MainActivity : AppCompatActivity() {
         val name = Prefs.assistantName(this)
         val user = Prefs.userName(this)
         UiLang.setText(txtName, name)
-        UiLang.setText(txtHello, if (user.isBlank()) "नमस्ते" else "नमस्ते, $user")
+        // v3.58: समय के हिसाब से - सुप्रभात / नमस्ते / शुभ संध्या
+        UiLang.setText(txtHello, com.dk.assistant.onboard.Greeting.of(java.util.Calendar.getInstance().get(java.util.Calendar.HOUR_OF_DAY), user))
 
         UiLang.setText(chipAccess, (if (Setup.accessibilityOn(this)) "✓ " else "✗ ") + "फ़ोन कंट्रोल")
         UiLang.setText(chipMic, (if (Setup.hasMic(this)) "✓ " else "✗ ") + "माइक")

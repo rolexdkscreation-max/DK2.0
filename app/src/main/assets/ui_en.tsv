@@ -58,6 +58,39 @@ Build सफल ✓	Build succeeded ✓
 Coder गलती:	Coder error:
 GitHub token नहीं डाला	No GitHub token added
 GitHub की दिक्कत	GitHub problem
+आगे →	Next →
+छोड़ें	Skip
+चलो शुरू करें	Let's start
+आपको क्या बुलाऊँ?	What should I call you?
+ऐसे बोलकर देखें	Try saying
+ज़रूरी इजाज़त	Required permissions
+माइक की इजाज़त दें	Allow microphone
+फ़ोन कंट्रोल (Accessibility) चालू करें	Turn on phone control (Accessibility)
+माँ को कॉल करो	Call Mom
+WhatsApp पर राहुल को मैसेज भेजो	Send Rahul a message on WhatsApp
+कल सुबह 7 बजे का अलार्म लगाओ	Set an alarm for 7 am tomorrow
+मेरी दुकान की वेबसाइट बनाओ	Build a website for my shop
+Instagram / Facebook / WhatsApp पर पोस्ट या मैसेज भेजने से पहले मैं आपसे "हाँ" पूछूँगा।	Before posting or sending a message on Instagram / Facebook / WhatsApp, I will ask you for a "yes".
+नाम सिर्फ़ इस फ़ोन में रहता है। बाद में सेटिंग्स → प्रोफ़ाइल में बदल सकते हैं।	Your name stays only on this phone. You can change it later in Settings → Profile.
+मुझसे बोलकर या लिखकर बात करें — सवाल पूछें, फ़ोन के काम कराएँ, कहानी लिखवाएँ या वेबसाइट बनवाएँ।	Talk to me by voice or text — ask questions, get phone tasks done, have stories written or websites built.
+सुनने के लिए माइक और आपके कहने पर फ़ोन चलाने के लिए Accessibility चाहिए। बाकी इजाज़तें बाद में सेटिंग्स → परमिशन में।	I need the microphone to listen and Accessibility to operate the phone when you ask. Other permissions are later in Settings → Permissions.
+पेज नंबर	Page number
+सुप्रभात	Good morning
+शुभ संध्या	Good evening
+ऐप के बारे में	About the app
+version • बनाने वाले • निजता (privacy)	version • creator • privacy
+असिस्टेंट का नाम:	Assistant name:
+(बदलने के लिए सेटिंग्स → प्रोफ़ाइल)	(to change: Settings → Profile)
+निजता (Privacy)	Privacy
+आपका डेटा कहाँ जाता है	Where your data goes
+• आपकी API keys और सेटिंग्स सिर्फ़ इस फ़ोन में सेव रहती हैं (फ़ोन के backup में भी नहीं जातीं)। हर key सिर्फ़ अपनी सेवा को भेजी जाती है, और आपका सवाल उसी AI सेवा को जाता है जिसकी key आपने डाली है।	• Your API keys and settings are saved only on this phone (not even in phone backups). Each key is sent only to its own service, and your question goes to the AI service whose key you entered.
+• स्क्रीन देखना चालू हो तभी स्क्रीनशॉट AI को जाता है (सेटिंग्स → परमिशन)।	• Screenshots go to the AI only when screen viewing is on (Settings → Permissions).
+• Notification सिर्फ़ फ़ोन की memory में रहते हैं।	• Notifications stay only in the phone's memory.
+• मौसम/इलाके के लिए ली गई लोकेशन कहीं सेव नहीं होती।	• Location taken for weather/area is never saved.
+• कैमरा permission सिर्फ़ टॉर्च के लिए है; DK फ़ोटो नहीं लेता।	• Camera permission is only for the torch; DK does not take photos.
+• Instagram / Facebook / WhatsApp पर पोस्ट या मैसेज भेजने से पहले DK आपसे "हाँ" पूछता है।	• Before posting or sending a message on Instagram / Facebook / WhatsApp, DK asks you for a "yes".
+और विकल्प	More options
+परिचय दोबारा देखें	View intro again
 GitHub टोकन गलत है या expire हो गया (401)।	GitHub token is wrong or expired (401).
 GitHub नहीं जुड़ा	GitHub not connected
 GitHub पर build देख रहा हूँ…	Watching the build on GitHub…
