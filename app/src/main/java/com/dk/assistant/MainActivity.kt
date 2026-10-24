@@ -279,7 +279,7 @@ class MainActivity : AppCompatActivity() {
             Mode.WORKING -> "काम कर रहा हूँ…"
             Mode.SPEAKING -> "Speaking • बोल रहा हूँ…"
         })
-        val userText = DKState.lastUserText.takeIf { it.isNotBlank() }?.let { "$user: $it\n" } ?: ""
+        val userText = DKState.lastUser.takeIf { it.isNotBlank() }?.let { "$user: $it\n" } ?: ""
         val dkText = if (DKState.lastReply.isBlank()) "" else "$name: " + DKState.lastReply
         UiLang.setText(txtDk, userText + dkText)
     }
