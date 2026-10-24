@@ -112,6 +112,8 @@ class ComputerActivity : AppCompatActivity() {
             contentDescription = "भेजें"
         }
         bar.addView(send, LinearLayout.LayoutParams((46 * dp).toInt(), (46 * dp).toInt()))
+        // DK कंप्यूटर / फ़ोन का काम चलते समय (DKWork से अपने-आप)
+        col.addView(DKWorkingIndicator.row(this, focus = TaskStatus.PC), LinearLayout.LayoutParams(-1, -2).apply { topMargin = (4 * dp).toInt() })
         col.addView(bar, LinearLayout.LayoutParams(-1, -2).apply { topMargin = (8 * dp).toInt() })
 
         send.setOnClickListener { if (ComputerSession.busy) ComputerSession.stop() else doSend() }

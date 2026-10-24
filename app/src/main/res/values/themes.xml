@@ -1,4 +1,4 @@
-<resources>
+<resources xmlns:tools="http://schemas.android.com/tools">
     <style name="Theme.DK" parent="Theme.MaterialComponents.NoActionBar">
         <item name="colorPrimary">#3D7BFF</item>
         <item name="colorSecondary">#9FD3FF</item>
@@ -20,6 +20,10 @@
         <item name="android:imageButtonStyle">@style/DK.ImageButton</item>
         <item name="android:alertDialogTheme">@style/Theme.DK.Dialog</item>
         <item name="alertDialogTheme">@style/Theme.DK.Dialog.Compat</item>
+        <!-- DK splash (Android 12+): गहरा रंग, logo DKSplash उभारता है. पुराने Android इन्हें अनदेखा करते हैं -->
+        <item name="android:windowSplashScreenBackground" tools:targetApi="31">#FF05060D</item>
+        <item name="android:windowSplashScreenAnimatedIcon" tools:targetApi="31">@drawable/dk_splash_empty</item>
+        <item name="android:windowSplashScreenIconBackgroundColor" tools:targetApi="31">#FF05060D</item>
     </style>
 
     <!-- Glass dialog (android.app.AlertDialog) -->

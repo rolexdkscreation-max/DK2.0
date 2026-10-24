@@ -93,6 +93,8 @@ class ChatActivity : AppCompatActivity() {
             contentDescription = "भेजें"
         }
         bar.addView(send, LinearLayout.LayoutParams((46 * dp).toInt(), (46 * dp).toInt()))
+        // DK का काम (सोचना/लिखना/खोज/फ़ोन का काम) - नीचे बाएँ, DKWork से अपने-आप
+        col.addView(DKWorkingIndicator.row(this), LinearLayout.LayoutParams(-1, -2).apply { topMargin = (4 * dp).toInt() })
         col.addView(bar, LinearLayout.LayoutParams(-1, -2).apply { topMargin = (8 * dp).toInt() })
 
         val doSend = {
