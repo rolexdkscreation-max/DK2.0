@@ -103,7 +103,12 @@ Important context: the existing app is a mature **View/XML + Kotlin** app (≈31
 ## Part 13 — Access-key licensing
 | Item | Status | Notes |
 |---|---|---|
-| AccessKeyRules / AccessKeyManager / enforcement / UI | MISSING | needs a backend that the owner controls |
+| AccessKeyRules (pure) + LicenseInfo | BUILT | `license/AccessKeyRules.kt`, tested in `AccessKeyRulesTest` |
+| AccessKeyManager | BUILT | private prefs `dk_access_key`, activate + device hash, liveCheck max every 3 h, fail open, admin block = off at once |
+| Backend config | BUILT | git-ignored `assets/dk_license.json`; missing = "licensing not configured" (app works as before). Contract in `docs/LICENSING.md` |
+| Enforcement | BUILT | `DKAccessibilityService.startLive` + `AgentRunner.execute` refuse with admin message; Home re-checks on resume and stops Live if blocked |
+| UI | BUILT | Home chip (only when configured and not active), Settings → Profile → Access key |
+| Real backend server | NOT BUILT | the owner must run one (no ids/URLs in the repo by rule) |
 
 ## Part 14 — Website Forge
 | Item | Status | Notes |

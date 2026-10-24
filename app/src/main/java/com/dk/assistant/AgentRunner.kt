@@ -250,6 +250,8 @@ class AgentRunner(
         DKLog.d("Command: $goal")
         heardAt.takeIf { it > 0 && System.currentTimeMillis() - it < 30_000 }?.let { DKLog.d("Deri: सुनना पूरा → रूटर ${System.currentTimeMillis() - it} ms"); heardAt = 0L }
         DKState.user(goal)
+        // DK AI Part 13: access key चालू नहीं = कोई काम नहीं, साफ़ संदेश (लाइसेंस सेट नहीं = पहले जैसा)
+        com.dk.assistant.license.AccessKeyManager.refusalOrNull(svc)?.let { say(it); return }
         currentGoal = goal
         synchronized(currentAnswer) { currentAnswer.clear() }
         val lower = goal.lowercase().trim()
