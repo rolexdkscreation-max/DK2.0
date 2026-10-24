@@ -369,7 +369,8 @@ class DKComposer(
         prefs.edit().putBoolean("dictation_mic_asked", true).apply()
         if (ok) startMic() else showNote(DictationRules.NO_PERMISSION)
     }
-    private val hideNote = Runnable { note.visibility = GONE }
+    private val hideNote = Runnable { hideNoteNow() }
+    private fun hideNoteNow() { note.visibility = GONE }
 
     val micActive get() = dict != null
 
