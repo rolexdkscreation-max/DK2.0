@@ -72,7 +72,7 @@ object GeminiTtsEngine : VoiceEngine {
 
     override fun speak(c: Context, text: String, voice: String, out: PcmOut) {
         notReady(c)?.let { throw IOException(it) }
-        val body = JSONObject().put("text", text).put("voice", voice).put("style", style(c)).toString()
+        val body = JSONObject().put("text", text).put("voice", voice).put("style", com.dk.assistant.avatar.MoodState.voiceStyle(style(c))).toString()   // v3.71: भाव का निर्देश जुड़ता है
         val req = Request.Builder().url(workerUrl(c) + "/tts")
             .post(body.toRequestBody("application/json; charset=utf-8".toMediaType()))
             .apply { auth(this, c) }.build()

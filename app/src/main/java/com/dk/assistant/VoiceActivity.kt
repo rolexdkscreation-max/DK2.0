@@ -23,6 +23,7 @@ import androidx.camera.view.PreviewView
 class VoiceActivity : AppCompatActivity() {
 
     private lateinit var orb: OrbView
+    private lateinit var avatar: com.dk.assistant.avatar.AvatarView
     private lateinit var state: TextView
     private lateinit var you: TextView
     private lateinit var dk: TextView
@@ -115,6 +116,12 @@ class VoiceActivity : AppCompatActivity() {
             val m = (10 * dp).toInt(); setMargins(m, m, m, m)
         })
         orbBox.addView(camBox, 1, FrameLayout.LayoutParams(-1, -1).apply { val m = (8 * dp).toInt(); setMargins(m, m, m, m) })
+        // v3.71: लड़की अवतार - ORB की जगह (कैमरा चालू हो तो उसके नीचे)
+        avatar = com.dk.assistant.avatar.AvatarView(this).apply {
+            visibility = android.view.View.GONE
+            setOnClickListener { toggleLive() }
+        }
+        orbBox.addView(avatar, 1, FrameLayout.LayoutParams(-1, -1))
         col.addView(orbBox, LinearLayout.LayoutParams(-1, 0, 1f))
 
         state = TextView(this).apply {
@@ -248,11 +255,18 @@ class VoiceActivity : AppCompatActivity() {
         orbBox.requestLayout()
     }
 
+    /** v3.71: "लड़की अवतार" चुना और चित्र हैं = ORB की जगह अवतार (पूरी जगह, नीचे सबटाइटल वैसे ही) */
+    private fun applyAvatar() {
+        val girl = Prefs.avatarKind(this) == "girl" && com.dk.assistant.avatar.AvatarAssets.available(this)
+        avatar.visibility = if (girl) android.view.View.VISIBLE else android.view.View.GONE
+        orb.visibility = if (girl) android.view.View.INVISIBLE else android.view.View.VISIBLE
+    }
+
     private fun toggleLive() {
         if (DKState.live) DKAccessibilityService.instance?.stopLive("आवाज़ स्क्रीन का माइक बटन") else startLiveIfReady()
     }
 
-    override fun onResume() { super.onResume(); DKState.listen(listener); LiveVision.listen(visionListener); render(); renderVision(); syncCamera() }
+    override fun onResume() { super.onResume(); applyAvatar(); DKState.listen(listener); LiveVision.listen(visionListener); render(); renderVision(); syncCamera() }
     override fun onPause() { DKState.unlisten(listener); LiveVision.unlisten(visionListener); super.onPause() }
     override fun onStart() { super.onStart(); visible = true }
     override fun onStop() {

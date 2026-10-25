@@ -118,6 +118,14 @@
                 android:layout_height="match_parent"
                 android:contentDescription="बोलने के लिए टैप करें" />
 
+            <!-- v3.71: ORB की जगह लड़की अवतार (सेटिंग्स → ORB → अवतार चुनो) -->
+            <com.dk.assistant.avatar.AvatarView
+                android:id="@+id/avatar"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:contentDescription="बोलने के लिए टैप करें"
+                android:visibility="gone" />
+
             <!-- orb chhota/bada karne ka button -->
             <ImageButton
                 android:id="@+id/btnOrbMin"

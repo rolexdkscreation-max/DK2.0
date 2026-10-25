@@ -86,6 +86,7 @@
         <activity
             android:name=".MainActivity"
             android:exported="true"
+            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden"
             android:windowSoftInputMode="adjustResize">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
@@ -101,6 +102,7 @@
         <activity
             android:name=".VoiceActivity"
             android:exported="false"
+            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden"
             android:launchMode="singleTop" />
 
         <!-- v3.40: स्क्रीन शेयर की Android इजाज़त (पारदर्शी, बिना UI) + शेयर चलने तक service -->
