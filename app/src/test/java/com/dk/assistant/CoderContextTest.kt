@@ -104,6 +104,7 @@ class CoderContextTest {
     @Test fun allLimits_tellsUserAndStops() {
         val m = CoderAi.allLimitsMessage(120, "GEMINI: 429, GROQ: 429", noFallback = false)
         assertTrue(m.contains("लगातार कोशिश नहीं"))
+        assertTrue(m.contains("वहीं से आगे"))
         assertTrue(m.contains("2 मिनट"))
         assertTrue(CoderTeam.isLimit(m))
         assertTrue(CoderAi.allLimitsMessage(30, "", true).contains("Groq"))

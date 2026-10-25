@@ -39,9 +39,22 @@ object Prefs {
     }
     fun scopeKey(c: Context, scope: String, id: String) = (sp(c).getString(ApiScopes.pref(scope, "key", id), "") ?: "").trim()
     fun scopeModel(c: Context, scope: String, id: String): String {
-        val def = Providers.byId(id)?.defaultModel ?: ""
-        return (sp(c).getString(ApiScopes.pref(scope, "model", id), def) ?: def).ifBlank { def }
+        val def = if (scope == ApiScopes.CODER && id == "gemini") GeminiModels.CODER else Providers.byId(id)?.defaultModel ?: ""
+        val p = sp(c)
+        // v3.70: कोडिंग एजेंट का पुराना default (flash-lite) एक बार 3.8 Flash पर (coding के लिए सबसे तेज़ + अच्छा). बाद में user जो चुने वही
+        if (scope == ApiScopes.CODER && id == "gemini" && !p.getBoolean("coder_model_v370", false)) {
+            val cur = p.getString(ApiScopes.pref(scope, "model", id), "").orEmpty().trim()
+            p.edit().apply { if (GeminiModels.oldCoderDefault(cur)) putString(ApiScopes.pref(scope, "model", id), GeminiModels.CODER); putBoolean("coder_model_v370", true) }.apply()
+            if (GeminiModels.oldCoderDefault(cur)) return GeminiModels.CODER
+        }
+        return (p.getString(ApiScopes.pref(scope, "model", id), def) ?: def).ifBlank { def }
     }
+    /**
+     * कोडिंग एजेंट की Gemini keys: पहली (मुख्य) + key 2 + key 3. एक key के सारे मॉडल की limit खत्म -> अगली key.
+     * खाली और दोहराई keys नहीं.
+     */
+    fun coderGeminiKeys(c: Context): List<String> = GeminiModels.distinctKeys(listOf(
+        scopeKey(c, ApiScopes.CODER, "gemini"), scopeKey(c, ApiScopes.CODER, "gemini2"), scopeKey(c, ApiScopes.CODER, "gemini3")))
     fun scopeBase(c: Context, scope: String, id: String): String {
         val def = Providers.byId(id)?.baseUrl ?: ""
         return (sp(c).getString(ApiScopes.pref(scope, "base", id), def) ?: def).ifBlank { def }
@@ -228,6 +241,8 @@ object Prefs {
     /** Coding agent ka khula PR (app restart ke baad bhi "Merge करें" card ke liye) */
     fun coderPrRepo(c: Context) = sp(c).getString("coder_pr_repo", "") ?: ""
     fun coderPrBase(c: Context) = sp(c).getString("coder_pr_base", "") ?: ""
+    /** कोडिंग एजेंट की अभी खुली बातचीत (इतिहास का धागा) */
+    fun coderThread(c: Context) = sp(c).getString("coder_thread", "").orEmpty()
     fun coderPrNum(c: Context) = sp(c).getInt("coder_pr_num", 0)
     fun coderPrUrl(c: Context) = sp(c).getString("coder_pr_url", "") ?: ""
     fun coderPrHead(c: Context) = sp(c).getString("coder_pr_head", "") ?: ""

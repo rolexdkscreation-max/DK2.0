@@ -45,6 +45,12 @@ object CoderSession {
         if (lines.takeLast(3).any { it.role == role && it.text == t }) return
         lines.add(Line(role, t)); if (lines.size > 300) lines.removeAt(0); listener?.invoke()
         if (role == "s") TaskStatus.step(TaskStatus.CODER, t)      // असली कदम (live status)
+        CoderHistory.onLine(role, t)                                // इतिहास: फ़ोन में (ऐप बंद होकर खुले तो वही बातचीत)
+    }
+
+    init {
+        // सारी limit खत्म होने पर इंतज़ार की खबर कोडिंग स्क्रीन पर (काम रुका नहीं, रुककर चल रहा है)
+        CoderAi.onLimitWait = { t -> scope.launch { add("s", t) } }
     }
     val busy get() = job?.isActive == true
     /** अभी चल रहा काम (जाँचकर्ता को बताने के लिए) */
@@ -66,7 +72,12 @@ object CoderSession {
         val from = lines.size
         val j = scope.launch(block = block)
         job = j
+        if (task != null) CoderHistory.setStatus(c.applicationContext, "run")
         j.invokeOnCompletion { cause ->
+            if (task != null) appCtx?.let { ctx ->
+                val last = lines.drop(from.coerceAtMost(lines.size)).lastOrNull { it.role == "d" || it.role == "e" }
+                CoderHistory.setStatus(ctx, CoderHistory.Logic.statusAfter(last?.role, cause is kotlinx.coroutines.CancellationException, SevenRunner.pending != null))
+            }
             if (task != null) {
                 val last = lines.drop(from.coerceAtMost(lines.size)).lastOrNull { it.role == "d" || it.role == "e" }
                 TaskStatus.end(TaskStatus.CODER, TaskStatus.coderState(last?.role, last?.text, cause is kotlinx.coroutines.CancellationException),
@@ -180,6 +191,7 @@ class CodingActivity : AppCompatActivity() {
         titles.addView(sub)
         top.addView(titles, LinearLayout.LayoutParams(0, -2, 1f))
         top.addView(smallBtn("रिपो") { if (Prefs.coderSeven(this)) sevenPicker() else chooseRepo() })
+        top.addView(smallBtn("इतिहास") { showHistory() }, LinearLayout.LayoutParams(-2, -2).apply { marginStart = (6 * dp).toInt() })
         top.addView(smallBtn("नया") { newSession() }, LinearLayout.LayoutParams(-2, -2).apply { marginStart = (6 * dp).toInt() })
         col.addView(top)
 
@@ -232,6 +244,7 @@ class CodingActivity : AppCompatActivity() {
         composer.onSend = { doSend() }
         setContentView(root)
         Glass.install(this)
+        CoderHistory.init(this)                                     // पिछली बातचीत वापस (ऐप बंद होकर खुली हो तो)
         if (CoderSession.lines.isEmpty()) CoderSession.add("d", welcome())
         renderMedia()
         keepTyping()
@@ -515,8 +528,63 @@ class CodingActivity : AppCompatActivity() {
         if (CoderSession.busy) { toast("पहले चल रहा काम रोकें"); return }
         CoderSession.agent?.reset(); CoderSession.savePr(this); CoderSession.agent = null
         CoderTeam.suggestions.clear(); SevenRunner.pending = null; RepoDoctorRunner.pending = null
+        CoderHistory.newThread(this)                                // पुरानी बातचीत इतिहास में रहती है
         CoderSession.lines.clear(); shown = 0; list.removeAllViews()
         CoderSession.add("d", welcome())
+    }
+
+    // ---------------------------------------------------------------- इतिहास: कब क्या काम हुआ, उसी में आगे लिखना
+    private fun showHistory() {
+        CoderHistory.flush(this)
+        val all = CoderHistory.list(this)
+        if (all.isEmpty()) { toast("अभी कोई इतिहास नहीं — पहला काम लिखें"); return }
+        val fmt = java.text.SimpleDateFormat("d MMM, h:mm a", java.util.Locale("hi", "IN"))
+        val box = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; val p = (6 * dp).toInt(); setPadding(p, p, p, p) }
+        var dlg: android.app.Dialog? = null
+        all.forEach { t ->
+            val row = LinearLayout(this).apply {
+                orientation = LinearLayout.VERTICAL; setBackgroundResource(R.drawable.glass_card)
+                val p = (12 * dp).toInt(); setPadding(p, (10 * dp).toInt(), p, (10 * dp).toInt())
+                isClickable = true; isFocusable = true
+            }
+            row.addView(TextView(this).apply {
+                text = (if (t.id == CoderHistory.current) "▶ " else "") + t.title; textSize = 15f; maxLines = 2
+                setTypeface(typeface, Typeface.BOLD); setTextColor(0xFFFFFFFF.toInt())
+            })
+            row.addView(TextView(this).apply {
+                text = "${CoderHistory.Logic.statusHi(t.status)} • शुरू ${fmt.format(java.util.Date(t.created))} • आख़िरी ${fmt.format(java.util.Date(t.updated))}" +
+                    (if (t.repo.isNotBlank()) "\n${t.repo}" else "") + (if (t.prNum > 0) " • PR #${t.prNum}" else "") + " • ${t.lines} संदेश"
+                textSize = 12f; setTextColor(0xB3FFFFFF.toInt()); setPadding(0, (3 * dp).toInt(), 0, 0)
+            })
+            row.setOnClickListener { dlg?.dismiss(); openThread(t) }
+            row.setOnLongClickListener {
+                UiDialog(this, Glass.DIALOG).setTitle("यह बातचीत इतिहास से हटाएँ?").setMessage(t.title + "\n\n(GitHub पर branch/PR जैसे हैं वैसे रहेंगे)")
+                    .setPositiveButton("हटाओ") { _, _ -> CoderHistory.delete(this, t.id); dlg?.dismiss(); showHistory() }
+                    .setNegativeButton("रुको", null).show(); true
+            }
+            box.addView(row, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = (8 * dp).toInt() })
+        }
+        val sc = android.widget.ScrollView(this).apply { addView(box) }
+        dlg = UiDialog(this, Glass.DIALOG).setTitle("इतिहास — कब क्या काम हुआ")
+            .setMessage("किसी पर टैप = वही बातचीत खुलेगी, उसी में आगे लिखें। लंबा दबाएँ = हटाएँ।")
+            .setView(sc).setNegativeButton("बंद करें", null).show()
+    }
+
+    /** इतिहास की बातचीत खोलो: उसके संदेश + उसका खुला PR (हो तो) - अगला काम उसी में जुड़ेगा */
+    private fun openThread(t: CoderHistory.Thread) {
+        if (CoderSession.busy) { toast("पहले चल रहा काम पूरा होने दें या रोकें"); return }
+        if (t.id == CoderHistory.current) return
+        val l = CoderHistory.open(this, t.id)
+        CoderTeam.suggestions.clear(); SevenRunner.pending = null; RepoDoctorRunner.pending = null
+        CoderSession.lines.clear(); CoderSession.lines.addAll(l); shown = 0; inline.drop(); list.removeAllViews()
+        // उस बातचीत का PR अभी खुला हो (merge नहीं) तो वही वापस - वरना साफ़ शुरुआत
+        CoderSession.agent?.let { a ->
+            a.reset()
+            if (t.prNum > 0 && t.prHead.isNotBlank() && t.repo == a.repo) a.restorePr(GitHub.Pull(t.prNum, t.prUrl, t.prHead, t.prBase.ifBlank { a.baseBranch }))
+            CoderSession.savePr(this)
+        }
+        SevenRunner.reopen(this)
+        CoderSession.add("s", "↩ इतिहास से खुली: ${t.title} — इसी में आगे लिखें")
     }
 
     // ---------------------------------------------------------------- 7-एजेंट: मोड + रिपो/branch चुनना
@@ -646,6 +714,8 @@ class CodingActivity : AppCompatActivity() {
         CoderSession.listener = { runOnUiThread { render() } }
         // app दोबारा खुली हो तो पिछला खुला PR (Merge card) वापस लाओ
         if (CoderSession.agent == null && problems().isEmpty()) CoderSession.agentFor(this)
+        // ऐप बंद होने से रुका काम: अपने-आप वहीं से आगे (या "वहीं से आगे" बटन)
+        if (Prefs.coderSeven(this)) SevenRunner.reopen(this)
         render(); keepTyping()
         // 7-एजेंट: बीच में GitHub जोड़ा (token है, रिपो नहीं, नॉर्मल खुद नहीं चुना) → रिपो चुनने का विकल्प
         if (Prefs.coderSeven(this) && !pickerShown && Prefs.ghToken(this).isNotBlank() && !Prefs.ghRepo(this).contains('/') && !Prefs.coderNormal(this)) {
@@ -692,7 +762,32 @@ class CodingActivity : AppCompatActivity() {
         renderSuggestions()
         // badlaav card
         changes.removeAllViews()
-        if (a != null && a.staged.isNotEmpty() && !CoderSession.busy) {
+        val ck = if (!CoderSession.busy && SevenRunner.pending == null) CoderHistory.checkpoint(this)?.takeIf { it.stage == "pause" || it.stage == "run" } else null
+        if (ck != null) {
+            // बीच में रुका काम (ऐप बंद / limit / समय / आपने रोका) - वहीं से आगे
+            changes.visibility = View.VISIBLE
+            changes.addView(TextView(this).apply {
+                text = "⏸ पिछला काम बीच में रुका"; textSize = 14f
+                setTypeface(typeface, Typeface.BOLD); setTextColor(0xFFFFFFFF.toInt())
+            })
+            changes.addView(TextView(this).apply {
+                text = CoderHistory.Logic.title(ck.task) + (if (ck.branch.isNotBlank()) "\nbranch: ${ck.branch}" else "") +
+                    (if (ck.prNum > 0) " • PR #${ck.prNum}" else "") + (if (ck.staged.isNotEmpty()) " • ${ck.staged.size} फ़ाइल के बदलाव बचे" else "") +
+                    "\nनए सिरे से नहीं — जहाँ रुका वहीं से आगे बढ़ेगा।"
+                textSize = 12f; setTextColor(0xCCFFFFFF.toInt()); setPadding(0, (4 * dp).toInt(), 0, (6 * dp).toInt())
+            })
+            val row = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+            row.addView(smallBtn("वहीं से आगे", accent = true) {
+                SevenRunner.resume(this, auto = false)?.let { toast(it) }; render()
+            }, LinearLayout.LayoutParams(0, (40 * dp).toInt(), 1f).apply { marginEnd = (8 * dp).toInt() })
+            row.addView(smallBtn("छोड़ दें") {
+                UiDialog(this, Glass.DIALOG).setTitle("रुका काम छोड़ दें?")
+                    .setMessage("GitHub पर branch/PR जैसे हैं वैसे रहेंगे; बस यह काम आगे नहीं बढ़ेगा।")
+                    .setPositiveButton("छोड़ दो") { _, _ -> SevenRunner.dropResume(this); CoderSession.add("s", "रुका काम छोड़ दिया"); render() }
+                    .setNegativeButton("रुको", null).show()
+            }, LinearLayout.LayoutParams(0, (40 * dp).toInt(), 1f))
+            changes.addView(row)
+        } else if (a != null && a.staged.isNotEmpty() && !CoderSession.busy) {
             changes.visibility = View.VISIBLE
             changes.addView(TextView(this).apply {
                 text = "बदलाव (अभी push नहीं हुए) — ${a.staged.size} फ़ाइल"; textSize = 14f
@@ -785,8 +880,57 @@ class CodingActivity : AppCompatActivity() {
         scroll.post { scroll.smoothScrollTo(0, list.height) }
     }
 
+    /** Emulator screenshot की पट्टी ("i" लाइन): शीर्षक + तस्वीरें, टैप = बड़ी */
+    private fun shotsCard(l: CoderSession.Line) {
+        val (caption, paths) = Shots.parse(l.text)
+        val card = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL; setBackgroundResource(R.drawable.glass_card)
+            val p = (10 * dp).toInt(); setPadding(p, p, p, p)
+        }
+        card.addView(TextView(this).apply { text = caption; textSize = 13f; setTextColor(0xFFFFFFFF.toInt()) })
+        val strip = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+        var any = false
+        paths.forEach { path ->
+            val f = java.io.File(path)
+            val bmp = if (f.exists()) decodeSmall(f, (150 * dp).toInt()) else null
+            if (bmp == null) return@forEach
+            any = true
+            val col = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER_HORIZONTAL }
+            col.addView(android.widget.ImageView(this).apply {
+                setImageBitmap(bmp); adjustViewBounds = true; scaleType = android.widget.ImageView.ScaleType.FIT_CENTER
+                contentDescription = "Emulator screenshot ${Shots.label(f.name)}"
+                setOnClickListener { showBig(f) }
+            }, LinearLayout.LayoutParams((110 * dp).toInt(), (200 * dp).toInt()))
+            col.addView(TextView(this).apply { text = Shots.label(f.name); textSize = 11f; setTextColor(0x99FFFFFF.toInt()); gravity = Gravity.CENTER })
+            strip.addView(col, LinearLayout.LayoutParams(-2, -2).apply { marginEnd = (8 * dp).toInt() })
+        }
+        if (any) card.addView(android.widget.HorizontalScrollView(this).apply { addView(strip); setPadding(0, (6 * dp).toInt(), 0, 0) })
+        else card.addView(TextView(this).apply { text = "(पुरानी तस्वीरें फ़ोन से हट चुकी हैं)"; textSize = 12f; setTextColor(0x99FFFFFF.toInt()) })
+        list.addView(card, LinearLayout.LayoutParams(-1, -2).apply { topMargin = (8 * dp).toInt() })
+        scroll.post { scroll.smoothScrollTo(0, list.height) }
+    }
+
+    private fun decodeSmall(f: java.io.File, maxH: Int): android.graphics.Bitmap? = try {
+        val o = android.graphics.BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        android.graphics.BitmapFactory.decodeFile(f.absolutePath, o)
+        var s = 1; while (o.outHeight / (s * 2) >= maxH) s *= 2
+        android.graphics.BitmapFactory.decodeFile(f.absolutePath, android.graphics.BitmapFactory.Options().apply { inSampleSize = s })
+    } catch (_: Throwable) { null }
+
+    private fun showBig(f: java.io.File) {
+        val bmp = decodeSmall(f, resources.displayMetrics.heightPixels) ?: return
+        val d = android.app.Dialog(this, android.R.style.Theme_Black_NoTitleBar_Fullscreen)
+        d.setContentView(android.widget.ImageView(this).apply {
+            setImageBitmap(bmp); scaleType = android.widget.ImageView.ScaleType.FIT_CENTER; setBackgroundColor(0xFF000000.toInt())
+            contentDescription = "Emulator screenshot ${Shots.label(f.name)} — टैप करके बंद करें"
+            setOnClickListener { d.dismiss() }
+        })
+        d.show()
+    }
+
     private fun bubble(l: CoderSession.Line) {
         if (l.role == "f") { fileCard(l); return }
+        if (l.role == "i") { shotsCard(l); return }
         val mine = l.role == "u"
         val tv = TextView(this).apply {
             text = l.text; setTextIsSelectable(true)

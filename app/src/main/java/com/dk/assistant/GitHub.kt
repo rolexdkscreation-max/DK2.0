@@ -202,6 +202,44 @@ class GitHub(private val token: String) {
         }
     }
 
+    // ---------------------------------------------------------------- Emulator के screenshot (Actions artifact)
+    data class Artifact(val id: Long, val name: String, val expired: Boolean, val size: Long)
+
+    /** एक run के artifacts (जैसे uaag-screenshots, DK-apk) */
+    fun artifacts(repo: String, runId: Long): List<Artifact> {
+        val a = JSONObject(get("/repos/$repo/actions/runs/$runId/artifacts?per_page=30")).optJSONArray("artifacts") ?: JSONArray()
+        return (0 until a.length()).map { a.getJSONObject(it) }
+            .map { Artifact(it.optLong("id"), it.optString("name"), it.optBoolean("expired"), it.optLong("size_in_bytes")) }
+    }
+
+    /**
+     * artifact की zip से तस्वीरें (png/jpg) + छोटी text फ़ाइलें. GitHub zip के लिए दूसरी जगह भेजता है (redirect) -
+     * OkHttp उसे खुद मानता है और दूसरी जगह token नहीं भेजता. [maxImages] से ज़्यादा तस्वीरें नहीं.
+     * @return फ़ाइल-नाम -> bytes
+     */
+    fun artifactFiles(repo: String, artifactId: Long, maxImages: Int = 8): Map<String, ByteArray> {
+        val out = LinkedHashMap<String, ByteArray>()
+        zipHttp.newCall(req("/repos/$repo/actions/artifacts/$artifactId/zip").get().build()).execute().use { resp ->
+            if (!resp.isSuccessful) throw Err(resp.code, if (resp.code == 403 || resp.code == 404)
+                "screenshot नहीं मिले (${resp.code}) — token में Actions: Read की इजाज़त दें" else "screenshot zip नहीं मिली (${resp.code})")
+            val zin = java.util.zip.ZipInputStream(resp.body!!.byteStream())
+            var e = zin.nextEntry
+            var imgs = 0
+            while (e != null) {
+                val n = e.name.substringAfterLast('/')
+                if (!e.isDirectory && n.isNotBlank()) {
+                    val img = Shots.isImage(n)
+                    if ((img && imgs < maxImages) || Shots.isText(n)) {
+                        val b = zin.readBytes()
+                        if (b.size <= 6_000_000) { out[n] = b; if (img) imgs++ }
+                    }
+                }
+                e = zin.nextEntry
+            }
+        }
+        return out
+    }
+
     // ---------------------------------------------------------------- रिपो डॉक्टर: पूरे रिपो की हालत
     private fun iso(t: String): Long = try { java.time.Instant.parse(t).toEpochMilli() } catch (_: Exception) { 0L }
 

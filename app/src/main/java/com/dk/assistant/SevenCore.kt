@@ -47,7 +47,8 @@ When you have read enough reply ONLY:
 Rules: one step = one file + one change. Max 10 steps. Change only what the task needs. Keep every old feature working.
 NAMES: for every function, class, property or variable from ANOTHER file (or another class) that a step will use, put it in that step's "uses" as "path: name".
 List ONLY names you have actually READ in that file. Never guess a name from memory - if you have not read the file that defines it, read it first.
-Never delete or weaken existing tests. Never plan changes to .github/workflows, gradle wrapper, signing/keystore files unless the task says so."""
+Never delete or weaken existing tests. Never plan changes to .github/workflows, gradle wrapper, signing/keystore files unless the task says so.
+TESTS: if the repo already has unit tests (a src/test folder in the file list) and your steps add new logic that does not need the Android screen (a pure function/class), add ONE more step that creates or extends a unit test for that logic, in the same style as the existing tests."""
 
         val CODER = """You are the CODER. Your ONLY job: implement ONE plan step in ONE file. No explanations.
 For an EXISTING file reply exactly:

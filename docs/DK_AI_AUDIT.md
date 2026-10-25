@@ -164,6 +164,16 @@ Important context: the existing app is a mature **View/XML + Kotlin** app (≈31
 | Instagram DM | NOT BUILT | needs testing on a real phone; Instagram posting stays as before |
 | On-phone timing | NOT VERIFIED | log line "तुरंत काम … काम+जाँच X ms" shows the real time |
 
+## v3.70 — कोडिंग एजेंट: इतिहास, "वहीं से आगे", emulator screenshot, 3 Gemini keys
+
+- **इतिहास (History)**: कोडिंग स्क्रीन पर "इतिहास" बटन. हर बातचीत (धागा) फ़ोन में (`filesDir/coder_history`): शीर्षक, शुरू/आख़िरी समय, हाल (चल रहा / मंज़ूरी / पूरा / रुका), रिपो, PR. टैप = वही बातचीत खुलती है और उसी में आगे लिखते हैं (उसका खुला PR भी वापस). लंबा दबाएँ = हटाएँ. सबसे नए 100. (`CoderHistory.kt`)
+- **वहीं से आगे (resume)**: मंज़ूर काम शुरू होते ही चौकी (checkpoint): काम, मंज़ूर समझ, branch, backup, PR, अब तक के बिना-push बदलाव. ऐप/Android ने बीच में बंद किया = अगली बार ऐप खुलते ही (या 6 सेकंड बाद background में) उसी branch/PR/बदलावों से अपने-आप आगे (3 बार तक; फिर बटन). गलती/limit/समय/रोकें = "⏸ पिछला काम बीच में रुका" card + "वहीं से आगे" बटन; "आगे बढ़ो / continue" लिखने से भी. मंज़ूरी वाली समझ भी ऐप बंद होकर खुलने पर "हाँ" का इंतज़ार करती है.
+- **Emulator screenshot ऐप में**: `build.yml` का UAAG कदम गलत package (`com.dk.app`) खोल रहा था - अब `com.dk.assistant/.MainActivity`, 2 screenshot + `status.txt` (चल रहा/crash) + crash log. PR/branch का build पूरा होते ही एजेंट `uaag-screenshots` artifact लाकर कोडिंग स्क्रीन में तस्वीरों की पट्टी दिखाता है (टैप = बड़ी). (`CoderShots.kt`, `GitHub.artifacts/artifactFiles`)
+- **मॉडल**: कोडिंग एजेंट का default `gemini-3.8-flash` (पहले flash-lite था - एक बार बदला). एक key पर क्रम: 3.8 Flash → 3.6 Flash → 3 Flash preview → 3.5 Flash-Lite → 3.1 Flash-Lite (सब free tier, ai.google.dev/gemini-api/docs/pricing).
+- **3 Gemini keys**: Settings → AI दिमाग → कोडिंग एजेंट → Gemini में Key 2 और Key 3. Key 1 के सारे मॉडल की limit खत्म → Key 2 के सारे मॉडल → Key 3. सब खत्म = काम रुकता नहीं, limit खुलने तक रुककर फिर (कुल 12 मिनट तक; फिर भी नहीं = दिन की limit, काम चौकी में बचा). Google limit project पर लगाता है - हर key अलग project की हो.
+- प्लानर: नया pure logic = उसका unit test भी (रिपो में tests हों तो).
+- बैकअप: `backup/v3.70-coder/`. Test: `CoderHistoryResumeTest`.
+
 ## v3.69 — Collapsible settings + per-engine style
 | Item | Status | Notes |
 |---|---|---|
