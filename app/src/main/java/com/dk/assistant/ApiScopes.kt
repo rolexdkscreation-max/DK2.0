@@ -15,7 +15,8 @@ object ApiScopes {
     const val CHAT = "chat"
     const val CODER = "coder"
     const val PC = "pc"
-    val ALL = listOf(LIVE, CHAT, CODER, PC)
+    const val TEACHER = "teacher"
+    val ALL = listOf(LIVE, CHAT, CODER, PC, TEACHER)
 
     /** सारी कंपनियाँ (Providers.all के id) */
     val PROVIDERS = listOf("gemini", "groq", "openrouter", "custom")
@@ -24,7 +25,7 @@ object ApiScopes {
     const val MIGRATED = "api_scopes_v1"
 
     fun title(scope: String) = when (scope) {
-        LIVE -> "DK लाइव"; CHAT -> "DK चैट"; CODER -> "कोडिंग एजेंट"; PC -> "DK कंप्यूटर"; else -> scope
+        LIVE -> "DK लाइव"; CHAT -> "DK चैट"; CODER -> "कोडिंग एजेंट"; PC -> "DK कंप्यूटर"; TEACHER -> "DK टीचर"; else -> scope
     }
 
     /** इस हिस्से में कौन-सी कंपनियाँ (DK लाइव: सिर्फ़ Gemini जवाब/बोलने के लिए + Groq सिर्फ़ सुनने के लिए) */

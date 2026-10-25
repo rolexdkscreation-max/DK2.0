@@ -85,6 +85,7 @@ class SettingsActivity : AppCompatActivity() {
             "brain_chat" -> { title.text = "AI दिमाग • DK चैट"; secBrain() }
             "brain_coder" -> { title.text = "AI दिमाग • कोडिंग एजेंट"; secBrainScope(ApiScopes.CODER) }
             "brain_pc" -> { title.text = "AI दिमाग • DK कंप्यूटर"; secBrainScope(ApiScopes.PC) }
+            "brain_teacher" -> { title.text = "AI दिमाग • DK टीचर"; secBrainScope(ApiScopes.TEACHER) }
             "voice" -> { title.text = "आवाज़"; secVoice() }
             "orb" -> { title.text = "ओर्ब और चेहरा"; bar.visibility = View.GONE; secOrb() }
             "access" -> { title.text = "Accessibility"; secAccess() }
@@ -105,7 +106,7 @@ class SettingsActivity : AppCompatActivity() {
         val items = listOf(
             Triple("profile", "प्रोफ़ाइल", "आपका नाम • असिस्टेंट का नाम ($name) • बात करने का तरीका"),
             Triple("lang", "भाषा / Language", "ऐप: ${if (UiLang.en()) "English" else "हिंदी"} • DK के जवाब: ${Lang.short(Prefs.replyLang(this))}"),
-            Triple("brain", "AI दिमाग", "DK लाइव • DK चैट • कोडिंग एजेंट • DK कंप्यूटर — हर एक की अपनी API key"),
+            Triple("brain", "AI दिमाग", "DK लाइव • DK चैट • कोडिंग एजेंट • DK कंप्यूटर • DK टीचर — हर एक की अपनी API key"),
             Triple("voice", "आवाज़", "बोलने वाला इंजन (Gemini TTS • Edge • Live) • सुनना • सिर्फ़ मेरी आवाज़"),
             Triple("orb", "ओर्ब और चेहरा", "पृथ्वी, गैलेक्सी, एटम, छल्ला, पुरुष/महिला HD चेहरा"),
             Triple("access", "Accessibility", (if (Setup.accessibilityOn(this)) "✓ चालू" else "✗ बंद") + " • फ़ोन कंट्रोल • हमेशा सुनना • कॉल • बैटरी"),
@@ -435,6 +436,7 @@ class SettingsActivity : AppCompatActivity() {
         menuRow("brain_chat", "DK चैट", scopeStatus(ApiScopes.CHAT) + "\nलिखकर चैट, जवाब, Google search, गहरी सोच, कहानी", "brain")
         menuRow("brain_coder", "कोडिंग एजेंट", scopeStatus(ApiScopes.CODER) + "\nकोडिंग टीम: बिल्डर, रिव्यूअर, कोऑर्डिनेटर", "coder")
         menuRow("brain_pc", "DK कंप्यूटर", scopeStatus(ApiScopes.PC) + "\nDK कंप्यूटर के काम और उसकी web search", "computer")
+        menuRow("brain_teacher", "DK टीचर", scopeStatus(ApiScopes.TEACHER) + "\nDK टीचर: स्टेप-बाय-स्टेप पढ़ाई, रिसर्च, व्हाइटबोर्ड", "brain")
     }
 
     /** DK लाइव: सिर्फ़ Google Gemini (Live + बोलना + सुनना) और सुनने के लिए चाहें तो Groq */
