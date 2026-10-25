@@ -153,6 +153,17 @@ Important context: the existing app is a mature **View/XML + Kotlin** app (≈31
 | Offline evaluation | DONE (English only) | LibriSpeech dev-clean, 40 speakers, 5-phrase enrolment: EER 1.6% at 1 s audio, 0.6% full utterance; Kotlin pipeline = Python (cos 0.99999999) |
 | On-phone accuracy / speed | NOT VERIFIED | needs a real phone (Hindi, noise, phone mic) |
 
+## v3.67 — Fast, honest phone actions
+| Item | Status | Notes |
+|---|---|---|
+| "यूट्यूब खोलो और उसपे पवन सिंह का सॉन्ग सर्च करके प्ले कर दो" | FIXED | was routed to *search* with query "उसपे पवन सिंह का सॉन्ग"; now `youtube_play` "पवन सिंह का सॉन्ग" (सॉन्ग/सांग words, उसपे/इसपर particles, "खोलो" stripped from the query) |
+| YouTube first-video lookup | FASTER | `YtPage.firstVideoId` streams the results page and stops at the first `videoRenderer` (was: whole ~1.7 MB page) |
+| No "हो गया" before the work | DONE | `DoneGate` + `GeminiLive`: for an action request Gemini's audio is held until a tool runs / the phone's own fast action succeeds; a success claim before that (or after a tool that only *started* / failed) is not played and Gemini is told to do the task / say the real state |
+| WhatsApp send without asking | DONE (opt-in, default OFF) | Settings → "WhatsApp संदेश"; still checks the message reached the chat before "भेज दिया" |
+| Delete last photo(s)/screenshot(s) | DONE (Android 11+) | `MediaDelete` + `DeleteMediaActivity`: Android's own Allow box, moved to trash (30-day undo), re-checked; only via Gemini `phone_task`, never from the instant path; Android 10 and older: honest "not possible" |
+| Instagram DM | NOT BUILT | needs testing on a real phone; Instagram posting stays as before |
+| On-phone timing | NOT VERIFIED | log line "तुरंत काम … काम+जाँच X ms" shows the real time |
+
 ## Deviations decided for this repo
 1. Package stays `com.dk.assistant` (existing installs must keep updating).
 2. Existing View screens are kept (Step 5). No Compose rewrite of working screens.

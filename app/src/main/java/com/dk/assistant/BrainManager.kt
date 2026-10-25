@@ -420,7 +420,7 @@ class BrainManager(private val ctx: Context) {
             append(TALK_RULES)
             append(TalkStyle.EMOTION)   // v3.59: आवाज़ में असली भावना
             append(TalkStyle.FRIEND_HI) // v3.60: मालिक का लिखा "करीबी दोस्त" हिस्सा (शब्दशः)
-            append(TalkStyle.NATURAL)   // v3.51: इंसान जैसी बात, झूठा "कर दिया" नहीं, notification/रुकने के नियम
+            append(TalkStyle.NATURAL); append(DoneGate.PROMPT)   // v3.67: पहले tool, फिर "हो गया बॉस" • v3.51: इंसान जैसी बात, झूठा "कर दिया" नहीं, notification/रुकने के नियम
             append(Memory.factsBlock(ctx))
             // v3.46: "सच्चा दोस्त" स्वभाव + बातचीत की याद अब आवाज़ (Live) में भी (पहले सिर्फ़ chat में जुड़ा था)
             if (Prefs.friendMode(ctx)) append("\n").append(FriendStyle.persona(f, user)).append(FriendTalk.block(ctx))

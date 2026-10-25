@@ -38,7 +38,8 @@ object LiveFast {
     }
 
     fun ok(type: String, r: String) = !r.startsWith("ERROR") && !r.startsWith("ASK:") && !r.startsWith("STEP_FAILED") &&
-        !(type == "youtube_play" && !r.startsWith("PLAYING") && !r.startsWith("VIDEO_OPENED"))
+        !(type == "youtube_play" && !r.startsWith("PLAYING") && !r.startsWith("VIDEO_OPENED")) &&
+        !(type == "delete_media" && !r.startsWith("DELETED:"))
 
     /** Gemini को tool का सच्चा नतीजा (कभी "done" झूठ नहीं) */
     fun quickResult(q: QuickCommands.Quick, r: String, already: Boolean): String {
@@ -65,6 +66,7 @@ object LiveFast {
         "call_contact" -> "call ${a.optString("name")}"
         "call_log" -> "opened recent calls"
         "gallery_latest" -> "opened the latest photo"
+        "delete_media" -> "moved the last ${a.optInt("count", 1)} ${a.optString("kind", "photo")}(s) to trash"
         "steps" -> a.optJSONArray("steps")?.let { arr -> (0 until arr.length()).mapNotNull { arr.optJSONObject(it)?.let { o -> describe(o) } }.joinToString(", then ") } ?: "steps"
         else -> a.optString("type").replace('_', ' ')
     }

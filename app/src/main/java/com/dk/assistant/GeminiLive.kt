@@ -274,6 +274,18 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
     /** इस जवाब को न बजाओ, न कोई काम करो - वह किसी और की आवाज़ का है */
     @Volatile private var muteTurn = false
     @Volatile private var muteAt = 0L
+    // v3.67 (DoneGate): काम वाली बात पर Gemini की आवाज़ असली काम दिखने तक रोकी जाती है - झूठा "हो गया" बजता ही नहीं
+    @Volatile private var actHold = false
+    @Volatile private var actEvidence = false
+    private val actHeld = ArrayList<ByteArray>()
+    @Volatile private var actHeldBytes = 0
+    @Volatile private var actTextFrom = 0
+    @Volatile private var lastFastOkAt = 0L
+    @Volatile private var actDropped = 0
+    @Volatile private var actReleased = 0
+    /** tool ने कहा "अभी हुआ नहीं" (शुरू हुआ / गड़बड़) - उसके बाद की बात फिर जाँचो */
+    @Volatile private var actPending = false
+    @Volatile private var actAfterTool = false
     @Volatile private var othersIgnored = 0
     @Volatile private var mutedParts = 0L
     @Volatile private var earlyEnds = 0
@@ -1088,6 +1100,9 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
             lastServerAt = System.currentTimeMillis()
             // v3.66: किसी और की आवाज़ पर बना काम - कुछ मत करो (फ़ोन पर कोई काम नहीं), Gemini को बता दो
             if (muteTurn) { ignoreTools(it); return@let }
+            // v3.67: tool से पहले बोला "कर दिया" = झूठ (काम अभी शुरू हुआ) - वह हिस्सा नहीं बजता; "ठीक है बॉस" बजता है
+            if (actHold) { if (DoneGate.beforeTool(heldActText()) == DoneGate.Verdict.DROP) dropAct("tool से पहले") else releaseAct("tool आया") }
+            actEvidence = true
             timeline.event(lastServerAt); replyWatch.onServerAnswered(); lastToolAt = lastServerAt; runTools(it)
         }
         o.optJSONObject("toolCallCancellation")?.optJSONArray("ids")?.let { a ->
@@ -1146,6 +1161,7 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
                     turnRecvBytes = 0; turnPlayedBytes = 0; shownReply = ""
                     // user ki baat yahin tak - aage jo bole woh nayi baat
                     caption?.closeUtterance()?.takeIf { it.isNotBlank() }?.let { turnUser = it; userDone = false }
+                    beginActHold()
                 }
                 timeline.audio(System.currentTimeMillis())
                 if (firstAudioAt == 0L) {
@@ -1158,6 +1174,11 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
                         if (lastToolAt < from && toolJobs.isEmpty() && model.isNotBlank()) Prefs.recordLiveLatency(svc, model, lastLatency)
                     }
                 }
+                if (actPending && !actHold) {
+                    actPending = false; actAfterTool = true
+                    actTextFrom = synchronized(turnLock) { replyText.length }; actHold = true
+                }
+                if (actHold) { holdAct(pcm); continue }
                 turnRecvBytes += pcm.size
                 playQ.offer(pcm)
             }
@@ -1191,6 +1212,7 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
             val newAfterBarge = localBargeAt > 0 && now - localBargeAt < 10_000 && timeline.speechEndAt > localBargeAt
             if (timeline.active && !newAfterBarge) { timeline.done(now); log("turn (interrupted): ${timeline.summary()}") }
             if (trace.firstPlayAt == 0L) trace.firstChunkAt = 0L
+            clearAct()
             flushPlayback()
             // close=false: user abhi bol raha hai (toka hai) - uski nayi baat band mat karo
             if (turnActive) finishTurn(close = false)
@@ -1204,6 +1226,7 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
         } else if (sc.optBoolean("turnComplete")) {
             val wasDropping = dropOld
             dropOld = false
+            if (actHold) endActHold()
             if (timeline.active) { timeline.done(System.currentTimeMillis()); log("turn पूरा: ${timeline.summary()}") }
             finishTurn()
             if (wasDropping) commitPending(false)   // toka hua jawab: sirf jitna bola utna hi chat me
@@ -1213,7 +1236,7 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
     }
 
     private fun startTurn() {
-        turnActive = true; routeDedupe.reset()
+        turnActive = true; routeDedupe.reset(); clearAct(); actEvidence = false
         synchronized(turnLock) { userText.clear(); replyText.clear(); turnSources = emptyList() }
     }
 
@@ -1491,6 +1514,8 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
                     JSONObject().put("id", id).put("name", name).put("response", JSONObject().put("result", result.take(if (name == "deep_think") 4000 else 1500))))))
                 log("tool $name ${(System.currentTimeMillis() - tStart)} ms: ${result.take(80)}")
                 if (name != "remember_fact") lastEvidenceAt = System.currentTimeMillis()
+                // v3.67: नतीजा "अभी हुआ नहीं" -> इसके बाद Gemini "हो गया" बोले तो वह नहीं बजेगा
+                if (name != "remember_fact" && name != "task_status" && DoneGate.notDoneYet(result)) actPending = true
                 // ab se deri ginti: tool ka jawab bheja -> pehli awaaz (tool ka samay alag dikhta hai)
                 eosAt = System.currentTimeMillis(); firstAudioAt = 0
                 val cur = ws
@@ -1527,6 +1552,14 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
         if (com.dk.assistant.agent.social.WaRoute.isWhatsAppSend(req)) {
             log("रूटर: WhatsApp मैसेज -> whatsapp_task")
             return com.dk.assistant.agent.social.WaRoute.redirect(req)
+        }
+        // v3.67: "आखिरी फोटो/स्क्रीनशॉट डिलीट करो" = सीधे फ़ोन पर; Android खुद Allow पूछता है, फिर जाँच कि सच में ट्रैश में गई
+        LocalRouter.deleteMedia(req)?.let { q ->
+            DKState.set(Mode.WORKING)
+            val t0 = System.currentTimeMillis()
+            val r = try { svc.perform(q.action) } catch (e: CancellationException) { throw e } catch (e: Exception) { "ERROR ${e.message}" }
+            log("phone_task मिटाना (बिना AI एजेंट) ${System.currentTimeMillis() - t0} ms: ${r.substringBefore(':')}")
+            return LiveFast.quickResult(q, r, already = false)
         }
         val wake = Prefs.wakeWords(svc)
         val fg = svc.currentPackage()
@@ -1859,6 +1892,80 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
         if (DKState.mode != Mode.WORKING) setMode(Mode.THINKING)
     }
 
+    // ================================================================ v3.67: DoneGate (सच्चा "हो गया")
+    /** जवाब की पहली आवाज़: यूज़र ने काम कहा और अभी तक कोई असली काम नहीं दिखा -> आवाज़ रोको */
+    private fun beginActHold() {
+        clearAct()
+        // यूज़र की बात नहीं (SYSTEM NOTE से बना जवाब, जैसे "संदेश भेज दिया" वाला) = रोकना नहीं
+        val u = turnUser.ifBlank { synchronized(turnLock) { userText.toString() } }
+        actAfterTool = false
+        val now = System.currentTimeMillis()
+        val ev = actEvidence || toolJobs.isNotEmpty() || now - lastFastOkAt < DoneGate.FAST_EVIDENCE_MS
+        if (ev || !DoneGate.isAction(u)) return
+        actTextFrom = synchronized(turnLock) { replyText.length }
+        actHold = true
+    }
+
+    private fun heldActText(): String = synchronized(turnLock) { if (replyText.length > actTextFrom) replyText.substring(actTextFrom) else "" }
+
+    private fun holdAct(pcm: ByteArray) {
+        synchronized(actHeld) { actHeld.add(pcm) }
+        actHeldBytes += pcm.size
+        // इतनी देर कोई दावा नहीं = आम बात (लंबा जवाब/सवाल) - रोकना बंद, बजाओ
+        if (actHeldBytes >= OUT_RATE * 2 * DoneGate.HOLD_MAX_MS / 1000 && !HonestGuard.claimsDone(heldActText())) releaseAct("आम बात")
+    }
+
+    private fun releaseAct(why: String) {
+        val l = synchronized(actHeld) { actHeld.toList().also { actHeld.clear() } }
+        actHold = false; actHeldBytes = 0
+        if (l.isEmpty()) return
+        actReleased++
+        for (b in l) { turnRecvBytes += b.size; playQ.offer(b) }
+        log("काम की बात: रोकी आवाज़ बजाई ($why, ${l.sumOf { it.size } * 1000 / (OUT_RATE * 2)} ms)")
+    }
+
+    private fun dropAct(why: String): String {
+        val t = heldActText()
+        val n = synchronized(actHeld) { actHeld.sumOf { it.size }.also { actHeld.clear() } }
+        actHold = false; actHeldBytes = 0
+        synchronized(turnLock) { if (replyText.length > actTextFrom) replyText.setLength(actTextFrom) }
+        actDropped++
+        log("सच-जाँच: काम होने से पहले का \"हो गया\" नहीं बजाया ($why, ${n * 1000 / (OUT_RATE * 2)} ms छोड़े)")
+        return t
+    }
+
+    private fun clearAct() { synchronized(actHeld) { actHeld.clear() }; actHold = false; actHeldBytes = 0; actPending = false; actAfterTool = false }
+
+    /** बारी खत्म और आवाज़ अब भी रुकी है: tool नहीं आया */
+    private fun endActHold() {
+        val fj = fastJob
+        if (fj?.isActive == true) {
+            // फ़ोन वही काम अभी कर रहा है (Gemini से पहले वाला रास्ता) - उसका नतीजा आने तक रुको, फिर तय करो
+            val keep = synchronized(actHeld) { actHeld.toList().also { actHeld.clear() } }
+            val said = heldActText()
+            actHold = false; actHeldBytes = 0
+            svc.scope.launch {
+                withTimeoutOrNull(8_000) { fj.join() }
+                val ok = System.currentTimeMillis() - lastFastOkAt < DoneGate.FAST_EVIDENCE_MS
+                if (ok || !HonestGuard.claimsDone(said)) {
+                    actReleased++; for (b in keep) { turnRecvBytes += b.size; playQ.offer(b) }
+                    log("काम की बात: फ़ोन ने काम कर दिया - रोकी आवाज़ बजाई")
+                } else {
+                    actDropped++; log("सच-जाँच: फ़ोन का काम नहीं हुआ - \"हो गया\" नहीं बजाया")
+                    visionNote(DoneGate.dropNote(said), evidence = false)
+                }
+            }
+            return
+        }
+        val said = heldActText()
+        val after = actAfterTool
+        if (DoneGate.decide(said, actEvidence && !after) == DoneGate.Verdict.DROP) {
+            dropAct(if (after) "काम अभी पूरा नहीं, फिर भी \"हो गया\"" else "बारी खत्म, कोई काम नहीं चला")
+            lastGuardAt = System.currentTimeMillis()          // HonestGuard दोबारा वही सुधार न भेजे
+            visionNote(if (after) DoneGate.pendingNote(said) else DoneGate.dropNote(said), evidence = false)
+        } else releaseAct("बारी खत्म, कोई दावा नहीं")
+    }
+
     /**
      * v3.29: बात खत्म -> caption का text 650ms में स्थिर हो और सीधा काम हो (ऐप खोलो, टॉर्च, आवाज़, YouTube पर चलाओ…)
      * तो Gemini के सोचने/tool call का इंतज़ार किए बिना तुरंत करो. Gemini बाद में वही phone_task माँगे तो दोबारा नहीं (Memo).
@@ -1894,6 +2001,7 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
             val t0 = System.currentTimeMillis()
             val r = try { svc.perform(q.action) } catch (e: CancellationException) { throw e } catch (e: Exception) { "ERROR ${e.message}" }
             fastMemo.finish(q, r); fastN++
+            if (LiveFast.ok(q.action.optString("type"), r) && !r.startsWith("VIDEO_OPENED")) lastFastOkAt = System.currentTimeMillis()
             log("तुरंत काम (Gemini से पहले) \"${b.take(40)}\" -> ${q.action.optString("type")} = ${r.take(60)} (वर्गीकरण $classMs ms, काम+जाँच ${System.currentTimeMillis() - t0} ms)")
         }
     }

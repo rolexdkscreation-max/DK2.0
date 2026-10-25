@@ -89,7 +89,7 @@ object HonestGuard {
     /** काम पूरा होने का दावा ("खोल दिया", "भेज दिया", "कर दिया", "सेट कर दिया", "done") */
     private val CLAIM = Regex(
         "(खोल|भेज|लगा|डाल|बंद|चालू|ऑन|ऑफ|सेट|सेव|डिलीट|मिटा|हटा|बजा|चला|कट|काट|उठा|कर|रख|जोड़|शेयर|बढ़ा|घटा|कम)\\s*(कर\\s*)?(दिया|दी|दिए|दिये|लिया|ली|चुका|चुकी)" +
-            "|काम\\s*(हो\\s*)?(गया|पूरा)|(?i)\\b(i have|i've|i just)\\s+(sent|opened|called|done|set|saved|turned|played|deleted)\\b|(?i)\\bdone\\b"
+            "|काम\\s*(हो\\s*)?(गया|पूरा)|(^|\\s)हो\\s*(गया|गई|गयी)(?=\\s|$|[,।.!])|(?i)\\bho\\s*gaya\\b|(?i)\\b(i have|i've|i just)\\s+(sent|opened|called|done|set|saved|turned|played|deleted)\\b|(?i)\\bdone\\b"
     )
     /** सवाल / इनकार / आगे करने की बात = दावा नहीं */
     private val NOT_CLAIM = Regex("नहीं|नही|(^|\\s)(ना|मत)(\\s|$)|पाया|पाई|सकता|सकती|करूँ|करूं|दूँ|दूं|क्या|\\?|तुमने|आपने|तूने|उसने|उन्होंने|" +
@@ -199,4 +199,78 @@ object TalkStyle {
 
     /** पुराना LocalBrain अभिवादन (बिना AI) - दफ़्तरी "क्या करूँ?" नहीं */
     fun greetReplies(n: String) = listOf("नमस्ते$n! कैसे हो?", "हाँ$n, बोलो।")
+}
+
+/**
+ * v3.67: "काम हुआ ही नहीं और DK पहले ही "हो गया" बोल देता है" - जड़ से।
+ * पहले: झूठा "कर दिया" बज जाने के *बाद* सुधार (HonestGuard) - पर यूज़र सुन चुका होता था।
+ * अब: यूज़र ने कोई काम कहा (खोलो / चलाओ / भेजो / डिलीट…) तो Gemini की आवाज़ तब तक रोक कर रखी जाती है
+ * जब तक उस बारी में असली काम (tool call / फ़ोन पर पहले ही हुआ काम) न दिखे.
+ *   - tool आया और पहले वाली बात में "कर दिया" था -> वह हिस्सा बजता ही नहीं; tool का सच्चा नतीजा बाद में बोला जाता है
+ *   - tool आया और पहले वाली बात "ठीक है बॉस, कर रहा हूँ" जैसी थी -> तुरंत बजती है (काम साथ में चलता है)
+ *   - बारी खत्म, tool नहीं, और "कर दिया" का दावा -> नहीं बजता, Gemini को सुधार (असली tool चलाए)
+ *   - बारी खत्म, कोई दावा नहीं (जैसे "किसको भेजूँ?") -> बजती है
+ */
+object DoneGate {
+    /** इतनी आवाज़ (ms) बिना किसी दावे के = आम बात है, रोकना बंद (लंबा जवाब न अटके) */
+    const val HOLD_MAX_MS = 2_500
+    /** फ़ोन ने (Gemini से पहले) काम कर दिया - इतनी देर तक उसका "हो गया" सच है */
+    const val FAST_EVIDENCE_MS = 15_000L
+
+    private val ACT = Regex(
+        "खोल|चला|प्ले|play|बजा|लगा|भेज|send|मैसेज|मेसेज|message|msg|कॉल|call|फ़ोन लगा|फोन लगा|डायल|dial|डिलीट|delete|मिटा|हटा|" +
+            "बंद कर|चालू कर|ऑन कर|ऑफ कर|ऑन|ऑफ|turn on|turn off|सेट|set|सेव|save|शेयर|share|पोस्ट|post|डाउनलोड|download|अलार्म|alarm|" +
+            "टॉर्च|torch|वॉल्यूम|volume|ब्राइटनेस|brightness|वाई-?फ़ाई|वाईफाई|wifi|ब्लूटूथ|bluetooth|रिप्लाई|reply|जवाब दे|" +
+            "open|kholo|chalao|bhejo|bajao|lagao|mita|hata|band karo|chalu karo",
+        RegexOption.IGNORE_CASE
+    )
+    private val QUESTION = Regex("(^|\\s)(क्या|kya|क्यों|kyon|kyu|कैसे|kaise|कब|kab|कितना|kitna|कौन|kaun)(\\s|$)|\\?", RegexOption.IGNORE_CASE)
+
+    /** यूज़र ने फ़ोन पर कोई काम कहा? (सवाल नहीं - "क्या तुमने भेजा?" पर रोक नहीं) */
+    fun isAction(user: String): Boolean {
+        val t = user.trim()
+        if (t.length < 3 || QUESTION.containsMatchIn(t)) return false
+        return ACT.containsMatchIn(t)
+    }
+
+    enum class Verdict { PLAY, DROP }
+
+    /** रोकी हुई आवाज़ का क्या करें. evidence = इस बारी में tool आया / फ़ोन ने काम पहले ही कर दिया */
+    fun decide(heldText: String, evidence: Boolean): Verdict =
+        if (!evidence && HonestGuard.claimsDone(heldText)) Verdict.DROP else Verdict.PLAY
+
+    /** tool आने पर: tool से *पहले* बोला गया "कर दिया" हमेशा झूठा (काम अभी शुरू हुआ है) */
+    fun beforeTool(heldText: String): Verdict = if (HonestGuard.claimsDone(heldText)) Verdict.DROP else Verdict.PLAY
+
+    /** Gemini को: झूठा "हो गया" नहीं बजाया - अभी असली काम करो */
+    fun dropNote(said: String): String =
+        "SYSTEM NOTE (this is not the user speaking): your last reply \"${said.take(140)}\" claimed the task was done, but NO tool ran, " +
+            "so nothing happened on the phone - DK did NOT play that reply to the user. Do the task now with the right tool " +
+            "(phone_task / whatsapp_task / …), and only after its DONE result tell the user in one short line (e.g. \"हो गया बॉस\"). " +
+            "If something needed is missing (whom / what text), ask the user instead."
+
+    /** tool का नतीजा "अभी हुआ नहीं" (शुरू हुआ / कतार में / गड़बड़ / पक्का नहीं) - तब भी "हो गया" झूठ है */
+    fun notDoneYet(result: String): Boolean {
+        val r = result.trim()
+        val l = r.lowercase()
+        if (listOf("STILL RUNNING", "STARTED", "FAILED", "NEEDS USER CHOICE", "DELETE_UNVERIFIED", "ERROR").any { r.startsWith(it) }) return true
+        if (listOf("confirmed", "cancelling", "resuming", "waiting_confirmation", "running").any { l.contains("\"status\":\"$it\"") }) return true
+        return r.startsWith("Started") || r.startsWith("Queued") || l.contains("\"status\":\"started\"") || l.contains("forge_started") ||
+            l.startsWith("not_done") || l.startsWith("tool failed") || r.startsWith("VIDEO_OPENED") || r.startsWith("Could not") ||
+            HonestGuard.actionFailed(r) || l.contains("\"error\"")
+    }
+
+    /** Gemini को: काम सिर्फ़ शुरू हुआ / नहीं हुआ और तुमने "हो गया" कहा - वह नहीं बजाया */
+    fun pendingNote(said: String): String =
+        "SYSTEM NOTE (this is not the user speaking): you said \"${said.take(140)}\" as if it was done, but the tool result said it is NOT done " +
+            "(only started / waiting / failed / not verified) - DK did NOT play that to the user. Tell the user the real state in one short line " +
+            "(e.g. \"भेज रहा हूँ बॉस, हो जाने पर बताता हूँ\" or what failed). Say \"हो गया\" only after a SYSTEM NOTE/tool result says completed."
+
+    /** Live prompt: काम = पहले tool, फिर एक छोटी पक्की लाइन */
+    const val PROMPT = "\nACTIONS (very important): when the user asks you to DO something on the phone, call the tool FIRST and say nothing " +
+        "that claims success before its result - at most a 2-word ack like \"ठीक है बॉस\". After the tool returns DONE/PLAYING/COMPLETED, confirm " +
+        "in ONE short natural line (e.g. \"हो गया बॉस, चला दिया\" / \"भेज दिया बॉस\"). If the result says failed / not verified / waiting, say exactly that " +
+        "honestly - never \"हो गया\". Anything you say claiming success before a tool result is muted by the phone. " +
+        "To delete the user's last photo(s)/screenshot(s) call phone_task right away (e.g. \"आखिरी 2 फोटो डिलीट करो\") - Android itself shows an " +
+        "Allow box, so do not ask first; say \"मिटा दी\" only if the result says DELETED."
 }
