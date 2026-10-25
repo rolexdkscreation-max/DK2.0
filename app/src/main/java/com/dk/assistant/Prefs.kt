@@ -119,10 +119,11 @@ object Prefs {
     fun autoUpdate(c: Context) = sp(c).getBoolean("auto_update", true)
     fun lastUpdateCheck(c: Context) = sp(c).getLong("upd_checked", 0L)
     fun liveMode(c: Context) = sp(c).getBoolean("live_mode", false)
-    /** orb ka aakaar: earth, galaxy, atom, dna, torus, face_male, face_female */
+    /** orb ka aakaar: earth, galaxy, atom, torus, geodesic, knot, dyson, face_male, face_female */
     /** Beech ka orb chhota (minimize) kiya hua hai? */
     fun orbMin(c: Context) = sp(c).getBoolean("orb_min", false)
-    fun orbStyle(c: Context) = sp(c).getString("orb_style", "earth") ?: "earth"
+    /** v3.65: हटाया गया आकार (dna/tesseract/wormhole/sphere3d) या अनजान -> earth */
+    fun orbStyle(c: Context) = Shapes.valid(sp(c).getString("orb_style", "earth"))
     /** v3.57: DK सुन/बोल रहा हो तो स्क्रीन के किनारों पर चमक */
     fun edgeGlow(c: Context) = sp(c).getBoolean("edge_glow", true)
     /** v3.58: पहली बार का परिचय पूरा/छोड़ा (पुराने उपयोगकर्ता पर अपने-आप true) */

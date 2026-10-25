@@ -87,7 +87,7 @@ Important context: the existing app is a mature **View/XML + Kotlin** app (≈31
 | Item | Status | Notes |
 |---|---|---|
 | Theme / glass design | EXISTS-PARTIAL | own "liquid glass" design (`Glass`, `LiquidGlass`, `Shapes`), not the "pearl of light" tokens |
-| Orb with styles | DONE (Part 10) | old `OrbView` styles kept; new style `sphere3d` = AGSL `RuntimeShader` sphere (`fx/Sphere3D`: normals, fbm interior, diffuse+specular, fresnel rim, halo, tilt-following light via accelerometer low-pass, per-state palette/amplitude in `fx/OrbLook`). Android < 13 or shader failure → dot Earth orb. System animations off → frozen |
+| Orb with styles | DONE (Part 10, v3.65) | dot styles in `Shapes`: earth, galaxy, atom, torus, geodesic, knot, dyson, face_male, face_female. v3.65: owner removed `dna`, `tesseract`, `wormhole` and the AGSL `sphere3d` (`fx/Sphere3D` deleted); a saved removed style falls back to earth (`Shapes.valid`). Faces = `FaceHD` on the MediaPipe canonical face mesh (`FaceMeshData`, Apache-2.0), 3200 dots with per-dot lighting (`Cloud.lum`); other styles draw 1400 dots and pad the rest as hidden. System animations off → frozen edge glow (`fx/Motion`) |
 | Splash | EXISTS-OK | `DKSplash` (once per process, skipped when animations are off) — unchanged |
 | Listening edge glow + overlay | DONE (Part 10) | `fx/EdgeGlowView` (~26dp, violet listening/thinking, pink speaking, red reserved for errors) added by the accessibility service as a non-touchable `TYPE_ACCESSIBILITY_OVERLAY` — covers DK's own screens and other apps, no extra overlay permission. Toggle: Settings → ओर्ब → किनारों की चमक (default on). Rules in `EdgeGlowRules` |
 | Home, Chat, Voice, Memory/History, Settings, Debug | EXISTS-OK | View-based |

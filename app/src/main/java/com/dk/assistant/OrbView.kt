@@ -17,7 +17,7 @@ import kotlin.math.sin
 import kotlin.random.Random
 
 /**
- * 3D orb: chhote-chhote dots se bane aakaar (prithvi, galaxy, atom, DNA, chhalla, purush/mahila chehra).
+ * 3D orb: chhote-chhote dots se bane aakaar (prithvi, galaxy, atom, chhalla, jaali, gaanth, dyson, purush/mahila HD chehra).
  * Aakaar badalne par dots bikhar kar ude aur naya aakaar banate hain ("apna chehra dikhao" animation).
  * Rang DK ki haalat se: neela = taiyaar, laal = sun raha, baingani = soch raha, hara = kaam, firozi = bol raha
  */
@@ -31,11 +31,6 @@ class OrbView @JvmOverloads constructor(
 
     /** Settings me preview ke liye - null ho to Prefs wala aakaar */
     var previewStyle: String? = null
-
-    /** v3.57: shader वाला गोला (सिर्फ़ Android 13+, "sphere3d" चुना हो तो) */
-    private var sphere: com.dk.assistant.fx.Sphere3D? = null
-    /** shader एक बार फ़ेल हुआ तो इस view में दोबारा कोशिश नहीं - डॉट वाला ओर्ब */
-    private var sphereBroken = false
 
     private var n = 0
     // from (purana aakaar) -> to (naya aakaar)
@@ -135,17 +130,6 @@ class OrbView @JvmOverloads constructor(
         val mode = DKState.mode
 
         val want = wanted()
-        // v3.57 (Part 10): असली रोशनी वाला 3D गोला (Android 13+); पुराने फ़ोन पर डॉट वाला पृथ्वी ओर्ब
-        if (want == com.dk.assistant.fx.OrbLook.STYLE && !mini && !sphereBroken && com.dk.assistant.fx.Motion.shaderOk) {
-            val sp = sphere ?: try { com.dk.assistant.fx.Sphere3D(context).also { sphere = it; it.start() } } catch (_: Throwable) { null }
-            if (sp != null) {
-                try {
-                    sp.draw(c, width.toFloat(), height.toFloat(), mode, DKState.level, t, dt)
-                    postInvalidateOnAnimation()
-                    return
-                } catch (_: Throwable) { sphere = null; sphereBroken = true }
-            }
-        } else if (sphere != null) { sphere?.stop(); sphere = null }
         if (want != target) morphTo(want)
         val cl = cloud
         val isFace = cl.sway
@@ -263,17 +247,21 @@ class OrbView @JvmOverloads constructor(
                 val depth = ((z2 + 1f) / 2f).coerceIn(0f, 1f)
                 val e = if (!morphing) 1f else ((p - delay[i] * 0.35f) / 0.65f).coerceIn(0f, 1f)
                 val k = (if (e > 0.5f) cl.kind[i] else kFrom[i]).toInt()
-                val a: Int; val col: Int; val sc: Float
+                if (k == Shapes.HIDDEN) continue      // v3.65: सामान्य आकार में बचे डॉट छिपे (पहले जैसी रफ़्तार)
+                val a0: Int; val col: Int; val sc: Float
                 when (k) {
-                    1 -> { a = (80 + 175 * pw16(depth)).toInt(); col = lerpColor(faceB, Color.WHITE, 0.25f * depth); sc = 1.25f }
-                    2 -> { a = (150 + 105 * depth).toInt(); col = lerpColor(faceB, Color.WHITE, 0.6f); sc = 1.15f }
-                    3 -> { a = (120 + 135 * depth).toInt(); col = lerpColor(faceB, tint, 0.5f); sc = 1.15f }
-                    4 -> { a = (45 + 150 * pw13(depth)).toInt(); col = lerpColor(faceA, faceB, 0.35f); sc = 0.8f }
+                    1 -> { a0 = (80 + 175 * pw16(depth)).toInt(); col = lerpColor(faceB, Color.WHITE, 0.25f * depth); sc = 1.25f }
+                    2 -> { a0 = (150 + 105 * depth).toInt(); col = lerpColor(faceB, Color.WHITE, 0.6f); sc = 1.15f }
+                    3 -> { a0 = (120 + 135 * depth).toInt(); col = lerpColor(faceB, tint, 0.5f); sc = 1.15f }
+                    4 -> { a0 = (45 + 150 * pw13(depth)).toInt(); col = lerpColor(faceA, faceB, 0.35f); sc = 0.8f }
                     else -> {
-                        a = if (isFace && !morphing) (30 + 150 * pw14(depth)).toInt() else (18 + 100 * pw16(depth)).toInt()
+                        a0 = if (isFace && !morphing) (30 + 150 * pw14(depth)).toInt() else (18 + 100 * pw16(depth)).toInt()
                         col = faceA; sc = 0.7f
                     }
                 }
+                // v3.65: चेहरे पर रोशनी-छाया (lum) - बाकी आकारों में lum = 1, कोई फ़र्क नहीं
+                val lm = if (e > 0.5f) cl.lum[i] else 1f
+                val a = if (lm >= 0.999f) a0 else (a0 * (if (k == 0 || k == 4) 0.35f + 0.65f * lm else 0.7f + 0.3f * lm)).toInt()
                 dot.color = withAlpha(col, a)
                 c.drawCircle(sx[i], sy[i], dotR * (0.45f + 0.75f * depth) * sc, dot)
             }
@@ -345,12 +333,13 @@ class OrbView @JvmOverloads constructor(
     }
 
     override fun onAttachedToWindow() { super.onAttachedToWindow(); lastT = 0L; cacheT = 0L; invalidate() }
-    override fun onDetachedFromWindow() { sphere?.stop(); sphere = null; super.onDetachedFromWindow() }
+    override fun onDetachedFromWindow() { super.onDetachedFromWindow() }
     /** chhupa tha, phir dikha -> animation dobara (chhupe hue me koi kaam nahi) */
     override fun onVisibilityAggregated(isVisible: Boolean) { super.onVisibilityAggregated(isVisible); if (isVisible) { lastT = 0L; invalidate() } }
 
     companion object {
-        const val FULL_DOTS = 1400
+        /** v3.65: चेहरे (HD) के लिए 3200; बाकी आकार 1400 ही दिखाते हैं (Shapes.PLAIN_DOTS), बचे छिपे */
+        const val FULL_DOTS = 3200
         const val MINI_DOTS = 320
         private const val LUT = 64
         private val P16 = FloatArray(LUT + 1) { (it / LUT.toFloat()).toDouble().pow(1.6).toFloat() }

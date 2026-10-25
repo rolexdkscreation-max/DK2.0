@@ -43,3 +43,9 @@ Reply (any HTTP status; 4xx without JSON counts as "not active"):
 | Network error during check | **fail open** — the last known state is kept |
 
 The key is stored only in private app storage (`dk_access_key` SharedPreferences) and is never written to the log.
+
+## तीसरे पक्ष का डेटा (Third-party data)
+
+- **MediaPipe canonical face model** (`app/src/main/java/com/dk/assistant/FaceMeshData.kt`) - इंसानी चेहरे के 3D ढाँचे के बिंदु, त्रिकोण और रेखाएँ।
+  स्रोत: https://github.com/google-ai-edge/mediapipe (`mediapipe/modules/face_geometry/data/canonical_face_model.obj`, `mediapipe/python/solutions/face_mesh_connections.py`)।
+  Copyright The MediaPipe Authors. Apache License 2.0 - https://www.apache.org/licenses/LICENSE-2.0
