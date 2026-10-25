@@ -59,6 +59,9 @@ class SpeechPipeline(private val ctx: Context, private val hooks: Hooks) {
     @Volatile private var speaking = false
     @Volatile private var released = false
     @Volatile private var lastWarmAt = 0L
+    /** v3.71: इस बारी के पहले वाक्य की आवाज़ इंजन से कब बनकर आई (देरी का हिसाब) */
+    @Volatile var firstSegPcmAt = 0L
+        private set
     private val spoken = StringBuilder()
     @Volatile private var track: AudioTrack? = null
     private var trackUsage = -1
@@ -216,7 +219,7 @@ class SpeechPipeline(private val ctx: Context, private val hooks: Hooks) {
         if (s.phone || waitPhone(s)) {
             markSpeaking()
             noteSpoken(s.text)
-            if (firstPending) { firstPending = false; hooks.onFirstAudio(System.currentTimeMillis(), "phone") }
+            if (firstPending) { firstPending = false; firstSegPcmAt = System.currentTimeMillis(); hooks.onFirstAudio(firstSegPcmAt, "phone") }
             runBlocking { try { hooks.phoneSay(s.text) } catch (_: Exception) {} }
             return
         }
@@ -256,6 +259,7 @@ class SpeechPipeline(private val ctx: Context, private val hooks: Hooks) {
         markSpeaking()
         if (firstPending) {
             firstPending = false
+            firstSegPcmAt = if (s.firstPcmAt > 0) s.firstPcmAt else now
             hooks.onFirstAudio(now, s.engine.ifBlank { engine?.id ?: "" })
             hooks.log("पहला टुकड़ा: \"${s.text.take(40)}\" • text आने के ${s.createdAt - turnAt} ms बाद कटा • " +
                 "इंजन ने ${if (s.firstPcmAt > 0) s.firstPcmAt - s.createdAt else -1} ms में पहली आवाज़ दी")

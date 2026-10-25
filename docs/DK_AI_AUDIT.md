@@ -164,6 +164,21 @@ Important context: the existing app is a mature **View/XML + Kotlin** app (≈31
 | Instagram DM | NOT BUILT | needs testing on a real phone; Instagram posting stays as before |
 | On-phone timing | NOT VERIFIED | log line "तुरंत काम … काम+जाँच X ms" shows the real time |
 
+## v3.71 — लड़की अवतार + बोलने की देरी कम
+
+| Area | Status | Notes |
+|---|---|---|
+| Avatar view | DONE | `avatar/AvatarView` - `drawBitmapMesh` on `avatar_body` (18x28 grid), hair weight 0 on face/neck/chest/shoulders, grows to the tips; random slow wind that never fully stops; 4.2 s breathing; Fit-center on black; Choreographer 60 fps only while visible |
+| Face layer | DONE | `face_<normal|sad|angry>_<base|blink|half|wide>` cropped at x 300-740, y 290-640 (eyebrows to chin incl. raised sad brows and blink eye corners), superellipse feather mask; mood change = 380 ms cross-fade, mouth = 70 ms |
+| Blink / lip-sync | DONE | blink every 3-5 s for 120 ms; `VoiceLevel` RMS sampled every 40 ms -> `MouthMapper` (smoothing + hysteresis) base/half/wide; sad/angry only base/half; silence -> base. Works for all three engines (same `VoiceLevel` path) |
+| Mood | DONE | Live TEXT split: `MOOD_TAG_NOTE` asks for [खुश]/[उदास]/[गुस्सा]/[भावुक]; `EmotionTag.Filter` strips it (even split across chunks) before TTS and subtitles. Native Live voice: no tag (it would be spoken) - `EmotionGuess` from the transcript. Face back to normal 3.5 s after the voice stops. Mood style appended to Gemini TTS style and Edge rate/pitch (`MoodState.voiceStyle`) |
+| Memory | DONE | PNG read as raw stream (no density up-scaling), inSampleSize from screen size, faces via `BitmapRegionDecoder` (only the face rect), cached once; missing image = ORB stays / nearest variant |
+| Rotation | DONE | MainActivity + VoiceActivity handle `orientation|screenSize|...` themselves -> avatar view is not recreated; bitmaps cached, wind clock global |
+| Settings | DONE | ORB section -> "अवतार चुनो": ORB (default) / लड़की अवतार + list of missing images |
+| Images | DONE | 11 PNGs (1024x1536) in `res/drawable-nodpi/`, generated from the owner's reference picture: neutral base first, every other face edited from it, then aligned to the base with OpenCV ECC (max 2 px shift) so the face crop matches; owner can replace them with the same names |
+| Latency | DONE | Worker unchanged (reply text comes from the Live websocket, already streaming; Worker /tts already streams PCM). `FAST_START` prompt (first sentence 4-6 words), chunker already speaks the first sentence while the rest is fetched, `VoiceWarm` on app open, `LatencyBoard` (Settings -> डिबग लॉग -> "देरी का हिसाब"): speech end -> first piece / first sentence audio / playback |
+| On-phone timing | NOT VERIFIED | needs the phone + keys |
+
 ## v3.70 — कोडिंग एजेंट: इतिहास, "वहीं से आगे", emulator screenshot, 3 Gemini keys
 
 - **इतिहास (History)**: कोडिंग स्क्रीन पर "इतिहास" बटन. हर बातचीत (धागा) फ़ोन में (`filesDir/coder_history`): शीर्षक, शुरू/आख़िरी समय, हाल (चल रहा / मंज़ूरी / पूरा / रुका), रिपो, PR. टैप = वही बातचीत खुलती है और उसी में आगे लिखते हैं (उसका खुला PR भी वापस). लंबा दबाएँ = हटाएँ. सबसे नए 100. (`CoderHistory.kt`)

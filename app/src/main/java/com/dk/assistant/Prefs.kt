@@ -147,6 +147,8 @@ object Prefs {
     fun ownerLevelNow(c: Context) = sp(c).getFloat("owner_level_now", 0f).toDouble()
     /** v3.65: हटाया गया आकार (dna/tesseract/wormhole/sphere3d) या अनजान -> earth */
     fun orbStyle(c: Context) = Shapes.valid(sp(c).getString("orb_style", "earth"))
+    /** v3.71: ORB की जगह क्या दिखे - "orb" (डिफ़ॉल्ट) या "girl" (लड़की अवतार) */
+    fun avatarKind(c: Context): String = if (sp(c).getString("avatar_kind", "orb") == "girl") "girl" else "orb"
     /** v3.57: DK सुन/बोल रहा हो तो स्क्रीन के किनारों पर चमक */
     fun edgeGlow(c: Context) = sp(c).getBoolean("edge_glow", true)
     /** v3.58: पहली बार का परिचय पूरा/छोड़ा (पुराने उपयोगकर्ता पर अपने-आप true) */

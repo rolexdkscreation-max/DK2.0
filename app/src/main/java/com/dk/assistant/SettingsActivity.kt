@@ -229,6 +229,14 @@ class SettingsActivity : AppCompatActivity() {
             upd()
             row(box, button("ताज़ा करें") { upd() })
         }
+        // v3.71: बोलने की देरी - हर बारी के तीन समय
+        card("देरी का हिसाब", "आपका बोलना ख़त्म → पहला टुकड़ा आया → पहले वाक्य की आवाज़ बनी → आवाज़ बजी") { box ->
+            val tv = TextView(this).apply { textSize = 12f; typeface = Typeface.MONOSPACE; setTextColor(0xE6FFFFFF.toInt()); setTextIsSelectable(true) }
+            box.addView(tv)
+            fun upd() { tv.text = LatencyBoard.text() }
+            upd()
+            row(box, button("ताज़ा करें") { upd() }, button("साफ़ करें") { LatencyBoard.clear(); upd() })
+        }
         card("लॉग", "सबसे नई लाइन नीचे • 300 लाइन तक") { box ->
             val tv = TextView(this).apply {
                 textSize = 11f; typeface = Typeface.MONOSPACE; setTextColor(0xE6FFFFFF.toInt()); setTextIsSelectable(true)
@@ -805,6 +813,23 @@ class SettingsActivity : AppCompatActivity() {
         val styles = Shapes.STYLES
         lateinit var preview: OrbView
         var chosen = Prefs.orbStyle(this)
+        // v3.71: ORB या लड़की अवतार
+        card("अवतार चुनो", "होम स्क्रीन और आवाज़ स्क्रीन पर ORB की जगह क्या दिखे") { box ->
+            val g = radios(box, listOf(
+                "orb" to "ORB (डिफ़ॉल्ट)",
+                "girl" to "लड़की अवतार — बालों में हवा, पलकें, बोलते समय होंठ, भाव के साथ चेहरा"),
+                Prefs.avatarKind(this), 2600)
+            g.setOnCheckedChangeListener { _, id ->
+                val v = if (id - 2600 == 1) "girl" else "orb"
+                Prefs.edit(this) { putString("avatar_kind", v) }
+                if (v == "girl" && !com.dk.assistant.avatar.AvatarAssets.available(this))
+                    toast("अवतार का चित्र (avatar_body) ऐप में नहीं है — तब तक ORB ही दिखेगा")
+            }
+            val miss = com.dk.assistant.avatar.AvatarAssets.missingFiles(this)
+            hint(box, if (miss.isEmpty()) "अवतार के सारे 11 चित्र मौजूद हैं।"
+                else "ऐप में ये चित्र नहीं हैं (res/drawable-nodpi में 1024x1536 PNG डालें): " + miss.joinToString(", ") +
+                    (if (miss.contains(com.dk.assistant.avatar.AvatarAssets.BODY)) " — avatar_body के बिना ORB ही दिखेगा।" else " — जो रूप नहीं है उसकी जगह पास वाला रूप दिखेगा।"))
+        }
         card("झलक", "ओर्ब पर टैप = चेहरा बनने वाला एनीमेशन") { box ->
             preview = OrbView(this).apply {
                 previewStyle = chosen

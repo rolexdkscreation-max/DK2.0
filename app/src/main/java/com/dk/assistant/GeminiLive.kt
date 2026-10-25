@@ -91,6 +91,13 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
             "as soon as you write it. Write exactly what should be heard: natural spoken Hindi (Devanagari), short sentences, " +
             "commas where a speaker would pause. No markdown, lists, emojis, headings or stage directions."
 
+        /** v3.71: पहली आवाज़ जल्दी - पहला वाक्य बहुत छोटा (वही सबसे पहले बनकर बजता है), बाकी भी छोटे */
+        private const val FAST_START = "\n\nSPEED NOTE: Always begin your reply with one very short sentence of 4-6 words " +
+            "(for example \"अच्छा, सुनो।\" or \"हाँ, यह आसान है।\"), then continue. Keep the rest in short sentences too."
+        /** v3.71: अवतार का भाव - सिर्फ़ TEXT बँटवारे में (टैग आवाज़ में नहीं जाता; ऐप पढ़कर हटा देता है) */
+        const val MOOD_TAG_NOTE = "\n\nMOOD TAG: हर जवाब की शुरुआत में एक भाव-टैग लिखो: [खुश], [उदास], [गुस्सा] या [भावुक]; " +
+            "सामान्य बात हो तो कोई टैग नहीं। टैग सिर्फ़ एक बार, सबसे पहले, फिर जवाब।"
+
         /** "माइक बंद करो" = haan; "माइक बंद मत करो" / "माइक बंद नहीं" = nahi */
         fun micOffCommand(t: String): Boolean {
             val low = t.lowercase()
@@ -334,6 +341,8 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
     @Volatile private var splitEngine: com.dk.assistant.voice.engine.VoiceEngine? = null
     /** replyText का कितना हिस्सा pipeline को भेजा जा चुका (DoneGate रोके तो आगे नहीं) */
     @Volatile private var splitFedTo = 0
+    /** v3.71: जवाब की शुरुआत का भाव-टैग पढ़कर हटाने वाला (सिर्फ़ TEXT बँटवारे में) */
+    @Volatile private var tagFilter: com.dk.assistant.avatar.EmotionTag.Filter? = null
     /** इस बारी में pipeline से कुछ बोला गया */
     @Volatile private var splitSpoke = false
     private val speechHooks = object : com.dk.assistant.voice.engine.SpeechPipeline.Hooks {
@@ -355,6 +364,8 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
                 val name = com.dk.assistant.voice.engine.VoiceEngines.byId(engineId)?.title ?: "फ़ोन की आवाज़"
                 trace.summary()?.let { lastBreakdown = "$it • बोलने वाला: $name" }
                 log("बोलना ख़त्म → पहली आवाज़ ($name): $ms ms" + (trace.summary()?.let { " • $it" } ?: ""))
+                // v3.71: तीनों समय अलग (डिबग → देरी का हिसाब)
+                LatencyBoard.record(name, trace.speechEndAt, trace.firstChunkAt, pipeline.firstSegPcmAt, at)?.let { log("देरी: " + LatencyBoard.line(it)) }
                 trace.reset()
             }
             svc.speaker.ensureAudible()
@@ -368,8 +379,8 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
         override suspend fun phoneSay(text: String) { svc.speaker.speakGoogle(text) }
         override fun phoneStop() { try { svc.speaker.stop() } catch (_: Exception) {} }
     }
-    private val pipelineLazy = lazy { com.dk.assistant.voice.engine.SpeechPipeline(svc, speechHooks) }
-    private val pipeline by pipelineLazy
+    private val pipelineLazy: Lazy<com.dk.assistant.voice.engine.SpeechPipeline> = lazy { com.dk.assistant.voice.engine.SpeechPipeline(svc, speechHooks) }
+    private val pipeline: com.dk.assistant.voice.engine.SpeechPipeline by pipelineLazy
     private fun pipeBusy() = pipelineLazy.isInitialized() && pipeline.busy
     private fun pipeStop() { if (pipelineLazy.isInitialized()) pipeline.stop() }
 
@@ -1109,8 +1120,8 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
                 .apply { if (!connText) put("speechConfig", JSONObject().put("voiceConfig", JSONObject()
                     .put("prebuiltVoiceConfig", JSONObject().put("voiceName", ex.voice)))
                     .apply { if (ex.lang) put("languageCode", LiveVoice.LANGUAGE) }) })
-            .put("systemInstruction", JSONObject().put("parts", JSONArray().put(JSONObject().put("text", Lang.sys(brain.liveSystemPrompt()) + if (connSplit) SPLIT_NOTE else
-                com.dk.assistant.voice.engine.LiveNativeEngine.styleNote(com.dk.assistant.voice.engine.LiveNativeEngine.style(svc))))))
+            .put("systemInstruction", JSONObject().put("parts", JSONArray().put(JSONObject().put("text", Lang.sys(brain.liveSystemPrompt()) + FAST_START + (if (connSplit) SPLIT_NOTE + (if (connText) MOOD_TAG_NOTE else "") else
+                com.dk.assistant.voice.engine.LiveNativeEngine.styleNote(com.dk.assistant.voice.engine.LiveNativeEngine.style(svc)))))))
             .put("tools", tools)
             .put("realtimeInputConfig", JSONObject()
                 .put("automaticActivityDetection", JSONObject()
@@ -1263,7 +1274,8 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
                 val tx = if (p.optBoolean("thought")) "" else p.optString("text", "")
                 if (tx.isNotEmpty() && connSplit) {
                     replyPartArrived("पहला text")
-                    synchronized(turnLock) { replyText.append(tx) }
+                    val clean = tagFilter?.push(tx) ?: tx          // v3.71: [खुश] जैसा टैग न बोला जाए, न दिखे
+                    if (clean.isNotEmpty()) synchronized(turnLock) { replyText.append(clean) }
                     splitHoldCheck(); pumpSplit()
                     continue
                 }
@@ -1285,7 +1297,10 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
             if (!turnActive) startTurn()
             generating = true
             // screen par abhi nahi - revealTick() awaaz ke saath-saath dikhata hai
-            synchronized(turnLock) { replyText.append(t) }
+            val soFar = synchronized(turnLock) { replyText.append(t); if (replyText.length < 240) replyText.toString() else null }
+            // v3.71: सीधी आवाज़ में टैग नहीं (बोल दिया जाता) - शुरू के शब्दों से अवतार का भाव
+            soFar?.let { com.dk.assistant.avatar.EmotionGuess.of(it) }?.takeIf { it != com.dk.assistant.avatar.Mood.NORMAL }
+                ?.let { com.dk.assistant.avatar.MoodState.set(it) }
             // v3.68: AUDIO + लिखावट वाला बँटवारा - यही text आवाज़ इंजन बोलता है
             if (connSplit) { replyPartArrived("पहली लिखावट"); splitHoldCheck(); pumpSplit() }
         }
@@ -1312,6 +1327,7 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
             val newAfterBarge = localBargeAt > 0 && now - localBargeAt < 10_000 && timeline.speechEndAt > localBargeAt
             if (timeline.active && !newAfterBarge) { timeline.done(now); log("turn (interrupted): ${timeline.summary()}") }
             if (trace.firstPlayAt == 0L) trace.firstChunkAt = 0L
+            tagFilter = null; com.dk.assistant.avatar.MoodState.replyDone()
             clearAct()
             flushPlayback()
             // close=false: user abhi bol raha hai (toka hai) - uski nayi baat band mat karo
@@ -1327,6 +1343,9 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
             val wasDropping = dropOld
             dropOld = false
             if (actHold) endActHold()
+            tagFilter?.finish()?.takeIf { it.isNotEmpty() }?.let { r -> synchronized(turnLock) { replyText.append(r) } }
+            tagFilter = null
+            com.dk.assistant.avatar.MoodState.replyDone()         // v3.71: बोलना ख़त्म होने के कुछ सेकंड बाद चेहरा सामान्य
             if (connSplit && !wasDropping) { pumpSplit(); if (pipelineLazy.isInitialized()) pipeline.endTurn() }   // v3.68: बचा text आख़िरी टुकड़ा
             if (timeline.active) { timeline.done(System.currentTimeMillis()); log("turn पूरा: ${timeline.summary()}") }
             finishTurn()
@@ -1346,6 +1365,9 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
             // user ki baat yahin tak - aage jo bole woh nayi baat
             caption?.closeUtterance()?.takeIf { it.isNotBlank() }?.let { turnUser = it; userDone = false }
             beginActHold()
+            // v3.71: नया जवाब = भाव शुरू से (TEXT बँटवारे में टैग से, बाकी में लिखावट के शब्दों से)
+            com.dk.assistant.avatar.MoodState.set(com.dk.assistant.avatar.Mood.NORMAL)
+            tagFilter = if (connSplit && connText) com.dk.assistant.avatar.EmotionTag.Filter { com.dk.assistant.avatar.MoodState.set(it) } else null
             if (connSplit) {
                 splitSpoke = false
                 synchronized(turnLock) { splitFedTo = minOf(splitFedTo, replyText.length) }
@@ -2469,6 +2491,8 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
                         lastBreakdown = "$sm • सबसे बड़ा हिस्सा: ${trace.bottleneck()}"
                         log("देरी के हिस्से: $lastBreakdown")
                     }
+                    if (!connSplit) LatencyBoard.record("Gemini Live (सीधी आवाज़)", trace.speechEndAt, trace.firstChunkAt, trace.firstChunkAt, trace.firstPlayAt)
+                        ?.let { log("देरी: " + LatencyBoard.line(it)) }
                     trace.reset()                // agli baari nayi ginti (purane aankde na chipkein)
                 }
                 if (first) svc.speaker.ensureAudible()      // awaaz mute to nahi (system calls - awaaz shuru hone ke baad)

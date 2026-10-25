@@ -1008,3 +1008,11 @@ Key 1 के सारे मॉडल (3.8 Flash → 3.6 Flash → 3 Flash → 
 कोई रुका हुआ काम नहीं	No stopped work
 अभी एक काम चल रहा है	A task is running right now
 ✓ limit खुल गई — काम आगे चल रहा है	✓ Limit reset — work is continuing
+अवतार चुनो	Choose avatar
+होम स्क्रीन और आवाज़ स्क्रीन पर ORB की जगह क्या दिखे	What to show in place of the ORB on the home and voice screens
+ORB (डिफ़ॉल्ट)	ORB (default)
+लड़की अवतार — बालों में हवा, पलकें, बोलते समय होंठ, भाव के साथ चेहरा	Girl avatar — hair in the wind, blinking, lips while speaking, face that shows the mood
+अवतार का चित्र (avatar_body) ऐप में नहीं है — तब तक ORB ही दिखेगा	The avatar picture (avatar_body) is not in the app — the ORB is shown until then
+अवतार के सारे 11 चित्र मौजूद हैं।	All 11 avatar pictures are present.
+देरी का हिसाब	Latency breakdown
+आपका बोलना ख़त्म → पहला टुकड़ा आया → पहले वाक्य की आवाज़ बनी → आवाज़ बजी	You stop speaking → first piece arrives → first sentence voice ready → voice starts playing
