@@ -18,3 +18,7 @@
 # Readable crash stack traces in the debug log
 -keepattributes SourceFile,LineNumberTable
 -renamesourcefileattribute SourceFile
+
+# v3.66: ONNX Runtime (आवाज़-पहचान) - JNI से बुलाई जाने वाली classes
+-keep class ai.onnxruntime.** { *; }
+-dontwarn ai.onnxruntime.**

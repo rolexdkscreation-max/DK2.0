@@ -142,6 +142,17 @@ Important context: the existing app is a mature **View/XML + Kotlin** app (≈31
 | Release APK on GitHub Releases | EXISTS-OK | `build.yml` builds and publishes on every merge to `main` |
 | minify/shrink, docs/RELEASE.md | DONE (Part 15) | `docs/RELEASE.md`; `app/proguard-rules.pro`; R8 + resource shrink opt-in with `DK_MINIFY=1` (default off until checked on a phone); local signing from git-ignored `keystore.properties` (CI env still wins) |
 
+## v3.66 — Owner voice only (layer 3) + far-voice gate (layer 4)
+| Item | Status | Notes |
+|---|---|---|
+| Owner voiceprint | DONE | `voice/OwnerVoice.kt` (ONNX Runtime 1.31, CAM++ zh_en, downloaded once with SHA-256 check), `voice/SpeakerFbank.kt` (Kaldi fbank, matches kaldi-native-fbank within 1.5e-4), `voice/VoicePrint.kt`, `voice/OwnerGate.kt`; Live + wake-word path; Settings enrolment (5 phrases) + test + delete |
+| Zero-latency design | DONE | audio streams to Gemini immediately; first 1 s is scored in parallel; OTHER → rest of audio silenced, reply not played, tool calls answered "IGNORED" without running |
+| Far / quiet voice gate | DONE | `TurnDetector.startFloor` from the owner's learned speech level (off on Bluetooth) |
+| Faster end of turn | DONE | `TurnEnd.complete()` → 360 ms instead of 550 ms when the caption is a complete sentence |
+| Barge-in while DK speaks | NOT GATED (v1) | interrupting DK still works for any voice |
+| Offline evaluation | DONE (English only) | LibriSpeech dev-clean, 40 speakers, 5-phrase enrolment: EER 1.6% at 1 s audio, 0.6% full utterance; Kotlin pipeline = Python (cos 0.99999999) |
+| On-phone accuracy / speed | NOT VERIFIED | needs a real phone (Hindi, noise, phone mic) |
+
 ## Deviations decided for this repo
 1. Package stays `com.dk.assistant` (existing installs must keep updating).
 2. Existing View screens are kept (Step 5). No Compose rewrite of working screens.

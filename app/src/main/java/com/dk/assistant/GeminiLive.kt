@@ -257,6 +257,27 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
     @Volatile private var falseAlarms = 0
     @Volatile private var realBarges = 0
     @Volatile private var gatedChunks = 0L
+
+    // ---- v3.66: सिर्फ़ मालिक की आवाज़ (परत 3) + दूर की आवाज़ अनसुनी (परत 4)
+    /** इस बात का फ़ैसला (mic thread पर ही) */
+    private val owner = com.dk.assistant.voice.OwnerGate(CHUNK_MS)
+    @Volatile private var ownerOn = false
+    @Volatile private var ownerTh = com.dk.assistant.voice.VoicePrint.TH_NORMAL
+    private var ownerCfgAt = 0L
+    /** हर नई बात पर +1 - पुरानी बात का देर से आया मिलान नई पर न लगे */
+    @Volatile private var ownerGen = 0
+    private class OwnerResult(val gen: Int, val score: Float?, val ms: Int, val tookMs: Long)
+    @Volatile private var ownerResult: OwnerResult? = null
+    /** DK सोच/काम कर रहा था तब नई आवाज़: पहचान होने तक Gemini को नहीं (किसी और की बात DK का जवाब न काटे) */
+    private var ownerHolding = false
+    private val ownerHold = ArrayDeque<ByteArray>()
+    /** इस जवाब को न बजाओ, न कोई काम करो - वह किसी और की आवाज़ का है */
+    @Volatile private var muteTurn = false
+    @Volatile private var muteAt = 0L
+    @Volatile private var othersIgnored = 0
+    @Volatile private var mutedParts = 0L
+    @Volatile private var earlyEnds = 0
+    private var capSeen = ""; private var capSeenAt = 0L
     /** 2.5 model ka "sochna" band (pehle awaaz tez) - setup mana kare to wapas */
     @Volatile private var thinkOff = true
     /** v3.59: इस Live की आवाज़/भाषा/affective (setup पर एक बार तय - बीच में अपने-आप नहीं बदलती) */
@@ -504,6 +525,10 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
         guardHeld = false; guardOk = false; guardPass = false; guardEndAt = 0L; guardBuf.clear(); guardOn = false
         trace.reset(); dropOld = false; suspectAt = 0L; replyWatch.reset()
         timeline.reset(); liveGate.reset(); capGate.reset(); resendText = null; lastServerAt = 0L
+        owner.reset(); ownerGen++; ownerResult = null; ownerHolding = false; ownerHold.clear(); muteTurn = false; ownerCfgAt = 0L
+        refreshOwnerCfg(System.currentTimeMillis())
+        if (ownerOn) { com.dk.assistant.voice.OwnerVoice.warm(svc); log("सिर्फ़ मालिक की आवाज़: चालू (" + (if (Prefs.ownerVoiceStrict(svc)) "सख़्त" else "सामान्य") + ")") }
+        if (turnDet.startFloor > 0) log("दूर की आवाज़ अनसुनी: चालू (${turnDet.startFloor.toInt()} RMS से धीमी नहीं)")
         coroutineScope {
             val mic = launch(Dispatchers.IO) { micLoop() }
             // DK ka text awaaz ke saath-saath (har 80ms)
@@ -1056,10 +1081,15 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
                     beginTimeline(now, now, "server VAD")
                 }
                 if (eosAt == 0L || now - eosAt > 3000) eosAt = now
-                firstAudioAt = 0; if (!isPlaying()) setMode(Mode.THINKING)
+                firstAudioAt = 0; if (!isPlaying() && !muteTurn) setMode(Mode.THINKING)
             }
         }
-        o.optJSONObject("toolCall")?.optJSONArray("functionCalls")?.let { lastServerAt = System.currentTimeMillis(); timeline.event(lastServerAt); replyWatch.onServerAnswered(); lastToolAt = lastServerAt; runTools(it) }
+        o.optJSONObject("toolCall")?.optJSONArray("functionCalls")?.let {
+            lastServerAt = System.currentTimeMillis()
+            // v3.66: किसी और की आवाज़ पर बना काम - कुछ मत करो (फ़ोन पर कोई काम नहीं), Gemini को बता दो
+            if (muteTurn) { ignoreTools(it); return@let }
+            timeline.event(lastServerAt); replyWatch.onServerAnswered(); lastToolAt = lastServerAt; runTools(it)
+        }
         o.optJSONObject("toolCallCancellation")?.optJSONArray("ids")?.let { a ->
             for (i in 0 until a.length()) toolJobs.remove(a.optString(i))?.cancel()
         }
@@ -1074,7 +1104,7 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
         if (sc.optBoolean("waitingForInput") && !waitingLogged) { waitingLogged = true; log("server: waitingForInput (मॉडल मान रहा है user आगे बोलेगा) • ${timeline.summary()}") }
         if (sc.optBoolean("generationComplete")) timeline.genDone(System.currentTimeMillis())
         if (!oldReply && (sc.has("modelTurn") || sc.has("outputTranscription"))) replyWatch.onServerAnswered()
-        sc.optJSONObject("inputTranscription")?.optString("text")?.takeIf { it.isNotBlank() }?.let { t ->
+        sc.optJSONObject("inputTranscription")?.optString("text")?.takeIf { it.isNotBlank() && !muteTurn }?.let { t ->
             if (!turnActive) startTurn()
             Ducker.duck(svc, "Live: user बोल रहा")
             suspectAt = 0L                     // user ki baat ka text aaya = rokna sahi tha (goonj nahi)
@@ -1097,6 +1127,8 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
         sc.optJSONObject("modelTurn")?.optJSONArray("parts")?.let { parts ->
             // user ne toka hai: purane jawab ke bache tukde - mat bajao (server "interrupted" bhejega)
             if (dropOld) { droppedOld++; return@let }
+            // v3.66: किसी और की आवाज़ का जवाब - बजाओ मत
+            if (muteTurn) { mutedParts++; generating = true; return@let }
             if (!turnActive) startTurn()
             generating = true
             for (i in 0 until parts.length()) {
@@ -1130,7 +1162,7 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
                 playQ.offer(pcm)
             }
         }
-        sc.optJSONObject("outputTranscription")?.optString("text")?.takeIf { it.isNotBlank() && !dropOld }?.let { t ->
+        sc.optJSONObject("outputTranscription")?.optString("text")?.takeIf { it.isNotBlank() && !dropOld && !muteTurn }?.let { t ->
             if (!turnActive) startTurn()
             generating = true
             // screen par abhi nahi - revealTick() awaaz ke saath-saath dikhata hai
@@ -1144,7 +1176,11 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
                 log("Google Search हुआ - ${add.size} स्रोत: ${add.joinToString { Grounding.host(it.second).ifBlank { it.first } }}")
             }
         }
-        if (sc.optBoolean("interrupted")) {
+        if (sc.optBoolean("interrupted") && muteTurn) {
+            // किसी और की बात का (न बजा) जवाब रुका - बस छूट खत्म, बाकी कुछ नहीं बदला
+            muteTurn = false; generating = false
+            log("दूसरे की आवाज़ का (न बजाया) जवाब रुका")
+        } else if (sc.optBoolean("interrupted")) {
             val now = System.currentTimeMillis()
             replyWatch.onServerHeard()    // server ne user ki awaaz pakdi tabhi roka - "nahi suna" rescue mat bhejo
             log("server: generation रुकी (interrupted) - आवाज़ रोकी" + if (localBargeAt > 0 && now - localBargeAt < 2000) " (फ़ोन ने ${now - localBargeAt} ms पहले ही रोक दी थी)" else "")
@@ -1161,7 +1197,11 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
             commitPending(false)          // jitna bola utna hi likha rahe
             setMode(Mode.LISTENING)
         }
-        if (sc.optBoolean("turnComplete")) {
+        if (sc.optBoolean("turnComplete") && muteTurn) {
+            muteTurn = false; generating = false
+            log("दूसरे की आवाज़ का जवाब नहीं बजाया ($mutedParts टुकड़े छोड़े)")
+            Ducker.releaseWhenQuiet({ !isPlaying() && !generating })
+        } else if (sc.optBoolean("turnComplete")) {
             val wasDropping = dropOld
             dropOld = false
             if (timeline.active) { timeline.done(System.currentTimeMillis()); log("turn पूरा: ${timeline.summary()}") }
@@ -1627,6 +1667,105 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
         return null
     }
 
+    // ================================================================ v3.66: सिर्फ़ मालिक की आवाज़
+    private fun refreshOwnerCfg(now: Long) {
+        ownerCfgAt = now
+        ownerOn = com.dk.assistant.voice.OwnerVoice.active(svc)
+        ownerTh = com.dk.assistant.voice.VoicePrint.threshold(Prefs.ownerVoiceStrict(svc))
+        turnDet.startFloor = com.dk.assistant.voice.OwnerVoice.farFloor(svc, btOn)
+        val fb = turnDet.farBlocked
+        if (fb > 0 && fb % 10 == 1 && fb != farLogged) { farLogged = fb; log("दूर की / धीमी आवाज़ अनसुनी (#$fb)") }
+    }
+    private var farLogged = 0
+
+    /** पहली ~1 सेकंड आवाज़ का मिलान अलग thread पर - mic और Gemini को भेजना रुकता नहीं */
+    private fun checkOwnerAsync() {
+        val gen = ownerGen
+        val audio = owner.takeAudio()
+        val ms = audio.size * 1000 / (IN_RATE * 2)
+        try {
+            com.dk.assistant.voice.OwnerVoice.exec.execute {
+                val t0 = System.currentTimeMillis()
+                val sc = try { com.dk.assistant.voice.OwnerVoice.score(svc, audio) } catch (_: Throwable) { null }
+                ownerResult = OwnerResult(gen, sc, ms, System.currentTimeMillis() - t0)
+            }
+        } catch (_: Exception) { owner.onFailed(System.currentTimeMillis()) }
+    }
+
+    /** मिलान का नतीजा आया हो तो लागू (mic thread पर) */
+    private fun applyOwnerResult(now: Long) {
+        val r = ownerResult ?: return
+        ownerResult = null
+        if (r.gen != ownerGen || !owner.active) return
+        val before = owner.verdict
+        if (r.score == null) owner.onFailed(now) else owner.onScore(r.score, ownerTh, now, r.ms, atEnd = false)
+        if (owner.verdict != before) onOwnerVerdict(now, r.score, r.ms, r.tookMs)
+    }
+
+    private fun onOwnerVerdict(now: Long, score: Float?, ms: Int, tookMs: Long) {
+        val sc = score?.let { String.format(java.util.Locale.US, "%.2f", it) } ?: "-"
+        when (owner.verdict) {
+            com.dk.assistant.voice.OwnerGate.Verdict.OWNER -> {
+                if (owner.checks <= 1 && owner.lastScore.isFinite()) DKLog.d("Live: आवाज़ मिलान $sc - मालिक (${ms} ms आवाज़, $tookMs ms)")
+                if (muteTurn && !generating) muteTurn = false
+                if (ownerHolding) {
+                    ownerHolding = false
+                    synchronized(sendLock) { ownerHold.forEach { sendAudio(it) } }
+                    ownerHold.forEach { capSend(it) }; ownerHold.clear()
+                }
+            }
+            com.dk.assistant.voice.OwnerGate.Verdict.OTHER -> {
+                othersIgnored++
+                log("किसी और की आवाज़ (मिलान $sc, ${ms} ms) - अनसुनी, जवाब नहीं (#$othersIgnored)")
+                val held = ownerHolding
+                ownerHolding = false; ownerHold.clear()
+                caption?.discard()
+                DKState.user("")
+                replyWatch.reset()
+                // पहले से Gemini को गई (रोकी नहीं गई) आवाज़ का जवाब आएगा - उसे न बजाओ, न काम
+                if (!held) { muteTurn = true; muteAt = now }
+                if (DKState.mode == Mode.LISTENING && !generating) setMode(Mode.IDLE)
+                Ducker.releaseWhenQuiet({ !isPlaying() && !generating })
+            }
+            else -> {}
+        }
+    }
+
+    /** बोलना खत्म: फ़ैसला बाकी हो तो अभी (इसी thread पर, ~15-60 ms - जवाब आने से पहले) */
+    private fun ownerEnd(now: Long) {
+        applyOwnerResult(now)
+        if (owner.verdict == com.dk.assistant.voice.OwnerGate.Verdict.PENDING) {
+            val before = owner.verdict
+            if (owner.needFinalCheck(now)) {
+                val audio = owner.takeAudio(); val ms = audio.size * 1000 / (IN_RATE * 2)
+                val t0 = System.currentTimeMillis()
+                val sc = try { com.dk.assistant.voice.OwnerVoice.score(svc, audio) } catch (_: Throwable) { null }
+                if (sc == null) owner.onFailed(now) else owner.onScore(sc, ownerTh, now, ms, atEnd = true)
+                ownerGen++; ownerResult = null           // बीच वाला (अगर चल रहा था) अब बेकार
+                if (owner.verdict != before) onOwnerVerdict(now, sc, ms, System.currentTimeMillis() - t0)
+            } else if (owner.verdict != before) onOwnerVerdict(now, null, owner.audioMs(), 0)
+        }
+        val isOwner = owner.verdict == com.dk.assistant.voice.OwnerGate.Verdict.OWNER
+        if (isOwner) {
+            val lv = com.dk.assistant.voice.VoicePrint.speechLevel(owner.rms(), turnDet.noise)
+            if (lv > 0) try { com.dk.assistant.voice.OwnerVoice.learnLevel(svc, lv) } catch (_: Exception) {}
+        }
+        owner.finish()
+        if (isOwner) onLocalEndOfSpeech(now)
+    }
+
+    /** किसी और की आवाज़ पर Gemini ने फ़ोन का काम माँगा - कुछ मत करो, सिर्फ़ जवाब दो कि अनदेखा करे */
+    private fun ignoreTools(calls: JSONArray) {
+        val arr = JSONArray()
+        for (i in 0 until calls.length()) {
+            val fc = calls.optJSONObject(i) ?: continue
+            arr.put(JSONObject().put("id", fc.optString("id")).put("name", fc.optString("name"))
+                .put("response", JSONObject().put("result", "IGNORED: that voice was not the owner's. Do nothing, say nothing, wait for the owner.")))
+        }
+        log("किसी और की आवाज़ पर काम माँगा (${calls.length()}) - कुछ नहीं किया")
+        try { ws?.tx(JSONObject().put("toolResponse", JSONObject().put("functionResponses", arr)).toString()) } catch (_: Exception) {}
+    }
+
     /**
      * Phone ne pakda: user ~500ms se chup (hybrid VAD). Turant audioStreamEnd -> server apna chup-intezaar chhod kar
      * jawab banana shuru karta hai. Na chale to server ka apna VAD (500ms) fallback hai.
@@ -1667,7 +1806,7 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
      * Shabd nahi = shor tha -> Listening + peeche ki awaaz wapas (pehle 40-80s dheemi atki rehti thi).
      */
     private fun onNoReply() {
-        if (!ready) return
+        if (!ready || muteTurn) return
         val now0 = System.currentTimeMillis()
         // v3.46: पहले यहाँ सीधा return = बचाव का इकलौता मौका खत्म और बात हमेशा के लिए खो जाती थी
         // (उसी पल फ़ोन का काम चल रहा हो / आप फिर बोलने लगे / DK बोल रहा हो). अब थोड़ी देर बाद फिर देखो.
@@ -1914,7 +2053,18 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
                     barging = false; bargeDet.reset(); bargeDet.ambient = 0.0
                     if (bargeGate.state != BargeGate.State.IDLE) { bargeGate.reset(); track?.let { try { it.setVolume(1f) } catch (_: Exception) {} } }
                     if (DKState.mode == Mode.LISTENING) DKState.level = (rms / 3500.0).toFloat().coerceIn(0f, 1f)
-                    val ev = turnDet.feed(rms, now)
+                    if (now - ownerCfgAt > 3_000) refreshOwnerCfg(now)
+                    var ev = turnDet.feed(rms, now)
+                    // v3.66 (तेज़ी): वाक्य साफ़ पूरा + 0.36s चुप + caption 0.2s से नहीं बदला = अभी "बात खत्म" (0.55s इंतज़ार नहीं)
+                    if (ev == TurnDetector.Event.NONE && turnDet.inSpeech && turnDet.silentMs > 0 && !guardHeld && captionOn()) {
+                        val cap = caption?.text().orEmpty()
+                        if (cap != capSeen) { capSeen = cap; capSeenAt = now }
+                        if (turnDet.silentMs >= TurnEnd.EARLY_END_MS && turnDet.speechMsNow < TurnEnd.LONG_SPEECH_MS &&
+                            now - capSeenAt >= 200 && TurnEnd.complete(cap) && turnDet.forceEnd()) {
+                            ev = TurnDetector.Event.SPEECH_END; earlyEnds++
+                            if (earlyEnds <= 3 || earlyEnds % 20 == 0) log("वाक्य पूरा लगा - ${TurnEnd.EARLY_END_MS} ms चुप्पी पर ही बात खत्म (#$earlyEnds)")
+                        }
+                    }
                     if (turnDet.inSpeech || generating || (turnActive && now - eosAt < 8_000)) quietSince = now
                     // v3.53: फ़ोन पर दूसरे ऐप की आवाज़ (वीडियो/गाना) - हर 300ms देखो (DK की अपनी आवाज़ थमने के बाद ही भरोसा)
                     if (now - mediaAt > 300) { mediaAt = now; mediaOn = Ducker.musicActive(svc) }
@@ -1958,11 +2108,28 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
                         duckFreedAt = now; Ducker.releaseNow()
                         log("पीछे की आवाज़ वापस (3s से सब शांत)")
                     }
-                    if (ev == TurnDetector.Event.SPEECH_START) { preroll.forEach { sendAudio(it); capSend(it) }; preroll.clear() }
+                    if (ev == TurnDetector.Event.SPEECH_START) {
+                        // v3.66: नई बात - मालिक की पहचान शुरू. DK सोच/काम कर रहा हो तो पहचान तक आवाज़ रोको
+                        ownerGen++; ownerResult = null; ownerHold.clear()
+                        if (ownerOn) owner.start(preroll) else owner.finish()
+                        ownerHolding = ownerOn && (generating || toolJobs.isNotEmpty() || (turnActive && now - eosAt < 8_000))
+                        if (ownerHolding) { preroll.forEach { ownerHold.addLast(it) }; preroll.clear() }
+                        else { preroll.forEach { sendAudio(it); capSend(it) }; preroll.clear() }
+                    }
+                    applyOwnerResult(now)
+                    val other = owner.active && owner.verdict == com.dk.assistant.voice.OwnerGate.Verdict.OTHER
                     // bolte samay + baat khatam hone tak (aakhri 500ms chup bhi) asli awaaz; warna khaamoshi
                     // (khaamoshi 1s tak jaati hai, phir audioStreamEnd aur upload band - SilenceStreamGate)
-                    if (turnDet.inSpeech || ev == TurnDetector.Event.SPEECH_END) { sendAudio(chunk); capSend(chunk) }
-                    else {
+                    if ((turnDet.inSpeech || ev == TurnDetector.Event.SPEECH_END) && !other) {
+                        if (ownerHolding) {
+                            ownerHold.addLast(chunk); while (ownerHold.size > 75) ownerHold.removeFirst()
+                            sendAudio(zeros, silent = true); capSend(zeros, silent = true)
+                        } else { sendAudio(chunk); capSend(chunk) }
+                        if (owner.active && turnDet.inSpeech && owner.add(chunk, rms)) checkOwnerAsync()
+                    } else if (other && (turnDet.inSpeech || ev == TurnDetector.Event.SPEECH_END)) {
+                        // किसी और की आवाज़: बाकी बात Gemini/लिखने वाले को नहीं
+                        sendAudio(zeros, silent = true); capSend(zeros, silent = true); gatedChunks++
+                    } else {
                         preroll.addLast(chunk); while (preroll.size > PREROLL_CHUNKS) preroll.removeFirst()
                         sendAudio(zeros, silent = true); capSend(zeros, silent = true); gatedChunks++
                     }
@@ -1975,9 +2142,13 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
                             // user bolne laga -> turant Listening (Thinking/Idle se bhi; phone ka kaam chal raha ho to nahi)
                             if (DKState.mode != Mode.WORKING) setMode(Mode.LISTENING)
                         }
-                        TurnDetector.Event.SPEECH_END -> onLocalEndOfSpeech(now)
+                        TurnDetector.Event.SPEECH_END -> {
+                            if (owner.active) ownerEnd(now)
+                            else onLocalEndOfSpeech(now)
+                        }
                         else -> {}
                     }
+                    if (muteTurn && now - muteAt > 20_000 && !generating) muteTurn = false
                 }
             }
         } finally {

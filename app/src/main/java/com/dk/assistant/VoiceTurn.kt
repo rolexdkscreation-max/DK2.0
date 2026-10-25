@@ -69,6 +69,31 @@ class TurnDetector(
 
     fun reset() { inSpeech = false; startRun = 0; speechMs = 0; silenceMs = 0; sumRms = 0.0; frames = 0; lowFrames = 0 }
 
+    /**
+     * v3.66 (परत 4): इससे धीमी आवाज़ को "बोलना शुरू" मत मानो - दूर की बातें / दूसरे कमरे की आवाज़ / धीमा TV.
+     * सिर्फ़ शुरू होने पर; बोलते समय धीमे होते शब्द पहले जैसे (बात बीच में न कटे). 0 = बंद
+     */
+    var startFloor = 0.0
+    /** इतनी बार दूर की आवाज़ रोकी (log के लिए) */
+    var farBlocked = 0
+        private set
+    private var farRun = 0
+    /** अभी की बात में चुप्पी (ms) */
+    val silentMs: Int get() = if (inSpeech) silenceMs else 0
+    /** अभी की बात कितनी लंबी (ms) */
+    val speechMsNow: Int get() = if (inSpeech) speechMs else 0
+
+    /**
+     * v3.66: वाक्य पूरा लगा और थोड़ी चुप्पी हो चुकी - पूरा END_SILENCE इंतज़ार किए बिना "बोलना खत्म"
+     * @return true = SPEECH_END माना (lastSpeechMs भरा)
+     */
+    fun forceEnd(): Boolean {
+        if (!inSpeech || speechMs < minSpeechMs) return false
+        lastSpeechMs = speechMs
+        reset()
+        return true
+    }
+
     /** DK ko toka (pakka) - user pehle se bol raha hai: seedha "bol raha" haalat (gate khula rahe) */
     fun forceSpeech(now: Long) { inSpeech = true; startRun = 0; speechMs = minSpeechMs; silenceMs = 0; lastVoiceAt = now }
 
@@ -77,6 +102,13 @@ class TurnDetector(
         // bolte samay dheemi awaaz (shabd ke aakhri hisse) ko chup mat samjho: neecha darwaza (hysteresis)
         val keepThr = max(noise * 1.6, 220.0)
         if (!inSpeech) {
+            if (rms > startThr && startFloor > 0 && rms < startFloor) {
+                // बोलने जितनी तेज़ पर मालिक की आम आवाज़ से बहुत धीमी = दूर की आवाज़: शुरू नहीं, शोर भी नहीं सीखा
+                startRun = 0
+                if (++farRun * chunkMs == startMs) farBlocked++
+                return Event.NONE
+            }
+            farRun = 0
             if (rms > startThr) {
                 startRun++
                 if (startRun * chunkMs >= startMs) {
