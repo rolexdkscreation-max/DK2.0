@@ -22,3 +22,8 @@
 # v3.66: ONNX Runtime (आवाज़-पहचान) - JNI से बुलाई जाने वाली classes
 -keep class ai.onnxruntime.** { *; }
 -dontwarn ai.onnxruntime.**
+
+# v3.68: आवाज़ इंजन नाम से (Class.forName + INSTANCE) ढूँढे जाते हैं - फ़ाइल हटाओ तो इंजन अपने-आप सूची से हट जाता है
+-keep class com.dk.assistant.voice.engine.GeminiTtsEngine { *; }
+-keep class com.dk.assistant.voice.engine.EdgeTtsEngine { *; }
+-keep class com.dk.assistant.voice.engine.LiveNativeEngine { *; }
