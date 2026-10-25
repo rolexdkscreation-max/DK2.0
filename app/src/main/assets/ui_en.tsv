@@ -40,8 +40,6 @@ Speaking • बोल रहा है…	Speaking…
 (कोई बदलाव नहीं)	(no changes)
 (बदलाव push नहीं किए)	(changes not pushed)
 (शुरुआती)	(default)
-3D रोशनी का गोला (Android 13+)	3D light orb (Android 13+)
-3D रोशनी का गोला: Android 13 या नए फ़ोन पर असली रोशनी और चमक वाला गोला (फ़ोन झुकाओ तो रोशनी घूमे)। पुराने फ़ोन पर पृथ्वी वाला ओर्ब दिखेगा।	3D light orb: on Android 13 or newer, a sphere with real lighting and shine (tilt the phone and the light moves). Older phones show the Earth orb.
 किनारों की चमक	Edge glow
 DK सुन या बोल रहा हो तो स्क्रीन के किनारे चमकें	Screen edges glow while DK is listening or speaking
 सुनते समय बैंगनी, बोलते समय गुलाबी चमक	Violet while listening, pink while speaking
@@ -529,7 +527,7 @@ repo मिले	repos found
 पुरुष (Male)	Male
 पुरुष •	Male •
 पूरे ऐप की भाषा और DK के जवाब	Whole app language and DK's replies
-पृथ्वी, गैलेक्सी, एटम, DNA, छल्ला, पुरुष/महिला चेहरा	Earth, galaxy, atom, DNA, ring, male/female face
+पृथ्वी, गैलेक्सी, एटम, छल्ला, पुरुष/महिला HD चेहरा	Earth, galaxy, atom, ring, male/female HD face
 प्रोफ़ाइल	Profile
 फ़ाइल बनाना	Creating files
 फ़ाइलों की लिस्ट	File list
@@ -866,9 +864,7 @@ Auto — आप जिस भाषा में बोलें, उसी म�
 आप	You
 माइक चालू करें	Turn mic on
 जियोडेसिक गोला (त्रिकोण जाली)	Geodesic sphere (triangle lattice)
-टेसरैक्ट (4D घन)	Tesseract (4D cube)
 क्वांटम गाँठ (ट्रेफ़ॉइल)	Quantum knot (trefoil)
-वर्महोल (समय-सुरंग)	Wormhole (time tunnel)
 डायसन कवच (जाली + कोर)	Dyson shell (lattice + core)
 GitHub ने अभी थोड़ी देर के लिए रोक दिया (एक घंटे में बहुत बार पूछा गया). कुछ देर बाद फिर चेक करें	GitHub is limiting requests for a while (too many checks in an hour). Please check again later
 GitHub token गलत/पुराना है	GitHub token is wrong or expired

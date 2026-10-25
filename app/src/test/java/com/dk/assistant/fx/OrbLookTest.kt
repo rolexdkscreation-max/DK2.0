@@ -3,61 +3,22 @@ package com.dk.assistant.fx
 import com.dk.assistant.Mode
 import com.dk.assistant.Shapes
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
+/** v3.65: "3D रोशनी का गोला" (sphere3d) मालिक के कहने पर हटा - अब पक्का करें कि वह सूची में नहीं और पुराना चुनाव पृथ्वी बने */
 class OrbLookTest {
-    @Test fun everyModeHasOwnPalette() {
-        val all = Mode.values().map { OrbLook.palette(it) }
-        assertEquals(all.size, all.toSet().size)
-        assertNotEquals(OrbLook.palette(Mode.IDLE), OrbLook.palette(Mode.IDLE, error = true))
-    }
-
-    @Test fun thinkingSwirlsFastest() {
-        val fastest = Mode.values().maxByOrNull { OrbLook.swirl(it) }
-        assertEquals(Mode.THINKING, fastest)
-    }
-
-    @Test fun amplitudeFollowsMicWhileListening() {
-        val quiet = OrbLook.amplitude(Mode.LISTENING, 0f, 0f)
-        val loud = OrbLook.amplitude(Mode.LISTENING, 1f, 0f)
-        assertTrue(loud > quiet)
-        for (t in 0..50) {
-            val a = OrbLook.amplitude(Mode.SPEAKING, 0f, t / 7f)
-            assertTrue(a in 0f..1f)
-        }
-    }
-
-    @Test fun reducedMotionFreezesScale() {
-        for (t in 0..20) assertEquals(1f, OrbLook.scale(Mode.LISTENING, t * 0.37f, reducedMotion = true), 0f)
-    }
-
-    @Test fun lerpEndsAndMiddle() {
-        val a = 0xFF000000.toInt(); val b = 0xFFFFFFFF.toInt()
-        assertEquals(a, OrbLook.lerp(a, b, 0f))
-        assertEquals(b, OrbLook.lerp(a, b, 1f))
-        val m = OrbLook.lerp(a, b, 0.5f)
-        assertEquals(0xFF, (m ushr 24) and 0xFF)
-        assertTrue(((m shr 16) and 0xFF) in 120..135)
-    }
-
-    @Test fun lowPassMovesSlowly() {
-        val v = OrbLook.lowPass(0f, 1f)
-        assertTrue(v > 0f && v < 0.2f)
-    }
-
-    @Test fun sphereStyleListedAndFallsBackToDots() {
-        assertTrue(Shapes.STYLES.any { it.first == OrbLook.STYLE })
-        // पुराने फ़ोन पर: डॉट वाला आकार बनना चाहिए (crash नहीं)
-        val cl = Shapes.make(OrbLook.STYLE, 100)
-        assertNotEquals(null, cl)
+    @Test fun sphereStyleRemovedAndFallsBackToEarth() {
+        assertTrue(Shapes.STYLES.none { it.first == "sphere3d" })
+        assertEquals("earth", Shapes.valid("sphere3d"))
+        val cl = Shapes.make("sphere3d", 100)
+        assertEquals(100, cl.count)
     }
 
     @Test fun oldStylesStillThere() {
         val keys = Shapes.STYLES.map { it.first }
-        for (k in listOf("earth", "galaxy", "atom", "dna", "torus", "face_male", "face_female")) assertTrue(k in keys)
+        for (k in listOf("earth", "galaxy", "atom", "torus", "face_male", "face_female")) assertTrue(k in keys)
     }
 }
 
