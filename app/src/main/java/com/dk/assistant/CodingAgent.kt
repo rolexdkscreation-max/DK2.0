@@ -33,16 +33,34 @@ class CoderAi(val provider: Provider, private val key: String, val model: String
      * Ek API ki limit/quota (429) ya server dikkat ho to agla model/API - kaam beech me na ruke.
      * Pehle chuna hua, phir baaki API. Sab ki limit ek saath khatm ho to ek baar thoda rukkar dobara.
      */
+    /** true = सारी limit खत्म होने पर रुककर फिर कोशिश (कोडिंग एजेंट). false = तुरंत बताओ (DK कंप्यूटर) */
+    @Volatile var waitOnLimit = false
+
     fun chat(system: String, msgs: List<Pair<String, String>>, media: List<CoderMedia> = emptyList()): String {
         var attempt = 1
+        var waitedSec = 0
         while (true) {
             try {
                 val r = chatChain(system, msgs, media)
                 if (attempt > 1) sink("AI API अस्थायी गलती (नेटवर्क/सर्वर)", "अपने-आप दोबारा कोशिश की ($attempt/${Retry.ATTEMPTS}) — सफल")
+                if (waitedSec > 0) {
+                    sink("सारी keys और मॉडल की limit खत्म थी (429)", "काम रोका नहीं — ${waitedSec} सेकंड रुककर फिर चला")
+                    onLimitWait?.invoke("✓ limit खुल गई — काम आगे चल रहा है")
+                }
                 return r
             } catch (e: java.io.IOException) {
-                // सारी keys की limit (429) या key/मॉडल की गलती (4xx) = दोबारा कोशिश बेकार, तुरंत रिपोर्ट
                 val code = (e as? AiException)?.code ?: -1
+                // सारी keys + सारे मॉडल की limit (429) एक साथ: काम रोकने की जगह limit खुलने तक रुको (हर मिनट वाली limit जल्दी खुलती है),
+                // कुल [LIMIT_WAIT_MAX_SEC] तक. फिर भी नहीं = दिन की limit - तब रुककर बताओ (काम चौकी में बचा रहता है, बाद में आगे)
+                val w = if (waitOnLimit) nextLimitWait(code, (e as? AiException)?.retryAfter ?: 0, waitedSec) else 0
+                if (w > 0) {
+                    DKStatus.post(DKStatus.Kind.LIMIT_ALL)
+                    onLimitWait?.invoke("⏳ सारी API keys और मॉडल की limit अभी खत्म — काम रोका नहीं, ${w} सेकंड रुककर फिर कोशिश (कुल रुके: ${waitedSec / 60} मिनट)")
+                    Thread.sleep(w * 1000L)
+                    waitedSec += w
+                    continue
+                }
+                // key/मॉडल की गलती (4xx) = दोबारा कोशिश बेकार, तुरंत रिपोर्ट
                 if (attempt >= Retry.ATTEMPTS || !Retry.isTransient(code, e.message.orEmpty())) {
                     if (attempt > 1) sink("AI API $attempt बार fail (${reason(e)})", "${Retry.ATTEMPTS} बार अपने-आप कोशिश के बाद भी नहीं चला — आपको रिपोर्ट किया")
                     throw e
@@ -87,7 +105,7 @@ class CoderAi(val provider: Provider, private val key: String, val model: String
         val tried = errs.joinToString { "${it.first.provider.name}: ${(it.second as? AiException)?.code ?: "network"}" }
         if (wait > 0) {
             DKStatus.post(DKStatus.Kind.LIMIT_ALL)
-            sink("सारी API keys और मॉडल की limit एक साथ खत्म (429)", "लगातार कोशिश नहीं की — काम रोककर आपको बताया")
+            sink("सारी API keys और मॉडल की limit एक साथ खत्म (429)", "limit खुलने तक रुककर फिर कोशिश (कुल ${LIMIT_WAIT_MAX_SEC / 60} मिनट तक) — काम रोका नहीं")
             throw AiException(429, allLimitsMessage(wait, tried, fallbacks.isEmpty()), wait)
         }
         // पहले चुने API की असली वजह, साथ में बाकी API का हाल
@@ -136,7 +154,7 @@ class CoderAi(val provider: Provider, private val key: String, val model: String
         // चुना मॉडल -> 3.8 Flash (coding के लिए सबसे अच्छा) -> बाकी नए मॉडल. 2.5 वाले backup नहीं (नए users के लिए बंद)
         // 404 "no longer available" दे चुके मॉडल (phone में याद) दोबारा नहीं - पहले हर कदम पर 2.5-pro का 404
         val kt = key.takeLast(6)
-        val all = GeminiModels.orderSkippingGone(model, listOf(GeminiModels.CODER) + GeminiClient.BACKUP_MODELS) {
+        val all = GeminiModels.orderSkippingGone(model, GeminiModels.CODER_CHAIN) {
             Cooldown.blocked(GeminiModels.goneKey(it, kt))
         }
         // jis model ki limit abhi khatm hui thi use thodi der chhodo (har kadam par wahi 429 dobara na khaayein)
@@ -261,7 +279,9 @@ class CoderAi(val provider: Provider, private val key: String, val model: String
          */
         fun forScope(c: Context, scope: String, sink: (String, String) -> Unit): CoderAi? {
             val p = Providers.byId(Prefs.scopeActive(c, scope)) ?: return null
-            val key = Prefs.scopeKey(c, scope, p.id)
+            // कोडिंग एजेंट + Gemini: 3 तक keys (key 1 के सारे मॉडल की limit खत्म -> key 2 के सारे मॉडल -> key 3)
+            val gemKeys = if (p.isGemini && scope == ApiScopes.CODER) Prefs.coderGeminiKeys(c) else emptyList()
+            val key = gemKeys.firstOrNull() ?: Prefs.scopeKey(c, scope, p.id)
             var model = Prefs.scopeModel(c, scope, p.id)
             // Settings का चुना Gemini मॉडल बंद हो चुका (404) -> setting खुद 3.8 Flash पर (हर बार 404 नहीं)
             if (p.isGemini && key.isNotBlank()) {
@@ -276,9 +296,22 @@ class CoderAi(val provider: Provider, private val key: String, val model: String
             }
             val base = Prefs.scopeBase(c, scope, p.id)
             if (key.isBlank() || model.isBlank() || (!p.isGemini && base.isBlank())) return null
-            val fb = if (p.isGemini) emptyList() else Prefs.scopeBackups(c, scope, p.id)
+            val fb = if (p.isGemini) gemKeys.drop(1).mapIndexed { i, k -> CoderAi(p, k, model, base, note = ", Gemini key ${i + 2}", sink = sink) }
+                else Prefs.scopeBackups(c, scope, p.id)
                 .map { m -> CoderAi(p, key, m, base, note = ", उसी key का दूसरा मॉडल", sink = sink) }
-            return CoderAi(p, key, model, base, fb, sink = sink)
+            return CoderAi(p, key, model, base, fb, sink = sink).also { it.waitOnLimit = scope == ApiScopes.CODER }
+        }
+
+        /** सारी keys की limit पर कुल कितना रुकें (फिर भी बंद = दिन की limit) */
+        const val LIMIT_WAIT_MAX_SEC = 12 * 60
+        /** limit खुलने के इंतज़ार की खबर (कोडिंग स्क्रीन पर कदम) */
+        @Volatile var onLimitWait: ((String) -> Unit)? = null
+
+        /** सब 429: अगली बार कितना रुकें (0 = अब और नहीं). Google का retryDelay हो तो वही (20..120 सेकंड), वरना 60 */
+        fun nextLimitWait(code: Int, retryAfter: Int, waitedSec: Int, maxSec: Int = LIMIT_WAIT_MAX_SEC): Int {
+            if (code != 429 || waitedSec >= maxSec) return 0
+            val w = if (retryAfter > 0) retryAfter.coerceIn(20, 120) else 60
+            return w.coerceAtMost(maxSec - waitedSec).coerceAtLeast(1)
         }
 
         /** 413 के बाद हर API/मॉडल की request सीमा (अक्षर, maxTokens) - अगली बार पहले से छोटी */
@@ -286,9 +319,10 @@ class CoderAi(val provider: Provider, private val key: String, val model: String
 
         /** सारी keys की limit खत्म: साफ़ हिंदी - क्या हुआ और आगे क्या करें */
         fun allLimitsMessage(waitSec: Int, tried: String, noFallback: Boolean): String =
-            "सारी API keys और मॉडल की limit अभी खत्म है (429), इसलिए काम रोक दिया — लगातार कोशिश नहीं की।\n" +
-                "आगे: लगभग ${if (waitSec >= 60) "${waitSec / 60} मिनट" else "$waitSec सेकंड"} बाद काम फिर भेजें" +
-                (if (noFallback) ", या Settings → AI दिमाग में इसी हिस्से की मुख्य API बदलकर दूसरी फ्री key (जैसे Groq / OpenRouter) डालें" else "") + "।" +
+            "सारी API keys और मॉडल की limit खत्म है (429) — ${LIMIT_WAIT_MAX_SEC / 60} मिनट तक रुक-रुककर कोशिश की, फिर भी नहीं खुली (शायद आज की limit)। " +
+                "बेवजह लगातार कोशिश नहीं की।\n" +
+                "किया हुआ काम बचा है (इतिहास में)। आगे: लगभग ${if (waitSec >= 60) "${waitSec / 60} मिनट" else "$waitSec सेकंड"} बाद \"वहीं से आगे\" दबाएँ या काम फिर भेजें" +
+                (if (noFallback) ", या Settings → AI दिमाग → कोडिंग एजेंट में Gemini key 2 / key 3 (दूसरे Google project की) या दूसरी फ्री key (जैसे Groq / OpenRouter) डालें" else "") + "।" +
                 if (tried.isNotBlank()) "\n(आज़माए: $tried)" else ""
 
         /** Gemini model ki limit kab tak (key ke aakhri 6 akshar|model -> time) */
@@ -406,6 +440,17 @@ class CodingAgent(private val gh: GitHub, var repo: String, var branch: String, 
     fun restorePr(p: GitHub.Pull) {
         if (!safePr || SafePr.isBlocked(p.head, baseBranch)) return
         pr = p; branch = p.head; prError = ""; pushedToBranch = true
+    }
+
+    /**
+     * "वहीं से आगे" (ऐप बंद होने के बाद): पिछली feature branch वापस - GitHub पर हो तभी. उस पर push हुआ माना
+     * (ताकि खाली समझकर मिटे नहीं). @return true = branch मिली
+     */
+    fun restoreBranch(name: String): Boolean {
+        if (!safePr || SafePr.isBlocked(name, baseBranch)) return false
+        val ok = try { gh.remoteBranchSha(repo, name).isNotBlank() } catch (_: Exception) { false }
+        if (ok) { branch = name; pushedToBranch = true }
+        return ok
     }
 
     /**

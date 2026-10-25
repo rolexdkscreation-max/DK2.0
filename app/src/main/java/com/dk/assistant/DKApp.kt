@@ -19,6 +19,10 @@ class DKApp : Application() {
         UiLang.load(this)     // स्क्रीनों की भाषा (शुरुआती English)
         StatusNotify.install(this)
         removeLegacyAntiTheftState()
+        // कोडिंग एजेंट: फ़ोन/Android ने ऐप बीच काम में बंद कर दी थी = थोड़ी देर बाद वहीं से अपने-आप आगे (बार-बार crash हो तो 3 बार बाद रुकता है)
+        android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
+            try { if (Prefs.coderOn(this) && Prefs.coderSeven(this)) SevenRunner.reopen(this) } catch (e: Exception) { DKLog.d("coder resume: ${e.message}") }
+        }, 6000)
         val prev = Thread.getDefaultUncaughtExceptionHandler()
         Thread.setDefaultUncaughtExceptionHandler { t, e ->
             try {

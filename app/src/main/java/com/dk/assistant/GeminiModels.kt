@@ -11,6 +11,19 @@ object GeminiModels {
     /** Coding/लंबे काम के लिए सबसे अच्छा Flash (software engineering + agents) */
     const val CODER = "gemini-3.8-flash"
 
+    /**
+     * कोडिंग एजेंट का क्रम (एक key पर): सबसे अच्छा coding Flash पहले, limit खत्म हो तो अगला.
+     * सब free tier में (ai.google.dev/gemini-api/docs/pricing, अक्टूबर 2026). Pro/Argon free में नहीं, इसलिए नहीं.
+     * 3.6 Flash बंद होगा तो 404 -> 7 दिन तक अपने-आप छूटता है ([orderSkippingGone]).
+     */
+    val CODER_CHAIN = listOf(CODER, "gemini-3.6-flash", "gemini-3-flash-preview", "gemini-3.5-flash-lite", "gemini-3.1-flash-lite")
+
+    /** v3.69 तक कोडिंग एजेंट का default flash-lite था (coding के लिए कमज़ोर) - एक बार 3.8 Flash पर */
+    fun oldCoderDefault(model: String): Boolean = model.trim().removePrefix("models/").let { it.isBlank() || it == "gemini-3.5-flash-lite" || it == "gemini-3.1-flash-lite" }
+
+    /** keys: खाली हटाओ, एक जैसी (दोहराई) एक बार */
+    fun distinctKeys(keys: List<String>): List<String> = keys.map { it.trim() }.filter { it.isNotBlank() }.distinct()
+
     /** 1.x / 2.x = पुराने, नए users के लिए बंद */
     fun isLegacy(model: String): Boolean = Regex("^(models/)?gemini-[12]\\.").containsMatchIn(model.trim())
 

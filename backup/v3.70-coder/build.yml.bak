@@ -1,0 +1,133 @@
+name: Build DK APK & UAAG Android Emulator Check
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+
+permissions:
+  contents: write   # Release banane ke liye
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    env:
+      VERSION_CODE: ${{ github.run_number }}
+    steps:
+      - name: Code checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0      # pichhle release se kya badla, yeh dekhne ke liye poori history
+
+      - name: Java 17 setup
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Gradle setup
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.7'
+
+      - name: Signing key (hamesha ek hi)
+        env:
+          KS_B64: ${{ secrets.DK_KEYSTORE_B64 }}
+        run: |
+          if [ -n "$KS_B64" ]; then
+            echo "$KS_B64" | base64 -d > "$RUNNER_TEMP/dk.jks"
+            echo "DK_KEYSTORE=$RUNNER_TEMP/dk.jks" >> "$GITHUB_ENV"
+          else
+            echo "::warning::DK_KEYSTORE_B64 secret nahi mila - debug key se sign hoga"
+          fi
+
+      - name: Update ka prakar aur version (सॉफ़्टवेयर अपडेट / सिक्योरिटी पैच)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -e
+          git fetch --tags --force >/dev/null 2>&1 || true
+          PREV_TAG="$(gh release view --json tagName -q .tagName 2>/dev/null || true)"
+          PREV_BODY="$(gh release view --json body -q .body 2>/dev/null || true)"
+          PREV_VER="$(printf '%s\n' "$PREV_BODY" | sed -n 's/^VERSION: *\([0-9.]*\).*/\1/p' | head -1)"
+          if [ -n "$PREV_TAG" ] && git rev-parse -q --verify "refs/tags/$PREV_TAG" >/dev/null; then RANGE="$PREV_TAG..HEAD"; else RANGE="HEAD~1..HEAD"; fi
+          MSGS="$(git log --pretty=%B $RANGE)"
+          FILES="$(git diff --name-only $RANGE)"
+          NEWKT="$(git diff --diff-filter=A --name-only $RANGE | grep -E '\.kt$' || true)"
+          if echo "$MSGS" | grep -qi '\[software\]'; then TYPE=software
+          elif echo "$MSGS" | grep -qi '\[security\]'; then TYPE=security
+          elif echo "$FILES" | grep -qE '^app/src/main/res/(layout|drawable|values|mipmap|anim|font|xml)/|Activity\.kt$|View\.kt$' || [ -n "$NEWKT" ]; then TYPE=software
+          else TYPE=security; fi
+          # Ensure new launcher icons are included in build workspace check
+          git status
+          BASE="$(tr -d ' \n' < version.txt)"
+          if [ -z "$PREV_VER" ]; then NEW="$BASE"
+          else
+            IFS=. read -r MA MI PA <<< "$PREV_VER"; MI=${MI:-0}; PA=${PA:-0}
+            if [ "$TYPE" = software ]; then NEW="$MA.$((MI+1))"; else NEW="$MA.$MI.$((PA+1))"; fi
+            TOP="$(printf '%s\n%s\n' "$NEW" "$BASE" | sort -V | tail -1)"
+            if [ "$TOP" = "$BASE" ] && [ "$BASE" != "$NEW" ]; then NEW="$BASE"; fi
+          fi
+          echo "UPD_TYPE=$TYPE" >> "$GITHUB_ENV"
+          echo "VERSION_NAME=$NEW" >> "$GITHUB_ENV"
+          {
+            echo "TYPE: $TYPE"
+            echo "VERSION: $NEW"
+            echo "---"
+            NOTES="$(git log --pretty='• %s' $RANGE | sed -E 's/\[(software|security)\] *//I' | head -40)"
+            if [ -n "$NOTES" ]; then echo "$NOTES"; else echo "• छोटे सुधार"; fi
+          } > release_notes.txt
+          echo "Prakar: $TYPE  •  Version: $NEW  (pichhla: ${PREV_VER:-koi nahi}, $RANGE)"
+          cat release_notes.txt
+
+      - name: APK build (Release)
+        env:
+          DK_KS_PASS: ${{ secrets.DK_KS_PASS }}
+          DK_KEY_ALIAS: dk
+        run: |
+          gradle assembleRelease --no-daemon
+          cp app/build/outputs/apk/release/app-release.apk DK.apk
+
+      - name: APK upload (Actions artifact)
+        uses: actions/upload-artifact@v4
+        with:
+          name: DK-apk
+          path: DK.apk
+
+      - name: UAAG Android Emulator & Screenshots Test
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 29
+          target: default
+          arch: x86_64
+          profile: pixel_4
+          script: |
+            echo "UAAG Emulator successfully start ho gaya hai!"
+            adb devices
+            mkdir -p screenshots
+            # App install check
+            adb install -r DK.apk
+            # App launch test
+            adb shell am start -n com.dk.app/.MainActivity || true
+            sleep 5
+            # Screenshot capture
+            adb exec-out screencap -p > screenshots/uaag_screen.png
+            echo "Screenshot successfully capture ho gaya hai!"
+
+      - name: Screenshots upload (Artifacts)
+        uses: actions/upload-artifact@v4
+        with:
+          name: uaag-screenshots
+          path: screenshots/
+
+      - name: GitHub Release (app ke andar update ke liye)
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "v${VERSION_CODE}" DK.apk \
+            --title "DK ${VERSION_NAME}" \
+            --notes-file release_notes.txt \
+            --latest

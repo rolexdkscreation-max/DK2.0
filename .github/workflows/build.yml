@@ -109,14 +109,21 @@ jobs:
             mkdir -p screenshots
             # App install check
             adb install -r DK.apk
-            # App launch test
-            adb shell am start -n com.dk.app/.MainActivity || true
-            sleep 5
-            # Screenshot capture
-            adb exec-out screencap -p > screenshots/uaag_screen.png
+            # App launch test (असली package: com.dk.assistant - पहले गलत com.dk.app था, इसलिए DK खुलता ही नहीं था)
+            adb shell am start -W -n com.dk.assistant/.MainActivity || true
+            sleep 8
+            # Screenshot capture (DK कोडिंग एजेंट इन्हें ऐप में दिखाता है)
+            timeout 30 adb exec-out screencap -p > screenshots/01_khulte_hi.png || true
+            sleep 6
+            timeout 30 adb exec-out screencap -p > screenshots/02_thodi_der_baad.png || true
+            # ऐप चल रहा है या crash हुआ - नतीजा + crash log भी साथ
+            if adb shell pidof com.dk.assistant > /dev/null; then echo "DK chal raha hai" > screenshots/status.txt; else echo "DK band ho gaya (crash?)" > screenshots/status.txt; fi
+            timeout 30 adb logcat -d -b crash > screenshots/crash_log.txt || true
+            cat screenshots/status.txt
             echo "Screenshot successfully capture ho gaya hai!"
 
       - name: Screenshots upload (Artifacts)
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: uaag-screenshots
