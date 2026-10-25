@@ -1,5 +1,6 @@
 package com.dk.assistant.voice.engine
 
+import android.widget.LinearLayout
 import android.content.Context
 import android.util.Base64
 import com.dk.assistant.GeminiLive
@@ -26,7 +27,7 @@ import java.util.concurrent.TimeUnit
 object LiveNativeEngine : VoiceEngine {
     override val id = VoiceEngines.LIVE_NATIVE
     override val title = "Gemini Live सीधी आवाज़"
-    override val note = "Live खुद लिखता और खुद बोलता है (native audio) • स्टाइल का डिब्बा यहाँ लागू नहीं, भावना Live खुद तय करता है"
+    override val note = "Live खुद लिखता और खुद बोलता है (native audio) • नीचे का भावना/स्टाइल Live के मुख्य निर्देश में जुड़ता है"
     override val split = false
     override val defaultOn = false
 
@@ -40,6 +41,22 @@ object LiveNativeEngine : VoiceEngine {
     }
     override fun voice(c: Context): String = Prefs.geminiVoice(c)
     override fun setVoice(c: Context, v: String) { Prefs.edit(c) { putString("gemini_voice", v) } }
+
+    /** v3.69: Live सीधी आवाज़ का अपना "भावना / स्टाइल" - Live सत्र के system instruction में जुड़ता है (GeminiLive.setupJson) */
+    fun style(c: Context): String = VoiceEngines.sp(c).getString("live_native_style", "") ?: ""
+
+    /** system instruction में जोड़ने लायक पंक्ति (खाली स्टाइल = कुछ नहीं) */
+    fun styleNote(style: String): String {
+        val s = style.trim()
+        return if (s.isBlank()) "" else "\n\nVOICE STYLE (how you sound, every reply, start to end): $s"
+    }
+
+    override fun settings(c: Context, box: LinearLayout, ui: VoiceUi) {
+        ui.field(box, "भावना / स्टाइल (Live के मुख्य निर्देश में)", style(c), "जैसे: धीमी, कोमल, भावुक आवाज़ में, प्यार से बोलो", multiLine = true) { v ->
+            VoiceEngines.sp(c).edit().putString("live_native_style", v.trim()).apply()
+        }
+        ui.hint(box, "Live उसी भाव में बोलेगा। चलती बातचीत में नया निर्देश अगली बार जुड़ने पर लगेगा (DK लाइव बंद करके फिर चालू करें)।")
+    }
 
     override fun notReady(c: Context): String? = if (GeminiLive.key(c).isBlank()) "DK लाइव की Gemini key नहीं डाली" else null
 
@@ -59,7 +76,7 @@ object LiveNativeEngine : VoiceEngine {
                             .put("prebuiltVoiceConfig", JSONObject().put("voiceName", voice)))))
                     .put("systemInstruction", JSONObject().put("parts", JSONArray().put(JSONObject().put("text",
                         "तुम सिर्फ़ आवाज़ हो। यूज़र जो वाक्य दे, उसे ज्यों-का-त्यों, गर्मजोशी और भावना से, हिंदी में बोलो। " +
-                            "एक भी शब्द जोड़ना/बदलना/जवाब देना नहीं।")))))
+                            "एक भी शब्द जोड़ना/बदलना/जवाब देना नहीं।" + styleNote(style(c)))))))
                 webSocket.send(setup.toString())
             }
             override fun onMessage(webSocket: WebSocket, text: String) = handle(text)

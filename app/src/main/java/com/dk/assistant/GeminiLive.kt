@@ -1109,7 +1109,8 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
                 .apply { if (!connText) put("speechConfig", JSONObject().put("voiceConfig", JSONObject()
                     .put("prebuiltVoiceConfig", JSONObject().put("voiceName", ex.voice)))
                     .apply { if (ex.lang) put("languageCode", LiveVoice.LANGUAGE) }) })
-            .put("systemInstruction", JSONObject().put("parts", JSONArray().put(JSONObject().put("text", Lang.sys(brain.liveSystemPrompt()) + if (connSplit) SPLIT_NOTE else ""))))
+            .put("systemInstruction", JSONObject().put("parts", JSONArray().put(JSONObject().put("text", Lang.sys(brain.liveSystemPrompt()) + if (connSplit) SPLIT_NOTE else
+                com.dk.assistant.voice.engine.LiveNativeEngine.styleNote(com.dk.assistant.voice.engine.LiveNativeEngine.style(svc))))))
             .put("tools", tools)
             .put("realtimeInputConfig", JSONObject()
                 .put("automaticActivityDetection", JSONObject()

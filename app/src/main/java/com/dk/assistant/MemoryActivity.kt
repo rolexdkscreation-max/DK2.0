@@ -151,17 +151,9 @@ class MemoryActivity : AppCompatActivity() {
         }
     }
 
-    private fun card(parent: LinearLayout, title: String, sub: String): LinearLayout {
-        val c = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL; setBackgroundResource(R.drawable.glass_card)
-            val p = (16 * dp).toInt(); setPadding(p, p, p, p)
-        }
-        c.addView(TextView(this).apply { text = title; textSize = 17f; setTypeface(typeface, Typeface.BOLD); setTextColor(0xFFFFFFFF.toInt()) })
-        if (sub.isNotBlank()) c.addView(TextView(this).apply { text = sub; textSize = 12f; setTextColor(0x99FFFFFF.toInt()); setPadding(0, (2 * dp).toInt(), 0, (10 * dp).toInt()) })
-        else c.addView(android.view.View(this), LinearLayout.LayoutParams(1, (8 * dp).toInt()))
-        parent.addView(c, LinearLayout.LayoutParams(-1, -2).apply { topMargin = (14 * dp).toInt() })
-        return c
-    }
+    /** v3.69: खुलने-बंद होने वाला कॉलम (साझा ui/CollapsibleSection, सेटिंग्स जैसा) - शुरू में बंद */
+    private fun card(parent: LinearLayout, title: String, sub: String): LinearLayout =
+        com.dk.assistant.ui.CollapsibleSection.add(this, parent, title, sub.ifBlank { null }) {}.body
 
     private fun button(t: String, on: () -> Unit) = TextView(this).apply {
         text = t; textSize = 15f; setTextColor(0xFFFFFFFF.toInt()); gravity = Gravity.CENTER

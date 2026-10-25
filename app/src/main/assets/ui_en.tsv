@@ -918,3 +918,53 @@ WhatsApp संदेश	WhatsApp messages
 "राहुल को WhatsApp पर लिखो …" कहने पर DK खुद भेजता है और भेजने के बाद ही "भेज दिया" बोलता है	When you say "write to Rahul on WhatsApp …", DK sends it itself and says "sent" only after it is really sent
 बिना पूछे तुरंत भेजो (बंद = भेजने से पहले "भेज दूँ?" पूछो)	Send right away without asking (off = ask "shall I send?" first)
 चालू करने पर भी नाम साफ़ न मिले (दो मिलते-जुलते नाम) तो DK पूछेगा। भेजने के बाद DK जाँचता है कि संदेश सच में चैट में गया।	Even when on, DK asks if the name is unclear (two similar names). After sending, DK checks that the message really reached the chat.
+# v3.68/v3.69: आवाज़ इंजन + खुलने-बंद होने वाले कॉलम
+बोलने वाला इंजन (DK Live)	Speaking engine (DK Live)
+Gemini TTS • Microsoft Edge TTS • Gemini Live सीधी आवाज़ — एक समय में एक	Gemini TTS • Microsoft Edge TTS • Gemini Live direct voice — one at a time
+बोलने वाला इंजन (Gemini TTS • Edge • Live) • सुनना • सिर्फ़ मेरी आवाज़	Speaking engine (Gemini TTS • Edge • Live) • Listening • Only my voice
+बात करने का तरीका (अपनी तरफ़ से)	Your own talking style
+जवाब Gemini Live लिखता है; बोलता यह इंजन है. एक समय में एक ही चालू. मेरे बोलना ख़त्म करने से पहली आवाज़ तक का समय हर इंजन के नीचे दिखता है (पिछली बार नापा). दिक़्क़त आए तो ऐप अपने-आप Gemini TTS पर लौटता है. ये बदलाव तुरंत सेव होते हैं.	Gemini Live writes the reply; this engine speaks it. Only one is on at a time. The time from when you stop speaking to the first sound is shown under each engine (last measured). If something goes wrong, the app falls back to Gemini TTS by itself. These changes save instantly.
+कोई आवाज़ इंजन नहीं मिला - DK लाइव अपनी आवाज़ में बोलेगा	No voice engine found - DK Live will speak in its own voice
+अभी नहीं चलेगा:	Will not work yet:
+▶ सुनो	▶ Listen
+कम से कम एक इंजन चालू रहता है - अभी:	At least one engine stays on - now:
+अब बोलेगा:	Now speaking:
+(अगली बात से)	(from the next reply)
+बज रहा है:	Playing:
+कोई आवाज़ नहीं आई	No sound came
+पहली आवाज़	first sound
+दिक़्क़त -	problem -
+(बातचीत में ऐप Gemini TTS पर लौटेगा)	(in conversation the app will fall back to Gemini TTS)
+पिछली बार:	Last time:
+बोलना ख़त्म → पहली आवाज़:	Speech end → first sound:
+बातचीत में अभी नापा नहीं	Not measured in conversation yet
+नमूना:	sample:
+भावना/स्टाइल का निर्देश मानता है • key Cloudflare Worker (dk-brain) में	Follows emotion/style instructions • key lives in the Cloudflare Worker (dk-brain)
+Kore — मज़बूत, साफ़ (महिला)	Kore — firm, clear (female)
+Leda — जवान, ताज़ी (महिला)	Leda — youthful, fresh (female)
+Aoede — हल्की, खुली (महिला)	Aoede — light, breezy (female)
+Sulafat — गर्मजोशी भरी (महिला)	Sulafat — warm (female)
+Vindemiatrix — कोमल, प्यारी (महिला)	Vindemiatrix — gentle, sweet (female)
+Cloudflare Worker (dk-brain) का पता नहीं डाला	Cloudflare Worker (dk-brain) address not entered
+Cloudflare Worker (dk-brain) का पता	Cloudflare Worker (dk-brain) address
+Worker का ऐप-टोकन (APP_TOKEN, ज़रूरी नहीं)	Worker app token (APP_TOKEN, optional)
+Worker में APP_TOKEN रखा हो तो वही	Same as APP_TOKEN in the Worker, if set
+भावना / स्टाइल (हर टुकड़े से पहले यही एक निर्देश)	Emotion / style (this one instruction before every piece)
+Gemini की key ऐप में नहीं - Worker में: wrangler secret put GEMINI_API_KEY (worker/dk-brain/README.md)	The Gemini key is not in the app - it is in the Worker: wrangler secret put GEMINI_API_KEY (worker/dk-brain/README.md)
+Gemini Live सीधी आवाज़	Gemini Live direct voice
+Live खुद लिखता और खुद बोलता है (native audio) • नीचे का भावना/स्टाइल Live के मुख्य निर्देश में जुड़ता है	Live writes and speaks by itself (native audio) • the emotion/style below is added to Live's main instruction
+भावना / स्टाइल (Live के मुख्य निर्देश में)	Emotion / style (in Live's main instruction)
+जैसे: धीमी, कोमल, भावुक आवाज़ में, प्यार से बोलो	e.g. speak slowly, softly, emotionally, with love
+Live उसी भाव में बोलेगा। चलती बातचीत में नया निर्देश अगली बार जुड़ने पर लगेगा (DK लाइव बंद करके फिर चालू करें)।	Live will speak in that mood. In a running conversation the new instruction applies on the next connection (turn DK Live off and on again).
+DK लाइव की Gemini key नहीं डाली	DK Live Gemini key not entered
+यह इंजन भावना के निर्देश नहीं मानता — सिर्फ़ गति और पिच बदलती है • मुफ़्त, बिना key	This engine does not follow emotion instructions — only speed and pitch change • free, no key
+Swara — हिंदी महिला	Swara — Hindi female
+Madhur — हिंदी पुरुष	Madhur — Hindi male
+ध्यान दें: Edge TTS भावना/स्टाइल के निर्देश नहीं मानता। सिर्फ़ गति और पिच बदल सकते हैं।	Note: Edge TTS does not follow emotion/style instructions. Only speed and pitch can change.
+भावना / स्टाइल (Edge के लिए)	Emotion / style (for Edge)
+जैसे: धीमी, कोमल आवाज़ में	e.g. slow, soft voice
+Edge में असर सिर्फ़ गति और पिच तक है: "धीमी", "कोमल" = गति कम, पिच नीचा; "तेज़", "जोश" = गति ज़्यादा। यह नीचे के स्लाइडर में जुड़ता है।	In Edge the effect is limited to speed and pitch: "slow", "soft" = lower speed and pitch; "fast", "excited" = higher speed. It adds to the sliders below.
+गति	Speed
+पिच (आवाज़ का ऊँचा-नीचापन)	Pitch (how high or low the voice is)
+कॉलम खुला	expanded
+कॉलम बंद	collapsed

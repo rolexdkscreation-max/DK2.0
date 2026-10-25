@@ -54,8 +54,6 @@ object Prefs {
     fun userName(c: Context) = sp(c).getString("user_name", "") ?: ""
     fun assistantName(c: Context) = (sp(c).getString("assistant_name", "DK") ?: "DK").ifBlank { "DK" }
     fun personality(c: Context) = sp(c).getString("personality", "") ?: ""
-    /** DK AI: 10 में से चुनी पर्सनैलिटी (Personality enum, शुरुआती NORMAL) */
-    fun personalityPreset(c: Context) = Personality.from(sp(c).getString(Personality.PREF_KEY, null))
     fun wakeWords(c: Context): List<String> {
         val raw = sp(c).getString("wake_words", "डीके, दीके, डी के, dk, d k") ?: ""
         val list = raw.split(',').map { it.trim().lowercase() }.filter { it.isNotEmpty() }.toMutableList()

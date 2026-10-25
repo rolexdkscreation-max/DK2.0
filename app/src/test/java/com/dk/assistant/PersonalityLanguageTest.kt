@@ -6,55 +6,22 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
-/** DK AI ब्रीफ़ Part 02/03: 10 पर्सनैलिटी, भाषा पहचान, Auto भाषा, मालिक का नाम */
+/** DK AI ब्रीफ़ Part 02/03: बात करने का तरीका, भाषा पहचान, Auto भाषा, मालिक का नाम */
 class PersonalityLanguageTest {
 
     @After fun reset() { Lang.current = Lang.HINGLISH; Lang.detected = Lang.HINGLISH }
 
-    @Test fun tenPersonalities_inOrder_defaultNormal() {
-        assertEquals(
-            listOf("NORMAL", "FRIENDLY", "PROFESSIONAL", "FUNNY", "COMPANION", "GF_MODE", "TEACHER", "DEVELOPER", "HUNGRY", "NAUTANKI"),
-            Personality.entries.map { it.name },
-        )
-        assertEquals(Personality.NORMAL, Personality.DEFAULT)
-        assertEquals(Personality.NORMAL, Personality.from(null))
-        assertEquals(Personality.NORMAL, Personality.from("गलत"))
-        assertEquals(Personality.GF_MODE, Personality.from("gf_mode"))
-        assertEquals(Personality.TEACHER, Personality.from(" TEACHER "))
+    // v3.69: 10 पर्सनैलिटी हटाईं (बैकअप backup/v3.69-settings) - अब सिर्फ़ अपना लिखा "बात करने का तरीका"
+    @Test fun personaLine_onlyUserText() {
+        assertEquals("", personaLine(""))
+        assertEquals("", personaLine("   "))
+        assertEquals(" Extra style instructions from the user: जवाब छोटे रखो.", personaLine("  जवाब छोटे रखो "))
     }
 
-    @Test fun everyInstruction_isAnInstruction_notAScriptedReply() {
-        for (p in Personality.entries) {
-            assertTrue(p.name, p.systemInstruction.startsWith("Personality: ${p.displayName}."))
-            assertTrue(p.name, p.displayName.isNotBlank() && p.description.isNotBlank() && p.icon.isNotBlank())
-        }
-    }
-
-    @Test fun companionAndGf_haveSafetyRules() {
-        for (p in listOf(Personality.COMPANION, Personality.GF_MODE)) {
-            val s = p.systemInstruction
-            assertTrue(p.name, s.contains("never claim to be human"))
-            assertTrue(p.name, s.contains("body"))
-            assertTrue(p.name, s.contains("No sexually explicit content"))
-            assertTrue(p.name, s.contains("change the tone or the topic, respect it immediately"))
-        }
-    }
-
-    @Test fun promptLine_everyPersonality_withAndWithoutExtra() {
-        for (p in Personality.entries) {
-            val plain = Personality.promptLine(p, "")
-            assertTrue(plain.startsWith(" Personality: "))
-            assertFalse(plain.contains("Extra style"))
-            val withExtra = Personality.promptLine(p, "  जवाब छोटे रखो ")
-            assertTrue(withExtra.contains(p.systemInstruction))
-            assertTrue(withExtra.contains("Extra style instructions from the user: जवाब छोटे रखो."))
-        }
-    }
-
-    @Test fun everyPersonality_x_everyLanguage_buildsAPrompt() {
-        for (p in Personality.entries) for ((code, _) in Lang.CHOICES) {
-            val sys = Lang.sys("You are DK." + Personality.promptLine(p, ""), code)
-            assertTrue(sys.contains(p.systemInstruction))
+    @Test fun everyLanguage_buildsAPrompt() {
+        for ((code, _) in Lang.CHOICES) {
+            val sys = Lang.sys("You are DK." + personaLine("धीरे बोलो"), code)
+            assertTrue(sys.contains("धीरे बोलो"))
             assertTrue(sys.contains("LANGUAGE (final rule"))
         }
     }

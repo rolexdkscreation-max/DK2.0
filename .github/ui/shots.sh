@@ -41,7 +41,14 @@ run() {
   (adb shell input swipe 540 560 540 560 3000 &) ; sleep 1.2;               shot ${tag}_02b_pressed 0
   sleep 3; adb shell input keyevent KEYCODE_BACK; sleep 1
   adb shell am start -S -W -n $PKG/.SettingsActivity --es section voice;   shot ${tag}_03_settings_voice 4
+  # v3.69: खुलने-बंद होने वाला कॉलम - टैप = खुले, दोबारा टैप = बंद
+  tap "बोलने वाला इंजन" && shot ${tag}_03b_voice_engine_open 2
+  adb shell input swipe 540 1700 540 700 300; shot ${tag}_03c_voice_engine_scroll 2
+  adb shell input swipe 540 1700 540 700 300; shot ${tag}_03d_voice_engine_scroll2 2
+  adb shell am start -S -W -n $PKG/.SettingsActivity --es section voice; sleep 3
+  tap "बोलने वाला इंजन" && sleep 1 && tap "बोलने वाला इंजन" && shot ${tag}_03e_voice_engine_closed 2
   adb shell am start -S -W -n $PKG/.SettingsActivity --es section profile; shot ${tag}_04_settings_profile 4
+  tap "Access key" && shot ${tag}_04b_profile_accesskey_open 2
   adb shell am force-stop $PKG
   adb shell am start -S -W -n $PKG/.ChatActivity; sleep 3
   adb shell input text "Namaste%sDK"; sleep 1
@@ -64,7 +71,8 @@ run() {
   adb shell am force-stop $PKG
 }
 
-run before /tmp/before.apk
+# नया पहले - emulator बीच में अटके तो भी इस branch की तस्वीरें मिलें
 run after  /tmp/after.apk
+run before /tmp/before.apk
 ls -la $OUT
 exit 0
