@@ -17,9 +17,9 @@ class TeacherActivity : AppCompatActivity() {
         setContentView(R.layout.activity_teacher)
         
         brain = BrainManager(this)
-        whiteboard = findViewById(R.id.whiteboard)
+        whiteboard = findViewById(R.id.whiteboardView)
         
-        findViewById<ImageView>(R.id.btn_voice).setOnClickListener {
+        findViewById<android.widget.ImageButton>(R.id.btnVoice).setOnClickListener {
             // वॉइस इनपुट लॉजिक यहाँ आएगा
         }
     }
