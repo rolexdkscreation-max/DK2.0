@@ -9,6 +9,7 @@ import com.dk.assistant.DKLog
 import com.dk.assistant.DKState
 import com.dk.assistant.NameMatch
 import com.dk.assistant.PhoneActions
+import com.dk.assistant.Prefs
 import com.dk.assistant.agent.core.ConfirmGate
 import com.dk.assistant.agent.social.MediaPolicy
 import com.dk.assistant.agent.social.OpenSpec
@@ -35,6 +36,8 @@ object SocialAgent {
     @Volatile var lastReport: TaskReport? = null
         private set
     private var seq = 0
+    /** v3.67: यह काम WhatsApp संदेश है और मालिक ने "बिना पूछे भेजो" चालू किया है */
+    @Volatile private var autoSend = false
 
     private fun err(code: String, msg: String) = JSONObject().put("status", "error").put("error", code).put("message", msg).toString()
 
@@ -63,6 +66,7 @@ object SocialAgent {
                 is Contact.Ask -> return err(c.code, c.msg)
             }
         }
+        autoSend = req.platform == Platform.WHATSAPP && req.action == SocialAction.SEND_MESSAGE && Prefs.waAutoSend(svc)
         val id = "social-" + (++seq) + "-" + (System.currentTimeMillis() % 100000)
         val task = SocialPlanner.plan(id, req, media, phone, who)
         val driver = AccessibilityScreenDriver(svc)
@@ -106,6 +110,10 @@ object SocialAgent {
         lastReport = rep
         DKLog.d("Social ${rep.taskId}: ${rep.status.name.lowercase()} (${rep.step}/${rep.totalSteps})")
         if (rep.status == TaskStatus.RUNNING && rep.step > 0) return   // बीच की हर बात नहीं
+        // मालिक ने सेटिंग में पहले ही "हाँ" दे रखी है -> सवाल नहीं, सीधा भेजो (पूरा होने का SYSTEM NOTE बाद में आता है)
+        if (rep.status == TaskStatus.WAITING_CONFIRMATION && autoSend) {
+            runner?.let { autoSend = false; DKLog.d("Social ${rep.taskId}: बिना पूछे भेजो (सेटिंग)"); it.control(SocialTaskRunner.Control.CONFIRM); return }
+        }
         val extra = when (rep.status) {
             TaskStatus.WAITING_CONFIRMATION -> " Ask the user exactly this question now and wait. If they say yes call social_media_task_control(command=confirm); if no, command=cancel."
             TaskStatus.WAITING_USER -> " Tell the user this. When they say it is done, call social_media_task_control(command=resume)."

@@ -227,10 +227,11 @@ object AppLauncher {
             .header("Cookie", "CONSENT=YES+1")
             .build()
         ytHttp.newCall(req).execute().use { r ->
-            val html = r.body?.string() ?: ""
-            Regex("\"videoRenderer\":\\{\"videoId\":\"([A-Za-z0-9_-]{11})\"").find(html)?.groupValues?.get(1)
+            val src = r.body?.source() ?: return@use null
+            YtPage.firstVideoId(src)
         }
     } catch (e: Exception) { DKLog.d("YouTube video id nahi mila: ${e.message}"); null }
+
 
     /** Seedha video chalao (search page + click ki zarurat nahi = ~10-20 sec bachte hain) */
     fun youtubePlay(ctx: Context, q: String, videoId: String?): String {

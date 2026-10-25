@@ -46,7 +46,7 @@ object LocalRouter {
     private val SEARCH = listOf("सर्च", "search", "ढूंढ", "ढूँढ", "खोजो", "खोजिए", "खोज", "dhundo", "dhoondo", "dhundho", "khojo", "find", "look for", "look up")
     private val PLAY = listOf("play", "प्ले", "चलाओ", "चला दो", "चलाइए", "चलाना", "चला", "बजाओ", "बजा दो", "बजा", "सुनाओ", "सुना दो",
         "लगाओ", "लगा दो", "chalao", "chala do", "bajao", "sunao", "lagao", "laga do")
-    private val SONG = listOf("song", "गाना", "गाने", "गीत", "video", "वीडियो", "bhajan", "भजन", "gaana", "gana", "gaane", "gane",
+    private val SONG = listOf("song", "सॉन्ग", "सोंग", "सांग", "सॉंग", "गाना", "गाने", "गानें", "गीत", "geet", "video", "वीडियो", "bhajan", "भजन", "gaana", "gana", "gaane", "gane",
         "music", "म्यूजिक", "म्यूज़िक", "trailer", "ट्रेलर")
     /** इन ऐप का नाम हो तो "गाना चलाओ" YouTube पर नहीं (AI / वही ऐप) */
     private val OTHER_MEDIA = listOf("spotify", "स्पॉटिफाई", "gaana app", "jiosaavn", "saavn", "सावन", "wynk", "विंक", "instagram", "इंस्टाग्राम", "reels", "रील")
@@ -192,12 +192,41 @@ object LocalRouter {
         return null
     }
 
+    private val DEL = listOf("डिलीट", "delete", "मिटा", "remove", "हटाओ", "हटा दो", "डिलिट", "dilit")
+    private val SHOT = listOf("screenshot", "स्क्रीनशॉट", "स्क्रीन शॉट", "स्क्रीनशॉट्स", "ss ")
+    private val NUM_WORDS = mapOf("एक" to 1, "दो" to 2, "तीन" to 3, "चार" to 4, "पांच" to 5, "पाँच" to 5, "छह" to 6, "छः" to 6, "सात" to 7,
+        "आठ" to 8, "नौ" to 9, "दस" to 10, "one" to 1, "two" to 2, "three" to 3, "four" to 4, "five" to 5, "ten" to 10,
+        "ek" to 1, "do" to 2, "teen" to 3, "char" to 4, "panch" to 5, "das" to 10)
+
+    /**
+     * "आखिरी फोटो डिलीट करो", "last 3 screenshot delete karo" -> delete_media {kind, count}.
+     * सिर्फ़ "आखिरी/नई" वाली (कौन-सी साफ़ है). "सारी फोटो मिटाओ" / किसी खास फोटो = नहीं (null -> पूछो).
+     * route()/तुरंत वाले रास्ते से कभी नहीं (मिटाना अपने आप नहीं) - सिर्फ़ Gemini के phone_task से, फिर Android की "Allow".
+     */
+    fun deleteMedia(raw: String): QuickCommands.Quick? {
+        val t = raw.trim().lowercase()
+        if (negated(t) || !hasAny(t, DEL)) return null
+        val shot = hasAny(t, SHOT)
+        if (!shot && !hasAny(t, PHOTO)) return null
+        if (hasAny(t, listOf("सारी", "सारे", "सभी", "सब ", "all", "पूरी", "पूरे", "saari", "sab ", "वीडियो", "video"))) return null
+        if (!hasAny(t, LATEST + listOf("अभी वाली", "अभी की", "abhi ki"))) return null
+        // गिनती सिर्फ़ फोटो/आखिरी के पास वाली ("आखिरी दो फोटो") - "डिलीट कर दो" का "दो" गिनती नहीं
+        val ws = t.split(Regex("\\s+")).filter { it.isNotEmpty() }
+        val near = { w: String -> (PHOTO + SHOT + LATEST).any { w.startsWith(it.trim()) } }
+        val n = ws.indices.firstNotNullOfOrNull { i ->
+            val v = ws[i].toIntOrNull() ?: NUM_WORDS[ws[i]]
+            if (v != null && (ws.getOrNull(i + 1)?.let(near) == true || ws.getOrNull(i - 1)?.let(near) == true)) v else null
+        } ?: 1
+        if (n < 1 || n > 20) return null
+        return QuickCommands.Quick(a("delete_media", "kind" to (if (shot) "screenshot" else "photo"), "count" to n), "")
+    }
+
     /** "फ्लिपकार्ट" में "कार्ट" छिपा है - दुकान का नाम हटाकर कार्ट/खरीद ढूँढो */
     private fun noShop(t: String): String { var x = t; SHOPS.values.flatten().sortedByDescending { it.length }.forEach { x = x.replace(it, " ") }; return x }
 
     fun shopOf(t: String): String? = SHOPS.entries.firstOrNull { (_, w) -> w.any { t.contains(it) } }?.key
 
-    private val PARTICLES = Regex("(?:^|\\s)(?:पर|पे|में|मे|मैं|me|par|pe|on|in|for|को|ko|के लिए|ke liye|से|se|the|a|an|for me|करो|कर दो|करिए|कीजिए|करना|करके|karo|kar do|kardo|kar ke|karke|kro|app|ऐप|एप)(?=\\s|$)")
+    private val PARTICLES = Regex("(?:^|\\s)(?:पर|पे|में|मे|मैं|me|par|pe|on|in|for|को|ko|के लिए|ke liye|से|se|the|a|an|for me|करो|कर दो|करिए|कीजिए|करना|करके|karo|kar do|kardo|kar ke|karke|kro|app|ऐप|एप|उसपे|उसपर|उस पर|उसमें|उसमे|इसपे|इसपर|इस पर|इसमें|वहाँ|वहां|uspe|uspar|usme|ispe|ज़रा|जरा|zara|प्लीज़|प्लीज|please|मेरे लिए|mere liye|दीजिए|दीजिये)(?=\\s|$)")
     private fun clean(t: String, remove: List<String>): String {
         var q = " $t "
         remove.sortedByDescending { it.length }.forEach { q = q.replace(it, " ") }
@@ -264,7 +293,9 @@ object LocalRouter {
             when {
                 ctx == "youtube" && hasAny(c, SEARCH) -> {
                     val s = clean(c, SEARCH + YT + PLAY)
-                    if (s.length >= 2) { lastQuery = s; q = QuickCommands.Quick(a("youtube_search", "query" to s), "YouTube पर खोज दिया"); replacePrev = prevType == "open_app" }
+                    // v3.67: "उसपे X सर्च करके प्ले कर दो" = सीधे पहला वीडियो चलाओ (पहले सिर्फ़ खोज होती थी, चलता नहीं था)
+                    if (s.length >= 2 && hasAny(c, PLAY)) { lastQuery = s; q = QuickCommands.Quick(a("youtube_play", "query" to s), ""); replacePrev = prevType == "open_app" }
+                    else if (s.length >= 2) { lastQuery = s; q = QuickCommands.Quick(a("youtube_search", "query" to s), "YouTube पर खोज दिया"); replacePrev = prevType == "open_app" }
                 }
                 ctx == "youtube" && hasAny(c, PLAY) && lastQuery != null && refersBack(c) -> {
                     q = QuickCommands.Quick(a("youtube_play", "query" to lastQuery!!), ""); replacePrev = prevType == "youtube_search"
@@ -310,7 +341,8 @@ object LocalRouter {
 
     /** इन prefix वाले नतीजे में ":" के बाद user को बोलने वाली साफ़ हिंदी बात होती है */
     private val SAY_PREFIX = listOf("ASK:", "ERROR_NOT_INSTALLED:", "ERROR_LAUNCH:", "ERROR_NO_CONTACT:", "ERROR_PERM:", "ERROR_NO_PHOTO:",
-        "CALLING:", "CALL_UNVERIFIED:", "DIALER:", "PHOTO_OPENED:", "GALLERY_OPENED:", "VIDEO_OPENED:", "STEPS_DONE:", "STEP_FAILED:")
+        "CALLING:", "CALL_UNVERIFIED:", "DIALER:", "PHOTO_OPENED:", "GALLERY_OPENED:", "VIDEO_OPENED:", "STEPS_DONE:", "STEP_FAILED:",
+        "DELETED:", "DELETE_UNVERIFIED:", "ERROR_DENIED:", "ERROR_OLD_ANDROID:")
 
     /** फ़ोन ने जो किया उसका साफ़ हिंदी वाक्य (null = यह नतीजा ऐसा नहीं) */
     fun userText(r: String): String? {
@@ -319,7 +351,8 @@ object LocalRouter {
     }
 
     /** यह नतीजा आख़िरी है - AI को देने से कुछ नहीं सुधरेगा (ऐप है ही नहीं / कॉन्टैक्ट नहीं / user से पूछना है) */
-    fun final(r: String) = listOf("ASK:", "ERROR_NOT_INSTALLED:", "ERROR_NO_CONTACT:", "ERROR_PERM:", "ERROR_NO_PHOTO:", "STEP_FAILED:").any { r.startsWith(it) }
+    fun final(r: String) = listOf("ASK:", "ERROR_NOT_INSTALLED:", "ERROR_NO_CONTACT:", "ERROR_PERM:", "ERROR_NO_PHOTO:", "STEP_FAILED:",
+        "DELETED:", "ERROR_DENIED:", "ERROR_OLD_ANDROID:").any { r.startsWith(it) }
 
     fun needsUser(r: String) = r.startsWith("ASK:")
 

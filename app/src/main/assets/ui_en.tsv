@@ -914,3 +914,7 @@ DK फिर से सबकी आवाज़ सुनेगा। दोब
 फ़ाइल सेव नहीं हुई	File could not be saved
 डाउनलोड खाली आया	Download was empty
 फ़ाइल उम्मीद से बड़ी - रोक दिया	File larger than expected - stopped
+WhatsApp संदेश	WhatsApp messages
+"राहुल को WhatsApp पर लिखो …" कहने पर DK खुद भेजता है और भेजने के बाद ही "भेज दिया" बोलता है	When you say "write to Rahul on WhatsApp …", DK sends it itself and says "sent" only after it is really sent
+बिना पूछे तुरंत भेजो (बंद = भेजने से पहले "भेज दूँ?" पूछो)	Send right away without asking (off = ask "shall I send?" first)
+चालू करने पर भी नाम साफ़ न मिले (दो मिलते-जुलते नाम) तो DK पूछेगा। भेजने के बाद DK जाँचता है कि संदेश सच में चैट में गया।	Even when on, DK asks if the name is unclear (two similar names). After sending, DK checks that the message really reached the chat.

@@ -235,6 +235,8 @@ object Prefs {
     fun coderPrHead(c: Context) = sp(c).getString("coder_pr_head", "") ?: ""
     /** User bole to peeche ka gaana/video dheema (~20%), jawab ke baad wapas */
     fun duckMedia(c: Context) = sp(c).getBoolean("duck_media", true)
+    /** v3.67: WhatsApp संदेश बिना "भेज दूँ?" पूछे भेजो - मालिक खुद चालू करे (default बंद) */
+    fun waAutoSend(c: Context) = sp(c).getBoolean("wa_auto_send", false)
 
     // ---- DK कंप्यूटर (कई कदम वाला एजेंट: search, वेब पढ़ना, कोड, फ़ाइलें, फ़ोन, कोडिंग, रिमाइंडर)
     fun computerOn(c: Context) = sp(c).getBoolean("pc_on", true)

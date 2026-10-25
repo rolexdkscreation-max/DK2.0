@@ -111,6 +111,13 @@
             android:noHistory="false"
             android:theme="@android:style/Theme.Translucent.NoTitleBar" />
 
+        <!-- v3.67: फ़ोटो मिटाने की Android "Allow" खिड़की (पारदर्शी, बिना UI) -->
+        <activity
+            android:name=".DeleteMediaActivity"
+            android:exported="false"
+            android:excludeFromRecents="true"
+            android:theme="@android:style/Theme.Translucent.NoTitleBar" />
+
         <service
             android:name=".ScreenShareService"
             android:exported="false"
