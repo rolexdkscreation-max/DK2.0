@@ -74,7 +74,7 @@ class CollapsibleSection private constructor(ctx: Context, title: String, sub: S
         header.accessibilityDelegate = object : View.AccessibilityDelegate() {
             override fun onInitializeAccessibilityNodeInfo(host: View, info: AccessibilityNodeInfo) {
                 super.onInitializeAccessibilityNodeInfo(host, info)
-                val st = if (isOpen) "खुला" else "बंद"
+                val st = com.dk.assistant.UiLang.s(if (isOpen) "कॉलम खुला" else "कॉलम बंद")
                 if (android.os.Build.VERSION.SDK_INT >= 30) info.stateDescription = st
                 else info.contentDescription = "${host.contentDescription}, $st"
             }
