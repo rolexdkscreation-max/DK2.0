@@ -49,3 +49,8 @@ The key is stored only in private app storage (`dk_access_key` SharedPreferences
 - **MediaPipe canonical face model** (`app/src/main/java/com/dk/assistant/FaceMeshData.kt`) - इंसानी चेहरे के 3D ढाँचे के बिंदु, त्रिकोण और रेखाएँ।
   स्रोत: https://github.com/google-ai-edge/mediapipe (`mediapipe/modules/face_geometry/data/canonical_face_model.obj`, `mediapipe/python/solutions/face_mesh_connections.py`)।
   Copyright The MediaPipe Authors. Apache License 2.0 - https://www.apache.org/licenses/LICENSE-2.0
+- **3D-Speaker CAM++ आवाज़-पहचान मॉडल** (`3dspeaker_speech_campplus_sv_zh_en_16k-common_advanced.onnx`, ~28 MB) - repo में नहीं, Settings → "मेरी आवाज़ सिखाओ" दबाने पर फ़ोन पर एक बार डाउनलोड (SHA-256 जाँच के साथ)।
+  स्रोत: https://github.com/modelscope/3D-Speaker (ModelScope `iic/speech_campplus_sv_zh_en_16k-common_advanced`), ONNX रूप: https://github.com/k2-fsa/sherpa-onnx/releases/tag/speaker-recongition-models
+  Copyright Alibaba / 3D-Speaker authors. Apache License 2.0 - https://www.apache.org/licenses/LICENSE-2.0
+- **ONNX Runtime** (`com.microsoft.onnxruntime:onnxruntime-android`) - फ़ोन पर मॉडल चलाने के लिए। Copyright Microsoft Corporation. MIT License - https://github.com/microsoft/onnxruntime/blob/main/LICENSE
+  इसका telemetry provider AndroidManifest में हटाया गया है (`tools:node="remove"`)।

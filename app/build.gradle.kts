@@ -61,6 +61,18 @@ android {
     buildFeatures {
         viewBinding = false
     }
+    // v3.66: आवाज़-पहचान (ONNX Runtime) सिर्फ़ arm64 फ़ोनों के लिए - APK करीब +13 MB ही बढ़े।
+    // 32-bit / x86 पर .so नहीं: वहाँ पहचान अपने-आप बंद रहती है और DK पहले की तरह सब सुनता है (कुछ टूटता नहीं)
+    packaging {
+        jniLibs {
+            useLegacyPackaging = true
+            excludes += setOf(
+                "lib/x86/libonnxruntime.so", "lib/x86/libonnxruntime4j_jni.so",
+                "lib/x86_64/libonnxruntime.so", "lib/x86_64/libonnxruntime4j_jni.so",
+                "lib/armeabi-v7a/libonnxruntime.so", "lib/armeabi-v7a/libonnxruntime4j_jni.so",
+            )
+        }
+    }
 }
 
 dependencies {
@@ -69,6 +81,8 @@ dependencies {
     implementation("com.google.android.material:material:1.12.0")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.1")
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
+    // v3.66: "सिर्फ़ मेरी आवाज़" - फ़ोन पर ही आवाज़-पहचान (MIT). 1.22 इस मॉडल पर थोड़ा ग़लत नतीजा देता था, 1.31 = Python जैसा
+    implementation("com.microsoft.onnxruntime:onnxruntime-android:1.31.0")
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.8.4")
     // DK AI Website Forge: 3D scene को app के assets से https पर चलाने के लिए (WebViewAssetLoader)
     implementation("androidx.webkit:webkit:1.11.0")

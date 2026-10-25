@@ -77,6 +77,12 @@
         android:supportsRtl="true"
         android:theme="@style/Theme.DK">
 
+        <!-- v3.66: ONNX Runtime का telemetry provider नहीं (कुछ भी बाहर न जाए, और x86 पर .so के बिना ऐप न रुके) -->
+        <provider
+            android:name="ai.onnxruntime.TelemetryInitializer"
+            android:authorities="${applicationId}.onnxruntime_telemetry_initializer"
+            tools:node="remove" />
+
         <activity
             android:name=".MainActivity"
             android:exported="true"

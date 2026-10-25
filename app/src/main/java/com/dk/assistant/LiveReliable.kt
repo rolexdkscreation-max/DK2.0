@@ -78,6 +78,33 @@ object TurnEnd {
     /** लंबी बात (2.5 सेकंड से ज़्यादा) में बीच का ठहराव लंबा होता है - तब 0.55 नहीं, 0.8 सेकंड चुप्पी पर "खत्म" */
     const val LONG_SPEECH_MS = 2_500
     const val LONG_END_SILENCE_MS = 800
+
+    /**
+     * v3.66 (तेज़ी): वाक्य साफ़ पूरा लगा (आखिरी शब्द "करो / बताओ / है / था / चाहिए / ?" जैसा) तो 0.55 की जगह
+     * 0.36 सेकंड चुप्पी पर ही "बात खत्म" - जवाब ~0.2 सेकंड पहले. आप फिर भी आगे बोलें तो Gemini पुराना जवाब
+     * रोककर नई बात सुनता है (START_OF_ACTIVITY_INTERRUPTS) - बात कटती नहीं.
+     */
+    const val EARLY_END_MS = 360
+    /** इतने से कम शब्द = पता नहीं पूरा है या नहीं (जल्दी मत काटो) */
+    const val EARLY_MIN_WORDS = 2
+    private val DONE_HI = Regex("(ओ|ो|िए|िये|ीजिए|है|हैं|हूँ|हूं|था|थी|थे|गा|गी|गे|चाहिए|देना|लेना|करना|बताना|सुनाना|दिखाना|क्या|कैसे|कहाँ|कब|क्यों|प्लीज़|प्लीज|धन्यवाद|शुक्रिया|ठीक|हाँ|नहीं)$")
+    /** "ओ" पर खत्म पर अधूरे (को / जो / वो / सो) */
+    private val NOT_DONE = setOf("को", "जो", "वो", "सो", "दो", "दोनों", "तो")
+    private val DONE_EN = Regex("(?i)\\b(it|this|that|now|please|me|you|him|her|them|up|down|on|off|done|thanks|thank you|yes|no|okay|ok)$")
+
+    /** caption का text पूरा वाक्य लगता है (आखिरी शब्द से) - "और / तो / कि" वाले continues() पहले ही रोकता है */
+    fun complete(caption: String): Boolean {
+        val t = caption.trim().trimEnd('.', ',', '।', '…', ' ')
+        if (t.isEmpty() || continues(caption)) return false
+        if (caption.trim().endsWith("?")) return true
+        val words = t.split(Regex("\\s+")).filter { it.isNotBlank() }
+        if (words.size < EARLY_MIN_WORDS) return false
+        val last = words.last()
+        // बीच में कटा शब्द (caption अभी लिख रहा है) - जैसे "बता" -> पूरा नहीं मानते: कम से कम 2 अक्षर
+        if (last.length < 2) return false
+        if (last in NOT_DONE) return false
+        return DONE_HI.containsMatchIn(last) || DONE_EN.containsMatchIn(t)
+    }
 }
 
 /** वही पहचानी बात router में बार-बार न जाए */

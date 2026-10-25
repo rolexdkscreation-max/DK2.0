@@ -122,6 +122,18 @@ object Prefs {
     /** orb ka aakaar: earth, galaxy, atom, torus, geodesic, knot, dyson, face_male, face_female */
     /** Beech ka orb chhota (minimize) kiya hua hai? */
     fun orbMin(c: Context) = sp(c).getBoolean("orb_min", false)
+    // ---- v3.66: सिर्फ़ मालिक की आवाज़ (voiceprint सिर्फ़ इसी फ़ोन में - backup बंद है, GitHub/इंटरनेट पर नहीं)
+    /** परत 3: सिर्फ़ मालिक की आवाज़ पर जवाब */
+    fun ownerVoiceOn(c: Context) = sp(c).getBoolean("owner_voice_on", false)
+    /** सख़्त = दूसरे लगभग कभी पास नहीं, मालिक को कभी-कभी दोबारा बोलना पड़े */
+    fun ownerVoiceStrict(c: Context) = sp(c).getBoolean("owner_voice_strict", false)
+    /** परत 4: दूर की / बहुत धीमी आवाज़ अनसुनी */
+    fun ownerFarOn(c: Context) = sp(c).getBoolean("owner_far_on", true)
+    fun ownerPrint(c: Context): FloatArray? = com.dk.assistant.voice.VoicePrint.decode(sp(c).getString("owner_print", null))
+    /** सीखते समय मालिक की आवाज़ का स्तर (RMS) */
+    fun ownerLevel(c: Context) = sp(c).getFloat("owner_level", 0f).toDouble()
+    /** पहचानी आवाज़ से धीरे-धीरे सीखा स्तर */
+    fun ownerLevelNow(c: Context) = sp(c).getFloat("owner_level_now", 0f).toDouble()
     /** v3.65: हटाया गया आकार (dna/tesseract/wormhole/sphere3d) या अनजान -> earth */
     fun orbStyle(c: Context) = Shapes.valid(sp(c).getString("orb_style", "earth"))
     /** v3.57: DK सुन/बोल रहा हो तो स्क्रीन के किनारों पर चमक */

@@ -870,3 +870,47 @@ GitHub ने अभी थोड़ी देर के लिए रोक द
 GitHub token गलत/पुराना है	GitHub token is wrong or expired
 GitHub पर release नहीं मिला	No release found on GitHub
 इंटरनेट नहीं मिला	No internet connection
+सिर्फ़ मेरी आवाज़ सुनो	Listen only to my voice
+DK सिर्फ़ आपकी आवाज़ पर जवाब दे — पास वालों की बातें, TV या दूर की आवाज़ अनसुनी	DK replies only to your voice — nearby talk, TV or distant voices are ignored
+सिर्फ़ मेरी आवाज़ पर जवाब दो	Reply only to my voice
+सख़्त पहचान (दूसरे लगभग कभी पास नहीं, पर कभी-कभी आपको दोबारा बोलना पड़ सकता है)	Strict match (others almost never pass, but sometimes you may need to repeat)
+दूर की / बहुत धीमी आवाज़ अनसुनी करो (दूसरे कमरे की बात, धीमा TV)	Ignore distant / very quiet voices (another room, quiet TV)
+यह फ़ोन 64-bit ARM नहीं है — आवाज़-पहचान यहाँ नहीं चलेगी, DK पहले की तरह सबकी आवाज़ सुनेगा	This phone is not 64-bit ARM — voice ID cannot run here, DK will listen to everyone as before
+पहचान वाला मॉडल इस फ़ोन पर नहीं चला — DK पहले की तरह सबकी आवाज़ सुनेगा	The voice ID model did not run on this phone — DK will listen to everyone as before
+अभी आपकी आवाज़ नहीं सीखी — नीचे "मेरी आवाज़ सिखाओ" दबाएँ (करीब 30 सेकंड)	Your voice is not learned yet — tap "Teach my voice" below (about 30 seconds)
+चालू — DK सिर्फ़ आपकी आवाज़ पर जवाब देगा	On — DK will reply only to your voice
+आपकी आवाज़ सीखी हुई है — ऊपर वाला स्विच चालू करें	Your voice is learned — turn on the switch above
+मेरी आवाज़ सिखाओ	Teach my voice
+जाँचो	Test
+पहचान मिटाओ	Delete voice ID
+आवाज़ की पहचान मिटाएँ?	Delete voice ID?
+DK फिर से सबकी आवाज़ सुनेगा। दोबारा चालू करने के लिए आवाज़ फिर से सिखानी होगी।	DK will listen to everyone again. To turn it back on you will need to teach your voice again.
+मिटाओ	Delete
+आवाज़ की पहचान मिटा दी	Voice ID deleted
+कैसे काम करता है: आप 5 छोटे वाक्य बोलते हैं, फ़ोन उनसे आपकी आवाज़ की पहचान बनाता है। यह पहचान सिर्फ़ इसी फ़ोन में रहती है — इंटरनेट या GitHub पर कहीं नहीं जाती, और आवाज़ सेव नहीं होती। पहली बार पहचान वाला मॉडल (~28 MB) एक बार डाउनलोड होता है।	How it works: you say 5 short sentences and the phone builds your voice ID from them. The ID stays only on this phone — it never goes to the internet or GitHub, and your voice is not saved. The first time, the voice ID model (~28 MB) is downloaded once.
+रफ़्तार: आपकी आवाज़ Gemini को उसी पल जाती रहती है, साथ-साथ पहली 1 सेकंड मिलाई जाती है — आपके जवाब में कोई देरी नहीं। किसी और की आवाज़ निकली तो DK न जवाब बोलेगा, न फ़ोन पर कोई काम करेगा।	Speed: your voice keeps going to Gemini instantly while the first second is matched in parallel — no delay in your reply. If it is someone else's voice, DK will neither speak a reply nor do anything on the phone.
+गला ख़राब हो, बहुत शोर हो या फ़ोन बहुत दूर हो तो कभी-कभी आपकी आवाज़ भी छूट सकती है — तब पास आकर फिर बोलें, या "सख़्त" बंद रखें। Bluetooth headset पर दूर-पास वाली जाँच अपने-आप बंद रहती है।	With a sore throat, heavy noise or the phone far away, your voice may sometimes be missed — come closer and speak again, or keep "Strict" off. On a Bluetooth headset the distance check is off automatically.
+पहचान वाला मॉडल डाउनलोड हो रहा है…	Downloading the voice ID model…
+वाक्य	Sentence
+फ़ोन को आम तौर पर जैसे पकड़ते हैं, वैसे पकड़कर आराम से बोलिए:	Hold the phone the way you usually do and speak naturally:
+आवाज़ ठीक से नहीं आई — शांत जगह पर फिर कोशिश करें	Your voice did not come through well — try again in a quiet place
+आवाज़ कम आई — पूरा वाक्य थोड़ा ज़ोर से बोलिए	Too little voice — say the whole sentence a bit louder
+सीख रहा हूँ…	Learning…
+वाक्य आपस में ठीक से नहीं मिले (शायद शोर था या कोई और बोला) — शांत जगह पर फिर से सिखाएँ	The sentences did not match each other well (maybe noise or someone else spoke) — teach again in a quiet place
+हो गया — DK ने आपकी आवाज़ सीख ली। अब DK सिर्फ़ आपकी आवाज़ पर जवाब देगा।	Done — DK has learned your voice. Now DK will reply only to your voice.
+मिलान की मज़बूती:	Match strength:
+गड़बड़ हुई	Something went wrong
+पहले "मेरी आवाज़ सिखाओ" दबाएँ	First tap "Teach my voice"
+आवाज़ की जाँच	Voice test
+कुछ भी बोलिए — या किसी और से बुलवाइए	Say anything — or ask someone else to speak
+आवाज़ नहीं आई	No voice heard
+यह आपकी आवाज़ है — DK जवाब देगा	This is your voice — DK will reply
+यह किसी और की आवाज़ लगी — DK अनसुनी करेगा	This sounded like someone else — DK will ignore it
+मिलान:	Match:
+सीमा	threshold
+यह फ़ोन 64-bit ARM नहीं है — आवाज़-पहचान यहाँ नहीं चलेगी	This phone is not 64-bit ARM — voice ID cannot run here
+डाउनलोड नहीं हुआ (HTTP	Download failed (HTTP
+फ़ाइल जाँच में ग़लत निकली - फिर से कोशिश करें	File check failed - please try again
+फ़ाइल सेव नहीं हुई	File could not be saved
+डाउनलोड खाली आया	Download was empty
+फ़ाइल उम्मीद से बड़ी - रोक दिया	File larger than expected - stopped
