@@ -330,7 +330,8 @@ class SettingsActivity : AppCompatActivity() {
                         show(rel)
                         if (rel != null && Updater.isDownloading(rel)) follow(rel)
                     } catch (e: Exception) {
-                        status.text = "चेक नहीं हो पाया: ${e.message}. इंटरनेट देखें।"
+                        // v3.64: असली वजह (403 = GitHub की घंटे वाली सीमा) - पहले हर बार "इंटरनेट देखें"
+                        status.text = "चेक नहीं हो पाया: ${e.message ?: ReleaseFeed.friendly(0)}"
                     }
                 }
             }

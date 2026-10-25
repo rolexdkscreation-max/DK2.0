@@ -69,39 +69,75 @@ object Updater {
 
     private fun parse(o: JSONObject): Release? {
         val tag = o.optString("tag_name")
-        val code = tag.filter { it.isDigit() }.toIntOrNull() ?: return null
         val assets = o.optJSONArray("assets")
         var url = ""; var size = 0L
         if (assets != null) for (i in 0 until assets.length()) {
             val a = assets.getJSONObject(i)
             if (a.optString("name").endsWith(".apk")) { url = a.optString("browser_download_url"); size = a.optLong("size"); break }
         }
+        return build(tag, o.optString("name", tag), o.optString("body", ""), url, size, o.optString("html_url"))
+    }
+
+    /** API और feed दोनों से एक ही तरह का Release (TYPE:/VERSION: लाइनें, notes) */
+    private fun build(tag: String, name: String, rawBody: String, url: String, size: Long, page: String): Release? {
+        val code = tag.filter { it.isDigit() }.toIntOrNull() ?: return null
         if (url.isBlank()) return null
-        val body = o.optString("body", "").replace("\r", "")
-        val lines = body.lines()
+        val body = rawBody.replace("\r", "")
+        val lines = body.lines().map { it.trim() }
         val type = lines.firstOrNull { it.startsWith("TYPE:") }?.substringAfter(":")?.trim()?.lowercase()
             ?.let { if (it.startsWith("sec")) "security" else "software" } ?: "software"
-        val title = o.optString("name", tag)
+        val title = name.ifBlank { tag }
         val ver = lines.firstOrNull { it.startsWith("VERSION:") }?.substringAfter(":")?.trim()
             ?: title.removePrefix("DK").trim()
         val notes = if (body.contains("\n---\n")) body.substringAfter("\n---\n").trim()
             else lines.filterNot { it.startsWith("TYPE:") || it.startsWith("VERSION:") }.joinToString("\n").trim()
-        return Release(code, title, notes, url, size, o.optString("html_url"), type, ver)
+        return Release(code, title, notes, url, size, page, type, ver)
     }
 
-    private fun getJson(url: String): JSONObject? {
-        val req = Request.Builder().url(url)
-            .header("Accept", "application/vnd.github+json").header("User-Agent", "DK-Assistant").build()
-        http.newCall(req).execute().use { r ->
+    /** GitHub का HTTP जवाब ठीक नहीं (403 = घंटे की सीमा, 429, 5xx...) - साफ़ हिंदी वजह के साथ */
+    class GhHttp(val code: Int) : java.io.IOException(ReleaseFeed.friendly(code))
+
+    private fun getJson(url: String, token: String = ""): JSONObject? {
+        val rb = Request.Builder().url(url)
+            .header("Accept", "application/vnd.github+json").header("User-Agent", "DK-Assistant")
+        if (token.isNotBlank()) rb.header("Authorization", "Bearer $token")
+        http.newCall(rb.build()).execute().use { r ->
             if (r.code == 404) return null
-            if (!r.isSuccessful) throw java.io.IOException("GitHub ${r.code}")
+            if (r.code == 401 && token.isNotBlank()) return getJson(url, "")     // token गलत/पुराना - बिना token
+            if (!r.isSuccessful) throw GhHttp(r.code)
             return JSONObject(r.body?.string() ?: "{}")
         }
     }
 
-    /** GitHub se sabse naya release. */
-    suspend fun latest(): Release? = withContext(Dispatchers.IO) {
-        getJson("https://api.github.com/repos/$REPO/releases/latest")?.let { parse(it) }
+    /** API न मिले तो: github.com का releases.atom feed + सीधा APK पता (API की घंटे वाली सीमा नहीं) */
+    private fun fromFeed(): Release? {
+        val req = Request.Builder().url(ReleaseFeed.feedUrl(REPO)).header("User-Agent", "DK-Assistant").build()
+        val e = http.newCall(req).execute().use { r ->
+            if (!r.isSuccessful) throw GhHttp(r.code)
+            ReleaseFeed.parseAtom(r.body?.string().orEmpty())
+        } ?: return null
+        val url = ReleaseFeed.apkUrl(REPO, e.tag)
+        // APK का आकार (download पूरा हुआ या नहीं, यह जाँचने के लिए). न मिले तो 0 = आकार की जाँच नहीं
+        val size = try {
+            http.newCall(Request.Builder().url(url).head().header("User-Agent", "DK-Assistant").build()).execute().use { r ->
+                if (r.code == 404) return null          // इस release में अभी APK नहीं (build चल रहा)
+                if (r.isSuccessful) r.header("Content-Length")?.toLongOrNull() ?: 0L else 0L
+            }
+        } catch (_: Exception) { 0L }
+        return build(e.tag, e.title, e.body, url, size, e.page)
+    }
+
+    /** GitHub se sabse naya release. token = Settings वाला GitHub token (हो तो घंटे में 5000 बार) */
+    suspend fun latest(token: String = ""): Release? = withContext(Dispatchers.IO) {
+        try {
+            getJson("https://api.github.com/repos/$REPO/releases/latest", token)?.let { parse(it) }
+        } catch (e: GhHttp) {
+            if (!ReleaseFeed.shouldFallback(e.code)) throw e
+            try { fromFeed() } catch (_: Exception) { throw e }
+        } catch (e: java.io.IOException) {
+            // API तक नहीं पहुँचा (DNS/नेटवर्क) - github.com शायद मिल जाए
+            try { fromFeed() } catch (_: Exception) { throw java.io.IOException(ReleaseFeed.friendly(0), e) }
+        }
     }
 
     /** Kisi khaas build ka release (update ke baad "क्या नया है" dikhane ke liye) */
@@ -111,7 +147,7 @@ object Updater {
 
     /** Naya update hai? (null = nahi hai) */
     suspend fun check(c: Context): Release? {
-        val rel = latest() ?: return null
+        val rel = latest(Prefs.ghToken(c)) ?: return null
         Prefs.edit(c) {
             putLong("upd_checked", System.currentTimeMillis())
             putInt("upd_latest", rel.code)
