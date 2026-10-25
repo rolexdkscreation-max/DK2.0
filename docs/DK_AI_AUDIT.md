@@ -169,13 +169,13 @@ Important context: the existing app is a mature **View/XML + Kotlin** app (≈31
 | Area | Status | Notes |
 |---|---|---|
 | Avatar view | DONE | `avatar/AvatarView` - `drawBitmapMesh` on `avatar_body` (18x28 grid), hair weight 0 on face/neck/chest/shoulders, grows to the tips; random slow wind that never fully stops; 4.2 s breathing; Fit-center on black; Choreographer 60 fps only while visible |
-| Face layer | DONE | `face_<normal|sad|angry>_<base|blink|half|wide>` cropped at x 330-710, y 320-620 (eyebrows to chin, measured on the sample image), superellipse feather mask; mood change = 380 ms cross-fade, mouth = 70 ms |
+| Face layer | DONE | `face_<normal|sad|angry>_<base|blink|half|wide>` cropped at x 300-740, y 290-640 (eyebrows to chin incl. raised sad brows and blink eye corners), superellipse feather mask; mood change = 380 ms cross-fade, mouth = 70 ms |
 | Blink / lip-sync | DONE | blink every 3-5 s for 120 ms; `VoiceLevel` RMS sampled every 40 ms -> `MouthMapper` (smoothing + hysteresis) base/half/wide; sad/angry only base/half; silence -> base. Works for all three engines (same `VoiceLevel` path) |
 | Mood | DONE | Live TEXT split: `MOOD_TAG_NOTE` asks for [खुश]/[उदास]/[गुस्सा]/[भावुक]; `EmotionTag.Filter` strips it (even split across chunks) before TTS and subtitles. Native Live voice: no tag (it would be spoken) - `EmotionGuess` from the transcript. Face back to normal 3.5 s after the voice stops. Mood style appended to Gemini TTS style and Edge rate/pitch (`MoodState.voiceStyle`) |
 | Memory | DONE | PNG read as raw stream (no density up-scaling), inSampleSize from screen size, faces via `BitmapRegionDecoder` (only the face rect), cached once; missing image = ORB stays / nearest variant |
 | Rotation | DONE | MainActivity + VoiceActivity handle `orientation|screenSize|...` themselves -> avatar view is not recreated; bitmaps cached, wind clock global |
 | Settings | DONE | ORB section -> "अवतार चुनो": ORB (default) / लड़की अवतार + list of missing images |
-| Images | MISSING | Not in repo - user to add 11 PNGs (1024x1536) to `app/src/main/res/drawable-nodpi/` |
+| Images | DONE | 11 PNGs (1024x1536) in `res/drawable-nodpi/`, generated from the owner's reference picture: neutral base first, every other face edited from it, then aligned to the base with OpenCV ECC (max 2 px shift) so the face crop matches; owner can replace them with the same names |
 | Latency | DONE | Worker unchanged (reply text comes from the Live websocket, already streaming; Worker /tts already streams PCM). `FAST_START` prompt (first sentence 4-6 words), chunker already speaks the first sentence while the rest is fetched, `VoiceWarm` on app open, `LatencyBoard` (Settings -> डिबग लॉग -> "देरी का हिसाब"): speech end -> first piece / first sentence audio / playback |
 | On-phone timing | NOT VERIFIED | needs the phone + keys |
 

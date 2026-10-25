@@ -215,12 +215,12 @@ object AvatarGeometry {
     const val IMG_W = 1024
     const val IMG_H = 1536
     /** चेहरे की त्वचा (भौंहों से ठुड्डी तक), बाल नहीं - 1024x1536 पर. नमूना चित्र से नापा */
-    const val FACE_L = 330
-    const val FACE_T = 320
-    const val FACE_R = 710
-    const val FACE_B = 620
+    const val FACE_L = 300
+    const val FACE_T = 290
+    const val FACE_R = 740
+    const val FACE_B = 640
     /** किनारे का धुंधलापन: superellipse का भीतरी हिस्सा (0..1) पूरा, बाहर की ओर धीरे-धीरे 0 */
-    const val FEATHER_IN = 0.80f
+    const val FEATHER_IN = 0.78f
 
     private fun smooth(e0: Float, e1: Float, x: Float): Float {
         val t = ((x - e0) / (e1 - e0)).coerceIn(0f, 1f); return t * t * (3 - 2 * t)
