@@ -788,6 +788,8 @@ class SettingsActivity : AppCompatActivity() {
             sbPitch = seek(box, Prefs.ttsPitch(this))
             hint(box, "Google आवाज़ ज़्यादा नेचुरल चाहिए तो: Play Store से \"Speech Services by Google\" अपडेट करें, फिर \"आवाज़ चुनें\" में \"ऑनलाइन\" वाली आवाज़ लें। Gemini आवाज़ की लिमिट खत्म हो तो DK अपने-आप Google आवाज़ में बोलेगा।")
             row(box, button("फ़ोन की TTS सेटिंग") { if (!Setup.openTts(this)) toast("TTS सेटिंग नहीं खुली") })
+            // v3.68: DK लाइव का बोलने वाला इंजन (Gemini TTS / Edge TTS / Gemini Live सीधी आवाज़)
+            com.dk.assistant.voice.engine.VoiceEngineCard.build(this, box, dp)
         }
 
         // ---- Listening

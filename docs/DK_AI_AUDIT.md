@@ -164,6 +164,18 @@ Important context: the existing app is a mature **View/XML + Kotlin** app (≈31
 | Instagram DM | NOT BUILT | needs testing on a real phone; Instagram posting stays as before |
 | On-phone timing | NOT VERIFIED | log line "तुरंत काम … काम+जाँच X ms" shows the real time |
 
+## v3.68 — Writing and speaking split (voice engines)
+| Item | Status | Notes |
+|---|---|---|
+| Split | DONE | `GeminiLive` asks Live for `responseModalities: TEXT`; the text streams into `voice/engine/SpeechPipeline`. Native-audio Live models accept only AUDIO - if TEXT setup is refused, that model is remembered and the split runs on AUDIO + output transcription (Live's audio is not played) |
+| Three engines, one interface | DONE | `VoiceEngine` (`speak/stop/preview`); `GeminiTtsEngine` (default ON, via `worker/dk-brain`, key only in the Worker), `EdgeTtsEngine` (OFF, Swara/Madhur, rate/pitch sliders, no emotion), `LiveNativeEngine` (OFF, old behaviour). Engines are found by class name - deleting a file removes the engine |
+| Pipeline | DONE | `TextChunker` (first piece at a sentence end or a comma after 5 words, forced at 8; later 6-28 words), 2 prefetch threads, one AudioTrack queue, `Joint` silence trim + 5 ms fade-in + fixed pause per punctuation, warm Worker/Edge sockets, stalled first piece flushed after 250 ms |
+| Settings | DONE | Settings -> आवाज़ -> "बोलने वाला इंजन (DK लाइव)": 3 switches (one at a time), voice list with ▶ सुनो per voice, Gemini style box, editable sample sentence, "तीनों बारी-बारी सुनो", last measured speech-end -> first-audio per engine |
+| Fallback | DONE | per piece: chosen engine -> Gemini TTS -> phone TTS; failed engine skipped for 120 s; no ready engine -> Live's own voice |
+| Lip-sync | DONE | `VoiceLevel` schedules the real RMS of whatever is playing (any engine); `OrbView` uses it while speaking |
+| Barge-in | DONE | `flushPlayback` also stops the pipeline queue and the playing piece |
+| On-phone timing | NOT VERIFIED | log "बोलना ख़त्म → पहली आवाज़ (…): X ms" + settings line. Sandbox: Edge connect 82-113 ms, first audio of a 5-8 word piece 37-125 ms on a warm socket. Gemini TTS/Live need the key (not measured here) |
+
 ## Deviations decided for this repo
 1. Package stays `com.dk.assistant` (existing installs must keep updating).
 2. Existing View screens are kept (Step 5). No Compose rewrite of working screens.

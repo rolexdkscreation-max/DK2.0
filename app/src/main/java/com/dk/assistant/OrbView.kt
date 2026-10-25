@@ -167,10 +167,12 @@ class OrbView @JvmOverloads constructor(
         val baseR = minOf(w, h) * (if (mini) 0.36f else if (isFace) 0.40f else 0.30f) *
             (if (morphing && isFace) 0.75f + 0.25f * ep else 1f)
         val breathe = 1f + 0.025f * sin(t * 1.6f)
+        // v3.68: लिप-सिंक - जो आवाज़ सच में बज रही है उसका ज़ोर (कोई भी आवाज़ इंजन); न हो तो पुराना अंदाज़ा
+        val voice = if (mode == Mode.SPEAKING) com.dk.assistant.voice.engine.VoiceLevel.mouth() else null
         val pulse = when {
             isFace -> 1f
             mode == Mode.LISTENING -> 1f + lvl * 0.14f
-            mode == Mode.SPEAKING -> 1f + 0.04f * sin(t * 9f)
+            mode == Mode.SPEAKING -> 1f + (voice?.let { it * 0.12f } ?: (0.04f * sin(t * 9f)))
             // v3.8: soch raha hai - halka dheema pulse (~1.1s), sannata na lage
             mode == Mode.THINKING -> 1f + 0.045f * (0.5f + 0.5f * sin(t * 5.6f))
             else -> 1f
@@ -201,7 +203,8 @@ class OrbView @JvmOverloads constructor(
         // chehra: palak jhapakna + bolte waqt muh khulna
         val blinkPh = (t % 4.2f)
         val blink = if (blinkPh < 0.14f) (1f - sin(blinkPh / 0.14f * PI.toFloat())).coerceAtLeast(0.08f) else 1f
-        val talk = if (mode == Mode.SPEAKING) (0.5f + 0.5f * sin(t * 13f)) * (0.6f + 0.4f * sin(t * 3.7f)).coerceAtLeast(0.2f)
+        val talk = if (voice != null) (voice * 1.15f).coerceIn(0f, 1f)
+            else if (mode == Mode.SPEAKING) (0.5f + 0.5f * sin(t * 13f)) * (0.6f + 0.4f * sin(t * 3.7f)).coerceAtLeast(0.2f)
             else if (mode == Mode.LISTENING) 0.05f else 0f
 
         val satOn = !mini && target == "earth"

@@ -1,0 +1,12 @@
+# DK AI - dk-brain Cloudflare Worker (v3.68: Gemini TTS की चाबी ऐप में नहीं, यहाँ)
+name = "dk-brain"
+main = "src/index.js"
+compatibility_date = "2026-10-01"
+
+[vars]
+# कौन-से TTS मॉडल किस क्रम में आज़माने हैं (पहला न चले तो अगला)
+TTS_MODELS = "gemini-3.8-flash-lite-tts,gemini-3.8-flash-tts,gemini-3.1-flash-tts-preview"
+
+# Secrets (wrangler.toml में नहीं):
+#   npx wrangler secret put GEMINI_API_KEY   (ज़रूरी)
+#   npx wrangler secret put APP_TOKEN        (वैकल्पिक: ऐप में "Worker token" वही डालें)
