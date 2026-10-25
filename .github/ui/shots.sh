@@ -71,7 +71,8 @@ run() {
   adb shell am force-stop $PKG
 }
 
-run before /tmp/before.apk
+# नया पहले - emulator बीच में अटके तो भी इस branch की तस्वीरें मिलें
 run after  /tmp/after.apk
+run before /tmp/before.apk
 ls -la $OUT
 exit 0
