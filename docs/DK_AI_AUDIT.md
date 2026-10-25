@@ -164,6 +164,21 @@ Important context: the existing app is a mature **View/XML + Kotlin** app (≈31
 | Instagram DM | NOT BUILT | needs testing on a real phone; Instagram posting stays as before |
 | On-phone timing | NOT VERIFIED | log line "तुरंत काम … काम+जाँच X ms" shows the real time |
 
+## v3.72 — कनेक्टर हब (Google, GitHub, Facebook Page, Instagram, MCP)
+
+| Area | Status | Notes |
+|---|---|---|
+| Settings | DONE | Settings menu -> "कनेक्टर" (`connect/ConnectorsActivity`): one collapsible card per connector with ✓/✗ status, connect/remove, "जाँचो" (one real read call). Google one-time setup guide shows package + this APK's signing SHA-1 (PackageManager) with copy buttons |
+| Google | DONE | Drive, Gmail, Calendar, Contacts, Tasks, Sheets/Docs, YouTube. Google Identity Services `AuthorizationClient` (`play-services-auth`), Android OAuth client = package + SHA-1, no client secret in the app, scopes asked per connector; access token fetched silently each time, never stored |
+| Meta | DONE | Facebook Page (pages, posts, comments, post, photo, reply) and Instagram Business/Creator (profile, media, comments, publish_image from public URL, reply) via Graph API v26.0. User pastes a long-lived user (or Page) token; DK reads `/me/accounts` and keeps the Page tokens |
+| Personal FB / IG | INFO | Meta API cannot post to personal profiles - card explains that the existing phone agent (`social_media_task`) does it |
+| GitHub | DONE | Wraps existing `GitHub.kt` (repos, files, read, search) with the coding-agent token |
+| MCP | DONE | `McpClient`: Streamable HTTP JSON-RPC (initialize, notifications/initialized, tools/list, tools/call), JSON or SSE replies, `Mcp-Session-Id`, re-init on 404. Tools cached; readOnlyHint / destructiveHint / name words decide "ask first" |
+| Live tool | DONE | `connector_task` {connector, action, args JSON, confirmed} added only when something is connected; description lists connected actions; send/delete/share/post return "NEEDS USER CHOICE" until `confirmed=true` (and `DoneGate` treats it as not done). Result up to 4000 chars; content not written to the log |
+| Security | DONE | Tokens AES-256-GCM with an Android Keystore key (`ConnectorStore`), only on the phone; Worker unchanged |
+| Tests | DONE | `ConnectorLogicTest` (27): catalog, tool text, confirm gate, args, MCP JSON/SSE/tools, Gmail MIME (Hindi, header injection), Docs text, calendar times, Drive query, Graph pages/errors, key box |
+| On-phone login | NOT VERIFIED | needs the owner's Google Cloud project / Meta app and the phone |
+
 ## v3.71 — लड़की अवतार + बोलने की देरी कम
 
 | Area | Status | Notes |
