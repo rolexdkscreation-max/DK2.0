@@ -49,8 +49,15 @@ object EdgeTtsEngine : VoiceEngine {
     fun rate(c: Context) = VoiceEngines.sp(c).getInt("edge_rate", 0)
     fun pitch(c: Context) = VoiceEngines.sp(c).getInt("edge_pitch", 0)
 
+    /** v3.69: Edge का अपना "भावना / स्टाइल" (शब्दों से सिर्फ़ गति-पिच, EdgeStyle) */
+    fun style(c: Context): String = VoiceEngines.sp(c).getString("edge_style", "") ?: ""
+
     override fun settings(c: Context, box: LinearLayout, ui: VoiceUi) {
         ui.hint(box, "ध्यान दें: Edge TTS भावना/स्टाइल के निर्देश नहीं मानता। सिर्फ़ गति और पिच बदल सकते हैं।")
+        ui.field(box, "भावना / स्टाइल (Edge के लिए)", style(c), "जैसे: धीमी, कोमल आवाज़ में", multiLine = true) { v ->
+            VoiceEngines.sp(c).edit().putString("edge_style", v.trim()).apply()
+        }
+        ui.hint(box, "Edge में असर सिर्फ़ गति और पिच तक है: \"धीमी\", \"कोमल\" = गति कम, पिच नीचा; \"तेज़\", \"जोश\" = गति ज़्यादा। यह नीचे के स्लाइडर में जुड़ता है।")
         ui.slider(box, "गति", -50, 50, rate(c), { v -> (if (v > 0) "+" else "") + "$v%" }) { v -> VoiceEngines.sp(c).edit().putInt("edge_rate", v).apply() }
         ui.slider(box, "पिच (आवाज़ का ऊँचा-नीचापन)", -30, 30, pitch(c), { v -> (if (v > 0) "+" else "") + "$v Hz" }) { v -> VoiceEngines.sp(c).edit().putInt("edge_pitch", v).apply() }
     }
@@ -198,7 +205,8 @@ object EdgeTtsEngine : VoiceEngine {
         val ts = jsDate()
         val cfg = "X-Timestamp:$ts\r\nContent-Type:application/json; charset=utf-8\r\nPath:speech.config\r\n\r\n" +
             "{\"context\":{\"synthesis\":{\"audio\":{\"metadataoptions\":{\"sentenceBoundaryEnabled\":\"false\",\"wordBoundaryEnabled\":\"false\"},\"outputFormat\":\"$FORMAT\"}}}}\r\n"
-        val ssml = EdgeDrm.ssml(text, voice, rate(c), pitch(c))
+        val (r, p) = EdgeStyle.apply(rate(c), pitch(c), style(c))     // v3.69: बॉक्स के शब्द -> गति/पिच
+        val ssml = EdgeDrm.ssml(text, voice, r, p)
         val msg = "X-RequestId:${uuid()}\r\nContent-Type:application/ssml+xml\r\nX-Timestamp:${ts}Z\r\nPath:ssml\r\n\r\n$ssml"
         return k.ws.send(cfg) && k.ws.send(msg)
     }

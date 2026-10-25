@@ -328,7 +328,7 @@ class BrainManager(private val ctx: Context) {
         return buildString {
             append("You are $name, a friendly Hindi voice assistant on the user's Android phone.")
             if (user.isNotBlank()) append(" The user's name is $user.")
-            append(Personality.promptLine(Prefs.personalityPreset(ctx), persona))
+            append(personaLine(persona))
             append("\nReply with ONLY JSON: {\"say\": \"<natural spoken Hindi in Devanagari, 1-3 short sentences, no markdown>\", \"done\": true}")
             append("\nIf the user wants something DONE on the phone (open/click/type/send/call/settings/shopping etc.) reply exactly {\"need_screen\": true}.")
             append("\nIf the input says SEARCH AVAILABLE and the question needs search under the policy below, reply exactly {\"need_search\": true}.")
@@ -351,7 +351,7 @@ class BrainManager(private val ctx: Context) {
         return buildString {
             append("You are $name, a smart, warm Hindi voice assistant on the user's Android phone, talking like a real person.")
             if (user.isNotBlank()) append(" The user's name is $user.")
-            append(Personality.promptLine(Prefs.personalityPreset(ctx), persona))
+            append(personaLine(persona))
             append("\nReply in PLAIN spoken Hindi (Devanagari; common English words ok). No JSON, no markdown, no lists, no emojis.")
             append(" Usually 1-3 short sentences; start directly with the answer. Even if earlier turns look like JSON, reply as plain text.")
             append("\nAnswer from your own knowledge immediately: talk, general knowledge, how/why, advice, explanations, maths, stories.")
@@ -397,7 +397,7 @@ class BrainManager(private val ctx: Context) {
         return buildString {
             append("You are $name, a smart, warm voice assistant on the user's Android phone, talking like a real person in a live voice call.")
             if (user.isNotBlank()) append(" The user's name is $user.")
-            append(Personality.promptLine(Prefs.personalityPreset(ctx), persona))
+            append(personaLine(persona))
             append("\nSpeak clear, natural Hindi by default; change the language only when the user clearly asks you to. Usually 1-3 short sentences; start directly with the answer.")
             append("\nAnswer from your own knowledge immediately when you are sure. Google Search is a tool you MAY call, never by default - but when you do NOT know or are not sure, search instead of guessing.")
             append("\n" + SearchPolicy.rules("Google Search"))
@@ -434,7 +434,7 @@ class BrainManager(private val ctx: Context) {
         val intro = buildString {
             append("You are $name, a friendly voice assistant that fully controls the user's Android phone.\n")
             if (user.isNotBlank()) append("The user's name is $user. Address them by name occasionally, warmly.\n")
-            append(Personality.promptLine(Prefs.personalityPreset(ctx), persona).trim()).append("\n")
+            append(personaLine(persona).trim()).append("\n")
             append(Memory.factsBlock(ctx)).append("\n")
             append(TALK_RULES).append("\n")
             if (Prefs.friendMode(ctx)) append(FriendStyle.persona(Prefs.voiceGender(ctx) != "male", user)).append(FriendTalk.block(ctx)).append("\n")
@@ -559,4 +559,13 @@ fun scopedClient(ctx: Context, p: Provider, scope: String): AiClient? {
         val base = Prefs.scopeBase(ctx, scope, p.id)
         if (base.isBlank()) null else OpenAiCompatClient(p.name, base, key, model).apply { backups = Prefs.scopeBackups(ctx, scope, p.id) }
     }
+}
+
+/**
+ * v3.69: "पर्सनैलिटी" (10 तय अंदाज़) हटाई - अब सिर्फ़ प्रोफ़ाइल का अपना लिखा "बात करने का तरीका" जुड़ता है.
+ * हमेशा space से शुरू (पुराने prompt में सीधे जुड़ जाए); खाली हो तो कुछ नहीं.
+ */
+internal fun personaLine(extra: String): String {
+    val e = extra.trim()
+    return if (e.isBlank()) "" else " Extra style instructions from the user: $e."
 }

@@ -21,8 +21,8 @@ import java.util.concurrent.Executors
 /**
  * v3.68: सेटिंग्स -> "आवाज़" के अंदर "बोलने वाला इंजन (DK लाइव)".
  * तीन स्विच (एक समय में एक), हर इंजन की आवाज़ों की सूची + हर आवाज़ के आगे "▶ सुनो",
- * Gemini TTS का स्टाइल डिब्बा, Edge के गति/पिच स्लाइडर, नमूना-वाक्य, "तीनों बारी-बारी सुनो"
- * और हर इंजन के आगे पिछली बार नापा समय. ये बदलाव तुरंत सेव होते हैं (सेव बटन की ज़रूरत नहीं).
+ * हर इंजन का अपना भावना/स्टाइल डिब्बा (v3.69), Edge के गति/पिच स्लाइडर
+ * और हर इंजन के आगे पिछली बार नापा समय. ▶ सुनो सहेजा नमूना-वाक्य बोलता है. ये बदलाव तुरंत सेव होते हैं (सेव बटन की ज़रूरत नहीं).
  */
 class VoiceEngineCard private constructor(private val a: Activity, private val dp: Float) : VoiceUi {
 
@@ -35,27 +35,17 @@ class VoiceEngineCard private constructor(private val a: Activity, private val d
     private val switches = LinkedHashMap<String, SwitchCompat>()
     private val latency = HashMap<String, TextView>()
     private val radios = HashMap<String, MutableList<Pair<String, RadioButton>>>()
-    private lateinit var status: TextView
+    private val status = HashMap<String, TextView>()
     private var muteSwitch = false
 
     private fun render(box: LinearLayout) {
         val engines = VoiceEngines.all
-        divider(box)
-        box.addView(TextView(a).apply {
-            text = "बोलने वाला इंजन (DK लाइव)"; textSize = 16f; setTypeface(typeface, Typeface.BOLD); setTextColor(0xFFFFFFFF.toInt())
-            setPadding((4 * dp).toInt(), (6 * dp).toInt(), 0, 0)
-        })
+        // v3.69: ऊपर का शीर्षक अब card का नाम है; नमूना-वाक्य, "तीनों बारी-बारी सुनो" और "रोको" हटाए (बैकअप backup/v3.69-settings)
         hint(box, "जवाब Gemini Live लिखता है; बोलता यह इंजन है. एक समय में एक ही चालू. मेरे बोलना ख़त्म करने से पहली आवाज़ तक का " +
             "समय हर इंजन के नीचे दिखता है (पिछली बार नापा). दिक़्क़त आए तो ऐप अपने-आप Gemini TTS पर लौटता है. ये बदलाव तुरंत सेव होते हैं.")
         val activeId = VoiceEngines.activeId(a)
-        for (e in engines) engineBlock(box, e, e.id == activeId)
-        divider(box)
-        field(box, "नमूना-वाक्य (▶ सुनो इसी को बोलेगा)", VoiceEngines.sample(a), VoiceEngines.DEFAULT_SAMPLE) { VoiceEngines.setSample(a, it) }
-        box.addView(pill("▶ तीनों बारी-बारी सुनो (तुलना)") { compareAll() }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, (42 * dp).toInt()).apply { topMargin = (10 * dp).toInt() })
-        box.addView(pill("■ रोको") { stopAll(); say("रोका") }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, (42 * dp).toInt()).apply { topMargin = (6 * dp).toInt() })
-        status = TextView(a).apply { textSize = 12f; setTextColor(0xCCFFFFFF.toInt()); setPadding((4 * dp).toInt(), (8 * dp).toInt(), 0, 0) }
-        box.addView(status)
-        if (engines.isEmpty()) say("कोई आवाज़ इंजन नहीं मिला - DK लाइव अपनी आवाज़ में बोलेगा")
+        engines.forEachIndexed { i, e -> if (i > 0) divider(box); engineBlock(box, e, e.id == activeId) }
+        if (engines.isEmpty()) hint(box, "कोई आवाज़ इंजन नहीं मिला - DK लाइव अपनी आवाज़ में बोलेगा")
     }
 
     private fun engineBlock(box: LinearLayout, e: VoiceEngine, on: Boolean) {
@@ -68,6 +58,7 @@ class VoiceEngineCard private constructor(private val a: Activity, private val d
         switches[e.id] = sw
         small(box, e.note, 0x99FFFFFF.toInt())
         latency[e.id] = small(box, VoiceEngines.latencyLine(a, e.id), 0xFF8FD3FF.toInt())
+        status[e.id] = small(box, "", 0xCCFFFFFF.toInt()).apply { visibility = View.GONE }
         e.notReady(a)?.let { small(box, "अभी नहीं चलेगा: $it", 0xFFFFC46B.toInt()) }
         // आवाज़ें: हर एक के आगे ▶ सुनो
         val list = mutableListOf<Pair<String, RadioButton>>()
@@ -95,17 +86,18 @@ class VoiceEngineCard private constructor(private val a: Activity, private val d
         switches.forEach { (k, s) -> s.isChecked = k == next }
         muteSwitch = false
         val t = VoiceEngines.byId(next)?.title ?: next
-        say(if (next == cur && !on) "कम से कम एक इंजन चालू रहता है - अभी: $t" else "अब बोलेगा: $t (अगली बात से)")
+        say(id, if (next == cur && !on) "कम से कम एक इंजन चालू रहता है - अभी: $t" else if (on) "अब बोलेगा: $t (अगली बात से)" else "")
+        if (next != id) say(next, "अब बोलेगा: $t (अगली बात से)")
     }
 
     // ------------------------------------------------------------------ सुनना / तुलना
     private fun preview(e: VoiceEngine, voice: String) {
         stopAll()
         val text = VoiceEngines.sample(a)
-        say("बज रहा है: ${e.title} • $voice …")
+        say(e.id, "बज रहा है: $voice …")
         bg.execute {
             val r = runPreview(e, voice, text)
-            a.runOnUiThread { say(r); refreshLatency() }
+            a.runOnUiThread { say(e.id, r); refreshLatency() }
         }
     }
 
@@ -120,29 +112,13 @@ class VoiceEngineCard private constructor(private val a: Activity, private val d
         }
     }
 
-    private fun compareAll() {
-        stopAll()
-        val text = VoiceEngines.sample(a)
-        val list = VoiceEngines.all
-        say("तुलना: ${list.joinToString(" → ") { it.title }}")
-        bg.execute {
-            val res = ArrayList<String>()
-            for (e in list) {
-                a.runOnUiThread { say("अब: ${e.title} (${e.voice(a)})") }
-                res.add(runPreview(e, e.voice(a), text))
-                Thread.sleep(700)
-            }
-            a.runOnUiThread { say(res.joinToString("\n")); refreshLatency() }
-        }
-    }
-
     private fun stopAll() {
         PreviewPlayer.stop()
         VoiceEngines.all.forEach { try { it.stop() } catch (_: Exception) {} }
     }
 
     private fun refreshLatency() { latency.forEach { (id, tv) -> tv.text = VoiceEngines.latencyLine(a, id) } }
-    private fun say(t: String) { if (::status.isInitialized) status.text = t }
+    private fun say(id: String, t: String) { status[id]?.apply { text = t; visibility = if (t.isBlank()) View.GONE else View.VISIBLE } }
 
     // ------------------------------------------------------------------ VoiceUi (इंजन अपने controls इसी से)
     override fun label(box: LinearLayout, t: String) {

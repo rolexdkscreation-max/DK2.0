@@ -164,6 +164,14 @@ Important context: the existing app is a mature **View/XML + Kotlin** app (≈31
 | Instagram DM | NOT BUILT | needs testing on a real phone; Instagram posting stays as before |
 | On-phone timing | NOT VERIFIED | log line "तुरंत काम … काम+जाँच X ms" shows the real time |
 
+## v3.69 — Collapsible settings + per-engine style
+| Item | Status | Notes |
+|---|---|---|
+| Shared collapsible section | DONE | `ui/CollapsibleSection` (title + arrow when closed, tap = open/close with 220 ms height/alpha animation, all closed at start). `SettingsActivity.card()` and `MemoryActivity.card()` use it, so every settings page gets it; new section = `CollapsibleSection.add(...)` |
+| Voice page cleanup | DONE | removed old voice card (gender, type, voice list, style, choose/listen, speed, pitch, phone TTS), sample sentence / compare / stop box, Profile "पर्सनैलिटी" + `Personality.kt`. Backups in `backup/v3.69-settings/`. Saved values stay on the phone |
+| Style box per engine | DONE | Gemini TTS unchanged (`gemini_tts_style`); Edge `edge_style` -> `EdgeStyle` words map to rate/pitch on top of the sliders; Live direct `live_native_style` -> appended to the Live system instruction (native mode) and preview |
+| On-phone look | NOT VERIFIED | emulator screenshots via `ui-preview` workflow |
+
 ## v3.68 — Writing and speaking split (voice engines)
 | Item | Status | Notes |
 |---|---|---|
