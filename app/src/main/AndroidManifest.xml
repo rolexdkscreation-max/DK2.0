@@ -100,6 +100,11 @@
             android:windowSoftInputMode="adjustResize|stateAlwaysVisible" />
 
         <activity
+            android:name=".TeacherActivity"
+            android:exported="false"
+            android:windowSoftInputMode="adjustResize" />
+
+        <activity
             android:name=".VoiceActivity"
             android:exported="false"
             android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden"
