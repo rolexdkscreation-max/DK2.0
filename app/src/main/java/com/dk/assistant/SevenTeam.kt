@@ -537,6 +537,7 @@ class SevenTeam(
     // ------------------------------------------------------------------ डिबगर
     /** @param missing डिबगर: यह काम कोड में कहीं लिखा ही नहीं (टूटी लाइन नहीं, गायब हिस्सा) */
     data class Diag(val files: List<String>, val missing: Boolean = false)
+
     /** @return (फ़ाइलें, root cause, fix) */
     private suspend fun debug(problem: String, repeat: Boolean): Triple<Diag, String, String>? {
         if (full) return debugFull(problem, repeat)
