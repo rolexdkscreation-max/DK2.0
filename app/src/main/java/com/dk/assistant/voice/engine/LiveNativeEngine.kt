@@ -76,7 +76,7 @@ object LiveNativeEngine : VoiceEngine {
                             .put("prebuiltVoiceConfig", JSONObject().put("voiceName", voice)))))
                     .put("systemInstruction", JSONObject().put("parts", JSONArray().put(JSONObject().put("text",
                         "तुम सिर्फ़ आवाज़ हो। यूज़र जो वाक्य दे, उसे ज्यों-का-त्यों, गर्मजोशी और भावना से, हिंदी में बोलो। " +
-                            "एक भी शब्द जोड़ना/बदलना/जवाब देना नहीं।" + styleNote(style(c)))))))
+                            "एक भी शब्द जोड़ना/बदलना/जवाब देना नहीं। शांत, हमदर्द लहजे में, मध्यम गति से, वाक्यों के बीच हल्के ठहराव के साथ बोलो।" + styleNote(style(c)))))))
                 webSocket.send(setup.toString())
             }
             override fun onMessage(webSocket: WebSocket, text: String) = handle(text)

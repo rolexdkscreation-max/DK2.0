@@ -342,6 +342,7 @@ class BrainManager(private val ctx: Context) {
             append(Memory.factsBlock(ctx))
             // v3.45: सच्चा दोस्त - लहजा + पिछली बातचीत की याद (आखिरी मुलाकात, सारांश, अधूरी बातें)
             if (Prefs.friendMode(ctx)) append("\n" + FriendStyle.persona(Prefs.voiceGender(ctx) != "male", user)).append(FriendTalk.block(ctx))
+            append(CalmPersona.block())   // v3.76: मालिक का तय स्वभाव - हमेशा
         }
     }
 
@@ -366,6 +367,7 @@ class BrainManager(private val ctx: Context) {
             append(TALK_RULES)
             append(TalkStyle.CHAT)   // v3.51: इंसान जैसी बात, झूठा "कर दिया" नहीं, notification/रुकने के नियम
             append(Memory.factsBlock(ctx))
+            append(CalmPersona.block())   // v3.76: मालिक का तय स्वभाव - classic आवाज़ में भी
         }
     }
 
@@ -424,6 +426,7 @@ class BrainManager(private val ctx: Context) {
             append(Memory.factsBlock(ctx))
             // v3.46: "सच्चा दोस्त" स्वभाव + बातचीत की याद अब आवाज़ (Live) में भी (पहले सिर्फ़ chat में जुड़ा था)
             if (Prefs.friendMode(ctx)) append("\n").append(FriendStyle.persona(f, user)).append(FriendTalk.block(ctx))
+            append(CalmPersona.block())   // v3.76: मालिक का तय स्वभाव - Live (सीधी आवाज़ / Gemini TTS / Edge) सब में
         }
     }
 
