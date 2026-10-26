@@ -421,33 +421,62 @@ Then one line "USER WANTS:" with what the user most likely wants changed, based 
         val gh = mode == Mode.GITHUB
         val chk = check ?: when (testOk) { true -> if (gh) CheckState.PASS else CheckState.NONE; false -> CheckState.FAIL; null -> CheckState.RUNNING }
         val done = testOk == true && (!gh || (chk == CheckState.PASS && prUrl.isNotBlank()))
-        append("📋 रिपोर्ट (${if (gh) "GitHub मोड" else "नॉर्मल मोड"})\n")
-        append(when {
-            done -> "✅ काम पूरा हुआ"
-            testOk == false || chk == CheckState.FAIL -> "❌ काम अभी पूरा नहीं हुआ (टेस्ट/चेक फ़ेल)"
-            else -> "⏳ काम अभी पूरा नहीं हुआ (चेक का नतीजा नहीं मिला)"
+        append("📋 DK कोडिंग एजेंट — काम की रिपोर्ट (").append(if (gh) "GitHub मोड" else "नॉर्मल मोड").append(")\n")
+        append("━━━━━━━━━━━━━━━━━━━━\n")
+        append("स्थिति: ").append(when {
+            done -> "✅ सत्यापन के अनुसार काम पूरा"
+            testOk == false || chk == CheckState.FAIL -> "❌ काम अधूरा — जाँच में समस्या मिली"
+            else -> "⏳ काम की पुष्टि अभी बाकी है"
         }).append("\n\n")
-        append("• काम क्या था: ").append(task.trim().take(300)).append("\n\n")
-        append("• क्या हुआ:\n")
-        if (changes.isEmpty()) append("  - कोई फ़ाइल नहीं बदली\n") else changes.forEach { (f, w) -> append("  - $f — $w\n") }
-        append("\n• बग / एरर: ")
-        if (bugs.isEmpty()) append("कोई नहीं\n") else {
-            append("\n"); bugs.forEach { b ->
-                append("  - क्या था: ${b.what}\n  - जड़ कहाँ थी: ${b.where.ifBlank { "-" }} — ${b.rootCause}\n  - कैसे ठीक किया: ${b.fix}\n")
-            }
-        }
-        append("\n• टेस्ट का नतीजा: ").append(when (testOk) { true -> "✅ पास"; false -> "❌ फ़ेल"; null -> "—" })
-        if (testNote.isNotBlank()) append(" ($testNote)")
+
+        append("1) आपने क्या काम दिया था?\n")
+        append(task.trim().take(500).ifBlank { "अनुरोध का विवरण उपलब्ध नहीं" }).append("\n\n")
+
+        append("2) एजेंट ने क्या बदला?\n")
+        if (changes.isEmpty()) append("• इस रिपोर्ट में कोई लागू किया गया फ़ाइल बदलाव दर्ज नहीं है\n")
+        else changes.forEach { (f, w) -> append("• फ़ाइल: ").append(f).append("\n  बदलाव: ").append(w).append("\n") }
         append("\n")
-        if (gh) {
-            append("• PR: ").append(prUrl.ifBlank { "अभी नहीं बना" + if (prNote.isNotBlank()) " — $prNote" else " — build पास होने पर ही बनता है" }).append("\n")
-            append("• चेक की हालत: ${chk.hi}").append(if (checkUrl.isNotBlank()) " — $checkUrl" else "").append("\n")
+
+        append("3) बग / समस्या और उसका समाधान\n")
+        if (bugs.isEmpty()) append("• कोई root cause दर्ज नहीं है; इसका मतलब यह नहीं कि हर संभावित बग की गारंटी से जाँच हो गई।\n")
+        else bugs.forEachIndexed { i, b ->
+            append(i + 1).append(". समस्या: ").append(b.what).append("\n")
+            append("   जगह: ").append(b.where.ifBlank { "पुष्टि नहीं हुई" }).append("\n")
+            append("   जड़: ").append(b.rootCause).append("\n")
+            append("   सुधार: ").append(b.fix).append("\n")
         }
-        if (backup.isNotBlank()) append("\n• बैकअप: $backup\n")
-        if (gh) {
-            if (done) append("\n• मंज़ूरी: क्या मैं PR को merge कर दूँ?")
-            else append("\n• main को हाथ नहीं लगाया — PR merge नहीं होगा जब तक चेक पास न हो")
+        append("\n")
+
+        append("4) जाँच और टेस्ट का असली नतीजा\n")
+        append("• एजेंट की जाँच: ").append(when (testOk) {
+            true -> "✅ पास"
+            false -> "❌ फ़ेल"
+            null -> "⚠ नतीजा उपलब्ध नहीं"
+        }).append("\n")
+        if (testNote.isNotBlank()) append("• जाँच का विवरण: ").append(testNote.trim()).append("\n")
+        if (!gh) {
+            append("• महत्वपूर्ण सीमा: नॉर्मल मोड में GitHub Actions/Android Gradle build अपने-आप नहीं चला। इसलिए ऊपर का पास/फ़ेल code review या उपलब्ध जाँच का नतीजा है—इसे वास्तविक APK build या फ़ोन पर सफल चलने का प्रमाण न मानें।\n")
+        } else {
+            append("• GitHub Actions: ").append(chk.hi).append("\n")
+            append("• Build/check लिंक: ").append(checkUrl.ifBlank { "लिंक उपलब्ध नहीं" }).append("\n")
+            append("• Pull Request: ").append(prUrl.ifBlank { "अभी नहीं बना" + if (prNote.isNotBlank()) " — $prNote" else " — build/check पास होने पर ही बनाया जाएगा" }).append("\n")
         }
+        append("\n")
+
+        if (backup.isNotBlank()) {
+            append("5) सुरक्षित बैकअप\n• Branch: ").append(backup).append("\n\n")
+        } else {
+            append("5) सुरक्षित बैकअप\n• इस रिपोर्ट में अलग backup branch दर्ज नहीं है।\n\n")
+        }
+
+        append(if (done) "6) अगला कदम\n" else "6) अभी क्या बाकी है?\n")
+        when {
+            done && gh -> append("• बदलाव अलग branch/PR पर है। कृपया PR की समीक्षा करें; merge केवल आपकी स्पष्ट मंज़ूरी के बाद होगा।\n")
+            done -> append("• असली Android build और फ़ोन पर जाँच करनी हो तो प्रोजेक्ट के build/test चलाएँ; इस मोड की रिपोर्ट उसे प्रमाणित नहीं करती।\n")
+            testOk == false || chk == CheckState.FAIL -> append("• ऊपर दिए गए error/log को ठीक करके जाँच फिर चलानी होगी। main को सीधे नहीं बदला गया।\n")
+            else -> append("• जाँच का वास्तविक नतीजा प्राप्त करें। जब तक आवश्यक जाँच पास न हो, काम को पूरा न मानें।\n")
+        }
+        if (gh && !done) append("• main को हाथ नहीं लगाया गया; merge नहीं किया गया।\n")
     }
 }
 
