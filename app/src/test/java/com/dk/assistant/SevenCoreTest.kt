@@ -139,7 +139,7 @@ class SevenCoreTest {
     @Test fun report_format() {
         val r = Seven.report("बटन जोड़ो", Seven.Mode.GITHUB, listOf("A.kt" to "बटन जोड़ा"),
             listOf(Seven.Bug("crash", "A.kt:3", "null", "check जोड़ा")), true, "", "https://pr/1", "backup/dk-1")
-        listOf("1) आपने क्या काम दिया था?", "2) एजेंट ने क्या बदला?", "फ़ाइल: A.kt", "3) बग / समस्या", "जगह: A.kt:3", "कैसे ठीक किया", "एजेंट की जाँच: ✅ पास",
+        listOf("1) आपने क्या काम दिया था?", "2) एजेंट ने क्या बदला?", "फ़ाइल: A.kt", "3) बग / समस्या", "जगह: A.kt:3", "सुधार:", "एजेंट की जाँच: ✅ पास",
             "कृपया PR की समीक्षा करें").forEach { assertTrue(it, r.contains(it)) }
         val n = Seven.report("x", Seven.Mode.NORMAL, emptyList(), emptyList(), false, "e", "", "")
         assertFalse(n.contains("merge")); assertTrue(n.contains("❌ फ़ेल")); assertTrue(n.contains("वास्तविक APK build")); assertTrue(n.contains("क्या काम दिया था"))
