@@ -90,6 +90,9 @@
                 <TextView android:id="@+id/chipComputer" style="@style/DKChip"
                     android:text="🖥 DK कंप्यूटर"
                     android:contentDescription="DK कंप्यूटर खोलें" />
+                <TextView android:id="@+id/chipTeacher" style="@style/DKChip"
+                    android:text="🎓 DK टीचर"
+                    android:contentDescription="DK टीचर खोलें" />
                 <TextView android:id="@+id/chipForge" style="@style/DKChip"
                     android:text="🌐 वेबसाइट"
                     android:contentDescription="वेबसाइट बनाने वाला Forge खोलें" />
