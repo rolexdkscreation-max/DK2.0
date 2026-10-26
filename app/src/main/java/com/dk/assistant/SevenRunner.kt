@@ -156,7 +156,8 @@ object SevenRunner {
                 listOf("जो check fail था वह पास हो", "बाकी सारे checks और पुराने tests पास हों", "कोई पुराना फ़ीचर न बदले"),
                 listOf("सारे मौजूदा फ़ीचर और tests"), emptyList(), emptyList())
             val out = team.run(task, u)
-            say(if (out.testOk == true) "d" else "e", out.report)
+            DKLog.d("रिपो डॉक्टर - 11-एजेंट पूरी रिपोर्ट:\n" + out.report)
+            say(if (out.testOk == true) "d" else "e", out.short.ifBlank { out.report })
             return out
         } finally {
             a.draftPr = false; a.prLater = false
@@ -182,6 +183,12 @@ object SevenRunner {
         if (pending == null && ck != null && ck.stage != "pending" && CoderHistory.Logic.isContinue(input)) {
             say("u", (if (fromVoice) "🎤 " else "") + input)
             return resume(c, auto = false)
+        }
+        // "आगे करो" पर रुका काम ही नहीं - इसे नया काम मानकर शुरू से न समझने बैठो
+        if (pending == null && ck == null && CoderHistory.Logic.isContinue(input)) {
+            say("u", (if (fromVoice) "🎤 " else "") + input)
+            say("s", "कोई रुका हुआ काम नहीं मिला — पिछला काम पूरा हो चुका है। नया काम बताइए।")
+            CoderSession.listener?.invoke(); return null
         }
         // PR तैयार है और user ने "हाँ" / "merge करो" कहा = डिप्लॉयमेंट (दोबारा जाँच → merge → APK release)
         if (pending == null && CoderSession.agent?.pr != null) {
@@ -247,7 +254,8 @@ object SevenRunner {
                         val open = a.pr
                         if (resume != null) {
                             // "वहीं से आगे": पिछली branch / PR / बदलाव वापस - नए सिरे से नहीं
-                            a.reset()
+                            // पूरा रिपो दोबारा न उतरे: उसी branch की फ़ोन में रखी फ़ाइलें बची रहें
+                            a.resetKeepFiles(resume.branch)
                             a.safePr = true
                             if (resume.prNum > 0 && resume.branch.isNotBlank()) a.restorePr(GitHub.Pull(resume.prNum, resume.prUrl, resume.branch, a.baseBranch))
                             else if (resume.branch.isNotBlank()) withContext(Dispatchers.IO) { a.restoreBranch(resume.branch) }
@@ -260,6 +268,9 @@ object SevenRunner {
                         val files = RepoFiles(a, c)
                         resume?.staged?.forEach { (p, content) -> files.stage(p, content) }
                         team = SevenTeam(Ai(ai), files, Git(a, task, c, resume?.backup.orEmpty()), full = true) { ag, t -> say("s", "${ag.icon} ${ag.hi}: $t") }
+                        // "आगे करो": टीम कहाँ तक पहुँची थी - वहीं से (पूरे हुए हिस्से दोबारा नहीं)
+                        team.resumeFrom = TeamProgress.parse(resume?.team)
+                        if (approved != null) team.onProgress = { p -> val j = p.json(); CoderHistory.updateCheckpoint(c) { it.copy(team = j) } }
                     } else {
                         say("s", "📝 नॉर्मल मोड" + when {
                             wantNormal -> " (आपने चुना)"
@@ -288,33 +299,43 @@ object SevenRunner {
                         return@withTimeout
                     }
                     val out = team.run(workTask, approved)
-                    finished = true
+                    // काम पूरा (या सिर्फ़ जवाब) = चौकी साफ़. नहीं हुआ = चौकी बची रहे, ताकि "आगे करो" वहीं से चले
+                    finished = out.testOk == true || out.answerOnly
                     if (out.answerOnly && out.report == SevenTeam.STATUS_ASK) { inspect(c, task); return@withTimeout }
                     if (out.answerOnly) { say("d", out.report); return@withTimeout }
-                    say(if (out.testOk == true) "d" else "e", out.report)
+                    // यूज़र को सिर्फ़ छोटी रिपोर्ट (हुआ/नहीं, API, वजह, हल). पूरी तकनीकी रिपोर्ट डिबग लॉग में
+                    DKLog.d("11-एजेंट पूरी रिपोर्ट:\n" + out.report)
+                    say(if (out.testOk == true) "d" else "e", out.short.ifBlank { out.report })
                     if (out.mode == Seven.Mode.NORMAL) out.files.forEach { (p, content) ->
                         say("f", p + "\n" + (content ?: "(यह फ़ाइल हटानी है)"))
                         if (content != null) CoderSession.normalFiles[p] = content else CoderSession.normalFiles.remove(p)
                     }
                     val ok = out.testOk == true
-                    CoderTeam.announce(c, if (ok) "11-एजेंट टीम: काम पूरा" else "11-एजेंट टीम: रुकी", out.report.lines().getOrNull(1).orEmpty(),
+                    CoderTeam.announce(c, if (ok) "11-एजेंट टीम: काम पूरा" else "11-एजेंट टीम: रुकी",
+                        out.short.lines().firstOrNull { it.startsWith("वजह:") }?.removePrefix("वजह:")?.trim() ?: out.report.lines().getOrNull(1).orEmpty(),
                         if (ok && out.mode == Seven.Mode.GITHUB) "कोडिंग का काम पूरा हो गया, बॉस। टेस्ट पास हैं, PR आपकी मंज़ूरी का इंतज़ार कर रहा है। हाँ बोलें तो merge करके APK release कर दूँगा।"
                         else if (ok) "कोडिंग का काम पूरा हो गया, बॉस। कोड स्क्रीन पर फ़ाइल-नाम के साथ है।"
-                        else "कोडिंग का काम पूरा नहीं हो पाया। कोडिंग स्क्रीन पर वजह लिखी है।")
+                        else "कोडिंग का काम पूरा नहीं हो पाया। कोडिंग स्क्रीन पर वजह और हल लिखा है। ठीक करके आगे करो बोलिए, वहीं से शुरू होगा।")
                 }
             } catch (e: kotlinx.coroutines.TimeoutCancellationException) {
-                say("e", "11-एजेंट टीम: तय समय (${CoderTeam.TASK_TIMEOUT_MIN} मिनट) में काम पूरा नहीं हुआ। main अछूता है। किया हुआ काम बचा है — \"वहीं से आगे\" दबाएँ।")
+                say("e", ShortReport.text(null, "तय समय (${CoderTeam.TASK_TIMEOUT_MIN} मिनट) में पूरा नहीं हुआ"))
             } catch (e: kotlinx.coroutines.CancellationException) {
-                say("e", "11-एजेंट टीम का काम रोक दिया। किया हुआ काम बचा है — चाहें तो \"वहीं से आगे\" दबाएँ।")
+                say("e", ShortReport.text(null, "काम रोक दिया"))
             } catch (e: Exception) {
-                say("e", "11-एजेंट टीम रुकी: " + (e.message ?: e.javaClass.simpleName).take(400) + "\n(API/नेटवर्क की गलती पर 3 बार अपने-आप कोशिश हो चुकी। किया हुआ काम बचा है — \"वहीं से आगे\" दबाएँ)")
+                val raw = e.message ?: e.javaClass.simpleName
+                DKLog.d("11-एजेंट टीम रुकी: $raw")
+                say("e", ShortReport.text(false, raw))
             } finally {
                 // पूरा हुआ (पास/फ़ेल की रिपोर्ट) = चौकी साफ़. बीच में रुका = "pause" (बटन से आगे). मंज़ूरी का इंतज़ार = वही रहे
                 withContext(NonCancellable) {
                     val k = if (approved != null) CoderHistory.checkpoint(c) else null
                     if (k != null && k.stage != "pending") {
                         if (finished) CoderHistory.clearCheckpoint(c)
-                        else CoderHistory.saveCheckpoint(c, k.copy(stage = "pause", last = CoderSession.lines.lastOrNull { it.role == "s" }?.text.orEmpty().take(300)))
+                        else {
+                            // टीम की याद (team) वाले बाकी बदलाव पहले लिखे जा चुके हों, उसके बाद ही "pause" (क्रम से, पुरानी चौकी से न ढके)
+                            val last = CoderSession.lines.lastOrNull { it.role == "s" }?.text.orEmpty().take(300)
+                            CoderHistory.updateCheckpoint(c) { if (it.stage == "pending") it else it.copy(stage = "pause", last = last) }
+                        }
                     }
                 }
                 agent?.let { a ->

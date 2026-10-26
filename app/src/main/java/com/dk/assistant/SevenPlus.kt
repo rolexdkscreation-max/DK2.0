@@ -174,22 +174,29 @@ object SevenPlus {
         /** टीम कैसे करेगी - कदम दर कदम */
         val steps: List<String> = emptyList(),
         /** फ़ोटो/वीडियो में प्रॉम्प्ट इंजीनियर ने क्या देखा (हर एजेंट को लिखा हुआ जाता है) */
-        val mediaNotes: String = ""
+        val mediaNotes: String = "",
+        /** user ने जो-जो माँगा - हर बात अलग (कुछ छूटे नहीं, कुछ जुड़े नहीं) */
+        val wants: List<String> = emptyList(),
+        /** अभी कोड में क्या हो रहा है / समस्या की वजह - सीधी भाषा में */
+        val now: String = ""
     ) {
         val needsAnswer get() = questions.isNotEmpty()
 
-        /** user को दिखाने वाला संदेश */
+        /**
+         * user को दिखाने वाला संदेश - जैसे कोई समझदार साथी समझाता है:
+         * आपने क्या माँगा (हर बात अलग), अभी क्या हो रहा है, क्या बदलेगा, क्या नहीं छेड़ा जाएगा, और क्या साफ़ नहीं.
+         * तकनीकी अंदाज़े (फ़ाइलों के path, काम का प्रकार, शर्तों की लंबी list) यहाँ नहीं - वे टीम के लिए spec में हैं.
+         */
         fun hindi(): String = buildString {
-            append("✍ मैंने आपकी बात ऐसे समझी:\n").append(understood.ifBlank { brief }).append("\n")
-            append("\nकाम का प्रकार: ").append(when (kind) { Seven.Kind.BUG -> "बग ठीक करना (पहले जड़ ढूँढेंगे)"; Seven.Kind.QUESTION -> "सवाल"; Seven.Kind.STATUS -> "रिपो/PR की जाँच"; else -> "नया फ़ीचर / बदलाव" }).append("\n")
+            append("✍ मैंने आपकी बात ऐसे समझी:\n").append(understood.ifBlank { brief }.trim()).append("\n")
+            if (wants.isNotEmpty()) append("\nआप ये चाहते हैं:\n").append(wants.mapIndexed { i, x -> "${i + 1}. $x" }.joinToString("\n")).append("\n")
+            if (now.isNotBlank()) append("\n🔍 अभी क्या हो रहा है:\n").append(now.trim()).append("\n")
             if (mediaNotes.isNotBlank()) append("\n🖼 आपकी फ़ोटो/वीडियो में मैंने देखा:\n").append(mediaNotes.trim().take(1500)).append("\n")
             if (changes.isNotEmpty()) append("\n🔧 क्या-क्या बदलेगा:\n").append(changes.joinToString("\n") { "• $it" }).append("\n")
-            if (steps.isNotEmpty()) append("\n🪜 कैसे करेंगे (कदम दर कदम):\n").append(steps.mapIndexed { i, x -> "${i + 1}. $x" }.joinToString("\n")).append("\n")
-            if (area.isNotEmpty()) append("\n📂 कहाँ बदलेगा (अंदाज़ा): ").append(area.take(8).joinToString()).append("\n")
-            if (acceptance.isNotEmpty()) append("\nकाम पूरा तब माना जाएगा जब:\n").append(acceptance.joinToString("\n") { "• $it" }).append("\n")
-            if (notTouch.isNotEmpty()) append("\nइन्हें नहीं छेड़ा जाएगा:\n").append(notTouch.joinToString("\n") { "• $it" }).append("\n")
+            if (steps.isNotEmpty()) append("\n🪜 कैसे करेंगे:\n").append(steps.mapIndexed { i, x -> "${i + 1}. $x" }.joinToString("\n")).append("\n")
+            if (notTouch.isNotEmpty()) append("\n🛡 इन्हें नहीं छेड़ा जाएगा:\n").append(notTouch.joinToString("\n") { "• $it" }).append("\n")
             if (questions.isNotEmpty()) {
-                append("\n❓ शुरू करने से पहले यह साफ़ करें:\n").append(questions.mapIndexed { i, q -> "${i + 1}. $q" }.joinToString("\n"))
+                append("\n❓ यह मुझे साफ़ नहीं हुआ — पहले बता दीजिए:\n").append(questions.mapIndexed { i, q -> "${i + 1}. $q" }.joinToString("\n"))
                 append("\n\nजवाब लिखें (या 🎤 से बोलें) — फिर मैं दोबारा समझकर बताऊँगा।")
             } else append("\nक्या मैंने सही समझा? \"हाँ\" लिखें/बोलें तो काम शुरू होगा। कुछ अलग चाहिए तो वही लिखें, मैं दोबारा समझूँगा। \"रद्द\" = काम नहीं होगा।")
         }
@@ -203,7 +210,9 @@ object SevenPlus {
                     acc, Seven.strings(o?.optJSONArray("not_touch")), Seven.strings(o?.optJSONArray("questions")).take(4),
                     Seven.strings(o?.optJSONArray("area")).take(8),
                     changes = Seven.strings(o?.optJSONArray("changes")).take(12),
-                    steps = Seven.strings(o?.optJSONArray("steps")).take(10))
+                    steps = Seven.strings(o?.optJSONArray("steps")).take(10),
+                    wants = Seven.strings(o?.optJSONArray("wants")).take(10),
+                    now = o?.optString("now").orEmpty().trim())
             }
         }
     }

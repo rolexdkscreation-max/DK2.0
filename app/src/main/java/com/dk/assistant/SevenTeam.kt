@@ -67,7 +67,23 @@ class SevenTeam(
     private val full: Boolean = false,
     private val ev: (Agent, String) -> Unit
 ) {
-    data class Outcome(val report: String, val files: Map<String, String?>, val testOk: Boolean?, val mode: Seven.Mode, val answerOnly: Boolean = false)
+    /**
+     * report = पूरी तकनीकी रिपोर्ट (डिबग लॉग / PR के लिए).
+     * short = यूज़र को दिखने वाली छोटी रिपोर्ट: हुआ/नहीं, API चली/नहीं, वजह, हल (ShortReport). खाली = report ही दिखाओ.
+     */
+    data class Outcome(val report: String, val files: Map<String, String?>, val testOk: Boolean?, val mode: Seven.Mode,
+                       val answerOnly: Boolean = false, val short: String = "")
+
+    /** "आगे करो": पिछली बार टीम कहाँ तक पहुँची थी (null = नया काम) */
+    var resumeFrom: TeamProgress? = null
+    /** हर पड़ाव पर टीम की याद (ऐप इसे फ़ोन में रखती है) */
+    var onProgress: ((TeamProgress) -> Unit)? = null
+    private var prog = TeamProgress()
+    private fun save(f: (TeamProgress) -> TeamProgress) {
+        prog = f(prog).copy(changes = LinkedHashMap(changes), backup = backup, qaOk = qaOk,
+            commit = commitMsg?.first.orEmpty(), title = commitMsg?.second.orEmpty())
+        try { onProgress?.invoke(prog) } catch (_: Exception) {}
+    }
 
     val mode get() = if (git != null) Seven.Mode.GITHUB else Seven.Mode.NORMAL
     private val changes = linkedMapOf<String, String>()
@@ -236,18 +252,37 @@ class SevenTeam(
             acceptance = Seven.strings(m?.optJSONArray("acceptance"))
         }
         val bug = kind == Seven.Kind.BUG
-        ev(Agent.MANAGER, (if (bug) "यह बग ठीक करने का काम है → डिबगर पहले जड़ ढूँढेगा" else "यह नया फ़ीचर/बदलाव है → प्लानर पहले फ़ाइलें पढ़ेगा") +
+        // "आगे करो": जो हो चुका वह याद - दोबारा नहीं
+        val r = resumeFrom?.takeIf { it.phase > TeamProgress.NONE || it.leftSteps > 0 }
+        if (r != null) {
+            prog = r
+            changes.putAll(r.changes); backup = r.backup; qaOk = r.qaOk
+            if (r.commit.isNotBlank()) commitMsg = r.commit to r.title.ifBlank { task.take(80) }
+            ev(Agent.MANAGER, "↩ वहीं से आगे: " + r.hindi())
+        } else ev(Agent.MANAGER, (if (bug) "यह बग ठीक करने का काम है → डिबगर पहले जड़ ढूँढेगा" else "यह नया फ़ीचर/बदलाव है → प्लानर पहले फ़ाइलें पढ़ेगा") +
             if (acceptance.isNotEmpty()) "\nपूरा होने की शर्तें:\n" + acceptance.joinToString("\n") { "• $it" } else "")
 
-        // 2. गिट: backup + नई branch (सिर्फ़ GitHub मोड)
+        // 2. गिट: backup + नई branch (सिर्फ़ GitHub मोड). "आगे करो" पर पहले से बनी हैं - दोबारा नहीं
         git?.let { g ->
-            backup = g.backup(task)
-            ev(Agent.GIT, if (backup.isNotBlank()) "backup branch बनाई: $backup" else "backup branch नहीं बन पाई — फिर भी main को हाथ नहीं लगेगा")
-            ev(Agent.GIT, "नई branch: ${g.branch(task)} — सारा काम इसी में, main अछूता")
+            if (r != null && r.phase >= TeamProgress.BRANCH) {
+                g.branch(task)
+            } else {
+                backup = g.backup(task)
+                ev(Agent.GIT, if (backup.isNotBlank()) "backup branch बनाई: $backup" else "backup branch नहीं बन पाई — फिर भी main को हाथ नहीं लगेगा")
+                ev(Agent.GIT, "नई branch: ${g.branch(task)} — सारा काम इसी में, main अछूता")
+            }
         }
+        if (r == null) save { it.copy(phase = TeamProgress.BRANCH) }
 
         // 3. प्लान (बग: पहले डिबगर)
-        var rootCause = ""
+        var rootCause = r?.rootCause.orEmpty()
+        // "आगे करो": बीच में रुका प्लान - बाकी कदम ही
+        if (r != null && r.leftSteps > 0) {
+            if (!execute(Seven.Plan(r.steps, emptyList()), emptySet(), r.stepsDone)) return finish(false, lastBlock)
+            save { it.copy(phase = maxOf(it.phase, TeamProgress.CODED), steps = emptyList(), stepsDone = 0, failLog = "", failUrl = "") }
+        }
+        val coded = prog.phase >= TeamProgress.CODED
+        if (!coded) {
         val plan = if (bug) {
             val d = debug("USER BUG REPORT:\n$task" + if (spec.isNotBlank()) "\nSPEC (approved by the user): $spec" else "", repeat = false)
             if (d == null && !full) return finish(false, "डिबगर बग की जड़ नहीं ढूँढ पाया — थोड़ी और जानकारी दें (कब होता है, क्या एरर दिखता है)")
@@ -267,14 +302,24 @@ class SevenTeam(
             }
         } else makePlan(task + if (brief.isNotBlank()) "\n(Manager brief: $brief)" else "", emptyList())
         plan ?: return finish(false, "प्लानर प्लान नहीं बना पाया: $lastBlock")
+        save { it.copy(rootCause = rootCause) }
         if (!execute(plan, emptySet())) return finish(false, lastBlock)
+        save { it.copy(phase = TeamProgress.CODED, steps = emptyList(), stepsDone = 0, failLog = "", failUrl = "") }
         // 3b. परफॉरमेंस: बदले code में UI जाम / leak / बेवजह का काम
         if (full) perf()
+        }
 
         // 4. टेस्टर ⇄ डिबगर चक्र
+        // "आगे करो": पिछली जाँच पास थी = दोबारा नहीं; फ़ेल थी और code तब से नहीं बदला = वही log सीधे डिबगर को
+        var passedBefore = r != null && prog.phase >= TeamProgress.PASSED
+        var oldFail = if (r != null && !passedBefore && prog.failLog.isNotBlank()) TeamTest(false, prog.failLog, prog.failUrl) else null
         val sigs = mutableListOf<String>()
         while (true) {
-            val t = test(rootCause)
+            val t = when {
+                passedBefore -> { passedBefore = false; TeamTest(true, "", "", "पिछली बार build + tests पास हो चुके थे", if (git?.prUrl.isNullOrBlank()) TeamTest.BRANCH else "") }
+                oldFail != null -> oldFail.also { oldFail = null }
+                else -> test(rootCause)
+            }
             lastTest = t
             if (t.ok == true) {
                 // QA: build पास - पर क्या काम सच में और पूरा हुआ? (PR से पहले)
@@ -288,10 +333,13 @@ class SevenTeam(
                             (if (qaFix.isNotBlank()) "\nQA SUGGESTED FIX: $qaFix" else ""), files.staged().keys.toList())
                             ?: return finish(false, "QA की बताई कमी का प्लान नहीं बना: $lastBlock")
                         if (!execute(fix, emptySet())) return finish(false, lastBlock)
+                        save { it.copy(phase = TeamProgress.CODED, steps = emptyList(), stepsDone = 0, failLog = "", failUrl = "") }
                         continue
                     }
                     qaOk = true
                 }
+                // build/tests (+QA) पास - "आगे करो" पर दोबारा नहीं चलेंगे
+                if (t.stage != TeamTest.BRANCH || git?.prUrl?.isNotBlank() == true) save { it.copy(phase = TeamProgress.PASSED, failLog = "", failUrl = "") }
                 passNote = t.note
                 ev(Agent.TESTER, (if (t.stage == TeamTest.BRANCH) "✓ PR से पहले branch पर build + tests पास" else if (t.stage == TeamTest.PR) "✓ PR का चेक पास" else "✓ टेस्ट + बिल्ड पास") +
                     if (t.url.isNotBlank()) "\n${t.url}" else "")
@@ -306,6 +354,8 @@ class SevenTeam(
                 break
             }
             if (t.ok == null) return finish(null, t.note.ifBlank { "टेस्ट का नतीजा नहीं मिला" })
+            // फ़ेल log याद रखो: रुके तो "आगे करो" पर टेस्ट दोबारा नहीं, सीधे डिबगर
+            save { it.copy(phase = TeamProgress.CODED, failLog = t.log.take(TeamProgress.MAX_LOG), failUrl = t.url) }
             val errs = errorLines(t.log)
             ev(Agent.TESTER, "✗ फ़ेल — log पढ़कर असली एरर डिबगर को दिया" + (if (errs.isNotBlank()) "\nअसली एरर:\n$errs" else "") + if (t.url.isNotBlank()) "\n${t.url}" else "")
             sigs.add(FixLoop.signature(t.log))
@@ -319,9 +369,12 @@ class SevenTeam(
             val d = debug("TEST/BUILD FAILED.\n" + (if (errs.isNotBlank()) "EXACT ERROR LINES FROM THE LOG:\n$errs\n\n" else "") + "FULL LOG (important part):\n${t.log.take(maxOf(12_000, big / 8))}", repeat)
                 ?: return finish(false, "डिबगर टेस्ट फ़ेल होने की जड़ नहीं ढूँढ पाया")
             rootCause = d.second
+            save { it.copy(rootCause = rootCause) }
             val fix = makePlan("MINIMAL FIX for the failed test/build.\nROOT CAUSE: ${d.second}\nFIX: ${d.third}", d.first.files)
                 ?: return finish(false, "प्लानर सुधार का प्लान नहीं बना पाया: $lastBlock")
             if (!execute(fix, if (repeat) fix.steps.map { it.file }.toSet() else emptySet())) return finish(false, lastBlock)
+            // सुधार लागू - पुराना फ़ेल log अब बेकार (अगली बार नई जाँच)
+            save { it.copy(phase = TeamProgress.CODED, steps = emptyList(), stepsDone = 0, failLog = "", failUrl = "") }
         }
 
         // 5. गिट: PR तैयार (merge नहीं)
@@ -579,11 +632,14 @@ class SevenTeam(
     }
 
     // ------------------------------------------------------------------ कोडर ⇄ रिव्यूअर, कदम-दर-कदम
-    private suspend fun execute(plan: Seven.Plan, rewrite: Set<String>): Boolean {
+    /** @param done "आगे करो": इतने कदम पहले ही हो चुके - वे छोड़ो */
+    private suspend fun execute(plan: Seven.Plan, rewrite: Set<String>, done: Int = 0): Boolean {
         curPlan = plan
+        save { it.copy(steps = plan.steps, stepsDone = done) }
         plan.steps.forEachIndexed { i, s ->
+            if (i < done) return@forEachIndexed
             ev(Agent.CODER, "कदम ${i + 1}/${plan.steps.size}: ${s.file} — ${s.change.take(140)}")
-            if (step(s, s.file in rewrite)) return@forEachIndexed
+            if (step(s, s.file in rewrite)) { save { it.copy(stepsDone = i + 1) }; return@forEachIndexed }
             // मैनेजर: अटके कदम पर दूसरा रास्ता - प्लानर से इसी हिस्से का नया प्लान
             ev(Agent.MANAGER, "कदम ${i + 1} अटका (${lastBlock.take(160)}) — रोककर दूसरा रास्ता: प्लानर से इस हिस्से का नया प्लान")
             val alt = planOnce("ONLY THIS PART of the task: ${s.change}\nFILE: ${s.file}\nThe previous attempt failed: $lastBlock\n" +
@@ -596,6 +652,7 @@ class SevenTeam(
                     return false
                 }
             }
+            save { it.copy(stepsDone = i + 1) }
         }
         return true
     }
@@ -893,7 +950,10 @@ class SevenTeam(
         }
         if (testOk != true && problem.isNotBlank()) rep += "\n\n• रुकने की वजह: $problem" +
             if (mode == Seven.Mode.GITHUB) "\n• main अछूता है${if (backup.isNotBlank()) ", backup: $backup" else ""}। आगे क्या करूँ, बताइए।" else ""
-        return Outcome(rep, files.staged(), testOk, mode)
+        // यूज़र को सिर्फ़ छोटी रिपोर्ट: हुआ/नहीं, API चली/नहीं, वजह, हल. पूरी रिपोर्ट (ऊपर) डिबग लॉग के लिए
+        val why = if (testOk == true) "" else problem.ifBlank { lt?.note.orEmpty() }.ifBlank { lt?.log.orEmpty() }
+        val short = ShortReport.text(testOk, why, pr.substringBefore(" ("), git != null)
+        return Outcome(rep, files.staged(), testOk, mode, short = short)
     }
 }
 

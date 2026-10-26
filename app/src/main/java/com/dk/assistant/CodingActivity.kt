@@ -377,13 +377,13 @@ class CodingActivity : AppCompatActivity() {
                 CoderSession.lastCommit = out.commit
                 if (out.stopped) {
                     // एजेंट खुद रुका: अपने-आप push नहीं, वजह एक बार रिपोर्ट में
-                    CoderSession.add("e", "⚠ काम अधूरा\n\n" + CoderReport.final(false, out.summary + "\n(बदलाव push नहीं किए)"))
+                    CoderSession.add("e", ShortReport.text(null, out.summary) + "\n(बदलाव push नहीं किए)")
                 } else {
                     val partial = out.commit == "DK: partial changes"
                     CoderSession.add("d", when {
                         out.question -> out.summary
-                        partial -> "⚠ काम अधूरा\n\n" + CoderReport.final(false, out.summary)
-                        else -> out.summary + "\n\n" + CoderReport.final(true, out.summary)
+                        partial -> ShortReport.text(null, out.summary)
+                        else -> ShortReport.text(true, github = false).lines().first() + "\n\n" + out.summary
                     })
                     if (!out.question && a.staged.isNotEmpty() && Prefs.coderAutoPush(applicationContext)) push(applicationContext)
                 }
@@ -391,7 +391,7 @@ class CodingActivity : AppCompatActivity() {
                 CoderSession.add("e", "रोक दिया।")
             } catch (e: Exception) {
                 val m = (e.message ?: e.javaClass.simpleName).take(300)
-                CoderSession.add("e", "⚠ काम अधूरा\n\n" + CoderReport.final(false, m))
+                CoderSession.add("e", ShortReport.text(false, m))
                 DKLog.d("Coder गलती: ${e.javaClass.simpleName} ${e.message}")
             } finally {
                 withContext(kotlinx.coroutines.NonCancellable) { try { a.dropEmptyBranch() } catch (_: Exception) {} }
