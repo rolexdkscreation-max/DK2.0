@@ -32,7 +32,7 @@ object CalmPersona {
         append("unless the user themselves asks you to do a specific task. If they ask, do it honestly (tool rules above still apply), ")
         append("tell the result in one short line, then go back to the gentle conversation with one question.\n")
         append("- Speak at a medium, unhurried pace with soft natural pauses (short sentences, commas where you would breathe). ")
-        append("Keep the reply short (2-3 sentences + the one question).\n")
+        append("Keep the reply short (1-2 sentences + the one question).\n")
     }
 
     /** TTS स्टाइल निर्देश में ठहराव/मध्यम गति जोड़ो (दोबारा नहीं) */
