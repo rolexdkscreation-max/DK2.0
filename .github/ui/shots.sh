@@ -35,9 +35,15 @@ run() {
   adb logcat -c
   adb shell am start -S -W -n $PKG/.MainActivity;                          shot ${tag}_01_home 12
   shot ${tag}_01b_home_late 14
-  # v4: ऊपर-बाएँ मेनू
+  # v4: पहली बार का परिचय (onboarding) छोड़कर असली होम, फिर ऊपर-बाएँ मेनू
+  { tap "Skip" || tap "छोड़ें"; } ; sleep 3
+  adb shell am start -W -n $PKG/.MainActivity;                             shot ${tag}_01d_home_real 8
   { tap "मेनू खोलें" || tap "Open menu"; } && shot ${tag}_01c_home_menu 2
   adb shell input keyevent KEYCODE_BACK; sleep 1
+  # v4: दिखावट (UI कस्टमाइज़ेशन)
+  adb shell am start -S -W -n $PKG/.SettingsActivity --es section ui;      shot ${tag}_04c_settings_ui 5
+  adb shell input swipe 540 1700 540 600 400;                             shot ${tag}_04d_settings_ui_scroll 2
+  adb shell input swipe 540 1700 540 600 400;                             shot ${tag}_04e_settings_ui_scroll2 2
   adb shell input keyevent KEYCODE_BACK; sleep 1
   adb shell am start -S -W -n $PKG/.SettingsActivity;                      shot ${tag}_02_settings 4
   # dabaane ki haalat (pressed): pehle card ko 3 sec dabaye rakho aur beech me screenshot
@@ -52,10 +58,6 @@ run() {
   tap "बोलने वाला इंजन" && sleep 1 && tap "बोलने वाला इंजन" && shot ${tag}_03e_voice_engine_closed 2
   adb shell am start -S -W -n $PKG/.SettingsActivity --es section profile; shot ${tag}_04_settings_profile 4
   tap "Access key" && shot ${tag}_04b_profile_accesskey_open 2
-  # v4: दिखावट (UI कस्टमाइज़ेशन)
-  adb shell am start -S -W -n $PKG/.SettingsActivity --es section ui;      shot ${tag}_04c_settings_ui 5
-  adb shell input swipe 540 1700 540 600 400;                             shot ${tag}_04d_settings_ui_scroll 2
-  adb shell input swipe 540 1700 540 600 400;                             shot ${tag}_04e_settings_ui_scroll2 2
   adb shell am force-stop $PKG
   adb shell am start -S -W -n $PKG/.ChatActivity; sleep 3
   adb shell input text "Namaste%sDK"; sleep 1
