@@ -548,6 +548,62 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
         return ok
     }
 
+    /** v3.75: web_search tool - फ़ोन खुद Google Search (Gemini REST) करके छोटा जवाब + स्रोत लाता है */
+    private suspend fun webSearchTool(query: String): String {
+        val q = query.trim().ifBlank { turnUser.trim() }
+        if (q.length < 2) return "Ask the user what to search."
+        DKState.hint(LivePromise.hintFor("web_search", q))
+        setMode(Mode.THINKING)
+        return try {
+            val r = withTimeoutOrNull(35_000) { BrainManager(svc).search(q, deep = false) }
+            if (r == null || r.text.isBlank()) "SEARCH FAILED (timeout). Tell the user honestly the search did not work right now."
+            else {
+                if (r.sources.isNotEmpty()) toolSources = Grounding.merge(toolSources, r.sources)
+                log("web_search: \"${q.take(40)}\" -> ${r.text.length} अक्षर, ${r.sources.size} स्रोत")
+                "SEARCH RESULT: " + r.text.take(3500) + "\nSpeak the answer from this result briefly and naturally. Do not read URLs."
+            }
+        } catch (e: CancellationException) { throw e } catch (e: Exception) {
+            log("web_search fail: ${e.message}")
+            "SEARCH FAILED (${e.javaClass.simpleName}). Tell the user honestly the search did not work right now."
+        }
+    }
+
+    @Volatile private var promiseJob: Job? = null
+    @Volatile private var promiseFixAt = 0L
+
+    /**
+     * v3.75: बारी खत्म - Gemini ने सिर्फ़ "सर्च करके बताता हूँ / एक मिनट / कर रहा हूँ" कहा और कोई tool नहीं बुलाया?
+     * तो चुप न रहो: सवाल था -> फ़ोन खुद सर्च करे और नतीजा Gemini को दे (वह बोले); काम था -> Gemini से phone_task करवाओ.
+     */
+    private fun promiseCheck() {
+        val now = System.currentTimeMillis()
+        val (said, heard) = synchronized(turnLock) { replyText.toString().trim() to userText.toString().trim() }
+        val user = (if (!userDone) turnUser.trim() else "").ifBlank { heard }.ifBlank { caption?.text().orEmpty().trim() }
+        val kind = LivePromise.kind(said, user)
+        if (kind == LivePromise.Kind.NONE || user.length < 2) return
+        val sources = synchronized(turnLock) { turnSources }
+        if (actEvidence || toolJobs.isNotEmpty() || sources.isNotEmpty() || fastJob?.isActive == true ||
+            now - lastFastOkAt < DoneGate.FAST_EVIDENCE_MS || now - promiseFixAt < 15_000 || promiseJob?.isActive == true) return
+        promiseFixAt = now
+        log("वादा-जाँच: Gemini ने \"${said.take(50)}\" कहा पर कोई tool नहीं - ${if (kind == LivePromise.Kind.SEARCH) "फ़ोन खुद सर्च कर रहा है" else "phone_task करवा रहा हूँ"}")
+        if (kind == LivePromise.Kind.ACTION) {
+            DKState.hint(LivePromise.hintFor("phone_task", user))
+            visionNote(LivePromise.actionNote(user), evidence = false)
+            svc.scope.launch { delay(20_000); if (toolJobs.isEmpty() && promiseJob?.isActive != true) DKState.hint("") }
+            return
+        }
+        promiseJob = svc.scope.launch {
+            DKState.hint(LivePromise.hintFor("web_search", user))
+            setMode(Mode.THINKING)
+            val r = try { withTimeoutOrNull(35_000) { BrainManager(svc).search(user, deep = false) } }
+                catch (e: CancellationException) { throw e } catch (e: Exception) { log("वादा-जाँच सर्च fail: ${e.message}"); null }
+            DKState.hint("")
+            if (r == null || r.text.isBlank()) { visionNote(LivePromise.searchFailNote(user), evidence = false); return@launch }
+            if (r.sources.isNotEmpty()) toolSources = Grounding.merge(toolSources, r.sources)
+            visionNote(LivePromise.searchNote(user, r.text), evidence = true)
+        }
+    }
+
     /** स्क्रीन/कैमरा चालू-बंद हुआ -> Gemini को बताओ (tool का जवाब बाकी हो तो उसके बाद) */
     fun visionNote(t: String, evidence: Boolean = true) {
         svc.scope.launch {
@@ -1015,6 +1071,11 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
                 .put("parameters", JSONObject().put("type", "OBJECT")
                     .put("properties", JSONObject().put("request", JSONObject().put("type", "STRING").put("description", "The user's request in their own words")))
                     .put("required", JSONArray().put("request"))))
+            .put(JSONObject().put("name", "web_search")
+                .put("description", "Search the internet (Google) RIGHT NOW and get a short answer with sources: news, prices, weather, scores, people, places, products, websites, anything current or anything you are not sure about. Whenever you say you will search / check / look it up, you MUST call this in the SAME turn - never only promise. (Opening a website or searching inside Chrome/an app on the phone = phone_task.)")
+                .put("parameters", JSONObject().put("type", "OBJECT")
+                    .put("properties", JSONObject().put("query", JSONObject().put("type", "STRING").put("description", "What to search, with all details the user gave")))
+                    .put("required", JSONArray().put("query"))))
             .put(JSONObject().put("name", "deep_think")
                 .put("description", "Solve a genuinely HARD question with a much stronger reasoning model (multi-step maths, logic puzzles, code, detailed comparisons, planning, exam-level or deep why/how questions). Returns a carefully reasoned answer in Hindi to speak.")
                 .put("parameters", JSONObject().put("type", "OBJECT")
@@ -1314,6 +1375,7 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
             val add = Grounding.sources(gm)
             if (add.isNotEmpty()) {
                 synchronized(turnLock) { turnSources = Grounding.merge(turnSources, add) }
+                if (toolJobs.isEmpty()) DKState.hint("")
                 log("Google Search हुआ - ${add.size} स्रोत: ${add.joinToString { Grounding.host(it.second).ifBlank { it.first } }}")
             }
         }
@@ -1353,6 +1415,7 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
             com.dk.assistant.avatar.MoodState.replyDone()         // v3.71: बोलना ख़त्म होने के कुछ सेकंड बाद चेहरा सामान्य
             if (connSplit && !wasDropping) { pumpSplit(); if (pipelineLazy.isInitialized()) pipeline.endTurn() }   // v3.68: बचा text आख़िरी टुकड़ा
             if (timeline.active) { timeline.done(System.currentTimeMillis()); log("turn पूरा: ${timeline.summary()}") }
+            if (!wasDropping) promiseCheck()
             finishTurn()
             if (wasDropping) commitPending(false)   // toka hua jawab: sirf jitna bola utna hi chat me
             // jawab poora bana; jab DK ki awaaz bajna band ho uske ~1.2s baad peeche ki awaaz dheere-dheere wapas
@@ -1615,6 +1678,8 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
             val sock = ws
             // LAZY: pehle map me darj, phir shuru - warna tez tool (remember_fact) map me aane se pehle hi remove() kar deta tha
             val j = svc.scope.launch(start = CoroutineStart.LAZY) {
+              // v3.75: screen पर दिखे कि DK अभी क्या कर रहा है (सर्च / सोच / फ़ोन का काम)
+              LivePromise.hintFor(name, args.optString("query").ifBlank { args.optString("request") }).takeIf { it.isNotEmpty() }?.let { DKState.hint(it) }
               try {
                 val result = try { when (name) {
                     "phone_task" -> phoneTask(args.optString("request"))
@@ -1662,6 +1727,7 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
                             }
                         }
                     }
+                    "web_search" -> webSearchTool(args.optString("query"))
                     "deep_think" -> {
                         DKState.set(Mode.THINKING)
                         try {
@@ -1681,7 +1747,7 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
                     "Tool failed (${e.javaClass.simpleName}) - tell the user it could not be done."
                 }
                 val resp = JSONObject().put("toolResponse", JSONObject().put("functionResponses", JSONArray().put(
-                    JSONObject().put("id", id).put("name", name).put("response", JSONObject().put("result", result.take(if (name == "deep_think" || name == "connector_task") 4000 else 1500))))))
+                    JSONObject().put("id", id).put("name", name).put("response", JSONObject().put("result", result.take(if (name == "deep_think" || name == "connector_task" || name == "web_search") 4000 else 1500))))))
                 log("tool $name ${(System.currentTimeMillis() - tStart)} ms: ${result.take(if (name == "connector_task") 24 else 80)}")
                 if (name != "remember_fact") lastEvidenceAt = System.currentTimeMillis()
                 // v3.67: नतीजा "अभी हुआ नहीं" -> इसके बाद Gemini "हो गया" बोले तो वह नहीं बजेगा
@@ -1702,6 +1768,7 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
               } finally {
                 // hamesha hatao (fail/cancel par bhi) - warna idle-exit aur watchdog band rehte
                 coroutineContext[Job]?.let { me -> toolJobs.remove(id, me) }
+                if (toolJobs.isEmpty() && promiseJob?.isActive != true) DKState.hint("")
               }
             }
             toolJobs[id] = j

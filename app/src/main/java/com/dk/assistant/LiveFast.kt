@@ -62,6 +62,8 @@ object LiveFast {
         "torch" -> if (a.optBoolean("on", true)) "torch on" else "torch off"
         "volume" -> "volume ${a.optString("direction")}" + if (a.has("level")) " ${a.optInt("level")}%" else ""
         "youtube_search" -> "searched \"${a.optString("query")}\" on YouTube"
+        "browser_search" -> "opened \"${a.optString("query")}\" in ${a.optString("browser", "chrome")}"
+        "app_search" -> "searched \"${a.optString("query")}\" in ${a.optString("app")}"
         "shop_search" -> "searched \"${a.optString("query")}\" in ${a.optString("app")}"
         "call_contact" -> "call ${a.optString("name")}"
         "call_log" -> "opened recent calls"
