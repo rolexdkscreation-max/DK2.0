@@ -144,7 +144,7 @@ class TeacherActivity : AppCompatActivity() {
         }
 
         val drawBtn = Button(this).apply { text = "✏️ पेंसिल"; setOnClickListener { whiteboardView.setMode(WhiteboardView.Mode.DRAW) } }
-        val typeBtn = Button(this).apply { text = "🔤 टाइप"; setOnClickListener { whiteboardView.setMode(WhiteboardView.Mode.TYPE) } }
+        val typeBtn = Button(this).apply { text = "🔤 टाइप"; setOnClickListener { whiteboardView.setMode(WhiteboardView.Mode.TEXT) } }
         val eraseBtn = Button(this).apply { text = "🧹 रबर"; setOnClickListener { whiteboardView.setMode(WhiteboardView.Mode.ERASE) } }
         val undoBtn = Button(this).apply { text = "↩️ अन-डू"; setOnClickListener { whiteboardView.undo() } }
         val redoBtn = Button(this).apply { text = "↪️ री-डू"; setOnClickListener { whiteboardView.redo() } }
