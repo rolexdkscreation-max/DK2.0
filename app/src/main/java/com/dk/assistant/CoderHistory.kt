@@ -53,7 +53,9 @@ object CoderHistory {
         val last: String = "",
         val at: Long = 0L,
         /** अपने-आप कितनी बार आगे बढ़ाया (बार-बार crash हो तो रुको) */
-        val tries: Int = 0
+        val tries: Int = 0,
+        /** टीम कहाँ तक पहुँची (TeamProgress का JSON) - "आगे करो" पर पूरे हुए हिस्से दोबारा नहीं */
+        val team: String = ""
     )
 
     const val MAX_THREADS = 100
@@ -108,19 +110,20 @@ object CoderHistory {
         fun uJson(u: SevenPlus.Understanding): JSONObject = JSONObject().put("kind", u.kind.name).put("brief", u.brief)
             .put("understood", u.understood).put("spec", u.spec).put("acceptance", arr(u.acceptance)).put("notTouch", arr(u.notTouch))
             .put("questions", arr(u.questions)).put("area", arr(u.area)).put("answer", u.answer).put("changes", arr(u.changes))
-            .put("steps", arr(u.steps)).put("mediaNotes", u.mediaNotes)
+            .put("steps", arr(u.steps)).put("mediaNotes", u.mediaNotes).put("wants", arr(u.wants)).put("now", u.now)
 
         fun u(o: JSONObject): SevenPlus.Understanding = SevenPlus.Understanding(
             try { Seven.Kind.valueOf(o.optString("kind")) } catch (_: Exception) { Seven.Kind.FEATURE },
             o.optString("brief"), o.optString("understood"), o.optString("spec"), strs(o.optJSONArray("acceptance")),
             strs(o.optJSONArray("notTouch")), strs(o.optJSONArray("questions")), strs(o.optJSONArray("area")), o.optString("answer"),
-            strs(o.optJSONArray("changes")), strs(o.optJSONArray("steps")), o.optString("mediaNotes"))
+            strs(o.optJSONArray("changes")), strs(o.optJSONArray("steps")), o.optString("mediaNotes"),
+            strs(o.optJSONArray("wants")), o.optString("now"))
 
         fun ckJson(k: Checkpoint): String = JSONObject().put("thread", k.thread).put("task", k.task).put("u", uJson(k.u))
             .put("stage", k.stage).put("normal", k.normal).put("repo", k.repo).put("base", k.base).put("branch", k.branch)
             .put("backup", k.backup).put("prNum", k.prNum).put("prUrl", k.prUrl)
             .put("staged", JSONObject().apply { k.staged.forEach { (p, c) -> put(p, c ?: JSONObject.NULL) } })
-            .put("last", k.last).put("at", k.at).put("tries", k.tries).toString()
+            .put("last", k.last).put("at", k.at).put("tries", k.tries).put("team", k.team).toString()
 
         fun ck(s: String?): Checkpoint? = if (s.isNullOrBlank()) null else try {
             val o = JSONObject(s)
@@ -129,7 +132,7 @@ object CoderHistory {
             st.keys().forEach { p -> staged[p] = if (st.isNull(p)) null else st.optString(p) }
             Checkpoint(o.optString("thread"), o.optString("task"), u(o.getJSONObject("u")), o.optString("stage"), o.optBoolean("normal"),
                 o.optString("repo"), o.optString("base"), o.optString("branch"), o.optString("backup"), o.optInt("prNum"),
-                o.optString("prUrl"), staged, o.optString("last"), o.optLong("at"), o.optInt("tries"))
+                o.optString("prUrl"), staged, o.optString("last"), o.optLong("at"), o.optInt("tries"), o.optString("team"))
         } catch (_: Exception) { null }
 
         /** काम का नतीजा (आख़िरी संदेश) -> धागे का हाल */
@@ -168,6 +171,10 @@ object CoderHistory {
             if (k.prNum > 0) append(" PR #${k.prNum} already exists.")
             if (k.staged.isNotEmpty()) append(" Files already changed in this work (their current content is what you read): ${k.staged.keys.take(30).joinToString()}.")
             if (k.last.isNotBlank()) append(" Last step before stop: ${k.last.take(300)}")
+            TeamProgress.parse(k.team)?.let { p ->
+                if (p.rootCause.isNotBlank()) append(" Root cause found earlier: ${p.rootCause.take(300)}.")
+                if (p.phase >= TeamProgress.CODED) append(" The code change is already done - only checking/fixing is left.")
+            }
             append(")")
         }
     }

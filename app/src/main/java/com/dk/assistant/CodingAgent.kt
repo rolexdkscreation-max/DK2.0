@@ -55,7 +55,7 @@ class CoderAi(val provider: Provider, private val key: String, val model: String
                 val w = if (waitOnLimit) nextLimitWait(code, (e as? AiException)?.retryAfter ?: 0, waitedSec) else 0
                 if (w > 0) {
                     DKStatus.post(DKStatus.Kind.LIMIT_ALL)
-                    onLimitWait?.invoke("⏳ सारी API keys और मॉडल की limit अभी खत्म — काम रोका नहीं, ${w} सेकंड रुककर फिर कोशिश (कुल रुके: ${waitedSec / 60} मिनट)")
+                    onLimitWait?.invoke("⏳ API की limit अभी खत्म — ${w} सेकंड रुककर अपने-आप फिर कोशिश (कुल रुके: ${waitedSec / 60} मिनट)")
                     Thread.sleep(w * 1000L)
                     waitedSec += w
                     continue
@@ -270,7 +270,8 @@ class CoderAi(val provider: Provider, private val key: String, val model: String
         fun forComputer(c: Context, sink: (String, String) -> Unit): CoderAi? = forScope(c, ApiScopes.PC, sink)
 
         /** कोडिंग एजेंट की AI: सिर्फ़ Settings → AI दिमाग → कोडिंग एजेंट की अपनी key. null = key नहीं */
-        fun fromPrefs(c: Context): CoderAi? = forScope(c, ApiScopes.CODER) { p, f -> CoderReport.add(p, f) }
+        // API/मॉडल बदलना, retry, request छोटी करना = अंदर की बात: यूज़र की रिपोर्ट में नहीं, सिर्फ़ डिबग लॉग में
+        fun fromPrefs(c: Context): CoderAi? = forScope(c, ApiScopes.CODER) { p, f -> DKLog.d("कोडिंग AI: $p → $f") }
 
         /**
          * एक हिस्से की AI: उसकी चुनी कंपनी + उसी की key. दूसरी कंपनी/दूसरे हिस्से की key पर कभी नहीं.
@@ -434,6 +435,17 @@ class CodingAgent(private val gh: GitHub, var repo: String, var branch: String, 
         branch = baseBranch; pr = null; prError = ""; lastTask = ""; lastSummary = ""; projectCtx = ""
         lastPushMsg = ""; lastChangeText = ""
         intentional = false; backupBranch = ""; rootCause = ""; pushedToBranch = false
+    }
+
+    /**
+     * "आगे करो": [reset] जैसा, पर उसी रिपो की फ़ोन में रखी फ़ाइलें (snapshot) बची रहें - पूरा रिपो दोबारा न उतरे.
+     * snapshot तभी बचे जब वह उसी branch का हो जिस पर आगे बढ़ना है (या branch अभी बनी ही नहीं थी).
+     */
+    fun resetKeepFiles(resumeBranch: String) {
+        val keep = snap != null && (resumeBranch.isBlank() || resumeBranch == branch)
+        val s = snap; val f = files
+        reset()
+        if (keep) { snap = s; files = f }
     }
 
     /** App restart ke baad pichhla khula PR wapas (Merge card ke liye). GitHub par band/merge mila to mergePr/push khud saaf karte hain */

@@ -415,8 +415,9 @@ acceptance must only cover what the user asked. suggestions: ONLY things the use
     private fun finish(c: Context, text: String, ok: Boolean, title: String? = null, spoken: String? = null) {
         // हर काम के बाद छोटी रिपोर्ट: क्या दिक्कत आई (bug/error/limit) और कैसे ठीक हुई
         // एक ही बात दो बार नहीं: fail पर गलती सिर्फ़ रिपोर्ट के "क्या नहीं हुआ" में
-        say(if (ok) "d" else "e", if (ok) "✅ " + text + "\n\n" + CoderReport.final(true, text)
-            else "⚠ काम अधूरा\n\n" + CoderReport.final(false, text))
+        // यूज़र को छोटी रिपोर्ट: हुआ/नहीं, API चली/नहीं, वजह, हल (API/मॉडल बदलने जैसी अंदर की बातें नहीं)
+        say(if (ok) "d" else "e", if (ok) ShortReport.text(true, "", CoderSession.agent?.pr?.url.orEmpty(), CoderSession.agent != null) + "\n\n" + text
+            else ShortReport.text(false, text, CoderSession.agent?.pr?.url.orEmpty()))
         val head = title ?: if (ok) "कोडिंग टीम: काम पूरा" else "कोडिंग टीम: काम अधूरा"
         notifyUser(c, head, text.lines().first().take(120))
         val prReady = CoderSession.agent?.pr != null
