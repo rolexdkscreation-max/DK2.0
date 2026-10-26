@@ -258,6 +258,50 @@ object AppLauncher {
         }
     }
 
+    /** v3.75: ब्राउज़र के package (बोला गया पहले, फिर Chrome, फिर कोई भी) */
+    private val BROWSER_PKGS = linkedMapOf(
+        "chrome" to listOf("com.android.chrome", "com.chrome.beta", "com.chrome.dev"),
+        "firefox" to listOf("org.mozilla.firefox", "org.mozilla.firefox_beta"),
+        "brave" to listOf("com.brave.browser"),
+        "opera" to listOf("com.opera.browser", "com.opera.mini.native"),
+        "edge" to listOf("com.microsoft.emmx"),
+        "samsung" to listOf("com.sec.android.app.sbrowser")
+    )
+
+    /** "amazon.in" / "amazon dot in" जैसा पता? -> https URL, नहीं तो null */
+    fun urlOf(q: String): String? {
+        val t = q.trim().lowercase().replace(Regex("\\s*(?:डॉट|dot)\\s*"), ".")
+        if (t.startsWith("http://") || t.startsWith("https://")) return t
+        val m = Regex("^(?:www\\.)?[a-z0-9-]+(?:\\.[a-z0-9-]+)*\\.(?:com|in|org|net|co|io|ai|gov|edu|info|app|dev|me)(?:/\\S*)?$").find(t.replace(" ", "")) ?: return null
+        return "https://" + m.value
+    }
+
+    /** v3.75: ब्राउज़र में वेबसाइट खोलो (पता हो) या Google पर खोजो - सीधे बोले गए ब्राउज़र में */
+    fun browserSearch(ctx: Context, q: String, browser: String = "chrome"): String {
+        val query = q.trim()
+        if (query.isEmpty()) return "ERROR: kya search karna hai"
+        val url = urlOf(query) ?: ("https://www.google.com/search?q=" + Uri.encode(query))
+        val pm = ctx.packageManager
+        val pkgs = (BROWSER_PKGS[browser].orEmpty() + BROWSER_PKGS.values.flatten()).distinct()
+        val pkg = pkgs.firstOrNull { p -> try { pm.getLaunchIntentForPackage(p) != null } catch (_: Exception) { false } }
+        return try {
+            val i = Intent(Intent.ACTION_VIEW, Uri.parse(url)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            if (pkg != null) i.setPackage(pkg)
+            ctx.startActivity(i)
+            lastPkg = pkg ?: ""
+            val name = pkg?.let { installedLabel(pm, it) } ?: "ब्राउज़र"
+            if (urlOf(query) != null) "SEARCHED: $name में $query खोल दिया।" else "SEARCHED: $name में Google पर \"$query\" खोज दिया।"
+        } catch (e: Exception) { "ERROR: ब्राउज़र नहीं खुला: ${e.message}" }
+    }
+
+    /** ऐप का अपना search (ACTION_SEARCH) हो तो उसी से खोज */
+    fun searchIntent(ctx: Context, pkg: String, q: String): Boolean = try {
+        val i = Intent(Intent.ACTION_SEARCH).setPackage(pkg).putExtra(SearchManager.QUERY, q).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        if (pkg.isNotBlank() && i.resolveActivity(ctx.packageManager) != null) { ctx.startActivity(i); true } else false
+    } catch (_: Exception) { false }
+
+    fun labelOf(ctx: Context, pkg: String): String = if (pkg.isBlank()) "" else installedLabel(ctx.packageManager, pkg) ?: ""
+
     fun openUrl(ctx: Context, url: String): String = try {
         ctx.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
         "opened $url"

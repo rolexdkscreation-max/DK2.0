@@ -709,6 +709,87 @@ class DKAccessibilityService : AccessibilityService() {
         else "VIDEO_OPENED: वीडियो खोलने को कह दिया, पर YouTube सामने खुला नहीं दिखा।"
     }
 
+    /** v3.75: ब्राउज़र खोज - ब्राउज़र सच में सामने आया? */
+    private suspend fun verifySearch(r: String): String {
+        if (!r.startsWith("SEARCHED:")) return r
+        val pkg = AppLauncher.lastPkg
+        if (pkg.isBlank()) return r
+        val ok = waitForeground(3000) { it == pkg }
+        DKLog.d("जाँच: ब्राउज़र ${if (ok) "सामने आ गया" else "सामने नहीं दिखा"}")
+        return if (ok) r else "SEARCH_UNVERIFIED: " + r.removePrefix("SEARCHED:").trim() + " (पर ब्राउज़र सामने नहीं दिखा)"
+    }
+
+    /**
+     * v3.75: "<ऐप> में X सर्च करो" - ऐप खोलो, फिर (1) ऐप का अपना search intent, नहीं तो
+     * (2) स्क्रीन पर search बटन/बॉक्स ढूँढो -> लिखो -> Enter. सच्चा नतीजा (न मिले तो साफ़ बताओ).
+     */
+    private suspend fun appSearch(app: String, query: String): String {
+        val q = query.trim()
+        if (app.isBlank() || q.isEmpty()) return "ERROR: app ya query khali"
+        val opened = AppLauncher.open(this, app)
+        if (!opened.startsWith("opened")) return opened
+        val pkg = AppLauncher.lastPkg
+        val label = AppLauncher.labelOf(this, pkg).ifBlank { app }
+        if (AppLauncher.searchIntent(this, pkg, q)) {
+            if (waitForeground(3000) { it == pkg }) return "SEARCHED: $label में \"$q\" खोज दिया।"
+        }
+        if (!waitForeground(3500) { it == pkg }) return "ERROR_LAUNCH: $label सामने नहीं आया, खोज नहीं हो पाई।"
+        delay(900)
+        val box = findSearchNode()
+        if (box == null) return "STEP_FAILED: $label खुल गया, पर उसमें खोज का बटन नहीं मिला।"
+        if (!box.isEditable) { box.performAction(AccessibilityNodeInfo.ACTION_CLICK); delay(700) }
+        val input = (if (box.isEditable) box else null) ?: findFocus(AccessibilityNodeInfo.FOCUS_INPUT) ?: findEditable()
+            ?: return "STEP_FAILED: $label में खोज का बॉक्स नहीं खुला।"
+        input.performAction(AccessibilityNodeInfo.ACTION_FOCUS)
+        val args = Bundle().apply { putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, q) }
+        if (!input.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, args)) return "STEP_FAILED: $label में \"$q\" लिख नहीं पाया।"
+        delay(250)
+        val entered = Build.VERSION.SDK_INT >= Build.VERSION_CODES.R &&
+            input.performAction(AccessibilityNodeInfo.AccessibilityAction.ACTION_IME_ENTER.id)
+        DKLog.d("ऐप-खोज: $label • \"${q.take(30)}\" • enter=${entered}")
+        return if (entered) "SEARCHED: $label में \"$q\" खोज दिया।"
+        else "SEARCHED: $label में \"$q\" लिख दिया (नतीजे के लिए खोज वाला बटन दबाना पड़ सकता है)।"
+    }
+
+    private fun isSearchy(n: AccessibilityNodeInfo): Boolean {
+        val id = (n.viewIdResourceName ?: "").lowercase()
+        val d = ((n.contentDescription ?: "").toString() + " " + (n.text ?: "").toString() + " " +
+            (if (Build.VERSION.SDK_INT >= 26) (n.hintText ?: "").toString() else "")).lowercase()
+        return id.contains("search") || listOf("search", "सर्च", "खोज", "ढूंढ", "ढूँढ").any { d.contains(it) }
+    }
+
+    /** स्क्रीन पर search बॉक्स (पहले) या search बटन */
+    private fun findSearchNode(): AccessibilityNodeInfo? {
+        var button: AccessibilityNodeInfo? = null
+        for (root in allRoots()) {
+            if (root.packageName?.toString() == packageName) continue
+            val stack = ArrayDeque<Pair<AccessibilityNodeInfo, Int>>(); stack.add(root to 0)
+            while (stack.isNotEmpty()) {
+                val (n, d) = stack.removeLast()
+                if (n.isVisibleToUser && isSearchy(n)) {
+                    if (n.isEditable) return n
+                    if (button == null) { var c: AccessibilityNodeInfo? = n; var k = 0
+                        while (c != null && !c.isClickable && k < 3) { c = c.parent; k++ }
+                        if (c != null && c.isClickable) button = c }
+                }
+                if (d < 30) for (i in 0 until n.childCount) n.getChild(i)?.let { stack.add(it to d + 1) }
+            }
+        }
+        return button
+    }
+
+    private fun findEditable(): AccessibilityNodeInfo? {
+        for (root in allRoots()) {
+            val stack = ArrayDeque<AccessibilityNodeInfo>(); stack.add(root)
+            while (stack.isNotEmpty()) {
+                val n = stack.removeLast()
+                if (n.isEditable && n.isVisibleToUser) return n
+                for (i in 0 until n.childCount) n.getChild(i)?.let { stack.add(it) }
+            }
+        }
+        return null
+    }
+
     /** v3.33: ऐप सच में सामने आया? (नतीजे पर निशान; न दिखे तो भी झूठा "खुल गया" नहीं) */
     private suspend fun verifyOpen(r: String): String {
         if (!r.startsWith("opened")) return r
@@ -742,7 +823,7 @@ class DKAccessibilityService : AccessibilityService() {
                 else "STEP_FAILED: ${if (done.isEmpty()) "" else done.joinToString(", ") + " हो गया, पर "}कदम ${i + 1} ($type) नहीं हुआ: $why"
             }
             done.add(LiveFast.describe(st)); last = r
-            if (i < arr.length() - 1 && type in listOf("open_app", "shop_search", "youtube_search", "open_url", "web_search")) waitSettle(prev, true, 3500)
+            if (i < arr.length() - 1 && type in listOf("open_app", "shop_search", "youtube_search", "open_url", "web_search", "browser_search", "app_search")) waitSettle(prev, true, 3500)
         }
         return "STEPS_DONE: " + done.joinToString(", ") + "। " + (LocalRouter.userText(last) ?: "")
     }
@@ -892,6 +973,10 @@ class DKAccessibilityService : AccessibilityService() {
                 "steps" -> performSteps(a.optJSONArray("steps"))
                 "web_search" -> AppLauncher.webSearch(this, a.optString("query"))
                 "open_url" -> AppLauncher.openUrl(this, a.optString("url"))
+                // v3.75: Chrome/ब्राउज़र में सीधे वेबसाइट या Google खोज (पहले सिर्फ़ Chrome खुलता था)
+                "browser_search" -> verifySearch(AppLauncher.browserSearch(this, a.optString("query"), a.optString("browser", "chrome")))
+                // v3.75: फ़ोन में इंस्टॉल किसी भी ऐप के अंदर खोज
+                "app_search" -> appSearch(a.optString("app"), a.optString("query"))
                 "dial" -> AppLauncher.dial(this, a.optString("number"))
                 "click" -> click(a.optInt("id", -1))
                 "long_click" -> longClick(a.optInt("id", -1))

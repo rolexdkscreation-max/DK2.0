@@ -42,6 +42,14 @@ object LocalRouter {
         "bigbasket" to listOf("bigbasket", "big basket", "बिगबास्केट", "बिग बास्केट"),
         "jiomart" to listOf("jiomart", "jio mart", "जियोमार्ट", "जियो मार्ट")
     )
+    /** v3.75: ब्राउज़र (Chrome वगैरह) - "क्रोम खोलो और उसमें X वेबसाइट सर्च करो" */
+    val BROWSER_APP = listOf("गूगल क्रोम", "google chrome", "क्रोम", "chrome", "ब्राउज़र", "ब्राउजर", "browser", "firefox", "फ़ायरफ़ॉक्स", "फायरफॉक्स",
+        "brave", "opera", "ओपेरा", "edge browser", "samsung internet")
+    private val BROWSER_ON = listOf("गूगल पर", "गूगल पे", "गूगल में", "गूगल मे", "google par", "google pe", "google pr", "google me", "google mein",
+        "google on", "on google", "इंटरनेट पर", "इंटरनेट पे", "इंटरनेट में", "internet par", "internet pe", "internet me", "on the internet", "नेट पर", "net par", "वेब पर", "web par")
+    private val SITE = listOf("वेबसाइट", "वेब साइट", "website", "web site", "साइट", "site", "पेज", "page", "लिंक", "link")
+    private val DOMAIN = Regex("[a-z0-9-]+\\s*(?:\\.|डॉट|dot)\\s*(?:com|in|org|net|co|io|ai|gov|edu|info|app|dev|me)(?![a-z])")
+    private val OPENW = listOf("खोलो", "खोल दो", "खोलिए", "खोल", "kholo", "khol do", "open", "ओपन", "चलाओ", "जाओ", "go to", "visit")
     private val YT = listOf("यूट्यूब", "यू ट्यूब", "youtube", "you tube", "यूटुब")
     private val SEARCH = listOf("सर्च", "search", "ढूंढ", "ढूँढ", "खोजो", "खोजिए", "खोज", "dhundo", "dhoondo", "dhundho", "khojo", "find", "look for", "look up")
     private val PLAY = listOf("play", "प्ले", "चलाओ", "चला दो", "चलाइए", "चलाना", "चला", "बजाओ", "बजा दो", "बजा", "सुनाओ", "सुना दो",
@@ -141,9 +149,51 @@ object LocalRouter {
         openVerb(t)?.let { return it }
         callContact(t)?.let { return it }
         latestPhoto(t)?.let { return it }
+        browserSearch(t)?.let { return it }
         shopSearch(t)?.let { return it }
         youtube(t, fg)?.let { return it }
+        inAppSearch(t)?.let { return it }
         return null
+    }
+
+    /** v3.75: "क्रोम पर X सर्च करो" / "गूगल पर X खोजो" / "क्रोम में amazon.in वेबसाइट खोलो" -> सीधे ब्राउज़र में */
+    private fun browserSearch(t: String): QuickCommands.Quick? {
+        val app = hasAny(t, BROWSER_APP)
+        val on = hasAny(t, BROWSER_ON)
+        if (!app && !on) return null
+        if (hasAny(t, YT)) return null
+        val want = hasAny(t, SEARCH) || hasAny(t, SITE) || DOMAIN.containsMatchIn(t)
+        if (!want) return null
+        val q = browserQuery(t)
+        if (q.length < 2) return null
+        return QuickCommands.Quick(a("browser_search", "query" to q, "browser" to browserOf(t)), "")
+    }
+
+    fun browserOf(t: String): String = when {
+        hasAny(t, listOf("firefox", "फ़ायरफ़ॉक्स", "फायरफॉक्स")) -> "firefox"
+        hasAny(t, listOf("brave")) -> "brave"
+        hasAny(t, listOf("opera", "ओपेरा")) -> "opera"
+        hasAny(t, listOf("edge browser")) -> "edge"
+        hasAny(t, listOf("samsung internet")) -> "samsung"
+        else -> "chrome"
+    }
+
+    private fun browserQuery(c: String): String =
+        clean(c.replace(Regex("\\s*(?:डॉट|dot)\\s+(?=[a-z])"), "."), SEARCH + SITE + BROWSER_APP + BROWSER_ON + OPENW + listOf("का नाम", "ka naam", "नाम", "name", "गूगल", "google", "इंटरनेट", "internet", "उसमें", "उसमे", "उसपे", "उस पर", "उसपर"))
+            .replace(Regex("\\s*(?:डॉट|dot)\\s*"), ".").trim()
+
+    /** v3.75: "<ऐप> में/पर X सर्च करो" - फ़ोन में इंस्टॉल कोई भी ऐप (WhatsApp, Spotify, Instagram…) */
+    private val IN_APP = Regex("^(?:मेरे\\s+|मेरी\\s+|my\\s+)?(.+?)\\s+(?:ऐप\\s+|app\\s+)?(?:में|मे|पर|पे|par|pe|me|mein|on|in)\\s+(.+)$")
+    private val NOT_APP = listOf("फ़ोन", "फोन", "phone", "मोबाइल", "mobile", "इंटरनेट", "internet", "नेट", "net", "वेब", "web", "गूगल", "google",
+        "स्क्रीन", "screen", "इस", "उस", "यहाँ", "वहाँ", "contact", "कॉन्टैक्ट", "गैलरी", "gallery", "फोटो", "फ़ोटो", "photos", "file", "फ़ाइल", "फाइल")
+    private fun inAppSearch(t: String): QuickCommands.Quick? {
+        if (!hasAny(t, SEARCH)) return null
+        val m = IN_APP.find(t) ?: return null
+        val app = m.groupValues[1].trim()
+        if (app.isBlank() || app.split(' ').size > 3 || hasAny(app, SEARCH) || hasAny(app, NOT_APP) || hasAny(app, CALLW)) return null
+        val q = clean(m.groupValues[2], SEARCH + OPENW)
+        if (q.length < 2) return null
+        return QuickCommands.Quick(a("app_search", "app" to app, "query" to q), "")
     }
 
     private val CALLW = listOf("कॉल", "call", "calls", "कॉल्स", "फोन", "फ़ोन")
@@ -274,6 +324,8 @@ object LocalRouter {
         hasAny(name, YT) -> "youtube"
         shopOf(name) != null -> shopOf(name)
         hasAny(name, listOf("gallery", "गैलरी", "photos", "फोटोज़", "फोटो", "फ़ोटो", "album")) -> "gallery"
+        hasAny(name, BROWSER_APP) -> "browser"
+        name.isNotBlank() -> "app:$name"
         else -> null
     }
 
@@ -308,6 +360,16 @@ object LocalRouter {
                     val s = clean(c, SEARCH + SHOPS.getValue(ctx!!))
                     if (s.length >= 2) { q = QuickCommands.Quick(a("shop_search", "app" to ctx!!, "query" to s), ""); replacePrev = prevType == "open_app" }
                 }
+                // v3.75: "क्रोम खोलो और उसमें X वेबसाइट सर्च करो / खोलो" -> ब्राउज़र में सीधे (पहले सिर्फ़ Chrome खुलता था)
+                ctx == "browser" && !hasAny(c, YT) && (hasAny(c, SEARCH) || hasAny(c, SITE) || DOMAIN.containsMatchIn(c)) -> {
+                    val s = browserQuery(c)
+                    if (s.length >= 2) { q = QuickCommands.Quick(a("browser_search", "query" to s, "browser" to browserOf(prev?.action?.optString("name").orEmpty())), ""); replacePrev = prevType == "open_app" }
+                }
+                // v3.75: "<कोई भी ऐप> खोलो और उसमें X सर्च करो" -> उसी ऐप में खोज
+                ctx != null && ctx!!.startsWith("app:") && hasAny(c, SEARCH) && !hasAny(c, YT) && shopOf(c) == null && !hasAny(c, BROWSER_APP + BROWSER_ON) -> {
+                    val s = clean(c, SEARCH + OPENW)
+                    if (s.length >= 2) { q = QuickCommands.Quick(a("app_search", "app" to ctx!!.removePrefix("app:"), "query" to s), ""); replacePrev = prevType == "open_app" }
+                }
                 ctx == "gallery" && hasAny(c, PHOTO) && hasAny(c, LATEST) -> {
                     q = QuickCommands.Quick(a("gallery_latest"), ""); replacePrev = prevType == "open_app"
                 }
@@ -324,6 +386,8 @@ object LocalRouter {
                 "youtube_search", "youtube_play" -> "youtube"
                 "shop_search" -> q.action.optString("app")
                 "gallery_latest" -> "gallery"
+                "browser_search" -> "browser"
+                "app_search" -> "app:" + q.action.optString("app")
                 else -> ctx
             }
         }
@@ -342,7 +406,7 @@ object LocalRouter {
     /** इन prefix वाले नतीजे में ":" के बाद user को बोलने वाली साफ़ हिंदी बात होती है */
     private val SAY_PREFIX = listOf("ASK:", "ERROR_NOT_INSTALLED:", "ERROR_LAUNCH:", "ERROR_NO_CONTACT:", "ERROR_PERM:", "ERROR_NO_PHOTO:",
         "CALLING:", "CALL_UNVERIFIED:", "DIALER:", "PHOTO_OPENED:", "GALLERY_OPENED:", "VIDEO_OPENED:", "STEPS_DONE:", "STEP_FAILED:",
-        "DELETED:", "DELETE_UNVERIFIED:", "ERROR_DENIED:", "ERROR_OLD_ANDROID:")
+        "DELETED:", "DELETE_UNVERIFIED:", "ERROR_DENIED:", "ERROR_OLD_ANDROID:", "SEARCHED:", "SEARCH_UNVERIFIED:")
 
     /** फ़ोन ने जो किया उसका साफ़ हिंदी वाक्य (null = यह नतीजा ऐसा नहीं) */
     fun userText(r: String): String? {
