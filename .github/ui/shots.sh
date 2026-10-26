@@ -70,8 +70,10 @@ run() {
   # v4: रंग बदलकर देखो (मैजेंटा + AMOLED) - Settings और होम दोनों पर तुरंत
   go .SettingsActivity --es section ui; sleep 4
   { tap "AMOLED" ; } ; sleep 2
-  adb shell input swipe 540 1500 540 700 400; sleep 1
-  { tap "मैजेंटा" || tap "Magenta"; } ; sleep 2;                          shot ${tag}_12_ui_magenta 1
+  adb shell input swipe 540 1500 540 700 400; sleep 2
+  { tap "मैजेंटा" || tap "Magenta"; } ; sleep 3;                          shot ${tag}_12_ui_magenta 1
+  # पसंद सच में सेव हुई? (emulator बंद हो जाए तब भी पता चले)
+  adb shell "cat /data/data/$PKG/shared_prefs/dk_prefs.xml" 2>/dev/null | grep -E 'ui_(theme|accent)' > "$OUT/${tag}_ui_prefs.txt" || true
   revive; timeout 90 adb shell am start -W -n $PKG/.MainActivity;                             shot ${tag}_13_home_magenta 8
   adb shell input keyevent KEYCODE_BACK; sleep 1
   adb shell am start -S -W -n $PKG/.SettingsActivity;                      shot ${tag}_02_settings 4

@@ -63,7 +63,10 @@ class SettingsActivity : AppCompatActivity() {
         txtSaved = findViewById(R.id.txtSaved)
         findViewById<OrbView>(R.id.miniOrb).mini = true
         findViewById<ImageButton>(R.id.btnBack).setOnClickListener { save(false); finish() }
-        findViewById<Button>(R.id.btnSave).setOnClickListener { save(true) }
+        findViewById<Button>(R.id.btnSave).apply {
+            backgroundTintList = null      // v4: Material का पक्का नीला tint हटाओ - नियॉन accent काँच (btn_accent) दिखे
+            setOnClickListener { save(true) }
+        }
         build()
     }
 
