@@ -40,10 +40,20 @@ run() {
   adb shell am start -W -n $PKG/.MainActivity;                             shot ${tag}_01d_home_real 8
   { tap "मेनू खोलें" || tap "Open menu"; } && shot ${tag}_01c_home_menu 2
   adb shell input keyevent KEYCODE_BACK; sleep 1
+  # v4: emulator कुछ मिनट में अटक जाता है - इसलिए नई स्क्रीनें पहले (चैट, आवाज़, मेमोरी)
+  adb shell am start -S -W -n $PKG/.ChatActivity;                          shot ${tag}_05a_chat_first 5
+  adb shell am start -S -W -n $PKG/.VoiceActivity;                         shot ${tag}_07a_voice_first 5
+  adb shell am start -S -W -n $PKG/.MemoryActivity;                        shot ${tag}_08a_memory_first 4
   # v4: दिखावट (UI कस्टमाइज़ेशन)
   adb shell am start -S -W -n $PKG/.SettingsActivity --es section ui;      shot ${tag}_04c_settings_ui 5
   adb shell input swipe 540 1700 540 600 400;                             shot ${tag}_04d_settings_ui_scroll 2
   adb shell input swipe 540 1700 540 600 400;                             shot ${tag}_04e_settings_ui_scroll2 2
+  # v4: रंग बदलकर देखो (मैजेंटा + AMOLED) - Settings और होम दोनों पर तुरंत
+  adb shell am start -S -W -n $PKG/.SettingsActivity --es section ui; sleep 4
+  { tap "AMOLED" ; } ; sleep 2
+  adb shell input swipe 540 1500 540 700 400; sleep 1
+  { tap "मैजेंटा" || tap "Magenta"; } ; sleep 2;                          shot ${tag}_12_ui_magenta 1
+  adb shell am start -W -n $PKG/.MainActivity;                             shot ${tag}_13_home_magenta 8
   adb shell input keyevent KEYCODE_BACK; sleep 1
   adb shell am start -S -W -n $PKG/.SettingsActivity;                      shot ${tag}_02_settings 4
   # dabaane ki haalat (pressed): pehle card ko 3 sec dabaye rakho aur beech me screenshot
@@ -75,11 +85,6 @@ run() {
   adb shell am force-stop $PKG
   adb shell am start -S -W -n $PKG/.CodingActivity;                        shot ${tag}_10_coding 5
   adb shell input keyevent KEYCODE_BACK; sleep 1;                        shot ${tag}_11_coding_nokb 2
-  # v4: रंग बदलकर देखो (मैजेंटा + AMOLED) - Settings और होम दोनों पर तुरंत
-  adb shell am start -S -W -n $PKG/.SettingsActivity --es section ui; sleep 4
-  { tap "मैजेंटा" || tap "Magenta"; } ; sleep 1
-  { tap "AMOLED" ; } ; sleep 2;                                            shot ${tag}_12_ui_magenta 1
-  adb shell am start -W -n $PKG/.MainActivity;                             shot ${tag}_13_home_magenta 8
   timeout 20 adb logcat -d -b crash > "$OUT/${tag}_crash.txt" || true
   timeout 20 adb logcat -d | grep -E "FATAL|AndroidRuntime|LiquidGlass|InflateException" > "$OUT/${tag}_errors.txt" || true
   adb shell am force-stop $PKG

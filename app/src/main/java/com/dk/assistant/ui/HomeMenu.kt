@@ -14,6 +14,7 @@ import com.dk.assistant.UiLang
 
 /**
  * v4 होम मेनू (ऊपर-बाएँ ☰): पहले होम पर नीचे जो बड़े कार्ड थे (चैट, आवाज़, मेमोरी) वे और बाकी स्क्रीनें यहाँ.
+ * PopupWindow activity के view-tree से बाहर है, इसलिए अनुवाद यहीं UiLang.s से.
  * हर पंक्ति वही पुराना काम खोलती है - कोई नया काम नहीं. पंक्ति 52dp ऊँची (48dp से ज़्यादा छूने की जगह).
  */
 object HomeMenu {
@@ -23,7 +24,7 @@ object HomeMenu {
         val dp = a.resources.displayMetrics.density
         val box = LinearLayout(a).apply {
             orientation = LinearLayout.VERTICAL
-            setBackgroundResource(R.drawable.glass_dialog)
+            setBackgroundResource(R.drawable.glass_card)
             val p = (10 * dp).toInt(); setPadding(p, p, p, p)
         }
         val pw = PopupWindow(box, (288 * dp).toInt(), ViewGroup.LayoutParams.WRAP_CONTENT, true)
@@ -44,10 +45,10 @@ object HomeMenu {
             }, LinearLayout.LayoutParams((40 * dp).toInt(), (40 * dp).toInt()).apply { marginEnd = (12 * dp).toInt() })
             val col = LinearLayout(a).apply { orientation = LinearLayout.VERTICAL }
             col.addView(TextView(a).apply {
-                UiLang.setText(this, it0.title); textSize = 16f; setTypeface(typeface, Typeface.BOLD); setTextColor(NeonTheme.TEXT)
+                text = UiLang.s(it0.title); textSize = 16f; setTypeface(typeface, Typeface.BOLD); setTextColor(NeonTheme.TEXT)
             })
             col.addView(TextView(a).apply {
-                UiLang.setText(this, it0.sub); textSize = 12f; setTextColor(NeonTheme.TEXT3)
+                text = UiLang.s(it0.sub); textSize = 12f; setTextColor(NeonTheme.TEXT3)
             })
             row.addView(col, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
             box.addView(row, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {

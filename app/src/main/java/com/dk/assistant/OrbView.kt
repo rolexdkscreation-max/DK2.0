@@ -308,6 +308,11 @@ class OrbView @JvmOverloads constructor(
         }
     }
 
+    private fun near(a: Int, b: Int): Boolean {
+        for (sh in intArrayOf(0, 8, 16, 24)) if (kotlin.math.abs(((a ushr sh) and 0xFF) - ((b ushr sh) and 0xFF)) > 2) return false
+        return true
+    }
+
     private fun drawNeon(c: Canvas, mode: Mode, now: Long, dt: Float) {
         val T = com.dk.assistant.ui.NeonTheme
         val still = T.reducedMotion()
@@ -316,6 +321,9 @@ class OrbView @JvmOverloads constructor(
         val (ta, tb) = neonColors(mode)
         val k = (1f - kotlin.math.exp(-dt * 20f)).coerceIn(0.08f, 1f)
         colA = lerpColor(colA, ta, k); colB = lerpColor(colB, tb, k)
+        // लगभग पहुँच गए तो ठीक वही रंग (हर frame नया shader न बने)
+        if (near(colA, ta)) colA = ta
+        if (near(colB, tb)) colB = tb
         val w = width.toFloat(); val h = height.toFloat()
         if (w <= 0f || h <= 0f) return
         val cx = w / 2f; val cy = h / 2f
@@ -368,6 +376,7 @@ class OrbView @JvmOverloads constructor(
         c.drawCircle(cx - R * 0.32f, cy - R * 0.48f, R * 0.42f, nSpec)
 
         if (still) postInvalidateDelayed(if (mode == Mode.LISTENING || mode == Mode.SPEAKING) 120 else 400)
+        else if (mode == Mode.IDLE) postInvalidateDelayed(33)      // खाली हालत: ~30fps काफ़ी (कमज़ोर फ़ोन/बैटरी)
         else postInvalidateOnAnimation()
     }
 

@@ -850,7 +850,7 @@ class SettingsActivity : AppCompatActivity() {
             val g = radios(box, items, T.look.accent.key, 6200)
             com.dk.assistant.ui.NeonTheme.Accent.values().forEachIndexed { i, ac ->
                 (g.getChildAt(i) as? RadioButton)?.let { rb ->
-                    val sp = android.text.SpannableString("●  " + ac.label)
+                    val sp = android.text.SpannableString("●  " + UiLang.s(ac.label))
                     sp.setSpan(android.text.style.ForegroundColorSpan(ac.main), 0, 1, 0)
                     rb.text = sp; rb.minHeight = (48 * dp).toInt()
                 }
