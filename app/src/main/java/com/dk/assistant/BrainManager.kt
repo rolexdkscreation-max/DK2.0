@@ -341,8 +341,8 @@ class BrainManager(private val ctx: Context) {
             append(TalkStyle.CHAT)   // v3.51: इंसान जैसी बात, झूठा "कर दिया" नहीं, notification/रुकने के नियम
             append(Memory.factsBlock(ctx))
             // v3.45: सच्चा दोस्त - लहजा + पिछली बातचीत की याद (आखिरी मुलाकात, सारांश, अधूरी बातें)
-            if (Prefs.friendMode(ctx)) append("\n" + FriendStyle.persona(Prefs.voiceGender(ctx) != "male", user)).append(FriendTalk.block(ctx))
-            append(CalmPersona.block())   // v3.76: मालिक का तय स्वभाव - हमेशा
+            if (Prefs.friendMode(ctx)) append("\n" + FriendStyle.persona(GirlfriendPersona.female(Prefs.voiceGender(ctx)), user)).append(FriendTalk.block(ctx))
+            append(CalmPersona.block()).append(GirlfriendPersona.block(Prefs.userName(ctx)))   // v3.76: मालिक का तय स्वभाव - हमेशा
         }
     }
 
@@ -367,7 +367,7 @@ class BrainManager(private val ctx: Context) {
             append(TALK_RULES)
             append(TalkStyle.CHAT)   // v3.51: इंसान जैसी बात, झूठा "कर दिया" नहीं, notification/रुकने के नियम
             append(Memory.factsBlock(ctx))
-            append(CalmPersona.block())   // v3.76: मालिक का तय स्वभाव - classic आवाज़ में भी
+            append(CalmPersona.block()).append(GirlfriendPersona.block(Prefs.userName(ctx)))   // v3.76: मालिक का तय स्वभाव - classic आवाज़ में भी
         }
     }
 
@@ -405,7 +405,7 @@ class BrainManager(private val ctx: Context) {
             append("\n" + SearchPolicy.rules("Google Search"))
             append("\nNever read out links, URLs or website names unless asked - the app shows the sources on screen.")
             append("\nFor genuinely HARD questions that need careful multi-step reasoning (multi-step maths, logic puzzles, code, detailed comparisons, planning, exam-level or deep why/how questions), call the function deep_think with the full question, then speak its answer naturally (you may shorten it for speech). Never use deep_think for easy chat.")
-            val f = Prefs.voiceGender(ctx) != "male"
+            val f = GirlfriendPersona.female(Prefs.voiceGender(ctx))
             val khol = if (f) "खोल रही हूँ" else "खोल रहा हूँ"; val bata = if (f) "बताती हूँ" else "बताता हूँ"
             append("\nSPEED: the moment the user stops, start speaking. Quick things (chat, simple facts you know, date/time) - answer at once in 1-2 sentences, no preamble.")
             append("\nBefore calling phone_task, first say a very short natural acknowledgement (2-4 words, e.g. \"ठीक है, $khol\") so the user is not left in silence; after it returns, give the result in one short sentence.")
@@ -426,7 +426,7 @@ class BrainManager(private val ctx: Context) {
             append(Memory.factsBlock(ctx))
             // v3.46: "सच्चा दोस्त" स्वभाव + बातचीत की याद अब आवाज़ (Live) में भी (पहले सिर्फ़ chat में जुड़ा था)
             if (Prefs.friendMode(ctx)) append("\n").append(FriendStyle.persona(f, user)).append(FriendTalk.block(ctx))
-            append(CalmPersona.block())   // v3.76: मालिक का तय स्वभाव - Live (सीधी आवाज़ / Gemini TTS / Edge) सब में
+            append(CalmPersona.block()).append(GirlfriendPersona.block(Prefs.userName(ctx)))   // v3.76: मालिक का तय स्वभाव - Live (सीधी आवाज़ / Gemini TTS / Edge) सब में
         }
     }
 
@@ -440,7 +440,7 @@ class BrainManager(private val ctx: Context) {
             append(personaLine(persona).trim()).append("\n")
             append(Memory.factsBlock(ctx)).append("\n")
             append(TALK_RULES).append("\n")
-            if (Prefs.friendMode(ctx)) append(FriendStyle.persona(Prefs.voiceGender(ctx) != "male", user)).append(FriendTalk.block(ctx)).append("\n")
+            if (Prefs.friendMode(ctx)) append(FriendStyle.persona(GirlfriendPersona.female(Prefs.voiceGender(ctx)), user)).append(FriendTalk.block(ctx)).append("\n")
             append(AssistantBrand.IDENTITY_RULE).append("\n")
         }
         return intro + BASE_PROMPT
