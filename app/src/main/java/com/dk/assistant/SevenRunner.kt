@@ -177,7 +177,13 @@ object SevenRunner {
         val a = CoderSession.agentFor(c) ?: return "कोडिंग एजेंट का सत्र नहीं मिला"
         
         try {
-            val verificationNote = SafePr.prBody("Verified build status: SUCCESS\n$summary", rootCause)
+            val verificationNote = SafePr.prBody(
+                summary = "Verified build status: SUCCESS\n$summary",
+                changes = a.stagedSummary(),
+                protected = a.protectedFiles(),
+                backup = a.backupBranch,
+                rootCause = rootCause
+            )
             return a.pr?.url ?: "PR लिंक उपलब्ध नहीं"
         } catch (e: Exception) {
             return "पुश और टेस्ट में त्रुटि: ${e.message}"
