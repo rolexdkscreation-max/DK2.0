@@ -4,28 +4,20 @@ import android.content.Context
 import android.media.AudioAttributes
 import android.media.MediaPlayer
 import android.os.Build
-import android.speech.tts.TextToSpeech
-import android.speech.tts.UtteranceProgressListener
 import android.speech.tts.Voice
 import kotlinx.coroutines.CompletableDeferred
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import kotlinx.coroutines.launch
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.async
 import kotlinx.coroutines.withTimeoutOrNull
 import java.io.File
-import java.util.Locale
-import java.util.UUID
-import java.util.concurrent.ConcurrentHashMap
 
 /**
- * DK ki awaaz. Do tareeke (dono FREE):
- *  1. "google"  - phone ki Google awaaz (offline/online, koi limit nahi). Mahila/purush chun sakte hain.
- *  2. "gemini"  - Gemini ki bahut natural awaaz (Gemini key se). Limit khatam ho to apne-aap Google awaaz.
+ * DK ki awaaz - v3.74 se SIRF Gemini (Gemini TTS). Phone ki apni awaaz (Android TTS) kabhi nahi.
+ * Internet nahi / key nahi / Gemini limit khatam -> DK chup, jawab sirf likha (VoicePolicy).
  */
-class Speaker(context: Context) : TextToSpeech.OnInitListener {
+class Speaker(context: Context) {
     /** v3.51: कॉल (घंटी/बात) चल रही है? - तब media mute होता है, इसलिए accessibility वाली आवाज़ (CallVoice) */
     @Volatile var callNow: () -> Boolean = { false }
     @Volatile private var lastUsage = -1
@@ -40,19 +32,13 @@ class Speaker(context: Context) : TextToSpeech.OnInitListener {
     private fun applyVoiceUsage() {
         val a = voiceAttrs()
         if (a.usage == lastUsage) return
-        try { tts.setAudioAttributes(a); lastUsage = a.usage } catch (_: Exception) {}
+        lastUsage = a.usage
         if (a.usage == CallVoice.USAGE_ASSISTANCE_ACCESSIBILITY) DKLog.d("कॉल चल रही है - DK की आवाज़ accessibility पर (media कॉल में mute होता है)")
     }
 
     private val appCtx = context.applicationContext
-    private val ready = CompletableDeferred<Boolean>()
-    private val pending = ConcurrentHashMap<String, CompletableDeferred<Unit>>()
-    @Volatile private var tts = TextToSpeech(appCtx, this, "com.google.android.tts")
-    /** Google TTS na chale to phone ka default TTS engine */
-    @Volatile private var triedDefault = false
-    /** Kaunse vakya sach me bolne lage (onStart aaya) */
-    private val startedIds: MutableSet<String> = ConcurrentHashMap.newKeySet()
     @Volatile private var lastVoiceWarn = 0L
+    @Volatile private var lastWarnWhy: VoicePolicy.Why? = null
 
     @Volatile private var player: MediaPlayer? = null
     @Volatile private var playDone: CompletableDeferred<Unit>? = null
@@ -63,65 +49,18 @@ class Speaker(context: Context) : TextToSpeech.OnInitListener {
         private set
     @Volatile private var geminiCooldownUntil = 0L
 
-    override fun onInit(status: Int) {
-        if (status != TextToSpeech.SUCCESS) {
-            DKLog.d("TTS start nahi hua (status=$status)")
-            if (!triedDefault) {
-                // Google TTS nahi chala -> phone ka apna TTS engine try karo (warna jawab sirf likha aata)
-                triedDefault = true
-                android.os.Handler(android.os.Looper.getMainLooper()).post {
-                    try { tts.shutdown() } catch (_: Exception) {}
-                    tts = TextToSpeech(appCtx, this)
-                }
-                return
-            }
-            ready.complete(false); return
-        }
-        // Hindi awaaz na ho to bhi chup mat raho - jo bhasha phone me hai usme bolo
-        val lr = try { tts.setLanguage(Locale("hi", "IN")) } catch (_: Exception) { TextToSpeech.LANG_NOT_SUPPORTED }
-        if (lr == TextToSpeech.LANG_MISSING_DATA || lr == TextToSpeech.LANG_NOT_SUPPORTED) {
-            DKLog.d("Hindi TTS awaaz phone me nahi hai ($lr) - default bhasha")
-            try { tts.setLanguage(Locale.getDefault()) } catch (_: Exception) {}
-        }
-        try {
-            tts.setAudioAttributes(AudioAttributes.Builder()
-                .setUsage(AudioAttributes.USAGE_MEDIA)
-                .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH).build())
-            lastUsage = AudioAttributes.USAGE_MEDIA
-        } catch (_: Exception) {}
-        tts.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
-            override fun onStart(utteranceId: String?) {
-                utteranceId?.let { startedIds.add(it) }
-                // ab sach me awaaz nikal rahi hai -> "बोल रहा हूँ"
-                if (busy && !paused && DKState.mode != Mode.SPEAKING) DKState.set(Mode.SPEAKING)
-            }
-            override fun onDone(utteranceId: String?) { utteranceId?.let { pending.remove(it)?.complete(Unit) } }
-            // QUEUE_FLUSH / stop() se kata vakya: onDone nahi aata - warna DK atka rehta (aur agla jawab bolta hi nahi)
-            override fun onStop(utteranceId: String?, interrupted: Boolean) { utteranceId?.let { pending.remove(it)?.complete(Unit) } }
-            override fun onError(utteranceId: String?, errorCode: Int) { DKLog.d("TTS error $errorCode"); utteranceId?.let { pending.remove(it)?.complete(Unit) } }
-            @Deprecated("Deprecated in Java")
-            override fun onError(utteranceId: String?) { utteranceId?.let { pending.remove(it)?.complete(Unit) } }
-        })
-        ready.complete(true)
-    }
+    /** v3.74: phone ki Google/Android awaaz ab nahi chalti - list hamesha khali */
+    @Suppress("RedundantSuspendModifier")
+    suspend fun hindiVoices(): List<Voice> = emptyList()
 
-    /** Phone me install Hindi Google awaazein. */
-    suspend fun hindiVoices(): List<Voice> {
-        if (!ready.await()) return emptyList()
-        return try {
-            tts.voices.orEmpty()
-                .filter { it.locale.language == "hi" }
-                .filter { !it.features.contains(TextToSpeech.Engine.KEY_FEATURE_NOT_INSTALLED) }
-                .sortedWith(compareBy<Voice> { VoiceCatalog.googleGender(it) ?: "z" }.thenBy { it.name })
-        } catch (e: Exception) { emptyList() }
-    }
+    /** Internet chalu hai? */
+    private fun online(): Boolean = try {
+        val cm = appCtx.getSystemService(android.net.ConnectivityManager::class.java)
+        cm?.getNetworkCapabilities(cm.activeNetwork)?.hasCapability(android.net.NetworkCapabilities.NET_CAPABILITY_INTERNET) == true
+    } catch (_: Exception) { true }
 
-    private suspend fun applyGoogleVoice(override: String? = null) {
-        val voices = hindiVoices()
-        val wanted = override ?: Prefs.googleVoice(appCtx)
-        val v = voices.firstOrNull { it.name == wanted } ?: VoiceCatalog.pickGoogle(voices, Prefs.voiceGender(appCtx))
-        if (v != null && tts.voice?.name != v.name) tts.voice = v
-    }
+    private fun why(key: String): VoicePolicy.Why =
+        VoicePolicy.gemini(key.isNotBlank(), online(), System.currentTimeMillis(), geminiCooldownUntil)
 
     // ================================================================ bolna (ek samay me ek hi awaaz)
     private val mutex = kotlinx.coroutines.sync.Mutex()
@@ -145,7 +84,7 @@ class Speaker(context: Context) : TextToSpeech.OnInitListener {
         speakStream(ch)
     }
 
-    /** Turant bolne wali chhoti baat (ठीक है / कॉल उठाऊँ?) - Gemini ki saved awaaz ho to wahi, warna Google. */
+    /** Turant bolne wali chhoti baat (ठीक है / कॉल उठाऊँ?) - Gemini ki saved awaaz (ya nayi Gemini awaaz). */
     suspend fun speakQuick(text: String) {
         if (text.isBlank()) return
         val ch = kotlinx.coroutines.channels.Channel<String>(1)
@@ -156,6 +95,7 @@ class Speaker(context: Context) : TextToSpeech.OnInitListener {
     /**
      * Vakya jaise-jaise aate hain (AI abhi likh hi raha ho), waise-waise bolta hai.
      * Beech me user bole -> pause() ; goonj thi -> resume() (wahi vakya dobara) ; asli baat -> stop().
+     * Sirf Gemini awaaz. Gemini na chale to us vakya par chup (phone TTS par NAHI jaata).
      */
     suspend fun speakStream(ch: kotlinx.coroutines.channels.ReceiveChannel<String>, quick: Boolean = false) {
         mutex.lock()
@@ -164,27 +104,27 @@ class Speaker(context: Context) : TextToSpeech.OnInitListener {
             aborted = false; paused = false
             synchronized(spoken) { spoken.clear() }
             busy = true
-            // "बोल रहा हूँ" tabhi jab sach me awaaz nikle (pehle vakya ka intezaar = "जवाब आ रहा है")
             if (prev != Mode.THINKING && prev != Mode.WORKING) DKState.set(Mode.THINKING)
             ensureAudible()
             applyVoiceUsage()
             val key = Prefs.ttsGeminiKey(appCtx)
             val voice = Prefs.geminiVoice(appCtx)
-            var gem = Prefs.voiceEngine(appCtx) == "gemini" && key.isNotBlank() && System.currentTimeMillis() > geminiCooldownUntil
-            if (!quick) applyGoogleVoiceSafe()
+            val w0 = why(key)
+            var gem = w0 == VoicePolicy.Why.OK
+            if (!gem) warnNoVoice(w0)
             val pendingWav = HashMap<String, kotlinx.coroutines.Deferred<ByteArray?>>()
             val bg = kotlinx.coroutines.CoroutineScope(Dispatchers.IO + kotlinx.coroutines.SupervisorJob())
             fun prefetch(t: String) {
                 if (gem && System.currentTimeMillis() <= geminiCooldownUntil) gem = false
                 if (gem && !pendingWav.containsKey(t)) pendingWav[t] = bg.async {
-                    try { if (quick) cacheFile(voice, t)?.takeIf { it.exists() }?.readBytes() else synth(key, t, voice) }
+                    try { synth(key, t, voice) }
                     catch (e: Exception) {
                         val code = (e as? AiException)?.code ?: 0
                         val until = if (code == 429) maxOf(System.currentTimeMillis() + 10 * 60_000L, GeminiTts.allBlockedUntil())
-                            else System.currentTimeMillis() + 2 * 60_000L
+                            else System.currentTimeMillis() + 60_000L
                         val first = System.currentTimeMillis() > geminiCooldownUntil
                         geminiCooldownUntil = maxOf(geminiCooldownUntil, until)
-                        if (first) DKLog.d("Gemini awaaz nahi chali ($code) - ${(geminiCooldownUntil - System.currentTimeMillis()) / 60_000} मिनट तक Google awaaz"); null
+                        if (first) DKLog.d("Gemini आवाज़ नहीं चली ($code) - ${(geminiCooldownUntil - System.currentTimeMillis()) / 60_000} मिनट DK चुप (फ़ोन की आवाज़ नहीं)"); null
                     }
                 }
             }
@@ -199,26 +139,24 @@ class Speaker(context: Context) : TextToSpeech.OnInitListener {
                     while (replay && !aborted) {
                         replay = false
                         currentChunk = chunk
-                        var played = false
                         if (gem) {
-                            // Gemini awaaz 3.5 sec me na bane to Google awaaz (der nahi)
-                            val wav = withTimeoutOrNull(if (quick) 400L else 3500L) { pendingWav[chunk]?.await() }
-                            if (wav != null) { DKState.set(Mode.SPEAKING); playWav(wav); played = true }
-                            else if (!quick) { gem = false; geminiCooldownUntil = maxOf(geminiCooldownUntil, System.currentTimeMillis() + 60_000L) }
-                        }
-                        if (!played && !aborted) played = googleSay(chunk)
-                        // phone ki awaaz nahi chali -> Gemini awaaz se bolo (key ho to), warna user ko batao
-                        if (!played && !aborted && !paused) {
-                            val wav = if (key.isNotBlank() && System.currentTimeMillis() > geminiCooldownUntil)
-                                withTimeoutOrNull(7000) { try { synth(key, chunk, voice) } catch (e: Exception) { null } } else null
-                            if (wav != null) { DKState.set(Mode.SPEAKING); playWav(wav) } else warnNoVoice()
+                            val wav = withTimeoutOrNull(VoicePolicy.waitMs(quick)) { pendingWav[chunk]?.await() }
+                            if (wav != null) { DKState.set(Mode.SPEAKING); playWav(wav) }
+                            else if (!aborted && !paused) {
+                                // Gemini ne awaaz nahi di -> chup (phone TTS nahi). Baaki jawab bhi likha hi rahega.
+                                gem = false
+                                warnNoVoice(why(key).takeIf { it != VoicePolicy.Why.OK } ?: VoicePolicy.Why.LIMIT)
+                            }
                         }
                         if (paused && !aborted) {
                             // user bol raha hai - sun lo; goonj nikli to wahi vakya dobara
                             DKState.set(Mode.LISTENING)
                             val go = withTimeoutOrNull(20_000) { resumeSignal?.await() } ?: false
                             paused = false
-                            if (go && !aborted) { DKState.set(Mode.SPEAKING); ensureAudible(); replay = true } else aborted = true
+                            if (go && !aborted) {
+                                DKState.set(Mode.SPEAKING); ensureAudible(); replay = true
+                                if (gem && !pendingWav.containsKey(chunk)) prefetch(chunk)
+                            } else aborted = true
                         }
                     }
                     if (!aborted) synchronized(spoken) { spoken.append(chunk).append(' ') }
@@ -231,7 +169,7 @@ class Speaker(context: Context) : TextToSpeech.OnInitListener {
             paused = false
             currentChunk = ""
             lastSpokeAt = System.currentTimeMillis()
-            if (DKState.mode == Mode.SPEAKING || DKState.mode == Mode.LISTENING)
+            if (DKState.mode == Mode.SPEAKING || DKState.mode == Mode.LISTENING || DKState.mode == Mode.THINKING && prev != Mode.THINKING)
                 DKState.set(if (prev == Mode.WORKING) prev else Mode.IDLE)
             mutex.unlock()
         }
@@ -253,56 +191,25 @@ class Speaker(context: Context) : TextToSpeech.OnInitListener {
 
     val isPaused get() = paused
 
-    private suspend fun applyGoogleVoiceSafe() { try { if (ready.await()) applyGoogleVoice() } catch (_: Exception) {} }
-
-    /** Ek vakya Google awaaz me. true = sach me bola (awaaz shuru hui), false = TTS ne nahi bola */
-    private suspend fun googleSay(text: String): Boolean {
-        if (!withTimeoutOrNull(6000) { ready.await() }.let { it == true }) return false
-        tts.setSpeechRate(Prefs.ttsRate(appCtx))
-        tts.setPitch(Prefs.ttsPitch(appCtx))
-        val id = UUID.randomUUID().toString()
-        val done = CompletableDeferred<Unit>()
-        pending[id] = done
-        var r = tts.speak(text, TextToSpeech.QUEUE_FLUSH, null, id)
-        if (r != TextToSpeech.SUCCESS) {
-            DKLog.d("TTS speak fail ($r) - dobara")
-            delay(250)
-            r = tts.speak(text, TextToSpeech.QUEUE_FLUSH, null, id)
-            if (r != TextToSpeech.SUCCESS) { pending.remove(id); return false }
-        }
-        // awaaz sach me shuru hui? (3.5 sec me nahi = TTS atka/kharab)
-        val started = withTimeoutOrNull(3500) {
-            while (id !in startedIds && !done.isCompleted) delay(40)
-            id in startedIds
-        }
-        if (started != true) {
-            if (aborted || paused) { pending.remove(id); return true }
-            DKLog.d("TTS ne bola hi nahi")
-            try { tts.stop() } catch (_: Exception) {}
-            pending.remove(id); startedIds.remove(id); return false
-        }
-        withTimeoutOrNull(8_000L + text.length * 120L) { done.await() }
-        pending.remove(id); startedIds.remove(id)
-        return true
-    }
-
-    private fun warnNoVoice() {
+    /** Awaaz kyon nahi - user ko ek chhota sandesh (5 min me ek baar, ya wajah badle to) */
+    private fun warnNoVoice(w: VoicePolicy.Why) {
+        if (w == VoicePolicy.Why.OK) return
         val now = System.currentTimeMillis()
-        if (now - lastVoiceWarn < 5 * 60_000L) return
-        lastVoiceWarn = now
+        if (w == lastWarnWhy && now - lastVoiceWarn < 5 * 60_000L) return
+        lastVoiceWarn = now; lastWarnWhy = w
+        val msg = VoicePolicy.message(w)
+        DKLog.d(msg)
         android.os.Handler(android.os.Looper.getMainLooper()).post {
-            try {
-                UiLang.toast(appCtx, "आवाज़ नहीं चल रही — सेटिंग्स → आवाज़ → \"फ़ोन की TTS सेटिंग\" में Google इंजन चुनें और हिंदी आवाज़ डाउनलोड करें", android.widget.Toast.LENGTH_LONG).show()
-            } catch (_: Exception) {}
+            try { UiLang.toast(appCtx, msg, android.widget.Toast.LENGTH_LONG).show() } catch (_: Exception) {}
         }
     }
 
-    /** Settings me Google awaaz sunne ke liye (seedha) */
-    suspend fun speakGoogle(text: String, voiceName: String? = null) {
-        if (!ready.await()) return
-        applyGoogleVoice(voiceName)
-        ensureAudible()
-        if (!googleSay(text)) warnNoVoice()
+    /**
+     * v3.74: pehle yeh phone ki Google awaaz thi. Ab phone TTS band - yeh bhi sirf Gemini awaaz
+     * (internet/key na ho to chup). voiceName ab kaam ka nahi.
+     */
+    suspend fun speakGoogle(text: String, @Suppress("UNUSED_PARAMETER") voiceName: String? = null) {
+        speak(text)
     }
 
     /** Chhote, baar-baar bole jaane wale vakya ki awaaz save - agli baar turant. */
@@ -402,9 +309,6 @@ class Speaker(context: Context) : TextToSpeech.OnInitListener {
 
     /** Abhi chal rahi awaaz turant band */
     private fun haltAudio() {
-        try { tts.stop() } catch (_: Exception) {}
-        pending.values.forEach { it.complete(Unit) }
-        pending.clear()
         android.os.Handler(android.os.Looper.getMainLooper()).post { stopPlayer() }
         playDone?.complete(Unit)
     }
@@ -418,6 +322,5 @@ class Speaker(context: Context) : TextToSpeech.OnInitListener {
 
     fun shutdown() {
         stop()
-        tts.shutdown()
     }
 }

@@ -944,7 +944,7 @@ class SettingsActivity : AppCompatActivity() {
         card("स्क्रीन देखना", "DK आपकी स्क्रीन देखकर काम करे (स्क्रीनशॉट AI को जाता है)") { box ->
             swShot = switch(box, "स्क्रीन देखना / शेयर करना", Prefs.screenshot(this))
             swShot.setOnCheckedChangeListener { _, on ->
-                Prefs.edit(this) { putBoolean("screenshot", on) }
+                Prefs.edit(this) { putBoolean("screenshot", on); putBoolean(ScreenGuard.USER_OK_KEY, on) }
                 toast(if (on) "अब DK स्क्रीन देख सकता है" else "स्क्रीन देखना बंद")
             }
             hint(box, "बोलकर भी कर सकते हैं: \"डीके, स्क्रीन देखना चालू करो\" / \"स्क्रीन देखना बंद करो\"। बंद रहने पर DK सिर्फ़ स्क्रीन का लिखा हुआ पढ़ता है।")
@@ -1279,7 +1279,7 @@ class SettingsActivity : AppCompatActivity() {
                 if (swWake.isChecked && !Prefs.wakeMode(this@SettingsActivity)) putBoolean("mic_user_off", false)
                 putBoolean("announce_calls", swCalls.isChecked)
             }
-            if (::swShot.isInitialized) putBoolean("screenshot", swShot.isChecked)
+            if (::swShot.isInitialized) { putBoolean("screenshot", swShot.isChecked); putBoolean(ScreenGuard.USER_OK_KEY, swShot.isChecked) }
             if (::swAutoUpd.isInitialized) putBoolean("auto_update", swAutoUpd.isChecked)
             // v3.69: आवाज़ (महिला/पुरुष, प्रकार, अंदाज़, स्पीड, पिच) की सेटिंग हटी - पहले सेव मान वैसे ही रहते हैं
             if (::rgListen.isInitialized) putString("listen_engine", radioValue(rgListen, listOf("auto", "classic", "google"), 2200))

@@ -60,9 +60,8 @@ object LiveVision {
             DKLog.d("स्क्रीन शेयर नहीं खुला: ${e.message}")
             return "Could not open the screen sharing permission (${e.message})."
         }
-        DKAccessibilityService.instance?.autoTapShareStart()
         DKLog.d("स्क्रीन शेयर: इजाज़त माँगी")
-        return "Asked Android for screen-sharing permission; DK tries to tap Start itself, otherwise the user taps Start on the popup. " +
+        return "Asked Android for screen-sharing permission; the USER must tap Start on the popup themselves (DK never taps it). " +
             "You will get a SYSTEM NOTE when sharing really starts - until then you CANNOT see the screen, so do not describe it. Tell the user briefly."
     }
 
