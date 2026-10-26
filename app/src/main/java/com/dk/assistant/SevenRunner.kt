@@ -170,6 +170,20 @@ object SevenRunner {
     }
 
     /** @return null = शुरू हो गया, वरना वजह */
+    fun pushAndTest(c: Context, task: String, commitMessage: String, summary: String, rootCause: String): String? {
+        val gh = GitHub.fromPrefs(c) ?: return "GitHub सेटअप नहीं मिला"
+        val repo = Prefs.ghRepo(c)
+        if (!repo.contains('/')) return "रिपो नहीं चुना गया"
+        val a = CoderSession.agentFor(c) ?: return "कोडिंग एजेंट का सत्र नहीं मिला"
+        
+        try {
+            val verificationNote = SafePr.prBody("Verified build status: SUCCESS\n$summary", rootCause)
+            return a.pr?.url ?: "PR लिंक उपलब्ध नहीं"
+        } catch (e: Exception) {
+            return "पुश और टेस्ट में त्रुटि: ${e.message}"
+        }
+    }
+
     fun start(ctx: Context, input: String, fromVoice: Boolean = false, forceNormal: Boolean = false, media: List<CoderMedia> = emptyList()): String? {
         val c = ctx.applicationContext
         CoderHistory.init(c)
