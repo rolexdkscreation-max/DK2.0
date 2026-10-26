@@ -142,7 +142,7 @@ class SevenCoreTest {
         listOf("काम क्या था", "क्या हुआ", "A.kt — बटन जोड़ा", "बग / एरर", "जड़ कहाँ थी: A.kt:3", "कैसे ठीक किया", "टेस्ट का नतीजा: ✅ पास",
             "क्या मैं PR को merge कर दूँ?").forEach { assertTrue(it, r.contains(it)) }
         val n = Seven.report("x", Seven.Mode.NORMAL, emptyList(), emptyList(), false, "e", "", "")
-        assertFalse(n.contains("merge")); assertTrue(n.contains("❌ फ़ेल"))
+        assertFalse(n.contains("merge")); assertTrue(n.contains("❌ फ़ेल")); assertTrue(n.contains("वास्तविक APK build")); assertTrue(n.contains("क्या काम दिया था"))
     }
 
     @Test fun everyAgentHasOwnShortPrompt() {
