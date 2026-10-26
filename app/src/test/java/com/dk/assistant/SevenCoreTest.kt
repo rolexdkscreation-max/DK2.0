@@ -139,7 +139,7 @@ class SevenCoreTest {
     @Test fun report_format() {
         val r = Seven.report("बटन जोड़ो", Seven.Mode.GITHUB, listOf("A.kt" to "बटन जोड़ा"),
             listOf(Seven.Bug("crash", "A.kt:3", "null", "check जोड़ा")), true, "", "https://pr/1", "backup/dk-1")
-        listOf("काम क्या था", "क्या हुआ", "फ़ाइल: A.kt", "3) बग / समस्या", "जगह: A.kt:3", "कैसे ठीक किया", "एजेंट की जाँच: ✅ पास",
+        listOf("1) आपने क्या काम दिया था?", "2) एजेंट ने क्या बदला?", "फ़ाइल: A.kt", "3) बग / समस्या", "जगह: A.kt:3", "कैसे ठीक किया", "एजेंट की जाँच: ✅ पास",
             "कृपया PR की समीक्षा करें").forEach { assertTrue(it, r.contains(it)) }
         val n = Seven.report("x", Seven.Mode.NORMAL, emptyList(), emptyList(), false, "e", "", "")
         assertFalse(n.contains("merge")); assertTrue(n.contains("❌ फ़ेल")); assertTrue(n.contains("वास्तविक APK build")); assertTrue(n.contains("क्या काम दिया था"))
@@ -162,12 +162,12 @@ class SevenCoreTest {
 
     @Test fun report_neverDoneBeforeCheckPasses_alwaysPrAndCheck() {
         val fail = Seven.report("x", Seven.Mode.GITHUB, emptyList(), emptyList(), false, "e: X.kt:3", "", "b", Seven.CheckState.FAIL, "https://ci/9")
-        assertFalse(fail.contains("✅ काम पूरा हुआ"))
+        assertTrue(fail.contains("❌ काम अधूरा")); assertFalse(fail.contains("सत्यापन के अनुसार काम पूरा"))
         assertTrue(fail.contains("Pull Request: अभी नहीं बना")); assertTrue(fail.contains("GitHub Actions: ❌ फ़ेल")); assertTrue(fail.contains("Build/check लिंक: https://ci/9"))
         val running = Seven.report("x", Seven.Mode.GITHUB, emptyList(), emptyList(), null, "", "https://pr/1", "b", Seven.CheckState.RUNNING)
-        assertFalse(running.contains("✅ काम पूरा हुआ")); assertTrue(running.contains("⏳")); assertFalse(running.contains("merge कर दूँ"))
+        assertFalse(running.contains("सत्यापन के अनुसार काम पूरा")); assertTrue(running.contains("⏳ काम की पुष्टि अभी बाकी है")); assertFalse(running.contains("merge कर दूँ"))
         val noPr = Seven.report("x", Seven.Mode.GITHUB, emptyList(), emptyList(), true, "", "", "b", Seven.CheckState.PASS)
-        assertFalse(noPr.contains("✅ काम पूरा हुआ"))
+        assertFalse(noPr.contains("सत्यापन के अनुसार काम पूरा"))
         val ok = Seven.report("x", Seven.Mode.GITHUB, emptyList(), emptyList(), true, "", "https://pr/1", "b", Seven.CheckState.PASS, "https://ci/1")
         assertTrue(ok.contains("✅ सत्यापन के अनुसार काम पूरा")); assertTrue(ok.contains("Pull Request: https://pr/1")); assertTrue(ok.contains("GitHub Actions: ✅ पास")); assertTrue(ok.contains("Build/check लिंक: https://ci/1"))
     }
