@@ -205,7 +205,7 @@ object EdgeTtsEngine : VoiceEngine {
         val ts = jsDate()
         val cfg = "X-Timestamp:$ts\r\nContent-Type:application/json; charset=utf-8\r\nPath:speech.config\r\n\r\n" +
             "{\"context\":{\"synthesis\":{\"audio\":{\"metadataoptions\":{\"sentenceBoundaryEnabled\":\"false\",\"wordBoundaryEnabled\":\"false\"},\"outputFormat\":\"$FORMAT\"}}}}\r\n"
-        val (r, p) = EdgeStyle.apply(rate(c), pitch(c), com.dk.assistant.avatar.MoodState.voiceStyle(style(c)))     // v3.69: बॉक्स के शब्द -> गति/पिच
+        val (r, p) = EdgeStyle.apply(com.dk.assistant.CalmPersona.edgeRate(rate(c)), pitch(c), com.dk.assistant.avatar.MoodState.voiceStyle(style(c)))     // v3.69: बॉक्स के शब्द -> गति/पिच
         val ssml = EdgeDrm.ssml(text, voice, r, p)
         val msg = "X-RequestId:${uuid()}\r\nContent-Type:application/ssml+xml\r\nX-Timestamp:${ts}Z\r\nPath:ssml\r\n\r\n$ssml"
         return k.ws.send(cfg) && k.ws.send(msg)

@@ -141,13 +141,16 @@ object GeminiTts {
         throw AiException(0, "audio nahi mila")
     }
 
-    fun styleText(s: String) = when (s) {
+    /** v3.76: हर स्टाइल में DK का शांत, मध्यम-ठहराव वाला बोलना (CalmPersona) */
+    fun styleText(s: String) = CalmPersona.ttsStyle(baseStyle(s))
+
+    private fun baseStyle(s: String) = when (s) {
         "cheerful" -> "cheerful, happy and energetic natural Hindi"
         "calm" -> "calm, soft and soothing natural Hindi"
         "friend" -> "casual, friendly like a close friend, natural Hindi"
         "pro" -> "clear, confident and professional natural Hindi"
         "sweet" -> "sweet, gentle and caring natural Hindi"
-        else -> "warm, natural, friendly conversational Hindi, normal speed"
+        else -> "warm, natural, friendly conversational Hindi"
     }
 
     private fun isWav(b: ByteArray) = b.size > 12 && b[0] == 'R'.code.toByte() && b[1] == 'I'.code.toByte() &&
