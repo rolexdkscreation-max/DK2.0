@@ -179,8 +179,8 @@ object SevenRunner {
         try {
             val verificationNote = SafePr.prBody(
                 summary = "Verified build status: SUCCESS\n$summary",
-                changes = a.staged.joinToString("\n") { it.path },
-                protected = a.files.filter { SafePr.isProtected(it.key) }.keys.toList(),
+                changes = a.staged.keys.joinToString("\n"),
+                protected = a.files?.filter { SafePr.isProtected(it.path) }?.map { it.path } ?: emptyList(),
                 backup = a.backupBranch,
                 rootCause = rootCause
             )
