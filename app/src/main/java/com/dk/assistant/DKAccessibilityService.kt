@@ -259,25 +259,9 @@ class DKAccessibilityService : AccessibilityService() {
         return r
     }
 
-    /** v3.40: स्क्रीन शेयर का Android popup - "Start / शुरू करें" खुद दबाओ (सिर्फ़ System UI में और popup DK ने खोला हो तभी) */
+    /** v3.74: पहले DK Android का "Start" खुद दबा देता था (बिना इजाज़त स्क्रीन). अब कभी नहीं - user खुद दबाए. */
     fun autoTapShareStart() {
-        scope.launch {
-            val words = setOf("start now", "start", "share screen", "शुरू करें", "अभी शुरू करें", "प्रारंभ करें", "स्क्रीन शेयर करें", "शेयर करें", "शुरू करो")
-            delay(700)
-            repeat(20) {
-                if (!LiveVision.asking || LiveVision.screenOn) return@launch
-                for (root in allRoots()) {
-                    val pkg = root.packageName?.toString().orEmpty()
-                    if (!pkg.contains("systemui") && pkg != "android") continue
-                    val n = exactClickable(root, words, 0) ?: continue
-                    if (n.performAction(AccessibilityNodeInfo.ACTION_CLICK)) {
-                        DKLog.d("स्क्रीन शेयर: '${n.text ?: n.contentDescription ?: ""}' खुद दबाया ($pkg)"); return@launch
-                    }
-                }
-                delay(400)
-            }
-            if (LiveVision.asking) DKLog.d("स्क्रीन शेयर: Start बटन खुद नहीं मिला - user दबाए")
-        }
+        if (!ScreenGuard.AUTO_TAP_SHARE_START) { DKLog.d("स्क्रीन शेयर: Start बटन user खुद दबाएगा"); return }
     }
 
     private fun exactClickable(n: AccessibilityNodeInfo?, words: Set<String>, d: Int): AccessibilityNodeInfo? {
@@ -884,7 +868,14 @@ class DKAccessibilityService : AccessibilityService() {
                     } catch (_: Exception) {}
                     "ok"
                 }
-                "screen_view" -> { Prefs.edit(this) { putBoolean("screenshot", a.optBoolean("on", true)) }; "ok" }
+                "screen_view" -> {
+                    // v3.74: चालू सिर्फ़ user की अपनी बात/बटन से - AI अपने-आप स्क्रीन नहीं खोल सकता
+                    val on = a.optBoolean("on", true)
+                    if (!ScreenGuard.allowSet(on, a.optBoolean(ScreenGuard.BY_USER, false))) {
+                        DKLog.d("स्क्रीन देखना: AI ने खुद चालू करना चाहा - रोका (user की इजाज़त नहीं)")
+                        "ERROR: screen viewing can only be turned on by the user (say \"स्क्रीन देखना चालू करो\" or Settings)"
+                    } else { Prefs.edit(this) { putBoolean("screenshot", on); putBoolean(ScreenGuard.USER_OK_KEY, on) }; "ok" }
+                }
                 "open_app" -> verifyOpen(AppLauncher.open(this, a.optString("name")))
                 "youtube_search" -> AppLauncher.youtubeSearch(this, a.optString("query"))
                 "youtube_play" -> {

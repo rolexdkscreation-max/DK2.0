@@ -36,8 +36,8 @@ object QuickCommands {
             return Quick(a("show_face"), "ये रहा मेरा चेहरा")
         // ---- screen dekhna (AI ko screenshot) chalu / band
         if (has("स्क्रीन", "screen") && has("देखना", "देखने", "देखो", "शेयर", "share", "दिखाना", "दिखाने") && (onW || offW) && words <= 8)
-            return if (offW) Quick(a("screen_view", "on" to false), "ठीक है, अब मैं आपकी स्क्रीन नहीं देखूँगा")
-                else Quick(a("screen_view", "on" to true), "ठीक है, अब मैं स्क्रीन देखकर काम करूँगा")
+            return if (offW) Quick(a("screen_view", "on" to false, ScreenGuard.BY_USER to true), "ठीक है, अब मैं आपकी स्क्रीन नहीं देखूँगा")
+                else Quick(a("screen_view", "on" to true, ScreenGuard.BY_USER to true), "ठीक है, अब मैं स्क्रीन देखकर काम करूँगा")
 
         // ---- calls (sabse pehle)
         if (has("कॉल", "call", "फोन", "फ़ोन") || has("उठा", "रिसीव", "receive", "answer")) {

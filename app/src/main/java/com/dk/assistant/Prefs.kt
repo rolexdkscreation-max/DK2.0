@@ -155,7 +155,8 @@ object Prefs {
     fun onboarded(c: Context) = sp(c).getBoolean("onboarded", false)
     /** v3.59: यूज़र ने खुद माइक/लाइव बंद किया - जब तक वह खुद चालू न करे, माइक अपने-आप नहीं खुलेगा (wake word भी नहीं) */
     fun micUserOff(c: Context) = sp(c).getBoolean("mic_user_off", false)
-    fun screenshot(c: Context) = sp(c).getBoolean("screenshot", true)
+    /** v3.74: स्क्रीन देखना - डिफ़ॉल्ट बंद. सिर्फ़ user खुद चालू करे ("स्क्रीन देखो" / सेटिंग) तब */
+    fun screenshot(c: Context) = ScreenGuard.canView(sp(c).getBoolean(ScreenGuard.PREF_KEY, false), sp(c).getBoolean(ScreenGuard.USER_OK_KEY, false))
     fun ttsRate(c: Context) = sp(c).getFloat("tts_rate", 1.05f)
     fun ttsPitch(c: Context) = sp(c).getFloat("tts_pitch", 1.0f)
 
@@ -165,8 +166,9 @@ object Prefs {
     fun replyLang(c: Context) = Lang.norm(sp(c).getString(Lang.KEY, Lang.HINDI) ?: Lang.HINDI)
     fun loadLang(c: Context) { Lang.current = replyLang(c) }
     fun voiceGender(c: Context) = sp(c).getString("voice_gender", "female") ?: "female"
-    /** "google" = phone ki awaaz, "gemini" = sabse natural (Gemini key se) */
-    fun voiceEngine(c: Context) = sp(c).getString("voice_engine", "google") ?: "google"
+    /** v3.74: फ़ोन की आवाज़ (google) बंद - हमेशा "gemini" */
+    @Suppress("UNUSED_PARAMETER")
+    fun voiceEngine(c: Context) = "gemini"
     fun voiceStyle(c: Context) = sp(c).getString("voice_style", "natural") ?: "natural"
     fun googleVoice(c: Context) = sp(c).getString("google_voice", "") ?: ""
     /** v3.59: किस मॉडल पर कौन-सी Live चीज़ (आवाज़/hi-IN/affective) setup तोड़ती है - अगली बार उसके बिना */

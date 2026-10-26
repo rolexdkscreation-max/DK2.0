@@ -4,7 +4,6 @@ import android.content.Context
 import android.media.AudioAttributes
 import android.media.AudioFormat
 import android.media.AudioTrack
-import kotlinx.coroutines.runBlocking
 import java.util.concurrent.Executors
 import java.util.concurrent.LinkedBlockingQueue
 import java.util.concurrent.TimeUnit
@@ -33,7 +32,7 @@ class SpeechPipeline(private val ctx: Context, private val hooks: Hooks) {
         fun onSpeaking(on: Boolean)
         /** अब तक बोला गया text (स्क्रीन पर साथ-साथ) */
         fun onSpoken(soFar: String)
-        /** आख़िरी सहारा: फ़ोन की अपनी (Android) आवाज़ */
+        /** v3.74: अब इस्तेमाल नहीं होता - फ़ोन की अपनी (Android) आवाज़ कभी नहीं बोलती */
         suspend fun phoneSay(text: String)
         fun phoneStop()
     }
@@ -170,7 +169,7 @@ class SpeechPipeline(private val ctx: Context, private val hooks: Hooks) {
                 if (s.firstPcmAt > 0) { s.engine = e.id; ok = true; break }
             }
         }
-        if (!ok && s.gen == gen) { s.phone = true; hooks.log("आवाज़ इंजन: कोई नहीं चला - फ़ोन की अपनी आवाज़") }
+        if (!ok && s.gen == gen) { s.phone = true; hooks.log("आवाज़ इंजन: कोई नहीं चला - यह टुकड़ा चुप (सिर्फ़ लिखा), फ़ोन की आवाज़ नहीं") }
         s.q.put(end)
     }
 
@@ -217,10 +216,8 @@ class SpeechPipeline(private val ctx: Context, private val hooks: Hooks) {
     private fun play(s: Seg) {
         val g = s.gen
         if (s.phone || waitPhone(s)) {
-            markSpeaking()
+            // v3.74: Gemini/इंजन की आवाज़ नहीं बनी -> फ़ोन TTS नहीं, बस text स्क्रीन पर (चुप)
             noteSpoken(s.text)
-            if (firstPending) { firstPending = false; firstSegPcmAt = System.currentTimeMillis(); hooks.onFirstAudio(firstSegPcmAt, "phone") }
-            runBlocking { try { hooks.phoneSay(s.text) } catch (_: Exception) {} }
             return
         }
         val tr = ensureTrack()

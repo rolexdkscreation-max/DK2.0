@@ -376,7 +376,8 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
             else if (!generating && toolJobs.isEmpty() && !turnActive) setMode(Mode.LISTENING)
         }
         override fun onSpoken(soFar: String) { if (connSplit && soFar.isNotBlank()) { shownReply = soFar; DKState.replyLive(soFar) } }
-        override suspend fun phoneSay(text: String) { svc.speaker.speakGoogle(text) }
+        /** v3.74: फ़ोन की अपनी आवाज़ बंद - Live में सिर्फ़ Gemini की आवाज़; न बने तो चुप (text दिखता रहता है) */
+        override suspend fun phoneSay(text: String) { DKLog.d("Live: आवाज़ नहीं बनी - फ़ोन TTS नहीं चलाया, सिर्फ़ लिखा") }
         override fun phoneStop() { try { svc.speaker.stop() } catch (_: Exception) {} }
     }
     private val pipelineLazy: Lazy<com.dk.assistant.voice.engine.SpeechPipeline> = lazy { com.dk.assistant.voice.engine.SpeechPipeline(svc, speechHooks) }
@@ -1070,7 +1071,7 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
                         .put("description", "One of: answer, answer_speaker, reject, speaker_on, speaker_off, who")))
                     .put("required", JSONArray().put("action"))))
             .put(JSONObject().put("name", "screen_share")
-                .put("description", "Turn sharing of the user's phone screen with you ON or OFF (it is OFF by default). Only while it is ON you receive an image of the screen about once a second. If the user asks you to look at / read / check their screen and sharing is OFF, first ask 'स्क्रीन शेयर चालू करूँ?'; when they agree, or when they directly ask you to share or see the screen, call with on=true. Android then shows its own permission popup (DK tries to tap Start itself). Never describe the screen before you get the SYSTEM NOTE that sharing really started. Call with on=false when the user says to stop.")
+                .put("description", "Turn sharing of the user's phone screen with you ON or OFF (it is OFF by default). Only while it is ON you receive an image of the screen about once a second. If the user asks you to look at / read / check their screen and sharing is OFF, first ask 'स्क्रीन शेयर चालू करूँ?'; when they agree, or when they directly ask you to share or see the screen, call with on=true. Never turn it on by yourself without the user's clear request or yes. Android then shows its own permission popup and the USER must tap Start (DK never taps it). Never describe the screen before you get the SYSTEM NOTE that sharing really started. Call with on=false when the user says to stop.")
                 .put("parameters", JSONObject().put("type", "OBJECT")
                     .put("properties", JSONObject().put("on", JSONObject().put("type", "BOOLEAN")))
                     .put("required", JSONArray().put("on"))))
