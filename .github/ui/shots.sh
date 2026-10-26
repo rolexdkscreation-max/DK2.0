@@ -35,6 +35,9 @@ run() {
   adb logcat -c
   adb shell am start -S -W -n $PKG/.MainActivity;                          shot ${tag}_01_home 12
   shot ${tag}_01b_home_late 14
+  # v4: ऊपर-बाएँ मेनू
+  { tap "मेनू खोलें" || tap "Open menu"; } && shot ${tag}_01c_home_menu 2
+  adb shell input keyevent KEYCODE_BACK; sleep 1
   adb shell input keyevent KEYCODE_BACK; sleep 1
   adb shell am start -S -W -n $PKG/.SettingsActivity;                      shot ${tag}_02_settings 4
   # dabaane ki haalat (pressed): pehle card ko 3 sec dabaye rakho aur beech me screenshot
@@ -49,6 +52,10 @@ run() {
   tap "बोलने वाला इंजन" && sleep 1 && tap "बोलने वाला इंजन" && shot ${tag}_03e_voice_engine_closed 2
   adb shell am start -S -W -n $PKG/.SettingsActivity --es section profile; shot ${tag}_04_settings_profile 4
   tap "Access key" && shot ${tag}_04b_profile_accesskey_open 2
+  # v4: दिखावट (UI कस्टमाइज़ेशन)
+  adb shell am start -S -W -n $PKG/.SettingsActivity --es section ui;      shot ${tag}_04c_settings_ui 5
+  adb shell input swipe 540 1700 540 600 400;                             shot ${tag}_04d_settings_ui_scroll 2
+  adb shell input swipe 540 1700 540 600 400;                             shot ${tag}_04e_settings_ui_scroll2 2
   adb shell am force-stop $PKG
   adb shell am start -S -W -n $PKG/.ChatActivity; sleep 3
   adb shell input text "Namaste%sDK"; sleep 1
@@ -66,6 +73,11 @@ run() {
   adb shell am force-stop $PKG
   adb shell am start -S -W -n $PKG/.CodingActivity;                        shot ${tag}_10_coding 5
   adb shell input keyevent KEYCODE_BACK; sleep 1;                        shot ${tag}_11_coding_nokb 2
+  # v4: रंग बदलकर देखो (मैजेंटा + AMOLED) - Settings और होम दोनों पर तुरंत
+  adb shell am start -S -W -n $PKG/.SettingsActivity --es section ui; sleep 4
+  { tap "मैजेंटा" || tap "Magenta"; } ; sleep 1
+  { tap "AMOLED" ; } ; sleep 2;                                            shot ${tag}_12_ui_magenta 1
+  adb shell am start -W -n $PKG/.MainActivity;                             shot ${tag}_13_home_magenta 8
   timeout 20 adb logcat -d -b crash > "$OUT/${tag}_crash.txt" || true
   timeout 20 adb logcat -d | grep -E "FATAL|AndroidRuntime|LiquidGlass|InflateException" > "$OUT/${tag}_errors.txt" || true
   adb shell am force-stop $PKG

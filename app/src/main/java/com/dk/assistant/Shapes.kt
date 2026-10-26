@@ -44,7 +44,11 @@ class Cloud(val n: Int) {
 
 object Shapes {
     /** Settings me dikhne wale naam */
+    const val NEON = "neon"
+
     val STYLES = listOf(
+        // v4: Premium Neon Glass - चमकदार नीला-बैंगनी परतों वाला गोला (होम पर बीच में माइक). नए फ़ोन पर शुरुआती
+        NEON to "नियॉन ओर्ब (नीला-बैंगनी)",
         "earth" to "पृथ्वी (सैटेलाइट के साथ)",
         "galaxy" to "आकाशगंगा (गैलेक्सी)",
         "atom" to "एटम",

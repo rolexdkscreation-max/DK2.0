@@ -87,6 +87,7 @@ class SettingsActivity : AppCompatActivity() {
             "brain_pc" -> { title.text = "AI दिमाग • DK कंप्यूटर"; secBrainScope(ApiScopes.PC) }
             "voice" -> { title.text = "आवाज़"; secVoice() }
             "orb" -> { title.text = "ओर्ब और चेहरा"; bar.visibility = View.GONE; secOrb() }
+            "ui" -> { title.text = "दिखावट"; bar.visibility = View.GONE; secUi() }
             "access" -> { title.text = "Accessibility"; secAccess() }
             "perms" -> { title.text = "परमिशन"; secPerms() }
             "update" -> { title.text = "अपडेट"; secUpdate() }
@@ -105,6 +106,7 @@ class SettingsActivity : AppCompatActivity() {
         val items = listOf(
             Triple("profile", "प्रोफ़ाइल", "आपका नाम • असिस्टेंट का नाम ($name) • बात करने का तरीका"),
             Triple("lang", "भाषा / Language", "ऐप: ${if (UiLang.en()) "English" else "हिंदी"} • DK के जवाब: ${Lang.short(Prefs.replyLang(this))}"),
+            Triple("ui", "दिखावट (UI कस्टमाइज़ेशन)", "थीम • मुख्य रंग • काँच की पारदर्शिता • चमक • एनिमेशन"),
             Triple("brain", "AI दिमाग", "DK लाइव • DK चैट • कोडिंग एजेंट • DK कंप्यूटर — हर एक की अपनी API key"),
             Triple("voice", "आवाज़", "बोलने वाला इंजन (Gemini TTS • Edge • Live) • सुनना • सिर्फ़ मेरी आवाज़"),
             Triple("orb", "ओर्ब और चेहरा", "पृथ्वी, गैलेक्सी, एटम, छल्ला, पुरुष/महिला HD चेहरा"),
@@ -210,6 +212,7 @@ class SettingsActivity : AppCompatActivity() {
         "brain" -> R.drawable.ic_s_brain
         "voice" -> R.drawable.ic_s_voice
         "orb" -> R.drawable.ic_s_orb
+        "ui" -> R.drawable.ic_s_ui
         "access" -> R.drawable.ic_s_access
         "perms" -> R.drawable.ic_s_perms
         "coder" -> R.drawable.ic_s_coder
@@ -811,6 +814,99 @@ class SettingsActivity : AppCompatActivity() {
         }
     }
 
+    // ------------------------------------------------------------ v4: दिखावट (UI कस्टमाइज़ेशन) - सिर्फ़ रंग-रूप
+    /**
+     * थीम, मुख्य रंग, काँच की पारदर्शिता, चमक, एनिमेशन. बदलते ही पूरा ऐप नए रूप में (पीछे खुली स्क्रीनें लौटते ही).
+     * यह AI, आवाज़, prompt, API key या बातचीत/यादों को बिल्कुल नहीं छूता - सिर्फ़ ui_* पसंद.
+     */
+    private fun secUi() {
+        val T = com.dk.assistant.ui.NeonTheme
+        fun applyLook(l: com.dk.assistant.ui.NeonTheme.Look) {
+            T.save(this, l)
+            com.dk.assistant.ui.NeonRefresh.bars(this)
+            com.dk.assistant.ui.NeonRefresh.invalidateAll(window.decorView)
+        }
+        card("झलक", "बदलाव यहीं तुरंत दिखता है", startOpen = true) { box ->
+            box.addView(OrbView(this).apply { previewStyle = Shapes.NEON; importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO },
+                LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, (170 * dp).toInt()))
+            row(box,
+                Button(this).apply {
+                    text = "मुख्य बटन"; isAllCaps = false; textSize = 13f; setTextColor(0xFFFFFFFF.toInt())
+                    setBackgroundResource(R.drawable.btn_accent); isClickable = false
+                },
+                button("काँच का बटन") {}.apply { isClickable = false })
+        }
+        card("थीम", "पृष्ठभूमि का रंग", startOpen = true) { box ->
+            val g = radios(box, T.THEMES, T.look.theme, 6100)
+            g.setOnCheckedChangeListener { _, id ->
+                val v = T.THEMES.getOrNull(id - 6100)?.first ?: return@setOnCheckedChangeListener
+                applyLook(T.look.copy(theme = v))
+            }
+            hint(box, "हल्की (Light) थीम अभी नहीं है: ऐप की ज़्यादातर स्क्रीनों पर सफ़ेद अक्षर हैं, हल्की पृष्ठभूमि पर वे पढ़ने में नहीं आते। " +
+                "\"फ़ोन जैसी (System)\" भी इसी वजह से नहीं — ऐप हमेशा गहरी थीम में रहता है।")
+        }
+        card("मुख्य रंग (Accent)", "किनारे, चमक, मुख्य बटन और ओर्ब का रंग", startOpen = true) { box ->
+            val items = com.dk.assistant.ui.NeonTheme.Accent.values().map { it.key to it.label }
+            val g = radios(box, items, T.look.accent.key, 6200)
+            com.dk.assistant.ui.NeonTheme.Accent.values().forEachIndexed { i, ac ->
+                (g.getChildAt(i) as? RadioButton)?.let { rb ->
+                    val sp = android.text.SpannableString("●  " + ac.label)
+                    sp.setSpan(android.text.style.ForegroundColorSpan(ac.main), 0, 1, 0)
+                    rb.text = sp; rb.minHeight = (48 * dp).toInt()
+                }
+            }
+            g.setOnCheckedChangeListener { _, id ->
+                val ac = com.dk.assistant.ui.NeonTheme.Accent.values().getOrNull(id - 6200) ?: return@setOnCheckedChangeListener
+                applyLook(T.look.copy(accent = ac))
+            }
+        }
+        fun slider(box: LinearLayout, title: String, value: Int, set: (Int) -> com.dk.assistant.ui.NeonTheme.Look) {
+            val lab = TextView(this).apply {
+                textSize = 13f; setTextColor(0xB3FFFFFF.toInt()); setPadding((4 * dp).toInt(), (10 * dp).toInt(), 0, (4 * dp).toInt())
+            }
+            fun show(v: Int) { lab.text = UiLang.s(title) + ": $v%" }
+            show(value); box.addView(lab)
+            val sb = SeekBar(this).apply {
+                max = 100; progress = value; minimumHeight = (48 * dp).toInt()
+                contentDescription = UiLang.s(title)
+                setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
+                    override fun onProgressChanged(b: SeekBar?, p: Int, fromUser: Boolean) { show(p) }
+                    override fun onStartTrackingTouch(b: SeekBar?) {}
+                    override fun onStopTrackingTouch(b: SeekBar?) { applyLook(set(progress)) }
+                })
+            }
+            box.addView(sb, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, (48 * dp).toInt()))
+        }
+        card("काँच और चमक", "पैनल कितने पारदर्शी हों, किनारों की नियॉन चमक कितनी हो", startOpen = true) { box ->
+            slider(box, "काँच की पारदर्शिता", T.look.glass) { T.look.copy(glass = it) }
+            slider(box, "नियॉन चमक", T.look.glow) { T.look.copy(glow = it) }
+            hint(box, "ज़्यादा पारदर्शिता पर भी अक्षर पढ़ने लायक रहें, इसलिए काँच कभी पूरा गायब नहीं होता। " +
+                "पीछे का असली धुंधलापन (blur) Android 12+ पर सिर्फ़ dialog के पीछे; बाकी जगह हल्का काँच-जैसा रंग।")
+        }
+        card("एनिमेशन", "ओर्ब के छल्ले, पृष्ठभूमि की रोशनी और मेनू का खुलना", startOpen = true) { box ->
+            val g = radios(box, T.MOTIONS, T.look.motion, 6300)
+            g.setOnCheckedChangeListener { _, id ->
+                val v = T.MOTIONS.getOrNull(id - 6300)?.first ?: return@setOnCheckedChangeListener
+                applyLook(T.look.copy(motion = v))
+            }
+            if (T.systemNoAnim) hint(box, "फ़ोन की सेटिंग में एनिमेशन बंद हैं — इसलिए DK अभी अपने-आप कम एनिमेशन में है।")
+        }
+        card("दिखावट पहले जैसी करें", "सिर्फ़ रंग-रूप शुरुआती जैसा — बातचीत, यादें, key और आवाज़ की सेटिंग नहीं मिटतीं", startOpen = true) { box ->
+            row(box, button("दिखावट रीसेट करें") {
+                UiDialog(this, Glass.DIALOG)
+                    .setTitle("दिखावट पहले जैसी करें?")
+                    .setMessage("थीम, मुख्य रंग, काँच, चमक और एनिमेशन शुरुआती हो जाएँगे। आपका कोई डेटा नहीं मिटेगा।")
+                    .setPositiveButton("हाँ, रीसेट करें") { _, _ ->
+                        T.resetAppearance(this)
+                        toast("दिखावट शुरुआती जैसी हो गई")
+                        recreate()
+                    }
+                    .setNegativeButton("नहीं", null)
+                    .show()
+            })
+        }
+    }
+
     // ------------------------------------------------------------ orb + chehra
     private fun secOrb() {
         val styles = Shapes.STYLES
@@ -1258,7 +1354,7 @@ class SettingsActivity : AppCompatActivity() {
 
     // ------------------------------------------------------------ save
     private fun save(showToast: Boolean) {
-        if (section == null || section == "orb") return
+        if (section == null || section == "orb" || section == "ui") return
         val active = if (::rgProvider.isInitialized)
             Providers.all.getOrNull(rgProvider.checkedRadioButtonId - 1000)?.id ?: Prefs.activeProvider(this)
         else Prefs.activeProvider(this)
@@ -1359,8 +1455,8 @@ class SettingsActivity : AppCompatActivity() {
     }
 
     /** v3.69: हर सेटिंग हिस्सा खुलने-बंद होने वाला कॉलम (साझा: ui/CollapsibleSection) - शुरू में बंद */
-    private fun card(title: String, sub: String?, body: (LinearLayout) -> Unit) {
-        com.dk.assistant.ui.CollapsibleSection.add(this, container, title, sub, body = body)
+    private fun card(title: String, sub: String?, startOpen: Boolean = false, body: (LinearLayout) -> Unit) {
+        com.dk.assistant.ui.CollapsibleSection.add(this, container, title, sub, startOpen = startOpen, body = body)
     }
 
     private fun label(box: LinearLayout, t: String) = box.addView(TextView(this).apply {

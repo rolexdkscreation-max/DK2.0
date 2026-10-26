@@ -131,6 +131,8 @@ class OrbView @JvmOverloads constructor(
 
         val want = wanted()
         if (want != target) morphTo(want)
+        // v4: नियॉन ओर्ब - डॉट नहीं, परतों वाला चमकदार गोला (रंग/चमक DK की असली हालत से)
+        if (target == Shapes.NEON && !mini) { drawNeon(c, mode, now, dt); return }
         val cl = cloud
         val isFace = cl.sway
         val morphMs = if (isFace) 2300f else 1600f
@@ -282,6 +284,91 @@ class OrbView @JvmOverloads constructor(
             mini -> postInvalidateDelayed(if (mode == Mode.IDLE) 66 else 33)
             else -> postInvalidateOnAnimation()
         }
+    }
+
+    // ------------------------------------------------------------------ v4 Neon orb
+    private val nHalo = Paint(Paint.ANTI_ALIAS_FLAG)
+    private val nBody = Paint(Paint.ANTI_ALIAS_FLAG)
+    private val nSpec = Paint(Paint.ANTI_ALIAS_FLAG)
+    private val nRing = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE; strokeCap = Paint.Cap.ROUND }
+    private val nRim = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE }
+    private val nM = android.graphics.Matrix()
+    private var nKey = 0L
+    private var nRingAng = 0f
+
+    /** हालत के रंग (सिर्फ़ असली DKState.mode से - कोई नकली हालत नहीं) */
+    private fun neonColors(m: Mode): Pair<Int, Int> {
+        val l = com.dk.assistant.ui.NeonTheme.look
+        return when (m) {
+            Mode.IDLE -> l.accent.main to l.accent.partner
+            Mode.LISTENING -> com.dk.assistant.ui.NeonTheme.CYAN to l.accent.main
+            Mode.THINKING -> com.dk.assistant.ui.NeonTheme.VIOLET to com.dk.assistant.ui.NeonTheme.MAGENTA
+            Mode.WORKING -> Color.parseColor("#00E676") to com.dk.assistant.ui.NeonTheme.CYAN
+            Mode.SPEAKING -> com.dk.assistant.ui.NeonTheme.CYAN to Color.parseColor("#64FFDA")
+        }
+    }
+
+    private fun drawNeon(c: Canvas, mode: Mode, now: Long, dt: Float) {
+        val T = com.dk.assistant.ui.NeonTheme
+        val still = T.reducedMotion()
+        val t = now / 1000f
+        lvl += (DKState.level - lvl) * 0.25f
+        val (ta, tb) = neonColors(mode)
+        val k = (1f - kotlin.math.exp(-dt * 20f)).coerceIn(0.08f, 1f)
+        colA = lerpColor(colA, ta, k); colB = lerpColor(colB, tb, k)
+        val w = width.toFloat(); val h = height.toFloat()
+        if (w <= 0f || h <= 0f) return
+        val cx = w / 2f; val cy = h / 2f
+        val voice = if (mode == Mode.SPEAKING) com.dk.assistant.voice.engine.VoiceLevel.mouth() else null
+        val pulse = if (still) 1f else when (mode) {
+            Mode.LISTENING -> 1f + lvl * 0.12f
+            Mode.SPEAKING -> 1f + (voice?.let { it * 0.10f } ?: (0.03f * sin(t * 9f)))
+            Mode.THINKING -> 1f + 0.04f * (0.5f + 0.5f * sin(t * 5.6f))
+            else -> 1f + 0.018f * sin(t * 1.4f)
+        }
+        val R = minOf(w, h) * 0.27f * pulse
+        val glowF = 0.35f + 0.65f * T.look.glowF
+
+        // शेडर सिर्फ़ रंग/चमक बदलने पर नए (हर frame नहीं) - जगह/नाप Matrix से
+        val key = (colA.toLong() shl 32) xor colB.toLong() xor (T.version.toLong() shl 50)
+        if (key != nKey || nBody.shader == null) {
+            nKey = key
+            nHalo.shader = RadialGradient(0f, 0f, 1f,
+                intArrayOf(T.alphaF(colA, 0.55f * glowF), T.alphaF(colB, 0.22f * glowF), T.alpha(colB, 0)),
+                floatArrayOf(0.42f, 0.68f, 1f), Shader.TileMode.CLAMP)
+            nBody.shader = RadialGradient(0f, 0f, 1f,
+                intArrayOf(T.mix(colA, Color.WHITE, 0.55f), colA, T.mix(colB, 0xFF0A0F3A.toInt(), 0.25f), T.mix(colB, 0xFF050A1F.toInt(), 0.55f)),
+                floatArrayOf(0f, 0.38f, 0.78f, 1f), Shader.TileMode.CLAMP)
+            nSpec.shader = RadialGradient(0f, 0f, 1f, intArrayOf(0x8CFFFFFF.toInt(), 0x00FFFFFF), floatArrayOf(0f, 1f), Shader.TileMode.CLAMP)
+            nRing.shader = android.graphics.SweepGradient(0f, 0f,
+                intArrayOf(T.alpha(colA, 0), T.alphaF(colA, 0.9f), T.alphaF(colB, 0.9f), T.alpha(colB, 0)),
+                floatArrayOf(0f, 0.35f, 0.7f, 1f))
+        }
+        // 1. बाहर की नियॉन चमक
+        nM.setScale(R * 1.9f, R * 1.9f); nM.postTranslate(cx, cy); nHalo.shader.setLocalMatrix(nM)
+        c.drawCircle(cx, cy, R * 1.9f, nHalo)
+        // 2. घूमते पतले छल्ले (कम एनिमेशन में स्थिर)
+        val speed = when (mode) { Mode.THINKING -> 2.4f; Mode.WORKING -> 1.6f; Mode.LISTENING -> 1.1f; Mode.SPEAKING -> 1.3f; else -> 0.4f }
+        if (!still) nRingAng = (nRingAng + speed * dt * 57.3f) % 360f
+        val dpx = resources.displayMetrics.density
+        for ((i, rr) in listOf(1.16f, 1.30f).withIndex()) {
+            nRing.strokeWidth = (if (i == 0) 2.2f else 1.4f) * dpx
+            nRing.alpha = if (i == 0) 230 else 150
+            nM.setRotate(if (i == 0) nRingAng else -nRingAng * 0.7f + 120f); nM.postTranslate(cx, cy)
+            nRing.shader.setLocalMatrix(nM)
+            c.drawCircle(cx, cy, R * rr, nRing)
+        }
+        // 3. गोला (ऊपर-बाएँ से रोशनी)
+        nM.setScale(R * 1.25f, R * 1.25f); nM.postTranslate(cx - R * 0.28f, cy - R * 0.32f); nBody.shader.setLocalMatrix(nM)
+        c.drawCircle(cx, cy, R, nBody)
+        // 4. चमकदार किनारा + ऊपर की चमक
+        nRim.strokeWidth = 1.4f * dpx; nRim.color = T.alphaF(T.mix(colB, Color.WHITE, 0.4f), 0.85f)
+        c.drawCircle(cx, cy, R, nRim)
+        nM.setScale(R * 0.42f, R * 0.30f); nM.postTranslate(cx - R * 0.32f, cy - R * 0.48f); nSpec.shader.setLocalMatrix(nM)
+        c.drawCircle(cx - R * 0.32f, cy - R * 0.48f, R * 0.42f, nSpec)
+
+        if (still) postInvalidateDelayed(if (mode == Mode.LISTENING || mode == Mode.SPEAKING) 120 else 400)
+        else postInvalidateOnAnimation()
     }
 
     /** Atom ke chhallon par daudte electron */

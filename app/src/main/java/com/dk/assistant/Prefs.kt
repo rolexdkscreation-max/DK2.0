@@ -146,7 +146,8 @@ object Prefs {
     /** पहचानी आवाज़ से धीरे-धीरे सीखा स्तर */
     fun ownerLevelNow(c: Context) = sp(c).getFloat("owner_level_now", 0f).toDouble()
     /** v3.65: हटाया गया आकार (dna/tesseract/wormhole/sphere3d) या अनजान -> earth */
-    fun orbStyle(c: Context) = Shapes.valid(sp(c).getString("orb_style", "earth"))
+    /** v4: जिसने कभी आकार नहीं चुना उसे नया नियॉन ओर्ब; पहले चुना हुआ आकार वैसा ही */
+    fun orbStyle(c: Context) = Shapes.valid(sp(c).getString("orb_style", Shapes.NEON))
     /** v3.71: ORB की जगह क्या दिखे - "orb" (डिफ़ॉल्ट) या "girl" (लड़की अवतार) */
     fun avatarKind(c: Context): String = if (sp(c).getString("avatar_kind", "orb") == "girl") "girl" else "orb"
     /** v3.57: DK सुन/बोल रहा हो तो स्क्रीन के किनारों पर चमक */
