@@ -1104,6 +1104,10 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
                 .put("parameters", JSONObject().put("type", "OBJECT")
                     .put("properties", JSONObject().put("fact", JSONObject().put("type", "STRING")))
                     .put("required", JSONArray().put("fact"))))))
+        // v3.72: जुड़े कनेक्टर (Gmail, Drive, GitHub, FB Page, MCP...) - कोई नहीं जुड़ा = कुछ नहीं जुड़ता
+        com.dk.assistant.connect.ConnectorTool.declaration(svc)?.let { d ->
+            tools.optJSONObject(0)?.optJSONArray("functionDeclarations")?.put(d); log("कनेक्टर: connector_task जोड़ा")
+        }
         if (useSearch) tools.put(JSONObject().put("googleSearch", JSONObject()))
         val setup = JSONObject()
             .put("model", "models/$m")
@@ -1604,7 +1608,7 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
             val id = fc.optString("id"); val name = fc.optString("name"); val args = fc.optJSONObject("args") ?: JSONObject()
             if (!toolDedup.firstTime(id)) { log("tool: $name - यही call (id) पहले आ चुका, दोबारा नहीं"); continue }
             // DK AI Part 12: caption / संदेश / कॉन्टैक्ट log में नहीं
-            log("tool: $name " + if (name == "social_media_task" || name == "whatsapp_task") args.optString("action") else args.toString().take(80))
+            log("tool: $name " + if (name == "social_media_task" || name == "whatsapp_task") args.optString("action") else if (name == "connector_task") args.optString("connector") + "." + args.optString("action") else args.toString().take(80))
             val tStart = System.currentTimeMillis()
             // v3.39: जिस जुड़ाव पर सवाल आया, जवाब सिर्फ़ उसी पर. बीच में दोबारा जुड़ा = पुराना id नए सत्र को अनजान -> 1007
             val sock = ws
@@ -1620,6 +1624,7 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
                     "remember_fact" -> if (Memory.addFact(svc, args.optString("fact"))) "saved" else "NOT saved: private info (passwords, PIN, OTP, bank/card/Aadhaar numbers) is never stored. If the user asked you to remember it, tell them gently you do not save such private details." 
                     "forget_memory" -> { val n = Memory.forget(svc, args.optString("about")); if (n > 0) "Forgotten ($n place(s) deleted)." else "Nothing saved about that - tell the user it is not in memory." }
                     "local_info" -> localInfoTool()
+                    "connector_task" -> withContext(Dispatchers.IO) { com.dk.assistant.connect.ConnectorTool.run(svc, args) }
                     "notifications" -> notifTool(args.optString("app"))
                     "notification_reply" -> notifReply(args.optString("to"), args.optString("message"))
                     "social_media_task" -> com.dk.assistant.agent.android.SocialAgent.start(svc, args)
@@ -1675,8 +1680,8 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
                     "Tool failed (${e.javaClass.simpleName}) - tell the user it could not be done."
                 }
                 val resp = JSONObject().put("toolResponse", JSONObject().put("functionResponses", JSONArray().put(
-                    JSONObject().put("id", id).put("name", name).put("response", JSONObject().put("result", result.take(if (name == "deep_think") 4000 else 1500))))))
-                log("tool $name ${(System.currentTimeMillis() - tStart)} ms: ${result.take(80)}")
+                    JSONObject().put("id", id).put("name", name).put("response", JSONObject().put("result", result.take(if (name == "deep_think" || name == "connector_task") 4000 else 1500))))))
+                log("tool $name ${(System.currentTimeMillis() - tStart)} ms: ${result.take(if (name == "connector_task") 24 else 80)}")
                 if (name != "remember_fact") lastEvidenceAt = System.currentTimeMillis()
                 // v3.67: नतीजा "अभी हुआ नहीं" -> इसके बाद Gemini "हो गया" बोले तो वह नहीं बजेगा
                 if (name != "remember_fact" && name != "task_status" && DoneGate.notDoneYet(result)) actPending = true

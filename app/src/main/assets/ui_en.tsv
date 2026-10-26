@@ -1016,3 +1016,95 @@ ORB (डिफ़ॉल्ट)	ORB (default)
 अवतार के सारे 11 चित्र मौजूद हैं।	All 11 avatar pictures are present.
 देरी का हिसाब	Latency breakdown
 आपका बोलना ख़त्म → पहला टुकड़ा आया → पहले वाक्य की आवाज़ बनी → आवाज़ बजी	You stop speaking → first piece arrives → first sentence voice ready → voice starts playing
+# v3.72 कनेक्टर हब
+खाता जोड़ो	Connect account
+पेज जोड़ो	Connect page
+server जोड़ो	Add server
+Google ने इजाज़त नहीं दी	Google did not give permission
+कनेक्टर	Connectors
+अपने खाते (Gmail, Drive, Calendar, GitHub, Facebook Page, Instagram…) जोड़िए - फिर DK लाइव से बोलकर काम: "मेरे नए मेल पढ़ो", "कल 4 बजे मीटिंग डालो", "Drive में बिल ढूँढो".	Connect your accounts (Gmail, Drive, Calendar, GitHub, Facebook Page, Instagram…) - then just say it in DK Live: "read my new mails", "add a meeting tomorrow at 4", "find the bill in Drive".
+भेजना, मिटाना, शेयर या पोस्ट करने से पहले DK हमेशा पूछेगा. पढ़ना/खोजना सीधे.	DK always asks before sending, deleting, sharing or posting. Reading and searching happen directly.
+Token सिर्फ़ इसी फ़ोन में रहते हैं (Android Keystore से बंद) - किसी server पर नहीं जाते. सब मुफ़्त (निजी इस्तेमाल).	Tokens stay only on this phone (locked with Android Keystore) - they are never sent to any server. All free (personal use).
+Google: एक बार की तैयारी	Google: one-time setup
+Drive, Gmail, Calendar वग़ैरह के लिए - 10 मिनट, सिर्फ़ एक बार	For Drive, Gmail, Calendar and more - 10 minutes, only once
+जल्द आने वाले	Coming soon
+Notion, Telegram bot, Spotify, Microsoft Outlook / OneDrive, Dropbox - अगले version में.	Notion, Telegram bot, Spotify, Microsoft Outlook / OneDrive, Dropbox - in the next version.
+तब तक: इनमें से किसी का MCP server हो तो नीचे "MCP server" में URL डालकर अभी जोड़ सकते हैं.	Until then: if any of them has an MCP server, you can add it now under "MCP server" below.
+1. console.cloud.google.com खोलें → नया Project बनाएँ (जैसे "DK").	1. Open console.cloud.google.com → create a new Project (for example "DK").
+2. APIs & Services → Library: Google Drive, Gmail, Google Calendar, People, Tasks, Google Sheets, Google Docs, YouTube Data API v3 - जो चाहिए उन्हें Enable करें.	2. APIs & Services → Library: enable the ones you need - Google Drive, Gmail, Google Calendar, People, Tasks, Google Sheets, Google Docs, YouTube Data API v3.
+3. OAuth consent screen (Google Auth Platform): User type External, ऐप का नाम DK, अपना ईमेल. Audience में Publish app (In production) करें - Testing में login 7 दिन में ख़त्म हो जाता है.	3. OAuth consent screen (Google Auth Platform): User type External, app name DK, your email. In Audience, press Publish app (In production) - in Testing the login expires after 7 days.
+4. Clients → Create client → Android: package नीचे वाला, SHA-1 नीचे वाला.	4. Clients → Create client → Android: use the package and SHA-1 shown below.
+5. यहाँ वापस आकर जिस कनेक्टर को चाहें उस पर "खाता जोड़ो" दबाएँ.	5. Come back here and press "Connect account" on any connector you want.
+Google "यह ऐप जाँचा नहीं गया" दिखाए तो Advanced → Go to DK दबाएँ - यह आपका अपना ऐप है.	If Google shows "This app isn't verified", press Advanced → Go to DK - it is your own app.
+SHA-1 (इस APK की signing key)	SHA-1 (signing key of this APK)
+SHA-1 कॉपी करें	Copy SHA-1
+Package कॉपी करें	Copy package
+हर नया APK एक ही key से बनता है, इसलिए SHA-1 वही रहता है. Debug APK की key अलग हो तो उसका SHA-1 भी अलग Android client में जोड़ें.	Every new APK is signed with the same key, so the SHA-1 stays the same. If a debug APK uses a different key, add its SHA-1 as another Android client.
+हटा दिया - Google की इजाज़त पूरी तरह हटाने: myaccount.google.com/permissions	Removed - to fully remove Google's permission: myaccount.google.com/permissions
+Google ने token नहीं दिया	Google did not give a token
+जुड़ गया - अगली बार DK लाइव शुरू होने पर काम करेगा	connected - works from the next DK Live start
+GitHub token अभी नहीं है - सेटिंग्स → कोडिंग एजेंट में डालें (वही token यहाँ काम आता है).	No GitHub token yet - add it in Settings → Coding agent (the same token works here).
+token सेटिंग	Token setting
+DK लाइव से हटाओ	Remove from DK Live
+DK लाइव में जोड़ो	Add to DK Live
+अपने पेज और Business/Creator Instagram के काम (Graph API)	Your Pages and Business/Creator Instagram (Graph API)
+जुड़े पेज:	Connected pages:
+पेज से कोई Business/Creator Instagram जुड़ा नहीं	No Business/Creator Instagram is linked to the page
+Facebook Page के काम	Facebook Page actions
+Instagram के काम	Instagram actions
+Token कैसे मिलेगा (एक बार)	How to get the token (once)
+1. developers.facebook.com → My Apps → Create app (Business). Facebook Login for Business / Instagram जोड़ें.	1. developers.facebook.com → My Apps → Create app (Business). Add Facebook Login for Business / Instagram.
+2. Tools → Graph API Explorer: अपना ऐप चुनें, Get User Access Token - इजाज़तें: pages_show_list, pages_read_engagement, pages_manage_posts, pages_manage_engagement, instagram_basic, instagram_content_publish, instagram_manage_comments.	2. Tools → Graph API Explorer: pick your app, Get User Access Token - permissions: pages_show_list, pages_read_engagement, pages_manage_posts, pages_manage_engagement, instagram_basic, instagram_content_publish, instagram_manage_comments.
+3. Access Token Debugger में Extend Access Token दबाएँ (लंबा token, ~60 दिन).	3. In Access Token Debugger press Extend Access Token (long-lived token, about 60 days).
+4. वही token नीचे चिपकाएँ - DK खुद आपके पेजों के Page token ले लेता है (जो ख़त्म नहीं होते).	4. Paste that token below - DK itself fetches the Page tokens of your pages (they do not expire).
+Instagram: अकाउंट Business या Creator हो और Facebook Page से जुड़ा हो (Instagram ऐप → Settings → Account type). निजी अकाउंट API से नहीं जुड़ता - उसके लिए फ़ोन-एजेंट.	Instagram: the account must be Business or Creator and linked to a Facebook Page (Instagram app → Settings → Account type). A personal account cannot use the API - the phone agent handles it.
+अपने पेज/अकाउंट के लिए Meta App Review की ज़रूरत नहीं.	No Meta App Review is needed for your own pages/accounts.
+Token (User या Page access token)	Token (User or Page access token)
+token बदलो	Change token
+पहले token चिपकाएँ	Paste the token first
+इस token से कोई Facebook Page नहीं मिला	No Facebook Page found with this token
+जुड़ नहीं पाया	Could not connect
+Facebook Page जुड़ गया	Facebook Page connected
+Facebook / Instagram निजी अकाउंट	Facebook / Instagram personal accounts
+फ़ोन-एजेंट से - कोई token नहीं	Through the phone agent - no token
+निजी Facebook प्रोफ़ाइल और निजी Instagram पर Meta किसी ऐप को API से पोस्ट नहीं करने देता.	Meta does not let any app post to a personal Facebook profile or personal Instagram through the API.
+इसलिए DK का पहले से चल रहा फ़ोन-एजेंट (Accessibility) यह काम Facebook / Instagram ऐप खोलकर करता है - पोस्ट, स्टोरी, मैसेज, कमेंट.	So DK's existing phone agent (Accessibility) does it by opening the Facebook / Instagram app - posts, stories, messages, comments.
+बोलिए: "Instagram पर यह फ़ोटो पोस्ट करो" या "Facebook पर राहुल को मैसेज भेजो". पोस्ट/भेजने से पहले DK पूछेगा.	Say: "post this photo on Instagram" or "send Rahul a message on Facebook". DK asks before posting/sending.
+Accessibility: ✓ चालू	Accessibility: ✓ on
+Accessibility: ✗ बंद - सेटिंग्स → Accessibility में चालू करें	Accessibility: ✗ off - turn it on in Settings → Accessibility
+MCP server (कोई भी ऐप)	MCP server (any app)
+Notion, Slack, Jira… किसी का भी MCP server URL डालें - उसके सारे tools DK लाइव में	Add the MCP server URL of Notion, Slack, Jira… - all its tools come to DK Live
+पूछकर:	ask first:
+tools फिर से लो	Reload tools
+नया server जोड़ें	Add a new server
+नाम (जैसे Notion)	Name (for example Notion)
+Token (ज़रूरत हो तो)	Token (if needed)
+सही URL डालें (https://…)	Enter a valid URL (https://…)
+सिर्फ़ Streamable HTTP वाले server (URL). * = भेजने/बदलने वाला tool, DK पहले पूछेगा.	Only Streamable HTTP servers (URL). * = a tool that sends/changes something, DK asks first.
+जोड़ रहा हूँ…	Connecting…
+server से कोई tool नहीं मिला	The server returned no tools
+जुड़ नहीं पाया:	Could not connect:
+MCP server जुड़ गया	MCP server connected
+✓ जुड़ा	✓ connected
+✗ नहीं जुड़ा	✗ not connected
+DK लाइव से क्या-क्या	What DK Live can do
+(पहले पूछेगा)	(asks first)
+फ़ाइलें खोजो, पढ़ो, नई text फ़ाइल, शेयर, ट्रैश	Search and read files, new text file, share, trash
+मेल खोजो, पढ़ो, ड्राफ़्ट, भेजो	Search, read, draft and send mail
+आने वाले इवेंट, नया इवेंट, इवेंट हटाओ	Upcoming events, new event, delete event
+नाम से नंबर/ईमेल खोजो	Find a number/email by name
+काम की सूची, नया काम, काम पूरा	Task list, new task, mark done
+शीट पढ़ो/पंक्ति जोड़ो, डॉक बनाओ/पढ़ो	Read sheets / add rows, create / read docs
+वीडियो खोजो, मेरे वीडियो, मेरी playlists	Search videos, my videos, my playlists
+repos, फ़ाइलें, कोड खोजो (कोडिंग एजेंट वाला token)	Repos, files, code search (coding agent token)
+अपने पेज की पोस्ट, कमेंट, जवाब, नई पोस्ट (Graph API)	Your page's posts, comments, replies, new posts (Graph API)
+प्रोफ़ाइल, पोस्ट, कमेंट, जवाब, फ़ोटो पोस्ट (Graph API)	Profile, posts, comments, replies, photo posts (Graph API)
+Facebook (निजी प्रोफ़ाइल)	Facebook (personal profile)
+फ़ोन-एजेंट से: Facebook ऐप खोलकर पोस्ट/मैसेज/कमेंट	Through the phone agent: posts/messages/comments by opening the Facebook app
+Instagram (निजी अकाउंट)	Instagram (personal account)
+फ़ोन-एजेंट से: Instagram ऐप खोलकर पोस्ट/स्टोरी/मैसेज	Through the phone agent: posts/stories/messages by opening the Instagram app
+Google सेटअप अधूरा (DEVELOPER_ERROR): Cloud Console में Android OAuth client - package com.dk.assistant और ऊपर दिखा SHA-1 - बनाइए	Google setup incomplete (DEVELOPER_ERROR): create an Android OAuth client in Cloud Console with package com.dk.assistant and the SHA-1 shown above
+आपने Google स्क्रीन बंद कर दी	You closed the Google screen
+Google से जवाब नहीं आया (timeout)	No reply from Google (timeout)
+Google login नहीं हुआ:	Google login failed:
+Gmail • Drive • Calendar • GitHub • Facebook Page • Instagram • MCP — DK लाइव से बोलकर काम	Gmail • Drive • Calendar • GitHub • Facebook Page • Instagram • MCP — work by voice in DK Live

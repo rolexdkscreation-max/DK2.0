@@ -112,6 +112,7 @@ class SettingsActivity : AppCompatActivity() {
             Triple("perms", "परमिशन", "माइक • स्क्रीन देखना • नोटिफ़िकेशन • कॉल • ऐप इंस्टॉल"),
             Triple("computer", "DK कंप्यूटर", (if (Prefs.computerOn(this)) "✓ चालू" else "✗ बंद") + " • कोई भी काम: खोज, रिसर्च, फ़ाइल/PDF, हिसाब, फ़ोन, रिमाइंडर"),
             Triple("coder", "कोडिंग एजेंट", (if (Prefs.coderOn(this)) "✓ चालू" else "✗ बंद") + " • GitHub से जुड़ें • कोड लिखें/बदलें/हटाएँ • push • अलग AI key"),
+            Triple("connectors", "कनेक्टर", "Gmail • Drive • Calendar • GitHub • Facebook Page • Instagram • MCP — DK लाइव से बोलकर काम"),
             Triple("story", "स्टोरी राइटर एजेंट", "लंबी हिंदी कहानियाँ (10–30 मिनट) • भाग-दर-भाग • कॉपी • फ़ोन में सेव"),
             Triple("update", "अपडेट", "अभी: ${Updater.displayVersion(this)} • नया version चेक करें"),
             Triple("debug", "डिबग लॉग", "माइक, कनेक्शन, देरी और गलतियों का पूरा हाल"),
@@ -131,6 +132,7 @@ class SettingsActivity : AppCompatActivity() {
                 setOnClickListener {
                     // Story Writer: seedha apni screen (iski koi settings nahi)
                     if (id == "story") startActivity(android.content.Intent(this@SettingsActivity, StoryWriterActivity::class.java))
+                    else if (id == "connectors") startActivity(android.content.Intent(this@SettingsActivity, com.dk.assistant.connect.ConnectorsActivity::class.java))
                     else startActivity(android.content.Intent(this@SettingsActivity, SettingsActivity::class.java).putExtra("section", id))
                 }
             }
@@ -213,6 +215,7 @@ class SettingsActivity : AppCompatActivity() {
         "coder" -> R.drawable.ic_s_coder
         "computer" -> R.drawable.ic_s_computer
         "story" -> R.drawable.ic_s_story
+        "connectors" -> R.drawable.ic_s_connect
         "update" -> R.drawable.ic_s_update
         "about" -> R.drawable.ic_s_profile
         else -> R.drawable.ic_s_debug

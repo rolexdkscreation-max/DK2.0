@@ -206,6 +206,12 @@
             android:exported="false"
             android:windowSoftInputMode="adjustResize" />
 
+        <!-- v3.72: कनेक्टर हब (Google / GitHub / Facebook Page / Instagram / MCP) -->
+        <activity
+            android:name=".connect.ConnectorsActivity"
+            android:exported="false"
+            android:windowSoftInputMode="adjustResize" />
+
         <!-- Phone control: screen padhna, click, type, scroll, screenshot -->
         <service
             android:name=".DKAccessibilityService"
