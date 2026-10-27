@@ -33,15 +33,21 @@ object VoiceEnroll {
      * @return null = माइक नहीं खुला / कोई नहीं बोला
      */
     @SuppressLint("MissingPermission")
-    suspend fun record(onLevel: (Float) -> Unit = {}): Take? = withContext(Dispatchers.IO) {
+    suspend fun record(
+        onLevel: (Float) -> Unit = {},
+        // v3.81: "Hey DK सिखाओ" = छोटा शब्द, सुनने वाला माइक-रास्ता (VOICE_RECOGNITION), जल्दी बंद
+        source: Int = MediaRecorder.AudioSource.VOICE_COMMUNICATION,
+        endSilenceMs: Int = 800,
+        minSpeechMs: Int = 400,
+    ): Take? = withContext(Dispatchers.IO) {
         val rate = OwnerGate.RATE
         val chunk = rate * 40 / 1000
         val min = AudioRecord.getMinBufferSize(rate, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT)
         val r = try {
-            AudioRecord(MediaRecorder.AudioSource.VOICE_COMMUNICATION, rate, AudioFormat.CHANNEL_IN_MONO,
+            AudioRecord(source, rate, AudioFormat.CHANNEL_IN_MONO,
                 AudioFormat.ENCODING_PCM_16BIT, maxOf(min * 2, chunk * 2 * 6)).takeIf { it.state == AudioRecord.STATE_INITIALIZED }
         } catch (_: Exception) { null } ?: return@withContext null
-        val det = TurnDetector(40, endSilenceMs = 800, minSpeechMs = 400)
+        val det = TurnDetector(40, endSilenceMs = endSilenceMs, minSpeechMs = minSpeechMs)
         val out = ByteArrayOutputStream()
         val pre = ArrayDeque<ByteArray>()
         val rms = ArrayList<Double>()
