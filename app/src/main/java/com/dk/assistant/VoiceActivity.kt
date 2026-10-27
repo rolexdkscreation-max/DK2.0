@@ -334,9 +334,9 @@ class VoiceActivity : AppCompatActivity() {
         if (f?.running == true && f.front == LiveVision.cameraFront) return
         val feed2 = f ?: CameraFeed(this, camView).also { feed = it }
         feed2.onFrameAnalyzed = { bitmap ->
-            faceEngine.analyze(bitmap) { rect, result, progress ->
+            faceEngine.processFrame(bitmap) { analysis ->
                 runOnUiThread {
-                    faceOverlay.update(rect, result, progress)
+                    faceOverlay.updateResult(analysis.result, analysis.faceBounds)
                 }
             }
         }

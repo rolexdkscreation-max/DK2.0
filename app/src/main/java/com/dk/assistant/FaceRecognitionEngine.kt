@@ -9,7 +9,7 @@ import java.util.concurrent.atomic.AtomicBoolean
 class FaceRecognitionEngine(private val context: Context) {
 
     data class AnalysisResult(
-        val result: FaceMatch.MatchResult,
+        val result: MatchResult,
         val similarity: Float,
         val faceBounds: RectF?,
         val embedding: FloatArray?,
@@ -33,7 +33,7 @@ class FaceRecognitionEngine(private val context: Context) {
                 accumulatedEmbeddings.clear()
                 onResult(
                     AnalysisResult(
-                        result = FaceMatch.MatchResult.NO_FACE,
+                        result = MatchResult.NO_FACE,
                         similarity = 0f,
                         faceBounds = null,
                         embedding = null,
@@ -53,7 +53,7 @@ class FaceRecognitionEngine(private val context: Context) {
 
                 onResult(
                     AnalysisResult(
-                        result = FaceMatch.MatchResult.SCANNING,
+                        result = MatchResult.SCANNING,
                         similarity = 0f,
                         faceBounds = faceBounds,
                         embedding = embedding,
@@ -78,7 +78,7 @@ class FaceRecognitionEngine(private val context: Context) {
                 )
             }
         } catch (e: Exception) {
-            DKLog.d("FaceRecognitionEngine", "Error analyzing frame: ${e.message}")
+            DKLog.d("FaceRecognitionEngine: Error analyzing frame: ${e.message}")
         } finally {
             isProcessing.set(false)
         }

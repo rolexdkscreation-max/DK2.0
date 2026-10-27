@@ -13,7 +13,7 @@ class FaceScanOverlayView @JvmOverloads constructor(
     defStyleAttr: Int = 0
 ) : View(context, attrs, defStyleAttr) {
 
-    private var matchResult: FaceMatch.MatchResult = FaceMatch.MatchResult.NO_FACE
+    private var matchResult: MatchResult = MatchResult.NO_FACE
     private var faceRect: RectF? = null
     private var scanProgress = 0f
     private var rotationAngle = 0f
@@ -30,7 +30,7 @@ class FaceScanOverlayView @JvmOverloads constructor(
         strokeWidth = 6f
     }
 
-    fun updateResult(result: FaceMatch.MatchResult, rect: RectF?) {
+    fun updateResult(result: MatchResult, rect: RectF?) {
         this.matchResult = result
         this.faceRect = rect
         postInvalidateOnAnimation()
@@ -45,18 +45,18 @@ class FaceScanOverlayView @JvmOverloads constructor(
         updateAnimations(deltaTime)
 
         val rect = faceRect ?: return
-        if (matchResult == FaceMatch.MatchResult.NO_FACE) return
+        if (matchResult == MatchResult.NO_FACE) return
 
         drawReticle(canvas, rect)
         
         when (matchResult) {
-            FaceMatch.MatchResult.SCANNING -> {
+            MatchResult.SCANNING -> {
                 drawScanningHUD(canvas, rect)
             }
-            FaceMatch.MatchResult.ACCESS_GRANTED -> {
+            MatchResult.ACCESS_GRANTED -> {
                 drawAccessBadge(canvas, rect, "ACCESS GRANTED", Color.GREEN)
             }
-            FaceMatch.MatchResult.ACCESS_DENIED -> {
+            MatchResult.ACCESS_DENIED -> {
                 drawAccessBadge(canvas, rect, "ACCESS DENIED", Color.RED)
             }
             else -> {}
@@ -72,8 +72,8 @@ class FaceScanOverlayView @JvmOverloads constructor(
 
     private fun drawReticle(canvas: Canvas, rect: RectF) {
         val color = when (matchResult) {
-            FaceMatch.MatchResult.ACCESS_GRANTED -> Color.GREEN
-            FaceMatch.MatchResult.ACCESS_DENIED -> Color.RED
+            MatchResult.ACCESS_GRANTED -> Color.GREEN
+            MatchResult.ACCESS_DENIED -> Color.RED
             else -> Color.CYAN
         }
         
