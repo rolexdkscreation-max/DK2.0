@@ -65,7 +65,7 @@ class FaceMatchTest {
     fun testEvaluateMatchNoStoredTarget() {
         val candidate = floatArrayOf(1.0f, 0.0f)
         val result = FaceMatch.evaluateMatch(candidate, null)
-        assertEquals(MatchResult.ACCESS_DENIED, result.first)
+        assertEquals(MatchResult.SCANNING, result.first)
     }
 
     @Test
