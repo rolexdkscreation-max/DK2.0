@@ -12,6 +12,8 @@ import android.media.audiofx.NoiseSuppressor
 import android.util.Base64
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.Deferred
+import kotlinx.coroutines.async
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -60,6 +62,9 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
         const val SERVER_SILENCE_MS = 800   // v3.46: 550 -> 800. छोटी बात पर फ़ोन खुद 550ms पर "खत्म" भेजता है; यह सिर्फ़ तब जब वाक्य अधूरा लगे ("और…", "तो…")
         /** Phone ka VAD: itni der chup = turant audioStreamEnd (server ka intezaar nahi) */
         const val CLIENT_END_MS = 550
+        /** v3.88: बोलते-बोलते तैयार किया डेटा कितनी देर ताज़ा माना जाए */
+        const val PREP_WEATHER_MS = 5 * 60_000L
+        const val PREP_SEARCH_MS = 45_000L
         /** Bolna shuru pakadne se pehle itni awaaz - chhota = pehla shabd turant (bahut chhota = DK ki goonj se galat "toka") */
         const val PREFIX_PADDING_MS = 100
         /** Wake word wala Live chup hone par connection itni der garam rakho */
@@ -562,19 +567,43 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
         if (q.length < 2) return "Ask the user what to search."
         DKState.hint(LivePromise.hintFor("web_search", q))
         setMode(Mode.THINKING)
-        return try {
-            val r = withTimeoutOrNull(40_000) { BrainManager(svc).search(q, deep = false) }
-            if (r == null || r.text.isBlank()) "SEARCH FAILED (timeout). Tell the user honestly the search did not work right now."
-            else {
-                if (r.sources.isNotEmpty()) toolSources = Grounding.merge(toolSources, r.sources)
-                log("web_search: \"${q.take(40)}\" -> ${r.text.length} अक्षर, ${r.sources.size} स्रोत")
-                "SEARCH RESULT (verified from several websites): " + r.text.take(3200) + "\n" + LiveSearch.sourcesLine(r.sources) +
-                    "\nSpeak the answer from this result now, briefly and naturally. Do not read URLs."
+        // v3.87: Live की खोज = Live की अपनी Gemini key पहले; fail = ख़ुद एक बार दोबारा (छोटी, तेज़ खोज)
+        val brain = BrainManager(svc).also { it.fromLive = true }
+        // v3.88: यूज़र के बोलते ही शुरू हुई खोज उसी बात की है = वही नतीजा (इंतज़ार कम)
+        var r: SearchResult? = preparedSearch(q)?.also { log("web_search: पहले से तैयार नतीजा इस्तेमाल किया") }
+        var why = SearchGuard.Fail.OTHER
+        for (attempt in 1..2) {
+            if (r != null) break
+            r = try {
+                if (attempt == 1) withTimeoutOrNull(32_000) { brain.search(q, deep = false) } else brain.quickSearch(q)
+            } catch (e: CancellationException) { throw e } catch (e: Exception) {
+                why = brain.lastSearchFail
+                log("web_search fail (कोशिश $attempt): ${SearchGuard.hindi(why)} - ${e.javaClass.simpleName} ${e.message?.take(120)}")
+                null
             }
-        } catch (e: CancellationException) { throw e } catch (e: Exception) {
-            log("web_search fail: ${e.message}")
-            "SEARCH FAILED (${e.javaClass.simpleName}). Tell the user honestly the search did not work right now."
+            if (r != null && r.text.isNotBlank()) break
+            if (r == null && attempt == 1 && why == SearchGuard.Fail.OTHER) why = SearchGuard.Fail.TIMEOUT
+            r = null
+            // key नहीं डली - दोबारा कोशिश बेकार
+            if (why == SearchGuard.Fail.NO_KEY) break
         }
+        val res = r
+        if (res == null) {
+            log("web_search: \"${q.take(40)}\" -> दो कोशिश के बाद भी नहीं (${SearchGuard.hindi(why)})")
+            DKState.hint(when (why) {
+                SearchGuard.Fail.NO_KEY -> "खोज के लिए Gemini key डालें (DK Live या DK चैट)"
+                SearchGuard.Fail.BAD_KEY -> "Gemini key ग़लत है - सेटिंग में जाँचें"
+                SearchGuard.Fail.QUOTA -> "आज की Gemini सीमा ख़त्म - कल या दूसरी key"
+                SearchGuard.Fail.NETWORK -> "इंटरनेट नहीं मिला"
+                else -> "ताज़ा जानकारी अभी नहीं मिली"
+            })
+            return SearchGuard.failResult(q, why)
+        }
+        // स्रोत सिर्फ़ तब, जब सच में खोज से जवाब आया
+        if (res.sources.isNotEmpty()) toolSources = Grounding.merge(toolSources, res.sources)
+        log("web_search: \"${q.take(40)}\" -> ${res.text.length} अक्षर, ${res.sources.size} स्रोत")
+        return "SEARCH RESULT (verified from several websites): " + res.text.take(3200) + "\n" + LiveSearch.sourcesLine(res.sources) +
+            "\nSpeak the answer from this result now, briefly and naturally. Do not read URLs."
     }
 
     @Volatile private var promiseJob: Job? = null
@@ -604,7 +633,7 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
         promiseJob = svc.scope.launch {
             DKState.hint(LivePromise.hintFor("web_search", user))
             setMode(Mode.THINKING)
-            val r = try { withTimeoutOrNull(35_000) { BrainManager(svc).search(user, deep = false) } }
+            val r = try { withTimeoutOrNull(35_000) { BrainManager(svc).also { it.fromLive = true }.search(user, deep = false) } }
                 catch (e: CancellationException) { throw e } catch (e: Exception) { log("वादा-जाँच सर्च fail: ${e.message}"); null }
             DKState.hint("")
             if (r == null || r.text.isBlank()) { visionNote(LivePromise.searchFailNote(user), evidence = false); return@launch }
@@ -1089,11 +1118,12 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
     }
 
     private fun setupJson(m: String): String {
+        NetProbe.refresh(svc)      // v3.88: धीमा नेटवर्क = छोटे जवाब (अपने-आप, कोई सेटिंग नहीं)
         val brain = BrainManager(svc)
         val ex = extrasFor(m)
         val tools = JSONArray().put(JSONObject().put("functionDeclarations", JSONArray()
             .put(JSONObject().put("name", "phone_task")
-                .put("description", "Do something on the user's Android phone: open apps (including opening WhatsApp), call, SMS, YouTube, music, settings (wifi, bluetooth, torch, volume, brightness), maps/directions, shopping, read or tap the screen. NOT for sending WhatsApp messages - always use whatsapp_task (action=send_message) for that.")
+                .put("description", "Do something on the user's Android phone: open apps (including opening WhatsApp), call, SMS, YouTube, music, settings (wifi, bluetooth, torch, volume, brightness), maps/directions, shopping, read or tap the screen. NOT for a single WhatsApp message - use whatsapp_task (action=send_message) for that. BUT if the user gives SEVERAL tasks in one go (e.g. alarm, then WhatsApp, then delete photo, then YouTube, then maps), call phone_task ONCE with his full request - the phone runs them one by one in order. While tasks run: a new task = phone_task with only that task (added at the end); 'रुको'/'बंद करो' = phone_task with request 'रुको' (stops at once).")
                 .put("parameters", JSONObject().put("type", "OBJECT")
                     .put("properties", JSONObject().put("request", JSONObject().put("type", "STRING").put("description", "The user's request in their own words")))
                     .put("required", JSONArray().put("request"))))
@@ -1187,6 +1217,11 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
                 .put("parameters", JSONObject().put("type", "OBJECT")
                     .put("properties", JSONObject().put("about", JSONObject().put("type", "STRING").put("description", "The topic to forget, a few words")))
                     .put("required", JSONArray().put("about"))))
+            .put(JSONObject().put("name", "recall_conversation")
+                .put("description", "The user asks what HE said earlier or what you two talked about (मैंने क्या बोला था / अभी मैंने क्या कहा था / कल क्या बात हुई थी / मैंने उस बारे में क्या बताया था / तुमने क्या कहा था). Searches the conversation saved ONLY on this phone (last 30 days + permanent short notes) - no internet. question = the user's question in his own words (include the time like अभी/कल/आज and the topic). Then say the result to the user briefly in your own voice; if it says it was not found, say exactly 'बॉस, मुझे ये याद नहीं मिल रहा।' - never invent.")
+                .put("parameters", JSONObject().put("type", "OBJECT")
+                    .put("properties", JSONObject().put("question", JSONObject().put("type", "STRING").put("description", "The user's question, his words")))
+                    .put("required", JSONArray().put("question"))))
             .put(JSONObject().put("name", "local_info")
                 .put("description", "Get the user's CURRENT location (fresh GPS/network, city/area name) and live weather right now. Call it when the user asks about weather, their area, nearby events/news/traffic/pandals/melas, or anything 'here/आसपास/मेरे शहर'. For local news or events, then use Google Search with the city name.")
                 .put("parameters", JSONObject().put("type", "OBJECT").put("properties", JSONObject())))
@@ -1215,7 +1250,7 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
                 .apply { if (!connText) put("speechConfig", JSONObject().put("voiceConfig", JSONObject()
                     .put("prebuiltVoiceConfig", JSONObject().put("voiceName", ex.voice)))
                     .apply { if (ex.lang) put("languageCode", LiveVoice.LANGUAGE) }) })
-            .put("systemInstruction", JSONObject().put("parts", JSONArray().put(JSONObject().put("text", Lang.sys(brain.liveSystemPrompt()) + FAST_START + (if (connSplit) SPLIT_NOTE + (if (connText) MOOD_TAG_NOTE else "") else
+            .put("systemInstruction", JSONObject().put("parts", JSONArray().put(JSONObject().put("text", Lang.sys(brain.liveSystemPrompt()) + FAST_START + NetSpeed.promptNote() + (if (connSplit) SPLIT_NOTE + (if (connText) MOOD_TAG_NOTE else "") else
                 com.dk.assistant.voice.engine.LiveNativeEngine.styleNote(com.dk.assistant.voice.engine.LiveNativeEngine.style(svc).ifBlank { CalmPersona.VOICE_STYLE }))))))
             .put("tools", tools)
             .put("realtimeInputConfig", JSONObject()
@@ -1284,7 +1319,7 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
     private fun handleServer(msg: String, setup: CompletableDeferred<Unit>) {
         val o = try { JSONObject(msg) } catch (e: Exception) { log("JSON नहीं समझा (${msg.length} bytes)"); return }
         if (o.has("setupComplete")) {
-            if (setupSentAt > 0) { trace.rttMs = System.currentTimeMillis() - setupSentAt; log("setup का जवाब ${trace.rttMs} ms (network RTT + server)") }
+            if (setupSentAt > 0) { trace.rttMs = System.currentTimeMillis() - setupSentAt; log("setup का जवाब ${trace.rttMs} ms (network RTT + server)"); NetSpeed.onSetup(trace.rttMs) }
             // ready + purani (judte samay ki) awaaz ek saath, lock me: mic ka naya tukda purane se pehle na nikle
             synchronized(sendLock) { ready = true; flushPending() }
             setup.complete(Unit)
@@ -1564,6 +1599,7 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
             if (!ok) { log("caption: \"${t.take(40)}\" - पक्का नहीं, जवाब जारी"); return }
         } else if (isPlaying()) return        // DK bol raha hai aur shak nahi = shor/goonj ka text, dikhao bhi mat
         DKState.user("$t…")
+        prefetch(t, final)        // v3.88: यूज़र बोल ही रहा है - ज़रूरी डेटा पहले से तैयार (गलत अंदाज़ा = चुपचाप बेकार)
         if (final) checkMicOff(t)        // andaze (interim) par mic band nahi - "माइक बंद मत करो" bhi ho sakta hai
         if (final) capFinal = t.trim()
         // v3.41: ghanti baj rahi hai aur pakka text aaya ("उठा लो" / "काट दो") -> bolna-khatam ka intezaar bhi nahi, turant
@@ -1634,9 +1670,64 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
 
     // ================================================================ phone ke kaam (function calling)
     /** v3.45: ताज़ा लोकेशन + मौसम (हर बार नई; कहीं सेव नहीं) */
+    // ================================================================ v3.88: बोलते-बोलते तैयारी (speculative prefetch)
+    private class Prep(val kind: SpecIntent.Kind, val text: String, val at: Long, val job: Deferred<Any?>)
+    @Volatile private var prepWeather: Prep? = null
+    @Volatile private var prepSearch: Prep? = null
+
+    /**
+     * "हेलो डीके, आज का मौसम बताओ" - "मौसम" सुनते ही लोकेशन + मौसम लाना शुरू. Gemini जब local_info माँगे तो तैयार मिले.
+     * ताज़ा खबर/स्कोर = पक्का (final) text आते ही खोज शुरू; Gemini की web_search उसी बात की हो तो वही नतीजा.
+     * अंदाज़ा गलत = कोई इस्तेमाल नहीं करता, कुछ देर में अपने-आप पुराना (यूज़र को कुछ नहीं दिखता/सुनाई देता).
+     */
+    private fun prefetch(t: String, final: Boolean) {
+        val k = SpecIntent.detect(t) ?: return
+        val now = System.currentTimeMillis()
+        try {
+            when (k) {
+                SpecIntent.Kind.WEATHER -> {
+                    if (prepWeather?.let { now - it.at < PREP_WEATHER_MS } == true) return
+                    if (!LocalInfo.hasPermission(svc)) return
+                    prepWeather = Prep(k, t, now, svc.scope.async(Dispatchers.IO) {
+                        try { LocalInfo.now(svc) } catch (e: CancellationException) { throw e } catch (_: Exception) { null }
+                    })
+                    log("पहले से तैयारी: मौसम (\"${t.take(30)}\")")
+                }
+                SpecIntent.Kind.SEARCH -> {
+                    if (!final) return
+                    val p = prepSearch
+                    if (p != null && now - p.at < PREP_SEARCH_MS && p.text == t.trim()) return
+                    val q = t.trim()
+                    prepSearch = Prep(k, q, now, svc.scope.async(Dispatchers.IO) {
+                        try { withTimeoutOrNull(30_000) { BrainManager(svc).also { it.fromLive = true }.search(q, deep = false) } }
+                        catch (e: CancellationException) { throw e } catch (_: Exception) { null }
+                    })
+                    log("पहले से तैयारी: खोज (\"${q.take(30)}\")")
+                }
+            }
+        } catch (e: Exception) { log("पहले से तैयारी नहीं हुई: ${e.javaClass.simpleName}") }
+    }
+
+    /** तैयार मौसम (ताज़ा हो तो); नहीं = null (तब पहले जैसा अभी लाओ) */
+    @Suppress("UNCHECKED_CAST")
+    private suspend fun preparedWeather(): Pair<LocalInfo.Place, String>? {
+        val p = prepWeather ?: return null
+        if (System.currentTimeMillis() - p.at > PREP_WEATHER_MS) { prepWeather = null; return null }
+        return (try { p.job.await() } catch (e: CancellationException) { throw e } catch (_: Exception) { null }) as? Pair<LocalInfo.Place, String>
+    }
+
+    /** तैयार खोज - उसी बात की हो और ताज़ा हो तो; नहीं = null (तब पहले जैसी खोज) */
+    private suspend fun preparedSearch(query: String): SearchResult? {
+        val p = prepSearch ?: return null
+        if (System.currentTimeMillis() - p.at > PREP_SEARCH_MS || !SpecIntent.sameTopic(query, p.text)) return null
+        prepSearch = null       // एक बार ही इस्तेमाल
+        val r = try { p.job.await() } catch (e: CancellationException) { throw e } catch (_: Exception) { null }
+        return (r as? SearchResult)?.takeIf { it.text.isNotBlank() }
+    }
+
     private suspend fun localInfoTool(): String {
         if (!LocalInfo.hasPermission(svc)) return "Location permission is OFF. Ask the user to allow location for DK (open the DK app; it asks), then try again."
-        val r = LocalInfo.now(svc) ?: return "Could not get the current location right now (GPS/location may be off). Tell the user honestly."
+        val r = preparedWeather()?.also { log("local_info: पहले से तैयार मौसम इस्तेमाल किया") } ?: LocalInfo.now(svc) ?: return "Could not get the current location right now (GPS/location may be off). Tell the user honestly."
         return "Current place: ${r.first.name.ifBlank { "unknown area (%.3f, %.3f)".format(java.util.Locale.US, r.first.lat, r.first.lon) }}. Weather now: ${r.second.substringAfter(" — ", r.second)}"
     }
 
@@ -1717,6 +1808,11 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
                     "screen_share" -> LiveVision.setScreen(svc, args.optBoolean("on", true))
                     "camera" -> LiveVision.setCamera(svc, args.optBoolean("on", true), args.optString("facing"))
                     "remember_fact" -> if (Memory.addFact(svc, args.optString("fact"))) "saved" else "NOT saved: private info (passwords, PIN, OTP, bank/card/Aadhaar numbers) is never stored. If the user asked you to remember it, tell them gently you do not save such private details." 
+                    "recall_conversation" -> {
+                        val a = LocalMemory.answer(svc, args.optString("question").ifBlank { DKState.lastUser.trimEnd('…') })
+                        if (a == LocalRecall.NOT_FOUND) "NOT FOUND in the phone's saved conversation. Say exactly: बॉस, मुझे ये याद नहीं मिल रहा।"
+                        else "FOUND on the phone (saved conversation). Tell the user this briefly, in your voice, keep the quoted words exact:\n$a"
+                    }
                     "forget_memory" -> { val n = Memory.forget(svc, args.optString("about")); if (n > 0) "Forgotten ($n place(s) deleted)." else "Nothing saved about that - tell the user it is not in memory." }
                     "local_info" -> localInfoTool()
                     "connector_task" -> withContext(Dispatchers.IO) { com.dk.assistant.connect.ConnectorTool.run(svc, args) }
@@ -1761,7 +1857,7 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
                     "deep_think" -> {
                         DKState.set(Mode.THINKING)
                         try {
-                            withTimeoutOrNull(45_000) { BrainManager(svc).think(args.optString("question")) }
+                            withTimeoutOrNull(45_000) { BrainManager(svc).also { it.fromLive = true }.think(args.optString("question")) }
                                 ?.takeIf { it.text.isNotBlank() }
                                 ?.also { if (it.sources.isNotEmpty()) toolSources = Grounding.merge(toolSources, it.sources) }
                                 ?.text ?: "Deep thinking timed out - answer it yourself carefully."
@@ -1846,7 +1942,149 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
      * 3) बाकी AgentRunner; 20s में पूरा न हो तो Gemini को सच ("अभी चल रहा") और पूरा होने पर उसे बताओ
      * पहले: 60s तक इंतज़ार और नतीजा न मिले तो "done" (झूठा "हो गया").
      */
+    // ---------------- v3.87: एक साथ कई काम (कतार) ----------------
+    @Volatile private var taskQueue: TaskRunQueue? = null
+    @Volatile private var queueAnswer: CompletableDeferred<String>? = null
+
     private suspend fun phoneTask(req: String): String {
+        val running = taskQueue?.takeIf { it.running }
+        if (running != null) {
+            if (TaskQueue.isStop(req)) { stopQueue("phone_task: \"${req.take(20)}\""); return TaskQueue.stoppedNote() }
+            // कतार ने सवाल पूछा था और Gemini ने जवाब phone_task में भेज दिया - वही जवाब
+            if (running.asking) { queueAnswer?.complete(req); return "QUEUE_OK: the phone took this as the answer to its question. Say only \"ठीक है\" - no tool call." }
+            // काम के बीच नया काम = कतार के आख़िर में
+            val n = running.add(TaskQueue.split(req).ifEmpty { listOf(TaskQueue.Item(req, "other")) })
+            log("कतार: नया काम आख़िर में जोड़ा (\"${req.take(30)}\", अब $n बाक़ी)")
+            return TaskQueue.addedNote(n)
+        }
+        val items = TaskQueue.split(req)
+        if (items.size >= 2) return startQueue(items)
+        return phoneTaskOne(req)
+    }
+
+    private fun startQueue(items: List<TaskQueue.Item>): String {
+        val startedAt = System.currentTimeMillis()
+        val q = TaskRunQueue(
+            runOne = { runQueued(it) },
+            prepare = { prev, next, prevOk -> queuePrepare(prev, next, prevOk) },
+            ask = { queueAsk(it) },
+            log = { log(it) }
+        )
+        q.add(items)
+        taskQueue = q
+        TeacherBoard.exitBlocked = { taskQueue?.running == true }
+        log("कतार शुरू: ${items.size} काम - " + items.joinToString(" | ") { "${it.domain}:${it.text.take(25)}" })
+        svc.scope.launch {
+            // "रुको / बंद करो" - Gemini के भरोसे नहीं, फ़ोन ख़ुद सुनता है
+            val watcher = launch {
+                var seen = DKState.lastUserAt
+                while (isActive) {
+                    delay(200)
+                    val at = DKState.lastUserAt
+                    if (at != seen && at > startedAt) {
+                        seen = at
+                        if (TaskQueue.isStop(DKState.lastUser.trimEnd('…'))) { stopQueue("यूज़र ने कहा \"${DKState.lastUser.take(20)}\""); break }
+                    }
+                }
+            }
+            val summary = try { q.runAll() } catch (e: CancellationException) { TaskQueue.summary(q.results, true, q.left()) }
+                catch (e: Exception) { log("कतार गड़बड़: ${e.message}"); TaskQueue.summary(q.results, q.stopped, q.left()) }
+                finally { watcher.cancel() }
+            if (taskQueue === q) taskQueue = null
+            log("कतार ख़त्म: $summary")
+            withTimeoutOrNull(15_000) { while (isPlaying() || generating || toolJobs.isNotEmpty()) delay(150) }
+            if (stopped || !ready) return@launch
+            visionNote(TaskQueue.summaryNote(summary), evidence = true)
+        }
+        return TaskQueue.startedNote(items)
+    }
+
+    private fun stopQueue(why: String) {
+        val q = taskQueue ?: return
+        if (q.stopped) return
+        q.stop()
+        log("कतार तुरंत रोकी: $why")
+        queueAnswer?.complete("")
+        try { if (agent.isBusy) agent.stop() } catch (_: Exception) {}
+        try { if (com.dk.assistant.agent.android.SocialAgent.busy()) com.dk.assistant.agent.android.SocialAgent.control(JSONObject().put("command", "cancel")) } catch (_: Exception) {}
+    }
+
+    /** अगले काम से पहले फ़ोन ठीक हालत में: अगला काम स्क्रीन पर चलेगा (AI एजेंट) या पिछला अटका = होम */
+    private suspend fun queuePrepare(prev: TaskQueue.Item, next: TaskQueue.Item, prevOk: Boolean) {
+        val direct = next.kind == TaskQueue.Kind.WHATSAPP_SEND || LocalRouter.deleteMedia(next.text) != null ||
+            LiveFast.pick(next.text, Prefs.wakeWords(svc), svc.currentPackage()) != null
+        if (!prevOk || !direct) {
+            try { svc.perform(JSONObject().put("type", "home")) } catch (e: CancellationException) { throw e } catch (_: Exception) {}
+            log("कतार: \"${prev.text.take(20)}\" के बाद होम (${if (!prevOk) "पिछला अटका" else "अगला स्क्रीन पर"})")
+            delay(800)
+        } else delay(350)
+    }
+
+    /** कतार का एक काम - पूरा होने तक रुको (Gemini को 7 सेकंड वाला जवाब नहीं, यह पीछे चलता है) */
+    private suspend fun runQueued(item: TaskQueue.Item): String {
+        if (item.kind == TaskQueue.Kind.WHATSAPP_SEND) return queueWhatsApp(item)
+        // कतार में WhatsApp मैसेज phone_task वाले redirect में न फँसे - सीधे भेजो
+        if (com.dk.assistant.agent.social.WaRoute.isWhatsAppSend(item.text)) {
+            val (c, m) = TaskQueue.parseWa(item.text)
+            if (c.isNotBlank() && m.isNotBlank()) return queueWhatsApp(item.copy(kind = TaskQueue.Kind.WHATSAPP_SEND, contact = c, message = m))
+            return "NEEDS USER CHOICE (nothing was done yet): किसे और क्या मैसेज भेजूँ, सर?. Ask the user"
+        }
+        return phoneTaskOne(item.text, queued = true)
+    }
+
+    private suspend fun queueWhatsApp(item: TaskQueue.Item): String {
+        val sa = com.dk.assistant.agent.android.SocialAgent
+        val args = JSONObject().put("action", "send_message").put("contact", item.contact).put("message", item.message)
+        val r = try { sa.start(svc, args, com.dk.assistant.agent.social.Platform.WHATSAPP) } catch (e: CancellationException) { throw e } catch (e: Exception) { return "FAILED: ${e.message}" }
+        val o = try { JSONObject(r) } catch (_: Exception) { null }
+        if (o == null || o.optString("status") == "error") {
+            val code = o?.optString("error").orEmpty(); val msg = o?.optString("message").orEmpty().ifBlank { r.take(120) }
+            log("कतार WhatsApp: $code $msg")
+            return if (code.contains("contact") || code.contains("ambiguous") || code.contains("not_found") || code.contains("many"))
+                "NEEDS USER CHOICE (nothing was done yet): $msg. Ask the user" else "FAILED: $msg"
+        }
+        val id = o.optString("task_id")
+        // भेजने से पहले "हाँ" वाला सवाल SocialAgent के SYSTEM NOTE से Gemini पूछता है - तब तक रुको
+        val rep = withTimeoutOrNull(150_000) {
+            while (true) {
+                val l = sa.lastReport
+                if (l != null && (id.isBlank() || l.taskId == id) && l.status.finished) return@withTimeoutOrNull l
+                if (taskQueue?.stopped == true) return@withTimeoutOrNull null
+                delay(400)
+            }
+            @Suppress("UNREACHABLE_CODE") null
+        }
+        return when {
+            rep == null -> "FAILED: timeout"
+            rep.status == com.dk.assistant.agent.social.TaskStatus.COMPLETED || rep.status == com.dk.assistant.agent.social.TaskStatus.SUBMITTED_UNVERIFIED -> "DONE: ${rep.message}"
+            rep.status == com.dk.assistant.agent.social.TaskStatus.CANCELLED -> "FAILED: cancel - ${rep.message}"
+            else -> "FAILED: ${rep.message}"
+        }
+    }
+
+    /** कतार का एक छोटा सवाल - Gemini पूछे, जवाब फ़ोन ख़ुद ले (अगली बात या phone_task) */
+    private suspend fun queueAsk(question: String): String? {
+        val since = System.currentTimeMillis()
+        val d = CompletableDeferred<String>()
+        queueAnswer = d
+        visionNote(TaskQueue.askNote(question), evidence = false)
+        log("कतार सवाल: $question")
+        val ans = withTimeoutOrNull(40_000) {
+            while (true) {
+                if (d.isCompleted) return@withTimeoutOrNull d.await()
+                val at = DKState.lastUserAt
+                val u = DKState.lastUser
+                // पूरी बात ("…" वाली अधूरी नहीं), सवाल पूछे जाने के बाद
+                if (at > since + 1500 && u.isNotBlank() && !u.endsWith("…") && System.currentTimeMillis() - at > 600) return@withTimeoutOrNull u
+                delay(200)
+            }
+            @Suppress("UNREACHABLE_CODE") ""
+        }
+        queueAnswer = null
+        return ans?.trim()?.takeIf { it.isNotBlank() && !TaskQueue.isStop(it) }
+    }
+
+    private suspend fun phoneTaskOne(req: String, queued: Boolean = false): String {
         // v3.59: WhatsApp मैसेज = whatsapp_task (पक्का भेजना + जाँच), phone_task नहीं
         if (com.dk.assistant.agent.social.WaRoute.isWhatsAppSend(req)) {
             log("रूटर: WhatsApp मैसेज -> whatsapp_task")
@@ -1903,9 +2141,11 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
         val job = agent.run(req, speak = false, note = note)
         // v3.41: 20s -> 7s. Gemini tool ke jawab tak CHUP rehta hai - 20s chuppi = "sun hi nahi raha". Ab 7s me
         // "kar raha hoon" bolta hai; kaam peeche chalta rehta hai aur poora hote hi lateNote se batata hai.
-        val finished = withTimeoutOrNull(AGENT_WAIT_MS) { job.join() } != null
+        // v3.87: कतार में = पूरा होने तक (90s) रुको, फिर अगला काम; बाद वाला संदेश नहीं
+        val finished = withTimeoutOrNull(if (queued) 90_000 else AGENT_WAIT_MS) { job.join() } != null
+        if (queued && !finished) job.cancel()
         val reply = DKState.lastReply.takeIf { it != before && it.isNotBlank() }
-        if (!finished) {
+        if (!finished && !queued) {
             log("phone_task ${AGENT_WAIT_MS / 1000}s में पूरा नहीं - Gemini को सच बताया (चल रहा है), पूरा होने पर बताऊँगा")
             svc.scope.launch {
                 val done = withTimeoutOrNull(120_000) { job.join() } != null

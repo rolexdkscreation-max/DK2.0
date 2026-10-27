@@ -229,12 +229,9 @@ class ChatActivity : AppCompatActivity() {
     }
 
     private fun render() {
-        status.text = when (DKState.mode) {
-            Mode.THINKING -> "जवाब आ रहा है…"
-            Mode.WORKING -> "काम कर रहा है…"
-            Mode.SPEAKING -> "Speaking • बोल रहा है…"
-            Mode.LISTENING -> "Listening • सुन रहा है…"
-            else -> if (DKAccessibilityService.instance != null) "ऑनलाइन • फ़ोन कंट्रोल चालू" else "सिर्फ़ बातचीत • फ़ोन कंट्रोल बंद"
+        // v3.88: सिर्फ़ तीन स्थितियाँ (Listening / Thinking / Speaking); खाली समय में पहले वाली ऑनलाइन जानकारी
+        status.text = ThreeState.label(DKState.mode, false, false) ?: run {
+            if (DKAccessibilityService.instance != null) "ऑनलाइन • फ़ोन कंट्रोल चालू" else "सिर्फ़ बातचीत • फ़ोन कंट्रोल बंद"
         }
         val msgs = DKState.messages
         if (awaiting && replyStarted()) awaiting = false

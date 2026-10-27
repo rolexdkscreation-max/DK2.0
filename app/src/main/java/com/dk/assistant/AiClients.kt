@@ -222,13 +222,13 @@ class GeminiClient(private val key: String, private val model: String) : AiClien
      * Google Search se jawab + kahan se mila (sources).
      * deep = mushkil sawaal: zyada sochne wala model, kai sources se jaanch, lamba jawab.
      */
-    fun search(system: String, history: List<Turn>, question: String, deep: Boolean, think: Boolean = false): SearchResult {
+    fun search(system: String, history: List<Turn>, question: String, deep: Boolean, think: Boolean = false, maxModels: Int = 99): SearchResult {
         var last: AiException? = null
         val order = when {
             think -> (THINK_MODELS + DEEP_MODELS + GeminiModels.order(model, BACKUP_MODELS)).distinct()
             deep -> (DEEP_MODELS + GeminiModels.order(model, BACKUP_MODELS)).distinct()
             else -> GeminiModels.order(model, BACKUP_MODELS)
-        }
+        }.take(maxModels.coerceAtLeast(1))
         for (m in order) {
           var withThinking = true
           for (attempt in 0..1) {
@@ -268,7 +268,8 @@ class GeminiClient(private val key: String, private val model: String) : AiClien
                 if (last == null || GeminiModels.isGone(last.code, last.message.orEmpty())) last = e
                 val msg = (e.message ?: "").lowercase()
                 // galat key = sab model fail honge -> ruko. (403 "model ki ijazat nahi" = agla model try karo)
-                if (e.code == 401 || (e.code == 403 && (msg.contains("api key") || msg.contains("api_key")))) throw e
+                // v3.87: 400 "API key not valid" bhi galat key hai (pehle har model par dobara jaata tha)
+                if (e.code == 401 || ((e.code == 403 || e.code == 400) && (msg.contains("api key") || msg.contains("api_key")))) throw e
                 // is model ko sochne ki setting pasand nahi -> bina uske ek baar aur
                 if (e.code == 400 && withThinking && msg.contains("think")) { withThinking = false; continue }
                 break

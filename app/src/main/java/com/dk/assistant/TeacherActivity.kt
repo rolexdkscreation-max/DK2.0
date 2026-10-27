@@ -38,6 +38,26 @@ import java.util.Locale
 
 class TeacherActivity : AppCompatActivity() {
 
+    companion object {
+        /** v3.87: पढ़ाई की बात सुनकर अपने-आप खुला (बटन से नहीं) */
+        const val EXTRA_AUTO = "teacher_auto"
+    }
+
+    /** DK का पाठ (TeacherBoard) बदला = पन्ने पर लिखो */
+    private var shownVersion = -1
+    private val boardListener: () -> Unit = { runOnUiThread { refreshLesson() } }
+
+    private fun refreshLesson() {
+        if (!::whiteboardView.isInitialized) return
+        val v = TeacherBoard.version
+        if (v == shownVersion) return
+        shownVersion = v
+        whiteboardView.setLesson(TeacherBoard.boardLines())
+    }
+
+    /** "बंद करो" / "वापस जाओ" (आवाज़ से) */
+    fun closeFromVoice() { if (!isFinishing) finish() }
+
     private lateinit var whiteboardView: WhiteboardView
     private lateinit var brainManager: BrainManager
     private var tts: TextToSpeech? = null
@@ -183,7 +203,7 @@ class TeacherActivity : AppCompatActivity() {
         val eraseBtn = Button(this).apply { text = "🧹 रबर"; setOnClickListener { whiteboardView.setMode(WhiteboardView.Mode.ERASE) } }
         val undoBtn = Button(this).apply { text = "↩️ अन-डू"; setOnClickListener { whiteboardView.undo() } }
         val redoBtn = Button(this).apply { text = "↪️ री-डू"; setOnClickListener { whiteboardView.redo() } }
-        val clearBtn = Button(this).apply { text = "🗑️ साफ़ करें"; setOnClickListener { whiteboardView.clear() } }
+        val clearBtn = Button(this).apply { text = "🗑️ साफ़ करें"; setOnClickListener { whiteboardView.clear(); whiteboardView.clearLesson(); TeacherBoard.reset(); shownVersion = TeacherBoard.version } }
 
         // Color selection buttons
         val btnBlack = Button(this).apply { text = "●"; setTextColor(Color.BLACK); setOnClickListener { whiteboardView.setDrawColor(Color.BLACK) } }
@@ -310,7 +330,16 @@ class TeacherActivity : AppCompatActivity() {
         rootLayout.addView(whiteboardView, boardParams)
 
         setContentView(rootLayout)
+
+        // v3.87: DK जो पढ़ाए, वही इस पन्ने पर (DK Live / आम आवाज़ - दोनों)
+        TeacherLink.attach(this)
+        DKState.listen(boardListener)
+        refreshLesson()
+        if (intent?.getBooleanExtra(EXTRA_AUTO, false) == true) statusText.text = "DK जो समझाएगी, वह यहीं लिखा दिखेगा • बंद करने के लिए बोलें \"बंद करो\""
     }
+
+    override fun onResume() { super.onResume(); TeacherLink.visible = true; refreshLesson() }
+    override fun onPause() { TeacherLink.visible = false; super.onPause() }
 
     private fun startVoiceInput() {
         val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
@@ -357,7 +386,7 @@ class TeacherActivity : AppCompatActivity() {
                 progressBar.visibility = View.GONE
                 statusText.text = ""
 
-                processTeacherResponse(response)
+                processTeacherResponse(response, userQuestion)
 
             } catch (e: Exception) {
                 Log.e("TeacherActivity", "Error asking teacher", e)
@@ -367,24 +396,16 @@ class TeacherActivity : AppCompatActivity() {
         }
     }
 
-    private fun processTeacherResponse(response: String) {
-        var cleanText = response
-
-        // Extract [WRITE]...[/WRITE] tags and write to whiteboard
+    private fun processTeacherResponse(response: String, question: String = "") {
+        // [WRITE] वाले मुख्य बिंदु भी पूरे जवाब के साथ - पूरा समझाया हुआ पन्ने पर, चरण-दर-चरण (v3.87)
         val regex = Regex("\\[WRITE\\](.*?)\\[/WRITE\\]", RegexOption.DOT_MATCHES_ALL)
-        val matches = regex.findAll(response)
+        val boardText = response.replace(regex) { it.groupValues[1].trim() + "\n" }.trim()
+        val cleanText = response.replace(regex, "").trim()
+        if (boardText.isNotEmpty()) TeacherBoard.addLocal(question.ifBlank { "सवाल" }, boardText)
+        refreshLesson()
 
-        for (match in matches) {
-            val point = match.groupValues[1].trim()
-            if (point.isNotEmpty()) {
-                whiteboardView.addBoardText(point)
-            }
-        }
-
-        cleanText = cleanText.replace(regex, "").trim()
-
-        // Speak clean text
-        if (cleanText.isNotEmpty()) {
+        // DK Live चल रहा हो तो फ़ोन की दूसरी आवाज़ नहीं (DK की अपनी आवाज़ ही)
+        if (cleanText.isNotEmpty() && !DKState.live) {
             tts?.speak(cleanText, TextToSpeech.QUEUE_FLUSH, null, "TeacherTTS")
         }
     }
@@ -427,6 +448,8 @@ class TeacherActivity : AppCompatActivity() {
     }
 
     override fun onDestroy() {
+        DKState.unlisten(boardListener)
+        TeacherLink.detach(this)
         activityScope.cancel()
         tts?.stop()
         tts?.shutdown()

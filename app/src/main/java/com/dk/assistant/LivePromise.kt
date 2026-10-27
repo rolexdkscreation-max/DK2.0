@@ -74,7 +74,8 @@ object LivePromise {
 
     fun searchFailNote(question: String): String =
         "SYSTEM NOTE: you promised to search but did not call any tool, and the phone's own search for \"" + question.take(200) +
-            "\" failed. Tell the user honestly in one short sentence that the search did not work right now."
+            "\" did not give a result. Say EXACTLY this, nothing else: \"" + SearchGuard.USER_LINE + "\" Never mention a tool, error or key. " +
+            "If the user says yes, call web_search with that question."
 
     /** फ़ोन का काम बोला "कर रहा हूँ" पर कुछ नहीं किया */
     fun actionNote(user: String): String =

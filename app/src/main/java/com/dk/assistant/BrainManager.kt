@@ -228,7 +228,45 @@ class BrainManager(private val ctx: Context) {
             throw lastError ?: AiException(-1, "NO_KEY")
         }
 
-    fun canSearch() = Prefs.webAnswers(ctx) && Prefs.key(ctx, "gemini").isNotBlank()
+    /**
+     * v3.87: खोज किस हिस्से से हो रही है - DK Live से हो तो पहले Live की अपनी Gemini key।
+     * पहले हमेशा DK चैट की key लगती थी: चैट में Groq चुना/key खाली = Live की हर खोज fail।
+     */
+    @Volatile var fromLive = false
+
+    /** खोज की keys क्रम में (अपनी पहले, दूसरी Gemini key बचाव में) - [SearchGuard.keys] */
+    fun searchKeys(): List<String> =
+        SearchGuard.keys(fromLive, Prefs.key(ctx, "gemini"), Prefs.scopeKey(ctx, ApiScopes.LIVE, "gemini"))
+
+    fun canSearch() = Prefs.webAnswers(ctx) && searchKeys().isNotEmpty()
+
+    /** आख़िरी खोज क्यों नहीं चली (लॉग + Live का जवाब) */
+    @Volatile var lastSearchFail: SearchGuard.Fail = SearchGuard.Fail.OTHER
+        private set
+
+    private fun failOf(e: Throwable?): SearchGuard.Fail = when (e) {
+        null -> SearchGuard.Fail.EMPTY
+        is AiException -> SearchGuard.classify(e.code, e.message)
+        is java.io.InterruptedIOException -> SearchGuard.Fail.TIMEOUT
+        is java.net.UnknownHostException, is java.net.ConnectException, is javax.net.ssl.SSLException -> SearchGuard.Fail.NETWORK
+        else -> SearchGuard.classify(0, e.message)
+    }
+
+    /** हर key बारी-बारी: key/quota की दिक़्क़त = अगली key; नेटवर्क = वहीं रुको (दूसरी key से फ़ायदा नहीं) */
+    private suspend fun <T> withSearchKeys(what: String, block: suspend (String) -> T): T {
+        val keys = searchKeys()
+        if (keys.isEmpty()) { lastSearchFail = SearchGuard.Fail.NO_KEY; DKLog.d("खोज ($what): Gemini key नहीं डली"); throw AiException(0, "NO_KEY") }
+        var last: Throwable? = null
+        for ((i, k) in keys.withIndex()) {
+            try { return block(k) } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (e: Exception) {
+                last = e
+                val f = failOf(e); lastSearchFail = f
+                DKLog.d("खोज ($what) key ${i + 1}/${keys.size} fail: ${SearchGuard.hindi(f)} - ${e.javaClass.simpleName} ${e.message?.take(160)}")
+                if (!SearchGuard.tryNextKey(f)) break
+            }
+        }
+        throw last ?: AiException(0, "search fail")
+    }
 
     /** Internet (Google Search) se pata karke sahi jawab - bolne layak chhota text. */
     suspend fun searchAnswer(question: String): String = search(question, deep = false).text
@@ -244,7 +282,7 @@ class BrainManager(private val ctx: Context) {
      */
     suspend fun think(question: String): SearchResult = search(question, deep = true, think = true)
 
-    fun canThink() = Prefs.key(ctx, "gemini").isNotBlank()
+    fun canThink() = searchKeys().isNotEmpty()
 
     /**
      * v3.80: ताज़ा जानकारी (deep/thorough/think नहीं) = [liveSearch] - कई तरफ़ से खोज, मिलाकर पक्का जवाब.
@@ -257,35 +295,53 @@ class BrainManager(private val ctx: Context) {
      * v3.80: लाइव जानकारी - [LiveSearch.plan] की 2-3 खोजें साथ-साथ (सरकारी सवाल = पहले सरकारी वेबसाइटें),
      * फिर सब मिलाकर एक जवाब. कोई खोज न चले = पुराना एक-खोज वाला रास्ता. स्रोत याद ("कहाँ से पता किया?").
      */
-    suspend fun liveSearch(question: String): SearchResult = withContext(Dispatchers.IO) {
+    suspend fun liveSearch(question: String): SearchResult = withSearchKeys("लाइव") { key -> liveSearchWith(key, question) }
+
+    private suspend fun liveSearchWith(key: String, question: String): SearchResult = withContext(Dispatchers.IO) {
         syncEpoch()
         NowClock.syncAsync()
-        val key = Prefs.key(ctx, "gemini"); val model = Prefs.model(ctx, "gemini")
+        val model = Prefs.model(ctx, "gemini")
         val name = Prefs.assistantName(ctx); val user = Prefs.userName(ctx)
         val nowLine = NowClock.line()
         val angles = LiveSearch.plan(question)
+        var firstKeyError: Exception? = null
         val reports = coroutineScope {
             angles.map { a ->
                 async {
                     try {
-                        kotlinx.coroutines.withTimeoutOrNull(18_000) {
-                            GeminiClient(key, model).search(LiveSearch.angleSystem(a, nowLine, name), emptyList(),
-                                "$question\n(Search date: ${NowClock.dateEn()})", deep = false)
+                        // v3.87: runInterruptible - timeout सच में HTTP कॉल रोके (पहले 3-4 मॉडल × 35 सेकंड लटकती थी)
+                        kotlinx.coroutines.withTimeoutOrNull(14_000) {
+                            kotlinx.coroutines.runInterruptible {
+                                GeminiClient(key, model).search(LiveSearch.angleSystem(a, nowLine, name), emptyList(),
+                                    "$question\n(Search date: ${NowClock.dateEn()})", deep = false, maxModels = 2)
+                            }
                         }?.let { a.id to it }
-                    } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (e: Exception) { DKLog.d("लाइव खोज ${a.id} fail: ${e.message}"); null }
+                    } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (e: Exception) {
+                        DKLog.d("लाइव खोज ${a.id} fail: ${SearchGuard.hindi(failOf(e))} - ${e.message?.take(160)}")
+                        // ग़लत key / quota = सब कोण fail होंगे; ऊपर अगली key आज़माई जाए
+                        if (SearchGuard.tryNextKey(failOf(e)) && failOf(e) != SearchGuard.Fail.MODEL) firstKeyError = firstKeyError ?: e
+                        null
+                    }
                 }
             }.awaitAll().filterNotNull()
         }
         val good = reports.filter { !LiveSearch.empty(it.second.text) }
         val sources = LiveSearch.mergeSources(reports.map { it.second.sources })
-        if (good.isEmpty()) return@withContext searchOnce(question, deep = false, thorough = false, think = false)
+        if (good.isEmpty()) {
+            firstKeyError?.let { throw it }   // key/quota - अगली key से (withSearchKeys)
+            return@withContext kotlinx.coroutines.withTimeoutOrNull(14_000) {
+                searchOnceWith(key, question, deep = false, thorough = false, think = false, maxModels = 2)
+            } ?: throw AiException(0, "timeout")
+        }
         val merged = try {
-            kotlinx.coroutines.withTimeoutOrNull(15_000) {
-                val client = GeminiClient(key, model)
-                val t = client.stream(LiveSearch.mergeSystem(nowLine, name, user) + Memory.factsBlock(ctx), emptyList(),
-                    LiveSearch.mergeInput(question, good.map { it.first to it.second.text })) { }
-                lastUsed = client.label
-                t
+            kotlinx.coroutines.withTimeoutOrNull(10_000) {
+                kotlinx.coroutines.runInterruptible {
+                    val client = GeminiClient(key, model)
+                    val t = client.stream(LiveSearch.mergeSystem(nowLine, name, user) + Memory.factsBlock(ctx), emptyList(),
+                        LiveSearch.mergeInput(question, good.map { it.first to it.second.text })) { }
+                    lastUsed = client.label
+                    t
+                }
             }
         } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (e: Exception) { DKLog.d("लाइव खोज मिलाना fail: ${e.message}"); null }
         val ans = (merged?.takeIf { it.isNotBlank() } ?: good.first().second.text)
@@ -296,9 +352,19 @@ class BrainManager(private val ctx: Context) {
         SearchResult(ans, sources)
     }
 
-    private suspend fun searchOnce(question: String, deep: Boolean, thorough: Boolean = false, think: Boolean = false): SearchResult = withContext(Dispatchers.IO) {
+    private suspend fun searchOnce(question: String, deep: Boolean, thorough: Boolean = false, think: Boolean = false): SearchResult =
+        withSearchKeys(if (think) "सोच" else "गहरी") { k -> searchOnceWith(k, question, deep, thorough, think) }
+
+    /** v3.87: फ़ौरन वाली एक खोज (दोबारा कोशिश में) - एक मॉडल, छोटा समय */
+    suspend fun quickSearch(question: String): SearchResult = withSearchKeys("दोबारा") { k ->
+        kotlinx.coroutines.withTimeoutOrNull(15_000) { searchOnceWith(k, question, deep = false, thorough = false, think = false, maxModels = 2) }
+            ?: throw AiException(0, "timeout")
+    }
+
+    private suspend fun searchOnceWith(key: String, question: String, deep: Boolean, thorough: Boolean = false, think: Boolean = false,
+                                       maxModels: Int = 99): SearchResult = withContext(Dispatchers.IO) {
         syncEpoch()
-        val client = GeminiClient(Prefs.key(ctx, "gemini"), Prefs.model(ctx, "gemini"))
+        val client = GeminiClient(key, Prefs.model(ctx, "gemini"))
         val name = Prefs.assistantName(ctx); val user = Prefs.userName(ctx)
         val sys = buildString {
             append("You are $name, a Hindi voice assistant")
@@ -335,7 +401,7 @@ class BrainManager(private val ctx: Context) {
             Prefs.personality(ctx).let { if (it.isNotBlank()) append(" Extra: $it") }
             append(Memory.factsBlock(ctx))
         }
-        val r = client.search(sys, history, question, deep || thorough, think)
+        val r = kotlinx.coroutines.runInterruptible { client.search(sys, history, question, deep || thorough, think, maxModels) }
         val ans = r.text.replace(Regex("[*#`]"), "").replace(Regex("\\[\\d+(,\\s*\\d+)*\\]"), "").trim()
         lastUsed = client.label
         LiveSearch.remember(question, r.sources)
@@ -398,6 +464,7 @@ class BrainManager(private val ctx: Context) {
             if (Prefs.friendMode(ctx)) append("\n" + FriendStyle.persona(GirlfriendPersona.female(Prefs.voiceGender(ctx)), user)).append(FriendTalk.block(ctx))
             append(CareTime.block()).append(LiveSearch.memoryBlock())   // v3.80: समय देखकर फ़िक्र + पिछली खोज के स्रोत
             append(CalmPersona.block()).append(GirlfriendPersona.block(Prefs.userName(ctx)))   // v3.76: मालिक का तय स्वभाव - हमेशा
+            append(WorkChatMode.block(live = false)).append(TeacherBoard.block()).append(LocalMemory.promptBlock(ctx)).append(NetProbe.refresh(ctx).let { NetSpeed.promptNote() })   // v3.88: लोकल याददाश्त का छोटा सार | v3.87: काम/बातचीत मोड + टीचर बोर्ड (स्वभाव वही)
         }
     }
 
@@ -424,6 +491,7 @@ class BrainManager(private val ctx: Context) {
             append(Memory.factsBlock(ctx))
             append(CareTime.block()).append(LiveSearch.memoryBlock())   // v3.80: समय देखकर फ़िक्र + पिछली खोज के स्रोत
             append(CalmPersona.block()).append(GirlfriendPersona.block(Prefs.userName(ctx)))   // v3.76: मालिक का तय स्वभाव - classic आवाज़ में भी
+            append(WorkChatMode.block(live = false)).append(TeacherBoard.block()).append(LocalMemory.promptBlock(ctx)).append(NetProbe.refresh(ctx).let { NetSpeed.promptNote() })   // v3.88: लोकल याददाश्त का छोटा सार | v3.87: काम/बातचीत मोड + टीचर बोर्ड (स्वभाव वही)
         }
     }
 
@@ -519,6 +587,7 @@ class BrainManager(private val ctx: Context) {
             if (Prefs.friendMode(ctx)) append("\n").append(FriendStyle.persona(f, user)).append(FriendTalk.block(ctx))
             append(CareTime.block()).append(LiveSearch.memoryBlock())   // v3.80: समय देखकर फ़िक्र + पिछली खोज के स्रोत
             append(CalmPersona.block()).append(GirlfriendPersona.block(Prefs.userName(ctx)))   // v3.76: मालिक का तय स्वभाव - Live (सीधी आवाज़ / Gemini TTS / Edge) सब में
+            append(WorkChatMode.block(live = true)).append(TeacherBoard.block()).append(LocalMemory.promptBlock(ctx))   // v3.88: लोकल याददाश्त का छोटा सार | v3.87: काम/बातचीत मोड + कई काम की कतार + टीचर बोर्ड (स्वभाव वही)
         }
     }
 
