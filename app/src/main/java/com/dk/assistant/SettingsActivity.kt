@@ -697,6 +697,16 @@ class SettingsActivity : AppCompatActivity() {
                 lifecycleScope.launch(kotlinx.coroutines.Dispatchers.IO) { try { HD.prepareAcks(this@SettingsActivity) } catch (_: Exception) {} }
                 toast("सेव हो गया")
             })
+        // v3.81: सिखाना न चले तो - "हे डीके / हेलो डीके" बोलकर (पुराना इंटरनेट वाला सुनना + "हाँ सर")
+        row(box, button("बिना सिखाए चलाओ") {
+            Prefs.edit(this) { putBoolean("wake_mode", true); putBoolean("mic_user_off", false); putBoolean("hey_dk_on", false) }
+            if (::swWake.isInitialized) swWake.isChecked = true
+            swOn.isChecked = false
+            Setup.startKeepAlive(this)
+            DKAccessibilityService.instance?.startWakeLoopIfEnabled()
+            refresh()
+            toast("अब \"हे डीके\" या \"हेलो डीके\" बोलिए")
+        })
         row(box,
             button("बैटरी की रोक हटाओ") { Setup.requestBatteryExempt(this) },
             button("मिटाओ") {
@@ -708,6 +718,7 @@ class SettingsActivity : AppCompatActivity() {
         refresh()
         hint(box, "कैसे काम करता है: आप 5 बार \"Hey DK\" बोलते हैं (या \"Hello DK\" — जो भी चुनें, पाँचों बार वही)। फ़ोन उससे आपके बोलने का तरीका और आपकी आवाज़ की पहचान बनाता है। सुनते समय हर छोटी बात फ़ोन के अंदर ही मिलाई जाती है — न मिले तो भूल जाता है, कहीं भेजता नहीं।")
         hint(box, "\"Hey DK, WhatsApp खोलो\" एक साँस में भी बोल सकते हैं — तब DK सीधे वही करेगा। सिर्फ़ \"Hey DK\" कहा तो \"हाँ सर\" बोलकर सुनेगा, और करीब 30 सेकंड चुप रहने पर फिर सो जाएगा।")
+        hint(box, "सिखाना न हो पाए तो \"बिना सिखाए चलाओ\" दबाइए: तब \"हे डीके, मौसम बताओ\" या सिर्फ़ \"हेलो डीके\" बोलने पर DK \"हाँ सर\" बोलकर सुनेगा। पर यह तरीका आपकी बात इंटरनेट (Groq/Gemini) से पहचानता है, थोड़ा धीमा है और किसी की भी आवाज़ पर जाग सकता है।")
         hint(box, "सीमाएँ: ऊपर DK की notification हमेशा दिखेगी (Android का नियम)। बैटरी थोड़ी ज़्यादा लगती है। Force stop करने या फ़ोन बंद होने पर नहीं सुनेगा। कॉल के दौरान माइक कॉल का होता है। यह फ़ोन का ताला नहीं है — आपकी आवाज़ की रिकॉर्डिंग से धोखा हो सकता है।")
     }
 
@@ -729,16 +740,33 @@ class SettingsActivity : AppCompatActivity() {
                     if (err != null) { tv.text = UiLang.s(err); kotlinx.coroutines.delay(2500) }
                 }
                 val takes = ArrayList<ByteArray>()
+                // पहले सुनने वाला माइक-रास्ता; उस पर आवाज़ न आए तो Live वाला (कई फ़ोन पर पहला बहुत धीमा आता है)
+                val sources = listOf(android.media.MediaRecorder.AudioSource.VOICE_RECOGNITION, android.media.MediaRecorder.AudioSource.VOICE_COMMUNICATION)
+                var srcIdx = 0
                 withDkMicPaused {
                     var tries = 0; var redo = -1; var outlierDone = false
                     while (takes.size < WM.TAKES || redo >= 0) {
                         val n = if (redo >= 0) redo + 1 else takes.size + 1
-                        tv.text = UiLang.s("नमूना") + " $n/${WM.TAKES} — " + UiLang.s("आम आवाज़ में, जैसे रोज़ बुलाएँगे, बोलिए:") + "\n\n\"Hey DK\""
-                        val take = HD.recordTake { }
-                        if (take == null || !WM.goodLength(take.speechMs)) {
-                            if (++tries >= 4) { tv.text = UiLang.s("आवाज़ ठीक से नहीं आई — शांत जगह पर फिर कोशिश करें"); return@withDkMicPaused }
-                            tv.text = UiLang.s(if (take != null && take.speechMs > WM.MAX_MS) "बहुत लंबा हो गया — सिर्फ़ \"Hey DK\" बोलिए" else "आवाज़ कम आई — थोड़ा साफ़ बोलिए")
-                            kotlinx.coroutines.delay(1200); continue
+                        val ask = UiLang.s("नमूना") + " $n/${WM.TAKES} — " + UiLang.s("आम आवाज़ में, जैसे रोज़ बुलाएँगे, बोलिए:") + "\n\n\"हे डीके\" (Hey DK)"
+                        tv.text = ask
+                        val take = HD.recordTake(sources[srcIdx]) { lv ->
+                            val bars = (lv * 12).toInt().coerceIn(0, 12)
+                            runOnUiThread { tv.text = ask + "\n\n" + UiLang.s("माइक:") + " " + "▮".repeat(bars) + "▯".repeat(12 - bars) }
+                        }
+                        val frames = if (take == null) 0 else kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) { HD.spokenFrames(take.pcm) }
+                        if (take == null || frames !in 20..300) {
+                            tries++
+                            // इस रास्ते पर दो बार कुछ नहीं आया -> दूसरा माइक-रास्ता, शुरू से
+                            if (tries >= 2 && srcIdx == 0 && takes.isEmpty()) {
+                                srcIdx = 1; tries = 0
+                                tv.text = UiLang.s("माइक दूसरे तरीके से खोल रहा हूँ — फिर से बोलिए"); kotlinx.coroutines.delay(1200); continue
+                            }
+                            if (tries >= 4) {
+                                tv.text = UiLang.s("आवाज़ ठीक से नहीं आई — शांत जगह पर फिर कोशिश करें") + "\n(" + HD.lastInfo + ")"
+                                return@withDkMicPaused
+                            }
+                            tv.text = UiLang.s(if (frames > 300) "बहुत लंबा हो गया — सिर्फ़ \"हे डीके\" बोलिए" else "आवाज़ नहीं पकड़ी — फ़ोन मुँह के पास रखकर थोड़ा साफ़ बोलिए") + "\n(" + HD.lastInfo + ")"
+                            kotlinx.coroutines.delay(1500); continue
                         }
                         tries = 0
                         if (redo >= 0) { takes[redo] = take.pcm; redo = -1 } else takes.add(take.pcm)
@@ -751,12 +779,13 @@ class SettingsActivity : AppCompatActivity() {
                                 redo = bad; continue
                             }
                         }
-                        kotlinx.coroutines.delay(500)
+                        tv.text = UiLang.s("ठीक है") + " ✓"
+                        kotlinx.coroutines.delay(600)
                     }
                 }
                 if (takes.size < WM.TAKES) return@launch
                 tv.text = UiLang.s("सीख रहा हूँ…")
-                val err = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) { HD.save(this@SettingsActivity, takes) }
+                val err = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) { HD.save(this@SettingsActivity, takes, sources[srcIdx]) }
                 if (err != null) { tv.text = UiLang.s(err); return@launch }
                 if (::swWake.isInitialized) swWake.isChecked = true
                 Setup.startKeepAlive(this@SettingsActivity)

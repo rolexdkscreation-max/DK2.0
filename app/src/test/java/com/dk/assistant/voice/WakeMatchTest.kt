@@ -125,6 +125,22 @@ class WakeMatchTest {
         assertTrue(WakeMatch.goodLength(800)); assertFalse(WakeMatch.goodLength(100)); assertFalse(WakeMatch.goodLength(4000))
     }
 
+    @Test fun vad_quietPhoneMicStillCaught() {
+        // धीमा माइक: शोर ~20, बोलना ~150 (पुराना TurnDetector 220 से नीचे "चुप" मानता था)
+        val v = WakeMatch.Vad(40, endMs = 500)
+        val evs = ArrayList<WakeMatch.Vad.Ev>()
+        repeat(10) { evs.add(v.feed(20.0)) }
+        repeat(18) { evs.add(v.feed(if (it == 6) 60.0 else 150.0)) }   // "हे ... डीके" बीच में हल्का ठहराव
+        repeat(15) { evs.add(v.feed(22.0)) }
+        assertEquals(1, evs.count { it == WakeMatch.Vad.Ev.START })
+        assertEquals(1, evs.count { it == WakeMatch.Vad.Ev.END })
+        assertTrue(evs.indexOf(WakeMatch.Vad.Ev.START) in 10..13)
+        assertTrue(v.speechMs in 600..760)
+        // तेज़ शोर में आम आवाज़ = शुरू नहीं
+        val loud = WakeMatch.Vad(40)
+        repeat(30) { assertEquals(WakeMatch.Vad.Ev.NONE, loud.feed(800.0 + (it % 3) * 20)) }
+    }
+
     private fun src(path: String): String = listOf(File("src/main/$path"), File("app/src/main/$path")).first { it.exists() }.readText()
 
     @Test fun wiring_localWakeBeforeCloudAndBootAndSettings() {
@@ -134,7 +150,7 @@ class WakeMatchTest {
         assertTrue(svc.contains("HeyDk.playAck(") && svc.contains("gemLive.idleExitMs = 30_000"))
         assertTrue(svc.contains("HeyDk.on(this) && !Prefs.micUserOff(this)) Setup.startKeepAlive(this)"))
         val hd = src("java/com/dk/assistant/voice/HeyDk.kt")
-        assertTrue(hd.contains("VoicePrint.threshold(") && hd.contains("MediaRecorder.AudioSource.VOICE_RECOGNITION"))
+        assertTrue(hd.contains("VoicePrint.threshold(") && hd.contains("AudioRecord(source(c), RATE"))
         assertFalse("आवाज़ इंटरनेट पर नहीं", hd.contains("okhttp") || hd.contains("Transcriber"))
         val set = src("java/com/dk/assistant/SettingsActivity.kt")
         assertTrue(set.contains("heyDkCard(box)") && set.contains("enrollHeyDk"))
