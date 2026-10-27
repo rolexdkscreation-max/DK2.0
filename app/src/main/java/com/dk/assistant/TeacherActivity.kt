@@ -2,15 +2,18 @@ package com.dk.assistant
 
 import android.content.Intent
 import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import android.graphics.Color
 import android.net.Uri
 import android.os.Bundle
+import android.provider.MediaStore
 import android.speech.RecognizerIntent
 import android.speech.tts.TextToSpeech
 import android.util.Log
 import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
+import android.view.inputmethod.InputMethodManager
 import android.widget.Button
 import android.widget.EditText
 import android.widget.HorizontalScrollView
@@ -40,6 +43,9 @@ class TeacherActivity : AppCompatActivity() {
     private var tts: TextToSpeech? = null
     private lateinit var progressBar: ProgressBar
     private lateinit var statusText: TextView
+    private lateinit var queryInput: EditText
+
+    private var capturedImageUri: Uri? = null
 
     private val activityScope = CoroutineScope(Dispatchers.Main + Job())
 
@@ -50,7 +56,31 @@ class TeacherActivity : AppCompatActivity() {
             val matches = result.data?.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS)
             if (!matches.isNullOrEmpty()) {
                 val spokenText = matches[0]
-                askTeacher(spokenText, useBoardImage = false)
+                askTeacher(spokenText, useBoardImage = false, customImageB64 = null)
+            }
+        }
+    }
+
+    private val cameraLauncher = registerForActivityResult(
+        ActivityResultContracts.TakePicture()
+    ) { success ->
+        if (success) {
+            capturedImageUri?.let { uri ->
+                try {
+                    val inputStream = contentResolver.openInputStream(uri)
+                    val bitmap = BitmapFactory.decodeStream(inputStream)
+                    inputStream?.close()
+                    if (bitmap != null) {
+                        activityScope.launch(Dispatchers.Default) {
+                            val b64 = jpegBase64(bitmap)
+                            withContext(Dispatchers.Main) {
+                                askTeacher("इस फोटो में दिए गए सवाल को समझाएं और हल करें।", useBoardImage = false, customImageB64 = b64)
+                            }
+                        }
+                    }
+                } catch (e: Exception) {
+                    Toast.makeText(this, "फोटो लोड करने में त्रुटि: ${e.message}", Toast.LENGTH_SHORT).show()
+                }
             }
         }
     }
@@ -144,7 +174,12 @@ class TeacherActivity : AppCompatActivity() {
         }
 
         val drawBtn = Button(this).apply { text = "✏️ पेंसिल"; setOnClickListener { whiteboardView.setMode(WhiteboardView.Mode.DRAW) } }
-        val typeBtn = Button(this).apply { text = "🔤 टाइप"; setOnClickListener { whiteboardView.setMode(WhiteboardView.Mode.TEXT) } }
+        val typeBtn = Button(this).apply { text = "🔤 टाइप"; setOnClickListener { 
+            whiteboardView.setMode(WhiteboardView.Mode.TEXT) 
+            queryInput.requestFocus()
+            val imm = getSystemService(INPUT_METHOD_SERVICE) as InputMethodManager
+            imm.showSoftInput(queryInput, InputMethodManager.SHOW_IMPLICIT)
+        } }
         val eraseBtn = Button(this).apply { text = "🧹 रबर"; setOnClickListener { whiteboardView.setMode(WhiteboardView.Mode.ERASE) } }
         val undoBtn = Button(this).apply { text = "↩️ अन-डू"; setOnClickListener { whiteboardView.undo() } }
         val redoBtn = Button(this).apply { text = "↪️ री-डू"; setOnClickListener { whiteboardView.redo() } }
@@ -175,10 +210,34 @@ class TeacherActivity : AppCompatActivity() {
             setPadding(0, 8, 0, 0)
         }
 
-        val queryInput = EditText(this).apply {
+        queryInput = EditText(this).apply {
             hint = "यहाँ सवाल लिखें या बोलें..."
             textSize = 14f
             layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+            setOnClickListener {
+                requestFocus()
+                val imm = getSystemService(INPUT_METHOD_SERVICE) as InputMethodManager
+                imm.showSoftInput(this, InputMethodManager.SHOW_IMPLICIT)
+            }
+        }
+
+        val cameraBtn = Button(this).apply {
+            text = "📷"
+            setOnClickListener {
+                try {
+                    val photoFile = File(cacheDir, "teacher_camera_${System.currentTimeMillis()}.jpg")
+                    capturedImageUri = FileProvider.getUriForFile(
+                        this@TeacherActivity,
+                        "$packageName.files",
+                        photoFile
+                    )
+                    capturedImageUri?.let { uri ->
+                        cameraLauncher.launch(uri)
+                    }
+                } catch (e: Exception) {
+                    Toast.makeText(this@TeacherActivity, "कैमरा शुरू करने में त्रुटि: ${e.message}", Toast.LENGTH_SHORT).show()
+                }
+            }
         }
 
         val micBtn = Button(this).apply {
@@ -192,7 +251,7 @@ class TeacherActivity : AppCompatActivity() {
                 val text = queryInput.text.toString().trim()
                 if (text.isNotEmpty()) {
                     queryInput.text.clear()
-                    askTeacher(text, useBoardImage = false)
+                    askTeacher(text, useBoardImage = false, customImageB64 = null)
                 }
             }
         }
@@ -202,11 +261,12 @@ class TeacherActivity : AppCompatActivity() {
             setBackgroundColor(Color.parseColor("#2E7D32"))
             setTextColor(Color.WHITE)
             setOnClickListener {
-                askTeacher("कृपया बोर्ड पर लिखे या बनाए गए सवाल को समझकर कदम-दर-कदम हल करें।", useBoardImage = true)
+                askTeacher("कृपया बोर्ड पर लिखे या बनाए गए सवाल को समझकर कदम-दर-कदम हल करें।", useBoardImage = true, customImageB64 = null)
             }
         }
 
         queryBar.addView(queryInput)
+        queryBar.addView(cameraBtn)
         queryBar.addView(micBtn)
         queryBar.addView(askTextBtn)
         queryBar.addView(solveBoardBtn)
@@ -263,7 +323,7 @@ class TeacherActivity : AppCompatActivity() {
         }
     }
 
-    private fun askTeacher(userQuestion: String, useBoardImage: Boolean) {
+    private fun askTeacher(userQuestion: String, useBoardImage: Boolean, customImageB64: String?) {
         progressBar.visibility = View.VISIBLE
         statusText.text = "डीके टीचर सोच रही हैं..."
 
@@ -281,8 +341,14 @@ class TeacherActivity : AppCompatActivity() {
                 """.trimIndent()
 
                 val prompt = "यूज़र का प्रश्न: $userQuestion"
-                val board = if (useBoardImage) whiteboardView.getBitmap() else null   // view को main thread पर ही पढ़ो
-                val imageB64 = board?.let { b -> withContext(Dispatchers.Default) { jpegBase64(b) } }
+                val imageB64 = when {
+                    customImageB64 != null -> customImageB64
+                    useBoardImage -> {
+                        val board = whiteboardView.getBitmap()
+                        withContext(Dispatchers.Default) { jpegBase64(board) }
+                    }
+                    else -> null
+                }
 
                 val response = brainManager.teach(systemPrompt, prompt, imageB64)
 
