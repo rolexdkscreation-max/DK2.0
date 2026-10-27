@@ -28,6 +28,7 @@ class CameraFeed(private val act: AppCompatActivity, private val view: PreviewVi
         private set
     var running = false
         private set
+    var onFrameAnalyzed: ((Bitmap) -> Unit)? = null
 
     fun start(front: Boolean, onOk: () -> Unit, onFail: (String) -> Unit) {
         val f = ProcessCameraProvider.getInstance(act)
@@ -69,6 +70,7 @@ class CameraFeed(private val act: AppCompatActivity, private val view: PreviewVi
                 val m = Matrix().apply { postRotate(rot.toFloat()) }
                 b = Bitmap.createBitmap(b, 0, 0, b.width, b.height, m, true)
             }
+            onFrameAnalyzed?.invoke(b)
             val sig = ScreenShareService.signature(b)
             if (!gate.shouldSend(now, sig)) return
             val out = ByteArrayOutputStream(64 * 1024)

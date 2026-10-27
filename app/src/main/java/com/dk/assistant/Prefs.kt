@@ -2,6 +2,10 @@ package com.dk.assistant
 
 import android.content.Context
 import android.content.SharedPreferences
+import java.nio.ByteBuffer
+import java.nio.ByteOrder
+import javax.crypto.Cipher
+import javax.crypto.spec.SecretKeySpec
 
 /** App ki saari settings phone me save hoti hain (naam, API keys, model, awaaz, options). */
 object Prefs {
@@ -141,6 +145,80 @@ object Prefs {
     /** परत 4: दूर की / बहुत धीमी आवाज़ अनसुनी */
     fun ownerFarOn(c: Context) = sp(c).getBoolean("owner_far_on", true)
     fun ownerPrint(c: Context): FloatArray? = com.dk.assistant.voice.VoicePrint.decode(sp(c).getString("owner_print", null))
+
+    // ---- बायोमेट्रिक चेहरा पहचान (स्थानीय एन्क्रिप्टेड एम्बेडिंग)
+    private val FACE_ENC_KEY = byteArrayOf(
+        0x37.toByte(), 0x5a.toByte(), 0x7c.toByte(), 0x11.toByte(),
+        0x88.toByte(), 0x9b.toByte(), 0xef.toByte(), 0x42.toByte(),
+        0x2c.toByte(), 0x3d.toByte(), 0x5e.toByte(), 0x6f.toByte(),
+        0x70.toByte(), 0x81.toByte(), 0x92.toByte(), 0xa3.toByte()
+    )
+
+    private fun floatsToBytes(floats: FloatArray): ByteArray {
+        val buf = ByteBuffer.allocate(floats.size * 4).order(ByteOrder.LITTLE_ENDIAN)
+        for (f in floats) buf.putFloat(f)
+        return buf.array()
+    }
+
+    private fun bytesToFloats(bytes: ByteArray): FloatArray {
+        val buf = ByteBuffer.wrap(bytes).order(ByteOrder.LITTLE_ENDIAN)
+        val floats = FloatArray(bytes.size / 4)
+        for (i in floats.indices) floats[i] = buf.float
+        return floats
+    }
+
+    private fun encodeBase64(bytes: ByteArray): String = try {
+        android.util.Base64.encodeToString(bytes, android.util.Base64.NO_WRAP)
+    } catch (e: Throwable) {
+        java.util.Base64.getEncoder().encodeToString(bytes)
+    }
+
+    private fun decodeBase64(str: String): ByteArray = try {
+        android.util.Base64.decode(str, android.util.Base64.NO_WRAP)
+    } catch (e: Throwable) {
+        java.util.Base64.getDecoder().decode(str)
+    }
+
+    private fun encryptFaceBytes(bytes: ByteArray): ByteArray {
+        val key = SecretKeySpec(FACE_ENC_KEY, "AES")
+        val cipher = Cipher.getInstance("AES/ECB/PKCS5Padding")
+        cipher.init(Cipher.ENCRYPT_MODE, key)
+        return cipher.doFinal(bytes)
+    }
+
+    private fun decryptFaceBytes(bytes: ByteArray): ByteArray {
+        val key = SecretKeySpec(FACE_ENC_KEY, "AES")
+        val cipher = Cipher.getInstance("AES/ECB/PKCS5Padding")
+        cipher.init(Cipher.DECRYPT_MODE, key)
+        return cipher.doFinal(bytes)
+    }
+
+    fun hasOwnerFace(c: Context): Boolean = !sp(c).getString("owner_face_print", null).isNullOrBlank()
+
+    fun ownerFacePrint(c: Context): FloatArray? {
+        val raw = sp(c).getString("owner_face_print", null) ?: return null
+        if (raw.isBlank()) return null
+        return try {
+            val enc = decodeBase64(raw)
+            val dec = decryptFaceBytes(enc)
+            bytesToFloats(dec)
+        } catch (e: Exception) {
+            null
+        }
+    }
+
+    fun setOwnerFacePrint(c: Context, embedding: FloatArray?) {
+        edit(c) {
+            if (embedding == null || embedding.isEmpty()) {
+                remove("owner_face_print")
+            } else {
+                val raw = floatsToBytes(embedding)
+                val enc = encryptFaceBytes(raw)
+                putString("owner_face_print", encodeBase64(enc))
+            }
+        }
+    }
+
     /** सीखते समय मालिक की आवाज़ का स्तर (RMS) */
     fun ownerLevel(c: Context) = sp(c).getFloat("owner_level", 0f).toDouble()
     /** पहचानी आवाज़ से धीरे-धीरे सीखा स्तर */
