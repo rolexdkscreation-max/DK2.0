@@ -8,7 +8,8 @@ import java.util.Locale
  * पूरे रिपो की असली हालत: कौन-से PR खुले हैं, किसके checks चल रहे / फँसे / fail हैं, conflict, draft,
  * main का build, release बाकी है या नहीं, और कोई दूसरा एजेंट/व्यक्ति किसी branch पर काम कर रहा है या नहीं.
  * फिर हर चीज़ के लिए अगला कदम: इंतज़ार / दोबारा चलाओ / 11 एजेंट से ठीक करो / merge + APK release.
- * कोई भी कदम user की "हाँ" के बाद ही (RepoDoctorRunner).
+ * खुले PR का सुधार ([auto]: fail ठीक करना, फँसा run, check चलाना, चलते checks पर नज़र) अपने-आप - सिर्फ़ उसी PR की branch पर.
+ * merge और release ([needYes]) हमेशा user की "हाँ" के बाद ही (RepoDoctorRunner).
  */
 object RepoDoctor {
 
@@ -69,8 +70,10 @@ object RepoDoctor {
             out += when {
                 p.number == s.myPr && s.busyHere -> Item(Act.WAIT, p.number, t, "मेरी टीम अभी इसी पर काम कर रही है", branch = p.head)
                 stuck != null -> Item(Act.RESTART, p.number, t, "check \"${stuck.name}\" ${(now - stuck.startedMs) / 60_000} मिनट से अटका है (फँसा)", stuck, p.head)
+                // एक check fail + दूसरा अभी चल रहा = गलती पहले से पता है → सुधार अभी (पहले "चल रहा" दिखाकर गलती छुप जाती थी)
+                failed != null -> Item(Act.FIX, p.number, t, "check \"${failed.name}\" fail (${failed.conclusion})" +
+                    (if (running != null) " — \"${running.name}\" अभी चल रहा है" else ""), failed, p.head)
                 running != null -> Item(Act.WAIT, p.number, t, "check \"${running.name}\" अभी चल रहा है", running, p.head)
-                failed != null -> Item(Act.FIX, p.number, t, "check \"${failed.name}\" fail (${failed.conclusion})", failed, p.head)
                 p.mergeable == false -> Item(Act.CONFLICT, p.number, t, "main से conflict है — अपने-आप merge नहीं हो सकता", branch = p.head)
                 runs.isEmpty() -> Item(Act.CHECK, p.number, t, "इस PR के आख़िरी commit पर कोई check नहीं चला", branch = p.head)
                 else -> Item(Act.MERGE, p.number, t, "सारे checks पास ✓" + (if (p.draft) " (अभी draft)" else "") +
@@ -105,6 +108,17 @@ object RepoDoctor {
     /** जिन पर user की हाँ से कुछ करना है */
     fun actionable(items: List<Item>) = items.filter { it.act in setOf(Act.RESTART, Act.FIX, Act.CHECK, Act.MERGE, Act.RELEASE) }
 
+    /**
+     * खुले PR के काम जो रिपो डॉक्टर अपने-आप करता है (हाँ की ज़रूरत नहीं): fail ठीक करना, फँसा run दोबारा, check चलाना,
+     * और चलते checks पर नज़र (पूरे होने तक). सब उसी PR की branch पर - merge कभी नहीं.
+     * मेरी टीम जिस PR पर अभी काम कर रही है (WAIT बिना run) वह नहीं.
+     */
+    fun auto(items: List<Item>) = items.filter { it.pr != null &&
+        (it.act in setOf(Act.RESTART, Act.FIX, Act.CHECK) || it.act == Act.WAIT && it.run != null) }
+
+    /** जिन पर user की हाँ चाहिए: merge, release, और main का सुधार */
+    fun needYes(items: List<Item>): List<Item> { val a = auto(items).toSet(); return actionable(items).filter { it !in a } }
+
     private fun icon(a: Act) = when (a) {
         Act.WAIT -> "⏳"; Act.RESTART -> "🧊"; Act.FIX -> "❌"; Act.CHECK -> "❔"; Act.CONFLICT -> "⚔"; Act.MERGE -> "✅"; Act.RELEASE -> "📦"; Act.INFO -> "🌿"
     }
@@ -115,6 +129,7 @@ object RepoDoctor {
             else "log पढ़ूँगा: GitHub की दिक्कत हुई तो दोबारा चलाऊँगा, code की गलती हुई तो 11 एजेंट नई branch + PR से ठीक करेंगे"
         Act.CHECK -> "उस branch पर check चलाऊँगा"
         Act.MERGE -> "दोबारा जाँच → merge → APK release (पक्का करके)"
+        Act.WAIT -> "checks पूरे होने तक नज़र रखूँगा: पास = merge के लिए आपसे पूछूँगा, fail = log पढ़कर 11 एजेंट उसी PR की branch पर ठीक करेंगे"
         Act.RELEASE -> "release build चलाकर APK release पक्का करूँगा"
         else -> ""
     }
@@ -130,7 +145,18 @@ object RepoDoctor {
         val info = items.filter { it.act == Act.INFO }
         if (info.isNotEmpty()) { append("\nदूसरे चल रहे काम:\n"); info.take(8).forEach { append("${icon(it.act)} ${it.title}: ${it.state}\n") } }
         val acts = actionable(items)
-        if (acts.isEmpty()) {
+        val auto = auto(items)
+        val yes = needYes(items)
+        if (auto.isNotEmpty()) {
+            append("\nमैं यह करूँगा (अपने-आप, अभी — सिर्फ़ PR की branch पर सुधार, merge नहीं):\n")
+            auto.forEachIndexed { n, i -> append("${n + 1}. ${i.title} — ${todo(i)}\n") }
+            append("   ठीक होकर सारे checks पास होते ही merge के लिए आपसे पूछूँगा।\n")
+            if (yes.isNotEmpty()) {
+                append("\nआपकी हाँ से:\n")
+                yes.forEachIndexed { n, i -> append("${n + 1}. ${i.title} — ${todo(i)}\n") }
+                append("\n\"हाँ\" बोलें/लिखें तो ये भी करूँ। \"नहीं\" = सिर्फ़ ऊपर वाला सुधार।")
+            }
+        } else if (acts.isEmpty()) {
             append(if (items.any { it.act == Act.WAIT }) "\nअभी कुछ करने की ज़रूरत नहीं — चल रहे checks पूरे होने दें, फिर \"रिपो चेक करो\" बोलें।"
                 else "\nसब ठीक है — कुछ ठीक करने को नहीं।")
             if (items.any { it.act == Act.CONFLICT }) append("\nConflict वाले PR अपने-आप merge नहीं होंगे — बताइए तो वही काम main से नई branch पर दोबारा करवा दूँ।")

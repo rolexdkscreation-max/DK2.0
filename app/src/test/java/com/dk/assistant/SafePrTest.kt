@@ -74,4 +74,12 @@ class SafePrTest {
         assertNull(SafePr.mergeIntent("जैसी आपकी मर्ज़ी"))
         assertNull(SafePr.mergeIntent("दो lists को merge करने वाला code लिखो"))
     }
+
+    @Test fun prBody_carriesWorkNote() {
+        val md = WorkNote("काम").apply { did("एक कदम") }.markdown()
+        val b = SafePr.prBody("s", "c", emptyList(), note = md)
+        assertTrue(b.contains("## क्या बदला") && b.contains("📒"))
+        org.junit.Assert.assertEquals(listOf("एक कदम"), WorkNote.fromBody(b)!!.done)
+        assertTrue(!SafePr.prBody("s", "c", emptyList()).contains("DK-NOTE"))
+    }
 }

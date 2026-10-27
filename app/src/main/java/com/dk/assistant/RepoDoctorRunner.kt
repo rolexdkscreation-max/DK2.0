@@ -9,9 +9,10 @@ import kotlinx.coroutines.withContext
 /**
  * रिपो डॉक्टर को ऐप से जोड़ना: "रिपो चेक करो" / "क्या चल रहा है" / "PR #42 ठीक करो" / "PR #42 merge करो".
  * 1. पूरे रिपो की असली हालत पढ़ो (सिर्फ़ पढ़ना - कुछ नहीं बदलता)
- * 2. रिपोर्ट + योजना दिखाओ, user की "हाँ" का इंतज़ार
- * 3. हाँ पर: फँसा run दोबारा, fail = GitHub की दिक्कत तो दोबारा / code की गलती तो 11 एजेंट उसी branch पर ठीक करें,
- *    सब हरा होते ही merge → APK release (पक्का)
+ * 2. रिपोर्ट + योजना दिखाओ
+ * 3. खुले PR का सुधार अपने-आप (हाँ की ज़रूरत नहीं): फँसा run दोबारा, चलते checks पर पूरे होने तक नज़र,
+ *    fail = GitHub की दिक्कत तो दोबारा / code की गलती तो 11 एजेंट उसी branch पर ठीक करें
+ * 4. सब हरा होते ही merge के लिए user से पूछो; merge → APK release सिर्फ़ "हाँ" (या "PR #N merge करो") से
  */
 object RepoDoctorRunner {
 
@@ -34,7 +35,7 @@ object RepoDoctorRunner {
         val shown = (if (fromVoice) "🎤 " else "") + input
         pending?.let { p ->
             when (SevenPlus.reply(input)) {
-                SevenPlus.Reply.YES -> { pending = null; say("u", shown); return Res(execute(c, p), "ठीक है, रिपो की योजना शुरू कर रही हूँ। हर कदम कोडिंग स्क्रीन पर दिखेगा।") }
+                SevenPlus.Reply.YES -> { pending = null; say("u", shown); return Res(execute(c, p, allowMerge = true), "ठीक है, रिपो की योजना शुरू कर रही हूँ। हर कदम कोडिंग स्क्रीन पर दिखेगा।") }
                 SevenPlus.Reply.NO -> { pending = null; say("u", shown); say("s", "ठीक है — रिपो में कुछ नहीं किया।"); return Res(null, "ठीक है, कुछ नहीं करूँगी।") }
                 SevenPlus.Reply.OTHER -> pending = null
             }
@@ -77,9 +78,16 @@ object RepoDoctorRunner {
                 }
                 val rep = RepoDoctor.report(s, items)
                 val acts = RepoDoctor.actionable(items)
+                val auto = RepoDoctor.auto(items)
+                val yes = RepoDoctor.needYes(items)
                 if (mergeNow && focus != null) {
                     val it0 = items.first()
-                    if (it0.act == RepoDoctor.Act.MERGE) { say("d", rep.substringBefore("\nमैं यह करूँगा")); execute(c, Plan(s, items))?.let { say("e", it) }; return@launch }
+                    // user ने खुद "PR #N merge करो" कहा = merge की हाँ. हरा = सीधे merge; fail/चल रहा = पहले ठीक/इंतज़ार, फिर merge
+                    if (it0.act == RepoDoctor.Act.MERGE || it0 in auto) {
+                        say("d", rep.substringBefore("\nमैं यह करूँगा"))
+                        execute(c, Plan(s, listOf(it0)), allowMerge = true)?.let { say("e", it) }
+                        return@launch
+                    }
                     say("d", rep)
                     if (acts.isNotEmpty()) pending = Plan(s, items)
                     CoderTeam.announce(c, "रिपो डॉक्टर: PR #$focus अभी merge नहीं", it0.state, "PR $focus अभी merge नहीं हो सकता: ${it0.state}। " +
@@ -87,8 +95,10 @@ object RepoDoctorRunner {
                     return@launch
                 }
                 say("d", rep)
-                if (acts.isNotEmpty()) pending = Plan(s, items)
+                pending = if (yes.isNotEmpty()) Plan(s, yes) else null
                 if (question != null) inspect(c, gh, s, question, focus, rep)
+                // खुले PR का सुधार / चलते checks पर नज़र - अपने-आप (merge फिर भी आपकी हाँ से)
+                if (auto.isNotEmpty()) execute(c, Plan(s, auto), allowMerge = false)?.let { say("s", "🩺 अपने-आप सुधार अभी शुरू नहीं हुआ: $it") }
                 val bad = items.count { it.act == RepoDoctor.Act.FIX || it.act == RepoDoctor.Act.RESTART }
                 val ready = items.count { it.act == RepoDoctor.Act.MERGE }
                 val running = items.count { it.act == RepoDoctor.Act.WAIT }
@@ -96,7 +106,11 @@ object RepoDoctorRunner {
                     "रिपो की जाँच पूरी। ${s.prs.size} PR खुले हैं" +
                         (if (bad > 0) ", $bad में खराबी या फँसा काम" else "") + (if (ready > 0) ", $ready merge के लिए तैयार" else "") +
                         (if (running > 0) ", $running अभी चल रहे" else "") + "। " +
-                        if (acts.isNotEmpty()) "योजना स्क्रीन पर है — हाँ बोलें तो ठीक करके merge और APK release कर दूँगी।" else "अभी कुछ करने की ज़रूरत नहीं।")
+                        when {
+                            auto.isNotEmpty() -> "खराब या चल रहे PR मैं अभी खुद देखकर ठीक कर रही हूँ; सब पास होते ही merge के लिए पूछूँगी।"
+                            yes.isNotEmpty() -> "योजना स्क्रीन पर है — हाँ बोलें तो merge और APK release कर दूँगी।"
+                            else -> "अभी कुछ करने की ज़रूरत नहीं।"
+                        })
             } catch (e: CancellationException) { throw e } catch (e: Exception) {
                 say("e", "रिपो डॉक्टर रिपो नहीं पढ़ पाया: " + (e.message ?: e.javaClass.simpleName).take(300) +
                     "\n(token में Pull requests: Read और Actions: Read की इजाज़त चाहिए)")
@@ -160,22 +174,26 @@ object RepoDoctorRunner {
             CoderSession.agent?.pr?.number ?: 0, CoderSession.busy)
     }
 
-    /** user की हाँ के बाद योजना चलाओ. @return null = शुरू, वरना वजह */
-    private fun execute(c: Context, plan: Plan): String? {
+    /**
+     * योजना चलाओ. allowMerge = user की merge वाली हाँ मिली है (false = सिर्फ़ सुधार/इंतज़ार; हरा होने पर merge के लिए पूछो).
+     * @return null = शुरू, वरना वजह
+     */
+    private fun execute(c: Context, plan: Plan, allowMerge: Boolean): String? {
         if (CoderSession.busy) return "अभी एक काम चल रहा है — पूरा होने दें, फिर \"रिपो चेक करो\" बोलें"
         val a = CoderSession.agentFor(c) ?: return "GitHub या AI सेटअप नहीं मिला"
         val gh = GitHub.fromPrefs(c) ?: return "GitHub token नहीं"
-        val acts = RepoDoctor.actionable(plan.items)
+        val acts = (RepoDoctor.actionable(plan.items) + RepoDoctor.auto(plan.items)).distinct()
         if (acts.isEmpty()) return "करने को कुछ नहीं"
         // पहले PR (छोटे नंबर पहले), फिर main का सुधार, आख़िर में release (merge खुद release बनाता है)
         val order = acts.sortedWith(compareBy({ if (it.pr != null) 0 else if (it.act == RepoDoctor.Act.RELEASE) 2 else 1 }, { it.pr ?: 0 }))
         CoderSession.launch(c, "रिपो डॉक्टर: " + order.joinToString { it.title.take(30) }) {
             val done = mutableListOf<String>()
+            val ready = mutableListOf<RepoDoctor.Item>()
             var released = false
             for (i in order) {
                 say("s", "🩺 ${i.title} — ${RepoDoctor.todo(i)}")
                 try {
-                    val r = handle(c, a, gh, plan.snap, i, released)
+                    val r = handle(c, a, gh, plan.snap, i, released, allowMerge, ready)
                     if (r.second) released = true
                     done += "${if (r.first) "✅" else "⚠"} ${i.title}: ${r.third}"
                 } catch (e: CancellationException) { throw e } catch (e: Exception) {
@@ -183,14 +201,24 @@ object RepoDoctorRunner {
                 }
             }
             say("d", "🩺 रिपो डॉक्टर — नतीजा:\n" + done.joinToString("\n") +
+                (if (ready.isNotEmpty()) "\n\n✅ merge के लिए तैयार: " + ready.joinToString { "PR #${it.pr}" } +
+                    " — \"हाँ\" बोलें तो merge करके नई APK release करूँगा।" else "") +
                 "\n\nफिर से जाँचना हो तो \"रिपो चेक करो\" बोलें।")
+            if (ready.isNotEmpty()) {
+                // हरे PR: merge user की हाँ से (पहले से इंतज़ार वाली योजना भी साथ रहे)
+                val merges = ready.map { RepoDoctor.Item(RepoDoctor.Act.MERGE, it.pr, it.title, "सारे checks पास ✓", branch = it.branch) }
+                pending = Plan(plan.snap, (pending?.items.orEmpty() + merges).distinctBy { it.act to it.pr })
+                CoderTeam.announce(c, "रिपो डॉक्टर: merge के लिए तैयार", ready.joinToString { "PR #${it.pr}" },
+                    "बॉस, " + ready.joinToString { "PR ${it.pr}" } + " के सारे checks पास हैं। merge करूँ? हाँ बोलिए।")
+            }
         }
         CoderSession.listener?.invoke()
         return null
     }
 
     /** @return (ठीक हुआ?, नई release बनी?, Hindi नतीजा) */
-    private suspend fun handle(c: Context, a: CodingAgent, gh: GitHub, s: RepoDoctor.Snap, i: RepoDoctor.Item, released: Boolean): Triple<Boolean, Boolean, String> {
+    private suspend fun handle(c: Context, a: CodingAgent, gh: GitHub, s: RepoDoctor.Snap, i: RepoDoctor.Item, released: Boolean,
+                               allowMerge: Boolean, ready: MutableList<RepoDoctor.Item>): Triple<Boolean, Boolean, String> {
         val repo = s.repo
         val pr = i.pr?.let { n -> s.prs.firstOrNull { it.number == n } }
         val pull = pr?.let { GitHub.Pull(it.number, it.url, it.head, it.base) }
@@ -198,12 +226,16 @@ object RepoDoctorRunner {
 
         suspend fun mergeIt(): Triple<Boolean, Boolean, String> {
             val p = pull ?: return Triple(true, false, "ठीक हो गया")
+            // merge की हाँ नहीं मिली (अपने-आप वाला सुधार) = merge नहीं, user से पूछो
+            if (!allowMerge) { ready += i; return Triple(true, false, "सारे checks पास ✓ — merge आपकी हाँ से") }
             a.reset(); a.safePr = true; a.restorePr(p)
             if (a.pr?.number != p.number) return Triple(false, false, "PR अपनाया नहीं जा सका (branch ${p.head})")
             if (withContext(Dispatchers.IO) { try { gh.isDraft(repo, p.number) } catch (_: Exception) { false } }) {
                 val why = a.teamReady(); if (why.isNotBlank()) return Triple(false, false, "draft नहीं हटा: ${why.take(120)}")
             }
             val ok = CoderTeam.mergeAndRelease(c, a, p)
+            // checks चल रहे थे → इंतज़ार किया, अब पास: merge की हाँ दोबारा (गलती नहीं)
+            if (!ok && a.lastMergeAsk) { ready += i; return Triple(true, false, "checks पूरे होकर पास ✓ — merge के लिए आपकी हाँ चाहिए") }
             return Triple(ok, ok, if (ok) "merge + नई APK release ✓" else "merge/release पूरा नहीं — ऊपर वजह")
         }
 
@@ -263,6 +295,18 @@ object RepoDoctorRunner {
                 }
             }
             RepoDoctor.Act.MERGE -> mergeIt()
+            RepoDoctor.Act.WAIT -> {
+                // checks चल रहे: पूरे होने तक नज़र. पास = merge (हाँ से), fail = log पढ़कर उसी branch पर सुधार
+                val run = i.run ?: return Triple(true, false, "कुछ नहीं करना था")
+                val p = pull ?: return Triple(true, false, "कुछ नहीं करना था")
+                say("s", "⏳ ${i.title}: checks पूरे होने तक नज़र रख रहा हूँ…")
+                when (watch(run.sha)) {
+                    true -> mergeIt()
+                    false -> fixCode(c, a, gh, s, i, p)?.let { if (it) mergeIt() else Triple(false, false, "11 एजेंट ठीक नहीं कर पाए — ऊपर रिपोर्ट") }
+                        ?: Triple(false, false, "11 एजेंट शुरू नहीं हो पाए")
+                    null -> Triple(false, false, "checks का नतीजा 20 मिनट में नहीं आया — थोड़ी देर बाद \"रिपो चेक करो\" बोलें")
+                }
+            }
             RepoDoctor.Act.RELEASE -> {
                 if (released) return Triple(true, false, "ऊपर merge के साथ नई release पहले ही बन गई")
                 val sha = withContext(Dispatchers.IO) { gh.remoteBranchSha(repo, s.base) }

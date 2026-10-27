@@ -124,6 +124,8 @@ object SevenRunner {
             return if (e.isBlank()) a.pr?.url.orEmpty() else ""
         }
         override val prNote: String get() = a.prError.ifBlank { if (a.pr == null && a.branch.isNotBlank()) "code branch ${a.branch} पर है" else "" }
+        override suspend fun saveNote(markdown: String) = a.teamSaveNote(markdown)
+        override suspend fun loadNote(): String = a.teamPrBody()
         override suspend fun ready(): String {
             val why = a.teamReady()
             val url = a.pr?.url.orEmpty()

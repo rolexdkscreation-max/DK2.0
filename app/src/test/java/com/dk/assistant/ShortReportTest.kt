@@ -76,4 +76,16 @@ class ShortReportTest {
         assertTrue(s, s.contains("कुछ अजीब हुआ"))
         assertFalse(s, s.contains("qwen") || s.contains("groq") || s.contains("दूसरी"))
     }
+
+    @Test fun checksStillRunning_isWait_notCodeError() {
+        // पहले: "❌ काम नहीं हुआ / वजह: कोड की जाँच पास नहीं हुई - Build/tests अभी चल रहे हैं"
+        val raw = "Build/tests अभी चल रहे हैं — पूरे होने दें"
+        assertEquals(ShortReport.Cause.WAITING, ShortReport.why(raw).cause)
+        val t = ShortReport.text(false, raw, "https://github.com/u/r/pull/95")
+        assertTrue(t, t.startsWith("⏳ काम पूरा नहीं हुआ"))
+        assertFalse(t, t.contains("कोड की जाँच पास नहीं हुई"))
+        assertTrue(t, t.contains("checks") && t.contains("API: ✅ ठीक चली") && t.contains("pull/95"))
+        // सच में fail = अब भी कोड की गलती
+        assertEquals(ShortReport.Cause.CODE, ShortReport.why("Build/tests fail हैं (compile) — merge नहीं किया").cause)
+    }
 }

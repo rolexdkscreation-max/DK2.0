@@ -52,6 +52,10 @@ interface TeamGit {
     suspend fun openPr(): String = prUrl
     /** PR क्यों नहीं बना / किस हाल में है */
     val prNote: String get() = ""
+    /** 📒 काम-कॉपी (markdown) PR के विवरण में रखो - PR अभी न बना हो तो PR बनते ही उसमें */
+    suspend fun saveNote(markdown: String) {}
+    /** पहले से खुले PR का विवरण (उसमें पिछली काम-कॉपी). "" = PR नहीं / पढ़ नहीं पाया */
+    suspend fun loadNote(): String = ""
 }
 
 /**
@@ -113,6 +117,32 @@ class SevenTeam(
     private var mediaNotes = ""
     /** अभी चल रहा पूरा प्लान (कोडर को पूरी तस्वीर) */
     private var curPlan: Seven.Plan? = null
+    /** 📒 काम-कॉपी: क्या पढ़ा (फ़ाइल में क्या है), क्या हुआ, क्या बाकी - PR के विवरण में; अगले राउंड बार-बार वही कोड नहीं पढ़ते */
+    val note = WorkNote()
+    private var noteSaved = ""
+
+    /** काम-कॉपी PR में लिखो (बदली हो तभी). गलती हो तो काम नहीं रुकता */
+    private suspend fun pushNote() {
+        val g = git ?: return
+        val md = note.markdown()
+        if (md == noteSaved) return
+        try { g.saveNote(md); noteSaved = md } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (_: Exception) {}
+    }
+
+    /** प्लानर/डिबगर के लिए काम-कॉपी (नोट वाली फ़ाइलें बदली हैं या नहीं - अभी की content से) */
+    private suspend fun notePrompt(): String {
+        if (note.isEmpty) return ""
+        val cur = note.files.keys.associateWith { p -> try { files.read(p) } catch (_: Exception) { null } }
+        return note.forPrompt(cur)
+    }
+
+    /** AI के अंतिम JSON के "notes":{"path":"…"} काम-कॉपी में */
+    private fun takeNotes(o: org.json.JSONObject?) {
+        val n = o?.optJSONObject("notes") ?: return
+        note.about(n.keys().asSequence().associateWith { n.optString(it) })
+    }
+
+    private fun stepText(s: Seven.Step) = "${s.file} — ${s.action}: ${s.change.take(120)}"
 
     // ---- पढ़ने की क्षमता: मॉडल जितना पढ़ सकता है उसी हिसाब से (पहले हर मॉडल पर एक जैसी छोटी सीमा थी)
     private val big get() = ai.budget.coerceAtLeast(CoderContext.MIN_BUDGET)
@@ -252,6 +282,16 @@ class SevenTeam(
             acceptance = Seven.strings(m?.optJSONArray("acceptance"))
         }
         val bug = kind == Seven.Kind.BUG
+        // 📒 पहले से खुले PR की काम-कॉपी: पिछले राउंड/एजेंट ने जो पढ़ा और किया - वहीं से, शुरू से नहीं
+        git?.let { g ->
+            val old = try { WorkNote.fromBody(g.loadNote()) } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (_: Exception) { null }
+            if (old != null) {
+                note.files.putAll(old.files); note.done.addAll(old.done); note.todo = old.todo; note.status = old.status; note.next = old.next
+                ev(Agent.MANAGER, "📒 PR की काम-कॉपी मिली: ${old.files.size} फ़ाइलों के नोट, ${old.done.size} काम हो चुके" +
+                    (if (old.todo.isNotEmpty()) ", ${old.todo.size} बाकी" else "") + " — जो पढ़ा जा चुका, शुरू से दोबारा नहीं पढ़ेंगे")
+            }
+        }
+        note.task = task.take(300)
         // "आगे करो": जो हो चुका वह याद - दोबारा नहीं
         val r = resumeFrom?.takeIf { it.phase > TeamProgress.NONE || it.leftSteps > 0 }
         if (r != null) {
@@ -303,6 +343,9 @@ class SevenTeam(
         } else makePlan(task + if (brief.isNotBlank()) "\n(Manager brief: $brief)" else "", emptyList())
         plan ?: return finish(false, "प्लानर प्लान नहीं बना पाया: $lastBlock")
         save { it.copy(rootCause = rootCause) }
+        note.plan(plan.steps.map { stepText(it) })
+        note.state("प्लान बना: ${plan.steps.size} कदम — कोड बदल रहा है", "कदम पूरे करके build/tests")
+        pushNote()
         if (!execute(plan, emptySet())) return finish(false, lastBlock)
         save { it.copy(phase = TeamProgress.CODED, steps = emptyList(), stepsDone = 0, failLog = "", failUrl = "") }
         // 3b. परफॉरमेंस: बदले code में UI जाम / leak / बेवजह का काम
@@ -321,6 +364,9 @@ class SevenTeam(
                 else -> test(rootCause)
             }
             lastTest = t
+            note.state(when (t.ok) { true -> "build/tests पास ✓" + (if (t.url.isNotBlank()) " ${t.url}" else ""); false -> "build/tests fail ✗ — डिबगर जड़ ढूँढ रहा है" + (if (t.url.isNotBlank()) " ${t.url}" else ""); null -> "build/tests का नतीजा अभी नहीं — " + t.note.take(120) },
+                when (t.ok) { true -> "PR तैयार करना, फिर merge आपकी हाँ से"; false -> "fail की जड़ ठीक करना"; null -> "checks पूरे होने पर नतीजा देखना" })
+            pushNote()
             if (t.ok == true) {
                 // QA: build पास - पर क्या काम सच में और पूरा हुआ? (PR से पहले)
                 if (full && !qaOk) {
@@ -349,6 +395,7 @@ class SevenTeam(
                     val url = g.openPr()
                     if (url.isBlank()) return finish(null, "build पास है पर PR नहीं बन पाया" + if (g.prNote.isNotBlank()) ": ${g.prNote}" else "", "")
                     ev(Agent.GIT, "build पास होने के बाद PR बनाया: $url")
+                    pushNote()
                     if (t.stage == TeamTest.BRANCH) { ev(Agent.TESTER, "अब PR का अपना चेक देख रहा हूँ…"); continue }
                 }
                 break
@@ -370,6 +417,7 @@ class SevenTeam(
                 ?: return finish(false, "डिबगर टेस्ट फ़ेल होने की जड़ नहीं ढूँढ पाया")
             rootCause = d.second
             save { it.copy(rootCause = rootCause) }
+            note.did("जड़ मिली: " + d.second.take(160))
             val fix = makePlan("MINIMAL FIX for the failed test/build.\nROOT CAUSE: ${d.second}\nFIX: ${d.third}", d.first.files)
                 ?: return finish(false, "प्लानर सुधार का प्लान नहीं बना पाया: $lastBlock")
             if (!execute(fix, if (repeat) fix.steps.map { it.file }.toSet() else emptySet())) return finish(false, lastBlock)
@@ -402,12 +450,13 @@ class SevenTeam(
             (if (changes.isNotEmpty()) "ALREADY CHANGED IN THIS TASK: ${changes.keys.joinToString()}\n" else "") +
             (if (full && notTouch.isNotEmpty()) "DO NOT CHANGE (user's existing features): " + notTouch.joinToString("; ") + "\n" else "") +
             (if (full && area.isNotEmpty()) "PROMPT ENGINEER - LIKELY AREA (verify by reading):\n" + area.joinToString("\n") { "- $it" } + "\n" else "") +
+            notePrompt() +
             (if (full) "REPO MAP (file: classes / functions / ids):\n" + map(ws()) + "\n" else "") +
             "FILE LIST (${list.size}):\n" + list.take(listMax).joinToString("\n") + if (list.isEmpty()) "(empty - create new files)" else ""))
         var usesFixed = false
         var whereFixed = 0
         val last = if (full) 8 else 3
-        val sys = Seven.Prompts.PLANNER + if (full) "\n" + SevenDebug.PLANNER_EXTRA else ""
+        val sys = Seven.Prompts.PLANNER + (if (full) "\n" + SevenDebug.PLANNER_EXTRA else "") + WorkNote.PROMPT_RULE
         val seen = SevenDebug.Seen()
         for (round in 0..last) {
             if (full) compactOld(msgs)
@@ -451,6 +500,7 @@ class SevenTeam(
                 }
             }
             if (plan != null) {
+                takeNotes(Seven.json(reply))
                 ev(Agent.PLANNER, "प्लान: ${plan.steps.size} कदम\n" + plan.steps.mapIndexed { i, s -> "${i + 1}. ${s.file} — ${s.action}: ${s.change.take(120)}" +
                     if (s.why.isNotBlank()) "\n   ↳ यहाँ क्यों: ${s.why.take(140)}" else "" }.joinToString("\n") +
                     if (plan.risks.isNotEmpty()) "\n⚠ पुराने फ़ीचर का ख़तरा:\n" + plan.risks.joinToString("\n") { "• $it" } else "")
@@ -476,9 +526,10 @@ class SevenTeam(
             (if (area.isNotEmpty()) "PROMPT ENGINEER - LIKELY AREA (verify by searching/reading):\n" + area.joinToString("\n") { "- $it" } + "\n" else "") +
             (if (notTouch.isNotEmpty()) "DO NOT CHANGE (user's existing features): " + notTouch.joinToString("; ") + "\n" else "") +
             (if (staged.isNotEmpty()) "DIFF OF THIS TASK (- removed, + added):\n" + diffText(staged, maxOf(12_000, big / 10)) + "\n" else "") +
+            notePrompt() +
             "REPO MAP (file: classes / functions / ids):\n" + map(w) + "\n" +
             "FILE LIST (${list.size}):\n" + list.take(listMax).joinToString("\n")))
-        val sys = Seven.Prompts.DEBUGGER + "\n" + SevenDebug.EXTRA
+        val sys = Seven.Prompts.DEBUGGER + "\n" + SevenDebug.EXTRA + WorkNote.PROMPT_RULE
         val seen = SevenDebug.Seen()
         debugSeen = seen
         val keys = (w.keys + list).toSet()
@@ -526,6 +577,7 @@ class SevenTeam(
                 val fix = o.optString("fix").trim()
                 if (probs.isNotEmpty()) ev(Agent.DEBUGGER, "⚠ जड़ पूरी तरह पक्की नहीं हो पाई (${probs.first().take(150)}) — फिर भी आगे बढ़ रहा हूँ, टेस्ट से पता चलेगा")
                 bugs.add(Seven.Bug(o.optString("bug").trim().ifBlank { root.take(150) }, where, root, fix.ifBlank { "-" }))
+                takeNotes(o)
                 ev(Agent.DEBUGGER, (if (missing) "जड़ मिली (यह काम कोड में कहीं लिखा ही नहीं है): " else "जड़ मिली: ") + "${where.ifBlank { "-" }}\n$root\nसुधार: ${fix.take(200)}")
                 val fl = Seven.strings(o.optJSONArray("files")).map { resolve(it) ?: it }
                 return Triple(Diag(fl, missing), root, fix)
@@ -549,9 +601,11 @@ class SevenTeam(
         for (e in entries) {
             val r0 = SevenDebug.parseRead(e)
             val r = SevenDebug.resolve(r0.path, keys)?.let { r0.copy(path = it) } ?: r0
-            val b = SevenDebug.block(r, try { files.read(r.path) } catch (_: Exception) { null }, budget, fileChars, numbers = false)
+            val c = try { files.read(r.path) } catch (_: Exception) { null }
+            val b = SevenDebug.block(r, c, budget, fileChars, numbers = false)
             budget -= b.chars
             seen.add(b.path, b.from, b.to)
+            if (b.chars > 0) note.read(b.path, c, b.from, b.to)
             out.add(b.text)
         }
         return out.joinToString("\n\n")
@@ -564,9 +618,11 @@ class SevenTeam(
         for (e in entries) {
             val r0 = SevenDebug.parseRead(e)
             val r = SevenDebug.resolve(r0.path, keys)?.let { r0.copy(path = it) } ?: r0
-            val b = SevenDebug.block(r, try { files.read(r.path) } catch (_: Exception) { null }, budget, fileChars)
+            val c = try { files.read(r.path) } catch (_: Exception) { null }
+            val b = SevenDebug.block(r, c, budget, fileChars)
             budget -= b.chars
             seen.add(b.path, b.from, b.to)
+            if (b.chars > 0) note.read(b.path, c, b.from, b.to)
             out.add(b.text)
         }
         return out.joinToString("\n\n")
@@ -580,7 +636,7 @@ class SevenTeam(
             out.add(when {
                 c == null -> "----- $p : FILE NOT FOUND -----"
                 budget <= 0 -> "----- $p : (skipped, read budget used) -----"
-                else -> { val part = c.take(minOf(budget, fileChars)); budget -= part.length
+                else -> { val part = c.take(minOf(budget, fileChars)); budget -= part.length; note.read(p, c, 1, part.lines().size)
                     "----- BEGIN $p (${c.lines().size} lines)${if (part.length < c.length) " TRUNCATED" else ""} -----\n$part\n----- END $p -----" }
             })
         }
@@ -599,10 +655,11 @@ class SevenTeam(
         val msgs = mutableListOf("user" to ("TASK: $task\n$problem\n" +
             (if (repeat) "NOTE FROM MANAGER: the SAME error came back after the previous fix. That fix did NOT address the real cause. Look for a different cause.\n" else "") +
             (if (changes.isNotEmpty()) "FILES CHANGED IN THIS TASK: ${changes.keys.joinToString()}\n" else "") +
+            notePrompt() +
             "FILE LIST (${list.size}):\n" + list.take(listMax).joinToString("\n")))
         var warned = false
         for (round in 0..4) {
-            val reply = aiAsk(Agent.DEBUGGER, Seven.Prompts.DEBUGGER, msgs)
+            val reply = aiAsk(Agent.DEBUGGER, Seven.Prompts.DEBUGGER + WorkNote.PROMPT_RULE, msgs)
             val terms = if (full) SevenPlus.RepoSearch.terms(reply) else null
             if (terms != null && round < 4) {
                 ev(Agent.DEBUGGER, "रिपो में खोज रहा हूँ: " + terms.joinToString())
@@ -621,6 +678,7 @@ class SevenTeam(
                 val where = o.optString("where").trim()
                 val fix = o.optString("fix").trim()
                 bugs.add(Seven.Bug(o.optString("bug").trim().ifBlank { root.take(150) }, where, root, fix.ifBlank { "-" }))
+                takeNotes(o)
                 ev(Agent.DEBUGGER, "जड़ मिली: ${where.ifBlank { "-" }}\n$root\nसुधार: ${fix.take(200)}")
                 return Triple(Diag(Seven.strings(o.optJSONArray("files"))), root, fix)
             }
@@ -639,7 +697,7 @@ class SevenTeam(
         plan.steps.forEachIndexed { i, s ->
             if (i < done) return@forEachIndexed
             ev(Agent.CODER, "कदम ${i + 1}/${plan.steps.size}: ${s.file} — ${s.change.take(140)}")
-            if (step(s, s.file in rewrite)) { save { it.copy(stepsDone = i + 1) }; return@forEachIndexed }
+            if (step(s, s.file in rewrite)) { save { it.copy(stepsDone = i + 1) }; note.did(stepText(s)); pushNote(); return@forEachIndexed }
             // मैनेजर: अटके कदम पर दूसरा रास्ता - प्लानर से इसी हिस्से का नया प्लान
             ev(Agent.MANAGER, "कदम ${i + 1} अटका (${lastBlock.take(160)}) — रोककर दूसरा रास्ता: प्लानर से इस हिस्से का नया प्लान")
             val alt = planOnce("ONLY THIS PART of the task: ${s.change}\nFILE: ${s.file}\nThe previous attempt failed: $lastBlock\n" +
@@ -653,6 +711,7 @@ class SevenTeam(
                 }
             }
             save { it.copy(stepsDone = i + 1) }
+            note.did(stepText(s) + " (दूसरे रास्ते से)"); pushNote()
         }
         return true
     }
@@ -928,8 +987,14 @@ class SevenTeam(
         return null
     }
 
-    private fun finish(testOk: Boolean?, problem: String, pr: String = git?.prUrl.orEmpty()): Outcome {
+    private suspend fun finish(testOk: Boolean?, problem: String, pr: String = git?.prUrl.orEmpty()): Outcome {
         if (problem.isNotBlank()) ev(Agent.MANAGER, (if (testOk == null) "⚠ " else "✗ ") + problem)
+        when (testOk) {
+            true -> note.state("✅ काम पूरा — build/tests पास, PR review के लिए तैयार", "merge सिर्फ़ आपकी हाँ से (\"हाँ, merge करो\")")
+            false -> note.state("❌ रुका: " + problem.take(160), "\"आगे करो\" — यही काम-कॉपी पढ़कर वहीं से")
+            null -> note.state("⏳ अधूरा: " + problem.take(160), "checks/नतीजा पूरा होने पर \"आगे करो\"")
+        }
+        pushNote()
         val lt = lastTest
         val chk = when {
             git == null -> null
