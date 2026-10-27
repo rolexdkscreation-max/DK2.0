@@ -185,6 +185,11 @@
             android:name=".ComputerAlarm"
             android:exported="false" />
 
+        <!-- v3.88: लोकल याददाश्त - रोज़ सार + 30 दिन से पुरानी बातें मिटाना -->
+        <receiver
+            android:name=".LocalMemoryReceiver"
+            android:exported="false" />
+
         <!-- फ़ोन restart / ऐप update के बाद DK कंप्यूटर के तय काम फिर से लगाना -->
         <receiver
             android:name=".ComputerBoot"

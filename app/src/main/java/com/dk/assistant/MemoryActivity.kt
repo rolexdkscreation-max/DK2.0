@@ -12,11 +12,17 @@ import android.widget.ScrollView
 import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
+import androidx.lifecycle.lifecycleScope
+import kotlinx.coroutines.launch
 
 /** DK ki yaadein: jo baatein "याद रखो" bolkar sikhayi, unhe dekho / jodo / hatao. Chat aur baatcheet bhi mita sakte hain. */
 class MemoryActivity : AppCompatActivity() {
 
     private lateinit var list: LinearLayout
+    // v3.88: फ़ोन की लोकल याददाश्त (30 दिन की बातें + हमेशा वाले सार)
+    private lateinit var localInfo: TextView
+    private lateinit var pointList: LinearLayout
+    private lateinit var turnList: LinearLayout
     private lateinit var talkList: LinearLayout
     private lateinit var info: TextView
     private val dp get() = resources.displayMetrics.density
@@ -89,6 +95,29 @@ class MemoryActivity : AppCompatActivity() {
             confirm("सारे सारांश, आखिरी मुलाकात और अधूरी बातें मिटा दें?") { FriendTalk.clear(this); refresh(); toast("बातचीत की याद मिटा दी") }
         })
 
+        // ---- v3.88: Memory - फ़ोन की लोकल याददाश्त
+        val localCard = card(col, "Memory (फ़ोन की याददाश्त)",
+            "हर बातचीत (आवाज़ + टेक्स्ट) सिर्फ़ इसी फ़ोन में सेव होती है — 30 दिन बाद अपने-आप मिटती है, उससे पहले ज़रूरी बातों का छोटा सार बनता है जो हमेशा रहता है। पासवर्ड/बैंक/कार्ड नंबर सेव नहीं होते। कुछ भी upload नहीं होता।")
+        localInfo = TextView(this).apply { textSize = 13f; setTextColor(0x99FFFFFF.toInt()); UiLang.keep(this) }
+        localCard.addView(localInfo)
+        localCard.addView(androidx.appcompat.widget.SwitchCompat(this).apply {
+            text = "बातचीत फ़ोन में याद रखो"; setTextColor(0xFFFFFFFF.toInt()); textSize = 15f
+            isChecked = Prefs.localMemoryOn(this@MemoryActivity)
+            setPadding(0, (8 * dp).toInt(), 0, (8 * dp).toInt())
+            setOnCheckedChangeListener { _, on -> Prefs.edit(this@MemoryActivity) { putBoolean("local_memory_on", on) } }
+        })
+        localCard.addView(TextView(this).apply { text = "हमेशा वाले सार"; textSize = 15f; setTypeface(typeface, Typeface.BOLD); setTextColor(0xFFFFFFFF.toInt()); setPadding(0, (10 * dp).toInt(), 0, 0) })
+        pointList = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        localCard.addView(pointList)
+        localCard.addView(TextView(this).apply { text = "पिछले 30 दिन की बातचीत (नई ऊपर)"; textSize = 15f; setTypeface(typeface, Typeface.BOLD); setTextColor(0xFFFFFFFF.toInt()); setPadding(0, (14 * dp).toInt(), 0, 0) })
+        turnList = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        localCard.addView(turnList)
+        localCard.addView(button("सारी लोकल याददाश्त मिटाएँ") {
+            confirm("फ़ोन में सेव पूरी बातचीत और सारे सार मिटा दें? यह वापस नहीं आएगा।") {
+                lifecycleScope.launch { LocalMemory.clearAll(this@MemoryActivity); refreshLocal(); toast("लोकल याददाश्त मिटा दी") }
+            }
+        })
+
         // ---- saaf karna
         val clean = card(col, "साफ़ करें", "")
         clean.addView(button("सारी यादें मिटाएँ") {
@@ -128,8 +157,47 @@ class MemoryActivity : AppCompatActivity() {
         }
     }
 
+    private fun refreshLocal() {
+        if (!::pointList.isInitialized) return
+        lifecycleScope.launch {
+            val (nt, np) = LocalMemory.counts(this@MemoryActivity)
+            val pts = LocalMemory.points(this@MemoryActivity)
+            val turns = LocalMemory.recent(this@MemoryActivity, 150)
+            if (isFinishing || isDestroyed) return@launch
+            localInfo.text = "$nt बातें (30 दिन) • $np सार • सब सिर्फ़ इसी फ़ोन में"
+            pointList.removeAllViews(); turnList.removeAllViews()
+            if (pts.isEmpty()) pointList.addView(dim("अभी कोई सार नहीं — बातचीत खत्म होने पर / रोज़ बनता है"))
+            pts.forEach { p -> pointList.addView(row("${p.day} • ${p.text}") { lifecycleScope.launch { LocalMemory.deletePoint(this@MemoryActivity, p.id); refreshLocal() } }) }
+            if (turns.isEmpty()) turnList.addView(dim("अभी कोई बातचीत सेव नहीं"))
+            val fmt = java.text.SimpleDateFormat("d MMM, h:mm a", java.util.Locale("hi", "IN"))
+            turns.forEach { t ->
+                val who = if (t.who == "u") "आप" else Prefs.assistantName(this@MemoryActivity)
+                turnList.addView(row("${fmt.format(java.util.Date(t.at))} • $who${if (t.src == "voice") " 🎤" else ""}: ${t.text.take(400)}") {
+                    lifecycleScope.launch { LocalMemory.deleteTurn(this@MemoryActivity, t.id); refreshLocal() }
+                })
+            }
+        }
+    }
+
+    private fun dim(t: String) = TextView(this).apply { text = t; textSize = 13f; setTextColor(0x99FFFFFF.toInt()); setPadding(0, (6 * dp).toInt(), 0, 0) }
+
+    private fun row(t: String, onDelete: () -> Unit) = LinearLayout(this).apply {
+        orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
+        setBackgroundResource(R.drawable.glass_row)
+        val p = (10 * dp).toInt(); setPadding(p + (4 * dp).toInt(), p / 2, p / 2, p / 2)
+        layoutParams = LinearLayout.LayoutParams(-1, -2).apply { topMargin = (6 * dp).toInt() }
+        addView(TextView(this@MemoryActivity).apply { text = t; textSize = 14f; setTextColor(0xFFFFFFFF.toInt()); UiLang.keep(this) },
+            LinearLayout.LayoutParams(0, -2, 1f))
+        addView(TextView(this@MemoryActivity).apply {
+            text = "✕"; textSize = 18f; gravity = Gravity.CENTER; setTextColor(0xCCFFFFFF.toInt())
+            contentDescription = "हटाएँ"
+            setOnClickListener { onDelete() }
+        }, LinearLayout.LayoutParams((44 * dp).toInt(), (44 * dp).toInt()))
+    }
+
     private fun refresh() {
         refreshTalk()
+        refreshLocal()
         list.removeAllViews()
         val facts = Memory.facts(this)
         info.text = "${facts.size} बातें याद • ${DKState.messages.size} चैट मैसेज"

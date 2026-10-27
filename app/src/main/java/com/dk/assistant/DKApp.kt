@@ -20,6 +20,10 @@ class DKApp : Application() {
         com.dk.assistant.ui.NeonTheme.load(this)          // v4: दिखावट (रंग/काँच/चमक/एनिमेशन) - सिर्फ़ UI
         registerActivityLifecycleCallbacks(com.dk.assistant.ui.NeonRefresh)
         StatusNotify.install(this)
+        // v3.88: लोकल याददाश्त - ऐप खुलते ही सार + 30 दिन की सफ़ाई, और रोज़ एक बार
+        try { LocalMemory.maintain(this, "ऐप खुला"); LocalMemory.scheduleDaily(this) } catch (_: Exception) {}
+        OfflineQueue.install(this)
+        TaskHistory.install(this)       // v3.88: हर काम और उसकी हालत का इतिहास (फ़ोन में)      // v3.88: नेटवर्क टूटे तो काम कतार में, आते ही आगे
         removeLegacyAntiTheftState()
         // कोडिंग एजेंट: फ़ोन/Android ने ऐप बीच काम में बंद कर दी थी = थोड़ी देर बाद वहीं से अपने-आप आगे (बार-बार crash हो तो 3 बार बाद रुकता है)
         android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({

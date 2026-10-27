@@ -5,7 +5,8 @@ import kotlin.math.sin
 
 /** सुनते/बोलते समय स्क्रीन के किनारों की चमक - कब और किस रंग में */
 object EdgeGlowRules {
-    const val VIOLET = 0xFF8B5CF6.toInt()   // सुन रहा / सोच रहा
+    const val VIOLET = 0xFF8B5CF6.toInt()   // सुन रहा
+    const val AMBER = 0xFFFFB300.toInt()    // v3.88: सोच रहा (अलग रंग)
     const val PINK = 0xFFFF6FAE.toInt()     // बोल रहा
     const val RED = 0xFFFF7A85.toInt()      // गड़बड़
 
@@ -16,7 +17,8 @@ object EdgeGlowRules {
         if (!live && mode == Mode.IDLE) return null
         return when (mode) {
             Mode.SPEAKING -> PINK
-            Mode.LISTENING, Mode.THINKING, Mode.WORKING -> VIOLET
+            Mode.LISTENING -> VIOLET
+            Mode.THINKING, Mode.WORKING -> AMBER
             Mode.IDLE -> if (live) VIOLET else null
         }
     }

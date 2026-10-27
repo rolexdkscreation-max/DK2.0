@@ -464,7 +464,7 @@ class BrainManager(private val ctx: Context) {
             if (Prefs.friendMode(ctx)) append("\n" + FriendStyle.persona(GirlfriendPersona.female(Prefs.voiceGender(ctx)), user)).append(FriendTalk.block(ctx))
             append(CareTime.block()).append(LiveSearch.memoryBlock())   // v3.80: समय देखकर फ़िक्र + पिछली खोज के स्रोत
             append(CalmPersona.block()).append(GirlfriendPersona.block(Prefs.userName(ctx)))   // v3.76: मालिक का तय स्वभाव - हमेशा
-            append(WorkChatMode.block(live = false)).append(TeacherBoard.block())   // v3.87: काम/बातचीत मोड + टीचर बोर्ड (स्वभाव वही)
+            append(WorkChatMode.block(live = false)).append(TeacherBoard.block()).append(LocalMemory.promptBlock(ctx)).append(NetProbe.refresh(ctx).let { NetSpeed.promptNote() })   // v3.88: लोकल याददाश्त का छोटा सार | v3.87: काम/बातचीत मोड + टीचर बोर्ड (स्वभाव वही)
         }
     }
 
@@ -491,7 +491,7 @@ class BrainManager(private val ctx: Context) {
             append(Memory.factsBlock(ctx))
             append(CareTime.block()).append(LiveSearch.memoryBlock())   // v3.80: समय देखकर फ़िक्र + पिछली खोज के स्रोत
             append(CalmPersona.block()).append(GirlfriendPersona.block(Prefs.userName(ctx)))   // v3.76: मालिक का तय स्वभाव - classic आवाज़ में भी
-            append(WorkChatMode.block(live = false)).append(TeacherBoard.block())   // v3.87: काम/बातचीत मोड + टीचर बोर्ड (स्वभाव वही)
+            append(WorkChatMode.block(live = false)).append(TeacherBoard.block()).append(LocalMemory.promptBlock(ctx)).append(NetProbe.refresh(ctx).let { NetSpeed.promptNote() })   // v3.88: लोकल याददाश्त का छोटा सार | v3.87: काम/बातचीत मोड + टीचर बोर्ड (स्वभाव वही)
         }
     }
 
@@ -587,7 +587,7 @@ class BrainManager(private val ctx: Context) {
             if (Prefs.friendMode(ctx)) append("\n").append(FriendStyle.persona(f, user)).append(FriendTalk.block(ctx))
             append(CareTime.block()).append(LiveSearch.memoryBlock())   // v3.80: समय देखकर फ़िक्र + पिछली खोज के स्रोत
             append(CalmPersona.block()).append(GirlfriendPersona.block(Prefs.userName(ctx)))   // v3.76: मालिक का तय स्वभाव - Live (सीधी आवाज़ / Gemini TTS / Edge) सब में
-            append(WorkChatMode.block(live = true)).append(TeacherBoard.block())   // v3.87: काम/बातचीत मोड + कई काम की कतार + टीचर बोर्ड (स्वभाव वही)
+            append(WorkChatMode.block(live = true)).append(TeacherBoard.block()).append(LocalMemory.promptBlock(ctx))   // v3.88: लोकल याददाश्त का छोटा सार | v3.87: काम/बातचीत मोड + कई काम की कतार + टीचर बोर्ड (स्वभाव वही)
         }
     }
 

@@ -88,6 +88,7 @@ class DKAccessibilityService : AccessibilityService() {
         // aap bolna shuru karo aur ghanti baj rahi ho -> ringtone turant dheemi (taaki DK saaf sune)
         ear = Ear(this, { speaker.busy }) { if (::calls.isInitialized && calls.ringing) calls.quietRinger() }
         agent = AgentRunner(this, scope, speaker)
+        OfflineQueue.drain(this)        // v3.88: पिछली बार नेटवर्क न होने से रुका काम
         calls = CallManager(this) { who -> scope.launch { onIncomingCall(who) } }
         calls.start()
         showEdgeGlow()
@@ -593,6 +594,7 @@ class DKAccessibilityService : AccessibilityService() {
                     }
                     // v3.45: बातचीत खत्म -> कब, कितनी देर, सारांश, अधूरी बातें (फ़ोन पर)
                     try { FriendTalk.sessionEnd(this@DKAccessibilityService, liveStart, scope) } catch (_: Exception) {}
+                    try { LocalMemory.maintain(this@DKAccessibilityService, "बातचीत खत्म") } catch (_: Exception) {}   // v3.88: आज का सार
                     if (wakeLive) {
                         // wake word wala chhota Live khatam -> wapas wake word sunna
                         wakeLive = false; gemLive.idleExitMs = 0

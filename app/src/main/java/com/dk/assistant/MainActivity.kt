@@ -19,8 +19,6 @@ class MainActivity : AppCompatActivity() {
     private lateinit var txtName: TextView
     private lateinit var txtState: TextView
     private lateinit var txtDk: TextView
-    private lateinit var chipAccess: TextView
-    private lateinit var chipMic: TextView
     private lateinit var btnMute: ImageButton
 
     private val stateListener: () -> Unit = { render() }
@@ -37,8 +35,6 @@ class MainActivity : AppCompatActivity() {
         txtState = findViewById(R.id.txtState)
         txtDk = findViewById(R.id.txtDk)
         UiLang.keep(txtDk)    // DK का जवाब (content) - UI भाषा से नहीं बदलता
-        chipAccess = findViewById(R.id.chipAccess)
-        chipMic = findViewById(R.id.chipMic)
         btnMute = findViewById(R.id.btnMute)
         findViewById<ImageButton>(R.id.btnSettings).setOnClickListener { openSettings() }
         // orb par tap = chehra dikh raha ho to hatao, warna live awaaz screen
@@ -57,13 +53,17 @@ class MainActivity : AppCompatActivity() {
                 com.dk.assistant.ui.HomeMenu.Item(R.drawable.ic_chat, "चैट", "लिखकर बात") { openChat() },
                 com.dk.assistant.ui.HomeMenu.Item(R.drawable.ic_mic, "आवाज़", "लाइव बातचीत") { openVoice() },
                 com.dk.assistant.ui.HomeMenu.Item(R.drawable.ic_memory, "मेमोरी", "यादें देखें") { startActivity(Intent(this, MemoryActivity::class.java)) },
+                // v3.88: होम की ऊपर वाली पट्टी के बटन अब यहाँ (फ़ीचर वही, बस जगह बदली)
+                com.dk.assistant.ui.HomeMenu.Item(R.drawable.ic_s_access, (if (Setup.accessibilityOn(this)) "✓ " else "✗ ") + "फ़ोन कंट्रोल",
+                    if (Setup.accessibilityOn(this)) "चालू है" else "चालू करने के लिए टैप करें") { openPhoneControl() },
+                com.dk.assistant.ui.HomeMenu.Item(R.drawable.ic_s_perms, (if (Setup.hasMic(this)) "✓ " else "✗ ") + "माइक",
+                    if (Setup.hasMic(this)) "अनुमति मिली हुई है" else "माइक की अनुमति दें") { askPerms() },
                 com.dk.assistant.ui.HomeMenu.Item(R.drawable.ic_s_computer, "DK कंप्यूटर", "कोई भी काम कदम-दर-कदम") { startActivity(Intent(this, ComputerActivity::class.java)) },
                 com.dk.assistant.ui.HomeMenu.Item(R.drawable.ic_s_story, "DK टीचर", "व्हाइटबोर्ड पर कदम-दर-कदम पढ़ाई") { startActivity(Intent(this, TeacherActivity::class.java)) },
                 com.dk.assistant.ui.HomeMenu.Item(R.drawable.ic_globe, "वेबसाइट", "वेबसाइट बनाने वाला Forge") { startActivity(Intent(this, com.dk.assistant.forge.ForgeActivity::class.java)) },
                 com.dk.assistant.ui.HomeMenu.Item(R.drawable.ic_settings, "सेटिंग्स", "दिखावट, आवाज़, AI दिमाग और बाकी सब") { openSettings() }
             ))
         }
-        chipIcons()
         btnMute.setOnClickListener {
             val muted = !DKState.micMuted
             DKState.setMicMuted(muted)
@@ -71,17 +71,6 @@ class MainActivity : AppCompatActivity() {
         }
         Setup.selfEnableAccessibility(this)
 
-        chipMic.setOnClickListener { askPerms() }
-        chipAccess.setOnClickListener {
-            if (!Setup.accessibilityOn(this)) {
-                UiLang.toast(this, "Installed/Downloaded apps में ${Prefs.assistantName(this)} ON करें", Toast.LENGTH_LONG).show()
-                Setup.openAccessibility(this)
-            }
-        }
-        // DK कंप्यूटर: कोई भी काम कदम-दर-कदम (खोज, फ़ाइलें, फ़ोन, कोडिंग…)
-        findViewById<TextView>(R.id.chipComputer).setOnClickListener { startActivity(Intent(this, ComputerActivity::class.java)) }
-        findViewById<TextView>(R.id.chipTeacher).setOnClickListener { startActivity(Intent(this, TeacherActivity::class.java)) }
-        findViewById<TextView>(R.id.chipForge).setOnClickListener { startActivity(Intent(this, com.dk.assistant.forge.ForgeActivity::class.java)) }
         findViewById<TextView>(R.id.chipKey).setOnClickListener { startActivity(Intent(this, SettingsActivity::class.java)) }
         findViewById<TextView>(R.id.chipUpdate).setOnClickListener {
             startActivity(Intent(this, SettingsActivity::class.java).putExtra("section", "update"))
@@ -104,15 +93,19 @@ class MainActivity : AppCompatActivity() {
         findViewById<android.view.View>(R.id.orb).visibility = if (girl) android.view.View.INVISIBLE else android.view.View.VISIBLE
     }
 
-    /** v4: chips के icon (emoji नहीं) text के नाप के */
-    private fun chipIcons() {
-        val sz = (18 * resources.displayMetrics.density).toInt()
-        for (id in listOf(R.id.chipComputer, R.id.chipTeacher, R.id.chipForge)) {
-            val t = findViewById<TextView>(id)
-            val d = t.compoundDrawablesRelative[0] ?: continue
-            d.setBounds(0, 0, sz, sz)
-            t.setCompoundDrawablesRelative(d, null, null, null)
-        }
+    /** v3.88: फ़ोन कंट्रोल (पहले होम की पट्टी में था, अब मेन्यू में) - बंद हो तो चालू करने की जगह खोलो */
+    private fun openPhoneControl() {
+        if (!Setup.accessibilityOn(this)) {
+            UiLang.toast(this, "Installed/Downloaded apps में ${Prefs.assistantName(this)} ON करें", Toast.LENGTH_LONG).show()
+            Setup.openAccessibility(this)
+        } else UiLang.toast(this, "फ़ोन कंट्रोल चालू है", Toast.LENGTH_SHORT).show()
+    }
+
+    /** v3.88: ऊपर की सूचना-पट्टी सिर्फ़ तब जब नया अपडेट / access key वाली बात हो */
+    private fun syncAlertRow() {
+        val any = findViewById<android.view.View>(R.id.chipUpdate).visibility == android.view.View.VISIBLE ||
+            findViewById<android.view.View>(R.id.chipKey).visibility == android.view.View.VISIBLE
+        findViewById<android.view.View>(R.id.alertRow).visibility = if (any) android.view.View.VISIBLE else android.view.View.GONE
     }
 
     /** v4: brand नाम पर accent → violet नियॉन रंग; नियॉन ओर्ब हो तो बीच में माइक */
@@ -261,6 +254,7 @@ class MainActivity : AppCompatActivity() {
             val show = i.status != com.dk.assistant.license.KeyStatus.NOT_CONFIGURED && !i.active
             chip.visibility = if (show) android.view.View.VISIBLE else android.view.View.GONE
             if (show) { chip.text = "🔑 " + i.statusText; chip.contentDescription = i.statusText }
+            syncAlertRow()
         }
     }
 
@@ -271,13 +265,14 @@ class MainActivity : AppCompatActivity() {
         val chip = findViewById<TextView>(R.id.chipUpdate)
         val sp = getSharedPreferences("dk_prefs", MODE_PRIVATE)
         fun chipFor(rel: Updater.Release?) {
-            if (rel == null) { chip.visibility = android.view.View.GONE; return }
+            if (rel == null) { chip.visibility = android.view.View.GONE; syncAlertRow(); return }
             chip.text = when {
                 Updater.downloaded(this, rel) != null -> "⬆ ${rel.typeLabel} तैयार — इंस्टॉल करें"
                 Updater.isDownloading(rel) -> "⬆ ${rel.typeLabel} डाउनलोड हो रहा है"
                 else -> "⬆ ${rel.typeLabel} • DK ${rel.version}"
             }
             chip.visibility = android.view.View.VISIBLE
+            syncAlertRow()
         }
         if (System.currentTimeMillis() - Prefs.lastUpdateCheck(this) < 3 * 60 * 60 * 1000L) {
             // 3 ghante ke andar dobara GitHub nahi - yaad rakha hua update; adhoora download ho to aage badhao
@@ -330,18 +325,9 @@ class MainActivity : AppCompatActivity() {
         // v3.58: समय के हिसाब से - सुप्रभात / नमस्ते / शुभ संध्या
         UiLang.setText(txtHello, com.dk.assistant.onboard.Greeting.of(java.util.Calendar.getInstance().get(java.util.Calendar.HOUR_OF_DAY), user))
 
-        UiLang.setText(chipAccess, (if (Setup.accessibilityOn(this)) "✓ " else "✗ ") + "फ़ोन कंट्रोल")
-        UiLang.setText(chipMic, (if (Setup.hasMic(this)) "✓ " else "✗ ") + "माइक")
-
-        val live = DKState.live
-        if (DKState.micMuted) UiLang.setText(txtState, "माइक म्यूट • ऊपर का बटन दबाकर चालू करें")
-        else UiLang.setText(txtState, when (DKState.mode) {
-            Mode.IDLE -> if (live) "माइक चालू है • आवाज़ स्क्रीन खोलें" else "ओर्ब पर टैप करके बोलिए"
-            Mode.LISTENING -> if (live) "Listening • सुन रहा हूँ… (बंद: टैप या \"माइक बंद\")" else "Listening • सुन रहा हूँ…"
-            Mode.THINKING -> "जवाब आ रहा है…"
-            Mode.WORKING -> "काम कर रहा हूँ…"
-            Mode.SPEAKING -> "Speaking • बोल रहा हूँ…"
-        })
+        // v3.88: सिर्फ़ तीन स्थितियाँ (Listening / Thinking / Speaking); कुछ न चले तो "Tap the orb and speak"
+        val st = ThreeState.label(DKState.mode, DKState.live, DKState.micMuted)
+        UiLang.setText(txtState, st ?: "ओर्ब पर टैप करके बोलिए")
         btnMute.setImageResource(if (DKState.micMuted) R.drawable.ic_mic_off else R.drawable.ic_mic)
         btnMute.contentDescription = UiLang.s(if (DKState.micMuted) "माइक चालू करें" else "माइक म्यूट करें")
         val userText = DKState.lastUser.takeIf { it.isNotBlank() }?.let { "${user.ifBlank { "आप" }}: $it\n" } ?: ""
