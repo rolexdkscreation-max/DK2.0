@@ -232,6 +232,49 @@ object WakeMatch {
     /** नमूने की लंबाई ठीक? (ms) */
     fun goodLength(speechMs: Int) = speechMs in MIN_MS..MAX_MS
 
+    // ------------------------------------------------------------------ छोटा "बोलना शुरू/खत्म" (Hey DK के लिए)
+
+    /**
+     * v3.81 fix: पुराना TurnDetector "बोलना जारी" के लिए कम से कम 220 का ज़ोर माँगता है - कई फ़ोन का
+     * VOICE_RECOGNITION माइक इससे धीमा आता है -> "Hey DK" तुरंत कट जाता था और गिनती न बनने से 8 s तक
+     * रिकॉर्ड चलता रहा ("बहुत लंबा" / "आवाज़ नहीं पकड़ी"). यह अपने शोर के हिसाब से दरवाज़ा बनाता है.
+     */
+    class Vad(private val chunkMs: Int = 40, private val endMs: Int = 450) {
+        enum class Ev { NONE, START, END }
+        var noise = 0.0
+            private set
+        var inSpeech = false
+            private set
+        private var warm = 0; private var run = 0; private var quiet = 0
+        var speechMs = 0
+            private set
+
+        fun startThr() = max(noise * 2.2, noise + 50.0).coerceAtLeast(60.0)
+        fun keepThr() = max(noise * 1.5, noise + 25.0).coerceAtLeast(40.0)
+
+        fun feed(rms: Double): Ev {
+            if (warm < 5) {        // पहले 200 ms: शोर सीखो
+                noise = if (warm == 0) rms else noise * 0.7 + rms * 0.3
+                warm++; return Ev.NONE
+            }
+            if (!inSpeech) {
+                if (rms > startThr()) {
+                    if (++run * chunkMs >= 80) { inSpeech = true; run = 0; quiet = 0; speechMs = 80; return Ev.START }
+                } else {
+                    run = 0
+                    noise = (noise * 0.95 + rms * 0.05).coerceIn(5.0, 4000.0)
+                }
+                return Ev.NONE
+            }
+            if (rms > keepThr()) { quiet = 0; speechMs += chunkMs; return Ev.NONE }
+            quiet += chunkMs
+            if (quiet >= endMs) { inSpeech = false; quiet = 0; return Ev.END }
+            return Ev.NONE
+        }
+
+        fun reset() { inSpeech = false; run = 0; quiet = 0; speechMs = 0 }
+    }
+
     // ------------------------------------------------------------------ जागने पर क्या बोले
 
     val DEFAULT_ACKS = listOf("हाँ सर", "बोलिए सर", "हाँ बॉस", "जी, बोलिए")

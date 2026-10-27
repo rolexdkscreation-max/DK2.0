@@ -7,7 +7,6 @@ import android.media.AudioRecord
 import android.media.MediaRecorder
 import com.dk.assistant.DKLog
 import com.dk.assistant.Prefs
-import com.dk.assistant.TurnDetector
 import com.dk.assistant.voice.engine.PreviewPlayer
 import com.dk.assistant.voice.engine.VoiceEngines
 import kotlinx.coroutines.Dispatchers
@@ -47,6 +46,7 @@ object HeyDk {
     fun ownerCheck(c: Context) = OwnerVoice.supported && OwnerVoice.hasModel(c) && Prefs.heyDkPrint(c) != null && OwnerVoice.broken == null
 
     fun status(c: Context): String = when {
+        !trained(c) && Prefs.wakeMode(c) -> "बिना सिखाए वाला तरीका चालू: \"हे डीके\" / \"हेलो डीके\" बोलिए (इंटरनेट से पहचान, हर आवाज़ पर)"
         !trained(c) -> "अभी सिखाया नहीं - नीचे \"Hey DK सिखाओ\" दबाइए"
         !Prefs.heyDkOn(c) -> "सीखा हुआ है, पर बंद है"
         ownerCheck(c) -> "चालू: \"Hey DK\" + सिर्फ़ आपकी आवाज़ (फ़ोन के अंदर)"
@@ -55,9 +55,67 @@ object HeyDk {
 
     // ------------------------------------------------------------------ सीखना
 
-    /** एक बार "Hey DK" रिकॉर्ड (सुनने वाला माइक-रास्ता ही, ताकि सुनते समय वैसा ही मिले) */
-    suspend fun recordTake(onLevel: (Float) -> Unit): VoiceEnroll.Take? =
-        VoiceEnroll.record(onLevel, MediaRecorder.AudioSource.VOICE_RECOGNITION, endSilenceMs = 450, minSpeechMs = 200)
+    /**
+     * कौन-सा माइक-रास्ता: पहले VOICE_RECOGNITION (कम बदलाव), पर कई फ़ोन पर वह बहुत धीमा/खाली आता है
+     * (सिखाते समय "आवाज़ नहीं पकड़ी") -> तब VOICE_COMMUNICATION (Live वाला). जो सीखते समय चला, सुनते समय वही.
+     */
+    fun source(c: Context) = Prefs.heyDkSource(c)
+
+    class Take(val pcm: ByteArray, val speechMs: Int, val peak: Double, val noise: Double)
+
+    /** पिछली रिकॉर्डिंग का हाल (सिखाते समय दिखाने को): शोर / सबसे तेज़ */
+    @Volatile var lastInfo = ""
+        private set
+
+    /**
+     * एक बार "Hey DK" रिकॉर्ड: बोलना शुरू होने का 7 s इंतज़ार, फिर 0.5 s चुप्पी या 3.5 s पर बंद.
+     * @param onLevel 0..1 मीटर (IO thread से)
+     */
+    @SuppressLint("MissingPermission")
+    suspend fun recordTake(source: Int, onLevel: (Float) -> Unit): Take? = withContext(Dispatchers.IO) {
+        val chunk = RATE * CHUNK_MS / 1000
+        val min = AudioRecord.getMinBufferSize(RATE, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT)
+        val r = try {
+            AudioRecord(source, RATE, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT, maxOf(min * 2, RATE * 2))
+                .takeIf { it.state == AudioRecord.STATE_INITIALIZED }
+        } catch (_: Exception) { null }
+        if (r == null) { lastInfo = "माइक नहीं खुला"; return@withContext null }
+        val vad = WakeMatch.Vad(CHUNK_MS, endMs = 500)
+        val pre = ArrayDeque<ByteArray>(); val out = ByteArrayOutputStream()
+        val buf = ShortArray(chunk); val bytes = ByteArray(chunk * 2)
+        var started = false; var ms = 0; var peak = 0.0
+        try {
+            r.startRecording()
+            while (isActive) {
+                val n = r.read(buf, 0, chunk)
+                if (n <= 0) { Thread.sleep(10); continue }
+                var sum = 0.0
+                for (i in 0 until n) { val v = buf[i].toInt(); sum += (v * v).toDouble(); bytes[i * 2] = (v and 0xff).toByte(); bytes[i * 2 + 1] = (v shr 8 and 0xff).toByte() }
+                val lv = sqrt(sum / n)
+                peak = maxOf(peak, lv); ms += CHUNK_MS
+                onLevel((lv / maxOf(vad.startThr() * 3, 600.0)).toFloat().coerceIn(0f, 1f))
+                val ev = vad.feed(lv)
+                val piece = bytes.copyOf(n * 2)
+                if (!started) {
+                    pre.addLast(piece); while (pre.size > 8) pre.removeFirst()
+                    if (ev == WakeMatch.Vad.Ev.START) { started = true; pre.forEach { out.write(it) }; pre.clear() }
+                    else if (ms > 7_000) break
+                    continue
+                }
+                out.write(piece)
+                if (ev == WakeMatch.Vad.Ev.END || out.size() >= RATE * 2 * 7 / 2) break
+            }
+        } finally {
+            try { r.stop() } catch (_: Exception) {}
+            r.release()
+        }
+        lastInfo = "शोर ${vad.noise.toInt()}, सबसे तेज़ ${peak.toInt()}"
+        DKLog.d("Hey DK नमूना: ${if (started) "${out.size() / 32} ms" else "कोई नहीं बोला"} ($lastInfo, माइक $source)")
+        if (!started) null else Take(out.toByteArray(), vad.speechMs, peak, vad.noise)
+    }
+
+    /** रिकॉर्ड में से सिर्फ़ बोला हुआ हिस्सा कितने फ़्रेम (10 ms) - VAD की गिनती पर भरोसा नहीं (शोर में लंबी/छोटी गिनती) */
+    fun spokenFrames(pcm: ByteArray): Int = featuresOf(pcm).size
 
     fun featuresOf(pcm: ByteArray): Array<FloatArray> = WakeMatch.features(SpeakerFbank.pcm16(pcm))
 
@@ -65,7 +123,7 @@ object HeyDk {
      * नमूने सेव. @return null = ठीक, वरना हिंदी कारण
      * आवाज़ (PCM) सेव नहीं होती - सिर्फ़ अंक (MFCC + पहचान).
      */
-    fun save(c: Context, takes: List<ByteArray>): String? {
+    fun save(c: Context, takes: List<ByteArray>, source: Int = MediaRecorder.AudioSource.VOICE_RECOGNITION): String? {
         val feats = takes.map { featuresOf(it) }.filter { it.size >= 15 }
         if (feats.size < 3) return "आवाज़ साफ़ नहीं आई - शांत जगह पर दोबारा सिखाइए"
         val m = WakeMatch.Model.build(feats) ?: return "नमूने आपस में नहीं मिले - हर बार एक ही तरह \"Hey DK\" बोलिए"
@@ -77,6 +135,7 @@ object HeyDk {
         Prefs.edit(c) {
             if (print != null) putString("hey_dk_print", VoicePrint.encode(print)) else remove("hey_dk_print")
             putBoolean("hey_dk_on", true)
+            putInt("hey_dk_src", source)
             putBoolean("wake_mode", true)       // सुनने वाला loop चले
         }
         DKLog.d("Hey DK सीखा: ${feats.size} नमूने, सीमा ${"%.2f".format(m.base)}, आवाज़-पहचान ${if (print != null) "हाँ" else "नहीं"}")
@@ -107,10 +166,10 @@ object HeyDk {
         val chunk = RATE * CHUNK_MS / 1000
         val min = AudioRecord.getMinBufferSize(RATE, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT)
         val r = try {
-            AudioRecord(MediaRecorder.AudioSource.VOICE_RECOGNITION, RATE, AudioFormat.CHANNEL_IN_MONO,
+            AudioRecord(source(c), RATE, AudioFormat.CHANNEL_IN_MONO,
                 AudioFormat.ENCODING_PCM_16BIT, maxOf(min * 2, RATE * 2)).takeIf { it.state == AudioRecord.STATE_INITIALIZED }
         } catch (_: Exception) { null } ?: return@withContext null
-        val det = TurnDetector(CHUNK_MS, endSilenceMs = 350, minSpeechMs = 200)
+        val det = WakeMatch.Vad(CHUNK_MS, endMs = 350)
         val pre = ArrayDeque<ByteArray>()
         val seg = ByteArrayOutputStream()
         // बात चलती रहे तो शुरू के कुछ कटों पर जाँचो (एक साँस में "Hey DK, ..." भी पकड़ में आए)
@@ -126,17 +185,17 @@ object HeyDk {
                 if (n <= 0) { Thread.sleep(20); continue }
                 var sum = 0.0
                 for (i in 0 until n) { val s = buf[i].toInt(); sum += (s * s).toDouble(); bytes[i * 2] = (s and 0xff).toByte(); bytes[i * 2 + 1] = (s shr 8 and 0xff).toByte() }
-                val ev = det.feed(sqrt(sum / n), System.currentTimeMillis())
+                val ev = det.feed(sqrt(sum / n))
                 val piece = bytes.copyOf(n * 2)
                 if (!inSeg) {
                     pre.addLast(piece); while (pre.size > 8) pre.removeFirst()
-                    if (ev == TurnDetector.Event.SPEECH_START) {
+                    if (ev == WakeMatch.Vad.Ev.START) {
                         inSeg = true; cutIdx = 0; checkedUpTo = 0; seg.reset(); pre.forEach { seg.write(it) }; preBytes = seg.size(); pre.clear()
                     }
                     continue
                 }
                 seg.write(piece)
-                val ended = ev == TurnDetector.Event.SPEECH_END || !det.inSpeech
+                val ended = ev == WakeMatch.Vad.Ev.END || !det.inSpeech
                 var probe = -1
                 if (cutIdx < cuts.size && seg.size() >= preBytes + cuts[cutIdx]) { probe = preBytes + cuts[cutIdx]; cutIdx++ }
                 else if (ended && seg.size() > checkedUpTo && seg.size() <= maxSeg) probe = seg.size()
@@ -154,7 +213,7 @@ object HeyDk {
                             var s2 = 0.0
                             for (i in 0 until k) { val v = buf[i].toInt(); s2 += (v * v).toDouble(); bytes[i * 2] = (v and 0xff).toByte(); bytes[i * 2 + 1] = (v shr 8 and 0xff).toByte() }
                             rest.write(bytes, 0, k * 2)
-                            det.feed(sqrt(s2 / k), System.currentTimeMillis())
+                            det.feed(sqrt(s2 / k))
                             quiet = if (det.inSpeech) 0 else quiet + CHUNK_MS
                         }
                         // "Hey DK" के बाद बस थोड़ा-सा (साँस/हम्म) = सिर्फ़ "Hey DK"
