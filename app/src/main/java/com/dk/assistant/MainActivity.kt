@@ -58,6 +58,7 @@ class MainActivity : AppCompatActivity() {
                 com.dk.assistant.ui.HomeMenu.Item(R.drawable.ic_mic, "आवाज़", "लाइव बातचीत") { openVoice() },
                 com.dk.assistant.ui.HomeMenu.Item(R.drawable.ic_memory, "मेमोरी", "यादें देखें") { startActivity(Intent(this, MemoryActivity::class.java)) },
                 com.dk.assistant.ui.HomeMenu.Item(R.drawable.ic_s_computer, "DK कंप्यूटर", "कोई भी काम कदम-दर-कदम") { startActivity(Intent(this, ComputerActivity::class.java)) },
+                com.dk.assistant.ui.HomeMenu.Item(R.drawable.ic_s_story, "DK टीचर", "व्हाइटबोर्ड पर कदम-दर-कदम पढ़ाई") { startActivity(Intent(this, TeacherActivity::class.java)) },
                 com.dk.assistant.ui.HomeMenu.Item(R.drawable.ic_globe, "वेबसाइट", "वेबसाइट बनाने वाला Forge") { startActivity(Intent(this, com.dk.assistant.forge.ForgeActivity::class.java)) },
                 com.dk.assistant.ui.HomeMenu.Item(R.drawable.ic_settings, "सेटिंग्स", "दिखावट, आवाज़, AI दिमाग और बाकी सब") { openSettings() }
             ))
@@ -79,6 +80,7 @@ class MainActivity : AppCompatActivity() {
         }
         // DK कंप्यूटर: कोई भी काम कदम-दर-कदम (खोज, फ़ाइलें, फ़ोन, कोडिंग…)
         findViewById<TextView>(R.id.chipComputer).setOnClickListener { startActivity(Intent(this, ComputerActivity::class.java)) }
+        findViewById<TextView>(R.id.chipTeacher).setOnClickListener { startActivity(Intent(this, TeacherActivity::class.java)) }
         findViewById<TextView>(R.id.chipForge).setOnClickListener { startActivity(Intent(this, com.dk.assistant.forge.ForgeActivity::class.java)) }
         findViewById<TextView>(R.id.chipKey).setOnClickListener { startActivity(Intent(this, SettingsActivity::class.java)) }
         findViewById<TextView>(R.id.chipUpdate).setOnClickListener {
@@ -105,7 +107,7 @@ class MainActivity : AppCompatActivity() {
     /** v4: chips के icon (emoji नहीं) text के नाप के */
     private fun chipIcons() {
         val sz = (18 * resources.displayMetrics.density).toInt()
-        for (id in listOf(R.id.chipComputer, R.id.chipForge)) {
+        for (id in listOf(R.id.chipComputer, R.id.chipTeacher, R.id.chipForge)) {
             val t = findViewById<TextView>(id)
             val d = t.compoundDrawablesRelative[0] ?: continue
             d.setBounds(0, 0, sz, sz)

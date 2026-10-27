@@ -376,6 +376,40 @@ class BrainManager(private val ctx: Context) {
      * v3.45: एक सीधा सवाल -> पूरा जवाब (बातचीत का सारांश वगैरह). चैट वाले AI एक-एक करके; null = कोई नहीं चला.
      * (system prompt / इतिहास नहीं - सिर्फ़ यही दो)
      */
+    /**
+     * DK टीचर: अपना system prompt + सवाल (+ चाहें तो व्हाइटबोर्ड की JPEG base64 फ़ोटो) -> पूरा जवाब.
+     * चैट का इतिहास न भेजा जाता है, न बदला जाता है. फ़ोटो सिर्फ़ उन AI को जो फ़ोटो पढ़ते हैं.
+     */
+    suspend fun teach(system: String, prompt: String, imageB64: String?): String = withContext(Dispatchers.IO) {
+        val list = rankedForChat()
+        if (list.isEmpty()) {
+            val all = Providers.all.filter { clientFor(it) != null }
+            throw if (all.isEmpty()) AiException(-1, "NO_KEY") else exhausted(all)
+        }
+        var lastError: Exception? = null
+        for (p in list) {
+            val client = clientFor(p) ?: continue
+            val img = if (p.vision) imageB64 else null
+            try {
+                val answer = try {
+                    client.complete(system, emptyList(), prompt, img)
+                } catch (e: AiException) {
+                    if (img != null && e.code == 400) client.complete(system, emptyList(), prompt, null) else throw e
+                }
+                if (answer.isBlank()) throw AiException(0, "khali jawab")
+                lastUsed = client.label
+                ProviderHealth.ok(p.id, 1000)
+                return@withContext answer
+            } catch (e: kotlinx.coroutines.CancellationException) { throw e
+            } catch (e: Exception) {
+                DKLog.d("teach ${client.label} fail: ${e.message?.take(80)}")
+                ProviderHealth.fail(p.id, e)
+                lastError = e
+            }
+        }
+        throw lastError ?: AiException(-1, "NO_KEY")
+    }
+
     suspend fun quickText(system: String, prompt: String): String? = withContext(Dispatchers.IO) {
         for (p in rankedForChat()) {
             val c = clientFor(p) ?: continue

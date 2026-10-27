@@ -7,4 +7,6 @@
     <files-path name="websites" path="Websites/" />
     <!-- DK AI Part 12: यूज़र ने DK को share की फ़ोटो/वीडियो (filesDir/shared_media) -->
     <files-path name="shared_media" path="shared_media/" />
+    <!-- DK टीचर: व्हाइटबोर्ड की फ़ोटो शेयर (cacheDir/images) -->
+    <cache-path name="teacher_board" path="images/" />
 </paths>

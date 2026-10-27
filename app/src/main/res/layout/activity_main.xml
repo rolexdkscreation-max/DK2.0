@@ -102,6 +102,10 @@
                     android:drawableStart="@drawable/ic_s_computer"
                     android:text="DK कंप्यूटर"
                     android:contentDescription="DK कंप्यूटर खोलें" />
+                <TextView android:id="@+id/chipTeacher" style="@style/DKChip"
+                    android:drawableStart="@drawable/ic_s_story"
+                    android:text="DK टीचर"
+                    android:contentDescription="DK टीचर (व्हाइटबोर्ड वाली पढ़ाई) खोलें" />
                 <TextView android:id="@+id/chipForge" style="@style/DKChip"
                     android:drawableStart="@drawable/ic_globe"
                     android:text="वेबसाइट"
