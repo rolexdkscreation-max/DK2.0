@@ -92,6 +92,7 @@ object PreviewPlayer {
                 .setEncoding(AudioFormat.ENCODING_PCM_16BIT).build())
             .setBufferSizeInBytes(maxOf(min * 2, VoiceEngine.RATE * 2 / 5))
             .setTransferMode(AudioTrack.MODE_STREAM).build()
+        VoiceTune.load(c); VoiceTune.apply(tr, -1)      // v3.80: सुनो में भी वही गति / पिच
         cur = tr
         var first = -1L
         var frames = 0L

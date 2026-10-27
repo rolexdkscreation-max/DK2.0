@@ -40,7 +40,7 @@ object LiveNativeEngine : VoiceEngine {
         return names.map { it to "$it — ${VoiceCatalog.GEMINI_INFO[it] ?: ""} (महिला)" }
     }
     override fun voice(c: Context): String = Prefs.geminiVoice(c)
-    override fun setVoice(c: Context, v: String) { Prefs.edit(c) { putString("gemini_voice", v) } }
+    override fun setVoice(c: Context, v: String) { Prefs.edit(c) { putString("gemini_voice", v) }; VoiceEngines.liveChanged() }
 
     /** v3.69: Live सीधी आवाज़ का अपना "भावना / स्टाइल" - Live सत्र के system instruction में जुड़ता है (GeminiLive.setupJson) */
     fun style(c: Context): String = VoiceEngines.sp(c).getString("live_native_style", "") ?: ""
@@ -53,9 +53,9 @@ object LiveNativeEngine : VoiceEngine {
 
     override fun settings(c: Context, box: LinearLayout, ui: VoiceUi) {
         ui.field(box, "भावना / स्टाइल (Live के मुख्य निर्देश में)", style(c), "जैसे: धीमी, कोमल, भावुक आवाज़ में, प्यार से बोलो", multiLine = true) { v ->
-            VoiceEngines.sp(c).edit().putString("live_native_style", v.trim()).apply()
+            if (v.trim() != style(c)) { VoiceEngines.sp(c).edit().putString("live_native_style", v.trim()).apply(); VoiceEngines.liveChanged() }
         }
-        ui.hint(box, "Live उसी भाव में बोलेगा। चलती बातचीत में नया निर्देश अगली बार जुड़ने पर लगेगा (DK लाइव बंद करके फिर चालू करें)।")
+        ui.hint(box, "Live उसी भाव में बोलेगा। चलती बातचीत में भी: DK का जवाब पूरा होते ही नई आवाज़ / नया निर्देश लग जाता है।")
     }
 
     override fun notReady(c: Context): String? = if (GeminiLive.key(c).isBlank()) "DK लाइव की Gemini key नहीं डाली" else null

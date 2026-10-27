@@ -45,9 +45,12 @@ object EdgeTtsEngine : VoiceEngine {
         VoiceEngines.sp(c).getString("edge_voice", null)?.takeIf { v -> VOICES.any { it.first == v } } ?: VOICES[0].first
     override fun setVoice(c: Context, v: String) { VoiceEngines.sp(c).edit().putString("edge_voice", v).apply() }
 
-    /** गति % (-50..+50), पिच Hz (-30..+30) */
-    fun rate(c: Context) = VoiceEngines.sp(c).getInt("edge_rate", 0)
-    fun pitch(c: Context) = VoiceEngines.sp(c).getInt("edge_pitch", 0)
+    /**
+     * v3.80: Edge के अपने गति/पिच स्लाइडर हटे - अब सब इंजनों के लिए एक ही गति/पिच ([VoiceTune], बजाते समय लगती है).
+     * यहाँ सिर्फ़ CalmPersona की हल्की धीमी चाल + स्टाइल के शब्द. (पुरानी edge_rate/edge_pitch अब नहीं पढ़ते - दो बार न लगे)
+     */
+    @Suppress("UNUSED_PARAMETER") fun rate(c: Context) = 0
+    @Suppress("UNUSED_PARAMETER") fun pitch(c: Context) = 0
 
     /** v3.69: Edge का अपना "भावना / स्टाइल" (शब्दों से सिर्फ़ गति-पिच, EdgeStyle) */
     fun style(c: Context): String = VoiceEngines.sp(c).getString("edge_style", "") ?: ""
@@ -57,9 +60,7 @@ object EdgeTtsEngine : VoiceEngine {
         ui.field(box, "भावना / स्टाइल (Edge के लिए)", style(c), "जैसे: धीमी, कोमल आवाज़ में", multiLine = true) { v ->
             VoiceEngines.sp(c).edit().putString("edge_style", v.trim()).apply()
         }
-        ui.hint(box, "Edge में असर सिर्फ़ गति और पिच तक है: \"धीमी\", \"कोमल\" = गति कम, पिच नीचा; \"तेज़\", \"जोश\" = गति ज़्यादा। यह नीचे के स्लाइडर में जुड़ता है।")
-        ui.slider(box, "गति", -50, 50, rate(c), { v -> (if (v > 0) "+" else "") + "$v%" }) { v -> VoiceEngines.sp(c).edit().putInt("edge_rate", v).apply() }
-        ui.slider(box, "पिच (आवाज़ का ऊँचा-नीचापन)", -30, 30, pitch(c), { v -> (if (v > 0) "+" else "") + "$v Hz" }) { v -> VoiceEngines.sp(c).edit().putInt("edge_pitch", v).apply() }
+        ui.hint(box, "Edge में असर सिर्फ़ गति और पिच तक है: \"धीमी\", \"कोमल\" = गति कम, पिच नीचा; \"तेज़\", \"जोश\" = गति ज़्यादा। गति और पिच के स्लाइडर ऊपर \"गति और पिच\" में हैं (सब आवाज़ों के लिए एक)।")
     }
 
     // ------------------------------------------------------------------ WebSocket (गर्म)

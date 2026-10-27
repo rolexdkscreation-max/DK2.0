@@ -64,6 +64,8 @@ class SpeechPipeline(private val ctx: Context, private val hooks: Hooks) {
     private val spoken = StringBuilder()
     @Volatile private var track: AudioTrack? = null
     private var trackUsage = -1
+    /** v3.80: इस track पर लगी गति/पिच का version ([VoiceTune]) */
+    @Volatile private var tuneVer = -1
     private val player: Thread
 
     init {
@@ -208,6 +210,8 @@ class SpeechPipeline(private val ctx: Context, private val hooks: Hooks) {
                 .setEncoding(AudioFormat.ENCODING_PCM_16BIT).build())
             .setBufferSizeInBytes(maxOf(min * 2, VoiceEngine.RATE * 2 / 5))     // ~200 ms: जल्दी शुरू, अटके बिना
             .setTransferMode(AudioTrack.MODE_STREAM).build()
+        VoiceTune.load(ctx)
+        tuneVer = VoiceTune.apply(t, -1)
         t.play()
         track = t; trackUsage = u
         return t
@@ -261,8 +265,9 @@ class SpeechPipeline(private val ctx: Context, private val hooks: Hooks) {
             hooks.log("पहला टुकड़ा: \"${s.text.take(40)}\" • text आने के ${s.createdAt - turnAt} ms बाद कटा • " +
                 "इंजन ने ${if (s.firstPcmAt > 0) s.firstPcmAt - s.createdAt else -1} ms में पहली आवाज़ दी")
         }
+        tuneVer = VoiceTune.apply(tr, tuneVer)      // v3.80: गति / पिच बदली -> अगले टुकड़े से ही
         val startAt = maxOf(playUntil, now)
-        playUntil = startAt + pcm.size * 1000L / (VoiceEngine.RATE * 2)
+        playUntil = startAt + VoiceTune.playMs(pcm.size, VoiceEngine.RATE)
         VoiceLevel.schedule(pcm, startAt)
         hooks.onPlay(pcm, now)
         var off = 0
