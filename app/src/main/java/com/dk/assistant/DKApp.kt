@@ -17,6 +17,8 @@ class DKApp : Application() {
         DKState.init(this)
         Prefs.loadLang(this)
         UiLang.load(this)     // स्क्रीनों की भाषा (शुरुआती English)
+        com.dk.assistant.ui.NeonTheme.load(this)          // v4: दिखावट (रंग/काँच/चमक/एनिमेशन) - सिर्फ़ UI
+        registerActivityLifecycleCallbacks(com.dk.assistant.ui.NeonRefresh)
         StatusNotify.install(this)
         removeLegacyAntiTheftState()
         // कोडिंग एजेंट: फ़ोन/Android ने ऐप बीच काम में बंद कर दी थी = थोड़ी देर बाद वहीं से अपने-आप आगे (बार-बार crash हो तो 3 बार बाद रुकता है)

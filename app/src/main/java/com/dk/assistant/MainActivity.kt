@@ -48,14 +48,21 @@ class MainActivity : AppCompatActivity() {
         findViewById<android.view.View>(R.id.avatar).setOnClickListener { openVoice() }
         findViewById<ImageButton>(R.id.btnOrbMin).setOnClickListener {
             Prefs.edit(this) { putBoolean("orb_min", !Prefs.orbMin(this@MainActivity)) }
-            applyOrbMin()
+            applyOrbMin(); applyNeon()
         }
         applyOrbMin()
-        findViewById<android.view.View>(R.id.btnChat).setOnClickListener { openChat() }
-        findViewById<android.view.View>(R.id.btnVoice).setOnClickListener { openVoice() }
-        findViewById<android.view.View>(R.id.btnMemory).setOnClickListener {
-            startActivity(Intent(this, MemoryActivity::class.java))
+        // v4: होम पर नीचे के 3 बड़े कार्ड नहीं - वही चैट / आवाज़ / मेमोरी (और बाकी स्क्रीनें) ऊपर-बाएँ मेनू में
+        findViewById<ImageButton>(R.id.btnMenu).setOnClickListener { v ->
+            com.dk.assistant.ui.HomeMenu.show(this, v, listOf(
+                com.dk.assistant.ui.HomeMenu.Item(R.drawable.ic_chat, "चैट", "लिखकर बात") { openChat() },
+                com.dk.assistant.ui.HomeMenu.Item(R.drawable.ic_mic, "आवाज़", "लाइव बातचीत") { openVoice() },
+                com.dk.assistant.ui.HomeMenu.Item(R.drawable.ic_memory, "मेमोरी", "यादें देखें") { startActivity(Intent(this, MemoryActivity::class.java)) },
+                com.dk.assistant.ui.HomeMenu.Item(R.drawable.ic_s_computer, "DK कंप्यूटर", "कोई भी काम कदम-दर-कदम") { startActivity(Intent(this, ComputerActivity::class.java)) },
+                com.dk.assistant.ui.HomeMenu.Item(R.drawable.ic_globe, "वेबसाइट", "वेबसाइट बनाने वाला Forge") { startActivity(Intent(this, com.dk.assistant.forge.ForgeActivity::class.java)) },
+                com.dk.assistant.ui.HomeMenu.Item(R.drawable.ic_settings, "सेटिंग्स", "दिखावट, आवाज़, AI दिमाग और बाकी सब") { openSettings() }
+            ))
         }
+        chipIcons()
         btnMute.setOnClickListener {
             val muted = !DKState.micMuted
             DKState.setMicMuted(muted)
@@ -94,6 +101,33 @@ class MainActivity : AppCompatActivity() {
         val girl = Prefs.avatarKind(this) == "girl" && com.dk.assistant.avatar.AvatarAssets.available(this)
         findViewById<android.view.View>(R.id.avatar).visibility = if (girl) android.view.View.VISIBLE else android.view.View.GONE
         findViewById<android.view.View>(R.id.orb).visibility = if (girl) android.view.View.INVISIBLE else android.view.View.VISIBLE
+    }
+
+    /** v4: chips के icon (emoji नहीं) text के नाप के */
+    private fun chipIcons() {
+        val sz = (18 * resources.displayMetrics.density).toInt()
+        for (id in listOf(R.id.chipComputer, R.id.chipForge)) {
+            val t = findViewById<TextView>(id)
+            val d = t.compoundDrawablesRelative[0] ?: continue
+            d.setBounds(0, 0, sz, sz)
+            t.setCompoundDrawablesRelative(d, null, null, null)
+        }
+    }
+
+    /** v4: brand नाम पर accent → violet नियॉन रंग; नियॉन ओर्ब हो तो बीच में माइक */
+    private fun applyNeon() {
+        val l = com.dk.assistant.ui.NeonTheme.look
+        txtName.post {
+            val w = txtName.paint.measureText(txtName.text.toString()).coerceAtLeast(1f)
+            txtName.paint.shader = android.graphics.LinearGradient(0f, 0f, w, 0f,
+                intArrayOf(com.dk.assistant.ui.NeonTheme.mix(l.accent.main, android.graphics.Color.WHITE, 0.35f), l.accent.partner),
+                null, android.graphics.Shader.TileMode.CLAMP)
+            txtName.invalidate()
+        }
+        val orbShown = findViewById<android.view.View>(R.id.orb).visibility == android.view.View.VISIBLE
+        val neon = Prefs.orbStyle(this) == Shapes.NEON && System.currentTimeMillis() >= DKState.faceUntil
+        findViewById<android.view.View>(R.id.orbMic).visibility =
+            if (orbShown && neon && !Prefs.orbMin(this)) android.view.View.VISIBLE else android.view.View.GONE
     }
 
     /** Orb chhota = upar chhoti jagah, DK ka aakhri jawab zyada dikhe. Bada = poori jagah. */
@@ -301,7 +335,7 @@ class MainActivity : AppCompatActivity() {
         val live = DKState.live
         if (DKState.micMuted) UiLang.setText(txtState, "माइक म्यूट • ऊपर का बटन दबाकर चालू करें")
         else UiLang.setText(txtState, when (DKState.mode) {
-            Mode.IDLE -> if (live) "माइक चालू है • आवाज़ स्क्रीन खोलें" else "ओर्ब या \"आवाज़\" दबाकर बात करें"
+            Mode.IDLE -> if (live) "माइक चालू है • आवाज़ स्क्रीन खोलें" else "ओर्ब पर टैप करके बोलिए"
             Mode.LISTENING -> if (live) "Listening • सुन रहा हूँ… (बंद: टैप या \"माइक बंद\")" else "Listening • सुन रहा हूँ…"
             Mode.THINKING -> "जवाब आ रहा है…"
             Mode.WORKING -> "काम कर रहा हूँ…"
@@ -312,5 +346,6 @@ class MainActivity : AppCompatActivity() {
         val userText = DKState.lastUser.takeIf { it.isNotBlank() }?.let { "${user.ifBlank { "आप" }}: $it\n" } ?: ""
         val dkText = if (DKState.lastReply.isBlank()) "" else "$name: " + DKState.lastReply
         UiLang.setText(txtDk, userText + dkText)
+        applyNeon()
     }
 }

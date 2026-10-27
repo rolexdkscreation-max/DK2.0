@@ -13,15 +13,20 @@
         android:layout_height="match_parent"
         android:orientation="vertical">
 
-        <!-- header -->
+        <!-- header (v4: काँच की पट्टी) -->
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
+            android:layout_marginStart="12dp"
+            android:layout_marginTop="12dp"
+            android:layout_marginEnd="12dp"
+            android:layout_marginBottom="4dp"
+            android:background="@drawable/glass_card"
             android:gravity="center_vertical"
             android:orientation="horizontal"
-            android:paddingStart="16dp"
-            android:paddingTop="16dp"
-            android:paddingEnd="16dp"
+            android:paddingStart="10dp"
+            android:paddingTop="10dp"
+            android:paddingEnd="12dp"
             android:paddingBottom="12dp">
 
             <ImageButton

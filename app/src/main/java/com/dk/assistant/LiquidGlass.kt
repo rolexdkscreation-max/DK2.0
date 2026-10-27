@@ -31,7 +31,11 @@ import org.xmlpull.v1.XmlPullParser
  * XML se aise: <drawable class="com.dk.assistant.GlassCardDrawable" />  (API 24+, app minSdk 26).
  * Isliye purane resource naam (glass_card, glass_pill...) wahi rehte hain - kisi screen ka code nahi chhuna padta.
  */
-abstract class LiquidGlassDrawable(private val s: Spec) : Drawable() {
+abstract class LiquidGlassDrawable(private val make: () -> Spec) : Drawable() {
+
+    /** v4 Neon Glass: Spec design tokens (ui/NeonTheme) se bante hain; UI पसंद बदले तो अगली draw पर नया रूप */
+    private var s: Spec = make()
+    private var ver = com.dk.assistant.ui.NeonTheme.version
 
     class Spec(
         val oval: Boolean = false,
@@ -47,7 +51,14 @@ abstract class LiquidGlassDrawable(private val s: Spec) : Drawable() {
         val shadow: Float = 1f,         // parchhai (0 = nahi)
         val shadowBottomDp: Float = 3f, // parchhai ki jagah (view ke andar hi)
         val recessed: Boolean = false,  // likhne ka dabba: andar dhansa hua
-        val focusRing: Boolean = false
+        val focusRing: Boolean = false,
+        /** Neon: kinare ka rang (pehle hamesha safed) */
+        val rimTint: Int = 0xFFFFFFFF.toInt(),
+        /** Neon: parchhai ki jagah halki rangeen roshni (pehle gehra neela) */
+        val shadowColor: Int = 0xFF061846.toInt(),
+        /** Neon: kinare ke bahar patli chamak (0 = nahi) */
+        val glowColor: Int = 0,
+        val glowA: Int = 0
     )
 
     private var d = Resources.getSystem().displayMetrics.density
@@ -76,6 +87,7 @@ abstract class LiquidGlassDrawable(private val s: Spec) : Drawable() {
     private val pHair = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE }
     private val pHi = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE; strokeCap = Paint.Cap.ROUND }
     private val pLo = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE; strokeCap = Paint.Cap.ROUND }
+    private val pGlow = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE }
 
     override fun inflate(r: Resources, parser: XmlPullParser, attrs: AttributeSet, theme: Resources.Theme?) {
         super.inflate(r, parser, attrs, theme)
@@ -128,7 +140,7 @@ abstract class LiquidGlassDrawable(private val s: Spec) : Drawable() {
 
         // 1. parchhai: gehra neela (kaala nahi) - DK ke aasman se mel khata.
         // Sirf kaanch ke BAAHAR wala hissa (Path.op DIFFERENCE) - ek baar yahin, draw me koi clip nahi (GPU halka).
-        pShadow.color = 0xFF061846.toInt()
+        pShadow.color = s.shadowColor or (0xFF shl 24)
         if (s.shadow > 0f) for (i in 0 until 4) {
             val k = (i + 1) / 4f
             val ring = shadowRings[i]
@@ -170,7 +182,9 @@ abstract class LiquidGlassDrawable(private val s: Spec) : Drawable() {
 
         // 5. patla chamakta kinara: diagonal - upar-baayein tez, beech halka, neeche-daayein reflection
         val ra = s.rim.coerceIn(0f, 1f)
-        fun wa(a: Float) = ((a * ra * 255).toInt().coerceIn(0, 255) shl 24) or 0xFFFFFF
+        val tintRgb = s.rimTint and 0xFFFFFF
+        fun wa(a: Float) = ((a * ra * 255).toInt().coerceIn(0, 255) shl 24) or tintRgb
+        fun ww(a: Float) = ((a * ra * 255).toInt().coerceIn(0, 255) shl 24) or 0xFFFFFF
         pRim.strokeWidth = 1f * d
         pRim.shader = LinearGradient(L, T, R, B,
             intArrayOf(wa(0.95f), wa(0.55f), wa(0.16f), wa(0.12f), wa(0.30f), wa(0.70f)),
@@ -214,7 +228,9 @@ abstract class LiquidGlassDrawable(private val s: Spec) : Drawable() {
             loA = floatArrayOf(g.right, y3); loB = floatArrayOf(x4, g.bottom); loM = floatArrayOf(g.right, g.bottom)
         }
         pHi.strokeWidth = 1.3f * d
-        pHi.shader = fadeTo(hiM, hiA, hiB, intArrayOf(wa(1f), wa(0.6f), 0x00FFFFFF), floatArrayOf(0f, 0.55f, 1f))
+        pHi.shader = fadeTo(hiM, hiA, hiB, intArrayOf(ww(1f), ww(0.6f), 0x00FFFFFF), floatArrayOf(0f, 0.55f, 1f))
+        pGlow.strokeWidth = 3.2f * d
+        pGlow.color = com.dk.assistant.ui.NeonTheme.alpha(s.glowColor, s.glowA)
         pLo.strokeWidth = 1f * d
         pLo.shader = fadeTo(loM, loA, loB, intArrayOf(wa(0.6f), wa(0.25f), 0x00FFFFFF), floatArrayOf(0f, 0.5f, 1f))
     }
@@ -242,6 +258,8 @@ abstract class LiquidGlassDrawable(private val s: Spec) : Drawable() {
 
     // ------------------------------------------------------------------ draw
     override fun draw(c: Canvas) {
+        val v = com.dk.assistant.ui.NeonTheme.version
+        if (v != ver) { ver = v; s = make(); if (!bounds.isEmpty) onBoundsChange(bounds) }
         if (bounds.isEmpty || glass.width() <= 0f) return
         val layer = if (alphaAll < 255) c.saveLayerAlpha(RectF(bounds), alphaAll) else -1
 
@@ -250,6 +268,9 @@ abstract class LiquidGlassDrawable(private val s: Spec) : Drawable() {
             pShadow.alpha = shadowAlpha[i]
             c.drawPath(shadowRings[i], pShadow)
         }
+
+        // 1b. Neon: kinare ke bahar ki patli chamak (andar wala aadha kaanch ke neeche)
+        if (s.glowA > 0) c.drawPath(rimPath, pGlow)
 
         // 2. kaanch
         c.drawPath(path, if (pressed && !s.recessed) pBodyPress else pBody)
@@ -279,7 +300,7 @@ abstract class LiquidGlassDrawable(private val s: Spec) : Drawable() {
     override fun setAlpha(alpha: Int) { if (alphaAll != alpha) { alphaAll = alpha; invalidateSelf() } }
     override fun getAlpha() = alphaAll
     override fun setColorFilter(cf: ColorFilter?) {
-        listOf(pBody, pBodyPress, pFrost, pSpec, pCaustic, pRim, pHair, pHi, pLo).forEach { it.colorFilter = cf }
+        listOf(pBody, pBodyPress, pFrost, pSpec, pCaustic, pRim, pHair, pHi, pLo, pGlow).forEach { it.colorFilter = cf }
         invalidateSelf()
     }
     @Deprecated("Deprecated in Java")
@@ -288,47 +309,62 @@ abstract class LiquidGlassDrawable(private val s: Spec) : Drawable() {
     companion object {
         private const val FULL = 999f
         private fun all(r: Float) = floatArrayOf(r, r, r, r)
+        private val T get() = com.dk.assistant.ui.NeonTheme
 
-        // Paardarshi DK neela (peeche ka aasman dikhe, par safed text saaf padha jaaye)
-        val CARD = Spec(radii = all(28f), bodyTop = 0xA84D84E0.toInt(), bodyBottom = 0xBA2552AE.toInt(),
-            pressTop = 0xC0659AEC.toInt(), pressBottom = 0xCC3364BF.toInt(), shadowBottomDp = 3.5f)
-        val CIRCLE = Spec(oval = true, bodyTop = 0xB05B92EA.toInt(), bodyBottom = 0xC22A5BB8.toInt(),
-            pressTop = 0xD07AA9F2.toInt(), pressBottom = 0xD83B6CC8.toInt(), frost = 1.15f, spec = 1.2f, shadowBottomDp = 2.2f)
-        val PILL = Spec(radii = all(FULL), bodyTop = 0xAC5089E2.toInt(), bodyBottom = 0xBE2856B2.toInt(),
-            pressTop = 0xC86A9DEE.toInt(), pressBottom = 0xD23667C4.toInt(), spec = 1.1f, shadowBottomDp = 2.2f)
-        // Mukhya (accent) button: zyada gehra chamakdaar neela kaanch - glow nahi, gloss
-        val ACCENT = Spec(radii = all(FULL), bodyTop = 0xE65C9CFF.toInt(), bodyBottom = 0xF02254D6.toInt(),
-            pressTop = 0xF03F7EEB.toInt(), pressBottom = 0xF51A45B8.toInt(), frost = 1.35f, spec = 1.3f, shadowBottomDp = 2.6f)
-        val ACCENT_CIRCLE = Spec(oval = true, bodyTop = 0xE65C9CFF.toInt(), bodyBottom = 0xF02254D6.toInt(),
-            pressTop = 0xF03F7EEB.toInt(), pressBottom = 0xF51A45B8.toInt(), frost = 1.4f, spec = 1.35f, shadowBottomDp = 2.6f)
-        val LIVE_CIRCLE = Spec(oval = true, bodyTop = 0xF0FF6E82.toInt(), bodyBottom = 0xF5D3253F.toInt(),
-            pressTop = 0xF5EE5468.toInt(), pressBottom = 0xF8B81C34.toInt(), frost = 1.4f, spec = 1.35f, shadowBottomDp = 2.6f)
-        val BUBBLE_DK = Spec(radii = floatArrayOf(22f, 22f, 22f, 6f), bodyTop = 0xA84D84E0.toInt(), bodyBottom = 0xBA2552AE.toInt(),
-            shadowBottomDp = 2.4f)
-        val BUBBLE_ME = Spec(radii = floatArrayOf(22f, 22f, 6f, 22f), bodyTop = 0xE65C9CFF.toInt(), bodyBottom = 0xF02254D6.toInt(),
-            frost = 1.3f, spec = 1.25f, shadowBottomDp = 2.4f)
+        // v4 Premium Neon Glass: gehra navy paardarshi kaanch + patla chamakdaar accent kinara + halki neon chamak.
+        // Saare rang ui/NeonTheme (design tokens) se - Settings → दिखावट me rang/kaanch/chamak badle to yahin se.
+        private fun glassSpec(oval: Boolean = false, radii: FloatArray = all(28f), frost: Float = 0.75f, spec: Float = 0.8f,
+                              shadowBottomDp: Float = 3f, glowMax: Int = 0x46, base: Float = 1f) = Spec(
+            oval = oval, radii = radii,
+            bodyTop = T.glassTop(base = base), bodyBottom = T.glassBottom(base = base),
+            pressTop = T.glassPressTop(), pressBottom = T.glassPressBottom(),
+            frost = frost, spec = spec, rim = 0.9f, shadow = 0.9f + T.look.glowF, shadowBottomDp = shadowBottomDp,
+            rimTint = T.rim(), shadowColor = T.mix(0xFF050A1F.toInt(), T.glow(), 0.55f * T.look.glowF),
+            glowColor = T.glow(), glowA = T.glowAlpha(max = glowMax))
+
+        private fun accentSpec(oval: Boolean = false, radii: FloatArray = all(FULL)) = Spec(
+            oval = oval, radii = radii,
+            bodyTop = T.accentTop(), bodyBottom = T.accentBottom(),
+            pressTop = T.mix(T.accentTop(), 0xFF000000.toInt(), 0.15f), pressBottom = T.mix(T.accentBottom(), 0xFF000000.toInt(), 0.15f),
+            frost = 1.2f, spec = 1.2f, shadowBottomDp = 2.6f,
+            rimTint = 0xFFFFFFFF.toInt(), shadowColor = T.mix(0xFF050A1F.toInt(), T.glow(), 0.7f * T.look.glowF),
+            glowColor = T.glow(), glowA = T.glowAlpha(max = 0x70))
+
+        val CARD: Spec get() = glassSpec(shadowBottomDp = 3.5f)
+        val CIRCLE: Spec get() = glassSpec(oval = true, frost = 0.9f, spec = 1f, shadowBottomDp = 2.2f, glowMax = 0x5A)
+        val PILL: Spec get() = glassSpec(radii = all(FULL), spec = 0.9f, shadowBottomDp = 2.2f)
+        val ACCENT: Spec get() = accentSpec()
+        val ACCENT_CIRCLE: Spec get() = accentSpec(oval = true)
+        // Live बंद करने वाला लाल बटन: लाल ही (मतलब नहीं बदला), बस नियॉन किनारा
+        val LIVE_CIRCLE: Spec get() = Spec(oval = true, bodyTop = 0xF0FF4D7A.toInt(), bodyBottom = 0xF5C2185B.toInt(),
+            pressTop = 0xF5E0436C.toInt(), pressBottom = 0xF8A0144B.toInt(), frost = 1.3f, spec = 1.3f, shadowBottomDp = 2.6f,
+            shadowColor = 0xFF5A0A2A.toInt(), glowColor = 0xFFFF4D7A.toInt(), glowA = T.glowAlpha(max = 0x60))
+        val BUBBLE_DK: Spec get() = glassSpec(radii = floatArrayOf(22f, 22f, 22f, 6f), shadowBottomDp = 2.4f, glowMax = 0x30)
+        val BUBBLE_ME: Spec get() = accentSpec(radii = floatArrayOf(22f, 22f, 6f, 22f))
         // इनपुट बार (DKComposer): PILL वाला ही काँच, पर हल्के गोल कोनों वाला आयत (ComposerShape.RADIUS_DP)
-        val COMPOSER = Spec(radii = all(ComposerShape.RADIUS_DP), bodyTop = 0xAC5089E2.toInt(), bodyBottom = 0xBE2856B2.toInt(),
-            spec = 1.1f, shadowBottomDp = 2.2f)
-        val INPUT = Spec(radii = all(18f), bodyTop = 0xB8173C88.toInt(), bodyBottom = 0xAE2550A6.toInt(),
-            frost = 0.35f, spec = 0.5f, rim = 0.62f, shadow = 0f, recessed = true, focusRing = true)
-        val ROW = Spec(radii = all(18f), bodyTop = 0x2EFFFFFF, bodyBottom = 0x14FFFFFF,
-            pressTop = 0x52FFFFFF, pressBottom = 0x2EFFFFFF, frost = 0.6f, spec = 0.7f, rim = 0.7f, shadow = 0f)
-        val DIALOG = Spec(radii = all(28f), bodyTop = 0xF2295AB4.toInt(), bodyBottom = 0xF51C428E.toInt(),
-            frost = 1f, spec = 1f, shadow = 0f)
+        val COMPOSER: Spec get() = glassSpec(radii = all(ComposerShape.RADIUS_DP), spec = 0.9f, shadowBottomDp = 2.2f, glowMax = 0x50)
+        val INPUT: Spec get() = Spec(radii = all(18f), bodyTop = T.alpha(0xFF070C2A.toInt(), T.glassAlpha() + 0x10),
+            bodyBottom = T.alpha(0xFF0D1440.toInt(), T.glassAlpha() + 0x08),
+            frost = 0.3f, spec = 0.4f, rim = 0.7f, shadow = 0f, recessed = true, focusRing = true, rimTint = T.rim())
+        val ROW: Spec get() = Spec(radii = all(18f), bodyTop = T.alpha(T.mix(0xFFFFFFFF.toInt(), T.glow(), 0.35f), 0x24),
+            bodyBottom = T.alpha(T.mix(0xFFFFFFFF.toInt(), T.glow(), 0.35f), 0x10),
+            pressTop = T.alpha(T.glow(), 0x48), pressBottom = T.alpha(T.glow(), 0x26), frost = 0.5f, spec = 0.6f, rim = 0.6f, shadow = 0f,
+            rimTint = T.rim())
+        val DIALOG: Spec get() = Spec(radii = all(28f), bodyTop = 0xF51A2563.toInt(), bodyBottom = 0xF80E1440.toInt(),
+            frost = 0.8f, spec = 0.8f, shadow = 0f, rimTint = T.rim(), glowColor = T.glow(), glowA = T.glowAlpha(max = 0x40))
     }
 }
 
 // XML ke liye: har roop ka apna public class (bina argument ka constructor zaroori)
-class GlassCardDrawable : LiquidGlassDrawable(LiquidGlassDrawable.CARD)
-class GlassCircleDrawable : LiquidGlassDrawable(LiquidGlassDrawable.CIRCLE)
-class GlassPillDrawable : LiquidGlassDrawable(LiquidGlassDrawable.PILL)
-class GlassAccentDrawable : LiquidGlassDrawable(LiquidGlassDrawable.ACCENT)
-class GlassAccentCircleDrawable : LiquidGlassDrawable(LiquidGlassDrawable.ACCENT_CIRCLE)
-class GlassLiveCircleDrawable : LiquidGlassDrawable(LiquidGlassDrawable.LIVE_CIRCLE)
-class GlassBubbleDkDrawable : LiquidGlassDrawable(LiquidGlassDrawable.BUBBLE_DK)
-class GlassBubbleMeDrawable : LiquidGlassDrawable(LiquidGlassDrawable.BUBBLE_ME)
-class GlassInputDrawable : LiquidGlassDrawable(LiquidGlassDrawable.INPUT)
-class GlassComposerDrawable : LiquidGlassDrawable(LiquidGlassDrawable.COMPOSER)
-class GlassRowDrawable : LiquidGlassDrawable(LiquidGlassDrawable.ROW)
-class GlassDialogDrawable : LiquidGlassDrawable(LiquidGlassDrawable.DIALOG)
+class GlassCardDrawable : LiquidGlassDrawable({ LiquidGlassDrawable.CARD })
+class GlassCircleDrawable : LiquidGlassDrawable({ LiquidGlassDrawable.CIRCLE })
+class GlassPillDrawable : LiquidGlassDrawable({ LiquidGlassDrawable.PILL })
+class GlassAccentDrawable : LiquidGlassDrawable({ LiquidGlassDrawable.ACCENT })
+class GlassAccentCircleDrawable : LiquidGlassDrawable({ LiquidGlassDrawable.ACCENT_CIRCLE })
+class GlassLiveCircleDrawable : LiquidGlassDrawable({ LiquidGlassDrawable.LIVE_CIRCLE })
+class GlassBubbleDkDrawable : LiquidGlassDrawable({ LiquidGlassDrawable.BUBBLE_DK })
+class GlassBubbleMeDrawable : LiquidGlassDrawable({ LiquidGlassDrawable.BUBBLE_ME })
+class GlassInputDrawable : LiquidGlassDrawable({ LiquidGlassDrawable.INPUT })
+class GlassComposerDrawable : LiquidGlassDrawable({ LiquidGlassDrawable.COMPOSER })
+class GlassRowDrawable : LiquidGlassDrawable({ LiquidGlassDrawable.ROW })
+class GlassDialogDrawable : LiquidGlassDrawable({ LiquidGlassDrawable.DIALOG })
