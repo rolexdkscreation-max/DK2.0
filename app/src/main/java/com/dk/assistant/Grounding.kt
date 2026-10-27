@@ -61,7 +61,13 @@ object SearchPolicy {
         "खबर", "ख़बर", "समाचार", "मौसम", "weather", "तापमान", "बारिश होगी", "भाव", "price", "कीमत", "दाम", "स्कोर", "score",
         "किसने जीता", "कौन जीता", "शेयर प्राइस", "stock", "सोने का", "चांदी", "पेट्रोल", "डीज़ल", "डीजल",
         "रिजल्ट", "चुनाव", "election", "कब रिलीज", "ट्रेन का स्टेटस", "pnr", "डॉलर", "dollar", "सेंसेक्स", "निफ्टी",
-        "मैच का", "मैच में", "लाइव मैच", "live score", "हाल ही में", "हाल में", "recent", "इस हफ्ते", "इस साल", "this week", "today"
+        "मैच का", "मैच में", "लाइव मैच", "live score", "हाल ही में", "हाल में", "recent", "इस हफ्ते", "इस साल", "this week", "today",
+        // v3.80: बदलने वाली हर जानकारी (सरकारी योजना/नियम/फ़ॉर्म, भर्ती, रिलीज़, अभी कौन...) - याद से नहीं, लाइव
+        "योजना", "yojana", "scheme", "स्कीम", "भर्ती", "vacancy", "recruitment", "एडमिट कार्ड", "admit card", "रिज़ल्ट", "result",
+        "नया नियम", "नए नियम", "new rule", "लास्ट डेट", "last date", "आखिरी तारीख", "आख़िरी तारीख", "कब होगा", "कब आएगा", "कब आएगी",
+        "लॉन्च", "launch", "रिलीज़", "release", "ब्याज दर", "interest rate", "रेपो रेट", "repo rate", "ट्रैफिक", "traffic", "फ्लाइट", "flight",
+        "आईपीएल", "ipl", "बिटकॉइन", "bitcoin", "crypto", "क्रिप्टो", "शेयर बाजार", "share market", "बाजार भाव", "मंडी भाव", "रेट क्या",
+        "करंट", "current", "वर्तमान", "इस समय", "अभी कौन", "अभी कितना", "अभी क्या चल", "आजकल", "नया क्या", "updates", "अपडेट"
     )
     /** Yeh sawaal gyaan se hi (coding, ganit, samjhana) - inme "price/score" jaisa shabd ho tab bhi search nahi */
     private val TIMELESS = listOf(
@@ -80,13 +86,16 @@ object SearchPolicy {
 
     /** System prompt ke liye niyam (chat, phone-task JSON aur Live - teeno me ek jaisa) */
     fun rules(searchName: String): String =
-        "WEB SEARCH POLICY ($searchName is optional - most questions need NO search):\n" +
-        "- Answer directly from your own knowledge for: general knowledge, definitions, explanations, how/why, advice, " +
-        "coding/programming, maths, stories, translations, grammar, history and science basics, and anything you are confident about.\n" +
-        "- Use $searchName ONLY when the answer depends on fresh or changing facts: recent news or events, live data " +
-        "(weather, stock/crypto/gold/fuel prices, live scores, match results), today's schedules/status (trains, flights, results, releases), " +
-        "or facts that change over time where your knowledge may be outdated (current office holders, latest product versions/prices, new rules or laws).\n" +
+        "WEB SEARCH POLICY ($searchName):\n" +
+        "- No search for timeless things: general knowledge that does not change, definitions, explanations, how/why, advice, " +
+        "coding/programming, maths, stories, translations, grammar, history and science basics.\n" +
+        "- ALWAYS use $searchName (never your memory - it may be months old) for anything live or that changes over time: recent news or events, " +
+        "live data (weather, stock/crypto/gold/fuel/mandi prices, live scores, match results), today's schedules/status (trains, flights, traffic, results, releases), " +
+        "government schemes, rules, laws, forms, fees, last dates, exams, admit cards, recruitments, current office holders, latest product versions/prices, " +
+        "anything the user calls today / now / latest / current.\n" +
+        "- Government questions: official government websites (*.gov.in, *.nic.in, PIB, the ministry/department, RBI, UIDAI, ECI...) come first.\n" +
         "- The current date and time are given below: answer date/time questions from them, never search for them.\n" +
-        "- If you are not sure your knowledge is still current for such a changing fact, then use $searchName; otherwise do not.\n" +
-        "- If you simply do not know the answer, or are not sure it is correct, do NOT guess or make it up - use $searchName."
+        "- If you are not sure your knowledge is still current for such a changing fact, then use $searchName.\n" +
+        "- If you simply do not know the answer, or are not sure it is correct, do NOT guess or make it up - use $searchName.\n" +
+        "- If the user asks where the information came from, name the websites the search used - honestly, never invent a source.\n"
 }

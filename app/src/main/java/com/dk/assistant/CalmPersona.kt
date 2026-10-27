@@ -13,7 +13,8 @@ object CalmPersona {
         "tab tak tum kaam ya karyon ke baare mein koi baat nahi karogi. Tumhari aawaaz ki gati madhyam aur thehrav wali honi chahiye."
 
     /** बोलने की गति/ठहराव - हर TTS के स्टाइल में जुड़ता है */
-    const val VOICE_STYLE = "calm, gentle and empathetic, at a medium unhurried pace with soft natural pauses between sentences"
+    const val VOICE_STYLE = "soft, tender and warm like a real caring person (natural human breath and intonation, never robotic), " +
+        "calm, gentle and empathetic, at a medium unhurried pace with soft natural pauses between sentences"   // v3.80: और कोमल, इंसान जैसी
 
     /** Edge (Microsoft) TTS भावना नहीं समझता - गति थोड़ी कम = मध्यम, ठहराव वाली */
     const val EDGE_RATE_DELTA = -8
@@ -33,6 +34,8 @@ object CalmPersona {
         append("tell the result in one short line, then go back to the gentle conversation with one question.\n")
         append("- Speak at a medium, unhurried pace with soft natural pauses (short sentences, commas where you would breathe). ")
         append("Keep the reply short (1-2 sentences + the one question).\n")
+        append("- Sound like a real, loving human being, never like a robot or a news announcer: a very soft, sweet, tender voice, ")
+        append("warm and close, natural rise and fall, gentle breaths, a smile in the voice; no flat or mechanical reading.\n")
     }
 
     /** TTS स्टाइल निर्देश में ठहराव/मध्यम गति जोड़ो (दोबारा नहीं) */

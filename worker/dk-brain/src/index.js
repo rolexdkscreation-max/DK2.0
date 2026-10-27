@@ -2,7 +2,7 @@
 // v3.68: Gemini TTS की आवाज़ यहाँ से - Gemini API key सिर्फ़ इस Worker के secret में (ऐप में नहीं).
 //
 //   GET  /ping                          -> "ok" (ऐप कनेक्शन गर्म रखता है)
-//   POST /tts  {text, voice, style}     -> 16-bit LE PCM, 24 kHz, mono (Content-Type: audio/l16; rate=24000), stream
+//   POST /tts  {text, voice, style, model?} -> 16-bit LE PCM, 24 kHz, mono (Content-Type: audio/l16; rate=24000), stream
 //
 // Secrets:  GEMINI_API_KEY (ज़रूरी), APP_TOKEN (वैकल्पिक - हो तो ऐप "Authorization: Bearer <token>" भेजे)
 // Vars:     TTS_MODELS (क्रम से आज़माए जाते हैं; जो चला वही आगे पहले)
@@ -58,10 +58,13 @@ async function tts(req, env) {
   const t = String(j.text || "").trim().slice(0, MAX_TEXT);
   if (!t) return text(400, "text खाली");
   const voice = VOICES.has(j.voice) ? j.voice : "Kore";
-  const style = String(j.style || "").slice(0, 300);
+  const style = String(j.style || "").slice(0, 600); // v3.80: कोमल आवाज़ का पूरा निर्देश (पहले 300 पर कट जाता था)
 
   const list = (env.TTS_MODELS || DEFAULT_MODELS).split(",").map((s) => s.trim()).filter(Boolean);
-  const models = goodModel && list.includes(goodModel) ? [goodModel, ...list.filter((m) => m !== goodModel)] : list;
+  let models = goodModel && list.includes(goodModel) ? [goodModel, ...list.filter((m) => m !== goodModel)] : list;
+  // v3.80: ऐप ने मॉडल चुना (सूची में हो तो) -> वही पहले, न चले तो बाकी
+  const want = String(j.model || "").trim();
+  if (want && list.includes(want)) models = [want, ...models.filter((m) => m !== want)];
 
   let last = "";
   for (const model of models) {

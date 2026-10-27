@@ -27,14 +27,20 @@ object GeminiTtsEngine : VoiceEngine {
     override val split = true
     override val defaultOn = true
 
-    const val DEFAULT_STYLE = "धीमी, कोमल, भावुक आवाज़ में, प्यार से बोलो:"
-    const val DEFAULT_VOICE = "Kore"
+    /** v3.80: और कोमल, इंसान जैसी - रोबोट/उद्घोषक जैसी नहीं */
+    const val DEFAULT_STYLE = "बहुत कोमल, मीठी और अपनेपन भरी आवाज़ में, जैसे कोई अपना प्यार से धीरे-धीरे बात कर रहा हो - स्वाभाविक साँस और ठहराव के साथ, रोबोट जैसा बिल्कुल नहीं:"
+    /** v3.80: डिफ़ॉल्ट सबसे नरम आवाज़ (पहले Kore - मज़बूत). जिसने खुद चुनी, उसकी वही रहती है */
+    const val DEFAULT_VOICE = "Achernar"
+    /** v3.80: Worker (dk-brain) के मॉडल - "" = अपने-आप (Worker जो चले) */
+    val MODELS = listOf("gemini-3.8-flash-tts", "gemini-3.8-flash-lite-tts", "gemini-3.1-flash-tts-preview")
     private val VOICES = listOf(
+        "Achernar" to "Achernar — बहुत नरम, कोमल (महिला)",
+        "Vindemiatrix" to "Vindemiatrix — कोमल, प्यारी (महिला)",
+        "Despina" to "Despina — मुलायम, मीठी (महिला)",
+        "Sulafat" to "Sulafat — गर्मजोशी भरी (महिला)",
         "Kore" to "Kore — मज़बूत, साफ़ (महिला)",
         "Leda" to "Leda — जवान, ताज़ी (महिला)",
         "Aoede" to "Aoede — हल्की, खुली (महिला)",
-        "Sulafat" to "Sulafat — गर्मजोशी भरी (महिला)",
-        "Vindemiatrix" to "Vindemiatrix — कोमल, प्यारी (महिला)",
     )
 
     private val http = OkHttpClient.Builder()
@@ -50,7 +56,13 @@ object GeminiTtsEngine : VoiceEngine {
         VoiceEngines.sp(c).getString("gemini_tts_voice", null)?.takeIf { v -> VOICES.any { it.first == v } } ?: DEFAULT_VOICE
     override fun setVoice(c: Context, v: String) { VoiceEngines.sp(c).edit().putString("gemini_tts_voice", v).apply() }
 
-    fun style(c: Context): String = VoiceEngines.sp(c).getString("gemini_tts_style", null) ?: DEFAULT_STYLE
+    fun style(c: Context): String = VoiceEngines.sp(c).getString("gemini_tts_style", null)?.takeIf { it.isNotBlank() } ?: DEFAULT_STYLE
+
+    /** v3.80: चुना मॉडल ("" = अपने-आप). अगले टुकड़े से ही लगता है - चलती बातचीत में भी */
+    fun model(c: Context): String = VoiceEngines.sp(c).getString("gemini_tts_model", "") ?: ""
+    fun setModel(c: Context, m: String) { VoiceEngines.sp(c).edit().putString("gemini_tts_model", m.trim()).apply() }
+    /** Worker ने पिछली बार किस मॉडल से आवाज़ बनाई (X-DK-Model) */
+    fun lastModel(c: Context): String = VoiceEngines.sp(c).getString("gemini_tts_model_used", "") ?: ""
     fun workerUrl(c: Context): String = (VoiceEngines.sp(c).getString("worker_url", "") ?: "").trim().trimEnd('/')
     private fun token(c: Context): String = (VoiceEngines.sp(c).getString("worker_token", "") ?: "").trim()
 
@@ -72,7 +84,8 @@ object GeminiTtsEngine : VoiceEngine {
 
     override fun speak(c: Context, text: String, voice: String, out: PcmOut) {
         notReady(c)?.let { throw IOException(it) }
-        val body = JSONObject().put("text", text).put("voice", voice).put("style", com.dk.assistant.CalmPersona.ttsStyle(com.dk.assistant.avatar.MoodState.voiceStyle(style(c)))).toString()   // v3.71: भाव का निर्देश जुड़ता है
+        val body = JSONObject().put("text", text).put("voice", voice).put("style", com.dk.assistant.CalmPersona.ttsStyle(com.dk.assistant.avatar.MoodState.voiceStyle(style(c))))   // v3.71: भाव का निर्देश जुड़ता है
+            .apply { model(c).takeIf { it.isNotBlank() }?.let { put("model", it) } }.toString()     // v3.80: चुना मॉडल
         val req = Request.Builder().url(workerUrl(c) + "/tts")
             .post(body.toRequestBody("application/json; charset=utf-8".toMediaType()))
             .apply { auth(this, c) }.build()
@@ -83,6 +96,9 @@ object GeminiTtsEngine : VoiceEngine {
                 if (!r.isSuccessful) {
                     val msg = try { r.body?.string()?.take(160) } catch (_: Exception) { null }
                     throw IOException("Worker ${r.code}: ${msg.orEmpty()}")
+                }
+                r.header("X-DK-Model")?.takeIf { it.isNotBlank() && it != lastModel(c) }?.let {
+                    VoiceEngines.sp(c).edit().putString("gemini_tts_model_used", it).apply()
                 }
                 val rate = Regex("rate=(\\d+)").find(r.header("Content-Type").orEmpty())?.groupValues?.get(1)?.toIntOrNull()
                     ?: VoiceEngine.RATE

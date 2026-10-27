@@ -45,6 +45,15 @@ object VoiceEngines {
     @Volatile var version = 0
         private set
 
+    /**
+     * v3.80: Live की अपनी आवाज़ / अंदाज़ / Live मॉडल बदला -> गिनती. चलता Live चुप होते ही नया connection लेता है
+     * (पहले: "अगली बार जुड़ने पर" - बीच बातचीत में आवाज़ नहीं बदलती थी).
+     */
+    @Volatile var liveVersion = 0
+        private set
+
+    fun liveChanged() { liveVersion++ }
+
     fun setActive(c: Context, id: String) {
         if (byId(id) == null) return
         sp(c).edit().putString("active", id).apply()

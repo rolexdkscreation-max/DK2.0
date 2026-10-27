@@ -2,6 +2,8 @@ package com.dk.assistant
 
 import android.content.Context
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.cancelChildren
 import kotlinx.coroutines.coroutineScope
@@ -32,6 +34,7 @@ class BrainManager(private val ctx: Context) {
     private fun syncEpoch() {
         if (epoch != Memory.historyEpoch) { epoch = Memory.historyEpoch; history.clear() }
         if (ver != Memory.historyVersion) reload()
+        NowClock.syncAsync()      // v3.80: सही समय (हर 3 घंटे इंटरनेट से मिलाओ - रुकता नहीं)
     }
     private fun reload() {
         synchronized(Memory.historyLock) {
@@ -243,15 +246,65 @@ class BrainManager(private val ctx: Context) {
 
     fun canThink() = Prefs.key(ctx, "gemini").isNotBlank()
 
-    suspend fun search(question: String, deep: Boolean, thorough: Boolean = false, think: Boolean = false): SearchResult = withContext(Dispatchers.IO) {
+    /**
+     * v3.80: ताज़ा जानकारी (deep/thorough/think नहीं) = [liveSearch] - कई तरफ़ से खोज, मिलाकर पक्का जवाब.
+     * बाकी पहले जैसा एक गहरी खोज.
+     */
+    suspend fun search(question: String, deep: Boolean, thorough: Boolean = false, think: Boolean = false): SearchResult =
+        if (!deep && !thorough && !think) liveSearch(question) else searchOnce(question, deep, thorough, think)
+
+    /**
+     * v3.80: लाइव जानकारी - [LiveSearch.plan] की 2-3 खोजें साथ-साथ (सरकारी सवाल = पहले सरकारी वेबसाइटें),
+     * फिर सब मिलाकर एक जवाब. कोई खोज न चले = पुराना एक-खोज वाला रास्ता. स्रोत याद ("कहाँ से पता किया?").
+     */
+    suspend fun liveSearch(question: String): SearchResult = withContext(Dispatchers.IO) {
+        syncEpoch()
+        NowClock.syncAsync()
+        val key = Prefs.key(ctx, "gemini"); val model = Prefs.model(ctx, "gemini")
+        val name = Prefs.assistantName(ctx); val user = Prefs.userName(ctx)
+        val nowLine = NowClock.line()
+        val angles = LiveSearch.plan(question)
+        val reports = coroutineScope {
+            angles.map { a ->
+                async {
+                    try {
+                        kotlinx.coroutines.withTimeoutOrNull(18_000) {
+                            GeminiClient(key, model).search(LiveSearch.angleSystem(a, nowLine, name), emptyList(),
+                                "$question\n(Search date: ${NowClock.dateEn()})", deep = false)
+                        }?.let { a.id to it }
+                    } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (e: Exception) { DKLog.d("लाइव खोज ${a.id} fail: ${e.message}"); null }
+                }
+            }.awaitAll().filterNotNull()
+        }
+        val good = reports.filter { !LiveSearch.empty(it.second.text) }
+        val sources = LiveSearch.mergeSources(reports.map { it.second.sources })
+        if (good.isEmpty()) return@withContext searchOnce(question, deep = false, thorough = false, think = false)
+        val merged = try {
+            kotlinx.coroutines.withTimeoutOrNull(15_000) {
+                val client = GeminiClient(key, model)
+                val t = client.stream(LiveSearch.mergeSystem(nowLine, name, user) + Memory.factsBlock(ctx), emptyList(),
+                    LiveSearch.mergeInput(question, good.map { it.first to it.second.text })) { }
+                lastUsed = client.label
+                t
+            }
+        } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (e: Exception) { DKLog.d("लाइव खोज मिलाना fail: ${e.message}"); null }
+        val ans = (merged?.takeIf { it.isNotBlank() } ?: good.first().second.text)
+            .replace(Regex("[*#`]"), "").replace(Regex("\\[\\d+(,\\s*\\d+)*\\]"), "").trim()
+        DKLog.d("लाइव खोज: ${angles.joinToString { it.id }} -> ${good.size} नतीजे, ${sources.size} वेबसाइटें")
+        LiveSearch.remember(question, sources)
+        remember("USER SAYS: $question", JSONObject().put("say", ans).put("done", true).toString())
+        SearchResult(ans, sources)
+    }
+
+    private suspend fun searchOnce(question: String, deep: Boolean, thorough: Boolean = false, think: Boolean = false): SearchResult = withContext(Dispatchers.IO) {
         syncEpoch()
         val client = GeminiClient(Prefs.key(ctx, "gemini"), Prefs.model(ctx, "gemini"))
         val name = Prefs.assistantName(ctx); val user = Prefs.userName(ctx)
-        val today = java.text.SimpleDateFormat("d MMMM yyyy, EEEE", java.util.Locale.ENGLISH).format(java.util.Date())
         val sys = buildString {
             append("You are $name, a Hindi voice assistant")
             if (user.isNotBlank()) append(" talking to $user")
-            append(". Today is $today.")
+            append(". ").append(NowClock.line())
+            if (LiveSearch.isGov(question)) append(" For this government-related question, rely on official government websites (*.gov.in, *.nic.in, PIB, the concerned ministry/department) first.")
             if (think) append(" Use Google Search whenever facts, numbers or recent information matter.")
             else append(" ALWAYS use Google Search before answering.")
             if (think) {
@@ -285,6 +338,7 @@ class BrainManager(private val ctx: Context) {
         val r = client.search(sys, history, question, deep || thorough, think)
         val ans = r.text.replace(Regex("[*#`]"), "").replace(Regex("\\[\\d+(,\\s*\\d+)*\\]"), "").trim()
         lastUsed = client.label
+        LiveSearch.remember(question, r.sources)
         remember("USER SAYS: $question", JSONObject().put("say", ans).put("done", true).toString())
         SearchResult(ans, r.sources)
     }
@@ -336,12 +390,13 @@ class BrainManager(private val ctx: Context) {
             append("\nEverything else (talk, general knowledge, how/why, advice, explanations, maths) -> answer IMMEDIATELY yourself from your own knowledge, short and warm. Do NOT ask for search for things you already know.")
             append("\nIf the user tells you a personal fact or preference worth remembering (names, numbers, likes, plans), add \"remember\": \"<the fact in short Hindi>\" to the JSON.")
             append(AssistantBrand.IDENTITY_RULE).append("\n")
-            append("\nToday: " + java.text.SimpleDateFormat("d MMMM yyyy, EEEE", java.util.Locale.ENGLISH).format(java.util.Date()))
+            append("\n" + NowClock.line())
             append(TALK_RULES)
             append(TalkStyle.CHAT)   // v3.51: इंसान जैसी बात, झूठा "कर दिया" नहीं, notification/रुकने के नियम
             append(Memory.factsBlock(ctx))
             // v3.45: सच्चा दोस्त - लहजा + पिछली बातचीत की याद (आखिरी मुलाकात, सारांश, अधूरी बातें)
             if (Prefs.friendMode(ctx)) append("\n" + FriendStyle.persona(GirlfriendPersona.female(Prefs.voiceGender(ctx)), user)).append(FriendTalk.block(ctx))
+            append(CareTime.block()).append(LiveSearch.memoryBlock())   // v3.80: समय देखकर फ़िक्र + पिछली खोज के स्रोत
             append(CalmPersona.block()).append(GirlfriendPersona.block(Prefs.userName(ctx)))   // v3.76: मालिक का तय स्वभाव - हमेशा
         }
     }
@@ -362,11 +417,12 @@ class BrainManager(private val ctx: Context) {
             append("\n- The question is genuinely HARD and needs careful multi-step reasoning (multi-step maths/word problems, logic puzzles, writing or fixing code, detailed comparison, planning, deep why/how explanation, exam-level questions) and the input says THINK AVAILABLE: reply exactly [THINK]. Do NOT use it for simple chat or easy facts.")
             append("\nLEARN from the user every day: if they tell a personal fact, preference, habit, or how they like answers, add at the very end a new line: [YAAD] <that fact in short Hindi>")
             append(AssistantBrand.IDENTITY_RULE).append("\n")
-            append("\nToday: " + java.text.SimpleDateFormat("d MMMM yyyy, EEEE, h:mm a", java.util.Locale.ENGLISH).format(java.util.Date()))
+            append("\n" + NowClock.line())
             append("\n" + SearchPolicy.rules("[SEARCH]"))
             append(TALK_RULES)
             append(TalkStyle.CHAT)   // v3.51: इंसान जैसी बात, झूठा "कर दिया" नहीं, notification/रुकने के नियम
             append(Memory.factsBlock(ctx))
+            append(CareTime.block()).append(LiveSearch.memoryBlock())   // v3.80: समय देखकर फ़िक्र + पिछली खोज के स्रोत
             append(CalmPersona.block()).append(GirlfriendPersona.block(Prefs.userName(ctx)))   // v3.76: मालिक का तय स्वभाव - classic आवाज़ में भी
         }
     }
@@ -435,13 +491,13 @@ class BrainManager(private val ctx: Context) {
             if (user.isNotBlank()) append(" The user's name is $user.")
             append(personaLine(persona))
             append("\nSpeak clear, natural Hindi by default; change the language only when the user clearly asks you to. Usually 1-3 short sentences; start directly with the answer.")
-            append("\nAnswer from your own knowledge immediately when you are sure. Google Search is a tool you MAY call, never by default - but when you do NOT know or are not sure, search instead of guessing.")
-            append("\n" + SearchPolicy.rules("Google Search"))
-            append("\nNever read out links, URLs or website names unless asked - the app shows the sources on screen.")
+            append("\nAnswer timeless things (chat, explanations, coding, maths, stories) from your own knowledge at once. But for ANYTHING live or changing - news, events, prices, weather, scores, government schemes/rules/forms/last dates, exams/results/recruitment, current office holders, latest releases/versions, anything about today/now/latest - ALWAYS call web_search: it searches several websites at once (official government websites first for government questions), cross-checks them and returns one verified answer. Your own knowledge may be months old: never answer such things from memory, and when you do NOT know or are not sure, search instead of guessing.")
+            append("\n" + SearchPolicy.rules("web_search"))
+            append("\nNever read out links, URLs or website names by yourself - the app shows the sources on screen. But when the user asks where the information came from (कहाँ से पता किया / कौन सी वेबसाइट / source), honestly name the websites listed in the last web_search SOURCES; never invent a source.")
             append("\nFor genuinely HARD questions that need careful multi-step reasoning (multi-step maths, logic puzzles, code, detailed comparisons, planning, exam-level or deep why/how questions), call the function deep_think with the full question, then speak its answer naturally (you may shorten it for speech). Never use deep_think for easy chat.")
             val f = GirlfriendPersona.female(Prefs.voiceGender(ctx))
             val khol = if (f) "खोल रही हूँ" else "खोल रहा हूँ"; val bata = if (f) "बताती हूँ" else "बताता हूँ"
-            append("\nSPEED: the moment the user stops, start speaking. Quick things (chat, simple facts you know, date/time) - answer at once in 1-2 sentences, no preamble.")
+            append("\nSPEED: the moment the user stops, start speaking. Quick things (chat, simple facts you know) - answer at once in 1-2 sentences, no preamble. For time/date call current_time (instant).")
             append("\nBefore calling phone_task, first say a very short natural acknowledgement (2-4 words, e.g. \"ठीक है, $khol\") so the user is not left in silence; after it returns, give the result in one short sentence.")
             append("\nBefore you use Google Search, deep_think or computer_task, FIRST say one short honest line that you are checking, e.g. \"एक सेकंड, सर्च करके $bata\" / \"एक सेकंड, सोचकर $bata\" (in the reply language), then in the SAME turn really call the tool (web_search for internet search, deep_think, computer_task, or phone_task for anything on the phone like opening Chrome and searching a website) and give the answer. NEVER end your turn with only a promise like 'सर्च करके बताता हूँ / एक मिनट / कर रहा हूँ' - if you said it, the tool call must follow at once. Never stay silent while searching.")
             append("\nBackground work (DK Computer / coding team): when the user asks how far it has got or whether it is done, call task_status and say only what it returns. Never invent progress or percentages, and never say a task is done before a SYSTEM NOTE or task_status says FINISHED.")
@@ -452,7 +508,8 @@ class BrainManager(private val ctx: Context) {
             append("\nIf the user tells a personal fact or preference worth remembering, call remember_fact with it (do not mention that you saved it).")
             append("\nIf the user interrupts you, stop and listen. If their new words are about the same topic, give one combined answer; if it is a different question, briefly finish the earlier point, then answer the new one.")
             append(AssistantBrand.IDENTITY_RULE).append("\n")
-            append("\nToday: " + java.text.SimpleDateFormat("d MMMM yyyy, EEEE, h:mm a", java.util.Locale.ENGLISH).format(java.util.Date()))
+            append("\n" + NowClock.line())
+            append("\nTIME: the line above was exact when this call started, but time keeps moving during the call. Whenever the user asks the time, date or day, or you need it (greeting, how late it is), call current_time and say exactly what it returns - never guess or reuse an old time.")
             append(TALK_RULES)
             append(TalkStyle.EMOTION)   // v3.59: आवाज़ में असली भावना
             append(TalkStyle.FRIEND_HI) // v3.60: मालिक का लिखा "करीबी दोस्त" हिस्सा (शब्दशः)
@@ -460,6 +517,7 @@ class BrainManager(private val ctx: Context) {
             append(Memory.factsBlock(ctx))
             // v3.46: "सच्चा दोस्त" स्वभाव + बातचीत की याद अब आवाज़ (Live) में भी (पहले सिर्फ़ chat में जुड़ा था)
             if (Prefs.friendMode(ctx)) append("\n").append(FriendStyle.persona(f, user)).append(FriendTalk.block(ctx))
+            append(CareTime.block()).append(LiveSearch.memoryBlock())   // v3.80: समय देखकर फ़िक्र + पिछली खोज के स्रोत
             append(CalmPersona.block()).append(GirlfriendPersona.block(Prefs.userName(ctx)))   // v3.76: मालिक का तय स्वभाव - Live (सीधी आवाज़ / Gemini TTS / Edge) सब में
         }
     }
