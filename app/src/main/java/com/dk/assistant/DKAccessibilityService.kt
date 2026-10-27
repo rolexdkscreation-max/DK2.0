@@ -550,7 +550,7 @@ class DKAccessibilityService : AccessibilityService() {
             DKLog.d("Sunna shuru (live=${DKState.live}, wake=${Prefs.wakeMode(this@DKAccessibilityService)}, Gemini Live=${if (liveReady()) "तैयार" else "नहीं: " + liveWhyNot()})")
             listener.muteBeep = true
             // v3.81: "हाँ सर" वगैरह पहले से बना लो (एक बार) - जागते ही बिना इंटरनेट-इंतज़ार के बोले
-            if (com.dk.assistant.voice.HeyDk.on(this@DKAccessibilityService)) launch(Dispatchers.IO) {
+            if (Prefs.wakeMode(this@DKAccessibilityService)) launch(Dispatchers.IO) {
                 try { com.dk.assistant.voice.HeyDk.prepareAcks(this@DKAccessibilityService) } catch (_: Exception) {}
             }
             var misses = 0
@@ -705,6 +705,17 @@ class DKAccessibilityService : AccessibilityService() {
                     // naam suna = user DK se baat kar raha hai -> peeche ka gaana/video dheema (Live ho to jawab ke baad wahi wapas badhayega)
                     Ducker.duck(this@DKAccessibilityService, "wake word")
                     // naam suna -> Gemini Live (asli awaaz, turant jawab); 45s chup = wapas wake word
+                    // v3.81: "हे डीके / हेलो डीके" (बिना सिखाए वाला तरीका) पर भी पहले "हाँ सर" - फिर Live
+                    if (cmd.isBlank()) {
+                        val me = this@DKAccessibilityService
+                        val ack = com.dk.assistant.voice.HeyDk.nextAck(me)
+                        DKState.reply(ack)
+                        val played = try { withContext(Dispatchers.IO) { com.dk.assistant.voice.HeyDk.playAck(me, ack) } } catch (_: Exception) { false }
+                        if (!played) {
+                            speaker.speak(ack)
+                            scope.launch(Dispatchers.IO) { try { com.dk.assistant.voice.HeyDk.prepareAcks(me) } catch (_: Exception) {} }
+                        }
+                    }
                     if (liveReady() && !callBusy() && checkMic()) {
                         DKLog.d("Wake word suna -> Gemini Live" + if (cmd.isNotBlank()) " (बात: $cmd)" else "")
                         wakeLive = true
@@ -715,7 +726,6 @@ class DKAccessibilityService : AccessibilityService() {
                         continue
                     }
                     if (cmd.isBlank()) {
-                        speaker.speak("हाँ, बोलिए।")
                         DKState.set(Mode.LISTENING)
                         cmd = hear() ?: ""
                         DKState.set(Mode.IDLE)
