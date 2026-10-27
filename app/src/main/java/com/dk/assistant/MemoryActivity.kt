@@ -34,12 +34,18 @@ class MemoryActivity : AppCompatActivity() {
         root.addView(scroll, FrameLayout.LayoutParams(-1, -1))
 
         // ---- upar
-        val top = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
+        // v4: काँच वाला header (पीछे का बटन 48dp, नाम के साथ)
+        val top = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
+            setBackgroundResource(R.drawable.glass_card)
+            val hp = (10 * dp).toInt(); setPadding(hp, hp, (14 * dp).toInt(), (12 * dp).toInt())
+        }
         top.addView(ImageButton(this).apply {
             setImageResource(R.drawable.ic_back); setBackgroundResource(R.drawable.glass_circle)
             val p = (12 * dp).toInt(); setPadding(p, p, p, p); scaleType = android.widget.ImageView.ScaleType.FIT_CENTER
+            contentDescription = "वापस"
             setOnClickListener { finish() }
-        }, LinearLayout.LayoutParams((46 * dp).toInt(), (46 * dp).toInt()))
+        }, LinearLayout.LayoutParams((48 * dp).toInt(), (48 * dp).toInt()))
         val titles = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding((12 * dp).toInt(), 0, 0, 0) }
         titles.addView(TextView(this).apply {
             text = "मेमोरी"; textSize = 22f; setTypeface(typeface, Typeface.BOLD); setTextColor(0xFFFFFFFF.toInt())

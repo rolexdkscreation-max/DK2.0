@@ -1108,3 +1108,43 @@ Google सेटअप अधूरा (DEVELOPER_ERROR): Cloud Console मे�
 Google से जवाब नहीं आया (timeout)	No reply from Google (timeout)
 Google login नहीं हुआ:	Google login failed:
 Gmail • Drive • Calendar • GitHub • Facebook Page • Instagram • MCP — DK लाइव से बोलकर काम	Gmail • Drive • Calendar • GitHub • Facebook Page • Instagram • MCP — work by voice in DK Live
+वेबसाइट	Website
+मेनू खोलें	Open menu
+कोई भी काम कदम-दर-कदम	Any task, step by step
+वेबसाइट बनाने वाला Forge	Forge website builder
+दिखावट, आवाज़, AI दिमाग और बाकी सब	Appearance, voice, AI brain and more
+दिखावट (UI कस्टमाइज़ेशन)	Appearance (UI customization)
+थीम • मुख्य रंग • काँच की पारदर्शिता • चमक • एनिमेशन	Theme • Accent • Glass transparency • Glow • Animation
+दिखावट	Appearance
+बदलाव यहीं तुरंत दिखता है	Changes show here instantly
+मुख्य बटन	Main button
+काँच का बटन	Glass button
+थीम	Theme
+पृष्ठभूमि का रंग	Background colour
+हल्की (Light) थीम अभी नहीं है: ऐप की ज़्यादातर स्क्रीनों पर सफ़ेद अक्षर हैं, हल्की पृष्ठभूमि पर वे पढ़ने में नहीं आते। "फ़ोन जैसी (System)" भी इसी वजह से नहीं — ऐप हमेशा गहरी थीम में रहता है।	A Light theme is not available yet: most screens use white text, which would be unreadable on a light background. "Follow system" is not offered for the same reason — the app always stays dark.
+डार्क नेवी (शुरुआती)	Dark navy (default)
+AMOLED काला (बैटरी बचत)	AMOLED black (saves battery)
+मुख्य रंग (Accent)	Accent colour
+किनारे, चमक, मुख्य बटन और ओर्ब का रंग	Colour of borders, glow, main buttons and the orb
+काँच और चमक	Glass and glow
+पैनल कितने पारदर्शी हों, किनारों की नियॉन चमक कितनी हो	How transparent panels are and how strong the neon edge glow is
+काँच की पारदर्शिता	Glass transparency
+नियॉन चमक	Neon glow
+ज़्यादा पारदर्शिता पर भी अक्षर पढ़ने लायक रहें, इसलिए काँच कभी पूरा गायब नहीं होता। पीछे का असली धुंधलापन (blur) Android 12+ पर सिर्फ़ dialog के पीछे; बाकी जगह हल्का काँच-जैसा रंग।	So text stays readable even at high transparency, the glass never disappears completely. Real background blur is used only behind dialogs on Android 12+; elsewhere a light frosted tint is used.
+ओर्ब के छल्ले, पृष्ठभूमि की रोशनी और मेनू का खुलना	Orb rings, background lights and menu opening
+सामान्य एनिमेशन	Standard animation
+कम एनिमेशन (Reduced motion)	Reduced motion
+फ़ोन की सेटिंग में एनिमेशन बंद हैं — इसलिए DK अभी अपने-आप कम एनिमेशन में है।	Animations are turned off in phone settings — so DK is using reduced motion automatically.
+दिखावट पहले जैसी करें	Restore appearance defaults
+सिर्फ़ रंग-रूप शुरुआती जैसा — बातचीत, यादें, key और आवाज़ की सेटिंग नहीं मिटतीं	Only the look goes back to default — chats, memories, keys and voice settings are not erased
+दिखावट रीसेट करें	Reset appearance
+दिखावट पहले जैसी करें?	Restore appearance defaults?
+थीम, मुख्य रंग, काँच, चमक और एनिमेशन शुरुआती हो जाएँगे। आपका कोई डेटा नहीं मिटेगा।	Theme, accent, glass, glow and animation will be reset. None of your data will be erased.
+हाँ, रीसेट करें	Yes, reset
+दिखावट शुरुआती जैसी हो गई	Appearance restored to defaults
+नियॉन ओर्ब (नीला-बैंगनी)	Neon orb (blue-violet)
+नियॉन नीला	Neon blue
+सियान	Cyan
+वायलेट	Violet
+पर्पल	Purple
+मैजेंटा	Magenta

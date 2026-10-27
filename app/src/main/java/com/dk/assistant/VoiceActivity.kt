@@ -46,7 +46,11 @@ class VoiceActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         // आवाज़ स्क्रीन: पूरी काली - पीछे ऐप (aurora/चैट/बटन) नहीं, सिर्फ़ आवाज़ का चलता गोला + बाहर निकलने का बटन
-        val root = FrameLayout(this).apply { setBackgroundColor(0xFF000000.toInt()) }
+        // v4 Neon Glass: काले के पास गहरा मिडनाइट ढलान (aurora/चैट अब भी नहीं) - बीच में चमकता ओर्ब ही मुख्य
+        val root = FrameLayout(this).apply {
+            background = android.graphics.drawable.GradientDrawable(android.graphics.drawable.GradientDrawable.Orientation.TOP_BOTTOM,
+                intArrayOf(0xFF000000.toInt(), com.dk.assistant.ui.NeonTheme.bg()[0], com.dk.assistant.ui.NeonTheme.bg()[2]))
+        }
         val col = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             val p = (18 * dp).toInt(); setPadding(p, p, p, p)
@@ -164,7 +168,8 @@ class VoiceActivity : AppCompatActivity() {
             show()
             background = android.graphics.drawable.GradientDrawable().apply {
                 shape = android.graphics.drawable.GradientDrawable.OVAL
-                setColor(0x00000000); setStroke((1 * dp).toInt().coerceAtLeast(1), 0x66FFFFFF)
+                setColor(com.dk.assistant.ui.NeonTheme.alpha(0xFF0E1440.toInt(), 0x99))
+                setStroke((1.2f * dp).toInt().coerceAtLeast(1), com.dk.assistant.ui.NeonTheme.alpha(com.dk.assistant.ui.NeonTheme.rim(), 0xB3))
             }
             val p = (16 * dp).toInt(); setPadding(p, p, p, p); scaleType = android.widget.ImageView.ScaleType.FIT_CENTER
             setOnClickListener {
@@ -179,7 +184,8 @@ class VoiceActivity : AppCompatActivity() {
             setImageResource(R.drawable.ic_close)
             background = android.graphics.drawable.GradientDrawable().apply {
                 shape = android.graphics.drawable.GradientDrawable.OVAL
-                setColor(0x26FFFFFF); setStroke((1 * dp).toInt().coerceAtLeast(1), 0x66FFFFFF)
+                setColor(com.dk.assistant.ui.NeonTheme.alpha(0xFF1B2A6E.toInt(), 0xB3))
+                setStroke((1.2f * dp).toInt().coerceAtLeast(1), com.dk.assistant.ui.NeonTheme.alpha(com.dk.assistant.ui.NeonTheme.rim(), 0xB3))
             }
             val p = (16 * dp).toInt(); setPadding(p, p, p, p); scaleType = android.widget.ImageView.ScaleType.FIT_CENTER
             contentDescription = "बंद करें"

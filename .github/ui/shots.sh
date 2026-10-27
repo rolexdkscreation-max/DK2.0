@@ -9,7 +9,26 @@ adb shell svc power stayon true
 adb shell input keyevent KEYCODE_WAKEUP
 adb shell wm dismiss-keyguard || true
 
-shot() { sleep "${2:-3}"; timeout 40 adb exec-out screencap -p > "$OUT/$1.png"; }
+# emulator कभी-कभी बीच में बंद हो जाता है (adb: device not found) - तब उसे दोबारा चालू करके आगे बढ़ो
+EMU="${ANDROID_SDK_ROOT:-$ANDROID_HOME}/emulator/emulator"
+AVD=$("$EMU" -list-avds 2>/dev/null | head -1)
+revive() {
+  adb get-state 2>/dev/null | grep -q device && return 0
+  echo "=== emulator बंद मिला ($(date -u +%T)) - दोबारा चालू ===" | tee -a "$OUT/emu_revive.txt"
+  { free -m; sudo dmesg 2>/dev/null | tail -25; } >> "$OUT/emu_revive.txt" 2>&1
+  pkill -9 -f qemu-system 2>/dev/null; sleep 3
+  adb kill-server; adb start-server
+  nohup "$EMU" -avd "$AVD" -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim > /tmp/emu2.log 2>&1 &
+  timeout 300 adb wait-for-device || return 1
+  for i in $(seq 1 80); do [ "$(adb shell getprop sys.boot_completed 2>/dev/null | tr -d '\r')" = 1 ] && break; sleep 3; done
+  adb root; sleep 4; adb wait-for-device
+  for k in window_animation_scale transition_animation_scale animator_duration_scale; do adb shell settings put global $k 0; done
+  adb shell svc power stayon true; adb shell input keyevent KEYCODE_WAKEUP; adb shell wm dismiss-keyguard || true
+  echo "=== फिर चालू ($(date -u +%T)) ===" >> "$OUT/emu_revive.txt"
+}
+shot() { sleep "${2:-3}"; revive; timeout 40 adb exec-out screencap -p > "$OUT/$1.png"; }
+# कोई स्क्रीन खोलो (emulator बंद हो तो पहले चालू)
+go() { revive; timeout 90 adb shell am start -S -W -n "$PKG/$1" "${@:2}"; }
 
 # text/desc se view dhoondh kar tap (uiautomator dump)
 tap() {
@@ -33,8 +52,29 @@ run() {
   adb uninstall $PKG >/dev/null 2>&1 || true
   adb install -r -g "$apk"
   adb logcat -c
-  adb shell am start -S -W -n $PKG/.MainActivity;                          shot ${tag}_01_home 12
+  go .MainActivity;                                                       shot ${tag}_01_home 12
   shot ${tag}_01b_home_late 14
+  # v4: पहली बार का परिचय (onboarding) छोड़कर असली होम, फिर ऊपर-बाएँ मेनू
+  { tap "Skip" || tap "छोड़ें"; } ; sleep 3
+  revive; timeout 90 adb shell am start -W -n $PKG/.MainActivity;                             shot ${tag}_01d_home_real 8
+  { tap "मेनू खोलें" || tap "Open menu"; } && shot ${tag}_01c_home_menu 2
+  adb shell input keyevent KEYCODE_BACK; sleep 1
+  # v4: emulator कुछ मिनट में अटक जाता है - इसलिए नई स्क्रीनें पहले (चैट, आवाज़, मेमोरी)
+  go .ChatActivity;                          shot ${tag}_05a_chat_first 5
+  go .VoiceActivity;                         shot ${tag}_07a_voice_first 5
+  go .MemoryActivity;                        shot ${tag}_08a_memory_first 4
+  # v4: दिखावट (UI कस्टमाइज़ेशन)
+  go .SettingsActivity --es section ui;      shot ${tag}_04c_settings_ui 5
+  adb shell input swipe 540 1700 540 600 400;                             shot ${tag}_04d_settings_ui_scroll 2
+  adb shell input swipe 540 1700 540 600 400;                             shot ${tag}_04e_settings_ui_scroll2 2
+  # v4: रंग बदलकर देखो (मैजेंटा + AMOLED) - Settings और होम दोनों पर तुरंत
+  go .SettingsActivity --es section ui; sleep 4
+  { tap "AMOLED" ; } ; sleep 2
+  adb shell input swipe 540 1500 540 700 400; sleep 2
+  { tap "मैजेंटा" || tap "Magenta"; } ; sleep 3;                          shot ${tag}_12_ui_magenta 1
+  # पसंद सच में सेव हुई? (emulator बंद हो जाए तब भी पता चले)
+  adb shell "cat /data/data/$PKG/shared_prefs/dk_prefs.xml" 2>/dev/null | grep -E 'ui_(theme|accent)' > "$OUT/${tag}_ui_prefs.txt" || true
+  revive; timeout 90 adb shell am start -W -n $PKG/.MainActivity;                             shot ${tag}_13_home_magenta 8
   adb shell input keyevent KEYCODE_BACK; sleep 1
   adb shell am start -S -W -n $PKG/.SettingsActivity;                      shot ${tag}_02_settings 4
   # dabaane ki haalat (pressed): pehle card ko 3 sec dabaye rakho aur beech me screenshot
