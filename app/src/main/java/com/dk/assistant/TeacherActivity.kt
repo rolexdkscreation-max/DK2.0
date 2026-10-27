@@ -213,6 +213,8 @@ class TeacherActivity : AppCompatActivity() {
         queryInput = EditText(this).apply {
             hint = "यहाँ सवाल लिखें या बोलें..."
             textSize = 14f
+            isFocusable = true
+            isFocusableInTouchMode = true
             layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
             setOnClickListener {
                 requestFocus()
