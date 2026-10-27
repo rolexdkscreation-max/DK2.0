@@ -1318,8 +1318,11 @@ pass=true ONLY if you are confident it compiles and the task works completely.${
                 if (System.currentTimeMillis() - t0 > 90_000) return@withContext null
                 delay(8_000); continue
             }
-            if (runs.all { it.status == "completed" }) {
-                val bad = runs.firstOrNull { it.conclusion !in listOf("success", "skipped", "neutral") }
+            // v3.89: कोई भी एक जाँच फ़ेल हो चुकी तो बाक़ी (जैसे 8-10 मिनट वाली emulator जाँच) का इंतज़ार नहीं -
+            // नतीजा वैसे भी फ़ेल ही है; तुरंत log लेकर डिबगर को (PR #105 में हर राउंड ~8 मिनट बेकार जाते थे)
+            val failedEarly = runs.firstOrNull { it.status == "completed" && it.conclusion !in listOf("success", "skipped", "neutral") }
+            if (failedEarly != null || runs.all { it.status == "completed" }) {
+                val bad = failedEarly
                     ?: return@withContext Build(true, runs.first().url, "")
                 val log = try { gh.failureLog(repo, bad.id) } catch (e: Exception) { "(log नहीं मिला: ${e.message})" }
                 // GitHub की अपनी दिक्कत (नेटवर्क/runner) - code नहीं बदलना; वही job अपने-आप दोबारा (2 बार तक)

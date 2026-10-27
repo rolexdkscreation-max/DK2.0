@@ -478,12 +478,13 @@ class CodingActivity : AppCompatActivity() {
         CoderSession.add("s", "GitHub पर build देख रहा हूँ…")
         val b = a.watchBuild(a.lastSha) { st -> CoderSession.scope.launch { CoderSession.add("s", st) } }
         if (b == null) { CoderSession.add("s", "इस repo के build की जानकारी नहीं मिली"); return }
-        if (b.ok) { CoderSession.add("d", "Build सफल ✓\n${b.url}"); return }
+        if (b.ok) { CoderSession.add("d", "Build सफल ✓\n${b.url}"); CoderSound.notify(c, CoderSound.DONE, "Build सफल ✓", a.repo); return }
+        CoderSound.notify(c, CoderSound.BUG, "Build fail — जड़ ढूँढ रहा हूँ", a.repo)
         CoderSession.add("e", "Build fail हुआ ✗\n${b.url}\n\n" + b.log.lines().filter { it.startsWith("e: ") || it.contains("error", true) }.take(6).joinToString("\n").take(700))
         fixSigs.add(FixLoop.signature(b.log))
         when (FixLoop.next(fixSigs)) {
-            FixLoop.Next.STOP_CAP -> { CoderSession.add("e", "${fixSigs.size} बार जड़ ढूँढकर ठीक करने के बाद भी build/tests fail हैं। ऊपर की गलती देखकर बताइए क्या करना है।"); return }
-            FixLoop.Next.STOP_STUCK -> { CoderSession.add("e", "वही गलती ${FixLoop.SAME_LIMIT} बार लगातार लौटी — एजेंट अटक गया, इसलिए रोका। इस गलती के बारे में और बताइए।"); return }
+            FixLoop.Next.STOP_CAP -> { CoderSound.notify(c, CoderSound.WAIT, "कोडिंग एजेंट रुका", "बार-बार fail — आपकी मदद चाहिए"); CoderSession.add("e", "${fixSigs.size} बार जड़ ढूँढकर ठीक करने के बाद भी build/tests fail हैं। ऊपर की गलती देखकर बताइए क्या करना है।"); return }
+            FixLoop.Next.STOP_STUCK -> { CoderSound.notify(c, CoderSound.WAIT, "कोडिंग एजेंट रुका", "वही गलती बार-बार"); CoderSession.add("e", "वही गलती ${FixLoop.SAME_LIMIT} बार लगातार लौटी — एजेंट अटक गया, इसलिए रोका। इस गलती के बारे में और बताइए।"); return }
             FixLoop.Next.FIX_AGAIN -> {}
         }
         CoderSession.add("s", "पहले गलती की जड़ ढूँढ रहा हूँ, फिर ठीक करके दोबारा test (राउंड ${round + 1})…")
@@ -494,7 +495,9 @@ class CodingActivity : AppCompatActivity() {
         CoderSession.add("d", out.summary)
         CoderSession.lastCommit = out.commit.ifBlank { "Fix build" }
         if (out.question || a.staged.isEmpty()) return
-        if (Prefs.coderAutoPush(c)) push(c, round + 1)
+        // v3.89: अलग feature branch (PR वाला सुरक्षित तरीका) पर सुधार अपने-आप push → build फिर से चलता है, पास होने तक
+        // (FixLoop की सीमा तक). main/base branch पर कभी बिना पूछे नहीं - वहाँ पहले जैसा "Push करें".
+        if (Prefs.coderAutoPush(c) || (a.safePr && a.branch.isNotBlank() && a.branch != a.baseBranch)) push(c, round + 1)
         else CoderSession.add("s", "Build ठीक करने वाले बदलाव तैयार हैं — नीचे \"Push करें\" दबाइए")
     }
 
@@ -537,7 +540,7 @@ class CodingActivity : AppCompatActivity() {
     private fun showHistory() {
         CoderHistory.flush(this)
         val all = CoderHistory.list(this)
-        if (all.isEmpty()) { toast("अभी कोई इतिहास नहीं — पहला काम लिखें"); return }
+        if (all.isEmpty()) { if (LocalNotes.all(filesDir).isNotEmpty()) showNotes() else toast("अभी कोई इतिहास नहीं — पहला काम लिखें"); return }
         val fmt = java.text.SimpleDateFormat("d MMM, h:mm a", java.util.Locale("hi", "IN"))
         val box = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; val p = (6 * dp).toInt(); setPadding(p, p, p, p) }
         var dlg: android.app.Dialog? = null
@@ -567,7 +570,35 @@ class CodingActivity : AppCompatActivity() {
         val sc = android.widget.ScrollView(this).apply { addView(box) }
         dlg = UiDialog(this, Glass.DIALOG).setTitle("इतिहास — कब क्या काम हुआ")
             .setMessage("किसी पर टैप = वही बातचीत खुलेगी, उसी में आगे लिखें। लंबा दबाएँ = हटाएँ।")
-            .setView(sc).setNegativeButton("बंद करें", null).show()
+            .setView(sc).setNegativeButton("बंद करें", null)
+            .setNeutralButton("📒 काम-कॉपी") { _, _ -> showNotes() }.show()
+    }
+
+    /**
+     * v3.89: फ़ोन में रखी काम-कॉपियाँ (हर रिपो/branch की) - तुरंत खुलती हैं, न इंटरनेट न GitHub API.
+     * चल रहे काम की कॉपी सबसे ऊपर.
+     */
+    private fun showNotes() {
+        val a = CoderSession.agent
+        val cur = a?.let { LocalNotes.fileName(it.repo, it.branch) }
+        val files = LocalNotes.all(filesDir).sortedByDescending { it.name == cur }
+        if (files.isEmpty()) { toast("अभी फ़ोन में कोई काम-कॉपी नहीं — कोडिंग टीम काम करेगी तो अपने-आप बनेगी"); return }
+        val fmt = java.text.SimpleDateFormat("d MMM, h:mm a", java.util.Locale("hi", "IN"))
+        fun open(f: java.io.File) {
+            val md = try { f.readText() } catch (_: Exception) { "" }
+            // छुपा data (<!-- ... -->) पढ़ने वाले के काम का नहीं
+            val txt = md.replace(Regex("<!--[\\s\\S]*?-->"), "").replace("**", "").trim()
+            val tv = TextView(this).apply {
+                text = txt.ifBlank { "(खाली)" }; textSize = 14f; setTextIsSelectable(true); setTextColor(0xFFFFFFFF.toInt())
+                val p = (16 * dp).toInt(); setPadding(p, p, p, p)
+            }
+            UiDialog(this, Glass.DIALOG).setTitle("📒 " + f.name.removeSuffix(".md").replace("__", " • "))
+                .setView(android.widget.ScrollView(this).apply { addView(tv) }).setNegativeButton("बंद करें", null).show()
+        }
+        if (files.size == 1) { open(files[0]); return }
+        val names = files.map { f -> (if (f.name == cur) "▶ " else "") + f.name.removeSuffix(".md").replace("__", " • ") + "\n" + fmt.format(java.util.Date(f.lastModified())) }
+        UiDialog(this, Glass.DIALOG).setTitle("📒 काम-कॉपी (फ़ोन में)")
+            .setItems(names.toTypedArray()) { _, i -> open(files[i]) }.setNegativeButton("बंद करें", null).show()
     }
 
     /** इतिहास की बातचीत खोलो: उसके संदेश + उसका खुला PR (हो तो) - अगला काम उसी में जुड़ेगा */
