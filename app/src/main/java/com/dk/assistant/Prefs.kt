@@ -133,6 +133,8 @@ object Prefs {
     /** orb ka aakaar: earth, galaxy, atom, torus, geodesic, knot, dyson, face_male, face_female */
     /** Beech ka orb chhota (minimize) kiya hua hai? */
     fun orbMin(c: Context) = sp(c).getBoolean("orb_min", false)
+    /** v3.88: हर बातचीत फ़ोन की लोकल याददाश्त (SQLite) में - 30 दिन, फिर सिर्फ़ सार */
+    fun localMemoryOn(c: Context) = sp(c).getBoolean("local_memory_on", true)
     // ---- v3.66: सिर्फ़ मालिक की आवाज़ (voiceprint सिर्फ़ इसी फ़ोन में - backup बंद है, GitHub/इंटरनेट पर नहीं)
     /** परत 3: सिर्फ़ मालिक की आवाज़ पर जवाब */
     fun ownerVoiceOn(c: Context) = sp(c).getBoolean("owner_voice_on", false)

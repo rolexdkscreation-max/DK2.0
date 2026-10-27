@@ -52,14 +52,16 @@ object Memory {
 
     /** "X भूल जाओ" - jisme yeh shabd ho woh baatein hatao. Wapas: kitni hatin. */
     fun forget(c: Context, about: String): Int {
+        // v3.88: फ़ोन की लोकल याददाश्त (30 दिन की बातें + सार) से भी - "ये भूल जाओ" = पिछली बात
+        val local = LocalMemory.forgetBlocking(c, about)
         val words = about.lowercase().split(' ').filter { it.length >= 2 }
-        if (words.isEmpty()) return 0
+        if (words.isEmpty() || LocalRecall.forgetsLast(about)) return local
         val list = facts(c).toMutableList()
         val before = list.size
         list.removeAll { f -> val l = f.lowercase(); words.all { l.contains(it) } }
         writeArr(c, "dk_facts.json", JSONArray(list))
         // v3.45: बातचीत के सारांश + अधूरी बातों से भी मिटाओ
-        return before - list.size + FriendTalk.forget(c, about)
+        return local + before - list.size + FriendTalk.forget(c, about)
     }
 
     fun clearFacts(c: Context) = writeArr(c, "dk_facts.json", JSONArray())

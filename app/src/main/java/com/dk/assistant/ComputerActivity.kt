@@ -74,6 +74,7 @@ class ComputerActivity : AppCompatActivity() {
         titles.addView(sub)
         top.addView(titles, LinearLayout.LayoutParams(0, -2, 1f))
         top.addView(smallBtn("फ़ाइलें") { showFiles() })
+        top.addView(smallBtn("इतिहास") { showHistory() }, LinearLayout.LayoutParams(-2, -2).apply { marginStart = (6 * dp).toInt() })
         top.addView(smallBtn("नया") { newSession() }, LinearLayout.LayoutParams(-2, -2).apply { marginStart = (6 * dp).toInt() })
         col.addView(top)
         col.addView(buildWork(), LinearLayout.LayoutParams(-1, -2).apply { topMargin = (10 * dp).toInt() })
@@ -101,7 +102,9 @@ class ComputerActivity : AppCompatActivity() {
         send.setOnClickListener { if (ComputerSession.busy) ComputerSession.stop() else doSend() }
         setContentView(root)
         Glass.install(this)
+        ComputerSession.restoreLines(this)          // v3.88: ऐप बंद हुआ था - पिछली बातचीत वापस
         if (ComputerSession.lines.isEmpty()) ComputerSession.add("d", welcome())
+        ComputerSession.pendingResume(this)?.let { s -> if (intent.getStringExtra("task").isNullOrBlank()) askResume(s) }
         // बाहर से काम आया हो (जैसे Settings / आवाज़)
         intent.getStringExtra("task")?.takeIf { it.isNotBlank() }?.let { ComputerSession.start(this, it)?.let { e -> ComputerSession.add("e", e) } }
     }
@@ -178,6 +181,27 @@ class ComputerActivity : AppCompatActivity() {
     private fun newSession() {
         ComputerSession.reset(); shown = 0; list.removeAllViews()
         ComputerSession.add("d", welcome())
+    }
+
+    /** v3.88: पिछला अधूरा काम - वहीं से आगे? */
+    private fun askResume(s: ComputerSaved.State) {
+        UiDialog(this, Glass.DIALOG)
+            .setTitle("पिछला काम अधूरा रह गया था")
+            .setMessage(s.task.take(300) + "\n\n" + (if (s.netPaused) "नेटवर्क टूटने से रुका था।" else "ऐप बंद होने से बीच में रुका था।") +
+                " जो कदम हो चुके वो दोबारा नहीं होंगे — वहीं से आगे करूँ?")
+            .setPositiveButton("हाँ, आगे करो") { _, _ -> ComputerSession.resume(this)?.let { toast(it) } }
+            .setNegativeButton("नहीं") { _, _ -> ComputerSaved.clear() }
+            .show()
+    }
+
+    /** v3.88: हर काम और उसकी हालत (DK कंप्यूटर + कोडिंग टीम) */
+    private fun showHistory() {
+        val l = TaskHistory.all(this)
+        if (l.isEmpty()) { toast("अभी कोई काम का इतिहास नहीं"); return }
+        UiDialog(this, Glass.DIALOG)
+            .setTitle("कामों का इतिहास")
+            .setItems(l.map { TaskHistory.line(it) }.toTypedArray()) { _, _ -> }
+            .setNegativeButton("बंद करें", null).show()
     }
 
     private fun showFiles() {

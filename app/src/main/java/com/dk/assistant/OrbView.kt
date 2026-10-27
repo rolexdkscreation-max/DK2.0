@@ -127,7 +127,8 @@ class OrbView @JvmOverloads constructor(
         val dt = if (lastT == 0L) 0.016f else ((now - lastT) / 1000f).coerceAtMost(0.05f)
         lastT = now
         val t = now / 1000f
-        val mode = DKState.mode
+        // v3.88: सिर्फ़ तीन रूप - Listening / Thinking (WORKING भी) / Speaking
+        val mode = ThreeState.look(DKState.mode)
 
         val want = wanted()
         if (want != target) morphTo(want)
@@ -279,6 +280,7 @@ class OrbView @JvmOverloads constructor(
         }
         if (satAlpha > 0f) drawOrbits(c, cx, cy, R, dotR, front = true, alpha = satAlpha)
         if (target == "atom" && !mini) drawElectrons(c, cx, cy, R, dotR, cosA, sinA, cosT, sinT, t, front = true)
+        if (!isFace && !mini) drawStateFx(c, cx, cy, R, mode, t, voice, com.dk.assistant.ui.NeonTheme.reducedMotion())
 
         when {
             mini -> postInvalidateDelayed(if (mode == Mode.IDLE) 66 else 33)
@@ -302,9 +304,9 @@ class OrbView @JvmOverloads constructor(
         return when (m) {
             Mode.IDLE -> l.accent.main to l.accent.partner
             Mode.LISTENING -> com.dk.assistant.ui.NeonTheme.CYAN to l.accent.main
-            Mode.THINKING -> com.dk.assistant.ui.NeonTheme.VIOLET to com.dk.assistant.ui.NeonTheme.MAGENTA
-            Mode.WORKING -> Color.parseColor("#00E676") to com.dk.assistant.ui.NeonTheme.CYAN
-            Mode.SPEAKING -> com.dk.assistant.ui.NeonTheme.CYAN to Color.parseColor("#64FFDA")
+            // v3.88: सोचते समय अलग रंग (सुनहरा-नारंगी), बोलते समय गुलाबी - तीनों साफ़ अलग
+            Mode.THINKING, Mode.WORKING -> THINK_A to THINK_B
+            Mode.SPEAKING -> SPEAK_A to SPEAK_B
         }
     }
 
@@ -374,10 +376,79 @@ class OrbView @JvmOverloads constructor(
         c.drawCircle(cx, cy, R, nRim)
         nM.setScale(R * 0.42f, R * 0.30f); nM.postTranslate(cx - R * 0.32f, cy - R * 0.48f); nSpec.shader.setLocalMatrix(nM)
         c.drawCircle(cx - R * 0.32f, cy - R * 0.48f, R * 0.42f, nSpec)
+        // 5. v3.88: हर हालत की अपनी अलग हरकत
+        drawStateFx(c, cx, cy, R, mode, t, voice, still)
 
         if (still) postInvalidateDelayed(if (mode == Mode.LISTENING || mode == Mode.SPEAKING) 120 else 400)
         else if (mode == Mode.IDLE) postInvalidateDelayed(33)      // खाली हालत: ~30fps काफ़ी (कमज़ोर फ़ोन/बैटरी)
         else postInvalidateOnAnimation()
+    }
+
+    // ------------------------------------------------------------------ v3.88: तीन हालत, तीन अलग एनिमेशन
+    private val sfx = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE; strokeCap = Paint.Cap.ROUND }
+    private val sfxDot = Paint(Paint.ANTI_ALIAS_FLAG)
+    private val sfxArc = android.graphics.RectF()
+
+    /**
+     * Listening = बाहर से अंदर सिमटते छल्ले (आवाज़ के ज़ोर से तेज़/चमकीले) - "सुन रही हूँ"
+     * Thinking  = गोले के चारों ओर घूमते धूमकेतु-चाप और पीछा करते बिंदु - "सोच रही हूँ"
+     * Speaking  = अंदर से बाहर फैलती लहरें (जो आवाज़ बज रही है उसके ज़ोर से) - "बोल रही हूँ"
+     * कम-एनिमेशन (reduced motion) में स्थिर हल्का निशान, हरकत नहीं.
+     */
+    private fun drawStateFx(c: Canvas, cx: Float, cy: Float, R: Float, mode: Mode, t: Float, voice: Float?, still: Boolean) {
+        val dpx = resources.displayMetrics.density
+        when (mode) {
+            Mode.LISTENING -> {
+                val col = colA
+                val drive = (0.35f + lvl * 1.4f).coerceIn(0.35f, 1f)
+                if (still) {
+                    sfx.strokeWidth = 1.6f * dpx; sfx.color = withAlpha(col, 120)
+                    c.drawCircle(cx, cy, R * 1.45f, sfx); return
+                }
+                for (i in 0 until 3) {
+                    val ph = ((t * (0.55f + lvl * 0.9f) + i / 3f) % 1f)          // 0 = बाहर, 1 = गोले पर
+                    val rr = R * (1.75f - 0.65f * ph)
+                    sfx.strokeWidth = (1.2f + 1.8f * ph) * dpx
+                    sfx.color = withAlpha(col, (ph * 210 * drive).toInt())
+                    c.drawCircle(cx, cy, rr, sfx)
+                }
+            }
+            Mode.THINKING, Mode.WORKING -> {
+                val col = colA; val col2 = colB
+                val base = if (still) 0f else t * 160f
+                sfx.strokeWidth = 2.6f * dpx
+                for (i in 0 until 3) {
+                    val rr = R * (1.22f + i * 0.13f)
+                    sfxArc.set(cx - rr, cy - rr, cx + rr, cy + rr)
+                    val start = (if (i % 2 == 0) base * (1f + i * 0.25f) else -base * 0.8f) + i * 120f
+                    sfx.color = withAlpha(if (i == 1) col2 else col, 200 - i * 45)
+                    c.drawArc(sfxArc, start, 70f - i * 14f, false, sfx)
+                }
+                // पीछा करते चमकीले बिंदु
+                for (j in 0 until 4) {
+                    val a = Math.toRadians((base * 1.5f + j * 22f).toDouble()).toFloat()
+                    val rr = R * 1.32f
+                    sfxDot.color = withAlpha(Color.WHITE, 230 - j * 50)
+                    c.drawCircle(cx + cos(a) * rr, cy + sin(a) * rr, (3.2f - j * 0.6f) * dpx, sfxDot)
+                }
+            }
+            Mode.SPEAKING -> {
+                val col = colB
+                val amp = (voice ?: (0.45f + 0.35f * sin(t * 7f))).coerceIn(0f, 1f)
+                if (still) {
+                    sfx.strokeWidth = 2f * dpx; sfx.color = withAlpha(col, 140)
+                    c.drawCircle(cx, cy, R * 1.25f, sfx); return
+                }
+                for (i in 0 until 3) {
+                    val ph = ((t * 0.9f + i / 3f) % 1f)                           // 0 = गोले पर, 1 = बाहर
+                    val rr = R * (1.05f + 0.85f * ph) * (1f + amp * 0.08f)
+                    sfx.strokeWidth = (3.2f - 2.2f * ph) * dpx * (0.6f + amp)
+                    sfx.color = withAlpha(col, ((1f - ph) * 220 * (0.35f + 0.65f * amp)).toInt())
+                    c.drawCircle(cx, cy, rr, sfx)
+                }
+            }
+            else -> {}
+        }
     }
 
     /** Atom ke chhallon par daudte electron */
@@ -437,6 +508,9 @@ class OrbView @JvmOverloads constructor(
     override fun onVisibilityAggregated(isVisible: Boolean) { super.onVisibilityAggregated(isVisible); if (isVisible) { lastT = 0L; invalidate() } }
 
     companion object {
+        /** v3.88: नियॉन ओर्ब - सोचना (सुनहरा→नारंगी) और बोलना (गुलाबी) के अलग रंग; सुनना = नीला-फ़िरोज़ी (पहले जैसा) */
+        val THINK_A = Color.parseColor("#FFB300"); val THINK_B = Color.parseColor("#FF6D00")
+        val SPEAK_A = Color.parseColor("#FF4FA3"); val SPEAK_B = Color.parseColor("#FF9AD5")
         /** v3.65: चेहरे (HD) के लिए 3200; बाकी आकार 1400 ही दिखाते हैं (Shapes.PLAIN_DOTS), बचे छिपे */
         const val FULL_DOTS = 3200
         const val MINI_DOTS = 320

@@ -200,6 +200,8 @@ class AgentRunner(
 
     /** "याद रखो ..." / "... भूल जाओ" / "क्या याद है" */
     private suspend fun memoryCommand(goal: String): Boolean {
+        // v3.88: "मैंने क्या बोला था / कल क्या बात हुई थी" = फ़ोन की लोकल याददाश्त से (कोई API नहीं)
+        if (LocalRecall.isRecall(goal)) { say(LocalMemory.answer(svc, goal)); return true }
         val m = Memory.parse(goal) ?: return false
         when (m.kind) {
             "remember" -> { Memory.addFact(svc, m.text); say("ठीक है, याद रख लिया।") }
@@ -400,6 +402,13 @@ class AgentRunner(
             } catch (e: Exception) {
                 filler?.cancel()
                 DKLog.d("AI error: ${e.javaClass.simpleName} ${e.message}")
+                // v3.88: फ़ोन पर इंटरनेट ही नहीं = काम कतार में (खोए नहीं), नेटवर्क आते ही अपने-आप आगे
+                if (e !is kotlinx.coroutines.CancellationException && !NetProbe.online(svc) && OfflineQueue.add(svc, goal)) {
+                    val q = "इंटरनेट नहीं है। आपका काम सँभाल कर रख लिया है — नेटवर्क आते ही अपने-आप आगे करूँगी।"
+                    DKState.replyFailed(q)
+                    if (!silent) speaker.speak(q)
+                    return
+                }
                 val msg = brain.explain(e)
                 DKState.replyFailed(msg + "\n(" + (e.message ?: e.javaClass.simpleName).take(160) + ")")
                 if (!silent) speaker.speak(msg)

@@ -52,7 +52,7 @@ object DKState {
         // chat screen ne yahi message "Send" dabate hi khud dikha diya tha (optimistic) - dobara mat jodo
         val opt = optimistic
         if (opt != null && opt.first == t && System.currentTimeMillis() - opt.second < 15_000) { optimistic = null; emit(); return }
-        if (!t.endsWith("…") && t.isNotBlank()) { messages.add(Msg("u", t)); trim() }
+        if (!t.endsWith("…") && t.isNotBlank()) { messages.add(Msg("u", t)); trim(); LocalMemory.record(appCtx, "u", t, if (live) "voice" else "text") }
         emit()
     }
 
@@ -68,6 +68,7 @@ object DKState {
         sentAt = System.currentTimeMillis()
         optimistic = t to sentAt
         messages.add(Msg("u", t)); trim()
+        LocalMemory.record(appCtx, "u", t, "text")     // v3.88: लोकल याददाश्त - तुरंत
         mode = Mode.THINKING; level = 0f      // typing indicator turant (listener seedha, post ka intezaar nahi)
         val copy = synchronized(listeners) { listeners.toList() }
         if (Looper.myLooper() == Looper.getMainLooper()) copy.forEach { it() } else main.post { copy.forEach { it() } }
@@ -88,6 +89,7 @@ object DKState {
         lastUser = t
         val i = messages.indexOfLast { it.role == "u" }
         if (i >= 0) { messages[i] = messages[i].copy(text = t); persist() }
+        LocalMemory.fixLastUser(appCtx, t)
         emit()
     }
     /** Abhi ban raha (streaming) jawab - chat screen par turant dikhta hai */
@@ -100,7 +102,7 @@ object DKState {
     fun reply(t: String, sources: List<Pair<String, String>> = emptyList()) {
         lastReply = t; liveReply = ""; hintText = ""; lastSources = sources
         TeacherBoard.onReply(t, final = true)   // v3.87: पढ़ाई का जवाब टीचर के पन्ने पर
-        if (t.isNotBlank()) { messages.add(Msg("d", t, src = sources)); trim() }
+        if (t.isNotBlank()) { messages.add(Msg("d", t, src = sources)); trim(); LocalMemory.record(appCtx, "d", t, if (live) "voice" else "text") }
         emit()
     }
     /** Jawab abhi ban raha hai (tukdon me) - screen par dikhao, chat list me abhi mat jodo */

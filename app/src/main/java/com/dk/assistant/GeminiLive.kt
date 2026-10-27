@@ -12,6 +12,8 @@ import android.media.audiofx.NoiseSuppressor
 import android.util.Base64
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.Deferred
+import kotlinx.coroutines.async
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -60,6 +62,9 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
         const val SERVER_SILENCE_MS = 800   // v3.46: 550 -> 800. छोटी बात पर फ़ोन खुद 550ms पर "खत्म" भेजता है; यह सिर्फ़ तब जब वाक्य अधूरा लगे ("और…", "तो…")
         /** Phone ka VAD: itni der chup = turant audioStreamEnd (server ka intezaar nahi) */
         const val CLIENT_END_MS = 550
+        /** v3.88: बोलते-बोलते तैयार किया डेटा कितनी देर ताज़ा माना जाए */
+        const val PREP_WEATHER_MS = 5 * 60_000L
+        const val PREP_SEARCH_MS = 45_000L
         /** Bolna shuru pakadne se pehle itni awaaz - chhota = pehla shabd turant (bahut chhota = DK ki goonj se galat "toka") */
         const val PREFIX_PADDING_MS = 100
         /** Wake word wala Live chup hone par connection itni der garam rakho */
@@ -564,9 +569,11 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
         setMode(Mode.THINKING)
         // v3.87: Live की खोज = Live की अपनी Gemini key पहले; fail = ख़ुद एक बार दोबारा (छोटी, तेज़ खोज)
         val brain = BrainManager(svc).also { it.fromLive = true }
-        var r: SearchResult? = null
+        // v3.88: यूज़र के बोलते ही शुरू हुई खोज उसी बात की है = वही नतीजा (इंतज़ार कम)
+        var r: SearchResult? = preparedSearch(q)?.also { log("web_search: पहले से तैयार नतीजा इस्तेमाल किया") }
         var why = SearchGuard.Fail.OTHER
         for (attempt in 1..2) {
+            if (r != null) break
             r = try {
                 if (attempt == 1) withTimeoutOrNull(32_000) { brain.search(q, deep = false) } else brain.quickSearch(q)
             } catch (e: CancellationException) { throw e } catch (e: Exception) {
@@ -1111,6 +1118,7 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
     }
 
     private fun setupJson(m: String): String {
+        NetProbe.refresh(svc)      // v3.88: धीमा नेटवर्क = छोटे जवाब (अपने-आप, कोई सेटिंग नहीं)
         val brain = BrainManager(svc)
         val ex = extrasFor(m)
         val tools = JSONArray().put(JSONObject().put("functionDeclarations", JSONArray()
@@ -1209,6 +1217,11 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
                 .put("parameters", JSONObject().put("type", "OBJECT")
                     .put("properties", JSONObject().put("about", JSONObject().put("type", "STRING").put("description", "The topic to forget, a few words")))
                     .put("required", JSONArray().put("about"))))
+            .put(JSONObject().put("name", "recall_conversation")
+                .put("description", "The user asks what HE said earlier or what you two talked about (मैंने क्या बोला था / अभी मैंने क्या कहा था / कल क्या बात हुई थी / मैंने उस बारे में क्या बताया था / तुमने क्या कहा था). Searches the conversation saved ONLY on this phone (last 30 days + permanent short notes) - no internet. question = the user's question in his own words (include the time like अभी/कल/आज and the topic). Then say the result to the user briefly in your own voice; if it says it was not found, say exactly 'बॉस, मुझे ये याद नहीं मिल रहा।' - never invent.")
+                .put("parameters", JSONObject().put("type", "OBJECT")
+                    .put("properties", JSONObject().put("question", JSONObject().put("type", "STRING").put("description", "The user's question, his words")))
+                    .put("required", JSONArray().put("question"))))
             .put(JSONObject().put("name", "local_info")
                 .put("description", "Get the user's CURRENT location (fresh GPS/network, city/area name) and live weather right now. Call it when the user asks about weather, their area, nearby events/news/traffic/pandals/melas, or anything 'here/आसपास/मेरे शहर'. For local news or events, then use Google Search with the city name.")
                 .put("parameters", JSONObject().put("type", "OBJECT").put("properties", JSONObject())))
@@ -1237,7 +1250,7 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
                 .apply { if (!connText) put("speechConfig", JSONObject().put("voiceConfig", JSONObject()
                     .put("prebuiltVoiceConfig", JSONObject().put("voiceName", ex.voice)))
                     .apply { if (ex.lang) put("languageCode", LiveVoice.LANGUAGE) }) })
-            .put("systemInstruction", JSONObject().put("parts", JSONArray().put(JSONObject().put("text", Lang.sys(brain.liveSystemPrompt()) + FAST_START + (if (connSplit) SPLIT_NOTE + (if (connText) MOOD_TAG_NOTE else "") else
+            .put("systemInstruction", JSONObject().put("parts", JSONArray().put(JSONObject().put("text", Lang.sys(brain.liveSystemPrompt()) + FAST_START + NetSpeed.promptNote() + (if (connSplit) SPLIT_NOTE + (if (connText) MOOD_TAG_NOTE else "") else
                 com.dk.assistant.voice.engine.LiveNativeEngine.styleNote(com.dk.assistant.voice.engine.LiveNativeEngine.style(svc).ifBlank { CalmPersona.VOICE_STYLE }))))))
             .put("tools", tools)
             .put("realtimeInputConfig", JSONObject()
@@ -1306,7 +1319,7 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
     private fun handleServer(msg: String, setup: CompletableDeferred<Unit>) {
         val o = try { JSONObject(msg) } catch (e: Exception) { log("JSON नहीं समझा (${msg.length} bytes)"); return }
         if (o.has("setupComplete")) {
-            if (setupSentAt > 0) { trace.rttMs = System.currentTimeMillis() - setupSentAt; log("setup का जवाब ${trace.rttMs} ms (network RTT + server)") }
+            if (setupSentAt > 0) { trace.rttMs = System.currentTimeMillis() - setupSentAt; log("setup का जवाब ${trace.rttMs} ms (network RTT + server)"); NetSpeed.onSetup(trace.rttMs) }
             // ready + purani (judte samay ki) awaaz ek saath, lock me: mic ka naya tukda purane se pehle na nikle
             synchronized(sendLock) { ready = true; flushPending() }
             setup.complete(Unit)
@@ -1586,6 +1599,7 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
             if (!ok) { log("caption: \"${t.take(40)}\" - पक्का नहीं, जवाब जारी"); return }
         } else if (isPlaying()) return        // DK bol raha hai aur shak nahi = shor/goonj ka text, dikhao bhi mat
         DKState.user("$t…")
+        prefetch(t, final)        // v3.88: यूज़र बोल ही रहा है - ज़रूरी डेटा पहले से तैयार (गलत अंदाज़ा = चुपचाप बेकार)
         if (final) checkMicOff(t)        // andaze (interim) par mic band nahi - "माइक बंद मत करो" bhi ho sakta hai
         if (final) capFinal = t.trim()
         // v3.41: ghanti baj rahi hai aur pakka text aaya ("उठा लो" / "काट दो") -> bolna-khatam ka intezaar bhi nahi, turant
@@ -1656,9 +1670,64 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
 
     // ================================================================ phone ke kaam (function calling)
     /** v3.45: ताज़ा लोकेशन + मौसम (हर बार नई; कहीं सेव नहीं) */
+    // ================================================================ v3.88: बोलते-बोलते तैयारी (speculative prefetch)
+    private class Prep(val kind: SpecIntent.Kind, val text: String, val at: Long, val job: Deferred<Any?>)
+    @Volatile private var prepWeather: Prep? = null
+    @Volatile private var prepSearch: Prep? = null
+
+    /**
+     * "हेलो डीके, आज का मौसम बताओ" - "मौसम" सुनते ही लोकेशन + मौसम लाना शुरू. Gemini जब local_info माँगे तो तैयार मिले.
+     * ताज़ा खबर/स्कोर = पक्का (final) text आते ही खोज शुरू; Gemini की web_search उसी बात की हो तो वही नतीजा.
+     * अंदाज़ा गलत = कोई इस्तेमाल नहीं करता, कुछ देर में अपने-आप पुराना (यूज़र को कुछ नहीं दिखता/सुनाई देता).
+     */
+    private fun prefetch(t: String, final: Boolean) {
+        val k = SpecIntent.detect(t) ?: return
+        val now = System.currentTimeMillis()
+        try {
+            when (k) {
+                SpecIntent.Kind.WEATHER -> {
+                    if (prepWeather?.let { now - it.at < PREP_WEATHER_MS } == true) return
+                    if (!LocalInfo.hasPermission(svc)) return
+                    prepWeather = Prep(k, t, now, svc.scope.async(Dispatchers.IO) {
+                        try { LocalInfo.now(svc) } catch (e: CancellationException) { throw e } catch (_: Exception) { null }
+                    })
+                    log("पहले से तैयारी: मौसम (\"${t.take(30)}\")")
+                }
+                SpecIntent.Kind.SEARCH -> {
+                    if (!final) return
+                    val p = prepSearch
+                    if (p != null && now - p.at < PREP_SEARCH_MS && p.text == t.trim()) return
+                    val q = t.trim()
+                    prepSearch = Prep(k, q, now, svc.scope.async(Dispatchers.IO) {
+                        try { withTimeoutOrNull(30_000) { BrainManager(svc).also { it.fromLive = true }.search(q, deep = false) } }
+                        catch (e: CancellationException) { throw e } catch (_: Exception) { null }
+                    })
+                    log("पहले से तैयारी: खोज (\"${q.take(30)}\")")
+                }
+            }
+        } catch (e: Exception) { log("पहले से तैयारी नहीं हुई: ${e.javaClass.simpleName}") }
+    }
+
+    /** तैयार मौसम (ताज़ा हो तो); नहीं = null (तब पहले जैसा अभी लाओ) */
+    @Suppress("UNCHECKED_CAST")
+    private suspend fun preparedWeather(): Pair<LocalInfo.Place, String>? {
+        val p = prepWeather ?: return null
+        if (System.currentTimeMillis() - p.at > PREP_WEATHER_MS) { prepWeather = null; return null }
+        return (try { p.job.await() } catch (e: CancellationException) { throw e } catch (_: Exception) { null }) as? Pair<LocalInfo.Place, String>
+    }
+
+    /** तैयार खोज - उसी बात की हो और ताज़ा हो तो; नहीं = null (तब पहले जैसी खोज) */
+    private suspend fun preparedSearch(query: String): SearchResult? {
+        val p = prepSearch ?: return null
+        if (System.currentTimeMillis() - p.at > PREP_SEARCH_MS || !SpecIntent.sameTopic(query, p.text)) return null
+        prepSearch = null       // एक बार ही इस्तेमाल
+        val r = try { p.job.await() } catch (e: CancellationException) { throw e } catch (_: Exception) { null }
+        return (r as? SearchResult)?.takeIf { it.text.isNotBlank() }
+    }
+
     private suspend fun localInfoTool(): String {
         if (!LocalInfo.hasPermission(svc)) return "Location permission is OFF. Ask the user to allow location for DK (open the DK app; it asks), then try again."
-        val r = LocalInfo.now(svc) ?: return "Could not get the current location right now (GPS/location may be off). Tell the user honestly."
+        val r = preparedWeather()?.also { log("local_info: पहले से तैयार मौसम इस्तेमाल किया") } ?: LocalInfo.now(svc) ?: return "Could not get the current location right now (GPS/location may be off). Tell the user honestly."
         return "Current place: ${r.first.name.ifBlank { "unknown area (%.3f, %.3f)".format(java.util.Locale.US, r.first.lat, r.first.lon) }}. Weather now: ${r.second.substringAfter(" — ", r.second)}"
     }
 
@@ -1739,6 +1808,11 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
                     "screen_share" -> LiveVision.setScreen(svc, args.optBoolean("on", true))
                     "camera" -> LiveVision.setCamera(svc, args.optBoolean("on", true), args.optString("facing"))
                     "remember_fact" -> if (Memory.addFact(svc, args.optString("fact"))) "saved" else "NOT saved: private info (passwords, PIN, OTP, bank/card/Aadhaar numbers) is never stored. If the user asked you to remember it, tell them gently you do not save such private details." 
+                    "recall_conversation" -> {
+                        val a = LocalMemory.answer(svc, args.optString("question").ifBlank { DKState.lastUser.trimEnd('…') })
+                        if (a == LocalRecall.NOT_FOUND) "NOT FOUND in the phone's saved conversation. Say exactly: बॉस, मुझे ये याद नहीं मिल रहा।"
+                        else "FOUND on the phone (saved conversation). Tell the user this briefly, in your voice, keep the quoted words exact:\n$a"
+                    }
                     "forget_memory" -> { val n = Memory.forget(svc, args.optString("about")); if (n > 0) "Forgotten ($n place(s) deleted)." else "Nothing saved about that - tell the user it is not in memory." }
                     "local_info" -> localInfoTool()
                     "connector_task" -> withContext(Dispatchers.IO) { com.dk.assistant.connect.ConnectorTool.run(svc, args) }

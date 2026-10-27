@@ -13,6 +13,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
@@ -48,6 +49,42 @@ object ComputerSession {
     fun add(role: String, t: String) {
         lines.add(Line(role, t)); while (lines.size > 400) lines.removeAt(0); listener?.invoke()
         if (role == "s") { now = t; TaskStatus.step(TaskStatus.PC, t) }     // असली कदम (live status)
+        ComputerSaved.dirty()
+    }
+
+    // ---- v3.88: ऐप बंद / नेटवर्क टूटा = काम की हालत फ़ोन में सेव; लौटने पर वहीं से आगे
+    @Volatile var runningTask: String? = null
+        private set
+    fun agentMsgs(): List<Pair<String, String>> = agent?.exportMsgs().orEmpty()
+
+    /** पिछली बार अधूरा रहा काम (ऐप बंद हुआ था / नेटवर्क टूटा) - null = कुछ नहीं */
+    fun pendingResume(c: Context): ComputerSaved.State? =
+        if (busy) null else ComputerSaved.load(c.applicationContext)?.takeIf { it.running && it.task.isNotBlank() }
+
+    /** स्क्रीन पर पिछली बातचीत वापस (ऐप दोबारा खुला और यहाँ कुछ नहीं) */
+    fun restoreLines(c: Context) {
+        if (lines.isNotEmpty() || busy) return
+        val s = ComputerSaved.load(c.applicationContext) ?: return
+        lines.addAll(s.lines.map { Line(it.first, it.second) })
+        if (agent == null && s.msgs.isNotEmpty()) agent = ComputerAgent(c.applicationContext).also { it.importMsgs(s.msgs) }
+    }
+
+    /** अधूरा काम वहीं से आगे (पुरानी बातचीत AI के पास, हो चुके कदम दोबारा नहीं) */
+    fun resume(c: Context): String? {
+        val s = pendingResume(c) ?: return "कोई अधूरा काम नहीं"
+        val ctx = c.applicationContext
+        if (agent == null) agent = ComputerAgent(ctx).also { it.importMsgs(s.msgs) }
+        add("s", "↻ पिछला अधूरा काम वहीं से आगे: ${s.task.take(80)}")
+        return start(ctx, RESUME_NOTE + s.task, background = !visible)
+    }
+    private const val RESUME_NOTE = "(पिछला काम ऐप बंद होने / नेटवर्क टूटने से बीच में रुक गया था। जो कदम हो चुके उन्हें दोबारा मत करो, वहीं से आगे पूरा करो।) "
+
+    /** नेटवर्क लौटा - नेटवर्क की वजह से रुका काम अपने-आप आगे (और notification) */
+    fun resumeIfNetPaused(c: Context) {
+        val s = pendingResume(c) ?: return
+        if (!s.netPaused) return
+        notifyUser(c.applicationContext, "DK कंप्यूटर: नेटवर्क आ गया", "रुका हुआ काम आगे बढ़ा रहा हूँ — ${s.task.take(120)}")
+        resume(c)?.let { add("e", it) }
     }
 
     /** काम शुरू करो (या कतार में). null = शुरू/कतार, वरना वजह */
@@ -60,8 +97,10 @@ object ComputerSession {
             add("u", (if (voice) "🎤 " else "") + task); add("s", "कतार में रखा (${queue.size}) — अभी वाला काम पूरा होते ही शुरू होगा")
             return null
         }
-        add("u", (if (voice) "🎤 " else "") + task)
-        TaskStatus.start(TaskStatus.PC, "DK कंप्यूटर", "DK Computer", task)
+        add("u", (if (voice) "🎤 " else "") + task.removePrefix(RESUME_NOTE).let { if (it != task) "↻ $it" else it })
+        TaskStatus.start(TaskStatus.PC, "DK कंप्यूटर", "DK Computer", task.removePrefix(RESUME_NOTE))
+        runningTask = task.removePrefix(RESUME_NOTE)
+        ComputerSaved.mark(ctx, running = true, netPaused = false)
         voiceRunning = voice
         plan = null; now = "समझ रहा हूँ…"
         val a = agent ?: ComputerAgent(ctx).also { agent = it }
@@ -71,14 +110,27 @@ object ComputerSession {
                 out.files.forEach { add("f", it) }
                 add("d", out.text + "\n\n" + out.report)
                 TaskStatus.end(TaskStatus.PC, if (out.question) TaskStatus.State.WAITING else TaskStatus.State.DONE, out.text)
+                ComputerSaved.mark(ctx, running = false, netPaused = false)
                 if (!visible || background) notifyUser(ctx, if (out.question) "DK कंप्यूटर को जानकारी चाहिए" else "DK कंप्यूटर: काम पूरा", out.text.take(300))
                 if (voice) speak(ComputerVoice.spoken(out.text, out.files.size, out.question))
             } catch (e: CancellationException) {
                 add("e", "काम रोक दिया।")
                 TaskStatus.end(TaskStatus.PC, TaskStatus.State.CANCELLED, "काम रोक दिया")
+                ComputerSaved.mark(ctx, running = false, netPaused = false)
                 throw e
             } catch (e: Exception) {
                 val m = (e.message ?: e.javaClass.simpleName).take(500)
+                // v3.88: नेटवर्क ही नहीं था = काम खोया नहीं; नेटवर्क आते ही अपने-आप वहीं से आगे
+                if (!NetProbe.online(ctx)) {
+                    add("e", "नेटवर्क चला गया — काम यहीं सेव है। नेटवर्क आते ही अपने-आप वहीं से आगे होगा।")
+                    TaskStatus.end(TaskStatus.PC, TaskStatus.State.WAITING, "नेटवर्क का इंतज़ार")
+                    ComputerSaved.mark(ctx, running = true, netPaused = true)
+                    OfflineQueue.install(ctx)
+                    if (!visible || background) notifyUser(ctx, "DK कंप्यूटर: नेटवर्क का इंतज़ार", "नेटवर्क आते ही काम वहीं से आगे होगा")
+                    if (voice) speak("नेटवर्क चला गया है। काम सेव है, नेटवर्क आते ही आगे कर दूँगी।")
+                    return@launch
+                }
+                ComputerSaved.mark(ctx, running = false, netPaused = false)
                 add("e", "गलती: $m\n\n" + a.reportText(m))
                 TaskStatus.end(TaskStatus.PC, TaskStatus.State.FAILED, m)
                 if (!visible || background) notifyUser(ctx, "DK कंप्यूटर: काम रुका", m.take(200))
@@ -109,7 +161,7 @@ object ComputerSession {
     fun stop() { job?.cancel(); ask?.answer?.complete(false) }
 
     /** नई बातचीत: पुराना संदर्भ और स्क्रीन साफ़ */
-    fun reset() { stop(); queue.clear(); agent = null; lines.clear(); listener?.invoke() }
+    fun reset() { stop(); queue.clear(); agent = null; lines.clear(); runningTask = null; listener?.invoke(); ComputerSaved.clear() }
 
     /** स्क्रीन पर हाँ/नहीं कार्ड (और स्क्रीन बंद हो तो notification). 3 मिनट में जवाब नहीं = नहीं */
     suspend fun confirm(c: Context, text: String): Boolean {
@@ -186,6 +238,10 @@ class ComputerAgent(private val c: Context) {
 
     private fun setPlan(p: ComputerPlan.Plan?) { plan = p; ComputerSession.showPlan(p) }
 
+    /** v3.88: काम की हालत सेव/वापस (ऐप बंद होने पर भी वहीं से आगे) */
+    fun exportMsgs(): List<Pair<String, String>> = synchronized(msgs) { msgs.toList() }
+    fun importMsgs(l: List<Pair<String, String>>) = synchronized(msgs) { msgs.clear(); msgs.addAll(l) }
+
     suspend fun run(task: String, background: Boolean): Result {
         synchronized(issues) { issues.clear() }
         files.clear(); pendingFail = null; did.clear(); setPlan(null)
@@ -193,14 +249,18 @@ class ComputerAgent(private val c: Context) {
         budget = ai.budget
         val cap = ComputerPlan.resultCap(budget)
         step("🧠 ${ai.label} से काम शुरू…")
-        // 1) पहले योजना: क्या समझा, कौन-से कदम, आपको क्या मिलेगा
-        makePlan(ai, task)
+        // 1) v3.88: योजना साथ-साथ बनती है - पहला कदम उसका इंतज़ार नहीं करता (पहले: लंबी योजना के बाद ही काम)
+        val before = msgs.takeLast(6).joinToString("\n") { (r, t) -> (if (r == "user") "USER/TOOL: " else "DK: ") + t.take(600) }
+        val planJob = CoroutineScope(currentCoroutineContext()).async { makePlan(ai, task, before) }.also { planJ = it }
+        var planSent = false
         addUser((if (msgs.isEmpty()) "TASK: " else "USER: ") + task + if (background) "\n(यह तय समय पर अपने-आप चला काम है — user अभी स्क्रीन पर नहीं है)" else "")
-        plan?.let { addUser(ComputerPlan.forAi(it)) }
         val max = Prefs.computerMaxSteps(c)
         var bad = 0; var tools = 0; var verifyRound = 0
         for (n in 1..max) {
+            // योजना बन गई = AI को अगले कदम से पहले बता दो (एक ही बार)
+            if (!planSent && planJob.isCompleted) { planSent = true; plan?.let { addUser(ComputerPlan.forAi(it)) } }
             compact()
+            ComputerSaved.dirty()
             val reply = withContext(Dispatchers.IO) { ai.chat(system(), msgs) }
             val call = parse(reply)
             if (call == null) {
@@ -218,6 +278,7 @@ class ComputerAgent(private val c: Context) {
                 "done" -> {
                     val ans = call.args.optString("answer").ifBlank { call.args.optString("text") }
                     // 2) आख़िरी जाँच: काम सच में पूरा? कमी हो तो खुद आगे काम
+                    if (!planJob.isCompleted) planJob.cancel()      // बहुत छोटा काम - योजना की ज़रूरत ही नहीं पड़ी
                     if (ComputerPlan.needsVerify(plan, tools, verifyRound)) {
                         verifyRound++
                         val miss = verify(ai, task, ans)
@@ -267,9 +328,8 @@ class ComputerAgent(private val c: Context) {
     }
 
     /** योजना बनाना - न बने तो पुराना तरीका (बिना checklist) चलता रहे */
-    private suspend fun makePlan(ai: CoderAi, task: String) {
-        step("📋 काम समझकर योजना बना रहा हूँ…")
-        val before = msgs.takeLast(6).joinToString("\n") { (r, t) -> (if (r == "user") "USER/TOOL: " else "DK: ") + t.take(600) }
+    private suspend fun makePlan(ai: CoderAi, task: String, before: String) {
+        step("📋 काम शुरू कर दिया — साथ-साथ योजना भी बना रहा हूँ…")
         val txt = try {
             withContext(Dispatchers.IO) {
                 ai.chat(PLAN_SYS, listOf("user" to (if (before.isNotBlank()) "CONVERSATION SO FAR (short):\n$before\n\n" else "") +
@@ -295,7 +355,11 @@ class ComputerAgent(private val c: Context) {
         return ComputerPlan.verdict(txt).missing
     }
 
+    /** साथ-साथ बन रही योजना (काम खत्म = उसे भी रोको, ताकि जवाब उसका इंतज़ार न करे) */
+    private var planJ: Job? = null
+
     private fun finish(text: String, question: Boolean = false): Result {
+        planJ?.let { if (!it.isCompleted) it.cancel() }; planJ = null
         pendingFail?.let { issue(it, "इसके बिना जितना हो सका उतना जवाब दिया") }; pendingFail = null
         if (!question) plan?.let { setPlan(ComputerPlan.finishAll(it)) }
         return Result(text.ifBlank { "(खाली जवाब)" }, files.toList(), reportText(), question)
@@ -368,6 +432,22 @@ class ComputerAgent(private val c: Context) {
                 val at = ComputerTools.whenMs(System.currentTimeMillis(), a.optInt("minutes", 0).takeIf { it > 0 }, a.optString("at"))
                     ?: return "ERROR: minutes (जैसे 30) या at (\"HH:mm\") दें"
                 ComputerTools.schedule(c, t, at).also { step("⏰ $it") }
+            }
+            // v3.88: एक-दूसरे पर निर्भर न रहने वाले (सिर्फ़ पढ़ने वाले) काम एक साथ
+            "parallel" -> {
+                val arr = a.optJSONArray("calls") ?: return "ERROR: calls खाली"
+                val calls = (0 until minOf(arr.length(), PARALLEL_MAX)).mapNotNull { i ->
+                    arr.optJSONObject(i)?.let { o -> Call(o.optString("tool"), o.optJSONObject("args") ?: JSONObject(), "", o.toString()) }
+                }
+                if (calls.isEmpty()) return "ERROR: calls खाली"
+                calls.firstOrNull { it.tool !in PARALLEL_SAFE }?.let {
+                    return "ERROR: parallel में सिर्फ़ ये टूल: ${PARALLEL_SAFE.joinToString()} ('${it.tool}' अलग से चलाएँ)"
+                }
+                step("⚡ ${calls.size} काम एक साथ चला रहा हूँ")
+                kotlinx.coroutines.coroutineScope {
+                    calls.map { cl -> async { "[${cl.tool}] " + try { runTool(cl) } catch (e: CancellationException) { throw e } catch (e: Exception) { "ERROR: " + (e.message ?: "").take(160) } } }
+                        .map { it.await() }
+                }.joinToString("\n\n========\n\n")
             }
             else -> "ERROR: unknown tool '${call.tool}'. Use only the listed tools."
         }
@@ -448,8 +528,13 @@ ${if (facts.isNotBlank()) "\nWHAT YOU KNOW ABOUT THE USER:\n$facts" else ""}
             "phone_task" to "phone_task {\"request\":\"Hindi command, e.g. YouTube खोलकर lofi songs चलाओ\"} — control the phone (apps, messages, calls, settings)",
             "coding_task" to "coding_task {\"task\":\"...\"} — give a code change to DK's coding team (user's GitHub repo); runs in background",
             "remember" to "remember {\"fact\":\"...\"} — save a long-term fact about the user",
+            "parallel" to "parallel {\"calls\":[{\"tool\":\"web_search\",\"args\":{...}},{\"tool\":\"read_url\",\"args\":{...}}]} — run up to 4 INDEPENDENT read-only calls at once (web_search, read_url, read_file, list_files, run_js); much faster",
             "schedule" to "schedule {\"task\":\"...\",\"minutes\":30} or {\"task\":\"...\",\"at\":\"18:30\"} — run a DK Computer task later (reminders, later checks); saved on the phone, survives restart"
         )
+
+        /** v3.88: parallel में सिर्फ़ पढ़ने वाले टूल (फ़ोन/फ़ाइल लिखना/कोडिंग एक-एक करके ही) */
+        val PARALLEL_SAFE = setOf("web_search", "read_url", "read_file", "list_files", "run_js")
+        const val PARALLEL_MAX = 4
 
         /** योजना बनाने वाला */
         const val PLAN_SYS = """You are the PLANNER of DK Computer (an AI agent on the user's Android phone with tools: web search, reading web pages, running JavaScript, creating files/PDF, phone control, coding team, reminders).

@@ -30,7 +30,7 @@ class EdgeGlowRulesTest {
 
     @Test fun colorsByState() {
         assertEquals(EdgeGlowRules.VIOLET, EdgeGlowRules.color(true, true, Mode.LISTENING))
-        assertEquals(EdgeGlowRules.VIOLET, EdgeGlowRules.color(true, false, Mode.THINKING))
+        assertEquals(EdgeGlowRules.AMBER, EdgeGlowRules.color(true, false, Mode.THINKING))
         assertEquals(EdgeGlowRules.PINK, EdgeGlowRules.color(true, true, Mode.SPEAKING))
         assertEquals(EdgeGlowRules.RED, EdgeGlowRules.color(true, true, Mode.SPEAKING, error = true))
         assertEquals(EdgeGlowRules.VIOLET, EdgeGlowRules.color(true, true, Mode.IDLE))
