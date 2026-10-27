@@ -91,7 +91,7 @@ object RepoDoctorRunner {
                     say("d", rep)
                     if (acts.isNotEmpty()) pending = Plan(s, items)
                     CoderTeam.announce(c, "रिपो डॉक्टर: PR #$focus अभी merge नहीं", it0.state, "PR $focus अभी merge नहीं हो सकता: ${it0.state}। " +
-                        if (acts.isNotEmpty()) "पहले ठीक करके merge करूँ? हाँ बोलिए।" else "")
+                        if (acts.isNotEmpty()) "पहले ठीक करके merge करूँ? हाँ बोलिए।" else "", kind = CoderSound.WAIT)
                     return@launch
                 }
                 say("d", rep)

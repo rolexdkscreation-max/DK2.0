@@ -349,16 +349,8 @@ class GitHub(private val token: String) {
             val failedStep = (0 until steps.length()).map { steps.getJSONObject(it) }.firstOrNull { it.optString("conclusion") == "failure" }?.optString("name") ?: "?"
             sb.append("JOB: ${j.optString("name")} • FAILED STEP: $failedStep\n")
             val log = try { get("/repos/$repo/actions/jobs/${j.optLong("id")}/logs") } catch (e: Exception) { "" }
-            val lines = log.lines().map { it.replace(Regex("^\\S+Z\\s"), "") }       // timestamp hatao
-            val key = lines.withIndex().filter { (_, l) ->
-                l.startsWith("e: ") || l.contains("error:", true) || l.contains("What went wrong") || l.contains("FAILURE:") ||
-                    l.contains("Unresolved reference") || l.contains("Exception") || l.startsWith("> ") || l.contains("##[error]") ||
-                    l.contains(" FAILED") || l.contains("AssertionError") || l.contains("tests completed")
-            }.map { it.index }
-            val pick = sortedSetOf<Int>()
-            key.take(200).forEach { k -> for (x in (k - 1)..(k + 3)) if (x in lines.indices) pick.add(x) }
-            val body = if (pick.isEmpty()) lines.takeLast(200) else pick.map { lines[it] }
-            sb.append(body.joinToString("\n").take(30_000)).append("\n")
+            // v3.89: असली एरर सबसे ऊपर (फ़ाइल:लाइन के साथ), runner के path रिपो वाले, बेकार Task/warning लाइनें हटीं
+            sb.append(BuildLog.digest(log, 30_000)).append("\n")
         }
         return sb.toString().ifBlank { "(build fail hua par log nahi mila)" }
     }

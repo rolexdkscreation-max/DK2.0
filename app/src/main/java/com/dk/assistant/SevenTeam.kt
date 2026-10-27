@@ -414,7 +414,8 @@ class SevenTeam(
             val repeat = sigs.size >= 2 && sigs[sigs.size - 1] == sigs[sigs.size - 2]
             if (repeat) ev(Agent.MANAGER, "वही गलती दोबारा आई — रणनीति बदल रहा हूँ: डिबगर दूसरी जड़ देखेगा, कोडर पूरी फ़ाइल दोबारा लिखेगा")
             val d = debug("TEST/BUILD FAILED.\n" + (if (errs.isNotBlank()) "EXACT ERROR LINES FROM THE LOG:\n$errs\n\n" else "") + "FULL LOG (important part):\n${t.log.take(maxOf(12_000, big / 8))}", repeat)
-                ?: return finish(false, "डिबगर टेस्ट फ़ेल होने की जड़ नहीं ढूँढ पाया")
+                ?: fallbackDiag(t.log)
+                ?: return finish(false, "डिबगर टेस्ट फ़ेल होने की जड़ नहीं ढूँढ पाया (log में फ़ाइल:लाइन वाला कोई एरर भी नहीं मिला)")
             rootCause = d.second
             save { it.copy(rootCause = rootCause) }
             note.did("जड़ मिली: " + d.second.take(160))
@@ -534,6 +535,17 @@ class SevenTeam(
         debugSeen = seen
         val keys = (w.keys + list).toSet()
         val resolve: (String) -> String? = { SevenDebug.resolve(it, keys) }
+        // v3.89: log में जिन फ़ाइल:लाइन पर एरर है, वहीं का कोड (लाइन नंबर के साथ) पहले से पहले संदेश में - जो कभी छोटा नहीं होता.
+        // पहले डिबगर ख़ुद ढूँढता था और कई बार ग़लत फ़ाइल पकड़ लेता था (PR #105: एरर test फ़ाइल में, इलाज main फ़ाइल का)
+        val sites = BuildLog.sites(problem)
+        if (sites.isNotEmpty()) {
+            val pre = errorContext(sites, seen, keys)
+            if (pre.isNotBlank()) {
+                msgs[0] = "user" to (msgs[0].second + "\n\nCODE AT THE ERROR LOCATIONS FROM THE LOG (already read for you, line numbers shown - start HERE):\n" + pre)
+                ev(Agent.DEBUGGER, "एरर वाली जगहों का कोड पहले ही पढ़ लिया: " + sites.mapNotNull { resolve(it.path) }.distinct().take(5).joinToString())
+            }
+        }
+        var coverAsked = false
         var rejected = 0
         var nudged = 0
         val last = DEBUG_ROUNDS - 1
@@ -563,7 +575,9 @@ class SevenTeam(
             val o = Seven.json(reply)
             val root = o?.optString("root_cause").orEmpty().trim()
             if (o != null && root.length >= 8) {
-                val probs = SevenDebug.verify(o, seen, resolve) { p -> w[p]?.lines()?.size }
+                val probs = SevenDebug.verify(o, seen, resolve) { p -> w[p]?.lines()?.size }.toMutableList()
+                // v3.89: एरर वाली फ़ाइल को इलाज छूता ही नहीं? एक बार टोको
+                if (!coverAsked) ErrorCover.miss(o, sites, resolve)?.let { probs.add(it); coverAsked = true }
                 if (probs.isNotEmpty() && rejected < SevenDebug.VERIFY_ROUNDS && left > FORCE_ROUNDS) {
                     rejected++
                     ev(Agent.DEBUGGER, "बताई जड़ पक्की नहीं — कोड पढ़कर दोबारा जाँच रहा हूँ:\n" + probs.joinToString("\n") { "• ${it.take(200)}" })
@@ -646,6 +660,34 @@ class SevenTeam(
     // ------------------------------------------------------------------ डिबगर
     /** @param missing डिबगर: यह काम कोड में कहीं लिखा ही नहीं (टूटी लाइन नहीं, गायब हिस्सा) */
     data class Diag(val files: List<String>, val missing: Boolean = false)
+
+    /** v3.89: एरर-जगहों का कोड, लाइन नंबर के साथ (छोटी फ़ाइल पूरी, बड़ी में ±25 लाइन), ज़्यादा से ज़्यादा 5 फ़ाइल */
+    private suspend fun errorContext(sites: List<BuildLog.Site>, seen: SevenDebug.Seen, keys: Collection<String>): String {
+        val byFile = LinkedHashMap<String, MutableList<Int>>()
+        for (st in sites) { val p = SevenDebug.resolve(st.path, keys) ?: continue; byFile.getOrPut(p) { mutableListOf() }.add(st.line) }
+        val entries = mutableListOf<String>()
+        for ((p, ls) in byFile.entries.take(5)) {
+            val total = try { files.read(p)?.lines()?.size } catch (_: Exception) { null } ?: continue
+            if (total <= 220) entries.add(p) else BuildLog.windows(ls, total, 25).take(4).forEach { r -> entries.add("$p:${r.first}-${r.last}") }
+        }
+        if (entries.isEmpty()) return ""
+        return readNumbered(entries, seen, keys)
+    }
+
+    /**
+     * v3.89: डिबगर हार जाए तब भी काम न रुके - log की फ़ाइल:लाइन + compiler का संदेश ही जड़ मानकर सुधार.
+     * (पहले यहाँ "जड़ नहीं ढूँढ पाया" कहकर पूरा काम रुक जाता था.) log में जगह ही न हो तो null.
+     */
+    private suspend fun fallbackDiag(log: String): Triple<Diag, String, String>? {
+        val sites = BuildLog.sites(log).take(8)
+        if (sites.isEmpty()) return null
+        val keys = files.list()
+        val fl = sites.mapNotNull { SevenDebug.resolve(it.path, keys) }.distinct()
+        if (fl.isEmpty()) return null
+        val root = sites.joinToString("\n") { "${SevenDebug.resolve(it.path, keys) ?: it.path}:${it.line} - ${it.msg}" }
+        ev(Agent.MANAGER, "डिबगर पक्की जड़ नहीं बता पाया — log में बताई जगहों से सीधा सुधार करवा रहा हूँ:\n" + root.take(500))
+        return Triple(Diag(fl), root, "Fix exactly these build/test errors at these lines (read each file around the line, keep everything else unchanged).")
+    }
 
     /** @return (फ़ाइलें, root cause, fix) */
     private suspend fun debug(problem: String, repeat: Boolean): Triple<Diag, String, String>? {

@@ -96,3 +96,15 @@ dependencies {
     // Android ka org.json unit test me khali (stub) hota hai - asli wala
     testImplementation("org.json:json:20240303")
 }
+
+// v3.89: test fail हो तो पूरा कारण log में (expected/actual + कौन-सी लाइन) - वरना सिर्फ़ "AssertionError at X.kt:68" आता था
+// और कोडिंग एजेंट का डिबगर असली वजह देख ही नहीं पाता था. सिर्फ़ log का रूप बदलता है, कोई test या build नहीं.
+tasks.withType<Test>().configureEach {
+    testLogging {
+        events("failed")
+        exceptionFormat = org.gradle.api.tasks.testing.logging.TestExceptionFormat.FULL
+        showExceptions = true
+        showCauses = true
+        showStackTraces = true
+    }
+}

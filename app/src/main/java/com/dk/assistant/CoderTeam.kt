@@ -426,7 +426,7 @@ acceptance must only cover what the user asked. suggestions: ONLY things the use
         say(if (ok) "d" else "e", if (ok) ShortReport.text(true, "", CoderSession.agent?.pr?.url.orEmpty(), CoderSession.agent != null) + "\n\n" + text
             else ShortReport.text(false, text, CoderSession.agent?.pr?.url.orEmpty()))
         val head = title ?: if (ok) "कोडिंग टीम: काम पूरा" else "कोडिंग टीम: काम अधूरा"
-        notifyUser(c, head, text.lines().first().take(120))
+        CoderSound.notify(c, CoderSound.kindFor(ok, title), head, text.lines().first().take(120))
         val prReady = CoderSession.agent?.pr != null
         val voice = spoken ?: if (ok && prReady) "कोडिंग का काम पूरा हो गया, बॉस। जाँच और build हो गए, PR आपके review के लिए तैयार है। Merge करना हो तो बोलिए, PR merge कर दो।"
             else if (ok) "कोडिंग का काम पूरा हो गया, बॉस। जाँच और build दोनों हो गए।" else "कोडिंग का काम पूरा नहीं हो पाया। कोडिंग स्क्रीन पर वजह लिखी है."
@@ -438,22 +438,12 @@ acceptance must only cover what the user asked. suggestions: ONLY things the use
     }
 
     /** 7-एजेंट सिस्टम: notification + आवाज़ (रिपोर्ट स्क्रीन पर पहले ही लिखी जा चुकी) */
-    fun announce(c: Context, title: String, text: String, voice: String) {
-        notifyUser(c, title, text.lines().first().take(120))
+    fun announce(c: Context, title: String, text: String, voice: String, kind: String = CoderSound.DONE) {
+        CoderSound.notify(c, kind, title, text.lines().first().take(120))
         DKState.reply(voice)
         val svc = DKAccessibilityService.instance
         if (svc != null && !DKState.live) svc.scope.launch { try { svc.speaker.speak(voice) } catch (_: Exception) {} }
     }
 
-    private fun notifyUser(c: Context, title: String, text: String) = try {
-        val nm = c.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-        if (Build.VERSION.SDK_INT >= 26 && nm.getNotificationChannel("dk_coder") == null)
-            nm.createNotificationChannel(NotificationChannel("dk_coder", "DK कोडिंग टीम", NotificationManager.IMPORTANCE_DEFAULT))
-        val pi = PendingIntent.getActivity(c, 7301, Intent(c, CodingActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
-        val b = (if (Build.VERSION.SDK_INT >= 26) android.app.Notification.Builder(c, "dk_coder") else @Suppress("DEPRECATION") android.app.Notification.Builder(c))
-            .setSmallIcon(android.R.drawable.stat_notify_sync_noanim).setContentTitle(title).setContentText(text)
-            .setStyle(android.app.Notification.BigTextStyle().bigText(text)).setContentIntent(pi).setAutoCancel(true)
-        nm.notify(7301, b.build())
-    } catch (_: Exception) {}
+    // v3.89: पुराना "dk_coder" (फ़ोन की आम tone) हटा - अब CoderSound की अलग आवाज़ें (काम पूरा / बग / रुका)
 }

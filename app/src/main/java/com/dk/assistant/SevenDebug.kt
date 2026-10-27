@@ -74,9 +74,11 @@ In a big file the anchor must be text from a part you have READ (not only a sear
      * @return रिपो का असली path (सटीक, या एक ही फ़ाइल जिसका path इसी पर ख़त्म हो), नहीं तो null
      */
     fun resolve(path: String, keys: Collection<String>): String? {
-        val p = path.trim().trim('`').removePrefix("./").removePrefix("/")
+        // v3.89: CI log के "file:///home/runner/work/DK2.0/DK2.0/app/..." जैसे पूरे path भी रिपो path बनें
+        val p = BuildLog.clean(path.trim().trim('`')).removePrefix("file://").removePrefix("./").removePrefix("/")
         if (p.isBlank()) return null
         if (p in keys) return p
+        keys.filter { p.endsWith("/$it") }.maxByOrNull { it.length }?.let { return it }
         val hits = keys.filter { it.endsWith("/$p") }
         return hits.singleOrNull() ?: hits.filterNot { it.contains("/test/") }.singleOrNull()
     }
@@ -206,5 +208,21 @@ In a big file the anchor must be text from a part you have READ (not only a sear
         if (bad.isNotEmpty() && !fix.contains("create", true) && !fix.contains("new file", true))
             out.add("These \"files\" do not exist: ${bad.joinToString()} - use real paths (or say in \"fix\" that a new file must be created)")
         return out
+    }
+}
+
+/** v3.89: compiler/test जिन फ़ाइलों में एरर बता रहा है, डिबगर का इलाज उन्हें छूता भी नहीं? (PR #105: 4 राउंड ग़लत फ़ाइल) */
+object ErrorCover {
+    /** @return डिबगर को लौटाने लायक बात, या null = ठीक */
+    fun miss(o: JSONObject, sites: List<BuildLog.Site>, resolve: (String) -> String?): String? {
+        if (sites.isEmpty()) return null
+        val errFiles = sites.mapNotNull { resolve(it.path) ?: it.path }.distinct()
+        val named = (Seven.strings(o.optJSONArray("files")) + listOfNotNull(SevenDebug.location(o.optString("where"))?.first))
+            .map { resolve(it) ?: it.removePrefix("./").removePrefix("/") }
+        fun same(a: String, b: String) = a == b || a.endsWith("/$b") || b.endsWith("/$a")
+        if (named.any { n -> errFiles.any { same(n, it) } }) return null
+        return "The build log reports the errors IN: ${errFiles.take(6).joinToString()} (e.g. ${sites.first().path}:${sites.first().line} - ${sites.first().msg.take(160)}). " +
+            "Your diagnosis does not touch any of these files. Read the error lines shown above; either fix those files (add them to \"files\") " +
+            "or explain exactly why the error in that file is caused by another file and include both."
     }
 }

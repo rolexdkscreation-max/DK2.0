@@ -124,8 +124,22 @@ object SevenRunner {
             return if (e.isBlank()) a.pr?.url.orEmpty() else ""
         }
         override val prNote: String get() = a.prError.ifBlank { if (a.pr == null && a.branch.isNotBlank()) "code branch ${a.branch} पर है" else "" }
-        override suspend fun saveNote(markdown: String) = a.teamSaveNote(markdown)
-        override suspend fun loadNote(): String = a.teamPrBody()
+        // v3.89: काम-कॉपी पहले फ़ोन में (तुरंत, बिना API); PR वाली कॉपी सिर्फ़ हालत बदलने पर / कुछ मिनट में एक बार
+        private var prNoteMd: String? = null
+        private var prNoteAt = 0L
+        override suspend fun saveNote(markdown: String) {
+            c?.let { ctx -> withContext(Dispatchers.IO) { LocalNotes.save(ctx.filesDir, a.repo, a.branch, markdown) } }
+            val now = System.currentTimeMillis()
+            if (c == null || a.pr == null || LocalNotes.prDue(markdown, prNoteMd, prNoteAt, now)) {
+                a.teamSaveNote(markdown)
+                if (a.pr != null) { prNoteMd = markdown; prNoteAt = now }
+            } else a.teamKeepNote(markdown)
+        }
+        override suspend fun loadNote(): String {
+            val local = c?.let { ctx -> withContext(Dispatchers.IO) { LocalNotes.load(ctx.filesDir, a.repo, a.branch) } }
+            // फ़ोन वाली कॉपी में वही छुपा data है जो WorkNote.fromBody पढ़ता है; न मिले/टूटी हो तो PR से (पुराना तरीका)
+            return if (local != null && WorkNote.fromBody(local) != null) local else a.teamPrBody()
+        }
         override suspend fun ready(): String {
             val why = a.teamReady()
             val url = a.pr?.url.orEmpty()
@@ -135,6 +149,12 @@ object SevenRunner {
     }
 
     private fun say(role: String, t: String) = CoderSession.add(role, t)
+
+    /** टीम की हर बात स्क्रीन पर; v3.89: टेस्टर का "✗ फ़ेल" = बग वाली अलग आवाज़ (काम बीच में, सुधार अपने-आप चलता रहता है) */
+    private fun teamEvents(c: Context): (Seven.Agent, String) -> Unit = { ag, t ->
+        say("s", "${ag.icon} ${ag.hi}: $t")
+        if (ag == Seven.Agent.TESTER && t.startsWith("✗")) CoderSound.notify(c, CoderSound.BUG, "कोडिंग टीम: बग मिला — ठीक कर रहा हूँ", t.lines().first().take(120))
+    }
 
     /**
      * रिपो डॉक्टर: fail हुए check को 11 एजेंट से ठीक करवाना (user की हाँ रिपो डॉक्टर में मिल चुकी).
@@ -153,7 +173,7 @@ object SevenRunner {
         }
         try {
             a.teamLoad { say("s", it) }
-            val team = SevenTeam(Ai(ai), RepoFiles(a), Git(a, task), full = true) { ag, t -> say("s", "${ag.icon} ${ag.hi}: $t") }
+            val team = SevenTeam(Ai(ai), RepoFiles(a), Git(a, task), full = true, ev = teamEvents(c))
             val u = SevenPlus.Understanding(Seven.Kind.BUG, title, "रिपो डॉक्टर: $title — जड़ ढूँढकर ठीक करना, ताकि सारे checks पास हों", task,
                 listOf("जो check fail था वह पास हो", "बाकी सारे checks और पुराने tests पास हों", "कोई पुराना फ़ीचर न बदले"),
                 listOf("सारे मौजूदा फ़ीचर और tests"), emptyList(), emptyList())
@@ -269,7 +289,7 @@ object SevenRunner {
                         a.teamLoad { say("s", it) }
                         val files = RepoFiles(a, c)
                         resume?.staged?.forEach { (p, content) -> files.stage(p, content) }
-                        team = SevenTeam(Ai(ai), files, Git(a, task, c, resume?.backup.orEmpty()), full = true) { ag, t -> say("s", "${ag.icon} ${ag.hi}: $t") }
+                        team = SevenTeam(Ai(ai), files, Git(a, task, c, resume?.backup.orEmpty()), full = true, ev = teamEvents(c))
                         // "आगे करो": टीम कहाँ तक पहुँची थी - वहीं से (पूरे हुए हिस्से दोबारा नहीं)
                         team.resumeFrom = TeamProgress.parse(resume?.team)
                         if (approved != null) team.onProgress = { p -> val j = p.json(); CoderHistory.updateCheckpoint(c) { it.copy(team = j) } }
@@ -297,7 +317,7 @@ object SevenRunner {
                         CoderTeam.announce(c, if (u.needsAnswer) "कोडिंग टीम: एक सवाल है" else "कोडिंग टीम: आपकी मंज़ूरी चाहिए",
                             u.understood.ifBlank { u.brief }.take(120),
                             if (u.needsAnswer) "बॉस, काम शुरू करने से पहले एक बात साफ़ कीजिए: " + u.questions.first().take(200)
-                            else "बॉस, मैंने काम ऐसे समझा: " + u.understood.ifBlank { u.brief }.take(220) + "। सही है तो हाँ बोलिए, वरना बताइए क्या बदलना है।")
+                            else "बॉस, मैंने काम ऐसे समझा: " + u.understood.ifBlank { u.brief }.take(220) + "। सही है तो हाँ बोलिए, वरना बताइए क्या बदलना है।", kind = CoderSound.WAIT)
                         return@withTimeout
                     }
                     val out = team.run(workTask, approved)
@@ -317,7 +337,8 @@ object SevenRunner {
                         out.short.lines().firstOrNull { it.startsWith("वजह:") }?.removePrefix("वजह:")?.trim() ?: out.report.lines().getOrNull(1).orEmpty(),
                         if (ok && out.mode == Seven.Mode.GITHUB) "कोडिंग का काम पूरा हो गया, बॉस। टेस्ट पास हैं, PR आपकी मंज़ूरी का इंतज़ार कर रहा है। हाँ बोलें तो merge करके APK release कर दूँगा।"
                         else if (ok) "कोडिंग का काम पूरा हो गया, बॉस। कोड स्क्रीन पर फ़ाइल-नाम के साथ है।"
-                        else "कोडिंग का काम पूरा नहीं हो पाया। कोडिंग स्क्रीन पर वजह और हल लिखा है। ठीक करके आगे करो बोलिए, वहीं से शुरू होगा।")
+                        else "कोडिंग का काम पूरा नहीं हो पाया। कोडिंग स्क्रीन पर वजह और हल लिखा है। ठीक करके आगे करो बोलिए, वहीं से शुरू होगा।",
+                        kind = if (ok) CoderSound.DONE else CoderSound.WAIT)
                 }
             } catch (e: kotlinx.coroutines.TimeoutCancellationException) {
                 say("e", ShortReport.text(null, "तय समय (${CoderTeam.TASK_TIMEOUT_MIN} मिनट) में पूरा नहीं हुआ"))

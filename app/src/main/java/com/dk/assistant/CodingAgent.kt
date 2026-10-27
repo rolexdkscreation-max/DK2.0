@@ -522,6 +522,9 @@ class CodingAgent(private val gh: GitHub, var repo: String, var branch: String, 
         private set
 
     /** काम-कॉपी PR के विवरण में: सिर्फ़ काम-कॉपी वाला हिस्सा बदलता है, बाकी विवरण (किसी और का लिखा भी) अछूता */
+    /** v3.89: काम-कॉपी सिर्फ़ याद रखो (फ़ोन में सहेजी जा चुकी) - अगली बार PR खुलने/बदलने पर उसी में जाएगी, अलग API call नहीं */
+    fun teamKeepNote(md: String) { workNote = md }
+
     suspend fun teamSaveNote(md: String) = withContext(Dispatchers.IO) {
         workNote = md
         val p = pr ?: return@withContext
@@ -1318,8 +1321,11 @@ pass=true ONLY if you are confident it compiles and the task works completely.${
                 if (System.currentTimeMillis() - t0 > 90_000) return@withContext null
                 delay(8_000); continue
             }
-            if (runs.all { it.status == "completed" }) {
-                val bad = runs.firstOrNull { it.conclusion !in listOf("success", "skipped", "neutral") }
+            // v3.89: कोई भी एक जाँच फ़ेल हो चुकी तो बाक़ी (जैसे 8-10 मिनट वाली emulator जाँच) का इंतज़ार नहीं -
+            // नतीजा वैसे भी फ़ेल ही है; तुरंत log लेकर डिबगर को (PR #105 में हर राउंड ~8 मिनट बेकार जाते थे)
+            val failedEarly = runs.firstOrNull { it.status == "completed" && it.conclusion !in listOf("success", "skipped", "neutral") }
+            if (failedEarly != null || runs.all { it.status == "completed" }) {
+                val bad = failedEarly
                     ?: return@withContext Build(true, runs.first().url, "")
                 val log = try { gh.failureLog(repo, bad.id) } catch (e: Exception) { "(log नहीं मिला: ${e.message})" }
                 // GitHub की अपनी दिक्कत (नेटवर्क/runner) - code नहीं बदलना; वही job अपने-आप दोबारा (2 बार तक)
