@@ -61,8 +61,7 @@ class FaceRecognitionEngine(private val context: Context) {
                     )
                 )
             } else {
-                val similarity = FaceMatch.cosineSimilarity(embedding, storedEmbedding)
-                val matchResult = FaceMatch.evaluateMatch(embedding, storedEmbedding)
+                val (matchResult, similarity) = FaceMatch.evaluateMatch(embedding, storedEmbedding)
 
                 scanFrameCount = (scanFrameCount + 1).coerceAtMost(requiredScanFrames)
                 val progress = 1.0f
