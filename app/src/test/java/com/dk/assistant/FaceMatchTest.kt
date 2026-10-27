@@ -90,7 +90,7 @@ class FaceMatchTest {
         val e2 = floatArrayOf(0.0f, 1.0f)
         val aggregated = FaceMatch.aggregateEmbeddings(listOf(e1, e2))
         assertNotNull(aggregated)
-        assertEquals(2, aggregated.size)
+        assertEquals(2, aggregated!!.size)
         val expected = (0.5f / Math.sqrt(0.5)).toFloat()
         assertEquals(expected, aggregated[0], 0.001f)
         assertEquals(expected, aggregated[1], 0.001f)
