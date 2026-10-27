@@ -46,6 +46,8 @@ object DKState {
     fun user(t: String) {
         lastUser = t
         if (t.isNotBlank()) lastUserAt = System.currentTimeMillis()
+        // v3.87: पढ़ाई की बात = टीचर वाला पन्ना अपने-आप (आधी "…" बात पर भी, ताकि जवाब शुरू होते ही दिखे)
+        if (t.isNotBlank()) TeacherLink.onUser(appCtx, t)
         if (t.isBlank()) { emit(); return }
         // chat screen ne yahi message "Send" dabate hi khud dikha diya tha (optimistic) - dobara mat jodo
         val opt = optimistic
@@ -97,11 +99,12 @@ object DKState {
     fun hint(t: String) { hintText = t; emit() }
     fun reply(t: String, sources: List<Pair<String, String>> = emptyList()) {
         lastReply = t; liveReply = ""; hintText = ""; lastSources = sources
+        TeacherBoard.onReply(t, final = true)   // v3.87: पढ़ाई का जवाब टीचर के पन्ने पर
         if (t.isNotBlank()) { messages.add(Msg("d", t, src = sources)); trim() }
         emit()
     }
     /** Jawab abhi ban raha hai (tukdon me) - screen par dikhao, chat list me abhi mat jodo */
-    fun replyLive(t: String) { if (liveReply.isEmpty()) lastSources = emptyList(); lastReply = t; liveReply = t; emit() }
+    fun replyLive(t: String) { if (liveReply.isEmpty()) lastSources = emptyList(); lastReply = t; liveReply = t; TeacherBoard.onReply(t, final = false); emit() }
     private fun trim() { while (messages.size > 200) messages.removeAt(0); persist() }
 
     // ---- chat phone me save (app band/restart ke baad bhi baatcheet dikhe)

@@ -8,6 +8,9 @@ import android.graphics.Matrix
 import android.graphics.Paint
 import android.graphics.Path
 import android.graphics.Typeface
+import android.text.Layout
+import android.text.StaticLayout
+import android.text.TextPaint
 import android.util.AttributeSet
 import android.view.GestureDetector
 import android.view.MotionEvent
@@ -82,6 +85,7 @@ class WhiteboardView @JvmOverloads constructor(
             ): Boolean {
                 if (currentMode == Mode.PAN_ZOOM || e2.pointerCount > 1) {
                     transformMatrix.postTranslate(-distanceX, -distanceY)
+                    userPanned = true
                     invalidate()
                     return true
                 }
@@ -130,6 +134,81 @@ class WhiteboardView @JvmOverloads constructor(
         undoStack.push(action)
         redoStack.clear()
         invalidate()
+    }
+
+    // ---------------- v3.87: DK का पाठ (अपने-आप लिखा जाने वाला हिस्सा) ----------------
+    // पेन, रबर, टाइप, अन-डू - सब पहले जैसे; पाठ उनके नीचे अलग परत में, टीचर जैसा धीरे-धीरे लिखता है।
+
+    private data class LessonLine(val text: String, val kind: TeacherBoard.Kind)
+    private var lesson: List<LessonLine> = emptyList()
+    private var lessonChars = 0          // कुल अक्षर
+    private var shownChars = 0           // अब तक लिखे गए
+    private var lessonHeight = 0f
+    private var userPanned = false
+    private val qPaint = TextPaint().apply { isAntiAlias = true; color = Color.parseColor("#1A237E"); textSize = 46f; typeface = Typeface.DEFAULT_BOLD }
+    private val hPaint = TextPaint().apply { isAntiAlias = true; color = Color.parseColor("#0D47A1"); textSize = 44f; typeface = Typeface.DEFAULT_BOLD }
+    private val sPaint = TextPaint().apply { isAntiAlias = true; color = Color.parseColor("#1B5E20"); textSize = 42f }
+    private val aPaint = TextPaint().apply { isAntiAlias = true; color = Color.parseColor("#B71C1C"); textSize = 44f; typeface = Typeface.DEFAULT_BOLD }
+    private val pPaint = TextPaint().apply { isAntiAlias = true; color = Color.parseColor("#212121"); textSize = 40f }
+    private val rulePaint = Paint().apply { color = Color.parseColor("#E3F2FD"); strokeWidth = 2f }
+
+    private val typer = object : Runnable {
+        override fun run() {
+            if (shownChars < lessonChars) {
+                // पीछे छूटे तो तेज़ (आवाज़ के साथ तालमेल), वरना टीचर की रफ़्तार
+                val behind = lessonChars - shownChars
+                shownChars = (shownChars + when { behind > 240 -> 12; behind > 80 -> 5; else -> 2 }).coerceAtMost(lessonChars)
+                invalidate()
+                postDelayed(this, 28)
+            }
+        }
+    }
+
+    /** पूरा पाठ (सवाल + DK का जवाब) - पहले लिखा हुआ वैसा ही रहता है, नया हिस्सा धीरे-धीरे आता है */
+    fun setLesson(lines: List<TeacherBoard.Line>) {
+        val next = lines.map { LessonLine(it.text, it.kind) }
+        // पहले जितना लिखा जा चुका, उतना साझा हिस्सा दोबारा नहीं लिखते
+        val oldText = lesson.joinToString("\n") { it.text }
+        val newText = next.joinToString("\n") { it.text }
+        var common = 0
+        while (common < oldText.length && common < newText.length && oldText[common] == newText[common]) common++
+        lesson = next
+        lessonChars = next.sumOf { it.text.length }
+        shownChars = shownChars.coerceAtMost(common.coerceAtMost(lessonChars))
+        removeCallbacks(typer); post(typer)
+        invalidate()
+    }
+
+    fun clearLesson() { lesson = emptyList(); lessonChars = 0; shownChars = 0; lessonHeight = 0f; userPanned = false; invalidate() }
+
+    private fun paintFor(k: TeacherBoard.Kind) = when (k) {
+        TeacherBoard.Kind.QUESTION -> qPaint
+        TeacherBoard.Kind.HEADING -> hPaint
+        TeacherBoard.Kind.STEP -> sPaint
+        TeacherBoard.Kind.ANSWER -> aPaint
+        TeacherBoard.Kind.POINT -> pPaint
+    }
+
+    /** पाठ लिखो (कटे बिना, स्क्रीन की चौड़ाई में लपेटकर); लौटाता है = कुल ऊँचाई */
+    private fun drawLesson(canvas: Canvas, w: Int, all: Boolean): Float {
+        if (lesson.isEmpty()) return 0f
+        val left = 48f
+        val width = (w - 96).coerceAtLeast(200)
+        var y = 40f
+        var budget = if (all) Int.MAX_VALUE else shownChars
+        for (line in lesson) {
+            if (budget <= 0) break
+            val prefix = if (line.kind == TeacherBoard.Kind.POINT) "• " else ""
+            val visible = line.text.take(budget)
+            budget -= line.text.length
+            if (line.kind == TeacherBoard.Kind.QUESTION && y > 60f) { y += 18f; canvas.drawLine(left, y, left + width, y, rulePaint); y += 22f }
+            val p = paintFor(line.kind)
+            val sl = StaticLayout.Builder.obtain(prefix + visible, 0, prefix.length + visible.length, p, width)
+                .setAlignment(Layout.Alignment.ALIGN_NORMAL).setLineSpacing(6f, 1f).build()
+            canvas.save(); canvas.translate(if (line.kind == TeacherBoard.Kind.STEP) left + 16f else left, y); sl.draw(canvas); canvas.restore()
+            y += sl.height + 14f
+        }
+        return y
     }
 
     override fun onTouchEvent(event: MotionEvent): Boolean {
@@ -200,6 +279,18 @@ class WhiteboardView @JvmOverloads constructor(
         canvas.save()
         canvas.concat(transformMatrix)
 
+        // v3.87: DK का पाठ सबसे नीचे की परत; नई लाइन स्क्रीन से नीचे जाए तो अपने-आप ऊपर खिसको
+        val h = drawLesson(canvas, width, all = false)
+        if (h > 0f && h != lessonHeight) {
+            val grew = h > lessonHeight
+            lessonHeight = h
+            if (grew && !userPanned && height > 0) {
+                val v = FloatArray(9); transformMatrix.getValues(v)
+                val bottom = h * v[Matrix.MSCALE_Y] + v[Matrix.MTRANS_Y]
+                if (bottom > height - 40) { transformMatrix.postTranslate(0f, (height - 40) - bottom); post { invalidate() } }
+            }
+        }
+
         for (action in undoStack) {
             when (action) {
                 is Action.DrawAction -> {
@@ -231,6 +322,7 @@ class WhiteboardView @JvmOverloads constructor(
         val bitmap = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
         val canvas = Canvas(bitmap)
         canvas.drawColor(Color.WHITE)
+        drawLesson(canvas, w, all = true)
 
         for (action in undoStack) {
             when (action) {
