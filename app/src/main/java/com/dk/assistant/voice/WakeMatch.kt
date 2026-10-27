@@ -88,7 +88,7 @@ object WakeMatch {
         val d = f[0].size
         val mean = FloatArray(d); val sd = FloatArray(d)
         for (v in f) for (i in 0 until d) mean[i] += v[i]
-        for (i in 0 until d) mean[i] /= f.size
+        for (i in 0 until d) mean[i] = mean[i] / f.size
         for (v in f) for (i in 0 until d) { val t = v[i] - mean[i]; sd[i] += t * t }
         for (i in 0 until d) sd[i] = sqrt(sd[i] / f.size).coerceAtLeast(1e-3f)
         return Array(f.size) { j -> FloatArray(d) { i -> (f[j][i] - mean[i]) / sd[i] } }
