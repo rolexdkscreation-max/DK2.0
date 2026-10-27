@@ -305,6 +305,13 @@ object CoderTeam {
             return false
         }
         val sha = a.lastMergeSha
+        if (sha.isBlank() && a.lastMergeAsk) {
+            // checks चल रहे थे: इंतज़ार किया, अब सब पास - merge user की दोबारा हाँ से (यह गलती नहीं)
+            say("d", res)
+            announce(c, "कोडिंग टीम: PR #${p.number} merge के लिए तैयार", res,
+                "बॉस, PR ${p.number} के सारे checks पास हो गए। merge करूँ? हाँ, merge करो बोलिए।")
+            return false
+        }
         if (sha.isBlank()) {
             finish(c, res, ok = false, title = "कोडिंग टीम: merge रुका", spoken = "PR अभी merge नहीं किया। " + res.lines().first().take(120))
             return false

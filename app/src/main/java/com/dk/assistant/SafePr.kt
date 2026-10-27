@@ -79,7 +79,7 @@ object SafePr {
     }
 
     /** PR ka description (Hindi). backup = पुराने फ़ीचर को बदलने/हटाने से पहले बनी backup branch; rootCause = bug/build की असली जड़ */
-    fun prBody(summary: String, changes: String, protected: List<String>, backup: String = "", rootCause: String = ""): String = buildString {
+    fun prBody(summary: String, changes: String, protected: List<String>, backup: String = "", rootCause: String = "", note: String = ""): String = buildString {
         append("DK कोडिंग एजेंट ने यह PR बनाया (सुरक्षित PR मोड)।\n\n")
         append("## क्या बदला\n").append(summary.trim().ifBlank { "-" }).append("\n\n")
         if (rootCause.isNotBlank()) append("## समस्या की जड़ (root cause)\n").append(rootCause.trim()).append("\n\n")
@@ -91,6 +91,8 @@ object SafePr {
         append("## पुराने features की सुरक्षा\n- सारे पुराने unit tests इसी PR पर दोबारा चलते हैं; कोई test हटाया या कमज़ोर नहीं किया जाता (जब तक आपने न कहा हो)\n")
             .append("- `main` को अभी हाथ नहीं लगाया गया — merge आपकी मंज़ूरी से ही होगा\n\n")
         append("## Merge से पहले\n- [ ] PR build check (unit tests + debug APK) हरा है\n- [ ] बदलाव पढ़ लिए, पुराने features नहीं छेड़े गए\n- [ ] ज़रूरत हो तो debug APK फ़ोन पर चलाकर देखा\n")
+        // 📒 एजेंट की काम-कॉपी (अगला राउंड/एजेंट यही पढ़कर आगे बढ़ता है)
+        if (note.isNotBlank()) append("\n").append(note.trim()).append("\n")
     }
 
     // ---------------------------------------------------------------- पुराना फ़ीचर बदलना/हटाना → पहले बैकअप

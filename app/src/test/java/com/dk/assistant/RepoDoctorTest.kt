@@ -109,4 +109,27 @@ class RepoDoctorTest {
         assertTrue(t, t.contains("PR #42") && t.contains("feature/42") && t.contains("ON THIS BRANCH"))
         assertTrue(t.contains("Keep every existing feature") && t.contains("Unresolved reference: refresh"))
     }
+
+    @Test fun oneCheckFailed_otherStillRunning_isFixNotWait() {
+        // PR #95 जैसा: compile fail, Emulator वाला अभी चल रहा - पहले "चल रहा" दिखाकर गलती छुप जाती थी
+        val s = snap(listOf(pr(95, "h")), listOf(run(1, "PR build check", "h", conclusion = "failure"),
+            run(2, "Build DK APK & Emulator Check", "h", "in_progress", "", startedAgoMin = 4)))
+        val i = RepoDoctor.analyze(s, now).first { it.pr == 95 }
+        assertEquals(Act.FIX, i.act); assertEquals(1L, i.run!!.id)
+        assertTrue(i.state, i.state.contains("अभी चल रहा"))
+    }
+
+    @Test fun openPrFixesAndWatching_areAutomatic_mergeNeedsYes() {
+        val s = snap(listOf(pr(1, "a"), pr(2, "b"), pr(3, "c"), pr(9, "z")), listOf(
+            run(1, "Check", "a", "in_progress", "", startedAgoMin = 3),   // चल रहा → नज़र (अपने-आप)
+            run(2, "Check", "b", conclusion = "failure"),                // fail → सुधार (अपने-आप)
+            run(3, "Check", "c"),                                        // हरा → merge (हाँ से)
+            run(4, "Check", "z", conclusion = "failure")), myPr = 9, busy = true)   // मेरी टीम काम कर रही - छूना नहीं
+        val items = RepoDoctor.analyze(s, now)
+        assertEquals(setOf(1, 2), RepoDoctor.auto(items).map { it.pr }.toSet())
+        assertEquals(listOf(Act.MERGE), RepoDoctor.needYes(items).map { it.act })
+        val r = RepoDoctor.report(s, items)
+        assertTrue(r, r.contains("अपने-आप") && r.contains("merge नहीं") && r.contains("आपकी हाँ से") && r.contains("\"हाँ\""))
+        assertTrue(r, r.contains("नज़र रखूँगा"))
+    }
 }

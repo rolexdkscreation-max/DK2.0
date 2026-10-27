@@ -391,6 +391,9 @@ class CodingAgent(private val gh: GitHub, var repo: String, var branch: String, 
     /** Aakhri merge ka commit sha (main par release APK build dekhne ke liye) */
     var lastMergeSha = ""
         private set
+    /** checks चल रहे थे → इंतज़ार किया, सब पास → merge नहीं किया, user से हाँ दोबारा माँगी (गलती नहीं) */
+    var lastMergeAsk = false
+        private set
     /** PR dobara banane ke liye (pehli baar token ki wajah se na bana ho) */
     private var lastPushMsg = ""
     private var lastChangeText = ""
@@ -435,6 +438,7 @@ class CodingAgent(private val gh: GitHub, var repo: String, var branch: String, 
         branch = baseBranch; pr = null; prError = ""; lastTask = ""; lastSummary = ""; projectCtx = ""
         lastPushMsg = ""; lastChangeText = ""
         intentional = false; backupBranch = ""; rootCause = ""; pushedToBranch = false
+        workNote = ""; lastMergeAsk = false
     }
 
     /**
@@ -512,6 +516,27 @@ class CodingAgent(private val gh: GitHub, var repo: String, var branch: String, 
     fun teamStage(path: String, content: String?) { remember(path); staged[path] = content }
     /** PR के विवरण के लिए: काम, क्या बदला, जड़ */
     fun teamInfo(task: String, summary: String, root: String) { lastTask = task; lastSummary = summary; rootCause = root }
+
+    /** 📒 एजेंट की काम-कॉपी (markdown) - PR के विवरण में. PR न बना हो तो यहीं रहती है और PR बनते ही उसमें जाती है */
+    var workNote = ""
+        private set
+
+    /** काम-कॉपी PR के विवरण में: सिर्फ़ काम-कॉपी वाला हिस्सा बदलता है, बाकी विवरण (किसी और का लिखा भी) अछूता */
+    suspend fun teamSaveNote(md: String) = withContext(Dispatchers.IO) {
+        workNote = md
+        val p = pr ?: return@withContext
+        try {
+            val body = gh.pullDetail(repo, p.number)?.body.orEmpty()
+            val nb = WorkNote.inBody(body, md)
+            if (nb != body) gh.editPullBody(repo, p.number, nb)
+        } catch (e: Exception) { DKLog.d("Coder: काम-कॉपी PR में नहीं लिखी: ${e.message?.take(120)}") }
+    }
+
+    /** खुले PR का विवरण (पिछली काम-कॉपी पढ़ने के लिए). "" = PR नहीं / पढ़ नहीं पाया */
+    suspend fun teamPrBody(): String = withContext(Dispatchers.IO) {
+        val p = pr ?: return@withContext ""
+        try { gh.pullDetail(repo, p.number)?.body.orEmpty() } catch (_: Exception) { "" }
+    }
     /** पूरा रिपो (बदलाव समेत) - नाम-जाँच के लिए. null = snapshot नहीं (बड़ा रिपो) */
     fun teamSnapshot(): Map<String, String>? = snap?.let { m ->
         HashMap(m).apply { staged.forEach { (p, c) -> if (c == null) remove(p) else put(p, c) } }
@@ -531,7 +556,7 @@ class CodingAgent(private val gh: GitHub, var repo: String, var branch: String, 
     suspend fun teamOpenPr(draft: Boolean): String = withContext(Dispatchers.IO) {
         if (pr != null) return@withContext ""
         val prot = SafePr.protectedIn(staged.keys)
-        val body = SafePr.prBody(lastSummary, lastChangeText, prot, backupBranch, rootCause)
+        val body = SafePr.prBody(lastSummary, lastChangeText, prot, backupBranch, rootCause, workNote)
         val title = lastPushMsg.ifBlank { lastTask.take(80) }
         try {
             pr = gh.openPullFor(repo, branch) ?: if (draft) gh.createDraftPull(repo, branch, baseBranch, title, body)
@@ -572,7 +597,7 @@ class CodingAgent(private val gh: GitHub, var repo: String, var branch: String, 
                 gh.createBranch(repo, name, baseBranch)
             }
             backupBranch = name
-            pr?.let { p -> try { gh.editPullBody(repo, p.number, SafePr.prBody(lastSummary, changeList().ifBlank { lastChangeText }, SafePr.protectedIn(staged.keys), backupBranch, rootCause)) } catch (_: Exception) {} }
+            pr?.let { p -> try { gh.editPullBody(repo, p.number, SafePr.prBody(lastSummary, changeList().ifBlank { lastChangeText }, SafePr.protectedIn(staged.keys), backupBranch, rootCause, workNote)) } catch (_: Exception) {} }
             name
         } catch (e: Exception) { DKLog.d("Coder: backup branch नहीं बनी: ${e.message}"); "" }
     }
@@ -587,7 +612,7 @@ class CodingAgent(private val gh: GitHub, var repo: String, var branch: String, 
         prError = ""
         pr = try {
             gh.openPullFor(repo, branch) ?: gh.createPull(repo, branch, baseBranch, lastPushMsg.ifBlank { "DK: code changes" },
-                SafePr.prBody(lastSummary, lastChangeText, emptyList(), backupBranch, rootCause))
+                SafePr.prBody(lastSummary, lastChangeText, emptyList(), backupBranch, rootCause, workNote))
         } catch (e: Exception) {
             prError = (e.message ?: e.javaClass.simpleName).take(200) +
                 " — token में Pull requests: Read and write दें, या GitHub पर $branch से PR खुद बनाएँ"
@@ -1177,8 +1202,8 @@ pass=true ONLY if you are confident it compiles and the task works completely.${
         if (safePr && pr == null && !prLater) {
             prError = ""
             pr = try {
-                gh.openPullFor(repo, branch) ?: if (draftPr) gh.createDraftPull(repo, branch, baseBranch, msg, SafePr.prBody(lastSummary, changeText, prot, backupBranch, rootCause))
-                else gh.createPull(repo, branch, baseBranch, msg, SafePr.prBody(lastSummary, changeText, prot, backupBranch, rootCause))
+                gh.openPullFor(repo, branch) ?: if (draftPr) gh.createDraftPull(repo, branch, baseBranch, msg, SafePr.prBody(lastSummary, changeText, prot, backupBranch, rootCause, workNote))
+                else gh.createPull(repo, branch, baseBranch, msg, SafePr.prBody(lastSummary, changeText, prot, backupBranch, rootCause, workNote))
             } catch (e: Exception) {
                 prError = (e.message ?: e.javaClass.simpleName).take(200) +
                     " — token में Pull requests: Read and write दें, या GitHub पर $branch से PR खुद बनाएँ"
@@ -1194,7 +1219,7 @@ pass=true ONLY if you are confident it compiles and the task works completely.${
      * @return Hindi nateeja
      */
     suspend fun mergePr(onStep: (String) -> Unit = {}): String = withContext(Dispatchers.IO) {
-        lastMergeSha = ""
+        lastMergeSha = ""; lastMergeAsk = false
         val p = pr ?: return@withContext "कोई PR नहीं है"
         var st = gh.pullState(repo, p.number)
         // PR के tests के बाद main आगे बढ़ गया? तो पुराने tests पर merge नहीं: branch को नए main से update करो,
@@ -1222,7 +1247,15 @@ pass=true ONLY if you are confident it compiles and the task works completely.${
             return@withContext "Build/tests नहीं देख पाया (${e.message}) — token में Actions: Read दें"
         }
         if (runs.isEmpty()) return@withContext "इस PR पर अभी कोई build/tests नहीं चला — थोड़ी देर बाद फिर कोशिश करें"
-        if (runs.any { it.status != "completed" }) return@withContext "Build/tests अभी चल रहे हैं — पूरे होने दें"
+        if (runs.any { it.status != "completed" }) {
+            // checks अभी चल रहे: यह गलती नहीं - पूरे होने तक इंतज़ार, फिर नतीजा बताकर merge की हाँ दोबारा माँगो
+            onStep("⏳ PR #${p.number} के checks अभी चल रहे हैं — पूरे होने तक इंतज़ार कर रहा हूँ (merge अभी नहीं)…")
+            val b = watchBuild(st.headSha, onStep)
+                ?: return@withContext "⏳ PR #${p.number} के checks अभी चल रहे हैं (20 मिनट में पूरे नहीं हुए) — merge नहीं किया। पूरे होने पर फिर \"merge करो\" बोलें"
+            if (!b.ok) return@withContext "Build/tests fail हैं — merge नहीं किया\n${b.url}"
+            lastMergeAsk = true
+            return@withContext "✓ PR #${p.number} के सारे checks अब पास हो गए (build + tests)।\nMerge करूँ? \"हाँ, merge करो\" बोलें — तभी merge होकर नई APK बनेगी।\n${p.url}"
+        }
         runs.firstOrNull { it.conclusion !in listOf("success", "skipped", "neutral") }?.let {
             return@withContext "Build/tests fail हैं (${it.name}) — merge नहीं किया\n${it.url}"
         }

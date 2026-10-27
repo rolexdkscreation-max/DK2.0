@@ -13,7 +13,8 @@ package com.dk.assistant
  */
 object ShortReport {
 
-    enum class Cause { LIMIT, KEY, TOKEN, NETWORK, CODE, UNCLEAR, TIMEOUT, STOPPED, OTHER }
+    enum class Cause { LIMIT, KEY, TOKEN, NETWORK, CODE, UNCLEAR, TIMEOUT, STOPPED, OTHER,
+        /** GitHub पर checks अभी चल रहे - गलती नहीं, बस इंतज़ार */ WAITING }
 
     data class Why(val cause: Cause, val reason: String, val fix: String) {
         /** गलती API की तरफ़ से है? (तब "API: ❌") */
@@ -34,6 +35,10 @@ object ShortReport {
                 Why(Cause.STOPPED, "काम बीच में रोका गया", "\"आगे करो\" बोलें - काम वहीं से शुरू होगा जहाँ रुका था")
             has("तय समय", "में पूरा नहीं हुआ") ->
                 Why(Cause.TIMEOUT, "काम तय समय में पूरा नहीं हुआ", "\"आगे करो\" बोलें - जो हो चुका वह दोबारा नहीं होगा")
+            // "Build/tests अभी चल रहे हैं" = कोड की गलती नहीं (पहले इसे "कोड की जाँच पास नहीं हुई" दिखाया जाता था)
+            isWaiting(l) ->
+                Why(Cause.WAITING, "GitHub पर checks (build/tests) अभी चल रहे हैं — यह कोड की गलती नहीं",
+                    "checks पूरे होने दें (Emulator वाला check ~10-15 मिनट लेता है), फिर \"merge करो\" या \"रिपो चेक करो\" बोलें")
             has("github") && has("401", "403", "token", "इजाज़त", "permission", "developer settings", "bad credentials", "not found", "नहीं मिला") ->
                 Why(Cause.TOKEN, "GitHub token गलत है या उसकी इजाज़त कम है",
                     "Settings में नया GitHub token डालें (Contents, Pull requests, Actions: Read and write), $GO_ON")
@@ -70,7 +75,7 @@ object ShortReport {
             return@buildString
         }
         val w = why(problem)
-        append(if (ok == null) "⏳ काम पूरा नहीं हुआ" else "❌ काम नहीं हुआ")
+        append(if (ok == null || w.cause == Cause.WAITING) "⏳ काम पूरा नहीं हुआ" else "❌ काम नहीं हुआ")
         append("\nAPI: ").append(if (w.apiFault) "❌ नहीं चली" else "✅ ठीक चली")
         append("\nवजह: ").append(w.reason)
         append("\nहल: ").append(w.fix)
@@ -78,6 +83,13 @@ object ShortReport {
     }
 
     // ------------------------------------------------------------------ मदद
+
+    private val waitWords = listOf("अभी चल रहे", "अभी चल रहा", "पूरे होने दें", "पूरे होने तक", "checks चल रहे", "check चल रहा",
+        "still running", "in_progress", "in progress", "queued")
+    private val failWords = listOf("fail", "फ़ेल", "फेल", "error", "e: ", "exception", "unresolved", "गलती")
+
+    /** checks सिर्फ़ चल रहे हैं (कहीं fail/गलती नहीं) */
+    fun isWaiting(lower: String): Boolean = waitWords.any { lower.contains(it) } && failWords.none { lower.contains(it) }
 
     private val noise = listOf(
         Regex("""\((आज़माए|दूसरे API|tried)[^)]*\)""", RegexOption.IGNORE_CASE),
