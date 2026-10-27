@@ -25,7 +25,7 @@ import androidx.core.content.FileProvider
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
-import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
@@ -280,16 +280,11 @@ class TeacherActivity : AppCompatActivity() {
                     5. उत्तर देने के बाद पूछें: "क्या आपको यह समझ आया?"
                 """.trimIndent()
 
-                val prompt = "$systemPrompt\n\nयूज़र का प्रश्न: $userQuestion"
-                val turns = listOf(Turn("user", prompt))
-                val imageBitmap = if (useBoardImage) whiteboardView.getBitmap() else null
+                val prompt = "यूज़र का प्रश्न: $userQuestion"
+                val board = if (useBoardImage) whiteboardView.getBitmap() else null   // view को main thread पर ही पढ़ो
+                val imageB64 = board?.let { b -> withContext(Dispatchers.Default) { jpegBase64(b) } }
 
-                val responseBuilder = StringBuilder()
-                brainManager.streamChat(turns, image = imageBitmap).collect { chunk ->
-                    responseBuilder.append(chunk)
-                }
-
-                val response = responseBuilder.toString()
+                val response = brainManager.teach(systemPrompt, prompt, imageB64)
 
                 progressBar.visibility = View.GONE
                 statusText.text = ""
@@ -299,7 +294,7 @@ class TeacherActivity : AppCompatActivity() {
             } catch (e: Exception) {
                 Log.e("TeacherActivity", "Error asking teacher", e)
                 progressBar.visibility = View.GONE
-                statusText.text = "त्रुटि: ${e.message ?: "जवाब प्राप्त करने में समस्या आई"}"
+                statusText.text = "त्रुटि: " + brainManager.explain(e)
             }
         }
     }
@@ -338,7 +333,7 @@ class TeacherActivity : AppCompatActivity() {
 
             val contentUri: Uri = FileProvider.getUriForFile(
                 this,
-                "$packageName.fileprovider",
+                "$packageName.files",
                 file
             )
 
@@ -353,7 +348,18 @@ class TeacherActivity : AppCompatActivity() {
         }
     }
 
+    /** व्हाइटबोर्ड -> छोटी JPEG (base64) ताकि AI को भेजना हल्का रहे */
+    private fun jpegBase64(full: Bitmap): String {
+        val maxSide = 1280
+        val scale = minOf(1f, maxSide.toFloat() / maxOf(full.width, full.height).coerceAtLeast(1))
+        val bmp = if (scale < 1f) Bitmap.createScaledBitmap(full, (full.width * scale).toInt().coerceAtLeast(1), (full.height * scale).toInt().coerceAtLeast(1), true) else full
+        val bos = java.io.ByteArrayOutputStream()
+        bmp.compress(Bitmap.CompressFormat.JPEG, 85, bos)
+        return android.util.Base64.encodeToString(bos.toByteArray(), android.util.Base64.NO_WRAP)
+    }
+
     override fun onDestroy() {
+        activityScope.cancel()
         tts?.stop()
         tts?.shutdown()
         super.onDestroy()
