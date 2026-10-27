@@ -43,7 +43,7 @@ class FaceMatchTest {
         val vector = floatArrayOf(3.0f, 4.0f)
         val normalized = FaceMatch.normalize(vector)
         assertNotNull(normalized)
-        assertEquals(0.6f, normalized[0], 0.0001f)
+        assertEquals(0.6f, normalized!![0], 0.0001f)
         assertEquals(0.8f, normalized[1], 0.0001f)
     }
 
@@ -52,7 +52,7 @@ class FaceMatchTest {
         val vector = floatArrayOf(0.0f, 0.0f, 0.0f)
         val normalized = FaceMatch.normalize(vector)
         assertNotNull(normalized)
-        assertEquals(0.0f, normalized[0], 0.0001f)
+        assertEquals(0.0f, normalized!![0], 0.0001f)
     }
 
     @Test
