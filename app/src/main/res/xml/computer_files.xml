@@ -9,4 +9,6 @@
     <files-path name="shared_media" path="shared_media/" />
     <!-- DK टीचर: व्हाइटबोर्ड की फ़ोटो शेयर (cacheDir/images) -->
     <cache-path name="teacher_board" path="images/" />
+    <!-- कैमरा और अन्य कैश फाइलों के लिए रूट पाथ -->
+    <cache-path name="cache_root" path="." />
 </paths>
