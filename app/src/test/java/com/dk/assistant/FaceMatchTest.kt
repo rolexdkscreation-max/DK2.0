@@ -58,14 +58,14 @@ class FaceMatchTest {
     @Test
     fun testEvaluateMatchNoFace() {
         val result = FaceMatch.evaluateMatch(null, floatArrayOf(1.0f, 0.0f))
-        assertEquals(FaceMatch.MatchResult.NO_FACE, result)
+        assertEquals(FaceMatch.MatchResult.NO_FACE, result.first)
     }
 
     @Test
     fun testEvaluateMatchNoStoredTarget() {
         val candidate = floatArrayOf(1.0f, 0.0f)
         val result = FaceMatch.evaluateMatch(candidate, null)
-        assertEquals(FaceMatch.MatchResult.ACCESS_DENIED, result)
+        assertEquals(FaceMatch.MatchResult.ACCESS_DENIED, result.first)
     }
 
     @Test
@@ -73,7 +73,7 @@ class FaceMatchTest {
         val v1 = floatArrayOf(1.0f, 0.5f, 0.2f)
         val v2 = floatArrayOf(0.98f, 0.52f, 0.19f)
         val result = FaceMatch.evaluateMatch(v1, v2, FaceMatch.NORMAL_THRESHOLD)
-        assertEquals(FaceMatch.MatchResult.ACCESS_GRANTED, result)
+        assertEquals(FaceMatch.MatchResult.ACCESS_GRANTED, result.first)
     }
 
     @Test
@@ -81,7 +81,7 @@ class FaceMatchTest {
         val v1 = floatArrayOf(1.0f, 0.0f, 0.0f)
         val v2 = floatArrayOf(0.0f, 1.0f, 0.0f)
         val result = FaceMatch.evaluateMatch(v1, v2, FaceMatch.STRICT_THRESHOLD)
-        assertEquals(FaceMatch.MatchResult.ACCESS_DENIED, result)
+        assertEquals(FaceMatch.MatchResult.ACCESS_DENIED, result.first)
     }
 
     @Test
