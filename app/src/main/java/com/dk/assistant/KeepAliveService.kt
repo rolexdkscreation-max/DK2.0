@@ -30,7 +30,7 @@ class KeepAliveService : Service() {
             Notification.Builder(this, "dk") else @Suppress("DEPRECATION") Notification.Builder(this)
         val notif = builder
             .setContentTitle(Prefs.assistantName(this) + " " + UiLang.s("चालू है"))
-            .setContentText(UiLang.s("गोल ओर्ब पर टैप करके बोलिए"))
+            .setContentText(UiLang.s(if (com.dk.assistant.voice.HeyDk.on(this)) "\"Hey DK\" बोलिए - सिर्फ़ आपकी आवाज़ पर जागूँगा" else "गोल ओर्ब पर टैप करके बोलिए"))
             .setSmallIcon(R.drawable.ic_dk)
             .setContentIntent(open)
             .setOngoing(true)

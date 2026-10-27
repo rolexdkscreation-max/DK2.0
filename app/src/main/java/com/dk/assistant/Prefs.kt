@@ -145,6 +145,15 @@ object Prefs {
     fun ownerLevel(c: Context) = sp(c).getFloat("owner_level", 0f).toDouble()
     /** पहचानी आवाज़ से धीरे-धीरे सीखा स्तर */
     fun ownerLevelNow(c: Context) = sp(c).getFloat("owner_level_now", 0f).toDouble()
+    // ---- v3.81: "Hey DK" - फ़ोन के अंदर (इंटरनेट नहीं), सिर्फ़ मालिक की आवाज़ पर जागना
+    fun heyDkOn(c: Context) = sp(c).getBoolean("hey_dk_on", false)
+    /** जागते ही क्या बोले ("हाँ सर, बोलिए सर, ...") */
+    fun heyDkAcks(c: Context) = sp(c).getString("hey_dk_acks", "") ?: ""
+    fun heyDkSense(c: Context): com.dk.assistant.voice.WakeMatch.Sense =
+        com.dk.assistant.voice.WakeMatch.Sense.values().firstOrNull { it.name == sp(c).getString("hey_dk_sense", "NORMAL") }
+            ?: com.dk.assistant.voice.WakeMatch.Sense.NORMAL
+    /** "Hey DK" बोलते समय की आवाज़-पहचान (मालिक) */
+    fun heyDkPrint(c: Context): FloatArray? = com.dk.assistant.voice.VoicePrint.decode(sp(c).getString("hey_dk_print", null))
     /** v3.65: हटाया गया आकार (dna/tesseract/wormhole/sphere3d) या अनजान -> earth */
     /** v4: जिसने कभी आकार नहीं चुना उसे नया नियॉन ओर्ब; पहले चुना हुआ आकार वैसा ही */
     fun orbStyle(c: Context) = Shapes.valid(sp(c).getString("orb_style", Shapes.NEON))

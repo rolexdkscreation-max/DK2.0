@@ -1151,3 +1151,31 @@ AMOLED काला (बैटरी बचत)	AMOLED black (saves battery)
 DK टीचर	DK Teacher
 DK टीचर (व्हाइटबोर्ड वाली पढ़ाई) खोलें	Open DK Teacher (whiteboard lessons)
 व्हाइटबोर्ड पर कदम-दर-कदम पढ़ाई	Step-by-step lessons on a whiteboard
+Hey DK (फ़ोन के अंदर)	Hey DK (on the phone)
+ऐप बंद हो तब भी "Hey DK" बोलिए — DK "हाँ सर" बोलकर सुनने लगेगा. इंटरनेट पर कुछ नहीं जाता	Say "Hey DK" even when the app is closed — DK says "Yes sir" and listens. Nothing goes to the internet
+"Hey DK" पर जागो	Wake on "Hey DK"
+पहचान कितनी आसानी से हो	How easily it should wake
+कम (शोर वाली जगह)	Low (noisy places)
+सामान्य	Normal
+ज़्यादा (आसानी से जागे)	High (wakes easily)
+जागते ही क्या बोले (कॉमा से अलग, बदल-बदलकर बोलेगा)	What to say on waking (comma separated, rotates)
+Hey DK सिखाओ	Teach Hey DK
+जवाब सेव करो	Save replies
+बैटरी की रोक हटाओ	Remove battery limit
+Hey DK मिटाएँ?	Delete Hey DK?
+सीखे हुए नमूने मिट जाएँगे। दोबारा चालू करने के लिए फिर से सिखाना होगा।	The learned samples will be deleted. You will need to teach it again to turn it on.
+Hey DK मिटा दिया	Hey DK deleted
+अभी सिखाया नहीं - नीचे "Hey DK सिखाओ" दबाइए	Not taught yet - tap "Teach Hey DK" below
+सीखा हुआ है, पर बंद है	Taught, but turned off
+चालू: "Hey DK" + सिर्फ़ आपकी आवाज़ (फ़ोन के अंदर)	On: "Hey DK" + only your voice (on the phone)
+चालू: "Hey DK" (आवाज़-पहचान मॉडल नहीं - दूसरे की आवाज़ पर भी कभी जाग सकता है)	On: "Hey DK" (no voice-ID model - may sometimes wake for others)
+बैटरी की रोक लगी है — नीचे "बैटरी की रोक हटाओ" दबाइए, वरना फ़ोन कुछ देर बाद DK को सुला सकता है	Battery limit is on — tap "Remove battery limit" below, or the phone may put DK to sleep
+नमूना	Sample
+आम आवाज़ में, जैसे रोज़ बुलाएँगे, बोलिए:	Say it in your normal voice, the way you will call it daily:
+बहुत लंबा हो गया — सिर्फ़ "Hey DK" बोलिए	Too long — say only "Hey DK"
+आवाज़ कम आई — थोड़ा साफ़ बोलिए	Too quiet — speak a little more clearly
+एक नमूना बाकियों से अलग लगा — उसे एक बार फिर बोलिए	One sample differed from the rest — please say it once more
+हो गया — अब "Hey DK" बोलकर देखिए।	Done — now try saying "Hey DK".
+"Hey DK" बोलिए - सिर्फ़ आपकी आवाज़ पर जागूँगा	Say "Hey DK" - I wake only for your voice
+आवाज़ साफ़ नहीं आई - शांत जगह पर दोबारा सिखाइए	Voice was not clear - teach again in a quiet place
+नमूने आपस में नहीं मिले - हर बार एक ही तरह "Hey DK" बोलिए	Samples did not match - say "Hey DK" the same way each time

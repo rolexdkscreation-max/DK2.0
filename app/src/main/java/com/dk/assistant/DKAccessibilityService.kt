@@ -101,6 +101,8 @@ class DKAccessibilityService : AccessibilityService() {
             DKState.reply(hello)
             speaker.speak(hello)
         }
+        // v3.81: "Hey DK" चालू = फ़ोन restart / ऐप बंद के बाद भी सुनने वाली notification-service फिर से
+        if (com.dk.assistant.voice.HeyDk.on(this) && !Prefs.micUserOff(this)) Setup.startKeepAlive(this)
         if (Prefs.liveMode(this)) startLive() else ensureLoop()
     }
 
@@ -199,7 +201,10 @@ class DKAccessibilityService : AccessibilityService() {
         DKState.setLive(false)
         // v3.59: बंद = बंद। जड़: बंद करने के 0.6s बाद "हमेशा सुनो" वाला wake-word loop माइक फिर खोल देता था,
         // और ऐप खोलते ही "दोस्त" वाला अभिवादन Live खुद चालू कर देता था। अब यूज़र के चालू करने तक माइक बंद।
-        Prefs.edit(this) { putBoolean("live_mode", false); putBoolean("mic_user_off", true) }
+        // v3.81: "Hey DK" चालू = Live बंद होने पर भी फ़ोन के अंदर सिर्फ़ "Hey DK" का इंतज़ार (कुछ बाहर नहीं जाता).
+        // पूरा माइक बंद = होम का म्यूट बटन या सेटिंग में "Hey DK" बंद.
+        val heyDk = com.dk.assistant.voice.HeyDk.on(this)
+        Prefs.edit(this) { putBoolean("live_mode", false); putBoolean("mic_user_off", !heyDk) }
         gemLive.stop(why)
         agent.stop()
         loopJob?.cancel(); loopJob = null
@@ -207,6 +212,11 @@ class DKAccessibilityService : AccessibilityService() {
         ear.release()
         DKState.set(Mode.IDLE)
         scope.launch {
+            if (heyDk) {
+                speaker.speak("ठीक है। ज़रूरत हो तो Hey DK बोलिए।")
+                delay(800); ensureLoop()
+                return@launch
+            }
             speaker.speak("ठीक है, माइक बंद।")
             // v3.59: wake word वाला सुनना भी नहीं - माइक तभी खुलेगा जब आप बटन दबाएँ या लाइव चालू करें
         }
@@ -539,6 +549,10 @@ class DKAccessibilityService : AccessibilityService() {
         loopJob = scope.launch {
             DKLog.d("Sunna shuru (live=${DKState.live}, wake=${Prefs.wakeMode(this@DKAccessibilityService)}, Gemini Live=${if (liveReady()) "तैयार" else "नहीं: " + liveWhyNot()})")
             listener.muteBeep = true
+            // v3.81: "हाँ सर" वगैरह पहले से बना लो (एक बार) - जागते ही बिना इंटरनेट-इंतज़ार के बोले
+            if (com.dk.assistant.voice.HeyDk.on(this@DKAccessibilityService)) launch(Dispatchers.IO) {
+                try { com.dk.assistant.voice.HeyDk.prepareAcks(this@DKAccessibilityService) } catch (_: Exception) {}
+            }
             var misses = 0
             while (isActive && (DKState.live || (Prefs.wakeMode(this@DKAccessibilityService) && !Prefs.micUserOff(this@DKAccessibilityService)))) {
                 // v3.59: म्यूट (wake word वाले सुनने में) = माइक छोड़ दो
@@ -591,6 +605,51 @@ class DKAccessibilityService : AccessibilityService() {
                 if (DKState.live) {
                     val why = liveWhyNot()
                     if (why != lastWhyNot) { lastWhyNot = why; DKLog.d("Gemini Live इस्तेमाल नहीं हो रहा: $why") }
+                }
+                // v3.81: "Hey DK" फ़ोन के अंदर (cloud STT नहीं) - सिर्फ़ मालिक की आवाज़ में "Hey DK" पर जागो
+                if (!DKState.live && com.dk.assistant.voice.HeyDk.on(this@DKAccessibilityService)) {
+                    if (!checkMic()) { delay(2000); continue }
+                    ear.release(); listener.release(); earCaptionOff()
+                    if (DKState.mode == Mode.LISTENING) DKState.set(Mode.IDLE)
+                    val me = this@DKAccessibilityService
+                    val hit = com.dk.assistant.voice.HeyDk.listen(me) {
+                        DKState.live || DKState.micMuted || agent.isBusy || speaker.busy || callAnnouncing || calls.inCall ||
+                            calls.ringing || DKMic.dictating || Prefs.micUserOff(me) || !Prefs.heyDkOn(me) || !Prefs.wakeMode(me)
+                    }
+                    if (hit == null) { delay(if (calls.ringing || calls.inCall) 800 else 200); continue }
+                    agent.heardAt = System.currentTimeMillis()
+                    Ducker.duck(me, "Hey DK")
+                    var cmd = ""
+                    if (hit.rest != null) {
+                        DKState.set(Mode.THINKING)
+                        cmd = com.dk.assistant.voice.WakeMatch.stripWake(Transcriber.transcribe(me, hit.rest) ?: "", Prefs.wakeWords(me))
+                    }
+                    if (cmd.isBlank()) {
+                        val ack = com.dk.assistant.voice.HeyDk.nextAck(me)
+                        DKState.reply(ack)
+                        val played = try { withContext(Dispatchers.IO) { com.dk.assistant.voice.HeyDk.playAck(me, ack) } } catch (_: Exception) { false }
+                        if (!played) {
+                            speaker.speak(ack)
+                            scope.launch(Dispatchers.IO) { try { com.dk.assistant.voice.HeyDk.prepareAcks(me) } catch (_: Exception) {} }
+                        }
+                    }
+                    if (liveReady() && !callBusy() && checkMic()) {
+                        DKLog.d("Hey DK -> Gemini Live" + if (cmd.isNotBlank()) " (बात: $cmd)" else "")
+                        wakeLive = true
+                        gemLive.idleExitMs = 30_000
+                        gemLive.firstText = cmd.ifBlank { null }
+                        if (cmd.isBlank()) DKState.set(Mode.LISTENING)
+                        DKState.setLive(true)
+                        continue
+                    }
+                    if (cmd.isBlank()) {
+                        DKState.set(Mode.LISTENING)
+                        cmd = hear() ?: ""
+                        DKState.set(Mode.IDLE)
+                    }
+                    if (cmd.isNotBlank()) agent.run(cmd).join()
+                    Ducker.releaseWhenQuiet({ !speaker.busy })
+                    continue
                 }
                 val liveBefore = DKState.live
                 val heard = hear(wakeGate = !liveBefore)

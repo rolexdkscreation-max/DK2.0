@@ -660,6 +660,116 @@ class SettingsActivity : AppCompatActivity() {
         hint(box, "गला ख़राब हो, बहुत शोर हो या फ़ोन बहुत दूर हो तो कभी-कभी आपकी आवाज़ भी छूट सकती है — तब पास आकर फिर बोलें, या \"सख़्त\" बंद रखें। Bluetooth headset पर दूर-पास वाली जाँच अपने-आप बंद रहती है।")
     }
 
+    private fun heyDkCard(box: LinearLayout) {
+        val HD = com.dk.assistant.voice.HeyDk
+        val status = TextView(this).apply { textSize = 14f; setTextColor(0xFFFFFFFF.toInt()); setPadding((4 * dp).toInt(), (4 * dp).toInt(), 0, (4 * dp).toInt()) }
+        box.addView(status)
+        val swOn = switch(box, "\"Hey DK\" पर जागो", Prefs.heyDkOn(this))
+        fun refresh() {
+            status.text = UiLang.s(HD.status(this)) + if (!Setup.batteryExempt(this)) "\n" + UiLang.s("बैटरी की रोक लगी है — नीचे \"बैटरी की रोक हटाओ\" दबाइए, वरना फ़ोन कुछ देर बाद DK को सुला सकता है") else ""
+            swOn.isEnabled = HD.trained(this)
+        }
+        swOn.setOnCheckedChangeListener { _, on ->
+            val ok = on && HD.trained(this)
+            Prefs.edit(this) {
+                putBoolean("hey_dk_on", ok)
+                if (ok) { putBoolean("wake_mode", true); putBoolean("mic_user_off", false) }
+            }
+            if (ok) {
+                if (::swWake.isInitialized) swWake.isChecked = true
+                Setup.startKeepAlive(this)
+                DKAccessibilityService.instance?.startWakeLoopIfEnabled()
+            }
+            refresh()
+        }
+        label(box, "पहचान कितनी आसानी से हो")
+        val senses = com.dk.assistant.voice.WakeMatch.Sense.values().toList()
+        val rgSense = radios(box, senses.map { it.name to it.label }, Prefs.heyDkSense(this).name, 2750)
+        rgSense.setOnCheckedChangeListener { _, _ ->
+            Prefs.edit(this) { putString("hey_dk_sense", radioValue(rgSense, senses.map { it.name }, 2750)) }
+        }
+        val edAcks = field(box, "जागते ही क्या बोले (कॉमा से अलग, बदल-बदलकर बोलेगा)", Prefs.heyDkAcks(this),
+            com.dk.assistant.voice.WakeMatch.DEFAULT_ACKS.joinToString(", "))
+        row(box,
+            button("Hey DK सिखाओ") { enrollHeyDk { swOn.isChecked = Prefs.heyDkOn(this); refresh() } },
+            button("जवाब सेव करो") {
+                Prefs.edit(this) { putString("hey_dk_acks", edAcks.text.toString().trim()) }
+                lifecycleScope.launch(kotlinx.coroutines.Dispatchers.IO) { try { HD.prepareAcks(this@SettingsActivity) } catch (_: Exception) {} }
+                toast("सेव हो गया")
+            })
+        row(box,
+            button("बैटरी की रोक हटाओ") { Setup.requestBatteryExempt(this) },
+            button("मिटाओ") {
+                androidx.appcompat.app.AlertDialog.Builder(this).setTitle(UiLang.s("Hey DK मिटाएँ?"))
+                    .setMessage(UiLang.s("सीखे हुए नमूने मिट जाएँगे। दोबारा चालू करने के लिए फिर से सिखाना होगा।"))
+                    .setPositiveButton(UiLang.s("मिटाओ")) { _, _ -> HD.forget(this); swOn.isChecked = false; refresh(); toast("Hey DK मिटा दिया") }
+                    .setNegativeButton(UiLang.s("रहने दो"), null).show()
+            })
+        refresh()
+        hint(box, "कैसे काम करता है: आप 5 बार \"Hey DK\" बोलते हैं (या \"Hello DK\" — जो भी चुनें, पाँचों बार वही)। फ़ोन उससे आपके बोलने का तरीका और आपकी आवाज़ की पहचान बनाता है। सुनते समय हर छोटी बात फ़ोन के अंदर ही मिलाई जाती है — न मिले तो भूल जाता है, कहीं भेजता नहीं।")
+        hint(box, "\"Hey DK, WhatsApp खोलो\" एक साँस में भी बोल सकते हैं — तब DK सीधे वही करेगा। सिर्फ़ \"Hey DK\" कहा तो \"हाँ सर\" बोलकर सुनेगा, और करीब 30 सेकंड चुप रहने पर फिर सो जाएगा।")
+        hint(box, "सीमाएँ: ऊपर DK की notification हमेशा दिखेगी (Android का नियम)। बैटरी थोड़ी ज़्यादा लगती है। Force stop करने या फ़ोन बंद होने पर नहीं सुनेगा। कॉल के दौरान माइक कॉल का होता है। यह फ़ोन का ताला नहीं है — आपकी आवाज़ की रिकॉर्डिंग से धोखा हो सकता है।")
+    }
+
+    private fun enrollHeyDk(done: () -> Unit) {
+        val HD = com.dk.assistant.voice.HeyDk
+        val WM = com.dk.assistant.voice.WakeMatch
+        val OV = com.dk.assistant.voice.OwnerVoice
+        if (!Setup.hasMic(this)) { requestPermissions(arrayOf(android.Manifest.permission.RECORD_AUDIO), 12); return }
+        val (dlg, tv) = ownerDialog("Hey DK सिखाओ")
+        ownerJob?.cancel()
+        ownerJob = lifecycleScope.launch {
+            try {
+                // आवाज़-पहचान (सिर्फ़ मालिक) के लिए मॉडल - न चल सके तो सिर्फ़ शब्द-मिलान
+                if (OV.supported && !OV.hasModel(this@SettingsActivity)) {
+                    tv.text = UiLang.s("पहचान वाला मॉडल डाउनलोड हो रहा है…")
+                    val err = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                        OV.download(this@SettingsActivity) { pct -> runOnUiThread { tv.text = UiLang.s("पहचान वाला मॉडल डाउनलोड हो रहा है…") + " $pct%" } }
+                    }
+                    if (err != null) { tv.text = UiLang.s(err); kotlinx.coroutines.delay(2500) }
+                }
+                val takes = ArrayList<ByteArray>()
+                withDkMicPaused {
+                    var tries = 0; var redo = -1; var outlierDone = false
+                    while (takes.size < WM.TAKES || redo >= 0) {
+                        val n = if (redo >= 0) redo + 1 else takes.size + 1
+                        tv.text = UiLang.s("नमूना") + " $n/${WM.TAKES} — " + UiLang.s("आम आवाज़ में, जैसे रोज़ बुलाएँगे, बोलिए:") + "\n\n\"Hey DK\""
+                        val take = HD.recordTake { }
+                        if (take == null || !WM.goodLength(take.speechMs)) {
+                            if (++tries >= 4) { tv.text = UiLang.s("आवाज़ ठीक से नहीं आई — शांत जगह पर फिर कोशिश करें"); return@withDkMicPaused }
+                            tv.text = UiLang.s(if (take != null && take.speechMs > WM.MAX_MS) "बहुत लंबा हो गया — सिर्फ़ \"Hey DK\" बोलिए" else "आवाज़ कम आई — थोड़ा साफ़ बोलिए")
+                            kotlinx.coroutines.delay(1200); continue
+                        }
+                        tries = 0
+                        if (redo >= 0) { takes[redo] = take.pcm; redo = -1 } else takes.add(take.pcm)
+                        if (takes.size >= WM.TAKES && !outlierDone) {
+                            outlierDone = true
+                            tv.text = UiLang.s("सीख रहा हूँ…")
+                            val bad = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) { WM.outlier(takes.map { HD.featuresOf(it) }) }
+                            if (bad >= 0) {
+                                tv.text = UiLang.s("एक नमूना बाकियों से अलग लगा — उसे एक बार फिर बोलिए"); kotlinx.coroutines.delay(1200)
+                                redo = bad; continue
+                            }
+                        }
+                        kotlinx.coroutines.delay(500)
+                    }
+                }
+                if (takes.size < WM.TAKES) return@launch
+                tv.text = UiLang.s("सीख रहा हूँ…")
+                val err = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) { HD.save(this@SettingsActivity, takes) }
+                if (err != null) { tv.text = UiLang.s(err); return@launch }
+                if (::swWake.isInitialized) swWake.isChecked = true
+                Setup.startKeepAlive(this@SettingsActivity)
+                DKAccessibilityService.instance?.startWakeLoopIfEnabled()
+                tv.text = UiLang.s("हो गया — अब \"Hey DK\" बोलकर देखिए।") + "\n\n" + UiLang.s(HD.status(this@SettingsActivity))
+                kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { try { HD.prepareAcks(this@SettingsActivity) } catch (_: Exception) {} }
+                done()
+            } catch (e: kotlinx.coroutines.CancellationException) { throw e
+            } catch (e: Exception) { tv.text = UiLang.s("गड़बड़ हुई") + " (${e.javaClass.simpleName})" }
+        }
+        dlg.setOnDismissListener { ownerJob?.cancel() }
+    }
+
     /** DK का माइक थोड़ी देर बंद (Live/सुनना माइक छोड़े), फिर जैसा था */
     private suspend fun <T> withDkMicPaused(block: suspend () -> T): T {
         val was = DKState.micMuted
@@ -773,6 +883,9 @@ class SettingsActivity : AppCompatActivity() {
 
         // ---- v3.66: सिर्फ़ मेरी आवाज़ (परत 3) + दूर की आवाज़ अनसुनी (परत 4)
         card("सिर्फ़ मेरी आवाज़ सुनो", "DK सिर्फ़ आपकी आवाज़ पर जवाब दे — पास वालों की बातें, TV या दूर की आवाज़ अनसुनी") { box -> ownerVoiceCard(box) }
+
+        // ---- v3.81: "Hey DK" - फ़ोन के अंदर, सिर्फ़ मालिक की आवाज़ पर जागना
+        card("Hey DK (फ़ोन के अंदर)", "ऐप बंद हो तब भी \"Hey DK\" बोलिए — DK \"हाँ सर\" बोलकर सुनने लगेगा. इंटरनेट पर कुछ नहीं जाता") { box -> heyDkCard(box) }
 
         // ---- v3.67: WhatsApp तुरंत भेजो (मालिक की मर्ज़ी, default बंद)
         card("WhatsApp संदेश", "\"राहुल को WhatsApp पर लिखो …\" कहने पर DK खुद भेजता है और भेजने के बाद ही \"भेज दिया\" बोलता है") { box ->
