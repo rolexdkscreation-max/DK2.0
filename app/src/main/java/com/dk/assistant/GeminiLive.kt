@@ -813,8 +813,8 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
                         }
                         // v3.80: Live की अपनी आवाज़ / अंदाज़ / Live मॉडल बदला -> DK चुप होते ही नया connection (उसी बातचीत में).
                         // बँटवारे वाले इंजन (Gemini TTS / Edge) की आवाज़ हर टुकड़े पर नई पढ़ी जाती है - वहाँ connection नहीं तोड़ना
-                        if (connLiveVer != $E.liveVersion && !turnActive && !isPlaying() && toolJobs.isEmpty()) {
-                            connLiveVer = $E.liveVersion
+                        if (connLiveVer != com.dk.assistant.voice.engine.VoiceEngines.liveVersion && !turnActive && !isPlaying() && toolJobs.isEmpty()) {
+                            connLiveVer = com.dk.assistant.voice.engine.VoiceEngines.liveVersion
                             val pick = LiveModelPick.get(svc)
                             val reordered = LiveModelPick.order(pick, models)
                             if (pick.isNotBlank() && reordered.first() != model) {
