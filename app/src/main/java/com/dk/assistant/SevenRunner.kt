@@ -133,7 +133,7 @@ object SevenRunner {
             if (c == null || a.pr == null || LocalNotes.prDue(markdown, prNoteMd, prNoteAt, now)) {
                 a.teamSaveNote(markdown)
                 if (a.pr != null) { prNoteMd = markdown; prNoteAt = now }
-            } else a.workNote = markdown
+            } else a.teamKeepNote(markdown)
         }
         override suspend fun loadNote(): String {
             val local = c?.let { ctx -> withContext(Dispatchers.IO) { LocalNotes.load(ctx.filesDir, a.repo, a.branch) } }

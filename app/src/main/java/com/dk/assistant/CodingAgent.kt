@@ -522,6 +522,9 @@ class CodingAgent(private val gh: GitHub, var repo: String, var branch: String, 
         private set
 
     /** काम-कॉपी PR के विवरण में: सिर्फ़ काम-कॉपी वाला हिस्सा बदलता है, बाकी विवरण (किसी और का लिखा भी) अछूता */
+    /** v3.89: काम-कॉपी सिर्फ़ याद रखो (फ़ोन में सहेजी जा चुकी) - अगली बार PR खुलने/बदलने पर उसी में जाएगी, अलग API call नहीं */
+    fun teamKeepNote(md: String) { workNote = md }
+
     suspend fun teamSaveNote(md: String) = withContext(Dispatchers.IO) {
         workNote = md
         val p = pr ?: return@withContext
