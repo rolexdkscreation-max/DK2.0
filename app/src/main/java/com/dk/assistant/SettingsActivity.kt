@@ -89,6 +89,7 @@ class SettingsActivity : AppCompatActivity() {
             "brain_coder" -> { title.text = "AI दिमाग • कोडिंग एजेंट"; secBrainScope(ApiScopes.CODER) }
             "brain_pc" -> { title.text = "AI दिमाग • DK कंप्यूटर"; secBrainScope(ApiScopes.PC) }
             "voice" -> { title.text = "आवाज़"; secVoice() }
+            "face" -> { title.text = "चेहरा पहचान"; bar.visibility = View.GONE; secFace() }
             "orb" -> { title.text = "ओर्ब और चेहरा"; bar.visibility = View.GONE; secOrb() }
             "ui" -> { title.text = "दिखावट"; bar.visibility = View.GONE; secUi() }
             "access" -> { title.text = "Accessibility"; secAccess() }
@@ -112,6 +113,7 @@ class SettingsActivity : AppCompatActivity() {
             Triple("ui", "दिखावट (UI कस्टमाइज़ेशन)", "थीम • मुख्य रंग • काँच की पारदर्शिता • चमक • एनिमेशन"),
             Triple("brain", "AI दिमाग", "DK लाइव • DK चैट • कोडिंग एजेंट • DK कंप्यूटर — हर एक की अपनी API key"),
             Triple("voice", "आवाज़", "बोलने वाला इंजन (Gemini TTS • Edge • Live) • सुनना • सिर्फ़ मेरी आवाज़"),
+            Triple("face", "चेहरा पहचान", (if (FaceAI.enrolled(this)) "✓ चेहरा सीखा" else "✗ अभी नहीं सीखा") + " • DK का अपना फ़ेस मॉडल • फ़ोन के अंदर, इंटरनेट पर कुछ नहीं जाता"),
             Triple("orb", "ओर्ब और चेहरा", "पृथ्वी, गैलेक्सी, एटम, छल्ला, पुरुष/महिला HD चेहरा"),
             Triple("access", "Accessibility", (if (Setup.accessibilityOn(this)) "✓ चालू" else "✗ बंद") + " • फ़ोन कंट्रोल • हमेशा सुनना • कॉल • बैटरी"),
             Triple("perms", "परमिशन", "माइक • स्क्रीन देखना • नोटिफ़िकेशन • कॉल • ऐप इंस्टॉल"),
@@ -214,6 +216,7 @@ class SettingsActivity : AppCompatActivity() {
         "lang" -> R.drawable.ic_s_lang
         "brain" -> R.drawable.ic_s_brain
         "voice" -> R.drawable.ic_s_voice
+        "face" -> R.drawable.ic_face
         "orb" -> R.drawable.ic_s_orb
         "ui" -> R.drawable.ic_s_ui
         "access" -> R.drawable.ic_s_access
@@ -428,15 +431,52 @@ class SettingsActivity : AppCompatActivity() {
     // ------------------------------------------------------------ AI दिमाग: 4 अलग हिस्से, हर एक की अपनी API
     private fun scopeStatus(scope: String): String {
         if (scope == ApiScopes.LIVE) {
-            val g = Prefs.scopeKey(this, scope, "gemini").isNotBlank(); val q = Prefs.scopeKey(this, scope, "groq").isNotBlank()
+            val g = Prefs.scopeKeyRaw(this, scope, "gemini").isNotBlank(); val q = Prefs.scopeKeyRaw(this, scope, "groq").isNotBlank()
             return (if (g) "✓ Gemini key" else "✗ Gemini key नहीं") + (if (q) " • ✓ सुनने के लिए Groq" else "") + " • सिर्फ़ Gemini"
         }
-        val id = Prefs.scopeActive(this, scope)
-        val ok = Prefs.scopeKey(this, scope, id).isNotBlank()
+        val id = Prefs.scopeActiveRaw(this, scope)
+        val ok = Prefs.scopeKeyRaw(this, scope, id).isNotBlank()
         return (if (ok) "✓ " else "✗ ") + KeySetup.name(id) + (if (ok) " • ${Prefs.scopeModel(this, scope, id)}" else " की key नहीं") + " • अपनी अलग key"
     }
 
     private fun secBrainMenu() {
+        // v3.91: "एक key से सब" - नया install = चालू (एक Gemini key से सारे काम); अलग-अलग keys वाले हिस्से बंद (मिटते नहीं)
+        val one = Prefs.oneKeyOn(this)
+        card("एक key से सब (ऑल-राउंडर)", "सिर्फ़ एक Gemini key — DK लाइव, चैट, Google खोज, सुनना-बोलना, कोडिंग एजेंट, DK कंप्यूटर सब इसी से", startOpen = one) { box ->
+            val sw = switch(box, "एक key से सब चलाओ", one)
+            sw.setOnCheckedChangeListener { _, on ->
+                save(false)
+                Prefs.edit(this) { putBoolean(ApiScopes.ONE_KEY_ON, on) }
+                container.removeAllViews(); secBrainMenu(); space(container, 8)
+                toast(if (on) "✓ अब सारे काम एक key से — DK लाइव दोबारा शुरू करें" else "✓ अब हर हिस्सा अपनी अलग key से")
+            }
+            if (!one) {
+                hint(box, "अभी बंद है — हर हिस्सा नीचे अपनी अलग key से चल रहा है। चालू करें तो सारे काम ऊपर की एक key से होंगे (अलग keys मिटेंगी नहीं, बंद करते ही फिर चलेंगी)।")
+                return@card
+            }
+            val ed = field(box, "Gemini API Key (सारे काम इसी से)", Prefs.oneKey(this), "AIza… यहाँ पेस्ट करें", secret = true)
+            keyFields[ApiScopes.ONE_KEY] = ed
+            val res = TextView(this).apply { setTextColor(0xB3FFFFFF.toInt()); textSize = 13f; setPadding((4 * dp).toInt(), (6 * dp).toInt(), 0, 0) }
+            row(box, showButton(ed), button("जाँचें") {
+                val k = ed.text.toString().trim()
+                if (k.isBlank()) { res.text = "पहले Gemini key पेस्ट करें (AIza… से शुरू)"; return@button }
+                if (ApiScopes.detect(k).let { it != null && it != "gemini" }) { res.text = "यह Gemini की key नहीं लगती — यहाँ सिर्फ़ Gemini key (AIza…) चलेगी"; return@button }
+                res.text = "जवाब और Google खोज से जाँच रहा हूँ…"
+                lifecycleScope.launch {
+                    res.text = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { checkSearchKey(k) }.replace("Google खोज चली", "जवाब और Google खोज चले")
+                    save(false)
+                }
+            }, button("Key लें") { Setup.openUrl(this, Providers.byId("gemini")!!.keyUrl) })
+            box.addView(res)
+            hint(box, "अभी: " + (if (Prefs.oneKey(this).isNotBlank()) "✓ सारे काम इसी एक key से" else "✗ key नहीं डाली") +
+                " • सुनना भी Gemini से (Groq की ज़रूरत नहीं)। एक free key की limit सब कामों में बँटती है — limit जल्दी खत्म हो तो बटन बंद करके अलग-अलग keys डालें।")
+        }
+        if (one) {
+            card("अलग-अलग key वाले हिस्से — बंद", "ऊपर \"एक key से सब\" चालू है, इसलिए DK लाइव / चैट / कोडिंग / कंप्यूटर की अलग keys अभी इस्तेमाल नहीं हो रहीं") { box ->
+                hint(box, "अलग-अलग key चाहिए तो ऊपर वाला बटन बंद करें — पहले डाली हुई अलग keys वैसी ही सुरक्षित हैं।")
+            }
+            return
+        }
         card("हर हिस्से की अपनी API", "हर हिस्सा सिर्फ़ अपनी डाली हुई key से जवाब लेता है — किसी दूसरे की key इस्तेमाल नहीं करता") { box ->
             hint(box, "किसी मॉडल का फ्री कोटा खत्म (limit) हो तो उसी key के दूसरे फ्री मॉडल पर अपने-आप स्विच होता है। दूसरी कंपनी पर नहीं जाता।")
         }
@@ -449,7 +489,7 @@ class SettingsActivity : AppCompatActivity() {
     /** DK लाइव: सिर्फ़ Google Gemini (Live + बोलना + सुनना) और सुनने के लिए चाहें तो Groq */
     private fun secBrainLive() {
         card("DK लाइव — Google Gemini", "Gemini Live बातचीत, Gemini नेचुरल आवाज़ और सुनना — सिर्फ़ इसी key से") { box ->
-            val ed = field(box, "Gemini API Key (DK लाइव की अपनी)", Prefs.scopeKey(this, ApiScopes.LIVE, "gemini"), "AIza… यहाँ पेस्ट करें", secret = true)
+            val ed = field(box, "Gemini API Key (DK लाइव की अपनी)", Prefs.scopeKeyRaw(this, ApiScopes.LIVE, "gemini"), "AIza… यहाँ पेस्ट करें", secret = true)
             keyFields[ApiScopes.pref(ApiScopes.LIVE, "key", "gemini")] = ed
             val res = TextView(this).apply { setTextColor(0xB3FFFFFF.toInt()); textSize = 13f; setPadding((4 * dp).toInt(), (6 * dp).toInt(), 0, 0) }
             row(box, showButton(ed), button("टेस्ट करें") {
@@ -460,7 +500,7 @@ class SettingsActivity : AppCompatActivity() {
             hint(box, "Limit खत्म हो तो इसी key के दूसरे Gemini Live / आवाज़ मॉडल पर अपने-आप। DK चैट या किसी और हिस्से की key यहाँ इस्तेमाल नहीं होती।")
         }
         card("लिखना (\"आप:\" वाली लाइन) — अपनी अलग Gemini key", "आप जो बोलते हैं उसे लिखने वाला (gemini-3.5-transcribe-live) इसी key से चलेगा, ताकि बोलने वाले Live की free limit इसमें खर्च न हो") { box ->
-            val ed = field(box, "Gemini API Key (सिर्फ़ लिखने के लिए)", Prefs.captionOwnKey(this), "AIza… (ज़रूरी नहीं — दूसरे Google account की key बेहतर)", secret = true)
+            val ed = field(box, "Gemini API Key (सिर्फ़ लिखने के लिए)", Prefs.captionOwnKeyRaw(this), "AIza… (ज़रूरी नहीं — दूसरे Google account की key बेहतर)", secret = true)
             keyFields[Prefs.CAPTION_KEY] = ed
             val res = TextView(this).apply { setTextColor(0xB3FFFFFF.toInt()); textSize = 13f; setPadding((4 * dp).toInt(), (6 * dp).toInt(), 0, 0) }
             row(box, showButton(ed), button("जाँचें") {
@@ -474,14 +514,14 @@ class SettingsActivity : AppCompatActivity() {
                 }
             }, button("Key लें") { Setup.openUrl(this, Providers.byId("gemini")!!.keyUrl) })
             box.addView(res)
-            hint(box, "अभी: " + (if (Prefs.captionOwnKey(this).isNotBlank()) "लिखना अपनी अलग key से" else "लिखना DK लाइव वाली key से (अलग key नहीं डाली)") +
+            hint(box, "अभी: " + (if (Prefs.captionOwnKeyRaw(this).isNotBlank()) "लिखना अपनी अलग key से" else "लिखना DK लाइव वाली key से (अलग key नहीं डाली)") +
                 ". एक ही Google account की दो keys की limit अक्सर साझा होती है — limit सच में बचानी हो तो दूसरे account की key डालें।")
             val lat = Prefs.liveLatency(this)
             if (lat.isNotEmpty()) hint(box, "बोलने वाले मॉडल — नापी गई रफ़्तार (सबसे तेज़ अपने-आप पहले):\n" +
                 LiveModelRank.describe(LiveModelRank.order(lat.keys.toList(), emptyList(), lat), lat))
         }
         card("खोज (Google Search) — अपनी अलग Gemini key", "DK लाइव और चैट की इंटरनेट खोज (Gemini + Google Search) पहले इसी key से — और गहरी: ज़्यादा वेबसाइटें, पूरी जानकारी") { box ->
-            val ed = field(box, "Gemini API Key (सिर्फ़ खोज के लिए)", Prefs.searchOwnKey(this), "AIza… (ज़रूरी नहीं — दूसरे Google account की key बेहतर)", secret = true)
+            val ed = field(box, "Gemini API Key (सिर्फ़ खोज के लिए)", Prefs.searchOwnKeyRaw(this), "AIza… (ज़रूरी नहीं — दूसरे Google account की key बेहतर)", secret = true)
             keyFields[Prefs.SEARCH_KEY] = ed
             val res = TextView(this).apply { setTextColor(0xB3FFFFFF.toInt()); textSize = 13f; setPadding((4 * dp).toInt(), (6 * dp).toInt(), 0, 0) }
             row(box, showButton(ed), button("जाँचें") {
@@ -495,11 +535,11 @@ class SettingsActivity : AppCompatActivity() {
                 }
             }, button("Key लें") { Setup.openUrl(this, Providers.byId("gemini")!!.keyUrl) })
             box.addView(res)
-            hint(box, "अभी: " + (if (Prefs.searchOwnKey(this).isNotBlank()) "खोज अपनी अलग key से — गहरी खोज चालू" else "खोज DK लाइव / चैट वाली key से (अलग key नहीं डाली)") +
+            hint(box, "अभी: " + (if (Prefs.searchOwnKeyRaw(this).isNotBlank()) "खोज अपनी अलग key से — गहरी खोज चालू" else "खोज DK लाइव / चैट वाली key से (अलग key नहीं डाली)") +
                 ". यह key न चले (limit/गलत) तो खोज अपने-आप पुरानी key से होगी। एक ही Google account की keys की limit साझा होती है — दूसरे account की key डालें।")
         }
         card("सुनना (आवाज़ → text) — Groq, चाहें तो", "Groq Whisper सबसे तेज़ सुनता है। खाली छोड़ें = ऊपर वाली Gemini key से सुनेगा") { box ->
-            val ed = field(box, "Groq API Key (सिर्फ़ सुनने के लिए)", Prefs.scopeKey(this, ApiScopes.LIVE, "groq"), "gsk_… (ज़रूरी नहीं)", secret = true)
+            val ed = field(box, "Groq API Key (सिर्फ़ सुनने के लिए)", Prefs.scopeKeyRaw(this, ApiScopes.LIVE, "groq"), "gsk_… (ज़रूरी नहीं)", secret = true)
             keyFields[ApiScopes.pref(ApiScopes.LIVE, "key", "groq")] = ed
             val res = TextView(this).apply { setTextColor(0xB3FFFFFF.toInt()); textSize = 13f; setPadding((4 * dp).toInt(), (6 * dp).toInt(), 0, 0) }
             row(box, showButton(ed), button("जाँचें") {
@@ -515,8 +555,8 @@ class SettingsActivity : AppCompatActivity() {
             }, button("Groq key लें") { Setup.openUrl(this, "https://console.groq.com/keys") })
             box.addView(res)
             hint(box, "अभी: " + when {
-                Prefs.scopeKey(this, ApiScopes.LIVE, "groq").isNotBlank() -> "Groq Whisper से सुन रहा है"
-                Prefs.scopeKey(this, ApiScopes.LIVE, "gemini").isNotBlank() -> "Gemini से सुन रहा है"
+                Prefs.scopeKeyRaw(this, ApiScopes.LIVE, "groq").isNotBlank() -> "Groq Whisper से सुन रहा है"
+                Prefs.scopeKeyRaw(this, ApiScopes.LIVE, "gemini").isNotBlank() -> "Gemini से सुन रहा है"
                 else -> "Google माइक से सुन रहा है (फ्री, बीप आ सकती है)"
             } + " • बिना-Live आवाज़ मोड में जवाब का text DK चैट की API से बनता है।")
         }
@@ -566,12 +606,12 @@ class SettingsActivity : AppCompatActivity() {
 
     private fun secBrainScope(scope: String) {
         card("${ApiScopes.title(scope)} की AI", "${ApiScopes.title(scope)} सिर्फ़ यहाँ डाली key से चलेगा — DK चैट या किसी और की key नहीं") { box ->
-            val cur = Prefs.scopeActive(this, scope)
+            val cur = Prefs.scopeActiveRaw(this, scope)
             val rg = RadioGroup(this).apply { orientation = RadioGroup.VERTICAL }
             Providers.all.forEachIndexed { i, p ->
                 rg.addView(RadioButton(this).apply {
                     id = scopeRadioBase(scope) + i
-                    text = p.name + (if (p.free) "   • फ्री" else "   • पेड") + if (Prefs.scopeKey(this@SettingsActivity, scope, p.id).isBlank()) "   • key नहीं" else "   • ✓ key"
+                    text = p.name + (if (p.free) "   • फ्री" else "   • पेड") + if (Prefs.scopeKeyRaw(this@SettingsActivity, scope, p.id).isBlank()) "   • key नहीं" else "   • ✓ key"
                     setTextColor(0xFFFFFFFF.toInt()); textSize = 15f
                     isChecked = cur == p.id
                     setPadding((6 * dp).toInt(), (6 * dp).toInt(), 0, (6 * dp).toInt())
@@ -593,7 +633,7 @@ class SettingsActivity : AppCompatActivity() {
                     text = p.name + if (p.free) "   • फ्री" else "   • पेड"
                     setTextColor(0xFFFFFFFF.toInt())
                     textSize = 15f
-                    isChecked = Prefs.activeProvider(this@SettingsActivity) == p.id
+                    isChecked = Prefs.activeProviderRaw(this@SettingsActivity) == p.id
                     setPadding((6 * dp).toInt(), (6 * dp).toInt(), 0, (6 * dp).toInt())
                 })
             }
@@ -615,7 +655,7 @@ class SettingsActivity : AppCompatActivity() {
         card("तुरंत सेटअप — कोई भी फ्री key डालें", "DK खुद पहचानेगा कि key किस कंपनी की है, उसके फ्री मॉडल जाँचकर सबसे तेज़ चुनेगा और बात शुरू कर देगा") { box ->
             val edText = field(box, "API key", "", "Gemini / Groq / OpenRouter — कोई भी", secret = true)
             val res1 = TextView(this).apply { setTextColor(0xB3FFFFFF.toInt()); textSize = 13f; setPadding((4 * dp).toInt(), (6 * dp).toInt(), 0, 0) }
-            val cur = Prefs.activeProvider(this).let { id -> if (Prefs.key(this, id).isNotBlank()) "अभी: ${KeySetup.name(id)} • ${Prefs.model(this, id)}" else "अभी कोई key नहीं" }
+            val cur = Prefs.activeProviderRaw(this).let { id -> if (Prefs.keyRaw(this, id).isNotBlank()) "अभी: ${KeySetup.name(id)} • ${Prefs.model(this, id)}" else "अभी कोई key नहीं" }
             res1.text = cur
             row(box, button("जोड़ें और सबसे तेज़ चुनें") {
                 val k = edText.text.toString().trim()
@@ -627,9 +667,9 @@ class SettingsActivity : AppCompatActivity() {
                     if (r.ok) {
                         edText.setText("")
                         // neeche wale company card bhi naye hisaab se (warna save() purani key likh deta)
-                        keyFields[ApiScopes.pref(ApiScopes.CHAT, "key", r.provider)]?.setText(Prefs.key(this@SettingsActivity, r.provider))
+                        keyFields[ApiScopes.pref(ApiScopes.CHAT, "key", r.provider)]?.setText(Prefs.keyRaw(this@SettingsActivity, r.provider))
                         modelFields[ApiScopes.pref(ApiScopes.CHAT, "model", r.provider)]?.setText(r.model)
-                        fetchedFor[ApiScopes.pref(ApiScopes.CHAT, "key", r.provider)] = Prefs.key(this@SettingsActivity, r.provider)
+                        fetchedFor[ApiScopes.pref(ApiScopes.CHAT, "key", r.provider)] = Prefs.keyRaw(this@SettingsActivity, r.provider)
                         Providers.all.indexOfFirst { it.id == r.provider }.takeIf { it >= 0 }?.let { rgProvider.check(1000 + it) }
                         save(false)
                         startTalking()
@@ -836,6 +876,93 @@ class SettingsActivity : AppCompatActivity() {
         val was = DKState.micMuted
         if (!was) { DKState.setMicMuted(true); kotlinx.coroutines.delay(700) }
         return try { block() } finally { if (!was) DKState.setMicMuted(false) }
+    }
+
+    // ================================================================ v3.91: चेहरा पहचान (DK का अपना फ़ेस मॉडल)
+    private fun secFace() {
+        card("मेरा चेहरा", "DK का अपना असली फ़ेस मॉडल (SFace) — सब फ़ोन के अंदर, कैमरे की तस्वीर कहीं नहीं जाती") { box ->
+            val status = TextView(this).apply { textSize = 14f; setTextColor(0xFFFFFFFF.toInt()); setPadding((4 * dp).toInt(), (4 * dp).toInt(), 0, (4 * dp).toInt()) }
+            box.addView(status)
+            val swHud = switch(box, "DK लाइव के कैमरे पर चेहरा पहचान दिखाओ", Prefs.faceHudOn(this))
+            val swStrict = switch(box, "सख़्त पहचान (दूसरों के पास होने की संभावना और कम, पर कभी आपको भी दोबारा देखना पड़ सकता है)", Prefs.faceStrict(this))
+            fun refresh() { status.text = UiLang.s(FaceAI.status(this)) }
+            swHud.setOnCheckedChangeListener { _, on -> Prefs.edit(this) { putBoolean("face_hud_on", on) } }
+            swStrict.setOnCheckedChangeListener { _, on -> Prefs.edit(this) { putBoolean("face_strict", on) } }
+            refresh()
+            row(box, button("मेरा चेहरा सिखाओ") { faceDialog(enroll = true) { refresh() } }, button("जाँचो") {
+                if (!FaceAI.enrolled(this)) { toast("पहले \"मेरा चेहरा सिखाओ\" दबाएँ"); return@button }
+                faceDialog(enroll = false) { refresh() }
+            })
+            row(box, button("चेहरा मिटाओ") {
+                androidx.appcompat.app.AlertDialog.Builder(this).setTitle(UiLang.s("चेहरे की पहचान मिटाएँ?"))
+                    .setMessage(UiLang.s("दोबारा चालू करने के लिए चेहरा फिर से सिखाना होगा।"))
+                    .setPositiveButton(UiLang.s("मिटाओ")) { _, _ -> FaceAI.forget(this); refresh(); toast("चेहरे की पहचान मिटा दी") }
+                    .setNegativeButton(UiLang.s("रहने दो"), null).show()
+            })
+            hint(box, "कैसे काम करता है: आगे वाले कैमरे से ~8 फ़्रेम लेकर आपके चेहरे की 128 अंकों की पहचान बनती है (YuNet चेहरा ढूँढता है, SFace पहचानता है — LFW जाँच में 99.3% सही)। पहचान सिर्फ़ इसी फ़ोन में, encrypted रहती है; तस्वीरें सेव नहीं होतीं। पहली बार मॉडल (~10 MB) एक बार डाउनलोड होता है।")
+            hint(box, "सीमा: यह फ़ोटो या वीडियो दिखाकर किए धोखे को नहीं पकड़ता, इसलिए फ़ोन के अपने फ़ेस/फ़िंगरप्रिंट लॉक जितना पक्का नहीं। बहुत अंधेरा, चश्मा/मास्क बदलना या बहुत तिरछा चेहरा हो तो आप भी कभी 'नहीं मिला' आ सकते हैं — तब रोशनी में सीधे देखें या चेहरा फिर से सिखाएँ।")
+        }
+    }
+
+    private var faceCam: FaceCam? = null
+
+    /** चेहरा सिखाने (enroll) या जाँचने का कैमरा वाला डायलॉग */
+    private fun faceDialog(enroll: Boolean, done: () -> Unit) {
+        if (!FaceAI.supported) { toast("यह फ़ोन 64-bit ARM नहीं है — चेहरा पहचान यहाँ नहीं चलेगी"); return }
+        if (checkSelfPermission(android.Manifest.permission.CAMERA) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+            requestPermissions(arrayOf(android.Manifest.permission.CAMERA), 14); toast("कैमरा की परमिशन दें, फिर दोबारा दबाएँ"); return
+        }
+        val wrap = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; val p = (16 * dp).toInt(); setPadding(p, p, p, p) }
+        val pv = androidx.camera.view.PreviewView(this).apply { implementationMode = androidx.camera.view.PreviewView.ImplementationMode.COMPATIBLE; scaleType = androidx.camera.view.PreviewView.ScaleType.FILL_CENTER }
+        wrap.addView(pv, LinearLayout.LayoutParams(-1, (300 * dp).toInt()))
+        val tv = TextView(this).apply { textSize = 16f; setTextColor(0xFFFFFFFF.toInt()); setPadding(0, (12 * dp).toInt(), 0, 0) }
+        wrap.addView(tv)
+        val dlg = androidx.appcompat.app.AlertDialog.Builder(this).setTitle(UiLang.s(if (enroll) "मेरा चेहरा सिखाओ" else "चेहरा जाँचो")).setView(wrap)
+            .setNegativeButton(UiLang.s("बंद करें"), null).show()
+        val ui = { t: String -> runOnUiThread { tv.text = UiLang.s(t) } }
+        val prints = ArrayList<FloatArray>()
+        var saved = false
+        fun startCam() {
+            ui(if (enroll) "फ़ोन आँखों के सामने रखें, रोशनी में सीधे कैमरे में देखें…" else "कैमरे में देखें…")
+            val cam = FaceCam(this, pv) { b ->
+                if (saved) return@FaceCam
+                val d = FaceAI.detect(this, b, minScore = 0.6f)
+                if (enroll) {
+                    FaceMath.enrollProblem(d, b.width)?.let { ui(it + "  (${prints.size}/${FaceMath.ENROLL_FRAMES})"); return@FaceCam }
+                    val e = FaceAI.embed(this, b, d!!) ?: run { ui(FaceAI.status(this)); return@FaceCam }
+                    val mean = FaceMatch.aggregateEmbeddings(prints)
+                    if (mean != null && FaceMatch.cosineSimilarity(mean, e) < FaceMath.ENROLL_SAME) {
+                        prints.clear(); ui("बीच में चेहरा बदल गया — फिर से शुरू, अकेले कैमरे में देखें"); return@FaceCam
+                    }
+                    prints.add(e)
+                    if (prints.size < FaceMath.ENROLL_FRAMES) { ui("सीख रहा हूँ… ${prints.size}/${FaceMath.ENROLL_FRAMES} — सिर थोड़ा-सा दाएँ-बाएँ घुमाएँ"); return@FaceCam }
+                    saved = true
+                    FaceAI.save(this, FaceMatch.aggregateEmbeddings(prints)!!)
+                    ui("हो गया — DK ने आपका चेहरा सीख लिया। अब \"जाँचो\" दबाकर देख सकते हैं।")
+                    runOnUiThread { faceCam?.stop(); done() }
+                } else {
+                    if (d == null) { ui("चेहरा नहीं दिखा — सामने आएँ"); return@FaceCam }
+                    val e = FaceAI.embed(this, b, d) ?: run { ui(FaceAI.status(this)); return@FaceCam }
+                    val s = FaceAI.score(this, e) ?: return@FaceCam
+                    val ok = FaceMath.decide(s, Prefs.faceStrict(this)) == MatchResult.ACCESS_GRANTED
+                    ui((if (ok) "✓ आप हैं — मालिक पहचाने गए" else "✗ यह चेहरा मालिक से नहीं मिला") + "\nमिलान: ${(s * 100).toInt()}% (पास: ${((if (Prefs.faceStrict(this)) FaceMath.STRICT else FaceMath.MATCH) * 100).toInt()}% से ऊपर)")
+                }
+            }
+            faceCam?.stop(); faceCam = cam
+            cam.start { why -> ui("कैमरा नहीं खुला: $why") }
+        }
+        val job = lifecycleScope.launch {
+            if (!FaceAI.hasModels(this@SettingsActivity)) {
+                tv.text = UiLang.s("चेहरा पहचान मॉडल डाउनलोड हो रहा है (~10 MB, एक बार)…")
+                val err = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                    FaceAI.download(this@SettingsActivity) { pct -> runOnUiThread { tv.text = UiLang.s("चेहरा पहचान मॉडल डाउनलोड हो रहा है (~10 MB, एक बार)…") + " $pct%" } }
+                }
+                if (err != null) { tv.text = UiLang.s(err); return@launch }
+            }
+            if (!FaceAI.ready(this@SettingsActivity)) { tv.text = UiLang.s(FaceAI.status(this@SettingsActivity)); return@launch }
+            startCam()
+        }
+        dlg.setOnDismissListener { job.cancel(); faceCam?.stop(); faceCam = null; done() }
     }
 
     private fun ownerDialog(title: String): Pair<androidx.appcompat.app.AlertDialog, TextView> {
@@ -1282,14 +1409,14 @@ class SettingsActivity : AppCompatActivity() {
             if (p.isCustom) {
                 baseFields[bName] = field(box, "Base URL", Prefs.scopeBase(this, scope, p.id), "https://.../v1")
             }
-            val key = field(box, "API Key", Prefs.scopeKey(this, scope, p.id), "यहाँ key पेस्ट करें", secret = true)
+            val key = field(box, "API Key", Prefs.scopeKeyRaw(this, scope, p.id), "यहाँ key पेस्ट करें", secret = true)
             keyFields[kName] = key
             if (p.isGemini && scope == ApiScopes.CODER) {
                 // कोडिंग एजेंट: 3 Gemini keys - एक के सारे मॉडल की limit खत्म = अपने-आप अगली
                 keyFields[ApiScopes.pref(scope, "key", "gemini2")] = field(box, "Gemini API Key 2 (बैकअप, ज़रूरी नहीं)",
-                    Prefs.scopeKey(this, scope, "gemini2"), "दूसरी Gemini key", secret = true)
+                    Prefs.scopeKeyRaw(this, scope, "gemini2"), "दूसरी Gemini key", secret = true)
                 keyFields[ApiScopes.pref(scope, "key", "gemini3")] = field(box, "Gemini API Key 3 (बैकअप, ज़रूरी नहीं)",
-                    Prefs.scopeKey(this, scope, "gemini3"), "तीसरी Gemini key", secret = true)
+                    Prefs.scopeKeyRaw(this, scope, "gemini3"), "तीसरी Gemini key", secret = true)
                 box.addView(TextView(this).apply {
                     text = "Key 1 के सारे मॉडल (3.8 Flash → 3.6 Flash → 3 Flash → 3.5 Flash-Lite → 3.1 Flash-Lite) की limit खत्म → अपने-आप Key 2 के सारे मॉडल → फिर Key 3। " +
                         "सबकी limit खत्म हो तो काम रुकता नहीं — limit खुलने तक रुककर फिर चलता है। ध्यान दें: Google limit project पर लगाता है, इसलिए हर key अलग Google project की हो।"
@@ -1527,20 +1654,21 @@ class SettingsActivity : AppCompatActivity() {
     /** कोडिंग / कंप्यूटर स्क्रीन पर: उनकी API अब AI दिमाग में उनके अपने विकल्प में */
     private fun apiLinkCard(scope: String, section: String) {
         card("${ApiScopes.title(scope)} की AI", "API key अब AI दिमाग → ${ApiScopes.title(scope)} में — सिर्फ़ इसी की अपनी") { box ->
-            hint(box, "अभी: " + scopeStatus(scope))
+            hint(box, "अभी: " + if (Prefs.oneKeyOn(this)) "✓ \"एक key से सब\" चालू — यह हिस्सा भी उसी एक Gemini key से" else scopeStatus(scope))
             row(box, button("${ApiScopes.title(scope)} की API खोलें") {
                 save(false)
-                startActivity(android.content.Intent(this, SettingsActivity::class.java).putExtra("section", section))
+                // v3.91: एक-key मोड में अलग key वाला पन्ना नहीं - AI दिमाग (एक key वाला खाना) खोलो
+                startActivity(android.content.Intent(this, SettingsActivity::class.java).putExtra("section", if (Prefs.oneKeyOn(this)) "brain" else section))
             })
         }
     }
 
     // ------------------------------------------------------------ save
     private fun save(showToast: Boolean) {
-        if (section == null || section == "orb" || section == "ui") return
+        if (section == null || section == "orb" || section == "ui" || section == "face") return
         val active = if (::rgProvider.isInitialized)
-            Providers.all.getOrNull(rgProvider.checkedRadioButtonId - 1000)?.id ?: Prefs.activeProvider(this)
-        else Prefs.activeProvider(this)
+            Providers.all.getOrNull(rgProvider.checkedRadioButtonId - 1000)?.id ?: Prefs.activeProviderRaw(this)
+        else Prefs.activeProviderRaw(this)
         Prefs.edit(this) {
             if (::edUser.isInitialized) {
                 putString("user_name", edUser.text.toString().trim())
@@ -1594,7 +1722,7 @@ class SettingsActivity : AppCompatActivity() {
         txtSaved.text = "✓ सेव हो गया"
         if (showToast) {
             val active2 = Providers.byId(active)
-            val warn = if (::rgProvider.isInitialized && Prefs.key(this, active).isBlank()) " (पर ${active2?.name} की key खाली है)" else ""
+            val warn = if (::rgProvider.isInitialized && Prefs.keyRaw(this, active).isBlank()) " (पर ${active2?.name} की key खाली है)" else ""
             toast("सेटिंग्स सेव हो गईं$warn")
         }
     }

@@ -96,6 +96,19 @@ object ApiScopes {
         return out
     }
 
+    // ---- v3.91: "एक key से सब" (ऑल-राउंडर) - एक Gemini key से DK लाइव, चैट, खोज, सुनना/बोलना, कोडिंग, कंप्यूटर
+    const val ONE_KEY_ON = "one_key_on"
+    const val ONE_KEY = "one_key_gemini"
+    /** पुरानी अलग-अलग keys की settings - इनमें से कोई भरी = पुराना user, उसकी अलग keys वैसे ही चलें */
+    val OLD_KEY_PREFS: List<String> = PROVIDERS.flatMap { id -> listOf("key_$id") + listOf(LIVE, CODER, PC).map { pref(it, "key", id) } } +
+        listOf("voice_key", "coder_key", "live_key_caption", "live_key_search", "coder_key_gemini2", "coder_key_gemini3")
+
+    /** पहली बार: नया install (कोई key नहीं) = एक key वाला चालू; पुराना user = बंद (अलग keys जैसी की तैसी) */
+    fun oneKeyDefault(get: (String) -> String?): Boolean = OLD_KEY_PREFS.none { !get(it).isNullOrBlank() }
+
+    /** एक-key मोड में किस कंपनी की key: Gemini = वही एक key; Groq/OpenRouter/Custom/बैकअप keys = कोई नहीं (सब Gemini से) */
+    fun oneKeyFor(id: String, oneKey: String): String = if (id == "gemini") oneKey.trim() else ""
+
     private val notChat = listOf("whisper", "tts", "guard", "safeguard", "playai", "orpheus", "distil", "embed", "image", "audio", "transcribe", "compound")
 
     /**

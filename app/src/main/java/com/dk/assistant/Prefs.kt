@@ -26,6 +26,9 @@ object Prefs {
             if (!scopesDone) {
                 val add = ApiScopes.migrate { k -> if (p.contains(k)) p.all[k]?.toString() else null }
                 if (add.isNotEmpty()) p.edit().apply { add.forEach { (k, v) -> if (!p.contains(k) || k == ApiScopes.MIGRATED) putString(k, v) } }.commit()
+                // v3.91: "एक key से सब" का पहला फ़ैसला (एक बार) - नया install = चालू, पुराना user = बंद
+                if (!p.contains(ApiScopes.ONE_KEY_ON))
+                    p.edit().putBoolean(ApiScopes.ONE_KEY_ON, ApiScopes.oneKeyDefault { k -> if (p.contains(k)) p.all[k]?.toString() else null }).commit()
                 scopesDone = true
             }
         }
@@ -35,13 +38,23 @@ object Prefs {
 
     // ---- हर हिस्से (DK लाइव / DK चैट / कोडिंग एजेंट / DK कंप्यूटर) की अपनी API - देखें [ApiScopes]
     /** इस हिस्से की मुख्य कंपनी (DK लाइव = हमेशा Gemini) */
-    fun scopeActive(c: Context, scope: String): String {
+    fun scopeActive(c: Context, scope: String): String = if (oneKeyOn(c)) "gemini" else scopeActiveRaw(c, scope)
+    /**
+     * v3.91: "एक key से सब" चालू = हर हिस्सा सिर्फ़ उसी एक Gemini key से (Groq/बाक़ी कंपनियाँ नहीं).
+     * अलग-अलग keys की settings मिटती नहीं - बटन बंद करते ही वही पुरानी keys फिर चलती हैं.
+     */
+    fun oneKeyOn(c: Context): Boolean = sp(c).getBoolean(ApiScopes.ONE_KEY_ON, false)
+    fun oneKey(c: Context): String = (sp(c).getString(ApiScopes.ONE_KEY, "") ?: "").trim()
+    /** सेटिंग्स स्क्रीन के लिए: अलग-अलग keys असल में जो सेव हैं (एक-key मोड से बदले बिना) */
+    fun scopeActiveRaw(c: Context, scope: String): String {
         if (scope == ApiScopes.LIVE) return "gemini"
-        if (scope == ApiScopes.CHAT) return activeProvider(c)
+        if (scope == ApiScopes.CHAT) return activeProviderRaw(c)
         val id = sp(c).getString(ApiScopes.activePref(scope), "") ?: ""
-        return if (Providers.byId(id) != null) id else activeProvider(c)
+        return if (Providers.byId(id) != null) id else activeProviderRaw(c)
     }
-    fun scopeKey(c: Context, scope: String, id: String) = (sp(c).getString(ApiScopes.pref(scope, "key", id), "") ?: "").trim()
+    fun scopeKey(c: Context, scope: String, id: String): String =
+        if (oneKeyOn(c)) ApiScopes.oneKeyFor(id, oneKey(c)) else scopeKeyRaw(c, scope, id)
+    fun scopeKeyRaw(c: Context, scope: String, id: String) = (sp(c).getString(ApiScopes.pref(scope, "key", id), "") ?: "").trim()
     fun scopeModel(c: Context, scope: String, id: String): String {
         val def = if (scope == ApiScopes.CODER && id == "gemini") GeminiModels.CODER else Providers.byId(id)?.defaultModel ?: ""
         val p = sp(c)
@@ -81,7 +94,8 @@ object Prefs {
 
     // ---- AI providers
     /** Hata di gayi company (Mistral, Z.ai, OpenAI, xAI) chuni thi to Gemini */
-    fun activeProvider(c: Context): String {
+    fun activeProvider(c: Context): String = if (oneKeyOn(c)) "gemini" else activeProviderRaw(c)
+    fun activeProviderRaw(c: Context): String {
         val id = sp(c).getString("active_provider", "gemini") ?: "gemini"
         return if (Providers.byId(id) != null) id else "gemini"
     }
@@ -91,7 +105,8 @@ object Prefs {
      */
     @Suppress("UNUSED_PARAMETER")
     fun fallback(c: Context) = false
-    fun key(c: Context, id: String) = sp(c).getString("key_$id", "") ?: ""
+    fun key(c: Context, id: String): String = if (oneKeyOn(c)) ApiScopes.oneKeyFor(id, oneKey(c)) else keyRaw(c, id)
+    fun keyRaw(c: Context, id: String) = sp(c).getString("key_$id", "") ?: ""
     fun model(c: Context, id: String): String {
         val def = Providers.byId(id)?.defaultModel ?: ""
         return (sp(c).getString("model_$id", def) ?: def).ifBlank { def }
@@ -128,8 +143,10 @@ object Prefs {
     const val CAPTION_KEY = "live_key_caption"
     /** v3.90: सिर्फ़ इंटरनेट खोज (Gemini + Google Search) की अपनी key. डली हो = खोज पहले इसी से, और गहरी (ज़्यादा कोण, ज़्यादा सोच) */
     const val SEARCH_KEY = "live_key_search"
-    fun searchOwnKey(c: Context): String = sp(c).getString(SEARCH_KEY, "")?.trim() ?: ""
-    fun captionOwnKey(c: Context): String = sp(c).getString(CAPTION_KEY, "")?.trim() ?: ""
+    fun searchOwnKey(c: Context): String = if (oneKeyOn(c)) "" else searchOwnKeyRaw(c)
+    fun captionOwnKey(c: Context): String = if (oneKeyOn(c)) "" else captionOwnKeyRaw(c)
+    fun searchOwnKeyRaw(c: Context): String = sp(c).getString(SEARCH_KEY, "")?.trim() ?: ""
+    fun captionOwnKeyRaw(c: Context): String = sp(c).getString(CAPTION_KEY, "")?.trim() ?: ""
     fun captionKey(c: Context): String = captionOwnKey(c).ifBlank { ttsGeminiKey(c) }
 
     // ---- options
@@ -198,6 +215,11 @@ object Prefs {
         return cipher.doFinal(bytes)
     }
 
+    /** v3.91: पहचान किस मॉडल से बनी ("sface1" = असली SFace). पुराने तरीके वाली पहचान नहीं मानी जाती */
+    fun ownerFaceModel(c: Context): String = sp(c).getString("owner_face_model", "") ?: ""
+    /** DK लाइव के कैमरे पर चेहरा पहचान का निशान (पहले से चालू था - वैसा ही) */
+    fun faceHudOn(c: Context) = sp(c).getBoolean("face_hud_on", true)
+    fun faceStrict(c: Context) = sp(c).getBoolean("face_strict", false)
     fun hasOwnerFace(c: Context): Boolean = !sp(c).getString("owner_face_print", null).isNullOrBlank()
 
     fun ownerFacePrint(c: Context): FloatArray? {
