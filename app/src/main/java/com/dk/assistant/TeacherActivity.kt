@@ -177,9 +177,10 @@ class TeacherActivity : AppCompatActivity() {
 
         whiteboardView = WhiteboardView(this).apply {
             id = View.generateViewId()
-            onDrawingChanged = { b64 ->
+            onDrawingChanged = { bitmap ->
                 debounceRunnable?.let { handler.removeCallbacks(it) }
                 debounceRunnable = Runnable {
+                    val b64 = jpegBase64(bitmap)
                     askTeacher("कृपया इस लिखे हुए सवाल या चित्र को समझकर हल करें।", useBoardImage = true, customImageB64 = b64)
                 }
                 handler.postDelayed(debounceRunnable!!, 1000)
