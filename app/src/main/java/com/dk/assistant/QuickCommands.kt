@@ -53,6 +53,10 @@ object QuickCommands {
         if (has("किसका कॉल", "किसका फोन", "किसका फ़ोन", "कौन कॉल", "who is calling")) return Quick(a("who_calls"), "")
         if (has("कॉल", "call")) return null          // "राहुल को कॉल करो" jaisi baat AI karega
 
+        // ---- v4: "अलार्म बंद करो" / "सारे अलार्म हटाओ" / "7 बजे का अलार्म बंद करो" / "स्नूज़ करो" (पहले बंद करने का कोई सीधा तरीका नहीं था)
+        java.util.Calendar.getInstance().let { now -> AlarmOff.parse(t, now.get(java.util.Calendar.HOUR_OF_DAY), now.get(java.util.Calendar.MINUTE)) }
+            ?.let { return Quick(AlarmOff.toJson(it), "") }
+
         // ---- maps: rasta, navigation, doori, paas ki jagah (turant, bina AI)
         Maps.parse(t)?.let { return it }
 

@@ -310,7 +310,7 @@ object TaskQueue {
         val t = item.text.lowercase()
         val off = Regex("(बंद|off)").containsMatchIn(t)
         return when (item.domain) {
-            "alarm" -> "अलार्म लग गया"
+            "alarm" -> if (AlarmOff.parse(item.text) != null) "अलार्म बंद हो गया" else "अलार्म लग गया"
             "timer" -> "टाइमर लग गया"
             "reminder" -> "रिमाइंडर लग गया"
             "whatsapp" -> if (item.kind == Kind.WHATSAPP_SEND) "मैसेज भेज दिया" else "व्हाट्सऐप खुल गया"
