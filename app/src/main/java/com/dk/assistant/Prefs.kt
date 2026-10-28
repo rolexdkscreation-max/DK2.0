@@ -135,6 +135,9 @@ object Prefs {
 
     /** Gemini Live और Gemini आवाज़ (बोलना) की key - सिर्फ़ DK लाइव की अपनी Gemini key */
     fun ttsGeminiKey(c: Context): String = scopeKey(c, ApiScopes.LIVE, "gemini")
+    /** DK लाइव की Gemini keys: मुख्य + बैकअप 2 + बैकअप 3 (एक बंद/limit खत्म = चुपचाप अगली). खाली/दोहराई नहीं */
+    fun liveGeminiKeys(c: Context): List<String> = LiveKeys.order(listOf(
+        ttsGeminiKey(c), scopeKey(c, ApiScopes.LIVE, "gemini2"), scopeKey(c, ApiScopes.LIVE, "gemini3")))
 
     /**
      * v3.41: "आप:" लिखने वाले (gemini-3.5-transcribe-live) की अपनी अलग key - बोलने वाले Live की free limit

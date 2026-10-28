@@ -721,10 +721,12 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
     }
 
     /** Quota khatam wala model: aaj dobara mat maango (pehli baar 30 min, dobara = Pacific aadhi raat tak) */
+    /** v3.94: अभी कौन सी key चल रही है (0 = मुख्य) - मॉडल की limit हर key की अलग */
+    @Volatile private var keyIdx = 0
     private fun blockModel(m: String, why: String) {
-        val n = Cooldown.strike("live:$m")
+        val n = Cooldown.strike(LiveKeys.cooldownName(keyIdx, m))
         val ms = if (n <= 1) 30 * 60_000L else Cooldown.msToQuotaReset()
-        Cooldown.block("live:$m", ms)
+        Cooldown.block(LiveKeys.cooldownName(keyIdx, m), ms)
         log("$m की limit खत्म ($why) - ${ms / 60_000} मिनट तक यह मॉडल नहीं माँगूँगा")
     }
     private fun isQuota(code: Int, r: String) = r.contains("quota") || r.contains("exhausted") || r.contains("rate limit") || code == 429
@@ -760,11 +762,30 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
         stopped = false; goAway = false; idleExit = false; lastAct = System.currentTimeMillis(); callAudioOn = false; lastUserLine = ""; lastDkLine = ""
         sent = 0; sentBytes = 0; dropped = 0; gaps = 0; readErr = 0; recvAudio = 0; reconnects = 0
         if (!Setup.hasMic(svc)) throw Fatal("माइक की परमिशन नहीं है")
-        val key = key(svc).ifBlank { throw Fatal("Gemini की key नहीं है") }
-        var models = LiveModelPick.order(LiveModelPick.get(svc), discoverModels(key))   // v3.80: चुना हुआ Live मॉडल पहले
+        // v3.94: मुख्य key + बैकअप keys - एक बंद/गलत/limit खत्म = चुपचाप अगली (user को पता न चले)
+        val keys = Prefs.liveGeminiKeys(svc).ifEmpty { throw Fatal("Gemini की key नहीं है") }
+        var ki = 0; keyIdx = 0; var mi = 0
+        var key = keys[0]
+        var models: List<String> = emptyList()
+        while (true) {
+            try { models = LiveModelPick.order(LiveModelPick.get(svc), discoverModels(key)); break }   // v3.80: चुना हुआ Live मॉडल पहले
+            catch (e: Fatal) {
+                val nk = LiveKeys.next(ki, keys.size); if (nk < 0) throw e
+                ki = nk; keyIdx = ki; key = keys[ki]; log("key ${ki} नहीं चली (${e.message}) - बैकअप key ${ki + 1} से")
+            }
+        }
+        /** अगली बैकअप key पर चुपचाप - true = बदल गई (मॉडल फिर से पहले से) */
+        fun switchKey(why: String): Boolean {
+            val nk = LiveKeys.next(ki, keys.size); if (nk < 0) return false
+            ki = nk; keyIdx = ki; key = keys[ki]
+            models = try { LiveModelPick.order(LiveModelPick.get(svc), discoverModels(key)) } catch (_: Exception) { FALLBACK_MODELS }
+            mi = 0; handle = null
+            log("$why - बैकअप key ${ki + 1} से जुड़ रहा हूँ (models: ${models.joinToString()})")
+            return true
+        }
         log("models: ${models.joinToString()}")
         if (stopped) return@withContext "जुड़ने से पहले बंद"
-        var mi = 0; var fails = 0
+        mi = 0; var fails = 0
         var quickDrops = 0                               // judne ke turant baad baar-baar tootna
         // v3.39: Bluetooth headset जुड़ा = कॉल वाला तरीका (माइक+आवाज़ headset पर), नहीं तो speaker (पहले जैसा)
         drop1007.reset(); endGate.reset(); quietSince = 0L; routeChanged = false
@@ -837,10 +858,12 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
                         when {
                             stopped -> break
                             r.contains("api key") || r.contains("api_key") || code == 401 || code == 403 ->
-                                throw Fatal("Gemini key गलत है या Live की इजाज़त नहीं")
+                                if (switchKey("key गलत/बंद (code=$code)")) continue else throw Fatal("Gemini key गलत है या Live की इजाज़त नहीं")
                             isQuota(code, r) || r.contains("rate") -> {
                                 blockModel(model, "setup")
-                                if (mi + 1 < models.size) { mi++; handle = null; continue } else throw Fatal("Gemini Live की फ्री लिमिट अभी खत्म है")
+                                if (mi + 1 < models.size) { mi++; handle = null; continue }
+                                else if (switchKey("इस key के सारे Live मॉडल की limit खत्म")) continue
+                                else throw Fatal("Gemini Live की फ्री लिमिट अभी खत्म है")
                             }
                             // v3.68: यह मॉडल TEXT जवाब नहीं देता (native-audio मॉडल सिर्फ़ AUDIO) -> AUDIO + लिखावट से बँटवारा, याद रखो
                             connText && (r.contains("modalit") || r.contains("text") || r.contains("not supported") ||
@@ -873,7 +896,7 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
                     val upAt = System.currentTimeMillis()
                     log("जुड़ गया [$model] ${System.currentTimeMillis() - t0} ms" + if (handle != null) " (पुरानी बातचीत जारी)" else "")
                     Prefs.edit(svc) { putString("live_model", model) }
-                    Cooldown.clear("live:$model")
+                    Cooldown.clear(LiveKeys.cooldownName(keyIdx, model))
                     if (!turnActive && !isPlaying()) DKState.set(Mode.LISTENING)
                     // ab chalne do jab tak band/toote/goAway/call
                     while (!stopped && isActive) {
@@ -979,11 +1002,16 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
                     }
                     log("connection टूटा (code=$code, ${reason.ifBlank { "-" }}, ${(System.currentTimeMillis() - upAt) / 1000}s चला) - दोबारा जुड़ रहा हूँ #$reconnects" +
                         if (handle != null) " (बातचीत वहीं से)" else " (नई बातचीत)")
-                    if (reason.lowercase().contains("api key")) throw Fatal("Gemini key बंद हो गई")
+                    if (reason.lowercase().contains("api key")) {
+                        if (turnActive) finishTurn()
+                        if (switchKey("key बंद हो गई")) continue else throw Fatal("Gemini key बंद हो गई")
+                    }
                     if (isQuota(code, reason.lowercase())) {
                         blockModel(model, "बातचीत के बीच")
                         if (turnActive) finishTurn()
-                        if (mi + 1 < models.size) { mi++; handle = null; continue } else throw Fatal("Gemini Live की फ्री लिमिट खत्म")
+                        if (mi + 1 < models.size) { mi++; handle = null; continue }
+                        else if (switchKey("बातचीत के बीच इस key की limit खत्म")) continue
+                        else throw Fatal("Gemini Live की फ्री लिमिट खत्म")
                     }
                     if (turnActive) finishTurn()
                     // 20 sec se pehle toota = network/server dikkat -> har baar zyada ruko (battery bachao)
@@ -1164,7 +1192,7 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
         val lat = Prefs.liveLatency(svc)
         val all = LiveModelRank.order(found, FALLBACK_MODELS, lat)
         // limit khatam wale model (aaj) chhodo - har baar 2 bekaar connection = ~1.5s deri + mic ke tukde gire
-        val (skip, ok) = all.partition { Cooldown.blocked("live:$it") }
+        val (skip, ok) = all.partition { Cooldown.blocked(LiveKeys.cooldownName(keyIdx, it)) }
         if (skip.isNotEmpty()) log("limit खत्म, छोड़े: ${skip.joinToString()}")
         log("सबसे तेज़ क्रम: " + ok.take(3).joinToString { m -> m + (lat[m]?.let { " ${it}ms" } ?: "") })
         return ok.ifEmpty { all }
