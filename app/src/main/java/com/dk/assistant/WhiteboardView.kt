@@ -16,7 +16,13 @@ import android.view.GestureDetector
 import android.view.MotionEvent
 import android.view.ScaleGestureDetector
 import android.view.View
+import android.os.Handler
+import android.os.Looper
 import androidx.core.view.GestureDetectorCompat
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import java.io.ByteArrayOutputStream
 import java.util.Stack
 
 class WhiteboardView @JvmOverloads constructor(
@@ -44,6 +50,10 @@ class WhiteboardView @JvmOverloads constructor(
 
     private val undoStack = Stack<Action>()
     private val redoStack = Stack<Action>()
+
+    var onDrawingChanged: ((Bitmap) -> Unit)? = null
+    private val snapshotHandler = Handler(Looper.getMainLooper())
+    private var lastSnapshotHash = 0
 
     private var currentPath: Path? = null
     private var currentPaint: Paint? = null
@@ -111,6 +121,7 @@ class WhiteboardView @JvmOverloads constructor(
             val action = undoStack.pop()
             redoStack.push(action)
             invalidate()
+            scheduleSnapshot()
         }
     }
 
@@ -119,6 +130,7 @@ class WhiteboardView @JvmOverloads constructor(
             val action = redoStack.pop()
             undoStack.push(action)
             invalidate()
+            scheduleSnapshot()
         }
     }
 
@@ -126,6 +138,7 @@ class WhiteboardView @JvmOverloads constructor(
         undoStack.clear()
         redoStack.clear()
         invalidate()
+        scheduleSnapshot()
     }
 
     fun addBoardText(text: String, x: Float = 60f, y: Float = 120f + (undoStack.size * 55f) % 800f) {
@@ -134,6 +147,7 @@ class WhiteboardView @JvmOverloads constructor(
         undoStack.push(action)
         redoStack.clear()
         invalidate()
+        scheduleSnapshot()
     }
 
     // ---------------- v3.87: DK का पाठ (अपने-आप लिखा जाने वाला हिस्सा) ----------------
@@ -144,6 +158,8 @@ class WhiteboardView @JvmOverloads constructor(
     private var lessonChars = 0          // कुल अक्षर
     private var shownChars = 0           // अब तक लिखे गए
     private var lessonHeight = 0f
+    private var lastQuestionY = 0f
+    private var questionCount = 0
     private var userPanned = false
     private val qPaint = TextPaint().apply { isAntiAlias = true; color = Color.parseColor("#1A237E"); textSize = 46f; typeface = Typeface.DEFAULT_BOLD }
     private val hPaint = TextPaint().apply { isAntiAlias = true; color = Color.parseColor("#0D47A1"); textSize = 44f; typeface = Typeface.DEFAULT_BOLD }
@@ -167,6 +183,20 @@ class WhiteboardView @JvmOverloads constructor(
     /** पूरा पाठ (सवाल + DK का जवाब) - पहले लिखा हुआ वैसा ही रहता है, नया हिस्सा धीरे-धीरे आता है */
     fun setLesson(lines: List<TeacherBoard.Line>) {
         val next = lines.map { LessonLine(it.text, it.kind) }
+
+        // नया सवाल आने पर ऑटो-स्क्रॉल रीसेट करें
+        val newQCount = next.count { it.kind == TeacherBoard.Kind.QUESTION }
+        if (newQCount > questionCount) {
+            questionCount = newQCount
+            userPanned = false
+            // नए सवाल को ऊपर लाने के लिए मैट्रिक्स रीसेट (अगर बहुत नीचे चले गए हों)
+            if (lessonHeight > 0) {
+                transformMatrix.reset()
+                transformMatrix.postTranslate(0f, -lessonHeight + 40f)
+                scaleFactor = 1.0f
+            }
+        }
+
         // पहले जितना लिखा जा चुका, उतना साझा हिस्सा दोबारा नहीं लिखते
         val oldText = lesson.joinToString("\n") { it.text }
         val newText = next.joinToString("\n") { it.text }
@@ -179,7 +209,7 @@ class WhiteboardView @JvmOverloads constructor(
         invalidate()
     }
 
-    fun clearLesson() { lesson = emptyList(); lessonChars = 0; shownChars = 0; lessonHeight = 0f; userPanned = false; invalidate() }
+    fun clearLesson() { lesson = emptyList(); lessonChars = 0; shownChars = 0; lessonHeight = 0f; lastQuestionY = 0f; questionCount = 0; userPanned = false; invalidate() }
 
     private fun paintFor(k: TeacherBoard.Kind) = when (k) {
         TeacherBoard.Kind.QUESTION -> qPaint
@@ -201,7 +231,10 @@ class WhiteboardView @JvmOverloads constructor(
             val prefix = if (line.kind == TeacherBoard.Kind.POINT) "• " else ""
             val visible = line.text.take(budget)
             budget -= line.text.length
-            if (line.kind == TeacherBoard.Kind.QUESTION && y > 60f) { y += 18f; canvas.drawLine(left, y, left + width, y, rulePaint); y += 22f }
+            if (line.kind == TeacherBoard.Kind.QUESTION) {
+                if (y > 60f) { y += 18f; canvas.drawLine(left, y, left + width, y, rulePaint); y += 22f }
+                lastQuestionY = y
+            }
             val p = paintFor(line.kind)
             val sl = StaticLayout.Builder.obtain(prefix + visible, 0, prefix.length + visible.length, p, width)
                 .setAlignment(Layout.Alignment.ALIGN_NORMAL).setLineSpacing(6f, 1f).build()
@@ -257,6 +290,7 @@ class WhiteboardView @JvmOverloads constructor(
                     MotionEvent.ACTION_UP -> {
                         currentPath = null
                         currentPaint = null
+                        scheduleSnapshot()
                     }
                 }
             }
@@ -279,15 +313,16 @@ class WhiteboardView @JvmOverloads constructor(
         canvas.save()
         canvas.concat(transformMatrix)
 
-        // v3.87: DK का पाठ सबसे नीचे की परत; नई लाइन स्क्रीन से नीचे जाए तो अपने-आप ऊपर खिसको
+        // v3.87 / नियम 1: ऑटो-स्क्रॉल और नया सवाल
         val h = drawLesson(canvas, width, all = false)
         if (h > 0f && h != lessonHeight) {
             val grew = h > lessonHeight
             lessonHeight = h
             if (grew && !userPanned && height > 0) {
-                val v = FloatArray(9); transformMatrix.getValues(v)
-                val bottom = h * v[Matrix.MSCALE_Y] + v[Matrix.MTRANS_Y]
-                if (bottom > height - 40) { transformMatrix.postTranslate(0f, (height - 40) - bottom); post { invalidate() } }
+                transformMatrix.reset()
+                transformMatrix.postTranslate(0f, -lastQuestionY + 40f)
+                scaleFactor = 1.0f
+                post { invalidate() }
             }
         }
 
@@ -316,9 +351,23 @@ class WhiteboardView @JvmOverloads constructor(
         canvas.restore()
     }
 
+    private fun scheduleSnapshot() {
+        snapshotHandler.removeCallbacksAndMessages(null)
+        snapshotHandler.postDelayed({
+            val hash = undoStack.hashCode() + lesson.hashCode()
+            if (hash != lastSnapshotHash) {
+                lastSnapshotHash = hash
+                CoroutineScope(Dispatchers.IO).launch {
+                    val bitmap = getBitmap()
+                    onDrawingChanged?.invoke(bitmap)
+                }
+            }
+        }, 1000)
+    }
+
     fun getBitmap(): Bitmap {
-        val w = if (width > 0) width else 1080
-        val h = if (height > 0) height else 1920
+        val w = if (width > 0) width else 1
+        val h = if (height > 0) height else 1
         val bitmap = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
         val canvas = Canvas(bitmap)
         canvas.drawColor(Color.WHITE)

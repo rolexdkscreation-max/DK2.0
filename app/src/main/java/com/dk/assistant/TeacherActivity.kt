@@ -172,8 +172,19 @@ class TeacherActivity : AppCompatActivity() {
         rootLayout.addView(topBar, topBarParams)
 
         // Whiteboard View
+        val handler = android.os.Handler(android.os.Looper.getMainLooper())
+        var debounceRunnable: Runnable? = null
+
         whiteboardView = WhiteboardView(this).apply {
             id = View.generateViewId()
+            onDrawingChanged = { bitmap ->
+                debounceRunnable?.let { handler.removeCallbacks(it) }
+                debounceRunnable = Runnable {
+                    val b64 = jpegBase64(bitmap)
+                    askTeacher("कृपया इस लिखे हुए सवाल या चित्र को समझकर हल करें।", useBoardImage = true, customImageB64 = b64)
+                }
+                handler.postDelayed(debounceRunnable!!, 1000)
+            }
         }
 
         // Bottom Controls Container
@@ -420,15 +431,13 @@ class TeacherActivity : AppCompatActivity() {
             bitmap.compress(Bitmap.CompressFormat.PNG, 100, stream)
             stream.close()
 
-            val contentUri: Uri = FileProvider.getUriForFile(
-                this,
-                "$packageName.files",
-                file
-            )
-
             val shareIntent = Intent(Intent.ACTION_SEND).apply {
                 type = "image/png"
-                putExtra(Intent.EXTRA_STREAM, contentUri)
+                putExtra(Intent.EXTRA_STREAM, FileProvider.getUriForFile(
+                    this@TeacherActivity,
+                    "$packageName.files",
+                    file
+                ))
                 addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
             }
             startActivity(Intent.createChooser(shareIntent, "व्हाइटबोर्ड शेयर करें"))
