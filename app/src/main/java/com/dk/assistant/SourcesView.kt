@@ -18,11 +18,22 @@ object SourcesView {
         if (sources.isEmpty()) return null
         val dp = c.resources.displayMetrics.density
         val col = LinearLayout(c).apply { orientation = LinearLayout.VERTICAL }
-        col.addView(TextView(c).apply {
+        val head = LinearLayout(c).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
+        head.addView(TextView(c).apply {
             text = "वेब सर्च से • स्रोत"
             textSize = 11f; setTextColor(0x99FFFFFF.toInt())
             setPadding((4 * dp).toInt(), 0, 0, (3 * dp).toInt())
         })
+        // v3.93: खोज किस सेवा से हुई - छोटे अक्षरों में (Tavily / Exa / Gemini); पता न हो (बिना-key बचाव खोज) = कुछ नहीं
+        WebSearch.viaOf(sources)?.let { via ->
+            head.addView(TextView(c).apply {
+                text = "  • $via"
+                textSize = 10f; setTextColor(0x80FFFFFF.toInt())
+                setPadding(0, 0, 0, (3 * dp).toInt())
+                contentDescription = "खोज $via से हुई"
+            })
+        }
+        col.addView(head)
         val row = LinearLayout(c).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
         sources.forEachIndexed { i, (title, url) ->
             val host = Grounding.host(url)

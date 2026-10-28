@@ -146,6 +146,14 @@ object Prefs {
     fun searchOwnKey(c: Context): String = if (oneKeyOn(c)) "" else searchOwnKeyRaw(c)
     fun captionOwnKey(c: Context): String = if (oneKeyOn(c)) "" else captionOwnKeyRaw(c)
     fun searchOwnKeyRaw(c: Context): String = sp(c).getString(SEARCH_KEY, "")?.trim() ?: ""
+    /**
+     * v3.93: इंटरनेट खोज का क्रम Tavily (मुख्य) -> Exa (दूसरा) -> Gemini [SEARCH_KEY] (आख़िरी). खाली = वह सेवा छोड़ो.
+     * DK कंप्यूटर वाली "key_tavily" से अलग (वह सिर्फ़ DK कंप्यूटर की). Gemini नहीं हैं, इसलिए "एक key से सब" में भी चलती हैं.
+     */
+    const val TAVILY_SEARCH_KEY = "search_key_tavily"
+    const val EXA_SEARCH_KEY = "search_key_exa"
+    fun tavilySearchKey(c: Context): String = sp(c).getString(TAVILY_SEARCH_KEY, "")?.trim() ?: ""
+    fun exaSearchKey(c: Context): String = sp(c).getString(EXA_SEARCH_KEY, "")?.trim() ?: ""
     fun captionOwnKeyRaw(c: Context): String = sp(c).getString(CAPTION_KEY, "")?.trim() ?: ""
     fun captionKey(c: Context): String = captionOwnKey(c).ifBlank { ttsGeminiKey(c) }
 
