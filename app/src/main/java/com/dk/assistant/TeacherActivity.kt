@@ -172,8 +172,19 @@ class TeacherActivity : AppCompatActivity() {
         rootLayout.addView(topBar, topBarParams)
 
         // Whiteboard View
+        val handler = android.os.Handler(android.os.Looper.getMainLooper())
+        var debounceRunnable: Runnable? = null
+
         whiteboardView = WhiteboardView(this).apply {
             id = View.generateViewId()
+            onDrawingChanged = { b64 ->
+                debounceRunnable?.let { handler.removeCallbacks(it) }
+                debounceRunnable = Runnable {
+                    GeminiLive.visionNote("बोर्ड पर नया लिखा गया / बदला गया", evidence = true)
+                    askTeacher("कृपया इस लिखे हुए सवाल या चित्र को समझकर हल करें।", useBoardImage = true, customImageB64 = b64)
+                }
+                handler.postDelayed(debounceRunnable!!, 1000)
+            }
         }
 
         // Bottom Controls Container
@@ -420,7 +431,7 @@ class TeacherActivity : AppCompatActivity() {
             bitmap.compress(Bitmap.CompressFormat.PNG, 100, stream)
             stream.close()
 
-            val contentUri: Uri = FileProvider.getUriForFile(
+.           val contentUri: Uri = FileProvider.getUriForFile(
                 this,
                 "$packageName.files",
                 file
