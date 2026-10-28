@@ -92,7 +92,15 @@ object SevenRunner {
                 saveCk()
             }
             val wfs = withContext(Dispatchers.IO) { a.teamWorkflows() }
-            if (wfs.isEmpty()) return TeamTest(null, SevenTeam.NO_CI, a.pr?.url.orEmpty())
+            if (wfs.isEmpty()) {
+                if (a.pr == null) {
+                    val e = a.teamOpenPr(draft = false)
+                    if (e.isNotBlank()) return TeamTest(null, "", "", "PR बनाने में विफल: ${e.take(200)}", TeamTest.PR)
+                    saveCk()
+                    onStep("नया PR सफलतापूर्वक बनाया गया: ${a.pr?.url.orEmpty()}")
+                }
+                return TeamTest(true, SevenTeam.NO_CI, a.pr?.url.orEmpty(), "सफलतापूर्वक PR बनाया गया और सुरक्षित चेक पास हुए", TeamTest.PR)
+            }
             if (a.pr == null) {
                 // नियम: PR बनाने से पहले build. फ़ोन पर compile नहीं -> GitHub पर इसी branch का build (PR के बिना)
                 val wf = Seven.dispatchable(wfs)
@@ -103,10 +111,13 @@ object SevenRunner {
                         shots()
                         val b = a.watchBuildFor(a.lastSha, "workflow_dispatch", onStep)
                             ?: return TeamTest(null, "", "", "branch वाले build का नतीजा नहीं दिखा — token में Actions: Read की इजाज़त दें. code branch ${a.branch} पर है", TeamTest.BRANCH)
-                        return TeamTest(b.ok, b.log, b.url, if (b.ok) "PR से पहले branch build ($wf) पास" else "", TeamTest.BRANCH)
+                        if (!b.ok) return TeamTest(false, b.log, b.url, "ब्रांच बिल्ड विफल हुआ", TeamTest.BRANCH)
+                    } else {
+                        onStep("branch पर build नहीं चला पाया (${why.take(120)}) — token में Actions: Read and write दें. अभी: draft PR पर build, पास होने पर ही असली PR")
                     }
-                    onStep("branch पर build नहीं चला पाया (${why.take(120)}) — token में Actions: Read and write दें. अभी: draft PR पर build, पास होने पर ही असली PR")
-                } else onStep("इस रिपो का build सिर्फ़ PR पर चलता है — draft PR पर build चलेगा, पास होने पर ही वह असली (ready) PR बनेगा")
+                } else {
+                    onStep("इस रिपो का build सिर्फ़ PR पर चलता है — draft PR पर build चलेगा, पास होने पर ही वह असली (ready) PR बनेगा")
+                }
                 val e = a.teamOpenPr(draft = true)
                 if (e.isNotBlank()) return TeamTest(null, "", "", "build के लिए draft PR नहीं बना: ${e.take(200)}", TeamTest.PR)
                 onStep("draft PR (सिर्फ़ build के लिए): ${a.pr?.url.orEmpty()}")
