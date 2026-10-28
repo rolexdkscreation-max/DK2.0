@@ -215,6 +215,11 @@ object Prefs {
         return cipher.doFinal(bytes)
     }
 
+    /** v3.91: पहचान किस मॉडल से बनी ("sface1" = असली SFace). पुराने तरीके वाली पहचान नहीं मानी जाती */
+    fun ownerFaceModel(c: Context): String = sp(c).getString("owner_face_model", "") ?: ""
+    /** DK लाइव के कैमरे पर चेहरा पहचान का निशान (पहले से चालू था - वैसा ही) */
+    fun faceHudOn(c: Context) = sp(c).getBoolean("face_hud_on", true)
+    fun faceStrict(c: Context) = sp(c).getBoolean("face_strict", false)
     fun hasOwnerFace(c: Context): Boolean = !sp(c).getString("owner_face_print", null).isNullOrBlank()
 
     fun ownerFacePrint(c: Context): FloatArray? {

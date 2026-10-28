@@ -336,7 +336,13 @@ class VoiceActivity : AppCompatActivity() {
         feed2.onFrameAnalyzed = { bitmap ->
             faceEngine.processFrame(bitmap) { analysis ->
                 runOnUiThread {
-                    faceOverlay.updateResult(analysis.result, analysis.faceBounds)
+                    // v3.91: फ़्रेम का डिब्बा -> स्क्रीन (भरकर कटा preview, आगे वाला कैमरा उल्टा)
+                    val r = analysis.faceBounds?.let { fb ->
+                        if (analysis.frameW <= 0 || faceOverlay.width <= 0) fb
+                        else FaceMath.toView(fb.left, fb.top, fb.width(), fb.height(), analysis.frameW, analysis.frameH,
+                            faceOverlay.width, faceOverlay.height, feed2.front).let { v -> android.graphics.RectF(v[0], v[1], v[2], v[3]) }
+                    }
+                    faceOverlay.updateResult(analysis.result, r)
                 }
             }
         }

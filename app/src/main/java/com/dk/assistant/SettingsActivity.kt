@@ -89,6 +89,7 @@ class SettingsActivity : AppCompatActivity() {
             "brain_coder" -> { title.text = "AI दिमाग • कोडिंग एजेंट"; secBrainScope(ApiScopes.CODER) }
             "brain_pc" -> { title.text = "AI दिमाग • DK कंप्यूटर"; secBrainScope(ApiScopes.PC) }
             "voice" -> { title.text = "आवाज़"; secVoice() }
+            "face" -> { title.text = "चेहरा पहचान"; bar.visibility = View.GONE; secFace() }
             "orb" -> { title.text = "ओर्ब और चेहरा"; bar.visibility = View.GONE; secOrb() }
             "ui" -> { title.text = "दिखावट"; bar.visibility = View.GONE; secUi() }
             "access" -> { title.text = "Accessibility"; secAccess() }
@@ -112,6 +113,7 @@ class SettingsActivity : AppCompatActivity() {
             Triple("ui", "दिखावट (UI कस्टमाइज़ेशन)", "थीम • मुख्य रंग • काँच की पारदर्शिता • चमक • एनिमेशन"),
             Triple("brain", "AI दिमाग", "DK लाइव • DK चैट • कोडिंग एजेंट • DK कंप्यूटर — हर एक की अपनी API key"),
             Triple("voice", "आवाज़", "बोलने वाला इंजन (Gemini TTS • Edge • Live) • सुनना • सिर्फ़ मेरी आवाज़"),
+            Triple("face", "चेहरा पहचान", (if (FaceAI.enrolled(this)) "✓ चेहरा सीखा" else "✗ अभी नहीं सीखा") + " • DK का अपना फ़ेस मॉडल • फ़ोन के अंदर, इंटरनेट पर कुछ नहीं जाता"),
             Triple("orb", "ओर्ब और चेहरा", "पृथ्वी, गैलेक्सी, एटम, छल्ला, पुरुष/महिला HD चेहरा"),
             Triple("access", "Accessibility", (if (Setup.accessibilityOn(this)) "✓ चालू" else "✗ बंद") + " • फ़ोन कंट्रोल • हमेशा सुनना • कॉल • बैटरी"),
             Triple("perms", "परमिशन", "माइक • स्क्रीन देखना • नोटिफ़िकेशन • कॉल • ऐप इंस्टॉल"),
@@ -214,6 +216,7 @@ class SettingsActivity : AppCompatActivity() {
         "lang" -> R.drawable.ic_s_lang
         "brain" -> R.drawable.ic_s_brain
         "voice" -> R.drawable.ic_s_voice
+        "face" -> R.drawable.ic_face
         "orb" -> R.drawable.ic_s_orb
         "ui" -> R.drawable.ic_s_ui
         "access" -> R.drawable.ic_s_access
@@ -873,6 +876,93 @@ class SettingsActivity : AppCompatActivity() {
         val was = DKState.micMuted
         if (!was) { DKState.setMicMuted(true); kotlinx.coroutines.delay(700) }
         return try { block() } finally { if (!was) DKState.setMicMuted(false) }
+    }
+
+    // ================================================================ v3.91: चेहरा पहचान (DK का अपना फ़ेस मॉडल)
+    private fun secFace() {
+        card("मेरा चेहरा", "DK का अपना असली फ़ेस मॉडल (SFace) — सब फ़ोन के अंदर, कैमरे की तस्वीर कहीं नहीं जाती") { box ->
+            val status = TextView(this).apply { textSize = 14f; setTextColor(0xFFFFFFFF.toInt()); setPadding((4 * dp).toInt(), (4 * dp).toInt(), 0, (4 * dp).toInt()) }
+            box.addView(status)
+            val swHud = switch(box, "DK लाइव के कैमरे पर चेहरा पहचान दिखाओ", Prefs.faceHudOn(this))
+            val swStrict = switch(box, "सख़्त पहचान (दूसरों के पास होने की संभावना और कम, पर कभी आपको भी दोबारा देखना पड़ सकता है)", Prefs.faceStrict(this))
+            fun refresh() { status.text = UiLang.s(FaceAI.status(this)) }
+            swHud.setOnCheckedChangeListener { _, on -> Prefs.edit(this) { putBoolean("face_hud_on", on) } }
+            swStrict.setOnCheckedChangeListener { _, on -> Prefs.edit(this) { putBoolean("face_strict", on) } }
+            refresh()
+            row(box, button("मेरा चेहरा सिखाओ") { faceDialog(enroll = true) { refresh() } }, button("जाँचो") {
+                if (!FaceAI.enrolled(this)) { toast("पहले \"मेरा चेहरा सिखाओ\" दबाएँ"); return@button }
+                faceDialog(enroll = false) { refresh() }
+            })
+            row(box, button("चेहरा मिटाओ") {
+                androidx.appcompat.app.AlertDialog.Builder(this).setTitle(UiLang.s("चेहरे की पहचान मिटाएँ?"))
+                    .setMessage(UiLang.s("दोबारा चालू करने के लिए चेहरा फिर से सिखाना होगा।"))
+                    .setPositiveButton(UiLang.s("मिटाओ")) { _, _ -> FaceAI.forget(this); refresh(); toast("चेहरे की पहचान मिटा दी") }
+                    .setNegativeButton(UiLang.s("रहने दो"), null).show()
+            })
+            hint(box, "कैसे काम करता है: आगे वाले कैमरे से ~8 फ़्रेम लेकर आपके चेहरे की 128 अंकों की पहचान बनती है (YuNet चेहरा ढूँढता है, SFace पहचानता है — LFW जाँच में 99.3% सही)। पहचान सिर्फ़ इसी फ़ोन में, encrypted रहती है; तस्वीरें सेव नहीं होतीं। पहली बार मॉडल (~10 MB) एक बार डाउनलोड होता है।")
+            hint(box, "सीमा: यह फ़ोटो या वीडियो दिखाकर किए धोखे को नहीं पकड़ता, इसलिए फ़ोन के अपने फ़ेस/फ़िंगरप्रिंट लॉक जितना पक्का नहीं। बहुत अंधेरा, चश्मा/मास्क बदलना या बहुत तिरछा चेहरा हो तो आप भी कभी 'नहीं मिला' आ सकते हैं — तब रोशनी में सीधे देखें या चेहरा फिर से सिखाएँ।")
+        }
+    }
+
+    private var faceCam: FaceCam? = null
+
+    /** चेहरा सिखाने (enroll) या जाँचने का कैमरा वाला डायलॉग */
+    private fun faceDialog(enroll: Boolean, done: () -> Unit) {
+        if (!FaceAI.supported) { toast("यह फ़ोन 64-bit ARM नहीं है — चेहरा पहचान यहाँ नहीं चलेगी"); return }
+        if (checkSelfPermission(android.Manifest.permission.CAMERA) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+            requestPermissions(arrayOf(android.Manifest.permission.CAMERA), 14); toast("कैमरा की परमिशन दें, फिर दोबारा दबाएँ"); return
+        }
+        val wrap = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; val p = (16 * dp).toInt(); setPadding(p, p, p, p) }
+        val pv = androidx.camera.view.PreviewView(this).apply { implementationMode = androidx.camera.view.PreviewView.ImplementationMode.COMPATIBLE; scaleType = androidx.camera.view.PreviewView.ScaleType.FILL_CENTER }
+        wrap.addView(pv, LinearLayout.LayoutParams(-1, (300 * dp).toInt()))
+        val tv = TextView(this).apply { textSize = 16f; setTextColor(0xFFFFFFFF.toInt()); setPadding(0, (12 * dp).toInt(), 0, 0) }
+        wrap.addView(tv)
+        val dlg = androidx.appcompat.app.AlertDialog.Builder(this).setTitle(UiLang.s(if (enroll) "मेरा चेहरा सिखाओ" else "चेहरा जाँचो")).setView(wrap)
+            .setNegativeButton(UiLang.s("बंद करें"), null).show()
+        val ui = { t: String -> runOnUiThread { tv.text = UiLang.s(t) } }
+        val prints = ArrayList<FloatArray>()
+        var saved = false
+        fun startCam() {
+            ui(if (enroll) "फ़ोन आँखों के सामने रखें, रोशनी में सीधे कैमरे में देखें…" else "कैमरे में देखें…")
+            val cam = FaceCam(this, pv) { b ->
+                if (saved) return@FaceCam
+                val d = FaceAI.detect(this, b, minScore = 0.6f)
+                if (enroll) {
+                    FaceMath.enrollProblem(d, b.width)?.let { ui(it + "  (${prints.size}/${FaceMath.ENROLL_FRAMES})"); return@FaceCam }
+                    val e = FaceAI.embed(this, b, d!!) ?: run { ui(FaceAI.status(this)); return@FaceCam }
+                    val mean = FaceMatch.aggregateEmbeddings(prints)
+                    if (mean != null && FaceMatch.cosineSimilarity(mean, e) < FaceMath.ENROLL_SAME) {
+                        prints.clear(); ui("बीच में चेहरा बदल गया — फिर से शुरू, अकेले कैमरे में देखें"); return@FaceCam
+                    }
+                    prints.add(e)
+                    if (prints.size < FaceMath.ENROLL_FRAMES) { ui("सीख रहा हूँ… ${prints.size}/${FaceMath.ENROLL_FRAMES} — सिर थोड़ा-सा दाएँ-बाएँ घुमाएँ"); return@FaceCam }
+                    saved = true
+                    FaceAI.save(this, FaceMatch.aggregateEmbeddings(prints)!!)
+                    ui("हो गया — DK ने आपका चेहरा सीख लिया। अब \"जाँचो\" दबाकर देख सकते हैं।")
+                    runOnUiThread { faceCam?.stop(); done() }
+                } else {
+                    if (d == null) { ui("चेहरा नहीं दिखा — सामने आएँ"); return@FaceCam }
+                    val e = FaceAI.embed(this, b, d) ?: run { ui(FaceAI.status(this)); return@FaceCam }
+                    val s = FaceAI.score(this, e) ?: return@FaceCam
+                    val ok = FaceMath.decide(s, Prefs.faceStrict(this)) == MatchResult.ACCESS_GRANTED
+                    ui((if (ok) "✓ आप हैं — मालिक पहचाने गए" else "✗ यह चेहरा मालिक से नहीं मिला") + "\nमिलान: ${(s * 100).toInt()}% (पास: ${((if (Prefs.faceStrict(this)) FaceMath.STRICT else FaceMath.MATCH) * 100).toInt()}% से ऊपर)")
+                }
+            }
+            faceCam?.stop(); faceCam = cam
+            cam.start { why -> ui("कैमरा नहीं खुला: $why") }
+        }
+        val job = lifecycleScope.launch {
+            if (!FaceAI.hasModels(this@SettingsActivity)) {
+                tv.text = UiLang.s("चेहरा पहचान मॉडल डाउनलोड हो रहा है (~10 MB, एक बार)…")
+                val err = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                    FaceAI.download(this@SettingsActivity) { pct -> runOnUiThread { tv.text = UiLang.s("चेहरा पहचान मॉडल डाउनलोड हो रहा है (~10 MB, एक बार)…") + " $pct%" } }
+                }
+                if (err != null) { tv.text = UiLang.s(err); return@launch }
+            }
+            if (!FaceAI.ready(this@SettingsActivity)) { tv.text = UiLang.s(FaceAI.status(this@SettingsActivity)); return@launch }
+            startCam()
+        }
+        dlg.setOnDismissListener { job.cancel(); faceCam?.stop(); faceCam = null; done() }
     }
 
     private fun ownerDialog(title: String): Pair<androidx.appcompat.app.AlertDialog, TextView> {
@@ -1575,7 +1665,7 @@ class SettingsActivity : AppCompatActivity() {
 
     // ------------------------------------------------------------ save
     private fun save(showToast: Boolean) {
-        if (section == null || section == "orb" || section == "ui") return
+        if (section == null || section == "orb" || section == "ui" || section == "face") return
         val active = if (::rgProvider.isInitialized)
             Providers.all.getOrNull(rgProvider.checkedRadioButtonId - 1000)?.id ?: Prefs.activeProviderRaw(this)
         else Prefs.activeProviderRaw(this)
