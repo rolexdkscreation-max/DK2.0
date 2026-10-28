@@ -80,7 +80,7 @@ class SettingsActivity : AppCompatActivity() {
         val title = findViewById<TextView>(R.id.txtTitle)
         val bar = findViewById<View>(R.id.saveBar)
         when (section) {
-            null -> { title.text = "सेटिंग्स"; bar.visibility = View.GONE; menu() }
+            null -> { title.text = "सेटिंग्स"; bar.visibility = View.GONE; setupSearch(); menu() }
             "profile" -> { title.text = "प्रोफ़ाइल"; secProfile() }
             "lang" -> { title.text = "भाषा / Language"; secLang() }
             "brain" -> { title.text = "AI दिमाग"; bar.visibility = View.GONE; secBrainMenu() }
@@ -119,6 +119,8 @@ class SettingsActivity : AppCompatActivity() {
             Triple("perms", "परमिशन", "माइक • स्क्रीन देखना • नोटिफ़िकेशन • कॉल • ऐप इंस्टॉल"),
             Triple("computer", "DK कंप्यूटर", (if (Prefs.computerOn(this)) "✓ चालू" else "✗ बंद") + " • कोई भी काम: खोज, रिसर्च, फ़ाइल/PDF, हिसाब, फ़ोन, रिमाइंडर"),
             Triple("coder", "कोडिंग एजेंट", (if (Prefs.coderOn(this)) "✓ चालू" else "✗ बंद") + " • GitHub से जुड़ें • कोड लिखें/बदलें/हटाएँ • push • अलग AI key"),
+            Triple("auto", "ऑटोनोमस मोड", (if (com.dk.assistant.auto.AutoPrefs.on(this)) "✓ चालू" else "✗ बंद") + " • DK खुद तय करे और खुद करे • API keys • आपातकालीन STOP"),
+            Triple("templates", "टेम्पलेट कमांड", "बिना AI के तय साँचे • WhatsApp • अलार्म • मैप • कॉल"),
             Triple("connectors", "कनेक्टर", "Gmail • Drive • Calendar • GitHub • Facebook Page • Instagram • MCP — DK लाइव से बोलकर काम"),
             Triple("story", "स्टोरी राइटर एजेंट", "लंबी हिंदी कहानियाँ (10–30 मिनट) • भाग-दर-भाग • कॉपी • फ़ोन में सेव"),
             Triple("update", "अपडेट", "अभी: ${Updater.displayVersion(this)} • नया version चेक करें"),
@@ -129,7 +131,7 @@ class SettingsActivity : AppCompatActivity() {
     }
 
     /** मेनू की एक पंक्ति (icon + नाम + विवरण + ›) - दबाने पर वह section */
-    private fun menuRow(id: String, t: String, sub: String, icon: String = id) {
+    private fun menuRow(id: String, t: String, sub: String, icon: String = id, searchHit: SettingsSearch.E? = null) {
         run {
             val box = LinearLayout(this).apply {
                 orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
@@ -140,6 +142,9 @@ class SettingsActivity : AppCompatActivity() {
                     // Story Writer: seedha apni screen (iski koi settings nahi)
                     if (id == "story") startActivity(android.content.Intent(this@SettingsActivity, StoryWriterActivity::class.java))
                     else if (id == "connectors") startActivity(android.content.Intent(this@SettingsActivity, com.dk.assistant.connect.ConnectorsActivity::class.java))
+                    else if (id == "auto") startActivity(android.content.Intent(this@SettingsActivity, com.dk.assistant.auto.AutoSettingsActivity::class.java))
+                    else if (id == "templates") startActivity(android.content.Intent(this@SettingsActivity, com.dk.assistant.template.TemplateSettingsActivity::class.java))
+                    else if (searchHit != null) openHit(searchHit)
                     else startActivity(android.content.Intent(this@SettingsActivity, SettingsActivity::class.java).putExtra("section", id))
                 }
             }
@@ -225,6 +230,8 @@ class SettingsActivity : AppCompatActivity() {
         "computer" -> R.drawable.ic_s_computer
         "story" -> R.drawable.ic_s_story
         "connectors" -> R.drawable.ic_s_connect
+        "auto" -> R.drawable.ic_s_brain
+        "templates" -> R.drawable.ic_s_voice
         "update" -> R.drawable.ic_s_update
         "about" -> R.drawable.ic_s_profile
         else -> R.drawable.ic_s_debug
@@ -1787,7 +1794,51 @@ class SettingsActivity : AppCompatActivity() {
 
     /** v3.69: हर सेटिंग हिस्सा खुलने-बंद होने वाला कॉलम (साझा: ui/CollapsibleSection) - शुरू में बंद */
     private fun card(title: String, sub: String?, startOpen: Boolean = false, body: (LinearLayout) -> Unit) {
-        com.dk.assistant.ui.CollapsibleSection.add(this, container, title, sub, startOpen = startOpen, body = body)
+        val focus = intent.getStringExtra("focus")
+        val s = com.dk.assistant.ui.CollapsibleSection.add(this, container, title, sub, startOpen = startOpen || focus == title, body = body)
+        // सर्च से आए: वही कॉलम खुला मिले और स्क्रीन उसी तक जाए
+        if (focus == title) s.view.post { findViewById<android.widget.ScrollView>(R.id.scroll)?.smoothScrollTo(0, (s.view.top - (8 * dp).toInt()).coerceAtLeast(0)) }
+    }
+
+    // ------------------------------------------------------------ सेटिंग्स में खोज (मुख्य मेनू के ऊपर)
+    private fun setupSearch() {
+        val box = findViewById<EditText>(R.id.settingsSearch)
+        box.visibility = View.VISIBLE
+        box.addTextChangedListener(object : TextWatcher {
+            override fun beforeTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) {}
+            override fun onTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) {}
+            override fun afterTextChanged(s: Editable?) {
+                val q = s?.toString().orEmpty()
+                container.removeAllViews()
+                if (q.isBlank()) { menu(); space(container, 8); return }
+                val hits = SettingsSearch.search(q)
+                if (hits.isEmpty()) {
+                    container.addView(TextView(this@SettingsActivity).apply {
+                        text = UiLang.s("\"$q\" से कुछ नहीं मिला — कोई दूसरा शब्द लिखें"); textSize = 14f; setTextColor(0x99FFFFFF.toInt())
+                        val pd = (16 * dp).toInt(); setPadding(pd, pd, pd, pd)
+                    })
+                    return
+                }
+                hits.forEach { e ->
+                    val icon = when (e.section) { SettingsSearch.ACT_AUTO -> "auto"; SettingsSearch.ACT_TEMPLATES -> "templates"
+                        SettingsSearch.ACT_CONNECTORS -> "connectors"; SettingsSearch.ACT_STORY -> "story"; else -> e.section.substringBefore('_') }
+                    if (e.card.isBlank()) menuRow(e.section, SettingsSearch.SECTIONS[e.section].orEmpty(), e.words.split(' ').take(5).joinToString(" • "), icon, e)
+                    else menuRow(e.section, e.card, SettingsSearch.place(e) + if (e.sub.isNotBlank()) " • " + e.sub.take(70) else "", icon, e)
+                }
+                space(container, 8)
+            }
+        })
+    }
+
+    private fun openHit(e: SettingsSearch.E) {
+        val i = when (e.section) {
+            SettingsSearch.ACT_AUTO -> android.content.Intent(this, com.dk.assistant.auto.AutoSettingsActivity::class.java)
+            SettingsSearch.ACT_TEMPLATES -> android.content.Intent(this, com.dk.assistant.template.TemplateSettingsActivity::class.java)
+            SettingsSearch.ACT_CONNECTORS -> android.content.Intent(this, com.dk.assistant.connect.ConnectorsActivity::class.java)
+            SettingsSearch.ACT_STORY -> android.content.Intent(this, StoryWriterActivity::class.java)
+            else -> android.content.Intent(this, SettingsActivity::class.java).putExtra("section", e.section).also { if (e.card.isNotBlank()) it.putExtra("focus", e.card) }
+        }
+        startActivity(i)
     }
 
     private fun label(box: LinearLayout, t: String) = box.addView(TextView(this).apply {
