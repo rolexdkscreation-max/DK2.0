@@ -108,9 +108,10 @@ object LivePromise {
             "short and clear (2-4 sentences). Do NOT say you will search again and do not invent anything beyond the result."
 
     fun searchFailNote(question: String, why: SearchGuard.Fail = SearchGuard.Fail.OTHER): String =
-        "SYSTEM NOTE: you promised to search but did not call any tool, and the phone's own search for \"" + question.take(200) +
-            "\" did not give a result. Say EXACTLY this, nothing else: \"" + SearchGuard.userLine(why) + "\" Never mention a tool, an API or a key by name. " +
-            "If the user says yes, call web_search with that question."
+        "SYSTEM NOTE: you promised to search but did not call any tool, and the phone's own internet search for \"" + question.take(200) +
+            "\" did not work. Start with \"" + WebSearch.ALL_FAILED_LINE + "\", then answer from your own knowledge and say it may not be the latest " +
+            "(never invent exact live figures). If the user asks why: \"" + SearchGuard.userLine(why) + "\" Never mention a tool, an API or a key by name. " +
+            "If the user says search again, call web_search with that question.\n"
 
     /** फ़ोन का काम बोला "कर रहा हूँ" पर कुछ नहीं किया */
     fun actionNote(user: String): String =
