@@ -12,9 +12,11 @@ object ThreeState {
     const val THINKING = "Thinking"
     const val SPEAKING = "Speaking"
 
-    fun label(mode: Mode, live: Boolean, muted: Boolean): String? = when {
+    /** v3.90: [work] = सच में खोज/सोच/काम चल रहा है. Live में बिना काम के THINKING (बस जवाब का पल) = "Listening" ही */
+    fun label(mode: Mode, live: Boolean, muted: Boolean, work: Boolean = true): String? = when {
         mode == Mode.SPEAKING -> SPEAKING
-        mode == Mode.THINKING || mode == Mode.WORKING -> THINKING
+        mode == Mode.WORKING -> THINKING
+        mode == Mode.THINKING && (work || !live) -> THINKING
         muted -> null
         mode == Mode.LISTENING -> LISTENING
         live -> LISTENING
@@ -22,5 +24,9 @@ object ThreeState {
     }
 
     /** ORB/चमक के लिए: WORKING = Thinking वाला रूप (तीन ही रूप) */
-    fun look(mode: Mode): Mode = if (mode == Mode.WORKING) Mode.THINKING else mode
+    fun look(mode: Mode, live: Boolean = false, work: Boolean = true): Mode = when {
+        mode == Mode.WORKING -> Mode.THINKING
+        mode == Mode.THINKING && live && !work -> Mode.LISTENING
+        else -> mode
+    }
 }

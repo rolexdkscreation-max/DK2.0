@@ -480,6 +480,24 @@ class SettingsActivity : AppCompatActivity() {
             if (lat.isNotEmpty()) hint(box, "बोलने वाले मॉडल — नापी गई रफ़्तार (सबसे तेज़ अपने-आप पहले):\n" +
                 LiveModelRank.describe(LiveModelRank.order(lat.keys.toList(), emptyList(), lat), lat))
         }
+        card("खोज (Google Search) — अपनी अलग Gemini key", "DK लाइव और चैट की इंटरनेट खोज (Gemini + Google Search) पहले इसी key से — और गहरी: ज़्यादा वेबसाइटें, पूरी जानकारी") { box ->
+            val ed = field(box, "Gemini API Key (सिर्फ़ खोज के लिए)", Prefs.searchOwnKey(this), "AIza… (ज़रूरी नहीं — दूसरे Google account की key बेहतर)", secret = true)
+            keyFields[Prefs.SEARCH_KEY] = ed
+            val res = TextView(this).apply { setTextColor(0xB3FFFFFF.toInt()); textSize = 13f; setPadding((4 * dp).toInt(), (6 * dp).toInt(), 0, 0) }
+            row(box, showButton(ed), button("जाँचें") {
+                val k = ed.text.toString().trim()
+                if (k.isBlank()) { res.text = "खाली है — खोज DK लाइव / चैट वाली key से होगी (तेज़ वाली, कम गहरी)"; return@button }
+                if (ApiScopes.detect(k).let { it != null && it != "gemini" }) { res.text = "यह Gemini की key नहीं लगती (AIza… से शुरू होती है)"; return@button }
+                res.text = "असली Google खोज करके जाँच रहा हूँ…"
+                lifecycleScope.launch {
+                    res.text = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { checkSearchKey(k) }
+                    save(false)
+                }
+            }, button("Key लें") { Setup.openUrl(this, Providers.byId("gemini")!!.keyUrl) })
+            box.addView(res)
+            hint(box, "अभी: " + (if (Prefs.searchOwnKey(this).isNotBlank()) "खोज अपनी अलग key से — गहरी खोज चालू" else "खोज DK लाइव / चैट वाली key से (अलग key नहीं डाली)") +
+                ". यह key न चले (limit/गलत) तो खोज अपने-आप पुरानी key से होगी। एक ही Google account की keys की limit साझा होती है — दूसरे account की key डालें।")
+        }
         card("सुनना (आवाज़ → text) — Groq, चाहें तो", "Groq Whisper सबसे तेज़ सुनता है। खाली छोड़ें = ऊपर वाली Gemini key से सुनेगा") { box ->
             val ed = field(box, "Groq API Key (सिर्फ़ सुनने के लिए)", Prefs.scopeKey(this, ApiScopes.LIVE, "groq"), "gsk_… (ज़रूरी नहीं)", secret = true)
             keyFields[ApiScopes.pref(ApiScopes.LIVE, "key", "groq")] = ed
@@ -503,6 +521,20 @@ class SettingsActivity : AppCompatActivity() {
             } + " • बिना-Live आवाज़ मोड में जवाब का text DK चैट की API से बनता है।")
         }
     }
+
+    /** v3.90: खोज वाली key से सच में एक Google Search (grounding) करके देखो */
+    private fun checkSearchKey(k: String): String = try {
+        val r = GeminiClient(k, Prefs.model(this, "gemini")).search("Answer in one short Hindi line using Google Search.", emptyList(),
+            "आज की तारीख़ और भारत की एक ताज़ा ख़बर", deep = false, maxModels = 2)
+        if (r.text.isBlank()) "✗ key चली पर Google खोज से जवाब नहीं आया"
+        else "✓ key सही है — Google खोज चली (${r.sources.size} वेबसाइटें)। DK लाइव दोबारा शुरू करें"
+    } catch (e: AiException) {
+        when (e.code) {
+            400, 401, 403 -> "✗ key गलत है या बंद है"
+            429 -> "✗ इस key की limit अभी खत्म है"
+            else -> "✗ खोज नहीं चली: ${e.message}"
+        }
+    } catch (e: Exception) { "✗ जाँच नहीं हो पाई: ${e.message}" }
 
     /** v3.41: लिखने वाली key सच में चलती है? (models list + transcribe मॉडल) */
     private fun checkCaptionKey(k: String): String = try {

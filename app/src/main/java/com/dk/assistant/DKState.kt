@@ -32,6 +32,17 @@ object DKState {
     fun hideFace() { faceUntil = 0L; emit() }
 
     fun set(m: Mode) { mode = m; if (m != Mode.LISTENING) level = 0f; emit() }
+
+    /**
+     * v3.90: DK Live में "Thinking" सिर्फ़ तब, जब सच में खोज / गहरी सोच / फ़ोन का काम चल रहा हो.
+     * आम बात ("कैसे हो") में सुनना -> सीधे बोलना (बीच का पल "Listening" ही दिखे). GeminiLive यह देता है;
+     * बाक़ी हर जगह हमेशा true = पहले जैसा.
+     */
+    @Volatile var workNow: () -> Boolean = { true }
+    fun working(): Boolean = try { workNow() } catch (_: Exception) { true }
+    fun refresh() = emit()
+    /** स्क्रीन पर दिखने वाली हालत: Live में बिना काम का THINKING = LISTENING (असली [mode] नहीं बदलता - अंदर के नियम वैसे ही) */
+    fun shownMode(): Mode = if (mode == Mode.THINKING && live && !working()) Mode.LISTENING else mode
     fun setLive(on: Boolean) { live = on; emit() }
     /** होम स्क्रीन का म्यूट बटन: true = DK का माइक कुछ नहीं भेजता/सुनता (Live में खामोशी जाती है), दोबारा दबाने तक */
     @Volatile var micMuted: Boolean = false

@@ -113,7 +113,7 @@ object DKWork {
             j.who + if (j.state == TaskStatus.State.WAITING) " • आपकी इजाज़त का इंतज़ार"
                     else j.last.takeIf { it.isNotBlank() }?.let { " • " + WorkResolver.roleLabel(it) }.orEmpty(),
             j.started))
-        return WorkResolver.resolve(DKState.mode, DKState.hintText, DKState.liveReply.isNotBlank(), tasks, voice, focus)
+        return WorkResolver.resolve(DKState.shownMode(), DKState.hintText, DKState.liveReply.isNotBlank(), tasks, voice, focus)
     }
 
     fun listen(l: () -> Unit) { bridge(); listeners.addIfAbsent(l) }

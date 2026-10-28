@@ -236,7 +236,7 @@ class BrainManager(private val ctx: Context) {
 
     /** खोज की keys क्रम में (अपनी पहले, दूसरी Gemini key बचाव में) - [SearchGuard.keys] */
     fun searchKeys(): List<String> =
-        SearchGuard.keys(fromLive, Prefs.key(ctx, "gemini"), Prefs.scopeKey(ctx, ApiScopes.LIVE, "gemini"))
+        SearchGuard.keys(fromLive, Prefs.key(ctx, "gemini"), Prefs.scopeKey(ctx, ApiScopes.LIVE, "gemini"), Prefs.searchOwnKey(ctx))
 
     fun canSearch() = Prefs.webAnswers(ctx) && searchKeys().isNotEmpty()
 
@@ -303,17 +303,22 @@ class BrainManager(private val ctx: Context) {
         val model = Prefs.model(ctx, "gemini")
         val name = Prefs.assistantName(ctx); val user = Prefs.userName(ctx)
         val nowLine = NowClock.line()
-        val angles = LiveSearch.plan(question)
+        // v3.90: खोज की अपनी key से = गहरी खोज (Gemini ऐप जैसी): एक और "पूरी जानकारी" वाला कोण, हर कोण में ज़्यादा सोच/लंबी रिपोर्ट, ज़्यादा समय.
+        // Live/चैट की key से = पहले जैसी तेज़ खोज (उनकी free limit बचे)
+        val deepS = LiveSearch.deepFor(key, Prefs.searchOwnKey(ctx))
+        val angles = LiveSearch.plan(question, deepS)
+        val angleMs = LiveSearch.angleTimeoutMs(deepS)
         var firstKeyError: Exception? = null
         val reports = coroutineScope {
             angles.map { a ->
                 async {
                     try {
                         // v3.87: runInterruptible - timeout सच में HTTP कॉल रोके (पहले 3-4 मॉडल × 35 सेकंड लटकती थी)
-                        kotlinx.coroutines.withTimeoutOrNull(14_000) {
+                        // v3.90: 14 -> 18 सेकंड: मोबाइल नेट पर Google खोज + पढ़ना अक्सर 14 से ऊपर जाता था, सारे कोण "timeout" = "जानकारी नहीं मिली"
+                        kotlinx.coroutines.withTimeoutOrNull(angleMs) {
                             kotlinx.coroutines.runInterruptible {
-                                GeminiClient(key, model).search(LiveSearch.angleSystem(a, nowLine, name), emptyList(),
-                                    "$question\n(Search date: ${NowClock.dateEn()})", deep = false, maxModels = 2)
+                                GeminiClient(key, model).search(LiveSearch.angleSystem(a, nowLine, name, deepS), emptyList(),
+                                    "$question\n(Search date: ${NowClock.dateEn()})", deep = deepS, maxModels = 2)
                             }
                         }?.let { a.id to it }
                     } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (e: Exception) {
@@ -334,10 +339,10 @@ class BrainManager(private val ctx: Context) {
             } ?: throw AiException(0, "timeout")
         }
         val merged = try {
-            kotlinx.coroutines.withTimeoutOrNull(10_000) {
+            kotlinx.coroutines.withTimeoutOrNull(if (deepS) 15_000L else 10_000L) {
                 kotlinx.coroutines.runInterruptible {
                     val client = GeminiClient(key, model)
-                    val t = client.stream(LiveSearch.mergeSystem(nowLine, name, user) + Memory.factsBlock(ctx), emptyList(),
+                    val t = client.stream(LiveSearch.mergeSystem(nowLine, name, user, deepS) + Memory.factsBlock(ctx), emptyList(),
                         LiveSearch.mergeInput(question, good.map { it.first to it.second.text })) { }
                     lastUsed = client.label
                     t
@@ -346,7 +351,7 @@ class BrainManager(private val ctx: Context) {
         } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (e: Exception) { DKLog.d("लाइव खोज मिलाना fail: ${e.message}"); null }
         val ans = (merged?.takeIf { it.isNotBlank() } ?: good.first().second.text)
             .replace(Regex("[*#`]"), "").replace(Regex("\\[\\d+(,\\s*\\d+)*\\]"), "").trim()
-        DKLog.d("लाइव खोज: ${angles.joinToString { it.id }} -> ${good.size} नतीजे, ${sources.size} वेबसाइटें")
+        DKLog.d("लाइव खोज${if (deepS) " (गहरी, खोज की अपनी key)" else ""}: ${angles.joinToString { it.id }} -> ${good.size} नतीजे, ${sources.size} वेबसाइटें")
         LiveSearch.remember(question, sources)
         remember("USER SAYS: $question", JSONObject().put("say", ans).put("done", true).toString())
         SearchResult(ans, sources)
@@ -561,12 +566,15 @@ class BrainManager(private val ctx: Context) {
             append("\nSpeak clear, natural Hindi by default; change the language only when the user clearly asks you to. Usually 1-3 short sentences; start directly with the answer.")
             append("\nAnswer timeless things (chat, explanations, coding, maths, stories) from your own knowledge at once. But for ANYTHING live or changing - news, events, prices, weather, scores, government schemes/rules/forms/last dates, exams/results/recruitment, current office holders, latest releases/versions, anything about today/now/latest - ALWAYS call web_search: it searches several websites at once (official government websites first for government questions), cross-checks them and returns one verified answer. Your own knowledge may be months old: never answer such things from memory, and when you do NOT know or are not sure, search instead of guessing.")
             append("\n" + SearchPolicy.rules("web_search"))
+            // v3.90: पहले बिना खोजे ही "माफ़ करिए, जानकारी नहीं मिल पाई" बोल देती थी
+            append("\nNEVER say that you could not find it / do not know / have no information / cannot tell (जानकारी नहीं मिली, मुझे नहीं पता, मेरे पास जानकारी नहीं) WITHOUT first calling web_search in that same turn. For any factual question you are not sure about - also big, detailed questions - call web_search (or deep_think for hard reasoning) and answer completely. If web_search returns NO_RESULT, say only the line it gives (it includes the reason).")
             append("\nNever read out links, URLs or website names by yourself - the app shows the sources on screen. But when the user asks where the information came from (कहाँ से पता किया / कौन सी वेबसाइट / source), honestly name the websites listed in the last web_search SOURCES; never invent a source.")
             append("\nFor genuinely HARD questions that need careful multi-step reasoning (multi-step maths, logic puzzles, code, detailed comparisons, planning, exam-level or deep why/how questions), call the function deep_think with the full question, then speak its answer naturally (you may shorten it for speech). Never use deep_think for easy chat.")
             val f = GirlfriendPersona.female(Prefs.voiceGender(ctx))
-            val khol = if (f) "खोल रही हूँ" else "खोल रहा हूँ"; val bata = if (f) "बताती हूँ" else "बताता हूँ"
+            val khol = if (f) "कर रही हूँ" else "कर रहा हूँ"; val bata = if (f) "बताती हूँ" else "बताता हूँ"
             append("\nSPEED: the moment the user stops, start speaking. Quick things (chat, simple facts you know) - answer at once in 1-2 sentences, no preamble. For time/date call current_time (instant).")
-            append("\nBefore calling phone_task, first say a very short natural acknowledgement (2-4 words, e.g. \"ठीक है, $khol\") so the user is not left in silence; after it returns, give the result in one short sentence.")
+            // v3.90 (मालिक का नियम): काम कहा = सिर्फ़ छोटा "ठीक है, कर रहा हूँ" -> काम -> "हो गया". बीच में और कोई बात नहीं.
+            append("\nTASKS (owner's rule): when the user asks you to DO something, say ONLY a very short acknowledgement (2-4 words, e.g. \"ठीक है, $khol\") and in the SAME turn call phone_task (or the right tool) at once. Nothing else before the work - no small talk, no explanations, no questions that the task does not truly need. After it returns, give the real result in one short sentence (e.g. \"हो गया\"). Do not start other topics until he talks again.")
             append("\nBefore you use Google Search, deep_think or computer_task, FIRST say one short honest line that you are checking, e.g. \"एक सेकंड, सर्च करके $bata\" / \"एक सेकंड, सोचकर $bata\" (in the reply language), then in the SAME turn really call the tool (web_search for internet search, deep_think, computer_task, or phone_task for anything on the phone like opening Chrome and searching a website) and give the answer. NEVER end your turn with only a promise like 'सर्च करके बताता हूँ / एक मिनट / कर रहा हूँ' - if you said it, the tool call must follow at once. Never stay silent while searching.")
             append("\nBackground work (DK Computer / coding team): when the user asks how far it has got or whether it is done, call task_status and say only what it returns. Never invent progress or percentages, and never say a task is done before a SYSTEM NOTE or task_status says FINISHED.")
             append("\nHONESTY (most important): never lie and never make a false promise. Say something is done (opened, played, sent, saved, set) ONLY if the tool result says DONE / ALREADY DONE / FINISHED. If it says FAILED - say honestly it did not work. If it says STILL RUNNING - say you are doing it and will tell when done (you will get a SYSTEM NOTE). Never promise to do something later (remind, call back, check later) unless a tool really does it (computer_task can do things later). Never invent facts, numbers, names or dates; if you do not know, search; if you still cannot find it, say honestly that you could not find reliable information.")

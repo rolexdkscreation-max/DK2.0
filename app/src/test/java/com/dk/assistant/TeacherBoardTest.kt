@@ -118,8 +118,11 @@ class SearchGuardTest {
     }
     @Test fun failMessageNeverSaysTool() {
         val r = SearchGuard.failResult("आज की ताज़ा ख़बर", SearchGuard.Fail.QUOTA)
-        assertTrue(r.contains(SearchGuard.USER_LINE))
-        assertTrue(r.contains("NEVER mention a tool"))
+        // v3.90: वजह भी बताई जाती है (सीमा भरी), पर "टूल/API" जैसे शब्द नहीं
+        assertTrue(r.contains(SearchGuard.userLine(SearchGuard.Fail.QUOTA)))
+        assertTrue(r.contains("सीमा"))
+        assertTrue(r.contains("Do not use the words tool"))
+        for (f in SearchGuard.Fail.values()) { assertFalse(SearchGuard.userLine(f).contains("टूल")); assertFalse(SearchGuard.userLine(f).contains("API")) }
         assertFalse(SearchGuard.USER_LINE.contains("टूल"))
         assertEquals("", SearchGuard.sourcesLine("", listOf("a" to "b")))
     }

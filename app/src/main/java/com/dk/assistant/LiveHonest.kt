@@ -214,6 +214,23 @@ object TalkStyle {
 object DoneGate {
     /** इतनी आवाज़ (ms) बिना किसी दावे के = आम बात है, रोकना बंद (लंबा जवाब न अटके) */
     const val HOLD_MAX_MS = 2_500
+    /**
+     * v3.90 (मालिक का नियम "पहले काम, फिर बात"): काम कहा और अभी tool नहीं आया - तब तक की बात इतनी देर तक रोकी रहती है
+     * (पहले 2.5 सेकंड बाद बज जाती थी = काम से पहले बातें). tool आया = वह बात हटाई. इससे लंबी = शायद सच में सवाल पूछ रहा है, बजाओ.
+     */
+    const val PRE_TOOL_HOLD_MS = 8_000
+    /** [command] = साफ़ हुक्म ("खोलो/भेजो/कर दो"); बाक़ी ("मुझे लगा…", "पता चला…") में पहले जैसा 2.5 सेकंड */
+    fun holdLimitMs(afterTool: Boolean, command: Boolean = true): Int = if (afterTool || !command) HOLD_MAX_MS else PRE_TOOL_HOLD_MS
+
+    /** साफ़ हुक्म वाले शब्द (आदेश का रूप) - [isAction] के "लगा/चला" जैसे टुकड़े आम बात में भी आते हैं */
+    private val COMMAND = Regex(
+        "(खोलो|खोल दो|खोल के|चलाओ|चला दो|चालू करो|चालू कर दो|बजाओ|बजा दो|लगाओ|लगा दो|भेजो|भेज दो|कॉल करो|फ़ोन करो|फोन करो|डायल करो|" +
+            "डिलीट करो|डिलीट कर दो|मिटाओ|मिटा दो|हटाओ|हटा दो|बंद करो|बंद कर दो|ऑन करो|ऑन कर दो|ऑफ करो|ऑफ कर दो|सेट करो|सेट कर दो|" +
+            "सेव करो|सेव कर दो|शेयर करो|शेयर कर दो|डाउनलोड करो|प्ले करो|प्ले कर दो|पोस्ट करो|रिप्लाई करो|कर दो|करो)(\\s|[।.!,]|$)|" +
+            "\\b(open|play|send|call|dial|delete|turn on|turn off|kholo|chalao|bhejo|bajao|lagao|band karo|chalu karo|kar do|karo)\\b",
+        RegexOption.IGNORE_CASE
+    )
+    fun isCommand(user: String): Boolean = isAction(user) && COMMAND.containsMatchIn(user.trim())
     /** फ़ोन ने (Gemini से पहले) काम कर दिया - इतनी देर तक उसका "हो गया" सच है */
     const val FAST_EVIDENCE_MS = 15_000L
 
@@ -240,6 +257,20 @@ object DoneGate {
         if (!evidence && HonestGuard.claimsDone(heldText)) Verdict.DROP else Verdict.PLAY
 
     /** tool आने पर: tool से *पहले* बोला गया "कर दिया" हमेशा झूठा (काम अभी शुरू हुआ है) */
+    /** छोटा "ठीक है, कर रहा हूँ" - इतने शब्द / इतनी आवाज़ (ms) तक */
+    const val ACK_MAX_WORDS = 6
+    const val ACK_MAX_MS = 3_000
+    /**
+     * v3.90: हुक्म वाले काम में tool आने तक रुकी बात: छोटा "ठीक है, कर रहा हूँ" = बजाओ (मालिक चाहते हैं);
+     * उससे लंबी बातें या "हो गया" का झूठा दावा = हटाओ (पहले काम, फिर बात). text न आया हो तो आवाज़ की लंबाई से.
+     */
+    fun beforeToolCommand(heldText: String, heldMs: Int): Verdict {
+        if (HonestGuard.claimsDone(heldText)) return Verdict.DROP
+        val t = heldText.trim()
+        val short = if (t.isNotEmpty()) t.split(Regex("\\s+")).size <= ACK_MAX_WORDS && heldMs <= ACK_MAX_MS + 1_000 else heldMs <= ACK_MAX_MS
+        return if (short) Verdict.PLAY else Verdict.DROP
+    }
+
     fun beforeTool(heldText: String): Verdict = if (HonestGuard.claimsDone(heldText)) Verdict.DROP else Verdict.PLAY
 
     /** Gemini को: झूठा "हो गया" नहीं बजाया - अभी असली काम करो */
@@ -268,7 +299,7 @@ object DoneGate {
 
     /** Live prompt: काम = पहले tool, फिर एक छोटी पक्की लाइन */
     const val PROMPT = "\nACTIONS (very important): when the user asks you to DO something on the phone, call the tool FIRST and say nothing " +
-        "that claims success before its result - at most a 2-word ack like \"ठीक है बॉस\". After the tool returns DONE/PLAYING/COMPLETED, confirm " +
+        "before it except a 2-4 word ack like \"ठीक है, कर रहा हूँ\" (nothing that claims success, no other talk). After the tool returns DONE/PLAYING/COMPLETED, confirm " +
         "in ONE short natural line (e.g. \"हो गया बॉस, चला दिया\" / \"भेज दिया बॉस\"). If the result says failed / not verified / waiting, say exactly that " +
         "honestly - never \"हो गया\". Anything you say claiming success before a tool result is muted by the phone. " +
         "To delete the user's last photo(s)/screenshot(s) call phone_task right away (e.g. \"आखिरी 2 फोटो डिलीट करो\") - Android itself shows an " +

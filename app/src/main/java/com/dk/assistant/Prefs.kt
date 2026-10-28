@@ -126,6 +126,9 @@ object Prefs {
      * इसमें खर्च न हो. खाली = पुराना तरीका (DK लाइव वाली Gemini key ही).
      */
     const val CAPTION_KEY = "live_key_caption"
+    /** v3.90: सिर्फ़ इंटरनेट खोज (Gemini + Google Search) की अपनी key. डली हो = खोज पहले इसी से, और गहरी (ज़्यादा कोण, ज़्यादा सोच) */
+    const val SEARCH_KEY = "live_key_search"
+    fun searchOwnKey(c: Context): String = sp(c).getString(SEARCH_KEY, "")?.trim() ?: ""
     fun captionOwnKey(c: Context): String = sp(c).getString(CAPTION_KEY, "")?.trim() ?: ""
     fun captionKey(c: Context): String = captionOwnKey(c).ifBlank { ttsGeminiKey(c) }
 

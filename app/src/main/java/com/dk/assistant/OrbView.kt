@@ -128,7 +128,7 @@ class OrbView @JvmOverloads constructor(
         lastT = now
         val t = now / 1000f
         // v3.88: सिर्फ़ तीन रूप - Listening / Thinking (WORKING भी) / Speaking
-        val mode = ThreeState.look(DKState.mode)
+        val mode = ThreeState.look(DKState.mode, DKState.live, DKState.working())
 
         val want = wanted()
         if (want != target) morphTo(want)

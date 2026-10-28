@@ -52,14 +52,36 @@ object SearchGuard {
      * खोज की keys क्रम में: जिस हिस्से (Live/चैट) से खोज हुई उसकी अपनी Gemini key पहले,
      * दूसरी Gemini key सिर्फ़ बचाव (पहली न हो / ग़लत हो / quota ख़त्म)। ख़ाली और दोहराई हुई keys नहीं।
      */
-    fun keys(fromLive: Boolean, chatGeminiKey: String, liveGeminiKey: String): List<String> =
-        (if (fromLive) listOf(liveGeminiKey, chatGeminiKey) else listOf(chatGeminiKey, liveGeminiKey))
+    fun keys(fromLive: Boolean, chatGeminiKey: String, liveGeminiKey: String, searchKey: String = ""): List<String> =
+        // v3.90: खोज की अपनी key (डली हो) सबसे पहले; न चले तो पुराने जैसा Live/चैट वाली key
+        (listOf(searchKey) + if (fromLive) listOf(liveGeminiKey, chatGeminiKey) else listOf(chatGeminiKey, liveGeminiKey))
             .map { it.trim() }.filter { it.isNotBlank() }.distinct()
 
-    /** Live के web_search का नतीजा जब दो बार (खुद एक बार दोबारा) कोशिश के बाद भी न मिले */
+    /**
+     * v3.90: यूज़र को वजह भी (पहले सिर्फ़ "जानकारी नहीं मिली" - क्यों, पता ही नहीं चलता था).
+     * आसान शब्दों में, बिना "API/टूल" जैसे शब्दों के, और आगे क्या करें.
+     */
+    fun reasonHi(f: Fail): String = when (f) {
+        Fail.NO_KEY -> "खोज के लिए Gemini की चाबी (key) सेटिंग में नहीं डली है"
+        Fail.BAD_KEY -> "सेटिंग में डली Gemini key ग़लत या बंद है"
+        Fail.QUOTA -> "आज की Google खोज की मुफ़्त सीमा अभी भर गई है, थोड़ी देर बाद फिर चलेगी"
+        Fail.NETWORK -> "इंटरनेट नहीं मिल रहा"
+        Fail.TIMEOUT -> "इंटरनेट धीमा है, वेबसाइटों से जवाब समय पर नहीं आया"
+        Fail.EMPTY -> "किसी भी वेबसाइट पर इसकी पक्की जानकारी नहीं मिली"
+        Fail.MODEL -> "सेटिंग में चुना Gemini मॉडल इंटरनेट खोज नहीं करता"
+        Fail.OTHER -> "Google की तरफ़ से जवाब नहीं आया"
+    }
+
+    fun userLine(f: Fail): String = when (f) {
+        Fail.NO_KEY, Fail.BAD_KEY, Fail.MODEL -> "सर, अभी जानकारी नहीं निकल पाई, क्योंकि ${reasonHi(f)}। सेटिंग में ठीक कर दीजिए, फिर तुरंत खोज हो जाएगी।"
+        Fail.NETWORK -> "सर, अभी जानकारी नहीं निकल पाई, क्योंकि ${reasonHi(f)}। नेट चालू करके फिर पूछिए।"
+        else -> "सर, अभी जानकारी नहीं निकल पाई, क्योंकि ${reasonHi(f)}। एक बार फिर कोशिश करूँ?"
+    }
+
+    /** Live के web_search का नतीजा जब Google खोज + दूसरी वेबसाइटें (बिना key वाली) सब आज़माने के बाद भी न मिले */
     fun failResult(q: String, f: Fail): String =
-        "NO_RESULT (the phone already tried twice; reason for logs only: ${f.name}). Say EXACTLY this to the user in your usual voice, nothing else: \"$USER_LINE\" " +
-            "NEVER mention a tool, an error, an API or a key. Do NOT guess today's facts. If the user then says yes / हाँ / कर लो, call web_search again with the same query: \"${q.take(150)}\"."
+        "NO_RESULT (the phone tried Google search and other websites). Tell the user exactly this, in your usual voice and gender form, nothing else: \"${userLine(f)}\" " +
+            "Do not use the words tool, API or error. Do NOT guess today's facts. If the user then says yes / हाँ / कर लो, call web_search again with the same query: \"${q.take(150)}\"."
 
     /** स्रोत तभी, जब सच में खोज से जवाब आया */
     fun sourcesLine(answer: String, sources: List<Pair<String, String>>): String =
