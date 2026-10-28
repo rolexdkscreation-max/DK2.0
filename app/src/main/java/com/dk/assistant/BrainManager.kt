@@ -44,10 +44,18 @@ class BrainManager(private val ctx: Context) {
     }
 
     /** DK चैट की अपनी key (हर हिस्से की अलग - देखें [ApiScopes]); limit पर उसी key के दूसरे मॉडल */
-    private fun clientFor(p: Provider, scope: String = ApiScopes.CHAT): AiClient? = scopedClient(ctx, p, scope)
+    private fun clientFor(p: Provider, scope: String = ApiScopes.CHAT): AiClient? =
+        override?.let { (id, c) -> if (p.id == id) c else null } ?: if (override != null) null else scopedClient(ctx, p, scope)
+
+    /**
+     * ऑटोनोमस मोड की अपनी key (कंपनी id -> client). null = पहले जैसा (DK की मुख्य key).
+     * सिर्फ़ ऑटोनोमस काम के दौरान लगती है, काम खत्म होते ही AgentRunner हटा देता है.
+     */
+    @Volatile var override: Pair<String, AiClient>? = null
 
     /** सिर्फ़ चुनी हुई कंपनी (दूसरी कंपनी पर अपने-आप जाना बंद - [Prefs.fallback]). */
     private fun orderedProviders(chat: Boolean = false): List<Provider> {
+        override?.let { (id, _) -> return listOfNotNull(Providers.byId(id)) }
         val active = Providers.byId(Prefs.activeProvider(ctx))
         val rest = Providers.all.filter { it.id != active?.id }
         val list = if (Prefs.fallback(ctx)) listOfNotNull(active) + rest else listOfNotNull(active)

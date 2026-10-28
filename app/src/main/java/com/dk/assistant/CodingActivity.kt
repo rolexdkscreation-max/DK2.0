@@ -125,7 +125,7 @@ object CoderSession {
         val repo = Prefs.ghRepo(c); val br = Prefs.ghBranch(c)
         val a = agent
         // baseBranch = aapki chuni (main); kaam wali feature branch alag ho sakti hai
-        if (a != null && a.repo == repo && a.baseBranch == br) return a.also { if (it.pr == null) it.safePr = Prefs.coderSafePr(c) }
+        if (a != null && a.repo == repo && a.baseBranch == br && a.aiNote == ai.autoTag) return a.also { if (it.pr == null) it.safePr = Prefs.coderSafePr(c) }
         return CodingAgent(gh, repo, br, ai).also { it.safePr = Prefs.coderSafePr(c); restorePr(c, it); agent = it }
     }
 

@@ -23,6 +23,8 @@ class CoderAi(val provider: Provider, private val key: String, val model: String
               /** रिपोर्ट कहाँ जाए (कोडिंग टीम = CoderReport, DK कंप्यूटर = उसकी अपनी रिपोर्ट) */
               private val sink: (String, String) -> Unit = { p, f -> CoderReport.add(p, f) }) {
     private val selfLabel = "${provider.name} ($model$note)"
+    /** ऑटोनोमस मोड वाली key का निशान (खाली = आम कोडिंग एजेंट). key नहीं, सिर्फ़ आखिरी 4 अक्षर */
+    val autoTag: String = if (note.contains("ऑटोनोमस")) "auto|${provider.id}|${key.takeLast(4)}" else ""
     private fun capKey() = "${provider.id}|${key.takeLast(6)}|$model"
     /** एक request में यह मॉडल कितने अक्षर पढ़ सकता है (413 के बाद जो सीमा याद हुई वही) - एजेंट इसी हिसाब से पूरी फ़ाइलें भेजते हैं */
     val budget: Int get() = sizeCap[capKey()]?.first ?: CoderContext.budgetFor(provider.isGemini, model)
@@ -271,7 +273,11 @@ class CoderAi(val provider: Provider, private val key: String, val model: String
 
         /** कोडिंग एजेंट की AI: सिर्फ़ Settings → AI दिमाग → कोडिंग एजेंट की अपनी key. null = key नहीं */
         // API/मॉडल बदलना, retry, request छोटी करना = अंदर की बात: यूज़र की रिपोर्ट में नहीं, सिर्फ़ डिबग लॉग में
-        fun fromPrefs(c: Context): CoderAi? = forScope(c, ApiScopes.CODER) { p, f -> DKLog.d("कोडिंग AI: $p → $f") }
+        // ऑटोनोमस मोड ने कोडिंग शुरू की हो: उसकी अपनी key -> (खाली) कोडिंग एजेंट की key -> (वो भी नहीं) DK की मुख्य key.
+        // ऑटोनोमस बंद / उसका काम नहीं = पहले जैसा, सिर्फ़ कोडिंग एजेंट की key.
+        fun fromPrefs(c: Context): CoderAi? = com.dk.assistant.auto.AutoMode.coderOverride(c)
+            ?: forScope(c, ApiScopes.CODER) { p, f -> DKLog.d("कोडिंग AI: $p → $f") }
+            ?: com.dk.assistant.auto.AutoMode.coderMainFallback(c)
 
         /**
          * एक हिस्से की AI: उसकी चुनी कंपनी + उसी की key. दूसरी कंपनी/दूसरे हिस्से की key पर कभी नहीं.
@@ -367,6 +373,8 @@ class CoderAi(val provider: Provider, private val key: String, val model: String
  * "done" se pehle syntax jaanch (bracket / XML / JSON), aur push ke baad GitHub Actions build dekhkar galti khud theek.
  */
 class CodingAgent(private val gh: GitHub, var repo: String, var branch: String, private val ai: CoderAi) {
+    /** ऑटोनोमस मोड की key वाला agent (अलग key = नया agent बने) */
+    val aiNote get() = ai.autoTag
 
     /** User ki chuni hui (main) branch. Surakshit PR mode me kaam hamesha alag feature branch par, PR isi me */
     val baseBranch = branch

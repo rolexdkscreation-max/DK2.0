@@ -919,6 +919,9 @@ class DKAccessibilityService : AccessibilityService() {
         DKLog.d("Screen thami ${System.currentTimeMillis() - t0} ms (${currentPackage()})")
     }
 
+    /** ऑटोनोमस मोड की सुरक्षा: पिछली पढ़ी स्क्रीन पर पासवर्ड वाली जगह है? */
+    fun hasPasswordField(): Boolean = try { elements.any { it.node.isPassword } } catch (_: Exception) { false }
+
     fun readScreen(): Screen {
         val list = mutableListOf<Element>()
         val sb = StringBuilder()
