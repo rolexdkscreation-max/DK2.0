@@ -132,11 +132,11 @@ object KeySetup {
         Prefs.edit(ctx) {
             for (scope in listOf(ApiScopes.LIVE, ApiScopes.CODER, ApiScopes.PC)) {
                 if (id !in ApiScopes.providers(scope)) continue
-                if (Prefs.scopeKey(ctx, scope, id).isNotBlank()) continue
+                if (Prefs.scopeKeyRaw(ctx, scope, id).isNotBlank()) continue
                 putString(ApiScopes.pref(scope, "key", id), key)
                 if (scope != ApiScopes.LIVE) {
                     putString(ApiScopes.pref(scope, "model", id), model)
-                    if (Prefs.scopeKey(ctx, scope, Prefs.scopeActive(ctx, scope)).isBlank()) putString(ApiScopes.activePref(scope), id)
+                    if (Prefs.scopeKeyRaw(ctx, scope, Prefs.scopeActiveRaw(ctx, scope)).isBlank()) putString(ApiScopes.activePref(scope), id)
                 }
                 done.add(scope)
             }

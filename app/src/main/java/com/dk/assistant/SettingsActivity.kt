@@ -428,15 +428,52 @@ class SettingsActivity : AppCompatActivity() {
     // ------------------------------------------------------------ AI दिमाग: 4 अलग हिस्से, हर एक की अपनी API
     private fun scopeStatus(scope: String): String {
         if (scope == ApiScopes.LIVE) {
-            val g = Prefs.scopeKey(this, scope, "gemini").isNotBlank(); val q = Prefs.scopeKey(this, scope, "groq").isNotBlank()
+            val g = Prefs.scopeKeyRaw(this, scope, "gemini").isNotBlank(); val q = Prefs.scopeKeyRaw(this, scope, "groq").isNotBlank()
             return (if (g) "✓ Gemini key" else "✗ Gemini key नहीं") + (if (q) " • ✓ सुनने के लिए Groq" else "") + " • सिर्फ़ Gemini"
         }
-        val id = Prefs.scopeActive(this, scope)
-        val ok = Prefs.scopeKey(this, scope, id).isNotBlank()
+        val id = Prefs.scopeActiveRaw(this, scope)
+        val ok = Prefs.scopeKeyRaw(this, scope, id).isNotBlank()
         return (if (ok) "✓ " else "✗ ") + KeySetup.name(id) + (if (ok) " • ${Prefs.scopeModel(this, scope, id)}" else " की key नहीं") + " • अपनी अलग key"
     }
 
     private fun secBrainMenu() {
+        // v3.91: "एक key से सब" - नया install = चालू (एक Gemini key से सारे काम); अलग-अलग keys वाले हिस्से बंद (मिटते नहीं)
+        val one = Prefs.oneKeyOn(this)
+        card("एक key से सब (ऑल-राउंडर)", "सिर्फ़ एक Gemini key — DK लाइव, चैट, Google खोज, सुनना-बोलना, कोडिंग एजेंट, DK कंप्यूटर सब इसी से", startOpen = one) { box ->
+            val sw = switch(box, "एक key से सब चलाओ", one)
+            sw.setOnCheckedChangeListener { _, on ->
+                save(false)
+                Prefs.edit(this) { putBoolean(ApiScopes.ONE_KEY_ON, on) }
+                container.removeAllViews(); secBrainMenu(); space(container, 8)
+                toast(if (on) "✓ अब सारे काम एक key से — DK लाइव दोबारा शुरू करें" else "✓ अब हर हिस्सा अपनी अलग key से")
+            }
+            if (!one) {
+                hint(box, "अभी बंद है — हर हिस्सा नीचे अपनी अलग key से चल रहा है। चालू करें तो सारे काम ऊपर की एक key से होंगे (अलग keys मिटेंगी नहीं, बंद करते ही फिर चलेंगी)।")
+                return@card
+            }
+            val ed = field(box, "Gemini API Key (सारे काम इसी से)", Prefs.oneKey(this), "AIza… यहाँ पेस्ट करें", secret = true)
+            keyFields[ApiScopes.ONE_KEY] = ed
+            val res = TextView(this).apply { setTextColor(0xB3FFFFFF.toInt()); textSize = 13f; setPadding((4 * dp).toInt(), (6 * dp).toInt(), 0, 0) }
+            row(box, showButton(ed), button("जाँचें") {
+                val k = ed.text.toString().trim()
+                if (k.isBlank()) { res.text = "पहले Gemini key पेस्ट करें (AIza… से शुरू)"; return@button }
+                if (ApiScopes.detect(k).let { it != null && it != "gemini" }) { res.text = "यह Gemini की key नहीं लगती — यहाँ सिर्फ़ Gemini key (AIza…) चलेगी"; return@button }
+                res.text = "जवाब और Google खोज से जाँच रहा हूँ…"
+                lifecycleScope.launch {
+                    res.text = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { checkSearchKey(k) }.replace("Google खोज चली", "जवाब और Google खोज चले")
+                    save(false)
+                }
+            }, button("Key लें") { Setup.openUrl(this, Providers.byId("gemini")!!.keyUrl) })
+            box.addView(res)
+            hint(box, "अभी: " + (if (Prefs.oneKey(this).isNotBlank()) "✓ सारे काम इसी एक key से" else "✗ key नहीं डाली") +
+                " • सुनना भी Gemini से (Groq की ज़रूरत नहीं)। एक free key की limit सब कामों में बँटती है — limit जल्दी खत्म हो तो बटन बंद करके अलग-अलग keys डालें।")
+        }
+        if (one) {
+            card("अलग-अलग key वाले हिस्से — बंद", "ऊपर \"एक key से सब\" चालू है, इसलिए DK लाइव / चैट / कोडिंग / कंप्यूटर की अलग keys अभी इस्तेमाल नहीं हो रहीं") { box ->
+                hint(box, "अलग-अलग key चाहिए तो ऊपर वाला बटन बंद करें — पहले डाली हुई अलग keys वैसी ही सुरक्षित हैं।")
+            }
+            return
+        }
         card("हर हिस्से की अपनी API", "हर हिस्सा सिर्फ़ अपनी डाली हुई key से जवाब लेता है — किसी दूसरे की key इस्तेमाल नहीं करता") { box ->
             hint(box, "किसी मॉडल का फ्री कोटा खत्म (limit) हो तो उसी key के दूसरे फ्री मॉडल पर अपने-आप स्विच होता है। दूसरी कंपनी पर नहीं जाता।")
         }
@@ -449,7 +486,7 @@ class SettingsActivity : AppCompatActivity() {
     /** DK लाइव: सिर्फ़ Google Gemini (Live + बोलना + सुनना) और सुनने के लिए चाहें तो Groq */
     private fun secBrainLive() {
         card("DK लाइव — Google Gemini", "Gemini Live बातचीत, Gemini नेचुरल आवाज़ और सुनना — सिर्फ़ इसी key से") { box ->
-            val ed = field(box, "Gemini API Key (DK लाइव की अपनी)", Prefs.scopeKey(this, ApiScopes.LIVE, "gemini"), "AIza… यहाँ पेस्ट करें", secret = true)
+            val ed = field(box, "Gemini API Key (DK लाइव की अपनी)", Prefs.scopeKeyRaw(this, ApiScopes.LIVE, "gemini"), "AIza… यहाँ पेस्ट करें", secret = true)
             keyFields[ApiScopes.pref(ApiScopes.LIVE, "key", "gemini")] = ed
             val res = TextView(this).apply { setTextColor(0xB3FFFFFF.toInt()); textSize = 13f; setPadding((4 * dp).toInt(), (6 * dp).toInt(), 0, 0) }
             row(box, showButton(ed), button("टेस्ट करें") {
@@ -460,7 +497,7 @@ class SettingsActivity : AppCompatActivity() {
             hint(box, "Limit खत्म हो तो इसी key के दूसरे Gemini Live / आवाज़ मॉडल पर अपने-आप। DK चैट या किसी और हिस्से की key यहाँ इस्तेमाल नहीं होती।")
         }
         card("लिखना (\"आप:\" वाली लाइन) — अपनी अलग Gemini key", "आप जो बोलते हैं उसे लिखने वाला (gemini-3.5-transcribe-live) इसी key से चलेगा, ताकि बोलने वाले Live की free limit इसमें खर्च न हो") { box ->
-            val ed = field(box, "Gemini API Key (सिर्फ़ लिखने के लिए)", Prefs.captionOwnKey(this), "AIza… (ज़रूरी नहीं — दूसरे Google account की key बेहतर)", secret = true)
+            val ed = field(box, "Gemini API Key (सिर्फ़ लिखने के लिए)", Prefs.captionOwnKeyRaw(this), "AIza… (ज़रूरी नहीं — दूसरे Google account की key बेहतर)", secret = true)
             keyFields[Prefs.CAPTION_KEY] = ed
             val res = TextView(this).apply { setTextColor(0xB3FFFFFF.toInt()); textSize = 13f; setPadding((4 * dp).toInt(), (6 * dp).toInt(), 0, 0) }
             row(box, showButton(ed), button("जाँचें") {
@@ -474,14 +511,14 @@ class SettingsActivity : AppCompatActivity() {
                 }
             }, button("Key लें") { Setup.openUrl(this, Providers.byId("gemini")!!.keyUrl) })
             box.addView(res)
-            hint(box, "अभी: " + (if (Prefs.captionOwnKey(this).isNotBlank()) "लिखना अपनी अलग key से" else "लिखना DK लाइव वाली key से (अलग key नहीं डाली)") +
+            hint(box, "अभी: " + (if (Prefs.captionOwnKeyRaw(this).isNotBlank()) "लिखना अपनी अलग key से" else "लिखना DK लाइव वाली key से (अलग key नहीं डाली)") +
                 ". एक ही Google account की दो keys की limit अक्सर साझा होती है — limit सच में बचानी हो तो दूसरे account की key डालें।")
             val lat = Prefs.liveLatency(this)
             if (lat.isNotEmpty()) hint(box, "बोलने वाले मॉडल — नापी गई रफ़्तार (सबसे तेज़ अपने-आप पहले):\n" +
                 LiveModelRank.describe(LiveModelRank.order(lat.keys.toList(), emptyList(), lat), lat))
         }
         card("खोज (Google Search) — अपनी अलग Gemini key", "DK लाइव और चैट की इंटरनेट खोज (Gemini + Google Search) पहले इसी key से — और गहरी: ज़्यादा वेबसाइटें, पूरी जानकारी") { box ->
-            val ed = field(box, "Gemini API Key (सिर्फ़ खोज के लिए)", Prefs.searchOwnKey(this), "AIza… (ज़रूरी नहीं — दूसरे Google account की key बेहतर)", secret = true)
+            val ed = field(box, "Gemini API Key (सिर्फ़ खोज के लिए)", Prefs.searchOwnKeyRaw(this), "AIza… (ज़रूरी नहीं — दूसरे Google account की key बेहतर)", secret = true)
             keyFields[Prefs.SEARCH_KEY] = ed
             val res = TextView(this).apply { setTextColor(0xB3FFFFFF.toInt()); textSize = 13f; setPadding((4 * dp).toInt(), (6 * dp).toInt(), 0, 0) }
             row(box, showButton(ed), button("जाँचें") {
@@ -495,11 +532,11 @@ class SettingsActivity : AppCompatActivity() {
                 }
             }, button("Key लें") { Setup.openUrl(this, Providers.byId("gemini")!!.keyUrl) })
             box.addView(res)
-            hint(box, "अभी: " + (if (Prefs.searchOwnKey(this).isNotBlank()) "खोज अपनी अलग key से — गहरी खोज चालू" else "खोज DK लाइव / चैट वाली key से (अलग key नहीं डाली)") +
+            hint(box, "अभी: " + (if (Prefs.searchOwnKeyRaw(this).isNotBlank()) "खोज अपनी अलग key से — गहरी खोज चालू" else "खोज DK लाइव / चैट वाली key से (अलग key नहीं डाली)") +
                 ". यह key न चले (limit/गलत) तो खोज अपने-आप पुरानी key से होगी। एक ही Google account की keys की limit साझा होती है — दूसरे account की key डालें।")
         }
         card("सुनना (आवाज़ → text) — Groq, चाहें तो", "Groq Whisper सबसे तेज़ सुनता है। खाली छोड़ें = ऊपर वाली Gemini key से सुनेगा") { box ->
-            val ed = field(box, "Groq API Key (सिर्फ़ सुनने के लिए)", Prefs.scopeKey(this, ApiScopes.LIVE, "groq"), "gsk_… (ज़रूरी नहीं)", secret = true)
+            val ed = field(box, "Groq API Key (सिर्फ़ सुनने के लिए)", Prefs.scopeKeyRaw(this, ApiScopes.LIVE, "groq"), "gsk_… (ज़रूरी नहीं)", secret = true)
             keyFields[ApiScopes.pref(ApiScopes.LIVE, "key", "groq")] = ed
             val res = TextView(this).apply { setTextColor(0xB3FFFFFF.toInt()); textSize = 13f; setPadding((4 * dp).toInt(), (6 * dp).toInt(), 0, 0) }
             row(box, showButton(ed), button("जाँचें") {
@@ -515,8 +552,8 @@ class SettingsActivity : AppCompatActivity() {
             }, button("Groq key लें") { Setup.openUrl(this, "https://console.groq.com/keys") })
             box.addView(res)
             hint(box, "अभी: " + when {
-                Prefs.scopeKey(this, ApiScopes.LIVE, "groq").isNotBlank() -> "Groq Whisper से सुन रहा है"
-                Prefs.scopeKey(this, ApiScopes.LIVE, "gemini").isNotBlank() -> "Gemini से सुन रहा है"
+                Prefs.scopeKeyRaw(this, ApiScopes.LIVE, "groq").isNotBlank() -> "Groq Whisper से सुन रहा है"
+                Prefs.scopeKeyRaw(this, ApiScopes.LIVE, "gemini").isNotBlank() -> "Gemini से सुन रहा है"
                 else -> "Google माइक से सुन रहा है (फ्री, बीप आ सकती है)"
             } + " • बिना-Live आवाज़ मोड में जवाब का text DK चैट की API से बनता है।")
         }
@@ -566,12 +603,12 @@ class SettingsActivity : AppCompatActivity() {
 
     private fun secBrainScope(scope: String) {
         card("${ApiScopes.title(scope)} की AI", "${ApiScopes.title(scope)} सिर्फ़ यहाँ डाली key से चलेगा — DK चैट या किसी और की key नहीं") { box ->
-            val cur = Prefs.scopeActive(this, scope)
+            val cur = Prefs.scopeActiveRaw(this, scope)
             val rg = RadioGroup(this).apply { orientation = RadioGroup.VERTICAL }
             Providers.all.forEachIndexed { i, p ->
                 rg.addView(RadioButton(this).apply {
                     id = scopeRadioBase(scope) + i
-                    text = p.name + (if (p.free) "   • फ्री" else "   • पेड") + if (Prefs.scopeKey(this@SettingsActivity, scope, p.id).isBlank()) "   • key नहीं" else "   • ✓ key"
+                    text = p.name + (if (p.free) "   • फ्री" else "   • पेड") + if (Prefs.scopeKeyRaw(this@SettingsActivity, scope, p.id).isBlank()) "   • key नहीं" else "   • ✓ key"
                     setTextColor(0xFFFFFFFF.toInt()); textSize = 15f
                     isChecked = cur == p.id
                     setPadding((6 * dp).toInt(), (6 * dp).toInt(), 0, (6 * dp).toInt())
@@ -593,7 +630,7 @@ class SettingsActivity : AppCompatActivity() {
                     text = p.name + if (p.free) "   • फ्री" else "   • पेड"
                     setTextColor(0xFFFFFFFF.toInt())
                     textSize = 15f
-                    isChecked = Prefs.activeProvider(this@SettingsActivity) == p.id
+                    isChecked = Prefs.activeProviderRaw(this@SettingsActivity) == p.id
                     setPadding((6 * dp).toInt(), (6 * dp).toInt(), 0, (6 * dp).toInt())
                 })
             }
@@ -615,7 +652,7 @@ class SettingsActivity : AppCompatActivity() {
         card("तुरंत सेटअप — कोई भी फ्री key डालें", "DK खुद पहचानेगा कि key किस कंपनी की है, उसके फ्री मॉडल जाँचकर सबसे तेज़ चुनेगा और बात शुरू कर देगा") { box ->
             val edText = field(box, "API key", "", "Gemini / Groq / OpenRouter — कोई भी", secret = true)
             val res1 = TextView(this).apply { setTextColor(0xB3FFFFFF.toInt()); textSize = 13f; setPadding((4 * dp).toInt(), (6 * dp).toInt(), 0, 0) }
-            val cur = Prefs.activeProvider(this).let { id -> if (Prefs.key(this, id).isNotBlank()) "अभी: ${KeySetup.name(id)} • ${Prefs.model(this, id)}" else "अभी कोई key नहीं" }
+            val cur = Prefs.activeProviderRaw(this).let { id -> if (Prefs.keyRaw(this, id).isNotBlank()) "अभी: ${KeySetup.name(id)} • ${Prefs.model(this, id)}" else "अभी कोई key नहीं" }
             res1.text = cur
             row(box, button("जोड़ें और सबसे तेज़ चुनें") {
                 val k = edText.text.toString().trim()
@@ -627,9 +664,9 @@ class SettingsActivity : AppCompatActivity() {
                     if (r.ok) {
                         edText.setText("")
                         // neeche wale company card bhi naye hisaab se (warna save() purani key likh deta)
-                        keyFields[ApiScopes.pref(ApiScopes.CHAT, "key", r.provider)]?.setText(Prefs.key(this@SettingsActivity, r.provider))
+                        keyFields[ApiScopes.pref(ApiScopes.CHAT, "key", r.provider)]?.setText(Prefs.keyRaw(this@SettingsActivity, r.provider))
                         modelFields[ApiScopes.pref(ApiScopes.CHAT, "model", r.provider)]?.setText(r.model)
-                        fetchedFor[ApiScopes.pref(ApiScopes.CHAT, "key", r.provider)] = Prefs.key(this@SettingsActivity, r.provider)
+                        fetchedFor[ApiScopes.pref(ApiScopes.CHAT, "key", r.provider)] = Prefs.keyRaw(this@SettingsActivity, r.provider)
                         Providers.all.indexOfFirst { it.id == r.provider }.takeIf { it >= 0 }?.let { rgProvider.check(1000 + it) }
                         save(false)
                         startTalking()
@@ -1282,14 +1319,14 @@ class SettingsActivity : AppCompatActivity() {
             if (p.isCustom) {
                 baseFields[bName] = field(box, "Base URL", Prefs.scopeBase(this, scope, p.id), "https://.../v1")
             }
-            val key = field(box, "API Key", Prefs.scopeKey(this, scope, p.id), "यहाँ key पेस्ट करें", secret = true)
+            val key = field(box, "API Key", Prefs.scopeKeyRaw(this, scope, p.id), "यहाँ key पेस्ट करें", secret = true)
             keyFields[kName] = key
             if (p.isGemini && scope == ApiScopes.CODER) {
                 // कोडिंग एजेंट: 3 Gemini keys - एक के सारे मॉडल की limit खत्म = अपने-आप अगली
                 keyFields[ApiScopes.pref(scope, "key", "gemini2")] = field(box, "Gemini API Key 2 (बैकअप, ज़रूरी नहीं)",
-                    Prefs.scopeKey(this, scope, "gemini2"), "दूसरी Gemini key", secret = true)
+                    Prefs.scopeKeyRaw(this, scope, "gemini2"), "दूसरी Gemini key", secret = true)
                 keyFields[ApiScopes.pref(scope, "key", "gemini3")] = field(box, "Gemini API Key 3 (बैकअप, ज़रूरी नहीं)",
-                    Prefs.scopeKey(this, scope, "gemini3"), "तीसरी Gemini key", secret = true)
+                    Prefs.scopeKeyRaw(this, scope, "gemini3"), "तीसरी Gemini key", secret = true)
                 box.addView(TextView(this).apply {
                     text = "Key 1 के सारे मॉडल (3.8 Flash → 3.6 Flash → 3 Flash → 3.5 Flash-Lite → 3.1 Flash-Lite) की limit खत्म → अपने-आप Key 2 के सारे मॉडल → फिर Key 3। " +
                         "सबकी limit खत्म हो तो काम रुकता नहीं — limit खुलने तक रुककर फिर चलता है। ध्यान दें: Google limit project पर लगाता है, इसलिए हर key अलग Google project की हो।"
@@ -1527,10 +1564,11 @@ class SettingsActivity : AppCompatActivity() {
     /** कोडिंग / कंप्यूटर स्क्रीन पर: उनकी API अब AI दिमाग में उनके अपने विकल्प में */
     private fun apiLinkCard(scope: String, section: String) {
         card("${ApiScopes.title(scope)} की AI", "API key अब AI दिमाग → ${ApiScopes.title(scope)} में — सिर्फ़ इसी की अपनी") { box ->
-            hint(box, "अभी: " + scopeStatus(scope))
+            hint(box, "अभी: " + if (Prefs.oneKeyOn(this)) "✓ \"एक key से सब\" चालू — यह हिस्सा भी उसी एक Gemini key से" else scopeStatus(scope))
             row(box, button("${ApiScopes.title(scope)} की API खोलें") {
                 save(false)
-                startActivity(android.content.Intent(this, SettingsActivity::class.java).putExtra("section", section))
+                // v3.91: एक-key मोड में अलग key वाला पन्ना नहीं - AI दिमाग (एक key वाला खाना) खोलो
+                startActivity(android.content.Intent(this, SettingsActivity::class.java).putExtra("section", if (Prefs.oneKeyOn(this)) "brain" else section))
             })
         }
     }
@@ -1539,8 +1577,8 @@ class SettingsActivity : AppCompatActivity() {
     private fun save(showToast: Boolean) {
         if (section == null || section == "orb" || section == "ui") return
         val active = if (::rgProvider.isInitialized)
-            Providers.all.getOrNull(rgProvider.checkedRadioButtonId - 1000)?.id ?: Prefs.activeProvider(this)
-        else Prefs.activeProvider(this)
+            Providers.all.getOrNull(rgProvider.checkedRadioButtonId - 1000)?.id ?: Prefs.activeProviderRaw(this)
+        else Prefs.activeProviderRaw(this)
         Prefs.edit(this) {
             if (::edUser.isInitialized) {
                 putString("user_name", edUser.text.toString().trim())
@@ -1594,7 +1632,7 @@ class SettingsActivity : AppCompatActivity() {
         txtSaved.text = "✓ सेव हो गया"
         if (showToast) {
             val active2 = Providers.byId(active)
-            val warn = if (::rgProvider.isInitialized && Prefs.key(this, active).isBlank()) " (पर ${active2?.name} की key खाली है)" else ""
+            val warn = if (::rgProvider.isInitialized && Prefs.keyRaw(this, active).isBlank()) " (पर ${active2?.name} की key खाली है)" else ""
             toast("सेटिंग्स सेव हो गईं$warn")
         }
     }
