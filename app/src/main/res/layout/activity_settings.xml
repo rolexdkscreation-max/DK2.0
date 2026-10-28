@@ -56,6 +56,33 @@
                 android:layout_height="48dp" />
         </LinearLayout>
 
+        <!-- सेटिंग्स में खोज (सिर्फ़ मुख्य मेनू पर दिखता है) -->
+        <EditText
+            android:id="@+id/settingsSearch"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="16dp"
+            android:layout_marginTop="6dp"
+            android:layout_marginEnd="16dp"
+            android:layout_marginBottom="4dp"
+            android:background="@drawable/glass_input"
+            android:drawableStart="@android:drawable/ic_menu_search"
+            android:drawablePadding="10dp"
+            android:hint="सेटिंग्स में खोजें… (जैसे ऑटोनोमस, key, आवाज़)"
+            android:imeOptions="actionSearch"
+            android:importantForAutofill="no"
+            android:inputType="text"
+            android:minHeight="48dp"
+            android:paddingStart="14dp"
+            android:paddingTop="10dp"
+            android:paddingEnd="14dp"
+            android:paddingBottom="10dp"
+            android:singleLine="true"
+            android:textColor="@color/text"
+            android:textColorHint="#80FFFFFF"
+            android:textSize="15sp"
+            android:visibility="gone" />
+
         <ScrollView
             android:id="@+id/scroll"
             android:layout_width="match_parent"
