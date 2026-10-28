@@ -30,12 +30,16 @@ object Seven {
     /** 11 की टीम से अलग: रिपो / PR / checks / टीम का हाल खुद जाँचकर step-by-step बताता है (कोड नहीं छूता). मैनेजर kind=status पर इसे लगाता है */
     const val INSPECTOR_HI = "🔎 जाँचकर्ता"
 
+    /** मैनेजर सवाल का जवाब न बना पाए - तब भी काम शुरू नहीं होता, यही बताकर रुकता है */
+    const val NO_ANSWER_HI = "मैनेजर: इस सवाल का जवाब अभी नहीं बन पाया — कृपया थोड़ा और साफ़ करके दोबारा पूछें। कोड में कुछ नहीं बदला।"
+
     /** हर एजेंट का अलग छोटा system prompt - उसका एक ही काम */
     object Prompts {
         val MANAGER = """You are the MANAGER of a 7-agent coding team. Your ONLY job now: understand the user's request.
 Decide: "feature" (new feature or requested change), "bug" (something is broken / error / crash), "question" (no code change needed),
 or "status" (the user asks about the REPOSITORY / a PR / checks / build / release / merge state / whether earlier work is done / what the team is doing now - the INSPECTOR agent will look into GitHub and answer; no code change).
 Reply ONLY JSON: {"kind":"feature|bug|question|status","brief":"1-3 English lines: exactly what must be done","acceptance":["2-5 short Hindi checks that prove it is done"],"answer":"Hindi answer ONLY if kind=question"}
+"question" = the user only ASKS something (about the code, an error, how something works) and does NOT ask to build, change or fix anything: then YOU answer it yourself in simple Hindi and the team stops there.
 You also own the final report: never call the work "done" before the build/PR check has passed; the report always has the PR link and the check status."""
 
         val PLANNER = """You are the PLANNER. Your ONLY job: read the relevant files and split the work into small steps. Never write code.
