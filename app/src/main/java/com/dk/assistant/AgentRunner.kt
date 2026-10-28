@@ -304,6 +304,19 @@ class AgentRunner(
         ComputerVoice.parse(goal)?.let { cmd -> if (computerFromVoice(cmd)) return }
         // "tumhe kisne banaya?" - sirf poochhne par
         if (asksCreator(lower)) { say(CREATOR_ANSWER); return }
+        // टेम्पलेट कमांड (साँचे): बिना API key / AI के - पहला मिला साँचा चलता है; न मिले तो नीचे पहले जैसा रास्ता
+        if (!note.contains(LocalRouter.DONE_NOTE)) {
+            var tg = goal.trim()
+            for (w in Prefs.wakeWords(svc).sortedByDescending { it.length }) if (w.length >= 2 && tg.startsWith(w, ignoreCase = true)) tg = tg.substring(w.length).trimStart(' ', ',')
+            com.dk.assistant.template.TemplateCommands.match(tg, com.dk.assistant.template.TemplateStore.all(svc))?.let { m ->
+                DKState.set(Mode.WORKING)
+                val r = com.dk.assistant.template.TemplateRunner.run(svc, m) { q ->
+                    say(q); DKState.set(Mode.LISTENING)
+                    svc.hearForAgent()?.also { DKState.user(it); DKState.set(Mode.WORKING) }
+                }
+                say(r); return
+            }
+        }
         // v3.33: Local-first - फ़ोन पर ही समझ आए ऐसा काम (ऐप खोलो, कॉल, YouTube/शॉपिंग सर्च, फ़ोटो, कई कदम) AI से पहले.
         // (पहले QuickCommands रिसर्च के बाद था - "zepto पर दूध सर्च करो" गहरी AI रिसर्च बन जाता था)
         if (!note.contains(LocalRouter.DONE_NOTE)) {
