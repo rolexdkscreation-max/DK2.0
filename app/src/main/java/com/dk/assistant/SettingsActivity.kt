@@ -1098,6 +1098,12 @@ class SettingsActivity : AppCompatActivity() {
             hint(box, "चालू करने पर भी नाम साफ़ न मिले (दो मिलते-जुलते नाम) तो DK पूछेगा। भेजने के बाद DK जाँचता है कि संदेश सच में चैट में गया।")
         }
 
+        // ---- टेम्पलेट कमांड (साँचे): बिना API key फ़ोन कंट्रोल
+        card("टेम्पलेट कमांड", "\"व्हाट्सएप ओपन करो ___ को ___ मैसेज भेज दो\" जैसे साँचे — बिना API key, बिना AI") { box ->
+            row(box, button("टेम्पलेट कमांड खोलें") { startActivity(android.content.Intent(this, com.dk.assistant.template.TemplateSettingsActivity::class.java)) })
+            hint(box, "हर साँचे को चालू/बंद करें, अपने नए साँचे जोड़ें, बदलें या हटाएँ।")
+        }
+
         // ---- ऑटोनोमस मोड (अलग स्क्रीन; शुरू में बंद)
         card("ऑटोनोमस मोड", "DK खुद तय करे कि काम कोडिंग का है या फ़ोन के ऐप का, और खुद करे — शुरू में बंद") { box ->
             row(box, button("ऑटोनोमस मोड खोलें") { startActivity(android.content.Intent(this, com.dk.assistant.auto.AutoSettingsActivity::class.java)) })

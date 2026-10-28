@@ -1248,7 +1248,9 @@ class DKAccessibilityService : AccessibilityService() {
         val l = " " + heard.lowercase().trim().trim('.', '।', '!', '?') + " "
         fun has(vararg w: String) = w.any { l.contains(it) }
         DKState.user(heard)
-        val speakerOn = has("स्पीकर", "speaker", "लाउड")
+        // टेम्पलेट "उठाओ / कॉल उठाओ" (Settings → टेम्पलेट कमांड में चालू हो): उठाते ही स्पीकर भी चालू
+        val speakerOn = has("स्पीकर", "speaker", "लाउड") ||
+            (has("उठा", "uthao", "utha lo") && com.dk.assistant.template.TemplateStore.on(this, "call_answer"))
         val pick = has("उठा", "रिसीव", "receive", "answer", "पिक", "pick", "accept", "स्वीकार", "बात करा", "बात करनी", "जोड़ो", "जोड़ दो") ||
             Regex("(^| )(हाँ|हां|हा|हम्म|yes|yeah|ok|ओके|ठीक है|जी|जी हाँ|जी हां|बिलकुल|बिल्कुल|उठाओ)( |$)").containsMatchIn(l.trim())
         val cut = has("काट", "कट ", "कट", "reject", "decline", "मना", "रख दो", "बाद में", "अभी नहीं", "नहीं उठा", "मत उठा", "बिज़ी", "busy") ||

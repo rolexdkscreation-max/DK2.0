@@ -44,7 +44,8 @@ object SocialAgent {
     fun busy() = job?.isActive == true
 
     /** tool: social_media_task / whatsapp_task. return = मॉडल के लिए JSON */
-    suspend fun start(svc: DKAccessibilityService, args: JSONObject, force: Platform? = null): String {
+    /** ownConfirm = true: भेजने से पहले पूछना बुलाने वाला (टेम्पलेट कमांड) खुद करता है, फिर [confirmByDk]. false = पहले जैसा */
+    suspend fun start(svc: DKAccessibilityService, args: JSONObject, force: Platform? = null, ownConfirm: Boolean = false): String {
         if (busy()) return err("busy", "Another social task (${lastReport?.taskId}) is running. Use social_media_task_control status/cancel first.")
         val req = when (val p = SocialRequestParser.parse(args, force)) {
             is SocialRequestParser.Parsed.Err -> return err("bad_request", p.why)
@@ -66,7 +67,7 @@ object SocialAgent {
                 is Contact.Ask -> return err(c.code, c.msg)
             }
         }
-        autoSend = req.platform == Platform.WHATSAPP && req.action == SocialAction.SEND_MESSAGE && Prefs.waAutoSend(svc)
+        autoSend = !ownConfirm && req.platform == Platform.WHATSAPP && req.action == SocialAction.SEND_MESSAGE && Prefs.waAutoSend(svc)
         val id = "social-" + (++seq) + "-" + (System.currentTimeMillis() % 100000)
         val task = SocialPlanner.plan(id, req, media, phone, who)
         val driver = AccessibilityScreenDriver(svc)
@@ -80,6 +81,13 @@ object SocialAgent {
         return JSONObject().put("status", "started").put("task_id", id)
             .put("message", "Started. You will get SYSTEM NOTEs as it progresses. Before anything is posted/sent you get status waiting_confirmation: then ask the user exactly that question and wait for their answer. Never say it is done before the SYSTEM NOTE says completed.")
             .toString()
+    }
+
+    /** टेम्पलेट कमांड: DK ने खुद यूज़र से पूछ लिया (या पुष्टि वाला switch बंद है) -> भेजो. false = कोई काम पुष्टि के इंतज़ार में नहीं */
+    fun confirmByDk(): Boolean {
+        val r = runner ?: return false
+        if (lastReport?.status != TaskStatus.WAITING_CONFIRMATION) return false
+        r.control(SocialTaskRunner.Control.CONFIRM); return true
     }
 
     /** tool: social_media_task_control(command, task_id) */
