@@ -520,23 +520,39 @@ class SettingsActivity : AppCompatActivity() {
             if (lat.isNotEmpty()) hint(box, "बोलने वाले मॉडल — नापी गई रफ़्तार (सबसे तेज़ अपने-आप पहले):\n" +
                 LiveModelRank.describe(LiveModelRank.order(lat.keys.toList(), emptyList(), lat), lat))
         }
-        card("खोज (Google Search) — अपनी अलग Gemini key", "DK लाइव और चैट की इंटरनेट खोज (Gemini + Google Search) पहले इसी key से — और गहरी: ज़्यादा वेबसाइटें, पूरी जानकारी") { box ->
-            val ed = field(box, "Gemini API Key (सिर्फ़ खोज के लिए)", Prefs.searchOwnKeyRaw(this), "AIza… (ज़रूरी नहीं — दूसरे Google account की key बेहतर)", secret = true)
-            keyFields[Prefs.SEARCH_KEY] = ed
-            val res = TextView(this).apply { setTextColor(0xB3FFFFFF.toInt()); textSize = 13f; setPadding((4 * dp).toInt(), (6 * dp).toInt(), 0, 0) }
-            row(box, showButton(ed), button("जाँचें") {
-                val k = ed.text.toString().trim()
-                if (k.isBlank()) { res.text = "खाली है — खोज DK लाइव / चैट वाली key से होगी (तेज़ वाली, कम गहरी)"; return@button }
-                if (ApiScopes.detect(k).let { it != null && it != "gemini" }) { res.text = "यह Gemini की key नहीं लगती (AIza… से शुरू होती है)"; return@button }
-                res.text = "असली Google खोज करके जाँच रहा हूँ…"
-                lifecycleScope.launch {
-                    res.text = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { checkSearchKey(k) }
-                    save(false)
-                }
-            }, button("Key लें") { Setup.openUrl(this, Providers.byId("gemini")!!.keyUrl) })
-            box.addView(res)
-            hint(box, "अभी: " + (if (Prefs.searchOwnKeyRaw(this).isNotBlank()) "खोज अपनी अलग key से — गहरी खोज चालू" else "खोज DK लाइव / चैट वाली key से (अलग key नहीं डाली)") +
-                ". यह key न चले (limit/गलत) तो खोज अपने-आप पुरानी key से होगी। एक ही Google account की keys की limit साझा होती है — दूसरे account की key डालें।")
+        // v3.93: खोज का बैकअप क्रम - Tavily (मुख्य) -> Exa (दूसरा) -> Gemini + Google Search (आख़िरी). कोई भी key खाली रह सकती है.
+        card("खोज — Tavily, Exa, Gemini (बैकअप क्रम)", "DK लाइव और चैट की इंटरनेट खोज पहले Tavily से; न चले तो अपने-आप Exa; वह भी न चले तो Gemini + Google Search") { box ->
+            fun searchKey(title: String, pref: String, value: String, ph: String, url: String, check: (String) -> String) {
+                val ed = field(box, title, value, ph, secret = true)
+                keyFields[pref] = ed
+                val res = TextView(this).apply { setTextColor(0xB3FFFFFF.toInt()); textSize = 13f; setPadding((4 * dp).toInt(), (6 * dp).toInt(), 0, 0) }
+                row(box, showButton(ed), button("जाँचें") {
+                    val k = ed.text.toString().trim()
+                    if (k.isBlank()) { res.text = "खाली है — खोज इसे छोड़कर अगली सेवा से होगी"; return@button }
+                    res.text = "जाँच रहा हूँ…"
+                    lifecycleScope.launch {
+                        res.text = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { check(k) }
+                        save(false)
+                    }
+                }, button("Key लें") { Setup.openUrl(this, url) })
+                box.addView(res)
+            }
+            searchKey("Tavily API Key (मुख्य)", Prefs.TAVILY_SEARCH_KEY, Prefs.tavilySearchKey(this), "tvly-… (ज़रूरी नहीं)",
+                WebSearch.TAVILY_KEY_URL) { WebSearchNet.checkTavily(it) }
+            searchKey("Exa API Key (दूसरा)", Prefs.EXA_SEARCH_KEY, Prefs.exaSearchKey(this), "Exa key (ज़रूरी नहीं)",
+                WebSearch.EXA_KEY_URL) { WebSearchNet.checkExa(it) }
+            searchKey("Gemini API Key (सिर्फ़ खोज के लिए)", Prefs.SEARCH_KEY, Prefs.searchOwnKeyRaw(this), "AIza… (आख़िरी — खाली = DK लाइव / चैट वाली key)",
+                Providers.byId("gemini")!!.keyUrl) { k ->
+                if (ApiScopes.detect(k).let { it != null && it != "gemini" }) "✗ Key गलत है — यह Gemini की key नहीं लगती (AIza… से शुरू होती है)"
+                else WebSearchNet.checkGemini(k)
+            }
+            val order = listOfNotNull(
+                "Tavily".takeIf { Prefs.tavilySearchKey(this).isNotBlank() },
+                "Exa".takeIf { Prefs.exaSearchKey(this).isNotBlank() },
+                "Gemini".takeIf { BrainManager(this).searchKeys().isNotEmpty() })
+            hint(box, "अभी का क्रम: " + (if (order.isEmpty()) "कोई key नहीं — इंटरनेट खोज बंद" else order.joinToString(" → ")) +
+                ". जो सेवा न चले (key गलत / limit / गड़बड़ी) उसे 1 घंटे छोड़कर अगली से खोज — आपसे कुछ नहीं पूछा जाता। " +
+                "खोज सिर्फ़ ताज़ा जानकारी (आज, ख़बर, भाव, मौसम, स्कोर) पर, एक सवाल पर एक बार, नतीजे 10 मिनट याद। Gemini खाली हो तो DK लाइव / चैट वाली key से।")
         }
         card("सुनना (आवाज़ → text) — Groq, चाहें तो", "Groq Whisper सबसे तेज़ सुनता है। खाली छोड़ें = ऊपर वाली Gemini key से सुनेगा") { box ->
             val ed = field(box, "Groq API Key (सिर्फ़ सुनने के लिए)", Prefs.scopeKeyRaw(this, ApiScopes.LIVE, "groq"), "gsk_… (ज़रूरी नहीं)", secret = true)
@@ -562,35 +578,11 @@ class SettingsActivity : AppCompatActivity() {
         }
     }
 
-    /** v3.90/v3.92: खोज वाली key की जाँच - checkCaptionKey की तरहreliable models/lightweight test, सही active key को गलत न बताए */
-    private fun checkSearchKey(k: String): String = try {
-        val c = okhttp3.OkHttpClient.Builder().callTimeout(10, java.util.concurrent.TimeUnit.SECONDS).build()
-        val req = okhttp3.Request.Builder().url("https://generativelanguage.googleapis.com/v1beta/models?pageSize=1000").header("x-goog-api-key", k).build()
-        c.newCall(req).execute().use { r ->
-            val body = r.body?.string() ?: ""
-            when {
-                r.code == 400 || r.code == 401 || r.code == 403 -> "✗ key गलत है या बंद है"
-                r.code == 429 -> "✗ इस key की limit अभी खत्म है"
-                !r.isSuccessful -> "✗ Google से जवाब नहीं (${r.code})"
-                body.contains("gemini") || body.contains("models/") -> "✓ key सही है — Google खोज के लिए तैयार। DK लाइव दोबारा शुरू करें"
-                else -> "✓ key सही है — DK लाइव दोबारा शुरू करें"
-            }
-        }
-    } catch (e: Exception) {
-        // यदि नेटवर्क या अन्य एक्सेप्शन आए, तो GeminiClient से एक हल्का टेस्ट करके देखें
-        try {
-            val r = GeminiClient(k, Prefs.model(this, "gemini")).search("Hi", emptyList(), "Hi", deep = false, maxModels = 1)
-            "✓ key सही है — DK लाइव दोबारा शुरू करें"
-        } catch (ex: AiException) {
-            when (ex.code) {
-                400, 401, 403 -> "✗ key गलत है या बंद है"
-                429 -> "✗ इस key की limit अभी खत्म है"
-                else -> "✓ key सही है — DK लाइव दोबारा शुरू करें"
-            }
-        } catch (_: Exception) {
-            "✓ key सही है — DK लाइव दोबारा शुरू करें"
-        }
-    }
+    /**
+     * v3.93: Gemini (खोज) key की जाँच - असली वजह + code. पहले: models-list फेल होने पर (जैसे इंटरनेट नहीं) भी "✓ key सही है",
+     * और 429 के अलावा हर गड़बड़ी छिप जाती थी. अब [WebSearch.checkMessage]: 400/401/403 = Key गलत, 429 = limit, इंटरनेट = इंटरनेट की दिक्कत.
+     */
+    private fun checkSearchKey(k: String): String = WebSearchNet.checkGemini(k)
 
     /** v3.41: लिखने वाली key सच में चलती है? (models list + transcribe मॉडल) */
     private fun checkCaptionKey(k: String): String = try {

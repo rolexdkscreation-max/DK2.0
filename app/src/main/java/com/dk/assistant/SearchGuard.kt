@@ -62,14 +62,14 @@ object SearchGuard {
      * आसान शब्दों में, बिना "API/टूल" जैसे शब्दों के, और आगे क्या करें.
      */
     fun reasonHi(f: Fail): String = when (f) {
-        Fail.NO_KEY -> "खोज के लिए Gemini की चाबी (key) सेटिंग में नहीं डली है"
-        Fail.BAD_KEY -> "सेटिंग में डली Gemini key ग़लत या बंद है"
-        Fail.QUOTA -> "आज की Google खोज की मुफ़्त सीमा अभी भर गई है, थोड़ी देर बाद फिर चलेगी"
+        Fail.NO_KEY -> "खोज के लिए कोई चाबी (key) - Tavily, Exa या Gemini - सेटिंग में नहीं डली है"
+        Fail.BAD_KEY -> "सेटिंग में डली खोज की key ग़लत या बंद है"
+        Fail.QUOTA -> "खोज की मुफ़्त सीमा (limit) अभी भर गई है, थोड़ी देर बाद फिर चलेगी"
         Fail.NETWORK -> "इंटरनेट नहीं मिल रहा"
         Fail.TIMEOUT -> "इंटरनेट धीमा है, वेबसाइटों से जवाब समय पर नहीं आया"
         Fail.EMPTY -> "किसी भी वेबसाइट पर इसकी पक्की जानकारी नहीं मिली"
         Fail.MODEL -> "सेटिंग में चुना Gemini मॉडल इंटरनेट खोज नहीं करता"
-        Fail.OTHER -> "Google की तरफ़ से जवाब नहीं आया"
+        Fail.OTHER -> "खोज वाली वेबसाइटों की तरफ़ से जवाब नहीं आया"
     }
 
     fun userLine(f: Fail): String = when (f) {
@@ -80,8 +80,11 @@ object SearchGuard {
 
     /** Live के web_search का नतीजा जब Google खोज + दूसरी वेबसाइटें (बिना key वाली) सब आज़माने के बाद भी न मिले */
     fun failResult(q: String, f: Fail): String =
-        "NO_RESULT (the phone tried Google search and other websites). Tell the user exactly this, in your usual voice and gender form, nothing else: \"${userLine(f)}\" " +
-            "Do not use the words tool, API or error. Do NOT guess today's facts. If the user then says yes / हाँ / कर लो, call web_search again with the same query: \"${q.take(150)}\"."
+        "NO_RESULT (the phone tried internet search - Tavily, Exa, Google - and other websites; none worked). Now answer from your OWN knowledge: " +
+            "start with \"${WebSearch.ALL_FAILED_LINE}\", then give your best answer from what you already know and say it may not be the latest. " +
+            "Never invent exact live figures (today's price, score, weather, results) - for those say you could not check right now. " +
+            "If the user asks why, say: \"${userLine(f)}\" " +
+            "Do not use the words tool, API or error. If the user then says search again / फिर से खोजो, call web_search again with the same query: \"${q.take(150)}\".\n"
 
     /** स्रोत तभी, जब सच में खोज से जवाब आया */
     fun sourcesLine(answer: String, sources: List<Pair<String, String>>): String =
