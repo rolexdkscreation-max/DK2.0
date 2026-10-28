@@ -1076,6 +1076,7 @@ class DKAccessibilityService : AccessibilityService() {
                 "directions" -> Maps.directions(this, a.optString("to"), a.optString("from"), a.optString("mode", "driving"))
                 "navigate" -> Maps.navigate(this, a.optString("to"), a.optString("mode", "driving"))
                 "map_search" -> Maps.search(this, a.optString("query"))
+                "alarm_off" -> AlarmOff.run(this, AlarmOff.fromJson(a))
                 "distance" -> distance(a.optString("to"), a.optString("from"), a.optString("mode", "driving"))
                 "media" -> DeviceActions.media(this, a.optString("key", "play_pause"))
                 "lock" -> if (Build.VERSION.SDK_INT >= 28) global(GLOBAL_ACTION_LOCK_SCREEN) else "ERROR: Android 9+ chahiye"
