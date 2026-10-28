@@ -246,7 +246,7 @@ class BrainManager(private val ctx: Context) {
     fun searchKeys(): List<String> =
         SearchGuard.keys(fromLive, Prefs.key(ctx, "gemini"), Prefs.scopeKey(ctx, ApiScopes.LIVE, "gemini"), Prefs.searchOwnKey(ctx))
 
-    fun canSearch() = Prefs.webAnswers(ctx) && searchKeys().isNotEmpty()
+    fun canSearch() = Prefs.webAnswers(ctx) && anySearch()
 
     /** आख़िरी खोज क्यों नहीं चली (लॉग + Live का जवाब) */
     @Volatile var lastSearchFail: SearchGuard.Fail = SearchGuard.Fail.OTHER
@@ -297,7 +297,89 @@ class BrainManager(private val ctx: Context) {
      * बाकी पहले जैसा एक गहरी खोज.
      */
     suspend fun search(question: String, deep: Boolean, thorough: Boolean = false, think: Boolean = false): SearchResult =
-        if (!deep && !thorough && !think) liveSearch(question) else searchOnce(question, deep, thorough, think)
+        if (think) searchOnce(question, deep, thorough, think)   // deep_think = सोच, इंटरनेट खोज का क्रम नहीं
+        else chainSearch(question, explicit = deep || thorough) { geminiSearch(question, deep, thorough) }
+
+    /** पहले जैसी Gemini + Google Search (क्रम की आख़िरी सेवा) */
+    private suspend fun geminiSearch(question: String, deep: Boolean, thorough: Boolean): SearchResult =
+        if (!deep && !thorough) liveSearch(question) else searchOnce(question, deep, thorough, false)
+
+    /** खोज की कोई सेवा है? (Tavily / Exa / Gemini में से कोई key) */
+    fun anySearch(): Boolean = Prefs.tavilySearchKey(ctx).isNotBlank() || Prefs.exaSearchKey(ctx).isNotBlank() || searchKeys().isNotEmpty()
+
+    /**
+     * v3.93: इंटरनेट खोज का बैकअप क्रम - Tavily -> Exa -> Gemini + Google Search ([WebSearch]). DK Live और चैट दोनों यहीं से.
+     * खाली key = छोड़ो; फेल = चुपचाप अगली (यूज़र से कुछ नहीं पूछते) और वह सेवा 1 घंटे बंद; नतीजा 10 मिनट याद;
+     * एक सवाल पर एक ही सफल खोज. सामान्य ज्ञान / गणित / कहानी (ताज़ा शब्द नहीं) = खोज नहीं (यूज़र ने ख़ुद "सर्च करो" न कहा हो).
+     */
+    private suspend fun chainSearch(question: String, explicit: Boolean, gemini: suspend () -> SearchResult): SearchResult {
+        if (!explicit && WebSearch.skip(question)) {
+            DKLog.d("खोज: सामान्य/बिना-बदलाव वाला सवाल - खोज नहीं, अपनी जानकारी से")
+            lastSearchFail = SearchGuard.Fail.OTHER
+            throw AiException(0, "no_search_needed")
+        }
+        WebSearch.cached(question)?.let { DKLog.d("खोज: 10 मिनट के अंदर वही सवाल - पिछला नतीजा"); return it }
+        return WebSearch.once(question) {
+            WebSearch.cached(question) ?: run {
+                val tKey = Prefs.tavilySearchKey(ctx); val eKey = Prefs.exaSearchKey(ctx)
+                val order = WebSearch.order(tKey.isNotBlank(), eKey.isNotBlank(), searchKeys().isNotEmpty())
+                var last: Exception? = null
+                var lastFail = SearchGuard.Fail.NO_KEY
+                for (p in order) {
+                    try {
+                        val r = when (p) {
+                            WebSearch.Provider.TAVILY -> fromFound(question, withContext(Dispatchers.IO) { WebSearchNet.tavily(tKey, question) })
+                            WebSearch.Provider.EXA -> fromFound(question, withContext(Dispatchers.IO) { WebSearchNet.exa(eKey, question) })
+                            WebSearch.Provider.GEMINI -> gemini()
+                        }
+                        if (r.text.isBlank()) throw AiException(0, "empty")
+                        WebSearch.tag(r.sources, p); WebSearch.clearDown(p); WebSearch.put(question, r)
+                        if (p != WebSearch.Provider.GEMINI) {
+                            LiveSearch.remember(question, r.sources)
+                            remember("USER SAYS: $question", JSONObject().put("say", r.text.take(1200)).put("done", true).toString())
+                        }
+                        DKLog.d("खोज: ${p.label} से (${r.sources.size} स्रोत)")
+                        return@run r
+                    } catch (e: kotlinx.coroutines.CancellationException) { throw e
+                    } catch (e: Exception) {
+                        val code = (e as? AiException)?.code ?: 0
+                        val f = if (p == WebSearch.Provider.GEMINI) lastSearchFail else
+                            if (e is java.io.InterruptedIOException) SearchGuard.Fail.TIMEOUT
+                            else if (e is java.io.IOException) SearchGuard.Fail.NETWORK
+                            else WebSearch.failOf(p, code, e.message)
+                        val empty = code == 0 && e.message == "empty"   // कुछ नहीं मिला = सेवा की ग़लती नहीं
+                        if (WebSearch.coolsDown(p, f) && !empty) {
+                            WebSearch.markDown(p, f); DKLog.d("खोज: ${p.label} नहीं चली (${SearchGuard.hindi(f)}${if (code > 0) ", code $code" else ""}) - 1 घंटे छोड़ी, अगली सेवा")
+                        } else DKLog.d("खोज: ${p.label} नहीं चली (${SearchGuard.hindi(f)}${if (code > 0) ", code $code" else ""}) - अगली सेवा")
+                        last = e; lastFail = f
+                    }
+                }
+                if (order.isEmpty()) lastFail = WebSearch.downReason() ?: SearchGuard.Fail.NO_KEY
+                lastSearchFail = lastFail
+                throw last ?: AiException(0, if (lastFail == SearchGuard.Fail.NO_KEY) "NO_KEY" else "all_down")
+            }
+        }
+    }
+
+    /**
+     * Tavily/Exa के नतीजे -> SearchResult. Live: नतीजे सीधे Live को (वह ख़ुद बोलकर जवाब बनाता है, कोई और AI call नहीं).
+     * चैट: चैट वाले AI से छोटा हिंदी जवाब (खोज दोबारा नहीं - सिर्फ़ मिलाना); वह न चले = सीधा सार.
+     */
+    private suspend fun fromFound(question: String, f: WebSearch.Found): SearchResult {
+        if (f.hits.isEmpty() && f.answer.isBlank()) throw AiException(0, "empty")
+        val sources = WebSearch.sources(f)
+        val report = WebSearch.report(f)
+        if (fromLive) return SearchResult(report, sources)
+        val merged = try {
+            kotlinx.coroutines.withTimeoutOrNull(10_000L) {
+                quickText(LiveSearch.mergeSystem(NowClock.line(), Prefs.assistantName(ctx), Prefs.userName(ctx)) + Memory.factsBlock(ctx),
+                    LiveSearch.mergeInput(question, listOf("web" to report)))
+            }
+        } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (_: Exception) { null }
+        val ans = (merged?.takeIf { it.isNotBlank() } ?: WebSearch.plainAnswer(f))
+            .replace(Regex("[*#`]"), "").replace(Regex("\\[\\d+(,\\s*\\d+)*\\]"), "").trim()
+        return SearchResult(ans.ifBlank { report }, sources)
+    }
 
     /**
      * v3.80: लाइव जानकारी - [LiveSearch.plan] की 2-3 खोजें साथ-साथ (सरकारी सवाल = पहले सरकारी वेबसाइटें),

@@ -84,6 +84,19 @@ object SearchPolicy {
         return FRESH.any { t.contains(it) }
     }
 
+    /**
+     * v3.93: सवाल सामान्य ज्ञान/पढ़ाई/कोड/गणित/कहानी वाला है (बदलने वाली जानकारी नहीं)? = इंटरनेट खोज नहीं.
+     * [needsSearch] से अलग: यह सिर्फ़ "पक्का बिना-खोज वाला" बताता है (बाकी फ़ैसला AI का).
+     */
+    /** बदलने वाली/ताज़ा जानकारी का कोई शब्द है? (आज, ख़बर, भाव, मौसम, स्कोर...) */
+    fun fresh(text: String): Boolean { val t = text.lowercase(); return FRESH.any { t.contains(it) } }
+
+    fun timeless(text: String): Boolean {
+        val t = text.lowercase()
+        if (TIMELESS.any { t.contains(it) }) return true
+        return Regex("^[\\d\\s+\\-*/x×÷().=?]+(कितना|कितने|kitna)?").matches(t.replace("होता है", "").replace("होते हैं", "").trim())
+    }
+
     /** System prompt ke liye niyam (chat, phone-task JSON aur Live - teeno me ek jaisa) */
     fun rules(searchName: String): String =
         "WEB SEARCH POLICY ($searchName):\n" +

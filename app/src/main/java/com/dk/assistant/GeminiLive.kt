@@ -574,6 +574,11 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
         DKState.hint(LivePromise.hintFor("web_search", q))
         setMode(Mode.THINKING)
         // v3.87: Live की खोज = Live की अपनी Gemini key पहले; fail = ख़ुद एक बार दोबारा (छोटी, तेज़ खोज)
+        // v3.93: सामान्य ज्ञान / गणित / कहानी (ताज़ा शब्द नहीं) = खोज नहीं, अपनी जानकारी से
+        if (WebSearch.skip(q)) {
+            log("web_search: \"${q.take(40)}\" - सामान्य सवाल, खोज नहीं")
+            return "NO_SEARCH_NEEDED: this is general knowledge (not live or changing). Answer it now from your own knowledge, briefly. Do not call web_search for it again."
+        }
         val brain = BrainManager(svc).also { it.fromLive = true }
         // v3.88: यूज़र के बोलते ही शुरू हुई खोज उसी बात की है = वही नतीजा (इंतज़ार कम)
         prepFail = null
@@ -588,7 +593,7 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
             if (r == null) why = pf
         }
         if (r == null && pf == null) {
-            r = try { withTimeoutOrNull(LiveSearch.totalTimeoutMs(Prefs.searchOwnKey(svc).isNotBlank())) { brain.search(q, deep = false) } }
+            r = try { withTimeoutOrNull(LiveSearch.totalTimeoutMs(Prefs.searchOwnKey(svc).isNotBlank()) + chainExtraMs()) { brain.search(q, deep = false) } }
             catch (e: CancellationException) { throw e } catch (e: Exception) {
                 why = brain.lastSearchFail
                 log("web_search fail (कोशिश 1): ${SearchGuard.hindi(why)} - ${e.javaClass.simpleName} ${e.message?.take(120)}")
@@ -603,11 +608,11 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
         if (res == null) {
             log("web_search: \"${q.take(40)}\" -> दो कोशिश के बाद भी नहीं (${SearchGuard.hindi(why)})")
             DKState.hint(when (why) {
-                SearchGuard.Fail.NO_KEY -> "खोज के लिए Gemini key डालें (DK Live या DK चैट)"
-                SearchGuard.Fail.BAD_KEY -> "Gemini key ग़लत है - सेटिंग में जाँचें"
-                SearchGuard.Fail.QUOTA -> "आज की Gemini सीमा ख़त्म - कल या दूसरी key"
-                SearchGuard.Fail.NETWORK -> "इंटरनेट नहीं मिला"
-                else -> "ताज़ा जानकारी अभी नहीं मिली"
+                SearchGuard.Fail.NO_KEY -> "${WebSearch.ALL_FAILED_LINE} - सेटिंग → खोज में Tavily, Exa या Gemini key डालें"
+                SearchGuard.Fail.BAD_KEY -> "${WebSearch.ALL_FAILED_LINE} - खोज की key ग़लत है, सेटिंग → खोज में जाँचें"
+                SearchGuard.Fail.QUOTA -> "${WebSearch.ALL_FAILED_LINE} - खोज की limit खत्म है"
+                SearchGuard.Fail.NETWORK -> "${WebSearch.ALL_FAILED_LINE} - इंटरनेट की दिक्कत है"
+                else -> WebSearch.ALL_FAILED_LINE
             })
             return SearchGuard.failResult(q, why)
         }
@@ -626,7 +631,8 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
     private suspend fun fallbackSearch(q: String, why0: SearchGuard.Fail, brain: BrainManager): Pair<SearchResult?, SearchGuard.Fail> = coroutineScope {
         var why = why0
         val open = async(Dispatchers.IO) { try { OpenSearchNet.search(q) } catch (e: Exception) { log("बिना-key खोज fail: ${e.message}"); null } }
-        val retry = why in listOf(SearchGuard.Fail.TIMEOUT, SearchGuard.Fail.OTHER, SearchGuard.Fail.EMPTY)
+        // v3.93: Tavily/Exa वाला क्रम पहले ही सब सेवाएँ आज़मा चुका = Gemini से दोबारा खोज नहीं (एक सवाल पर एक खोज)
+        val retry = why in listOf(SearchGuard.Fail.TIMEOUT, SearchGuard.Fail.OTHER, SearchGuard.Fail.EMPTY) && chainExtraMs() == 0L
         val quick = if (!retry) null else try { withTimeoutOrNull(16_000) { brain.quickSearch(q) } }
             catch (e: CancellationException) { throw e } catch (e: Exception) {
                 if (brain.lastSearchFail != SearchGuard.Fail.OTHER) why = brain.lastSearchFail
@@ -641,6 +647,10 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
         }
         null to why
     }
+
+    /** v3.93: Tavily/Exa पहले आज़माए जाते हैं - उनके लिए कुछ सेकंड और (हर एक ज़्यादा से ज़्यादा ~10 सेकंड) */
+    private fun chainExtraMs(): Long =
+        (if (Prefs.tavilySearchKey(svc).isNotBlank()) 10_000L else 0L) + (if (Prefs.exaSearchKey(svc).isNotBlank()) 10_000L else 0L)
 
     private val OPEN_NOTE = "(The normal Google search did not work right now, so these come from Google News headlines and Wikipedia. " +
         "Answer from them. If they do not answer the exact question, say briefly what you found and that the full detail could not be confirmed.)\n"
@@ -674,7 +684,7 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
             setMode(Mode.THINKING)
             val brain = BrainManager(svc).also { it.fromLive = true }
             var why = SearchGuard.Fail.TIMEOUT
-            var r = try { withTimeoutOrNull(LiveSearch.totalTimeoutMs(Prefs.searchOwnKey(svc).isNotBlank()) + 3_000) { brain.search(user, deep = false) } }
+            var r = try { withTimeoutOrNull(LiveSearch.totalTimeoutMs(Prefs.searchOwnKey(svc).isNotBlank()) + 3_000 + chainExtraMs()) { brain.search(user, deep = false) } }
                 catch (e: CancellationException) { throw e } catch (e: Exception) { why = brain.lastSearchFail; log("वादा-जाँच सर्च fail: ${e.message}"); null }
             // v3.90: यहाँ भी बचाव वाली खोज, और fail हो तो असली वजह यूज़र को
             if (r == null || r.text.isBlank()) { val fb = fallbackSearch(user, why, brain); r = fb.first; why = fb.second }
@@ -1277,7 +1287,9 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
         com.dk.assistant.connect.ConnectorTool.declaration(svc)?.let { d ->
             tools.optJSONObject(0)?.optJSONArray("functionDeclarations")?.put(d); log("कनेक्टर: connector_task जोड़ा")
         }
-        if (useSearch) tools.put(JSONObject().put("googleSearch", JSONObject()))
+        // v3.93: Tavily/Exa की key हो तो Live की अपनी Google Search नहीं - हर खोज web_search से (Tavily -> Exa -> Gemini क्रम)
+        val ownChain = Prefs.tavilySearchKey(svc).isNotBlank() || Prefs.exaSearchKey(svc).isNotBlank()
+        if (useSearch && !ownChain) tools.put(JSONObject().put("googleSearch", JSONObject()))
         val setup = JSONObject()
             .put("model", "models/$m")
             .put("generationConfig", JSONObject()
@@ -1486,7 +1498,7 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
         }
         // v3.9: Gemini ne sach me Google Search kiya -> sources (title, url) is baari ke jawab ke saath
         (sc.optJSONObject("groundingMetadata") ?: o.optJSONObject("groundingMetadata"))?.let { gm ->
-            val add = Grounding.sources(gm)
+            val add = Grounding.sources(gm).also { WebSearch.tag(it, WebSearch.Provider.GEMINI) }
             if (add.isNotEmpty()) {
                 synchronized(turnLock) { turnSources = Grounding.merge(turnSources, add) }
                 if (toolJobs.isEmpty()) DKState.hint("")

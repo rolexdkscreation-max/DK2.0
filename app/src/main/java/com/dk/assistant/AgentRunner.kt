@@ -356,6 +356,7 @@ class AgentRunner(
             note = (if (note.isNotBlank()) "$note\n" else "") + com.dk.assistant.auto.AutoPlan.phoneNote(plan)
         }
         // "सर्च करो / रिसर्च करो / डीप रिसर्च करो" -> poori gehri khoj, phir vistaar se pakka jawab
+        searchFailed = false
         if (autoS == null && !note.contains(LocalRouter.DONE_NOTE) && explicitResearch(lower) && brain.canSearch()) {
             if (searchAndSay(goal, deep = true, thorough = true)) return
         }
@@ -388,8 +389,16 @@ class AgentRunner(
 
         // 2) Taaza jaankari (mausam/bhav/score/news) -> Google Search (tez). Baaki sab -> seedha AI = turant jawab.
         //    Gehri research sirf tab jab user khud bole "सर्च/रिसर्च करो" (upar).
-        if (chatMode && brain.canSearch() && needsSearch(lower)) {
+        // v3.93: एक सवाल पर एक ही खोज - ऊपर (सर्च करो) खोज हो चुकी हो तो दोबारा नहीं
+        if (chatMode && !searchFailed && brain.canSearch() && needsSearch(lower)) {
             if (searchAndSay(goal)) return
+        }
+        // v3.93: Tavily, Exa, Gemini तीनों न चलीं = DK अपनी जानकारी से जवाब दे, पर साफ़ बताए
+        if (chatMode && searchFailed) {
+            when (chatStream(goal, (if (note.isNotBlank()) "$note\n" else "") + SEARCH_FAILED_NOTE)) {
+                ChatOut.SCREEN -> chatMode = false
+                else -> return
+            }
         }
         // 3) Normal baatcheet: pehle sikha hua (wahi sawaal pehle poocha tha) = turant; warna AI se TUKDON me jawab
         if (chatMode) {
@@ -397,7 +406,10 @@ class AgentRunner(
             if (note.isBlank()) withContext(Dispatchers.IO) { LocalBrain.recall(svc, goal, exact = true) }?.let { DKLog.d("Seekha hua jawab"); say(it); return }
             when (chatStream(goal, note)) {
                 ChatOut.DONE -> return
-                ChatOut.SEARCH -> { if (brain.canSearch() && searchAndSay(goal)) return }
+                ChatOut.SEARCH -> {
+                    if (!searchFailed && brain.canSearch() && searchAndSay(goal)) return
+                    if (searchFailed) { if (chatStream(goal, SEARCH_FAILED_NOTE) != ChatOut.SCREEN) return; chatMode = false }
+                }
                 ChatOut.THINK -> { if (brain.canThink() && thinkAndSay(goal)) return; if (chatStream(goal, "Deep thinking is unavailable right now: do NOT reply [THINK]. Answer it yourself, carefully and correctly.") != ChatOut.SCREEN) return; chatMode = false }
                 ChatOut.SCREEN -> chatMode = false
             }
@@ -743,6 +755,10 @@ class AgentRunner(
         }
     }
 
+    private val SEARCH_FAILED_NOTE = "INTERNET SEARCH FAILED (Tavily, Exa and Google search were all tried). Do NOT reply [SEARCH]. " +
+        "Start your reply with exactly \"${WebSearch.ALL_FAILED_LINE}।\" then answer from your own knowledge, and say it may not be the latest. " +
+        "Never invent exact live figures (today's price, score, weather, results) - for those just say you could not check right now."
+
     private suspend fun searchAndSay(goal: String, fillerSaid: Boolean = false, deep: Boolean = false, thorough: Boolean = false): Boolean {
         // v3.29 (user ki maang): search karna pade to sach bolo - "एक सेकंड, सर्च करके बताता हूँ" (search saath-saath chalta hai, deri nahi)
         DKState.set(Mode.THINKING); DKState.hint(if (deep) "इंटरनेट पर गहराई से खोज रहा है…" else "इंटरनेट पर खोज रहा है…")
@@ -761,11 +777,17 @@ class AgentRunner(
                 if (!silent) speaker.speak(r.text)
                 true
             }
+        } catch (e: kotlinx.coroutines.CancellationException) { throw e
         } catch (e: Exception) {
-            DKLog.d("Search fail: ${e.message}")
+            DKLog.d("Search fail: ${e.message?.take(120)}")
+            // "no_search_needed" = खोज की ज़रूरत ही नहीं थी (सामान्य ज्ञान) - वह "खोज नहीं हो पाई" नहीं
+            if (e.message != "no_search_needed") searchFailed = true
             false
         }
     }
+
+    /** v3.93: इस सवाल पर इंटरनेट खोज (Tavily -> Exa -> Gemini) हुई पर तीनों न चलीं */
+    @Volatile private var searchFailed = false
 
     /** Kya yeh phone par kuch karne ki command hai? (nahi to normal baatcheet) */
     private fun looksLikePhoneTask(t: String): Boolean {
