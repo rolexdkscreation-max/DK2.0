@@ -491,13 +491,19 @@ class SettingsActivity : AppCompatActivity() {
         card("DK लाइव — Google Gemini", "Gemini Live बातचीत, Gemini नेचुरल आवाज़ और सुनना — सिर्फ़ इसी key से") { box ->
             val ed = field(box, "Gemini API Key (DK लाइव की अपनी)", Prefs.scopeKeyRaw(this, ApiScopes.LIVE, "gemini"), "AIza… यहाँ पेस्ट करें", secret = true)
             keyFields[ApiScopes.pref(ApiScopes.LIVE, "key", "gemini")] = ed
+            // v3.94: बैकअप keys - मुख्य key बंद/गलत हो या उसकी limit खत्म हो तो DK लाइव चुपचाप अगली key से चलता रहे
+            keyFields[ApiScopes.pref(ApiScopes.LIVE, "key", "gemini2")] = field(box, "Gemini API Key 2 (बैकअप, ज़रूरी नहीं)",
+                Prefs.scopeKeyRaw(this, ApiScopes.LIVE, "gemini2"), "दूसरी Gemini key", secret = true)
+            keyFields[ApiScopes.pref(ApiScopes.LIVE, "key", "gemini3")] = field(box, "Gemini API Key 3 (बैकअप, ज़रूरी नहीं)",
+                Prefs.scopeKeyRaw(this, ApiScopes.LIVE, "gemini3"), "तीसरी Gemini key", secret = true)
             val res = TextView(this).apply { setTextColor(0xB3FFFFFF.toInt()); textSize = 13f; setPadding((4 * dp).toInt(), (6 * dp).toInt(), 0, 0) }
             row(box, showButton(ed), button("टेस्ट करें") {
                 save(false); res.text = "टेस्ट हो रहा है…"
                 lifecycleScope.launch { res.text = BrainManager(this@SettingsActivity).test(Providers.byId("gemini")!!, ApiScopes.LIVE) }
             }, button("Key लें") { Setup.openUrl(this, Providers.byId("gemini")!!.keyUrl) })
             box.addView(res)
-            hint(box, "Limit खत्म हो तो इसी key के दूसरे Gemini Live / आवाज़ मॉडल पर अपने-आप। DK चैट या किसी और हिस्से की key यहाँ इस्तेमाल नहीं होती।")
+            hint(box, "Limit खत्म हो तो इसी key के दूसरे Gemini Live / आवाज़ मॉडल पर अपने-आप। फिर भी न चले (key बंद/गलत या सारे मॉडल की limit खत्म) → " +
+                "बातचीत के बीच ही चुपचाप Key 2, फिर Key 3। हर key अलग Google account/project की हो, तभी limit अलग मिलती है। DK चैट या किसी और हिस्से की key यहाँ इस्तेमाल नहीं होती।")
         }
         card("लिखना (\"आप:\" वाली लाइन) — अपनी अलग Gemini key", "आप जो बोलते हैं उसे लिखने वाला (gemini-3.5-transcribe-live) इसी key से चलेगा, ताकि बोलने वाले Live की free limit इसमें खर्च न हो") { box ->
             val ed = field(box, "Gemini API Key (सिर्फ़ लिखने के लिए)", Prefs.captionOwnKeyRaw(this), "AIza… (ज़रूरी नहीं — दूसरे Google account की key बेहतर)", secret = true)
