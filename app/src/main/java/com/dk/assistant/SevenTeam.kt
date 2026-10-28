@@ -200,13 +200,14 @@ class SevenTeam(
             return SevenPlus.Understanding(kind, brief0, "", "", emptyList(), emptyList(), emptyList(), emptyList(), mediaNotes = mediaNotes)
         }
         if (kind == Seven.Kind.QUESTION) {
-            val ans = m?.optString("answer").orEmpty().trim()
-            if (ans.isNotBlank()) {
-                ev(Agent.MANAGER, "यह सवाल है — कोड बदलने की ज़रूरत नहीं")
-                return SevenPlus.Understanding(kind, brief0, "", "", emptyList(), emptyList(), emptyList(), emptyList(), ans, mediaNotes = mediaNotes)
-            }
+            // सवाल = जवाब सिर्फ़ मैनेजर देता है और वहीं रुकता है (कोई branch / बदलाव / मंज़ूरी नहीं)
+            var ans = m?.optString("answer").orEmpty().trim()
+            if (ans.isBlank()) ans = askJson(Agent.MANAGER, "USER QUESTION:\n$task\n\nThis is a question (kind=question). Reply ONLY JSON {\"kind\":\"question\",\"answer\":\"simple Hindi answer\"}\n" +
+                "FILES IN WORKSPACE (${fileList.size}):\n" + fileList.take(listMax).joinToString("\n"))?.optString("answer").orEmpty().trim()
+            ev(Agent.MANAGER, "यह सवाल है — जवाब मैं (मैनेजर) दे रहा हूँ, कोड नहीं बदलेगा")
+            return SevenPlus.Understanding(kind, brief0, "", "", emptyList(), emptyList(), emptyList(), emptyList(), ans.ifBlank { Seven.NO_ANSWER_HI }, mediaNotes = mediaNotes)
         }
-        val k = if (kind == Seven.Kind.QUESTION) Seven.Kind.FEATURE else kind
+        val k = kind
         ev(Agent.MANAGER, if (k == Seven.Kind.BUG) "यह बग ठीक करने का काम लगता है → प्रॉम्प्ट इंजीनियर साफ़ करेगा, फिर डिबगर जड़ ढूँढेगा"
             else "यह नया फ़ीचर/बदलाव लगता है → प्रॉम्प्ट इंजीनियर साफ़ करेगा कि ठीक-ठीक क्या और कहाँ")
         ev(Agent.PROMPT, "आपकी बात को साफ़ काम में बदल रहा हूँ — रिपो का नक्शा देखकर जगह भी ढूँढ रहा हूँ…")

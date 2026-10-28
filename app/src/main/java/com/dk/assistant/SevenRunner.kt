@@ -239,6 +239,21 @@ object SevenRunner {
         return null
     }
 
+    /** खुले PR और उनकी फ़ाइलें पढ़कर छोटा नोट; GitHub न मिले तो साफ़ बताओ (अंदाज़ा नहीं) */
+    private suspend fun preCheck(gh: GitHub, repo: String, u: SevenPlus.Understanding, ownPr: Int?, base: String): String = try {
+        withContext(Dispatchers.IO) {
+            val prs = gh.openPulls(repo)
+            val paths = RepoPreCheck.areaPaths(u.area)
+            val touching = if (paths.isEmpty()) emptyMap() else prs.take(6).associate { p ->
+                p.number to (try { RepoPreCheck.overlap(paths, gh.pullFiles(repo, p.number).map { it.path }) } catch (e: Exception) { if (e is kotlinx.coroutines.CancellationException) throw e; emptyList() })
+            }
+            RepoPreCheck.text(prs, touching, ownPr, base)
+        }
+    } catch (e: Exception) {
+        if (e is kotlinx.coroutines.CancellationException) throw e
+        "🔎 रिपो जाँच नहीं हो पाई (${e.message?.take(80)}) — खुले PR की जानकारी अभी पक्की नहीं।"
+    }
+
     /** मंज़ूर काम (या समझना) 11 एजेंट से. [resume] = ऐप बंद होने/रुकने के बाद "वहीं से आगे" */
     private fun launchTeam(c: Context, ai: CoderAi, task: String, approved: SevenPlus.Understanding?, normal: Boolean,
                            allMedia: List<CoderMedia>, resume: CoderHistory.Checkpoint?) {
@@ -310,6 +325,8 @@ object SevenRunner {
                         if (u.answer.isNotBlank()) { say("d", u.answer); return@withTimeout }
                         // मैनेजर: रिपो / PR / काम की हालत का सवाल → जाँचकर्ता (कोड नहीं छूता, मंज़ूरी की ज़रूरत नहीं)
                         if (u.kind == Seven.Kind.STATUS) { inspect(c, task); return@withTimeout }
+                        // मैनेजर: "हाँ" माँगने से पहले रिपो जाँच (खुले PR + इसी जगह का टकराव) - सिर्फ़ पढ़ना
+                        if (d.mode == Seven.Mode.GITHUB && gh != null) say("s", preCheck(gh, repo, u, agent?.pr?.number, Prefs.ghBranch(c)))
                         pending = Pending(task, u, normal, allMedia)
                         // ऐप बंद होकर खुले तो भी यही समझ "हाँ" का इंतज़ार करे
                         CoderHistory.saveCheckpoint(c, CoderHistory.Checkpoint(CoderHistory.current, task, u, "pending", normal, repo, Prefs.ghBranch(c)))
