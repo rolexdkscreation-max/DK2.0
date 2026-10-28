@@ -363,7 +363,7 @@ class VoiceActivity : AppCompatActivity() {
         // laal (Live) kaanch par gulabi icon na dikhe - tab safed; warna apna rang
         mic.imageTintList = if (live) android.content.res.ColorStateList.valueOf(0xFFFFFFFF.toInt()) else null
         // v3.88: सिर्फ़ तीन स्थितियाँ - Listening / Thinking / Speaking
-        UiLang.setText(state, ThreeState.label(DKState.mode, live, DKState.micMuted) ?: "ओर्ब पर टैप करके बोलिए")
+        UiLang.setText(state, ThreeState.label(DKState.mode, live, DKState.micMuted, DKState.working()) ?: "ओर्ब पर टैप करके बोलिए")
         // bolte-bolte naye shabd aakhir me judte hain - lamba ho to aakhri hissa dikhao (naye shabd chhupe nahi)
         val min = Prefs.orbMin(this)
         UiLang.setText(you, UiLang.s("आप:") + " " + tail(DKState.lastUser, if (min) 400 else 90).ifBlank { "—" })

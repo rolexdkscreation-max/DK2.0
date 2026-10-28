@@ -32,7 +32,7 @@ object WorkChatMode {
     fun block(live: Boolean): String = buildString {
         append("\n\nWORK MODE vs TALK MODE (owner's rules). These do NOT change your personality, voice or speaking style - only how much you say and when:")
         append("\n- On EVERY user turn first decide: is he getting a phone task done (WORK) or just talking (TALK)? Command words like कर दो, लगाओ, खोलो, भेजो, चलाओ, बंद करो, call, send, open mean WORK.")
-        append("\n- WORK: talk only about the task. No jokes, small talk, stories, long intro or extra advice. Before: one very short line like \"ठीक है, कर रही हूँ।\" (in your own gender form). ")
+        append("\n- WORK: talk only about the task. No jokes, small talk, stories, long intro or extra advice. Before: say NOTHING - call the tool at once (work first, talk after; the screen shows the work is running). ")
         append("When it is done: the result at once, e.g. \"हो गया।\" Do not start how-are-you talk, stories or questions in the middle of a task - ask only what the task truly needs.")
         if (live) {
             append("\n- SEVERAL TASKS in one go (e.g. \"अलार्म लगाओ, फिर राहुल को व्हाट्सऐप करो, फिर गैलरी से फ़ोटो डिलीट करो, फिर यूट्यूब पर गाना सर्च करो, फिर मैप में नेविगेशन शुरू करो\" - 5 or more): ")

@@ -150,7 +150,11 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
             log("${job.whoEn} का काम खत्म (${job.state.en}) - Gemini को असली नतीजा बताया")
         }
     }
-    init { TaskStatus.listen(statusListener) }
+    init {
+        TaskStatus.listen(statusListener)
+        // v3.90: "Thinking" तभी जब कोई tool (खोज, गहरी सोच, फ़ोन का काम…) या फ़ोन की अपनी खोज चल रही हो
+        DKState.workNow = { toolJobs.isNotEmpty() || promiseJob?.isActive == true || DKState.mode == Mode.WORKING }
+    }
     @Volatile private var goAway = false
     @Volatile private var goAwayDrop = false          // server ne khud naya connection maanga (galti nahi)
     private var handle: String? = null
@@ -306,6 +310,8 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
     /** tool ने कहा "अभी हुआ नहीं" (शुरू हुआ / गड़बड़) - उसके बाद की बात फिर जाँचो */
     @Volatile private var actPending = false
     @Volatile private var actAfterTool = false
+    /** v3.90: यूज़र ने साफ़ हुक्म दिया ("खोलो/भेजो/कर दो") = काम से पहले की बातें नहीं (पहले काम, फिर बात) */
+    @Volatile private var actCommand = false
     @Volatile private var othersIgnored = 0
     @Volatile private var mutedParts = 0L
     @Volatile private var earlyEnds = 0
@@ -570,22 +576,28 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
         // v3.87: Live की खोज = Live की अपनी Gemini key पहले; fail = ख़ुद एक बार दोबारा (छोटी, तेज़ खोज)
         val brain = BrainManager(svc).also { it.fromLive = true }
         // v3.88: यूज़र के बोलते ही शुरू हुई खोज उसी बात की है = वही नतीजा (इंतज़ार कम)
+        prepFail = null
         var r: SearchResult? = preparedSearch(q)?.also { log("web_search: पहले से तैयार नतीजा इस्तेमाल किया") }
         var why = SearchGuard.Fail.OTHER
-        for (attempt in 1..2) {
-            if (r != null) break
-            r = try {
-                if (attempt == 1) withTimeoutOrNull(32_000) { brain.search(q, deep = false) } else brain.quickSearch(q)
-            } catch (e: CancellationException) { throw e } catch (e: Exception) {
+        // v3.90: अभी-अभी (यूज़र के बोलते ही) वही पूरी Google खोज fail हुई = वही दोबारा भेजना बेकार (सीमा और भरती, समय जाता),
+        // सीधे बचाव वाली खोज (बिना-key वेबसाइटें + ज़रूरत हो तो एक छोटी Gemini खोज)
+        val pf = prepFail
+        if (r == null && pf != null) {
+            why = pf; log("web_search: पहले वाली खोज fail (${SearchGuard.hindi(pf)}) - सीधे बचाव वाली खोज")
+            val fb = fallbackSearch(q, why, brain); r = fb.first; why = fb.second
+            if (r == null) why = pf
+        }
+        if (r == null && pf == null) {
+            r = try { withTimeoutOrNull(32_000) { brain.search(q, deep = false) } }
+            catch (e: CancellationException) { throw e } catch (e: Exception) {
                 why = brain.lastSearchFail
-                log("web_search fail (कोशिश $attempt): ${SearchGuard.hindi(why)} - ${e.javaClass.simpleName} ${e.message?.take(120)}")
+                log("web_search fail (कोशिश 1): ${SearchGuard.hindi(why)} - ${e.javaClass.simpleName} ${e.message?.take(120)}")
                 null
             }
-            if (r != null && r.text.isNotBlank()) break
-            if (r == null && attempt == 1 && why == SearchGuard.Fail.OTHER) why = SearchGuard.Fail.TIMEOUT
-            r = null
-            // key नहीं डली - दोबारा कोशिश बेकार
-            if (why == SearchGuard.Fail.NO_KEY) break
+            if (r == null && why == SearchGuard.Fail.OTHER) why = SearchGuard.Fail.TIMEOUT
+            if (r != null && r.text.isBlank()) { r = null; why = SearchGuard.Fail.EMPTY }
+            // v3.90: Google खोज न चली तो हार नहीं - बिना key वाली दूसरी वेबसाइटें (Google News, Wikipedia) + एक छोटी दोबारा खोज, साथ-साथ
+            if (r == null) { val fb = fallbackSearch(q, why, brain); r = fb.first; why = fb.second }
         }
         val res = r
         if (res == null) {
@@ -605,6 +617,33 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
         return "SEARCH RESULT (verified from several websites): " + res.text.take(3200) + "\n" + LiveSearch.sourcesLine(res.sources) +
             "\nSpeak the answer from this result now, briefly and naturally. Do not read URLs."
     }
+
+    /**
+     * v3.90: Gemini की खोज fail होने पर बचाव - (1) बिना-key खोज: Google News + Wikipedia, (2) साथ में छोटी Gemini खोज
+     * (सिर्फ़ जब दोबारा कोशिश का फ़ायदा हो: धीमा नेट / अनजानी गड़बड़ - सीमा भरी/key ग़लत पर नहीं, वरना वही गलती फिर).
+     * Gemini वाला मिले तो वही (ज़्यादा सटीक), वरना बिना-key वाला. कुछ न मिले = (null, असली वजह).
+     */
+    private suspend fun fallbackSearch(q: String, why0: SearchGuard.Fail, brain: BrainManager): Pair<SearchResult?, SearchGuard.Fail> = coroutineScope {
+        var why = why0
+        val open = async(Dispatchers.IO) { try { OpenSearchNet.search(q) } catch (e: Exception) { log("बिना-key खोज fail: ${e.message}"); null } }
+        val retry = why in listOf(SearchGuard.Fail.TIMEOUT, SearchGuard.Fail.OTHER, SearchGuard.Fail.EMPTY)
+        val quick = if (!retry) null else try { withTimeoutOrNull(16_000) { brain.quickSearch(q) } }
+            catch (e: CancellationException) { throw e } catch (e: Exception) {
+                if (brain.lastSearchFail != SearchGuard.Fail.OTHER) why = brain.lastSearchFail
+                log("web_search fail (कोशिश 2): ${SearchGuard.hindi(why)} - ${e.message?.take(100)}"); null
+            }
+        if (quick != null && quick.text.isNotBlank()) { open.cancel(); return@coroutineScope quick to why }
+        val o = withTimeoutOrNull(12_000) { open.await() }
+        open.cancel()
+        if (o != null) {
+            log("web_search: Google खोज नहीं चली (${SearchGuard.hindi(why)}) - बिना-key वेबसाइटों से जवाब")
+            return@coroutineScope SearchResult(OPEN_NOTE + o.text, o.sources) to why
+        }
+        null to why
+    }
+
+    private val OPEN_NOTE = "(The normal Google search did not work right now, so these come from Google News headlines and Wikipedia. " +
+        "Answer from them. If they do not answer the exact question, say briefly what you found and that the full detail could not be confirmed.)\n"
 
     @Volatile private var promiseJob: Job? = null
     @Volatile private var promiseFixAt = 0L
@@ -633,10 +672,14 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
         promiseJob = svc.scope.launch {
             DKState.hint(LivePromise.hintFor("web_search", user))
             setMode(Mode.THINKING)
-            val r = try { withTimeoutOrNull(35_000) { BrainManager(svc).also { it.fromLive = true }.search(user, deep = false) } }
-                catch (e: CancellationException) { throw e } catch (e: Exception) { log("वादा-जाँच सर्च fail: ${e.message}"); null }
+            val brain = BrainManager(svc).also { it.fromLive = true }
+            var why = SearchGuard.Fail.TIMEOUT
+            var r = try { withTimeoutOrNull(35_000) { brain.search(user, deep = false) } }
+                catch (e: CancellationException) { throw e } catch (e: Exception) { why = brain.lastSearchFail; log("वादा-जाँच सर्च fail: ${e.message}"); null }
+            // v3.90: यहाँ भी बचाव वाली खोज, और fail हो तो असली वजह यूज़र को
+            if (r == null || r.text.isBlank()) { val fb = fallbackSearch(user, why, brain); r = fb.first; why = fb.second }
             DKState.hint("")
-            if (r == null || r.text.isBlank()) { visionNote(LivePromise.searchFailNote(user), evidence = false); return@launch }
+            if (r == null || r.text.isBlank()) { visionNote(LivePromise.searchFailNote(user, why), evidence = false); return@launch }
             if (r.sources.isNotEmpty()) toolSources = Grounding.merge(toolSources, r.sources)
             visionNote(LivePromise.searchNote(user, r.text), evidence = true)
         }
@@ -1353,7 +1396,8 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
             // v3.66: किसी और की आवाज़ पर बना काम - कुछ मत करो (फ़ोन पर कोई काम नहीं), Gemini को बता दो
             if (muteTurn) { ignoreTools(it); return@let }
             // v3.67: tool से पहले बोला "कर दिया" = झूठ (काम अभी शुरू हुआ) - वह हिस्सा नहीं बजता; "ठीक है बॉस" बजता है
-            if (actHold) { if (DoneGate.beforeTool(heldActText()) == DoneGate.Verdict.DROP) dropAct("tool से पहले") else releaseAct("tool आया") }
+            // v3.90: काम से पहले की बातें ("ठीक है, खोल रहा हूँ…" / इधर-उधर की बात) नहीं - पहले काम, फिर नतीजे वाली बात
+            if (actHold) { if ((!actAfterTool && actCommand) || DoneGate.beforeTool(heldActText()) == DoneGate.Verdict.DROP) dropAct(if (!actAfterTool && actCommand) "काम से पहले की बात - पहले काम" else "tool से पहले") else releaseAct("tool आया") }
             actEvidence = true
             timeline.event(lastServerAt); replyWatch.onServerAnswered(); lastToolAt = lastServerAt; runTools(it)
         }
@@ -1527,7 +1571,7 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
     private fun splitHoldCheck() {
         if (!connSplit || !actHold) return
         val t = heldActText()
-        if (t.length >= DoneGate.HOLD_MAX_MS * 14 / 1000 && !HonestGuard.claimsDone(t)) releaseAct("आम बात")
+        if (t.length >= DoneGate.holdLimitMs(actAfterTool, actCommand) * 14 / 1000 && !HonestGuard.claimsDone(t)) releaseAct("आम बात")
     }
 
     private fun startTurn() {
@@ -1699,8 +1743,10 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
                     if (p != null && now - p.at < PREP_SEARCH_MS && p.text == t.trim()) return
                     val q = t.trim()
                     prepSearch = Prep(k, q, now, svc.scope.async(Dispatchers.IO) {
-                        try { withTimeoutOrNull(30_000) { BrainManager(svc).also { it.fromLive = true }.search(q, deep = false) } }
-                        catch (e: CancellationException) { throw e } catch (_: Exception) { null }
+                        val b = BrainManager(svc).also { it.fromLive = true }
+                        // v3.90: fail हुई तो वजह भी (सीमा भरी/key ग़लत = web_search फिर वही Google खोज न दोहराए)
+                        try { withTimeoutOrNull(30_000) { b.search(q, deep = false) } ?: SearchGuard.Fail.TIMEOUT }
+                        catch (e: CancellationException) { throw e } catch (_: Exception) { b.lastSearchFail }
                     })
                     log("पहले से तैयारी: खोज (\"${q.take(30)}\")")
                 }
@@ -1722,8 +1768,11 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
         if (System.currentTimeMillis() - p.at > PREP_SEARCH_MS || !SpecIntent.sameTopic(query, p.text)) return null
         prepSearch = null       // एक बार ही इस्तेमाल
         val r = try { p.job.await() } catch (e: CancellationException) { throw e } catch (_: Exception) { null }
+        prepFail = r as? SearchGuard.Fail
         return (r as? SearchResult)?.takeIf { it.text.isNotBlank() }
     }
+    /** v3.90: पहले से शुरू हुई खोज किस वजह से fail हुई (null = fail नहीं / थी ही नहीं) */
+    @Volatile private var prepFail: SearchGuard.Fail? = null
 
     private suspend fun localInfoTool(): String {
         if (!LocalInfo.hasPermission(svc)) return "Location permission is OFF. Ask the user to allow location for DK (open the DK app; it asks), then try again."
@@ -1897,10 +1946,11 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
               } finally {
                 // hamesha hatao (fail/cancel par bhi) - warna idle-exit aur watchdog band rehte
                 coroutineContext[Job]?.let { me -> toolJobs.remove(id, me) }
-                if (toolJobs.isEmpty() && promiseJob?.isActive != true) DKState.hint("")
+                if (toolJobs.isEmpty() && promiseJob?.isActive != true) { DKState.hint(""); DKState.refresh() }
               }
             }
             toolJobs[id] = j
+            DKState.refresh()       // v3.90: अब सच में काम चल रहा है = "Thinking" दिखे
             j.start()
         }
     }
@@ -2441,6 +2491,7 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
         val now = System.currentTimeMillis()
         val ev = actEvidence || toolJobs.isNotEmpty() || now - lastFastOkAt < DoneGate.FAST_EVIDENCE_MS
         if (ev || !DoneGate.isAction(u)) return
+        actCommand = DoneGate.isCommand(u)
         actTextFrom = synchronized(turnLock) { replyText.length }
         actHold = true
     }
@@ -2451,7 +2502,7 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
         synchronized(actHeld) { actHeld.add(pcm) }
         actHeldBytes += pcm.size
         // इतनी देर कोई दावा नहीं = आम बात (लंबा जवाब/सवाल) - रोकना बंद, बजाओ
-        if (actHeldBytes >= OUT_RATE * 2 * DoneGate.HOLD_MAX_MS / 1000 && !HonestGuard.claimsDone(heldActText())) releaseAct("आम बात")
+        if (actHeldBytes >= OUT_RATE * 2 * DoneGate.holdLimitMs(actAfterTool, actCommand) / 1000 && !HonestGuard.claimsDone(heldActText())) releaseAct("आम बात")
     }
 
     private fun releaseAct(why: String) {
@@ -2474,7 +2525,7 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
         return t
     }
 
-    private fun clearAct() { synchronized(actHeld) { actHeld.clear() }; actHold = false; actHeldBytes = 0; actPending = false; actAfterTool = false }
+    private fun clearAct() { synchronized(actHeld) { actHeld.clear() }; actHold = false; actHeldBytes = 0; actPending = false; actAfterTool = false; actCommand = false }
 
     /** बारी खत्म और आवाज़ अब भी रुकी है: tool नहीं आया */
     private fun endActHold() {

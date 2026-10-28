@@ -326,7 +326,7 @@ class MainActivity : AppCompatActivity() {
         UiLang.setText(txtHello, com.dk.assistant.onboard.Greeting.of(java.util.Calendar.getInstance().get(java.util.Calendar.HOUR_OF_DAY), user))
 
         // v3.88: सिर्फ़ तीन स्थितियाँ (Listening / Thinking / Speaking); कुछ न चले तो "Tap the orb and speak"
-        val st = ThreeState.label(DKState.mode, DKState.live, DKState.micMuted)
+        val st = ThreeState.label(DKState.mode, DKState.live, DKState.micMuted, DKState.working())
         UiLang.setText(txtState, st ?: "ओर्ब पर टैप करके बोलिए")
         btnMute.setImageResource(if (DKState.micMuted) R.drawable.ic_mic_off else R.drawable.ic_mic)
         btnMute.contentDescription = UiLang.s(if (DKState.micMuted) "माइक चालू करें" else "माइक म्यूट करें")

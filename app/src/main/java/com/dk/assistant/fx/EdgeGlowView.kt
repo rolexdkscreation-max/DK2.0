@@ -33,7 +33,7 @@ class EdgeGlowView(context: Context) : View(context) {
     private fun refresh() {
         val now = System.currentTimeMillis()
         if (now - cacheT > 1500) { cacheT = now; enabledCache = Prefs.edgeGlow(context); reduced = Motion.reduced(context) }
-        val c = EdgeGlowRules.color(enabledCache, DKState.live, DKState.mode)
+        val c = EdgeGlowRules.color(enabledCache, DKState.live, DKState.shownMode())
         if (c != null) color = c
         if (c != null || shown > 0f) { lastT = 0L; invalidate() }
     }
@@ -43,7 +43,7 @@ class EdgeGlowView(context: Context) : View(context) {
         val now = SystemClock.uptimeMillis()
         val dt = if (lastT == 0L) 0.016f else ((now - lastT) / 1000f).coerceAtMost(0.05f)
         lastT = now
-        val target = EdgeGlowRules.color(enabledCache, DKState.live, DKState.mode)
+        val target = EdgeGlowRules.color(enabledCache, DKState.live, DKState.shownMode())
         if (target != null) color = target
         // धीरे से आना-जाना (~250ms)
         shown = when {
@@ -53,7 +53,7 @@ class EdgeGlowView(context: Context) : View(context) {
         }
         val col = color ?: return
         if (shown <= 0f) return
-        val inten = EdgeGlowRules.intensity(DKState.mode, DKState.level, now / 1000f, reduced) * shown
+        val inten = EdgeGlowRules.intensity(DKState.shownMode(), DKState.level, now / 1000f, reduced) * shown
         val a = (200 * inten).toInt().coerceIn(0, 255)
         val solid = (col and 0x00FFFFFF) or (a shl 24)
         val clear = col and 0x00FFFFFF

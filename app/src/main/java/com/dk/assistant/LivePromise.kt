@@ -32,6 +32,39 @@ object LivePromise {
         "सर्च करो", "सर्च कर दो", "search karo", "search kar do", "टाइप", "type", "दबाओ", "tap", "click",
         "کھولو", "کروم", "سرچ کرو"
     )
+    /**
+     * v3.90: Live मॉडल बिना खोजे ही "माफ़ करिए, मुझे जानकारी नहीं मिल पाई / मुझे नहीं पता" बोल देता था
+     * (web_search बुलाया ही नहीं). ऐसा जवाब = फ़ोन खुद खोजे और सही जवाब दिलवाए.
+     */
+    private val REFUSAL = listOf(
+        "जानकारी नहीं मिल", "जानकारी नहीं है", "जानकारी नहीं दे", "जानकारी उपलब्ध नहीं", "पक्की जानकारी नहीं", "सही जानकारी नहीं",
+        "जानकारी नहीं निकल", "कुछ नहीं मिला", "नहीं मिल पाई", "नहीं मिल पाया", "नहीं मिल सकी", "पता नहीं चल पाया", "पता नहीं चल सका",
+        "मुझे नहीं पता", "मुझे पता नहीं", "मैं नहीं जानता", "मैं नहीं जानती", "नहीं बता सकता", "नहीं बता सकती", "नहीं बता पाऊँगा", "नहीं बता पाऊँगी",
+        "नहीं बता पाऊंगा", "नहीं बता पाऊंगी", "मेरे पास इसकी जानकारी", "मेरे पास जानकारी नहीं", "मेरे पास कोई जानकारी", "real-time", "रियल टाइम जानकारी",
+        "jaankari nahi mil", "jankari nahi mil", "mujhe nahi pata", "pata nahi chal",
+        "i don't know", "i do not know", "couldn't find", "could not find", "no information", "don't have information",
+        "don't have access to real", "i'm not sure about", "not able to find",
+        "معلومات نہیں مل", "مجھے نہیں پتا"
+    )
+
+    /** जवाब "जानकारी नहीं मिली / पता नहीं" वाला है (और याद-वाला "याद नहीं" नहीं) */
+    fun refuses(reply: String): Boolean {
+        val r = reply.trim()
+        if (r.isEmpty() || r.length > MAX_REFUSAL_CHARS) return false
+        if (r.contains("याद नहीं")) return false
+        return has(r, REFUSAL)
+    }
+    const val MAX_REFUSAL_CHARS = 260
+
+    /** अपनी निजी बात ("मेरा नाम क्या है", "मैंने क्या कहा") इंटरनेट पर नहीं खोजी जाती */
+    private val PERSONAL = listOf("मेरा ", "मेरी ", "मेरे ", "मैंने", "मुझे क्या", "हमने", "तुमने", "तुम्हारा", "तुम्हारी", "mera ", "meri ", "maine", " my ", "i said")
+
+    /** यूज़र ने कोई जानकारी माँगी (फ़ोन का काम या अपनी निजी बात नहीं) */
+    fun asksInfo(user: String): Boolean {
+        val u = user.trim()
+        return u.length >= 6 && !has(u, PHONE_ASK) && !has(u, PERSONAL)
+    }
+
     /** इतने से लंबा जवाब = उसमें असली बात भी है, सिर्फ़ वादा नहीं */
     const val MAX_PROMISE_CHARS = 180
 
@@ -40,10 +73,11 @@ object LivePromise {
     /** जवाब में सिर्फ़ वादा है? किस तरह का (सर्च या फ़ोन का काम) */
     fun kind(reply: String, user: String): Kind {
         val r = reply.trim()
-        if (r.isEmpty() || r.length > MAX_PROMISE_CHARS) return Kind.NONE
+        if (r.isEmpty()) return Kind.NONE
+        if (r.length > MAX_PROMISE_CHARS) return if (refuses(r) && asksInfo(user)) Kind.SEARCH else Kind.NONE
         val search = has(r, SEARCH_PROMISE)
         val doing = has(r, DOING_PROMISE)
-        if (!search && !doing) return Kind.NONE
+        if (!search && !doing) return if (refuses(r) && asksInfo(user)) Kind.SEARCH else Kind.NONE
         return if (has(user, PHONE_ASK)) Kind.ACTION else Kind.SEARCH
     }
 
@@ -68,13 +102,14 @@ object LivePromise {
 
     /** सर्च हो गया - Gemini अब जवाब बोले */
     fun searchNote(question: String, result: String): String =
-        "SYSTEM NOTE: you told the user you would search/check but you did not call any tool. The phone searched the internet for: \"" +
+        "SYSTEM NOTE: you told the user you would search/check (or that you could not find / do not know it) but you did not call any tool. " +
+            "If you said you could not find it, first say one short line like \"रुकिए, मिल गया\". The phone searched the internet for: \"" +
             question.take(200) + "\". RESULT: \"" + result.take(2500) + "\". Now give the user the answer from this result in their language, " +
             "short and clear (2-4 sentences). Do NOT say you will search again and do not invent anything beyond the result."
 
-    fun searchFailNote(question: String): String =
+    fun searchFailNote(question: String, why: SearchGuard.Fail = SearchGuard.Fail.OTHER): String =
         "SYSTEM NOTE: you promised to search but did not call any tool, and the phone's own search for \"" + question.take(200) +
-            "\" did not give a result. Say EXACTLY this, nothing else: \"" + SearchGuard.USER_LINE + "\" Never mention a tool, error or key. " +
+            "\" did not give a result. Say EXACTLY this, nothing else: \"" + SearchGuard.userLine(why) + "\" Never mention a tool, an API or a key by name. " +
             "If the user says yes, call web_search with that question."
 
     /** फ़ोन का काम बोला "कर रहा हूँ" पर कुछ नहीं किया */
