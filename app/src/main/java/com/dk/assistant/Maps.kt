@@ -100,6 +100,8 @@ object Maps {
     private val SUFFIX = listOf(" का", " की", " के", " तक", " से", " को", " पर", " में")
     private val PREFIX = listOf("यहाँ से ", "यहां से ", "मुझे ", "अभी ", "जरा ", "ज़रा ")
 
+    private const val distWordsAll = "(?:की दूरी|का डिस्टेंस|की डिस्टेंस|कितनी दूर|कितना दूर|कितने किलोमीटर|कितना किलोमीटर|कितने km|distance|दूरी)"
+
     private fun cleanPlace(p: String): String {
         var s = p.replace(MODE_WORDS, " ").replace(Regex("\\s+"), " ").trim(' ', ',', '.', '।', '?')
         var changed = true
@@ -118,13 +120,80 @@ object Maps {
         val o = JSONObject().put("type", type); kv.forEach { o.put(it.first, it.second) }; return o
     }
 
+    // ---- v4: "मैप पर X सर्च करके डायरेक्शन लगा दो" जैसी बोली - जगह का नाम साफ़ निकले (पहले पूरा वाक्य ही जगह बन जाता था)
+    /** शुरू का "मैप पर / गूगल मैप्स खोलो / open google maps" - हटाओ और याद रखो कि बात मैप की है */
+    private val LEAD = Regex("^(?:(?:open|खोलो|ओपन करो|ओपन) )?(?:(?:गूगल|google) )?(?:मैप्स|मैप|maps|map|नक्शे|नक्शा)(?: (?:ऐप|app))?" +
+        "(?: (?:खोलो|खोल दो|खोलकर|खोल के|खोलके|ओपन करो|ओपन करके|ओपन कर के|open करो|open करके|open|and))?(?: (?:में|मे|पर|पे|on|in))? ")
+    /** आखिर का "on google maps" / "मैप में" */
+    private val TAIL = Regex(" (?:on|in) (?:google )?maps?$| (?:गूगल )?(?:मैप्स|मैप|नक्शे) (?:में|पर|पे)$")
+    /** "डायरेक्शन" के बोलचाल/सुनने में गलत रूप ("डिस्ट्रेक्शन") भी */
+    private val DIR = Regex("(डायरेक्शन्स|डायरेक्शंस|डायरेक्शन|डाइरेक्शन|डिरेक्शन|डायरेक्सन|डिस्ट्रेक्शन|डिस्ट्रक्शन|directions|direction)")
+    private val SEARCH_VERB = listOf("सर्च करके", "सर्च कर के", "सर्च करो", "सर्च कर दो", "सर्च कर", "सर्च", "search करके", "search karo", "search",
+        "खोजकर", "खोज कर", "खोज के", "खोजो", "खोज दो", "ढूंढकर", "ढूँढकर", "ढूंढ कर", "ढूँढ कर", "ढूंढ के", "ढूँढ के", "ढूंढो", "ढूँढो", "ढूंढ दो", "ढूँढ दो",
+        "find", "locate", "दिखाओ", "दिखा दो", "show me", "show")
+    private val ACT_WORDS = listOf("लगा दो", "लगा दे", "लगा देना", "लगाओ", "लगाना", "लगा", "चालू करो", "चालू कर दो", "चालू", "शुरू करो", "शुरू कर दो", "शुरू",
+        "स्टार्ट करो", "स्टार्ट", "start", "सेट करो", "सेट कर दो", "set", "बताओ", "बता दो", "करो", "कर दो", "दो",
+        "खोलो", "खोल दो", "ओपन करो", "ओपन", "open", "के लिए", "के लिये", "please", "get", "the", "to", "for", "me")
+    private val MAP_WORDS = listOf("गूगल मैप्स", "गूगल मैप", "google maps", "google map", "मैप्स", "मैप", "maps", "map", "नक्शे", "नक्शा", "नेविगेशन", "navigation", "navigate", "नेविगेट")
+    private val STRIP = Regex("(?<=^| )(?:" + (SEARCH_VERB + ACT_WORDS + MAP_WORDS).sortedByDescending { it.length }.joinToString("|") { Regex.escape(it) } + ")(?= |$)")
+
+    /** बोली बात से सिर्फ़ जगह का नाम: खोजो/लगा दो/मैप/नेविगेशन जैसे शब्द हटाकर */
+    fun place(p: String): String {
+        var s = p.replace(DIR, " ").replace(Regex("\\s+"), " ").trim()
+        var prev: String
+        do {
+            prev = s
+            s = cleanPlace(s.replace(STRIP, " ").replace(Regex("\\s+"), " ").trim())
+        } while (s != prev && s.isNotBlank())
+        return s
+    }
+
+    private val WORD_CALL = Regex("(?<![\\p{L}\\p{M}])(?:कॉल|कॉल्स|call|calls)(?![\\p{L}\\p{M}])")
+    private val MAP_SAID = Regex("^(?:(?:open|खोलो|ओपन करो|ओपन) )?(?:(?:गूगल|google) )?(?:मैप्स|मैप|maps|map|नक्शे|नक्शा)(?: |$)")
+    private val OTHER_APP = Regex("(यूट्यूब|youtube|व्हाट्सएप|व्हाट्सऐप|whatsapp|इंस्टाग्राम|instagram|फेसबुक|facebook|मैसेज|message|गाना|song|अलार्म|alarm|फ़ोटो|फोटो|photo)")
+
+    /** "मैप खोलो और X…" / "open google maps and X" -> "मैप पर X…" (null = ऐसा नहीं) */
+    fun mergeOpen(t: String): String? {
+        val m = Regex("^(?:(?:open|खोलो|ओपन करो|ओपन) )?(?:(?:गूगल|google) )?(?:मैप्स|मैप|maps|map|नक्शा)(?: (?:ऐप|app))?" +
+            "(?: (?:खोलो|खोल दो|ओपन करो|ओपन कर दो|open करो|open|खोलकर|खोल के|खोलके))?\\s*(?:,\\s*)?(?:और|फिर|and then|and|then|aur|phir|उसके बाद)\\s+(.+)$")
+            .find(t.lowercase().trim()) ?: return null
+        val rest = m.groupValues[1].trim()
+        if (rest.isBlank() || OTHER_APP.containsMatchIn(rest) || WORD_CALL.containsMatchIn(rest)) return null
+        val mapIntent = DIR.containsMatchIn(rest) || SEARCH_VERB.any { rest.contains(it) } ||
+            listOf("नेविगेशन", "navigat", "नेविगेट", "रास्ता", "रस्ता", "route", "रूट", "जाना है", "ले चलो", "पहुँचा", "पहुंचा", "दूरी", "दूर", "पास में", "नज़दीक", "नजदीक", "near", "लोकेशन", "location")
+                .any { rest.contains(it) }
+        return if (mapIntent) "मैप पर $rest" else null
+    }
+
     fun parse(raw: String): QuickCommands.Quick? {
         var t = raw.lowercase().trim().trim('.', '।', '!', '?', ',')
+        val t0 = t
         NOISE.forEach { t = t.replace(it, " ") }
         t = t.replace(Regex("\\s+"), " ").trim()
         if (listOf(" और ", " फिर ", " then ", " उसके बाद ").any { " $t ".contains(it) }) return null
-        if (t.contains("कॉल") || t.contains("मैसेज") || t.contains("whatsapp")) return null
+        // v4: पूरा शब्द "कॉल" - "कॉलेज रोड" / "कॉलोनी" जगह का नाम है, कॉल नहीं
+        if (WORD_CALL.containsMatchIn(t) || t.contains("मैसेज") || t.contains("whatsapp")) return null
         val mode = modeOf(t)
+        var onMap = MAP_SAID.containsMatchIn(t0)
+        LEAD.find(t)?.let { t = t.substring(it.range.last + 1).trim(); onMap = true }
+        TAIL.find(t)?.let { t = t.substring(0, it.range.first).trim(); onMap = true }
+        if (t.isBlank()) return null
+        val go = listOf("लगा", "चालू", "शुरू", "स्टार्ट", "start", "सेट", "set").any { t.contains(it) }
+
+        // ---- "X का डायरेक्शन लगा दो" / "X सर्च करके डायरेक्शन लगा दो" / "directions to X"
+        if (DIR.containsMatchIn(t) && !Regex(distWordsAll).containsMatchIn(t)) {
+            val to = place(t)
+            if (to.isBlank() || isHere(to)) return null
+            return if (go) QuickCommands.Quick(a("navigate", "to" to to, "mode" to mode), "$to का नेविगेशन शुरू कर रहा हूँ।")
+            else QuickCommands.Quick(a("directions", "to" to to, "from" to "", "mode" to mode), "$to का रास्ता मैप पर खोल दिया।")
+        }
+        // ---- English: "navigate to X", "take me to X", "route to X"
+        Regex("^(?:navigate|take me|drive me|start navigation) (?:to )?(.+)$").find(t)?.let { m ->
+            val to = place(m.groupValues[1]); if (to.isNotBlank()) return QuickCommands.Quick(a("navigate", "to" to to, "mode" to mode), "$to का नेविगेशन शुरू कर रहा हूँ।")
+        }
+        Regex("^(?:show |get |find )?(?:the )?(?:route|way) (?:to|for) (.+)$").find(t)?.let { m ->
+            val to = place(m.groupValues[1]); if (to.isNotBlank()) return QuickCommands.Quick(a("directions", "to" to to, "from" to "", "mode" to mode), "$to का रास्ता मैप पर खोल दिया।")
+        }
 
         // ---- doori: "A से B की दूरी", "B कितनी दूर है", "यहाँ से B कितने किलोमीटर"
         val distWords = "(?:की दूरी|का डिस्टेंस|की डिस्टेंस|कितनी दूर|कितना दूर|कितने किलोमीटर|कितना किलोमीटर|कितने km|distance)"
@@ -156,7 +225,8 @@ object Maps {
             val to = cleanPlace(m.groupValues[1]); if (to.isNotBlank()) return QuickCommands.Quick(a("navigate", "to" to to, "mode" to mode), "$to का नेविगेशन शुरू कर रहा हूँ।")
         }
         if (t.contains("नेविगेशन") || t.contains("navigation") || t.contains("नेविगेट")) {
-            val to = cleanPlace(t.replace(Regex("(के लिए|के लिये|नेविगेशन|navigation|नेविगेट|चालू करो|चालू कर दो|शुरू करो|शुरू कर दो|स्टार्ट करो|start|करो|लगाओ|लगा दो|पर)"), " "))
+            // v4: "नासिक स्टेशन खोजकर नेविगेशन शुरू करो" -> "नासिक स्टेशन" (पहले "खोजकर" भी जगह के नाम में जाता था)
+            val to = place(cleanPlace(t.replace(Regex("(के लिए|के लिये|नेविगेशन|navigation|नेविगेट|चालू करो|चालू कर दो|शुरू करो|शुरू कर दो|स्टार्ट करो|start|करो|लगाओ|लगा दो|पर)"), " ")))
             if (to.isNotBlank()) return QuickCommands.Quick(a("navigate", "to" to to, "mode" to mode), "$to का नेविगेशन शुरू कर रहा हूँ।")
             return null
         }
@@ -180,6 +250,11 @@ object Maps {
         }
         Regex("^(.+?) (?:मैप|map|नक्शे) (?:में|पर) (?:दिखाओ|खोलो|ढूंढो|ढूँढो|सर्च करो|खोजो)$").find(t)?.let { m ->
             val q = cleanPlace(m.groupValues[1]); if (q.isNotBlank()) return QuickCommands.Quick(a("map_search", "query" to q), "मैप पर दिखा रहा हूँ।")
+        }
+        // ---- v4: "मैप पर X सर्च करो" / "search X on google maps" / "मैप में X दिखाओ" -> सीधे X मैप पर
+        if (onMap) {
+            val q = place(t)
+            if (q.isNotBlank() && !isHere(q) && q.split(' ').size <= 8) return QuickCommands.Quick(a("map_search", "query" to q), "$q मैप पर दिखा रहा हूँ।")
         }
         return null
     }

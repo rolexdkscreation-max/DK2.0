@@ -99,6 +99,8 @@ object LocalRouter {
         if (t0.length < 2 || negated(t0)) return Split(null, raw)
         // "चलो ठीक है, होम स्क्रीन पे आओ": भराव वाला हिस्सा काम नहीं - उसकी वजह से पूरी बात Gemini को जाती थी
         val t = Filler.stripLead(t0)
+        // v4: "मैप खोलो और X का डायरेक्शन लगा दो" = एक ही मैप वाला काम (दो टुकड़ों में X का मैप-संदर्भ खो जाता था)
+        Maps.mergeOpen(t)?.let { m -> Maps.parse(m)?.let { return Split(it, null) } }
         val clauses = clausesOf(t).filter { !Filler.isFiller(it) }.ifEmpty { clausesOf(t) }
         if (clauses.size == 1 && clauses[0] != t) single(clauses[0], wakeWords, fg)?.let { return Split(it, null) }
         if (clauses.size >= 2) plan(clauses, wakeWords, fg)?.let { return it.copy(rest = it.rest?.let { raw }) }
