@@ -52,8 +52,9 @@ object SearchGuard {
      * खोज की keys क्रम में: जिस हिस्से (Live/चैट) से खोज हुई उसकी अपनी Gemini key पहले,
      * दूसरी Gemini key सिर्फ़ बचाव (पहली न हो / ग़लत हो / quota ख़त्म)। ख़ाली और दोहराई हुई keys नहीं।
      */
-    fun keys(fromLive: Boolean, chatGeminiKey: String, liveGeminiKey: String): List<String> =
-        (if (fromLive) listOf(liveGeminiKey, chatGeminiKey) else listOf(chatGeminiKey, liveGeminiKey))
+    fun keys(fromLive: Boolean, chatGeminiKey: String, liveGeminiKey: String, searchKey: String = ""): List<String> =
+        // v3.90: खोज की अपनी key (डली हो) सबसे पहले; न चले तो पुराने जैसा Live/चैट वाली key
+        (listOf(searchKey) + if (fromLive) listOf(liveGeminiKey, chatGeminiKey) else listOf(chatGeminiKey, liveGeminiKey))
             .map { it.trim() }.filter { it.isNotBlank() }.distinct()
 
     /**

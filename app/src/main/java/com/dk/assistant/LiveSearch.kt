@@ -39,6 +39,20 @@ object LiveSearch {
         "UPSC/MPSC/SSC/board sites, courts' sites, egazette"
 
     /** कौन-कौन सी खोज (2 या 3). पहली हमेशा सबसे भरोसे वाली तरफ़ */
+    /** v3.90: यह key खोज की अपनी key है = गहरी खोज */
+    fun deepFor(key: String, searchKey: String): Boolean = searchKey.isNotBlank() && key.trim() == searchKey.trim()
+    fun angleTimeoutMs(deep: Boolean): Long = if (deep) 28_000L else 18_000L
+    /** Live की web_search पूरा कितना रुके (कोण + मिलाना) */
+    fun totalTimeoutMs(deep: Boolean): Long = if (deep) 46_000L else 32_000L
+
+    fun plan(question: String, deep: Boolean): List<Angle> {
+        val l = plan(question)
+        if (!deep) return l
+        return l + Angle("detail", "Search deeply like a careful researcher: open several authoritative pages (official, reference, expert and " +
+            "reputed news), collect the COMPLETE details - exact numbers, dates, rules, steps, eligibility, background, reasons, and what changed " +
+            "recently. Cross-check each important fact on at least two websites.")
+    }
+
     fun plan(question: String): List<Angle> {
         val gov = isGov(question)
         val list = mutableListOf<Angle>()
@@ -53,15 +67,16 @@ object LiveSearch {
     }
 
     /** हर एक खोज का system निर्देश */
-    fun angleSystem(a: Angle, nowLine: String, name: String): String =
+    fun angleSystem(a: Angle, nowLine: String, name: String, deep: Boolean = false): String =
         "You are the research helper of $name, a Hindi voice assistant. $nowLine\n" +
-        "ALWAYS use Google Search. ${a.instruction}\n" +
-        "Report ONLY facts you found, as 3-8 short lines in plain text (Hindi or English is fine). For every fact write in brackets " +
+        "ALWAYS use Google Search${if (deep) " - run several different searches and read multiple pages, do not stop at the first result" else ""}. ${a.instruction}\n" +
+        "Report ONLY facts you found, as ${if (deep) "6-15" else "3-8"} short lines in plain text (Hindi or English is fine). For every fact write in brackets " +
         "the website name and the date of that information, like (pib.gov.in, 26 Oct 2026). Numbers with units. " +
         "If the newest information you found is old, say how old. If you found nothing reliable, write exactly: NOTHING RELIABLE FOUND."
 
     /** मिलाने वाले का system निर्देश */
-    fun mergeSystem(nowLine: String, name: String, user: String): String = buildString {
+    fun mergeSystem(nowLine: String, name: String, user: String, deep: Boolean = false): String = buildString {
+        if (deep) append("DEEP SEARCH: give a complete, well-organised answer with all the important details the reports found (still in spoken style, no lists of links). ")
         append("You are $name, a Hindi voice assistant")
         if (user.isNotBlank()) append(" talking to $user")
         append(". $nowLine\n")

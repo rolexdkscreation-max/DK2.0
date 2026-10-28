@@ -257,6 +257,20 @@ object DoneGate {
         if (!evidence && HonestGuard.claimsDone(heldText)) Verdict.DROP else Verdict.PLAY
 
     /** tool आने पर: tool से *पहले* बोला गया "कर दिया" हमेशा झूठा (काम अभी शुरू हुआ है) */
+    /** छोटा "ठीक है, कर रहा हूँ" - इतने शब्द / इतनी आवाज़ (ms) तक */
+    const val ACK_MAX_WORDS = 6
+    const val ACK_MAX_MS = 3_000
+    /**
+     * v3.90: हुक्म वाले काम में tool आने तक रुकी बात: छोटा "ठीक है, कर रहा हूँ" = बजाओ (मालिक चाहते हैं);
+     * उससे लंबी बातें या "हो गया" का झूठा दावा = हटाओ (पहले काम, फिर बात). text न आया हो तो आवाज़ की लंबाई से.
+     */
+    fun beforeToolCommand(heldText: String, heldMs: Int): Verdict {
+        if (HonestGuard.claimsDone(heldText)) return Verdict.DROP
+        val t = heldText.trim()
+        val short = if (t.isNotEmpty()) t.split(Regex("\\s+")).size <= ACK_MAX_WORDS && heldMs <= ACK_MAX_MS + 1_000 else heldMs <= ACK_MAX_MS
+        return if (short) Verdict.PLAY else Verdict.DROP
+    }
+
     fun beforeTool(heldText: String): Verdict = if (HonestGuard.claimsDone(heldText)) Verdict.DROP else Verdict.PLAY
 
     /** Gemini को: झूठा "हो गया" नहीं बजाया - अभी असली काम करो */
@@ -285,7 +299,7 @@ object DoneGate {
 
     /** Live prompt: काम = पहले tool, फिर एक छोटी पक्की लाइन */
     const val PROMPT = "\nACTIONS (very important): when the user asks you to DO something on the phone, call the tool FIRST and say nothing " +
-        "before it (work first, talk after - not even an ack). After the tool returns DONE/PLAYING/COMPLETED, confirm " +
+        "before it except a 2-4 word ack like \"ठीक है, कर रहा हूँ\" (nothing that claims success, no other talk). After the tool returns DONE/PLAYING/COMPLETED, confirm " +
         "in ONE short natural line (e.g. \"हो गया बॉस, चला दिया\" / \"भेज दिया बॉस\"). If the result says failed / not verified / waiting, say exactly that " +
         "honestly - never \"हो गया\". Anything you say claiming success before a tool result is muted by the phone. " +
         "To delete the user's last photo(s)/screenshot(s) call phone_task right away (e.g. \"आखिरी 2 फोटो डिलीट करो\") - Android itself shows an " +

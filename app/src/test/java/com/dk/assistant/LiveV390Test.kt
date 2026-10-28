@@ -89,8 +89,35 @@ class LiveV390Test {
         assertEquals(DoneGate.HOLD_MAX_MS, DoneGate.holdLimitMs(afterTool = true, command = true))
     }
 
-    @Test fun promptsSayWorkFirst() {
-        assertFalse(DoneGate.PROMPT.contains("2-word ack"))
-        assertTrue(WorkChatMode.block(true).contains("say NOTHING"))
+    @Test fun promptsKeepShortAckThenWork() {
+        // मालिक: काम से पहले सिर्फ़ "ठीक है, कर रहा हूँ", बाद में "हो गया" - बाक़ी बातें नहीं
+        assertTrue(DoneGate.PROMPT.contains("2-4 word ack"))
+        assertTrue(WorkChatMode.block(true).contains("ठीक है, कर रही हूँ"))
+        assertTrue(WorkChatMode.block(true).contains("nothing else before the work"))
+        assertFalse(WorkChatMode.block(true).contains("say NOTHING"))
+    }
+
+    @Test fun commandAckPlaysChatterDrops() {
+        assertEquals(DoneGate.Verdict.PLAY, DoneGate.beforeToolCommand("ठीक है, कर रहा हूँ।", 1_400))
+        assertEquals(DoneGate.Verdict.PLAY, DoneGate.beforeToolCommand("", 1_500))   // text अभी नहीं आया, आवाज़ छोटी
+        assertEquals(DoneGate.Verdict.DROP, DoneGate.beforeToolCommand("हो गया बॉस, खोल दिया", 1_200))   // झूठा दावा
+        assertEquals(DoneGate.Verdict.DROP, DoneGate.beforeToolCommand(
+            "ठीक है बॉस, वैसे आज मौसम बहुत अच्छा है, आप कैसे हैं, मैं अभी यूट्यूब खोलती हूँ", 6_000))
+        assertEquals(DoneGate.Verdict.DROP, DoneGate.beforeToolCommand("", 7_000))
+    }
+
+    @Test fun ownSearchKeyFirstAndDeeper() {
+        assertEquals(listOf("S", "LIVE", "CHAT"), SearchGuard.keys(true, "CHAT", "LIVE", "S"))
+        assertEquals(listOf("S", "CHAT", "LIVE"), SearchGuard.keys(false, "CHAT", "LIVE", " S "))
+        assertEquals(listOf("LIVE", "CHAT"), SearchGuard.keys(true, "CHAT", "LIVE", ""))   // नहीं डाली = पहले जैसा
+        assertEquals(listOf("K"), SearchGuard.keys(true, "K", "K", "K"))
+        assertTrue(LiveSearch.deepFor("S", "S")); assertFalse(LiveSearch.deepFor("LIVE", "S")); assertFalse(LiveSearch.deepFor("LIVE", ""))
+        val q = "लाडकी बहीण योजना की अगली किस्त कब आएगी"
+        assertEquals(LiveSearch.plan(q).size + 1, LiveSearch.plan(q, true).size)
+        assertEquals(LiveSearch.plan(q), LiveSearch.plan(q, false))
+        assertTrue(LiveSearch.angleTimeoutMs(true) > LiveSearch.angleTimeoutMs(false))
+        assertTrue(LiveSearch.totalTimeoutMs(true) > LiveSearch.angleTimeoutMs(true))
+        val a = LiveSearch.plan(q, true).last()
+        assertTrue(LiveSearch.angleSystem(a, "now", "DK", true).contains("several different searches"))
     }
 }

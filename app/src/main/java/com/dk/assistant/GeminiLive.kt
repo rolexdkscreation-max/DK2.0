@@ -64,7 +64,7 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
         const val CLIENT_END_MS = 550
         /** v3.88: बोलते-बोलते तैयार किया डेटा कितनी देर ताज़ा माना जाए */
         const val PREP_WEATHER_MS = 5 * 60_000L
-        const val PREP_SEARCH_MS = 45_000L
+        const val PREP_SEARCH_MS = 50_000L
         /** Bolna shuru pakadne se pehle itni awaaz - chhota = pehla shabd turant (bahut chhota = DK ki goonj se galat "toka") */
         const val PREFIX_PADDING_MS = 100
         /** Wake word wala Live chup hone par connection itni der garam rakho */
@@ -588,7 +588,7 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
             if (r == null) why = pf
         }
         if (r == null && pf == null) {
-            r = try { withTimeoutOrNull(32_000) { brain.search(q, deep = false) } }
+            r = try { withTimeoutOrNull(LiveSearch.totalTimeoutMs(Prefs.searchOwnKey(svc).isNotBlank())) { brain.search(q, deep = false) } }
             catch (e: CancellationException) { throw e } catch (e: Exception) {
                 why = brain.lastSearchFail
                 log("web_search fail (कोशिश 1): ${SearchGuard.hindi(why)} - ${e.javaClass.simpleName} ${e.message?.take(120)}")
@@ -674,7 +674,7 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
             setMode(Mode.THINKING)
             val brain = BrainManager(svc).also { it.fromLive = true }
             var why = SearchGuard.Fail.TIMEOUT
-            var r = try { withTimeoutOrNull(35_000) { brain.search(user, deep = false) } }
+            var r = try { withTimeoutOrNull(LiveSearch.totalTimeoutMs(Prefs.searchOwnKey(svc).isNotBlank()) + 3_000) { brain.search(user, deep = false) } }
                 catch (e: CancellationException) { throw e } catch (e: Exception) { why = brain.lastSearchFail; log("वादा-जाँच सर्च fail: ${e.message}"); null }
             // v3.90: यहाँ भी बचाव वाली खोज, और fail हो तो असली वजह यूज़र को
             if (r == null || r.text.isBlank()) { val fb = fallbackSearch(user, why, brain); r = fb.first; why = fb.second }
@@ -1397,7 +1397,13 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
             if (muteTurn) { ignoreTools(it); return@let }
             // v3.67: tool से पहले बोला "कर दिया" = झूठ (काम अभी शुरू हुआ) - वह हिस्सा नहीं बजता; "ठीक है बॉस" बजता है
             // v3.90: काम से पहले की बातें ("ठीक है, खोल रहा हूँ…" / इधर-उधर की बात) नहीं - पहले काम, फिर नतीजे वाली बात
-            if (actHold) { if ((!actAfterTool && actCommand) || DoneGate.beforeTool(heldActText()) == DoneGate.Verdict.DROP) dropAct(if (!actAfterTool && actCommand) "काम से पहले की बात - पहले काम" else "tool से पहले") else releaseAct("tool आया") }
+            if (actHold) {
+                val cmd = !actAfterTool && actCommand
+                val v = if (cmd) DoneGate.beforeToolCommand(heldActText(), (actHeldBytes.toLong() * 1000 / (OUT_RATE * 2)).toInt())
+                        else DoneGate.beforeTool(heldActText())
+                // v3.90: हुक्म = छोटा "ठीक है, कर रहा हूँ" बजे, उससे ज़्यादा बात हटे
+                if (v == DoneGate.Verdict.DROP) dropAct(if (cmd) "काम से पहले की लंबी बात - पहले काम" else "tool से पहले") else releaseAct(if (cmd) "छोटा ठीक है" else "tool आया")
+            }
             actEvidence = true
             timeline.event(lastServerAt); replyWatch.onServerAnswered(); lastToolAt = lastServerAt; runTools(it)
         }
@@ -1745,7 +1751,7 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
                     prepSearch = Prep(k, q, now, svc.scope.async(Dispatchers.IO) {
                         val b = BrainManager(svc).also { it.fromLive = true }
                         // v3.90: fail हुई तो वजह भी (सीमा भरी/key ग़लत = web_search फिर वही Google खोज न दोहराए)
-                        try { withTimeoutOrNull(30_000) { b.search(q, deep = false) } ?: SearchGuard.Fail.TIMEOUT }
+                        try { withTimeoutOrNull(LiveSearch.totalTimeoutMs(Prefs.searchOwnKey(svc).isNotBlank())) { b.search(q, deep = false) } ?: SearchGuard.Fail.TIMEOUT }
                         catch (e: CancellationException) { throw e } catch (_: Exception) { b.lastSearchFail }
                     })
                     log("पहले से तैयारी: खोज (\"${q.take(30)}\")")
