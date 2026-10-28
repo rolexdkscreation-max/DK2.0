@@ -366,8 +366,8 @@ class WhiteboardView @JvmOverloads constructor(
     }
 
     fun getBitmap(): Bitmap {
-        val w = if (width > 0) width else 1080
-        val h = if (height > 0) height else 1920
+        val w = if (width > 0) width else 1
+        val h = if (height > 0) height else 1
         val bitmap = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
         val canvas = Canvas(bitmap)
         canvas.drawColor(Color.WHITE)
