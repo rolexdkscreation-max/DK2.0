@@ -1090,6 +1090,12 @@ class SettingsActivity : AppCompatActivity() {
             hint(box, "चालू करने पर भी नाम साफ़ न मिले (दो मिलते-जुलते नाम) तो DK पूछेगा। भेजने के बाद DK जाँचता है कि संदेश सच में चैट में गया।")
         }
 
+        // ---- ऑटोनोमस मोड (अलग स्क्रीन; शुरू में बंद)
+        card("ऑटोनोमस मोड", "DK खुद तय करे कि काम कोडिंग का है या फ़ोन के ऐप का, और खुद करे — शुरू में बंद") { box ->
+            row(box, button("ऑटोनोमस मोड खोलें") { startActivity(android.content.Intent(this, com.dk.assistant.auto.AutoSettingsActivity::class.java)) })
+            hint(box, "यहाँ से चालू/बंद, कौन-से काम, अपने काम, पुष्टि, अलग API keys, इमरजेंसी स्टॉप और हर कदम का लॉग।")
+        }
+
         // ---- v3.88: Memory (फ़ोन की लोकल याददाश्त)
         card("Memory (याददाश्त)", "क्या-क्या सेव है देखें, कोई एक चीज़ या सारी मेमोरी मिटाएँ — सब सिर्फ़ इसी फ़ोन में") { box ->
             row(box, button("मेमोरी खोलें") { startActivity(android.content.Intent(this, MemoryActivity::class.java)) })

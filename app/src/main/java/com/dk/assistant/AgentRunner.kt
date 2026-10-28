@@ -21,6 +21,8 @@ class AgentRunner(
     private val speaker: Speaker
 ) {
     private val brain = BrainManager(svc)
+    /** ऑटोनोमस मोड का अभी का काम (null = आम DK, पहले जैसा) */
+    @Volatile private var autoS: com.dk.assistant.auto.AutoRun? = null
 
     private var job: Job? = null
 
@@ -45,7 +47,13 @@ class AgentRunner(
         silent = !speak
         Lang.noteUser(command)   // DK AI: "Auto" भाषा - यूज़र की इस बात की भाषा याद
         val j = scope.launch {
-            try { execute(command, note) } finally { if (job === coroutineContext[Job]) { DKState.set(Mode.IDLE); silent = false; currentGoal = null } }
+            try { execute(command, note) } finally {
+                if (job === coroutineContext[Job]) {
+                    autoS?.let { com.dk.assistant.auto.AutoLog.add(svc, "काम खत्म: ${it.plan.task.take(80)}") }
+                    autoS = null; brain.override = null
+                    DKState.set(Mode.IDLE); silent = false; currentGoal = null
+                }
+            }
         }
         job = j
         return j
@@ -252,6 +260,7 @@ class AgentRunner(
 
     private suspend fun execute(goal: String, note0: String = "") {
         var note = note0
+        autoS = null; brain.override = null
         DKLog.d("Command: $goal")
         heardAt.takeIf { it > 0 && System.currentTimeMillis() - it < 30_000 }?.let { DKLog.d("Deri: सुनना पूरा → रूटर ${System.currentTimeMillis() - it} ms"); heardAt = 0L }
         DKState.user(goal)
@@ -267,6 +276,10 @@ class AgentRunner(
         }
         if (bare in listOf("stop", "रुको", "बस", "ruko", "cancel", "चुप", "चुप हो जाओ", "बस करो", "रुक जाओ", "ठीक है बस", "बस बस", "रहने दो", "chup")) {
             speaker.stop(); DKState.reply("ठीक है।"); return
+        }
+        // ऑटोनोमस मोड: "इमरजेंसी स्टॉप" = सारा ऑटोनोमस काम (कोडिंग भी) तुरंत बंद
+        if (com.dk.assistant.auto.AutoPrefs.on(svc) && bare in com.dk.assistant.auto.AutoSafety.STOP_WORDS) {
+            com.dk.assistant.auto.AutoMode.emergencyStop(svc); say("ठीक है, सारा ऑटोनोमस काम रोक दिया।"); return
         }
         if (memoryCommand(goal)) return
         // DK AI Website Forge: "ek cafe ki website banao" -> लाइव 3D build स्क्रीन (कोडिंग एजेंट वाली बात यहाँ नहीं पकड़ी जाती)
@@ -320,9 +333,18 @@ class AgentRunner(
                 svc.waitSettle("", false, 2500)
             }
         }
+        // ऑटोनोमस मोड (Settings में चालू हो तभी; बंद = यह हिस्सा कुछ नहीं करता): कोडिंग -> कोडिंग एजेंट, फ़ोन के काम -> नीचे स्क्रीन वाला रास्ता
+        com.dk.assistant.auto.AutoMode.plan(svc, goal)?.let { plan ->
+            if (plan.kind == com.dk.assistant.auto.AutoPlan.Kind.CODING) { say(com.dk.assistant.auto.AutoMode.startCoding(svc, plan.task)); return }
+            val ovr = com.dk.assistant.auto.AutoMode.brainClient(svc)
+            brain.override = ovr
+            autoS = com.dk.assistant.auto.AutoRun(plan, com.dk.assistant.auto.AutoPrefs.confirm(svc))
+            com.dk.assistant.auto.AutoLog.add(svc, "नया काम (${plan.kind.title}): $goal — AI: " + if (ovr != null) "ऑटोनोमस की अपनी key" else "DK की मुख्य key")
+            note = (if (note.isNotBlank()) "$note\n" else "") + com.dk.assistant.auto.AutoPlan.phoneNote(plan)
+        }
         // "सर्च करो / रिसर्च करो / डीप रिसर्च करो" -> poori gehri khoj, phir vistaar se pakka jawab
         searchFailed = false
-        if (!note.contains(LocalRouter.DONE_NOTE) && explicitResearch(lower) && brain.canSearch()) {
+        if (autoS == null && !note.contains(LocalRouter.DONE_NOTE) && explicitResearch(lower) && brain.canSearch()) {
             if (searchAndSay(goal, deep = true, thorough = true)) return
         }
         if (lower.contains("नई बात") || lower.contains("new chat") || lower.contains("भूल जाओ")) {
@@ -349,7 +371,7 @@ class AgentRunner(
         var wantShot = false
         var shotWarned = false
         // Normal baatcheet ho to screen padhe bina seedha jawab = bahut tez
-        var chatMode = !looksLikePhoneTask(lower)
+        var chatMode = autoS == null && !looksLikePhoneTask(lower)
         var step = 0
 
         // 2) Taaza jaankari (mausam/bhav/score/news) -> Google Search (tez). Baaki sab -> seedha AI = turant jawab.
@@ -390,6 +412,14 @@ class AgentRunner(
                 prompt = "CHAT MODE (no screen info).\nUSER SAYS: $goal"
             } else {
                 val screen = svc.readScreen()
+                // ऑटोनोमस: पासवर्ड / OTP / बैंक / भुगतान वाली स्क्रीन पर कुछ नहीं - रुककर बताओ
+                autoS?.let { s ->
+                    s.screen = screen.text; s.pkg = screen.packageName
+                    com.dk.assistant.auto.AutoSafety.blockReason(screen.text, screen.packageName, svc.hasPasswordField())?.let { r ->
+                        com.dk.assistant.auto.AutoLog.add(svc, "रुका: $r"); sayFailed(r); return
+                    }
+                    com.dk.assistant.auto.AutoLog.add(svc, "कदम $step: स्क्रीन पढ़ी (${screen.packageName})")
+                }
                 if (wantShot && !Prefs.screenshot(svc) && !shotWarned) {
                     shotWarned = true
                     DKState.reply("स्क्रीन देखना बंद है। चालू करने के लिए बोलिए \"स्क्रीन देखना चालू करो\" या सेटिंग्स → परमिशन में ऑन करें।")
@@ -443,6 +473,7 @@ class AgentRunner(
             }
 
             val sayText = resp.optString("say", "")
+            autoS?.let { if (sayText.isNotBlank()) com.dk.assistant.auto.AutoLog.add(svc, "DK: " + sayText.take(160)) }
             val actions = resp.optJSONArray("actions")
             val hasActions = actions != null && actions.length() > 0
             var done = resp.optBoolean("done", !hasActions)
@@ -478,10 +509,34 @@ class AgentRunner(
                         break
                     }
                     if (a.optString("type") in APP_OPENERS) opensApp = true
+                    // ऑटोनोमस: भेजना / पोस्ट / डिलीट जैसा कदम = पुष्टि वाला switch चालू हो तो पहले एक बार पूछो
+                    autoS?.let { s ->
+                        if (s.confirm && com.dk.assistant.auto.AutoSafety.irreversible(a, s.screen, s.pkg)) {
+                            speakJob?.join()
+                            val what = com.dk.assistant.auto.AutoSafety.describe(a, s.screen)
+                            say("यह कदम वापस नहीं होगा: $what। क्या मैं करूँ? हाँ या नहीं बोलिए।")
+                            DKState.set(Mode.LISTENING)
+                            val ans = svc.hearForAgent()
+                            ans?.let { DKState.user(it) }
+                            val yes = com.dk.assistant.auto.AutoSafety.yes(ans)
+                            com.dk.assistant.auto.AutoLog.add(svc, "पुष्टि माँगी ($what): " + if (yes) "हाँ" else "नहीं / जवाब नहीं")
+                            if (!yes) { say("ठीक है, यह कदम नहीं किया। काम यहीं रोक दिया।"); return }
+                            DKState.set(Mode.WORKING)
+                        }
+                    }
                     val r = svc.perform(a)
                     DKLog.d("Action ${a.optString("type")} -> $r")
                     if (a.optString("type") == "youtube_play" && r.startsWith("PLAYING")) done = true
                     results.append("${a.optString("type")} -> $r\n")
+                    // ऑटोनोमस: हर कदम लॉग में; बार-बार fail / वही कदम बार-बार = रुककर बताओ (अंतहीन कोशिश नहीं)
+                    autoS?.let { s ->
+                        com.dk.assistant.auto.AutoLog.add(svc, "कदम: " + com.dk.assistant.auto.AutoSafety.describe(a, s.screen) + " → " + r.take(120))
+                        if (s.stuck.note(com.dk.assistant.auto.AutoSafety.sig(a, step), HonestGuard.actionFailed(r))) {
+                            val m = "मैं इस काम में अटक गई — एक ही कदम बार-बार नहीं हो पा रहा, इसलिए रुक गई। आखिरी नतीजा: ${r.take(80)}"
+                            com.dk.assistant.auto.AutoLog.add(svc, "रुका: अटक गया")
+                            sayFailed(m); return
+                        }
+                    }
                     delay(250)
                 }
             }
