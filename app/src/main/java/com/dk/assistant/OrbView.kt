@@ -49,7 +49,6 @@ class OrbView @JvmOverloads constructor(
     private val glowM = android.graphics.Matrix()
     private var glowCol = 0
     private var glowAlpha = -1
-    private val rim = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE }
 
     private var ang = 0f
     private var tilt = 0.41f
@@ -210,11 +209,6 @@ class OrbView @JvmOverloads constructor(
             else if (mode == Mode.SPEAKING) (0.5f + 0.5f * sin(t * 13f)) * (0.6f + 0.4f * sin(t * 3.7f)).coerceAtLeast(0.2f)
             else if (mode == Mode.LISTENING) 0.05f else 0f
 
-        val satOn = !mini && target == "earth"
-        val satAlpha = if (satOn) (if (morphing) ep else 1f) else 0f
-        if (satAlpha > 0f) drawOrbits(c, cx, cy, R, dotR, front = false, alpha = satAlpha)
-        if (target == "atom" && !mini) drawElectrons(c, cx, cy, R, dotR, cosA, sinA, cosT, sinT, t, front = false)
-
         // ---- dots ka hisaab
         for (i in 0 until n) {
             val e = if (!morphing) 1f else ease(((p - delay[i] * 0.35f) / 0.65f).coerceIn(0f, 1f))
@@ -273,10 +267,6 @@ class OrbView @JvmOverloads constructor(
             }
         }
 
-        if (satAlpha > 0f) drawOrbits(c, cx, cy, R, dotR, front = true, alpha = satAlpha)
-        if (target == "atom" && !mini) drawElectrons(c, cx, cy, R, dotR, cosA, sinA, cosT, sinT, t, front = true)
-        if (!isFace && !mini) drawStateFx(c, cx, cy, R, mode, t, voice, com.dk.assistant.ui.NeonTheme.reducedMotion())
-
         when {
             mini -> postInvalidateDelayed(if (mode == Mode.IDLE) 66 else 33)
             else -> postInvalidateOnAnimation()
@@ -287,11 +277,8 @@ class OrbView @JvmOverloads constructor(
     private val nHalo = Paint(Paint.ANTI_ALIAS_FLAG)
     private val nBody = Paint(Paint.ANTI_ALIAS_FLAG)
     private val nSpec = Paint(Paint.ANTI_ALIAS_FLAG)
-    private val nRing = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE; strokeCap = Paint.Cap.ROUND }
-    private val nRim = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE }
     private val nM = android.graphics.Matrix()
     private var nKey = 0L
-    private var nRingAng = 0f
 
     /** हालत के रंग (सिर्फ़ असली DKState.mode से - कोई नकली हालत नहीं) */
     private fun neonColors(m: Mode): Pair<Int, Int> {
@@ -345,44 +332,23 @@ class OrbView @JvmOverloads constructor(
                 intArrayOf(T.mix(colA, Color.WHITE, 0.55f), colA, T.mix(colB, 0xFF0A0F3A.toInt(), 0.25f), T.mix(colB, 0xFF050A1F.toInt(), 0.55f)),
                 floatArrayOf(0f, 0.38f, 0.78f, 1f), Shader.TileMode.CLAMP)
             nSpec.shader = RadialGradient(0f, 0f, 1f, intArrayOf(0x8CFFFFFF.toInt(), 0x00FFFFFF), floatArrayOf(0f, 1f), Shader.TileMode.CLAMP)
-            nRing.shader = android.graphics.SweepGradient(0f, 0f,
-                intArrayOf(T.alpha(colA, 0), T.alphaF(colA, 0.9f), T.alphaF(colB, 0.9f), T.alpha(colB, 0)),
-                floatArrayOf(0f, 0.35f, 0.7f, 1f))
         }
         // 1. बाहर की नियॉन चमक
         nM.setScale(R * 1.9f, R * 1.9f); nM.postTranslate(cx, cy); nHalo.shader.setLocalMatrix(nM)
         c.drawCircle(cx, cy, R * 1.9f, nHalo)
-        // 2. घूमते पतले छल्ले (कम एनिमेशन में स्थिर)
-        val speed = when (mode) { Mode.THINKING -> 2.4f; Mode.WORKING -> 1.6f; Mode.LISTENING -> 1.1f; Mode.SPEAKING -> 1.3f; else -> 0.4f }
-        if (!still) nRingAng = (nRingAng + speed * dt * 57.3f) % 360f
         val dpx = resources.displayMetrics.density
-        for ((i, rr) in listOf(1.16f, 1.30f).withIndex()) {
-            nRing.strokeWidth = (if (i == 0) 2.2f else 1.4f) * dpx
-            nRing.alpha = if (i == 0) 230 else 150
-            nM.setRotate(if (i == 0) nRingAng else -nRingAng * 0.7f + 120f); nM.postTranslate(cx, cy)
-            nRing.shader.setLocalMatrix(nM)
-            c.drawCircle(cx, cy, R * rr, nRing)
-        }
-        // 3. गोला (ऊपर-बाएँ से रोशनी)
+        // 3. गोला (ऊपर-बाएँ से रोशनी) - बाहरी रिंग या बॉर्डर पूरी तरह हटा दी गई है ताकि चालू होने पर भी न दिखे
         nM.setScale(R * 1.25f, R * 1.25f); nM.postTranslate(cx - R * 0.28f, cy - R * 0.32f); nBody.shader.setLocalMatrix(nM)
         c.drawCircle(cx, cy, R, nBody)
         // 4. चमकदार किनारा + ऊपर की चमक
-        nRim.strokeWidth = 1.4f * dpx; nRim.color = T.alphaF(T.mix(colB, Color.WHITE, 0.4f), 0.85f)
-        c.drawCircle(cx, cy, R, nRim)
         nM.setScale(R * 0.42f, R * 0.30f); nM.postTranslate(cx - R * 0.32f, cy - R * 0.48f); nSpec.shader.setLocalMatrix(nM)
         c.drawCircle(cx - R * 0.32f, cy - R * 0.48f, R * 0.42f, nSpec)
-        // 5. v3.88: हर हालत की अपनी अलग हरकत
-        drawStateFx(c, cx, cy, R, mode, t, voice, still)
-
         if (still) postInvalidateDelayed(if (mode == Mode.LISTENING || mode == Mode.SPEAKING) 120 else 400)
         else if (mode == Mode.IDLE) postInvalidateDelayed(33)      // खाली हालत: ~30fps काफ़ी (कमज़ोर फ़ोन/बैटरी)
         else postInvalidateOnAnimation()
     }
 
     // ------------------------------------------------------------------ v3.88: तीन हालत, तीन अलग एनिमेशन
-    private val sfx = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE; strokeCap = Paint.Cap.ROUND }
-    private val sfxDot = Paint(Paint.ANTI_ALIAS_FLAG)
-    private val sfxArc = android.graphics.RectF()
 
     /**
      * Listening = बाहर से अंदर सिमटते छल्ले (आवाज़ के ज़ोर से तेज़/चमकीले) - "सुन रही हूँ"
@@ -391,111 +357,8 @@ class OrbView @JvmOverloads constructor(
      * कम-एनिमेशन (reduced motion) में स्थिर हल्का निशान, हरकत नहीं.
      */
     private fun drawStateFx(c: Canvas, cx: Float, cy: Float, R: Float, mode: Mode, t: Float, voice: Float?, still: Boolean) {
-        val dpx = resources.displayMetrics.density
-        when (mode) {
-            Mode.LISTENING -> {
-                val col = colA
-                val drive = (0.35f + lvl * 1.4f).coerceIn(0.35f, 1f)
-                if (still) {
-                    sfx.strokeWidth = 1.6f * dpx; sfx.color = withAlpha(col, 120)
-                    c.drawCircle(cx, cy, R * 1.45f, sfx); return
-                }
-                for (i in 0 until 3) {
-                    val ph = ((t * (0.55f + lvl * 0.9f) + i / 3f) % 1f)          // 0 = बाहर, 1 = गोले पर
-                    val rr = R * (1.75f - 0.65f * ph)
-                    sfx.strokeWidth = (1.2f + 1.8f * ph) * dpx
-                    sfx.color = withAlpha(col, (ph * 210 * drive).toInt())
-                    c.drawCircle(cx, cy, rr, sfx)
-                }
-            }
-            Mode.THINKING, Mode.WORKING -> {
-                val col = colA; val col2 = colB
-                val base = if (still) 0f else t * 160f
-                sfx.strokeWidth = 2.6f * dpx
-                for (i in 0 until 3) {
-                    val rr = R * (1.22f + i * 0.13f)
-                    sfxArc.set(cx - rr, cy - rr, cx + rr, cy + rr)
-                    val start = (if (i % 2 == 0) base * (1f + i * 0.25f) else -base * 0.8f) + i * 120f
-                    sfx.color = withAlpha(if (i == 1) col2 else col, 200 - i * 45)
-                    c.drawArc(sfxArc, start, 70f - i * 14f, false, sfx)
-                }
-                // पीछा करते चमकीले बिंदु
-                for (j in 0 until 4) {
-                    val a = Math.toRadians((base * 1.5f + j * 22f).toDouble()).toFloat()
-                    val rr = R * 1.32f
-                    sfxDot.color = withAlpha(Color.WHITE, 230 - j * 50)
-                    c.drawCircle(cx + cos(a) * rr, cy + sin(a) * rr, (3.2f - j * 0.6f) * dpx, sfxDot)
-                }
-            }
-            Mode.SPEAKING -> {
-                val col = colB
-                val amp = (voice ?: (0.45f + 0.35f * sin(t * 7f))).coerceIn(0f, 1f)
-                if (still) {
-                    sfx.strokeWidth = 2f * dpx; sfx.color = withAlpha(col, 140)
-                    c.drawCircle(cx, cy, R * 1.25f, sfx); return
-                }
-                for (i in 0 until 3) {
-                    val ph = ((t * 0.9f + i / 3f) % 1f)                           // 0 = गोले पर, 1 = बाहर
-                    val rr = R * (1.05f + 0.85f * ph) * (1f + amp * 0.08f)
-                    sfx.strokeWidth = (3.2f - 2.2f * ph) * dpx * (0.6f + amp)
-                    sfx.color = withAlpha(col, ((1f - ph) * 220 * (0.35f + 0.65f * amp)).toInt())
-                    c.drawCircle(cx, cy, rr, sfx)
-                }
-            }
-            else -> {}
-        }
     }
 
-    /** Atom ke chhallon par daudte electron */
-    private fun drawElectrons(c: Canvas, cx: Float, cy: Float, R: Float, dotR: Float,
-                              cosA: Float, sinA: Float, cosT: Float, sinT: Float, t: Float, front: Boolean) {
-        for (ring in 0 until 3) {
-            val (x0, y0, z0) = Shapes.ringPoint(ring, t * (1.6f + ring * 0.35f) + ring * 2f, 0.95f)
-            val x1 = x0 * cosA + z0 * sinA
-            val z1 = -x0 * sinA + z0 * cosA
-            val y2 = y0 * cosT - z1 * sinT
-            val z2 = y0 * sinT + z1 * cosT
-            if ((z2 >= 0f) != front) continue
-            val persp = 4f / (4f - z2)
-            val px = cx + x1 * R * persp; val py = cy - y2 * R * persp
-            dot.color = withAlpha(colB, 70); c.drawCircle(px, py, dotR * 4.5f, dot)
-            dot.color = withAlpha(Color.WHITE, 230); c.drawCircle(px, py, dotR * 2f, dot)
-        }
-    }
-
-    private fun drawOrbits(c: Canvas, cx: Float, cy: Float, R: Float, dotR: Float, front: Boolean, alpha: Float) {
-        drawOrbit(c, cx, cy, R * 1.22f, 0.45f, 0.35f, ang * 1.6f + 1f, 72, dotR, front, alpha)
-        drawOrbit(c, cx, cy, R * 1.36f, -0.9f, 1.1f, -ang * 1.1f, 90, dotR, front, alpha)
-    }
-
-    private fun drawOrbit(c: Canvas, cx: Float, cy: Float, radius: Float, incl: Float, node: Float,
-                          phase: Float, count: Int, dotR: Float, front: Boolean, alpha: Float) {
-        val ci = cos(incl); val si = sin(incl); val cn = cos(node); val sn = sin(node)
-        for (k in 0..count) {
-            val th = (2 * PI * k / count).toFloat()
-            val sat = k == count
-            val a = if (sat) phase else th
-            var x = cos(a); var y = 0f; var z = sin(a)
-            val y1 = y * ci - z * si; val z1 = y * si + z * ci
-            y = y1; z = z1
-            val x2 = x * cn + z * sn; val z2 = -x * sn + z * cn
-            x = x2; z = z2
-            if ((z >= 0f) != front) continue
-            val persp = 6f / (6f - z)
-            val px = cx + x * radius * persp
-            val py = cy - y * radius * persp
-            val depth = (z + 1f) / 2f
-            if (sat) {
-                dot.color = withAlpha(Color.WHITE, ((140 + 115 * depth) * alpha).toInt())
-                c.drawCircle(px, py, dotR * 2.2f, dot)
-                dot.color = withAlpha(colB, (70 * alpha).toInt())
-                c.drawCircle(px, py, dotR * 4.5f, dot)
-            } else {
-                dot.color = withAlpha(colB, ((25 + 90 * depth) * alpha).toInt())
-                c.drawCircle(px, py, dotR * 0.45f, dot)
-            }
-        }
-    }
 
     override fun onAttachedToWindow() { super.onAttachedToWindow(); lastT = 0L; cacheT = 0L; invalidate() }
     override fun onDetachedFromWindow() { super.onDetachedFromWindow() }
