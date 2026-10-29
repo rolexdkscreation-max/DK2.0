@@ -3128,10 +3128,10 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
         com.dk.assistant.voice.engine.VoiceTune.load(svc)
         var tuneVer = com.dk.assistant.voice.engine.VoiceTune.apply(t, -1)   // v3.80: गति / पिच (सेटिंग्स -> आवाज़)
         // v3.6: speaker पर DK की आवाज़ फ़ोन की बाकी आवाज़ से धीमी थी - थोड़ा boost (Bluetooth पर नहीं)
-        boost = SpeakerBoost.attach(t.audioSessionId, btOn)
+        spkBoost = SpeakerBoost.attach(t.audioSessionId, btOn)
         t.play()
         track = t
-        log((if (btOn) "आवाज़: Bluetooth headset" else "स्पीकर" + (if (boost != null) " (+${SpeakerBoost.GAIN_MB / 100} dB)" else "")) + ": $OUT_RATE Hz PCM16 mono stream • " + com.dk.assistant.voice.engine.VoiceTune.label())
+        log((if (btOn) "आवाज़: Bluetooth headset" else "स्पीकर" + (if (spkBoost != null) " (+${SpeakerBoost.GAIN_MB / 100} dB)" else "")) + ": $OUT_RATE Hz PCM16 mono stream • " + com.dk.assistant.voice.engine.VoiceTune.label())
         playThread = Thread {
             var speakingSet = false
             while (!Thread.currentThread().isInterrupted) {
@@ -3208,7 +3208,7 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
         pipeStop(); com.dk.assistant.voice.engine.VoiceLevel.clear()
         track?.let { try { it.stop() } catch (_: Exception) {}; try { it.release() } catch (_: Exception) {} }
         track = null
-        SpeakerBoost.release(boost); boost = null
+        SpeakerBoost.release(spkBoost); spkBoost = null
     }
-    private var boost: android.media.audiofx.LoudnessEnhancer? = null
+    private var spkBoost: android.media.audiofx.LoudnessEnhancer? = null
 }

@@ -77,7 +77,7 @@ class OneKeyAudioMemoryTest {
         assertTrue(SpeakerBoost.gainFor(false) in 300..1000)
         assertTrue(SpeakerBoost.SUSPECT_VOLUME > 0.3f && SpeakerBoost.SUSPECT_VOLUME < 1f)
         val g = src("GeminiLive.kt")
-        assertTrue(g.contains("SpeakerBoost.attach(t.audioSessionId, btOn)") && g.contains("SpeakerBoost.release(boost)"))
+        assertTrue(g.contains("SpeakerBoost.attach(t.audioSessionId, btOn)") && g.contains("SpeakerBoost.release(spkBoost)"))
         assertFalse(g.contains("setVolume(0.3f)"))
     }
 
