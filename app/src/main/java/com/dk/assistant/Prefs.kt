@@ -173,7 +173,8 @@ object Prefs {
     fun localMemoryOn(c: Context) = sp(c).getBoolean("local_memory_on", true)
     // ---- v3.66: सिर्फ़ मालिक की आवाज़ (voiceprint सिर्फ़ इसी फ़ोन में - backup बंद है, GitHub/इंटरनेट पर नहीं)
     /** परत 3: सिर्फ़ मालिक की आवाज़ पर जवाब */
-    fun ownerVoiceOn(c: Context) = sp(c).getBoolean("owner_voice_on", false)
+    // v4.5: "सिर्फ़ मेरी आवाज़ सुनो" option हटाया (मालिक की माँग) - पहले चालू किया हो तब भी अब DK सबकी आवाज़ सुनेगा
+    @Suppress("UNUSED_PARAMETER") fun ownerVoiceOn(c: Context) = false
     /** सख़्त = दूसरे लगभग कभी पास नहीं, मालिक को कभी-कभी दोबारा बोलना पड़े */
     fun ownerVoiceStrict(c: Context) = sp(c).getBoolean("owner_voice_strict", false)
     /** परत 4: दूर की / बहुत धीमी आवाज़ अनसुनी */

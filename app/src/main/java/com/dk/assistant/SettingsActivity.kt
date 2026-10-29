@@ -115,7 +115,7 @@ class SettingsActivity : AppCompatActivity() {
             Triple("lang", "भाषा / Language", "ऐप: ${if (UiLang.en()) "English" else "हिंदी"} • DK के जवाब: ${Lang.short(Prefs.replyLang(this))}"),
             Triple("ui", "दिखावट (UI कस्टमाइज़ेशन)", "थीम • मुख्य रंग • काँच की पारदर्शिता • चमक • एनिमेशन"),
             Triple("brain", "AI दिमाग", "DK लाइव • DK चैट • कोडिंग एजेंट • DK कंप्यूटर — हर एक की अपनी API key"),
-            Triple("voice", "आवाज़", "बोलने वाला इंजन (Gemini TTS • Edge • Live) • सुनना • सिर्फ़ मेरी आवाज़"),
+            Triple("voice", "आवाज़", "बोलने वाला इंजन (Gemini TTS • Edge • Live) • सुनना"),
             Triple("orb", "ओर्ब और चेहरा", "पृथ्वी, गैलेक्सी, एटम, छल्ला, पुरुष/महिला HD चेहरा"),
             Triple("access", "Accessibility", (if (Setup.accessibilityOn(this)) "✓ चालू" else "✗ बंद") + " • फ़ोन कंट्रोल • हमेशा सुनना • कॉल • बैटरी"),
             Triple("perms", "परमिशन", "माइक • स्क्रीन देखना • नोटिफ़िकेशन • कॉल • ऐप इंस्टॉल"),
@@ -720,44 +720,8 @@ class SettingsActivity : AppCompatActivity() {
         try { startActivity(android.content.Intent(this, VoiceActivity::class.java)) } catch (_: Exception) {}
     }
 
-    // ================================================================ v3.66: सिर्फ़ मेरी आवाज़
+    // v4.5: "सिर्फ़ मेरी आवाज़ सुनो" option ऐप से हटाया - मालिक की माँग. ownerJob/ownerDialog "Hey DK सिखाओ" में चलते हैं.
     private var ownerJob: kotlinx.coroutines.Job? = null
-
-    private fun ownerVoiceCard(box: LinearLayout) {
-        val OV = com.dk.assistant.voice.OwnerVoice
-        val status = TextView(this).apply { textSize = 14f; setTextColor(0xFFFFFFFF.toInt()); setPadding((4 * dp).toInt(), (4 * dp).toInt(), 0, (4 * dp).toInt()) }
-        box.addView(status)
-        val swOn = switch(box, "सिर्फ़ मेरी आवाज़ पर जवाब दो", Prefs.ownerVoiceOn(this))
-        val swStrict = switch(box, "सख़्त पहचान (दूसरे लगभग कभी पास नहीं, पर कभी-कभी आपको दोबारा बोलना पड़ सकता है)", Prefs.ownerVoiceStrict(this))
-        val swFar = switch(box, "दूर की / बहुत धीमी आवाज़ अनसुनी करो (दूसरे कमरे की बात, धीमा TV)", Prefs.ownerFarOn(this))
-        fun refresh() {
-            val enrolled = OV.enrolled(this)
-            status.text = UiLang.s(when {
-                !OV.supported -> "यह फ़ोन 64-bit ARM नहीं है — आवाज़-पहचान यहाँ नहीं चलेगी, DK पहले की तरह सबकी आवाज़ सुनेगा"
-                OV.broken != null -> "पहचान वाला मॉडल इस फ़ोन पर नहीं चला — DK पहले की तरह सबकी आवाज़ सुनेगा"
-                !enrolled -> "अभी आपकी आवाज़ नहीं सीखी — नीचे \"मेरी आवाज़ सिखाओ\" दबाएँ (करीब 30 सेकंड)"
-                Prefs.ownerVoiceOn(this) -> "चालू — DK सिर्फ़ आपकी आवाज़ पर जवाब देगा"
-                else -> "आपकी आवाज़ सीखी हुई है — ऊपर वाला स्विच चालू करें"
-            })
-            swOn.isEnabled = enrolled
-        }
-        swOn.setOnCheckedChangeListener { _, on -> Prefs.edit(this) { putBoolean("owner_voice_on", on && OV.enrolled(this@SettingsActivity)) }; refresh() }
-        swStrict.setOnCheckedChangeListener { _, on -> Prefs.edit(this) { putBoolean("owner_voice_strict", on) } }
-        swFar.setOnCheckedChangeListener { _, on -> Prefs.edit(this) { putBoolean("owner_far_on", on) } }
-        refresh()
-        row(box,
-            button("मेरी आवाज़ सिखाओ") { enrollOwner { swOn.isChecked = Prefs.ownerVoiceOn(this); refresh() } },
-            button("जाँचो") { testOwner() })
-        row(box, button("पहचान मिटाओ") {
-            androidx.appcompat.app.AlertDialog.Builder(this).setTitle(UiLang.s("आवाज़ की पहचान मिटाएँ?"))
-                .setMessage(UiLang.s("DK फिर से सबकी आवाज़ सुनेगा। दोबारा चालू करने के लिए आवाज़ फिर से सिखानी होगी।"))
-                .setPositiveButton(UiLang.s("मिटाओ")) { _, _ -> OV.forget(this); swOn.isChecked = false; refresh(); toast("आवाज़ की पहचान मिटा दी") }
-                .setNegativeButton(UiLang.s("रहने दो"), null).show()
-        })
-        hint(box, "कैसे काम करता है: आप 5 छोटे वाक्य बोलते हैं, फ़ोन उनसे आपकी आवाज़ की पहचान बनाता है। यह पहचान सिर्फ़ इसी फ़ोन में रहती है — इंटरनेट या GitHub पर कहीं नहीं जाती, और आवाज़ सेव नहीं होती। पहली बार पहचान वाला मॉडल (~28 MB) एक बार डाउनलोड होता है।")
-        hint(box, "रफ़्तार: आपकी आवाज़ Gemini को उसी पल जाती रहती है, साथ-साथ पहली 1 सेकंड मिलाई जाती है — आपके जवाब में कोई देरी नहीं। किसी और की आवाज़ निकली तो DK न जवाब बोलेगा, न फ़ोन पर कोई काम करेगा।")
-        hint(box, "गला ख़राब हो, बहुत शोर हो या फ़ोन बहुत दूर हो तो कभी-कभी आपकी आवाज़ भी छूट सकती है — तब पास आकर फिर बोलें, या \"सख़्त\" बंद रखें। Bluetooth headset पर दूर-पास वाली जाँच अपने-आप बंद रहती है।")
-    }
 
     private fun heyDkCard(box: LinearLayout) {
         val HD = com.dk.assistant.voice.HeyDk
@@ -915,81 +879,6 @@ class SettingsActivity : AppCompatActivity() {
         return d to tv
     }
 
-    private fun enrollOwner(done: () -> Unit) {
-        val OV = com.dk.assistant.voice.OwnerVoice
-        if (!OV.supported) { toast("यह फ़ोन 64-bit ARM नहीं है — आवाज़-पहचान यहाँ नहीं चलेगी"); return }
-        if (!Setup.hasMic(this)) { requestPermissions(arrayOf(android.Manifest.permission.RECORD_AUDIO), 12); return }
-        val VP = com.dk.assistant.voice.VoicePrint
-        val (dlg, tv) = ownerDialog("मेरी आवाज़ सिखाओ")
-        ownerJob?.cancel()
-        ownerJob = lifecycleScope.launch {
-            try {
-                if (!OV.hasModel(this@SettingsActivity)) {
-                    tv.text = UiLang.s("पहचान वाला मॉडल डाउनलोड हो रहा है…")
-                    val err = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
-                        OV.download(this@SettingsActivity) { pct -> runOnUiThread { tv.text = UiLang.s("पहचान वाला मॉडल डाउनलोड हो रहा है…") + " $pct%" } }
-                    }
-                    if (err != null) { tv.text = UiLang.s(err); return@launch }
-                }
-                val prints = ArrayList<FloatArray>(); val levels = ArrayList<Double>()
-                withDkMicPaused {
-                    val phrases = com.dk.assistant.voice.VoiceEnroll.PHRASES
-                    var i = 0; var tries = 0
-                    while (i < phrases.size) {
-                        tv.text = UiLang.s("वाक्य") + " ${i + 1}/${phrases.size} — " + UiLang.s("फ़ोन को आम तौर पर जैसे पकड़ते हैं, वैसे पकड़कर आराम से बोलिए:") + "\n\n\"${phrases[i]}\""
-                        val take = com.dk.assistant.voice.VoiceEnroll.record()
-                        if (take == null || take.speechMs < VP.MIN_ENROLL_SPEECH_MS) {
-                            if (++tries >= 3) { tv.text = UiLang.s("आवाज़ ठीक से नहीं आई — शांत जगह पर फिर कोशिश करें"); return@withDkMicPaused }
-                            tv.text = UiLang.s("आवाज़ कम आई — पूरा वाक्य थोड़ा ज़ोर से बोलिए"); kotlinx.coroutines.delay(1200); continue
-                        }
-                        tv.text = UiLang.s("सीख रहा हूँ…")
-                        val e = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) { OV.embed(this@SettingsActivity, take.pcm) }
-                        if (e == null) { tv.text = UiLang.s("पहचान वाला मॉडल इस फ़ोन पर नहीं चला — DK पहले की तरह सबकी आवाज़ सुनेगा"); return@withDkMicPaused }
-                        prints.add(e); if (take.level > 0) levels.add(take.level)
-                        i++; tries = 0
-                        kotlinx.coroutines.delay(400)
-                    }
-                }
-                if (prints.size < com.dk.assistant.voice.VoicePrint.ENROLL_PHRASES) return@launch
-                val cons = VP.consistency(prints)
-                if (cons < VP.ENROLL_MIN_CONSISTENCY) {
-                    tv.text = UiLang.s("वाक्य आपस में ठीक से नहीं मिले (शायद शोर था या कोई और बोला) — शांत जगह पर फिर से सिखाएँ")
-                    return@launch
-                }
-                val lv = levels.sorted().let { if (it.isEmpty()) 0.0 else it[it.size / 2] }
-                OV.saveEnrollment(this@SettingsActivity, VP.mean(prints)!!, lv)
-                Prefs.edit(this@SettingsActivity) { putBoolean("owner_voice_on", true) }
-                tv.text = UiLang.s("हो गया — DK ने आपकी आवाज़ सीख ली। अब DK सिर्फ़ आपकी आवाज़ पर जवाब देगा।") +
-                    "\n\n" + UiLang.s("मिलान की मज़बूती:") + " ${(cons * 100).toInt()}%"
-                done()
-            } catch (e: kotlinx.coroutines.CancellationException) { throw e
-            } catch (e: Exception) { tv.text = UiLang.s("गड़बड़ हुई") + " (${e.javaClass.simpleName})" }
-        }
-        dlg.setOnDismissListener { ownerJob?.cancel() }
-    }
-
-    private fun testOwner() {
-        val OV = com.dk.assistant.voice.OwnerVoice
-        if (!OV.enrolled(this) || !OV.hasModel(this)) { toast("पहले \"मेरी आवाज़ सिखाओ\" दबाएँ"); return }
-        if (!Setup.hasMic(this)) { requestPermissions(arrayOf(android.Manifest.permission.RECORD_AUDIO), 12); return }
-        val (dlg, tv) = ownerDialog("आवाज़ की जाँच")
-        ownerJob?.cancel()
-        ownerJob = lifecycleScope.launch {
-            withDkMicPaused {
-                tv.text = UiLang.s("कुछ भी बोलिए — या किसी और से बुलवाइए")
-                val take = com.dk.assistant.voice.VoiceEnroll.record()
-                if (take == null) { tv.text = UiLang.s("आवाज़ नहीं आई"); return@withDkMicPaused }
-                val cut = take.pcm.copyOf(minOf(take.pcm.size, 16000 * 2 * 3))
-                val sc = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) { OV.score(this@SettingsActivity, cut) }
-                if (sc == null) { tv.text = UiLang.s("पहचान वाला मॉडल इस फ़ोन पर नहीं चला — DK पहले की तरह सबकी आवाज़ सुनेगा"); return@withDkMicPaused }
-                val th = com.dk.assistant.voice.VoicePrint.threshold(Prefs.ownerVoiceStrict(this@SettingsActivity))
-                tv.text = UiLang.s(if (sc >= th) "यह आपकी आवाज़ है — DK जवाब देगा" else "यह किसी और की आवाज़ लगी — DK अनसुनी करेगा") +
-                    "\n\n" + UiLang.s("मिलान:") + " ${(sc * 100).toInt()}% (" + UiLang.s("सीमा") + " ${(th * 100).toInt()}%)"
-            }
-        }
-        dlg.setOnDismissListener { ownerJob?.cancel() }
-    }
-
     private fun secVoice() {
         // v3.69: पुराना "आवाज़" हिस्सा (महिला/पुरुष, आवाज़ का प्रकार, सूची, अंदाज़, स्पीड, पिच, फ़ोन TTS) हटाया -
         // बैकअप: backup/v3.69-settings/. अब सिर्फ़ DK लाइव का बोलने वाला इंजन.
@@ -1010,9 +899,6 @@ class SettingsActivity : AppCompatActivity() {
             hint(box, "आवाज़ धीरे से (fade) कम-ज़्यादा होती है। फ़ोन की volume नहीं बदलती। कुछ ऐप (जैसे podcast) धीमे होने की जगह थोड़ी देर रुक जाते हैं।")
             hint(box, "आवाज़ की keys (Gemini Live, बोलना, सुनना): सेटिंग्स → AI दिमाग → DK लाइव। अभी: " + scopeStatus(ApiScopes.LIVE))
         }
-
-        // ---- v3.66: सिर्फ़ मेरी आवाज़ (परत 3) + दूर की आवाज़ अनसुनी (परत 4)
-        card("सिर्फ़ मेरी आवाज़ सुनो", "DK सिर्फ़ आपकी आवाज़ पर जवाब दे — पास वालों की बातें, TV या दूर की आवाज़ अनसुनी") { box -> ownerVoiceCard(box) }
 
         // ---- v3.81: "Hey DK" - फ़ोन के अंदर, सिर्फ़ मालिक की आवाज़ पर जागना
         card("Hey DK (फ़ोन के अंदर)", "ऐप बंद हो तब भी \"Hey DK\" बोलिए — DK \"हाँ सर\" बोलकर सुनने लगेगा. इंटरनेट पर कुछ नहीं जाता") { box -> heyDkCard(box) }
