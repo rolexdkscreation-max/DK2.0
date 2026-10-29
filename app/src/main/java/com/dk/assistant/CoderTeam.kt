@@ -258,7 +258,14 @@ object CoderTeam {
             }
             say("s", "कोऑर्डिनेटर: पहले जड़ ढूँढने, फिर ठीक करने भेजा (उसके बाद tests दोबारा)")
             val repeat = failSigs.size >= 2 && failSigs[failSigs.size - 1] == failSigs[failSigs.size - 2]
-            val fix = a.run("BUILD FAILED on GitHub Actions after the last push (commit ${a.lastSha.take(7)}). STEP 1: find the ROOT CAUSE - read the exact files/lines " +
+            // v4.4: पहले पक्की जाँच - इसी काम ने कोई फ़ाइल हटाई/आधी की और एरर उसी के नाम के हैं? तो वही जड़: main से हूबहू वापस
+            val restored = withContext(Dispatchers.IO) { a.restoreDamaged(b.log) }
+            if (restored.isNotEmpty()) say("s", "डिबगर: असली जड़ मिली — इसी काम ने ${restored.joinToString { it.path.substringAfterLast('/') }} हटाई/आधी कर दी थी। ${a.baseBranch} से हूबहू वापस लाई; अब सिर्फ़ ज़रूरी छोटा बदलाव होगा")
+            val foot = withContext(Dispatchers.IO) { a.footprintText() }
+            val fix = a.run("BUILD FAILED on GitHub Actions after the last push (commit ${a.lastSha.take(7)}). " +
+                (if (restored.isNotEmpty()) CodeGuard.damageNote(restored, a.baseBranch) + "\n" else "") +
+                (if (foot.isNotBlank()) foot + "\n" else "") +
+                "STEP 1: find the ROOT CAUSE - read the exact files/lines " +
                 "the log mentions and understand WHY it fails. STEP 2: fix ONLY that cause (never delete/skip/weaken tests). Give root_cause in done." +
                 (if (repeat) "\nNOTE: this SAME error came back after your previous fix - your last fix did not address the real cause. Re-read the code and try a different, correct fix." else "") +
                 "\nBUILD LOG:\n${b.log}") { st -> step("बिल्डर: $st") }

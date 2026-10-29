@@ -25,6 +25,10 @@ interface TeamFiles {
     suspend fun all(): Map<String, String>? = null
     /** all() पूरा रिपो है (GitHub मोड)? false = user की भेजी कुछ फ़ाइलें */
     val whole: Boolean get() = false
+    /** v4.4: पूरे काम का हिसाब base branch (main) से - पहले के push/पिछली बार चला काम भी. "" = नहीं दे सकते */
+    suspend fun footprint(): String = ""
+    /** v4.4: build log की जड़ = इसी काम ने हटाई/आधी की फ़ाइल -> main से हूबहू वापस (staged). लौटाता है क्या वापस आया */
+    suspend fun restoreDamaged(log: String): List<CodeGuard.Damage> = emptyList()
 }
 
 /** टेस्ट/बिल्ड का नतीजा. ok = null: नतीजा देख नहीं पाए (जैसे token में Actions की इजाज़त नहीं) */
@@ -221,7 +225,7 @@ class SevenTeam(
             "\nMANAGER: kind=${k.name.lowercase()}" +
             (if (brief0.isNotBlank()) "; brief=$brief0" else "") + "\nMODE: $mode\n" +
             // v3.6: प्रॉम्प्ट इंजीनियर को छोटा नक्शा (पहले ~1 लाख+ अक्षर हर चक्कर = धीमे नेटवर्क पर मिनटों अटका) - ज़रूरत हो तो वह खोज/पढ़ लेता है
-            "REPO MAP (file: classes / functions / ids):\n" + SevenPlus.RepoMap.build(ws, PROMPT_MAP_CHARS) + "\nFILE LIST (${fileList.size}):\n" + fileList.take(listMax).joinToString("\n")))
+            "REPO MAP (file: classes / functions / ids):\n" + SevenPlus.RepoMap.build(ws, maxOf(PROMPT_MAP_CHARS, mapChars)) + "\nFILE LIST (${fileList.size}):\n" + fileList.take(listMax).joinToString("\n")))
         for (round in 0..4) {
             if (round > 0) ev(Agent.PROMPT, "जवाब तैयार कर रहा हूँ… (चक्कर ${round + 1}/5)")
             val reply = aiAsk(Agent.PROMPT, Seven.Prompts.PROMPT, msgs)
@@ -421,7 +425,15 @@ class SevenTeam(
             }
             val repeat = sigs.size >= 2 && sigs[sigs.size - 1] == sigs[sigs.size - 2]
             if (repeat) ev(Agent.MANAGER, "वही गलती दोबारा आई — रणनीति बदल रहा हूँ: डिबगर दूसरी जड़ देखेगा, कोडर पूरी फ़ाइल दोबारा लिखेगा")
-            val d = debug("TEST/BUILD FAILED.\n" + (if (errs.isNotBlank()) "EXACT ERROR LINES FROM THE LOG:\n$errs\n\n" else "") + "FULL LOG (important part):\n${t.log.take(maxOf(12_000, big / 8))}", repeat)
+            // v4.4: पहले पक्की जाँच - एरर उन्हीं नामों के हैं जो इसी काम की हटाई/आधी फ़ाइल में थे? तो जड़ वही: main से हूबहू वापस
+            val restored = try { files.restoreDamaged(t.log) } catch (_: Exception) { emptyList() }
+            if (restored.isNotEmpty()) {
+                restored.forEach { changes[it.path] = "main से हूबहू वापस (इसी काम ने ${if (it.removed) "हटा दी" else "आधी कर दी"} थी)" }
+                ev(Agent.DEBUGGER, "असली जड़ मिली — इसी काम ने ये फ़ाइलें हटाई/आधी कर दी थीं, एरर इन्हीं के नामों के हैं:\n" +
+                    restored.joinToString("\n") { "• ${it.path}" + if (it.names.isNotEmpty()) " (${it.names.take(5).joinToString()})" else "" } + "\nमुख्य branch से हूबहू वापस लाई — अब सिर्फ़ ज़रूरी छोटा बदलाव")
+            }
+            val d = debug("TEST/BUILD FAILED.\n" + (if (restored.isNotEmpty()) CodeGuard.damageNote(restored, "main") + "\n\n" else "") +
+                (if (errs.isNotBlank()) "EXACT ERROR LINES FROM THE LOG:\n$errs\n\n" else "") + "FULL LOG (important part):\n${t.log.take(maxOf(30_000, big / 4))}", repeat)
                 ?: fallbackDiag(t.log)
                 ?: return finish(false, "डिबगर टेस्ट फ़ेल होने की जड़ नहीं ढूँढ पाया (log में फ़ाइल:लाइन वाला कोई एरर भी नहीं मिला)")
             rootCause = d.second
@@ -530,11 +542,13 @@ class SevenTeam(
         val list = files.list()
         val w = ws()
         val staged = files.staged()
+        val foot = try { files.footprint() } catch (_: Exception) { "" }
         val msgs = mutableListOf("user" to ("TASK: $task\n$problem\n" +
+            (if (foot.isNotBlank()) foot + "\n" else "") +
             (if (repeat) "NOTE FROM MANAGER: the SAME error came back after the previous fix. That fix did NOT address the real cause. Look for a different cause.\n" else "") +
             (if (area.isNotEmpty()) "PROMPT ENGINEER - LIKELY AREA (verify by searching/reading):\n" + area.joinToString("\n") { "- $it" } + "\n" else "") +
             (if (notTouch.isNotEmpty()) "DO NOT CHANGE (user's existing features): " + notTouch.joinToString("; ") + "\n" else "") +
-            (if (staged.isNotEmpty()) "DIFF OF THIS TASK (- removed, + added):\n" + diffText(staged, maxOf(12_000, big / 10)) + "\n" else "") +
+            (if (staged.isNotEmpty()) "DIFF OF THIS TASK (- removed, + added):\n" + diffText(staged, maxOf(60_000, big / 4)) + "\n" else "") +
             notePrompt() +
             "REPO MAP (file: classes / functions / ids):\n" + map(w) + "\n" +
             "FILE LIST (${list.size}):\n" + list.take(listMax).joinToString("\n")))
@@ -822,6 +836,11 @@ class SevenTeam(
 
     private suspend fun deleteStep(s: Seven.Step, cur: String?): Boolean {
         if (cur == null) { lastBlock = "${s.file} मौजूद नहीं"; return false }
+        // v4.4: पक्की जाँच (AI से पहले) - फ़ाइल बाकी रिपो में इस्तेमाल है तो कभी नहीं हटती
+        val gone = files.staged().filterValues { it == null }.keys + s.file
+        CodeGuard.deleteProblem(s.file, cur, ws(), gone)?.let { p ->
+            lastBlock = p; ev(Agent.REVIEWER, "✗ ${s.file} हटाना रोका: यह फ़ाइल अभी भी इस्तेमाल हो रही है\n$p"); return false
+        }
         val o = askJson(Agent.REVIEWER, "TASK: $task\nSTEP: delete file ${s.file} — ${s.change}\nFILE LIST:\n" + files.list().take(listMax).joinToString("\n") +
             "\nCould deleting it break an existing feature (is it still used)?")
         val probs = Seven.strings(o?.optJSONArray("problems"))
@@ -868,8 +887,11 @@ class SevenTeam(
             else -> e.pairs.mapIndexed { i, (f, r) -> "--- FIND #${i + 1}\n$f\n+++ REPLACE #${i + 1}\n$r" }.joinToString("\n")
         }
         val ctx = if (cur != null && e.full == null) "\nFILE CONTEXT:\n" + (if (cur.length <= fileChars) cur else Seven.window(cur, e.pairs.first().first.lines().first(), 60)) else ""
+        // v4.4: शर्त उल्टी हुई? (जैसे `if (!inSeg)` -> `if (inSeg)`) - रिव्यूअर को अलग से दिखाओ
+        val flips = CodeGuard.flips(cur, after)
+        val flipNote = if (flips.isEmpty()) "" else "\nCONDITION FLIPPED by this change (a bug unless the STEP explicitly asks to invert it - check each):\n" + flips.joinToString("\n") { "- $it" }
         for (t in 0..1) {
-            val nameCheck = if (unsure.isEmpty()) "" else "\nNAME CHECK (not found in this repository - only valid if it really exists in the external parent class / SDK):\n" +
+            val nameCheck = flipNote + if (unsure.isEmpty()) "" else "\nNAME CHECK (not found in this repository - only valid if it really exists in the external parent class / SDK):\n" +
                 unsure.joinToString("\n") { "- " + it.english() }
             val o = askJson(Agent.REVIEWER, "TASK: $task\nSTEP: ${s.change}\nFILE: ${s.file}\n" + handOff(s) + "CHANGE:\n$change$ctx$nameCheck") ?: continue
             if (o.optBoolean("pass", false)) return emptyList()
@@ -955,8 +977,8 @@ class SevenTeam(
         val o = askJson(Agent.QA, "USER REQUEST:\n$task\n" + (if (spec.isNotBlank()) "SPEC (approved by the user):\n$spec\n" else if (brief.isNotBlank()) "BRIEF: $brief\n" else "") +
             "ACCEPTANCE:\n" + acceptance.joinToString("\n") { "- $it" } + "\n" +
             (if (notTouch.isNotEmpty()) "MUST STAY UNCHANGED:\n" + notTouch.joinToString("\n") { "- $it" } + "\n" else "") +
-            "DIFF:\n" + diffText(staged, maxOf(25_000, big / 5)) + "\n\nCHANGED FILES NOW:\n" +
-            staged.entries.joinToString("\n\n") { (p, c) -> "----- $p -----\n" + (c ?: "(deleted)").take(maxOf(15_000, big / 8)) }.take(maxOf(45_000, big / 3)))
+            "DIFF:\n" + diffText(staged, maxOf(60_000, big / 4)) + "\n\nCHANGED FILES NOW:\n" +
+            staged.entries.joinToString("\n\n") { (p, c) -> "----- $p -----\n" + (c ?: "(deleted)").take(maxOf(30_000, big / 6)) }.take(maxOf(90_000, big / 3)))
         qaChecks = Seven.strings(o?.optJSONArray("checks"))
         qaFix = o?.optString("fix").orEmpty().trim()
         if (qaChecks.isNotEmpty()) ev(Agent.QA, qaChecks.take(8).joinToString("\n") { "• $it" })
@@ -969,13 +991,27 @@ class SevenTeam(
 
     /** हर बदली फ़ाइल: हटाई / जोड़ी लाइनें */
     private suspend fun diffText(staged: Map<String, String?>, max: Int): String = buildString {
-        for ((p, c) in staged) {
-            val before = files.original(p)
-            append("=== ").append(p).append(if (before == null) " (NEW)" else if (c == null) " (DELETED)" else "").append(" ===\n")
+        // v4.4: हटाई/आधी फ़ाइलें सबसे ऊपर, और हर फ़ाइल को बराबर हिस्सा - पहले एक हटाई फ़ाइल की लाइनें पूरी जगह खा जाती थीं,
+        // बाकी हटाई फ़ाइलें (Prefs.kt, SettingsActivity.kt) डिबगर को दिखती ही नहीं थीं
+        val rows = staged.entries.map { (p, c) -> Triple(p, c, files.original(p)) }
+            .sortedByDescending { (_, c, b) -> if (b != null && c == null) 2 else if (CodeGuard.shrunk(b, c)) 1 else 0 }
+        val per = (max / rows.size.coerceAtLeast(1)).coerceAtLeast(1_500)
+        for ((p, c, before) in rows) {
+            val start = length
+            append("=== ").append(p).append(when {
+                before == null -> " (NEW)"
+                c == null -> " (DELETED - whole file, ${CodeGuard.lines(before)} lines were removed)"
+                CodeGuard.shrunk(before, c) -> " (MOSTLY EMPTIED: ${CodeGuard.lines(before)} -> ${CodeGuard.lines(c)} lines)"
+                else -> ""
+            }).append(" ===\n")
             val b = before?.lines().orEmpty(); val a = c?.lines().orEmpty()
             val bs = b.toHashSet(); val asSet = a.toHashSet()
-            b.filter { it !in asSet && it.isNotBlank() }.take(400).forEach { append("- ").append(it).append('\n') }
-            a.filter { it !in bs && it.isNotBlank() }.take(1000).forEach { append("+ ").append(it).append('\n') }
+            if (c != null || before == null) {
+                CodeGuard.flips(before, c).takeIf { it.isNotEmpty() }?.let { f -> append("!! CONDITION FLIPPED (bug unless the task asks for it):\n"); f.forEach { append("!!   ").append(it).append('\n') } }
+                b.filter { it !in asSet && it.isNotBlank() }.take(1500).forEach { append("- ").append(it).append('\n') }
+                a.filter { it !in bs && it.isNotBlank() }.take(3000).forEach { append("+ ").append(it).append('\n') }
+            } else b.filter { it.isNotBlank() }.take(15).forEach { append("- ").append(it).append('\n') }
+            if (length - start > per) { setLength(start + per); append("\n…(more lines of $p - read the file)\n") }
             if (length > max) break
         }
     }.take(max)

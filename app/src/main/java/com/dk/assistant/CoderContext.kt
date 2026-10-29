@@ -16,17 +16,23 @@ object CoderContext {
     /** Gemini (1M token वाले मॉडल): एक request में इतने अक्षर - पूरी बड़ी फ़ाइलें एक साथ */
     const val GEMINI_BUDGET = 500_000
     /** बाकी (Groq/OpenRouter/Custom): शुरू इतने से; 413 मिले तो अपने-आप छोटा होकर याद रहता है */
-    const val OTHER_BUDGET = 160_000
+    const val OTHER_BUDGET = 200_000   // v4.4 (मालिक): कम से कम 2 लाख अक्षर (पहले 1.6 लाख)
 
     /** मॉडल की असली पढ़ने की क्षमता (अक्षर) - पहले सबके लिए 60k था, इसलिए बड़ी फ़ाइलें अधूरी पढ़ी जाती थीं */
     fun budgetFor(gemini: Boolean, model: String): Int {
         val m = model.lowercase()
         return when {
             gemini -> GEMINI_BUDGET
-            m.contains("gemini") || m.contains("claude") || m.contains("gpt-4.1") || m.contains("gpt-5") -> 400_000
+            m.contains("gemini") || m.contains("claude") || m.contains("gpt-4.1") || m.contains("gpt-5") -> 500_000   // v4.4: 5 लाख
             else -> OTHER_BUDGET
         }
     }
+    /**
+     * v4.4 (मालिक): एक बार में कितना पढ़ें (read/diff/रिव्यू) - मॉडल की क्षमता का 1/5 (Gemini = 1 लाख, बाकी = 40 हज़ार),
+     * कम से कम [CHUNK_CHARS]. पहले हर फ़ाइल 12 हज़ार के टुकड़ों में और पूरा इतिहास 60 हज़ार में सिमट जाता था.
+     */
+    fun readChars(budget: Int): Int = maxOf(CHUNK_CHARS, budget / 5)
+
     /** पिछले कितने संदेश पूरे भेजें */
     const val KEEP_TAIL = 8
 

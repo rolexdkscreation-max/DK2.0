@@ -63,6 +63,13 @@ object SevenRunner {
             c?.let { ctx -> val st = LinkedHashMap(a.staged); val br = a.branch; CoderHistory.updateCheckpoint(ctx) { it.copy(staged = st, branch = br) } }
         }
         override fun staged(): Map<String, String?> = LinkedHashMap(mine)
+        // v4.4: main से पूरे काम का हिसाब (push हो चुके + पिछली बार चले काम समेत) और टूटी फ़ाइल हूबहू वापस
+        override suspend fun footprint(): String = withContext(Dispatchers.IO) { a.footprintText() }
+        override suspend fun restoreDamaged(log: String): List<CodeGuard.Damage> {
+            val d = withContext(Dispatchers.IO) { try { CodeGuard.damage(log, a.taskChanges()) { a.baseRead(it) } } catch (_: Exception) { emptyList() } }
+            d.forEach { stage(it.path, it.baseContent) }
+            return d
+        }
         override suspend fun all(): Map<String, String>? = a.teamSnapshot()
         override val whole: Boolean get() = a.teamSnapshot() != null
     }
