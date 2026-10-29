@@ -1453,7 +1453,7 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
                     .put("properties", JSONObject().put("question", JSONObject().put("type", "STRING").put("description", "The user's question, his words")))
                     .put("required", JSONArray().put("question"))))
             .put(JSONObject().put("name", "local_info")
-                .put("description", "Get the user's CURRENT location (fresh GPS/network, city/area name) and live weather right now. Call it when the user asks about weather, their area, nearby events/news/traffic/pandals/melas, or anything 'here/आसपास/मेरे शहर'. For local news or events, then use Google Search with the city name.")
+                .put("description", "Get the user's CURRENT location (fresh GPS/network, checked right now - never an old saved one): street, area, city, nearby places (temple, market, hospital, petrol pump, school...) and live weather. Call it when the user asks where he is (\"मैं अभी कहाँ खड़ा हूँ\", \"मैं कहाँ हूँ\"), what is around him (आसपास), about weather, his area, nearby events/news/traffic/pandals/melas, or anything 'here/मेरे शहर'. While it runs, say only \"रुकिए सर, देखती हूँ...\". Then answer in short human sentences like \"सर, आप अभी ... के पास हैं। आपके आसपास ... है।\" For local news or events, then use Google Search with the city name.")
                 .put("parameters", JSONObject().put("type", "OBJECT").put("properties", JSONObject())))
             .put(JSONObject().put("name", "remember_fact")
                 .put("description", "Save a personal fact or preference the user told about themselves.")
@@ -1730,6 +1730,7 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
             if (timeline.active) { timeline.done(System.currentTimeMillis()); log("turn पूरा: ${timeline.summary()}") }
             if (!wasDropping && !agentCheck()) promiseCheck()
             finishTurn()
+            FriendTalk.touch(svc)   // v4.3: बातचीत का समय फ़ोन में सेव ("इतनी देर कहाँ थे?" के लिए)
             if (wasDropping) commitPending(false)   // toka hua jawab: sirf jitna bola utna hi chat me
             // jawab poora bana; jab DK ki awaaz bajna band ho uske ~1.2s baad peeche ki awaaz dheere-dheere wapas
             Ducker.releaseWhenQuiet({ !isPlaying() && !generating })
@@ -2024,8 +2025,23 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
     /** v3.90: पहले से शुरू हुई खोज किस वजह से fail हुई (null = fail नहीं / थी ही नहीं) */
     @Volatile private var prepFail: SearchGuard.Fail? = null
 
+    /** v4.3: user ने जगह/आसपास पूछा (सिर्फ़ मौसम नहीं) - तब पूरा पता + आसपास की जगहें */
+    private fun wantsWhere(): Boolean = NearbyPlaces.wantsWhere(DKState.lastUser)
+
     private suspend fun localInfoTool(): String {
-        if (!LocalInfo.hasPermission(svc)) return "Location permission is OFF. Ask the user to allow location for DK (open the DK app; it asks), then try again."
+        // v4.3 (मालिक): इजाज़त नहीं / GPS बंद = साफ़ बताओ कि क्या चालू करना है
+        if (!LocalInfo.hasPermission(svc)) {
+            try {
+                svc.startActivity(android.content.Intent(svc, MainActivity::class.java).putExtra("ask_location", true)
+                    .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK or android.content.Intent.FLAG_ACTIVITY_SINGLE_TOP))
+            } catch (_: Exception) {}
+            return "Location permission is OFF, so you cannot know where he is. I opened the DK app to ask for it. Tell him clearly and briefly: allow Location for DK on the screen (\"Allow\" / \"While using the app\"), then ask again."
+        }
+        if (!LocalInfo.locationOn(svc)) return "The phone's Location (GPS) is turned OFF, so you cannot see where he is. Tell him clearly: turn ON Location from the quick settings (pull down from the top, tap 'Location'), then ask again."
+        if (wantsWhere()) {
+            LocalInfo.where(svc)?.let { return it }
+            return "Could not get a fresh location fix right now (weak GPS/network). Tell him honestly; suggest stepping near a window/open area with Location ON and asking again."
+        }
         val r = preparedWeather()?.also { log("local_info: पहले से तैयार मौसम इस्तेमाल किया") } ?: LocalInfo.now(svc) ?: return "Could not get the current location right now (GPS/location may be off). Tell the user honestly."
         return "Current place: ${r.first.name.ifBlank { "unknown area (%.3f, %.3f)".format(java.util.Locale.US, r.first.lat, r.first.lon) }}. Weather now: ${r.second.substringAfter(" — ", r.second)}"
     }

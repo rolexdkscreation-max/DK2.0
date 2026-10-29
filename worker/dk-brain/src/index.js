@@ -57,7 +57,7 @@ async function tts(req, env) {
   try { j = await req.json(); } catch { return text(400, "JSON चाहिए"); }
   const t = String(j.text || "").trim().slice(0, MAX_TEXT);
   if (!t) return text(400, "text खाली");
-  const voice = VOICES.has(j.voice) ? j.voice : "Kore";
+  const voice = VOICES.has(j.voice) ? j.voice : "Sulafat"; // v4.3: DK की एक ही आवाज़ (Live जैसी)
   const style = String(j.style || "").slice(0, 600); // v3.80: कोमल आवाज़ का पूरा निर्देश (पहले 300 पर कट जाता था)
 
   const list = (env.TTS_MODELS || DEFAULT_MODELS).split(",").map((s) => s.trim()).filter(Boolean);

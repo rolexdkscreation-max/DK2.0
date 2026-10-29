@@ -49,6 +49,26 @@ object FriendTalk {
     fun shouldGreet(c: Context): Boolean { val b = load(c); return FriendStyle.shouldGreet(System.currentTimeMillis(), b.lastSeen, b.lastGreet) }
 
     /**
+     * v4.3 (मालिक): ऐप खुलते ही "इतनी देर कहाँ थे?" - पिछली बातचीत हो चुकी हो तो कुछ मिनट बाद भी पूछे ([ReturnGreet]).
+     * पहली बार (कभी बात नहीं हुई) = पुराना नियम (परिचय, 20 मिनट).
+     */
+    fun shouldGreetNow(c: Context, lastMsg: Long): Boolean {
+        val b = load(c); val now = System.currentTimeMillis()
+        if (b.lastSeen <= 0) return FriendStyle.shouldGreet(now, b.lastSeen, b.lastGreet) && now - lastMsg >= 20 * 60_000L
+        return ReturnGreet.shouldAsk(now, b.lastSeen, b.lastGreet, lastMsg)
+    }
+
+    @Volatile private var lastTouch = 0L
+
+    /** v4.3: हर बातचीत (turn) के अंत में समय फ़ोन में सेव - ऐप अचानक बंद हो तब भी "कब बात हुई" सही रहे. 30 s में एक बार लिखता है */
+    fun touch(c: Context) {
+        val now = System.currentTimeMillis()
+        if (now - lastTouch < 30_000L) return
+        lastTouch = now
+        try { edit(c.applicationContext) { it.lastSeen = maxOf(it.lastSeen, now) } } catch (_: Exception) {}
+    }
+
+    /**
      * ऐप खुलते ही DK का पहला SYSTEM NOTE. ताज़ा लोकेशन+मौसम यहीं (हर बार नई; कहीं सेव नहीं).
      * स्थानीय खबर के लिए Google Search: 3 घंटे में एक बार (API खर्च बचे).
      */
