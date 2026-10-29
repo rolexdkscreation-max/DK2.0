@@ -142,7 +142,7 @@ class AgentRunner(
                 sayQuick("ठीक है, कॉल नहीं किया।"); return true
             }
             DKState.user(ans)
-            val name = (LocalRouter.single(LocalRouter.normalize(ans, Prefs.wakeWords(svc)), Prefs.wakeWords(svc))
+            val name = (LocalRouter.single(LocalRouter.normalize(ans, emptyList()), emptyList())
                 ?.action?.takeIf { it.optString("type") == "call_contact" }?.optString("name")) ?: ans
             val r2 = svc.perform(JSONObject().put("type", "call_contact").put("name", name))
             DKLog.d("TURANT call_contact (दूसरी बार) -> ${r2.substringBefore(':')}")
@@ -307,7 +307,6 @@ class AgentRunner(
         // टेम्पलेट कमांड (साँचे): बिना API key / AI के - पहला मिला साँचा चलता है; न मिले तो नीचे पहले जैसा रास्ता
         if (!note.contains(LocalRouter.DONE_NOTE)) {
             var tg = goal.trim()
-            for (w in Prefs.wakeWords(svc).sortedByDescending { it.length }) if (w.length >= 2 && tg.startsWith(w, ignoreCase = true)) tg = tg.substring(w.length).trimStart(' ', ',')
             com.dk.assistant.template.TemplateCommands.match(tg, com.dk.assistant.template.TemplateStore.all(svc))?.let { m ->
                 DKState.set(Mode.WORKING)
                 val r = com.dk.assistant.template.TemplateRunner.run(svc, m) { q ->
@@ -321,7 +320,7 @@ class AgentRunner(
         // (पहले QuickCommands रिसर्च के बाद था - "zepto पर दूध सर्च करो" गहरी AI रिसर्च बन जाता था)
         if (!note.contains(LocalRouter.DONE_NOTE)) {
             val tc = System.nanoTime()
-            val sp = LocalRouter.split(goal, Prefs.wakeWords(svc), svc.currentPackage())
+            val sp = LocalRouter.split(goal, emptyList(), svc.currentPackage())
             val ms = (System.nanoTime() - tc) / 1_000_000
             val local = sp.local
             DKLog.d("रूटर ($ms ms): " + when {
