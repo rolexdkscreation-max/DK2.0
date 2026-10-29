@@ -273,11 +273,6 @@ class OrbView @JvmOverloads constructor(
             }
         }
 
-        if (!isFace) {
-            rim.strokeWidth = dotR * 0.6f
-            rim.color = withAlpha(colB, if (target == "earth") 50 else 22)
-            c.drawCircle(cx, cy, R * 1.0f, rim)
-        }
         if (satAlpha > 0f) drawOrbits(c, cx, cy, R, dotR, front = true, alpha = satAlpha)
         if (target == "atom" && !mini) drawElectrons(c, cx, cy, R, dotR, cosA, sinA, cosT, sinT, t, front = true)
         if (!isFace && !mini) drawStateFx(c, cx, cy, R, mode, t, voice, com.dk.assistant.ui.NeonTheme.reducedMotion())

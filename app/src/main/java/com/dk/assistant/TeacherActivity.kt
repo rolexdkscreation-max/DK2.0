@@ -195,6 +195,14 @@ class TeacherActivity : AppCompatActivity() {
             setPadding(12, 8, 12, 12)
         }
 
+        // Expandable / Collapsible Pencil Menu Panel
+        val pencilMenuContainer = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            visibility = View.GONE
+            setBackgroundColor(Color.parseColor("#ECEFF1"))
+            setPadding(8, 8, 8, 8)
+        }
+
         // Toolbar Items (Scrollable)
         val toolbarScroll = HorizontalScrollView(this).apply {
             isHorizontalScrollBarEnabled = false
@@ -234,7 +242,7 @@ class TeacherActivity : AppCompatActivity() {
         toolbar.addView(clearBtn)
         toolbarScroll.addView(toolbar)
 
-        // Query input area
+        // Query input area inside Pencil popup
         val queryBar = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
@@ -289,6 +297,34 @@ class TeacherActivity : AppCompatActivity() {
             }
         }
 
+        queryBar.addView(queryInput)
+        queryBar.addView(cameraBtn)
+        queryBar.addView(micBtn)
+        queryBar.addView(askTextBtn)
+
+        pencilMenuContainer.addView(toolbarScroll)
+        pencilMenuContainer.addView(queryBar)
+
+        // Bottom Action Bar: Pencil Toggle Button + Permanent "Board Solution" Button
+        val bottomActionBar = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(0, 4, 0, 0)
+        }
+
+        val pencilToggleBtn = Button(this).apply {
+            text = "✏️ पेंसिल"
+            setBackgroundColor(Color.parseColor("#1976D2"))
+            setTextColor(Color.WHITE)
+            setOnClickListener {
+                pencilMenuContainer.visibility = if (pencilMenuContainer.visibility == View.VISIBLE) View.GONE else View.VISIBLE
+            }
+        }
+
+        val spacer = View(this).apply {
+            layoutParams = LinearLayout.LayoutParams(0, 0, 1f)
+        }
+
         val solveBoardBtn = Button(this).apply {
             text = "📋 बोर्ड हल करें"
             setBackgroundColor(Color.parseColor("#2E7D32"))
@@ -298,11 +334,9 @@ class TeacherActivity : AppCompatActivity() {
             }
         }
 
-        queryBar.addView(queryInput)
-        queryBar.addView(cameraBtn)
-        queryBar.addView(micBtn)
-        queryBar.addView(askTextBtn)
-        queryBar.addView(solveBoardBtn)
+        bottomActionBar.addView(pencilToggleBtn)
+        bottomActionBar.addView(spacer)
+        bottomActionBar.addView(solveBoardBtn)
 
         // Progress bar and status
         progressBar = ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal).apply {
@@ -317,8 +351,8 @@ class TeacherActivity : AppCompatActivity() {
             setPadding(4, 4, 4, 4)
         }
 
-        bottomContainer.addView(toolbarScroll)
-        bottomContainer.addView(queryBar)
+        bottomContainer.addView(pencilMenuContainer)
+        bottomContainer.addView(bottomActionBar)
         bottomContainer.addView(progressBar)
         bottomContainer.addView(statusText)
 
