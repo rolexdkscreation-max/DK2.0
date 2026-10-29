@@ -1531,6 +1531,7 @@ class SettingsActivity : AppCompatActivity() {
     private lateinit var swCoder: SwitchCompat
     private lateinit var swAutoPush: SwitchCompat
     private lateinit var edCoderSteps: EditText
+    private lateinit var edCoderLight: EditText
     private lateinit var swBuildFix: SwitchCompat
     private lateinit var swTeam: SwitchCompat
     private lateinit var swSeven: SwitchCompat
@@ -1597,6 +1598,10 @@ class SettingsActivity : AppCompatActivity() {
             box.addView(res)
             hint(box, "Token बनाते समय: Repository access → अपना repo चुनें • Permissions → Contents: Read and write, Pull requests: Read and write (सुरक्षित PR मोड), और Actions: Read (build/tests जाँचने के लिए)।")
             swAutoPush = switch(box, "बिना पूछे push करो (बंद = पहले बदलाव दिखाओ, फिर \"Push करें\" दबाने पर)", Prefs.coderAutoPush(this))
+            // v3.6: हर एजेंट का अपना मॉडल - कोडर/डिबगर/प्लानर/रिव्यूअर = कोडिंग एजेंट का मॉडल (3.8 Flash), बाकी हल्का
+            edCoderLight = field(box, "हल्के एजेंटों का मॉडल (प्रॉम्प्ट इंजीनियर, मैनेजर, गिट, टेस्टर, QA, डिप्लॉयमेंट, परफॉरमेंस)",
+                Prefs.coderLightModel(this), GeminiModels.LIGHT + " (सुझाया — जल्दी जवाब, धीमे नेटवर्क पर भी)")
+            hint(box, "कोडर, डिबगर, प्लानर और रिव्यूअर AI दिमाग → कोडिंग एजेंट में चुना मॉडल लेते हैं (सुझाया: ${GeminiModels.CODER})। 5 Gemini keys हों तो limit, धीमा नेटवर्क या server गलती पर अगली key अपने-आप।")
             edCoderSteps = field(box, "एक काम में ज़्यादा से ज़्यादा कदम (3–30)", Prefs.coderMaxSteps(this).toString(),
                 "5 (सुझाया) — कम कदम = कम API खर्च, limit/413 कम").apply { inputType = InputType.TYPE_CLASS_NUMBER }
             swBuildFix = switch(box, "Push के बाद tests + build जाँचो, fail हो तो पहले जड़ ढूँढकर खुद ठीक करो (पास होने तक)", Prefs.coderBuildFix(this))
@@ -1650,6 +1655,7 @@ class SettingsActivity : AppCompatActivity() {
                 putBoolean("coder_on", swCoder.isChecked)
                 putBoolean("coder_autopush", swAutoPush.isChecked)
                 putString("coder_max_steps", (edCoderSteps.text.toString().trim().toIntOrNull() ?: CodingAgent.DEFAULT_STEPS).coerceIn(3, 30).toString())
+                if (::edCoderLight.isInitialized) putString("coder_light_model", edCoderLight.text.toString().trim())
                 putBoolean("coder_buildfix", swBuildFix.isChecked)
                 putBoolean("coder_team", swTeam.isChecked)
                 putBoolean("coder_seven", swSeven.isChecked)

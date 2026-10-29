@@ -167,6 +167,8 @@ class SevenTeam(
         const val FILE_CHARS = 40_000          // एक फ़ाइल इससे बड़ी = anchor के आस-पास का हिस्सा
         const val READ_BUDGET = 150_000        // प्लानर/डिबगर एक बार में इतना पढ़ें
         const val LIST_MAX = 800
+        /** v3.6: प्रॉम्प्ट इंजीनियर का नक्शा (प्लानर/डिबगर को पूरा वाला ही) */
+        const val PROMPT_MAP_CHARS = 30_000
         /** गिट: रिपो में GitHub Actions का कोई workflow नहीं */
         const val NO_CI = "NO_CI"
         /** QA कितनी बार काम वापस भेज सकता है (फिर रुककर user को रिपोर्ट) */
@@ -208,6 +210,9 @@ class SevenTeam(
             return SevenPlus.Understanding(kind, brief0, "", "", emptyList(), emptyList(), emptyList(), emptyList(), ans.ifBlank { Seven.NO_ANSWER_HI }, mediaNotes = mediaNotes)
         }
         val k = kind
+        // v3.6 (owner: "मैनेजर समझाता नहीं"): काम के साथ पूछे सवालों का जवाब पहले - तुरंत दिखे (प्रॉम्प्ट इंजीनियर का इंतज़ार नहीं)
+        val reply0 = m?.optString("reply").orEmpty().trim()
+        if (reply0.isNotBlank()) ev(Agent.MANAGER, "आपके सवालों का जवाब:\n$reply0")
         ev(Agent.MANAGER, if (k == Seven.Kind.BUG) "यह बग ठीक करने का काम लगता है → प्रॉम्प्ट इंजीनियर साफ़ करेगा, फिर डिबगर जड़ ढूँढेगा"
             else "यह नया फ़ीचर/बदलाव लगता है → प्रॉम्प्ट इंजीनियर साफ़ करेगा कि ठीक-ठीक क्या और कहाँ")
         ev(Agent.PROMPT, "आपकी बात को साफ़ काम में बदल रहा हूँ — रिपो का नक्शा देखकर जगह भी ढूँढ रहा हूँ…")
@@ -215,8 +220,10 @@ class SevenTeam(
         val msgs = mutableListOf("user" to ("USER REQUEST (user's own words):\n$task\n" + (if (media.isNotEmpty()) CoderMedia.describe(media) + "\n" else "") +
             "\nMANAGER: kind=${k.name.lowercase()}" +
             (if (brief0.isNotBlank()) "; brief=$brief0" else "") + "\nMODE: $mode\n" +
-            "REPO MAP (file: classes / functions / ids):\n" + map(ws) + "\nFILE LIST (${fileList.size}):\n" + fileList.take(listMax).joinToString("\n")))
+            // v3.6: प्रॉम्प्ट इंजीनियर को छोटा नक्शा (पहले ~1 लाख+ अक्षर हर चक्कर = धीमे नेटवर्क पर मिनटों अटका) - ज़रूरत हो तो वह खोज/पढ़ लेता है
+            "REPO MAP (file: classes / functions / ids):\n" + SevenPlus.RepoMap.build(ws, PROMPT_MAP_CHARS) + "\nFILE LIST (${fileList.size}):\n" + fileList.take(listMax).joinToString("\n")))
         for (round in 0..4) {
+            if (round > 0) ev(Agent.PROMPT, "जवाब तैयार कर रहा हूँ… (चक्कर ${round + 1}/5)")
             val reply = aiAsk(Agent.PROMPT, Seven.Prompts.PROMPT, msgs)
             val terms = SevenPlus.RepoSearch.terms(reply)
             val reads = Seven.planReads(reply)
@@ -232,14 +239,14 @@ class SevenTeam(
             }
             val o = Seven.json(reply)
             if (o != null && (o.has("understood") || o.has("spec"))) {
-                val u = SevenPlus.Understanding.parse(o, k, brief0, acc0).copy(mediaNotes = mediaNotes)
+                val u = SevenPlus.Understanding.parse(o, k, brief0, acc0).copy(mediaNotes = mediaNotes, reply = reply0)
                 ev(Agent.PROMPT, if (u.needsAnswer) "कुछ बातें साफ़ नहीं — आपसे पूछ रहा हूँ" else "समझ तैयार — आपकी मंज़ूरी का इंतज़ार")
                 return u
             }
             msgs.add("model" to reply); msgs.add("user" to "Reply ONLY the JSON {\"understood\":…,\"spec\":…,\"acceptance\":[…],\"not_touch\":[…],\"area\":[…],\"questions\":[…]}")
         }
         ev(Agent.PROMPT, "पूरा spec नहीं बना — मैनेजर की समझ दिखा रहा हूँ")
-        return SevenPlus.Understanding(k, brief0, brief0.ifBlank { task.take(300) }, brief0, acc0, emptyList(), emptyList(), emptyList(), mediaNotes = mediaNotes)
+        return SevenPlus.Understanding(k, brief0, brief0.ifBlank { task.take(300) }, brief0, acc0, emptyList(), emptyList(), emptyList(), mediaNotes = mediaNotes, reply = reply0)
     }
 
     /** प्रॉम्प्ट इंजीनियर पहले फ़ोटो/वीडियो ध्यान से देखे - जो दिखा वह लिखकर पूरी टीम को (जिनका मॉडल फ़ोटो न देख सके उन्हें भी) */

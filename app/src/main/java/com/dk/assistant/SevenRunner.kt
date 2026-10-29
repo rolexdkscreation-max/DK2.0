@@ -29,12 +29,15 @@ object SevenRunner {
         SevenPlus.resolve(input, p?.task, p?.u, p?.forceNormal == true, forceNormal)
 
     /** कोडिंग एजेंट की अपनी API (Settings → AI दिमाग → कोडिंग एजेंट); limit पर उसी key के दूसरे मॉडल - CoderAi खुद */
-    private class Ai(private val ai: CoderAi) : TeamAi {
+    private class Ai(private val ai: CoderAi, lightModel: String = GeminiModels.LIGHT) : TeamAi {
+        // v3.6: हर एजेंट का अपना मॉडल - कोडर/डिबगर/प्लानर/रिव्यूअर = तेज़ (कोडिंग एजेंट का चुना, 3.8 Flash), बाकी हल्का (3.5 Flash Lite)
+        private val light = ai.withModel(lightModel)
+        private fun pick(agent: Seven.Agent) = if (TeamModels.fast(agent)) ai else light
         // runInterruptible: "रोकें" दबाते ही limit वाला इंतज़ार (Thread.sleep) भी रुके
         override suspend fun ask(agent: Seven.Agent, system: String, msgs: List<Pair<String, String>>): String =
-            kotlinx.coroutines.runInterruptible(Dispatchers.IO) { ai.chat(system, msgs) }
+            kotlinx.coroutines.runInterruptible(Dispatchers.IO) { pick(agent).chat(system, msgs) }
         override suspend fun askMedia(agent: Seven.Agent, system: String, msgs: List<Pair<String, String>>, media: List<CoderMedia>): String =
-            kotlinx.coroutines.runInterruptible(Dispatchers.IO) { ai.chat(system, msgs, media) }
+            kotlinx.coroutines.runInterruptible(Dispatchers.IO) { pick(agent).chat(system, msgs, media) }
         override val budget: Int get() = ai.budget
     }
 
@@ -173,7 +176,7 @@ object SevenRunner {
         }
         try {
             a.teamLoad { say("s", it) }
-            val team = SevenTeam(Ai(ai), RepoFiles(a), Git(a, task), full = true, ev = teamEvents(c))
+            val team = SevenTeam(Ai(ai, Prefs.coderLightModel(c)), RepoFiles(a), Git(a, task), full = true, ev = teamEvents(c))
             val u = SevenPlus.Understanding(Seven.Kind.BUG, title, "रिपो डॉक्टर: $title — जड़ ढूँढकर ठीक करना, ताकि सारे checks पास हों", task,
                 listOf("जो check fail था वह पास हो", "बाकी सारे checks और पुराने tests पास हों", "कोई पुराना फ़ीचर न बदले"),
                 listOf("सारे मौजूदा फ़ीचर और tests"), emptyList(), emptyList())
@@ -305,7 +308,7 @@ object SevenRunner {
                         a.teamLoad { say("s", it) }
                         val files = RepoFiles(a, c)
                         resume?.staged?.forEach { (p, content) -> files.stage(p, content) }
-                        team = SevenTeam(Ai(ai), files, Git(a, task, c, resume?.backup.orEmpty()), full = true, ev = teamEvents(c))
+                        team = SevenTeam(Ai(ai, Prefs.coderLightModel(c)), files, Git(a, task, c, resume?.backup.orEmpty()), full = true, ev = teamEvents(c))
                         // "आगे करो": टीम कहाँ तक पहुँची थी - वहीं से (पूरे हुए हिस्से दोबारा नहीं)
                         team.resumeFrom = TeamProgress.parse(resume?.team)
                         if (approved != null) team.onProgress = { p -> val j = p.json(); CoderHistory.updateCheckpoint(c) { it.copy(team = j) } }
@@ -317,7 +320,7 @@ object SevenRunner {
                         } + " — गिट एजेंट बंद; रिव्यू, टेस्ट, डिबग वही। कोड फ़ाइल-नाम के साथ मिलेगा।")
                         val start = LinkedHashMap(CoderSession.normalFiles).apply { putAll(Seven.filesFromMessage(task)) }
                         if (start.isNotEmpty()) say("s", "फ़ाइलें: " + start.keys.joinToString())
-                        team = SevenTeam(Ai(ai), MemoryFiles(start), null, full = true) { ag, t -> say("s", "${ag.icon} ${ag.hi}: $t") }
+                        team = SevenTeam(Ai(ai, Prefs.coderLightModel(c)), MemoryFiles(start), null, full = true) { ag, t -> say("s", "${ag.icon} ${ag.hi}: $t") }
                     }
                     team.media = allMedia
                     if (approved == null) {

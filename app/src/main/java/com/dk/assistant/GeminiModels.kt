@@ -10,6 +10,9 @@ package com.dk.assistant
 object GeminiModels {
     /** Coding/लंबे काम के लिए सबसे अच्छा Flash (software engineering + agents) */
     const val CODER = "gemini-3.8-flash"
+    /** v3.6: हल्के एजेंट (प्रॉम्प्ट इंजीनियर, मैनेजर, गिट, टेस्टर, QA...) - जल्दी, धीमे नेटवर्क पर भी */
+    const val LIGHT = "gemini-3.5-flash-lite"
+    val LIGHT_CHAIN = listOf(LIGHT, "gemini-3.1-flash-lite", CODER, "gemini-3.6-flash", "gemini-3-flash-preview")
 
     /**
      * कोडिंग एजेंट का क्रम (एक key पर): सबसे अच्छा coding Flash पहले, limit खत्म हो तो अगला.

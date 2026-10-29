@@ -76,8 +76,9 @@ jobs:
             echo "TYPE: $TYPE"
             echo "VERSION: $NEW"
             echo "---"
-            NOTES="$(git log --pretty='• %s' $RANGE | sed -E 's/\[(software|security)\] *//I' | head -40)"
-            if [ -n "$NOTES" ]; then echo "$NOTES"; else echo "• छोटे सुधार"; fi
+            # v3.6: सिर्फ़ असली बदलाव - PR का "## अपडेट में क्या नया" (Merge/टेस्ट/बैकअप/काम-विवरण नहीं)
+            NOTES="$(python3 .github/scripts/release_notes.py "$RANGE" 2>/dev/null || true)"
+            if [ -n "$NOTES" ]; then echo "$NOTES"; else echo "• छोटे सुधार और बेहतर स्थिरता"; fi
           } > release_notes.txt
           echo "Prakar: $TYPE  •  Version: $NEW  (pichhla: ${PREV_VER:-koi nahi}, $RANGE)"
           cat release_notes.txt

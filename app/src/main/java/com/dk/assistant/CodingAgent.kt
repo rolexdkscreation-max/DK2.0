@@ -19,7 +19,7 @@ import java.util.concurrent.TimeUnit
  */
 class CoderAi(val provider: Provider, private val key: String, val model: String, private val base: String,
               /** Doosre API (Groq/OpenRouter/Custom/doosri Gemini key) - limit khatm ho to inpar apne aap */
-              private val fallbacks: List<CoderAi> = emptyList(), note: String = "",
+              private val fallbacks: List<CoderAi> = emptyList(), private val note: String = "",
               /** रिपोर्ट कहाँ जाए (कोडिंग टीम = CoderReport, DK कंप्यूटर = उसकी अपनी रिपोर्ट) */
               private val sink: (String, String) -> Unit = { p, f -> CoderReport.add(p, f) }) {
     private val selfLabel = "${provider.name} ($model$note)"
@@ -37,6 +37,20 @@ class CoderAi(val provider: Provider, private val key: String, val model: String
      */
     /** true = सारी limit खत्म होने पर रुककर फिर कोशिश (कोडिंग एजेंट). false = तुरंत बताओ (DK कंप्यूटर) */
     @Volatile var waitOnLimit = false
+
+    /** v3.6: Gemini मॉडलों का क्रम (चुना मॉडल पहले, फिर ये) - हल्के एजेंट = LIGHT_CHAIN */
+    private var chain: List<String> = GeminiModels.CODER_CHAIN
+
+    /**
+     * v3.6 (owner का नियम): हल्के एजेंटों के लिए वही keys (5 तक, वही fallback), पर हल्का मॉडल.
+     * Gemini नहीं (Groq/OpenRouter...) = वही AI (उनके मॉडल का नाम Gemini वाला नहीं हो सकता).
+     */
+    fun withModel(m: String, modelChain: List<String> = GeminiModels.LIGHT_CHAIN): CoderAi {
+        if (!provider.isGemini || m.isBlank() || m == model) return this
+        return CoderAi(provider, key, m, base, fallbacks.map { it.withModel(m, modelChain) }, note, sink).also {
+            it.waitOnLimit = waitOnLimit; it.chain = modelChain
+        }
+    }
 
     fun chat(system: String, msgs: List<Pair<String, String>>, media: List<CoderMedia> = emptyList()): String {
         var attempt = 1
@@ -156,7 +170,7 @@ class CoderAi(val provider: Provider, private val key: String, val model: String
         // चुना मॉडल -> 3.8 Flash (coding के लिए सबसे अच्छा) -> बाकी नए मॉडल. 2.5 वाले backup नहीं (नए users के लिए बंद)
         // 404 "no longer available" दे चुके मॉडल (phone में याद) दोबारा नहीं - पहले हर कदम पर 2.5-pro का 404
         val kt = key.takeLast(6)
-        val all = GeminiModels.orderSkippingGone(model, GeminiModels.CODER_CHAIN) {
+        val all = GeminiModels.orderSkippingGone(model, chain) {
             Cooldown.blocked(GeminiModels.goneKey(it, kt))
         }
         // jis model ki limit abhi khatm hui thi use thodi der chhodo (har kadam par wahi 429 dobara na khaayein)

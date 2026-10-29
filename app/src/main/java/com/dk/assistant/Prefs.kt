@@ -354,6 +354,8 @@ object Prefs {
     /** true = bina pooche push (default: pehle dikhao, phir "Push" dabane par) */
     fun coderAutoPush(c: Context) = sp(c).getBoolean("coder_autopush", false)
     /** कोडिंग एजेंट: एक काम में ज़्यादा से ज़्यादा कदम (3-30, default 5) */
+    /** v3.6: हल्के एजेंटों (प्रॉम्प्ट इंजीनियर, मैनेजर...) का Gemini मॉडल */
+    fun coderLightModel(c: Context): String = sp(c).getString("coder_light_model", null)?.trim()?.removePrefix("models/")?.ifBlank { null } ?: GeminiModels.LIGHT
     fun coderMaxSteps(c: Context) = (sp(c).getString("coder_max_steps", null)?.trim()?.toIntOrNull() ?: CodingAgent.DEFAULT_STEPS).coerceIn(3, 30)
     fun coderBuildFix(c: Context) = sp(c).getBoolean("coder_buildfix", true)
     /** सुरक्षित PR मोड (default चालू): main पर सीधे push नहीं - नई feature branch → PR → tests/build → आप review करके Merge */

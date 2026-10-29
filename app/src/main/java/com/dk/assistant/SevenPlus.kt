@@ -178,7 +178,9 @@ object SevenPlus {
         /** user ने जो-जो माँगा - हर बात अलग (कुछ छूटे नहीं, कुछ जुड़े नहीं) */
         val wants: List<String> = emptyList(),
         /** अभी कोड में क्या हो रहा है / समस्या की वजह - सीधी भाषा में */
-        val now: String = ""
+        val now: String = "",
+        /** v3.6: काम के साथ पूछे गए सवालों का मैनेजर का जवाब (काम नहीं रुकता - पहले समझाना, फिर "हाँ") */
+        val reply: String = ""
     ) {
         val needsAnswer get() = questions.isNotEmpty()
 
@@ -188,6 +190,7 @@ object SevenPlus {
          * तकनीकी अंदाज़े (फ़ाइलों के path, काम का प्रकार, शर्तों की लंबी list) यहाँ नहीं - वे टीम के लिए spec में हैं.
          */
         fun hindi(): String = buildString {
+            if (reply.isNotBlank()) append("👔 मैनेजर — आपके सवालों का जवाब:\n").append(reply.trim()).append("\n\n")
             append("✍ मैंने आपकी बात ऐसे समझी:\n").append(understood.ifBlank { brief }.trim()).append("\n")
             if (wants.isNotEmpty()) append("\nआप ये चाहते हैं:\n").append(wants.mapIndexed { i, x -> "${i + 1}. $x" }.joinToString("\n")).append("\n")
             if (now.isNotBlank()) append("\n🔍 अभी क्या हो रहा है:\n").append(now.trim()).append("\n")

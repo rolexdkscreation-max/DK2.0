@@ -306,7 +306,7 @@ class MainActivity : AppCompatActivity() {
         if (pi.firstInstallTime == pi.lastUpdateTime) return               // pehli baar install - update nahi
         lifecycleScope.launch {
             val rel = Updater.byCode(cur)
-            val notes = rel?.notes?.takeIf { it.isNotBlank() } ?: sp.getString("upd_notes_$cur", "").orEmpty()
+            val notes = rel?.notes?.takeIf { it.isNotBlank() } ?: ReleaseNotes.clean(sp.getString("upd_notes_$cur", "").orEmpty())
             val label = rel?.typeLabel ?: "अपडेट"
             if (isFinishing || isDestroyed) return@launch
             UiDialog(this@MainActivity, Glass.DIALOG)
