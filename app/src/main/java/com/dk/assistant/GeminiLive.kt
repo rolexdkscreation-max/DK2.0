@@ -221,7 +221,9 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
     @Volatile private var firstAudioAt = 0L
 
     // ---- v3.8: turant haalat (listening/thinking/speaking) + barge-in + deri ke hisse
-    private val turnDet = TurnDetector(CHUNK_MS, endSilenceMs = CLIENT_END_MS, loudNoiseFactor = 2.0,
+    // v3.6: धीमी आवाज़ भी "बोलना" (owner: "ज़ोर से बोलना पड़ता है") - दरवाज़ा 2.5x -> 2.0x शोर, 300 -> 220 RMS
+    private val turnDet = TurnDetector(CHUNK_MS, endSilenceMs = CLIENT_END_MS, startFactor = LiveHear.START_FACTOR,
+        startMin = LiveHear.START_MIN, loudNoiseFactor = LiveHear.LOUD_FACTOR,
         longSpeechMs = TurnEnd.LONG_SPEECH_MS, longEndSilenceMs = TurnEnd.LONG_END_SILENCE_MS, steadyResetMs = 6_000)
     /** वही पहचानी बात router में बार-बार न जाए (हर छोटी चुप्पी पर पूरा caption दोबारा जाँचा जाता था) */
     private val routeDedupe = RouteDedupe()
@@ -704,9 +706,16 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
         promiseFixAt = now
         log("वादा-जाँच: Gemini ने \"${said.take(50)}\" कहा पर कोई tool नहीं - ${if (kind == LivePromise.Kind.SEARCH) "फ़ोन खुद सर्च कर रहा है" else "phone_task करवा रहा हूँ"}")
         if (kind == LivePromise.Kind.ACTION) {
-            DKState.hint(LivePromise.hintFor("phone_task", user))
-            visionNote(LivePromise.actionNote(user), evidence = false)
-            svc.scope.launch { delay(20_000); if (toolJobs.isEmpty() && promiseJob?.isActive != true) DKState.hint("") }
+            // v3.6 (owner: "सुना, लिखा भी दिखा, पर काम नहीं किया"): पहले सिर्फ़ Gemini को याद दिलाते थे - वह फिर भी
+            // अक्सर tool नहीं बुलाता था. अब फ़ोन खुद वही काम करता है, फिर Gemini को असली नतीजा (वह सच बोले).
+            promiseJob = svc.scope.launch {
+                DKState.hint(LivePromise.hintFor("phone_task", user))
+                setMode(Mode.WORKING)
+                val r = try { phoneTask(user) } catch (e: CancellationException) { throw e } catch (e: Exception) { "ERROR ${e.message}" }
+                DKState.hint("")
+                log("वादा-जाँच: फ़ोन ने खुद काम किया - ${r.take(60)}")
+                visionNote(LivePromise.actionDoneNote(user, r), evidence = LivePromise.actionOk(r))
+            }
             return
         }
         promiseJob = svc.scope.launch {
@@ -1979,6 +1988,11 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
      */
     private fun agentTool(name: String, args: JSONObject): String {
         val agent = LiveAgentRoute.byTool(name) ?: return "unknown function"
+        // v3.6: एक key = सिर्फ़ बातचीत. एजेंट नहीं चलेगा - DK साफ़ बताए + Settings खुले (झूठा "हो गया" नहीं)
+        OneKeyGate.LIVE_TOOLS[name]?.takeIf { OneKeyGate.blocked(svc, it) }?.let { w ->
+            log("एक key मोड: ${w.hi} नहीं चलेगा - Settings खोली"); OneKeyGate.openSettings(svc)
+            return OneKeyGate.liveNote(w)
+        }
         var handoff = true          // false = सिर्फ़ हाँ/नहीं/इजाज़त का जवाब (नया काम नहीं)
         val task = when (name) { "story_task" -> args.optString("topic"); "build_website" -> args.optString("prompt"); else -> args.optString("task") }.trim()
         val result = when (name) {
@@ -2467,7 +2481,8 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
         ownerCfgAt = now
         ownerOn = com.dk.assistant.voice.OwnerVoice.active(svc)
         ownerTh = com.dk.assistant.voice.VoicePrint.threshold(Prefs.ownerVoiceStrict(svc))
-        turnDet.startFloor = com.dk.assistant.voice.OwnerVoice.farFloor(svc, btOn)
+        // v3.6: "दूर की आवाज़ अनसुनी" सिर्फ़ जब "सिर्फ़ मेरी आवाज़" चालू हो - वरना धीमी बोली हुई बात भी फेंक देता था
+        turnDet.startFloor = LiveHear.farFloor(ownerOn, com.dk.assistant.voice.OwnerVoice.farFloor(svc, btOn))
         val fb = turnDet.farBlocked
         if (fb > 0 && fb % 10 == 1 && fb != farLogged) { farLogged = fb; log("दूर की / धीमी आवाज़ अनसुनी (#$fb)") }
     }
@@ -2937,7 +2952,7 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
                             if (bargeDet.feed(rms, now, outLevel(now))) {
                                 // SHAK: tez awaaz. DK ki awaaz halki (rokna nahi), caption model ko suno - shabd hain?
                                 bargeGate.suspect(now); barging = true; loudMs = 0L
-                                track?.let { try { it.setVolume(0.3f) } catch (_: Exception) {} }
+                                track?.let { try { it.setVolume(SpeakerBoost.SUSPECT_VOLUME) } catch (_: Exception) {} }
                                 log("तेज़ आवाज़ (rms=${rms.toInt()}, गूँज=${bargeDet.echoLevel().toInt()}, शोर=${bargeDet.ambient.toInt()}) - यूज़र है? शब्द सुन रहा हूँ, DK धीमा")
                                 synchronized(bargeBuf) { bargeBuf.clear(); bargeBuf.addAll(preroll); bargeBuf.addLast(chunk) }
                                 preroll.forEach { capSend(it) }; preroll.clear()
@@ -3112,9 +3127,11 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
             .build()
         com.dk.assistant.voice.engine.VoiceTune.load(svc)
         var tuneVer = com.dk.assistant.voice.engine.VoiceTune.apply(t, -1)   // v3.80: गति / पिच (सेटिंग्स -> आवाज़)
+        // v3.6: speaker पर DK की आवाज़ फ़ोन की बाकी आवाज़ से धीमी थी - थोड़ा boost (Bluetooth पर नहीं)
+        spkBoost = SpeakerBoost.attach(t.audioSessionId, btOn)
         t.play()
         track = t
-        log((if (btOn) "आवाज़: Bluetooth headset" else "स्पीकर") + ": $OUT_RATE Hz PCM16 mono stream • " + com.dk.assistant.voice.engine.VoiceTune.label())
+        log((if (btOn) "आवाज़: Bluetooth headset" else "स्पीकर" + (if (spkBoost != null) " (+${SpeakerBoost.GAIN_MB / 100} dB)" else "")) + ": $OUT_RATE Hz PCM16 mono stream • " + com.dk.assistant.voice.engine.VoiceTune.label())
         playThread = Thread {
             var speakingSet = false
             while (!Thread.currentThread().isInterrupted) {
@@ -3191,5 +3208,7 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
         pipeStop(); com.dk.assistant.voice.engine.VoiceLevel.clear()
         track?.let { try { it.stop() } catch (_: Exception) {}; try { it.release() } catch (_: Exception) {} }
         track = null
+        SpeakerBoost.release(spkBoost); spkBoost = null
     }
+    private var spkBoost: android.media.audiofx.LoudnessEnhancer? = null
 }

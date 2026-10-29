@@ -340,6 +340,7 @@ class CodingActivity : AppCompatActivity() {
         if (typed.isEmpty() && !hasMedia || CoderSession.busy && !RepoDoctor.isStatusAsk(typed)) return
         // सिर्फ़ फ़ोटो/वीडियो भेजी: टीम उन्हें देखकर समझे
         val t = typed.ifEmpty { "इस फ़ोटो/वीडियो को ध्यान से देखकर समझो कि क्या ठीक करना / बदलना है" }
+        OneKeyGate.check(this, OneKeyGate.Work.CODING)?.let { CoderSession.add("u", t); CoderSession.add("e", it); render(); return }
         edt.setText("")
         keepTyping()
         // रिपो डॉक्टर: रिपो की हालत / किसी PR को ठीक या merge करना / उसकी योजना की हाँ (फ़ोटो के साथ = नया काम)

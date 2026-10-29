@@ -273,6 +273,26 @@ object LocalRecall {
         turnDays.filter { it < today && it !in doneDays }.distinct().sorted()
 
     /** prompt के लिए छोटा सार (पूरी पुरानी बातचीत की जगह) */
+    /**
+     * v3.6 (owner: "एक बात बोली, फिर DK खोलकर पूछा 'क्या बोला था' - याद नहीं"): हर बार DK लाइव नई बातचीत से शुरू होता था
+     * और उसे सिर्फ़ पुराने दिनों का सार मिलता था. अब पिछले [windowMs] की आख़िरी [maxTurns] बातें भी (नई सबसे नीचे).
+     */
+    fun recentBlock(turns: List<Turn>, now: Long, maxTurns: Int = 20, windowMs: Long = 6 * 3_600_000L, maxChars: Int = 1800): String {
+        val keep = turns.filter { it.at in (now - windowMs)..now && it.text.isNotBlank() }.sortedBy { it.at }.takeLast(maxTurns)
+        if (keep.isEmpty()) return ""
+        val lines = ArrayList<String>()
+        var len = 0
+        for (t in keep.asReversed()) {
+            val mins = ((now - t.at) / 60_000L).coerceAtLeast(0)
+            val line = "\n- " + (if (t.who == "u") "User" else "You") + " (" + (if (mins < 1) "just now" else "$mins min ago") + "): " + t.text.take(200)
+            if (len + line.length > maxChars) break
+            lines.add(line); len += line.length
+        }
+        val sb = StringBuilder("\nRECENT CONVERSATION (last few hours, saved on this phone - newest last). Remember it; if the user asks what he said / what you said, answer from this:")
+        lines.asReversed().forEach { sb.append(it) }
+        return sb.append("\n").toString()
+    }
+
     fun promptBlock(points: List<Point>, maxChars: Int = 600): String {
         if (points.isEmpty()) return ""
         val sb = StringBuilder("\nLOCAL MEMORY (short notes from earlier days, saved only on this phone):")

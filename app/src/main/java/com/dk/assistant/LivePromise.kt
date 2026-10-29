@@ -114,6 +114,17 @@ object LivePromise {
             "If the user says search again, call web_search with that question.\n"
 
     /** फ़ोन का काम बोला "कर रहा हूँ" पर कुछ नहीं किया */
+    /** v3.6: फ़ोन ने खुद phone_task चलाया (Gemini ने वादा किया पर tool नहीं बुलाया) - असली नतीजा */
+    fun actionDoneNote(user: String, result: String): String =
+        "SYSTEM NOTE: you said you would do \"" + user.take(200) + "\" but did not call a tool, so the phone ran phone_task itself. " +
+            "Real result: " + result.take(600) + " - Tell the user this real result in 1 short sentence. Do NOT call phone_task again for this."
+
+    /** नतीजा सफल? (DONE / OK से शुरू, ERROR/FAIL नहीं) */
+    fun actionOk(result: String): Boolean {
+        val r = result.trim().uppercase()
+        return !r.startsWith("ERROR") && !r.startsWith("FAIL") && !r.contains("NOT_DONE") && !r.startsWith("NOT ")
+    }
+
     fun actionNote(user: String): String =
         "SYSTEM NOTE: you said you are doing it, but you did NOT call any tool - nothing happened on the phone. Call phone_task RIGHT NOW " +
             "with request = \"" + user.take(300) + "\" (the user's exact words). Do not say it is done until the tool result says DONE."

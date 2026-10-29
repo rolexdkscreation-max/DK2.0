@@ -74,6 +74,8 @@ class SettingsActivity : AppCompatActivity() {
     private lateinit var swAutoUpd: SwitchCompat
     private var pendingRelease: Updater.Release? = null
 
+    companion object { const val EXTRA_FOCUS_KEY = "focus_key" }
+
     private val section: String? get() = intent.getStringExtra("section")
 
     private fun build() {
@@ -446,7 +448,7 @@ class SettingsActivity : AppCompatActivity() {
     private fun secBrainMenu() {
         // v3.91: "एक key से सब" - नया install = चालू (एक Gemini key से सारे काम); अलग-अलग keys वाले हिस्से बंद (मिटते नहीं)
         val one = Prefs.oneKeyOn(this)
-        card("एक key से सब (ऑल-राउंडर)", "सिर्फ़ एक Gemini key — DK लाइव, चैट, Google खोज, सुनना-बोलना, कोडिंग एजेंट, DK कंप्यूटर सब इसी से", startOpen = one) { box ->
+        card("एक key से सब (ऑल-राउंडर)", "सिर्फ़ एक Gemini key — DK लाइव में बात, चैट, सुनना-लिखना, Google खोज और फ़ोन के काम। कोडिंग एजेंट, स्टोरी मोड, DK कंप्यूटर, वेबसाइट के लिए इसे बंद करके अलग-अलग keys डालें", startOpen = one) { box ->
             val sw = switch(box, "एक key से सब चलाओ", one)
             sw.setOnCheckedChangeListener { _, on ->
                 save(false)
@@ -458,8 +460,13 @@ class SettingsActivity : AppCompatActivity() {
                 hint(box, "अभी बंद है — हर हिस्सा नीचे अपनी अलग key से चल रहा है। चालू करें तो सारे काम ऊपर की एक key से होंगे (अलग keys मिटेंगी नहीं, बंद करते ही फिर चलेंगी)।")
                 return@card
             }
-            val ed = field(box, "Gemini API Key (सारे काम इसी से)", Prefs.oneKey(this), "AIza… यहाँ पेस्ट करें", secret = true)
+            val ed = field(box, "Gemini API Key (बात + चैट इसी से)", Prefs.oneKey(this), "AIza… यहाँ पेस्ट करें", secret = true)
             keyFields[ApiScopes.ONE_KEY] = ed
+            // v3.6: पहली बार माइक दबाया और key नहीं = सीधे यहीं, keyboard खुला
+            if (intent.getBooleanExtra(EXTRA_FOCUS_KEY, false) && Prefs.oneKey(this).isBlank()) ed.post {
+                ed.requestFocus()
+                (getSystemService(INPUT_METHOD_SERVICE) as? android.view.inputmethod.InputMethodManager)?.showSoftInput(ed, 0)
+            }
             val res = TextView(this).apply { setTextColor(0xB3FFFFFF.toInt()); textSize = 13f; setPadding((4 * dp).toInt(), (6 * dp).toInt(), 0, 0) }
             row(box, showButton(ed), button("जाँचें") {
                 val k = ed.text.toString().trim()
@@ -472,7 +479,7 @@ class SettingsActivity : AppCompatActivity() {
                 }
             }, button("Key लें") { Setup.openUrl(this, Providers.byId("gemini")!!.keyUrl) })
             box.addView(res)
-            hint(box, "अभी: " + (if (Prefs.oneKey(this).isNotBlank()) "✓ सारे काम इसी एक key से" else "✗ key नहीं डाली") +
+            hint(box, "अभी: " + (if (Prefs.oneKey(this).isNotBlank()) "✓ बात, चैट, खोज और फ़ोन के काम इसी एक key से" else "✗ key नहीं डाली") +
                 " • सुनना भी Gemini से (Groq की ज़रूरत नहीं)। एक free key की limit सब कामों में बँटती है — limit जल्दी खत्म हो तो बटन बंद करके अलग-अलग keys डालें।")
         }
         if (one) {

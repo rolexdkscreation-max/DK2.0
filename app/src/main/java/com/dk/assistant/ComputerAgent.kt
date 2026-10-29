@@ -90,6 +90,7 @@ object ComputerSession {
     /** काम शुरू करो (या कतार में). null = शुरू/कतार, वरना वजह */
     fun start(c: Context, task: String, background: Boolean = false, voice: Boolean = false): String? {
         val ctx = c.applicationContext
+        OneKeyGate.check(ctx, OneKeyGate.Work.COMPUTER)?.let { return it }
         if (!Prefs.computerOn(ctx)) return "DK कंप्यूटर बंद है — Settings → DK कंप्यूटर में चालू करें"
         if (CoderAi.forComputer(ctx) { _, _ -> } == null) return "DK कंप्यूटर की AI key नहीं मिली — Settings → AI दिमाग → DK कंप्यूटर में key डालें"
         if (busy) {

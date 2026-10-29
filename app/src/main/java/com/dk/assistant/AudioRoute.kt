@@ -1,6 +1,9 @@
 package com.dk.assistant
 
+import android.content.BroadcastReceiver
 import android.content.Context
+import android.content.Intent
+import android.content.IntentFilter
 import android.media.AudioDeviceCallback
 import android.media.AudioDeviceInfo
 import android.media.AudioManager
@@ -35,6 +38,15 @@ object BtAudio {
 
     private fun log(m: String) = DKLog.d("आवाज़ का रास्ता: $m")
 
+    // v3.6: SCO सच में जुड़ा? (SDK < 31 पर फ़ोन की ख़बर से; 31+ पर communicationDevice से)
+    @Volatile private var scoState = -1
+    private var appCtx: Context? = null
+    private var scoWatch: BroadcastReceiver? = null
+    /** जिस headset ने रास्ता नहीं लिया - वह हटने/दोबारा जुड़ने तक फिर उसी पर ज़बरदस्ती नहीं */
+    @Volatile private var refused: String? = null
+    private var verifyTry = 0
+    private val verify = Runnable { verifyRoute() }
+
     private val recheck = Runnable { apply() }
     private val cb = object : AudioDeviceCallback() {
         override fun onAudioDevicesAdded(added: Array<out AudioDeviceInfo>) { soon() }
@@ -51,6 +63,7 @@ object BtAudio {
      */
     @Synchronized fun acquire(c: Context, owner: Any, onChange: (Boolean) -> Unit): Boolean {
         if (am == null) am = c.applicationContext.getSystemService(AudioManager::class.java)
+        if (appCtx == null) appCtx = c.applicationContext
         users[owner] = onChange
         if (!watching) {
             watching = true
@@ -63,7 +76,7 @@ object BtAudio {
     @Synchronized fun release(owner: Any) {
         if (users.remove(owner) == null || users.isNotEmpty()) return
         watching = false
-        h.removeCallbacks(recheck)
+        h.removeCallbacks(recheck); h.removeCallbacks(verify)
         try { am?.unregisterAudioDeviceCallback(cb) } catch (_: Exception) {}
         if (bluetooth) leave()
     }
@@ -89,8 +102,10 @@ object BtAudio {
         val m = am ?: return
         if (users.isEmpty() || phoneCall(m)) return
         val d = findBt(m)
+        if (d == null) refused = null                       // headset हटा = अगली बार फिर कोशिश
         val was = bluetooth
         when {
+            d != null && !bluetooth && refused == id(d) -> {}  // यह headset रास्ता नहीं ले पाया - फ़ोन के speaker पर ही
             d != null && !bluetooth -> enter(m, d)
             d == null && bluetooth -> { log("Bluetooth हट गया - फ़ोन के माइक और speaker पर वापस"); leave() }
         }
@@ -107,7 +122,59 @@ object BtAudio {
         if (!ok) { try { m.mode = AudioManager.MODE_NORMAL } catch (_: Exception) {}; log("Bluetooth headset ने बात का रास्ता नहीं लिया - फ़ोन का माइक/speaker"); return }
         bluetooth = true
         btInput = inputFor(m, d)
+        btDev = d
         log("Bluetooth जुड़ा (${d.productName}) - कॉल वाला तरीका: माइक और आवाज़ headset पर")
+        // v3.6: फ़ोन ने हाँ कहा, पर सच में headset पर गया? जाँचो - नहीं तो आवाज़ earpiece (ऊपर वाले छोटे स्पीकर) से आती थी
+        if (Build.VERSION.SDK_INT < 31) watchSco()
+        verifyTry = 0
+        h.removeCallbacks(verify); h.postDelayed(verify, BtPick.VERIFY_AT_MS[0])
+    }
+
+    private var btDev: AudioDeviceInfo? = null
+    private fun id(d: AudioDeviceInfo) = "${d.type}|${d.address}|${d.productName}"
+
+    @Suppress("DEPRECATION")
+    private fun routedNow(m: AudioManager): Boolean = try {
+        if (Build.VERSION.SDK_INT >= 31) BtPick.routedToHeadset(m.communicationDevice?.type)
+        else BtPick.scoConnected(scoState) || m.isBluetoothScoOn && scoState == -1
+    } catch (_: Exception) { true }
+
+    @Synchronized private fun verifyRoute() {
+        val m = am ?: return
+        if (!bluetooth || users.isEmpty() || phoneCall(m)) return
+        if (routedNow(m)) { log("✓ पक्का: आवाज़ और माइक Bluetooth headset पर"); return }
+        val d = btDev
+        verifyTry++
+        if (verifyTry < BtPick.VERIFY_AT_MS.size && d != null) {
+            log("headset ने अभी रास्ता नहीं लिया - एक बार फिर कोशिश")
+            retryRoute(m, d)
+            h.postDelayed(verify, BtPick.VERIFY_AT_MS[verifyTry] - BtPick.VERIFY_AT_MS[verifyTry - 1]); return
+        }
+        log("Bluetooth headset ने कॉल वाला रास्ता नहीं लिया - आवाज़ earpiece में न जाए, इसलिए फ़ोन के माइक और speaker पर")
+        refused = d?.let { id(it) }
+        leave()
+        users.values.toList().forEach { try { it(false) } catch (_: Exception) {} }
+    }
+
+    @Suppress("DEPRECATION")
+    private fun retryRoute(m: AudioManager, d: AudioDeviceInfo) {
+        try { if (Build.VERSION.SDK_INT >= 31) m.setCommunicationDevice(d) else m.startBluetoothSco() } catch (_: Exception) {}
+    }
+
+    @Suppress("DEPRECATION")
+    private fun watchSco() {
+        val c = appCtx ?: return
+        if (scoWatch != null) return
+        val r = object : BroadcastReceiver() {
+            override fun onReceive(ctx: Context?, i: Intent?) {
+                scoState = i?.getIntExtra(AudioManager.EXTRA_SCO_AUDIO_STATE, -1) ?: -1
+            }
+        }
+        try {
+            if (Build.VERSION.SDK_INT >= 33) c.registerReceiver(r, IntentFilter(AudioManager.ACTION_SCO_AUDIO_STATE_UPDATED), Context.RECEIVER_NOT_EXPORTED)
+            else c.registerReceiver(r, IntentFilter(AudioManager.ACTION_SCO_AUDIO_STATE_UPDATED))
+            scoWatch = r
+        } catch (_: Exception) {}
     }
 
     @Suppress("DEPRECATION")
@@ -115,6 +182,8 @@ object BtAudio {
         val m = am
         bluetooth = false
         btInput = null
+        btDev = null
+        h.removeCallbacks(verify)
         if (m == null || phoneCall(m)) return
         try {
             if (Build.VERSION.SDK_INT >= 31) m.clearCommunicationDevice()

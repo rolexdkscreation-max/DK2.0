@@ -44,6 +44,7 @@ object CoderTeam {
 
     fun start(ctx: Context, task: String, fromVoice: Boolean = false, queued: Boolean = false): String? {
         val c = ctx.applicationContext
+        OneKeyGate.check(c, OneKeyGate.Work.CODING)?.let { return it }
         // रिपो डॉक्टर: "रिपो चेक करो" / "PR #N ठीक करो" / "PR #N merge करो" / उसकी योजना की हाँ
         if (!queued) RepoDoctorRunner.intercept(c, task, fromVoice)?.let { return it.err }
         // 7 एजेंट वाला नया सिस्टम चालू हो तो (आवाज़ से भी) वही; बंद = पुरानी टीम जैसी की तैसी

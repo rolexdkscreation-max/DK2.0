@@ -134,4 +134,16 @@ object BtPick {
         val sco = types.indexOf(TYPE_BLUETOOTH_SCO)
         return if (sco >= 0) sco else types.indexOf(TYPE_BLE_HEADSET)
     }
+
+    /**
+     * v3.6: "कॉल वाला रास्ता" सच में headset पर बना? (फ़ोन ने हाँ कहा पर SCO नहीं जुड़ा = आवाज़ ऊपर वाले
+     * छोटे कॉल-स्पीकर/earpiece से, धीमी - owner की शिकायत). type = अभी का बात वाला डिवाइस (null = कोई नहीं)
+     */
+    fun routedToHeadset(type: Int?): Boolean = type == TYPE_BLUETOOTH_SCO || type == TYPE_BLE_HEADSET
+
+    /** SDK < 31: SCO की ख़बर (AudioManager.SCO_AUDIO_STATE_CONNECTED = 1) */
+    fun scoConnected(state: Int): Boolean = state == 1
+
+    /** कितनी बार जाँचें (ms, जुड़ने के बाद): पहली बार में न बने तो एक बार फिर कोशिश, फिर फ़ोन के speaker पर */
+    val VERIFY_AT_MS = longArrayOf(1500L, 4000L)
 }
