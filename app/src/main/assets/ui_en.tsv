@@ -993,7 +993,11 @@ Gemini API Key 2 (बैकअप, ज़रूरी नहीं)	Gemini API K
 दूसरी Gemini key	Second Gemini key
 Gemini API Key 3 (बैकअप, ज़रूरी नहीं)	Gemini API Key 3 (backup, optional)
 तीसरी Gemini key	Third Gemini key
-Key 1 के सारे मॉडल (3.8 Flash → 3.6 Flash → 3 Flash → 3.5 Flash-Lite → 3.1 Flash-Lite) की limit खत्म → अपने-आप Key 2 के सारे मॉडल → फिर Key 3।	When all models of Key 1 (3.8 Flash → 3.6 Flash → 3 Flash → 3.5 Flash-Lite → 3.1 Flash-Lite) hit their limit → automatically all models of Key 2 → then Key 3.
+Gemini API Key 4 (बैकअप, ज़रूरी नहीं)	Gemini API Key 4 (backup, optional)
+चौथी Gemini key	Fourth Gemini key
+Gemini API Key 5 (बैकअप, ज़रूरी नहीं)	Gemini API Key 5 (backup, optional)
+पाँचवीं Gemini key	Fifth Gemini key
+Key 1 के सारे मॉडल (3.8 Flash → 3.6 Flash → 3 Flash → 3.5 Flash-Lite → 3.1 Flash-Lite) की limit खत्म → अपने-आप Key 2 के सारे मॉडल → फिर Key 3 → Key 4 → Key 5।	When all models of Key 1 (3.8 Flash → 3.6 Flash → 3 Flash → 3.5 Flash-Lite → 3.1 Flash-Lite) hit their limit → automatically all models of Key 2 → then Key 3 → Key 4 → Key 5.
 सबकी limit खत्म हो तो काम रुकता नहीं — limit खुलने तक रुककर फिर चलता है। ध्यान दें: Google limit project पर लगाता है, इसलिए हर key अलग Google project की हो।	If every limit is used up, work does not stop — it waits for the limit to reset and continues. Note: Google sets limits per project, so each key should come from a different Google project.
 ⏳ चल रहा	⏳ Running
 ✋ मंज़ूरी का इंतज़ार	✋ Waiting for approval

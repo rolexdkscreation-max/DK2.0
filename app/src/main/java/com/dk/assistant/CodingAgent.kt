@@ -286,7 +286,7 @@ class CoderAi(val provider: Provider, private val key: String, val model: String
          */
         fun forScope(c: Context, scope: String, sink: (String, String) -> Unit): CoderAi? {
             val p = Providers.byId(Prefs.scopeActive(c, scope)) ?: return null
-            // कोडिंग एजेंट + Gemini: 3 तक keys (key 1 के सारे मॉडल की limit खत्म -> key 2 के सारे मॉडल -> key 3)
+            // कोडिंग एजेंट + Gemini: 5 तक keys (key 1 के सारे मॉडल की limit खत्म -> key 2 के सारे मॉडल -> key 3 -> key 4 -> key 5)
             val gemKeys = if (p.isGemini && scope == ApiScopes.CODER) Prefs.coderGeminiKeys(c) else emptyList()
             val key = gemKeys.firstOrNull() ?: Prefs.scopeKey(c, scope, p.id)
             var model = Prefs.scopeModel(c, scope, p.id)
@@ -329,7 +329,7 @@ class CoderAi(val provider: Provider, private val key: String, val model: String
             "सारी API keys और मॉडल की limit खत्म है (429) — ${LIMIT_WAIT_MAX_SEC / 60} मिनट तक रुक-रुककर कोशिश की, फिर भी नहीं खुली (शायद आज की limit)। " +
                 "बेवजह लगातार कोशिश नहीं की।\n" +
                 "किया हुआ काम बचा है (इतिहास में)। आगे: लगभग ${if (waitSec >= 60) "${waitSec / 60} मिनट" else "$waitSec सेकंड"} बाद \"वहीं से आगे\" दबाएँ या काम फिर भेजें" +
-                (if (noFallback) ", या Settings → AI दिमाग → कोडिंग एजेंट में Gemini key 2 / key 3 (दूसरे Google project की) या दूसरी फ्री key (जैसे Groq / OpenRouter) डालें" else "") + "।" +
+                (if (noFallback) ", या Settings → AI दिमाग → कोडिंग एजेंट में Gemini key 2 से key 5 (दूसरे Google project की) या दूसरी फ्री key (जैसे Groq / OpenRouter) डालें" else "") + "।" +
                 if (tried.isNotBlank()) "\n(आज़माए: $tried)" else ""
 
         /** Gemini model ki limit kab tak (key ke aakhri 6 akshar|model -> time) */

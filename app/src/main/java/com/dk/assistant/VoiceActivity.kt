@@ -37,8 +37,6 @@ class VoiceActivity : AppCompatActivity() {
     private lateinit var camBtn: ImageButton
     private lateinit var camBox: FrameLayout
     private lateinit var camView: PreviewView
-    private lateinit var faceOverlay: FaceScanOverlayView
-    private val faceEngine by lazy { FaceRecognitionEngine(this) }
     private var feed: CameraFeed? = null
     private var camAsked = false
     private val visionListener: () -> Unit = { renderVision(); syncCamera() }
@@ -113,8 +111,6 @@ class VoiceActivity : AppCompatActivity() {
         }
         camView = PreviewView(this).apply { implementationMode = PreviewView.ImplementationMode.COMPATIBLE; scaleType = PreviewView.ScaleType.FILL_CENTER }
         camBox.addView(camView, FrameLayout.LayoutParams(-1, -1))
-        faceOverlay = FaceScanOverlayView(this)
-        camBox.addView(faceOverlay, FrameLayout.LayoutParams(-1, -1))
         camBox.addView(ImageButton(this).apply {
             setImageResource(R.drawable.ic_flip); setBackgroundResource(R.drawable.glass_circle)
             val p = (10 * dp).toInt(); setPadding(p, p, p, p); scaleType = android.widget.ImageView.ScaleType.FIT_CENTER
@@ -333,19 +329,7 @@ class VoiceActivity : AppCompatActivity() {
         }
         if (f?.running == true && f.front == LiveVision.cameraFront) return
         val feed2 = f ?: CameraFeed(this, camView).also { feed = it }
-        feed2.onFrameAnalyzed = { bitmap ->
-            faceEngine.processFrame(bitmap) { analysis ->
-                runOnUiThread {
-                    // v3.91: फ़्रेम का डिब्बा -> स्क्रीन (भरकर कटा preview, आगे वाला कैमरा उल्टा)
-                    val r = analysis.faceBounds?.let { fb ->
-                        if (analysis.frameW <= 0 || faceOverlay.width <= 0) fb
-                        else FaceMath.toView(fb.left, fb.top, fb.width(), fb.height(), analysis.frameW, analysis.frameH,
-                            faceOverlay.width, faceOverlay.height, feed2.front).let { v -> android.graphics.RectF(v[0], v[1], v[2], v[3]) }
-                    }
-                    faceOverlay.updateResult(analysis.result, r)
-                }
-            }
-        }
+        feed2.onFrameAnalyzed = null      // v3.99: कैमरे पर चेहरा पहचान हटाई
         val front = LiveVision.cameraFront
         feed2.start(front,
             onOk = { LiveVision.onCameraStarted(front) },

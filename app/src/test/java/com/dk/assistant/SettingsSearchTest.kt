@@ -42,7 +42,8 @@ class SettingsSearchTest {
     @Test fun nukta_and_case_ignored() {
         assertTrue(SettingsSearch.search("आवाज").isNotEmpty())          // बिना नुक़्ता
         assertTrue(SettingsSearch.search("GEMINI key").any { it.section.startsWith("brain") })
-        assertTrue(SettingsSearch.search("मेरा चेहरा").any { it.card == "मेरा चेहरा" })
+        // v3.99: "मेरा चेहरा" (चेहरा पहचान) card हटाया गया - वही जाँच (छोटे/बड़े अक्षर + card पर पहुँचना) ओर्ब के card पर
+        assertTrue(SettingsSearch.search("dk का चेहरा").any { it.card == "DK का चेहरा" })
     }
 
     @Test fun cardHit_hasSection_forOpening() {
@@ -62,5 +63,14 @@ class SettingsSearchTest {
         assertTrue(s.contains("Triple(\"auto\", \"ऑटोनोमस मोड\""))
         assertTrue(s.contains("Triple(\"templates\", \"टेम्पलेट कमांड\""))
         assertTrue(s.contains("AutoSettingsActivity::class.java"))
+    }
+
+    /** v3.99: चेहरा पहचान ऐप से हटी - सेटिंग्स में न मेनू, न card, न सर्च */
+    @Test fun faceRecognition_removedFromSettings() {
+        val s = src("src/main/java/com/dk/assistant/SettingsActivity.kt")
+        assertTrue(!s.contains("FaceAI.") && !s.contains("secFace") && !s.contains("Triple(\"face\""))
+        assertTrue(SettingsSearch.ENTRIES.none { it.section == "face" } && "face" !in SettingsSearch.SECTIONS)
+        val v = src("src/main/java/com/dk/assistant/VoiceActivity.kt")
+        assertTrue(!v.contains("FaceRecognitionEngine") && !v.contains("FaceScanOverlayView"))
     }
 }
