@@ -45,8 +45,8 @@ object CallCmd {
         if (!awaiting(now)) return null
         var t = heard.replace(Regex("[\u200B-\u200D\uFEFF]"), "").trim().trim('.', '।', '!', ',', '"')
         // "भेजो कि मैं मीटिंग में हूँ" / "लिखो ..." -> सिर्फ़ मैसेज
-        t = t.replace(Regex("^(यह |ये |बस )?(भेजो|भेज दो|लिखो|लिख दो|बोलो|कहो|send|write)\s*(कि|की|ki|that)?\s*", RegexOption.IGNORE_CASE), "")
-            .replace(Regex("\s*(भेज दो|भेजो|लिख दो|send kar do|send karo|send)$", RegexOption.IGNORE_CASE), "").trim()
+        t = t.replace(Regex("^(यह |ये |बस )?(भेजो|भेज दो|लिखो|लिख दो|बोलो|कहो|send|write)\\s*(कि|की|ki|that)?\\s*", RegexOption.IGNORE_CASE), "")
+            .replace(Regex("\\s*(भेज दो|भेजो|लिख दो|send kar do|send karo|send)$", RegexOption.IGNORE_CASE), "").trim()
         if (CANCEL_RX.matches(t.lowercase())) { doneMessage(); return Cmd(CANCEL) }
         if (!usableText(t)) return null
         doneMessage()
