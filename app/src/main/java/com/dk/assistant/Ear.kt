@@ -144,8 +144,8 @@ class Ear(
                 if (dkTalking && !talking) echo = if (echo == 0.0) rms else echo * 0.85 + rms * 0.15
                 // dheemi awaaz bhi pakdo, par pankhe/TV ka shor nahi. DK bol raha ho to uski goonj se kaafi upar.
                 // v3.7: dheemi awaaz ke liye kam seema (pehle noise*2.0 / 260) - dheere bolo tab bhi pakde
-                val startTh = if (barge && dkTalking) maxOf(noise * 2.3, echo * 1.8, 650.0) else maxOf(noise * 1.7, 150.0)
-                val stopTh = maxOf(noise * 1.3, 120.0)
+                val startTh = if (barge && dkTalking) maxOf(noise * 2.3, echo * 1.8, 650.0) else maxOf(noise * 1.5, 120.0)   // v4.2: और धीमी आवाज़ (पहले 1.7x / 150)
+                val stopTh = maxOf(noise * 1.25, 100.0)
                 val startFrames = if (barge && dkTalking) 7 else START_FRAMES
 
                 if (!talking) {

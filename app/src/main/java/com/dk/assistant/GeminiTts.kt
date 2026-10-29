@@ -24,17 +24,58 @@ object GeminiTts {
 
     @Volatile private var workingModel: String? = null
 
-    /** Model -> kab tak band (429 limit). Free tier: 10 awaaz/din har model - khatam ho to baar-baar mat maango */
+    /**
+     * (key, model) -> kab tak band (429 limit). Free tier: 10 awaaz/din har model HAR KEY - khatam ho to baar-baar mat maango.
+     * v4.2: pehle limit sirf model ki thi (key ki nahi) aur sirf mukhya key chalti thi - mukhya key ki limit khatam = DK chup,
+     * call aane par bhi ("Gemini आवाज़ की लिमिट खत्म"). Ab har key ki alag, aur bachi hui backup key se awaaz.
+     */
     private val blockedUntil = java.util.concurrent.ConcurrentHashMap<String, Long>()
     private val missing = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
 
-    /** Sab model band hain to kab khulenge (0 = koi khula hai) */
-    fun allBlockedUntil(): Long {
+    /** key ka chhota pehchaan-naam (key khud kahin save/log nahi hoti) */
+    internal fun tag(key: String): String =
+        java.security.MessageDigest.getInstance("MD5").digest(key.toByteArray()).take(4).joinToString("") { "%02x".format(it) }
+    private fun slot(key: String, m: String) = tag(key) + "|" + m
+    private fun cdName(key: String, m: String) = "tts:" + tag(key) + ":" + m
+    private fun blocked(key: String, m: String, now: Long) =
+        (blockedUntil[slot(key, m)] ?: 0L) > now || Cooldown.blocked(cdName(key, m))
+
+    /** Is key ke sab model band hain to kab khulenge (0 = koi khula hai) */
+    fun allBlockedUntil(key: String): Long {
         val now = System.currentTimeMillis()
         val all = (NEW_MODELS + OLD_MODELS).filter { it !in missing }
         if (all.isEmpty()) return now + 6 * 3600_000L
-        val times = all.map { maxOf(blockedUntil[it] ?: 0L, Cooldown.until("tts:$it")) }
+        val times = all.map { maxOf(blockedUntil[slot(key, it)] ?: 0L, Cooldown.until(cdName(key, it))) }
         return if (times.all { it > now }) times.min() else 0L
+    }
+
+    /** Sab keys band hon to kab koi khulegi (0 = koi key abhi chal sakti hai) */
+    fun allBlockedUntil(keys: List<String>): Long {
+        if (keys.isEmpty()) return 0L
+        val t = keys.map { allBlockedUntil(it) }
+        return if (t.any { it == 0L }) 0L else t.min()
+    }
+
+    /**
+     * v4.2: mukhya key, phir backup 2, phir backup 3 - jo key chale usi se awaaz.
+     * 401/403 (key galat) ya us key ke sab model ki limit khatam -> chupchaap agli key.
+     */
+    fun synthesizeAny(keys: List<String>, text: String, voice: String, style: String = ""): ByteArray {
+        val list = keys.filter { it.isNotBlank() }.distinct()
+        if (list.isEmpty()) throw AiException(401, "Gemini की key नहीं है")
+        var last: Exception? = null
+        for ((i, k) in list.withIndex()) {
+            if (allBlockedUntil(k) > 0L) continue
+            try {
+                val w = synthesize(k, text, voice, style)
+                if (i > 0) DKLog.d("Gemini TTS: मुख्य key नहीं चली - बैकअप key ${i + 1} से आवाज़")
+                return w
+            } catch (e: AiException) {
+                last = e
+                DKLog.d("Gemini TTS key ${i + 1} नहीं चली (${e.code}) - अगली key")
+            }
+        }
+        throw (last as? AiException) ?: AiException(429, "Gemini TTS की आज की फ्री लिमिट खत्म (सब keys)")
     }
 
     /** "Please retry in 13h22m27.5s" / "retryDelay":"48s" -> ms */
@@ -54,7 +95,7 @@ object GeminiTts {
     fun synthesize(key: String, text: String, voice: String, style: String = ""): ByteArray {
         val now = System.currentTimeMillis()
         val order = (listOfNotNull(workingModel) + NEW_MODELS + OLD_MODELS).distinct()
-            .filter { it !in missing && (blockedUntil[it] ?: 0L) <= now && !Cooldown.blocked("tts:$it") }
+            .filter { it !in missing && !blocked(key, it, now) }
         if (order.isEmpty()) throw AiException(429, "Gemini TTS की आज की फ्री लिमिट खत्म")
         var last: Exception? = null
         for (m in order) {
@@ -68,8 +109,8 @@ object GeminiTts {
                 when (e.code) {
                     429 -> {
                         val ms = retryMs(e.message ?: "")
-                        blockedUntil[m] = System.currentTimeMillis() + ms
-                        Cooldown.block("tts:$m", ms)          // app band-chalu hone par bhi yaad (har baar 4 model maangkar 1.5s deri nahi)
+                        blockedUntil[slot(key, m)] = System.currentTimeMillis() + ms
+                        Cooldown.block(cdName(key, m), ms)          // app band-chalu hone par bhi yaad (har baar 4 model maangkar 1.5s deri nahi)
                         if (workingModel == m) workingModel = null
                         DKLog.d("Gemini TTS $m -> 429 लिमिट, ${ms / 60_000} मिनट तक नहीं माँगूँगा")
                     }

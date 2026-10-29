@@ -59,8 +59,11 @@ class Speaker(context: Context) {
         cm?.getNetworkCapabilities(cm.activeNetwork)?.hasCapability(android.net.NetworkCapabilities.NET_CAPABILITY_INTERNET) == true
     } catch (_: Exception) { true }
 
-    private fun why(key: String): VoicePolicy.Why =
-        VoicePolicy.gemini(key.isNotBlank(), online(), System.currentTimeMillis(), geminiCooldownUntil)
+    /** v4.2: DK लाइव की तीनों keys (मुख्य + बैकअप 2 + बैकअप 3) - पहले सिर्फ़ मुख्य key से आवाज़ बनती थी */
+    private fun keys(): List<String> = Prefs.liveGeminiKeys(appCtx)
+
+    private fun why(keys: List<String>): VoicePolicy.Why =
+        VoicePolicy.gemini(keys.isNotEmpty(), online(), System.currentTimeMillis(), geminiCooldownUntil)
 
     // ================================================================ bolna (ek samay me ek hi awaaz)
     private val mutex = kotlinx.coroutines.sync.Mutex()
@@ -85,11 +88,60 @@ class Speaker(context: Context) {
     }
 
     /** Turant bolne wali chhoti baat (ठीक है / कॉल उठाऊँ?) - Gemini ki saved awaaz (ya nayi Gemini awaaz). */
-    suspend fun speakQuick(text: String) {
-        if (text.isBlank()) return
+    suspend fun speakQuick(text: String): Boolean {
+        if (text.isBlank()) return false
         val ch = kotlinx.coroutines.channels.Channel<String>(1)
         ch.trySend(text.trim()); ch.close()
-        speakStream(ch, quick = true)
+        return speakStream(ch, quick = true)
+    }
+
+    // ================================================================ v4.2: कॉल का एलान - हर हाल में, पूरी आवाज़ में
+    /**
+     * कॉल आई: पूरी आवाज़ में बोलो. क्रम: नाम वाला वाक्य (तीनों keys) -> न बने तो पहले से सहेजा "सर, कॉल आ रहा है"
+     * (बिना इंटरनेट / limit के भी तुरंत). लौटता है = क्या बोला (NAME / GENERIC / NONE).
+     */
+    enum class CallSpoke { NAME, GENERIC, NONE }
+
+    suspend fun speakCall(text: String, generic: Boolean = true): CallSpoke {
+        fullCallVolume()
+        if (speakQuick(text)) return CallSpoke.NAME
+        if (!generic) return CallSpoke.NONE
+        val wav = cachedCallWav() ?: return CallSpoke.NONE
+        DKLog.d("कॉल: नाम वाली आवाज़ नहीं बनी - सहेजी आवाज़ \"${CallVoice.GENERIC_ASK}\" बजा रहा हूँ")
+        busy = true
+        try { DKState.set(Mode.SPEAKING); fullCallVolume(); playWav(wav) } finally { busy = false; lastSpokeAt = System.currentTimeMillis() }
+        return CallSpoke.GENERIC
+    }
+
+    private fun cachedCallWav(): ByteArray? = try {
+        cacheFile(Prefs.geminiVoice(appCtx), CallVoice.GENERIC_ASK)?.takeIf { it.exists() && it.length() > 100 }?.readBytes()
+    } catch (_: Exception) { null }
+
+    /** "सर, कॉल आ रहा है" की आवाज़ पहले से बनाकर रखो (एक बार - फिर हमेशा तुरंत, limit / इंटरनेट न हो तब भी) */
+    suspend fun warmCallVoice() {
+        if (cachedCallWav() != null) return
+        val keys = keys(); if (keys.isEmpty() || !online()) return
+        try { synth(keys, CallVoice.GENERIC_ASK, Prefs.geminiVoice(appCtx)); DKLog.d("कॉल की सहेजी आवाज़ तैयार") }
+        catch (e: Exception) { DKLog.d("कॉल की सहेजी आवाज़ अभी नहीं बनी: ${e.message?.take(80)}") }
+    }
+
+    @Volatile private var accBefore = -1
+    /** कॉल के समय DK की आवाज़ (accessibility) पूरी - मालिक: "फुल आवाज़ में बोले" */
+    fun fullCallVolume() {
+        if (Build.VERSION.SDK_INT < 26) return
+        try {
+            val a = CallVoice.STREAM_ACCESSIBILITY; val am = audio.getStreamMaxVolume(a)
+            if (am <= 0) return
+            val cur = audio.getStreamVolume(a)
+            if (cur < am) { if (accBefore < 0) accBefore = cur; audio.setStreamVolume(a, am, 0) }
+        } catch (_: Exception) {}
+    }
+
+    /** कॉल खत्म - accessibility आवाज़ पहले जितनी */
+    fun restoreCallVolume() {
+        val b = accBefore; accBefore = -1
+        if (b < 0 || Build.VERSION.SDK_INT < 26) return
+        try { audio.setStreamVolume(CallVoice.STREAM_ACCESSIBILITY, b, 0) } catch (_: Exception) {}
     }
 
     /**
@@ -97,9 +149,10 @@ class Speaker(context: Context) {
      * Beech me user bole -> pause() ; goonj thi -> resume() (wahi vakya dobara) ; asli baat -> stop().
      * Sirf Gemini awaaz. Gemini na chale to us vakya par chup (phone TTS par NAHI jaata).
      */
-    suspend fun speakStream(ch: kotlinx.coroutines.channels.ReceiveChannel<String>, quick: Boolean = false) {
+    suspend fun speakStream(ch: kotlinx.coroutines.channels.ReceiveChannel<String>, quick: Boolean = false): Boolean {
         mutex.lock()
         val prev = DKState.mode
+        var played = false
         try {
             aborted = false; paused = false
             synchronized(spoken) { spoken.clear() }
@@ -107,9 +160,9 @@ class Speaker(context: Context) {
             if (prev != Mode.THINKING && prev != Mode.WORKING) DKState.set(Mode.THINKING)
             ensureAudible()
             applyVoiceUsage()
-            val key = Prefs.ttsGeminiKey(appCtx)
+            val keys = keys()
             val voice = Prefs.geminiVoice(appCtx)
-            val w0 = why(key)
+            val w0 = why(keys)
             var gem = w0 == VoicePolicy.Why.OK
             if (!gem) warnNoVoice(w0)
             val pendingWav = HashMap<String, kotlinx.coroutines.Deferred<ByteArray?>>()
@@ -117,10 +170,10 @@ class Speaker(context: Context) {
             fun prefetch(t: String) {
                 if (gem && System.currentTimeMillis() <= geminiCooldownUntil) gem = false
                 if (gem && !pendingWav.containsKey(t)) pendingWav[t] = bg.async {
-                    try { synth(key, t, voice) }
+                    try { synth(keys, t, voice) }
                     catch (e: Exception) {
                         val code = (e as? AiException)?.code ?: 0
-                        val until = if (code == 429) maxOf(System.currentTimeMillis() + 10 * 60_000L, GeminiTts.allBlockedUntil())
+                        val until = if (code == 429) maxOf(System.currentTimeMillis() + 10 * 60_000L, GeminiTts.allBlockedUntil(keys))
                             else System.currentTimeMillis() + 60_000L
                         val first = System.currentTimeMillis() > geminiCooldownUntil
                         geminiCooldownUntil = maxOf(geminiCooldownUntil, until)
@@ -141,11 +194,11 @@ class Speaker(context: Context) {
                         currentChunk = chunk
                         if (gem) {
                             val wav = withTimeoutOrNull(VoicePolicy.waitMs(quick)) { pendingWav[chunk]?.await() }
-                            if (wav != null) { DKState.set(Mode.SPEAKING); playWav(wav) }
+                            if (wav != null) { DKState.set(Mode.SPEAKING); playWav(wav); played = true }
                             else if (!aborted && !paused) {
                                 // Gemini ne awaaz nahi di -> chup (phone TTS nahi). Baaki jawab bhi likha hi rahega.
                                 gem = false
-                                warnNoVoice(why(key).takeIf { it != VoicePolicy.Why.OK } ?: VoicePolicy.Why.LIMIT)
+                                warnNoVoice(why(keys).takeIf { it != VoicePolicy.Why.OK } ?: VoicePolicy.Why.LIMIT)
                             }
                         }
                         if (paused && !aborted) {
@@ -173,6 +226,7 @@ class Speaker(context: Context) {
                 DKState.set(if (prev == Mode.WORKING) prev else Mode.IDLE)
             mutex.unlock()
         }
+        return played
     }
 
     /** User beech me bolne laga: turant chup (par bolna khatam nahi - goonj nikli to resume) */
@@ -236,10 +290,10 @@ class Speaker(context: Context) {
         return out.ifEmpty { listOf(text) }
     }
 
-    private suspend fun synth(key: String, text: String, voice: String): ByteArray {
+    private suspend fun synth(keys: List<String>, text: String, voice: String): ByteArray {
         val cf = cacheFile(voice, text)
         if (cf != null && cf.exists() && cf.length() > 100) return withContext(Dispatchers.IO) { cf.readBytes() }
-        return withContext(Dispatchers.IO) { GeminiTts.synthesize(key, text, voice, Prefs.voiceStyle(appCtx)).also { w -> cf?.writeBytes(w) } }
+        return withContext(Dispatchers.IO) { GeminiTts.synthesizeAny(keys, text, voice, Prefs.voiceStyle(appCtx)).also { w -> cf?.writeBytes(w) } }
     }
 
     private val audio = appCtx.getSystemService(Context.AUDIO_SERVICE) as android.media.AudioManager
@@ -271,10 +325,10 @@ class Speaker(context: Context) {
 
     /** Settings me awaaz sunne ke liye. */
     suspend fun previewGemini(voice: String, text: String): String? {
-        val key = Prefs.ttsGeminiKey(appCtx)
-        if (key.isBlank()) return "पहले Gemini की API key डालें"
+        val keys = keys()
+        if (keys.isEmpty()) return "पहले Gemini की API key डालें"
         return try {
-            val wav = withContext(Dispatchers.IO) { GeminiTts.synthesize(key, text, voice, Prefs.voiceStyle(appCtx)) }
+            val wav = withContext(Dispatchers.IO) { GeminiTts.synthesizeAny(keys, text, voice, Prefs.voiceStyle(appCtx)) }
             playWav(wav); null
         } catch (e: Exception) { "Gemini आवाज़ नहीं चली: ${e.message?.take(120)}" }
     }

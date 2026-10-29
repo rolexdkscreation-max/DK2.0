@@ -38,6 +38,9 @@ class TurnDetector(
      * इतनी देर लगातार एक-सी आवाज़ (बोलने जैसे उतार-चढ़ाव नहीं) = शोर: सीखो और "बोलना" बंद (0 = बंद)
      */
     private val steadyResetMs: Int = 0,
+    /** v4.2: बोलते समय "अभी भी बोल रहा" की निचली सीमा (धीमी आवाज़ में बात बीच में न कटे) */
+    private val keepFactor: Double = 1.6,
+    private val keepMin: Double = 220.0,
 ) {
     private var sumRms = 0.0; private var frames = 0; private var lowFrames = 0
     /** कितनी बार लगातार शोर को "बोलना" समझने से बचे (debug) */
@@ -100,7 +103,7 @@ class TurnDetector(
     fun feed(rms: Double, now: Long): Event {
         val startThr = max(noise * factorFor(noise), startMin)
         // bolte samay dheemi awaaz (shabd ke aakhri hisse) ko chup mat samjho: neecha darwaza (hysteresis)
-        val keepThr = max(noise * 1.6, 220.0)
+        val keepThr = max(noise * keepFactor, keepMin)
         if (!inSpeech) {
             if (rms > startThr && startFloor > 0 && rms < startFloor) {
                 // बोलने जितनी तेज़ पर मालिक की आम आवाज़ से बहुत धीमी = दूर की आवाज़: शुरू नहीं, शोर भी नहीं सीखा

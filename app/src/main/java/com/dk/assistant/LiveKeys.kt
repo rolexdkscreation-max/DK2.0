@@ -13,4 +13,7 @@ object LiveKeys {
 
     /** मॉडल की limit हर key की अलग: पहली key का नाम पुराना ही ("live:मॉडल"), बाकी "live:2:मॉडल" */
     fun cooldownName(ki: Int, model: String): String = if (ki <= 0) "live:$model" else "live:${ki + 1}:$model"
+
+    /** v4.2: इस key के सारे Live मॉडल की limit (आज) खत्म? तो जुड़ने की कोशिश में समय मत गँवाओ - सीधे अगली key */
+    fun allBlocked(models: List<String>, blocked: (String) -> Boolean): Boolean = models.isNotEmpty() && models.all(blocked)
 }
