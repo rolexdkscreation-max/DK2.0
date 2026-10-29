@@ -95,7 +95,11 @@ object LocalRouter {
 
     /** पूरा रास्ता: फ़ोन पर कितना हो सकता है + AI को क्या बचा */
     fun split(raw: String, wakeWords: List<String>, fg: String = ""): Split {
+        // v4.1: "SMS भेजूँ?" का हाँ/ना (ना = "मत भेजो" - इसलिए negated से पहले)
+        OfflineCommands.confirm(raw, System.currentTimeMillis())?.let { return Split(it, null) }
         val t0 = normalize(raw, wakeWords)
+        // v4.1: SMS - मैसेज में "और" / "मत" हो सकता है, इसलिए टुकड़े / मना-जाँच से पहले (अपनी मना-जाँच ख़ुद)
+        OfflineCommands.whole(t0)?.let { return Split(it, null) }
         if (t0.length < 2 || negated(t0)) return Split(null, raw)
         // "चलो ठीक है, होम स्क्रीन पे आओ": भराव वाला हिस्सा काम नहीं - उसकी वजह से पूरी बात Gemini को जाती थी
         val t = Filler.stripLead(t0)
@@ -142,6 +146,8 @@ object LocalRouter {
 
     fun single(t: String, wakeWords: List<String>, fg: String = ""): QuickCommands.Quick? {
         if (t.length < 2 || negated(t)) return null
+        // 0) v4.1: बिना API वाले नए काम (अलार्म, टाइमर, कैमरा, समय/बैटरी, "X पर टैप", एयरप्लेन, "X सेटिंग")
+        OfflineCommands.parse(t)?.let { return it }
         // 1) पुराना QuickCommands जैसा था (ऐप खोलो, टॉर्च, आवाज़, YouTube पर चलाओ, कॉल उठाओ…)
         QuickCommands.parse(t, wakeWords)?.let { return it }
         // 2) नए सीधे काम
@@ -408,7 +414,7 @@ object LocalRouter {
     /** इन prefix वाले नतीजे में ":" के बाद user को बोलने वाली साफ़ हिंदी बात होती है */
     private val SAY_PREFIX = listOf("ASK:", "ERROR_NOT_INSTALLED:", "ERROR_LAUNCH:", "ERROR_NO_CONTACT:", "ERROR_PERM:", "ERROR_NO_PHOTO:",
         "CALLING:", "CALL_UNVERIFIED:", "DIALER:", "PHOTO_OPENED:", "GALLERY_OPENED:", "VIDEO_OPENED:", "STEPS_DONE:", "STEP_FAILED:",
-        "DELETED:", "DELETE_UNVERIFIED:", "ERROR_DENIED:", "ERROR_OLD_ANDROID:", "SEARCHED:", "SEARCH_UNVERIFIED:")
+        "DELETED:", "DELETE_UNVERIFIED:", "ERROR_DENIED:", "ERROR_OLD_ANDROID:", "SEARCHED:", "SEARCH_UNVERIFIED:", "SAID:")
 
     /** फ़ोन ने जो किया उसका साफ़ हिंदी वाक्य (null = यह नतीजा ऐसा नहीं) */
     fun userText(r: String): String? {
@@ -418,7 +424,7 @@ object LocalRouter {
 
     /** यह नतीजा आख़िरी है - AI को देने से कुछ नहीं सुधरेगा (ऐप है ही नहीं / कॉन्टैक्ट नहीं / user से पूछना है) */
     fun final(r: String) = listOf("ASK:", "ERROR_NOT_INSTALLED:", "ERROR_NO_CONTACT:", "ERROR_PERM:", "ERROR_NO_PHOTO:", "STEP_FAILED:",
-        "DELETED:", "ERROR_DENIED:", "ERROR_OLD_ANDROID:").any { r.startsWith(it) }
+        "DELETED:", "ERROR_DENIED:", "ERROR_OLD_ANDROID:", "SAID:").any { r.startsWith(it) }
 
     fun needsUser(r: String) = r.startsWith("ASK:")
 

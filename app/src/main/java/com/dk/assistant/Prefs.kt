@@ -338,6 +338,12 @@ object Prefs {
     fun micDeniedOnce(c: Context) = sp(c).getBoolean("mic_denied", false)
 
     fun announceCalls(c: Context) = sp(c).getBoolean("announce_calls", true)
+    /** v4.1: सिर्फ़ "DK ..." से शुरू होने वाली बात सुनो (शुरू में बंद = पहले जैसा) */
+    fun dkOnly(c: Context) = sp(c).getBoolean("dk_only_listen", false)
+    fun setDkOnly(c: Context, on: Boolean) = sp(c).edit().putBoolean("dk_only_listen", on).apply()
+    /** v4.1: कॉल काटकर भेजा जाने वाला तैयार मैसेज (Settings में बदल सकते हैं) */
+    const val CALL_BUSY_DEFAULT = "अभी व्यस्त हूँ, थोड़ी देर में कॉल करता हूँ।"
+    fun callBusyMsg(c: Context) = (sp(c).getString("call_busy_msg", CALL_BUSY_DEFAULT) ?: "").ifBlank { CALL_BUSY_DEFAULT }
     /** Sawaal ka sahi/taaza jawab Google Search se (Gemini key ho to) */
     fun webAnswers(c: Context) = sp(c).getBoolean("web_answers", true)
 

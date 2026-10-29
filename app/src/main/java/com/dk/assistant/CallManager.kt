@@ -20,6 +20,9 @@ class CallManager(private val ctx: Context, private val onRinging: (String) -> U
     @Volatile var state = TelephonyManager.CALL_STATE_IDLE
         private set
     @Volatile private var simCaller: String = ""
+    /** v4.1: SIM कॉल का असली नंबर (काटकर SMS भेजने के लिए) - कॉल ख़त्म होने के कुछ सेकंड बाद तक रहता है */
+    @Volatile var simNumber: String = ""
+        private set
     /** v4: SIM कॉल का नाम, नहीं तो WhatsApp/Instagram… वाली कॉल का */
     val caller: String get() = simCaller.ifBlank { if (AppCall.active()) AppCall.who() else "" }
     private var listener: PhoneStateListener? = null
@@ -89,10 +92,11 @@ class CallManager(private val ctx: Context, private val onRinging: (String) -> U
                 val prev = state
                 state = s
                 if (s == TelephonyManager.CALL_STATE_RINGING && prev != s) {
+                    simNumber = number.orEmpty()
                     simCaller = nameFor(number)
                     onRinging(simCaller)
                 }
-                if (s == TelephonyManager.CALL_STATE_IDLE) { simCaller = ""; restoreRinger() }
+                if (s == TelephonyManager.CALL_STATE_IDLE) { simCaller = ""; restoreRinger(); if (prev != s) CallCmd.markEnded(System.currentTimeMillis()) }
                 if (s == TelephonyManager.CALL_STATE_OFFHOOK) restoreRinger()
             }
         }
@@ -147,6 +151,12 @@ class CallManager(private val ctx: Context, private val onRinging: (String) -> U
         return false
     }
 
+    /** v4.1: कॉल में अपना माइक बंद/चालू (SIM कॉल). false = फ़ोन ने नहीं माना */
+    fun muteApi(on: Boolean): Boolean {
+        val am = ctx.getSystemService(AudioManager::class.java) ?: return false
+        return try { am.isMicrophoneMute = on; am.isMicrophoneMute == on } catch (e: Exception) { DKLog.d("mute: ${e.message}"); false }
+    }
+
     @Suppress("DEPRECATION")
     fun speakerApi(on: Boolean) {
         val am = ctx.getSystemService(AudioManager::class.java) ?: return
@@ -173,6 +183,7 @@ class CallManager(private val ctx: Context, private val onRinging: (String) -> U
 
     companion object {
         val PERMS = arrayOf(Manifest.permission.READ_PHONE_STATE, Manifest.permission.READ_CALL_LOG,
-            Manifest.permission.READ_CONTACTS, Manifest.permission.ANSWER_PHONE_CALLS)
+            Manifest.permission.READ_CONTACTS, Manifest.permission.ANSWER_PHONE_CALLS,
+            Manifest.permission.SEND_SMS)   // v4.1: कॉल काटकर SMS
     }
 }

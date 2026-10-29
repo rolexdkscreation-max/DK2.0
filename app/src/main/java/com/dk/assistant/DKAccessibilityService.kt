@@ -90,6 +90,7 @@ class DKAccessibilityService : AccessibilityService() {
         agent = AgentRunner(this, scope, speaker)
         OfflineQueue.drain(this)        // v3.88: पिछली बार नेटवर्क न होने से रुका काम
         calls = CallManager(this) { who -> scope.launch { onIncomingCall(who) } }
+        CallCmd.liveCheck = { calls.ringing || calls.inCall }   // v4.1: घंटी/कॉल में कॉल-कमांड बिना DK
         calls.start()
         showEdgeGlow()
         showBubble()
@@ -681,6 +682,11 @@ class DKAccessibilityService : AccessibilityService() {
                     if (handleCallReply(heard)) continue
                     if (calls.ringing) continue      // call ke dauraan baaki baatein nahi
                 }
+                // v4.1: कॉल अभी-अभी ख़त्म / चल रही - कुछ सेकंड तक कॉल वाली कमांड बिना DK
+                if (CallCmd.windowOpen(System.currentTimeMillis())) {
+                    val cc = CallCmd.route(heard, System.currentTimeMillis())
+                    if (cc != null) { DKState.user(heard); doCallCmd(cc); continue }
+                }
 
                 if (DKState.live) {
                     if (low.trim(' ', '.', '।').length < 2) continue
@@ -691,7 +697,11 @@ class DKAccessibilityService : AccessibilityService() {
                     val am = getSystemService(android.media.AudioManager::class.java)
                     val othersPlaying = am?.isMusicActive == true && System.currentTimeMillis() - speaker.lastSpokeAt > 2500
                     var cmdText = heard
-                    if (othersPlaying) {
+                    // v4.1: "सिर्फ़ DK बोलने पर सुनो" - शुरुआत में DK वाले वाक्य ही, बाकी पूरी तरह अनदेखे
+                    if (Prefs.dkOnly(this@DKAccessibilityService)) {
+                        cmdText = DkOnly.filter(heard) ?: continue
+                        if (cmdText.isBlank()) continue
+                    } else if (othersPlaying) {
                         val w = Prefs.wakeWords(this@DKAccessibilityService).firstOrNull { low.contains(it) } ?: continue
                         cmdText = heard.substring((low.indexOf(w) + w.length).coerceAtMost(heard.length)).trim(' ', ',', '.', '!')
                         if (cmdText.isBlank()) continue
@@ -704,6 +714,8 @@ class DKAccessibilityService : AccessibilityService() {
                     val wake = Prefs.wakeWords(this@DKAccessibilityService).firstOrNull { low.contains(it) } ?: continue
                     var cmd = heard.substring((low.indexOf(wake) + wake.length).coerceAtMost(heard.length))
                         .trim(' ', ',', '.', '!')
+                    // v4.1: "सिर्फ़ DK बोलने पर सुनो" - नाम बात की शुरुआत में हो तभी (बीच में आया नाम = अनदेखा)
+                    if (Prefs.dkOnly(this@DKAccessibilityService)) cmd = DkOnly.filter(heard) ?: continue
                     // naam suna = user DK se baat kar raha hai -> peeche ka gaana/video dheema (Live ho to jawab ke baad wahi wapas badhayega)
                     Ducker.duck(this@DKAccessibilityService, "wake word")
                     // naam suna -> Gemini Live (asli awaaz, turant jawab); 45s chup = wapas wake word
@@ -1090,6 +1102,7 @@ class DKAccessibilityService : AccessibilityService() {
                 "who_calls" -> whoCalls()
                 "close_app" -> closeApp()
                 "close_all_apps" -> closeAllApps()
+                in OfflineExec.TYPES -> OfflineExec.run(this, a)   // v4.1: अलार्म / टाइमर / कैमरा / समय / टैप / SMS (बिना API)
                 "wait" -> { delay(a.optLong("ms", 1000).coerceIn(100, 8000)); "waited" }
                 else -> "ERROR: unknown action ${a.optString("type")}"
             }
@@ -1194,7 +1207,7 @@ class DKAccessibilityService : AccessibilityService() {
     fun onAppCall(who: String, ask: String) {
         if (!::calls.isInitialized || calls.simRinging || calls.inCall) return
         DKLog.d("ऐप कॉल: $ask")
-        AppCall.onGone = { calls.restoreRinger() }
+        AppCall.onGone = { calls.restoreRinger(); if (!AppCall.ongoing()) CallCmd.markEnded(System.currentTimeMillis()) }
         scope.launch { onIncomingCall(who, ask) }
     }
 
@@ -1207,7 +1220,8 @@ class DKAccessibilityService : AccessibilityService() {
         var who = who0
         if (who.isBlank() && ask == null) who = callerFromScreen()
         if (!calls.ringing && (calls.known || ask != null)) { callPending = false; return }
-        val msg = ask ?: if (who.isNotBlank()) "$who का कॉल आ रहा है। उठाऊँ या काट दूँ?" else "किसी का कॉल आ रहा है। उठाऊँ या काट दूँ?"
+        val msg = ask ?: CallCmd.announce(who)   // v4.1: "सर, राहुल का कॉल आ रहा है।" (नाम नहीं = नंबर, वह भी नहीं = अनजान नंबर)
+        if (ask == null) rejectTarget = null      // नई SIM कॉल - पिछली काटी कॉल का नंबर नहीं
         DKState.reply(msg)
         // v3.40: DK लाइव (Gemini) जुड़ा है = वही पूछे और जवाब सुने (Live बंद नहीं होता, पुराने सुनने पर निर्भर नहीं)
         if (DKState.live && gemLive.canTalk()) {
@@ -1253,11 +1267,127 @@ class DKAccessibilityService : AccessibilityService() {
         } finally { callPending = false; DKState.set(Mode.IDLE) }
     }
 
+    // ------------------------------------------------------------ v4.1: कॉल की नई आवाज़-कमांड (API नहीं)
+
+    /** काटी गई कॉल किसकी थी - मैसेज इसी को (नाम कभी नहीं पूछते) */
+    private data class CallTarget(val name: String, val number: String, val pkg: String, val app: String, val open: android.app.PendingIntent?)
+    @Volatile private var rejectTarget: CallTarget? = null
+
+    private fun currentTarget(): CallTarget? {
+        val r = AppCall.current
+        if (!calls.simRinging && calls.state == android.telephony.TelephonyManager.CALL_STATE_IDLE && r != null)
+            return CallTarget(r.who, "", r.pkg, r.app, r.open)
+        val num = calls.simNumber
+        if (num.isBlank() && calls.caller.isBlank()) return rejectTarget
+        return CallTarget(calls.caller, num, "", "", null)
+    }
+
+    /** ऊपर की कमांड चलाओ; लौटता है = बोलने वाला छोटा वाक्य */
+    suspend fun runCallCmd(c: CallCmd.Cmd): String {
+        val now = System.currentTimeMillis()
+        DKLog.d("कॉल कमांड: ${c.action}${if (c.text.isNotBlank()) " (मैसेज ${c.text.length} अक्षर)" else ""}")
+        return when (c.action) {
+            CallCmd.REJECT_MSG, CallCmd.REJECT_BUSY -> {
+                val live = calls.ringing || calls.inCall
+                val t = if (live) currentTarget() else rejectTarget ?: currentTarget()
+                if (live) { endCall(); callPending = false }
+                if (t != null) rejectTarget = t
+                val target = rejectTarget ?: return "सर, कॉल काट दी। किसकी कॉल थी पता नहीं चला, इसलिए मैसेज नहीं भेजा।"
+                val text = if (c.action == CallCmd.REJECT_BUSY) Prefs.callBusyMsg(this) else c.text
+                if (!CallCmd.usableText(text)) {
+                    CallCmd.awaitMessage(now)
+                    "सर, कॉल काट दी। क्या मैसेज भेजूँ?"
+                } else { CallCmd.doneMessage(); sendRejectMessage(target, text) }
+            }
+            CallCmd.MUTE, CallCmd.UNMUTE -> if (c.action == CallCmd.MUTE && calls.ringing && !calls.inCall) {
+                calls.quietRinger(); "सर, घंटी धीमी कर दी।"   // कॉल ख़त्म होते ही पुरानी आवाज़ वापस (RingGuard)
+            } else muteCall(c.action == CallCmd.MUTE)
+            CallCmd.CANCEL -> "ठीक है सर, मैसेज नहीं भेजा।"
+            CallCmd.END -> {
+                if (!calls.ringing && !calls.inCall && !callPending) return "सर, अभी कोई कॉल नहीं चल रही।"
+                val r = endCall(); callPending = false
+                if (r == "ERROR_CALL_PERM") "सर, कॉल काटने की परमिशन नहीं है। Settings में DK को फ़ोन की परमिशन दीजिए।"
+                else if (r.startsWith("ERROR")) "सर, कॉल नहीं कटी। स्क्रीन पर बटन दबाइए।" else "सर, कॉल काट दी।"
+            }
+            else -> ""
+        }
+    }
+
+    /** कमांड चलाओ और नतीजा बोलो (फ़ोन की अपनी आवाज़ - घंटी/कॉल में भी सुनाई दे) */
+    suspend fun doCallCmd(c: CallCmd.Cmd) {
+        val m = try { runCallCmd(c) } catch (e: Exception) { DKLog.d("call cmd: ${e.message}"); "सर, यह काम नहीं हो पाया।" }
+        if (m.isBlank()) return
+        DKState.reply(m)
+        callAnnouncing = true
+        try { speaker.speakQuick(m) } finally { callAnnouncing = false }
+    }
+
+    private suspend fun muteCall(on: Boolean): String {
+        if (!calls.inCall) return "सर, अभी कोई कॉल नहीं चल रही।"
+        // पहले कॉल स्क्रीन का Mute बटन (हालत देखकर - वह toggle है), फिर सिस्टम तरीका
+        val btn = allRoots().asSequence().flatMap { root ->
+            listOf("Mute", "म्यूट", "MUTE", "Microphone").asSequence().flatMap { root.findAccessibilityNodeInfosByText(it).asSequence() }
+        }.mapNotNull { n -> var x: AccessibilityNodeInfo? = n; var d = 0; while (x != null && !x.isClickable && d < 4) { x = x.parent; d++ }; x }.firstOrNull()
+        val word = if (on) "म्यूट कर दिया" else "म्यूट हटा दिया"
+        if (btn != null && btn.isCheckable) {
+            if (btn.isChecked == on) return "सर, पहले से ${if (on) "म्यूट है" else "म्यूट नहीं है"}।"
+            if (btn.performAction(AccessibilityNodeInfo.ACTION_CLICK)) return "सर, $word।"
+        }
+        if (calls.muteApi(on)) return "सर, $word।"
+        if (btn != null && btn.performAction(AccessibilityNodeInfo.ACTION_CLICK)) return "सर, $word।"
+        return "सर, म्यूट नहीं हो पाया। कॉल स्क्रीन पर म्यूट बटन दबाइए।"
+    }
+
+    /** काटी कॉल वाले को मैसेज: SIM = SMS; ऐप = उसी व्यक्ति के notification से सीधा reply, नहीं तो ऐप खोलो + मैसेज कॉपी */
+    private suspend fun sendRejectMessage(t: CallTarget, text: String): String {
+        val who = t.name.ifBlank { t.number.ifBlank { "उन्हें" } }
+        if (t.pkg.isBlank()) {
+            if (t.number.isBlank()) return "सर, कॉल काट दी। नंबर नहीं मिला, इसलिए मैसेज नहीं भेजा।"
+            if (androidx.core.content.ContextCompat.checkSelfPermission(this, android.Manifest.permission.SEND_SMS) == android.content.pm.PackageManager.PERMISSION_GRANTED) {
+                return try {
+                    @Suppress("DEPRECATION")
+                    val sms = if (Build.VERSION.SDK_INT >= 31) getSystemService(android.telephony.SmsManager::class.java) else android.telephony.SmsManager.getDefault()
+                    sms.sendMultipartTextMessage(t.number, null, sms.divideMessage(text), null, null)
+                    "सर, कॉल काट दी और $who को मैसेज भेज दिया।"
+                } catch (e: Exception) { DKLog.d("sms: ${e.message}"); openSmsDraft(t.number, text); "सर, कॉल काट दी। SMS सीधे नहीं गया, मैसेज लिखकर खोल दिया है, भेजें दबाइए।" }
+            }
+            openSmsDraft(t.number, text)
+            return "सर, कॉल काट दी। SMS भेजने की परमिशन नहीं है, इसलिए मैसेज लिखकर खोल दिया है, भेजें दबाइए। Settings में DK को SMS की परमिशन दे दें तो आगे सीधे जाएगा।"
+        }
+        // ऐप की कॉल: उसी व्यक्ति के हाल के message notification में reply हो तो सीधा
+        val item = NotifStore.all().filter { it.pkg == t.pkg && it.canReply }.let { list ->
+            if (t.name.isBlank()) null else list.firstOrNull { it.title.equals(t.name, true) } ?: list.firstOrNull { it.title.contains(t.name, true) }
+        }
+        if (item != null && DKNotifListener.reply(this, item.key, text) == null) return "सर, कॉल काट दी और ${t.app} पर $who को मैसेज भेज दिया।"
+        try {
+            getSystemService(android.content.ClipboardManager::class.java)?.setPrimaryClip(android.content.ClipData.newPlainText("DK", text))
+        } catch (_: Exception) {}
+        var opened = false
+        try { t.open?.let { it.send(); opened = true } } catch (_: Exception) {}
+        if (!opened) try {
+            packageManager.getLaunchIntentForPackage(t.pkg)?.let { startActivity(it.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)); opened = true }
+        } catch (_: Exception) {}
+        return if (opened) "सर, कॉल काट दी। ${t.app} में सीधे भेजने का रास्ता नहीं मिला, ऐप खोल दिया है और मैसेज कॉपी कर दिया है, $who की चैट में चिपकाकर भेज दीजिए।"
+            else "सर, कॉल काट दी, पर ${t.app} पर मैसेज नहीं भेज पाया।"
+    }
+
+    private fun openSmsDraft(number: String, text: String) {
+        try {
+            startActivity(android.content.Intent(android.content.Intent.ACTION_SENDTO, android.net.Uri.parse("smsto:" + android.net.Uri.encode(number)))
+                .putExtra("sms_body", text).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK))
+        } catch (e: Exception) { DKLog.d("sms draft: ${e.message}") }
+    }
+
     /** Ghanti ke dauraan boli baat: true = samajh kar kaam kar diya. */
     private suspend fun handleCallReply(heard: String): Boolean {
         val l = " " + heard.lowercase().trim().trim('.', '।', '!', '?') + " "
         fun has(vararg w: String) = w.any { l.contains(it) }
         DKState.user(heard)
+        // v4.1: काटकर मैसेज / तैयार मैसेज / म्यूट / कॉल काटो
+        CallCmd.route(heard, System.currentTimeMillis())?.let { cc ->
+            doCallCmd(cc)
+            return cc.action !in listOf(CallCmd.MUTE, CallCmd.UNMUTE, CallCmd.CANCEL)
+        }
         // टेम्पलेट "उठाओ / कॉल उठाओ" (Settings → टेम्पलेट कमांड में चालू हो): उठाते ही स्पीकर भी चालू
         val speakerOn = has("स्पीकर", "speaker", "लाउड") ||
             (has("उठा", "uthao", "utha lo") && com.dk.assistant.template.TemplateStore.on(this, "call_answer"))
@@ -1330,6 +1460,9 @@ class DKAccessibilityService : AccessibilityService() {
         rootInActiveWindow?.let { if (out.none { r -> r == it }) out.add(0, it) }
         return out
     }
+
+    /** v4.1: स्क्रीन पर लिखे (या बटन के विवरण) पर टैप - [OfflineExec] के लिए */
+    fun clickVisibleText(vararg words: String): Boolean = clickByText(*words)
 
     private fun clickByText(vararg words: String): Boolean {
         for (root in allRoots()) for (w in words) {

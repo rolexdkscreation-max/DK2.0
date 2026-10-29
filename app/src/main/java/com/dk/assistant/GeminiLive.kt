@@ -372,6 +372,8 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
     private var guardPass = false                    // नाम वाली बात अभी चल रही - इसे दोबारा मत रोको
     private var guardEndAt = 0L                      // रोकी हुई बात खत्म कब हुई (देर से आते शब्दों का इंतज़ार)
     private val guardBuf = ArrayDeque<ByteArray>()
+    @Volatile private var dkOnlyNow = false          // v4.1: Settings → "सिर्फ़ DK बोलने पर सुनो" (हर 3s ताज़ा)
+    private var dkOnlyAt = 0L
     @Volatile private var guardOn = false            // अभी गार्ड चालू (फ़ोन पर दूसरी आवाज़ बज रही)
     private var mediaAt = 0L; private var mediaOn = false
     @Volatile var phoneAudioIgnored = 0              // कितनी बार फ़ोन की अपनी आवाज़ छोड़ी (debug)
@@ -1771,6 +1773,19 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
         visionNote(HonestGuard.correctionNote(reply), evidence = false)
     }
 
+    private fun now0() = System.currentTimeMillis()
+
+    /** v4.1: रोकी हुई आवाज़ मालिक की है? (मिलान फ़ेल / आवाज़ बहुत छोटी = हाँ, पहले जैसा) */
+    private fun ownerSaysOwner(held: Collection<ByteArray>): Boolean {
+        return try {
+            val out = java.io.ByteArrayOutputStream(); held.forEach { out.write(it) }
+            val audio = out.toByteArray()
+            if (audio.size < IN_RATE * 2 / 2) return true
+            val sc = com.dk.assistant.voice.OwnerVoice.score(svc, audio) ?: return true
+            sc >= ownerTh
+        } catch (_: Throwable) { true }
+    }
+
     /** Caption is key par chal raha hai -> "आप:" sirf usi se (Live model ka der se aaya text screen par nahi, warna text aage-peeche hota) */
     private fun captionOn() = caption?.let { it.ready && it.working } == true
 
@@ -1778,7 +1793,8 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
     private fun onCaption(t: String, final: Boolean) {
         // v3.53: फ़ोन पर वीडियो/गाना बज रहा है और DK चुप - बिना DK के नाम वाले शब्द फ़ोन की अपनी आवाज़ (न दिखाओ, न धीमा करो)
         if (guardOn && !isPlaying() && !guardOk) {
-            if (!(guardHeld && PhoneAudioGuard.hasName(t, Prefs.wakeWords(svc)))) return
+            val named = if (dkOnlyNow) DkOnly.filter(t) != null else PhoneAudioGuard.hasName(t, Prefs.wakeWords(svc))
+            if (!(guardHeld && named)) return
             guardOk = true
             log("वीडियो/गाने के बीच DK का नाम सुना (\"${t.take(40)}\") - यूज़र की बात, Gemini को भेज रहा हूँ")
         }
@@ -1802,6 +1818,7 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
             // (v3.5+: पूरे शब्द मिलाकर, आम शब्द छोड़कर - पहले "है/क्या" से असली सवाल भी गूँज मान लिया जाता था)
             val real = BargeGate.realWords(t) && !BargeGate.isEcho(t, dkNow) && !BargeGate.isRepeat(t, turnUser)
             if (!real) { log("caption: \"${t.take(40)}\" - पक्का नहीं, जवाब जारी"); return }
+            if (dkOnlyNow && !CallCmd.windowOpen(now0()) && !svc.callRinging() && DkOnly.filter(t) == null && !LiveStop.isStop(t)) return   // v4.1: DK नहीं बोला = अनदेखा
             if (captionOn() && !LiveStop.isStop(t)) {
                 // अगला सवाल: जवाब मत काटो (Gemini को आवाज़ नहीं - वरना सर्वर पुराना जवाब रोक देता), caption सुनता रहे
                 val now = System.currentTimeMillis()
@@ -1821,6 +1838,16 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
         if (final) checkMicOff(t)        // andaze (interim) par mic band nahi - "माइक बंद मत करो" bhi ho sakta hai
         if (final) capFinal = t.trim()
         // v3.41: ghanti baj rahi hai aur pakka text aaya ("उठा लो" / "काट दो") -> bolna-khatam ka intezaar bhi nahi, turant
+        // v4.1: काटकर मैसेज / तैयार मैसेज / म्यूट / कॉल काटो (घंटी, कॉल, या कॉल के ठीक बाद) - फ़ोन खुद, Gemini का जवाब/tool नहीं
+        if (final && System.currentTimeMillis() - playEnd > 600 && !micMuted && CallCmd.windowOpen(System.currentTimeMillis())) {
+            val cc = CallCmd.route(t, System.currentTimeMillis())
+            if (cc != null) {
+                muteTurn = true; muteAt = System.currentTimeMillis()
+                log("कॉल कमांड फ़ोन ने सुनी: ${cc.action}")
+                svc.scope.launch { svc.doCallCmd(cc) }
+                return
+            }
+        }
         if (final && svc.callRinging() && System.currentTimeMillis() - playEnd > 600 && !micMuted) {
             CallReply.parse(t)?.takeIf { it != CallReply.WHO }?.let { act -> svc.scope.launch { callTool(act, "फ़ोन ने सुना (तुरंत): \"${t.take(30)}\"") } }
         }
@@ -2867,7 +2894,11 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
 
     /** जवाब पूरा हुआ - बीच में पूछा सवाल अब Gemini को (यूज़र की नई बारी की तरह, "आप:" लाइन भी) */
     private fun flushAsks(now: Long) {
-        val t = askQueue.drain() ?: return
+        val raw = askQueue.drain() ?: return
+        // v4.1: "सिर्फ़ DK बोलने पर सुनो" - बीच में पूछी बात में DK से शुरू होने वाले वाक्य ही (DK हटाकर)
+        val t = if (!dkOnlyNow) raw else DkOnly.filter(raw)?.takeIf { it.isNotBlank() } ?: run {
+            log("बीच की बात DK से शुरू नहीं हुई - छोड़ी (\"${raw.take(40)}\")"); return
+        }
         try {
             startTurn(); turnUser = t; userDone = false
             caption?.discard()
@@ -3050,7 +3081,11 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
                     if (turnDet.inSpeech || generating || (turnActive && now - eosAt < 8_000)) quietSince = now
                     // v3.53: फ़ोन पर दूसरे ऐप की आवाज़ (वीडियो/गाना) - हर 300ms देखो (DK की अपनी आवाज़ थमने के बाद ही भरोसा)
                     if (now - mediaAt > 300) { mediaAt = now; mediaOn = Ducker.musicActive(svc) }
-                    guardOn = !svc.callRinging() && !callAudioOn && PhoneAudioGuard.active(mediaOn, now - playEnd)
+                    // v4.1: "सिर्फ़ DK बोलने पर सुनो" चालू = हर बात रोको, caption में शुरुआत में DK हो तभी Gemini को
+                    // (घंटी / कॉल के ठीक बाद के कुछ सेकंड में नहीं - तब कॉल की कमांड बिना DK)
+                    if (now - dkOnlyAt > 3_000) { dkOnlyAt = now; dkOnlyNow = Prefs.dkOnly(svc) }
+                    val dkGate = dkOnlyNow && caption?.usable == true && !CallCmd.windowOpen(now)
+                    guardOn = !svc.callRinging() && !callAudioOn && (dkGate || PhoneAudioGuard.active(mediaOn, now - playEnd))
                     if (guardPass && (ev == TurnDetector.Event.SPEECH_END || !turnDet.inSpeech)) guardPass = false
                     if (guardHeld || (guardOn && !guardPass && (ev == TurnDetector.Event.SPEECH_START || turnDet.inSpeech))) {
                         if (!guardHeld) {
@@ -3064,6 +3099,14 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
                         guardBuf.addLast(chunk); capSend(chunk)
                         while (guardBuf.size > PhoneAudioGuard.MAX_HOLD_CHUNKS) guardBuf.removeFirst()
                         if (ev == TurnDetector.Event.SPEECH_END) { guardEndAt = now; caption?.endOfSpeech() }
+                        if (guardOk && dkOnlyNow && ownerOn && !ownerSaysOwner(guardBuf)) {
+                            // v4.1: पहले "सिर्फ़ मेरी आवाज़" - DK बोला पर आवाज़ मालिक की नहीं = अनसुनी
+                            othersIgnored++
+                            log("DK सुना पर आवाज़ मालिक की नहीं - अनसुनी (#$othersIgnored)")
+                            guardHeld = false; guardOk = false; guardEndAt = 0L; guardBuf.clear(); caption?.discard(); DKState.user("")
+                            sendAudio(zeros, silent = true); gatedChunks++
+                            continue
+                        }
                         if (guardOk) {
                             // नाम मिला = यूज़र. रुकी आवाज़ Gemini को, फिर सामान्य रास्ता (बात चल रही या खत्म)
                             guardHeld = false; guardPass = turnDet.inSpeech && guardEndAt == 0L

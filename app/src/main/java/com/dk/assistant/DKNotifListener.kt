@@ -104,7 +104,7 @@ class DKNotifListener : NotificationListenerService() {
                 val app0 = try { packageManager.getApplicationLabel(packageManager.getApplicationInfo(sbn.packageName, 0)).toString() } catch (_: Exception) { sbn.packageName }
                 val wasCall = AppCall.current?.key == sbn.key
                 if (AppCall.posted(sbn.key, sbn.packageName, app0, n, t0, x0)) {
-                    if (push) AppCall.current?.let { r -> DKAccessibilityService.instance?.onAppCall(r.who, AppCall.announce(r.app, r.who, r.video)) }
+                    if (push) AppCall.current?.let { r -> DKAccessibilityService.instance?.onAppCall(r.who, CallCmd.announce(r.who, r.app, r.video)) }
                     return
                 }
                 if (AppCall.current?.key == sbn.key || wasCall) return

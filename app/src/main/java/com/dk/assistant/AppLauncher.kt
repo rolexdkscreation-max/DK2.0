@@ -146,6 +146,44 @@ object AppLauncher {
         return "opened $label"
     }
 
+    // v4.1: फ़ोन के ऐप की सूची याद (हर बार पूरा पैकेज-मैनेजर नहीं पूछते). ऐप install / uninstall / update = सूची ताज़ा
+    @Volatile private var cache: List<Pair<String, String>>? = null
+    @Volatile private var receiverOn = false
+
+    /** (नाम, package) - launcher वाले ऐप */
+    fun appList(ctx: Context): List<Pair<String, String>> {
+        cache?.let { return it }
+        watchInstalls(ctx)
+        val pm = ctx.packageManager
+        val launcher = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER)
+        val list = pm.queryIntentActivities(launcher, 0).map {
+            it.loadLabel(pm).toString() to it.activityInfo.packageName
+        }.distinctBy { it.second }
+        if (receiverOn) cache = list   // बदलाव की ख़बर न मिल सके तो याद नहीं रखते (पुरानी सूची का डर नहीं)
+        return list
+    }
+
+    fun forgetApps() { cache = null }
+
+    private fun watchInstalls(ctx: Context) {
+        if (receiverOn) return
+        synchronized(this) {
+            if (receiverOn) return
+            try {
+                val f = android.content.IntentFilter().apply {
+                    addAction(Intent.ACTION_PACKAGE_ADDED); addAction(Intent.ACTION_PACKAGE_REMOVED)
+                    addAction(Intent.ACTION_PACKAGE_CHANGED); addAction(Intent.ACTION_PACKAGE_REPLACED); addDataScheme("package")
+                }
+                val r = object : android.content.BroadcastReceiver() {
+                    override fun onReceive(c: Context?, i: Intent?) { cache = null }
+                }
+                val app = ctx.applicationContext
+                if (android.os.Build.VERSION.SDK_INT >= 33) app.registerReceiver(r, f, Context.RECEIVER_EXPORTED) else app.registerReceiver(r, f)
+                receiverOn = true
+            } catch (e: Exception) { DKLog.d("app list watch: ${e.message}") }
+        }
+    }
+
     fun open(ctx: Context, name: String): String {
         val pm = ctx.packageManager
         val query = cleanName(name).ifBlank { name.trim().lowercase() }
@@ -159,10 +197,7 @@ object AppLauncher {
             }
         }
 
-        val launcher = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER)
-        val apps = pm.queryIntentActivities(launcher, 0).map {
-            it.loadLabel(pm).toString() to it.activityInfo.packageName
-        }.distinctBy { it.second }
+        val apps = appList(ctx)
         val candidates = mutableListOf(query)
         aliases.forEach { (_, words) -> if (words.any { query.contains(it) }) candidates.addAll(words) }
 
