@@ -20,7 +20,7 @@ object SettingsSearch {
     val SECTIONS: Map<String, String> = linkedMapOf(
         "profile" to "प्रोफ़ाइल", "lang" to "भाषा / Language", "ui" to "दिखावट (UI कस्टमाइज़ेशन)", "brain" to "AI दिमाग",
         "brain_live" to "AI दिमाग • DK लाइव", "brain_chat" to "AI दिमाग • DK चैट", "brain_coder" to "AI दिमाग • कोडिंग एजेंट",
-        "brain_pc" to "AI दिमाग • DK कंप्यूटर", "voice" to "आवाज़", "face" to "चेहरा पहचान", "orb" to "ओर्ब और चेहरा",
+        "brain_pc" to "AI दिमाग • DK कंप्यूटर", "voice" to "आवाज़", "orb" to "ओर्ब और चेहरा",
         "access" to "Accessibility", "perms" to "परमिशन", "computer" to "DK कंप्यूटर", "coder" to "कोडिंग एजेंट",
         ACT_AUTO to "ऑटोनोमस मोड", ACT_TEMPLATES to "टेम्पलेट कमांड", ACT_CONNECTORS to "कनेक्टर", ACT_STORY to "स्टोरी राइटर एजेंट",
         "update" to "अपडेट", "debug" to "डिबग लॉग", "about" to "ऐप के बारे में"
@@ -37,7 +37,6 @@ object SettingsSearch {
         "brain_coder" to "coder coding कोडिंग key api",
         "brain_pc" to "computer कंप्यूटर key api",
         "voice" to "voice आवाज़ बोलना सुनना mic माइक tts whatsapp memory याददाश्त dost दोस्त",
-        "face" to "face चेहरा camera कैमरा",
         "orb" to "orb ओर्ब avatar अवतार चेहरा",
         "access" to "accessibility फ़ोन कंट्रोल control battery बैटरी call कॉल",
         "perms" to "permission परमिशन इजाज़त mic camera notification",
@@ -75,7 +74,6 @@ object SettingsSearch {
         E("voice", "ऑटोनोमस मोड", "DK खुद तय करे कि काम कोडिंग का है या फ़ोन के ऐप का, और खुद करे — शुरू में बंद"),
         E("voice", "Memory (याददाश्त)", "क्या-क्या सेव है देखें, कोई एक चीज़ या सारी मेमोरी मिटाएँ — सब सिर्फ़ इसी फ़ोन में"),
         E("voice", "सच्चा दोस्त", "DK करीबी दोस्त की तरह अपनेपन से बात करे, पिछली बातें याद रखे"),
-        E("face", "मेरा चेहरा", "DK का अपना असली फ़ेस मॉडल (SFace) — सब फ़ोन के अंदर, कैमरे की तस्वीर कहीं नहीं जाती"),
         E("orb", "अवतार चुनो", "होम स्क्रीन और आवाज़ स्क्रीन पर ORB की जगह क्या दिखे"),
         E("orb", "झलक", "ओर्ब पर टैप = चेहरा बनने वाला एनीमेशन"),
         E("orb", "ओर्ब का आकार", "सब छोटे-छोटे 3D डॉट से बने हैं — जो पसंद हो चुनें"),
