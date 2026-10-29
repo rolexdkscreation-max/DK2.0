@@ -339,7 +339,7 @@ class OrbView @JvmOverloads constructor(
         nM.setScale(R * 1.9f, R * 1.9f); nM.postTranslate(cx, cy); nHalo.shader.setLocalMatrix(nM)
         c.drawCircle(cx, cy, R * 1.9f, nHalo)
         val dpx = resources.displayMetrics.density
-        // 3. गोला (ऊपर-बाएँ से रोशनी)
+        // 3. गोला (ऊपर-बाएँ से रोशनी) - बाहरी रिंग या बॉर्डर पूरी तरह हटा दी गई है ताकि चालू होने पर भी न दिखे
         nM.setScale(R * 1.25f, R * 1.25f); nM.postTranslate(cx - R * 0.28f, cy - R * 0.32f); nBody.shader.setLocalMatrix(nM)
         c.drawCircle(cx, cy, R, nBody)
         // 4. चमकदार किनारा + ऊपर की चमक
