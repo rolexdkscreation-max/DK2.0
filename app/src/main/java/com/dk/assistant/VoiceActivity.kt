@@ -274,7 +274,7 @@ class VoiceActivity : AppCompatActivity() {
     }
 
     private fun toggleLive() {
-        if (DKState.live) DKAccessibilityService.instance?.stopLive("आवाज़ स्क्रीन का माइक बटन") else startLiveIfReady()
+        startLiveIfReady()
     }
 
     override fun onResume() { super.onResume(); applyAvatar(); DKState.listen(listener); LiveVision.listen(visionListener); render(); renderVision(); syncCamera() }
