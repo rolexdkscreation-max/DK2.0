@@ -11,7 +11,7 @@ object FriendStyle {
 
     /** बोलने का अंदाज़ - system instruction में (TALK_RULES के बाद, ताकि लहजा यही रहे; सच्चाई के नियम वही) */
     fun persona(female: Boolean, userName: String): String {
-        val boss = if (userName.isNotBlank()) "\"बॉस\" or \"$userName\"" else "\"बॉस\""
+        val boss = if (userName.isNotBlank()) "\"सर\" or \"$userName\"" else "\"सर\""
         val g = if (female) "a young woman (use feminine Hindi verbs: \"मैं कर रही हूँ\", \"मुझे पता थी\")" else "a young man (masculine Hindi verbs: \"मैं कर रहा हूँ\")"
         return """
 FRIEND MODE - who you are (this sets your TONE; the honesty, safety and tool rules above still apply fully):
@@ -58,10 +58,7 @@ FRIEND MODE - who you are (this sets your TONE; the honesty, safety and tool rul
         append("It is ${partOfDay(hour)} now (hour $hour) - greet accordingly (सुबह/दोपहर/शाम/रात). ")
         if (gap < 0) append("This is your very first conversation: introduce yourself warmly as their new friend and ask their name if you do not know it. ")
         else append("You last talked ${book.gapText(now)}. ")
-        when (sulk(gap)) {
-            2 -> append("They came back after ${gap / 86_400_000L} days: first act cutely sulky like a small child (रूठो) - e.g. \"पूरे ${gap / 86_400_000L} दिन बाद याद आई मेरी? जाओ, मैं बात नहीं करती... अच्छा ठीक है, बताओ कैसे हो?\" - then melt quickly. ")
-            1 -> append("They did not come for about a day: a light loving complaint is nice (\"कल कहाँ गायब थे?\"). ")
-        }
+        if (gap >= 0) append(ReturnGreet.note(gap))   // v4.3 (मालिक): मिनट/घंटे/दिन के हिसाब से "इतनी देर कहाँ थे?" - असली गिनती के साथ
         val fest = Festivals.today(today)
         val missed = if (book.lastSeen > 0) Festivals.missed(java.time.Instant.ofEpochMilli(book.lastSeen).atZone(java.time.ZoneId.systemDefault()).toLocalDate(), today) else null
         when {
@@ -71,7 +68,7 @@ FRIEND MODE - who you are (this sets your TONE; the honesty, safety and tool rul
         val t = book.threads.lastOrNull()
         if (t != null) append("Something unfinished they told you: \"${t.text}\" - if it fits, ask what happened with it (only this one thing). ")
         else book.sessions.lastOrNull { it.summary.isNotBlank() }?.let { append("Last time you talked about: ${it.summary.take(160)} - you may refer to it naturally. ") }
-        if (fest == null && missed == null && t == null && sulk(gap) == 0) append("Ask how they are and what they did today (e.g. \"कैसे हो बॉस? आज क्या-क्या किया?\"). ")
+        if (fest == null && missed == null && t == null && sulk(gap) == 0) append("Ask how they are and what they did today (e.g. \"कैसे हैं सर? आज क्या-क्या किया?\"). ")
         if (!local.isNullOrBlank()) {
             append("Fresh local info right now: $local. Mention ONE useful local thing casually, as if you noticed it yourself (e.g. rain -> \"छाता रख लेना!\"). ")
             if (searchLocalNews) append("You may do ONE quick Google Search for today's local news/events/festival crowd/traffic in that city and mention one notable thing (sad news gently, never as a joke). ")

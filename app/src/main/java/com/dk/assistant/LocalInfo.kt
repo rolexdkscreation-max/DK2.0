@@ -11,6 +11,7 @@ import android.location.LocationManager
 import android.os.Build
 import android.os.Looper
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
@@ -105,5 +106,55 @@ object LocalInfo {
         val text = listOfNotNull(name.ifBlank { null }, w).joinToString(" — ")
         DKLog.d("ताज़ा लोकेशन: ${name.ifBlank { "नाम नहीं मिला" }}" + (w?.let { " | $it" } ?: ""))
         return place to text.ifBlank { return null }
+    }
+
+    /** v4.3: फ़ोन की Location (GPS) सेटिंग चालू है? */
+    fun locationOn(c: Context): Boolean {
+        val lm = c.getSystemService(LocationManager::class.java) ?: return false
+        return try {
+            if (Build.VERSION.SDK_INT >= 28) lm.isLocationEnabled
+            else listOf(LocationManager.NETWORK_PROVIDER, LocationManager.GPS_PROVIDER).any { lm.isProviderEnabled(it) }
+        } catch (_: Exception) { false }
+    }
+
+    /** v4.3: पूरा पता (सड़क/इलाका/शहर) - फ़ोन का Geocoder, नहीं तो मुफ़्त OpenStreetMap (Nominatim) */
+    suspend fun address(c: Context, lat: Double, lon: Double): NearbyPlaces.Addr = withContext(Dispatchers.IO) {
+        try {
+            @Suppress("DEPRECATION")
+            val a = Geocoder(c, Locale("hi", "IN")).getFromLocation(lat, lon, 1)?.firstOrNull()
+            if (a != null) {
+                val ad = NearbyPlaces.Addr(a.thoroughfare ?: "", a.subLocality ?: "", a.locality ?: a.subAdminArea ?: "", a.adminArea ?: "")
+                if (ad.area.isNotBlank() || ad.street.isNotBlank()) return@withContext ad
+            }
+        } catch (_: Exception) {}
+        try {
+            http.newCall(Request.Builder().url(NearbyPlaces.nominatimUrl(lat, lon)).header("User-Agent", NearbyPlaces.UA).build()).execute().use { r ->
+                if (r.isSuccessful) NearbyPlaces.parseAddr(r.body?.string() ?: "") else NearbyPlaces.Addr("", "", "", "")
+            }
+        } catch (_: Exception) { NearbyPlaces.Addr("", "", "", "") }
+    }
+
+    /** v4.3: आसपास की जगहें (OpenStreetMap Overpass, ~600 m) */
+    suspend fun nearby(lat: Double, lon: Double): List<NearbyPlaces.Spot> = withContext(Dispatchers.IO) {
+        try {
+            val body = okhttp3.FormBody.Builder().add("data", NearbyPlaces.overpassQuery(lat, lon)).build()
+            http.newCall(Request.Builder().url(NearbyPlaces.OVERPASS).header("User-Agent", NearbyPlaces.UA).post(body).build()).execute().use { r ->
+                if (r.isSuccessful) NearbyPlaces.parseSpots(r.body?.string() ?: "", lat, lon) else emptyList()
+            }
+        } catch (e: Exception) { DKLog.d("आसपास की जगहें नहीं मिलीं: ${e.message}"); emptyList() }
+    }
+
+    /**
+     * v4.3 (मालिक): "मैं अभी कहाँ खड़ा हूँ?" - हमेशा ताज़ा लोकेशन (पुरानी सेव की कभी नहीं) -> पता + आसपास + मौसम (साथ-साथ).
+     * null = लोकेशन नहीं मिली (वजह [hasPermission]/[locationOn] से).
+     */
+    suspend fun where(c: Context): String? = kotlinx.coroutines.coroutineScope {
+        val l = fresh(c, 10_000) ?: return@coroutineScope null
+        val addr = async { address(c, l.latitude, l.longitude) }
+        val spots = async { nearby(l.latitude, l.longitude) }
+        val w = async { weather(l.latitude, l.longitude) }
+        val ad = addr.await(); val sp = spots.await()
+        DKLog.d("ताज़ा जगह: ${ad.text().ifBlank { "नाम नहीं मिला" }} | आसपास ${sp.size}")
+        NearbyPlaces.toolText(ad, sp, w.await())
     }
 }

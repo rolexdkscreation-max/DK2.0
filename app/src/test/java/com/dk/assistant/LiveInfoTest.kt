@@ -190,7 +190,7 @@ class LiveInfoTest {
         assertTrue(CalmPersona.VOICE_STYLE.contains("never robotic"))
         assertTrue(CalmPersona.block().contains("never like a robot"))
         val tts = src("voice/engine/GeminiTtsEngine.kt")
-        assertTrue(tts.contains("const val DEFAULT_VOICE = \"Achernar\""))
+        assertTrue(tts.contains("const val DEFAULT_VOICE = \"Sulafat\""))   // v4.3: मालिक ने आवाज़ बदलवाई (Achernar -> Sulafat)
         assertTrue(tts.contains("put(\"model\", it)"))
         assertTrue(src("GeminiLive.kt").contains("LiveNativeEngine.style(svc).ifBlank { CalmPersona.VOICE_STYLE }"))
         val w = worker()

@@ -29,15 +29,15 @@ object GeminiTtsEngine : VoiceEngine {
 
     /** v3.80: और कोमल, इंसान जैसी - रोबोट/उद्घोषक जैसी नहीं */
     const val DEFAULT_STYLE = "बहुत कोमल, मीठी और अपनेपन भरी आवाज़ में, जैसे कोई अपना प्यार से धीरे-धीरे बात कर रहा हो - स्वाभाविक साँस और ठहराव के साथ, रोबोट जैसा बिल्कुल नहीं:"
-    /** v3.80: डिफ़ॉल्ट सबसे नरम आवाज़ (पहले Kore - मज़बूत). जिसने खुद चुनी, उसकी वही रहती है */
-    const val DEFAULT_VOICE = "Achernar"
+    /** v4.3 (मालिक): डिफ़ॉल्ट Sulafat - सीधी Live आवाज़ जैसी ही (पहले Achernar) */
+    const val DEFAULT_VOICE = "Sulafat"
     /** v3.80: Worker (dk-brain) के मॉडल - "" = अपने-आप (Worker जो चले) */
     val MODELS = listOf("gemini-3.8-flash-tts", "gemini-3.8-flash-lite-tts", "gemini-3.1-flash-tts-preview")
     private val VOICES = listOf(
+        "Sulafat" to "Sulafat — गर्मजोशी भरी, कोमल (महिला)",
         "Achernar" to "Achernar — बहुत नरम, कोमल (महिला)",
         "Vindemiatrix" to "Vindemiatrix — कोमल, प्यारी (महिला)",
         "Despina" to "Despina — मुलायम, मीठी (महिला)",
-        "Sulafat" to "Sulafat — गर्मजोशी भरी (महिला)",
         "Kore" to "Kore — मज़बूत, साफ़ (महिला)",
         "Leda" to "Leda — जवान, ताज़ी (महिला)",
         "Aoede" to "Aoede — हल्की, खुली (महिला)",
@@ -52,9 +52,13 @@ object GeminiTtsEngine : VoiceEngine {
     private val calls = Collections.synchronizedSet(HashSet<Call>())
 
     override fun voices() = VOICES
+    /** v4.3: Live वाली ही आवाज़ (एक ही सेटिंग "gemini_voice") - दोनों जगह बिल्कुल एक जैसी */
     override fun voice(c: Context): String =
-        VoiceEngines.sp(c).getString("gemini_tts_voice", null)?.takeIf { v -> VOICES.any { it.first == v } } ?: DEFAULT_VOICE
-    override fun setVoice(c: Context, v: String) { VoiceEngines.sp(c).edit().putString("gemini_tts_voice", v).apply() }
+        com.dk.assistant.Prefs.geminiVoice(c).takeIf { v -> VOICES.any { it.first == v } } ?: DEFAULT_VOICE
+    override fun setVoice(c: Context, v: String) {
+        VoiceEngines.sp(c).edit().putString("gemini_tts_voice", v).apply()
+        com.dk.assistant.Prefs.edit(c) { putString("gemini_voice", v) }; VoiceEngines.liveChanged()
+    }
 
     fun style(c: Context): String = VoiceEngines.sp(c).getString("gemini_tts_style", null)?.takeIf { it.isNotBlank() } ?: DEFAULT_STYLE
 
@@ -84,7 +88,7 @@ object GeminiTtsEngine : VoiceEngine {
 
     override fun speak(c: Context, text: String, voice: String, out: PcmOut) {
         notReady(c)?.let { throw IOException(it) }
-        val body = JSONObject().put("text", text).put("voice", voice).put("style", com.dk.assistant.CalmPersona.ttsStyle(com.dk.assistant.avatar.MoodState.voiceStyle(style(c))))   // v3.71: भाव का निर्देश जुड़ता है
+        val body = JSONObject().put("text", text).put("voice", voice).put("style", com.dk.assistant.SpeakingStyle.tts(com.dk.assistant.CalmPersona.ttsStyle(com.dk.assistant.avatar.MoodState.voiceStyle(style(c)))))   // v4.3: मालिक का बोलने का तरीका   // v3.71: भाव का निर्देश जुड़ता है
             .apply { model(c).takeIf { it.isNotBlank() }?.let { put("model", it) } }.toString()     // v3.80: चुना मॉडल
         val req = Request.Builder().url(workerUrl(c) + "/tts")
             .post(body.toRequestBody("application/json; charset=utf-8".toMediaType()))

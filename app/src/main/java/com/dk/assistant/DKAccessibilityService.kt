@@ -180,10 +180,10 @@ class DKAccessibilityService : AccessibilityService() {
         if (!DKState.live && Prefs.micUserOff(this)) return
         if (GeminiLive.key(this).isBlank() || !Setup.hasMic(this)) return
         if (calls.ringing || calls.inCall) return
-        if (!FriendTalk.shouldGreet(this)) return
         // अभी-अभी बात चल रही थी (Live खुला रहा, सारांश अभी बना नहीं) - बीच में "नमस्ते" नहीं
         val lastMsg = DKState.messages.lastOrNull()?.time ?: 0L
-        if (System.currentTimeMillis() - lastMsg < 20 * 60_000L) return
+        // v4.3 (मालिक): पिछली बातचीत हो चुकी हो तो कुछ मिनट बाद भी "इतनी देर कहाँ थे?" (पहली बार = पुराना 20 मिनट नियम)
+        if (!FriendTalk.shouldGreetNow(this, lastMsg)) return
         greeting = true
         FriendTalk.markGreeted(this)
         scope.launch {

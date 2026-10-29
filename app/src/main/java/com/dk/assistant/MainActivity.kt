@@ -177,6 +177,14 @@ class MainActivity : AppCompatActivity() {
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         if (intent.getBooleanExtra("ask_mic", false)) checkMicPerm(force = true)
+        if (intent.getBooleanExtra("ask_location", false)) askLocationNow()
+    }
+
+    /** v4.3: user ने खुद जगह पूछी और इजाज़त नहीं - अभी माँगो (इजाज़त हो तो कभी नहीं) */
+    private fun askLocationNow() {
+        if (LocalInfo.hasPermission(this)) return
+        Prefs.edit(this) { putBoolean("loc_asked_v43", true) }
+        ActivityCompat.requestPermissions(this, arrayOf(Manifest.permission.ACCESS_COARSE_LOCATION, Manifest.permission.ACCESS_FINE_LOCATION), 13)
     }
 
     /**
@@ -186,8 +194,11 @@ class MainActivity : AppCompatActivity() {
     private var friendAskedThisOpen = false
     private fun friendOnOpen() {
         if (!Prefs.friendMode(this) || !Prefs.friendOpener(this) || !Setup.hasMic(this)) return
-        if (!LocalInfo.hasPermission(this) && !friendAskedThisOpen) {
+        // v4.3 (मालिक): लोकेशन की इजाज़त सिर्फ़ पहली बार अपने-आप माँगो - मिल गई या एक बार पूछ ली तो हर बार नहीं
+        val locAsked = Prefs.locAsked(this)
+        if (!LocalInfo.hasPermission(this) && !friendAskedThisOpen && !locAsked) {
             friendAskedThisOpen = true
+            Prefs.edit(this) { putBoolean("loc_asked_v43", true) }
             ActivityCompat.requestPermissions(this, arrayOf(Manifest.permission.ACCESS_COARSE_LOCATION, Manifest.permission.ACCESS_FINE_LOCATION), 11)
             return   // जवाब आने पर (onRequestPermissionsResult) बात शुरू
         }
@@ -243,6 +254,7 @@ class MainActivity : AppCompatActivity() {
         Setup.startKeepAlive(this)
         checkMicPerm(force = intent?.getBooleanExtra("ask_mic", false) == true)
         intent?.removeExtra("ask_mic")
+        if (intent?.getBooleanExtra("ask_location", false) == true) { intent?.removeExtra("ask_location"); askLocationNow() }
         friendOnOpen()
         render()
         checkUpdate()
