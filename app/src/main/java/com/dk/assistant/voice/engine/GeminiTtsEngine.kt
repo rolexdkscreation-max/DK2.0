@@ -25,7 +25,7 @@ object GeminiTtsEngine : VoiceEngine {
     override val title = "Gemini TTS"
     override val note = "भावना/स्टाइल का निर्देश मानता है • key Cloudflare Worker (dk-brain) में"
     override val split = true
-    override val defaultOn = true
+    override val defaultOn = false
 
     /** v3.80: और कोमल, इंसान जैसी - रोबोट/उद्घोषक जैसी नहीं */
     const val DEFAULT_STYLE = "बहुत कोमल, मीठी और अपनेपन भरी आवाज़ में, जैसे कोई अपना प्यार से धीरे-धीरे बात कर रहा हो - स्वाभाविक साँस और ठहराव के साथ, रोबोट जैसा बिल्कुल नहीं:"

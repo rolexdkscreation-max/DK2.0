@@ -7,6 +7,8 @@ import org.junit.Test
 
 /** v3.68: एक समय में एक इंजन; जोड़ (Joint); PCM सहायक */
 class VoiceEnginesTest {
+    private fun src(name: String): String = listOf(java.io.File("src/main/java/com/dk/assistant/$name"), java.io.File("app/src/main/java/com/dk/assistant/$name"))
+        .first { it.exists() }.readText()
     private val all = setOf(VoiceEngines.GEMINI_TTS, VoiceEngines.EDGE_TTS, VoiceEngines.LIVE_NATIVE)
 
     @Test fun switchingOnOneTurnsOthersOff() {
@@ -14,12 +16,35 @@ class VoiceEnginesTest {
         assertEquals(VoiceEngines.LIVE_NATIVE, VoiceEngines.toggle(VoiceEngines.EDGE_TTS, VoiceEngines.LIVE_NATIVE, true, available = all))
     }
 
-    @Test fun turningOffActiveFallsBackToGeminiTts() {
-        assertEquals(VoiceEngines.GEMINI_TTS, VoiceEngines.toggle(VoiceEngines.EDGE_TTS, VoiceEngines.EDGE_TTS, false, available = all))
-        // डिफ़ॉल्ट को बंद करो = वही रहता है (कोई इंजन न हो ऐसा नहीं)
-        assertEquals(VoiceEngines.GEMINI_TTS, VoiceEngines.toggle(VoiceEngines.GEMINI_TTS, VoiceEngines.GEMINI_TTS, false, available = all))
+    @Test fun turningOffActiveFallsBackToDkLive() {
+        // v3.5+: डिफ़ॉल्ट DK लाइव (Gemini Live सीधी आवाज़), दूसरे नंबर पर Gemini TTS
+        assertEquals(VoiceEngines.LIVE_NATIVE, VoiceEngines.toggle(VoiceEngines.EDGE_TTS, VoiceEngines.EDGE_TTS, false, available = all))
+        assertEquals(VoiceEngines.LIVE_NATIVE, VoiceEngines.toggle(VoiceEngines.GEMINI_TTS, VoiceEngines.GEMINI_TTS, false, available = all))
+        // डिफ़ॉल्ट (DK लाइव) को बंद करो = दूसरा नंबर Gemini TTS (कोई इंजन न हो ऐसा नहीं)
+        assertEquals(VoiceEngines.GEMINI_TTS, VoiceEngines.toggle(VoiceEngines.LIVE_NATIVE, VoiceEngines.LIVE_NATIVE, false, available = all))
         // किसी बंद वाले को बंद = कुछ नहीं बदलता
         assertEquals(VoiceEngines.EDGE_TTS, VoiceEngines.toggle(VoiceEngines.EDGE_TTS, VoiceEngines.LIVE_NATIVE, false, available = all))
+        // सिर्फ़ एक इंजन बचा = वही रहता है
+        assertEquals(VoiceEngines.LIVE_NATIVE, VoiceEngines.toggle(VoiceEngines.LIVE_NATIVE, VoiceEngines.LIVE_NATIVE, false, available = setOf(VoiceEngines.LIVE_NATIVE)))
+    }
+
+    @Test fun oldGeminiTtsDefaultMovesToDkLiveOnce() {
+        assertEquals(VoiceEngines.LIVE_NATIVE, VoiceEngines.migrated(VoiceEngines.GEMINI_TTS, done = false))
+        assertEquals(VoiceEngines.LIVE_NATIVE, VoiceEngines.migrated(null, done = false))
+        // Edge खुद चुना था = वैसा ही
+        assertEquals(VoiceEngines.EDGE_TTS, VoiceEngines.migrated(VoiceEngines.EDGE_TTS, done = false))
+        // एक बार हो गया = बाद में यूज़र ने Gemini TTS चुना तो वही रहे
+        assertEquals(VoiceEngines.GEMINI_TTS, VoiceEngines.migrated(VoiceEngines.GEMINI_TTS, done = true))
+    }
+
+    @Test fun dkLiveIsTheDefaultEngine() {
+        val native = src("voice/engine/LiveNativeEngine.kt"); val tts = src("voice/engine/GeminiTtsEngine.kt")
+        assertTrue(native.contains("override val defaultOn = true"))
+        assertTrue(tts.contains("override val defaultOn = false"))
+        assertTrue(native.contains("override val title = \"DK लाइव"))
+        // स्क्रीन पर क्रम: DK लाइव पहले, Gemini TTS दूसरे
+        val list = src("voice/engine/VoiceEngines.kt")
+        assertTrue(list.indexOf("engine.LiveNativeEngine\"") in 0 until list.indexOf("engine.GeminiTtsEngine\""))
     }
 
     @Test fun removedEngineCannotBeChosen() {

@@ -29,6 +29,21 @@ object LiveReport {
         return LiveConnect.storyStarted(t, m)
     }
 
+    /**
+     * v3.5+: DK लाइव ने कोडिंग / DK कंप्यूटर को काम दिया -> उसकी स्क्रीन खोलो (वहीं "🎤 ..." वाली लाइन और हर कदम दिखता है).
+     * कहानी और वेबसाइट अपनी स्क्रीन पहले से खुद खोलते हैं.
+     */
+    fun openAgent(c: Context, a: LiveAgentRoute.Agent) {
+        val cls = when (a) {
+            LiveAgentRoute.Agent.CODING -> CodingActivity::class.java
+            LiveAgentRoute.Agent.COMPUTER -> ComputerActivity::class.java
+            else -> return
+        }
+        try {
+            c.startActivity(Intent(c, cls).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_REORDER_TO_FRONT or Intent.FLAG_ACTIVITY_SINGLE_TOP))
+        } catch (e: Exception) { DKLog.d("${a.title} स्क्रीन नहीं खुली: ${e.message}") }
+    }
+
     fun teacher(c: Context, on: Boolean): String {
         if (on) { TeacherLink.openByVoice(c); return LiveConnect.teacherResult(true, false) }
         return LiveConnect.teacherResult(false, TeacherLink.closeByVoice())

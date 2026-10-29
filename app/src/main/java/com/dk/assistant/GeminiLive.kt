@@ -62,6 +62,20 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
         const val SERVER_SILENCE_MS = 800   // v3.46: 550 -> 800. छोटी बात पर फ़ोन खुद 550ms पर "खत्म" भेजता है; यह सिर्फ़ तब जब वाक्य अधूरा लगे ("और…", "तो…")
         /** Phone ka VAD: itni der chup = turant audioStreamEnd (server ka intezaar nahi) */
         const val CLIENT_END_MS = 550
+        /** v3.5+: HOLD - caption इतनी देर न बदले + आवाज़ शांत = यूज़र का अगला सवाल पूरा */
+        const val HOLD_END_MS = 1100L
+        const val HOLD_QUIET_MS = 700L
+        /** caption ने "पक्का" (final) text दे दिया हो तो इतना ही */
+        const val HOLD_FINAL_MS = 500L
+        /** आवाज़ गूँज से तेज़ लगती रहे तब भी caption इतनी देर न बदले = पूरा */
+        const val HOLD_STALE_MS = 2200L
+        const val HOLD_MAX_MS = 15_000L
+        /** कतार का सवाल इतनी देर में न भेजा जा सका = पुराना, छोड़ो */
+        const val ASK_KEEP_MS = 90_000L
+        /** एजेंट का tool इतनी देर में बुलाया जा चुका = उसी बात का, फ़ोन दोबारा नहीं चलाता */
+        const val AGENT_TOOL_RECENT_MS = 60_000L
+        const val HOLD_HINT = "सुन रही हूँ — यह जवाब पूरा होते ही आपके सवाल का जवाब दूँगी (रोकना हो तो \"रुको\" बोलें)"
+        const val ASK_HINT = "आपका अगला सवाल याद है — यह जवाब पूरा होते ही बताऊँगी"
         /** v3.88: बोलते-बोलते तैयार किया डेटा कितनी देर ताज़ा माना जाए */
         const val PREP_WEATHER_MS = 5 * 60_000L
         const val PREP_SEARCH_MS = 50_000L
@@ -278,6 +292,22 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
     private val bargeGate = BargeGate()
     /** Shak ke dauran ki awaaz (pakka hone par Gemini ko yahi pehle jaati hai) */
     private val bargeBuf = ArrayDeque<ByteArray>()
+    /**
+     * v3.5+: DK बोल रहा है और यूज़र ने "रुको" के अलावा कुछ पूछा = जवाब नहीं काटा, सवाल यहाँ याद.
+     * जवाब पूरा (आवाज़ बंद, कुछ बन नहीं रहा) होते ही वही सवाल Gemini को - उसका भी जवाब.
+     */
+    private val askQueue = AskQueue()
+    @Volatile private var askAt = 0L
+    /** HOLD (यूज़र का अगला सवाल सुन रहे) का हिसाब: caption का आख़िरी text, कब बदला, आख़िरी तेज़ आवाज़ */
+    @Volatile private var holdCap = ""
+    @Volatile private var holdCapAt = 0L
+    @Volatile private var holdLoudAt = 0L
+    @Volatile private var holdFinal = false
+    /** आख़िरी बार DK की आवाज़ बज रही थी (कतार वाला सवाल थोड़ी चुप्पी के बाद ही) */
+    @Volatile private var lastPlayingAt = 0L
+    /** v3.5+: एजेंट (कहानी/कोडिंग/कंप्यूटर/वेबसाइट) का tool आख़िरी बार कब बुलाया - "हाँ कर दिया" पर tool न बुलाया तो फ़ोन खुद */
+    @Volatile private var agentToolAt = 0L
+    @Volatile private var agentFixAt = 0L
     @Volatile private var falseAlarms = 0
     @Volatile private var realBarges = 0
     @Volatile private var gatedChunks = 0L
@@ -695,6 +725,34 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
         }
     }
 
+    /**
+     * v3.5+: बारी ख़त्म - यूज़र ने किसी एजेंट (कहानी / कोडिंग / DK कंप्यूटर / वेबसाइट) को काम कहा, DK ने "हाँ, कर रही हूँ /
+     * हो गया" कहा, पर उसका tool नहीं बुलाया? तो फ़ोन खुद वही tool चलाए - एजेंट की स्क्रीन खुले और काम वहाँ दिखे,
+     * फिर Gemini को असली नतीजा (वह सच बोले). true = यहीं संभाल लिया (promiseCheck नहीं).
+     */
+    private fun agentCheck(): Boolean {
+        val now = System.currentTimeMillis()
+        val (said, heard) = synchronized(turnLock) { replyText.toString().trim() to userText.toString().trim() }
+        val user = (if (!userDone) turnUser.trim() else "").ifBlank { heard }.ifBlank { caption?.text().orEmpty().trim() }
+        val recent = now - agentToolAt < AGENT_TOOL_RECENT_MS || toolJobs.isNotEmpty()
+        val agent = LiveAgentRoute.missed(user, said, recent) ?: return false
+        if (now - agentFixAt < 15_000) return false
+        agentFixAt = now; agentToolAt = now
+        log("एजेंट-जाँच: Gemini ने \"${said.take(50)}\" कहा पर ${agent.tool} नहीं बुलाया - फ़ोन खुद ${agent.title} को काम दे रहा है")
+        DKState.hint("${agent.title} को काम दे रही हूँ…")
+        svc.scope.launch {
+            val a = JSONObject(); LiveAgentRoute.args(agent, user).forEach { (k, v) -> a.put(k, v) }
+            val r = try { agentTool(agent.tool, a) } catch (e: CancellationException) { throw e } catch (e: Exception) {
+                log("एजेंट-जाँच: ${agent.tool} fail: ${e.message}"); "Tool failed (${e.javaClass.simpleName}) - tell the user it could not be done."
+            }
+            log("एजेंट-जाँच: ${agent.tool} -> ${r.take(80)}")
+            DKState.hint("")
+            if (DoneGate.notDoneYet(r)) actPending = true
+            visionNote(LiveAgentRoute.note(agent, r), evidence = true)
+        }
+        return true
+    }
+
     /** स्क्रीन/कैमरा चालू-बंद हुआ -> Gemini को बताओ (tool का जवाब बाकी हो तो उसके बाद) */
     fun visionNote(t: String, evidence: Boolean = true) {
         svc.scope.launch {
@@ -806,6 +864,7 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
         caption = LiveCaption(capKey, onText = { t, fin -> onCaption(t, fin) }, onLate = { t -> onLateCaption(t) },
             isNewSpeech = { barging || System.currentTimeMillis() < bargeUntil }).also { it.start() }
         turnDet.reset(); bargeDet.reset(); bargeGate.reset(); synchronized(bargeBuf) { bargeBuf.clear() }
+        askQueue.clear(); holdCap = ""; holdCapAt = 0L; holdLoudAt = 0L; holdFinal = false
         guardHeld = false; guardOk = false; guardPass = false; guardEndAt = 0L; guardBuf.clear(); guardOn = false
         trace.reset(); dropOld = false; suspectAt = 0L; replyWatch.reset()
         timeline.reset(); liveGate.reset(); capGate.reset(); resendText = null; lastServerAt = 0L
@@ -1583,7 +1642,7 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
             com.dk.assistant.avatar.MoodState.replyDone()         // v3.71: बोलना ख़त्म होने के कुछ सेकंड बाद चेहरा सामान्य
             if (connSplit && !wasDropping) { pumpSplit(); if (pipelineLazy.isInitialized()) pipeline.endTurn() }   // v3.68: बचा text आख़िरी टुकड़ा
             if (timeline.active) { timeline.done(System.currentTimeMillis()); log("turn पूरा: ${timeline.summary()}") }
-            if (!wasDropping) promiseCheck()
+            if (!wasDropping && !agentCheck()) promiseCheck()
             finishTurn()
             if (wasDropping) commitPending(false)   // toka hua jawab: sirf jitna bola utna hi chat me
             // jawab poora bana; jab DK ki awaaz bajna band ho uske ~1.2s baad peeche ki awaaz dheere-dheere wapas
@@ -1692,15 +1751,33 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
         // (caption ko DK bolte samay sirf phone ki pakdi user-awaaz jaati hai). Jawab abhi ban raha ho to
         // yeh pichhli baat ka der se aaya text ho sakta hai - tab phone/server ka barge-in hi rokega
         suspectAt = 0L
-        if (bargeGate.state == BargeGate.State.TENTATIVE) {
-            val dkNow = synchronized(turnLock) { replyText.toString() + " " + (pendingReply ?: "") }
-            // sendLock: CONFIRMED hote hi mic thread naya tukda bhejta hai - pehle shak ke samay ki (purani) awaaz jaye
-            val ok = synchronized(sendLock) {
-                // DK ki apni awaaz ya pichhli baat ka der se aaya text = user ka naya bolna nahi
-                if (BargeGate.isEcho(t, turnUser) || !bargeGate.onText(t, dkNow)) false
-                else { confirmBarge("caption: ${t.take(30)}"); true }
+        if (bargeGate.state == BargeGate.State.HOLD) {
+            // v3.5+: यूज़र का अगला सवाल सुन रहे (जवाब चल रहा). "रुको" आया = अभी रोको; बाकी = सुनते रहो, जवाब के बाद
+            val now = System.currentTimeMillis()
+            if (t != holdCap) { holdCap = t; holdCapAt = now }
+            if (final) holdFinal = true
+            if (!LiveStop.isStop(t)) { DKState.hint(HOLD_HINT); return }
+            askQueue.clear()
+            synchronized(sendLock) { bargeGate.confirm(); confirmBarge("रुको: ${t.take(30)}") }
+        } else if (bargeGate.state == BargeGate.State.TENTATIVE) {
+            val dkNow = dkHeardNow()
+            // DK ki apni awaaz ya pichhli baat ka der se aaya text = user ka naya bolna nahi
+            // (v3.5+: पूरे शब्द मिलाकर, आम शब्द छोड़कर - पहले "है/क्या" से असली सवाल भी गूँज मान लिया जाता था)
+            val real = BargeGate.realWords(t) && !BargeGate.isEcho(t, dkNow) && !BargeGate.isRepeat(t, turnUser)
+            if (!real) { log("caption: \"${t.take(40)}\" - पक्का नहीं, जवाब जारी"); return }
+            if (captionOn() && !LiveStop.isStop(t)) {
+                // अगला सवाल: जवाब मत काटो (Gemini को आवाज़ नहीं - वरना सर्वर पुराना जवाब रोक देता), caption सुनता रहे
+                val now = System.currentTimeMillis()
+                synchronized(sendLock) { bargeGate.hold(now) }
+                holdCap = t; holdCapAt = now; holdLoudAt = now; holdFinal = final
+                track?.let { try { it.setVolume(1f) } catch (_: Exception) {} }
+                log("यूज़र ने बीच में कुछ पूछा (\"${t.take(30)}\") - जवाब नहीं रोका, सवाल सुन रहा हूँ")
+                DKState.hint(HOLD_HINT)
+                return
             }
-            if (!ok) { log("caption: \"${t.take(40)}\" - पक्का नहीं, जवाब जारी"); return }
+            if (LiveStop.isStop(t)) askQueue.clear()
+            // sendLock: CONFIRMED hote hi mic thread naya tukda bhejta hai - pehle shak ke samay ki (purani) awaaz jaye
+            synchronized(sendLock) { bargeGate.confirm(); confirmBarge("caption: ${t.take(30)}") }
         } else if (isPlaying()) return        // DK bol raha hai aur shak nahi = shor/goonj ka text, dikhao bhi mat
         DKState.user("$t…")
         prefetch(t, final)        // v3.88: यूज़र बोल ही रहा है - ज़रूरी डेटा पहले से तैयार (गलत अंदाज़ा = चुपचाप बेकार)
@@ -1895,6 +1972,57 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
     /** DK AI: वही tool call id दोबारा आए तो काम दोबारा नहीं (दो बार call/मैसेज न जाए) */
     private val toolDedup = ToolCallDeduplicator()
 
+    /**
+     * v3.5+: एजेंट वाले tool (कहानी / वेबसाइट / DK कंप्यूटर / कोडिंग) एक जगह - Gemini के tool call से भी और
+     * [agentCheck] से भी (Gemini ने "हाँ कर दिया" कहा पर tool नहीं बुलाया). काम सच में सौंपा गया = उस एजेंट की स्क्रीन
+     * खुलती है और वहाँ "🎤 DK लाइव से मिला काम" दिखता है.
+     */
+    private fun agentTool(name: String, args: JSONObject): String {
+        val agent = LiveAgentRoute.byTool(name) ?: return "unknown function"
+        var handoff = true          // false = सिर्फ़ हाँ/नहीं/इजाज़त का जवाब (नया काम नहीं)
+        val task = when (name) { "story_task" -> args.optString("topic"); "build_website" -> args.optString("prompt"); else -> args.optString("task") }.trim()
+        val result = when (name) {
+            "story_task" -> LiveReport.startStory(svc, args.optString("topic"), args.optInt("minutes", 0))
+            "build_website" -> com.dk.assistant.forge.ForgeLauncher.fromVoice(svc, args.optString("prompt"))
+            "computer_task" -> {
+                val t = args.optString("task").trim()
+                val yn = if (ComputerSession.ask != null) ComputerVoice.yesNo(t) else null
+                when {
+                    yn != null -> { handoff = false; ComputerSession.answer(yn); if (yn) "Permission given - DK Computer continues." else "Permission refused - DK Computer will not do it." }
+                    !Prefs.computerOn(svc) -> "DK Computer is OFF in settings - tell the user to turn it on (सेटिंग्स → DK कंप्यूटर)."
+                    t.length < 3 -> "Ask the user what DK Computer should do."
+                    else -> {
+                        val wasBusy = ComputerSession.busy
+                        ComputerSession.start(svc, t, voice = true)?.let { "Could not start: $it" }
+                            ?: if (wasBusy) "Queued - DK Computer will start it after the current task."
+                            else "Started. DK Computer shows each step on its screen and will notify when done (result also in the notification)."
+                    }
+                }
+            }
+            "coding_task" -> {
+                val t = args.optString("task")
+                // pehle setting jaancho - band ho to merge/sujhav ka faisla bhi nahi (AgentRunner jaisa)
+                when {
+                    !Prefs.coderOn(svc) -> "Coding agent is OFF in settings - tell the user to turn it on (सेटिंग्स → कोडिंग एजेंट)."
+                    else -> CoderTeam.voiceDecision(svc, t)?.also { handoff = false } ?: when {
+                        // 7-एजेंट चालू = पुराना टीम switch ज़रूरी नहीं
+                        !Prefs.coderSeven(svc) && !Prefs.coderTeam(svc) -> "Coding team is OFF in settings (सेटिंग्स → कोडिंग एजेंट → टीम)."
+                        else -> CoderTeam.start(svc, t, fromVoice = true)?.let { "Could not start: $it" }
+                            ?: if (Prefs.coderSeven(svc)) "Started (11-agent team). FIRST its prompt engineer shows the user what it understood and WAITS: when the user confirms (हाँ / yes), call this tool again with task='हाँ'; if the user corrects or answers its question, call this tool again with exactly that answer; 'रद्द' cancels. It is NOT done yet - real progress: call task_status. You will get a SYSTEM NOTE when it really finishes; never say it is done before that."
+                            else "Started. Builder writes, Reviewer checks, Coordinator pushes and will notify when done. It is NOT done yet - real progress: call task_status."
+                    }
+                }
+            }
+            else -> "unknown function"
+        }
+        if (handoff && LiveAgentRoute.started(result)) {
+            AgentHandoff.mark(agent, task, result)
+            if (agent == LiveAgentRoute.Agent.CODING || agent == LiveAgentRoute.Agent.COMPUTER) LiveReport.openAgent(svc, agent)
+            log("एजेंट को काम दिया: ${agent.title} - स्क्रीन पर दिख रहा है")
+        }
+        return result
+    }
+
     private fun runTools(calls: JSONArray) {
         for (i in 0 until calls.length()) {
             val fc = calls.optJSONObject(i) ?: continue
@@ -1903,6 +2031,7 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
             // DK AI Part 12: caption / संदेश / कॉन्टैक्ट log में नहीं
             log("tool: $name " + if (name == "social_media_task" || name == "whatsapp_task") args.optString("action") else if (name == "connector_task") args.optString("connector") + "." + args.optString("action") else args.toString().take(80))
             val tStart = System.currentTimeMillis()
+            if (name in LiveAgentRoute.TOOLS) agentToolAt = tStart      // v3.5+: इस बात पर एजेंट का tool सच में बुलाया
             // v3.39: जिस जुड़ाव पर सवाल आया, जवाब सिर्फ़ उसी पर. बीच में दोबारा जुड़ा = पुराना id नए सत्र को अनजान -> 1007
             val sock = ws
             // LAZY: pehle map me darj, phir shuru - warna tez tool (remember_fact) map me aane se pehle hi remove() kar deta tha
@@ -1918,7 +2047,7 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
                     "camera" -> LiveVision.setCamera(svc, args.optBoolean("on", true), args.optString("facing"))
                     "dk_features" -> LiveConnect.features(com.dk.assistant.auto.AutoPrefs.on(svc),
                         com.dk.assistant.auto.AutoPrefs.enabledKinds(svc).map { it.title }, Prefs.oneKeyOn(svc) && Prefs.oneKey(svc).isNotBlank())
-                    "story_task" -> LiveReport.startStory(svc, args.optString("topic"), args.optInt("minutes", 0))
+                    "story_task", "build_website", "computer_task", "coding_task" -> agentTool(name, args)
                     "teacher_mode" -> LiveReport.teacher(svc, args.optBoolean("on", true))
                     "remember_fact" -> if (Memory.addFact(svc, args.optString("fact"))) "saved" else "NOT saved: private info (passwords, PIN, OTP, bank/card/Aadhaar numbers) is never stored. If the user asked you to remember it, tell them gently you do not save such private details." 
                     "recall_conversation" -> {
@@ -1945,36 +2074,6 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
                         else -> com.dk.assistant.agent.android.SocialAgent.start(svc, args, com.dk.assistant.agent.social.Platform.WHATSAPP)
                     }
                     "social_media_task_control" -> com.dk.assistant.agent.android.SocialAgent.control(args)
-                    "build_website" -> com.dk.assistant.forge.ForgeLauncher.fromVoice(svc, args.optString("prompt"))
-                    "computer_task" -> {
-                        val t = args.optString("task").trim()
-                        val yn = if (ComputerSession.ask != null) ComputerVoice.yesNo(t) else null
-                        when {
-                            yn != null -> { ComputerSession.answer(yn); if (yn) "Permission given - DK Computer continues." else "Permission refused - DK Computer will not do it." }
-                            !Prefs.computerOn(svc) -> "DK Computer is OFF in settings - tell the user to turn it on (सेटिंग्स → DK कंप्यूटर)."
-                            t.length < 3 -> "Ask the user what DK Computer should do."
-                            else -> {
-                                val wasBusy = ComputerSession.busy
-                                ComputerSession.start(svc, t, voice = true)?.let { "Could not start: $it" }
-                                    ?: if (wasBusy) "Queued - DK Computer will start it after the current task."
-                                    else "Started. DK Computer shows each step on its screen and will notify when done (result also in the notification)."
-                            }
-                        }
-                    }
-                    "coding_task" -> {
-                        val t = args.optString("task")
-                        // pehle setting jaancho - band ho to merge/sujhav ka faisla bhi nahi (AgentRunner jaisa)
-                        when {
-                            !Prefs.coderOn(svc) -> "Coding agent is OFF in settings - tell the user to turn it on (सेटिंग्स → कोडिंग एजेंट)."
-                            else -> CoderTeam.voiceDecision(svc, t) ?: when {
-                                // 7-एजेंट चालू = पुराना टीम switch ज़रूरी नहीं
-                                !Prefs.coderSeven(svc) && !Prefs.coderTeam(svc) -> "Coding team is OFF in settings (सेटिंग्स → कोडिंग एजेंट → टीम)."
-                                else -> CoderTeam.start(svc, t, fromVoice = true)?.let { "Could not start: $it" }
-                                    ?: if (Prefs.coderSeven(svc)) "Started (11-agent team). FIRST its prompt engineer shows the user what it understood and WAITS: when the user confirms (हाँ / yes), call this tool again with task='हाँ'; if the user corrects or answers its question, call this tool again with exactly that answer; 'रद्द' cancels. It is NOT done yet - real progress: call task_status. You will get a SYSTEM NOTE when it really finishes; never say it is done before that."
-                                    else "Started. Builder writes, Reviewer checks, Coordinator pushes and will notify when done. It is NOT done yet - real progress: call task_status."
-                            }
-                        }
-                    }
                     "web_search" -> webSearchTool(args.optString("query"))
                     "current_time" -> { NowClock.syncAsync(); NowClock.toolAnswer() }
                     "deep_think" -> {
@@ -2694,6 +2793,49 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
         }
     }
 
+    /** DK ने अभी तक जो बोला/बोल रहा है (गूँज की जाँच के लिए) - बारी ख़त्म हो चुकी हो तब भी पिछला जवाब */
+    private fun dkHeardNow(): String = synchronized(turnLock) { replyText.toString() + " " + (pendingReply ?: "") } + " " + lastDkLine
+
+    /**
+     * v3.5+: HOLD ख़त्म - यूज़र ने अपना अगला सवाल पूरा बोल दिया. गूँज/शोर नहीं तो कतार में; जवाब पूरा होते ही [flushAsks].
+     * Gemini को अभी कुछ नहीं गया था, इसलिए DK का चलता जवाब पूरा बजता है.
+     */
+    private fun finishHold(now: Long) {
+        val t = (caption?.text().orEmpty().ifBlank { holdCap }).trim().trimEnd('…').trim()
+        caption?.discard()
+        synchronized(bargeBuf) { bargeBuf.clear() }
+        synchronized(sendLock) { bargeGate.reset() }
+        barging = false; bargeDet.reset(); holdCap = ""; holdCapAt = 0L; holdLoudAt = 0L; holdFinal = false
+        track?.let { try { it.setVolume(1f) } catch (_: Exception) {} }
+        when {
+            !BargeGate.realWords(t) || BargeGate.isEcho(t, dkHeardNow()) || BargeGate.isRepeat(t, turnUser) -> {
+                log("बीच की आवाज़ (\"${t.take(30)}\") DK की गूँज / पुरानी बात थी - छोड़ी"); DKState.hint("")
+            }
+            LiveStop.isStop(t) -> { askQueue.clear(); DKState.hint(""); bargeIn("रुको: ${t.take(30)}") }
+            askQueue.add(t) -> {
+                askAt = now
+                log("बीच में पूछा सवाल याद रखा (\"${t.take(40)}\") - जवाब पूरा होते ही बताऊँगा (कतार: ${askQueue.size()})")
+                DKState.hint(ASK_HINT)
+            }
+        }
+    }
+
+    /** जवाब पूरा हुआ - बीच में पूछा सवाल अब Gemini को (यूज़र की नई बारी की तरह, "आप:" लाइन भी) */
+    private fun flushAsks(now: Long) {
+        val t = askQueue.drain() ?: return
+        try {
+            startTurn(); turnUser = t; userDone = false
+            caption?.discard()
+            DKState.hint(""); DKState.user("$t…")
+            setMode(Mode.THINKING)
+            eosAt = now; firstAudioAt = 0; trace.reset(); trace.speechEndAt = now; trace.endpointAt = now
+            beginTimeline(now, now, "बीच में पूछा सवाल (जवाब के बाद)")
+            ws?.tx(JSONObject().put("realtimeInput", JSONObject().put("text", t)).toString())
+            lastAct = now
+            log("बीच में पूछा सवाल अब भेजा: ${t.take(60)}")
+        } catch (_: Exception) {}
+    }
+
     /** Dheere bolne par bhi saaf awaaz Gemini tak (v3.7) */
     private val boost = MicBoost()
 
@@ -2781,7 +2923,9 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
                 }
                 if (sum == 0.0) { if (++zeroRun == 75) log("माइक से 3 सेकंड से बिल्कुल आवाज़ नहीं (कोई दूसरा ऐप माइक ले रहा है?)") } else zeroRun = 0
                 val chunk = bytes.copyOf()
-                if (playing) {
+                if (playing) lastPlayingAt = now
+                // v3.5+: HOLD (यूज़र का अगला सवाल सुन रहे) - DK का जवाब ख़त्म हो जाए तब भी सवाल पूरा होने तक इसी रास्ते
+                if (playing || bargeGate.state == BargeGate.State.HOLD) {
                     // ---- DK bol raha hai: mic band NAHI, har 40ms suno. Par Gemini ko sirf PAKKE user shabd.
                     quietSince = now
                     turnDet.reset()
@@ -2819,6 +2963,18 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
                             } else if (bargeGate.state == BargeGate.State.CONFIRMED) confirmBarge("लगातार आवाज़ (caption बंद)")
                         }
                         BargeGate.State.CONFIRMED -> { sendAudio(chunk); capSend(chunk) }
+                        BargeGate.State.HOLD -> {
+                            // सिर्फ़ caption सुने (Gemini को खामोशी - जवाब चलता रहे). "रुको" सुनते ही onCaption रोकेगा
+                            synchronized(bargeBuf) { bargeBuf.addLast(chunk); while (bargeBuf.size > 50) bargeBuf.removeFirst() }
+                            capSend(chunk)
+                            sendAudio(zeros, silent = true); gatedChunks++
+                            if (rms > maxOf(bargeDet.ambient * 2.5, bargeDet.echoLevel() * 1.5, 800.0)) holdLoudAt = now
+                            val capQuiet = now - holdCapAt; val loudQuiet = now - holdLoudAt
+                            val done = (holdFinal && capQuiet >= HOLD_FINAL_MS && loudQuiet >= HOLD_FINAL_MS) ||
+                                (capQuiet >= HOLD_END_MS && loudQuiet >= HOLD_QUIET_MS) || capQuiet >= HOLD_STALE_MS ||
+                                now - bargeGate.since >= HOLD_MAX_MS
+                            if (done) finishHold(now)
+                        }
                     }
                 } else {
                     // ---- DK chup: phone par hi "bolna shuru / khatam" + SHOR-GATE:
@@ -2827,6 +2983,12 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
                     if (barging) bargeUntil = now + 1500
                     barging = false; bargeDet.reset(); bargeDet.ambient = 0.0
                     if (bargeGate.state != BargeGate.State.IDLE) { bargeGate.reset(); track?.let { try { it.setVolume(1f) } catch (_: Exception) {} } }
+                    // v3.5+: जवाब पूरा, DK चुप -> बीच में पूछा सवाल अब (उसका भी जवाब)
+                    if (!askQueue.isEmpty()) {
+                        if (now - askAt > ASK_KEEP_MS) { askQueue.clear(); log("बीच में पूछा सवाल बहुत पुराना हो गया - छोड़ा") }
+                        else if (ready && ws != null && !turnActive && !muteTurn && AskQueue.readyToSend(isPlaying(), generating,
+                                toolJobs.isNotEmpty(), turnDet.inSpeech, false, now - lastPlayingAt)) flushAsks(now)
+                    }
                     if (DKState.mode == Mode.LISTENING) DKState.level = (rms / 3500.0).toFloat().coerceIn(0f, 1f)
                     if (now - ownerCfgAt > 3_000) refreshOwnerCfg(now)
                     var ev = turnDet.feed(rms, now)

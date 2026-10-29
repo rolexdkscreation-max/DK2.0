@@ -20,16 +20,16 @@ import java.util.concurrent.TimeUnit
 /**
  * इंजन 3: "Gemini Live सीधी आवाज़" (native audio) - Gemini Live खुद लिखे और खुद बोले, बँटवारे के बिना.
  * यह DK का पुराना (v3.67 तक का) रास्ता है - चुनने पर GeminiLive वैसा ही चलता है जैसा पहले.
- * डिफ़ॉल्ट बंद. आवाज़ वही "gemini_voice" (पुरानी सेटिंग) जो Live पहले से इस्तेमाल करता है.
+ * v3.5+: यही डिफ़ॉल्ट ("DK लाइव") - सबसे तेज़, Gemini TTS दूसरे नंबर पर. आवाज़ वही "gemini_voice" (पुरानी सेटिंग) जो Live पहले से इस्तेमाल करता है.
  *
  * [speak] सिर्फ़ ▶ सुनो (और फ़ॉलबैक जाँच) के लिए: एक छोटा अलग Live सत्र जो दिया वाक्य ज्यों-का-त्यों बोलता है.
  */
 object LiveNativeEngine : VoiceEngine {
     override val id = VoiceEngines.LIVE_NATIVE
-    override val title = "Gemini Live सीधी आवाज़"
+    override val title = "DK लाइव (सीधी आवाज़ — सबसे तेज़)"
     override val note = "Live खुद लिखता और खुद बोलता है (native audio) • नीचे का भावना/स्टाइल Live के मुख्य निर्देश में जुड़ता है"
     override val split = false
-    override val defaultOn = false
+    override val defaultOn = true
 
     private const val URL = "wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent"
     private val http = OkHttpClient.Builder().connectTimeout(8, TimeUnit.SECONDS).readTimeout(0, TimeUnit.MILLISECONDS).build()

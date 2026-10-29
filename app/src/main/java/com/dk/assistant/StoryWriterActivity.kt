@@ -42,6 +42,9 @@ class StoryWriterActivity : AppCompatActivity() {
     private lateinit var status: LinearLayout
     private lateinit var progress: ProgressBar
     private lateinit var txtStatus: TextView
+    /** v3.5+: "🎤 DK लाइव से मिला काम" पट्टी */
+    private lateinit var liveCard: LinearLayout
+    private lateinit var liveNote: TextView
     private lateinit var btnRetry: Button
     private lateinit var titleView: TextView
     private lateinit var partsBox: LinearLayout
@@ -87,6 +90,11 @@ class StoryWriterActivity : AppCompatActivity() {
         val body = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(0, (8 * dp).toInt(), 0, (16 * dp).toInt()) }
         scroll.addView(body)
         col.addView(scroll, LinearLayout.LayoutParams(-1, 0, 1f).apply { topMargin = (10 * dp).toInt() })
+
+        // v3.5+: DK लाइव ने काम दिया हो तो सबसे ऊपर साफ़ दिखे (क्या कहा गया, कब)
+        liveCard = card(body).apply { visibility = View.GONE }
+        liveNote = TextView(this).apply { textSize = 14f; setTextColor(0xFF9FD3FF.toInt()); setLineSpacing(0f, 1.2f) }
+        liveCard.addView(liveNote)
 
         // vishay + lambai + button
         val form = card(body)
@@ -195,7 +203,7 @@ class StoryWriterActivity : AppCompatActivity() {
             toast("पहले सेटिंग्स → AI दिमाग → DK चैट में AI key डालें")
             startActivity(Intent(this, SettingsActivity::class.java).putExtra("section", "brain")); return
         }
-        val go = { shown = 0; partsBox.removeAllViews(); s.start(this, edtTopic.text.toString(), minutes) }
+        val go = { shown = 0; partsBox.removeAllViews(); AgentHandoff.clear(LiveAgentRoute.Agent.STORY); s.start(this, edtTopic.text.toString(), minutes) }
         if (s.parts.isNotEmpty()) {
             UiDialog(this).setTitle("नई कहानी लिखें?")
                 .setMessage("अभी वाली कहानी स्क्रीन से हट जाएगी। चाहिए तो पहले 'सेव करें' दबाएँ।")
@@ -207,6 +215,14 @@ class StoryWriterActivity : AppCompatActivity() {
         val s = StorySession
         sub.text = StoryAi.fromPrefs(this)?.let { "सिर्फ़ text • ${it.label}" } ?: "AI key नहीं — सेटिंग्स → AI दिमाग"
         btnWrite.text = if (s.busy) "रोकें" else "कहानी लिखो"
+        // v3.5+: DK लाइव से शुरू हुई कहानी - स्क्रीन पहले से खुली हो तब भी विषय और लंबाई वही दिखे
+        if (s.busy) {
+            if (edtTopic.text.toString() != s.topic) edtTopic.setText(s.topic)
+            if (minutes != s.minutes) { minutes = s.minutes; paintLengths() }
+        }
+        val banner = AgentHandoff.banner(LiveAgentRoute.Agent.STORY)
+        liveCard.visibility = if (banner != null) View.VISIBLE else View.GONE
+        if (banner != null) liveNote.text = banner + if (s.busy) "\nस्टोरी राइटर लिख रहा है ↓" else if (s.done) "\n✓ लिख दी" else ""
         edtTopic.isEnabled = !s.busy
         for (i in 0 until lengthRow.childCount) lengthRow.getChildAt(i).isEnabled = !s.busy
 
