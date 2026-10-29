@@ -389,6 +389,8 @@ class CoderAi(val provider: Provider, private val key: String, val model: String
 class CodingAgent(private val gh: GitHub, var repo: String, var branch: String, private val ai: CoderAi) {
     /** ऑटोनोमस मोड की key वाला agent (अलग key = नया agent बने) */
     val aiNote get() = ai.autoTag
+    /** v4.4: यह मॉडल एक बार में कितना पढ़ सके (2 लाख / 5 लाख) */
+    private val budget: Int get() = ai.budget
 
     /** User ki chuni hui (main) branch. Surakshit PR mode me kaam hamesha alag feature branch par, PR isi me */
     val baseBranch = branch
