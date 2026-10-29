@@ -314,6 +314,14 @@ class GitHub(private val token: String) {
         iso(JSONObject(get("/repos/$repo/commits/$sha")).optJSONObject("commit")?.optJSONObject("committer")?.optString("date").orEmpty())
 
     /** head branch, base से कितने commit आगे है */
+    /** v4.4: base...head में बदली हर फ़ाइल (status removed/modified/added, +/- लाइन) - डिबगर को पूरे काम का हिसाब */
+    fun compareFiles(repo: String, base: String, head: String): List<CodeGuard.Change> {
+        val a = JSONObject(get("/repos/$repo/compare/${enc(base)}...${enc(head)}")).optJSONArray("files") ?: return emptyList()
+        return (0 until a.length()).map { a.getJSONObject(it) }.map { o ->
+            CodeGuard.Change(o.optString("filename"), o.optString("status"), o.optInt("additions"), o.optInt("deletions"))
+        }
+    }
+
     fun aheadBy(repo: String, base: String, head: String): Int =
         JSONObject(get("/repos/$repo/compare/${enc(base)}...${enc(head)}")).optInt("ahead_by", 0)
 

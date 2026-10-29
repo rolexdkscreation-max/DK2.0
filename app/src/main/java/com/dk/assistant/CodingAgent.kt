@@ -389,6 +389,8 @@ class CoderAi(val provider: Provider, private val key: String, val model: String
 class CodingAgent(private val gh: GitHub, var repo: String, var branch: String, private val ai: CoderAi) {
     /** ऑटोनोमस मोड की key वाला agent (अलग key = नया agent बने) */
     val aiNote get() = ai.autoTag
+    /** v4.4: यह मॉडल एक बार में कितना पढ़ सके (2 लाख / 5 लाख) */
+    private val budget: Int get() = ai.budget
 
     /** User ki chuni hui (main) branch. Surakshit PR mode me kaam hamesha alag feature branch par, PR isi me */
     val baseBranch = branch
@@ -567,6 +569,61 @@ class CodingAgent(private val gh: GitHub, var repo: String, var branch: String, 
         HashMap(m).apply { staged.forEach { (p, c) -> if (c == null) remove(p) else put(p, c) } }
     }
 
+    // ---------------------------------------------------------------- v4.4: पूरे काम का हिसाब (main से) + टूटी फ़ाइल वापस
+    private val baseCache = HashMap<String, String?>()
+
+    /** base branch (main) पर फ़ाइल = इस काम से पहले की असली शक्ल (दोबारा चले काम में भी सही) */
+    fun baseRead(path: String): String? = synchronized(baseCache) {
+        if (baseCache.containsKey(path)) return baseCache[path]
+        val r = try { gh.read(repo, path, baseBranch) } catch (_: Exception) { null }
+        baseCache[path] = r; r
+    }
+
+    /** इस काम ने main से क्या बदला: पहले के push (GitHub compare) + अभी के staged. हटाई/आधी फ़ाइलें पहचान के साथ */
+    fun taskChanges(): List<CodeGuard.Change> {
+        val m = LinkedHashMap<String, CodeGuard.Change>()
+        if (branch.isNotBlank() && branch != baseBranch) try {
+            gh.compareFiles(repo, baseBranch, branch).forEach { m[it.path] = it }
+        } catch (e: Exception) { DKLog.d("Coder: main से तुलना नहीं मिली: ${e.message}") }
+        for ((p, c) in staged.toMap()) {
+            val b = baseRead(p)
+            if (b == null && c == null) { m.remove(p); continue }
+            val bl = CodeGuard.lines(b); val al = CodeGuard.lines(c)
+            m[p] = CodeGuard.Change(p, if (c == null) "removed" else if (b == null) "added" else "modified", maxOf(0, al - bl), maxOf(0, bl - al))
+        }
+        return m.values.map { ch -> if (ch.status == "added" || ch.deletions < 30) ch else ch.copy(baseLines = CodeGuard.lines(baseRead(ch.path))) }
+    }
+
+    /** डिबगर के लिए: पूरे काम का हिसाब (हटाई/आधी फ़ाइलें सबसे ऊपर) */
+    fun footprintText(): String = try { CodeGuard.footprint(taskChanges(), baseBranch) } catch (_: Exception) { "" }
+
+    /** v4.4: build fail की जड़ = इसी काम ने फ़ाइल हटाई/आधी की -> main से हूबहू वापस (staged). लौटाता है क्या वापस आया */
+    fun restoreDamaged(log: String): List<CodeGuard.Damage> {
+        val d = try { CodeGuard.damage(log, taskChanges()) { baseRead(it) } } catch (e: Exception) { DKLog.d("Coder: नुकसान जाँच नहीं हुई: ${e.message}"); emptyList() }
+        d.forEach { teamStage(it.path, it.baseContent) }
+        if (d.isNotEmpty()) DKLog.d("Coder: main से वापस लाई: " + d.joinToString { it.path })
+        return d
+    }
+
+    /** v4.4: रिव्यूअर को पक्की (बिना AI) चेतावनियाँ - हटाई/आधी फ़ाइल और उल्टी शर्तें */
+    private fun guardNotes(): String = buildString {
+        for ((p, c) in staged.toMap()) {
+            val b = original[p]
+            if (c == null && b != null) append("!! FILE DELETED: $p (${CodeGuard.lines(b)} lines) - an issue unless the task really needs this whole file gone and nothing uses it\n")
+            else if (CodeGuard.shrunk(b, c)) append("!! FILE MOSTLY EMPTIED: $p (${CodeGuard.lines(b)} -> ${CodeGuard.lines(c)} lines) - check nothing needed was lost\n")
+            CodeGuard.flips(b, c).forEach { append("!! CONDITION FLIPPED in $p: $it - a bug unless the task asks to invert it\n") }
+        }
+    }
+
+    /** v4.4: फ़ाइल हटाने से पहले - बाकी रिपो में इस्तेमाल है? (रिपो की copy न हो तो GitHub खोज) */
+    fun deleteBlock(path: String, content: String?): String? {
+        if (content == null) return null
+        val gone = staged.filterValues { it == null }.keys + path
+        teamSnapshot()?.let { return CodeGuard.deleteProblem(path, content, it, gone) }
+        val users = try { gh.search(repo, CodeGuard.stem(path)).filter { it != path && it !in gone } } catch (_: Exception) { emptyList() }
+        return if (users.isEmpty()) null else "$path is still used by: ${users.take(6).joinToString()} - deleting it breaks the build. Remove ONLY the code the task asks for (small FIND/REPLACE edits), keep the file."
+    }
+
     /** रिपो के GitHub Actions workflows: (फ़ाइल का नाम, content) */
     fun teamWorkflows(): List<Pair<String, String>> = allPaths()
         .filter { it.startsWith(".github/workflows/") && (it.endsWith(".yml") || it.endsWith(".yaml")) }
@@ -689,6 +746,13 @@ Rules:
 - Changes are only STAGED; the app pushes them to GitHub (API commit) automatically AFTER "done". Do NOT try to push, and never claim it is pushed. Call done when the edits are staged.
 - Check your own work before done (imports, names, brackets, unused leftovers).
 - Never put secrets/API keys in code. Do not delete files unless the user asked or it is clearly required.
+- REMOVING A FEATURE/OPTION/SETTING (v4.4): remove ONLY its own lines (its UI row, its pref key/function, its uses) with small edits.
+  NEVER delete or rewrite a shared file (Prefs, Settings/Activities, strings/translation files like *.tsv/*.xml) for it - deleting a file that is still used is blocked automatically.
+  "write" of an existing file that drops more than half of its lines is also blocked: use edit with FIND/REPLACE.
+- Be precise: never invert a condition (if (!x) -> if (x)), never drop a "!", else-branch, return, argument or call unless the task needs exactly that.
+  Before done, run "diff" and check EVERY removed line: was removing it really part of the task?
+- BUILD FAILED with many "Unresolved reference"/"cannot find symbol" errors: first check whether THIS task deleted or emptied the file that defined those names
+  (the task FOOTPRINT shows it). Then the fix is to bring that file back exactly from the base branch - never re-create it piece by piece. Read ALL error lines, not only the first.
 - NEVER add features, settings, files or behaviour the user did not ask for. If you think something extra is needed or useful, use "suggest" (max 2 per task, only if it really matters) and do NOT implement it.
 - If the user only asks a question about the code, read what you need and answer in "done" summary with commit "".
 - If a task says the BUILD FAILED, read the exact files/lines from the log, fix the real cause, and do not change unrelated code.
@@ -738,7 +802,7 @@ SAFE PR MODE (always follow):
             projectCtx = loadProjectContext()
             if (projectCtx.isNotBlank()) {
                 onStep("repo के नियम, agents और GitHub Actions समझ लिए")
-                msgs.add("user" to "PROJECT CONTEXT (read and follow before any change):\n" + projectCtx.take(6000))
+                msgs.add("user" to "PROJECT CONTEXT (read and follow before any change):\n" + projectCtx.take(maxOf(6000, budget / 20)))
                 msgs.add("model" to "{\"tool\":\"diff\"}")
                 msgs.add("user" to "RESULT (diff):\n(no staged changes)")
             }
@@ -861,7 +925,7 @@ SAFE PR MODE (always follow):
                     val ps = (0 until many.length()).map { many.optString(it).trim().trimStart('/') }.filter { it.isNotBlank() }.take(6)
                     onStep("पढ़ रहा हूँ: " + ps.joinToString(", ") { it.substringAfterLast('/') })
                     readInTask.addAll(ps)
-                    val per = (CoderContext.CHUNK_CHARS * 2) / ps.size.coerceAtLeast(1)
+                    val per = (CoderContext.readChars(budget) * 2) / ps.size.coerceAtLeast(1)   // v4.4: मॉडल जितना पढ़ सके
                     return ps.joinToString("\n\n") { p ->
                         val t = current(p)
                         "===== $p =====\n" + when {
@@ -880,11 +944,11 @@ SAFE PR MODE (always follow):
                     onStep("पढ़ रहा हूँ: $path ($a-$b)")
                     val part = "(${lines.size} lines total)\n" + (a..b).joinToString("\n") { "$it| ${lines[it - 1]}" }
                     // बहुत लंबी range भी एक हिस्से (chunk) से बड़ी नहीं
-                    return if (part.length > CoderContext.CHUNK_CHARS) CoderContext.chunk(t, a, path = path) else part
+                    return if (part.length > CoderContext.readChars(budget)) CoderContext.chunk(t, a, CoderContext.readChars(budget), path) else part
                 }
                 onStep("पढ़ रहा हूँ: $path")
                 // बड़ी फ़ाइल पूरी नहीं - हिस्सों में (हर हिस्सा line नंबर के साथ, अगला हिस्सा कैसे पढ़ें)
-                return if (t.length > CoderContext.CHUNK_CHARS) CoderContext.chunk(t, 1, path = path) else t
+                return if (t.length > CoderContext.readChars(budget)) CoderContext.chunk(t, 1, CoderContext.readChars(budget), path) else t
             }
             "grep", "search" -> {
                 val q = o.optString("pattern").ifBlank { o.optString("query") }
@@ -898,6 +962,11 @@ SAFE PR MODE (always follow):
                 // पहले समझो, फिर बदलो: मौजूदा फ़ाइल को बिना पढ़े पूरा नहीं बदलना (नई फ़ाइल ठीक है)
                 if (path !in readInTask && !staged.containsKey(path) && current(path) != null)
                     return "ERROR: $path already exists and you have not read it in this task. Read it first (or use edit with FIND/REPLACE). Nothing staged."
+                // v4.4: पूरी फ़ाइल दोबारा लिखते समय आधी से ज़्यादा गायब = गलती (बचा कोड छूट गया) - edit से छोटा बदलाव करो
+                val old = current(path)
+                if (CodeGuard.shrunk(old, content))
+                    return "ERROR: NOT staged. This write would remove ${CodeGuard.lines(old) - CodeGuard.lines(content)} of ${CodeGuard.lines(old)} lines of $path " +
+                        "(more than half the file). Keep every other line exactly - use edit with FIND/REPLACE to change only what the task needs."
                 remember(path)
                 staged[path] = content
                 onStep("लिखा: $path (${content.lines().size} लाइन)")
@@ -924,7 +993,9 @@ SAFE PR MODE (always follow):
                 return "OK edited $path (${c.finds.size} change${if (c.finds.size > 1) "s" else ""})" + if (notes.isNotEmpty()) " - " + notes.joinToString() else ""
             }
             "delete" -> {
-                if (current(path) == null) return "NOT FOUND: $path"
+                val cur = current(path) ?: return "NOT FOUND: $path"
+                // v4.4: इस्तेमाल हो रही फ़ाइल कभी नहीं हटती (पहले "option हटाओ" पर पूरी Prefs.kt/SettingsActivity.kt हट गई थीं)
+                deleteBlock(path, cur)?.let { return "ERROR: NOT deleted. $it" }
                 remember(path); staged[path] = null
                 onStep("हटाया: $path"); return "OK staged delete $path"
             }
@@ -937,7 +1008,7 @@ SAFE PR MODE (always follow):
             }
             "diff" -> {
                 onStep("अपने बदलाव जाँच रहा हूँ…")
-                return diffAll().ifBlank { "(no staged changes)" }.let { if (it.length > 40_000) it.take(40_000) + "\n…(diff cut)" else it }
+                return diffAll().ifBlank { "(no staged changes)" }.let { val m = maxOf(40_000, budget / 3); if (it.length > m) it.take(m) + "\n…(diff cut)" else it }
             }
             else -> return "ERROR: unknown tool '$tool'"
         }
@@ -1148,6 +1219,9 @@ Reply with EXACTLY ONE tool call per message (JSON on the first line, no other t
 {"tool":"verdict","pass":true,"issues":[],"tested":"Hindi: what you checked/traced"}
 {"tool":"verdict","pass":false,"issues":["path:line - problem - exact fix"],"tested":"Hindi: what you checked"}
 6. Regression: old features must keep working. A deleted/weakened existing test, or a fix that hides a symptom instead of the real cause, is an issue.
+7. LINE BY LINE (v4.4): compare every removed line with what replaced it. An inverted condition (a "!" added/removed, == vs !=, < vs >=, && vs ||), a dropped else/return/argument/call,
+   or a changed default value is an issue unless the task asks for it. Lines marked "!!" above were found automatically - check each one.
+8. A deleted or mostly emptied file is an issue if anything still uses its classes/functions/keys (grep them). Removing an option means removing ONLY that option's code.
 pass=true ONLY if you are confident it compiles and the task works completely.${if (intentional) "\nINTENTIONAL CHANGE: the user explicitly asked to change/remove an existing feature (backup taken). Changing/removing exactly that feature is NOT an issue." else ""}
 """.trimIndent()
 
@@ -1159,17 +1233,17 @@ pass=true ONLY if you are confident it compiles and the task works completely.${
         if (staged.isEmpty()) return@withContext Review(true, emptyList(), "कोई बदलाव नहीं था", true)
         val rmsgs = mutableListOf<Pair<String, String>>()
         val static = check()
-        val d = diffAll().let { if (it.length > 20_000) it.take(20_000) + "\n…(diff cut - use read)" else it }
+        val d = diffAll().let { val m = maxOf(20_000, budget / 3); if (it.length > m) it.take(m) + "\n…(diff cut - use read)" else it }   // v4.4: पूरा diff
         rmsgs.add("user" to "REVIEW ROUND $round\nUSER TASK: $task\n" +
             (if (acceptance.isNotEmpty()) "ACCEPTANCE CRITERIA:\n" + acceptance.joinToString("\n") { "- $it" } + "\n" else "") +
-            (if (projectCtx.isNotBlank()) "PROJECT RULES:\n${projectCtx.take(5000)}\n" else "") +
+            (if (projectCtx.isNotBlank()) "PROJECT RULES:\n${projectCtx.take(maxOf(5000, budget / 20))}\n" else "") +
             SafePr.protectedIn(staged.keys).let { if (it.isEmpty()) "" else "PROTECTED FILES CHANGED: ${it.joinToString()} (issue unless the task explicitly asks)\n" } +
-            "STATIC CHECK: " + static.ifBlank { "OK (brackets/XML/JSON fine)" } + "\n\nSTAGED DIFF:\n$d")
+            "STATIC CHECK: " + static.ifBlank { "OK (brackets/XML/JSON fine)" } + "\n" + guardNotes() + "\nSTAGED DIFF:\n$d")
         var bad = 0
         for (step in 1..(maxSteps + 2)) {
             ensureActive()
             if (step > 1) delay(STEP_DELAY_MS)
-            val reply = try { ai.chat(reviewerSystem(), if (CoderContext.total(rmsgs) > CoderContext.DEFAULT_BUDGET) CoderContext.compact(rmsgs) else rmsgs) } catch (e: AiException) { throw AiException(e.code, "Reviewer ${ai.label}: ${e.message}") }
+            val reply = try { ai.chat(reviewerSystem(), if (CoderContext.total(rmsgs) > budget) CoderContext.compact(rmsgs, budget) else rmsgs) } catch (e: AiException) { throw AiException(e.code, "Reviewer ${ai.label}: ${e.message}") }
             rmsgs.add("model" to reply)
             val call = parse(reply)
             if (call == null) {
@@ -1189,7 +1263,7 @@ pass=true ONLY if you are confident it compiles and the task works completely.${
                 "list", "read", "grep", "search", "diff", "suggest" -> try { runTool(tool, path, call) { st -> onStep("रिव्यूअर: $st") } } catch (e: GitHub.Err) { "GITHUB ERROR: ${e.message}" }
                 else -> "ERROR: reviewer is READ-ONLY. Use list/read/grep/diff, then verdict."
             }
-            rmsgs.add("user" to "RESULT ($tool${if (path.isNotBlank()) " $path" else ""}):\n" + result.take(CoderContext.CHUNK_CHARS))
+            rmsgs.add("user" to "RESULT ($tool${if (path.isNotBlank()) " $path" else ""}):\n" + result.take(CoderContext.readChars(budget)))
         }
         // Reviewer faisla nahi de paya: static jaanch hi aadhaar
         Review(static.isBlank(), static.lines().filter { it.isNotBlank() }.map { it.removePrefix("- ") }, "रिव्यूअर पूरा जवाब नहीं दे पाया — सिर्फ़ static जाँच हुई", false)
@@ -1212,6 +1286,8 @@ pass=true ONLY if you are confident it compiles and the task works completely.${
             gh.checkWrite(repo)?.let { throw IllegalStateException(it) }
             writeChecked = true
         }
+        // v4.4: आख़िरी पहरा - इस्तेमाल हो रही फ़ाइल हटाने वाला commit कभी नहीं (किसी भी रास्ते से आया हो)
+        staged.filterValues { it == null }.keys.forEach { p -> deleteBlock(p, original[p] ?: baseRead(p))?.let { throw IllegalStateException("push रोका: $it") } }
         // GitHub API से सीधा commit (git push नहीं); commit() खुद पक्का करता है कि branch नए commit पर पहुँची
         val url = gh.commit(repo, branch, staged.toMap(), msg)
         pushedToBranch = true
@@ -1383,7 +1459,8 @@ pass=true ONLY if you are confident it compiles and the task works completely.${
         // repo के नियम (AGENTS.md आदि) छोटा करने पर भी साथ रहें - पर तभी जब वे पुराने हिस्से में चले गए हों
         val rules = if (projectCtx.isBlank() || msgs.size <= CoderContext.KEEP_TAIL + 6) "" else "PROJECT RULES (short):\n" + projectCtx.take(3000) + "\n\n"
         val st = if (staged.isEmpty()) "" else "STAGED (not pushed yet, the app pushes after done): " + staged.keys.joinToString()
-        return CoderContext.compact(msgs, CoderContext.DEFAULT_BUDGET, CoderContext.KEEP_TAIL, (rules + st).trim())
+        // v4.4: मॉडल की पूरी क्षमता (पहले हमेशा 60 हज़ार - बड़ी फ़ाइलें/लंबे काम का इतिहास कट जाता था)
+        return CoderContext.compact(msgs, budget, CoderContext.KEEP_TAIL, (rules + st).trim())
     }
 
     companion object {
