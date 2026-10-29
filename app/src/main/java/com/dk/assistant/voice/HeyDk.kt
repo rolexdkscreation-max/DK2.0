@@ -19,7 +19,7 @@ import kotlin.math.sqrt
 /**
  * v3.81: "Hey DK" / "Hello DK" - ऐप बंद हो तब भी (KeepAlive + Accessibility), पूरी तरह फ़ोन के अंदर.
  *
- *  - माइक की आवाज़ कहीं नहीं जाती: बोलना शुरू -> छोटी बात -> [WakeMatch] (शब्द) + [OwnerVoice] (आवाज़) -> नहीं मिला = भूल जाओ.
+ *  - माइक की आवाज़ कहीं नहीं जाती: बोलना शुरू -> छोटी बात -> [WakeMatch] (शब्द) -> नहीं मिला = भूल जाओ.
  *  - मिला = तुरंत "हाँ सर" (पहले से बना रखा, इंटरनेट का इंतज़ार नहीं) -> Gemini Live -> चुप्पी पर वापस सो जाओ.
  *  - "Hey DK, WhatsApp खोलो" एक साँस में = बिना "हाँ सर" के सीधे वही काम.
  */
@@ -42,15 +42,14 @@ object HeyDk {
     fun trained(c: Context) = model(c) != null
     /** चालू + सीखा हुआ */
     fun on(c: Context) = Prefs.heyDkOn(c) && trained(c)
-    /** आवाज़-पहचान भी लगेगी? (नहीं = सिर्फ़ शब्द मिलान, जो आपकी आवाज़ के नमूनों से ही बना है) */
-    fun ownerCheck(c: Context) = OwnerVoice.supported && OwnerVoice.hasModel(c) && Prefs.heyDkPrint(c) != null && OwnerVoice.broken == null
+    /** आवाज़-पहचान हटा दी गई है */
+    fun ownerCheck(c: Context) = false
 
     fun status(c: Context): String = when {
         !trained(c) && Prefs.wakeMode(c) -> "बिना सिखाए वाला तरीका चालू: \"हे डीके\" / \"हेलो डीके\" बोलिए (इंटरनेट से पहचान, हर आवाज़ पर)"
         !trained(c) -> "अभी सिखाया नहीं - नीचे \"Hey DK सिखाओ\" दबाइए"
         !Prefs.heyDkOn(c) -> "सीखा हुआ है, पर बंद है"
-        ownerCheck(c) -> "चालू: \"Hey DK\" + सिर्फ़ आपकी आवाज़ (फ़ोन के अंदर)"
-        else -> "चालू: \"Hey DK\" (आवाज़-पहचान मॉडल नहीं - दूसरे की आवाज़ पर भी कभी जाग सकता है)"
+        else -> "चालू: \"Hey DK\" (शब्द मिलान)"
     }
 
     // ------------------------------------------------------------------ सीखना
@@ -130,15 +129,13 @@ object HeyDk {
         modelFile(c).parentFile?.mkdirs()
         modelFile(c).writeText(m.toJson())
         cached = null
-        val prints = if (OwnerVoice.supported && OwnerVoice.hasModel(c)) takes.mapNotNull { OwnerVoice.embed(c, it) } else emptyList()
-        val print = VoicePrint.mean(prints)
         Prefs.edit(c) {
-            if (print != null) putString("hey_dk_print", VoicePrint.encode(print)) else remove("hey_dk_print")
+            remove("hey_dk_print")
             putBoolean("hey_dk_on", true)
             putInt("hey_dk_src", source)
             putBoolean("wake_mode", true)       // सुनने वाला loop चले
         }
-        DKLog.d("Hey DK सीखा: ${feats.size} नमूने, सीमा ${"%.2f".format(m.base)}, आवाज़-पहचान ${if (print != null) "हाँ" else "नहीं"}")
+        DKLog.d("Hey DK सीखा: ${feats.size} नमूने, सीमा ${"%.2f".format(m.base)}")
         return null
     }
 
@@ -158,7 +155,6 @@ object HeyDk {
 
     /**
      * "Hey DK" का इंतज़ार. [stop] true होते ही (Live चालू / म्यूट / call / बंद) माइक छोड़कर null.
-     * मालिक की आवाज़ में "Hey DK" = [Hit].
      */
     @SuppressLint("MissingPermission")
     suspend fun listen(c: Context, stop: () -> Boolean): Hit? = withContext(Dispatchers.IO) {
@@ -187,7 +183,7 @@ object HeyDk {
                 for (i in 0 until n) { val s = buf[i].toInt(); sum += (s * s).toDouble(); bytes[i * 2] = (s and 0xff).toByte(); bytes[i * 2 + 1] = (s shr 8 and 0xff).toByte() }
                 val ev = det.feed(sqrt(sum / n))
                 val piece = bytes.copyOf(n * 2)
-                if (!inSeg) {
+                if (inSeg) {
                     pre.addLast(piece); while (pre.size > 8) pre.removeFirst()
                     if (ev == WakeMatch.Vad.Ev.START) {
                         inSeg = true; cutIdx = 0; checkedUpTo = 0; seg.reset(); pre.forEach { seg.write(it) }; preBytes = seg.size(); pre.clear()
@@ -218,7 +214,7 @@ object HeyDk {
                         }
                         // "Hey DK" के बाद बस थोड़ा-सा (साँस/हम्म) = सिर्फ़ "Hey DK"
                         val extra = rest.size() - probe
-                        return@withContext Hit(hit.distance, hit.owner, if (extra > RATE * 2 * 4 / 10) rest.toByteArray() else null)
+                        return@withContext Hit(hit.distance, null, if (extra > RATE * 2 * 4 / 10) rest.toByteArray() else null)
                     }
                 }
                 if (ended || seg.size() > maxSeg * 3) { inSeg = false; seg.reset(); det.reset() }
@@ -230,7 +226,7 @@ object HeyDk {
         }
     }
 
-    /** शब्द + आवाज़ जाँच (माइक thread पर ही - छोटा काम, बोलने के बाद एक बार) */
+    /** शब्द जाँच (माइक thread पर ही - छोटा काम, बोलने के बाद एक बार) */
     private fun check(c: Context, model: WakeMatch.Model, sense: WakeMatch.Sense, pcm: ByteArray): Hit? {
         val ms = pcm.size / 2 * 1000 / RATE
         if (ms < WakeMatch.MIN_MS) return null
@@ -239,20 +235,8 @@ object HeyDk {
         val (d1, d2) = model.distances(f)
         val th = model.threshold(sense)
         if (!(d1 <= th && d2 <= th * 1.15f)) return null
-        var owner: Float? = null
-        if (ownerCheck(c)) {
-            val print = Prefs.heyDkPrint(c)
-            val e = OwnerVoice.embed(c, pcm)
-            if (print != null && e != null) {
-                owner = VoicePrint.cosine(print, e)
-                if (owner < VoicePrint.threshold(Prefs.ownerVoiceStrict(c))) {
-                    DKLog.d("Hey DK जैसा सुना, पर आवाज़ आपकी नहीं (${"%.2f".format(owner)}) - नहीं जागा")
-                    return null
-                }
-            }
-        }
-        DKLog.d("Hey DK सुना (दूरी ${"%.2f".format(d1)}/${"%.2f".format(th)}${owner?.let { ", आवाज़ %.2f".format(it) } ?: ""})")
-        return Hit(d1, owner, null)
+        DKLog.d("Hey DK सुना (दूरी ${"%.2f".format(d1)}/${"%.2f".format(th)})")
+        return Hit(d1, null, null)
     }
 
     // ------------------------------------------------------------------ "हाँ सर" - तुरंत

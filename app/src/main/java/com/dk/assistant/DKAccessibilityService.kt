@@ -360,28 +360,9 @@ class DKAccessibilityService : AccessibilityService() {
     }
     private fun earCaptionOff() { ear.onFrame = null; earCaption?.stop(); earCaption = null }
 
-    @Volatile private var ownerSeenAt = 0L
-    private var othersIgnored = 0
-
     /** v3.66: आवाज़ मालिक की है? (पहचान बंद / मॉडल गड़बड़ = हाँ, आवाज़ मत खोओ) */
     private suspend fun ownerHeard(pcm: ByteArray): Boolean {
-        if (!com.dk.assistant.voice.OwnerVoice.active(this)) return true
-        val G = com.dk.assistant.voice.OwnerGate.Companion
-        val cut = pcm.copyOf(minOf(pcm.size, G.RATE * 2 * G.MAX_MS / 1000))
-        val ms = cut.size * 1000 / (G.RATE * 2)
-        if (ms < G.MIN_CHECK_MS) return System.currentTimeMillis() - ownerSeenAt < G.RECENT_OWNER_MS
-        val t0 = System.currentTimeMillis()
-        val sc = withContext(Dispatchers.Default) { try { com.dk.assistant.voice.OwnerVoice.score(this@DKAccessibilityService, cut) } catch (_: Throwable) { null } }
-            ?: return true
-        val now = System.currentTimeMillis()
-        var th = com.dk.assistant.voice.VoicePrint.threshold(Prefs.ownerVoiceStrict(this))
-        if (ms < G.SHORT_MS) th -= G.SHORT_SLACK
-        if (now - ownerSeenAt < G.RECENT_OWNER_MS) th -= G.RECENT_SLACK
-        val ok = sc >= th
-        val txt = String.format(java.util.Locale.US, "%.2f", sc)
-        if (ok) { ownerSeenAt = now; DKLog.d("आवाज़ मिलान $txt - मालिक (${now - t0} ms)") }
-        else { othersIgnored++; DKLog.d("किसी और की आवाज़ (मिलान $txt) - अनसुनी (#$othersIgnored)") }
-        return ok
+        return true
     }
 
     /** Ek baat suno -> text. Bina beep (apna mic + Groq/Gemini) ya Google mic. Har dikkat DK bolkar batata hai. */

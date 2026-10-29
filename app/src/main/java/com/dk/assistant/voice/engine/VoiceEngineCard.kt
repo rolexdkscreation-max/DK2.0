@@ -26,6 +26,7 @@ import java.util.concurrent.Executors
  * और हर इंजन के आगे पिछली बार नापा समय. ▶ सुनो सहेजा नमूना-वाक्य बोलता है. ये बदलाव तुरंत सेव होते हैं (सेव बटन की ज़रूरत नहीं).
  */
 class VoiceEngineCard private constructor(private val a: Activity, private val dp: Float) : VoiceUi {
+    // Owner voice removed completely
 
     companion object {
         /** SettingsActivity की "आवाज़" वाली card के box में जोड़ो */

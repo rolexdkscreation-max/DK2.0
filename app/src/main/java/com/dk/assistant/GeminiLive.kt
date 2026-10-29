@@ -933,9 +933,6 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
         guardHeld = false; guardOk = false; guardPass = false; guardEndAt = 0L; guardBuf.clear(); guardOn = false
         trace.reset(); dropOld = false; suspectAt = 0L; replyWatch.reset()
         timeline.reset(); liveGate.reset(); capGate.reset(); resendText = null; lastServerAt = 0L
-        owner.reset(); ownerGen++; ownerResult = null; ownerHolding = false; ownerHold.clear(); muteTurn = false; ownerCfgAt = 0L
-        refreshOwnerCfg(System.currentTimeMillis())
-        if (ownerOn) { com.dk.assistant.voice.OwnerVoice.warm(svc); log("सिर्फ़ मालिक की आवाज़: चालू (" + (if (Prefs.ownerVoiceStrict(svc)) "सख़्त" else "सामान्य") + ")") }
         if (turnDet.startFloor > 0) log("दूर की आवाज़ अनसुनी: चालू (${turnDet.startFloor.toInt()} RMS से धीमी नहीं)")
         coroutineScope {
             val mic = launch(Dispatchers.IO) { micLoop() }
