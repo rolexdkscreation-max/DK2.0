@@ -195,6 +195,7 @@ object ForgeController {
                 metrics = _state.value.metrics.copy(chars = html.length))
             DKLog.d("Forge: वेबसाइट तैयार (${html.length / 1024} KB, ${(System.currentTimeMillis() - t0) / 1000}s)")
             if (!screenVisible) notifyReady(c)
+            com.dk.assistant.LiveReport.note(com.dk.assistant.LiveConnect.webDoneNote(true, text, null))   // v3.102
         } catch (e: CancellationException) {
             throw e
         } catch (e: WebsiteForgeClient.ForgeHttpException) {
@@ -210,6 +211,7 @@ object ForgeController {
         if (_state.value.buildId != id) return
         DKLog.d("Forge: नहीं बनी - $msg")
         _state.value = _state.value.copy(phase = ForgePhase.FAILED, error = msg)
+        com.dk.assistant.LiveReport.note(com.dk.assistant.LiveConnect.webDoneNote(false, _state.value.prompt, msg))   // v3.102
     }
 
     private fun notifyReady(c: Context) {

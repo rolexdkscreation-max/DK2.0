@@ -96,12 +96,8 @@ object LiveVision {
         }
         if (!liveReady()) return "DK Live is not connected right now, so the camera cannot be used."
         if (live()?.visionBroken == true) return "This Live model does not accept images, so the camera is not possible. Tell the user to pick another Gemini Live model in Settings."
-        val f = facing.lowercase()
-        val front = when {
-            f.contains("front") || f.contains("selfie") || f.contains("आगे") || f.contains("सेल्फ़ी") || f.contains("सेल्फी") -> true
-            f.contains("back") || f.contains("rear") || f.contains("पीछे") -> false
-            else -> cameraFront
-        }
+        // v3.102: "मुझे देखो" = आगे वाला, "ये देखो / पीछे वाला" = पीछे वाला (model ने facing न दिया हो तब भी user की बात से)
+        val front = LiveConnect.wantFront(facing, DKState.lastUser.trimEnd('…')) ?: cameraFront
         if (cameraOn && front == cameraFront) return "Camera is already ON (${if (front) "front" else "back"}) - you are receiving camera images."
         cameraFront = front; cameraWanted = true; changed()
         if (!VoiceActivity.visible) {

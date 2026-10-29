@@ -38,6 +38,15 @@ object TeacherLink {
         } catch (e: Exception) { DKLog.d("टीचर: ${e.javaClass.simpleName} ${e.message}") }
     }
 
+    /** v3.102: DK लाइव के teacher_mode tool से */
+    fun openByVoice(c: Context) = open(c, "बोलकर खोला")
+    /** @return पन्ना खुला था? */
+    fun closeByVoice(): Boolean {
+        val a = activity?.get() ?: return false
+        main.post { a.closeFromVoice() }
+        return true
+    }
+
     private fun open(c: Context, why: String) {
         val now = System.currentTimeMillis()
         if (now - lastOpenAt < 1500) return
