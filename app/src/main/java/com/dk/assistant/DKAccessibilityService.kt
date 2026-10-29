@@ -1189,23 +1189,31 @@ class DKAccessibilityService : AccessibilityService() {
      *  2. "<naam> का कॉल आ रहा है। उठाऊँ या काट दूँ?"
      *  3. aapka jawab suno (wake word ki zarurat nahi) -> uthao / kaato / speaker / ringtone band
      */
-    private suspend fun onIncomingCall(who0: String) {
+    /** v4: WhatsApp / Instagram / Facebook / Messenger… की कॉल बजी (DKNotifListener) - SIM कॉल जैसा ही पूछो */
+    fun onAppCall(who: String, ask: String) {
+        if (!::calls.isInitialized || calls.simRinging || calls.inCall) return
+        DKLog.d("ऐप कॉल: $ask")
+        AppCall.onGone = { calls.restoreRinger() }
+        scope.launch { onIncomingCall(who, ask) }
+    }
+
+    private suspend fun onIncomingCall(who0: String, ask: String? = null) {
         if (!Prefs.announceCalls(this)) return
         callPending = true
         agent.stop()
         calls.quietRinger()
         delay(200)   // v3.41: 500 -> 200 ms (call screen aane bhar ka samay; naam phone ki list se pehle hi)
         var who = who0
-        if (who.isBlank()) who = callerFromScreen()
-        if (!calls.ringing && calls.known) { callPending = false; return }
-        val msg = if (who.isNotBlank()) "$who का कॉल आ रहा है। उठाऊँ या काट दूँ?" else "किसी का कॉल आ रहा है। उठाऊँ या काट दूँ?"
+        if (who.isBlank() && ask == null) who = callerFromScreen()
+        if (!calls.ringing && (calls.known || ask != null)) { callPending = false; return }
+        val msg = ask ?: if (who.isNotBlank()) "$who का कॉल आ रहा है। उठाऊँ या काट दूँ?" else "किसी का कॉल आ रहा है। उठाऊँ या काट दूँ?"
         DKState.reply(msg)
         // v3.40: DK लाइव (Gemini) जुड़ा है = वही पूछे और जवाब सुने (Live बंद नहीं होता, पुराने सुनने पर निर्भर नहीं)
         if (DKState.live && gemLive.canTalk()) {
             // v3.51: पहले Gemini (Live) खुद पूछता था - पर उसकी आवाज़ media पर है और घंटी के समय Android उसे mute कर देता है:
             // "बोल दिया" दिखता (isPlaying) पर सुनाई कुछ नहीं, फ़ोन वाली आवाज़ भी नहीं चलती थी = सिर्फ़ लिखा दिखता.
             // अब फ़ोन खुद (accessibility आवाज़, घंटी में भी सुनाई दे) पूछता है; Live को बस बताया जाता है ताकि जवाब वही सुने.
-            gemLive.noteCallAsked(who)
+            gemLive.noteCallAsked(if (ask == null) who else AppCall.current?.let { r -> "${r.who.ifBlank { "कोई" }} (${r.app}${if (r.video) " वीडियो" else ""} कॉल)" } ?: who)
             gemLive.muteMic(true)
             callAnnouncing = true
             try { speaker.speakQuick(msg) } finally { callAnnouncing = false; gemLive.muteMic(false) }
@@ -1351,6 +1359,23 @@ class DKAccessibilityService : AccessibilityService() {
     }
 
     private suspend fun answerCall(speakerOn: Boolean): String {
+        // v4: WhatsApp / Instagram / Facebook / Messenger… की कॉल = उसी notification का Answer बटन, फिर जाँच कि सच में उठी
+        if (!calls.simRinging && AppCall.ringing()) {
+            val app = AppCall.current?.app.orEmpty()
+            val sent = calls.answer()
+            var up = withTimeoutOrNull(2500) { while (!AppCall.ongoing()) delay(100) } != null
+            if (!up) {
+                // बटन नहीं था / नहीं चला -> कॉल की स्क्रीन खुली है, वहाँ Answer
+                delay(600)
+                clickByText("Answer", "Accept", "ANSWER", "Join", "उत्तर दें", "जवाब दें", "स्वीकार करें", "स्वीकार") ||
+                    clickById("answer", "accept", "accept_call", "answer_call")
+                up = withTimeoutOrNull(2000) { while (!AppCall.ongoing()) delay(100) } != null
+            }
+            calls.restoreRinger()
+            if (!up && !sent) return "ERROR: $app कॉल नहीं उठ पाई - फ़ोन पर खुद उठाइए"
+            if (speakerOn) scope.launch { delay(1500); setSpeaker(true) }
+            return (if (up) "call utha li" else "$app call ka Answer daba diya") + (if (speakerOn) " aur speaker on" else "")
+        }
         if (calls.inCall && !calls.ringing) {
             if (speakerOn) setSpeaker(true)
             return "call pehle se chal rahi hai" + if (speakerOn) ", speaker on" else ""
