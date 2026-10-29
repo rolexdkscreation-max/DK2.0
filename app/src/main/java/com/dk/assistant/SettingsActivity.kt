@@ -1357,13 +1357,17 @@ class SettingsActivity : AppCompatActivity() {
             val key = field(box, "API Key", Prefs.scopeKeyRaw(this, scope, p.id), "यहाँ key पेस्ट करें", secret = true)
             keyFields[kName] = key
             if (p.isGemini && scope == ApiScopes.CODER) {
-                // कोडिंग एजेंट: 3 Gemini keys - एक के सारे मॉडल की limit खत्म = अपने-आप अगली
+                // कोडिंग एजेंट: 5 Gemini keys - एक के सारे मॉडल की limit खत्म = अपने-आप अगली
                 keyFields[ApiScopes.pref(scope, "key", "gemini2")] = field(box, "Gemini API Key 2 (बैकअप, ज़रूरी नहीं)",
                     Prefs.scopeKeyRaw(this, scope, "gemini2"), "दूसरी Gemini key", secret = true)
                 keyFields[ApiScopes.pref(scope, "key", "gemini3")] = field(box, "Gemini API Key 3 (बैकअप, ज़रूरी नहीं)",
                     Prefs.scopeKeyRaw(this, scope, "gemini3"), "तीसरी Gemini key", secret = true)
+                keyFields[ApiScopes.pref(scope, "key", "gemini4")] = field(box, "Gemini API Key 4 (बैकअप, ज़रूरी नहीं)",
+                    Prefs.scopeKeyRaw(this, scope, "gemini4"), "चौथी Gemini key", secret = true)
+                keyFields[ApiScopes.pref(scope, "key", "gemini5")] = field(box, "Gemini API Key 5 (बैकअप, ज़रूरी नहीं)",
+                    Prefs.scopeKeyRaw(this, scope, "gemini5"), "पाँचवीं Gemini key", secret = true)
                 box.addView(TextView(this).apply {
-                    text = "Key 1 के सारे मॉडल (3.8 Flash → 3.6 Flash → 3 Flash → 3.5 Flash-Lite → 3.1 Flash-Lite) की limit खत्म → अपने-आप Key 2 के सारे मॉडल → फिर Key 3। " +
+                    text = "Key 1 के सारे मॉडल (3.8 Flash → 3.6 Flash → 3 Flash → 3.5 Flash-Lite → 3.1 Flash-Lite) की limit खत्म → अपने-आप Key 2 के सारे मॉडल → फिर Key 3 → Key 4 → Key 5। " +
                         "सबकी limit खत्म हो तो काम रुकता नहीं — limit खुलने तक रुककर फिर चलता है। ध्यान दें: Google limit project पर लगाता है, इसलिए हर key अलग Google project की हो।"
                     textSize = 12f; setTextColor(0xB3FFFFFF.toInt()); setPadding((4 * dp).toInt(), (4 * dp).toInt(), 0, (4 * dp).toInt())
                 })

@@ -67,11 +67,12 @@ object Prefs {
         return (p.getString(ApiScopes.pref(scope, "model", id), def) ?: def).ifBlank { def }
     }
     /**
-     * कोडिंग एजेंट की Gemini keys: पहली (मुख्य) + key 2 + key 3. एक key के सारे मॉडल की limit खत्म -> अगली key.
+     * कोडिंग एजेंट की Gemini keys: पहली (मुख्य) + key 2 + key 3 + key 4 + key 5. एक key के सारे मॉडल की limit खत्म -> अगली key.
      * खाली और दोहराई keys नहीं.
      */
     fun coderGeminiKeys(c: Context): List<String> = GeminiModels.distinctKeys(listOf(
-        scopeKey(c, ApiScopes.CODER, "gemini"), scopeKey(c, ApiScopes.CODER, "gemini2"), scopeKey(c, ApiScopes.CODER, "gemini3")))
+        scopeKey(c, ApiScopes.CODER, "gemini"), scopeKey(c, ApiScopes.CODER, "gemini2"), scopeKey(c, ApiScopes.CODER, "gemini3"),
+        scopeKey(c, ApiScopes.CODER, "gemini4"), scopeKey(c, ApiScopes.CODER, "gemini5")))
     fun scopeBase(c: Context, scope: String, id: String): String {
         val def = Providers.byId(id)?.baseUrl ?: ""
         return (sp(c).getString(ApiScopes.pref(scope, "base", id), def) ?: def).ifBlank { def }

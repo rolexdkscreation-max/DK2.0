@@ -101,7 +101,8 @@ object ApiScopes {
     const val ONE_KEY = "one_key_gemini"
     /** पुरानी अलग-अलग keys की settings - इनमें से कोई भरी = पुराना user, उसकी अलग keys वैसे ही चलें */
     val OLD_KEY_PREFS: List<String> = PROVIDERS.flatMap { id -> listOf("key_$id") + listOf(LIVE, CODER, PC).map { pref(it, "key", id) } } +
-        listOf("voice_key", "coder_key", "live_key_caption", "live_key_search", "coder_key_gemini2", "coder_key_gemini3")
+        listOf("voice_key", "coder_key", "live_key_caption", "live_key_search", "coder_key_gemini2", "coder_key_gemini3",
+            "coder_key_gemini4", "coder_key_gemini5")
 
     /** पहली बार: नया install (कोई key नहीं) = एक key वाला चालू; पुराना user = बंद (अलग keys जैसी की तैसी) */
     fun oneKeyDefault(get: (String) -> String?): Boolean = OLD_KEY_PREFS.none { !get(it).isNullOrBlank() }
