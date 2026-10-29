@@ -197,6 +197,12 @@
             android:name=".ComputerAlarm"
             android:exported="false" />
 
+        <!-- v3.6: हर 6 घंटे अपडेट जाँच (JobScheduler, restart के बाद भी) -->
+        <service
+            android:name=".UpdateJob"
+            android:exported="false"
+            android:permission="android.permission.BIND_JOB_SERVICE" />
+
         <!-- v3.88: लोकल याददाश्त - रोज़ सार + 30 दिन से पुरानी बातें मिटाना -->
         <receiver
             android:name=".LocalMemoryReceiver"

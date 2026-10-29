@@ -22,6 +22,7 @@ class DKApp : Application() {
         StatusNotify.install(this)
         // v3.88: लोकल याददाश्त - ऐप खुलते ही सार + 30 दिन की सफ़ाई, और रोज़ एक बार
         try { LocalMemory.maintain(this, "ऐप खुला"); LocalMemory.scheduleDaily(this) } catch (_: Exception) {}
+        UpdateJob.schedule(this)        // v3.6: हर 6 घंटे अपडेट जाँच + नोटिफ़िकेशन (ऐप बंद हो तब भी)
         OfflineQueue.install(this)
         TaskHistory.install(this)       // v3.88: हर काम और उसकी हालत का इतिहास (फ़ोन में)      // v3.88: नेटवर्क टूटे तो काम कतार में, आते ही आगे
         removeLegacyAntiTheftState()

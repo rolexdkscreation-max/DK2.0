@@ -89,8 +89,9 @@ object Updater {
         val title = name.ifBlank { tag }
         val ver = lines.firstOrNull { it.startsWith("VERSION:") }?.substringAfter(":")?.trim()
             ?: title.removePrefix("DK").trim()
-        val notes = if (body.contains("\n---\n")) body.substringAfter("\n---\n").trim()
+        val raw = if (body.contains("\n---\n")) body.substringAfter("\n---\n").trim()
             else lines.filterNot { it.startsWith("TYPE:") || it.startsWith("VERSION:") }.joinToString("\n").trim()
+        val notes = ReleaseNotes.clean(raw)     // v3.6: सिर्फ़ असली बदलाव (Merge/टेस्ट/बैकअप/लंबा काम-विवरण नहीं)
         return Release(code, title, notes, url, size, page, type, ver)
     }
 
@@ -166,7 +167,7 @@ object Updater {
         val code = sp.getInt("upd_latest", 0)
         val url = sp.getString("upd_url", "").orEmpty()
         if (code <= currentCode(c) || url.isBlank()) return null
-        return Release(code, sp.getString("upd_name", "").orEmpty(), sp.getString("upd_notes_$code", "").orEmpty(), url,
+        return Release(code, sp.getString("upd_name", "").orEmpty(), ReleaseNotes.clean(sp.getString("upd_notes_$code", "").orEmpty()), url,
             sp.getLong("upd_size", 0L), "", sp.getString("upd_type", "software") ?: "software", sp.getString("upd_version", "").orEmpty())
     }
 
@@ -343,6 +344,28 @@ object Updater {
             .setContentText(UiLang.s("इंटरनेट आने पर टैप करें — जहाँ रुका था वहीं से आगे होगा"))
             .setAutoCancel(true).build())
     } catch (_: Exception) {}
+
+    // v3.6: नया अपडेट आया - 6 घंटे वाली जाँच से (ऐप बंद हो तब भी)
+    private const val CH_NEW = "dk_update_new"
+    private const val NOTIF_NEW = 4203
+
+    fun notifyNew(c: Context, rel: Release) {
+        val last = c.getSharedPreferences("dk_prefs", Context.MODE_PRIVATE).getInt("upd_notified", 0)
+        if (!ReleaseNotes.shouldNotify(rel.code, currentCode(c), last)) return
+        try {
+            val nm = c.getSystemService(Context.NOTIFICATION_SERVICE) as android.app.NotificationManager
+            if (Build.VERSION.SDK_INT >= 26 && nm.getNotificationChannel(CH_NEW) == null)
+                nm.createNotificationChannel(android.app.NotificationChannel(CH_NEW, "DK नया अपडेट", android.app.NotificationManager.IMPORTANCE_DEFAULT))
+            val text = UiLang.s(rel.notes)
+            nm.notify(NOTIF_NEW, (if (Build.VERSION.SDK_INT >= 26) android.app.Notification.Builder(c, CH_NEW) else @Suppress("DEPRECATION") android.app.Notification.Builder(c))
+                .setSmallIcon(android.R.drawable.stat_sys_download_done)
+                .setContentTitle(UiLang.s("DK ${rel.version} आ गया • ${rel.typeLabel}"))
+                .setContentText(text.lineSequence().firstOrNull().orEmpty())
+                .setStyle(android.app.Notification.BigTextStyle().bigText(text))
+                .setContentIntent(openUpdate(c)).setAutoCancel(true).build())
+            Prefs.edit(c) { putInt("upd_notified", rel.code) }
+        } catch (e: Exception) { DKLog.d("update notify: ${e.message}") }
+    }
 
     fun clearNotification(c: Context) = try { nm(c).cancel(NOTIF_ID) } catch (_: Exception) {}
 }
