@@ -19,8 +19,9 @@ class CallManager(private val ctx: Context, private val onRinging: (String) -> U
 
     @Volatile var state = TelephonyManager.CALL_STATE_IDLE
         private set
-    @Volatile var caller: String = ""
-        private set
+    @Volatile private var simCaller: String = ""
+    /** v4: SIM कॉल का नाम, नहीं तो WhatsApp/Instagram… वाली कॉल का */
+    val caller: String get() = simCaller.ifBlank { if (AppCall.active()) AppCall.who() else "" }
     private var listener: PhoneStateListener? = null
 
     private fun granted(p: String) = ContextCompat.checkSelfPermission(ctx, p) == PackageManager.PERMISSION_GRANTED
@@ -29,7 +30,10 @@ class CallManager(private val ctx: Context, private val onRinging: (String) -> U
     val known get() = listener != null
     fun canAnswer() = Build.VERSION.SDK_INT >= 26 && granted(Manifest.permission.ANSWER_PHONE_CALLS)
 
-    val ringing get() = state == TelephonyManager.CALL_STATE_RINGING || (!known && telecomRinging())
+    /** SIM वाली कॉल बज रही है */
+    val simRinging get() = state == TelephonyManager.CALL_STATE_RINGING || (!known && telecomRinging())
+    /** v4: SIM या किसी ऐप (WhatsApp/Instagram/Facebook/Messenger…) की कॉल बज रही है */
+    val ringing get() = simRinging || AppCall.ringing()
 
     @SuppressLint("MissingPermission")
     private fun telecomRinging(): Boolean = try {
@@ -55,7 +59,8 @@ class CallManager(private val ctx: Context, private val onRinging: (String) -> U
         try { ctx.getSystemService(AudioManager::class.java)?.setStreamVolume(AudioManager.STREAM_RING, savedRing, 0) } catch (_: Exception) {}
         savedRing = -1
     }
-    val inCall get() = state == TelephonyManager.CALL_STATE_OFFHOOK
+    /** SIM कॉल चल रही है, या v4: ऐप वाली कॉल उठ चुकी है */
+    val inCall get() = state == TelephonyManager.CALL_STATE_OFFHOOK || (state == TelephonyManager.CALL_STATE_IDLE && AppCall.ongoing())
 
     @Suppress("DEPRECATION")
     fun start() {
@@ -67,10 +72,10 @@ class CallManager(private val ctx: Context, private val onRinging: (String) -> U
                 val prev = state
                 state = s
                 if (s == TelephonyManager.CALL_STATE_RINGING && prev != s) {
-                    caller = nameFor(number)
-                    onRinging(caller)
+                    simCaller = nameFor(number)
+                    onRinging(simCaller)
                 }
-                if (s == TelephonyManager.CALL_STATE_IDLE) { caller = ""; restoreRinger() }
+                if (s == TelephonyManager.CALL_STATE_IDLE) { simCaller = ""; restoreRinger() }
                 if (s == TelephonyManager.CALL_STATE_OFFHOOK) restoreRinger()
             }
         }
@@ -102,6 +107,8 @@ class CallManager(private val ctx: Context, private val onRinging: (String) -> U
 
     @SuppressLint("MissingPermission")
     fun answer(): Boolean {
+        // v4: ऐप (WhatsApp…) की कॉल - उसी notification का Answer बटन (SIM कॉल न बज रही हो तो)
+        if (!simRinging && AppCall.ringing()) return AppCall.answer(ctx)
         if (Build.VERSION.SDK_INT >= 26 && granted(Manifest.permission.ANSWER_PHONE_CALLS)) {
             try {
                 ctx.getSystemService(TelecomManager::class.java)?.acceptRingingCall(); return true
@@ -112,6 +119,8 @@ class CallManager(private val ctx: Context, private val onRinging: (String) -> U
 
     @SuppressLint("MissingPermission")
     fun end(): Boolean {
+        // v4: ऐप की कॉल - बजती = Decline, चल रही = Hang up (SIM कॉल न हो तो)
+        if (!simRinging && state == TelephonyManager.CALL_STATE_IDLE && AppCall.active()) return AppCall.end(ctx)
         if (Build.VERSION.SDK_INT >= 28 && granted(Manifest.permission.ANSWER_PHONE_CALLS)) {
             try {
                 @Suppress("DEPRECATION")

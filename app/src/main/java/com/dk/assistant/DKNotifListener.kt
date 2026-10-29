@@ -79,6 +79,8 @@ class DKNotifListener : NotificationListenerService() {
         instance = this
         // पहले से पड़े notification भी ले लो (DK लाइव शुरू होने से पहले वाले)
         try { activeNotifications?.forEach { take(it, push = false) } } catch (_: Exception) {}
+        // v4: अलग रहने के दौरान ख़त्म हुई ऐप कॉल अटकी न रहे
+        try { AppCall.current?.key?.let { k -> if (activeNotifications?.none { it.key == k } != false) AppCall.removed(k) } } catch (_: Exception) {}
     }
 
     override fun onListenerDisconnected() { if (instance === this) instance = null }
@@ -88,12 +90,25 @@ class DKNotifListener : NotificationListenerService() {
 
     override fun onNotificationRemoved(sbn: StatusBarNotification?) {
         // हटाया गया notification: reply action बेकार; पर याद रखो (user पूछ सकता है "क्या आया था")
-        sbn?.key?.let { replyActions.remove(it) }
+        sbn?.key?.let { replyActions.remove(it); AppCall.removed(it) }
     }
 
     private fun take(sbn: StatusBarNotification, push: Boolean) {
         try {
             val n = sbn.notification ?: return
+            // v4: WhatsApp / Instagram / Facebook / Messenger… की आने वाली कॉल (ये "लगातार चलने वाले" notification हैं - नीचे छूट जाते थे)
+            if (sbn.packageName != packageName) {
+                val ex0 = n.extras
+                val t0 = ex0?.getCharSequence(Notification.EXTRA_TITLE)?.toString().orEmpty()
+                val x0 = ex0?.getCharSequence(Notification.EXTRA_TEXT)?.toString().orEmpty()
+                val app0 = try { packageManager.getApplicationLabel(packageManager.getApplicationInfo(sbn.packageName, 0)).toString() } catch (_: Exception) { sbn.packageName }
+                val wasCall = AppCall.current?.key == sbn.key
+                if (AppCall.posted(sbn.key, sbn.packageName, app0, n, t0, x0)) {
+                    if (push) AppCall.current?.let { r -> DKAccessibilityService.instance?.onAppCall(r.who, AppCall.announce(r.app, r.who, r.video)) }
+                    return
+                }
+                if (AppCall.current?.key == sbn.key || wasCall) return
+            }
             val ongoing = (n.flags and Notification.FLAG_ONGOING_EVENT) != 0 || (n.flags and Notification.FLAG_FOREGROUND_SERVICE) != 0
             val summary = (n.flags and Notification.FLAG_GROUP_SUMMARY) != 0
             if (NotifStore.skip(sbn.packageName, packageName, ongoing, summary)) return
