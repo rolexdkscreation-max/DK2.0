@@ -1040,6 +1040,7 @@ class DKAccessibilityService : AccessibilityService() {
                 }
                 // v3.33: फ़ोन के सीधे काम (बिना AI)
                 "call_contact" -> PhoneActions.callContact(this, a.optString("name"))
+                "wa_call" -> WaCall.call(this, a.optString("name"), a.optBoolean("video", false))
                 "call_log" -> PhoneActions.callLog(this)
                 "open_dialer" -> PhoneActions.openDialer(this)
                 "gallery_latest" -> PhoneActions.latestPhoto(this)

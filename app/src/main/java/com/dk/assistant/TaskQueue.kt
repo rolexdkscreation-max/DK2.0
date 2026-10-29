@@ -313,7 +313,7 @@ object TaskQueue {
             "alarm" -> if (AlarmOff.parse(item.text) != null) "अलार्म बंद हो गया" else "अलार्म लग गया"
             "timer" -> "टाइमर लग गया"
             "reminder" -> "रिमाइंडर लग गया"
-            "whatsapp" -> if (item.kind == Kind.WHATSAPP_SEND) "मैसेज भेज दिया" else "व्हाट्सऐप खुल गया"
+            "whatsapp" -> if (item.kind == Kind.WHATSAPP_SEND) "मैसेज भेज दिया" else if (WaCall.parse(item.text) != null) "WhatsApp कॉल लगा दी" else "व्हाट्सऐप खुल गया"
             "sms" -> "SMS भेज दिया"
             "call" -> "कॉल लगा दी"
             "gallery" -> if (item.kind == Kind.DELETE) "फ़ोटो डिलीट हो गई" else "गैलरी खुल गई"
