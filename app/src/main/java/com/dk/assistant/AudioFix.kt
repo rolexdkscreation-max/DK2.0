@@ -40,9 +40,16 @@ object DuckRule {
 
 /** v3.6: DK लाइव का "बोलना शुरू" दरवाज़ा (इससे धीमी आवाज़ = Gemini को खामोशी जाती थी, वह सुनता ही नहीं था) */
 object LiveHear {
-    const val START_FACTOR = 2.0      // पहले 2.5x शोर
-    const val LOUD_FACTOR = 1.7       // तेज़ शोर/गाने में (पहले 2.0x)
-    const val START_MIN = 220.0       // पहले 300 RMS
+    // v4.2 (मालिक: "एकदम धीरे से भी बोलूँ तो सुन ले") - दरवाज़ा और नीचे; शोर को बोलना मानने से steadyReset + server VAD + caption बचाते हैं
+    const val START_FACTOR = 1.7      // पहले 2.0x (उससे पहले 2.5x) शोर
+    const val LOUD_FACTOR = 1.5       // तेज़ शोर/गाने में (पहले 1.7x)
+    const val START_MIN = 150.0       // पहले 220 (उससे पहले 300) RMS
+    /** बोलते समय धीमे होते शब्द (वाक्य का आख़िरी हिस्सा) को चुप्पी न मानो - पहले 1.6x / 220 */
+    const val KEEP_FACTOR = 1.4
+    const val KEEP_MIN = 140.0
+    /** धीमी आवाज़ को Gemini तक तेज़ करना: पहले max 6 गुना, शोर 450 तक */
+    const val BOOST_MAX = 10.0
+    const val BOOST_NOISE_CAP = 700.0
     /** दूर/धीमी आवाज़ की रोक सिर्फ़ "सिर्फ़ मालिक की आवाज़" के साथ */
     fun farFloor(ownerOn: Boolean, floor: Double): Double = if (ownerOn) floor else 0.0
 }

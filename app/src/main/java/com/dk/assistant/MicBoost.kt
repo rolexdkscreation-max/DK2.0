@@ -18,6 +18,8 @@ import kotlin.math.tanh
 class MicBoost(
     private val target: Double = 2500.0,
     private val maxGain: Double = 6.0,
+    /** शोर को इससे ज़्यादा तेज़ मत करो (पंखा/TV) */
+    private val noiseCap: Double = 450.0,
 ) {
     @Volatile var noise = 120.0
         private set
@@ -34,7 +36,7 @@ class MicBoost(
         noise = if (rms < noise) noise * 0.85 + rms * 0.15 else noise * 0.997 + rms * 0.003
         if (noise < 20.0) noise = 20.0
         // shor ko 450 se upar mat le jao (pankha/TV tez na ho)
-        val cap = (450.0 / noise).coerceIn(1.0, maxGain)
+        val cap = (noiseCap / noise).coerceIn(1.0, maxGain)
         val speech = rms > maxOf(noise * 1.6, 60.0)
         val want = if (speech) (target / rms).coerceIn(1.0, cap) else minOf(gain, cap)
         gain = if (want < gain) want else gain + (want - gain) * 0.08

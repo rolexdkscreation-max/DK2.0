@@ -25,7 +25,8 @@ import java.util.concurrent.TimeUnit
  * Yeh na chale (key/limit/model nahi) to chup-chaap band - tab purana tareeka (Live model ka text) chalta hai.
  */
 class LiveCaption(
-    private val key: String,
+    /** v4.2: लिखने वाले की key + DK लाइव की बैकअप keys (एक की limit खत्म = अगली; पहले एक ही key थी) */
+    private val keys: List<String>,
     /** (abhi ki baat, isme pakka text aaya?) */
     private val onText: (String, Boolean) -> Unit,
     /** Band ho chuki baat ka der se aaya (pakka) text - pichhli line theek karo */
@@ -51,7 +52,9 @@ class LiveCaption(
     @Volatile private var stopped = true
     @Volatile private var mi = 0
     @Volatile private var fails = 0
-    @Volatile private var dead = false          // is key par chalta hi nahi
+    @Volatile private var dead = false          // kisi key par chalta hi nahi
+    @Volatile private var ki = 0
+    private val key: String get() = keys.getOrElse(ki) { "" }
     @Volatile private var upAt = 0L
     /** v3.39: आख़िरी असली आवाज़ कब भेजी (टूटने का लॉग + जुड़ाव कब बदलें) */
     @Volatile private var lastRealAt = 0L
@@ -91,6 +94,7 @@ class LiveCaption(
     private fun log(m: String) = DKLog.d("Caption: $m")
 
     fun start() {
+        if (keys.isEmpty()) dead = true
         if (dead) return
         stopped = false
         connect()
@@ -221,6 +225,7 @@ class LiveCaption(
                 r.contains("permission") || r.contains("api key") || r.contains("quota") || r.contains("exhausted") ||
                 code == 404 || code == 1007 || code == 1008 || code == 403 || code == 429)) {
             if (mi + 1 < MODELS.size) { mi++; connect(); return }
+            if (ki + 1 < keys.size) { ki++; mi = 0; log("इस key पर नहीं चला - बैकअप key ${ki + 1} से"); connect(); return }
             dead = true
             log("इस key पर लाइव कैप्शन नहीं चलता - पुराना तरीका चलेगा")
             return

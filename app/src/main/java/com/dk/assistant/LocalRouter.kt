@@ -81,7 +81,8 @@ object LocalRouter {
             for (g in GREET + EDGE_FILLER) if (t == g || t.startsWith("$g ") || t.startsWith("$g,")) { t = t.substring(g.length).trim(' ', ','); changed = true }
             for (g in EDGE_FILLER) if (t.endsWith(" $g")) { t = t.dropLast(g.length + 1).trim(' ', ','); changed = true }
         }
-        return t.trim('.', '।', '!', '?', ',', ' ')
+        // v4.2: ग़लत सुने आम शब्द ठीक ("youtube फॉलो" = खोलो, "पबा सिंगा" = पवन सिंह) - तेज़ रास्ता अटके नहीं
+        return HearFix.fix(t.trim('.', '।', '!', '?', ',', ' '))
     }
 
     private fun hasAny(t: String, w: List<String>) = w.any { t.contains(it) }
@@ -357,7 +358,8 @@ object LocalRouter {
                     if (s.length >= 2 && hasAny(c, PLAY)) { lastQuery = s; q = QuickCommands.Quick(a("youtube_play", "query" to s), ""); replacePrev = prevType == "open_app" }
                     else if (s.length >= 2) { lastQuery = s; q = QuickCommands.Quick(a("youtube_search", "query" to s), "YouTube पर खोज दिया"); replacePrev = prevType == "open_app" }
                 }
-                ctx == "youtube" && hasAny(c, PLAY) && lastQuery != null && refersBack(c) -> {
+                // v4.2: "…सर्च करो और प्ले कर दो" - अकेला "प्ले कर दो" = वही खोजा हुआ चलाओ (पहले यह टुकड़ा अटकता = पूरी बात Gemini को)
+                ctx == "youtube" && hasAny(c, PLAY) && lastQuery != null && (refersBack(c) || clean(c, PLAY + YT).length < 2) -> {
                     q = QuickCommands.Quick(a("youtube_play", "query" to lastQuery!!), ""); replacePrev = prevType == "youtube_search"
                 }
                 ctx == "youtube" && hasAny(c, PLAY) && lastQuery == null -> {

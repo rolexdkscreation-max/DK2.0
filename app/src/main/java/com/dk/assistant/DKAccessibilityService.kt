@@ -92,6 +92,7 @@ class DKAccessibilityService : AccessibilityService() {
         calls = CallManager(this) { who -> scope.launch { onIncomingCall(who) } }
         CallCmd.liveCheck = { calls.ringing || calls.inCall }   // v4.1: घंटी/कॉल में कॉल-कमांड बिना DK
         calls.start()
+        scope.launch { speaker.warmCallVoice() }   // v4.2: "सर, कॉल आ रहा है" पहले से तैयार - limit / नेट न हो तब भी कॉल पर चुप नहीं
         showEdgeGlow()
         showBubble()
         AppVisible.onChange = { inApp -> bubble?.visibility = if (inApp) android.view.View.GONE else android.view.View.VISIBLE }
@@ -350,7 +351,7 @@ class DKAccessibilityService : AccessibilityService() {
     private fun earCaptionOn() {
         val key = Prefs.captionKey(this)   // v3.41: likhne ki apni key (ho to)
         if (key.isBlank()) { ear.onFrame = null; return }
-        val c = earCaption ?: LiveCaption(key, onText = { t, _ -> if (earShowing && t.isNotBlank()) DKState.user("$t…") }, onLate = { })
+        val c = earCaption ?: LiveCaption(LiveKeys.order(listOf(key) + Prefs.liveGeminiKeys(this)), onText = { t, _ -> if (earShowing && t.isNotBlank()) DKState.user("$t…") }, onLate = { })
             .also { it.start(); earCaption = it }
         ear.onFrame = { b, n ->
             val out = ByteArray(n * 2)
@@ -1228,18 +1229,31 @@ class DKAccessibilityService : AccessibilityService() {
             // v3.51: पहले Gemini (Live) खुद पूछता था - पर उसकी आवाज़ media पर है और घंटी के समय Android उसे mute कर देता है:
             // "बोल दिया" दिखता (isPlaying) पर सुनाई कुछ नहीं, फ़ोन वाली आवाज़ भी नहीं चलती थी = सिर्फ़ लिखा दिखता.
             // अब फ़ोन खुद (accessibility आवाज़, घंटी में भी सुनाई दे) पूछता है; Live को बस बताया जाता है ताकि जवाब वही सुने.
-            gemLive.noteCallAsked(if (ask == null) who else AppCall.current?.let { r -> "${r.who.ifBlank { "कोई" }} (${r.app}${if (r.video) " वीडियो" else ""} कॉल)" } ?: who)
+            val whoNote = if (ask == null) who else AppCall.current?.let { r -> "${r.who.ifBlank { "कोई" }} (${r.app}${if (r.video) " वीडियो" else ""} कॉल)" } ?: who
+            gemLive.noteCallAsked(whoNote)
             gemLive.muteMic(true)
             callAnnouncing = true
-            try { speaker.speakQuick(msg) } finally { callAnnouncing = false; gemLive.muteMic(false) }
+            // v4.2: पूरी आवाज़ + तीनों keys से. (पहले सिर्फ़ मुख्य key - उसकी limit खत्म = कॉल पर DK चुप)
+            val spoke = try { speaker.speakCall(msg, generic = false) } finally { callAnnouncing = false; gemLive.muteMic(false) }
             // पूछने के बाद Live की आवाज़ भी घंटी में सुनाई दे ("उठा रहा हूँ" / "किसका है" का जवाब)
             gemLive.callAudio(true)
-            DKLog.d("कॉल: फ़ोन की आवाज़ से पूछा (Live जवाब सुन रहा है)")
+            if (spoke == Speaker.CallSpoke.NONE) {
+                // Gemini TTS की limit (सब keys) खत्म - Live की अपनी आवाज़ (उसकी limit अलग) से नाम बताकर पूछो, पूरी आवाज़ में
+                speaker.fullCallVolume()
+                val liveSaid = gemLive.announceCall(whoNote)
+                DKLog.d("कॉल: TTS आवाज़ नहीं बनी - " + if (liveSaid) "DK लाइव की आवाज़ से पूछा" else "लाइव भी नहीं बोला, सहेजी आवाज़")
+                if (!liveSaid) {
+                    gemLive.muteMic(true); callAnnouncing = true
+                    try { speaker.speakCall("", generic = true) } finally { callAnnouncing = false; gemLive.muteMic(false) }
+                }
+            } else DKLog.d("कॉल: फ़ोन की आवाज़ से पूछा (Live जवाब सुन रहा है)")
             scope.launch { while (calls.ringing) delay(500); callPending = false; if (!calls.inCall) gemLive.callAudio(false) }
+            scope.launch { delay(1_000); while (calls.ringing || calls.inCall) delay(500); speaker.restoreCallVolume() }
             return
         }
         callAnnouncing = true
-        try { speaker.speakQuick(msg) } finally { callAnnouncing = false }   // phone ki apni awaaz = bina der
+        try { speaker.speakCall(msg) } finally { callAnnouncing = false }   // v4.2: पूरी आवाज़, तीनों keys, न बने तो सहेजी आवाज़
+        scope.launch { delay(1_000); while (calls.ringing || calls.inCall) delay(500); speaker.restoreCallVolume() }
 
         // Sunne wala loop chalu hai to wahi jawab sambhalega. Nahi to yahin suno (jab tak ghanti baje, max ~30 sec)
         if (loopJob?.isActive == true) {

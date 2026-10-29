@@ -233,7 +233,8 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
     // v3.6: धीमी आवाज़ भी "बोलना" (owner: "ज़ोर से बोलना पड़ता है") - दरवाज़ा 2.5x -> 2.0x शोर, 300 -> 220 RMS
     private val turnDet = TurnDetector(CHUNK_MS, endSilenceMs = CLIENT_END_MS, startFactor = LiveHear.START_FACTOR,
         startMin = LiveHear.START_MIN, loudNoiseFactor = LiveHear.LOUD_FACTOR,
-        longSpeechMs = TurnEnd.LONG_SPEECH_MS, longEndSilenceMs = TurnEnd.LONG_END_SILENCE_MS, steadyResetMs = 6_000)
+        longSpeechMs = TurnEnd.LONG_SPEECH_MS, longEndSilenceMs = TurnEnd.LONG_END_SILENCE_MS, steadyResetMs = 6_000,
+        keepFactor = LiveHear.KEEP_FACTOR, keepMin = LiveHear.KEEP_MIN)
     /** वही पहचानी बात router में बार-बार न जाए (हर छोटी चुप्पी पर पूरा caption दोबारा जाँचा जाता था) */
     private val routeDedupe = RouteDedupe()
     private val bargeDet = BargeDetector()
@@ -906,6 +907,10 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
             log("$why - बैकअप key ${ki + 1} से जुड़ रहा हूँ (models: ${models.joinToString()})")
             return true
         }
+        // v4.2: मुख्य key के सारे मॉडल की limit पहले से खत्म (पिछली बार पता चला) = बेकार connection नहीं, सीधे बैकअप key
+        while (LiveKeys.allBlocked(models) { Cooldown.blocked(LiveKeys.cooldownName(keyIdx, it)) }) {
+            if (!switchKey("key ${ki + 1} के सारे Live मॉडल की limit आज खत्म")) break
+        }
         log("models: ${models.joinToString()}")
         if (stopped) return@withContext "जुड़ने से पहले बंद"
         mi = 0; var fails = 0
@@ -926,7 +931,7 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
         // v3.41: "aap:" likhne wala apni alag key se (Settings -> AI dimaag -> DK live) - bolne wale ki free limit bachi rahe
         val capKey = Prefs.captionKey(svc)
         log("लिखने वाला: " + if (Prefs.captionOwnKey(svc).isNotBlank()) "अपनी अलग key से" else "DK लाइव वाली key से (अलग key नहीं डाली)")
-        caption = LiveCaption(capKey, onText = { t, fin -> onCaption(t, fin) }, onLate = { t -> onLateCaption(t) },
+        caption = LiveCaption(LiveKeys.order(listOf(capKey) + Prefs.liveGeminiKeys(svc)), onText = { t, fin -> onCaption(t, fin) }, onLate = { t -> onLateCaption(t) },
             isNewSpeech = { barging || System.currentTimeMillis() < bargeUntil }).also { it.start() }
         turnDet.reset(); bargeDet.reset(); bargeGate.reset(); synchronized(bargeBuf) { bargeBuf.clear() }
         askQueue.clear(); holdCap = ""; holdCapAt = 0L; holdLoudAt = 0L; holdFinal = false
@@ -2960,7 +2965,7 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
     }
 
     /** Dheere bolne par bhi saaf awaaz Gemini tak (v3.7) */
-    private val boost = MicBoost()
+    private val boost = MicBoost(maxGain = LiveHear.BOOST_MAX, noiseCap = LiveHear.BOOST_NOISE_CAP)   // v4.2: और धीमी आवाज़ भी
 
     private suspend fun micLoop() = coroutineScope {
         var r = openMic() ?: throw Fatal("माइक नहीं खुला (कोई दूसरा ऐप माइक इस्तेमाल कर रहा है?)", recoverable = true)

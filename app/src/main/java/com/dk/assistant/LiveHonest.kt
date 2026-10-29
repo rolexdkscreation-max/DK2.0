@@ -22,6 +22,9 @@ object CallVoice {
     /** android.media.AudioManager.STREAM_ACCESSIBILITY */
     const val STREAM_ACCESSIBILITY = 10
 
+    /** v4.2: कॉल का सहेजा हुआ एलान (नाम वाली आवाज़ न बने तब भी DK चुप न रहे) - एक बार बनता है, फिर हमेशा तुरंत */
+    const val GENERIC_ASK = "सर, कॉल आ रहा है। उठाऊँ या काट दूँ?"
+
     /**
      * DK की आवाज़ किस usage पर बजे.
      * कॉल (घंटी/बात) = accessibility (media mute हो जाता है); Bluetooth = पहले जैसा कॉल वाला; बाकी पहले जैसा media.
