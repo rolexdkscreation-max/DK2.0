@@ -76,14 +76,17 @@ class VoiceActivity : AppCompatActivity() {
         }.also { top.addView(it, LinearLayout.LayoutParams((46 * dp).toInt(), (46 * dp).toInt()).apply { marginEnd = (8 * dp).toInt() }) }
         shareBtn = topBtn(R.drawable.ic_screen_share, "स्क्रीन शेयर चालू/बंद") { onShareTap() }
         camBtn = topBtn(R.drawable.ic_camera, "कैमरा चालू/बंद") { onCamTap() }
-        top.addView(ImageButton(this).apply {
+        val faceBtn = ImageButton(this).apply {
             setImageResource(R.drawable.ic_face); setBackgroundResource(R.drawable.glass_circle)
             val p = (13 * dp).toInt(); setPadding(p, p, p, p); scaleType = android.widget.ImageView.ScaleType.FIT_CENTER
             contentDescription = "चेहरा दिखाओ"
             setOnClickListener { if (System.currentTimeMillis() < DKState.faceUntil) DKState.hideFace() else DKState.showFace() }
-        }, LinearLayout.LayoutParams((46 * dp).toInt(), (46 * dp).toInt()))
+        }
+        top.addView(faceBtn, LinearLayout.LayoutParams((46 * dp).toInt(), (46 * dp).toInt()))
         col.addView(top)
-        top.visibility = android.view.View.GONE     // बटन/शीर्षक नहीं (स्क्रीन शेयर/कैमरा आवाज़ से अब भी चलते हैं)
+        // v3.102: स्क्रीन शेयर / कैमरा बटन फिर दिखें (ऊपर दाईं ओर). शीर्षक और चेहरा बटन पहले की तरह नहीं
+        titles.visibility = android.view.View.INVISIBLE
+        faceBtn.visibility = android.view.View.GONE
 
         // ---- beech me orb
         orb = OrbView(this).apply {
@@ -211,6 +214,8 @@ class VoiceActivity : AppCompatActivity() {
 
     private fun handle(i: Intent?) {
         if (i?.getBooleanExtra("camera", false) == true) { syncCamera(); return }   // Live ने कैमरा माँगा (Live पहले से चालू)
+        // v3.102: होम का कैमरा / स्क्रीन शेयर बटन - DK लाइव चालू करो, जुड़ते ही वही चालू
+        i?.getStringExtra(EXTRA_WANT)?.let { w -> i.removeExtra(EXTRA_WANT); wantVision(w, "back"); return }
         if (i?.getBooleanExtra("face", false) == true) {
             if (System.currentTimeMillis() >= DKState.faceUntil) DKState.showFace()
             return     // chehra dekhne aaye hain: mic apne aap chalu nahi
@@ -284,10 +289,44 @@ class VoiceActivity : AppCompatActivity() {
     override fun onDestroy() { feed?.release(); feed = null; super.onDestroy() }
 
     // ---------------------------------------------------------------- v3.40: स्क्रीन शेयर / कैमरा
-    private fun onShareTap() {
-        if (!DKState.live || DKAccessibilityService.instance?.gemLive?.canTalk() != true) {
-            UiLang.toast(this, "पहले DK लाइव चालू करें (माइक दबाएँ) — स्क्रीन शेयर DK लाइव के साथ चलता है", Toast.LENGTH_LONG).show(); return
+    private fun liveReady() = DKState.live && DKAccessibilityService.instance?.gemLive?.canTalk() == true
+
+    /** v3.102: DK लाइव बंद हो तो उसे चालू करो और जुड़ते ही कैमरा/स्क्रीन शेयर (20 सेकंड तक इंतज़ार) */
+    private var wantJob: Runnable? = null
+    private fun wantVision(what: String, facing: String) {
+        wantJob?.let { orb.removeCallbacks(it) }; wantJob = null
+        if (liveReady()) { doVision(what, facing); return }
+        UiLang.toast(this, "DK लाइव चालू हो रही है… जुड़ते ही " + (if (what == WANT_SCREEN) "स्क्रीन शेयर" else "कैमरा") + " चालू होगा", Toast.LENGTH_SHORT).show()
+        if (!DKState.live) startLiveIfReady()
+        val until = System.currentTimeMillis() + 20_000
+        val r = object : Runnable {
+            override fun run() {
+                if (isFinishing || isDestroyed) return
+                when {
+                    liveReady() -> { wantJob = null; doVision(what, facing) }
+                    System.currentTimeMillis() < until -> orb.postDelayed(this, 500)
+                    else -> { wantJob = null; UiLang.toast(this@VoiceActivity, "DK लाइव नहीं जुड़ी — माइक दबाकर फिर कोशिश करें", Toast.LENGTH_LONG).show() }
+                }
+            }
         }
+        wantJob = r; orb.postDelayed(r, 500)
+    }
+
+    private fun doVision(what: String, facing: String) {
+        if (what == WANT_SCREEN) {
+            if (LiveVision.screenOn || LiveVision.asking) return
+            val r = LiveVision.setScreen(this, true)
+            if (r.startsWith("This Live model")) UiLang.toast(this, "यह Gemini Live मॉडल तस्वीर नहीं लेता — सेटिंग्स में दूसरा मॉडल चुनें", Toast.LENGTH_LONG).show()
+            else UiLang.toast(this, "Android पूछेगा — \"Start / शुरू करें\" दबाते ही DK आपकी स्क्रीन देखेगा", Toast.LENGTH_SHORT).show()
+        } else {
+            camAsked = false
+            val r = LiveVision.setCamera(this, true, facing)
+            if (r.startsWith("This Live model")) UiLang.toast(this, "यह Gemini Live मॉडल तस्वीर नहीं लेता — सेटिंग्स में दूसरा मॉडल चुनें", Toast.LENGTH_LONG).show()
+        }
+    }
+
+    private fun onShareTap() {
+        if (!liveReady()) { wantVision(WANT_SCREEN, ""); return }
         val turningOn = !(LiveVision.screenOn || LiveVision.asking)
         val r = LiveVision.toggleScreen(this)
         if (turningOn && r.startsWith("This Live model")) UiLang.toast(this, "यह Gemini Live मॉडल तस्वीर नहीं लेता — सेटिंग्स में दूसरा मॉडल चुनें", Toast.LENGTH_LONG).show()
@@ -295,9 +334,7 @@ class VoiceActivity : AppCompatActivity() {
     }
 
     private fun onCamTap() {
-        if (!DKState.live || DKAccessibilityService.instance?.gemLive?.canTalk() != true) {
-            UiLang.toast(this, "पहले DK लाइव चालू करें (माइक दबाएँ) — कैमरा DK लाइव के साथ चलता है", Toast.LENGTH_LONG).show(); return
-        }
+        if (!liveReady()) { wantVision(WANT_CAMERA, if (LiveVision.cameraFront) "front" else "back"); return }
         camAsked = false
         val r = LiveVision.toggleCamera(this)
         if (r.startsWith("This Live model")) UiLang.toast(this, "यह Gemini Live मॉडल तस्वीर नहीं लेता — सेटिंग्स में दूसरा मॉडल चुनें", Toast.LENGTH_LONG).show()
@@ -369,6 +406,10 @@ class VoiceActivity : AppCompatActivity() {
 
     companion object {
         private const val REQ_CAM = 4209
+        /** v3.102: होम के बटन से - DK लाइव चालू होते ही कैमरा / स्क्रीन शेयर */
+        const val EXTRA_WANT = "want_vision"
+        const val WANT_CAMERA = "camera"
+        const val WANT_SCREEN = "screen"
         /** आवाज़ स्क्रीन सामने है (कैमरा सिर्फ़ तभी) */
         @Volatile var visible = false
             private set

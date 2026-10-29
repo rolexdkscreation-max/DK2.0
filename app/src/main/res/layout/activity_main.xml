@@ -62,6 +62,29 @@
                     android:textStyle="bold" />
             </LinearLayout>
 
+            <!-- v3.102: होम पर कैमरा / स्क्रीन शेयर (टैप = DK लाइव चालू होकर देखे) -->
+            <ImageButton
+                android:id="@+id/btnHomeCam"
+                android:layout_width="44dp"
+                android:layout_height="44dp"
+                android:layout_marginEnd="8dp"
+                android:background="@drawable/glass_circle"
+                android:contentDescription="कैमरा से दिखाएँ"
+                android:padding="11dp"
+                android:scaleType="fitCenter"
+                android:src="@drawable/ic_camera" />
+
+            <ImageButton
+                android:id="@+id/btnHomeShare"
+                android:layout_width="44dp"
+                android:layout_height="44dp"
+                android:layout_marginEnd="8dp"
+                android:background="@drawable/glass_circle"
+                android:contentDescription="स्क्रीन शेयर"
+                android:padding="11dp"
+                android:scaleType="fitCenter"
+                android:src="@drawable/ic_screen_share" />
+
             <ImageButton
                 android:id="@+id/btnMute"
                 android:layout_width="48dp"

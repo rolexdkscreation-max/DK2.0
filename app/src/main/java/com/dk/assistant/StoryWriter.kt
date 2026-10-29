@@ -219,7 +219,11 @@ object StorySession {
             } catch (e: Exception) {
                 error = "भाग ${parts.size + 1} नहीं लिख पाया: " + (e.message ?: e.javaClass.simpleName).take(200)
                 DKLog.d("Story गलती: ${e.javaClass.simpleName} ${e.message}")
-            } finally { notifyUi() }
+            } finally {
+                notifyUi()
+                // v3.102: DK लाइव चल रही हो तो कहानी का सच्चा नतीजा उसे (वही बोलकर बताए)
+                LiveReport.note(LiveConnect.storyDoneNote(title, parts.size, total, if (done) null else error))
+            }
         }
         notifyUi()
     }
