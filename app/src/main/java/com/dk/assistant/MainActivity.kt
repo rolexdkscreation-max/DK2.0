@@ -37,6 +37,8 @@ class MainActivity : AppCompatActivity() {
         UiLang.keep(txtDk)    // DK का जवाब (content) - UI भाषा से नहीं बदलता
         btnMute = findViewById(R.id.btnMute)
         findViewById<ImageButton>(R.id.btnSettings).setOnClickListener { openSettings() }
+        findViewById<ImageButton>(R.id.btnHomeCam).setOnClickListener { openVoice(VoiceActivity.WANT_CAMERA) }
+        findViewById<ImageButton>(R.id.btnHomeShare).setOnClickListener { openVoice(VoiceActivity.WANT_SCREEN) }
         // orb par tap = chehra dikh raha ho to hatao, warna live awaaz screen
         findViewById<OrbView>(R.id.orb).setOnClickListener {
             if (System.currentTimeMillis() < DKState.faceUntil) DKState.hideFace() else openVoice()
@@ -227,8 +229,9 @@ class MainActivity : AppCompatActivity() {
         return true
     }
 
-    private fun openVoice() {
-        if (ready()) startActivity(Intent(this, VoiceActivity::class.java))
+    /** want = कैमरा/स्क्रीन शेयर भी चालू करना (v3.102 होम के बटन) */
+    private fun openVoice(want: String? = null) {
+        if (ready()) startActivity(Intent(this, VoiceActivity::class.java).apply { if (want != null) putExtra(VoiceActivity.EXTRA_WANT, want) })
     }
 
     override fun onResume() {

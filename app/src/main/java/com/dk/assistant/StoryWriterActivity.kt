@@ -180,7 +180,12 @@ class StoryWriterActivity : AppCompatActivity() {
         render()
     }
 
-    override fun onResume() { super.onResume(); StorySession.listener = { runOnUiThread { render() } }; render() }
+    override fun onResume() {
+        super.onResume()
+        // v3.102: DK लाइव से शुरू हुई कहानी - विषय और लंबाई भी पन्ने पर दिखे
+        if (StorySession.busy) { if (edtTopic.text.isEmpty()) edtTopic.setText(StorySession.topic); minutes = StorySession.minutes; paintLengths() }
+        StorySession.listener = { runOnUiThread { render() } }; render()
+    }
     override fun onPause() { super.onPause(); StorySession.listener = null }
 
     private fun onWrite() {

@@ -76,7 +76,7 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
         /** v3.80: tool का नतीजा भेजने के बाद इतनी देर चुप = याद दिलाओ */
         private const val TOOL_ANSWER_MS = 8_000L
         /** v3.80: इनका नतीजा = यूज़र को जवाब बोलना ज़रूरी */
-        private val ANSWER_TOOLS = setOf("web_search", "deep_think", "current_time", "local_info", "connector_task", "task_status")
+        private val ANSWER_TOOLS = setOf("web_search", "deep_think", "current_time", "local_info", "connector_task", "task_status", "dk_features")
         /**
          * Jawab "ban raha" (generating) tha par itni der server se ek bhi sandesh nahi aur awaaz bhi nahi baj rahi =
          * turnComplete kho gaya / stream atak gaya. Tab turn band (stream ya connection nahi kaata - aage kuch aaye to
@@ -1236,6 +1236,20 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
                 .put("parameters", JSONObject().put("type", "OBJECT")
                     .put("properties", JSONObject().put("prompt", JSONObject().put("type", "STRING").put("description", "What website to build, with every detail the user gave (business, name, sections, colours, language)")))
                     .put("required", JSONArray().put("prompt"))))
+            .put(JSONObject().put("name", "dk_features")
+                .put("description", "Get the REAL list of everything DK can do - all agents and modes (phone control, WhatsApp, calls, social media, Coding Agent team, DK Computer, Website Forge, Story Mode, Teacher Mode, Autonomous Mode, camera, screen share, search, memory) and which tool does what. Call it when the user asks what you can do / which agents DK has / what is inside an agent (तुम क्या-क्या कर सकती हो, कौन-कौन से एजेंट हैं), or when you are unsure which tool fits a task.")
+                .put("parameters", JSONObject().put("type", "OBJECT").put("properties", JSONObject())))
+            .put(JSONObject().put("name", "story_task")
+                .put("description", "Story Mode: the Story Writer Agent writes a long emotional Hindi story (10, 15, 20, 25 or 30 minutes) part by part on DK's Story screen. Use it when the user asks to write/make a story or kahani (कहानी लिखो, 20 मिनट की कहानी बनाओ, स्टोरी मोड). It returns story_started immediately; you get a SYSTEM NOTE when it is really finished.")
+                .put("parameters", JSONObject().put("type", "OBJECT")
+                    .put("properties", JSONObject()
+                        .put("topic", JSONObject().put("type", "STRING").put("description", "The story topic / instructions in the user's words (empty = the agent picks one)"))
+                        .put("minutes", JSONObject().put("type", "INTEGER").put("description", "Length in minutes if the user said it (10-30), else 0")))))
+            .put(JSONObject().put("name", "teacher_mode")
+                .put("description", "Open (on=true) or close (on=false) DK Teacher Mode - a whiteboard page where everything you explain is written for studying. Use it when the user says टीचर मोड खोलो / पढ़ाई शुरू करो / टीचर मोड बंद करो.")
+                .put("parameters", JSONObject().put("type", "OBJECT")
+                    .put("properties", JSONObject().put("on", JSONObject().put("type", "BOOLEAN")))
+                    .put("required", JSONArray().put("on"))))
             .put(JSONObject().put("name", "social_media_task")
                 .put("description", "Post on Instagram or Facebook by driving the real app on the phone. Instagram: post_photo, post_video, post_reel, post_story. Facebook: post_text, post_photo, post_video, post_story. Media can ONLY be a photo/video the user shared to DK (Gallery -> Share -> DK); use media='latest_shared'. mode='draft' fills everything but never posts. Posting is irreversible: you will get a SYSTEM NOTE with status waiting_confirmation - ask the user that exact question and only after a clear yes call social_media_task_control(command=confirm). DK never fills logins, passwords, CAPTCHAs or 2-step codes - it waits for the user. Report the final status truthfully (submitted_unverified = not confirmed).")
                 .put("parameters", JSONObject().put("type", "OBJECT")
@@ -1277,7 +1291,7 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
                     .put("properties", JSONObject().put("on", JSONObject().put("type", "BOOLEAN")))
                     .put("required", JSONArray().put("on"))))
             .put(JSONObject().put("name", "camera")
-                .put("description", "Turn the phone camera ON or OFF so you can see what the user shows you (OFF by default). Only while it is ON you receive a camera image about once a second. Use when the user says कैमरा चालू करो / कैमरा से देखो / ये देखो क्या है (and the camera is off), or to turn it off. facing: back (default) or front (selfie).")
+                .put("description", "Turn the phone camera ON or OFF so you can see what the user shows you (OFF by default). Only while it is ON you receive a camera image about once a second. Use when the user says कैमरा चालू करो / कैमरा से देखो / ये देखो क्या है (and the camera is off), or to turn it off. This is DK's own camera inside the app (not the phone's camera app). facing: front when the user wants you to look at THEM (मुझे देखो / मेरा चेहरा देखो / मैं कैसा लग रहा हूँ / आगे वाला कैमरा); back when they want to show you something (ये देखो / पीछे वाला कैमरा / बैक कैमरा). If the camera is already on and the user wants the other side, call again with on=true and the new facing.")
                 .put("parameters", JSONObject().put("type", "OBJECT")
                     .put("properties", JSONObject().put("on", JSONObject().put("type", "BOOLEAN"))
                         .put("facing", JSONObject().put("type", "STRING").put("description", "back or front")))
@@ -1902,6 +1916,10 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
                     "phone_call" -> callTool(args.optString("action"), "Gemini")
                     "screen_share" -> LiveVision.setScreen(svc, args.optBoolean("on", true))
                     "camera" -> LiveVision.setCamera(svc, args.optBoolean("on", true), args.optString("facing"))
+                    "dk_features" -> LiveConnect.features(com.dk.assistant.auto.AutoPrefs.on(svc),
+                        com.dk.assistant.auto.AutoPrefs.enabledKinds(svc).map { it.title }, Prefs.oneKeyOn(svc) && Prefs.oneKey(svc).isNotBlank())
+                    "story_task" -> LiveReport.startStory(svc, args.optString("topic"), args.optInt("minutes", 0))
+                    "teacher_mode" -> LiveReport.teacher(svc, args.optBoolean("on", true))
                     "remember_fact" -> if (Memory.addFact(svc, args.optString("fact"))) "saved" else "NOT saved: private info (passwords, PIN, OTP, bank/card/Aadhaar numbers) is never stored. If the user asked you to remember it, tell them gently you do not save such private details." 
                     "recall_conversation" -> {
                         val a = LocalMemory.answer(svc, args.optString("question").ifBlank { DKState.lastUser.trimEnd('…') })
