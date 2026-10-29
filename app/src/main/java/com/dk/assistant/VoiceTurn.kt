@@ -241,7 +241,11 @@ class BargeGate(
     /** Caption band ho to: itni der lagatar tez awaaz = pakka */
     private val noCaptionMs: Long = 700,
 ) {
-    enum class State { IDLE, TENTATIVE, CONFIRMED }
+    /**
+     * HOLD (v3.5+): user sach me bola par "रुको" nahi bola = DK ka jawab chalta rahe, user ki baat sirf caption sune
+     * (Gemini ko nahi - warna server purana jawab kaat deta). Baat poori = sawaal kataar me, jawab khatam hote hi bheja jaata hai.
+     */
+    enum class State { IDLE, TENTATIVE, CONFIRMED, HOLD }
     var state = State.IDLE
         private set
     var since = 0L
@@ -269,19 +273,53 @@ class BargeGate(
 
     fun confirmedByLength(): Boolean = state == State.CONFIRMED
 
+    /** Asli shabd aaye par rokne wale nahi: jawab chalne do, baat sunte raho (TENTATIVE -> HOLD) */
+    fun hold(now: Long) { if (state == State.TENTATIVE || state == State.CONFIRMED) { state = State.HOLD; since = now } }
+
+    /** HOLD me "रुको" aaya ya caption band: ab sach me toko (HOLD/TENTATIVE -> CONFIRMED) */
+    fun confirm() { if (state != State.IDLE) state = State.CONFIRMED }
+
     companion object {
         private val LETTER = Regex("[\\p{L}\\p{M}]")
         private val WS = Regex("[\\s,.!?।]+")
         /** Kam se kam 2 akshar wala ek shabd ("हाँ", "ruko") - khaali/ek akshar/aawaaz-chinh nahi */
         fun realWords(t: String): Boolean = t.split(WS).any { w -> LETTER.findAll(w).count() >= 2 }
-        /** Caption ne DK ki apni awaaz likh di? (adhiktar shabd DK ke jawab me) */
+        private val TOKEN_SPLIT = Regex("[^\\p{L}\\p{M}\\p{N}]+")
+        /**
+         * v3.5+: goonj ki ginti me in aam shabdon ko nahi ginte - "क्या / है / मुझे / बताओ" har jawab me hote hain,
+         * pehle inhi ki wajah se user ka naya sawaal "DK ki goonj" maan kar phenk diya jaata tha.
+         */
+        private val COMMON = setOf(
+            "है", "हैं", "हूँ", "हूं", "हो", "था", "थी", "थे", "का", "की", "के", "को", "में", "मे", "से", "पर", "और", "या", "तो",
+            "भी", "ही", "ने", "एक", "यह", "ये", "वह", "वो", "क्या", "कि", "जो", "मैं", "मुझे", "मेरा", "मेरी", "मेरे", "आप", "आपका",
+            "आपको", "तुम", "तुम्हें", "हम", "कर", "करो", "करना", "दो", "दे", "बताओ", "बता", "बताइए", "अब", "अभी", "जी", "हाँ", "हां",
+            "नहीं", "ना", "तो", "फिर", "कैसे", "कौन", "कब", "कहाँ", "क्यों", "इस", "उस", "इसका", "उसका", "रहा", "रही", "रहे",
+            "the", "a", "an", "is", "are", "to", "of", "and", "in", "on", "it", "i", "you", "me", "my", "what", "ji", "hai",
+            "ka", "ki", "ke", "ko", "se", "aur", "kya", "bhi", "to", "ye", "wo", "ho", "mai", "main", "mujhe", "batao", "karo",
+            "ہے", "ہیں", "کا", "کی", "کے", "کو", "میں", "سے", "اور", "کیا", "بھی", "تو", "یہ", "وہ", "مجھے", "بتاؤ", "کرو",
+        )
+        fun tokens(t: String): List<String> = t.lowercase().split(TOKEN_SPLIT).filter { LETTER.findAll(it).count() >= 2 }
+
+        /**
+         * Caption ne DK ki apni awaaz likh di? Pure shabd mila kar (pehle "substring" - "है" har jagah mil jaata tha).
+         * Aam shabd hata kar bache shabdon me se 80% DK ke jawab me = goonj.
+         */
         fun isEcho(t: String, reply: String): Boolean {
             if (reply.isBlank()) return false
-            val words = t.lowercase().split(WS).filter { LETTER.findAll(it).count() >= 2 }
+            val words = tokens(t)
             if (words.isEmpty()) return true
-            val r = reply.lowercase()
-            val hit = words.count { r.contains(it) }
-            return words.size >= 2 && hit * 10 >= words.size * 8
+            val r = tokens(reply).toHashSet()
+            val content = words.filter { it !in COMMON }
+            if (content.isEmpty()) return words.size >= 2 && words.all { it in r }   // sirf aam shabd - DK ke hi hon to goonj
+            val hit = content.count { it in r }
+            return if (content.size == 1) words.size >= 2 && hit == 1 && words.all { it in r }
+            else hit * 10 >= content.size * 8
+        }
+
+        /** Pichhle sawaal ka der se aaya caption? (poori nayi baat pichhle sawaal ke andar hi ho) - naye sawaal ko nahi rokta */
+        fun isRepeat(t: String, prev: String): Boolean {
+            val a = tokens(t); if (a.isEmpty() || prev.isBlank()) return false
+            return (" " + tokens(prev).joinToString(" ") + " ").contains(" " + a.joinToString(" ") + " ")
         }
     }
 }

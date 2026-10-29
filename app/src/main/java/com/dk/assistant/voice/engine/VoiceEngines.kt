@@ -16,11 +16,18 @@ object VoiceEngines {
     const val LIVE_NATIVE = "live_native"
     const val DEFAULT_SAMPLE = "मुझे तुम्हारी बहुत याद आ रही थी"
 
+    /** क्रम = स्क्रीन पर क्रम: पहले DK लाइव (डिफ़ॉल्ट, सबसे तेज़), फिर Gemini TTS, फिर Edge */
     private val CLASSES = listOf(
+        "com.dk.assistant.voice.engine.LiveNativeEngine",
         "com.dk.assistant.voice.engine.GeminiTtsEngine",
         "com.dk.assistant.voice.engine.EdgeTtsEngine",
-        "com.dk.assistant.voice.engine.LiveNativeEngine",
     )
+
+    /** एक बार का बदलाव: पुराना डिफ़ॉल्ट (Gemini TTS) सेव था -> DK लाइव. इसके बाद यूज़र जो चुने वही रहे */
+    const val MIGRATE_KEY = "dk_live_default_v1"
+
+    /** pure: सेव इंजन + migration हुआ या नहीं -> अब कौन-सा (JVM test) */
+    fun migrated(saved: String?, done: Boolean): String? = if (!done && (saved == null || saved == GEMINI_TTS)) LIVE_NATIVE else saved
 
     val all: List<VoiceEngine> by lazy {
         CLASSES.mapNotNull { n ->
@@ -34,7 +41,14 @@ object VoiceEngines {
 
     /** कौन-सा इंजन चालू (कुछ न चुना = जिसका defaultOn; वह भी न हो = Live की अपनी आवाज़) */
     fun activeId(c: Context): String {
-        val saved = sp(c).getString("active", null)
+        val p = sp(c)
+        if (!p.getBoolean(MIGRATE_KEY, false)) {
+            val m = migrated(p.getString("active", null), false)
+            val ed = p.edit().putBoolean(MIGRATE_KEY, true)
+            if (m != null) ed.putString("active", m)
+            ed.apply()
+        }
+        val saved = p.getString("active", null)
         if (byId(saved) != null) return saved!!
         return all.firstOrNull { it.defaultOn }?.id ?: LIVE_NATIVE
     }
@@ -61,12 +75,13 @@ object VoiceEngines {
     }
 
     /**
-     * स्विच दबाया: एक चालू = बाकी अपने-आप बंद. चालू वाले को बंद किया = डिफ़ॉल्ट (Gemini TTS) पर लौटो
-     * (कोई भी इंजन चालू न रहे - ऐसा नहीं होने देते). लौटाता है: अब कौन चालू.
+     * स्विच दबाया: एक चालू = बाकी अपने-आप बंद. चालू वाले को बंद किया = डिफ़ॉल्ट (DK लाइव) पर लौटो;
+     * DK लाइव ही बंद किया = दूसरा नंबर (Gemini TTS). कोई भी इंजन चालू न रहे - ऐसा नहीं होने देते. लौटाता है: अब कौन चालू.
      */
-    fun toggle(current: String, id: String, on: Boolean, default: String = GEMINI_TTS, available: Set<String>): String = when {
+    fun toggle(current: String, id: String, on: Boolean, default: String = LIVE_NATIVE, available: Set<String>, second: String = GEMINI_TTS): String = when {
         on && id in available -> id
         !on && id == current && default in available && default != id -> default
+        !on && id == current && second in available && second != id -> second
         else -> current
     }
 

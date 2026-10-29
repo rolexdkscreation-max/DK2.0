@@ -43,7 +43,7 @@ class VoiceEngineCard private constructor(private val a: Activity, private val d
         val engines = VoiceEngines.all
         // v3.69: ऊपर का शीर्षक अब card का नाम है; नमूना-वाक्य, "तीनों बारी-बारी सुनो" और "रोको" हटाए (बैकअप backup/v3.69-settings)
         hint(box, "जवाब Gemini Live लिखता है; बोलता यह इंजन है. एक समय में एक ही चालू. मेरे बोलना ख़त्म करने से पहली आवाज़ तक का " +
-            "समय हर इंजन के नीचे दिखता है (पिछली बार नापा). दिक़्क़त आए तो ऐप अपने-आप Gemini TTS पर लौटता है. ये बदलाव तुरंत सेव होते हैं.")
+            "समय हर इंजन के नीचे दिखता है (पिछली बार नापा). डिफ़ॉल्ट: DK लाइव (सबसे तेज़). Gemini TTS / Edge में दिक़्क़त आए तो ऐप अपने-आप Gemini TTS पर लौटता है. ये बदलाव तुरंत सेव होते हैं.")
         nowBlock(box)            // v3.80: अभी कौन बोल रहा (इंजन / आवाज़ / मॉडल) + मॉडल बदलो + गति-पिच
         divider(box)
         val activeId = VoiceEngines.activeId(a)
