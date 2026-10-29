@@ -20,6 +20,13 @@ class LiveQueueAgentTest {
             "रुको मत", "कल क्रिकेट मैच किसने जीता", "", "ठीक है").forEach { assertFalse(it, LiveStop.isStop(it)) }
     }
 
+    @Test fun dontStopDoesNotStop() {
+        // "don't" टूटकर "don t" बनता था, इसलिए पहले "don't stop" पर भी DK रुक जाता था
+        listOf("don't stop", "Don't stop, keep going", "don’t stop", "dont stop", "do not stop", "DK don't stop",
+            "never stop", "मत रुकना").forEach { assertFalse(it, LiveStop.isStop(it)) }
+        listOf("stop", "ok stop", "please stop").forEach { assertTrue(it, LiveStop.isStop(it)) }
+    }
+
     // ------------------------------------------------------------------ कतार
     @Test fun askQueueKeepsQuestionsAndDrainsOnce() {
         val q = AskQueue()

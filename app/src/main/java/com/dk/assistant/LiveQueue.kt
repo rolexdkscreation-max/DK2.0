@@ -21,17 +21,21 @@ object LiveStop {
         "नहीं", "हो", "भी", "बस", "ok", "okay", "arey", "are", "yaar", "abhi", "ek", "minute", "second", "karo", "do", "jao", "nahi", "ho",
         "اوکے", "ٹھیک", "ہے", "یار", "ابھی", "ایک", "منٹ", "کرو", "دو", "جاؤ", "نہیں",
     )
-    private val NOT_STOP = listOf("मत रुको", "रुको मत", "रुकना मत", "mat ruko", "ruko mat", "don't stop", "dont stop", "مت رکو", "رکو مت")
+    private val NOT_STOP = listOf("मत रुको", "रुको मत", "रुकना मत", "mat ruko", "ruko mat", "don't stop", "dont stop", "do not stop",
+        "never stop", "मत रुकना", "مت رکو", "رکو مت")
     private val SPLIT = Regex("[^\\p{L}\\p{M}\\p{N}]+")
 
     fun words(t: String): List<String> = t.lowercase().split(SPLIT).filter { it.isNotBlank() }
+
+    /** NOT_STOP भी उसी तरह तोड़ो जैसे यूज़र की बात - "don't" -> "don t" (पहले मेल नहीं खाता था) */
+    private val NOT_STOP_W = NOT_STOP.map { words(it).joinToString(" ") }
 
     /** यूज़र ने DK को रोका? */
     fun isStop(t: String): Boolean {
         val w = words(t)
         if (w.isEmpty()) return false
         val joined = " " + w.joinToString(" ") + " "
-        if (NOT_STOP.any { joined.contains(" $it ") }) return false     // "मत रुको, बोलते रहो"
+        if (NOT_STOP_W.any { joined.contains(" $it ") }) return false     // "मत रुको, बोलते रहो"
         if (w.size <= 6 && STRONG.any { joined.contains(" $it ") }) return true
         // लंबी बात भी "रुको ..." से शुरू हो तो रोकना
         if (STRONG.any { joined.startsWith(" $it ") }) return true
