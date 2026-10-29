@@ -343,8 +343,6 @@ class OrbView @JvmOverloads constructor(
         nM.setScale(R * 1.25f, R * 1.25f); nM.postTranslate(cx - R * 0.28f, cy - R * 0.32f); nBody.shader.setLocalMatrix(nM)
         c.drawCircle(cx, cy, R, nBody)
         // 4. चमकदार किनारा + ऊपर की चमक
-        nRim.strokeWidth = 1.4f * dpx; nRim.color = T.alphaF(T.mix(colB, Color.WHITE, 0.4f), 0.85f)
-        c.drawCircle(cx, cy, R, nRim)
         nM.setScale(R * 0.42f, R * 0.30f); nM.postTranslate(cx - R * 0.32f, cy - R * 0.48f); nSpec.shader.setLocalMatrix(nM)
         c.drawCircle(cx - R * 0.32f, cy - R * 0.48f, R * 0.42f, nSpec)
         if (still) postInvalidateDelayed(if (mode == Mode.LISTENING || mode == Mode.SPEAKING) 120 else 400)
