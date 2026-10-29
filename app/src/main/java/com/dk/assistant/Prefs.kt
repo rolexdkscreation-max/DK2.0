@@ -79,5 +79,5 @@ object Prefs {
     fun hasAnyKey(context: Context): Boolean = key(context).isNotBlank()
     fun coderThread(context: Context): String = getString(context, "coder_thread", "")
     fun ghRepo(context: Context): String = getString(context, "gh_repo", "")
-    fun edit(context: Context): Boolean = getBoolean(context, "edit", false)
+    fun edit(context: Context): SharedPreferences.Editor = getPrefs(context).edit()
 }
