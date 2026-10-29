@@ -690,7 +690,8 @@ class BrainManager(private val ctx: Context) {
             if (Prefs.friendMode(ctx)) append("\n").append(FriendStyle.persona(f, user)).append(FriendTalk.block(ctx))
             append(CareTime.block()).append(LiveSearch.memoryBlock())   // v3.80: समय देखकर फ़िक्र + पिछली खोज के स्रोत
             append(CalmPersona.block()).append(GirlfriendPersona.block(Prefs.userName(ctx)))   // v3.76: मालिक का तय स्वभाव - Live (सीधी आवाज़ / Gemini TTS / Edge) सब में
-            append(WorkChatMode.block(live = true)).append(TeacherBoard.block()).append(LocalMemory.liveBlock(ctx))   // v3.88: लोकल याददाश्त का छोटा सार | v3.87: काम/बातचीत मोड + कई काम की कतार + टीचर बोर्ड (स्वभाव वही)
+            append(WorkChatMode.block(live = true)).append(TeacherBoard.block()).append(LocalMemory.liveBlock(ctx))
+            append(TaskFirst.prompt(f))   // v3.7 (मालिक): फ़ोन का काम = पहले काम (चुप), फिर "हो गया सर" + "और कुछ?" - आख़िर में ताकि यही चले   // v3.88: लोकल याददाश्त का छोटा सार | v3.87: काम/बातचीत मोड + कई काम की कतार + टीचर बोर्ड (स्वभाव वही)
         }
     }
 

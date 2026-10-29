@@ -35,6 +35,8 @@ class SpeechPipeline(private val ctx: Context, private val hooks: Hooks) {
         /** v3.74: अब इस्तेमाल नहीं होता - फ़ोन की अपनी (Android) आवाज़ कभी नहीं बोलती */
         suspend fun phoneSay(text: String)
         fun phoneStop()
+        /** v3.7: कोई इंजन आवाज़ नहीं बना पाया - यह टुकड़ा सिर्फ़ लिखा गया (Live अपनी आवाज़ पर चला जाए) */
+        fun onSilent(text: String) {}
     }
 
     private class Seg(val text: String, val gen: Int, val createdAt: Long) {
@@ -222,6 +224,7 @@ class SpeechPipeline(private val ctx: Context, private val hooks: Hooks) {
         if (s.phone || waitPhone(s)) {
             // v3.74: Gemini/इंजन की आवाज़ नहीं बनी -> फ़ोन TTS नहीं, बस text स्क्रीन पर (चुप)
             noteSpoken(s.text)
+            try { hooks.onSilent(s.text) } catch (_: Exception) {}
             return
         }
         val tr = ensureTrack()
