@@ -278,7 +278,6 @@ class OrbView @JvmOverloads constructor(
     private val nHalo = Paint(Paint.ANTI_ALIAS_FLAG)
     private val nBody = Paint(Paint.ANTI_ALIAS_FLAG)
     private val nSpec = Paint(Paint.ANTI_ALIAS_FLAG)
-    private val nRim = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE }
     private val nM = android.graphics.Matrix()
     private var nKey = 0L
 
