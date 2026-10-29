@@ -49,7 +49,6 @@ class OrbView @JvmOverloads constructor(
     private val glowM = android.graphics.Matrix()
     private var glowCol = 0
     private var glowAlpha = -1
-    private val rim = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE }
 
     private var ang = 0f
     private var tilt = 0.41f
