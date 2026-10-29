@@ -28,7 +28,8 @@ class ChatActivity : AppCompatActivity() {
     private lateinit var edt: EditText
     private lateinit var composer: DKComposer
     private lateinit var inline: DKInlineReply
-    private var shown = 0
+    /** आख़िरी message जो स्क्रीन पर दिखा (गिनती नहीं - 200 के बाद गिनती अटक जाती थी) */
+    private var lastShown: DKState.Msg? = null
     private val dp get() = resources.displayMetrics.density
     private val listener: () -> Unit = { render() }
     private var localBrain: BrainManager? = null
@@ -233,14 +234,15 @@ class ChatActivity : AppCompatActivity() {
         status.text = ThreeState.label(DKState.mode, false, false) ?: run {
             if (DKAccessibilityService.instance != null) "ऑनलाइन • फ़ोन कंट्रोल चालू" else "सिर्फ़ बातचीत • फ़ोन कंट्रोल बंद"
         }
-        val msgs = DKState.messages
+        val msgs = DKState.messages.toList()   // एक पल की कॉपी: बीच में पुराना हटे तो भी गड़बड़ नहीं
         if (awaiting && replyStarted()) awaiting = false
-        if (msgs.size < shown) { inline.drop(); list.removeAllViews(); shown = 0 }
-        if (shown == 0 && msgs.isEmpty()) {
+        var from = ChatSync.firstNew(msgs, lastShown)
+        if (from < 0) { inline.drop(); list.removeAllViews(); lastShown = null; from = 0 }
+        if (lastShown == null && msgs.isEmpty()) {
             bubble("d", "नमस्ते${Prefs.userName(this).let { if (it.isNotBlank()) " $it" else "" }}! यहाँ लिखकर कुछ भी पूछिए या कोई काम बोलिए।", keep = false)
         }
-        while (shown < msgs.size) {
-            val m = msgs[shown]; shown++
+        for (idx in from until msgs.size) {
+            val m = msgs[idx]; lastShown = m
             placeholder?.let { list.removeView(it); placeholder = null }
             // DK का जवाब = उसी बुलबुले में जहाँ तरंग चल रही थी (नया बुलबुला नहीं)
             if (m.role == "d" && inline.answer(m.text) != null) Unit else bubble(m.role, m.text)
