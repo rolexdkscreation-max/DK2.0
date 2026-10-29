@@ -47,9 +47,11 @@ class SettingsSearchTest {
     }
 
     @Test fun cardHit_hasSection_forOpening() {
-        val r = SettingsSearch.search("सिर्फ़ मेरी आवाज़")
-        val e = r.first { it.card == "सिर्फ़ मेरी आवाज़ सुनो" }
+        // v4.5: "सिर्फ़ मेरी आवाज़ सुनो" card हटाया गया (मालिक की माँग) - वही जाँच (card मिले + सही हिस्सा खुले) Hey DK card पर
+        val r = SettingsSearch.search("Hey DK")
+        val e = r.first { it.card == "Hey DK (फ़ोन के अंदर)" }
         assertEquals("voice", e.section)
+        assertTrue(SettingsSearch.search("सिर्फ़ मेरी आवाज़").none { it.card == "सिर्फ़ मेरी आवाज़ सुनो" })
     }
 
     @Test fun blankOrNoise_nothing() {
