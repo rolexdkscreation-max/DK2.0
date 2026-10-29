@@ -46,14 +46,14 @@ object DeviceActions {
             has("mobile data", "data usage", "डेटा", "sim", "सिम", "network", "नेटवर्क") -> Settings.ACTION_DATA_ROAMING_SETTINGS
             has("airplane", "flight", "एयरप्लेन", "फ्लाइट") -> Settings.ACTION_AIRPLANE_MODE_SETTINGS
             has("display", "brightness", "डिस्प्ले", "ब्राइटनेस", "dark", "डार्क", "font", "फ़ॉन्ट", "फॉन्ट") -> Settings.ACTION_DISPLAY_SETTINGS
-            has("sound", "volume", "ring", "साउंड", "आवाज़", "रिंग") -> Settings.ACTION_SOUND_SETTINGS
+            has("sound", "volume", "ring", "साउंड", "आवाज़", "आवाज", "रिंग") -> Settings.ACTION_SOUND_SETTINGS
             has("dnd", "disturb", "डिस्टर्ब") -> "android.settings.ZEN_MODE_SETTINGS"
             has("notification", "नोटिफिकेशन") -> "android.settings.NOTIFICATION_SETTINGS"
             has("battery", "बैटरी") -> Intent.ACTION_POWER_USAGE_SUMMARY
             has("location", "gps", "लोकेशन", "जीपीएस") -> Settings.ACTION_LOCATION_SOURCE_SETTINGS
             has("storage", "स्टोरेज", "memory", "मेमोरी") -> Settings.ACTION_INTERNAL_STORAGE_SETTINGS
             has("default app", "डिफ़ॉल्ट", "डिफॉल्ट") -> Settings.ACTION_MANAGE_DEFAULT_APPS_SETTINGS
-            has("app", "ऐप", "एप") -> Settings.ACTION_APPLICATION_SETTINGS
+            has("app", "ऐप", "एप", "permission", "परमिशन", "अनुमति") -> Settings.ACTION_APPLICATION_SETTINGS
             has("about", "phone info", "फोन के बारे", "अबाउट", "android version") -> Settings.ACTION_DEVICE_INFO_SETTINGS
             has("date", "time", "समय", "तारीख", "टाइम") -> Settings.ACTION_DATE_SETTINGS
             has("language", "भाषा", "लैंग्वेज") -> Settings.ACTION_LOCALE_SETTINGS

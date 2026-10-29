@@ -45,6 +45,8 @@ class SettingsActivity : AppCompatActivity() {
     private lateinit var swWake: SwitchCompat
     private lateinit var swShot: SwitchCompat
     private lateinit var swCalls: SwitchCompat
+    private lateinit var swDkOnly: SwitchCompat
+    private lateinit var edBusyMsg: EditText
     private lateinit var swWeb: SwitchCompat
     private val keyFields = mutableMapOf<String, EditText>()
     private val modelFields = mutableMapOf<String, EditText>()
@@ -1263,7 +1265,12 @@ class SettingsActivity : AppCompatActivity() {
         }
         card("सुनना और कॉल", null) { box ->
             swWake = switch(box, "हमेशा सुनो (जगाने वाला शब्द बोलकर कमांड)", Prefs.wakeMode(this))
-            swCalls = switch(box, "कॉल आने पर पहले बताओ किसका कॉल है (\"उठा लो\" / \"काट दो\" बोलें)", Prefs.announceCalls(this))
+            // v4.1: सिर्फ़ "DK ..." से शुरू होने वाली बात सुनो (शुरू में बंद)
+            swDkOnly = switch(box, "सिर्फ़ DK बोलने पर सुनो", Prefs.dkOnly(this))
+            hint(box, "चालू करने पर DK तभी सुनेगा और काम करेगा जब बात की शुरुआत में DK बोला जाए। बाकी बातें अनदेखी कर दी जाएँगी।")
+            swCalls = switch(box, "आने वाली कॉल बोलकर बताओ", Prefs.announceCalls(this))
+            hint(box, "कॉल आने पर DK बताएगा किसका कॉल है (फ़ोन, WhatsApp, Telegram, Messenger, Instagram)। घंटी के समय बिना DK बोले कहें: \"उठाओ\", \"काट दो\", \"उठाकर स्पीकर पर डालो\", \"काटो और मैसेज भेजो ...\", \"काटो और बोलो बाद में कॉल करूँगा\"।")
+            edBusyMsg = field(box, "कॉल काटकर भेजा जाने वाला तैयार मैसेज", Prefs.callBusyMsg(this), Prefs.CALL_BUSY_DEFAULT)
             row(box, button("कॉल/कॉन्टैक्ट परमिशन दें") {
                 androidx.core.app.ActivityCompat.requestPermissions(this, CallManager.PERMS, 11)
             })
@@ -1646,6 +1653,8 @@ class SettingsActivity : AppCompatActivity() {
                 // v3.59: "हमेशा सुनो" अभी-अभी चालू किया = आपने खुद माइक चालू करना चुना
                 if (swWake.isChecked && !Prefs.wakeMode(this@SettingsActivity)) putBoolean("mic_user_off", false)
                 putBoolean("announce_calls", swCalls.isChecked)
+                if (::swDkOnly.isInitialized) putBoolean("dk_only_listen", swDkOnly.isChecked)
+                if (::edBusyMsg.isInitialized) putString("call_busy_msg", edBusyMsg.text.toString().trim())
             }
             if (::swShot.isInitialized) { putBoolean("screenshot", swShot.isChecked); putBoolean(ScreenGuard.USER_OK_KEY, swShot.isChecked) }
             if (::swAutoUpd.isInitialized) putBoolean("auto_update", swAutoUpd.isChecked)
