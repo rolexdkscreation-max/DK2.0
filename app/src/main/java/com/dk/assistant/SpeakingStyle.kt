@@ -30,10 +30,9 @@ object SpeakingStyle {
 """.trim()
 
     /** TTS के लिए वही तरीका, छोटे English निर्देश में (TTS मॉडल English style निर्देश सबसे अच्छे से मानता है) */
-    const val TTS_STYLE = "natural conversational pace, a little slower on loving or emotional lines; never monotone - " +
-        "rise slightly at the end of questions, bright when happy, lower and softer when sad or worried; " +
-        "tiny pause at commas, a slightly longer one at full stops, a short beat before an emotional or important word; " +
-        "intimate close soft voice for affectionate lines; clear Hindi pronunciation, English words in the same easy accent"
+    const val TTS_STYLE = "a little slower on loving lines; never monotone: questions rise at the end, bright when happy, " +
+        "low and soft when sad or worried; tiny pause at commas, longer at full stops, a short beat before emotional words; " +
+        "close, intimate soft voice for affectionate lines; clear Hindi, English words in the same easy accent"
 
     /** Gemini TTS का पूरा style: पुराना (कोमल आवाज़) + यही तरीका, Worker की सीमा में */
     fun tts(styled: String): String {
@@ -41,9 +40,12 @@ object SpeakingStyle {
         if (b.contains(TTS_STYLE)) return b.take(TTS_MAX)
         val full = if (b.isEmpty()) TTS_STYLE else "$b; $TTS_STYLE"
         if (full.length <= TTS_MAX) return full
-        // लंबा हो गया: पहले कोमल-आवाज़ वाला पक्का हिस्सा + यही तरीका (मालिक का तय सुर/ठहराव कभी न कटे)
+        // लंबा हो गया: कोमल-आवाज़ वाला पक्का हिस्सा + यही तरीका कभी न कटे; बाकी (भाव/अपना निर्देश) जितना आए उतना आगे
         val core = "${CalmPersona.VOICE_STYLE}; $TTS_STYLE"
-        return if (core.length <= TTS_MAX) core else TTS_STYLE
+        if (core.length > TTS_MAX) return TTS_STYLE
+        val rest = b.replace(CalmPersona.VOICE_STYLE, "").trim(' ', ';')
+        val room = TTS_MAX - core.length - 2
+        return if (room > 20 && rest.isNotEmpty()) "${rest.take(room).trimEnd()}; $core" else core
     }
 
     /**
