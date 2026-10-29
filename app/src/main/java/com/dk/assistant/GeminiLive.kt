@@ -89,6 +89,9 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
         private const val THINK_STUCK_MS = 12_000L
         /** v3.80: tool का नतीजा भेजने के बाद इतनी देर चुप = याद दिलाओ */
         private const val TOOL_ANSWER_MS = 8_000L
+        /** v4.1: जवाब में लिखी हुई (असली नहीं) tool call का नकली id - इसका नतीजा toolResponse में नहीं जाता */
+        const val LEAK_ID = "dk-leak-"
+        const val LEAK_DEDUP_MS = 20_000L
         /** v3.80: इनका नतीजा = यूज़र को जवाब बोलना ज़रूरी */
         private val ANSWER_TOOLS = setOf("web_search", "deep_think", "current_time", "local_info", "connector_task", "task_status", "dk_features")
         /**
@@ -191,6 +194,12 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
     private val userText = StringBuilder()
     private val replyText = StringBuilder()
     @Volatile private var turnActive = false
+    // v4.1: Live ने tool call की जगह "phone_task{…}<ctrl43>" लिख/बोल दिया -> यह फ़िल्टर उसे छिपाता है और फ़ोन तुरंत असली काम करता है
+    private var leakFilter = newLeakFilter()
+    /** इस बारी में लिखी हुई call दिखी = Live की अपनी (गड़बड़) आवाज़ अब नहीं बजती */
+    @Volatile private var leakMute = false
+    @Volatile private var lastLeakKey = ""
+    @Volatile private var lastLeakAt = 0L
     private val turnLock = Any()
 
     // ---- turant text (v3.0)
@@ -781,6 +790,33 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
         }
         return true
     }
+
+    private fun newLeakFilter() = LeakedCall.Filter(onOpen = { onLeakOpen() }, onCall = { runLeaked(it) })
+
+    /** v4.1: जवाब में लिखी हुई tool call शुरू होती दिखी - Live की आवाज़ तुरंत बंद (वह "phone task…" बोलने वाला है) */
+    private fun onLeakOpen() {
+        if (leakMute) return
+        leakMute = true
+        flushPlayback()
+        log("Live ने tool call बुलाने की जगह लिख दी - छिपाई, आवाज़ रोकी, फ़ोन खुद काम करेगा")
+    }
+
+    /** v4.1: लिखी हुई call = असली tool की तरह उसी पल चलाओ (वही रास्ता जो सच्चे toolCall का है) */
+    private fun runLeaked(c: LeakedCall.Call) {
+        val now = System.currentTimeMillis()
+        val key = c.name + "|" + c.args.toString()
+        if (key == lastLeakKey && now - lastLeakAt < LEAK_DEDUP_MS) { log("लिखी हुई ${c.name} - अभी-अभी यही चलाई, दोबारा नहीं"); return }
+        lastLeakKey = key; lastLeakAt = now
+        val args = JSONObject(); c.args.forEach { (k, v) -> args.put(k, v) }
+        log("लिखी हुई call पकड़ी: ${c.name} - सीधे चला रहे हैं")
+        lastToolAt = now
+        runTools(JSONArray().put(JSONObject().put("id", LEAK_ID + now).put("name", c.name).put("args", args)))
+    }
+
+    private fun leakNote(name: String, result: String): String =
+        "SYSTEM NOTE: you wrote the function call for $name as text instead of calling it, so the phone ran it itself. " +
+            "Real result: \"" + result.take(800) + "\". Tell the user this real result in ONE short natural sentence in their language " +
+            "(e.g. \"हो गया सर\") - never read out function names, braces, arguments or <ctrl> tokens. Do NOT call $name again for this request."
 
     /** स्क्रीन/कैमरा चालू-बंद हुआ -> Gemini को बताओ (tool का जवाब बाकी हो तो उसके बाद) */
     fun visionNote(t: String, evidence: Boolean = true) {
@@ -1605,7 +1641,8 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
                 val tx = if (p.optBoolean("thought")) "" else p.optString("text", "")
                 if (tx.isNotEmpty() && connSplit) {
                     replyPartArrived("पहला text")
-                    val clean = tagFilter?.push(tx) ?: tx          // v3.71: [खुश] जैसा टैग न बोला जाए, न दिखे
+                    val noLeak = leakFilter.push(tx)               // v4.1: "phone_task{…}" न दिखे, न बोला जाए - काम सीधे
+                    val clean = if (noLeak.isEmpty()) "" else tagFilter?.push(noLeak) ?: noLeak   // v3.71: [खुश] जैसा टैग न बोला जाए, न दिखे
                     if (clean.isNotEmpty()) synchronized(turnLock) { replyText.append(clean) }
                     splitHoldCheck(); pumpSplit()
                     continue
@@ -1619,6 +1656,7 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
                 replyPartArrived("पहला ऑडियो चंक")
                 timeline.audio(System.currentTimeMillis())
                 if (connSplit) continue              // v3.68: transcript वाला बँटवारा - Live की अपनी आवाज़ नहीं बजती
+                if (leakMute) continue               // v4.1: "phone task request…" जैसी आवाज़ नहीं - फ़ोन चुपचाप काम कर रहा है
                 if (actHold) { holdAct(pcm); continue }
                 turnRecvBytes += pcm.size
                 playOut(pcm)
@@ -1628,7 +1666,8 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
             if (!turnActive) startTurn()
             generating = true
             // screen par abhi nahi - revealTick() awaaz ke saath-saath dikhata hai
-            val soFar = synchronized(turnLock) { replyText.append(t); if (replyText.length < 240) replyText.toString() else null }
+            val tc = leakFilter.push(t)              // v4.1: लिखी हुई tool call हटाओ (और उसी पल असली काम)
+            val soFar = synchronized(turnLock) { replyText.append(tc); if (replyText.length < 240) replyText.toString() else null }
             // v3.71: सीधी आवाज़ में टैग नहीं (बोल दिया जाता) - शुरू के शब्दों से अवतार का भाव
             soFar?.let { com.dk.assistant.avatar.EmotionGuess.of(it) }?.takeIf { it != com.dk.assistant.avatar.Mood.NORMAL }
                 ?.let { com.dk.assistant.avatar.MoodState.set(it) }
@@ -1660,6 +1699,7 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
             if (timeline.active && !newAfterBarge) { timeline.done(now); log("turn (interrupted): ${timeline.summary()}") }
             if (trace.firstPlayAt == 0L) trace.firstChunkAt = 0L
             tagFilter = null; com.dk.assistant.avatar.MoodState.replyDone()
+            leakFilter.finish(); leakFilter = newLeakFilter(); leakMute = false
             clearAct()
             flushPlayback()
             // close=false: user abhi bol raha hai (toka hai) - uski nayi baat band mat karo
@@ -1675,6 +1715,9 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
             val wasDropping = dropOld
             dropOld = false
             if (actHold) endActHold()
+            // v4.1: रुका हुआ बचा हिस्सा (अधूरी लिखी call भी हो तो अभी चलेगी)
+            leakFilter.finish().takeIf { it.isNotEmpty() }?.let { r -> (tagFilter?.push(r) ?: r).takeIf { it.isNotEmpty() }?.let { c -> synchronized(turnLock) { replyText.append(c) } } }
+            leakFilter = newLeakFilter(); leakMute = false
             tagFilter?.finish()?.takeIf { it.isNotEmpty() }?.let { r -> synchronized(turnLock) { replyText.append(r) } }
             tagFilter = null
             com.dk.assistant.avatar.MoodState.replyDone()         // v3.71: बोलना ख़त्म होने के कुछ सेकंड बाद चेहरा सामान्य
@@ -1734,6 +1777,7 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
 
     private fun startTurn() {
         turnActive = true; routeDedupe.reset(); clearAct(); actEvidence = false
+        leakFilter = newLeakFilter(); leakMute = false
         synchronized(turnLock) { userText.clear(); replyText.clear(); turnSources = emptyList(); splitFedTo = 0 }
     }
 
@@ -2172,7 +2216,10 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
                 // ab se deri ginti: tool ka jawab bheja -> pehli awaaz (tool ka samay alag dikhta hai)
                 eosAt = System.currentTimeMillis(); firstAudioAt = 0
                 val cur = ws
-                if (cur != null && cur === sock) {
+                if (id.startsWith(LEAK_ID)) {
+                    // v4.1: यह call Live ने लिखी थी (असली toolCall नहीं) - server को इसका id पता नहीं, इसलिए नतीजा SYSTEM NOTE में
+                    visionNote(leakNote(name, result), evidence = !DoneGate.notDoneYet(result))
+                } else if (cur != null && cur === sock) {
                     if (!cur.tx(resp.toString())) log("tool जवाब नहीं भेज पाया")
                     else if (name in ANSWER_TOOLS) watchToolAnswer(name, result, cur)
                 }
