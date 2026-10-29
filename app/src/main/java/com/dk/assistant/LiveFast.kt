@@ -21,7 +21,7 @@ object LiveFast {
      * v3.33: बात खत्म होते ही caption से (Gemini से पहले) ये नहीं करते - वापस न होने वाले काम.
      * caption में एक शब्द गलत सुना = गलत आदमी को कॉल. ये Gemini के phone_task से (उसने पूरी आवाज़ सुनी) - फिर भी फ़ोन पर, बिना AgentRunner.
      */
-    private val NOT_SPECULATIVE = setOf("call_contact", "wa_call")
+    private val NOT_SPECULATIVE = setOf("call_contact", "wa_call", "sms_send", "sms_confirm")   // v4.1: SMS = पक्का सुनकर ही
 
     /**
      * बात का पक्का text -> तुरंत करने लायक सीधा काम (या null).
@@ -47,6 +47,9 @@ object LiveFast {
         val what = q.ack.ifBlank { describe(q.action) }
         val said = LocalRouter.userText(r)
         // v3.33: user से पूछना है (कई कॉन्टैक्ट / कई ऐप) - Gemini वही सवाल पूछे, खुद कुछ न करे
+        // v4.1: SMS भेजने से पहले पूछा - "हाँ" पर फ़ोन ख़ुद भेजेगा (Gemini कुछ और न करे)
+        if (r.startsWith("ASK:") && type == "sms_send" && OfflineCommands.pending != null) return "NEEDS USER CONFIRMATION (nothing sent yet): ${said ?: r}. " +
+            "Ask the user exactly this in their language. If they say yes, call phone_task with exactly \"हाँ, SMS भेजो\"; if no, call phone_task with exactly \"SMS मत भेजो\". Do not send it any other way."
         if (r.startsWith("ASK:")) return "NEEDS USER CHOICE (nothing was done yet): ${said ?: r}. Ask the user exactly this in their language. Do NOT call, open or do anything until they answer."
         // सच्चा नतीजा, जो फ़ोन ने खुद जाँचा ("डायलर खोला" = कॉल लगी नहीं, "वीडियो खोला" = चल रहा पक्का नहीं)
         if (said != null && ok(type, r)) return (if (already) "ALREADY DONE just now (do not repeat it): " else "DONE: ") +

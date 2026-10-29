@@ -19,6 +19,7 @@ class DKApp : Application() {
         UiLang.load(this)     // स्क्रीनों की भाषा (शुरुआती English)
         com.dk.assistant.ui.NeonTheme.load(this)          // v4: दिखावट (रंग/काँच/चमक/एनिमेशन) - सिर्फ़ UI
         registerActivityLifecycleCallbacks(com.dk.assistant.ui.NeonRefresh)
+        registerActivityLifecycleCallbacks(ScreenAwake)   // v4.1: DK सामने = स्क्रीन जगी (wake lock नहीं)
         StatusNotify.install(this)
         // v3.88: लोकल याददाश्त - ऐप खुलते ही सार + 30 दिन की सफ़ाई, और रोज़ एक बार
         try { LocalMemory.maintain(this, "ऐप खुला"); LocalMemory.scheduleDaily(this) } catch (_: Exception) {}

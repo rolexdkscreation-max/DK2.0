@@ -28,6 +28,7 @@
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
     <!-- v3.33 (वैकल्पिक): "राहुल को कॉल करो" = सीधी कॉल (न दें तो डायलर में नंबर भरता है) -->
+    <uses-permission android:name="android.permission.SEND_SMS" />
     <uses-permission android:name="android.permission.CALL_PHONE" />
     <!-- v3.33 (वैकल्पिक): "सबसे नई फ़ोटो दिखाओ" (न दें तो सिर्फ़ गैलरी खुलती है). सिर्फ़ फ़ोटो पढ़ना - मिटाना नहीं -->
     <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
