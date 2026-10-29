@@ -143,6 +143,23 @@ object LocalMemory {
         return s
     }
 
+    /**
+     * v3.6: DK लाइव शुरू होते समय - पुराने दिनों का सार + पिछले कुछ घंटों की असली बातें. ताज़ा पढ़ो (पहली बार
+     * cache खाली होने से कुछ नहीं जाता था), पर ज़्यादा से ज़्यादा ~400ms रुककर.
+     */
+    fun liveBlock(c: Context): String {
+        if (!Prefs.localMemoryOn(c)) return promptBlock(c)
+        val ctx = c.applicationContext
+        return try {
+            io.submit<String> {
+                val d = db(ctx); val now = System.currentTimeMillis()
+                val pts = LocalRecall.promptBlock(allPoints(d).takeLast(30))
+                blockCache = now to pts
+                pts + LocalRecall.recentBlock(turnsSince(d, now - 6 * 3_600_000L), now)
+            }.get(400, java.util.concurrent.TimeUnit.MILLISECONDS)
+        } catch (_: Exception) { promptBlock(c) }
+    }
+
     // ------------------------------------------------------------------ मिटाना (यूज़र के कहने पर)
     suspend fun deleteTurn(c: Context, id: Long) = withContext(dispatcher) { try { db(c).delete("turns", "id=?", arrayOf(id.toString())) } catch (_: Exception) { 0 } }
 

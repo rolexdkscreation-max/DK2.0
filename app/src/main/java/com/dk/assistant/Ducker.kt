@@ -25,7 +25,8 @@ object Ducker {
     private var quietCheck: (() -> Boolean)? = null
 
     /** Itni der se zyada kabhi dheema nahi rakhenge (bhool-chook se gaana hamesha dheema na rahe) */
-    private const val MAX_HOLD_MS = 90_000L
+    // v3.6: 90s -> 60s (owner: "DK चालू करते ही सारी आवाज़ कम" - बात रुकने पर भी देर तक धीमा रहता था)
+    private const val MAX_HOLD_MS = DuckRule.MAX_HOLD_MS
     private const val AFTER_REPLY_MS = 1_200L
 
     private val watchdog = Runnable { if (active) { DKLog.d("Background awaaz: ${MAX_HOLD_MS / 1000}s ho gaye - wapas badha rahe"); doRelease() } }
@@ -58,6 +59,8 @@ object Ducker {
                 .setOnAudioFocusChangeListener({ }, h)
                 .build().also { req = it }
             val musicOn = try { a.isMusicActive } catch (_: Exception) { false }
+            // v3.6: कुछ बज ही नहीं रहा = focus मत लो (फ़ोन की बाकी आवाज़ें/सूचनाएँ बेवजह धीमी न हों)
+            if (!DuckRule.shouldDuck(musicOn)) return@post
             val res = try { a.requestAudioFocus(r) } catch (_: Exception) { AudioManager.AUDIOFOCUS_REQUEST_FAILED }
             active = res == AudioManager.AUDIOFOCUS_REQUEST_GRANTED
             if (active) {

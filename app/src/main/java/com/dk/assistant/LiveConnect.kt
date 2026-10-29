@@ -30,7 +30,7 @@ object LiveConnect {
         appendLine("13. Notifications -> notifications (read) and notification_reply (reply).")
         appendLine("14. Memory -> remember_fact, recall_conversation, forget_memory.")
         appendLine("15. Status of background work (coding team / DK Computer) -> task_status. When coding, DK Computer, story or website work ends you get a SYSTEM NOTE with the real result - tell the user.")
-        appendLine("API key: " + (if (oneKey) "one all-rounder key is used for everything." else "each part uses its own key from Settings (or the main key)."))
+        appendLine("API key: " + (if (oneKey) "one all-rounder key is used ONLY for talking, chat, web search and phone tasks. coding_task, computer_task, build_website and story_task do NOT run on one key - tell the user to turn off 'एक key से सब' in Settings -> AI दिमाग and add separate keys." else "each part uses its own key from Settings (or the main key)."))
         append("Tell the user only what is in this list. Never claim an ability that is not here.")
     }
 

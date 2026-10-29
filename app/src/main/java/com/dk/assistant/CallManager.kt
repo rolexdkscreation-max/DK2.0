@@ -41,9 +41,22 @@ class CallManager(private val ctx: Context, private val onRinging: (String) -> U
     } catch (_: Exception) { false }
 
     // ---- ringtone dheemi (DK ko aapki baat sunai de), call khatam hote hi wapas
-    private var savedRing = -1
+    // v3.6: पहले का ringtone volume फ़ाइल में भी (DK बीच में बंद/crash = घंटी हमेशा 1 पर रह जाती थी - owner की शिकायत)
+    private val ringPrefs get() = ctx.getSharedPreferences("dk_ring", Context.MODE_PRIVATE)
+    private var savedRing: Int
+        get() = ringPrefs.getInt("saved", -1)
+        set(v) { ringPrefs.edit().putInt("saved", v).putLong("at", System.currentTimeMillis()).apply() }
+    private val ringH = android.os.Handler(android.os.Looper.getMainLooper())
+    private val ringSafety = object : Runnable {
+        override fun run() {
+            if (savedRing < 0) return
+            if (RingGuard.shouldRestore(ringing || inCall)) { DKLog.d("घंटी: कॉल ख़त्म - आवाज़ वापस"); restoreRinger() }
+            else ringH.postDelayed(this, RingGuard.CHECK_MS)
+        }
+    }
     fun quietRinger() {
         val am = ctx.getSystemService(AudioManager::class.java) ?: return
+        ringH.removeCallbacks(ringSafety); ringH.postDelayed(ringSafety, RingGuard.CHECK_MS)
         try {
             if (savedRing < 0) savedRing = am.getStreamVolume(AudioManager.STREAM_RING)
             if (am.getStreamVolume(AudioManager.STREAM_RING) > 1) am.setStreamVolume(AudioManager.STREAM_RING, 1, 0)
@@ -55,15 +68,19 @@ class CallManager(private val ctx: Context, private val onRinging: (String) -> U
         }
     }
     fun restoreRinger() {
-        if (savedRing < 0) return
-        try { ctx.getSystemService(AudioManager::class.java)?.setStreamVolume(AudioManager.STREAM_RING, savedRing, 0) } catch (_: Exception) {}
-        savedRing = -1
+        val v = savedRing
+        if (v < 0) return
+        ringH.removeCallbacks(ringSafety)
+        try { ctx.getSystemService(AudioManager::class.java)?.setStreamVolume(AudioManager.STREAM_RING, v, 0) } catch (_: Exception) {}
+        ringPrefs.edit().remove("saved").remove("at").apply()
     }
     /** SIM कॉल चल रही है, या v4: ऐप वाली कॉल उठ चुकी है */
     val inCall get() = state == TelephonyManager.CALL_STATE_OFFHOOK || (state == TelephonyManager.CALL_STATE_IDLE && AppCall.ongoing())
 
     @Suppress("DEPRECATION")
     fun start() {
+        // v3.6: पिछली बार DK बीच में बंद हुआ और घंटी धीमी रह गई = अभी कोई कॉल नहीं तो वापस
+        if (savedRing >= 0 && RingGuard.shouldRestore(ringing || inCall)) { DKLog.d("घंटी: पिछली बार धीमी रह गई थी - वापस"); restoreRinger() }
         if (listener != null || !granted(Manifest.permission.READ_PHONE_STATE)) return
         val tm = ctx.getSystemService(TelephonyManager::class.java) ?: return
         val l = object : PhoneStateListener() {

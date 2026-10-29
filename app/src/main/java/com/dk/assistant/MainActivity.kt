@@ -216,11 +216,12 @@ class MainActivity : AppCompatActivity() {
     /** Sab taiyaar hai? Nahi to sahi jagah bhejo. */
     private fun ready(): Boolean {
         when {
-            !Setup.hasMic(this) -> { askPerms(); return false }
+            // v3.6 (owner का नियम): key नहीं = सीधे key डालने वाली जगह (keyboard खुला) - माइक की अनुमति बाद में
             !Prefs.hasAnyKey(this) -> {
-                UiLang.toast(this, "पहले कोई भी फ्री API key डालें — DK खुद सबसे तेज़ फ्री मॉडल चुन लेगा", Toast.LENGTH_LONG).show()
-                startActivity(Intent(this, SettingsActivity::class.java).putExtra("section", "brain")); return false
+                startActivity(Intent(this, SettingsActivity::class.java).putExtra("section", "brain")
+                    .putExtra(SettingsActivity.EXTRA_FOCUS_KEY, true)); return false
             }
+            !Setup.hasMic(this) -> { askPerms(); return false }
             !Setup.accessibilityOn() && !Setup.selfEnableAccessibility(this) && !Setup.enabledInSettings(this) -> {
                 UiLang.toast(this, "Accessibility में ${Prefs.assistantName(this)} ON करें", Toast.LENGTH_LONG).show()
                 Setup.openAccessibility(this); return false

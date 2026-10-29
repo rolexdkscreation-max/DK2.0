@@ -112,7 +112,7 @@ object LiveAgentRoute {
     fun started(result: String): Boolean {
         val r = result.trim()
         if (r.isEmpty()) return false
-        val bad = listOf("Could not", "is OFF", "Ask the user", "forge_not_started", "story_busy", "unknown function", "Tool failed", "Permission ")
+        val bad = listOf("Could not", "is OFF", "Ask the user", "forge_not_started", "story_busy", "unknown function", "Tool failed", "Permission ", "not_started", "एक key पर नहीं चलता")
         return bad.none { r.startsWith(it) || r.contains(it) }
     }
 

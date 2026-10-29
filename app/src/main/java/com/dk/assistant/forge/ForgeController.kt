@@ -10,6 +10,7 @@ import android.net.NetworkCapabilities
 import android.os.Build
 import com.dk.assistant.ApiScopes
 import com.dk.assistant.DKLog
+import com.dk.assistant.OneKeyGate
 import com.dk.assistant.Lang
 import com.dk.assistant.Prefs
 import com.dk.assistant.R
@@ -121,6 +122,7 @@ object ForgeController {
     }
 
     private fun begin(c: Context, text: String, isEdit: Boolean): StartResult {
+        OneKeyGate.check(c, OneKeyGate.Work.WEBSITE)?.let { return StartResult.MissingKey(it) }
         if (text.isBlank()) return StartResult.NothingToEdit(Lang.pick("कैसी वेबसाइट बनानी है, यह बताइए।", "Tell me what website to build."))
         if (_state.value.phase == ForgePhase.BUILDING) return StartResult.Busy(Lang.pick("एक वेबसाइट अभी बन रही है, पहले वह पूरी होने दें।", "A website is already being built; let it finish first."))
         val key = apiKey(c)

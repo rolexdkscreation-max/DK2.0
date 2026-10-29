@@ -17,6 +17,7 @@ object LiveReport {
     }
 
     fun startStory(c: Context, topic: String, minutes: Int): String {
+        OneKeyGate.check(c, OneKeyGate.Work.STORY)?.let { return it }
         if (StorySession.busy) return LiveConnect.STORY_BUSY
         val m = LiveConnect.storyMinutes(minutes)
         val t = topic.trim()

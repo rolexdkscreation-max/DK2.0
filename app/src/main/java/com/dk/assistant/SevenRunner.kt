@@ -196,6 +196,7 @@ object SevenRunner {
     fun start(ctx: Context, input: String, fromVoice: Boolean = false, forceNormal: Boolean = false, media: List<CoderMedia> = emptyList()): String? {
         val c = ctx.applicationContext
         CoderHistory.init(c)
+        OneKeyGate.check(c, OneKeyGate.Work.CODING)?.let { return it }
         if (!Prefs.coderOn(c)) return "कोडिंग एजेंट बंद है — Settings में चालू करें"
         val ai = CoderAi.fromPrefs(c) ?: return "कोडिंग एजेंट की AI key नहीं — Settings → AI दिमाग → कोडिंग एजेंट में डालें"
         if (CoderSession.busy) return "अभी एक काम चल रहा है — पूरा होने दें या रोकें"
