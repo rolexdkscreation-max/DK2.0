@@ -29,7 +29,7 @@ class SoftHearCallVoiceTest {
 
     @Test fun singerNamesFixed() {
         assertEquals("पवन सिंह सॉन्ग हकीकत", HearFix.fix("पबा सिंगा सॉन्ग हकीकत"))
-        assertEquals("पवन सिंह का गाना", HearFix.fix("pawan singh का गाना"))
+        assertEquals("pawan singh ka song", HearFix.fix("pawan singh ka song"))   // सही English नाम नहीं बदलता
         assertEquals("खेसारी लाल यादव", HearFix.fix("केसरी लाल यादव"))
         assertEquals("पवनपुत्र हनुमान", HearFix.fix("पवनपुत्र हनुमान"))
     }

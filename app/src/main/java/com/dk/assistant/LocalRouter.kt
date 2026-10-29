@@ -358,7 +358,8 @@ object LocalRouter {
                     if (s.length >= 2 && hasAny(c, PLAY)) { lastQuery = s; q = QuickCommands.Quick(a("youtube_play", "query" to s), ""); replacePrev = prevType == "open_app" }
                     else if (s.length >= 2) { lastQuery = s; q = QuickCommands.Quick(a("youtube_search", "query" to s), "YouTube पर खोज दिया"); replacePrev = prevType == "open_app" }
                 }
-                ctx == "youtube" && hasAny(c, PLAY) && lastQuery != null && refersBack(c) -> {
+                // v4.2: "…सर्च करो और प्ले कर दो" - अकेला "प्ले कर दो" = वही खोजा हुआ चलाओ (पहले यह टुकड़ा अटकता = पूरी बात Gemini को)
+                ctx == "youtube" && hasAny(c, PLAY) && lastQuery != null && (refersBack(c) || clean(c, PLAY + YT).length < 2) -> {
                     q = QuickCommands.Quick(a("youtube_play", "query" to lastQuery!!), ""); replacePrev = prevType == "youtube_search"
                 }
                 ctx == "youtube" && hasAny(c, PLAY) && lastQuery == null -> {
