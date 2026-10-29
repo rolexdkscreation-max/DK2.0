@@ -51,6 +51,8 @@ object QuickCommands {
             return if (offW) Quick(a("speaker", "on" to false), "स्पीकर बंद") else Quick(a("speaker", "on" to true), "स्पीकर चालू")
         }
         if (has("किसका कॉल", "किसका फोन", "किसका फ़ोन", "कौन कॉल", "who is calling")) return Quick(a("who_calls"), "")
+        // ---- v4: "व्हाट्सएप पर राहुल को (वीडियो) कॉल करो" -> सीधे WhatsApp कॉल (पहले SIM कॉल या "कॉन्टैक्ट नहीं मिला")
+        WaCall.parse(t)?.let { return Quick(WaCall.toJson(it), "") }
         // "राहुल को कॉल करो" jaisi baat AI karega (v4: पूरा शब्द - "कॉलेज रोड" / "कॉलोनी" जगह के नाम हैं)
         if (Regex("(?<![\\p{L}\\p{M}])(?:कॉल|कॉल्स|कॉलिंग|call|calls|calling|caller)(?![\\p{L}\\p{M}])").containsMatchIn(t)) return null
 

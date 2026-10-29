@@ -1247,10 +1247,10 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
                         .put("mode", JSONObject().put("type", "STRING").put("enum", JSONArray().put("publish").put("draft"))))
                     .put("required", JSONArray().put("platform").put("action"))))
             .put(JSONObject().put("name", "whatsapp_task")
-                .put("description", "WhatsApp on the phone - ALWAYS use this (never phone_task) to send a WhatsApp message: read_unread (unread messages from notifications), send_message (contact + message; irreversible - wait for waiting_confirmation SYSTEM NOTE, ask the user, confirm only after a clear yes), read_chat (contact), search_chat (query), mute / unmute / mark_read (contact). If the contact is ambiguous you get contact_ambiguous - ask the user which one.")
+                .put("description", "WhatsApp on the phone - ALWAYS use this (never phone_task) to send a WhatsApp message or make a WhatsApp call: read_unread (unread messages from notifications), voice_call / video_call (contact - WhatsApp audio or video call; when the user says WhatsApp पर कॉल / वीडियो कॉल; a plain X को कॉल करो without WhatsApp is a normal phone call, not this), send_message (contact + message; irreversible - wait for waiting_confirmation SYSTEM NOTE, ask the user, confirm only after a clear yes), read_chat (contact), search_chat (query), mute / unmute / mark_read (contact). If the contact is ambiguous you get contact_ambiguous - ask the user which one.")
                 .put("parameters", JSONObject().put("type", "OBJECT")
                     .put("properties", JSONObject()
-                        .put("action", JSONObject().put("type", "STRING").put("enum", JSONArray().put("read_unread").put("send_message").put("read_chat").put("search_chat").put("mute").put("unmute").put("mark_read")))
+                        .put("action", JSONObject().put("type", "STRING").put("enum", JSONArray().put("read_unread").put("voice_call").put("video_call").put("send_message").put("read_chat").put("search_chat").put("mute").put("unmute").put("mark_read")))
                         .put("contact", JSONObject().put("type", "STRING").put("description", "Contact name as saved, or phone number"))
                         .put("message", JSONObject().put("type", "STRING"))
                         .put("query", JSONObject().put("type", "STRING")))
@@ -1914,8 +1914,18 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
                     "notifications" -> notifTool(args.optString("app"))
                     "notification_reply" -> notifReply(args.optString("to"), args.optString("message"))
                     "social_media_task" -> com.dk.assistant.agent.android.SocialAgent.start(svc, args)
-                    "whatsapp_task" -> if (args.optString("action").trim().lowercase() in setOf("read_unread", "unread", "read")) notifTool("WhatsApp")
-                        else com.dk.assistant.agent.android.SocialAgent.start(svc, args, com.dk.assistant.agent.social.Platform.WHATSAPP)
+                    "whatsapp_task" -> when (val act = args.optString("action").trim().lowercase()) {
+                        in setOf("read_unread", "unread", "read") -> notifTool("WhatsApp")
+                        // v4: WhatsApp आवाज़ / वीडियो कॉल - सीधे (स्क्रीन पर बटन ढूँढे बिना)
+                        in setOf("voice_call", "video_call", "call", "audio_call") -> {
+                            val cmd = WaCall.Cmd(args.optString("contact").trim(), act == "video_call")
+                            DKState.set(Mode.WORKING)
+                            val r = WaCall.call(svc, cmd.name, cmd.video)
+                            log("WhatsApp ${if (cmd.video) "वीडियो " else ""}कॉल \"${cmd.name}\" -> ${r.substringBefore(':')}")
+                            LiveFast.quickResult(QuickCommands.Quick(WaCall.toJson(cmd), ""), r, already = false)
+                        }
+                        else -> com.dk.assistant.agent.android.SocialAgent.start(svc, args, com.dk.assistant.agent.social.Platform.WHATSAPP)
+                    }
                     "social_media_task_control" -> com.dk.assistant.agent.android.SocialAgent.control(args)
                     "build_website" -> com.dk.assistant.forge.ForgeLauncher.fromVoice(svc, args.optString("prompt"))
                     "computer_task" -> {

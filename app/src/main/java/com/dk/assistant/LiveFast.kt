@@ -21,7 +21,7 @@ object LiveFast {
      * v3.33: बात खत्म होते ही caption से (Gemini से पहले) ये नहीं करते - वापस न होने वाले काम.
      * caption में एक शब्द गलत सुना = गलत आदमी को कॉल. ये Gemini के phone_task से (उसने पूरी आवाज़ सुनी) - फिर भी फ़ोन पर, बिना AgentRunner.
      */
-    private val NOT_SPECULATIVE = setOf("call_contact")
+    private val NOT_SPECULATIVE = setOf("call_contact", "wa_call")
 
     /**
      * बात का पक्का text -> तुरंत करने लायक सीधा काम (या null).
@@ -66,6 +66,7 @@ object LiveFast {
         "app_search" -> "searched \"${a.optString("query")}\" in ${a.optString("app")}"
         "shop_search" -> "searched \"${a.optString("query")}\" in ${a.optString("app")}"
         "call_contact" -> "call ${a.optString("name")}"
+        "wa_call" -> (if (a.optBoolean("video")) "WhatsApp video call " else "WhatsApp call ") + a.optString("name")
         "call_log" -> "opened recent calls"
         "gallery_latest" -> "opened the latest photo"
         "delete_media" -> "moved the last ${a.optInt("count", 1)} ${a.optString("kind", "photo")}(s) to trash"
