@@ -45,12 +45,12 @@ class CallManager(private val ctx: Context, private val onRinging: (String) -> U
     } catch (_: Exception) { false }
 
     fun quietRinger() {
-        if (RingGuard.shouldRestore) {
+        if (RingGuard.shouldRestore(ringing || inCall)) {
             ctx.getSharedPreferences("dk_ring", Context.MODE_PRIVATE)
         }
     }
     fun restoreRinger() {
-        if (RingGuard.shouldRestore) {
+        if (RingGuard.shouldRestore(ringing || inCall)) {
             ctx.getSharedPreferences("dk_ring", Context.MODE_PRIVATE)
         }
     }
