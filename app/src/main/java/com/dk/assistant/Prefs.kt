@@ -179,6 +179,10 @@ object Prefs {
     fun ownerVoiceStrict(c: Context) = sp(c).getBoolean("owner_voice_strict", false)
     /** परत 4: दूर की / बहुत धीमी आवाज़ अनसुनी */
     fun ownerFarOn(c: Context) = sp(c).getBoolean("owner_far_on", true)
+    /** v4.7: आपकी पास वाली आवाज़ के सीखे स्तर (NearVoice) */
+    fun nearLevels(c: Context) = sp(c).getString("near_levels", "").orEmpty()
+    /** v4.7: DK के जवाब के बीच बोलें तो DK रुककर सुने (false, नया) / जवाब चलता रहे और सवाल बाद में (true, पुराना) */
+    fun bargeHold(c: Context) = sp(c).getBoolean("barge_hold", false)
     fun ownerPrint(c: Context): FloatArray? = com.dk.assistant.voice.VoicePrint.decode(sp(c).getString("owner_print", null))
 
     // ---- बायोमेट्रिक चेहरा पहचान (स्थानीय एन्क्रिप्टेड एम्बेडिंग)

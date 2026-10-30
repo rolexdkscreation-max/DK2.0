@@ -238,10 +238,14 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
     private val turnDet = TurnDetector(CHUNK_MS, endSilenceMs = CLIENT_END_MS, startFactor = LiveHear.START_FACTOR,
         startMin = LiveHear.START_MIN, loudNoiseFactor = LiveHear.LOUD_FACTOR,
         longSpeechMs = TurnEnd.LONG_SPEECH_MS, longEndSilenceMs = TurnEnd.LONG_END_SILENCE_MS, steadyResetMs = 6_000,
-        keepFactor = LiveHear.KEEP_FACTOR, keepMin = LiveHear.KEEP_MIN)
+        keepFactor = LiveHear.KEEP_FACTOR, keepMin = LiveHear.KEEP_MIN, tailFactor = LiveHear.TAIL_FACTOR)
+    /** v4.7: आपकी पास वाली आवाज़ (अपने आप सीखी) - दूर की आवाज़ अनसुनी */
+    private val near = NearVoice().also { try { it.load(Prefs.nearLevels(svc)) } catch (_: Exception) {} }
+    private val nearRms = ArrayList<Double>()
     /** वही पहचानी बात router में बार-बार न जाए (हर छोटी चुप्पी पर पूरा caption दोबारा जाँचा जाता था) */
     private val routeDedupe = RouteDedupe()
-    private val bargeDet = BargeDetector()
+    // v4.7 (मालिक: "जवाब देते समय बोलूँ तो रुककर सुने"): 200ms / 900 RMS (पहले 240ms / 1200) - पक्का caption के शब्दों से
+    private val bargeDet = BargeDetector(needChunks = 5, minRms = 900.0)
     private val trace = LatencyTrace()
     /** Har baari ki poori samay-rekha (end of speech -> upload -> pehla event -> audio -> awaaz -> turn khatam) */
     private val timeline = TurnTimeline()
@@ -972,7 +976,8 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
                     } else {
                     val setup = CompletableDeferred<Unit>()
                     connect(key, model, closed, setup)
-                    val ok = withTimeoutOrNull(12_000) {
+                    // v4.7: setup आम तौर पर ~1s; 12s इंतज़ार = टूटे connection पर बहुत देर. अब 6s, फिर तुरंत दोबारा
+                    val ok = withTimeoutOrNull(6_000) {
                         while (!setup.isCompleted && !closed.isCompleted) delay(25)
                         setup.isCompleted
                     } ?: false
@@ -994,8 +999,10 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
                                 if (switchKey("key गलत/बंद (code=$code)")) continue else throw Fatal("Gemini key गलत है या Live की इजाज़त नहीं")
                             isQuota(code, r) || r.contains("rate") -> {
                                 blockModel(model, "setup")
-                                if (mi + 1 < models.size) { mi++; handle = null; continue }
-                                else if (switchKey("इस key के सारे Live मॉडल की limit खत्म")) continue
+                                // v4.7 (मालिक: "limit खत्म = तुरंत दूसरी key"): पहले उसी key के बाकी मॉडल एक-एक कर (हर एक पर
+                                // नया connection = सेकंडों की देर), फिर दूसरी key. अब सीधे दूसरी key; वह न हो तो बाकी मॉडल
+                                if (switchKey("इस key की limit खत्म")) continue
+                                else if (mi + 1 < models.size) { mi++; handle = null; continue }
                                 else throw Fatal("Gemini Live की फ्री लिमिट अभी खत्म है")
                             }
                             // v3.68: यह मॉडल TEXT जवाब नहीं देता (native-audio मॉडल सिर्फ़ AUDIO) -> AUDIO + लिखावट से बँटवारा, याद रखो
@@ -1021,7 +1028,7 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
                         }
                         fails++
                         if (fails >= 4) throw Fatal("Gemini Live से जुड़ नहीं पाया: ${reason.take(80)}", recoverable = true)
-                        delay(minOf(8000L, 500L shl fails))       // 1s, 2s, 4s, 8s
+                        delay(minOf(LiveRetry.FAST_MAX_MS, 500L shl fails))       // v4.7: 1s, 2s, 2s (पहले 8s तक)
                         continue
                     }
                     }
@@ -1157,8 +1164,8 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
                     if (isQuota(code, reason.lowercase())) {
                         blockModel(model, "बातचीत के बीच")
                         if (turnActive) finishTurn()
-                        if (mi + 1 < models.size) { mi++; handle = null; continue }
-                        else if (switchKey("बातचीत के बीच इस key की limit खत्म")) continue
+                        if (switchKey("बातचीत के बीच इस key की limit खत्म")) continue     // v4.7: सीधे दूसरी key
+                        else if (mi + 1 < models.size) { mi++; handle = null; continue }
                         else throw Fatal("Gemini Live की फ्री लिमिट खत्म")
                     }
                     if (turnActive) finishTurn()
@@ -1167,7 +1174,8 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
                     if (goAwayDrop || lasted >= 20_000) quickDrops = 0 else quickDrops++
                     goAwayDrop = false
                     if (quickDrops >= 6) throw Fatal("Gemini Live बार-बार टूट रहा है - नेटवर्क देखें", recoverable = true)
-                    val wait = if (quickDrops == 0) 250L else minOf(15_000L, 500L shl quickDrops)   // 1s,2s,4s,8s,15s
+                    // v4.7 (मालिक: "टूटे तो 1-2 सेकंड में जुड़े"): 1s, 2s, 2s... (पहले 15s तक)
+                    val wait = if (quickDrops == 0) 250L else minOf(LiveRetry.FAST_MAX_MS, 500L shl quickDrops)
                     if (quickDrops > 0) log("जल्दी टूटा (${lasted / 1000}s) - $wait ms रुककर दोबारा (#$quickDrops)")
                     delay(wait)
                 }
@@ -1872,7 +1880,7 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
             val now = System.currentTimeMillis()
             if (t != holdCap) { holdCap = t; holdCapAt = now }
             if (final) holdFinal = true
-            if (!LiveStop.isStop(t)) { DKState.hint(HOLD_HINT); return }
+            if (!LiveStop.isStop(t) && Prefs.bargeHold(svc)) { DKState.hint(HOLD_HINT); return }
             askQueue.clear()
             synchronized(sendLock) { bargeGate.confirm(); confirmBarge("रुको: ${t.take(30)}") }
         } else if (bargeGate.state == BargeGate.State.TENTATIVE) {
@@ -1882,7 +1890,9 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
             val real = BargeGate.realWords(t) && !BargeGate.isEcho(t, dkNow) && !BargeGate.isRepeat(t, turnUser)
             if (!real) { log("caption: \"${t.take(40)}\" - पक्का नहीं, जवाब जारी"); return }
             if (dkOnlyNow && !CallCmd.windowOpen(now0()) && !svc.callRinging() && DkOnly.filter(t) == null && !LiveStop.isStop(t)) return   // v4.1: DK नहीं बोला = अनदेखा
-            if (captionOn() && !LiveStop.isStop(t)) {
+            // v4.7 (मालिक: "जवाब देते समय मैं बोलूँ तो बात रोककर मेरी बात सुने"): असली शब्द = DK रुके और सुने.
+            // पुराना तरीका (जवाब चलता रहे, सवाल बाद में) सिर्फ़ जब Prefs.bargeHold चालू हो
+            if (captionOn() && !LiveStop.isStop(t) && Prefs.bargeHold(svc)) {
                 // अगला सवाल: जवाब मत काटो (Gemini को आवाज़ नहीं - वरना सर्वर पुराना जवाब रोक देता), caption सुनता रहे
                 val now = System.currentTimeMillis()
                 synchronized(sendLock) { bargeGate.hold(now) }
@@ -2619,10 +2629,27 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
         ownerTh = com.dk.assistant.voice.VoicePrint.threshold(Prefs.ownerVoiceStrict(svc))
         // v3.6: "दूर की आवाज़ अनसुनी" सिर्फ़ जब "सिर्फ़ मेरी आवाज़" चालू हो - वरना धीमी बोली हुई बात भी फेंक देता था
         turnDet.startFloor = LiveHear.farFloor(ownerOn, com.dk.assistant.voice.OwnerVoice.farFloor(svc, btOn))
+        // v4.7: बिना आवाज़ सिखाए भी दूर की आवाज़ अनसुनी - आपकी पास वाली आवाज़ से सीखा (Bluetooth पर बंद: माइक मुँह के पास)
+        if (!ownerOn && !btOn && Prefs.ownerFarOn(svc)) turnDet.startFloor = near.floor()
         val fb = turnDet.farBlocked
         if (fb > 0 && fb % 10 == 1 && fb != farLogged) { farLogged = fb; log("दूर की / धीमी आवाज़ अनसुनी (#$fb)") }
     }
     private var farLogged = 0
+
+    /**
+     * v4.7: असली (शब्दों वाली) बात खत्म - उसका स्तर सीखो (दूर की आवाज़ की रोक इसी से). Bluetooth / बिना शब्द / बहुत छोटी = नहीं.
+     * दूर की आवाज़ शुरू ही नहीं होती तो सीखी भी नहीं जाती - सीखा स्तर आपकी पास वाली आवाज़ का ही रहता है.
+     */
+    private fun learnNear() {
+        val lv = NearVoice.utterLevel(nearRms, turnDet.noise)
+        nearRms.clear()
+        if (btOn || lv <= 0 || turnDet.lastSpeechMs < 500 || !BargeGate.realWords(caption?.text().orEmpty())) return
+        val before = near.floor()
+        near.learn(lv)
+        if (++nearLearned % 5 == 1) try { Prefs.edit(svc) { putString("near_levels", near.save()) } } catch (_: Exception) {}
+        if (before <= 0 && near.floor() > 0) log("आपकी पास वाली आवाज़ सीख ली (स्तर ${near.level.toInt()}) - इससे बहुत धीमी (दूर की) आवाज़ अब अनसुनी")
+    }
+    private var nearLearned = 0
 
     /** पहली ~1 सेकंड आवाज़ का मिलान अलग thread पर - mic और Gemini को भेजना रुकता नहीं */
     private fun checkOwnerAsync() {
@@ -3232,6 +3259,7 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
                             sendAudio(zeros, silent = true); capSend(zeros, silent = true)
                         } else { sendAudio(chunk); capSend(chunk) }
                         if (owner.active && turnDet.inSpeech && owner.add(chunk, rms)) checkOwnerAsync()
+                        if (turnDet.inSpeech && nearRms.size < 400) nearRms.add(rms)      // v4.7: पास वाली आवाज़ का स्तर
                     } else if (other && (turnDet.inSpeech || ev == TurnDetector.Event.SPEECH_END)) {
                         // किसी और की आवाज़: बाकी बात Gemini/लिखने वाले को नहीं
                         sendAudio(zeros, silent = true); capSend(zeros, silent = true); gatedChunks++
@@ -3241,6 +3269,7 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
                     }
                     when (ev) {
                         TurnDetector.Event.SPEECH_START -> {
+                            nearRms.clear()
                             lastAct = now; trace.reset(); replyWatch.onSpeechStart(); rescueWaits = 0
                             // v3.46: गाना/वीडियो चल रहा हो तो आप बोलना शुरू करते ही धीमा (पहले शब्द पहचाने जाने के बाद ही -
                             // पर तेज़ गाने में शब्द पहचाने ही नहीं जाते थे)
@@ -3249,6 +3278,7 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
                             if (DKState.mode != Mode.WORKING) setMode(Mode.LISTENING)
                         }
                         TurnDetector.Event.SPEECH_END -> {
+                            learnNear()
                             if (owner.active) ownerEnd(now)
                             else onLocalEndOfSpeech(now)
                         }
