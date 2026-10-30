@@ -29,7 +29,7 @@ import java.util.concurrent.TimeUnit
 import kotlin.coroutines.resume
 
 /**
- * DK कंप्यूटर के टूल: web search (Tavily / Brave / Gemini), वेब पेज पढ़ना, JavaScript चलाना,
+ * DK कंप्यूटर के टूल: web search (Tavily / Exa / Gemini), वेब पेज पढ़ना, JavaScript चलाना,
  * फ़ाइलें (md/txt/csv/html/json + PDF), फ़ाइल खोलना/शेयर करना, और बाद में काम चलाना (रिमाइंडर).
  */
 object ComputerTools {
@@ -43,22 +43,22 @@ object ComputerTools {
     data class SearchOut(val via: String, val hits: List<Hit>, val summary: String = "")
 
     /** कौन-कौन से search चल सकते हैं, क्रम में (Settings की पसंद पहले) */
-    fun searchOrder(choice: String, hasTavily: Boolean, hasBrave: Boolean, hasGemini: Boolean): List<String> {
-        val avail = buildList { if (hasTavily) add("tavily"); if (hasBrave) add("brave"); if (hasGemini) add("gemini") }
+    fun searchOrder(choice: String, hasExa: Boolean, hasTavily: Boolean, hasGemini: Boolean): List<String> {
+        val avail = buildList { if (hasExa) add("exa"); if (hasTavily) add("tavily"); if (hasGemini) add("gemini") }
         return if (choice in avail) listOf(choice) + avail.filter { it != choice } else avail
     }
 
     /** Search; एक fail हो तो अगला. [onIssue] = रिपोर्ट के लिए (दिक्कत, हल) */
     fun search(c: Context, query: String, n: Int, onIssue: (String, String) -> Unit): SearchOut {
-        val order = searchOrder(Prefs.computerSearch(c), Prefs.tavilyKey(c).isNotBlank(), Prefs.braveKey(c).isNotBlank(),
+        val order = searchOrder(Prefs.computerSearch(c), Prefs.exaSearchKey(c).isNotBlank(), Prefs.tavilyKey(c).isNotBlank(),
             Prefs.scopeKey(c, ApiScopes.PC, "gemini").isNotBlank())
-        if (order.isEmpty()) throw IllegalStateException("Search के लिए कोई key नहीं — Settings → DK कंप्यूटर में Tavily/Brave key या AI दिमाग → DK कंप्यूटर में Gemini key डालें")
+        if (order.isEmpty()) throw IllegalStateException("Search के लिए कोई key नहीं — Settings → DK कंप्यूटर में Exa/Tavily key या AI दिमाग → DK कंप्यूटर में Gemini key डालें")
         var last: Exception? = null
         for ((i, s) in order.withIndex()) {
             try {
                 val out = when (s) {
+                    "exa" -> exa(Prefs.exaSearchKey(c), query, n)
                     "tavily" -> tavily(Prefs.tavilyKey(c), query, n)
-                    "brave" -> brave(Prefs.braveKey(c), query, n)
                     else -> gemini(c, query)
                 }
                 if (i > 0 && last != null) onIssue("${order[i - 1]} search नहीं चला: ${short(last)}", "अपने आप $s search पर स्विच किया")
@@ -84,17 +84,17 @@ object ComputerTools {
         }.filter { it.url.isNotBlank() }
     }
 
-    fun brave(key: String, q: String, n: Int): SearchOut {
-        val url = "https://api.search.brave.com/res/v1/web/search".toHttpUrl().newBuilder()
-            .addQueryParameter("q", q).addQueryParameter("count", n.coerceIn(1, 10).toString()).build()
-        val req = Request.Builder().url(url).header("Accept", "application/json").header("X-Subscription-Token", key).build()
-        return SearchOut("Brave", parseBrave(exec(req)))
+    fun exa(key: String, q: String, n: Int): SearchOut {
+        val body = JSONObject().put("query", q).put("numResults", n.coerceIn(1, 10)).put("contents", JSONObject().put("text", true))
+        val req = Request.Builder().url("https://api.exa.ai/search").header("x-api-key", key)
+            .post(body.toString().toRequestBody(JSON)).build()
+        return SearchOut("Exa", parseExa(exec(req)))
     }
 
-    fun parseBrave(raw: String): List<Hit> {
-        val arr = JSONObject(raw).optJSONObject("web")?.optJSONArray("results") ?: JSONArray()
+    fun parseExa(raw: String): List<Hit> {
+        val arr = JSONObject(raw).optJSONArray("results") ?: JSONArray()
         return (0 until arr.length()).mapNotNull { i -> arr.optJSONObject(i) }.map {
-            Hit(stripTags(it.optString("title")), it.optString("url"), stripTags(it.optString("description")).take(600))
+            Hit(it.optString("title"), it.optString("url"), it.optString("text").take(600))
         }.filter { it.url.isNotBlank() }
     }
 

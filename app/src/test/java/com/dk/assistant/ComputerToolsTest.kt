@@ -50,8 +50,8 @@ class ComputerToolsTest {
 
     // ---------------------------------------------------------------- search
     @Test fun searchOrderPrefersChoiceThenOthers() {
-        assertEquals(listOf("tavily", "brave", "gemini"), ComputerTools.searchOrder("auto", true, true, true))
-        assertEquals(listOf("brave", "tavily"), ComputerTools.searchOrder("brave", true, true, false))
+        assertEquals(listOf("exa", "tavily", "gemini"), ComputerTools.searchOrder("auto", true, true, true))
+        assertEquals(listOf("exa", "tavily"), ComputerTools.searchOrder("exa", true, true, false))
         assertEquals(listOf("gemini"), ComputerTools.searchOrder("tavily", false, false, true))
         assertTrue(ComputerTools.searchOrder("auto", false, false, false).isEmpty())
     }
@@ -65,13 +65,13 @@ class ComputerToolsTest {
         assertEquals("IMD", h[0].title); assertEquals("https://imd.gov.in", h[0].url); assertEquals("बारिश", h[0].snippet)
     }
 
-    @Test fun parseBraveResultsStripsTags() {
-        val raw = """{"type":"search","web":{"results":[
-            {"title":"<strong>Nashik</strong> news","url":"https://a.in/n","description":"आज <strong>नासिक</strong> में"}]}}"""
-        val h = ComputerTools.parseBrave(raw)
+    @Test fun parseExaResultsStripsTags() {
+        val raw = """{"results":[
+            {"title":"<strong>Nashik</strong> news","url":"https://a.in/n","text":"आज <strong>नासिक</strong> में"}]}"""
+        val h = ComputerTools.parseExa(raw)
         assertEquals(1, h.size)
         assertEquals("Nashik news", h[0].title); assertEquals("आज नासिक में", h[0].snippet)
-        assertTrue(ComputerTools.parseBrave("{\"type\":\"search\"}").isEmpty())
+        assertTrue(ComputerTools.parseExa("{\"results\":[]}").isEmpty())
     }
 
     // ---------------------------------------------------------------- वेब पेज

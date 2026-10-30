@@ -409,7 +409,7 @@ object Prefs {
     /** auto | tavily | brave | gemini */
     fun computerSearch(c: Context) = sp(c).getString("pc_search", "auto") ?: "auto"
     fun tavilyKey(c: Context) = sp(c).getString("key_tavily", "") ?: ""
-    fun braveKey(c: Context) = sp(c).getString("key_brave", "") ?: ""
+    fun exaSearchKey(c: Context) = sp(c).getString("key_exa", "") ?: ""
     /** मैसेज/कॉल/पेमेंट जैसे फ़ोन के काम से पहले पूछो (default चालू) */
     fun computerConfirm(c: Context) = sp(c).getBoolean("pc_confirm", true)
     fun computerMaxSteps(c: Context) = sp(c).getInt("pc_max_steps", 40).coerceIn(5, 60)
