@@ -162,7 +162,11 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
                 kotlinx.coroutines.delay(2000)
                 if (!stopped) {
                     reconnects++
-                    connect()
+                    val currentKey = key(svc)
+                    val currentModel = if (model.isNotBlank()) model else FALLBACK_MODELS.first()
+                    val closed = kotlinx.coroutines.CompletableDeferred<Pair<Int, String>>()
+                    val setup = kotlinx.coroutines.CompletableDeferred<Unit>()
+                    connect(currentKey, currentModel, closed, setup)
                 }
             } catch (e: Exception) {
                 log("रीकनेक्शन विफल: ${e.message}")
