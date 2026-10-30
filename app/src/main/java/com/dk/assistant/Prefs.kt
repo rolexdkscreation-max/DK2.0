@@ -406,7 +406,7 @@ object Prefs {
     /** "same" = वही AI जो बातचीत में; वरना provider id */
     fun computerProvider(c: Context) = sp(c).getString("pc_provider", "same") ?: "same"
     fun computerModel(c: Context) = sp(c).getString("pc_model", "") ?: ""
-    /** auto | tavily | brave | gemini */
+    /** auto | tavily | exa | gemini */
     fun computerSearch(c: Context) = sp(c).getString("pc_search", "auto") ?: "auto"
     fun tavilyKey(c: Context) = sp(c).getString("key_tavily", "") ?: ""
     fun exaSearchKey(c: Context) = sp(c).getString("key_exa", "") ?: ""

@@ -1370,10 +1370,10 @@ class SettingsActivity : AppCompatActivity() {
     private lateinit var swPcConfirm: SwitchCompat
     private lateinit var rgPcSearch: RadioGroup
     private lateinit var edTavily: EditText
-    private lateinit var edBrave: EditText
+    private lateinit var edExa: EditText
     private lateinit var edPcSteps: EditText
     private val pcTools = mutableMapOf<String, SwitchCompat>()
-    private val pcSearchIds = listOf("auto", "tavily", "brave", "gemini")
+    private val pcSearchIds = listOf("auto", "tavily", "exa", "gemini")
 
     private fun secComputer() {
         card("DK कंप्यूटर", "कोई भी काम कदम-दर-कदम: इंटरनेट पर खोज, वेबसाइट पढ़ना, हिसाब (कोड), फ़ाइल/PDF, फ़ोन के काम, कोडिंग, रिमाइंडर") { box ->
