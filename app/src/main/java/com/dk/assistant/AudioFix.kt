@@ -50,6 +50,8 @@ object LiveHear {
     /** धीमी आवाज़ को Gemini तक तेज़ करना: पहले max 6 गुना, शोर 450 तक */
     const val BOOST_MAX = 10.0
     const val BOOST_NOISE_CAP = 700.0
+    /** v4.7: बात के अपने स्तर का इतना गुना (−18 dB) से धीमा = बात खत्म (माइक का शोर "बोलना" न लगे) */
+    const val TAIL_FACTOR = 0.12
     /** दूर/धीमी आवाज़ की रोक सिर्फ़ "सिर्फ़ मालिक की आवाज़" के साथ */
     fun farFloor(ownerOn: Boolean, floor: Double): Double = if (ownerOn) floor else 0.0
 }
