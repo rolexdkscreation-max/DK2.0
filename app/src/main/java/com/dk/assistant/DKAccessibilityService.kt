@@ -107,6 +107,8 @@ class DKAccessibilityService : AccessibilityService() {
         // v3.81: "Hey DK" चालू = फ़ोन restart / ऐप बंद के बाद भी सुनने वाली notification-service फिर से
         if (com.dk.assistant.voice.HeyDk.on(this) && !Prefs.micUserOff(this)) Setup.startKeepAlive(this)
         if (Prefs.liveMode(this)) startLive() else ensureLoop()
+        // v4.6: नेट लौटते ही टूटा Live फिर जोड़ो (इंतज़ार नहीं)
+        try { (getSystemService(CONNECTIVITY_SERVICE) as android.net.ConnectivityManager).registerDefaultNetworkCallback(netBack) } catch (_: Exception) {}
     }
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) { /* zarurat nahi, hum on-demand padhte hain */ }
@@ -119,6 +121,7 @@ class DKAccessibilityService : AccessibilityService() {
     override fun onInterrupt() { agent.stop() }
 
     override fun onDestroy() {
+        try { (getSystemService(CONNECTIVITY_SERVICE) as android.net.ConnectivityManager).unregisterNetworkCallback(netBack) } catch (_: Exception) {}
         instance = null
         AppVisible.onChange = null
         removeBubble()
@@ -155,6 +158,7 @@ class DKAccessibilityService : AccessibilityService() {
             return
         }
         wakeLive = false; gemLive.idleExitMs = 0
+        liveNow("Live चालू")                                       // v4.6: टैप = अभी जोड़ो (पिछली गलती का इंतज़ार नहीं)
         Prefs.edit(this) { putBoolean("mic_user_off", false) }    // v3.59: यूज़र ने खुद चालू किया
         Setup.startKeepAlive(this)
         // wake word wala loop hear() me atka ho (baat ka intezaar / STT) to Live tab tak shuru nahi hota tha -> use roko
@@ -167,6 +171,42 @@ class DKAccessibilityService : AccessibilityService() {
             ear.release(); listener.release(); earCaptionOff()
         }
         ensureLoop()
+    }
+
+    /** v4.6: पिछली गलती का इंतज़ार खत्म - अगली बार loop सीधे Gemini Live जोड़े */
+    private fun liveNow(why: String) {
+        if (liveOffUntil > System.currentTimeMillis()) DKLog.d("Live: $why - इंतज़ार खत्म, अभी जोड़ रहा हूँ")
+        liveOffUntil = 0L; liveSoftFails = 0; liveOffSoft = false
+    }
+
+    /**
+     * v4.6 (मालिक: "ऐप चालू करते ही लाइव से कनेक्शन हो जाना चाहिए"): ऐप खुला -
+     * Live बंद हो (और आपने खुद माइक बंद नहीं किया) = तुरंत चालू; चालू हो पर टूटा पड़ा = तुरंत फिर जोड़ो.
+     */
+    fun appOpened() {
+        if (callBusy()) return
+        if (DKState.live) {
+            if (wakeLive || gemLive.running || liveOffUntil <= System.currentTimeMillis()) return
+            liveNow("ऐप खुला")
+            // पुराने तरीके के सुनने (hear) में अटका हो तो रोको - Live तुरंत
+            if (!agent.isBusy && !speaker.busy && DKState.mode != Mode.SPEAKING && loopJob?.isActive == true) {
+                loopJob?.cancel(); loopJob = null
+                ear.release(); listener.release(); earCaptionOff()
+            }
+            ensureLoop()
+            return
+        }
+        if (Prefs.micUserOff(this) || GeminiLive.key(this).isBlank() || !Setup.hasMic(this)) return
+        if (com.dk.assistant.license.AccessKeyManager.refusalOrNull(this) != null) return
+        DKLog.d("ऐप खुला - DK लाइव तुरंत चालू")
+        startLive()
+    }
+
+    /** v4.6: नेट वापस आया - Live टूटा पड़ा हो तो इंतज़ार नहीं, अभी जोड़ो */
+    private val netBack = object : android.net.ConnectivityManager.NetworkCallback() {
+        override fun onAvailable(network: android.net.Network) {
+            if (DKState.live && !wakeLive && liveOffSoft && liveOffUntil > System.currentTimeMillis()) liveNow("नेट वापस आया")
+        }
     }
 
     /**
@@ -246,6 +286,8 @@ class DKAccessibilityService : AccessibilityService() {
     @Volatile private var liveOffUntil = 0L
     /** Lagatar kitni baar Live network/mic ki thodi-der wali dikkat se ruka (backoff ke liye) */
     @Volatile private var liveSoftFails = 0
+    /** v4.6: Live थोड़ी देर की दिक्कत (नेट / टूटना / setup) से रुका - पुराने तरीके पर नहीं, बस सेकंडों में फिर जोड़ो */
+    @Volatile private var liveOffSoft = false
     fun callBusy() = calls.ringing || callPending || callAnnouncing || calls.inCall
     /**
      * v3.40: call उठ चुकी (चल रही) = माइक call का -> तभी DK लाइव रुकता है. घंटी के समय Live खुला रहता है:
@@ -565,6 +607,12 @@ class DKAccessibilityService : AccessibilityService() {
                 if (DKMic.dictating && !useGeminiLive()) { ear.release(); listener.release(); delay(300); continue }
                 // call chal rahi hai: mic call ka hai - DK ka mic chhod do (warna saamne wale ko awaaz nahi jaati)
                 if (calls.inCall && !calls.ringing) { ear.release(); listener.release(); DKState.set(Mode.IDLE); delay(1000); continue }
+                // v4.6: Live थोड़ी देर के लिए टूटा (नेट/connection) - पुराने तरीके (दूसरा STT + chat) पर नहीं जाना:
+                // वहाँ बोला हुआ लिखा जाता था (कभी ग़लत) पर जवाब अक्सर नहीं आता था. बस इंतज़ार और तुरंत फिर Live
+                if (DKState.live && !wakeLive && liveOffSoft && System.currentTimeMillis() <= liveOffUntil && GeminiLive.available(this@DKAccessibilityService)) {
+                    ear.release(); listener.release(); earCaptionOff()
+                    delay(250); continue
+                }
                 // Gemini Live: mic ki awaaz lagatar stream, jawab ki awaaz turant stream (sabse kam deri)
                 if (useGeminiLive() && !callBusy()) {
                     if (!checkMic()) { delay(2000); continue }
@@ -582,16 +630,24 @@ class DKAccessibilityService : AccessibilityService() {
                         if (System.currentTimeMillis() - liveStart > 5 * 60_000L) liveSoftFails = 0
                         // key/limit/model = asli rukawat (10 min). Network/mic busy = thodi der: 15s, 30s, 60s ... 5 min tak
                         // (pehle har baar 10 min ke liye Live band = "kabhi chalta hai kabhi nahi", beech me purana dheema tareeka)
-                        val offMs = LiveRetry.offMs(e.recoverable, liveSoftFails)
+                        // v4.6 (मालिक: "कनेक्शन टूटे तो तुरंत जुड़े"): आपने Live चालू रखा है = 1s, 2s, 4s, 8s, 15s
+                        // (limit/key = 60s). पहले 15s-10 मिनट तक पुराना तरीका चलता था - बोला दिखता था, जवाब नहीं आता था
+                        val userLive = DKState.live && !wakeLive
+                        val offMs = if (userLive) LiveRetry.liveOnMs(e.recoverable, liveSoftFails) else LiveRetry.offMs(e.recoverable, liveSoftFails)
                         if (e.recoverable) liveSoftFails++
+                        liveOffSoft = userLive && e.recoverable
                         liveOffUntil = System.currentTimeMillis() + offMs
                         DKLog.d("Gemini Live ruka (${if (e.recoverable) "थोड़ी देर की दिक्कत #$liveSoftFails" else "असली रुकावट"}) - ${offMs / 1000}s बाद फिर कोशिश: ${e.message}")
                         DKState.set(Mode.IDLE)
-                        warn("live", "Gemini Live नहीं चला: ${e.message}। अभी पुराने तरीके से सुन रहा हूँ।")
+                        if (liveOffSoft) warn("live", "DK लाइव का connection टूटा (${e.message}) - ${offMs / 1000}s में फिर जोड़ रहा हूँ।")
+                        else warn("live", "Gemini Live नहीं चला: ${e.message}। अभी पुराने तरीके से सुन रहा हूँ।")
                     } catch (e: kotlinx.coroutines.CancellationException) { throw e
                     } catch (e: Exception) {
                         failed = true
-                        liveOffUntil = System.currentTimeMillis() + 2 * 60_000L
+                        // v4.6: आपने Live चालू रखा है = 3s में फिर (पहले 2 मिनट पुराना तरीका)
+                        val userLive = DKState.live && !wakeLive
+                        liveOffSoft = userLive
+                        liveOffUntil = System.currentTimeMillis() + if (userLive) 3_000L else 2 * 60_000L
                         DKLog.d("Gemini Live गलती: ${e.javaClass.simpleName} ${e.message}")
                     }
                     // v3.45: बातचीत खत्म -> कब, कितनी देर, सारांश, अधूरी बातें (फ़ोन पर)

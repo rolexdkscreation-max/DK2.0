@@ -256,6 +256,8 @@ class MainActivity : AppCompatActivity() {
         intent?.removeExtra("ask_mic")
         if (intent?.getBooleanExtra("ask_location", false) == true) { intent?.removeExtra("ask_location"); askLocationNow() }
         friendOnOpen()
+        // v4.6 (मालिक): ऐप खुलते ही DK लाइव जुड़े - बंद हो तो चालू, टूटा पड़ा हो तो तुरंत फिर (आपने माइक बंद किया हो तो नहीं)
+        try { DKAccessibilityService.instance?.appOpened() } catch (_: Exception) {}
         render()
         checkUpdate()
         checkAccessKey()
