@@ -314,7 +314,10 @@ class CoderAi(val provider: Provider, private val key: String, val model: String
          * Limit (429) / मॉडल बंद: Gemini अपने अंदर उसी key के दूसरे मॉडल; Groq/OpenRouter/Custom के लिए
          * उसी key के बैकअप मॉडल fallback में.
          */
-        fun forScope(c: Context, scope: String, sink: (String, String) -> Unit, providerId: String = Prefs.scopeActive(c, scope)): CoderAi? {
+        fun forScope(c: Context, scope: String, sink: (String, String) -> Unit): CoderAi? =
+            forScope(c, scope, sink, Prefs.scopeActive(c, scope))
+
+        fun forScope(c: Context, scope: String, sink: (String, String) -> Unit, providerId: String): CoderAi? {
             val p = Providers.byId(providerId) ?: return null
             // कोडिंग एजेंट + Gemini: 5 तक keys (key 1 के सारे मॉडल की limit खत्म -> key 2 के सारे मॉडल -> key 3 -> key 4 -> key 5)
             val gemKeys = if (p.isGemini && scope == ApiScopes.CODER) Prefs.coderGeminiKeys(c) else emptyList()
