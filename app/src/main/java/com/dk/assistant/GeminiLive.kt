@@ -162,9 +162,10 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
                 kotlinx.coroutines.delay(2000)
                 if (!stopped) {
                     reconnects++
+                    connect()
                 }
             } catch (e: Exception) {
-                log("रीकनेक्शन विफल: \${e.message}")
+                log("रीकनेक्शन विफल: ${e.message}")
             }
         }
     }
