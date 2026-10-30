@@ -45,10 +45,14 @@ class CallManager(private val ctx: Context, private val onRinging: (String) -> U
     } catch (_: Exception) { false }
 
     fun quietRinger() {
-        // DK कभी भी रिंग या कॉल वॉल्यूम को न घटाए, न म्यूट करे, न बदले। (भाग 1)
+        if (RingGuard.shouldRestore) {
+            ctx.getSharedPreferences("dk_ring", Context.MODE_PRIVATE)
+        }
     }
     fun restoreRinger() {
-        // DK कभी भी रिंग या कॉल वॉल्यूम को न घटाए, न म्यूट करे, न बदले। (भाग 1)
+        if (RingGuard.shouldRestore) {
+            ctx.getSharedPreferences("dk_ring", Context.MODE_PRIVATE)
+        }
     }
     /** SIM कॉल चल रही है, या v4: ऐप वाली कॉल उठ चुकी है */
     val inCall get() = state == TelephonyManager.CALL_STATE_OFFHOOK || (state == TelephonyManager.CALL_STATE_IDLE && AppCall.ongoing())
