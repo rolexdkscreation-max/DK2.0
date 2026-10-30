@@ -41,7 +41,15 @@ class TurnDetector(
     /** v4.2: बोलते समय "अभी भी बोल रहा" की निचली सीमा (धीमी आवाज़ में बात बीच में न कटे) */
     private val keepFactor: Double = 1.6,
     private val keepMin: Double = 220.0,
+    /**
+     * v4.7 (मालिक: "बात खत्म होते ही जवाब, 3-4 सेकंड रुकता है"): बोलते समय इस बात के अपने स्तर का इतना गुना से धीमा =
+     * चुप्पी. पहले बात खत्म होने के बाद माइक का अपना शोर (फ़ोन का AGC चुप्पी में शोर बढ़ा देता है) "अभी भी बोल रहा"
+     * की सीमा से ऊपर रहता था = "बात खत्म" सेकंडों तक नहीं (steadyReset तक). 0 = बंद (पुराना तरीका)
+     */
+    private val tailFactor: Double = 0.0,
 ) {
+    /** इस बात का बोलने वाला स्तर (धीरे-धीरे) - tailFactor के लिए */
+    private var talkLvl = 0.0
     private var sumRms = 0.0; private var frames = 0; private var lowFrames = 0
     /** कितनी बार लगातार शोर को "बोलना" समझने से बचे (debug) */
     var steadyResets = 0
@@ -70,7 +78,7 @@ class TurnDetector(
     var lastSpeechMs = 0
         private set
 
-    fun reset() { inSpeech = false; startRun = 0; speechMs = 0; silenceMs = 0; sumRms = 0.0; frames = 0; lowFrames = 0 }
+    fun reset() { inSpeech = false; startRun = 0; speechMs = 0; silenceMs = 0; sumRms = 0.0; frames = 0; lowFrames = 0; talkLvl = 0.0 }
 
     /**
      * v3.66 (परत 4): इससे धीमी आवाज़ को "बोलना शुरू" मत मानो - दूर की बातें / दूसरे कमरे की आवाज़ / धीमा TV.
@@ -132,7 +140,12 @@ class TurnDetector(
                 reset(); return Event.NONE
             }
         }
-        if (rms > keepThr) { silenceMs = 0; speechMs += chunkMs; lastVoiceAt = now; return Event.NONE }
+        // v4.7: इस बात के अपने (ऊँचे) स्तर से बहुत धीमा (−18 dB) = चुप्पी, भले माइक का शोर keepThr से ऊपर हो
+        val tailThr = if (tailFactor > 0 && speechMs >= 300) talkLvl * tailFactor else 0.0
+        if (rms > keepThr && rms > tailThr) {
+            if (tailFactor > 0) talkLvl = if (rms > talkLvl) talkLvl * 0.7 + rms * 0.3 else talkLvl * 0.98 + rms * 0.02
+            silenceMs = 0; speechMs += chunkMs; lastVoiceAt = now; return Event.NONE
+        }
         silenceMs += chunkMs
         val need = if (longEndSilenceMs > endSilenceMs && longSpeechMs > 0 && speechMs >= longSpeechMs) longEndSilenceMs else endSilenceMs
         if (silenceMs < need) return Event.NONE
@@ -539,4 +552,8 @@ object LiveRetry {
     const val LIVE_HARD_MS = 60_000L
     fun liveOnMs(recoverable: Boolean, softFails: Int): Long =
         if (!recoverable) LIVE_HARD_MS else minOf(LIVE_SOFT_MAX_MS, 1_000L shl softFails.coerceIn(0, 4))
+
+    /** v4.7 (मालिक: "टूटे तो 1-2 सेकंड में जुड़े"): थोड़ी-देर वाली दिक्कत में कभी 2s से ज़्यादा नहीं (limit/key वैसा ही) */
+    const val FAST_MAX_MS = 2_000L
+    fun fast(recoverable: Boolean, ms: Long): Long = if (recoverable) minOf(FAST_MAX_MS, ms) else ms
 }

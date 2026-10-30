@@ -897,6 +897,12 @@ class SettingsActivity : AppCompatActivity() {
             switch(box, "बोलते समय पीछे का गाना/वीडियो धीमा करो (करीब 20%), जवाब के बाद धीरे-धीरे वापस", Prefs.duckMedia(this))
                 .setOnCheckedChangeListener { _, on -> Prefs.edit(this) { putBoolean("duck_media", on) }; if (!on) Ducker.releaseNow() }
             hint(box, "आवाज़ धीरे से (fade) कम-ज़्यादा होती है। फ़ोन की volume नहीं बदलती। कुछ ऐप (जैसे podcast) धीमे होने की जगह थोड़ी देर रुक जाते हैं।")
+            // v4.7: दूर की आवाज़ अनसुनी (बिना आवाज़ सिखाए) + जवाब के बीच बोलें तो DK रुके
+            switch(box, "दूर की आवाज़ अनसुनी करो (फ़ोन के पास धीरे या ज़ोर से - दोनों सुनेगा)", Prefs.ownerFarOn(this))
+                .setOnCheckedChangeListener { _, on -> Prefs.edit(this) { putBoolean("owner_far_on", on) } }
+            hint(box, "DK आपकी पहली कुछ बातों से आपकी पास वाली आवाज़ अपने आप सीखता है। उससे बहुत धीमी (दूसरे कमरे / दूर की) आवाज़ पर जवाब नहीं देगा। Bluetooth headset पर यह रोक बंद रहती है।")
+            switch(box, "DK के जवाब के बीच बोलूँ तो DK रुककर मेरी बात सुने", !Prefs.bargeHold(this))
+                .setOnCheckedChangeListener { _, on -> Prefs.edit(this) { putBoolean("barge_hold", !on) } }
             hint(box, "आवाज़ की keys (Gemini Live, बोलना, सुनना): सेटिंग्स → AI दिमाग → DK लाइव। अभी: " + scopeStatus(ApiScopes.LIVE))
         }
 

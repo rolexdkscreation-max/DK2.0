@@ -633,7 +633,8 @@ class DKAccessibilityService : AccessibilityService() {
                         // v4.6 (मालिक: "कनेक्शन टूटे तो तुरंत जुड़े"): आपने Live चालू रखा है = 1s, 2s, 4s, 8s, 15s
                         // (limit/key = 60s). पहले 15s-10 मिनट तक पुराना तरीका चलता था - बोला दिखता था, जवाब नहीं आता था
                         val userLive = DKState.live && !wakeLive
-                        val offMs = if (userLive) LiveRetry.liveOnMs(e.recoverable, liveSoftFails) else LiveRetry.offMs(e.recoverable, liveSoftFails)
+                        // v4.7 (मालिक: "1-2 सेकंड में जुड़े"): थोड़ी-देर वाली दिक्कत = कभी 2s से ज़्यादा नहीं
+                        val offMs = if (userLive) LiveRetry.fast(e.recoverable, LiveRetry.liveOnMs(e.recoverable, liveSoftFails)) else LiveRetry.offMs(e.recoverable, liveSoftFails)
                         if (e.recoverable) liveSoftFails++
                         liveOffSoft = userLive && e.recoverable
                         liveOffUntil = System.currentTimeMillis() + offMs
