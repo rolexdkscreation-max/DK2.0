@@ -1636,10 +1636,22 @@ class SettingsActivity : AppCompatActivity() {
         if (focus == title) s.view.post { findViewById<android.widget.ScrollView>(R.id.scroll)?.smoothScrollTo(0, (s.view.top - (8 * dp).toInt()).coerceAtLeast(0)) }
     }
 
-    // ------------------------------------------------------------ सेटिंग्स में खोज (मुख्य मेनू के ऊपर)
+    // ------------------------------------------------------------ सेटिंग्स में खोज (टॉगल होने वाला लॉजिक)
     private fun setupSearch() {
         val box = findViewById<EditText>(R.id.settingsSearch)
-        box.visibility = View.VISIBLE
+        box.visibility = View.GONE
+        val btnSearch = findViewById<ImageButton>(R.id.btnSearch)
+        btnSearch.visibility = View.VISIBLE
+        btnSearch.setOnClickListener {
+            if (box.visibility == View.VISIBLE) {
+                box.visibility = View.GONE
+                box.setText("")
+            } else {
+                box.visibility = View.VISIBLE
+                box.requestFocus()
+                (getSystemService(INPUT_METHOD_SERVICE) as? android.view.inputmethod.InputMethodManager)?.showSoftInput(box, 0)
+            }
+        }
         box.addTextChangedListener(object : TextWatcher {
             override fun beforeTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) {}
             override fun onTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) {}
