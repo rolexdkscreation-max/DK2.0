@@ -350,6 +350,19 @@ class DKAccessibilityService : AccessibilityService() {
         System.currentTimeMillis() > googleUntil
 
     /** Ek hi dikkat baar-baar na bole (5 min me ek baar) - screen par likho + bolkar batao */
+    /** v5: DK लाइव न जुड़ पाया - स्क्रीन पर बताया / बोलकर बताया (फिर जुड़ने पर GeminiLive दोनों रीसेट करता है) */
+    @Volatile var liveTroubleShown = false
+    @Volatile var liveTroubleSpoken = false
+
+    /** हर रुकावट में सिर्फ़ एक बार बोलो - बार-बार बड़बड़ नहीं, पर यूज़र को कभी न लगे कि DK सुन नहीं रही */
+    private suspend fun liveTroubleSay(msg: String) {
+        if (liveTroubleSpoken) return
+        liveTroubleSpoken = true; liveTroubleShown = true
+        DKLog.d("Live न जुड़ा - यूज़र को बताया: $msg")
+        DKState.reply(msg)
+        try { speaker.speak(msg) } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (_: Exception) {}
+    }
+
     private suspend fun warn(id: String, msg: String) {
         val now = System.currentTimeMillis()
         if (now - (warnedAt[id] ?: 0L) < 5 * 60_000L) return
@@ -640,7 +653,10 @@ class DKAccessibilityService : AccessibilityService() {
                         liveOffUntil = System.currentTimeMillis() + offMs
                         DKLog.d("Gemini Live ruka (${if (e.recoverable) "थोड़ी देर की दिक्कत #$liveSoftFails" else "असली रुकावट"}) - ${offMs / 1000}s बाद फिर कोशिश: ${e.message}")
                         DKState.set(Mode.IDLE)
-                        if (liveOffSoft) warn("live", "DK लाइव का connection टूटा (${e.message}) - ${offMs / 1000}s में फिर जोड़ रहा हूँ।")
+                        // v5 (मालिक: "न जुड़ पाए तो यूज़र को बोल दे"): आपने Live चालू रखा है = हर रुकावट में एक बार साफ़ शब्दों में बोलो
+                        // (तकनीकी गलती नहीं); फिर जुड़ते ही GeminiLive "जुड़ गई, बोलिए" दिखाता है
+                        if (userLive) liveTroubleSay(LiveConnectNotice.forStop(e.message, e.recoverable))
+                        else if (liveOffSoft) warn("live", "DK लाइव का connection टूटा (${e.message}) - ${offMs / 1000}s में फिर जोड़ रहा हूँ।")
                         else warn("live", "Gemini Live नहीं चला: ${e.message}। अभी पुराने तरीके से सुन रहा हूँ।")
                     } catch (e: kotlinx.coroutines.CancellationException) { throw e
                     } catch (e: Exception) {
@@ -648,8 +664,10 @@ class DKAccessibilityService : AccessibilityService() {
                         // v4.6: आपने Live चालू रखा है = 3s में फिर (पहले 2 मिनट पुराना तरीका)
                         val userLive = DKState.live && !wakeLive
                         liveOffSoft = userLive
-                        liveOffUntil = System.currentTimeMillis() + if (userLive) 3_000L else 2 * 60_000L
+                        // v5: 3s -> 1s (मालिक: "टूटे तो 1 सेकंड में फिर जुड़े")
+                        liveOffUntil = System.currentTimeMillis() + if (userLive) LiveRetry.FAST_MAX_MS else 2 * 60_000L
                         DKLog.d("Gemini Live गलती: ${e.javaClass.simpleName} ${e.message}")
+                        if (userLive) liveTroubleSay(LiveConnectNotice.TROUBLE)
                     }
                     // v3.45: बातचीत खत्म -> कब, कितनी देर, सारांश, अधूरी बातें (फ़ोन पर)
                     try { FriendTalk.sessionEnd(this@DKAccessibilityService, liveStart, scope) } catch (_: Exception) {}

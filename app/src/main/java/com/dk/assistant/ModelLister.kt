@@ -62,7 +62,31 @@ object ModelLister {
         return out
     }
 
+    /**
+     * v5 (Extra API): key से असली कंपनी - हर उम्मीदवार की /models जाँचो, जो खुले वही कंपनी (साथ में उसके मॉडल).
+     * किसी की /models न खुले पर निशान पक्का हो (जैसे pplx-) = वही कंपनी, उसके जाने-माने मॉडल. null = पहचान नहीं.
+     */
+    suspend fun detectCompany(key: String): Pair<ApiCompanies.Company, List<String>>? = withContext(Dispatchers.IO) {
+        val cands = ApiCompanies.candidates(key)
+        for (c in cands) {
+            try {
+                val list = openAi(c.base, key.trim()).filter { m -> SKIP.none { m.lowercase().contains(it) } }.distinct().sorted()
+                if (list.isNotEmpty()) return@withContext c to list
+            } catch (e: AiException) {
+                // 401/403 = इस कंपनी की key नहीं; 404 = /models नहीं है (पर key शायद इसी की) - अगला उम्मीदवार
+                DKLog.d("Extra API: ${c.name} -> ${e.code}")
+            } catch (e: Exception) { DKLog.d("Extra API: ${c.name} -> ${e.javaClass.simpleName}") }
+        }
+        ApiCompanies.sure(key)?.let { it to it.models }
+    }
+
     private fun openAi(base: String, key: String): List<String> {
+        // Claude: मॉडल की सूची x-api-key से (chat OpenAI-जैसे पते पर Bearer से चलती है)
+        if (base.contains("anthropic.com")) {
+            val o = get("https://api.anthropic.com/v1/models?limit=100", mapOf("x-api-key" to key, "anthropic-version" to "2023-06-01"))
+            val arr = o.optJSONArray("data")
+            return (0 until (arr?.length() ?: 0)).mapNotNull { arr!!.optJSONObject(it)?.optString("id")?.takeIf { s -> s.isNotBlank() } }
+        }
         val o = get("$base/models", mapOf("Authorization" to "Bearer $key"))
         val arr = o.optJSONArray("data") ?: o.optJSONArray("models")
         return (0 until (arr?.length() ?: 0)).mapNotNull { arr!!.optJSONObject(it)?.optString("id")?.takeIf { s -> s.isNotBlank() } }

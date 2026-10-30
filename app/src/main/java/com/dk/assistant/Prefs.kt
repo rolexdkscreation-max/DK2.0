@@ -419,6 +419,9 @@ object Prefs {
     fun models(c: Context, id: String): List<String> =
         (sp(c).getString("models_$id", "") ?: "").split('\n').filter { it.isNotBlank() }
 
+    /** v5: DK लाइव का dk_settings tool कोई भी ऑन-ऑफ सेटिंग पढ़ सके */
+    fun bool(c: Context, key: String, def: Boolean): Boolean = sp(c).getBoolean(key, def)
+
     fun edit(c: Context, block: SharedPreferences.Editor.() -> Unit) {
         val e = sp(c).edit(); e.block(); e.commit()   // commit = turant disk par save
     }

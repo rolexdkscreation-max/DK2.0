@@ -554,6 +554,7 @@ object LiveRetry {
         if (!recoverable) LIVE_HARD_MS else minOf(LIVE_SOFT_MAX_MS, 1_000L shl softFails.coerceIn(0, 4))
 
     /** v4.7 (मालिक: "टूटे तो 1-2 सेकंड में जुड़े"): थोड़ी-देर वाली दिक्कत में कभी 2s से ज़्यादा नहीं (limit/key वैसा ही) */
-    const val FAST_MAX_MS = 2_000L
+    // v5 (मालिक: "डिस्कनेक्ट होते ही 1 सेकंड के अंदर फिर जुड़े"): 2s -> 1s
+    const val FAST_MAX_MS = 1_000L
     fun fast(recoverable: Boolean, ms: Long): Long = if (recoverable) minOf(FAST_MAX_MS, ms) else ms
 }
