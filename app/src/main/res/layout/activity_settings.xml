@@ -59,7 +59,7 @@
                 android:contentDescription="खोज"
                 android:padding="12dp"
                 android:scaleType="fitCenter"
-                android:src="@drawable/ic_search" />
+                android:src="@android:drawable/ic_menu_search" />
 
             <com.dk.assistant.OrbView
                 android:id="@+id/miniOrb"
