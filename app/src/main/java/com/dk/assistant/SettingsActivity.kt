@@ -1388,9 +1388,9 @@ class SettingsActivity : AppCompatActivity() {
             })
         }
         apiLinkCard(ApiScopes.PC, "brain_pc")
-        card("वेब search", "Gemini key से Google search फ्री; Tavily / Brave की key डालें तो उनसे (Groq/OpenRouter वालों के लिए भी)") { box ->
+        card("वेब search", "Gemini key से Google search फ्री; Tavily / Exa की key डालें तो उनसे (Groq/OpenRouter वालों के लिए भी)") { box ->
             val cur = Prefs.computerSearch(this)
-            val names = mapOf("auto" to "अपने-आप (Tavily → Brave → Gemini, जो key हो)", "tavily" to "Tavily", "brave" to "Brave Search", "gemini" to "Google (Gemini key से)")
+            val names = mapOf("auto" to "अपने-आप (Tavily → Exa → Gemini, जो key हो)", "tavily" to "Tavily", "exa" to "Exa Search", "gemini" to "Google (Gemini key से)")
             rgPcSearch = RadioGroup(this).apply { orientation = RadioGroup.VERTICAL }
             pcSearchIds.forEachIndexed { i, id ->
                 rgPcSearch.addView(RadioButton(this).apply {
@@ -1401,8 +1401,8 @@ class SettingsActivity : AppCompatActivity() {
             box.addView(rgPcSearch)
             edTavily = field(box, "Tavily API Key", Prefs.tavilyKey(this), "tvly-…", secret = true)
             row(box, button("Tavily key बनाएँ") { Setup.openUrl(this, "https://app.tavily.com/home") })
-            edBrave = field(box, "Brave Search API Key", Prefs.braveKey(this), "BSA…", secret = true)
-            row(box, button("Brave key बनाएँ") { Setup.openUrl(this, "https://api-dashboard.search.brave.com/app/keys") })
+            edExa = field(box, "Exa API Key", Prefs.exaSearchKey(this), "Exa key", secret = true)
+            row(box, button("Exa key बनाएँ") { Setup.openUrl(this, WebSearch.EXA_KEY_URL) })
             hint(box, "Keys सिर्फ़ इसी फ़ोन में रहती हैं। एक search fail हो तो DK अपने-आप अगला आज़माता है।")
         }
         card("कंप्यूटर के टूल", "जो बंद करेंगे, वह DK कंप्यूटर इस्तेमाल नहीं करेगा") { box ->
@@ -1570,7 +1570,7 @@ class SettingsActivity : AppCompatActivity() {
                 putInt("pc_max_steps", (edPcSteps.text.toString().trim().toIntOrNull() ?: 25).coerceIn(5, 60))
                 putString("pc_search", pcSearchIds.getOrNull(rgPcSearch.checkedRadioButtonId - 5100) ?: "auto")
                 putString("key_tavily", edTavily.text.toString().trim())
-                putString("key_brave", edBrave.text.toString().trim())
+                putString(Prefs.EXA_SEARCH_KEY, edExa.text.toString().trim())
                 pcTools.forEach { (id, sw) -> putBoolean("pc_tool_$id", sw.isChecked) }
             }
             // हर हिस्से की अपनी setting (नाम ApiScopes.pref से: key_gemini, coder_key_groq, live_key_gemini …)
