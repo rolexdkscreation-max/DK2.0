@@ -145,10 +145,29 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
     class Fatal(msg: String, val recoverable: Boolean = false) : Exception(msg)
 
     private val http = OkHttpClient.Builder()
-        .connectTimeout(10, TimeUnit.SECONDS)
-        .readTimeout(0, TimeUnit.MILLISECONDS)       // stream: read timeout nahi
-        .pingInterval(15, TimeUnit.SECONDS)          // connection zinda hai? (NAT/mobile data par tootne se bachao)
+        .connectTimeout(20, TimeUnit.SECONDS)
+        .readTimeout(60, TimeUnit.SECONDS)
+        .callTimeout(120, TimeUnit.SECONDS)
+        .pingInterval(10, TimeUnit.SECONDS)          // connection zinda hai? (NAT/mobile data par tootne se bachao)
+        .retryOnConnectionFailure(true)
         .build()
+
+    private fun reconnect() {
+        svc.scope.launch(kotlinx.coroutines.Dispatchers.IO) {
+            try {
+                if (stopped) return@launch
+                log("धीमे नेटवर्क पर रीकनेक्शन लॉजिक शुरू हो रहा है...")
+                ws?.cancel()
+                ws = null
+                kotlinx.coroutines.delay(2000)
+                if (!stopped) {
+                    reconnects++
+                }
+            } catch (e: Exception) {
+                log("रीकनेक्शन विफल: \${e.message}")
+            }
+        }
+    }
 
     @Volatile private var ws: WebSocket? = null
     @Volatile private var ready = false
