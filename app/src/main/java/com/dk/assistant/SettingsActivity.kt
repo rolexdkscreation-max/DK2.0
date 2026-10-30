@@ -1067,6 +1067,18 @@ class SettingsActivity : AppCompatActivity() {
             }
             if (T.systemNoAnim) hint(box, "फ़ोन की सेटिंग में एनिमेशन बंद हैं — इसलिए DK अभी अपने-आप कम एनिमेशन में है।")
         }
+        // v4.x: जवाब आने से पहले बुलबुले में चलने वाला "लिख रही है" एनीमेशन
+        card("टाइपिंग एनीमेशन", "जवाब आने से पहले चैट के बुलबुले में क्या चले — जो पसंद हो चुनें", startOpen = true) { box ->
+            val cur = Prefs.typingStyle(this)
+            val prev = DKWorkingIndicator(this).apply { bare = true; state = WorkState.THINKING; typingPreview = cur }
+            box.addView(prev, LinearLayout.LayoutParams((56 * dp).toInt(), (56 * dp).toInt()).apply { gravity = Gravity.CENTER_HORIZONTAL })
+            val g = radios(box, TypingStyles.STYLES, cur, 6400)
+            g.setOnCheckedChangeListener { _, id ->
+                val v = TypingStyles.STYLES.getOrNull(id - 6400)?.first ?: return@setOnCheckedChangeListener
+                Prefs.edit(this) { putString("typing_style", v) }
+                prev.typingPreview = v
+            }
+        }
         card("दिखावट पहले जैसी करें", "सिर्फ़ रंग-रूप शुरुआती जैसा — बातचीत, यादें, key और आवाज़ की सेटिंग नहीं मिटतीं", startOpen = true) { box ->
             row(box, button("दिखावट रीसेट करें") {
                 UiDialog(this, Glass.DIALOG)
@@ -1088,23 +1100,6 @@ class SettingsActivity : AppCompatActivity() {
         val styles = Shapes.STYLES
         lateinit var preview: OrbView
         var chosen = Prefs.orbStyle(this)
-        // v3.71: ORB या लड़की अवतार
-        card("अवतार चुनो", "होम स्क्रीन और आवाज़ स्क्रीन पर ORB की जगह क्या दिखे") { box ->
-            val g = radios(box, listOf(
-                "orb" to "ORB (डिफ़ॉल्ट)",
-                "girl" to "लड़की अवतार — बालों में हवा, पलकें, बोलते समय होंठ, भाव के साथ चेहरा"),
-                Prefs.avatarKind(this), 2600)
-            g.setOnCheckedChangeListener { _, id ->
-                val v = if (id - 2600 == 1) "girl" else "orb"
-                Prefs.edit(this) { putString("avatar_kind", v) }
-                if (v == "girl" && !com.dk.assistant.avatar.AvatarAssets.available(this))
-                    toast("अवतार का चित्र (avatar_body) ऐप में नहीं है — तब तक ORB ही दिखेगा")
-            }
-            val miss = com.dk.assistant.avatar.AvatarAssets.missingFiles(this)
-            hint(box, if (miss.isEmpty()) "अवतार के सारे 11 चित्र मौजूद हैं।"
-                else "ऐप में ये चित्र नहीं हैं (res/drawable-nodpi में 1024x1536 PNG डालें): " + miss.joinToString(", ") +
-                    (if (miss.contains(com.dk.assistant.avatar.AvatarAssets.BODY)) " — avatar_body के बिना ORB ही दिखेगा।" else " — जो रूप नहीं है उसकी जगह पास वाला रूप दिखेगा।"))
-        }
         card("झलक", "ओर्ब पर टैप = चेहरा बनने वाला एनीमेशन") { box ->
             preview = OrbView(this).apply {
                 previewStyle = chosen

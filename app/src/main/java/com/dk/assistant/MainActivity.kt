@@ -43,7 +43,6 @@ class MainActivity : AppCompatActivity() {
         findViewById<OrbView>(R.id.orb).setOnClickListener {
             if (System.currentTimeMillis() < DKState.faceUntil) DKState.hideFace() else openVoice()
         }
-        findViewById<android.view.View>(R.id.avatar).setOnClickListener { openVoice() }
         findViewById<ImageButton>(R.id.btnOrbMin).setOnClickListener {
             Prefs.edit(this) { putBoolean("orb_min", !Prefs.orbMin(this@MainActivity)) }
             applyOrbMin(); applyNeon()
@@ -86,13 +85,6 @@ class MainActivity : AppCompatActivity() {
             getSharedPreferences("dk_prefs", MODE_PRIVATE).edit().putBoolean("call_perm_asked", true).apply()
             askPerms()
         }
-    }
-
-    /** v3.71: सेटिंग्स में "लड़की अवतार" चुना और चित्र मौजूद = ORB की जगह वही. चित्र न हों तो ORB ही */
-    private fun applyAvatar() {
-        val girl = Prefs.avatarKind(this) == "girl" && com.dk.assistant.avatar.AvatarAssets.available(this)
-        findViewById<android.view.View>(R.id.avatar).visibility = if (girl) android.view.View.VISIBLE else android.view.View.GONE
-        findViewById<android.view.View>(R.id.orb).visibility = if (girl) android.view.View.INVISIBLE else android.view.View.VISIBLE
     }
 
     /** v3.88: फ़ोन कंट्रोल (पहले होम की पट्टी में था, अब मेन्यू में) - बंद हो तो चालू करने की जगह खोलो */
@@ -249,7 +241,6 @@ class MainActivity : AppCompatActivity() {
     override fun onResume() {
         super.onResume()
         DKState.listen(stateListener)
-        applyAvatar()
         VoiceWarm.onAppOpen(this)      // v3.71: ऐप खुलते ही Worker/TTS का कनेक्शन तैयार
         Setup.startKeepAlive(this)
         checkMicPerm(force = intent?.getBooleanExtra("ask_mic", false) == true)

@@ -280,9 +280,10 @@ object Prefs {
     fun heyDkPrint(c: Context): FloatArray? = com.dk.assistant.voice.VoicePrint.decode(sp(c).getString("hey_dk_print", null))
     /** v3.65: हटाया गया आकार (dna/tesseract/wormhole/sphere3d) या अनजान -> earth */
     /** v4: जिसने कभी आकार नहीं चुना उसे नया नियॉन ओर्ब; पहले चुना हुआ आकार वैसा ही */
+    /** v4.x: जवाब वाले बुलबुले का "लिख रही है" एनीमेशन (TypingStyles) */
+    fun typingStyle(c: Context): String = TypingStyles.valid(sp(c).getString("typing_style", TypingStyles.BARS))
     fun orbStyle(c: Context) = Shapes.valid(sp(c).getString("orb_style", Shapes.NEON))
     /** v3.71: ORB की जगह क्या दिखे - "orb" (डिफ़ॉल्ट) या "girl" (लड़की अवतार) */
-    fun avatarKind(c: Context): String = if (sp(c).getString("avatar_kind", "orb") == "girl") "girl" else "orb"
     /** v3.57: DK सुन/बोल रहा हो तो स्क्रीन के किनारों पर चमक */
     fun edgeGlow(c: Context) = sp(c).getBoolean("edge_glow", true)
     /** v3.58: पहली बार का परिचय पूरा/छोड़ा (पुराने उपयोगकर्ता पर अपने-आप true) */

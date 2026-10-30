@@ -39,6 +39,14 @@ class DKWorkingIndicator(context: Context) : View(context) {
     var bare = false
         set(v) { if (field != v) { field = v; invalidate() } }
 
+    /** Settings की झलक के लिए - null = Prefs वाला टाइपिंग एनीमेशन (सिर्फ़ bare बुलबुले में) */
+    var typingPreview: String? = null
+        set(v) { field = v; styleT = 0L; kick() }
+    private var typing = TypingStyles.BARS
+    private var styleT = 0L
+    private val tDots = FloatArray(TypingStyles.MAX * 4)
+    private val dotP = Paint(Paint.ANTI_ALIAS_FLAG)
+
     private val dp = resources.displayMetrics.density
     private val tile = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = TILE }
     private val glow = Paint(Paint.ANTI_ALIAS_FLAG)
@@ -66,6 +74,8 @@ class DKWorkingIndicator(context: Context) : View(context) {
         val s = minOf(w, h).toFloat()
         val cx = w / 2f; val cy = h / 2f
         bar.shader = LinearGradient(cx - s * 0.32f, cy - s * 0.3f, cx + s * 0.32f, cy + s * 0.3f,
+            intArrayOf(BLUE, MID, PURPLE), floatArrayOf(0f, 0.5f, 1f), Shader.TileMode.CLAMP)
+        dotP.shader = LinearGradient(cx - s * 0.4f, cy - s * 0.4f, cx + s * 0.4f, cy + s * 0.4f,
             intArrayOf(BLUE, MID, PURPLE), floatArrayOf(0f, 0.5f, 1f), Shader.TileMode.CLAMP)
         glow.shader = RadialGradient(cx, cy, s * 0.5f, intArrayOf(0x997A5CFF.toInt(), 0x227A5CFF, 0x007A5CFF),
             floatArrayOf(0f, 0.55f, 1f), Shader.TileMode.CLAMP)
@@ -111,6 +121,22 @@ class DKWorkingIndicator(context: Context) : View(context) {
             // ग्लो: हमेशा हल्का, काम में धड़कता
             glow.alpha = (255 * (0.35f + 0.25f * amp + 0.4f * pulse * beat)).toInt().coerceIn(0, 255)
             c.drawCircle(cx, cy, s * (0.46f + 0.04f * pulse * beat), glow)
+        }
+        // v4.x: बुलबुले में चुना हुआ टाइपिंग एनीमेशन (डॉट वाला) - बार की जगह
+        if (bare) {
+            if (now - styleT > 1000) { styleT = now; typing = typingPreview ?: Prefs.typingStyle(context) }
+            if (typing != TypingStyles.BARS) {
+                val cnt = TypingStyles.dots(typing, phase, amp / 0.85f, tDots)
+                for (i in 0 until cnt) {
+                    dotP.alpha = (255 * tDots[i * 4 + 3] * (0.35f + 0.65f * (amp / 0.38f).coerceAtMost(1f))).toInt().coerceIn(0, 255)
+                    c.drawCircle(cx + tDots[i * 4] * s, cy + tDots[i * 4 + 1] * s, tDots[i * 4 + 2] * s, dotP)
+                }
+                val idle = state == WorkState.IDLE && amp < 0.004f
+                if (idle) { amp = 0f; ringA = 0f; pulse = 0f; running = false; last = 0L }
+                else if (canAnimate()) postInvalidateOnAnimation()
+                else { running = false; last = 0L }
+                return
+            }
         }
         // बार
         val n = H.size
