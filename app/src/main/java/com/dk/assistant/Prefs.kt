@@ -406,10 +406,9 @@ object Prefs {
     /** "same" = वही AI जो बातचीत में; वरना provider id */
     fun computerProvider(c: Context) = sp(c).getString("pc_provider", "same") ?: "same"
     fun computerModel(c: Context) = sp(c).getString("pc_model", "") ?: ""
-    /** auto | tavily | brave | gemini */
+    /** auto | tavily | exa | gemini */
     fun computerSearch(c: Context) = sp(c).getString("pc_search", "auto") ?: "auto"
     fun tavilyKey(c: Context) = sp(c).getString("key_tavily", "") ?: ""
-    fun braveKey(c: Context) = sp(c).getString("key_brave", "") ?: ""
     /** मैसेज/कॉल/पेमेंट जैसे फ़ोन के काम से पहले पूछो (default चालू) */
     fun computerConfirm(c: Context) = sp(c).getBoolean("pc_confirm", true)
     fun computerMaxSteps(c: Context) = sp(c).getInt("pc_max_steps", 40).coerceIn(5, 60)

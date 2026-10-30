@@ -238,7 +238,7 @@ class ComputerActivity : AppCompatActivity() {
 
     private fun render() {
         val ai = CoderAi.forComputer(this) { _, _ -> }
-        val src = ComputerTools.searchOrder(Prefs.computerSearch(this), Prefs.tavilyKey(this).isNotBlank(), Prefs.braveKey(this).isNotBlank(),
+        val src = ComputerTools.searchOrder(Prefs.computerSearch(this), Prefs.exaSearchKey(this).isNotBlank(), Prefs.tavilyKey(this).isNotBlank(),
             Prefs.scopeKey(this, ApiScopes.PC, "gemini").isNotBlank()).firstOrNull() ?: "search नहीं"
         sub.text = "${ai?.label ?: "AI नहीं"} • खोज: $src" + if (ComputerSession.busy) " • काम चल रहा है…" else ""
         send.setImageResource(if (ComputerSession.busy) android.R.drawable.ic_media_pause else R.drawable.ic_send)
