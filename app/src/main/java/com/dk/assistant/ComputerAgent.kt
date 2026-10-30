@@ -393,7 +393,7 @@ class ComputerAgent(private val c: Context) {
             "web_search" -> {
                 val q = a.optString("query").ifBlank { return "ERROR: query खाली" }
                 step("🔎 खोज: $q")
-                withContext(Dispatchers.IO) { ComputerTools.formatSearch(ComputerTools.search(c, q, a.optInt("n", 6).coerceIn(1, 10)) { p, f -> issue(p, f) }) }
+                withContext(Dispatchers.IO) { ComputerTools.formatSearch(ComputerTools.search(c, q, a.optInt("n", 6).coerceIn(1, 10)) { p, f -> issue(p, f); step("🔎 " + f.removePrefix("अपने आप ").replace("खोज पर गया", "से खोज चल रही है").let { "अब $it" }) }) }
             }
             "read_url" -> {
                 val u = a.optString("url").ifBlank { return "ERROR: url खाली" }

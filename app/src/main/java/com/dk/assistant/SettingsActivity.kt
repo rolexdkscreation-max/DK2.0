@@ -512,7 +512,7 @@ class SettingsActivity : AppCompatActivity() {
 
     /** v5: Extra API - किसी भी कंपनी की key (कंपनी अपने-आप + मॉडल चुनें); DK कंप्यूटर की chain में आखिरी बैकअप */
     private fun secBrainExtra() {
-        card("DK कंप्यूटर का बैकअप क्रम", "पहले Gemini → फिर Groq → फिर OpenRouter → फिर Extra API — जिसकी key डली है और जो चल जाए, उसी से काम होता है") { box ->
+        card("DK कंप्यूटर का बैकअप क्रम", "पहले Gemini → फिर OpenRouter → फिर Extra API (Groq की key हो तो सबसे आखिर में) — जिसकी key डली है और जो चल जाए, उसी से काम होता है। खोज: Gemini → Tavily → OpenRouter → Exa") { box ->
             hint(box, "जो key नहीं डाली, वह छूट जाती है। काम के दौरान मॉडल बदले तो DK कंप्यूटर में सिर्फ़ इतना दिखता है कि अब कौन-सा मॉडल काम कर रहा है — गलतियाँ नहीं दिखतीं।" +
                 if (Prefs.oneKeyOn(this)) "\nध्यान दें: अभी \"एक key से सब\" चालू है — DK कंप्यूटर के लिए उसे बंद करें।" else "")
         }
@@ -1452,7 +1452,7 @@ class SettingsActivity : AppCompatActivity() {
     private lateinit var edExa: EditText
     private lateinit var edPcSteps: EditText
     private val pcTools = mutableMapOf<String, SwitchCompat>()
-    private val pcSearchIds = listOf("auto", "tavily", "exa", "gemini")
+    private val pcSearchIds = listOf("auto", "tavily", "exa", "gemini", "openrouter")
 
     private fun secComputer() {
         card("DK कंप्यूटर", "कोई भी काम कदम-दर-कदम: इंटरनेट पर खोज, वेबसाइट पढ़ना, हिसाब (कोड), फ़ाइल/PDF, फ़ोन के काम, कोडिंग, रिमाइंडर") { box ->
@@ -1467,9 +1467,9 @@ class SettingsActivity : AppCompatActivity() {
             })
         }
         apiLinkCard(ApiScopes.PC, "brain_pc")
-        card("वेब search", "Gemini key से Google search फ्री; Tavily / Exa की key डालें तो उनसे (Groq/OpenRouter वालों के लिए भी)") { box ->
+        card("वेब search", "बैकअप क्रम: Gemini (Google) → Tavily → OpenRouter → Exa — जिसकी key डली है और जो चल जाए, उसी से खोज") { box ->
             val cur = Prefs.computerSearch(this)
-            val names = mapOf("auto" to "अपने-आप (Tavily → Exa → Gemini, जो key हो)", "tavily" to "Tavily", "exa" to "Exa Search", "gemini" to "Google (Gemini key से)")
+            val names = mapOf("auto" to "अपने-आप (Gemini → Tavily → OpenRouter → Exa, जो key हो)", "tavily" to "Tavily", "exa" to "Exa Search", "gemini" to "Google (Gemini key से)", "openrouter" to "OpenRouter web खोज (OpenRouter key से)")
             rgPcSearch = RadioGroup(this).apply { orientation = RadioGroup.VERTICAL }
             pcSearchIds.forEachIndexed { i, id ->
                 rgPcSearch.addView(RadioButton(this).apply {

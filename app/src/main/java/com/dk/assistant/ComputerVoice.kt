@@ -73,8 +73,8 @@ object ComputerVoice {
         val e = error.lowercase()
         return when {
             e.contains("key नहीं मिली") || e.contains("api key") && e.contains("नहीं") ->
-                "DK कंप्यूटर की AI key नहीं मिली — Settings → AI दिमाग → DK कंप्यूटर में key डालें (Gemini / Groq / OpenRouter / Extra API)।"
-            else -> "यह काम अभी पूरा नहीं हो पाया। मैंने Gemini, Groq, OpenRouter और Extra API — जो भी डली हैं, सब से कोशिश की। " +
+                "DK कंप्यूटर की AI key नहीं मिली — Settings → AI दिमाग → DK कंप्यूटर में key डालें (Gemini / OpenRouter / Extra API / Groq)।"
+            else -> "यह काम अभी पूरा नहीं हो पाया। मैंने Gemini, OpenRouter, Extra API और Groq — जो भी डली हैं, सब से कोशिश की। " +
                 "थोड़ी देर बाद \"वहीं से आगे\" दबाएँ या काम फिर भेजें।"
         }
     }

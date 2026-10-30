@@ -48,20 +48,36 @@ object ComputerTools {
         return if (choice in avail) listOf(choice) + avail.filter { it != choice } else avail
     }
 
-    /** Search; एक fail हो तो अगला. [onIssue] = रिपोर्ट के लिए (दिक्कत, हल) */
+    /** DK कंप्यूटर की खोज का बैकअप क्रम (मालिक का नियम): Gemini → Tavily → OpenRouter → Exa */
+    val SEARCH_CHAIN = listOf("gemini", "tavily", "openrouter", "exa")
+
+    /** जिनकी key डली है, उन्हीं का क्रम. Settings में कोई एक चुना हो तो वह सबसे पहले, फिर बाकी इसी क्रम में */
+    fun searchChain(choice: String, hasGemini: Boolean, hasTavily: Boolean, hasOpenRouter: Boolean, hasExa: Boolean): List<String> {
+        val have = mapOf("gemini" to hasGemini, "tavily" to hasTavily, "openrouter" to hasOpenRouter, "exa" to hasExa)
+        val avail = SEARCH_CHAIN.filter { have[it] == true }
+        return if (choice in avail) listOf(choice) + avail.filter { it != choice } else avail
+    }
+
+    fun searchChain(c: Context): List<String> = searchChain(Prefs.computerSearch(c),
+        Prefs.scopeKey(c, ApiScopes.PC, "gemini").isNotBlank(), Prefs.tavilyKey(c).isNotBlank(),
+        Prefs.scopeKey(c, ApiScopes.PC, "openrouter").isNotBlank(), Prefs.exaSearchKey(c).isNotBlank())
+
+    fun searchLabel(s: String) = when (s) { "gemini" -> "Google (Gemini)"; "tavily" -> "Tavily"; "openrouter" -> "OpenRouter"; "exa" -> "Exa"; else -> s }
+
+    /** Search; एक fail हो तो अगला. [onIssue] = सिर्फ़ अंदर की जानकारी (स्क्रीन पर गलती नहीं, बस कौन-सी खोज चली) */
     fun search(c: Context, query: String, n: Int, onIssue: (String, String) -> Unit): SearchOut {
-        val order = searchOrder(Prefs.computerSearch(c), Prefs.exaSearchKey(c).isNotBlank(), Prefs.tavilyKey(c).isNotBlank(),
-            Prefs.scopeKey(c, ApiScopes.PC, "gemini").isNotBlank())
-        if (order.isEmpty()) throw IllegalStateException("Search के लिए कोई key नहीं — Settings → DK कंप्यूटर में Exa/Tavily key या AI दिमाग → DK कंप्यूटर में Gemini key डालें")
+        val order = searchChain(c)
+        if (order.isEmpty()) throw IllegalStateException("Search के लिए कोई key नहीं — AI दिमाग → DK कंप्यूटर में Gemini/OpenRouter key या Settings → DK कंप्यूटर में Tavily/Exa key डालें")
         var last: Exception? = null
         for ((i, s) in order.withIndex()) {
             try {
                 val out = when (s) {
                     "exa" -> exa(Prefs.exaSearchKey(c), query, n)
                     "tavily" -> tavily(Prefs.tavilyKey(c), query, n)
+                    "openrouter" -> openRouter(Prefs.scopeKey(c, ApiScopes.PC, "openrouter"), Prefs.scopeModel(c, ApiScopes.PC, "openrouter"), query, n)
                     else -> gemini(c, query)
                 }
-                if (i > 0 && last != null) onIssue("${order[i - 1]} search नहीं चला: ${short(last)}", "अपने आप $s search पर स्विच किया")
+                if (i > 0 && last != null) onIssue("${searchLabel(order[i - 1])} खोज नहीं चली: ${short(last)}", "अपने आप ${searchLabel(s)} खोज पर गया")
                 return out
             } catch (e: Exception) { last = e; DKLog.d("Computer: $s search fail ${e.message?.take(100)}") }
         }
@@ -82,6 +98,29 @@ object ComputerTools {
         return (0 until arr.length()).mapNotNull { i -> arr.optJSONObject(i) }.map {
             Hit(it.optString("title"), it.optString("url"), it.optString("content").take(600))
         }.filter { it.url.isNotBlank() }
+    }
+
+    /** OpenRouter की web खोज (plugin "web") - जवाब + url_citation वाले स्रोत. (OpenRouter के credits से, free मॉडल पर भी) */
+    fun openRouter(key: String, model: String, q: String, n: Int): SearchOut {
+        val m = model.trim().removeSuffix(":online").ifBlank { "openrouter/auto" }
+        val body = JSONObject().put("model", m)
+            .put("messages", JSONArray().put(JSONObject().put("role", "user").put("content",
+                "Search the web and give a dense factual summary (facts, numbers, dates, names). Keep the language of the query. Query: $q")))
+            .put("plugins", JSONArray().put(JSONObject().put("id", "web").put("max_results", n.coerceIn(1, 10))))
+        val req = Request.Builder().url("https://openrouter.ai/api/v1/chat/completions").header("Authorization", "Bearer $key")
+            .header("X-Title", "DK Computer").post(body.toString().toRequestBody(JSON)).build()
+        return parseOpenRouter(exec(req))
+    }
+
+    fun parseOpenRouter(raw: String): SearchOut {
+        val msg = JSONObject(raw).optJSONArray("choices")?.optJSONObject(0)?.optJSONObject("message") ?: JSONObject()
+        val ann = msg.optJSONArray("annotations") ?: JSONArray()
+        val hits = (0 until ann.length()).mapNotNull { i -> ann.optJSONObject(i)?.optJSONObject("url_citation") }.map {
+            Hit(it.optString("title"), it.optString("url"), it.optString("content").take(600))
+        }.filter { it.url.isNotBlank() }.distinctBy { it.url }
+        val text = msg.optString("content").trim()
+        if (hits.isEmpty() && text.isBlank()) throw java.io.IOException("OpenRouter: खाली जवाब")
+        return SearchOut("OpenRouter", hits, text)
     }
 
     fun exa(key: String, q: String, n: Int): SearchOut {

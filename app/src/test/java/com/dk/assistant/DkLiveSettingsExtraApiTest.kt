@@ -146,7 +146,15 @@ class DkLiveSettingsExtraApiTest {
     }
 
     @Test fun computer_fallbackChain_andCleanScreen() {
-        assertEquals(listOf("gemini", "groq", "openrouter", "custom"), CoderAi.PC_CHAIN)
+        assertEquals(listOf("gemini", "openrouter", "custom", "groq"), CoderAi.PC_CHAIN)
+        // खोज: Gemini → Tavily → OpenRouter → Exa
+        assertEquals(listOf("gemini", "tavily", "openrouter", "exa"), ComputerTools.SEARCH_CHAIN)
+        assertEquals(listOf("gemini", "tavily", "openrouter", "exa"), ComputerTools.searchChain("auto", true, true, true, true))
+        assertEquals(listOf("tavily", "exa"), ComputerTools.searchChain("auto", false, true, false, true))
+        assertEquals(listOf("exa", "gemini", "openrouter"), ComputerTools.searchChain("exa", true, false, true, true))
+        assertTrue(ComputerTools.searchChain("auto", false, false, false, false).isEmpty())
+        val or = ComputerTools.parseOpenRouter("""{"choices":[{"message":{"content":"जवाब","annotations":[{"type":"url_citation","url_citation":{"url":"https://a.com","title":"A","content":"x"}}]}}]}""")
+        assertEquals("OpenRouter", or.via); assertEquals("https://a.com", or.hits.single().url); assertEquals("जवाब", or.summary)
         assertEquals("Groq (openai/gpt-oss-120b)", ComputerVoice.switchedTo("अपने आप Groq (openai/gpt-oss-120b) पर स्विच किया, काम बिना रुके जारी रहा"))
         assertNull(ComputerVoice.switchedTo("अपने-आप दोबारा कोशिश की (2/3) — सफल"))
         val f = ComputerVoice.failShort("HTTP 429: quota exceeded for model gemini-x")

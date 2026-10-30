@@ -299,7 +299,7 @@ class CoderAi(val provider: Provider, private val key: String, val model: String
         }
 
         /** DK कंप्यूटर की fallback chain का क्रम (मालिक का नियम) */
-        val PC_CHAIN = listOf("gemini", "groq", "openrouter", "custom")
+        val PC_CHAIN = listOf("gemini", "openrouter", "custom", "groq")
 
         /** कोडिंग एजेंट की AI: सिर्फ़ Settings → AI दिमाग → कोडिंग एजेंट की अपनी key. null = key नहीं */
         // API/मॉडल बदलना, retry, request छोटी करना = अंदर की बात: यूज़र की रिपोर्ट में नहीं, सिर्फ़ डिबग लॉग में
