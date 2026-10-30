@@ -360,7 +360,7 @@ class ReplyWatchdog(
     fun onSpeechStart() {
         // पहले: हर नए टुकड़े पर सब साफ़ - बिना सुनी असली बात के बाद एक खटखट आई तो वह बात हमेशा के लिए खो जाती थी
         carryMs = if (!heard && !answered && (deadline > 0L || pendingSince > 0L)) carryMs + lastMs else 0
-        heard = false; deadline = 0L; answered = false; answerDeadline = 0L; nudged = false; pendingSince = 0L; defers = 0
+        heard = false; deadline = 0L; answered = false; answerDeadline = 0L; nudged = false; pendingSince = 0L; defers = 0; deadFired = false; nudgeAt = 0L
     }
     @Volatile private var lastMs = 0
 
@@ -385,7 +385,7 @@ class ReplyWatchdog(
     fun onServerAnswered() { heard = true; deadline = 0L; answered = true; answerDeadline = 0L; pendingSince = 0L }
 
     /** Humne khud text bhej diya (nahi suna tha) - is baat par dobara "atka" nudge nahi */
-    fun onRescued() { heard = true; deadline = 0L; nudged = true; answerDeadline = 0L }
+    fun onRescued(now: Long = System.currentTimeMillis()) { heard = true; deadline = 0L; nudged = true; answerDeadline = 0L; nudgeAt = now }
 
     /** Phone ne pakda: baat khatam */
     fun onEndOfSpeech(now: Long, speechMs: Int) {
@@ -409,7 +409,21 @@ class ReplyWatchdog(
     /** true = (sirf ek baar) server ne suna par jawab shuru nahi kiya */
     fun stalled(now: Long): Boolean {
         if (answerDeadline == 0L || answered || nudged || !heard || now < answerDeadline) return false
-        answerDeadline = 0L; nudged = true
+        answerDeadline = 0L; nudged = true; nudgeAt = now
+        return true
+    }
+
+    @Volatile private var deadFired = false
+    @Volatile private var nudgeAt = 0L
+
+    /**
+     * v4.6: बात भेजी, बचाव (text / "जवाब दो") भी भेज दिया, फिर भी [afterMs] तक जवाब शुरू नहीं (न आवाज़, न tool) =
+     * connection खुला दिखता है पर सत्र अटका. पहले DK यहीं हमेशा चुप रहता था (बचाव एक ही बार).
+     * true (सिर्फ़ एक बार) = नया connection + वही बात दोबारा.
+     */
+    fun dead(now: Long, afterMs: Long = DEAD_MS): Boolean {
+        if (pendingSince == 0L || answered || !nudged || deadFired || nudgeAt == 0L || now - nudgeAt < afterMs) return false
+        deadFired = true
         return true
     }
 
@@ -420,7 +434,12 @@ class ReplyWatchdog(
         return true
     }
 
-    fun reset() { heard = false; deadline = 0L; answered = false; answerDeadline = 0L; nudged = false; pendingSince = 0L }
+    fun reset() { heard = false; deadline = 0L; answered = false; answerDeadline = 0L; nudged = false; pendingSince = 0L; deadFired = false; nudgeAt = 0L }
+
+    companion object {
+        /** बचाव भेजने के इतनी देर बाद भी जवाब शुरू नहीं = अटका सत्र (आम जवाब 1-3s में शुरू होता है) */
+        const val DEAD_MS = 6_000L
+    }
 }
 
 /**
@@ -510,4 +529,14 @@ object LiveRetry {
     const val SOFT_MAX_MS = 5 * 60_000L
     fun offMs(recoverable: Boolean, softFails: Int): Long =
         if (!recoverable) HARD_MS else minOf(SOFT_MAX_MS, 15_000L shl softFails.coerceIn(0, 5))
+
+    /**
+     * v4.6 (मालिक: "कनेक्शन टूटे तो तुरंत जुड़े"): यूज़र ने खुद Live चालू रखा है (ओर्ब टैप / ऐप) - तब रुकना सेकंडों में,
+     * मिनटों में नहीं. जड़: पहले 15s-5 मिनट (limit/key = 10 मिनट) तक DK "पुराने तरीके" (फ़ोन/Groq STT + chat) पर रहता था -
+     * बोला हुआ लिखा जाता था (कभी ग़लत सुना) पर जवाब अक्सर नहीं आता था. offMs() wake-word वाले छोटे Live के लिए वैसा ही.
+     */
+    const val LIVE_SOFT_MAX_MS = 15_000L
+    const val LIVE_HARD_MS = 60_000L
+    fun liveOnMs(recoverable: Boolean, softFails: Int): Long =
+        if (!recoverable) LIVE_HARD_MS else minOf(LIVE_SOFT_MAX_MS, 1_000L shl softFails.coerceIn(0, 4))
 }

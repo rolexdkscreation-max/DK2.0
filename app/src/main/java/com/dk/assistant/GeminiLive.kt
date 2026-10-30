@@ -153,6 +153,10 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
     @Volatile private var ws: WebSocket? = null
     @Volatile private var ready = false
     @Volatile private var stopped = true
+    /** v4.6: Live अभी सच में चल रहा है (run() के अंदर) - ऐप खुलने / नेट लौटने पर "तुरंत जोड़ो" के लिए */
+    val running: Boolean get() = !stopped
+    /** v4.6: अटके सत्र कितनी बार पकड़े (बात भेजी पर server चुप) */
+    @Volatile private var deadSessions = 0
 
     /** v3.31: DK कंप्यूटर / कोडिंग टीम का काम सच में खत्म हो -> DK लाइव को असली नतीजा (वही बोले). नकली progress नहीं */
     private val statusListener = TaskStatus.Listener { job, ended ->
@@ -1087,6 +1091,15 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
                         }
                         if (replyWatch.due(now)) onNoReply()
                         if (replyWatch.stalled(now)) onStalled()
+                        // v4.6 (मालिक: "बोला हुआ लिखा जाता है, पर जवाब नहीं आता"): बचाव का text भी भेजा, फिर भी server
+                        // बिल्कुल चुप = connection खुला पर सत्र अटका. पहले यहाँ कुछ नहीं होता था (DK हमेशा चुप).
+                        // अब: तुरंत नया connection (नई बातचीत, अटका सत्र नहीं) + वही बात दोबारा (नीचे resendText).
+                        if (!generating && !isPlaying() && toolJobs.isEmpty() && !turnDet.inSpeech && replyWatch.dead(now)) {
+                            deadSessions++
+                            log("बात भेजी, बचाव भी भेजा, पर ${ReplyWatchdog.DEAD_MS / 1000}s से जवाब नहीं - सत्र अटका, तुरंत नया connection और वही बात दोबारा (#$deadSessions) • ${timeline.summary()}")
+                            handle = null; goAway = true; goAwayDrop = true
+                            break
+                        }
                         // samay-rekha: bheja hua sab input audio phone se nikal gaya?
                         if (timeline.active && timeline.uploadAt == 0L && (ws?.queueSize() ?: 1L) == 0L) timeline.upload(now)
                         // jawab "ban raha" tha par server 15s se bilkul chup (turnComplete kho gaya) -> turn band, warna
