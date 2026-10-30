@@ -52,15 +52,24 @@ object Ducker {
             val a = am ?: c.applicationContext.getSystemService(AudioManager::class.java).also { am = it } ?: return@post
             val r = req ?: AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK)
                 .setAudioAttributes(AudioAttributes.Builder()
-                    .setUsage(AudioAttributes.USAGE_ASSISTANT)
-                    .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH).build())
+                    .setUsage(AudioAttributes.USAGE_MEDIA)
+                    .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC).build())
                 .setWillPauseWhenDucked(false)
                 .setAcceptsDelayedFocusGain(false)
                 .setOnAudioFocusChangeListener({ }, h)
                 .build().also { req = it }
             val musicOn = try { a.isMusicActive } catch (_: Exception) { false }
-            // v3.6: कुछ बज ही नहीं रहा = focus मत लो (फ़ोन की बाकी आवाज़ें/सूचनाएँ बेवजह धीमी न हों)
             if (!DuckRule.shouldDuck(musicOn)) return@post
+            
+            // सिर्फ STREAM_MUSIC (मीडिया वॉल्यूम) को आधा (वर्तमान वॉल्यूम का आधा) करने के लिए AudioManager API से सीधे STREAM_MUSIC वॉल्यूम नियंत्रित करें, बिना रिंग, कॉल या नोटिफिकेशन वॉल्यूम को छुए।
+            try {
+                val currentMusicVol = a.getStreamVolume(AudioManager.STREAM_MUSIC)
+                if (currentMusicVol > 0) {
+                    savedMusicVol = currentMusicVol
+                    a.setStreamVolume(AudioManager.STREAM_MUSIC, currentMusicVol / 2, 0)
+                }
+            } catch (_: Exception) {}
+
             val res = try { a.requestAudioFocus(r) } catch (_: Exception) { AudioManager.AUDIOFOCUS_REQUEST_FAILED }
             active = res == AudioManager.AUDIOFOCUS_REQUEST_GRANTED
             if (active) {
@@ -87,10 +96,20 @@ object Ducker {
     /** Turant wapas (Live band, call aaya, app band) */
     fun releaseNow() { h.post { h.removeCallbacks(releaser); doRelease() } }
 
+    private var savedMusicVol = -1
+
     private fun doRelease() {
         h.removeCallbacks(watchdog)
         if (!active) return
         active = false
+        try {
+            am?.let { a ->
+                if (savedMusicVol != -1) {
+                    a.setStreamVolume(AudioManager.STREAM_MUSIC, savedMusicVol, 0)
+                    savedMusicVol = -1
+                }
+            }
+        } catch (_: Exception) {}
         try { req?.let { am?.abandonAudioFocusRequest(it) } } catch (_: Exception) {}
         DKLog.d("Background awaaz wapas (${(System.currentTimeMillis() - since) / 1000}s dheemi rahi)")
     }

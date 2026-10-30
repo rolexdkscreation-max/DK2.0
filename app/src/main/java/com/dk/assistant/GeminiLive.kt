@@ -145,10 +145,10 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
     class Fatal(msg: String, val recoverable: Boolean = false) : Exception(msg)
 
     private val http = OkHttpClient.Builder()
-        .connectTimeout(20, TimeUnit.SECONDS)
-        .readTimeout(60, TimeUnit.SECONDS)
-        .callTimeout(120, TimeUnit.SECONDS)
-        .pingInterval(10, TimeUnit.SECONDS)          // connection zinda hai? (NAT/mobile data par tootne se bachao)
+        .connectTimeout(10, TimeUnit.SECONDS)
+        .readTimeout(30, TimeUnit.SECONDS)
+        .callTimeout(60, TimeUnit.SECONDS)
+        .pingInterval(5, TimeUnit.SECONDS)          // कनेक्शन को लगातार zinda रखने के लिए
         .retryOnConnectionFailure(true)
         .build()
 
@@ -156,10 +156,10 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
         svc.scope.launch(kotlinx.coroutines.Dispatchers.IO) {
             try {
                 if (stopped) return@launch
-                log("धीमे नेटवर्क पर रीकनेक्शन लॉजिक शुरू हो रहा है...")
+                log("धीमे नेटवर्क पर ऑटो-रीकनेक्ट और रिट्राई शुरू हो रहा है...")
                 ws?.cancel()
                 ws = null
-                kotlinx.coroutines.delay(2000)
+                kotlinx.coroutines.delay(1000)
                 if (!stopped) {
                     reconnects++
                     val currentKey = key(svc)
@@ -169,7 +169,7 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
                     connect(currentKey, currentModel, closed, setup)
                 }
             } catch (e: Exception) {
-                log("रीकनेक्शन विफल: ${e.message}")
+                log("रीकनेक्शन और रिट्राई विफल: ${e.message}")
             }
         }
     }
