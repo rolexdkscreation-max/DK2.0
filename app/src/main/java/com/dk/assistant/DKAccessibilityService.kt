@@ -1274,45 +1274,44 @@ class DKAccessibilityService : AccessibilityService() {
         callPending = true
         agent.stop()
         calls.quietRinger()
-        delay(200)   // v3.41: 500 -> 200 ms (call screen aane bhar ka samay; naam phone ki list se pehle hi)
+        delay(200)
         var who = who0
         if (who.isBlank() && ask == null) who = callerFromScreen()
         if (!calls.ringing && (calls.known || ask != null)) { callPending = false; return }
-        val msg = ask ?: CallCmd.announce(who)   // v4.1: "सर, राहुल का कॉल आ रहा है।" (नाम नहीं = नंबर, वह भी नहीं = अनजान नंबर)
-        if (ask == null) rejectTarget = null      // नई SIM कॉल - पिछली काटी कॉल का नंबर नहीं
+        val msg = ask ?: CallCmd.announce(who)
+        if (ask == null) rejectTarget = null
+        
+        // भाग 4: नोटिफिकेशन और सवालों का क्रम
+        val isQuestion = DKState.mode == Mode.THINKING || DKState.mode == Mode.LISTENING
+        if (isQuestion) {
+            DKLog.d("नोटिफिकेशन: सवाल चल रहा है, पहले जवाब दो फिर कॉल बताओ")
+            while (DKState.mode == Mode.THINKING || DKState.mode == Mode.LISTENING) delay(500)
+        }
+        
         DKState.reply(msg)
-        // v3.40: DK लाइव (Gemini) जुड़ा है = वही पूछे और जवाब सुने (Live बंद नहीं होता, पुराने सुनने पर निर्भर नहीं)
         if (DKState.live && gemLive.canTalk()) {
-            // v3.51: पहले Gemini (Live) खुद पूछता था - पर उसकी आवाज़ media पर है और घंटी के समय Android उसे mute कर देता है:
-            // "बोल दिया" दिखता (isPlaying) पर सुनाई कुछ नहीं, फ़ोन वाली आवाज़ भी नहीं चलती थी = सिर्फ़ लिखा दिखता.
-            // अब फ़ोन खुद (accessibility आवाज़, घंटी में भी सुनाई दे) पूछता है; Live को बस बताया जाता है ताकि जवाब वही सुने.
             val whoNote = if (ask == null) who else AppCall.current?.let { r -> "${r.who.ifBlank { "कोई" }} (${r.app}${if (r.video) " वीडियो" else ""} कॉल)" } ?: who
             gemLive.noteCallAsked(whoNote)
             gemLive.muteMic(true)
             callAnnouncing = true
-            // v4.2: पूरी आवाज़ + तीनों keys से. (पहले सिर्फ़ मुख्य key - उसकी limit खत्म = कॉल पर DK चुप)
             val spoke = try { speaker.speakCall(msg, generic = false) } finally { callAnnouncing = false; gemLive.muteMic(false) }
-            // पूछने के बाद Live की आवाज़ भी घंटी में सुनाई दे ("उठा रहा हूँ" / "किसका है" का जवाब)
             gemLive.callAudio(true)
             if (spoke == Speaker.CallSpoke.NONE) {
-                // Gemini TTS की limit (सब keys) खत्म - Live की अपनी आवाज़ (उसकी limit अलग) से नाम बताकर पूछो, पूरी आवाज़ में
                 speaker.fullCallVolume()
                 val liveSaid = gemLive.announceCall(whoNote)
-                DKLog.d("कॉल: TTS आवाज़ नहीं बनी - " + if (liveSaid) "DK लाइव की आवाज़ से पूछा" else "लाइव भी नहीं बोला, सहेजी आवाज़")
                 if (!liveSaid) {
                     gemLive.muteMic(true); callAnnouncing = true
                     try { speaker.speakCall("", generic = true) } finally { callAnnouncing = false; gemLive.muteMic(false) }
                 }
-            } else DKLog.d("कॉल: फ़ोन की आवाज़ से पूछा (Live जवाब सुन रहा है)")
+            }
             scope.launch { while (calls.ringing) delay(500); callPending = false; if (!calls.inCall) gemLive.callAudio(false) }
             scope.launch { delay(1_000); while (calls.ringing || calls.inCall) delay(500); speaker.restoreCallVolume() }
             return
         }
         callAnnouncing = true
-        try { speaker.speakCall(msg) } finally { callAnnouncing = false }   // v4.2: पूरी आवाज़, तीनों keys, न बने तो सहेजी आवाज़
+        try { speaker.speakCall(msg) } finally { callAnnouncing = false }
         scope.launch { delay(1_000); while (calls.ringing || calls.inCall) delay(500); speaker.restoreCallVolume() }
 
-        // Sunne wala loop chalu hai to wahi jawab sambhalega. Nahi to yahin suno (jab tak ghanti baje, max ~30 sec)
         if (loopJob?.isActive == true) {
             scope.launch { while (calls.ringing) delay(500); callPending = false }
             return
@@ -1326,7 +1325,6 @@ class DKAccessibilityService : AccessibilityService() {
                 DKState.set(Mode.IDLE)
                 if (!calls.ringing) break
                 if (ans == null) {
-                    // chup hain -> ek baar aur poochho
                     if (asked < 2 && System.currentTimeMillis() > until - 18_000) {
                         asked++; callAnnouncing = true
                         try { speaker.speakQuick("कॉल उठाऊँ?") } finally { callAnnouncing = false }

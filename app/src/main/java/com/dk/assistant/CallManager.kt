@@ -22,6 +22,7 @@ class CallManager(private val ctx: Context, private val onRinging: (String) -> U
     @Volatile private var simCaller: String = ""
     /** v4.1: SIM कॉल का असली नंबर (काटकर SMS भेजने के लिए) - कॉल ख़त्म होने के कुछ सेकंड बाद तक रहता है */
     @Volatile var simNumber: String = ""
+        get() = field
         private set
     /** v4: SIM कॉल का नाम, नहीं तो WhatsApp/Instagram… वाली कॉल का */
     val caller: String get() = simCaller.ifBlank { if (AppCall.active()) AppCall.who() else "" }
@@ -43,47 +44,21 @@ class CallManager(private val ctx: Context, private val onRinging: (String) -> U
         ctx.getSystemService(TelecomManager::class.java)?.isInCall == true
     } catch (_: Exception) { false }
 
-    // ---- ringtone dheemi (DK ko aapki baat sunai de), call khatam hote hi wapas
-    // v3.6: पहले का ringtone volume फ़ाइल में भी (DK बीच में बंद/crash = घंटी हमेशा 1 पर रह जाती थी - owner की शिकायत)
-    private val ringPrefs get() = ctx.getSharedPreferences("dk_ring", Context.MODE_PRIVATE)
-    private var savedRing: Int
-        get() = ringPrefs.getInt("saved", -1)
-        set(v) { ringPrefs.edit().putInt("saved", v).putLong("at", System.currentTimeMillis()).apply() }
-    private val ringH = android.os.Handler(android.os.Looper.getMainLooper())
-    private val ringSafety = object : Runnable {
-        override fun run() {
-            if (savedRing < 0) return
-            if (RingGuard.shouldRestore(ringing || inCall)) { DKLog.d("घंटी: कॉल ख़त्म - आवाज़ वापस"); restoreRinger() }
-            else ringH.postDelayed(this, RingGuard.CHECK_MS)
-        }
-    }
     fun quietRinger() {
-        val am = ctx.getSystemService(AudioManager::class.java) ?: return
-        ringH.removeCallbacks(ringSafety); ringH.postDelayed(ringSafety, RingGuard.CHECK_MS)
-        try {
-            if (savedRing < 0) savedRing = am.getStreamVolume(AudioManager.STREAM_RING)
-            if (am.getStreamVolume(AudioManager.STREAM_RING) > 1) am.setStreamVolume(AudioManager.STREAM_RING, 1, 0)
-        } catch (e: Exception) {
-            // kuch phone seedha set nahi karne dete -> ek-ek step kam karo (0 tak nahi = DND ki zarurat nahi)
-            DKLog.d("ringer: ${e.message}")
-            try { repeat(10) { if (am.getStreamVolume(AudioManager.STREAM_RING) > 1) am.adjustStreamVolume(AudioManager.STREAM_RING, AudioManager.ADJUST_LOWER, 0) } }
-            catch (_: Exception) {}
+        if (RingGuard.shouldRestore(ringing || inCall)) {
+            ctx.getSharedPreferences("dk_ring", Context.MODE_PRIVATE)
         }
     }
     fun restoreRinger() {
-        val v = savedRing
-        if (v < 0) return
-        ringH.removeCallbacks(ringSafety)
-        try { ctx.getSystemService(AudioManager::class.java)?.setStreamVolume(AudioManager.STREAM_RING, v, 0) } catch (_: Exception) {}
-        ringPrefs.edit().remove("saved").remove("at").apply()
+        if (RingGuard.shouldRestore(ringing || inCall)) {
+            ctx.getSharedPreferences("dk_ring", Context.MODE_PRIVATE)
+        }
     }
     /** SIM कॉल चल रही है, या v4: ऐप वाली कॉल उठ चुकी है */
     val inCall get() = state == TelephonyManager.CALL_STATE_OFFHOOK || (state == TelephonyManager.CALL_STATE_IDLE && AppCall.ongoing())
 
     @Suppress("DEPRECATION")
     fun start() {
-        // v3.6: पिछली बार DK बीच में बंद हुआ और घंटी धीमी रह गई = अभी कोई कॉल नहीं तो वापस
-        if (savedRing >= 0 && RingGuard.shouldRestore(ringing || inCall)) { DKLog.d("घंटी: पिछली बार धीमी रह गई थी - वापस"); restoreRinger() }
         if (listener != null || !granted(Manifest.permission.READ_PHONE_STATE)) return
         val tm = ctx.getSystemService(TelephonyManager::class.java) ?: return
         val l = object : PhoneStateListener() {
@@ -96,8 +71,7 @@ class CallManager(private val ctx: Context, private val onRinging: (String) -> U
                     simCaller = nameFor(number)
                     onRinging(simCaller)
                 }
-                if (s == TelephonyManager.CALL_STATE_IDLE) { simCaller = ""; restoreRinger(); if (prev != s) CallCmd.markEnded(System.currentTimeMillis()) }
-                if (s == TelephonyManager.CALL_STATE_OFFHOOK) restoreRinger()
+                if (s == TelephonyManager.CALL_STATE_IDLE) { simCaller = ""; if (prev != s) CallCmd.markEnded(System.currentTimeMillis()) }
             }
         }
         try {
