@@ -94,7 +94,7 @@ object ComputerTools {
     fun parseExa(raw: String): List<Hit> {
         val arr = JSONObject(raw).optJSONArray("results") ?: JSONArray()
         return (0 until arr.length()).mapNotNull { i -> arr.optJSONObject(i) }.map {
-            Hit(it.optString("title"), it.optString("url"), it.optString("text").take(600))
+            Hit(stripTags(it.optString("title")), it.optString("url"), stripTags(it.optString("text")).take(600))
         }.filter { it.url.isNotBlank() }
     }
 
