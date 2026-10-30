@@ -142,14 +142,6 @@
                 android:layout_height="match_parent"
                 android:contentDescription="बोलने के लिए टैप करें" />
 
-            <!-- v3.71: ORB की जगह लड़की अवतार (सेटिंग्स → ORB → अवतार चुनो) -->
-            <com.dk.assistant.avatar.AvatarView
-                android:id="@+id/avatar"
-                android:layout_width="match_parent"
-                android:layout_height="match_parent"
-                android:contentDescription="बोलने के लिए टैप करें"
-                android:visibility="gone" />
-
             <!-- v4: नियॉन ओर्ब के बीच माइक (सिर्फ़ निशान - टैप ओर्ब ही लेता है) -->
             <ImageView
                 android:id="@+id/orbMic"

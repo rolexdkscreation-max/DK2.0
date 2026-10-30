@@ -59,7 +59,7 @@ object Shapes {
         "geodesic" to "जियोडेसिक गोला (त्रिकोण जाली)",
         "knot" to "क्वांटम गाँठ (ट्रेफ़ॉइल)",
         "dyson" to "डायसन कवच (जाली + कोर)"
-    )
+    ) + FutureOrbs.STYLES      // v4.x: नए futuristic ORB - हर एक का अपना चलता एनीमेशन
 
     /** v3.65: मालिक के कहने पर पूरी तरह हटाए गए आकार - पहले चुने हों तो पृथ्वी */
     val REMOVED = setOf("dna", "tesseract", "wormhole", "sphere3d")
@@ -80,6 +80,8 @@ object Shapes {
             "geodesic" -> geodesic(m)
             "knot" -> knot(m)
             "dyson" -> dyson(m)
+            FutureOrbs.NEURAL, FutureOrbs.HOLO, FutureOrbs.PULSAR, FutureOrbs.BLACKHOLE,
+            FutureOrbs.SOUNDWAVE, FutureOrbs.STARGATE -> FutureOrbs.build(style, m)
             else -> earth(m)
         }
         return if (m == n) base else pad(base, n)
