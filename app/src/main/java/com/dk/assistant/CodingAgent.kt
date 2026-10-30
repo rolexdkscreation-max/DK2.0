@@ -23,6 +23,11 @@ class CoderAi(val provider: Provider, private val key: String, val model: String
               /** रिपोर्ट कहाँ जाए (कोडिंग टीम = CoderReport, DK कंप्यूटर = उसकी अपनी रिपोर्ट) */
               private val sink: (String, String) -> Unit = { p, f -> CoderReport.add(p, f) }) {
     private val selfLabel = "${provider.name} ($model$note)"
+    /** v5 (DK कंप्यूटर की chain): इसी API के बैकअप / बिना बैकअप वाली अकेली कॉपी / key-base (chain बनाने को) */
+    internal fun fallbackList(): List<CoderAi> = fallbacks
+    internal fun alone(): CoderAi = CoderAi(provider, key, model, base, emptyList(), note, sink)
+    internal fun keyForChain(): String = key
+    internal fun baseForChain(): String = base
     /** ऑटोनोमस मोड वाली key का निशान (खाली = आम कोडिंग एजेंट). key नहीं, सिर्फ़ आखिरी 4 अक्षर */
     val autoTag: String = if (note.contains("ऑटोनोमस")) "auto|${provider.id}|${key.takeLast(4)}" else ""
     private fun capKey() = "${provider.id}|${key.takeLast(6)}|$model"
@@ -283,7 +288,18 @@ class CoderAi(val provider: Provider, private val key: String, val model: String
             .readTimeout(150, TimeUnit.SECONDS).callTimeout(180, TimeUnit.SECONDS).build()
 
         /** DK कंप्यूटर की AI: सिर्फ़ Settings → AI दिमाग → DK कंप्यूटर की अपनी key. [sink] = कंप्यूटर की अपनी रिपोर्ट. */
-        fun forComputer(c: Context, sink: (String, String) -> Unit): CoderAi? = forScope(c, ApiScopes.PC, sink)
+        // v5 (मालिक): "DK कंप्यूटर पहले Gemini से कोशिश करे, फिर Groq, फिर OpenRouter, फिर Extra API - जिससे भी बने, उससे काम हो".
+        // DK कंप्यूटर की अपनी keys (Settings → AI दिमाग → DK कंप्यूटर) में से जिसकी भी key डली है, सब इसी क्रम में एक chain में.
+        fun forComputer(c: Context, sink: (String, String) -> Unit): CoderAi? {
+            if (Prefs.oneKeyOn(c)) return forScope(c, ApiScopes.PC, sink)
+            val parts = PC_CHAIN.mapNotNull { id -> forScope(c, ApiScopes.PC, sink, id) }
+            val first = parts.firstOrNull() ?: return forScope(c, ApiScopes.PC, sink)
+            val rest = first.fallbackList() + parts.drop(1).flatMap { listOf(it.alone()) + it.fallbackList() }
+            return CoderAi(first.provider, first.keyForChain(), first.model, first.baseForChain(), rest, sink = sink)
+        }
+
+        /** DK कंप्यूटर की fallback chain का क्रम (मालिक का नियम) */
+        val PC_CHAIN = listOf("gemini", "openrouter", "custom", "groq")
 
         /** कोडिंग एजेंट की AI: सिर्फ़ Settings → AI दिमाग → कोडिंग एजेंट की अपनी key. null = key नहीं */
         // API/मॉडल बदलना, retry, request छोटी करना = अंदर की बात: यूज़र की रिपोर्ट में नहीं, सिर्फ़ डिबग लॉग में
@@ -298,8 +314,11 @@ class CoderAi(val provider: Provider, private val key: String, val model: String
          * Limit (429) / मॉडल बंद: Gemini अपने अंदर उसी key के दूसरे मॉडल; Groq/OpenRouter/Custom के लिए
          * उसी key के बैकअप मॉडल fallback में.
          */
-        fun forScope(c: Context, scope: String, sink: (String, String) -> Unit): CoderAi? {
-            val p = Providers.byId(Prefs.scopeActive(c, scope)) ?: return null
+        fun forScope(c: Context, scope: String, sink: (String, String) -> Unit): CoderAi? =
+            forScope(c, scope, sink, Prefs.scopeActive(c, scope))
+
+        fun forScope(c: Context, scope: String, sink: (String, String) -> Unit, providerId: String): CoderAi? {
+            val p = Providers.byId(providerId) ?: return null
             // कोडिंग एजेंट + Gemini: 5 तक keys (key 1 के सारे मॉडल की limit खत्म -> key 2 के सारे मॉडल -> key 3 -> key 4 -> key 5)
             val gemKeys = if (p.isGemini && scope == ApiScopes.CODER) Prefs.coderGeminiKeys(c) else emptyList()
             val key = gemKeys.firstOrNull() ?: Prefs.scopeKey(c, scope, p.id)

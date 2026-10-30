@@ -5,6 +5,7 @@ package com.dk.assistant
  *  - dk_features tool: DK लाइव को पता रहे कि DK के पास कौन-कौन से एजेंट/मोड हैं और हर एक में क्या है
  *  - story_task: स्टोरी मोड बोलकर (कहानी पूरी होते ही DK लाइव खुद बताए)
  *  - teacher_mode: टीचर मोड बोलकर खोलना/बंद करना
+ *  - dk_settings: DK की सेटिंग्स जानना / खोलना / (दो बार पक्का करके) ऑन-ऑफ
  *  - वेबसाइट बनकर तैयार/फ़ेल = DK लाइव खुद बताए
  *  - "मुझे देखो" = आगे वाला कैमरा, "ये देखो / पीछे वाला" = पीछे वाला
  * Android import नहीं -> JVM test.
@@ -22,7 +23,7 @@ object LiveConnect {
         appendLine("6. DK Computer (autonomous background agent: web research, reading sites, calculations, PDF/files/tables/reports, reminders or tasks for later, chains of phone actions) -> computer_task.")
         appendLine("7. Website Forge (builds a full animated website live on the phone) -> build_website.")
         appendLine("8. Story Mode (Story Writer Agent: long emotional Hindi stories of 10, 15, 20, 25 or 30 minutes, written part by part) -> story_task.")
-        appendLine("9. Teacher Mode (whiteboard page; what you explain is written there) -> teacher_mode. It also opens by itself when the user asks a study question.")
+        appendLine("9. Teacher Mode (whiteboard page; what you explain is written there) -> teacher_mode. It opens ONLY when the user himself asks (टीचर मोड खोलो) - never by itself for a study question.")
         appendLine("10. Autonomous Mode: " + (if (autoOn) "ON" + (if (autoKinds.isNotEmpty()) " for: " + autoKinds.joinToString(", ") else "") + " - phone_task requests of these kinds are planned and done by it automatically."
             else "OFF - the user can turn it on in Settings -> ऑटोनोमस मोड. Never claim it is on."))
         appendLine("11. Camera inside DK -> camera (front = look at the user, back = look at what the user shows). Screen share -> screen_share.")
@@ -30,6 +31,7 @@ object LiveConnect {
         appendLine("13. Notifications -> notifications (read) and notification_reply (reply).")
         appendLine("14. Memory -> remember_fact, recall_conversation, forget_memory.")
         appendLine("15. Status of background work (coding team / DK Computer) -> task_status. When coding, DK Computer, story or website work ends you get a SYSTEM NOTE with the real result - tell the user.")
+        appendLine("16. DK's own settings -> dk_settings: list every setting with its state, open any part of Settings, switch settings ON/OFF (always two confirmations: \"ठीक है बॉस\" + \"सर, क्या सच में...?\").")
         appendLine("API key: " + (if (oneKey) "one all-rounder key is used ONLY for talking, chat, web search and phone tasks. coding_task, computer_task, build_website and story_task do NOT run on one key - tell the user to turn off 'एक key से सब' in Settings -> AI दिमाग and add separate keys." else "each part uses its own key from Settings (or the main key)."))
         append("Tell the user only what is in this list. Never claim an ability that is not here.")
     }

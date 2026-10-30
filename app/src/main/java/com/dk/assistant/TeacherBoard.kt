@@ -53,6 +53,17 @@ object TeacherBoard {
     /** ताज़ा जानकारी वाले सवाल (खोज) पढ़ाई नहीं */
     private val LIVE = Regex("(आज|अभी|ख़बर|खबर|न्यूज़|न्यूज|मौसम|स्कोर|मैच|भाव|कीमत|रेट|शेयर|तारीख़|तारीख|टाइम|समय\\s*क्या|news|weather|score|price|today)", RegexOption.IGNORE_CASE)
 
+    /**
+     * v5 (मालिक: "टीचर मोड अपने-आप न खुले - जब तक यूज़र खुद न बोले कि टीचर मोड खोलो"):
+     * यूज़र ने साफ़ टीचर मोड / पढ़ाई मोड खोलने को कहा? (सिर्फ़ पढ़ाई का सवाल पूछना = नहीं)
+     */
+    private val OPEN_CMD = Regex("(टीचर|टिचर|टीचरमोड|teacher|पढ़ाई\\s*मोड|पढाई\\s*मोड|स्टडी\\s*मोड|study\\s*mode|शिक्षक\\s*मोड)", RegexOption.IGNORE_CASE)
+    fun isOpenCommand(text: String): Boolean {
+        val t = text.trim().trimEnd('…').trim()
+        if (t.isBlank() || isExit(t)) return false
+        return OPEN_CMD.containsMatchIn(t)
+    }
+
     /** पढ़ाई से जुड़ा सवाल / सीखने की बात? */
     fun isStudy(text: String): Boolean {
         val t = text.trim().trimEnd('…').trim()
@@ -219,8 +230,13 @@ object TeacherBoard {
 
     /** मॉडल के नियम - पढ़ाई का जवाब बोर्ड पर लिखने लायक बने */
     fun block(): String =
-        "\n\nSTUDY / TEACHER MODE: when the user asks ANY study question or wants to learn something (any subject), or says टीचर मोड / पढ़ाओ / समझाओ, the phone opens the white Teacher board BY ITSELF " +
-            "and writes on it exactly what you say, in step with your voice - do not say you are opening anything, just teach. Teach like a good teacher in simple words: " +
+        "\n\nSTUDY / TEACHER MODE (owner's rule): the white Teacher board opens ONLY when the user himself asks for it " +
+            "(\"टीचर मोड खोलो\" / \"teacher mode on\" / \"पढ़ाई मोड चालू करो\") - then use teacher_mode on=true. NEVER open it by yourself just because a question " +
+            "sounds like studies: answer such a question normally, and only if it is clearly a study topic you may ask once \"सर, क्या टीचर मोड खोल दूँ?\" and open it only if he says yes. " +
+            "WHEN TEACHER MODE IS OPEN you are a fully professional teacher for ANYTHING he wants to learn: every school/college subject, competitive exams, coding, " +
+            "and ANY language (English, Marathi, Hindi, Sanskrit, Urdu, Gujarati, Tamil, French, Spanish, German, Japanese ...). For a language: teach from his level - " +
+            "words with meaning and pronunciation, daily-use sentences, grammar in simple steps, then ask him to repeat or answer, gently correct mistakes and give small practice / quiz. " +
+            "The board writes exactly what you say, in step with your voice - do not say you are writing anything, just teach. Teach like a good teacher in simple words: " +
             "MATHS: solve it step by step, every step one short spoken line that starts with \"चरण 1:\", \"चरण 2:\" … and end with \"उत्तर: …\". " +
             "OTHER SUBJECTS: first a short heading line, then simple points, each point one short sentence. " +
             "Stay in this teaching style until the study talk is over. If he gives a phone task in between (alarm, message), do it with the WORK rules, then go back to teaching if he wants. " +

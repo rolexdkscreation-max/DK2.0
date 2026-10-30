@@ -88,7 +88,7 @@ object KeySetup {
         val key = key0.trim().trim('"', '\'')
         if (key.length < 16) return@withContext Result(false, "", "", 0, "यह key बहुत छोटी है, पूरी key पेस्ट करें।")
         val id = detect(key) ?: identify(key)
-            ?: return@withContext Result(false, "", "", 0, "यह key Google Gemini, Groq या OpenRouter की नहीं लगी (या गलत है)। किसी और कंपनी की key हो तो Custom API में Base URL के साथ डालें।")
+            ?: return@withContext Result(false, "", "", 0, "यह key Google Gemini, Groq या OpenRouter की नहीं लगी (या गलत है)। किसी और कंपनी (OpenAI, Claude, Grok…) की key हो तो Settings → AI दिमाग → Extra API में डालें — कंपनी अपने-आप पहचानी जाएगी।")
         val p = Providers.byId(id) ?: return@withContext Result(false, id, "", 0, "कंपनी नहीं मिली")
         val list = try { ModelLister.fetch(p, key, p.baseUrl) } catch (e: Exception) {
             val code = (e as? AiException)?.code ?: 0

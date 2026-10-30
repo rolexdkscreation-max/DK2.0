@@ -1051,12 +1051,16 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
                                 if (mi + 1 < models.size) { mi++; handle = null; continue } else throw Fatal("Live वाला कोई मॉडल नहीं चला ($reason)")
                         }
                         fails++
+                        // मालिक: "न जुड़ पाए तो यूज़र को बोल दे" - 2 नाकाम कोशिशें (≈2s) = स्क्रीन पर बताओ (बोलकर: सेवा में, Live रुकने पर)
+                        if (LiveConnectNotice.shouldTell(fails, svc.liveTroubleShown)) { svc.liveTroubleShown = true; DKState.reply(LiveConnectNotice.TROUBLE) }
                         if (fails >= 4) throw Fatal("Gemini Live से जुड़ नहीं पाया: ${reason.take(80)}", recoverable = true)
                         delay(minOf(LiveRetry.FAST_MAX_MS, 500L shl fails))       // v4.7: 1s, 2s, 2s (पहले 8s तक)
                         continue
                     }
                     }
                     fails = 0
+                    // पहले "जुड़ नहीं पा रही" बताया था = अब "फिर जुड़ गई, बोलिए" (स्क्रीन पर; माइक चालू है, इसलिए फ़ोन की आवाज़ नहीं)
+                    if (svc.liveTroubleShown || svc.liveTroubleSpoken) { svc.liveTroubleShown = false; svc.liveTroubleSpoken = false; DKState.reply(LiveConnectNotice.BACK) }
                     val upAt = System.currentTimeMillis()
                     log("जुड़ गया [$model] ${System.currentTimeMillis() - t0} ms" + if (handle != null) " (पुरानी बातचीत जारी)" else "")
                     Prefs.edit(svc) { putString("live_model", model) }
@@ -1426,10 +1430,24 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
                         .put("topic", JSONObject().put("type", "STRING").put("description", "The story topic / instructions in the user's words (empty = the agent picks one)"))
                         .put("minutes", JSONObject().put("type", "INTEGER").put("description", "Length in minutes if the user said it (10-30), else 0")))))
             .put(JSONObject().put("name", "teacher_mode")
-                .put("description", "Open (on=true) or close (on=false) DK Teacher Mode - a whiteboard page where everything you explain is written for studying. Use it when the user says टीचर मोड खोलो / पढ़ाई शुरू करो / टीचर मोड बंद करो.")
+                .put("description", "Open (on=true) or close (on=false) DK Teacher Mode - a whiteboard page where everything you explain is written for studying. Use it ONLY when the user himself asks: टीचर मोड खोलो / teacher mode on / पढ़ाई मोड चालू करो / टीचर मोड बंद करो. NEVER open it by yourself just because a question is about studies (owner's rule).")
                 .put("parameters", JSONObject().put("type", "OBJECT")
                     .put("properties", JSONObject().put("on", JSONObject().put("type", "BOOLEAN")))
                     .put("required", JSONArray().put("on"))))
+            // v5 (मालिक): DK को सारी सेटिंग्स पता हों और वह उन्हें ऑन-ऑफ कर सके - हर बदलाव से पहले दो बार पक्का
+            .put(JSONObject().put("name", "dk_settings")
+                .put("description", "Know, open and switch DK's own settings. action=list: all switchable settings with their current ON/OFF state and all parts of Settings. " +
+                    "action=open: open that part of Settings on screen (setting = what to open, e.g. 'आवाज़', 'DK कंप्यूटर', 'API key'). " +
+                    "action=set: switch a setting ON (on=true) or OFF (on=false). Owner's rule - TWO confirmations: the first set call never changes anything, it tells you to say " +
+                    "\"ठीक है बॉस\" and ask \"सर, क्या आप सच में ... ऑन/ऑफ करना चाहते हैं?\"; only after his clear yes call set again with confirmed=true. Use it whenever the user asks " +
+                    "about DK's settings or says 'यह सेटिंग ऑन/ऑफ कर दो' / 'सेटिंग खोलो'.")
+                .put("parameters", JSONObject().put("type", "OBJECT")
+                    .put("properties", JSONObject()
+                        .put("action", JSONObject().put("type", "STRING").put("enum", JSONArray().put("list").put("open").put("set")))
+                        .put("setting", JSONObject().put("type", "STRING").put("description", "The setting in the user's words (empty for list)"))
+                        .put("on", JSONObject().put("type", "BOOLEAN").put("description", "true = turn ON, false = turn OFF (only for set)"))
+                        .put("confirmed", JSONObject().put("type", "BOOLEAN").put("description", "true ONLY after you asked 'सर, क्या सच में...?' and he clearly said yes")))
+                    .put("required", JSONArray().put("action"))))
             .put(JSONObject().put("name", "social_media_task")
                 .put("description", "Post on Instagram or Facebook by driving the real app on the phone. Instagram: post_photo, post_video, post_reel, post_story. Facebook: post_text, post_photo, post_video, post_story. Media can ONLY be a photo/video the user shared to DK (Gallery -> Share -> DK); use media='latest_shared'. mode='draft' fills everything but never posts. Posting is irreversible: you will get a SYSTEM NOTE with status waiting_confirmation - ask the user that exact question and only after a clear yes call social_media_task_control(command=confirm). DK never fills logins, passwords, CAPTCHAs or 2-step codes - it waits for the user. Report the final status truthfully (submitted_unverified = not confirmed).")
                 .put("parameters", JSONObject().put("type", "OBJECT")
@@ -2230,6 +2248,7 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
                         com.dk.assistant.auto.AutoPrefs.enabledKinds(svc).map { it.title }, Prefs.oneKeyOn(svc) && Prefs.oneKey(svc).isNotBlank())
                     "story_task", "build_website", "computer_task", "coding_task" -> agentTool(name, args)
                     "teacher_mode" -> LiveReport.teacher(svc, args.optBoolean("on", true))
+                    "dk_settings" -> DkSettingsApply.run(svc, args)
                     "remember_fact" -> if (Memory.addFact(svc, args.optString("fact"))) "saved" else "NOT saved: private info (passwords, PIN, OTP, bank/card/Aadhaar numbers) is never stored. If the user asked you to remember it, tell them gently you do not save such private details." 
                     "recall_conversation" -> {
                         val a = LocalMemory.answer(svc, args.optString("question").ifBlank { DKState.lastUser.trimEnd('…') })

@@ -157,7 +157,7 @@ class ComputerActivity : AppCompatActivity() {
     private fun welcome(): String {
         val ai = CoderAi.forComputer(this) { _, _ -> }
         if (!Prefs.computerOn(this)) return "DK कंप्यूटर बंद है — Settings → DK कंप्यूटर में चालू करें।"
-        if (ai == null) return "पहले Settings → AI दिमाग → DK कंप्यूटर में API key डालें (Gemini / Groq / OpenRouter / Custom)।"
+        if (ai == null) return "पहले Settings → AI दिमाग → DK कंप्यूटर में API key डालें (Gemini / OpenRouter / Extra API / Groq)।"
         return "नमस्ते। मैं ${Prefs.assistantName(this)} कंप्यूटर हूँ — कोई भी काम दीजिए, मैं कदम-दर-कदम पूरा करूँगा और आखिर में रिपोर्ट दूँगा।\n\n" +
             "कैसे काम करता हूँ:\n📋 पहले आपको योजना दिखाता हूँ (क्या समझा, कौन-से कदम, आपको क्या मिलेगा)\n▶ ऊपर हर पल दिखता है कि अभी कौन-सा कदम चल रहा है\n🧐 जवाब देने से पहले खुद जाँचता हूँ कि काम पूरा और सही है\n🪜 जो आपको खुद करना हो, उसके एक-एक कदम समझाता हूँ\n\n" +
             "मैं कर सकता हूँ:\n• इंटरनेट पर खोज और वेबसाइटें पढ़कर रिसर्च (स्रोत के लिंक के साथ)\n• हिसाब, डेटा, तुलना (कोड चलाकर)\n" +
@@ -174,9 +174,9 @@ class ComputerActivity : AppCompatActivity() {
         render()
     }
 
-    /** बुलबुले में तरंग के बगल का संदेश: अभी का कदम, या असली रुकावट (दोबारा कोशिश / मॉडल / सीमा) */
+    /** बुलबुले में तरंग के बगल का संदेश: अभी का कदम (v5, मालिक: रुकावट / दोबारा कोशिश / सीमा जैसी गलतियाँ नहीं दिखतीं) */
     private fun busyLabel(): String =
-        DKStatus.fresh(busySince) ?: ComputerSession.now.trim().lineSequence().firstOrNull().orEmpty().take(90)
+        ComputerSession.now.trim().lineSequence().firstOrNull().orEmpty().take(90)
 
     private fun newSession() {
         ComputerSession.reset(); shown = 0; list.removeAllViews()
@@ -238,8 +238,7 @@ class ComputerActivity : AppCompatActivity() {
 
     private fun render() {
         val ai = CoderAi.forComputer(this) { _, _ -> }
-        val src = ComputerTools.searchOrder(Prefs.computerSearch(this), Prefs.exaSearchKey(this).isNotBlank(), Prefs.tavilyKey(this).isNotBlank(),
-            Prefs.scopeKey(this, ApiScopes.PC, "gemini").isNotBlank()).firstOrNull() ?: "search नहीं"
+        val src = ComputerTools.searchChain(this).firstOrNull()?.let { ComputerTools.searchLabel(it) } ?: "search नहीं"
         sub.text = "${ai?.label ?: "AI नहीं"} • खोज: $src" + if (ComputerSession.busy) " • काम चल रहा है…" else ""
         send.setImageResource(if (ComputerSession.busy) android.R.drawable.ic_media_pause else R.drawable.ic_send)
         send.contentDescription = if (ComputerSession.busy) "रोकें" else "भेजें"

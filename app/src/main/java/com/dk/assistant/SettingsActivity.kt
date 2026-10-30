@@ -92,6 +92,7 @@ class SettingsActivity : AppCompatActivity() {
             "brain_chat" -> { title.text = "AI दिमाग • DK चैट"; secBrain() }
             "brain_coder" -> { title.text = "AI दिमाग • कोडिंग एजेंट"; secBrainScope(ApiScopes.CODER) }
             "brain_pc" -> { title.text = "AI दिमाग • DK कंप्यूटर"; secBrainScope(ApiScopes.PC) }
+            "brain_extra" -> { title.text = "AI दिमाग • Extra API"; secBrainExtra() }
             "voice" -> { title.text = "आवाज़"; secVoice() }
             "orb" -> { title.text = "ओर्ब और चेहरा"; bar.visibility = View.GONE; secOrb() }
             "ui" -> { title.text = "दिखावट"; bar.visibility = View.GONE; secUi() }
@@ -437,6 +438,14 @@ class SettingsActivity : AppCompatActivity() {
     }
 
     // ------------------------------------------------------------ AI दिमाग: 4 अलग हिस्से, हर एक की अपनी API
+    /** Extra API की हालत: कौन-सी कंपनी + मॉडल */
+    private fun extraStatus(): String {
+        val k = Prefs.scopeKeyRaw(this, ApiScopes.PC, "custom")
+        if (k.isBlank()) return "✗ अभी कोई Extra API नहीं"
+        val c = ApiCompanies.byBase(Prefs.scopeBase(this, ApiScopes.PC, "custom"))
+        return "✓ " + (c?.name ?: "Extra API") + " • " + Prefs.scopeModel(this, ApiScopes.PC, "custom").ifBlank { "मॉडल चुनें" }
+    }
+
     private fun scopeStatus(scope: String): String {
         if (scope == ApiScopes.LIVE) {
             val g = Prefs.scopeKeyRaw(this, scope, "gemini").isNotBlank(); val q = Prefs.scopeKeyRaw(this, scope, "groq").isNotBlank()
@@ -484,6 +493,8 @@ class SettingsActivity : AppCompatActivity() {
             hint(box, "अभी: " + (if (Prefs.oneKey(this).isNotBlank()) "✓ बात, चैट, खोज और फ़ोन के काम इसी एक key से" else "✗ key नहीं डाली") +
                 " • सुनना भी Gemini से (Groq की ज़रूरत नहीं)। एक free key की limit सब कामों में बँटती है — limit जल्दी खत्म हो तो बटन बंद करके अलग-अलग keys डालें।")
         }
+        // v5 (मालिक): "DK कंप्यूटर में Extra AI API जोड़ने का विकल्प AI दिमाग में भी दिखे" - एक-key मोड में भी
+        menuRow("brain_extra", "Extra API (कोई भी कंपनी)", extraStatus() + "\nOpenAI, Claude, Grok, DeepSeek… किसी की भी key — DK कंप्यूटर का आखिरी बैकअप", "computer")
         if (one) {
             card("अलग-अलग key वाले हिस्से — बंद", "ऊपर \"एक key से सब\" चालू है, इसलिए DK लाइव / चैट / कोडिंग / कंप्यूटर की अलग keys अभी इस्तेमाल नहीं हो रहीं") { box ->
                 hint(box, "अलग-अलग key चाहिए तो ऊपर वाला बटन बंद करें — पहले डाली हुई अलग keys वैसी ही सुरक्षित हैं।")
@@ -497,6 +508,15 @@ class SettingsActivity : AppCompatActivity() {
         menuRow("brain_chat", "DK चैट", scopeStatus(ApiScopes.CHAT) + "\nलिखकर चैट, जवाब, Google search, गहरी सोच, कहानी", "brain")
         menuRow("brain_coder", "कोडिंग एजेंट", scopeStatus(ApiScopes.CODER) + "\nकोडिंग टीम: बिल्डर, रिव्यूअर, कोऑर्डिनेटर", "coder")
         menuRow("brain_pc", "DK कंप्यूटर", scopeStatus(ApiScopes.PC) + "\nDK कंप्यूटर के काम और उसकी web search", "computer")
+    }
+
+    /** v5: Extra API - किसी भी कंपनी की key (कंपनी अपने-आप + मॉडल चुनें); DK कंप्यूटर की chain में आखिरी बैकअप */
+    private fun secBrainExtra() {
+        card("DK कंप्यूटर का बैकअप क्रम", "पहले Gemini → फिर OpenRouter → फिर Extra API (Groq की key हो तो सबसे आखिर में) — जिसकी key डली है और जो चल जाए, उसी से काम होता है। खोज: Gemini → Tavily → OpenRouter → Exa") { box ->
+            hint(box, "जो key नहीं डाली, वह छूट जाती है। काम के दौरान मॉडल बदले तो DK कंप्यूटर में सिर्फ़ इतना दिखता है कि अब कौन-सा मॉडल काम कर रहा है — गलतियाँ नहीं दिखतीं।" +
+                if (Prefs.oneKeyOn(this)) "\nध्यान दें: अभी \"एक key से सब\" चालू है — DK कंप्यूटर के लिए उसे बंद करें।" else "")
+        }
+        providerCard(Providers.byId("custom")!!, ApiScopes.PC)
     }
 
     /** DK लाइव: सिर्फ़ Google Gemini (Live + बोलना + सुनना) और सुनने के लिए चाहें तो Groq */
@@ -1257,11 +1277,22 @@ class SettingsActivity : AppCompatActivity() {
     private fun providerCard(p: Provider, scope: String = ApiScopes.CHAT) {
         val kName = ApiScopes.pref(scope, "key", p.id); val mName = ApiScopes.pref(scope, "model", p.id); val bName = ApiScopes.pref(scope, "base", p.id)
         card(p.name + if (scope == ApiScopes.CHAT) "" else " — ${ApiScopes.title(scope)}", p.note) { box ->
+            // v5 (मालिक): Base URL वाला खाना नहीं - key से कंपनी अपने-आप (पता छुपे खाने में सेव), फिर मॉडल चुनें
+            var company: TextView? = null
             if (p.isCustom) {
-                baseFields[bName] = field(box, "Base URL", Prefs.scopeBase(this, scope, p.id), "https://.../v1")
+                baseFields[bName] = EditText(this).apply { setText(Prefs.scopeBase(this@SettingsActivity, scope, p.id)) }
+                company = TextView(this).apply {
+                    setTextColor(0xFFFFFFFF.toInt()); textSize = 14f
+                    setPadding((4 * dp).toInt(), (6 * dp).toInt(), 0, (2 * dp).toInt())
+                    val known = ApiCompanies.byBase(Prefs.scopeBase(this@SettingsActivity, scope, p.id))
+                    text = if (Prefs.scopeKeyRaw(this@SettingsActivity, scope, p.id).isBlank()) "कंपनी: key डालते ही अपने-आप पता चलेगी"
+                        else if (known != null) ApiCompanies.label(known)
+                        else if (Prefs.scopeBase(this@SettingsActivity, scope, p.id).isNotBlank()) "कंपनी: पहले से जुड़ा API ✓" else ApiCompanies.label(null)
+                }
             }
             val key = field(box, "API Key", Prefs.scopeKeyRaw(this, scope, p.id), "यहाँ key पेस्ट करें", secret = true)
             keyFields[kName] = key
+            company?.let { box.addView(it) }
             if (p.isGemini && scope == ApiScopes.CODER) {
                 // कोडिंग एजेंट: 5 Gemini keys - एक के सारे मॉडल की limit खत्म = अपने-आप अगली
                 keyFields[ApiScopes.pref(scope, "key", "gemini2")] = field(box, "Gemini API Key 2 (बैकअप, ज़रूरी नहीं)",
@@ -1295,6 +1326,28 @@ class SettingsActivity : AppCompatActivity() {
             fun loadModels(openPicker: Boolean) {
                 val k = key.text.toString().trim()
                 if (k.length < 12) { mInfo.text = "पहले सही API key डालें"; return }
+                // Extra API: key से कंपनी पहचानो -> उसका पता सेव -> उसी के मॉडल
+                if (p.isCustom) {
+                    mInfo.text = "कंपनी पहचान रहा हूँ…"
+                    lifecycleScope.launch {
+                        val hit = try { ModelLister.detectCompany(k) } catch (e: Exception) { null }
+                        if (hit == null) {
+                            company?.text = ApiCompanies.label(null)
+                            mInfo.text = "यह key किसी जानी-मानी कंपनी की नहीं लगी — \"कंपनी बदलें\" से चुनें"
+                            return@launch
+                        }
+                        val (c, list) = hit
+                        baseFields[bName]?.setText(c.base)
+                        company?.text = ApiCompanies.label(c)
+                        fetchedFor[kName] = k
+                        Prefs.edit(this@SettingsActivity) { putString(bName, c.base); putString("models_${p.id}", list.joinToString("\n")) }
+                        if (model.text.toString().trim().isBlank() || model.text.toString().trim() !in list) list.firstOrNull()?.let { model.setText(it) }
+                        save(false)
+                        mInfo.text = "✓ ${c.name} — ${list.size} मॉडल मिले, \"मॉडल चुनें\" दबाएँ"
+                        if (openPicker && list.isNotEmpty()) pickModel(p, model, list)
+                    }
+                    return
+                }
                 val base = baseFields[bName]?.text?.toString()?.trim()?.ifBlank { null } ?: Prefs.scopeBase(this, scope, p.id)
                 if (base.isBlank() && !p.isGemini) { mInfo.text = "पहले Base URL डालें"; return }
                 mInfo.text = "मॉडल लोड हो रहे हैं…"
@@ -1331,6 +1384,32 @@ class SettingsActivity : AppCompatActivity() {
                     else loadModels(true)
                 },
                 button("लिस्ट रीफ़्रेश") { loadModels(false) })
+            // Extra API: पहचान गलत / न हुई = कंपनी खुद चुनें (फिर उसी के मॉडल)
+            if (p.isCustom) row(box, button("कंपनी बदलें") {
+                val names = ApiCompanies.ALL.map { it.name }.toTypedArray()
+                val cur = ApiCompanies.ALL.indexOfFirst { it.base == baseFields[bName]?.text?.toString()?.trim() }
+                UiDialog(this, Glass.DIALOG)
+                    .setTitle("कौन-सी कंपनी की key है?")
+                    .setSingleChoiceItems(names, cur) { d, which ->
+                        val c = ApiCompanies.ALL[which]
+                        baseFields[bName]?.setText(c.base)
+                        company?.text = ApiCompanies.label(c)
+                        Prefs.edit(this) { putString(bName, c.base) }
+                        save(false); d.dismiss()
+                        val k = key.text.toString().trim()
+                        if (k.length < 12) { mInfo.text = "अब key डालें"; return@setSingleChoiceItems }
+                        mInfo.text = "मॉडल लोड हो रहे हैं…"
+                        lifecycleScope.launch {
+                            val list = try { ModelLister.fetch(p, k, c.base) } catch (e: Exception) { c.models }
+                            fetchedFor[kName] = k
+                            Prefs.edit(this@SettingsActivity) { putString("models_${p.id}", list.joinToString("\n")) }
+                            if (model.text.toString().trim() !in list) list.firstOrNull()?.let { model.setText(it); save(false) }
+                            mInfo.text = "✓ ${c.name} — ${list.size} मॉडल, \"मॉडल चुनें\" दबाएँ"
+                        }
+                    }
+                    .setNegativeButton("बंद करें", null)
+                    .show()
+            })
             val buttons = mutableListOf<View>()
             buttons.add(button("दिखाओ") { v ->
                 val show = key.inputType != (InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_VISIBLE_PASSWORD)
@@ -1373,7 +1452,7 @@ class SettingsActivity : AppCompatActivity() {
     private lateinit var edExa: EditText
     private lateinit var edPcSteps: EditText
     private val pcTools = mutableMapOf<String, SwitchCompat>()
-    private val pcSearchIds = listOf("auto", "tavily", "exa", "gemini")
+    private val pcSearchIds = listOf("auto", "tavily", "exa", "gemini", "openrouter")
 
     private fun secComputer() {
         card("DK कंप्यूटर", "कोई भी काम कदम-दर-कदम: इंटरनेट पर खोज, वेबसाइट पढ़ना, हिसाब (कोड), फ़ाइल/PDF, फ़ोन के काम, कोडिंग, रिमाइंडर") { box ->
@@ -1388,9 +1467,9 @@ class SettingsActivity : AppCompatActivity() {
             })
         }
         apiLinkCard(ApiScopes.PC, "brain_pc")
-        card("वेब search", "Gemini key से Google search फ्री; Tavily / Exa की key डालें तो उनसे (Groq/OpenRouter वालों के लिए भी)") { box ->
+        card("वेब search", "बैकअप क्रम: Gemini (Google) → Tavily → OpenRouter → Exa — जिसकी key डली है और जो चल जाए, उसी से खोज") { box ->
             val cur = Prefs.computerSearch(this)
-            val names = mapOf("auto" to "अपने-आप (Tavily → Exa → Gemini, जो key हो)", "tavily" to "Tavily", "exa" to "Exa Search", "gemini" to "Google (Gemini key से)")
+            val names = mapOf("auto" to "अपने-आप (Gemini → Tavily → OpenRouter → Exa, जो key हो)", "tavily" to "Tavily", "exa" to "Exa Search", "gemini" to "Google (Gemini key से)", "openrouter" to "OpenRouter web खोज (OpenRouter key से)")
             rgPcSearch = RadioGroup(this).apply { orientation = RadioGroup.VERTICAL }
             pcSearchIds.forEachIndexed { i, id ->
                 rgPcSearch.addView(RadioButton(this).apply {

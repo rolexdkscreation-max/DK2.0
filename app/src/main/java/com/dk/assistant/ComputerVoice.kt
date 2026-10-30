@@ -64,4 +64,22 @@ object ComputerVoice {
         if (question) s += " जवाब देने के लिए बोलिए: डीके कंप्यूटर, और फिर अपना जवाब।"
         return s.trim()
     }
+
+    /**
+     * v5 (मालिक): DK कंप्यूटर की गलती स्क्रीन पर तकनीकी रूप में नहीं (कोड, 429, कौन-सा मॉडल fail...) - सिर्फ़ एक साफ़ लाइन.
+     * पूरी वजह डिबग लॉग में जाती है.
+     */
+    fun failShort(error: String): String {
+        val e = error.lowercase()
+        return when {
+            e.contains("key नहीं मिली") || e.contains("api key") && e.contains("नहीं") ->
+                "DK कंप्यूटर की AI key नहीं मिली — Settings → AI दिमाग → DK कंप्यूटर में key डालें (Gemini / OpenRouter / Extra API / Groq)।"
+            else -> "यह काम अभी पूरा नहीं हो पाया। मैंने Gemini, OpenRouter, Extra API और Groq — जो भी डली हैं, सब से कोशिश की। " +
+                "थोड़ी देर बाद \"वहीं से आगे\" दबाएँ या काम फिर भेजें।"
+        }
+    }
+
+    /** मॉडल बदलने की अंदरूनी खबर ("अपने आप Groq (model) पर स्विच किया...") से सिर्फ़ नए मॉडल का नाम; बाकी खबर = null */
+    fun switchedTo(fix: String): String? =
+        Regex("अपने आप (.+?) पर स्विच").find(fix)?.groupValues?.get(1)?.trim()?.takeIf { it.isNotBlank() }
 }

@@ -7,7 +7,7 @@ import android.os.Looper
 import java.lang.ref.WeakReference
 
 /**
- * v3.87: [TeacherBoard] का Android हिस्सा - पढ़ाई की बात सुनते ही टीचर वाला पन्ना अपने-आप खोलो,
+ * v3.87: [TeacherBoard] का Android हिस्सा - v5 से पन्ना सिर्फ़ तब खुलता है जब यूज़र खुद टीचर मोड माँगे,
  * "बंद करो / वापस जाओ" पर बंद करो। DKState.user() से बुलाया जाता है (DK Live और आम आवाज़ - दोनों)।
  */
 object TeacherLink {
@@ -28,7 +28,10 @@ object TeacherLink {
         if (t.isBlank()) return
         try {
             when (TeacherBoard.onUser(t)) {
-                TeacherBoard.Action.OPEN -> open(c, "पढ़ाई का सवाल")
+                // v5 (मालिक): सिर्फ़ पढ़ाई का सवाल = पन्ना नहीं खुलता; यूज़र खुद "टीचर मोड खोलो" बोले तभी
+                TeacherBoard.Action.OPEN ->
+                    if (TeacherBoard.isOpenCommand(t)) open(c, "यूज़र ने टीचर मोड माँगा")
+                    else if (!t.endsWith("…")) TeacherBoard.reset()   // बंद पन्ने पर पुराना सवाल जमा न हो
                 TeacherBoard.Action.CLOSE -> main.post { activity?.get()?.closeFromVoice() }
                 TeacherBoard.Action.NONE -> {
                     // पन्ना खुला है पर पीछे चला गया (बीच में अलार्म/मैसेज) - नया पढ़ाई का सवाल = फिर सामने

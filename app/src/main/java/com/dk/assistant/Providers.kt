@@ -22,7 +22,8 @@ object Providers {
             "https://api.groq.com/openai/v1", "openai/gpt-oss-120b", false, "https://console.groq.com/keys"),
         Provider("openrouter", "OpenRouter", true, "फ्री मॉडल • रोज़ ~50 रिक्वेस्ट",
             "https://openrouter.ai/api/v1", "openrouter/free", true, "https://openrouter.ai/keys"),
-        Provider("custom", "Custom API", true, "कोई भी OpenAI जैसा API (Base URL डालें)",
+        // v5 (मालिक): "Custom API (Base URL)" की जगह - किसी भी कंपनी की key, कंपनी अपने-आप पहचानी जाती है, फिर मॉडल चुनें
+        Provider("custom", "Extra API (कोई भी कंपनी)", true, "OpenAI, Claude, Grok, DeepSeek, Mistral, Perplexity, Kimi, Qwen… किसी की भी key डालें — कंपनी का नाम अपने-आप आएगा, फिर मॉडल चुनें",
             "", "", true, "", isCustom = true)
     )
 

@@ -109,7 +109,8 @@ object ComputerSession {
             try {
                 val out = a.run(task, background)
                 out.files.forEach { add("f", it) }
-                add("d", out.text + "\n\n" + out.report)
+                // v5 (मालिक): जवाब के नीचे "कौन-सा मॉडल चला / क्या गलती हुई" वाली रिपोर्ट नहीं - सिर्फ़ असली जवाब
+                add("d", out.text)
                 TaskStatus.end(TaskStatus.PC, if (out.question) TaskStatus.State.WAITING else TaskStatus.State.DONE, out.text)
                 ComputerSaved.mark(ctx, running = false, netPaused = false)
                 if (!visible || background) notifyUser(ctx, if (out.question) "DK कंप्यूटर को जानकारी चाहिए" else "DK कंप्यूटर: काम पूरा", out.text.take(300))
@@ -132,10 +133,13 @@ object ComputerSession {
                     return@launch
                 }
                 ComputerSaved.mark(ctx, running = false, netPaused = false)
-                add("e", "गलती: $m\n\n" + a.reportText(m))
-                TaskStatus.end(TaskStatus.PC, TaskStatus.State.FAILED, m)
-                if (!visible || background) notifyUser(ctx, "DK कंप्यूटर: काम रुका", m.take(200))
-                if (voice) speak("DK कंप्यूटर का काम पूरा नहीं हो पाया। वजह स्क्रीन में लिखी है।")
+                // v5 (मालिक): तकनीकी गलतियाँ / रिपोर्ट स्क्रीन पर नहीं - सिर्फ़ डिबग लॉग में; यूज़र को एक साफ़ लाइन
+                DKLog.d("DK कंप्यूटर: काम रुका - $m\n" + a.reportText(m))
+                val shown = ComputerVoice.failShort(m)
+                add("e", shown)
+                TaskStatus.end(TaskStatus.PC, TaskStatus.State.FAILED, shown)
+                if (!visible || background) notifyUser(ctx, "DK कंप्यूटर: काम रुका", shown.take(200))
+                if (voice) speak(shown)
             }
         }
         job = j
@@ -246,7 +250,11 @@ class ComputerAgent(private val c: Context) {
     suspend fun run(task: String, background: Boolean): Result {
         synchronized(issues) { issues.clear() }
         files.clear(); pendingFail = null; did.clear(); setPlan(null)
-        val ai = CoderAi.forComputer(c) { p, f -> issue(p, f) } ?: throw IllegalStateException("AI key नहीं मिली")
+        // v5 (मालिक): गलतियाँ स्क्रीन पर नहीं; Gemini -> Groq -> OpenRouter -> Extra में मॉडल बदले तो सिर्फ़ इतना दिखे कि अब कौन-सा मॉडल काम कर रहा है
+        val ai = CoderAi.forComputer(c) { p, f ->
+            issue(p, f)
+            ComputerVoice.switchedTo(f)?.let { step("⚙ अब $it पर काम चल रहा है") }
+        } ?: throw IllegalStateException("AI key नहीं मिली")
         budget = ai.budget
         val cap = ComputerPlan.resultCap(budget)
         step("🧠 ${ai.label} से काम शुरू…")
@@ -385,7 +393,7 @@ class ComputerAgent(private val c: Context) {
             "web_search" -> {
                 val q = a.optString("query").ifBlank { return "ERROR: query खाली" }
                 step("🔎 खोज: $q")
-                withContext(Dispatchers.IO) { ComputerTools.formatSearch(ComputerTools.search(c, q, a.optInt("n", 6).coerceIn(1, 10)) { p, f -> issue(p, f) }) }
+                withContext(Dispatchers.IO) { ComputerTools.formatSearch(ComputerTools.search(c, q, a.optInt("n", 6).coerceIn(1, 10)) { p, f -> issue(p, f); step("🔎 " + f.removePrefix("अपने आप ").replace("खोज पर गया", "से खोज चल रही है").let { "अब $it" }) }) }
             }
             "read_url" -> {
                 val u = a.optString("url").ifBlank { return "ERROR: url खाली" }
