@@ -93,6 +93,7 @@ object SettingsSearch {
         E("perms", "स्क्रीन देखना", "DK आपकी स्क्रीन देखकर काम करे (स्क्रीनशॉट AI को जाता है)"),
         E("perms", "ज़रूरी परमिशन", ""),
         E("update", "अपडेट", ""),
+        E("debug", "DK Inspector", "Run Deep Inspection • Ask DK Inspector • Bug Reports • हर घंटे अपने-आप जाँच", "inspector bug report जाँच गड़बड़ी debugger"),
         E("debug", "Gemini Live हाल", "माइक से भेजे टुकड़े, गिरे टुकड़े, दोबारा जुड़ना, देरी"),
         E("debug", "देरी का हिसाब", "आपका बोलना ख़त्म → पहला टुकड़ा आया → पहले वाक्य की आवाज़ बनी → आवाज़ बजी"),
         E("debug", "लॉग", "सबसे नई लाइन नीचे • 300 लाइन तक"),

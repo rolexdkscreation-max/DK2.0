@@ -32,6 +32,7 @@ object LiveConnect {
         appendLine("14. Memory -> remember_fact, recall_conversation, forget_memory.")
         appendLine("15. Status of background work (coding team / DK Computer) -> task_status. When coding, DK Computer, story or website work ends you get a SYSTEM NOTE with the real result - tell the user.")
         appendLine("16. DK's own settings -> dk_settings: list every setting with its state, open any part of Settings, switch settings ON/OFF (always two confirmations: \"ठीक है बॉस\" + \"सर, क्या सच में...?\").")
+        appendLine("17. DK Inspector (app's own debugger) -> dk_inspector: list found bugs, full report, answer questions from real debug logs, run an inspection now. It never changes code; a report goes to the Coding Agent ONLY after the owner clearly says yes (\"ठीक है, Coding Agent को दे दो\").")
         appendLine("API key: " + (if (oneKey) "one all-rounder key is used ONLY for talking, chat, web search and phone tasks. coding_task, computer_task, build_website and story_task do NOT run on one key - tell the user to turn off 'एक key से सब' in Settings -> AI दिमाग and add separate keys." else "each part uses its own key from Settings (or the main key)."))
         append("Tell the user only what is in this list. Never claim an ability that is not here.")
     }

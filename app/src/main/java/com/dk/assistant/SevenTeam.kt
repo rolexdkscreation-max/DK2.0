@@ -173,6 +173,8 @@ class SevenTeam(
         const val LIST_MAX = 800
         /** v3.6: प्रॉम्प्ट इंजीनियर का नक्शा (प्लानर/डिबगर को पूरा वाला ही) */
         const val PROMPT_MAP_CHARS = 30_000
+        /** v5.1: समझाने वाले के खोज/पढ़ने के चक्कर */
+        const val EXPLAIN_ROUNDS = 10
         /** गिट: रिपो में GitHub Actions का कोई workflow नहीं */
         const val NO_CI = "NO_CI"
         /** QA कितनी बार काम वापस भेज सकता है (फिर रुककर user को रिपोर्ट) */
@@ -198,7 +200,12 @@ class SevenTeam(
         val fileList = files.list()
         val m = askJson(Agent.MANAGER, "USER REQUEST:\n$task\n" + (if (media.isNotEmpty()) CoderMedia.describe(media) + "\n" else "") +
             "\nMODE: $mode\nFILES IN WORKSPACE (${fileList.size}):\n" + fileList.take(listMax).joinToString("\n"))
-        val kind = Seven.kindOf(m?.optString("kind"), task)
+        var kind = Seven.kindOf(m?.optString("kind"), task)
+        // v5.1: "जांच करो / समझाओ" और कुछ बदलना नहीं = सवाल (समझाने वाला), बदलाव नहीं
+        if ((kind == Seven.Kind.FEATURE || kind == Seven.Kind.BUG) && Seven.explainOnly(task)) {
+            ev(Agent.MANAGER, "आपने सिर्फ़ समझाने/जाँचने को कहा है, कुछ बदलने को नहीं → कोड नहीं बदलेगा")
+            kind = Seven.Kind.QUESTION
+        }
         val brief0 = m?.optString("brief").orEmpty().trim()
         val acc0 = Seven.strings(m?.optJSONArray("acceptance"))
         if (kind == Seven.Kind.STATUS) {
@@ -210,6 +217,9 @@ class SevenTeam(
             var ans = m?.optString("answer").orEmpty().trim()
             if (ans.isBlank()) ans = askJson(Agent.MANAGER, "USER QUESTION:\n$task\n\nThis is a question (kind=question). Reply ONLY JSON {\"kind\":\"question\",\"answer\":\"simple Hindi answer\"}\n" +
                 "FILES IN WORKSPACE (${fileList.size}):\n" + fileList.take(listMax).joinToString("\n"))?.optString("answer").orEmpty().trim()
+            // v5.1 (मालिक: "कोडिंग एजेंट सवाल का जवाब अच्छे से नहीं देता"): मैनेजर काम समझाने वाले को सौंपता है - वह असली कोड पढ़कर गहराई से समझाता है
+            val deep = explain(task, ans)
+            if (deep != null) return SevenPlus.Understanding(kind, brief0, "", "", emptyList(), emptyList(), emptyList(), emptyList(), deep, mediaNotes = mediaNotes)
             ev(Agent.MANAGER, "यह सवाल है — जवाब मैं (मैनेजर) दे रहा हूँ, कोड नहीं बदलेगा")
             return SevenPlus.Understanding(kind, brief0, "", "", emptyList(), emptyList(), emptyList(), emptyList(), ans.ifBlank { Seven.NO_ANSWER_HI }, mediaNotes = mediaNotes)
         }
@@ -217,6 +227,8 @@ class SevenTeam(
         // v3.6 (owner: "मैनेजर समझाता नहीं"): काम के साथ पूछे सवालों का जवाब पहले - तुरंत दिखे (प्रॉम्प्ट इंजीनियर का इंतज़ार नहीं)
         val reply0 = m?.optString("reply").orEmpty().trim()
         if (reply0.isNotBlank()) ev(Agent.MANAGER, "आपके सवालों का जवाब:\n$reply0")
+        // v5.1: काम के साथ "समझाओ" भी कहा = पहले समझाने वाला असली कोड से समझाए, फिर काम
+        if (Seven.wantsExplain(task)) explain(task, reply0)?.let { ev(Agent.EXPLAINER, "समझ (असली कोड से):\n$it") }
         ev(Agent.MANAGER, if (k == Seven.Kind.BUG) "यह बग ठीक करने का काम लगता है → प्रॉम्प्ट इंजीनियर साफ़ करेगा, फिर डिबगर जड़ ढूँढेगा"
             else "यह नया फ़ीचर/बदलाव लगता है → प्रॉम्प्ट इंजीनियर साफ़ करेगा कि ठीक-ठीक क्या और कहाँ")
         ev(Agent.PROMPT, "आपकी बात को साफ़ काम में बदल रहा हूँ — रिपो का नक्शा देखकर जगह भी ढूँढ रहा हूँ…")
@@ -251,6 +263,48 @@ class SevenTeam(
         }
         ev(Agent.PROMPT, "पूरा spec नहीं बना — मैनेजर की समझ दिखा रहा हूँ")
         return SevenPlus.Understanding(k, brief0, brief0.ifBlank { task.take(300) }, brief0, acc0, emptyList(), emptyList(), emptyList(), mediaNotes = mediaNotes, reply = reply0)
+    }
+
+    /**
+     * v5.1: समझाने वाला - मैनेजर का सौंपा सवाल / "समझाओ" / "जांच करो"। असली कोड खोजता-पढ़ता है, फिर आसान हिंदी में
+     * गहरा, step-by-step जवाब (फ़ाइल: function के साथ)। कोड कभी नहीं बदलता। AI न चले = null (मैनेजर का छोटा जवाब बचता है)।
+     */
+    private suspend fun explain(question: String, quick: String): String? {
+        ev(Agent.MANAGER, "यह समझाने का काम है → ${Agent.EXPLAINER.icon} ${Agent.EXPLAINER.hi} को सौंपा (असली कोड पढ़कर गहराई से समझाएगा, कोड नहीं बदलेगा)")
+        ev(Agent.EXPLAINER, "असली कोड ढूँढ रहा हूँ…")
+        return try {
+            val ws = try { workspace() } catch (e: Exception) { if (e is kotlinx.coroutines.CancellationException) throw e; emptyMap() }
+            val fileList = files.list()
+            val msgs = mutableListOf("user" to ("OWNER'S QUESTION (his own words):\n$question\n" +
+                (if (quick.isNotBlank()) "\nMANAGER'S QUICK NOTE (may be incomplete - verify in the code):\n$quick\n" else "") +
+                (if (mediaNotes.isNotBlank()) "\nPHOTO/VIDEO NOTES:\n$mediaNotes\n" else "") +
+                "\nREPO MAP (file: classes / functions / ids):\n" + SevenPlus.RepoMap.build(ws, maxOf(PROMPT_MAP_CHARS, mapChars)) +
+                "\nFILE LIST (${fileList.size}):\n" + fileList.take(listMax).joinToString("\n")))
+            for (round in 0 until EXPLAIN_ROUNDS) {
+                if (round > 0) ev(Agent.EXPLAINER, "पढ़ रहा हूँ और समझ जोड़ रहा हूँ… (चक्कर ${round + 1}/$EXPLAIN_ROUNDS)")
+                val reply = aiAsk(Agent.EXPLAINER, Seven.Prompts.EXPLAINER, msgs)
+                val last = round == EXPLAIN_ROUNDS - 1
+                val terms = SevenPlus.RepoSearch.terms(reply)
+                val reads = Seven.planReads(reply)
+                if (!last && terms != null) {
+                    ev(Agent.EXPLAINER, "रिपो में खोज रहा हूँ: " + terms.joinToString())
+                    msgs.add("model" to reply); msgs.add("user" to SevenPlus.RepoSearch.search(ws, terms) + "\nSearch/read more, or give the full Hindi explanation now (plain text).")
+                    continue
+                }
+                if (!last && reads != null) {
+                    ev(Agent.EXPLAINER, "पढ़ रहा हूँ: " + reads.joinToString())
+                    msgs.add("model" to reply); msgs.add("user" to readFiles(reads) + "\nSearch/read more, or give the full Hindi explanation now (plain text).")
+                    continue
+                }
+                val t = reply.trim()
+                if (terms == null && reads == null && t.length >= 20) { ev(Agent.EXPLAINER, "समझाना तैयार"); return t }
+                msgs.add("model" to reply); msgs.add("user" to "Now give the complete explanation in simple Hindi as plain text with the headings (no JSON).")
+            }
+            null
+        } catch (e: Exception) {
+            if (e is kotlinx.coroutines.CancellationException) throw e
+            ev(Agent.EXPLAINER, "⚠ गहराई से नहीं समझा पाया — मैनेजर का छोटा जवाब दिखा रहा हूँ"); null
+        }
     }
 
     /** प्रॉम्प्ट इंजीनियर पहले फ़ोटो/वीडियो ध्यान से देखे - जो दिखा वह लिखकर पूरी टीम को (जिनका मॉडल फ़ोटो न देख सके उन्हें भी) */
@@ -600,6 +654,8 @@ class SevenTeam(
                 val probs = SevenDebug.verify(o, seen, resolve) { p -> w[p]?.lines()?.size }.toMutableList()
                 // v3.89: एरर वाली फ़ाइल को इलाज छूता ही नहीं? एक बार टोको
                 if (!coverAsked) ErrorCover.miss(o, sites, resolve)?.let { probs.add(it); coverAsked = true }
+                // v5.1: बताई लाइन का "quote" असली फ़ाइल से मिलाओ
+                if (probs.isEmpty()) QuoteCheck.problem(o, resolve) { p -> w[p] }?.let { probs.add(it) }
                 if (probs.isNotEmpty() && rejected < SevenDebug.VERIFY_ROUNDS && left > FORCE_ROUNDS) {
                     rejected++
                     ev(Agent.DEBUGGER, "बताई जड़ पक्की नहीं — कोड पढ़कर दोबारा जाँच रहा हूँ:\n" + probs.joinToString("\n") { "• ${it.take(200)}" })

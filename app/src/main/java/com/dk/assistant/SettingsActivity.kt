@@ -242,6 +242,11 @@ class SettingsActivity : AppCompatActivity() {
 
     /** App ka "console": har galti/chetavni, mic ke aankde, Live connection, deri (ms) */
     private fun secDebug() {
+        // v5.1: DK Inspector - Debug के तीनों हिस्से पढ़कर गड़बड़ी, वजह, असर, हल और bug रिपोर्ट (कोड कभी नहीं बदलता)
+        card("DK Inspector", "Run Deep Inspection • Ask DK Inspector • Bug Reports • हर घंटे अपने-आप जाँच") { box ->
+            try { com.dk.assistant.inspector.InspectorCard.build(this, box, dp, { t, f -> button(t, f) }, { b, vs -> row(b, *vs) }) }
+            catch (_: Throwable) { hint(box, "DK Inspector अभी नहीं खुल पाया - बाकी Debug हिस्से नीचे वैसे ही हैं") }
+        }
         card("Gemini Live हाल", "माइक से भेजे टुकड़े, गिरे टुकड़े, दोबारा जुड़ना, देरी") { box ->
             val st = TextView(this).apply { textSize = 13f; setTextColor(0xFFFFFFFF.toInt()); setPadding((4 * dp).toInt(), (6 * dp).toInt(), 0, 0) }
             box.addView(st)

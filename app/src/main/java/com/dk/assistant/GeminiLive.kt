@@ -1448,6 +1448,20 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
                         .put("on", JSONObject().put("type", "BOOLEAN").put("description", "true = turn ON, false = turn OFF (only for set)"))
                         .put("confirmed", JSONObject().put("type", "BOOLEAN").put("description", "true ONLY after you asked 'सर, क्या सच में...?' and he clearly said yes")))
                     .put("required", JSONArray().put("action"))))
+            // v5.1: DK Inspector - app की अपनी जाँच (सिर्फ़ पढ़ना). Coding Agent को रिपोर्ट सिर्फ़ मालिक की साफ़ हाँ के बाद
+            .put(JSONObject().put("name", "dk_inspector")
+                .put("description", "DK Inspector - DK's own debugger that reads the real Debug data (Gemini Live status, latency breakdown, logs). " +
+                    "action=list: found bug reports with id/severity/status. action=report: the full report of one id (explain it in simple Hindi; 'suspected' causes stay 'शायद'). " +
+                    "action=ask: answer the owner's question about bugs/slowness/mic/connection from real data (question = his words). action=inspect: run a deep inspection now. " +
+                    "action=send_to_coder: give the report to the Coding Agent - ONLY after the owner clearly says yes (e.g. 'ठीक है, Coding Agent को दे दो'), then approved=true. " +
+                    "Never claim a bug is fixed unless the report status is Resolved. Use it when the owner asks what is wrong with DK, why DK is slow/not hearing, or about a DKI- report.")
+                .put("parameters", JSONObject().put("type", "OBJECT")
+                    .put("properties", JSONObject()
+                        .put("action", JSONObject().put("type", "STRING").put("enum", JSONArray().put("list").put("report").put("ask").put("inspect").put("send_to_coder")))
+                        .put("id", JSONObject().put("type", "STRING").put("description", "Bug ID like DKI-1A2B3C (report / send_to_coder)"))
+                        .put("question", JSONObject().put("type", "STRING").put("description", "The owner's question in his words (ask)"))
+                        .put("approved", JSONObject().put("type", "BOOLEAN").put("description", "true ONLY after the owner clearly said yes to giving it to the Coding Agent")))
+                    .put("required", JSONArray().put("action"))))
             .put(JSONObject().put("name", "social_media_task")
                 .put("description", "Post on Instagram or Facebook by driving the real app on the phone. Instagram: post_photo, post_video, post_reel, post_story. Facebook: post_text, post_photo, post_video, post_story. Media can ONLY be a photo/video the user shared to DK (Gallery -> Share -> DK); use media='latest_shared'. mode='draft' fills everything but never posts. Posting is irreversible: you will get a SYSTEM NOTE with status waiting_confirmation - ask the user that exact question and only after a clear yes call social_media_task_control(command=confirm). DK never fills logins, passwords, CAPTCHAs or 2-step codes - it waits for the user. Report the final status truthfully (submitted_unverified = not confirmed).")
                 .put("parameters", JSONObject().put("type", "OBJECT")
@@ -2249,6 +2263,7 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
                     "story_task", "build_website", "computer_task", "coding_task" -> agentTool(name, args)
                     "teacher_mode" -> LiveReport.teacher(svc, args.optBoolean("on", true))
                     "dk_settings" -> DkSettingsApply.run(svc, args)
+                    "dk_inspector" -> com.dk.assistant.inspector.Inspector.liveTool(svc, args)
                     "remember_fact" -> if (Memory.addFact(svc, args.optString("fact"))) "saved" else "NOT saved: private info (passwords, PIN, OTP, bank/card/Aadhaar numbers) is never stored. If the user asked you to remember it, tell them gently you do not save such private details." 
                     "recall_conversation" -> {
                         val a = LocalMemory.answer(svc, args.optString("question").ifBlank { DKState.lastUser.trimEnd('…') })

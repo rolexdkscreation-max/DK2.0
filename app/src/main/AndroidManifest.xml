@@ -210,6 +210,11 @@
             android:name=".LocalMemoryReceiver"
             android:exported="false" />
 
+        <!-- v5.1: DK Inspector - लगभग हर घंटे Debug डेटा की जाँच (सिर्फ़ पढ़ना) -->
+        <receiver
+            android:name=".inspector.InspectorReceiver"
+            android:exported="false" />
+
         <!-- फ़ोन restart / ऐप update के बाद DK कंप्यूटर के तय काम फिर से लगाना -->
         <receiver
             android:name=".ComputerBoot"

@@ -15,7 +15,7 @@ object SevenDebug {
     /** एक बार में एक हिस्से की ज़्यादा से ज़्यादा लाइनें */
     const val RANGE_MAX_LINES = 600
     /** जड़ की जाँच फ़ेल होने पर डिबगर को कितनी बार वापस भेजें */
-    const val VERIFY_ROUNDS = 2
+    const val VERIFY_ROUNDS = 3   // v5.1: 2 → 3 (मालिक: डिबगर कभी-कभी चूकता था)
 
     /** 11-एजेंट मोड में डिबगर के prompt में जुड़ने वाले नियम */
     const val EXTRA = """
@@ -30,7 +30,9 @@ HOW TO FIND THE ROOT CAUSE (follow this, do not guess):
 8) WHOLE-TASK FOOTPRINT (if given) lists every file this task changed compared to the base branch - including earlier pushes and earlier runs. Files marked "!!" (DELETED / MOSTLY EMPTIED) come first: if the errors are "Unresolved reference" / "cannot find symbol" for names that lived in such a file, THAT deletion is the root cause. The fix is to restore that file exactly from the base branch - NEVER re-create its pieces one by one.
 9) Read ALL error lines of the log, not just the first. Group them by file and by missing name; one real cause usually explains many errors. Your root cause must explain every group, otherwise keep looking.
 10) Check the DIFF line by line: an inverted condition ("!" added/removed, == vs !=, < vs >=), a dropped else/return/call, or a removed name that is still used elsewhere (search it) is a bug unless the task asks for it. "!! CONDITION FLIPPED" lines were found automatically.
-FINAL JSON: {"kind":"bug|missing","root_cause":"path:line - what is wrong / missing and WHY","bug":"Hindi: बग क्या था","where":"path:line","fix":"minimal fix in English: which file, what change","files":["paths to change"]}"""
+11) QUOTE (v5.1): add "quote" = the exact code text (copied from the numbered lines you READ, without the "123| " prefix) of the line in "where". It is compared with the real file around that line; a quote that is not there means you are describing code that does not exist - it is sent back.
+12) Before the final JSON, check yourself: does this cause explain EVERY symptom / error line? Could another place cause the same? If you are not sure, read more instead of guessing.
+FINAL JSON: {"kind":"bug|missing","root_cause":"path:line - what is wrong / missing and WHY","bug":"Hindi: बग क्या था","where":"path:line","quote":"exact code on that line","fix":"minimal fix in English: which file, what change","files":["paths to change"]}"""
 
     /** 11-एजेंट मोड में प्लानर के prompt में जुड़ने वाले नियम (बड़ी फ़ाइलें) */
     const val PLANNER_EXTRA = """
@@ -211,6 +213,36 @@ In a big file the anchor must be text from a part you have READ (not only a sear
         if (bad.isNotEmpty() && !fix.contains("create", true) && !fix.contains("new file", true))
             out.add("These \"files\" do not exist: ${bad.joinToString()} - use real paths (or say in \"fix\" that a new file must be created)")
         return out
+    }
+}
+
+/**
+ * v5.1 (मालिक: "डिबगर कभी-कभी चूक कर रहा है"): डिबगर ने "where" की लाइन का जो कोड "quote" किया,
+ * वह असली फ़ाइल में उस लाइन के ±[NEAR] लाइनों में है? न हो = वह ऐसा कोड बता रहा है जो वहाँ है ही नहीं।
+ * quote न दिया हो तो रोकता नहीं (पुराने जवाब चलते रहें) - सिर्फ़ गलत quote पर वापस भेजता है।
+ */
+object QuoteCheck {
+    const val NEAR = 3
+    private fun norm(s: String) = s.replace(Regex("^\\s*\\d+\\|\\s?"), "").replace(Regex("\\s+"), " ").trim()
+
+    /** @return समस्या (डिबगर को लौटाने लायक) या null = ठीक / जाँचने लायक नहीं */
+    fun problem(o: JSONObject, resolve: (String) -> String?, text: (String) -> String?): String? {
+        val quote = norm(o.optString("quote"))
+        if (quote.length < 6) return null
+        val loc = SevenDebug.location(o.optString("where")) ?: SevenDebug.location(o.optString("root_cause")) ?: return null
+        val line = loc.second ?: return null
+        val path = resolve(loc.first) ?: loc.first
+        val src = text(path) ?: return null
+        val lines = src.lines()
+        if (line < 1 || line > lines.size) return null   // यह गलती verify() पहले ही बताता है
+        val from = maxOf(1, line - NEAR); val to = minOf(lines.size, line + NEAR)
+        val near = (from..to).map { norm(lines[it - 1]) }
+        val q = quote.removeSuffix("…").removeSuffix("...").trim()
+        if (near.any { it.isNotEmpty() && (it.contains(q) || q.contains(it) && it.length >= 12) }) return null
+        if (norm(lines.subList(from - 1, to).joinToString(" ")).contains(q)) return null
+        return "QUOTE NOT FOUND: \"${quote.take(120)}\" is not on $path:$line (±$NEAR lines). Lines $from-$to really are:\n" +
+            (from..to).joinToString("\n") { "$it| " + lines[it - 1].take(160) } +
+            "\nRe-read the code and give the real line + quote (or a different root cause)."
     }
 }
 
