@@ -9,6 +9,9 @@
 # but keep their names stable for logs and Settings deep links.
 -keep class com.dk.assistant.DKAccessibilityService
 -keep class com.dk.assistant.DKNotifListener
+-keep class com.dk.assistant.DKAssistActivity
+-keep class com.dk.assistant.DKVoiceInteractionService
+-keep class com.dk.assistant.DKVoiceInteractionSessionService
 
 # org.json is part of Android; OkHttp and coroutines ship their own consumer rules.
 -dontwarn org.conscrypt.**
