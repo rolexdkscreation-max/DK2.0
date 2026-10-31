@@ -59,9 +59,9 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
         const val OUT_RATE = 24000
         private const val CHUNK_MS = 40
         /** Server VAD: itni der chup = baat khatam (Google: 500-800ms; kam = baat beech me kat-ti hai) */
-        const val SERVER_SILENCE_MS = 800   // v3.46: 550 -> 800. छोटी बात पर फ़ोन खुद 550ms पर "खत्म" भेजता है; यह सिर्फ़ तब जब वाक्य अधूरा लगे ("और…", "तो…")
+        const val SERVER_SILENCE_MS = 500   // v5.1 (मालिक: "बोलना बंद होते ही जवाब"): 800 -> 500 (Google की सलाह 500-800 का सबसे तेज़). पहले v3.46: 550 -> 800. छोटी बात पर फ़ोन खुद 550ms पर "खत्म" भेजता है; यह सिर्फ़ तब जब वाक्य अधूरा लगे ("और…", "तो…")
         /** Phone ka VAD: itni der chup = turant audioStreamEnd (server ka intezaar nahi) */
-        const val CLIENT_END_MS = 550
+        const val CLIENT_END_MS = 500     // v5.1: 550 -> 500 (Google: फ़ोन का VAD कम से कम 500ms; पूरे वाक्य पर TurnEnd.EARLY_END_MS पहले जैसा)
         /** v3.5+: HOLD - caption इतनी देर न बदले + आवाज़ शांत = यूज़र का अगला सवाल पूरा */
         const val HOLD_END_MS = 1100L
         const val HOLD_QUIET_MS = 700L
@@ -142,15 +142,10 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
      * Live nahi chal sakta (key galat / limit / model nahi) - purane tareeke par jao.
      * recoverable = network / mic thodi der busy jaisi dikkat: thodi der baad Live dobara (10 min ka lamba ruk nahi)
      */
-    class Fatal(msg: String, val recoverable: Boolean = false) : Exception(msg)
+    class Fatal(msg: String, val recoverable: Boolean = false, val light: Boolean = false) : Exception(msg)
 
-    private val http = OkHttpClient.Builder()
-        .connectTimeout(10, TimeUnit.SECONDS)
-        .readTimeout(30, TimeUnit.SECONDS)
-        .callTimeout(60, TimeUnit.SECONDS)
-        .pingInterval(5, TimeUnit.SECONDS)          // कनेक्शन को लगातार zinda रखने के लिए
-        .retryOnConnectionFailure(true)
-        .build()
+    /** v5.1: एक ही साझा client (connection pool) - स्क्रीन चालू होते ही LiveNet इसका host पहले से गरम रखता है */
+    private val http: OkHttpClient = LiveNet.http
 
     private fun reconnect() {
         svc.scope.launch(kotlinx.coroutines.Dispatchers.IO) {
@@ -538,7 +533,7 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
 
     /** Garam (standby) connection: wake word ke baad chup hone par band nahi kiya */
     private class Parked(val ws: WebSocket, val closed: CompletableDeferred<Pair<Int, String>>, val model: String, val at: Long,
-                         val split: Boolean = false, val text: Boolean = false, val liveVer: Int = -1)
+                         val split: Boolean = false, val text: Boolean = false, val liveVer: Int = -1, val keyIdx: Int = -1)
     @Volatile private var parked: Parked? = null
     @Volatile private var curClosed: CompletableDeferred<Pair<Int, String>>? = null
 
@@ -568,6 +563,7 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
 
     fun stop(why: String = "user stop") {
         stopped = true
+        curRace?.let { cancelRace(it, why) }      // v5.1: चलती दौड़ (पीछे वाली भी) बंद
         closeWs(ws, why)
         parked?.let { parked = null; closeWs(it.ws, why) }
     }
@@ -981,37 +977,56 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
             try {
                 while (!stopped && isActive) {
                     if (svc.callTakesMic()) return@coroutineScope      // v3.40: घंटी पर नहीं, call उठने पर ही
-                    model = models[mi]
+                    // v5.1: standby वाला गर्म connection (wake word / हल्के मोड की पीछे की दौड़) किसी भी मॉडल/key का हो - वही लो
+                    val pk = parked; parked = null
+                    val pkOk = pk != null && !pk.closed.isCompleted && System.currentTimeMillis() - pk.at < PARK_MS
+                    model = if (pkOk) pk!!.model else models[mi]
+                    if (pkOk && pk!!.keyIdx in keys.indices) { ki = pk.keyIdx; keyIdx = ki; key = keys[ki] }
                     planSplit(model)                 // v3.68: इस connection में कौन बोलेगा (बँटवारा / सीधी आवाज़)
                     // v3.8: wake word ke baad garam rakha connection abhi zinda hai -> naya mat banao (0 ms)
-                    val pk = parked; parked = null
-                    val reuse = pk != null && !pk.closed.isCompleted && pk.model == model &&
-                        System.currentTimeMillis() - pk.at < PARK_MS && pk.split == connSplit && pk.text == connText &&
+                    val reuse = pkOk && pk!!.model == model && pk.split == connSplit && pk.text == connText &&
                         pk.liveVer == connLiveVer   // v3.80: बीच में आवाज़/मॉडल बदला = पुराना गर्म connection नहीं
                     if (pk != null && !reuse) closeWs(pk.ws, "standby purana")
-                    val closed = if (reuse) pk!!.closed else CompletableDeferred()
-                    curClosed = closed
+                    val closed: CompletableDeferred<Pair<Int, String>>
                     val t0 = System.currentTimeMillis()
                     if (reuse) {
-                        ws = pk!!.ws; warmReuses++
-                        synchronized(sendLock) { ready = true; flushPending() }
-                        log("गर्म connection फिर से [$model] - जुड़ने में 0 ms (${(t0 - pk.at) / 1000}s से standby में था)")
+                        closed = pk!!.closed; curClosed = closed
+                        ws = pk.ws; warmReuses++; connResumed = false
+                        synchronized(sendLock) { sendContext(ws); ready = true; flushPending() }
+                        log("गर्म connection फिर से [$model • key #${keyIdx + 1}] - जुड़ने में 0 ms (${(t0 - pk.at) / 1000}s से standby में था)")
+                        DKState.setLink("Live • $model • key #${keyIdx + 1} • 0 ms")
                         if (firstText != null) openerText = null; sendFirstText(); sendResend(); sendOpener()
                     } else {
-                    val setup = CompletableDeferred<Unit>()
-                    connect(key, model, closed, setup)
-                    // v4.7: setup आम तौर पर ~1s; 12s इंतज़ार = टूटे connection पर बहुत देर. अब 6s, फिर तुरंत दोबारा
-                    val ok = withTimeoutOrNull(6_000) {
-                        while (!setup.isCompleted && !closed.isCompleted) delay(25)
-                        setup.isCompleted
-                    } ?: false
+                    // v5.1 (मालिक): तय 6s/12s का इंतज़ार नहीं - (मॉडल × key) की दौड़. #1 अभी, 1.5s में setup न हो तो #2 साथ में,
+                    // फिर #3 (3 तक). हर जोड़ी का अपना इंतज़ार नेट के हिसाब से (4s - 22s); जो पहले जुड़े वही, बाकी तुरंत बंद.
+                    // 6s में कोई नहीं = धीमा नेट - हल्का मोड (दौड़ पीछे चलती रहती है; जीती तो standby में)
+                    ready = false
+                    val rc = startRace(keys, models, live = true, resumeId = if (handle != null) LiveRace.Combo(model, ki).id else null)
+                    withTimeoutOrNull(LiveRace.LIGHT_AFTER_MS) {
+                        while (!rc.winner.isCompleted && !rc.over) delay(25)
+                    }
+                    val att = synchronized(raceLock) { if (rc.winner.isCompleted) rc.won else { rc.handOff = false; null } }
+                    val ok = att != null
+                    val stillTrying = !rc.over
+                    closed = att?.closed ?: CompletableDeferred()
+                    curClosed = closed
+                    if (att != null) {
+                        ki = att.c.keyIdx; key = keys[ki]; mi = models.indexOf(model).coerceAtLeast(0)
+                        if (!att.resume) handle = null      // दूसरी जोड़ी जीती = नई बातचीत (उसके setup में handle नहीं गया था)
+                    } else {
+                        // नीचे वाली पुरानी जाँच उसी जोड़ी पर जिसकी गलती है (बनावट की गलती पहले)
+                        (rc.configCombo ?: rc.lastFailCombo)?.let { c -> model = c.model; if (c.keyIdx in keys.indices) { ki = c.keyIdx; keyIdx = ki; key = keys[ki] } }
+                    }
                     if (!ok) {
-                        val (code, reason) = if (closed.isCompleted) closed.await() else 0 to "setup का जवाब 12 सेकंड में नहीं आया"
-                        ws?.let { ourClose[it] = "setup fail" }
-                        try { ws?.cancel() } catch (_: Exception) {}
+                        val (code, reason) = rc.config ?: rc.lastFail ?: (0 to "setup का जवाब ${LiveRace.LIGHT_AFTER_MS / 1000} सेकंड में नहीं आया")
                         ready = false
-                        log("setup fail [$model] code=$code reason=$reason")
+                        log("setup fail [$model • key #${keyIdx + 1}] code=$code reason=$reason" + if (stillTrying) " - दौड़ पीछे से जारी" else "")
                         val r = reason.lowercase()
+                        // v5.1: 6s में कोई जोड़ी नहीं जुड़ी और बाकी अभी कोशिश में = धीमा नेट -> हल्का मोड (जो जीतेगी standby में रहेगी)
+                        if (!stopped && stillTrying && rc.config == null) {
+                            fails++
+                            throw Fatal("धीमा नेट - ${LiveRace.LIGHT_AFTER_MS / 1000}s में Live नहीं जुड़ा", recoverable = true, light = true)
+                        }
                         // dobara judte waqt purani baatcheet (resume handle) na chale to turant nayi baatcheet - fail mat gino
                         if (!stopped && handle != null && code != 401 && code != 403 && !r.contains("api key") && !r.contains("quota")) {
                             log("पुरानी बातचीत जारी नहीं हो पाई - नई बातचीत से जुड़ रहा हूँ")
@@ -1053,7 +1068,10 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
                         fails++
                         // मालिक: "न जुड़ पाए तो यूज़र को बोल दे" - 2 नाकाम कोशिशें (≈2s) = स्क्रीन पर बताओ (बोलकर: सेवा में, Live रुकने पर)
                         if (LiveConnectNotice.shouldTell(fails, svc.liveTroubleShown)) { svc.liveTroubleShown = true; DKState.reply(LiveConnectNotice.TROUBLE) }
-                        if (fails >= 4) throw Fatal("Gemini Live से जुड़ नहीं पाया: ${reason.take(80)}", recoverable = true)
+                        // v5.1: दौड़ में सारी जोड़ियाँ पहले ही आज़माई गईं (हर एक सिर्फ़ एक बार) - बनावट की गलती ठीक न हो पाई तो
+                        // वह जोड़ी भी 2 मिनट नहीं; दूसरी नाकाम दौड़ = हल्का मोड (बार-बार उसी पर नहीं)
+                        rc.configCombo?.let { health.comboFail(it, System.currentTimeMillis()); saveHealth() }
+                        if (fails >= 2 || stillTrying) throw Fatal("Gemini Live से जुड़ नहीं पाया: ${reason.take(80)}", recoverable = true, light = true)
                         delay(minOf(LiveRetry.FAST_MAX_MS, 500L shl fails))       // v4.7: 1s, 2s, 2s (पहले 8s तक)
                         continue
                     }
@@ -1062,7 +1080,8 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
                     // पहले "जुड़ नहीं पा रही" बताया था = अब "फिर जुड़ गई, बोलिए" (स्क्रीन पर; माइक चालू है, इसलिए फ़ोन की आवाज़ नहीं)
                     if (svc.liveTroubleShown || svc.liveTroubleSpoken) { svc.liveTroubleShown = false; svc.liveTroubleSpoken = false; DKState.reply(LiveConnectNotice.BACK) }
                     val upAt = System.currentTimeMillis()
-                    log("जुड़ गया [$model] ${System.currentTimeMillis() - t0} ms" + if (handle != null) " (पुरानी बातचीत जारी)" else "")
+                    log("जुड़ गया [$model • key #${keyIdx + 1}] ${System.currentTimeMillis() - t0} ms" + if (handle != null) " (पुरानी बातचीत जारी)" else "")
+                    DKState.setLink("Live • $model • key #${keyIdx + 1} • ${System.currentTimeMillis() - t0} ms")
                     Prefs.edit(svc) { putString("live_model", model) }
                     Cooldown.clear(LiveKeys.cooldownName(keyIdx, model))
                     if (!turnActive && !isPlaying()) DKState.set(Mode.LISTENING)
@@ -1236,7 +1255,7 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
     /** Wake word wala Live chup hone par: connection band nahi, 5 min standby (agli baar judne ki deri = 0) */
     private fun park(w: WebSocket, c: CompletableDeferred<Pair<Int, String>>) {
         try { w.tx("{\"realtimeInput\":{\"audioStreamEnd\":true}}") } catch (_: Exception) {}     // atki awaaz flush
-        val p = Parked(w, c, model, System.currentTimeMillis(), connSplit, connText, connLiveVer)
+        val p = Parked(w, c, model, System.currentTimeMillis(), connSplit, connText, connLiveVer, keyIdx)
         parked = p
         log("connection बंद नहीं किया - ${PARK_MS / 60_000} मिनट standby (अगली बार तुरंत जुड़ेगा)")
         svc.scope.launch {
@@ -1334,7 +1353,7 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
     /** Network se Live models ki list (aur cache memory + phone dono me) */
     private fun fetchModels(key: String): List<String> {
         val found = mutableListOf<String>()
-        val c = OkHttpClient.Builder().callTimeout(8, TimeUnit.SECONDS).build()
+        val c = http.newBuilder().callTimeout(8, TimeUnit.SECONDS).build()   // v5.1: वही साझा pool
         val req = Request.Builder().url("https://generativelanguage.googleapis.com/v1beta/models?pageSize=1000")
             .header("x-goog-api-key", key).build()
         c.newCall(req).execute().use { r ->
@@ -1382,7 +1401,8 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
         return ok.ifEmpty { all }
     }
 
-    private fun setupJson(m: String): String {
+    /** v5.1: txt = यह जोड़ी TEXT माँगे (दौड़ में हर मॉडल का अपना); resume = पुरानी बातचीत का handle भेजो (सिर्फ़ उसी जोड़ी पर) */
+    private fun setupJson(m: String, txt: Boolean = txt, resume: Boolean = true): String {
         NetProbe.refresh(svc)      // v3.88: धीमा नेटवर्क = छोटे जवाब (अपने-आप, कोई सेटिंग नहीं)
         val brain = BrainManager(svc)
         val ex = extrasFor(m)
@@ -1549,17 +1569,17 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
             .put("generationConfig", JSONObject()
                 // v3.68: बँटवारा - Live सिर्फ़ जवाब लिखे (TEXT), बोलना अलग आवाज़ इंजन (voice/engine). मॉडल TEXT न ले तो
                 // AUDIO + transcript (Live की आवाज़ बजती नहीं, उसका लिखा text इंजन बोलता है)
-                .put("responseModalities", JSONArray().put(if (connText) "TEXT" else "AUDIO"))
+                .put("responseModalities", JSONArray().put(if (txt) "TEXT" else "AUDIO"))
                 .apply {
                     // v3.9: 2.5 native-audio pehle "sochta" hai (der). Baatcheet me band - mushkil sawaal deep_think tool se.
                     // (3.1 ka default "minimal" hai; 3.8-live me thinking setting dena mana hai)
                     if (thinkOff && m.startsWith("gemini-2.5")) put("thinkingConfig", JSONObject().put("thinkingBudget", 0))
                 }
-                .apply { if (ex.affective && !connText) put("enableAffectiveDialog", true) }
-                .apply { if (!connText) put("speechConfig", JSONObject().put("voiceConfig", JSONObject()
+                .apply { if (ex.affective && !txt) put("enableAffectiveDialog", true) }
+                .apply { if (!txt) put("speechConfig", JSONObject().put("voiceConfig", JSONObject()
                     .put("prebuiltVoiceConfig", JSONObject().put("voiceName", ex.voice)))
                     .apply { if (ex.lang) put("languageCode", LiveVoice.LANGUAGE) }) })
-            .put("systemInstruction", JSONObject().put("parts", JSONArray().put(JSONObject().put("text", Lang.sys(brain.liveSystemPrompt()) + FAST_START + NetSpeed.promptNote() + (if (connSplit) SPLIT_NOTE + (if (connText) MOOD_TAG_NOTE else "") else
+            .put("systemInstruction", JSONObject().put("parts", JSONArray().put(JSONObject().put("text", Lang.sys(brain.liveSystemPrompt(withMemory = false)) + FAST_START + NetSpeed.promptNote() + (if (connSplit) SPLIT_NOTE + (if (txt) MOOD_TAG_NOTE else "") else
                 com.dk.assistant.voice.engine.LiveNativeEngine.styleNote(com.dk.assistant.voice.engine.LiveNativeEngine.style(svc).ifBlank { CalmPersona.VOICE_STYLE }))))))
             .put("tools", tools)
             .put("realtimeInputConfig", JSONObject()
@@ -1577,10 +1597,255 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
                     .put("silenceDurationMs", SERVER_SILENCE_MS))
                 .put("activityHandling", "START_OF_ACTIVITY_INTERRUPTS"))
             .put("inputAudioTranscription", JSONObject())
-            .apply { if (!connText) put("outputAudioTranscription", JSONObject()) }
-            .put("sessionResumption", if (handle != null) JSONObject().put("handle", handle) else JSONObject())
+            .apply { if (!txt) put("outputAudioTranscription", JSONObject()) }
+            .put("sessionResumption", if (resume && handle != null) JSONObject().put("handle", handle) else JSONObject())
             .put("contextWindowCompression", JSONObject().put("slidingWindow", JSONObject()))
         return JSONObject().put("setup", setup).toString()
+    }
+
+    // ================================================================ v5.1: (मॉडल × key) की दौड़
+    // मालिक: "DK लाइव 1-2 सेकंड में जुड़े; धीमे नेट / गलत key / मॉडल बंद पर भी". नियम LiveRace में (JVM test).
+    private val raceSp by lazy { svc.getSharedPreferences("dk_live_race", android.content.Context.MODE_PRIVATE) }
+    private val health: LiveRace.Health by lazy { LiveRace.Health.decode(try { raceSp.getString("h", "") } catch (_: Exception) { "" }) }
+    private fun saveHealth() { try { raceSp.edit().putString("h", health.encode()).apply() } catch (_: Exception) {} }
+    private val raceLock = Any()
+
+    /** दौड़ की एक जोड़ी (अपना WebSocket, अपना closed/setup) - key सिर्फ़ URL में, log में कभी नहीं */
+    private inner class Attempt(val c: LiveRace.Combo, val key: String, val text: Boolean, val resume: Boolean) {
+        val closed = CompletableDeferred<Pair<Int, String>>()
+        val setup = CompletableDeferred<Unit>()
+        val t0 = System.currentTimeMillis()
+        @Volatile var w: WebSocket? = null
+        @Volatile var sentAt = 0L
+        @Volatile var won = false
+        @Volatile var dead = false
+    }
+
+    private inner class Race(val live: Boolean, val keyCount: Int) {
+        val winner = CompletableDeferred<Attempt>()
+        /** जीतने वाली जोड़ी (winner के साथ ही, raceLock में) */
+        @Volatile var won: Attempt? = null
+        /** true = जीतने वाला सीधे Live बने; false (run() ने इंतज़ार छोड़ा / पीछे की दौड़) = standby में रखो */
+        @Volatile var handOff = live
+        @Volatile var over = false
+        @Volatile var cancelled = false
+        @Volatile var config: Pair<Int, String>? = null
+        @Volatile var configCombo: LiveRace.Combo? = null
+        @Volatile var lastFail: Pair<Int, String>? = null
+        @Volatile var lastFailCombo: LiveRace.Combo? = null
+        val atts = java.util.concurrent.CopyOnWriteArrayList<Attempt>()
+    }
+    @Volatile private var curRace: Race? = null
+    @Volatile private var lastBgRaceAt = 0L
+    /** इस connection पर पुरानी बातचीत (handle) चली = याद दोबारा नहीं भेजनी */
+    @Volatile private var connResumed = false
+    private val ctxSent = java.util.Collections.newSetFromMap(java.util.WeakHashMap<WebSocket, Boolean>())
+
+    /** v5.1: पीछे की दौड़ से जीता (या wake word वाला) connection standby में तैयार */
+    fun warmReady(): Boolean = parked?.let { !it.closed.isCompleted && System.currentTimeMillis() - it.at < PARK_MS } == true
+    fun raceBusy(): Boolean = curRace?.let { !it.over } == true
+    /** नेट वापस आया: नेट की वजह से रुकी जोड़ियाँ फिर (गलत key वाली नहीं) + पीछे की दौड़ तुरंत */
+    fun netBack() { health.clearComboFails(); saveHealth(); lastBgRaceAt = 0L }
+
+    /** बँटवारे में यह मॉडल TEXT लेता है? (planSplit जैसा, पर हर मॉडल का अपना) */
+    private fun textFor(m: String): Boolean =
+        connSplit && !com.dk.assistant.voice.engine.VoiceEngines.sp(svc).getBoolean("text_off|$m", false)
+
+    private fun startRace(keys: List<String>, models: List<String>, live: Boolean, resumeId: String?): Race {
+        curRace?.let { if (!it.over) cancelRace(it, "नई दौड़") }
+        val r = Race(live, keys.size)
+        curRace = r
+        val now = System.currentTimeMillis()
+        val queue = health.order(models, keys.size, now) { Cooldown.blocked(LiveKeys.cooldownName(it.keyIdx, it.model)) }.toMutableList()
+        val tmo = LiveRace.timeoutMs(health.recentTimes())
+        log("दौड़${if (live) "" else " (पीछे से, माइक नहीं)"}: ${queue.size} जोड़ियाँ, हर एक का इंतज़ार $tmo ms (हाल के नाप: ${health.recentTimes().joinToString()}) • " +
+            queue.take(4).joinToString { it.label })
+        if (queue.isEmpty()) {
+            r.lastFail = 0 to "सारी keys/मॉडल अभी रुके हुए (गलत key / limit / अभी-अभी नाकाम)"
+            r.over = true
+            return r
+        }
+        svc.scope.launch(Dispatchers.IO) {
+            val inFlight = ArrayList<Attempt>()
+            var lastLaunch = 0L
+            try {
+                while (!r.winner.isCompleted && !r.cancelled) {
+                    val t = System.currentTimeMillis()
+                    for (a in inFlight.toList()) {
+                        if (a.won) continue
+                        if (a.closed.isCompleted) {
+                            inFlight.remove(a)
+                            val (code, reason) = a.closed.await()
+                            attemptFailed(r, a, code, reason, queue); lastLaunch = 0L      // नाकाम = अगली तुरंत
+                        } else if (t - a.t0 > tmo) {
+                            inFlight.remove(a); killAttempt(a, "setup timeout")
+                            health.comboFail(a.c, t); saveHealth()
+                            r.lastFail = 0 to "setup का जवाब ${tmo / 1000} सेकंड में नहीं आया"; r.lastFailCombo = a.c
+                            log("दौड़: [${a.c.label}] ${t - a.t0} ms में setup नहीं - यह जोड़ी 2 मिनट नहीं, अगली तुरंत")
+                            lastLaunch = 0L
+                        }
+                    }
+                    if (r.winner.isCompleted || r.cancelled) break
+                    if (LiveRace.shouldLaunch(inFlight.size, queue.size, t, lastLaunch)) {
+                        val c = queue.removeAt(0)
+                        val a = Attempt(c, keys[c.keyIdx], textFor(c.model), resume = c.id == resumeId)
+                        inFlight.add(a); r.atts.add(a); lastLaunch = t
+                        log("जुड़ रहा हूँ: [${c.label}]" + (if (inFlight.size > 1) " (साथ में ${inFlight.size - 1} और चल रही)" else "") + if (a.resume) " (पुरानी बातचीत)" else "")
+                        if (r.live) DKState.setLink("जुड़ रहा है… ${c.label}")
+                        openAttempt(r, a)
+                    }
+                    if (inFlight.isEmpty() && queue.isEmpty()) break
+                    delay(25)
+                }
+            } catch (e: kotlinx.coroutines.CancellationException) { throw e
+            } catch (e: Exception) { log("दौड़ की गलती: ${e.javaClass.simpleName} ${e.message}")
+            } finally {
+                r.over = true
+                if (!r.winner.isCompleted) inFlight.forEach { killAttempt(it, if (r.cancelled) "दौड़ रोकी" else "दौड़ खत्म") }
+                if (!r.winner.isCompleted && !r.cancelled) log("दौड़ खत्म - कोई जोड़ी नहीं जुड़ी (${r.lastFail?.second?.take(80) ?: "-"})")
+            }
+        }
+        return r
+    }
+
+    private fun cancelRace(r: Race, why: String) {
+        synchronized(raceLock) { r.cancelled = true; r.handOff = false }
+        r.atts.forEach { if (!it.won) killAttempt(it, why) }
+    }
+
+    private fun killAttempt(a: Attempt, why: String) {
+        a.dead = true
+        a.w?.let { ourClose[it] = why; try { it.cancel() } catch (_: Exception) {} }
+    }
+
+    private fun attemptFailed(r: Race, a: Attempt, code: Int, reason: String, queue: MutableList<LiveRace.Combo>) {
+        val now = System.currentTimeMillis(); val ms = now - a.t0
+        r.lastFail = code to reason; r.lastFailCombo = a.c
+        when (LiveRace.classify(code, reason)) {
+            LiveRace.Fail.KEY -> {
+                health.keyBad(a.c.keyIdx, now)
+                queue.removeAll { it.keyIdx == a.c.keyIdx }
+                log("दौड़: [${a.c.label}] $ms ms - key #${a.c.keyIdx + 1} नहीं चली (code=$code${if (LiveRace.isQuota(code, reason)) ", limit" else ""}) - 10 मिनट तक यह key नहीं, अगली तुरंत")
+            }
+            LiveRace.Fail.MODEL -> {
+                for (k in 0 until r.keyCount) health.comboFail(LiveRace.Combo(a.c.model, k), now)
+                queue.removeAll { it.model == a.c.model }
+                log("दौड़: [${a.c.label}] $ms ms - यह मॉडल नहीं मिला/नहीं चला (code=$code) - 2 मिनट तक नहीं, अगला तुरंत")
+            }
+            LiveRace.Fail.CONFIG -> {
+                if (r.config == null) { r.config = code to reason; r.configCombo = a.c }
+                log("दौड़: [${a.c.label}] $ms ms - setup की बनावट नहीं ली (code=$code ${reason.take(80)}) - ठीक करके फिर")
+            }
+            LiveRace.Fail.NET -> {
+                health.comboFail(a.c, now)
+                log("दौड़: [${a.c.label}] $ms ms - connection की गलती (code=$code ${reason.take(80)}) - यह जोड़ी 2 मिनट नहीं, अगली तुरंत")
+            }
+        }
+        saveHealth()
+    }
+
+    private fun openAttempt(r: Race, a: Attempt) {
+        val req = Request.Builder().url("$URL?key=${a.key}").build()
+        a.w = http.newWebSocket(req, object : WebSocketListener() {
+            override fun onOpen(webSocket: WebSocket, response: Response) {
+                a.sentAt = System.currentTimeMillis()
+                if (a.dead) return
+                if (!webSocket.tx(setupJson(a.c.model, a.text, a.resume))) a.closed.complete(0 to "setup नहीं भेज पाया")
+            }
+            override fun onMessage(webSocket: WebSocket, text: String) { onAttemptMsg(r, a, webSocket, text) }
+            override fun onMessage(webSocket: WebSocket, bytes: ByteString) { onAttemptMsg(r, a, webSocket, bytes.utf8()) }
+            override fun onClosing(webSocket: WebSocket, code: Int, reason: String) {
+                val ours = ourClose.remove(webSocket)
+                if (a.won || !a.dead) {
+                    if (ours != null) log("हमने बंद किया ($ours) code=$code")
+                    else log("server ने बंद किया [${a.c.label}] code=$code reason=${reason.ifBlank { "-" }}")
+                }
+                a.closed.complete(code to reason)
+                try { webSocket.close(1000, null) } catch (_: Exception) {}
+            }
+            override fun onClosed(webSocket: WebSocket, code: Int, reason: String) { ourClose.remove(webSocket); a.closed.complete(code to reason) }
+            override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
+                val body = try { response?.body?.string()?.take(200) } catch (_: Exception) { null }
+                val why = (t.javaClass.simpleName + ": " + (t.message ?: "")) + (body?.let { " | $it" } ?: "")
+                ourClose.remove(webSocket)
+                if (a.won || !a.dead) log("connection गलती [${a.c.label}]: http=${response?.code} $why")
+                a.closed.complete((response?.code ?: 0) to why)
+            }
+        })
+    }
+
+    private fun onAttemptMsg(r: Race, a: Attempt, w: WebSocket, text: String) {
+        if (a.won) { if (w === ws) onServer(text, a.setup); return }
+        if (a.dead || !text.contains("setupComplete")) return
+        val now = System.currentTimeMillis(); val ms = now - a.t0
+        var live = false
+        val first = synchronized(raceLock) {
+            if (r.winner.isCompleted || r.cancelled) false else {
+                a.won = true
+                if (r.handOff) {
+                    live = true
+                    // जीतने वाला अब Live: ws/मॉडल/key नंबर इसी के (बाकी जोड़ियाँ नीचे बंद)
+                    ws = w; model = a.c.model; keyIdx = a.c.keyIdx; connText = a.text; setupSentAt = a.sentAt
+                    connResumed = a.resume && handle != null
+                    wire.reset()
+                }
+                r.won = a; r.winner.complete(a); true
+            }
+        }
+        if (!first) { killAttempt(a, "दौड़ में दूसरा जीता"); return }
+        health.ok(a.c, ms, now); saveHealth()
+        Cooldown.clear(LiveKeys.cooldownName(a.c.keyIdx, a.c.model))
+        log("दौड़ जीती: [${a.c.label}] जुड़ने में $ms ms" + if (r.atts.size > 1) " (${r.atts.size} जोड़ियाँ आज़माईं)" else "")
+        r.atts.forEach { if (it !== a) killAttempt(it, "दौड़: दूसरा जीता") }
+        if (live) onServer(text, a.setup) else parkRaced(a, w)
+    }
+
+    /** पीछे की दौड़ जीती (या run() ने 6s बाद इंतज़ार छोड़ा था) - standby में रखो; हल्का मोड इसे देखकर Live पर लौटता है */
+    private fun parkRaced(a: Attempt, w: WebSocket) {
+        parked?.let { old -> closeWs(old.ws, "standby बदला") }
+        val p = Parked(w, a.closed, a.c.model, System.currentTimeMillis(), connSplit, a.text, connLiveVer, a.c.keyIdx)
+        parked = p
+        log("पीछे से Live तैयार [${a.c.label}] - standby में (DK चुप होते ही Live पर वापस)")
+        svc.scope.launch {
+            delay(PARK_MS)
+            if (parked === p) { parked = null; closeWs(p.ws, "standby khatam") }
+        }
+    }
+
+    /**
+     * v5.1: हल्के मोड में - बिना माइक, बिना आवाज़ भेजे, पीछे से Live की दौड़ (हर 8s में ज़्यादा से ज़्यादा एक).
+     * जीता connection standby में - DK चुप हो तब सेवा Live पर लौटती है.
+     */
+    fun backgroundRace(why: String): Boolean {
+        val now = System.currentTimeMillis()
+        if (raceBusy() || warmReady() || now - lastBgRaceAt < LiveRace.BACKGROUND_EVERY_MS) return false
+        lastBgRaceAt = now
+        svc.scope.launch(Dispatchers.IO) {
+            try {
+                val keys = Prefs.liveGeminiKeys(svc)
+                if (keys.isEmpty() || !NetProbe.online(svc)) return@launch
+                keyIdx = 0
+                val models = try { LiveModelPick.order(LiveModelPick.get(svc), discoverModels(keys[0])) } catch (_: Exception) { FALLBACK_MODELS }
+                planSplit(models.first())
+                log("हल्का मोड: Live पीछे से फिर आज़मा रहा हूँ ($why)")
+                startRace(keys, models, live = false, resumeId = null)
+            } catch (e: kotlinx.coroutines.CancellationException) { throw e
+            } catch (e: Exception) { log("पीछे की दौड़ नहीं चली: ${e.message}") }
+        }
+        return true
+    }
+
+    /** v5.1: याद/पिछली बातें setup के बाद (setup छोटा रहे). turnComplete=false = DK इस पर जवाब नहीं बनाता */
+    private fun sendContext(w: WebSocket?) {
+        if (w == null || connResumed) return
+        synchronized(ctxSent) { if (!ctxSent.add(w)) return }
+        val t = try { BrainManager(svc).liveMemoryContext() } catch (e: Exception) { log("याद नहीं बनी: ${e.message}"); "" }
+        if (t.isBlank()) return
+        val msg = JSONObject().put("clientContent", JSONObject()
+            .put("turns", JSONArray().put(JSONObject().put("role", "user")
+                .put("parts", JSONArray().put(JSONObject().put("text", LiveRace.contextNote(t))))))
+            .put("turnComplete", false)).toString()
+        if (w.tx(msg)) log("याद/पिछली बातें जुड़ने के बाद भेजीं (${t.length} अक्षर) - setup छोटा रहा")
     }
 
     private fun connect(key: String, m: String, closed: CompletableDeferred<Pair<Int, String>>, setup: CompletableDeferred<Unit>) {
@@ -1630,7 +1895,8 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
         if (o.has("setupComplete")) {
             if (setupSentAt > 0) { trace.rttMs = System.currentTimeMillis() - setupSentAt; log("setup का जवाब ${trace.rttMs} ms (network RTT + server)"); NetSpeed.onSetup(trace.rttMs) }
             // ready + purani (judte samay ki) awaaz ek saath, lock me: mic ka naya tukda purane se pehle na nikle
-            synchronized(sendLock) { ready = true; flushPending() }
+            // v5.1: पहले याद (छोटे setup के बाद), फिर जुड़ते समय की आवाज़ - फ़ोन ने जो 3s तक जमा की
+            synchronized(sendLock) { sendContext(ws); ready = true; flushPending() }
             setup.complete(Unit)
             if (firstText != null) openerText = null; sendFirstText(); sendResend(); sendOpener()
             // v3.7: पिछला जवाब सिर्फ़ लिखा गया था (आवाज़ नहीं बनी) - अब Live की अपनी आवाज़ में दोबारा
@@ -3377,15 +3643,28 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
         playThread = Thread {
             var speakingSet = false
             while (!Thread.currentThread().isInterrupted) {
-                val b = try { playQ.poll(100, TimeUnit.MILLISECONDS) } catch (_: InterruptedException) { break }
+                val b0 = try { playQ.poll(100, TimeUnit.MILLISECONDS) } catch (_: InterruptedException) { break }
                 val tr = track ?: break
-                if (b == null) {
+                if (b0 == null) {
                     if (speakingSet && !isPlaying()) {
                         speakingSet = false
                         if (!turnActive && DKState.mode == Mode.SPEAKING) idleMode()
                     }
                     continue
                 }
+                // v5.1: छोटा jitter buffer - जवाब के बीच नेट रुका और आवाज़ खत्म हो गई = ~250ms जमा करके फिर बजाओ
+                // (टूटी-टूटी आवाज़ नहीं). जवाब का पहला टुकड़ा कभी नहीं रुकता - शुरू में कोई देरी नहीं
+                val b = if (LiveRace.Jitter.underrun(turnPlayedBytes > 0, turnActive, System.currentTimeMillis(), playEnd)) {
+                    val g0 = gen; val st = System.currentTimeMillis()
+                    val parts = arrayListOf(b0); var ms = b0.size * 1000 / (OUT_RATE * 2)
+                    while (g0 == gen && LiveRace.Jitter.keepFilling(ms, System.currentTimeMillis() - st)) {
+                        val x = try { playQ.poll(20, TimeUnit.MILLISECONDS) } catch (_: InterruptedException) { null } ?: continue
+                        parts.add(x); ms += x.size * 1000 / (OUT_RATE * 2)
+                    }
+                    jitterWaits++
+                    if (parts.size == 1) b0 else ByteArray(parts.sumOf { it.size }).also { out ->
+                        var o = 0; for (p in parts) { System.arraycopy(p, 0, out, o, p.size); o += p.size } }
+                } else b0
                 val g = gen
                 // pehla tukda: haalat PEHLE "Speaking" (UI turant), awaaz likhne ke baad baaki kaam
                 val first = !speakingSet || DKState.mode != Mode.SPEAKING
@@ -3426,6 +3705,8 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
     }
 
     @Volatile private var firstWriteAt = 0L
+    /** v5.1: जवाब के बीच कितनी बार jitter buffer ने रुककर आवाज़ जमा की */
+    @Volatile private var jitterWaits = 0
 
     /** Beech me toka: jo awaaz kataar me hai sab hatao, turant chup */
     private fun flushPlayback() {

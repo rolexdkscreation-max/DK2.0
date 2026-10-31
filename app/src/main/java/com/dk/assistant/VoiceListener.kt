@@ -18,6 +18,9 @@ import kotlin.coroutines.resume
  * Ek hi recognizer baar-baar use hota hai (tez), aur lagatar sunne me "beep" ki awaaz dabai jaati hai.
  */
 class VoiceListener(private val context: Context) {
+    /** v5.1: हल्के मोड (धीमा नेट) में true - on-device पहचान पहले */
+    @Volatile var preferOffline = false
+
 
     companion object {
         /** Beep dabane ke liye humne awaaz mute ki hai? (Speaker bolne se pehle isse wapas kholta hai) */
@@ -125,6 +128,8 @@ class VoiceListener(private val context: Context) {
                 // Hindi + English mili baat (Hinglish) dono samjho
                 putExtra("android.speech.extra.EXTRA_ADDITIONAL_LANGUAGES", arrayOf("en-IN"))
                 putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
+                // v5.1: धीमा नेट - हल्का मोड = फ़ोन के अंदर (on-device) पहचान पहले; Hindi pack न हो तो फ़ोन खुद online
+                if (preferOffline) putExtra(RecognizerIntent.EXTRA_PREFER_OFFLINE, true)
                 putExtra(RecognizerIntent.EXTRA_CALLING_PACKAGE, context.packageName)
                 // bolna band karte hi jaldi khatam karo (tez jawab)
                 putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, 1500L)

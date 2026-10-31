@@ -73,7 +73,9 @@ class LiveFastBargeNearTest {
         val g = src("GeminiLive.kt")
         assertTrue(g.contains("minOf(LiveRetry.FAST_MAX_MS, 500L shl quickDrops)"))
         assertTrue(g.contains("delay(minOf(LiveRetry.FAST_MAX_MS, 500L shl fails))"))
-        assertTrue(g.contains("withTimeoutOrNull(6_000) {\n                        while (!setup.isCompleted"))
+        // v5.1 (मालिक): तय 6s इंतज़ार की जगह (मॉडल × key) की दौड़ - 6s में न जुड़े = हल्का मोड
+        assertTrue(g.contains("withTimeoutOrNull(LiveRace.LIGHT_AFTER_MS) {\n                        while (!rc.winner.isCompleted && !rc.over)"))
+        assertEquals(6_000L, LiveRace.LIGHT_AFTER_MS)
         assertFalse(g.contains("minOf(15_000L, 500L shl quickDrops)"))
         assertTrue(src("DKAccessibilityService.kt").contains("LiveRetry.fast(e.recoverable, LiveRetry.liveOnMs(e.recoverable, liveSoftFails))"))
     }

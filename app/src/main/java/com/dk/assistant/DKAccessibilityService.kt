@@ -109,6 +109,8 @@ class DKAccessibilityService : AccessibilityService() {
         if (Prefs.liveMode(this)) startLive() else ensureLoop()
         // v4.6: नेट लौटते ही टूटा Live फिर जोड़ो (इंतज़ार नहीं)
         try { (getSystemService(CONNECTIVITY_SERVICE) as android.net.ConnectivityManager).registerDefaultNetworkCallback(netBack) } catch (_: Exception) {}
+        // v5.1: स्क्रीन चालू होते ही Gemini Live के host का DNS+TLS पहले से (Live सत्र नहीं, माइक नहीं; हर स्क्रीन-चालू में एक बार)
+        LiveNet.register(this)
     }
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) { /* zarurat nahi, hum on-demand padhte hain */ }
@@ -122,6 +124,8 @@ class DKAccessibilityService : AccessibilityService() {
 
     override fun onDestroy() {
         try { (getSystemService(CONNECTIVITY_SERVICE) as android.net.ConnectivityManager).unregisterNetworkCallback(netBack) } catch (_: Exception) {}
+        LiveNet.unregister(this)
+        lightMode = false; lightJob?.cancel()
         instance = null
         AppVisible.onChange = null
         removeBubble()
@@ -177,6 +181,65 @@ class DKAccessibilityService : AccessibilityService() {
     private fun liveNow(why: String) {
         if (liveOffUntil > System.currentTimeMillis()) DKLog.d("Live: $why - इंतज़ार खत्म, अभी जोड़ रहा हूँ")
         liveOffUntil = 0L; liveSoftFails = 0; liveOffSoft = false
+        if (lightMode) { lightMode = false; listener.preferOffline = false }
+    }
+
+    /**
+     * v5.1: power बटन (default assistant) / DK स्क्रीन खुली = Live अभी, UI के साथ-साथ (UI का इंतज़ार नहीं).
+     * माइक की इजाज़त न हो = कुछ नहीं (स्क्रीन इजाज़त का बटन दिखाती है). Accessibility यहाँ कभी चालू नहीं की जाती.
+     */
+    fun invokedNow(why: String) {
+        if (!Setup.hasMic(this) || callBusy()) return
+        DKLog.d("DK बुलाया ($why) - Live तुरंत, पीछे से")
+        if (DKState.live) appOpened() else startLive()
+    }
+
+    // ================================================================ v5.1: धीमा नेट - हल्का मोड
+    // मालिक: "6s में Live न जुड़े / नेट बहुत धीमा = फ़ोन पर बोला लिखो -> सिर्फ़ text DK Chat को (stream) -> वाक्य-दर-वाक्य TTS;
+    // Live पीछे से चुपचाप जुड़ता रहे, जुड़े तो वापस Live (DK बोल रही हो तब नहीं)". यह सब पुराने (मौजूदा) हिस्सों से:
+    // hearLight() = फ़ोन का SpeechRecognizer (on-device पहले) • agent.run() = DK Chat का stream वाला रास्ता • speaker = मौजूदा TTS
+    @Volatile var lightMode = false
+        private set
+    private var lightJob: kotlinx.coroutines.Job? = null
+
+    private fun enterLight(why: String) {
+        lightMode = true
+        liveOffSoft = false
+        liveOffUntil = Long.MAX_VALUE / 4            // Live का loop नहीं - हल्का मोड; वापसी lightJob से
+        listener.preferOffline = true
+        val st = if (NetProbe.online(this)) DKState.LINK_LIGHT else DKState.LINK_OFFLINE
+        DKState.setLink(st)
+        DKLog.d("Live: $st - $why (बोला फ़ोन पर लिखा -> DK Chat (text) -> TTS; Live पीछे से जुड़ता रहेगा)")
+        if (lightJob?.isActive == true) return
+        lightJob = scope.launch {
+            while (isActive && lightMode && DKState.live) {
+                if (gemLive.warmReady()) {
+                    // Live तैयार - DK बोल रही हो / काम चल रहा हो तो रुको
+                    if (!agent.isBusy && !speaker.busy && DKState.mode != Mode.SPEAKING && !callAnnouncing) { lightBack(); break }
+                } else {
+                    gemLive.backgroundRace(if (NetProbe.online(this@DKAccessibilityService)) "हल्का मोड" else "ऑफ़लाइन")
+                    DKState.setLink(if (NetProbe.online(this@DKAccessibilityService)) DKState.LINK_LIGHT else DKState.LINK_OFFLINE)
+                }
+                delay(500)
+            }
+        }
+    }
+
+    private fun lightBack() {
+        lightMode = false; listener.preferOffline = false
+        liveOffUntil = 0L; liveOffSoft = false; liveSoftFails = 0
+        DKLog.d("Live: पीछे से जुड़ गई - हल्के मोड से वापस DK Live")
+        // पुराने तरीके के सुनने (hear) में अटका हो तो रोको - Live तुरंत (standby वाला connection, 0 ms)
+        if (loopJob?.isActive == true) { loopJob?.cancel(); loopJob = null; ear.release(); listener.release(); earCaptionOff() }
+        ensureLoop()
+    }
+
+    /** हल्के मोड में सुनना: फ़ोन का अपना SpeechRecognizer (on-device पहले, आवाज़ upload नहीं) */
+    private suspend fun hearLight(): String? {
+        if (!checkMic()) { delay(2000); return null }
+        if (DKState.micMuted) { delay(800); return null }   // होम का म्यूट बटन: कुछ मत सुनो
+        listener.preferOffline = true
+        return hearGoogle()
     }
 
     /**
@@ -205,6 +268,7 @@ class DKAccessibilityService : AccessibilityService() {
     /** v4.6: नेट वापस आया - Live टूटा पड़ा हो तो इंतज़ार नहीं, अभी जोड़ो */
     private val netBack = object : android.net.ConnectivityManager.NetworkCallback() {
         override fun onAvailable(network: android.net.Network) {
+            try { gemLive.netBack() } catch (_: Exception) {}     // v5.1: नेट की वजह से रुकी जोड़ियाँ फिर आज़माओ
             if (DKState.live && !wakeLive && liveOffSoft && liveOffUntil > System.currentTimeMillis()) liveNow("नेट वापस आया")
         }
     }
@@ -242,6 +306,7 @@ class DKAccessibilityService : AccessibilityService() {
         DKLog.d("Live बंद किया: $why")
         wakeLive = false; gemLive.idleExitMs = 0
         DKState.setLive(false)
+        lightMode = false; lightJob?.cancel(); listener.preferOffline = false; DKState.setLink("")   // v5.1
         // v3.59: बंद = बंद। जड़: बंद करने के 0.6s बाद "हमेशा सुनो" वाला wake-word loop माइक फिर खोल देता था,
         // और ऐप खोलते ही "दोस्त" वाला अभिवादन Live खुद चालू कर देता था। अब यूज़र के चालू करने तक माइक बंद।
         // v3.81: "Hey DK" चालू = Live बंद होने पर भी फ़ोन के अंदर सिर्फ़ "Hey DK" का इंतज़ार (कुछ बाहर नहीं जाता).
@@ -443,6 +508,7 @@ class DKAccessibilityService : AccessibilityService() {
     /** Ek baat suno -> text. Bina beep (apna mic + Groq/Gemini) ya Google mic. Har dikkat DK bolkar batata hai. */
     /** @param wakeGate wake word वाला सुनना (Live बंद): caption में DK का नाम न हो तो Groq को मत भेजो */
     suspend fun hear(wakeGate: Boolean = false): String? {
+        if (lightMode && DKState.live) return hearLight()     // v5.1: धीमा नेट - हल्का मोड
         if (!checkMic()) { delay(2000); return null }
         if (DKState.micMuted) { delay(800); return null }   // होम का म्यूट बटन: कुछ मत सुनो
         if (!silentEar()) return hearGoogle()
@@ -635,6 +701,7 @@ class DKAccessibilityService : AccessibilityService() {
                     val liveStart = System.currentTimeMillis()
                     try {
                         val r = gemLive.run()
+                        DKState.setLink("")          // v5.1: Live रुका (सामान्य) - पुराना "Live • …" न दिखे
                         liveSoftFails = 0
                         DKLog.d("Gemini Live ruka: $r")
                     } catch (e: GeminiLive.Fatal) {
@@ -655,7 +722,12 @@ class DKAccessibilityService : AccessibilityService() {
                         DKState.set(Mode.IDLE)
                         // v5 (मालिक: "न जुड़ पाए तो यूज़र को बोल दे"): आपने Live चालू रखा है = हर रुकावट में एक बार साफ़ शब्दों में बोलो
                         // (तकनीकी गलती नहीं); फिर जुड़ते ही GeminiLive "जुड़ गई, बोलिए" दिखाता है
-                        if (userLive) liveTroubleSay(LiveConnectNotice.forStop(e.message, e.recoverable))
+                        // v5.1: 6s में Live नहीं / सारी जोड़ियाँ नाकाम / key-limit = हल्का मोड (पीछे से Live जुड़ता रहता है)
+                        if (userLive && (e.light || !e.recoverable)) {
+                            enterLight(e.message ?: "-")
+                            liveTroubleSay(LiveConnectNotice.forLight(e.message, e.recoverable, NetProbe.online(this@DKAccessibilityService)))
+                        }
+                        else if (userLive) { DKState.setLink("Live नहीं जुड़ा - फिर जोड़ रहा हूँ"); liveTroubleSay(LiveConnectNotice.forStop(e.message, e.recoverable)) }
                         else if (liveOffSoft) warn("live", "DK लाइव का connection टूटा (${e.message}) - ${offMs / 1000}s में फिर जोड़ रहा हूँ।")
                         else warn("live", "Gemini Live नहीं चला: ${e.message}। अभी पुराने तरीके से सुन रहा हूँ।")
                     } catch (e: kotlinx.coroutines.CancellationException) { throw e
