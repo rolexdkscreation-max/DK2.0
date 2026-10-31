@@ -31,29 +31,6 @@ class DKVoiceInteractionSession(context: android.content.Context) : VoiceInterac
     private var closeButton: android.widget.ImageButton? = null
     private var micButton: android.widget.Button? = null
 
-    override fun onPrepareToShow() {
-        super.onPrepareToShow()
-        try {
-            val window = window?.window
-            if (window != null) {
-                window.setLayout(
-                    android.view.ViewGroup.LayoutParams.WRAP_CONTENT,
-                    android.view.ViewGroup.LayoutParams.WRAP_CONTENT
-                )
-                window.setGravity(android.view.Gravity.BOTTOM or android.view.Gravity.CENTER_HORIZONTAL)
-                window.clearFlags(android.view.WindowManager.LayoutParams.FLAG_DIM_BEHIND)
-                window.addFlags(
-                    android.view.WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or
-                    android.view.WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
-                    android.view.WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS
-                )
-                window.setBackgroundDrawableResource(android.R.color.transparent)
-            }
-        } catch (e: Exception) {
-            android.util.Log.e("DKAssist", "Error setting window attributes in onPrepareToShow", e)
-        }
-    }
-
     override fun onCreateContentView(): android.view.View {
         val context = context
         val container = android.widget.FrameLayout(context).apply {
@@ -145,6 +122,22 @@ class DKVoiceInteractionSession(context: android.content.Context) : VoiceInterac
         super.onShow(args, showFlags)
         try {
             android.util.Log.e("DKAssist", "DKVoiceInteractionSession onShow")
+            val window = window?.window
+            if (window != null) {
+                window.setLayout(
+                    android.view.ViewGroup.LayoutParams.WRAP_CONTENT,
+                    android.view.ViewGroup.LayoutParams.WRAP_CONTENT
+                )
+                window.setGravity(android.view.Gravity.BOTTOM or android.view.Gravity.CENTER_HORIZONTAL)
+                window.clearFlags(android.view.WindowManager.LayoutParams.FLAG_DIM_BEHIND)
+                window.addFlags(
+                    android.view.WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or
+                    android.view.WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
+                    android.view.WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS
+                )
+                window.setBackgroundDrawableResource(android.R.color.transparent)
+            }
+
             val hasMic = androidx.core.content.ContextCompat.checkSelfPermission(
                 context,
                 android.Manifest.permission.RECORD_AUDIO
