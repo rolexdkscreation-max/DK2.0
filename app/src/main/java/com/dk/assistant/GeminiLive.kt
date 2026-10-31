@@ -1402,7 +1402,7 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
     }
 
     /** v5.1: txt = यह जोड़ी TEXT माँगे (दौड़ में हर मॉडल का अपना); resume = पुरानी बातचीत का handle भेजो (सिर्फ़ उसी जोड़ी पर) */
-    private fun setupJson(m: String, txt: Boolean = txt, resume: Boolean = true): String {
+    private fun setupJson(m: String, txt: Boolean = connText, resume: Boolean = true): String {
         NetProbe.refresh(svc)      // v3.88: धीमा नेटवर्क = छोटे जवाब (अपने-आप, कोई सेटिंग नहीं)
         val brain = BrainManager(svc)
         val ex = extrasFor(m)
