@@ -114,23 +114,16 @@ private fun execute(req: Request): String = http.newCall(req).execute().use { r 
 
 /** Google Gemini (apna alag format). Ek model fail ho to dusre Gemini model try karta hai. */
 class GeminiClient(private val key: String, private val model: String) : AiClient {
-    /** true = baatcheet: sabse kam sochna, chhota jawab = tez */
     var fast = false
-    /** true = sirf yahi model (auto-setup me naapne ke liye) */
     var only = false
-    /** Auto-setup ke paaye tez free models (purane naam ki jagah) */
     var backups: List<String> = BACKUP_MODELS
     override var label = "Gemini ($model)"
         private set
 
     companion object {
-        // Inki free limit alag-alag hoti hai - ek ki khatam ho to dusra chal jata hai
-        // 2.5 वाले नए users के लिए बंद (404 "no longer available to new users") - इसलिए backup में नहीं
         val BACKUP_MODELS = listOf("gemini-3.5-flash-lite", "gemini-3.1-flash-lite", "gemini-3.8-flash")
-        /** Mushkil sawaal (research) ke liye zyada samajhdar model pehle */
         val DEEP_MODELS = listOf("gemini-3.8-flash")
-        /** Sabse mushkil sawaal (gehri soch): sabse taakatwar model pehle, na chale to agla */
-        val THINK_MODELS = listOf("gemini-4-argon", "gemini-3.1-pro-preview", "gemini-3.8-flash")   // argon/pro = paid key; free key par 3.8 Flash (high thinking)
+        val THINK_MODELS = listOf("gemini-4-argon", "gemini-3.1-pro-preview", "gemini-3.8-flash")
     }
 
     override fun complete(system: String, history: List<Turn>, prompt: String, imageB64: String?): String {
@@ -142,12 +135,10 @@ class GeminiClient(private val key: String, private val model: String) : AiClien
                 label = "Gemini ($m)"
                 return r
             } catch (e: AiException) {
-                // "मॉडल बंद" वाली गलती असली वजह (जैसे 429) को न छिपाए
                 if (last == null || GeminiModels.isGone(last.code, last.message.orEmpty())) last = e
                 val tryNext = e.code == 404 || e.code == 429 || e.code >= 500 ||
                     (e.code == 400 && (e.message ?: "").contains("model", ignoreCase = true) &&
                         !(e.message ?: "").contains("API key", ignoreCase = true))
-                DKLog.d("Gemini $m -> ${e.code} ${e.message}")
                 if (!tryNext) throw e
             }
         }
@@ -155,31 +146,22 @@ class GeminiClient(private val key: String, private val model: String) : AiClien
     }
 
     override fun stream(system: String, history: List<Turn>, prompt: String, onDelta: (String) -> Unit): String {
-        // chuna hua model + ek backup (zyada nahi - warna der hoti hai; dusri key race me hai)
         val models = if (only) listOf(model) else GeminiModels.order(model, backups).take(3)
         var last: AiException? = null
         for (m in models) {
             var thinking = true
-            var attempt = 0
-            while (attempt < 2) {
-                attempt++
-                var gotAny = false
-                try {
-                    val full = StringBuilder()
-                    streamOnce(m, system, history, prompt, thinking) { d -> gotAny = true; full.append(d); onDelta(d) }
-                    label = "Gemini ($m)"
-                    return full.toString()
-                } catch (e: AiException) {
-                    if (gotAny) throw e
-                    if (last == null || GeminiModels.isGone(last.code, last.message.orEmpty())) last = e
-                    DKLog.d("Gemini stream $m -> ${e.code} ${e.message}")
-                    // "thinking" na samjhe to bina uske dobara (wahi model)
-                    if (e.code == 400 && thinking && (e.message ?: "").contains("think", true)) { thinking = false; continue }
-                    val tryNext = e.code == 404 || e.code == 429 || e.code >= 500 ||
-                        (e.code == 400 && (e.message ?: "").contains("model", true) && !(e.message ?: "").contains("API key", true))
-                    if (!tryNext) throw e
-                    break   // agla model
-                }
+            var gotAny = false
+            try {
+                val full = StringBuilder()
+                streamOnce(m, system, history, prompt, thinking) { gotAny = true; full.append(it); onDelta(it) }
+                label = "Gemini ($m)"
+                return full.toString()
+            } catch (e: AiException) {
+                if (gotAny) throw e
+                if (last == null || GeminiModels.isGone(last.code, last.message.orEmpty())) last = e
+                val tryNext = e.code == 404 || e.code == 429 || e.code >= 500 ||
+                    (e.code == 400 && (e.message ?: "").contains("model", true) && !(e.message ?: "").contains("API key", true))
+                if (!tryNext) throw e
             }
         }
         throw last ?: AiException(0, "Gemini fail")
@@ -214,14 +196,9 @@ class GeminiClient(private val key: String, private val model: String) : AiClien
         }
     }
 
-    /** Google Search se taaza/sahi jawab (grounding). Sirf text. */
     fun searchAnswer(system: String, history: List<Turn>, question: String): String =
         search(system, history, question, deep = false).text
 
-    /**
-     * Google Search se jawab + kahan se mila (sources).
-     * deep = mushkil sawaal: zyada sochne wala model, kai sources se jaanch, lamba jawab.
-     */
     fun search(system: String, history: List<Turn>, question: String, deep: Boolean, think: Boolean = false, maxModels: Int = 99): SearchResult {
         var last: AiException? = null
         val order = when {
@@ -230,8 +207,6 @@ class GeminiClient(private val key: String, private val model: String) : AiClien
             else -> GeminiModels.order(model, BACKUP_MODELS)
         }.take(maxModels.coerceAtLeast(1))
         for (m in order) {
-          var withThinking = true
-          for (attempt in 0..1) {
             try {
                 val contents = JSONArray()
                 history.takeLast(if (deep) 8 else 6).forEach {
@@ -240,11 +215,6 @@ class GeminiClient(private val key: String, private val model: String) : AiClien
                 }
                 contents.put(JSONObject().put("role", "user").put("parts", JSONArray().put(JSONObject().put("text", question))))
                 val gen = JSONObject().put("maxOutputTokens", if (think) 6000 else if (deep) 3000 else 1024)
-                if (withThinking) {
-                    val lvl = if (think) "high" else if (deep) "medium" else "low"
-                    if ((m.startsWith("gemini-3") || m.startsWith("gemini-4")) && !m.contains("lite")) gen.put("thinkingConfig", JSONObject().put("thinkingLevel", lvl))
-                    if (m.startsWith("gemini-2.5")) gen.put("thinkingConfig", JSONObject().put("thinkingBudget", if (think) 8192 else if (deep) 2048 else 0))
-                }
                 val body = JSONObject()
                     .put("system_instruction", JSONObject().put("parts", JSONArray().put(JSONObject().put("text", Lang.sys(system)))))
                     .put("contents", contents)
@@ -258,8 +228,6 @@ class GeminiClient(private val key: String, private val model: String) : AiClien
                 val p = cand?.optJSONObject("content")?.optJSONArray("parts") ?: throw AiException(0, "khali jawab")
                 val sb = StringBuilder()
                 for (i in 0 until p.length()) { val o = p.optJSONObject(i) ?: continue; if (!o.optBoolean("thought")) sb.append(o.optString("text")) }
-                // kin websites se jaankari mili
-                // sirf tab jab sach me search hua (groundingMetadata) - warna khali = koi source nahi dikhega
                 val sources = Grounding.sources(cand.optJSONObject("groundingMetadata"))
                 label = (if (think) "Gemini गहरी सोच" else "Gemini+Search") + " ($m)"
                 if (sb.isBlank()) throw AiException(0, "khali jawab")
@@ -267,14 +235,8 @@ class GeminiClient(private val key: String, private val model: String) : AiClien
             } catch (e: AiException) {
                 if (last == null || GeminiModels.isGone(last.code, last.message.orEmpty())) last = e
                 val msg = (e.message ?: "").lowercase()
-                // galat key = sab model fail honge -> ruko. (403 "model ki ijazat nahi" = agla model try karo)
-                // v3.87: 400 "API key not valid" bhi galat key hai (pehle har model par dobara jaata tha)
                 if (e.code == 401 || ((e.code == 403 || e.code == 400) && (msg.contains("api key") || msg.contains("api_key")))) throw e
-                // is model ko sochne ki setting pasand nahi -> bina uske ek baar aur
-                if (e.code == 400 && withThinking && msg.contains("think")) { withThinking = false; continue }
-                break
             }
-          }
         }
         throw last ?: AiException(0, "search fail")
     }
@@ -290,38 +252,25 @@ class GeminiClient(private val key: String, private val model: String) : AiClien
         if (imageB64 != null) parts.put(JSONObject().put("inline_data",
             JSONObject().put("mime_type", "image/jpeg").put("data", imageB64)))
         contents.put(JSONObject().put("role", "user").put("parts", parts))
-
         val gen = JSONObject().put("responseMimeType", "application/json").put("maxOutputTokens", if (fast) 600 else 2048)
-        // Gemini 3/4 model "sochte" hain = dheere. Response speed badhane ke liye thinking level ko "minimal" ya "off" rakhein.
-        val heavy = m.startsWith("gemini-3") || m.startsWith("gemini-4")
-        if (thinking && heavy) gen.put("thinkingConfig", JSONObject().put("thinkingLevel", "minimal"))
-        if (thinking && m.startsWith("gemini-2.5")) gen.put("thinkingConfig", JSONObject().put("thinkingBudget", 0))
-
         val body = JSONObject()
             .put("system_instruction", JSONObject().put("parts", JSONArray().put(JSONObject().put("text", Lang.sys(system)))))
             .put("contents", contents)
             .put("generationConfig", gen)
-
         val req = Request.Builder()
             .url("https://generativelanguage.googleapis.com/v1beta/models/$m:generateContent")
             .header("x-goog-api-key", key)
             .post(body.toString().toRequestBody(JSON_TYPE))
             .build()
-        val raw = try { execute(req) } catch (e: AiException) {
-            if (e.code == 400 && thinking && (e.message ?: "").contains("think", true))
-                return call(m, system, history, prompt, imageB64, thinking = false)
-            throw e
-        }
-        val resp = JSONObject(raw)
-        val p = resp.optJSONArray("candidates")?.optJSONObject(0)?.optJSONObject("content")?.optJSONArray("parts")
-            ?: throw AiException(0, "Gemini ne khali jawab diya: " +
-                (resp.optJSONObject("promptFeedback")?.optString("blockReason") ?: ""))
-        val sb = StringBuilder()
-        for (i in 0 until p.length()) {
-            val o = p.optJSONObject(i) ?: continue
-            if (!o.optBoolean("thought", false)) sb.append(o.optString("text"))
-        }
-        return sb.toString()
+        return JSONObject(execute(req)).optJSONArray("candidates")?.optJSONObject(0)?.optJSONObject("content")?.optJSONArray("parts")
+            ?.let { p ->
+                val sb = StringBuilder()
+                for (i in 0 until p.length()) {
+                    val o = p.optJSONObject(i) ?: continue
+                    if (!o.optBoolean("thought", false)) sb.append(o.optString("text"))
+                }
+                sb.toString()
+            } ?: throw AiException(0, "Gemini ne khali jawab diya")
     }
 }
 
@@ -334,18 +283,14 @@ class OpenAiCompatClient(
 ) : AiClient {
     override val label = "$name ($model)"
     var fast = false
-    /** उसी key के बैकअप मॉडल: मुख्य की limit (429) खत्म / मॉडल बंद (404) / सर्वर गलती हो तो अपने-आप इन पर - दूसरी कंपनी पर नहीं */
     var backups: List<String> = emptyList()
-    /** आखिरी जवाब किस मॉडल से आया */
     @Volatile var usedModel: String = model
         private set
 
-    /** पूरे खाते की रोज़ की limit (OpenRouter free-models-per-day) = उसी key के बाकी मॉडल भी 429 देंगे - उन पर मत जाओ */
     private fun tryNext(e: AiException) = !RateLimit.accountWide(e) && (e.code == 404 || e.code == 429 || e.code == 413 || e.code >= 500) ||
         (e.code == 400 && (e.message.orEmpty().contains("model", true) || e.message.orEmpty().contains("decommission", true)))
 
     private fun mKey(m: String) = "m429_${name}_$m"
-    /** जिस मॉडल ने अभी 429 दिया, वह थोड़ी देर पीछे (सब रुके हों तो सब आज़माओ) */
     private fun models(): List<String> {
         val all = (listOf(model) + backups).distinct()
         val (ok, wait) = all.partition { !Cooldown.blocked(mKey(it)) }
@@ -359,7 +304,6 @@ class OpenAiCompatClient(
             try { return completeOnce(m, system, history, prompt, imageB64).also { usedModel = m } } catch (e: AiException) {
                 last = e; noteFail(m, e)
                 if (!tryNext(e)) throw e
-                DKLog.d("$name: $m ${e.code} - उसी key के अगले मॉडल पर")
             }
         }
         throw last ?: AiException(0, "$name: कोई मॉडल नहीं चला")
@@ -380,9 +324,7 @@ class OpenAiCompatClient(
             msgs.put(JSONObject().put("role", "user").put("content", prompt))
         }
         val body = JSONObject().put("model", model).put("messages", msgs)
-        // gpt-oss jaise "sochne wale" model: baatcheet me kam socho = tez
         if (model.contains("gpt-oss")) body.put("reasoning_effort", if (fast) "low" else "medium")
-
         val req = Request.Builder()
             .url(baseUrl.trimEnd('/') + "/chat/completions")
             .header("Authorization", "Bearer $key")
@@ -410,9 +352,7 @@ class OpenAiCompatClient(
                 return streamOnce(m, system, history, prompt) { sent = true; onDelta(it) }.also { usedModel = m }
             } catch (e: AiException) {
                 last = e; noteFail(m, e)
-                // आधा जवाब बोल चुके हों तो दूसरे मॉडल से दोबारा नहीं (दोहराव)
                 if (sent || !tryNext(e)) throw e
-                DKLog.d("$name: $m ${e.code} - उसी key के अगले मॉडल पर")
             }
         }
         throw last ?: AiException(0, "$name: कोई मॉडल नहीं चला")

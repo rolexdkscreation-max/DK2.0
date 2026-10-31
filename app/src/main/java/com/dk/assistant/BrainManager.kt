@@ -58,7 +58,8 @@ class BrainManager(private val ctx: Context) {
         override?.let { (id, _) -> return listOfNotNull(Providers.byId(id)) }
         val active = Providers.byId(Prefs.activeProvider(ctx))
         val rest = Providers.all.filter { it.id != active?.id }
-        val list = if (Prefs.fallback(ctx)) listOfNotNull(active) + rest else listOfNotNull(active)
+        // v4.3: Always include all for fail-back; fallback setting only affects Groq priority
+        val list = listOfNotNull(active) + rest
         // baatcheet ke liye Groq sabse tez hai (key ho to pehle)
         if (chat && Prefs.fallback(ctx) && Prefs.key(ctx, "groq").isNotBlank()) {
             val g = Providers.byId("groq")!!
@@ -72,7 +73,7 @@ class BrainManager(private val ctx: Context) {
     /** Baatcheet: jinki key hai, unme chalti hui + sabse tez pehle. Limit/galti wali sabse aakhir me. */
     private fun rankedForChat(): List<Provider> {
         val withKey = Providers.all.filter { clientFor(it) != null }
-            .filter { Prefs.fallback(ctx) || it.id == Prefs.activeProvider(ctx) }
+        // v4.3: Always include all providers with keys for immediate fail-back
         val active = Prefs.activeProvider(ctx)
         val (good, bad) = withKey.partition { ProviderHealth.usable(it.id) }
         // रोज़ की limit / गलत key वाली को बिल्कुल मत आज़माओ (हर बार वही 429 = देर); थोड़ी देर वाली सिर्फ़ आख़िर में
