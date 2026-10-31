@@ -31,14 +31,39 @@ class DKVoiceInteractionSession(context: android.content.Context) : VoiceInterac
     private var closeButton: android.widget.ImageButton? = null
     private var micButton: android.widget.Button? = null
 
+    override fun onPrepareToShow() {
+        super.onPrepareToShow()
+        try {
+            val window = window?.window
+            if (window != null) {
+                window.setLayout(
+                    android.view.ViewGroup.LayoutParams.WRAP_CONTENT,
+                    android.view.ViewGroup.LayoutParams.WRAP_CONTENT
+                )
+                window.setGravity(android.view.Gravity.BOTTOM or android.view.Gravity.CENTER_HORIZONTAL)
+                window.clearFlags(android.view.WindowManager.LayoutParams.FLAG_DIM_BEHIND)
+                window.addFlags(
+                    android.view.WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or
+                    android.view.WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
+                    android.view.WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS
+                )
+                window.setBackgroundDrawableResource(android.R.color.transparent)
+            }
+        } catch (e: Exception) {
+            android.util.Log.e("DKAssist", "Error setting window attributes in onPrepareToShow", e)
+        }
+    }
+
     override fun onCreateContentView(): android.view.View {
         val context = context
         val container = android.widget.FrameLayout(context).apply {
             layoutParams = android.widget.FrameLayout.LayoutParams(
-                android.widget.FrameLayout.LayoutParams.MATCH_PARENT,
-                android.widget.FrameLayout.LayoutParams.MATCH_PARENT
+                android.widget.FrameLayout.LayoutParams.WRAP_CONTENT,
+                android.widget.FrameLayout.LayoutParams.WRAP_CONTENT
             )
             setBackgroundColor(android.graphics.Color.TRANSPARENT)
+            isClickable = false
+            isFocusable = false
         }
 
         val innerLayout = android.widget.LinearLayout(context).apply {
@@ -51,6 +76,8 @@ class DKVoiceInteractionSession(context: android.content.Context) : VoiceInterac
                 gravity = android.view.Gravity.BOTTOM or android.view.Gravity.CENTER_HORIZONTAL
                 bottomMargin = 100
             }
+            isClickable = false
+            isFocusable = false
         }
 
         val topRow = android.widget.LinearLayout(context).apply {
