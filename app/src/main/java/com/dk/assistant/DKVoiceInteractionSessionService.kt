@@ -11,7 +11,4 @@ class DKVoiceInteractionSessionService : VoiceInteractionSessionService() {
 }
 
 class DKVoiceInteractionSession(context: android.content.Context) : VoiceInteractionSession(context) {
-    override fun onPrepareToShow(args: Bundle?, showFlags: Int) {
-        super.onPrepareToShow(args, showFlags)
-    }
 }

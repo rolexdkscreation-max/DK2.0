@@ -39,7 +39,7 @@
     <!-- adb se di jaaye to DK apni Accessibility khud ON rakhta hai -->
     <uses-permission android:name="android.permission.WRITE_SECURE_SETTINGS" tools:ignore="ProtectedPermissions" />
 
-    <!-- Phone ke saare launcher apps ki list dekhne ke liye (open_app ke liye) -->
+    <!-- Phone ke saare launcher apps ki list dekhne ke liye (open_app के लिए) -->
     <queries>
         <intent>
             <action android:name="android.intent.action.MAIN" />
@@ -88,7 +88,7 @@
             tools:node="remove" />
 
         <activity
-            android:name=".assistant.DKAssistActivity"
+            android:name=".DKAssistActivity"
             android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.ASSIST" />
@@ -97,7 +97,7 @@
         </activity>
 
         <service
-            android:name=".assistant.DKVoiceInteractionService"
+            android:name=".DKVoiceInteractionService"
             android:permission="android.permission.BIND_VOICE_INTERACTION"
             android:exported="true">
             <intent-filter>
@@ -109,7 +109,7 @@
         </service>
 
         <service
-            android:name=".assistant.DKVoiceInteractionSessionService"
+            android:name=".DKVoiceInteractionSessionService"
             android:permission="android.permission.BIND_VOICE_INTERACTION"
             android:exported="false" />
 
