@@ -25,30 +25,134 @@ class DKVoiceInteractionSessionService : VoiceInteractionSessionService() {
     }
 }
 
-/**
- * v5.1 (मालिक): DK default assistant (power बटन) से बुलाई = Live उसी पल पीछे से जुड़ना शुरू, साथ-साथ DK की स्क्रीन (ओर्ब).
- * UI के किसी कदम का इंतज़ार नहीं. माइक की इजाज़त न हो तो Live नहीं (स्क्रीन पर इजाज़त का बटन).
- * Accessibility यहाँ कभी चालू नहीं की जाती - service न चल रही हो तो सिर्फ़ स्क्रीन खुलती है और वहीं साफ़ बताया जाता है.
- */
 class DKVoiceInteractionSession(context: android.content.Context) : VoiceInteractionSession(context) {
-    override fun onPrepareShow(args: Bundle?, showFlags: Int) {
-        super.onPrepareShow(args, showFlags)
-        // अपनी खाली खिड़की नहीं - DK की स्क्रीन (VoiceActivity) ही दिखती है
-        try { setUiEnabled(false) } catch (_: Exception) {}
+
+    private var orbView: OrbView? = null
+    private var closeButton: android.widget.ImageButton? = null
+    private var micButton: android.widget.Button? = null
+
+    override fun onCreateContentView(): android.view.View {
+        val context = context
+        val container = android.widget.FrameLayout(context).apply {
+            layoutParams = android.widget.FrameLayout.LayoutParams(
+                android.widget.FrameLayout.LayoutParams.MATCH_PARENT,
+                android.widget.FrameLayout.LayoutParams.MATCH_PARENT
+            )
+            setBackgroundColor(android.graphics.Color.TRANSPARENT)
+        }
+
+        val innerLayout = android.widget.LinearLayout(context).apply {
+            orientation = android.widget.LinearLayout.VERTICAL
+            gravity = android.view.Gravity.CENTER_HORIZONTAL
+            layoutParams = android.widget.FrameLayout.LayoutParams(
+                android.widget.FrameLayout.LayoutParams.WRAP_CONTENT,
+                android.widget.FrameLayout.LayoutParams.WRAP_CONTENT
+            ).apply {
+                gravity = android.view.Gravity.BOTTOM or android.view.Gravity.CENTER_HORIZONTAL
+                bottomMargin = 100
+            }
+        }
+
+        val topRow = android.widget.LinearLayout(context).apply {
+            orientation = android.widget.LinearLayout.HORIZONTAL
+            gravity = android.view.Gravity.END
+            layoutParams = android.widget.LinearLayout.LayoutParams(
+                android.widget.LinearLayout.LayoutParams.MATCH_PARENT,
+                android.widget.LinearLayout.LayoutParams.WRAP_CONTENT
+            )
+        }
+
+        closeButton = android.widget.ImageButton(context).apply {
+            setImageResource(android.R.drawable.ic_menu_close_clear_cancel)
+            background = null
+            setOnClickListener {
+                try {
+                    hide()
+                } catch (e: Exception) {
+                    android.util.Log.e("DKAssist", "Error hiding session", e)
+                }
+            }
+            layoutParams = android.widget.LinearLayout.LayoutParams(100, 100)
+        }
+        topRow.addView(closeButton)
+        innerLayout.addView(topRow)
+
+        orbView = OrbView(context).apply {
+            layoutParams = android.widget.LinearLayout.LayoutParams(300, 300).apply {
+                gravity = android.view.Gravity.CENTER_HORIZONTAL
+            }
+            setOnClickListener {
+                try {
+                    val intent = android.content.Intent(context, VoiceActivity::class.java).apply {
+                        addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK or android.content.Intent.FLAG_ACTIVITY_SINGLE_TOP)
+                    }
+                    context.startActivity(intent)
+                } catch (e: Exception) {
+                    android.util.Log.e("DKAssist", "Error starting VoiceActivity from orb", e)
+                }
+            }
+        }
+        innerLayout.addView(orbView)
+
+        micButton = android.widget.Button(context).apply {
+            text = "Mic Permission"
+            visibility = android.view.View.GONE
+            setOnClickListener {
+                try {
+                    val intent = android.content.Intent(context, VoiceActivity::class.java).apply {
+                        addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK or android.content.Intent.FLAG_ACTIVITY_SINGLE_TOP)
+                    }
+                    context.startActivity(intent)
+                } catch (e: Exception) {
+                    android.util.Log.e("DKAssist", "Error opening voice activity for mic", e)
+                }
+            }
+        }
+        innerLayout.addView(micButton)
+
+        container.addView(innerLayout)
+        return container
     }
 
     override fun onShow(args: Bundle?, showFlags: Int) {
         super.onShow(args, showFlags)
-        // 1) Live पहले (पीछे से, तुरंत)
+        // v5.1 (मालिक): power बटन से बुलाया = DK Live उसी पल पीछे से जुड़ना शुरू, ओर्ब दिखने के साथ-साथ
+        // (UI के किसी कदम का इंतज़ार नहीं). माइक की इजाज़त न हो = Live नहीं, नीचे वाला बटन दिखता है.
+        // Accessibility यहाँ कभी चालू नहीं की जाती.
         try { DKAccessibilityService.instance?.invokedNow("power बटन / assistant") }
         catch (e: Exception) { android.util.Log.e("DKAssist", "Live शुरू नहीं हुआ", e) }
-        // 2) साथ-साथ DK की स्क्रीन
-        val i = android.content.Intent(context, VoiceActivity::class.java)
-            .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK or android.content.Intent.FLAG_ACTIVITY_SINGLE_TOP)
-        try { startAssistantActivity(i) }
-        catch (e: Exception) {
-            android.util.Log.e("DKAssist", "assistant activity नहीं खुली", e)
-            try { context.startActivity(i) } catch (_: Exception) {}
+        try {
+            android.util.Log.e("DKAssist", "DKVoiceInteractionSession onShow")
+            val hasMic = androidx.core.content.ContextCompat.checkSelfPermission(
+                context,
+                android.Manifest.permission.RECORD_AUDIO
+            ) == android.content.pm.PackageManager.PERMISSION_GRANTED
+
+            if (hasMic) {
+                micButton?.visibility = android.view.View.GONE
+            } else {
+                micButton?.visibility = android.view.View.VISIBLE
+            }
+        } catch (e: Exception) {
+            android.util.Log.e("DKAssist", "Error in DKVoiceInteractionSession onShow", e)
+        }
+    }
+
+    override fun onHide() {
+        super.onHide()
+        try {
+            android.util.Log.e("DKAssist", "DKVoiceInteractionSession onHide")
+        } catch (e: Exception) {
+            android.util.Log.e("DKAssist", "Error in DKVoiceInteractionSession onHide", e)
+        }
+    }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        try {
+            android.util.Log.e("DKAssist", "DKVoiceInteractionSession onDestroy")
+        } catch (e: Exception) {
+            android.util.Log.e("DKAssist", "Error in DKVoiceInteractionSession onDestroy", e)
         }
     }
 }

@@ -134,7 +134,8 @@ class LiveRaceTest {
         assertTrue(s.contains("gemLive.backgroundRace("))
         assertTrue(s.contains("if (lightMode && DKState.live) return hearLight()"))
         val v = src("DKVoiceInteractionSessionService.kt")
-        assertTrue(v.contains("override fun onShow(") && v.contains("invokedNow(") && v.contains("startAssistantActivity("))
+        val show = v.substring(v.indexOf("override fun onShow("))
+        assertTrue(show.indexOf("invokedNow(") in 0 until show.indexOf("micButton?.visibility"))   // Live पहले, UI साथ-साथ
         assertFalse(v.contains("selfEnableAccessibility"))                          // Accessibility कभी अपने-आप नहीं
         val inv = s.substring(s.indexOf("fun invokedNow("), s.indexOf("fun invokedNow(") + 400)
         assertTrue(inv.contains("Setup.hasMic(this)"))                              // इजाज़त नहीं = माइक नहीं
