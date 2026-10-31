@@ -5,8 +5,23 @@ import android.service.voice.VoiceInteractionSessionService
 import android.os.Bundle
 
 class DKVoiceInteractionSessionService : VoiceInteractionSessionService() {
+    override fun onCreate() {
+        super.onCreate()
+        try {
+            android.util.Log.e("DKAssist", "DKVoiceInteractionSessionService onCreate")
+        } catch (e: Exception) {
+            android.util.Log.e("DKAssist", "Error in DKVoiceInteractionSessionService onCreate", e)
+        }
+    }
+
     override fun onNewSession(args: Bundle?): VoiceInteractionSession {
-        return DKVoiceInteractionSession(this)
+        try {
+            android.util.Log.e("DKAssist", "DKVoiceInteractionSessionService onNewSession")
+            return DKVoiceInteractionSession(this)
+        } catch (e: Exception) {
+            android.util.Log.e("DKAssist", "Error in DKVoiceInteractionSessionService onNewSession", e)
+            return DKVoiceInteractionSession(this)
+        }
     }
 }
 

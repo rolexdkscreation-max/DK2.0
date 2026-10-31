@@ -97,7 +97,7 @@
         </activity>
 
         <service
-            android:name=".DKVoiceInteractionService"
+            android:name="com.dk.assistant.DKVoiceInteractionService"
             android:permission="android.permission.BIND_VOICE_INTERACTION"
             android:exported="true">
             <intent-filter>
@@ -109,9 +109,22 @@
         </service>
 
         <service
-            android:name=".DKVoiceInteractionSessionService"
+            android:name="com.dk.assistant.DKVoiceInteractionSessionService"
             android:permission="android.permission.BIND_VOICE_INTERACTION"
             android:exported="false" />
+
+        <service
+            android:name="com.dk.assistant.DKRecognitionService"
+            android:exported="true"
+            android:permission="android.permission.BIND_RECOGNITION_SERVICE">
+            <intent-filter>
+                <action android:name="android.speech.RecognitionService" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+            <meta-data
+                android:name="android.speech"
+                android:resource="@xml/recognition_service" />
+        </service>
 
         <activity
             android:name=".MainActivity"
