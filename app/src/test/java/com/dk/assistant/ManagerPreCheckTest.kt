@@ -19,7 +19,8 @@ class ManagerPreCheckTest {
         val git = FakeGit(ArrayDeque())
         val u = SevenTeam(ai, files, git, full = true) { _, _ -> }.understand("add() क्या करता है?")
         assertEquals("add() दो संख्याएँ जोड़ता है", u.answer)
-        assertEquals(listOf(Agent.MANAGER), ai.calls)
+        // v5.1: मैनेजर सवाल समझाने वाले को सौंपता है; वह न चले (यहाँ नकली AI में जवाब नहीं) तो मैनेजर का जवाब
+        assertEquals(listOf(Agent.MANAGER, Agent.EXPLAINER), ai.calls)
         assertTrue(git.log.isEmpty())
     }
 
@@ -28,7 +29,7 @@ class ManagerPreCheckTest {
             Agent.MANAGER to """{"kind":"question","answer":"यह फ़ाइल src/Calc.kt में है"}""")
         val u = SevenTeam(ai, files, FakeGit(ArrayDeque()), full = true) { _, _ -> }.understand("add() कहाँ है?")
         assertEquals("यह फ़ाइल src/Calc.kt में है", u.answer)
-        assertEquals(listOf(Agent.MANAGER, Agent.MANAGER), ai.calls)   // प्रॉम्प्ट इंजीनियर / काम नहीं
+        assertEquals(listOf(Agent.MANAGER, Agent.MANAGER, Agent.EXPLAINER), ai.calls)   // प्रॉम्प्ट इंजीनियर / काम नहीं (v5.1: + समझाने वाला)
     }
 
     @Test fun question_noAnswerAtAll_managerStopsWithMessage() = runBlocking {

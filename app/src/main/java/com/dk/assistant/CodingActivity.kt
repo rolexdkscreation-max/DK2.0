@@ -36,6 +36,9 @@ object CoderSession {
     var lastCommit = ""
     /** 7-एजेंट: टोकन/रिपो की दिक्कत पर रुका काम - "नॉर्मल मोड में करो" का विकल्प */
     @Volatile var offerNormal: String? = null
+    /** v5.1: अभी कौन सा एजेंट काम कर रहा है (स्क्रीन पर नाम + animation) */
+    @Volatile var activeAgent: Seven.Agent? = null
+    @Volatile var activeNote: String = ""
     /** 7-एजेंट नॉर्मल मोड: पिछले जवाबों की फ़ाइलें (अगले संदेश में आगे काम के लिए) */
     val normalFiles = LinkedHashMap<String, String>()
     val scope = CoroutineScope(Dispatchers.Main + SupervisorJob())
@@ -145,6 +148,7 @@ class CodingActivity : AppCompatActivity() {
     // काम चलते समय: चलती पट्टी + "काम कर रहा है..." (बिंदु बढ़ते हैं)
     private lateinit var busyBar: LinearLayout
     private lateinit var busyText: TextView
+    private lateinit var agentWork: AgentWorkView
     private val busyHandler = android.os.Handler(android.os.Looper.getMainLooper())
     private var busyStep = 0
     private var busyOn = false
@@ -154,6 +158,7 @@ class CodingActivity : AppCompatActivity() {
             busyStep++
             if (inline.active) inline.show(busyLabel(), WorkState.WORKING)
             busyText.text = BusyLabel.text(busyStep)
+            showAgent()
             busyHandler.postDelayed(this, BusyLabel.TICK_MS)
         }
     }
@@ -206,6 +211,9 @@ class CodingActivity : AppCompatActivity() {
         busyBar.addView(ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal).apply { isIndeterminate = true },
             LinearLayout.LayoutParams(-1, (4 * dp).toInt()).apply { topMargin = (4 * dp).toInt() })
         col.addView(busyBar, LinearLayout.LayoutParams(-1, -2).apply { topMargin = (6 * dp).toInt() })
+        // v5.1: कौन सा एजेंट काम कर रहा है - सारे एजेंट मैनेजर के नीचे, चलता हुआ चमकता है
+        agentWork = AgentWorkView(this).apply { visibility = View.GONE; setBackgroundResource(R.drawable.glass_card); val p = (8 * dp).toInt(); setPadding(p, p, p, p) }
+        col.addView(agentWork, LinearLayout.LayoutParams(-1, -2).apply { topMargin = (6 * dp).toInt() })
 
         scroll = ScrollView(this).apply { isFillViewport = true }
         list = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(0, (8 * dp).toInt(), 0, (8 * dp).toInt()) }
@@ -767,8 +775,17 @@ class CodingActivity : AppCompatActivity() {
             busySince = System.currentTimeMillis()
             // ऊपर वाली चलती पट्टी अब नहीं - DK का काम जवाब वाले बुलबुले के अंदर तरंग से दिखता है
             busyBar.visibility = View.GONE
+            showAgent()
             busyHandler.postDelayed(busyTick, BusyLabel.TICK_MS)
-        } else busyBar.visibility = View.GONE
+        } else { busyBar.visibility = View.GONE; agentWork.visibility = View.GONE; CoderSession.activeAgent = null; CoderSession.activeNote = "" }
+    }
+
+    /** 11-एजेंट टीम चल रही हो तो: कौन सा एजेंट काम कर रहा है (नाम + animation) */
+    private fun showAgent() {
+        if (!Prefs.coderSeven(this)) { agentWork.visibility = View.GONE; return }
+        agentWork.visibility = View.VISIBLE
+        agentWork.active = CoderSession.activeAgent
+        agentWork.note = CoderSession.activeNote
     }
 
     private fun render() {

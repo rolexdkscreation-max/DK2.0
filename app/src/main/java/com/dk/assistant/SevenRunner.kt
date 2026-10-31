@@ -162,6 +162,7 @@ object SevenRunner {
 
     /** टीम की हर बात स्क्रीन पर; v3.89: टेस्टर का "✗ फ़ेल" = बग वाली अलग आवाज़ (काम बीच में, सुधार अपने-आप चलता रहता है) */
     private fun teamEvents(c: Context): (Seven.Agent, String) -> Unit = { ag, t ->
+        CoderSession.activeAgent = ag; CoderSession.activeNote = t       // v5.1: स्क्रीन पर "कौन काम कर रहा है"
         say("s", "${ag.icon} ${ag.hi}: $t")
         if (ag == Seven.Agent.TESTER && t.startsWith("✗")) CoderSound.notify(c, CoderSound.BUG, "कोडिंग टीम: बग मिला — ठीक कर रहा हूँ", t.lines().first().take(120))
     }
@@ -276,7 +277,8 @@ object SevenRunner {
             var agent: CodingAgent? = null
             var finished = false
             try {
-                kotlinx.coroutines.withTimeout(CoderTeam.TASK_TIMEOUT_MIN * 60 * 1000L) {
+                // v5.1 (मालिक): जो काम लिया उसे पूरा करो - कोई समय-सीमा नहीं (अटकने की पहचान FixLoop/राउंड से)
+                run work@{
                     // 0. मोड चुनो
                     val token = Prefs.ghToken(c).isNotBlank()
                     val repo = Prefs.ghRepo(c)
@@ -292,11 +294,11 @@ object SevenRunner {
                     if (d.blocked) {
                         say("e", "⚠ ${d.problem}")
                         CoderSession.offerNormal = task
-                        return@withTimeout
+                        return@work
                     }
                     val team: SevenTeam
                     if (d.mode == Seven.Mode.GITHUB) {
-                        val a = CoderSession.agentFor(c) ?: run { say("e", "GitHub सेटअप नहीं मिला"); return@withTimeout }
+                        val a = CoderSession.agentFor(c) ?: run { say("e", "GitHub सेटअप नहीं मिला"); return@work }
                         agent = a
                         // नया काम = साफ़ शुरुआत (नया backup + नई branch). पिछला PR अभी खुला (merge नहीं) हो तो यह काम उसी में जुड़ता है
                         val open = a.pr
@@ -333,9 +335,9 @@ object SevenRunner {
                     if (approved == null) {
                         // चरण 1: सिर्फ़ समझ (कोई branch / बदलाव नहीं) - user को दिखाकर "हाँ" का इंतज़ार
                         val u = team.understand(task)
-                        if (u.answer.isNotBlank()) { say("d", u.answer); return@withTimeout }
+                        if (u.answer.isNotBlank()) { say("d", u.answer); return@work }
                         // मैनेजर: रिपो / PR / काम की हालत का सवाल → जाँचकर्ता (कोड नहीं छूता, मंज़ूरी की ज़रूरत नहीं)
-                        if (u.kind == Seven.Kind.STATUS) { inspect(c, task); return@withTimeout }
+                        if (u.kind == Seven.Kind.STATUS) { inspect(c, task); return@work }
                         // मैनेजर: "हाँ" माँगने से पहले रिपो जाँच (खुले PR + इसी जगह का टकराव) - सिर्फ़ पढ़ना
                         if (d.mode == Seven.Mode.GITHUB && gh != null) say("s", preCheck(gh, repo, u, agent?.pr?.number, Prefs.ghBranch(c)))
                         pending = Pending(task, u, normal, allMedia)
@@ -346,13 +348,13 @@ object SevenRunner {
                             u.understood.ifBlank { u.brief }.take(120),
                             if (u.needsAnswer) "बॉस, काम शुरू करने से पहले एक बात साफ़ कीजिए: " + u.questions.first().take(200)
                             else "बॉस, मैंने काम ऐसे समझा: " + u.understood.ifBlank { u.brief }.take(220) + "। सही है तो हाँ बोलिए, वरना बताइए क्या बदलना है।", kind = CoderSound.WAIT)
-                        return@withTimeout
+                        return@work
                     }
                     val out = team.run(workTask, approved)
                     // काम पूरा (या सिर्फ़ जवाब) = चौकी साफ़. नहीं हुआ = चौकी बची रहे, ताकि "आगे करो" वहीं से चले
                     finished = out.testOk == true || out.answerOnly
-                    if (out.answerOnly && out.report == SevenTeam.STATUS_ASK) { inspect(c, task); return@withTimeout }
-                    if (out.answerOnly) { say("d", out.report); return@withTimeout }
+                    if (out.answerOnly && out.report == SevenTeam.STATUS_ASK) { inspect(c, task); return@work }
+                    if (out.answerOnly) { say("d", out.report); return@work }
                     // यूज़र को सिर्फ़ छोटी रिपोर्ट (हुआ/नहीं, API, वजह, हल). पूरी तकनीकी रिपोर्ट डिबग लॉग में
                     DKLog.d("11-एजेंट पूरी रिपोर्ट:\n" + out.report)
                     say(if (out.testOk == true) "d" else "e", out.short.ifBlank { out.report })
@@ -369,7 +371,7 @@ object SevenRunner {
                         kind = if (ok) CoderSound.DONE else CoderSound.WAIT)
                 }
             } catch (e: kotlinx.coroutines.TimeoutCancellationException) {
-                say("e", ShortReport.text(null, "तय समय (${CoderTeam.TASK_TIMEOUT_MIN} मिनट) में पूरा नहीं हुआ"))
+                say("e", ShortReport.text(null, "एक अंदर का कदम तय समय में पूरा नहीं हुआ"))
             } catch (e: kotlinx.coroutines.CancellationException) {
                 say("e", ShortReport.text(null, "काम रोक दिया"))
             } catch (e: Exception) {

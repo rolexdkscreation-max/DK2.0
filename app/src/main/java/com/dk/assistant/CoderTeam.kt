@@ -30,7 +30,6 @@ object CoderTeam {
     /** Build/test fail → जड़ → fix → फिर test: तब तक जब तक पास न हो (अटकने/सुरक्षा-सीमा पर रुककर रिपोर्ट, देखें [FixLoop]) */
     const val MAX_BUILD_ROUNDS = FixLoop.HARD_CAP
     /** एक काम की कुल समय-सीमा (पहले 10 मिनट = सिर्फ़ 1-2 build-fix राउंड; अब "पास होने तक" वाले चक्र के लिए जगह) */
-    const val TASK_TIMEOUT_MIN = 40L
 
     data class Suggestion(val id: Int, val title: String, val why: String, val task: String, var state: String = "pending") // pending/yes/no/done
     val suggestions = mutableListOf<Suggestion>()
@@ -78,7 +77,7 @@ object CoderTeam {
                     if (currentTask != null) say("s", "कोऑर्डिनेटर: कतार का अगला काम शुरू — ${currentTask.take(80)}")
                 }
             } catch (e: kotlinx.coroutines.TimeoutCancellationException) {
-                val msg = "कोडिंग का काम तय समय ($TASK_TIMEOUT_MIN मिनट) में पूरा नहीं हो पाया।"
+                val msg = "कोडिंग का एक कदम तय समय में पूरा नहीं हो पाया।"
                 finish(c, msg, ok = false, title = "कोडिंग टीम: टाइमआउट")
             } catch (e: CancellationException) {
                 say("e", "टीम का काम रोक दिया।")
@@ -97,10 +96,11 @@ object CoderTeam {
      * @return null = ठीक, वरना गलती का संदेश. रोकें (cancel) दबाया तो कतार भी साफ़ और आगे फेंको.
      */
     private suspend fun runOne(c: Context, a: CodingAgent, task: String): String? = try {
-        kotlinx.coroutines.withTimeout(TASK_TIMEOUT_MIN * 60 * 1000L) { pipeline(c, a, task) }
+        // v5.1 (मालिक): समय-सीमा नहीं - काम पूरा होने तक (रोकें बटन से रुकता है)
+        pipeline(c, a, task)
         null
     } catch (e: kotlinx.coroutines.TimeoutCancellationException) {
-        val msg = "कोडिंग का काम तय समय ($TASK_TIMEOUT_MIN मिनट) में पूरा नहीं हो पाया।"
+        val msg = "कोडिंग का एक कदम तय समय में पूरा नहीं हो पाया।"
         finish(c, msg, ok = false, title = "कोडिंग टीम: टाइमआउट")
         msg
     } catch (e: CancellationException) {

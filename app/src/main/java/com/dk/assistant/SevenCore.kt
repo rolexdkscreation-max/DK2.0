@@ -24,7 +24,9 @@ object Seven {
     enum class Agent(val hi: String, val icon: String) {
         MANAGER("मैनेजर", "👔"), PLANNER("प्लानर", "🗺"), CODER("कोडर", "⌨"), REVIEWER("रिव्यूअर", "🔍"),
         TESTER("टेस्टर", "🧪"), DEBUGGER("डिबगर", "🐞"), GIT("गिट", "🌿"),
-        PROMPT("प्रॉम्प्ट इंजीनियर", "✍"), PERF("परफॉरमेंस", "⚡"), QA("QA", "✅"), DEPLOY("डिप्लॉयमेंट", "🚀")
+        PROMPT("प्रॉम्प्ट इंजीनियर", "✍"), PERF("परफॉरमेंस", "⚡"), QA("QA", "✅"), DEPLOY("डिप्लॉयमेंट", "🚀"),
+        /** v5.1 (मालिक: "कोडिंग एजेंट सवाल का अच्छे से जवाब नहीं देता"): असली कोड पढ़कर गहराई से समझाने वाला */
+        EXPLAINER("समझाने वाला", "🎓")
     }
 
     /** 11 की टीम से अलग: रिपो / PR / checks / टीम का हाल खुद जाँचकर step-by-step बताता है (कोड नहीं छूता). मैनेजर kind=status पर इसे लगाता है */
@@ -144,10 +146,23 @@ Describe in English, completely and precisely, everything that matters for the c
 Then one line "USER WANTS:" with what the user most likely wants changed, based on the request and the media. No JSON."""
 
         /** हर एजेंट पर लागू: सावधानी, पूरा पढ़ना, पूरा समझाकर आगे देना */
+        /** v5.1: समझाने वाला - सवाल/“समझाओ”/“जांच करो” पर असली कोड पढ़कर गहराई से, आसान हिंदी में */
+        const val EXPLAINER = """You are the EXPLAINER (समझाने वाला) of the DK coding team, working under the MANAGER. Your ONLY job: explain deeply and correctly, in simple Hindi, whatever the owner asks about his app - how a feature works, why something happens, what a file/function does, or a full check ("जांच करो") of the app code. You NEVER change code.
+FIRST find and read the REAL code. To look, reply ONLY one JSON line: {"search":["word",...]} (max 6 words/names to grep in the repo) or {"read":["path",...]} (max 8 repo paths) - you get the results and can ask again. Never explain from file names, guesses or memory.
+When you have read enough, reply in plain text (NO JSON) in Hindi with these short headings:
+1) सीधा जवाब - 2-3 lines.
+2) यह कैसे काम करता है - step by step, the real flow: which file and function does what (write "path: function"), in order.
+3) क्यों / कहाँ दिक्कत हो सकती है - only what the code you READ shows. Not sure = write "पक्का नहीं" and what must be checked.
+4) For a check ("जांच करो"/"चेक करो"): every important part you checked - "✓ ठीक" / "⚠ खतरा" / "✗ गलती" with path:line and one line why.
+5) आगे क्या करें - one concrete next step (e.g. "ठीक करवाना हो तो बोलें: …").
+Teach like a patient senior engineer explaining to the owner (not a programmer): simple words, explain every technical word in a few words. Be complete - do not skip any part of the question. Never invent a file, function, line or result; if something could not be read, say so."""
+
         const val RULES = """TEAM WORK RULES (for every agent):
 - Work step by step and very carefully; check each step before the next. No shortcuts, no guessing.
 - Read everything you are given COMPLETELY (whole files, whole logs, the whole spec). Your context is large - long content is normal. If something you need is cut ("…" / "more lines"), ask to read that part instead of guessing.
-- When your result goes to another agent, explain it fully INSIDE the required reply format (JSON fields / plan steps): what, where (file:line), why, and what must not change - the next agent knows only what you write."""
+- When your result goes to another agent, explain it fully INSIDE the required reply format (JSON fields / plan steps): what, where (file:line), why, and what must not change - the next agent knows only what you write.
+- PROFESSIONAL STANDARD (owner: "एक भी गलती ना हो"): work like a meticulous senior engineer. Never invent a file, function, API, result or number. Never say "done/fixed/tested" unless you actually saw it. Unsure = say so and check, do not guess.
+- A task you take must be finished completely - no half work, no "TODO", no skipped part. If a part truly cannot be done, say exactly which part and why."""
 
         /** कोडर: उसका जवाब सिर्फ़ FIND/REPLACE - नियम वही, पर बाहर कोई लिखा-पढ़ी नहीं */
         const val RULES_CODER = """TEAM WORK RULES: work very carefully, step by step. Read the WHOLE file content, the spec, the plan and the definitions you are given before you change anything. Reply ONLY in the required FILE / FIND / REPLACE format - no explanations outside it."""
@@ -156,6 +171,7 @@ Then one line "USER WANTS:" with what the user most likely wants changed, based 
             Agent.MANAGER -> MANAGER; Agent.PLANNER -> PLANNER; Agent.CODER -> CODER; Agent.REVIEWER -> REVIEWER
             Agent.TESTER -> TESTER; Agent.DEBUGGER -> DEBUGGER; Agent.GIT -> GIT
             Agent.PROMPT -> PROMPT; Agent.PERF -> PERF; Agent.QA -> QA; Agent.DEPLOY -> DEPLOY
+            Agent.EXPLAINER -> EXPLAINER
         }
     }
 
@@ -192,6 +208,18 @@ Then one line "USER WANTS:" with what the user most likely wants changed, based 
         "feature" -> if (SafePr.isFixTask(task) && !SafePr.changesOldFeature(task)) Kind.BUG else Kind.FEATURE
         else -> if (SafePr.isFixTask(task)) Kind.BUG else Kind.FEATURE
     }
+
+    // ------------------------------------------------------------------ v5.1: समझाने वाला
+    private val explainWords = listOf("समझाओ", "समझा दो", "समझाइए", "समझाना", "समझा", "explain", "samjhao", "samjha do", "जांच करो", "जाँच करो",
+        "जांच कर", "जाँच कर", "चेक करो", "check karo", "कैसे काम करता", "कैसे काम करती", "how does", "how it works")
+    private val changeWords = listOf("बनाओ", "बना दो", "जोड़ो", "जोड़ दो", "जोड़", "हटाओ", "हटा दो", "बदलो", "बदल दो", "ठीक करो", "ठीक कर दो", "सुधारो",
+        "fix", "add ", "remove", "change", "implement", "लगाओ", "लगा दो", "डालो", "डाल दो", "बढ़ाओ", "कम करो", "update")
+
+    /** मालिक "समझाओ / जांच करो / कैसे काम करता है" कह रहा है? */
+    fun wantsExplain(task: String): Boolean = task.lowercase().let { t -> explainWords.any { t.contains(it) } }
+
+    /** सिर्फ़ समझाना/जाँचना है, कुछ बदलना नहीं ("पूरा कोड जांच करो और समझाओ") → सवाल, समझाने वाला */
+    fun explainOnly(task: String): Boolean = wantsExplain(task) && task.lowercase().let { t -> changeWords.none { t.contains(it) } }
 
     // ------------------------------------------------------------------ JSON
     /** AI के जवाब में पहला पूरा JSON object (```json घेरा या आगे-पीछे का text हो तो भी) */
