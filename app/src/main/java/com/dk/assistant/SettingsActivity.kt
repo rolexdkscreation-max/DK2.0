@@ -1151,6 +1151,15 @@ class SettingsActivity : AppCompatActivity() {
         card("फ़ोन कंट्रोल (Accessibility)", "एक बार ON करें — फिर ON ही रहेगा") { box ->
             accStatus = TextView(this).apply { textSize = 15f; setTextColor(0xFFFFFFFF.toInt()); setPadding((4 * dp).toInt(), (6 * dp).toInt(), 0, 0) }
             box.addView(accStatus)
+            val roleManager = getSystemService(android.app.role.RoleManager::class.java)
+            val isAssistantRoleHeld = roleManager?.isRoleHeld(android.app.role.RoleManager.ROLE_ASSISTANT) == true
+            val roleStatusView = TextView(this).apply {
+                textSize = 14f
+                setTextColor(if (isAssistantRoleHeld) 0xFF00FF00.toInt() else 0xFFFF5555.toInt())
+                setPadding((4 * dp).toInt(), (6 * dp).toInt(), 0, (6 * dp).toInt())
+                text = if (isAssistantRoleHeld) "✓ Assistant Role: सक्रिय है" else "✗ Assistant Role: सक्रिय नहीं है (डिफ़ॉल्ट असिस्टेंट सेट करें)"
+            }
+            box.addView(roleStatusView)
             row(box,
                 button("Accessibility ON करें") { Setup.openAccessibility(this) },
                 button("App info") { Setup.openAppInfo(this) })
