@@ -47,7 +47,7 @@ DK सुन या बोल रहा हो तो स्क्रीन क�
 ) पर काम करूँगा।	) I'll work on it.
 ) — काम दोबारा भेजें:	) — send the task again:
 ) • बदलने के लिए ऊपर "रिपो"	) • to change, use "Repo" at the top
-11 एजेंट •	11 agents •
+7 एजेंट + 🎓 •	7 agents + 🎓 •
 Build fail हुआ ✗	Build failed ✗
 Build जाँच/सुधार में गलती:	Error while checking/fixing the build:
 Build ठीक करने वाले बदलाव तैयार हैं — नीचे "Push करें" दबाइए	Changes that fix the build are ready — tap "Push" below
@@ -127,7 +127,7 @@ review के लिए तैयार	ready for review
 क्या बनाना है? बोलिए…	What should I build? Speak…
 ठीक है	OK
 नई branch (feature/dk-…) → PR →	New branch (feature/dk-…) → PR →
-नमस्ते। 11 एजेंट वाली टीम तैयार है: मैनेजर → प्रॉम्प्ट इंजीनियर → गिट → प्लानर → कोडर → रिव्यूअर → परफॉरमेंस → टेस्टर → डिबगर → QA → डिप्लॉयमेंट।	Hello. The 11-agent team is ready: Manager → Prompt engineer → Git → Planner → Coder → Reviewer → Performance → Tester → Debugger → QA → Deployment.
+नमस्ते। 7 एजेंट वाली टीम तैयार है: मैनेजर → प्लानर → कोडर → रिव्यूअर → टेस्टर → डिबगर → गिट/रिलीज़, और अलग से 🎓 समझाने वाला।	Hello. The 7-agent team is ready: Manager → Planner → Coder → Reviewer → Tester → Debugger → Git/Release, plus a separate 🎓 Explainer.
 नमस्ते। कोडिंग टीम तैयार है —	Hello. The coding team is ready —
 नमस्ते। मैं	Hello. I am
 नया	New
@@ -326,7 +326,7 @@ key गलत है या बंद है	key is wrong or disabled
 (पर	(but
 ) • बात करने का तरीका	) • Talking style
 . इंटरनेट देखें।	. Check the internet.
-11 एजेंट वाला नया सिस्टम: मैनेजर → प्रॉम्प्ट इंजीनियर (समझ + आपकी हाँ) → गिट → प्लानर → कोडर → रिव्यूअर → परफॉरमेंस → टेस्टर → डिबगर → QA → डिप्लॉयमेंट	New 11-agent system: Manager → Prompt engineer (understanding + your yes) → Git → Planner → Coder → Reviewer → Performance → Tester → Debugger → QA → Deployment
+7 एजेंट वाला सिस्टम: मैनेजर (समझ + आपकी हाँ) → प्लानर (पहले जड़/कारण) → कोडर → रिव्यूअर → टेस्टर → डिबगर → गिट/रिलीज़ (+ 🎓 समझाने वाला)	7-agent system: Manager (understanding + your yes) → Planner (root cause first) → Coder → Reviewer → Tester → Debugger → Git/Release (+ 🎓 Explainer)
 5 (सुझाया) — कम कदम = कम API खर्च, limit/413 कम	5 (suggested) — fewer steps = lower API cost, fewer limit/413 errors
 AI दिमाग	AI brain
 AI दिमाग • DK कंप्यूटर	AI brain • DK Computer

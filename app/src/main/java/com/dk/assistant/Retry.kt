@@ -77,4 +77,17 @@ object FixLoop {
         if (history.size >= SAME_LIMIT && history.takeLast(SAME_LIMIT).distinct().size == 1 && history.last().isNotBlank()) return Next.STOP_STUCK
         return Next.FIX_AGAIN
     }
+
+    /**
+     * v5.2 (मालिक: "max 3 कोशिश की सीमा हटाओ - काम पूरा होने तक चलते रहो, बीच में मत पूछो"):
+     * कोडिंग टीम (कोडर → रिव्यूअर → टेस्टर → डिबगर) का चक्र. कोई गिनती-सीमा नहीं (STOP_CAP कभी नहीं);
+     * रुकना सिर्फ़ तब जब आख़िरी [TEAM_SAME_LIMIT] कोशिशों में हूबहू एक ही गलती लौटी हो.
+     */
+    const val TEAM_SAME_LIMIT = 10
+
+    fun nextTeam(history: List<String>): Next = if (stuck(history)) Next.STOP_STUCK else Next.FIX_AGAIN
+
+    /** आख़िरी [limit] चीज़ें हूबहू एक जैसी (और खाली नहीं) = अटक गए */
+    fun stuck(history: List<String>, limit: Int = TEAM_SAME_LIMIT): Boolean =
+        history.size >= limit && history.takeLast(limit).distinct().size == 1 && history.last().isNotBlank()
 }

@@ -37,7 +37,7 @@ object CoderSession {
     /** 7-एजेंट: टोकन/रिपो की दिक्कत पर रुका काम - "नॉर्मल मोड में करो" का विकल्प */
     @Volatile var offerNormal: String? = null
     /** v5.1: अभी कौन सा एजेंट काम कर रहा है (स्क्रीन पर नाम + animation) */
-    @Volatile var activeAgent: Seven.Agent? = null
+    @Volatile var activeAgent: Seven.Member? = null
     @Volatile var activeNote: String = ""
     /** 7-एजेंट नॉर्मल मोड: पिछले जवाबों की फ़ाइलें (अगले संदेश में आगे काम के लिए) */
     val normalFiles = LinkedHashMap<String, String>()
@@ -310,7 +310,7 @@ class CodingActivity : AppCompatActivity() {
     }
 
     private fun welcome(): String {
-        if (Prefs.coderSeven(this)) return "नमस्ते। 11 एजेंट वाली टीम तैयार है: मैनेजर → प्रॉम्प्ट इंजीनियर → गिट → प्लानर → कोडर → रिव्यूअर → परफॉरमेंस → टेस्टर → डिबगर → QA → डिप्लॉयमेंट।\n" + sevenModeLine() +
+        if (Prefs.coderSeven(this)) return "नमस्ते। 7 एजेंट वाली टीम तैयार है: मैनेजर → प्लानर → कोडर → रिव्यूअर → टेस्टर → डिबगर → गिट/रिलीज़, और अलग से 🎓 समझाने वाला।\n" + sevenModeLine() +
             "\nबताइए क्या बनाना/ठीक करना है। पहले मैं बताऊँगा कि मैंने क्या समझा — आपकी \"हाँ\" के बाद ही code छुआ जाएगा। GitHub मोड में: backup branch, नई branch, टेस्ट, QA, PR — merge और APK release सिर्फ़ आपकी मंज़ूरी से।" +
             " नॉर्मल मोड में: कोड हर फ़ाइल के नाम के साथ अलग मिलेगा (कॉपी बटन के साथ)। अपना कोड ```घेरे``` में भेजें तो उसी पर काम होगा।"
         val problems = problems()
@@ -365,7 +365,7 @@ class CodingActivity : AppCompatActivity() {
         }
         if (hasMedia) {
             CoderSession.media.clear(); renderMedia()
-            CoderSession.add("s", "📎 फ़ोटो/वीडियो सिर्फ़ 11-एजेंट टीम देखती है (Settings → कोडिंग एजेंट में चालू करें)। अभी सिर्फ़ आपका लिखा भेजा।")
+            CoderSession.add("s", "📎 फ़ोटो/वीडियो सिर्फ़ 7 एजेंट वाली टीम देखती है (Settings → कोडिंग एजेंट में चालू करें)। अभी सिर्फ़ आपका लिखा भेजा।")
             if (typed.isEmpty()) { render(); return }
         }
         val p = problems()
@@ -780,7 +780,7 @@ class CodingActivity : AppCompatActivity() {
         } else { busyBar.visibility = View.GONE; agentWork.visibility = View.GONE; CoderSession.activeAgent = null; CoderSession.activeNote = "" }
     }
 
-    /** 11-एजेंट टीम चल रही हो तो: कौन सा एजेंट काम कर रहा है (नाम + animation) */
+    /** 7 एजेंट वाली टीम चल रही हो तो: कौन सा एजेंट काम कर रहा है (नाम + animation) */
     private fun showAgent() {
         if (!Prefs.coderSeven(this)) { agentWork.visibility = View.GONE; return }
         agentWork.visibility = View.VISIBLE
@@ -791,7 +791,7 @@ class CodingActivity : AppCompatActivity() {
     private fun render() {
         val a = CoderSession.agent
         val ai = CoderAi.fromPrefs(this)
-        sub.text = (if (Prefs.coderSeven(this)) "11 एजेंट • " + sevenModeLine().substringBefore(" — ").substringBefore(" •").removePrefix("मोड: ") + " • ${ai?.label ?: "AI नहीं"}"
+        sub.text = (if (Prefs.coderSeven(this)) "7 एजेंट + 🎓 • " + sevenModeLine().substringBefore(" — ").substringBefore(" •").removePrefix("मोड: ") + " • ${ai?.label ?: "AI नहीं"}"
             else "${Prefs.ghRepo(this).ifBlank { "repo नहीं चुना" }} • ${a?.branch ?: Prefs.ghBranch(this)} • ${ai?.label ?: "AI नहीं"}") +
             if (CoderSession.busy) " • काम चल रहा है…" else ""
         maybeOfferNormal()

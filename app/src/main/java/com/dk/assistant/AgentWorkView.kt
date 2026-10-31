@@ -13,23 +13,23 @@ import android.view.View
  * Android-मुक्त हिस्सा (कौन सा एजेंट, लेबल) = [AgentWork] - JVM test होता है।
  */
 object AgentWork {
-    /** स्क्रीन पर एजेंट की पंक्ति का क्रम: मैनेजर सबसे पहले (सबका मालिक) */
-    val ORDER: List<Seven.Agent> = listOf(Seven.Agent.MANAGER) + Seven.Agent.values().filter { it != Seven.Agent.MANAGER }
+    /** स्क्रीन पर टीम की पंक्ति का क्रम (v5.2: 7 एजेंट + समझाने वाला): मैनेजर सबसे पहले (सबका मालिक) */
+    val ORDER: List<Seven.Member> = listOf(Seven.Member.MANAGER) + Seven.Member.values().filter { it != Seven.Member.MANAGER }
 
-    /** टीम की लाइन "👔 मैनेजर: …" से एजेंट */
-    fun parse(line: String): Seven.Agent? = Seven.Agent.values().firstOrNull { line.startsWith("${it.icon} ${it.hi}:") }
+    /** टीम की लाइन "👔 मैनेजर: …" से सदस्य */
+    fun parse(line: String): Seven.Member? = Seven.Member.values().firstOrNull { line.startsWith("${it.icon} ${it.hi}:") }
 
-    fun label(a: Seven.Agent?, tick: Int): String {
+    fun label(a: Seven.Member?, tick: Int): String {
         val dots = ".".repeat(tick % 4)
         return if (a == null) "👔 मैनेजर काम बाँट रहा है$dots" else "${a.icon} ${a.hi} काम कर रहा है$dots"
     }
 
     /** मैनेजर के अलावा कोई एजेंट = "मैनेजर ने उसे काम सौंपा" */
-    fun underManager(a: Seven.Agent?): String = if (a == null || a == Seven.Agent.MANAGER) "👔 मैनेजर" else "👔 मैनेजर → ${a.icon} ${a.hi}"
+    fun underManager(a: Seven.Member?): String = if (a == null || a == Seven.Member.MANAGER) "👔 मैनेजर" else "👔 मैनेजर → ${a.icon} ${a.hi}"
 }
 
 class AgentWorkView(c: Context) : View(c) {
-    var active: Seven.Agent? = null
+    var active: Seven.Member? = null
         set(v) { field = v; invalidate() }
     var note: String = ""
         set(v) { field = v; invalidate() }

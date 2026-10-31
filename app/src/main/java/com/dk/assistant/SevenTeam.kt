@@ -71,10 +71,23 @@ class SevenTeam(
     private val ai: TeamAi,
     private val files: TeamFiles,
     private val git: TeamGit?,
-    /** true = 11-एजेंट (प्रॉम्प्ट इंजीनियर, नक्शा+खोज, जगह-जाँच, परफॉरमेंस, QA). false = पुराना 7-एजेंट क्रम जैसा का तैसा */
+    /** true = पूरी टीम (मैनेजर की समझ/spec, नक्शा+खोज, जगह-जाँच, रिव्यूअर की परफॉरमेंस जाँच, टेस्टर की QA). false = पुराना छोटा क्रम जैसा का तैसा */
     private val full: Boolean = false,
-    private val ev: (Agent, String) -> Unit
+    ev: (Agent, String) -> Unit
 ) {
+    private val sink = ev
+    private fun ev(a: Agent, t: String) = sink(a, t)
+
+    /**
+     * v5.2 (मालिक: "प्लानर पहले जड़/कारण ढूँढकर लिखे, कारण पता होने के बाद ही कोडर"): बग के काम में शुरू की जड़-खोज
+     * प्लानर की ज़िम्मेदारी है - वह डिबगर वाली जाँच (वही prompt, वही पक्की लाइन-जाँच) से जड़ ढूँढता है.
+     * स्क्रीन पर उस समय नाम "प्लानर" दिखे, इसके लिए: [shownAs].
+     */
+    @Volatile private var rootByPlanner = false
+    /** यह ज़िम्मेदारी अभी स्क्रीन पर किस सदस्य के नाम से दिखे (7 + समझाने वाला) */
+    fun shownAs(a: Agent): Seven.Member = if (rootByPlanner && a == Agent.DEBUGGER) Seven.Member.PLANNER else a.member
+    /** हर राउंड की जड़ (रुकना पड़े तो user को "क्या-क्या आज़माया") */
+    private val tried = mutableListOf<String>()
     /**
      * report = पूरी तकनीकी रिपोर्ट (डिबग लॉग / PR के लिए).
      * short = यूज़र को दिखने वाली छोटी रिपोर्ट: हुआ/नहीं, API चली/नहीं, वजह, हल (ShortReport). खाली = report ही दिखाओ.
@@ -112,6 +125,7 @@ class SevenTeam(
     private var repoMap: String? = null
     private var qaOk = false
     private var qaRounds = 0
+    private val qaMiss = mutableListOf<String>()
     private var qaFix = ""
     private var qaChecks = listOf<String>()
     private val perfNotes = mutableListOf<String>()
@@ -177,7 +191,7 @@ class SevenTeam(
         const val EXPLAIN_ROUNDS = 10
         /** गिट: रिपो में GitHub Actions का कोई workflow नहीं */
         const val NO_CI = "NO_CI"
-        /** QA कितनी बार काम वापस भेज सकता है (फिर रुककर user को रिपोर्ट) */
+        /** पुराना: QA कितनी बार काम वापस भेज सकता था. v5.2 से गिनती-सीमा नहीं (FixLoop.TEAM_SAME_LIMIT वाला नियम) - नाम पुराने code/रिपोर्ट के लिए */
         const val QA_ROUNDS = 2
         /** 11-एजेंट डिबगर: कुल राउंड, और आख़िरी कितने राउंड में खोज/पढ़ाई बंद (सिर्फ़ फ़ैसला) */
         const val DEBUG_ROUNDS = 14
@@ -229,8 +243,8 @@ class SevenTeam(
         if (reply0.isNotBlank()) ev(Agent.MANAGER, "आपके सवालों का जवाब:\n$reply0")
         // v5.1: काम के साथ "समझाओ" भी कहा = पहले समझाने वाला असली कोड से समझाए, फिर काम
         if (Seven.wantsExplain(task)) explain(task, reply0)?.let { ev(Agent.EXPLAINER, "समझ (असली कोड से):\n$it") }
-        ev(Agent.MANAGER, if (k == Seven.Kind.BUG) "यह बग ठीक करने का काम लगता है → प्रॉम्प्ट इंजीनियर साफ़ करेगा, फिर डिबगर जड़ ढूँढेगा"
-            else "यह नया फ़ीचर/बदलाव लगता है → प्रॉम्प्ट इंजीनियर साफ़ करेगा कि ठीक-ठीक क्या और कहाँ")
+        ev(Agent.MANAGER, if (k == Seven.Kind.BUG) "यह बग ठीक करने का काम लगता है → पहले मैं आपकी बात साफ़ काम (spec) में बदलूँगा, फिर प्लानर जड़ ढूँढकर लिखेगा"
+            else "यह नया फ़ीचर/बदलाव लगता है → पहले मैं साफ़ करूँगा कि ठीक-ठीक क्या और कहाँ, फिर प्लानर")
         ev(Agent.PROMPT, "आपकी बात को साफ़ काम में बदल रहा हूँ — रिपो का नक्शा देखकर जगह भी ढूँढ रहा हूँ…")
         val ws = try { workspace() } catch (_: Exception) { emptyMap() }
         val msgs = mutableListOf("user" to ("USER REQUEST (user's own words):\n$task\n" + (if (media.isNotEmpty()) CoderMedia.describe(media) + "\n" else "") +
@@ -365,7 +379,8 @@ class SevenTeam(
             changes.putAll(r.changes); backup = r.backup; qaOk = r.qaOk
             if (r.commit.isNotBlank()) commitMsg = r.commit to r.title.ifBlank { task.take(80) }
             ev(Agent.MANAGER, "↩ वहीं से आगे: " + r.hindi())
-        } else ev(Agent.MANAGER, (if (bug) "यह बग ठीक करने का काम है → डिबगर पहले जड़ ढूँढेगा" else "यह नया फ़ीचर/बदलाव है → प्लानर पहले फ़ाइलें पढ़ेगा") +
+        } else ev(Agent.MANAGER, (if (bug) "यह बग ठीक करने का काम है → प्लानर को सौंपा: पहले जड़ (कारण) ढूँढकर लिखेगा, कारण पता होने के बाद ही कोडर"
+            else "यह नया फ़ीचर/बदलाव है → प्लानर को सौंपा: पहले फ़ाइलें पढ़कर कारण/ज़रूरत लिखेगा, फिर कोडर") +
             if (acceptance.isNotEmpty()) "\nपूरा होने की शर्तें:\n" + acceptance.joinToString("\n") { "• $it" } else "")
 
         // 2. गिट: backup + नई branch (सिर्फ़ GitHub मोड). "आगे करो" पर पहले से बनी हैं - दोबारा नहीं
@@ -390,24 +405,33 @@ class SevenTeam(
         val coded = prog.phase >= TeamProgress.CODED
         if (!coded) {
         val plan = if (bug) {
-            val d = debug("USER BUG REPORT:\n$task" + if (spec.isNotBlank()) "\nSPEC (approved by the user): $spec" else "", repeat = false)
+            ev(Agent.PLANNER, "पहले बग की जड़ ढूँढ रहा हूँ (कोड अभी नहीं बदलेगा)…")
+            rootByPlanner = true
+            val d = try { debug("USER BUG REPORT:\n$task" + if (spec.isNotBlank()) "\nSPEC (approved by the user): $spec" else "", repeat = false) }
+                finally { rootByPlanner = false }
             if (d == null && !full) return finish(false, "डिबगर बग की जड़ नहीं ढूँढ पाया — थोड़ी और जानकारी दें (कब होता है, क्या एरर दिखता है)")
             if (d == null) {
                 // मैनेजर: डिबगर अटका - रुककर user से पूछने की जगह दूसरा रास्ता: प्लानर डिबगर की पढ़ी फ़ाइलों से खुद जगह ढूँढकर सुधार बनाए
                 val readByDebugger = debugSeen?.paths().orEmpty().toList()
-                ev(Agent.MANAGER, "डिबगर एक पक्की लाइन तक नहीं पहुँचा — रणनीति बदल रहा हूँ: प्लानर खुद खोजकर/पढ़कर सुधार की जगह ढूँढेगा" +
-                    if (readByDebugger.isNotEmpty()) " (डिबगर की पढ़ी फ़ाइलें: ${readByDebugger.joinToString()})" else "")
+                ev(Agent.MANAGER, "जड़ की एक पक्की लाइन नहीं मिली — रणनीति बदल रहा हूँ: प्लानर खुद खोजकर/पढ़कर जगह और कारण ढूँढेगा" +
+                    if (readByDebugger.isNotEmpty()) " (अब तक पढ़ी फ़ाइलें: ${readByDebugger.joinToString()})" else "")
                 bugs.add(Seven.Bug("जड़ की एक पक्की लाइन नहीं मिली", "-", "डिबगर ने ${readByDebugger.size} फ़ाइलें पढ़ीं, पर एक पक्की लाइन तय नहीं कर पाया", "प्लानर ने खोजकर सुधार बनाया"))
                 makePlan("FIX THIS USER PROBLEM (the debugger could not pin one exact line - the needed code may be MISSING, not broken).\n" +
                     "USER PROBLEM: $task\n" + (if (spec.isNotBlank()) "SPEC: $spec\n" else "") +
-                    "Search and read to find where the behaviour is (or must be) implemented, then plan the smallest complete change.", readByDebugger)
+                    "Search and read to find where the behaviour is (or must be) implemented, then plan the smallest complete change.\n" +
+                    "ROOT CAUSE FIRST: in every step's \"why\" write the root cause you found (what is wrong or missing, and where).", readByDebugger)
             } else {
                 rootCause = d.second
+                ev(Agent.PLANNER, "जड़ (कारण) लिखी: ${d.second.take(300)}\nअब इसी कारण पर सुधार का प्लान — कोडर इसके बाद")
                 makePlan((if (d.first.missing) "ADD THE MISSING CODE for this user problem (it is not implemented anywhere yet) - smallest complete change, wired to the place given.\n"
                     else "MINIMAL FIX for this bug.\n") + "ROOT CAUSE: ${d.second}\nFIX: ${d.third}", d.first.files)
             }
         } else makePlan(task + if (brief.isNotBlank()) "\n(Manager brief: $brief)" else "", emptyList())
         plan ?: return finish(false, "प्लानर प्लान नहीं बना पाया: $lastBlock")
+        // v5.2: कोडर से पहले प्लानर का लिखा कारण/ज़रूरत (बग = जड़; फ़ीचर = क्या और क्यों)
+        val planWhy = plan.steps.map { it.why.trim() }.filter { it.isNotBlank() }.distinct()
+        if (!bug || rootCause.isBlank()) ev(Agent.PLANNER, (if (bug) "जड़ (कारण) लिखी: " else "कारण/ज़रूरत लिखी: ") +
+            (planWhy.take(3).joinToString(" • ").ifBlank { (spec.ifBlank { brief }).ifBlank { task }.take(300) }).take(400) + "\nअब कोडर शुरू करेगा")
         save { it.copy(rootCause = rootCause) }
         note.plan(plan.steps.map { stepText(it) })
         note.state("प्लान बना: ${plan.steps.size} कदम — कोड बदल रहा है", "कदम पूरे करके build/tests")
@@ -439,8 +463,12 @@ class SevenTeam(
                     val miss = qa()
                     if (miss.isNotEmpty()) {
                         qaRounds++
-                        if (qaRounds > QA_ROUNDS) return finish(false, "QA ने $QA_ROUNDS बार सुधार के बाद भी काम पूरा नहीं माना: " + miss.joinToString("; ").take(300))
-                        ev(Agent.MANAGER, "QA ने कमी बताई — प्लानर से सुधार करवा रहा हूँ (राउंड $qaRounds/$QA_ROUNDS)")
+                        // v5.2: गिनती-सीमा नहीं - रुकना सिर्फ़ तब जब हूबहू वही कमी लगातार 10 बार लौटे
+                        qaMiss.add(miss.joinToString("; "))
+                        tried.add("QA की कमी ठीक की: " + miss.joinToString("; ").take(120))
+                        if (FixLoop.stuck(qaMiss)) return finish(false, "टेस्टर (QA जाँच) ने हूबहू वही कमी ${FixLoop.TEAM_SAME_LIMIT} बार लगातार बताई: " +
+                            miss.joinToString("; ").take(300) + stuckNote(miss.joinToString("; ")))
+                        ev(Agent.MANAGER, "टेस्टर (QA जाँच) ने कमी बताई — प्लानर से सुधार करवा रहा हूँ (राउंड $qaRounds)")
                         val fix = makePlan("QA FOUND THE TASK INCOMPLETE OR WRONG.\nMISSING:\n" + miss.joinToString("\n") { "- $it" } +
                             (if (qaFix.isNotBlank()) "\nQA SUGGESTED FIX: $qaFix" else ""), files.staged().keys.toList())
                             ?: return finish(false, "QA की बताई कमी का प्लान नहीं बना: $lastBlock")
@@ -472,9 +500,10 @@ class SevenTeam(
             val errs = errorLines(t.log)
             ev(Agent.TESTER, "✗ फ़ेल — log पढ़कर असली एरर डिबगर को दिया" + (if (errs.isNotBlank()) "\nअसली एरर:\n$errs" else "") + if (t.url.isNotBlank()) "\n${t.url}" else "")
             sigs.add(FixLoop.signature(t.log))
-            when (FixLoop.next(sigs)) {
-                FixLoop.Next.STOP_CAP -> return finish(false, "${sigs.size} बार जड़ ढूँढकर ठीक करने के बाद भी टेस्ट फ़ेल: ${sigs.last().take(200)}")
-                FixLoop.Next.STOP_STUCK -> return finish(false, "वही गलती ${FixLoop.SAME_LIMIT} बार लौटी, रणनीति बदलकर भी नहीं गई: ${sigs.last().take(200)}")
+            // v5.2: कोई गिनती-सीमा नहीं - काम पूरा होने तक; रुकना सिर्फ़ जब हूबहू वही गलती लगातार 10 बार
+            when (FixLoop.nextTeam(sigs)) {
+                FixLoop.Next.STOP_STUCK, FixLoop.Next.STOP_CAP -> return finish(false, "वही गलती ${FixLoop.TEAM_SAME_LIMIT} बार लगातार लौटी, रणनीति बदलकर भी नहीं गई: ${sigs.last().take(200)}" +
+                    stuckNote(sigs.last()))
                 FixLoop.Next.FIX_AGAIN -> {}
             }
             val repeat = sigs.size >= 2 && sigs[sigs.size - 1] == sigs[sigs.size - 2]
@@ -491,6 +520,7 @@ class SevenTeam(
                 ?: fallbackDiag(t.log)
                 ?: return finish(false, "डिबगर टेस्ट फ़ेल होने की जड़ नहीं ढूँढ पाया (log में फ़ाइल:लाइन वाला कोई एरर भी नहीं मिला)")
             rootCause = d.second
+            tried.add("जड़ मानी: " + d.second.take(160))
             save { it.copy(rootCause = rootCause) }
             note.did("जड़ मिली: " + d.second.take(160))
             val fix = makePlan("MINIMAL FIX for the failed test/build.\nROOT CAUSE: ${d.second}\nFIX: ${d.third}", d.first.files)
@@ -846,7 +876,10 @@ class SevenTeam(
         if (strat == Seven.Strategy.REWRITE) ev(Agent.MANAGER, "रणनीति: ${s.file} पूरी पढ़कर पूरी दोबारा लिखवा रहा हूँ" + if (backup.isNotBlank()) " (backup: $backup)" else " (पुरानी फ़ाइल याद रखी है)")
         val defs = definitions(s)
         var msgs = mutableListOf("user" to coderBrief(s, cur, strat, defs))
-        for (attempt in 1..Seven.STEP_ATTEMPTS) {
+        // v5.2: गिनती-सीमा नहीं - कदम लागू होने तक; रुकना (और दूसरा रास्ता) सिर्फ़ जब हूबहू वही गलती लगातार 10 बार
+        var attempt = 0
+        while (!FixLoop.stuck(errors)) {
+            attempt++
             val sys = Seven.Prompts.CODER + if (strat == Seven.Strategy.REWRITE) "\n\n" + Seven.Prompts.CODER_REWRITE else ""
             val reply = aiAsk(Agent.CODER, sys, msgs)
             val edit = Seven.parseEdit(reply, s.file)
@@ -872,7 +905,7 @@ class SevenTeam(
             }
             if (chk.findMiss) misses++
             errors.add(problems.joinToString(" | "))
-            ev(Agent.REVIEWER, "✗ ${s.file}: वापस कोडर को (कोशिश $attempt/${Seven.STEP_ATTEMPTS})\n" + problems.joinToString("\n") { "• ${it.take(200)}" })
+            ev(Agent.REVIEWER, "✗ ${s.file}: वापस कोडर को (कोशिश $attempt)\n" + problems.joinToString("\n") { "• ${it.take(200)}" })
             lastBlock = problems.joinToString("; ").take(300)
             val next = Seven.strategy(errors, misses, cur?.length ?: 0, cur != null)
             if (next != strat) {
@@ -887,6 +920,7 @@ class SevenTeam(
                     "\nSend the corrected change in the same format.")
             }
         }
+        lastBlock = "हूबहू वही गलती ${FixLoop.TEAM_SAME_LIMIT} बार लगातार: " + lastBlock
         return false
     }
 
@@ -1129,6 +1163,11 @@ class SevenTeam(
         return null
     }
 
+    /** रुकना पड़ा (हूबहू वही गलती 10 बार): क्या-क्या आज़माया + शक कहाँ है */
+    private fun stuckNote(last: String): String = "\nक्या-क्या आज़माया:\n" +
+        (tried.takeLast(10).ifEmpty { listOf("कोडर → रिव्यूअर → टेस्टर → डिबगर चक्र") }).joinToString("\n") { "• $it" } +
+        "\nशक: जड़ शायद वह नहीं जो अब तक मानी गई (या ज़रूरी code/फ़ाइल रिपो में नहीं) — एरर: ${last.take(200)}"
+
     private suspend fun finish(testOk: Boolean?, problem: String, pr: String = git?.prUrl.orEmpty()): Outcome {
         if (problem.isNotBlank()) ev(Agent.MANAGER, (if (testOk == null) "⚠ " else "✗ ") + problem)
         when (testOk) {
@@ -1150,9 +1189,9 @@ class SevenTeam(
             if (testOk == true) passNote else problem.take(300), pr, backup, chk, lt?.url.orEmpty(),
             if (changes.isEmpty() && pr.isBlank()) "कोई code नहीं बदला, इसलिए PR नहीं बना" else git?.prNote.orEmpty())
         if (full) {
-            if (qaChecks.isNotEmpty()) rep += "\n\n✅ QA की जाँच:\n" + qaChecks.take(8).joinToString("\n") { "• $it" }
-            if (perfNotes.isNotEmpty()) rep += "\n\n⚡ परफॉरमेंस के सुझाव (ज़रूरी नहीं):\n" + perfNotes.take(5).joinToString("\n") { "• $it" }
-            if (testOk == true && git != null) rep += "\n\n🚀 डिप्लॉयमेंट: \"हाँ, merge करो\" / \"Merge करें\" कहने पर ही — PR दोबारा जाँच → merge → APK build → " +
+            if (qaChecks.isNotEmpty()) rep += "\n\n✅ QA की जाँच (टेस्टर):\n" + qaChecks.take(8).joinToString("\n") { "• $it" }
+            if (perfNotes.isNotEmpty()) rep += "\n\n⚡ परफॉरमेंस के सुझाव (रिव्यूअर, ज़रूरी नहीं):\n" + perfNotes.take(5).joinToString("\n") { "• $it" }
+            if (testOk == true && git != null) rep += "\n\n🚀 डिप्लॉयमेंट (गिट/रिलीज़): \"हाँ, merge करो\" / \"Merge करें\" कहने पर ही — PR दोबारा जाँच → merge → APK build → " +
                 "release में APK सच में है, यह पक्का करके version बताऊँगा। आपकी हाँ के बिना कुछ merge या release नहीं होगा।"
         }
         if (testOk != true && problem.isNotBlank()) rep += "\n\n• रुकने की वजह: $problem" +
@@ -1160,6 +1199,12 @@ class SevenTeam(
         // यूज़र को सिर्फ़ छोटी रिपोर्ट: हुआ/नहीं, API चली/नहीं, वजह, हल. पूरी रिपोर्ट (ऊपर) डिबग लॉग के लिए
         val why = if (testOk == true) "" else problem.ifBlank { lt?.note.orEmpty() }.ifBlank { lt?.log.orEmpty() }
         val short = ShortReport.text(testOk, why, pr.substringBefore(" ("), git != null)
+        // v5.2: काम ख़त्म → मैनेजर समझाने वाले से नतीजा बतवाता है (असली नतीजे से, बिना AI - कुछ बनाया हुआ नहीं)
+        val told = Seven.resultExplain(testOk, changes.entries.map { it.key to it.value }, bugs, problem, lt?.note.orEmpty(),
+            tried, pr.substringBefore(" ("), git != null)
+        ev(Agent.MANAGER, "काम ख़त्म → ${Seven.Member.EXPLAINER.label} नतीजा बताएगा")
+        ev(Agent.EXPLAINER, told)
+        rep += "\n\n" + told
         return Outcome(rep, files.staged(), testOk, mode, short = short)
     }
 }

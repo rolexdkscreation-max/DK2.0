@@ -217,21 +217,26 @@ class SevenPlusTest {
     }
 
     @Test fun qa_keepsRejecting_stopsAndReports_neverClaimsDone() = runBlocking {
+        // v5.2 (मालिक: "max 3 की सीमा हटाओ"): QA कमी बताता रहे तो टीम रुकती नहीं; रुकती सिर्फ़ तब जब हूबहू वही कमी
+        // लगातार FixLoop.TEAM_SAME_LIMIT बार लौटे - और तब भी कभी "काम पूरा" नहीं कहती
         val qaNo = """{"pass":false,"missing":["अधूरा"]}"""
-        val fixPlan = """{"steps":[{"file":"src/Calc.kt","action":"edit","change":"x","anchor":"fun sub"}]}"""
-        val e1 = "FILE: src/Calc.kt\n<<<FIND\nfun sub(a: Int, b: Int): Int {\nFIND>>>\n<<<REPLACE\n// v1\nfun sub(a: Int, b: Int): Int {\nREPLACE>>>"
-        val e2 = "FILE: src/Calc.kt\n<<<FIND\n// v1\nFIND>>>\n<<<REPLACE\n// v2\nREPLACE>>>"
-        val fixPlan2 = """{"steps":[{"file":"src/Calc.kt","action":"edit","change":"x","anchor":"// v1"}]}"""
-        val ai = FakeAi(Agent.PLANNER to planOne, Agent.CODER to goodEdit, Agent.REVIEWER to pass, Agent.PERF to perfOk,
-            Agent.TESTER to """{"pass":true}""", Agent.QA to qaNo,
-            Agent.PLANNER to fixPlan, Agent.CODER to e1, Agent.REVIEWER to pass, Agent.TESTER to """{"pass":true}""", Agent.QA to qaNo,
-            Agent.PLANNER to fixPlan2, Agent.CODER to e2, Agent.REVIEWER to pass, Agent.TESTER to """{"pass":true}""", Agent.QA to qaNo)
+        val first = "FILE: src/Calc.kt\n<<<FIND\nfun sub(a: Int, b: Int): Int {\nFIND>>>\n<<<REPLACE\n// v1\nfun sub(a: Int, b: Int): Int {\nREPLACE>>>"
+        fun edit(k: Int) = "FILE: src/Calc.kt\n<<<FIND\n// v$k\nFIND>>>\n<<<REPLACE\n// v${k + 1}\nREPLACE>>>"
+        fun plan(anchor: String) = """{"steps":[{"file":"src/Calc.kt","action":"edit","change":"x","anchor":"$anchor"}]}"""
+        val script = mutableListOf(Agent.PLANNER to planOne, Agent.CODER to goodEdit, Agent.REVIEWER to pass, Agent.PERF to perfOk,
+            Agent.TESTER to """{"pass":true}""", Agent.QA to qaNo)
+        for (r in 1 until FixLoop.TEAM_SAME_LIMIT) {
+            script += listOf(Agent.PLANNER to plan(if (r == 1) "fun sub" else "// v${r - 1}"), Agent.CODER to (if (r == 1) first else edit(r - 1)),
+                Agent.REVIEWER to pass, Agent.TESTER to """{"pass":true}""", Agent.QA to qaNo)
+        }
+        val ai = FakeAi(*script.toTypedArray())
         val f = MemoryFiles(mapOf("src/Calc.kt" to calcFile))
         val pre = SevenPlus.Understanding.parse(Seven.json(understood), Seven.Kind.FEATURE, "", emptyList())
         val out = SevenTeam(ai, f, null, full = true) { _, _ -> }.run("Calc में sub जोड़ो", pre)
-        assertEquals(3, ai.calls.count { it == Agent.QA })
+        assertEquals(FixLoop.TEAM_SAME_LIMIT, ai.calls.count { it == Agent.QA })
         assertFalse(out.testOk == true)
         assertTrue(out.report, out.report.contains("QA"))
+        assertTrue(out.report, out.report.contains("क्या-क्या आज़माया"))
     }
 
     @Test fun perf_mustProblem_getsOneFixRound() = runBlocking {

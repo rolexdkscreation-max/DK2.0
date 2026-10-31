@@ -11,7 +11,7 @@ import kotlinx.coroutines.withContext
  * 1. पूरे रिपो की असली हालत पढ़ो (सिर्फ़ पढ़ना - कुछ नहीं बदलता)
  * 2. रिपोर्ट + योजना दिखाओ
  * 3. खुले PR का सुधार अपने-आप (हाँ की ज़रूरत नहीं): फँसा run दोबारा, चलते checks पर पूरे होने तक नज़र,
- *    fail = GitHub की दिक्कत तो दोबारा / code की गलती तो 11 एजेंट उसी branch पर ठीक करें
+ *    fail = GitHub की दिक्कत तो दोबारा / code की गलती तो 7 एजेंट की टीम उसी branch पर ठीक करें
  * 4. सब हरा होते ही merge के लिए user से पूछो; merge → APK release सिर्फ़ "हाँ" (या "PR #N merge करो") से
  */
 object RepoDoctorRunner {
@@ -28,7 +28,7 @@ object RepoDoctorRunner {
 
     /**
      * हर संदेश पहले यहाँ: रिपो डॉक्टर का हो तो संभालो.
-     * @return null = आगे का सामान्य काम (11 एजेंट / पुरानी टीम)
+     * @return null = आगे का सामान्य काम (7 एजेंट की टीम / पुरानी टीम)
      */
     fun intercept(ctx: Context, input: String, fromVoice: Boolean): Res? {
         val c = ctx.applicationContext
@@ -255,7 +255,7 @@ object RepoDoctorRunner {
                 say("s", "🧊 अटका run रोककर दोबारा चलाया: ${run.url}")
                 when (watch(run.sha)) {
                     true -> if (pull != null) mergeIt() else Triple(true, false, "दोबारा चलाने पर पास ✓")
-                    false -> if (pull != null) fixCode(c, a, gh, s, i, pull)?.let { if (it) mergeIt() else Triple(false, false, "11 एजेंट ठीक नहीं कर पाए") }
+                    false -> if (pull != null) fixCode(c, a, gh, s, i, pull)?.let { if (it) mergeIt() else Triple(false, false, "7 एजेंट की टीम ठीक नहीं कर पाए") }
                         ?: Triple(false, false, "fail का log नहीं मिला") else Triple(false, false, "दोबारा चलाने पर भी fail")
                     null -> Triple(false, false, "नतीजा नहीं दिखा (Actions: Read इजाज़त?)")
                 }
@@ -268,7 +268,7 @@ object RepoDoctorRunner {
                 say("s", "❔ ${p.head} पर check ($wf) चलाया")
                 when (watch(pr?.headSha.orEmpty(), "workflow_dispatch")) {
                     true -> mergeIt()
-                    false -> fixCode(c, a, gh, s, i, p)?.let { if (it) mergeIt() else Triple(false, false, "11 एजेंट ठीक नहीं कर पाए") } ?: Triple(false, false, "fail")
+                    false -> fixCode(c, a, gh, s, i, p)?.let { if (it) mergeIt() else Triple(false, false, "7 एजेंट की टीम ठीक नहीं कर पाए") } ?: Triple(false, false, "fail")
                     null -> Triple(false, false, "check का नतीजा नहीं दिखा")
                 }
             }
@@ -284,8 +284,8 @@ object RepoDoctorRunner {
                         false -> {}
                     }
                 }
-                val ok = fixCode(c, a, gh, s, i, pull) ?: return Triple(false, false, "11 एजेंट शुरू नहीं हो पाए")
-                if (!ok) Triple(false, false, "11 एजेंट ठीक नहीं कर पाए — ऊपर रिपोर्ट")
+                val ok = fixCode(c, a, gh, s, i, pull) ?: return Triple(false, false, "7 एजेंट की टीम शुरू नहीं हो पाए")
+                if (!ok) Triple(false, false, "7 एजेंट की टीम ठीक नहीं कर पाए — ऊपर रिपोर्ट")
                 else if (pull != null) mergeIt()
                 else {
                     // main की गलती: टीम ने नया PR बनाया - वही merge + release
@@ -302,8 +302,8 @@ object RepoDoctorRunner {
                 say("s", "⏳ ${i.title}: checks पूरे होने तक नज़र रख रहा हूँ…")
                 when (watch(run.sha)) {
                     true -> mergeIt()
-                    false -> fixCode(c, a, gh, s, i, p)?.let { if (it) mergeIt() else Triple(false, false, "11 एजेंट ठीक नहीं कर पाए — ऊपर रिपोर्ट") }
-                        ?: Triple(false, false, "11 एजेंट शुरू नहीं हो पाए")
+                    false -> fixCode(c, a, gh, s, i, p)?.let { if (it) mergeIt() else Triple(false, false, "7 एजेंट की टीम ठीक नहीं कर पाए — ऊपर रिपोर्ट") }
+                        ?: Triple(false, false, "7 एजेंट की टीम शुरू नहीं हो पाए")
                     null -> Triple(false, false, "checks का नतीजा 20 मिनट में नहीं आया — थोड़ी देर बाद \"रिपो चेक करो\" बोलें")
                 }
             }
@@ -320,7 +320,7 @@ object RepoDoctorRunner {
         }
     }
 
-    /** 11 एजेंट से code की गलती ठीक करवाओ. @return null = शुरू नहीं हुआ */
+    /** 7 एजेंट की टीम से code की गलती ठीक करवाओ. @return null = शुरू नहीं हुआ */
     private suspend fun fixCode(c: Context, a: CodingAgent, gh: GitHub, s: RepoDoctor.Snap, i: RepoDoctor.Item, pull: GitHub.Pull?): Boolean? {
         // ताज़ा fail run का log (दोबारा चलने के बाद वाला)
         val run = withContext(Dispatchers.IO) {
@@ -328,7 +328,7 @@ object RepoDoctorRunner {
             try { gh.runsFor(s.repo, sha).firstOrNull { it.status == "completed" && it.conclusion in RepoDoctor.BAD } } catch (_: Exception) { null }
         }
         val log = withContext(Dispatchers.IO) { try { gh.failureLog(s.repo, run?.id ?: i.run?.id ?: 0) } catch (_: Exception) { "" } }
-        say("s", "🐞 code की गलती — 11 एजेंट जड़ ढूँढकर " + (if (pull != null) "PR #${pull.number} की branch पर" else "नई branch पर") + " ठीक करेंगे")
+        say("s", "🐞 code की गलती — 7 एजेंट की टीम जड़ ढूँढकर " + (if (pull != null) "PR #${pull.number} की branch पर" else "नई branch पर") + " ठीक करेंगे")
         val out = SevenRunner.fixWithTeam(c, a, pull, RepoDoctor.fixTask(i, s.base, log), i.title) ?: return null
         return out.testOk == true
     }
