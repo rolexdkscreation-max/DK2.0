@@ -116,6 +116,11 @@ class DKVoiceInteractionSession(context: android.content.Context) : VoiceInterac
 
     override fun onShow(args: Bundle?, showFlags: Int) {
         super.onShow(args, showFlags)
+        // v5.1 (मालिक): power बटन से बुलाया = DK Live उसी पल पीछे से जुड़ना शुरू, ओर्ब दिखने के साथ-साथ
+        // (UI के किसी कदम का इंतज़ार नहीं). माइक की इजाज़त न हो = Live नहीं, नीचे वाला बटन दिखता है.
+        // Accessibility यहाँ कभी चालू नहीं की जाती.
+        try { DKAccessibilityService.instance?.invokedNow("power बटन / assistant") }
+        catch (e: Exception) { android.util.Log.e("DKAssist", "Live शुरू नहीं हुआ", e) }
         try {
             android.util.Log.e("DKAssist", "DKVoiceInteractionSession onShow")
             val hasMic = androidx.core.content.ContextCompat.checkSelfPermission(

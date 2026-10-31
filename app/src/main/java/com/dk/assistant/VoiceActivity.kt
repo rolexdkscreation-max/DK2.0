@@ -24,6 +24,8 @@ class VoiceActivity : AppCompatActivity() {
 
     private lateinit var orb: OrbView
     private lateinit var state: TextView
+    private lateinit var link: TextView
+    private lateinit var permBtn: TextView
     private lateinit var you: TextView
     private lateinit var dk: TextView
     private lateinit var srcBox: FrameLayout
@@ -44,6 +46,8 @@ class VoiceActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // v5.1 (मालिक): स्क्रीन खुलते ही Live पीछे से जुड़ना शुरू - ओर्ब/UI बनने का इंतज़ार नहीं (माइक की इजाज़त हो तभी)
+        if (plainOpen(intent)) DKAccessibilityService.instance?.invokedNow("DK स्क्रीन खुली")
         // आवाज़ स्क्रीन: पूरी काली - पीछे ऐप (aurora/चैट/बटन) नहीं, सिर्फ़ आवाज़ का चलता गोला + बाहर निकलने का बटन
         // v4 Neon Glass: काले के पास गहरा मिडनाइट ढलान (aurora/चैट अब भी नहीं) - बीच में चमकता ओर्ब ही मुख्य
         val root = FrameLayout(this).apply {
@@ -131,6 +135,22 @@ class VoiceActivity : AppCompatActivity() {
         // सुनना/सोचना/बोलना अब orb खुद दिखाता है - अलग पट्टी/लेबल नहीं
         state.visibility = android.view.View.GONE
         col.addView(state, LinearLayout.LayoutParams(-2, -2).apply { gravity = Gravity.CENTER_HORIZONTAL })
+        // v5.1: DK Live का जुड़ाव साफ़ दिखे - "जुड़ रहा है… मॉडल • key #N" / "Live • … ms" / "धीमा नेट - हल्का मोड" / "ऑफ़लाइन"
+        link = TextView(this).apply {
+            setTextColor(0xCCFFFFFF.toInt()); textSize = 12f; gravity = Gravity.CENTER
+            val h = (12 * dp).toInt(); val v = (4 * dp).toInt(); setPadding(h, v, h, v)
+            visibility = android.view.View.GONE
+        }
+        col.addView(link, LinearLayout.LayoutParams(-2, -2).apply { gravity = Gravity.CENTER_HORIZONTAL })
+        // v5.1: माइक की इजाज़त नहीं = साफ़ बटन (बिना इजाज़त माइक कभी नहीं खुलता)
+        permBtn = TextView(this).apply {
+            setBackgroundResource(R.drawable.glass_pill); setTextColor(0xFFFFFFFF.toInt()); textSize = 14f
+            val h = (18 * dp).toInt(); val v = (10 * dp).toInt(); setPadding(h, v, h, v)
+            UiLang.setText(this, "माइक की इजाज़त दें")
+            setOnClickListener { requestPermissions(arrayOf(android.Manifest.permission.RECORD_AUDIO), REQ_MIC) }
+            visibility = if (Setup.hasMic(this@VoiceActivity)) android.view.View.GONE else android.view.View.VISIBLE
+        }
+        col.addView(permBtn, LinearLayout.LayoutParams(-2, -2).apply { gravity = Gravity.CENTER_HORIZONTAL; topMargin = (8 * dp).toInt() })
 
         // ---- live likha hua
         val card = LinearLayout(this).apply {
@@ -204,6 +224,10 @@ class VoiceActivity : AppCompatActivity() {
     }
 
     override fun onNewIntent(intent: Intent) { super.onNewIntent(intent); handle(intent) }
+
+    /** सिर्फ़ DK खोली गई (कैमरा / चेहरा / स्क्रीन-शेयर वाला बुलावा नहीं) */
+    private fun plainOpen(i: Intent?): Boolean =
+        i?.getBooleanExtra("camera", false) != true && i?.getStringExtra(EXTRA_WANT) == null && i?.getBooleanExtra("face", false) != true
 
     private fun handle(i: Intent?) {
         if (i?.getBooleanExtra("camera", false) == true) { syncCamera(); return }   // Live ने कैमरा माँगा (Live पहले से चालू)
@@ -363,6 +387,10 @@ class VoiceActivity : AppCompatActivity() {
     @Deprecated("Deprecated in Java")
     override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
         @Suppress("DEPRECATION") super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if (requestCode == REQ_MIC) {     // v5.1: इजाज़त मिली = Live अभी
+            if (grantResults.firstOrNull() == PackageManager.PERMISSION_GRANTED) { if (::permBtn.isInitialized) permBtn.visibility = android.view.View.GONE; startLiveIfReady() }
+            return
+        }
         if (requestCode != REQ_CAM) return
         if (grantResults.firstOrNull() == PackageManager.PERMISSION_GRANTED) syncCamera()
         else { UiLang.toast(this, "कैमरा की इजाज़त नहीं मिली", Toast.LENGTH_LONG).show(); LiveVision.onCameraStopped("कैमरा की इजाज़त नहीं") }
@@ -378,6 +406,12 @@ class VoiceActivity : AppCompatActivity() {
         // v3.88: सिर्फ़ तीन स्थितियाँ - Listening / Thinking / Speaking
         UiLang.setText(state, ThreeState.label(DKState.mode, live, DKState.micMuted, DKState.working()) ?: "ओर्ब पर टैप करके बोलिए")
         // bolte-bolte naye shabd aakhir me judte hain - lamba ho to aakhri hissa dikhao (naye shabd chhupe nahi)
+        val ls = DKState.linkStatus
+        if (::link.isInitialized) {
+            link.visibility = if (ls.isBlank()) android.view.View.GONE else android.view.View.VISIBLE
+            if (ls.isNotBlank()) link.text = ls        // मॉडल का नाम/नंबर - अनुवाद नहीं
+        }
+        if (::permBtn.isInitialized) permBtn.visibility = if (Setup.hasMic(this)) android.view.View.GONE else android.view.View.VISIBLE
         val min = Prefs.orbMin(this)
         UiLang.setText(you, UiLang.s("आप:") + " " + tail(DKState.lastUser, if (min) 400 else 90).ifBlank { "—" })
         UiLang.setText(dk, "$name: " + tail(DKState.lastReply, if (min) 100_000 else 200).ifBlank { "—" })
@@ -392,6 +426,7 @@ class VoiceActivity : AppCompatActivity() {
 
     companion object {
         private const val REQ_CAM = 4209
+        private const val REQ_MIC = 4210
         /** v3.102: होम के बटन से - DK लाइव चालू होते ही कैमरा / स्क्रीन शेयर */
         const val EXTRA_WANT = "want_vision"
         const val WANT_CAMERA = "camera"

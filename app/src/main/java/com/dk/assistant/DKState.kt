@@ -34,6 +34,16 @@ object DKState {
     fun set(m: Mode) { mode = m; if (m != Mode.LISTENING) level = 0f; emit() }
 
     /**
+     * v5.1: DK Live का जुड़ाव - स्क्रीन पर साफ़ दिखे (कभी चुपचाप नाकाम नहीं):
+     * "जुड़ रहा है… <मॉडल> • key #N", "Live • <मॉडल> • key #N • 820 ms", "धीमा नेट - हल्का मोड", "ऑफ़लाइन". key कभी नहीं, सिर्फ़ नंबर
+     */
+    @Volatile var linkStatus = ""
+        private set
+    const val LINK_LIGHT = "धीमा नेट - हल्का मोड"
+    const val LINK_OFFLINE = "ऑफ़लाइन"
+    fun setLink(s: String) { if (linkStatus != s) { linkStatus = s; emit() } }
+
+    /**
      * v3.90: DK Live में "Thinking" सिर्फ़ तब, जब सच में खोज / गहरी सोच / फ़ोन का काम चल रहा हो.
      * आम बात ("कैसे हो") में सुनना -> सीधे बोलना (बीच का पल "Listening" ही दिखे). GeminiLive यह देता है;
      * बाक़ी हर जगह हमेशा true = पहले जैसा.
