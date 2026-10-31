@@ -48,8 +48,8 @@ object ApiCompanies {
 
     /** "sk-" वाली keys (प्रोजेक्ट/एडमिन निशान के बिना) - OpenAI जैसी दिखती हैं, पर DeepSeek / Kimi / Qwen की भी यही शक्ल */
     private val SK_LOOKALIKE = listOf("openai", "deepseek", "moonshot", "qwen")
-    /** कोई निशान नहीं - इन्हें क्रम से जाँचो */
-    private val NO_PREFIX = listOf("mistral", "together", "sambanova", "deepseek", "zhipu")
+    /** कोई निशान नहीं - इन्हें क्रम से जाँचो, SambaNova और अन्य सभी थर्ड-पार्टी एपीआई की के लिए */
+    private val NO_PREFIX = listOf("sambanova", "mistral", "together", "deepseek", "zhipu", "moonshot", "qwen")
 
     /**
      * key देखकर कंपनी के उम्मीदवार, सबसे पक्के पहले. खाली = key बहुत छोटी.
@@ -57,9 +57,9 @@ object ApiCompanies {
      */
     fun candidates(key: String): List<Company> {
         val k = key.trim()
-        if (k.length < 16) return emptyList()
+        if (k.length < 8) return emptyList()
         // सबसे लंबा मिलता निशान (sk-ant- / sk-or- पहले, फिर sk-)
-        val hit = ALL.flatMap { c -> c.prefixes.map { it to c } }.filter { (p, _) -> k.startsWith(p) }.maxByOrNull { it.first.length }
+        val hit = ALL.filter { it.prefixes.isNotEmpty() }.flatMap { c -> c.prefixes.map { it to c } }.filter { (p, _) -> k.startsWith(p) }.maxByOrNull { it.first.length }
         if (hit != null) {
             val (p, c) = hit
             if (c.id == "openai" && p == "sk-") return SK_LOOKALIKE.mapNotNull { byId(it) }
@@ -69,7 +69,8 @@ object ApiCompanies {
         if (k.contains('.') && !k.contains(' ')) return listOfNotNull(byId("zhipu")) + NO_PREFIX.filter { it != "zhipu" }.mapNotNull { byId(it) }
         // 64 अक्षर hex = Together
         if (k.length == 64 && k.all { it.isDigit() || it in 'a'..'f' }) return listOfNotNull(byId("together")) + NO_PREFIX.filter { it != "together" }.mapNotNull { byId(it) }
-        return NO_PREFIX.mapNotNull { byId(it) }
+        // यदि कोई भी एपीआई की बिना प्रीफिक्स या अन्य है, तो सभी समर्थित कंपनियों को उम्मीदवार के रूप में लौटाएं ताकि प्रोब सही से जांच सके
+        return ALL.map { it.id }.distinct().mapNotNull { byId(it) }
     }
 
     /** पक्की पहचान (बिना इंटरनेट) - सिर्फ़ एक उम्मीदवार हो तब */
