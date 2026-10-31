@@ -648,7 +648,11 @@ class BrainManager(private val ctx: Context) {
         } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (_: Exception) { null }
     }
 
-    fun liveSystemPrompt(): String {
+    /**
+     * v5.1 (मालिक: "Live का setup message छोटा रहे"): withMemory=false = सिर्फ़ नियम/स्वभाव (setup में);
+     * याद (facts, दोस्त वाली बातें, पिछली खोज, लोकल याददाश्त) जुड़ने के बाद liveMemoryContext() से अलग भेजी जाती है.
+     */
+    fun liveSystemPrompt(withMemory: Boolean = true): String {
         val name = Prefs.assistantName(ctx); val user = Prefs.userName(ctx); val persona = Prefs.personality(ctx)
         return buildString {
             append("You are $name, a smart, warm voice assistant on the user's Android phone, talking like a real person in a live voice call.")
@@ -690,16 +694,24 @@ class BrainManager(private val ctx: Context) {
             append(TalkStyle.EMOTION)   // v3.59: आवाज़ में असली भावना
             append(TalkStyle.FRIEND_HI) // v3.60: मालिक का लिखा "करीबी दोस्त" हिस्सा (शब्दशः)
             append(TalkStyle.NATURAL); append(DoneGate.PROMPT)   // v3.67: पहले tool, फिर "हो गया बॉस" • v3.51: इंसान जैसी बात, झूठा "कर दिया" नहीं, notification/रुकने के नियम
-            append(Memory.factsBlock(ctx))
+            if (withMemory) append(Memory.factsBlock(ctx))
             // v3.46: "सच्चा दोस्त" स्वभाव + बातचीत की याद अब आवाज़ (Live) में भी (पहले सिर्फ़ chat में जुड़ा था)
-            if (Prefs.friendMode(ctx)) append("\n").append(FriendStyle.persona(f, user)).append(FriendTalk.block(ctx))
-            append(CareTime.block()).append(LiveSearch.memoryBlock())   // v3.80: समय देखकर फ़िक्र + पिछली खोज के स्रोत
+            if (Prefs.friendMode(ctx)) append("\n").append(FriendStyle.persona(f, user)).append(if (withMemory) FriendTalk.block(ctx) else "")
+            append(CareTime.block()).append(if (withMemory) LiveSearch.memoryBlock() else "")   // v3.80: समय देखकर फ़िक्र + पिछली खोज के स्रोत
             append(CalmPersona.block()).append(GirlfriendPersona.block(Prefs.userName(ctx))).append(SpeakingStyle.block(Prefs.userName(ctx)))   // v3.76: मालिक का तय स्वभाव - Live (सीधी आवाज़ / Gemini TTS / Edge) सब में
-            append(WorkChatMode.block(live = true)).append(TeacherBoard.block()).append(LocalMemory.liveBlock(ctx))
+            append(WorkChatMode.block(live = true)).append(TeacherBoard.block()).append(if (withMemory) LocalMemory.liveBlock(ctx) else "")
             if (Prefs.dkOnly(ctx)) append(DkOnly.PROMPT)   // v4.1: सिर्फ़ "DK ..." वाली बात का जवाब
             append(TaskFirst.prompt(f))   // v3.7 (मालिक): फ़ोन का काम = पहले काम (चुप), फिर "हो गया सर" + "और कुछ?" - आख़िर में ताकि यही चले   // v3.88: लोकल याददाश्त का छोटा सार | v3.87: काम/बातचीत मोड + कई काम की कतार + टीचर बोर्ड (स्वभाव वही)
         }
     }
+
+    /** v5.1: Live जुड़ने के बाद भेजी जाने वाली याद (वही हिस्से जो पहले setup में जाते थे) */
+    fun liveMemoryContext(): String = buildString {
+        append(Memory.factsBlock(ctx))
+        if (Prefs.friendMode(ctx)) append(FriendTalk.block(ctx))
+        append(LiveSearch.memoryBlock())
+        append(LocalMemory.liveBlock(ctx))
+    }.trim()
 
     private fun buildSystemPrompt(): String {
         val name = Prefs.assistantName(ctx)

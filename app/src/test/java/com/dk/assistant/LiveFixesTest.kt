@@ -51,8 +51,11 @@ class LiveFixesTest {
     }
 
     @Test fun vadLimits_longerPauseAllowed() {
-        assertEquals(550, GeminiLive.CLIENT_END_MS)
-        assertEquals(800, GeminiLive.SERVER_SILENCE_MS)   // v3.46: फ़ोन 550ms पर खुद भेजता है; सर्वर सिर्फ़ अधूरे वाक्य पर
+        // v5.1 (मालिक: "बोलना बंद होते ही जवाब", 300-500ms): Google की सलाह का सबसे तेज़ सिरा (500)
+        assertEquals(500, GeminiLive.CLIENT_END_MS)
+        assertEquals(500, GeminiLive.SERVER_SILENCE_MS)
+        assertTrue(GeminiLive.SERVER_SILENCE_MS in 300..500 && GeminiLive.CLIENT_END_MS in 300..500)
+        assertTrue(TurnEnd.EARLY_END_MS < GeminiLive.CLIENT_END_MS)   // पूरा वाक्य = और जल्दी
     }
 
     // ------------------------------------------------------------------ 5) पीछे की आवाज़
