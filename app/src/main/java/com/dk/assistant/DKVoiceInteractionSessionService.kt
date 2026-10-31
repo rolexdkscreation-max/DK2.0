@@ -122,7 +122,7 @@ class DKVoiceInteractionSession(context: android.content.Context) : VoiceInterac
         super.onShow(args, showFlags)
         try {
             android.util.Log.e("DKAssist", "DKVoiceInteractionSession onShow")
-            val window = window
+            val window = window?.window
             if (window != null) {
                 window.setLayout(
                     android.view.ViewGroup.LayoutParams.WRAP_CONTENT,
