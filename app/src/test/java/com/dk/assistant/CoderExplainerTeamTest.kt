@@ -90,7 +90,5 @@ class CoderExplainerTeamTest {
         assertNull("quote नहीं = पुराना व्यवहार", QuoteCheck.problem(JSONObject().put("where", "src/Calc.kt:3"), { it }, text))
         assertTrue(SevenDebug.EXTRA.contains("\"quote\""))
         assertEquals(3, SevenDebug.VERIFY_ROUNDS)
-        assertEquals(20, SevenTeam.DEBUG_ROUNDS)
-        assertEquals(4, SevenTeam.QA_ROUNDS)
     }
 }

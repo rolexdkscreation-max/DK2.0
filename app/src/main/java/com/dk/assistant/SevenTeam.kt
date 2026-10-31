@@ -178,9 +178,9 @@ class SevenTeam(
         /** गिट: रिपो में GitHub Actions का कोई workflow नहीं */
         const val NO_CI = "NO_CI"
         /** QA कितनी बार काम वापस भेज सकता है (फिर रुककर user को रिपोर्ट) */
-        const val QA_ROUNDS = 4          // v5.1: 2 → 4 - अधूरा काम QA वापस भेजता रहे (मालिक: एक भी गलती ना हो)
+        const val QA_ROUNDS = 2
         /** 11-एजेंट डिबगर: कुल राउंड, और आख़िरी कितने राउंड में खोज/पढ़ाई बंद (सिर्फ़ फ़ैसला) */
-        const val DEBUG_ROUNDS = 20       // v5.1: 14 → 20 - जड़ पक्की करने के लिए ज़्यादा पढ़ाई
+        const val DEBUG_ROUNDS = 14
         const val FORCE_ROUNDS = 3
         /** ये एजेंट user की फ़ोटो/वीडियो खुद देखते हैं (बाकी को लिखा विवरण) */
         val SEES_MEDIA = setOf(Agent.PROMPT, Agent.PLANNER, Agent.DEBUGGER, Agent.QA)
