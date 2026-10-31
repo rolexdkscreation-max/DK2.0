@@ -7,7 +7,7 @@ import java.util.Locale
  *
  * पूरे रिपो की असली हालत: कौन-से PR खुले हैं, किसके checks चल रहे / फँसे / fail हैं, conflict, draft,
  * main का build, release बाकी है या नहीं, और कोई दूसरा एजेंट/व्यक्ति किसी branch पर काम कर रहा है या नहीं.
- * फिर हर चीज़ के लिए अगला कदम: इंतज़ार / दोबारा चलाओ / 11 एजेंट से ठीक करो / merge + APK release.
+ * फिर हर चीज़ के लिए अगला कदम: इंतज़ार / दोबारा चलाओ / 7 एजेंट की टीम से ठीक करो / merge + APK release.
  * खुले PR का सुधार ([auto]: fail ठीक करना, फँसा run, check चलाना, चलते checks पर नज़र) अपने-आप - सिर्फ़ उसी PR की branch पर.
  * merge और release ([needYes]) हमेशा user की "हाँ" के बाद ही (RepoDoctorRunner).
  */
@@ -40,7 +40,7 @@ object RepoDoctor {
     enum class Act {
         /** checks चल रहे हैं - रुको */ WAIT,
         /** फँसा run: रोककर दोबारा */ RESTART,
-        /** fail: log देखकर - GitHub की दिक्कत = दोबारा, code की गलती = 11 एजेंट उसी branch पर ठीक करें */ FIX,
+        /** fail: log देखकर - GitHub की दिक्कत = दोबारा, code की गलती = 7 एजेंट की टीम उसी branch पर ठीक करें */ FIX,
         /** कोई check नहीं चला: branch पर check चलाओ */ CHECK,
         /** conflict: अपने-आप नहीं (main से ताज़ा branch पर काम दोबारा) */ CONFLICT,
         /** सब हरा: (draft हो तो ready) → merge → APK release */ MERGE,
@@ -125,11 +125,11 @@ object RepoDoctor {
 
     fun todo(i: Item): String = when (i.act) {
         Act.RESTART -> "अटका run रोककर दोबारा चलाऊँगा"
-        Act.FIX -> if (i.pr != null) "log पढ़ूँगा: GitHub की दिक्कत हुई तो दोबारा चलाऊँगा, code की गलती हुई तो 11 एजेंट उसी PR की branch पर ठीक करेंगे"
-            else "log पढ़ूँगा: GitHub की दिक्कत हुई तो दोबारा चलाऊँगा, code की गलती हुई तो 11 एजेंट नई branch + PR से ठीक करेंगे"
+        Act.FIX -> if (i.pr != null) "log पढ़ूँगा: GitHub की दिक्कत हुई तो दोबारा चलाऊँगा, code की गलती हुई तो 7 एजेंट की टीम उसी PR की branch पर ठीक करेंगे"
+            else "log पढ़ूँगा: GitHub की दिक्कत हुई तो दोबारा चलाऊँगा, code की गलती हुई तो 7 एजेंट की टीम नई branch + PR से ठीक करेंगे"
         Act.CHECK -> "उस branch पर check चलाऊँगा"
         Act.MERGE -> "दोबारा जाँच → merge → APK release (पक्का करके)"
-        Act.WAIT -> "checks पूरे होने तक नज़र रखूँगा: पास = merge के लिए आपसे पूछूँगा, fail = log पढ़कर 11 एजेंट उसी PR की branch पर ठीक करेंगे"
+        Act.WAIT -> "checks पूरे होने तक नज़र रखूँगा: पास = merge के लिए आपसे पूछूँगा, fail = log पढ़कर 7 एजेंट की टीम उसी PR की branch पर ठीक करेंगे"
         Act.RELEASE -> "release build चलाकर APK release पक्का करूँगा"
         else -> ""
     }
@@ -198,7 +198,7 @@ object RepoDoctor {
     private val fixWords = listOf("ठीक", "सही कर", "fix", "theek", "thik", "सुधार")
     fun isFixAsk(text: String) = fixWords.any { text.lowercase(Locale.ROOT).contains(it) }
 
-    /** 11 एजेंट के लिए साफ़ काम (fail check) - user की हाँ पहले ही मिल चुकी */
+    /** 7 एजेंट की टीम के लिए साफ़ काम (fail check) - user की हाँ पहले ही मिल चुकी */
     fun fixTask(i: Item, base: String, errors: String): String =
         (if (i.pr != null) "The check \"${i.run?.name}\" FAILS on PR #${i.pr} (branch ${i.branch}). Fix the root cause ON THIS BRANCH so that all checks pass."
         else "The build \"${i.run?.name}\" FAILS on $base. Fix the root cause on a new branch + PR so that all checks pass.") +

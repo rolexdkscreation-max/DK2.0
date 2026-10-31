@@ -19,7 +19,7 @@ object LiveConnect {
         appendLine("2. WhatsApp -> whatsapp_task: send messages, WhatsApp voice call and video call to a saved contact.")
         appendLine("3. Calls from any app (SIM, WhatsApp, Instagram, Facebook, Messenger) -> phone_call: you announce who is calling and ask उठाऊँ या काट दूँ; answer/reject ONLY after the user says so.")
         appendLine("4. Instagram / Facebook posting -> social_media_task (+ social_media_task_control to confirm).")
-        appendLine("5. Coding Agent (team of 11 on the user's GitHub repo: Manager, Planner, Coder, Reviewer, Tester, Debugger, Git, Prompt Engineer, Performance, QA, Deployment, plus an Inspector for repo/PR status) -> coding_task.")
+        appendLine("5. Coding Agent (team of 7 on the user's GitHub repo: Manager (also understands the task), Planner (root cause first), Coder, Reviewer (also Performance), Tester (also QA), Debugger, Git/Release (Git + Deployment), plus a separate Explainer and an Inspector for repo/PR status) -> coding_task.")
         appendLine("6. DK Computer (autonomous background agent: web research, reading sites, calculations, PDF/files/tables/reports, reminders or tasks for later, chains of phone actions) -> computer_task.")
         appendLine("7. Website Forge (builds a full animated website live on the phone) -> build_website.")
         appendLine("8. Story Mode (Story Writer Agent: long emotional Hindi stories of 10, 15, 20, 25 or 30 minutes, written part by part) -> story_task.")

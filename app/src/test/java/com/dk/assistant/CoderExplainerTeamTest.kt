@@ -59,14 +59,15 @@ class CoderExplainerTeamTest {
     }
 
     @Test fun agentWorkLabelAndManagerFirst() {
-        assertEquals(Agent.MANAGER, AgentWork.ORDER.first())
-        assertEquals(Agent.values().size, AgentWork.ORDER.size)
-        assertEquals(Agent.DEBUGGER, AgentWork.parse("🐞 डिबगर: जड़ ढूँढ रहा हूँ"))
+        // v5.2: स्क्रीन पर 7 एजेंट + समझाने वाला (जुड़ी ज़िम्मेदारियाँ उसी सदस्य के नाम से)
+        assertEquals(Seven.Member.MANAGER, AgentWork.ORDER.first())
+        assertEquals(Seven.Member.values().size, AgentWork.ORDER.size)
+        assertEquals(Seven.Member.DEBUGGER, AgentWork.parse("🐞 डिबगर: जड़ ढूँढ रहा हूँ"))
         assertNull(AgentWork.parse("कुछ और"))
-        assertEquals("🎓 समझाने वाला काम कर रहा है..", AgentWork.label(Agent.EXPLAINER, 2))
-        assertEquals("👔 मैनेजर → 🐞 डिबगर", AgentWork.underManager(Agent.DEBUGGER))
+        assertEquals("🎓 समझाने वाला काम कर रहा है..", AgentWork.label(Seven.Member.EXPLAINER, 2))
+        assertEquals("👔 मैनेजर → 🐞 डिबगर", AgentWork.underManager(Seven.Member.DEBUGGER))
         val src = File("src/main/java/com/dk/assistant/SevenRunner.kt").readText()
-        assertTrue(src.contains("CoderSession.activeAgent = ag"))
+        assertTrue(src.contains("CoderSession.activeAgent = m"))
         assertTrue(File("src/main/java/com/dk/assistant/CodingActivity.kt").readText().contains("AgentWorkView(this)"))
     }
 

@@ -1524,7 +1524,7 @@ class SettingsActivity : AppCompatActivity() {
             swTeam = switch(box, "मल्टी-एजेंट टीम: बिल्डर → रिव्यूअर → कोऑर्डिनेटर (एक बार बोलो, बाकी सब अपने-आप)", Prefs.coderTeam(this))
             hint(box, "चालू: बिल्डर कोड लिखता है → रिव्यूअर खुद जाँचता है (बग/गलती/लॉजिक, ब्रैकेट/XML) → गड़बड़ी हो तो बिल्डर को वापस → सही होने पर अपने-आप push → GitHub build देखकर fail हो तो फिर ठीक → पूरा होने पर बताता है। " +
                 "कोई अतिरिक्त चीज़ ज़रूरी लगे तो टीम खुद नहीं जोड़ती — आपसे पूछती है (हाँ/नहीं)। आवाज़ से: \"कोडिंग एजेंट, … बनाओ\"। बंद: पुराना तरीका (एक एजेंट, आप push दबाएँ)।")
-            swSeven = switch(box, "11 एजेंट वाला नया सिस्टम: मैनेजर → प्रॉम्प्ट इंजीनियर (समझ + आपकी हाँ) → गिट → प्लानर → कोडर → रिव्यूअर → परफॉरमेंस → टेस्टर → डिबगर → QA → डिप्लॉयमेंट", Prefs.coderSeven(this))
+            swSeven = switch(box, "7 एजेंट वाला सिस्टम: मैनेजर (समझ + आपकी हाँ) → प्लानर (पहले जड़/कारण) → कोडर → रिव्यूअर → टेस्टर → डिबगर → गिट/रिलीज़ (+ 🎓 समझाने वाला)", Prefs.coderSeven(this))
             hint(box, "चालू: GitHub token + चुना रिपो = GitHub मोड (backup, नई branch, PR, मंज़ूरी से merge); token/रिपो नहीं = नॉर्मल मोड (कोड फ़ाइल-नाम के साथ स्क्रीन पर)। " +
                 "हर बदलाव FIND/REPLACE में, लागू होने से पहले रिव्यूअर जाँचता है। बंद: पुराना एजेंट/टीम जैसी की तैसी।")
             row(box, button("एजेंट खोलें") {
@@ -1577,7 +1577,7 @@ class SettingsActivity : AppCompatActivity() {
             hint(box, "Token बनाते समय: Repository access → अपना repo चुनें • Permissions → Contents: Read and write, Pull requests: Read and write (सुरक्षित PR मोड), और Actions: Read (build/tests जाँचने के लिए)।")
             swAutoPush = switch(box, "बिना पूछे push करो (बंद = पहले बदलाव दिखाओ, फिर \"Push करें\" दबाने पर)", Prefs.coderAutoPush(this))
             // v3.6: हर एजेंट का अपना मॉडल - कोडर/डिबगर/प्लानर/रिव्यूअर = कोडिंग एजेंट का मॉडल (3.8 Flash), बाकी हल्का
-            edCoderLight = field(box, "हल्के एजेंटों का मॉडल (प्रॉम्प्ट इंजीनियर, मैनेजर, गिट, टेस्टर, QA, डिप्लॉयमेंट, परफॉरमेंस)",
+            edCoderLight = field(box, "हल्के एजेंटों का मॉडल (मैनेजर, गिट/रिलीज़, टेस्टर)",
                 Prefs.coderLightModel(this), GeminiModels.LIGHT + " (सुझाया — जल्दी जवाब, धीमे नेटवर्क पर भी)")
             hint(box, "कोडर, डिबगर, प्लानर और रिव्यूअर AI दिमाग → कोडिंग एजेंट में चुना मॉडल लेते हैं (सुझाया: ${GeminiModels.CODER})। 5 Gemini keys हों तो limit, धीमा नेटवर्क या server गलती पर अगली key अपने-आप।")
             edCoderSteps = field(box, "एक काम में ज़्यादा से ज़्यादा कदम (3–30)", Prefs.coderMaxSteps(this).toString(),

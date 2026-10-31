@@ -20,13 +20,44 @@ import org.json.JSONObject
  */
 object Seven {
 
-    // ------------------------------------------------------------------ एजेंट
+    // ------------------------------------------------------------------ टीम (v5.2: 7 काम करने वाले + 1 समझाने वाला)
+    /**
+     * v5.2 (मालिक): 11 की जगह 7 एजेंट + समझाने वाला. जोड़े हुए एजेंट एक ही सदस्य हैं - उनका काम करने का तरीका
+     * (prompt/जाँच) वही रहा, बस अब वह उसी सदस्य की दूसरी ज़िम्मेदारी है:
+     *   मैनेजर + प्रॉम्प्ट इंजीनियर → मैनेजर • गिट + डिप्लॉयमेंट → गिट/रिलीज़ • रिव्यूअर + परफॉरमेंस → रिव्यूअर • टेस्टर + QA → टेस्टर
+     *   प्लानर, कोडर, डिबगर वैसे ही • समझाने वाला अलग (काम के चक्र में नहीं - सिर्फ़ सवाल का जवाब और आख़िर में नतीजा बताना)
+     */
+    enum class Member(val hi: String, val icon: String) {
+        MANAGER("मैनेजर", "👔"), PLANNER("प्लानर", "🗺"), CODER("कोडर", "⌨"), REVIEWER("रिव्यूअर", "🔍"),
+        TESTER("टेस्टर", "🧪"), DEBUGGER("डिबगर", "🐞"), GIT_RELEASE("गिट/रिलीज़", "🌿"),
+        EXPLAINER("समझाने वाला", "🎓");
+        val label get() = "$icon $hi"
+        companion object {
+            /** काम के चक्र वाले 7 (समझाने वाला बाहर) */
+            val WORKERS: List<Member> get() = values().filter { it != EXPLAINER }
+        }
+    }
+
+
+    // ------------------------------------------------------------------ ज़िम्मेदारियाँ (हर एक का अपना prompt; सदस्य = member)
     enum class Agent(val hi: String, val icon: String) {
         MANAGER("मैनेजर", "👔"), PLANNER("प्लानर", "🗺"), CODER("कोडर", "⌨"), REVIEWER("रिव्यूअर", "🔍"),
         TESTER("टेस्टर", "🧪"), DEBUGGER("डिबगर", "🐞"), GIT("गिट", "🌿"),
         PROMPT("प्रॉम्प्ट इंजीनियर", "✍"), PERF("परफॉरमेंस", "⚡"), QA("QA", "✅"), DEPLOY("डिप्लॉयमेंट", "🚀"),
         /** v5.1 (मालिक: "कोडिंग एजेंट सवाल का अच्छे से जवाब नहीं देता"): असली कोड पढ़कर गहराई से समझाने वाला */
-        EXPLAINER("समझाने वाला", "🎓")
+        EXPLAINER("समझाने वाला", "🎓");
+
+        /** यह ज़िम्मेदारी टीम के किस सदस्य की है (स्क्रीन पर वही नाम, मॉडल भी उसी का) */
+        val member: Member get() = when (this) {
+            MANAGER, PROMPT -> Member.MANAGER
+            PLANNER -> Member.PLANNER
+            CODER -> Member.CODER
+            REVIEWER, PERF -> Member.REVIEWER
+            TESTER, QA -> Member.TESTER
+            DEBUGGER -> Member.DEBUGGER
+            GIT, DEPLOY -> Member.GIT_RELEASE
+            EXPLAINER -> Member.EXPLAINER
+        }
     }
 
     /** 11 की टीम से अलग: रिपो / PR / checks / टीम का हाल खुद जाँचकर step-by-step बताता है (कोड नहीं छूता). मैनेजर kind=status पर इसे लगाता है */
@@ -215,11 +246,23 @@ Teach like a patient senior engineer explaining to the owner (not a programmer):
     private val changeWords = listOf("बनाओ", "बना दो", "जोड़ो", "जोड़ दो", "जोड़", "हटाओ", "हटा दो", "बदलो", "बदल दो", "ठीक करो", "ठीक कर दो", "सुधारो",
         "fix", "add ", "remove", "change", "implement", "लगाओ", "लगा दो", "डालो", "डाल दो", "बढ़ाओ", "कम करो", "update")
 
-    /** मालिक "समझाओ / जांच करो / कैसे काम करता है" कह रहा है? */
-    fun wantsExplain(task: String): Boolean = task.lowercase().let { t -> explainWords.any { t.contains(it) } }
+    /** v5.2: सवाल वाले शब्द (क्या हुआ / क्या नहीं / क्यों / कैसे) */
+    private val questionWords = listOf("क्यों", "क्यूँ", "क्यूं", "कैसे", "क्या हुआ", "क्या नहीं हुआ", "क्या हो रहा", "why", "how ", "what happened",
+        "kyu", "kyon", "kaise", "kya hua")
+
+    /** मालिक ने सवाल पूछा (क्या हुआ / क्यों / कैसे / "?") */
+    fun asksQuestion(task: String): Boolean = task.contains('?') || task.lowercase().let { t -> questionWords.any { t.contains(it) } }
+
+    /**
+     * मालिक "समझाओ / जांच करो / कैसे काम करता है" कह रहा है?
+     * v5.2: या एक ही बात में सवाल भी और काम भी ("यह क्यों टूटा? ठीक करो") = पहले समझाने वाला जवाब दे, फिर प्लानर.
+     */
+    fun wantsExplain(task: String): Boolean = task.lowercase().let { t ->
+        explainWords.any { t.contains(it) } || (asksQuestion(task) && changeWords.any { t.contains(it) })
+    }
 
     /** सिर्फ़ समझाना/जाँचना है, कुछ बदलना नहीं ("पूरा कोड जांच करो और समझाओ") → सवाल, समझाने वाला */
-    fun explainOnly(task: String): Boolean = wantsExplain(task) && task.lowercase().let { t -> changeWords.none { t.contains(it) } }
+    fun explainOnly(task: String): Boolean = task.lowercase().let { t -> explainWords.any { t.contains(it) } && changeWords.none { t.contains(it) } }
 
     // ------------------------------------------------------------------ JSON
     /** AI के जवाब में पहला पूरा JSON object (```json घेरा या आगे-पीछे का text हो तो भी) */
@@ -459,6 +502,38 @@ Teach like a patient senior engineer explaining to the owner (not a programmer):
      * आख़िरी रिपोर्ट - user के माँगे ढाँचे में.
      * नियम (user): चेक पास होने से पहले "काम पूरा हुआ" नहीं; GitHub मोड में PR का लिंक और चेक की हालत हमेशा.
      */
+    /**
+     * v5.2: काम ख़त्म होने पर समझाने वाले का नतीजा - आसान हिंदी में: क्या हुआ, क्या नहीं हुआ, वजह, कैसे ठीक होगा.
+     * सिर्फ़ असली नतीजे (बदली फ़ाइलें, मिली जड़, रुकने की वजह) से बनता है - AI नहीं, कुछ बनाया/अंदाज़ा नहीं.
+     */
+    fun resultExplain(testOk: Boolean?, changes: List<Pair<String, String>>, bugs: List<Bug>, problem: String, testNote: String,
+                      tried: List<String>, prUrl: String, github: Boolean): String = buildString {
+        append("${Member.EXPLAINER.icon} ${Member.EXPLAINER.hi} — नतीजा आसान भाषा में:\n")
+        val did = changes.take(6).joinToString("; ") { "${it.first} (${it.second.take(80)})" }
+        append("• क्या हुआ: ").append(when {
+            testOk == true && changes.isEmpty() -> "जाँच पूरी हुई, किसी फ़ाइल को बदलने की ज़रूरत नहीं पड़ी"
+            testOk == true -> "काम पूरा — ${changes.size} फ़ाइल बदली: $did" + if (github && prUrl.isNotBlank()) "। build/tests पास, PR तैयार: $prUrl" else "। जाँच पास"
+            changes.isEmpty() -> "अभी कोई फ़ाइल नहीं बदली"
+            else -> "${changes.size} फ़ाइल में बदलाव हुआ: $did"
+        }).append('\n')
+        append("• क्या नहीं हुआ: ").append(when (testOk) {
+            true -> if (github) "merge और APK release अभी नहीं — वह सिर्फ़ आपकी मंज़ूरी से" else "कुछ बाकी नहीं"
+            false -> "काम पूरा नहीं माना गया — " + problem.ifBlank { "build/tests पास नहीं हुए" }.take(200)
+            null -> "नतीजा अभी पक्का नहीं — " + problem.ifBlank { testNote }.ifBlank { "checks पूरे नहीं हुए" }.take(200)
+        }).append('\n')
+        val cause = bugs.lastOrNull()?.rootCause?.takeIf { it.isNotBlank() }
+            ?: tried.lastOrNull()?.takeIf { it.isNotBlank() }
+        append("• वजह: ").append(when {
+            testOk == true -> cause?.let { "जो कारण मिला और ठीक हुआ: ${it.take(200)}" } ?: "कोई रुकावट नहीं आई"
+            else -> (problem.ifBlank { testNote }.ifBlank { cause.orEmpty() }).ifBlank { "पक्की वजह नहीं मिली" }.take(240)
+        }).append('\n')
+        append("• कैसे ठीक होगा: ").append(when (testOk) {
+            true -> if (github) "PR देखकर \"हाँ, merge करो\" कहें, तभी merge और APK release होगा" else "बदली फ़ाइलें ऊपर हैं, उन्हें इस्तेमाल करें"
+            false -> "\"आगे करो\" कहें तो टीम वहीं से, ऊपर लिखी वजह पर दूसरा रास्ता लेकर आगे बढ़ेगी" + if (github) " (main अछूता है)" else ""
+            null -> "checks पूरे होने पर \"आगे करो\" कहें — वहीं से नतीजा देखकर आगे"
+        })
+    }
+
     fun report(task: String, mode: Mode, changes: List<Pair<String, String>>, bugs: List<Bug>, testOk: Boolean?, testNote: String,
                prUrl: String, backup: String, check: CheckState? = null, checkUrl: String = "", prNote: String = ""): String = buildString {
         val gh = mode == Mode.GITHUB

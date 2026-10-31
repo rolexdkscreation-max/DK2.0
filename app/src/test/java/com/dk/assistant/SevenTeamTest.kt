@@ -149,10 +149,11 @@ REPLACE>>>"""
         val fixPlan = """{"steps":[{"file":"src/Calc.kt","action":"edit","change":"fix","anchor":"fun sub"}]}"""
         fun fixEdit(n: Int) = "FILE: src/Calc.kt\n<<<FIND\n    return a - b${if (n == 0) "" else " // $n"}\nFIND>>>\n<<<REPLACE\n    return a - b // ${n + 1}\nREPLACE>>>"
         val script = mutableListOf(Agent.MANAGER to managerFeature, Agent.PLANNER to planOne, Agent.CODER to goodEdit, Agent.REVIEWER to pass, Agent.GIT to gitMsg)
-        for (n in 0 until 3) script += listOf(Agent.DEBUGGER to dbg, Agent.PLANNER to fixPlan, Agent.CODER to fixEdit(n), Agent.REVIEWER to pass, Agent.GIT to gitMsg)
+        // v5.2: गिनती-सीमा नहीं - रुकना सिर्फ़ जब हूबहू वही गलती लगातार FixLoop.TEAM_SAME_LIMIT बार
+        for (n in 0 until FixLoop.TEAM_SAME_LIMIT) script += listOf(Agent.DEBUGGER to dbg, Agent.PLANNER to fixPlan, Agent.CODER to fixEdit(n), Agent.REVIEWER to pass, Agent.GIT to gitMsg)
         val ai = FakeAi(*script.toTypedArray())
         val same = TeamTest(false, "e: file:///src/Calc.kt:7:5 Unresolved reference: foo")
-        val git = FakeGit(ArrayDeque(List(5) { same }))
+        val git = FakeGit(ArrayDeque(List(FixLoop.TEAM_SAME_LIMIT + 2) { same }))
         val out = SevenTeam(ai, files(), git) { _, _ -> }.run("sub() जोड़ो")
         assertEquals(false, out.testOk)
         assertFalse(git.log.contains("ready"))                          // PR review के लिए तैयार नहीं
@@ -239,10 +240,10 @@ REPLACE>>>"""
         val fixPlan = """{"steps":[{"file":"src/Calc.kt","action":"edit","change":"fix","anchor":"fun sub"}]}"""
         fun fixEdit(n: Int) = "FILE: src/Calc.kt\n<<<FIND\n    return a - b${if (n == 0) "" else " // $n"}\nFIND>>>\n<<<REPLACE\n    return a - b // ${n + 1}\nREPLACE>>>"
         val script = mutableListOf(Agent.MANAGER to managerFeature, Agent.PLANNER to planOne, Agent.CODER to goodEdit, Agent.REVIEWER to pass, Agent.GIT to gitMsg)
-        for (n in 0 until 3) script += listOf(Agent.DEBUGGER to dbg, Agent.PLANNER to fixPlan, Agent.CODER to fixEdit(n), Agent.REVIEWER to pass)
+        for (n in 0 until FixLoop.TEAM_SAME_LIMIT) script += listOf(Agent.DEBUGGER to dbg, Agent.PLANNER to fixPlan, Agent.CODER to fixEdit(n), Agent.REVIEWER to pass)
         val ai = FakeAi(*script.toTypedArray())
         val fail = TeamTest(false, "e: file:///w/src/Calc.kt:5:9 Unresolved reference: speak", "https://ci/b", stage = TeamTest.BRANCH)
-        val git = LaterGit(ArrayDeque(List(6) { fail }))
+        val git = LaterGit(ArrayDeque(List(FixLoop.TEAM_SAME_LIMIT + 2) { fail }))
         val events = mutableListOf<String>()
         val out = SevenTeam(ai, files(), git) { _, t -> events.add(t) }.run("Calc में sub() फ़ंक्शन जोड़ो")
         assertFalse(git.log.contains("openPr"))

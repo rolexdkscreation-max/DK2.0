@@ -8,8 +8,10 @@ package com.dk.assistant
  * दोनों एक ही keys पर (5 Gemini keys तक) - limit/नेटवर्क/server गलती पर अगली key अपने-आप.
  */
 object TeamModels {
-    val FAST: Set<Seven.Agent> = setOf(Seven.Agent.CODER, Seven.Agent.DEBUGGER, Seven.Agent.PLANNER, Seven.Agent.REVIEWER,
-        Seven.Agent.EXPLAINER)   // v5.1: समझाने वाला गहरा पढ़ता-समझाता है = मज़बूत मॉडल
+    /** v5.2: मॉडल सदस्य के हिसाब से - एक सदस्य = एक मॉडल (रिव्यूअर की परफॉरमेंस जाँच भी उसी मज़बूत मॉडल पर) */
+    val FAST_MEMBERS: Set<Seven.Member> = setOf(Seven.Member.CODER, Seven.Member.DEBUGGER, Seven.Member.PLANNER, Seven.Member.REVIEWER,
+        Seven.Member.EXPLAINER)   // v5.1: समझाने वाला गहरा पढ़ता-समझाता है = मज़बूत मॉडल
+    val FAST: Set<Seven.Agent> = Seven.Agent.values().filter { it.member in FAST_MEMBERS }.toSet()
     fun fast(a: Seven.Agent): Boolean = a in FAST
     fun modelFor(a: Seven.Agent, fastModel: String, lightModel: String): String = if (fast(a)) fastModel else lightModel
 }

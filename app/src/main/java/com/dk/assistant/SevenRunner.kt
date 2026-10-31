@@ -161,14 +161,18 @@ object SevenRunner {
     private fun say(role: String, t: String) = CoderSession.add(role, t)
 
     /** टीम की हर बात स्क्रीन पर; v3.89: टेस्टर का "✗ फ़ेल" = बग वाली अलग आवाज़ (काम बीच में, सुधार अपने-आप चलता रहता है) */
-    private fun teamEvents(c: Context): (Seven.Agent, String) -> Unit = { ag, t ->
-        CoderSession.activeAgent = ag; CoderSession.activeNote = t       // v5.1: स्क्रीन पर "कौन काम कर रहा है"
-        say("s", "${ag.icon} ${ag.hi}: $t")
-        if (ag == Seven.Agent.TESTER && t.startsWith("✗")) CoderSound.notify(c, CoderSound.BUG, "कोडिंग टीम: बग मिला — ठीक कर रहा हूँ", t.lines().first().take(120))
+    /** v5.2: स्क्रीन पर नाम टीम के सदस्य का (7 + समझाने वाला) - जुड़ी ज़िम्मेदारियाँ उसी सदस्य के नाम से */
+    private class Shown { var team: SevenTeam? = null; fun of(ag: Seven.Agent): Seven.Member = team?.shownAs(ag) ?: ag.member }
+
+    private fun teamEvents(c: Context, shown: Shown? = null, sound: Boolean = true): (Seven.Agent, String) -> Unit = { ag, t ->
+        val m = shown?.of(ag) ?: ag.member
+        CoderSession.activeAgent = m; CoderSession.activeNote = t       // v5.1: स्क्रीन पर "कौन काम कर रहा है"
+        say("s", "${m.icon} ${m.hi}: $t")
+        if (sound && ag == Seven.Agent.TESTER && t.startsWith("✗")) CoderSound.notify(c, CoderSound.BUG, "कोडिंग टीम: बग मिला — ठीक कर रहा हूँ", t.lines().first().take(120))
     }
 
     /**
-     * रिपो डॉक्टर: fail हुए check को 11 एजेंट से ठीक करवाना (user की हाँ रिपो डॉक्टर में मिल चुकी).
+     * रिपो डॉक्टर: fail हुए check को 7 एजेंट की टीम से ठीक करवाना (user की हाँ रिपो डॉक्टर में मिल चुकी).
      * pr != null = उसी PR की branch पर सुधार (नया PR नहीं); null = main से नई branch + PR.
      * यह पहले से चल रहे काम (CoderSession.launch) के अंदर बुलाया जाता है.
      * @return टीम का नतीजा (testOk = true तभी जब सारे checks पास)
@@ -184,12 +188,13 @@ object SevenRunner {
         }
         try {
             a.teamLoad { say("s", it) }
-            val team = SevenTeam(Ai(ai, Prefs.coderLightModel(c)), RepoFiles(a), Git(a, task), full = true, ev = teamEvents(c))
+            val shown = Shown()
+            val team = SevenTeam(Ai(ai, Prefs.coderLightModel(c)), RepoFiles(a), Git(a, task), full = true, ev = teamEvents(c, shown)).also { shown.team = it }
             val u = SevenPlus.Understanding(Seven.Kind.BUG, title, "रिपो डॉक्टर: $title — जड़ ढूँढकर ठीक करना, ताकि सारे checks पास हों", task,
                 listOf("जो check fail था वह पास हो", "बाकी सारे checks और पुराने tests पास हों", "कोई पुराना फ़ीचर न बदले"),
                 listOf("सारे मौजूदा फ़ीचर और tests"), emptyList(), emptyList())
             val out = team.run(task, u)
-            DKLog.d("रिपो डॉक्टर - 11-एजेंट पूरी रिपोर्ट:\n" + out.report)
+            DKLog.d("रिपो डॉक्टर - कोडिंग टीम की पूरी रिपोर्ट:\n" + out.report)
             say(if (out.testOk == true) "d" else "e", out.short.ifBlank { out.report })
             return out
         } finally {
@@ -245,7 +250,7 @@ object SevenRunner {
             CoderSession.listener?.invoke(); return null
         }
         val (task, approved, normal) = r
-        if (approved != null) say("s", "✅ आपकी मंज़ूरी मिली — अब 11 एजेंट काम शुरू कर रहे हैं")
+        if (approved != null) say("s", "✅ आपकी मंज़ूरी मिली — अब 7 एजेंट की टीम (+ समझाने वाला) काम शुरू कर रही है")
         launchTeam(c, ai, task, approved, normal, allMedia, null)
         CoderSession.listener?.invoke()
         return null
@@ -266,7 +271,7 @@ object SevenRunner {
         "🔎 रिपो जाँच नहीं हो पाई (${e.message?.take(80)}) — खुले PR की जानकारी अभी पक्की नहीं।"
     }
 
-    /** मंज़ूर काम (या समझना) 11 एजेंट से. [resume] = ऐप बंद होने/रुकने के बाद "वहीं से आगे" */
+    /** मंज़ूर काम (या समझना) 7 एजेंट की टीम से. [resume] = ऐप बंद होने/रुकने के बाद "वहीं से आगे" */
     private fun launchTeam(c: Context, ai: CoderAi, task: String, approved: SevenPlus.Understanding?, normal: Boolean,
                            allMedia: List<CoderMedia>, resume: CoderHistory.Checkpoint?) {
         // चौकी: मंज़ूर काम शुरू = "run" (ऐप बीच में बंद हो तो अगली बार वहीं से)
@@ -317,7 +322,8 @@ object SevenRunner {
                         a.teamLoad { say("s", it) }
                         val files = RepoFiles(a, c)
                         resume?.staged?.forEach { (p, content) -> files.stage(p, content) }
-                        team = SevenTeam(Ai(ai, Prefs.coderLightModel(c)), files, Git(a, task, c, resume?.backup.orEmpty()), full = true, ev = teamEvents(c))
+                        val shown = Shown()
+                        team = SevenTeam(Ai(ai, Prefs.coderLightModel(c)), files, Git(a, task, c, resume?.backup.orEmpty()), full = true, ev = teamEvents(c, shown)).also { shown.team = it }
                         // "आगे करो": टीम कहाँ तक पहुँची थी - वहीं से (पूरे हुए हिस्से दोबारा नहीं)
                         team.resumeFrom = TeamProgress.parse(resume?.team)
                         if (approved != null) team.onProgress = { p -> val j = p.json(); CoderHistory.updateCheckpoint(c) { it.copy(team = j) } }
@@ -329,7 +335,8 @@ object SevenRunner {
                         } + " — गिट एजेंट बंद; रिव्यू, टेस्ट, डिबग वही। कोड फ़ाइल-नाम के साथ मिलेगा।")
                         val start = LinkedHashMap(CoderSession.normalFiles).apply { putAll(Seven.filesFromMessage(task)) }
                         if (start.isNotEmpty()) say("s", "फ़ाइलें: " + start.keys.joinToString())
-                        team = SevenTeam(Ai(ai, Prefs.coderLightModel(c)), MemoryFiles(start), null, full = true) { ag, t -> say("s", "${ag.icon} ${ag.hi}: $t") }
+                        val shown = Shown()
+                        team = SevenTeam(Ai(ai, Prefs.coderLightModel(c)), MemoryFiles(start), null, full = true, ev = teamEvents(c, shown, sound = false)).also { shown.team = it }
                     }
                     team.media = allMedia
                     if (approved == null) {
@@ -356,14 +363,14 @@ object SevenRunner {
                     if (out.answerOnly && out.report == SevenTeam.STATUS_ASK) { inspect(c, task); return@work }
                     if (out.answerOnly) { say("d", out.report); return@work }
                     // यूज़र को सिर्फ़ छोटी रिपोर्ट (हुआ/नहीं, API, वजह, हल). पूरी तकनीकी रिपोर्ट डिबग लॉग में
-                    DKLog.d("11-एजेंट पूरी रिपोर्ट:\n" + out.report)
+                    DKLog.d("कोडिंग टीम की पूरी रिपोर्ट:\n" + out.report)
                     say(if (out.testOk == true) "d" else "e", out.short.ifBlank { out.report })
                     if (out.mode == Seven.Mode.NORMAL) out.files.forEach { (p, content) ->
                         say("f", p + "\n" + (content ?: "(यह फ़ाइल हटानी है)"))
                         if (content != null) CoderSession.normalFiles[p] = content else CoderSession.normalFiles.remove(p)
                     }
                     val ok = out.testOk == true
-                    CoderTeam.announce(c, if (ok) "11-एजेंट टीम: काम पूरा" else "11-एजेंट टीम: रुकी",
+                    CoderTeam.announce(c, if (ok) "कोडिंग टीम: काम पूरा" else "कोडिंग टीम: रुकी",
                         out.short.lines().firstOrNull { it.startsWith("वजह:") }?.removePrefix("वजह:")?.trim() ?: out.report.lines().getOrNull(1).orEmpty(),
                         if (ok && out.mode == Seven.Mode.GITHUB) "कोडिंग का काम पूरा हो गया, बॉस। टेस्ट पास हैं, PR आपकी मंज़ूरी का इंतज़ार कर रहा है। हाँ बोलें तो merge करके APK release कर दूँगा।"
                         else if (ok) "कोडिंग का काम पूरा हो गया, बॉस। कोड स्क्रीन पर फ़ाइल-नाम के साथ है।"
@@ -376,7 +383,7 @@ object SevenRunner {
                 say("e", ShortReport.text(null, "काम रोक दिया"))
             } catch (e: Exception) {
                 val raw = e.message ?: e.javaClass.simpleName
-                DKLog.d("11-एजेंट टीम रुकी: $raw")
+                DKLog.d("कोडिंग टीम रुकी: $raw")
                 say("e", ShortReport.text(false, raw))
             } finally {
                 // पूरा हुआ (पास/फ़ेल की रिपोर्ट) = चौकी साफ़. बीच में रुका = "pause" (बटन से आगे). मंज़ूरी का इंतज़ार = वही रहे

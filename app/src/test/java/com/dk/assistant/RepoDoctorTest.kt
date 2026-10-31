@@ -85,7 +85,7 @@ class RepoDoctorTest {
         val items = RepoDoctor.analyze(s, now)
         val r = RepoDoctor.report(s, items)
         assertTrue(r, r.contains("खुले PR: 2") && r.contains("PR #41") && r.contains("PR #42"))
-        assertTrue(r, r.contains("मैं यह करूँगा") && r.contains("11 एजेंट") && r.contains("\"हाँ\""))
+        assertTrue(r, r.contains("मैं यह करूँगा") && r.contains("7 एजेंट की टीम") && r.contains("\"हाँ\""))
         val ok = RepoDoctor.report(snap(emptyList(), emptyList()), emptyList())
         assertTrue(ok, ok.contains("कोई PR खुला नहीं") && ok.contains("सब ठीक") && !ok.contains("\"हाँ\""))
     }
