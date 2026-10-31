@@ -1320,7 +1320,7 @@ class SettingsActivity : AppCompatActivity() {
             box.addView(mInfo)
             fun loadModels(openPicker: Boolean) {
                 val k = key.text.toString().trim()
-                if (k.length < 12) { mInfo.text = "पहले सही API key डालें"; return }
+                if (k.length < 6) { mInfo.text = "पहले सही API key डालें"; return }
                 // Extra API: key से कंपनी पहचानो -> उसका पता सेव -> उसी के मॉडल
                 if (p.isCustom) {
                     mInfo.text = "कंपनी पहचान रहा हूँ…"

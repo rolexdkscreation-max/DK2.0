@@ -73,11 +73,20 @@ object ModelLister {
                 val list = openAi(c.base, key.trim()).filter { m -> SKIP.none { m.lowercase().contains(it) } }.distinct().sorted()
                 if (list.isNotEmpty()) return@withContext c to list
             } catch (e: AiException) {
-                // 401/403 = इस कंपनी की key नहीं; 404 = /models नहीं है (पर key शायद इसी की) - अगला उम्मीदवार
+                // 401/403 = इस कंपनी की key नहीं; 404/500/etc = अगला उम्मीदवार
                 DKLog.d("Extra API: ${c.name} -> ${e.code}")
-            } catch (e: Exception) { DKLog.d("Extra API: ${c.name} -> ${e.javaClass.simpleName}") }
+            } catch (e: Exception) {
+                DKLog.d("Extra API: ${c.name} -> ${e.javaClass.simpleName}: ${e.message}")
+            }
         }
-        ApiCompanies.sure(key)?.let { it to it.models }
+        ApiCompanies.sure(key)?.let { company ->
+            val fallbackModels = try {
+                openAi(company.base, key.trim()).filter { m -> SKIP.none { m.lowercase().contains(it) } }.distinct().sorted()
+            } catch (e: Exception) {
+                emptyList()
+            }
+            company to (fallbackModels.ifEmpty { company.models })
+        }
     }
 
     private fun openAi(base: String, key: String): List<String> {
