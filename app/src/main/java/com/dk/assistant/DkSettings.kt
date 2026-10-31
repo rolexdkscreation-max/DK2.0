@@ -61,6 +61,8 @@ object DkSettings {
             listOf("बिल्ड फिक्स", "build fix", "टेस्ट जाँचो", "build जाँचो")),
         Item("coder_team", "मल्टी-एजेंट टीम", "coder", "coder_team", true,
             listOf("मल्टी एजेंट", "multi agent", "एजेंट टीम", "टीम")),
+        Item("default_assistant", "डिफ़ॉल्ट असिस्टेंट", "system", "default_assistant", false,
+            listOf("डिफ़ॉल्ट असिस्टेंट", "default assistant", "डिफ़ॉल्ट असिस्टेंट", "main assistant", "मुख्य असिस्टेंट")),
     )
 
     private fun n(s: String) = s.lowercase().replace("़", "").replace("ॉ", "ो").replace(Regex("\\s+"), " ").trim()
