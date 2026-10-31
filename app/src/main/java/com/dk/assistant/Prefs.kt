@@ -420,6 +420,10 @@ object Prefs {
     fun models(c: Context, id: String): List<String> =
         (sp(c).getString("models_$id", "") ?: "").split('\n').filter { it.isNotBlank() }
 
+    // ---- default assistant
+    fun defaultAssistant(c: Context) = sp(c).getBoolean("default_assistant", false)
+    fun setDefaultAssistant(c: Context, on: Boolean) = edit(c) { putBoolean("default_assistant", on) }
+
     /** v5: DK लाइव का dk_settings tool कोई भी ऑन-ऑफ सेटिंग पढ़ सके */
     fun bool(c: Context, key: String, def: Boolean): Boolean = sp(c).getBoolean(key, def)
 
