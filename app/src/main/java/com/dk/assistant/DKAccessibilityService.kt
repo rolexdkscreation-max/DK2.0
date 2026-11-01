@@ -99,6 +99,7 @@ class DKAccessibilityService : AccessibilityService() {
         bubble?.visibility = if (AppVisible.visible) android.view.View.GONE else android.view.View.VISIBLE
         DKLog.d("DK accessibility service chalu ho gaya")
         val user = Prefs.userName(this)
+        liveOffUntil = 0L; liveSoftFails = 0; liveOffSoft = false
         scope.launch {
             val hello = "${Prefs.assistantName(this@DKAccessibilityService)} तैयार है" + (if (user.isNotBlank()) ", $user" else "") + "।"
             DKState.reply(hello)
@@ -237,9 +238,31 @@ class DKAccessibilityService : AccessibilityService() {
     /** हल्के मोड में सुनना: फ़ोन का अपना SpeechRecognizer (on-device पहले, आवाज़ upload नहीं) */
     private suspend fun hearLight(): String? {
         if (!checkMic()) { delay(2000); return null }
-        if (DKState.micMuted) { delay(800); return null }   // होम का म्यूट बटन: कुछ मत सुनो
+        if (DKState.micMuted) { delay(800); return null }
         listener.preferOffline = true
-        return hearGoogle()
+        var tries = 0
+        val langs = listOf("hi-IN", "en-IN", java.util.Locale.getDefault().toLanguageTag())
+        while (tries < 5) {
+            val lang = langs[tries % langs.size]
+            val intent = android.content.Intent(android.speech.RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
+                putExtra(android.speech.RecognizerIntent.EXTRA_LANGUAGE_MODEL, android.speech.RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+                putExtra(android.speech.RecognizerIntent.EXTRA_LANGUAGE, lang)
+                putExtra(android.speech.RecognizerIntent.EXTRA_MAX_RESULTS, 1)
+            }
+            listener.intent = intent
+            val text = hearGoogle()
+            if (text != null) return text
+            if (listener.lastError == 13 || listener.lastError == 12) {
+                tries++
+                DKLog.d("Mic error ${listener.lastError} (lang=$lang), कोशिश $tries/5")
+                delay(3000)
+            } else break
+        }
+        if (tries >= 5) {
+            val msg = "हिंदी भाषा का पैक फ़ोन में नहीं है, Google ऐप की settings में Offline speech डाउनलोड करें।"
+            DKState.reply(msg); speaker.speak(msg)
+        }
+        return null
     }
 
     /**
@@ -708,13 +731,10 @@ class DKAccessibilityService : AccessibilityService() {
                         failed = true
                         // 5 min+ theek chala tha = purani dikkatein ginti se hatao (backoff shuru se)
                         if (System.currentTimeMillis() - liveStart > 5 * 60_000L) liveSoftFails = 0
-                        // key/limit/model = asli rukawat (10 min). Network/mic busy = thodi der: 15s, 30s, 60s ... 5 min tak
-                        // (pehle har baar 10 min ke liye Live band = "kabhi chalta hai kabhi nahi", beech me purana dheema tareeka)
-                        // v4.6 (मालिक: "कनेक्शन टूटे तो तुरंत जुड़े"): आपने Live चालू रखा है = 1s, 2s, 4s, 8s, 15s
-                        // (limit/key = 60s). पहले 15s-10 मिनट तक पुराना तरीका चलता था - बोला दिखता था, जवाब नहीं आता था
+                        // key/limit/model = asli rukawat. Network/mic busy = thodi der.
                         val userLive = DKState.live && !wakeLive
-                        // v4.7 (मालिक: "1-2 सेकंड में जुड़े"): थोड़ी-देर वाली दिक्कत = कभी 2s से ज़्यादा नहीं
-                        val offMs = if (userLive) LiveRetry.fast(e.recoverable, LiveRetry.liveOnMs(e.recoverable, liveSoftFails)) else LiveRetry.offMs(e.recoverable, liveSoftFails)
+                        val rawMs = if (userLive) LiveRetry.fast(e.recoverable, LiveRetry.liveOnMs(e.recoverable, liveSoftFails)) else LiveRetry.offMs(e.recoverable, liveSoftFails)
+                        val offMs = rawMs.coerceAtMost(60_000L)
                         if (e.recoverable) liveSoftFails++
                         liveOffSoft = userLive && e.recoverable
                         liveOffUntil = System.currentTimeMillis() + offMs
@@ -736,8 +756,10 @@ class DKAccessibilityService : AccessibilityService() {
                         // v4.6: आपने Live चालू रखा है = 3s में फिर (पहले 2 मिनट पुराना तरीका)
                         val userLive = DKState.live && !wakeLive
                         liveOffSoft = userLive
-                        // v5: 3s -> 1s (मालिक: "टूटे तो 1 सेकंड में फिर जुड़े")
-                        liveOffUntil = System.currentTimeMillis() + if (userLive) LiveRetry.FAST_MAX_MS else 2 * 60_000L
+                        // v5: 3s -> 1s (मालिक: "टूटे तो 1 सेकंड में फिर जुड़े"), max 60s
+                        val rawMs = if (userLive) LiveRetry.FAST_MAX_MS else 2 * 60_000L
+                        val offMs = rawMs.coerceAtMost(60_000L)
+                        liveOffUntil = System.currentTimeMillis() + offMs
                         DKLog.d("Gemini Live गलती: ${e.javaClass.simpleName} ${e.message}")
                         if (userLive) liveTroubleSay(LiveConnectNotice.TROUBLE)
                     }

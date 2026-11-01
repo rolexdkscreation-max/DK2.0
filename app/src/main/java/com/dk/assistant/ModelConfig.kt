@@ -96,12 +96,23 @@ object ModelConfig {
     }
 
     /**
-     * हिंदी संदेश जब दोनों मॉडल (primary और fallback) फ़ेल हो जाएं।
+     * हिंदी संदेश जब दोनों मॉडल (primary और fallback) फ़ेल हो जाएं (केवल वास्तविक 429 या RESOURCE_EXHAUSTED पर)।
      */
     fun quotaExhaustedMessage(feature: String): String = when (feature) {
-        FEATURE_LIVE -> "लाइव वॉइस फ़ीचर कुछ देर के लिए उपलब्ध नहीं है (कोटा समाप्त)।"
-        FEATURE_CHAT -> "टेक्स्ट चैट फ़ीचर कुछ देर के लिए उपलब्ध नहीं है (कोटा समाप्त)।"
-        FEATURE_CODER -> "कोडिंग एजेंट फ़ीचर कुछ देर के लिए उपलब्ध नहीं है (कोटा समाप्त)।"
-        else -> "यह फ़ीचर कुछ देर के लिए उपलब्ध नहीं है।"
+        FEATURE_LIVE -> "Gemini आवाज़ की लिमिट खत्म हो गई है। कृपया कुछ देर प्रतीक्षा करें।"
+        FEATURE_CHAT -> "Gemini चैट की लिमिट खत्म हो गई है। कृपया कुछ देर प्रतीक्षा करें।"
+        FEATURE_CODER -> "Gemini कोडिंग एजेंट की लिमिट खत्म हो गई है। कृपया कुछ देर प्रतीक्षा करें।"
+        else -> "Gemini की लिमिट खत्म हो गई है।"
+    }
+
+    /**
+     * timeout, नेट की गलती, और गलत key के लिए अलग-अलग संदेश।
+     */
+    fun networkErrorMessage(isTimeout: Boolean, isAuthError: Boolean): String {
+        return when {
+            isAuthError -> "API key अमान्य है या अनुमति नहीं है।"
+            isTimeout -> "नेटवर्क का समय समाप्त (timeout) हो गया। कृपया दोबारा कोशिश करें।"
+            else -> "नेटवर्क में गड़बड़ी है। कृपया अपना इंटरनेट कनेक्शन जांचें।"
+        }
     }
 }

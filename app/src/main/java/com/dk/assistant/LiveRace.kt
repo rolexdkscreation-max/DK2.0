@@ -13,7 +13,7 @@ package com.dk.assistant
  */
 object LiveRace {
     const val STAGGER_MS = 1_500L
-    const val MAX_PARALLEL = 3
+    const val MAX_PARALLEL = 1
     /** इतनी देर में कोई जोड़ी न जुड़े = धीमा नेट - हल्का मोड (Live पीछे से जुड़ता रहता है) */
     const val LIGHT_AFTER_MS = 6_000L
     const val KEY_BAD_MS = 10 * 60_000L

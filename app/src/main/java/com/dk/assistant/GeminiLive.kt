@@ -105,6 +105,7 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
         private val WS = Regex("\\s+")
         private const val CHUNK_SAMPLES = IN_RATE * CHUNK_MS / 1000      // 640 samples = 1280 bytes
         private const val URL = "wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent"
+        const val CONST_SETUP_TIMEOUT_MS = 15_000L
         /** Docs (Oct 2026): gemini-3.8-live = default; 3.1 flash live = purana preview */
         /** v3.41: phone_task ka lamba kaam (AgentRunner) - itni der baad Gemini ko "chal raha hai" */
         const val AGENT_WAIT_MS = 7_000L
