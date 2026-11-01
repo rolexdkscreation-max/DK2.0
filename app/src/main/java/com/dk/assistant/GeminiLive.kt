@@ -2927,16 +2927,13 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
     private fun openMic(): AudioRecord? {
         val min = AudioRecord.getMinBufferSize(IN_RATE, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT)
         if (min <= 0) { log("यह फ़ोन 16kHz PCM16 mono नहीं देता (min=$min)"); return null }
-        val sources = intArrayOf(
-            MediaRecorder.AudioSource.DEFAULT,
-            MediaRecorder.AudioSource.MIC,
-            MediaRecorder.AudioSource.VOICE_COMMUNICATION,
-            MediaRecorder.AudioSource.VOICE_RECOGNITION
-        )
-        for (src in sources) {
+        // VOICE_COMMUNICATION = phone ka echo-cancel (DK ki apni awaaz mic me kam), na chale to baaki.
+        // (#158 ने DEFAULT पहले रखा था "error 13" के लिए - पर 13 SpeechRecognizer की भाषा-गलती है, AudioRecord की नहीं; MicLang.kt)
+        for (src in intArrayOf(MediaRecorder.AudioSource.VOICE_COMMUNICATION, MediaRecorder.AudioSource.VOICE_RECOGNITION, MediaRecorder.AudioSource.MIC, MediaRecorder.AudioSource.DEFAULT)) {
             try {
                 val r = AudioRecord(src, IN_RATE, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT, maxOf(min * 2, CHUNK_SAMPLES * 2 * 6))
                 if (r.state != AudioRecord.STATE_INITIALIZED) { r.release(); continue }
+                // Bluetooth जुड़ा = headset का माइक (कॉल वाला तरीका)
                 if (btOn) BtAudio.btInput?.let { d -> try { r.setPreferredDevice(d) } catch (_: Exception) {} }
                 val sid = r.audioSessionId
                 val aec = try { AcousticEchoCanceler.isAvailable() && AcousticEchoCanceler.create(sid)?.apply { enabled = true } != null } catch (_: Exception) { false }
