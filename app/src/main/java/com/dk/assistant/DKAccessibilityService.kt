@@ -249,7 +249,7 @@ class DKAccessibilityService : AccessibilityService() {
                 putExtra(android.speech.RecognizerIntent.EXTRA_LANGUAGE, lang)
                 putExtra(android.speech.RecognizerIntent.EXTRA_MAX_RESULTS, 1)
             }
-            listener.intent(recognizerIntent)
+            listener.intent = recognizerIntent
             val text = hearGoogle()
             if (text != null) return text
             if (listener.lastError == 13 || listener.lastError == 12) {
