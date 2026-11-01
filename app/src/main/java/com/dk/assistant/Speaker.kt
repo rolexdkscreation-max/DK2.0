@@ -67,9 +67,12 @@ class Speaker(context: Context) {
      * (Edge का WebSocket, worker की ज़रूरत नहीं). सेवा (DKAccessibilityService.enterBackup) चालू/बंद करती है.
      */
     @Volatile var edgeOnly = false
+    /** Edge अभी-अभी नहीं जुड़ा = 60s तक हर वाक्य पर 12s इंतज़ार नहीं, सीधे फ़ोन की आवाज़ (log 11:09: हर वाक्य 6-12s अटकता था) */
+    @Volatile private var edgeDownUntil = 0L
+    private val EDGE_DOWN = "आवाज़: फ़ोन की (Edge नहीं जुड़ा)"
 
     private fun why(keys: List<String>): VoicePolicy.Why =
-        if (edgeOnly && online()) VoicePolicy.Why.OK
+        if (edgeOnly) VoicePolicy.Why.OK          // बैकअप मोड: Edge, वह न चले तो फ़ोन की आवाज़ (बिना नेट भी)
         else VoicePolicy.gemini(keys.isNotEmpty(), online(), System.currentTimeMillis(), geminiCooldownUntil)
 
     // ================================================================ bolna (ek samay me ek hi awaaz)
@@ -204,6 +207,12 @@ class Speaker(context: Context) {
                         if (gem) {
                             val wav = withTimeoutOrNull(VoicePolicy.waitMs(quick)) { pendingWav[chunk]?.await() }
                             if (wav != null) { DKState.set(Mode.SPEAKING); playWav(wav); played = true }
+                            else if (edgeOnly && !aborted && !paused) {
+                                // बैकअप मोड: Edge नहीं चला = फ़ोन की अपनी हिंदी आवाज़ (चुप नहीं)
+                                DKState.set(Mode.SPEAKING)
+                                if (PhoneVoice.say(appCtx, chunk)) played = true
+                                else { gem = false; DKLog.d("बैकअप मोड: Edge और फ़ोन की आवाज़ दोनों नहीं चलीं - जवाब सिर्फ़ लिखा") }
+                            }
                             else if (!aborted && !paused) {
                                 // Gemini ne awaaz nahi di -> chup (phone TTS nahi). Baaki jawab bhi likha hi rahega.
                                 gem = false
@@ -300,7 +309,18 @@ class Speaker(context: Context) {
     }
 
     private suspend fun synth(keys: List<String>, text: String, voice: String): ByteArray {
-        if (edgeOnly) return withContext(Dispatchers.IO) { edgeWav(text) }
+        if (edgeOnly) {
+            if (System.currentTimeMillis() < edgeDownUntil) throw java.io.IOException("Edge अभी नहीं जुड़ रहा - फ़ोन की आवाज़")
+            return withContext(Dispatchers.IO) {
+                try { edgeWav(text) } catch (e: Exception) {
+                    // स्क्रीन की पट्टी पर साफ़: बैकअप मोड • (Live का कारण) • आवाज़: फ़ोन की (Edge नहीं जुड़ा)
+                    val l = DKState.linkStatus
+                    if (l.startsWith("बैकअप मोड") && !l.contains(EDGE_DOWN)) DKState.setLink("$l • $EDGE_DOWN")
+                    DKLog.d("बैकअप मोड: Edge नहीं जुड़ा (${e.message?.take(80)}) - 60s तक फ़ोन की अपनी आवाज़")
+                    edgeDownUntil = System.currentTimeMillis() + 60_000L; throw e
+                }
+            }
+        }
         val cf = cacheFile(voice, text)
         if (cf != null && cf.exists() && cf.length() > 100) return withContext(Dispatchers.IO) { cf.readBytes() }
         return withContext(Dispatchers.IO) { GeminiTts.synthesizeAny(keys, text, voice, Prefs.voiceStyle(appCtx)).also { w -> cf?.writeBytes(w) } }
@@ -383,6 +403,7 @@ class Speaker(context: Context) {
     /** Abhi chal rahi awaaz turant band */
     private fun haltAudio() {
         android.os.Handler(android.os.Looper.getMainLooper()).post { stopPlayer() }
+        PhoneVoice.stop()
         playDone?.complete(Unit)
     }
 

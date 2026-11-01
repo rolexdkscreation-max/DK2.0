@@ -13,6 +13,8 @@ object LiveFailWhy {
         CONFIG("सेटिंग में गलती है", "सेटिंग में गलती है - Gemini ने DK लाइव की शुरुआती सेटिंग नहीं मानी।", 10 * 60_000L),
         NET("इंटरनेट की दिक्कत है", "इंटरनेट की दिक्कत है - Gemini Live का server नहीं मिल रहा।", 60_000L),
         SLOW("इंटरनेट बहुत धीमा है", "इंटरनेट बहुत धीमा है - ${LiveRace.CONNECT_WAIT_MS / 1000} सेकंड में Gemini Live नहीं जुड़ा।", 60_000L),
+        /** नवंबर 2026 (log 11:09): नेट चालू (Groq/OpenRouter चले) पर Google के server तक connection खुला ही नहीं */
+        UNREACHABLE("इंटरनेट की दिक्कत है - Google तक नहीं पहुँच रहा", "इंटरनेट की दिक्कत है - फ़ोन का नेट चल रहा है, पर Gemini (Google) के server तक connection खुल ही नहीं रहा। VPN, Private DNS या ad-blocker बंद करके, या Wi-Fi और mobile data बदलकर देखें।", 60_000L),
         SERVER("Gemini server जवाब नहीं दे रहा", "Gemini Live का server अभी जवाब नहीं दे रहा।", 60_000L),
         MIC("माइक की अनुमति नहीं मिली", "माइक की अनुमति नहीं मिली। फ़ोन की Settings → Apps → DK → Permissions → Microphone चालू करें।", 5 * 60_000L),
         MIC_BUSY("माइक व्यस्त है", "माइक कोई दूसरा ऐप इस्तेमाल कर रहा है।", 60_000L),
@@ -34,6 +36,7 @@ object LiveFailWhy {
                 r.contains("models/") -> Kind.MODEL
             code == 1007 || code == 400 || r.contains("invalid") || r.contains("unknown name") || r.contains("modalit") ||
                 r.contains("cannot find field") -> Kind.CONFIG
+            r.contains("server तक नहीं पहुँचा") || r.contains("connection खुला ही नहीं") -> Kind.UNREACHABLE
             r.contains("धीमा") || r.contains("सेकंड में नहीं") -> Kind.SLOW
             r.contains("unknownhost") || r.contains("unable to resolve") || r.contains("failed to connect") ||
                 r.contains("timeout") || r.contains("timed out") || r.contains("network") || r.contains("नेट") ||
