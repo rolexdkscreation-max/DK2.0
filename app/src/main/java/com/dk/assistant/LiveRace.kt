@@ -13,7 +13,7 @@ package com.dk.assistant
  */
 object LiveRace {
     const val STAGGER_MS = 1_500L
-    const val MAX_PARALLEL = 3
+    const val MAX_PARALLEL = 2      // नवंबर 2026 (मालिक): फ्री key पर एक साथ ज़्यादा सत्र नहीं - अधिकतम 2
     /** मालिक (नवंबर 2026): हल्का मोड हटा. इतनी देर में कोई जोड़ी न जुड़े = साफ़ कारण ("इंटरनेट बहुत धीमा") + बैकअप मोड */
     const val CONNECT_WAIT_MS = 20_000L
     const val KEY_BAD_MS = 10 * 60_000L

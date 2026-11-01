@@ -186,7 +186,7 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
         svc.scope.launch {
             // DK बोल रहा हो तो बीच में नहीं - चुप होने तक (10s तक) रुको
             // tool का जवाब बाकी हो तो भी नहीं (Gemini tool के जवाब का इंतज़ार कर रहा हो तब text = 1007 का ख़तरा)
-            withTimeoutOrNull(15_000) { while (isPlaying() || generating || toolJobs.isNotEmpty()) delay(150) }
+            if (!waitQuiet(45_000)) { log("Gemini चुप नहीं हुआ (45s) - बीच बातचीत text नहीं भेजा"); return@launch }
             if (stopped || !ready) return@launch
             lastEvidenceAt = System.currentTimeMillis()
             try { ws?.tx(JSONObject().put("realtimeInput", JSONObject().put("text", TaskStatus.endNote(job))).toString()) } catch (_: Exception) {}
@@ -201,6 +201,15 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
     @Volatile private var goAway = false
     @Volatile private var goAwayDrop = false          // server ne khud naya connection maanga (galti nahi)
     private var handle: String? = null
+    /** नवंबर 2026: बीच बातचीत का बचाव-text (caption/अटका/टूटने से पहले की बात/बीच का सवाल) - डिफ़ॉल्ट बंद (1011 की जड़) */
+    @Volatile private var textRescue = false
+    /** goAway पर पहले से तैयार connection किस handle से बना (useParked) */
+    @Volatile private var parkHandle: String? = null
+    @Volatile private var weakNetTold = false
+    @Volatile private var prevAlive = false
+    /** run() की keys/models - goAway पर पीछे से नया connection तैयार करने के लिए */
+    @Volatile private var curKeys: List<String> = emptyList()
+    @Volatile private var curModels: List<String> = emptyList()
     private var useSearch = true
 
     // ---- aankde (debug)
@@ -311,7 +320,7 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
     /** v3.9.1: bola par Gemini ne suna hi nahi -> caption ka text seedha bhejo */
     // v3.41: suna par jawab shuru nahi = 4.5s ki jagah 3.5s me bachao (atka sawaal jaldi dobara)
     // v3.46: 2.5s -> 1.8s (सर्वर ने सुना हो तो ~1s में text भेज देता है); 0.4s -> 0.25s (छोटे आदेश "हाँ", "रुको" भी बचें - caption के शब्द ज़रूरी)
-    private val replyWatch = ReplyWatchdog(timeoutMs = 1800, minSpeechMs = 250, answerTimeoutMs = 3500)
+    private val replyWatch = ReplyWatchdog(timeoutMs = LiveStay.NO_REPLY_MS, minSpeechMs = 250, answerTimeoutMs = 3500)   // नवंबर 2026: 1.8s -> 6s (पहला जवाब अक्सर 2-4s)
     @Volatile private var unheard = 0
     @Volatile private var rescued = 0
     /** v3.29: suna par jawab shuru nahi kiya -> wahi baat text me dobara (kitni baar) */
@@ -544,7 +553,8 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
 
     /** Garam (standby) connection: wake word ke baad chup hone par band nahi kiya */
     private class Parked(val ws: WebSocket, val closed: CompletableDeferred<Pair<Int, String>>, val model: String, val at: Long,
-                         val split: Boolean = false, val text: Boolean = false, val liveVer: Int = -1, val keyIdx: Int = -1)
+                         val split: Boolean = false, val text: Boolean = false, val liveVer: Int = -1, val keyIdx: Int = -1,
+                         val resumedFrom: String? = null)
     @Volatile private var parked: Parked? = null
     @Volatile private var curClosed: CompletableDeferred<Pair<Int, String>>? = null
 
@@ -858,10 +868,22 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
             "Real result: \"" + result.take(800) + "\". Tell the user this real result in ONE short natural sentence in their language " +
             "(e.g. \"हो गया सर\") - never read out function names, braces, arguments or <ctrl> tokens. Do NOT call $name again for this request."
 
+    /**
+     * नवंबर 2026: बीच बातचीत text सिर्फ़ तब जब Gemini चुप हो और कोई turn न चल रहा हो (1011 की जड़: बोलते/सोचते समय text).
+     * true = अभी भेज सकते हैं (ज़्यादा से ज़्यादा [maxMs] इंतज़ार)
+     */
+    private suspend fun waitQuiet(maxMs: Long): Boolean {
+        fun quiet() = !isPlaying() && !generating && !turnActive && !turnDet.inSpeech && toolJobs.isEmpty()
+        withTimeoutOrNull(maxMs) { while (!stopped && !quiet()) delay(150) }
+        if (!quiet()) return false
+        delay(400)                        // ठीक अभी turn खत्म हुआ - server को साँस लेने दो
+        return !stopped && quiet()
+    }
+
     /** स्क्रीन/कैमरा चालू-बंद हुआ -> Gemini को बताओ (tool का जवाब बाकी हो तो उसके बाद) */
     fun visionNote(t: String, evidence: Boolean = true) {
         svc.scope.launch {
-            withTimeoutOrNull(8_000) { while (toolJobs.isNotEmpty() || generating) delay(150) }
+            if (!waitQuiet(20_000)) { log("Gemini चुप नहीं हुआ (20s) - SYSTEM NOTE नहीं भेजा: ${t.take(50)}"); return@launch }
             if (!canTalk()) return@launch
             if (evidence) lastEvidenceAt = System.currentTimeMillis()
             try { ws?.tx(JSONObject().put("realtimeInput", JSONObject().put("text", t)).toString()) } catch (_: Exception) {}
@@ -924,6 +946,8 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
         NowClock.syncAsync()   // v3.80: सही समय (फ़ोन की घड़ी ग़लत हो तो इंटरनेट से)
         stopped = false; goAway = false; idleExit = false; lastAct = System.currentTimeMillis(); callAudioOn = false; lastUserLine = ""; lastDkLine = ""
         sent = 0; sentBytes = 0; dropped = 0; gaps = 0; readErr = 0; recvAudio = 0; reconnects = 0
+        textRescue = LiveStay.textRescueOn(svc); weakNetTold = false
+        log("बीच बातचीत का बचाव-text: " + if (textRescue) "चालू (सेटिंग)" else "बंद (डिफ़ॉल्ट - 1011 से बचाव)")
         if (!Setup.hasMic(svc)) throw Fatal("माइक की परमिशन नहीं है", kind = LiveFailWhy.Kind.MIC)
         // v3.94: मुख्य key + बैकअप keys - एक बंद/गलत/limit खत्म = चुपचाप अगली (user को पता न चले)
         val keys = Prefs.liveGeminiKeys(svc).ifEmpty { throw Fatal("Gemini की key नहीं है", kind = LiveFailWhy.Kind.NO_KEY) }
@@ -951,6 +975,7 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
             if (!switchKey("key ${ki + 1} के सारे Live मॉडल की limit आज खत्म")) break
         }
         log("models: ${models.joinToString()}")
+        curKeys = keys; curModels = models
         if (stopped) return@withContext "जुड़ने से पहले बंद"
         mi = 0; var fails = 0
         var quickDrops = 0                               // judne ke turant baad baar-baar tootna
@@ -996,13 +1021,14 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
                     planSplit(model)                 // v3.68: इस connection में कौन बोलेगा (बँटवारा / सीधी आवाज़)
                     // v3.8: wake word ke baad garam rakha connection abhi zinda hai -> naya mat banao (0 ms)
                     val reuse = pkOk && pk!!.model == model && pk.split == connSplit && pk.text == connText &&
-                        pk.liveVer == connLiveVer   // v3.80: बीच में आवाज़/मॉडल बदला = पुराना गर्म connection नहीं
+                        pk.liveVer == connLiveVer &&  // v3.80: बीच में आवाज़/मॉडल बदला = पुराना गर्म connection नहीं
+                        LiveStay.useParked(pk.resumedFrom, handle, oldAlive = prevAlive)
                     if (pk != null && !reuse) closeWs(pk.ws, "standby purana")
                     val closed: CompletableDeferred<Pair<Int, String>>
                     val t0 = System.currentTimeMillis()
                     if (reuse) {
                         closed = pk!!.closed; curClosed = closed
-                        ws = pk.ws; warmReuses++; connResumed = false
+                        ws = pk.ws; warmReuses++; connResumed = pk.resumedFrom != null    // goAway वाला = वही बातचीत (याद दोबारा नहीं)
                         synchronized(sendLock) { sendContext(ws); ready = true; flushPending() }
                         log("गर्म connection फिर से [$model • key #${keyIdx + 1}] - जुड़ने में 0 ms (${(t0 - pk.at) / 1000}s से standby में था)")
                         DKState.setLink("Live • $model • key #${keyIdx + 1} • 0 ms")
@@ -1177,7 +1203,7 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
                         // v4.6 (मालिक: "बोला हुआ लिखा जाता है, पर जवाब नहीं आता"): बचाव का text भी भेजा, फिर भी server
                         // बिल्कुल चुप = connection खुला पर सत्र अटका. पहले यहाँ कुछ नहीं होता था (DK हमेशा चुप).
                         // अब: तुरंत नया connection (नई बातचीत, अटका सत्र नहीं) + वही बात दोबारा (नीचे resendText).
-                        if (!generating && !isPlaying() && toolJobs.isEmpty() && !turnDet.inSpeech && replyWatch.dead(now)) {
+                        if (textRescue && !generating && !isPlaying() && toolJobs.isEmpty() && !turnDet.inSpeech && replyWatch.dead(now)) {
                             deadSessions++
                             log("बात भेजी, बचाव भी भेजा, पर ${ReplyWatchdog.DEAD_MS / 1000}s से जवाब नहीं - सत्र अटका, तुरंत नया connection और वही बात दोबारा (#$deadSessions) • ${timeline.summary()}")
                             handle = null; goAway = true; goAwayDrop = true
@@ -1197,11 +1223,18 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
                     }
                     ready = false
                     if (stopped) break
+                    prevAlive = !closed.isCompleted          // goAway/बदलाव पर हमने बंद किया (पुराना ज़िंदा था) या खुद कटा
                     val (code, reason) = if (closed.isCompleted) closed.await() else 1000 to "goAway"
                     // user ki baat khatam ho chuki thi par jawab shuru nahi hua aur connection toot gaya -> woh baat
                     // chupchaap kho jaati thi. Dobara judte hi ek baar text me bhejo.
                     val dropAt = System.currentTimeMillis()
-                    if (resendText == null && replyWatch.unanswered(dropAt)) {
+                    val textAgo = wire.lastTextAgo()
+                    val lastedAtDrop = dropAt - upAt
+                    if (textAgo >= 0) log("कटने से ${"%.1f".format(textAgo / 1000.0)}s पहले text भेजा था (${lastedAtDrop / 1000}s चला)")
+                    if (LiveStay.skipResend(lastedAtDrop, textAgo)) {
+                        resendText = null; replyWatch.onResent()
+                        log("2s से कम चला और ठीक पहले text गया था - वही text दोबारा नहीं (टूटने का चक्कर नहीं)")
+                    } else if (textRescue && resendText == null && replyWatch.unanswered(dropAt)) {
                         val t = caption?.text().orEmpty().trim()
                             .ifBlank { if (!userDone) turnUser.trim() else "" }
                             .ifBlank { synchronized(turnLock) { userText.toString().trim() } }
@@ -1249,9 +1282,13 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
                     val lasted = System.currentTimeMillis() - upAt
                     if (goAwayDrop || lasted >= 20_000) quickDrops = 0 else quickDrops++
                     goAwayDrop = false
-                    if (quickDrops >= 6) throw Fatal("Gemini Live बार-बार टूट रहा है - नेटवर्क देखें", recoverable = true)
-                    // v4.7 (मालिक: "टूटे तो 1-2 सेकंड में जुड़े"): 1s, 2s, 2s... (पहले 15s तक)
-                    val wait = if (quickDrops == 0) 250L else minOf(LiveRetry.FAST_MAX_MS, 500L shl quickDrops)
+                    // नवंबर 2026 (मालिक): 7 बार के बाद हार नहीं - ✕ दबाने तक कोशिश. इंतज़ार 1, 2, 4, 8, 15s (+ random)
+                    if (quickDrops >= LiveStay.WEAK_NET_TELL_AT && !weakNetTold) {
+                        weakNetTold = true
+                        DKState.setLink("नेटवर्क कमज़ोर है - पीछे से जोड़ रहा हूँ")
+                        log("बार-बार टूट रहा है ($quickDrops) - यूज़र को एक बार बताया: नेटवर्क कमज़ोर है")
+                    }
+                    val wait = LiveStay.backoffMs(quickDrops)
                     if (quickDrops > 0) log("जल्दी टूटा (${lasted / 1000}s) - $wait ms रुककर दोबारा (#$quickDrops)")
                     delay(wait)
                 }
@@ -1343,6 +1380,7 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
     private fun sendResend() {
         val t = resendText ?: return
         resendText = null
+        if (!textRescue) { log("टूटने से पहले की बात text में दोबारा नहीं भेजी (बचाव-text बंद) - बातचीत handle से वहीं से"); return }
         val w = ws ?: return
         val now = System.currentTimeMillis()
         eosAt = now; firstAudioAt = 0; trace.reset(); trace.speechEndAt = now; trace.endpointAt = now
@@ -1699,6 +1737,8 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
             queue = health.order(models, keys.size, now) { Cooldown.blocked(LiveKeys.cooldownName(it.keyIdx, it.model)) }.toMutableList()
         }
         val tmo = LiveRace.timeoutMs(health.recentTimes())
+        // नवंबर 2026: बातचीत वहीं से (handle) वाली जोड़ी सबसे पहले - दूसरी जीतती तो handle छूटता (संदर्भ खो जाता)
+        if (resumeId != null) queue.indexOfFirst { it.id == resumeId }.takeIf { it > 0 }?.let { queue.add(0, queue.removeAt(it)) }
         log("दौड़${if (live) "" else " (पीछे से, माइक नहीं)"}: ${queue.size} जोड़ियाँ, हर एक का इंतज़ार $tmo ms (हाल के नाप: ${health.recentTimes().joinToString()}) • " +
             queue.take(4).joinToString { it.label })
         if (queue.isEmpty()) {
@@ -1855,10 +1895,29 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
         if (live) onServer(text, a.setup) else parkRaced(a, w)
     }
 
+    /**
+     * नवंबर 2026 (मालिक): goAway = server जल्द काटेगा. कटने का इंतज़ार नहीं: DK बोल रहा/काम चल रहा हो तो अभी पीछे से
+     * उसी बातचीत (handle) का नया connection तैयार (standby). DK चुप होते ही उसी पर (0 ms); बीच में बात हुई (handle बदला)
+     * तो ताज़ा handle से. पुराना जवाब पूरा होने के बाद ही पुराना बंद (नीचे loop का goAway).
+     */
+    private fun onGoAway(timeLeft: String) {
+        val left = LiveStay.timeLeftMs(timeLeft)
+        log("goAway: ${timeLeft.ifBlank { "?" }} बाकी" + if (left >= 0) " (${left} ms)" else "")
+        goAway = true
+        val busy = turnActive || isPlaying() || toolJobs.isNotEmpty() || generating
+        if (!busy || stopped || parked != null || handle == null || curKeys.isEmpty()) return
+        val h = handle; val m = model; val k = keyIdx
+        parkHandle = h
+        log("goAway: DK बोल रहा है - पीछे से उसी बातचीत का नया connection तैयार कर रहा हूँ")
+        try { startRace(curKeys, listOf(m) + curModels.filter { it != m }, live = false, resumeId = LiveRace.Combo(m, k).id) }
+        catch (e: Exception) { log("goAway: पीछे का connection शुरू नहीं हुआ: ${e.message}") }
+    }
+
     /** दौड़ जीती पर run() इंतज़ार छोड़ चुका था - standby में रखो; अगली बार Live इसे तुरंत (0 ms) लेता है */
     private fun parkRaced(a: Attempt, w: WebSocket) {
         parked?.let { old -> closeWs(old.ws, "standby बदला") }
-        val p = Parked(w, a.closed, a.c.model, System.currentTimeMillis(), connSplit, a.text, connLiveVer, a.c.keyIdx)
+        val p = Parked(w, a.closed, a.c.model, System.currentTimeMillis(), connSplit, a.text, connLiveVer, a.c.keyIdx,
+            resumedFrom = if (a.resume) parkHandle else null)
         parked = p
         log("पीछे से Live तैयार [${a.c.label}] - standby में (DK चुप होते ही Live पर वापस)")
         svc.scope.launch {
@@ -1939,7 +1998,7 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
         o.optJSONObject("sessionResumptionUpdate")?.let {
             if (it.optBoolean("resumable") && it.optString("newHandle").isNotBlank()) handle = it.optString("newHandle")
         }
-        o.optJSONObject("goAway")?.let { log("goAway: ${it.optString("timeLeft")} बाकी"); goAway = true }
+        o.optJSONObject("goAway")?.let { onGoAway(it.optString("timeLeft")) }
         o.optJSONObject("voiceActivity")?.optString("type")?.let { t ->
             if (t == "ACTIVITY_START" || t == "ACTIVITY_END") replyWatch.onServerHeard()
             if (t == "ACTIVITY_START") {
@@ -2450,7 +2509,7 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
             try {
                 delay(NotifPush.BATCH_MS)
                 // DK बोल रहा / user बोल रहा / tool चल रहा = बीच में नहीं (60s तक रुको)
-                withTimeoutOrNull(60_000) { while (isPlaying() || generating || turnActive || turnDet.inSpeech || toolJobs.isNotEmpty()) delay(200) }
+                if (!waitQuiet(60_000)) { log("सूचना: Gemini चुप नहीं हुआ (60s) - text नहीं भेजा, अगली सूचना के साथ"); return@launch }
                 val items = synchronized(notifQ) { notifQ.toList().also { notifQ.clear() } }
                 if (items.isEmpty() || !canTalk() || svc.callBusy()) return@launch
                 val ok = try { ws?.tx(JSONObject().put("realtimeInput", JSONObject().put("text", NotifPush.note(items))).toString()) == true } catch (_: Exception) { false }
@@ -2731,7 +2790,7 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
                 finally { watcher.cancel() }
             if (taskQueue === q) taskQueue = null
             log("कतार ख़त्म: $summary")
-            withTimeoutOrNull(15_000) { while (isPlaying() || generating || toolJobs.isNotEmpty()) delay(150) }
+            if (!waitQuiet(45_000)) { log("Gemini चुप नहीं हुआ (45s) - बीच बातचीत text नहीं भेजा"); return@launch }
             if (stopped || !ready) return@launch
             visionNote(TaskQueue.summaryNote(summary), evidence = true)
         }
@@ -2892,7 +2951,7 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
                 val rep = DKState.lastReply.takeIf { it != before && it.isNotBlank() }
                     ?: if (!done) "It could not be finished in time and was stopped." else null
                 // DK बोल रहा हो तो बीच में नहीं - चुप होने तक (10s तक) रुको
-                withTimeoutOrNull(15_000) { while (isPlaying() || generating || toolJobs.isNotEmpty()) delay(150) }
+                if (!waitQuiet(45_000)) { log("Gemini चुप नहीं हुआ (45s) - बीच बातचीत text नहीं भेजा"); return@launch }
                 if (stopped || !ready) return@launch
                 val bad = !done || DKState.failedAt != failBefore
                 lastEvidenceAt = System.currentTimeMillis()
@@ -3144,13 +3203,21 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
             if (!turnDet.inSpeech) replyWatch.defer(now0)
             return
         }
+        if (!textRescue) {
+            // नवंबर 2026: caption का text कभी Gemini को नहीं (पीछे का शोर / फ़ोन की आवाज़ भी caption बनती है; बीच का text = 1011)
+            unheard++
+            log("Gemini से ${LiveStay.NO_REPLY_MS / 1000}s में कुछ नहीं - caption text नहीं भेजा (बचाव-text बंद), सुन रहा हूँ (#$unheard)")
+            if (DKState.mode == Mode.THINKING) setMode(Mode.LISTENING)
+            Ducker.releaseWhenQuiet({ !isPlaying() && !generating })
+            return
+        }
         val t = caption?.text().orEmpty().trim()
         // caption के शब्द थोड़ी देर से आते हैं (उसका जुड़ाव हर 50s बदलता है) - एक-दो बार और रुको, फिर "शोर" मानो
         if (!BargeGate.realWords(t) && rescueWaits < 2 && replyWatch.defer(now0, 600)) { rescueWaits++; return }
         rescueWaits = 0
         unheard++
         if (!BargeGate.realWords(t)) {
-            log("Gemini से 2.5s में कुछ नहीं आया और caption में शब्द नहीं - शोर था, सुन रहा हूँ (#$unheard)")
+            log("Gemini से ${LiveStay.NO_REPLY_MS / 1000}s में कुछ नहीं आया और caption में शब्द नहीं - शोर था, सुन रहा हूँ (#$unheard)")
             if (DKState.mode == Mode.THINKING) setMode(Mode.LISTENING)
             Ducker.releaseWhenQuiet({ !isPlaying() && !generating })
             return
@@ -3162,7 +3229,7 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
         replyWatch.onRescued()               // ek baat ke liye ek hi baar (atka-nudge bhi nahi)
         val ok = try { ws?.tx(JSONObject().put("realtimeInput", JSONObject().put("text", t)).toString()) == true } catch (_: Exception) { false }
         if (ok) rescued++
-        log("Gemini ने आवाज़ नहीं सुनी (2.5s में कुछ नहीं) - caption का text सीधे भेजा: \"${t.take(60)}\"" + if (ok) "" else " (भेज नहीं पाया)")
+        log("Gemini ने आवाज़ नहीं सुनी (${LiveStay.NO_REPLY_MS / 1000}s में कुछ नहीं) - caption का text सीधे भेजा: \"${t.take(60)}\"" + if (ok) "" else " (भेज नहीं पाया)")
         if (DKState.mode != Mode.WORKING) setMode(Mode.THINKING)
     }
 
@@ -3173,6 +3240,7 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
      */
     private fun onStalled() {
         if (!ready) return
+        if (!textRescue) { log("Gemini ने सुना पर जवाब धीमा - वही बात text में दोबारा नहीं भेजी (बचाव-text बंद), इंतज़ार"); return }
         if ((generating && !dropOld) || isPlaying() || toolJobs.isNotEmpty() || turnDet.inSpeech) {
             if (!turnDet.inSpeech && !isPlaying() && !(generating && !dropOld)) replyWatch.deferAnswer(System.currentTimeMillis())
             return
@@ -3360,6 +3428,7 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
     /** जवाब पूरा हुआ - बीच में पूछा सवाल अब Gemini को (यूज़र की नई बारी की तरह, "आप:" लाइन भी) */
     private fun flushAsks(now: Long) {
         val raw = askQueue.drain() ?: return
+        if (!textRescue) { log("बीच में पकड़ी बात (caption) text में नहीं भेजी (बचाव-text बंद): ${raw.take(40)}"); return }
         // v4.1: "सिर्फ़ DK बोलने पर सुनो" - बीच में पूछी बात में DK से शुरू होने वाले वाक्य ही (DK हटाकर)
         val t = if (!dkOnlyNow) raw else DkOnly.filter(raw)?.takeIf { it.isNotBlank() } ?: run {
             log("बीच की बात DK से शुरू नहीं हुई - छोड़ी (\"${raw.take(40)}\")"); return

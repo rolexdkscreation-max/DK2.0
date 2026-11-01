@@ -32,6 +32,8 @@ object VoiceTune {
     fun load(c: Context) {
         if (loaded) return
         val sp = VoiceEngines.sp(c)
+        // नवंबर 2026 (मालिक): गति 95% / पिच 92% पर आवाज़ धीमी और देर से लगी - एक बार 100% पर लाओ (बाद में slider से बदल सकते हैं)
+        if (!sp.getBoolean("tune_reset_nov26", false)) sp.edit().putInt("tune_speed", NORMAL).putInt("tune_pitch", NORMAL).putBoolean("tune_reset_nov26", true).apply()
         speedPct = clampSpeed(sp.getInt("tune_speed", NORMAL)); pitchPct = clampPitch(sp.getInt("tune_pitch", NORMAL))
         loaded = true; version++
     }
