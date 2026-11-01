@@ -14,16 +14,14 @@ package com.dk.assistant
 object LiveRace {
     const val STAGGER_MS = 1_500L
     const val MAX_PARALLEL = 3
-    /** इतनी देर में कोई जोड़ी न जुड़े = धीमा नेट - हल्का मोड (Live पीछे से जुड़ता रहता है) */
-    const val LIGHT_AFTER_MS = 6_000L
+    /** मालिक (नवंबर 2026): हल्का मोड हटा. इतनी देर में कोई जोड़ी न जुड़े = साफ़ कारण ("इंटरनेट बहुत धीमा") + बैकअप मोड */
+    const val CONNECT_WAIT_MS = 20_000L
     const val KEY_BAD_MS = 10 * 60_000L
     const val COMBO_FAIL_MS = 2 * 60_000L
     const val MIN_TIMEOUT_MS = 4_000L
     const val MAX_TIMEOUT_MS = 22_000L
-    /** नाप नहीं है (पहली बार) */
-    const val DEFAULT_TIMEOUT_MS = 6_000L
-    /** हल्के मोड में Live को पीछे से फिर आज़माना (हर इतनी देर में एक दौड़) */
-    const val BACKGROUND_EVERY_MS = 8_000L
+    /** नाप नहीं है (पहली बार) - धीमे mobile नेट पर 6s कम था */
+    const val DEFAULT_TIMEOUT_MS = 10_000L
     private const val KEEP_TIMES = 8
 
     data class Combo(val model: String, val keyIdx: Int) {
