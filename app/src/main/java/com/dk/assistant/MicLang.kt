@@ -4,7 +4,7 @@ package com.dk.assistant
  * Mic error 12/13 का पक्का इलाज (JVM test होने वाले नियम).
  *
  * जड़: 12 = SpeechRecognizer.ERROR_LANGUAGE_NOT_SUPPORTED, 13 = ERROR_LANGUAGE_UNAVAILABLE.
- * हल्के मोड (धीमा नेट) में VoiceListener हर बार "hi-IN + EXTRA_PREFER_OFFLINE" माँगता था; फ़ोन में
+ * (पुराने) हल्के मोड (धीमा नेट) में VoiceListener हर बार "hi-IN + EXTRA_PREFER_OFFLINE" माँगता था; फ़ोन में
  * हिंदी का offline पैक न हो तो पहचान तुरंत 13 देती है (फ़ोन खुद online पर नहीं जाता)। पुराना hearLight()
  * नई भाषा वाला Intent बनाता था पर कभी भेजता नहीं था - वही नाकाम माँग 5 बार, हर बार 3s चुप्पी।
  *

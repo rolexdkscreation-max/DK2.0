@@ -135,7 +135,7 @@ class VoiceActivity : AppCompatActivity() {
         // सुनना/सोचना/बोलना अब orb खुद दिखाता है - अलग पट्टी/लेबल नहीं
         state.visibility = android.view.View.GONE
         col.addView(state, LinearLayout.LayoutParams(-2, -2).apply { gravity = Gravity.CENTER_HORIZONTAL })
-        // v5.1: DK Live का जुड़ाव साफ़ दिखे - "जुड़ रहा है… मॉडल • key #N" / "Live • … ms" / "धीमा नेट - हल्का मोड" / "ऑफ़लाइन"
+        // v5.1: DK Live का जुड़ाव साफ़ दिखे - "जुड़ रहा है… मॉडल • key #N" / "Live • … ms" / "बैकअप मोड • <कारण>"
         link = TextView(this).apply {
             setTextColor(0xCCFFFFFF.toInt()); textSize = 12f; gravity = Gravity.CENTER
             val h = (12 * dp).toInt(); val v = (4 * dp).toInt(); setPadding(h, v, h, v)

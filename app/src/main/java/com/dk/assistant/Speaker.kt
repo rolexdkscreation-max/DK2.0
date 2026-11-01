@@ -62,8 +62,15 @@ class Speaker(context: Context) {
     /** v4.2: DK लाइव की तीनों keys (मुख्य + बैकअप 2 + बैकअप 3) - पहले सिर्फ़ मुख्य key से आवाज़ बनती थी */
     private fun keys(): List<String> = Prefs.liveGeminiKeys(appCtx)
 
+    /**
+     * बैकअप मोड (DK लाइव नहीं जुड़ा): बोलना Microsoft Edge TTS से - हिंदी आवाज़, बिना key, फ़ोन से सीधे
+     * (Edge का WebSocket, worker की ज़रूरत नहीं). सेवा (DKAccessibilityService.enterBackup) चालू/बंद करती है.
+     */
+    @Volatile var edgeOnly = false
+
     private fun why(keys: List<String>): VoicePolicy.Why =
-        VoicePolicy.gemini(keys.isNotEmpty(), online(), System.currentTimeMillis(), geminiCooldownUntil)
+        if (edgeOnly && online()) VoicePolicy.Why.OK
+        else VoicePolicy.gemini(keys.isNotEmpty(), online(), System.currentTimeMillis(), geminiCooldownUntil)
 
     // ================================================================ bolna (ek samay me ek hi awaaz)
     private val mutex = kotlinx.coroutines.sync.Mutex()
@@ -168,10 +175,12 @@ class Speaker(context: Context) {
             val pendingWav = HashMap<String, kotlinx.coroutines.Deferred<ByteArray?>>()
             val bg = kotlinx.coroutines.CoroutineScope(Dispatchers.IO + kotlinx.coroutines.SupervisorJob())
             fun prefetch(t: String) {
-                if (gem && System.currentTimeMillis() <= geminiCooldownUntil) gem = false
+                if (gem && !edgeOnly && System.currentTimeMillis() <= geminiCooldownUntil) gem = false
                 if (gem && !pendingWav.containsKey(t)) pendingWav[t] = bg.async {
                     try { synth(keys, t, voice) }
                     catch (e: Exception) {
+                        // बैकअप मोड: Edge न बोले तो Gemini का cooldown मत लगाओ (वह अलग इंजन है)
+                        if (edgeOnly) { DKLog.d("बैकअप मोड: Edge TTS नहीं बोला (${e.message?.take(80)})"); return@async null }
                         val code = (e as? AiException)?.code ?: 0
                         val until = if (code == 429) maxOf(System.currentTimeMillis() + 10 * 60_000L, GeminiTts.allBlockedUntil(keys))
                             else System.currentTimeMillis() + 60_000L
@@ -291,9 +300,19 @@ class Speaker(context: Context) {
     }
 
     private suspend fun synth(keys: List<String>, text: String, voice: String): ByteArray {
+        if (edgeOnly) return withContext(Dispatchers.IO) { edgeWav(text) }
         val cf = cacheFile(voice, text)
         if (cf != null && cf.exists() && cf.length() > 100) return withContext(Dispatchers.IO) { cf.readBytes() }
         return withContext(Dispatchers.IO) { GeminiTts.synthesizeAny(keys, text, voice, Prefs.voiceStyle(appCtx)).also { w -> cf?.writeBytes(w) } }
+    }
+
+    /** Edge TTS (PCM 24 kHz) -> WAV - बाकी बजाना वही (playWav) */
+    private fun edgeWav(text: String): ByteArray {
+        val e = com.dk.assistant.voice.engine.EdgeTtsEngine
+        val buf = java.io.ByteArrayOutputStream()
+        e.speak(appCtx, text, e.voice(appCtx)) { pcm -> buf.write(pcm) }
+        if (buf.size() == 0) throw java.io.IOException("Edge TTS ने आवाज़ नहीं दी")
+        return GeminiTts.pcmToWav(buf.toByteArray(), com.dk.assistant.voice.engine.VoiceEngine.RATE)
     }
 
     private val audio = appCtx.getSystemService(Context.AUDIO_SERVICE) as android.media.AudioManager

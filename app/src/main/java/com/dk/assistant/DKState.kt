@@ -35,12 +35,10 @@ object DKState {
 
     /**
      * v5.1: DK Live का जुड़ाव - स्क्रीन पर साफ़ दिखे (कभी चुपचाप नाकाम नहीं):
-     * "जुड़ रहा है… <मॉडल> • key #N", "Live • <मॉडल> • key #N • 820 ms", "धीमा नेट - हल्का मोड", "ऑफ़लाइन". key कभी नहीं, सिर्फ़ नंबर
+     * "जुड़ रहा है… <मॉडल> • key #N", "Live • <मॉडल> • key #N • 820 ms", "बैकअप मोड • <कारण>". key कभी नहीं, सिर्फ़ नंबर
      */
     @Volatile var linkStatus = ""
         private set
-    const val LINK_LIGHT = "धीमा नेट - हल्का मोड"
-    const val LINK_OFFLINE = "ऑफ़लाइन"
     fun setLink(s: String) { if (linkStatus != s) { linkStatus = s; emit() } }
 
     /**

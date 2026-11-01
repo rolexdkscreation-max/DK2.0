@@ -45,7 +45,7 @@ object GeminiTtsEngine : VoiceEngine {
 
     private val http = OkHttpClient.Builder()
         .connectTimeout(6, TimeUnit.SECONDS)
-        .readTimeout(8, TimeUnit.SECONDS)                 // बीच में 8 s चुप = टूटा मानो (Gemini TTS पर लौटो/फ़ोन)
+        .readTimeout(15, TimeUnit.SECONDS)                // पहला टुकड़ा धीमे नेट पर 8s से ज़्यादा ले सकता है; 15 s चुप = टूटा मानो
         .callTimeout(30, TimeUnit.SECONDS)
         .connectionPool(okhttp3.ConnectionPool(4, 5, TimeUnit.MINUTES))
         .build()
@@ -99,7 +99,7 @@ object GeminiTtsEngine : VoiceEngine {
             call.execute().use { r ->
                 if (!r.isSuccessful) {
                     val msg = try { r.body?.string()?.take(160) } catch (_: Exception) { null }
-                    throw IOException("Worker ${r.code}: ${msg.orEmpty()}")
+                    throw IOException("Gemini TTS: ${WorkerWhy.http(r.code, msg)} (Worker ${r.code})")
                 }
                 r.header("X-DK-Model")?.takeIf { it.isNotBlank() && it != lastModel(c) }?.let {
                     VoiceEngines.sp(c).edit().putString("gemini_tts_model_used", it).apply()
@@ -118,7 +118,8 @@ object GeminiTtsEngine : VoiceEngine {
             }
         } catch (e: IOException) {
             if (call.isCanceled()) return                    // stop() - चुपचाप
-            throw e
+            if (e.message?.startsWith("Gemini TTS:") == true) throw e
+            throw IOException("Gemini TTS: ${WorkerWhy.network(e.message)}", e)
         } finally { calls.remove(call) }
     }
 

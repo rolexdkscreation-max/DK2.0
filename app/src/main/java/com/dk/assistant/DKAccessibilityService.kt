@@ -126,7 +126,7 @@ class DKAccessibilityService : AccessibilityService() {
     override fun onDestroy() {
         try { (getSystemService(CONNECTIVITY_SERVICE) as android.net.ConnectivityManager).unregisterNetworkCallback(netBack) } catch (_: Exception) {}
         LiveNet.unregister(this)
-        lightMode = false; lightJob?.cancel()
+        exitBackup("सेवा बंद")
         instance = null
         AppVisible.onChange = null
         removeBubble()
@@ -182,7 +182,6 @@ class DKAccessibilityService : AccessibilityService() {
     private fun liveNow(why: String) {
         if (liveOffUntil > System.currentTimeMillis()) DKLog.d("Live: $why - इंतज़ार खत्म, अभी जोड़ रहा हूँ")
         liveOffUntil = 0L; liveSoftFails = 0; liveOffSoft = false
-        if (lightMode) { lightMode = false; listener.preferOffline = false }
     }
 
     /**
@@ -195,57 +194,51 @@ class DKAccessibilityService : AccessibilityService() {
         if (DKState.live) appOpened() else startLive()
     }
 
-    // ================================================================ v5.1: धीमा नेट - हल्का मोड
-    // मालिक: "6s में Live न जुड़े / नेट बहुत धीमा = फ़ोन पर बोला लिखो -> सिर्फ़ text DK Chat को (stream) -> वाक्य-दर-वाक्य TTS;
-    // Live पीछे से चुपचाप जुड़ता रहे, जुड़े तो वापस Live (DK बोल रही हो तब नहीं)". यह सब पुराने (मौजूदा) हिस्सों से:
-    // hearLight() = फ़ोन का SpeechRecognizer (on-device पहले) • agent.run() = DK Chat का stream वाला रास्ता • speaker = मौजूदा TTS
-    @Volatile var lightMode = false
+    // ================================================================ बैकअप मोड (मालिक, नवंबर 2026)
+    // "हल्का मोड" पूरी तरह हटा. अब: Gemini Live सच में न जुड़े (GeminiLive.Fatal) = बैकअप मोड -
+    // फ़ोन की बोली-पहचान (SpeechRecognizer) सुनती है -> agent.run() = DK Chat का text दिमाग़ (Gemini key हो तो Gemini)
+    // -> Microsoft Edge TTS हिंदी आवाज़ में (speaker.edgeOnly, बिना key, फ़ोन से सीधे - worker नहीं).
+    // स्क्रीन पर "बैकअप मोड • <कारण>"; कारण के हिसाब से 1-10 मिनट बाद Live फिर आज़माया जाता है (LiveFailWhy).
+    @Volatile var backupMode = false
         private set
-    private var lightJob: kotlinx.coroutines.Job? = null
+    @Volatile var backupKind: LiveFailWhy.Kind? = null
+        private set
 
-    private fun enterLight(why: String) {
-        lightMode = true
+    private suspend fun enterBackup(kind: LiveFailWhy.Kind, detail: String) {
+        val firstTime = !backupMode || backupKind != kind
+        backupMode = true; backupKind = kind
         liveOffSoft = false
-        liveOffUntil = Long.MAX_VALUE / 4            // Live का loop नहीं - हल्का मोड; वापसी lightJob से
-        listener.preferOffline = true
-        val st = if (NetProbe.online(this)) DKState.LINK_LIGHT else DKState.LINK_OFFLINE
-        DKState.setLink(st)
-        DKLog.d("Live: $st - $why (बोला फ़ोन पर लिखा -> DK Chat (text) -> TTS; Live पीछे से जुड़ता रहेगा)")
-        if (lightJob?.isActive == true) return
-        lightJob = scope.launch {
-            while (isActive && lightMode && DKState.live) {
-                if (gemLive.warmReady()) {
-                    // Live तैयार - DK बोल रही हो / काम चल रहा हो तो रुको
-                    if (!agent.isBusy && !speaker.busy && DKState.mode != Mode.SPEAKING && !callAnnouncing) { lightBack(); break }
-                } else {
-                    gemLive.backgroundRace(if (NetProbe.online(this@DKAccessibilityService)) "हल्का मोड" else "ऑफ़लाइन")
-                    DKState.setLink(if (NetProbe.online(this@DKAccessibilityService)) DKState.LINK_LIGHT else DKState.LINK_OFFLINE)
-                }
-                delay(500)
-            }
-        }
+        liveOffUntil = System.currentTimeMillis() + kind.retryMs
+        speaker.edgeOnly = true
+        listener.preferOffline = false
+        DKState.setLink(LiveFailWhy.link(kind))
+        DKLog.d("बैकअप मोड: ${kind.short} ($detail) - ${kind.retryMs / 1000}s बाद Live फिर आज़माऊँगी")
+        if (firstTime) { liveTroubleSpoken = false; liveTroubleSay(LiveFailWhy.backupLine(kind)) }
     }
 
-    private fun lightBack() {
-        lightMode = false; listener.preferOffline = false
-        liveOffUntil = 0L; liveOffSoft = false; liveSoftFails = 0
-        DKLog.d("Live: पीछे से जुड़ गई - हल्के मोड से वापस DK Live")
-        // पुराने तरीके के सुनने (hear) में अटका हो तो रोको - Live तुरंत (standby वाला connection, 0 ms)
-        if (loopJob?.isActive == true) { loopJob?.cancel(); loopJob = null; ear.release(); listener.release(); earCaptionOff() }
-        ensureLoop()
+    private fun exitBackup(why: String) {
+        if (!backupMode) return
+        backupMode = false; backupKind = null
+        speaker.edgeOnly = false
+        DKLog.d("बैकअप मोड खत्म: $why")
+    }
+
+    /** GeminiLive: setup पूरा = DK लाइव जुड़ गया */
+    fun liveConnected() {
+        if (backupMode) { exitBackup("DK लाइव जुड़ गया"); liveSoftFails = 0 }
     }
 
     /** Mic error 12/13 का संदेश एक बार (हर बार बोलकर परेशान नहीं) */
     private var langWarnedAt = 0L
 
     /**
-     * हल्के मोड में सुनना: फ़ोन का अपना SpeechRecognizer (on-device पहले, आवाज़ upload नहीं).
-     * Error 12/13 पर भाषा/online वाली अगली कोशिश VoiceListener खुद (तुरंत) करता है - यहाँ सिर्फ़ सब नाकाम होने पर संदेश.
+     * बैकअप मोड में सुनना: फ़ोन का अपना SpeechRecognizer (online पहले - धीमे नेट वाला offline-पहले हटा).
+     * Error 12/13 पर भाषा वाली अगली कोशिश VoiceListener खुद (तुरंत) करता है - यहाँ सिर्फ़ सब नाकाम होने पर संदेश.
      */
-    private suspend fun hearLight(): String? {
+    private suspend fun hearBackup(): String? {
         if (!checkMic()) { delay(2000); return null }
         if (DKState.micMuted) { delay(800); return null }
-        listener.preferOffline = true
+        listener.preferOffline = false
         val text = hearGoogle()
         if (text == null && listener.langMissing) {
             val now = System.currentTimeMillis()
@@ -323,7 +316,7 @@ class DKAccessibilityService : AccessibilityService() {
         DKLog.d("Live बंद किया: $why")
         wakeLive = false; gemLive.idleExitMs = 0
         DKState.setLive(false)
-        lightMode = false; lightJob?.cancel(); listener.preferOffline = false; DKState.setLink("")   // v5.1
+        exitBackup("Live बंद"); listener.preferOffline = false; DKState.setLink("")
         // v3.59: बंद = बंद। जड़: बंद करने के 0.6s बाद "हमेशा सुनो" वाला wake-word loop माइक फिर खोल देता था,
         // और ऐप खोलते ही "दोस्त" वाला अभिवादन Live खुद चालू कर देता था। अब यूज़र के चालू करने तक माइक बंद।
         // v3.81: "Hey DK" चालू = Live बंद होने पर भी फ़ोन के अंदर सिर्फ़ "Hey DK" का इंतज़ार (कुछ बाहर नहीं जाता).
@@ -525,7 +518,7 @@ class DKAccessibilityService : AccessibilityService() {
     /** Ek baat suno -> text. Bina beep (apna mic + Groq/Gemini) ya Google mic. Har dikkat DK bolkar batata hai. */
     /** @param wakeGate wake word वाला सुनना (Live बंद): caption में DK का नाम न हो तो Groq को मत भेजो */
     suspend fun hear(wakeGate: Boolean = false): String? {
-        if (lightMode && DKState.live) return hearLight()     // v5.1: धीमा नेट - हल्का मोड
+        if (backupMode && DKState.live) return hearBackup()   // Live नहीं जुड़ा - बैकअप मोड (फ़ोन की बोली-पहचान)
         if (!checkMic()) { delay(2000); return null }
         if (DKState.micMuted) { delay(800); return null }   // होम का म्यूट बटन: कुछ मत सुनो
         if (!silentEar()) return hearGoogle()
@@ -736,10 +729,11 @@ class DKAccessibilityService : AccessibilityService() {
                         DKState.set(Mode.IDLE)
                         // v5 (मालिक: "न जुड़ पाए तो यूज़र को बोल दे"): आपने Live चालू रखा है = हर रुकावट में एक बार साफ़ शब्दों में बोलो
                         // (तकनीकी गलती नहीं); फिर जुड़ते ही GeminiLive "जुड़ गई, बोलिए" दिखाता है
-                        // v5.1: 6s में Live नहीं / सारी जोड़ियाँ नाकाम / key-limit = हल्का मोड (पीछे से Live जुड़ता रहता है)
-                        if (userLive && (e.light || !e.recoverable)) {
-                            enterLight(e.message ?: "-")
-                            liveTroubleSay(LiveConnectNotice.forLight(e.message, e.recoverable, NetProbe.online(this@DKAccessibilityService)))
+                        // मालिक (नवंबर 2026): Live नहीं जुड़ा = साफ़ हिंदी कारण + बैकअप मोड (बोली-पहचान -> text दिमाग़ -> Edge TTS).
+                        // जुड़ने के बाद बीच में टूटा (kind नहीं, recoverable) = पहले जैसा तुरंत फिर जोड़ो
+                        if (userLive && (e.kind != null || !e.recoverable)) {
+                            val kind = e.kind ?: LiveFailWhy.classify(0, e.message, NetProbe.online(this@DKAccessibilityService))
+                            enterBackup(kind, e.message ?: "-")
                         }
                         else if (userLive) { DKState.setLink("Live नहीं जुड़ा - फिर जोड़ रहा हूँ"); liveTroubleSay(LiveConnectNotice.forStop(e.message, e.recoverable)) }
                         else if (liveOffSoft) warn("live", "DK लाइव का connection टूटा (${e.message}) - ${offMs / 1000}s में फिर जोड़ रहा हूँ।")
