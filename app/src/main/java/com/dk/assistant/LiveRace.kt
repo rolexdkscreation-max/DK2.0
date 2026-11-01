@@ -188,4 +188,30 @@ object LiveRace {
         /** और जमा करें? */
         fun keepFilling(bufferedMs: Int, waitedMs: Long): Boolean = bufferedMs < TARGET_MS && waitedMs < MAX_WAIT_MS
     }
+    /**
+     * नवंबर 2026 (log: "limit खत्म, छोड़े: सारे" -> "दौड़: 0 जोड़ियाँ" -> code=0): Live मॉडल की रोक सिर्फ़ असली quota पर और
+     * सिर्फ़ तब जब उस दौड़ में सच में कोशिश हुई ([tried]). पहले `r.contains("rate")` था - "bidiGenerateContent" के
+     * "gene-rate" से "मॉडल नहीं मिला" भी "limit खत्म" बन जाता था; और 0 जोड़ियों वाली दौड़ पुराना कारण दोहराकर
+     * बिना आज़माए हर मॉडल रोक देती थी.
+     */
+    fun shouldBlockModel(code: Int, reason: String, tried: Boolean): Boolean = tried && isQuota(code, reason)
+
+    /** दिन भर (Pacific आधी रात तक) की रोक सिर्फ़ रोज़ की limit पर; बाकी (rate limit / 429 बिना quota) = 30 मिनट */
+    fun dailyBlock(strike: Int, reason: String): Boolean {
+        val r = reason.lowercase()
+        return strike >= 2 && (r.contains("quota") || r.contains("exhausted") || r.contains("per day") || r.contains("daily"))
+    }
+
+    /**
+     * सारी जोड़ियाँ रुकी हैं = चुपचाप 0 जोड़ियाँ नहीं. जिसकी रोक सबसे जल्दी खत्म हो उस एक जोड़ी पर एक ही कोशिश
+     * (रोक की पुष्टि; जुड़ा = रोक हटती है). [until] = Cooldown का समय (0 = रोक नहीं)
+     */
+    fun probeWhenEmpty(models: List<String>, keyCount: Int, until: (Combo) -> Long): Combo? {
+        var best: Combo? = null; var bestAt = Long.MAX_VALUE
+        for (m in fastFirst(models)) for (k in 0 until keyCount) {
+            val c = Combo(m, k); val u = until(c)
+            if (u < bestAt) { best = c; bestAt = u }
+        }
+        return best
+    }
 }
