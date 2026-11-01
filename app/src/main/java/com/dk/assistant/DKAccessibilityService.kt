@@ -235,33 +235,28 @@ class DKAccessibilityService : AccessibilityService() {
         ensureLoop()
     }
 
-    /** हल्के मोड में सुनना: फ़ोन का अपना SpeechRecognizer (on-device पहले, आवाज़ upload नहीं) */
+    /** Mic error 12/13 का संदेश एक बार (हर बार बोलकर परेशान नहीं) */
+    private var langWarnedAt = 0L
+
+    /**
+     * हल्के मोड में सुनना: फ़ोन का अपना SpeechRecognizer (on-device पहले, आवाज़ upload नहीं).
+     * Error 12/13 पर भाषा/online वाली अगली कोशिश VoiceListener खुद (तुरंत) करता है - यहाँ सिर्फ़ सब नाकाम होने पर संदेश.
+     */
     private suspend fun hearLight(): String? {
         if (!checkMic()) { delay(2000); return null }
         if (DKState.micMuted) { delay(800); return null }
         listener.preferOffline = true
-        var tries = 0
-        val langs = listOf("hi-IN", "en-IN", java.util.Locale.getDefault().toLanguageTag())
-        while (tries < 5) {
-            val lang = langs[tries % langs.size]
-            val recognizerIntent = android.content.Intent(android.speech.RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
-                putExtra(android.speech.RecognizerIntent.EXTRA_LANGUAGE_MODEL, android.speech.RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
-                putExtra(android.speech.RecognizerIntent.EXTRA_LANGUAGE, lang)
-                putExtra(android.speech.RecognizerIntent.EXTRA_MAX_RESULTS, 1)
+        val text = hearGoogle()
+        if (text == null && listener.langMissing) {
+            val now = System.currentTimeMillis()
+            if (now - langWarnedAt > MicLang.BAD_FOR_MS) {
+                langWarnedAt = now
+                val msg = DictationRules.message(MicLang.ERR_LANG_UNAVAILABLE)
+                DKState.reply(msg); speaker.speak(msg)
             }
-            val text = hearGoogle()
-            if (text != null) return text
-            if (listener.lastError == 13 || listener.lastError == 12) {
-                tries++
-                DKLog.d("Mic error ${listener.lastError} (lang=$lang), कोशिश $tries/5")
-                delay(3000)
-            } else break
+            delay(1500)
         }
-        if (tries >= 5) {
-            val msg = "हिंदी भाषा का पैक फ़ोन में नहीं है, Google ऐप की settings में Offline speech डाउनलोड करें।"
-            DKState.reply(msg); speaker.speak(msg)
-        }
-        return null
+        return text
     }
 
     /**
