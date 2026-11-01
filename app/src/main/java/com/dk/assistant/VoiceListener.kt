@@ -73,8 +73,35 @@ class VoiceListener(private val context: Context) {
         reset()
     }
 
-    /** Ek baar sunta hai aur bola hua text return karta hai (ya null). */
-    suspend fun listenOnce(): String? = withContext(Dispatchers.Main) {
+    /** Mic error 12/13: कौन सी (भाषा, offline) जोड़ी चली / नाकाम - MicLang देखें */
+    private val langMem = MicLang.Memory()
+
+    /** आख़िरी बार सारी भाषा-जोड़ियाँ 12/13 पर नाकाम हुईं? (फ़ोन में पहचान की भाषा ही नहीं) */
+    @Volatile var langMissing = false
+        private set
+
+    /**
+     * Ek baar sunta hai aur bola hua text return karta hai (ya null).
+     * Error 12/13 (भाषा नहीं मिली) = तुरंत अगली (भाषा, offline) जोड़ी, बिना रुके; बाकी गलतियाँ पहले जैसी.
+     */
+    suspend fun listenOnce(): String? {
+        val all = MicLang.plans(preferOffline, java.util.Locale.getDefault().toLanguageTag())
+        for (plan in langMem.order(all, System.currentTimeMillis())) {
+            val text = listenWith(plan)
+            if (!MicLang.isLangError(lastError)) {
+                if (text != null || lastError == 0) langMem.good(plan)
+                langMissing = false
+                return text
+            }
+            DKLog.d("Mic error $lastError: भाषा ${plan.lang}${if (plan.offline) " (offline)" else ""} नहीं मिली - अगली कोशिश")
+            langMem.bad(plan, System.currentTimeMillis())
+            reset()
+        }
+        langMissing = true
+        return null
+    }
+
+    private suspend fun listenWith(plan: MicLang.Plan): String? = withContext(Dispatchers.Main) {
         suspendCancellableCoroutine { cont ->
             val r = obtain()
             val finished = AtomicBoolean(false)
@@ -122,14 +149,14 @@ class VoiceListener(private val context: Context) {
 
             val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
                 putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
-                putExtra(RecognizerIntent.EXTRA_LANGUAGE, "hi-IN")
-                putExtra(RecognizerIntent.EXTRA_LANGUAGE_PREFERENCE, "hi-IN")
+                putExtra(RecognizerIntent.EXTRA_LANGUAGE, plan.lang)
+                putExtra(RecognizerIntent.EXTRA_LANGUAGE_PREFERENCE, plan.lang)
                 putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 3)
                 // Hindi + English mili baat (Hinglish) dono samjho
-                putExtra("android.speech.extra.EXTRA_ADDITIONAL_LANGUAGES", arrayOf("en-IN"))
+                MicLang.extraLang(plan.lang)?.let { putExtra("android.speech.extra.EXTRA_ADDITIONAL_LANGUAGES", arrayOf(it)) }
                 putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
-                // v5.1: धीमा नेट - हल्का मोड = फ़ोन के अंदर (on-device) पहचान पहले; Hindi pack न हो तो फ़ोन खुद online
-                if (preferOffline) putExtra(RecognizerIntent.EXTRA_PREFER_OFFLINE, true)
+                // v5.1: धीमा नेट - हल्का मोड = फ़ोन के अंदर (on-device) पहचान पहले; पैक न हो (error 13) तो listenOnce() अगली जोड़ी (online) पर
+                if (plan.offline) putExtra(RecognizerIntent.EXTRA_PREFER_OFFLINE, true)
                 putExtra(RecognizerIntent.EXTRA_CALLING_PACKAGE, context.packageName)
                 // bolna band karte hi jaldi khatam karo (tez jawab)
                 putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, 1500L)
