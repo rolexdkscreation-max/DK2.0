@@ -244,11 +244,12 @@ class DKAccessibilityService : AccessibilityService() {
         val langs = listOf("hi-IN", "en-IN", java.util.Locale.getDefault().toLanguageTag())
         while (tries < 5) {
             val lang = langs[tries % langs.size]
-            listener.intent = android.content.Intent(android.speech.RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
+            val intent = android.content.Intent(android.speech.RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
                 putExtra(android.speech.RecognizerIntent.EXTRA_LANGUAGE_MODEL, android.speech.RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
                 putExtra(android.speech.RecognizerIntent.EXTRA_LANGUAGE, lang)
                 putExtra(android.speech.RecognizerIntent.EXTRA_MAX_RESULTS, 1)
             }
+            listener.intent = intent
             val text = hearGoogle()
             if (text != null) return text
             if (listener.lastError == 13 || listener.lastError == 12) {
