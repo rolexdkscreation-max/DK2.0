@@ -63,6 +63,20 @@ class LiveSetupAndBackupTest {
         assertFalse(LiveFailWhy.detail(1008, "bad").contains("AIza"))
     }
 
+    /** log 11:09: 18 जोड़ियाँ, एक भी WebSocket नहीं खुला - पहले "लिमिट खत्म" दिखा (कारण में "limit" शब्द था) */
+    @Test fun unreachable_notQuota() {
+        assertEquals(LiveFailWhy.Kind.UNREACHABLE, LiveFailWhy.classify(0, "connection खुला ही नहीं - 5s में Google के server तक नहीं पहुँचा"))
+        assertTrue(LiveFailWhy.Kind.UNREACHABLE.msg.contains("इंटरनेट की दिक्कत है"))
+        assertTrue(LiveFailWhy.Kind.UNREACHABLE.msg.contains("VPN"))
+        assertFalse(LiveFailWhy.classify(0, "सारी जोड़ियाँ अभी रुकी हुई हैं (अभी-अभी नाकाम)") == LiveFailWhy.Kind.QUOTA)
+        assertEquals(LiveFailWhy.Kind.SLOW, LiveFailWhy.classify(0, "setup का जवाब 5 सेकंड में नहीं आया"))
+        val g = src("GeminiLive.kt")
+        assertFalse(g.contains("गलत key / limit / अभी-अभी नाकाम"))
+        assertTrue(g.contains("r.opened.incrementAndGet()"))
+        assertTrue(g.contains("kind = LiveFailWhy.Kind.UNREACHABLE"))
+        assertTrue(g.contains("lastRaceFail = it"))
+    }
+
     @Test fun workerReasons() {
         assertTrue(WorkerWhy.http(401, "unauthorized").contains("Worker token"))
         assertTrue(WorkerWhy.http(500, "GEMINI_API_KEY secret नहीं").contains("GEMINI_API_KEY"))
@@ -82,7 +96,11 @@ class LiveSetupAndBackupTest {
         assertTrue(s.contains("liveTroubleSay(LiveFailWhy.backupLine(kind))"))
         assertTrue(g.split("svc.liveConnected()").size - 1 >= 2)                 // नया connection और गर्म connection दोनों
         val sp = src("Speaker.kt")
-        assertTrue(sp.contains("if (edgeOnly) return withContext(Dispatchers.IO) { edgeWav(text) }"))
+        assertTrue(sp.contains("if (edgeOnly) {") && sp.contains("try { edgeWav(text) }"))
+        // Edge न जुड़े = बैकअप मोड में फ़ोन की अपनी आवाज़ (चुप नहीं); आम मोड में फ़ोन की आवाज़ अब भी नहीं
+        assertTrue(sp.contains("else if (edgeOnly && !aborted && !paused) {") && sp.contains("PhoneVoice.say(appCtx, chunk)"))
+        assertTrue(sp.contains("PhoneVoice.stop()"))
+        assertFalse(VoicePolicy.PHONE_TTS_ALLOWED)
         assertTrue(sp.contains("EdgeTtsEngine"))
         assertFalse(src("voice/engine/GeminiTtsEngine.kt").contains(".readTimeout(8, TimeUnit.SECONDS)"))
     }

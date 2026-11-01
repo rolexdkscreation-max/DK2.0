@@ -1034,6 +1034,15 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
                         ready = false
                         log("setup fail [$model • key #${keyIdx + 1}] code=$code reason=$reason" + if (stillTrying) " - दौड़ पीछे से जारी" else "")
                         val r = reason.lowercase()
+                        // नवंबर 2026 (log 11:09): 18 जोड़ियाँ, एक का भी WebSocket नहीं खुला, जबकि Groq/OpenRouter चल रहे थे =
+                        // चाबी/मॉडल/limit की गलती नहीं - फ़ोन से Google के server तक रास्ता बंद/अटका. साफ़ यही कारण, तुरंत बैकअप
+                        val unreached = rc.config == null && rc.atts.isNotEmpty() && rc.opened.get() == 0 && NetProbe.online(svc)
+                        if (!stopped && unreached) {
+                            fails++
+                            if (stillTrying) cancelRace(rc, "Google तक नहीं पहुँचा")
+                            throw Fatal("Google के server तक connection खुला ही नहीं (${rc.atts.size} जोड़ियाँ, ${LiveFailWhy.detail(code, reason)})",
+                                recoverable = true, kind = LiveFailWhy.Kind.UNREACHABLE)
+                        }
                         // 20s में कोई जोड़ी नहीं जुड़ी (और गलती भी नहीं आई) = बहुत धीमा नेट -> दौड़ बंद, साफ़ कारण
                         if (!stopped && stillTrying && rc.config == null) {
                             fails++
@@ -1653,8 +1662,13 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
         @Volatile var lastFail: Pair<Int, String>? = null
         @Volatile var lastFailCombo: LiveRace.Combo? = null
         val atts = java.util.concurrent.CopyOnWriteArrayList<Attempt>()
+        /** कितनी जोड़ियों का WebSocket सच में खुला (0 = Google के server तक पहुँचे ही नहीं) */
+        val opened = java.util.concurrent.atomic.AtomicInteger()
     }
     @Volatile private var curRace: Race? = null
+    /** पिछली नाकाम दौड़ का असली कारण - अगली दौड़ में सारी जोड़ियाँ रुकी हों तो वही कारण (पहले "limit" शब्द से गलत "लिमिट खत्म" दिखता था) */
+    @Volatile private var lastRaceFail: Pair<Int, String>? = null
+    @Volatile private var lastRaceFailAt = 0L
     /** इस connection पर पुरानी बातचीत (handle) चली = याद दोबारा नहीं भेजनी */
     @Volatile private var connResumed = false
     private val ctxSent = java.util.Collections.newSetFromMap(java.util.WeakHashMap<WebSocket, Boolean>())
@@ -1673,12 +1687,17 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
         val r = Race(live, keys.size)
         curRace = r
         val now = System.currentTimeMillis()
-        val queue = health.order(models, keys.size, now) { Cooldown.blocked(LiveKeys.cooldownName(it.keyIdx, it.model)) }.toMutableList()
+        var queue = health.order(models, keys.size, now) { Cooldown.blocked(LiveKeys.cooldownName(it.keyIdx, it.model)) }.toMutableList()
+        // सारी जोड़ियाँ सिर्फ़ नेट की वजह से रुकी हों और पिछली नाकामी 55s से पुरानी = फिर आज़माओ (बैकअप मोड से Live पर लौटने की कोशिश)
+        if (queue.isEmpty() && now - lastRaceFailAt > 55_000L) {
+            health.clearComboFails(); saveHealth()
+            queue = health.order(models, keys.size, now) { Cooldown.blocked(LiveKeys.cooldownName(it.keyIdx, it.model)) }.toMutableList()
+        }
         val tmo = LiveRace.timeoutMs(health.recentTimes())
         log("दौड़${if (live) "" else " (पीछे से, माइक नहीं)"}: ${queue.size} जोड़ियाँ, हर एक का इंतज़ार $tmo ms (हाल के नाप: ${health.recentTimes().joinToString()}) • " +
             queue.take(4).joinToString { it.label })
         if (queue.isEmpty()) {
-            r.lastFail = 0 to "सारी keys/मॉडल अभी रुके हुए (गलत key / limit / अभी-अभी नाकाम)"
+            r.lastFail = lastRaceFail?.takeIf { now - lastRaceFailAt < 10 * 60_000L } ?: (0 to "सारी जोड़ियाँ अभी रुकी हुई हैं (अभी-अभी नाकाम)")
             r.over = true
             return r
         }
@@ -1697,7 +1716,9 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
                         } else if (t - a.t0 > tmo) {
                             inFlight.remove(a); killAttempt(a, "setup timeout")
                             health.comboFail(a.c, t); saveHealth()
-                            r.lastFail = 0 to "setup का जवाब ${tmo / 1000} सेकंड में नहीं आया"; r.lastFailCombo = a.c
+                            // WebSocket खुला ही नहीं (onOpen नहीं आया) = Google के server तक पहुँचे ही नहीं; खुला पर setupComplete नहीं = धीमा
+                            r.lastFail = 0 to (if (a.sentAt == 0L) "connection खुला ही नहीं - ${tmo / 1000}s में Google के server तक नहीं पहुँचा"
+                                else "setup का जवाब ${tmo / 1000} सेकंड में नहीं आया"); r.lastFailCombo = a.c
                             log("दौड़: [${a.c.label}] ${t - a.t0} ms में setup नहीं - यह जोड़ी 2 मिनट नहीं, अगली तुरंत")
                             lastLaunch = 0L
                         }
@@ -1719,7 +1740,8 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
             } finally {
                 r.over = true
                 if (!r.winner.isCompleted) inFlight.forEach { killAttempt(it, if (r.cancelled) "दौड़ रोकी" else "दौड़ खत्म") }
-                if (!r.winner.isCompleted && !r.cancelled) log("दौड़ खत्म - कोई जोड़ी नहीं जुड़ी (${r.lastFail?.second?.take(80) ?: "-"})")
+                if (!r.winner.isCompleted && !r.cancelled) log("दौड़ खत्म - कोई जोड़ी नहीं जुड़ी (${r.lastFail?.second?.take(80) ?: "-"}) • खुले connection: ${r.opened.get()}/${r.atts.size}")
+                if (!r.winner.isCompleted) r.lastFail?.let { lastRaceFail = it; lastRaceFailAt = System.currentTimeMillis() }
             }
         }
         return r
@@ -1766,6 +1788,7 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
         a.w = http.newWebSocket(req, object : WebSocketListener() {
             override fun onOpen(webSocket: WebSocket, response: Response) {
                 a.sentAt = System.currentTimeMillis()
+                r.opened.incrementAndGet()
                 if (a.dead) return
                 if (!webSocket.tx(setupJson(a.c.model, a.text, a.resume))) a.closed.complete(0 to "setup नहीं भेज पाया")
             }
