@@ -420,6 +420,14 @@ object InspectorCore {
     }
 
     /** DK Live को बताना है? - सिर्फ़ ज़रूरी नई/फिर-से आई/ज़्यादा गंभीर हुई गड़बड़ी, एक बार */
+    /**
+     * नवंबर 2026: Live कनेक्शन/जवाब की गड़बड़ी की रिपोर्ट उसी Live में text बनाकर नहीं भेजनी - बीच बातचीत का text खुद 1011 का
+     * जाना-माना कारण है (गड़बड़ी -> रिपोर्ट -> text -> फिर गड़बड़ी का चक्कर). ये Inspector स्क्रीन पर ही दिखें.
+     */
+    fun liveDeliverable(i: Incident): Boolean = i.component != Component.LIVE_CONNECTION && i.component != Component.LIVE_RESPONSE
+    /** Live कम से कम इतनी देर से टिका हो तभी Inspector उसमें बोले */
+    const val LIVE_STABLE_MS = 60_000L
+
     fun shouldNotify(i: Incident): Boolean {
         if (i.status == Status.RESOLVED) return false
         val important = i.severity.rank >= Severity.HIGH.rank || (i.certainty == Certainty.CONFIRMED && i.count >= 3 && i.severity.rank >= Severity.MEDIUM.rank)

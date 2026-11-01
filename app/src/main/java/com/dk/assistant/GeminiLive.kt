@@ -174,6 +174,9 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
 
     @Volatile private var ws: WebSocket? = null
     @Volatile private var ready = false
+    /** नवंबर 2026: इस connection के जुड़ने का समय (0 = नहीं जुड़ा) - Inspector सिर्फ़ टिके connection में बोले */
+    @Volatile private var upSince = 0L
+    fun stableFor(ms: Long): Boolean = ready && upSince > 0 && System.currentTimeMillis() - upSince >= ms
     @Volatile private var stopped = true
     /** v4.6: Live अभी सच में चल रहा है (run() के अंदर) - ऐप खुलने / नेट लौटने पर "तुरंत जोड़ो" के लिए */
     val running: Boolean get() = !stopped
@@ -914,6 +917,17 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
         Cooldown.block(LiveKeys.cooldownName(keyIdx, m), ms)
         log("$m की limit खत्म ($why) - ${ms / 60_000} मिनट तक यह मॉडल नहीं माँगूँगा")
     }
+    /** नवंबर 2026: एक मॉडल पर बार-बार 1011 = Google की तरफ़ उस मॉडल की खराबी - 30 मिनट हटाओ (अगर दूसरा मॉडल बचा हो). नया मॉडल लौटाता है */
+    private val model1011 = LiveStay.Model1011()
+    private fun dropModel1011(keys: List<String>, models: List<String>, where: String): String? {
+        val m = model
+        val free = { x: String -> keys.indices.any { k -> !Cooldown.blocked(LiveKeys.cooldownName(k, x)) } }
+        val next = models.firstOrNull { it != m && free(it) }
+        if (next == null) { log("1011 बार-बार ($m, $where) - दूसरा मॉडल नहीं बचा, इसी पर कोशिश"); return null }
+        for (k in keys.indices) Cooldown.block(LiveKeys.cooldownName(k, m), LiveStay.MODEL_1011_BLOCK_MS)
+        log("1011 \"Internal error\" ${LiveStay.MODEL_1011_HITS} बार ($m, $where) - Google की तरफ़ इस मॉडल की खराबी; 30 मिनट हटाया, अब $next (नई बातचीत)")
+        return next
+    }
     private fun isQuota(code: Int, r: String) = r.contains("quota") || r.contains("exhausted") || r.contains("rate limit") || code == 429
 
     private fun log(m: String) = DKLog.d("Live: $m")
@@ -1134,6 +1148,7 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
                     // पहले "जुड़ नहीं पा रही" बताया था = अब "फिर जुड़ गई, बोलिए" (स्क्रीन पर; माइक चालू है, इसलिए फ़ोन की आवाज़ नहीं)
                     if (svc.liveTroubleShown || svc.liveTroubleSpoken) { svc.liveTroubleShown = false; svc.liveTroubleSpoken = false; DKState.reply(LiveConnectNotice.BACK) }
                     val upAt = System.currentTimeMillis()
+                    upSince = upAt
                     log("जुड़ गया [$model • key #${keyIdx + 1}] ${System.currentTimeMillis() - t0} ms" + if (handle != null) " (पुरानी बातचीत जारी)" else "")
                     DKState.setLink("Live • $model • key #${keyIdx + 1} • ${System.currentTimeMillis() - t0} ms")
                     svc.liveConnected()              // बैकअप मोड था तो खत्म, वापस DK लाइव
@@ -1242,6 +1257,8 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
                         log("connection टूटा जब बात का जवाब बाकी था • ${timeline.summary()}" + if (resendText != null) " - जुड़ते ही दोबारा भेजूँगा" else "")
                     }
                     closeWs(ws, "reconnect")
+                    upSince = 0L
+                    LiveStay.modeAfterDrop(DKState.mode, isPlaying()).let { if (it != DKState.mode) setMode(it) }
                     goAway = false
                     reconnects++
                     log("टूटने से पहले भेजे: ${wire.summary()}")
@@ -1264,6 +1281,7 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
                         if (handle != null) { handle = null; log("1007: टूटी बातचीत से दोबारा नहीं - नई बातचीत (#${a.count})") }
                         if (a.disableSearch) { useSearch = false; log("1007 दो मिनट में ${a.count} बार - इस Live में Google Search बंद (जाना-माना 1007 कारण)") }
                     }
+                    if (code == 1011 && model1011.hit(model)) dropModel1011(keys, models, "बातचीत के बीच")?.let { handle = null }
                     log("connection टूटा (code=$code, ${reason.ifBlank { "-" }}, ${(System.currentTimeMillis() - upAt) / 1000}s चला) - दोबारा जुड़ रहा हूँ #$reconnects" +
                         if (handle != null) " (बातचीत वहीं से)" else " (नई बातचीत)")
                     if (reason.lowercase().contains("api key")) {
@@ -1301,12 +1319,13 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
                 // wake word wala Live chup hone se ruka: connection band mat karo, 5 min garam rakho
                 if (idleExit && w != null && c != null && !c.isCompleted && !goAway) park(w, c)
                 else closeWs(w, "bye")
-                ready = false
+                ready = false; upSince = 0L
                 ws = null; curClosed = null
                 caption?.stop(); caption = null
                 fastJob?.cancel(); fastJob = null; fastMemo.reset()
                 toolJobs.values.forEach { it.cancel() }; toolJobs.clear()
                 stopPlayer()
+                LiveStay.modeAfterEnd(DKState.mode).let { if (it != DKState.mode) { DKState.set(it); thinkingSince = 0L } }
                 BtAudio.release(this@GeminiLive); btOn = false
                 LiveVision.onLiveEnded(svc)          // Live बंद = स्क्रीन शेयर / कैमरा भी बंद (कोई तस्वीर कहीं नहीं जाती)
                 if (turnActive) finishTurn()
@@ -1648,7 +1667,7 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
                     .apply { if (ex.lang && LiveSetupRules.sendLanguageCode(m)) put("languageCode", LiveVoice.LANGUAGE) }) })
             .put("systemInstruction", JSONObject().put("parts", JSONArray().put(JSONObject().put("text", Lang.sys(brain.liveSystemPrompt(withMemory = false)) + FAST_START + NetSpeed.promptNote() + (if (connSplit) SPLIT_NOTE + (if (txt) MOOD_TAG_NOTE else "") else
                 com.dk.assistant.voice.engine.LiveNativeEngine.styleNote(com.dk.assistant.voice.engine.LiveNativeEngine.style(svc).ifBlank { CalmPersona.VOICE_STYLE }))))))
-            .put("tools", tools)
+            .put("tools", LiveStay.cleanTools(tools))
             .put("realtimeInputConfig", JSONObject()
                 .put("automaticActivityDetection", JSONObject()
                     .put("disabled", false)
@@ -1830,7 +1849,12 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
                 if (r.config == null) { r.config = code to reason; r.configCombo = a.c }
                 log("दौड़: [${a.c.label}] $ms ms - setup की बनावट नहीं ली (code=$code ${reason.take(80)}) - ठीक करके फिर")
             }
-            LiveRace.Fail.NET -> {
+            LiveRace.Fail.NET -> if (code == 1011 && model1011.hit(a.c.model, now)) {
+                // नवंबर 2026: जुड़ते समय भी इसी मॉडल पर बार-बार 1011 = Google की तरफ़ मॉडल की खराबी, नेट नहीं - पूरा मॉडल हटाओ
+                for (k in 0 until r.keyCount) health.comboFail(LiveRace.Combo(a.c.model, k), now)
+                queue.removeAll { it.model == a.c.model }
+                log("दौड़: [${a.c.label}] $ms ms - इस मॉडल पर बार-बार 1011 (Google की तरफ़ खराबी) - यह मॉडल अभी नहीं, अगला तुरंत")
+            } else {
                 health.comboFail(a.c, now)
                 log("दौड़: [${a.c.label}] $ms ms - connection की गलती (code=$code ${reason.take(80)}) - यह जोड़ी 2 मिनट नहीं, अगली तुरंत")
             }

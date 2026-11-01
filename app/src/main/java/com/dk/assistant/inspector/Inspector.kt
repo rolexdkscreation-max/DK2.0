@@ -7,6 +7,7 @@ import android.content.Context
 import android.content.Intent
 import android.os.SystemClock
 import com.dk.assistant.CoderTeam
+import com.dk.assistant.DKAccessibilityService
 import com.dk.assistant.DKLog
 import com.dk.assistant.DKState
 import com.dk.assistant.GeminiLive
@@ -126,7 +127,9 @@ object Inspector {
             if (!DKState.live) return
             if (DKState.mode == Mode.SPEAKING || DKState.mode == Mode.THINKING) return
             val xs = incidents(c)
-            val pick = xs.filter { InspectorCore.shouldNotify(it) }.maxByOrNull { it.severity.rank } ?: return
+            // नवंबर 2026: Live अभी जुड़ा/टिका न हो (दौड़, दोबारा जुड़ना, बैकअप मोड) = कुछ नहीं भेजो - बाद की जाँच में फिर
+            if (DKAccessibilityService.instance?.gemLive?.stableFor(InspectorCore.LIVE_STABLE_MS) != true) return
+            val pick = xs.filter { InspectorCore.shouldNotify(it) && InspectorCore.liveDeliverable(it) }.maxByOrNull { it.severity.rank } ?: return
             val now = System.currentTimeMillis()
             LiveReport.note(InspectorCore.liveSummary(pick) + " Explain this to the owner now in simple Hindi (क्या हुआ, क्यों, किस फ़ीचर पर असर, कैसे ठीक होगा). " +
                 "Then ask: \"सर, क्या मैं पूरी रिपोर्ट Coding Agent को दे दूँ?\" Only if he clearly says yes (e.g. 'ठीक है, Coding Agent को दे दो') " +

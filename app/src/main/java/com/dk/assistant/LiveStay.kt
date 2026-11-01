@@ -1,6 +1,8 @@
 package com.dk.assistant
 
 import android.content.Context
+import org.json.JSONArray
+import org.json.JSONObject
 
 /**
  * नवंबर 2026 (मालिक: "एक बार जुड़ने के बाद ✕ दबाने तक जुड़ा रहे; बीच में कटे तो पीछे से चुपचाप जुड़े, बातचीत वहीं से").
@@ -46,4 +48,58 @@ object LiveStay {
 
     /** ✕ से बंद = 1000; बाकी हर कटाव (1006/1011/1001/नेटवर्क बदलना) = अपने-आप कटा, चुपचाप फिर */
     fun userClosed(stoppedByUser: Boolean): Boolean = stoppedByUser
+    /**
+     * नवंबर 2026 (Inspector के बाद "Live नहीं जुड़ रहा"): Google का जाना-माना server bug - gemini-2.5-flash-native-audio-preview-12-2025
+     * (और -latest) 27 मई 2026 से बीच बातचीत में 1011 "Internal error" देता है. उसी मॉडल पर बार-बार जुड़ना = वही 1011.
+     * 3 मिनट में 2 बार 1011 = यह मॉडल 30 मिनट (सारी key) हटाओ, अगला मॉडल (बचा आख़िरी मॉडल कभी नहीं हटता).
+     */
+    const val MODEL_1011_WINDOW_MS = 3 * 60_000L
+    const val MODEL_1011_HITS = 2
+    const val MODEL_1011_BLOCK_MS = 30 * 60_000L
+    class Model1011 {
+        private val hits = HashMap<String, ArrayDeque<Long>>()
+        /** इस मॉडल का 1011 दर्ज करो; true = अब यह मॉडल हटाना है */
+        @Synchronized fun hit(model: String, now: Long = System.currentTimeMillis()): Boolean {
+            val q = hits.getOrPut(model) { ArrayDeque() }
+            q.addLast(now)
+            while (q.isNotEmpty() && now - q.first() > MODEL_1011_WINDOW_MS) q.removeFirst()
+            if (q.size >= MODEL_1011_HITS) { q.clear(); return true }
+            return false
+        }
+        @Synchronized fun count(model: String) = hits[model]?.size ?: 0
+    }
+
+    /**
+     * अधूरी function declaration (खाली properties / बिना description वाला parameter) native-audio मॉडल पर 1011 का जाना-माना कारण.
+     * बिना parameter वाले tool से "parameters" हटाओ; हर property को description दो. मतलब/नाम नहीं बदलता.
+     */
+    fun cleanTools(tools: JSONArray): JSONArray {
+        for (i in 0 until tools.length()) {
+            val decls = tools.optJSONObject(i)?.optJSONArray("functionDeclarations") ?: continue
+            for (j in 0 until decls.length()) {
+                val d = decls.optJSONObject(j) ?: continue
+                if (d.optString("description").isBlank()) d.put("description", d.optString("name").replace('_', ' '))
+                val p = d.optJSONObject("parameters") ?: continue
+                val props = p.optJSONObject("properties")
+                if (props == null || props.length() == 0) { d.remove("parameters"); continue }
+                fixProps(props)
+            }
+        }
+        return tools
+    }
+    private fun fixProps(props: JSONObject) {
+        for (k in props.keys()) {
+            val v = props.optJSONObject(k) ?: continue
+            if (v.optString("description").isBlank()) v.put("description", k.replace('_', ' '))
+            v.optJSONObject("properties")?.let { fixProps(it) }
+            v.optJSONObject("items")?.optJSONObject("properties")?.let { fixProps(it) }
+        }
+    }
+    /**
+     * नवंबर 2026 (स्क्रीन पर "Speaking" जबकि Live टूट चुका): Live बंद होते समय stopped=true पहले लगता है, इसलिए आवाज़-इंजन का
+     * "बोलना खत्म" नहीं पहुँचता - SPEAKING/THINKING अटका रहता था. Live खत्म = इन्हें IDLE करो (बैकअप आवाज़ खुद SPEAKING लगाती है).
+     */
+    fun modeAfterEnd(m: Mode): Mode = if (m == Mode.SPEAKING || m == Mode.THINKING) Mode.IDLE else m
+    /** बीच में कटा और कुछ नहीं बज रहा = "Speaking" नहीं, "Listening" (जुड़ते ही फिर सुनेगा) */
+    fun modeAfterDrop(m: Mode, playing: Boolean): Mode = if (m == Mode.SPEAKING && !playing) Mode.LISTENING else m
 }
