@@ -1691,7 +1691,11 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
         var queue = health.order(models, keys.size, now) { Cooldown.blocked(LiveKeys.cooldownName(it.keyIdx, it.model)) }.toMutableList()
         // सारी जोड़ियाँ सिर्फ़ नेट की वजह से रुकी हों और पिछली नाकामी 55s से पुरानी = फिर आज़माओ (बैकअप मोड से Live पर लौटने की कोशिश)
         if (queue.isEmpty() && now - lastRaceFailAt > 55_000L) {
-            health.clearComboFails(); saveHealth()
+            health.clearComboFails()
+            // नवंबर 2026: इस सत्र में अभी तक कोई दौड़ नाकाम नहीं (ऐप/सेवा नई शुरू) - पुरानी save हुई key-रोक से
+            // शुरू होते ही "server जवाब नहीं दे रहा" नहीं; एक साफ़ मौका
+            if (lastRaceFailAt == 0L) health.clearKeyBad()
+            saveHealth()
             queue = health.order(models, keys.size, now) { Cooldown.blocked(LiveKeys.cooldownName(it.keyIdx, it.model)) }.toMutableList()
         }
         val tmo = LiveRace.timeoutMs(health.recentTimes())
@@ -1714,9 +1718,12 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
                             inFlight.remove(a)
                             val (code, reason) = a.closed.await()
                             attemptFailed(r, a, code, reason, queue); lastLaunch = 0L      // नाकाम = अगली तुरंत
-                        } else if (t - a.t0 > tmo) {
+                        } else if (t - a.t0 > LiveRace.attemptTimeoutMs(tmo, opened = a.sentAt > 0L,
+                                othersLeft = queue.isNotEmpty() || inFlight.size > 1)) {
                             inFlight.remove(a); killAttempt(a, "setup timeout")
-                            health.comboFail(a.c, t); saveHealth()
+                            health.comboFail(a.c, t)
+                            health.time(LiveRace.timeoutPenaltyMs(t - a.t0))     // अगली बार इंतज़ार बढ़े (पहले कभी नहीं बढ़ता था)
+                            saveHealth()
                             // WebSocket खुला ही नहीं (onOpen नहीं आया) = Google के server तक पहुँचे ही नहीं; खुला पर setupComplete नहीं = धीमा
                             if (a.sentAt == 0L) DkDns.reportUnreachable(LIVE_HOST)
                             r.lastFail = 0 to (if (a.sentAt == 0L) "connection खुला ही नहीं - ${tmo / 1000}s में Google के server तक नहीं पहुँचा"
@@ -1726,8 +1733,10 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
                         }
                     }
                     if (r.winner.isCompleted || r.cancelled) break
-                    if (LiveRace.shouldLaunch(inFlight.size, queue.size, t, lastLaunch)) {
-                        val c = queue.removeAt(0)
+                    // नवंबर 2026: एक key पर एक समय में एक ही जोड़ी (फ्री key की ~3 सत्र वाली सीमा - caption/standby भी उसी key पर)
+                    val ni = LiveRace.nextLaunchable(queue, inFlight.map { it.c.keyIdx }.toSet())
+                    if (ni >= 0 && LiveRace.shouldLaunch(inFlight.size, queue.size, t, lastLaunch)) {
+                        val c = queue.removeAt(ni)
                         val a = Attempt(c, keys[c.keyIdx], textFor(c.model), resume = c.id == resumeId)
                         inFlight.add(a); r.atts.add(a); lastLaunch = t
                         log("जुड़ रहा हूँ: [${c.label}]" + (if (inFlight.size > 1) " (साथ में ${inFlight.size - 1} और चल रही)" else "") + if (a.resume) " (पुरानी बातचीत)" else "")
@@ -1763,7 +1772,11 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
         val now = System.currentTimeMillis(); val ms = now - a.t0
         r.lastFail = code to reason; r.lastFailCombo = a.c
         when (LiveRace.classify(code, reason)) {
-            LiveRace.Fail.KEY -> {
+            LiveRace.Fail.KEY -> if (LiveRace.quotaOnlyForCombo(code, reason)) {
+                // limit/quota = सिर्फ़ यही (मॉडल × key) रुके; उसी key के बाकी मॉडल आज़माओ (पहले पूरी key 10 मिनट बंद)
+                health.comboFail(a.c, now)
+                log("दौड़: [${a.c.label}] $ms ms - इस मॉडल की limit (code=$code) - यह जोड़ी 2 मिनट नहीं, उसी key का अगला मॉडल तुरंत")
+            } else {
                 health.keyBad(a.c.keyIdx, now)
                 queue.removeAll { it.keyIdx == a.c.keyIdx }
                 log("दौड़: [${a.c.label}] $ms ms - key #${a.c.keyIdx + 1} नहीं चली (code=$code${if (LiveRace.isQuota(code, reason)) ", limit" else ""}) - 10 मिनट तक यह key नहीं, अगली तुरंत")

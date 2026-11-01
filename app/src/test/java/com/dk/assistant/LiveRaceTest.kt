@@ -147,4 +147,46 @@ class LiveRaceTest {
         val m = listOf(File("src/main/AndroidManifest.xml"), File("app/src/main/AndroidManifest.xml")).first { it.exists() }.readText()
         assertFalse(m.contains("SYSTEM_ALERT_WINDOW"))
     }
+
+    // नवंबर 2026 (मालिक: एक ही key से सब - Gemini नहीं जुड़ता, "server काम नहीं कर रहा")
+    @Test fun oneKey_onlyOneAttemptPerKeyAtATime() {
+        val q = listOf(LiveRace.Combo("a", 0), LiveRace.Combo("b", 0), LiveRace.Combo("a", 1))
+        assertEquals(0, LiveRace.nextLaunchable(q, emptySet()))
+        assertEquals(2, LiveRace.nextLaunchable(q, setOf(0)))          // key #1 पर पहले से एक चल रही = key #2 वाली
+        assertEquals(-1, LiveRace.nextLaunchable(q, setOf(0, 1)))      // दोनों key व्यस्त = रुको
+        assertEquals(-1, LiveRace.nextLaunchable(q.take(2), setOf(0))) // एक ही key = एक-एक करके
+    }
+
+    @Test fun quotaBlocksOnlyThatModel_realKeyErrorBlocksKey() {
+        assertTrue(LiveRace.quotaOnlyForCombo(1011, "You exceeded your current quota"))
+        assertTrue(LiveRace.quotaOnlyForCombo(429, ""))
+        assertTrue(LiveRace.quotaOnlyForCombo(1011, "Too many concurrent sessions"))
+        assertFalse(LiveRace.quotaOnlyForCombo(1007, "API key not valid. Please pass a valid API key."))
+        assertFalse(LiveRace.quotaOnlyForCombo(403, "forbidden"))
+        assertFalse(LiveRace.quotaOnlyForCombo(401, ""))
+    }
+
+    @Test fun attemptTimeout_neverStuckAt4s() {
+        assertEquals(4_000L, LiveRace.attemptTimeoutMs(4_000L, opened = false, othersLeft = true))
+        assertEquals(LiveRace.OPENED_MIN_MS, LiveRace.attemptTimeoutMs(4_000L, opened = true, othersLeft = true))
+        assertEquals(LiveRace.MAX_TIMEOUT_MS, LiveRace.attemptTimeoutMs(4_000L, opened = false, othersLeft = false))
+        // timeout का नाप जुड़ता है = इंतज़ार बढ़ता है (पहले 4s पर हमेशा अटका)
+        val h = LiveRace.Health()
+        listOf(600L, 700L, 800L).forEach { h.time(it) }
+        assertEquals(4_000L, LiveRace.timeoutMs(h.recentTimes()))
+        repeat(4) { h.time(LiveRace.timeoutPenaltyMs(4_000L)) }
+        assertTrue(LiveRace.timeoutMs(h.recentTimes()) > 4_000L)
+    }
+
+    @Test fun freshStart_clearsSavedKeyBlock() {
+        val h = LiveRace.Health()
+        h.keyBad(0, 1_000L)
+        assertTrue(h.order(listOf("m"), 1, 2_000L).isEmpty())
+        h.clearKeyBad()
+        assertEquals(1, h.order(listOf("m"), 1, 2_000L).size)
+        val g = src("GeminiLive.kt")
+        assertTrue(g.contains("if (lastRaceFailAt == 0L) health.clearKeyBad()"))
+        assertTrue(g.contains("LiveRace.nextLaunchable(queue"))
+        assertTrue(g.contains("LiveRace.quotaOnlyForCombo(code, reason)"))
+    }
 }
