@@ -121,7 +121,8 @@ class LiveRaceTest {
         assertTrue(g.contains("private val http: OkHttpClient = LiveNet.http"))
         assertTrue(g.contains("startRace(keys, models, live = true"))
         assertTrue(g.contains("throw Fatal(\"धीमा नेट"))
-        assertTrue(g.contains("light = true"))
+        assertFalse(g.contains("light = true"))                                    // हल्का मोड हटा (मालिक, नवंबर 2026)
+        assertTrue(g.contains("kind = k)"))
         assertTrue(g.contains("liveSystemPrompt(withMemory = false)"))
         assertTrue(g.contains("sendContext(ws); ready = true; flushPending()"))
         assertTrue(g.contains("\"turnComplete\", false"))
@@ -130,9 +131,11 @@ class LiveRaceTest {
         assertFalse(net.contains("newWebSocket") || net.contains("AudioRecord"))   // गरम करना = सिर्फ़ HTTPS, Live/माइक नहीं
         val s = src("DKAccessibilityService.kt")
         assertTrue(s.contains("LiveNet.register(this)") && s.contains("LiveNet.unregister(this)"))
-        assertTrue(s.contains("enterLight(e.message"))
-        assertTrue(s.contains("gemLive.backgroundRace("))
-        assertTrue(s.contains("if (lightMode && DKState.live) return hearLight()"))
+        // हल्का मोड पूरी तरह हटा -> असली नाकामी पर साफ़ कारण के साथ बैकअप मोड
+        assertFalse(s.contains("enterLight(") || s.contains("gemLive.backgroundRace(") || s.contains("lightMode"))
+        assertFalse(g.contains("fun backgroundRace("))
+        assertTrue(s.contains("enterBackup(kind, e.message"))
+        assertTrue(s.contains("if (backupMode && DKState.live) return hearBackup()"))
         val v = src("DKVoiceInteractionSessionService.kt")
         val show = v.substring(v.indexOf("override fun onShow("))
         assertTrue(show.indexOf("invokedNow(") in 0 until show.indexOf("micButton?.visibility"))   // Live पहले, UI साथ-साथ

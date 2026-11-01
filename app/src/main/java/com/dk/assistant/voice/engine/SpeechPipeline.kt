@@ -37,6 +37,8 @@ class SpeechPipeline(private val ctx: Context, private val hooks: Hooks) {
         fun phoneStop()
         /** v3.7: कोई इंजन आवाज़ नहीं बना पाया - यह टुकड़ा सिर्फ़ लिखा गया (Live अपनी आवाज़ पर चला जाए) */
         fun onSilent(text: String) {}
+        /** चुना हुआ इंजन (जैसे Gemini TTS/Worker) नहीं चला - साफ़ कारण स्क्रीन पर */
+        fun onEngineError(title: String, why: String) {}
     }
 
     private class Seg(val text: String, val gen: Int, val createdAt: Long) {
@@ -169,6 +171,7 @@ class SpeechPipeline(private val ctx: Context, private val hooks: Hooks) {
                 if (s.gen != gen) break
                 VoiceEngines.markFailed(e.id, ex.message ?: ex.javaClass.simpleName)
                 hooks.log("आवाज़ इंजन ${e.title} में दिक़्क़त: ${(ex.message ?: ex.javaClass.simpleName).take(90)}")
+                if (e.id == chosen.id) try { hooks.onEngineError(e.title, ex.message ?: ex.javaClass.simpleName) } catch (_: Exception) {}
                 // आधा बज चुका हो तो दोबारा शुरू से नहीं (वही शब्द दो बार) - जितना बना उतना
                 if (s.firstPcmAt > 0) { s.engine = e.id; ok = true; break }
             }
