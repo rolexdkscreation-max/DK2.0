@@ -9,7 +9,7 @@ import java.util.concurrent.TimeUnit
 
 /** API key se us company ke saare models ki list laata hai. */
 object ModelLister {
-    private val http = OkHttpClient.Builder().callTimeout(20, TimeUnit.SECONDS).build()
+    private val http = com.dk.assistant.NetFix.builder().callTimeout(20, TimeUnit.SECONDS).build()
 
     private val SKIP = listOf("embedding", "embed", "tts", "whisper", "audio", "image", "imagen", "veo", "moderation",
         "dall-e", "transcribe", "realtime", "native-audio", "live", "aqa", "guard", "rerank", "ocr", "search-preview")

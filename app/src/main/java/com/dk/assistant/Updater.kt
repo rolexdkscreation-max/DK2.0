@@ -50,7 +50,7 @@ object Updater {
         val sizeMb get() = String.format(java.util.Locale.US, "%.1f MB", size / 1024.0 / 1024.0)
     }
 
-    private val http = OkHttpClient.Builder()
+    private val http = com.dk.assistant.NetFix.builder()
         .connectTimeout(15, TimeUnit.SECONDS)
         .readTimeout(60, TimeUnit.SECONDS)
         .followRedirects(true)

@@ -35,7 +35,7 @@ interface AiClient {
 class LoserException : RuntimeException("loser")
 
 /** Baatcheet ke liye: jaldi haar maano, dusri key try karo */
-private val fastHttp = OkHttpClient.Builder()
+private val fastHttp = com.dk.assistant.NetFix.builder()
     .connectTimeout(6, TimeUnit.SECONDS)
     .readTimeout(12, TimeUnit.SECONDS)
     .callTimeout(40, TimeUnit.SECONDS)
@@ -91,7 +91,7 @@ private class ThinkFilter {
     }
 }
 
-private val http = OkHttpClient.Builder()
+private val http = com.dk.assistant.NetFix.builder()
     .connectTimeout(10, TimeUnit.SECONDS)
     .readTimeout(30, TimeUnit.SECONDS)
     .callTimeout(35, TimeUnit.SECONDS)      // 35 sec se zyada wait nahi - phir dusra AI

@@ -12,7 +12,7 @@ import java.util.concurrent.TimeUnit
 
 /** Gemini ki bahut natural awaaz (Gemini API key se). WAV bytes deta hai. */
 object GeminiTts {
-    private val http = OkHttpClient.Builder()
+    private val http = com.dk.assistant.NetFix.builder()
         .connectTimeout(8, TimeUnit.SECONDS)
         .readTimeout(20, TimeUnit.SECONDS)
         .callTimeout(22, TimeUnit.SECONDS)

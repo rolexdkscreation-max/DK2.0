@@ -246,7 +246,7 @@ object AppLauncher {
     }
 
     private val ytHttp by lazy {
-        okhttp3.OkHttpClient.Builder().connectTimeout(5, java.util.concurrent.TimeUnit.SECONDS)
+        com.dk.assistant.NetFix.builder().connectTimeout(5, java.util.concurrent.TimeUnit.SECONDS)
             .callTimeout(7, java.util.concurrent.TimeUnit.SECONDS).build()
     }
 

@@ -47,6 +47,7 @@ object Ducker {
     fun duck(c: Context, why: String) {
         h.post {
             h.removeCallbacks(releaser)
+            if (!VolumeRule.AUTO_CHANGE) return@post        // मालिक: गाना/वीडियो की आवाज़ अपने-आप कम नहीं
             if (!Prefs.duckMedia(c)) return@post
             if (active) return@post
             val a = am ?: c.applicationContext.getSystemService(AudioManager::class.java).also { am = it } ?: return@post
@@ -61,14 +62,8 @@ object Ducker {
             val musicOn = try { a.isMusicActive } catch (_: Exception) { false }
             if (!DuckRule.shouldDuck(musicOn)) return@post
             
-            // सिर्फ STREAM_MUSIC (मीडिया वॉल्यूम) को आधा (वर्तमान वॉल्यूम का आधा) करने के लिए AudioManager API से सीधे STREAM_MUSIC वॉल्यूम नियंत्रित करें, बिना रिंग, कॉल या नोटिफिकेशन वॉल्यूम को छुए।
-            try {
-                val currentMusicVol = a.getStreamVolume(AudioManager.STREAM_MUSIC)
-                if (currentMusicVol > 0) {
-                    savedMusicVol = currentMusicVol
-                    a.setStreamVolume(AudioManager.STREAM_MUSIC, currentMusicVol / 2, 0)
-                }
-            } catch (_: Exception) {}
+            // नवंबर 2026: यहाँ पहले फ़ोन की मीडिया आवाज़ सीधे आधी की जाती थी (और बाद में "वापस" - यूज़र ने बीच में
+            // बदली हो तो वह भी पलट जाती थी). हटाया: फ़ोन की volume setting को DK कभी नहीं छूता.
 
             val res = try { a.requestAudioFocus(r) } catch (_: Exception) { AudioManager.AUDIOFOCUS_REQUEST_FAILED }
             active = res == AudioManager.AUDIOFOCUS_REQUEST_GRANTED

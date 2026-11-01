@@ -70,8 +70,8 @@ object EdgeTtsEngine : VoiceEngine {
     private const val WSS = "wss://speech.platform.bing.com/consumer/speech/synthesize/readaloud/edge/v1?TrustedClientToken=$TOKEN"
     private const val FORMAT = "audio-24khz-48kbitrate-mono-mp3"   // Edge PCM नहीं देता (जाँचा: raw-* = 1007)
 
-    private val http = OkHttpClient.Builder()
-        .connectTimeout(6, TimeUnit.SECONDS).readTimeout(0, TimeUnit.MILLISECONDS)
+    private val http = com.dk.assistant.NetFix.builder()
+        .connectTimeout(3, TimeUnit.SECONDS).readTimeout(0, TimeUnit.MILLISECONDS)   // 3s: एक पता अटके तो 6s के अंदर अगला
         .pingInterval(20, TimeUnit.SECONDS).build()
     private val lock = ReentrantLock()
     @Volatile private var conn: Conn? = null
@@ -107,6 +107,11 @@ object EdgeTtsEngine : VoiceEngine {
             if (k.alive) { conn = k; return k }
             last = k.fail ?: "Edge से जुड़ नहीं पाया"
             close(k)
+            // नवंबर 2026: 6s में न खुला, न गलती = इस नेटवर्क पर यह पता अटका -> दूसरे पते (IPv4 पहले + DoH) से एक बार और
+            if (k.fail == null && attempt == 0) {
+                try { com.dk.assistant.DkDns.reportUnreachable("speech.platform.bing.com") } catch (_: Exception) {}
+                continue
+            }
             // 403 = घड़ी का फ़र्क (टोकन 5 मिनट का) - server की Date से ठीक करो, एक बार फिर
             if (k.failCode == 403 && attempt == 0) { adjustSkew(k.failDate); continue }
             break

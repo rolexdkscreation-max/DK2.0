@@ -32,7 +32,7 @@ object LiveNativeEngine : VoiceEngine {
     override val defaultOn = true
 
     private const val URL = "wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent"
-    private val http = OkHttpClient.Builder().connectTimeout(8, TimeUnit.SECONDS).readTimeout(0, TimeUnit.MILLISECONDS).build()
+    private val http = com.dk.assistant.NetFix.builder().connectTimeout(8, TimeUnit.SECONDS).readTimeout(0, TimeUnit.MILLISECONDS).build()
     @Volatile private var cur: WebSocket? = null
 
     override fun voices(): List<Pair<String, String>> {

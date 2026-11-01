@@ -29,7 +29,7 @@ import kotlin.coroutines.resume
 object LocalInfo {
     data class Place(val lat: Double, val lon: Double, val name: String)
 
-    private val http = OkHttpClient.Builder().callTimeout(8, TimeUnit.SECONDS).build()
+    private val http = com.dk.assistant.NetFix.builder().callTimeout(8, TimeUnit.SECONDS).build()
 
     fun hasPermission(c: Context) =
         c.checkSelfPermission(Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED ||

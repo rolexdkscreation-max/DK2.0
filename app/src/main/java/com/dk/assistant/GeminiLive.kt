@@ -104,6 +104,7 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
         private const val LEAD_BYTES = OUT_RATE * 2 * 150 / 1000
         private val WS = Regex("\\s+")
         private const val CHUNK_SAMPLES = IN_RATE * CHUNK_MS / 1000      // 640 samples = 1280 bytes
+        private const val LIVE_HOST = "generativelanguage.googleapis.com"
         private const val URL = "wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent"
         const val CONST_SETUP_TIMEOUT_MS = 15_000L
         /** Docs (Oct 2026): gemini-3.8-live = default; 3.1 flash live = purana preview */
@@ -1717,6 +1718,7 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
                             inFlight.remove(a); killAttempt(a, "setup timeout")
                             health.comboFail(a.c, t); saveHealth()
                             // WebSocket खुला ही नहीं (onOpen नहीं आया) = Google के server तक पहुँचे ही नहीं; खुला पर setupComplete नहीं = धीमा
+                            if (a.sentAt == 0L) DkDns.reportUnreachable(LIVE_HOST)
                             r.lastFail = 0 to (if (a.sentAt == 0L) "connection खुला ही नहीं - ${tmo / 1000}s में Google के server तक नहीं पहुँचा"
                                 else "setup का जवाब ${tmo / 1000} सेकंड में नहीं आया"); r.lastFailCombo = a.c
                             log("दौड़: [${a.c.label}] ${t - a.t0} ms में setup नहीं - यह जोड़ी 2 मिनट नहीं, अगली तुरंत")
@@ -3463,8 +3465,9 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
                             if (bargeDet.feed(rms, now, outLevel(now))) {
                                 // SHAK: tez awaaz. DK ki awaaz halki (rokna nahi), caption model ko suno - shabd hain?
                                 bargeGate.suspect(now); barging = true; loudMs = 0L
-                                track?.let { try { it.setVolume(SpeakerBoost.SUSPECT_VOLUME) } catch (_: Exception) {} }
-                                log("तेज़ आवाज़ (rms=${rms.toInt()}, गूँज=${bargeDet.echoLevel().toInt()}, शोर=${bargeDet.ambient.toInt()}) - यूज़र है? शब्द सुन रहा हूँ, DK धीमा")
+                                // मालिक (नवंबर 2026): DK की आवाज़ अपने-आप धीमी-तेज़ नहीं - शक के समय भी पूरी (रोकना पक्के शब्दों पर ही)
+                                if (VolumeRule.AUTO_CHANGE) track?.let { try { it.setVolume(SpeakerBoost.SUSPECT_VOLUME) } catch (_: Exception) {} }
+                                log("तेज़ आवाज़ (rms=${rms.toInt()}, गूँज=${bargeDet.echoLevel().toInt()}, शोर=${bargeDet.ambient.toInt()}) - यूज़र है? शब्द सुन रहा हूँ (DK की आवाज़ नहीं बदली)")
                                 synchronized(bargeBuf) { bargeBuf.clear(); bargeBuf.addAll(preroll); bargeBuf.addLast(chunk) }
                                 preroll.forEach { capSend(it) }; preroll.clear()
                                 capSend(chunk)

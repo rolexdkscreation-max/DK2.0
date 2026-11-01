@@ -6,7 +6,7 @@ import com.dk.assistant.OpenSearch.Hit
 object OpenSearchNet {
     // ------------------------------------------------------------------ फ़ोन पर (Android/IO)
     private val http by lazy {
-        okhttp3.OkHttpClient.Builder().connectTimeout(5, java.util.concurrent.TimeUnit.SECONDS)
+        com.dk.assistant.NetFix.builder().connectTimeout(5, java.util.concurrent.TimeUnit.SECONDS)
             .readTimeout(7, java.util.concurrent.TimeUnit.SECONDS).callTimeout(9, java.util.concurrent.TimeUnit.SECONDS).build()
     }
     private const val UA = "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Mobile Safari/537.36"

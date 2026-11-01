@@ -138,6 +138,7 @@ class Speaker(context: Context) {
     @Volatile private var accBefore = -1
     /** कॉल के समय DK की आवाज़ (accessibility) पूरी - मालिक: "फुल आवाज़ में बोले" */
     fun fullCallVolume() {
+        if (!VolumeRule.AUTO_CHANGE) return       // मालिक (नवंबर 2026): कॉल की आवाज़ भी अपने-आप नहीं बढ़ेगी
         if (Build.VERSION.SDK_INT < 26) return
         try {
             val a = CallVoice.STREAM_ACCESSIBILITY; val am = audio.getStreamMaxVolume(a)
@@ -346,6 +347,12 @@ class Speaker(context: Context) {
         try {
             VoiceListener.forceUnmute(audio)
             val s = android.media.AudioManager.STREAM_MUSIC
+            // मालिक (नवंबर 2026): यूज़र की रखी आवाज़ (mute / 0 भी) DK अपने-आप नहीं बदलेगा - सिर्फ़ बताएगा
+            if (!VolumeRule.AUTO_CHANGE) {
+                if (audio.getStreamVolume(s) == 0 || (Build.VERSION.SDK_INT >= 23 && audio.isStreamMute(s)))
+                    DKLog.d("मीडिया की आवाज़ 0/बंद है - DK खुद नहीं बढ़ाएगा (\"आवाज़ बढ़ाओ\" बोलें)")
+                return
+            }
             // pichhli baar app band hote waqt mute reh gayi awaaz bhi kholo
             // Sirf NORMAL ringer me - silent/vibrate (user ya "volume silent" command) me notification/system ko mat chhuo,
             // warna DK ke bolte hi phone wapas ring mode me chala jaata tha

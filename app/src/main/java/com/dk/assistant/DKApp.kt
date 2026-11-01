@@ -15,6 +15,7 @@ class DKApp : Application() {
     override fun onCreate() {
         super.onCreate()
         DKState.init(this)
+        NetFix.install(this)  // नवंबर 2026: एक नेटवर्क पर न चलना - IPv4 पहले + DoH, नेटवर्क बदले तो याद साफ़
         Prefs.loadLang(this)
         UiLang.load(this)     // स्क्रीनों की भाषा (शुरुआती English)
         com.dk.assistant.ui.NeonTheme.load(this)          // v4: दिखावट (रंग/काँच/चमक/एनिमेशन) - सिर्फ़ UI

@@ -489,9 +489,9 @@ class GitHub(private val token: String) {
     }
 
     companion object {
-        private val http = OkHttpClient.Builder()
+        private val http = com.dk.assistant.NetFix.builder()
             .connectTimeout(15, TimeUnit.SECONDS).readTimeout(40, TimeUnit.SECONDS).callTimeout(60, TimeUnit.SECONDS).build()
-        private val zipHttp = OkHttpClient.Builder()
+        private val zipHttp = com.dk.assistant.NetFix.builder()
             .connectTimeout(15, TimeUnit.SECONDS).readTimeout(60, TimeUnit.SECONDS).callTimeout(120, TimeUnit.SECONDS).build()
         const val TOKEN_URL = "https://github.com/settings/personal-access-tokens/new"
         /**
