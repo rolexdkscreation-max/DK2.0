@@ -69,6 +69,44 @@ object LiveRace {
     fun shouldLaunch(inFlight: Int, queued: Int, now: Long, lastLaunchAt: Long): Boolean =
         queued > 0 && inFlight < MAX_PARALLEL && (inFlight == 0 || now - lastLaunchAt >= STAGGER_MS)
 
+    /**
+     * नवंबर 2026 (मालिक: "एक ही API key से तीनों काम - Gemini जुड़ता ही नहीं, 'server काम नहीं कर रहा'"):
+     * जड़ - फ्री Gemini key पर एक साथ सिर्फ़ ~3 Live सत्र. एक ही key पर 3 जोड़ियाँ साथ में + लिखने वाला (caption) +
+     * standby = सीमा पार -> Google "quota/limit" से बंद करता था -> पूरी key 10 मिनट बंद (फ़ोन में save) -> एक-key मोड में
+     * Live पूरी तरह बंद और ऐप दोबारा खोलने पर "सारी जोड़ियाँ रुकी" = "Gemini server जवाब नहीं दे रहा".
+     * इलाज: एक key पर एक समय में सिर्फ़ एक जोड़ी. दौड़ अब keys के बीच (हर key अपनी एक जोड़ी), एक key = एक-एक करके.
+     * @return queue में अगली जोड़ी का index जिसकी key पर अभी कोई जोड़ी नहीं चल रही; कोई नहीं = -1 (रुको)
+     */
+    fun nextLaunchable(queue: List<Combo>, busyKeys: Set<Int>): Int = queue.indexOfFirst { it.keyIdx !in busyKeys }
+
+    /** WebSocket खुल गया (setup भेज दिया) - Google तक पहुँच गए, जवाब धीमा: कम से कम इतना रुको (पहले 4s में मार देते थे) */
+    const val OPENED_MIN_MS = 12_000L
+
+    /**
+     * एक जोड़ी को कब तक मौका. जड़ (नवंबर 2026): इंतज़ार सिर्फ़ सफल जुड़ने के नाप से बनता था (अच्छे Wi-Fi पर 4s) और
+     * timeout का कभी नाप नहीं जुड़ता था - mobile data / धीमे नेट पर हर जोड़ी 4s में मरती, इंतज़ार कभी बढ़ता ही नहीं
+     * (हमेशा के लिए अटका). अब: खुल चुका connection कम से कम 12s; आज़माने को और कोई जोड़ी न बची = पूरे 22s तक.
+     */
+    fun attemptTimeoutMs(tmo: Long, opened: Boolean, othersLeft: Boolean): Long = when {
+        !othersLeft -> MAX_TIMEOUT_MS
+        opened -> maxOf(tmo, OPENED_MIN_MS)
+        else -> tmo
+    }.coerceAtMost(MAX_TIMEOUT_MS)
+
+    /** timeout हुआ - नाप में "इतना धीमा" जोड़ो, ताकि अगली बार इंतज़ार अपने-आप बढ़े */
+    fun timeoutPenaltyMs(waitedMs: Long): Long = (waitedMs * 2).coerceIn(MIN_TIMEOUT_MS, MAX_TIMEOUT_MS)
+
+    /**
+     * limit/quota की गलती पूरी key की नहीं - उसी (मॉडल × key) की. पहले पूरी key 10 मिनट बंद हो जाती थी (एक key = Live बंद).
+     * असली key की गलती (401/403/गलत key/इजाज़त/billing) पर ही key बंद.
+     */
+    fun quotaOnlyForCombo(code: Int, reason: String): Boolean {
+        val r = reason.lowercase()
+        if (code == 401 || code == 403 || r.contains("api key") || r.contains("api_key") || r.contains("permission") ||
+            r.contains("unauthenticated") || r.contains("billing")) return false
+        return isQuota(code, r) || r.contains("limit") || r.contains("concurrent") || r.contains("too many")
+    }
+
     /** जुड़ने के बाद भेजी जाने वाली याद (setup में नहीं - setup छोटा रहे) */
     fun contextNote(t: String): String =
         "SYSTEM CONTEXT (background memory for this call - do not reply to this message, just use it when relevant):\n" + t.trim()
@@ -88,6 +126,8 @@ object LiveRace {
         @Synchronized fun isComboFailed(c: Combo, now: Long): Boolean = (comboFailUntil[c.id] ?: 0L) > now
         /** नेट वापस आया: नेट की वजह से रुकी जोड़ियाँ फिर आज़माओ (गलत key वाली नहीं) */
         @Synchronized fun clearComboFails() { comboFailUntil.clear() }
+        /** ऐप/सेवा नई शुरू हुई और सब रुका है (पुरानी save हालत) = एक साफ़ मौका, key की पुरानी रोक भी हटाओ */
+        @Synchronized fun clearKeyBad() { keyBadUntil.clear() }
         @Synchronized fun ok(c: Combo, ms: Long, now: Long) {
             lastWin = c.id; lastOk[c.id] = now; comboFailUntil.remove(c.id); keyBadUntil.remove(c.keyIdx)
             time(ms)
