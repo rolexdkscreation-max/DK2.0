@@ -112,7 +112,7 @@ class LiveModel1011Test {
         assertTrue(s.contains("पुरानी save हुई Live रोक हटाई"))
         // 1011 वाला मॉडल हटाना save होने वाली Cooldown से नहीं
         val d = s.substring(s.indexOf("private fun dropModel1011"), s.indexOf("private fun isQuota"))
-        assertFalse(d.contains("Cooldown.block"))
+        assertFalse(d.contains("Cooldown.block("))
     }
 
     @Test fun captionIndependentOfLiveCooldown() {

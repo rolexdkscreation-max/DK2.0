@@ -1757,8 +1757,8 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
             health.clearComboFails()
             // नवंबर 2026: इस सत्र में अभी तक कोई दौड़ नाकाम नहीं (ऐप/सेवा नई शुरू) - पुरानी save हुई key-रोक से
             // शुरू होते ही "server जवाब नहीं दे रहा" नहीं; एक साफ़ मौका
+            if (lastRaceFailAt == 0L) health.clearKeyBad()
             if (lastRaceFailAt == 0L) {
-                health.clearKeyBad()
                 // नवंबर 2026: फ़ोन में save हुई Live मॉडल-रोक भी एक बार साफ़ (पहले यह कभी नहीं हटती थी - कोशिश ही नहीं होती थी)
                 val held = models.flatMap { m -> keys.indices.map { LiveKeys.cooldownName(it, m) } }.filter { Cooldown.blocked(it) }
                 if (held.isNotEmpty()) { held.forEach { Cooldown.clear(it) }; log("नई शुरुआत: पुरानी save हुई Live रोक हटाई (${held.size}) - एक साफ़ मौका") }
