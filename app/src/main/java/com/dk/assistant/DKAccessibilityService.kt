@@ -41,7 +41,7 @@ import kotlin.math.abs
  *  - screen ke saare buttons/text padhta hai (aankh)
  *  - click, long press, type, scroll, swipe, back/home karta hai (haath)
  *  - screenshot leta hai (Android 11+)
- *  - floating "DK" bubble dikhata hai: tap = bolo, dobara tap = roko
+ *  - नीचे बीच में एक तैरता ORB (FloatOrb.kt) दिखाता है: tap = bolo, dobara tap = roko; ✕ = सिर्फ़ ORB छिपे
  */
 class DKAccessibilityService : AccessibilityService() {
 
@@ -67,7 +67,8 @@ class DKAccessibilityService : AccessibilityService() {
     lateinit var ear: Ear
         private set
 
-    private var bubble: OrbView? = null
+    /** नवंबर 2026: सिर्फ़ एक तैरता ORB (नीचे बीच में) - पुराना किनारे वाला bubble हटाया */
+    private var floatOrb: FloatOrb? = null
     /** v3.57: सुनते/बोलते समय किनारों की चमक (छूने पर कुछ नहीं, नीचे का ऐप चलता रहे) */
     private var edgeGlow: com.dk.assistant.fx.EdgeGlowView? = null
     lateinit var calls: CallManager
@@ -94,9 +95,12 @@ class DKAccessibilityService : AccessibilityService() {
         calls.start()
         scope.launch { speaker.warmCallVoice() }   // v4.2: "सर, कॉल आ रहा है" पहले से तैयार - limit / नेट न हो तब भी कॉल पर चुप नहीं
         showEdgeGlow()
-        showBubble()
-        AppVisible.onChange = { inApp -> bubble?.visibility = if (inApp) android.view.View.GONE else android.view.View.VISIBLE }
-        bubble?.visibility = if (AppVisible.visible) android.view.View.GONE else android.view.View.VISIBLE
+        // एक ही ORB, हर हाल में (DK ऐप खुला / minimize / दूसरा ऐप). ऐप खुलते ही - ✕ से छिपा हो तो वापस
+        floatOrb = FloatOrb(this) { onOrbTap() }.also { it.sync() }
+        AppVisible.onChange = { inApp ->
+            if (inApp && !Prefs.floatOrbOn(this)) Prefs.setFloatOrbOn(this, true)
+            refreshOrb()
+        }
         DKLog.d("DK accessibility service chalu ho gaya")
         val user = Prefs.userName(this)
         liveOffUntil = 0L; liveSoftFails = 0; liveOffSoft = false
@@ -129,7 +133,7 @@ class DKAccessibilityService : AccessibilityService() {
         exitBackup("सेवा बंद")
         instance = null
         AppVisible.onChange = null
-        removeBubble()
+        floatOrb?.remove(); floatOrb = null
         removeEdgeGlow()
         DKState.setLive(false)
         listener.release()
@@ -1802,44 +1806,17 @@ class DKAccessibilityService : AccessibilityService() {
         }
     }
 
-    // ---------------------------------------------------------------- floating bubble
-    @SuppressLint("ClickableViewAccessibility")
-    private fun showBubble() {
-        val wm = getSystemService(WINDOW_SERVICE) as WindowManager
-        val size = (76 * resources.displayMetrics.density).toInt()
-        val params = WindowManager.LayoutParams(
-            size, size,
-            WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY,
-            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
-            PixelFormat.TRANSLUCENT
-        ).apply {
-            gravity = Gravity.TOP or Gravity.START
-            x = resources.displayMetrics.widthPixels - size - 20
-            y = resources.displayMetrics.heightPixels / 3
-        }
-        val v = OrbView(this).apply { mini = true }
-        var downX = 0f; var downY = 0f; var startX = 0; var startY = 0; var moved = false
-        v.setOnTouchListener { _, ev ->
-            when (ev.action) {
-                MotionEvent.ACTION_DOWN -> {
-                    downX = ev.rawX; downY = ev.rawY; startX = params.x; startY = params.y; moved = false
-                }
-                MotionEvent.ACTION_MOVE -> {
-                    val dx = ev.rawX - downX; val dy = ev.rawY - downY
-                    if (abs(dx) > 12 || abs(dy) > 12) moved = true
-                    params.x = startX + dx.toInt(); params.y = startY + dy.toInt()
-                    wm.updateViewLayout(v, params)
-                }
-                MotionEvent.ACTION_UP -> if (!moved) {
-                    // call chal rahi ho to bubble tap = call kaato (call ke dauraan Android mic nahi deta)
-                    if (calls.inCall || calls.ringing) scope.launch { perform(JSONObject().put("type", "end_call")) }
-                    else toggleLive()
-                }
-            }
-            true
-        }
-        wm.addView(v, params)
-        bubble = v
+    // ---------------------------------------------------------------- तैरता ORB (FloatOrb.kt)
+    /** Settings switch / slider, notification बटन, ऐप खुलना - सब यहीं से ORB ठीक करते हैं */
+    fun refreshOrb() {
+        android.os.Handler(android.os.Looper.getMainLooper()).post { floatOrb?.sync() }
+    }
+
+    /** ORB टैप = पहले वाले किनारे के ORB जैसा */
+    private fun onOrbTap() {
+        // call chal rahi ho to orb tap = call kaato (call ke dauraan Android mic nahi deta)
+        if (calls.inCall || calls.ringing) scope.launch { perform(JSONObject().put("type", "end_call")) }
+        else toggleLive()
     }
 
     private fun showEdgeGlow() {
@@ -1863,8 +1840,4 @@ class DKAccessibilityService : AccessibilityService() {
         edgeGlow = null
     }
 
-    private fun removeBubble() {
-        bubble?.let { (getSystemService(WINDOW_SERVICE) as WindowManager).removeView(it) }
-        bubble = null
-    }
 }

@@ -169,6 +169,13 @@ object Prefs {
     /** orb ka aakaar: earth, galaxy, atom, torus, geodesic, knot, dyson, face_male, face_female */
     /** Beech ka orb chhota (minimize) kiya hua hai? */
     fun orbMin(c: Context) = sp(c).getBoolean("orb_min", false)
+    // ---- नवंबर 2026 (मालिक): सिर्फ़ एक तैरता ORB, नीचे बीच में. ✕ = सिर्फ़ ORB छिपे (DK चालू रहे)
+    /** तैरता ORB दिखे? (✕ = false; ऐप खोलना / Settings switch / notification बटन = true) */
+    fun floatOrbOn(c: Context) = sp(c).getBoolean("float_orb_on", true)
+    fun setFloatOrbOn(c: Context, on: Boolean) = edit(c) { putBoolean("float_orb_on", on) }
+    /** तैरते ORB का आकार (dp). शुरू में 76 = पुराने किनारे वाले छोटे ORB जितना */
+    fun floatOrbDp(c: Context) = FloatOrbSize.clamp(sp(c).getInt("float_orb_dp", FloatOrbSize.DEFAULT_DP))
+    fun setFloatOrbDp(c: Context, dp: Int) = edit(c) { putInt("float_orb_dp", FloatOrbSize.clamp(dp)) }
     /** v3.88: हर बातचीत फ़ोन की लोकल याददाश्त (SQLite) में - 30 दिन, फिर सिर्फ़ सार */
     fun localMemoryOn(c: Context) = sp(c).getBoolean("local_memory_on", true)
     // ---- v3.66: सिर्फ़ मालिक की आवाज़ (voiceprint सिर्फ़ इसी फ़ोन में - backup बंद है, GitHub/इंटरनेट पर नहीं)

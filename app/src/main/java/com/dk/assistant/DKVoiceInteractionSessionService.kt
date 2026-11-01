@@ -153,6 +153,21 @@ class DKVoiceInteractionSession(context: android.content.Context) : VoiceInterac
             } else {
                 micButton?.visibility = android.view.View.VISIBLE
             }
+
+            // नवंबर 2026 (मालिक): "सिर्फ़ एक ORB, नीचे बीच में". DK सेवा चालू = वही तैरता ORB (FloatOrb) दिखे,
+            // यहाँ का अलग बड़ा ✕ वाला ORB नहीं. सेवा न हो तभी यह ORB - उसी आकार का जो Settings में चुना.
+            val svc = DKAccessibilityService.instance
+            if (svc != null) {
+                Prefs.setFloatOrbOn(context, true); svc.refreshOrb()
+                orbView?.visibility = android.view.View.GONE
+                closeButton?.visibility = android.view.View.GONE
+                // माइक की इजाज़त है = यह खाली खिड़की तुरंत बंद (Live/माइक DK सेवा में चलता रहता है)
+                if (hasMic) android.os.Handler(android.os.Looper.getMainLooper()).post { try { hide() } catch (_: Exception) {} }
+            } else {
+                val px = (Prefs.floatOrbDp(context) * context.resources.displayMetrics.density).toInt()
+                orbView?.let { o -> o.layoutParams = o.layoutParams.apply { width = px; height = px }; o.visibility = android.view.View.VISIBLE }
+                closeButton?.visibility = android.view.View.VISIBLE
+            }
         } catch (e: Exception) {
             android.util.Log.e("DKAssist", "Error in DKVoiceInteractionSession onShow", e)
         }
