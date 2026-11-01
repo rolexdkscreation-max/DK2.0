@@ -249,6 +249,11 @@
             android:name=".LocalMemoryReceiver"
             android:exported="false" />
 
+        <!-- नवंबर 2026: ✕ से छिपे ORB को notification के "ORB दिखाओ" बटन से वापस लाना -->
+        <receiver
+            android:name=".OrbShowReceiver"
+            android:exported="false" />
+
         <!-- v5.1: DK Inspector - लगभग हर घंटे Debug डेटा की जाँच (सिर्फ़ पढ़ना) -->
         <receiver
             android:name=".inspector.InspectorReceiver"

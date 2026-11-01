@@ -1072,6 +1072,43 @@ class SettingsActivity : AppCompatActivity() {
             }
             if (T.systemNoAnim) hint(box, "फ़ोन की सेटिंग में एनिमेशन बंद हैं — इसलिए DK अभी अपने-आप कम एनिमेशन में है।")
         }
+        // नवंबर 2026 (मालिक): एक ही तैरता ORB (नीचे बीच में) - दिखे/छिपे + आकार. ORB पर दो उंगलियों से pinch भी
+        card("तैरता ORB", "स्क्रीन के नीचे बीच वाला एक ORB — हर ऐप के ऊपर", startOpen = true) { box ->
+            val on = SwitchCompat(this).apply {
+                text = UiLang.s("ORB दिखाओ"); isChecked = Prefs.floatOrbOn(this@SettingsActivity); textSize = 14f
+                setTextColor(0xFFFFFFFF.toInt()); setPadding((4 * dp).toInt(), (10 * dp).toInt(), 0, (6 * dp).toInt())
+                setOnCheckedChangeListener { _, v ->
+                    Prefs.setFloatOrbOn(this@SettingsActivity, v)
+                    if (v) OrbNotify.cancel(this@SettingsActivity)
+                    DKAccessibilityService.instance?.refreshOrb()
+                }
+            }
+            box.addView(on, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+            val lab = TextView(this).apply {
+                textSize = 13f; setTextColor(0xB3FFFFFF.toInt()); setPadding((4 * dp).toInt(), (10 * dp).toInt(), 0, (4 * dp).toInt())
+            }
+            fun showSize(v: Int) { lab.text = UiLang.s("ORB का आकार") + ": $v dp" + (if (v == FloatOrbSize.DEFAULT_DP) " (" + UiLang.s("शुरुआती") + ")" else "") }
+            val cur = Prefs.floatOrbDp(this)
+            showSize(cur); box.addView(lab)
+            val sb = SeekBar(this).apply {
+                max = FloatOrbSize.MAX_DP - FloatOrbSize.MIN_DP; progress = cur - FloatOrbSize.MIN_DP
+                minimumHeight = (48 * dp).toInt(); contentDescription = UiLang.s("ORB का आकार")
+                setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
+                    override fun onProgressChanged(b: SeekBar?, p: Int, fromUser: Boolean) {
+                        val v = FloatOrbSize.MIN_DP + p
+                        showSize(v)
+                        if (fromUser) { Prefs.setFloatOrbDp(this@SettingsActivity, v); DKAccessibilityService.instance?.refreshOrb() }
+                    }
+                    override fun onStartTrackingTouch(b: SeekBar?) {}
+                    override fun onStopTrackingTouch(b: SeekBar?) {}
+                })
+            }
+            box.addView(sb, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, (48 * dp).toInt()))
+            hint(box, "✕ दबाने पर सिर्फ़ ORB छिपता है — DK का माइक, \"हे डीके\" और सेवा चलते रहते हैं। " +
+                "वापस लाने के लिए: ऐप खोलें, यहाँ का स्विच चालू करें, या notification का \"ORB दिखाओ\" बटन दबाएँ। " +
+                "ORB को पकड़कर खींचें तो जगह बदलती है; दो उंगलियों से फैलाएँ/सिकोड़ें तो आकार।" +
+                (if (DKAccessibilityService.instance == null) " (अभी DK की Accessibility सेवा बंद है — ORB तभी दिखेगा जब वह चालू हो।)" else ""))
+        }
         // v4.x: जवाब आने से पहले बुलबुले में चलने वाला "लिख रही है" एनीमेशन
         card("टाइपिंग एनीमेशन", "जवाब आने से पहले चैट के बुलबुले में क्या चले — जो पसंद हो चुनें", startOpen = true) { box ->
             val cur = Prefs.typingStyle(this)
