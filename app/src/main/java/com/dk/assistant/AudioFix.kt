@@ -33,6 +33,16 @@ object RingGuard {
 }
 
 /** v3.6: पीछे का गाना/वीडियो कब धीमा - सिर्फ़ जब सच में कुछ बज रहा हो, और ज़्यादा से ज़्यादा 60s (भूल-चूक में) */
+/**
+ * मालिक (01 नवंबर 2026): "कोई भी आवाज़ - मीडिया, फ़ोन कॉल, DK की अपनी - अपने-आप कम या ज़्यादा नहीं होनी चाहिए.
+ * जितनी यूज़र ने रखी, उतनी ही रहे; जब तक DK को बोला न जाए (आवाज़ कम/ज़्यादा करो)."
+ * false = DK खुद कभी volume नहीं बदलता: न गाना धीमा (Ducker), न कॉल पर पूरी आवाज़, न 0 से 50%, न बीप के लिए mute,
+ * न शोर पर अपनी आवाज़ 60%. सिर्फ़ यूज़र के कहने पर (DeviceActions.volume) बदलेगा.
+ */
+object VolumeRule {
+    const val AUTO_CHANGE = false
+}
+
 object DuckRule {
     const val MAX_HOLD_MS = 60_000L
     fun shouldDuck(musicActive: Boolean): Boolean = musicActive

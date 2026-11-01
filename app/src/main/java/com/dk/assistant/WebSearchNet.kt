@@ -12,7 +12,7 @@ import java.util.concurrent.TimeUnit
  */
 object WebSearchNet {
     private val http by lazy {
-        okhttp3.OkHttpClient.Builder().connectTimeout(5, TimeUnit.SECONDS)
+        com.dk.assistant.NetFix.builder().connectTimeout(5, TimeUnit.SECONDS)
             .readTimeout(8, TimeUnit.SECONDS).callTimeout(10, TimeUnit.SECONDS).build()
     }
     private val JSON = "application/json".toMediaType()

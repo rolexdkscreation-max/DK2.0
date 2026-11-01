@@ -19,7 +19,7 @@ import java.util.concurrent.TimeUnit
  *  2. Gemini (Gemini key ho to)
  */
 object Transcriber {
-    private val http = OkHttpClient.Builder()
+    private val http = com.dk.assistant.NetFix.builder()
         .connectTimeout(8, TimeUnit.SECONDS).readTimeout(20, TimeUnit.SECONDS).callTimeout(22, TimeUnit.SECONDS).build()
 
     // Whisper kabhi-kabhi chup/shor par yeh shabd "sun" leta hai

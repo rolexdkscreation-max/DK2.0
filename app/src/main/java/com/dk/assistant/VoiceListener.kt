@@ -57,6 +57,7 @@ class VoiceListener(private val context: Context) {
     @Volatile var lastSpokeAt = 0L
 
     private fun mute(on: Boolean) {
+        if (on && !VolumeRule.AUTO_CHANGE) return   // मालिक: बीप दबाने के लिए भी आवाज़ mute नहीं (unmute हमेशा चलता है)
         if (on == beepMuted) return
         val ownVoice = System.currentTimeMillis() - lastSpokeAt < 3000
         if (on && audio.isMusicActive && !ownVoice) return   // gaana/video chal raha ho to awaaz mat chheduo

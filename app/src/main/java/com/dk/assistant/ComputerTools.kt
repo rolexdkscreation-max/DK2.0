@@ -33,7 +33,7 @@ import kotlin.coroutines.resume
  * फ़ाइलें (md/txt/csv/html/json + PDF), फ़ाइल खोलना/शेयर करना, और बाद में काम चलाना (रिमाइंडर).
  */
 object ComputerTools {
-    private val http = OkHttpClient.Builder().connectTimeout(15, TimeUnit.SECONDS)
+    private val http = com.dk.assistant.NetFix.builder().connectTimeout(15, TimeUnit.SECONDS)
         .readTimeout(40, TimeUnit.SECONDS).callTimeout(60, TimeUnit.SECONDS).followRedirects(true).build()
     private val JSON = "application/json".toMediaType()
     private const val UA = "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126 Mobile Safari/537.36 DK-Computer"

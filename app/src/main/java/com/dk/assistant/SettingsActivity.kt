@@ -630,7 +630,7 @@ class SettingsActivity : AppCompatActivity() {
 
     /** v3.41: लिखने वाली key सच में चलती है? (models list + transcribe मॉडल) */
     private fun checkCaptionKey(k: String): String = try {
-        val c = okhttp3.OkHttpClient.Builder().callTimeout(10, java.util.concurrent.TimeUnit.SECONDS).build()
+        val c = com.dk.assistant.NetFix.builder().callTimeout(10, java.util.concurrent.TimeUnit.SECONDS).build()
         val req = okhttp3.Request.Builder().url("https://generativelanguage.googleapis.com/v1beta/models?pageSize=1000").header("x-goog-api-key", k).build()
         c.newCall(req).execute().use { r ->
             val body = r.body?.string() ?: ""

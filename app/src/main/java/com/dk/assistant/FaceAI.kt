@@ -156,7 +156,7 @@ object FaceAI {
         dst.parentFile?.mkdirs()
         val part = File(dst.parentFile, dst.name + ".part")
         return try {
-            val http = OkHttpClient.Builder().connectTimeout(20, TimeUnit.SECONDS).readTimeout(60, TimeUnit.SECONDS).build()
+            val http = com.dk.assistant.NetFix.builder().connectTimeout(20, TimeUnit.SECONDS).readTimeout(60, TimeUnit.SECONDS).build()
             http.newCall(Request.Builder().url(url).build()).execute().use { resp ->
                 if (!resp.isSuccessful) return "डाउनलोड नहीं हुआ (HTTP ${resp.code})"
                 val body = resp.body ?: return "डाउनलोड खाली आया"

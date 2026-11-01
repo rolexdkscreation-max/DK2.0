@@ -107,7 +107,7 @@ object OwnerVoice {
         val dir = modelFile(c).parentFile!!; dir.mkdirs()
         val part = File(dir, "model.part")
         return try {
-            val http = OkHttpClient.Builder().connectTimeout(20, TimeUnit.SECONDS).readTimeout(60, TimeUnit.SECONDS).build()
+            val http = com.dk.assistant.NetFix.builder().connectTimeout(20, TimeUnit.SECONDS).readTimeout(60, TimeUnit.SECONDS).build()
             http.newCall(Request.Builder().url(MODEL_URL).build()).execute().use { resp ->
                 if (!resp.isSuccessful) return "डाउनलोड नहीं हुआ (HTTP ${resp.code})"
                 val body = resp.body ?: return "डाउनलोड खाली आया"

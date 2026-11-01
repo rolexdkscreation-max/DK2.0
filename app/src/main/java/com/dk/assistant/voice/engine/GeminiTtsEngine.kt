@@ -43,7 +43,7 @@ object GeminiTtsEngine : VoiceEngine {
         "Aoede" to "Aoede — हल्की, खुली (महिला)",
     )
 
-    private val http = OkHttpClient.Builder()
+    private val http = com.dk.assistant.NetFix.builder()
         .connectTimeout(6, TimeUnit.SECONDS)
         .readTimeout(15, TimeUnit.SECONDS)                // पहला टुकड़ा धीमे नेट पर 8s से ज़्यादा ले सकता है; 15 s चुप = टूटा मानो
         .callTimeout(30, TimeUnit.SECONDS)

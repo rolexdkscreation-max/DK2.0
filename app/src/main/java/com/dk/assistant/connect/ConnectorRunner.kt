@@ -19,7 +19,7 @@ import java.util.concurrent.TimeUnit
  * भेजना/मिटाना/शेयर/पोस्ट = [Gate] पहले "हाँ" माँगता है.
  */
 object ConnectorRunner {
-    private val http = OkHttpClient.Builder().connectTimeout(15, TimeUnit.SECONDS).readTimeout(40, TimeUnit.SECONDS).build()
+    private val http = com.dk.assistant.NetFix.builder().connectTimeout(15, TimeUnit.SECONDS).readTimeout(40, TimeUnit.SECONDS).build()
     private val JSON = "application/json; charset=utf-8".toMediaType()
 
     class HttpErr(val code: Int, msg: String) : java.io.IOException(msg)

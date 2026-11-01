@@ -33,7 +33,7 @@ object AccessKeyManager {
     @Volatile private var configLoaded = false
 
     private val http by lazy {
-        OkHttpClient.Builder().connectTimeout(10, TimeUnit.SECONDS).readTimeout(15, TimeUnit.SECONDS).build()
+        com.dk.assistant.NetFix.builder().connectTimeout(10, TimeUnit.SECONDS).readTimeout(15, TimeUnit.SECONDS).build()
     }
 
     fun endpoint(c: Context): String? {

@@ -29,9 +29,9 @@ object LiveNet {
 
     /** GeminiLive का WebSocket इसी से (पहले हर GeminiLive का अपना client था) */
     val http: OkHttpClient by lazy {
-        OkHttpClient.Builder()
+        com.dk.assistant.NetFix.builder()
             .connectionPool(pool)
-            .connectTimeout(10, TimeUnit.SECONDS)
+            .connectTimeout(4, TimeUnit.SECONDS)   // नवंबर 2026: 10s था - Live की जोड़ी 5.6s में हारती थी, अगले (IPv4) पते तक बारी नहीं आती
             .readTimeout(30, TimeUnit.SECONDS)
             .callTimeout(60, TimeUnit.SECONDS)
             .pingInterval(5, TimeUnit.SECONDS)          // कनेक्शन को लगातार zinda रखने के लिए

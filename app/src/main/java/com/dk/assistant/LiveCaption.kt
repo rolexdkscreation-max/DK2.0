@@ -40,7 +40,7 @@ class LiveCaption(
         private const val URL = "wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent"
     }
 
-    private val http = OkHttpClient.Builder()
+    private val http = com.dk.assistant.NetFix.builder()
         .connectTimeout(10, TimeUnit.SECONDS)
         .readTimeout(0, TimeUnit.MILLISECONDS)
         .pingInterval(15, TimeUnit.SECONDS)

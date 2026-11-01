@@ -15,7 +15,7 @@ import java.util.concurrent.TimeUnit
  * Mcp-Session-Id server दे तो आगे हर कॉल में वही भेजते हैं; session खत्म (404) = फिर से initialize.
  */
 object McpClient {
-    private val http = OkHttpClient.Builder().connectTimeout(15, TimeUnit.SECONDS).readTimeout(60, TimeUnit.SECONDS).build()
+    private val http = com.dk.assistant.NetFix.builder().connectTimeout(15, TimeUnit.SECONDS).readTimeout(60, TimeUnit.SECONDS).build()
     private val JSON = "application/json".toMediaType()
 
     class Conn(val url: String, val token: String, var session: String)

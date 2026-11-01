@@ -157,7 +157,7 @@ class StoryAi(val provider: Provider, private val key: String, val model: String
 
     companion object {
         private val JSON = "application/json".toMediaType()
-        private val http = OkHttpClient.Builder().connectTimeout(15, TimeUnit.SECONDS)
+        private val http = com.dk.assistant.NetFix.builder().connectTimeout(15, TimeUnit.SECONDS)
             .readTimeout(150, TimeUnit.SECONDS).callTimeout(180, TimeUnit.SECONDS).build()
 
         /** "AI दिमाग" wali company. null = key/model nahi */

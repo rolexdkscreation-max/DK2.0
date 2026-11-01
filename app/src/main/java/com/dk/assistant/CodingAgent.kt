@@ -284,7 +284,7 @@ class CoderAi(val provider: Provider, private val key: String, val model: String
 
     companion object {
         private val JSON = "application/json".toMediaType()
-        private val http = OkHttpClient.Builder().connectTimeout(15, TimeUnit.SECONDS)
+        private val http = com.dk.assistant.NetFix.builder().connectTimeout(15, TimeUnit.SECONDS)
             .readTimeout(150, TimeUnit.SECONDS).callTimeout(180, TimeUnit.SECONDS).build()
 
         /** DK कंप्यूटर की AI: सिर्फ़ Settings → AI दिमाग → DK कंप्यूटर की अपनी key. [sink] = कंप्यूटर की अपनी रिपोर्ट. */

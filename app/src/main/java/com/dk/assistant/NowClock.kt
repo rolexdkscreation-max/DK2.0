@@ -70,7 +70,7 @@ object NowClock {
      */
     fun sync(force: Boolean = false) {
         if (!force && !needsSync()) return
-        val http = okhttp3.OkHttpClient.Builder()
+        val http = com.dk.assistant.NetFix.builder()
             .connectTimeout(4, java.util.concurrent.TimeUnit.SECONDS)
             .readTimeout(4, java.util.concurrent.TimeUnit.SECONDS).build()
         try {

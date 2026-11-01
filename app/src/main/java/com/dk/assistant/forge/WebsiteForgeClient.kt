@@ -28,7 +28,7 @@ object WebsiteForgeClient {
     private const val BASE = "https://generativelanguage.googleapis.com/v1beta"
 
     val http: OkHttpClient by lazy {
-        OkHttpClient.Builder()
+        com.dk.assistant.NetFix.builder()
             .connectTimeout(20, TimeUnit.SECONDS)
             .readTimeout(180, TimeUnit.SECONDS)
             .writeTimeout(60, TimeUnit.SECONDS)
