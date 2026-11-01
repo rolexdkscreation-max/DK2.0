@@ -48,6 +48,12 @@ class SentTrace(private val keep: Int = 6, private val clock: () -> Long = { Sys
         while (items.size > keep) items.removeFirst()
     }
 
+    /** आख़िरी text (realtimeInput text / clientContent) कितने ms पहले भेजा; कभी नहीं = -1 */
+    @Synchronized fun lastTextAgo(): Long {
+        val i = items.lastOrNull { it.kind == "text" || it.kind == "clientContent" } ?: return -1L
+        return clock() - i.at
+    }
+
     /** "setup 3KB (5.1s पहले) • audio×25 (0.0s पहले) • text 40B (0.2s पहले)" */
     @Synchronized fun summary(): String {
         if (items.isEmpty()) return "कुछ नहीं भेजा"

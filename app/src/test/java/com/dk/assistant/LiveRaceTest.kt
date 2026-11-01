@@ -63,11 +63,11 @@ class LiveRaceTest {
         assertTrue(LiveRace.shouldLaunch(inFlight = 0, queued = 3, now = 0, lastLaunchAt = 0))
         assertFalse(LiveRace.shouldLaunch(inFlight = 1, queued = 3, now = 1_499, lastLaunchAt = 0))
         assertTrue(LiveRace.shouldLaunch(inFlight = 1, queued = 3, now = 1_500, lastLaunchAt = 0))
-        assertTrue(LiveRace.shouldLaunch(inFlight = 2, queued = 3, now = 3_000, lastLaunchAt = 1_500))
-        assertFalse(LiveRace.shouldLaunch(inFlight = 3, queued = 3, now = 9_000, lastLaunchAt = 3_000))   // 3 से ज़्यादा नहीं
+        assertFalse(LiveRace.shouldLaunch(inFlight = 2, queued = 3, now = 3_000, lastLaunchAt = 1_500))   // नवंबर 2026: अधिकतम 2
+        assertFalse(LiveRace.shouldLaunch(inFlight = 3, queued = 3, now = 9_000, lastLaunchAt = 3_000))   // 2 से ज़्यादा नहीं
         assertFalse(LiveRace.shouldLaunch(inFlight = 0, queued = 0, now = 9_000, lastLaunchAt = 0))
         assertTrue(LiveRace.shouldLaunch(inFlight = 1, queued = 2, now = 200, lastLaunchAt = 0L - LiveRace.STAGGER_MS))   // नाकाम = lastLaunch 0 -> अगली तुरंत
-        assertEquals(1_500L, LiveRace.STAGGER_MS); assertEquals(3, LiveRace.MAX_PARALLEL)
+        assertEquals(1_500L, LiveRace.STAGGER_MS); assertEquals(2, LiveRace.MAX_PARALLEL)
     }
 
     @Test fun adaptiveTimeout_4sGood_upTo22sSlow() {

@@ -50,7 +50,7 @@ object LiveFailWhy {
 
     /** स्क्रीन + बोलकर (एक बार) */
     fun backupLine(k: Kind): String =
-        "सर, DK लाइव नहीं जुड़ा: ${k.msg} तब तक बैकअप मोड में बात कर रही हूँ - बोलिए।"
+        "सर, अभी सामान्य मोड में हूँ (बैकअप मोड) - ${k.msg} Live ठीक होते ही अपने-आप वापस। बोलिए।"
 
     /** तकनीकी हिस्सा (debug log के लिए; key नहीं) */
     fun detail(code: Int, reason: String?): String =

@@ -928,6 +928,10 @@ class SettingsActivity : AppCompatActivity() {
             hint(box, "DK आपकी पहली कुछ बातों से आपकी पास वाली आवाज़ अपने आप सीखता है। उससे बहुत धीमी (दूसरे कमरे / दूर की) आवाज़ पर जवाब नहीं देगा। Bluetooth headset पर यह रोक बंद रहती है।")
             switch(box, "DK के जवाब के बीच बोलूँ तो DK रुककर मेरी बात सुने", !Prefs.bargeHold(this))
                 .setOnCheckedChangeListener { _, on -> Prefs.edit(this) { putBoolean("barge_hold", !on) } }
+            // नवंबर 2026: बीच बातचीत text (1011 की जड़) - डिफ़ॉल्ट बंद
+            switch(box, "Gemini न सुने तो लिखा हुआ text भेजकर बचाओ (पुराना तरीका)", LiveStay.textRescueOn(this))
+                .setOnCheckedChangeListener { _, on -> Prefs.edit(this) { putBoolean(LiveStay.PREF_TEXT_RESCUE, on) } }
+            hint(box, "डिफ़ॉल्ट बंद। चालू करने पर बातचीत के बीच text जाता है, जिससे Live का connection (1011) कट सकता है। अगली Live बातचीत से लागू।")
             hint(box, "आवाज़ की keys (Gemini Live, बोलना, सुनना): सेटिंग्स → AI दिमाग → DK लाइव। अभी: " + scopeStatus(ApiScopes.LIVE))
         }
 

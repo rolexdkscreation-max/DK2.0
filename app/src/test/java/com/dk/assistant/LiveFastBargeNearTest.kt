@@ -71,7 +71,9 @@ class LiveFastBargeNearTest {
         assertEquals(1_000L, LiveRetry.fast(true, LiveRetry.liveOnMs(true, 0)))
         assertEquals(60_000L, LiveRetry.fast(false, LiveRetry.liveOnMs(false, 0)))     // सारी keys की limit खत्म
         val g = src("GeminiLive.kt")
-        assertTrue(g.contains("minOf(LiveRetry.FAST_MAX_MS, 500L shl quickDrops)"))
+        // नवंबर 2026 (मालिक): बीच में टूटना = 1, 2, 4, 8, 15s (+ random), कभी हार नहीं (पहले 1-2s और 7 बार के बाद हार)
+        assertTrue(g.contains("val wait = LiveStay.backoffMs(quickDrops)"))
+        assertFalse(g.contains("quickDrops >= 6) throw Fatal"))
         assertTrue(g.contains("delay(minOf(LiveRetry.FAST_MAX_MS, 500L shl fails))"))
         // v5.1 (मालिक): तय इंतज़ार की जगह (मॉडल × key) की दौड़. नवंबर 2026: हल्का मोड हटा - 20s तक दौड़, फिर साफ़ कारण + बैकअप मोड
         assertTrue(g.contains("withTimeoutOrNull(LiveRace.CONNECT_WAIT_MS) {\n                        while (!rc.winner.isCompleted && !rc.over)"))
