@@ -74,7 +74,7 @@ object WaCall {
         if (spoken.isBlank()) return "ASK: WhatsApp पर किसे $kind करूँ?"
         if (androidx.core.content.ContextCompat.checkSelfPermission(svc, android.Manifest.permission.READ_CONTACTS) != android.content.pm.PackageManager.PERMISSION_GRANTED)
             return "ERROR_PERM: WhatsApp कॉल के लिए DK को कॉन्टैक्ट पढ़ने की इजाज़त चाहिए - Settings → Apps → DK → Permissions → Contacts।"
-        val all = withContext(Dispatchers.IO) { try { rows(svc, video) } catch (e: Exception) { DKLog.d("WaCall rows: ${e.message}"); emptyList() } }
+        val all = withContext(Dispatchers.IO) { try { rows(svc, video) } catch (e: Exception) { DKLog.d("WaCall rows: ${e.message}"); DKBug.report("call", e, "WhatsApp contact ढूँढना"); emptyList() } }
         if (all.isEmpty()) return "ERROR_NO_CONTACT: फ़ोन के कॉन्टैक्ट में WhatsApp वाला कोई नहीं मिला (WhatsApp → Settings → Contacts sync चालू करें)।"
         val sd = digits(spoken)
         val hits = if (sd.length >= 6) all.filter { digits(it.number).endsWith(sd.takeLast(10)) }
@@ -94,6 +94,7 @@ object WaCall {
                     return "ERROR_NOT_INSTALLED: फ़ोन में WhatsApp नहीं मिला।"
                 } catch (e: Exception) {
                     DKLog.d("WaCall start: ${e.message}")
+                    DKBug.report("call", e, "WhatsApp call शुरू करना")
                     return "ERROR_LAUNCH: WhatsApp $kind नहीं खुल पाई।"
                 }
                 delay(2500)

@@ -8,6 +8,8 @@ import android.content.Intent
 import android.os.SystemClock
 import com.dk.assistant.CoderTeam
 import com.dk.assistant.DKAccessibilityService
+import com.dk.assistant.DKApp
+import com.dk.assistant.DKBug
 import com.dk.assistant.DKLog
 import com.dk.assistant.DKState
 import com.dk.assistant.GeminiLive
@@ -25,6 +27,8 @@ import org.json.JSONObject
  *  - रखता है: SharedPreferences में bug की छोटी रिपोर्ट (≤8 छिपाई हुई लाइनें), पूरा लॉग नहीं।
  *  - हर चीज़ try/catch में - Inspector कभी DK Live को crash नहीं कर सकता।
  *  - app का source code कभी नहीं बदलता; Coding Agent को सिर्फ़ मालिक की मंज़ूरी के बाद रिपोर्ट जाती है।
+ *  - नवंबर 2026 (मालिक): पूरे ऐप से जुड़ा - DKLog फ़ाइल + हर हिस्से की गलती (DKBug) + crash फ़ाइल + Android का
+ *    "ऐप क्यों बंद हुआ" रिकॉर्ड (ANR / memory). हर 20 मिनट जाँच; हटाओ / सब साफ़ / बाद में - मालिक तय करता है.
  */
 object Inspector {
 
@@ -35,8 +39,15 @@ object Inspector {
     private const val K_NEXT = "next"
     private const val K_RUNS = "runs"
     private const val K_LAST_SIG = "lastSig"
+    private const val K_FEED = "feedAt"
+    private const val K_CRASH = "crashAt"
+    private const val K_EXIT = "exitAt"
     private const val ALARM_ID = 7311
     const val HOUR_MS = 3600_000L
+    /** नवंबर 2026 (मालिक): "हर 20 मिनट पर स्कैन" */
+    const val SCAN_MS = 20 * 60_000L
+    /** दो अपने-आप जाँच के बीच कम से कम (alarm + service timer दोनों चलें तो दोहराव न हो) */
+    const val MIN_GAP_MS = 15 * 60_000L
 
     @Volatile var running = false; private set
     @Volatile var step = ""; private set
@@ -70,7 +81,7 @@ object Inspector {
     }
 
     /**
-     * एक जाँच। [auto]=true: हर घंटे वाली (कुछ नहीं बदला तो रिपोर्ट दोबारा नहीं बनती)।
+     * एक जाँच। [auto]=true: हर 20 मिनट वाली (कुछ नहीं बदला तो रिपोर्ट दोबारा नहीं बनती)।
      * [onStep] = UI पर प्रगति। कभी exception बाहर नहीं फेंकता।
      */
     @Synchronized
@@ -85,9 +96,11 @@ object Inspector {
             val stats = try { InspectorCore.parseStats(GeminiLive.stats) } catch (e: Exception) { InspectorCore.LiveStats("", emptyMap()) }
             val mic = try { Setup.hasMic(ctx) } catch (e: Exception) { null }
             val key = try { GeminiLive.available(ctx) } catch (e: Exception) { null }
-            p(35, "लॉग पढ़ रहा हूँ (क्रम और समय वैसे ही)…")
-            val events = try { InspectorCore.parseLog(DKLog.all()) } catch (e: Exception) { emptyList() }
-            val seen = sp(ctx).getString(K_SEEN, "").orEmpty().split(',').filter { it.isNotBlank() }.toSet()
+            p(35, "पूरे ऐप का लॉग पढ़ रहा हूँ (क्रम और समय वैसे ही)…")
+            val src = gather(ctx)
+            val events = try { InspectorCore.parseLog(src.text) } catch (e: Exception) { emptyList() }
+            // फ़ाइल वाले स्रोत समय से छँटते हैं (पहले पढ़ा = दोबारा नहीं आता); बस memory वाले लॉग को पुरानी "देखी" सूची चाहिए
+            val seen = if (src.fromFile) emptySet() else sp(ctx).getString(K_SEEN, "").orEmpty().split(',').filter { it.isNotBlank() }.toSet()
             p(55, "देरी के हिस्से जाँच रहा हूँ…")
             val lat = try {
                 InspectorCore.latency(LatencyBoard.all().map { InspectorCore.Lat(it.engine, it.firstPiece, it.firstVoice, it.play) },
@@ -98,7 +111,7 @@ object Inspector {
             p(85, "पुरानी रिपोर्टों से मिला रहा हूँ (दोहराव नहीं)…")
             val old = incidents(ctx)
             val m = InspectorCore.merge(old, found, now, appVersion(ctx))
-            // कुछ नहीं बदला (हर घंटे वाली जाँच) = वही रिपोर्ट दोबारा नहीं लिखनी
+            // कुछ नहीं बदला (अपने-आप वाली जाँच) = वही रिपोर्ट दोबारा नहीं लिखनी
             val sig = InspectorCore.hash(m.incidents.joinToString("|") { it.id + it.status + it.count + it.severity })
             val changed = sig != sp(ctx).getString(K_LAST_SIG, "")
             sp(ctx).edit().apply {
@@ -106,19 +119,67 @@ object Inspector {
                 putString(K_INC, InspectorCore.listToJson(m.incidents))
                 putString(K_SEEN, events.map { InspectorCore.lineKey(it) }.takeLast(400).joinToString(","))
                 putLong(K_LAST, now); putInt(K_RUNS, runs(ctx) + 1); putString(K_LAST_SIG, sig)
-                if (auto) putLong(K_NEXT, now + HOUR_MS)
+                putLong(K_FEED, src.feedAt); putLong(K_CRASH, src.crashAt); putLong(K_EXIT, src.exitAt)
+                putLong(K_NEXT, now + SCAN_MS)
             }.apply()
             p(95, "ज़रूरी बातें DK Live को भेज रहा हूँ…")
             deliverPending(ctx)
-            val open = m.incidents.count { it.status != Status.RESOLVED }
+            val open = m.incidents.count { isOpen(it) }
             val text = "जाँच पूरी: ${events.size} लॉग लाइनें, ${found.size} नतीजे • नए ${m.fresh.size} • फिर से आए ${m.reopened.size} • खुले कुल $open"
             p(100, text)
-            DKLog.d("DK Inspector: " + (if (auto) "हर घंटे की" else "गहरी") + " जाँच पूरी - नए ${m.fresh.size}, खुले $open")
+            DKLog.d("DK Inspector: " + (if (auto) "हर 20 मिनट की" else "गहरी") + " जाँच पूरी - नए ${m.fresh.size}, खुले $open")
             return Result(true, m.fresh.size, m.reopened.size, open, text, changed)
         } catch (e: Throwable) {
             p(100, "जाँच पूरी नहीं हो सकी")
             return Result(false, 0, 0, 0, "जाँच पूरी नहीं हो सकी: ${InspectorCore.redact(e.javaClass.simpleName)}", false)
         } finally { running = false }
+    }
+
+    fun isOpen(i: Incident) = i.status != Status.RESOLVED && i.status != Status.QUIET && i.status != Status.DISMISSED
+
+    data class Source(val text: String, val fromFile: Boolean, val feedAt: Long, val crashAt: Long, val exitAt: Long)
+
+    /**
+     * पूरे ऐप से नई लाइनें (सिर्फ़ पढ़ना):
+     *  1. DKLog + DKBug फ़ाइल (ऐप बंद होने पर भी बचती है) - पिछली जाँच के बाद वाली ही
+     *  2. last_crash.txt - नया crash हो तो (पूरा stack वहाँ है)
+     *  3. Android का exit रिकॉर्ड (Android 11+) - ANR / native crash / memory से बंद
+     * फ़ाइल न हो (पहली बार) तो पुराना तरीका: DKLog.all() (memory की आख़िरी 300 लाइन)
+     */
+    private fun gather(c: Context): Source {
+        val p = sp(c)
+        val feedAfter = p.getLong(K_FEED, 0)
+        val files = try { (DKBug.logFile?.read() ?: "") + (DKBug.bugFile?.read() ?: "") } catch (_: Throwable) { "" }
+        val sb = StringBuilder()
+        var feedAt = feedAfter
+        val fromFile = files.isNotBlank()
+        if (fromFile) {
+            val (t, at) = InspectorCore.feedSince(files, feedAfter); sb.append(t); feedAt = at
+        } else sb.append(try { DKLog.all() } catch (_: Throwable) { "" })
+        var crashAt = p.getLong(K_CRASH, 0)
+        try {
+            val f = java.io.File(c.filesDir, "last_crash.txt")
+            if (f.exists() && f.lastModified() > crashAt) {
+                InspectorCore.crashEvent(DKApp.lastCrash(c))?.let { sb.append('\n').append(InspectorCore.clock(f.lastModified())).append(' ').append(InspectorCore.redact(it)) }
+                crashAt = f.lastModified()
+            }
+        } catch (_: Throwable) {}
+        var exitAt = p.getLong(K_EXIT, 0)
+        try {
+            if (android.os.Build.VERSION.SDK_INT >= 30) {
+                val am = c.getSystemService(Context.ACTIVITY_SERVICE) as android.app.ActivityManager
+                val first = exitAt == 0L
+                for (x in am.getHistoricalProcessExitReasons(c.packageName, 0, 10).sortedBy { it.timestamp }) {
+                    if (x.timestamp <= exitAt) continue
+                    exitAt = maxOf(exitAt, x.timestamp)
+                    if (first) continue // पहली बार = पुराना इतिहास नहीं, बस आगे से
+                    InspectorCore.exitEvent(x.reason, x.description)?.let {
+                        sb.append('\n').append(InspectorCore.clock(x.timestamp)).append(' ').append(InspectorCore.redact(it))
+                    }
+                }
+            }
+        } catch (_: Throwable) {}
+        return Source(sb.toString(), fromFile, feedAt, crashAt, exitAt)
     }
 
     /** ज़रूरी नई गड़बड़ी: DK Live चालू और खाली हो तो आसान हिंदी में बताए; एक गड़बड़ी एक ही बार */
@@ -129,11 +190,14 @@ object Inspector {
             val xs = incidents(c)
             // नवंबर 2026: Live अभी जुड़ा/टिका न हो (दौड़, दोबारा जुड़ना, बैकअप मोड) = कुछ नहीं भेजो - बाद की जाँच में फिर
             if (DKAccessibilityService.instance?.gemLive?.stableFor(InspectorCore.LIVE_STABLE_MS) != true) return
-            val pick = xs.filter { InspectorCore.shouldNotify(it) && InspectorCore.liveDeliverable(it) }.maxByOrNull { it.severity.rank } ?: return
             val now = System.currentTimeMillis()
+            val pick = xs.filter { InspectorCore.shouldNotify(it, now) && InspectorCore.liveDeliverable(it) }.maxByOrNull { it.severity.rank } ?: return
             LiveReport.note(InspectorCore.liveSummary(pick) + " Explain this to the owner now in simple Hindi (क्या हुआ, क्यों, किस फ़ीचर पर असर, कैसे ठीक होगा). " +
-                "Then ask: \"सर, क्या मैं पूरी रिपोर्ट Coding Agent को दे दूँ?\" Only if he clearly says yes (e.g. 'ठीक है, Coding Agent को दे दो') " +
-                "call dk_inspector(action=send_to_coder, id=${pick.id}, approved=true). For follow-up questions use dk_inspector(action=report, id=${pick.id}).")
+                "Then ask: \"सर, इसे Coding Agent को दे दूँ, हटा दूँ, या बाद में बताऊँ?\" Act only on his clear answer: " +
+                "give to coder (e.g. 'ठीक है, Coding Agent को दे दो') -> dk_inspector(action=send_to_coder, id=${pick.id}, approved=true); " +
+                "remove (e.g. 'हटा दो', 'ठीक हो गया') -> dk_inspector(action=dismiss, id=${pick.id}); " +
+                "later (e.g. 'बाद में') -> dk_inspector(action=later, id=${pick.id}). Clear the whole list only if he asks: dk_inspector(action=clear_all). " +
+                "For follow-up questions use dk_inspector(action=report, id=${pick.id}).")
             save(c, xs.map {
                 if (it.id != pick.id) it else it.copy(notifiedAt = now, notifiedSeverity = it.severity.rank,
                     status = if (it.status == Status.FIXING) it.status else Status.AWAITING_APPROVAL)
@@ -146,6 +210,24 @@ object Inspector {
     }
 
     fun clearResolved(c: Context) { try { save(c, incidents(c).filter { it.status != Status.RESOLVED }) } catch (_: Throwable) {} }
+
+    /** मालिक: "यह हटा दो" - सूची से जाता है; फिर आए तो "फिर से आया" बनकर लौटता है */
+    fun dismiss(c: Context, id: String): Boolean = try {
+        val xs = incidents(c); val ok = xs.any { it.id.equals(id, true) }
+        if (ok) save(c, InspectorCore.dismiss(xs, id, System.currentTimeMillis())); ok
+    } catch (_: Throwable) { false }
+
+    /** मालिक: "सब साफ़ करो" */
+    fun clearAll(c: Context): Int = try {
+        val xs = incidents(c); val n = xs.count { InspectorCore.visible(it) }
+        save(c, InspectorCore.clearAll(xs, System.currentTimeMillis())); n
+    } catch (_: Throwable) { 0 }
+
+    /** मालिक: "बाद में बताना" */
+    fun later(c: Context, id: String): Boolean = try {
+        val xs = incidents(c); val ok = xs.any { it.id.equals(id, true) }
+        if (ok) save(c, InspectorCore.later(xs, id, System.currentTimeMillis())); ok
+    } catch (_: Throwable) { false }
 
     /**
      * मंज़ूरी के बाद ही Coding Agent। [approved] = मालिक ने साफ़ हाँ कहा ("ठीक है, Coding Agent को दे दो")।
@@ -173,17 +255,21 @@ object Inspector {
             } ?: "No report with that id. " + listText(c)
             "ask" -> "Answer the owner from this real DK Inspector data only (Hindi):\n" + InspectorCore.answer(a.optString("question"), snapshot(c))
             "send_to_coder" -> sendToCoder(c, a.optString("id"), a.optBoolean("approved", false))
+            "dismiss" -> if (dismiss(c, a.optString("id"))) "REMOVED ${a.optString("id").uppercase()}. Tell the owner: हटा दिया; अगर यह गड़बड़ी फिर आई तो मैं दोबारा बताऊँगा।"
+                else "No report with that id. " + listText(c)
+            "later" -> if (later(c, a.optString("id"))) "OK. Tell the owner: ठीक है, 2 घंटे बाद फिर याद दिलाऊँगा।" else "No report with that id. " + listText(c)
+            "clear_all" -> clearAll(c).let { "CLEARED $it reports. Tell the owner: सारी गड़बड़ियाँ सूची से साफ़ कर दीं; कोई फिर आई तो दोबारा बताऊँगा।" }
             else -> listText(c)
         }
     } catch (e: Throwable) { "DK Inspector अभी नहीं चल पाया (${e.javaClass.simpleName})। Settings → Debug → DK Inspector देखें।" }
 
     fun listText(c: Context): String {
-        val xs = incidents(c)
+        val xs = incidents(c).filter { InspectorCore.visible(it) }
         if (xs.isEmpty()) return "DK Inspector: अभी कोई गड़बड़ी दर्ज नहीं" + (if (lastRun(c) == 0L) " (अभी तक जाँच नहीं हुई - action=inspect)" else "")
         return "DK Inspector reports:\n" + xs.take(10).joinToString("\n") { "${it.id} [${it.severity.name}/${it.status.name}] ${it.title} (${it.count} बार)" }
     }
 
-    // ------------------------------------------------------------------ हर घंटे (best-effort, बैटरी-हल्का)
+    // ------------------------------------------------------------------ हर 20 मिनट (best-effort, बैटरी-हल्का)
 
     /** AlarmManager inexact + ELAPSED_REALTIME (फ़ोन को जगाता नहीं) - वही तरीका जो LocalMemory.scheduleDaily में है */
     fun schedule(c: Context) {
@@ -192,19 +278,40 @@ object Inspector {
             val am = ctx.getSystemService(Context.ALARM_SERVICE) as AlarmManager
             val pi = PendingIntent.getBroadcast(ctx, ALARM_ID, Intent(ctx, InspectorReceiver::class.java),
                 PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
-            am.setInexactRepeating(AlarmManager.ELAPSED_REALTIME, SystemClock.elapsedRealtime() + AlarmManager.INTERVAL_HOUR,
-                AlarmManager.INTERVAL_HOUR, pi)
-            if (nextRun(ctx) < System.currentTimeMillis()) sp(ctx).edit().putLong(K_NEXT, System.currentTimeMillis() + HOUR_MS).apply()
+            am.setInexactRepeating(AlarmManager.ELAPSED_REALTIME, SystemClock.elapsedRealtime() + SCAN_MS, SCAN_MS, pi)
+            if (nextRun(ctx) < System.currentTimeMillis()) sp(ctx).edit().putLong(K_NEXT, System.currentTimeMillis() + SCAN_MS).apply()
         } catch (_: Throwable) {}
     }
+
+    /** अपने-आप वाली जाँच - पिछली 15 मिनट से कम पहले हुई हो तो नहीं (alarm और service timer दोनों से आ सकती है) */
+    fun autoInspect(c: Context) {
+        try {
+            if (System.currentTimeMillis() - lastRun(c) < MIN_GAP_MS) return
+            inspect(c, auto = true)
+        } catch (_: Throwable) {}
+    }
+
+    // Android inexact alarm को टाल सकता है - Accessibility service चालू हो तो उसका अपना 20 मिनट timer पक्का चलाता है
+    @Volatile private var timer: java.util.concurrent.ScheduledExecutorService? = null
+
+    fun startTimer(c: Context) {
+        try {
+            if (timer != null) return
+            val ctx = c.applicationContext
+            timer = java.util.concurrent.Executors.newSingleThreadScheduledExecutor { r -> Thread(r, "dk-inspector-scan").apply { isDaemon = true } }
+                .also { it.scheduleWithFixedDelay({ autoInspect(ctx) }, 2, SCAN_MS / 60_000L, java.util.concurrent.TimeUnit.MINUTES) }
+        } catch (_: Throwable) {}
+    }
+
+    fun stopTimer() { try { timer?.shutdownNow() } catch (_: Throwable) {}; timer = null }
 }
 
-/** हर घंटे वाली जाँच - अलग thread पर, ताकि DK Live/मुख्य thread न रुके */
+/** हर 20 मिनट वाली जाँच - अलग thread पर, ताकि DK Live/मुख्य thread न रुके */
 class InspectorReceiver : BroadcastReceiver() {
     override fun onReceive(c: Context, i: Intent) {
         val p = goAsync()
         Thread {
-            try { Inspector.inspect(c, auto = true) } catch (_: Throwable) {} finally { try { p.finish() } catch (_: Throwable) {} }
+            try { Inspector.autoInspect(c) } catch (_: Throwable) {} finally { try { p.finish() } catch (_: Throwable) {} }
         }.start()
     }
 }

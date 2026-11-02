@@ -31,6 +31,7 @@ object InspectorCard {
 
     private fun sevColor(i: Incident) = when {
         i.status == Status.RESOLVED -> 0xFF4ADE80.toInt()
+        i.status == Status.QUIET -> 0x99FFFFFF.toInt()   // नवंबर 2026: 24 घंटे शांत = हल्का (धुंधला)
         i.severity == InspectorCore.Severity.CRITICAL -> 0xFFFF4D6D.toInt()
         i.severity == InspectorCore.Severity.HIGH -> 0xFFFF9F43.toInt()
         i.severity == InspectorCore.Severity.MEDIUM -> 0xFFFFD166.toInt()
@@ -51,12 +52,15 @@ object InspectorCard {
 
         fun refresh() {
             try {
-                val xs = Inspector.incidents(a)
+                // नवंबर 2026: आपने हटाया = सूची में नहीं (फिर आए तो "फिर से आया" बनकर लौटता है)
+                val xs = Inspector.incidents(a).filter { InspectorCore.visible(it) }
+                val open = xs.filter { Inspector.isOpen(it) }
                 status.text = "Inspector Status: " + (if (Inspector.running) "जाँच चल रही है…" else "तैयार (सिर्फ़ पढ़ता है, कोड नहीं बदलता)") +
                     "\nLast Inspection: " + fmt(Inspector.lastRun(a)) +
-                    "\nNext Scheduled Inspection: " + fmt(Inspector.nextRun(a)) + " (लगभग हर घंटे, बैटरी बचाने के लिए फ़ोन तय करता है)" +
-                    "\nTotal Detected Issues: ${xs.size} • Critical: ${xs.count { it.severity == InspectorCore.Severity.CRITICAL && it.status != Status.RESOLVED }}" +
-                    " • Resolved: ${xs.count { it.status == Status.RESOLVED }}"
+                    "\nNext Scheduled Inspection: " + fmt(Inspector.nextRun(a)) + " (हर 20 मिनट, पूरे ऐप की)" +
+                    "\nTotal Detected Issues: ${open.size} खुली • Critical: ${open.count { it.severity == InspectorCore.Severity.CRITICAL }}" +
+                    " • Resolved: ${xs.count { it.status == Status.RESOLVED }} • शांत: ${xs.count { it.status == Status.QUIET }}" +
+                    "\n24 घंटे न दिखे = शांत; शांत / हल / हटाई = 3 दिन बाद अपने-आप साफ़"
                 list.removeAllViews()
                 if (xs.isEmpty()) list.addView(tv(12f, 0x80FFFFFF.toInt()).apply { text = "Bug Reports: अभी कोई नहीं" })
                 xs.forEach { i -> list.addView(item(a, i, dp, button, row) { refresh() }) }
@@ -92,6 +96,14 @@ object InspectorCard {
                 ans.visibility = View.VISIBLE; ans.text = r
             }
         }, button("हल हुई हटाएँ") { Inspector.clearResolved(a); refresh() }))
+        row(box, arrayOf(button("सब साफ़ करें") {
+            AlertDialog.Builder(a).setTitle("सारी Bug Reports साफ़ कर दूँ?")
+                .setMessage("सूची खाली हो जाएगी। कोई गड़बड़ी फिर आई तो DK Inspector उसे दोबारा \"फिर से आया\" बनाकर दिखाएगा।")
+                .setPositiveButton("हाँ, सब साफ़") { _, _ ->
+                    val n = Inspector.clearAll(a)
+                    Toast.makeText(a, "$n रिपोर्ट साफ़ कीं", Toast.LENGTH_SHORT).show(); refresh()
+                }.setNegativeButton("नहीं", null).show()
+        }))
         box.addView(ans)
         box.addView(tv(13f, 0xB3FFFFFF.toInt()).apply { text = "Bug Reports" })
         box.addView(list)
@@ -107,6 +119,7 @@ object InspectorCard {
         v.addView(TextView(a).apply {
             text = "● ${i.id} • ${i.title}"; textSize = 14f; setTextColor(sevColor(i))
         })
+        if (i.status == Status.QUIET) v.alpha = 0.6f
         v.addView(TextView(a).apply {
             text = "${i.severity.hi} • ${i.status.hi} • ${i.component.hi} • ${i.count} बार • ${i.certainty.name}"
             textSize = 11f; setTextColor(0xB3FFFFFF.toInt())
@@ -134,6 +147,11 @@ object InspectorCard {
                 }.setNegativeButton("नहीं", null).show()
         }
         row(v, btns.toTypedArray())
+        // नवंबर 2026 (मालिक): ठीक हो गया / नहीं चाहिए = हटाओ
+        row(v, arrayOf(button("हटाएँ") {
+            Inspector.dismiss(a, i.id)
+            Toast.makeText(a, "हटा दिया - फिर आया तो दोबारा दिखेगा", Toast.LENGTH_SHORT).show(); refresh()
+        }))
         val wrap = LinearLayout(a).apply { orientation = LinearLayout.VERTICAL; setPadding(0, (8 * dp).toInt(), 0, 0) }
         wrap.addView(v)
         return wrap

@@ -77,7 +77,7 @@ class CallManager(private val ctx: Context, private val onRinging: (String) -> U
         try {
             tm.listen(l, PhoneStateListener.LISTEN_CALL_STATE)
             listener = l
-        } catch (e: Exception) { DKLog.d("Call listener: ${e.message}") }
+        } catch (e: Exception) { DKLog.d("Call listener: ${e.message}"); DKBug.report("call", e, "कॉल सुनने वाला शुरू करना") }
     }
 
     @Suppress("DEPRECATION")
@@ -107,7 +107,7 @@ class CallManager(private val ctx: Context, private val onRinging: (String) -> U
         if (Build.VERSION.SDK_INT >= 26 && granted(Manifest.permission.ANSWER_PHONE_CALLS)) {
             try {
                 ctx.getSystemService(TelecomManager::class.java)?.acceptRingingCall(); return true
-            } catch (e: Exception) { DKLog.d("answer: ${e.message}") }
+            } catch (e: Exception) { DKLog.d("answer: ${e.message}"); DKBug.report("call", e, "कॉल उठाना") }
         }
         return false
     }
@@ -120,7 +120,7 @@ class CallManager(private val ctx: Context, private val onRinging: (String) -> U
             try {
                 @Suppress("DEPRECATION")
                 return ctx.getSystemService(TelecomManager::class.java)?.endCall() == true
-            } catch (e: Exception) { DKLog.d("end: ${e.message}") }
+            } catch (e: Exception) { DKLog.d("end: ${e.message}"); DKBug.report("call", e, "कॉल काटना") }
         }
         return false
     }
@@ -128,7 +128,7 @@ class CallManager(private val ctx: Context, private val onRinging: (String) -> U
     /** v4.1: कॉल में अपना माइक बंद/चालू (SIM कॉल). false = फ़ोन ने नहीं माना */
     fun muteApi(on: Boolean): Boolean {
         val am = ctx.getSystemService(AudioManager::class.java) ?: return false
-        return try { am.isMicrophoneMute = on; am.isMicrophoneMute == on } catch (e: Exception) { DKLog.d("mute: ${e.message}"); false }
+        return try { am.isMicrophoneMute = on; am.isMicrophoneMute == on } catch (e: Exception) { DKLog.d("mute: ${e.message}"); DKBug.report("call", e, "माइक mute"); false }
     }
 
     @Suppress("DEPRECATION")
@@ -141,7 +141,7 @@ class CallManager(private val ctx: Context, private val onRinging: (String) -> U
                 else am.clearCommunicationDevice()
             }
             am.isSpeakerphoneOn = on
-        } catch (e: Exception) { DKLog.d("speaker: ${e.message}") }
+        } catch (e: Exception) { DKLog.d("speaker: ${e.message}"); DKBug.report("call", e, "speaker चालू/बंद") }
     }
 
     /** Speaker abhi chalu hai? (pata na chale to null) */

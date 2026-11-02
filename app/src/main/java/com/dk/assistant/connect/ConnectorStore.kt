@@ -101,13 +101,13 @@ object ConnectorStore {
     private fun seal(plain: String): String? = try {
         val ci = Cipher.getInstance("AES/GCM/NoPadding"); ci.init(Cipher.ENCRYPT_MODE, key())
         Base64.encodeToString(Box.pack(ci.iv, ci.doFinal(plain.toByteArray(Charsets.UTF_8))), Base64.NO_WRAP)
-    } catch (e: Exception) { com.dk.assistant.DKLog.d("कनेक्टर: token बंद नहीं हुआ (${e.javaClass.simpleName})"); null }
+    } catch (e: Exception) { com.dk.assistant.DKLog.d("कनेक्टर: token बंद नहीं हुआ (${e.javaClass.simpleName})"); com.dk.assistant.DKBug.report("connector", e, "token सुरक्षित रखना"); null }
 
     private fun open(stored: String): String? = try {
         val (iv, ct) = Box.unpack(Base64.decode(stored, Base64.NO_WRAP)) ?: throw IllegalStateException("bad box")
         val ci = Cipher.getInstance("AES/GCM/NoPadding"); ci.init(Cipher.DECRYPT_MODE, key(), GCMParameterSpec(128, iv))
         String(ci.doFinal(ct), Charsets.UTF_8)
-    } catch (e: Exception) { com.dk.assistant.DKLog.d("कनेक्टर: token खुला नहीं (${e.javaClass.simpleName})"); null }
+    } catch (e: Exception) { com.dk.assistant.DKLog.d("कनेक्टर: token खुला नहीं (${e.javaClass.simpleName})"); com.dk.assistant.DKBug.report("connector", e, "token खोलना"); null }
 }
 
 /** [iv की लंबाई 1 byte][iv][ciphertext] - शुद्ध, test होता है */

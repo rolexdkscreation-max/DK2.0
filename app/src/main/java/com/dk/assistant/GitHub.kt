@@ -356,7 +356,7 @@ class GitHub(private val token: String) {
             val steps = j.optJSONArray("steps") ?: JSONArray()
             val failedStep = (0 until steps.length()).map { steps.getJSONObject(it) }.firstOrNull { it.optString("conclusion") == "failure" }?.optString("name") ?: "?"
             sb.append("JOB: ${j.optString("name")} • FAILED STEP: $failedStep\n")
-            val log = try { get("/repos/$repo/actions/jobs/${j.optLong("id")}/logs") } catch (e: Exception) { "" }
+            val log = try { get("/repos/$repo/actions/jobs/${j.optLong("id")}/logs") } catch (e: Exception) { DKBug.report("github", e, "build का लॉग पढ़ना"); "" }
             // v3.89: असली एरर सबसे ऊपर (फ़ाइल:लाइन के साथ), runner के path रिपो वाले, बेकार Task/warning लाइनें हटीं
             sb.append(BuildLog.digest(log, 30_000)).append("\n")
         }
