@@ -28,7 +28,8 @@ class PiperFastStartTest {
         assertEquals("एक दो तीन चार पाँच", out[0])
         assertEquals(10, TextChunker.words(out[1]))
         assertEquals(16, TextChunker.words(out[2]))
-        assertEquals(16, TextChunker.words(out[3]))
+        assertEquals(3, out.size)
+        assertEquals(15, TextChunker.words(c.flush()!!))        // बचा = आख़िरी टुकड़ा
     }
 
     @Test fun piperFirstCommaAfterThreeWords() {
