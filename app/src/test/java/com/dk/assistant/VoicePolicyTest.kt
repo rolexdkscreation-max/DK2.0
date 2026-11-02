@@ -41,7 +41,7 @@ class VoicePolicyTest {
     }
 
     @Test fun liveAndPipelineDoNotUsePhoneVoice() {
-        assertFalse(src("GeminiLive.kt").contains("speaker.speakGoogle("))
+        assertFalse(LiveSrc.all().contains("speaker.speakGoogle("))
         assertFalse(src("voice/engine/SpeechPipeline.kt").contains("hooks.phoneSay("))
     }
 }

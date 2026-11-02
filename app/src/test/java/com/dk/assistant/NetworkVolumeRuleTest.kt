@@ -59,7 +59,7 @@ class NetworkVolumeRuleTest {
         assertTrue(src("DKApp.kt").contains("NetFix.install(this)"))
         // Live की जोड़ी 5.6s में हारती है - connect 4s ताकि अगला पता भी आज़माया जाए
         assertTrue(src("LiveNet.kt").contains(".connectTimeout(4, TimeUnit.SECONDS)"))
-        assertTrue(src("GeminiLive.kt").contains("DkDns.reportUnreachable(LIVE_HOST)"))
+        assertTrue(LiveSrc.all().contains("DkDns.reportUnreachable(LIVE_HOST)"))
         assertTrue(src("voice/engine/EdgeTtsEngine.kt").contains("DkDns.reportUnreachable(\"speech.platform.bing.com\")"))
     }
 
@@ -72,7 +72,7 @@ class NetworkVolumeRuleTest {
         assertTrue(sp.contains("if (!VolumeRule.AUTO_CHANGE) return       // मालिक (नवंबर 2026): कॉल की आवाज़"))
         assertTrue(sp.contains("DK खुद नहीं बढ़ाएगा"))
         assertTrue(src("VoiceListener.kt").contains("if (on && !VolumeRule.AUTO_CHANGE) return"))
-        assertTrue(src("GeminiLive.kt").contains("if (VolumeRule.AUTO_CHANGE) track?.let { try { it.setVolume(SpeakerBoost.SUSPECT_VOLUME) }"))
+        assertTrue(LiveSrc.all().contains("if (VolumeRule.AUTO_CHANGE) track?.let { try { it.setVolume(SpeakerBoost.SUSPECT_VOLUME) }"))
         // यूज़र के कहने पर आवाज़ बदलना अब भी चलता है
         assertTrue(src("DeviceActions.kt").contains("ADJUST_LOWER"))
     }

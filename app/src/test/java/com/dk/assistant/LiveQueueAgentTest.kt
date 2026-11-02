@@ -162,7 +162,7 @@ class LiveQueueAgentTest {
         .first { it.exists() }.readText()
 
     @Test fun liveWiresQueueAndAgentCheck() {
-        val g = src("GeminiLive.kt")
+        val g = LiveSrc.all()
         assertTrue(g.contains("BargeGate.State.HOLD ->"))
         assertTrue(g.contains("flushAsks(now)"))
         assertTrue(g.contains("if (!wasDropping && !agentCheck()) promiseCheck()"))

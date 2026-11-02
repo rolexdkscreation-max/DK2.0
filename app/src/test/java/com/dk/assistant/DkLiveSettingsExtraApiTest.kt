@@ -41,7 +41,7 @@ class DkLiveSettingsExtraApiTest {
         assertTrue(LiveConnectNotice.forStop("Gemini Live की फ्री लिमिट खत्म", false).contains("लिमिट"))
         val s = src("DKAccessibilityService.kt")
         assertTrue(s.contains("if (userLive) liveTroubleSay("))
-        val g = src("GeminiLive.kt")
+        val g = LiveSrc.all()
         assertTrue(g.contains("LiveConnectNotice.shouldTell(fails, svc.liveTroubleShown)"))
         assertTrue(g.contains("DKState.reply(LiveConnectNotice.BACK)"))
     }
@@ -93,7 +93,7 @@ class DkLiveSettingsExtraApiTest {
         val cat = DkSettings.catalog { false }
         assertTrue(cat.contains("[wake]: OFF"))
         assertTrue(cat.contains("AI दिमाग • Extra API"))
-        val g = src("GeminiLive.kt")
+        val g = LiveSrc.all()
         assertTrue(g.contains("put(\"name\", \"dk_settings\")"))
         assertTrue(g.contains("\"dk_settings\" -> DkSettingsApply.run(svc, args)"))
         assertTrue("dk_settings" in LeakedCall.TOOLS)

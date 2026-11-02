@@ -21,7 +21,7 @@ class TaskFirstVoiceTest {
         assertEquals(DoneGate.Verdict.DROP, TaskFirst.beforeToolCommand("अच्छा, सुनो। मैं अभी यूट्यूब खोलता हूँ"))
         // काम के लिए ज़रूरी सवाल बचता है
         assertEquals(DoneGate.Verdict.PLAY, TaskFirst.beforeToolCommand("किसे भेजूँ सर?"))
-        assertTrue(src("GeminiLive.kt").contains("TaskFirst.beforeToolCommand(heldActText())"))
+        assertTrue(LiveSrc.all().contains("TaskFirst.beforeToolCommand(heldActText())"))
     }
 
     @Test fun normalTalkIsNotHeldLong() {
@@ -36,7 +36,7 @@ class TaskFirstVoiceTest {
         assertTrue(TaskFirst.release(true, 200, "किसको मैसेज करूँ?"))
         assertFalse(TaskFirst.release(true, 1_000, "ठीक है"))
         assertTrue(TaskFirst.release(true, TaskFirst.CMD_TALK_MS, "माफ़ करना, यह ऐप फ़ोन में नहीं है"))
-        val g = src("GeminiLive.kt")
+        val g = LiveSrc.all()
         assertTrue(g.contains("TaskFirst.release(actCommand && !actAfterTool, System.currentTimeMillis() - actHoldAt"))
         assertTrue(g.contains("actHold = true; actHoldAt = now"))
     }
@@ -55,7 +55,7 @@ class TaskFirstVoiceTest {
         val pipe = src("voice/engine/SpeechPipeline.kt")
         assertTrue(pipe.contains("hooks.onSilent(s.text)"))
         assertFalse(pipe.contains("hooks.phoneSay("))          // पुराना नियम: फ़ोन की अपनी आवाज़ नहीं
-        val g = src("GeminiLive.kt")
+        val g = LiveSrc.all()
         assertTrue(g.contains("override fun onSilent("))
         assertTrue(g.contains("System.currentTimeMillis() < splitOffUntil"))
         assertTrue(g.contains("SilentVoice.resayNote("))

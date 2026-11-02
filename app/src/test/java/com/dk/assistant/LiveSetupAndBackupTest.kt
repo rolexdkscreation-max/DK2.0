@@ -28,9 +28,9 @@ class LiveSetupAndBackupTest {
     }
 
     @Test fun source_setupUsesRules() {
-        val g = src("GeminiLive.kt")
+        val g = LiveSrc.all()
         assertTrue(g.contains("connText = LiveSetupRules.askText(m, split = true)"))
-        assertTrue(g.contains("private fun textFor(m: String): Boolean = LiveSetupRules.askText(m, connSplit)"))
+        assertTrue(g.contains("internal fun GeminiLive.textFor(m: String): Boolean = LiveSetupRules.askText(m, connSplit)"))
         assertTrue(g.contains("ex.lang && LiveSetupRules.sendLanguageCode(m)"))
         assertTrue(g.contains("LiveSetupRules.sendAffective(m)) put(\"enableAffectiveDialog\""))
         assertTrue(g.contains(".apply { if (!txt) put(\"outputAudioTranscription\", JSONObject()) }"))   // Gemini TTS इसी लिखावट को बोलता है
@@ -70,7 +70,7 @@ class LiveSetupAndBackupTest {
         assertTrue(LiveFailWhy.Kind.UNREACHABLE.msg.contains("VPN"))
         assertFalse(LiveFailWhy.classify(0, "सारी जोड़ियाँ अभी रुकी हुई हैं (अभी-अभी नाकाम)") == LiveFailWhy.Kind.QUOTA)
         assertEquals(LiveFailWhy.Kind.SLOW, LiveFailWhy.classify(0, "setup का जवाब 5 सेकंड में नहीं आया"))
-        val g = src("GeminiLive.kt")
+        val g = LiveSrc.all()
         assertFalse(g.contains("गलत key / limit / अभी-अभी नाकाम"))
         assertTrue(g.contains("r.opened.incrementAndGet()"))
         assertTrue(g.contains("kind = LiveFailWhy.Kind.UNREACHABLE"))
@@ -87,7 +87,7 @@ class LiveSetupAndBackupTest {
     }
 
     @Test fun source_lightModeGone_backupWired() {
-        val s = src("DKAccessibilityService.kt"); val g = src("GeminiLive.kt")
+        val s = src("DKAccessibilityService.kt"); val g = LiveSrc.all()
         for (bad in listOf("lightMode", "enterLight(", "lightBack(", "hearLight(", "LINK_LIGHT")) assertFalse(bad, s.contains(bad))
         assertFalse(src("DKState.kt").contains("LINK_LIGHT"))
         assertFalse(src("LiveRace.kt").contains("LIGHT_AFTER_MS") || src("LiveRace.kt").contains("BACKGROUND_EVERY_MS"))

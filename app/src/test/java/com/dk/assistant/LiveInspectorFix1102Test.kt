@@ -58,7 +58,7 @@ class LiveInspectorFix1102Test {
     }
 
     @Test fun wiredInGeminiLive() {
-        val s = src("GeminiLive.kt")
+        val s = LiveSrc.all()
         assertTrue(s.contains("LiveStay.demoteKnown1011(LiveModelRank.order(found, FALLBACK_MODELS, lat))"))
         assertTrue(s.contains("val safe = LiveStay.safeOrder(models) { broken1011.isBroken(it, now) }"))
         assertTrue(s.contains("code == 1011 && LiveStay.known1011(model)"))

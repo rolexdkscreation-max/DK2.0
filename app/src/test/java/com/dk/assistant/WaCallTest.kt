@@ -52,7 +52,7 @@ class WaCallTest {
     }
 
     @Test fun live_tool_hasCallActions_andResultHonest() {
-        val src = listOf(java.io.File("src/main/java/com/dk/assistant/GeminiLive.kt"), java.io.File("app/src/main/java/com/dk/assistant/GeminiLive.kt")).first { it.exists() }.readText()
+        val src = LiveSrc.all()
         assert(src.contains(".put(\"voice_call\").put(\"video_call\")"))
         val q = QuickCommands.Quick(WaCall.toJson(WaCall.Cmd("राहुल", false)), "")
         assert(LiveFast.quickResult(q, "ASK: WhatsApp पर किसे कॉल करूँ - Rahul या Rahul Sharma?", false).startsWith("NEEDS USER CHOICE"))

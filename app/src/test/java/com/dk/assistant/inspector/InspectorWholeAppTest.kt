@@ -1,5 +1,7 @@
 package com.dk.assistant.inspector
 
+import com.dk.assistant.LiveSrc
+
 import com.dk.assistant.inspector.InspectorCore as I
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -152,7 +154,7 @@ class InspectorWholeAppTest {
         assertTrue(acc.contains("Inspector.startTimer(this)") && acc.contains("Inspector.stopTimer()"))
         assertTrue(src("DKApp.kt").contains("DKBug.init(this)"))
         assertTrue(src("DKLog.kt").contains("DKBug.logFile?.append"))
-        val gl = src("GeminiLive.kt")
+        val gl = LiveSrc.all()
         assertTrue(gl.contains(".put(\"send_to_coder\").put(\"dismiss\").put(\"later\").put(\"clear_all\")"))
         val card = src("inspector/InspectorCard.kt")
         assertTrue(card.contains("\"सब साफ़ करें\"") && card.contains("\"हटाएँ\"") && card.contains("InspectorCore.visible(it)"))

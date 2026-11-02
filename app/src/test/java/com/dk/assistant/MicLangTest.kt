@@ -66,8 +66,8 @@ class MicLangTest {
     }
 
     @Test fun source_liveMic_echoCancelSourceFirst() {
-        val g = src("GeminiLive.kt")
-        val om = g.substring(g.indexOf("private fun openMic()"))
+        val g = LiveSrc.all()
+        val om = g.substring(g.indexOf("internal fun GeminiLive.openMic()"))
         val vc = om.indexOf("AudioSource.VOICE_COMMUNICATION"); val def = om.indexOf("AudioSource.DEFAULT")
         assertTrue(vc in 0 until def)
     }

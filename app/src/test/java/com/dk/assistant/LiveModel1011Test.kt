@@ -55,7 +55,7 @@ class LiveModel1011Test {
     }
 
     @Test fun wiredInGeminiLive() {
-        val s = src("GeminiLive.kt")
+        val s = LiveSrc.all()
         assertTrue(s.contains(".put(\"tools\", LiveStay.cleanTools(tools))"))
         assertTrue(s.contains("code == 1011 && model1011.hit(model)"))
         assertTrue(s.contains("code == 1011 && model1011.hit(a.c.model, now)"))
@@ -104,7 +104,7 @@ class LiveModel1011Test {
     }
 
     @Test fun cooldownFixWiredIn() {
-        val s = src("GeminiLive.kt")
+        val s = LiveSrc.all()
         assertFalse(s.contains("isQuota(code, r) || r.contains(\"rate\")"))
         assertTrue(s.contains("LiveRace.shouldBlockModel(code, r, tried = rc.lastFailCombo != null)"))
         assertTrue(s.contains("LiveRace.probeWhenEmpty(models, keys.size, untilOf)"))

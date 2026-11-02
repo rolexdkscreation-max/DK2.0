@@ -395,6 +395,7 @@ DK2.0/
         ├── Memory.kt                ← यादें और बातचीत सेव
         ├── Ear.kt, VoiceListener.kt, Transcriber.kt ← सुनना
         ├── GeminiLive.kt           ← Gemini Live: आवाज़ से आवाज़ स्ट्रीम (v2.9)
+        ├── GeminiLiveSetup/Race/Server/Tools/Queue/Mic/Player.kt ← GeminiLive के हिस्से (setup, connect, server message, tools, कामों की कतार, माइक, आवाज़)
         ├── Speaker.kt, GeminiTts.kt, VoiceCatalog.kt ← बोलना
         ├── Setup.kt, KeepAliveService.kt, DKApp.kt  ← परमिशन, चालू रखना, क्रैश से बचाव
         ├── Updater.kt               ← ऐप के अंदर अपडेट

@@ -144,7 +144,7 @@ class CoderSevenAgentsTest {
             val s = File("src/main/java/com/dk/assistant/$n").readText()
             assertFalse(n, s.contains("\"11 एजेंट") || s.contains("11-एजेंट टीम") || s.contains("11 एजेंट वाली"))
         }
-        val live = File("src/main/java/com/dk/assistant/GeminiLive.kt").readText()
+        val live = LiveSrc.all()
         assertFalse(live.contains("11-agent team"))
         assertTrue(File("src/main/assets/ui_en.tsv").readText().contains("7 एजेंट वाली टीम तैयार है"))
     }
