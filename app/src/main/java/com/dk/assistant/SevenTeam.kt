@@ -73,6 +73,8 @@ class SevenTeam(
     private val git: TeamGit?,
     /** true = पूरी टीम (मैनेजर की समझ/spec, नक्शा+खोज, जगह-जाँच, रिव्यूअर की परफॉरमेंस जाँच, टेस्टर की QA). false = पुराना छोटा क्रम जैसा का तैसा */
     private val full: Boolean = false,
+    /** नवंबर 2026: काम ख़त्म = समझाने वाला असली diff पढ़कर AI से समझाए (क्या, क्यों, कैसे चलेगा, बग कहाँ था, कैसे जाँचें). false = सिर्फ़ पक्का ढाँचा */
+    private val aiResult: Boolean = false,
     ev: (Agent, String) -> Unit
 ) {
     private val sink = ev
@@ -232,7 +234,7 @@ class SevenTeam(
             if (ans.isBlank()) ans = askJson(Agent.MANAGER, "USER QUESTION:\n$task\n\nThis is a question (kind=question). Reply ONLY JSON {\"kind\":\"question\",\"answer\":\"simple Hindi answer\"}\n" +
                 "FILES IN WORKSPACE (${fileList.size}):\n" + fileList.take(listMax).joinToString("\n"))?.optString("answer").orEmpty().trim()
             // v5.1 (मालिक: "कोडिंग एजेंट सवाल का जवाब अच्छे से नहीं देता"): मैनेजर काम समझाने वाले को सौंपता है - वह असली कोड पढ़कर गहराई से समझाता है
-            val deep = explain(task, ans)
+            val deep = explain(task, ans, Seven.handoff(m))
             if (deep != null) return SevenPlus.Understanding(kind, brief0, "", "", emptyList(), emptyList(), emptyList(), emptyList(), deep, mediaNotes = mediaNotes)
             ev(Agent.MANAGER, "यह सवाल है — जवाब मैं (मैनेजर) दे रहा हूँ, कोड नहीं बदलेगा")
             return SevenPlus.Understanding(kind, brief0, "", "", emptyList(), emptyList(), emptyList(), emptyList(), ans.ifBlank { Seven.NO_ANSWER_HI }, mediaNotes = mediaNotes)
@@ -242,7 +244,7 @@ class SevenTeam(
         val reply0 = m?.optString("reply").orEmpty().trim()
         if (reply0.isNotBlank()) ev(Agent.MANAGER, "आपके सवालों का जवाब:\n$reply0")
         // v5.1: काम के साथ "समझाओ" भी कहा = पहले समझाने वाला असली कोड से समझाए, फिर काम
-        if (Seven.wantsExplain(task)) explain(task, reply0)?.let { ev(Agent.EXPLAINER, "समझ (असली कोड से):\n$it") }
+        if (Seven.wantsExplain(task)) explain(task, reply0, Seven.handoff(m))?.let { ev(Agent.EXPLAINER, "समझ (असली कोड से):\n$it") }
         ev(Agent.MANAGER, if (k == Seven.Kind.BUG) "यह बग ठीक करने का काम लगता है → पहले मैं आपकी बात साफ़ काम (spec) में बदलूँगा, फिर प्लानर जड़ ढूँढकर लिखेगा"
             else "यह नया फ़ीचर/बदलाव लगता है → पहले मैं साफ़ करूँगा कि ठीक-ठीक क्या और कहाँ, फिर प्लानर")
         ev(Agent.PROMPT, "आपकी बात को साफ़ काम में बदल रहा हूँ — रिपो का नक्शा देखकर जगह भी ढूँढ रहा हूँ…")
@@ -283,13 +285,15 @@ class SevenTeam(
      * v5.1: समझाने वाला - मैनेजर का सौंपा सवाल / "समझाओ" / "जांच करो"। असली कोड खोजता-पढ़ता है, फिर आसान हिंदी में
      * गहरा, step-by-step जवाब (फ़ाइल: function के साथ)। कोड कभी नहीं बदलता। AI न चले = null (मैनेजर का छोटा जवाब बचता है)।
      */
-    private suspend fun explain(question: String, quick: String): String? {
-        ev(Agent.MANAGER, "यह समझाने का काम है → ${Agent.EXPLAINER.icon} ${Agent.EXPLAINER.hi} को सौंपा (असली कोड पढ़कर गहराई से समझाएगा, कोड नहीं बदलेगा)")
+    private suspend fun explain(question: String, quick: String, handoff: String = ""): String? {
+        ev(Agent.MANAGER, "यह समझाने का काम है → ${Agent.EXPLAINER.icon} ${Agent.EXPLAINER.hi} को सौंपा (असली कोड पढ़कर गहराई से समझाएगा, कोड नहीं बदलेगा)" +
+            if (handoff.isNotBlank()) "\nमैंने सवाल ऐसे समझा:\n$handoff" else "")
         ev(Agent.EXPLAINER, "असली कोड ढूँढ रहा हूँ…")
         return try {
             val ws = try { workspace() } catch (e: Exception) { if (e is kotlinx.coroutines.CancellationException) throw e; emptyMap() }
             val fileList = files.list()
             val msgs = mutableListOf("user" to ("OWNER'S QUESTION (his own words):\n$question\n" +
+                (if (handoff.isNotBlank()) "\nMANAGER'S HANDOFF (the manager understood the question - explain EVERY point below, step by step, in full detail):\n$handoff\n" else "") +
                 (if (quick.isNotBlank()) "\nMANAGER'S QUICK NOTE (may be incomplete - verify in the code):\n$quick\n" else "") +
                 (if (mediaNotes.isNotBlank()) "\nPHOTO/VIDEO NOTES:\n$mediaNotes\n" else "") +
                 "\nREPO MAP (file: classes / functions / ids):\n" + SevenPlus.RepoMap.build(ws, maxOf(PROMPT_MAP_CHARS, mapChars)) +
@@ -314,12 +318,37 @@ class SevenTeam(
                 if (terms == null && reads == null && t.length >= 20) { ev(Agent.EXPLAINER, "समझाना तैयार"); return t }
                 msgs.add("model" to reply); msgs.add("user" to "Now give the complete explanation in simple Hindi as plain text with the headings (no JSON).")
             }
-            null
+            // नवंबर 2026: आख़िरी चक्कर में भी खोज माँगी तो पहले खाली हाथ लौटता था - अब जितना पढ़ा उसी से पूरा जवाब
+            val fin = aiAsk(Agent.EXPLAINER, Seven.Prompts.EXPLAINER, msgs + ("user" to "No more search/read. Using ONLY what you have read, give the complete explanation now in simple Hindi plain text with the headings (no JSON). Mark anything you could not read as \"पक्का नहीं\".")).trim()
+            if (SevenPlus.RepoSearch.terms(fin) == null && Seven.planReads(fin) == null && fin.length >= 20) { ev(Agent.EXPLAINER, "समझाना तैयार"); fin } else null
         } catch (e: Exception) {
             if (e is kotlinx.coroutines.CancellationException) throw e
             ev(Agent.EXPLAINER, "⚠ गहराई से नहीं समझा पाया — मैनेजर का छोटा जवाब दिखा रहा हूँ"); null
         }
     }
+
+    /**
+     * नवंबर 2026: काम ख़त्म होने पर समझाने वाला - असली बदलाव (diff), मिली जड़, टेस्ट का नतीजा पढ़कर मालिक को समझाए.
+     * कोड नहीं लिखता. AI न चले / जवाब बेकार = null (तब पक्का ढाँचा ही दिखता है - कुछ बनाया हुआ नहीं).
+     */
+    private suspend fun explainResult(testOk: Boolean?, problem: String, testNote: String): String? = try {
+        ev(Agent.EXPLAINER, "असली बदलाव पढ़कर नतीजा समझा रहा हूँ…")
+        val staged = files.staged()
+        val user = buildString {
+            append("OWNER'S REQUEST (his words):\n").append(task).append("\n")
+            if (spec.isNotBlank()) append("SPEC (approved):\n").append(spec).append("\n") else if (brief.isNotBlank()) append("BRIEF: ").append(brief).append("\n")
+            if (acceptance.isNotEmpty()) append("ACCEPTANCE:\n").append(acceptance.joinToString("\n") { "- $it" }).append("\n")
+            if (notTouch.isNotEmpty()) append("MUST STAY UNCHANGED:\n").append(notTouch.joinToString("\n") { "- $it" }).append("\n")
+            if (bugs.isNotEmpty()) append("BUGS FOUND BY THE DEBUGGER:\n").append(bugs.joinToString("\n") { "- what: ${it.what} | where: ${it.where} | root cause: ${it.rootCause} | fix: ${it.fix}" }).append("\n")
+            append("CHANGED FILES (coder's note):\n").append(changes.entries.joinToString("\n") { "- ${it.key}: ${it.value}" }).append("\n")
+            append("RESULT: ").append(when (testOk) { true -> "build/tests PASSED"; false -> "FAILED - $problem"; null -> "NOT CONFIRMED YET - ${problem.ifBlank { testNote }}" }).append("\n")
+            if (qaChecks.isNotEmpty()) append("QA CHECKS:\n").append(qaChecks.take(8).joinToString("\n") { "- $it" }).append("\n")
+            if (tried.isNotEmpty()) append("WHAT THE TEAM TRIED:\n").append(tried.takeLast(6).joinToString("\n") { "- $it" }).append("\n")
+            append("\nREAL DIFF (- removed, + added):\n").append(if (staged.isEmpty()) "(no change)" else diffText(staged, maxOf(40_000, big / 5)))
+        }
+        val t = aiAsk(Agent.EXPLAINER, Seven.Prompts.RESULT, listOf("user" to user)).trim()
+        if (Seven.json(t) != null || t.length < 60 || t.contains("```")) null else t
+    } catch (e: Exception) { if (e is kotlinx.coroutines.CancellationException) throw e; null }
 
     /** प्रॉम्प्ट इंजीनियर पहले फ़ोटो/वीडियो ध्यान से देखे - जो दिखा वह लिखकर पूरी टीम को (जिनका मॉडल फ़ोटो न देख सके उन्हें भी) */
     private suspend fun seeMedia() {
@@ -979,7 +1008,9 @@ class SevenTeam(
         val ctx = if (cur != null && e.full == null) "\nFILE CONTEXT:\n" + (if (cur.length <= fileChars) cur else Seven.window(cur, e.pairs.first().first.lines().first(), 60)) else ""
         // v4.4: शर्त उल्टी हुई? (जैसे `if (!inSeg)` -> `if (inSeg)`) - रिव्यूअर को अलग से दिखाओ
         val flips = CodeGuard.flips(cur, after)
-        val flipNote = if (flips.isEmpty()) "" else "\nCONDITION FLIPPED by this change (a bug unless the STEP explicitly asks to invert it - check each):\n" + flips.joinToString("\n") { "- $it" }
+        val dropped = CodeGuard.droppedGuards(cur, after).filter { g -> flips.none { it.contains(g) } }
+        val flipNote = (if (flips.isEmpty()) "" else "\nCONDITION FLIPPED by this change (a bug unless the STEP explicitly asks to invert it - check each):\n" + flips.joinToString("\n") { "- $it" }) +
+            (if (dropped.isEmpty()) "" else "\nSAFETY / CONDITION REMOVED by this change (old check / retry / fallback / catch is gone - reject unless the STEP asks to remove it or the same protection exists in the new code):\n" + dropped.joinToString("\n") { "- $it" })
         for (t in 0..1) {
             val nameCheck = flipNote + if (unsure.isEmpty()) "" else "\nNAME CHECK (not found in this repository - only valid if it really exists in the external parent class / SDK):\n" +
                 unsure.joinToString("\n") { "- " + it.english() }
@@ -1097,7 +1128,12 @@ class SevenTeam(
             val b = before?.lines().orEmpty(); val a = c?.lines().orEmpty()
             val bs = b.toHashSet(); val asSet = a.toHashSet()
             if (c != null || before == null) {
-                CodeGuard.flips(before, c).takeIf { it.isNotEmpty() }?.let { f -> append("!! CONDITION FLIPPED (bug unless the task asks for it):\n"); f.forEach { append("!!   ").append(it).append('\n') } }
+                val fl = CodeGuard.flips(before, c)
+                fl.takeIf { it.isNotEmpty() }?.let { f -> append("!! CONDITION FLIPPED (bug unless the task asks for it):\n"); f.forEach { append("!!   ").append(it).append('\n') } }
+                CodeGuard.droppedGuards(before, c).filter { g -> fl.none { it.contains(g) } }.takeIf { it.isNotEmpty() }?.let { d ->
+                    append("!! SAFETY / CONDITION REMOVED (check, retry, fallback or catch that no longer exists - a regression unless the task asks to remove it):\n")
+                    d.forEach { append("!!   ").append(it).append('\n') }
+                }
                 b.filter { it !in asSet && it.isNotBlank() }.take(1500).forEach { append("- ").append(it).append('\n') }
                 a.filter { it !in bs && it.isNotBlank() }.take(3000).forEach { append("+ ").append(it).append('\n') }
             } else b.filter { it.isNotBlank() }.take(15).forEach { append("- ").append(it).append('\n') }
@@ -1203,8 +1239,11 @@ class SevenTeam(
         val told = Seven.resultExplain(testOk, changes.entries.map { it.key to it.value }, bugs, problem, lt?.note.orEmpty(),
             tried, pr.substringBefore(" ("), git != null)
         ev(Agent.MANAGER, "काम ख़त्म → ${Seven.Member.EXPLAINER.label} नतीजा बताएगा")
-        ev(Agent.EXPLAINER, told)
-        rep += "\n\n" + told
+        // नवंबर 2026 (मालिक): "समझाने वाला सिर्फ़ बदली फ़ाइल बताता है" - अब असली diff पढ़कर: क्या/क्यों बदला, कैसे चलेगा, बग कहाँ था, कैसे जाँचें
+        val deep = if (aiResult && (changes.isNotEmpty() || problem.isNotBlank())) explainResult(testOk, problem, lt?.note.orEmpty()) else null
+        val shown = if (deep != null) "${Seven.Member.EXPLAINER.icon} ${Seven.Member.EXPLAINER.hi} — क्या हुआ, कैसे हुआ, आसान भाषा में:\n$deep\n\n$told" else told
+        ev(Agent.EXPLAINER, shown)
+        rep += "\n\n" + shown
         return Outcome(rep, files.staged(), testOk, mode, short = short)
     }
 }

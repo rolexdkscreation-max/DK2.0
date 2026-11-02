@@ -154,7 +154,40 @@ object SevenPlus {
             // नकली progress: बिना असली काम के बढ़ता प्रतिशत (पुरानी branch में मिला था: हर 2 सेकंड +25%)
             val fakeProgress = add.any { Regex("""progress\s*\+=\s*\d+""").containsMatchIn(it) } && add.any { it.contains("delay(") }
             if (fakeProgress) out.add("$path: progress सिर्फ़ समय के साथ बढ़ रहा है (delay + progress +=) — यह नकली progress है, असली काम की हालत दिखाएँ")
+            unused(after, add).forEach { out.add("$path: नया '$it' बनाया पर कहीं इस्तेमाल नहीं हुआ — काम सिर्फ़ दिखावे का है (असल में जोड़ें या हटाएँ)") }
             return out
+        }
+
+        /**
+         * नवंबर 2026 (PR #159 से सीख: recognizerIntent बना पर कभी काम में नहीं लिया, "दूसरी भाषा" वाला सुधार असल में चला ही नहीं).
+         * सिर्फ़ इस फ़ाइल के अंदर दिखने वाले नाम: function के अंदर का val/var, private/const - पूरी फ़ाइल में एक ही बार (बस बनाया) = बेकार.
+         */
+        fun unused(after: String, added: List<String>): List<String> {
+            if (after.contains("@Suppress(\"UNUSED") || after.contains("@Suppress(\"unused")) return emptyList()
+            val addSet = added.toHashSet()
+            val raw = after.lines()
+            val decl = Regex("""^(private\s+)?(?:const\s+)?(val|var|fun)\s+(?:<[^>]*>\s*)?([A-Za-z][A-Za-z0-9_]*)\s*[(:=]""")
+            val names = mutableListOf<String>()
+            for ((i, line) in raw.withIndex()) {
+                val t = line.trim(); if (t !in addSet) continue
+                val m = decl.find(t) ?: continue
+                val private = m.groupValues[1].isNotEmpty(); val kind = m.groupValues[2]; val name = m.groupValues[3]
+                // private = बाहर से दिखता नहीं; बिना private सिर्फ़ function/lambda के अंदर वाला val/var (class/object का सदस्य नहीं)
+                val local = !private && kind != "fun" && enclosing(raw, i)?.let { !Regex("""\b(class|object|interface)\b""").containsMatchIn(it) } == true
+                if ((private || local) && name.length > 1) names.add(name)
+            }
+            return names.distinct().filter { n -> Regex("""\b${Regex.escape(n)}\b""").findAll(after).count() <= 1 }.take(6)
+        }
+
+        /** इस लाइन से कम खिसकी (indent) सबसे पास की ऊपर वाली लाइन = जिसके अंदर यह लिखी है. सबसे बाहर = null */
+        private fun enclosing(raw: List<String>, i: Int): String? {
+            val ind = raw[i].length - raw[i].trimStart().length
+            if (ind == 0) return null
+            for (j in i - 1 downTo 0) {
+                val l = raw[j]; if (l.isBlank()) continue
+                if (l.length - l.trimStart().length < ind) return l
+            }
+            return null
         }
     }
 

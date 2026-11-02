@@ -164,6 +164,18 @@ object CodeGuard {
      * हटाई और जोड़ी गई लाइनों में से वे जोड़े जिनमें सिर्फ़ शर्त उल्टी हुई (जैसे `if (!inSeg)` -> `if (inSeg)`).
      * रिव्यूअर को दिखाते हैं: काम में यह उलटना माँगा न हो तो यह bug है.
      */
+    /**
+     * नवंबर 2026 (PR #148 से सीख): बदलाव में कोई शर्त / catch / retry / fallback पूरी तरह हट गया (उल्टा नहीं - ग़ायब).
+     * ऐसे हटाने से पुराना बचाव चुपचाप टूटता है (जैसे "thinking न चले तो बिना thinking दोबारा"). रिव्यूअर/QA को अलग से दिखाते हैं.
+     */
+    fun droppedGuards(before: String?, after: String?, max: Int = 15): List<String> {
+        if (before == null || after == null) return emptyList()
+        val now = after.lines().map(::norm).toHashSet()
+        return before.lines().map(::norm).filter { it.isNotEmpty() && it !in now && GUARD.containsMatchIn(it) && !it.startsWith("//") && !it.startsWith("*") }
+            .distinct().take(max)
+    }
+    private val GUARD = Regex("""^(\}\s*)?(else\s+)?if\s*\(|\bcatch\s*\(|\?:\s*return\b|\bcontinue\b|\b(retry|fallback|backup)\w*\s*[(=]""", RegexOption.IGNORE_CASE)
+
     fun flips(before: String?, after: String?, max: Int = 20): List<String> {
         if (before == null || after == null) return emptyList()
         val bs = before.lines().map(::norm).toHashSet(); val asSet = after.lines().map(::norm).toHashSet()

@@ -158,6 +158,23 @@ class GeminiClient(private val key: String, private val model: String) : AiClien
                 return full.toString()
             } catch (e: AiException) {
                 if (gotAny) throw e
+                // नवंबर 2026: PR #148 में यह बचाव हट गया था - मॉडल "thinking" न समझे (400) तो उसी मॉडल से बिना thinking एक बार दोबारा
+                if (GeminiModels.thinkingRejected(e.code, e.message.orEmpty(), thinking)) {
+                    thinking = false
+                    try {
+                        val full = StringBuilder()
+                        streamOnce(m, system, history, prompt, false) { gotAny = true; full.append(it); onDelta(it) }
+                        label = "Gemini ($m)"
+                        return full.toString()
+                    } catch (e2: AiException) {
+                        if (gotAny) throw e2
+                        if (last == null || GeminiModels.isGone(last.code, last.message.orEmpty())) last = e2
+                        val next2 = e2.code == 404 || e2.code == 429 || e2.code >= 500 ||
+                            (e2.code == 400 && (e2.message ?: "").contains("model", true) && !(e2.message ?: "").contains("API key", true))
+                        if (!next2) throw e2
+                        continue
+                    }
+                }
                 if (last == null || GeminiModels.isGone(last.code, last.message.orEmpty())) last = e
                 val tryNext = e.code == 404 || e.code == 429 || e.code >= 500 ||
                     (e.code == 400 && (e.message ?: "").contains("model", true) && !(e.message ?: "").contains("API key", true))
