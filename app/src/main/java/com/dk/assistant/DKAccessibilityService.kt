@@ -204,7 +204,7 @@ class DKAccessibilityService : AccessibilityService() {
     // ================================================================ बैकअप मोड (मालिक, नवंबर 2026)
     // "हल्का मोड" पूरी तरह हटा. अब: Gemini Live सच में न जुड़े (GeminiLive.Fatal) = बैकअप मोड -
     // फ़ोन की बोली-पहचान (SpeechRecognizer) सुनती है -> agent.run() = DK Chat का text दिमाग़ (Gemini key हो तो Gemini)
-    // -> Piper TTS हिंदी आवाज़ में (speaker.piperOnly, फ़ोन में ही - बिना key, बिना इंटरनेट; पहले Edge TTS था).
+    // -> Kokoro TTS हिंदी आवाज़ में (speaker.localOnly, फ़ोन में ही - बिना key, बिना इंटरनेट; पहले Edge TTS था).
     // स्क्रीन पर "बैकअप मोड • <कारण>"; कारण के हिसाब से 1-10 मिनट बाद Live फिर आज़माया जाता है (LiveFailWhy).
     @Volatile var backupMode = false
         internal set

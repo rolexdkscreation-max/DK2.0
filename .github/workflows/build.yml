@@ -40,14 +40,14 @@ jobs:
         with:
           gradle-version: '8.7'
 
-      # Piper TTS: sherpa-onnx AAR + Hindi/English आवाज़ें (~75 MB) - app/build.gradle.kts sha256 जाँचकर लाता है.
+      # Kokoro TTS: sherpa-onnx AAR + Kokoro-82M int8 (~160 MB) - app/build.gradle.kts sha256 जाँचकर लाता है.
       # cache = हर build में दोबारा डाउनलोड नहीं (बदलें तो Gradle खुद नई लाता है)
-      - name: Piper TTS files cache
+      - name: Kokoro TTS files cache
         uses: actions/cache@v4
         with:
           path: .dk-cache
-          key: dk-piper-${{ hashFiles('app/build.gradle.kts') }}
-          restore-keys: dk-piper-
+          key: dk-kokoro-${{ hashFiles('app/build.gradle.kts') }}
+          restore-keys: dk-kokoro-
 
       - name: Signing key (hamesha ek hi)
         env:
@@ -168,7 +168,9 @@ jobs:
           if [ -n "$LATEST_VER" ] && [ "$(printf '%s\n%s\n' "$LATEST_VER" "$VERSION_NAME" | sort -V | tail -1)" != "$VERSION_NAME" ]; then
             echo "::error::नया version ${VERSION_NAME} पिछली release ${LATEST_VER} से बड़ा नहीं - release रोकी"; exit 1
           fi
+          # टैग उसी commit पर जिससे यह APK बना (बिना --target टैग main की नई नोक पर लग जाता था)
           gh release create "v${VERSION_CODE}" DK.apk \
+            --target "$GITHUB_SHA" \
             --title "DK ${VERSION_NAME}" \
             --notes-file release_notes.txt \
             --latest
