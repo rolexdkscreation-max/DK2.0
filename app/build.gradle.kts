@@ -61,7 +61,7 @@ android {
     buildFeatures {
         viewBinding = false
     }
-    // नवंबर 2026 (मालिक): Kokoro TTS पूरी तरह हटाया (APK ~140 MB -> छोटा). बैकअप: branch backup/dk-kokoro-default
+    // नवंबर 2026 (मालिक): Kokoro TTS पूरी तरह हटाया (APK ~140 MB -> छोटा).
     // व्यवहार वाले tests (Robolectric) को असली layout / theme / strings चाहिए
     testOptions {
         unitTests.isIncludeAndroidResources = true

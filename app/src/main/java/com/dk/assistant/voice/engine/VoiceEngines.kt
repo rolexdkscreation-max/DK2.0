@@ -12,7 +12,7 @@ import java.util.concurrent.ConcurrentHashMap
  */
 object VoiceEngines {
     const val GEMINI_TTS = "gemini_tts"
-    /** नवंबर 2026: हटाया गया Kokoro TTS - सिर्फ़ पुरानी सेव पसंद पहचानने के लिए (migration). बैकअप: branch backup/dk-kokoro-default */
+    /** नवंबर 2026: हटाया गया Kokoro TTS - सिर्फ़ पुरानी सेव पसंद पहचानने के लिए (migration). */
     const val OLD_KOKORO_ID = "kokoro_tts"
     /** नवंबर 2026: हटाया गया Piper TTS - सिर्फ़ पुरानी सेव पसंद पहचानने के लिए (migration) */
     const val OLD_PIPER_ID = "piper_tts"
