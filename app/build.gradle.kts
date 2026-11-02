@@ -61,6 +61,10 @@ android {
     buildFeatures {
         viewBinding = false
     }
+    // व्यवहार वाले tests (Robolectric) को असली layout / theme / strings चाहिए
+    testOptions {
+        unitTests.isIncludeAndroidResources = true
+    }
     // v3.66: आवाज़-पहचान (ONNX Runtime) सिर्फ़ arm64 फ़ोनों के लिए - APK करीब +13 MB ही बढ़े।
     // 32-bit / x86 पर .so नहीं: वहाँ पहचान अपने-आप बंद रहती है और DK पहले की तरह सब सुनता है (कुछ टूटता नहीं)
     packaging {
@@ -95,6 +99,9 @@ dependencies {
     testImplementation("junit:junit:4.13.2")
     // Android ka org.json unit test me khali (stub) hota hai - asli wala
     testImplementation("org.json:json:20240303")
+    // व्यवहार वाले tests (नवंबर 2026): असली Context / SharedPreferences फ़ोन के बिना - code की लाइन नहीं, असली नतीजा जाँचो
+    testImplementation("org.robolectric:robolectric:4.13")
+    testImplementation("androidx.test:core:1.6.1")
 }
 
 // v3.89: test fail हो तो पूरा कारण log में (expected/actual + कौन-सी लाइन) - वरना सिर्फ़ "AssertionError at X.kt:68" आता था
