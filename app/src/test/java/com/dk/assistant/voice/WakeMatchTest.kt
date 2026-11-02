@@ -152,7 +152,7 @@ class WakeMatchTest {
         val hd = src("java/com/dk/assistant/voice/HeyDk.kt")
         assertTrue(hd.contains("VoicePrint.threshold(") && hd.contains("AudioRecord(source(c), RATE"))
         assertFalse("आवाज़ इंटरनेट पर नहीं", hd.contains("okhttp") || hd.contains("Transcriber"))
-        val set = src("java/com/dk/assistant/SettingsActivity.kt")
+        val set = com.dk.assistant.SetSrc.all()
         assertTrue(set.contains("heyDkCard(box)") && set.contains("enrollHeyDk"))
         val ui = src("assets/ui_en.tsv")
         assertTrue(ui.contains("Hey DK सिखाओ\tTeach Hey DK"))

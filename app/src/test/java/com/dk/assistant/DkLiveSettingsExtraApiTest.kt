@@ -136,7 +136,7 @@ class DkLiveSettingsExtraApiTest {
     }
 
     @Test fun extraApi_noBaseUrlField_companyAndModelPicker() {
-        val s = src("SettingsActivity.kt")
+        val s = com.dk.assistant.SetSrc.all()
         assertFalse(s.contains("field(box, \"Base URL\""))
         assertTrue(s.contains("ModelLister.detectCompany(k)"))
         assertTrue(s.contains("button(\"कंपनी बदलें\")"))

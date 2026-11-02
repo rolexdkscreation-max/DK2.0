@@ -178,7 +178,7 @@ class InspectorCoreTest {
         val live = LiveSrc.all()
         assertTrue(live.contains("\"dk_inspector\" -> com.dk.assistant.inspector.Inspector.liveTool(svc, args)"))
         assertTrue("dk_inspector" in com.dk.assistant.LeakedCall.TOOLS)
-        val set = src("SettingsActivity.kt")
+        val set = com.dk.assistant.SetSrc.all()
         assertTrue(set.contains("Run Deep Inspection")); assertTrue(set.contains("Ask DK Inspector"))
         // पुराने तीनों Debug हिस्से वैसे ही
         listOf("Gemini Live हाल", "देरी का हिसाब", "\"लॉग\"").forEach { assertTrue(set.contains(it)) }

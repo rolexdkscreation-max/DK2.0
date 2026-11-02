@@ -109,7 +109,7 @@ class LiveFastBargeNearTest {
         assertTrue(g.contains("tailFactor = LiveHear.TAIL_FACTOR"))
         assertTrue(g.contains("if (!ownerOn && !btOn && Prefs.ownerFarOn(svc)) turnDet.startFloor = near.floor()"))
         assertTrue(g.contains("learnNear()"))
-        val s = src("SettingsActivity.kt")
+        val s = com.dk.assistant.SetSrc.all()
         assertTrue(s.contains("\"दूर की आवाज़ अनसुनी करो") && s.contains("putBoolean(\"barge_hold\", !on)"))
     }
 }

@@ -33,7 +33,7 @@ class CoderFiveKeysTest {
     @Test fun wired_inPrefsAndSettings() {
         val p = src("Prefs.kt")
         assertTrue(p.contains("scopeKey(c, ApiScopes.CODER, \"gemini4\")") && p.contains("scopeKey(c, ApiScopes.CODER, \"gemini5\")"))
-        val s = src("SettingsActivity.kt")
+        val s = com.dk.assistant.SetSrc.all()
         assertTrue(s.contains("ApiScopes.pref(scope, \"key\", \"gemini4\")") && s.contains("ApiScopes.pref(scope, \"key\", \"gemini5\")"))
     }
 }

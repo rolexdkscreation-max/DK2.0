@@ -116,7 +116,7 @@ class NeonThemeTest {
     }
 
     @Test fun settingsHasAppearanceSection() {
-        val s = File(root(), "app/src/main/java/com/dk/assistant/SettingsActivity.kt").readText()
+        val s = SetSrc.all()
         assertTrue(s.contains("Triple(\"ui\""))
         assertTrue(s.contains("\"ui\" -> { title.text = \"दिखावट\""))
         assertTrue(s.contains("resetAppearance(this)"))

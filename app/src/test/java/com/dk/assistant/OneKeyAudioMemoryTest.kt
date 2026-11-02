@@ -55,7 +55,7 @@ class OneKeyAudioMemoryTest {
         val key = m.indexOf("!Prefs.hasAnyKey(this) ->"); val mic = m.indexOf("!Setup.hasMic(this) -> { askPerms()")
         assertTrue(key in 0 until mic)                                  // key पहले, माइक की अनुमति बाद में
         assertTrue(m.contains("SettingsActivity.EXTRA_FOCUS_KEY, true"))
-        assertTrue(src("SettingsActivity.kt").contains("intent.getBooleanExtra(EXTRA_FOCUS_KEY, false)"))
+        assertTrue(com.dk.assistant.SetSrc.all().contains("intent.getBooleanExtra(EXTRA_FOCUS_KEY, false)"))
     }
 
     // ------------------------------------------------------------------ Bluetooth

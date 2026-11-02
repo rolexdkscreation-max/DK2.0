@@ -11,7 +11,7 @@ class SettingsSearchTest {
 
     /** SettingsActivity के हर (सीधे नाम वाले) card का नाम सर्च में होना चाहिए - नया card जोड़ा और यहाँ भूले तो यह fail */
     @Test fun everyCardInActivity_isSearchable() {
-        val s = src("src/main/java/com/dk/assistant/SettingsActivity.kt")
+        val s = com.dk.assistant.SetSrc.all()
         val titles = Regex("""\bcard\("((?:[^"\\$]|\\.)*)"""").findAll(s).map { it.groupValues[1].replace("\\\"", "\"") }.toSet()
         assertTrue(titles.size > 40)
         val have = SettingsSearch.ENTRIES.map { it.card }.toSet()
@@ -20,7 +20,7 @@ class SettingsSearchTest {
     }
 
     @Test fun everySectionOfActivity_isInSearch() {
-        val s = src("src/main/java/com/dk/assistant/SettingsActivity.kt")
+        val s = com.dk.assistant.SetSrc.all()
         val ids = Regex(""""([a-z_]+)" -> \{ title\.text = """).findAll(s).map { it.groupValues[1] }.toSet()
         assertTrue(ids.isNotEmpty())
         assertTrue((ids - SettingsSearch.SECTIONS.keys).isEmpty())
@@ -61,7 +61,7 @@ class SettingsSearchTest {
     }
 
     @Test fun mainMenu_hasAutoAndTemplatesRows() {
-        val s = src("src/main/java/com/dk/assistant/SettingsActivity.kt")
+        val s = com.dk.assistant.SetSrc.all()
         assertTrue(s.contains("Triple(\"auto\", \"ऑटोनोमस मोड\""))
         assertTrue(s.contains("Triple(\"templates\", \"टेम्पलेट कमांड\""))
         assertTrue(s.contains("AutoSettingsActivity::class.java"))
@@ -69,7 +69,7 @@ class SettingsSearchTest {
 
     /** v3.99: चेहरा पहचान ऐप से हटी - सेटिंग्स में न मेनू, न card, न सर्च */
     @Test fun faceRecognition_removedFromSettings() {
-        val s = src("src/main/java/com/dk/assistant/SettingsActivity.kt")
+        val s = com.dk.assistant.SetSrc.all()
         assertTrue(!s.contains("FaceAI.") && !s.contains("secFace") && !s.contains("Triple(\"face\""))
         assertTrue(SettingsSearch.ENTRIES.none { it.section == "face" } && "face" !in SettingsSearch.SECTIONS)
         val v = src("src/main/java/com/dk/assistant/VoiceActivity.kt")
