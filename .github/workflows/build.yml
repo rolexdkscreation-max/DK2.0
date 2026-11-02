@@ -39,8 +39,12 @@ jobs:
           if [ -n "$KS_B64" ]; then
             echo "$KS_B64" | base64 -d > "$RUNNER_TEMP/dk.jks"
             echo "DK_KEYSTORE=$RUNNER_TEMP/dk.jks" >> "$GITHUB_ENV"
+          elif [ "${{ github.event_name }}" = "push" ] && [ "${{ github.ref }}" = "refs/heads/main" ]; then
+            # सुरक्षा: main की release कभी debug key से नहीं - वरना फ़ोन पर पुराने ऐप के ऊपर update नहीं होगा
+            echo "::error::DK_KEYSTORE_B64 secret nahi mila - main ki release debug key se nahi banegi (secret wapas daalein)"
+            exit 1
           else
-            echo "::warning::DK_KEYSTORE_B64 secret nahi mila - debug key se sign hoga"
+            echo "::warning::DK_KEYSTORE_B64 secret nahi mila - debug key se sign hoga (sirf PR / branch build)"
           fi
 
       - name: Update ka prakar aur version (सॉफ़्टवेयर अपडेट / सिक्योरिटी पैच)

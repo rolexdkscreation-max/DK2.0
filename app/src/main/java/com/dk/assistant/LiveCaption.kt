@@ -161,7 +161,7 @@ class LiveCaption(
         if (stopped || dead) return
         ready = false
         val m = MODELS[mi.coerceIn(0, MODELS.size - 1)]
-        val req = Request.Builder().url("$URL?key=$key").build()
+        val req = Request.Builder().url(URL).header("x-goog-api-key", key).build()
         ws = http.newWebSocket(req, listener(m))
     }
 
@@ -204,7 +204,7 @@ class LiveCaption(
                 if (stopped || ws !== cur || next != null || !ready) continue
                 val now = System.currentTimeMillis()
                 if (CaptionRotate.now(now - upAt, if (lastRealAt == 0L) Long.MAX_VALUE else now - lastRealAt)) {
-                    next = http.newWebSocket(Request.Builder().url("$URL?key=$key").build(), listener(m))
+                    next = http.newWebSocket(Request.Builder().url(URL).header("x-goog-api-key", key).build(), listener(m))
                     return@Thread
                 }
             }

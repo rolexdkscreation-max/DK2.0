@@ -16,8 +16,8 @@ v3.68: Gemini TTS ("आवाज़ इंजन 1") की चाबी ऐप 
 cd worker/dk-brain
 npx wrangler deploy
 npx wrangler secret put GEMINI_API_KEY      # Google AI Studio की चाबी
-npx wrangler secret put APP_TOKEN           # वैकल्पिक - लगाया तो ऐप में भी वही डालें
+npx wrangler secret put APP_TOKEN           # ज़रूरी - ऐप में भी वही डालें (इसके बिना Worker 500 देता है)
 ```
 
 फिर ऐप: सेटिंग्स -> आवाज़ -> "बोलने वाला इंजन (DK लाइव)" -> Gemini TTS -> "dk-brain Worker का पता" में
-`https://dk-brain.<आपका-subdomain>.workers.dev` (और token, अगर लगाया).
+`https://dk-brain.<आपका-subdomain>.workers.dev` और "Worker token" में वही APP_TOKEN.

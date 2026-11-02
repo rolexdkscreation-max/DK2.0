@@ -4,7 +4,8 @@
 //   GET  /ping                          -> "ok" (ऐप कनेक्शन गर्म रखता है)
 //   POST /tts  {text, voice, style, model?} -> 16-bit LE PCM, 24 kHz, mono (Content-Type: audio/l16; rate=24000), stream
 //
-// Secrets:  GEMINI_API_KEY (ज़रूरी), APP_TOKEN (वैकल्पिक - हो तो ऐप "Authorization: Bearer <token>" भेजे)
+// Secrets:  GEMINI_API_KEY (ज़रूरी), APP_TOKEN (ज़रूरी - ऐप "Authorization: Bearer <token>" भेजे)
+//           सुरक्षा: APP_TOKEN के बिना Worker कुछ नहीं करता - वरना जिसे भी Worker का पता मालूम हो, वह आपकी Gemini चाबी की लिमिट खत्म कर दे
 // Vars:     TTS_MODELS (क्रम से आज़माए जाते हैं; जो चला वही आगे पहले)
 
 const API = "https://generativelanguage.googleapis.com/v1beta/interactions";
@@ -18,15 +19,21 @@ let goodModel = null; // isolate में याद: जो मॉडल चल
 export default {
   async fetch(req, env) {
     const url = new URL(req.url);
-    if (env.APP_TOKEN) {
-      const auth = req.headers.get("Authorization") || "";
-      if (auth !== `Bearer ${env.APP_TOKEN}`) return text(401, "unauthorized");
-    }
+    if (!env.APP_TOKEN) return text(500, "APP_TOKEN secret नहीं लगी (npx wrangler secret put APP_TOKEN)");
+    if (!sameText(req.headers.get("Authorization") || "", `Bearer ${env.APP_TOKEN}`)) return text(401, "unauthorized");
     if (url.pathname === "/ping") return text(200, "ok");
     if (url.pathname === "/tts" && req.method === "POST") return tts(req, env);
     return text(404, "not found");
   },
 };
+
+/** token की तुलना हमेशा पूरी (समय से token का अंदाज़ा न लगे) */
+function sameText(a, b) {
+  const x = new TextEncoder().encode(a), y = new TextEncoder().encode(b);
+  let diff = x.length ^ y.length;
+  for (let i = 0; i < y.length; i++) diff |= (x[i % (x.length || 1)] || 0) ^ y[i];
+  return diff === 0;
+}
 
 function text(status, body) {
   return new Response(body, { status, headers: { "Content-Type": "text/plain; charset=utf-8" } });

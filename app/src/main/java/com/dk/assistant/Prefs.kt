@@ -10,7 +10,7 @@ import javax.crypto.spec.SecretKeySpec
 /** App ki saari settings phone me save hoti hain (naam, API keys, model, awaaz, options). */
 object Prefs {
     private fun sp(c: Context): SharedPreferences {
-        val p = c.getSharedPreferences("dk_prefs", Context.MODE_PRIVATE)
+        val p = secure(c.getSharedPreferences("dk_prefs", Context.MODE_PRIVATE))
         // Purane version (sirf Gemini) ki key ko naye format me le aao
         if (p.contains("api_key")) {
             val old = p.getString("api_key", "") ?: ""
@@ -35,6 +35,9 @@ object Prefs {
         return p
     }
     @Volatile private var scopesDone = false
+
+    /** सुरक्षा: API keys / GitHub token ताले वाली परत से ([SecretPrefs]) - पुरानी सादी keys पहली बार अपने-आप ताले में */
+    private fun secure(raw: SharedPreferences): SharedPreferences = SecretPrefs.of(raw)
 
     // ---- हर हिस्से (DK लाइव / DK चैट / कोडिंग एजेंट / DK कंप्यूटर) की अपनी API - देखें [ApiScopes]
     /** इस हिस्से की मुख्य कंपनी (DK लाइव = हमेशा Gemini) */
@@ -196,7 +199,11 @@ object Prefs {
     fun ownerPrint(c: Context): FloatArray? = com.dk.assistant.voice.VoicePrint.decode(sp(c).getString("owner_print", null))
 
     // ---- बायोमेट्रिक चेहरा पहचान (स्थानीय एन्क्रिप्टेड एम्बेडिंग)
-    private val FACE_ENC_KEY = byteArrayOf(
+    // सुरक्षा: अब "owner_face_v2" में - AndroidKeyStore की चाबी (AES-GCM, [SecretPrefs])।
+    // नीचे वाली पुरानी चाबी सिर्फ़ पुरानी "owner_face_print" को एक बार पढ़कर नए ताले में ले जाने के लिए है - इससे अब कुछ बंद नहीं होता।
+    private const val FACE_PREF = "owner_face_v2"
+    private const val FACE_PREF_OLD = "owner_face_print"
+    private val LEGACY_FACE_KEY = byteArrayOf(
         0x37.toByte(), 0x5a.toByte(), 0x7c.toByte(), 0x11.toByte(),
         0x88.toByte(), 0x9b.toByte(), 0xef.toByte(), 0x42.toByte(),
         0x2c.toByte(), 0x3d.toByte(), 0x5e.toByte(), 0x6f.toByte(),
@@ -228,17 +235,10 @@ object Prefs {
         java.util.Base64.getDecoder().decode(str)
     }
 
-    private fun encryptFaceBytes(bytes: ByteArray): ByteArray {
-        val key = SecretKeySpec(FACE_ENC_KEY, "AES")
+    /** सिर्फ़ पुरानी पहचान पढ़ने के लिए (नई कभी इस तरीके से नहीं बनती) */
+    private fun decryptLegacyFace(bytes: ByteArray): ByteArray {
         val cipher = Cipher.getInstance("AES/ECB/PKCS5Padding")
-        cipher.init(Cipher.ENCRYPT_MODE, key)
-        return cipher.doFinal(bytes)
-    }
-
-    private fun decryptFaceBytes(bytes: ByteArray): ByteArray {
-        val key = SecretKeySpec(FACE_ENC_KEY, "AES")
-        val cipher = Cipher.getInstance("AES/ECB/PKCS5Padding")
-        cipher.init(Cipher.DECRYPT_MODE, key)
+        cipher.init(Cipher.DECRYPT_MODE, SecretKeySpec(LEGACY_FACE_KEY, "AES"))
         return cipher.doFinal(bytes)
     }
 
@@ -247,15 +247,16 @@ object Prefs {
     /** DK लाइव के कैमरे पर चेहरा पहचान का निशान (पहले से चालू था - वैसा ही) */
     fun faceHudOn(c: Context) = sp(c).getBoolean("face_hud_on", true)
     fun faceStrict(c: Context) = sp(c).getBoolean("face_strict", false)
-    fun hasOwnerFace(c: Context): Boolean = !sp(c).getString("owner_face_print", null).isNullOrBlank()
+    fun hasOwnerFace(c: Context): Boolean =
+        !sp(c).getString(FACE_PREF, null).isNullOrBlank() || !sp(c).getString(FACE_PREF_OLD, null).isNullOrBlank()
 
     fun ownerFacePrint(c: Context): FloatArray? {
-        val raw = sp(c).getString("owner_face_print", null) ?: return null
-        if (raw.isBlank()) return null
+        sp(c).getString(FACE_PREF, null)?.takeIf { it.isNotBlank() }?.let { v ->
+            return try { bytesToFloats(decodeBase64(v)).takeIf { it.isNotEmpty() } } catch (e: Exception) { null }
+        }
+        val old = sp(c).getString(FACE_PREF_OLD, null)?.takeIf { it.isNotBlank() } ?: return null
         return try {
-            val enc = decodeBase64(raw)
-            val dec = decryptFaceBytes(enc)
-            bytesToFloats(dec)
+            bytesToFloats(decryptLegacyFace(decodeBase64(old))).also { setOwnerFacePrint(c, it) }   // एक बार: नए ताले में
         } catch (e: Exception) {
             null
         }
@@ -263,13 +264,9 @@ object Prefs {
 
     fun setOwnerFacePrint(c: Context, embedding: FloatArray?) {
         edit(c) {
-            if (embedding == null || embedding.isEmpty()) {
-                remove("owner_face_print")
-            } else {
-                val raw = floatsToBytes(embedding)
-                val enc = encryptFaceBytes(raw)
-                putString("owner_face_print", encodeBase64(enc))
-            }
+            remove(FACE_PREF_OLD)
+            if (embedding == null || embedding.isEmpty()) remove(FACE_PREF)
+            else putString(FACE_PREF, encodeBase64(floatsToBytes(embedding)))   // SecretPrefs ताले में रखता है
         }
     }
 

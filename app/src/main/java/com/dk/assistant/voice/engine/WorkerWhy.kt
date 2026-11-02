@@ -11,6 +11,8 @@ object WorkerWhy {
         return when {
             code == 401 && b.contains("unauthorized") ->
                 "Worker token मेल नहीं खाता - ऐप के \"Worker token\" और Worker के APP_TOKEN में एक ही चीज़ डालें"
+            code == 500 && b.contains("app_token") ->
+                "Worker में APP_TOKEN secret नहीं डाली (npx wrangler secret put APP_TOKEN) - वही ऐप के \"Worker token\" में भी डालें"
             code == 500 && b.contains("gemini_api_key") ->
                 "Worker में GEMINI_API_KEY secret नहीं डाली (npx wrangler secret put GEMINI_API_KEY)"
             code == 401 || code == 403 -> "Worker की Gemini चाबी गलत है या उस पर TTS की इजाज़त नहीं"
