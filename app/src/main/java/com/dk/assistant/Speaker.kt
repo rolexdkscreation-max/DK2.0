@@ -178,9 +178,15 @@ class Speaker(context: Context) {
             if (!gem) warnNoVoice(w0)
             val pendingWav = HashMap<String, kotlinx.coroutines.Deferred<ByteArray?>>()
             val bg = kotlinx.coroutines.CoroutineScope(Dispatchers.IO + kotlinx.coroutines.SupervisorJob())
+            // नवंबर 2026: Kokoro (बैकअप मोड) एक समय में एक ही वाक्य बनाता है - आगे वाले वाक्य पहले lock न पकड़ लें,
+            // इसलिए क्रम से: पहला वाक्य पहले (पहली आवाज़ जल्दी), बाकी उसके बजते-बजते पीछे बनते रहें
+            var lastLocal: kotlinx.coroutines.Deferred<ByteArray?>? = null
             fun prefetch(t: String) {
                 if (gem && !localOnly && System.currentTimeMillis() <= geminiCooldownUntil) gem = false
-                if (gem && !pendingWav.containsKey(t)) pendingWav[t] = bg.async {
+                if (!gem || pendingWav.containsKey(t)) return
+                val prev = if (localOnly) lastLocal else null          // async बनने से पहले पकड़ो (खुद का इंतज़ार नहीं)
+                pendingWav[t] = bg.async {
+                    prev?.join()
                     try { synth(keys, t, voice) }
                     catch (e: Exception) {
                         // बैकअप मोड: Kokoro न बोले तो Gemini का cooldown मत लगाओ (वह अलग इंजन है)
@@ -192,7 +198,7 @@ class Speaker(context: Context) {
                         geminiCooldownUntil = maxOf(geminiCooldownUntil, until)
                         if (first) DKLog.d("Gemini आवाज़ नहीं चली ($code) - ${(geminiCooldownUntil - System.currentTimeMillis()) / 60_000} मिनट DK चुप (फ़ोन की आवाज़ नहीं)"); null
                     }
-                }
+                }.also { if (localOnly) lastLocal = it }
             }
             val ahead = ArrayDeque<String>()
             try {

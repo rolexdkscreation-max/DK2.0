@@ -664,9 +664,9 @@ class AgentRunner(
                     if (c == '.' && i + 1 < pend.length && pend[i + 1].isWhitespace()) { cut = i; break }
                 }
                 if (cut < 0) {
-                    // v3.7: pehla tukda aur chhota (45) = awaaz jaldi shuru
-                    val limit = if (sentCount == 0) 45 else 170
-                    val minCut = if (sentCount == 0) 12 else 20
+                    // v3.7: pehla tukda aur chhota (45) = awaaz jaldi shuru; नवंबर 2026: बैकअप (Kokoro) में 28
+                    val limit = LiveHealth.cutLimit(sentCount, speaker.localOnly)
+                    val minCut = LiveHealth.cutMin(sentCount, speaker.localOnly)
                     if (pend.length > limit) {
                         val c2 = pend.lastIndexOf(",").takeIf { it > minCut } ?: pend.lastIndexOf(" ").takeIf { it > minCut } ?: return
                         cut = c2
@@ -679,6 +679,7 @@ class AgentRunner(
         DKState.sentAt.takeIf { it > 0 && System.currentTimeMillis() - it < 120_000 }?.let {
             DKLog.d("Deri: Send → AI request ${System.currentTimeMillis() - it} ms (बीच की जाँचें)")
         }
+        ModeTrack.call(ModeTrack.Ch.TEXT, if (speaker.localOnly) "बैकअप मोड (Live की जगह) • Kokoro" else "")
         val full = try {
             brain.streamChat(prompt, "USER SAYS: $goal") { d ->
                 buf.append(d)
@@ -701,6 +702,7 @@ class AgentRunner(
             ch.close(); throw e
         } catch (e: Exception) {
             DKLog.d("Chat stream fail: ${e.message}")
+            ModeTrack.error(ModeTrack.Ch.TEXT, e.message ?: e.javaClass.simpleName)
             if (mode == 1) feed("\n")
             ch.close()
             speakJob?.join()
@@ -712,6 +714,7 @@ class AgentRunner(
             return ChatOut.DONE
         }
 
+        ModeTrack.ok(ModeTrack.Ch.TEXT)
         if (mode == 3) {
             val o = try { JSONObject(full.substring(full.indexOf('{'), full.lastIndexOf('}') + 1)) } catch (_: Exception) { JSONObject().put("say", full) }
             when {

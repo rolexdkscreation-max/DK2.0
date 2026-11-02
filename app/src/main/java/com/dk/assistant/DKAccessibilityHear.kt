@@ -48,20 +48,68 @@ internal fun DKAccessibilityService.liveNow(why: String) {
 
 internal suspend fun DKAccessibilityService.enterBackup(kind: LiveFailWhy.Kind, detail: String) {
     val firstTime = !backupMode || backupKind != kind
-    backupMode = true; backupKind = kind
+    val now = System.currentTimeMillis()
+    quotaStrikes = LiveHealth.strikesAfter(backupKind, kind, quotaStrikes)
+    backupMode = true; backupKind = kind; backupAt = now
     liveOffSoft = false
-    liveOffUntil = System.currentTimeMillis() + kind.retryMs
+    // नवंबर 2026: आख़िरी सीमा (जाँच न चले तब भी) - लिमिट में कभी 60s से पहले नहीं (429 का चक्कर नहीं)
+    val cap = LiveHealth.capMs(kind, quotaStrikes)
+    liveOffUntil = now + cap
     speaker.localOnly = true
     listener.preferOffline = false
+    try { com.dk.assistant.voice.engine.KokoroTtsEngine.warm(this) } catch (_: Throwable) {}   // पहला जवाब बिना model-लोड की देरी
     DKState.setLink(LiveFailWhy.link(kind))
-    DKLog.d("बैकअप मोड: ${kind.short} ($detail) - ${kind.retryMs / 1000}s बाद Live फिर आज़माऊँगी")
-    if (firstTime) { liveTroubleSpoken = false; liveTroubleSay(LiveFailWhy.backupLine(kind)) }
+    ModeTrack.switchTo(ModeTrack.Ch.TEXT, "${kind.short} ($detail)")
+    DKLog.d("बैकअप मोड: ${kind.short} ($detail) - ${LiveHealth.cooldownMs(kind, quotaStrikes) / 1000}s बाद से चुप सेहत-जाँच, ज़्यादा से ज़्यादा ${cap / 1000}s बाद Live फिर आज़माऊँगी")
+    // मालिक (नवंबर 2026): नेट / socket / server / लिमिट = चुपचाप (सिर्फ़ ऊपर पट्टी), बाकी कारण एक बार बोलकर
+    if (firstTime && !LiveHealth.silent(kind)) { liveTroubleSpoken = false; liveTroubleSay(LiveFailWhy.backupLine(kind)) }
+    startHealthCheck()
+}
+
+/**
+ * नवंबर 2026 (मालिक: "text मोड में पीछे चुप health-check, ठीक होते ही अगली बात से वापस Live"):
+ * IO thread पर, सिर्फ़ बैकअप मोड में. Live सत्र / माइक नहीं छूता - एक छोटा HTTPS GET ([LiveNet.healthProbe]).
+ * ठीक + cooldown पूरा = liveNow() -> चलता सुनना / जवाब पूरा होने के बाद loop अगली बार Live जोड़ता है (बीच में नहीं टोकता).
+ */
+internal fun DKAccessibilityService.startHealthCheck() {
+    if (healthJob?.isActive == true) return
+    val me = this
+    healthJob = scope.launch(Dispatchers.IO) {
+        var last = 0L
+        while (isActive && backupMode) {
+            val k = backupKind ?: break
+            if (!LiveHealth.probes(k)) break                     // मॉडल / सेटिंग / माइक: जाँच से पता नहीं - पुराना नियम (cap)
+            delay(LiveHealth.nextCheckInMs(System.currentTimeMillis(), backupAt, k, quotaStrikes, last).coerceAtLeast(500L))
+            if (!backupMode || backupKind != k) continue
+            val p = if (!NetProbe.online(me)) LiveHealth.Probe.NET else LiveNet.healthProbe(GeminiLive.key(me))
+            last = System.currentTimeMillis()
+            ModeTrack.call(ModeTrack.Ch.PROBE)
+            if (p == LiveHealth.Probe.OK) ModeTrack.ok(ModeTrack.Ch.PROBE) else ModeTrack.error(ModeTrack.Ch.PROBE, "${k.short}: ${p.name}")
+            val nk = LiveHealth.kindAfter(k, p)
+            if (nk != k) {
+                // जाँच में ही लिमिट / key की गलती = उसी के नियम से इंतज़ार (लिमिट = फिर कम से कम 60s)
+                quotaStrikes = LiveHealth.strikesAfter(k, nk, quotaStrikes)
+                backupKind = nk; backupAt = last
+                liveOffUntil = last + LiveHealth.capMs(nk, quotaStrikes)
+                DKState.setLink(LiveFailWhy.link(nk))
+                DKLog.d("सेहत-जाँच: ${nk.short} - Live अभी नहीं")
+                continue
+            }
+            if (LiveHealth.open(last, backupAt, k, quotaStrikes, p)) {
+                DKLog.d("सेहत-जाँच ठीक (${k.short} दूर) - अगली बात से फिर Gemini Live")
+                liveNow("सेहत-जाँच ठीक")
+                break
+            }
+        }
+    }
 }
 
 internal fun DKAccessibilityService.exitBackup(why: String) {
     if (!backupMode) return
     backupMode = false; backupKind = null
+    healthJob?.cancel(); healthJob = null
     speaker.localOnly = false
+    ModeTrack.switchTo(ModeTrack.Ch.LIVE, why)
     DKLog.d("बैकअप मोड खत्म: $why")
 }
 
