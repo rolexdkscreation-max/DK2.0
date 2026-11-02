@@ -209,7 +209,7 @@ class SevenDebugTest {
     private val earPath = "app/src/main/java/com/dk/assistant/Ear.kt"
     private val btUnderstood = """{"understood":"Bluetooth जुड़ा हो तो उसी के माइक से सुनना","spec":"use the Bluetooth headset microphone when connected","acceptance":["Bluetooth जुड़ा हो तो उसी माइक से सुनता है"],"not_touch":[],"area":[],"questions":[]}"""
     private val btPlan = """{"steps":[{"file":"$earPath","action":"edit","change":"route mic to bluetooth SCO before recording","anchor":"fun start() {"}]}"""
-    private val btEdit = "FILE: $earPath\n<<<FIND\n    fun start() {\nFIND>>>\n<<<REPLACE\n    fun start() {\n        val useBt = true\nREPLACE>>>"
+    private val btEdit = "FILE: $earPath\n<<<FIND\n    fun start() {\nFIND>>>\n<<<REPLACE\n    fun start() {\n        val useBt = true\n        if (!useBt) return\nREPLACE>>>"   // 02 नवंबर 2026: useBt सच में इस्तेमाल (QA अब बना-पर-बेकार code पकड़ता है)
     private fun rest() = arrayOf(Agent.CODER to btEdit, Agent.REVIEWER to """{"pass":true,"problems":[]}""", Agent.PERF to """{"pass":true,"must":[]}""",
         Agent.TESTER to """{"pass":true}""", Agent.QA to """{"pass":true,"checks":[],"missing":[]}""")
 
