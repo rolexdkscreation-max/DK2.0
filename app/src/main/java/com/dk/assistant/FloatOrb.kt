@@ -16,7 +16,6 @@ import android.view.ScaleGestureDetector
 import android.view.View
 import android.view.WindowManager
 import android.widget.FrameLayout
-import android.widget.TextView
 import kotlin.math.abs
 import kotlin.math.roundToInt
 
@@ -29,6 +28,38 @@ object FloatOrbSize {
     fun clamp(dp: Int) = dp.coerceIn(MIN_DP, MAX_DP)
     /** नीचे से कितनी दूरी (dp) - navigation bar / gesture पट्टी के ऊपर */
     const val BOTTOM_GAP_DP = 120
+}
+
+/**
+ * मालिक (02 नवंबर 2026): "ऐप खुला हो तब छोटा ORB नहीं आना चाहिए. ऐप से बाहर जाते ही बड़ा ORB सिकुड़कर नीचे बीच में छोटा
+ * होकर आए, वहीं टिका रहे (हटे नहीं), उस पर ✕ नहीं. power बटन वाला popup अच्छे animation से आए, Live जुड़ने के थोड़ी देर बाद
+ * नीचे की ओर animation से चला जाए."
+ */
+object OrbRules {
+    /** power बटन / assistant वाला popup अभी स्क्रीन पर (तब छोटा ORB नहीं - दो ORB एक साथ नहीं) */
+    @Volatile var popupShowing = false
+    /** छोटा तैरता ORB: Settings में चालू + DK ऐप सामने नहीं + popup नहीं */
+    fun floatWanted(prefOn: Boolean, inApp: Boolean, popup: Boolean): Boolean = prefOn && !inApp && !popup
+    /** popup कम से कम इतना दिखे */
+    const val POPUP_MIN_MS = 1_800L
+    /** Live जुड़ने के बाद इतनी देर रुककर जाए */
+    const val POPUP_AFTER_LIVE_MS = 2_500L
+    /** Live न जुड़े (बैकअप / इजाज़त नहीं) तब भी इतने बाद (बोलना खत्म होते ही) */
+    const val POPUP_MAX_MS = 20_000L
+    /** ✕ नहीं है - इसलिए popup कभी हमेशा के लिए न अटके (शोर / लंबा काम): इतने बाद DK बोल न रहा हो तो ज़रूर जाए */
+    const val POPUP_HARD_MAX_MS = 60_000L
+    /** बाहर आते समय ORB कितना बड़ा दिखकर सिकुड़े */
+    const val ENTER_SCALE = 1.9f
+    /** popup जाए? बोलते/सोचते/उपयोगकर्ता के बोलते समय कभी नहीं */
+    fun popupShouldLeave(shownMs: Long, liveUpMs: Long, mode: Mode, level: Float): Boolean {
+        if (shownMs < POPUP_MIN_MS) return false
+        if (shownMs >= POPUP_HARD_MAX_MS && mode != Mode.SPEAKING) return true
+        if (mode == Mode.SPEAKING || mode == Mode.THINKING || mode == Mode.WORKING) return false
+        if (level > 0.18f) return false
+        return (liveUpMs >= POPUP_AFTER_LIVE_MS) || shownMs >= POPUP_MAX_MS
+    }
+    /** DK Live सच में जुड़ा? (GeminiLive जुड़ते ही "Live • <मॉडल> • …" लिखता है) */
+    fun liveUp(link: String): Boolean = link.startsWith("Live •")
 }
 
 /**
@@ -45,20 +76,18 @@ class FloatOrb(private val c: Context, private val onTap: () -> Unit) {
     private val density = c.resources.displayMetrics.density
     private var root: FrameLayout? = null
     private var orb: OrbView? = null
-    private var close: TextView? = null
     private var lp: WindowManager.LayoutParams? = null
     private var curDp = FloatOrbSize.DEFAULT_DP.toFloat()
 
     private fun px(dp: Float) = (dp * density).roundToInt()
-    private fun closePx() = px(26f)
-    /** खिड़की = ORB + ✕ का आधा हिस्सा (✕ ORB के ऊपर-दाएँ कोने पर) */
-    private fun winPx(orbPx: Int) = orbPx + closePx() / 2
+    /** नवंबर 2026: ✕ हटाया - खिड़की = सिर्फ़ ORB (थोड़ी जगह animation की चमक के लिए) */
+    private fun winPx(orbPx: Int) = orbPx
 
     val showing: Boolean get() = root != null
 
-    /** Prefs के हिसाब से दिखाओ / हटाओ / आकार ठीक करो (Settings, notification, ऐप खुलना - सब यहीं से) */
+    /** Prefs + ऐप सामने है या नहीं + popup के हिसाब से दिखाओ / हटाओ / आकार ठीक करो (सब यहीं से) */
     fun sync() {
-        if (!Prefs.floatOrbOn(c)) { remove(); return }
+        if (!OrbRules.floatWanted(Prefs.floatOrbOn(c), AppVisible.visible, OrbRules.popupShowing)) { remove(animated = true); return }
         val want = Prefs.floatOrbDp(c).toFloat()
         if (root == null) show() else if (abs(want - curDp) >= 1f) applySize(want, save = false)
         OrbNotify.cancel(c)
@@ -67,7 +96,9 @@ class FloatOrb(private val c: Context, private val onTap: () -> Unit) {
     @SuppressLint("ClickableViewAccessibility")
     private fun show() {
         curDp = Prefs.floatOrbDp(c).toFloat()
-        val o = px(curDp); val w = winPx(o)
+        val o = px(curDp)
+        // शुरू में खिड़की ORB से 2 गुना - वरना 1.9x वाला सिकुड़ना खिड़की के किनारे पर कट जाता. animation के बाद असली आकार
+        val w = (o * OrbRules.ENTER_SCALE).roundToInt() + px(4f)
         val dm = c.resources.displayMetrics
         val p = WindowManager.LayoutParams(
             w, w,
@@ -83,30 +114,35 @@ class FloatOrb(private val c: Context, private val onTap: () -> Unit) {
         }
         val box = FrameLayout(c)
         val ov = OrbView(c).apply { mini = true; contentDescription = "DK ORB - दबाएँ: बोलें / रोकें" }
-        box.addView(ov, FrameLayout.LayoutParams(o, o, Gravity.BOTTOM or Gravity.START))
-        val x = TextView(c).apply {
-            text = "✕"; textSize = 13f; gravity = Gravity.CENTER; setTextColor(0xFFFFFFFF.toInt())
-            background = GradientDrawable().apply { shape = GradientDrawable.OVAL; setColor(0xCC1B1B2A.toInt()); setStroke(px(1f), 0x66FFFFFF) }
-            contentDescription = "ORB छिपाएँ (DK चालू रहेगा)"
-            setOnClickListener { hideByUser() }
-        }
-        box.addView(x, FrameLayout.LayoutParams(closePx(), closePx(), Gravity.TOP or Gravity.END))
+        box.addView(ov, FrameLayout.LayoutParams(o, o, Gravity.CENTER))
         attachTouch(ov, p)
+        // बड़ा ORB सिकुड़कर छोटा होता दिखे ("merge होकर छोटा"): बड़ा + धुँधला -> अपने आकार में, हल्का उछाल
+        ov.alpha = 0f; ov.scaleX = OrbRules.ENTER_SCALE; ov.scaleY = OrbRules.ENTER_SCALE
         try { wm.addView(box, p) } catch (e: Exception) { DKLog.d("ORB नहीं लगा: ${e.javaClass.simpleName}"); return }
-        root = box; orb = ov; close = x; lp = p
+        root = box; orb = ov; lp = p
+        ov.animate().alpha(1f).scaleX(1f).scaleY(1f).setDuration(420)
+            .setInterpolator(android.view.animation.OvershootInterpolator(1.1f))
+            .withEndAction { if (root === box) fitWindow() }.start()
     }
 
-    /** ✕ = सिर्फ़ ORB छिपे. Live / माइक / Hey DK / सेवा को हाथ नहीं. वापस लाने का बटन notification में */
-    private fun hideByUser() {
-        Prefs.setFloatOrbOn(c, false)
-        remove()
-        OrbNotify.showHidden(c)
-        DKLog.d("ORB छिपाया (✕) - DK चालू है; वापस: ऐप खोलें / Settings / notification")
+    /** हटाओ; [animated] = छोटा होकर धुँधला (ऐप खुलते ही / popup आते ही) */
+    fun remove(animated: Boolean = false) {
+        val r = root ?: return
+        val ov = orb
+        root = null; orb = null; lp = null
+        if (animated && ov != null) {
+            ov.animate().alpha(0f).scaleX(0.4f).scaleY(0.4f).setDuration(220)
+                .withEndAction { try { wm.removeView(r) } catch (_: Exception) {} }.start()
+        } else try { wm.removeView(r) } catch (_: Exception) {}
     }
 
-    fun remove() {
-        root?.let { try { wm.removeView(it) } catch (_: Exception) {} }
-        root = null; orb = null; close = null; lp = null
+    /** animation के बाद खिड़की = सिर्फ़ ORB (बीच वहीं) - ताकि आस-पास की स्क्रीन छूना चले */
+    private fun fitWindow() {
+        val r = root ?: return; val p = lp ?: return
+        val w = winPx(px(curDp)); if (p.width == w) return
+        val cx = p.x + p.width / 2; val cy = p.y + p.height / 2
+        p.width = w; p.height = w; p.x = cx - w / 2; p.y = cy - w / 2
+        try { wm.updateViewLayout(r, p) } catch (_: Exception) {}
     }
 
     /** नया आकार - ORB का बीच वहीं रहे */
@@ -125,7 +161,7 @@ class FloatOrb(private val c: Context, private val onTap: () -> Unit) {
 
     @SuppressLint("ClickableViewAccessibility")
     private fun attachTouch(v: View, p: WindowManager.LayoutParams) {
-        var downX = 0f; var downY = 0f; var startX = 0; var startY = 0
+        var downX = 0f; var downY = 0f
         var moved = false; var scaling = false
         // दो उंगलियों से फैलाओ / सिकोड़ो = आकार; छोड़ते ही सेव
         val scale = ScaleGestureDetector(c, object : ScaleGestureDetector.SimpleOnScaleGestureListener() {
@@ -137,18 +173,11 @@ class FloatOrb(private val c: Context, private val onTap: () -> Unit) {
             scale.onTouchEvent(ev)
             when (ev.actionMasked) {
                 MotionEvent.ACTION_DOWN -> {
-                    downX = ev.rawX; downY = ev.rawY; startX = p.x; startY = p.y; moved = false; scaling = false
+                    downX = ev.rawX; downY = ev.rawY; moved = false; scaling = false
                 }
                 MotionEvent.ACTION_POINTER_DOWN -> scaling = true
-                MotionEvent.ACTION_MOVE -> if (!scaling && ev.pointerCount == 1) {
-                    // पहले जैसा: पकड़कर खींचो = जगह बदले
-                    val dx = ev.rawX - downX; val dy = ev.rawY - downY
-                    if (abs(dx) > 12 || abs(dy) > 12) moved = true
-                    if (moved) {
-                        p.x = startX + dx.toInt(); p.y = startY + dy.toInt()
-                        root?.let { try { wm.updateViewLayout(it, p) } catch (_: Exception) {} }
-                    }
-                }
+                // नवंबर 2026 (मालिक): ORB नीचे बीच में ही टिका रहे - खींचने से जगह नहीं बदलती; उंगली हिली = टैप नहीं
+                MotionEvent.ACTION_MOVE -> if (abs(ev.rawX - downX) > 12 || abs(ev.rawY - downY) > 12) moved = true
                 MotionEvent.ACTION_UP -> if (!moved && !scaling) onTap()
             }
             true

@@ -28,7 +28,12 @@ class DKVoiceInteractionSessionService : VoiceInteractionSessionService() {
 class DKVoiceInteractionSession(context: android.content.Context) : VoiceInteractionSession(context) {
 
     private var orbView: OrbView? = null
-    private var closeButton: android.widget.ImageButton? = null
+    private val h = android.os.Handler(android.os.Looper.getMainLooper())
+    private var shownAt = 0L
+    private var liveUpAt = 0L
+    private var leaving = false
+    private val watch = Runnable { checkLeave() }
+    private val onState: () -> Unit = { checkLeave() }
     private var micButton: android.widget.Button? = null
 
     override fun onCreateContentView(): android.view.View {
@@ -66,19 +71,7 @@ class DKVoiceInteractionSession(context: android.content.Context) : VoiceInterac
             )
         }
 
-        closeButton = android.widget.ImageButton(context).apply {
-            setImageResource(android.R.drawable.ic_menu_close_clear_cancel)
-            background = null
-            setOnClickListener {
-                try {
-                    hide()
-                } catch (e: Exception) {
-                    android.util.Log.e("DKAssist", "Error hiding session", e)
-                }
-            }
-            layoutParams = android.widget.LinearLayout.LayoutParams(100, 100)
-        }
-        topRow.addView(closeButton)
+        // नवंबर 2026 (मालिक): popup पर ✕ नहीं - अपने-आप animation से जाता है
         innerLayout.addView(topRow)
 
         orbView = OrbView(context).apply {
@@ -122,7 +115,9 @@ class DKVoiceInteractionSession(context: android.content.Context) : VoiceInterac
         super.onShow(args, showFlags)
         // v5.1 (मालिक): power बटन से बुलाया = DK Live उसी पल पीछे से जुड़ना शुरू, ओर्ब दिखने के साथ-साथ
         // (UI के किसी कदम का इंतज़ार नहीं). माइक की इजाज़त न हो = Live नहीं, नीचे वाला बटन दिखता है.
-        // Accessibility यहाँ कभी चालू नहीं की जाती.
+        // Accessibility यहाँ नई चालू नहीं की जाती - सिर्फ़ पहले से चालू (Not working) वाली फिर जोड़ी जाती है.
+        // नवंबर 2026: पहले से चालू पर "Not working" वाली सेवा फिर जोड़ो (सिर्फ़ adb इजाज़त हो तो; नई इजाज़त नहीं)
+        try { Setup.healAccessibility(context) } catch (_: Exception) {}
         try { DKAccessibilityService.instance?.invokedNow("power बटन / assistant") }
         catch (e: Exception) { android.util.Log.e("DKAssist", "Live शुरू नहीं हुआ", e) }
         try {
@@ -154,26 +149,61 @@ class DKVoiceInteractionSession(context: android.content.Context) : VoiceInterac
                 micButton?.visibility = android.view.View.VISIBLE
             }
 
-            // नवंबर 2026 (मालिक): "सिर्फ़ एक ORB, नीचे बीच में". DK सेवा चालू = वही तैरता ORB (FloatOrb) दिखे,
-            // यहाँ का अलग बड़ा ✕ वाला ORB नहीं. सेवा न हो तभी यह ORB - उसी आकार का जो Settings में चुना.
-            val svc = DKAccessibilityService.instance
-            if (svc != null) {
-                Prefs.setFloatOrbOn(context, true); svc.refreshOrb()
-                orbView?.visibility = android.view.View.GONE
-                closeButton?.visibility = android.view.View.GONE
-                // माइक की इजाज़त है = यह खाली खिड़की तुरंत बंद (Live/माइक DK सेवा में चलता रहता है)
-                if (hasMic) android.os.Handler(android.os.Looper.getMainLooper()).post { try { hide() } catch (_: Exception) {} }
-            } else {
-                val px = (Prefs.floatOrbDp(context) * context.resources.displayMetrics.density).toInt()
-                orbView?.let { o -> o.layoutParams = o.layoutParams.apply { width = px; height = px }; o.visibility = android.view.View.VISIBLE }
-                closeButton?.visibility = android.view.View.VISIBLE
-            }
+            // नवंबर 2026 (मालिक): power बटन = popup अच्छे animation से नीचे से आए, बात चलने तक रहे, Live जुड़ने के
+            // थोड़ी देर बाद नीचे की ओर animation से चला जाए. popup के रहते छोटा तैरता ORB नहीं (दो ORB नहीं); popup जाते ही
+            // ऐप बाहर हो तो छोटा ORB नीचे बीच में आता है. ✕ नहीं.
+            val px = (Prefs.floatOrbDp(context) * 1.6f * context.resources.displayMetrics.density).toInt()
+            orbView?.let { o -> o.layoutParams = o.layoutParams.apply { width = px; height = px }; o.visibility = android.view.View.VISIBLE }
+            OrbRules.popupShowing = true
+            DKAccessibilityService.instance?.let { it.refreshOrb() }   // Settings का switch जैसा है वैसा (ज़बरदस्ती चालू नहीं)
+            shownAt = System.currentTimeMillis(); liveUpAt = 0L; leaving = false
+            enterAnim()
+            DKState.listen(onState)
+            h.removeCallbacks(watch); h.postDelayed(watch, 400)
         } catch (e: Exception) {
             android.util.Log.e("DKAssist", "Error in DKVoiceInteractionSession onShow", e)
         }
     }
 
+    /** नीचे से ऊपर, छोटे से अपने आकार में, धुँधले से साफ़ - हल्का उछाल */
+    private fun enterAnim() {
+        val o = orbView ?: return
+        val d = context.resources.displayMetrics.density
+        o.alpha = 0f; o.scaleX = 0.55f; o.scaleY = 0.55f; o.translationY = 140f * d
+        o.animate().alpha(1f).scaleX(1f).scaleY(1f).translationY(0f).setDuration(460)
+            .setInterpolator(android.view.animation.OvershootInterpolator(0.9f)).start()
+    }
+
+    /** बात चल रही हो तो रुको; Live जुड़ा + थोड़ी देर = नीचे की ओर फिसलकर जाओ */
+    private fun checkLeave() {
+        if (leaving || shownAt == 0L) return
+        val now = System.currentTimeMillis()
+        if (OrbRules.liveUp(DKState.linkStatus)) { if (liveUpAt == 0L) liveUpAt = now } else liveUpAt = 0L
+        val up = if (liveUpAt == 0L) 0L else now - liveUpAt
+        if (OrbRules.popupShouldLeave(now - shownAt, up, DKState.shownMode(), DKState.level)) leave()
+        else { h.removeCallbacks(watch); h.postDelayed(watch, 400) }
+    }
+
+    private fun leave() {
+        leaving = true
+        h.removeCallbacks(watch)
+        val o = orbView
+        val done = { try { hide() } catch (_: Exception) {} }
+        if (o == null) { done(); return }
+        val d = context.resources.displayMetrics.density
+        o.animate().alpha(0f).scaleX(0.7f).scaleY(0.7f).translationY(160f * d).setDuration(380)
+            .setInterpolator(android.view.animation.AccelerateInterpolator()).withEndAction { done() }.start()
+    }
+
+    private fun cleanup() {
+        h.removeCallbacks(watch)
+        DKState.unlisten(onState)
+        shownAt = 0L
+        if (OrbRules.popupShowing) { OrbRules.popupShowing = false; DKAccessibilityService.instance?.refreshOrb() }
+    }
+
     override fun onHide() {
+        cleanup()
         super.onHide()
         try {
             android.util.Log.e("DKAssist", "DKVoiceInteractionSession onHide")
@@ -183,6 +213,7 @@ class DKVoiceInteractionSession(context: android.content.Context) : VoiceInterac
     }
 
     override fun onDestroy() {
+        cleanup()
         super.onDestroy()
         try {
             android.util.Log.e("DKAssist", "DKVoiceInteractionSession onDestroy")
