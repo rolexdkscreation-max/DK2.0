@@ -86,6 +86,8 @@ class SettingsActivity : AppCompatActivity() {
     // ------------------------------------------------------------ UI build
     internal lateinit var swAutoUpd: SwitchCompat
     internal var pendingRelease: Updater.Release? = null
+    /** फ़ोन लॉक / अनलॉक वाला हिस्सा खुला हो तो उसका सेव */
+    internal var plSave: (() -> Unit)? = null
 
     companion object { const val EXTRA_FOCUS_KEY = "focus_key" }
 
@@ -108,6 +110,7 @@ class SettingsActivity : AppCompatActivity() {
             "orb" -> { title.text = "ओर्ब और चेहरा"; bar.visibility = View.GONE; secOrb() }
             "ui" -> { title.text = "दिखावट"; bar.visibility = View.GONE; secUi() }
             "access" -> { title.text = "Accessibility"; secAccess() }
+            "phonelock" -> { title.text = "फ़ोन लॉक / अनलॉक"; secPhoneLock() }
             "perms" -> { title.text = "परमिशन"; secPerms() }
             "update" -> { title.text = "अपडेट"; secUpdate() }
             "debug" -> { title.text = "डिबग लॉग"; bar.visibility = View.GONE; secDebug() }
@@ -130,6 +133,7 @@ class SettingsActivity : AppCompatActivity() {
             Triple("voice", "आवाज़", "बोलने वाला इंजन (Gemini TTS • Edge • Live) • सुनना"),
             Triple("orb", "ओर्ब और चेहरा", "पृथ्वी, गैलेक्सी, एटम, छल्ला, पुरुष/महिला HD चेहरा"),
             Triple("access", "Accessibility", (if (Setup.accessibilityOn(this)) "✓ चालू" else "✗ बंद") + " • फ़ोन कंट्रोल • हमेशा सुनना • कॉल • बैटरी"),
+            Triple("phonelock", "फ़ोन लॉक / अनलॉक", (if (PhoneLockStore.lockOn(this) || PhoneLockStore.unlockOn(this)) "✓ चालू" else "✗ बंद") + " • \"हे DK फोन लॉक करो\" • अपना नाम और वाक्य • PIN / पैटर्न"),
             Triple("perms", "परमिशन", "माइक • स्क्रीन देखना • नोटिफ़िकेशन • कॉल • ऐप इंस्टॉल"),
             Triple("computer", "DK कंप्यूटर", (if (Prefs.computerOn(this)) "✓ चालू" else "✗ बंद") + " • कोई भी काम: खोज, रिसर्च, फ़ाइल/PDF, हिसाब, फ़ोन, रिमाइंडर"),
             Triple("coder", "कोडिंग एजेंट", (if (Prefs.coderOn(this)) "✓ चालू" else "✗ बंद") + " • GitHub से जुड़ें • कोड लिखें/बदलें/हटाएँ • push • अलग AI key"),
@@ -400,6 +404,7 @@ class SettingsActivity : AppCompatActivity() {
                 Providers.all.getOrNull(rg.checkedRadioButtonId - scopeRadioBase(scope))?.let { putString(ApiScopes.activePref(scope), it.id) }
             }
         }
+        plSave?.invoke()
         DKAccessibilityService.instance?.startWakeLoopIfEnabled()
         txtSaved.text = "✓ सेव हो गया"
         if (showToast) {

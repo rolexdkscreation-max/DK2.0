@@ -1,0 +1,154 @@
+package com.dk.assistant
+
+import android.accessibilityservice.AccessibilityService.GestureResultCallback
+import android.accessibilityservice.GestureDescription
+import android.app.KeyguardManager
+import android.graphics.Path
+import android.graphics.Rect
+import android.os.Build
+import android.os.Bundle
+import android.view.accessibility.AccessibilityNodeInfo
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlin.coroutines.resume
+
+/**
+ * नवंबर 2026: लॉक स्क्रीन पर मालिक का सेव किया PIN / पैटर्न / पासवर्ड डालना (Settings → फ़ोन लॉक / अनलॉक)।
+ *
+ * - सिर्फ़ तब जब मालिक ने खुद \"आवाज़ से अनलॉक\" चालू करके PIN सेव किया हो ([PhoneLockStore.canEnter])।
+ * - एक बार में एक ही कोशिश; न खुले तो दोबारा नहीं डालता। लगातार [PhoneLockStore.MAX_FAILS] बार न खुले = रुक जाता है
+ *   (वरना Android फ़ोन को लंबे समय के लिए बंद कर देता है)। नया PIN सेव करने पर फिर चालू।
+ * - PIN log / AI / स्क्रीन पर कहीं नहीं।
+ */
+internal object PhoneUnlocker {
+    const val FAIL = PhoneLockVoice.UNLOCK_FAIL
+
+    private fun nodes(svc: DKAccessibilityService): List<AccessibilityNodeInfo> {
+        val out = ArrayList<AccessibilityNodeInfo>()
+        fun walk(n: AccessibilityNodeInfo?, d: Int) {
+            if (n == null || d > 40) return
+            out.add(n)
+            for (i in 0 until n.childCount) walk(n.getChild(i), d + 1)
+        }
+        svc.allRoots().forEach { walk(it, 0) }
+        return out
+    }
+
+    private class Screen(
+        val digits: Map<Char, AccessibilityNodeInfo>,
+        val enter: AccessibilityNodeInfo?,
+        val pattern: AccessibilityNodeInfo?,
+        val edit: AccessibilityNodeInfo?,
+    )
+
+    private fun look(svc: DKAccessibilityService): Screen {
+        val digits = HashMap<Char, AccessibilityNodeInfo>()
+        val byId = HashMap<Char, AccessibilityNodeInfo>()      // "…:id/key5" वाले पक्के - लिखावट वाले (घड़ी, गिनती) से ऊपर
+        var enter: AccessibilityNodeInfo? = null; var pattern: AccessibilityNodeInfo? = null; var edit: AccessibilityNodeInfo? = null
+        for (n in nodes(svc)) {
+            if (!n.isVisibleToUser) continue
+            val id = n.viewIdResourceName
+            if (pattern == null && PhoneLockVoice.patternView(n.className, id)) pattern = n
+            if (edit == null && n.isEditable) edit = n
+            if (enter == null && PhoneLockVoice.enterKey(id, n.text, n.contentDescription)) enter = n
+            PhoneLockVoice.digitKey(id, n.text, n.contentDescription)?.let { d ->
+                if (PhoneLockVoice.digitKey(id, null, null) != null) { if (d !in byId) byId[d] = n }
+                else if (d !in digits && (n.isClickable || n.parent?.isClickable == true)) digits[d] = n
+            }
+        }
+        return Screen(digits + byId, enter, pattern, edit)
+    }
+
+    private suspend fun press(svc: DKAccessibilityService, n: AccessibilityNodeInfo): Boolean {
+        var c: AccessibilityNodeInfo? = n; var depth = 0
+        while (c != null && !c.isClickable && depth < 3) { c = c.parent; depth++ }
+        if (c != null && c.performAction(AccessibilityNodeInfo.ACTION_CLICK)) return true
+        val r = Rect(); n.getBoundsInScreen(r)
+        return !r.isEmpty && svc.tap(r.exactCenterX(), r.exactCenterY())
+    }
+
+    private suspend fun stroke(svc: DKAccessibilityService, pts: List<Pair<Float, Float>>): Boolean {
+        if (pts.size < 2) return false
+        val p = Path().apply { moveTo(pts[0].first, pts[0].second); pts.drop(1).forEach { lineTo(it.first, it.second) } }
+        val g = GestureDescription.Builder().addStroke(GestureDescription.StrokeDescription(p, 0, 140L * pts.size)).build()
+        return suspendCancellableCoroutine { cont ->
+            val ok = svc.dispatchGesture(g, object : GestureResultCallback() {
+                override fun onCompleted(d: GestureDescription?) { if (cont.isActive) cont.resume(true) }
+                override fun onCancelled(d: GestureDescription?) { if (cont.isActive) cont.resume(false) }
+            }, null)
+            if (!ok && cont.isActive) cont.resume(false)
+        }
+    }
+
+    /** PIN वाला हिस्सा / पैटर्न / पासवर्ड का खाना आने तक (ऊपर swipe के बाद) */
+    private suspend fun waitBouncer(svc: DKAccessibilityService, kind: PhoneLockVoice.Kind): Screen? {
+        repeat(14) {
+            val s = look(svc)
+            val ready = when (kind) {
+                PhoneLockVoice.Kind.PIN -> s.digits.size >= 10 || s.edit != null
+                PhoneLockVoice.Kind.PATTERN -> s.pattern != null
+                PhoneLockVoice.Kind.PASSWORD -> s.edit != null
+            }
+            if (ready) return s
+            delay(200)
+        }
+        return null
+    }
+
+    private suspend fun opened(km: KeyguardManager): Boolean {
+        repeat(12) { if (!km.isKeyguardLocked) return true; delay(200) }
+        return !km.isKeyguardLocked
+    }
+
+    /** लॉक स्क्रीन ऊपर swipe हो चुकी, फ़ोन अब भी बंद → सेव किया PIN डालो */
+    suspend fun enter(svc: DKAccessibilityService, km: KeyguardManager): String {
+        val kind = PhoneLockStore.kind(svc) ?: return "$FAIL PIN सेव नहीं है। Settings → फ़ोन लॉक / अनलॉक में डालिए।"
+        if (PhoneLockStore.fails(svc) >= PhoneLockStore.MAX_FAILS)
+            return "$FAIL पिछली ${PhoneLockStore.MAX_FAILS} बार फ़ोन नहीं खुला, इसलिए मैंने ${kind.hi} डालना रोक दिया है। Settings में ${kind.hi} दोबारा सेव कीजिए।"
+        val secret = PhoneLockStore.secret(svc) ?: return "$FAIL सेव किया ${kind.hi} खुल नहीं पाया। Settings में दोबारा सेव कीजिए।"
+        var s = waitBouncer(svc, kind)
+        if (s == null) {        // कुछ फ़ोन: पहली swipe से सिर्फ़ घड़ी हटती है
+            val dm = svc.resources.displayMetrics
+            svc.swipe(dm.widthPixels / 2f, dm.heightPixels * 0.85f, dm.widthPixels / 2f, dm.heightPixels * 0.25f, 250)
+            s = waitBouncer(svc, kind)
+        }
+        if (s == null) {
+            if (!km.isKeyguardLocked) return "phone unlock ho gaya"
+            return "$FAIL लॉक स्क्रीन पर ${kind.hi} डालने की जगह नहीं मिली। फ़ोन खुद खोलिए।"
+        }
+        var typed = false
+        when (kind) {
+            PhoneLockVoice.Kind.PIN -> {
+                if (s.digits.size >= 10) {
+                    typed = true
+                    for (d in secret) { val n = s.digits[d]; if (n == null || !press(svc, n)) { typed = false; break }; delay(90) }
+                } else s.edit?.let { typed = setText(it, secret) }
+            }
+            PhoneLockVoice.Kind.PASSWORD -> s.edit?.let { typed = setText(it, secret) }
+            PhoneLockVoice.Kind.PATTERN -> s.pattern?.let { pv ->
+                val r = Rect(); pv.getBoundsInScreen(r)
+                if (!r.isEmpty) typed = stroke(svc, secret.map { PhoneLockVoice.cell(it, r.left, r.top, r.right, r.bottom) })
+            }
+        }
+        if (!typed) return "$FAIL ${kind.hi} पूरा नहीं डल पाया। फ़ोन खुद खोलिए।"
+        // कई फ़ोन PIN सही होते ही खुद खुलते हैं; न खुले तो Enter / OK
+        if (kind != PhoneLockVoice.Kind.PATTERN && km.isKeyguardLocked) {
+            delay(250)
+            if (km.isKeyguardLocked) {
+                val en = look(svc).enter
+                val ime = if (Build.VERSION.SDK_INT >= 30) AccessibilityNodeInfo.AccessibilityAction.ACTION_IME_ENTER.id else 0
+                if (en != null) press(svc, en)
+                else if (ime != 0) look(svc).edit?.performAction(ime)
+            }
+        }
+        if (opened(km)) { PhoneLockStore.worked(svc); DKLog.d("फ़ोन लॉक: आवाज़ से खुला (${kind.id})"); return "phone unlock ho gaya" }
+        PhoneLockStore.failed(svc)
+        DKLog.d("फ़ोन लॉक: ${kind.id} डाला पर फ़ोन नहीं खुला (${PhoneLockStore.fails(svc)}/${PhoneLockStore.MAX_FAILS})")
+        return "$FAIL ${kind.hi} डालने पर भी फ़ोन नहीं खुला। हो सकता है फ़ोन का ${kind.hi} बदल गया हो, Settings में नया सेव कीजिए।"
+    }
+
+    private fun setText(n: AccessibilityNodeInfo, t: String): Boolean {
+        val b = Bundle().apply { putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, t) }
+        return n.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, b)
+    }
+}
