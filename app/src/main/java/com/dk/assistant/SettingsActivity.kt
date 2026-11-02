@@ -384,7 +384,7 @@ class SettingsActivity : AppCompatActivity() {
                 putBoolean("coder_team", swTeam.isChecked)
                 putBoolean("coder_seven", swSeven.isChecked)
                 putString("gh_token", edGhToken.text.toString().trim())
-                putString("gh_repo", edGhRepo.text.toString().trim().removePrefix("https://github.com/").removeSuffix(".git").trim('/'))
+                putString("gh_repo", Prefs.cleanRepo(edGhRepo.text.toString()))
                 putString("gh_branch", edGhBranch.text.toString().trim())
             }
             if (::swPc.isInitialized) {

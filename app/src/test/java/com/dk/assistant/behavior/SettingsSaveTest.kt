@@ -72,7 +72,7 @@ class SettingsSaveTest {
 
     @Test fun repoLinkBecomesOwnerSlashName() {
         val s = open("coder")
-        Ui.field(s.get(), "Repo (owner/naam)").setText(" https://github.com/rolex/DK2.0.git ")
+        Ui.field(s.get(), "Repo (owner/naam)").setText(" https://github.com/rolex/DK2.0.git/ ")
         Ui.field(s.get(), "GitHub Token").setText(" ghp_test123 ")
         leave(s)
         assertEquals("rolex/DK2.0", Prefs.ghRepo(c))

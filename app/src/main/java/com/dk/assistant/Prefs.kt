@@ -368,6 +368,18 @@ object Prefs {
     fun coderOn(c: Context) = sp(c).getBoolean("coder_on", false)
     fun ghToken(c: Context) = sp(c).getString("gh_token", "") ?: ""
     fun ghRepo(c: Context) = sp(c).getString("gh_repo", "") ?: ""
+    /**
+     * Repo खाने में जो भी डाला (पूरा link, आख़िर में "/" या ".git", http/www) → "owner/naam".
+     * पहले "…/DK2.0.git/" डालने पर ".git" रह जाता था (आख़िरी "/" की वजह से)।
+     */
+    fun cleanRepo(raw: String): String {
+        var s = raw.trim().trim('/')
+        s = s.replace(Regex("^(https?://)?(www\\.)?github\\.com[/:]", RegexOption.IGNORE_CASE), "")
+            .removePrefix("git@github.com:")
+        s = s.trim('/')
+        if (s.endsWith(".git", ignoreCase = true)) s = s.dropLast(4)
+        return s.trim('/')
+    }
     fun ghBranch(c: Context) = (sp(c).getString("gh_branch", "") ?: "").ifBlank { "main" }
     /** "same" = wahi AI jo baatcheet me; warna provider id (alag key) */
     fun coderProvider(c: Context) = sp(c).getString("coder_provider", "same") ?: "same"
