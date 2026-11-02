@@ -97,7 +97,7 @@ class UpdateNotesCoderModelsTest {
         assertTrue(src("Prefs.kt").contains("coder_light_model"))
         val r = src("SevenRunner.kt")
         assertTrue(r.contains("withModel(") && r.contains("Prefs.coderLightModel(c)"))
-        assertTrue(src("CodingAgent.kt").contains("fun withModel("))
+        assertTrue(com.dk.assistant.CoderSrc.all().contains("fun withModel("))
     }
 
     @Test fun managerAnswersQuestionsFirst() {

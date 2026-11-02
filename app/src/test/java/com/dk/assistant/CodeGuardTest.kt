@@ -70,7 +70,7 @@ class CodeGuardTest {
     }
 
     @Test fun wiredIntoAgents() {
-        val ca = src("CodingAgent.kt")
+        val ca = com.dk.assistant.CoderSrc.all()
         assertTrue(ca.contains("deleteBlock(path, cur)?.let { return \"ERROR: NOT deleted. \$it\" }"))
         assertTrue(ca.contains("CodeGuard.shrunk(old, content)"))
         assertTrue(ca.contains("push रोका"))
