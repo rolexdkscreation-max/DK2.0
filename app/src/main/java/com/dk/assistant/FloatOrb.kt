@@ -10,6 +10,9 @@ import android.content.Intent
 import android.graphics.PixelFormat
 import android.graphics.drawable.GradientDrawable
 import android.os.Build
+import android.os.Handler
+import android.os.Looper
+import android.os.SystemClock
 import android.view.Gravity
 import android.view.MotionEvent
 import android.view.ScaleGestureDetector
@@ -58,6 +61,33 @@ object OrbRules {
         if (level > 0.18f) return false
         return (liveUpMs >= POPUP_AFTER_LIVE_MS) || shownMs >= POPUP_MAX_MS
     }
+    // ---- मालिक (02 नवंबर 2026): "छोटा ORB तभी दिखे जब DK सुन रहा हो / हम बोल रहे हों / DK बोल रहा हो;
+    // बोलना-सुनना बंद = छिप जाए; फिर बोलना शुरू = फिर दिखे. उंगली से पकड़कर कहीं भी खिसका सकें."
+    /** इतनी देर कोई न बोले (न आप, न DK) = ORB छिपे (Live पीछे चलता रहता है - बोलते ही ORB फिर) */
+    const val QUIET_HIDE_MS = 6_000L
+    /** बातचीत खत्म (Live बंद / सब IDLE) के बाद इतनी देर में छिपे - mode बदलते समय टिमटिमाए नहीं */
+    const val IDLE_GRACE_MS = 1_200L
+    /** माइक की आवाज़ इससे ऊपर = आप बोल रहे हैं */
+    const val TALK_LEVEL = 0.18f
+    /** दिखते समय कितनी बार जाँचें */
+    const val TICK_MS = 300L
+    /** अभी कोई बोल रहा / DK काम कर रहा है? (ORB तुरंत दिखे) */
+    fun talkingNow(mode: Mode, level: Float): Boolean =
+        mode == Mode.SPEAKING || mode == Mode.THINKING || mode == Mode.WORKING || (mode == Mode.LISTENING && level > TALK_LEVEL)
+    /**
+     * छोटा ORB अभी दिखे? [mode] = DKState.shownMode(), [quietMs] = आख़िरी बार कोई बोला / सुनना शुरू हुआ - उसके बाद का समय.
+     * DK बोल / सोच / काम कर रहा = हमेशा. सुन रहा (Live) = आख़िरी बात के [QUIET_HIDE_MS] तक. बाकी (Hey DK का पीछे वाला सुनना भी) = छिपा.
+     */
+    fun talkWanted(mode: Mode, live: Boolean, quietMs: Long): Boolean = when {
+        mode == Mode.SPEAKING || mode == Mode.THINKING || mode == Mode.WORKING -> true
+        // सिर्फ़ Live वाला सुनना गिनो - बिना Live के "Hey DK" का पीछे वाला सुनना (हमेशा चलता) ORB नहीं दिखाता
+        live -> quietMs < QUIET_HIDE_MS
+        else -> quietMs < IDLE_GRACE_MS
+    }
+    /** खिसकाया ORB स्क्रीन के अंदर ही रहे */
+    fun clampPos(x: Int, y: Int, w: Int, h: Int, screenW: Int, screenH: Int): Pair<Int, Int> =
+        x.coerceIn(0, (screenW - w).coerceAtLeast(0)) to y.coerceIn(0, (screenH - h).coerceAtLeast(0))
+
     /** DK Live सच में जुड़ा? (GeminiLive जुड़ते ही "Live • <मॉडल> • …" लिखता है) */
     fun liveUp(link: String): Boolean = link.startsWith("Live •")
 }
@@ -85,9 +115,40 @@ class FloatOrb(private val c: Context, private val onTap: () -> Unit) {
 
     val showing: Boolean get() = root != null
 
+    // ---- बोलने-सुनने पर ही दिखना (OrbRules.talkWanted)
+    private val main = Handler(Looper.getMainLooper())
+    /** आख़िरी बार कोई बोला / सुनना शुरू हुआ / ORB छुआ (uptime) */
+    private var lastTalkAt = 0L
+    private var lastLive = false
+    private var lastMode = Mode.IDLE
+    private var touching = false
+    private val ticker = Runnable { tick() }
+    private val onState: () -> Unit = { main.post { tick() } }
+    init { DKState.listen(onState) }
+
+    /** सेवा बंद: सुनना बंद + ORB हटाओ */
+    fun release() {
+        DKState.unlisten(onState); main.removeCallbacks(ticker); remove()
+    }
+
+    /** DK की हालत देखो: बोलना/सुनना शुरू = अभी दिखाओ; चुप्पी लंबी = छिपाओ. दिखते / Live चलते समय हर TICK_MS पर */
+    private fun tick() {
+        main.removeCallbacks(ticker)
+        val now = SystemClock.uptimeMillis()
+        val m = DKState.shownMode(); val live = DKState.live
+        // Live शुरू (power बटन / Hey DK / टैप) = सुनना शुरू. DK बोलना खत्म -> सुनना: SPEAKING वाला समय ही गिना जा चुका
+        val started = (live && !lastLive) || (live && m == Mode.LISTENING && lastMode != Mode.LISTENING)
+        if (started || touching || OrbRules.talkingNow(m, DKState.level)) lastTalkAt = now
+        lastLive = live; lastMode = m
+        sync()
+        if (live || m != Mode.IDLE || root != null) main.postDelayed(ticker, OrbRules.TICK_MS)
+    }
+
     /** Prefs + ऐप सामने है या नहीं + popup के हिसाब से दिखाओ / हटाओ / आकार ठीक करो (सब यहीं से) */
     fun sync() {
         if (!OrbRules.floatWanted(Prefs.floatOrbOn(c), AppVisible.visible, OrbRules.popupShowing)) { remove(animated = true); return }
+        // बोलना-सुनना नहीं हो रहा = छिपा रहे (मालिक, 02 नवंबर 2026)
+        if (!OrbRules.talkWanted(DKState.shownMode(), DKState.live, SystemClock.uptimeMillis() - lastTalkAt)) { remove(animated = true); return }
         val want = Prefs.floatOrbDp(c).toFloat()
         if (root == null) show() else if (abs(want - curDp) >= 1f) applySize(want, save = false)
         OrbNotify.cancel(c)
@@ -108,9 +169,15 @@ class FloatOrb(private val c: Context, private val onTap: () -> Unit) {
             PixelFormat.TRANSLUCENT
         ).apply {
             gravity = Gravity.TOP or Gravity.START
-            // नीचे बीच में (हर बार दिखने पर यहीं से; खींचने पर जहाँ छोड़ो वहीं)
+            // पहली बार नीचे बीच में; उंगली से खिसकाया हो तो वहीं (बीच का बिंदु स्क्रीन के हिस्से में सेव)
             x = (dm.widthPixels - w) / 2
             y = dm.heightPixels - w - px(FloatOrbSize.BOTTOM_GAP_DP.toFloat())
+            val fx = Prefs.floatOrbFx(c); val fy = Prefs.floatOrbFy(c)
+            if (fx >= 0f && fy >= 0f) {
+                val (cx, cy) = OrbRules.clampPos((fx * dm.widthPixels).roundToInt() - w / 2, (fy * dm.heightPixels).roundToInt() - w / 2,
+                    w, w, dm.widthPixels, dm.heightPixels)
+                x = cx; y = cy
+            }
         }
         val box = FrameLayout(c)
         val ov = OrbView(c).apply { mini = true; contentDescription = "DK ORB - दबाएँ: बोलें / रोकें" }
@@ -159,9 +226,27 @@ class FloatOrb(private val c: Context, private val onTap: () -> Unit) {
         if (save) Prefs.setFloatOrbDp(c, nd.roundToInt())
     }
 
+    /** खिड़की उंगली के साथ (स्क्रीन के अंदर) */
+    private fun moveTo(x: Int, y: Int) {
+        val r = root ?: return; val p = lp ?: return
+        val dm = c.resources.displayMetrics
+        val (nx, ny) = OrbRules.clampPos(x, y, p.width, p.height, dm.widthPixels, dm.heightPixels)
+        p.x = nx; p.y = ny
+        try { wm.updateViewLayout(r, p) } catch (_: Exception) {}
+    }
+
+    /** ORB का बीच = स्क्रीन का कौन-सा हिस्सा (0..1) - घुमाने / आकार बदलने पर भी वही जगह */
+    private fun savePos() {
+        val p = lp ?: return
+        val dm = c.resources.displayMetrics
+        if (dm.widthPixels <= 0 || dm.heightPixels <= 0) return
+        Prefs.setFloatOrbPos(c, (p.x + p.width / 2f) / dm.widthPixels, (p.y + p.height / 2f) / dm.heightPixels)
+    }
+
     @SuppressLint("ClickableViewAccessibility")
     private fun attachTouch(v: View, p: WindowManager.LayoutParams) {
         var downX = 0f; var downY = 0f
+        var startX = 0; var startY = 0
         var moved = false; var scaling = false
         // दो उंगलियों से फैलाओ / सिकोड़ो = आकार; छोड़ते ही सेव
         val scale = ScaleGestureDetector(c, object : ScaleGestureDetector.SimpleOnScaleGestureListener() {
@@ -173,12 +258,21 @@ class FloatOrb(private val c: Context, private val onTap: () -> Unit) {
             scale.onTouchEvent(ev)
             when (ev.actionMasked) {
                 MotionEvent.ACTION_DOWN -> {
-                    downX = ev.rawX; downY = ev.rawY; moved = false; scaling = false
+                    downX = ev.rawX; downY = ev.rawY; moved = false; scaling = false; touching = true
+                    startX = p.x; startY = p.y
                 }
                 MotionEvent.ACTION_POINTER_DOWN -> scaling = true
-                // नवंबर 2026 (मालिक): ORB नीचे बीच में ही टिका रहे - खींचने से जगह नहीं बदलती; उंगली हिली = टैप नहीं
-                MotionEvent.ACTION_MOVE -> if (abs(ev.rawX - downX) > 12 || abs(ev.rawY - downY) > 12) moved = true
-                MotionEvent.ACTION_UP -> if (!moved && !scaling) onTap()
+                // 02 नवंबर 2026 (मालिक की नई माँग): "हाथ से पकड़कर इधर-उधर कहीं भी खिसका सकें" - उंगली के साथ चले,
+                // स्क्रीन के अंदर ही; छोड़ते ही वह जगह सेव (अगली बार वहीं दिखे). उंगली हिली = टैप नहीं
+                MotionEvent.ACTION_MOVE -> {
+                    if (abs(ev.rawX - downX) > 12 || abs(ev.rawY - downY) > 12) moved = true
+                    if (moved && !scaling) moveTo(startX + (ev.rawX - downX).roundToInt(), startY + (ev.rawY - downY).roundToInt())
+                }
+                MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                    touching = false; lastTalkAt = SystemClock.uptimeMillis()
+                    if (moved && !scaling) savePos()
+                    else if (ev.actionMasked == MotionEvent.ACTION_UP && !moved && !scaling) onTap()
+                }
             }
             true
         }

@@ -164,6 +164,8 @@ internal fun GeminiLive.flushPending() = synchronized(sendLock) {
  */
 internal fun GeminiLive.sendAudio(pcm: ByteArray, silent: Boolean = false): Unit = synchronized(sendLock) {
     if ((micMuted || DKState.micMuted) && !silent) { sendAudio(ByteArray(pcm.size), true); return@synchronized }
+    // नवंबर 2026: power बटन वाला "जी सर" बज रहा है = माइक में DK की अपनी आवाज़ - Gemini को खामोशी (InvokeAck)
+    if (!silent && InvokeAck.deafNow()) { sendAudio(ByteArray(pcm.size), true); return@synchronized }
     var end = false
     if (silent) {
         when (liveGate.onSilence()) {
