@@ -326,6 +326,23 @@ class GeminiLive(internal val svc: DKAccessibilityService, internal val agent: A
     internal fun WebSocket.tx(m: String): Boolean { wire.sent(m); return send(m) }
     /** Server ka aakhri sandesh (koi bhi) - atka stream pakadne ke liye */
     @Volatile internal var lastServerAt = 0L
+    /** नवंबर 2026: server का आखिरी कोई भी संदेश (VAD / resumption भी) - अटका session पकड़ने के लिए */
+    @Volatile internal var lastAnyServerAt = 0L
+    /** नवंबर 2026: अभी की बात की आवाज़ (session अटके तो नए connection पर यही दोबारा - text नहीं) */
+    internal val utt = LiveRecover.Utterance(CHUNK_MS)
+    /** नए connection पर दोबारा भेजनी है (null = कुछ नहीं) */
+    @Volatile internal var replayAudio: List<ByteArray>? = null
+    @Volatile internal var replayAt = 0L
+    internal val zombieSwaps = LiveRecover.SwapLimit()
+    @Volatile internal var zombieN = 0
+    @Volatile internal var replayedN = 0
+    /** गड़बड़ी (टूटा / अटका) कब और क्या - अगला जवाब आने पर "संभल गया" */
+    @Volatile internal var recoverWhy: String? = null
+    @Volatile internal var recoverAt = 0L
+    /** यूज़र को सच में रुकावट दिखी (12s से ज़्यादा टूटा) */
+    @Volatile internal var slowReconnects = 0
+    /** इस बात (endpoint) पर अटका-जाँच हो चुकी */
+    @Volatile internal var zombieFor = 0L
     @Volatile private var genStalls = 0
     @Volatile internal var handlerErrors = 0
     /** Connection tootne se pehle ki baat jiska jawab shuru nahi hua tha - judte hi ek baar text me */
@@ -853,7 +870,9 @@ class GeminiLive(internal val svc: DKAccessibilityService, internal val agent: A
     private fun updateStats() {
         stats = "मॉडल: ${model.ifBlank { "-" }} • जुड़ा: ${if (ready) "हाँ" else "नहीं"} • भेजे टुकड़े: $sent (${sentBytes / 1024} KB)" +
             " • गिरे: $dropped • मिक गैप: $gaps • पढ़ने की गलती: $readErr • आई आवाज़: ${recvAudio / 1024} KB" +
-            " • दोबारा जुड़ा: $reconnects • गर्म connection दोबारा: $warmReuses" +
+            " • दोबारा जुड़ा: $slowReconnects • खुद संभला (बिना रुकावट): ${(reconnects - slowReconnects).coerceAtLeast(0)}" +
+            (if (zombieN > 0) " • अटका session बदला: $zombieN" else "") + (if (replayedN > 0) " • बात की आवाज़ दोबारा भेजी: $replayedN" else "") +
+            " • गर्म connection दोबारा: $warmReuses" +
             " • बीच में टोकना: सिर्फ़ पक्के शब्द (असली $realBarges, शोर अनदेखा $falseAlarms)" +
             " • शोर-गेट: ${gatedChunks * CHUNK_MS / 1000}s शोर नहीं भेजा" +
             (if (unheard > 0) " • Gemini ने नहीं सुना: $unheard (caption से भेजा $rescued)" else "") +
@@ -877,7 +896,7 @@ class GeminiLive(internal val svc: DKAccessibilityService, internal val agent: A
     suspend fun run(): String = withContext(Dispatchers.IO) {
         NowClock.syncAsync()   // v3.80: सही समय (फ़ोन की घड़ी ग़लत हो तो इंटरनेट से)
         stopped = false; goAway = false; idleExit = false; lastAct = System.currentTimeMillis(); callAudioOn = false; lastUserLine = ""; lastDkLine = ""
-        sent = 0; sentBytes = 0; dropped = 0; gaps = 0; readErr = 0; recvAudio = 0; reconnects = 0
+        sent = 0; sentBytes = 0; dropped = 0; gaps = 0; readErr = 0; recvAudio = 0; reconnects = 0; slowReconnects = 0; zombieN = 0; replayedN = 0
         textRescue = LiveStay.textRescueOn(svc); weakNetTold = false
         log("बीच बातचीत का बचाव-text: " + if (textRescue) "चालू (सेटिंग)" else "बंद (डिफ़ॉल्ट - 1011 से बचाव)")
         if (!Setup.hasMic(svc)) throw Fatal("माइक की परमिशन नहीं है", kind = LiveFailWhy.Kind.MIC)
@@ -910,6 +929,8 @@ class GeminiLive(internal val svc: DKAccessibilityService, internal val agent: A
         curKeys = keys; curModels = models
         if (stopped) return@withContext "जुड़ने से पहले बंद"
         mi = 0; var fails = 0
+        var lostAt = 0L                                   // नवंबर 2026: connection कब टूटा (फिर जुड़ने तक कितनी रुकावट)
+        zombieSwaps.reset(); zombieFor = 0L; replayAudio = null; recoverWhy = null; utt.clear(); lastAnyServerAt = 0L
         var quickDrops = 0                               // judne ke turant baad baar-baar tootna
         // v3.39: Bluetooth headset जुड़ा = कॉल वाला तरीका (माइक+आवाज़ headset पर), नहीं तो speaker (पहले जैसा)
         drop1007.reset(); endGate.reset(); quietSince = 0L; routeChanged = false
@@ -961,7 +982,7 @@ class GeminiLive(internal val svc: DKAccessibilityService, internal val agent: A
                     if (reuse) {
                         closed = pk!!.closed; curClosed = closed
                         ws = pk.ws; warmReuses++; connResumed = pk.resumedFrom != null    // goAway वाला = वही बातचीत (याद दोबारा नहीं)
-                        synchronized(sendLock) { sendContext(ws); ready = true; flushPending() }
+                        synchronized(sendLock) { sendContext(ws); ready = true; flushPending(); sendReplay() }
                         log("गर्म connection फिर से [$model • key #${keyIdx + 1}] - जुड़ने में 0 ms (${(t0 - pk.at) / 1000}s से standby में था)")
                         DKState.setLink("Live • $model • key #${keyIdx + 1} • 0 ms")
                         svc.liveConnected()          // बैकअप मोड था तो खत्म
@@ -1067,6 +1088,11 @@ class GeminiLive(internal val svc: DKAccessibilityService, internal val agent: A
                     if (svc.liveTroubleShown || svc.liveTroubleSpoken) { svc.liveTroubleShown = false; svc.liveTroubleSpoken = false; DKState.reply(LiveConnectNotice.BACK) }
                     val upAt = System.currentTimeMillis()
                     val resumedConn = handle != null
+                    // नवंबर 2026: कितनी देर टूटा रहा - 12s तक = यूज़र को पता नहीं चला (अपने-आप संभला); ज़्यादा = सच में रुकावट
+                    if (lostAt > 0L) {
+                        val gap = upAt - lostAt; lostAt = 0L
+                        if (gap > LiveRecover.RECOVER_MS) { slowReconnects++; log("Live: connection टूटा रहा ${gap / 1000}s - यूज़र को रुकावट दिखी (#$slowReconnects)") }
+                    }
                     upSince = upAt
                     log("जुड़ गया [$model • key #${keyIdx + 1}] ${System.currentTimeMillis() - t0} ms" + if (handle != null) " (पुरानी बातचीत जारी)" else "")
                     DKState.setLink("Live • $model • key #${keyIdx + 1} • ${System.currentTimeMillis() - t0} ms")
@@ -1143,6 +1169,36 @@ class GeminiLive(internal val svc: DKAccessibilityService, internal val agent: A
                             handle = null; goAway = true; goAwayDrop = true
                             break
                         }
+                        // नवंबर 2026 (DKI-70D747, मालिक: "बीच-बीच में लाइव जवाब नहीं देता"): बात भेजी पर उस पल से server से
+                        // एक भी संदेश नहीं (न लिखावट, न VAD) = session अंदर से अटका (Google की जानी-मानी खराबी, 3.1/3.8).
+                        // पहले यह बचाव सिर्फ़ बचाव-text चालू होने पर था (डिफ़ॉल्ट बंद) = DK हर बार चुप.
+                        // अब हमेशा: 4s में नया connection + वही आवाज़ दोबारा (text नहीं). मिनट में 2 बार तक.
+                        val zBusy = generating || isPlaying() || toolJobs.isNotEmpty() || turnDet.inSpeech || muteTurn || ownerHolding || guardHeld
+                        val zEnd = if (timeline.active) timeline.endpointAt else 0L
+                        if (zEnd > 0L && zEnd != zombieFor &&
+                            LiveRecover.zombie(now, zEnd, timeline.eventAt, lastAnyServerAt, zBusy, utt.speechMs(), BargeGate.realWords(caption?.text().orEmpty()))) {
+                            zombieFor = zEnd
+                            if (zombieSwaps.tryTake(now)) {
+                                zombieN++
+                                val again = zombieSwaps.recent(now) > 1
+                                replayAudio = utt.snapshot(now); replayAt = now
+                                recoverWhy = "session अटका"; recoverAt = now
+                                if (again) handle = null          // अटका सत्र फिर अटका = नई बातचीत (याद prompt में)
+                                log("Live: बात के बाद ${(now - zEnd) / 100 / 10.0}s तक Gemini से कुछ नहीं आया (न लिखावट, न VAD) - session अटका; " +
+                                    "नया connection${if (again) " (नई बातचीत)" else " (बातचीत वहीं से)"} और आपकी वही आवाज़ दोबारा (#$zombieN) • ${timeline.summary()}")
+                                goAway = true; goAwayDrop = true
+                                break
+                            } else log("Live: session फिर अटका पर 1 मिनट में ${LiveRecover.MAX_SWAPS} बार बदल चुका - इस बार नहीं (चक्कर नहीं) • ${timeline.summary()}")
+                        }
+                        // नवंबर 2026: फ़ोन का नेटवर्क बदला (Wi-Fi <-> mobile) = पुराना socket पुराने रास्ते पर, ping से पता चलने में 30s.
+                        // DK चुप होते ही तुरंत नया connection (बातचीत वहीं से); पुराना standby भी पुराने रास्ते का - हटाओ
+                        if (DkDns.switchedAt > upAt && !isPlaying() && toolJobs.isEmpty() && !turnDet.inSpeech && !generating) {
+                            parked?.let { p -> parked = null; closeWs(p.ws, "नेटवर्क बदला") }
+                            recoverWhy = "नेटवर्क बदला"; recoverAt = now
+                            log("नेटवर्क बदला - पुराने रास्ते का connection छोड़कर तुरंत नया (बातचीत वहीं से)")
+                            goAway = true; goAwayDrop = true
+                            break
+                        }
                         // samay-rekha: bheja hua sab input audio phone se nikal gaya?
                         if (timeline.active && timeline.uploadAt == 0L && (ws?.queueSize() ?: 1L) == 0L) timeline.upload(now)
                         // jawab "ban raha" tha par server 15s se bilkul chup (turnComplete kho gaya) -> turn band, warna
@@ -1174,7 +1230,14 @@ class GeminiLive(internal val svc: DKAccessibilityService, internal val agent: A
                             .ifBlank { synchronized(turnLock) { userText.toString().trim() } }
                         if (BargeGate.realWords(t)) { resendText = t; replyWatch.onResent() }
                         log("connection टूटा जब बात का जवाब बाकी था • ${timeline.summary()}" + if (resendText != null) " - जुड़ते ही दोबारा भेजूँगा" else "")
+                    } else if (!textRescue && replayAudio == null && replyWatch.unanswered(dropAt)) {
+                        // नवंबर 2026: बचाव-text बंद (डिफ़ॉल्ट) में पहले यह बात चुपचाप खो जाती थी - अब उसकी आवाज़ दोबारा (text नहीं)
+                        val a = utt.snapshot(dropAt)
+                        if (a.isNotEmpty()) { replayAudio = a; replayAt = dropAt; replyWatch.onResent() }
+                        log("connection टूटा जब बात का जवाब बाकी था • ${timeline.summary()}" + if (a.isNotEmpty()) " - जुड़ते ही वही आवाज़ दोबारा" else "")
                     }
+                    if (recoverWhy == null) { recoverWhy = "connection टूटा/बदला"; recoverAt = dropAt }
+                    lostAt = dropAt
                     closeWs(ws, "reconnect")
                     upSince = 0L
                     LiveStay.modeAfterDrop(DKState.mode, isPlaying()).let { if (it != DKState.mode) setMode(it) }
@@ -1724,7 +1787,7 @@ class GeminiLive(internal val svc: DKAccessibilityService, internal val agent: A
         if (w.queueSize() > (if (silent) 32 * 1024 else 256 * 1024)) { dropped++; return@synchronized }
         val msg = "{\"realtimeInput\":{\"audio\":{\"mimeType\":\"audio/pcm;rate=$IN_RATE\",\"data\":\"" +
             Base64.encodeToString(pcm, Base64.NO_WRAP) + "\"}}}"
-        if (w.tx(msg)) { sent++; sentBytes += pcm.size } else dropped++
+        if (w.tx(msg)) { sent++; sentBytes += pcm.size; utt.add(pcm, !silent, System.currentTimeMillis()) } else dropped++
         // 1s khaamoshi bheji -> stream band (docs: audioStreamEnd), ab asli awaaz aane tak upload nahi
         if (end && endGate.onSilenceEnd()) try { w.tx("{\"realtimeInput\":{\"audioStreamEnd\":true}}") } catch (_: Exception) {}
     }

@@ -34,7 +34,7 @@ object LiveNet {
             .connectTimeout(4, TimeUnit.SECONDS)   // नवंबर 2026: 10s था - Live की जोड़ी 5.6s में हारती थी, अगले (IPv4) पते तक बारी नहीं आती
             .readTimeout(30, TimeUnit.SECONDS)
             .callTimeout(60, TimeUnit.SECONDS)
-            .pingInterval(5, TimeUnit.SECONDS)          // कनेक्शन को लगातार zinda रखने के लिए
+            .pingInterval(LiveRecover.PING_S, TimeUnit.SECONDS)   // नवंबर 2026: 5s था = pong 5s में न आए तो हम खुद तोड़ते थे (DKI-406DD9). Google SDK 20s
             .retryOnConnectionFailure(true)
             .build()
     }
