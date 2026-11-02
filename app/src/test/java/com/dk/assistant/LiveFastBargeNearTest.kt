@@ -79,7 +79,7 @@ class LiveFastBargeNearTest {
         assertTrue(g.contains("withTimeoutOrNull(LiveRace.CONNECT_WAIT_MS) {\n                        while (!rc.winner.isCompleted && !rc.over)"))
         assertEquals(20_000L, LiveRace.CONNECT_WAIT_MS)
         assertFalse(g.contains("minOf(15_000L, 500L shl quickDrops)"))
-        assertTrue(src("DKAccessibilityService.kt").contains("LiveRetry.fast(e.recoverable, LiveRetry.liveOnMs(e.recoverable, liveSoftFails))"))
+        assertTrue(com.dk.assistant.AccSrc.all().contains("LiveRetry.fast(e.recoverable, LiveRetry.liveOnMs(e.recoverable, liveSoftFails))"))
     }
 
     @Test fun limitSwitchesKeyFirst() {

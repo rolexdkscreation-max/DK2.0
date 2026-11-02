@@ -58,7 +58,7 @@ class LiveAlwaysConnectedTest {
         assertTrue(g.contains("replyWatch.dead(now)"))
         assertTrue(g.contains("handle = null; goAway = true; goAwayDrop = true"))
         assertTrue(g.contains("val running: Boolean get() = !stopped"))
-        val s = src("DKAccessibilityService.kt")
+        val s = com.dk.assistant.AccSrc.all()
         assertTrue(s.contains("LiveRetry.liveOnMs(e.recoverable, liveSoftFails)"))
         assertTrue(s.contains("liveOffSoft && System.currentTimeMillis() <= liveOffUntil"))
         assertTrue(s.contains("liveNow(\"Live चालू\")"))

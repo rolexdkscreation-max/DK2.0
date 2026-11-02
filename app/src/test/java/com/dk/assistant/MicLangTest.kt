@@ -58,7 +58,7 @@ class MicLangTest {
         assertTrue(v.contains("EXTRA_LANGUAGE, plan.lang"))
         assertTrue(v.contains("if (plan.offline) putExtra(RecognizerIntent.EXTRA_PREFER_OFFLINE, true)"))
         assertFalse(v.contains("if (preferOffline) putExtra(RecognizerIntent.EXTRA_PREFER_OFFLINE"))
-        val s = src("DKAccessibilityService.kt")
+        val s = com.dk.assistant.AccSrc.all()
         val hl = s.substring(s.indexOf("private suspend fun hearBackup()"), s.indexOf("fun appOpened()"))
         assertFalse(hl.contains("recognizerIntent"))           // बना पर कभी न भेजा गया Intent हटा
         assertFalse(hl.contains("delay(3000)"))                // 5 × 3s चुप्पी नहीं

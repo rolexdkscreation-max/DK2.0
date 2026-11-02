@@ -11,6 +11,7 @@ import com.dk.assistant.agent.core.ScreenDriver
 import com.dk.assistant.agent.core.ScreenObservation
 import com.dk.assistant.agent.core.UiElement
 import kotlinx.coroutines.delay
+import com.dk.assistant.tap
 
 /**
  * DK AI Part 12: असली फ़ोन पर ScreenDriver - Accessibility से.

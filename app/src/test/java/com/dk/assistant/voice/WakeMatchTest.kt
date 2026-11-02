@@ -144,7 +144,7 @@ class WakeMatchTest {
     private fun src(path: String): String = listOf(File("src/main/$path"), File("app/src/main/$path")).first { it.exists() }.readText()
 
     @Test fun wiring_localWakeBeforeCloudAndBootAndSettings() {
-        val svc = src("java/com/dk/assistant/DKAccessibilityService.kt")
+        val svc = com.dk.assistant.AccSrc.all()
         val local = svc.indexOf("com.dk.assistant.voice.HeyDk.listen(")
         assertTrue(local > 0 && local < svc.indexOf("val heard = hear(wakeGate = !liveBefore)"))
         assertTrue(svc.contains("HeyDk.playAck(") && svc.contains("gemLive.idleExitMs = 30_000"))

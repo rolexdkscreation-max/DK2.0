@@ -74,7 +74,7 @@ class VoiceGreetLocationTest {
         assertFalse(ReturnGreet.shouldAsk(now, now - H, now - M, 0))           // अभी स्वागत हो चुका
         val b = FriendBook(); b.addSession(now - 3 * H - M, now - 3 * H, "बात हुई")
         assertTrue(FriendStyle.opener(19, java.time.LocalDate.of(2026, 3, 3), b, now, null, false).contains("तीन घंटे"))
-        assertTrue(src("DKAccessibilityService.kt").contains("FriendTalk.shouldGreetNow(this, lastMsg)"))
+        assertTrue(com.dk.assistant.AccSrc.all().contains("FriendTalk.shouldGreetNow(this, lastMsg)"))
         assertTrue(LiveSrc.all().contains("FriendTalk.touch(svc)"))
     }
 

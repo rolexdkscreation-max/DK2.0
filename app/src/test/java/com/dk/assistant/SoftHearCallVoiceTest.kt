@@ -113,7 +113,7 @@ class SoftHearCallVoiceTest {
 
     // ------------------------------------------------------------------ कॉल
     @Test fun callAlwaysSpokenLoud() {
-        val acc = src("DKAccessibilityService.kt")
+        val acc = com.dk.assistant.AccSrc.all()
         assertTrue(acc.contains("speaker.speakCall(msg"))
         assertTrue(acc.contains("gemLive.announceCall(whoNote)"))          // TTS न बने = Live की अपनी आवाज़
         assertTrue(acc.contains("speaker.warmCallVoice()"))

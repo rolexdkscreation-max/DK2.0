@@ -58,6 +58,6 @@ class AppCallTest {
         val cm = src("CallManager.kt")
         assertTrue(cm.contains("val ringing get() = simRinging || AppCall.ringing()"))
         assertTrue(cm.contains("AppCall.answer(ctx)") && cm.contains("AppCall.end(ctx)"))
-        assertTrue(src("DKAccessibilityService.kt").contains("fun onAppCall("))
+        assertTrue(com.dk.assistant.AccSrc.all().contains("fun onAppCall("))
     }
 }

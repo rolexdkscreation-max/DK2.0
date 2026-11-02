@@ -65,7 +65,7 @@ class FloatOrbTest {
     }
 
     @Test fun onlyOneOrb_sideBubbleGone() {
-        val s = src("DKAccessibilityService.kt")
+        val s = com.dk.assistant.AccSrc.all()
         assertFalse(s.contains("fun showBubble(") || s.contains("private var bubble"))
         assertTrue(s.contains("FloatOrb(this)"))
         // ऐप खुला होने पर ORB छिपाना हटाया. 02 नवंबर 2026: ✕ हटा - पुराने ✕ से छिपा ORB सिर्फ़ एक बार वापस (migration),

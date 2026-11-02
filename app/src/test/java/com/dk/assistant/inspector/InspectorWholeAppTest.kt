@@ -150,7 +150,7 @@ class InspectorWholeAppTest {
         assertTrue(ins.contains("DKBug.logFile") && ins.contains("DKBug.bugFile"))
         assertTrue(ins.contains("Coding Agent को दे दूँ, हटा दूँ, या बाद में बताऊँ"))
         for (a in listOf("\"dismiss\" ->", "\"later\" ->", "\"clear_all\" ->")) assertTrue(a, ins.contains(a))
-        val acc = src("DKAccessibilityService.kt")
+        val acc = com.dk.assistant.AccSrc.all()
         assertTrue(acc.contains("Inspector.startTimer(this)") && acc.contains("Inspector.stopTimer()"))
         assertTrue(src("DKApp.kt").contains("DKBug.init(this)"))
         assertTrue(src("DKLog.kt").contains("DKBug.logFile?.append"))
