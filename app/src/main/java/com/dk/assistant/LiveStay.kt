@@ -69,6 +69,53 @@ object LiveStay {
     }
 
     /**
+     * नवंबर 2026 (DK Inspector DKI-406DD9 / DKI-7A418A, 02 Nov 09:00-09:06): 6 मिनट में 6 बार 1011 - ऐप तीनों 2.5 native-audio
+     * मॉडलों (12-2025 -> 09-2025 -> -latest) पर घूमता रहा, 3.8-live पर 6 मिनट बाद पहुँचा. Google forum: -latest / 12-2025 पर
+     * 27 मई 2026 से 80-90% turn 1011; मालिक के फ़ोन पर 09-2025 भी टूटा.
+     *  - [known1011]: 2.5 native-audio = पहले 1011 पर ही हटाओ (2 बार का इंतज़ार नहीं)
+     *  - [Broken1011]: जिस मॉडल पर 1011 आया वह [BROKEN_1011_MS] तक सबसे पीछे (हटता नहीं - आख़िरी बचा मॉडल हमेशा रहता है)
+     *  - [safeOrder]: टूटे सबसे पीछे; मालिक का चुना मॉडल पहले रहता है जब तक वह सच में न टूटे
+     */
+    const val BROKEN_1011_MS = 6 * 3600_000L
+    fun known1011(m: String) = m.startsWith("gemini-2.5-flash-native-audio")
+
+    class Broken1011 {
+        private val until = HashMap<String, Long>()
+        @Synchronized fun mark(m: String, now: Long = System.currentTimeMillis()) { until[m] = now + BROKEN_1011_MS }
+        @Synchronized fun isBroken(m: String, now: Long = System.currentTimeMillis()) = (until[m] ?: 0L) > now
+        @Synchronized fun encode(now: Long = System.currentTimeMillis()) =
+            until.filter { it.value > now }.entries.joinToString(";") { it.key + "=" + it.value }
+        companion object {
+            fun decode(s: String?): Broken1011 = Broken1011().also { b ->
+                s.orEmpty().split(';').forEach { p ->
+                    val i = p.lastIndexOf('='); if (i > 0) p.substring(i + 1).toLongOrNull()?.let { b.until[p.substring(0, i)] = it }
+                }
+            }
+        }
+    }
+
+    /** क्रम वैसा ही, बस 1011 से टूटे मॉडल सबसे पीछे (कोई मॉडल हटता नहीं) */
+    fun safeOrder(models: List<String>, broken: (String) -> Boolean): List<String> {
+        val (bad, ok) = models.partition(broken)
+        return ok + bad
+    }
+
+    /** मालिक ने कोई मॉडल नहीं चुना तो: 2.5 native-audio (Google की तरफ़ 1011) बाकी Live मॉडलों के बाद - सिर्फ़ बैकअप */
+    fun demoteKnown1011(models: List<String>): List<String> {
+        val (old, rest) = models.partition { known1011(it) }
+        return if (rest.isEmpty()) models else rest + old
+    }
+
+    /** पुरानी बातचीत (handle) से जुड़ते ही 1011 = वह handle ज़हरीला (Google forum) - उसी से फिर जुड़ना = फिर 1011, नई बातचीत */
+    const val RESUME_POISON_MS = 8_000L
+    fun resumePoisoned(code: Int, ranMs: Long, resumed: Boolean) = code == 1011 && resumed && ranMs in 0 until RESUME_POISON_MS
+
+    /** माइक गैप के समय की हालत - Inspector / Coding Agent को वजह पक्की करने का सबूत */
+    fun gapContext(connected: Boolean, upSince: Long, now: Long, mode: String, playing: Boolean): String =
+        (if (!connected || upSince <= 0) "Live जुड़ा नहीं था (दोबारा जुड़ रहा था)" else "Live जुड़ा था (${(now - upSince) / 1000}s से)") +
+            " • हाल: $mode" + (if (playing) " • DK बोल रहा था" else "")
+
+    /**
      * अधूरी function declaration (खाली properties / बिना description वाला parameter) native-audio मॉडल पर 1011 का जाना-माना कारण.
      * बिना parameter वाले tool से "parameters" हटाओ; हर property को description दो. मतलब/नाम नहीं बदलता.
      */

@@ -82,6 +82,8 @@ object InspectorCore {
         val snoozeUntil: Long = 0,
         /** मालिक ने कब हटाया (0 = नहीं) */
         val dismissedAt: Long = 0,
+        /** "Live हाल" जैसी कुल गिनती का पिछली जाँच वाला अंक (-1 = पता नहीं) - बढ़े तभी नई घटना */
+        val lastRaw: Int = -1,
     )
 
     // ------------------------------------------------------------------ गुप्त जानकारी छिपाना
@@ -274,7 +276,15 @@ object InspectorCore {
     /** इन संदेशों में "गलती" शब्द है पर ये गलती नहीं (जानकारी हैं) */
     private val NOT_ERROR = Regex("(गलती: 0|गलती 0|पढ़ने की गलती: 0|0 गलती|बिना गलती|गलती नहीं|गलती ठीक|no error)")
 
+    /**
+     * नवंबर 2026 (DKI-063250): ऐप का अपना "संभाल लिया" संदेश (मॉडल बदला / नई बातचीत) - गड़बड़ी वही connection टूटना है
+     * जो पहले से अलग रिपोर्ट में गिना गया. इसे नया bug नहीं बनाते.
+     */
+    private val HANDLED = Regex("(मिनट हटाया, अब |घंटे सबसे पीछे, अब |यह मॉडल अभी नहीं, अगला तुरंत|वह बातचीत टूटी हुई, अब नई बातचीत|दूसरा मॉडल नहीं बचा, इसी पर कोशिश)")
+    fun handled(msg: String) = HANDLED.containsMatchIn(msg)
+
     fun ruleFor(msg: String): Rule? {
+        if (handled(msg)) return null
         if (NOT_ERROR.containsMatchIn(msg) && !Regex("(?i)(exception|fail|टूटा|विफल)").containsMatchIn(msg)) return null
         return RULES.firstOrNull { it.match.containsMatchIn(msg) }
     }
@@ -299,6 +309,30 @@ object InspectorCore {
 
     fun bugId(fp: String): String = "DKI-" + hash(fp).take(6)
 
+    const val SAME_EVENT_MS = 1_000L
+    /** "HH:mm:ss.SSS" -> दिन का ms (-1 = समय नहीं) */
+    private val CLOCK_RX = Regex("^(\\d\\d):(\\d\\d):(\\d\\d)\\.(\\d{3})$")
+    fun clockMs(t: String): Long {
+        val m = CLOCK_RX.find(t) ?: return -1
+        val (h, mi, se, ms) = m.destructured
+        return ((h.toLong() * 60 + mi.toLong()) * 60 + se.toLong()) * 1000 + ms.toLong()
+    }
+
+    /** "Live हाल" और देरी के नतीजे पूरी बातचीत का कुल हैं (हर जाँच में वही संख्या) - नई घटना नहीं */
+    fun cumulative(fp: String) = fp.startsWith("stats:") || fp == "latency_high"
+
+    /**
+     * नवंबर 2026 (DKI-F2A775 = DKI-406DD9): वही गड़बड़ी लॉग से पक्की मिली हो तो "Live हाल" वाली गिनती अलग bug नहीं.
+     * [found] में से हटाओ, और store में पड़ी ऐसी पुरानी दोहरी रिपोर्ट भी (Coding Agent के पास वाली नहीं).
+     */
+    fun dropDupStats(found: List<Finding>, old: List<Incident>): Pair<List<Finding>, List<Incident>> {
+        val logRules = (found.filterNot { cumulative(it.fingerprint) }.map { it.rule.id } +
+            old.filter { !cumulative(it.fingerprint) && it.status != Status.DISMISSED }.map { it.ruleId }).toSet()
+        fun dup(fp: String, rule: String) = fp.startsWith("stats:") && rule in logRules
+        return found.filterNot { dup(it.fingerprint, it.rule.id) } to
+            old.filterNot { dup(it.fingerprint, it.ruleId) && it.status != Status.FIXING }
+    }
+
     fun lineKey(e: Event): String = hash(e.time + "|" + e.msg)
 
     /**
@@ -318,7 +352,11 @@ object InspectorCore {
                 val seq = events.subList((e.idx - 6).coerceAtLeast(0), e.idx + 1).map { it.time + " " + redact(it.msg).take(200) }
                 acc[fp] = Acc(r, 1, e, e, arrayListOf(line), seq)
             } else {
-                a.count++; a.last = e
+                // नवंबर 2026 (DKI-406DD9 "12 बार" = असल में 6): एक ही घटना की लगातार लाइनें ("server ने बंद किया" + "connection टूटा")
+                // 1 सेकंड के अंदर = एक बार गिनो (सबूत में दोनों लाइनें रहती हैं)
+                val gap = clockMs(e.time) - clockMs(a.last.time)
+                if (r.perMessage || clockMs(e.time) < 0 || gap !in 0 until SAME_EVENT_MS) a.count++
+                a.last = e
                 if (a.ev.size < 8) a.ev += line else { a.ev[7] = line }
             }
         }
@@ -432,17 +470,26 @@ object InspectorCore {
         val fresh = ArrayList<Incident>(); val reopened = ArrayList<Incident>()
         val touched = HashSet<String>()
         for (f in found) {
-            touched += f.fingerprint
             val o = byFp[f.fingerprint]
+            // नवंबर 2026 (हटाया बग बिना नई घटना "फिर आया"): कुल गिनती वैसी ही = कुछ नया नहीं हुआ, बस अंक याद रखो
+            if (o != null && cumulative(f.fingerprint)) {
+                val unknownAndClosed = o.lastRaw < 0 && o.status in setOf(Status.DISMISSED, Status.QUIET, Status.RESOLVED)
+                if (f.count == o.lastRaw || unknownAndClosed) { byFp[f.fingerprint] = o.copy(lastRaw = f.count); continue }
+            }
+            touched += f.fingerprint
             if (o == null) {
                 val n = Incident(bugId(f.fingerprint), f.fingerprint, f.rule.id, f.rule.title, f.rule.component, f.severity,
                     f.rule.certainty, now, now, f.count, Status.NEW, f.message, f.evidence, f.sequence,
-                    f.rule.cause, f.rule.impact, f.rule.fix, f.rule.code, f.rule.test)
+                    f.rule.cause, f.rule.impact, f.rule.fix, f.rule.code, f.rule.test,
+                    lastRaw = if (cumulative(f.fingerprint)) f.count else -1)
                 byFp[f.fingerprint] = n; fresh += n
             } else {
                 val wasResolved = o.status == Status.RESOLVED || o.status == Status.QUIET || o.status == Status.DISMISSED
                 // stats वाले नतीजे गिनती का कुल होते हैं - जोड़ते नहीं, सबसे बड़ा रखते हैं
-                val cnt = if (f.fingerprint.startsWith("stats:") || f.fingerprint == "latency_high") maxOf(o.count, f.count) else o.count + f.count
+                // बढ़ी = उतनी नई; घटी = नई बातचीत (गिनती 0 से) = पूरी नई
+                val cnt = if (cumulative(f.fingerprint)) {
+                    if (o.lastRaw < 0) maxOf(o.count, f.count) else if (f.count > o.lastRaw) o.count + (f.count - o.lastRaw) else o.count + f.count
+                } else o.count + f.count
                 val st = when {
                     wasResolved -> Status.REOPENED
                     o.status == Status.NEW -> Status.INVESTIGATING
@@ -450,7 +497,8 @@ object InspectorCore {
                 }
                 val sev = if (f.severity.rank > o.severity.rank) f.severity else o.severity
                 val n = o.copy(lastSeen = now, count = cnt, status = st, severity = sev, message = f.message,
-                    evidence = (o.evidence + f.evidence).takeLast(8), quietChecks = 0,
+                    evidence = (o.evidence + f.evidence).distinct().takeLast(8), quietChecks = 0,
+                    lastRaw = if (cumulative(f.fingerprint)) f.count else o.lastRaw,
                     reopenCount = o.reopenCount + if (wasResolved) 1 else 0,
                     resolvedNote = when (o.status) {
                         Status.DISMISSED -> "आपने हटाया था, पर फिर आया।"
@@ -715,7 +763,7 @@ object InspectorCore {
         put("cause", i.cause); put("impact", i.impact); put("fix", i.fix); put("code", i.code); put("test", i.test)
         put("notified", i.notifiedAt); put("notSev", i.notifiedSeverity); put("reopen", i.reopenCount)
         put("fixVer", i.fixVersion); put("quiet", i.quietChecks); put("resolvedAt", i.resolvedAt)
-        put("resolvedNote", i.resolvedNote); put("linked", i.linkedTo); put("snooze", i.snoozeUntil); put("dismissed", i.dismissedAt)
+        put("resolvedNote", i.resolvedNote); put("linked", i.linkedTo); put("snooze", i.snoozeUntil); put("dismissed", i.dismissedAt); put("raw", i.lastRaw)
     }
 
     private fun JSONArray?.strings(): List<String> = if (this == null) emptyList() else (0 until length()).map { optString(it) }
@@ -728,7 +776,7 @@ object InspectorCore {
             o.optJSONArray("seq").strings(), o.optString("cause"), o.optString("impact"), o.optString("fix"),
             o.optString("code"), o.optString("test"), o.optLong("notified"), o.optInt("notSev"), o.optInt("reopen"),
             o.optString("fixVer"), o.optInt("quiet"), o.optLong("resolvedAt"), o.optString("resolvedNote"), o.optString("linked"),
-            o.optLong("snooze"), o.optLong("dismissed"))
+            o.optLong("snooze"), o.optLong("dismissed"), o.optInt("raw", -1))
     } catch (e: Exception) { null }
 
     fun listToJson(xs: List<Incident>): String = JSONArray().apply { xs.forEach { put(toJson(it)) } }.toString()
