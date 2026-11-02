@@ -226,6 +226,10 @@ class GeminiLive(internal val svc: DKAccessibilityService, internal val agent: A
     @Volatile internal var textRescue = false
     /** goAway पर पहले से तैयार connection किस handle से बना (useParked) */
     @Volatile internal var parkHandle: String? = null
+    /** नवंबर 2026 (LiveSpare): goAway में बताया समय कब खत्म; दूसरे connection की पिछली कोशिश कब; अभी वाली दौड़ standby के लिए है? */
+    @Volatile internal var goAwayDeadline = 0L
+    @Volatile internal var spareTriedAt = 0L
+    @Volatile internal var spareWanted = false
     @Volatile private var weakNetTold = false
     @Volatile private var prevAlive = false
     /** run() की keys/models - goAway पर पीछे से नया connection तैयार करने के लिए */
@@ -901,6 +905,7 @@ class GeminiLive(internal val svc: DKAccessibilityService, internal val agent: A
                     // मालिक (नवंबर 2026): हल्का मोड हटा. 20s तक दौड़ (सारी जोड़ियाँ नाकाम = तुरंत नीचे की जाँच, बनावट की गलती ठीक करके फिर);
                     // फिर भी नहीं = साफ़ कारण के साथ बैकअप मोड (सेवा में)
                     ready = false
+                    spareWanted = false                  // यह दौड़ असली connection के लिए (standby वाली नहीं)
                     val rc = startRace(keys, models, live = true, resumeId = if (handle != null) LiveRace.Combo(model, ki).id else null)
                     withTimeoutOrNull(LiveRace.CONNECT_WAIT_MS) {
                         while (!rc.winner.isCompleted && !rc.over) delay(25)
@@ -1017,7 +1022,19 @@ class GeminiLive(internal val svc: DKAccessibilityService, internal val agent: A
                             log("${idleMs / 1000}s से कोई बात नहीं - Live बंद, wake word पर वापस")
                             idleExit = true; stopped = true; break
                         }
-                        if (goAway && !turnActive && !isPlaying()) { log("goAway - नया connection"); goAwayDrop = true; break }
+                        // नवंबर 2026 (मालिक): कटने से पहले ही दूसरा connection तैयार (goAway पर, या connection पुराना होते ही) - LiveSpare
+                        val nowL = System.currentTimeMillis()
+                        val idleNow = !turnActive && !isPlaying() && toolJobs.isEmpty() && !generating
+                        if (LiveSpare.due(goAway, nowL - upAt)) prepareSpare(if (goAway) "goAway" else "${(nowL - upAt) / 60_000} मिनट चला", idleNow)
+                        if (goAway && !turnActive && !isPlaying()) {
+                            if (LiveSpare.waitForSpare(spareReady(), nowL - spareTriedAt, goAwayDeadline - nowL)) { delay(100); continue }
+                            log(if (spareReady()) "goAway - पहले से तैयार connection पर (0 ms, बातचीत वहीं से)" else "goAway - नया connection")
+                            goAwayDrop = true; break
+                        }
+                        if (!goAway && LiveSpare.rotateNow(nowL - upAt, spareReady(), idleNow)) {
+                            log("connection ${(nowL - upAt) / 60_000} मिनट चला - server के काटने से पहले ही तैयार connection पर (0 ms, बातचीत वहीं से)")
+                            goAway = true; goAwayDrop = true; break
+                        }
                         // v3.68: सेटिंग्स में आवाज़ इंजन बदला और connection का तरीका (TEXT/AUDIO) बदलना ज़रूरी -> चुप होने पर नया connection
                         if (connEngVer != com.dk.assistant.voice.engine.VoiceEngines.version) {
                             val ch = com.dk.assistant.voice.engine.VoiceEngines.active(svc)
@@ -1122,6 +1139,7 @@ class GeminiLive(internal val svc: DKAccessibilityService, internal val agent: A
                     ready = false
                     if (stopped) break
                     prevAlive = !closed.isCompleted          // goAway/बदलाव पर हमने बंद किया (पुराना ज़िंदा था) या खुद कटा
+                    val seamless = goAwayDrop && spareReady()          // LiveSpare: दूसरा connection तैयार = बिना रुके
                     val (code, reason) = if (closed.isCompleted) closed.await() else 1000 to "goAway"
                     // user ki baat khatam ho chuki thi par jawab shuru nahi hua aur connection toot gaya -> woh baat
                     // chupchaap kho jaati thi. Dobara judte hi ek baar text me bhejo.
@@ -1202,7 +1220,7 @@ class GeminiLive(internal val svc: DKAccessibilityService, internal val agent: A
                     }
                     val wait = LiveStay.backoffMs(quickDrops)
                     if (quickDrops > 0) log("जल्दी टूटा (${lasted / 1000}s) - $wait ms रुककर दोबारा (#$quickDrops)")
-                    delay(wait)
+                    LiveSpare.waitAfterSwitch(seamless, wait).let { if (it > 0) delay(it) }
                 }
             } finally {
                 stopped = true

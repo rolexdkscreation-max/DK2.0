@@ -90,7 +90,6 @@ class SpeechPipeline(private val ctx: Context, private val hooks: Hooks) {
     /** नया जवाब शुरू */
     fun begin(e: VoiceEngine) {
         engine = e
-        // नवंबर 2026: Kokoro (फ़ोन में ही) = छोटा पहला टुकड़ा -> बात खत्म होते ही पहली आवाज़ (TextChunker.LOCAL देखें)
         synchronized(chunker) { chunker.reset(profileFor(e.id)) }
         synchronized(spoken) { spoken.setLength(0) }
         firstPending = true
@@ -192,7 +191,7 @@ class SpeechPipeline(private val ctx: Context, private val hooks: Hooks) {
         }
     }
 
-    /** पहला टुकड़ा बना ही नहीं और text रुका है (Kokoro 150 ms / बाकी 250 ms) - जितना है (≥2 / ≥3 शब्द) अभी बोल दो */
+    /** पहला टुकड़ा बना ही नहीं और text रुका है (फ़ोन वाली आवाज़ 150 ms / बाकी 250 ms) - जितना है (≥2 / ≥3 शब्द) अभी बोल दो */
     private fun stallCheck() {
         val pr = chunker.profile
         if (!firstPending || System.currentTimeMillis() - lastFeedAt < pr.stallMs) return
@@ -294,9 +293,9 @@ class SpeechPipeline(private val ctx: Context, private val hooks: Hooks) {
     }
 
     companion object {
-        /** इंजन के हिसाब से टुकड़ों का नाप: फ़ोन में ही बनने वाली आवाज़ (Kokoro) = छोटा पहला टुकड़ा */
-        fun profileFor(engineId: String): TextChunker.Profile =
-            if (engineId == VoiceEngines.KOKORO_TTS) TextChunker.LOCAL else TextChunker.STANDARD
+        /** इंजन के हिसाब से टुकड़ों का नाप (नवंबर 2026: Kokoro हटाया - अब सब इंजन STANDARD; LOCAL फ़ोन में बनने वाली आवाज़ के लिए रखा) */
+        @Suppress("UNUSED_PARAMETER")
+        fun profileFor(engineId: String): TextChunker.Profile = TextChunker.STANDARD
 
         /** टुकड़े के बाद ठहराव - हर बार एक-सा (आवाज़ की लय बनी रहे) */
         fun pauseMs(t: String): Int {

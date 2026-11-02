@@ -57,7 +57,6 @@ internal suspend fun DKAccessibilityService.enterBackup(kind: LiveFailWhy.Kind, 
     liveOffUntil = now + cap
     speaker.localOnly = true
     listener.preferOffline = false
-    try { com.dk.assistant.voice.engine.KokoroTtsEngine.warm(this) } catch (_: Throwable) {}   // पहला जवाब बिना model-लोड की देरी
     DKState.setLink(LiveFailWhy.link(kind))
     ModeTrack.switchTo(ModeTrack.Ch.TEXT, "${kind.short} ($detail)")
     DKLog.d("बैकअप मोड: ${kind.short} ($detail) - ${LiveHealth.cooldownMs(kind, quotaStrikes) / 1000}s बाद से चुप सेहत-जाँच, ज़्यादा से ज़्यादा ${cap / 1000}s बाद Live फिर आज़माऊँगी")

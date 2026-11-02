@@ -204,7 +204,7 @@ class DKAccessibilityService : AccessibilityService() {
     // ================================================================ बैकअप मोड (मालिक, नवंबर 2026)
     // "हल्का मोड" पूरी तरह हटा. अब: Gemini Live सच में न जुड़े (GeminiLive.Fatal) = बैकअप मोड -
     // फ़ोन की बोली-पहचान (SpeechRecognizer) सुनती है -> agent.run() = DK Chat का text दिमाग़ (Gemini key हो तो Gemini)
-    // -> Kokoro TTS हिंदी आवाज़ में (speaker.localOnly, फ़ोन में ही - बिना key, बिना इंटरनेट; पहले Edge TTS था).
+    // -> Gemini TTS की आवाज़ में; वह न चले = तुरंत फ़ोन की अपनी Google / Android आवाज़ (speaker.localOnly; नवंबर 2026 Kokoro हटाया).
     // स्क्रीन पर "बैकअप मोड • <कारण>"; कारण के हिसाब से 1-10 मिनट बाद Live फिर आज़माया जाता है (LiveFailWhy).
     @Volatile var backupMode = false
         internal set
@@ -604,7 +604,7 @@ class DKAccessibilityService : AccessibilityService() {
                             val kind = e.kind ?: LiveFailWhy.classify(0, e.message, NetProbe.online(this@DKAccessibilityService))
                             enterBackup(kind, e.message ?: "-")
                         }
-                        // नवंबर 2026 (मालिक): जुड़कर बार-बार टूटा (socket drop) = यूज़र रुका न रहे -> चुपचाप text मोड + Kokoro;
+                        // नवंबर 2026 (मालिक): जुड़कर बार-बार टूटा (socket drop) = यूज़र रुका न रहे -> चुपचाप text मोड + Gemini TTS (न चले तो फ़ोन की आवाज़);
                         // पीछे सेहत-जाँच ठीक होते ही अगली बात से फिर Live (LiveHealth)
                         else if (userLive && LiveHealth.dropToBackup(liveSoftFails)) {
                             enterBackup(LiveHealth.softKind(LiveFailWhy.classify(0, e.message, NetProbe.online(this@DKAccessibilityService))), e.message ?: "-")

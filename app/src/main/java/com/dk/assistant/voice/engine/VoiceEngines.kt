@@ -5,24 +5,24 @@ import android.content.SharedPreferences
 import java.util.concurrent.ConcurrentHashMap
 
 /**
- * v3.68: तीनों आवाज़ इंजनों (नवंबर 2026: Kokoro TTS, DK लाइव, Gemini TTS - Edge हटाया) की सूची + कौन चालू है + पिछली बार नापा समय.
+ * v3.68: आवाज़ इंजनों (नवंबर 2026: DK लाइव = Direct Gemini Live Voice डिफ़ॉल्ट, Gemini TTS बैकअप - Edge / Piper / Kokoro हटाए) की सूची + कौन चालू है + पिछली बार नापा समय.
  *
  * इंजन नाम से ढूँढे जाते हैं ([CLASSES]) - किसी इंजन की फ़ाइल हटा दो तो वह सूची से अपने-आप गायब,
  * बाकी सब वैसे ही चलता है. एक समय में सिर्फ़ एक इंजन चालू ([toggle]).
  */
 object VoiceEngines {
     const val GEMINI_TTS = "gemini_tts"
-    const val KOKORO_TTS = "kokoro_tts"
-    /** नवंबर 2026: हटाया गया Kokoro TTS - सिर्फ़ पुरानी सेव पसंद पहचानने के लिए (migration) */
+    /** नवंबर 2026: हटाया गया Kokoro TTS - सिर्फ़ पुरानी सेव पसंद पहचानने के लिए (migration). बैकअप: branch backup/dk-kokoro-default */
+    const val OLD_KOKORO_ID = "kokoro_tts"
+    /** नवंबर 2026: हटाया गया Piper TTS - सिर्फ़ पुरानी सेव पसंद पहचानने के लिए (migration) */
     const val OLD_PIPER_ID = "piper_tts"
     /** नवंबर 2026: हटाया गया Microsoft Edge TTS - सिर्फ़ पुरानी सेव पसंद पहचानने के लिए (migration) */
     const val OLD_EDGE_ID = "edge_tts"
     const val LIVE_NATIVE = "live_native"
     const val DEFAULT_SAMPLE = "मुझे तुम्हारी बहुत याद आ रही थी"
 
-    /** क्रम = स्क्रीन पर क्रम: पहले Kokoro (नवंबर 2026 से डिफ़ॉल्ट, फ़ोन में), फिर DK लाइव (Direct Gemini Live Voice), फिर Gemini TTS */
+    /** क्रम = स्क्रीन पर क्रम: पहले DK लाइव (Direct Gemini Live Voice, डिफ़ॉल्ट), फिर Gemini TTS (बैकअप) */
     private val CLASSES = listOf(
-        "com.dk.assistant.voice.engine.KokoroTtsEngine",
         "com.dk.assistant.voice.engine.LiveNativeEngine",
         "com.dk.assistant.voice.engine.GeminiTtsEngine",
     )
@@ -34,15 +34,17 @@ object VoiceEngines {
     fun migrated(saved: String?, done: Boolean): String? = if (!done && (saved == null || saved == GEMINI_TTS)) LIVE_NATIVE else saved
 
     /**
-     * नवंबर 2026 (मालिक): डिफ़ॉल्ट Kokoro (Kokoro पूरी तरह हटाया) - एक बार हर फ़ोन पर Kokoro चालू (Direct Live बंद),
-     * फिर यूज़र जो चुने वही रहे. Kokoro इस फ़ोन पर न चले (arm64 नहीं) तो जो था वही; हटाया Edge / Kokoro चुना था तो DK लाइव.
+     * नवंबर 2026 (मालिक: "Kokoro पूरी तरह हटाओ, डिफ़ॉल्ट Direct Gemini Live, बैकअप Gemini TTS / फ़ोन की आवाज़"):
+     * एक बार हर फ़ोन पर DK लाइव (Direct Gemini Live Voice) चालू. उसके बाद यूज़र जो चुने (जैसे Gemini TTS) वही रहे.
+     * हटाए गए इंजन (Kokoro / Piper / Edge) की पुरानी पसंद = हमेशा DK लाइव.
      */
-    const val KOKORO_KEY = "kokoro_default_v1"
+    const val DIRECT_KEY = "live_direct_default_v2"
+    private val REMOVED = setOf(OLD_KOKORO_ID, OLD_PIPER_ID, OLD_EDGE_ID)
 
     /** pure (JVM test) */
-    fun kokoroMigrated(saved: String?, done: Boolean, kokoroOk: Boolean): String? = when {
-        !done && kokoroOk -> KOKORO_TTS
-        saved == OLD_EDGE_ID || saved == OLD_PIPER_ID -> if (kokoroOk) KOKORO_TTS else LIVE_NATIVE
+    fun directMigrated(saved: String?, done: Boolean): String? = when {
+        !done -> LIVE_NATIVE
+        saved in REMOVED -> LIVE_NATIVE
         else -> saved
     }
 
@@ -67,12 +69,13 @@ object VoiceEngines {
             if (m != null) ed.putString("active", m)
             ed.apply()
         }
-        if (!p.getBoolean(KOKORO_KEY, false) || p.getString("active", null).let { it == OLD_EDGE_ID || it == OLD_PIPER_ID }) {
-            val ok = byId(KOKORO_TTS) != null && KokoroTtsEngine.notReady(c) == null
-            val m = kokoroMigrated(p.getString("active", null), p.getBoolean(KOKORO_KEY, false), ok)
-            val ed = p.edit().putBoolean(KOKORO_KEY, true)
+        if (!p.getBoolean(DIRECT_KEY, false) || p.getString("active", null) in REMOVED) {
+            val m = directMigrated(p.getString("active", null), p.getBoolean(DIRECT_KEY, false))
+            val ed = p.edit().putBoolean(DIRECT_KEY, true)
             if (m != null) ed.putString("active", m)
             ed.apply()
+            // पुराने Kokoro की फ़ोन में कॉपी की हुई फ़ाइलें (espeak-ng-data) - जगह खाली करो
+            try { java.io.File(c.applicationContext.filesDir, "kokoro_model").deleteRecursively() } catch (_: Throwable) {}
         }
         val saved = p.getString("active", null)
         if (byId(saved) != null) return saved!!

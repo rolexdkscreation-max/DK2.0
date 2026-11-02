@@ -63,16 +63,17 @@ class Speaker(context: Context) {
     private fun keys(): List<String> = Prefs.liveGeminiKeys(appCtx)
 
     /**
-     * बैकअप मोड (DK लाइव नहीं जुड़ा): बोलना Kokoro TTS से (नवंबर 2026, Edge TTS की जगह) - हिंदी आवाज़ फ़ोन में ही,
-     * बिना key, बिना इंटरनेट, worker नहीं. सेवा (DKAccessibilityService.enterBackup) चालू/बंद करती है.
+     * बैकअप मोड (Direct Gemini Live नहीं जुड़ा / टूटा): नवंबर 2026 (मालिक, Kokoro हटाया) - बोलना **Gemini TTS** से,
+     * वह न चले / धीमा हो / limit / इंटरनेट नहीं = **तुरंत** फ़ोन की अपनी (Google / Android) आवाज़ ([PhoneVoice]) - चुप नहीं.
+     * सेवा (DKAccessibilityService.enterBackup) चालू/बंद करती है.
      */
     @Volatile var localOnly = false
-    /** Kokoro अभी-अभी नहीं चला = 60s तक हर वाक्य पर इंतज़ार नहीं, सीधे फ़ोन की आवाज़ (log 11:09 वाला नियम) */
+    /** बैकअप मोड में Gemini TTS अभी-अभी नहीं चला = कुछ देर हर वाक्य पर इंतज़ार नहीं, सीधे फ़ोन की आवाज़ */
     @Volatile private var localDownUntil = 0L
-    private val LOCAL_DOWN = "आवाज़: फ़ोन की (Kokoro नहीं चला)"
+    private val LOCAL_DOWN = "आवाज़: फ़ोन की (Gemini TTS नहीं चला)"
 
     private fun why(keys: List<String>): VoicePolicy.Why =
-        if (localOnly) VoicePolicy.Why.OK         // बैकअप मोड: Kokoro, वह न चले तो फ़ोन की आवाज़ (बिना नेट भी)
+        if (localOnly) VoicePolicy.Why.OK         // बैकअप मोड: Gemini TTS, वह न चले तो फ़ोन की आवाज़ (बिना नेट भी)
         else VoicePolicy.gemini(keys.isNotEmpty(), online(), System.currentTimeMillis(), geminiCooldownUntil)
 
     // ================================================================ bolna (ek samay me ek hi awaaz)
@@ -178,19 +179,16 @@ class Speaker(context: Context) {
             if (!gem) warnNoVoice(w0)
             val pendingWav = HashMap<String, kotlinx.coroutines.Deferred<ByteArray?>>()
             val bg = kotlinx.coroutines.CoroutineScope(Dispatchers.IO + kotlinx.coroutines.SupervisorJob())
-            // नवंबर 2026: Kokoro (बैकअप मोड) एक समय में एक ही वाक्य बनाता है - आगे वाले वाक्य पहले lock न पकड़ लें,
-            // इसलिए क्रम से: पहला वाक्य पहले (पहली आवाज़ जल्दी), बाकी उसके बजते-बजते पीछे बनते रहें
-            var lastLocal: kotlinx.coroutines.Deferred<ByteArray?>? = null
+            // बैकअप मोड: एक बार फ़ोन की आवाज़ पर गए तो इस जवाब के बाकी वाक्य भी उसी आवाज़ में (बीच में आवाज़ न बदले)
+            var phoneOnly = localOnly && BackupVoice.phoneFirst(keys.isNotEmpty(), online(), System.currentTimeMillis(), localDownUntil)
             fun prefetch(t: String) {
                 if (gem && !localOnly && System.currentTimeMillis() <= geminiCooldownUntil) gem = false
-                if (!gem || pendingWav.containsKey(t)) return
-                val prev = if (localOnly) lastLocal else null          // async बनने से पहले पकड़ो (खुद का इंतज़ार नहीं)
+                if (!gem || phoneOnly || pendingWav.containsKey(t)) return
                 pendingWav[t] = bg.async {
-                    prev?.join()
                     try { synth(keys, t, voice) }
                     catch (e: Exception) {
-                        // बैकअप मोड: Kokoro न बोले तो Gemini का cooldown मत लगाओ (वह अलग इंजन है)
-                        if (localOnly) { DKLog.d("बैकअप मोड: Kokoro TTS नहीं बोला (${e.message?.take(80)})"); return@async null }
+                        // बैकअप मोड: synth() ने खुद localDownUntil लगाया - यहाँ बस null (वाक्य फ़ोन की आवाज़ में)
+                        if (localOnly) { DKLog.d("बैकअप मोड: Gemini TTS नहीं बोला (${e.message?.take(80)}) - फ़ोन की आवाज़"); return@async null }
                         val code = (e as? AiException)?.code ?: 0
                         val until = if (code == 429) maxOf(System.currentTimeMillis() + 10 * 60_000L, GeminiTts.allBlockedUntil(keys))
                             else System.currentTimeMillis() + 60_000L
@@ -198,7 +196,7 @@ class Speaker(context: Context) {
                         geminiCooldownUntil = maxOf(geminiCooldownUntil, until)
                         if (first) DKLog.d("Gemini आवाज़ नहीं चली ($code) - ${(geminiCooldownUntil - System.currentTimeMillis()) / 60_000} मिनट DK चुप (फ़ोन की आवाज़ नहीं)"); null
                     }
-                }.also { if (localOnly) lastLocal = it }
+                }
             }
             val ahead = ArrayDeque<String>()
             try {
@@ -212,13 +210,15 @@ class Speaker(context: Context) {
                         replay = false
                         currentChunk = chunk
                         if (gem) {
-                            val wav = withTimeoutOrNull(VoicePolicy.waitMs(quick)) { pendingWav[chunk]?.await() }
+                            val wait = if (localOnly) BackupVoice.waitMs(played) else VoicePolicy.waitMs(quick)
+                            val wav = if (phoneOnly) null else withTimeoutOrNull(wait) { pendingWav[chunk]?.await() }
                             if (wav != null) { DKState.set(Mode.SPEAKING); playWav(wav); played = true }
                             else if (localOnly && !aborted && !paused) {
-                                // बैकअप मोड: Kokoro नहीं चला = फ़ोन की अपनी हिंदी आवाज़ (चुप नहीं)
+                                // बैकअप मोड: Gemini TTS नहीं चला / देर हुई = तुरंत फ़ोन की अपनी (Google / Android) आवाज़ (चुप नहीं)
+                                if (!phoneOnly) { phoneOnly = true; markPhoneVoice() }
                                 DKState.set(Mode.SPEAKING)
                                 if (PhoneVoice.say(appCtx, chunk)) played = true
-                                else { gem = false; DKLog.d("बैकअप मोड: Kokoro और फ़ोन की आवाज़ दोनों नहीं चलीं - जवाब सिर्फ़ लिखा") }
+                                else { gem = false; DKLog.d("बैकअप मोड: Gemini TTS और फ़ोन की आवाज़ दोनों नहीं चलीं - जवाब सिर्फ़ लिखा") }
                             }
                             else if (!aborted && !paused) {
                                 // Gemini ne awaaz nahi di -> chup (phone TTS nahi). Baaki jawab bhi likha hi rahega.
@@ -316,30 +316,30 @@ class Speaker(context: Context) {
     }
 
     private suspend fun synth(keys: List<String>, text: String, voice: String): ByteArray {
+        val cf = cacheFile(voice, text)
+        if (cf != null && cf.exists() && cf.length() > 100) return withContext(Dispatchers.IO) { cf.readBytes() }
         if (localOnly) {
-            if (System.currentTimeMillis() < localDownUntil) throw java.io.IOException("Kokoro अभी नहीं चल रहा - फ़ोन की आवाज़")
+            // बैकअप मोड: Gemini TTS (DK लाइव की keys). न चले = थोड़ी देर सीधे फ़ोन की आवाज़ (हर वाक्य पर इंतज़ार नहीं)
+            if (BackupVoice.phoneFirst(keys.isNotEmpty(), online(), System.currentTimeMillis(), localDownUntil))
+                throw java.io.IOException("बैकअप मोड: Gemini TTS अभी नहीं - फ़ोन की आवाज़")
             return withContext(Dispatchers.IO) {
-                try { kokoroWav(text) } catch (e: Exception) {
-                    // स्क्रीन की पट्टी पर साफ़: बैकअप मोड • (Live का कारण) • आवाज़: फ़ोन की (Kokoro नहीं चला)
-                    val l = DKState.linkStatus
-                    if (l.startsWith("बैकअप मोड") && !l.contains(LOCAL_DOWN)) DKState.setLink("$l • $LOCAL_DOWN")
-                    DKLog.d("बैकअप मोड: Kokoro नहीं चला (${e.message?.take(80)}) - 60s तक फ़ोन की अपनी आवाज़")
-                    localDownUntil = System.currentTimeMillis() + 60_000L; throw e
+                try { GeminiTts.synthesizeAny(keys, text, voice, Prefs.voiceStyle(appCtx)).also { w -> cf?.writeBytes(w) } }
+                catch (e: Exception) {
+                    val code = (e as? AiException)?.code ?: 0
+                    localDownUntil = BackupVoice.downUntil(code, System.currentTimeMillis(), GeminiTts.allBlockedUntil(keys))
+                    markPhoneVoice()
+                    DKLog.d("बैकअप मोड: Gemini TTS नहीं चला ($code ${e.message?.take(80)}) - ${(localDownUntil - System.currentTimeMillis()) / 1000}s फ़ोन की अपनी आवाज़")
+                    throw e
                 }
             }
         }
-        val cf = cacheFile(voice, text)
-        if (cf != null && cf.exists() && cf.length() > 100) return withContext(Dispatchers.IO) { cf.readBytes() }
         return withContext(Dispatchers.IO) { GeminiTts.synthesizeAny(keys, text, voice, Prefs.voiceStyle(appCtx)).also { w -> cf?.writeBytes(w) } }
     }
 
-    /** Kokoro TTS (फ़ोन में, PCM 24 kHz) -> WAV - बाकी बजाना वही (playWav) */
-    private fun kokoroWav(text: String): ByteArray {
-        val e = com.dk.assistant.voice.engine.KokoroTtsEngine
-        val buf = java.io.ByteArrayOutputStream()
-        e.speak(appCtx, text, e.voice(appCtx)) { pcm -> buf.write(pcm) }
-        if (buf.size() == 0) throw java.io.IOException("Kokoro TTS ने आवाज़ नहीं दी")
-        return GeminiTts.pcmToWav(buf.toByteArray(), com.dk.assistant.voice.engine.VoiceEngine.RATE)
+    /** स्क्रीन की पट्टी पर साफ़: बैकअप मोड • (Live का कारण) • आवाज़: फ़ोन की */
+    private fun markPhoneVoice() {
+        val l = DKState.linkStatus
+        if (l.startsWith("बैकअप मोड") && !l.contains(LOCAL_DOWN)) DKState.setLink("$l • $LOCAL_DOWN")
     }
 
     private val audio = appCtx.getSystemService(Context.AUDIO_SERVICE) as android.media.AudioManager
