@@ -46,9 +46,14 @@ object OrbRules {
     const val POPUP_AFTER_LIVE_MS = 2_500L
     /** Live न जुड़े (बैकअप / इजाज़त नहीं) तब भी इतने बाद (बोलना खत्म होते ही) */
     const val POPUP_MAX_MS = 20_000L
+    /** ✕ नहीं है - इसलिए popup कभी हमेशा के लिए न अटके (शोर / लंबा काम): इतने बाद DK बोल न रहा हो तो ज़रूर जाए */
+    const val POPUP_HARD_MAX_MS = 60_000L
+    /** बाहर आते समय ORB कितना बड़ा दिखकर सिकुड़े */
+    const val ENTER_SCALE = 1.9f
     /** popup जाए? बोलते/सोचते/उपयोगकर्ता के बोलते समय कभी नहीं */
     fun popupShouldLeave(shownMs: Long, liveUpMs: Long, mode: Mode, level: Float): Boolean {
         if (shownMs < POPUP_MIN_MS) return false
+        if (shownMs >= POPUP_HARD_MAX_MS && mode != Mode.SPEAKING) return true
         if (mode == Mode.SPEAKING || mode == Mode.THINKING || mode == Mode.WORKING) return false
         if (level > 0.18f) return false
         return (liveUpMs >= POPUP_AFTER_LIVE_MS) || shownMs >= POPUP_MAX_MS
@@ -91,7 +96,9 @@ class FloatOrb(private val c: Context, private val onTap: () -> Unit) {
     @SuppressLint("ClickableViewAccessibility")
     private fun show() {
         curDp = Prefs.floatOrbDp(c).toFloat()
-        val o = px(curDp); val w = winPx(o)
+        val o = px(curDp)
+        // शुरू में खिड़की ORB से 2 गुना - वरना 1.9x वाला सिकुड़ना खिड़की के किनारे पर कट जाता. animation के बाद असली आकार
+        val w = (o * OrbRules.ENTER_SCALE).roundToInt() + px(4f)
         val dm = c.resources.displayMetrics
         val p = WindowManager.LayoutParams(
             w, w,
@@ -110,11 +117,12 @@ class FloatOrb(private val c: Context, private val onTap: () -> Unit) {
         box.addView(ov, FrameLayout.LayoutParams(o, o, Gravity.CENTER))
         attachTouch(ov, p)
         // बड़ा ORB सिकुड़कर छोटा होता दिखे ("merge होकर छोटा"): बड़ा + धुँधला -> अपने आकार में, हल्का उछाल
-        ov.alpha = 0f; ov.scaleX = 1.9f; ov.scaleY = 1.9f
+        ov.alpha = 0f; ov.scaleX = OrbRules.ENTER_SCALE; ov.scaleY = OrbRules.ENTER_SCALE
         try { wm.addView(box, p) } catch (e: Exception) { DKLog.d("ORB नहीं लगा: ${e.javaClass.simpleName}"); return }
         root = box; orb = ov; lp = p
         ov.animate().alpha(1f).scaleX(1f).scaleY(1f).setDuration(420)
-            .setInterpolator(android.view.animation.OvershootInterpolator(1.1f)).start()
+            .setInterpolator(android.view.animation.OvershootInterpolator(1.1f))
+            .withEndAction { if (root === box) fitWindow() }.start()
     }
 
     /** हटाओ; [animated] = छोटा होकर धुँधला (ऐप खुलते ही / popup आते ही) */
@@ -126,6 +134,15 @@ class FloatOrb(private val c: Context, private val onTap: () -> Unit) {
             ov.animate().alpha(0f).scaleX(0.4f).scaleY(0.4f).setDuration(220)
                 .withEndAction { try { wm.removeView(r) } catch (_: Exception) {} }.start()
         } else try { wm.removeView(r) } catch (_: Exception) {}
+    }
+
+    /** animation के बाद खिड़की = सिर्फ़ ORB (बीच वहीं) - ताकि आस-पास की स्क्रीन छूना चले */
+    private fun fitWindow() {
+        val r = root ?: return; val p = lp ?: return
+        val w = winPx(px(curDp)); if (p.width == w) return
+        val cx = p.x + p.width / 2; val cy = p.y + p.height / 2
+        p.width = w; p.height = w; p.x = cx - w / 2; p.y = cy - w / 2
+        try { wm.updateViewLayout(r, p) } catch (_: Exception) {}
     }
 
     /** नया आकार - ORB का बीच वहीं रहे */

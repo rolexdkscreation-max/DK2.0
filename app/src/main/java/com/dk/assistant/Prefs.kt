@@ -173,6 +173,9 @@ object Prefs {
     /** तैरता ORB दिखे? (✕ = false; ऐप खोलना / Settings switch / notification बटन = true) */
     fun floatOrbOn(c: Context) = sp(c).getBoolean("float_orb_on", true)
     fun setFloatOrbOn(c: Context, on: Boolean) = edit(c) { putBoolean("float_orb_on", on) }
+    /** नवंबर 2026: ORB का ✕ हटा. पुराने ✕ से छिपा ORB एक बार वापस (उसके बाद सिर्फ़ Settings का switch चलेगा) */
+    fun orbNoXMigrated(c: Context) = sp(c).getBoolean("float_orb_nox_v1", false)
+    fun setOrbNoXMigrated(c: Context) = edit(c) { putBoolean("float_orb_nox_v1", true) }
     /** तैरते ORB का आकार (dp). शुरू में 76 = पुराने किनारे वाले छोटे ORB जितना */
     fun floatOrbDp(c: Context) = FloatOrbSize.clamp(sp(c).getInt("float_orb_dp", FloatOrbSize.DEFAULT_DP))
     fun setFloatOrbDp(c: Context, dp: Int) = edit(c) { putInt("float_orb_dp", FloatOrbSize.clamp(dp)) }

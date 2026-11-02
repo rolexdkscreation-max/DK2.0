@@ -96,11 +96,10 @@ class DKAccessibilityService : AccessibilityService() {
         scope.launch { speaker.warmCallVoice() }   // v4.2: "सर, कॉल आ रहा है" पहले से तैयार - limit / नेट न हो तब भी कॉल पर चुप नहीं
         showEdgeGlow()
         // एक ही छोटा ORB - सिर्फ़ ऐप से बाहर (ऐप खुला = नहीं, OrbRules). ऐप खुलने/बंद होने पर sync
+        // ✕ अब नहीं: पुराने ✕ से छिपा ORB सिर्फ़ एक बार वापस. उसके बाद Settings का switch ही मालिक - ऐप खुलने पर ज़बरदस्ती चालू नहीं
+        if (!Prefs.orbNoXMigrated(this)) { Prefs.setFloatOrbOn(this, true); Prefs.setOrbNoXMigrated(this) }
         floatOrb = FloatOrb(this) { onOrbTap() }.also { it.sync() }
-        AppVisible.onChange = { inApp ->
-            if (inApp && !Prefs.floatOrbOn(this)) Prefs.setFloatOrbOn(this, true)
-            refreshOrb()
-        }
+        AppVisible.onChange = { _ -> refreshOrb() }
         DKLog.d("DK accessibility service chalu ho gaya")
         val user = Prefs.userName(this)
         liveOffUntil = 0L; liveSoftFails = 0; liveOffSoft = false

@@ -19,6 +19,8 @@ class FloatOrbTest {
         val f = src("FloatOrb.kt")
         assertTrue(f.contains("OrbRules.floatWanted(Prefs.floatOrbOn(c), AppVisible.visible, OrbRules.popupShowing)"))
         assertTrue(f.contains("OvershootInterpolator"))                                  // सिकुड़कर आना
+        // सिकुड़ना कटे नहीं: शुरू की खिड़की ENTER_SCALE जितनी बड़ी, animation के बाद सिर्फ़ ORB जितनी
+        assertTrue(f.contains("(o * OrbRules.ENTER_SCALE)") && f.contains("withEndAction { if (root === box) fitWindow() }"))
     }
 
     @Test fun popupStaysWhileTalking_leavesAfterLive() {
@@ -28,6 +30,11 @@ class FloatOrbTest {
         assertFalse(OrbRules.popupShouldLeave(5_000, 1_000, Mode.LISTENING, 0f))          // Live अभी-अभी जुड़ा
         assertTrue(OrbRules.popupShouldLeave(5_000, 3_000, Mode.LISTENING, 0f))           // जुड़ा + थोड़ी देर = जाए
         assertTrue(OrbRules.popupShouldLeave(OrbRules.POPUP_MAX_MS, 0, Mode.IDLE, 0f))   // Live न जुड़े तब भी आख़िर में
+        // ✕ नहीं है: शोर (level ऊँचा) या लंबा काम हो तब भी popup हमेशा के लिए नहीं अटकता - DK बोल रहा हो तो ही रुके
+        assertTrue(OrbRules.popupShouldLeave(OrbRules.POPUP_HARD_MAX_MS, 0, Mode.LISTENING, 0.9f))
+        assertTrue(OrbRules.popupShouldLeave(OrbRules.POPUP_HARD_MAX_MS, 0, Mode.WORKING, 0f))
+        assertFalse(OrbRules.popupShouldLeave(OrbRules.POPUP_HARD_MAX_MS, 0, Mode.SPEAKING, 0f))
+        assertFalse(OrbRules.popupShouldLeave(OrbRules.POPUP_MAX_MS, 0, Mode.LISTENING, 0.9f))
         assertTrue(OrbRules.liveUp("Live • gemini-3.1-flash-live-preview • key #1 • 820 ms"))
         assertFalse(OrbRules.liveUp("जुड़ रहा है… x"))
         val v = src("DKVoiceInteractionSessionService.kt")
@@ -39,6 +46,9 @@ class FloatOrbTest {
         val h = s.substring(s.indexOf("fun healAccessibility"), s.indexOf("fun selfEnableAccessibility"))
         assertTrue(h.contains("enabledInSettings(c)") && h.contains("canWriteSecure(c)") && h.contains("instance == null"))
         assertTrue(src("DKVoiceInteractionService.kt").contains("Setup.healAccessibility(this)"))
+        // boot पर तुरंत off/on नहीं - थोड़ा रुककर
+        assertTrue(src("DKVoiceInteractionService.kt").contains("Setup.HEAL_DELAY_MS"))
+        assertTrue(Setup.HEAL_DELAY_MS >= 3_000L)
     }
 
     private fun src(rel: String): String {
@@ -58,9 +68,12 @@ class FloatOrbTest {
         val s = src("DKAccessibilityService.kt")
         assertFalse(s.contains("fun showBubble(") || s.contains("private var bubble"))
         assertTrue(s.contains("FloatOrb(this)"))
-        // ऐप खुला होने पर ORB छिपाना हटाया; ऐप खुले = ✕ से छिपा ORB वापस
+        // ऐप खुला होने पर ORB छिपाना हटाया. 02 नवंबर 2026: ✕ हटा - पुराने ✕ से छिपा ORB सिर्फ़ एक बार वापस (migration),
+        // उसके बाद ऐप खुलने / power बटन पर Settings का switch ज़बरदस्ती चालू नहीं होता (switch ही ORB छिपाने का रास्ता)
         assertFalse(s.contains("bubble?.visibility"))
-        assertTrue(s.contains("if (inApp && !Prefs.floatOrbOn(this)) Prefs.setFloatOrbOn(this, true)"))
+        assertTrue(s.contains("if (!Prefs.orbNoXMigrated(this)) { Prefs.setFloatOrbOn(this, true); Prefs.setOrbNoXMigrated(this) }"))
+        assertFalse(s.contains("if (inApp && !Prefs.floatOrbOn(this)) Prefs.setFloatOrbOn(this, true)"))
+        assertFalse(src("DKVoiceInteractionSessionService.kt").contains("Prefs.setFloatOrbOn(context, true)"))
         // टैप पहले जैसा
         val tap = s.substring(s.indexOf("private fun onOrbTap()"), s.indexOf("private fun onOrbTap()") + 400)
         assertTrue(tap.contains("end_call") && tap.contains("toggleLive()"))

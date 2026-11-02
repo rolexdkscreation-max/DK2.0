@@ -155,7 +155,7 @@ class DKVoiceInteractionSession(context: android.content.Context) : VoiceInterac
             val px = (Prefs.floatOrbDp(context) * 1.6f * context.resources.displayMetrics.density).toInt()
             orbView?.let { o -> o.layoutParams = o.layoutParams.apply { width = px; height = px }; o.visibility = android.view.View.VISIBLE }
             OrbRules.popupShowing = true
-            DKAccessibilityService.instance?.let { Prefs.setFloatOrbOn(context, true); it.refreshOrb() }
+            DKAccessibilityService.instance?.let { it.refreshOrb() }   // Settings का switch जैसा है वैसा (ज़बरदस्ती चालू नहीं)
             shownAt = System.currentTimeMillis(); liveUpAt = 0L; leaving = false
             enterAnim()
             DKState.listen(onState)
