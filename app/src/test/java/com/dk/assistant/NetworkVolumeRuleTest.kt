@@ -60,7 +60,8 @@ class NetworkVolumeRuleTest {
         // Live की जोड़ी 5.6s में हारती है - connect 4s ताकि अगला पता भी आज़माया जाए
         assertTrue(src("LiveNet.kt").contains(".connectTimeout(4, TimeUnit.SECONDS)"))
         assertTrue(LiveSrc.all().contains("DkDns.reportUnreachable(LIVE_HOST)"))
-        assertTrue(src("voice/engine/EdgeTtsEngine.kt").contains("DkDns.reportUnreachable(\"speech.platform.bing.com\")"))
+        // नवंबर 2026: Edge TTS (speech.platform.bing.com) हटाया - Piper फ़ोन में ही, उसे नेटवर्क नहीं चाहिए
+        assertFalse(java.io.File(listOf("src/main/java/com/dk/assistant", "app/src/main/java/com/dk/assistant").first { java.io.File(it).exists() }, "voice/engine/EdgeTtsEngine.kt").exists())
     }
 
     @Test fun noAutoVolume() {

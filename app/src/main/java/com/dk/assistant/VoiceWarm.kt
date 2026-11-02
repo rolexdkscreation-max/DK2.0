@@ -5,7 +5,7 @@ import com.dk.assistant.voice.engine.VoiceEngines
 
 /**
  * v3.71: ऐप खुलते ही चुने हुए आवाज़ इंजन का कनेक्शन तैयार (Gemini TTS = Worker का /ping, TLS + HTTP/2 खुला रहे;
- * Edge = WebSocket खुला). इंजन अपना OkHttp client/connection pool दोबारा इस्तेमाल करते हैं, इसलिए पहले वाक्य पर
+ * Piper = आवाज़ पहले से लोड). इंजन अपना OkHttp client/connection pool दोबारा इस्तेमाल करते हैं, इसलिए पहले वाक्य पर
  * हाथ मिलाने (DNS + TLS) की देरी नहीं लगती. 20 s में एक बार से ज़्यादा नहीं (बैटरी/डेटा).
  */
 object VoiceWarm {

@@ -9,7 +9,7 @@ import org.junit.Test
 class LatencyBoardTest {
     @Test fun threeTimes() {
         LatencyBoard.clear()
-        val r = LatencyBoard.record("Edge TTS", 1000, 1600, 1900, 2050)!!
+        val r = LatencyBoard.record("Piper TTS", 1000, 1600, 1900, 2050)!!
         assertEquals(600, r.firstPiece); assertEquals(900, r.firstVoice); assertEquals(1050, r.play)
         assertTrue(LatencyBoard.line(r).contains("पहला टुकड़ा 600 ms"))
         assertTrue(LatencyBoard.line(r).contains("बजना शुरू 1050 ms"))
@@ -27,10 +27,10 @@ class LatencyBoardTest {
     @Test fun keepsLastAndAverages() {
         LatencyBoard.clear()
         repeat(20) { LatencyBoard.record("Gemini TTS", 1000, 1200, 1500, 1800) }
-        LatencyBoard.record("Edge TTS", 1000, 1200, 1300, 1400)
+        LatencyBoard.record("Piper TTS", 1000, 1200, 1300, 1400)
         assertEquals(12, LatencyBoard.all().size)
         assertEquals(800L, LatencyBoard.averages()["Gemini TTS"])
-        assertEquals(400L, LatencyBoard.averages()["Edge TTS"])
+        assertEquals(400L, LatencyBoard.averages()["Piper TTS"])
         assertTrue(LatencyBoard.text().contains("औसत"))
         LatencyBoard.clear()
         assertTrue(LatencyBoard.text().contains("अभी कोई बारी नहीं"))

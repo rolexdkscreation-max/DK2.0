@@ -109,7 +109,7 @@ internal suspend fun <T> SettingsActivity.withDkMicPaused(block: suspend () -> T
 internal fun SettingsActivity.secVoice() {
     // v3.69: पुराना "आवाज़" हिस्सा (महिला/पुरुष, आवाज़ का प्रकार, सूची, अंदाज़, स्पीड, पिच, फ़ोन TTS) हटाया -
     // बैकअप: branch backup/dk-before-backup-folder-cleanup-1102, फ़ोल्डर backup/v3.69-settings/. अब सिर्फ़ DK लाइव का बोलने वाला इंजन.
-    card("बोलने वाला इंजन (DK Live)", "DK लाइव (डिफ़ॉल्ट) • Gemini TTS • Microsoft Edge TTS — एक समय में एक") { box ->
+    card("बोलने वाला इंजन (DK Live)", "Piper TTS (डिफ़ॉल्ट, फ़ोन में) • DK लाइव (Direct Gemini Live Voice) • Gemini TTS — एक समय में एक") { box ->
         com.dk.assistant.voice.engine.VoiceEngineCard.build(this, box, dp)
     }
 

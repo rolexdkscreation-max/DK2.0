@@ -1,11 +1,12 @@
 package com.dk.assistant.voice.engine
 
 /**
- * v3.69: Edge TTS भावना का निर्देश नहीं समझता - इसलिए "भावना / स्टाइल" बॉक्स के शब्दों से सिर्फ़ गति (%) और पिच (Hz) बदलती है.
+ * v3.69 (नवंबर 2026 से नाम WordStyle, पहले Edge TTS के लिए था - अब Piper TTS के लिए): जो इंजन भावना का निर्देश
+ * नहीं समझता, उसके "भावना / स्टाइल" बॉक्स के शब्दों से सिर्फ़ गति (%) और पिच (Hz) बदलती है.
  * "धीमी", "कोमल" = गति कम, पिच नीचा; "तेज़", "जोश" = गति ज़्यादा. नतीजा स्लाइडर के मान में जुड़ता है.
  * Android import नहीं -> JVM test.
  */
-object EdgeStyle {
+object WordStyle {
     /** (शब्द, गति %, पिच Hz) - हर मिला शब्द एक बार गिना जाता है */
     private val RULES: List<Triple<List<String>, Int, Int>> = listOf(
         Triple(listOf("धीमी", "धीमे", "धीमा", "धीरे", "आराम", "ठहर", "slow", "calm"), -15, 0),
@@ -27,7 +28,7 @@ object EdgeStyle {
         return r.coerceIn(-50, 50) to p.coerceIn(-30, 30)
     }
 
-    /** स्लाइडर + बॉक्स = आख़िरी गति और पिच (Edge की सीमा में) */
+    /** स्लाइडर + बॉक्स = आख़िरी गति और पिच (-50..50 %, -30..30 Hz) */
     fun apply(rate: Int, pitch: Int, style: String): Pair<Int, Int> {
         val (dr, dp) = adjust(style)
         return (rate + dr).coerceIn(-50, 50) to (pitch + dp).coerceIn(-30, 30)

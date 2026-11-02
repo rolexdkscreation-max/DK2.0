@@ -81,9 +81,9 @@ class AvatarLogicTest {
         assertTrue(MoodState.voiceStyle("").contains("हँसमुख"))
         // Edge: शब्दों से गति/पिच सच में बदले
         MoodState.set(Mood.SAD)
-        assertTrue(com.dk.assistant.voice.engine.EdgeStyle.adjust(MoodState.voiceStyle("")).first < 0)
+        assertTrue(com.dk.assistant.voice.engine.WordStyle.adjust(MoodState.voiceStyle("")).first < 0)
         MoodState.set(Mood.ANGRY)
-        assertTrue(com.dk.assistant.voice.engine.EdgeStyle.adjust(MoodState.voiceStyle("")).first > 0)
+        assertTrue(com.dk.assistant.voice.engine.WordStyle.adjust(MoodState.voiceStyle("")).first > 0)
     }
 
     @Test fun guessForNativeVoice() {
