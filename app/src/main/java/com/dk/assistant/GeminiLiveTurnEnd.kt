@@ -165,6 +165,11 @@ internal fun GeminiLive.scheduleFast() {
             val act = CallReply.parse(b)
             if (act != null) { callTool(act, "फ़ोन ने सुना: \"${b.take(30)}\""); return@launch }
         }
+        // नवंबर 2026: "फोन लॉक / अनलॉक करो" = अलग, न रुकने वाला काम (नीचे runLockNow) - 15s वाला दोहराव-रोक
+        // यहाँ नहीं (पहले वही बात दोबारा बोलने पर कुछ नहीं होता था); दो बार चलने से Memo की छोटी खिड़की रोकती है
+        PhoneLockVoice.instant(b, Prefs.wakeWords(svc), needName = dkOnlyNow)?.let { act ->
+            runLockNow(PhoneLockVoice.quick(act), b, "बोलना खत्म"); return@launch
+        }
         // v3.46: वही बात दोबारा router में नहीं (हर ठहराव/शोर पर वही caption दोबारा जाता था)
         if (!routeDedupe.fresh(b, System.currentTimeMillis())) return@launch
         val tc = System.nanoTime()
@@ -176,6 +181,7 @@ internal fun GeminiLive.scheduleFast() {
             log("तुरंत: स्क्रीन शेयर ${if (q.action.optBoolean("on", true)) "चालू" else "बंद"} -> ${r.take(60)}"); return@launch
         }
         if (q == null) { log("रूटर: \"${b.take(30)}\" फ़ोन पर सीधा नहीं - Gemini संभालेगा (वर्गीकरण $classMs ms)"); return@launch }
+        if (PhoneLockVoice.isLockType(q.action.optString("type"))) { runLockNow(q, b, "रूटर"); return@launch }
         // नवंबर 2026 (DKI-87912D): आधी बात पर बड़ा काम नहीं - थोड़ा और रुककर देखो आप आगे तो नहीं बोल रहे
         val settle = LiveFast.settleMs(q.action.optString("type"))
         if (settle > 0) {
@@ -262,4 +268,22 @@ internal fun GeminiLive.flushAsks(now: Long) {
         lastAct = now
         log("बीच में पूछा सवाल अब भेजा: ${t.take(60)}")
     } catch (_: Exception) {}
+}
+
+/**
+ * नवंबर 2026 (मालिक: "लाइव बातचीत में 'फोन लॉक / अनलॉक करो' बोलूँ तो तुरंत हो"): फ़ोन लॉक / अनलॉक अलग job में।
+ * पहले यह fastJob के अंदर चलता था - अनलॉक के बीच (PIN डलते समय) कोई भी नया "बोलना खत्म" (DK की अपनी
+ * आवाज़ / शोर) fastJob रद्द कर देता था: आधा PIN डला, फिर Gemini के phone_task ने दोबारा पूरा PIN डाला = गलत PIN,
+ * और दो बार गलत पर आवाज़ से अनलॉक ही रुक जाता था। अब: एक बार शुरू = पूरा होता है, एक समय में एक ही (PhoneUnlocker.gate)।
+ */
+internal fun GeminiLive.runLockNow(q: QuickCommands.Quick, heard: String, from: String) {
+    if (stopped || !fastMemo.begin(q, System.currentTimeMillis())) return
+    val type = q.action.optString("type")
+    svc.scope.launch {
+        val t0 = System.currentTimeMillis()
+        val r = try { svc.perform(q.action) } catch (e: CancellationException) { throw e } catch (e: Exception) { "ERROR ${e.message}" }
+        fastMemo.finish(q, r); fastN++
+        if (LiveFast.ok(type, r)) lastFastOkAt = System.currentTimeMillis()
+        log("तुरंत फ़ोन $type ($from, Gemini से पहले) \"${heard.take(40)}\" -> ${r.take(60)} (${System.currentTimeMillis() - t0} ms)")
+    }
 }

@@ -55,6 +55,14 @@ internal fun GeminiLive.onCaption(t: String, final: Boolean) {
         log("वीडियो/गाने के बीच DK का नाम सुना (\"${t.take(40)}\") - यूज़र की बात, Gemini को भेज रहा हूँ")
     }
     lastAct = System.currentTimeMillis()
+    // नवंबर 2026: "फोन लॉक करो" / "DK फोन अनलॉक करो" का पक्का text आते ही - DK बोल रहा हो (जवाब रोके-सुने वाला
+    // रास्ता) तब भी, बोलना-खत्म / Gemini के tool का इंतज़ार नहीं। DK की अपनी आवाज़ की गूँज = नहीं।
+    if (final && !micMuted && ComputerSession.ask == null) {
+        PhoneLockVoice.instant(t, Prefs.wakeWords(svc), needName = dkOnlyNow)?.let { act ->
+            val dkNear = isPlaying() || System.currentTimeMillis() - playEnd < 1500
+            if (!(dkNear && BargeGate.isEcho(t, dkHeardNow()))) runLockNow(PhoneLockVoice.quick(act), t, "caption")
+        }
+    }
     if (t.isNotBlank()) Ducker.duck(svc, "Live: user बोल रहा")   // user ke shabd aaye -> peeche ka gaana/video dheema
     // DK bol raha hai aur user ke asli shabd aaye (mic DK bolte samay sirf tez awaaz bhejta hai) -> DK chup
     // (caption ko DK bolte samay sirf phone ki pakdi user-awaaz jaati hai). Jawab abhi ban raha ho to

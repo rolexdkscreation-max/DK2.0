@@ -114,9 +114,17 @@ object LiveFast {
         @Volatile private var last: Done? = null
 
         /** true = नया काम (करो); false = वही काम अभी-अभी शुरू/पूरा हो चुका */
+        /**
+         * नवंबर 2026: फ़ोन लॉक / अनलॉक की दोहराव-खिड़की छोटी - पहले 15s तक वही \"फोन लॉक करो\" दोबारा बोलने पर
+         * कुछ नहीं होता था (उंगली से खोला, फिर बोला \"लॉक करो\" = लॉक नहीं)। उसी बात के दो रास्ते
+         * (caption + बोलना खत्म + Gemini का phone_task) अब भी एक ही बार चलते हैं।
+         */
+        private fun win(type: String?) = if (PhoneLockVoice.isLockType(type)) minOf(windowMs, LOCK_BEGIN_MS) else windowMs
+        private fun sameWin(type: String?) = if (PhoneLockVoice.isLockType(type)) minOf(windowMs, LOCK_SAME_MS) else windowMs
+
         @Synchronized fun begin(q: QuickCommands.Quick, now: Long): Boolean {
             val key = q.action.toString(); val l = last
-            if (l != null && l.key == key && now - l.at < windowMs) return false
+            if (l != null && l.key == key && now - l.at < win(l.type)) return false
             last = Done(key, q.action.optString("type"), now, null)
             return true
         }
@@ -129,7 +137,7 @@ object LiveFast {
          */
         fun same(q: QuickCommands.Quick?, now: Long): String? {
             val l = last ?: return NOT_SAME
-            if (q == null || now - l.at >= windowMs) return NOT_SAME
+            if (q == null || now - l.at >= sameWin(l.type)) return NOT_SAME
             return if (l.key == q.action.toString() || l.type == q.action.optString("type")) l.result else NOT_SAME
         }
 
@@ -137,6 +145,12 @@ object LiveFast {
         /** यह काम रद्द हुआ - Gemini का phone_task इसका (रद्द) नतीजा न ले, पूरा काम खुद करे */
         @Synchronized fun cancel(q: QuickCommands.Quick) { if (last?.key == q.action.toString()) last = null }
 
-        companion object { const val NOT_SAME = "\u0000not-same" }
+        companion object {
+            const val NOT_SAME = "\u0000not-same"
+            /** इतनी देर में वही लॉक / अनलॉक दोबारा = वही बात (दो रास्तों से आई), दोबारा नहीं */
+            const val LOCK_BEGIN_MS = 3_000L
+            /** Gemini का phone_task इतनी देर तक \"अभी-अभी किया\" मानेगा (अनलॉक में PIN डलने का समय भी) */
+            const val LOCK_SAME_MS = 8_000L
+        }
     }
 }

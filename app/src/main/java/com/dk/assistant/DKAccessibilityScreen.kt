@@ -28,6 +28,8 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
+import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.coroutineScope
@@ -271,30 +273,63 @@ internal fun DKAccessibilityService.pressEnter(): String {
 }
 
 /** Screen jagao; swipe-lock ho to khol do. PIN/pattern: सिर्फ़ तब जब मालिक ने आवाज़ से अनलॉक चालू करके सेव किया हो, वरना user खुद (suraksha). */
+internal suspend fun DKAccessibilityService.unlock(): String =
+    // नवंबर 2026: एक समय में एक ही अनलॉक, और शुरू हुआ तो पूरा (Live में बीच में रद्द होकर आधा PIN नहीं)
+    PhoneUnlocker.gate.withLock { withContext(NonCancellable) { unlockNow() } }
+
 @Suppress("DEPRECATION")
-internal suspend fun DKAccessibilityService.unlock(): String {
+private suspend fun DKAccessibilityService.unlockNow(): String {
+    val t0 = System.currentTimeMillis()
     val pm = getSystemService(android.os.PowerManager::class.java)
-    if (pm != null && !pm.isInteractive) {
+    val km = getSystemService(android.app.KeyguardManager::class.java)
+    val wasOff = pm != null && !pm.isInteractive
+    if (wasOff) {
         try {
-            val wl = pm.newWakeLock(android.os.PowerManager.SCREEN_BRIGHT_WAKE_LOCK or
+            val wl = pm!!.newWakeLock(android.os.PowerManager.SCREEN_BRIGHT_WAKE_LOCK or
                 android.os.PowerManager.ACQUIRE_CAUSES_WAKEUP, "dk:wake")
             wl.acquire(4000)
         } catch (e: Exception) { DKLog.d("wake: ${e.message}") }
-        delay(700)
     }
-    val km = getSystemService(android.app.KeyguardManager::class.java)
-    if (km == null || !km.isKeyguardLocked) return "screen on hai, phone pehle se unlocked hai"
-    val dm = resources.displayMetrics
-    swipe(dm.widthPixels / 2f, dm.heightPixels * 0.88f, dm.widthPixels / 2f, dm.heightPixels * 0.3f, 300)
-    delay(700)
-    return when {
+    if (km == null || !km.isKeyguardLocked) {
+        if (wasOff) waitScreenOn(pm, 800)
+        return "screen on hai, phone pehle se unlocked hai"
+    }
+    // नवंबर 2026: पहले स्क्रीन जगाकर अंदाज़े से swipe (700ms + 700ms रुककर) - Android 14 पर कई फ़ोन में स्क्रीन जगती ही नहीं थी,
+    // अंधेरी स्क्रीन पर swipe बेकार और PIN वाला हिस्सा कभी नहीं खुलता। अब छोटी पारदर्शी स्क्रीन: स्क्रीन तुरंत जगे और
+    // Android खुद PIN वाला हिस्सा खोले (requestDismissKeyguard); swipe सिर्फ़ अगर यह न चले
+    val asked = UnlockWakeActivity.open(this)
+    waitScreenOn(pm, 1200)
+    val canPin = km.isKeyguardSecure && PhoneLockStore.unlockOn(this) && PhoneLockStore.hasSecret(this)
+    if (!asked) {
+        val dm = resources.displayMetrics
+        swipe(dm.widthPixels / 2f, dm.heightPixels * 0.88f, dm.widthPixels / 2f, dm.heightPixels * 0.3f, 300)
+        delay(400)
+    } else if (!km.isKeyguardSecure) {
+        // सिर्फ़ swipe वाला ताला: Android खुद खोल देता है - न खुले तो swipe
+        var n = 0
+        while (km.isKeyguardLocked && n++ < 8) delay(PhoneUnlocker.POLL_MS)
+        if (km.isKeyguardLocked) {
+            val dm = resources.displayMetrics
+            swipe(dm.widthPixels / 2f, dm.heightPixels * 0.88f, dm.widthPixels / 2f, dm.heightPixels * 0.3f, 300)
+            delay(400)
+        }
+    }
+    val r = when {
         !km.isKeyguardLocked -> "phone unlock ho gaya"
         // नवंबर 2026: मालिक ने Settings → फ़ोन लॉक / अनलॉक में PIN / पैटर्न सेव किया हो तभी DK खुद डालता है
         // (गलत की गिनती पूरी हो तो enter खुद बताता है कि क्यों रुका - PIN नहीं डालता)
-        km.isKeyguardSecure && PhoneLockStore.unlockOn(this) && PhoneLockStore.hasSecret(this) -> PhoneUnlocker.enter(this, km)
+        canPin -> PhoneUnlocker.enter(this, km, asked)
         km.isKeyguardSecure -> "screen on, lock screen PIN/pattern/fingerprint maang rahi hai - user ko bolo ki khud khole (DK PIN nahi daalta)"
         else -> "lock screen khuli"
     }
+    DKLog.d("फ़ोन अनलॉक: ${r.take(50)} (${System.currentTimeMillis() - t0} ms, स्क्रीन ${if (wasOff) "बंद थी" else "चालू थी"}, PIN हिस्सा माँगा=$asked)")
+    return r
+}
+
+private suspend fun waitScreenOn(pm: android.os.PowerManager?, maxMs: Long) {
+    if (pm == null) return
+    val until = System.currentTimeMillis() + maxMs
+    while (!pm.isInteractive && System.currentTimeMillis() < until) delay(50)
 }
 
 /** Saari windows (notification popup, call screen) me button dhoondo aur dabao. */

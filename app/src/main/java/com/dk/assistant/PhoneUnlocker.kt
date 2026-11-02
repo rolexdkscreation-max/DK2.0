@@ -8,8 +8,11 @@ import android.graphics.Rect
 import android.os.Build
 import android.os.Bundle
 import android.view.accessibility.AccessibilityNodeInfo
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.withContext
 import kotlin.coroutines.resume
 
 /**
@@ -22,6 +25,17 @@ import kotlin.coroutines.resume
  */
 internal object PhoneUnlocker {
     const val FAIL = PhoneLockVoice.UNLOCK_FAIL
+
+    /**
+     * नवंबर 2026: एक समय में एक ही अनलॉक। पहले Live में तुरंत वाला रास्ता और Gemini का phone_task दोनों साथ
+     * PIN डालते थे - अंक आपस में मिल जाते (गलत PIN), गिनती बढ़ती और आवाज़ से अनलॉक रुक जाता।
+     */
+    val gate = Mutex()
+
+    /** PIN दबाने के बीच (पहले 90ms) */
+    const val KEY_GAP_MS = 45L
+    /** PIN वाला हिस्सा दिखने तक देखने का अंतर */
+    const val POLL_MS = 100L
 
     private fun nodes(svc: DKAccessibilityService): List<AccessibilityNodeInfo> {
         val out = ArrayList<AccessibilityNodeInfo>()
@@ -81,8 +95,8 @@ internal object PhoneUnlocker {
     }
 
     /** PIN वाला हिस्सा / पैटर्न / पासवर्ड का खाना आने तक (ऊपर swipe के बाद) */
-    private suspend fun waitBouncer(svc: DKAccessibilityService, kind: PhoneLockVoice.Kind): Screen? {
-        repeat(14) {
+    private suspend fun waitBouncer(svc: DKAccessibilityService, kind: PhoneLockVoice.Kind, tries: Int = 25): Screen? {
+        repeat(tries) {
             val s = look(svc)
             val ready = when (kind) {
                 PhoneLockVoice.Kind.PIN -> s.digits.size >= 10 || s.edit != null
@@ -90,38 +104,45 @@ internal object PhoneUnlocker {
                 PhoneLockVoice.Kind.PASSWORD -> s.edit != null
             }
             if (ready) return s
-            delay(200)
+            delay(POLL_MS)
         }
         return null
     }
 
     private suspend fun opened(km: KeyguardManager): Boolean {
-        repeat(12) { if (!km.isKeyguardLocked) return true; delay(200) }
+        repeat(30) { if (!km.isKeyguardLocked) return true; delay(POLL_MS) }
         return !km.isKeyguardLocked
     }
 
-    /** लॉक स्क्रीन ऊपर swipe हो चुकी, फ़ोन अब भी बंद → सेव किया PIN डालो */
-    suspend fun enter(svc: DKAccessibilityService, km: KeyguardManager): String {
+    /**
+     * लॉक स्क्रीन ऊपर swipe हो चुकी / Android ने PIN वाला हिस्सा खोल दिया ([UnlockWakeActivity]), फ़ोन अब भी बंद →
+     * सेव किया PIN डालो। asked = Android से PIN वाला हिस्सा माँगा जा चुका (तब पहले थोड़ा कम इंतज़ार, फिर swipe)।
+     */
+    suspend fun enter(svc: DKAccessibilityService, km: KeyguardManager, asked: Boolean = false): String {
         val kind = PhoneLockStore.kind(svc) ?: return "$FAIL PIN सेव नहीं है। Settings → फ़ोन लॉक / अनलॉक में डालिए।"
         if (PhoneLockStore.fails(svc) >= PhoneLockStore.MAX_FAILS)
             return "$FAIL पिछली ${PhoneLockStore.MAX_FAILS} बार फ़ोन नहीं खुला, इसलिए मैंने ${kind.hi} डालना रोक दिया है। Settings में ${kind.hi} दोबारा सेव कीजिए।"
         val secret = PhoneLockStore.secret(svc) ?: return "$FAIL सेव किया ${kind.hi} खुल नहीं पाया। Settings में दोबारा सेव कीजिए।"
-        var s = waitBouncer(svc, kind)
-        if (s == null) {        // कुछ फ़ोन: पहली swipe से सिर्फ़ घड़ी हटती है
+        var s = waitBouncer(svc, kind, if (asked) 15 else 25)
+        if (s == null && !km.isKeyguardLocked) return "phone unlock ho gaya"
+        if (s == null) {        // कुछ फ़ोन: पहली swipe से सिर्फ़ घड़ी हटती है / PIN वाला हिस्सा खुद नहीं खुला
             val dm = svc.resources.displayMetrics
             svc.swipe(dm.widthPixels / 2f, dm.heightPixels * 0.85f, dm.widthPixels / 2f, dm.heightPixels * 0.25f, 250)
             s = waitBouncer(svc, kind)
         }
-        if (s == null) {
-            if (!km.isKeyguardLocked) return "phone unlock ho gaya"
-            return "$FAIL लॉक स्क्रीन पर ${kind.hi} डालने की जगह नहीं मिली। फ़ोन खुद खोलिए।"
-        }
+        if (s == null && !km.isKeyguardLocked) return "phone unlock ho gaya"
+        // PIN डलना शुरू = पूरा डलेगा (बीच में रद्द होकर आधा PIN न छूटे - अगली कोशिश में अंक जुड़कर गलत हो जाते)
+        val screen: Screen = s ?: return "$FAIL लॉक स्क्रीन पर ${kind.hi} डालने की जगह नहीं मिली। फ़ोन खुद खोलिए।"
+        return withContext(NonCancellable) { type(svc, km, kind, secret, screen) }
+    }
+
+    private suspend fun type(svc: DKAccessibilityService, km: KeyguardManager, kind: PhoneLockVoice.Kind, secret: String, s: Screen): String {
         var typed = false
         when (kind) {
             PhoneLockVoice.Kind.PIN -> {
                 if (s.digits.size >= 10) {
                     typed = true
-                    for (d in secret) { val n = s.digits[d]; if (n == null || !press(svc, n)) { typed = false; break }; delay(90) }
+                    for (d in secret) { val n = s.digits[d]; if (n == null || !press(svc, n)) { typed = false; break }; delay(KEY_GAP_MS) }
                 } else s.edit?.let { typed = setText(it, secret) }
             }
             PhoneLockVoice.Kind.PASSWORD -> s.edit?.let { typed = setText(it, secret) }
@@ -133,7 +154,7 @@ internal object PhoneUnlocker {
         if (!typed) return "$FAIL ${kind.hi} पूरा नहीं डल पाया। फ़ोन खुद खोलिए।"
         // कई फ़ोन PIN सही होते ही खुद खुलते हैं; न खुले तो Enter / OK
         if (kind != PhoneLockVoice.Kind.PATTERN && km.isKeyguardLocked) {
-            delay(250)
+            delay(200)
             if (km.isKeyguardLocked) {
                 val en = look(svc).enter
                 val ime = if (Build.VERSION.SDK_INT >= 30) AccessibilityNodeInfo.AccessibilityAction.ACTION_IME_ENTER.id else 0

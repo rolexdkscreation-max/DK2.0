@@ -96,6 +96,26 @@ object PhoneLockVoice {
         return null
     }
 
+    /**
+     * DK लाइव (आवाज़ से आवाज़ वाली बातचीत) के बीच: छोटा, पक्का वाक्य ("फोन लॉक करो", "डीके फोन अनलॉक करो") → तुरंत,
+     * Gemini के जवाब / tool का इंतज़ार किए बिना। Settings में लॉक / अनलॉक बंद हो तब भी आम वाक्य चलते हैं
+     * (पहले भी Live में "फोन लॉक करो" QuickCommands से लॉक करता था) - अनलॉक में PIN सिर्फ़ तब डलता है जब Settings में सेव हो।
+     * names = DK के बुलाने वाले नाम (wake words) - वाक्य में हों तो गिनती में नहीं।
+     * needName = "सिर्फ़ DK बोलने पर सुनो" चालू हो तो नाम ज़रूरी।
+     */
+    fun instant(heard: String, names: List<String> = emptyList(), needName: Boolean = false, c: Cfg = cfg): Act? {
+        val all = (c.names + list(DEFAULT_NAMES) + names.map { norm(it) }).filter { it.isNotEmpty() }.distinct()
+        val use = Cfg(
+            lockOn = true, unlockOn = true, names = all,
+            lock = if (c.lockOn && c.lock.isNotEmpty()) (c.lock + list(DEFAULT_LOCK)).distinct() else list(DEFAULT_LOCK),
+            unlock = if (c.unlockOn && c.unlock.isNotEmpty()) (c.unlock + list(DEFAULT_UNLOCK)).distinct() else list(DEFAULT_UNLOCK),
+        )
+        return match(heard, needName, use)
+    }
+
+    /** "lock" / "unlock" / "wake" = फ़ोन का ताला वाला काम (दोबारा बोला = दोबारा करो, छोटी दोहराव-खिड़की) */
+    fun isLockType(type: String?) = type == "lock" || type == "unlock" || type == "wake"
+
     /** फ़ोन पर चलने वाला काम (QuickCommands जैसा ही - वही \"lock\" / \"unlock\") */
     fun quick(act: Act) = QuickCommands.Quick(JSONObject().put("type", act.type), "")
 
