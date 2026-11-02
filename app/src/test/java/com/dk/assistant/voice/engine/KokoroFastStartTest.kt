@@ -42,7 +42,8 @@ class KokoroFastStartTest {
         val out = c.feed("जी हाँ, आज मौसम काफ़ी अच्छा रहेगा और दिन में धूप निकलेगी ")
         assertEquals("जी हाँ,", out[0])
         assertEquals("आज मौसम काफ़ी अच्छा रहेगा", out[1])
-        assertTrue(out[2].startsWith("और दिन में"))
+        assertEquals(2, out.size)                                  // "और दिन में धूप निकलेगी" अभी छोटा - इंतज़ार
+        assertTrue(c.flush()!!.startsWith("और दिन में"))
         val d = local().feed("मुझे लगता है आप आज शाम को ")
         assertEquals("मुझे लगता है", d[0])                          // "है" के बाद
         // बहुत पीछे (आधे से कम) का मोड़ नहीं - छोटे टुकड़े नहीं बनते
