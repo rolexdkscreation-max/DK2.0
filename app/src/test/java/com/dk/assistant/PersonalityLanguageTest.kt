@@ -11,7 +11,7 @@ class PersonalityLanguageTest {
 
     @After fun reset() { Lang.current = Lang.HINGLISH; Lang.detected = Lang.HINGLISH }
 
-    // v3.69: 10 पर्सनैलिटी हटाईं (बैकअप backup/v3.69-settings) - अब सिर्फ़ अपना लिखा "बात करने का तरीका"
+    // v3.69: 10 पर्सनैलिटी हटाईं (बैकअप: branch backup/dk-before-backup-folder-cleanup-1102, फ़ोल्डर backup/v3.69-settings) - अब सिर्फ़ अपना लिखा "बात करने का तरीका"
     @Test fun personaLine_onlyUserText() {
         assertEquals("", personaLine(""))
         assertEquals("", personaLine("   "))

@@ -202,13 +202,13 @@ Important context: the existing app is a mature **View/XML + Kotlin** app (≈31
 - **मॉडल**: कोडिंग एजेंट का default `gemini-3.8-flash` (पहले flash-lite था - एक बार बदला). एक key पर क्रम: 3.8 Flash → 3.6 Flash → 3 Flash preview → 3.5 Flash-Lite → 3.1 Flash-Lite (सब free tier, ai.google.dev/gemini-api/docs/pricing).
 - **3 Gemini keys**: Settings → AI दिमाग → कोडिंग एजेंट → Gemini में Key 2 और Key 3. Key 1 के सारे मॉडल की limit खत्म → Key 2 के सारे मॉडल → Key 3. सब खत्म = काम रुकता नहीं, limit खुलने तक रुककर फिर (कुल 12 मिनट तक; फिर भी नहीं = दिन की limit, काम चौकी में बचा). Google limit project पर लगाता है - हर key अलग project की हो.
 - प्लानर: नया pure logic = उसका unit test भी (रिपो में tests हों तो).
-- बैकअप: `backup/v3.70-coder/`. Test: `CoderHistoryResumeTest`.
+- बैकअप: `backup/v3.70-coder/` (branch `backup/dk-before-backup-folder-cleanup-1102` में). Test: `CoderHistoryResumeTest`.
 
 ## v3.69 — Collapsible settings + per-engine style
 | Item | Status | Notes |
 |---|---|---|
 | Shared collapsible section | DONE | `ui/CollapsibleSection` (title + arrow when closed, tap = open/close with 220 ms height/alpha animation, all closed at start). `SettingsActivity.card()` and `MemoryActivity.card()` use it, so every settings page gets it; new section = `CollapsibleSection.add(...)` |
-| Voice page cleanup | DONE | removed old voice card (gender, type, voice list, style, choose/listen, speed, pitch, phone TTS), sample sentence / compare / stop box, Profile "पर्सनैलिटी" + `Personality.kt`. Backups in `backup/v3.69-settings/`. Saved values stay on the phone |
+| Voice page cleanup | DONE | removed old voice card (gender, type, voice list, style, choose/listen, speed, pitch, phone TTS), sample sentence / compare / stop box, Profile "पर्सनैलिटी" + `Personality.kt`. Backups in `backup/v3.69-settings/` (branch `backup/dk-before-backup-folder-cleanup-1102` में). Saved values stay on the phone |
 | Style box per engine | DONE | Gemini TTS unchanged (`gemini_tts_style`); Edge `edge_style` -> `EdgeStyle` words map to rate/pitch on top of the sliders; Live direct `live_native_style` -> appended to the Live system instruction (native mode) and preview |
 | On-phone look | NOT VERIFIED | emulator screenshots via `ui-preview` workflow |
 
