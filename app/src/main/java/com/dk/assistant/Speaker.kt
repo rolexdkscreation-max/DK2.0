@@ -63,16 +63,16 @@ class Speaker(context: Context) {
     private fun keys(): List<String> = Prefs.liveGeminiKeys(appCtx)
 
     /**
-     * बैकअप मोड (DK लाइव नहीं जुड़ा): बोलना Piper TTS से (नवंबर 2026, Edge TTS की जगह) - हिंदी आवाज़ फ़ोन में ही,
+     * बैकअप मोड (DK लाइव नहीं जुड़ा): बोलना Kokoro TTS से (नवंबर 2026, Edge TTS की जगह) - हिंदी आवाज़ फ़ोन में ही,
      * बिना key, बिना इंटरनेट, worker नहीं. सेवा (DKAccessibilityService.enterBackup) चालू/बंद करती है.
      */
-    @Volatile var piperOnly = false
-    /** Piper अभी-अभी नहीं चला = 60s तक हर वाक्य पर इंतज़ार नहीं, सीधे फ़ोन की आवाज़ (log 11:09 वाला नियम) */
-    @Volatile private var piperDownUntil = 0L
-    private val PIPER_DOWN = "आवाज़: फ़ोन की (Piper नहीं चला)"
+    @Volatile var localOnly = false
+    /** Kokoro अभी-अभी नहीं चला = 60s तक हर वाक्य पर इंतज़ार नहीं, सीधे फ़ोन की आवाज़ (log 11:09 वाला नियम) */
+    @Volatile private var localDownUntil = 0L
+    private val LOCAL_DOWN = "आवाज़: फ़ोन की (Kokoro नहीं चला)"
 
     private fun why(keys: List<String>): VoicePolicy.Why =
-        if (piperOnly) VoicePolicy.Why.OK         // बैकअप मोड: Piper, वह न चले तो फ़ोन की आवाज़ (बिना नेट भी)
+        if (localOnly) VoicePolicy.Why.OK         // बैकअप मोड: Kokoro, वह न चले तो फ़ोन की आवाज़ (बिना नेट भी)
         else VoicePolicy.gemini(keys.isNotEmpty(), online(), System.currentTimeMillis(), geminiCooldownUntil)
 
     // ================================================================ bolna (ek samay me ek hi awaaz)
@@ -179,12 +179,12 @@ class Speaker(context: Context) {
             val pendingWav = HashMap<String, kotlinx.coroutines.Deferred<ByteArray?>>()
             val bg = kotlinx.coroutines.CoroutineScope(Dispatchers.IO + kotlinx.coroutines.SupervisorJob())
             fun prefetch(t: String) {
-                if (gem && !piperOnly && System.currentTimeMillis() <= geminiCooldownUntil) gem = false
+                if (gem && !localOnly && System.currentTimeMillis() <= geminiCooldownUntil) gem = false
                 if (gem && !pendingWav.containsKey(t)) pendingWav[t] = bg.async {
                     try { synth(keys, t, voice) }
                     catch (e: Exception) {
-                        // बैकअप मोड: Piper न बोले तो Gemini का cooldown मत लगाओ (वह अलग इंजन है)
-                        if (piperOnly) { DKLog.d("बैकअप मोड: Piper TTS नहीं बोला (${e.message?.take(80)})"); return@async null }
+                        // बैकअप मोड: Kokoro न बोले तो Gemini का cooldown मत लगाओ (वह अलग इंजन है)
+                        if (localOnly) { DKLog.d("बैकअप मोड: Kokoro TTS नहीं बोला (${e.message?.take(80)})"); return@async null }
                         val code = (e as? AiException)?.code ?: 0
                         val until = if (code == 429) maxOf(System.currentTimeMillis() + 10 * 60_000L, GeminiTts.allBlockedUntil(keys))
                             else System.currentTimeMillis() + 60_000L
@@ -208,11 +208,11 @@ class Speaker(context: Context) {
                         if (gem) {
                             val wav = withTimeoutOrNull(VoicePolicy.waitMs(quick)) { pendingWav[chunk]?.await() }
                             if (wav != null) { DKState.set(Mode.SPEAKING); playWav(wav); played = true }
-                            else if (piperOnly && !aborted && !paused) {
-                                // बैकअप मोड: Piper नहीं चला = फ़ोन की अपनी हिंदी आवाज़ (चुप नहीं)
+                            else if (localOnly && !aborted && !paused) {
+                                // बैकअप मोड: Kokoro नहीं चला = फ़ोन की अपनी हिंदी आवाज़ (चुप नहीं)
                                 DKState.set(Mode.SPEAKING)
                                 if (PhoneVoice.say(appCtx, chunk)) played = true
-                                else { gem = false; DKLog.d("बैकअप मोड: Piper और फ़ोन की आवाज़ दोनों नहीं चलीं - जवाब सिर्फ़ लिखा") }
+                                else { gem = false; DKLog.d("बैकअप मोड: Kokoro और फ़ोन की आवाज़ दोनों नहीं चलीं - जवाब सिर्फ़ लिखा") }
                             }
                             else if (!aborted && !paused) {
                                 // Gemini ne awaaz nahi di -> chup (phone TTS nahi). Baaki jawab bhi likha hi rahega.
@@ -310,15 +310,15 @@ class Speaker(context: Context) {
     }
 
     private suspend fun synth(keys: List<String>, text: String, voice: String): ByteArray {
-        if (piperOnly) {
-            if (System.currentTimeMillis() < piperDownUntil) throw java.io.IOException("Piper अभी नहीं चल रहा - फ़ोन की आवाज़")
+        if (localOnly) {
+            if (System.currentTimeMillis() < localDownUntil) throw java.io.IOException("Kokoro अभी नहीं चल रहा - फ़ोन की आवाज़")
             return withContext(Dispatchers.IO) {
-                try { piperWav(text) } catch (e: Exception) {
-                    // स्क्रीन की पट्टी पर साफ़: बैकअप मोड • (Live का कारण) • आवाज़: फ़ोन की (Piper नहीं चला)
+                try { kokoroWav(text) } catch (e: Exception) {
+                    // स्क्रीन की पट्टी पर साफ़: बैकअप मोड • (Live का कारण) • आवाज़: फ़ोन की (Kokoro नहीं चला)
                     val l = DKState.linkStatus
-                    if (l.startsWith("बैकअप मोड") && !l.contains(PIPER_DOWN)) DKState.setLink("$l • $PIPER_DOWN")
-                    DKLog.d("बैकअप मोड: Piper नहीं चला (${e.message?.take(80)}) - 60s तक फ़ोन की अपनी आवाज़")
-                    piperDownUntil = System.currentTimeMillis() + 60_000L; throw e
+                    if (l.startsWith("बैकअप मोड") && !l.contains(LOCAL_DOWN)) DKState.setLink("$l • $LOCAL_DOWN")
+                    DKLog.d("बैकअप मोड: Kokoro नहीं चला (${e.message?.take(80)}) - 60s तक फ़ोन की अपनी आवाज़")
+                    localDownUntil = System.currentTimeMillis() + 60_000L; throw e
                 }
             }
         }
@@ -327,12 +327,12 @@ class Speaker(context: Context) {
         return withContext(Dispatchers.IO) { GeminiTts.synthesizeAny(keys, text, voice, Prefs.voiceStyle(appCtx)).also { w -> cf?.writeBytes(w) } }
     }
 
-    /** Piper TTS (फ़ोन में, PCM 24 kHz) -> WAV - बाकी बजाना वही (playWav) */
-    private fun piperWav(text: String): ByteArray {
-        val e = com.dk.assistant.voice.engine.PiperTtsEngine
+    /** Kokoro TTS (फ़ोन में, PCM 24 kHz) -> WAV - बाकी बजाना वही (playWav) */
+    private fun kokoroWav(text: String): ByteArray {
+        val e = com.dk.assistant.voice.engine.KokoroTtsEngine
         val buf = java.io.ByteArrayOutputStream()
         e.speak(appCtx, text, e.voice(appCtx)) { pcm -> buf.write(pcm) }
-        if (buf.size() == 0) throw java.io.IOException("Piper TTS ने आवाज़ नहीं दी")
+        if (buf.size() == 0) throw java.io.IOException("Kokoro TTS ने आवाज़ नहीं दी")
         return GeminiTts.pcmToWav(buf.toByteArray(), com.dk.assistant.voice.engine.VoiceEngine.RATE)
     }
 

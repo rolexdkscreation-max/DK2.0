@@ -1027,7 +1027,7 @@ class GeminiLive(internal val svc: DKAccessibilityService, internal val agent: A
                             else if (!turnActive && !isPlaying()) { log("आवाज़ इंजन बदला (${ch?.title}) - नया connection"); goAway = true; goAwayDrop = true }
                         }
                         // v3.80: Live की अपनी आवाज़ / अंदाज़ / Live मॉडल बदला -> DK चुप होते ही नया connection (उसी बातचीत में).
-                        // बँटवारे वाले इंजन (Piper / Gemini TTS) की आवाज़ हर टुकड़े पर नई पढ़ी जाती है - वहाँ connection नहीं तोड़ना
+                        // बँटवारे वाले इंजन (Kokoro / Gemini TTS) की आवाज़ हर टुकड़े पर नई पढ़ी जाती है - वहाँ connection नहीं तोड़ना
                         if (connLiveVer != com.dk.assistant.voice.engine.VoiceEngines.liveVersion && !turnActive && !isPlaying() && toolJobs.isEmpty()) {
                             connLiveVer = com.dk.assistant.voice.engine.VoiceEngines.liveVersion
                             val pick = LiveModelPick.get(svc)

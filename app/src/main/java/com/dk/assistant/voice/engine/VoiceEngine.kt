@@ -30,6 +30,8 @@ interface VoiceEngine {
     /** (आवाज़ का पक्का नाम, दिखने वाला नाम) */
     fun voices(): List<Pair<String, String>>
     fun voice(c: Context): String
+    /** सूची में आवाज़ का समूह (जैसे "Female voices" / "Male voices"); null = बिना समूह */
+    fun voiceGroup(v: String): String? = null
     fun setVoice(c: Context, v: String)
 
     /** null = चल सकता है; नहीं तो वजह (जैसे "Worker का पता नहीं डाला") */

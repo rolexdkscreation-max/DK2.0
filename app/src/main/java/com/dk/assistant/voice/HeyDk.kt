@@ -263,8 +263,8 @@ object HeyDk {
 
     fun nextAck(c: Context): String = WakeMatch.nextAck(acks(c), lastAck).also { lastAck = it }
 
-    /** जो इंजन अकेले बोल सकता है (Live की अपनी आवाज़ अकेले नहीं बोलती -> Gemini TTS / Piper) */
-    private fun ackEngine(c: Context) = listOfNotNull(VoiceEngines.active(c), VoiceEngines.byId(VoiceEngines.GEMINI_TTS), VoiceEngines.byId(VoiceEngines.PIPER_TTS))
+    /** जो इंजन अकेले बोल सकता है (Live की अपनी आवाज़ अकेले नहीं बोलती -> Gemini TTS / Kokoro) */
+    private fun ackEngine(c: Context) = listOfNotNull(VoiceEngines.active(c), VoiceEngines.byId(VoiceEngines.GEMINI_TTS), VoiceEngines.byId(VoiceEngines.KOKORO_TTS))
         .firstOrNull { it.id != VoiceEngines.LIVE_NATIVE && it.notReady(c) == null }
 
     private fun ackFile(c: Context, engineId: String, voice: String, text: String): File {

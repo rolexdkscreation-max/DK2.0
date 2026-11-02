@@ -51,7 +51,7 @@ internal suspend fun DKAccessibilityService.enterBackup(kind: LiveFailWhy.Kind, 
     backupMode = true; backupKind = kind
     liveOffSoft = false
     liveOffUntil = System.currentTimeMillis() + kind.retryMs
-    speaker.piperOnly = true
+    speaker.localOnly = true
     listener.preferOffline = false
     DKState.setLink(LiveFailWhy.link(kind))
     DKLog.d("बैकअप मोड: ${kind.short} ($detail) - ${kind.retryMs / 1000}s बाद Live फिर आज़माऊँगी")
@@ -61,7 +61,7 @@ internal suspend fun DKAccessibilityService.enterBackup(kind: LiveFailWhy.Kind, 
 internal fun DKAccessibilityService.exitBackup(why: String) {
     if (!backupMode) return
     backupMode = false; backupKind = null
-    speaker.piperOnly = false
+    speaker.localOnly = false
     DKLog.d("बैकअप मोड खत्म: $why")
 }
 

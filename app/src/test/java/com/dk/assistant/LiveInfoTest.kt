@@ -185,8 +185,8 @@ class LiveInfoTest {
         assertTrue(card.contains("Gemini TTS का मॉडल"))
         assertTrue(card.contains("VoiceTune.setSpeed(a, v)"))
         assertTrue(card.contains("VoiceTune.setPitch(a, v)"))
-        // Piper के अलग गति/पिच स्लाइडर नहीं (एक ही जगह - पहले Edge के लिए भी यही नियम था)
-        assertFalse(src("voice/engine/PiperTtsEngine.kt").contains("ui.slider("))
+        // Kokoro के अलग गति/पिच स्लाइडर नहीं (एक ही जगह - पहले Edge के लिए भी यही नियम था)
+        assertFalse(src("voice/engine/KokoroTtsEngine.kt").contains("ui.slider("))
     }
 
     @Test fun voice_softerAndHumanLike() {

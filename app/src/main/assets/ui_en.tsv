@@ -1201,16 +1201,15 @@ Run Deep Inspection • Ask DK Inspector • Bug Reports • हर 20 मिन
 सब साफ़ करें	Clear all
 हाँ, सब साफ़	Yes, clear all
 सारी Bug Reports साफ़ कर दूँ?	Clear all bug reports?
-Piper TTS (फ़ोन में, बिना इंटरनेट)	Piper TTS (on the phone, no internet)
-आवाज़ फ़ोन में ही बनती है - इंटरनेट / key नहीं चाहिए • भावना के निर्देश नहीं मानता (शब्दों से सिर्फ़ रफ़्तार)	Voice is made on the phone - no internet / key needed • does not follow emotion instructions (words only change pace)
-भावना / स्टाइल (Piper के लिए)	Emotion / style (for Piper)
+Kokoro TTS (फ़ोन में, बिना इंटरनेट)	Kokoro TTS (on the phone, no internet)
+Kokoro-82M • हिंदी + हिंग्लिश • आवाज़ फ़ोन में ही बनती है - इंटरनेट / key नहीं चाहिए	Kokoro-82M • Hindi + Hinglish • voice is made on the phone - no internet / key needed
+Kokoro सिर्फ़ हिंदी और हिंग्लिश बोलता है - रोमन में लिखे हिंदी शब्द ("main aapka kaam kar deta hoon") अपने-आप देवनागरी उच्चारण में.	Kokoro speaks only Hindi and Hinglish - Hindi words written in Roman ("main aapka kaam kar deta hoon") are pronounced the Hindi way automatically.
+आवाज़ फ़ोन में ही बनती है: इंटरनेट न हो तब भी DK बोलेगा. पहली बार लोड होने में 2-4 सेकंड; आवाज़ बदलना तुरंत (दोबारा लोड नहीं).	The voice is made on the phone: DK speaks even without internet. First load takes 2-4 seconds; switching voices is instant (no reload).
+Kokoro-82M (hexgrad) - Apache-2.0.	Kokoro-82M (hexgrad) - Apache-2.0.
+Female voices	Female voices
+Male voices	Male voices
+भावना / स्टाइल (Kokoro के लिए)	Emotion / style (for Kokoro)
 जैसे: धीरे, आराम से  •  या: तेज़, जल्दी	e.g. slow, relaxed  •  or: fast, quick
-Piper भावना के निर्देश नहीं समझता - "धीरे / तेज़" जैसे शब्दों से सिर्फ़ रफ़्तार बदलती है. गति / पिच नीचे के स्लाइडर से.	Piper does not understand emotion instructions - words like "slow / fast" only change the pace. Speed / pitch via the sliders below.
-आवाज़ फ़ोन में ही बनती है: इंटरनेट न हो तब भी DK बोलेगा. पहली बार (या आवाज़ बदलने पर) लोड होने में 1-2 सेकंड.	The voice is made on the phone: DK speaks even without internet. First load (or after changing voice) takes 1-2 seconds.
-आवाज़ें: Piper (rhasspy) - हिंदी आवाज़ें CC BY-NC-SA 4.0 (बेचने वाले काम के लिए नहीं).	Voices: Piper (rhasspy) - Hindi voices CC BY-NC-SA 4.0 (not for commercial use).
 DK लाइव — Direct Gemini Live Voice (सीधी आवाज़)	DK Live — Direct Gemini Live Voice
-Piper TTS (डिफ़ॉल्ट, फ़ोन में) • DK लाइव (Direct Gemini Live Voice) • Gemini TTS — एक समय में एक	Piper TTS (default, on the phone) • DK Live (Direct Gemini Live Voice) • Gemini TTS — one at a time
-बोलने वाला इंजन (Piper • Gemini TTS • Live) • सुनना	Speaking engine (Piper • Gemini TTS • Live) • Listening
-Priyamvada - हिंदी, महिला	Priyamvada - Hindi, female
-Pratham - हिंदी, पुरुष	Pratham - Hindi, male
-Lessac - English, महिला	Lessac - English, female
+Kokoro TTS (डिफ़ॉल्ट, फ़ोन में) • DK लाइव (Direct Gemini Live Voice) • Gemini TTS — एक समय में एक	Kokoro TTS (default, on the phone) • DK Live (Direct Gemini Live Voice) • Gemini TTS — one at a time
+बोलने वाला इंजन (Kokoro • Gemini TTS • Live) • सुनना	Speaking engine (Kokoro • Gemini TTS • Live) • Listening

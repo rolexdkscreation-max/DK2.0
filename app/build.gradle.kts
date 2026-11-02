@@ -3,24 +3,26 @@ import java.security.MessageDigest
 import java.net.URI
 import java.net.HttpURLConnection
 
-// ---------------------------------------------------------------------------------------------- Piper TTS (नवंबर 2026)
-// फ़ोन में ही आवाज़ (बिना इंटरनेट): sherpa-onnx (Apache-2.0) + Piper की आवाज़ें. फ़ाइलें बड़ी हैं (repo में नहीं) -
-// build के समय GitHub releases से एक बार आती हैं, sha256 जाँचकर `.dk-cache/` में रहती हैं (git-ignored; CI में cache).
-// 2.x में espeak-ng हटा दिया गया (Piper की हिंदी उसके बिना नहीं चलती) - इसलिए 1.13.8 पक्का.
+// ---------------------------------------------------------------------------------------------- Kokoro TTS (नवंबर 2026)
+// फ़ोन में ही आवाज़ (बिना इंटरनेट): sherpa-onnx (Apache-2.0) + Kokoro-82M v1.0 multi-lang int8 (Apache-2.0).
+// मालिक: "Piper पूरी तरह हटाओ, Kokoro डिफ़ॉल्ट; सिर्फ़ हिंदी + हिंग्लिश; सिर्फ़ 4 आवाज़ें (hf_alpha, hf_beta, hm_omega, hm_psi)".
+// फ़ाइलें बड़ी हैं (repo में नहीं) - build के समय GitHub releases से एक बार आती हैं, sha256 जाँचकर `.dk-cache/` में
+// (git-ignored; CI में cache). 2.x में espeak-ng हटा दिया गया (Kokoro की हिंदी उसी से) - इसलिए 1.13.8 पक्का.
 // "static-link" वाली AAR: ONNX Runtime उसके अंदर ही जुड़ा है -> हमारे onnxruntime-android (आवाज़-पहचान) से टकराव नहीं.
 val dkCache: File = rootProject.file(".dk-cache")
 val sherpaVersion = "1.13.8"
 val sherpaAar = File(dkCache, "sherpa-onnx-static-link-onnxruntime-$sherpaVersion.aar")
 val sherpaAarSha = "b22c3fc1b6a45666d28892bb2f7694beeb77a8362d7ebd77c1a5431ec9435471"
-/** APK में जाने वाली Piper आवाज़ें (int8 = छोटी). नाम = PiperTtsEngine.VOICES के नाम (test दोनों मिलाता है) */
-val piperVoices = linkedMapOf(
-    "hi_IN-priyamvada-medium" to "2997c7bbc211e524af83dfdffe7712942f10bd76c079a526af2e09d1f36a92f2",
-    "hi_IN-pratham-medium" to "20f568c56207c13b9a0d9478aec8b7d1449122e618aeebc7211f6abc942b58b7",
-    "en_US-lessac-medium" to "f1c6d0295cf16087b05f80fdca5b44daca5cd78e2c425d419a42ba34929805f9",
-)
-/** espeak-ng-data में सिर्फ़ यही भाषाएँ (बाकी ~15 MB के शब्दकोश नहीं - आवाज़ बिल्कुल वही रहती है) */
+/** Kokoro model (sherpa-onnx tts-models) */
+val kokoroName = "kokoro-int8-multi-lang-v1_0"
+val kokoroSha = "72c347230107ef8a31098ec4d468a605244beef5f1ed00db97efa13518800653"
+/** voices.bin में सिर्फ़ ये 4 आवाज़ें भरी रहती हैं (बाकी 50 शून्य -> APK में ~2 MB). KokoroTtsEngine.VOICE_LIST जैसे ही (test मिलाता है) */
+val kokoroSpeakers = linkedMapOf("hf_alpha" to 31, "hf_beta" to 32, "hm_omega" to 33, "hm_psi" to 34)
+/** एक आवाज़ = 510 x 1 x 256 float32 */
+val kokoroStyleBytes = 510 * 256 * 4
+/** espeak-ng-data में सिर्फ़ हिंदी + English (हिंग्लिश के English शब्द) - बाकी ~15 MB के शब्दकोश नहीं */
 val espeakDicts = setOf("hi_dict", "en_dict")
-val piperAssets = File(dkCache, "piper-assets")
+val kokoroAssets = File(dkCache, "kokoro-assets")
 
 fun sha256(f: File): String = MessageDigest.getInstance("SHA-256").let { md ->
     f.inputStream().use { inp -> val b = ByteArray(1 shl 16); while (true) { val n = inp.read(b); if (n < 0) break; md.update(b, 0, n) } }
@@ -49,34 +51,41 @@ fun dkFetch(url: String, to: File, sha: String) {
     throw GradleException("DK: $url नहीं आया (${last?.message}) - इंटरनेट देखें, फिर दोबारा build", last)
 }
 
-/** आवाज़ें -> .dk-cache/piper-assets/piper_models/<नाम>/ + एक साझा, छोटा espeak-ng-data */
-fun preparePiper() {
-    val stamp = File(piperAssets, "piper_models/.stamp")
-    val want = "$sherpaVersion|" + piperVoices.entries.joinToString(",") { "${it.key}=${it.value}" } + "|" + espeakDicts.sorted()
+/** Kokoro -> .dk-cache/kokoro-assets/kokoro_model/ (model.onnx, tokens.txt, voices.bin, छोटा espeak-ng-data) */
+fun prepareKokoro() {
+    // पुरानी Piper फ़ाइलें (cache से) - हटाओ, ताकि APK / cache में कुछ न बचे
+    dkCache.listFiles()?.filter { it.name.startsWith("vits-piper-") || it.name == "piper-assets" }?.forEach { it.deleteRecursively() }
+    val root = File(kokoroAssets, "kokoro_model")
+    val stamp = File(root, ".stamp")
+    val want = "$sherpaVersion|$kokoroName=$kokoroSha|" + kokoroSpeakers.values.joinToString(",") + "|" + espeakDicts.sorted()
     if (stamp.exists() && stamp.readText() == want) return
-    val root = File(piperAssets, "piper_models"); root.deleteRecursively(); root.mkdirs()
-    for ((name, sha) in piperVoices) {
-        val tar = File(dkCache, "vits-piper-$name-int8.tar.bz2")
-        dkFetch("https://github.com/k2-fsa/sherpa-onnx/releases/download/tts-models/vits-piper-$name-int8.tar.bz2", tar, sha)
-        val x = File(dkCache, "x-$name"); x.deleteRecursively(); x.mkdirs()
-        val p = ProcessBuilder("tar", "xjf", tar.absolutePath, "-C", x.absolutePath).redirectErrorStream(true).start()
-        val out = p.inputStream.bufferedReader().readText()
-        if (p.waitFor() != 0) throw GradleException("DK: ${tar.name} नहीं खुला: $out")
-        val src = File(x, "vits-piper-$name-int8")
-        val dst = File(root, name); dst.mkdirs()
-        File(src, "$name.onnx").copyTo(File(dst, "model.onnx"), true)
-        File(src, "tokens.txt").copyTo(File(dst, "tokens.txt"), true)
-        File(src, "MODEL_CARD").takeIf { it.exists() }?.copyTo(File(dst, "MODEL_CARD"), true)
-        val es = File(root, "espeak-ng-data")
-        if (!es.exists()) File(src, "espeak-ng-data").copyRecursively(es, true)
-        x.deleteRecursively()
-    }
+    root.deleteRecursively(); root.mkdirs()
+    val tar = File(dkCache, "$kokoroName.tar.bz2")
+    dkFetch("https://github.com/k2-fsa/sherpa-onnx/releases/download/tts-models/$kokoroName.tar.bz2", tar, kokoroSha)
+    val x = File(dkCache, "x-kokoro"); x.deleteRecursively(); x.mkdirs()
+    val p = ProcessBuilder("tar", "xjf", tar.absolutePath, "-C", x.absolutePath,
+        "$kokoroName/model.int8.onnx", "$kokoroName/tokens.txt", "$kokoroName/voices.bin", "$kokoroName/espeak-ng-data", "$kokoroName/LICENSE")
+        .redirectErrorStream(true).start()
+    val out = p.inputStream.bufferedReader().readText()
+    if (p.waitFor() != 0) throw GradleException("DK: ${tar.name} नहीं खुला: $out")
+    val src = File(x, kokoroName)
+    File(src, "model.int8.onnx").copyTo(File(root, "model.onnx"), true)
+    File(src, "tokens.txt").copyTo(File(root, "tokens.txt"), true)
+    File(src, "LICENSE").copyTo(File(root, "LICENSE"), true)
+    // voices.bin: पूरी लंबाई (sherpa model की गिनती से मिलाता है), पर सिर्फ़ 4 हिंदी आवाज़ें भरी - बाकी शून्य (zip में लगभग 0 बाइट)
+    val all = File(src, "voices.bin").readBytes()
+    if (all.size % kokoroStyleBytes != 0) throw GradleException("DK: voices.bin का नाप अजीब (${all.size})")
+    val keep = ByteArray(all.size)
+    for (sid in kokoroSpeakers.values) System.arraycopy(all, sid * kokoroStyleBytes, keep, sid * kokoroStyleBytes, kokoroStyleBytes)
+    File(root, "voices.bin").writeBytes(keep)
+    File(src, "espeak-ng-data").copyRecursively(File(root, "espeak-ng-data"), true)
     File(root, "espeak-ng-data").listFiles()?.filter { it.isFile && it.name.endsWith("_dict") && it.name !in espeakDicts }?.forEach { it.delete() }
+    x.deleteRecursively()
     stamp.writeText(want)
 }
 
 dkFetch("https://github.com/k2-fsa/sherpa-onnx/releases/download/v$sherpaVersion/${sherpaAar.name}", sherpaAar, sherpaAarSha)
-preparePiper()
+prepareKokoro()
 
 plugins {
     id("com.android.application")
@@ -139,8 +148,12 @@ android {
     buildFeatures {
         viewBinding = false
     }
-    // Piper TTS की आवाज़ें (.dk-cache से, ऊपर देखें) APK के assets/piper_models/ में
-    sourceSets.getByName("main").assets.srcDir(piperAssets)
+    // Kokoro TTS (.dk-cache से, ऊपर देखें) APK के assets/kokoro_model/ में
+    sourceSets.getByName("main").assets.srcDir(kokoroAssets)
+    // model.onnx (~109 MB) बिना zip-दबाव: फ़ोन सीधे APK से पढ़ता है (खोलकर दोबारा RAM में नहीं)
+    androidResources {
+        noCompress += listOf("onnx")
+    }
     // व्यवहार वाले tests (Robolectric) को असली layout / theme / strings चाहिए
     testOptions {
         unitTests.isIncludeAndroidResources = true
@@ -154,7 +167,7 @@ android {
                 "lib/x86/libonnxruntime.so", "lib/x86/libonnxruntime4j_jni.so",
                 "lib/x86_64/libonnxruntime.so", "lib/x86_64/libonnxruntime4j_jni.so",
                 "lib/armeabi-v7a/libonnxruntime.so", "lib/armeabi-v7a/libonnxruntime4j_jni.so",
-                // Piper TTS (sherpa-onnx) भी सिर्फ़ arm64 - बाकी फ़ोनों पर Piper अपने-आप "तैयार नहीं" और Gemini TTS / DK लाइव बोलते हैं
+                // Kokoro TTS (sherpa-onnx) भी सिर्फ़ arm64 - बाकी फ़ोनों पर Kokoro अपने-आप "तैयार नहीं" और Gemini TTS / DK लाइव बोलते हैं
                 "lib/x86/libsherpa-onnx-jni.so", "lib/x86_64/libsherpa-onnx-jni.so", "lib/armeabi-v7a/libsherpa-onnx-jni.so",
             )
         }
@@ -170,7 +183,7 @@ dependencies {
     // v3.66: "सिर्फ़ मेरी आवाज़" - फ़ोन पर ही आवाज़-पहचान (MIT). 1.22 इस मॉडल पर थोड़ा ग़लत नतीजा देता था, 1.31 = Python जैसा
     implementation("com.microsoft.onnxruntime:onnxruntime-android:1.31.0")
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.8.4")
-    // नवंबर 2026: Piper TTS (फ़ोन में आवाज़, बिना इंटरनेट) - sherpa-onnx की आधिकारिक AAR (Maven Central पर नहीं, ऊपर dkFetch)
+    // नवंबर 2026: Kokoro TTS (फ़ोन में आवाज़, बिना इंटरनेट) - sherpa-onnx की आधिकारिक AAR (Maven Central पर नहीं, ऊपर dkFetch)
     implementation(files(sherpaAar))
     // DK AI Website Forge: 3D scene को app के assets से https पर चलाने के लिए (WebViewAssetLoader)
     implementation("androidx.webkit:webkit:1.11.0")

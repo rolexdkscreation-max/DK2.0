@@ -1,7 +1,7 @@
 package com.dk.assistant
 
 /**
- * v3.76: मालिक का तय किया DK का स्वभाव - हर वॉइस मोड में हमेशा (Gemini Live सीधी आवाज़, Gemini TTS, Piper TTS, classic आवाज़).
+ * v3.76: मालिक का तय किया DK का स्वभाव - हर वॉइस मोड में हमेशा (Gemini Live सीधी आवाज़, Gemini TTS, Kokoro TTS, classic आवाज़).
  * कोई switch नहीं - "यह पूरा ऐसा ही रहना चाहिए". Android import नहीं -> JVM test.
  */
 object CalmPersona {
@@ -16,7 +16,7 @@ object CalmPersona {
     const val VOICE_STYLE = "soft, tender and warm like a real caring person (natural human breath and intonation, never robotic), " +
         "calm, gentle and empathetic, at a medium unhurried pace with soft natural pauses between sentences"   // v3.80: और कोमल, इंसान जैसी
 
-    /** Piper TTS (पहले Edge) भावना नहीं समझता - गति थोड़ी कम = मध्यम, ठहराव वाली */
+    /** Kokoro TTS (पहले Edge) भावना नहीं समझता - गति थोड़ी कम = मध्यम, ठहराव वाली */
     const val PLAIN_RATE_DELTA = -8
 
     /** सभी वॉइस prompts में (सबसे आख़िर में जुड़ता है, इसलिए पहले के स्टाइल नियमों से ऊपर) */
@@ -45,6 +45,6 @@ object CalmPersona {
         return if (b.isEmpty()) VOICE_STYLE else "$b; $VOICE_STYLE"
     }
 
-    /** गति (%) + शांत स्वभाव की कमी, -50..50 के अंदर (Piper की रफ़्तार इसी से) */
+    /** गति (%) + शांत स्वभाव की कमी, -50..50 के अंदर (Kokoro की रफ़्तार इसी से) */
     fun plainRate(rate: Int): Int = (rate + PLAIN_RATE_DELTA).coerceIn(-50, 50)
 }

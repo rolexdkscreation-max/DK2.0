@@ -43,7 +43,7 @@ class VoiceEngineCard private constructor(private val a: Activity, private val d
         val engines = VoiceEngines.all
         // v3.69: ऊपर का शीर्षक अब card का नाम है; नमूना-वाक्य, "तीनों बारी-बारी सुनो" और "रोको" हटाए (बैकअप: branch backup/dk-before-backup-folder-cleanup-1102, फ़ोल्डर backup/v3.69-settings)
         hint(box, "जवाब Gemini Live लिखता है; बोलता यह इंजन है. एक समय में एक ही चालू. मेरे बोलना ख़त्म करने से पहली आवाज़ तक का " +
-            "समय हर इंजन के नीचे दिखता है (पिछली बार नापा). डिफ़ॉल्ट: Piper TTS (फ़ोन में, बिना इंटरनेट). \"DK लाइव\" का स्विच = Direct Gemini Live Voice (Gemini की अपनी आवाज़ सीधे). Piper / Gemini TTS में दिक़्क़त आए तो ऐप अपने-आप दूसरी आवाज़ पर लौटता है. ये बदलाव तुरंत सेव होते हैं.")
+            "समय हर इंजन के नीचे दिखता है (पिछली बार नापा). डिफ़ॉल्ट: Kokoro TTS (फ़ोन में, बिना इंटरनेट). \"DK लाइव\" का स्विच = Direct Gemini Live Voice (Gemini की अपनी आवाज़ सीधे). Kokoro / Gemini TTS में दिक़्क़त आए तो ऐप अपने-आप दूसरी आवाज़ पर लौटता है. ये बदलाव तुरंत सेव होते हैं.")
         nowBlock(box)            // v3.80: अभी कौन बोल रहा (इंजन / आवाज़ / मॉडल) + मॉडल बदलो + गति-पिच
         divider(box)
         val activeId = VoiceEngines.activeId(a)
@@ -66,7 +66,10 @@ class VoiceEngineCard private constructor(private val a: Activity, private val d
         // आवाज़ें: हर एक के आगे ▶ सुनो
         val list = mutableListOf<Pair<String, RadioButton>>()
         val cur = e.voice(a)
+        var group: String? = null
         for ((name, label) in e.voices()) {
+            // नवंबर 2026 (Kokoro): समूह का शीर्षक - "Female voices: Alpha, Beta" | "Male voices: Omega, Psi"
+            e.voiceGroup(name)?.takeIf { it != group }?.let { g -> group = g; small(box, g, 0xFF8FD3FF.toInt()) }
             val row = LinearLayout(a).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
             val rb = RadioButton(a).apply {
                 text = label; isChecked = name == cur; textSize = 13f; setTextColor(0xFFFFFFFF.toInt())
@@ -83,7 +86,7 @@ class VoiceEngineCard private constructor(private val a: Activity, private val d
 
     private fun onSwitch(id: String, on: Boolean) {
         val cur = VoiceEngines.activeId(a)
-        val next = VoiceModeController.switch(a, id, on)      // नवंबर 2026: बंद = Piper पर लौटो (Piper बंद = Direct Live)
+        val next = VoiceModeController.switch(a, id, on)      // नवंबर 2026: बंद = Kokoro पर लौटो (Kokoro बंद = Direct Live)
         muteSwitch = true
         switches.forEach { (k, s) -> s.isChecked = k == next }
         muteSwitch = false
@@ -148,7 +151,7 @@ class VoiceEngineCard private constructor(private val a: Activity, private val d
         label(box, "गति और पिच (जो आवाज़ चालू है, उसी पर - तुरंत)")
         slider(box, "गति", VoiceTune.MIN_SPEED, VoiceTune.MAX_SPEED, VoiceTune.speedPct, { v -> VoiceTune.fmt(v) }) { v -> VoiceTune.setSpeed(a, v); refreshNow() }
         slider(box, "पिच (आवाज़ का ऊँचा-नीचापन)", VoiceTune.MIN_PITCH, VoiceTune.MAX_PITCH, VoiceTune.pitchPct, { v -> VoiceTune.fmt(v) }) { v -> VoiceTune.setPitch(a, v); refreshNow() }
-        hint(box, "100% = सामान्य। कोमल आवाज़ के लिए गति 90-95% और पिच 100-104% अच्छी लगती है। Piper, DK लाइव और Gemini TTS - तीनों पर एक ही। गति 0.5x-2.0x, पिच 0.5x-1.5x।")
+        hint(box, "100% = सामान्य। कोमल आवाज़ के लिए गति 90-95% और पिच 100-104% अच्छी लगती है। Kokoro, DK लाइव और Gemini TTS - तीनों पर एक ही। गति 0.5x-2.0x, पिच 0.5x-1.5x।")
     }
 
     private fun radioList(box: LinearLayout, items: List<Pair<String, String>>, cur: String, onPick: (String) -> Unit) {
