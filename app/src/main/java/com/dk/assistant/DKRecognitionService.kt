@@ -10,7 +10,7 @@ class DKRecognitionService : RecognitionService() {
         try {
             Log.d("DKAssist", "onStartListening called")
         } catch (e: Exception) {
-            Log.e("DKAssist", "Error in onStartListening", e)
+            Log.e("DKAssist", "Error in onStartListening", e); com.dk.assistant.DKBug.report("assistant", e, "Error in onStartListening", alsoLog = true)
         }
     }
 
@@ -18,7 +18,7 @@ class DKRecognitionService : RecognitionService() {
         try {
             Log.d("DKAssist", "onCancel called")
         } catch (e: Exception) {
-            Log.e("DKAssist", "Error in onCancel", e)
+            Log.e("DKAssist", "Error in onCancel", e); com.dk.assistant.DKBug.report("assistant", e, "Error in onCancel", alsoLog = true)
         }
     }
 
@@ -26,7 +26,7 @@ class DKRecognitionService : RecognitionService() {
         try {
             Log.d("DKAssist", "onStopListening called")
         } catch (e: Exception) {
-            Log.e("DKAssist", "Error in onStopListening", e)
+            Log.e("DKAssist", "Error in onStopListening", e); com.dk.assistant.DKBug.report("assistant", e, "Error in onStopListening", alsoLog = true)
         }
     }
 
@@ -35,7 +35,7 @@ class DKRecognitionService : RecognitionService() {
             super.onCreate()
             Log.d("DKAssist", "DKRecognitionService created")
         } catch (e: Exception) {
-            Log.e("DKAssist", "Error in onCreate", e)
+            Log.e("DKAssist", "Error in onCreate", e); com.dk.assistant.DKBug.report("assistant", e, "Error in onCreate", alsoLog = true)
         }
     }
 
@@ -44,7 +44,7 @@ class DKRecognitionService : RecognitionService() {
             super.onDestroy()
             Log.d("DKAssist", "DKRecognitionService destroyed")
         } catch (e: Exception) {
-            Log.e("DKAssist", "Error in onDestroy", e)
+            Log.e("DKAssist", "Error in onDestroy", e); com.dk.assistant.DKBug.report("assistant", e, "Error in onDestroy", alsoLog = true)
         }
     }
 }

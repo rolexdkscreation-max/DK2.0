@@ -10,7 +10,7 @@ class DKVoiceInteractionSessionService : VoiceInteractionSessionService() {
         try {
             android.util.Log.e("DKAssist", "DKVoiceInteractionSessionService onCreate")
         } catch (e: Exception) {
-            android.util.Log.e("DKAssist", "Error in DKVoiceInteractionSessionService onCreate", e)
+            android.util.Log.e("DKAssist", "Error in DKVoiceInteractionSessionService onCreate", e); com.dk.assistant.DKBug.report("assistant", e, "Error in DKVoiceInteractionSessionService onCreate", alsoLog = true)
         }
     }
 
@@ -19,7 +19,7 @@ class DKVoiceInteractionSessionService : VoiceInteractionSessionService() {
             android.util.Log.e("DKAssist", "DKVoiceInteractionSessionService onNewSession")
             return DKVoiceInteractionSession(this)
         } catch (e: Exception) {
-            android.util.Log.e("DKAssist", "Error in DKVoiceInteractionSessionService onNewSession", e)
+            android.util.Log.e("DKAssist", "Error in DKVoiceInteractionSessionService onNewSession", e); com.dk.assistant.DKBug.report("assistant", e, "Error in DKVoiceInteractionSessionService onNewSession", alsoLog = true)
             return DKVoiceInteractionSession(this)
         }
     }
@@ -85,7 +85,7 @@ class DKVoiceInteractionSession(context: android.content.Context) : VoiceInterac
                     }
                     context.startActivity(intent)
                 } catch (e: Exception) {
-                    android.util.Log.e("DKAssist", "Error starting VoiceActivity from orb", e)
+                    android.util.Log.e("DKAssist", "Error starting VoiceActivity from orb", e); com.dk.assistant.DKBug.report("assistant", e, "Error starting VoiceActivity from orb", alsoLog = true)
                 }
             }
         }
@@ -101,7 +101,7 @@ class DKVoiceInteractionSession(context: android.content.Context) : VoiceInterac
                     }
                     context.startActivity(intent)
                 } catch (e: Exception) {
-                    android.util.Log.e("DKAssist", "Error opening voice activity for mic", e)
+                    android.util.Log.e("DKAssist", "Error opening voice activity for mic", e); com.dk.assistant.DKBug.report("assistant", e, "Error opening voice activity for mic", alsoLog = true)
                 }
             }
         }
@@ -119,7 +119,7 @@ class DKVoiceInteractionSession(context: android.content.Context) : VoiceInterac
         // नवंबर 2026: पहले से चालू पर "Not working" वाली सेवा फिर जोड़ो (सिर्फ़ adb इजाज़त हो तो; नई इजाज़त नहीं)
         try { Setup.healAccessibility(context) } catch (_: Exception) {}
         try { DKAccessibilityService.instance?.invokedNow("power बटन / assistant") }
-        catch (e: Exception) { android.util.Log.e("DKAssist", "Live शुरू नहीं हुआ", e) }
+        catch (e: Exception) { android.util.Log.e("DKAssist", "Live शुरू नहीं हुआ", e); com.dk.assistant.DKBug.report("assistant", e, "Live शुरू नहीं हुआ", alsoLog = true) }
         try {
             android.util.Log.e("DKAssist", "DKVoiceInteractionSession onShow")
             val window = window?.window
@@ -161,7 +161,7 @@ class DKVoiceInteractionSession(context: android.content.Context) : VoiceInterac
             DKState.listen(onState)
             h.removeCallbacks(watch); h.postDelayed(watch, 400)
         } catch (e: Exception) {
-            android.util.Log.e("DKAssist", "Error in DKVoiceInteractionSession onShow", e)
+            android.util.Log.e("DKAssist", "Error in DKVoiceInteractionSession onShow", e); com.dk.assistant.DKBug.report("assistant", e, "Error in DKVoiceInteractionSession onShow", alsoLog = true)
         }
     }
 
@@ -208,7 +208,7 @@ class DKVoiceInteractionSession(context: android.content.Context) : VoiceInterac
         try {
             android.util.Log.e("DKAssist", "DKVoiceInteractionSession onHide")
         } catch (e: Exception) {
-            android.util.Log.e("DKAssist", "Error in DKVoiceInteractionSession onHide", e)
+            android.util.Log.e("DKAssist", "Error in DKVoiceInteractionSession onHide", e); com.dk.assistant.DKBug.report("assistant", e, "Error in DKVoiceInteractionSession onHide", alsoLog = true)
         }
     }
 
@@ -218,7 +218,7 @@ class DKVoiceInteractionSession(context: android.content.Context) : VoiceInterac
         try {
             android.util.Log.e("DKAssist", "DKVoiceInteractionSession onDestroy")
         } catch (e: Exception) {
-            android.util.Log.e("DKAssist", "Error in DKVoiceInteractionSession onDestroy", e)
+            android.util.Log.e("DKAssist", "Error in DKVoiceInteractionSession onDestroy", e); com.dk.assistant.DKBug.report("assistant", e, "Error in DKVoiceInteractionSession onDestroy", alsoLog = true)
         }
     }
 }

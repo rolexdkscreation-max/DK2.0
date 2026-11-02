@@ -23,7 +23,7 @@ class UpdateJob : JobService() {
             try {
                 val rel = Updater.check(applicationContext)
                 if (rel != null) Updater.notifyNew(applicationContext, rel)
-            } catch (e: Exception) { DKLog.d("update job: ${e.message}") }
+            } catch (e: Exception) { DKLog.d("update job: ${e.message}"); DKBug.report("update", e, "अपने-आप update जाँच") }
             jobFinished(p, false)
         }
         return true
@@ -45,6 +45,6 @@ class UpdateJob : JobService() {
                     .build())
             }
             Unit
-        } catch (e: Exception) { DKLog.d("update job schedule: ${e.message}") }
+        } catch (e: Exception) { DKLog.d("update job schedule: ${e.message}"); DKBug.report("update", e, "update जाँच का समय लगाना") }
     }
 }

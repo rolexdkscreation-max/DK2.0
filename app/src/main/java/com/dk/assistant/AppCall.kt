@@ -117,7 +117,7 @@ object AppCall {
                 pi.send(c, 0, null, null, null, null, o.toBundle())
             } else pi.send()
             true
-        } catch (e: Exception) { DKLog.d("AppCall बटन: ${e.message}"); false }
+        } catch (e: Exception) { DKLog.d("AppCall बटन: ${e.message}"); DKBug.report("call", e, "ऐप में call बटन दबाना"); false }
     }
 
     /** उठाओ: Answer बटन; न हो तो कॉल की स्क्रीन खोलो (फिर DK स्क्रीन पर Answer ढूँढता है) */

@@ -1564,11 +1564,13 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
                     "action=list: found bug reports with id/severity/status. action=report: the full report of one id (explain it in simple Hindi; 'suspected' causes stay 'शायद'). " +
                     "action=ask: answer the owner's question about bugs/slowness/mic/connection from real data (question = his words). action=inspect: run a deep inspection now. " +
                     "action=send_to_coder: give the report to the Coding Agent - ONLY after the owner clearly says yes (e.g. 'ठीक है, Coding Agent को दे दो'), then approved=true. " +
+                    "action=dismiss: remove one report (owner says 'हटा दो' / 'ठीक हो गया'); if it comes back it is shown again. action=later: remind later (owner says 'बाद में'). " +
+                    "action=clear_all: clear the whole bug list - only when the owner asks to clear all. It watches the whole app (calls, connectors, update, power-button assistant, notifications, crashes, ANR) every 20 minutes. " +
                     "Never claim a bug is fixed unless the report status is Resolved. Use it when the owner asks what is wrong with DK, why DK is slow/not hearing, or about a DKI- report.")
                 .put("parameters", JSONObject().put("type", "OBJECT")
                     .put("properties", JSONObject()
-                        .put("action", JSONObject().put("type", "STRING").put("enum", JSONArray().put("list").put("report").put("ask").put("inspect").put("send_to_coder")))
-                        .put("id", JSONObject().put("type", "STRING").put("description", "Bug ID like DKI-1A2B3C (report / send_to_coder)"))
+                        .put("action", JSONObject().put("type", "STRING").put("enum", JSONArray().put("list").put("report").put("ask").put("inspect").put("send_to_coder").put("dismiss").put("later").put("clear_all")))
+                        .put("id", JSONObject().put("type", "STRING").put("description", "Bug ID like DKI-1A2B3C (report / send_to_coder / dismiss / later)"))
                         .put("question", JSONObject().put("type", "STRING").put("description", "The owner's question in his words (ask)"))
                         .put("approved", JSONObject().put("type", "BOOLEAN").put("description", "true ONLY after the owner clearly said yes to giving it to the Coding Agent")))
                     .put("required", JSONArray().put("action"))))

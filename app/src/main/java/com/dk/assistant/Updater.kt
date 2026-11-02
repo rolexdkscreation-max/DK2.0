@@ -270,6 +270,7 @@ object Updater {
                 if (e is kotlinx.coroutines.CancellationException) { clearNotification(c); throw e }
                 lastError = e.message ?: e.javaClass.simpleName
                 DKLog.d("Update download fail: $lastError")
+                DKBug.report("update", e, "नया version download")
                 notifyFail(c, rel)
             } finally {
                 if (downloadingCode == rel.code) downloadingCode = 0
@@ -364,7 +365,7 @@ object Updater {
                 .setStyle(android.app.Notification.BigTextStyle().bigText(text))
                 .setContentIntent(openUpdate(c)).setAutoCancel(true).build())
             Prefs.edit(c) { putInt("upd_notified", rel.code) }
-        } catch (e: Exception) { DKLog.d("update notify: ${e.message}") }
+        } catch (e: Exception) { DKLog.d("update notify: ${e.message}"); DKBug.report("update", e, "update notification") }
     }
 
     fun clearNotification(c: Context) = try { nm(c).cancel(NOTIF_ID) } catch (_: Exception) {}

@@ -9,7 +9,7 @@ class DKVoiceInteractionService : VoiceInteractionService() {
         try {
             super.onCreate()
         } catch (e: Exception) {
-            Log.e("DKAssist", "Error in DKVoiceInteractionService.onCreate", e)
+            Log.e("DKAssist", "Error in DKVoiceInteractionService.onCreate", e); com.dk.assistant.DKBug.report("assistant", e, "Error in DKVoiceInteractionService.onCreate", alsoLog = true)
         }
     }
 
@@ -21,7 +21,7 @@ class DKVoiceInteractionService : VoiceInteractionService() {
             android.os.Handler(android.os.Looper.getMainLooper()).postDelayed(
                 { try { Setup.healAccessibility(this) } catch (_: Exception) {} }, Setup.HEAL_DELAY_MS)
         } catch (e: Exception) {
-            Log.e("DKAssist", "Error in DKVoiceInteractionService.onReady", e)
+            Log.e("DKAssist", "Error in DKVoiceInteractionService.onReady", e); com.dk.assistant.DKBug.report("assistant", e, "Error in DKVoiceInteractionService.onReady", alsoLog = true)
         }
     }
 }

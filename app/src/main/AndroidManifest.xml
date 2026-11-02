@@ -254,7 +254,7 @@
             android:name=".OrbShowReceiver"
             android:exported="false" />
 
-        <!-- v5.1: DK Inspector - लगभग हर घंटे Debug डेटा की जाँच (सिर्फ़ पढ़ना) -->
+        <!-- v5.1: DK Inspector - हर 20 मिनट पूरे ऐप की जाँच (सिर्फ़ पढ़ना) -->
         <receiver
             android:name=".inspector.InspectorReceiver"
             android:exported="false" />

@@ -438,6 +438,7 @@ class TeacherActivity : AppCompatActivity() {
 
             } catch (e: Exception) {
                 Log.e("TeacherActivity", "Error asking teacher", e)
+                DKBug.report("app", e, "Teacher से पूछना", alsoLog = true)
                 progressBar.visibility = View.GONE
                 statusText.text = "त्रुटि: " + brainManager.explain(e)
             }

@@ -14,6 +14,7 @@ class DKApp : Application() {
 
     override fun onCreate() {
         super.onCreate()
+        DKBug.init(this)      // नवंबर 2026: DK Inspector पूरे ऐप से जुड़ा - लॉग + हर हिस्से की गलती फ़ाइल में (सबसे पहले)
         DKState.init(this)
         NetFix.install(this)  // नवंबर 2026: एक नेटवर्क पर न चलना - IPv4 पहले + DoH, नेटवर्क बदले तो याद साफ़
         Prefs.loadLang(this)
@@ -24,7 +25,7 @@ class DKApp : Application() {
         StatusNotify.install(this)
         // v3.88: लोकल याददाश्त - ऐप खुलते ही सार + 30 दिन की सफ़ाई, और रोज़ एक बार
         try { LocalMemory.maintain(this, "ऐप खुला"); LocalMemory.scheduleDaily(this) } catch (_: Exception) {}
-        // v5.1: DK Inspector - लगभग हर घंटे जाँच (inexact, फ़ोन नहीं जगाता)
+        // v5.1: DK Inspector - हर 20 मिनट जाँच (inexact, फ़ोन नहीं जगाता; Accessibility चालू हो तो पक्का timer भी)
         try { com.dk.assistant.inspector.Inspector.schedule(this) } catch (_: Throwable) {}
         UpdateJob.schedule(this)        // v3.6: हर 6 घंटे अपडेट जाँच + नोटिफ़िकेशन (ऐप बंद हो तब भी)
         OfflineQueue.install(this)

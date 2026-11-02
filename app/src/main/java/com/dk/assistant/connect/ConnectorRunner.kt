@@ -56,6 +56,7 @@ object ConnectorRunner {
             "FAILED (HTTP ${e.code}): ${e.message}"
         } catch (e: Exception) {
             DKLog.d("कनेक्टर ${mcp?.id ?: id}.$action fail: ${e.javaClass.simpleName}")
+            com.dk.assistant.DKBug.report("connector", e, "कनेक्टर ${mcp?.id ?: id}.$action")
             "FAILED: ${e.message?.take(200) ?: e.javaClass.simpleName}"
         }
     }

@@ -115,6 +115,8 @@ class DKAccessibilityService : AccessibilityService() {
         try { (getSystemService(CONNECTIVITY_SERVICE) as android.net.ConnectivityManager).registerDefaultNetworkCallback(netBack) } catch (_: Exception) {}
         // v5.1: स्क्रीन चालू होते ही Gemini Live के host का DNS+TLS पहले से (Live सत्र नहीं, माइक नहीं; हर स्क्रीन-चालू में एक बार)
         LiveNet.register(this)
+        // नवंबर 2026: DK Inspector - service चालू रहे तब तक पक्का हर 20 मिनट पूरे ऐप की जाँच (alarm Android टाल सकता है)
+        com.dk.assistant.inspector.Inspector.startTimer(this)
     }
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) { /* zarurat nahi, hum on-demand padhte hain */ }
@@ -129,6 +131,7 @@ class DKAccessibilityService : AccessibilityService() {
     override fun onDestroy() {
         try { (getSystemService(CONNECTIVITY_SERVICE) as android.net.ConnectivityManager).unregisterNetworkCallback(netBack) } catch (_: Exception) {}
         LiveNet.unregister(this)
+        com.dk.assistant.inspector.Inspector.stopTimer()
         exitBackup("सेवा बंद")
         instance = null
         AppVisible.onChange = null

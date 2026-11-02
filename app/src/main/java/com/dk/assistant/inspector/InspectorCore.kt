@@ -31,14 +31,22 @@ object InspectorCore {
 
     enum class Status(val hi: String) {
         NEW("New (नया)"), INVESTIGATING("Investigating (जाँच जारी)"), AWAITING_APPROVAL("Awaiting Approval (आपकी मंज़ूरी बाकी)"),
-        FIXING("Fixing (Coding Agent ठीक कर रहा)"), RESOLVED("Resolved (हल - जाँच से पक्का)"), REOPENED("Reopened (फिर से आया)")
+        FIXING("Fixing (Coding Agent ठीक कर रहा)"), RESOLVED("Resolved (हल - जाँच से पक्का)"), REOPENED("Reopened (फिर से आया)"),
+        /** नवंबर 2026: 24 घंटे से नहीं दिखा (शायद ठीक हो गया) - 3 दिन बाद सूची से अपने-आप साफ़ */
+        QUIET("Quiet (24 घंटे से नहीं दिखा)"),
+        /** मालिक ने हटाया - सूची में नहीं दिखता; फिर आए तो "फिर से आया" बनकर लौटता है */
+        DISMISSED("Dismissed (आपने हटाया)")
     }
 
     enum class Component(val hi: String) {
         LIVE_CONNECTION("Gemini Live कनेक्शन"), MICROPHONE("माइक / आवाज़ इनपुट"), AUDIO_OUTPUT("आवाज़ आउटपुट / playback"),
         TTS("TTS (बोलने वाली आवाज़)"), LIVE_RESPONSE("Gemini Live जवाब"), API("API / key / limit"),
         LATENCY("देरी (latency)"), CODING_AGENT("Coding Agent"), DK_COMPUTER("DK Computer"),
-        CRASH("App crash / exception"), APP("App (दूसरा हिस्सा)")
+        CRASH("App crash / exception"), APP("App (दूसरा हिस्सा)"),
+        // नवंबर 2026: पूरे ऐप से जुड़ाव - हर हिस्से का अपना नाम
+        CALL("कॉल (उठाना / काटना / WhatsApp)"), CONNECTOR("Connectors (Google / GitHub / दूसरे)"), UPDATE("App update"),
+        ASSISTANT("Power बटन assistant / popup"), NOTIFICATION("Notifications / reply"), SETTINGS("Settings"),
+        SYSTEM("Android ने ऐप रोका / बंद किया")
     }
 
     const val NOT_AVAILABLE = "NOT AVAILABLE"
@@ -70,6 +78,10 @@ object InspectorCore {
         val notifiedAt: Long = 0, val notifiedSeverity: Int = 0,
         val reopenCount: Int = 0, val fixVersion: String = "", val quietChecks: Int = 0,
         val resolvedAt: Long = 0, val resolvedNote: String = "", val linkedTo: String = "",
+        /** "बाद में बताना" - इस समय तक DK Live इसे नहीं बोलेगा */
+        val snoozeUntil: Long = 0,
+        /** मालिक ने कब हटाया (0 = नहीं) */
+        val dismissedAt: Long = 0,
     )
 
     // ------------------------------------------------------------------ गुप्त जानकारी छिपाना
@@ -116,7 +128,55 @@ object InspectorCore {
 
     // ------------------------------------------------------------------ नियम
 
-    val RULES: List<Rule> = listOf(
+    /** नवंबर 2026: [DKBug.report] वाली लाइन का रूप - "⚠ गलती [हिस्सा] क्या करते समय — Exception: संदेश @ File.kt:12" */
+    fun bugLine(area: String, what: String, exName: String?, exMsg: String?, frame: String?): String = buildString {
+        append("⚠ गलती [").append(area.lowercase().ifBlank { "app" }).append("] ").append(what.take(120))
+        if (exName != null) append(" — ").append(exName)
+        if (!exMsg.isNullOrBlank()) append(": ").append(exMsg.replace('\n', ' ').take(240))
+        if (frame != null) append(" @ ").append(frame)
+    }
+
+    private fun area(id: String, comp: Component, title: String, impact: String, code: String, test: String) =
+        Rule("area_$id", comp, Certainty.CONFIRMED, Severity.MEDIUM, Regex("""^⚠ गलती \[$id\]"""),
+            title, "उस हिस्से के code में गलती पकड़ी गई (exception) - नाम और जगह (file:line) लॉग में लिखी है।",
+            impact, "बार-बार हो तो पूरी रिपोर्ट Coding Agent को दें।", code, test, perMessage = true)
+
+    /** ऐप के हर हिस्से से आई गलतियाँ ([DKBug.report]) - सबसे पहले जाँचे जाते हैं (सही हिस्से का नाम मिले) */
+    private val AREA_RULES: List<Rule> = listOf(
+        area("call", Component.CALL, "कॉल वाले काम में गलती", "कॉल उठाना / काटना / speaker / WhatsApp call अधूरा रह सकता है।",
+            "CallManager.kt / WaCall.kt / AppCall.kt (लॉग में file:line)।", "एक कॉल उठवाएँ/कटवाएँ; यह गलती न आए।"),
+        area("connector", Component.CONNECTOR, "Connector (Google / दूसरे app) में गलती", "उस connector वाला काम (Gmail, Drive, GitHub…) नहीं होता।",
+            "connect/ConnectorRunner.kt / ConnectorStore.kt / GoogleAuth.kt।", "Connectors screen में वही connector जाँचें।"),
+        area("update", Component.UPDATE, "App update में गलती", "नया version अपने-आप नहीं आता।",
+            "Updater.kt / UpdateJob.kt।", "Settings → Update → जाँचें; नया version आए।"),
+        area("assistant", Component.ASSISTANT, "Power बटन assistant / popup में गलती", "power बटन दबाने पर DK नहीं खुलता या popup अटकता है।",
+            "DKVoiceInteractionService.kt / DKVoiceInteractionSessionService.kt / DKRecognitionService.kt।", "power बटन दबाकर DK बुलाएँ; popup आए और जाए।"),
+        area("notification", Component.NOTIFICATION, "Notification / reply में गलती", "notification पढ़ना या जवाब भेजना नहीं होता।",
+            "DKNotifListener.kt / StatusNotify.kt।", "कोई message आने पर DK से जवाब भिजवाएँ।"),
+        area("github", Component.CODING_AGENT, "GitHub से बात करने में गलती", "Coding Agent / build log / PR वाला काम अधूरा।",
+            "GitHub.kt।", "Coding screen में कोई छोटा काम दें; GitHub पर दिखे।"),
+        area("settings", Component.SETTINGS, "Settings screen में गलती", "कोई setting बदलती/दिखती नहीं।",
+            "SettingsActivity.kt (लॉग में file:line)।", "वही setting दोबारा बदलें।"),
+        area("app", Component.APP, "ऐप के किसी हिस्से में गलती", "उस हिस्से का काम रुक सकता है।",
+            "लॉग में लिखी file:line।", "वही काम दोबारा करें।"),
+        Rule("app_crash_file", Component.CRASH, Certainty.CONFIRMED, Severity.HIGH, Regex("^FATAL ऐप crash"),
+            "ऐप crash हुआ (पूरा stack मिला)", "कोड में exception उठा जो कहीं संभला नहीं - नाम और पहली DK लाइन (file:line) लिखी है।",
+            "ऐप/DK Live अचानक बंद हुआ।", "पूरी रिपोर्ट Coding Agent को दें।", "लॉग में लिखी file:line।", "वही काम दोबारा करें; crash न हो।",
+            perMessage = true),
+        Rule("app_anr", Component.SYSTEM, Certainty.CONFIRMED, Severity.HIGH, Regex("^ऐप अटका \\(ANR\\)"),
+            "ऐप अटक गया (ANR)", "मुख्य thread कुछ सेकंड से ज़्यादा रुका रहा, Android ने ऐप रोका (Android का अपना रिकॉर्ड)।",
+            "screen जम जाती है / DK जवाब नहीं देता।", "पूरी रिपोर्ट Coding Agent को दें (भारी काम मुख्य thread से हटाना)।",
+            "Android रिकॉर्ड में लिखा हिस्सा - Coding Agent पक्का करे।", "ऐप 10 मिनट चलाएँ; ANR न आए।"),
+        Rule("app_native_crash", Component.CRASH, Certainty.CONFIRMED, Severity.HIGH, Regex("^FATAL native crash"),
+            "ऐप का native crash", "Android/लाइब्रेरी के native हिस्से में crash (Android का रिकॉर्ड)।",
+            "ऐप अचानक बंद।", "पूरी रिपोर्ट Coding Agent को दें।", "Android रिकॉर्ड - Coding Agent पक्का करे।", "वही काम दोबारा करें।"),
+        Rule("app_killed", Component.SYSTEM, Certainty.SUSPECTED, Severity.MEDIUM, Regex("^Android ने ऐप बंद किया"),
+            "Android ने ऐप बंद कर दिया", "शक: memory कम थी या ऐप ने ज़्यादा बैटरी/CPU लिया (Android का रिकॉर्ड)।",
+            "DK अचानक बंद, Accessibility 'Not working' हो सकती है।", "फ़ोन Settings → Battery → DK = Unrestricted; बार-बार हो तो Coding Agent को दें।",
+            "पहले सबूत: उसी समय क्या चल रहा था।", "ऐप कुछ घंटे चलाएँ; यह न आए।"),
+    )
+
+    val RULES: List<Rule> = AREA_RULES + listOf(
         Rule("live_mic_permission", Component.MICROPHONE, Certainty.CONFIRMED, Severity.CRITICAL,
             Regex("(?i)(माइक परमिशन नहीं|RECORD_AUDIO.*(denied|नहीं)|mic permission)"),
             "माइक की परमिशन नहीं है", "Android ने DK को माइक इस्तेमाल करने की अनुमति नहीं दी।",
@@ -380,7 +440,7 @@ object InspectorCore {
                     f.rule.cause, f.rule.impact, f.rule.fix, f.rule.code, f.rule.test)
                 byFp[f.fingerprint] = n; fresh += n
             } else {
-                val wasResolved = o.status == Status.RESOLVED
+                val wasResolved = o.status == Status.RESOLVED || o.status == Status.QUIET || o.status == Status.DISMISSED
                 // stats वाले नतीजे गिनती का कुल होते हैं - जोड़ते नहीं, सबसे बड़ा रखते हैं
                 val cnt = if (f.fingerprint.startsWith("stats:") || f.fingerprint == "latency_high") maxOf(o.count, f.count) else o.count + f.count
                 val st = when {
@@ -392,17 +452,103 @@ object InspectorCore {
                 val n = o.copy(lastSeen = now, count = cnt, status = st, severity = sev, message = f.message,
                     evidence = (o.evidence + f.evidence).takeLast(8), quietChecks = 0,
                     reopenCount = o.reopenCount + if (wasResolved) 1 else 0,
-                    resolvedNote = if (wasResolved) "पहले हल माना गया था (${o.resolvedNote}) पर फिर आया।" else o.resolvedNote)
+                    resolvedNote = when (o.status) {
+                        Status.DISMISSED -> "आपने हटाया था, पर फिर आया।"
+                        Status.QUIET -> "24 घंटे शांत था (शायद ठीक), पर फिर आया।"
+                        Status.RESOLVED -> "पहले हल माना गया था (${o.resolvedNote}) पर फिर आया।"
+                        else -> o.resolvedNote
+                    }, dismissedAt = 0, snoozeUntil = 0,
+                    notifiedAt = if (wasResolved) 0 else o.notifiedAt)
                 byFp[f.fingerprint] = n
                 if (wasResolved) reopened += n
             }
         }
         // जो इस बार नहीं दिखे: शांत जाँच गिनो + हल की पुष्टि
         val out = byFp.values.map { i ->
-            if (i.fingerprint in touched) i else verifyResolved(i.copy(quietChecks = i.quietChecks + 1), now, appVersion)
-        }.sortedWith(compareByDescending<Incident> { it.status != Status.RESOLVED }.thenByDescending { it.severity.rank }.thenByDescending { it.lastSeen })
+            if (i.fingerprint in touched) i else autoQuiet(verifyResolved(i.copy(quietChecks = i.quietChecks + 1), now, appVersion), now)
+        }.filterNot { purge(it, now) }
+            .sortedWith(compareByDescending<Incident> { visible(it) && it.status != Status.RESOLVED && it.status != Status.QUIET }.thenByDescending { it.severity.rank }.thenByDescending { it.lastSeen })
         return Merge(out.take(60), fresh, reopened)
     }
+
+    /** नवंबर 2026 (मालिक): 24 घंटे न दिखे = शांत; शांत / हल / हटाया = 3 दिन बाद सूची से अपने-आप साफ़ */
+    const val QUIET_MS = 24 * 3600_000L
+    const val PURGE_MS = 3 * 24 * 3600_000L
+    /** "बाद में बताना" = इतनी देर बाद DK Live फिर याद दिलाए */
+    const val LATER_MS = 2 * 3600_000L
+
+    /** Coding Agent के पास (FIXING) नहीं छूते - वह अपनी पुष्टि से ही हल होता है */
+    fun autoQuiet(i: Incident, now: Long): Incident =
+        if (i.status in setOf(Status.NEW, Status.INVESTIGATING, Status.AWAITING_APPROVAL, Status.REOPENED) && now - i.lastSeen >= QUIET_MS)
+            i.copy(status = Status.QUIET, resolvedNote = "24 घंटे से नहीं दिखा - शायद ठीक हो गया (3 दिन बाद अपने-आप साफ़)") else i
+
+    fun purge(i: Incident, now: Long): Boolean = when (i.status) {
+        Status.QUIET -> now - i.lastSeen >= PURGE_MS
+        Status.RESOLVED -> now - maxOf(i.resolvedAt, i.lastSeen) >= PURGE_MS
+        Status.DISMISSED -> now - maxOf(i.dismissedAt, i.lastSeen) >= PURGE_MS
+        else -> false
+    }
+
+    /** सूची / DK Live में दिखे? हटाया हुआ नहीं */
+    fun visible(i: Incident): Boolean = i.status != Status.DISMISSED
+
+    /** एक हटाओ (मालिक ने कहा) - याद रहता है ताकि फिर आए तो "फिर से आया" दिखे */
+    fun dismiss(xs: List<Incident>, id: String, now: Long): List<Incident> =
+        xs.map { if (!it.id.equals(id, true)) it else it.copy(status = Status.DISMISSED, dismissedAt = now, snoozeUntil = 0) }
+
+    /** सब साफ़ - Coding Agent के पास वाले (FIXING) भी सूची से हटते हैं, पर फिर आए तो लौटते हैं */
+    fun clearAll(xs: List<Incident>, now: Long): List<Incident> =
+        xs.map { if (it.status == Status.DISMISSED) it else it.copy(status = Status.DISMISSED, dismissedAt = now, snoozeUntil = 0) }
+
+    /** "बाद में" - [LATER_MS] बाद DK Live फिर पूछे */
+    fun later(xs: List<Incident>, id: String, now: Long): List<Incident> =
+        xs.map { if (!it.id.equals(id, true)) it else it.copy(snoozeUntil = now + LATER_MS, notifiedAt = 0) }
+
+    // ------------------------------------------------------------------ नवंबर 2026: नए स्रोत (फ़ाइल / crash / Android रिकॉर्ड)
+
+    /** "<ms>\t<लाइन>" वाली फ़ाइल से [after] के बाद की लाइनें (DKLog के रूप में) + सबसे नया समय */
+    fun feedSince(text: String, after: Long): Pair<String, Long> {
+        val got = ArrayList<Pair<Long, String>>()
+        for (raw in text.lines()) {
+            val tab = raw.indexOf('\t'); if (tab <= 0) continue
+            val at = raw.substring(0, tab).toLongOrNull() ?: continue
+            if (at > after) got += at to raw.substring(tab + 1)
+        }
+        // दो फ़ाइलें (लॉग + गलतियाँ) मिलाकर समय के क्रम में; बहुत ज़्यादा हों तो सबसे नई 1500
+        val xs = got.sortedBy { it.first }.takeLast(1500)
+        return xs.joinToString("\n") { it.second } to (xs.maxOfOrNull { it.first } ?: after).coerceAtLeast(after)
+    }
+
+    /** last_crash.txt (पहली लाइन = "dd MMM HH:mm:ss [thread] version X", फिर stack) -> एक लॉग संदेश */
+    fun crashEvent(text: String): String? {
+        val ls = text.lines().map { it.trim() }.filter { it.isNotEmpty() }
+        if (ls.size < 2) return null
+        val head = ls[0]
+        val ex = ls.drop(1).firstOrNull { !it.startsWith("at ") && !it.startsWith("...") } ?: return null
+        val at = ls.firstOrNull { it.startsWith("at com.dk.") }?.removePrefix("at ")
+        val ver = Regex("version (\\S+)").find(head)?.groupValues?.get(1)
+        val thread = Regex("\\[([^\\]]+)\\]").find(head)?.groupValues?.get(1)
+        return "FATAL ऐप crash" + (ver?.let { " (version $it)" } ?: "") + (thread?.let { " [$it]" } ?: "") + ": " + ex.take(240) + (at?.let { " @ $it" } ?: "")
+    }
+
+    /**
+     * Android का "ऐप क्यों बंद हुआ" रिकॉर्ड (ApplicationExitInfo, Android 11+) -> लॉग संदेश. [reason] = Android का अंक.
+     * crash (4) नहीं - वह last_crash.txt से पूरे stack के साथ आता है. मालिक का बंद करना / ऐप का खुद बंद होना = गलती नहीं.
+     */
+    fun exitEvent(reason: Int, desc: String?): String? {
+        val d = desc?.trim()?.take(200)?.let { if (it.isEmpty()) "" else ": $it" } ?: ""
+        return when (reason) {
+            6 -> "ऐप अटका (ANR) - Android ने ऐप रोका$d"
+            5 -> "FATAL native crash (Android रिकॉर्ड)$d"
+            3 -> "Android ने ऐप बंद किया (memory कम)$d"
+            9 -> "Android ने ऐप बंद किया (ज़्यादा बैटरी/CPU)$d"
+            7 -> "FATAL native crash - ऐप शुरू ही नहीं हुआ$d"
+            else -> null
+        }
+    }
+
+    /** epoch ms -> लॉग का समय "HH:mm:ss.SSS" */
+    fun clock(t: Long): String = java.text.SimpleDateFormat("HH:mm:ss.SSS", java.util.Locale.US).format(java.util.Date(t))
 
     const val RESOLVE_QUIET_CHECKS = 3
     const val RESOLVE_QUIET_MS = 24 * 3600_000L
@@ -428,8 +574,9 @@ object InspectorCore {
     /** Live कम से कम इतनी देर से टिका हो तभी Inspector उसमें बोले */
     const val LIVE_STABLE_MS = 60_000L
 
-    fun shouldNotify(i: Incident): Boolean {
-        if (i.status == Status.RESOLVED) return false
+    fun shouldNotify(i: Incident, now: Long = System.currentTimeMillis()): Boolean {
+        if (i.status == Status.RESOLVED || i.status == Status.QUIET || i.status == Status.DISMISSED) return false
+        if (now < i.snoozeUntil) return false
         val important = i.severity.rank >= Severity.HIGH.rank || (i.certainty == Certainty.CONFIRMED && i.count >= 3 && i.severity.rank >= Severity.MEDIUM.rank)
         if (!important) return false
         if (i.notifiedAt == 0L) return true
@@ -501,7 +648,7 @@ object InspectorCore {
             val i = s.incidents.firstOrNull { it.id.equals(m.value, true) }
             return i?.let { fullReport(it) } ?: "${m.value.uppercase()} नाम की कोई रिपोर्ट नहीं मिली। Bug Reports सूची से सही ID लें।"
         }
-        val open = s.incidents.filter { it.status != Status.RESOLVED }
+        val open = s.incidents.filter { it.status != Status.RESOLVED && it.status != Status.QUIET && it.status != Status.DISMISSED }
         val sb = StringBuilder()
         val topic: Component? = when {
             Regex("(slow|late|latency|देर|धीम|time|समय|जल्दी|fast)").containsMatchIn(t) -> Component.LATENCY
@@ -568,7 +715,7 @@ object InspectorCore {
         put("cause", i.cause); put("impact", i.impact); put("fix", i.fix); put("code", i.code); put("test", i.test)
         put("notified", i.notifiedAt); put("notSev", i.notifiedSeverity); put("reopen", i.reopenCount)
         put("fixVer", i.fixVersion); put("quiet", i.quietChecks); put("resolvedAt", i.resolvedAt)
-        put("resolvedNote", i.resolvedNote); put("linked", i.linkedTo)
+        put("resolvedNote", i.resolvedNote); put("linked", i.linkedTo); put("snooze", i.snoozeUntil); put("dismissed", i.dismissedAt)
     }
 
     private fun JSONArray?.strings(): List<String> = if (this == null) emptyList() else (0 until length()).map { optString(it) }
@@ -580,7 +727,8 @@ object InspectorCore {
             Status.valueOf(o.optString("status", "NEW")), o.optString("msg"), o.optJSONArray("ev").strings(),
             o.optJSONArray("seq").strings(), o.optString("cause"), o.optString("impact"), o.optString("fix"),
             o.optString("code"), o.optString("test"), o.optLong("notified"), o.optInt("notSev"), o.optInt("reopen"),
-            o.optString("fixVer"), o.optInt("quiet"), o.optLong("resolvedAt"), o.optString("resolvedNote"), o.optString("linked"))
+            o.optString("fixVer"), o.optInt("quiet"), o.optLong("resolvedAt"), o.optString("resolvedNote"), o.optString("linked"),
+            o.optLong("snooze"), o.optLong("dismissed"))
     } catch (e: Exception) { null }
 
     fun listToJson(xs: List<Incident>): String = JSONArray().apply { xs.forEach { put(toJson(it)) } }.toString()

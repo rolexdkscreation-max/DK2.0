@@ -243,7 +243,7 @@ class SettingsActivity : AppCompatActivity() {
     /** App ka "console": har galti/chetavni, mic ke aankde, Live connection, deri (ms) */
     private fun secDebug() {
         // v5.1: DK Inspector - Debug के तीनों हिस्से पढ़कर गड़बड़ी, वजह, असर, हल और bug रिपोर्ट (कोड कभी नहीं बदलता)
-        card("DK Inspector", "Run Deep Inspection • Ask DK Inspector • Bug Reports • हर घंटे अपने-आप जाँच") { box ->
+        card("DK Inspector", "Run Deep Inspection • Ask DK Inspector • Bug Reports • हर 20 मिनट अपने-आप जाँच") { box ->
             try { com.dk.assistant.inspector.InspectorCard.build(this, box, dp, { t, f -> button(t, f) }, { b, vs -> row(b, *vs) }) }
             catch (_: Throwable) { hint(box, "DK Inspector अभी नहीं खुल पाया - बाकी Debug हिस्से नीचे वैसे ही हैं") }
         }

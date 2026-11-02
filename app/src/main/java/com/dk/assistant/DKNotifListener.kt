@@ -52,7 +52,7 @@ class DKNotifListener : NotificationListenerService() {
                 null
             } catch (e: PendingIntent.CanceledException) {
                 "वह notification अब पुराना हो गया (हट गया) — ऐप खोलकर भेजना होगा"
-            } catch (e: Exception) { "reply नहीं गया: ${e.message}" }
+            } catch (e: Exception) { DKBug.report("notification", e, "notification से जवाब भेजना"); "reply नहीं गया: ${e.message}" }
         }
 
         /**

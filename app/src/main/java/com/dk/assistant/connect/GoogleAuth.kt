@@ -31,6 +31,7 @@ object GoogleAuth {
         val r: AuthorizationResult = Tasks.await(Identity.getAuthorizationClient(c).authorize(request(scopes)), 20, TimeUnit.SECONDS)
         read(r)
     } catch (e: Exception) {
+        com.dk.assistant.DKBug.report("connector", e, "Google से अनुमति लेना")
         Res.Fail(explain(e))
     }
 
