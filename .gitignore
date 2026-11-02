@@ -10,3 +10,8 @@ app/src/main/assets/dk_license.json
 keystore.properties
 *.jks
 *.keystore
+
+# Python cache और पुरानी .bak फ़ाइलें repo में नहीं (पुराना code backup/dk-… branches में रहता है)
+__pycache__/
+*.pyc
+*.bak
