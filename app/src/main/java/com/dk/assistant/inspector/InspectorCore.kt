@@ -338,12 +338,33 @@ object InspectorCore {
     /**
      * घटनाएँ → नतीजे। [seen] = पिछली जाँच में पढ़ी जा चुकी लाइनें (वही लाइन दोबारा नहीं गिनी जाती)।
      */
+    /**
+     * नवंबर 2026 (DKI-406DD9 "326 बार", DKI-D24C3A "218 बार"): connection टूटा / setup अटका / session चुप - पर DK ने
+     * [RECOVER_MS] के अंदर खुद फिर जोड़ लिया (यूज़र को पता नहीं चला) = गलती नहीं. ये लाइनें उसी के निशान हैं.
+     * "रुकावट दिखी" वाली लाइन (12s से ज़्यादा टूटा) कभी नहीं छिपती.
+     */
+    private val RECOVERED = Regex("(जुड़ गया \\[|गर्म connection फिर से \\[|Live संभल गया)")
+    private val NOT_RECOVERABLE = Regex("रुकावट दिखी")
+    private val RECOVERABLE = setOf("live_conn_drop", "live_setup_failed", "live_stall")
+    const val RECOVER_MS = 12_000L
+
+    /** यह गड़बड़ी [RECOVER_MS] में अपने-आप संभल गई? (okAt = संभलने वाली लाइनों का समय, बढ़ते क्रम में) */
+    fun recovered(rule: Rule, e: Event, okAt: LongArray): Boolean {
+        if (rule.id !in RECOVERABLE || NOT_RECOVERABLE.containsMatchIn(e.msg)) return false
+        val t = clockMs(e.time); if (t < 0) return false
+        var lo = 0; var hi = okAt.size
+        while (lo < hi) { val mid = (lo + hi) / 2; if (okAt[mid] < t) lo = mid + 1 else hi = mid }
+        return lo < okAt.size && okAt[lo] - t <= RECOVER_MS
+    }
+
     fun analyze(events: List<Event>, seen: Set<String> = emptySet()): List<Finding> {
         data class Acc(val rule: Rule, var count: Int, val first: Event, var last: Event, val ev: ArrayList<String>, val seq: List<String>)
         val acc = LinkedHashMap<String, Acc>()
+        val okAt = events.filter { RECOVERED.containsMatchIn(it.msg) }.map { clockMs(it.time) }.filter { it >= 0 }.sorted().toLongArray()
         for (e in events) {
             if (lineKey(e) in seen) continue
             val r = ruleFor(e.msg) ?: continue
+            if (recovered(r, e, okAt)) continue
             val fp = fingerprint(r, e.msg)
             val a = acc[fp]
             val line = e.time + " " + redact(e.msg).take(300)
