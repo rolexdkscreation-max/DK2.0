@@ -168,7 +168,9 @@ jobs:
           if [ -n "$LATEST_VER" ] && [ "$(printf '%s\n%s\n' "$LATEST_VER" "$VERSION_NAME" | sort -V | tail -1)" != "$VERSION_NAME" ]; then
             echo "::error::नया version ${VERSION_NAME} पिछली release ${LATEST_VER} से बड़ा नहीं - release रोकी"; exit 1
           fi
+          # टैग उसी commit पर जिससे यह APK बना (बिना --target टैग main की नई नोक पर लग जाता था)
           gh release create "v${VERSION_CODE}" DK.apk \
+            --target "$GITHUB_SHA" \
             --title "DK ${VERSION_NAME}" \
             --notes-file release_notes.txt \
             --latest

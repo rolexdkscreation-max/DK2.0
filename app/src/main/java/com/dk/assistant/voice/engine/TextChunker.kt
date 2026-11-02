@@ -31,6 +31,12 @@ class TextChunker(
         val nextMin: Int, val nextSoft: Int, val nextMax: Int,
         /** पहला टुकड़ा नहीं बना और text इतने ms से रुका = जितना है बोल दो */
         val stallMs: Long, val stallMin: Int,
+        /**
+         * नवंबर 2026 (मालिक: "रोबोट जैसा बोलता है"): ज़बरदस्ती कटाव वाक्य के बीच से न हो - पीछे देखकर
+         * "और / लेकिन / कि / क्योंकि / अगर ..." से पहले या "है / था ..." के बाद काटो. Piper हर टुकड़े के अंत को
+         * वाक्य का अंत मानकर सुर गिराता है -> बीच से कटे टुकड़े रोबोट जैसे लगते थे. STANDARD में बंद (पुराना वही).
+         */
+        val smartCut: Boolean = false,
     )
 
     var profile = Profile(firstSoft, firstMax, nextMin, nextSoft, nextMax, nextMin, nextSoft, nextMax, STALL_MS, STALL_MIN)
@@ -100,6 +106,7 @@ class TextChunker(
         val firstMax = p.firstMax
         var wordsSoFar = 0
         var inWord = false
+        val starts = ArrayList<Int>(32)
         var i = 0
         while (i < s.length) {
             val ch = s[i]
@@ -107,8 +114,9 @@ class TextChunker(
                 if (inWord) { wordsSoFar++; inWord = false }
                 // ज़बरदस्ती: इतने शब्द हो गए और अगला शब्द शुरू होने वाला है
                 val max = if (first) firstMax else nextMax
-                if (wordsSoFar >= max) return i
+                if (wordsSoFar >= max) return if (p.smartCut) naturalCut(starts, max, i) else i
             } else {
+                if (!inWord) starts.add(i)
                 inWord = true
                 val w = wordsSoFar + 1                       // यह char जिस शब्द में है, उसे गिनकर
                 if (ch in HARD) {
@@ -127,6 +135,20 @@ class TextChunker(
             i++
         }
         return 0
+    }
+
+    /** ज़बरदस्ती कटाव [hard] पर: पीछे (आधे टुकड़े तक) बातचीत का प्राकृतिक मोड़ ढूँढो, न मिले तो [hard] */
+    private fun naturalCut(starts: List<Int>, max: Int, hard: Int): Int {
+        val keep = maxOf(2, max / 2)
+        for (j in starts.size - 1 downTo keep) {
+            if (wordAt(starts[j]) in BREAK_BEFORE || wordAt(starts[j - 1]) in BREAK_AFTER) return starts[j]
+        }
+        return hard
+    }
+    private fun wordAt(i: Int): String {
+        var j = i
+        while (j < buf.length && !buf[j].isWhitespace()) j++
+        return buf.substring(i, j).lowercase()
     }
 
     /** "।।", "?!", "...", ")" जैसे लगातार निशान साथ ले जाओ */
@@ -148,13 +170,26 @@ class TextChunker(
         /** इंटरनेट वाले इंजन (Gemini TTS / Worker): पुराना नाप - हर टुकड़ा = एक request */
         val STANDARD = Profile(FIRST_SOFT, FIRST_MAX, NEXT_MIN, NEXT_SOFT, NEXT_MAX, NEXT_MIN, NEXT_SOFT, NEXT_MAX, STALL_MS, STALL_MIN)
 
-        /** फ़ोन में ही बनने वाली आवाज़ (Piper): पहला बहुत छोटा, फिर धीरे-धीरे बड़ा */
+        /**
+         * फ़ोन में ही बनने वाली आवाज़ (Piper): पहला छोटा, फिर धीरे-धीरे बड़ा.
+         * नवंबर 2026: 5/10/16 पर बीच से कटे टुकड़े रोबोट जैसे लगते थे -> अल्पविराम पर 2 शब्द से ही,
+         * ज़बरदस्ती 7/12/18 पर पर [Profile.smartCut] से बातचीत के मोड़ पर (sandbox: पहली आवाज़ फिर भी ~0.15-0.25 s).
+         */
         val LOCAL = Profile(
-            firstSoft = 3, firstMax = 5,
-            secondMin = 4, secondSoft = 7, secondMax = 10,
-            nextMin = 5, nextSoft = 10, nextMax = 16,
+            firstSoft = 2, firstMax = 7,
+            secondMin = 3, secondSoft = 5, secondMax = 12,
+            nextMin = 4, nextSoft = 8, nextMax = 18,
             stallMs = 150L, stallMin = 2,
+            smartCut = true,
         )
+        /** इस शब्द से पहले काटना ठीक (नया उपवाक्य शुरू होता है). "पर / तो" नहीं - वे "मेज़ पर", "मैं तो" भी होते हैं */
+        val BREAK_BEFORE = setOf(
+            "और", "एवं", "लेकिन", "परंतु", "परन्तु", "मगर", "किंतु", "किन्तु", "कि", "क्योंकि", "जो", "जब", "जहाँ",
+            "अगर", "यदि", "या", "फिर", "ताकि", "इसलिए", "बल्कि", "वरना", "तब", "जबकि",
+            "and", "but", "because", "or", "then", "which", "so",
+        )
+        /** इस शब्द के बाद काटना ठीक (क्रिया पूरी) */
+        val BREAK_AFTER = setOf("है", "हैं", "था", "थी", "थे", "हूँ", "हो", "गा", "गी", "गे", "रहा", "रही", "रहे")
         private val HARD = charArrayOf('।', '॥', '.', '!', '?', '…', '\n').toSet()
         private val SOFT = charArrayOf(',', ';', ':', '—', '–', '،').toSet()
         private val CLOSERS = charArrayOf(')', '"', '\'', '”', '’', ']').toSet()

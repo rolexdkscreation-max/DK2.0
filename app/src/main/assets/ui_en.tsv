@@ -1211,6 +1211,10 @@ Piper भावना के निर्देश नहीं समझता 
 DK लाइव — Direct Gemini Live Voice (सीधी आवाज़)	DK Live — Direct Gemini Live Voice
 Piper TTS (डिफ़ॉल्ट, फ़ोन में) • DK लाइव (Direct Gemini Live Voice) • Gemini TTS — एक समय में एक	Piper TTS (default, on the phone) • DK Live (Direct Gemini Live Voice) • Gemini TTS — one at a time
 बोलने वाला इंजन (Piper • Gemini TTS • Live) • सुनना	Speaking engine (Piper • Gemini TTS • Live) • Listening
-Priyamvada - हिंदी, महिला	Priyamvada - Hindi, female
-Pratham - हिंदी, पुरुष	Pratham - Hindi, male
+प्रियंवदा • सहज (आम बातचीत, महिला)	Priyamvada • Natural (everyday talk, female)
+प्रियंवदा • खुशमिज़ाज (चहकती, महिला)	Priyamvada • Cheerful (bright, female)
+प्रियंवदा • शांत (नरम, धीमी, महिला)	Priyamvada • Calm (soft, slower, female)
+प्रियंवदा • गंभीर (गहरी, साफ़, महिला)	Priyamvada • Serious (deeper, clear, female)
+प्रथम • पुरुष (हिंदी)	Pratham • Male (Hindi)
 Lessac - English, महिला	Lessac - English, female
+अंदाज़: सहज = आम बातचीत, खुशमिज़ाज = चहकती, शांत = नरम-धीमी, गंभीर = गहरी. बदलने पर पहली बार 1-2 सेकंड लोड.	Styles: Natural = everyday talk, Cheerful = bright, Calm = soft and slower, Serious = deeper. First load after a change takes 1-2 seconds.

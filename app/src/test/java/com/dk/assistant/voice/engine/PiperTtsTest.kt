@@ -41,8 +41,48 @@ class PiperTtsTest {
         val g = File(root(), "app/build.gradle.kts").readText()
         val block = g.substringAfter("val piperVoices = linkedMapOf(").substringBefore(")\n")
         val built = Regex("\"([A-Za-z_-]+)\" to \"[0-9a-f]{64}\"").findAll(block).map { it.groupValues[1] }.toList()
-        assertEquals(PiperTtsEngine.VOICES.map { it.first }, built)
+        // एक फ़ोल्डर के कई अंदाज़ (@khush...) -> फ़ोल्डरों की सूची build जैसी
+        assertEquals(PiperTtsEngine.VOICES.map { PiperTtsEngine.voiceDir(it.first) }.distinct(), built)
         assertEquals(PiperTtsEngine.VOICES.map { it.first }.toSet().size, PiperTtsEngine.VOICES.size)
+    }
+
+    /** मालिक (नवंबर 2026): "English आवाज़ हटाओ, पुरुष एक ही, महिला 3-4 अलग-अलग अंदाज़ की" */
+    @Test fun oneMaleFourFemaleNoEnglish() {
+        val v = PiperTtsEngine.VOICES
+        assertTrue(v.none { it.first.startsWith("en_") })
+        assertFalse(File(root(), "app/build.gradle.kts").readText().contains("en_US-lessac-medium"))
+        assertEquals(1, v.count { it.second.contains("पुरुष") })
+        assertEquals(4, v.count { it.second.contains("महिला") })
+        assertEquals(PiperTtsEngine.VOICES[0].first, PiperTtsEngine.DEFAULT_VOICE)        // पुरानी चुनी आवाज़ वही रहती है
+        // हर महिला अंदाज़ सच में अलग (रफ़्तार / उतार-चढ़ाव / पिच)
+        val looks = v.filter { it.second.contains("महिला") }.map { PiperTtsEngine.look(it.first) }
+        assertEquals(4, looks.toSet().size)
+        assertEquals(4, looks.map { it.pitch }.toSet().size)
+        for (l in looks) { assertTrue(l.pitch in 0.9f..1.1f); assertTrue(l.noise in 0.5f..0.8f) }
+        assertEquals("hi_IN-priyamvada-medium", PiperTtsEngine.voiceDir("hi_IN-priyamvada-medium@khush"))
+        assertEquals(PiperTtsEngine.NATURAL, PiperTtsEngine.look("hi_IN-pratham-medium"))
+        assertEquals(PiperTtsEngine.NATURAL, PiperTtsEngine.look("x@कुछभी"))
+    }
+
+    /** सहज = लगभग असली बातचीत की रफ़्तार (पहले शांत स्वभाव से 0.92 = खिंची हुई) */
+    @Test fun naturalPaceNearOne() {
+        val s = PiperTtsEngine.speed("") * PiperTtsEngine.NATURAL.speed
+        assertTrue(s in 0.97f..1.03f)
+    }
+
+    /** बेहतर resample: लंबाई वही, सीधी आवाज़ बिना खनक, बीच के मान चिकने */
+    @Test fun cubicResampleKeepsLengthAndShape() {
+        val n = 2205
+        val b = ByteArray(n * 2)
+        for (i in 0 until n) { val v = (Math.sin(i * 2 * Math.PI * 440 / 22050) * 12000).toInt(); b[i * 2] = (v and 0xff).toByte(); b[i * 2 + 1] = (v shr 8).toByte() }
+        val o = Resample.to24k(b, 22050)
+        assertEquals(n * 24000 / 22050 * 2, o.size)
+        var err = 0.0
+        for (i in 10 until o.size / 2 - 10) {
+            val got = ((o[i * 2].toInt() and 0xff) or (o[i * 2 + 1].toInt() shl 8)).toShort().toInt()
+            err = maxOf(err, Math.abs(got - Math.sin(i * 2 * Math.PI * 440 / 24000) * 12000))
+        }
+        assertTrue("err=$err", err < 60)
     }
 
     @Test fun buildFetchesVerifiedSherpaWithEspeakAndStaticOnnx() {
@@ -90,6 +130,8 @@ class PiperTtsTest {
         // .so न हो तो ऐप गिरे नहीं
         assertTrue(e.contains("catch (t: Throwable)"))
         assertTrue(e.contains("OfflineTts(assetManager = c.assets, config = cfg)"))
+        assertTrue(e.contains("noiseScale = lk.noise"))
+        assertTrue(e.contains("Math.round(t.sampleRate() * lk.pitch)"))
         // दूसरा इंजन चुना = Piper की याद ख़ाली
         assertTrue(File(main(), "voice/engine/VoiceModeController.kt").readText().contains("PiperTtsEngine.releaseNow()"))
     }

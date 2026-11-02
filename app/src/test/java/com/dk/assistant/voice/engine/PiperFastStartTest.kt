@@ -1,6 +1,7 @@
 package com.dk.assistant.voice.engine
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -22,14 +23,33 @@ class PiperFastStartTest {
         assertEquals(TextChunker.NEXT_MAX, TextChunker.STANDARD.secondMax)
     }
 
-    @Test fun piperFirstForcedAtFiveWords_thenGrows() {
+    /** नवंबर 2026: 5/10/16 -> 7/12/18 (बीच से कटे छोटे टुकड़े रोबोट जैसे लगते थे); मोड़ न मिले तो वहीं ज़बरदस्ती */
+    @Test fun piperFirstForcedAtSevenWords_thenGrows() {
         val c = local()
         val out = c.feed(nums)
-        assertEquals("एक दो तीन चार पाँच", out[0])
-        assertEquals(10, TextChunker.words(out[1]))
-        assertEquals(16, TextChunker.words(out[2]))
+        assertEquals("एक दो तीन चार पाँच छह सात", out[0])
+        assertEquals(12, TextChunker.words(out[1]))
+        assertEquals(18, TextChunker.words(out[2]))
         assertEquals(3, out.size)
-        assertEquals(15, TextChunker.words(c.flush()!!))        // बचा = आख़िरी टुकड़ा
+        assertEquals(9, TextChunker.words(c.flush()!!))         // बचा = आख़िरी टुकड़ा
+    }
+
+    /** मालिक: "रोबोट जैसा बोलता है" - ज़बरदस्ती कटाव "और / लेकिन / अगर" से पहले, या "है" के बाद */
+    @Test fun piperForcedCutFallsOnNaturalBreak() {
+        val c = local()
+        val out = c.feed("आज नासिक में मौसम काफ़ी अच्छा रहेगा और दिन में हल्की धूप निकलेगी लेकिन शाम को ठंडी हवा चल सकती है ")
+        assertEquals("आज नासिक में मौसम काफ़ी अच्छा रहेगा", out[0])
+        assertTrue(out[1].startsWith("और दिन में"))
+        val d = local().feed("मुझे लगता है आप आज शाम को बाज़ार ज़रूर चलिए ")
+        assertEquals("मुझे लगता है", d[0])                          // "है" के बाद
+        // बहुत पीछे (आधे से कम) का मोड़ नहीं - छोटे टुकड़े नहीं बनते
+        assertEquals("एक और तीन चार पाँच छह सात", local().feed("एक और तीन चार पाँच छह सात आठ नौ ")[0])
+    }
+
+    @Test fun naturalCutOnlyForPiper() {
+        assertTrue(TextChunker.LOCAL.smartCut)
+        assertFalse(TextChunker.STANDARD.smartCut)
+        assertTrue("पर" !in TextChunker.BREAK_BEFORE && "तो" !in TextChunker.BREAK_BEFORE)   // "मेज़ पर", "मैं तो"
     }
 
     @Test fun piperFirstCommaAfterThreeWords() {
@@ -60,7 +80,7 @@ class PiperFastStartTest {
     /** हर अगला टुकड़ा पिछले से ज़्यादा से ज़्यादा ~2 गुना: पिछला बजते-बजते बन जाए (बीच में चुप्पी नहीं) */
     @Test fun piperPiecesGrowSlowlyNoGap() {
         val p = TextChunker.LOCAL
-        assertTrue(p.firstMax <= 5)
+        assertTrue(p.firstMax <= 7)                              // पहली आवाज़ फिर भी जल्दी (7 शब्द ≈ 0.55 s sandbox)
         assertTrue(p.secondMax <= p.firstMax * 2)
         assertTrue(p.nextMax <= p.secondMax * 2)
         assertTrue(p.nextMax < TextChunker.NEXT_MAX)

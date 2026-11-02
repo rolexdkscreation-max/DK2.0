@@ -16,9 +16,8 @@ val sherpaAarSha = "b22c3fc1b6a45666d28892bb2f7694beeb77a8362d7ebd77c1a5431ec943
 val piperVoices = linkedMapOf(
     "hi_IN-priyamvada-medium" to "2997c7bbc211e524af83dfdffe7712942f10bd76c079a526af2e09d1f36a92f2",
     "hi_IN-pratham-medium" to "20f568c56207c13b9a0d9478aec8b7d1449122e618aeebc7211f6abc942b58b7",
-    "en_US-lessac-medium" to "f1c6d0295cf16087b05f80fdca5b44daca5cd78e2c425d419a42ba34929805f9",
 )
-/** espeak-ng-data में सिर्फ़ यही भाषाएँ (बाकी ~15 MB के शब्दकोश नहीं - आवाज़ बिल्कुल वही रहती है) */
+/** espeak-ng-data में सिर्फ़ यही भाषाएँ (en_dict: हिंदी जवाब के बीच के English शब्दों के लिए - English आवाज़ हटने के बाद भी) (बाकी ~15 MB के शब्दकोश नहीं - आवाज़ बिल्कुल वही रहती है) */
 val espeakDicts = setOf("hi_dict", "en_dict")
 val piperAssets = File(dkCache, "piper-assets")
 

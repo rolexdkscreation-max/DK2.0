@@ -35,25 +35,49 @@ object PiperTtsEngine : VoiceEngine {
     /** espeak-ng-data बदले (नया sherpa / नई भाषा) तो यह बदलो -> फ़ोन में दोबारा कॉपी */
     const val DATA_VER = "1.13.8-hi-en-1"
 
-    /** (आवाज़ का पक्का नाम = assets का फ़ोल्डर, दिखने वाला नाम). app/build.gradle.kts के piperVoices जैसा ही (test मिलाता है) */
+    /**
+     * नवंबर 2026 (मालिक: "English आवाज़ हटाओ, पुरुष एक ही, महिला 3-4 अलग-अलग अंदाज़ की, रोबोट जैसी नहीं - नैचुरल"):
+     * Piper में हिंदी की महिला आवाज़ सिर्फ़ एक (Priyamvada) है -> उसी से 4 अंदाज़ ([Look]): हर एक की अपनी
+     * रफ़्तार, उतार-चढ़ाव (VITS noise) और पिच. पुरुष: सिर्फ़ Pratham.
+     * पक्का नाम = "assets का फ़ोल्डर" या "फ़ोल्डर@अंदाज़". फ़ोल्डर app/build.gradle.kts के piperVoices जैसे ही (test मिलाता है).
+     */
     val VOICES = listOf(
-        "hi_IN-priyamvada-medium" to "Priyamvada - हिंदी, महिला",
-        "hi_IN-pratham-medium" to "Pratham - हिंदी, पुरुष",
-        "en_US-lessac-medium" to "Lessac - English, महिला",
+        "hi_IN-priyamvada-medium" to "प्रियंवदा • सहज (आम बातचीत, महिला)",
+        "hi_IN-priyamvada-medium@khush" to "प्रियंवदा • खुशमिज़ाज (चहकती, महिला)",
+        "hi_IN-priyamvada-medium@shant" to "प्रियंवदा • शांत (नरम, धीमी, महिला)",
+        "hi_IN-priyamvada-medium@gambhir" to "प्रियंवदा • गंभीर (गहरी, साफ़, महिला)",
+        "hi_IN-pratham-medium" to "प्रथम • पुरुष (हिंदी)",
     )
+
+    /**
+     * एक अंदाज़: [speed] = रफ़्तार का गुणा (शांत स्वभाव के ऊपर), [noise]/[noiseW] = VITS का उतार-चढ़ाव
+     * (कम = सपाट/रोबोट जैसा, ज़्यादा = भावुक; बहुत ज़्यादा = लड़खड़ाती), [pitch] = आवाज़ ऊँची/गहरी.
+     * पिच AudioTrack (Sonic) से नहीं: आवाज़ [pitch] गुना लंबी बनती है और फिर उतनी ही तेज़ resample -> लंबाई वही,
+     * पिच बदली, और कोई खिंचाव-वाली खरखराहट नहीं.
+     */
+    data class Look(val speed: Float, val noise: Float, val noiseW: Float, val pitch: Float)
+    /** सहज: शांत स्वभाव (-8%) की धीमी चाल बराबर करके लगभग असली बातचीत की रफ़्तार (0.92 x 1.08 ≈ 1.0) */
+    val NATURAL = Look(speed = 1.08f, noise = 0.667f, noiseW = 0.8f, pitch = 1.0f)
+    val LOOKS = mapOf(
+        "" to NATURAL,
+        "khush" to Look(speed = 1.15f, noise = 0.75f, noiseW = 0.9f, pitch = 1.07f),
+        "shant" to Look(speed = 1.01f, noise = 0.55f, noiseW = 0.7f, pitch = 0.97f),
+        "gambhir" to Look(speed = 1.08f, noise = 0.6f, noiseW = 0.75f, pitch = 0.92f),
+    )
+    fun look(v: String): Look = LOOKS[v.substringAfter('@', "").substringBefore('#')] ?: NATURAL
     val DEFAULT_VOICE = VOICES[0].first
 
     override fun voices() = VOICES
     override fun voice(c: Context): String =
-        VoiceEngines.sp(c).getString("piper_voice", null)?.let { v -> VOICES.firstOrNull { it.first == voiceDir(v) }?.let { v } }
+        VoiceEngines.sp(c).getString("piper_voice", null)?.let { v -> VOICES.firstOrNull { it.first == v }?.let { v } }
             ?: DEFAULT_VOICE
     override fun setVoice(c: Context, v: String) {
         VoiceEngines.sp(c).edit().putString("piper_voice", v).apply()
         warm(c)
     }
 
-    /** "नाम" या "नाम#3" (कई बोलने वालों वाली आवाज़ में बोलने वाला नं.) */
-    fun voiceDir(v: String): String = v.substringBefore('#')
+    /** "नाम", "नाम@अंदाज़" या "नाम#3" (कई बोलने वालों वाली आवाज़ में बोलने वाला नं.) */
+    fun voiceDir(v: String): String = v.substringBefore('#').substringBefore('@')
     fun speakerId(v: String): Int = v.substringAfter('#', "0").toIntOrNull()?.coerceAtLeast(0) ?: 0
 
     /** Piper की रफ़्तार: शांत स्वभाव (CalmPersona) + स्टाइल के शब्द ("धीरे", "तेज़"...). 1.0 = सामान्य. गति/पिच स्लाइडर अलग (AudioTrack पर) */
@@ -110,14 +134,17 @@ object PiperTtsEngine : VoiceEngine {
     // --------------------------------------------------------------------------------- बनाना
     /** एक समय में एक ही आवाज़ याद में (हर आवाज़ ~20-60 MB) */
     private var tts: OfflineTts? = null
+    /** लोड हुई आवाज़ = फ़ोल्डर + उतार-चढ़ाव (noise load के समय तय होता है -> अंदाज़ बदला = दोबारा लोड, ~1-2 s) */
     private var ttsVoice = ""
+    private fun key(v: String) = look(v).let { "${voiceDir(v)}|${it.noise}|${it.noiseW}" }
     private val lock = Any()
     /** stop() पर बढ़ता है - चल रहा बनाना अगले टुकड़े पर रुक जाता है */
     @Volatile private var gen = 0
 
     private fun load(c: Context, v: String): OfflineTts {
         val dir = voiceDir(v)
-        tts?.takeIf { ttsVoice == dir }?.let { return it }
+        val lk = look(v)
+        tts?.takeIf { ttsVoice == key(v) }?.let { return it }
         release()
         val t0 = System.currentTimeMillis()
         val cfg = OfflineTtsConfig(
@@ -126,6 +153,8 @@ object PiperTtsEngine : VoiceEngine {
                     model = "$ASSET_DIR/$dir/model.onnx",
                     tokens = "$ASSET_DIR/$dir/tokens.txt",
                     dataDir = dataDir(c),
+                    noiseScale = lk.noise,
+                    noiseScaleW = lk.noiseW,
                 ),
                 numThreads = 2,
                 debug = false,
@@ -135,14 +164,14 @@ object PiperTtsEngine : VoiceEngine {
         )
         val t = OfflineTts(assetManager = c.assets, config = cfg)
         Log.i(TAG, "आवाज़ $dir लोड: ${System.currentTimeMillis() - t0} ms, ${t.sampleRate()} Hz")
-        tts = t; ttsVoice = dir
+        tts = t; ttsVoice = key(v)
         return t
     }
 
     override fun warm(c: Context) {
         if (notReady(c) != null) return
         val v = voice(c)
-        if (ttsVoice == voiceDir(v) && tts != null) return
+        if (ttsVoice == key(v) && tts != null) return
         Thread({ try { synchronized(lock) { load(c, v) } } catch (t: Throwable) { Log.w(TAG, "warm: ${t.message}") } },
             "dk-piper-warm").apply { isDaemon = true }.start()
     }
@@ -151,12 +180,14 @@ object PiperTtsEngine : VoiceEngine {
         notReady(c)?.let { throw IOException("Piper: $it") }
         val my = gen
         val v = voice.takeIf { hasVoice(c, it) } ?: voice(c)
-        val speed = speed(style(c))
+        val lk = look(v)
+        // पिच: [pitch] गुना लंबी बनाओ, फिर [pitch] गुना तेज़ resample -> लंबाई = speed के हिसाब से, पिच ऊँची/गहरी
+        val speed = (speed(style(c)) * lk.speed / lk.pitch).coerceIn(0.5f, 2f)
         // espeak-ng thread-safe नहीं -> एक समय में एक ही बनाना (दूसरी synth thread इंतज़ार करती है, बजना चलता रहता है)
         synchronized(lock) {
             if (my != gen) return
             val t = try { load(c, v) } catch (e: Throwable) { throw IOException("Piper: आवाज़ लोड नहीं हुई (${e.message})", e) }
-            val rate = t.sampleRate()
+            val rate = Math.round(t.sampleRate() * lk.pitch)
             var any = false
             try {
                 t.generateWithCallback(text = text, sid = speakerId(v), speed = speed) { samples ->
@@ -198,6 +229,7 @@ object PiperTtsEngine : VoiceEngine {
             VoiceEngines.sp(c).edit().putString("piper_style", v.trim()).apply()
         }
         ui.hint(box, "Piper भावना के निर्देश नहीं समझता - \"धीरे / तेज़\" जैसे शब्दों से सिर्फ़ रफ़्तार बदलती है. गति / पिच नीचे के स्लाइडर से.")
+        ui.hint(box, "अंदाज़: सहज = आम बातचीत, खुशमिज़ाज = चहकती, शांत = नरम-धीमी, गंभीर = गहरी. बदलने पर पहली बार 1-2 सेकंड लोड.")
         ui.hint(box, "आवाज़ फ़ोन में ही बनती है: इंटरनेट न हो तब भी DK बोलेगा. पहली बार (या आवाज़ बदलने पर) लोड होने में 1-2 सेकंड.")
         ui.hint(box, "आवाज़ें: Piper (rhasspy) - हिंदी आवाज़ें CC BY-NC-SA 4.0 (बेचने वाले काम के लिए नहीं).")
     }

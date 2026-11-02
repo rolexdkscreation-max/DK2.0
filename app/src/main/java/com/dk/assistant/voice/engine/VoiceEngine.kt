@@ -134,7 +134,11 @@ class PcmEven {
     }
 }
 
-/** दूसरी sample-rate (जैसे 16/22.05 kHz) -> 24 kHz (सीधा linear, बोली के लिए काफ़ी) */
+/**
+ * दूसरी sample-rate (जैसे 16/22.05 kHz) -> 24 kHz.
+ * नवंबर 2026: सीधी (linear) की जगह cubic (Catmull-Rom) - linear से ऊँची आवाज़ें दबती थीं और हल्की
+ * धातु जैसी/रोबोटिक खनक आती थी. लंबाई बिल्कुल वही (n * 24000 / from).
+ */
 object Resample {
     fun to24k(pcm: ByteArray, from: Int): ByteArray {
         if (from == VoiceEngine.RATE || from <= 0) return pcm
@@ -142,12 +146,13 @@ object Resample {
         if (n == 0) return pcm
         val outN = (n.toLong() * VoiceEngine.RATE / from).toInt()
         val o = ByteArray(outN * 2)
+        fun at(k: Int): Double { val j = k.coerceIn(0, n - 1); return ((pcm[j * 2].toInt() and 0xff) or (pcm[j * 2 + 1].toInt() shl 8)).toShort().toDouble() }
         for (i in 0 until outN) {
             val pos = i.toDouble() * from / VoiceEngine.RATE
-            val a = pos.toInt().coerceAtMost(n - 1); val b = (a + 1).coerceAtMost(n - 1); val f = pos - a
-            val va = ((pcm[a * 2].toInt() and 0xff) or (pcm[a * 2 + 1].toInt() shl 8)).toShort().toInt()
-            val vb = ((pcm[b * 2].toInt() and 0xff) or (pcm[b * 2 + 1].toInt() shl 8)).toShort().toInt()
-            val v = (va + (vb - va) * f).toInt()
+            val a = pos.toInt(); val t = pos - a
+            val p0 = at(a - 1); val p1 = at(a); val p2 = at(a + 1); val p3 = at(a + 2)
+            val y = p1 + 0.5 * t * (p2 - p0 + t * (2 * p0 - 5 * p1 + 4 * p2 - p3 + t * (3 * (p1 - p2) + p3 - p0)))
+            val v = Math.round(y).toInt().coerceIn(-32768, 32767)
             o[i * 2] = (v and 0xff).toByte(); o[i * 2 + 1] = ((v shr 8) and 0xff).toByte()
         }
         return o
