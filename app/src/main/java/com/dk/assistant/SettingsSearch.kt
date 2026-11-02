@@ -101,6 +101,7 @@ object SettingsSearch {
         E("debug", "DK Inspector", "Run Deep Inspection • Ask DK Inspector • Bug Reports • हर 20 मिनट अपने-आप जाँच", "inspector bug report जाँच गड़बड़ी debugger"),
         E("debug", "Gemini Live हाल", "माइक से भेजे टुकड़े, गिरे टुकड़े, दोबारा जुड़ना, देरी"),
         E("debug", "देरी का हिसाब", "आपका बोलना ख़त्म → पहला टुकड़ा आया → पहले वाक्य की आवाज़ बनी → आवाज़ बजी"),
+        E("debug", "Live / Text हिसाब", "Gemini Live, text मोड (बैकअप) और पीछे की सेहत-जाँच - हर एक की कॉल, ठीक, गलती अलग", "live text fallback backup health बैकअप सेहत"),
         E("debug", "लॉग", "सबसे नई लाइन नीचे • 300 लाइन तक"),
         E("coder", "कोडिंग एजेंट", "आपके GitHub repo में कोड लिखता, बदलता, हटाता और push करता है"),
         E("coder", "GitHub कनेक्टर", "Personal Access Token से जुड़ता है (फ़ोन में ही रहता है)"),
