@@ -664,7 +664,7 @@ class AgentRunner(
                     if (c == '.' && i + 1 < pend.length && pend[i + 1].isWhitespace()) { cut = i; break }
                 }
                 if (cut < 0) {
-                    // v3.7: pehla tukda aur chhota (45) = awaaz jaldi shuru; नवंबर 2026: बैकअप (Kokoro) में 28
+                    // v3.7: pehla tukda aur chhota (45) = awaaz jaldi shuru; नवंबर 2026: बैकअप मोड में 28
                     val limit = LiveHealth.cutLimit(sentCount, speaker.localOnly)
                     val minCut = LiveHealth.cutMin(sentCount, speaker.localOnly)
                     if (pend.length > limit) {
@@ -679,7 +679,7 @@ class AgentRunner(
         DKState.sentAt.takeIf { it > 0 && System.currentTimeMillis() - it < 120_000 }?.let {
             DKLog.d("Deri: Send → AI request ${System.currentTimeMillis() - it} ms (बीच की जाँचें)")
         }
-        ModeTrack.call(ModeTrack.Ch.TEXT, if (speaker.localOnly) "बैकअप मोड (Live की जगह) • Kokoro" else "")
+        ModeTrack.call(ModeTrack.Ch.TEXT, if (speaker.localOnly) "बैकअप मोड (Live की जगह) • Gemini TTS / फ़ोन की आवाज़" else "")
         val full = try {
             brain.streamChat(prompt, "USER SAYS: $goal") { d ->
                 buf.append(d)

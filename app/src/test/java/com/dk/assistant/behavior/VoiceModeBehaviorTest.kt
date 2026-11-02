@@ -6,111 +6,85 @@ import android.content.Intent
 import androidx.test.core.app.ApplicationProvider
 import com.dk.assistant.SettingsActivity
 import com.dk.assistant.voice.engine.LiveNativeEngine
-import com.dk.assistant.voice.engine.KokoroTtsEngine
+import com.dk.assistant.voice.engine.GeminiTtsEngine
 import com.dk.assistant.voice.engine.VoiceEngines
 import com.dk.assistant.voice.engine.VoiceModeController
 import com.dk.assistant.voice.engine.VoiceTune
-import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
-import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.Robolectric
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 
-/** नवंबर 2026: Kokoro डिफ़ॉल्ट (Piper हटाया) + "Direct Gemini Live Voice" स्विच - असली Settings स्क्रीन पर */
+/** नवंबर 2026 (मालिक): Kokoro हटाया - डिफ़ॉल्ट "Direct Gemini Live Voice", बैकअप Gemini TTS - असली Settings स्क्रीन पर */
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [34], application = Application::class)
 class VoiceModeBehaviorTest {
     private val c: Context get() = ApplicationProvider.getApplicationContext()
 
-    @Before fun kokoroWorks() { KokoroTtsEngine.nativeForTest = true }
-    @After fun reset() { KokoroTtsEngine.nativeForTest = null }
-
     private fun open() = Robolectric.buildActivity(SettingsActivity::class.java,
         Intent(c, SettingsActivity::class.java).putExtra("section", "voice")).setup()
 
-    @Test fun freshInstallSpeaksWithKokoro_directLiveOff() {
-        assertEquals(VoiceEngines.KOKORO_TTS, VoiceEngines.activeId(c))
-        assertFalse(VoiceModeController.directLive(c))
-        // ऐप दोबारा खुले (प्रक्रिया नई) - तब भी Kokoro
-        assertEquals(VoiceEngines.KOKORO_TTS, VoiceEngines.activeId(c))
+    @Test fun freshInstallSpeaksWithDirectLive() {
+        assertEquals(VoiceEngines.LIVE_NATIVE, VoiceEngines.activeId(c))
+        assertTrue(VoiceModeController.directLive(c))
+        // ऐप दोबारा खुले - तब भी Direct Live
+        assertEquals(VoiceEngines.LIVE_NATIVE, VoiceEngines.activeId(c))
     }
 
-    /** मालिक (नवंबर 2026): डिफ़ॉल्ट Alpha पर ताला - यूज़र के radio दबाए बिना Beta / कोई और कभी नहीं */
-    @Test fun alphaHardLocked_onlyUserPickChangesIt() {
-        VoiceEngines.sp(c).edit().putString(KokoroTtsEngine.PREF_VOICE, "hf_beta").commit()   // बिना यूज़र (restore वगैरह)
-        assertEquals("hf_alpha", KokoroTtsEngine.voice(c))
+    /** पुराना Kokoro डिफ़ॉल्ट वाला फ़ोन (अपडेट) = Direct Live; Kokoro की कॉपी फ़ाइलें मिटें */
+    @Test fun oldKokoroChoiceMovesToDirectLive() {
+        val dir = java.io.File(c.filesDir, "kokoro_model").apply { mkdirs() }
+        java.io.File(dir, "x.bin").writeText("x")
+        VoiceEngines.sp(c).edit().putString("active", VoiceEngines.OLD_KOKORO_ID).putBoolean(VoiceEngines.MIGRATE_KEY, true)
+            .putBoolean("kokoro_default_v1", true).commit()
+        assertEquals(VoiceEngines.LIVE_NATIVE, VoiceEngines.activeId(c))
+        assertFalse(dir.exists())
+    }
+
+    /** migration के बाद यूज़र ने Gemini TTS चुना = ऐप दोबारा खुलने पर भी वही (ज़बरदस्ती Direct नहीं) */
+    @Test fun userPickedGeminiTtsStays() {
+        assertEquals(VoiceEngines.LIVE_NATIVE, VoiceEngines.activeId(c))
+        assertEquals(VoiceEngines.GEMINI_TTS, VoiceModeController.setDirectLive(c, false))
+        assertEquals(VoiceEngines.GEMINI_TTS, VoiceEngines.activeId(c))
+    }
+
+    @Test fun oldPiperAndEdgeChoiceMoveToDirectLive() {
+        for (old in listOf(VoiceEngines.OLD_PIPER_ID, VoiceEngines.OLD_EDGE_ID)) {
+            VoiceEngines.sp(c).edit().putString("active", old).putBoolean(VoiceEngines.MIGRATE_KEY, true)
+                .putBoolean(VoiceEngines.DIRECT_KEY, true).commit()
+            assertEquals(old, VoiceEngines.LIVE_NATIVE, VoiceEngines.activeId(c))
+        }
+    }
+
+    @Test fun settingsShowOnlyDirectLiveAndGeminiTts() {
         val s = open().get()
-        val rb = Ui.all(s).filterIsInstance<android.widget.RadioButton>()
-        assertTrue(rb.first { it.text.toString() == "Alpha" }.isChecked)
-        assertFalse(rb.first { it.text.toString() == "Beta" }.isChecked)
-        rb.first { it.text.toString() == "Psi" }.performClick()                                  // यूज़र ने खुद चुनी
-        assertEquals("hm_psi", KokoroTtsEngine.voice(c))
-        assertTrue(VoiceEngines.sp(c).getBoolean(KokoroTtsEngine.PREF_PICKED, false))
+        val live = Ui.switch(s, LiveNativeEngine.title)
+        val tts = Ui.switch(s, GeminiTtsEngine.title)
+        assertTrue(live.isChecked); assertFalse(tts.isChecked)
+        assertFalse(Ui.hasText(s, "Kokoro"))
     }
 
-    /** Piper हटाया: पहले Piper चुना था = अब Kokoro (एक बार वाला migration हो चुका हो तब भी) */
-    @Test fun oldPiperChoiceMovesToKokoro() {
-        VoiceEngines.sp(c).edit().putString("active", VoiceEngines.OLD_PIPER_ID).putBoolean(VoiceEngines.MIGRATE_KEY, true)
-            .putBoolean(VoiceEngines.KOKORO_KEY, true).commit()
-        assertEquals(VoiceEngines.KOKORO_TTS, VoiceEngines.activeId(c))
-    }
-
-    /** सेटिंग्स में सिर्फ़ 2 समूह और 4 नाम: [Female voices: Alpha, Beta] | [Male voices: Omega, Psi] */
-    @Test fun settingsShowOnlyFourKokoroVoicesInTwoGroups() {
-        val s = open().get()
-        for (t in listOf("Female voices", "Male voices")) assertTrue(t, Ui.hasText(s, t))
-        val radios = Ui.all(s).filterIsInstance<android.widget.RadioButton>().map { it.text.toString() }
-        for (n in listOf("Alpha", "Beta", "Omega", "Psi")) assertTrue(n, n in radios)
-        for (old in listOf("Priyamvada", "Pratham", "Lessac", "प्रियंवदा", "प्रथम")) assertFalse(old, radios.any { it.contains(old) })
-        // Alpha पहले से चुनी
-        assertTrue(Ui.all(s).filterIsInstance<android.widget.RadioButton>().first { it.text.toString() == "Alpha" }.isChecked)
-    }
-
-    @Test fun oldEdgeChoiceMovesToKokoro() {
-        VoiceEngines.sp(c).edit().putString("active", VoiceEngines.OLD_EDGE_ID).putBoolean(VoiceEngines.MIGRATE_KEY, true)
-            .putBoolean(VoiceEngines.KOKORO_KEY, true).commit()
-        assertEquals(VoiceEngines.KOKORO_TTS, VoiceEngines.activeId(c))
-    }
-
-    @Test fun directLiveSwitchOnScreenIsSavedAndOffReturnsToKokoro() {
+    @Test fun directLiveSwitchOnScreenIsSavedAndOffGoesToGeminiTts() {
         val s = open()
         val live = Ui.switch(s.get(), LiveNativeEngine.title)
-        val kokoro = Ui.switch(s.get(), KokoroTtsEngine.title)
-        assertTrue(kokoro.isChecked); assertFalse(live.isChecked)
-        live.isChecked = true
-        assertEquals(VoiceEngines.LIVE_NATIVE, VoiceEngines.activeId(c))
-        assertFalse(kokoro.isChecked)                                   // एक समय में एक
+        val tts = Ui.switch(s.get(), GeminiTtsEngine.title)
+        assertTrue(live.isChecked)
+        live.isChecked = false
+        assertEquals(VoiceEngines.GEMINI_TTS, VoiceEngines.activeId(c))
+        assertTrue(tts.isChecked)                                       // एक समय में एक
         s.pause().stop().destroy()
-        // दोबारा खोलो: Direct चालू ही दिखे (सेव)
+        // दोबारा खोलो: Gemini TTS चालू ही दिखे (सेव); Direct फिर चालू करो
         val again = open()
-        val live2 = Ui.switch(again.get(), LiveNativeEngine.title)
-        assertTrue(live2.isChecked)
-        live2.isChecked = false
-        assertEquals(VoiceEngines.KOKORO_TTS, VoiceEngines.activeId(c))
-        assertTrue(Ui.switch(again.get(), KokoroTtsEngine.title).isChecked)
-    }
-
-    @Test fun phoneWithoutKokoroKeepsDirectLive() {
-        KokoroTtsEngine.nativeForTest = false
-        // पहली बार: Kokoro न चले तो जो था वही (DK लाइव) - चुप नहीं
+        assertTrue(Ui.switch(again.get(), GeminiTtsEngine.title).isChecked)
+        Ui.switch(again.get(), LiveNativeEngine.title).isChecked = true
         assertEquals(VoiceEngines.LIVE_NATIVE, VoiceEngines.activeId(c))
-        assertEquals(VoiceEngines.LIVE_NATIVE, VoiceModeController.setDirectLive(c, false))
     }
 
-    @Test fun kokoroVoiceAndTuneAreSaved() {
-        assertEquals("hf_alpha", KokoroTtsEngine.voice(c))                          // शुरुआत = Female 'Alpha'
-        KokoroTtsEngine.setVoice(c, "hm_omega")
-        assertEquals("hm_omega", KokoroTtsEngine.voice(c))
-        KokoroTtsEngine.setVoice(c, "नहीं-है")                                      // अनजान = अनदेखा, पिछली चुनी वही
-        assertEquals("hm_omega", KokoroTtsEngine.voice(c))
-        // पुरानी (Piper वाली) सेव आवाज़ = Alpha
-        VoiceEngines.sp(c).edit().putString(KokoroTtsEngine.PREF_VOICE, "hi_IN-pratham-medium").commit()
-        assertEquals(KokoroTtsEngine.DEFAULT_VOICE, KokoroTtsEngine.voice(c))
+    @Test fun tuneIsSaved() {
         VoiceTune.setSpeed(c, 200); VoiceTune.setPitch(c, 50)
         assertEquals(200, VoiceTune.speedPct); assertEquals(50, VoiceTune.pitchPct)
         VoiceTune.reset(c)

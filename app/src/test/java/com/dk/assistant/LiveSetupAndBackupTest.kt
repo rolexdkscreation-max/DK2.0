@@ -96,12 +96,13 @@ class LiveSetupAndBackupTest {
         assertTrue(s.contains("liveTroubleSay(LiveFailWhy.backupLine(kind))"))
         assertTrue(g.split("svc.liveConnected()").size - 1 >= 2)                 // नया connection और गर्म connection दोनों
         val sp = src("Speaker.kt")
-        assertTrue(sp.contains("if (localOnly) {") && sp.contains("try { kokoroWav(text) }"))
+        // नवंबर 2026: Kokoro हटाया - बैकअप मोड = Gemini TTS, वह न चले = तुरंत फ़ोन की (Google / Android) आवाज़
+        assertTrue(sp.contains("if (localOnly) {") && sp.contains("BackupVoice.phoneFirst(") && !sp.contains("kokoroWav"))
         // नवंबर 2026: Edge की जगह Piper, अब Kokoro. Kokoro न चले = बैकअप मोड में फ़ोन की अपनी आवाज़ (चुप नहीं); आम मोड में फ़ोन की आवाज़ अब भी नहीं
         assertTrue(sp.contains("else if (localOnly && !aborted && !paused) {") && sp.contains("PhoneVoice.say(appCtx, chunk)"))
         assertTrue(sp.contains("PhoneVoice.stop()"))
         assertFalse(VoicePolicy.PHONE_TTS_ALLOWED)
-        assertTrue(sp.contains("KokoroTtsEngine")); assertFalse(sp.contains("EdgeTtsEngine"))
+        assertFalse(sp.contains("KokoroTtsEngine")); assertFalse(sp.contains("EdgeTtsEngine"))
         assertFalse(src("voice/engine/GeminiTtsEngine.kt").contains(".readTimeout(8, TimeUnit.SECONDS)"))
     }
 

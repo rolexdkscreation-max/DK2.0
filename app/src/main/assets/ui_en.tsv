@@ -1201,17 +1201,12 @@ Run Deep Inspection • Ask DK Inspector • Bug Reports • हर 20 मिन
 सब साफ़ करें	Clear all
 हाँ, सब साफ़	Yes, clear all
 सारी Bug Reports साफ़ कर दूँ?	Clear all bug reports?
-Kokoro TTS (फ़ोन में, बिना इंटरनेट)	Kokoro TTS (on the phone, no internet)
-Kokoro-82M • हिंदी + हिंग्लिश • आवाज़ फ़ोन में ही बनती है - इंटरनेट / key नहीं चाहिए	Kokoro-82M • Hindi + Hinglish • voice is made on the phone - no internet / key needed
-Kokoro सिर्फ़ हिंदी और हिंग्लिश बोलता है - रोमन में लिखे हिंदी शब्द ("main aapka kaam kar deta hoon") अपने-आप देवनागरी उच्चारण में.	Kokoro speaks only Hindi and Hinglish - Hindi words written in Roman ("main aapka kaam kar deta hoon") are pronounced the Hindi way automatically.
 आवाज़ फ़ोन में ही बनती है: इंटरनेट न हो तब भी DK बोलेगा. पहली बार लोड होने में 2-4 सेकंड; आवाज़ बदलना तुरंत (दोबारा लोड नहीं).	The voice is made on the phone: DK speaks even without internet. First load takes 2-4 seconds; switching voices is instant (no reload).
-Kokoro-82M (hexgrad) - Apache-2.0.	Kokoro-82M (hexgrad) - Apache-2.0.
 Female voices	Female voices
 Male voices	Male voices
-भावना / स्टाइल (Kokoro के लिए)	Emotion / style (for Kokoro)
 जैसे: धीरे, आराम से  •  या: तेज़, जल्दी	e.g. slow, relaxed  •  or: fast, quick
 DK लाइव — Direct Gemini Live Voice (सीधी आवाज़)	DK Live — Direct Gemini Live Voice
-Kokoro TTS (डिफ़ॉल्ट, फ़ोन में) • DK लाइव (Direct Gemini Live Voice) • Gemini TTS — एक समय में एक	Kokoro TTS (default, on the phone) • DK Live (Direct Gemini Live Voice) • Gemini TTS — one at a time
-बोलने वाला इंजन (Kokoro • Gemini TTS • Live) • सुनना	Speaking engine (Kokoro • Gemini TTS • Live) • Listening
 Live / Text हिसाब	Live / Text tracking
 Gemini Live, text मोड (बैकअप) और पीछे की सेहत-जाँच - हर एक की कॉल, ठीक, गलती अलग	Gemini Live, text mode (backup) and background health-check - calls, successes and errors tracked separately
+DK लाइव (Direct Gemini Live Voice, डिफ़ॉल्ट) • Gemini TTS (बैकअप) — एक समय में एक	DK Live (Direct Gemini Live Voice, default) • Gemini TTS (backup) — one at a time
+बोलने वाला इंजन (Live • Gemini TTS) • सुनना	Speaking engine (Live • Gemini TTS) • Listening

@@ -9,7 +9,7 @@ import org.junit.Test
 import java.io.File
 
 /**
- * नवंबर 2026 (मालिक): Live टूटे = चुपचाप text मोड + Kokoro; पीछे सेहत-जाँच; लिमिट में कम से कम 60s;
+ * नवंबर 2026 (मालिक): Live टूटे = चुपचाप text मोड + Gemini TTS (न चले तो फ़ोन की आवाज़); पीछे सेहत-जाँच; लिमिट में कम से कम 60s;
  * ठीक होते ही अगली बात से फिर Live; Live और Text की कॉल / गलतियाँ अलग-अलग.
  */
 class LiveHealthTest {
@@ -96,7 +96,7 @@ class LiveHealthTest {
         assertEquals(ModeTrack.KEEP, ModeTrack.stat(ModeTrack.Ch.TEXT).recent.size)
     }
 
-    @Test fun firstSpokenPieceShorterForKokoro() {
+    @Test fun firstSpokenPieceShorterInBackup() {
         assertEquals(45, LiveHealth.cutLimit(0, local = false))             // पुराना (Gemini आवाज़) वही
         assertEquals(28, LiveHealth.cutLimit(0, local = true))
         assertEquals(170, LiveHealth.cutLimit(1, local = true))
@@ -117,7 +117,7 @@ class LiveHealthTest {
         assertTrue(s.contains("ModeTrack.switchTo(ModeTrack.Ch.TEXT"))
         assertTrue(s.contains("ModeTrack.switchTo(ModeTrack.Ch.LIVE"))
         assertTrue(s.contains("ModeTrack.error(ModeTrack.Ch.LIVE"))
-        assertTrue(s.contains("KokoroTtsEngine.warm(this)"))
+        assertFalse(s.contains("KokoroTtsEngine"))
         // जाँच Live सत्र / माइक नहीं खोलती, key URL में नहीं
         val net = src("LiveNet.kt")
         assertTrue(net.contains("header(\"x-goog-api-key\", key)"))
@@ -127,12 +127,23 @@ class LiveHealthTest {
         assertTrue(src("SettingsSystem.kt").contains("ModeTrack.text()"))
     }
 
-    /** Kokoro बैकअप: वाक्य क्रम से बनें (आगे वाला पहले lock न पकड़े), पीछे IO thread पर */
-    @Test fun kokoroSentencesSynthInOrderInBackground() {
+    /** बैकअप मोड: Gemini TTS पीछे IO thread पर; न चले / देर = तुरंत फ़ोन की आवाज़, फिर उस जवाब में आवाज़ नहीं बदलती */
+    @Test fun backupVoiceGeminiTtsThenPhoneVoice() {
         val sp = src("Speaker.kt")
-        assertTrue(sp.contains("val prev = if (localOnly) lastLocal else null"))
-        assertTrue(sp.contains("prev?.join()"))
-        assertTrue(sp.contains("}.also { if (localOnly) lastLocal = it }"))
         assertTrue(sp.contains("CoroutineScope(Dispatchers.IO + kotlinx.coroutines.SupervisorJob())"))
+        assertTrue(sp.contains("BackupVoice.waitMs(played)"))
+        assertTrue(sp.contains("if (!phoneOnly) { phoneOnly = true; markPhoneVoice() }"))
+        assertTrue(sp.contains("PhoneVoice.say(appCtx, chunk)"))
+        assertFalse(sp.contains("lastLocal"))
+        // pure नियम
+        assertTrue(BackupVoice.phoneFirst(haveKeys = false, online = true, now = 0, downUntil = 0))
+        assertTrue(BackupVoice.phoneFirst(haveKeys = true, online = false, now = 0, downUntil = 0))
+        assertTrue(BackupVoice.phoneFirst(haveKeys = true, online = true, now = 5, downUntil = 10))
+        assertFalse(BackupVoice.phoneFirst(haveKeys = true, online = true, now = 11, downUntil = 10))
+        assertEquals(1_000L + BackupVoice.DOWN_MS, BackupVoice.downUntil(500, 1_000L, 0L))
+        assertEquals(1_000L + BackupVoice.LIMIT_DOWN_MS, BackupVoice.downUntil(429, 1_000L, 0L))
+        assertEquals(99_999_999L, BackupVoice.downUntil(429, 1_000L, 99_999_999L))
+        assertTrue(BackupVoice.waitMs(false) <= 4_000L)          // पहली आवाज़ जल्दी (लंबी चुप्पी नहीं)
+        assertTrue(BackupVoice.waitMs(true) >= BackupVoice.waitMs(false))
     }
 }

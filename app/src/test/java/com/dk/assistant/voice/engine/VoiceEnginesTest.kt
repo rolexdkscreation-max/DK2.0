@@ -10,21 +10,19 @@ import org.junit.Test
 class VoiceEnginesTest {
     private fun src(name: String): String = listOf(java.io.File("src/main/java/com/dk/assistant/$name"), java.io.File("app/src/main/java/com/dk/assistant/$name"))
         .first { it.exists() }.readText()
-    private val all = setOf(VoiceEngines.GEMINI_TTS, VoiceEngines.KOKORO_TTS, VoiceEngines.LIVE_NATIVE)
+    private val all = setOf(VoiceEngines.GEMINI_TTS, VoiceEngines.LIVE_NATIVE)
 
     @Test fun switchingOnOneTurnsOthersOff() {
-        assertEquals(VoiceEngines.KOKORO_TTS, VoiceEngines.toggle(VoiceEngines.GEMINI_TTS, VoiceEngines.KOKORO_TTS, true, available = all))
-        assertEquals(VoiceEngines.LIVE_NATIVE, VoiceEngines.toggle(VoiceEngines.KOKORO_TTS, VoiceEngines.LIVE_NATIVE, true, available = all))
+        assertEquals(VoiceEngines.GEMINI_TTS, VoiceEngines.toggle(VoiceEngines.LIVE_NATIVE, VoiceEngines.GEMINI_TTS, true, available = all))
+        assertEquals(VoiceEngines.LIVE_NATIVE, VoiceEngines.toggle(VoiceEngines.GEMINI_TTS, VoiceEngines.LIVE_NATIVE, true, available = all))
     }
 
     @Test fun turningOffActiveFallsBackToDkLive() {
-        // v3.5+: डिफ़ॉल्ट DK लाइव (Gemini Live सीधी आवाज़), दूसरे नंबर पर Gemini TTS
-        assertEquals(VoiceEngines.LIVE_NATIVE, VoiceEngines.toggle(VoiceEngines.KOKORO_TTS, VoiceEngines.KOKORO_TTS, false, available = all))
         assertEquals(VoiceEngines.LIVE_NATIVE, VoiceEngines.toggle(VoiceEngines.GEMINI_TTS, VoiceEngines.GEMINI_TTS, false, available = all))
         // डिफ़ॉल्ट (DK लाइव) को बंद करो = दूसरा नंबर Gemini TTS (कोई इंजन न हो ऐसा नहीं)
         assertEquals(VoiceEngines.GEMINI_TTS, VoiceEngines.toggle(VoiceEngines.LIVE_NATIVE, VoiceEngines.LIVE_NATIVE, false, available = all))
         // किसी बंद वाले को बंद = कुछ नहीं बदलता
-        assertEquals(VoiceEngines.KOKORO_TTS, VoiceEngines.toggle(VoiceEngines.KOKORO_TTS, VoiceEngines.LIVE_NATIVE, false, available = all))
+        assertEquals(VoiceEngines.GEMINI_TTS, VoiceEngines.toggle(VoiceEngines.GEMINI_TTS, VoiceEngines.LIVE_NATIVE, false, available = all))
         // सिर्फ़ एक इंजन बचा = वही रहता है
         assertEquals(VoiceEngines.LIVE_NATIVE, VoiceEngines.toggle(VoiceEngines.LIVE_NATIVE, VoiceEngines.LIVE_NATIVE, false, available = setOf(VoiceEngines.LIVE_NATIVE)))
     }
@@ -32,56 +30,52 @@ class VoiceEnginesTest {
     @Test fun oldGeminiTtsDefaultMovesToDkLiveOnce() {
         assertEquals(VoiceEngines.LIVE_NATIVE, VoiceEngines.migrated(VoiceEngines.GEMINI_TTS, done = false))
         assertEquals(VoiceEngines.LIVE_NATIVE, VoiceEngines.migrated(null, done = false))
-        // कोई और इंजन खुद चुना था (जैसे पुराना Edge) = यह migration उसे नहीं छूता (Kokoro वाला अलग है, नीचे)
         assertEquals(VoiceEngines.OLD_EDGE_ID, VoiceEngines.migrated(VoiceEngines.OLD_EDGE_ID, done = false))
-        // एक बार हो गया = बाद में यूज़र ने Gemini TTS चुना तो वही रहे
         assertEquals(VoiceEngines.GEMINI_TTS, VoiceEngines.migrated(VoiceEngines.GEMINI_TTS, done = true))
     }
 
-    /** नवंबर 2026 (मालिक): पहले "DK लाइव डिफ़ॉल्ट" था - अब Kokoro डिफ़ॉल्ट (पहले Piper), DK लाइव = Direct Gemini Live Voice (बंद) */
-    @Test fun kokoroIsTheDefaultEngine() {
+    /** नवंबर 2026 (मालिक): Kokoro पूरी तरह हटाया - डिफ़ॉल्ट Direct Gemini Live Voice (DK लाइव), बैकअप Gemini TTS */
+    @Test fun directLiveIsTheDefaultEngine_kokoroGone() {
         val native = src("voice/engine/LiveNativeEngine.kt"); val tts = src("voice/engine/GeminiTtsEngine.kt")
-        val kokoro = src("voice/engine/KokoroTtsEngine.kt")
-        assertTrue(kokoro.contains("override val defaultOn = true"))
-        assertTrue(native.contains("override val defaultOn = false"))
+        assertTrue(native.contains("override val defaultOn = true"))
         assertTrue(tts.contains("override val defaultOn = false"))
         assertTrue(native.contains("override val title = \"DK लाइव"))
         assertTrue(native.contains("Direct Gemini Live Voice"))
-        // स्क्रीन पर क्रम: Kokoro, DK लाइव, Gemini TTS
         val list = src("voice/engine/VoiceEngines.kt")
-        assertTrue(list.indexOf("engine.KokoroTtsEngine\"") in 0 until list.indexOf("engine.LiveNativeEngine\""))
+        assertFalse(list.contains("engine.KokoroTtsEngine\""))
         assertTrue(list.indexOf("engine.LiveNativeEngine\"") in 0 until list.indexOf("engine.GeminiTtsEngine\""))
+        for (f in listOf("src/main/java/com/dk/assistant/voice/engine/KokoroTtsEngine.kt", "app/src/main/java/com/dk/assistant/voice/engine/KokoroTtsEngine.kt"))
+            assertFalse(f, java.io.File(f).exists())
+        // APK में Kokoro model / sherpa-onnx नहीं (साइज़ ~140 MB की असली वजह)
+        val gradle = listOf(java.io.File("build.gradle.kts"), java.io.File("app/build.gradle.kts")).first { it.exists() }.readText()
+        for (bad in listOf("sherpa", "kokoro_model", "model.onnx", "dkFetch")) assertFalse(bad, gradle.contains(bad))
+        assertFalse(gradle.contains("implementation(files(sherpaAar))"))
+        assertFalse(gradle.contains("kokoroAssets"))
     }
 
-    @Test fun kokoroBecomesDefaultOnceThenUserChoiceStays() {
-        // पहली बार: जो भी था -> Kokoro (फ़ोन पर चल सके तो)
-        assertEquals(VoiceEngines.KOKORO_TTS, VoiceEngines.kokoroMigrated(VoiceEngines.LIVE_NATIVE, done = false, kokoroOk = true))
-        assertEquals(VoiceEngines.KOKORO_TTS, VoiceEngines.kokoroMigrated(null, done = false, kokoroOk = true))
-        // बाद में यूज़र ने Direct Live / Gemini TTS चुना = वही रहे
-        assertEquals(VoiceEngines.LIVE_NATIVE, VoiceEngines.kokoroMigrated(VoiceEngines.LIVE_NATIVE, done = true, kokoroOk = true))
-        assertEquals(VoiceEngines.GEMINI_TTS, VoiceEngines.kokoroMigrated(VoiceEngines.GEMINI_TTS, done = true, kokoroOk = true))
-        // Kokoro इस फ़ोन पर नहीं चलता = जो था वही; हटाया Edge = DK लाइव (चुप नहीं)
-        assertEquals(VoiceEngines.GEMINI_TTS, VoiceEngines.kokoroMigrated(VoiceEngines.GEMINI_TTS, done = false, kokoroOk = false))
-        assertEquals(VoiceEngines.LIVE_NATIVE, VoiceEngines.kokoroMigrated(VoiceEngines.OLD_EDGE_ID, done = false, kokoroOk = false))
-        assertEquals(VoiceEngines.KOKORO_TTS, VoiceEngines.kokoroMigrated(VoiceEngines.OLD_EDGE_ID, done = true, kokoroOk = true))
-        // Piper हटाया: पुरानी Piper पसंद = Kokoro (न चले तो DK लाइव)
-        assertEquals(VoiceEngines.KOKORO_TTS, VoiceEngines.kokoroMigrated(VoiceEngines.OLD_PIPER_ID, done = true, kokoroOk = true))
-        assertEquals(VoiceEngines.LIVE_NATIVE, VoiceEngines.kokoroMigrated(VoiceEngines.OLD_PIPER_ID, done = true, kokoroOk = false))
-        assertEquals("kokoro_tts", VoiceEngines.KOKORO_TTS)
-        assertTrue(VoiceEngines.OLD_PIPER_ID != VoiceEngines.KOKORO_TTS)
+    @Test fun directLiveBecomesDefaultOnceThenUserChoiceStays() {
+        // पहली बार: जो भी था -> Direct Live
+        assertEquals(VoiceEngines.LIVE_NATIVE, VoiceEngines.directMigrated(VoiceEngines.OLD_KOKORO_ID, done = false))
+        assertEquals(VoiceEngines.LIVE_NATIVE, VoiceEngines.directMigrated(VoiceEngines.GEMINI_TTS, done = false))
+        assertEquals(VoiceEngines.LIVE_NATIVE, VoiceEngines.directMigrated(null, done = false))
+        // बाद में यूज़र ने Gemini TTS चुना = वही रहे
+        assertEquals(VoiceEngines.GEMINI_TTS, VoiceEngines.directMigrated(VoiceEngines.GEMINI_TTS, done = true))
+        assertEquals(VoiceEngines.LIVE_NATIVE, VoiceEngines.directMigrated(VoiceEngines.LIVE_NATIVE, done = true))
+        // हटाए इंजन (Kokoro / Piper / Edge) = हमेशा Direct Live
+        for (old in listOf(VoiceEngines.OLD_KOKORO_ID, VoiceEngines.OLD_PIPER_ID, VoiceEngines.OLD_EDGE_ID))
+            assertEquals(old, VoiceEngines.LIVE_NATIVE, VoiceEngines.directMigrated(old, done = true))
+        assertEquals("kokoro_tts", VoiceEngines.OLD_KOKORO_ID)
     }
 
-    @Test fun directLiveSwitchGoesBackToKokoro() {
-        val p = VoiceEngines.KOKORO_TTS; val l = VoiceEngines.LIVE_NATIVE; val g = VoiceEngines.GEMINI_TTS
-        assertEquals(l, VoiceModeController.next(p, l, true, all))          // Direct चालू
-        assertEquals(p, VoiceModeController.next(l, l, false, all))         // Direct बंद = Kokoro
-        assertEquals(p, VoiceModeController.next(g, g, false, all))         // Gemini TTS बंद = Kokoro
-        assertEquals(l, VoiceModeController.next(p, p, false, all))         // Kokoro बंद = Direct (कोई तो बोले)
-        assertEquals(g, VoiceModeController.next(p, g, true, all))
-        // Kokoro इस फ़ोन पर नहीं = Direct बंद करने पर भी Direct ही (Kokoro पर नहीं जाता)
-        assertEquals(l, VoiceModeController.next(l, l, false, setOf(l, g)))
+    @Test fun directLiveSwitchOffGoesToGeminiTts() {
+        val l = VoiceEngines.LIVE_NATIVE; val g = VoiceEngines.GEMINI_TTS
+        assertEquals(l, VoiceModeController.next(g, l, true, all))          // Direct चालू
+        assertEquals(g, VoiceModeController.next(l, l, false, all))         // Direct बंद = Gemini TTS (बैकअप)
+        assertEquals(l, VoiceModeController.next(g, g, false, all))         // Gemini TTS बंद = Direct
+        assertEquals(g, VoiceModeController.next(l, g, true, all))
+        assertEquals(l, VoiceModeController.next(l, l, false, setOf(l)))    // अकेला = वही
         assertEquals(VoiceModeController.Mode.DIRECT_LIVE, VoiceModeController.modeOf(l))
-        assertEquals(VoiceModeController.Mode.KOKORO, VoiceModeController.modeOf(p))
+        assertEquals(VoiceModeController.Mode.DIRECT_LIVE, VoiceModeController.modeOf(VoiceEngines.OLD_KOKORO_ID))
         assertEquals(VoiceModeController.Mode.GEMINI_TTS, VoiceModeController.modeOf(g))
     }
 

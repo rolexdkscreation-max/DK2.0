@@ -227,25 +227,47 @@ internal fun GeminiLive.onAttemptMsg(r: Race, a: Attempt, w: WebSocket, text: St
 }
 
 /**
- * नवंबर 2026 (मालिक): goAway = server जल्द काटेगा. कटने का इंतज़ार नहीं: DK बोल रहा/काम चल रहा हो तो अभी पीछे से
- * उसी बातचीत (handle) का नया connection तैयार (standby). DK चुप होते ही उसी पर (0 ms); बीच में बात हुई (handle बदला)
- * तो ताज़ा handle से. पुराना जवाब पूरा होने के बाद ही पुराना बंद (नीचे loop का goAway).
+ * नवंबर 2026 (मालिक): goAway = server जल्द काटेगा. कटने का इंतज़ार नहीं: DK बोल रहा हो या चुप - अभी पीछे से
+ * उसी बातचीत (handle) का नया connection तैयार (standby). नया तैयार होते ही उसी पर (0 ms); बीच में बात हुई (handle बदला)
+ * तो ताज़ा handle से. पुराना जवाब पूरा होने के बाद ही पुराना बंद (नीचे loop का goAway). नियम: [LiveSpare].
  */
 internal fun GeminiLive.onGoAway(timeLeft: String) {
     val left = LiveStay.timeLeftMs(timeLeft)
     log("goAway: ${timeLeft.ifBlank { "?" }} बाकी" + if (left >= 0) " (${left} ms)" else "")
+    goAwayDeadline = System.currentTimeMillis() + LiveSpare.goAwayLeft(left)
     goAway = true
-    val busy = turnActive || isPlaying() || toolJobs.isNotEmpty() || generating
-    if (!busy || stopped || parked != null || handle == null || curKeys.isEmpty()) return
+    prepareSpare("goAway", idle = !(turnActive || isPlaying() || toolJobs.isNotEmpty() || generating))
+}
+
+/** standby (दूसरा connection) उसी ताज़ा बातचीत से बना और ज़िंदा है? */
+internal fun GeminiLive.spareReady(): Boolean = parked?.let {
+    !it.closed.isCompleted && System.currentTimeMillis() - it.at < PARK_MS && it.resumedFrom != null && it.resumedFrom == handle
+} == true
+
+/**
+ * नवंबर 2026 (मालिक): कटने से पहले ही दूसरा connection - goAway पर, या connection [LiveSpare.PREPARE_AT_MS] पुराना होते ही.
+ * resume handle से बनता है = वही बातचीत, वही याद. लौटाता है: तैयारी शुरू हुई?
+ */
+internal fun GeminiLive.prepareSpare(why: String, idle: Boolean): Boolean {
+    val now = System.currentTimeMillis()
+    val p = parked
+    val alive = p != null && !p.closed.isCompleted && now - p.at < PARK_MS
+    val fresh = alive && p!!.resumedFrom != null && p.resumedFrom == handle
+    val stale = alive && !fresh
+    if (!LiveSpare.shouldPrepare(stopped, handle != null, curKeys.isNotEmpty(), fresh, stale, idle, now - spareTriedAt)) return false
+    if (p != null) { parked = null; closeWs(p.ws, "standby पुराना (बातचीत आगे बढ़ी)") }
     val h = handle; val m = model; val k = keyIdx
-    parkHandle = h
-    log("goAway: DK बोल रहा है - पीछे से उसी बातचीत का नया connection तैयार कर रहा हूँ")
-    try { startRace(curKeys, listOf(m) + curModels.filter { it != m }, live = false, resumeId = LiveRace.Combo(m, k).id) }
-    catch (e: Exception) { log("goAway: पीछे का connection शुरू नहीं हुआ: ${e.message}") }
+    parkHandle = h; spareTriedAt = now; spareWanted = true
+    log("$why: पीछे से उसी बातचीत का दूसरा connection पहले से तैयार कर रहा हूँ (बिना रुकावट बदलेगा)")
+    return try { startRace(curKeys, listOf(m) + curModels.filter { it != m }, live = false, resumeId = LiveRace.Combo(m, k).id); true }
+    catch (e: Exception) { spareWanted = false; log("$why: पीछे का connection शुरू नहीं हुआ: ${e.message}"); false }
 }
 
 /** दौड़ जीती पर run() इंतज़ार छोड़ चुका था - standby में रखो; अगली बार Live इसे तुरंत (0 ms) लेता है */
 internal fun GeminiLive.parkRaced(a: Attempt, w: WebSocket) {
+    // पहले से तैयार किया दूसरा connection (prepareSpare) पुरानी बातचीत से नहीं जुड़ा = नई बातचीत होती (याद टूटती) - मत रखो
+    if (spareWanted && !a.resume) { spareWanted = false; closeWs(w, "standby: बातचीत वहीं से नहीं जुड़ी"); log("पीछे का connection नई बातचीत बनता - छोड़ा (अगली बार फिर)"); return }
+    spareWanted = false
     parked?.let { old -> closeWs(old.ws, "standby बदला") }
     val p = Parked(w, a.closed, a.c.model, System.currentTimeMillis(), connSplit, a.text, connLiveVer, a.c.keyIdx,
         resumedFrom = if (a.resume) parkHandle else null)
