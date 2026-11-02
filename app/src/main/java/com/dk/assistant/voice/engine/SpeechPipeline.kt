@@ -90,7 +90,8 @@ class SpeechPipeline(private val ctx: Context, private val hooks: Hooks) {
     /** नया जवाब शुरू */
     fun begin(e: VoiceEngine) {
         engine = e
-        synchronized(chunker) { chunker.reset() }
+        // नवंबर 2026: Piper (फ़ोन में ही) = छोटा पहला टुकड़ा -> बात खत्म होते ही पहली आवाज़ (TextChunker.LOCAL देखें)
+        synchronized(chunker) { chunker.reset(profileFor(e.id)) }
         synchronized(spoken) { spoken.setLength(0) }
         firstPending = true
         turnAt = System.currentTimeMillis(); lastFeedAt = turnAt
@@ -191,10 +192,11 @@ class SpeechPipeline(private val ctx: Context, private val hooks: Hooks) {
         }
     }
 
-    /** पहला टुकड़ा बना ही नहीं और text 250 ms से रुका है - जितना है (≥3 शब्द) अभी बोल दो */
+    /** पहला टुकड़ा बना ही नहीं और text रुका है (Piper 150 ms / बाकी 250 ms) - जितना है (≥2 / ≥3 शब्द) अभी बोल दो */
     private fun stallCheck() {
-        if (!firstPending || System.currentTimeMillis() - lastFeedAt < 250) return
-        val p = synchronized(chunker) { chunker.flushFirstIfStalled(3) } ?: return
+        val pr = chunker.profile
+        if (!firstPending || System.currentTimeMillis() - lastFeedAt < pr.stallMs) return
+        val p = synchronized(chunker) { chunker.flushFirstIfStalled(pr.stallMin) } ?: return
         enqueue(p)
     }
 
@@ -292,6 +294,10 @@ class SpeechPipeline(private val ctx: Context, private val hooks: Hooks) {
     }
 
     companion object {
+        /** इंजन के हिसाब से टुकड़ों का नाप: फ़ोन में ही बनने वाली आवाज़ (Piper) = छोटा पहला टुकड़ा */
+        fun profileFor(engineId: String): TextChunker.Profile =
+            if (engineId == VoiceEngines.PIPER_TTS) TextChunker.LOCAL else TextChunker.STANDARD
+
         /** टुकड़े के बाद ठहराव - हर बार एक-सा (आवाज़ की लय बनी रहे) */
         fun pauseMs(t: String): Int {
             val c = t.trimEnd().trimEnd(')', '"', '\'', '”', '’').lastOrNull() ?: return 0

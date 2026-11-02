@@ -11,18 +11,40 @@ package com.dk.assistant.voice.engine
  * बिना Android के (JVM test में चलता है).
  */
 class TextChunker(
-    private val firstSoft: Int = FIRST_SOFT,
-    private val firstMax: Int = FIRST_MAX,
-    private val nextMin: Int = NEXT_MIN,
-    private val nextSoft: Int = NEXT_SOFT,
-    private val nextMax: Int = NEXT_MAX,
+    firstSoft: Int = FIRST_SOFT,
+    firstMax: Int = FIRST_MAX,
+    nextMin: Int = NEXT_MIN,
+    nextSoft: Int = NEXT_SOFT,
+    nextMax: Int = NEXT_MAX,
 ) {
+    /**
+     * नवंबर 2026 (मालिक: "बात खत्म होते ही जवाब शुरू"): टुकड़ों का नाप इंजन के हिसाब से.
+     * Piper (फ़ोन में ही) पूरा टुकड़ा बनाकर ही पहली आवाज़ देता है, और बनाने का समय लंबाई के साथ बढ़ता है
+     * (sandbox नाप, hi_IN-priyamvada-medium int8: 3 शब्द ≈ 0.22 s, 8 शब्द ≈ 0.6-0.7 s, 14 शब्द ≈ 1.3-1.4 s - फ़ोन पर इससे ज़्यादा).
+     * इसलिए [LOCAL]: पहला टुकड़ा 3-5 शब्द, दूसरा थोड़ा बड़ा (पहला बजते-बजते बन जाए), फिर 16 तक -
+     * हर अगला टुकड़ा पिछले के बजने से पहले बन जाए, बीच में चुप्पी नहीं.
+     * second* = दूसरा टुकड़ा (STANDARD में = next, यानी पुराना व्यवहार बिल्कुल वही).
+     */
+    data class Profile(
+        val firstSoft: Int, val firstMax: Int,
+        val secondMin: Int, val secondSoft: Int, val secondMax: Int,
+        val nextMin: Int, val nextSoft: Int, val nextMax: Int,
+        /** पहला टुकड़ा नहीं बना और text इतने ms से रुका = जितना है बोल दो */
+        val stallMs: Long, val stallMin: Int,
+    )
+
+    var profile = Profile(firstSoft, firstMax, nextMin, nextSoft, nextMax, nextMin, nextSoft, nextMax, STALL_MS, STALL_MIN)
+        private set
+
     private val buf = StringBuilder()
     /** अब तक कितने टुकड़े निकले (0 = पहला अभी बाकी) */
     var emitted = 0
         private set
 
     fun reset() { buf.setLength(0); emitted = 0 }
+
+    /** नया जवाब, नए नाप के साथ (इंजन बदला) */
+    fun reset(p: Profile) { profile = p; reset() }
 
     /** नया text जोड़ो, जो टुकड़े पूरे हो गए वे लौटाओ */
     fun feed(t: String): List<String> {
@@ -68,7 +90,14 @@ class TextChunker(
     /** कहाँ काटें (index, उस char के बाद). 0 = अभी नहीं */
     private fun findCut(final: Boolean): Int {
         val s = buf
+        val p = profile
         val first = emitted == 0
+        val second = emitted == 1
+        val nextMin = if (second) p.secondMin else p.nextMin
+        val nextSoft = if (second) p.secondSoft else p.nextSoft
+        val nextMax = if (second) p.secondMax else p.nextMax
+        val firstSoft = p.firstSoft
+        val firstMax = p.firstMax
         var wordsSoFar = 0
         var inWord = false
         var i = 0
@@ -113,6 +142,19 @@ class TextChunker(
         const val NEXT_MIN = 6
         const val NEXT_SOFT = 12
         const val NEXT_MAX = 28
+        const val STALL_MS = 250L
+        const val STALL_MIN = 3
+
+        /** इंटरनेट वाले इंजन (Gemini TTS / Worker): पुराना नाप - हर टुकड़ा = एक request */
+        val STANDARD = Profile(FIRST_SOFT, FIRST_MAX, NEXT_MIN, NEXT_SOFT, NEXT_MAX, NEXT_MIN, NEXT_SOFT, NEXT_MAX, STALL_MS, STALL_MIN)
+
+        /** फ़ोन में ही बनने वाली आवाज़ (Piper): पहला बहुत छोटा, फिर धीरे-धीरे बड़ा */
+        val LOCAL = Profile(
+            firstSoft = 3, firstMax = 5,
+            secondMin = 4, secondSoft = 7, secondMax = 10,
+            nextMin = 5, nextSoft = 10, nextMax = 16,
+            stallMs = 150L, stallMin = 2,
+        )
         private val HARD = charArrayOf('।', '॥', '.', '!', '?', '…', '\n').toSet()
         private val SOFT = charArrayOf(',', ';', ':', '—', '–', '،').toSet()
         private val CLOSERS = charArrayOf(')', '"', '\'', '”', '’', ']').toSet()
