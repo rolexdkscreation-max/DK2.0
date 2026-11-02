@@ -185,8 +185,23 @@ When you have read enough, reply in plain text (NO JSON) in Hindi with these sho
 2) यह कैसे काम करता है - step by step, the real flow: which file and function does what (write "path: function"), in order.
 3) क्यों / कहाँ दिक्कत हो सकती है - only what the code you READ shows. Not sure = write "पक्का नहीं" and what must be checked.
 4) For a check ("जांच करो"/"चेक करो"): every important part you checked - "✓ ठीक" / "⚠ खतरा" / "✗ गलती" with path:line and one line why.
-5) आगे क्या करें - one concrete next step (e.g. "ठीक करवाना हो तो बोलें: …").
+5) बग ढूँढना हो ("बग कहाँ है / क्यों नहीं चलता / ढूँढो") - trace it like a debugger: start from what the owner does on the phone, follow every function call in order (path: function), and stop at the exact place (path:line) where the behaviour goes wrong. Write: बग कहाँ है (path:line), जड़ क्या है (why that line is wrong), सबूत (which line you read proves it), कैसे पक्का करें (what to do on the phone / which log line will show it), ठीक करने का तरीका - in WORDS only (which function, what must change), never code.
+6) आगे क्या करें - one concrete next step (e.g. "ठीक करवाना हो तो बोलें: …").
+You NEVER write code - no code blocks, no FIND/REPLACE, at most a function name or one short line quoted from the file.
 Teach like a patient senior engineer explaining to the owner (not a programmer): simple words, explain every technical word in a few words. Be complete - do not skip any part of the question. Never invent a file, function, line or result; if something could not be read, say so."""
+
+        /** नवंबर 2026: काम ख़त्म होने पर समझाने वाला - असली diff से, मालिक के लिए (सिर्फ़ "कौन सी फ़ाइल बदली" नहीं) */
+        const val RESULT = """You are the EXPLAINER (समझाने वाला) of the DK coding team. The team has just finished (or stopped) a task. Explain the RESULT to the owner (not a programmer) in simple Hindi, like a patient senior engineer sitting next to him. You NEVER write code: no code blocks, no FIND/REPLACE - at most a function name or one short quoted line.
+Use ONLY the REAL DIFF, the bugs, the result and the checks you are given. Never invent a change, a test result or a behaviour. If the diff does not show something, write "पक्का नहीं".
+Reply in plain text (NO JSON) with these short headings:
+1) सीधी बात - 2 lines: what the owner asked and whether it is really done (use RESULT exactly - passed / failed / not confirmed).
+2) क्या बदला और क्यों - for EVERY changed file: पहले क्या होता था -> अब क्या होगा -> यह बदलाव माँग के किस हिस्से के लिए है. Write "path: function".
+3) अब यह कैसे चलेगा - step by step from the owner's side: वह फ़ोन पर क्या करेगा -> app के अंदर कौन सा function क्या करेगा -> स्क्रीन पर / आवाज़ में क्या दिखेगा/सुनाई देगा.
+4) बग कहाँ था और कैसे मिला - only if there was a bug: exact place (path:line or function), जड़, and how the team found it. No bug = write "कोई बग नहीं था, यह नया काम था".
+5) आप खुद कैसे जाँचें - 2-4 concrete steps on the phone and what the owner should see if it works (and what it means if he sees something else).
+6) ध्यान रखें - any risk you SEE in the diff (a removed check/retry/fallback, something that can break an old feature, a new value that is never used). Nothing seen = "कोई ख़तरा नहीं दिखा".
+7) अगर काम रुका - only when RESULT is not passed: exactly what blocked it, in simple words, and the next step ("आगे करो" / what the owner must decide).
+Explain every technical word in a few simple words. Be complete but short - no filler."""
 
         const val RULES = """TEAM WORK RULES (for every agent):
 - Work step by step and very carefully; check each step before the next. No shortcuts, no guessing.
@@ -242,7 +257,13 @@ Teach like a patient senior engineer explaining to the owner (not a programmer):
 
     // ------------------------------------------------------------------ v5.1: समझाने वाला
     private val explainWords = listOf("समझाओ", "समझा दो", "समझाइए", "समझाना", "समझा", "explain", "samjhao", "samjha do", "जांच करो", "जाँच करो",
-        "जांच कर", "जाँच कर", "चेक करो", "check karo", "कैसे काम करता", "कैसे काम करती", "how does", "how it works")
+        "जांच कर", "जाँच कर", "चेक करो", "check karo", "कैसे काम करता", "कैसे काम करती", "how does", "how it works",
+        "review करो", "रिव्यू करो")
+    /**
+     * नवंबर 2026: "बग ढूँढो / कहाँ है / पता करो" = पहले समझाने वाला असली कोड पढ़कर बताए बग कहाँ और क्यों (कोड नहीं लिखता),
+     * फिर पहले जैसा टीम काम आगे (डिबगर/सुधार) - पुराना रास्ता नहीं बदला, बस समझ पहले मिलती है
+     */
+    private val findWords = listOf("ढूँढो", "ढूंढो", "ढूँढ कर बताओ", "ढूंढ कर बताओ", "पता करो", "बग कहाँ", "बग कहां", "dhundho", "find the bug")
     private val changeWords = listOf("बनाओ", "बना दो", "जोड़ो", "जोड़ दो", "जोड़", "हटाओ", "हटा दो", "बदलो", "बदल दो", "ठीक करो", "ठीक कर दो", "सुधारो",
         "fix", "add ", "remove", "change", "implement", "लगाओ", "लगा दो", "डालो", "डाल दो", "बढ़ाओ", "कम करो", "update")
 
@@ -258,7 +279,7 @@ Teach like a patient senior engineer explaining to the owner (not a programmer):
      * v5.2: या एक ही बात में सवाल भी और काम भी ("यह क्यों टूटा? ठीक करो") = पहले समझाने वाला जवाब दे, फिर प्लानर.
      */
     fun wantsExplain(task: String): Boolean = task.lowercase().let { t ->
-        explainWords.any { t.contains(it) } || (asksQuestion(task) && changeWords.any { t.contains(it) })
+        explainWords.any { t.contains(it) } || findWords.any { t.contains(it) } || (asksQuestion(task) && changeWords.any { t.contains(it) })
     }
 
     /** सिर्फ़ समझाना/जाँचना है, कुछ बदलना नहीं ("पूरा कोड जांच करो और समझाओ") → सवाल, समझाने वाला */

@@ -8,6 +8,10 @@ package com.dk.assistant
  * नए projects के लिए: gemini-3.5-flash-lite या gemini-3.8-flash।
  */
 object GeminiModels {
+    /** नवंबर 2026: 400 + संदेश में "think" (thinkingConfig / thinking_level समझा नहीं) = उसी मॉडल से बिना thinking दोबारा. API key की गलती नहीं */
+    fun thinkingRejected(code: Int, msg: String, thinkingOn: Boolean): Boolean =
+        thinkingOn && code == 400 && msg.contains("think", ignoreCase = true) && !msg.contains("API key", ignoreCase = true)
+
     /** Coding/लंबे काम के लिए सबसे अच्छा Flash (software engineering + agents) */
     const val CODER = "gemini-3.8-flash"
     /** v3.6: हल्के एजेंट (प्रॉम्प्ट इंजीनियर, मैनेजर, गिट, टेस्टर, QA...) - जल्दी, धीमे नेटवर्क पर भी */
