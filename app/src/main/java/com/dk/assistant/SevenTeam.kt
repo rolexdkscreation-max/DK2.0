@@ -234,7 +234,7 @@ class SevenTeam(
             if (ans.isBlank()) ans = askJson(Agent.MANAGER, "USER QUESTION:\n$task\n\nThis is a question (kind=question). Reply ONLY JSON {\"kind\":\"question\",\"answer\":\"simple Hindi answer\"}\n" +
                 "FILES IN WORKSPACE (${fileList.size}):\n" + fileList.take(listMax).joinToString("\n"))?.optString("answer").orEmpty().trim()
             // v5.1 (मालिक: "कोडिंग एजेंट सवाल का जवाब अच्छे से नहीं देता"): मैनेजर काम समझाने वाले को सौंपता है - वह असली कोड पढ़कर गहराई से समझाता है
-            val deep = explain(task, ans)
+            val deep = explain(task, ans, Seven.handoff(m))
             if (deep != null) return SevenPlus.Understanding(kind, brief0, "", "", emptyList(), emptyList(), emptyList(), emptyList(), deep, mediaNotes = mediaNotes)
             ev(Agent.MANAGER, "यह सवाल है — जवाब मैं (मैनेजर) दे रहा हूँ, कोड नहीं बदलेगा")
             return SevenPlus.Understanding(kind, brief0, "", "", emptyList(), emptyList(), emptyList(), emptyList(), ans.ifBlank { Seven.NO_ANSWER_HI }, mediaNotes = mediaNotes)
@@ -244,7 +244,7 @@ class SevenTeam(
         val reply0 = m?.optString("reply").orEmpty().trim()
         if (reply0.isNotBlank()) ev(Agent.MANAGER, "आपके सवालों का जवाब:\n$reply0")
         // v5.1: काम के साथ "समझाओ" भी कहा = पहले समझाने वाला असली कोड से समझाए, फिर काम
-        if (Seven.wantsExplain(task)) explain(task, reply0)?.let { ev(Agent.EXPLAINER, "समझ (असली कोड से):\n$it") }
+        if (Seven.wantsExplain(task)) explain(task, reply0, Seven.handoff(m))?.let { ev(Agent.EXPLAINER, "समझ (असली कोड से):\n$it") }
         ev(Agent.MANAGER, if (k == Seven.Kind.BUG) "यह बग ठीक करने का काम लगता है → पहले मैं आपकी बात साफ़ काम (spec) में बदलूँगा, फिर प्लानर जड़ ढूँढकर लिखेगा"
             else "यह नया फ़ीचर/बदलाव लगता है → पहले मैं साफ़ करूँगा कि ठीक-ठीक क्या और कहाँ, फिर प्लानर")
         ev(Agent.PROMPT, "आपकी बात को साफ़ काम में बदल रहा हूँ — रिपो का नक्शा देखकर जगह भी ढूँढ रहा हूँ…")
@@ -285,13 +285,15 @@ class SevenTeam(
      * v5.1: समझाने वाला - मैनेजर का सौंपा सवाल / "समझाओ" / "जांच करो"। असली कोड खोजता-पढ़ता है, फिर आसान हिंदी में
      * गहरा, step-by-step जवाब (फ़ाइल: function के साथ)। कोड कभी नहीं बदलता। AI न चले = null (मैनेजर का छोटा जवाब बचता है)।
      */
-    private suspend fun explain(question: String, quick: String): String? {
-        ev(Agent.MANAGER, "यह समझाने का काम है → ${Agent.EXPLAINER.icon} ${Agent.EXPLAINER.hi} को सौंपा (असली कोड पढ़कर गहराई से समझाएगा, कोड नहीं बदलेगा)")
+    private suspend fun explain(question: String, quick: String, handoff: String = ""): String? {
+        ev(Agent.MANAGER, "यह समझाने का काम है → ${Agent.EXPLAINER.icon} ${Agent.EXPLAINER.hi} को सौंपा (असली कोड पढ़कर गहराई से समझाएगा, कोड नहीं बदलेगा)" +
+            if (handoff.isNotBlank()) "\nमैंने सवाल ऐसे समझा:\n$handoff" else "")
         ev(Agent.EXPLAINER, "असली कोड ढूँढ रहा हूँ…")
         return try {
             val ws = try { workspace() } catch (e: Exception) { if (e is kotlinx.coroutines.CancellationException) throw e; emptyMap() }
             val fileList = files.list()
             val msgs = mutableListOf("user" to ("OWNER'S QUESTION (his own words):\n$question\n" +
+                (if (handoff.isNotBlank()) "\nMANAGER'S HANDOFF (the manager understood the question - explain EVERY point below, step by step, in full detail):\n$handoff\n" else "") +
                 (if (quick.isNotBlank()) "\nMANAGER'S QUICK NOTE (may be incomplete - verify in the code):\n$quick\n" else "") +
                 (if (mediaNotes.isNotBlank()) "\nPHOTO/VIDEO NOTES:\n$mediaNotes\n" else "") +
                 "\nREPO MAP (file: classes / functions / ids):\n" + SevenPlus.RepoMap.build(ws, maxOf(PROMPT_MAP_CHARS, mapChars)) +

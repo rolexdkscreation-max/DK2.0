@@ -113,4 +113,25 @@ class CoderResultExplainTest {
         val src = listOf(java.io.File("src/main/java/com/dk/assistant/AiClients.kt"), java.io.File("app/src/main/java/com/dk/assistant/AiClients.kt")).first { it.exists() }.readText()
         assertTrue(src.contains("GeminiModels.thinkingRejected(e.code, e.message.orEmpty(), thinking)") && src.contains("streamOnce(m, system, history, prompt, false)"))
     }
+
+    // ---- मालिक: "मैनेजर काम समझेगा, समझकर समझाने वाले को बताएगा; समझाने वाला कदम-दर-कदम पूरा समझाए"
+    @Test fun managerUnderstandsQuestion_thenHandsEveryPointToExplainer() = runBlocking {
+        val calc2 = "package app\n\nfun add(a: Int, b: Int) = a + b\n\nfun twice(x: Int) = add(x, x)\n"
+        val mgr = """{"kind":"question","answer":"छोटा","handoff":{"wants":"twice() अंदर से कैसे चलता है","points":["twice() किसे बुलाता है","add() क्या लौटाता है"],"look":["src/Calc.kt: twice"]}}"""
+        val deep = "1) सीधा जवाब: twice(x) = add(x, x).\n2) यह कैसे काम करता है: कदम 1: twice() -> कदम 2: add()"
+        val ai = FakeAi(Agent.MANAGER to mgr, Agent.EXPLAINER to deep)
+        val events = mutableListOf<String>()
+        val u = SevenTeam(ai, MemoryFiles(mapOf("src/Calc.kt" to calc2)), FakeGit(ArrayDeque()), full = true) { a, t -> events.add("${a.name}:$t") }
+            .understand("twice() कैसे काम करता है? समझाओ")
+        assertEquals(deep, u.answer)
+        assertEquals(listOf(Agent.MANAGER, Agent.EXPLAINER), ai.calls)                 // कोई अतिरिक्त AI कॉल नहीं
+        val got = ai.lastUser[Agent.EXPLAINER]!!
+        assertTrue(got, got.contains("MANAGER'S HANDOFF") && got.contains("1. twice() किसे बुलाता है") && got.contains("2. add() क्या लौटाता है") &&
+            got.contains("कहाँ से पढ़ना शुरू करें: src/Calc.kt: twice"))
+        assertTrue(events.any { it.startsWith("MANAGER:") && it.contains("मैंने सवाल ऐसे समझा") })   // मालिक को भी दिखे
+        assertTrue(ai.prompts[Agent.MANAGER]!!.contains("\"handoff\""))
+        assertTrue(ai.prompts[Agent.EXPLAINER]!!.contains("कदम-दर-कदम") && ai.prompts[Agent.EXPLAINER]!!.contains("explain EVERY one of its points"))
+        assertEquals("", Seven.handoff(null))
+        assertEquals("", Seven.handoff(org.json.JSONObject("""{"handoff":{"look":["x"]}}""")))
+    }
 }
