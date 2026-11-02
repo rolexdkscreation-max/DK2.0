@@ -37,6 +37,17 @@ object LiveFast {
         return q
     }
 
+    /**
+     * नवंबर 2026 (DKI-87912D): ये काम छोटे और पलटने लायक हैं - बात खत्म होते ही. बाकी (app में खोज, ऐप खोलना,
+     * वीडियो चलाना...) आधी बात पर न चलें: [SETTLE_MS] और चुप्पी + caption वही रहे तभी.
+     */
+    private val INSTANT = setOf("volume", "media", "torch", "speaker", "screen_view", "panel", "lock", "unlock", "back", "home",
+        "recents", "scroll", "notifications", "quick_settings", "answer_call", "end_call", "who_calls", "screenshot_save", "show_face")
+    const val SETTLE_MS = 700L
+    fun settleMs(type: String): Long = if (type in INSTANT) 0L else SETTLE_MS
+    /** काम बीच में रद्द हुआ (आप आगे बोले) - गलती नहीं */
+    fun cancelled(r: String) = r.contains("was cancelled", true) || r.contains("JobCancellationException")
+
     fun ok(type: String, r: String) = !r.startsWith("ERROR") && !r.startsWith("ASK:") && !r.startsWith("STEP_FAILED") &&
         !(type == "youtube_play" && !r.startsWith("PLAYING") && !r.startsWith("VIDEO_OPENED")) &&
         !(type == "delete_media" && !r.startsWith("DELETED:"))
@@ -123,6 +134,8 @@ object LiveFast {
         }
 
         fun reset() { last = null }
+        /** यह काम रद्द हुआ - Gemini का phone_task इसका (रद्द) नतीजा न ले, पूरा काम खुद करे */
+        @Synchronized fun cancel(q: QuickCommands.Quick) { if (last?.key == q.action.toString()) last = null }
 
         companion object { const val NOT_SAME = "\u0000not-same" }
     }

@@ -53,6 +53,7 @@ object ProviderHealth {
         }
         if (code == 429) x.strikes++ else x.strikes = 0
         val wait = when {
+            dead(e) -> DEAD_MS
             code == 401 || code == 403 -> 30 * 60_000L
             code == 404 -> 10 * 60_000L
             code == 429 -> RateLimit.backoffMs(x.strikes, (e as? AiException)?.retryAfter ?: 0)
@@ -68,11 +69,21 @@ object ProviderHealth {
 
     fun reason(id: String) = h(id).reason
 
+    /**
+     * नवंबर 2026 (DKI-F0ACC6): Google ने key ही बंद कर दी ("The bound service account is deleted or disabled",
+     * key expired / deleted). 30 मिनट बाद फिर वही key = हर बार एक बेकार कोशिश, फिर धीमा free मॉडल (timeout).
+     * यह अपने-आप ठीक नहीं होती - [DEAD_MS] तक पीछे; नई key डालते ही (key बदली = नया id) फिर चलेगी.
+     */
+    private val DEAD = Regex("(?i)(service account[^.]{0,40}(deleted|disabled)|api key expired|API_KEY_INVALID|key (was|has been) deleted|key[^.]{0,20}(revoked|disabled))")
+    const val DEAD_MS = 6 * 60 * 60_000L
+    fun dead(e: Throwable): Boolean = DEAD.containsMatchIn(e.message.orEmpty())
+
     /** Galti ka chhota Hindi kaaran (DK bolkar batata hai) */
     fun short(e: Throwable): String {
         val code = (e as? AiException)?.code ?: 0
         val msg = e.message ?: ""
         return when {
+            dead(e) -> "Google ने यह key बंद कर दी है - नई key डालें"
             e is java.net.UnknownHostException -> "इंटरनेट नहीं मिल रहा"
             e is java.net.SocketTimeoutException || e is java.io.InterruptedIOException -> "सर्वर बहुत धीमा है"
             RateLimit.daily(e) -> dailyReason(RateLimit.nextUtcMidnight(System.currentTimeMillis()))

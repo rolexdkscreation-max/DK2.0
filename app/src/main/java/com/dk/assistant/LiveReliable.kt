@@ -92,6 +92,22 @@ object TurnEnd {
     private val NOT_DONE = setOf("को", "जो", "वो", "सो", "दो", "दोनों", "तो")
     private val DONE_EN = Regex("(?i)\\b(it|this|that|now|please|me|you|him|her|them|up|down|on|off|done|thanks|thank you|yes|no|okay|ok)$")
 
+    /**
+     * नवंबर 2026 (DKI-70D747 / DKI-87912D): "Map में सागर नर्सरी search करो ... और वहाँ navigation start करो" -
+     * "करो" पर 0.36s चुप्पी में बात कट जाती थी (एक हुक्म 3 टुकड़े). लंबे हुक्म में लोग "और ..." जोड़ते हैं, इसलिए
+     * हुक्म वाले शब्द (ओ / िए / दो) पर जल्दी काटना सिर्फ़ छोटी बात (<= [EARLY_CMD_MAX_WORDS] शब्द) में. सवाल वैसे ही तेज़.
+     */
+    const val EARLY_CMD_MAX_WORDS = 3
+    private val IMPERATIVE = Regex("(ओ|ो|िए|िये|ीजिए|देना|लेना|करना|दिखाना|सुनाना|बताना)$")
+
+    fun earlyOk(caption: String): Boolean {
+        if (!complete(caption)) return false
+        val t = caption.trim()
+        if (t.endsWith("?")) return true
+        val words = t.trimEnd('.', ',', '।', '…', ' ').split(Regex("\\s+")).filter { it.isNotBlank() }
+        return !IMPERATIVE.containsMatchIn(words.last()) || words.size <= EARLY_CMD_MAX_WORDS
+    }
+
     /** caption का text पूरा वाक्य लगता है (आखिरी शब्द से) - "और / तो / कि" वाले continues() पहले ही रोकता है */
     fun complete(caption: String): Boolean {
         val t = caption.trim().trimEnd('.', ',', '।', '…', ' ')

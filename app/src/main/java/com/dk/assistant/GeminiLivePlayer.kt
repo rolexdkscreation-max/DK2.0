@@ -78,14 +78,16 @@ internal fun GeminiLive.startPlayer() {
             }
             if (trace.firstChunkAt > 0 && trace.firstPlayAt == 0L && off > 0) {
                 trace.firstPlayAt = firstWriteAt.takeIf { it > 0 } ?: System.currentTimeMillis(); firstWriteAt = 0L
+                // नवंबर 2026 (DKI-CCB3F8): इस बारी में फ़ोन का काम (tool) चला = देरी उस काम की, बात की नहीं - औसत में नहीं
+                val withTool = toolCallAt >= trace.speechEndAt && trace.speechEndAt > 0
                 trace.summary()?.let { sm ->
                     lastLatency = trace.firstPlayAt - trace.speechEndAt
-                    if (!connSplit && lastLatency in 0..60_000) com.dk.assistant.voice.engine.VoiceEngines.recordLatency(svc,
+                    if (!connSplit && !withTool && lastLatency in 0..60_000) com.dk.assistant.voice.engine.VoiceEngines.recordLatency(svc,
                         com.dk.assistant.voice.engine.VoiceEngines.LIVE_NATIVE, lastLatency)
-                    lastBreakdown = "$sm • सबसे बड़ा हिस्सा: ${trace.bottleneck()}"
+                    lastBreakdown = "$sm • सबसे बड़ा हिस्सा: ${trace.bottleneck()}" + if (withTool) " ${LiveRecover.TOOL_MARK}" else ""
                     log("देरी के हिस्से: $lastBreakdown")
                 }
-                if (!connSplit) LatencyBoard.record("Gemini Live (सीधी आवाज़)", trace.speechEndAt, trace.firstChunkAt, trace.firstChunkAt, trace.firstPlayAt)
+                if (!connSplit && !withTool) LatencyBoard.record("Gemini Live (सीधी आवाज़)", trace.speechEndAt, trace.firstChunkAt, trace.firstChunkAt, trace.firstPlayAt)
                     ?.let { log("देरी: " + LatencyBoard.line(it)) }
                 trace.reset()                // agli baari nayi ginti (purane aankde na chipkein)
             }
