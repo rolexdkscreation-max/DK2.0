@@ -67,4 +67,55 @@ class LiveModel1011Test {
         assertTrue(s.contains("stableFor(InspectorCore.LIVE_STABLE_MS) != true) return"))
         assertTrue(s.contains("InspectorCore.liveDeliverable(it)"))
     }
+    // ---- cooldown / मॉडल fallback (log: "limit खत्म, छोड़े: सारे" -> "दौड़: 0 जोड़ियाँ" -> code=0)
+
+    @Test fun modelNotFoundIsNotQuota() {
+        val r = "models/gemini-x is not found for API version v1beta, or is not supported for bidiGenerateContent."
+        assertFalse(LiveRace.shouldBlockModel(1008, r, tried = true))       // "gene-rate" अब limit नहीं
+        assertTrue(LiveRace.shouldBlockModel(1011, "You exceeded your current quota", tried = true))
+        assertTrue(LiveRace.shouldBlockModel(429, "", tried = true))
+    }
+
+    @Test fun noBlockWithoutRealAttempt() {
+        // 0 जोड़ियों वाली दौड़ पुराना quota कारण दोहराती है - बिना आज़माए मॉडल नहीं रुकना चाहिए
+        assertFalse(LiveRace.shouldBlockModel(1011, "You exceeded your current quota", tried = false))
+    }
+
+    @Test fun fullDayBlockOnlyForDailyQuota() {
+        assertFalse(LiveRace.dailyBlock(1, "quota exceeded"))
+        assertTrue(LiveRace.dailyBlock(2, "Quota exceeded for metric ... per day"))
+        assertFalse(LiveRace.dailyBlock(2, "rate limit"))
+        assertFalse(LiveRace.dailyBlock(3, ""))
+    }
+
+    @Test fun allBlockedStillGivesOneProbe() {
+        val now = 1_000_000L
+        val until = mapOf("a" to now + 20 * 60_000L, "b" to now + 5 * 60_000L, "c" to now + 60 * 60_000L)
+        val c = LiveRace.probeWhenEmpty(listOf("a", "b", "c"), 1) { until[it.model] ?: 0L }
+        assertEquals("b", c!!.model)                                        // सबसे जल्दी खुलने वाला
+        assertEquals(null, LiveRace.probeWhenEmpty(emptyList(), 1) { 0L })
+    }
+
+    @Test fun cooldownExpiresAndRetryAllowed() {
+        val h = LiveRace.Health(); val c = LiveRace.Combo("m", 0)
+        h.comboFail(c, 0)
+        assertTrue(h.order(listOf("m"), 1, 1_000).isEmpty())
+        assertEquals(listOf(c), h.order(listOf("m"), 1, LiveRace.COMBO_FAIL_MS + 1))   // 2 मिनट बाद फिर कोशिश
+    }
+
+    @Test fun cooldownFixWiredIn() {
+        val s = src("GeminiLive.kt")
+        assertFalse(s.contains("isQuota(code, r) || r.contains(\"rate\")"))
+        assertTrue(s.contains("LiveRace.shouldBlockModel(code, r, tried = rc.lastFailCombo != null)"))
+        assertTrue(s.contains("LiveRace.probeWhenEmpty(models, keys.size, untilOf)"))
+        assertTrue(s.contains("LiveRace.dailyBlock(n, reason)"))
+        assertTrue(s.contains("पुरानी save हुई Live रोक हटाई"))
+        // 1011 वाला मॉडल हटाना save होने वाली Cooldown से नहीं
+        val d = s.substring(s.indexOf("private fun dropModel1011"), s.indexOf("private fun isQuota"))
+        assertFalse(d.contains("Cooldown.block("))
+    }
+
+    @Test fun captionIndependentOfLiveCooldown() {
+        assertFalse(src("LiveCaption.kt").contains("Cooldown"))
+    }
 }

@@ -51,11 +51,10 @@ object LiveStay {
     /**
      * नवंबर 2026 (Inspector के बाद "Live नहीं जुड़ रहा"): Google का जाना-माना server bug - gemini-2.5-flash-native-audio-preview-12-2025
      * (और -latest) 27 मई 2026 से बीच बातचीत में 1011 "Internal error" देता है. उसी मॉडल पर बार-बार जुड़ना = वही 1011.
-     * 3 मिनट में 2 बार 1011 = यह मॉडल 30 मिनट (सारी key) हटाओ, अगला मॉडल (बचा आख़िरी मॉडल कभी नहीं हटता).
+     * 3 मिनट में 2 बार 1011 = यह मॉडल दौड़ से 2 मिनट हटाओ (save नहीं होता), अगला मॉडल (बचा आख़िरी मॉडल कभी नहीं हटता).
      */
     const val MODEL_1011_WINDOW_MS = 3 * 60_000L
     const val MODEL_1011_HITS = 2
-    const val MODEL_1011_BLOCK_MS = 30 * 60_000L
     class Model1011 {
         private val hits = HashMap<String, ArrayDeque<Long>>()
         /** इस मॉडल का 1011 दर्ज करो; true = अब यह मॉडल हटाना है */

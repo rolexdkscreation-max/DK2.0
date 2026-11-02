@@ -911,9 +911,10 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
     /** Quota khatam wala model: aaj dobara mat maango (pehli baar 30 min, dobara = Pacific aadhi raat tak) */
     /** v3.94: अभी कौन सी key चल रही है (0 = मुख्य) - मॉडल की limit हर key की अलग */
     @Volatile private var keyIdx = 0
-    private fun blockModel(m: String, why: String) {
+    private fun blockModel(m: String, why: String, reason: String = "") {
         val n = Cooldown.strike(LiveKeys.cooldownName(keyIdx, m))
-        val ms = if (n <= 1) 30 * 60_000L else Cooldown.msToQuotaReset()
+        // नवंबर 2026: दूसरी बार भी पूरे दिन की रोक सिर्फ़ असली रोज़ की limit पर (पहले हर दूसरी बार = Pacific आधी रात तक)
+        val ms = if (LiveRace.dailyBlock(n, reason)) Cooldown.msToQuotaReset() else 30 * 60_000L
         Cooldown.block(LiveKeys.cooldownName(keyIdx, m), ms)
         log("$m की limit खत्म ($why) - ${ms / 60_000} मिनट तक यह मॉडल नहीं माँगूँगा")
     }
@@ -922,10 +923,13 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
     private fun dropModel1011(keys: List<String>, models: List<String>, where: String): String? {
         val m = model
         val free = { x: String -> keys.indices.any { k -> !Cooldown.blocked(LiveKeys.cooldownName(k, x)) } }
-        val next = models.firstOrNull { it != m && free(it) }
+        val nowF = System.currentTimeMillis()
+        val next = models.firstOrNull { it != m && free(it) && keys.indices.any { k -> !health.isComboFailed(LiveRace.Combo(it, k), nowF) } }
         if (next == null) { log("1011 बार-बार ($m, $where) - दूसरा मॉडल नहीं बचा, इसी पर कोशिश"); return null }
-        for (k in keys.indices) Cooldown.block(LiveKeys.cooldownName(k, m), LiveStay.MODEL_1011_BLOCK_MS)
-        log("1011 \"Internal error\" ${LiveStay.MODEL_1011_HITS} बार ($m, $where) - Google की तरफ़ इस मॉडल की खराबी; 30 मिनट हटाया, अब $next (नई बातचीत)")
+        // save होने वाली Cooldown नहीं (वह ऐप बंद-चालू पर भी रहती) - सिर्फ़ दौड़ की 2 मिनट वाली रोक, अपने-आप हटती है
+        val now = System.currentTimeMillis()
+        for (k in keys.indices) health.comboFail(LiveRace.Combo(m, k), now)
+        log("1011 \"Internal error\" ${LiveStay.MODEL_1011_HITS} बार ($m, $where) - Google की तरफ़ इस मॉडल की खराबी; ${LiveRace.COMBO_FAIL_MS / 60_000} मिनट हटाया, अब $next (नई बातचीत)")
         return next
     }
     private fun isQuota(code: Int, r: String) = r.contains("quota") || r.contains("exhausted") || r.contains("rate limit") || code == 429
@@ -1100,8 +1104,8 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
                             stopped -> break
                             r.contains("api key") || r.contains("api_key") || code == 401 || code == 403 ->
                                 if (switchKey("key गलत/बंद (code=$code)")) continue else throw Fatal("Gemini key गलत है या Live की इजाज़त नहीं (${LiveFailWhy.detail(code, reason)})", kind = LiveFailWhy.Kind.KEY)
-                            isQuota(code, r) || r.contains("rate") -> {
-                                blockModel(model, "setup")
+                            LiveRace.shouldBlockModel(code, r, tried = rc.lastFailCombo != null) -> {
+                                blockModel(model, "setup", r)
                                 // v4.7 (मालिक: "limit खत्म = तुरंत दूसरी key"): पहले उसी key के बाकी मॉडल एक-एक कर (हर एक पर
                                 // नया connection = सेकंडों की देर), फिर दूसरी key. अब सीधे दूसरी key; वह न हो तो बाकी मॉडल
                                 if (switchKey("इस key की limit खत्म")) continue
@@ -1289,7 +1293,7 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
                         if (switchKey("key बंद हो गई")) continue else throw Fatal("Gemini key बंद हो गई")
                     }
                     if (isQuota(code, reason.lowercase())) {
-                        blockModel(model, "बातचीत के बीच")
+                        blockModel(model, "बातचीत के बीच", reason)
                         if (turnActive) finishTurn()
                         if (switchKey("बातचीत के बीच इस key की limit खत्म")) continue     // v4.7: सीधे दूसरी key
                         else if (mi + 1 < models.size) { mi++; handle = null; continue }
@@ -1482,7 +1486,7 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
         val all = LiveModelRank.order(found, FALLBACK_MODELS, lat)
         // limit khatam wale model (aaj) chhodo - har baar 2 bekaar connection = ~1.5s deri + mic ke tukde gire
         val (skip, ok) = all.partition { Cooldown.blocked(LiveKeys.cooldownName(keyIdx, it)) }
-        if (skip.isNotEmpty()) log("limit खत्म, छोड़े: ${skip.joinToString()}")
+        if (skip.isNotEmpty()) log("limit खत्म, छोड़े: " + skip.joinToString { m -> m + " (" + ((Cooldown.until(LiveKeys.cooldownName(keyIdx, m)) - System.currentTimeMillis()) / 60_000).coerceAtLeast(0) + " मिनट बाकी)" })
         log("सबसे तेज़ क्रम: " + ok.take(3).joinToString { m -> m + (lat[m]?.let { " ${it}ms" } ?: "") })
         return ok.ifEmpty { all }
     }
@@ -1727,6 +1731,8 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
     /** पिछली नाकाम दौड़ का असली कारण - अगली दौड़ में सारी जोड़ियाँ रुकी हों तो वही कारण (पहले "limit" शब्द से गलत "लिमिट खत्म" दिखता था) */
     @Volatile private var lastRaceFail: Pair<Int, String>? = null
     @Volatile private var lastRaceFailAt = 0L
+    /** सब रुका होने पर आख़िरी जाँच-कोशिश कब (2 मिनट में एक से ज़्यादा नहीं - लगातार चक्कर नहीं) */
+    @Volatile private var lastProbeAt = 0L
     /** इस connection पर पुरानी बातचीत (handle) चली = याद दोबारा नहीं भेजनी */
     @Volatile private var connResumed = false
     private val ctxSent = java.util.Collections.newSetFromMap(java.util.WeakHashMap<WebSocket, Boolean>())
@@ -1752,8 +1758,22 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
             // नवंबर 2026: इस सत्र में अभी तक कोई दौड़ नाकाम नहीं (ऐप/सेवा नई शुरू) - पुरानी save हुई key-रोक से
             // शुरू होते ही "server जवाब नहीं दे रहा" नहीं; एक साफ़ मौका
             if (lastRaceFailAt == 0L) health.clearKeyBad()
+            if (lastRaceFailAt == 0L) {
+                // नवंबर 2026: फ़ोन में save हुई Live मॉडल-रोक भी एक बार साफ़ (पहले यह कभी नहीं हटती थी - कोशिश ही नहीं होती थी)
+                val held = models.flatMap { m -> keys.indices.map { LiveKeys.cooldownName(it, m) } }.filter { Cooldown.blocked(it) }
+                if (held.isNotEmpty()) { held.forEach { Cooldown.clear(it) }; log("नई शुरुआत: पुरानी save हुई Live रोक हटाई (${held.size}) - एक साफ़ मौका") }
+            }
             saveHealth()
             queue = health.order(models, keys.size, now) { Cooldown.blocked(LiveKeys.cooldownName(it.keyIdx, it.model)) }.toMutableList()
+        }
+        // नवंबर 2026: फिर भी सब रुका = चुपचाप 0 जोड़ियाँ नहीं - जिसकी रोक सबसे जल्दी खत्म हो, उस एक जोड़ी पर एक कोशिश
+        if (queue.isEmpty() && models.isNotEmpty() && now - lastProbeAt > LiveRace.COMBO_FAIL_MS) {
+            val untilOf = { c: LiveRace.Combo -> Cooldown.until(LiveKeys.cooldownName(c.keyIdx, c.model)) }
+            LiveRace.probeWhenEmpty(models, keys.size, untilOf)?.let { c ->
+                lastProbeAt = now; queue.add(c)
+                log("सारी जोड़ियाँ रुकी थीं (" + models.joinToString { m -> m + " " + ((Cooldown.until(LiveKeys.cooldownName(0, m)) - now) / 60_000).coerceAtLeast(0) + "m" } +
+                    ") - एक जाँच-कोशिश: ${c.label}")
+            }
         }
         val tmo = LiveRace.timeoutMs(health.recentTimes())
         // नवंबर 2026: बातचीत वहीं से (handle) वाली जोड़ी सबसे पहले - दूसरी जीतती तो handle छूटता (संदर्भ खो जाता)
