@@ -32,6 +32,15 @@ jobs:
         with:
           gradle-version: '8.7'
 
+      # Piper TTS: sherpa-onnx AAR + Hindi/English आवाज़ें (~75 MB) - app/build.gradle.kts sha256 जाँचकर लाता है.
+      # cache = हर build में दोबारा डाउनलोड नहीं (बदलें तो Gradle खुद नई लाता है)
+      - name: Piper TTS files cache
+        uses: actions/cache@v4
+        with:
+          path: .dk-cache
+          key: dk-piper-${{ hashFiles('app/build.gradle.kts') }}
+          restore-keys: dk-piper-
+
       - name: Signing key (hamesha ek hi)
         env:
           KS_B64: ${{ secrets.DK_KEYSTORE_B64 }}

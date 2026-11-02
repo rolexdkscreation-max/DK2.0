@@ -15,3 +15,6 @@ keystore.properties
 __pycache__/
 *.pyc
 *.bak
+
+# Piper TTS: sherpa-onnx AAR + आवाज़ों की फ़ाइलें build के समय GitHub से आती हैं (app/build.gradle.kts)
+.dk-cache/

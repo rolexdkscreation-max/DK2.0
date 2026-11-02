@@ -167,8 +167,11 @@ class LiveInfoTest {
     }
 
     @Test fun tune_speedAndPitch() {
-        assertEquals(70, VoiceTune.clampSpeed(10)); assertEquals(130, VoiceTune.clampSpeed(400))
-        assertEquals(80, VoiceTune.clampPitch(0)); assertEquals(120, VoiceTune.clampPitch(999))
+        // नवंबर 2026 (मालिक): गति 0.5x-2.0x, पिच 0.5x-1.5x (पहले 70-130 / 80-120)
+        assertEquals(50, VoiceTune.clampSpeed(10)); assertEquals(200, VoiceTune.clampSpeed(400))
+        assertEquals(50, VoiceTune.clampPitch(0)); assertEquals(150, VoiceTune.clampPitch(999))
+        assertEquals(100, VoiceTune.clampSpeed(100)); assertEquals(100, VoiceTune.clampPitch(100))
+        assertEquals("50% (0.50x)", VoiceTune.fmt(50)); assertEquals("200% (2.00x)", VoiceTune.fmt(200))
         // 1 सेकंड की 24 kHz आवाज़: सामान्य 1000ms, 125% गति पर 800ms, 80% पर 1250ms
         assertEquals(1000L, VoiceTune.playMs(48_000, 24_000, 100))
         assertEquals(800L, VoiceTune.playMs(48_000, 24_000, 125))
@@ -182,8 +185,8 @@ class LiveInfoTest {
         assertTrue(card.contains("Gemini TTS का मॉडल"))
         assertTrue(card.contains("VoiceTune.setSpeed(a, v)"))
         assertTrue(card.contains("VoiceTune.setPitch(a, v)"))
-        // Edge के अलग गति/पिच स्लाइडर नहीं (एक ही जगह)
-        assertFalse(src("voice/engine/EdgeTtsEngine.kt").contains("putInt(\"edge_rate\""))
+        // Piper के अलग गति/पिच स्लाइडर नहीं (एक ही जगह - पहले Edge के लिए भी यही नियम था)
+        assertFalse(src("voice/engine/PiperTtsEngine.kt").contains("ui.slider("))
     }
 
     @Test fun voice_softerAndHumanLike() {

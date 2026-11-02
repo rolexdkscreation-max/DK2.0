@@ -5,22 +5,24 @@ import android.content.SharedPreferences
 import java.util.concurrent.ConcurrentHashMap
 
 /**
- * v3.68: तीनों आवाज़ इंजनों की सूची + कौन चालू है + पिछली बार नापा समय.
+ * v3.68: तीनों आवाज़ इंजनों (नवंबर 2026: Piper TTS, DK लाइव, Gemini TTS - Edge हटाया) की सूची + कौन चालू है + पिछली बार नापा समय.
  *
  * इंजन नाम से ढूँढे जाते हैं ([CLASSES]) - किसी इंजन की फ़ाइल हटा दो तो वह सूची से अपने-आप गायब,
  * बाकी सब वैसे ही चलता है. एक समय में सिर्फ़ एक इंजन चालू ([toggle]).
  */
 object VoiceEngines {
     const val GEMINI_TTS = "gemini_tts"
-    const val EDGE_TTS = "edge_tts"
+    const val PIPER_TTS = "piper_tts"
+    /** नवंबर 2026: हटाया गया Microsoft Edge TTS - सिर्फ़ पुरानी सेव पसंद पहचानने के लिए (migration) */
+    const val OLD_EDGE_ID = "edge_tts"
     const val LIVE_NATIVE = "live_native"
     const val DEFAULT_SAMPLE = "मुझे तुम्हारी बहुत याद आ रही थी"
 
-    /** क्रम = स्क्रीन पर क्रम: पहले DK लाइव (डिफ़ॉल्ट, सबसे तेज़), फिर Gemini TTS, फिर Edge */
+    /** क्रम = स्क्रीन पर क्रम: पहले Piper (नवंबर 2026 से डिफ़ॉल्ट, फ़ोन में), फिर DK लाइव (Direct Gemini Live Voice), फिर Gemini TTS */
     private val CLASSES = listOf(
+        "com.dk.assistant.voice.engine.PiperTtsEngine",
         "com.dk.assistant.voice.engine.LiveNativeEngine",
         "com.dk.assistant.voice.engine.GeminiTtsEngine",
-        "com.dk.assistant.voice.engine.EdgeTtsEngine",
     )
 
     /** एक बार का बदलाव: पुराना डिफ़ॉल्ट (Gemini TTS) सेव था -> DK लाइव. इसके बाद यूज़र जो चुने वही रहे */
@@ -28,6 +30,19 @@ object VoiceEngines {
 
     /** pure: सेव इंजन + migration हुआ या नहीं -> अब कौन-सा (JVM test) */
     fun migrated(saved: String?, done: Boolean): String? = if (!done && (saved == null || saved == GEMINI_TTS)) LIVE_NATIVE else saved
+
+    /**
+     * नवंबर 2026 (मालिक): डिफ़ॉल्ट Piper - एक बार हर फ़ोन पर Piper चालू (Direct Live बंद), फिर यूज़र जो चुने वही रहे.
+     * Piper इस फ़ोन पर न चले (arm64 नहीं) तो जो था वही; हटाया Edge चुना था तो DK लाइव.
+     */
+    const val PIPER_KEY = "piper_default_v1"
+
+    /** pure (JVM test) */
+    fun piperMigrated(saved: String?, done: Boolean, piperOk: Boolean): String? = when {
+        !done && piperOk -> PIPER_TTS
+        saved == OLD_EDGE_ID -> if (piperOk) PIPER_TTS else LIVE_NATIVE
+        else -> saved
+    }
 
     val all: List<VoiceEngine> by lazy {
         CLASSES.mapNotNull { n ->
@@ -47,6 +62,13 @@ object VoiceEngines {
         if (!p.getBoolean(MIGRATE_KEY, false)) {
             val m = migrated(p.getString("active", null), false)
             val ed = p.edit().putBoolean(MIGRATE_KEY, true)
+            if (m != null) ed.putString("active", m)
+            ed.apply()
+        }
+        if (!p.getBoolean(PIPER_KEY, false) || p.getString("active", null) == OLD_EDGE_ID) {
+            val ok = byId(PIPER_TTS) != null && PiperTtsEngine.notReady(c) == null
+            val m = piperMigrated(p.getString("active", null), p.getBoolean(PIPER_KEY, false), ok)
+            val ed = p.edit().putBoolean(PIPER_KEY, true)
             if (m != null) ed.putString("active", m)
             ed.apply()
         }

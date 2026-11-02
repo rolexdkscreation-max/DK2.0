@@ -28,16 +28,16 @@ class CalmPersonaTest {
         assertTrue(GeminiTts.styleText("natural").contains("medium unhurried pace"))
     }
 
-    @Test fun edgeRateSlowerButInRange() {
-        assertEquals(-8, CalmPersona.edgeRate(0))
-        assertEquals(-50, CalmPersona.edgeRate(-50))
-        assertEquals(42, CalmPersona.edgeRate(50))
+    @Test fun plainRateSlowerButInRange() {
+        assertEquals(-8, CalmPersona.plainRate(0))
+        assertEquals(-50, CalmPersona.plainRate(-50))
+        assertEquals(42, CalmPersona.plainRate(50))
     }
 
     @Test fun appliedInAllVoicePromptsAndEngines() {
         assertEquals(3, Regex("append\\(CalmPersona.block\\(\\)\\)").findAll(src("BrainManager.kt")).count())
         assertTrue(src("voice/engine/GeminiTtsEngine.kt").contains("CalmPersona.ttsStyle("))
-        assertTrue(src("voice/engine/EdgeTtsEngine.kt").contains("CalmPersona.edgeRate("))
+        assertTrue(src("voice/engine/PiperTtsEngine.kt").contains("CalmPersona.plainRate("))
         assertTrue(src("voice/engine/LiveNativeEngine.kt").contains("मध्यम गति"))
     }
 }

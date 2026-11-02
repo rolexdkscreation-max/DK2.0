@@ -6,15 +6,16 @@ import android.media.PlaybackParams
 
 /**
  * v3.80: आवाज़ की गति (speed) और पिच - एक ही जगह, जो भी आवाज़ इंजन चालू हो (DK लाइव की सीधी आवाज़,
- * Gemini TTS, Edge) उसी पर. बजाने वाले AudioTrack पर लगती है -> बदलते ही तुरंत, चलती बातचीत में भी.
+ * Gemini TTS, Piper) उसी पर. बजाने वाले AudioTrack पर लगती है -> बदलते ही तुरंत, चलती बातचीत में भी.
  *
- * प्रतिशत में: 100 = सामान्य. गति 70-130, पिच 80-120 (इससे बाहर आवाज़ बिगड़ती है).
+ * प्रतिशत में: 100 = सामान्य. नवंबर 2026 (मालिक): गति 50-200 (0.5x-2.0x), पिच 50-150 (0.5x-1.5x) - पहले 70-130 / 80-120.
+ * किनारों पर आवाज़ अजीब लग सकती है - यह मालिक की पसंद पर.
  */
 object VoiceTune {
-    const val MIN_SPEED = 70
-    const val MAX_SPEED = 130
-    const val MIN_PITCH = 80
-    const val MAX_PITCH = 120
+    const val MIN_SPEED = 50
+    const val MAX_SPEED = 200
+    const val MIN_PITCH = 50
+    const val MAX_PITCH = 150
     const val NORMAL = 100
 
     @Volatile var speedPct = NORMAL
@@ -50,6 +51,8 @@ object VoiceTune {
 
     fun reset(c: Context) { setSpeed(c, NORMAL); setPitch(c, NORMAL) }
 
+    /** स्लाइडर पर: "95% (0.95x)" */
+    fun fmt(pct: Int): String = String.format(java.util.Locale.US, "%d%% (%.2fx)", pct, pct / 100f)
     fun speed(): Float = speedPct / 100f
     fun pitch(): Float = pitchPct / 100f
 

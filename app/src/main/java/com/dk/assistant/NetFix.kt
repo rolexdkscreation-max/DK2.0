@@ -77,7 +77,7 @@ object DkDns : Dns {
         badIp[a] = System.currentTimeMillis() + BAD_MS
     }
 
-    /** WebSocket (Live / Edge) host तक connection खुला ही नहीं - अगली बार DoH वाले पते भी, पुराने पते पीछे */
+    /** WebSocket (Live) host तक connection खुला ही नहीं - अगली बार DoH वाले पते भी, पुराने पते पीछे */
     /**
      * नवंबर 2026: फ़ोन का नेटवर्क सच में बदला (Wi-Fi <-> mobile) कब - Live तुरंत नया connection बनाता है.
      * सिर्फ़ नया नेटवर्क; IPv6 पते का बदलना (onLinkPropertiesChanged) नहीं - वह बार-बार होता है.

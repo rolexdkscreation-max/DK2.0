@@ -5,7 +5,7 @@ package com.dk.assistant
  * https://ai.google.dev/gemini-api/docs/live-guide
  *
  *  - "native audio models only support AUDIO response modality": Live से TEXT कभी नहीं माँगते.
- *    Gemini TTS / Edge जैसा अलग आवाज़ इंजन चुना हो = AUDIO + outputAudioTranscription, Live की आवाज़ नहीं बजती,
+ *    Piper / Gemini TTS जैसा अलग आवाज़ इंजन चुना हो = AUDIO + outputAudioTranscription, Live की आवाज़ नहीं बजती,
  *    उसकी लिखावट वह इंजन बोलता है (पहले TEXT माँगते थे -> setup मना -> Live जुड़ता ही नहीं था).
  *  - native audio मॉडल "don't support explicitly setting the language code" -> speechConfig.languageCode नहीं
  *    (हिंदी में बोलना system instruction से).

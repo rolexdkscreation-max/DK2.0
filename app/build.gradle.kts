@@ -1,4 +1,82 @@
 import java.util.Properties
+import java.security.MessageDigest
+import java.net.URI
+import java.net.HttpURLConnection
+
+// ---------------------------------------------------------------------------------------------- Piper TTS (नवंबर 2026)
+// फ़ोन में ही आवाज़ (बिना इंटरनेट): sherpa-onnx (Apache-2.0) + Piper की आवाज़ें. फ़ाइलें बड़ी हैं (repo में नहीं) -
+// build के समय GitHub releases से एक बार आती हैं, sha256 जाँचकर `.dk-cache/` में रहती हैं (git-ignored; CI में cache).
+// 2.x में espeak-ng हटा दिया गया (Piper की हिंदी उसके बिना नहीं चलती) - इसलिए 1.13.8 पक्का.
+// "static-link" वाली AAR: ONNX Runtime उसके अंदर ही जुड़ा है -> हमारे onnxruntime-android (आवाज़-पहचान) से टकराव नहीं.
+val dkCache: File = rootProject.file(".dk-cache")
+val sherpaVersion = "1.13.8"
+val sherpaAar = File(dkCache, "sherpa-onnx-static-link-onnxruntime-$sherpaVersion.aar")
+val sherpaAarSha = "b22c3fc1b6a45666d28892bb2f7694beeb77a8362d7ebd77c1a5431ec9435471"
+/** APK में जाने वाली Piper आवाज़ें (int8 = छोटी). नाम = PiperTtsEngine.VOICES के नाम (test दोनों मिलाता है) */
+val piperVoices = linkedMapOf(
+    "hi_IN-priyamvada-medium" to "2997c7bbc211e524af83dfdffe7712942f10bd76c079a526af2e09d1f36a92f2",
+    "hi_IN-pratham-medium" to "20f568c56207c13b9a0d9478aec8b7d1449122e618aeebc7211f6abc942b58b7",
+    "en_US-lessac-medium" to "f1c6d0295cf16087b05f80fdca5b44daca5cd78e2c425d419a42ba34929805f9",
+)
+/** espeak-ng-data में सिर्फ़ यही भाषाएँ (बाकी ~15 MB के शब्दकोश नहीं - आवाज़ बिल्कुल वही रहती है) */
+val espeakDicts = setOf("hi_dict", "en_dict")
+val piperAssets = File(dkCache, "piper-assets")
+
+fun sha256(f: File): String = MessageDigest.getInstance("SHA-256").let { md ->
+    f.inputStream().use { inp -> val b = ByteArray(1 shl 16); while (true) { val n = inp.read(b); if (n < 0) break; md.update(b, 0, n) } }
+    md.digest().joinToString("") { "%02x".format(it) }
+}
+
+/** एक बार डाउनलोड (3 कोशिश), sha256 मिले तभी रखो */
+fun dkFetch(url: String, to: File, sha: String) {
+    if (to.exists() && sha256(to) == sha) return
+    to.parentFile.mkdirs()
+    val tmp = File(to.path + ".part")
+    var last: Exception? = null
+    for (i in 1..3) {
+        try {
+            logger.lifecycle("DK: डाउनलोड $url")
+            val c = URI(url).toURL().openConnection() as HttpURLConnection
+            c.instanceFollowRedirects = true; c.connectTimeout = 30_000; c.readTimeout = 60_000
+            c.inputStream.use { inp -> tmp.outputStream().use { inp.copyTo(it, 1 shl 16) } }
+            val got = sha256(tmp)
+            if (got != sha) throw GradleException("DK: $url का sha256 नहीं मिला ($got)")
+            if (to.exists()) to.delete()
+            if (!tmp.renameTo(to)) throw GradleException("DK: ${to.name} नहीं रखा जा सका")
+            return
+        } catch (e: Exception) { last = e; tmp.delete(); Thread.sleep(2_000L * i) }
+    }
+    throw GradleException("DK: $url नहीं आया (${last?.message}) - इंटरनेट देखें, फिर दोबारा build", last)
+}
+
+/** आवाज़ें -> .dk-cache/piper-assets/piper_models/<नाम>/ + एक साझा, छोटा espeak-ng-data */
+fun preparePiper() {
+    val stamp = File(piperAssets, "piper_models/.stamp")
+    val want = "$sherpaVersion|" + piperVoices.entries.joinToString(",") { "${it.key}=${it.value}" } + "|" + espeakDicts.sorted()
+    if (stamp.exists() && stamp.readText() == want) return
+    val root = File(piperAssets, "piper_models"); root.deleteRecursively(); root.mkdirs()
+    for ((name, sha) in piperVoices) {
+        val tar = File(dkCache, "vits-piper-$name-int8.tar.bz2")
+        dkFetch("https://github.com/k2-fsa/sherpa-onnx/releases/download/tts-models/vits-piper-$name-int8.tar.bz2", tar, sha)
+        val x = File(dkCache, "x-$name"); x.deleteRecursively(); x.mkdirs()
+        val p = ProcessBuilder("tar", "xjf", tar.absolutePath, "-C", x.absolutePath).redirectErrorStream(true).start()
+        val out = p.inputStream.bufferedReader().readText()
+        if (p.waitFor() != 0) throw GradleException("DK: ${tar.name} नहीं खुला: $out")
+        val src = File(x, "vits-piper-$name-int8")
+        val dst = File(root, name); dst.mkdirs()
+        File(src, "$name.onnx").copyTo(File(dst, "model.onnx"), true)
+        File(src, "tokens.txt").copyTo(File(dst, "tokens.txt"), true)
+        File(src, "MODEL_CARD").takeIf { it.exists() }?.copyTo(File(dst, "MODEL_CARD"), true)
+        val es = File(root, "espeak-ng-data")
+        if (!es.exists()) File(src, "espeak-ng-data").copyRecursively(es, true)
+        x.deleteRecursively()
+    }
+    File(root, "espeak-ng-data").listFiles()?.filter { it.isFile && it.name.endsWith("_dict") && it.name !in espeakDicts }?.forEach { it.delete() }
+    stamp.writeText(want)
+}
+
+dkFetch("https://github.com/k2-fsa/sherpa-onnx/releases/download/v$sherpaVersion/${sherpaAar.name}", sherpaAar, sherpaAarSha)
+preparePiper()
 
 plugins {
     id("com.android.application")
@@ -61,6 +139,8 @@ android {
     buildFeatures {
         viewBinding = false
     }
+    // Piper TTS की आवाज़ें (.dk-cache से, ऊपर देखें) APK के assets/piper_models/ में
+    sourceSets.getByName("main").assets.srcDir(piperAssets)
     // व्यवहार वाले tests (Robolectric) को असली layout / theme / strings चाहिए
     testOptions {
         unitTests.isIncludeAndroidResources = true
@@ -74,6 +154,8 @@ android {
                 "lib/x86/libonnxruntime.so", "lib/x86/libonnxruntime4j_jni.so",
                 "lib/x86_64/libonnxruntime.so", "lib/x86_64/libonnxruntime4j_jni.so",
                 "lib/armeabi-v7a/libonnxruntime.so", "lib/armeabi-v7a/libonnxruntime4j_jni.so",
+                // Piper TTS (sherpa-onnx) भी सिर्फ़ arm64 - बाकी फ़ोनों पर Piper अपने-आप "तैयार नहीं" और Gemini TTS / DK लाइव बोलते हैं
+                "lib/x86/libsherpa-onnx-jni.so", "lib/x86_64/libsherpa-onnx-jni.so", "lib/armeabi-v7a/libsherpa-onnx-jni.so",
             )
         }
     }
@@ -88,6 +170,8 @@ dependencies {
     // v3.66: "सिर्फ़ मेरी आवाज़" - फ़ोन पर ही आवाज़-पहचान (MIT). 1.22 इस मॉडल पर थोड़ा ग़लत नतीजा देता था, 1.31 = Python जैसा
     implementation("com.microsoft.onnxruntime:onnxruntime-android:1.31.0")
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.8.4")
+    // नवंबर 2026: Piper TTS (फ़ोन में आवाज़, बिना इंटरनेट) - sherpa-onnx की आधिकारिक AAR (Maven Central पर नहीं, ऊपर dkFetch)
+    implementation(files(sherpaAar))
     // DK AI Website Forge: 3D scene को app के assets से https पर चलाने के लिए (WebViewAssetLoader)
     implementation("androidx.webkit:webkit:1.11.0")
     // v3.40: DK लाइव का कैमरा (preview + हर सेकंड एक तस्वीर Gemini को)

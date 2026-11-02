@@ -920,8 +920,6 @@ WhatsApp संदेश	WhatsApp messages
 चालू करने पर भी नाम साफ़ न मिले (दो मिलते-जुलते नाम) तो DK पूछेगा। भेजने के बाद DK जाँचता है कि संदेश सच में चैट में गया।	Even when on, DK asks if the name is unclear (two similar names). After sending, DK checks that the message really reached the chat.
 # v3.68/v3.69: आवाज़ इंजन + खुलने-बंद होने वाले कॉलम
 बोलने वाला इंजन (DK Live)	Speaking engine (DK Live)
-Gemini TTS • Microsoft Edge TTS • Gemini Live सीधी आवाज़ — एक समय में एक	Gemini TTS • Microsoft Edge TTS • Gemini Live direct voice — one at a time
-बोलने वाला इंजन (Gemini TTS • Edge • Live) • सुनना • सिर्फ़ मेरी आवाज़	Speaking engine (Gemini TTS • Edge • Live) • Listening • Only my voice
 बात करने का तरीका (अपनी तरफ़ से)	Your own talking style
 जवाब Gemini Live लिखता है; बोलता यह इंजन है. एक समय में एक ही चालू. मेरे बोलना ख़त्म करने से पहली आवाज़ तक का समय हर इंजन के नीचे दिखता है (पिछली बार नापा). दिक़्क़त आए तो ऐप अपने-आप Gemini TTS पर लौटता है. ये बदलाव तुरंत सेव होते हैं.	Gemini Live writes the reply; this engine speaks it. Only one is on at a time. The time from when you stop speaking to the first sound is shown under each engine (last measured). If something goes wrong, the app falls back to Gemini TTS by itself. These changes save instantly.
 कोई आवाज़ इंजन नहीं मिला - DK लाइव अपनी आवाज़ में बोलेगा	No voice engine found - DK Live will speak in its own voice
@@ -960,10 +958,7 @@ DK लाइव की Gemini key नहीं डाली	DK Live Gemini key n
 यह इंजन भावना के निर्देश नहीं मानता — सिर्फ़ गति और पिच बदलती है • मुफ़्त, बिना key	This engine does not follow emotion instructions — only speed and pitch change • free, no key
 Swara — हिंदी महिला	Swara — Hindi female
 Madhur — हिंदी पुरुष	Madhur — Hindi male
-ध्यान दें: Edge TTS भावना/स्टाइल के निर्देश नहीं मानता। सिर्फ़ गति और पिच बदल सकते हैं।	Note: Edge TTS does not follow emotion/style instructions. Only speed and pitch can change.
-भावना / स्टाइल (Edge के लिए)	Emotion / style (for Edge)
 जैसे: धीमी, कोमल आवाज़ में	e.g. slow, soft voice
-Edge में असर सिर्फ़ गति और पिच तक है: "धीमी", "कोमल" = गति कम, पिच नीचा; "तेज़", "जोश" = गति ज़्यादा। यह नीचे के स्लाइडर में जुड़ता है।	In Edge the effect is limited to speed and pitch: "slow", "soft" = lower speed and pitch; "fast", "excited" = higher speed. It adds to the sliders below.
 गति	Speed
 पिच (आवाज़ का ऊँचा-नीचापन)	Pitch (how high or low the voice is)
 कॉलम खुला	expanded
@@ -1206,3 +1201,16 @@ Run Deep Inspection • Ask DK Inspector • Bug Reports • हर 20 मिन
 सब साफ़ करें	Clear all
 हाँ, सब साफ़	Yes, clear all
 सारी Bug Reports साफ़ कर दूँ?	Clear all bug reports?
+Piper TTS (फ़ोन में, बिना इंटरनेट)	Piper TTS (on the phone, no internet)
+आवाज़ फ़ोन में ही बनती है - इंटरनेट / key नहीं चाहिए • भावना के निर्देश नहीं मानता (शब्दों से सिर्फ़ रफ़्तार)	Voice is made on the phone - no internet / key needed • does not follow emotion instructions (words only change pace)
+भावना / स्टाइल (Piper के लिए)	Emotion / style (for Piper)
+जैसे: धीरे, आराम से  •  या: तेज़, जल्दी	e.g. slow, relaxed  •  or: fast, quick
+Piper भावना के निर्देश नहीं समझता - "धीरे / तेज़" जैसे शब्दों से सिर्फ़ रफ़्तार बदलती है. गति / पिच नीचे के स्लाइडर से.	Piper does not understand emotion instructions - words like "slow / fast" only change the pace. Speed / pitch via the sliders below.
+आवाज़ फ़ोन में ही बनती है: इंटरनेट न हो तब भी DK बोलेगा. पहली बार (या आवाज़ बदलने पर) लोड होने में 1-2 सेकंड.	The voice is made on the phone: DK speaks even without internet. First load (or after changing voice) takes 1-2 seconds.
+आवाज़ें: Piper (rhasspy) - हिंदी आवाज़ें CC BY-NC-SA 4.0 (बेचने वाले काम के लिए नहीं).	Voices: Piper (rhasspy) - Hindi voices CC BY-NC-SA 4.0 (not for commercial use).
+DK लाइव — Direct Gemini Live Voice (सीधी आवाज़)	DK Live — Direct Gemini Live Voice
+Piper TTS (डिफ़ॉल्ट, फ़ोन में) • DK लाइव (Direct Gemini Live Voice) • Gemini TTS — एक समय में एक	Piper TTS (default, on the phone) • DK Live (Direct Gemini Live Voice) • Gemini TTS — one at a time
+बोलने वाला इंजन (Piper • Gemini TTS • Live) • सुनना	Speaking engine (Piper • Gemini TTS • Live) • Listening
+Priyamvada - हिंदी, महिला	Priyamvada - Hindi, female
+Pratham - हिंदी, पुरुष	Pratham - Hindi, male
+Lessac - English, महिला	Lessac - English, female

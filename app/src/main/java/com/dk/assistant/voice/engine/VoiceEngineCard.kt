@@ -43,7 +43,7 @@ class VoiceEngineCard private constructor(private val a: Activity, private val d
         val engines = VoiceEngines.all
         // v3.69: ऊपर का शीर्षक अब card का नाम है; नमूना-वाक्य, "तीनों बारी-बारी सुनो" और "रोको" हटाए (बैकअप: branch backup/dk-before-backup-folder-cleanup-1102, फ़ोल्डर backup/v3.69-settings)
         hint(box, "जवाब Gemini Live लिखता है; बोलता यह इंजन है. एक समय में एक ही चालू. मेरे बोलना ख़त्म करने से पहली आवाज़ तक का " +
-            "समय हर इंजन के नीचे दिखता है (पिछली बार नापा). डिफ़ॉल्ट: DK लाइव (सबसे तेज़). Gemini TTS / Edge में दिक़्क़त आए तो ऐप अपने-आप Gemini TTS पर लौटता है. ये बदलाव तुरंत सेव होते हैं.")
+            "समय हर इंजन के नीचे दिखता है (पिछली बार नापा). डिफ़ॉल्ट: Piper TTS (फ़ोन में, बिना इंटरनेट). \"DK लाइव\" का स्विच = Direct Gemini Live Voice (Gemini की अपनी आवाज़ सीधे). Piper / Gemini TTS में दिक़्क़त आए तो ऐप अपने-आप दूसरी आवाज़ पर लौटता है. ये बदलाव तुरंत सेव होते हैं.")
         nowBlock(box)            // v3.80: अभी कौन बोल रहा (इंजन / आवाज़ / मॉडल) + मॉडल बदलो + गति-पिच
         divider(box)
         val activeId = VoiceEngines.activeId(a)
@@ -83,8 +83,7 @@ class VoiceEngineCard private constructor(private val a: Activity, private val d
 
     private fun onSwitch(id: String, on: Boolean) {
         val cur = VoiceEngines.activeId(a)
-        val next = VoiceEngines.toggle(cur, id, on, available = VoiceEngines.all.map { it.id }.toSet())
-        if (next != cur) VoiceEngines.setActive(a, next)
+        val next = VoiceModeController.switch(a, id, on)      // नवंबर 2026: बंद = Piper पर लौटो (Piper बंद = Direct Live)
         muteSwitch = true
         switches.forEach { (k, s) -> s.isChecked = k == next }
         muteSwitch = false
@@ -103,7 +102,7 @@ class VoiceEngineCard private constructor(private val a: Activity, private val d
         val live = com.dk.assistant.Prefs.liveModel(a).ifBlank { "अभी नहीं जुड़ा" }
         val livePick = com.dk.assistant.LiveModelPick.get(a)
         return buildString {
-            append("बोलने वाला: ").append(e?.title ?: "Gemini Live").append(" • आवाज़: ").append(e?.voice(a) ?: com.dk.assistant.Prefs.geminiVoice(a))
+            append("बोलने वाला: ").append(e?.title ?: "Gemini Live").append(" • आवाज़: ").append(e?.let { x -> x.voice(a).let { v -> x.voices().firstOrNull { it.first == v }?.second ?: v } } ?: com.dk.assistant.Prefs.geminiVoice(a))
             if (e != null && e.split) append("\nजवाब लिखने वाला (DK लाइव): ").append(live)
             else append("\nDK लाइव मॉडल (यही बोलता है): ").append(live)
             if (livePick.isNotBlank() && livePick != live) append(" → चुना: ").append(livePick).append(" (DK चुप होते ही)")
@@ -147,9 +146,9 @@ class VoiceEngineCard private constructor(private val a: Activity, private val d
 
         // गति / पिच - जो भी इंजन चालू हो, उसी पर; बातचीत के बीच भी तुरंत
         label(box, "गति और पिच (जो आवाज़ चालू है, उसी पर - तुरंत)")
-        slider(box, "गति", VoiceTune.MIN_SPEED, VoiceTune.MAX_SPEED, VoiceTune.speedPct, { v -> "$v%" }) { v -> VoiceTune.setSpeed(a, v); refreshNow() }
-        slider(box, "पिच (आवाज़ का ऊँचा-नीचापन)", VoiceTune.MIN_PITCH, VoiceTune.MAX_PITCH, VoiceTune.pitchPct, { v -> "$v%" }) { v -> VoiceTune.setPitch(a, v); refreshNow() }
-        hint(box, "100% = सामान्य। कोमल आवाज़ के लिए गति 90-95% और पिच 100-104% अच्छी लगती है। DK लाइव, Gemini TTS और Edge - तीनों पर एक ही।")
+        slider(box, "गति", VoiceTune.MIN_SPEED, VoiceTune.MAX_SPEED, VoiceTune.speedPct, { v -> VoiceTune.fmt(v) }) { v -> VoiceTune.setSpeed(a, v); refreshNow() }
+        slider(box, "पिच (आवाज़ का ऊँचा-नीचापन)", VoiceTune.MIN_PITCH, VoiceTune.MAX_PITCH, VoiceTune.pitchPct, { v -> VoiceTune.fmt(v) }) { v -> VoiceTune.setPitch(a, v); refreshNow() }
+        hint(box, "100% = सामान्य। कोमल आवाज़ के लिए गति 90-95% और पिच 100-104% अच्छी लगती है। Piper, DK लाइव और Gemini TTS - तीनों पर एक ही। गति 0.5x-2.0x, पिच 0.5x-1.5x।")
     }
 
     private fun radioList(box: LinearLayout, items: List<Pair<String, String>>, cur: String, onPick: (String) -> Unit) {

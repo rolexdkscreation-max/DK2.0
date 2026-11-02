@@ -26,10 +26,10 @@ import java.util.concurrent.TimeUnit
  */
 object LiveNativeEngine : VoiceEngine {
     override val id = VoiceEngines.LIVE_NATIVE
-    override val title = "DK लाइव (सीधी आवाज़ — सबसे तेज़)"
+    override val title = "DK लाइव — Direct Gemini Live Voice (सीधी आवाज़)"
     override val note = "Live खुद लिखता और खुद बोलता है (native audio) • नीचे का भावना/स्टाइल Live के मुख्य निर्देश में जुड़ता है"
     override val split = false
-    override val defaultOn = true
+    override val defaultOn = false          // नवंबर 2026: डिफ़ॉल्ट Piper (Direct Live = बंद, स्विच से चालू)
 
     private const val URL = "wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent"
     private val http = com.dk.assistant.NetFix.builder().connectTimeout(8, TimeUnit.SECONDS).readTimeout(0, TimeUnit.MILLISECONDS).build()
