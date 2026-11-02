@@ -98,6 +98,19 @@ object LiveNet {
         })
     }
 
+    /**
+     * नवंबर 2026: बैकअप (text) मोड की चुप सेहत-जाँच ([LiveHealth]). एक छोटा HTTPS GET (models की 1 लाइन, key header में -
+     * URL / log में key नहीं). Live सत्र नहीं, माइक नहीं, token नहीं. उसी गरम connection से = Live जल्दी जुड़ता है.
+     * Blocking - सिर्फ़ IO thread पर बुलाएँ.
+     */
+    fun healthProbe(key: String): LiveHealth.Probe {
+        if (key.isBlank()) return LiveHealth.Probe.KEY
+        return try {
+            val r = Request.Builder().url("https://$HOST/v1beta/models?pageSize=1").get().header("x-goog-api-key", key).build()
+            warmHttp.newCall(r).execute().use { LiveHealth.probeResult(it.code) }
+        } catch (_: IOException) { LiveHealth.Probe.NET } catch (_: Exception) { LiveHealth.Probe.NET }
+    }
+
     private fun screenOff() {
         warmedThisScreen = false
         warmCall?.cancel(); warmCall = null

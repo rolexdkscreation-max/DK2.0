@@ -210,10 +210,16 @@ class DKAccessibilityService : AccessibilityService() {
         internal set
     @Volatile var backupKind: LiveFailWhy.Kind? = null
         internal set
+    /** नवंबर 2026: बैकअप कब शुरू हुआ (cooldown यहीं से) + लगातार कितनी बार लिमिट (60 -> 120 -> 240s ...) - LiveHealth */
+    @Volatile internal var backupAt = 0L
+    @Volatile internal var quotaStrikes = 0
+    /** बैकअप में पीछे वाली चुप सेहत-जाँच (Live ठीक = अगली बात से फिर Live) */
+    internal var healthJob: kotlinx.coroutines.Job? = null
 
     /** GeminiLive: setup पूरा = DK लाइव जुड़ गया */
     fun liveConnected() {
         if (backupMode) { exitBackup("DK लाइव जुड़ गया"); liveSoftFails = 0 }
+        ModeTrack.switchTo(ModeTrack.Ch.LIVE, "Live जुड़ा")
     }
 
     /** Mic error 12/13 का संदेश एक बार (हर बार बोलकर परेशान नहीं) */
@@ -569,15 +575,18 @@ class DKAccessibilityService : AccessibilityService() {
                     lastWhyNot = ""
                     var failed = false
                     val liveStart = System.currentTimeMillis()
+                    ModeTrack.call(ModeTrack.Ch.LIVE, if (backupMode) "बैकअप से वापस Live (सेहत-जाँच ठीक)" else "")
                     try {
                         val r = gemLive.run()
                         DKState.setLink("")          // v5.1: Live रुका (सामान्य) - पुराना "Live • …" न दिखे
                         liveSoftFails = 0
+                        ModeTrack.ok(ModeTrack.Ch.LIVE)
                         DKLog.d("Gemini Live ruka: $r")
                     } catch (e: GeminiLive.Fatal) {
                         failed = true
+                        ModeTrack.error(ModeTrack.Ch.LIVE, (e.kind?.short ?: if (e.recoverable) "टूटा" else "रुकावट") + ": " + (e.message ?: "-"))
                         // 5 min+ theek chala tha = purani dikkatein ginti se hatao (backoff shuru se)
-                        if (System.currentTimeMillis() - liveStart > 5 * 60_000L) liveSoftFails = 0
+                        if (System.currentTimeMillis() - liveStart > 5 * 60_000L) { liveSoftFails = 0; quotaStrikes = 0 }
                         // key/limit/model = asli rukawat. Network/mic busy = thodi der.
                         val userLive = DKState.live && !wakeLive
                         val rawMs = if (userLive) LiveRetry.fast(e.recoverable, LiveRetry.liveOnMs(e.recoverable, liveSoftFails)) else LiveRetry.offMs(e.recoverable, liveSoftFails)
@@ -595,6 +604,11 @@ class DKAccessibilityService : AccessibilityService() {
                             val kind = e.kind ?: LiveFailWhy.classify(0, e.message, NetProbe.online(this@DKAccessibilityService))
                             enterBackup(kind, e.message ?: "-")
                         }
+                        // नवंबर 2026 (मालिक): जुड़कर बार-बार टूटा (socket drop) = यूज़र रुका न रहे -> चुपचाप text मोड + Kokoro;
+                        // पीछे सेहत-जाँच ठीक होते ही अगली बात से फिर Live (LiveHealth)
+                        else if (userLive && LiveHealth.dropToBackup(liveSoftFails)) {
+                            enterBackup(LiveHealth.softKind(LiveFailWhy.classify(0, e.message, NetProbe.online(this@DKAccessibilityService))), e.message ?: "-")
+                        }
                         else if (userLive) { DKState.setLink("Live नहीं जुड़ा - फिर जोड़ रहा हूँ"); liveTroubleSay(LiveConnectNotice.forStop(e.message, e.recoverable)) }
                         else if (liveOffSoft) warn("live", "DK लाइव का connection टूटा (${e.message}) - ${offMs / 1000}s में फिर जोड़ रहा हूँ।")
                         else warn("live", "Gemini Live नहीं चला: ${e.message}। अभी पुराने तरीके से सुन रहा हूँ।")
@@ -609,7 +623,12 @@ class DKAccessibilityService : AccessibilityService() {
                         val offMs = rawMs.coerceAtMost(60_000L)
                         liveOffUntil = System.currentTimeMillis() + offMs
                         DKLog.d("Gemini Live गलती: ${e.javaClass.simpleName} ${e.message}")
-                        if (userLive) liveTroubleSay(LiveConnectNotice.TROUBLE)
+                        ModeTrack.error(ModeTrack.Ch.LIVE, "${e.javaClass.simpleName}: ${e.message ?: "-"}")
+                        if (userLive) liveSoftFails++
+                        // बार-बार अनजानी गलती = क्रैश/रुकना नहीं, चुपचाप text मोड (सेहत-जाँच से वापस)
+                        if (userLive && LiveHealth.dropToBackup(liveSoftFails))
+                            enterBackup(LiveHealth.softKind(LiveFailWhy.classify(0, e.message, NetProbe.online(this@DKAccessibilityService))), e.message ?: "-")
+                        else if (userLive) liveTroubleSay(LiveConnectNotice.TROUBLE)
                     }
                     // v3.45: बातचीत खत्म -> कब, कितनी देर, सारांश, अधूरी बातें (फ़ोन पर)
                     try { FriendTalk.sessionEnd(this@DKAccessibilityService, liveStart, scope) } catch (_: Exception) {}

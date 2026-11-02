@@ -67,12 +67,23 @@ object KokoroTtsEngine : VoiceEngine {
     override fun voices() = VOICES
     override fun voiceGroup(v: String): String? = byVoice(v)?.group
 
-    /** चुनी आवाज़ SharedPreferences में (ऐप बंद-चालू / फ़ोन restart पर भी वही). अनजान/पुरानी = Alpha */
-    override fun voice(c: Context): String =
-        VoiceEngines.sp(c).getString(PREF_VOICE, null)?.takeIf { byVoice(it) != null } ?: DEFAULT_VOICE
+    /** यूज़र ने खुद (Settings में radio दबाकर) चुनी - तभी Alpha के अलावा कोई आवाज़ */
+    const val PREF_PICKED = "kokoro_voice_by_user"
+
+    /**
+     * चुनी आवाज़ SharedPreferences में (Android का localStorage; ऐप बंद-चालू / फ़ोन restart पर भी वही).
+     * मालिक (नवंबर 2026): डिफ़ॉल्ट Female 'Alpha' पर पक्का ताला - Beta या कोई और अपने-आप कभी नहीं:
+     * सिर्फ़ यूज़र के radio दबाने ([setVoice]) से बदलती है. अनजान / पुरानी / बिना-यूज़र लिखी (restore, पुरानी Piper) = Alpha.
+     */
+    override fun voice(c: Context): String {
+        val p = VoiceEngines.sp(c)
+        if (!p.getBoolean(PREF_PICKED, false)) return DEFAULT_VOICE
+        return p.getString(PREF_VOICE, null)?.takeIf { byVoice(it) != null } ?: DEFAULT_VOICE
+    }
+    /** सिर्फ़ Settings की आवाज़-सूची से (यूज़र) - बाकी code इसे नहीं बुलाता */
     override fun setVoice(c: Context, v: String) {
         if (byVoice(v) == null) return
-        VoiceEngines.sp(c).edit().putString(PREF_VOICE, v).apply()
+        VoiceEngines.sp(c).edit().putString(PREF_VOICE, v).putBoolean(PREF_PICKED, true).apply()
         warm(c)
     }
 

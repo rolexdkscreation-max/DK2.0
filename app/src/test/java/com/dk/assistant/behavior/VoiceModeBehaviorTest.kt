@@ -40,6 +40,19 @@ class VoiceModeBehaviorTest {
         assertEquals(VoiceEngines.KOKORO_TTS, VoiceEngines.activeId(c))
     }
 
+    /** मालिक (नवंबर 2026): डिफ़ॉल्ट Alpha पर ताला - यूज़र के radio दबाए बिना Beta / कोई और कभी नहीं */
+    @Test fun alphaHardLocked_onlyUserPickChangesIt() {
+        VoiceEngines.sp(c).edit().putString(KokoroTtsEngine.PREF_VOICE, "hf_beta").commit()   // बिना यूज़र (restore वगैरह)
+        assertEquals("hf_alpha", KokoroTtsEngine.voice(c))
+        val s = open().get()
+        val rb = Ui.all(s).filterIsInstance<android.widget.RadioButton>()
+        assertTrue(rb.first { it.text.toString() == "Alpha" }.isChecked)
+        assertFalse(rb.first { it.text.toString() == "Beta" }.isChecked)
+        rb.first { it.text.toString() == "Psi" }.performClick()                                  // यूज़र ने खुद चुनी
+        assertEquals("hm_psi", KokoroTtsEngine.voice(c))
+        assertTrue(VoiceEngines.sp(c).getBoolean(KokoroTtsEngine.PREF_PICKED, false))
+    }
+
     /** Piper हटाया: पहले Piper चुना था = अब Kokoro (एक बार वाला migration हो चुका हो तब भी) */
     @Test fun oldPiperChoiceMovesToKokoro() {
         VoiceEngines.sp(c).edit().putString("active", VoiceEngines.OLD_PIPER_ID).putBoolean(VoiceEngines.MIGRATE_KEY, true)

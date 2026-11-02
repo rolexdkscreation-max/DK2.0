@@ -16,6 +16,7 @@ class DKApp : Application() {
         super.onCreate()
         DKBug.init(this)      // नवंबर 2026: DK Inspector पूरे ऐप से जुड़ा - लॉग + हर हिस्से की गलती फ़ाइल में (सबसे पहले)
         DKState.init(this)
+        ModeTrack.sink = { DKLog.d(it) }   // नवंबर 2026: [LIVE] / [TEXT] / [PROBE] की कॉल और गलतियाँ अलग-अलग लॉग में
         NetFix.install(this)  // नवंबर 2026: एक नेटवर्क पर न चलना - IPv4 पहले + DoH, नेटवर्क बदले तो याद साफ़
         Prefs.loadLang(this)
         UiLang.load(this)     // स्क्रीनों की भाषा (शुरुआती English)
