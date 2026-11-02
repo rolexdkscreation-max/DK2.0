@@ -25,7 +25,7 @@ internal fun GeminiLive.handleServer(msg: String, setup: CompletableDeferred<Uni
         if (setupSentAt > 0) { trace.rttMs = System.currentTimeMillis() - setupSentAt; log("setup का जवाब ${trace.rttMs} ms (network RTT + server)"); NetSpeed.onSetup(trace.rttMs) }
         // ready + purani (judte samay ki) awaaz ek saath, lock me: mic ka naya tukda purane se pehle na nikle
         // v5.1: पहले याद (छोटे setup के बाद), फिर जुड़ते समय की आवाज़ - फ़ोन ने जो 3s तक जमा की
-        synchronized(sendLock) { sendContext(ws); ready = true; flushPending() }
+        synchronized(sendLock) { sendContext(ws); ready = true; flushPending(); sendReplay() }
         setup.complete(Unit)
         if (firstText != null) openerText = null; sendFirstText(); sendResend(); sendOpener()
         // v3.7: पिछला जवाब सिर्फ़ लिखा गया था (आवाज़ नहीं बनी) - अब Live की अपनी आवाज़ में दोबारा
@@ -38,6 +38,7 @@ internal fun GeminiLive.handleServer(msg: String, setup: CompletableDeferred<Uni
     }
     o.optJSONObject("goAway")?.let { onGoAway(it.optString("timeLeft")) }
     o.optJSONObject("voiceActivity")?.optString("type")?.let { t ->
+        lastAnyServerAt = System.currentTimeMillis()      // नवंबर 2026: server ने सुना = session ज़िंदा (अटका नहीं)
         if (t == "ACTIVITY_START" || t == "ACTIVITY_END") replyWatch.onServerHeard()
         if (t == "ACTIVITY_START") {
             // server ne user ki awaaz pakdi: DK bol raha ho to turant chup (bache tukde bhi nahi), warna Listening
@@ -55,7 +56,7 @@ internal fun GeminiLive.handleServer(msg: String, setup: CompletableDeferred<Uni
         }
     }
     o.optJSONObject("toolCall")?.optJSONArray("functionCalls")?.let {
-        lastServerAt = System.currentTimeMillis()
+        lastServerAt = System.currentTimeMillis(); lastAnyServerAt = lastServerAt; utt.clear(); onRecovered()
         // v3.66: किसी और की आवाज़ पर बना काम - कुछ मत करो (फ़ोन पर कोई काम नहीं), Gemini को बता दो
         if (muteTurn) { ignoreTools(it); return@let }
         // v3.67: tool से पहले बोला "कर दिया" = झूठ (काम अभी शुरू हुआ) - वह हिस्सा नहीं बजता; "ठीक है बॉस" बजता है
@@ -75,7 +76,7 @@ internal fun GeminiLive.handleServer(msg: String, setup: CompletableDeferred<Uni
         for (i in 0 until a.length()) toolJobs.remove(a.optString(i))?.cancel()
     }
     val sc = o.optJSONObject("serverContent") ?: return
-    lastServerAt = System.currentTimeMillis()
+    lastServerAt = System.currentTimeMillis(); lastAnyServerAt = lastServerAt; onRecovered()
     // dropOld = user ne toka, yeh PURANE jawab ke bache tukde hain (phenke jaate hain) - inhe nayi baat ka
     // "jawab aaya" mat gino, warna nayi baat ka watchdog band ho jaata aur server na sune to DK chup rehta
     val oldReply = dropOld
@@ -84,7 +85,7 @@ internal fun GeminiLive.handleServer(msg: String, setup: CompletableDeferred<Uni
     // docs: model jawab nahi bana raha kyunki use lagta hai user aage bolega (diagnostics - sirf log)
     if (sc.optBoolean("waitingForInput") && !waitingLogged) { waitingLogged = true; log("server: waitingForInput (मॉडल मान रहा है user आगे बोलेगा) • ${timeline.summary()}") }
     if (sc.optBoolean("generationComplete")) timeline.genDone(System.currentTimeMillis())
-    if (!oldReply && (sc.has("modelTurn") || sc.has("outputTranscription"))) replyWatch.onServerAnswered()
+    if (!oldReply && (sc.has("modelTurn") || sc.has("outputTranscription"))) { replyWatch.onServerAnswered(); utt.clear() }
     sc.optJSONObject("inputTranscription")?.optString("text")?.takeIf { it.isNotBlank() && !muteTurn }?.let { t ->
         if (!turnActive) startTurn()
         Ducker.duck(svc, "Live: user बोल रहा")

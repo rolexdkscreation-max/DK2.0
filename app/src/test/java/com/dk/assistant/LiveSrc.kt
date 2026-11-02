@@ -20,6 +20,7 @@ object LiveSrc {
         "GeminiLiveQueue.kt",
         "GeminiLiveMic.kt",
         "GeminiLivePlayer.kt",
+        "GeminiLiveRecover.kt",
     )
 
     private fun dir(): File {

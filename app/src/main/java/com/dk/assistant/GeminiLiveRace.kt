@@ -59,6 +59,9 @@ internal fun GeminiLive.startRace(keys: List<String>, models: List<String>, live
     val tmo = LiveRace.timeoutMs(health.recentTimes())
     // नवंबर 2026: बातचीत वहीं से (handle) वाली जोड़ी सबसे पहले - दूसरी जीतती तो handle छूटता (संदर्भ खो जाता)
     if (resumeId != null) queue.indexOfFirst { it.id == resumeId }.takeIf { it > 0 }?.let { queue.add(0, queue.removeAt(it)) }
+    // नवंबर 2026 (DKI-D24C3A): setup पर बार-बार अटका मॉडल 30 मिनट सबसे पीछे (हटाया नहीं) - एक key पर एक समय एक ही
+    // जोड़ी चलती है, अटका मॉडल पहले = हर बार 10s+ का इंतज़ार
+    queue = LiveRecover.Demote.order(queue, now) { it.model }.toMutableList()
     log("दौड़${if (live) "" else " (पीछे से, माइक नहीं)"}: ${queue.size} जोड़ियाँ, हर एक का इंतज़ार $tmo ms (हाल के नाप: ${health.recentTimes().joinToString()}) • " +
         queue.take(4).joinToString { it.label })
     if (queue.isEmpty()) {
@@ -86,6 +89,8 @@ internal fun GeminiLive.startRace(keys: List<String>, models: List<String>, live
                         saveHealth()
                         // WebSocket खुला ही नहीं (onOpen नहीं आया) = Google के server तक पहुँचे ही नहीं; खुला पर setupComplete नहीं = धीमा
                         if (a.sentAt == 0L) DkDns.reportUnreachable(LIVE_HOST)
+                        else if (LiveRecover.Demote.setupHung(a.c.model, t))
+                            log("मॉडल ${a.c.model}: socket खुला पर लगातार ${LiveRecover.Demote.STREAK} बार setup का जवाब नहीं - ${LiveRecover.Demote.DEMOTE_MS / 60_000} मिनट दौड़ में सबसे पीछे (हटाया नहीं)")
                         r.lastFail = 0 to (if (a.sentAt == 0L) "connection खुला ही नहीं - ${tmo / 1000}s में Google के server तक नहीं पहुँचा"
                             else "setup का जवाब ${tmo / 1000} सेकंड में नहीं आया"); r.lastFailCombo = a.c
                         log("दौड़: [${a.c.label}] ${t - a.t0} ms में setup नहीं - यह जोड़ी 2 मिनट नहीं, अगली तुरंत")
@@ -214,7 +219,7 @@ internal fun GeminiLive.onAttemptMsg(r: Race, a: Attempt, w: WebSocket, text: St
         }
     }
     if (!first) { killAttempt(a, "दौड़ में दूसरा जीता"); return }
-    health.ok(a.c, ms, now); saveHealth()
+    health.ok(a.c, ms, now); saveHealth(); LiveRecover.Demote.ok(a.c.model)
     Cooldown.clear(LiveKeys.cooldownName(a.c.keyIdx, a.c.model))
     log("दौड़ जीती: [${a.c.label}] जुड़ने में $ms ms" + if (r.atts.size > 1) " (${r.atts.size} जोड़ियाँ आज़माईं)" else "")
     r.atts.forEach { if (it !== a) killAttempt(it, "दौड़: दूसरा जीता") }

@@ -78,6 +78,12 @@ object DkDns : Dns {
     }
 
     /** WebSocket (Live / Edge) host तक connection खुला ही नहीं - अगली बार DoH वाले पते भी, पुराने पते पीछे */
+    /**
+     * नवंबर 2026: फ़ोन का नेटवर्क सच में बदला (Wi-Fi <-> mobile) कब - Live तुरंत नया connection बनाता है.
+     * सिर्फ़ नया नेटवर्क; IPv6 पते का बदलना (onLinkPropertiesChanged) नहीं - वह बार-बार होता है.
+     */
+    @Volatile var switchedAt = 0L
+
     fun reportUnreachable(host: String) {
         val now = System.currentTimeMillis()
         cache.remove(host)?.second?.forEach { markBad(it) }
@@ -140,7 +146,7 @@ object NetFix {
             cm.registerDefaultNetworkCallback(object : ConnectivityManager.NetworkCallback() {
                 @Volatile private var last: Network? = null
                 override fun onAvailable(network: Network) {
-                    if (last != null && last != network) DkDns.onNetworkChanged("नया नेटवर्क")
+                    if (last != null && last != network) { DkDns.switchedAt = System.currentTimeMillis(); DkDns.onNetworkChanged("नया नेटवर्क") }
                     last = network
                 }
                 @Volatile private var sig = ""
