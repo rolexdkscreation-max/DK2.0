@@ -41,7 +41,7 @@ import kotlin.math.abs
  *  - screen ke saare buttons/text padhta hai (aankh)
  *  - click, long press, type, scroll, swipe, back/home karta hai (haath)
  *  - screenshot leta hai (Android 11+)
- *  - नीचे बीच में एक तैरता ORB (FloatOrb.kt) दिखाता है: tap = bolo, dobara tap = roko; ✕ = सिर्फ़ ORB छिपे
+ *  - ऐप से बाहर नीचे बीच में एक तैरता ORB (FloatOrb.kt): tap = bolo, dobara tap = roko; ✕ नहीं (छिपाना Settings से)
  */
 class DKAccessibilityService : AccessibilityService() {
 
@@ -95,7 +95,7 @@ class DKAccessibilityService : AccessibilityService() {
         calls.start()
         scope.launch { speaker.warmCallVoice() }   // v4.2: "सर, कॉल आ रहा है" पहले से तैयार - limit / नेट न हो तब भी कॉल पर चुप नहीं
         showEdgeGlow()
-        // एक ही ORB, हर हाल में (DK ऐप खुला / minimize / दूसरा ऐप). ऐप खुलते ही - ✕ से छिपा हो तो वापस
+        // एक ही छोटा ORB - सिर्फ़ ऐप से बाहर (ऐप खुला = नहीं, OrbRules). ऐप खुलने/बंद होने पर sync
         floatOrb = FloatOrb(this) { onOrbTap() }.also { it.sync() }
         AppVisible.onChange = { inApp ->
             if (inApp && !Prefs.floatOrbOn(this)) Prefs.setFloatOrbOn(this, true)

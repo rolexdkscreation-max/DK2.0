@@ -30,6 +30,14 @@ object Setup {
     fun canWriteSecure(c: Context) =
         ContextCompat.checkSelfPermission(c, "android.permission.WRITE_SECURE_SETTINGS") == PackageManager.PERMISSION_GRANTED
 
+    /**
+     * नवंबर 2026: "ऐप पूरा बंद करने के बाद Accessibility में DK 'Not working' - फिर से चालू करना पड़ता है".
+     * फ़ोन (recents साफ़ / force stop) DK की process मार देता है; Android सेवा को सूची में चालू रखता है पर जोड़ता नहीं.
+     * सिर्फ़ तब फिर से जोड़ो जब मालिक ने पहले से चालू की हो (settings में है) पर चल नहीं रही - नई इजाज़त कभी नहीं.
+     */
+    fun healAccessibility(c: Context): Boolean =
+        DKAccessibilityService.instance == null && enabledInSettings(c) && canWriteSecure(c) && selfEnableAccessibility(c)
+
     fun selfEnableAccessibility(c: Context): Boolean {
         if (DKAccessibilityService.instance != null) return true
         if (!canWriteSecure(c)) return false
