@@ -66,7 +66,7 @@ class ScreenDkOnlyOfflineCallsTest {
     @Test fun dkOnlySettingWired() {
         val p = src("Prefs.kt")
         assertTrue(p.contains("getBoolean(\"dk_only_listen\", false)"))
-        val st = src("SettingsActivity.kt")
+        val st = com.dk.assistant.SetSrc.all()
         assertTrue(st.contains("\"सिर्फ़ DK बोलने पर सुनो\""))
         assertTrue(st.contains("चालू करने पर DK तभी सुनेगा और काम करेगा जब बात की शुरुआत में DK बोला जाए। बाकी बातें अनदेखी कर दी जाएँगी।"))
         assertTrue(st.contains("putBoolean(\"dk_only_listen\", swDkOnly.isChecked)"))
@@ -202,7 +202,7 @@ class ScreenDkOnlyOfflineCallsTest {
         assertTrue(svc.contains("sendMultipartTextMessage"))
         assertTrue(svc.contains("Prefs.callBusyMsg(this)"))
         assertTrue(src("DKNotifListener.kt").contains("CallCmd.announce(r.who, r.app, r.video)"))
-        assertTrue(src("SettingsActivity.kt").contains("\"आने वाली कॉल बोलकर बताओ\""))
+        assertTrue(com.dk.assistant.SetSrc.all().contains("\"आने वाली कॉल बोलकर बताओ\""))
         assertTrue(src("Prefs.kt").contains("getBoolean(\"announce_calls\", true)"))
         assertTrue(manifest().contains("android.permission.SEND_SMS"))
         assertTrue(LiveSrc.all().contains("svc.doCallCmd(cc)"))

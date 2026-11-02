@@ -100,6 +100,6 @@ class FloatOrbTest {
         assertFalse(f.contains("stopLive") || f.contains("disableSelf") || f.contains("stopService"))
         val m = listOf(File("src/main/AndroidManifest.xml"), File("app/src/main/AndroidManifest.xml")).first { it.exists() }.readText()
         assertTrue(m.contains(".OrbShowReceiver"))
-        assertTrue(src("SettingsActivity.kt").contains("card(\"तैरता ORB\""))
+        assertTrue(com.dk.assistant.SetSrc.all().contains("card(\"तैरता ORB\""))
     }
 }

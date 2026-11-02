@@ -11,7 +11,7 @@ class OwnerVoiceRemovedTest {
     private fun src(n: String) = f("java/com/dk/assistant/$n").readText()
 
     @Test fun optionGoneFromSettings() {
-        val s = src("SettingsActivity.kt")
+        val s = com.dk.assistant.SetSrc.all()
         assertFalse(s.contains("card(\"सिर्फ़ मेरी आवाज़ सुनो\""))
         assertFalse(s.contains("fun ownerVoiceCard(") || s.contains("fun enrollOwner(") || s.contains("fun testOwner("))
         assertFalse(s.contains("putBoolean(\"owner_voice_on\""))
@@ -24,7 +24,7 @@ class OwnerVoiceRemovedTest {
     }
 
     @Test fun nothingElseLost() {
-        val s = src("SettingsActivity.kt")
+        val s = com.dk.assistant.SetSrc.all()
         assertTrue(s.contains("heyDkCard(box)") && s.contains("enrollHeyDk") && s.contains("fun ownerDialog(") && s.contains("private var ownerJob"))
         assertTrue(s.lines().size > 1500)
         val p = src("Prefs.kt")

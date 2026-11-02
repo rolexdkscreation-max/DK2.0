@@ -141,7 +141,7 @@ class CoderSevenAgentsTest {
     @Test fun texts_sayTeamOf7_notOf11() {
         val files = listOf("CodingActivity.kt", "SettingsActivity.kt", "SevenRunner.kt", "RepoDoctorRunner.kt", "RepoDoctor.kt", "AgentRunner.kt")
         for (n in files) {
-            val s = File("src/main/java/com/dk/assistant/$n").readText()
+            val s = if (n == "SettingsActivity.kt") SetSrc.all() else File("src/main/java/com/dk/assistant/$n").readText()   // Settings अब कई हिस्सों में
             assertFalse(n, s.contains("\"11 एजेंट") || s.contains("11-एजेंट टीम") || s.contains("11 एजेंट वाली"))
         }
         val live = LiveSrc.all()

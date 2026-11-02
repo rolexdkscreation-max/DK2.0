@@ -100,7 +100,7 @@ class FutureOrbsTypingTest {
         }
         val w = src("DKWorkingIndicator.kt").readText()
         assertTrue(w.contains("TypingStyles.dots(typing"))
-        val st = src("SettingsActivity.kt").readText()
+        val st = com.dk.assistant.SetSrc.all()
         assertTrue(st.contains("card(\"टाइपिंग एनीमेशन\""))
         assertTrue(st.contains("putString(\"typing_style\", v)"))
     }
@@ -113,7 +113,7 @@ class FutureOrbsTypingTest {
         assertFalse(listOf(File("src/main/java/com/dk/assistant/avatar/AvatarView.kt"), File("app/src/main/java/com/dk/assistant/avatar/AvatarView.kt")).any { it.exists() })
         assertFalse(listOf(File("src/main/java/com/dk/assistant/avatar/AvatarAssets.kt"), File("app/src/main/java/com/dk/assistant/avatar/AvatarAssets.kt")).any { it.exists() })
         for (f in listOf("MainActivity.kt", "VoiceActivity.kt", "SettingsActivity.kt", "Prefs.kt")) {
-            val s = src(f).readText()
+            val s = if (f == "SettingsActivity.kt") SetSrc.all() else src(f).readText()   // Settings अब कई हिस्सों में
             assertFalse("$f still has avatar", s.contains("AvatarView") || s.contains("AvatarAssets") || s.contains("avatarKind") || s.contains("avatar_kind"))
         }
         val layout = res("res/layout/activity_main.xml").readText()
