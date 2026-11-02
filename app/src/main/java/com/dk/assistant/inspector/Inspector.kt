@@ -109,8 +109,9 @@ object Inspector {
             p(70, "गड़बड़ियाँ ढूँढ रहा हूँ, वजह और असर जोड़ रहा हूँ…")
             val found = InspectorCore.analyze(events, seen) + InspectorCore.liveFindings(stats, mic, key) + listOfNotNull(lat?.warning)
             p(85, "पुरानी रिपोर्टों से मिला रहा हूँ (दोहराव नहीं)…")
-            val old = incidents(ctx)
-            val m = InspectorCore.merge(old, found, now, appVersion(ctx))
+            // नवंबर 2026: लॉग से पक्की मिली गड़बड़ी की "Live हाल" वाली दोहरी रिपोर्ट नहीं
+            val (uniq, old) = InspectorCore.dropDupStats(found, incidents(ctx))
+            val m = InspectorCore.merge(old, uniq, now, appVersion(ctx))
             // कुछ नहीं बदला (अपने-आप वाली जाँच) = वही रिपोर्ट दोबारा नहीं लिखनी
             val sig = InspectorCore.hash(m.incidents.joinToString("|") { it.id + it.status + it.count + it.severity })
             val changed = sig != sp(ctx).getString(K_LAST_SIG, "")

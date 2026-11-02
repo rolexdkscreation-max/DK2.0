@@ -920,6 +920,12 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
     }
     /** नवंबर 2026: एक मॉडल पर बार-बार 1011 = Google की तरफ़ उस मॉडल की खराबी - 30 मिनट हटाओ (अगर दूसरा मॉडल बचा हो). नया मॉडल लौटाता है */
     private val model1011 = LiveStay.Model1011()
+    /** नवंबर 2026: 1011 से टूटे मॉडल 6 घंटे सबसे पीछे (ऐप बंद-चालू पर भी याद) */
+    private val broken1011: LiveStay.Broken1011 by lazy { LiveStay.Broken1011.decode(try { raceSp.getString("b1011", "") } catch (_: Exception) { "" }) }
+    private fun markBroken1011(m: String) {
+        broken1011.mark(m)
+        try { raceSp.edit().putString("b1011", broken1011.encode()).apply() } catch (_: Exception) {}
+    }
     private fun dropModel1011(keys: List<String>, models: List<String>, where: String): String? {
         val m = model
         val free = { x: String -> keys.indices.any { k -> !Cooldown.blocked(LiveKeys.cooldownName(k, x)) } }
@@ -929,7 +935,8 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
         // save होने वाली Cooldown नहीं (वह ऐप बंद-चालू पर भी रहती) - सिर्फ़ दौड़ की 2 मिनट वाली रोक, अपने-आप हटती है
         val now = System.currentTimeMillis()
         for (k in keys.indices) health.comboFail(LiveRace.Combo(m, k), now)
-        log("1011 \"Internal error\" ${LiveStay.MODEL_1011_HITS} बार ($m, $where) - Google की तरफ़ इस मॉडल की खराबी; ${LiveRace.COMBO_FAIL_MS / 60_000} मिनट हटाया, अब $next (नई बातचीत)")
+        markBroken1011(m)
+        log("1011 \"Internal error\" ($m, $where) - Google की तरफ़ इस मॉडल की खराबी; ${LiveStay.BROKEN_1011_MS / 3600_000} घंटे सबसे पीछे, अब $next (नई बातचीत)")
         return next
     }
     private fun isQuota(code: Int, r: String) = r.contains("quota") || r.contains("exhausted") || r.contains("rate limit") || code == 429
@@ -1152,6 +1159,7 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
                     // पहले "जुड़ नहीं पा रही" बताया था = अब "फिर जुड़ गई, बोलिए" (स्क्रीन पर; माइक चालू है, इसलिए फ़ोन की आवाज़ नहीं)
                     if (svc.liveTroubleShown || svc.liveTroubleSpoken) { svc.liveTroubleShown = false; svc.liveTroubleSpoken = false; DKState.reply(LiveConnectNotice.BACK) }
                     val upAt = System.currentTimeMillis()
+                    val resumedConn = handle != null
                     upSince = upAt
                     log("जुड़ गया [$model • key #${keyIdx + 1}] ${System.currentTimeMillis() - t0} ms" + if (handle != null) " (पुरानी बातचीत जारी)" else "")
                     DKState.setLink("Live • $model • key #${keyIdx + 1} • ${System.currentTimeMillis() - t0} ms")
@@ -1285,7 +1293,11 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
                         if (handle != null) { handle = null; log("1007: टूटी बातचीत से दोबारा नहीं - नई बातचीत (#${a.count})") }
                         if (a.disableSearch) { useSearch = false; log("1007 दो मिनट में ${a.count} बार - इस Live में Google Search बंद (जाना-माना 1007 कारण)") }
                     }
-                    if (code == 1011 && model1011.hit(model)) dropModel1011(keys, models, "बातचीत के बीच")?.let { handle = null }
+                    // नवंबर 2026: पुरानी बातचीत से जुड़ते ही 1011 = वह बातचीत टूटी हुई - उससे फिर नहीं
+                    if (LiveStay.resumePoisoned(code, lastedAtDrop, resumedConn) && handle != null) { handle = null; log("पुरानी बातचीत से जुड़ते ही 1011 - वह बातचीत टूटी हुई, अब नई बातचीत") }
+                    // 2.5 native-audio = पहले 1011 पर ही (Google की जानी-मानी खराबी), बाकी = 3 मिनट में 2 बार
+                    val drop1011 = code == 1011 && model1011.hit(model) || code == 1011 && LiveStay.known1011(model)
+                    if (drop1011) dropModel1011(keys, models, "बातचीत के बीच")?.let { handle = null }
                     log("connection टूटा (code=$code, ${reason.ifBlank { "-" }}, ${(System.currentTimeMillis() - upAt) / 1000}s चला) - दोबारा जुड़ रहा हूँ #$reconnects" +
                         if (handle != null) " (बातचीत वहीं से)" else " (नई बातचीत)")
                     if (reason.lowercase().contains("api key")) {
@@ -1483,7 +1495,8 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
         }
         // v3.41: sabse NAYA nahi, sabse TEZ pehle - phone par naapa jawab-samay (LiveModelRank)
         val lat = Prefs.liveLatency(svc)
-        val all = LiveModelRank.order(found, FALLBACK_MODELS, lat)
+        // नवंबर 2026: 2.5 native-audio (Google की तरफ़ 1011) सिर्फ़ बैकअप; मालिक ने चुना हो तो LiveModelPick उसे फिर पहले रखता है
+        val all = LiveStay.demoteKnown1011(LiveModelRank.order(found, FALLBACK_MODELS, lat))
         // limit khatam wale model (aaj) chhodo - har baar 2 bekaar connection = ~1.5s deri + mic ke tukde gire
         val (skip, ok) = all.partition { Cooldown.blocked(LiveKeys.cooldownName(keyIdx, it)) }
         if (skip.isNotEmpty()) log("limit खत्म, छोड़े: " + skip.joinToString { m -> m + " (" + ((Cooldown.until(LiveKeys.cooldownName(keyIdx, m)) - System.currentTimeMillis()) / 60_000).coerceAtLeast(0) + " मिनट बाकी)" })
@@ -1753,7 +1766,9 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
         val r = Race(live, keys.size)
         curRace = r
         val now = System.currentTimeMillis()
-        var queue = health.order(models, keys.size, now) { Cooldown.blocked(LiveKeys.cooldownName(it.keyIdx, it.model)) }.toMutableList()
+        // नवंबर 2026: 1011 से टूटे मॉडल (6 घंटे) सबसे पीछे - पहले 2 मिनट बाद फिर उन्हीं पर लौट आता था
+        val safe = LiveStay.safeOrder(models) { broken1011.isBroken(it, now) }
+        var queue = health.order(safe, keys.size, now) { Cooldown.blocked(LiveKeys.cooldownName(it.keyIdx, it.model)) }.toMutableList()
         // सारी जोड़ियाँ सिर्फ़ नेट की वजह से रुकी हों और पिछली नाकामी 55s से पुरानी = फिर आज़माओ (बैकअप मोड से Live पर लौटने की कोशिश)
         if (queue.isEmpty() && now - lastRaceFailAt > 55_000L) {
             health.clearComboFails()
@@ -1766,7 +1781,7 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
                 if (held.isNotEmpty()) { held.forEach { Cooldown.clear(it) }; log("नई शुरुआत: पुरानी save हुई Live रोक हटाई (${held.size}) - एक साफ़ मौका") }
             }
             saveHealth()
-            queue = health.order(models, keys.size, now) { Cooldown.blocked(LiveKeys.cooldownName(it.keyIdx, it.model)) }.toMutableList()
+            queue = health.order(safe, keys.size, now) { Cooldown.blocked(LiveKeys.cooldownName(it.keyIdx, it.model)) }.toMutableList()
         }
         // नवंबर 2026: फिर भी सब रुका = चुपचाप 0 जोड़ियाँ नहीं - जिसकी रोक सबसे जल्दी खत्म हो, उस एक जोड़ी पर एक कोशिश
         if (queue.isEmpty() && models.isNotEmpty() && now - lastProbeAt > LiveRace.COMBO_FAIL_MS) {
@@ -1871,9 +1886,10 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
                 if (r.config == null) { r.config = code to reason; r.configCombo = a.c }
                 log("दौड़: [${a.c.label}] $ms ms - setup की बनावट नहीं ली (code=$code ${reason.take(80)}) - ठीक करके फिर")
             }
-            LiveRace.Fail.NET -> if (code == 1011 && model1011.hit(a.c.model, now)) {
+            LiveRace.Fail.NET -> if (code == 1011 && model1011.hit(a.c.model, now) || code == 1011 && LiveStay.known1011(a.c.model)) {
                 // नवंबर 2026: जुड़ते समय भी इसी मॉडल पर बार-बार 1011 = Google की तरफ़ मॉडल की खराबी, नेट नहीं - पूरा मॉडल हटाओ
                 for (k in 0 until r.keyCount) health.comboFail(LiveRace.Combo(a.c.model, k), now)
+                markBroken1011(a.c.model)
                 queue.removeAll { it.model == a.c.model }
                 log("दौड़: [${a.c.label}] $ms ms - इस मॉडल पर बार-बार 1011 (Google की तरफ़ खराबी) - यह मॉडल अभी नहीं, अगला तुरंत")
             } else {
@@ -3565,7 +3581,12 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
                 }
                 errRun = 0
                 val now = System.currentTimeMillis()
-                if (last > 0 && now - last > CHUNK_MS * 3) { gaps++; if (gaps % 20 == 1L) log("माइक में ${now - last} ms का गैप (#$gaps)") }
+                // नवंबर 2026 (DKI-4144DC "मिक गैप: 10" - वजह पक्की नहीं थी): गैप के समय हालत भी लिखो (जुड़ा था? क्या चल रहा था?)
+                if (last > 0 && now - last > CHUNK_MS * 3) {
+                    gaps++
+                    if (gaps <= 5 || gaps % 20 == 1L) log("माइक में ${now - last} ms का गैप (#$gaps) • " +
+                        LiveStay.gapContext(ready, upSince, now, DKState.mode.name, isPlaying()))
+                }
                 last = now
                 var sum = 0.0
                 for (i in 0 until CHUNK_SAMPLES) { val s = buf[i].toInt(); sum += (s * s).toDouble() }
