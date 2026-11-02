@@ -48,7 +48,7 @@ object LiveFast {
     /** काम बीच में रद्द हुआ (आप आगे बोले) - गलती नहीं */
     fun cancelled(r: String) = r.contains("was cancelled", true) || r.contains("JobCancellationException")
 
-    fun ok(type: String, r: String) = !r.startsWith("ERROR") && !r.startsWith("ASK:") && !r.startsWith("STEP_FAILED") &&
+    fun ok(type: String, r: String) = !r.startsWith("ERROR") && !r.startsWith(PhoneLockVoice.UNLOCK_FAIL) && !r.startsWith("ASK:") && !r.startsWith("STEP_FAILED") &&
         !(type == "youtube_play" && !r.startsWith("PLAYING") && !r.startsWith("VIDEO_OPENED")) &&
         !(type == "delete_media" && !r.startsWith("DELETED:"))
 

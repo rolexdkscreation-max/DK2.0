@@ -21,7 +21,7 @@ object SettingsSearch {
         "profile" to "प्रोफ़ाइल", "lang" to "भाषा / Language", "ui" to "दिखावट (UI कस्टमाइज़ेशन)", "brain" to "AI दिमाग",
         "brain_live" to "AI दिमाग • DK लाइव", "brain_chat" to "AI दिमाग • DK चैट", "brain_coder" to "AI दिमाग • कोडिंग एजेंट",
         "brain_pc" to "AI दिमाग • DK कंप्यूटर", "brain_extra" to "AI दिमाग • Extra API", "voice" to "आवाज़", "orb" to "ओर्ब और चेहरा",
-        "access" to "Accessibility", "perms" to "परमिशन", "computer" to "DK कंप्यूटर", "coder" to "कोडिंग एजेंट",
+        "access" to "Accessibility", "phonelock" to "फ़ोन लॉक / अनलॉक", "perms" to "परमिशन", "computer" to "DK कंप्यूटर", "coder" to "कोडिंग एजेंट",
         ACT_AUTO to "ऑटोनोमस मोड", ACT_TEMPLATES to "टेम्पलेट कमांड", ACT_CONNECTORS to "कनेक्टर", ACT_STORY to "स्टोरी राइटर एजेंट",
         "update" to "अपडेट", "debug" to "डिबग लॉग", "about" to "ऐप के बारे में"
     )
@@ -40,6 +40,7 @@ object SettingsSearch {
         "voice" to "voice आवाज़ बोलना सुनना mic माइक tts whatsapp memory याददाश्त dost दोस्त",
         "orb" to "orb ओर्ब चेहरा",
         "access" to "accessibility फ़ोन कंट्रोल control battery बैटरी call कॉल",
+        "phonelock" to "lock unlock लॉक अनलॉक फ़ोन फोन phone pin पिन pattern पैटर्न password पासवर्ड screen स्क्रीन खोलो बंद",
         "perms" to "permission परमिशन इजाज़त mic camera notification",
         "computer" to "computer कंप्यूटर reminder रिमाइंडर search",
         "coder" to "coding कोडिंग github गिटहब agent एजेंट",
@@ -91,6 +92,9 @@ object SettingsSearch {
         E("access", "बार-बार बंद न हो", "Android बैटरी बचाने के लिए DK को बंद कर देता है — यह रोकें"),
         E("access", "सुनना और कॉल", ""),
         E("access", "गड़बड़ी रिपोर्ट", "पिछली बार DK किस वजह से बंद हुआ"),
+        E("phonelock", "आवाज़ से फ़ोन लॉक / अनलॉक", "\"हे DK फोन लॉक करो\" • \"हे मायरा फोन अनलॉक करो\" — बिना AI, सीधे फ़ोन पर"),
+        E("phonelock", "क्या बोलें", "बुलाने के नाम (DK, मायरा, जारवी…) और लॉक / अनलॉक के वाक्य"),
+        E("phonelock", "फ़ोन का PIN / पैटर्न / पासवर्ड", "एक बार डालें — फ़ोन के अंदर ताले (Keystore) में सेव, कहीं भेजा नहीं जाता"),
         E("perms", "स्क्रीन देखना", "DK आपकी स्क्रीन देखकर काम करे (स्क्रीनशॉट AI को जाता है)"),
         E("perms", "ज़रूरी परमिशन", ""),
         E("update", "अपडेट", ""),

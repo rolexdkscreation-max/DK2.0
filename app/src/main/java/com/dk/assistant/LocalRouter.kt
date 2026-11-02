@@ -98,6 +98,8 @@ object LocalRouter {
     fun split(raw: String, wakeWords: List<String>, fg: String = ""): Split {
         // v4.1: "SMS भेजूँ?" का हाँ/ना (ना = "मत भेजो" - इसलिए negated से पहले)
         OfflineCommands.confirm(raw, System.currentTimeMillis())?.let { return Split(it, null) }
+        // नवंबर 2026: Settings → फ़ोन लॉक / अनलॉक - मालिक के अपने वाक्य (DK पहले से बुलाया हुआ, इसलिए नाम ज़रूरी नहीं)
+        PhoneLockVoice.match(raw, needName = false)?.let { return Split(PhoneLockVoice.quick(it), null) }
         val t0 = normalize(raw, wakeWords)
         // v4.1: SMS - मैसेज में "और" / "मत" हो सकता है, इसलिए टुकड़े / मना-जाँच से पहले (अपनी मना-जाँच ख़ुद)
         OfflineCommands.whole(t0)?.let { return Split(it, null) }
@@ -416,7 +418,7 @@ object LocalRouter {
     /** इन prefix वाले नतीजे में ":" के बाद user को बोलने वाली साफ़ हिंदी बात होती है */
     private val SAY_PREFIX = listOf("ASK:", "ERROR_NOT_INSTALLED:", "ERROR_LAUNCH:", "ERROR_NO_CONTACT:", "ERROR_PERM:", "ERROR_NO_PHOTO:",
         "CALLING:", "CALL_UNVERIFIED:", "DIALER:", "PHOTO_OPENED:", "GALLERY_OPENED:", "VIDEO_OPENED:", "STEPS_DONE:", "STEP_FAILED:",
-        "DELETED:", "DELETE_UNVERIFIED:", "ERROR_DENIED:", "ERROR_OLD_ANDROID:", "SEARCHED:", "SEARCH_UNVERIFIED:", "SAID:")
+        "DELETED:", "DELETE_UNVERIFIED:", "ERROR_DENIED:", "ERROR_OLD_ANDROID:", "SEARCHED:", "SEARCH_UNVERIFIED:", "SAID:", PhoneLockVoice.UNLOCK_FAIL)
 
     /** फ़ोन ने जो किया उसका साफ़ हिंदी वाक्य (null = यह नतीजा ऐसा नहीं) */
     fun userText(r: String): String? {
@@ -426,7 +428,7 @@ object LocalRouter {
 
     /** यह नतीजा आख़िरी है - AI को देने से कुछ नहीं सुधरेगा (ऐप है ही नहीं / कॉन्टैक्ट नहीं / user से पूछना है) */
     fun final(r: String) = listOf("ASK:", "ERROR_NOT_INSTALLED:", "ERROR_NO_CONTACT:", "ERROR_PERM:", "ERROR_NO_PHOTO:", "STEP_FAILED:",
-        "DELETED:", "ERROR_DENIED:", "ERROR_OLD_ANDROID:", "SAID:").any { r.startsWith(it) }
+        "DELETED:", "ERROR_DENIED:", "ERROR_OLD_ANDROID:", "SAID:", PhoneLockVoice.UNLOCK_FAIL).any { r.startsWith(it) }
 
     fun needsUser(r: String) = r.startsWith("ASK:")
 

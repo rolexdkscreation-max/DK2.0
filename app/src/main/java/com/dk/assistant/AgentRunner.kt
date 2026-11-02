@@ -152,7 +152,7 @@ class AgentRunner(
         // v3.33: फ़ोन ने खुद जाँचा हुआ सच्चा नतीजा (ऐप नहीं है / डायलर खुला / वीडियो खुला पर चलना पक्का नहीं ...) - AI को नहीं
         LocalRouter.userText(r)?.let { m ->
             if (LiveFast.ok(type, r) || LocalRouter.final(r)) {
-                if (r.startsWith("ERROR") || r.startsWith("STEP_FAILED")) DKState.replyFailed(m) else DKState.reply(m)
+                if (r.startsWith("ERROR") || r.startsWith("STEP_FAILED") || r.startsWith(PhoneLockVoice.UNLOCK_FAIL)) DKState.replyFailed(m) else DKState.reply(m)
                 if (!silent) speaker.speakQuick(m)
                 return true
             }
@@ -162,7 +162,11 @@ class AgentRunner(
         if (type == "youtube_play" && !r.startsWith("PLAYING")) return false
         val msg = when {
             type == "who_calls" -> if (r.startsWith("CALLER:")) r.removePrefix("CALLER:").trim() + " का कॉल है।" else "पता नहीं चला किसका कॉल है।"
-            type == "unlock" -> if (r.contains("PIN")) "स्क्रीन चालू है, PIN या फिंगरप्रिंट से खोलिए।" else ""
+            type == "unlock" -> when {
+                r.contains("PIN") -> "स्क्रीन चालू है, PIN या फिंगरप्रिंट से खोलिए।"
+                r.startsWith("phone unlock ho gaya") && PhoneLockStore.unlockOn(svc) -> "फ़ोन खुल गया।"
+                else -> ""
+            }
             type == "open_app" -> ""
             type == "youtube_play" -> if (r.contains("verified: playing")) "वीडियो चल रहा है" else "वीडियो खोल दिया"
             type == "call_log" -> "कॉल लिस्ट खोल दी"

@@ -85,6 +85,7 @@ class DKAccessibilityService : AccessibilityService() {
     override fun onServiceConnected() {
         super.onServiceConnected()
         instance = this
+        try { PhoneLockStore.reload(this) } catch (_: Exception) {}   // आवाज़ से फ़ोन लॉक / अनलॉक के नाम-वाक्य
         // v3.39: Bluetooth माइक अब BtAudio से (सिर्फ़ headset जुड़ा हो तब, सुनते/बात करते समय). पहले (PR #48) यहाँ
         // पूरा फ़ोन हमेशा के लिए "कॉल" मोड में चला जाता था - Bluetooth न हो तब भी, और कभी वापस नहीं.
 
@@ -472,7 +473,8 @@ class DKAccessibilityService : AccessibilityService() {
         // caption ne bolte-bolte jo likha woh screen par rehne do (pehle "…" se mit jaata tha)
         val capNow = earCaption?.text().orEmpty()
         // wake mode: caption ne saaf baat suni aur usme DK ka naam nahi -> Groq par bhejna bekaar (deri + limit)
-        if (wakeGate && SttTiming.skipWakeStt(capNow, Prefs.wakeWords(this))) {
+        // (फ़ोन लॉक / अनलॉक के अपने नाम - "हे मायरा फोन अनलॉक करो" - भी DK के नाम जैसे गिनो)
+        if (wakeGate && SttTiming.skipWakeStt(capNow, Prefs.wakeWords(this) + PhoneLockVoice.cfg.let { if (it.on) it.names else emptyList() })) {
             earShowing = false
             earCaption?.closeUtterance()
             if (capNow.isNotBlank()) DKState.user("")      // background ki baat screen par na rahe
@@ -702,6 +704,15 @@ class DKAccessibilityService : AccessibilityService() {
                 if (CallCmd.windowOpen(System.currentTimeMillis())) {
                     val cc = CallCmd.route(heard, System.currentTimeMillis())
                     if (cc != null) { DKState.user(heard); doCallCmd(cc); continue }
+                }
+
+                // नवंबर 2026: आवाज़ से फ़ोन लॉक / अनलॉक - Settings में डाला कोई भी नाम + वाक्य ("हे मायरा फोन अनलॉक करो"),
+                // AI / इंटरनेट के बिना, सीधे फ़ोन पर
+                PhoneLockStore.reload(this@DKAccessibilityService)
+                val lockAct = PhoneLockVoice.match(heard, needName = true)
+                if (lockAct != null) {
+                    DKState.user(heard); DKLog.d("फ़ोन लॉक: आवाज़ से ${lockAct.type}")
+                    agent.runQuick(PhoneLockVoice.quick(lockAct)); continue
                 }
 
                 if (DKState.live) {

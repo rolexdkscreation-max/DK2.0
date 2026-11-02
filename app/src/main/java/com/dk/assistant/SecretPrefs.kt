@@ -25,7 +25,7 @@ object SecretNames {
 
     private val EXACT = setOf(
         "gh_token", "worker_token", "voice_key", "coder_key", "api_key", "one_key_gemini",
-        "search_key_tavily", "search_key_exa", "owner_face_v2",
+        "search_key_tavily", "search_key_exa", "owner_face_v2", "plock_secret",
     )
     private val SCOPE_KEY = Regex("^(live|coder|pc)_key_.+")
 

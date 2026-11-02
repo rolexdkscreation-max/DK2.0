@@ -270,7 +270,7 @@ internal fun DKAccessibilityService.pressEnter(): String {
     return "ERROR: enter support nahi, search button click karo"
 }
 
-/** Screen jagao; swipe-lock ho to khol do. PIN/pattern/fingerprint user khud dalega (suraksha). */
+/** Screen jagao; swipe-lock ho to khol do. PIN/pattern: सिर्फ़ तब जब मालिक ने आवाज़ से अनलॉक चालू करके सेव किया हो, वरना user खुद (suraksha). */
 @Suppress("DEPRECATION")
 internal suspend fun DKAccessibilityService.unlock(): String {
     val pm = getSystemService(android.os.PowerManager::class.java)
@@ -289,6 +289,9 @@ internal suspend fun DKAccessibilityService.unlock(): String {
     delay(700)
     return when {
         !km.isKeyguardLocked -> "phone unlock ho gaya"
+        // नवंबर 2026: मालिक ने Settings → फ़ोन लॉक / अनलॉक में PIN / पैटर्न सेव किया हो तभी DK खुद डालता है
+        // (गलत की गिनती पूरी हो तो enter खुद बताता है कि क्यों रुका - PIN नहीं डालता)
+        km.isKeyguardSecure && PhoneLockStore.unlockOn(this) && PhoneLockStore.hasSecret(this) -> PhoneUnlocker.enter(this, km)
         km.isKeyguardSecure -> "screen on, lock screen PIN/pattern/fingerprint maang rahi hai - user ko bolo ki khud khole (DK PIN nahi daalta)"
         else -> "lock screen khuli"
     }
