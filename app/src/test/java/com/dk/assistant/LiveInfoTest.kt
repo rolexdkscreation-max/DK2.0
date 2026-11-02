@@ -69,7 +69,7 @@ class LiveInfoTest {
         assertFalse("पुरानी अंग्रेज़ी 'Today:' वाली तारीख़ नहीं", bm.contains("\"\\nToday: \""))
         assertEquals(3, Regex("CareTime\\.block\\(\\)").findAll(bm).count())
         assertTrue(bm.contains("call current_time"))
-        val live = src("GeminiLive.kt")
+        val live = LiveSrc.all()
         assertTrue(live.contains("\"current_time\" -> { NowClock.syncAsync(); NowClock.toolAnswer() }"))
         assertTrue(live.contains("put(\"name\", \"current_time\")"))
     }
@@ -142,8 +142,8 @@ class LiveInfoTest {
 
     // ------------------------------------------------------------------ "सुनकर चुप" नहीं + सोच दिखे
     @Test fun live_remindsToAnswerAfterToolAndShowsThinking() {
-        val live = src("GeminiLive.kt")
-        assertTrue(live.contains("private fun watchToolAnswer("))
+        val live = LiveSrc.all()
+        assertTrue(live.contains("internal fun GeminiLive.watchToolAnswer("))
         assertTrue(live.contains("else if (name in ANSWER_TOOLS) watchToolAnswer(name, result, cur)"))
         assertTrue(live.contains("setMode(if (toolJobs.isNotEmpty()) Mode.THINKING else Mode.LISTENING)"))
         assertTrue(live.contains("if (!turnActive && DKState.mode == Mode.SPEAKING) idleMode()"))
@@ -151,7 +151,7 @@ class LiveInfoTest {
 
     // ------------------------------------------------------------------ आवाज़: तुरंत बदले, मॉडल दिखे/बदले, गति-पिच
     @Test fun live_voiceAndModelChangeApplyDuringCall() {
-        val live = src("GeminiLive.kt")
+        val live = LiveSrc.all()
         assertTrue(live.contains("connLiveVer != com.dk.assistant.voice.engine.VoiceEngines.liveVersion"))
         assertTrue(live.contains("pk.liveVer == connLiveVer"))
         assertTrue(live.contains("LiveModelPick.order(LiveModelPick.get(svc), discoverModels(key))"))
@@ -175,7 +175,7 @@ class LiveInfoTest {
         assertEquals(1250L, VoiceTune.playMs(48_000, 24_000, 80))
         assertEquals("गति 95% • पिच 102%", VoiceTune.label(95, 102))
         assertTrue(src("voice/engine/SpeechPipeline.kt").contains("VoiceTune.apply(tr, tuneVer)"))
-        assertTrue(src("GeminiLive.kt").contains("VoiceTune.apply(tr, tuneVer)"))
+        assertTrue(LiveSrc.all().contains("VoiceTune.apply(tr, tuneVer)"))
         val card = src("voice/engine/VoiceEngineCard.kt")
         assertTrue(card.contains("अभी कौन बोल रहा है"))
         assertTrue(card.contains("DK लाइव का मॉडल"))
@@ -192,7 +192,7 @@ class LiveInfoTest {
         val tts = src("voice/engine/GeminiTtsEngine.kt")
         assertTrue(tts.contains("const val DEFAULT_VOICE = \"Sulafat\""))   // v4.3: मालिक ने आवाज़ बदलवाई (Achernar -> Sulafat)
         assertTrue(tts.contains("put(\"model\", it)"))
-        assertTrue(src("GeminiLive.kt").contains("LiveNativeEngine.style(svc).ifBlank { CalmPersona.VOICE_STYLE }"))
+        assertTrue(LiveSrc.all().contains("LiveNativeEngine.style(svc).ifBlank { CalmPersona.VOICE_STYLE }"))
         val w = worker()
         assertTrue(w.contains("if (want && list.includes(want))"))
         assertTrue(w.contains("slice(0, 600)"))

@@ -70,7 +70,7 @@ class LiveFastBargeNearTest {
         assertTrue((0..9).all { LiveRetry.fast(true, LiveRetry.liveOnMs(true, it)) <= 2_000L })
         assertEquals(1_000L, LiveRetry.fast(true, LiveRetry.liveOnMs(true, 0)))
         assertEquals(60_000L, LiveRetry.fast(false, LiveRetry.liveOnMs(false, 0)))     // सारी keys की limit खत्म
-        val g = src("GeminiLive.kt")
+        val g = LiveSrc.all()
         // नवंबर 2026 (मालिक): बीच में टूटना = 1, 2, 4, 8, 15s (+ random), कभी हार नहीं (पहले 1-2s और 7 बार के बाद हार)
         assertTrue(g.contains("val wait = LiveStay.backoffMs(quickDrops)"))
         assertFalse(g.contains("quickDrops >= 6) throw Fatal"))
@@ -83,7 +83,7 @@ class LiveFastBargeNearTest {
     }
 
     @Test fun limitSwitchesKeyFirst() {
-        val g = src("GeminiLive.kt")
+        val g = LiveSrc.all()
         val a = g.indexOf("if (switchKey(\"इस key की limit खत्म\")) continue")
         assertTrue(a > 0 && a < g.indexOf("else if (mi + 1 < models.size)", a))
         val b = g.indexOf("if (switchKey(\"बातचीत के बीच इस key की limit खत्म\")) continue")
@@ -91,7 +91,7 @@ class LiveFastBargeNearTest {
     }
 
     @Test fun bargeStopsAndListens() {
-        val g = src("GeminiLive.kt")
+        val g = LiveSrc.all()
         assertTrue(g.contains("captionOn() && !LiveStop.isStop(t) && Prefs.bargeHold(svc)"))
         assertTrue(g.contains("!LiveStop.isStop(t) && Prefs.bargeHold(svc)) { DKState.hint(HOLD_HINT); return }"))
         assertTrue(g.contains("BargeDetector(needChunks = 5, minRms = 900.0)"))
@@ -105,7 +105,7 @@ class LiveFastBargeNearTest {
     }
 
     @Test fun nearWiredIn() {
-        val g = src("GeminiLive.kt")
+        val g = LiveSrc.all()
         assertTrue(g.contains("tailFactor = LiveHear.TAIL_FACTOR"))
         assertTrue(g.contains("if (!ownerOn && !btOn && Prefs.ownerFarOn(svc)) turnDet.startFloor = near.floor()"))
         assertTrue(g.contains("learnNear()"))

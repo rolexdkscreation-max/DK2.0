@@ -75,7 +75,7 @@ class VoiceGreetLocationTest {
         val b = FriendBook(); b.addSession(now - 3 * H - M, now - 3 * H, "बात हुई")
         assertTrue(FriendStyle.opener(19, java.time.LocalDate.of(2026, 3, 3), b, now, null, false).contains("तीन घंटे"))
         assertTrue(src("DKAccessibilityService.kt").contains("FriendTalk.shouldGreetNow(this, lastMsg)"))
-        assertTrue(src("GeminiLive.kt").contains("FriendTalk.touch(svc)"))
+        assertTrue(LiveSrc.all().contains("FriendTalk.touch(svc)"))
     }
 
     // ---- भाग 3: लोकेशन
@@ -100,7 +100,7 @@ class VoiceGreetLocationTest {
     }
 
     @Test fun locationToolIsFreshAndHonest() {
-        val g = src("GeminiLive.kt")
+        val g = LiveSrc.all()
         assertTrue(g.contains("रुकिए सर, देखती हूँ..."))
         assertTrue(g.contains("LocalInfo.locationOn(svc)"))
         assertTrue(g.contains("putExtra(\"ask_location\", true)"))

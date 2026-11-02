@@ -82,7 +82,7 @@ class SoftHearCallVoiceTest {
     }
 
     @Test fun liveUsesSofterGateAndBoost() {
-        val live = src("GeminiLive.kt")
+        val live = LiveSrc.all()
         assertTrue(live.contains("keepMin = LiveHear.KEEP_MIN"))
         assertTrue(live.contains("MicBoost(maxGain = LiveHear.BOOST_MAX, noiseCap = LiveHear.BOOST_NOISE_CAP)"))
         assertTrue(src("BrainManager.kt").contains("HEARING:"))
@@ -93,7 +93,7 @@ class SoftHearCallVoiceTest {
         assertTrue(LiveKeys.allBlocked(listOf("a", "b")) { true })
         assertFalse(LiveKeys.allBlocked(listOf("a", "b")) { it == "a" })
         assertFalse(LiveKeys.allBlocked(emptyList()) { true })
-        assertTrue(src("GeminiLive.kt").contains("LiveKeys.allBlocked(models)"))
+        assertTrue(LiveSrc.all().contains("LiveKeys.allBlocked(models)"))
     }
 
     @Test fun ttsLimitIsPerKey() {
@@ -107,7 +107,7 @@ class SoftHearCallVoiceTest {
         assertTrue(sp.contains("Prefs.liveGeminiKeys(appCtx)"))
         assertTrue(sp.contains("GeminiTts.synthesizeAny(keys"))
         assertFalse(sp.contains("Prefs.ttsGeminiKey(appCtx)"))
-        assertTrue(src("GeminiLive.kt").contains("LiveCaption(LiveKeys.order(listOf(capKey) + Prefs.liveGeminiKeys(svc))"))
+        assertTrue(LiveSrc.all().contains("LiveCaption(LiveKeys.order(listOf(capKey) + Prefs.liveGeminiKeys(svc))"))
         assertTrue(src("LiveCaption.kt").contains("बैकअप key"))
     }
 

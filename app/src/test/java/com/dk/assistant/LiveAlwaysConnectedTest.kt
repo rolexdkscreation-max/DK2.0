@@ -54,7 +54,7 @@ class LiveAlwaysConnectedTest {
     }
 
     @Test fun wiredIn() {
-        val g = src("GeminiLive.kt")
+        val g = LiveSrc.all()
         assertTrue(g.contains("replyWatch.dead(now)"))
         assertTrue(g.contains("handle = null; goAway = true; goAwayDrop = true"))
         assertTrue(g.contains("val running: Boolean get() = !stopped"))

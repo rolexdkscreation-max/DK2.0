@@ -64,7 +64,7 @@ class LiveConnectTest {
     }
 
     @Test fun liveDeclaresNewTools_andHomeHasButtons() {
-        val g = src("src/main/java/com/dk/assistant/GeminiLive.kt")
+        val g = LiveSrc.all()
         listOf("dk_features", "story_task", "teacher_mode").forEach {
             assertTrue(g.contains("put(\"name\", \"$it\")") && g.contains("\"$it\" ->"))
         }

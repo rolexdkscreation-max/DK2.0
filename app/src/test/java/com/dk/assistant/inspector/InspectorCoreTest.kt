@@ -1,5 +1,7 @@
 package com.dk.assistant.inspector
 
+import com.dk.assistant.LiveSrc
+
 import com.dk.assistant.inspector.InspectorCore as I
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -173,7 +175,7 @@ class InspectorCoreTest {
         assertTrue(s.contains("AlarmManager.ELAPSED_REALTIME")); assertTrue(s.contains("setInexactRepeating"))
         assertTrue(src("DKApp.kt").contains("Inspector.schedule"))
         assertTrue(File("src/main/AndroidManifest.xml").readText().contains(".inspector.InspectorReceiver"))
-        val live = src("GeminiLive.kt")
+        val live = LiveSrc.all()
         assertTrue(live.contains("\"dk_inspector\" -> com.dk.assistant.inspector.Inspector.liveTool(svc, args)"))
         assertTrue("dk_inspector" in com.dk.assistant.LeakedCall.TOOLS)
         val set = src("SettingsActivity.kt")

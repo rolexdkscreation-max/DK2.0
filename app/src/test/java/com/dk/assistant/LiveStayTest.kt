@@ -16,18 +16,18 @@ class LiveStayTest {
         assertEquals(listOf(1_000L, 2_000L, 4_000L, 8_000L, 15_000L, 15_000L, 15_000L), (1..7).map { LiveStay.backoffMs(it, 0.0) })
         assertEquals(1_200L, LiveStay.backoffMs(1, 1.0))                    // +20% random तक
         assertTrue((1..100).all { LiveStay.backoffMs(it, 1.0) <= 18_000L })
-        val g = src("GeminiLive.kt")
+        val g = LiveSrc.all()
         assertFalse(g.contains("Gemini Live बार-बार टूट रहा है - नेटवर्क देखें"))
         assertTrue(g.contains("नेटवर्क कमज़ोर है - पीछे से जोड़ रहा हूँ"))
     }
 
     @Test fun noReplyLimitAtLeast6s() {
         assertTrue(LiveStay.NO_REPLY_MS >= 6_000L)
-        assertTrue(src("GeminiLive.kt").contains("ReplyWatchdog(timeoutMs = LiveStay.NO_REPLY_MS"))
+        assertTrue(LiveSrc.all().contains("ReplyWatchdog(timeoutMs = LiveStay.NO_REPLY_MS"))
     }
 
     @Test fun midTalkText_offByDefault_andOnlyWhenQuiet() {
-        val g = src("GeminiLive.kt")
+        val g = LiveSrc.all()
         assertTrue(g.contains("textRescue = LiveStay.textRescueOn(svc)"))
         assertTrue(src("LiveStay.kt").contains("Prefs.bool(c, PREF_TEXT_RESCUE, false)"))
         // चारों बचाव-text flag के पीछे
@@ -36,7 +36,7 @@ class LiveStayTest {
         assertTrue(g.contains("टूटने से पहले की बात text में दोबारा नहीं भेजी (बचाव-text बंद)"))
         assertTrue(g.contains("बीच में पकड़ी बात (caption) text में नहीं भेजी"))
         // ज़रूरी SYSTEM NOTE सिर्फ़ चुप्पी में
-        assertTrue(g.contains("private suspend fun waitQuiet(maxMs: Long): Boolean"))
+        assertTrue(g.contains("internal suspend fun waitQuiet(maxMs: Long): Boolean"))
         assertFalse(g.contains("withTimeoutOrNull(15_000) { while (isPlaying() || generating || toolJobs.isNotEmpty()) delay(150) }"))
     }
 
@@ -57,7 +57,7 @@ class LiveStayTest {
         assertTrue(LiveStay.useParked("h1", "h1", true))
         assertFalse(LiveStay.useParked("h1", "h2", true))      // तैयार होने के बाद नई बात = ताज़ा handle से
         assertTrue(LiveStay.useParked("h1", "h2", false))      // पुराना मर गया = तैयार वाला तुरंत
-        val g = src("GeminiLive.kt")
+        val g = LiveSrc.all()
         assertTrue(g.contains("o.optJSONObject(\"goAway\")?.let { onGoAway(it.optString(\"timeLeft\")) }"))
         assertTrue(g.contains("startRace(curKeys, listOf(m) + curModels.filter { it != m }, live = false, resumeId = LiveRace.Combo(m, k).id)"))
         // resumption + compression बने रहें
@@ -69,7 +69,7 @@ class LiveStayTest {
     }
 
     @Test fun userCloseIs1000() {
-        assertTrue(src("GeminiLive.kt").contains("w.close(1000, \"bye\")"))
+        assertTrue(LiveSrc.all().contains("w.close(1000, \"bye\")"))
     }
 
     @Test fun voiceTuneResetTo100Once() {

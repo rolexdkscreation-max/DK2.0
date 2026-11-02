@@ -70,7 +70,7 @@ class ScreenDkOnlyOfflineCallsTest {
         assertTrue(st.contains("\"सिर्फ़ DK बोलने पर सुनो\""))
         assertTrue(st.contains("चालू करने पर DK तभी सुनेगा और काम करेगा जब बात की शुरुआत में DK बोला जाए। बाकी बातें अनदेखी कर दी जाएँगी।"))
         assertTrue(st.contains("putBoolean(\"dk_only_listen\", swDkOnly.isChecked)"))
-        val g = src("GeminiLive.kt")
+        val g = LiveSrc.all()
         assertTrue(g.contains("DkOnly.filter(t) != null"))
         assertTrue(g.contains("ownerSaysOwner(guardBuf)"))           // पहले मालिक की आवाज़, फिर DK
         assertTrue(g.contains("DkOnly.filter(raw)"))                  // बीच में पूछी बात भी
@@ -205,6 +205,6 @@ class ScreenDkOnlyOfflineCallsTest {
         assertTrue(src("SettingsActivity.kt").contains("\"आने वाली कॉल बोलकर बताओ\""))
         assertTrue(src("Prefs.kt").contains("getBoolean(\"announce_calls\", true)"))
         assertTrue(manifest().contains("android.permission.SEND_SMS"))
-        assertTrue(src("GeminiLive.kt").contains("svc.doCallCmd(cc)"))
+        assertTrue(LiveSrc.all().contains("svc.doCallCmd(cc)"))
     }
 }

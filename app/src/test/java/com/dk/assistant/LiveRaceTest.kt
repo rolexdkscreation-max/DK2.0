@@ -105,9 +105,9 @@ class LiveRaceTest {
     @Test fun keyNeverInLabelOrLogs() {
         val c = LiveRace.Combo("gemini-3.1-flash-live-preview", 0)
         assertEquals("gemini-3.1-flash-live-preview • key #1", c.label)
-        val g = src("GeminiLive.kt")
-        val raceStart = g.indexOf("private fun startRace(")
-        val raceEnd = g.indexOf("private fun sendContext(")
+        val g = LiveSrc.all()
+        val raceStart = g.indexOf("internal fun GeminiLive.startRace(")
+        val raceEnd = g.indexOf("internal fun GeminiLive.sendContext(")
         val race = g.substring(raceStart, raceEnd)
         // log / स्क्रीन वाली किसी लाइन में key नहीं (सिर्फ़ उसका नंबर)
         race.lines().filter { it.contains("log(") || it.contains("setLink(") }.forEach {
@@ -117,8 +117,8 @@ class LiveRaceTest {
     }
 
     @Test fun wiring_raceLightModePrewarmInvokeContext() {
-        val g = src("GeminiLive.kt")
-        assertTrue(g.contains("private val http: OkHttpClient = LiveNet.http"))
+        val g = LiveSrc.all()
+        assertTrue(g.contains("internal val http: OkHttpClient = LiveNet.http"))
         assertTrue(g.contains("startRace(keys, models, live = true"))
         assertTrue(g.contains("throw Fatal(\"धीमा नेट"))
         assertFalse(g.contains("light = true"))                                    // हल्का मोड हटा (मालिक, नवंबर 2026)
@@ -184,7 +184,7 @@ class LiveRaceTest {
         assertTrue(h.order(listOf("m"), 1, 2_000L).isEmpty())
         h.clearKeyBad()
         assertEquals(1, h.order(listOf("m"), 1, 2_000L).size)
-        val g = src("GeminiLive.kt")
+        val g = LiveSrc.all()
         assertTrue(g.contains("if (lastRaceFailAt == 0L) health.clearKeyBad()"))
         assertTrue(g.contains("LiveRace.nextLaunchable(queue"))
         assertTrue(g.contains("LiveRace.quotaOnlyForCombo(code, reason)"))

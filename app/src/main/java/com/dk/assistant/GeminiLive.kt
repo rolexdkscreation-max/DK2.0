@@ -51,13 +51,24 @@ import kotlin.math.sqrt
  *
  * Purane tareeke (poora record -> Whisper -> AI -> alag TTS) me 4 alag kadam the; yahan sab ek hi stream me.
  * Connection toote to apne-aap dobara judta hai (session resumption = baatcheet yaad rehti hai).
+ *
+ * फ़ाइलें (नवंबर 2026 में बँटवारा, व्यवहार वही): यहाँ सारी state + run() + बातचीत की बारी (turn/caption/barge)।
+ * बाकी हिस्से इसी class के extension functions हैं, इन फ़ाइलों में:
+ *  - GeminiLiveSetup.kt  : setup message, मॉडल की सूची
+ *  - GeminiLiveRace.kt   : (मॉडल × key) की दौड़, WebSocket connect
+ *  - GeminiLiveServer.kt : server के message (आवाज़, caption, tool call, interrupted)
+ *  - GeminiLiveTools.kt  : tools (खोज, मौसम/जगह, notification, एजेंट, call)
+ *  - GeminiLiveQueue.kt  : फ़ोन के काम + कामों की कतार
+ *  - GeminiLiveMic.kt    : माइक खोलना + सुनने का loop
+ *  - GeminiLivePlayer.kt : DK की आवाज़ बजाना
+ * नया हिस्सा बने तो test की LiveSrc.PARTS में भी जोड़ें (source-check tests सारे हिस्से पढ़ते हैं)।
  */
-class GeminiLive(private val svc: DKAccessibilityService, private val agent: AgentRunner) {
+class GeminiLive(internal val svc: DKAccessibilityService, internal val agent: AgentRunner) {
 
     companion object {
         const val IN_RATE = 16000
         const val OUT_RATE = 24000
-        private const val CHUNK_MS = 40
+        internal const val CHUNK_MS = 40
         /** Server VAD: itni der chup = baat khatam (Google: 500-800ms; kam = baat beech me kat-ti hai) */
         const val SERVER_SILENCE_MS = 500   // v5.1 (मालिक: "बोलना बंद होते ही जवाब"): 800 -> 500 (Google की सलाह 500-800 का सबसे तेज़). पहले v3.46: 550 -> 800. छोटी बात पर फ़ोन खुद 550ms पर "खत्म" भेजता है; यह सिर्फ़ तब जब वाक्य अधूरा लगे ("और…", "तो…")
         /** Phone ka VAD: itni der chup = turant audioStreamEnd (server ka intezaar nahi) */
@@ -82,18 +93,18 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
         /** Bolna shuru pakadne se pehle itni awaaz - chhota = pehla shabd turant (bahut chhota = DK ki goonj se galat "toka") */
         const val PREFIX_PADDING_MS = 100
         /** Wake word wala Live chup hone par connection itni der garam rakho */
-        private const val PARK_MS = 5 * 60_000L
+        internal const val PARK_MS = 5 * 60_000L
         /** DK bolte samay (gate mode) user ki awaaz pakdi -> usse pehle ka itna hissa bhi bhejo (pehla shabd na kate) */
-        private const val PREROLL_CHUNKS = 8          // 8 x 40ms = 320ms
+        internal const val PREROLL_CHUNKS = 8          // 8 x 40ms = 320ms
         /** Itni der "Thinking" aur kuch na aaye -> wapas "Listening" (purani haalat atki na rahe) */
         private const val THINK_STUCK_MS = 12_000L
         /** v3.80: tool का नतीजा भेजने के बाद इतनी देर चुप = याद दिलाओ */
-        private const val TOOL_ANSWER_MS = 8_000L
+        internal const val TOOL_ANSWER_MS = 8_000L
         /** v4.1: जवाब में लिखी हुई (असली नहीं) tool call का नकली id - इसका नतीजा toolResponse में नहीं जाता */
         const val LEAK_ID = "dk-leak-"
         const val LEAK_DEDUP_MS = 20_000L
         /** v3.80: इनका नतीजा = यूज़र को जवाब बोलना ज़रूरी */
-        private val ANSWER_TOOLS = setOf("web_search", "deep_think", "current_time", "local_info", "connector_task", "task_status", "dk_features")
+        internal val ANSWER_TOOLS = setOf("web_search", "deep_think", "current_time", "local_info", "connector_task", "task_status", "dk_features")
         /**
          * Jawab "ban raha" (generating) tha par itni der server se ek bhi sandesh nahi aur awaaz bhi nahi baj rahi =
          * turnComplete kho gaya / stream atak gaya. Tab turn band (stream ya connection nahi kaata - aage kuch aaye to
@@ -103,9 +114,9 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
         /** AudioTrack me likhi par abhi na baji awaaz (~150ms) */
         private const val LEAD_BYTES = OUT_RATE * 2 * 150 / 1000
         private val WS = Regex("\\s+")
-        private const val CHUNK_SAMPLES = IN_RATE * CHUNK_MS / 1000      // 640 samples = 1280 bytes
-        private const val LIVE_HOST = "generativelanguage.googleapis.com"
-        private const val URL = "wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent"
+        internal const val CHUNK_SAMPLES = IN_RATE * CHUNK_MS / 1000      // 640 samples = 1280 bytes
+        internal const val LIVE_HOST = "generativelanguage.googleapis.com"
+        internal const val URL = "wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent"
         const val CONST_SETUP_TIMEOUT_MS = 15_000L
         /** Docs (Oct 2026): gemini-3.8-live = default; 3.1 flash live = purana preview */
         /** v3.41: phone_task ka lamba kaam (AgentRunner) - itni der baad Gemini ko "chal raha hai" */
@@ -115,12 +126,12 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
 
         fun key(c: android.content.Context) = Prefs.ttsGeminiKey(c)
         /** v3.68: बँटवारे में Live का लिखा text सीधे बोला जाता है - बोलने लायक लिखो */
-        private const val SPLIT_NOTE = "\n\nOUTPUT NOTE: Your reply text is spoken aloud by a separate voice engine, sentence by sentence, " +
+        internal const val SPLIT_NOTE = "\n\nOUTPUT NOTE: Your reply text is spoken aloud by a separate voice engine, sentence by sentence, " +
             "as soon as you write it. Write exactly what should be heard: natural spoken Hindi (Devanagari), short sentences, " +
             "commas where a speaker would pause. No markdown, lists, emojis, headings or stage directions."
 
         /** v3.71: पहली आवाज़ जल्दी - पहला वाक्य बहुत छोटा (वही सबसे पहले बनकर बजता है), बाकी भी छोटे */
-        private const val FAST_START = "\n\nSPEED NOTE: Always begin your reply with one very short sentence of 4-6 words " +
+        internal const val FAST_START = "\n\nSPEED NOTE: Always begin your reply with one very short sentence of 4-6 words " +
             "(for example \"अच्छा, सुनो।\" or \"हाँ, यह आसान है।\"), then continue. Keep the rest in short sentences too."
         /** v3.71: अवतार का भाव - सिर्फ़ TEXT बँटवारे में (टैग आवाज़ में नहीं जाता; ऐप पढ़कर हटा देता है) */
         const val MOOD_TAG_NOTE = "\n\nMOOD TAG: हर जवाब की शुरुआत में एक भाव-टैग लिखो: [खुश], [उदास], [गुस्सा] या [भावुक]; " +
@@ -148,7 +159,7 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
     class Fatal(msg: String, val recoverable: Boolean = false, val kind: LiveFailWhy.Kind? = null) : Exception(msg)
 
     /** v5.1: एक ही साझा client (connection pool) - स्क्रीन चालू होते ही LiveNet इसका host पहले से गरम रखता है */
-    private val http: OkHttpClient = LiveNet.http
+    internal val http: OkHttpClient = LiveNet.http
 
     private fun reconnect() {
         svc.scope.launch(kotlinx.coroutines.Dispatchers.IO) {
@@ -172,12 +183,12 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
         }
     }
 
-    @Volatile private var ws: WebSocket? = null
-    @Volatile private var ready = false
+    @Volatile internal var ws: WebSocket? = null
+    @Volatile internal var ready = false
     /** नवंबर 2026: इस connection के जुड़ने का समय (0 = नहीं जुड़ा) - Inspector सिर्फ़ टिके connection में बोले */
-    @Volatile private var upSince = 0L
+    @Volatile internal var upSince = 0L
     fun stableFor(ms: Long): Boolean = ready && upSince > 0 && System.currentTimeMillis() - upSince >= ms
-    @Volatile private var stopped = true
+    @Volatile internal var stopped = true
     /** v4.6: Live अभी सच में चल रहा है (run() के अंदर) - ऐप खुलने / नेट लौटने पर "तुरंत जोड़ो" के लिए */
     val running: Boolean get() = !stopped
     /** v4.6: अटके सत्र कितनी बार पकड़े (बात भेजी पर server चुप) */
@@ -201,89 +212,89 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
         // v3.90: "Thinking" तभी जब कोई tool (खोज, गहरी सोच, फ़ोन का काम…) या फ़ोन की अपनी खोज चल रही हो
         DKState.workNow = { toolJobs.isNotEmpty() || promiseJob?.isActive == true || DKState.mode == Mode.WORKING }
     }
-    @Volatile private var goAway = false
+    @Volatile internal var goAway = false
     @Volatile private var goAwayDrop = false          // server ne khud naya connection maanga (galti nahi)
-    private var handle: String? = null
+    internal var handle: String? = null
     /** नवंबर 2026: बीच बातचीत का बचाव-text (caption/अटका/टूटने से पहले की बात/बीच का सवाल) - डिफ़ॉल्ट बंद (1011 की जड़) */
     @Volatile private var textRescue = false
     /** goAway पर पहले से तैयार connection किस handle से बना (useParked) */
-    @Volatile private var parkHandle: String? = null
+    @Volatile internal var parkHandle: String? = null
     @Volatile private var weakNetTold = false
     @Volatile private var prevAlive = false
     /** run() की keys/models - goAway पर पीछे से नया connection तैयार करने के लिए */
-    @Volatile private var curKeys: List<String> = emptyList()
-    @Volatile private var curModels: List<String> = emptyList()
-    private var useSearch = true
+    @Volatile internal var curKeys: List<String> = emptyList()
+    @Volatile internal var curModels: List<String> = emptyList()
+    internal var useSearch = true
 
     // ---- aankde (debug)
     @Volatile private var sent = 0L
     @Volatile private var sentBytes = 0L
     @Volatile private var dropped = 0L
-    @Volatile private var gaps = 0L
-    @Volatile private var readErr = 0L
-    @Volatile private var recvAudio = 0L
+    @Volatile internal var gaps = 0L
+    @Volatile internal var readErr = 0L
+    @Volatile internal var recvAudio = 0L
     @Volatile private var reconnects = 0
-    @Volatile private var lastLatency = -1L
+    @Volatile internal var lastLatency = -1L
     /** v3.41: aakhri tool call kab aaya - tool wali baari ka samay model ki raftaar me mat gino */
-    @Volatile private var lastToolAt = 0L
-    @Volatile private var model = ""
+    @Volatile internal var lastToolAt = 0L
+    @Volatile internal var model = ""
 
     // ---- baari (turn)
-    private val userText = StringBuilder()
-    private val replyText = StringBuilder()
-    @Volatile private var turnActive = false
+    internal val userText = StringBuilder()
+    internal val replyText = StringBuilder()
+    @Volatile internal var turnActive = false
     // v4.1: Live ने tool call की जगह "phone_task{…}<ctrl43>" लिख/बोल दिया -> यह फ़िल्टर उसे छिपाता है और फ़ोन तुरंत असली काम करता है
-    private var leakFilter = newLeakFilter()
+    internal var leakFilter = newLeakFilter()
     /** इस बारी में लिखी हुई call दिखी = Live की अपनी (गड़बड़) आवाज़ अब नहीं बजती */
-    @Volatile private var leakMute = false
+    @Volatile internal var leakMute = false
     @Volatile private var lastLeakKey = ""
     @Volatile private var lastLeakAt = 0L
-    private val turnLock = Any()
+    internal val turnLock = Any()
 
     // ---- turant text (v3.0)
     /** Alag tez caption stream - "आप:" me bolte-bolte shabd */
-    @Volatile private var caption: LiveCaption? = null
+    @Volatile internal var caption: LiveCaption? = null
     /** DK ne jawab shuru kiya us waqt tak user ne jo bola (caption se) */
-    @Volatile private var turnUser = ""
+    @Volatile internal var turnUser = ""
     /** Is baari ki user line chat me pakki ho chuki (der se aaya text ab us line ko theek karega) */
     @Volatile private var userDone = false
     /** Is baari ka jawab (awaaz) shuru ho chuka - ginti dobara shuru nahi karni */
     @Volatile private var replyStarted = false
     /** Gemini abhi jawab bana raha hai (turnComplete nahi aaya) */
-    @Volatile private var generating = false
+    @Volatile internal var generating = false
     /** DK bol raha hai aur user sach me bol raha hai (mic asli awaaz bhej raha hai) */
-    @Volatile private var barging = false
+    @Volatile internal var barging = false
     /** DK ka text uski awaaz ke saath: kitni awaaz aayi / kitni baj chuki */
-    @Volatile private var turnRecvBytes = 0L
-    @Volatile private var turnPlayedBytes = 0L
+    @Volatile internal var turnRecvBytes = 0L
+    @Volatile internal var turnPlayedBytes = 0L
     /** Jawab poora aa gaya par awaaz abhi baj rahi hai */
     @Volatile private var pendingReply: String? = null
     /** v3.9: is baari Google Search hua to uske sources (groundingMetadata) - sirf screen par, bole nahi jaate */
-    private var turnSources: List<Pair<String, String>> = emptyList()
+    internal var turnSources: List<Pair<String, String>> = emptyList()
     private var pendingSources: List<Pair<String, String>> = emptyList()
     /** deep_think tool ne search kiya ho to uske sources (agle jawab ke saath) */
-    @Volatile private var toolSources: List<Pair<String, String>> = emptyList()
+    @Volatile internal var toolSources: List<Pair<String, String>> = emptyList()
     @Volatile private var shownReply = ""
-    @Volatile private var eosAt = 0L
-    @Volatile private var firstAudioAt = 0L
+    @Volatile internal var eosAt = 0L
+    @Volatile internal var firstAudioAt = 0L
 
     // ---- v3.8: turant haalat (listening/thinking/speaking) + barge-in + deri ke hisse
     // v3.6: धीमी आवाज़ भी "बोलना" (owner: "ज़ोर से बोलना पड़ता है") - दरवाज़ा 2.5x -> 2.0x शोर, 300 -> 220 RMS
-    private val turnDet = TurnDetector(CHUNK_MS, endSilenceMs = CLIENT_END_MS, startFactor = LiveHear.START_FACTOR,
+    internal val turnDet = TurnDetector(CHUNK_MS, endSilenceMs = CLIENT_END_MS, startFactor = LiveHear.START_FACTOR,
         startMin = LiveHear.START_MIN, loudNoiseFactor = LiveHear.LOUD_FACTOR,
         longSpeechMs = TurnEnd.LONG_SPEECH_MS, longEndSilenceMs = TurnEnd.LONG_END_SILENCE_MS, steadyResetMs = 6_000,
         keepFactor = LiveHear.KEEP_FACTOR, keepMin = LiveHear.KEEP_MIN, tailFactor = LiveHear.TAIL_FACTOR)
     /** v4.7: आपकी पास वाली आवाज़ (अपने आप सीखी) - दूर की आवाज़ अनसुनी */
     private val near = NearVoice().also { try { it.load(Prefs.nearLevels(svc)) } catch (_: Exception) {} }
-    private val nearRms = ArrayList<Double>()
+    internal val nearRms = ArrayList<Double>()
     /** वही पहचानी बात router में बार-बार न जाए (हर छोटी चुप्पी पर पूरा caption दोबारा जाँचा जाता था) */
     private val routeDedupe = RouteDedupe()
     // v4.7 (मालिक: "जवाब देते समय बोलूँ तो रुककर सुने"): 200ms / 900 RMS (पहले 240ms / 1200) - पक्का caption के शब्दों से
-    private val bargeDet = BargeDetector(needChunks = 5, minRms = 900.0)
-    private val trace = LatencyTrace()
+    internal val bargeDet = BargeDetector(needChunks = 5, minRms = 900.0)
+    internal val trace = LatencyTrace()
     /** Har baari ki poori samay-rekha (end of speech -> upload -> pehla event -> audio -> awaaz -> turn khatam) */
-    private val timeline = TurnTimeline()
-    @Volatile private var waitingLogged = false
+    internal val timeline = TurnTimeline()
+    @Volatile internal var waitingLogged = false
     @Volatile private var noReplyTurns = 0
     /** Khaamoshi me upload band (Live socket / caption socket alag-alag) */
     private val liveGate = SilenceStreamGate(CHUNK_MS)
@@ -293,98 +304,98 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
      * Audio bhejne ka ek hi kram: mic thread, caption thread (barge pakka) aur OkHttp thread (judte samay ki
      * awaaz) teeno bhejte hain - bina lock ke purane tukde naye ke BAAD pahunch sakte the (ulti-pulti awaaz).
      */
-    private val sendLock = Any()
+    internal val sendLock = Any()
     /** v3.39: टूटने से पहले भेजे आख़िरी संदेश (किस्म + आकार) - 1007 की असली वजह लॉग में */
-    private val wire = SentTrace()
+    internal val wire = SentTrace()
     private val drop1007 = Drop1007()
     /** "बात खत्म" (audioStreamEnd) एक बात पर एक ही बार */
     private val endGate = StreamEndGate()
     /** आख़िरी बार यूज़र बोला / DK बोला - पीछे की आवाज़ कब वापस (DuckWatch) */
-    @Volatile private var quietSince = 0L
-    @Volatile private var duckFreedAt = 0L
+    @Volatile internal var quietSince = 0L
+    @Volatile internal var duckFreedAt = 0L
     /** Bluetooth जुड़ा = कॉल वाला तरीका (BtAudio); हटा = speaker */
-    @Volatile private var btOn = false
-    @Volatile private var routeChanged = false
+    @Volatile internal var btOn = false
+    @Volatile internal var routeChanged = false
     /** DK की अपनी आवाज़ कितनी तेज़ बज रही है (आख़िरी ~400ms) - गूँज पहचानने के लिए */
-    private val outLevels = ArrayDeque<Pair<Long, Double>>()
-    private fun outLevel(now: Long): Double = synchronized(outLevels) {
+    internal val outLevels = ArrayDeque<Pair<Long, Double>>()
+    internal fun outLevel(now: Long): Double = synchronized(outLevels) {
         while (outLevels.isNotEmpty() && now - outLevels.first().first > 400) outLevels.removeFirst()
         outLevels.maxOfOrNull { it.second } ?: 0.0
     }
     /** Live socket पर भेजो + दर्ज करो (टूटने पर लॉग) */
-    private fun WebSocket.tx(m: String): Boolean { wire.sent(m); return send(m) }
+    internal fun WebSocket.tx(m: String): Boolean { wire.sent(m); return send(m) }
     /** Server ka aakhri sandesh (koi bhi) - atka stream pakadne ke liye */
-    @Volatile private var lastServerAt = 0L
+    @Volatile internal var lastServerAt = 0L
     @Volatile private var genStalls = 0
-    @Volatile private var handlerErrors = 0
+    @Volatile internal var handlerErrors = 0
     /** Connection tootne se pehle ki baat jiska jawab shuru nahi hua tha - judte hi ek baar text me */
     @Volatile private var resendText: String? = null
     @Volatile private var resentN = 0
     /** v3.9.1: bola par Gemini ne suna hi nahi -> caption ka text seedha bhejo */
     // v3.41: suna par jawab shuru nahi = 4.5s ki jagah 3.5s me bachao (atka sawaal jaldi dobara)
     // v3.46: 2.5s -> 1.8s (सर्वर ने सुना हो तो ~1s में text भेज देता है); 0.4s -> 0.25s (छोटे आदेश "हाँ", "रुको" भी बचें - caption के शब्द ज़रूरी)
-    private val replyWatch = ReplyWatchdog(timeoutMs = LiveStay.NO_REPLY_MS, minSpeechMs = 250, answerTimeoutMs = 3500)   // नवंबर 2026: 1.8s -> 6s (पहला जवाब अक्सर 2-4s)
+    internal val replyWatch = ReplyWatchdog(timeoutMs = LiveStay.NO_REPLY_MS, minSpeechMs = 250, answerTimeoutMs = 3500)   // नवंबर 2026: 1.8s -> 6s (पहला जवाब अक्सर 2-4s)
     @Volatile private var unheard = 0
     @Volatile private var rescued = 0
     /** v3.29: suna par jawab shuru nahi kiya -> wahi baat text me dobara (kitni baar) */
     @Volatile private var stalledN = 0
     /** v3.29: baat khatam hote hi seedha kaam (Gemini se pehle) + Gemini ka phone_task dohraav na kare */
-    private val fastMemo = LiveFast.Memo()
+    internal val fastMemo = LiveFast.Memo()
     @Volatile private var fastJob: Job? = null
     @Volatile private var fastN = 0
     /** User ne toka: purane jawab ke jo tukde ab bhi aa rahe hain unhe mat bajao (interrupted/turnComplete tak) */
-    @Volatile private var dropOld = false
-    @Volatile private var droppedOld = 0L
+    @Volatile internal var dropOld = false
+    @Volatile internal var droppedOld = 0L
     /** Echo-cancel chalu hai -> DK bolte samay bhi mic ki asli awaaz Gemini ko (sach me full-duplex) */
-    @Volatile private var aecOn = false
+    @Volatile internal var aecOn = false
     /**
      * v3.9: band. Log (15:37) me dikha: lagatar asli mic = peeche ka shor bhi Gemini tak -> server sochta raha user bol raha hai
      * -> jawab 8-16s der se / aaya hi nahi. Ab DK bolte samay Gemini ko sirf PAKKE user shabd (BargeGate) jaate hain.
      */
-    @Volatile private var fullDuplex = false
+    @Volatile internal var fullDuplex = false
     /** DK bolte samay "user bola?" - shak -> caption se shabd -> pakka (shor par jawab chalta rahe) */
-    private val bargeGate = BargeGate()
+    internal val bargeGate = BargeGate()
     /** Shak ke dauran ki awaaz (pakka hone par Gemini ko yahi pehle jaati hai) */
-    private val bargeBuf = ArrayDeque<ByteArray>()
+    internal val bargeBuf = ArrayDeque<ByteArray>()
     /**
      * v3.5+: DK बोल रहा है और यूज़र ने "रुको" के अलावा कुछ पूछा = जवाब नहीं काटा, सवाल यहाँ याद.
      * जवाब पूरा (आवाज़ बंद, कुछ बन नहीं रहा) होते ही वही सवाल Gemini को - उसका भी जवाब.
      */
-    private val askQueue = AskQueue()
-    @Volatile private var askAt = 0L
+    internal val askQueue = AskQueue()
+    @Volatile internal var askAt = 0L
     /** HOLD (यूज़र का अगला सवाल सुन रहे) का हिसाब: caption का आख़िरी text, कब बदला, आख़िरी तेज़ आवाज़ */
     @Volatile private var holdCap = ""
-    @Volatile private var holdCapAt = 0L
-    @Volatile private var holdLoudAt = 0L
-    @Volatile private var holdFinal = false
+    @Volatile internal var holdCapAt = 0L
+    @Volatile internal var holdLoudAt = 0L
+    @Volatile internal var holdFinal = false
     /** आख़िरी बार DK की आवाज़ बज रही थी (कतार वाला सवाल थोड़ी चुप्पी के बाद ही) */
-    @Volatile private var lastPlayingAt = 0L
+    @Volatile internal var lastPlayingAt = 0L
     /** v3.5+: एजेंट (कहानी/कोडिंग/कंप्यूटर/वेबसाइट) का tool आख़िरी बार कब बुलाया - "हाँ कर दिया" पर tool न बुलाया तो फ़ोन खुद */
-    @Volatile private var agentToolAt = 0L
+    @Volatile internal var agentToolAt = 0L
     @Volatile private var agentFixAt = 0L
-    @Volatile private var falseAlarms = 0
+    @Volatile internal var falseAlarms = 0
     @Volatile private var realBarges = 0
-    @Volatile private var gatedChunks = 0L
+    @Volatile internal var gatedChunks = 0L
 
     // ---- v3.66: सिर्फ़ मालिक की आवाज़ (परत 3) + दूर की आवाज़ अनसुनी (परत 4)
     /** इस बात का फ़ैसला (mic thread पर ही) */
-    private val owner = com.dk.assistant.voice.OwnerGate(CHUNK_MS)
-    @Volatile private var ownerOn = false
+    internal val owner = com.dk.assistant.voice.OwnerGate(CHUNK_MS)
+    @Volatile internal var ownerOn = false
     @Volatile private var ownerTh = com.dk.assistant.voice.VoicePrint.TH_NORMAL
-    private var ownerCfgAt = 0L
+    internal var ownerCfgAt = 0L
     /** हर नई बात पर +1 - पुरानी बात का देर से आया मिलान नई पर न लगे */
-    @Volatile private var ownerGen = 0
-    private class OwnerResult(val gen: Int, val score: Float?, val ms: Int, val tookMs: Long)
-    @Volatile private var ownerResult: OwnerResult? = null
+    @Volatile internal var ownerGen = 0
+    internal class OwnerResult(val gen: Int, val score: Float?, val ms: Int, val tookMs: Long)
+    @Volatile internal var ownerResult: OwnerResult? = null
     /** DK सोच/काम कर रहा था तब नई आवाज़: पहचान होने तक Gemini को नहीं (किसी और की बात DK का जवाब न काटे) */
-    private var ownerHolding = false
-    private val ownerHold = ArrayDeque<ByteArray>()
+    internal var ownerHolding = false
+    internal val ownerHold = ArrayDeque<ByteArray>()
     /** इस जवाब को न बजाओ, न कोई काम करो - वह किसी और की आवाज़ का है */
-    @Volatile private var muteTurn = false
-    @Volatile private var muteAt = 0L
+    @Volatile internal var muteTurn = false
+    @Volatile internal var muteAt = 0L
     // v3.67 (DoneGate): काम वाली बात पर Gemini की आवाज़ असली काम दिखने तक रोकी जाती है - झूठा "हो गया" बजता ही नहीं
-    @Volatile private var actHold = false
-    @Volatile private var actEvidence = false
+    @Volatile internal var actHold = false
+    @Volatile internal var actEvidence = false
     private val actHeld = ArrayList<ByteArray>()
     @Volatile private var actHeldBytes = 0
     /** v3.7: रोकना कब शुरू हुआ (घड़ी) - आम बात 0.9 s से ज़्यादा नहीं रुकती */
@@ -394,60 +405,60 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
     @Volatile private var actDropped = 0
     @Volatile private var actReleased = 0
     /** tool ने कहा "अभी हुआ नहीं" (शुरू हुआ / गड़बड़) - उसके बाद की बात फिर जाँचो */
-    @Volatile private var actPending = false
-    @Volatile private var actAfterTool = false
+    @Volatile internal var actPending = false
+    @Volatile internal var actAfterTool = false
     /** v3.90: यूज़र ने साफ़ हुक्म दिया ("खोलो/भेजो/कर दो") = काम से पहले की बातें नहीं (पहले काम, फिर बात) */
-    @Volatile private var actCommand = false
-    @Volatile private var othersIgnored = 0
-    @Volatile private var mutedParts = 0L
-    @Volatile private var earlyEnds = 0
-    private var capSeen = ""; private var capSeenAt = 0L
+    @Volatile internal var actCommand = false
+    @Volatile internal var othersIgnored = 0
+    @Volatile internal var mutedParts = 0L
+    @Volatile internal var earlyEnds = 0
+    internal var capSeen = ""; internal var capSeenAt = 0L
     /** 2.5 model ka "sochna" band (pehle awaaz tez) - setup mana kare to wapas */
-    @Volatile private var thinkOff = true
+    @Volatile internal var thinkOff = true
     /** v3.59: इस Live की आवाज़/भाषा/affective (setup पर एक बार तय - बीच में अपने-आप नहीं बदलती) */
     @Volatile private var extras: LiveVoice.Extras? = null
     @Volatile private var extrasModel = ""
     @Volatile private var extrasChosen = ""
-    private fun extrasFor(m: String): LiveVoice.Extras {
+    internal fun extrasFor(m: String): LiveVoice.Extras {
         val chosen = Prefs.geminiVoice(svc)
         val cur = extras
         if (cur != null && extrasModel == m && extrasChosen == chosen) return cur
         return LiveVoice.start(m, chosen, Prefs.liveExtrasOff(svc)).also { extras = it; extrasModel = m; extrasChosen = chosen }
     }
     @Volatile private var falseInterrupts = 0
-    @Volatile private var suspectAt = 0L
-    @Volatile private var localBargeAt = 0L
-    @Volatile private var bargeUntil = 0L
+    @Volatile internal var suspectAt = 0L
+    @Volatile internal var localBargeAt = 0L
+    @Volatile internal var bargeUntil = 0L
     // v3.53: फ़ोन से निकली आवाज़ (वीडियो/गाना) - PhoneAudioGuard. ये सब mic thread के; guardOk caption thread लिखता है
-    @Volatile private var guardHeld = false          // अभी की आवाज़ रोकी हुई - caption में DK का नाम आने तक Gemini को नहीं
-    @Volatile private var guardOk = false            // रोकी हुई बात में नाम मिल गया = यूज़र
-    private var guardPass = false                    // नाम वाली बात अभी चल रही - इसे दोबारा मत रोको
-    private var guardEndAt = 0L                      // रोकी हुई बात खत्म कब हुई (देर से आते शब्दों का इंतज़ार)
-    private val guardBuf = ArrayDeque<ByteArray>()
-    @Volatile private var dkOnlyNow = false          // v4.1: Settings → "सिर्फ़ DK बोलने पर सुनो" (हर 3s ताज़ा)
-    private var dkOnlyAt = 0L
-    @Volatile private var guardOn = false            // अभी गार्ड चालू (फ़ोन पर दूसरी आवाज़ बज रही)
-    private var mediaAt = 0L; private var mediaOn = false
+    @Volatile internal var guardHeld = false          // अभी की आवाज़ रोकी हुई - caption में DK का नाम आने तक Gemini को नहीं
+    @Volatile internal var guardOk = false            // रोकी हुई बात में नाम मिल गया = यूज़र
+    internal var guardPass = false                    // नाम वाली बात अभी चल रही - इसे दोबारा मत रोको
+    internal var guardEndAt = 0L                      // रोकी हुई बात खत्म कब हुई (देर से आते शब्दों का इंतज़ार)
+    internal val guardBuf = ArrayDeque<ByteArray>()
+    @Volatile internal var dkOnlyNow = false          // v4.1: Settings → "सिर्फ़ DK बोलने पर सुनो" (हर 3s ताज़ा)
+    internal var dkOnlyAt = 0L
+    @Volatile internal var guardOn = false            // अभी गार्ड चालू (फ़ोन पर दूसरी आवाज़ बज रही)
+    internal var mediaAt = 0L; internal var mediaOn = false
     @Volatile var phoneAudioIgnored = 0              // कितनी बार फ़ोन की अपनी आवाज़ छोड़ी (debug)
-        private set
+        internal set
     @Volatile private var thinkingSince = 0L
-    @Volatile private var lastBreakdown = ""
+    @Volatile internal var lastBreakdown = ""
     @Volatile private var warmReuses = 0
-    @Volatile private var setupSentAt = 0L
+    @Volatile internal var setupSentAt = 0L
 
     // ---- v3.68: बँटवारा - Gemini Live सिर्फ़ जवाब लिखे, बोलना अलग "आवाज़ इंजन" (voice/engine/*) करे
     /** इस connection में Live की अपनी आवाज़ नहीं बजती - उसका text SpeechPipeline बोलती है */
-    @Volatile private var connSplit = false
+    @Volatile internal var connSplit = false
     /** setup में responseModalities = TEXT (false + connSplit = AUDIO + transcript वाला तरीका) */
-    @Volatile private var connText = false
+    @Volatile internal var connText = false
     @Volatile private var connEngVer = -1
     /** v3.80: इस connection में Live की आवाज़ / अंदाज़ / मॉडल का version (बदले = चुप होते ही नया connection) */
-    @Volatile private var connLiveVer = -1
+    @Volatile internal var connLiveVer = -1
     @Volatile private var splitEngine: com.dk.assistant.voice.engine.VoiceEngine? = null
     /** replyText का कितना हिस्सा pipeline को भेजा जा चुका (DoneGate रोके तो आगे नहीं) */
     @Volatile private var splitFedTo = 0
     /** v3.71: जवाब की शुरुआत का भाव-टैग पढ़कर हटाने वाला (सिर्फ़ TEXT बँटवारे में) */
-    @Volatile private var tagFilter: com.dk.assistant.avatar.EmotionTag.Filter? = null
+    @Volatile internal var tagFilter: com.dk.assistant.avatar.EmotionTag.Filter? = null
     /** इस बारी में pipeline से कुछ बोला गया */
     @Volatile private var splitSpoke = false
     private val speechHooks = object : com.dk.assistant.voice.engine.SpeechPipeline.Hooks {
@@ -504,11 +515,11 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
     @Volatile private var engineErrLast = ""
     @Volatile private var splitSilentAt = 0L
     @Volatile private var splitOffUntil = 0L
-    @Volatile private var silentResay = ""
-    private val pipelineLazy: Lazy<com.dk.assistant.voice.engine.SpeechPipeline> = lazy { com.dk.assistant.voice.engine.SpeechPipeline(svc, speechHooks) }
-    private val pipeline: com.dk.assistant.voice.engine.SpeechPipeline by pipelineLazy
+    @Volatile internal var silentResay = ""
+    internal val pipelineLazy: Lazy<com.dk.assistant.voice.engine.SpeechPipeline> = lazy { com.dk.assistant.voice.engine.SpeechPipeline(svc, speechHooks) }
+    internal val pipeline: com.dk.assistant.voice.engine.SpeechPipeline by pipelineLazy
     private fun pipeBusy() = pipelineLazy.isInitialized() && pipeline.busy
-    private fun pipeStop() { if (pipelineLazy.isInitialized()) pipeline.stop() }
+    internal fun pipeStop() { if (pipelineLazy.isInitialized()) pipeline.stop() }
 
     /** नए connection से पहले: कौन बोलेगा (बँटवारा या Live की सीधी आवाज़) */
     private fun planSplit(m: String) {
@@ -539,7 +550,7 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
     }
 
     /** बँटवारे में: replyText का नया हिस्सा pipeline को (DoneGate रोके हो तो नहीं) */
-    private fun pumpSplit() {
+    internal fun pumpSplit() {
         if (!connSplit || actHold || muteTurn || dropOld) return
         val add = synchronized(turnLock) {
             if (splitFedTo > replyText.length) splitFedTo = replyText.length
@@ -549,41 +560,41 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
     }
 
     /** Live की अपनी आवाज़ का टुकड़ा: बँटवारे में बजता नहीं (सिर्फ़ गिनती) */
-    private fun playOut(pcm: ByteArray) {
+    internal fun playOut(pcm: ByteArray) {
         if (connSplit) return
         playQ.offer(pcm)
     }
 
     /** Garam (standby) connection: wake word ke baad chup hone par band nahi kiya */
-    private class Parked(val ws: WebSocket, val closed: CompletableDeferred<Pair<Int, String>>, val model: String, val at: Long,
+    internal class Parked(val ws: WebSocket, val closed: CompletableDeferred<Pair<Int, String>>, val model: String, val at: Long,
                          val split: Boolean = false, val text: Boolean = false, val liveVer: Int = -1, val keyIdx: Int = -1,
                          val resumedFrom: String? = null)
-    @Volatile private var parked: Parked? = null
+    @Volatile internal var parked: Parked? = null
     @Volatile private var curClosed: CompletableDeferred<Pair<Int, String>>? = null
 
     // ---- bajana (playback)
-    private val playQ = LinkedBlockingQueue<ByteArray>()
-    @Volatile private var track: AudioTrack? = null
-    @Volatile private var playEnd = 0L                // kab tak awaaz baj rahi hogi (andaza)
-    @Volatile private var gen = 0
-    private var playThread: Thread? = null
+    internal val playQ = LinkedBlockingQueue<ByteArray>()
+    @Volatile internal var track: AudioTrack? = null
+    @Volatile internal var playEnd = 0L                // kab tak awaaz baj rahi hogi (andaza)
+    @Volatile internal var gen = 0
+    internal var playThread: Thread? = null
     fun isPlaying() = System.currentTimeMillis() < playEnd + 120 || playQ.isNotEmpty() || pipeBusy()
 
-    private val toolJobs = ConcurrentHashMap<String, Job>()
+    internal val toolJobs = ConcurrentHashMap<String, Job>()
 
     /** Wake word se Live shuru hua: pehli baat (text) jo DK ko turant samajhni hai */
     @Volatile var firstText: String? = null
     /** >0 = itni der koi baat na ho to Live khud band (wake mode me wapas) */
     @Volatile var idleExitMs = 0L
-    @Volatile private var lastAct = 0L
+    @Volatile internal var lastAct = 0L
     @Volatile private var idleExit = false
     /** v3.51: आखिरी असली काम (tool नतीजा / काम पूरा होने का SYSTEM NOTE) कब - इसके बिना "कर दिया" = झूठ */
-    @Volatile private var lastEvidenceAt = 0L
+    @Volatile internal var lastEvidenceAt = 0L
     @Volatile private var lastGuardAt = 0L
     /** v3.51: आखिरी बात (user / DK) - "मैं चेक करता हूँ" पर Live खुला रहे */
     @Volatile private var lastUserLine = ""
     @Volatile private var lastDkLine = ""
-    @Volatile private var modelCache: Triple<Int, Long, List<String>>? = null
+    @Volatile internal var modelCache: Triple<Int, Long, List<String>>? = null
 
     fun stop(why: String = "user stop") {
         stopped = true
@@ -599,8 +610,8 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
     /** फ़ोन की अपनी आवाज़ (speakQuick) से कुछ बोलते समय वह आवाज़ Gemini को न जाए */
     fun muteMic(on: Boolean) { micMuted = on }
     /** call का आख़िरी काम (दो बार न हो: फ़ोन ने सुनकर उठाया, फिर Gemini ने भी phone_call माँगा) */
-    @Volatile private var callDone: Pair<String, Long>? = null
-    private val callLock = Any()
+    @Volatile internal var callDone: Pair<String, Long>? = null
+    internal val callLock = Any()
     /** v3.41: caption ka aakhri PAKKA text - scheduleFast doosri baar intezaar na kare */
     @Volatile private var capFinal = ""
 
@@ -623,7 +634,7 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
     }
 
     /** v3.51: कॉल के समय Live की आवाज़ accessibility पर (media घंटी/कॉल में mute) */
-    @Volatile private var callAudioOn = false
+    @Volatile internal var callAudioOn = false
     fun callAudio(on: Boolean) {
         if (callAudioOn == on) return
         callAudioOn = on
@@ -641,25 +652,6 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
         val ok = try { ws?.tx(JSONObject().put("realtimeInput", JSONObject().put("text", CallReply.liveNoteAsked(who))).toString()) == true } catch (_: Exception) { false }
         lastAct = System.currentTimeMillis(); lastEvidenceAt = lastAct
         log("कॉल आया (${who.ifBlank { "नंबर पता नहीं" }}) - फ़ोन ने आवाज़ में पूछा, Live जवाब सुनेगा" + if (ok) "" else " (Live को बता नहीं पाया)")
-    }
-
-    private suspend fun callTool(action: String, from: String): String {
-        val a = action.trim().lowercase()
-        if (a !in CallReply.ACTIONS) return "Unknown action '$action' - use one of: ${CallReply.ACTIONS.joinToString()}"
-        val now = System.currentTimeMillis()
-        val pick = listOf(CallReply.ANSWER, CallReply.ANSWER_SPEAKER, CallReply.REJECT)
-        // v3.41: phone (caption) aur Gemini ek saath -> pehla jeete, doosra "ho gaya" (dono saath uthayein/kaatein nahi)
-        synchronized(callLock) {
-            callDone?.let { (d, at) ->
-                if (now - at < 15_000 && d in pick && a in pick) return "Already done ($d) a moment ago - do not repeat it."
-            }
-            if (a in pick) callDone = a to now
-        }
-        val r = svc.liveCallAction(a)
-        if (a in pick && (r.startsWith("ERROR") || r == "NO_CALL")) synchronized(callLock) { if (callDone?.second == now) callDone = null }
-        if (a != CallReply.WHO && a !in pick && !r.startsWith("ERROR") && r != "NO_CALL") callDone = a to now
-        log("कॉल ($from): $a -> $r")
-        return if (a == CallReply.WHO) (if (r.startsWith("CALLER:")) r else "Caller name is not known.") else CallReply.resultNote(a, r)
     }
 
     @Volatile private var lastFrameAt = 0L
@@ -681,102 +673,17 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
         return ok
     }
 
-    /** v3.75: web_search tool - फ़ोन खुद Google Search (Gemini REST) करके छोटा जवाब + स्रोत लाता है */
-    private suspend fun webSearchTool(query: String): String {
-        val q = query.trim().ifBlank { turnUser.trim() }
-        if (q.length < 2) return "Ask the user what to search."
-        DKState.hint(LivePromise.hintFor("web_search", q))
-        setMode(Mode.THINKING)
-        // v3.87: Live की खोज = Live की अपनी Gemini key पहले; fail = ख़ुद एक बार दोबारा (छोटी, तेज़ खोज)
-        // v3.93: सामान्य ज्ञान / गणित / कहानी (ताज़ा शब्द नहीं) = खोज नहीं, अपनी जानकारी से
-        if (WebSearch.skip(q)) {
-            log("web_search: \"${q.take(40)}\" - सामान्य सवाल, खोज नहीं")
-            return "NO_SEARCH_NEEDED: this is general knowledge (not live or changing). Answer it now from your own knowledge, briefly. Do not call web_search for it again."
-        }
-        val brain = BrainManager(svc).also { it.fromLive = true }
-        // v3.88: यूज़र के बोलते ही शुरू हुई खोज उसी बात की है = वही नतीजा (इंतज़ार कम)
-        prepFail = null
-        var r: SearchResult? = preparedSearch(q)?.also { log("web_search: पहले से तैयार नतीजा इस्तेमाल किया") }
-        var why = SearchGuard.Fail.OTHER
-        // v3.90: अभी-अभी (यूज़र के बोलते ही) वही पूरी Google खोज fail हुई = वही दोबारा भेजना बेकार (सीमा और भरती, समय जाता),
-        // सीधे बचाव वाली खोज (बिना-key वेबसाइटें + ज़रूरत हो तो एक छोटी Gemini खोज)
-        val pf = prepFail
-        if (r == null && pf != null) {
-            why = pf; log("web_search: पहले वाली खोज fail (${SearchGuard.hindi(pf)}) - सीधे बचाव वाली खोज")
-            val fb = fallbackSearch(q, why, brain); r = fb.first; why = fb.second
-            if (r == null) why = pf
-        }
-        if (r == null && pf == null) {
-            r = try { withTimeoutOrNull(LiveSearch.totalTimeoutMs(Prefs.searchOwnKey(svc).isNotBlank()) + chainExtraMs()) { brain.search(q, deep = false) } }
-            catch (e: CancellationException) { throw e } catch (e: Exception) {
-                why = brain.lastSearchFail
-                log("web_search fail (कोशिश 1): ${SearchGuard.hindi(why)} - ${e.javaClass.simpleName} ${e.message?.take(120)}")
-                null
-            }
-            if (r == null && why == SearchGuard.Fail.OTHER) why = SearchGuard.Fail.TIMEOUT
-            if (r != null && r.text.isBlank()) { r = null; why = SearchGuard.Fail.EMPTY }
-            // v3.90: Google खोज न चली तो हार नहीं - बिना key वाली दूसरी वेबसाइटें (Google News, Wikipedia) + एक छोटी दोबारा खोज, साथ-साथ
-            if (r == null) { val fb = fallbackSearch(q, why, brain); r = fb.first; why = fb.second }
-        }
-        val res = r
-        if (res == null) {
-            log("web_search: \"${q.take(40)}\" -> दो कोशिश के बाद भी नहीं (${SearchGuard.hindi(why)})")
-            DKState.hint(when (why) {
-                SearchGuard.Fail.NO_KEY -> "${WebSearch.ALL_FAILED_LINE} - सेटिंग → खोज में Tavily, Exa या Gemini key डालें"
-                SearchGuard.Fail.BAD_KEY -> "${WebSearch.ALL_FAILED_LINE} - खोज की key ग़लत है, सेटिंग → खोज में जाँचें"
-                SearchGuard.Fail.QUOTA -> "${WebSearch.ALL_FAILED_LINE} - खोज की limit खत्म है"
-                SearchGuard.Fail.NETWORK -> "${WebSearch.ALL_FAILED_LINE} - इंटरनेट की दिक्कत है"
-                else -> WebSearch.ALL_FAILED_LINE
-            })
-            return SearchGuard.failResult(q, why)
-        }
-        // स्रोत सिर्फ़ तब, जब सच में खोज से जवाब आया
-        if (res.sources.isNotEmpty()) toolSources = Grounding.merge(toolSources, res.sources)
-        log("web_search: \"${q.take(40)}\" -> ${res.text.length} अक्षर, ${res.sources.size} स्रोत")
-        return "SEARCH RESULT (verified from several websites): " + res.text.take(3200) + "\n" + LiveSearch.sourcesLine(res.sources) +
-            "\nSpeak the answer from this result now, briefly and naturally. Do not read URLs."
-    }
-
-    /**
-     * v3.90: Gemini की खोज fail होने पर बचाव - (1) बिना-key खोज: Google News + Wikipedia, (2) साथ में छोटी Gemini खोज
-     * (सिर्फ़ जब दोबारा कोशिश का फ़ायदा हो: धीमा नेट / अनजानी गड़बड़ - सीमा भरी/key ग़लत पर नहीं, वरना वही गलती फिर).
-     * Gemini वाला मिले तो वही (ज़्यादा सटीक), वरना बिना-key वाला. कुछ न मिले = (null, असली वजह).
-     */
-    private suspend fun fallbackSearch(q: String, why0: SearchGuard.Fail, brain: BrainManager): Pair<SearchResult?, SearchGuard.Fail> = coroutineScope {
-        var why = why0
-        val open = async(Dispatchers.IO) { try { OpenSearchNet.search(q) } catch (e: Exception) { log("बिना-key खोज fail: ${e.message}"); null } }
-        // v3.93: Tavily/Exa वाला क्रम पहले ही सब सेवाएँ आज़मा चुका = Gemini से दोबारा खोज नहीं (एक सवाल पर एक खोज)
-        val retry = why in listOf(SearchGuard.Fail.TIMEOUT, SearchGuard.Fail.OTHER, SearchGuard.Fail.EMPTY) && chainExtraMs() == 0L
-        val quick = if (!retry) null else try { withTimeoutOrNull(16_000) { brain.quickSearch(q) } }
-            catch (e: CancellationException) { throw e } catch (e: Exception) {
-                if (brain.lastSearchFail != SearchGuard.Fail.OTHER) why = brain.lastSearchFail
-                log("web_search fail (कोशिश 2): ${SearchGuard.hindi(why)} - ${e.message?.take(100)}"); null
-            }
-        if (quick != null && quick.text.isNotBlank()) { open.cancel(); return@coroutineScope quick to why }
-        val o = withTimeoutOrNull(12_000) { open.await() }
-        open.cancel()
-        if (o != null) {
-            log("web_search: Google खोज नहीं चली (${SearchGuard.hindi(why)}) - बिना-key वेबसाइटों से जवाब")
-            return@coroutineScope SearchResult(OPEN_NOTE + o.text, o.sources) to why
-        }
-        null to why
-    }
-
-    /** v3.93: Tavily/Exa पहले आज़माए जाते हैं - उनके लिए कुछ सेकंड और (हर एक ज़्यादा से ज़्यादा ~10 सेकंड) */
-    private fun chainExtraMs(): Long =
-        (if (Prefs.tavilySearchKey(svc).isNotBlank()) 10_000L else 0L) + (if (Prefs.exaSearchKey(svc).isNotBlank()) 10_000L else 0L)
-
-    private val OPEN_NOTE = "(The normal Google search did not work right now, so these come from Google News headlines and Wikipedia. " +
+    internal val OPEN_NOTE = "(The normal Google search did not work right now, so these come from Google News headlines and Wikipedia. " +
         "Answer from them. If they do not answer the exact question, say briefly what you found and that the full detail could not be confirmed.)\n"
 
-    @Volatile private var promiseJob: Job? = null
+    @Volatile internal var promiseJob: Job? = null
     @Volatile private var promiseFixAt = 0L
 
     /**
      * v3.75: बारी खत्म - Gemini ने सिर्फ़ "सर्च करके बताता हूँ / एक मिनट / कर रहा हूँ" कहा और कोई tool नहीं बुलाया?
      * तो चुप न रहो: सवाल था -> फ़ोन खुद सर्च करे और नतीजा Gemini को दे (वह बोले); काम था -> Gemini से phone_task करवाओ.
      */
-    private fun promiseCheck() {
+    internal fun promiseCheck() {
         val now = System.currentTimeMillis()
         val (said, heard) = synchronized(turnLock) { replyText.toString().trim() to userText.toString().trim() }
         val user = (if (!userDone) turnUser.trim() else "").ifBlank { heard }.ifBlank { caption?.text().orEmpty().trim() }
@@ -821,7 +728,7 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
      * हो गया" कहा, पर उसका tool नहीं बुलाया? तो फ़ोन खुद वही tool चलाए - एजेंट की स्क्रीन खुले और काम वहाँ दिखे,
      * फिर Gemini को असली नतीजा (वह सच बोले). true = यहीं संभाल लिया (promiseCheck नहीं).
      */
-    private fun agentCheck(): Boolean {
+    internal fun agentCheck(): Boolean {
         val now = System.currentTimeMillis()
         val (said, heard) = synchronized(turnLock) { replyText.toString().trim() to userText.toString().trim() }
         val user = (if (!userDone) turnUser.trim() else "").ifBlank { heard }.ifBlank { caption?.text().orEmpty().trim() }
@@ -844,7 +751,7 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
         return true
     }
 
-    private fun newLeakFilter() = LeakedCall.Filter(onOpen = { onLeakOpen() }, onCall = { runLeaked(it) })
+    internal fun newLeakFilter() = LeakedCall.Filter(onOpen = { onLeakOpen() }, onCall = { runLeaked(it) })
 
     /** v4.1: जवाब में लिखी हुई tool call शुरू होती दिखी - Live की आवाज़ तुरंत बंद (वह "phone task…" बोलने वाला है) */
     private fun onLeakOpen() {
@@ -866,7 +773,7 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
         runTools(JSONArray().put(JSONObject().put("id", LEAK_ID + now).put("name", c.name).put("args", args)))
     }
 
-    private fun leakNote(name: String, result: String): String =
+    internal fun leakNote(name: String, result: String): String =
         "SYSTEM NOTE: you wrote the function call for $name as text instead of calling it, so the phone ran it itself. " +
             "Real result: \"" + result.take(800) + "\". Tell the user this real result in ONE short natural sentence in their language " +
             "(e.g. \"हो गया सर\") - never read out function names, braces, arguments or <ctrl> tokens. Do NOT call $name again for this request."
@@ -875,7 +782,7 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
      * नवंबर 2026: बीच बातचीत text सिर्फ़ तब जब Gemini चुप हो और कोई turn न चल रहा हो (1011 की जड़: बोलते/सोचते समय text).
      * true = अभी भेज सकते हैं (ज़्यादा से ज़्यादा [maxMs] इंतज़ार)
      */
-    private suspend fun waitQuiet(maxMs: Long): Boolean {
+    internal suspend fun waitQuiet(maxMs: Long): Boolean {
         fun quiet() = !isPlaying() && !generating && !turnActive && !turnDet.inSpeech && toolJobs.isEmpty()
         withTimeoutOrNull(maxMs) { while (!stopped && !quiet()) delay(150) }
         if (!quiet()) return false
@@ -895,14 +802,14 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
     }
 
     /** Haalat badlo (Thinking kab se hai yaad rakho - atakne par wapas) */
-    private fun setMode(m: Mode) {
+    internal fun setMode(m: Mode) {
         thinkingSince = if (m == Mode.THINKING) (if (DKState.mode == Mode.THINKING && thinkingSince > 0) thinkingSince else System.currentTimeMillis()) else 0L
         if (DKState.mode != m) DKState.set(m)
     }
 
     /** Kaun se connection HUMNE band kiye (aur kyun) - log me "server ने बंद किया" galat na likha jaye */
-    private val ourClose = ConcurrentHashMap<WebSocket, String>()
-    private fun closeWs(w: WebSocket?, why: String) {
+    internal val ourClose = ConcurrentHashMap<WebSocket, String>()
+    internal fun closeWs(w: WebSocket?, why: String) {
         if (w == null) return
         ourClose[w] = why
         try { w.close(1000, "bye") } catch (_: Exception) {}      // reason ASCII hi (123 byte se zyada = close hi nahi hota)
@@ -910,7 +817,7 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
 
     /** Quota khatam wala model: aaj dobara mat maango (pehli baar 30 min, dobara = Pacific aadhi raat tak) */
     /** v3.94: अभी कौन सी key चल रही है (0 = मुख्य) - मॉडल की limit हर key की अलग */
-    @Volatile private var keyIdx = 0
+    @Volatile internal var keyIdx = 0
     private fun blockModel(m: String, why: String, reason: String = "") {
         val n = Cooldown.strike(LiveKeys.cooldownName(keyIdx, m))
         // नवंबर 2026: दूसरी बार भी पूरे दिन की रोक सिर्फ़ असली रोज़ की limit पर (पहले हर दूसरी बार = Pacific आधी रात तक)
@@ -919,10 +826,10 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
         log("$m की limit खत्म ($why) - ${ms / 60_000} मिनट तक यह मॉडल नहीं माँगूँगा")
     }
     /** नवंबर 2026: एक मॉडल पर बार-बार 1011 = Google की तरफ़ उस मॉडल की खराबी - 30 मिनट हटाओ (अगर दूसरा मॉडल बचा हो). नया मॉडल लौटाता है */
-    private val model1011 = LiveStay.Model1011()
+    internal val model1011 = LiveStay.Model1011()
     /** नवंबर 2026: 1011 से टूटे मॉडल 6 घंटे सबसे पीछे (ऐप बंद-चालू पर भी याद) */
-    private val broken1011: LiveStay.Broken1011 by lazy { LiveStay.Broken1011.decode(try { raceSp.getString("b1011", "") } catch (_: Exception) { "" }) }
-    private fun markBroken1011(m: String) {
+    internal val broken1011: LiveStay.Broken1011 by lazy { LiveStay.Broken1011.decode(try { raceSp.getString("b1011", "") } catch (_: Exception) { "" }) }
+    internal fun markBroken1011(m: String) {
         broken1011.mark(m)
         try { raceSp.edit().putString("b1011", broken1011.encode()).apply() } catch (_: Exception) {}
     }
@@ -941,7 +848,7 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
     }
     private fun isQuota(code: Int, r: String) = r.contains("quota") || r.contains("exhausted") || r.contains("rate limit") || code == 429
 
-    private fun log(m: String) = DKLog.d("Live: $m")
+    internal fun log(m: String) = DKLog.d("Live: $m")
 
     private fun updateStats() {
         stats = "मॉडल: ${model.ifBlank { "-" }} • जुड़ा: ${if (ready) "हाँ" else "नहीं"} • भेजे टुकड़े: $sent (${sentBytes / 1024} KB)" +
@@ -1379,7 +1286,7 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
         return openerText == null
     }
 
-    private fun sendOpener() {
+    internal fun sendOpener() {
         val t = openerText ?: return
         // 90s से पुराना (Live नहीं जुड़ा था) = बासी; अगली बार ऐप खुलने पर नया
         if (System.currentTimeMillis() - openerAt > 90_000) { openerText = null; return }
@@ -1396,7 +1303,7 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
         } catch (_: Exception) {}
     }
 
-    private fun sendFirstText() {
+    internal fun sendFirstText() {
         val t = firstText ?: return
         firstText = null
         try {
@@ -1412,7 +1319,7 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
     }
 
     /** Tootne se pehle ki unanswered baat - naye connection par ek baar text me (UI line dobara nahi) */
-    private fun sendResend() {
+    internal fun sendResend() {
         val t = resendText ?: return
         resendText = null
         if (!textRescue) { log("टूटने से पहले की बात text में दोबारा नहीं भेजी (बचाव-text बंद) - बातचीत handle से वहीं से"); return }
@@ -1431,7 +1338,7 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
      */
     @Volatile private var tlWords = false
     @Volatile private var noiseTurns = 0
-    private fun beginTimeline(speechEnd: Long, endpoint: Long, why: String) {
+    internal fun beginTimeline(speechEnd: Long, endpoint: Long, why: String) {
         if (timeline.active && timeline.eventAt == 0L && timeline.audioAt == 0L && toolJobs.isEmpty()) {
             // v3.46: खटखट/शोर (caption में कोई शब्द नहीं) को "जवाब नहीं आया" में मत गिनो - वहाँ चुप रहना ही सही है
             if (tlWords) { noReplyTurns++; log("पिछली बात पर Gemini से कुछ नहीं आया (#$noReplyTurns) • ${timeline.summary()}") }
@@ -1446,277 +1353,21 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
      * 1) awaaz TURANT band (AudioTrack flush - sirf dheemi nahi)  2) purane jawab ke aane wale tukde phenko
      * 3) haalat turant Listening. Generation server rokta hai (mic ki awaaz -> server VAD -> "interrupted").
      */
-    private fun bargeIn(why: String) {
+    internal fun bargeIn(why: String) {
         localBargeAt = System.currentTimeMillis(); bargeUntil = localBargeAt + 1500; suspectAt = 0L
         if (generating) dropOld = true
         stopForUser(why)
     }
 
-    /** Network se Live models ki list (aur cache memory + phone dono me) */
-    private fun fetchModels(key: String): List<String> {
-        val found = mutableListOf<String>()
-        val c = http.newBuilder().callTimeout(8, TimeUnit.SECONDS).build()   // v5.1: वही साझा pool
-        val req = Request.Builder().url("https://generativelanguage.googleapis.com/v1beta/models?pageSize=1000")
-            .header("x-goog-api-key", key).build()
-        c.newCall(req).execute().use { r ->
-            val s = r.body?.string() ?: ""
-            if (r.code == 400 || r.code == 401 || r.code == 403) throw Fatal("Gemini key गलत है")
-            val arr = JSONObject(s).optJSONArray("models")
-            for (i in 0 until (arr?.length() ?: 0)) {
-                val m = arr!!.optJSONObject(i) ?: continue
-                if (m.optJSONArray("supportedGenerationMethods")?.toString()?.contains("bidiGenerateContent") == true)
-                    found.add(m.optString("name").removePrefix("models/"))
-            }
-        }
-        if (found.isNotEmpty()) {
-            val now = System.currentTimeMillis()
-            modelCache = Triple(key.hashCode(), now, found.toList())
-            Prefs.saveLiveModelCache(svc, LiveModelCache.encode(key.hashCode(), now, found))
-        }
-        return found
-    }
-
-    /** Is key par kaun se Live models hain (bidiGenerateContent) - sabse naya/tez pehle */
-    private fun discoverModels(key: String): List<String> {
-        val found = mutableListOf<String>()
-        // wake word par har baar list mat mango (deri). Cache ab phone me bhi save - app restart ke baad bhi
-        // connect se pehle 3-4s ki list wali deri nahi (log 07:51:50); 1 ghante se purani ho to nayi peeche se.
-        val kh = key.hashCode()
-        val cache = modelCache ?: LiveModelCache.decode(Prefs.liveModelCache(svc))?.also { modelCache = it }
-        when (LiveModelCache.plan(cache, kh, System.currentTimeMillis())) {
-            "use" -> found.addAll(cache!!.third)
-            "refresh" -> {
-                found.addAll(cache!!.third)
-                svc.scope.launch(Dispatchers.IO) {
-                    try { fetchModels(key) } catch (e: Exception) { log("models list (peeche se) nahi aayi: ${e.message}") }
-                }
-            }
-            else -> try { found.addAll(fetchModels(key)) } catch (e: Fatal) { throw e } catch (e: Exception) { log("models list nahi aayi: ${e.message}") }
-        }
-        // v3.41: sabse NAYA nahi, sabse TEZ pehle - phone par naapa jawab-samay (LiveModelRank)
-        val lat = Prefs.liveLatency(svc)
-        // नवंबर 2026: 2.5 native-audio (Google की तरफ़ 1011) सिर्फ़ बैकअप; मालिक ने चुना हो तो LiveModelPick उसे फिर पहले रखता है
-        val all = LiveStay.demoteKnown1011(LiveModelRank.order(found, FALLBACK_MODELS, lat))
-        // limit khatam wale model (aaj) chhodo - har baar 2 bekaar connection = ~1.5s deri + mic ke tukde gire
-        val (skip, ok) = all.partition { Cooldown.blocked(LiveKeys.cooldownName(keyIdx, it)) }
-        if (skip.isNotEmpty()) log("limit खत्म, छोड़े: " + skip.joinToString { m -> m + " (" + ((Cooldown.until(LiveKeys.cooldownName(keyIdx, m)) - System.currentTimeMillis()) / 60_000).coerceAtLeast(0) + " मिनट बाकी)" })
-        log("सबसे तेज़ क्रम: " + ok.take(3).joinToString { m -> m + (lat[m]?.let { " ${it}ms" } ?: "") })
-        return ok.ifEmpty { all }
-    }
-
-    /** v5.1: txt = यह जोड़ी TEXT माँगे (दौड़ में हर मॉडल का अपना); resume = पुरानी बातचीत का handle भेजो (सिर्फ़ उसी जोड़ी पर) */
-    private fun setupJson(m: String, txt: Boolean = connText, resume: Boolean = true): String {
-        NetProbe.refresh(svc)      // v3.88: धीमा नेटवर्क = छोटे जवाब (अपने-आप, कोई सेटिंग नहीं)
-        val brain = BrainManager(svc)
-        val ex = extrasFor(m)
-        val tools = JSONArray().put(JSONObject().put("functionDeclarations", JSONArray()
-            .put(JSONObject().put("name", "phone_task")
-                .put("description", "Do something on the user's Android phone: open apps (including opening WhatsApp), call, SMS, YouTube, music, settings (wifi, bluetooth, torch, volume, brightness), maps/directions, shopping, read or tap the screen. NOT for a single WhatsApp message - use whatsapp_task (action=send_message) for that. BUT if the user gives SEVERAL tasks in one go (e.g. alarm, then WhatsApp, then delete photo, then YouTube, then maps), call phone_task ONCE with his full request - the phone runs them one by one in order. While tasks run: a new task = phone_task with only that task (added at the end); 'रुको'/'बंद करो' = phone_task with request 'रुको' (stops at once).")
-                .put("parameters", JSONObject().put("type", "OBJECT")
-                    .put("properties", JSONObject().put("request", JSONObject().put("type", "STRING").put("description", "The user's request in their own words")))
-                    .put("required", JSONArray().put("request"))))
-            .put(JSONObject().put("name", "web_search")
-                .put("description", "Live search RIGHT NOW: searches several websites at once (official government websites first for government questions, plus reputed news and reference sites), cross-checks them and returns one verified, up-to-date answer with the website names (SOURCES). Use it for anything live or changing: news, prices, weather, scores, government schemes/rules/forms/dates, results, recruitments, people in office, products, releases - and anything you are not sure about. Whenever you say you will search / check / look it up, you MUST call this in the SAME turn - never only promise. (Opening a website or searching inside Chrome/an app on the phone = phone_task.)")
-                .put("parameters", JSONObject().put("type", "OBJECT")
-                    .put("properties", JSONObject().put("query", JSONObject().put("type", "STRING").put("description", "What to search, with all details the user gave")))
-                    .put("required", JSONArray().put("query"))))
-            .put(JSONObject().put("name", "current_time")
-                .put("description", "Get the exact current date, day and time (internet-checked clock, user's time zone). Call it whenever the user asks the time, date or day, or before saying how late/early it is - never guess.")
-                .put("parameters", JSONObject().put("type", "OBJECT").put("properties", JSONObject())))
-            .put(JSONObject().put("name", "deep_think")
-                .put("description", "Solve a genuinely HARD question with a much stronger reasoning model (multi-step maths, logic puzzles, code, detailed comparisons, planning, exam-level or deep why/how questions). Returns a carefully reasoned answer in Hindi to speak.")
-                .put("parameters", JSONObject().put("type", "OBJECT")
-                    .put("properties", JSONObject().put("question", JSONObject().put("type", "STRING").put("description", "The complete question with all details the user gave")))
-                    .put("required", JSONArray().put("question"))))
-            .put(JSONObject().put("name", "coding_task")
-                .put("description", "Give a programming task to the user's coding team (Builder + Reviewer + Coordinator) that works on their GitHub repo - e.g. build/change/fix a feature in the app. Also use it when the user approves or rejects a coding suggestion (\"सुझाव जोड़ दो\" / \"सुझाव नहीं\"), and when the user asks to merge the ready pull request (e.g. PR merge कर दो - pass task \"PR merge कर दो\"; it checks tests/build first, merges, then GitHub Actions builds the new APK release). Also use it when the user asks about the repository itself - what is going on, which PRs are open, whether a PR/build is stuck or failed, 'रिपो चेक करो', 'PR 42 ठीक करो', 'PR 42 merge करो' - pass the user's words; it reads the real GitHub state and answers. Also use it when the coding team showed its understanding and the user says yes / corrects it / answers its question - pass exactly what the user said (e.g. \"हाँ\"). It starts in the background; tell the user it has started.")
-                .put("parameters", JSONObject().put("type", "OBJECT")
-                    .put("properties", JSONObject().put("task", JSONObject().put("type", "STRING").put("description", "The full coding task (or the suggestion decision) in the user's words")))
-                    .put("required", JSONArray().put("task"))))
-            .put(JSONObject().put("name", "computer_task")
-                .put("description", "Give a multi-step task to DK Computer, the user's autonomous agent: web research, reading websites, calculations, making files/PDF/tables/reports, reminders or tasks at a later time (survive phone restart), and chains of phone actions. Use it when the user says DK कंप्यूटर / कंप्यूटर से, or asks to research and make a PDF/file/report/table, or to remind/do something later. Also use it to pass the user's हाँ/नहीं when DK Computer asked for permission (task = the user's words). It runs in the background, shows each step on the DK कंप्यूटर screen and notifies when done; tell the user it has started.")
-                .put("parameters", JSONObject().put("type", "OBJECT")
-                    .put("properties", JSONObject().put("task", JSONObject().put("type", "STRING").put("description", "The full task in the user's words, with all details (or just हाँ / नहीं for a permission)")))
-                    .put("required", JSONArray().put("task"))))
-            .put(JSONObject().put("name", "build_website")
-                .put("description", "DK Website Forge: build a complete animated 3D website from the user's description (e.g. 'DK, ek cafe ki website banao'). A live 3D build screen opens on the phone and the finished website is shown there. Use it ONLY when the user asks to build/create/make a website, web page or landing page - not for coding tasks on GitHub. It returns forge_started immediately; tell the user it has started and that they can watch it being built.")
-                .put("parameters", JSONObject().put("type", "OBJECT")
-                    .put("properties", JSONObject().put("prompt", JSONObject().put("type", "STRING").put("description", "What website to build, with every detail the user gave (business, name, sections, colours, language)")))
-                    .put("required", JSONArray().put("prompt"))))
-            .put(JSONObject().put("name", "dk_features")
-                .put("description", "Get the REAL list of everything DK can do - all agents and modes (phone control, WhatsApp, calls, social media, Coding Agent team, DK Computer, Website Forge, Story Mode, Teacher Mode, Autonomous Mode, camera, screen share, search, memory) and which tool does what. Call it when the user asks what you can do / which agents DK has / what is inside an agent (तुम क्या-क्या कर सकती हो, कौन-कौन से एजेंट हैं), or when you are unsure which tool fits a task.")
-                .put("parameters", JSONObject().put("type", "OBJECT").put("properties", JSONObject())))
-            .put(JSONObject().put("name", "story_task")
-                .put("description", "Story Mode: the Story Writer Agent writes a long emotional Hindi story (10, 15, 20, 25 or 30 minutes) part by part on DK's Story screen. Use it when the user asks to write/make a story or kahani (कहानी लिखो, 20 मिनट की कहानी बनाओ, स्टोरी मोड). It returns story_started immediately; you get a SYSTEM NOTE when it is really finished.")
-                .put("parameters", JSONObject().put("type", "OBJECT")
-                    .put("properties", JSONObject()
-                        .put("topic", JSONObject().put("type", "STRING").put("description", "The story topic / instructions in the user's words (empty = the agent picks one)"))
-                        .put("minutes", JSONObject().put("type", "INTEGER").put("description", "Length in minutes if the user said it (10-30), else 0")))))
-            .put(JSONObject().put("name", "teacher_mode")
-                .put("description", "Open (on=true) or close (on=false) DK Teacher Mode - a whiteboard page where everything you explain is written for studying. Use it ONLY when the user himself asks: टीचर मोड खोलो / teacher mode on / पढ़ाई मोड चालू करो / टीचर मोड बंद करो. NEVER open it by yourself just because a question is about studies (owner's rule).")
-                .put("parameters", JSONObject().put("type", "OBJECT")
-                    .put("properties", JSONObject().put("on", JSONObject().put("type", "BOOLEAN")))
-                    .put("required", JSONArray().put("on"))))
-            // v5 (मालिक): DK को सारी सेटिंग्स पता हों और वह उन्हें ऑन-ऑफ कर सके - हर बदलाव से पहले दो बार पक्का
-            .put(JSONObject().put("name", "dk_settings")
-                .put("description", "Know, open and switch DK's own settings. action=list: all switchable settings with their current ON/OFF state and all parts of Settings. " +
-                    "action=open: open that part of Settings on screen (setting = what to open, e.g. 'आवाज़', 'DK कंप्यूटर', 'API key'). " +
-                    "action=set: switch a setting ON (on=true) or OFF (on=false). Owner's rule - TWO confirmations: the first set call never changes anything, it tells you to say " +
-                    "\"ठीक है बॉस\" and ask \"सर, क्या आप सच में ... ऑन/ऑफ करना चाहते हैं?\"; only after his clear yes call set again with confirmed=true. Use it whenever the user asks " +
-                    "about DK's settings or says 'यह सेटिंग ऑन/ऑफ कर दो' / 'सेटिंग खोलो'.")
-                .put("parameters", JSONObject().put("type", "OBJECT")
-                    .put("properties", JSONObject()
-                        .put("action", JSONObject().put("type", "STRING").put("enum", JSONArray().put("list").put("open").put("set")))
-                        .put("setting", JSONObject().put("type", "STRING").put("description", "The setting in the user's words (empty for list)"))
-                        .put("on", JSONObject().put("type", "BOOLEAN").put("description", "true = turn ON, false = turn OFF (only for set)"))
-                        .put("confirmed", JSONObject().put("type", "BOOLEAN").put("description", "true ONLY after you asked 'सर, क्या सच में...?' and he clearly said yes")))
-                    .put("required", JSONArray().put("action"))))
-            // v5.1: DK Inspector - app की अपनी जाँच (सिर्फ़ पढ़ना). Coding Agent को रिपोर्ट सिर्फ़ मालिक की साफ़ हाँ के बाद
-            .put(JSONObject().put("name", "dk_inspector")
-                .put("description", "DK Inspector - DK's own debugger that reads the real Debug data (Gemini Live status, latency breakdown, logs). " +
-                    "action=list: found bug reports with id/severity/status. action=report: the full report of one id (explain it in simple Hindi; 'suspected' causes stay 'शायद'). " +
-                    "action=ask: answer the owner's question about bugs/slowness/mic/connection from real data (question = his words). action=inspect: run a deep inspection now. " +
-                    "action=send_to_coder: give the report to the Coding Agent - ONLY after the owner clearly says yes (e.g. 'ठीक है, Coding Agent को दे दो'), then approved=true. " +
-                    "action=dismiss: remove one report (owner says 'हटा दो' / 'ठीक हो गया'); if it comes back it is shown again. action=later: remind later (owner says 'बाद में'). " +
-                    "action=clear_all: clear the whole bug list - only when the owner asks to clear all. It watches the whole app (calls, connectors, update, power-button assistant, notifications, crashes, ANR) every 20 minutes. " +
-                    "Never claim a bug is fixed unless the report status is Resolved. Use it when the owner asks what is wrong with DK, why DK is slow/not hearing, or about a DKI- report.")
-                .put("parameters", JSONObject().put("type", "OBJECT")
-                    .put("properties", JSONObject()
-                        .put("action", JSONObject().put("type", "STRING").put("enum", JSONArray().put("list").put("report").put("ask").put("inspect").put("send_to_coder").put("dismiss").put("later").put("clear_all")))
-                        .put("id", JSONObject().put("type", "STRING").put("description", "Bug ID like DKI-1A2B3C (report / send_to_coder / dismiss / later)"))
-                        .put("question", JSONObject().put("type", "STRING").put("description", "The owner's question in his words (ask)"))
-                        .put("approved", JSONObject().put("type", "BOOLEAN").put("description", "true ONLY after the owner clearly said yes to giving it to the Coding Agent")))
-                    .put("required", JSONArray().put("action"))))
-            .put(JSONObject().put("name", "social_media_task")
-                .put("description", "Post on Instagram or Facebook by driving the real app on the phone. Instagram: post_photo, post_video, post_reel, post_story. Facebook: post_text, post_photo, post_video, post_story. Media can ONLY be a photo/video the user shared to DK (Gallery -> Share -> DK); use media='latest_shared'. mode='draft' fills everything but never posts. Posting is irreversible: you will get a SYSTEM NOTE with status waiting_confirmation - ask the user that exact question and only after a clear yes call social_media_task_control(command=confirm). DK never fills logins, passwords, CAPTCHAs or 2-step codes - it waits for the user. Report the final status truthfully (submitted_unverified = not confirmed).")
-                .put("parameters", JSONObject().put("type", "OBJECT")
-                    .put("properties", JSONObject()
-                        .put("platform", JSONObject().put("type", "STRING").put("enum", JSONArray().put("instagram").put("facebook")))
-                        .put("action", JSONObject().put("type", "STRING").put("enum", JSONArray().put("post_photo").put("post_video").put("post_reel").put("post_story").put("post_text")))
-                        .put("caption", JSONObject().put("type", "STRING").put("description", "Caption / post text exactly as the user wants it"))
-                        .put("media", JSONObject().put("type", "STRING").put("description", "latest_shared (default)"))
-                        .put("mode", JSONObject().put("type", "STRING").put("enum", JSONArray().put("publish").put("draft"))))
-                    .put("required", JSONArray().put("platform").put("action"))))
-            .put(JSONObject().put("name", "whatsapp_task")
-                .put("description", "WhatsApp on the phone - ALWAYS use this (never phone_task) to send a WhatsApp message or make a WhatsApp call: read_unread (unread messages from notifications), voice_call / video_call (contact - WhatsApp audio or video call; when the user says WhatsApp पर कॉल / वीडियो कॉल; a plain X को कॉल करो without WhatsApp is a normal phone call, not this), send_message (contact + message; irreversible - wait for waiting_confirmation SYSTEM NOTE, ask the user, confirm only after a clear yes), read_chat (contact), search_chat (query), mute / unmute / mark_read (contact). If the contact is ambiguous you get contact_ambiguous - ask the user which one.")
-                .put("parameters", JSONObject().put("type", "OBJECT")
-                    .put("properties", JSONObject()
-                        .put("action", JSONObject().put("type", "STRING").put("enum", JSONArray().put("read_unread").put("voice_call").put("video_call").put("send_message").put("read_chat").put("search_chat").put("mute").put("unmute").put("mark_read")))
-                        .put("contact", JSONObject().put("type", "STRING").put("description", "Contact name as saved, or phone number"))
-                        .put("message", JSONObject().put("type", "STRING"))
-                        .put("query", JSONObject().put("type", "STRING")))
-                    .put("required", JSONArray().put("action"))))
-            .put(JSONObject().put("name", "social_media_task_control")
-                .put("description", "Control the running Instagram/Facebook/WhatsApp task: status, confirm (ONLY after the user clearly said yes to the confirmation question - DK checks this), cancel, resume (after the user finished a login/CAPTCHA/permission screen themselves).")
-                .put("parameters", JSONObject().put("type", "OBJECT")
-                    .put("properties", JSONObject()
-                        .put("command", JSONObject().put("type", "STRING").put("enum", JSONArray().put("status").put("confirm").put("cancel").put("resume")))
-                        .put("task_id", JSONObject().put("type", "STRING")))
-                    .put("required", JSONArray().put("command"))))
-            .put(JSONObject().put("name", "task_status")
-                .put("description", "Get the REAL current status of background work given to DK Computer or the coding team (state, real steps done, latest step, result). Call it whenever the user asks how far a task has got / is it done (काम कहाँ तक पहुँचा, हुआ या नहीं). Tell ONLY what it returns - never guess progress or percentages.")
-                .put("parameters", JSONObject().put("type", "OBJECT").put("properties", JSONObject())))
-            .put(JSONObject().put("name", "phone_call")
-                .put("description", "Handle the phone call that is ringing now (or is in progress) - ONLY after the user told you what to do. action: answer = pick up; answer_speaker = pick up and put it on loudspeaker; reject = cut / decline / hang up; speaker_on / speaker_off during a call; who = who is calling. Never answer or reject a call on your own.")
-                .put("parameters", JSONObject().put("type", "OBJECT")
-                    .put("properties", JSONObject().put("action", JSONObject().put("type", "STRING")
-                        .put("description", "One of: answer, answer_speaker, reject, speaker_on, speaker_off, who")))
-                    .put("required", JSONArray().put("action"))))
-            .put(JSONObject().put("name", "screen_share")
-                .put("description", "Turn sharing of the user's phone screen with you ON or OFF (it is OFF by default). Only while it is ON you receive an image of the screen about once a second. If the user asks you to look at / read / check their screen and sharing is OFF, first ask 'स्क्रीन शेयर चालू करूँ?'; when they agree, or when they directly ask you to share or see the screen, call with on=true. Never turn it on by yourself without the user's clear request or yes. Android then shows its own permission popup and the USER must tap Start (DK never taps it). Never describe the screen before you get the SYSTEM NOTE that sharing really started. Call with on=false when the user says to stop.")
-                .put("parameters", JSONObject().put("type", "OBJECT")
-                    .put("properties", JSONObject().put("on", JSONObject().put("type", "BOOLEAN")))
-                    .put("required", JSONArray().put("on"))))
-            .put(JSONObject().put("name", "camera")
-                .put("description", "Turn the phone camera ON or OFF so you can see what the user shows you (OFF by default). Only while it is ON you receive a camera image about once a second. Use when the user says कैमरा चालू करो / कैमरा से देखो / ये देखो क्या है (and the camera is off), or to turn it off. This is DK's own camera inside the app (not the phone's camera app). facing: front when the user wants you to look at THEM (मुझे देखो / मेरा चेहरा देखो / मैं कैसा लग रहा हूँ / आगे वाला कैमरा); back when they want to show you something (ये देखो / पीछे वाला कैमरा / बैक कैमरा). If the camera is already on and the user wants the other side, call again with on=true and the new facing.")
-                .put("parameters", JSONObject().put("type", "OBJECT")
-                    .put("properties", JSONObject().put("on", JSONObject().put("type", "BOOLEAN"))
-                        .put("facing", JSONObject().put("type", "STRING").put("description", "back or front")))
-                    .put("required", JSONArray().put("on"))))
-            .put(JSONObject().put("name", "notifications")
-                .put("description", "Read the phone's recent notifications (messages, WhatsApp, calls missed, apps). Call it when the user asks क्या notification आया / किसका मैसेज आया / क्या लिखा है / कोई मैसेज आया क्या. Optional app = app or sender name to filter (e.g. WhatsApp, Rahul). Tell the user briefly who sent what - only what it returns.")
-                .put("parameters", JSONObject().put("type", "OBJECT")
-                    .put("properties", JSONObject().put("app", JSONObject().put("type", "STRING").put("description", "Optional: app or sender name to filter")))))
-            .put(JSONObject().put("name", "notification_reply")
-                .put("description", "Send a reply to a notification directly from the notification (WhatsApp, SMS, Telegram, etc.), when the user asks to reply (इसको रिप्लाई कर दो / Rahul को जवाब दो कि ...). to = sender or app name from the notification, or empty for the latest one. message = exactly what the user wants to send, in their words. After it returns, tell the user in one short line what was sent and to whom.")
-                .put("parameters", JSONObject().put("type", "OBJECT")
-                    .put("properties", JSONObject()
-                        .put("to", JSONObject().put("type", "STRING").put("description", "Sender/app name, or empty for the newest notification"))
-                        .put("message", JSONObject().put("type", "STRING").put("description", "The reply text to send")))
-                    .put("required", JSONArray().put("message"))))
-            .put(JSONObject().put("name", "forget_memory")
-                .put("description", "When the user says to forget something (यह भूल जाओ / वो बात भूल जाओ / इसे मिटा दो), call this with what to forget - resolve 'यह/वो' from the conversation into the actual topic in a few words (e.g. 'इंटरव्यू', 'प्रिया का नंबर'). Deletes it from saved facts and conversation memory. Then confirm in one short line.")
-                .put("parameters", JSONObject().put("type", "OBJECT")
-                    .put("properties", JSONObject().put("about", JSONObject().put("type", "STRING").put("description", "The topic to forget, a few words")))
-                    .put("required", JSONArray().put("about"))))
-            .put(JSONObject().put("name", "recall_conversation")
-                .put("description", "The user asks what HE said earlier or what you two talked about (मैंने क्या बोला था / अभी मैंने क्या कहा था / कल क्या बात हुई थी / मैंने उस बारे में क्या बताया था / तुमने क्या कहा था). Searches the conversation saved ONLY on this phone (last 30 days + permanent short notes) - no internet. question = the user's question in his own words (include the time like अभी/कल/आज and the topic). Then say the result to the user briefly in your own voice; if it says it was not found, say exactly 'बॉस, मुझे ये याद नहीं मिल रहा।' - never invent.")
-                .put("parameters", JSONObject().put("type", "OBJECT")
-                    .put("properties", JSONObject().put("question", JSONObject().put("type", "STRING").put("description", "The user's question, his words")))
-                    .put("required", JSONArray().put("question"))))
-            .put(JSONObject().put("name", "local_info")
-                .put("description", "Get the user's CURRENT location (fresh GPS/network, checked right now - never an old saved one): street, area, city, nearby places (temple, market, hospital, petrol pump, school...) and live weather. Call it when the user asks where he is (\"मैं अभी कहाँ खड़ा हूँ\", \"मैं कहाँ हूँ\"), what is around him (आसपास), about weather, his area, nearby events/news/traffic/pandals/melas, or anything 'here/मेरे शहर'. While it runs, say only \"रुकिए सर, देखती हूँ...\". Then answer in short human sentences like \"सर, आप अभी ... के पास हैं। आपके आसपास ... है।\" For local news or events, then use Google Search with the city name.")
-                .put("parameters", JSONObject().put("type", "OBJECT").put("properties", JSONObject())))
-            .put(JSONObject().put("name", "remember_fact")
-                .put("description", "Save a personal fact or preference the user told about themselves.")
-                .put("parameters", JSONObject().put("type", "OBJECT")
-                    .put("properties", JSONObject().put("fact", JSONObject().put("type", "STRING")))
-                    .put("required", JSONArray().put("fact"))))))
-        // v3.72: जुड़े कनेक्टर (Gmail, Drive, GitHub, FB Page, MCP...) - कोई नहीं जुड़ा = कुछ नहीं जुड़ता
-        com.dk.assistant.connect.ConnectorTool.declaration(svc)?.let { d ->
-            tools.optJSONObject(0)?.optJSONArray("functionDeclarations")?.put(d); log("कनेक्टर: connector_task जोड़ा")
-        }
-        // v3.93: Tavily/Exa की key हो तो Live की अपनी Google Search नहीं - हर खोज web_search से (Tavily -> Exa -> Gemini क्रम)
-        val ownChain = Prefs.tavilySearchKey(svc).isNotBlank() || Prefs.exaSearchKey(svc).isNotBlank()
-        if (useSearch && !ownChain) tools.put(JSONObject().put("googleSearch", JSONObject()))
-        val setup = JSONObject()
-            .put("model", "models/$m")
-            .put("generationConfig", JSONObject()
-                // v3.68: बँटवारा - Live सिर्फ़ जवाब लिखे (TEXT), बोलना अलग आवाज़ इंजन (voice/engine). मॉडल TEXT न ले तो
-                // AUDIO + transcript (Live की आवाज़ बजती नहीं, उसका लिखा text इंजन बोलता है)
-                .put("responseModalities", JSONArray().put(if (txt) "TEXT" else "AUDIO"))
-                .apply {
-                    // v3.9: 2.5 native-audio pehle "sochta" hai (der). Baatcheet me band - mushkil sawaal deep_think tool se.
-                    // (3.1 ka default "minimal" hai; 3.8-live me thinking setting dena mana hai)
-                    if (thinkOff && m.startsWith("gemini-2.5")) put("thinkingConfig", JSONObject().put("thinkingBudget", 0))
-                }
-                .apply { if (ex.affective && !txt && LiveSetupRules.sendAffective(m)) put("enableAffectiveDialog", true) }
-                .apply { if (!txt) put("speechConfig", JSONObject().put("voiceConfig", JSONObject()
-                    .put("prebuiltVoiceConfig", JSONObject().put("voiceName", ex.voice)))
-                    .apply { if (ex.lang && LiveSetupRules.sendLanguageCode(m)) put("languageCode", LiveVoice.LANGUAGE) }) })
-            .put("systemInstruction", JSONObject().put("parts", JSONArray().put(JSONObject().put("text", Lang.sys(brain.liveSystemPrompt(withMemory = false)) + FAST_START + NetSpeed.promptNote() + (if (connSplit) SPLIT_NOTE + (if (txt) MOOD_TAG_NOTE else "") else
-                com.dk.assistant.voice.engine.LiveNativeEngine.styleNote(com.dk.assistant.voice.engine.LiveNativeEngine.style(svc).ifBlank { CalmPersona.VOICE_STYLE }))))))
-            .put("tools", LiveStay.cleanTools(tools))
-            .put("realtimeInputConfig", JSONObject()
-                .put("automaticActivityDetection", JSONObject()
-                    .put("disabled", false)
-                    // v3.9.1: wapas HIGH. Shor-gate ke baad server ko sirf (a) phone ki pakdi user-awaaz ya (b) khaamoshi (0) jaati hai -
-                    // shor pehle hi ruk chuka. LOW ne user ki asli (dheemi/chhoti) baat bhi "bolna" nahi maani: log me
-                    // ~15 baar audioStreamEnd, jawab sirf 3. HIGH = jo phone bheje woh suna jaye.
-                    .put("startOfSpeechSensitivity", "START_SENSITIVITY_HIGH")
-                    // HIGH = chup hote hi jaldi "bolna khatam" (tez jawab); 500ms = docs ki salaah (500-800ms) ka sabse tez.
-                    // (server ka default ~800ms tha.) Phone khud bhi 500ms chup par audioStreamEnd bhejta hai (hybrid VAD).
-                    .put("endOfSpeechSensitivity", "END_SENSITIVITY_HIGH")
-                    // 100ms = pehla shabd na kate (phone 320ms pehle ki awaaz bhi bhejta hai), khatak/thak par "bolna shuru" nahi
-                    .put("prefixPaddingMs", PREFIX_PADDING_MS)
-                    .put("silenceDurationMs", SERVER_SILENCE_MS))
-                .put("activityHandling", "START_OF_ACTIVITY_INTERRUPTS"))
-            .put("inputAudioTranscription", JSONObject())
-            .apply { if (!txt) put("outputAudioTranscription", JSONObject()) }
-            .put("sessionResumption", if (resume && handle != null) JSONObject().put("handle", handle) else JSONObject())
-            .put("contextWindowCompression", JSONObject().put("slidingWindow", JSONObject()))
-        return JSONObject().put("setup", setup).toString()
-    }
-
     // ================================================================ v5.1: (मॉडल × key) की दौड़
     // मालिक: "DK लाइव 1-2 सेकंड में जुड़े; धीमे नेट / गलत key / मॉडल बंद पर भी". नियम LiveRace में (JVM test).
     private val raceSp by lazy { svc.getSharedPreferences("dk_live_race", android.content.Context.MODE_PRIVATE) }
-    private val health: LiveRace.Health by lazy { LiveRace.Health.decode(try { raceSp.getString("h", "") } catch (_: Exception) { "" }) }
-    private fun saveHealth() { try { raceSp.edit().putString("h", health.encode()).apply() } catch (_: Exception) {} }
-    private val raceLock = Any()
+    internal val health: LiveRace.Health by lazy { LiveRace.Health.decode(try { raceSp.getString("h", "") } catch (_: Exception) { "" }) }
+    internal fun saveHealth() { try { raceSp.edit().putString("h", health.encode()).apply() } catch (_: Exception) {} }
+    internal val raceLock = Any()
 
     /** दौड़ की एक जोड़ी (अपना WebSocket, अपना closed/setup) - key सिर्फ़ URL में, log में कभी नहीं */
-    private inner class Attempt(val c: LiveRace.Combo, val key: String, val text: Boolean, val resume: Boolean) {
+    internal inner class Attempt(val c: LiveRace.Combo, val key: String, val text: Boolean, val resume: Boolean) {
         val closed = CompletableDeferred<Pair<Int, String>>()
         val setup = CompletableDeferred<Unit>()
         val t0 = System.currentTimeMillis()
@@ -1726,7 +1377,7 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
         @Volatile var dead = false
     }
 
-    private inner class Race(val live: Boolean, val keyCount: Int) {
+    internal inner class Race(val live: Boolean, val keyCount: Int) {
         val winner = CompletableDeferred<Attempt>()
         /** जीतने वाली जोड़ी (winner के साथ ही, raceLock में) */
         @Volatile var won: Attempt? = null
@@ -1742,15 +1393,15 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
         /** कितनी जोड़ियों का WebSocket सच में खुला (0 = Google के server तक पहुँचे ही नहीं) */
         val opened = java.util.concurrent.atomic.AtomicInteger()
     }
-    @Volatile private var curRace: Race? = null
+    @Volatile internal var curRace: Race? = null
     /** पिछली नाकाम दौड़ का असली कारण - अगली दौड़ में सारी जोड़ियाँ रुकी हों तो वही कारण (पहले "limit" शब्द से गलत "लिमिट खत्म" दिखता था) */
-    @Volatile private var lastRaceFail: Pair<Int, String>? = null
-    @Volatile private var lastRaceFailAt = 0L
+    @Volatile internal var lastRaceFail: Pair<Int, String>? = null
+    @Volatile internal var lastRaceFailAt = 0L
     /** सब रुका होने पर आख़िरी जाँच-कोशिश कब (2 मिनट में एक से ज़्यादा नहीं - लगातार चक्कर नहीं) */
-    @Volatile private var lastProbeAt = 0L
+    @Volatile internal var lastProbeAt = 0L
     /** इस connection पर पुरानी बातचीत (handle) चली = याद दोबारा नहीं भेजनी */
-    @Volatile private var connResumed = false
-    private val ctxSent = java.util.Collections.newSetFromMap(java.util.WeakHashMap<WebSocket, Boolean>())
+    @Volatile internal var connResumed = false
+    internal val ctxSent = java.util.Collections.newSetFromMap(java.util.WeakHashMap<WebSocket, Boolean>())
 
     /** v5.1: पीछे की दौड़ से जीता (या wake word वाला) connection standby में तैयार */
     fun warmReady(): Boolean = parked?.let { !it.closed.isCompleted && System.currentTimeMillis() - it.at < PARK_MS } == true
@@ -1758,483 +1409,10 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
     /** नेट वापस आया: नेट की वजह से रुकी जोड़ियाँ फिर (गलत key वाली नहीं) + पीछे की दौड़ तुरंत */
     fun netBack() { health.clearComboFails(); saveHealth() }
 
-    /** बँटवारे में यह मॉडल TEXT लेता है? (planSplit जैसा, पर हर मॉडल का अपना) */
-    private fun textFor(m: String): Boolean = LiveSetupRules.askText(m, connSplit)
-
-    private fun startRace(keys: List<String>, models: List<String>, live: Boolean, resumeId: String?): Race {
-        curRace?.let { if (!it.over) cancelRace(it, "नई दौड़") }
-        val r = Race(live, keys.size)
-        curRace = r
-        val now = System.currentTimeMillis()
-        // नवंबर 2026: 1011 से टूटे मॉडल (6 घंटे) सबसे पीछे - पहले 2 मिनट बाद फिर उन्हीं पर लौट आता था
-        val safe = LiveStay.safeOrder(models) { broken1011.isBroken(it, now) }
-        var queue = health.order(safe, keys.size, now) { Cooldown.blocked(LiveKeys.cooldownName(it.keyIdx, it.model)) }.toMutableList()
-        // सारी जोड़ियाँ सिर्फ़ नेट की वजह से रुकी हों और पिछली नाकामी 55s से पुरानी = फिर आज़माओ (बैकअप मोड से Live पर लौटने की कोशिश)
-        if (queue.isEmpty() && now - lastRaceFailAt > 55_000L) {
-            health.clearComboFails()
-            // नवंबर 2026: इस सत्र में अभी तक कोई दौड़ नाकाम नहीं (ऐप/सेवा नई शुरू) - पुरानी save हुई key-रोक से
-            // शुरू होते ही "server जवाब नहीं दे रहा" नहीं; एक साफ़ मौका
-            if (lastRaceFailAt == 0L) health.clearKeyBad()
-            if (lastRaceFailAt == 0L) {
-                // नवंबर 2026: फ़ोन में save हुई Live मॉडल-रोक भी एक बार साफ़ (पहले यह कभी नहीं हटती थी - कोशिश ही नहीं होती थी)
-                val held = models.flatMap { m -> keys.indices.map { LiveKeys.cooldownName(it, m) } }.filter { Cooldown.blocked(it) }
-                if (held.isNotEmpty()) { held.forEach { Cooldown.clear(it) }; log("नई शुरुआत: पुरानी save हुई Live रोक हटाई (${held.size}) - एक साफ़ मौका") }
-            }
-            saveHealth()
-            queue = health.order(safe, keys.size, now) { Cooldown.blocked(LiveKeys.cooldownName(it.keyIdx, it.model)) }.toMutableList()
-        }
-        // नवंबर 2026: फिर भी सब रुका = चुपचाप 0 जोड़ियाँ नहीं - जिसकी रोक सबसे जल्दी खत्म हो, उस एक जोड़ी पर एक कोशिश
-        if (queue.isEmpty() && models.isNotEmpty() && now - lastProbeAt > LiveRace.COMBO_FAIL_MS) {
-            val untilOf = { c: LiveRace.Combo -> Cooldown.until(LiveKeys.cooldownName(c.keyIdx, c.model)) }
-            LiveRace.probeWhenEmpty(models, keys.size, untilOf)?.let { c ->
-                lastProbeAt = now; queue.add(c)
-                log("सारी जोड़ियाँ रुकी थीं (" + models.joinToString { m -> m + " " + ((Cooldown.until(LiveKeys.cooldownName(0, m)) - now) / 60_000).coerceAtLeast(0) + "m" } +
-                    ") - एक जाँच-कोशिश: ${c.label}")
-            }
-        }
-        val tmo = LiveRace.timeoutMs(health.recentTimes())
-        // नवंबर 2026: बातचीत वहीं से (handle) वाली जोड़ी सबसे पहले - दूसरी जीतती तो handle छूटता (संदर्भ खो जाता)
-        if (resumeId != null) queue.indexOfFirst { it.id == resumeId }.takeIf { it > 0 }?.let { queue.add(0, queue.removeAt(it)) }
-        log("दौड़${if (live) "" else " (पीछे से, माइक नहीं)"}: ${queue.size} जोड़ियाँ, हर एक का इंतज़ार $tmo ms (हाल के नाप: ${health.recentTimes().joinToString()}) • " +
-            queue.take(4).joinToString { it.label })
-        if (queue.isEmpty()) {
-            r.lastFail = lastRaceFail?.takeIf { now - lastRaceFailAt < 10 * 60_000L } ?: (0 to "सारी जोड़ियाँ अभी रुकी हुई हैं (अभी-अभी नाकाम)")
-            r.over = true
-            return r
-        }
-        svc.scope.launch(Dispatchers.IO) {
-            val inFlight = ArrayList<Attempt>()
-            var lastLaunch = 0L
-            try {
-                while (!r.winner.isCompleted && !r.cancelled) {
-                    val t = System.currentTimeMillis()
-                    for (a in inFlight.toList()) {
-                        if (a.won) continue
-                        if (a.closed.isCompleted) {
-                            inFlight.remove(a)
-                            val (code, reason) = a.closed.await()
-                            attemptFailed(r, a, code, reason, queue); lastLaunch = 0L      // नाकाम = अगली तुरंत
-                        } else if (t - a.t0 > LiveRace.attemptTimeoutMs(tmo, opened = a.sentAt > 0L,
-                                othersLeft = queue.isNotEmpty() || inFlight.size > 1)) {
-                            inFlight.remove(a); killAttempt(a, "setup timeout")
-                            health.comboFail(a.c, t)
-                            health.time(LiveRace.timeoutPenaltyMs(t - a.t0))     // अगली बार इंतज़ार बढ़े (पहले कभी नहीं बढ़ता था)
-                            saveHealth()
-                            // WebSocket खुला ही नहीं (onOpen नहीं आया) = Google के server तक पहुँचे ही नहीं; खुला पर setupComplete नहीं = धीमा
-                            if (a.sentAt == 0L) DkDns.reportUnreachable(LIVE_HOST)
-                            r.lastFail = 0 to (if (a.sentAt == 0L) "connection खुला ही नहीं - ${tmo / 1000}s में Google के server तक नहीं पहुँचा"
-                                else "setup का जवाब ${tmo / 1000} सेकंड में नहीं आया"); r.lastFailCombo = a.c
-                            log("दौड़: [${a.c.label}] ${t - a.t0} ms में setup नहीं - यह जोड़ी 2 मिनट नहीं, अगली तुरंत")
-                            lastLaunch = 0L
-                        }
-                    }
-                    if (r.winner.isCompleted || r.cancelled) break
-                    // नवंबर 2026: एक key पर एक समय में एक ही जोड़ी (फ्री key की ~3 सत्र वाली सीमा - caption/standby भी उसी key पर)
-                    val ni = LiveRace.nextLaunchable(queue, inFlight.map { it.c.keyIdx }.toSet())
-                    if (ni >= 0 && LiveRace.shouldLaunch(inFlight.size, queue.size, t, lastLaunch)) {
-                        val c = queue.removeAt(ni)
-                        val a = Attempt(c, keys[c.keyIdx], textFor(c.model), resume = c.id == resumeId)
-                        inFlight.add(a); r.atts.add(a); lastLaunch = t
-                        log("जुड़ रहा हूँ: [${c.label}]" + (if (inFlight.size > 1) " (साथ में ${inFlight.size - 1} और चल रही)" else "") + if (a.resume) " (पुरानी बातचीत)" else "")
-                        if (r.live) DKState.setLink("जुड़ रहा है… ${c.label}")
-                        openAttempt(r, a)
-                    }
-                    if (inFlight.isEmpty() && queue.isEmpty()) break
-                    delay(25)
-                }
-            } catch (e: kotlinx.coroutines.CancellationException) { throw e
-            } catch (e: Exception) { log("दौड़ की गलती: ${e.javaClass.simpleName} ${e.message}")
-            } finally {
-                r.over = true
-                if (!r.winner.isCompleted) inFlight.forEach { killAttempt(it, if (r.cancelled) "दौड़ रोकी" else "दौड़ खत्म") }
-                if (!r.winner.isCompleted && !r.cancelled) log("दौड़ खत्म - कोई जोड़ी नहीं जुड़ी (${r.lastFail?.second?.take(80) ?: "-"}) • खुले connection: ${r.opened.get()}/${r.atts.size}")
-                if (!r.winner.isCompleted) r.lastFail?.let { lastRaceFail = it; lastRaceFailAt = System.currentTimeMillis() }
-            }
-        }
-        return r
-    }
-
-    private fun cancelRace(r: Race, why: String) {
-        synchronized(raceLock) { r.cancelled = true; r.handOff = false }
-        r.atts.forEach { if (!it.won) killAttempt(it, why) }
-    }
-
-    private fun killAttempt(a: Attempt, why: String) {
-        a.dead = true
-        a.w?.let { ourClose[it] = why; try { it.cancel() } catch (_: Exception) {} }
-    }
-
-    private fun attemptFailed(r: Race, a: Attempt, code: Int, reason: String, queue: MutableList<LiveRace.Combo>) {
-        val now = System.currentTimeMillis(); val ms = now - a.t0
-        r.lastFail = code to reason; r.lastFailCombo = a.c
-        when (LiveRace.classify(code, reason)) {
-            LiveRace.Fail.KEY -> if (LiveRace.quotaOnlyForCombo(code, reason)) {
-                // limit/quota = सिर्फ़ यही (मॉडल × key) रुके; उसी key के बाकी मॉडल आज़माओ (पहले पूरी key 10 मिनट बंद)
-                health.comboFail(a.c, now)
-                log("दौड़: [${a.c.label}] $ms ms - इस मॉडल की limit (code=$code) - यह जोड़ी 2 मिनट नहीं, उसी key का अगला मॉडल तुरंत")
-            } else {
-                health.keyBad(a.c.keyIdx, now)
-                queue.removeAll { it.keyIdx == a.c.keyIdx }
-                log("दौड़: [${a.c.label}] $ms ms - key #${a.c.keyIdx + 1} नहीं चली (code=$code${if (LiveRace.isQuota(code, reason)) ", limit" else ""}) - 10 मिनट तक यह key नहीं, अगली तुरंत")
-            }
-            LiveRace.Fail.MODEL -> {
-                for (k in 0 until r.keyCount) health.comboFail(LiveRace.Combo(a.c.model, k), now)
-                queue.removeAll { it.model == a.c.model }
-                log("दौड़: [${a.c.label}] $ms ms - यह मॉडल नहीं मिला/नहीं चला (code=$code) - 2 मिनट तक नहीं, अगला तुरंत")
-            }
-            LiveRace.Fail.CONFIG -> {
-                if (r.config == null) { r.config = code to reason; r.configCombo = a.c }
-                log("दौड़: [${a.c.label}] $ms ms - setup की बनावट नहीं ली (code=$code ${reason.take(80)}) - ठीक करके फिर")
-            }
-            LiveRace.Fail.NET -> if (code == 1011 && model1011.hit(a.c.model, now) || code == 1011 && LiveStay.known1011(a.c.model)) {
-                // नवंबर 2026: जुड़ते समय भी इसी मॉडल पर बार-बार 1011 = Google की तरफ़ मॉडल की खराबी, नेट नहीं - पूरा मॉडल हटाओ
-                for (k in 0 until r.keyCount) health.comboFail(LiveRace.Combo(a.c.model, k), now)
-                markBroken1011(a.c.model)
-                queue.removeAll { it.model == a.c.model }
-                log("दौड़: [${a.c.label}] $ms ms - इस मॉडल पर बार-बार 1011 (Google की तरफ़ खराबी) - यह मॉडल अभी नहीं, अगला तुरंत")
-            } else {
-                health.comboFail(a.c, now)
-                log("दौड़: [${a.c.label}] $ms ms - connection की गलती (code=$code ${reason.take(80)}) - यह जोड़ी 2 मिनट नहीं, अगली तुरंत")
-            }
-        }
-        saveHealth()
-    }
-
-    private fun openAttempt(r: Race, a: Attempt) {
-        val req = Request.Builder().url("$URL?key=${a.key}").build()
-        a.w = http.newWebSocket(req, object : WebSocketListener() {
-            override fun onOpen(webSocket: WebSocket, response: Response) {
-                a.sentAt = System.currentTimeMillis()
-                r.opened.incrementAndGet()
-                if (a.dead) return
-                if (!webSocket.tx(setupJson(a.c.model, a.text, a.resume))) a.closed.complete(0 to "setup नहीं भेज पाया")
-            }
-            override fun onMessage(webSocket: WebSocket, text: String) { onAttemptMsg(r, a, webSocket, text) }
-            override fun onMessage(webSocket: WebSocket, bytes: ByteString) { onAttemptMsg(r, a, webSocket, bytes.utf8()) }
-            override fun onClosing(webSocket: WebSocket, code: Int, reason: String) {
-                val ours = ourClose.remove(webSocket)
-                if (a.won || !a.dead) {
-                    if (ours != null) log("हमने बंद किया ($ours) code=$code")
-                    else log("server ने बंद किया [${a.c.label}] code=$code reason=${reason.ifBlank { "-" }}")
-                }
-                a.closed.complete(code to reason)
-                try { webSocket.close(1000, null) } catch (_: Exception) {}
-            }
-            override fun onClosed(webSocket: WebSocket, code: Int, reason: String) { ourClose.remove(webSocket); a.closed.complete(code to reason) }
-            override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
-                val body = try { response?.body?.string()?.take(200) } catch (_: Exception) { null }
-                val why = (t.javaClass.simpleName + ": " + (t.message ?: "")) + (body?.let { " | $it" } ?: "")
-                ourClose.remove(webSocket)
-                if (a.won || !a.dead) log("connection गलती [${a.c.label}]: http=${response?.code} $why")
-                a.closed.complete((response?.code ?: 0) to why)
-            }
-        })
-    }
-
-    private fun onAttemptMsg(r: Race, a: Attempt, w: WebSocket, text: String) {
-        if (a.won) { if (w === ws) onServer(text, a.setup); return }
-        if (a.dead || !text.contains("setupComplete")) return
-        val now = System.currentTimeMillis(); val ms = now - a.t0
-        var live = false
-        val first = synchronized(raceLock) {
-            if (r.winner.isCompleted || r.cancelled) false else {
-                a.won = true
-                if (r.handOff) {
-                    live = true
-                    // जीतने वाला अब Live: ws/मॉडल/key नंबर इसी के (बाकी जोड़ियाँ नीचे बंद)
-                    ws = w; model = a.c.model; keyIdx = a.c.keyIdx; connText = a.text; setupSentAt = a.sentAt
-                    connResumed = a.resume && handle != null
-                    wire.reset()
-                }
-                r.won = a; r.winner.complete(a); true
-            }
-        }
-        if (!first) { killAttempt(a, "दौड़ में दूसरा जीता"); return }
-        health.ok(a.c, ms, now); saveHealth()
-        Cooldown.clear(LiveKeys.cooldownName(a.c.keyIdx, a.c.model))
-        log("दौड़ जीती: [${a.c.label}] जुड़ने में $ms ms" + if (r.atts.size > 1) " (${r.atts.size} जोड़ियाँ आज़माईं)" else "")
-        r.atts.forEach { if (it !== a) killAttempt(it, "दौड़: दूसरा जीता") }
-        if (live) onServer(text, a.setup) else parkRaced(a, w)
-    }
-
-    /**
-     * नवंबर 2026 (मालिक): goAway = server जल्द काटेगा. कटने का इंतज़ार नहीं: DK बोल रहा/काम चल रहा हो तो अभी पीछे से
-     * उसी बातचीत (handle) का नया connection तैयार (standby). DK चुप होते ही उसी पर (0 ms); बीच में बात हुई (handle बदला)
-     * तो ताज़ा handle से. पुराना जवाब पूरा होने के बाद ही पुराना बंद (नीचे loop का goAway).
-     */
-    private fun onGoAway(timeLeft: String) {
-        val left = LiveStay.timeLeftMs(timeLeft)
-        log("goAway: ${timeLeft.ifBlank { "?" }} बाकी" + if (left >= 0) " (${left} ms)" else "")
-        goAway = true
-        val busy = turnActive || isPlaying() || toolJobs.isNotEmpty() || generating
-        if (!busy || stopped || parked != null || handle == null || curKeys.isEmpty()) return
-        val h = handle; val m = model; val k = keyIdx
-        parkHandle = h
-        log("goAway: DK बोल रहा है - पीछे से उसी बातचीत का नया connection तैयार कर रहा हूँ")
-        try { startRace(curKeys, listOf(m) + curModels.filter { it != m }, live = false, resumeId = LiveRace.Combo(m, k).id) }
-        catch (e: Exception) { log("goAway: पीछे का connection शुरू नहीं हुआ: ${e.message}") }
-    }
-
-    /** दौड़ जीती पर run() इंतज़ार छोड़ चुका था - standby में रखो; अगली बार Live इसे तुरंत (0 ms) लेता है */
-    private fun parkRaced(a: Attempt, w: WebSocket) {
-        parked?.let { old -> closeWs(old.ws, "standby बदला") }
-        val p = Parked(w, a.closed, a.c.model, System.currentTimeMillis(), connSplit, a.text, connLiveVer, a.c.keyIdx,
-            resumedFrom = if (a.resume) parkHandle else null)
-        parked = p
-        log("पीछे से Live तैयार [${a.c.label}] - standby में (DK चुप होते ही Live पर वापस)")
-        svc.scope.launch {
-            delay(PARK_MS)
-            if (parked === p) { parked = null; closeWs(p.ws, "standby khatam") }
-        }
-    }
-
-    /** v5.1: याद/पिछली बातें setup के बाद (setup छोटा रहे). turnComplete=false = DK इस पर जवाब नहीं बनाता */
-    private fun sendContext(w: WebSocket?) {
-        if (w == null || connResumed) return
-        synchronized(ctxSent) { if (!ctxSent.add(w)) return }
-        val t = try { BrainManager(svc).liveMemoryContext() } catch (e: Exception) { log("याद नहीं बनी: ${e.message}"); "" }
-        if (t.isBlank()) return
-        val msg = JSONObject().put("clientContent", JSONObject()
-            .put("turns", JSONArray().put(JSONObject().put("role", "user")
-                .put("parts", JSONArray().put(JSONObject().put("text", LiveRace.contextNote(t))))))
-            .put("turnComplete", false)).toString()
-        if (w.tx(msg)) log("याद/पिछली बातें जुड़ने के बाद भेजीं (${t.length} अक्षर) - setup छोटा रहा")
-    }
-
-    private fun connect(key: String, m: String, closed: CompletableDeferred<Pair<Int, String>>, setup: CompletableDeferred<Unit>) {
-        ready = false
-        val req = Request.Builder().url("$URL?key=$key").build()
-        ws = http.newWebSocket(req, object : WebSocketListener() {
-            override fun onOpen(webSocket: WebSocket, response: Response) {
-                setupSentAt = System.currentTimeMillis()
-                wire.reset()
-                if (!webSocket.tx(setupJson(m))) closed.complete(0 to "setup नहीं भेज पाया")
-            }
-            override fun onMessage(webSocket: WebSocket, text: String) { if (webSocket === ws) onServer(text, setup) }
-            // Gemini JSON ko binary frame me bhi bhejta hai
-            override fun onMessage(webSocket: WebSocket, bytes: ByteString) { if (webSocket === ws) onServer(bytes.utf8(), setup) }
-            override fun onClosing(webSocket: WebSocket, code: Int, reason: String) {
-                val ours = ourClose.remove(webSocket)
-                if (ours != null) log("हमने बंद किया ($ours) code=$code")
-                else log("server ने बंद किया code=$code reason=${reason.ifBlank { "-" }}")
-                closed.complete(code to reason)
-                try { webSocket.close(1000, null) } catch (_: Exception) {}
-            }
-            override fun onClosed(webSocket: WebSocket, code: Int, reason: String) { ourClose.remove(webSocket); closed.complete(code to reason) }
-            override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
-                val body = try { response?.body?.string()?.take(200) } catch (_: Exception) { null }
-                val why = (t.javaClass.simpleName + ": " + (t.message ?: "")) + (body?.let { " | $it" } ?: "")
-                ourClose.remove(webSocket)
-                log("connection गलती: http=${response?.code} $why")
-                closed.complete((response?.code ?: 0) to why)
-            }
-        })
-    }
-
     // ================================================================ server ke sandesh
-    /**
-     * OkHttp ke listener se koi exception bahar gaya to OkHttp poora WebSocket fail kar deta hai (onFailure) =
-     * chalta jawab beech me kho jata aur reconnect. Ek sandesh ki gadbad se session mat todo - log karo, aage chalo.
-     */
-    private fun onServer(msg: String, setup: CompletableDeferred<Unit>) {
-        try { handleServer(msg, setup) } catch (e: Exception) {
-            handlerErrors++
-            log("server संदेश संभालने में गलती #$handlerErrors (${e.javaClass.simpleName}: ${e.message?.take(80)}) - connection चालू रखा")
-        }
-    }
-
-    private fun handleServer(msg: String, setup: CompletableDeferred<Unit>) {
-        val o = try { JSONObject(msg) } catch (e: Exception) { log("JSON नहीं समझा (${msg.length} bytes)"); return }
-        if (o.has("setupComplete")) {
-            if (setupSentAt > 0) { trace.rttMs = System.currentTimeMillis() - setupSentAt; log("setup का जवाब ${trace.rttMs} ms (network RTT + server)"); NetSpeed.onSetup(trace.rttMs) }
-            // ready + purani (judte samay ki) awaaz ek saath, lock me: mic ka naya tukda purane se pehle na nikle
-            // v5.1: पहले याद (छोटे setup के बाद), फिर जुड़ते समय की आवाज़ - फ़ोन ने जो 3s तक जमा की
-            synchronized(sendLock) { sendContext(ws); ready = true; flushPending() }
-            setup.complete(Unit)
-            if (firstText != null) openerText = null; sendFirstText(); sendResend(); sendOpener()
-            // v3.7: पिछला जवाब सिर्फ़ लिखा गया था (आवाज़ नहीं बनी) - अब Live की अपनी आवाज़ में दोबारा
-            if (!connSplit && silentResay.isNotBlank()) { val t = silentResay; silentResay = ""; visionNote(SilentVoice.resayNote(t), evidence = false) }
-            return
-        }
-        lastAct = System.currentTimeMillis()
-        o.optJSONObject("sessionResumptionUpdate")?.let {
-            if (it.optBoolean("resumable") && it.optString("newHandle").isNotBlank()) handle = it.optString("newHandle")
-        }
-        o.optJSONObject("goAway")?.let { onGoAway(it.optString("timeLeft")) }
-        o.optJSONObject("voiceActivity")?.optString("type")?.let { t ->
-            if (t == "ACTIVITY_START" || t == "ACTIVITY_END") replyWatch.onServerHeard()
-            if (t == "ACTIVITY_START") {
-                // server ne user ki awaaz pakdi: DK bol raha ho to turant chup (bache tukde bhi nahi), warna Listening
-                if (isPlaying()) bargeIn("server ACTIVITY_START") else setMode(Mode.LISTENING)
-            }
-            if (t == "ACTIVITY_END") {
-                val now = System.currentTimeMillis()
-                // phone ne is baari "khatam" nahi pakda (dheemi awaaz) -> server ka pakadna hi endpoint
-                if (trace.endpointAt == 0L || now - trace.endpointAt > 5000) {
-                    trace.reset(); trace.endpointAt = now; trace.speechEndAt = now
-                    beginTimeline(now, now, "server VAD")
-                }
-                if (eosAt == 0L || now - eosAt > 3000) eosAt = now
-                firstAudioAt = 0; if (!isPlaying() && !muteTurn) setMode(Mode.THINKING)
-            }
-        }
-        o.optJSONObject("toolCall")?.optJSONArray("functionCalls")?.let {
-            lastServerAt = System.currentTimeMillis()
-            // v3.66: किसी और की आवाज़ पर बना काम - कुछ मत करो (फ़ोन पर कोई काम नहीं), Gemini को बता दो
-            if (muteTurn) { ignoreTools(it); return@let }
-            // v3.67: tool से पहले बोला "कर दिया" = झूठ (काम अभी शुरू हुआ) - वह हिस्सा नहीं बजता; "ठीक है बॉस" बजता है
-            // v3.90: काम से पहले की बातें ("ठीक है, खोल रहा हूँ…" / इधर-उधर की बात) नहीं - पहले काम, फिर नतीजे वाली बात
-            if (actHold) {
-                val cmd = !actAfterTool && actCommand
-                // v3.7 (मालिक): हुक्म = काम से पहले कुछ नहीं (ठीक है भी नहीं) - काम के बाद "हो गया सर"
-                val v = if (cmd) TaskFirst.beforeToolCommand(heldActText())
-                        else DoneGate.beforeTool(heldActText())
-                // v3.90: हुक्म = छोटा "ठीक है, कर रहा हूँ" बजे, उससे ज़्यादा बात हटे
-                if (v == DoneGate.Verdict.DROP) dropAct(if (cmd) "काम से पहले की लंबी बात - पहले काम" else "tool से पहले") else releaseAct(if (cmd) "छोटा ठीक है" else "tool आया")
-            }
-            actEvidence = true
-            timeline.event(lastServerAt); replyWatch.onServerAnswered(); lastToolAt = lastServerAt; runTools(it)
-        }
-        o.optJSONObject("toolCallCancellation")?.optJSONArray("ids")?.let { a ->
-            for (i in 0 until a.length()) toolJobs.remove(a.optString(i))?.cancel()
-        }
-        val sc = o.optJSONObject("serverContent") ?: return
-        lastServerAt = System.currentTimeMillis()
-        // dropOld = user ne toka, yeh PURANE jawab ke bache tukde hain (phenke jaate hain) - inhe nayi baat ka
-        // "jawab aaya" mat gino, warna nayi baat ka watchdog band ho jaata aur server na sune to DK chup rehta
-        val oldReply = dropOld
-        if (!oldReply || sc.has("inputTranscription")) timeline.event(lastServerAt)
-        if (sc.has("inputTranscription")) replyWatch.onServerHeard()
-        // docs: model jawab nahi bana raha kyunki use lagta hai user aage bolega (diagnostics - sirf log)
-        if (sc.optBoolean("waitingForInput") && !waitingLogged) { waitingLogged = true; log("server: waitingForInput (मॉडल मान रहा है user आगे बोलेगा) • ${timeline.summary()}") }
-        if (sc.optBoolean("generationComplete")) timeline.genDone(System.currentTimeMillis())
-        if (!oldReply && (sc.has("modelTurn") || sc.has("outputTranscription"))) replyWatch.onServerAnswered()
-        sc.optJSONObject("inputTranscription")?.optString("text")?.takeIf { it.isNotBlank() && !muteTurn }?.let { t ->
-            if (!turnActive) startTurn()
-            Ducker.duck(svc, "Live: user बोल रहा")
-            suspectAt = 0L                     // user ki baat ka text aaya = rokna sahi tha (goonj nahi)
-            val u = synchronized(turnLock) { userText.append(t); userText.toString().trim() }
-            Lang.noteUser(u)                   // DK AI: "Auto" भाषा - यूज़र की भाषा याद (तय लाइनें उसी में)
-            // phone ne "bolna khatam" pakda ho to deri wahin se ginti (der se aaye text se nahi)
-            if (trace.speechEndAt == 0L || System.currentTimeMillis() - trace.speechEndAt > 5000) eosAt = System.currentTimeMillis()
-            // caption chal raha hai to woh pehle hi turant likh chuka - yeh der se aaya text screen par mat daalo
-            if (!captionOn()) DKState.user("$u…")
-            checkMicOff(u)
-        }
-        // kuch Live model khud bhi bolte-bolte (interim) text dete hain - caption na ho to wahi dikhao
-        sc.optJSONObject("interimInputTranscription")?.optString("text")?.takeIf { it.isNotBlank() }?.let { t ->
-            Ducker.duck(svc, "Live: user बोल रहा")
-            if (!captionOn()) {
-                val u = synchronized(turnLock) { userText.toString().trim() }
-                DKState.user((if (turnActive) "$u $t" else t).trim() + "…")
-            }
-        }
-        sc.optJSONObject("modelTurn")?.optJSONArray("parts")?.let { parts ->
-            // user ne toka hai: purane jawab ke bache tukde - mat bajao (server "interrupted" bhejega)
-            if (dropOld) { droppedOld++; return@let }
-            // v3.66: किसी और की आवाज़ का जवाब - बजाओ मत
-            if (muteTurn) { mutedParts++; generating = true; return@let }
-            if (!turnActive) startTurn()
-            generating = true
-            for (i in 0 until parts.length()) {
-                val p = parts.optJSONObject(i) ?: continue
-                // v3.68: TEXT जवाब (बँटवारा) - जैसे-जैसे आए, आवाज़ इंजन को (पहला वाक्यांश बनते ही बोलना शुरू)
-                val tx = if (p.optBoolean("thought")) "" else p.optString("text", "")
-                if (tx.isNotEmpty() && connSplit) {
-                    replyPartArrived("पहला text")
-                    val noLeak = leakFilter.push(tx)               // v4.1: "phone_task{…}" न दिखे, न बोला जाए - काम सीधे
-                    val clean = if (noLeak.isEmpty()) "" else tagFilter?.push(noLeak) ?: noLeak   // v3.71: [खुश] जैसा टैग न बोला जाए, न दिखे
-                    if (clean.isNotEmpty()) synchronized(turnLock) { replyText.append(clean) }
-                    splitHoldCheck(); pumpSplit()
-                    continue
-                }
-                val inline = p.optJSONObject("inlineData") ?: continue
-                val mime = inline.optString("mimeType")
-                if (!mime.startsWith("audio/pcm")) { log("अनजान output: $mime"); continue }
-                val pcm = try { Base64.decode(inline.optString("data"), Base64.DEFAULT) } catch (e: Exception) { log("audio decode गलती"); continue }
-                if (pcm.isEmpty()) continue
-                recvAudio += pcm.size
-                replyPartArrived("पहला ऑडियो चंक")
-                timeline.audio(System.currentTimeMillis())
-                if (connSplit) continue              // v3.68: transcript वाला बँटवारा - Live की अपनी आवाज़ नहीं बजती
-                if (leakMute) continue               // v4.1: "phone task request…" जैसी आवाज़ नहीं - फ़ोन चुपचाप काम कर रहा है
-                if (actHold) { holdAct(pcm); continue }
-                turnRecvBytes += pcm.size
-                playOut(pcm)
-            }
-        }
-        sc.optJSONObject("outputTranscription")?.optString("text")?.takeIf { it.isNotBlank() && !dropOld && !muteTurn }?.let { t ->
-            if (!turnActive) startTurn()
-            generating = true
-            // screen par abhi nahi - revealTick() awaaz ke saath-saath dikhata hai
-            val tc = leakFilter.push(t)              // v4.1: लिखी हुई tool call हटाओ (और उसी पल असली काम)
-            val soFar = synchronized(turnLock) { replyText.append(tc); if (replyText.length < 240) replyText.toString() else null }
-            // v3.71: सीधी आवाज़ में टैग नहीं (बोल दिया जाता) - शुरू के शब्दों से अवतार का भाव
-            soFar?.let { com.dk.assistant.avatar.EmotionGuess.of(it) }?.takeIf { it != com.dk.assistant.avatar.Mood.NORMAL }
-                ?.let { com.dk.assistant.avatar.MoodState.set(it) }
-            // v3.68: AUDIO + लिखावट वाला बँटवारा - यही text आवाज़ इंजन बोलता है
-            if (connSplit) { replyPartArrived("पहली लिखावट"); splitHoldCheck(); pumpSplit() }
-        }
-        // v3.9: Gemini ne sach me Google Search kiya -> sources (title, url) is baari ke jawab ke saath
-        (sc.optJSONObject("groundingMetadata") ?: o.optJSONObject("groundingMetadata"))?.let { gm ->
-            val add = Grounding.sources(gm).also { WebSearch.tag(it, WebSearch.Provider.GEMINI) }
-            if (add.isNotEmpty()) {
-                synchronized(turnLock) { turnSources = Grounding.merge(turnSources, add) }
-                if (toolJobs.isEmpty()) DKState.hint("")
-                log("Google Search हुआ - ${add.size} स्रोत: ${add.joinToString { Grounding.host(it.second).ifBlank { it.first } }}")
-            }
-        }
-        if (sc.optBoolean("interrupted") && muteTurn) {
-            // किसी और की बात का (न बजा) जवाब रुका - बस छूट खत्म, बाकी कुछ नहीं बदला
-            muteTurn = false; generating = false
-            log("दूसरे की आवाज़ का (न बजाया) जवाब रुका")
-        } else if (sc.optBoolean("interrupted")) {
-            val now = System.currentTimeMillis()
-            replyWatch.onServerHeard()    // server ne user ki awaaz pakdi tabhi roka - "nahi suna" rescue mat bhejo
-            log("server: generation रुकी (interrupted) - आवाज़ रोकी" + if (localBargeAt > 0 && now - localBargeAt < 2000) " (फ़ोन ने ${now - localBargeAt} ms पहले ही रोक दी थी)" else "")
-            // phone ne user ki awaaz nahi pakdi -> shayad DK ki apni goonj; 2 sec me user ka text na aaye to gino
-            if (now - localBargeAt > 1500 && fullDuplex && aecOn) suspectAt = now
-            dropOld = false               // purana generation khatam - ab aane wala audio NAYE jawab ka hai
-            // sirf toka gaya (purana) turn band karo - toka-ke-boli nayi baat ki samay-rekha (barge ke baad shuru) chalti rahe
-            val newAfterBarge = localBargeAt > 0 && now - localBargeAt < 10_000 && timeline.speechEndAt > localBargeAt
-            if (timeline.active && !newAfterBarge) { timeline.done(now); log("turn (interrupted): ${timeline.summary()}") }
-            if (trace.firstPlayAt == 0L) trace.firstChunkAt = 0L
-            tagFilter = null; com.dk.assistant.avatar.MoodState.replyDone()
-            leakFilter.finish(); leakFilter = newLeakFilter(); leakMute = false
-            clearAct()
-            flushPlayback()
-            // close=false: user abhi bol raha hai (toka hai) - uski nayi baat band mat karo
-            if (turnActive) finishTurn(close = false)
-            commitPending(false)          // jitna bola utna hi likha rahe
-            setMode(Mode.LISTENING)
-        }
-        if (sc.optBoolean("turnComplete") && muteTurn) {
-            muteTurn = false; generating = false
-            log("दूसरे की आवाज़ का जवाब नहीं बजाया ($mutedParts टुकड़े छोड़े)")
-            Ducker.releaseWhenQuiet({ !isPlaying() && !generating })
-        } else if (sc.optBoolean("turnComplete")) {
-            val wasDropping = dropOld
-            dropOld = false
-            if (actHold) endActHold()
-            // v4.1: रुका हुआ बचा हिस्सा (अधूरी लिखी call भी हो तो अभी चलेगी)
-            leakFilter.finish().takeIf { it.isNotEmpty() }?.let { r -> (tagFilter?.push(r) ?: r).takeIf { it.isNotEmpty() }?.let { c -> synchronized(turnLock) { replyText.append(c) } } }
-            leakFilter = newLeakFilter(); leakMute = false
-            tagFilter?.finish()?.takeIf { it.isNotEmpty() }?.let { r -> synchronized(turnLock) { replyText.append(r) } }
-            tagFilter = null
-            com.dk.assistant.avatar.MoodState.replyDone()         // v3.71: बोलना ख़त्म होने के कुछ सेकंड बाद चेहरा सामान्य
-            if (connSplit && !wasDropping) { pumpSplit(); if (pipelineLazy.isInitialized()) pipeline.endTurn() }   // v3.68: बचा text आख़िरी टुकड़ा
-            if (timeline.active) { timeline.done(System.currentTimeMillis()); log("turn पूरा: ${timeline.summary()}") }
-            if (!wasDropping && !agentCheck()) promiseCheck()
-            finishTurn()
-            FriendTalk.touch(svc)   // v4.3: बातचीत का समय फ़ोन में सेव ("इतनी देर कहाँ थे?" के लिए)
-            if (wasDropping) commitPending(false)   // toka hua jawab: sirf jitna bola utna hi chat me
-            // jawab poora bana; jab DK ki awaaz bajna band ho uske ~1.2s baad peeche ki awaaz dheere-dheere wapas
-            Ducker.releaseWhenQuiet({ !isPlaying() && !generating })
-        }
-    }
 
     /** जवाब का हिस्सा (आवाज़ या text) आया: पहली बार पर बारी की गिनती + देरी (पहले inline था; v3.68 में text के लिए भी) */
-    private fun replyPartArrived(what: String) {
+    internal fun replyPartArrived(what: String) {
         if (!replyStarted) {
             replyStarted = true
             // naya jawab: pichhla (agar abhi bhi baj raha tha) poora likho, ginti shuru se
@@ -2270,20 +1448,20 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
     }
 
     /** बँटवारे में आवाज़ नहीं रुकती, text रुकता है: इतना लिखा और कोई "हो गया" दावा नहीं = आम बात, बोलो */
-    private fun splitHoldCheck() {
+    internal fun splitHoldCheck() {
         if (!connSplit || !actHold) return
         val t = heldActText()
         if (t.length >= DoneGate.holdLimitMs(actAfterTool, actCommand) * 14 / 1000 && !HonestGuard.claimsDone(t)) releaseAct("आम बात")
         else if (TaskFirst.release(actCommand && !actAfterTool, System.currentTimeMillis() - actHoldAt, t)) releaseAct("आम बात / ज़रूरी सवाल")
     }
 
-    private fun startTurn() {
+    internal fun startTurn() {
         turnActive = true; routeDedupe.reset(); clearAct(); actEvidence = false
         leakFilter = newLeakFilter(); leakMute = false
         synchronized(turnLock) { userText.clear(); replyText.clear(); turnSources = emptyList(); splitFedTo = 0 }
     }
 
-    private fun finishTurn(close: Boolean = true) {
+    internal fun finishTurn(close: Boolean = true) {
         turnActive = false; generating = false
         val (mu, r) = synchronized(turnLock) {
             (userText.toString().trim() to replyText.toString().trim()).also { userText.clear(); replyText.clear() }
@@ -2322,7 +1500,7 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
     private fun now0() = System.currentTimeMillis()
 
     /** v4.1: रोकी हुई आवाज़ मालिक की है? (मिलान फ़ेल / आवाज़ बहुत छोटी = हाँ, पहले जैसा) */
-    private fun ownerSaysOwner(held: Collection<ByteArray>): Boolean {
+    internal fun ownerSaysOwner(held: Collection<ByteArray>): Boolean {
         return try {
             val out = java.io.ByteArrayOutputStream(); held.forEach { out.write(it) }
             val audio = out.toByteArray()
@@ -2333,7 +1511,7 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
     }
 
     /** Caption is key par chal raha hai -> "आप:" sirf usi se (Live model ka der se aaya text screen par nahi, warna text aage-peeche hota) */
-    private fun captionOn() = caption?.let { it.ready && it.working } == true
+    internal fun captionOn() = caption?.let { it.ready && it.working } == true
 
     /** Caption se turant shabd - "आप:" line */
     private fun onCaption(t: String, final: Boolean) {
@@ -2416,7 +1594,7 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
     }
 
     @Volatile private var micOffSent = false
-    private fun checkMicOff(t: String) {
+    internal fun checkMicOff(t: String) {
         if (micOffSent || !micOffCommand(t)) return
         // DK khud bol raha tha / abhi bola ("ठीक है, माइक बंद") - apni hi awaaz ko hukm mat samjho
         val now = System.currentTimeMillis()
@@ -2450,7 +1628,7 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
     }
 
     /** Ruka hua jawab chat me pakka karo. full=false: sirf jitna bola gaya (beech me toka) */
-    private fun commitPending(full: Boolean) {
+    internal fun commitPending(full: Boolean) {
         val (text, src) = synchronized(turnLock) {
             (pendingReply to pendingSources).also { pendingReply = null; pendingSources = emptyList() }
         }
@@ -2464,102 +1642,12 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
     // ================================================================ phone ke kaam (function calling)
     /** v3.45: ताज़ा लोकेशन + मौसम (हर बार नई; कहीं सेव नहीं) */
     // ================================================================ v3.88: बोलते-बोलते तैयारी (speculative prefetch)
-    private class Prep(val kind: SpecIntent.Kind, val text: String, val at: Long, val job: Deferred<Any?>)
-    @Volatile private var prepWeather: Prep? = null
-    @Volatile private var prepSearch: Prep? = null
+    internal class Prep(val kind: SpecIntent.Kind, val text: String, val at: Long, val job: Deferred<Any?>)
+    @Volatile internal var prepWeather: Prep? = null
+    @Volatile internal var prepSearch: Prep? = null
 
-    /**
-     * "हेलो डीके, आज का मौसम बताओ" - "मौसम" सुनते ही लोकेशन + मौसम लाना शुरू. Gemini जब local_info माँगे तो तैयार मिले.
-     * ताज़ा खबर/स्कोर = पक्का (final) text आते ही खोज शुरू; Gemini की web_search उसी बात की हो तो वही नतीजा.
-     * अंदाज़ा गलत = कोई इस्तेमाल नहीं करता, कुछ देर में अपने-आप पुराना (यूज़र को कुछ नहीं दिखता/सुनाई देता).
-     */
-    private fun prefetch(t: String, final: Boolean) {
-        val k = SpecIntent.detect(t) ?: return
-        val now = System.currentTimeMillis()
-        try {
-            when (k) {
-                SpecIntent.Kind.WEATHER -> {
-                    if (prepWeather?.let { now - it.at < PREP_WEATHER_MS } == true) return
-                    if (!LocalInfo.hasPermission(svc)) return
-                    prepWeather = Prep(k, t, now, svc.scope.async(Dispatchers.IO) {
-                        try { LocalInfo.now(svc) } catch (e: CancellationException) { throw e } catch (_: Exception) { null }
-                    })
-                    log("पहले से तैयारी: मौसम (\"${t.take(30)}\")")
-                }
-                SpecIntent.Kind.SEARCH -> {
-                    if (!final) return
-                    val p = prepSearch
-                    if (p != null && now - p.at < PREP_SEARCH_MS && p.text == t.trim()) return
-                    val q = t.trim()
-                    prepSearch = Prep(k, q, now, svc.scope.async(Dispatchers.IO) {
-                        val b = BrainManager(svc).also { it.fromLive = true }
-                        // v3.90: fail हुई तो वजह भी (सीमा भरी/key ग़लत = web_search फिर वही Google खोज न दोहराए)
-                        try { withTimeoutOrNull(LiveSearch.totalTimeoutMs(Prefs.searchOwnKey(svc).isNotBlank())) { b.search(q, deep = false) } ?: SearchGuard.Fail.TIMEOUT }
-                        catch (e: CancellationException) { throw e } catch (_: Exception) { b.lastSearchFail }
-                    })
-                    log("पहले से तैयारी: खोज (\"${q.take(30)}\")")
-                }
-            }
-        } catch (e: Exception) { log("पहले से तैयारी नहीं हुई: ${e.javaClass.simpleName}") }
-    }
-
-    /** तैयार मौसम (ताज़ा हो तो); नहीं = null (तब पहले जैसा अभी लाओ) */
-    @Suppress("UNCHECKED_CAST")
-    private suspend fun preparedWeather(): Pair<LocalInfo.Place, String>? {
-        val p = prepWeather ?: return null
-        if (System.currentTimeMillis() - p.at > PREP_WEATHER_MS) { prepWeather = null; return null }
-        return (try { p.job.await() } catch (e: CancellationException) { throw e } catch (_: Exception) { null }) as? Pair<LocalInfo.Place, String>
-    }
-
-    /** तैयार खोज - उसी बात की हो और ताज़ा हो तो; नहीं = null (तब पहले जैसी खोज) */
-    private suspend fun preparedSearch(query: String): SearchResult? {
-        val p = prepSearch ?: return null
-        if (System.currentTimeMillis() - p.at > PREP_SEARCH_MS || !SpecIntent.sameTopic(query, p.text)) return null
-        prepSearch = null       // एक बार ही इस्तेमाल
-        val r = try { p.job.await() } catch (e: CancellationException) { throw e } catch (_: Exception) { null }
-        prepFail = r as? SearchGuard.Fail
-        return (r as? SearchResult)?.takeIf { it.text.isNotBlank() }
-    }
     /** v3.90: पहले से शुरू हुई खोज किस वजह से fail हुई (null = fail नहीं / थी ही नहीं) */
-    @Volatile private var prepFail: SearchGuard.Fail? = null
-
-    /** v4.3: user ने जगह/आसपास पूछा (सिर्फ़ मौसम नहीं) - तब पूरा पता + आसपास की जगहें */
-    private fun wantsWhere(): Boolean = NearbyPlaces.wantsWhere(DKState.lastUser)
-
-    private suspend fun localInfoTool(): String {
-        // v4.3 (मालिक): इजाज़त नहीं / GPS बंद = साफ़ बताओ कि क्या चालू करना है
-        if (!LocalInfo.hasPermission(svc)) {
-            try {
-                svc.startActivity(android.content.Intent(svc, MainActivity::class.java).putExtra("ask_location", true)
-                    .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK or android.content.Intent.FLAG_ACTIVITY_SINGLE_TOP))
-            } catch (_: Exception) {}
-            return "Location permission is OFF, so you cannot know where he is. I opened the DK app to ask for it. Tell him clearly and briefly: allow Location for DK on the screen (\"Allow\" / \"While using the app\"), then ask again."
-        }
-        if (!LocalInfo.locationOn(svc)) return "The phone's Location (GPS) is turned OFF, so you cannot see where he is. Tell him clearly: turn ON Location from the quick settings (pull down from the top, tap 'Location'), then ask again."
-        if (wantsWhere()) {
-            LocalInfo.where(svc)?.let { return it }
-            return "Could not get a fresh location fix right now (weak GPS/network). Tell him honestly; suggest stepping near a window/open area with Location ON and asking again."
-        }
-        val r = preparedWeather()?.also { log("local_info: पहले से तैयार मौसम इस्तेमाल किया") } ?: LocalInfo.now(svc) ?: return "Could not get the current location right now (GPS/location may be off). Tell the user honestly."
-        return "Current place: ${r.first.name.ifBlank { "unknown area (%.3f, %.3f)".format(java.util.Locale.US, r.first.lat, r.first.lon) }}. Weather now: ${r.second.substringAfter(" — ", r.second)}"
-    }
-
-    /** v3.41: फ़ोन के notification (DKNotifListener -> NotifStore) */
-    private fun notifTool(app: String): String {
-        if (!DKNotifListener.enabled(svc)) {
-            DKNotifListener.openSettings(svc)
-            return "Notification access is OFF. I opened the setting - tell the user to turn ON 'DK' in Notification access, then ask again."
-        }
-        // v3.51: पहले सिर्फ़ memory देखी जाती थी - Android ने पढ़ने वाला (listener) अलग कर दिया हो / ऐप दोबारा शुरू हुआ हो
-        // तो memory खाली = "कोई notification नहीं" (झूठ). अब फ़ोन पर अभी पड़े notification ताज़ा पढ़ो; न पढ़ सको तो सच बताओ.
-        val alive = DKNotifListener.refresh(svc)
-        val q = app.trim()
-        val list = NotifStore.recent(app = q)
-        val r = NotifPush.toolAnswer(alive, NotifStore.describe(list, System.currentTimeMillis()), NotifStore.all().size, q,
-            NotifStore.describe(list, System.currentTimeMillis()))
-        log("notifications (${if (alive) "ताज़ा पढ़ा" else "पढ़ने वाला जुड़ा नहीं"}): ${list.size}")
-        return r
-    }
+    @Volatile internal var prepFail: SearchGuard.Fail? = null
 
     /** v3.51: नया notification आया - Live को तुरंत बताओ (कुछ सेकंड के सब एक साथ) */
     private val notifQ = ArrayList<Triple<String, String, String>>()
@@ -2581,215 +1669,11 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
         }
     }
 
-    private fun notifReply(to: String, message: String): String {
-        val msg = message.trim()
-        if (msg.isBlank()) return "No message given - ask the user what to reply."
-        if (!DKNotifListener.enabled(svc)) {
-            DKNotifListener.openSettings(svc)
-            return "Notification access is OFF. I opened the setting - tell the user to turn ON 'DK' in Notification access."
-        }
-        val n = NotifStore.findForReply(to)
-            ?: return "No notification found that can be replied to" + (if (to.isNotBlank()) " for '$to'" else "") + ". Tell the user; offer to send it via phone_task instead."
-        val err = DKNotifListener.reply(svc, n.key, msg)
-        log("notification reply -> [${n.app}] ${n.title.take(20)}: " + (err ?: "भेज दिया"))
-        return if (err == null) "Sent to ${n.title.ifBlank { n.app }} on ${n.app}: \"$msg\""
-        else "Not sent: $err. Offer to send it via phone_task (open ${n.app})."
-    }
-
     /** DK AI: वही tool call id दोबारा आए तो काम दोबारा नहीं (दो बार call/मैसेज न जाए) */
-    private val toolDedup = ToolCallDeduplicator()
-
-    /**
-     * v3.5+: एजेंट वाले tool (कहानी / वेबसाइट / DK कंप्यूटर / कोडिंग) एक जगह - Gemini के tool call से भी और
-     * [agentCheck] से भी (Gemini ने "हाँ कर दिया" कहा पर tool नहीं बुलाया). काम सच में सौंपा गया = उस एजेंट की स्क्रीन
-     * खुलती है और वहाँ "🎤 DK लाइव से मिला काम" दिखता है.
-     */
-    private fun agentTool(name: String, args: JSONObject): String {
-        val agent = LiveAgentRoute.byTool(name) ?: return "unknown function"
-        // v3.6: एक key = सिर्फ़ बातचीत. एजेंट नहीं चलेगा - DK साफ़ बताए + Settings खुले (झूठा "हो गया" नहीं)
-        OneKeyGate.LIVE_TOOLS[name]?.takeIf { OneKeyGate.blocked(svc, it) }?.let { w ->
-            log("एक key मोड: ${w.hi} नहीं चलेगा - Settings खोली"); OneKeyGate.openSettings(svc)
-            return OneKeyGate.liveNote(w)
-        }
-        var handoff = true          // false = सिर्फ़ हाँ/नहीं/इजाज़त का जवाब (नया काम नहीं)
-        val task = when (name) { "story_task" -> args.optString("topic"); "build_website" -> args.optString("prompt"); else -> args.optString("task") }.trim()
-        val result = when (name) {
-            "story_task" -> LiveReport.startStory(svc, args.optString("topic"), args.optInt("minutes", 0))
-            "build_website" -> com.dk.assistant.forge.ForgeLauncher.fromVoice(svc, args.optString("prompt"))
-            "computer_task" -> {
-                val t = args.optString("task").trim()
-                val yn = if (ComputerSession.ask != null) ComputerVoice.yesNo(t) else null
-                when {
-                    yn != null -> { handoff = false; ComputerSession.answer(yn); if (yn) "Permission given - DK Computer continues." else "Permission refused - DK Computer will not do it." }
-                    !Prefs.computerOn(svc) -> "DK Computer is OFF in settings - tell the user to turn it on (सेटिंग्स → DK कंप्यूटर)."
-                    t.length < 3 -> "Ask the user what DK Computer should do."
-                    else -> {
-                        val wasBusy = ComputerSession.busy
-                        ComputerSession.start(svc, t, voice = true)?.let { "Could not start: $it" }
-                            ?: if (wasBusy) "Queued - DK Computer will start it after the current task."
-                            else "Started. DK Computer shows each step on its screen and will notify when done (result also in the notification)."
-                    }
-                }
-            }
-            "coding_task" -> {
-                val t = args.optString("task")
-                // pehle setting jaancho - band ho to merge/sujhav ka faisla bhi nahi (AgentRunner jaisa)
-                when {
-                    !Prefs.coderOn(svc) -> "Coding agent is OFF in settings - tell the user to turn it on (सेटिंग्स → कोडिंग एजेंट)."
-                    else -> CoderTeam.voiceDecision(svc, t)?.also { handoff = false } ?: when {
-                        // 7-एजेंट चालू = पुराना टीम switch ज़रूरी नहीं
-                        !Prefs.coderSeven(svc) && !Prefs.coderTeam(svc) -> "Coding team is OFF in settings (सेटिंग्स → कोडिंग एजेंट → टीम)."
-                        else -> CoderTeam.start(svc, t, fromVoice = true)?.let { "Could not start: $it" }
-                            ?: if (Prefs.coderSeven(svc)) "Started (7-agent team + Explainer). FIRST its manager shows the user what it understood and WAITS: when the user confirms (हाँ / yes), call this tool again with task='हाँ'; if the user corrects or answers its question, call this tool again with exactly that answer; 'रद्द' cancels. It is NOT done yet - real progress: call task_status. You will get a SYSTEM NOTE when it really finishes; never say it is done before that."
-                            else "Started. Builder writes, Reviewer checks, Coordinator pushes and will notify when done. It is NOT done yet - real progress: call task_status."
-                    }
-                }
-            }
-            else -> "unknown function"
-        }
-        if (handoff && LiveAgentRoute.started(result)) {
-            AgentHandoff.mark(agent, task, result)
-            if (agent == LiveAgentRoute.Agent.CODING || agent == LiveAgentRoute.Agent.COMPUTER) LiveReport.openAgent(svc, agent)
-            log("एजेंट को काम दिया: ${agent.title} - स्क्रीन पर दिख रहा है")
-        }
-        return result
-    }
-
-    private fun runTools(calls: JSONArray) {
-        for (i in 0 until calls.length()) {
-            val fc = calls.optJSONObject(i) ?: continue
-            val id = fc.optString("id"); val name = fc.optString("name"); val args = fc.optJSONObject("args") ?: JSONObject()
-            if (!toolDedup.firstTime(id)) { log("tool: $name - यही call (id) पहले आ चुका, दोबारा नहीं"); continue }
-            // DK AI Part 12: caption / संदेश / कॉन्टैक्ट log में नहीं
-            log("tool: $name " + if (name == "social_media_task" || name == "whatsapp_task") args.optString("action") else if (name == "connector_task") args.optString("connector") + "." + args.optString("action") else args.toString().take(80))
-            val tStart = System.currentTimeMillis()
-            if (name in LiveAgentRoute.TOOLS) agentToolAt = tStart      // v3.5+: इस बात पर एजेंट का tool सच में बुलाया
-            // v3.39: जिस जुड़ाव पर सवाल आया, जवाब सिर्फ़ उसी पर. बीच में दोबारा जुड़ा = पुराना id नए सत्र को अनजान -> 1007
-            val sock = ws
-            // LAZY: pehle map me darj, phir shuru - warna tez tool (remember_fact) map me aane se pehle hi remove() kar deta tha
-            val j = svc.scope.launch(start = CoroutineStart.LAZY) {
-              // v3.75: screen पर दिखे कि DK अभी क्या कर रहा है (सर्च / सोच / फ़ोन का काम)
-              LivePromise.hintFor(name, args.optString("query").ifBlank { args.optString("request") }).takeIf { it.isNotEmpty() }?.let { DKState.hint(it) }
-              try {
-                val result = try { when (name) {
-                    "phone_task" -> phoneTask(args.optString("request"))
-                    "task_status" -> TaskStatus.summary()
-                    "phone_call" -> callTool(args.optString("action"), "Gemini")
-                    "screen_share" -> LiveVision.setScreen(svc, args.optBoolean("on", true))
-                    "camera" -> LiveVision.setCamera(svc, args.optBoolean("on", true), args.optString("facing"))
-                    "dk_features" -> LiveConnect.features(com.dk.assistant.auto.AutoPrefs.on(svc),
-                        com.dk.assistant.auto.AutoPrefs.enabledKinds(svc).map { it.title }, Prefs.oneKeyOn(svc) && Prefs.oneKey(svc).isNotBlank())
-                    "story_task", "build_website", "computer_task", "coding_task" -> agentTool(name, args)
-                    "teacher_mode" -> LiveReport.teacher(svc, args.optBoolean("on", true))
-                    "dk_settings" -> DkSettingsApply.run(svc, args)
-                    "dk_inspector" -> com.dk.assistant.inspector.Inspector.liveTool(svc, args)
-                    "remember_fact" -> if (Memory.addFact(svc, args.optString("fact"))) "saved" else "NOT saved: private info (passwords, PIN, OTP, bank/card/Aadhaar numbers) is never stored. If the user asked you to remember it, tell them gently you do not save such private details." 
-                    "recall_conversation" -> {
-                        val a = LocalMemory.answer(svc, args.optString("question").ifBlank { DKState.lastUser.trimEnd('…') })
-                        if (a == LocalRecall.NOT_FOUND) "NOT FOUND in the phone's saved conversation. Say exactly: बॉस, मुझे ये याद नहीं मिल रहा।"
-                        else "FOUND on the phone (saved conversation). Tell the user this briefly, in your voice, keep the quoted words exact:\n$a"
-                    }
-                    "forget_memory" -> { val n = Memory.forget(svc, args.optString("about")); if (n > 0) "Forgotten ($n place(s) deleted)." else "Nothing saved about that - tell the user it is not in memory." }
-                    "local_info" -> localInfoTool()
-                    "connector_task" -> withContext(Dispatchers.IO) { com.dk.assistant.connect.ConnectorTool.run(svc, args) }
-                    "notifications" -> notifTool(args.optString("app"))
-                    "notification_reply" -> notifReply(args.optString("to"), args.optString("message"))
-                    "social_media_task" -> com.dk.assistant.agent.android.SocialAgent.start(svc, args)
-                    "whatsapp_task" -> when (val act = args.optString("action").trim().lowercase()) {
-                        in setOf("read_unread", "unread", "read") -> notifTool("WhatsApp")
-                        // v4: WhatsApp आवाज़ / वीडियो कॉल - सीधे (स्क्रीन पर बटन ढूँढे बिना)
-                        in setOf("voice_call", "video_call", "call", "audio_call") -> {
-                            val cmd = WaCall.Cmd(args.optString("contact").trim(), act == "video_call")
-                            DKState.set(Mode.WORKING)
-                            val r = WaCall.call(svc, cmd.name, cmd.video)
-                            log("WhatsApp ${if (cmd.video) "वीडियो " else ""}कॉल \"${cmd.name}\" -> ${r.substringBefore(':')}")
-                            LiveFast.quickResult(QuickCommands.Quick(WaCall.toJson(cmd), ""), r, already = false)
-                        }
-                        else -> com.dk.assistant.agent.android.SocialAgent.start(svc, args, com.dk.assistant.agent.social.Platform.WHATSAPP)
-                    }
-                    "social_media_task_control" -> com.dk.assistant.agent.android.SocialAgent.control(args)
-                    "web_search" -> webSearchTool(args.optString("query"))
-                    "current_time" -> { NowClock.syncAsync(); NowClock.toolAnswer() }
-                    "deep_think" -> {
-                        DKState.set(Mode.THINKING)
-                        try {
-                            withTimeoutOrNull(45_000) { BrainManager(svc).also { it.fromLive = true }.think(args.optString("question")) }
-                                ?.takeIf { it.text.isNotBlank() }
-                                ?.also { if (it.sources.isNotEmpty()) toolSources = Grounding.merge(toolSources, it.sources) }
-                                ?.text ?: "Deep thinking timed out - answer it yourself carefully."
-                        } catch (e: Exception) {
-                            log("deep_think fail: ${e.message}")
-                            "Deep thinking unavailable - answer it yourself carefully."
-                        }
-                    }
-                    else -> "unknown function"
-                } } catch (e: CancellationException) { throw e } catch (e: Exception) {
-                    // tool toota - phir bhi Gemini ko jawab bhejo, warna model hamesha intezaar karta
-                    log("tool $name fail: ${e.message}")
-                    "Tool failed (${e.javaClass.simpleName}) - tell the user it could not be done."
-                }
-                val resp = JSONObject().put("toolResponse", JSONObject().put("functionResponses", JSONArray().put(
-                    JSONObject().put("id", id).put("name", name).put("response", JSONObject().put("result", result.take(if (name == "deep_think" || name == "connector_task" || name == "web_search") 4000 else 1500))))))
-                log("tool $name ${(System.currentTimeMillis() - tStart)} ms: ${result.take(if (name == "connector_task") 24 else 80)}")
-                if (name != "remember_fact") lastEvidenceAt = System.currentTimeMillis()
-                // v3.67: नतीजा "अभी हुआ नहीं" -> इसके बाद Gemini "हो गया" बोले तो वह नहीं बजेगा
-                if (name != "remember_fact" && name != "task_status" && DoneGate.notDoneYet(result)) actPending = true
-                // ab se deri ginti: tool ka jawab bheja -> pehli awaaz (tool ka samay alag dikhta hai)
-                eosAt = System.currentTimeMillis(); firstAudioAt = 0
-                val cur = ws
-                if (id.startsWith(LEAK_ID)) {
-                    // v4.1: यह call Live ने लिखी थी (असली toolCall नहीं) - server को इसका id पता नहीं, इसलिए नतीजा SYSTEM NOTE में
-                    visionNote(leakNote(name, result), evidence = !DoneGate.notDoneYet(result))
-                } else if (cur != null && cur === sock) {
-                    if (!cur.tx(resp.toString())) log("tool जवाब नहीं भेज पाया")
-                    else if (name in ANSWER_TOOLS) watchToolAnswer(name, result, cur)
-                }
-                else {
-                    log("tool $name का जवाब पुराने जुड़ाव का - नए जुड़ाव पर tool जवाब नहीं भेजा (1007 से बचाव)")
-                    if (cur != null && ready && name != "task_status" && name != "remember_fact") lastEvidenceAt = System.currentTimeMillis()
-                    if (cur != null && ready && name != "task_status" && name != "remember_fact") try {
-                        cur.tx(JSONObject().put("realtimeInput", JSONObject().put("text",
-                            "SYSTEM NOTE: the connection was renewed while the user's earlier request ($name) was running. Its result: \"" +
-                                result.take(600) + "\". Tell the user briefly only if it is still relevant. Do not invent details.")).toString())
-                    } catch (_: Exception) {}
-                }
-              } finally {
-                // hamesha hatao (fail/cancel par bhi) - warna idle-exit aur watchdog band rehte
-                coroutineContext[Job]?.let { me -> toolJobs.remove(id, me) }
-                if (toolJobs.isEmpty() && promiseJob?.isActive != true) { DKState.hint(""); DKState.refresh() }
-              }
-            }
-            toolJobs[id] = j
-            DKState.refresh()       // v3.90: अब सच में काम चल रहा है = "Thinking" दिखे
-            j.start()
-        }
-    }
-
-    /**
-     * v3.80: नतीजा (खोज / सोच / समय) भेज दिया पर Gemini चुप रह गया = यूज़र "सुनकर रह गया" वाली हालत.
-     * [TOOL_ANSWER_MS] तक कुछ न आए (आवाज़/लिखावट/यूज़र की बात) -> एक बार याद दिलाओ कि अब जवाब बोलो.
-     */
-    private fun watchToolAnswer(name: String, result: String, sock: WebSocket) {
-        val sentAt = System.currentTimeMillis()
-        svc.scope.launch {
-            delay(TOOL_ANSWER_MS)
-            if (stopped || !ready || ws !== sock) return@launch
-            if (lastServerAt > sentAt || lastAct > sentAt || generating || isPlaying() || toolJobs.isNotEmpty()) return@launch
-            log("tool $name का नतीजा ${TOOL_ANSWER_MS / 1000}s से बोला नहीं गया - Gemini को याद दिलाया")
-            DKState.hint("जवाब तैयार कर रहा है…")
-            if (DKState.mode != Mode.WORKING) setMode(Mode.THINKING)
-            try {
-                sock.tx(JSONObject().put("realtimeInput", JSONObject().put("text",
-                    "SYSTEM NOTE: you already received the result of $name for the user's last question but have not answered yet. " +
-                        "Answer the user NOW, briefly and naturally in Hindi, from this result: \"" + result.take(900) + "\"")).toString())
-            } catch (_: Exception) {}
-            delay(10_000)
-            if (toolJobs.isEmpty() && promiseJob?.isActive != true && !generating) DKState.hint("")
-        }
-    }
+    internal val toolDedup = ToolCallDeduplicator()
 
     /** v3.80: tool चलते समय आवाज़ खत्म = "सोच/खोज रहा है" दिखे, सुन रहा नहीं (वरना लगता बात छूट गई) */
-    private fun idleMode() {
+    internal fun idleMode() {
         if (DKState.mode == Mode.WORKING) return
         setMode(if (toolJobs.isNotEmpty()) Mode.THINKING else Mode.LISTENING)
     }
@@ -2803,232 +1687,14 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
      * पहले: 60s तक इंतज़ार और नतीजा न मिले तो "done" (झूठा "हो गया").
      */
     // ---------------- v3.87: एक साथ कई काम (कतार) ----------------
-    @Volatile private var taskQueue: TaskRunQueue? = null
-    @Volatile private var queueAnswer: CompletableDeferred<String>? = null
-
-    private suspend fun phoneTask(req: String): String {
-        val running = taskQueue?.takeIf { it.running }
-        if (running != null) {
-            if (TaskQueue.isStop(req)) { stopQueue("phone_task: \"${req.take(20)}\""); return TaskQueue.stoppedNote() }
-            // कतार ने सवाल पूछा था और Gemini ने जवाब phone_task में भेज दिया - वही जवाब
-            if (running.asking) { queueAnswer?.complete(req); return "QUEUE_OK: the phone took this as the answer to its question. Say only \"ठीक है\" - no tool call." }
-            // काम के बीच नया काम = कतार के आख़िर में
-            val n = running.add(TaskQueue.split(req).ifEmpty { listOf(TaskQueue.Item(req, "other")) })
-            log("कतार: नया काम आख़िर में जोड़ा (\"${req.take(30)}\", अब $n बाक़ी)")
-            return TaskQueue.addedNote(n)
-        }
-        val items = TaskQueue.split(req)
-        if (items.size >= 2) return startQueue(items)
-        return phoneTaskOne(req)
-    }
-
-    private fun startQueue(items: List<TaskQueue.Item>): String {
-        val startedAt = System.currentTimeMillis()
-        val q = TaskRunQueue(
-            runOne = { runQueued(it) },
-            prepare = { prev, next, prevOk -> queuePrepare(prev, next, prevOk) },
-            ask = { queueAsk(it) },
-            log = { log(it) }
-        )
-        q.add(items)
-        taskQueue = q
-        TeacherBoard.exitBlocked = { taskQueue?.running == true }
-        log("कतार शुरू: ${items.size} काम - " + items.joinToString(" | ") { "${it.domain}:${it.text.take(25)}" })
-        svc.scope.launch {
-            // "रुको / बंद करो" - Gemini के भरोसे नहीं, फ़ोन ख़ुद सुनता है
-            val watcher = launch {
-                var seen = DKState.lastUserAt
-                while (isActive) {
-                    delay(200)
-                    val at = DKState.lastUserAt
-                    if (at != seen && at > startedAt) {
-                        seen = at
-                        if (TaskQueue.isStop(DKState.lastUser.trimEnd('…'))) { stopQueue("यूज़र ने कहा \"${DKState.lastUser.take(20)}\""); break }
-                    }
-                }
-            }
-            val summary = try { q.runAll() } catch (e: CancellationException) { TaskQueue.summary(q.results, true, q.left()) }
-                catch (e: Exception) { log("कतार गड़बड़: ${e.message}"); TaskQueue.summary(q.results, q.stopped, q.left()) }
-                finally { watcher.cancel() }
-            if (taskQueue === q) taskQueue = null
-            log("कतार ख़त्म: $summary")
-            if (!waitQuiet(45_000)) { log("Gemini चुप नहीं हुआ (45s) - बीच बातचीत text नहीं भेजा"); return@launch }
-            if (stopped || !ready) return@launch
-            visionNote(TaskQueue.summaryNote(summary), evidence = true)
-        }
-        return TaskQueue.startedNote(items)
-    }
-
-    private fun stopQueue(why: String) {
-        val q = taskQueue ?: return
-        if (q.stopped) return
-        q.stop()
-        log("कतार तुरंत रोकी: $why")
-        queueAnswer?.complete("")
-        try { if (agent.isBusy) agent.stop() } catch (_: Exception) {}
-        try { if (com.dk.assistant.agent.android.SocialAgent.busy()) com.dk.assistant.agent.android.SocialAgent.control(JSONObject().put("command", "cancel")) } catch (_: Exception) {}
-    }
-
-    /** अगले काम से पहले फ़ोन ठीक हालत में: अगला काम स्क्रीन पर चलेगा (AI एजेंट) या पिछला अटका = होम */
-    private suspend fun queuePrepare(prev: TaskQueue.Item, next: TaskQueue.Item, prevOk: Boolean) {
-        val direct = next.kind == TaskQueue.Kind.WHATSAPP_SEND || LocalRouter.deleteMedia(next.text) != null ||
-            LiveFast.pick(next.text, Prefs.wakeWords(svc), svc.currentPackage()) != null
-        if (!prevOk || !direct) {
-            try { svc.perform(JSONObject().put("type", "home")) } catch (e: CancellationException) { throw e } catch (_: Exception) {}
-            log("कतार: \"${prev.text.take(20)}\" के बाद होम (${if (!prevOk) "पिछला अटका" else "अगला स्क्रीन पर"})")
-            delay(800)
-        } else delay(350)
-    }
-
-    /** कतार का एक काम - पूरा होने तक रुको (Gemini को 7 सेकंड वाला जवाब नहीं, यह पीछे चलता है) */
-    private suspend fun runQueued(item: TaskQueue.Item): String {
-        if (item.kind == TaskQueue.Kind.WHATSAPP_SEND) return queueWhatsApp(item)
-        // कतार में WhatsApp मैसेज phone_task वाले redirect में न फँसे - सीधे भेजो
-        if (com.dk.assistant.agent.social.WaRoute.isWhatsAppSend(item.text)) {
-            val (c, m) = TaskQueue.parseWa(item.text)
-            if (c.isNotBlank() && m.isNotBlank()) return queueWhatsApp(item.copy(kind = TaskQueue.Kind.WHATSAPP_SEND, contact = c, message = m))
-            return "NEEDS USER CHOICE (nothing was done yet): किसे और क्या मैसेज भेजूँ, सर?. Ask the user"
-        }
-        return phoneTaskOne(item.text, queued = true)
-    }
-
-    private suspend fun queueWhatsApp(item: TaskQueue.Item): String {
-        val sa = com.dk.assistant.agent.android.SocialAgent
-        val args = JSONObject().put("action", "send_message").put("contact", item.contact).put("message", item.message)
-        val r = try { sa.start(svc, args, com.dk.assistant.agent.social.Platform.WHATSAPP) } catch (e: CancellationException) { throw e } catch (e: Exception) { return "FAILED: ${e.message}" }
-        val o = try { JSONObject(r) } catch (_: Exception) { null }
-        if (o == null || o.optString("status") == "error") {
-            val code = o?.optString("error").orEmpty(); val msg = o?.optString("message").orEmpty().ifBlank { r.take(120) }
-            log("कतार WhatsApp: $code $msg")
-            return if (code.contains("contact") || code.contains("ambiguous") || code.contains("not_found") || code.contains("many"))
-                "NEEDS USER CHOICE (nothing was done yet): $msg. Ask the user" else "FAILED: $msg"
-        }
-        val id = o.optString("task_id")
-        // भेजने से पहले "हाँ" वाला सवाल SocialAgent के SYSTEM NOTE से Gemini पूछता है - तब तक रुको
-        val rep = withTimeoutOrNull(150_000) {
-            while (true) {
-                val l = sa.lastReport
-                if (l != null && (id.isBlank() || l.taskId == id) && l.status.finished) return@withTimeoutOrNull l
-                if (taskQueue?.stopped == true) return@withTimeoutOrNull null
-                delay(400)
-            }
-            @Suppress("UNREACHABLE_CODE") null
-        }
-        return when {
-            rep == null -> "FAILED: timeout"
-            rep.status == com.dk.assistant.agent.social.TaskStatus.COMPLETED || rep.status == com.dk.assistant.agent.social.TaskStatus.SUBMITTED_UNVERIFIED -> "DONE: ${rep.message}"
-            rep.status == com.dk.assistant.agent.social.TaskStatus.CANCELLED -> "FAILED: cancel - ${rep.message}"
-            else -> "FAILED: ${rep.message}"
-        }
-    }
-
-    /** कतार का एक छोटा सवाल - Gemini पूछे, जवाब फ़ोन ख़ुद ले (अगली बात या phone_task) */
-    private suspend fun queueAsk(question: String): String? {
-        val since = System.currentTimeMillis()
-        val d = CompletableDeferred<String>()
-        queueAnswer = d
-        visionNote(TaskQueue.askNote(question), evidence = false)
-        log("कतार सवाल: $question")
-        val ans = withTimeoutOrNull(40_000) {
-            while (true) {
-                if (d.isCompleted) return@withTimeoutOrNull d.await()
-                val at = DKState.lastUserAt
-                val u = DKState.lastUser
-                // पूरी बात ("…" वाली अधूरी नहीं), सवाल पूछे जाने के बाद
-                if (at > since + 1500 && u.isNotBlank() && !u.endsWith("…") && System.currentTimeMillis() - at > 600) return@withTimeoutOrNull u
-                delay(200)
-            }
-            @Suppress("UNREACHABLE_CODE") ""
-        }
-        queueAnswer = null
-        return ans?.trim()?.takeIf { it.isNotBlank() && !TaskQueue.isStop(it) }
-    }
-
-    private suspend fun phoneTaskOne(req: String, queued: Boolean = false): String {
-        // v3.59: WhatsApp मैसेज = whatsapp_task (पक्का भेजना + जाँच), phone_task नहीं
-        if (com.dk.assistant.agent.social.WaRoute.isWhatsAppSend(req)) {
-            log("रूटर: WhatsApp मैसेज -> whatsapp_task")
-            return com.dk.assistant.agent.social.WaRoute.redirect(req)
-        }
-        // v3.67: "आखिरी फोटो/स्क्रीनशॉट डिलीट करो" = सीधे फ़ोन पर; Android खुद Allow पूछता है, फिर जाँच कि सच में ट्रैश में गई
-        LocalRouter.deleteMedia(req)?.let { q ->
-            DKState.set(Mode.WORKING)
-            val t0 = System.currentTimeMillis()
-            val r = try { svc.perform(q.action) } catch (e: CancellationException) { throw e } catch (e: Exception) { "ERROR ${e.message}" }
-            log("phone_task मिटाना (बिना AI एजेंट) ${System.currentTimeMillis() - t0} ms: ${r.substringBefore(':')}")
-            return LiveFast.quickResult(q, r, already = false)
-        }
-        val wake = Prefs.wakeWords(svc)
-        val fg = svc.currentPackage()
-        val tc = System.nanoTime()
-        val q = LiveFast.pick(req, wake, fg)
-        log("रूटर: phone_task \"${req.take(30)}\" -> ${q?.action?.optString("type") ?: "फ़ोन पर पूरा नहीं"} (${(System.nanoTime() - tc) / 1_000_000} ms)")
-        var same = fastMemo.same(q, System.currentTimeMillis())
-        if (same != LiveFast.Memo.NOT_SAME) {
-            val until = System.currentTimeMillis() + 4000
-            while (same == null && System.currentTimeMillis() < until) { delay(80); same = fastMemo.same(q, System.currentTimeMillis()) }
-            log("phone_task = अभी-अभी किया काम, दोबारा नहीं: $req")
-            val r = same
-            if (r != null && r != LiveFast.Memo.NOT_SAME) {
-                if (LiveFast.ok(q!!.action.optString("type"), r) || LocalRouter.final(r)) return LiveFast.quickResult(q, r, already = true)
-                // तुरंत वाला नहीं चला (ऐप नहीं मिला / वीडियो सीधे नहीं चला) -> AgentRunner संभाले
-            } else if (r == null) return "STARTED just now and still opening. Tell the user in 2-5 words."
-        } else if (q != null && fastMemo.begin(q, System.currentTimeMillis())) {
-            DKState.set(Mode.WORKING)
-            val r = try { svc.perform(q.action) } catch (e: CancellationException) { throw e } catch (e: Exception) { "ERROR ${e.message}" }
-            fastMemo.finish(q, r)
-            log("phone_task सीधे (बिना AI): ${q.action} = ${r.take(60)}")
-            // v3.33: ऐप है ही नहीं / कॉन्टैक्ट नहीं / user से पूछना है = AI से कुछ नहीं सुधरेगा -> सीधे सच
-            if (LiveFast.ok(q.action.optString("type"), r) || LocalRouter.final(r)) return LiveFast.quickResult(q, r, already = false)
-        }
-        DKState.set(Mode.WORKING)
-        // v3.33: आधा काम फ़ोन पर ("Flipkart खोलो, X सर्च करो") + बाकी ("पहला प्रोडक्ट कार्ट में डालो") AgentRunner को
-        var note = ""
-        if (q == null) {
-            val sp = LocalRouter.split(req, wake, fg)
-            val pre = sp.local
-            if (pre != null && sp.rest != null && fastMemo.begin(pre, System.currentTimeMillis())) {
-                val r = try { svc.perform(pre.action) } catch (e: CancellationException) { throw e } catch (e: Exception) { "ERROR ${e.message}" }
-                fastMemo.finish(pre, r)
-                log("phone_task: पहला हिस्सा फ़ोन पर (${pre.action.optString("type")}) = ${r.take(60)}, बाकी AgentRunner")
-                if (!LiveFast.ok(pre.action.optString("type"), r) && LocalRouter.final(r)) return LiveFast.quickResult(pre, r, already = false)
-                note = LocalRouter.DONE_NOTE + " " + LiveFast.describe(pre.action) + " -> " + r.take(160) +
-                    "\nContinue the rest of the user's goal from the CURRENT screen."
-            }
-        }
-        val before = DKState.lastReply
-        val failBefore = DKState.failedAt
-        val job = agent.run(req, speak = false, note = note)
-        // v3.41: 20s -> 7s. Gemini tool ke jawab tak CHUP rehta hai - 20s chuppi = "sun hi nahi raha". Ab 7s me
-        // "kar raha hoon" bolta hai; kaam peeche chalta rehta hai aur poora hote hi lateNote se batata hai.
-        // v3.87: कतार में = पूरा होने तक (90s) रुको, फिर अगला काम; बाद वाला संदेश नहीं
-        val finished = withTimeoutOrNull(if (queued) 90_000 else AGENT_WAIT_MS) { job.join() } != null
-        if (queued && !finished) job.cancel()
-        val reply = DKState.lastReply.takeIf { it != before && it.isNotBlank() }
-        if (!finished && !queued) {
-            log("phone_task ${AGENT_WAIT_MS / 1000}s में पूरा नहीं - Gemini को सच बताया (चल रहा है), पूरा होने पर बताऊँगा")
-            svc.scope.launch {
-                val done = withTimeoutOrNull(120_000) { job.join() } != null
-                if (!done) job.cancel()
-                val rep = DKState.lastReply.takeIf { it != before && it.isNotBlank() }
-                    ?: if (!done) "It could not be finished in time and was stopped." else null
-                // DK बोल रहा हो तो बीच में नहीं - चुप होने तक (10s तक) रुको
-                if (!waitQuiet(45_000)) { log("Gemini चुप नहीं हुआ (45s) - बीच बातचीत text नहीं भेजा"); return@launch }
-                if (stopped || !ready) return@launch
-                val bad = !done || DKState.failedAt != failBefore
-                lastEvidenceAt = System.currentTimeMillis()
-                try { ws?.tx(JSONObject().put("realtimeInput", JSONObject().put("text", LiveFast.lateNote(req, rep, bad))).toString()) } catch (_: Exception) {}
-                log("phone_task बाद में पूरा (${if (done) "हुआ" else "रोका"}) - Gemini को बताया")
-            }
-        }
-        return LiveFast.agentResult(finished, reply, failed = finished && DKState.failedAt != failBefore)
-    }
+    @Volatile internal var taskQueue: TaskRunQueue? = null
+    @Volatile internal var queueAnswer: CompletableDeferred<String>? = null
 
     // ================================================================ mic -> stream
     private val pending = ArrayDeque<ByteArray>()       // judne/dobara judne ke beech ki baat (1 sec tak)
 
     /** sendLock ke andar hi bulao (setupComplete / garam connection) */
-    private fun flushPending() = synchronized(sendLock) {
+    internal fun flushPending() = synchronized(sendLock) {
         val list = synchronized(pending) { pending.toList().also { pending.clear() } }
         list.forEach { sendAudio(it) }
         if (list.isNotEmpty()) log("जुड़ते समय की ${list.size * CHUNK_MS} ms आवाज़ भेजी")
@@ -3038,7 +1704,7 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
      * silent=true: khaamoshi (shoonya) ka tukda - SilenceStreamGate tay karta hai bhejna hai ya nahi.
      * sendLock: teen thread yahan bhejte hain - ek hi kram me jaye.
      */
-    private fun sendAudio(pcm: ByteArray, silent: Boolean = false): Unit = synchronized(sendLock) {
+    internal fun sendAudio(pcm: ByteArray, silent: Boolean = false): Unit = synchronized(sendLock) {
         if ((micMuted || DKState.micMuted) && !silent) { sendAudio(ByteArray(pcm.size), true); return@synchronized }
         var end = false
         if (silent) {
@@ -3064,7 +1730,7 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
     }
 
     /** Caption socket: asli awaaz hamesha; khaamoshi 1s tak, phir audioStreamEnd aur band */
-    private fun capSend(pcm: ByteArray, silent: Boolean = false) {
+    internal fun capSend(pcm: ByteArray, silent: Boolean = false) {
         val c = caption ?: return
         if (DKState.micMuted && !silent) return     // v3.59: म्यूट में लिखने वाले को भी आवाज़ नहीं
         if (!silent) { capGate.onReal(); c.send(pcm); return }
@@ -3075,33 +1741,8 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
         }
     }
 
-    @SuppressLint("MissingPermission")
-    private fun openMic(): AudioRecord? {
-        val min = AudioRecord.getMinBufferSize(IN_RATE, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT)
-        if (min <= 0) { log("यह फ़ोन 16kHz PCM16 mono नहीं देता (min=$min)"); return null }
-        // VOICE_COMMUNICATION = phone ka echo-cancel (DK ki apni awaaz mic me kam), na chale to baaki.
-        // (#158 ने DEFAULT पहले रखा था "error 13" के लिए - पर 13 SpeechRecognizer की भाषा-गलती है, AudioRecord की नहीं; MicLang.kt)
-        for (src in intArrayOf(MediaRecorder.AudioSource.VOICE_COMMUNICATION, MediaRecorder.AudioSource.VOICE_RECOGNITION, MediaRecorder.AudioSource.MIC, MediaRecorder.AudioSource.DEFAULT)) {
-            try {
-                val r = AudioRecord(src, IN_RATE, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT, maxOf(min * 2, CHUNK_SAMPLES * 2 * 6))
-                if (r.state != AudioRecord.STATE_INITIALIZED) { r.release(); continue }
-                // Bluetooth जुड़ा = headset का माइक (कॉल वाला तरीका)
-                if (btOn) BtAudio.btInput?.let { d -> try { r.setPreferredDevice(d) } catch (_: Exception) {} }
-                val sid = r.audioSessionId
-                val aec = try { AcousticEchoCanceler.isAvailable() && AcousticEchoCanceler.create(sid)?.apply { enabled = true } != null } catch (_: Exception) { false }
-                val ns = try { NoiseSuppressor.isAvailable() && NoiseSuppressor.create(sid)?.apply { enabled = true } != null } catch (_: Exception) { false }
-                val agc = try { AutomaticGainControl.isAvailable() && AutomaticGainControl.create(sid)?.apply { enabled = true } != null } catch (_: Exception) { false }
-                aecOn = aec
-                log("माइक: ${if (btOn) "Bluetooth headset" else "फ़ोन"} • ${r.sampleRate} Hz, mono, PCM16, source=$src, AEC=$aec NS=$ns AGC=$agc, buffer=${min}B" +
-                    " • शोर-गेट चालू: Gemini को सिर्फ़ यूज़र की आवाज़; DK बोलते समय सिर्फ़ पक्के शब्दों पर रुकेगा")
-                return r
-            } catch (e: Exception) { log("माइक source $src: ${e.message}") }
-        }
-        return null
-    }
-
     // ================================================================ v3.66: सिर्फ़ मालिक की आवाज़
-    private fun refreshOwnerCfg(now: Long) {
+    internal fun refreshOwnerCfg(now: Long) {
         ownerCfgAt = now
         ownerOn = com.dk.assistant.voice.OwnerVoice.active(svc)
         ownerTh = com.dk.assistant.voice.VoicePrint.threshold(Prefs.ownerVoiceStrict(svc))
@@ -3118,7 +1759,7 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
      * v4.7: असली (शब्दों वाली) बात खत्म - उसका स्तर सीखो (दूर की आवाज़ की रोक इसी से). Bluetooth / बिना शब्द / बहुत छोटी = नहीं.
      * दूर की आवाज़ शुरू ही नहीं होती तो सीखी भी नहीं जाती - सीखा स्तर आपकी पास वाली आवाज़ का ही रहता है.
      */
-    private fun learnNear() {
+    internal fun learnNear() {
         val lv = NearVoice.utterLevel(nearRms, turnDet.noise)
         nearRms.clear()
         if (btOn || lv <= 0 || turnDet.lastSpeechMs < 500 || !BargeGate.realWords(caption?.text().orEmpty())) return
@@ -3130,7 +1771,7 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
     private var nearLearned = 0
 
     /** पहली ~1 सेकंड आवाज़ का मिलान अलग thread पर - mic और Gemini को भेजना रुकता नहीं */
-    private fun checkOwnerAsync() {
+    internal fun checkOwnerAsync() {
         val gen = ownerGen
         val audio = owner.takeAudio()
         val ms = audio.size * 1000 / (IN_RATE * 2)
@@ -3144,7 +1785,7 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
     }
 
     /** मिलान का नतीजा आया हो तो लागू (mic thread पर) */
-    private fun applyOwnerResult(now: Long) {
+    internal fun applyOwnerResult(now: Long) {
         val r = ownerResult ?: return
         ownerResult = null
         if (r.gen != ownerGen || !owner.active) return
@@ -3183,7 +1824,7 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
     }
 
     /** बोलना खत्म: फ़ैसला बाकी हो तो अभी (इसी thread पर, ~15-60 ms - जवाब आने से पहले) */
-    private fun ownerEnd(now: Long) {
+    internal fun ownerEnd(now: Long) {
         applyOwnerResult(now)
         if (owner.verdict == com.dk.assistant.voice.OwnerGate.Verdict.PENDING) {
             val before = owner.verdict
@@ -3205,23 +1846,11 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
         if (isOwner) onLocalEndOfSpeech(now)
     }
 
-    /** किसी और की आवाज़ पर Gemini ने फ़ोन का काम माँगा - कुछ मत करो, सिर्फ़ जवाब दो कि अनदेखा करे */
-    private fun ignoreTools(calls: JSONArray) {
-        val arr = JSONArray()
-        for (i in 0 until calls.length()) {
-            val fc = calls.optJSONObject(i) ?: continue
-            arr.put(JSONObject().put("id", fc.optString("id")).put("name", fc.optString("name"))
-                .put("response", JSONObject().put("result", "IGNORED: that voice was not the owner's. Do nothing, say nothing, wait for the owner.")))
-        }
-        log("किसी और की आवाज़ पर काम माँगा (${calls.length()}) - कुछ नहीं किया")
-        try { ws?.tx(JSONObject().put("toolResponse", JSONObject().put("functionResponses", arr)).toString()) } catch (_: Exception) {}
-    }
-
     /**
      * Phone ne pakda: user ~500ms se chup (hybrid VAD). Turant audioStreamEnd -> server apna chup-intezaar chhod kar
      * jawab banana shuru karta hai. Na chale to server ka apna VAD (500ms) fallback hai.
      */
-    private fun onLocalEndOfSpeech(now: Long) {
+    internal fun onLocalEndOfSpeech(now: Long) {
         val w = ws
         trace.speechEndAt = turnDet.lastVoiceAt.takeIf { it > 0 } ?: now
         trace.endpointAt = now
@@ -3334,9 +1963,9 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
         actHold = true; actHoldAt = now
     }
 
-    private fun heldActText(): String = synchronized(turnLock) { if (replyText.length > actTextFrom) replyText.substring(actTextFrom) else "" }
+    internal fun heldActText(): String = synchronized(turnLock) { if (replyText.length > actTextFrom) replyText.substring(actTextFrom) else "" }
 
-    private fun holdAct(pcm: ByteArray) {
+    internal fun holdAct(pcm: ByteArray) {
         synchronized(actHeld) { actHeld.add(pcm) }
         actHeldBytes += pcm.size
         // इतनी देर कोई दावा नहीं = आम बात (लंबा जवाब/सवाल) - रोकना बंद, बजाओ
@@ -3345,7 +1974,7 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
         else if (TaskFirst.release(actCommand && !actAfterTool, System.currentTimeMillis() - actHoldAt, heldActText())) releaseAct("आम बात / ज़रूरी सवाल")
     }
 
-    private fun releaseAct(why: String) {
+    internal fun releaseAct(why: String) {
         val l = synchronized(actHeld) { actHeld.toList().also { actHeld.clear() } }
         actHold = false; actHeldBytes = 0
         if (connSplit) { actReleased++; pumpSplit(); log("काम की बात: रुका text बोलने भेजा ($why)"); return }
@@ -3355,7 +1984,7 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
         log("काम की बात: रोकी आवाज़ बजाई ($why, ${l.sumOf { it.size } * 1000 / (OUT_RATE * 2)} ms)")
     }
 
-    private fun dropAct(why: String): String {
+    internal fun dropAct(why: String): String {
         val t = heldActText()
         val n = synchronized(actHeld) { actHeld.sumOf { it.size }.also { actHeld.clear() } }
         actHold = false; actHeldBytes = 0
@@ -3365,10 +1994,10 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
         return t
     }
 
-    private fun clearAct() { synchronized(actHeld) { actHeld.clear() }; actHold = false; actHeldBytes = 0; actPending = false; actAfterTool = false; actCommand = false }
+    internal fun clearAct() { synchronized(actHeld) { actHeld.clear() }; actHold = false; actHeldBytes = 0; actPending = false; actAfterTool = false; actCommand = false }
 
     /** बारी खत्म और आवाज़ अब भी रुकी है: tool नहीं आया */
-    private fun endActHold() {
+    internal fun endActHold() {
         val fj = fastJob
         if (fj?.isActive == true) {
             // फ़ोन वही काम अभी कर रहा है (Gemini से पहले वाला रास्ता) - उसका नतीजा आने तक रुको, फिर तय करो
@@ -3439,14 +2068,14 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
         }
     }
 
-    @Volatile private var loudMs = 0L
-    @Volatile private var rescueWaits = 0
+    @Volatile internal var loudMs = 0L
+    @Volatile internal var rescueWaits = 0
 
     /**
      * PAKKA: user sach me bol raha hai (caption me asli shabd / caption band ho to lagatar awaaz).
      * Ab DK chup + purane tukde phenko + user ki awaaz (shak ke samay se) Gemini ko -> server generation rokta hai.
      */
-    private fun confirmBarge(why: String) {
+    internal fun confirmBarge(why: String) {
         realBarges++
         log("यूज़र सच में बोल रहा ($why) - DK चुप, सुन रहा हूँ")
         // sendLock: shak ke samay ki (purani) awaaz pehle, mic ka naya tukda uske baad (ulti-pulti awaaz = server na samjhe)
@@ -3467,7 +2096,7 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
      * v3.5+: HOLD ख़त्म - यूज़र ने अपना अगला सवाल पूरा बोल दिया. गूँज/शोर नहीं तो कतार में; जवाब पूरा होते ही [flushAsks].
      * Gemini को अभी कुछ नहीं गया था, इसलिए DK का चलता जवाब पूरा बजता है.
      */
-    private fun finishHold(now: Long) {
+    internal fun finishHold(now: Long) {
         val t = (caption?.text().orEmpty().ifBlank { holdCap }).trim().trimEnd('…').trim()
         caption?.discard()
         synchronized(bargeBuf) { bargeBuf.clear() }
@@ -3488,7 +2117,7 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
     }
 
     /** जवाब पूरा हुआ - बीच में पूछा सवाल अब Gemini को (यूज़र की नई बारी की तरह, "आप:" लाइन भी) */
-    private fun flushAsks(now: Long) {
+    internal fun flushAsks(now: Long) {
         val raw = askQueue.drain() ?: return
         if (!textRescue) { log("बीच में पकड़ी बात (caption) text में नहीं भेजी (बचाव-text बंद): ${raw.take(40)}"); return }
         // v4.1: "सिर्फ़ DK बोलने पर सुनो" - बीच में पूछी बात में DK से शुरू होने वाले वाक्य ही (DK हटाकर)
@@ -3509,399 +2138,13 @@ class GeminiLive(private val svc: DKAccessibilityService, private val agent: Age
     }
 
     /** Dheere bolne par bhi saaf awaaz Gemini tak (v3.7) */
-    private val boost = MicBoost(maxGain = LiveHear.BOOST_MAX, noiseCap = LiveHear.BOOST_NOISE_CAP)   // v4.2: और धीमी आवाज़ भी
-
-    private suspend fun micLoop() = coroutineScope {
-        var r = openMic() ?: throw Fatal("माइक नहीं खुला (कोई दूसरा ऐप माइक इस्तेमाल कर रहा है?)", recoverable = true)
-        try {
-            r.startRecording()
-            if (r.recordingState != AudioRecord.RECORDSTATE_RECORDING) throw Fatal("माइक रिकॉर्डिंग शुरू नहीं हुई", recoverable = true)
-            val buf = ShortArray(CHUNK_SAMPLES)
-            val bytes = ByteArray(CHUNK_SAMPLES * 2)
-            val zeros = ByteArray(CHUNK_SAMPLES * 2)
-            // DK bolte samay (gate mode) ki pichhli 320ms asli awaaz - user ki pakdi awaaz ka shuru ka hissa na kate
-            val preroll = ArrayDeque<ByteArray>()
-            var last = 0L; var zeroRun = 0; var errRun = 0
-            loudMs = 0L
-            while (isActive && !stopped) {
-                // इनपुट बार में बोलकर लिखना: माइक छोड़ो (Google पहचान को आवाज़ मिले), खत्म होते ही वापस
-                if (DKMic.dictating) {
-                    try { r.stop() } catch (_: Exception) {}
-                    try { r.release() } catch (_: Exception) {}
-                    log("माइक छोड़ा: आप इनपुट बार में बोलकर लिख रहे हैं")
-                    while (isActive && !stopped && DKMic.dictating) delay(200)
-                    r = openMic() ?: throw Fatal("माइक दोबारा नहीं खुला (बोलकर लिखने के बाद)", recoverable = true)
-                    r.startRecording(); last = 0L; errRun = 0
-                    log("माइक वापस: बोलकर लिखना खत्म")
-                    continue
-                }
-                // v3.59: म्यूट बटन = माइक सच में बंद (Android का हरा माइक-निशान भी हटे)।
-                // जड़: पहले माइक खुला रहता था और सिर्फ़ Gemini को खाली आवाज़ जाती थी - पर caption वाले को असली
-                // आवाज़ जाती थी, बीच में टोकना (barge) भी चलता था, और फ़ोन "माइक चालू" ही दिखाता था।
-                if (DKState.micMuted) {
-                    try { r.stop() } catch (_: Exception) {}
-                    try { r.release() } catch (_: Exception) {}
-                    log("माइक म्यूट: माइक छोड़ दिया - अनम्यूट तक कुछ नहीं सुनूँगा")
-                    synchronized(sendLock) { try { ws?.tx("{\"realtimeInput\":{\"audioStreamEnd\":true}}") } catch (_: Exception) {} }
-                    try { caption?.endOfSpeech() } catch (_: Exception) {}
-                    synchronized(bargeBuf) { bargeBuf.clear() }
-                    preroll.clear(); turnDet.reset(); DKState.level = 0f
-                    while (isActive && !stopped && DKState.micMuted) delay(150)
-                    if (!isActive || stopped) break
-                    r = openMic() ?: throw Fatal("माइक दोबारा नहीं खुला (अनम्यूट के बाद)", recoverable = true)
-                    r.startRecording(); last = 0L; errRun = 0
-                    quietSince = System.currentTimeMillis()
-                    log("माइक अनम्यूट: फिर सुन रहा हूँ")
-                    continue
-                }
-                // v3.39: Bluetooth जुड़ा/हटा -> माइक नए रास्ते पर दोबारा खोलो
-                if (routeChanged) {
-                    routeChanged = false
-                    try { r.stop() } catch (_: Exception) {}; try { r.release() } catch (_: Exception) {}
-                    r = openMic() ?: throw Fatal("माइक दोबारा नहीं खुला (Bluetooth बदला)", recoverable = true)
-                    r.startRecording()
-                    log("माइक नए रास्ते पर: " + if (btOn) "Bluetooth headset" else "फ़ोन का माइक")
-                }
-                // poora 40ms tukda padho (beech ka khaali hissa = gap). Koi jama nahi: har 40ms turant bhejo
-                var got = 0
-                while (got < CHUNK_SAMPLES && isActive) {
-                    val n = r.read(buf, got, CHUNK_SAMPLES - got)
-                    if (n < 0) { readErr++; errRun++; break }
-                    got += n
-                }
-                if (got < CHUNK_SAMPLES) {
-                    log("माइक पढ़ने में गलती ($errRun)")
-                    if (errRun >= 5) {           // mic atak gaya -> dobara kholo
-                        try { r.stop() } catch (_: Exception) {}; r.release()
-                        delay(300)
-                        r = openMic() ?: throw Fatal("माइक दोबारा नहीं खुला", recoverable = true)
-                        r.startRecording(); errRun = 0
-                    }
-                    continue
-                }
-                errRun = 0
-                val now = System.currentTimeMillis()
-                // नवंबर 2026 (DKI-4144DC "मिक गैप: 10" - वजह पक्की नहीं थी): गैप के समय हालत भी लिखो (जुड़ा था? क्या चल रहा था?)
-                if (last > 0 && now - last > CHUNK_MS * 3) {
-                    gaps++
-                    if (gaps <= 5 || gaps % 20 == 1L) log("माइक में ${now - last} ms का गैप (#$gaps) • " +
-                        LiveStay.gapContext(ready, upSince, now, DKState.mode.name, isPlaying()))
-                }
-                last = now
-                var sum = 0.0
-                for (i in 0 until CHUNK_SAMPLES) { val s = buf[i].toInt(); sum += (s * s).toDouble() }
-                val rms = sqrt(sum / CHUNK_SAMPLES)
-                val playing = isPlaying()
-                // dheemi awaaz tez (v3.7): DK chup ho tab hi - DK ki apni goonj ko tez nahi karna
-                if (!playing) boost.apply(buf, CHUNK_SAMPLES)
-                for (i in 0 until CHUNK_SAMPLES) {
-                    val s = buf[i].toInt()
-                    bytes[i * 2] = (s and 0xff).toByte(); bytes[i * 2 + 1] = (s shr 8 and 0xff).toByte()   // little-endian
-                }
-                if (sum == 0.0) { if (++zeroRun == 75) log("माइक से 3 सेकंड से बिल्कुल आवाज़ नहीं (कोई दूसरा ऐप माइक ले रहा है?)") } else zeroRun = 0
-                val chunk = bytes.copyOf()
-                if (playing) lastPlayingAt = now
-                // v3.5+: HOLD (यूज़र का अगला सवाल सुन रहे) - DK का जवाब ख़त्म हो जाए तब भी सवाल पूरा होने तक इसी रास्ते
-                if (playing || bargeGate.state == BargeGate.State.HOLD) {
-                    // ---- DK bol raha hai: mic band NAHI, har 40ms suno. Par Gemini ko sirf PAKKE user shabd.
-                    quietSince = now
-                    turnDet.reset()
-                    if (guardHeld) { guardHeld = false; guardEndAt = 0L; guardBuf.clear() }   // v3.53: DK बोलने लगा - रोकी आवाज़ छोड़ो
-                    guardPass = false
-                    if (bargeDet.ambient == 0.0) bargeDet.ambient = turnDet.noise
-                    when (bargeGate.state) {
-                        BargeGate.State.IDLE -> {
-                            if (bargeDet.feed(rms, now, outLevel(now))) {
-                                // SHAK: tez awaaz. DK ki awaaz halki (rokna nahi), caption model ko suno - shabd hain?
-                                bargeGate.suspect(now); barging = true; loudMs = 0L
-                                // मालिक (नवंबर 2026): DK की आवाज़ अपने-आप धीमी-तेज़ नहीं - शक के समय भी पूरी (रोकना पक्के शब्दों पर ही)
-                                if (VolumeRule.AUTO_CHANGE) track?.let { try { it.setVolume(SpeakerBoost.SUSPECT_VOLUME) } catch (_: Exception) {} }
-                                log("तेज़ आवाज़ (rms=${rms.toInt()}, गूँज=${bargeDet.echoLevel().toInt()}, शोर=${bargeDet.ambient.toInt()}) - यूज़र है? शब्द सुन रहा हूँ (DK की आवाज़ नहीं बदली)")
-                                synchronized(bargeBuf) { bargeBuf.clear(); bargeBuf.addAll(preroll); bargeBuf.addLast(chunk) }
-                                preroll.forEach { capSend(it) }; preroll.clear()
-                                capSend(chunk)
-                            } else {
-                                preroll.addLast(chunk); while (preroll.size > PREROLL_CHUNKS) preroll.removeFirst()
-                                capSend(zeros, silent = true)
-                            }
-                            sendAudio(zeros, silent = true); gatedChunks++
-                        }
-                        BargeGate.State.TENTATIVE -> {
-                            loudMs = if (rms > maxOf(bargeDet.ambient * 2.5, 800.0)) loudMs + CHUNK_MS else 0L
-                            synchronized(bargeBuf) { bargeBuf.addLast(chunk); while (bargeBuf.size > 50) bargeBuf.removeFirst() }
-                            capSend(chunk)
-                            sendAudio(zeros, silent = true); gatedChunks++
-                            if (bargeGate.expired(now, captionOn(), loudMs)) {
-                                // shabd nahi aaye = shor/TV/log. DK ka jawab poori awaaz me chalta rahe
-                                falseAlarms++
-                                log("शब्द नहीं मिले - पीछे का शोर था, जवाब जारी (#$falseAlarms)")
-                                track?.let { try { it.setVolume(1f) } catch (_: Exception) {} }
-                                bargeDet.rearm(rms); barging = false
-                                synchronized(bargeBuf) { bargeBuf.clear() }
-                            } else if (bargeGate.state == BargeGate.State.CONFIRMED) confirmBarge("लगातार आवाज़ (caption बंद)")
-                        }
-                        BargeGate.State.CONFIRMED -> { sendAudio(chunk); capSend(chunk) }
-                        BargeGate.State.HOLD -> {
-                            // सिर्फ़ caption सुने (Gemini को खामोशी - जवाब चलता रहे). "रुको" सुनते ही onCaption रोकेगा
-                            synchronized(bargeBuf) { bargeBuf.addLast(chunk); while (bargeBuf.size > 50) bargeBuf.removeFirst() }
-                            capSend(chunk)
-                            sendAudio(zeros, silent = true); gatedChunks++
-                            if (rms > maxOf(bargeDet.ambient * 2.5, bargeDet.echoLevel() * 1.5, 800.0)) holdLoudAt = now
-                            val capQuiet = now - holdCapAt; val loudQuiet = now - holdLoudAt
-                            val done = (holdFinal && capQuiet >= HOLD_FINAL_MS && loudQuiet >= HOLD_FINAL_MS) ||
-                                (capQuiet >= HOLD_END_MS && loudQuiet >= HOLD_QUIET_MS) || capQuiet >= HOLD_STALE_MS ||
-                                now - bargeGate.since >= HOLD_MAX_MS
-                            if (done) finishHold(now)
-                        }
-                    }
-                } else {
-                    // ---- DK chup: phone par hi "bolna shuru / khatam" + SHOR-GATE:
-                    // Gemini/caption ko sirf user ki awaaz (320ms pehle se); baaki samay khaamoshi.
-                    // (Peeche ka lagatar shor bhejne par server "user abhi bol raha" maan kar jawab rokta tha.)
-                    if (barging) bargeUntil = now + 1500
-                    barging = false; bargeDet.reset(); bargeDet.ambient = 0.0
-                    if (bargeGate.state != BargeGate.State.IDLE) { bargeGate.reset(); track?.let { try { it.setVolume(1f) } catch (_: Exception) {} } }
-                    // v3.5+: जवाब पूरा, DK चुप -> बीच में पूछा सवाल अब (उसका भी जवाब)
-                    if (!askQueue.isEmpty()) {
-                        if (now - askAt > ASK_KEEP_MS) { askQueue.clear(); log("बीच में पूछा सवाल बहुत पुराना हो गया - छोड़ा") }
-                        else if (ready && ws != null && !turnActive && !muteTurn && AskQueue.readyToSend(isPlaying(), generating,
-                                toolJobs.isNotEmpty(), turnDet.inSpeech, false, now - lastPlayingAt)) flushAsks(now)
-                    }
-                    if (DKState.mode == Mode.LISTENING) DKState.level = (rms / 3500.0).toFloat().coerceIn(0f, 1f)
-                    if (now - ownerCfgAt > 3_000) refreshOwnerCfg(now)
-                    var ev = turnDet.feed(rms, now)
-                    // v3.66 (तेज़ी): वाक्य साफ़ पूरा + 0.36s चुप + caption 0.2s से नहीं बदला = अभी "बात खत्म" (0.55s इंतज़ार नहीं)
-                    if (ev == TurnDetector.Event.NONE && turnDet.inSpeech && turnDet.silentMs > 0 && !guardHeld && captionOn()) {
-                        val cap = caption?.text().orEmpty()
-                        if (cap != capSeen) { capSeen = cap; capSeenAt = now }
-                        if (turnDet.silentMs >= TurnEnd.EARLY_END_MS && turnDet.speechMsNow < TurnEnd.LONG_SPEECH_MS &&
-                            now - capSeenAt >= 200 && TurnEnd.complete(cap) && turnDet.forceEnd()) {
-                            ev = TurnDetector.Event.SPEECH_END; earlyEnds++
-                            if (earlyEnds <= 3 || earlyEnds % 20 == 0) log("वाक्य पूरा लगा - ${TurnEnd.EARLY_END_MS} ms चुप्पी पर ही बात खत्म (#$earlyEnds)")
-                        }
-                    }
-                    if (turnDet.inSpeech || generating || (turnActive && now - eosAt < 8_000)) quietSince = now
-                    // v3.53: फ़ोन पर दूसरे ऐप की आवाज़ (वीडियो/गाना) - हर 300ms देखो (DK की अपनी आवाज़ थमने के बाद ही भरोसा)
-                    if (now - mediaAt > 300) { mediaAt = now; mediaOn = Ducker.musicActive(svc) }
-                    // v4.1: "सिर्फ़ DK बोलने पर सुनो" चालू = हर बात रोको, caption में शुरुआत में DK हो तभी Gemini को
-                    // (घंटी / कॉल के ठीक बाद के कुछ सेकंड में नहीं - तब कॉल की कमांड बिना DK)
-                    if (now - dkOnlyAt > 3_000) { dkOnlyAt = now; dkOnlyNow = Prefs.dkOnly(svc) }
-                    val dkGate = dkOnlyNow && caption?.usable == true && !CallCmd.windowOpen(now)
-                    guardOn = !svc.callRinging() && !callAudioOn && (dkGate || PhoneAudioGuard.active(mediaOn, now - playEnd))
-                    if (guardPass && (ev == TurnDetector.Event.SPEECH_END || !turnDet.inSpeech)) guardPass = false
-                    if (guardHeld || (guardOn && !guardPass && (ev == TurnDetector.Event.SPEECH_START || turnDet.inSpeech))) {
-                        if (!guardHeld) {
-                            // नई आवाज़ आई, पर फ़ोन पर वीडियो चल रहा है: पहले सिर्फ़ लिखने वाले को, Gemini को नहीं
-                            guardHeld = true; guardOk = false; guardEndAt = 0L; guardBuf.clear()
-                            caption?.discard()
-                            if (caption?.usable != true && phoneAudioIgnored == 0)
-                                log("वीडियो/गाना चल रहा है और लिखने वाला (caption) बंद - DK का नाम पहचान नहीं सकता, फ़ोन की आवाज़ अनसुनी रहेगी (बात के लिए वीडियो रोकें)")
-                            preroll.forEach { guardBuf.addLast(it); capSend(it) }; preroll.clear()
-                        }
-                        guardBuf.addLast(chunk); capSend(chunk)
-                        while (guardBuf.size > PhoneAudioGuard.MAX_HOLD_CHUNKS) guardBuf.removeFirst()
-                        if (ev == TurnDetector.Event.SPEECH_END) { guardEndAt = now; caption?.endOfSpeech() }
-                        if (guardOk && dkOnlyNow && ownerOn && !ownerSaysOwner(guardBuf)) {
-                            // v4.1: पहले "सिर्फ़ मेरी आवाज़" - DK बोला पर आवाज़ मालिक की नहीं = अनसुनी
-                            othersIgnored++
-                            log("DK सुना पर आवाज़ मालिक की नहीं - अनसुनी (#$othersIgnored)")
-                            guardHeld = false; guardOk = false; guardEndAt = 0L; guardBuf.clear(); caption?.discard(); DKState.user("")
-                            sendAudio(zeros, silent = true); gatedChunks++
-                            continue
-                        }
-                        if (guardOk) {
-                            // नाम मिला = यूज़र. रुकी आवाज़ Gemini को, फिर सामान्य रास्ता (बात चल रही या खत्म)
-                            guardHeld = false; guardPass = turnDet.inSpeech && guardEndAt == 0L
-                            synchronized(sendLock) { guardBuf.forEach { sendAudio(it) } }; guardBuf.clear()
-                            lastAct = now; trace.reset(); replyWatch.onSpeechStart(); rescueWaits = 0
-                            if (Ducker.musicActive(svc)) Ducker.duck(svc, "Live: वीडियो के बीच DK का नाम")
-                            if (DKState.mode != Mode.WORKING) setMode(Mode.LISTENING)
-                            if (guardEndAt > 0L || !turnDet.inSpeech) { guardEndAt = 0L; onLocalEndOfSpeech(now) }
-                            continue
-                        }
-                        val tooLong = guardBuf.size >= PhoneAudioGuard.MAX_HOLD_CHUNKS && turnDet.inSpeech
-                        if (PhoneAudioGuard.expired(guardEndAt, now) || tooLong || (!guardOn && !turnDet.inSpeech && guardEndAt == 0L)) {
-                            // नाम नहीं आया = फ़ोन से निकली आवाज़ (वीडियो की बात). छोड़ो - न जवाब, न धीमा, न स्क्रीन पर
-                            phoneAudioIgnored++
-                            if (phoneAudioIgnored % 10 == 1) log("फ़ोन से निकली आवाज़ (वीडियो/गाना) - DK का नाम नहीं, अनसुनी (#$phoneAudioIgnored)")
-                            guardHeld = false; guardEndAt = 0L; guardBuf.clear(); caption?.discard()
-                            if (tooLong) caption?.endOfSpeech()
-                        }
-                        sendAudio(zeros, silent = true); gatedChunks++
-                        continue
-                    }
-                    // v3.39: पीछे की आवाज़ - यूज़र चुप, DK चुप, जवाब नहीं बन रहा, 3s शांत = वापस तेज़ (हर रास्ते पर)
-                    if (DuckWatch.shouldRelease(Ducker.active, turnDet.inSpeech, false, generating, quietSince, now) && now - duckFreedAt > 2_000) {
-                        duckFreedAt = now; Ducker.releaseNow()
-                        log("पीछे की आवाज़ वापस (3s से सब शांत)")
-                    }
-                    if (ev == TurnDetector.Event.SPEECH_START) {
-                        // v3.66: नई बात - मालिक की पहचान शुरू. DK सोच/काम कर रहा हो तो पहचान तक आवाज़ रोको
-                        ownerGen++; ownerResult = null; ownerHold.clear()
-                        if (ownerOn) owner.start(preroll) else owner.finish()
-                        ownerHolding = ownerOn && (generating || toolJobs.isNotEmpty() || (turnActive && now - eosAt < 8_000))
-                        if (ownerHolding) { preroll.forEach { ownerHold.addLast(it) }; preroll.clear() }
-                        else { preroll.forEach { sendAudio(it); capSend(it) }; preroll.clear() }
-                    }
-                    applyOwnerResult(now)
-                    val other = owner.active && owner.verdict == com.dk.assistant.voice.OwnerGate.Verdict.OTHER
-                    // bolte samay + baat khatam hone tak (aakhri 500ms chup bhi) asli awaaz; warna khaamoshi
-                    // (khaamoshi 1s tak jaati hai, phir audioStreamEnd aur upload band - SilenceStreamGate)
-                    if ((turnDet.inSpeech || ev == TurnDetector.Event.SPEECH_END) && !other) {
-                        if (ownerHolding) {
-                            ownerHold.addLast(chunk); while (ownerHold.size > 75) ownerHold.removeFirst()
-                            sendAudio(zeros, silent = true); capSend(zeros, silent = true)
-                        } else { sendAudio(chunk); capSend(chunk) }
-                        if (owner.active && turnDet.inSpeech && owner.add(chunk, rms)) checkOwnerAsync()
-                        if (turnDet.inSpeech && nearRms.size < 400) nearRms.add(rms)      // v4.7: पास वाली आवाज़ का स्तर
-                    } else if (other && (turnDet.inSpeech || ev == TurnDetector.Event.SPEECH_END)) {
-                        // किसी और की आवाज़: बाकी बात Gemini/लिखने वाले को नहीं
-                        sendAudio(zeros, silent = true); capSend(zeros, silent = true); gatedChunks++
-                    } else {
-                        preroll.addLast(chunk); while (preroll.size > PREROLL_CHUNKS) preroll.removeFirst()
-                        sendAudio(zeros, silent = true); capSend(zeros, silent = true); gatedChunks++
-                    }
-                    when (ev) {
-                        TurnDetector.Event.SPEECH_START -> {
-                            nearRms.clear()
-                            lastAct = now; trace.reset(); replyWatch.onSpeechStart(); rescueWaits = 0
-                            // v3.46: गाना/वीडियो चल रहा हो तो आप बोलना शुरू करते ही धीमा (पहले शब्द पहचाने जाने के बाद ही -
-                            // पर तेज़ गाने में शब्द पहचाने ही नहीं जाते थे)
-                            if (Ducker.musicActive(svc)) Ducker.duck(svc, "Live: फ़ोन ने आवाज़ पकड़ी")
-                            // user bolne laga -> turant Listening (Thinking/Idle se bhi; phone ka kaam chal raha ho to nahi)
-                            if (DKState.mode != Mode.WORKING) setMode(Mode.LISTENING)
-                        }
-                        TurnDetector.Event.SPEECH_END -> {
-                            learnNear()
-                            if (owner.active) ownerEnd(now)
-                            else onLocalEndOfSpeech(now)
-                        }
-                        else -> {}
-                    }
-                    if (muteTurn && now - muteAt > 20_000 && !generating) muteTurn = false
-                }
-            }
-        } finally {
-            try { r.stop() } catch (_: Exception) {}
-            try { r.release() } catch (_: Exception) {}
-            try { if (ready) ws?.tx("{\"realtimeInput\":{\"audioStreamEnd\":true}}") } catch (_: Exception) {}
-            DKState.level = 0f
-        }
-    }
+    internal val boost = MicBoost(maxGain = LiveHear.BOOST_MAX, noiseCap = LiveHear.BOOST_NOISE_CAP)   // v4.2: और धीमी आवाज़ भी
 
     // ================================================================ Gemini ki awaaz bajana
-    private fun startPlayer() {
-        stopPlayer()
-        val min = AudioTrack.getMinBufferSize(OUT_RATE, AudioFormat.CHANNEL_OUT_MONO, AudioFormat.ENCODING_PCM_16BIT)
-        val t = AudioTrack.Builder()
-            // Bluetooth = कॉल वाली आवाज़ (headset में, गूँज हटाना ठीक); नहीं तो पहले जैसा मीडिया (speaker)
-            // v3.51: कॉल (घंटी/बात) के समय media mute होता है -> accessibility (CallVoice)
-            .setAudioAttributes(AudioAttributes.Builder().setUsage(CallVoice.usage(callAudioOn || svc.callRinging(), btOn))
-                .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH).build())
-            .setAudioFormat(AudioFormat.Builder().setSampleRate(OUT_RATE).setChannelMask(AudioFormat.CHANNEL_OUT_MONO)
-                .setEncoding(AudioFormat.ENCODING_PCM_16BIT).build())
-            .setBufferSizeInBytes(maxOf(min * 2, OUT_RATE * 2 / 5))      // ~200ms buffer: jaldi shuru, atke bina
-            .setTransferMode(AudioTrack.MODE_STREAM)
-            .build()
-        com.dk.assistant.voice.engine.VoiceTune.load(svc)
-        var tuneVer = com.dk.assistant.voice.engine.VoiceTune.apply(t, -1)   // v3.80: गति / पिच (सेटिंग्स -> आवाज़)
-        // v3.6: speaker पर DK की आवाज़ फ़ोन की बाकी आवाज़ से धीमी थी - थोड़ा boost (Bluetooth पर नहीं)
-        spkBoost = SpeakerBoost.attach(t.audioSessionId, btOn)
-        t.play()
-        track = t
-        log((if (btOn) "आवाज़: Bluetooth headset" else "स्पीकर" + (if (spkBoost != null) " (+${SpeakerBoost.GAIN_MB / 100} dB)" else "")) + ": $OUT_RATE Hz PCM16 mono stream • " + com.dk.assistant.voice.engine.VoiceTune.label())
-        playThread = Thread {
-            var speakingSet = false
-            while (!Thread.currentThread().isInterrupted) {
-                val b0 = try { playQ.poll(100, TimeUnit.MILLISECONDS) } catch (_: InterruptedException) { break }
-                val tr = track ?: break
-                if (b0 == null) {
-                    if (speakingSet && !isPlaying()) {
-                        speakingSet = false
-                        if (!turnActive && DKState.mode == Mode.SPEAKING) idleMode()
-                    }
-                    continue
-                }
-                // v5.1: छोटा jitter buffer - जवाब के बीच नेट रुका और आवाज़ खत्म हो गई = ~250ms जमा करके फिर बजाओ
-                // (टूटी-टूटी आवाज़ नहीं). जवाब का पहला टुकड़ा कभी नहीं रुकता - शुरू में कोई देरी नहीं
-                val b = if (LiveRace.Jitter.underrun(turnPlayedBytes > 0, turnActive, System.currentTimeMillis(), playEnd)) {
-                    val g0 = gen; val st = System.currentTimeMillis()
-                    val parts = arrayListOf(b0); var ms = b0.size * 1000 / (OUT_RATE * 2)
-                    while (g0 == gen && LiveRace.Jitter.keepFilling(ms, System.currentTimeMillis() - st)) {
-                        val x = try { playQ.poll(20, TimeUnit.MILLISECONDS) } catch (_: InterruptedException) { null } ?: continue
-                        parts.add(x); ms += x.size * 1000 / (OUT_RATE * 2)
-                    }
-                    jitterWaits++
-                    if (parts.size == 1) b0 else ByteArray(parts.sumOf { it.size }).also { out ->
-                        var o = 0; for (p in parts) { System.arraycopy(p, 0, out, o, p.size); o += p.size } }
-                } else b0
-                val g = gen
-                // pehla tukda: haalat PEHLE "Speaking" (UI turant), awaaz likhne ke baad baaki kaam
-                val first = !speakingSet || DKState.mode != Mode.SPEAKING
-                if (first) { speakingSet = true; setMode(Mode.SPEAKING) }
-                val now = System.currentTimeMillis()
-                // v3.80: बातचीत के बीच गति / पिच बदली -> अगले टुकड़े से ही
-                tuneVer = com.dk.assistant.voice.engine.VoiceTune.apply(tr, tuneVer)
-                com.dk.assistant.voice.engine.VoiceLevel.schedule(b, maxOf(playEnd, now))     // v3.68: असली ज़ोर से लिप-सिंक
-                playEnd = maxOf(playEnd, now) + com.dk.assistant.voice.engine.VoiceTune.playMs(b.size, OUT_RATE)
-                // DK की अपनी आवाज़ कितनी तेज़ (गूँज पहचानने के लिए - BargeDetector)
-                noteOutLevel(b, now)
-                var off = 0
-                while (off < b.size && g == gen) {
-                    val n = try { tr.write(b, off, b.size - off) } catch (_: Exception) { -1 }
-                    if (n <= 0) break
-                    // v3.46: आवाज़ पहले हिस्से के लिखते ही शुरू हो जाती है - पहले पूरा टुकड़ा लिखने (buffer भरा हो तो
-                    // ~800ms रुकना) के बाद गिनते थे = "playback 818ms" असल में नाप की गलती थी
-                    if (off == 0) { val pt = System.currentTimeMillis(); timeline.play(pt); if (trace.firstChunkAt > 0 && trace.firstPlayAt == 0L) firstWriteAt = pt }
-                    off += n
-                    if (g == gen) turnPlayedBytes += n
-                }
-                if (trace.firstChunkAt > 0 && trace.firstPlayAt == 0L && off > 0) {
-                    trace.firstPlayAt = firstWriteAt.takeIf { it > 0 } ?: System.currentTimeMillis(); firstWriteAt = 0L
-                    trace.summary()?.let { sm ->
-                        lastLatency = trace.firstPlayAt - trace.speechEndAt
-                        if (!connSplit && lastLatency in 0..60_000) com.dk.assistant.voice.engine.VoiceEngines.recordLatency(svc,
-                            com.dk.assistant.voice.engine.VoiceEngines.LIVE_NATIVE, lastLatency)
-                        lastBreakdown = "$sm • सबसे बड़ा हिस्सा: ${trace.bottleneck()}"
-                        log("देरी के हिस्से: $lastBreakdown")
-                    }
-                    if (!connSplit) LatencyBoard.record("Gemini Live (सीधी आवाज़)", trace.speechEndAt, trace.firstChunkAt, trace.firstChunkAt, trace.firstPlayAt)
-                        ?.let { log("देरी: " + LatencyBoard.line(it)) }
-                    trace.reset()                // agli baari nayi ginti (purane aankde na chipkein)
-                }
-                if (first) svc.speaker.ensureAudible()      // awaaz mute to nahi (system calls - awaaz shuru hone ke baad)
-            }
-        }.apply { name = "dk-live-play"; isDaemon = true; start() }
-    }
 
-    @Volatile private var firstWriteAt = 0L
+    @Volatile internal var firstWriteAt = 0L
     /** v5.1: जवाब के बीच कितनी बार jitter buffer ने रुककर आवाज़ जमा की */
-    @Volatile private var jitterWaits = 0
+    @Volatile internal var jitterWaits = 0
 
-    /** Beech me toka: jo awaaz kataar me hai sab hatao, turant chup */
-    private fun flushPlayback() {
-        gen++
-        playQ.clear()
-        playEnd = 0L
-        track?.let { try { it.pause(); it.flush(); it.play() } catch (_: Exception) {} }
-        pipeStop()                                   // v3.68: आवाज़ इंजन की कतार + चलती आवाज़ भी तुरंत
-        com.dk.assistant.voice.engine.VoiceLevel.clear()
-    }
-
-    /** बजने वाले टुकड़े की तेज़ी (हर चौथा sample - सस्ता) */
-    private fun noteOutLevel(b: ByteArray, now: Long) {
-        var sq = 0.0; var k = 0; var i = 0
-        while (i + 1 < b.size) { val v = (b[i].toInt() and 0xff) or (b[i + 1].toInt() shl 8); sq += (v * v).toDouble(); k++; i += 8 }
-        if (k > 0) synchronized(outLevels) { outLevels.addLast(now to sqrt(sq / k)); while (outLevels.size > 40) outLevels.removeFirst() }
-    }
-
-    private fun stopPlayer() {
-        playThread?.interrupt(); playThread = null
-        playQ.clear(); playEnd = 0L
-        pipeStop(); com.dk.assistant.voice.engine.VoiceLevel.clear()
-        track?.let { try { it.stop() } catch (_: Exception) {}; try { it.release() } catch (_: Exception) {} }
-        track = null
-        SpeakerBoost.release(spkBoost); spkBoost = null
-    }
-    private var spkBoost: android.media.audiofx.LoudnessEnhancer? = null
+    internal var spkBoost: android.media.audiofx.LoudnessEnhancer? = null
 }

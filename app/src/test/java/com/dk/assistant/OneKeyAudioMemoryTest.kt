@@ -39,7 +39,7 @@ class OneKeyAudioMemoryTest {
     }
 
     @Test fun agentEntryPointsAreGated() {
-        assertTrue(src("GeminiLive.kt").contains("OneKeyGate.LIVE_TOOLS[name]"))
+        assertTrue(LiveSrc.all().contains("OneKeyGate.LIVE_TOOLS[name]"))
         assertTrue(src("ComputerAgent.kt").contains("OneKeyGate.check(ctx, OneKeyGate.Work.COMPUTER)"))
         assertTrue(src("CoderTeam.kt").contains("OneKeyGate.check(c, OneKeyGate.Work.CODING)"))
         assertTrue(src("SevenRunner.kt").contains("OneKeyGate.check(c, OneKeyGate.Work.CODING)"))
@@ -76,7 +76,7 @@ class OneKeyAudioMemoryTest {
         assertEquals(0, SpeakerBoost.gainFor(true))
         assertTrue(SpeakerBoost.gainFor(false) in 300..1000)
         assertTrue(SpeakerBoost.SUSPECT_VOLUME > 0.3f && SpeakerBoost.SUSPECT_VOLUME < 1f)
-        val g = src("GeminiLive.kt")
+        val g = LiveSrc.all()
         assertTrue(g.contains("SpeakerBoost.attach(t.audioSessionId, btOn)") && g.contains("SpeakerBoost.release(spkBoost)"))
         assertFalse(g.contains("setVolume(0.3f)"))
     }
@@ -117,7 +117,7 @@ class OneKeyAudioMemoryTest {
         assertFalse(LivePromise.actionOk("ERROR boom"))
         val n = LivePromise.actionDoneNote("क्रोम खोलो", "DONE: Chrome खुला")
         assertTrue(n.contains("DONE: Chrome खुला") && n.contains("Do NOT call phone_task again"))
-        assertTrue(src("GeminiLive.kt").contains("LivePromise.actionDoneNote(user, r)"))
+        assertTrue(LiveSrc.all().contains("LivePromise.actionDoneNote(user, r)"))
     }
 
     // ------------------------------------------------------------------ याद
