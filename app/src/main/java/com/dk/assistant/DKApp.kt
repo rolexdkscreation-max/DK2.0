@@ -4,6 +4,7 @@ import android.app.Activity
 import android.app.Application
 import android.os.Bundle
 import java.io.File
+import kotlinx.coroutines.launch
 
 /**
  * Poore app ki shuruaat:
@@ -28,6 +29,12 @@ class DKApp : Application() {
         try { LocalMemory.maintain(this, "ऐप खुला"); LocalMemory.scheduleDaily(this) } catch (_: Exception) {}
         // v5.1: DK Inspector - हर 20 मिनट जाँच (inexact, फ़ोन नहीं जगाता; Accessibility चालू हो तो पक्का timer भी)
         try { com.dk.assistant.inspector.Inspector.schedule(this) } catch (_: Throwable) {}
+        // नवंबर 2026: Active apps से Stop के बाद रुका फ़ोन कंट्रोल - हर ~15 मिनट जाँच + ऐप शुरू होते ही (A11yWatch)
+        A11yWatchJob.schedule(this)
+        kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.Default).launch {
+            kotlinx.coroutines.delay(6_000)
+            try { A11yWatch.check(this@DKApp, "ऐप शुरू") } catch (_: Exception) {}
+        }
         UpdateJob.schedule(this)        // v3.6: हर 6 घंटे अपडेट जाँच + नोटिफ़िकेशन (ऐप बंद हो तब भी)
         OfflineQueue.install(this)
         TaskHistory.install(this)       // v3.88: हर काम और उसकी हालत का इतिहास (फ़ोन में)      // v3.88: नेटवर्क टूटे तो काम कतार में, आते ही आगे

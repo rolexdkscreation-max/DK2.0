@@ -129,7 +129,7 @@ class OnboardingActivity : AppCompatActivity() {
     private fun refreshPerms() {
         val st = permStatus ?: return
         st.text = (if (Setup.hasMic(this)) "✓ " else "✗ ") + "माइक" + "     " +
-            (if (Setup.accessibilityOn(this)) "✓ " else "✗ ") + "फ़ोन कंट्रोल"
+            Setup.a11yMark(this) + "फ़ोन कंट्रोल"
     }
 
     override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {

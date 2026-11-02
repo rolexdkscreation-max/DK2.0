@@ -108,6 +108,7 @@ class DKAccessibilityService : AccessibilityService() {
         floatOrb = FloatOrb(this) { onOrbTap() }.also { it.sync() }
         AppVisible.onChange = { _ -> refreshOrb() }
         DKLog.d("DK accessibility service chalu ho gaya")
+        A11yWatch.cancel(this)          // नवंबर 2026: "फ़ोन कंट्रोल रुक गया" वाली notification हटाओ
         val user = Prefs.userName(this)
         liveOffUntil = 0L; liveSoftFails = 0; liveOffSoft = false
         scope.launch {

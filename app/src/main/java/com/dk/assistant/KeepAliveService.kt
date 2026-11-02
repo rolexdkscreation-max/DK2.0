@@ -34,6 +34,9 @@ class KeepAliveService : Service() {
             .setSmallIcon(R.drawable.ic_dk)
             .setContentIntent(open)
             .setOngoing(true)
+            // नवंबर 2026: ऊपर "Active apps" का Stop पूरा DK (फ़ोन कंट्रोल भी) मार देता है - यह बटन सिर्फ़ माइक बंद करता है
+            .addAction(Notification.Action.Builder(null as android.graphics.drawable.Icon?, UiLang.s("माइक बंद करें"),
+                PendingIntent.getBroadcast(this, 1, Intent(this, MicOffReceiver::class.java), PendingIntent.FLAG_IMMUTABLE)).build())
             .build()
 
         // Android 14: background se mic wali service shuru karna mana hai -> crash na ho (isi se DK band hota tha)
@@ -51,5 +54,19 @@ class KeepAliveService : Service() {
         Setup.selfEnableAccessibility(this)
         DKAccessibilityService.instance?.startWakeLoopIfEnabled()
         return START_STICKY
+    }
+}
+
+/**
+ * नवंबर 2026: DK की notification का "माइक बंद करें" - Live/सुनना बंद, notification हटे; फ़ोन कंट्रोल (Accessibility) चलता रहे.
+ * (Android के "Active apps" वाले Stop से पूरा ऐप मरता है और Accessibility "not available" हो जाती है.)
+ * माइक फिर: DK खोलकर ओर्ब दबाएँ / बोलें.
+ */
+class MicOffReceiver : android.content.BroadcastReceiver() {
+    override fun onReceive(c: android.content.Context, i: Intent?) {
+        DKLog.d("सूचना से: माइक बंद (ऐप और फ़ोन कंट्रोल चालू)")
+        Prefs.edit(c) { putBoolean("live_mode", false); putBoolean("mic_user_off", true) }
+        try { DKAccessibilityService.instance?.stopLive("सूचना से माइक बंद") } catch (_: Exception) {}
+        try { c.stopService(Intent(c, KeepAliveService::class.java)) } catch (_: Exception) {}
     }
 }
