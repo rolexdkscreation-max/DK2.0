@@ -206,7 +206,7 @@ object InspectorCore {
             "उस API वाला फ़ीचर रुकता है या दूसरे model पर चला जाता है।", "दूसरी key जोड़ें या limit reset होने दें; Extra API रखें।",
             "कोड बदलाव ज़रूरी नहीं, fallback पहले से है - fallback न चले तो जाँच।", "थोड़ी देर बाद फिर चलाएँ; 429 न आए।"),
         Rule("api_auth", Component.API, Certainty.CONFIRMED, Severity.HIGH,
-            Regex("(?i)(\\b401\\b|\\b403\\b|PERMISSION_DENIED|invalid.{0,6}(api)?.?key|API key not valid|key गलत|key नहीं मिली|unauthorized)"),
+            Regex("(?i)(\\b401\\b|\\b403\\b|PERMISSION_DENIED|invalid.{0,6}(api)?.?key|API key not valid|key गलत|key नहीं मिली|unauthorized|service account[^.]{0,40}(deleted|disabled)|api key expired)"),
             "API key गलत या मना हुई", "API ने key को अमान्य/बिना-अनुमति बताया।",
             "उस API वाला फ़ीचर काम नहीं करता।", "Settings → AI Brain में सही key डालें (key कभी रिपोर्ट में नहीं दिखती)।",
             "कोड बदलाव ज़रूरी नहीं।", "key बदलकर वही फ़ीचर चलाएँ; 401/403 न आए।"),
@@ -260,6 +260,12 @@ object InspectorCore {
             "DK Computer का काम नहीं हुआ", "DK Computer का कोई कदम असफल रहा।",
             "DK Computer वाला काम अधूरा।", "Computer screen में कदम देखें।",
             "ComputerTools / ComputerRunner।", "वही काम फिर दें।"),
+        // नवंबर 2026 (DKI-F0ACC6): पीछे वाले AI (OpenRouter आदि) का timeout crash नहीं - DK अगली key/मॉडल पर गया
+        Rule("ai_timeout", Component.API, Certainty.CONFIRMED, Severity.LOW,
+            Regex("(?i)(AI error: \\w*(Timeout|InterruptedIO)\\w*|\\) fail: (timeout|timed out|Read timed out))"),
+            "AI ने समय पर जवाब नहीं दिया (timeout)", "पीछे चल रहे काम का AI (जैसे OpenRouter free) धीमा रहा - ऐप crash नहीं हुआ।",
+            "पीछे वाला काम धीमा या अधूरा रह सकता है।", "Gemini key ठीक रखें - बंद key पर DK धीमे free मॉडल पर जाता है।",
+            "कोड बदलाव ज़रूरी नहीं (fallback पहले से)।", "वही काम दोबारा करें; timeout बार-बार न आए।"),
         Rule("crash", Component.CRASH, Certainty.CONFIRMED, Severity.HIGH,
             Regex("(FATAL|[A-Za-z]+Exception|OutOfMemoryError|StackOverflowError|crash)"),
             "App में exception आया", "कोड में exception (गलती) उठा - लॉग में उसका नाम लिखा है।",
@@ -435,7 +441,11 @@ object InspectorCore {
 
     private val BD_RX = Regex("कुल (-?\\d+)ms = बोलना-खत्म-पहचान (-?\\d+)ms \\+ generation\\(\\+network\\) (-?\\d+)ms \\+ playback (-?\\d+)ms \\[([^\\]]*)]")
 
+    /** नवंबर 2026 (DKI-CCB3F8): इस बारी में फ़ोन का काम चला - देरी उस काम की, औसत में नहीं (LiveRecover.TOOL_MARK) */
+    const val TOOL_MARK = "[फ़ोन का काम साथ में - औसत में नहीं]"
+
     fun parseBreakdowns(events: List<Event>): List<Breakdown> = events.mapNotNull { e ->
+        if (e.msg.contains(TOOL_MARK)) return@mapNotNull null
         val m = BD_RX.find(e.msg) ?: return@mapNotNull null
         val net = m.groupValues[5]
         val rtt = Regex("RTT~(\\d+)ms").find(net)?.groupValues?.get(1)?.toLongOrNull() ?: -1

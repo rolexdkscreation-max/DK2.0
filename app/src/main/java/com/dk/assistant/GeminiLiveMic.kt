@@ -215,7 +215,7 @@ internal suspend fun GeminiLive.micLoop() = coroutineScope {
                     val cap = caption?.text().orEmpty()
                     if (cap != capSeen) { capSeen = cap; capSeenAt = now }
                     if (turnDet.silentMs >= TurnEnd.EARLY_END_MS && turnDet.speechMsNow < TurnEnd.LONG_SPEECH_MS &&
-                        now - capSeenAt >= 200 && TurnEnd.complete(cap) && turnDet.forceEnd()) {
+                        now - capSeenAt >= 200 && TurnEnd.earlyOk(cap) && turnDet.forceEnd()) {
                         ev = TurnDetector.Event.SPEECH_END; earlyEnds++
                         if (earlyEnds <= 3 || earlyEnds % 20 == 0) log("वाक्य पूरा लगा - ${TurnEnd.EARLY_END_MS} ms चुप्पी पर ही बात खत्म (#$earlyEnds)")
                     }
@@ -253,7 +253,7 @@ internal suspend fun GeminiLive.micLoop() = coroutineScope {
                         // नाम मिला = यूज़र. रुकी आवाज़ Gemini को, फिर सामान्य रास्ता (बात चल रही या खत्म)
                         guardHeld = false; guardPass = turnDet.inSpeech && guardEndAt == 0L
                         synchronized(sendLock) { guardBuf.forEach { sendAudio(it) } }; guardBuf.clear()
-                        lastAct = now; trace.reset(); replyWatch.onSpeechStart(); rescueWaits = 0
+                        lastAct = now; trace.reset(); replyWatch.onSpeechStart(); rescueWaits = 0; speechStartAt = now
                         if (Ducker.musicActive(svc)) Ducker.duck(svc, "Live: वीडियो के बीच DK का नाम")
                         if (DKState.mode != Mode.WORKING) setMode(Mode.LISTENING)
                         if (guardEndAt > 0L || !turnDet.inSpeech) { guardEndAt = 0L; onLocalEndOfSpeech(now) }
@@ -304,7 +304,7 @@ internal suspend fun GeminiLive.micLoop() = coroutineScope {
                 when (ev) {
                     TurnDetector.Event.SPEECH_START -> {
                         nearRms.clear()
-                        lastAct = now; trace.reset(); replyWatch.onSpeechStart(); rescueWaits = 0
+                        lastAct = now; trace.reset(); replyWatch.onSpeechStart(); rescueWaits = 0; speechStartAt = now
                         // v3.46: गाना/वीडियो चल रहा हो तो आप बोलना शुरू करते ही धीमा (पहले शब्द पहचाने जाने के बाद ही -
                         // पर तेज़ गाने में शब्द पहचाने ही नहीं जाते थे)
                         if (Ducker.musicActive(svc)) Ducker.duck(svc, "Live: फ़ोन ने आवाज़ पकड़ी")

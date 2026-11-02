@@ -498,7 +498,7 @@ class GeminiLive(internal val svc: DKAccessibilityService, internal val agent: A
                 trace.summary()?.let { lastBreakdown = "$it • बोलने वाला: $name" }
                 log("बोलना ख़त्म → पहली आवाज़ ($name): $ms ms" + (trace.summary()?.let { " • $it" } ?: ""))
                 // v3.71: तीनों समय अलग (डिबग → देरी का हिसाब)
-                LatencyBoard.record(name, trace.speechEndAt, trace.firstChunkAt, pipeline.firstSegPcmAt, at)?.let { log("देरी: " + LatencyBoard.line(it)) }
+                if (toolCallAt < trace.speechEndAt) LatencyBoard.record(name, trace.speechEndAt, trace.firstChunkAt, pipeline.firstSegPcmAt, at)?.let { log("देरी: " + LatencyBoard.line(it)) }
                 trace.reset()
             }
             svc.speaker.ensureAudible()
@@ -1401,11 +1401,23 @@ class GeminiLive(internal val svc: DKAccessibilityService, internal val agent: A
      */
     @Volatile private var tlWords = false
     @Volatile private var noiseTurns = 0
+    @Volatile private var contTurns = 0
+    /** आपने आखिरी बार बोलना कब शुरू किया (फ़ोन VAD) */
+    @Volatile internal var speechStartAt = 0L
+    /** इस बारी में Gemini ने फ़ोन का काम (tool) माँगा - देरी के औसत में नहीं गिनते */
+    @Volatile internal var toolCallAt = 0L
     internal fun beginTimeline(speechEnd: Long, endpoint: Long, why: String) {
         if (timeline.active && timeline.eventAt == 0L && timeline.audioAt == 0L && toolJobs.isEmpty()) {
             // v3.46: खटखट/शोर (caption में कोई शब्द नहीं) को "जवाब नहीं आया" में मत गिनो - वहाँ चुप रहना ही सही है
-            if (tlWords) { noReplyTurns++; log("पिछली बात पर Gemini से कुछ नहीं आया (#$noReplyTurns) • ${timeline.summary()}") }
-            else noiseTurns++
+            // नवंबर 2026 (DKI-70D747): आप [LiveRecover.CONTINUE_MS] के अंदर फिर बोलने लगे = वही बात आगे (टुकड़ा), Gemini पूरी
+            // बात का एक साथ जवाब देता है - इसे "जवाब नहीं आया" नहीं गिनते. इंतज़ार का समय लाइन में (पक्का सबूत)
+            val from = if (speechStartAt > timeline.endpointAt) speechStartAt else speechEnd
+            val waited = from - timeline.endpointAt
+            if (!tlWords) noiseTurns++
+            else if (waited in 0 until LiveRecover.CONTINUE_MS) {
+                contTurns++
+                if (contTurns <= 3 || contTurns % 20 == 0) log("बात आगे बोली (${waited} ms बाद) - टुकड़ा, जवाब पूरी बात पर (#$contTurns)")
+            } else { noReplyTurns++; log("पिछली बात पर Gemini से कुछ नहीं आया (#$noReplyTurns, इंतज़ार ${waited / 100 / 10.0}s) • ${timeline.summary()}") }
         }
         tlWords = BargeGate.realWords(caption?.text().orEmpty())
         timeline.begin(speechEnd, endpoint, why); waitingLogged = false
@@ -2122,9 +2134,22 @@ class GeminiLive(internal val svc: DKAccessibilityService, internal val agent: A
                 log("तुरंत: स्क्रीन शेयर ${if (q.action.optBoolean("on", true)) "चालू" else "बंद"} -> ${r.take(60)}"); return@launch
             }
             if (q == null) { log("रूटर: \"${b.take(30)}\" फ़ोन पर सीधा नहीं - Gemini संभालेगा (वर्गीकरण $classMs ms)"); return@launch }
+            // नवंबर 2026 (DKI-87912D): आधी बात पर बड़ा काम नहीं - थोड़ा और रुककर देखो आप आगे तो नहीं बोल रहे
+            val settle = LiveFast.settleMs(q.action.optString("type"))
+            if (settle > 0) {
+                delay(settle)
+                if (cur() != b || turnDet.inSpeech || stopped) {
+                    log("तुरंत काम रुका (${q.action.optString("type")}) - आप आगे बोल रहे थे, पूरी बात पर फिर से"); routeDedupe.reset(); return@launch
+                }
+            }
             if (!fastMemo.begin(q, System.currentTimeMillis())) return@launch
             val t0 = System.currentTimeMillis()
             val r = try { svc.perform(q.action) } catch (e: CancellationException) { throw e } catch (e: Exception) { "ERROR ${e.message}" }
+            if (!isActive || LiveFast.cancelled(r)) {
+                fastMemo.cancel(q); routeDedupe.reset()
+                log("तुरंत काम रद्द (${q.action.optString("type")}) - आप आगे बोले, पूरी बात पर फिर से (${System.currentTimeMillis() - t0} ms)")
+                return@launch
+            }
             fastMemo.finish(q, r); fastN++
             if (LiveFast.ok(q.action.optString("type"), r) && !r.startsWith("VIDEO_OPENED")) lastFastOkAt = System.currentTimeMillis()
             log("तुरंत काम (Gemini से पहले) \"${b.take(40)}\" -> ${q.action.optString("type")} = ${r.take(60)} (वर्गीकरण $classMs ms, काम+जाँच ${System.currentTimeMillis() - t0} ms)")

@@ -56,7 +56,7 @@ internal fun GeminiLive.handleServer(msg: String, setup: CompletableDeferred<Uni
         }
     }
     o.optJSONObject("toolCall")?.optJSONArray("functionCalls")?.let {
-        lastServerAt = System.currentTimeMillis(); lastAnyServerAt = lastServerAt; utt.clear(); onRecovered()
+        lastServerAt = System.currentTimeMillis(); lastAnyServerAt = lastServerAt; utt.clear(); onRecovered(); toolCallAt = lastServerAt
         // v3.66: किसी और की आवाज़ पर बना काम - कुछ मत करो (फ़ोन पर कोई काम नहीं), Gemini को बता दो
         if (muteTurn) { ignoreTools(it); return@let }
         // v3.67: tool से पहले बोला "कर दिया" = झूठ (काम अभी शुरू हुआ) - वह हिस्सा नहीं बजता; "ठीक है बॉस" बजता है
