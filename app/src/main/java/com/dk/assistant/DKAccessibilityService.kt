@@ -143,7 +143,7 @@ class DKAccessibilityService : AccessibilityService() {
         exitBackup("सेवा बंद")
         instance = null
         AppVisible.onChange = null
-        floatOrb?.remove(); floatOrb = null
+        floatOrb?.release(); floatOrb = null
         removeEdgeGlow()
         DKState.setLive(false)
         listener.release()
@@ -199,7 +199,15 @@ class DKAccessibilityService : AccessibilityService() {
     fun invokedNow(why: String) {
         if (!Setup.hasMic(this) || callBusy()) return
         DKLog.d("DK बुलाया ($why) - Live तुरंत, पीछे से")
+        // नवंबर 2026 (मालिक, Siri जैसा): नेट का रास्ता (DNS + TLS) अभी गरम करो, Live उसी पल जुड़ना शुरू,
+        // और साथ-साथ फ़ोन में बना छोटा "जी सर" / टिंग तुरंत (InvokeAck) - जुड़ने का इंतज़ार कभी चुप्पी में नहीं
+        try { LiveNet.warm(this, "DK बुलाया") } catch (_: Exception) {}
         if (DKState.live) appOpened() else startLive()
+        val inCall = calls.inCall || calls.ringing
+        scope.launch(Dispatchers.IO) {
+            val how = try { InvokeAck.play(this@DKAccessibilityService, inCall) } catch (_: Exception) { "" }
+            if (how.isNotEmpty()) DKLog.d("DK बुलाया: तुरंत जवाब ($how)")
+        }
     }
 
     // ================================================================ बैकअप मोड (मालिक, नवंबर 2026)

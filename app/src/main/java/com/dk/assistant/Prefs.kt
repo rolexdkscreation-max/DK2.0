@@ -182,6 +182,12 @@ object Prefs {
     /** तैरते ORB का आकार (dp). शुरू में 76 = पुराने किनारे वाले छोटे ORB जितना */
     fun floatOrbDp(c: Context) = FloatOrbSize.clamp(sp(c).getInt("float_orb_dp", FloatOrbSize.DEFAULT_DP))
     fun setFloatOrbDp(c: Context, dp: Int) = edit(c) { putInt("float_orb_dp", FloatOrbSize.clamp(dp)) }
+    /** नवंबर 2026: खिसकाए ORB का बीच (स्क्रीन का हिस्सा 0..1); -1 = कभी नहीं खिसकाया (नीचे बीच में) */
+    fun floatOrbFx(c: Context) = sp(c).getFloat("float_orb_fx", -1f)
+    fun floatOrbFy(c: Context) = sp(c).getFloat("float_orb_fy", -1f)
+    fun setFloatOrbPos(c: Context, fx: Float, fy: Float) = edit(c) {
+        putFloat("float_orb_fx", fx.coerceIn(0f, 1f)); putFloat("float_orb_fy", fy.coerceIn(0f, 1f))
+    }
     /** v3.88: हर बातचीत फ़ोन की लोकल याददाश्त (SQLite) में - 30 दिन, फिर सिर्फ़ सार */
     fun localMemoryOn(c: Context) = sp(c).getBoolean("local_memory_on", true)
     // ---- v3.66: सिर्फ़ मालिक की आवाज़ (voiceprint सिर्फ़ इसी फ़ोन में - backup बंद है, GitHub/इंटरनेट पर नहीं)

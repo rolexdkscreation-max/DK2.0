@@ -288,6 +288,13 @@ object HeyDk {
         }
     }
 
+    /** नवंबर 2026: यह "हाँ सर" फ़ोन में पहले से बना है? (power बटन पर तुरंत - बिना इंटरनेट) */
+    fun hasAck(c: Context, text: String): Boolean {
+        val e = ackEngine(c) ?: return false
+        val f = ackFile(c, e.id, e.voice(c), text)
+        return f.exists() && f.length() > 2000
+    }
+
     /** पहले से बनी आवाज़ बजाओ (रुककर, ~1 s). @return false = बनी नहीं थी (तब आम तरीके से बोलो) */
     fun playAck(c: Context, text: String): Boolean {
         val e = ackEngine(c) ?: return false
