@@ -13,6 +13,14 @@ permissions:
 jobs:
   build:
     runs-on: ubuntu-latest
+    # नवंबर 2026: main पर release एक-एक करके. पहले दो PR 10 सेकंड के अंतर से merge हुए (#186, #187) - दोनों build ने
+    # एक ही पिछली release पढ़कर एक ही version (DK 3.143) बना दिया, और पुराने code वाली release "Latest" बन गई.
+    # अब दूसरा build पहले के पूरा होने तक रुकता है, फिर नई release पढ़कर अगला version लेता है.
+    # (इंतज़ार में तीसरा आए तो बीच वाला छोड़ दिया जाता है - नया build उसके सारे बदलाव भी ले लेता है)
+    # PR / हाथ से चलाए build पहले जैसे साथ-साथ (हर एक का अपना group)
+    concurrency:
+      group: ${{ (github.event_name == 'push' && github.ref == 'refs/heads/main') && 'dk-release-main' || format('dk-build-{0}', github.run_id) }}
+      cancel-in-progress: false
     env:
       VERSION_CODE: ${{ github.run_number }}
     steps:
@@ -148,6 +156,18 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          set -e
+          # नवंबर 2026: आख़िरी जाँच - यही version पहले से release में है, या नया version पिछले से छोटा = release नहीं
+          # (एक नाम की दो release से app का update गड़बड़ाता था)
+          LATEST_BODY="$(gh release view --json body -q .body 2>/dev/null || true)"
+          LATEST_VER="$(printf '%s\n' "$LATEST_BODY" | sed -n 's/^VERSION: *\([0-9.]*\).*/\1/p' | head -1)"
+          NAMES="$(gh release list --limit 200 --json name -q '.[].name' 2>/dev/null || true)"
+          if printf '%s\n' "$NAMES" | grep -qxF "DK ${VERSION_NAME}"; then
+            echo "::error::DK ${VERSION_NAME} नाम की release पहले से है - दोहराव रोका (दोबारा चलाइए, नया version लेगा)"; exit 1
+          fi
+          if [ -n "$LATEST_VER" ] && [ "$(printf '%s\n%s\n' "$LATEST_VER" "$VERSION_NAME" | sort -V | tail -1)" != "$VERSION_NAME" ]; then
+            echo "::error::नया version ${VERSION_NAME} पिछली release ${LATEST_VER} से बड़ा नहीं - release रोकी"; exit 1
+          fi
           gh release create "v${VERSION_CODE}" DK.apk \
             --title "DK ${VERSION_NAME}" \
             --notes-file release_notes.txt \

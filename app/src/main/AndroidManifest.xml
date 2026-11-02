@@ -14,6 +14,8 @@
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.VIBRATE" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
+    <!-- नवंबर 2026: आवाज़ से अनलॉक - Android 14+ पर स्क्रीन जगाने के लिए -->
+    <uses-permission android:name="android.permission.TURN_SCREEN_ON" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <uses-permission android:name="android.permission.READ_PHONE_STATE" />
     <uses-permission android:name="android.permission.READ_CALL_LOG" />
@@ -290,6 +292,19 @@
             android:name=".connect.ConnectorsActivity"
             android:exported="false"
             android:windowSoftInputMode="adjustResize" />
+
+        <!-- नवंबर 2026: आवाज़ से अनलॉक - लॉक स्क्रीन पर स्क्रीन जगाकर Android से PIN वाला हिस्सा माँगती है (पारदर्शी, खुद बंद) -->
+        <activity
+            android:name=".UnlockWakeActivity"
+            android:exported="false"
+            android:excludeFromRecents="true"
+            android:noHistory="true"
+            android:taskAffinity=""
+            android:launchMode="singleInstance"
+            android:showWhenLocked="true"
+            android:turnScreenOn="true"
+            android:theme="@android:style/Theme.Translucent.NoTitleBar"
+            tools:targetApi="27" />
 
         <!-- Phone control: screen padhna, click, type, scroll, screenshot -->
         <service
