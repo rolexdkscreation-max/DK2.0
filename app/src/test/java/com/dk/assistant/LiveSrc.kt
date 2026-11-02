@@ -21,6 +21,12 @@ object LiveSrc {
         "GeminiLiveMic.kt",
         "GeminiLivePlayer.kt",
         "GeminiLiveRecover.kt",
+        "GeminiLiveCaption.kt",
+        "GeminiLiveOwner.kt",
+        "GeminiLiveTurnEnd.kt",
+        "GeminiLiveActHold.kt",
+        "GeminiLiveTurn.kt",
+        "GeminiLiveChecks.kt",
     )
 
     private fun dir(): File {
