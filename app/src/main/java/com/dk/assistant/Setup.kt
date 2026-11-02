@@ -18,6 +18,16 @@ object Setup {
     /** System settings me DK ki accessibility ON hai? (service abhi restart ho rahi ho tab bhi true) */
     fun accessibilityOn(c: Context): Boolean = DKAccessibilityService.instance != null || enabledInSettings(c)
 
+    /**
+     * नवंबर 2026: स्क्रीन पर सच्ची हालत. पहले Settings में ON होते ही "✓ चालू" दिखता था, भले Android ने सेवा रोक दी हो
+     * (Active apps से Stop के बाद "Service is not available") - अब "⚠ रुका है".
+     */
+    fun a11yMark(c: Context): String = when (A11yWatch.state(DKAccessibilityService.instance != null, enabledInSettings(c), canWriteSecure(c))) {
+        A11yWatch.State.RUNNING -> "✓ "
+        A11yWatch.State.OFF -> "✗ "
+        else -> "⚠ "
+    }
+
     private fun component(c: Context) = android.content.ComponentName(c, DKAccessibilityService::class.java).flattenToString()
 
     fun enabledInSettings(c: Context): Boolean = try {

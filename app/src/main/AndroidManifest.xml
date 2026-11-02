@@ -240,6 +240,16 @@
             android:name=".ComputerAlarm"
             android:exported="false" />
 
+        <!-- नवंबर 2026: फ़ोन कंट्रोल (Accessibility) रुका तो ठीक करना / बताना - Active apps के Stop के बाद भी चलता है -->
+        <service
+            android:name=".A11yWatchJob"
+            android:exported="false"
+            android:permission="android.permission.BIND_JOB_SERVICE" />
+
+        <receiver
+            android:name=".MicOffReceiver"
+            android:exported="false" />
+
         <!-- v3.6: हर 6 घंटे अपडेट जाँच (JobScheduler, restart के बाद भी) -->
         <service
             android:name=".UpdateJob"

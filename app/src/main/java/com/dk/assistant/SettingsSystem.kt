@@ -335,7 +335,7 @@ internal fun SettingsActivity.secAccess() {
         box.addView(batStatus)
         row(box, button("बैटरी रोक हटाएँ") { Setup.requestBatteryExempt(this) })
         hint(box, "Xiaomi/Redmi/Poco: App info → Autostart ON, Battery saver → No restrictions। Vivo/Oppo/Realme: Battery → Allow background activity। Recent apps में DK पर लॉक लगाएँ।")
-        label(box, "हमेशा ON (सबसे पक्का तरीका — एक बार कंप्यूटर से)")
+        label(box, "हमेशा ON (सबसे पक्का तरीका — एक बार इजाज़त, PC हो या न हो)")
         secStatus = TextView(this).apply { textSize = 13f; setTextColor(0xB3FFFFFF.toInt()); setPadding((4 * dp).toInt(), 0, 0, 0) }
         box.addView(secStatus)
         val cmd = "adb shell pm grant $packageName android.permission.WRITE_SECURE_SETTINGS"
@@ -348,6 +348,16 @@ internal fun SettingsActivity.secAccess() {
             cm.setPrimaryClip(android.content.ClipData.newPlainText("adb", cmd)); toast("कॉपी हो गया")
         })
         hint(box, "USB debugging ON करके कंप्यूटर से यह कमांड एक बार चलाएँ। उसके बाद अगर Android कभी DK की Accessibility बंद भी कर दे, तो DK खुद उसे वापस ON कर लेगा।")
+        // नवंबर 2026 (मालिक: "मेरे पास PC नहीं"): Android 11+ में फ़ोन खुद ही adb चला सकता है (Wireless debugging)
+        label(box, "बिना PC के (Android 11+, सिर्फ़ फ़ोन से)")
+        val shellCmd = "pm grant $packageName android.permission.WRITE_SECURE_SETTINGS"
+        hint(box, A11yNoPc.STEPS)
+        row(box, button("बिना PC वाली कमांड कॉपी करें") {
+            val cm = getSystemService(android.content.ClipboardManager::class.java)
+            cm.setPrimaryClip(android.content.ClipData.newPlainText("shell", shellCmd)); toast("कॉपी हो गया — aShell में चिपकाएँ")
+        }, button("Shizuku खोलें") { Setup.openUrl(this, A11yNoPc.SHIZUKU_URL) })
+        row(box, button("aShell खोलें") { Setup.openUrl(this, A11yNoPc.ASHELL_URL) },
+            button("Developer options") { try { startActivity(android.content.Intent(android.provider.Settings.ACTION_APPLICATION_DEVELOPMENT_SETTINGS)) } catch (_: Exception) { toast("पहले Build number 7 बार दबाएँ") } })
     }
     card("सुनना और कॉल", null) { box ->
         swWake = switch(box, "हमेशा सुनो (जगाने वाला शब्द बोलकर कमांड)", Prefs.wakeMode(this))
@@ -381,7 +391,9 @@ internal fun SettingsActivity.secAccess() {
 internal fun SettingsActivity.refreshAccess() {
     accStatus?.text = when {
         Setup.accessibilityOn() -> "✓ चालू है — DK फ़ोन चला सकता है"
-        Setup.enabledInSettings(this) -> "⟳ ON है, सर्विस दोबारा शुरू हो रही है… (न हो तो एक बार OFF-ON करें)"
+        // नवंबर 2026: ON दिखता है पर चल नहीं रही (ज़्यादातर ऊपर "Active apps" से Stop दबाने पर) - साफ़ बताओ
+        Setup.enabledInSettings(this) -> if (Setup.canWriteSecure(this)) "⟳ रुकी थी — DK खुद फिर से चालू कर रहा है…"
+            else "⚠ Settings में ON है पर Android ने सेवा रोक दी (\"Service is not available\")। ठीक करें: नीचे बटन → DK → OFF → फिर ON"
         else -> "✗ बंद है — नीचे बटन दबाकर Installed/Downloaded apps में ${Prefs.assistantName(this)} ON करें"
     }
     batStatus?.text = if (Setup.batteryExempt(this)) "✓ बैटरी रोक हटी हुई है" else "✗ Android DK को बैटरी बचाने के लिए बंद कर सकता है"

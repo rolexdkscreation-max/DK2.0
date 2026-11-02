@@ -55,8 +55,8 @@ class MainActivity : AppCompatActivity() {
                 com.dk.assistant.ui.HomeMenu.Item(R.drawable.ic_mic, "आवाज़", "लाइव बातचीत") { openVoice() },
                 com.dk.assistant.ui.HomeMenu.Item(R.drawable.ic_memory, "मेमोरी", "यादें देखें") { startActivity(Intent(this, MemoryActivity::class.java)) },
                 // v3.88: होम की ऊपर वाली पट्टी के बटन अब यहाँ (फ़ीचर वही, बस जगह बदली)
-                com.dk.assistant.ui.HomeMenu.Item(R.drawable.ic_s_access, (if (Setup.accessibilityOn(this)) "✓ " else "✗ ") + "फ़ोन कंट्रोल",
-                    if (Setup.accessibilityOn(this)) "चालू है" else "चालू करने के लिए टैप करें") { openPhoneControl() },
+                com.dk.assistant.ui.HomeMenu.Item(R.drawable.ic_s_access, Setup.a11yMark(this) + "फ़ोन कंट्रोल",
+                    when { Setup.accessibilityOn() -> "चालू है"; Setup.enabledInSettings(this) -> "रुका है — ठीक करने के लिए टैप करें"; else -> "चालू करने के लिए टैप करें" }) { openPhoneControl() },
                 com.dk.assistant.ui.HomeMenu.Item(R.drawable.ic_s_perms, (if (Setup.hasMic(this)) "✓ " else "✗ ") + "माइक",
                     if (Setup.hasMic(this)) "अनुमति मिली हुई है" else "माइक की अनुमति दें") { askPerms() },
                 com.dk.assistant.ui.HomeMenu.Item(R.drawable.ic_s_computer, "DK कंप्यूटर", "कोई भी काम कदम-दर-कदम") { startActivity(Intent(this, ComputerActivity::class.java)) },
@@ -89,7 +89,13 @@ class MainActivity : AppCompatActivity() {
 
     /** v3.88: फ़ोन कंट्रोल (पहले होम की पट्टी में था, अब मेन्यू में) - बंद हो तो चालू करने की जगह खोलो */
     private fun openPhoneControl() {
-        if (!Setup.accessibilityOn(this)) {
+        if (!Setup.accessibilityOn() && Setup.enabledInSettings(this) && Setup.selfEnableAccessibility(this)) {
+            UiLang.toast(this, "फ़ोन कंट्रोल फिर से चालू किया", Toast.LENGTH_SHORT).show()
+        } else if (!Setup.accessibilityOn() && Setup.enabledInSettings(this)) {
+            // नवंबर 2026: Settings में ON पर Android ने रोक दी ("Service is not available") - OFF-ON से ही जुड़ती है
+            UiLang.toast(this, "${Prefs.assistantName(this)} को एक बार OFF करके फिर ON करें", Toast.LENGTH_LONG).show()
+            Setup.openAccessibility(this)
+        } else if (!Setup.accessibilityOn(this)) {
             UiLang.toast(this, "Installed/Downloaded apps में ${Prefs.assistantName(this)} ON करें", Toast.LENGTH_LONG).show()
             Setup.openAccessibility(this)
         } else UiLang.toast(this, "फ़ोन कंट्रोल चालू है", Toast.LENGTH_SHORT).show()
