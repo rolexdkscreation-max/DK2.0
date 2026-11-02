@@ -66,7 +66,7 @@ object LiveNativeEngine : VoiceEngine {
         val ready = CountDownLatch(1); val done = CountDownLatch(1)
         var err: String? = null
         var got = false
-        val ws = http.newWebSocket(Request.Builder().url("$URL?key=$key").build(), object : WebSocketListener() {
+        val ws = http.newWebSocket(Request.Builder().url(URL).header("x-goog-api-key", key).build(), object : WebSocketListener() {
             override fun onOpen(webSocket: WebSocket, response: Response) {
                 val setup = JSONObject().put("setup", JSONObject()
                     .put("model", "models/$model")

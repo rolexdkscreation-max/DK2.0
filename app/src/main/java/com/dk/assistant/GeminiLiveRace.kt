@@ -170,7 +170,7 @@ internal fun GeminiLive.attemptFailed(r: Race, a: Attempt, code: Int, reason: St
 }
 
 internal fun GeminiLive.openAttempt(r: Race, a: Attempt) {
-    val req = Request.Builder().url("$URL?key=${a.key}").build()
+    val req = Request.Builder().url(URL).header("x-goog-api-key", a.key).build()
     a.w = http.newWebSocket(req, object : WebSocketListener() {
         override fun onOpen(webSocket: WebSocket, response: Response) {
             a.sentAt = System.currentTimeMillis()
@@ -272,7 +272,7 @@ internal fun GeminiLive.sendContext(w: WebSocket?) {
 
 internal fun GeminiLive.connect(key: String, m: String, closed: CompletableDeferred<Pair<Int, String>>, setup: CompletableDeferred<Unit>) {
     ready = false
-    val req = Request.Builder().url("$URL?key=$key").build()
+    val req = Request.Builder().url(URL).header("x-goog-api-key", key).build()
     ws = http.newWebSocket(req, object : WebSocketListener() {
         override fun onOpen(webSocket: WebSocket, response: Response) {
             setupSentAt = System.currentTimeMillis()

@@ -37,7 +37,9 @@ object VoiceEngines {
 
     fun byId(id: String?): VoiceEngine? = all.firstOrNull { it.id == id }
 
-    fun sp(c: Context): SharedPreferences = c.applicationContext.getSharedPreferences("dk_voice_engine", Context.MODE_PRIVATE)
+    /** सुरक्षा: worker_token ताले में ([com.dk.assistant.SecretPrefs]) - बाकी settings वैसी ही */
+    fun sp(c: Context): SharedPreferences =
+        com.dk.assistant.SecretPrefs.of(c.applicationContext.getSharedPreferences("dk_voice_engine", Context.MODE_PRIVATE))
 
     /** कौन-सा इंजन चालू (कुछ न चुना = जिसका defaultOn; वह भी न हो = Live की अपनी आवाज़) */
     fun activeId(c: Context): String {

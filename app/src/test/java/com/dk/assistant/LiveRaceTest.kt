@@ -113,7 +113,9 @@ class LiveRaceTest {
         race.lines().filter { it.contains("log(") || it.contains("setLink(") }.forEach {
             assertFalse(it, it.contains("a.key") || it.contains("\${key}") || it.contains("\$key "))
         }
-        assertTrue(race.contains("\"\$URL?key=\${a.key}\""))                         // key सिर्फ़ URL में
+        // सुरक्षा (मालिक, नवंबर 2026): key अब URL में भी नहीं - सिर्फ़ header में (URL log / error में छप सकता है)
+        assertTrue(race.contains(".url(URL).header(\"x-goog-api-key\", a.key)"))
+        assertFalse(g.contains("?key="))
     }
 
     @Test fun wiring_raceLightModePrewarmInvokeContext() {
