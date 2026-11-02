@@ -36,6 +36,12 @@ import java.io.ByteArrayOutputStream
 import kotlin.coroutines.resume
 import kotlin.math.abs
 
+// फ़ाइलें (नवंबर 2026 में बँटवारा, व्यवहार वही): यहाँ सारी state + lifecycle + बाहर से बुलाए जाने वाले functions।
+// बाकी हिस्से इसी class के extension functions हैं:
+//  - DKAccessibilityCalls.kt  : आने वाली कॉल, उठाना/काटना, म्यूट, स्पीकर, मना करने का संदेश
+//  - DKAccessibilityScreen.kt : स्क्रीन पढ़ना, खोज, टाइप, टैप/स्वाइप, अनलॉक, ऐप बंद करना
+//  - DKAccessibilityHear.kt   : माइक जाँच, Google से सुनना, गूँज, बीच में टोकना, backup मोड
+// नया हिस्सा बने तो test की AccSrc.PARTS में भी जोड़ें (source-check tests सारे हिस्से पढ़ते हैं)।
 /**
  * DK ka "haath aur aankh":
  *  - screen ke saare buttons/text padhta hai (aankh)
@@ -56,7 +62,7 @@ class DKAccessibilityService : AccessibilityService() {
     // Kisi bhi kaam me galti ho to sirf log karo - service crash na ho (crash = Android Accessibility band kar deta hai)
     val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main +
         kotlinx.coroutines.CoroutineExceptionHandler { _, e -> DKLog.d("Galti (sambhal li): ${e.javaClass.simpleName} ${e.message}") })
-    private var elements: List<Element> = emptyList()
+    internal var elements: List<Element> = emptyList()
 
     lateinit var speaker: Speaker
         private set
@@ -70,7 +76,7 @@ class DKAccessibilityService : AccessibilityService() {
     /** नवंबर 2026: सिर्फ़ एक तैरता ORB (नीचे बीच में) - पुराना किनारे वाला bubble हटाया */
     private var floatOrb: FloatOrb? = null
     /** v3.57: सुनते/बोलते समय किनारों की चमक (छूने पर कुछ नहीं, नीचे का ऐप चलता रहे) */
-    private var edgeGlow: com.dk.assistant.fx.EdgeGlowView? = null
+    internal var edgeGlow: com.dk.assistant.fx.EdgeGlowView? = null
     lateinit var calls: CallManager
         private set
     private var wakeLoopRunning = false
@@ -184,12 +190,6 @@ class DKAccessibilityService : AccessibilityService() {
         ensureLoop()
     }
 
-    /** v4.6: पिछली गलती का इंतज़ार खत्म - अगली बार loop सीधे Gemini Live जोड़े */
-    private fun liveNow(why: String) {
-        if (liveOffUntil > System.currentTimeMillis()) DKLog.d("Live: $why - इंतज़ार खत्म, अभी जोड़ रहा हूँ")
-        liveOffUntil = 0L; liveSoftFails = 0; liveOffSoft = false
-    }
-
     /**
      * v5.1: power बटन (default assistant) / DK स्क्रीन खुली = Live अभी, UI के साथ-साथ (UI का इंतज़ार नहीं).
      * माइक की इजाज़त न हो = कुछ नहीं (स्क्रीन इजाज़त का बटन दिखाती है). Accessibility यहाँ कभी चालू नहीं की जाती.
@@ -206,28 +206,9 @@ class DKAccessibilityService : AccessibilityService() {
     // -> Microsoft Edge TTS हिंदी आवाज़ में (speaker.edgeOnly, बिना key, फ़ोन से सीधे - worker नहीं).
     // स्क्रीन पर "बैकअप मोड • <कारण>"; कारण के हिसाब से 1-10 मिनट बाद Live फिर आज़माया जाता है (LiveFailWhy).
     @Volatile var backupMode = false
-        private set
+        internal set
     @Volatile var backupKind: LiveFailWhy.Kind? = null
-        private set
-
-    private suspend fun enterBackup(kind: LiveFailWhy.Kind, detail: String) {
-        val firstTime = !backupMode || backupKind != kind
-        backupMode = true; backupKind = kind
-        liveOffSoft = false
-        liveOffUntil = System.currentTimeMillis() + kind.retryMs
-        speaker.edgeOnly = true
-        listener.preferOffline = false
-        DKState.setLink(LiveFailWhy.link(kind))
-        DKLog.d("बैकअप मोड: ${kind.short} ($detail) - ${kind.retryMs / 1000}s बाद Live फिर आज़माऊँगी")
-        if (firstTime) { liveTroubleSpoken = false; liveTroubleSay(LiveFailWhy.backupLine(kind)) }
-    }
-
-    private fun exitBackup(why: String) {
-        if (!backupMode) return
-        backupMode = false; backupKind = null
-        speaker.edgeOnly = false
-        DKLog.d("बैकअप मोड खत्म: $why")
-    }
+        internal set
 
     /** GeminiLive: setup पूरा = DK लाइव जुड़ गया */
     fun liveConnected() {
@@ -355,20 +336,20 @@ class DKAccessibilityService : AccessibilityService() {
     /** Settings save hone par: "hamesha suno (wake word)" mode chalu/band. */
     fun startWakeLoopIfEnabled() { ensureLoop() }
 
-    private var loopJob: kotlinx.coroutines.Job? = null
+    internal var loopJob: kotlinx.coroutines.Job? = null
 
     /** Silent kaan (apna mic) ya uski key kuch der ke liye kharab -> tab tak Google mic se suno */
     @Volatile private var googleUntil = 0L
     private var micFails = 0
-    private val warnedAt = HashMap<String, Long>()
+    internal val warnedAt = HashMap<String, Long>()
 
     /** Gemini Live (aawaz se aawaz, real-time) - sabse tez tareeka */
     val gemLive by lazy { GeminiLive(this, agent) }
-    @Volatile private var liveOffUntil = 0L
+    @Volatile internal var liveOffUntil = 0L
     /** Lagatar kitni baar Live network/mic ki thodi-der wali dikkat se ruka (backoff ke liye) */
-    @Volatile private var liveSoftFails = 0
+    @Volatile internal var liveSoftFails = 0
     /** v4.6: Live थोड़ी देर की दिक्कत (नेट / टूटना / setup) से रुका - पुराने तरीके पर नहीं, बस सेकंडों में फिर जोड़ो */
-    @Volatile private var liveOffSoft = false
+    @Volatile internal var liveOffSoft = false
     fun callBusy() = calls.ringing || callPending || callAnnouncing || calls.inCall
     /**
      * v3.40: call उठ चुकी (चल रही) = माइक call का -> तभी DK लाइव रुकता है. घंटी के समय Live खुला रहता है:
@@ -400,28 +381,10 @@ class DKAccessibilityService : AccessibilityService() {
         if (!ScreenGuard.AUTO_TAP_SHARE_START) { DKLog.d("स्क्रीन शेयर: Start बटन user खुद दबाएगा"); return }
     }
 
-    private fun exactClickable(n: AccessibilityNodeInfo?, words: Set<String>, d: Int): AccessibilityNodeInfo? {
-        if (n == null || d > 25) return null
-        val t = (n.text ?: n.contentDescription)?.toString()?.trim()?.lowercase()
-        if (t != null && t in words) {
-            var c: AccessibilityNodeInfo? = n; var up = 0
-            while (c != null && !c.isClickable && up < 3) { c = c.parent; up++ }
-            if (c != null && c.isClickable && c.isEnabled) return c
-        }
-        for (i in 0 until n.childCount) exactClickable(n.getChild(i), words, d + 1)?.let { return it }
-        return null
-    }
     fun useGeminiLive(): Boolean = DKState.live && liveReady()
     /** Gemini Live chal sakta hai? (sunne ka tareeka "auto" + Gemini key + abhi ruka nahi) */
     fun liveReady(): Boolean = Prefs.listenEngine(this) == "auto" &&
         GeminiLive.available(this) && System.currentTimeMillis() > liveOffUntil
-    /** Live kyun nahi chal raha - log me saaf likho */
-    private fun liveWhyNot(): String = when {
-        Prefs.listenEngine(this) != "auto" -> "सेटिंग में सुनने का तरीका '${Prefs.listenEngine(this)}' है (Gemini Live के लिए 'अपने आप' चुनें)"
-        !GeminiLive.available(this) -> "Gemini key नहीं है"
-        System.currentTimeMillis() <= liveOffUntil -> "पिछली गलती के बाद ${(liveOffUntil - System.currentTimeMillis()) / 1000}s रुका है"
-        else -> "-"
-    }
     /** Wake word sunke thodi der ke liye Live chalu kiya (chup rahne par wapas wake mode) */
     @Volatile private var wakeLive = false
     private var lastWhyNot = ""
@@ -435,67 +398,12 @@ class DKAccessibilityService : AccessibilityService() {
     @Volatile var liveTroubleShown = false
     @Volatile var liveTroubleSpoken = false
 
-    /** हर रुकावट में सिर्फ़ एक बार बोलो - बार-बार बड़बड़ नहीं, पर यूज़र को कभी न लगे कि DK सुन नहीं रही */
-    private suspend fun liveTroubleSay(msg: String) {
-        if (liveTroubleSpoken) return
-        liveTroubleSpoken = true; liveTroubleShown = true
-        DKLog.d("Live न जुड़ा - यूज़र को बताया: $msg")
-        DKState.reply(msg)
-        try { speaker.speak(msg) } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (_: Exception) {}
-    }
-
-    private suspend fun warn(id: String, msg: String) {
-        val now = System.currentTimeMillis()
-        if (now - (warnedAt[id] ?: 0L) < 5 * 60_000L) return
-        warnedAt[id] = now
-        DKLog.d("Chetavni: $msg")
-        DKState.reply(msg)
-        speaker.speak(msg)
-    }
-
-    /** Mic ki permission hai? Nahi to batao aur app khol kar permission maango. */
-    private suspend fun checkMic(): Boolean {
-        if (Setup.hasMic(this)) return true
-        DKState.set(Mode.IDLE)
-        warn("perm", "माइक की परमिशन नहीं है, इसलिए मैं सुन नहीं पा रहा। ऐप खुल रहा है — वहाँ माइक की इजाज़त दीजिए।")
-        try {
-            startActivity(android.content.Intent(this, MainActivity::class.java)
-                .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK or android.content.Intent.FLAG_ACTIVITY_SINGLE_TOP)
-                .putExtra("ask_mic", true))
-        } catch (e: Exception) { DKLog.d("app nahi khula: ${e.message}") }
-        return false
-    }
-
-    /** Google mic se ek baat (silent kaan na chale tab) */
-    private suspend fun hearGoogle(): String? {
-        ear.release()
-        if (!android.speech.SpeechRecognizer.isRecognitionAvailable(this)) {
-            warn("norec", "फ़ोन में Google का सुनने वाला ऐप नहीं मिला। Groq की फ्री key डालिए, तो मैं खुद सुनूँगा।")
-            delay(3000); return null
-        }
-        listener.lastSpokeAt = speaker.lastSpokeAt
-        DKState.set(Mode.LISTENING)
-        return listener.listenOnce()
-    }
-
     /**
      * v3.7: purane (bina beep) tareeke me bhi bolte-bolte shabd screen par.
      * Gemini key ho to mic ki awaaz (sirf jab aap bol rahe ho) tez caption model ko bhi jaati hai.
      */
-    private var earCaption: LiveCaption? = null
-    @Volatile private var earShowing = false
-    private fun earCaptionOn() {
-        val key = Prefs.captionKey(this)   // v3.41: likhne ki apni key (ho to)
-        if (key.isBlank()) { ear.onFrame = null; return }
-        val c = earCaption ?: LiveCaption(LiveKeys.order(listOf(key) + Prefs.liveGeminiKeys(this)), onText = { t, _ -> if (earShowing && t.isNotBlank()) DKState.user("$t…") }, onLate = { })
-            .also { it.start(); earCaption = it }
-        ear.onFrame = { b, n ->
-            val out = ByteArray(n * 2)
-            for (i in 0 until n) { val v = b[i].toInt(); out[i * 2] = (v and 0xff).toByte(); out[i * 2 + 1] = (v shr 8 and 0xff).toByte() }
-            c.send(out)
-        }
-    }
-    private fun earCaptionOff() { ear.onFrame = null; earCaption?.stop(); earCaption = null }
+    internal var earCaption: LiveCaption? = null
+    @Volatile internal var earShowing = false
 
     @Volatile private var ownerSeenAt = 0L
     private var othersIgnored = 0
@@ -601,8 +509,8 @@ class DKAccessibilityService : AccessibilityService() {
     }
 
     /** Agent ne "ask" se sawaal poocha hai aur jawab sun raha hai (tab beech-me-tokne wala kaan chup) */
-    @Volatile private var agentHearing = false
-    @Volatile private var bargeListen: kotlinx.coroutines.Deferred<String?>? = null
+    @Volatile internal var agentHearing = false
+    @Volatile internal var bargeListen: kotlinx.coroutines.Deferred<String?>? = null
 
     suspend fun hearForAgent(): String? {
         agentHearing = true
@@ -610,62 +518,6 @@ class DKAccessibilityService : AccessibilityService() {
             bargeListen?.cancelAndJoin()
             return hear()
         } finally { agentHearing = false }
-    }
-
-    /** Suni hui baat DK ki apni hi awaaz (goonj) to nahi? */
-    private fun isEcho(heard: String): Boolean {
-        val dk = (speaker.currentChunk + " " + speaker.spokenSoFar().takeLast(300)).let { LocalBrain.norm(it) }
-        if (dk.isBlank()) return false
-        val dkWords = dk.split(' ').filter { it.length > 1 }.toSet()
-        val hw = LocalBrain.norm(heard).split(' ').filter { it.length > 1 }
-        if (hw.isEmpty()) return true
-        val same = hw.count { it in dkWords }
-        return if (hw.size <= 2) same == hw.size else same >= hw.size * 0.6
-    }
-
-    /** DK bol/soch raha hai - us dauraan bhi suno. User bole to DK chup, baat suno, phir dono milakar jawab. */
-    private suspend fun listenBarge(): String? {
-        if (silentEar()) {
-            val pcm = ear.nextUtterance(barge = true, onStart = { if (speaker.busy) speaker.pause() }, onDiscard = { speaker.resume() })
-                ?: run { speaker.resume(); delay(300); return null }
-            val text = Transcriber.transcribe(this, pcm)
-            if (text.isNullOrBlank() || text.trim(' ', '.', '।', ',').length < 2 || isEcho(text)) {
-                DKLog.d("Beech ki awaaz goonj/shor thi: $text"); speaker.resume(); return null
-            }
-            return text
-        }
-        // Google mic: pehle apne kaan se pata karo ki user bolne laga, phir Google se suno
-        ear.nextUtterance(barge = true, vadOnly = true, onStart = { if (speaker.busy) speaker.pause() }) ?: run { delay(300); return null }
-        ear.release()
-        listener.lastSpokeAt = speaker.lastSpokeAt
-        val text = listener.listenOnce()
-        if (text.isNullOrBlank() || isEcho(text)) { speaker.resume(); return null }
-        return text
-    }
-
-    /** Kaam/jawab chalne do, saath me suno - beech me toka to naya (milaya hua) jawab. */
-    private suspend fun runWithBarge(first: kotlinx.coroutines.Job) {
-        var job = first
-        while (job.isActive) {
-            if (!DKState.live || agentHearing || callAnnouncing || calls.ringing || calls.inCall) {
-                withTimeoutOrNull(300) { job.join() }; continue
-            }
-            val heard: String? = coroutineScope {
-                val l = async { listenBarge() }
-                bargeListen = l
-                try {
-                    select<String?> {
-                        l.onAwait { it }
-                        // kaam khatam - par user beech me bol raha ho to uski baat poori suno
-                        job.onJoin { if (ear.capturing) l.await() else { l.cancel(); null } }
-                    }
-                } finally { bargeListen = null }
-            }
-            if (heard == null) continue
-            val low = heard.lowercase()
-            if (GeminiLive.micOffCommand(low)) { stopLive("बोला: ${heard.take(60)}"); return }
-            job = agent.interrupt(heard)
-        }
     }
 
     /**
@@ -931,150 +783,6 @@ class DKAccessibilityService : AccessibilityService() {
         return false
     }
 
-    /** DK खुद बोल रहा है? (तब "गाना बज रहा" की जाँच भरोसे लायक नहीं) */
-    private fun selfAudio(): Boolean = try { speaker.busy || gemLive.isPlaying() } catch (_: Exception) { false }
-
-    /**
-     * v3.33: YouTube वीडियो सच में चला? - YouTube सामने हो और फ़ोन पर media आवाज़ चल रही हो (DK की अपनी आवाज़ नहीं).
-     * "खोल दिया" को "चल रहा है" नहीं कहते.
-     */
-    private suspend fun verifyYoutube(r: String): String {
-        if (!r.startsWith("PLAYING")) return r
-        val t0 = System.currentTimeMillis()
-        val am = getSystemService(android.media.AudioManager::class.java)
-        var front = false
-        while (System.currentTimeMillis() - t0 < 5000) {
-            if (currentPackage() == LocalRouter.YT_PKG) front = true
-            if (front && am?.isMusicActive == true && !selfAudio()) {
-                DKLog.d("जाँच: YouTube वीडियो चल रहा है (${System.currentTimeMillis() - t0} ms)")
-                return "$r (verified: playing)"
-            }
-            delay(200)
-        }
-        DKLog.d("जाँच: YouTube ${if (front) "सामने खुला, पर आवाज़ नहीं मिली" else "सामने नहीं दिखा"} (${System.currentTimeMillis() - t0} ms)")
-        return if (front) "VIDEO_OPENED: YouTube पर वीडियो खोल दिया, पर चलना शुरू हुआ या नहीं - पक्का नहीं दिखा।"
-        else "VIDEO_OPENED: वीडियो खोलने को कह दिया, पर YouTube सामने खुला नहीं दिखा।"
-    }
-
-    /** v3.75: ब्राउज़र खोज - ब्राउज़र सच में सामने आया? */
-    private suspend fun verifySearch(r: String): String {
-        if (!r.startsWith("SEARCHED:")) return r
-        val pkg = AppLauncher.lastPkg
-        if (pkg.isBlank()) return r
-        val ok = waitForeground(3000) { it == pkg }
-        DKLog.d("जाँच: ब्राउज़र ${if (ok) "सामने आ गया" else "सामने नहीं दिखा"}")
-        return if (ok) r else "SEARCH_UNVERIFIED: " + r.removePrefix("SEARCHED:").trim() + " (पर ब्राउज़र सामने नहीं दिखा)"
-    }
-
-    /**
-     * v3.75: "<ऐप> में X सर्च करो" - ऐप खोलो, फिर (1) ऐप का अपना search intent, नहीं तो
-     * (2) स्क्रीन पर search बटन/बॉक्स ढूँढो -> लिखो -> Enter. सच्चा नतीजा (न मिले तो साफ़ बताओ).
-     */
-    private suspend fun appSearch(app: String, query: String): String {
-        val q = query.trim()
-        if (app.isBlank() || q.isEmpty()) return "ERROR: app ya query khali"
-        val opened = AppLauncher.open(this, app)
-        if (!opened.startsWith("opened")) return opened
-        val pkg = AppLauncher.lastPkg
-        val label = AppLauncher.labelOf(this, pkg).ifBlank { app }
-        if (AppLauncher.searchIntent(this, pkg, q)) {
-            if (waitForeground(3000) { it == pkg }) return "SEARCHED: $label में \"$q\" खोज दिया।"
-        }
-        if (!waitForeground(3500) { it == pkg }) return "ERROR_LAUNCH: $label सामने नहीं आया, खोज नहीं हो पाई।"
-        delay(900)
-        val box = findSearchNode()
-        if (box == null) return "STEP_FAILED: $label खुल गया, पर उसमें खोज का बटन नहीं मिला।"
-        if (!box.isEditable) { box.performAction(AccessibilityNodeInfo.ACTION_CLICK); delay(700) }
-        val input = (if (box.isEditable) box else null) ?: findFocus(AccessibilityNodeInfo.FOCUS_INPUT) ?: findEditable()
-            ?: return "STEP_FAILED: $label में खोज का बॉक्स नहीं खुला।"
-        input.performAction(AccessibilityNodeInfo.ACTION_FOCUS)
-        val args = Bundle().apply { putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, q) }
-        if (!input.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, args)) return "STEP_FAILED: $label में \"$q\" लिख नहीं पाया।"
-        delay(250)
-        val entered = Build.VERSION.SDK_INT >= Build.VERSION_CODES.R &&
-            input.performAction(AccessibilityNodeInfo.AccessibilityAction.ACTION_IME_ENTER.id)
-        DKLog.d("ऐप-खोज: $label • \"${q.take(30)}\" • enter=${entered}")
-        return if (entered) "SEARCHED: $label में \"$q\" खोज दिया।"
-        else "SEARCHED: $label में \"$q\" लिख दिया (नतीजे के लिए खोज वाला बटन दबाना पड़ सकता है)।"
-    }
-
-    private fun isSearchy(n: AccessibilityNodeInfo): Boolean {
-        val id = (n.viewIdResourceName ?: "").lowercase()
-        val d = ((n.contentDescription ?: "").toString() + " " + (n.text ?: "").toString() + " " +
-            (if (Build.VERSION.SDK_INT >= 26) (n.hintText ?: "").toString() else "")).lowercase()
-        return id.contains("search") || listOf("search", "सर्च", "खोज", "ढूंढ", "ढूँढ").any { d.contains(it) }
-    }
-
-    /** स्क्रीन पर search बॉक्स (पहले) या search बटन */
-    private fun findSearchNode(): AccessibilityNodeInfo? {
-        var button: AccessibilityNodeInfo? = null
-        for (root in allRoots()) {
-            if (root.packageName?.toString() == packageName) continue
-            val stack = ArrayDeque<Pair<AccessibilityNodeInfo, Int>>(); stack.add(root to 0)
-            while (stack.isNotEmpty()) {
-                val (n, d) = stack.removeLast()
-                if (n.isVisibleToUser && isSearchy(n)) {
-                    if (n.isEditable) return n
-                    if (button == null) { var c: AccessibilityNodeInfo? = n; var k = 0
-                        while (c != null && !c.isClickable && k < 3) { c = c.parent; k++ }
-                        if (c != null && c.isClickable) button = c }
-                }
-                if (d < 30) for (i in 0 until n.childCount) n.getChild(i)?.let { stack.add(it to d + 1) }
-            }
-        }
-        return button
-    }
-
-    private fun findEditable(): AccessibilityNodeInfo? {
-        for (root in allRoots()) {
-            val stack = ArrayDeque<AccessibilityNodeInfo>(); stack.add(root)
-            while (stack.isNotEmpty()) {
-                val n = stack.removeLast()
-                if (n.isEditable && n.isVisibleToUser) return n
-                for (i in 0 until n.childCount) n.getChild(i)?.let { stack.add(it) }
-            }
-        }
-        return null
-    }
-
-    /** v3.33: ऐप सच में सामने आया? (नतीजे पर निशान; न दिखे तो भी झूठा "खुल गया" नहीं) */
-    private suspend fun verifyOpen(r: String): String {
-        if (!r.startsWith("opened")) return r
-        val pkg = AppLauncher.lastPkg
-        if (pkg.isBlank()) return r
-        val t0 = System.currentTimeMillis()
-        val ok = waitForeground(2500) { it == pkg }
-        DKLog.d("जाँच: ऐप ${if (ok) "सामने आ गया" else "सामने नहीं दिखा"} (${System.currentTimeMillis() - t0} ms)")
-        return if (ok) "$r (verified)" else "$r (not confirmed on screen)"
-    }
-
-    /**
-     * v3.33: कई कदम एक-एक करके; हर कदम के बाद जाँच, कोई कदम न हो / पूछना पड़े तो वहीं रुको (आगे झूठा "हो गया" नहीं).
-     * सिर्फ़ तय action types (nested "steps" नहीं), ज़्यादा से ज़्यादा 6.
-     */
-    private suspend fun performSteps(arr: org.json.JSONArray?): String {
-        if (arr == null || arr.length() == 0) return "ERROR: steps khali"
-        if (arr.length() > 6) return "ERROR: bahut saare steps"
-        val done = mutableListOf<String>()
-        var last = ""
-        for (i in 0 until arr.length()) {
-            val st = arr.optJSONObject(i) ?: return "ERROR: step ${i + 1} galat"
-            val type = st.optString("type")
-            if (type == "steps") return "ERROR: nested steps nahi"
-            val prev = currentPackage()
-            val r = perform(st)
-            DKLog.d("कदम ${i + 1}/${arr.length()} $type -> ${r.take(80)}")
-            if (r.startsWith("ASK:") || r.startsWith("ERROR")) {
-                val why = LocalRouter.userText(r) ?: r.take(100)
-                return if (r.startsWith("ASK:")) r
-                else "STEP_FAILED: ${if (done.isEmpty()) "" else done.joinToString(", ") + " हो गया, पर "}कदम ${i + 1} ($type) नहीं हुआ: $why"
-            }
-            done.add(LiveFast.describe(st)); last = r
-            if (i < arr.length() - 1 && type in listOf("open_app", "shop_search", "youtube_search", "open_url", "web_search", "browser_search", "app_search")) waitSettle(prev, true, 3500)
-        }
-        return "STEPS_DONE: " + done.joinToString(", ") + "। " + (LocalRouter.userText(last) ?: "")
-    }
-
     /**
      * Action ke baad screen ke thamne ka intezaar (pehle seedha 650ms tha - YouTube jaisa app tab tak khulta bhi nahi tha,
      * AI ko purani screen dikhti thi aur woh app dobara kholta tha = 10-20 sec bekaar).
@@ -1115,42 +823,6 @@ class DKAccessibilityService : AccessibilityService() {
         val dm = resources.displayMetrics
         val pkg = rootInActiveWindow?.packageName?.toString() ?: "unknown"
         return Screen(sb.toString(), pkg, dm.widthPixels, dm.heightPixels, list.size)
-    }
-
-    private fun walk(node: AccessibilityNodeInfo, out: MutableList<Element>, sb: StringBuilder, depth: Int) {
-        if (out.size >= 140 || depth > 40) return
-        if (node.isVisibleToUser) {
-            val text = node.text?.toString()?.trim().orEmpty()
-            val desc = node.contentDescription?.toString()?.trim().orEmpty()
-            val useful = text.isNotEmpty() || desc.isNotEmpty() || node.isClickable ||
-                node.isEditable || node.isScrollable || node.isLongClickable
-            if (useful) {
-                val r = Rect().also { node.getBoundsInScreen(it) }
-                if (r.width() > 0 && r.height() > 0) {
-                    val id = out.size
-                    out.add(Element(id, node, r))
-                    val cls = node.className?.toString()?.substringAfterLast('.') ?: "View"
-                    val flags = buildList {
-                        if (node.isClickable) add("click")
-                        if (node.isLongClickable) add("long")
-                        if (node.isEditable) add("edit")
-                        if (node.isScrollable) add("scroll")
-                        if (node.isChecked) add("checked")
-                        if (node.isSelected) add("selected")
-                        if (node.isFocused) add("focused")
-                    }.joinToString(",")
-                    sb.append("[").append(id).append("] ").append(cls)
-                    if (text.isNotEmpty()) sb.append(" \"").append(text.take(50)).append("\"")
-                    if (desc.isNotEmpty() && desc != text) sb.append(" (").append(desc.take(50)).append(")")
-                    if (flags.isNotEmpty()) sb.append(" {").append(flags).append("}")
-                    sb.append(" @").append(r.centerX()).append(",").append(r.centerY()).append("\n")
-                }
-            }
-        }
-        for (i in 0 until node.childCount) {
-            val child = node.getChild(i) ?: continue
-            walk(child, out, sb, depth + 1)
-        }
     }
 
     /** Screenshot (Android 11+), chhota JPEG base64 me - AI ko "dikhane" ke liye. */
@@ -1275,47 +947,12 @@ class DKAccessibilityService : AccessibilityService() {
         }
     }
 
-    private fun element(id: Int): Element? = elements.getOrNull(id)
-
-    private suspend fun click(id: Int): String {
+    internal suspend fun click(id: Int): String {
         val e = element(id) ?: return "ERROR: id $id screen par nahi hai"
         var n: AccessibilityNodeInfo? = e.node
         while (n != null && !n.isClickable) n = n.parent
         if (n != null && n.performAction(AccessibilityNodeInfo.ACTION_CLICK)) return "clicked $id"
         return if (tap(e.bounds.exactCenterX(), e.bounds.exactCenterY())) "tapped $id" else "ERROR click $id"
-    }
-
-    private suspend fun longClick(id: Int): String {
-        val e = element(id) ?: return "ERROR: id $id screen par nahi hai"
-        var n: AccessibilityNodeInfo? = e.node
-        while (n != null && !n.isLongClickable) n = n.parent
-        if (n != null && n.performAction(AccessibilityNodeInfo.ACTION_LONG_CLICK)) return "long clicked $id"
-        val x = e.bounds.exactCenterX(); val y = e.bounds.exactCenterY()
-        return if (swipe(x, y, x, y, 900)) "long pressed $id" else "ERROR long click $id"
-    }
-
-    private suspend fun typeText(id: Int, text: String): String {
-        var target: AccessibilityNodeInfo? = element(id)?.node
-        if (target != null && !target.isEditable) {
-            click(id); delay(500)
-            target = findFocus(AccessibilityNodeInfo.FOCUS_INPUT) ?: target
-        }
-        if (target == null) target = findFocus(AccessibilityNodeInfo.FOCUS_INPUT)
-        if (target == null) return "ERROR: koi text box nahi mila"
-        target.performAction(AccessibilityNodeInfo.ACTION_FOCUS)
-        val args = Bundle().apply {
-            putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, text)
-        }
-        return if (target.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, args)) "typed" else "ERROR type"
-    }
-
-    private fun pressEnter(): String {
-        val f = findFocus(AccessibilityNodeInfo.FOCUS_INPUT) ?: return "ERROR: focused box nahi"
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-            val ok = f.performAction(AccessibilityNodeInfo.AccessibilityAction.ACTION_IME_ENTER.id)
-            if (ok) return "enter pressed"
-        }
-        return "ERROR: enter support nahi, search button click karo"
     }
 
     private suspend fun scroll(dir: String): String {
@@ -1331,35 +968,11 @@ class DKAccessibilityService : AccessibilityService() {
         return if (ok) "scrolled $dir" else "ERROR scroll"
     }
 
-    /** Screen jagao; swipe-lock ho to khol do. PIN/pattern/fingerprint user khud dalega (suraksha). */
-    @Suppress("DEPRECATION")
-    private suspend fun unlock(): String {
-        val pm = getSystemService(android.os.PowerManager::class.java)
-        if (pm != null && !pm.isInteractive) {
-            try {
-                val wl = pm.newWakeLock(android.os.PowerManager.SCREEN_BRIGHT_WAKE_LOCK or
-                    android.os.PowerManager.ACQUIRE_CAUSES_WAKEUP, "dk:wake")
-                wl.acquire(4000)
-            } catch (e: Exception) { DKLog.d("wake: ${e.message}") }
-            delay(700)
-        }
-        val km = getSystemService(android.app.KeyguardManager::class.java)
-        if (km == null || !km.isKeyguardLocked) return "screen on hai, phone pehle se unlocked hai"
-        val dm = resources.displayMetrics
-        swipe(dm.widthPixels / 2f, dm.heightPixels * 0.88f, dm.widthPixels / 2f, dm.heightPixels * 0.3f, 300)
-        delay(700)
-        return when {
-            !km.isKeyguardLocked -> "phone unlock ho gaya"
-            km.isKeyguardSecure -> "screen on, lock screen PIN/pattern/fingerprint maang rahi hai - user ko bolo ki khud khole (DK PIN nahi daalta)"
-            else -> "lock screen khuli"
-        }
-    }
-
     // ---------------------------------------------------------------- calls
     /** Call ka elaan chal raha hai (tab sunne wala loop ruka rahe, DK apni hi awaaz na sune) */
-    @Volatile private var callAnnouncing = false
+    @Volatile internal var callAnnouncing = false
     /** Call aayi aur abhi jawab (उठाओ / काटो) nahi mila */
-    @Volatile private var callPending = false
+    @Volatile internal var callPending = false
 
     /**
      * Call aate hi:
@@ -1375,87 +988,9 @@ class DKAccessibilityService : AccessibilityService() {
         scope.launch { onIncomingCall(who, ask) }
     }
 
-    private suspend fun onIncomingCall(who0: String, ask: String? = null) {
-        if (!Prefs.announceCalls(this)) return
-        callPending = true
-        agent.stop()
-        calls.quietRinger()
-        delay(200)
-        var who = who0
-        if (who.isBlank() && ask == null) who = callerFromScreen()
-        if (!calls.ringing && (calls.known || ask != null)) { callPending = false; return }
-        val msg = ask ?: CallCmd.announce(who)
-        if (ask == null) rejectTarget = null
-        
-        // भाग 4: नोटिफिकेशन और सवालों का क्रम
-        val isQuestion = DKState.mode == Mode.THINKING || DKState.mode == Mode.LISTENING
-        if (isQuestion) {
-            DKLog.d("नोटिफिकेशन: सवाल चल रहा है, पहले जवाब दो फिर कॉल बताओ")
-            while (DKState.mode == Mode.THINKING || DKState.mode == Mode.LISTENING) delay(500)
-        }
-        
-        DKState.reply(msg)
-        if (DKState.live && gemLive.canTalk()) {
-            val whoNote = if (ask == null) who else AppCall.current?.let { r -> "${r.who.ifBlank { "कोई" }} (${r.app}${if (r.video) " वीडियो" else ""} कॉल)" } ?: who
-            gemLive.noteCallAsked(whoNote)
-            gemLive.muteMic(true)
-            callAnnouncing = true
-            val spoke = try { speaker.speakCall(msg, generic = false) } finally { callAnnouncing = false; gemLive.muteMic(false) }
-            gemLive.callAudio(true)
-            if (spoke == Speaker.CallSpoke.NONE) {
-                speaker.fullCallVolume()
-                val liveSaid = gemLive.announceCall(whoNote)
-                if (!liveSaid) {
-                    gemLive.muteMic(true); callAnnouncing = true
-                    try { speaker.speakCall("", generic = true) } finally { callAnnouncing = false; gemLive.muteMic(false) }
-                }
-            }
-            scope.launch { while (calls.ringing) delay(500); callPending = false; if (!calls.inCall) gemLive.callAudio(false) }
-            scope.launch { delay(1_000); while (calls.ringing || calls.inCall) delay(500); speaker.restoreCallVolume() }
-            return
-        }
-        callAnnouncing = true
-        try { speaker.speakCall(msg) } finally { callAnnouncing = false }
-        scope.launch { delay(1_000); while (calls.ringing || calls.inCall) delay(500); speaker.restoreCallVolume() }
-
-        if (loopJob?.isActive == true) {
-            scope.launch { while (calls.ringing) delay(500); callPending = false }
-            return
-        }
-        val until = System.currentTimeMillis() + 30_000
-        var asked = 1
-        try {
-            while (calls.ringing && callPending && System.currentTimeMillis() < until) {
-                DKState.set(Mode.LISTENING)
-                val ans = hear()
-                DKState.set(Mode.IDLE)
-                if (!calls.ringing) break
-                if (ans == null) {
-                    if (asked < 2 && System.currentTimeMillis() > until - 18_000) {
-                        asked++; callAnnouncing = true
-                        try { speaker.speakQuick("कॉल उठाऊँ?") } finally { callAnnouncing = false }
-                    }
-                    continue
-                }
-                if (handleCallReply(ans)) break
-            }
-        } finally { callPending = false; DKState.set(Mode.IDLE) }
-    }
-
-    // ------------------------------------------------------------ v4.1: कॉल की नई आवाज़-कमांड (API नहीं)
-
     /** काटी गई कॉल किसकी थी - मैसेज इसी को (नाम कभी नहीं पूछते) */
-    private data class CallTarget(val name: String, val number: String, val pkg: String, val app: String, val open: android.app.PendingIntent?)
-    @Volatile private var rejectTarget: CallTarget? = null
-
-    private fun currentTarget(): CallTarget? {
-        val r = AppCall.current
-        if (!calls.simRinging && calls.state == android.telephony.TelephonyManager.CALL_STATE_IDLE && r != null)
-            return CallTarget(r.who, "", r.pkg, r.app, r.open)
-        val num = calls.simNumber
-        if (num.isBlank() && calls.caller.isBlank()) return rejectTarget
-        return CallTarget(calls.caller, num, "", "", null)
-    }
+    internal data class CallTarget(val name: String, val number: String, val pkg: String, val app: String, val open: android.app.PendingIntent?)
+    @Volatile internal var rejectTarget: CallTarget? = null
 
     /** ऊपर की कमांड चलाओ; लौटता है = बोलने वाला छोटा वाक्य */
     suspend fun runCallCmd(c: CallCmd.Cmd): String {
@@ -1497,316 +1032,8 @@ class DKAccessibilityService : AccessibilityService() {
         try { speaker.speakQuick(m) } finally { callAnnouncing = false }
     }
 
-    private suspend fun muteCall(on: Boolean): String {
-        if (!calls.inCall) return "सर, अभी कोई कॉल नहीं चल रही।"
-        // पहले कॉल स्क्रीन का Mute बटन (हालत देखकर - वह toggle है), फिर सिस्टम तरीका
-        val btn = allRoots().asSequence().flatMap { root ->
-            listOf("Mute", "म्यूट", "MUTE", "Microphone").asSequence().flatMap { root.findAccessibilityNodeInfosByText(it).asSequence() }
-        }.mapNotNull { n -> var x: AccessibilityNodeInfo? = n; var d = 0; while (x != null && !x.isClickable && d < 4) { x = x.parent; d++ }; x }.firstOrNull()
-        val word = if (on) "म्यूट कर दिया" else "म्यूट हटा दिया"
-        if (btn != null && btn.isCheckable) {
-            if (btn.isChecked == on) return "सर, पहले से ${if (on) "म्यूट है" else "म्यूट नहीं है"}।"
-            if (btn.performAction(AccessibilityNodeInfo.ACTION_CLICK)) return "सर, $word।"
-        }
-        if (calls.muteApi(on)) return "सर, $word।"
-        if (btn != null && btn.performAction(AccessibilityNodeInfo.ACTION_CLICK)) return "सर, $word।"
-        return "सर, म्यूट नहीं हो पाया। कॉल स्क्रीन पर म्यूट बटन दबाइए।"
-    }
-
-    /** काटी कॉल वाले को मैसेज: SIM = SMS; ऐप = उसी व्यक्ति के notification से सीधा reply, नहीं तो ऐप खोलो + मैसेज कॉपी */
-    private suspend fun sendRejectMessage(t: CallTarget, text: String): String {
-        val who = t.name.ifBlank { t.number.ifBlank { "उन्हें" } }
-        if (t.pkg.isBlank()) {
-            if (t.number.isBlank()) return "सर, कॉल काट दी। नंबर नहीं मिला, इसलिए मैसेज नहीं भेजा।"
-            if (androidx.core.content.ContextCompat.checkSelfPermission(this, android.Manifest.permission.SEND_SMS) == android.content.pm.PackageManager.PERMISSION_GRANTED) {
-                return try {
-                    @Suppress("DEPRECATION")
-                    val sms = if (Build.VERSION.SDK_INT >= 31) getSystemService(android.telephony.SmsManager::class.java) else android.telephony.SmsManager.getDefault()
-                    sms.sendMultipartTextMessage(t.number, null, sms.divideMessage(text), null, null)
-                    "सर, कॉल काट दी और $who को मैसेज भेज दिया।"
-                } catch (e: Exception) { DKLog.d("sms: ${e.message}"); openSmsDraft(t.number, text); "सर, कॉल काट दी। SMS सीधे नहीं गया, मैसेज लिखकर खोल दिया है, भेजें दबाइए।" }
-            }
-            openSmsDraft(t.number, text)
-            return "सर, कॉल काट दी। SMS भेजने की परमिशन नहीं है, इसलिए मैसेज लिखकर खोल दिया है, भेजें दबाइए। Settings में DK को SMS की परमिशन दे दें तो आगे सीधे जाएगा।"
-        }
-        // ऐप की कॉल: उसी व्यक्ति के हाल के message notification में reply हो तो सीधा
-        val item = NotifStore.all().filter { it.pkg == t.pkg && it.canReply }.let { list ->
-            if (t.name.isBlank()) null else list.firstOrNull { it.title.equals(t.name, true) } ?: list.firstOrNull { it.title.contains(t.name, true) }
-        }
-        if (item != null && DKNotifListener.reply(this, item.key, text) == null) return "सर, कॉल काट दी और ${t.app} पर $who को मैसेज भेज दिया।"
-        try {
-            getSystemService(android.content.ClipboardManager::class.java)?.setPrimaryClip(android.content.ClipData.newPlainText("DK", text))
-        } catch (_: Exception) {}
-        var opened = false
-        try { t.open?.let { it.send(); opened = true } } catch (_: Exception) {}
-        if (!opened) try {
-            packageManager.getLaunchIntentForPackage(t.pkg)?.let { startActivity(it.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)); opened = true }
-        } catch (_: Exception) {}
-        return if (opened) "सर, कॉल काट दी। ${t.app} में सीधे भेजने का रास्ता नहीं मिला, ऐप खोल दिया है और मैसेज कॉपी कर दिया है, $who की चैट में चिपकाकर भेज दीजिए।"
-            else "सर, कॉल काट दी, पर ${t.app} पर मैसेज नहीं भेज पाया।"
-    }
-
-    private fun openSmsDraft(number: String, text: String) {
-        try {
-            startActivity(android.content.Intent(android.content.Intent.ACTION_SENDTO, android.net.Uri.parse("smsto:" + android.net.Uri.encode(number)))
-                .putExtra("sms_body", text).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK))
-        } catch (e: Exception) { DKLog.d("sms draft: ${e.message}") }
-    }
-
-    /** Ghanti ke dauraan boli baat: true = samajh kar kaam kar diya. */
-    private suspend fun handleCallReply(heard: String): Boolean {
-        val l = " " + heard.lowercase().trim().trim('.', '।', '!', '?') + " "
-        fun has(vararg w: String) = w.any { l.contains(it) }
-        DKState.user(heard)
-        // v4.1: काटकर मैसेज / तैयार मैसेज / म्यूट / कॉल काटो
-        CallCmd.route(heard, System.currentTimeMillis())?.let { cc ->
-            doCallCmd(cc)
-            return cc.action !in listOf(CallCmd.MUTE, CallCmd.UNMUTE, CallCmd.CANCEL)
-        }
-        // टेम्पलेट "उठाओ / कॉल उठाओ" (Settings → टेम्पलेट कमांड में चालू हो): उठाते ही स्पीकर भी चालू
-        val speakerOn = has("स्पीकर", "speaker", "लाउड") ||
-            (has("उठा", "uthao", "utha lo") && com.dk.assistant.template.TemplateStore.on(this, "call_answer"))
-        val pick = has("उठा", "रिसीव", "receive", "answer", "पिक", "pick", "accept", "स्वीकार", "बात करा", "बात करनी", "जोड़ो", "जोड़ दो") ||
-            Regex("(^| )(हाँ|हां|हा|हम्म|yes|yeah|ok|ओके|ठीक है|जी|जी हाँ|जी हां|बिलकुल|बिल्कुल|उठाओ)( |$)").containsMatchIn(l.trim())
-        val cut = has("काट", "कट ", "कट", "reject", "decline", "मना", "रख दो", "बाद में", "अभी नहीं", "नहीं उठा", "मत उठा", "बिज़ी", "busy") ||
-            Regex("(^| )(नहीं|नही|ना|no|nahi)( |$)").containsMatchIn(l.trim())
-        val quiet = has("चुप", "साइलेंट", "silent", "ringtone बंद", "रिंगटोन बंद", "घंटी बंद", "आवाज़ बंद", "आवाज बंद", "आवाज़ कम", "आवाज कम", "धीरे")
-        val who = has("कौन", "किसका", "who")
-        return when {
-            // "मत उठाओ" / "नहीं उठाना" = kaato (pehle check)
-            has("मत उठा", "नहीं उठा", "ना उठा") -> { agent.runQuick(QuickCommands.Quick(JSONObject().put("type", "end_call"), "कॉल काट दिया")).join(); callPending = false; true }
-            pick && !has("काट", "reject") -> {
-                agent.runQuick(QuickCommands.Quick(JSONObject().put("type", "answer_call").put("speaker", speakerOn),
-                    if (speakerOn) "कॉल उठा कर स्पीकर पर डाल रहा हूँ" else "कॉल उठा रहा हूँ")).join()
-                callPending = false; true
-            }
-            cut -> { agent.runQuick(QuickCommands.Quick(JSONObject().put("type", "end_call"), "कॉल काट दिया")).join(); callPending = false; true }
-            quiet -> {
-                DeviceActions.volume(this, "set", 0, "ring")
-                DKState.reply("रिंगटोन धीमी कर दी।"); speaker.speakQuick("रिंगटोन धीमी कर दी।"); false
-            }
-            who -> {
-                val name = calls.caller.ifBlank { callerFromScreen() }
-                val m = if (name.isNotBlank()) "$name का कॉल है। उठाऊँ?" else "नंबर पता नहीं चला। उठाऊँ?"
-                DKState.reply(m); speaker.speakQuick(m); false
-            }
-            else -> {
-                // "आवाज़ बढ़ाओ" jaisi seedhi command chalne do
-                val q = QuickCommands.parse(heard, Prefs.wakeWords(this))
-                if (q != null) { agent.runQuick(q).join(); q.action.optString("type") in listOf("answer_call", "end_call") } else false
-            }
-        }
-    }
-
-    /** Doori naapo: Maps me rasta kholo, phir screen se km + samay padho. */
-    private suspend fun distance(to: String, from: String, mode: String): String {
-        val r = Maps.directions(this, to, from, mode)
-        if (r.startsWith("ERROR")) return r
-        val until = System.currentTimeMillis() + 12_000
-        delay(2500)
-        while (System.currentTimeMillis() < until) {
-            val sc = readScreen()
-            if (sc.packageName.contains("maps")) Maps.readDistance(sc.text)?.let { return "DISTANCE: $it" }
-            delay(800)
-        }
-        return "maps route opened, distance screen par dikh rahi hai par padh nahi paya"
-    }
-
-    /** Call wali screen se naam padho (contacts permission na ho tab). */
-    private fun callerFromScreen(): String {
-        return try {
-            val root = rootInActiveWindow ?: return ""
-            val texts = mutableListOf<String>()
-            fun walk(n: AccessibilityNodeInfo?, d: Int) {
-                if (n == null || d > 25) return
-                n.text?.toString()?.trim()?.let { if (it.length in 2..40) texts.add(it) }
-                for (i in 0 until n.childCount) walk(n.getChild(i), d + 1)
-            }
-            walk(root, 0)
-            val skip = listOf("incoming", "call", "कॉल", "answer", "decline", "उत्तर", "अस्वीकार", "message", "मैसेज", "reply", "remind", "swipe", "स्वाइप", "mobile", "मोबाइल", "sim", "hd")
-            texts.firstOrNull { t -> skip.none { t.lowercase().contains(it) } && !t.contains(":") } ?: ""
-        } catch (e: Exception) { "" }
-    }
-
-    /** Saari windows (notification popup, call screen) me button dhoondo aur dabao. */
-    private fun allRoots(): List<AccessibilityNodeInfo> {
-        val out = mutableListOf<AccessibilityNodeInfo>()
-        try { windows.forEach { w -> w.root?.let { out.add(it) } } } catch (_: Exception) {}
-        rootInActiveWindow?.let { if (out.none { r -> r == it }) out.add(0, it) }
-        return out
-    }
-
     /** v4.1: स्क्रीन पर लिखे (या बटन के विवरण) पर टैप - [OfflineExec] के लिए */
     fun clickVisibleText(vararg words: String): Boolean = clickByText(*words)
-
-    private fun clickByText(vararg words: String): Boolean {
-        for (root in allRoots()) for (w in words) {
-            for (n in root.findAccessibilityNodeInfosByText(w)) {
-                var c: AccessibilityNodeInfo? = n; var depth = 0
-                while (c != null && !c.isClickable && depth < 4) { c = c.parent; depth++ }
-                if (c != null && c.isClickable && c.performAction(AccessibilityNodeInfo.ACTION_CLICK)) return true
-            }
-        }
-        return false
-    }
-
-    /** View-id se (jaise "answer_button") button dabao. */
-    private fun clickById(vararg parts: String): Boolean {
-        fun walk(n: AccessibilityNodeInfo?, d: Int): Boolean {
-            if (n == null || d > 30) return false
-            val id = n.viewIdResourceName?.lowercase() ?: ""
-            val desc = n.contentDescription?.toString()?.lowercase() ?: ""
-            if (parts.any { id.contains(it) || desc.contains(it) }) {
-                var c: AccessibilityNodeInfo? = n; var k = 0
-                while (c != null && !c.isClickable && k < 3) { c = c.parent; k++ }
-                if (c?.performAction(AccessibilityNodeInfo.ACTION_CLICK) == true) return true
-            }
-            for (i in 0 until n.childCount) if (walk(n.getChild(i), d + 1)) return true
-            return false
-        }
-        return allRoots().any { walk(it, 0) }
-    }
-
-    private suspend fun answerCall(speakerOn: Boolean): String {
-        // v4: WhatsApp / Instagram / Facebook / Messenger… की कॉल = उसी notification का Answer बटन, फिर जाँच कि सच में उठी
-        if (!calls.simRinging && AppCall.ringing()) {
-            val app = AppCall.current?.app.orEmpty()
-            val sent = calls.answer()
-            var up = withTimeoutOrNull(2500) { while (!AppCall.ongoing()) delay(100) } != null
-            if (!up) {
-                // बटन नहीं था / नहीं चला -> कॉल की स्क्रीन खुली है, वहाँ Answer
-                delay(600)
-                clickByText("Answer", "Accept", "ANSWER", "Join", "उत्तर दें", "जवाब दें", "स्वीकार करें", "स्वीकार") ||
-                    clickById("answer", "accept", "accept_call", "answer_call")
-                up = withTimeoutOrNull(2000) { while (!AppCall.ongoing()) delay(100) } != null
-            }
-            calls.restoreRinger()
-            if (!up && !sent) return "ERROR: $app कॉल नहीं उठ पाई - फ़ोन पर खुद उठाइए"
-            if (speakerOn) scope.launch { delay(1500); setSpeaker(true) }
-            return (if (up) "call utha li" else "$app call ka Answer daba diya") + (if (speakerOn) " aur speaker on" else "")
-        }
-        if (calls.inCall && !calls.ringing) {
-            if (speakerOn) setSpeaker(true)
-            return "call pehle se chal rahi hai" + if (speakerOn) ", speaker on" else ""
-        }
-        // v3.41: tay deri (700/700/800/900/1500 ms) ki jagah "uthi ya nahi" har 100 ms dekho - uthte hi aage
-        suspend fun answered(ms: Long) = withTimeoutOrNull(ms) { while (!(calls.known && calls.inCall)) delay(100) } != null
-        // 1) Android ka seedha tareeka (permission chahiye)
-        var ok = calls.answer()
-        if (answered(1000)) ok = true
-        // 2) Call popup / call screen ka "Answer" button
-        if (!(calls.known && calls.inCall)) {
-            ok = clickByText("Answer", "Accept", "ANSWER", "उत्तर दें", "उत्तर", "स्वीकार करें", "स्वीकार", "जवाब दें", "रिसीव", "उठाएं") ||
-                clickById("answer", "accept", "incoming_call_accept") || ok
-            answered(900)
-        }
-        // 3) "Swipe up to answer" wali screen
-        if (!(calls.known && calls.inCall) && isCallScreen()) {
-            val dm = resources.displayMetrics
-            swipe(dm.widthPixels / 2f, dm.heightPixels * 0.85f, dm.widthPixels / 2f, dm.heightPixels * 0.35f, 300)
-            answered(900)
-            ok = ok || (calls.known && calls.inCall)
-        }
-        // 4) ek baar aur seedha tareeka (kuch phone pehli baar me nahi uthate)
-        if (calls.known && !calls.inCall && calls.ringing) { calls.answer(); answered(900) }
-        calls.restoreRinger()
-        if (calls.known) ok = calls.inCall
-        if (!ok) return if (!calls.canAnswer()) "ERROR_CALL_PERM" else "ERROR: call nahi uthi"
-        if (speakerOn) {
-            // call screen ka Speaker button aane do (pehle 1.5s fixed), phir ek baar aur pakka (kuch phone shuru me speaker hata dete)
-            delay(400); setSpeaker(true)
-            scope.launch { delay(1500); if (calls.inCall && calls.speakerIsOn() != true) setSpeaker(true) }
-        }
-        return "call utha li" + (if (speakerOn) " aur speaker on" else "")
-    }
-
-    private fun isCallScreen(): Boolean {
-        val p = rootInActiveWindow?.packageName?.toString()?.lowercase() ?: return false
-        return listOf("dialer", "incall", "telecom", "phone", "contacts").any { p.contains(it) }
-    }
-
-    private suspend fun endCall(): String {
-        calls.restoreRinger()
-        if (calls.end()) return "call kaat di"
-        if (clickByText("End call", "Decline", "Reject", "DECLINE", "कॉल समाप्त करें", "कॉल समाप्त", "समाप्त", "अस्वीकार करें", "अस्वीकार", "काटें", "कट करें", "Hang up") ||
-            clickById("decline", "reject", "end_call", "endcall", "hangup")) return "call kaat di"
-        return if (!calls.canAnswer()) "ERROR_CALL_PERM" else "ERROR: call nahi kati"
-    }
-
-    private suspend fun setSpeaker(on: Boolean): String {
-        // Pehle call screen ka "Speaker" button (sabse pakka), phir system tareeka
-        // Button TOGGLE hai - bina haalat dekhe dabane se "speaker off" par speaker ON ho jaata tha
-        val btn = speakerButton()
-        if (btn == null) { calls.speakerApi(on); return "speaker ${if (on) "on" else "off"}" }
-        val now: Boolean? = if (btn.isCheckable) btn.isChecked else calls.speakerIsOn()
-        if (now == on) return "speaker pehle se ${if (on) "on" else "off"} hai"
-        if (now == null || !btn.performAction(AccessibilityNodeInfo.ACTION_CLICK)) calls.speakerApi(on)
-        return "speaker ${if (on) "on" else "off"}"
-    }
-
-    /** Call screen ka "Speaker" button (clickable node) - na mile to null */
-    private fun speakerButton(): AccessibilityNodeInfo? {
-        for (root in allRoots()) for (w in listOf("Speaker", "स्पीकर", "Speakerphone", "लाउडस्पीकर")) {
-            for (n in root.findAccessibilityNodeInfosByText(w)) {
-                var c: AccessibilityNodeInfo? = n; var depth = 0
-                while (c != null && !c.isClickable && depth < 4) { c = c.parent; depth++ }
-                if (c != null && c.isClickable) return c
-            }
-        }
-        return null
-    }
-
-    private fun whoCalls(): String {
-        if (!calls.ringing && !calls.inCall) return "abhi koi call nahi hai"
-        val who = calls.caller.ifBlank { callerFromScreen() }
-        return if (who.isBlank()) "caller ka naam pata nahi chala" else "CALLER: $who"
-    }
-
-    /** Abhi wala app band karo: recents me card upar fenko. */
-    private suspend fun closeApp(): String {
-        val pkg = rootInActiveWindow?.packageName?.toString()
-        if (!performGlobalAction(GLOBAL_ACTION_RECENTS)) return "ERROR recents"
-        delay(900)
-        val dm = resources.displayMetrics
-        swipe(dm.widthPixels / 2f, dm.heightPixels * 0.5f, dm.widthPixels / 2f, dm.heightPixels * 0.05f, 220)
-        delay(500)
-        performGlobalAction(GLOBAL_ACTION_HOME)
-        return "closed recent app ${pkg ?: ""}"
-    }
-
-    /** Sab apps band: recents me "Clear all / सभी बंद करें" dabao. */
-    private suspend fun closeAllApps(): String {
-        if (!performGlobalAction(GLOBAL_ACTION_RECENTS)) return "ERROR recents"
-        delay(1000)
-        val root = rootInActiveWindow ?: return "ERROR recents screen"
-        val words = listOf("clear all", "close all", "सभी साफ़", "सब हटाएँ", "सभी बंद", "सभी हटाएं", "सभी साफ करें", "x")
-        for (w in words) {
-            val n = root.findAccessibilityNodeInfosByText(w).firstOrNull { it.isClickable || it.parent?.isClickable == true }
-            if (n != null) {
-                (if (n.isClickable) n else n.parent).performAction(AccessibilityNodeInfo.ACTION_CLICK)
-                return "cleared all recent apps"
-            }
-        }
-        return "recents khula hai, 'Clear all' button nahi mila - screen dekh kar dabao"
-    }
-
-    private fun global(action: Int): String = if (performGlobalAction(action)) "ok" else "ERROR"
-
-    internal suspend fun tap(x: Float, y: Float): Boolean = swipe(x, y, x, y, 60)
-
-    private suspend fun swipe(x1: Float, y1: Float, x2: Float, y2: Float, duration: Long): Boolean {
-        val path = Path().apply { moveTo(x1, y1); lineTo(x2, y2) }
-        val gesture = GestureDescription.Builder()
-            .addStroke(GestureDescription.StrokeDescription(path, 0, duration))
-            .build()
-        return suspendCancellableCoroutine { cont ->
-            val ok = dispatchGesture(gesture, object : GestureResultCallback() {
-                override fun onCompleted(g: GestureDescription?) { if (cont.isActive) cont.resume(true) }
-                override fun onCancelled(g: GestureDescription?) { if (cont.isActive) cont.resume(false) }
-            }, null)
-            if (!ok && cont.isActive) cont.resume(false)
-        }
-    }
 
     // ---------------------------------------------------------------- तैरता ORB (FloatOrb.kt)
     /** Settings switch / slider, notification बटन, ऐप खुलना - सब यहीं से ORB ठीक करते हैं */
@@ -1819,27 +1046,6 @@ class DKAccessibilityService : AccessibilityService() {
         // call chal rahi ho to orb tap = call kaato (call ke dauraan Android mic nahi deta)
         if (calls.inCall || calls.ringing) scope.launch { perform(JSONObject().put("type", "end_call")) }
         else toggleLive()
-    }
-
-    private fun showEdgeGlow() {
-        try {
-            val wm = getSystemService(WINDOW_SERVICE) as WindowManager
-            val params = WindowManager.LayoutParams(
-                WindowManager.LayoutParams.MATCH_PARENT, WindowManager.LayoutParams.MATCH_PARENT,
-                WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY,
-                WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE or
-                    WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
-                PixelFormat.TRANSLUCENT
-            ).apply { gravity = Gravity.TOP or Gravity.START }
-            val v = com.dk.assistant.fx.EdgeGlowView(this)
-            wm.addView(v, params)
-            edgeGlow = v
-        } catch (e: Exception) { DKLog.d("Edge glow नहीं लगा: ${e.javaClass.simpleName}") }
-    }
-
-    private fun removeEdgeGlow() {
-        edgeGlow?.let { try { (getSystemService(WINDOW_SERVICE) as WindowManager).removeView(it) } catch (_: Exception) {} }
-        edgeGlow = null
     }
 
 }

@@ -74,7 +74,7 @@ class ScreenDkOnlyOfflineCallsTest {
         assertTrue(g.contains("DkOnly.filter(t) != null"))
         assertTrue(g.contains("ownerSaysOwner(guardBuf)"))           // पहले मालिक की आवाज़, फिर DK
         assertTrue(g.contains("DkOnly.filter(raw)"))                  // बीच में पूछी बात भी
-        val svc = src("DKAccessibilityService.kt")
+        val svc = com.dk.assistant.AccSrc.all()
         assertTrue(svc.contains("cmdText = DkOnly.filter(heard) ?: continue"))
         assertTrue(src("BrainManager.kt").contains("if (Prefs.dkOnly(ctx)) append(DkOnly.PROMPT)"))
     }
@@ -197,7 +197,7 @@ class ScreenDkOnlyOfflineCallsTest {
     }
 
     @Test fun callWiring() {
-        val svc = src("DKAccessibilityService.kt")
+        val svc = com.dk.assistant.AccSrc.all()
         assertTrue(svc.contains("CallCmd.announce(who)"))
         assertTrue(svc.contains("sendMultipartTextMessage"))
         assertTrue(svc.contains("Prefs.callBusyMsg(this)"))

@@ -24,7 +24,7 @@ class DkLiveSettingsExtraApiTest {
     @Test fun live_reconnectsWithinOneSecond() {
         assertEquals(1_000L, LiveRetry.FAST_MAX_MS)
         assertTrue((0..9).all { LiveRetry.fast(true, LiveRetry.liveOnMs(true, it)) <= 1_000L })
-        assertTrue(src("DKAccessibilityService.kt").contains("if (userLive) LiveRetry.FAST_MAX_MS else 2 * 60_000L"))
+        assertTrue(com.dk.assistant.AccSrc.all().contains("if (userLive) LiveRetry.FAST_MAX_MS else 2 * 60_000L"))
     }
 
     @Test fun live_tellsUserOnceWhenItCannotConnect() {
@@ -39,7 +39,7 @@ class DkLiveSettingsExtraApiTest {
         assertEquals(LiveConnectNotice.MIC, LiveConnectNotice.forStop("माइक नहीं खुला", true))
         assertEquals(LiveConnectNotice.TROUBLE, LiveConnectNotice.forStop("Gemini Live से जुड़ नहीं पाया: timeout", true))
         assertTrue(LiveConnectNotice.forStop("Gemini Live की फ्री लिमिट खत्म", false).contains("लिमिट"))
-        val s = src("DKAccessibilityService.kt")
+        val s = com.dk.assistant.AccSrc.all()
         assertTrue(s.contains("if (userLive) liveTroubleSay("))
         val g = LiveSrc.all()
         assertTrue(g.contains("LiveConnectNotice.shouldTell(fails, svc.liveTroubleShown)"))

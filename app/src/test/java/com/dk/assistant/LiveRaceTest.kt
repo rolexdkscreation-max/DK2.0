@@ -131,7 +131,7 @@ class LiveRaceTest {
         val net = src("LiveNet.kt")
         assertTrue(net.contains("ACTION_SCREEN_ON") && net.contains("ACTION_SCREEN_OFF") && net.contains("warmedThisScreen"))
         assertFalse(net.contains("newWebSocket") || net.contains("AudioRecord"))   // गरम करना = सिर्फ़ HTTPS, Live/माइक नहीं
-        val s = src("DKAccessibilityService.kt")
+        val s = com.dk.assistant.AccSrc.all()
         assertTrue(s.contains("LiveNet.register(this)") && s.contains("LiveNet.unregister(this)"))
         // हल्का मोड पूरी तरह हटा -> असली नाकामी पर साफ़ कारण के साथ बैकअप मोड
         assertFalse(s.contains("enterLight(") || s.contains("gemLive.backgroundRace(") || s.contains("lightMode"))

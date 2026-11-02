@@ -87,7 +87,7 @@ class LiveSetupAndBackupTest {
     }
 
     @Test fun source_lightModeGone_backupWired() {
-        val s = src("DKAccessibilityService.kt"); val g = LiveSrc.all()
+        val s = com.dk.assistant.AccSrc.all(); val g = LiveSrc.all()
         for (bad in listOf("lightMode", "enterLight(", "lightBack(", "hearLight(", "LINK_LIGHT")) assertFalse(bad, s.contains(bad))
         assertFalse(src("DKState.kt").contains("LINK_LIGHT"))
         assertFalse(src("LiveRace.kt").contains("LIGHT_AFTER_MS") || src("LiveRace.kt").contains("BACKGROUND_EVERY_MS"))
