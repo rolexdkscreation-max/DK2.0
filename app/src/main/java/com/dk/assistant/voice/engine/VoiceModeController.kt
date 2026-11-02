@@ -11,7 +11,7 @@ import android.content.Context
  *
  * सब कुछ [VoiceEngines] में ही सेव होता है ("active", SharedPreferences) - ऐप बंद-चालू करने पर वही रहता है;
  * नया इंस्टॉल = Direct Gemini Live. सेटिंग्स का "Direct Gemini Live Voice" स्विच = DK लाइव इंजन का स्विच.
- * Kokoro.
+ * Kokoro पूरी तरह हटाया (वापस नहीं लाना).
  */
 object VoiceModeController {
     enum class Mode { GEMINI_TTS, DIRECT_LIVE }
