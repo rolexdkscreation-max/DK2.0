@@ -62,16 +62,18 @@ object ImageGenAgent {
     } catch (_: Exception) { null }
 
     /** डाउनलोड हुई तस्वीर छोटी JPEG (768px) - नहीं तो null */
-    private fun fileJpeg(svc: DKAccessibilityService, startMs: Long): ByteArray? = try {
-        val (id, _) = newest(svc, startMs) ?: return null
-        val uri = ContentUris.withAppendedId(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, id)
-        val opts = BitmapFactory.Options().apply { inJustDecodeBounds = true }
-        svc.contentResolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it, null, opts) }
-        var sample = 1
-        while (maxOf(opts.outWidth, opts.outHeight) / (sample * 2) >= 768) sample *= 2
-        val bmp = svc.contentResolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it, null, BitmapFactory.Options().apply { inSampleSize = sample }) }
-        bmp?.let { val bos = ByteArrayOutputStream(); it.compress(Bitmap.CompressFormat.JPEG, 75, bos); bos.toByteArray() }
-    } catch (_: Exception) { null }
+    private fun fileJpeg(svc: DKAccessibilityService, startMs: Long): ByteArray? {
+        val id = newest(svc, startMs)?.first ?: return null
+        return try {
+            val uri = ContentUris.withAppendedId(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, id)
+            val opts = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+            svc.contentResolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it, null, opts) }
+            var sample = 1
+            while (maxOf(opts.outWidth, opts.outHeight) / (sample * 2) >= 768) sample *= 2
+            val bmp = svc.contentResolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it, null, BitmapFactory.Options().apply { inSampleSize = sample }) }
+            bmp?.let { val bos = ByteArrayOutputStream(); it.compress(Bitmap.CompressFormat.JPEG, 75, bos); bos.toByteArray() }
+        } catch (_: Exception) { null }
+    }
 
     /** Gemini vision (वही key): तस्वीर में क्या है - 2-3 छोटे हिंदी वाक्य */
     private fun describe(svc: DKAccessibilityService, jpeg: ByteArray, prompt: String): String? {
