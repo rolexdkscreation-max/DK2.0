@@ -277,16 +277,31 @@ object HeyDk {
     fun prepareAcks(c: Context) {
         val e = ackEngine(c) ?: return
         val voice = e.voice(c)
+        // DKI-9DC74D (नवंबर 2026): जड़ - Worker (dk-brain) में APP_TOKEN secret नहीं = हर power बटन / Hey DK पर Worker फिर
+        // बुलाया जाता, हर बार 500 और वही गलती (29 बार). अब: (1) Live आवाज़ चालू हो और Live वाला ack बना हो = Worker की ज़रूरत
+        // ही नहीं; (2) Worker नाकाम = 10 मिनट तक दोबारा नहीं (टिंग/Live वाली आवाज़ चलती रहे).
+        val now = System.currentTimeMillis()
+        if (!LiveAckRules.retryDue(ackFailAt, now)) return
+        val liveOn = VoiceEngines.activeId(c) == VoiceEngines.LIVE_NATIVE
         for (t in acks(c)) {
             val f = ackFile(c, e.id, voice, t)
             if (f.exists() && f.length() > 2000) continue
+            if (liveOn && hasLiveAck(c, t)) continue
             try {
                 val out = ByteArrayOutputStream()
                 e.speak(c, t, voice) { out.write(it) }
-                if (out.size() > 2000) { f.parentFile?.mkdirs(); f.writeBytes(out.toByteArray()) }
-            } catch (ex: Exception) { DKLog.d("Hey DK जवाब की आवाज़ नहीं बनी: ${ex.message}") }
+                if (out.size() > 2000) { f.parentFile?.mkdirs(); f.writeBytes(out.toByteArray()); ackFailAt = 0L }
+            } catch (ex: Exception) {
+                ackFailAt = System.currentTimeMillis()
+                DKLog.d("Hey DK जवाब की आवाज़ नहीं बनी: ${ex.message} - ${ACK_RETRY_MS / 60_000} मिनट तक दोबारा नहीं")
+                return
+            }
         }
     }
+
+    /** Worker/TTS नाकाम होने के बाद इतनी देर दोबारा नहीं */
+    const val ACK_RETRY_MS = LiveAckRules.RETRY_MS
+    @Volatile private var ackFailAt = 0L
 
     /** नवंबर 2026: यह "हाँ सर" फ़ोन में पहले से बना है? (power बटन पर तुरंत - बिना इंटरनेट) */
     fun hasAck(c: Context, text: String): Boolean = ackPick(c, text) != null
