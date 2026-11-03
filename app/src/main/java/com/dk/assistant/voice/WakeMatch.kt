@@ -277,12 +277,63 @@ object WakeMatch {
 
     // ------------------------------------------------------------------ जागने पर क्या बोले
 
-    val DEFAULT_ACKS = listOf("हाँ सर", "बोलिए सर", "हाँ बॉस", "जी, बोलिए")
+    /** नवंबर 2026 (मालिक): power बटन / Hey DK पर हमेशा एक ही साफ़, professional जवाब - "Yes Boss" (पहले बदल-बदलकर "हाँ सर / बोलिए सर…") */
+    val DEFAULT_ACKS = listOf("Yes Boss")
+    /** पुराना default (किसी ने Settings में वही सेव किया हो) = नया "Yes Boss" */
+    val OLD_DEFAULT_ACKS = listOf("हाँ सर", "बोलिए सर", "हाँ बॉस", "जी, बोलिए")
 
-    /** "हाँ सर, बोलिए सर" -> सूची (कॉमा/नई लाइन से) */
+    /** "हाँ सर, बोलिए सर" -> सूची (कॉमा/नई लाइन से). खाली या पुराना default = "Yes Boss" */
     fun parseAcks(raw: String?): List<String> {
         val l = raw.orEmpty().split(',', '\n', '|').map { it.trim() }.filter { it.isNotBlank() }.distinct().take(8)
+        // Settings का खाना पुराना default दिखाकर वैसा ही सेव हुआ था ("हाँ सर, बोलिए सर, हाँ बॉस, जी, बोलिए") = नया default
+        val old = OLD_DEFAULT_ACKS.joinToString(", ").split(',').map { it.trim() }.filter { it.isNotBlank() }
+        if (l.isNotEmpty() && (l.toSet() == old.toSet() || l.toSet() == OLD_DEFAULT_ACKS.toSet())) return DEFAULT_ACKS
         return l.ifEmpty { DEFAULT_ACKS }
+    }
+
+    // ------------------------------------------------------------------ बिना सिखाए वाला जागना: सिर्फ़ पूरा "Hey DK"
+
+    /** जगाने वाले पहले शब्द: Hey / OK / Hello / Hi (हिंदी में भी) - Google के "Hey Google / OK Google" जैसा */
+    val WAKE_LEADS = setOf("hey", "hay", "hei", "he", "hi", "hii", "hello", "helo", "hallo", "hullo", "ok", "okay", "okey", "oke", "o.k",
+        "हे", "हेय", "है", "हाय", "हैलो", "हेलो", "हलो", "हल्लो", "ओके", "ओक", "ओकै", "ओकेय", "ऐ")
+
+    /** "DK" किस-किस तरह लिखा आता है (बोली-पहचान से) */
+    val DK_FORMS = listOf(listOf("dk"), listOf("d", "k"), listOf("dee", "kay"), listOf("dee", "k"), listOf("deekay"), listOf("dikey"), listOf("deke"), listOf("dkay"), listOf("decay"),
+        listOf("डीके"), listOf("डी", "के"), listOf("दीके"), listOf("दी", "के"), listOf("डीकेय"), listOf("डिके"), listOf("डी", "कै"))
+
+    private fun tokens(text: String): List<String> =
+        text.lowercase().replace(Regex("[,.!?।॥:;\"'()\\[\\]{}-]"), " ").split(Regex("\\s+")).filter { it.isNotBlank() }
+
+    /**
+     * नवंबर 2026 (मालिक): "कुछ भी बोलूँ तो DK जाग जाता है - ऐसा नहीं होना चाहिए". पहले बात में कहीं भी "dk"/"डी के" मिलते ही जागता था.
+     * अब सिर्फ़ पूरा वाक्य: "Hey DK" / "OK DK" / "Hello DK" / "Hi DK" (या [names] में डाला अपना नाम, जैसे "Hey मायरा") -
+     * बात की शुरुआत में (पहले 2 शब्दों में). @return नाम के बाद की बात ("" = सिर्फ़ बुलाया) या null = यह जगाना नहीं.
+     */
+    fun strictWake(text: String, names: List<String> = emptyList()): String? {
+        val t = tokens(text)
+        if (t.isEmpty()) return null
+        val forms = DK_FORMS + names.map { tokens(it) }.filter { it.isNotEmpty() && it != listOf("d", "k") && it != listOf("dk") }
+        for (i in 0..minOf(1, t.size - 1)) {
+            // जुड़कर लिखा: "heydk", "okdk", "हेडीके"
+            val glued = forms.filter { it.size == 1 }.firstOrNull { f -> WAKE_LEADS.any { l -> l.length > 1 && t[i] == l + f[0] } }
+            if (glued != null) return rest(text, t, i + 1)
+            if (t[i] !in WAKE_LEADS || i + 1 >= t.size) continue
+            val f = forms.firstOrNull { f -> i + 1 + f.size <= t.size && t.subList(i + 1, i + 1 + f.size) == f } ?: continue
+            return rest(text, t, i + 1 + f.size)
+        }
+        return null
+    }
+
+    /** मूल बात में से पहले [n] शब्द हटाकर बाकी (लिखावट वैसी ही) */
+    private fun rest(text: String, t: List<String>, n: Int): String {
+        if (n >= t.size) return ""
+        val after = t.drop(n)
+        // मूल text में उस शब्द की जगह ढूँढो जहाँ से बाकी बात शुरू
+        val low = text.lowercase()
+        var pos = 0
+        for (w in t.take(n)) { val j = low.indexOf(w, pos); if (j >= 0) pos = j + w.length }
+        val out = text.substring(pos.coerceAtMost(text.length)).trim(' ', ',', '.', '!', '।', '?', '-')
+        return out.ifBlank { after.joinToString(" ") }
     }
 
     /** पिछली बार वाला नहीं - बदल-बदलकर */

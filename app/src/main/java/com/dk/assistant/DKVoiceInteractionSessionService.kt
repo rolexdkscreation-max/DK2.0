@@ -118,7 +118,7 @@ class DKVoiceInteractionSession(context: android.content.Context) : VoiceInterac
         // Accessibility यहाँ नई चालू नहीं की जाती - सिर्फ़ पहले से चालू (Not working) वाली फिर जोड़ी जाती है.
         // नवंबर 2026: पहले से चालू पर "Not working" वाली सेवा फिर जोड़ो (सिर्फ़ adb इजाज़त हो तो; नई इजाज़त नहीं)
         try { Setup.healAccessibility(context) } catch (_: Exception) {}
-        try { DKAccessibilityService.instance?.invokedNow("power बटन / assistant") }
+        try { DKAccessibilityService.instance?.invokedNow("power बटन / assistant", session = true) }
         catch (e: Exception) { android.util.Log.e("DKAssist", "Live शुरू नहीं हुआ", e); com.dk.assistant.DKBug.report("assistant", e, "Live शुरू नहीं हुआ", alsoLog = true) }
         try {
             android.util.Log.e("DKAssist", "DKVoiceInteractionSession onShow")

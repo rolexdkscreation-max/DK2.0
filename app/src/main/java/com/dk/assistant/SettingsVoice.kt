@@ -80,8 +80,18 @@ internal fun SettingsActivity.heyDkCard(box: LinearLayout) {
         Setup.startKeepAlive(this)
         DKAccessibilityService.instance?.startWakeLoopIfEnabled()
         refresh()
-        toast("अब \"हे डीके\" या \"हेलो डीके\" बोलिए")
+        toast("अब \"Hey DK\", \"OK DK\" या \"Hello DK\" बोलिए")
     })
+    // नवंबर 2026 (मालिक): कुछ भी बोलने पर न जागे - सिर्फ़ पूरा "Hey DK / OK DK / Hello DK"
+    val swStrict = switch(box, "सिर्फ़ \"Hey DK / OK DK / Hello DK\" पर जागो", Prefs.wakeStrict(this))
+    swStrict.setOnCheckedChangeListener { _, on -> Prefs.edit(this) { putBoolean("wake_strict", on) } }
+    hint(box, "चालू = बात की शुरुआत में पूरा \"Hey DK\", \"OK DK\", \"Hello DK\" या \"Hi DK\" बोलने पर ही जागेगा। बाकी कोई भी बात (जिसमें बीच में DK आ जाए) अनसुनी। बंद = पुराना तरीका।")
+    // power बटन = एक बार की बातचीत (चुप = वापस Hey DK)
+    val swSession = switch(box, "power बटन = एक बार की बातचीत", Prefs.invokeSession(this))
+    swSession.setOnCheckedChangeListener { _, on -> Prefs.edit(this) { putBoolean("invoke_session", on) } }
+    hint(box, "चालू = power बटन से DK खुले तो \"Yes Boss\" बोलकर सुनेगा, और ${InvokeSession.IDLE_MS / 1000} सेकंड चुप रहने पर Live बंद करके फिर सिर्फ़ \"Hey DK\" का इंतज़ार करेगा (माइक चालू दिखेगा पर कुछ भी बोलने पर जवाब नहीं देगा)। Live का बटन खुद दबाएँ = हमेशा वाला Live, पहले जैसा।")
+    val swChime = switch(box, "Live जुड़ते ही हल्की आवाज़", Prefs.bool(this, "live_chime", true))
+    swChime.setOnCheckedChangeListener { _, on -> Prefs.edit(this) { putBoolean("live_chime", on) } }
     row(box,
         button("बैटरी की रोक हटाओ") { Setup.requestBatteryExempt(this) },
         button("मिटाओ") {
@@ -92,8 +102,8 @@ internal fun SettingsActivity.heyDkCard(box: LinearLayout) {
         })
     refresh()
     hint(box, "कैसे काम करता है: आप 5 बार \"Hey DK\" बोलते हैं (या \"Hello DK\" — जो भी चुनें, पाँचों बार वही)। फ़ोन उससे आपके बोलने का तरीका और आपकी आवाज़ की पहचान बनाता है। सुनते समय हर छोटी बात फ़ोन के अंदर ही मिलाई जाती है — न मिले तो भूल जाता है, कहीं भेजता नहीं।")
-    hint(box, "\"Hey DK, WhatsApp खोलो\" एक साँस में भी बोल सकते हैं — तब DK सीधे वही करेगा। सिर्फ़ \"Hey DK\" कहा तो \"हाँ सर\" बोलकर सुनेगा, और करीब 30 सेकंड चुप रहने पर फिर सो जाएगा।")
-    hint(box, "सिखाना न हो पाए तो \"बिना सिखाए चलाओ\" दबाइए: तब \"हे डीके, मौसम बताओ\" या सिर्फ़ \"हेलो डीके\" बोलने पर DK \"हाँ सर\" बोलकर सुनेगा। पर यह तरीका आपकी बात इंटरनेट (Groq/Gemini) से पहचानता है, थोड़ा धीमा है और किसी की भी आवाज़ पर जाग सकता है।")
+    hint(box, "\"Hey DK, WhatsApp खोलो\" एक साँस में भी बोल सकते हैं — तब DK सीधे वही करेगा। सिर्फ़ \"Hey DK\" कहा तो \"Yes Boss\" बोलकर सुनेगा, और करीब 30 सेकंड चुप रहने पर फिर सो जाएगा।")
+    hint(box, "सिखाना न हो पाए तो \"बिना सिखाए चलाओ\" दबाइए: तब \"हे डीके, मौसम बताओ\" या सिर्फ़ \"हेलो डीके\" बोलने पर DK \"Yes Boss\" बोलकर सुनेगा। पर यह तरीका आपकी बात इंटरनेट (Groq/Gemini) से पहचानता है, थोड़ा धीमा है और किसी की भी आवाज़ पर जाग सकता है।")
     hint(box, "सीमाएँ: ऊपर DK की notification हमेशा दिखेगी (Android का नियम)। बैटरी थोड़ी ज़्यादा लगती है। Force stop करने या फ़ोन बंद होने पर नहीं सुनेगा। कॉल के दौरान माइक कॉल का होता है। यह फ़ोन का ताला नहीं है — आपकी आवाज़ की रिकॉर्डिंग से धोखा हो सकता है।")
 }
 

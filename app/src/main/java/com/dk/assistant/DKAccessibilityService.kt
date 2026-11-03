@@ -163,8 +163,13 @@ class DKAccessibilityService : AccessibilityService() {
         if (DKState.live) stopLive("ओर्ब/माइक टैप") else startLive()
     }
 
+    /** नवंबर 2026: power बटन वाली एक बार की बातचीत चल रही है (चुप = Live बंद, वापस "Hey DK") */
+    @Volatile internal var sessionLive = false
+
     fun startLive() {
         DKLog.d("Live चालू (live=${DKState.live}, wake=$wakeLive)")
+        // खुद Live चालू किया (बटन/ओर्ब) = हमेशा वाला, एक बार वाली बातचीत नहीं
+        if (sessionLive) { sessionLive = false; gemLive.idleExitMs = 0; Prefs.edit(this) { putBoolean("live_mode", true) } }
         // DK AI Part 13: access key चालू नहीं = लाइव शुरू नहीं (लाइसेंस सेट नहीं = पहले जैसा चलता है)
         com.dk.assistant.license.AccessKeyManager.refusalOrNull(this)?.let { msg ->
             DKLog.d("Live: access key चालू नहीं - शुरू नहीं किया")
@@ -196,17 +201,35 @@ class DKAccessibilityService : AccessibilityService() {
      * v5.1: power बटन (default assistant) / DK स्क्रीन खुली = Live अभी, UI के साथ-साथ (UI का इंतज़ार नहीं).
      * माइक की इजाज़त न हो = कुछ नहीं (स्क्रीन इजाज़त का बटन दिखाती है). Accessibility यहाँ कभी चालू नहीं की जाती.
      */
-    fun invokedNow(why: String) {
+    /**
+     * नवंबर 2026 (मालिक): power बटन = Google Assistant जैसी एक बार की बातचीत. चुप होने के कुछ देर बाद Live खुद बंद और
+     * माइक वापस सिर्फ़ "Hey DK" सुनता है (पहले power बटन से Live हमेशा के लिए चालू रह जाता था = कुछ भी बोलो, DK जवाब देता).
+     * Live का बटन खुद दबाकर चालू किया = वह पहले जैसा हमेशा वाला.
+     */
+    private fun beginSession() {
+        if (!InvokeSession.useSession(true, Prefs.invokeSession(this), Prefs.wakeMode(this)) || !DKState.live) return
+        if (wakeLive) { gemLive.idleExitMs = maxOf(gemLive.idleExitMs, InvokeSession.IDLE_MS); return }
+        sessionLive = true; gemLive.idleExitMs = InvokeSession.IDLE_MS
+        Prefs.edit(this) { putBoolean("live_mode", false) }   // फ़ोन/ऐप फिर शुरू हो तो हमेशा वाला Live न लौटे
+        DKLog.d("power बटन: एक बार की बातचीत (${InvokeSession.IDLE_MS / 1000}s चुप = वापस Hey DK)")
+    }
+
+    fun invokedNow(why: String, session: Boolean = false) {
         if (!Setup.hasMic(this) || callBusy()) return
         DKLog.d("DK बुलाया ($why) - Live तुरंत, पीछे से")
         // नवंबर 2026 (मालिक, Siri जैसा): नेट का रास्ता (DNS + TLS) अभी गरम करो, Live उसी पल जुड़ना शुरू,
-        // और साथ-साथ फ़ोन में बना छोटा "जी सर" / टिंग तुरंत (InvokeAck) - जुड़ने का इंतज़ार कभी चुप्पी में नहीं
+        // और साथ-साथ फ़ोन में बना छोटा "Yes Boss" / टिंग तुरंत (InvokeAck) - जुड़ने का इंतज़ार कभी चुप्पी में नहीं
         try { LiveNet.warm(this, "DK बुलाया") } catch (_: Exception) {}
+        val wasConnected = DKState.live && gemLive.ready
+        LiveChime.arm()
         if (DKState.live) appOpened() else startLive()
+        if (session) beginSession()    // power बटन = एक बार की बातचीत (InvokeSession)
         val inCall = calls.inCall || calls.ringing
         scope.launch(Dispatchers.IO) {
             val how = try { InvokeAck.play(this@DKAccessibilityService, inCall) } catch (_: Exception) { "" }
             if (how.isNotEmpty()) DKLog.d("DK बुलाया: तुरंत जवाब ($how)")
+            // पहले से जुड़ा था = "Yes Boss" के बाद अभी "जुड़ गया" वाली आवाज़
+            if (wasConnected && gemLive.ready) LiveChime.connected(this@DKAccessibilityService, inCall)
         }
     }
 
@@ -228,6 +251,8 @@ class DKAccessibilityService : AccessibilityService() {
     /** GeminiLive: setup पूरा = DK लाइव जुड़ गया */
     fun liveConnected() {
         if (backupMode) { exitBackup("DK लाइव जुड़ गया"); liveSoftFails = 0 }
+        // नवंबर 2026 (मालिक): बुलाने के बाद Live जुड़ा = छोटी, हल्की "जुड़ गया" आवाज़ (Yes Boss के बाद; बीच बातचीत के चुपचाप re-connect पर नहीं)
+        LiveChime.connected(this, calls.inCall || calls.ringing)
         ModeTrack.switchTo(ModeTrack.Ch.LIVE, "Live जुड़ा")
     }
 
@@ -317,7 +342,7 @@ class DKAccessibilityService : AccessibilityService() {
 
     fun stopLive(why: String = "?") {
         DKLog.d("Live बंद किया: $why")
-        wakeLive = false; gemLive.idleExitMs = 0
+        wakeLive = false; sessionLive = false; gemLive.idleExitMs = 0
         DKState.setLive(false)
         exitBackup("Live बंद"); listener.preferOffline = false; DKState.setLink("")
         // v3.59: बंद = बंद। जड़: बंद करने के 0.6s बाद "हमेशा सुनो" वाला wake-word loop माइक फिर खोल देता था,
@@ -591,6 +616,14 @@ class DKAccessibilityService : AccessibilityService() {
                         liveSoftFails = 0
                         ModeTrack.ok(ModeTrack.Ch.LIVE)
                         DKLog.d("Gemini Live ruka: $r")
+                        // नवंबर 2026 (मालिक): power बटन वाली बातचीत - चुप रहे = Live बंद, माइक वापस सिर्फ़ "Hey DK" सुनता है
+                        if (sessionLive && !wakeLive && gemLive.idleExited) {
+                            sessionLive = false; gemLive.idleExitMs = 0
+                            DKState.setLive(false); DKState.set(Mode.IDLE); DKState.setLink("")
+                            Prefs.edit(this@DKAccessibilityService) { putBoolean("live_mode", false) }
+                            DKLog.d("power बटन वाली बातचीत खत्म - अब सिर्फ़ Hey DK पर जागेगा")
+                            Ducker.releaseWhenQuiet({ !speaker.busy })
+                        }
                     } catch (e: GeminiLive.Fatal) {
                         failed = true
                         ModeTrack.error(ModeTrack.Ch.LIVE, (e.kind?.short ?: if (e.recoverable) "टूटा" else "रुकावट") + ": " + (e.message ?: "-"))
@@ -684,7 +717,7 @@ class DKAccessibilityService : AccessibilityService() {
                     }
                     if (liveReady() && !callBusy() && checkMic()) {
                         DKLog.d("Hey DK -> Gemini Live" + if (cmd.isNotBlank()) " (बात: $cmd)" else "")
-                        wakeLive = true
+                        wakeLive = true; LiveChime.arm()
                         gemLive.idleExitMs = 30_000
                         gemLive.firstText = cmd.ifBlank { null }
                         if (cmd.isBlank()) DKState.set(Mode.LISTENING)
@@ -769,11 +802,20 @@ class DKAccessibilityService : AccessibilityService() {
                     Ducker.releaseWhenQuiet({ !speaker.busy })
                 } else {
                     // wake word mode
-                    val wake = Prefs.wakeWords(this@DKAccessibilityService).firstOrNull { low.contains(it) } ?: continue
-                    var cmd = heard.substring((low.indexOf(wake) + wake.length).coerceAtMost(heard.length))
-                        .trim(' ', ',', '.', '!')
-                    // v4.1: "सिर्फ़ DK बोलने पर सुनो" - नाम बात की शुरुआत में हो तभी (बीच में आया नाम = अनदेखा)
-                    if (Prefs.dkOnly(this@DKAccessibilityService)) cmd = DkOnly.filter(heard) ?: continue
+                    // नवंबर 2026 (मालिक): "कुछ भी बोलूँ तो DK जाग जाता है" - अब सिर्फ़ पूरा "Hey DK / OK DK / Hello DK" (शुरुआत में).
+                    // बाकी हर बात = अनसुनी, कुछ नहीं होता. Settings में "सख़्त जागना" बंद = पुराना तरीका (बात में कहीं भी नाम)
+                    var cmd: String
+                    if (Prefs.wakeStrict(this@DKAccessibilityService)) {
+                        cmd = com.dk.assistant.voice.WakeMatch.strictWake(heard, Prefs.wakeWords(this@DKAccessibilityService)) ?: run {
+                            DKLog.d("Hey DK नहीं बोला - अनसुना: \"${heard.take(40)}\""); null
+                        } ?: continue
+                    } else {
+                        val wake = Prefs.wakeWords(this@DKAccessibilityService).firstOrNull { low.contains(it) } ?: continue
+                        cmd = heard.substring((low.indexOf(wake) + wake.length).coerceAtMost(heard.length))
+                            .trim(' ', ',', '.', '!')
+                        // v4.1: "सिर्फ़ DK बोलने पर सुनो" - नाम बात की शुरुआत में हो तभी (बीच में आया नाम = अनदेखा)
+                        if (Prefs.dkOnly(this@DKAccessibilityService)) cmd = DkOnly.filter(heard) ?: continue
+                    }
                     // naam suna = user DK se baat kar raha hai -> peeche ka gaana/video dheema (Live ho to jawab ke baad wahi wapas badhayega)
                     Ducker.duck(this@DKAccessibilityService, "wake word")
                     // naam suna -> Gemini Live (asli awaaz, turant jawab); 45s chup = wapas wake word
@@ -790,7 +832,7 @@ class DKAccessibilityService : AccessibilityService() {
                     }
                     if (liveReady() && !callBusy() && checkMic()) {
                         DKLog.d("Wake word suna -> Gemini Live" + if (cmd.isNotBlank()) " (बात: $cmd)" else "")
-                        wakeLive = true
+                        wakeLive = true; LiveChime.arm()
                         gemLive.idleExitMs = 45_000
                         gemLive.firstText = cmd.ifBlank { null }
                         if (cmd.isBlank()) DKState.set(Mode.LISTENING)

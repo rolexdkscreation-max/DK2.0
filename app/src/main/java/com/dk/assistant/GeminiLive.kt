@@ -616,6 +616,8 @@ class GeminiLive(internal val svc: DKAccessibilityService, internal val agent: A
     @Volatile var idleExitMs = 0L
     @Volatile internal var lastAct = 0L
     @Volatile private var idleExit = false
+    /** नवंबर 2026: पिछला run चुप रहने से (idleExitMs) रुका? - power बटन वाली एक बार की बातचीत यहीं खत्म होती है */
+    val idleExited: Boolean get() = idleExit
     /** v3.51: आखिरी असली काम (tool नतीजा / काम पूरा होने का SYSTEM NOTE) कब - इसके बिना "कर दिया" = झूठ */
     @Volatile internal var lastEvidenceAt = 0L
     @Volatile internal var lastGuardAt = 0L
