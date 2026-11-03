@@ -115,10 +115,14 @@ class WakeMatchTest {
 
     @Test fun acks_rotateAndParse() {
         assertEquals(WakeMatch.DEFAULT_ACKS, WakeMatch.parseAcks(" "))
-        assertTrue(WakeMatch.DEFAULT_ACKS.containsAll(listOf("हाँ सर", "बोलिए सर", "हाँ बॉस")))
+        // नवंबर 2026 (मालिक): हमेशा "Yes Boss"; पुराना default सेव था तो भी "Yes Boss"
+        assertEquals(listOf("Yes Boss"), WakeMatch.DEFAULT_ACKS)
+        assertEquals("Yes Boss", WakeMatch.nextAck(WakeMatch.DEFAULT_ACKS, "Yes Boss", Random(1)))
+        assertEquals(listOf("Yes Boss"), WakeMatch.parseAcks("हाँ सर, बोलिए सर, हाँ बॉस, जी, बोलिए"))
         assertEquals(listOf("जी सर", "हुकुम"), WakeMatch.parseAcks("जी सर, हुकुम,, जी सर"))
+        val own = listOf("जी सर", "हुकुम", "बोलिए")
         var last = ""
-        repeat(20) { val a = WakeMatch.nextAck(WakeMatch.DEFAULT_ACKS, last, Random(it)); assertNotEquals(last, a); last = a }
+        repeat(20) { val a = WakeMatch.nextAck(own, last, Random(it)); assertNotEquals(last, a); last = a }
         assertEquals("WhatsApp खोलो", WakeMatch.stripWake("Hey DK, WhatsApp खोलो।", listOf("डीके", "dk")))
         assertEquals("मौसम बताओ", WakeMatch.stripWake("हेलो डीके मौसम बताओ", listOf("डीके")))
         assertEquals("", WakeMatch.stripWake("Hey DK", listOf("dk")))

@@ -94,6 +94,10 @@ object Prefs {
         list.add(assistantName(c).lowercase())
         return list.distinct()
     }
+    /** नवंबर 2026 (मालिक): बिना सिखाए वाला जागना सिर्फ़ पूरे "Hey DK / OK DK / Hello DK" पर (बात में कहीं "DK" आने पर नहीं). default चालू */
+    fun wakeStrict(c: Context) = sp(c).getBoolean("wake_strict", true)
+    /** नवंबर 2026 (मालिक): power बटन से DK = एक बार की बातचीत (चुप होते ही वापस सिर्फ़ "Hey DK" का इंतज़ार), हमेशा वाला Live नहीं. default चालू */
+    fun invokeSession(c: Context) = sp(c).getBoolean("invoke_session", true)
     fun wakeWordsRaw(c: Context) = sp(c).getString("wake_words", "डीके, दीके, डी के, dk, d k") ?: ""
 
     // ---- AI providers
