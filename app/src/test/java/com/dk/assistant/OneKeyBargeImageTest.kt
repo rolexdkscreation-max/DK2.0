@@ -68,6 +68,11 @@ class OneKeyBargeImageTest {
         error("$name नहीं मिला")
     }
 
+    @Test fun oneKey_imageAndPhoneControlNotBlocked() {
+        for (t in listOf("image_task", "phone_task", "whatsapp_task", "phone_call")) assertFalse(t, OneKeyGate.LIVE_TOOLS.containsKey(t))
+        assertTrue(src("BrainManager.kt").contains("image_task (make + download an image in ChatGPT / Gemini)"))
+    }
+
     @Test fun wiring() {
         assertTrue(src("GeminiLiveSetup.kt").contains("\"image_task\""))
         assertTrue(src("GeminiLiveTools.kt").contains("ImageGenAgent.run(svc, args)"))
