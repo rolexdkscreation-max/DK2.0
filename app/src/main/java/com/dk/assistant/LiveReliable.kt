@@ -75,6 +75,10 @@ object TurnEnd {
 
     fun continues(caption: String): Boolean = caption.isNotBlank() && CONTINUES.containsMatchIn(caption.trim())
 
+    /** v3.152: caption का आख़िरी text आपकी आख़िरी आवाज़ से इतना पीछे नहीं - यानी वह आपकी पूरी बात है */
+    const val CAPTION_STALE_MS = 450L
+    fun captionFresh(textAt: Long, lastVoiceAt: Long): Boolean = textAt > 0 && (lastVoiceAt <= 0 || textAt >= lastVoiceAt - CAPTION_STALE_MS)
+
     /** लंबी बात (2.5 सेकंड से ज़्यादा) में बीच का ठहराव लंबा होता है - तब 0.55 नहीं, 0.8 सेकंड चुप्पी पर "खत्म" */
     const val LONG_SPEECH_MS = 2_500
     const val LONG_END_SILENCE_MS = 800

@@ -93,6 +93,7 @@ object LivePromise {
             "coding_task" -> "कोडिंग टीम को काम दे रहा है…"
             "build_website" -> "वेबसाइट बना रहा है…"
             "whatsapp_task", "social_media_task" -> "संदेश/ऐप का काम कर रहा है…"
+            "image_task" -> "इमेज बना रहा है" + (if (a.isNotEmpty()) ": $a" else "") + "…"
             "notifications", "notification_reply" -> "नोटिफ़िकेशन देख रहा है…"
             "connector_task" -> "जुड़े ऐप से जानकारी ला रहा है…"
             "local_info" -> "जगह/मौसम देख रहा है…"

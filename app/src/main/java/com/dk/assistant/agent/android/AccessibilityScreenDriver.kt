@@ -33,7 +33,9 @@ class AccessibilityScreenDriver(private val svc: DKAccessibilityService) : Scree
                 val text = n.text?.toString()?.trim().orEmpty()
                 val desc = n.contentDescription?.toString()?.trim().orEmpty()
                 val vid = n.viewIdResourceName.orEmpty()
-                if (r.width() > 0 && r.height() > 0 && (text.isNotEmpty() || desc.isNotEmpty() || vid.isNotEmpty() || n.isClickable || n.isEditable || n.isScrollable)) {
+                // v3.152: बड़ी तस्वीर (ChatGPT/Gemini की बनी इमेज) - बिना नाम/click के भी दिखे
+                val bigImage = n.className?.toString()?.contains("Image") == true && r.width() >= 200 && r.height() >= 200
+                if (r.width() > 0 && r.height() > 0 && (text.isNotEmpty() || desc.isNotEmpty() || vid.isNotEmpty() || n.isClickable || n.isEditable || n.isScrollable || bigImage)) {
                     list += UiElement(list.size, text.take(300), desc.take(200), vid, n.className?.toString()?.substringAfterLast('.').orEmpty(),
                         n.isClickable, n.isEditable, n.isScrollable, n.isEnabled, Box(r.left, r.top, r.right, r.bottom))
                     ns += n

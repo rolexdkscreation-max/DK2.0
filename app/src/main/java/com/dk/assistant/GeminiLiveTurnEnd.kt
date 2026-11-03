@@ -61,7 +61,9 @@ internal fun GeminiLive.onLocalEndOfSpeech(now: Long) {
     val words = BargeGate.realWords(capNow)
     // v3.46: वाक्य "और / तो / कि / ये बताओ…" पर रुका = आप आगे बोलेंगे. तब "बात खत्म" मत भेजो (पहले हर ठहराव पर
     // Gemini अधूरी बात का जवाब बनाने लगता, फिर आप आगे बोलते तो रद्द - कई वाक्यों पर जवाब बहुत देर से आता था)
-    val holdEnd = TurnEnd.continues(capNow)
+    // v3.152 (एक key, caption धीमा): caption का text आपकी आख़िरी आवाज़ से पीछे छूटा = वह पुराना अधूरा हिस्सा है,
+    // उस पर "वाक्य अधूरा" मानकर "बात खत्म" रोकना = हर बार जवाब देर से। तब रोको मत।
+    val holdEnd = TurnEnd.continues(capNow) && TurnEnd.captionFresh(caption?.textAt ?: 0L, turnDet.lastVoiceAt)
     val endSent = !holdEnd && ready && w != null && endGate.onSpeechEnd(turnDet.lastSpeechMs, words) &&
         try { w.tx("{\"realtimeInput\":{\"audioStreamEnd\":true}}") } catch (_: Exception) { false }
     caption?.endOfSpeech()

@@ -21,6 +21,9 @@ import okhttp3.WebSocket
 import org.json.JSONArray
 import org.json.JSONObject
 
+/** v3.152: इमेज बनाना + डाउनलोड + देखना (ChatGPT/Gemini ~30-90s) */
+internal const val IMAGE_TASK_MS = 140_000L
+
 // GeminiLive का हिस्सा: Live के tools: खोज, मौसम/जगह, notification, एजेंट, call, tool call चलाना.
 // यह code पहले GeminiLive.kt में था; सिर्फ़ जगह बदली है, व्यवहार वही (extension functions, वही state GeminiLive में)।
 
@@ -330,6 +333,12 @@ internal fun GeminiLive.runTools(calls: JSONArray) {
                 "notifications" -> notifTool(args.optString("app"))
                 "notification_reply" -> notifReply(args.optString("to"), args.optString("message"))
                 "social_media_task" -> com.dk.assistant.agent.android.SocialAgent.start(svc, args)
+                // v3.152: असली ChatGPT / Gemini ऐप में इमेज - बनाओ, डाउनलोड, और सच में देखकर बताओ
+                "image_task" -> {
+                    DKState.set(Mode.WORKING)
+                    withTimeoutOrNull(IMAGE_TASK_MS) { com.dk.assistant.agent.android.ImageGenAgent.run(svc, args) }
+                        ?: "ERROR: the image app took more than ${IMAGE_TASK_MS / 1000} seconds. Tell the user it is still being made in the app and he can check it there."
+                }
                 "whatsapp_task" -> when (val act = args.optString("action").trim().lowercase()) {
                     in setOf("read_unread", "unread", "read") -> notifTool("WhatsApp")
                     // v4: WhatsApp आवाज़ / वीडियो कॉल - सीधे (स्क्रीन पर बटन ढूँढे बिना)
