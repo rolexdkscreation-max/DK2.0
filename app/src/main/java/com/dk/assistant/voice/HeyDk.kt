@@ -289,17 +289,24 @@ object HeyDk {
     }
 
     /** नवंबर 2026: यह "हाँ सर" फ़ोन में पहले से बना है? (power बटन पर तुरंत - बिना इंटरनेट) */
-    fun hasAck(c: Context, text: String): Boolean {
-        val e = ackEngine(c) ?: return false
-        val f = ackFile(c, e.id, e.voice(c), text)
-        return f.exists() && f.length() > 2000
+    fun hasAck(c: Context, text: String): Boolean = ackPick(c, text) != null
+
+    /** मालिक (नवंबर 2026): DK की अपनी Gemini Live आवाज़ में बना "Yes Boss" ([LiveAckMaker]) - voice बदली = नई फ़ाइल */
+    fun liveAckFile(c: Context, voice: String, text: String): File = ackFile(c, VoiceEngines.LIVE_NATIVE, voice, text)
+
+    fun hasLiveAck(c: Context, text: String): Boolean = liveAckFile(c, Prefs.geminiVoice(c), text).let { it.exists() && it.length() > 1000 }
+
+    /** कौन सी बनी आवाज़ बजे: Live आवाज़ चालू (डिफ़ॉल्ट) = Live वाली पहले, फिर पुराना इंजन वाला. कोई नहीं = null */
+    private fun ackPick(c: Context, text: String): File? {
+        val live = liveAckFile(c, Prefs.geminiVoice(c), text).takeIf { it.exists() && it.length() > 1000 }
+        val e = ackEngine(c)
+        val eng = e?.let { ackFile(c, it.id, it.voice(c), text) }?.takeIf { it.exists() && it.length() > 2000 }
+        return if (VoiceEngines.activeId(c) == VoiceEngines.LIVE_NATIVE) live ?: eng else eng ?: live
     }
 
     /** पहले से बनी आवाज़ बजाओ (रुककर, ~1 s). @return false = बनी नहीं थी (तब आम तरीके से बोलो) */
     fun playAck(c: Context, text: String): Boolean {
-        val e = ackEngine(c) ?: return false
-        val f = ackFile(c, e.id, e.voice(c), text)
-        if (!f.exists()) return false
+        val f = ackPick(c, text) ?: return false
         val pcm = try { f.readBytes() } catch (_: Exception) { return false }
         return PreviewPlayer.play(c) { out -> out.write(pcm) } >= 0
     }

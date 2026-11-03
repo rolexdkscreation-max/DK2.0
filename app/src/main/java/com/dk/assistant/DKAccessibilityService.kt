@@ -87,7 +87,9 @@ class DKAccessibilityService : AccessibilityService() {
     override fun onServiceConnected() {
         super.onServiceConnected()
         instance = this
-        try { PhoneLockStore.reload(this) } catch (_: Exception) {}   // आवाज़ से फ़ोन लॉक / अनलॉक के नाम-वाक्य
+        try { PhoneLockStore.reload(this) } catch (_: Exception) {}
+        // power बटन वाला "Yes Boss" पहले से बना लो (Live चालू हो तो नहीं - तब Live बंद होने पर)
+        com.dk.assistant.voice.LiveAckMaker.ensureAsync(this, "DK शुरू", 15_000L)   // आवाज़ से फ़ोन लॉक / अनलॉक के नाम-वाक्य
         // v3.39: Bluetooth माइक अब BtAudio से (सिर्फ़ headset जुड़ा हो तब, सुनते/बात करते समय). पहले (PR #48) यहाँ
         // पूरा फ़ोन हमेशा के लिए "कॉल" मोड में चला जाता था - Bluetooth न हो तब भी, और कभी वापस नहीं.
 
@@ -354,6 +356,8 @@ class DKAccessibilityService : AccessibilityService() {
         val heyDk = com.dk.assistant.voice.HeyDk.on(this)
         Prefs.edit(this) { putBoolean("live_mode", false); putBoolean("mic_user_off", !heyDk) }
         gemLive.stop(why)
+        // मालिक (नवंबर 2026): power बटन वाला "Yes Boss" DK की Live आवाज़ में - Live बंद हुआ = अब एक छोटा अलग connection ठीक
+        com.dk.assistant.voice.LiveAckMaker.ensureAsync(this, "Live बंद", 3_000L)
         agent.stop()
         loopJob?.cancel(); loopJob = null
         listener.release()

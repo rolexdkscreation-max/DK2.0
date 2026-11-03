@@ -52,6 +52,8 @@ object InvokeAck {
         deafUntil = System.currentTimeMillis() + TONE_DEAF_MS
         tone()
         Thread { try { HeyDk.prepareAcks(c) } catch (_: Exception) {} }.start()
+        // Live की अपनी आवाज़ वाला "Yes Boss" - Live बंद होते ही बनेगा (अभी Live जुड़ रहा है, उससे टकराव नहीं)
+        com.dk.assistant.voice.LiveAckMaker.ensureAsync(c, "power बटन (टिंग बजी)")
         return "tone"
     }
 
