@@ -96,9 +96,9 @@ internal fun SettingsActivity.secDebug() {
     card("देरी का हिसाब", "आपका बोलना ख़त्म → पहला टुकड़ा आया → पहले वाक्य की आवाज़ बनी → आवाज़ बजी") { box ->
         val tv = TextView(this).apply { textSize = 12f; typeface = Typeface.MONOSPACE; setTextColor(0xE6FFFFFF.toInt()); setTextIsSelectable(true) }
         box.addView(tv)
-        fun upd() { tv.text = LatencyBoard.text() }
+        fun upd() { tv.text = LatencyBoard.text() + "\n\n" + NativeCommands.text() }
         upd()
-        row(box, button("ताज़ा करें") { upd() }, button("साफ़ करें") { LatencyBoard.clear(); upd() })
+        row(box, button("ताज़ा करें") { upd() }, button("साफ़ करें") { LatencyBoard.clear(); NativeCommands.clear(); upd() })
     }
     // नवंबर 2026 (मालिक): Live और text मोड की कॉल / गलतियाँ अलग-अलग
     card("Live / Text हिसाब", "Gemini Live, text मोड (बैकअप) और पीछे की सेहत-जाँच - हर एक की कॉल, ठीक, गलती अलग") { box ->

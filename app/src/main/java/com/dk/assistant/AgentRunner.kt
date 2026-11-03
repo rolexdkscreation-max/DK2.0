@@ -111,7 +111,7 @@ class AgentRunner(
     private suspend fun doQuick(q: QuickCommands.Quick): Boolean {
         DKState.set(Mode.WORKING)
         val t0 = System.currentTimeMillis()
-        val r = svc.perform(q.action)
+        val r = NativeActionEngine.exec(svc, q, "बिना Live")
         DKLog.d("TURANT ${q.action} -> $r (${System.currentTimeMillis() - t0}ms)")
         val type = q.action.optString("type")
         if (type == "answer_call" || type == "end_call") {
@@ -339,7 +339,7 @@ class AgentRunner(
             } else if (local != null) {
                 DKState.set(Mode.WORKING)
                 val t0 = System.currentTimeMillis()
-                val r = svc.perform(local.action)
+                val r = NativeActionEngine.exec(svc, local, "बिना Live पहला हिस्सा")
                 DKLog.d("TURANT (पहला हिस्सा) ${local.action.optString("type")} -> ${r.take(80)} (${System.currentTimeMillis() - t0}ms)")
                 if (LocalRouter.final(r) && !LiveFast.ok(local.action.optString("type"), r)) {
                     val m = LocalRouter.userText(r) ?: "यह नहीं हो पाया।"
