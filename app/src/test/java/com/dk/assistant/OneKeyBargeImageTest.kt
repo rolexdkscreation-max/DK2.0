@@ -73,6 +73,19 @@ class OneKeyBargeImageTest {
         assertTrue(src("BrainManager.kt").contains("image_task (make + download an image in ChatGPT / Gemini)"))
     }
 
+    /** मालिक: अलग-अलग key वाले मोड में भी यही सब काम चालू रहें - कोई मोड-शर्त नहीं */
+    @Test fun multiKeyMode_sameWorkOn() {
+        for (t in listOf("image_task", "phone_task", "whatsapp_task", "phone_call")) {
+            assertFalse(t, OneKeyGate.blocked(false, OneKeyGate.LIVE_TOOLS[t]))
+            assertFalse(t, OneKeyGate.blocked(true, OneKeyGate.LIVE_TOOLS[t]))
+        }
+        assertFalse("tools की सूची मोड पर नहीं बदलती", src("GeminiLiveSetup.kt").contains("oneKeyOn"))
+        for (f in listOf("GeminiLiveMic.kt", "GeminiLiveTurnEnd.kt", "VoiceTurn.kt")) assertFalse(f, src(f).contains("oneKeyOn"))
+        val img = src("agent/android/ImageGenAgent.kt")
+        assertTrue(img.contains("Prefs.liveGeminiKeys(svc)"))
+        assertFalse(img.contains("oneKeyOn"))
+    }
+
     @Test fun wiring() {
         assertTrue(src("GeminiLiveSetup.kt").contains("\"image_task\""))
         assertTrue(src("GeminiLiveTools.kt").contains("ImageGenAgent.run(svc, args)"))
