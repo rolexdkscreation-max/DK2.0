@@ -22,14 +22,14 @@ internal fun GeminiLive.beginFreeze(why: String, now: Long) {
 internal fun GeminiLive.resumeOld(why: String, now: Long) {
     val held = now - rotFreezeAt
     rotFreezeAt = 0L; freezeEndAt = now; rotFallbacks++
-    synchronized(sendLock) { ready = true; flushPending(); sendFrozenEnd() }
+    synchronized(sendLock) { ready = true; flushPending() }
     log("थामना छोड़ा ($why) ${held} ms बाद - पुराने connection पर ही, जमा आवाज़ भेज दी; ${LiveSpare.FREEZE_RETRY_MS / 1000}s बाद फिर कोशिश")
     LatencyBoard.count("Live बदलना: पुराने पर लौटा")
 }
 
 /**
  * थामे समय आप बोले और बात पूरी हो गई (बात-खत्म का संकेत उस समय नहीं गया) = जमा आवाज़ भेजने के बाद अब संकेत.
- * sendLock के अंदर, flushPending के बाद.
+ * flushPending के अंत में अपने-आप (sendLock के अंदर) - पुराने पर लौटे, नए पर बदले या सामान्य नया connection, तीनों में.
  */
 internal fun GeminiLive.sendFrozenEnd() {
     if (!freezeReal) return

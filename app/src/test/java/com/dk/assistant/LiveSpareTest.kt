@@ -115,9 +115,9 @@ class LiveSpareTest {
         assertTrue(g.contains("LiveSpare.startFreeze(LiveSpare.freezeDue(goAway, nowL - upAt)"))
         assertTrue(g.contains("synchronized(sendLock) { ready = false }"))                     // थामे = पुराने पर कुछ नहीं
         assertTrue(g.contains("val capMs = if (rotFreezeAt > 0L) LiveSpare.FREEZE_PENDING_MS else 3000L"))
-        assertTrue(g.contains("ready = true; flushPending(); sendFrozenEnd()"))               // पुराने पर लौटे = जमा आवाज़ वहीं
-        assertTrue(g.contains("flushPending(); sendFrozenEnd(); sendReplay()"))               // नए पर = जमा आवाज़ वहाँ
-        assertTrue(g.contains("handle = it.optString(\"newHandle\"); handleAt = System.currentTimeMillis()"))
+        assertTrue(g.contains("synchronized(sendLock) { ready = true; flushPending() }"))      // पुराने पर लौटे = जमा आवाज़ वहीं
+        assertTrue(g.contains("sendFrozenEnd()          // नवंबर 2026 (थामो और बदलो)"))          // flushPending के अंत में (नए/पुराने दोनों पर)
+        assertTrue(g.contains("it.optString(\"newHandle\").isNotBlank()) handleAt = System.currentTimeMillis()"))
         assertTrue(g.contains("if (sc.optBoolean(\"turnComplete\")) lastReplyDoneAt = System.currentTimeMillis()"))
         assertTrue(g.contains("prepareSpare(\"\$why (थामा)\", idle = true, force = true)"))
     }

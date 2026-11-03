@@ -942,7 +942,7 @@ class GeminiLive(internal val svc: DKAccessibilityService, internal val agent: A
                     if (reuse) {
                         closed = pk!!.closed; curClosed = closed
                         ws = pk.ws; warmReuses++; connResumed = pk.resumedFrom != null    // goAway वाला = वही बातचीत (याद दोबारा नहीं)
-                        synchronized(sendLock) { sendContext(ws); ready = true; flushPending(); sendFrozenEnd(); sendReplay() }
+                        synchronized(sendLock) { sendContext(ws); ready = true; flushPending(); sendReplay() }
                         if (pk.resumedFrom != null && frozeLast >= 0) {
                             rotSwitches++
                             LatencyBoard.stage("Live बदलना: आवाज़ जमा रही", frozeLast)

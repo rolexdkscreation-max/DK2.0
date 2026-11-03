@@ -156,6 +156,7 @@ internal fun GeminiLive.flushPending() = synchronized(sendLock) {
     val list = synchronized(pending) { pending.toList().also { pending.clear() } }
     list.forEach { sendAudio(it) }
     if (list.isNotEmpty()) log("जुड़ते समय की ${list.size * CHUNK_MS} ms आवाज़ भेजी")
+    sendFrozenEnd()          // नवंबर 2026 (थामो और बदलो): थामे समय कही पूरी बात = जमा आवाज़ के बाद बात-खत्म का संकेत
 }
 
 /**

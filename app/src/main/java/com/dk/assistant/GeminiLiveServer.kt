@@ -25,7 +25,7 @@ internal fun GeminiLive.handleServer(msg: String, setup: CompletableDeferred<Uni
         if (setupSentAt > 0) { trace.rttMs = System.currentTimeMillis() - setupSentAt; log("setup का जवाब ${trace.rttMs} ms (network RTT + server)"); NetSpeed.onSetup(trace.rttMs) }
         // ready + purani (judte samay ki) awaaz ek saath, lock me: mic ka naya tukda purane se pehle na nikle
         // v5.1: पहले याद (छोटे setup के बाद), फिर जुड़ते समय की आवाज़ - फ़ोन ने जो 3s तक जमा की
-        synchronized(sendLock) { sendContext(ws); ready = true; flushPending(); sendFrozenEnd(); sendReplay() }
+        synchronized(sendLock) { sendContext(ws); ready = true; flushPending(); sendReplay() }
         setup.complete(Unit)
         if (firstText != null) openerText = null; sendFirstText(); sendResend(); sendOpener()
         // v3.7: पिछला जवाब सिर्फ़ लिखा गया था (आवाज़ नहीं बनी) - अब Live की अपनी आवाज़ में दोबारा
@@ -34,7 +34,8 @@ internal fun GeminiLive.handleServer(msg: String, setup: CompletableDeferred<Uni
     }
     lastAct = System.currentTimeMillis()
     o.optJSONObject("sessionResumptionUpdate")?.let {
-        if (it.optBoolean("resumable") && it.optString("newHandle").isNotBlank()) { handle = it.optString("newHandle"); handleAt = System.currentTimeMillis() }
+        if (it.optBoolean("resumable") && it.optString("newHandle").isNotBlank()) handle = it.optString("newHandle")
+        if (it.optBoolean("resumable") && it.optString("newHandle").isNotBlank()) handleAt = System.currentTimeMillis()   // नवंबर 2026: handle कब ताज़ा हुआ (LiveSpare.handleFresh)
     }
     o.optJSONObject("goAway")?.let { onGoAway(it.optString("timeLeft")) }
     o.optJSONObject("voiceActivity")?.optString("type")?.let { t ->
