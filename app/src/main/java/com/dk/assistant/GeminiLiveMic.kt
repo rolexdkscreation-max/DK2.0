@@ -9,6 +9,7 @@ import android.media.audiofx.AutomaticGainControl
 import android.media.audiofx.NoiseSuppressor
 import com.dk.assistant.GeminiLive.Companion.ASK_KEEP_MS
 import com.dk.assistant.GeminiLive.Companion.CHUNK_MS
+import com.dk.assistant.GeminiLive.Companion.CLIENT_END_MS
 import com.dk.assistant.GeminiLive.Companion.CHUNK_SAMPLES
 import com.dk.assistant.GeminiLive.Companion.HOLD_END_MS
 import com.dk.assistant.GeminiLive.Companion.HOLD_FINAL_MS
@@ -211,17 +212,30 @@ internal suspend fun GeminiLive.micLoop() = coroutineScope {
                 }
                 if (DKState.mode == Mode.LISTENING) DKState.level = (rms / 3500.0).toFloat().coerceIn(0f, 1f)
                 if (now - ownerCfgAt > 3_000) refreshOwnerCfg(now)
+                // नवंबर 2026 (Smart turn): "बात खत्म" की चुप्पी तय नहीं - caption देखकर हर chunk पर (पूरा वाक्य 0.36s,
+                // "और / to / for…" पर 1.1s, caption पीछे हो तो 0.7s तक, आपकी आदत के ठहराव से थोड़ा ज़्यादा). Hybrid VAD:
+                // यही फ़ैसला audioStreamEnd भेजता है, server का silenceDurationMs सिर्फ़ बचाव ([SERVER_SILENCE_MS]).
+                val capHeard = turnDet.inSpeech && (caption?.textAt ?: 0L) >= turnDet.lastTalkAt
+                turnDet.endNeedMs = if (turnDet.inSpeech && !guardHeld)
+                    TurnEnd.adaptiveEndMs(caption?.text().orEmpty(), caption?.textAt ?: 0L, turnDet.lastTalkAt,
+                        turnDet.speechMsNow, turnDet.typicalPauseMs, captionOn(), CLIENT_END_MS, now) else 0
                 var ev = turnDet.feed(rms, now)
                 // v3.66 (तेज़ी): वाक्य साफ़ पूरा + 0.36s चुप + caption 0.2s से नहीं बदला = अभी "बात खत्म" (0.55s इंतज़ार नहीं)
+                // नवंबर 2026: + caption आपकी आख़िरी आवाज़ के बाद बदला हो (पुराना caption "Kal meeting hai" पर "…to" से पहले न कटे)
                 if (ev == TurnDetector.Event.NONE && turnDet.inSpeech && turnDet.silentMs > 0 && !guardHeld && captionOn()) {
                     val cap = caption?.text().orEmpty()
                     if (cap != capSeen) { capSeen = cap; capSeenAt = now }
                     if (turnDet.silentMs >= TurnEnd.EARLY_END_MS && turnDet.speechMsNow < TurnEnd.LONG_SPEECH_MS &&
-                        now - capSeenAt >= 200 && TurnEnd.earlyOk(cap) && turnDet.forceEnd()) {
-                        ev = TurnDetector.Event.SPEECH_END; earlyEnds++
+                        now - capSeenAt >= 200 && capHeard && TurnEnd.earlyOk(cap) && turnDet.forceEnd()) {
+                        ev = TurnDetector.Event.SPEECH_END; earlyEnds++; LatencyBoard.count("पूरा वाक्य: 0.36s पर बात खत्म")
                         if (earlyEnds <= 3 || earlyEnds % 20 == 0) log("वाक्य पूरा लगा - ${TurnEnd.EARLY_END_MS} ms चुप्पी पर ही बात खत्म (#$earlyEnds)")
+                    } else if (TurnEnd.noiseTail(now, turnDet.lastTalkAt, caption?.textAt ?: 0L, turnDet.endNeedMs, true) && turnDet.forceEnd()) {
+                        // नवंबर 2026: पंखा / TV की आवाज़ से "अभी भी बोल रहा" - पर आपकी आवाज़ और नए शब्द 1s से नहीं
+                        ev = TurnDetector.Event.SPEECH_END; noiseEnds++; LatencyBoard.count("शोर के बीच बात खत्म पहचानी")
+                        if (noiseEnds <= 3 || noiseEnds % 20 == 0) log("पीछे का शोर - आप ${now - turnDet.lastTalkAt} ms से चुप, caption में नए शब्द नहीं = बात खत्म (#$noiseEnds)")
                     }
                 }
+                pollStartHold(now)
                 if (turnDet.inSpeech || generating || (turnActive && now - eosAt < 8_000)) quietSince = now
                 // v3.53: फ़ोन पर दूसरे ऐप की आवाज़ (वीडियो/गाना) - हर 300ms देखो (DK की अपनी आवाज़ थमने के बाद ही भरोसा)
                 if (now - mediaAt > 300) { mediaAt = now; mediaOn = Ducker.musicActive(svc) }
@@ -306,6 +320,9 @@ internal suspend fun GeminiLive.micLoop() = coroutineScope {
                 when (ev) {
                     TurnDetector.Event.SPEECH_START -> {
                         nearRms.clear()
+                        // नवंबर 2026: जवाब बन रहा / आने वाला पर अभी बजा नहीं और आप आगे बोले = वह जवाब आपके चुप होने तक रुके
+                        if (eosAt > 0 && now - eosAt < 3_000) LatencyBoard.count("बात खत्म के 3s में आप फिर बोले (संभावित झूठा अंत)")
+                        if (!dropOld && !muteTurn && (generating || turnActive || (eosAt > 0 && now - eosAt < 3_000))) startHold.begin(now)
                         lastAct = now; trace.reset(); replyWatch.onSpeechStart(); rescueWaits = 0; speechStartAt = now
                         // v3.46: गाना/वीडियो चल रहा हो तो आप बोलना शुरू करते ही धीमा (पहले शब्द पहचाने जाने के बाद ही -
                         // पर तेज़ गाने में शब्द पहचाने ही नहीं जाते थे)
@@ -315,6 +332,7 @@ internal suspend fun GeminiLive.micLoop() = coroutineScope {
                     }
                     TurnDetector.Event.SPEECH_END -> {
                         learnNear()
+                        startHold.userEnded(now, BargeGate.realWords(caption?.text().orEmpty()))
                         if (owner.active) ownerEnd(now)
                         else onLocalEndOfSpeech(now)
                     }

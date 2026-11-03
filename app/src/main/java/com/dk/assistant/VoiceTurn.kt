@@ -81,6 +81,29 @@ class TurnDetector(
     fun reset() { inSpeech = false; startRun = 0; speechMs = 0; silenceMs = 0; sumRms = 0.0; frames = 0; lowFrames = 0; talkLvl = 0.0 }
 
     /**
+     * नवंबर 2026 (Smart turn): > 0 = इस बात में "खत्म" के लिए इतनी चुप्पी (mic loop हर chunk पर caption देखकर
+     * [TurnEnd.adaptiveEndMs] से भरता है). 0 = पुराना तय तरीका (endSilenceMs / longEndSilenceMs).
+     */
+    var endNeedMs = 0
+    /** बोलते-बोलते रुककर फिर बोले = बीच का ठहराव (ms). आपकी आदत: धीमे बोलने वाले के लंबे ठहराव पर बात न कटे */
+    var typicalPauseMs = 0
+        private set
+    /**
+     * आख़िरी बार बोलने जितनी तेज़ आवाज़ (इस बात के स्तर का 30%+) - पंखे/शोर का झोंका नहीं. caption इसके बाद बदला =
+     * आख़िरी शब्द लिखे जा चुके (शोर के झोंके से caption फिर से "पुराना" न माना जाए)
+     */
+    var lastTalkAt = 0L
+        private set
+    /** ठहराव गिनने की निचली सीमा - इससे छोटे = शब्दों के बीच का आम फ़ासला */
+    private val pauseMinMs = 200
+
+    private fun notePause(ms: Int) {
+        if (ms < pauseMinMs) return
+        val p = ms.coerceAtMost(1_500)
+        typicalPauseMs = if (typicalPauseMs == 0) p else (typicalPauseMs * 0.7 + p * 0.3).toInt()
+    }
+
+    /**
      * v3.66 (परत 4): इससे धीमी आवाज़ को "बोलना शुरू" मत मानो - दूर की बातें / दूसरे कमरे की आवाज़ / धीमा TV.
      * सिर्फ़ शुरू होने पर; बोलते समय धीमे होते शब्द पहले जैसे (बात बीच में न कटे). 0 = बंद
      */
@@ -106,7 +129,7 @@ class TurnDetector(
     }
 
     /** DK ko toka (pakka) - user pehle se bol raha hai: seedha "bol raha" haalat (gate khula rahe) */
-    fun forceSpeech(now: Long) { inSpeech = true; startRun = 0; speechMs = minSpeechMs; silenceMs = 0; lastVoiceAt = now }
+    fun forceSpeech(now: Long) { inSpeech = true; startRun = 0; speechMs = minSpeechMs; silenceMs = 0; lastVoiceAt = now; lastTalkAt = now }
 
     fun feed(rms: Double, now: Long): Event {
         val startThr = max(noise * factorFor(noise), startMin)
@@ -123,7 +146,7 @@ class TurnDetector(
             if (rms > startThr) {
                 startRun++
                 if (startRun * chunkMs >= startMs) {
-                    inSpeech = true; speechMs = startRun * chunkMs; silenceMs = 0; startRun = 0; lastVoiceAt = now
+                    inSpeech = true; speechMs = startRun * chunkMs; silenceMs = 0; startRun = 0; lastVoiceAt = now; lastTalkAt = now
                     return Event.SPEECH_START
                 }
             } else {
@@ -144,10 +167,12 @@ class TurnDetector(
         val tailThr = if (tailFactor > 0 && speechMs >= 300) talkLvl * tailFactor else 0.0
         if (rms > keepThr && rms > tailThr) {
             if (tailFactor > 0) talkLvl = if (rms > talkLvl) talkLvl * 0.7 + rms * 0.3 else talkLvl * 0.98 + rms * 0.02
+            if (talkLvl <= 0.0 || rms >= talkLvl * 0.3) { if (silenceMs > 0) notePause(silenceMs); lastTalkAt = now }
             silenceMs = 0; speechMs += chunkMs; lastVoiceAt = now; return Event.NONE
         }
         silenceMs += chunkMs
-        val need = if (longEndSilenceMs > endSilenceMs && longSpeechMs > 0 && speechMs >= longSpeechMs) longEndSilenceMs else endSilenceMs
+        val need = if (endNeedMs > 0) endNeedMs
+            else if (longEndSilenceMs > endSilenceMs && longSpeechMs > 0 && speechMs >= longSpeechMs) longEndSilenceMs else endSilenceMs
         if (silenceMs < need) return Event.NONE
         val real = speechMs >= minSpeechMs
         lastSpeechMs = speechMs
