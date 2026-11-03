@@ -42,7 +42,8 @@ object LiveFast {
      * वीडियो चलाना...) आधी बात पर न चलें: [SETTLE_MS] और चुप्पी + caption वही रहे तभी.
      */
     private val INSTANT = setOf("volume", "media", "torch", "speaker", "screen_view", "panel", "lock", "unlock", "back", "home",
-        "recents", "scroll", "notifications", "quick_settings", "answer_call", "end_call", "who_calls", "screenshot_save", "show_face")
+        "recents", "scroll", "notifications", "quick_settings", "answer_call", "end_call", "who_calls", "screenshot_save", "show_face",
+        "brightness", "rotation", "dnd")
     const val SETTLE_MS = 700L
     fun settleMs(type: String): Long = if (type in INSTANT) 0L else SETTLE_MS
     /** काम बीच में रद्द हुआ (आप आगे बोले) - गलती नहीं */
@@ -85,7 +86,7 @@ object LiveFast {
         "gallery_latest" -> "opened the latest photo"
         "delete_media" -> "moved the last ${a.optInt("count", 1)} ${a.optString("kind", "photo")}(s) to trash"
         "steps" -> a.optJSONArray("steps")?.let { arr -> (0 until arr.length()).mapNotNull { arr.optJSONObject(it)?.let { o -> describe(o) } }.joinToString(", then ") } ?: "steps"
-        else -> a.optString("type").replace('_', ' ')
+        else -> NativeCommands.describe(a) ?: a.optString("type").replace('_', ' ')
     }
 
     /** phone_task (AgentRunner) का सच्चा नतीजा */

@@ -1023,7 +1023,7 @@ class DKAccessibilityService : AccessibilityService() {
                 "alarm_off" -> AlarmOff.run(this, AlarmOff.fromJson(a))
                 "distance" -> distance(a.optString("to"), a.optString("from"), a.optString("mode", "driving"))
                 "media" -> DeviceActions.media(this, a.optString("key", "play_pause"))
-                "lock" -> if (Build.VERSION.SDK_INT >= 28) global(GLOBAL_ACTION_LOCK_SCREEN) else "ERROR: Android 9+ chahiye"
+                "lock" -> if (Build.VERSION.SDK_INT >= 28) global(GLOBAL_ACTION_LOCK_SCREEN) else NativeActionEngine.lockOld()
                 "screenshot_save" -> if (Build.VERSION.SDK_INT >= 28) global(GLOBAL_ACTION_TAKE_SCREENSHOT) else "ERROR"
                 "power_menu" -> global(GLOBAL_ACTION_POWER_DIALOG)
                 "unlock", "wake" -> unlock()
@@ -1033,6 +1033,7 @@ class DKAccessibilityService : AccessibilityService() {
                 "who_calls" -> whoCalls()
                 "close_app" -> closeApp()
                 "close_all_apps" -> closeAllApps()
+                in NativeActionEngine.TYPES -> NativeActionEngine.run(this, a)   // नवंबर 2026: ब्राइटनेस / ऑटो रोटेट / DND
                 in OfflineExec.TYPES -> OfflineExec.run(this, a)   // v4.1: अलार्म / टाइमर / कैमरा / समय / टैप / SMS (बिना API)
                 "wait" -> { delay(a.optLong("ms", 1000).coerceIn(100, 8000)); "waited" }
                 else -> "ERROR: unknown action ${a.optString("type")}"

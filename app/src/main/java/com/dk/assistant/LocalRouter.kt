@@ -100,7 +100,8 @@ object LocalRouter {
         OfflineCommands.confirm(raw, System.currentTimeMillis())?.let { return Split(it, null) }
         // नवंबर 2026: Settings → फ़ोन लॉक / अनलॉक - मालिक के अपने वाक्य (DK पहले से बुलाया हुआ, इसलिए नाम ज़रूरी नहीं)
         PhoneLockVoice.match(raw, needName = false)?.let { return Split(PhoneLockVoice.quick(it), null) }
-        val t0 = normalize(raw, wakeWords)
+        // नवंबर 2026: "do not disturb" = एक नाम (dnd) - इसका "do not" मना करना नहीं
+        val t0 = NativeCommands.dndWord(normalize(raw, wakeWords))
         // v4.1: SMS - मैसेज में "और" / "मत" हो सकता है, इसलिए टुकड़े / मना-जाँच से पहले (अपनी मना-जाँच ख़ुद)
         OfflineCommands.whole(t0)?.let { return Split(it, null) }
         if (t0.length < 2 || negated(t0)) return Split(null, raw)
@@ -151,6 +152,8 @@ object LocalRouter {
         if (t.length < 2 || negated(t)) return null
         // 0) v4.1: बिना API वाले नए काम (अलार्म, टाइमर, कैमरा, समय/बैटरी, "X पर टैप", एयरप्लेन, "X सेटिंग")
         OfflineCommands.parse(t)?.let { return it }
+        // 0.5) नवंबर 2026: ब्राइटनेस / ऑटो रोटेट / DND / "डिस्प्ले खोलो" जैसे सेटिंग पेज (NativeCommands, बिना API)
+        NativeCommands.parse(t)?.let { return it }
         // 1) पुराना QuickCommands जैसा था (ऐप खोलो, टॉर्च, आवाज़, YouTube पर चलाओ, कॉल उठाओ…)
         QuickCommands.parse(t, wakeWords)?.let { return it }
         // 2) नए सीधे काम

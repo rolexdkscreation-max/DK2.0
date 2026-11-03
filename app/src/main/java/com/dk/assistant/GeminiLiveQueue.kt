@@ -186,7 +186,7 @@ internal suspend fun GeminiLive.phoneTaskOne(req: String, queued: Boolean = fals
         } else if (r == null) return "STARTED just now and still opening. Tell the user in 2-5 words."
     } else if (q != null && fastMemo.begin(q, System.currentTimeMillis())) {
         DKState.set(Mode.WORKING)
-        val r = try { svc.perform(q.action) } catch (e: CancellationException) { throw e } catch (e: Exception) { "ERROR ${e.message}" }
+        val r = try { NativeActionEngine.exec(svc, q, "Live phone_task") } catch (e: CancellationException) { throw e } catch (e: Exception) { "ERROR ${e.message}" }
         fastMemo.finish(q, r)
         log("phone_task सीधे (बिना AI): ${q.action} = ${r.take(60)}")
         // v3.33: ऐप है ही नहीं / कॉन्टैक्ट नहीं / user से पूछना है = AI से कुछ नहीं सुधरेगा -> सीधे सच
@@ -199,7 +199,7 @@ internal suspend fun GeminiLive.phoneTaskOne(req: String, queued: Boolean = fals
         val sp = LocalRouter.split(req, wake, fg)
         val pre = sp.local
         if (pre != null && sp.rest != null && fastMemo.begin(pre, System.currentTimeMillis())) {
-            val r = try { svc.perform(pre.action) } catch (e: CancellationException) { throw e } catch (e: Exception) { "ERROR ${e.message}" }
+            val r = try { NativeActionEngine.exec(svc, pre, "Live पहला हिस्सा") } catch (e: CancellationException) { throw e } catch (e: Exception) { "ERROR ${e.message}" }
             fastMemo.finish(pre, r)
             log("phone_task: पहला हिस्सा फ़ोन पर (${pre.action.optString("type")}) = ${r.take(60)}, बाकी AgentRunner")
             if (!LiveFast.ok(pre.action.optString("type"), r) && LocalRouter.final(r)) return LiveFast.quickResult(pre, r, already = false)

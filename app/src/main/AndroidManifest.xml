@@ -22,6 +22,9 @@
     <uses-permission android:name="android.permission.READ_CONTACTS" />
     <uses-permission android:name="android.permission.ANSWER_PHONE_CALLS" />
     <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
+    <!-- नवंबर 2026: ब्राइटनेस / ऑटो रोटेट (user खुद "सिस्टम सेटिंग बदलें" में Allow करता है) और डू नॉट डिस्टर्ब -->
+    <uses-permission android:name="android.permission.WRITE_SETTINGS" tools:ignore="ProtectedPermissions" />
+    <uses-permission android:name="android.permission.ACCESS_NOTIFICATION_POLICY" />
     <!-- v3.39: Android 11 तक Bluetooth headset का माइक (SCO) चालू करने के लिए; 12+ पर setCommunicationDevice -->
     <uses-permission android:name="android.permission.BLUETOOTH" android:maxSdkVersion="30" />
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />

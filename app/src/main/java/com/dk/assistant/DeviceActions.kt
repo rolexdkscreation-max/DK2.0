@@ -49,6 +49,7 @@ object DeviceActions {
             has("sound", "volume", "ring", "साउंड", "आवाज़", "आवाज", "रिंग") -> Settings.ACTION_SOUND_SETTINGS
             has("dnd", "disturb", "डिस्टर्ब") -> "android.settings.ZEN_MODE_SETTINGS"
             has("notification", "नोटिफिकेशन") -> "android.settings.NOTIFICATION_SETTINGS"
+            has("saver", "सेवर", "saving", "सेविंग") -> Settings.ACTION_BATTERY_SAVER_SETTINGS
             has("battery", "बैटरी") -> Intent.ACTION_POWER_USAGE_SUMMARY
             has("location", "gps", "लोकेशन", "जीपीएस") -> Settings.ACTION_LOCATION_SOURCE_SETTINGS
             has("storage", "स्टोरेज", "memory", "मेमोरी") -> Settings.ACTION_INTERNAL_STORAGE_SETTINGS

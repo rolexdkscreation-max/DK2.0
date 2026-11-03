@@ -194,7 +194,7 @@ internal fun GeminiLive.scheduleFast() {
         }
         if (!fastMemo.begin(q, System.currentTimeMillis())) return@launch
         val t0 = System.currentTimeMillis()
-        val r = try { svc.perform(q.action) } catch (e: CancellationException) { throw e } catch (e: Exception) { "ERROR ${e.message}" }
+        val r = try { NativeActionEngine.exec(svc, q, "Live बोलना खत्म") } catch (e: CancellationException) { throw e } catch (e: Exception) { "ERROR ${e.message}" }
         if (!isActive || LiveFast.cancelled(r)) {
             fastMemo.cancel(q); routeDedupe.reset()
             log("तुरंत काम रद्द (${q.action.optString("type")}) - आप आगे बोले, पूरी बात पर फिर से (${System.currentTimeMillis() - t0} ms)")
