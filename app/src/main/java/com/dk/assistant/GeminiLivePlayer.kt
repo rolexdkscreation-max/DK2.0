@@ -99,6 +99,7 @@ internal fun GeminiLive.startPlayer() {
 /** Beech me toka: jo awaaz kataar me hai sab hatao, turant chup */
 internal fun GeminiLive.flushPlayback() {
     gen++
+    startHold.clear()                            // नवंबर 2026: आपके बोलते समय रुका पुराना जवाब भी
     playQ.clear()
     playEnd = 0L
     track?.let { try { it.pause(); it.flush(); it.play() } catch (_: Exception) {} }

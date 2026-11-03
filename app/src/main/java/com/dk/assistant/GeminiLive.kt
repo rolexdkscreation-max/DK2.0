@@ -77,7 +77,14 @@ class GeminiLive(internal val svc: DKAccessibilityService, internal val agent: A
         const val OUT_RATE = 24000
         internal const val CHUNK_MS = 40
         /** Server VAD: itni der chup = baat khatam (Google: 500-800ms; kam = baat beech me kat-ti hai) */
-        const val SERVER_SILENCE_MS = 500   // v5.1 (मालिक: "बोलना बंद होते ही जवाब"): 800 -> 500 (Google की सलाह 500-800 का सबसे तेज़). पहले v3.46: 550 -> 800. छोटी बात पर फ़ोन खुद 550ms पर "खत्म" भेजता है; यह सिर्फ़ तब जब वाक्य अधूरा लगे ("और…", "तो…")
+        /**
+         * नवंबर 2026 (Smart turn): 500 -> 800 (Google docs: server default ~800, सलाह 500-800). Hybrid VAD में "बात खत्म"
+         * फ़ोन तय करता है (audioStreamEnd = server तुरंत जवाब) - पूरा वाक्य 0.36s, आम बात 0.5s (पहले जैसा तेज़).
+         * server का 500 हर "और… / to… / की…" ठहराव पर फ़ोन से पहले ही बात काट देता था (फ़ोन का रोकना बेकार था) - अब
+         * 800 सिर्फ़ बचाव + अधूरे वाक्य पर सोचने का समय. नाप (offline replay, 300 असली आवाज़ें): 0.5s से छोटे ठहराव पर
+         * बात कटना 24/60 -> 5/60; server 500 पर फ़ोन का कोई सुधार असर नहीं करता (196/240 = 196/240).
+         */
+        const val SERVER_SILENCE_MS = 800   // पहले v5.1 (मालिक: "बोलना बंद होते ही जवाब"): 800 -> 500 (Google की सलाह 500-800 का सबसे तेज़). पहले v3.46: 550 -> 800. छोटी बात पर फ़ोन खुद 550ms पर "खत्म" भेजता है; यह सिर्फ़ तब जब वाक्य अधूरा लगे ("और…", "तो…")
         /** Phone ka VAD: itni der chup = turant audioStreamEnd (server ka intezaar nahi) */
         const val CLIENT_END_MS = 500     // v5.1: 550 -> 500 (Google: फ़ोन का VAD कम से कम 500ms; पूरे वाक्य पर TurnEnd.EARLY_END_MS पहले जैसा)
         /** v3.5+: HOLD - caption इतनी देर न बदले + आवाज़ शांत = यूज़र का अगला सवाल पूरा */
@@ -440,6 +447,8 @@ class GeminiLive(internal val svc: DKAccessibilityService, internal val agent: A
     @Volatile internal var othersIgnored = 0
     @Volatile internal var mutedParts = 0L
     @Volatile internal var earlyEnds = 0
+    /** नवंबर 2026: पीछे के शोर (पंखा / TV) के बीच आपकी बात खत्म पहचानी (TurnEnd.noiseTail) */
+    @Volatile internal var noiseEnds = 0
     internal var capSeen = ""; internal var capSeenAt = 0L
     /** 2.5 model ka "sochna" band (pehle awaaz tez) - setup mana kare to wapas */
     @Volatile internal var thinkOff = true
@@ -579,7 +588,7 @@ class GeminiLive(internal val svc: DKAccessibilityService, internal val agent: A
 
     /** बँटवारे में: replyText का नया हिस्सा pipeline को (DoneGate रोके हो तो नहीं) */
     internal fun pumpSplit() {
-        if (!connSplit || actHold || muteTurn || dropOld) return
+        if (!connSplit || actHold || muteTurn || dropOld || startHold.active) return
         val add = synchronized(turnLock) {
             if (splitFedTo > replyText.length) splitFedTo = replyText.length
             val t = replyText.substring(splitFedTo); splitFedTo = replyText.length; t
@@ -590,7 +599,31 @@ class GeminiLive(internal val svc: DKAccessibilityService, internal val agent: A
     /** Live की अपनी आवाज़ का टुकड़ा: बँटवारे में बजता नहीं (सिर्फ़ गिनती) */
     internal fun playOut(pcm: ByteArray) {
         if (connSplit) return
+        if (startHold.offer(pcm)) return        // नवंबर 2026: आप अभी बोल रहे - पुराना जवाब कतार में नहीं (LiveStartHold)
         playQ.offer(pcm)
+    }
+
+    /** नवंबर 2026 (Smart turn): आप बोल रहे थे तब आया जवाब - बजाएँ / फेंकें? (mic loop हर chunk पर) */
+    internal val startHold = ReplyStartHold()
+
+    internal fun pollStartHold(now: Long) {
+        when (startHold.check(now)) {
+            ReplyStartHold.Decision.WAIT -> {}
+            ReplyStartHold.Decision.RELEASE -> {
+                val complete = startHold.heldComplete
+                val held = startHold.release()
+                if (!connSplit) held.forEach { playQ.offer(it) }
+                else { pumpSplit(); if (complete && pipelineLazy.isInitialized()) pipeline.endTurn() }
+                LatencyBoard.count("बोलते समय आया जवाब: server ने नहीं रोका, बाद में बजा")
+                if (held.isNotEmpty() || complete) log("server ने पुराना जवाब नहीं रोका (आपकी आवाज़ में नई बात नहीं) - रुका जवाब अब (${held.sumOf { it.size } / 48} ms ऑडियो)")
+            }
+            ReplyStartHold.Decision.DROP -> {
+                val b = startHold.drop()
+                LatencyBoard.count("आप आगे बोले: पिछले टुकड़े का बासी जवाब नहीं बजा")
+                if (connSplit) synchronized(turnLock) { splitFedTo = replyText.length }
+                log("आप आगे बोले - पिछले टुकड़े का बासी जवाब नहीं बजाया (${b / 48} ms) • नई बात का जवाब आएगा")
+            }
+        }
     }
 
     /** Garam (standby) connection: wake word ke baad chup hone par band nahi kiya */

@@ -199,8 +199,9 @@ internal fun GeminiLive.handleServer(msg: String, setup: CompletableDeferred<Uni
         tagFilter?.finish()?.takeIf { it.isNotEmpty() }?.let { r -> synchronized(turnLock) { replyText.append(r) } }
         tagFilter = null
         com.dk.assistant.avatar.MoodState.replyDone()         // v3.71: बोलना ख़त्म होने के कुछ सेकंड बाद चेहरा सामान्य
-        if (connSplit && !wasDropping) { pumpSplit(); if (pipelineLazy.isInitialized()) pipeline.endTurn() }   // v3.68: बचा text आख़िरी टुकड़ा
-        if (timeline.active) { timeline.done(System.currentTimeMillis()); log("turn पूरा: ${timeline.summary()}") }
+        startHold.turnComplete()                 // नवंबर 2026: रुका जवाब पूरा (आप चुप होने पर बजे या फेंका जाए)
+        if (connSplit && !wasDropping && !startHold.active) { pumpSplit(); if (pipelineLazy.isInitialized()) pipeline.endTurn() }   // v3.68: बचा text आख़िरी टुकड़ा
+        if (timeline.active) { timeline.done(System.currentTimeMillis()); LatencyBoard.timeline(timeline); log("turn पूरा: ${timeline.summary()}") }
         if (!wasDropping && !agentCheck()) promiseCheck()
         finishTurn()
         FriendTalk.touch(svc)   // v4.3: बातचीत का समय फ़ोन में सेव ("इतनी देर कहाँ थे?" के लिए)

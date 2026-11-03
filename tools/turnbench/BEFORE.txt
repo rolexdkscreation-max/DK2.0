@@ -1,0 +1,17 @@
+== BEFORE (main) (server 500ms)
+ALL            n=300  falseEOT(cut)=195/240  missedEOT= 0  latency median= 420 p95= 728
+lang=hi        n=105  falseEOT(cut)= 69/90   missedEOT= 0  latency median= 424 p95= 675
+lang=en        n= 90  falseEOT(cut)= 64/75   missedEOT= 0  latency median= 410 p95= 478
+lang=hg        n=105  falseEOT(cut)= 62/75   missedEOT= 0  latency median= 422 p95= 668
+rate=slow      n=100  falseEOT(cut)= 73/80   missedEOT= 0  latency median= 413 p95= 820
+rate=normal    n=100  falseEOT(cut)= 65/80   missedEOT= 0  latency median= 424 p95= 848
+rate=fast      n=100  falseEOT(cut)= 57/80   missedEOT= 0  latency median= 428 p95= 475
+cond=clean     n= 60  falseEOT(cut)= 41/48   missedEOT= 0  latency median= 424 p95= 463
+cond=fan       n= 60  falseEOT(cut)= 40/48   missedEOT= 0  latency median= 418 p95= 478
+cond=tv        n= 60  falseEOT(cut)= 32/48   missedEOT= 0  latency median= 443 p95=2247
+cond=gaps      n= 60  falseEOT(cut)= 41/48   missedEOT= 0  latency median= 426 p95= 463
+cond=soft      n= 60  falseEOT(cut)= 41/48   missedEOT= 0  latency median= 398 p95= 440
+pause<500ms    n= 60  falseEOT(cut)= 24/60   missedEOT= 0  latency median= 418 p95= 848
+pause>=500ms   n=180  falseEOT(cut)=171/180  missedEOT= 0  latency median= 424 p95= 668
+no pause       n= 60  falseEOT(cut)=  0/0    missedEOT= 0  latency median= 408 p95= 728
+NOISE 500ms noise-only 240s -> false turns = 47 [fan=2, tv=13, clicks=28, gapsfan=4]

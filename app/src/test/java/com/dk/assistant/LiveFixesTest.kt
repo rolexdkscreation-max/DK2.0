@@ -51,11 +51,15 @@ class LiveFixesTest {
     }
 
     @Test fun vadLimits_longerPauseAllowed() {
-        // v5.1 (मालिक: "बोलना बंद होते ही जवाब", 300-500ms): Google की सलाह का सबसे तेज़ सिरा (500)
+        // v5.1 (मालिक: "बोलना बंद होते ही जवाब", 300-500ms): फ़ोन का फ़ैसला 500 ही (Google की सलाह का सबसे तेज़ सिरा)
         assertEquals(500, GeminiLive.CLIENT_END_MS)
-        assertEquals(500, GeminiLive.SERVER_SILENCE_MS)
-        assertTrue(GeminiLive.SERVER_SILENCE_MS in 300..500 && GeminiLive.CLIENT_END_MS in 300..500)
+        assertTrue(GeminiLive.CLIENT_END_MS in 300..500)
         assertTrue(TurnEnd.EARLY_END_MS < GeminiLive.CLIENT_END_MS)   // पूरा वाक्य = और जल्दी
+        // नवंबर 2026 (मालिक: Smart turn - "छोटे ठहराव पर बात न कटे", Hybrid VAD): server सिर्फ़ बचाव, Google की
+        // सलाह (500-800) के भीतर, और फ़ोन के "अधूरा वाक्य" इंतज़ार से कम नहीं (वरना server पहले काट देता है)
+        assertEquals(800, GeminiLive.SERVER_SILENCE_MS)
+        assertTrue(GeminiLive.SERVER_SILENCE_MS in 500..800)
+        assertTrue(TurnEnd.CONT_END_MS <= GeminiLive.SERVER_SILENCE_MS && TurnEnd.MAX_NEUTRAL_END_MS <= GeminiLive.SERVER_SILENCE_MS)
     }
 
     // ------------------------------------------------------------------ 5) पीछे की आवाज़
