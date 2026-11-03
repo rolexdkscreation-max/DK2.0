@@ -109,7 +109,9 @@ object CallCmd {
     fun announce(who: String, app: String = "", video: Boolean = false): String {
         val w = who.trim()
         val kind = (if (app.isBlank()) "" else "$app ") + (if (video) "वीडियो कॉल" else "कॉल")
-        if (w.isNotBlank()) return "सर, $w का $kind आ रहा है।"
-        return if (app.isBlank()) "सर, अनजान नंबर से कॉल आ रहा है।" else "सर, $app पर किसी का ${if (video) "वीडियो कॉल" else "कॉल"} आ रहा है।"
+        // v3.156 मालिक: "बॉस कॉल आ रहा है, उठाओ या कट कर दो" - पहली बार में ही पूरा सवाल
+        val q = " उठाऊँ या काट दूँ?"
+        if (w.isNotBlank()) return "बॉस, $w का $kind आ रहा है।$q"
+        return (if (app.isBlank()) "बॉस, अनजान नंबर से कॉल आ रहा है।" else "बॉस, $app पर किसी का ${if (video) "वीडियो कॉल" else "कॉल"} आ रहा है।") + q
     }
 }

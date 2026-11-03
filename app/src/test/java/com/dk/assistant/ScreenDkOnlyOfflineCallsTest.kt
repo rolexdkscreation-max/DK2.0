@@ -161,10 +161,10 @@ class ScreenDkOnlyOfflineCallsTest {
     // ------------------------------------------------------------ 4. कॉल
 
     @Test fun announceLines() {
-        assertEquals("सर, राहुल का WhatsApp कॉल आ रहा है।", CallCmd.announce("राहुल", "WhatsApp", false))
-        assertEquals("सर, राहुल का कॉल आ रहा है।", CallCmd.announce("राहुल"))
-        assertEquals("सर, अनजान नंबर से कॉल आ रहा है।", CallCmd.announce(""))
-        assertEquals("सर, Telegram पर किसी का वीडियो कॉल आ रहा है।", CallCmd.announce("", "Telegram", true))
+        assertEquals("बॉस, राहुल का WhatsApp कॉल आ रहा है। उठाऊँ या काट दूँ?", CallCmd.announce("राहुल", "WhatsApp", false))
+        assertEquals("बॉस, राहुल का कॉल आ रहा है। उठाऊँ या काट दूँ?", CallCmd.announce("राहुल"))
+        assertEquals("बॉस, अनजान नंबर से कॉल आ रहा है। उठाऊँ या काट दूँ?", CallCmd.announce(""))
+        assertEquals("बॉस, Telegram पर किसी का वीडियो कॉल आ रहा है। उठाऊँ या काट दूँ?", CallCmd.announce("", "Telegram", true))
     }
 
     @Test fun callCommands() {

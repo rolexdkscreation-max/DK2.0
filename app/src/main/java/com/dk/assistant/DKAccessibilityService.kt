@@ -54,6 +54,8 @@ class DKAccessibilityService : AccessibilityService() {
     companion object {
         @Volatile var instance: DKAccessibilityService? = null
             private set
+        /** v3.156: AI को एक बार में इतनी चीज़ें (पहले 140, और सिर्फ़ शुरू की) */
+        const val SCREEN_CAP = 180
     }
 
     data class Element(val id: Int, val node: AccessibilityNodeInfo, val bounds: Rect)
@@ -901,7 +903,16 @@ class DKAccessibilityService : AccessibilityService() {
         } catch (_: Exception) { }
         if (roots.isEmpty()) rootInActiveWindow?.let { roots.add(it) }
 
-        for (root in roots) walk(root, list, sb, 0)
+        val raw = mutableListOf<Element>()
+        for (root in roots) walk(root, raw, sb, 0)
+        // v3.156: ज़्यादा चीज़ें हों तो ज़रूरी पहले (लिखने का खाना, बटन, नीचे का हिस्सा) - क्रम वही
+        val h = resources.displayMetrics.heightPixels
+        val cands = raw.map { e ->
+            com.dk.assistant.agent.core.NodePick.Cand(e.node.isEditable, e.node.isClickable || e.node.isLongClickable,
+                !e.node.text.isNullOrBlank() || !e.node.contentDescription.isNullOrBlank(), e.bounds.top, e.bounds.bottom)
+        }
+        com.dk.assistant.agent.core.NodePick.keep(cands, SCREEN_CAP, h).forEach { i -> list.add(raw[i].copy(id = list.size)) }
+        list.forEach { screenLine(it, sb) }
         elements = list
 
         val dm = resources.displayMetrics

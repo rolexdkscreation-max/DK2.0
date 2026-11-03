@@ -7,6 +7,7 @@ import android.os.Build
 import android.speech.tts.Voice
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.async
@@ -115,13 +116,34 @@ class Speaker(context: Context) {
 
     suspend fun speakCall(text: String, generic: Boolean = true): CallSpoke {
         fullCallVolume()
+        // v3.156 मालिक: "कॉल आया तो तुरंत फटाक से बोले" - इंटरनेट से आवाज़ बनने का इंतज़ार (2-5 सेकंड) नहीं:
+        // 1) यही वाक्य पहले बना हो (वही व्यक्ति दोबारा) = तुरंत  2) सहेजा "बॉस, कॉल आ रहा है..." = तुरंत
+        // 3) कुछ भी सहेजा नहीं = तभी नया बनाओ
+        val voice = Prefs.geminiVoice(appCtx)
+        val named = if (text.isBlank()) null else try { cacheFile(voice, text.trim())?.takeIf { it.exists() && it.length() > 100 }?.readBytes() } catch (_: Exception) { null }
+        if (named != null) { playCallWav(named); return CallSpoke.NAME }
+        val wav = cachedCallWav()
+        if (wav != null) {
+            DKLog.d("कॉल: तुरंत सहेजी आवाज़ \"${CallVoice.GENERIC_ASK}\" (नाम वाली अगली बार के लिए बन रही है)")
+            playCallWav(wav)
+            if (text.isNotBlank()) warmLine(text.trim())
+            return CallSpoke.GENERIC
+        }
         if (speakQuick(text)) return CallSpoke.NAME
-        if (!generic) return CallSpoke.NONE
-        val wav = cachedCallWav() ?: return CallSpoke.NONE
-        DKLog.d("कॉल: नाम वाली आवाज़ नहीं बनी - सहेजी आवाज़ \"${CallVoice.GENERIC_ASK}\" बजा रहा हूँ")
+        return CallSpoke.NONE
+    }
+
+    private suspend fun playCallWav(wav: ByteArray) {
         busy = true
         try { DKState.set(Mode.SPEAKING); fullCallVolume(); playWav(wav) } finally { busy = false; lastSpokeAt = System.currentTimeMillis() }
-        return CallSpoke.GENERIC
+    }
+
+    /** पीछे से आवाज़ बनाकर सहेजो (अगली बार तुरंत) - अभी कुछ नहीं बोलता */
+    private fun warmLine(text: String) {
+        kotlinx.coroutines.CoroutineScope(Dispatchers.IO).launch {
+            val keys = keys(); if (keys.isEmpty() || !online()) return@launch
+            try { synth(keys, text, Prefs.geminiVoice(appCtx)) } catch (_: Exception) { }
+        }
     }
 
     private fun cachedCallWav(): ByteArray? = try {
@@ -139,7 +161,7 @@ class Speaker(context: Context) {
     @Volatile private var accBefore = -1
     /** कॉल के समय DK की आवाज़ (accessibility) पूरी - मालिक: "फुल आवाज़ में बोले" */
     fun fullCallVolume() {
-        if (!VolumeRule.AUTO_CHANGE) return       // मालिक (नवंबर 2026): कॉल की आवाज़ भी अपने-आप नहीं बढ़ेगी
+        if (!VolumeRule.AUTO_CHANGE && !VolumeRule.CALL_FULL) return       // मालिक (नवंबर 2026): कॉल की आवाज़ - v3.156 से कॉल के एलान पर पूरी (CALL_FULL)
         if (Build.VERSION.SDK_INT < 26) return
         try {
             val a = CallVoice.STREAM_ACCESSIBILITY; val am = audio.getStreamMaxVolume(a)

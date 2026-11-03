@@ -61,9 +61,12 @@ object ImageGenAgent {
         override suspend fun look(goal: String): Pair<Int, Int>? = lookAt(svc, goal)
     }
 
-    /** स्क्रीन देखना: मालिक ने खुद चालू किया हो (ScreenGuard) + Android 11+ + key हो */
+    /**
+     * स्क्रीन देखना: मालिक ने खुद चालू किया हो (ScreenGuard) + Android 11+ + key हो.
+     * v3.156: या "आपके कहे काम में बटन देखकर दबाए" (Prefs.taskLook) - यह सिर्फ़ इसी image/ask काम के बीच, आपके कहने पर.
+     */
     fun canSee(svc: DKAccessibilityService): Boolean =
-        Build.VERSION.SDK_INT >= Build.VERSION_CODES.R && Prefs.screenshot(svc) && apiKey(svc) != null
+        Build.VERSION.SDK_INT >= Build.VERSION_CODES.R && (Prefs.screenshot(svc) || Prefs.taskLook(svc)) && apiKey(svc) != null
 
     private fun apiKey(svc: DKAccessibilityService) = Prefs.liveGeminiKeys(svc).firstOrNull { it.isNotBlank() }
 
@@ -140,6 +143,27 @@ object ImageGenAgent {
     }
 
     /** Live tool का नतीजा (Live इसे आवाज़ में बताता है) */
+    /**
+     * v3.156 मालिक: "ChatGPT में prompt लिख देता है पर भेज नहीं पाता" - कोई भी सवाल/लिखा हुआ (इमेज नहीं)
+     * असली ChatGPT / Gemini ऐप में लिखो, भेजो, जवाब पूरा होने तक रुको, जवाब पढ़कर लौटाओ.
+     */
+    suspend fun ask(svc: DKAccessibilityService, args: JSONObject): String {
+        val prompt = args.optString("prompt").ifBlank { args.optString("request") }.trim()
+        if (prompt.isBlank()) return "ERROR: क्या लिखना / पूछना है, यह नहीं बताया. Ask the user what to type."
+        val app = ImageApp.parse(args.optString("app"))
+        DKLog.d("AiAsk: ${app?.hi ?: "auto"} (देखना=${canSee(svc)}) prompt: ${prompt.take(160)}")
+        val r = ImageGenFlow(AccessibilityScreenDriver(svc), Host(svc)).ask(app, prompt)
+        DKLog.d("AiAsk: नतीजा ok=${r.ok} app=${r.app?.hi} तरीका=[${r.how}] ${r.error}")
+        if (r.screenDump.isNotBlank()) DKLog.d("AiAsk स्क्रीन: ${r.screenDump.take(1500)}")
+        if (!r.ok) return "ERROR: " + r.error.ifBlank { "भेज नहीं पाया" } +
+            (if (r.blocker != null) ". The user must finish that screen himself, then ask again." else "") +
+            " Tell the user exactly this reason in one short Hindi line."
+        if (r.appReply.isBlank()) return "SENT: the prompt was typed AND sent in ${r.app?.hi}, but DK could not read the answer. " +
+            "Tell the user it is sent and the answer is on the screen in ${r.app?.hi}."
+        return "SENT_AND_ANSWERED: DK typed and sent the prompt in ${r.app?.hi}. ${r.app?.hi} replied: \"${r.appReply}\". " +
+            "Tell the user the gist of this reply in short Hindi (do not invent anything beyond it). The app is open on the screen now."
+    }
+
     suspend fun run(svc: DKAccessibilityService, args: JSONObject, show: (ByteArray) -> Unit = {}): String {
         val given = args.optString("prompt").ifBlank { args.optString("request") }.trim()
         val user = args.optString("user_words").trim()

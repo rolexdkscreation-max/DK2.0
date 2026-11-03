@@ -174,6 +174,28 @@ internal fun GeminiLive.setupJson(m: String, txt: Boolean = connText, resume: Bo
                     .put("app", JSONObject().put("type", "STRING").put("enum", JSONArray().put("chatgpt").put("gemini").put("auto")).put("description", "Which app the user named; auto = ChatGPT if installed, else Gemini"))
                     .put("download", JSONObject().put("type", "BOOLEAN").put("description", "Save it to the phone gallery (default true)")))
                 .put("required", JSONArray().put("prompt"))))
+        // v3.156: ChatGPT / Gemini में कुछ भी लिखकर भेजना (इमेज नहीं) - DK खुद Send दबाता है
+        .put(JSONObject().put("name", "ai_app_prompt")
+            .put("description", "Type ANY prompt or question into the REAL ChatGPT or Gemini app on the phone, press Send (DK taps it itself) and read the app's answer back. " +
+                "Use when the user says e.g. 'ChatGPT में यह पूछो / लिखो / भेजो', 'Gemini ऐप से पूछो', 'ChatGPT पर prompt डालो'. For making a picture use image_task instead. " +
+                "DK CAN tap and send in these apps - never tell the user that you cannot tap, touch or send. First say one short line like 'भेज रहा हूँ'.")
+            .put("parameters", JSONObject().put("type", "OBJECT")
+                .put("properties", JSONObject()
+                    .put("prompt", JSONObject().put("type", "STRING").put("description", "Exactly what to type in the app (the user's words / the prompt he wants)"))
+                    .put("app", JSONObject().put("type", "STRING").put("enum", JSONArray().put("chatgpt").put("gemini").put("auto")).put("description", "Which app the user named; auto = ChatGPT if installed, else Gemini")))
+                .put("required", JSONArray().put("prompt"))))
+        // v3.156: "मुझे शर्ट देखनी है" - shopping ऐप (पूछकर) में वही चीज़
+        .put(JSONObject().put("name", "shop_search")
+            .put("description", "Show a product the user wants to see or buy (shirt, jeans, lower/track pants, shoes, watch, kurta, saree, bag...) in a shopping app on the phone. " +
+                "Use for 'मुझे शर्ट देखनी है', 'जींस दिखाओ', 'जूते देखने हैं', 'Flipkart पर घड़ी दिखाओ'. Leave app empty when the user did not name one: DK then checks which apps are installed " +
+                "and the result tells you to ask 'किस ऐप पर दिखाऊँ - Flipkart, Meesho या Amazon?'. After he answers call again with that app. First say 'ठीक है, दिखाता हूँ'. Never order or pay.")
+            .put("parameters", JSONObject().put("type", "OBJECT")
+                .put("properties", JSONObject()
+                    .put("item", JSONObject().put("type", "STRING").put("description", "What to search, in short English shopping words with every detail he said (colour, men/women, size, brand), e.g. 'black shirt for men'"))
+                    .put("item_hindi", JSONObject().put("type", "STRING").put("description", "The item in the user's own Hindi word, e.g. 'शर्ट'"))
+                    .put("app", JSONObject().put("type", "STRING").put("description", "Shopping app the user named: flipkart, meesho, amazon, myntra, ajio. Empty if he did not name one"))
+                    .put("user_words", JSONObject().put("type", "STRING").put("description", "The user's own words exactly")))
+                .put("required", JSONArray().put("item"))))
         .put(JSONObject().put("name", "whatsapp_task")
             .put("description", "WhatsApp on the phone - ALWAYS use this (never phone_task) to send a WhatsApp message or make a WhatsApp call: read_unread (unread messages from notifications), voice_call / video_call (contact - WhatsApp audio or video call; when the user says WhatsApp पर कॉल / वीडियो कॉल; a plain X को कॉल करो without WhatsApp is a normal phone call, not this), send_message (contact + message; irreversible - wait for waiting_confirmation SYSTEM NOTE, ask the user, confirm only after a clear yes), read_chat (contact), search_chat (query), mute / unmute / mark_read (contact). If the contact is ambiguous you get contact_ambiguous - ask the user which one.")
             .put("parameters", JSONObject().put("type", "OBJECT")

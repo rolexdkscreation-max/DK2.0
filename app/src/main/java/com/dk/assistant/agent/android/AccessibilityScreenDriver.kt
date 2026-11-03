@@ -4,9 +4,11 @@ import android.accessibilityservice.AccessibilityService
 import android.graphics.Rect
 import android.os.Bundle
 import android.view.accessibility.AccessibilityNodeInfo
+import android.view.accessibility.AccessibilityWindowInfo
 import com.dk.assistant.DKAccessibilityService
 import com.dk.assistant.agent.core.Box
 import com.dk.assistant.agent.core.DriverResult
+import com.dk.assistant.agent.core.NodePick
 import com.dk.assistant.agent.core.ScreenDriver
 import com.dk.assistant.agent.core.ScreenObservation
 import com.dk.assistant.agent.core.UiElement
@@ -22,12 +24,15 @@ class AccessibilityScreenDriver(private val svc: DKAccessibilityService) : Scree
     private var seq = 0L
     @Volatile private var currentId = -1L
     private var nodes: List<AccessibilityNodeInfo> = emptyList()
+    private companion object { const val CAP = 320 }
 
     override suspend fun capture(): ScreenObservation? {
-        val root = try { svc.rootInActiveWindow } catch (_: Exception) { null } ?: return null
-        val list = ArrayList<UiElement>(); val ns = ArrayList<AccessibilityNodeInfo>()
+        val root = appRoot() ?: return null
+        val dm = svc.resources.displayMetrics
+        val raw = ArrayList<UiElement>(); val rawN = ArrayList<AccessibilityNodeInfo>(); val cands = ArrayList<NodePick.Cand>()
         fun walk(n: AccessibilityNodeInfo?, depth: Int) {
-            if (n == null || list.size >= 220 || depth > 45) return
+            // v3.156: पूरी स्क्रीन (पहले 220 चीज़ / गहराई 45 पर रुकता था - लंबी chat में "भेजें" बटन छूट जाता था)
+            if (n == null || raw.size >= NodePick.RAW_MAX || depth > NodePick.DEPTH_MAX) return
             if (n.isVisibleToUser) {
                 val r = Rect().also { n.getBoundsInScreen(it) }
                 val text = n.text?.toString()?.trim().orEmpty()
@@ -36,18 +41,37 @@ class AccessibilityScreenDriver(private val svc: DKAccessibilityService) : Scree
                 // v3.152: बड़ी तस्वीर (ChatGPT/Gemini की बनी इमेज) - बिना नाम/click के भी दिखे
                 val bigImage = n.className?.toString()?.contains("Image") == true && r.width() >= 200 && r.height() >= 200
                 if (r.width() > 0 && r.height() > 0 && (text.isNotEmpty() || desc.isNotEmpty() || vid.isNotEmpty() || n.isClickable || n.isEditable || n.isScrollable || bigImage)) {
-                    list += UiElement(list.size, text.take(300), desc.take(200), vid, n.className?.toString()?.substringAfterLast('.').orEmpty(),
+                    raw += UiElement(raw.size, text.take(300), desc.take(200), vid, n.className?.toString()?.substringAfterLast('.').orEmpty(),
                         n.isClickable, n.isEditable, n.isScrollable, n.isEnabled, Box(r.left, r.top, r.right, r.bottom))
-                    ns += n
+                    rawN += n
+                    cands += NodePick.Cand(n.isEditable, n.isClickable, text.isNotEmpty() || desc.isNotEmpty(), r.top, r.bottom)
                 }
             }
             for (i in 0 until n.childCount) walk(try { n.getChild(i) } catch (_: Exception) { null }, depth + 1)
         }
         walk(root, 0)
-        val dm = svc.resources.displayMetrics
+        // ज़्यादा हों तो ज़रूरी पहले: लिखने का खाना, बटन, नीचे का हिस्सा
+        val keep = NodePick.keep(cands, CAP, dm.heightPixels)
+        val list = ArrayList<UiElement>(keep.size); val ns = ArrayList<AccessibilityNodeInfo>(keep.size)
+        keep.forEach { i -> list += raw[i].copy(id = list.size); ns += rawN[i] }
         val id = ++seq
         nodes = ns; currentId = id
         return ScreenObservation(id, root.packageName?.toString().orEmpty(), list, dm.widthPixels, dm.heightPixels)
+    }
+
+    /**
+     * v3.156: सही खिड़की - ऊपर वाली ऐप (ChatGPT/Flipkart...), DK का अपना बुलबुला/पर्दा नहीं।
+     * पहले सिर्फ़ rootInActiveWindow - DK की अपनी खिड़की active हो तो गलत स्क्रीन पढ़ी जाती थी।
+     */
+    private fun appRoot(): AccessibilityNodeInfo? {
+        val own = svc.packageName
+        val active = try { svc.rootInActiveWindow } catch (_: Exception) { null }
+        if (active != null && active.packageName?.toString() != own) return active
+        val apps = try {
+            svc.windows.filter { it.type == AccessibilityWindowInfo.TYPE_APPLICATION }
+                .mapNotNull { w -> w.root?.takeIf { r -> r.packageName?.toString() != own }?.let { w to it } }
+        } catch (_: Exception) { emptyList() }
+        return (apps.firstOrNull { it.first.isFocused } ?: apps.maxByOrNull { it.first.layer })?.second ?: active
     }
 
     private fun node(obs: ScreenObservation, e: UiElement): AccessibilityNodeInfo? {
@@ -70,7 +94,14 @@ class AccessibilityScreenDriver(private val svc: DKAccessibilityService) : Scree
         val n = node(obs, e) ?: return DriverResult.STALE
         n.performAction(AccessibilityNodeInfo.ACTION_FOCUS)
         val b = Bundle().apply { putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, text) }
-        return if (n.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, b)) DriverResult.OK else DriverResult.FAILED
+        if (n.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, b)) return DriverResult.OK
+        // v3.156: कुछ ऐप SET_TEXT नहीं मानते - clipboard से चिपकाओ (Paste)
+        return try {
+            val cm = svc.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+            cm.setPrimaryClip(android.content.ClipData.newPlainText("DK", text))
+            n.performAction(AccessibilityNodeInfo.ACTION_CLICK)
+            if (n.performAction(AccessibilityNodeInfo.ACTION_PASTE)) DriverResult.OK else DriverResult.FAILED
+        } catch (_: Exception) { DriverResult.FAILED }
     }
 
     override suspend fun scroll(down: Boolean): DriverResult {

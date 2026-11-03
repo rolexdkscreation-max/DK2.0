@@ -70,7 +70,7 @@ class NetworkVolumeRuleTest {
         assertTrue(d.contains("if (!VolumeRule.AUTO_CHANGE) return@post"))
         assertFalse(d.contains("currentMusicVol / 2"))
         val sp = src("Speaker.kt")
-        assertTrue(sp.contains("if (!VolumeRule.AUTO_CHANGE) return       // मालिक (नवंबर 2026): कॉल की आवाज़"))
+        assertTrue(sp.contains("if (!VolumeRule.AUTO_CHANGE && !VolumeRule.CALL_FULL) return       // मालिक (नवंबर 2026): कॉल की आवाज़"))   // v3.156: सिर्फ़ कॉल के एलान पर पूरी
         assertTrue(sp.contains("DK खुद नहीं बढ़ाएगा"))
         assertTrue(src("VoiceListener.kt").contains("if (on && !VolumeRule.AUTO_CHANGE) return"))
         assertTrue(LiveSrc.all().contains("if (VolumeRule.AUTO_CHANGE) track?.let { try { it.setVolume(SpeakerBoost.SUSPECT_VOLUME) }"))

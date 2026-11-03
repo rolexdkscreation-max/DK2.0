@@ -23,7 +23,7 @@ object CallVoice {
     const val STREAM_ACCESSIBILITY = 10
 
     /** v4.2: कॉल का सहेजा हुआ एलान (नाम वाली आवाज़ न बने तब भी DK चुप न रहे) - एक बार बनता है, फिर हमेशा तुरंत */
-    const val GENERIC_ASK = "सर, कॉल आ रहा है। उठाऊँ या काट दूँ?"
+    const val GENERIC_ASK = "बॉस, कॉल आ रहा है। उठाऊँ या काट दूँ?"
 
     /**
      * DK की आवाज़ किस usage पर बजे.

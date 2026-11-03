@@ -339,6 +339,14 @@ internal fun GeminiLive.runTools(calls: JSONArray) {
                     withTimeoutOrNull(IMAGE_TASK_MS) { com.dk.assistant.agent.android.ImageGenAgent.run(svc, args) }
                         ?: "ERROR: the image app took more than ${IMAGE_TASK_MS / 1000} seconds. Tell the user it is still being made in the app and he can check it there."
                 }
+                // v3.156: ChatGPT / Gemini ऐप में कुछ भी लिखकर भेजो (इमेज नहीं) और जवाब पढ़ो
+                "ai_app_prompt" -> {
+                    DKState.set(Mode.WORKING)
+                    withTimeoutOrNull(IMAGE_TASK_MS) { com.dk.assistant.agent.android.ImageGenAgent.ask(svc, args) }
+                        ?: "SENT: the app took too long to answer. Tell the user it is sent and the answer is in the app."
+                }
+                // v3.156: "मुझे शर्ट देखनी है" - फ़ोन में जो shopping ऐप हैं उनमें से (पूछकर) उसी चीज़ को खोजो
+                "shop_search" -> com.dk.assistant.ShopOpen.tool(svc, args)
                 "whatsapp_task" -> when (val act = args.optString("action").trim().lowercase()) {
                     in setOf("read_unread", "unread", "read") -> notifTool("WhatsApp")
                     // v4: WhatsApp आवाज़ / वीडियो कॉल - सीधे (स्क्रीन पर बटन ढूँढे बिना)
