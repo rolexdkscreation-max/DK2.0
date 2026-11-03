@@ -43,6 +43,16 @@ class LiveAckRulesTest {
         assertFalse(LiveAckRules.shouldMake(missing = false, liveOn = false, haveKey = true, sinceFailMs = r, busy = false))
     }
 
+    /** DKI-9DC74D: Worker (APP_TOKEN नहीं) नाकाम = हर बटन पर फिर नहीं बुलाना, 10 मिनट बाद ही */
+    @Test fun workerFailBacksOff() {
+        assertTrue(LiveAckRules.retryDue(0L, 5_000L))
+        assertFalse(LiveAckRules.retryDue(1_000L, 1_000L + 60_000L))
+        assertTrue(LiveAckRules.retryDue(1_000L, 1_000L + LiveAckRules.RETRY_MS))
+        val hey = File("src/main/java/com/dk/assistant/voice/HeyDk.kt").readText()
+        assertTrue(hey.contains("if (!LiveAckRules.retryDue(ackFailAt, now)) return"))
+        assertTrue(hey.contains("if (liveOn && hasLiveAck(c, t)) continue"))
+    }
+
     @Test fun modelsSavedFirstNoDup() {
         assertEquals(listOf("b", "a", "c"), LiveAckRules.models("b", listOf("a", "b", "c")))
         assertEquals(listOf("a", "c"), LiveAckRules.models("", listOf("a", "c")))
