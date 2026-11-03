@@ -699,7 +699,7 @@ class BrainManager(private val ctx: Context) {
             if (Prefs.friendMode(ctx)) append("\n").append(FriendStyle.persona(f, user)).append(if (withMemory) FriendTalk.block(ctx) else "")
             append(CareTime.block()).append(if (withMemory) LiveSearch.memoryBlock() else "")   // v3.80: समय देखकर फ़िक्र + पिछली खोज के स्रोत
             append(CalmPersona.block()).append(GirlfriendPersona.block(Prefs.userName(ctx))).append(SpeakingStyle.block(Prefs.userName(ctx)))   // v3.76: मालिक का तय स्वभाव - Live (सीधी आवाज़ / Gemini TTS / Edge) सब में
-            append(WorkChatMode.block(live = true)).append(TeacherBoard.block()).append(if (withMemory) LocalMemory.liveBlock(ctx) else "")
+            append(WorkChatMode.block(live = true)).append(TeacherBoard.block()).append(if (withMemory) LocalMemory.liveBlock(ctx) + (if (!Prefs.localMemoryOn(ctx)) MsgDraft.recentBlock(MsgDraft.turnsFromState(), System.currentTimeMillis()) else "") else "")
             if (Prefs.dkOnly(ctx)) append(DkOnly.PROMPT)   // v4.1: सिर्फ़ "DK ..." वाली बात का जवाब
             append(TaskFirst.prompt(f))   // v3.7 (मालिक): फ़ोन का काम = पहले काम (चुप), फिर "हो गया सर" + "और कुछ?" - आख़िर में ताकि यही चले   // v3.88: लोकल याददाश्त का छोटा सार | v3.87: काम/बातचीत मोड + कई काम की कतार + टीचर बोर्ड (स्वभाव वही)
         }
@@ -711,6 +711,8 @@ class BrainManager(private val ctx: Context) {
         if (Prefs.friendMode(ctx)) append(FriendTalk.block(ctx))
         append(LiveSearch.memoryBlock())
         append(LocalMemory.liveBlock(ctx))
+        // v3.151: लोकल याददाश्त बंद हो तब भी नया connection अभी की बातचीत न भूले
+        if (!Prefs.localMemoryOn(ctx)) append(MsgDraft.recentBlock(MsgDraft.turnsFromState(), System.currentTimeMillis()))
     }.trim()
 
     private fun buildSystemPrompt(): String {
@@ -750,6 +752,7 @@ INTELLIGENCE (be genuinely smart, like a brilliant expert friend):
 13. Match depth to the question: tiny questions get tiny answers; serious questions (health, money, legal, study, career, tech) get a careful, correct, slightly fuller answer, with a gentle note to consult an expert where it really matters.
 14. Explain like a great teacher: simple words, an everyday example if useful, most important point first.
 15. Never make false promises: never say you did something (opened, sent, saved, set, booked) unless it was really done, and never promise to do something later that you cannot actually do.
+16. Follow-up answers: when you asked the user a question (which message? which contact? which time?), his next words ARE the answer - join them with his earlier request and finish the task. Never ask again for anything he already told you in this conversation (e.g. he said "धीरज कुमार को मैसेज करो", you asked "क्या मैसेज?", he answered -> call the tool with contact=धीरज कुमार AND that message).
 """
 
         val BASE_PROMPT = """
@@ -783,7 +786,7 @@ Available actions:
 {"type":"volume","direction":"up|down|mute|unmute|max|set|silent|ring","level":50}
 {"type":"media","key":"play_pause|next|previous"}  control music/video playing in any app
 {"type":"lock"}                                   lock the phone (screen off)
-{"type":"unlock"}                                 wake screen + open swipe lock (if PIN/fingerprint is set, tell user to unlock; never type a PIN)
+{"type":"unlock"}                                 wake screen + unlock (DK types the PIN itself only if the owner saved it in Settings → फ़ोन लॉक / अनलॉक; if the result says it could not, tell the user exactly that reason)
 {"type":"close_app"}                              close the current/last app
 {"type":"close_all_apps"}                         clear all recent apps
 {"type":"screenshot_save"}                        take & save a screenshot

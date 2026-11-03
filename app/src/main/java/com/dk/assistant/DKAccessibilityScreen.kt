@@ -319,7 +319,9 @@ private suspend fun DKAccessibilityService.unlockNow(): String {
         // नवंबर 2026: मालिक ने Settings → फ़ोन लॉक / अनलॉक में PIN / पैटर्न सेव किया हो तभी DK खुद डालता है
         // (गलत की गिनती पूरी हो तो enter खुद बताता है कि क्यों रुका - PIN नहीं डालता)
         canPin -> PhoneUnlocker.enter(this, km, asked)
-        km.isKeyguardSecure -> "screen on, lock screen PIN/pattern/fingerprint maang rahi hai - user ko bolo ki khud khole (DK PIN nahi daalta)"
+        // v3.151: पहले यह "हो गया" गिना जाता था (LiveFast.ok) - DK चुप या "खुल गया" बोलता, फ़ोन बंद ही रहता।
+        // अब सच्चा कारण + क्या करना है (Settings में PIN सेव)
+        km.isKeyguardSecure -> PhoneLockVoice.noPinReason(PhoneLockStore.unlockOn(this), PhoneLockStore.hasSecret(this))
         else -> "lock screen khuli"
     }
     DKLog.d("फ़ोन अनलॉक: ${r.take(50)} (${System.currentTimeMillis() - t0} ms, स्क्रीन ${if (wasOff) "बंद थी" else "चालू थी"}, PIN हिस्सा माँगा=$asked)")

@@ -32,8 +32,13 @@ internal object PhoneUnlocker {
      */
     val gate = Mutex()
 
-    /** PIN दबाने के बीच (पहले 90ms) */
-    const val KEY_GAP_MS = 45L
+    /**
+     * PIN दबाने के बीच। v3.151: 45ms पर कई फ़ोन (Samsung / Xiaomi) बीच का अंक छोड़ देते थे = गलत PIN, गिनती बढ़ी और
+     * दो बार में आवाज़ से अनलॉक रुक गया। 60ms (पहले 90, फिर 45) - 6 अंक का PIN भी आधे सेकंड से कम।
+     */
+    const val KEY_GAP_MS = 60L
+    /** PIN वाला हिस्सा दिखते ही बटन अभी खिसक रहे होते हैं (animation) - पहला अंक छूट जाता था */
+    const val SETTLE_MS = 180L
     /** PIN वाला हिस्सा दिखने तक देखने का अंतर */
     const val POLL_MS = 100L
 
@@ -94,16 +99,17 @@ internal object PhoneUnlocker {
         }
     }
 
+    private fun ready(kind: PhoneLockVoice.Kind, s: Screen) = when (kind) {
+        PhoneLockVoice.Kind.PIN -> s.digits.size >= 10 || s.edit != null
+        PhoneLockVoice.Kind.PATTERN -> s.pattern != null
+        PhoneLockVoice.Kind.PASSWORD -> s.edit != null
+    }
+
     /** PIN वाला हिस्सा / पैटर्न / पासवर्ड का खाना आने तक (ऊपर swipe के बाद) */
     private suspend fun waitBouncer(svc: DKAccessibilityService, kind: PhoneLockVoice.Kind, tries: Int = 25): Screen? {
         repeat(tries) {
             val s = look(svc)
-            val ready = when (kind) {
-                PhoneLockVoice.Kind.PIN -> s.digits.size >= 10 || s.edit != null
-                PhoneLockVoice.Kind.PATTERN -> s.pattern != null
-                PhoneLockVoice.Kind.PASSWORD -> s.edit != null
-            }
-            if (ready) return s
+            if (ready(kind, s)) return s
             delay(POLL_MS)
         }
         return null
@@ -132,7 +138,11 @@ internal object PhoneUnlocker {
         }
         if (s == null && !km.isKeyguardLocked) return "phone unlock ho gaya"
         // PIN डलना शुरू = पूरा डलेगा (बीच में रद्द होकर आधा PIN न छूटे - अगली कोशिश में अंक जुड़कर गलत हो जाते)
-        val screen: Screen = s ?: return "$FAIL लॉक स्क्रीन पर ${kind.hi} डालने की जगह नहीं मिली। फ़ोन खुद खोलिए।"
+        val first: Screen = s ?: return "$FAIL लॉक स्क्रीन पर ${kind.hi} डालने की जगह नहीं मिली। फ़ोन खुद खोलिए।"
+        // v3.151: animation रुकने दो, फिर बटन ताज़ा पढ़ो (पहला अंक छूटकर गलत PIN न बने)
+        delay(SETTLE_MS)
+        if (!km.isKeyguardLocked) return "phone unlock ho gaya"
+        val screen: Screen = look(svc).takeIf { ready(kind, it) } ?: first
         return withContext(NonCancellable) { type(svc, km, kind, secret, screen) }
     }
 
