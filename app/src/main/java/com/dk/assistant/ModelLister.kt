@@ -11,6 +11,9 @@ import java.util.concurrent.TimeUnit
 object ModelLister {
     private val http = com.dk.assistant.NetFix.builder().callTimeout(20, TimeUnit.SECONDS).build()
 
+    /** नवंबर 2026: कंपनी की API का दिया साफ़ नाम (Gemini displayName / OpenRouter name) - id -> नाम. Settings में मॉडल चुनते समय दिखता है */
+    val names = java.util.concurrent.ConcurrentHashMap<String, String>()
+
     private val SKIP = listOf("embedding", "embed", "tts", "whisper", "audio", "image", "imagen", "veo", "moderation",
         "dall-e", "transcribe", "realtime", "native-audio", "live", "aqa", "guard", "rerank", "ocr", "search-preview")
 
@@ -54,7 +57,11 @@ object ModelLister {
             for (i in 0 until (arr?.length() ?: 0)) {
                 val m = arr!!.optJSONObject(i)
                 val methods = m.optJSONArray("supportedGenerationMethods")?.toString() ?: ""
-                if (methods.contains("generateContent")) out.add(m.optString("name").removePrefix("models/"))
+                if (methods.contains("generateContent")) {
+                    val id = m.optString("name").removePrefix("models/")
+                    out.add(id)
+                    m.optString("displayName").takeIf { it.isNotBlank() }?.let { names[id] = it }
+                }
             }
             token = o.optString("nextPageToken")
             if (token.isBlank()) return out
@@ -94,10 +101,20 @@ object ModelLister {
         if (base.contains("anthropic.com")) {
             val o = get("https://api.anthropic.com/v1/models?limit=100", mapOf("x-api-key" to key, "anthropic-version" to "2023-06-01"))
             val arr = o.optJSONArray("data")
-            return (0 until (arr?.length() ?: 0)).mapNotNull { arr!!.optJSONObject(it)?.optString("id")?.takeIf { s -> s.isNotBlank() } }
+            return (0 until (arr?.length() ?: 0)).mapNotNull { i ->
+                val m = arr!!.optJSONObject(i) ?: return@mapNotNull null
+                val id = m.optString("id").takeIf { s -> s.isNotBlank() } ?: return@mapNotNull null
+                m.optString("display_name").takeIf { it.isNotBlank() }?.let { names[id] = it }
+                id
+            }
         }
         val o = get("$base/models", mapOf("Authorization" to "Bearer $key"))
         val arr = o.optJSONArray("data") ?: o.optJSONArray("models")
-        return (0 until (arr?.length() ?: 0)).mapNotNull { arr!!.optJSONObject(it)?.optString("id")?.takeIf { s -> s.isNotBlank() } }
+        return (0 until (arr?.length() ?: 0)).mapNotNull { i ->
+            val m = arr!!.optJSONObject(i) ?: return@mapNotNull null
+            val id = m.optString("id").takeIf { s -> s.isNotBlank() } ?: return@mapNotNull null
+            (m.optString("name").ifBlank { m.optString("display_name") }).takeIf { it.isNotBlank() }?.let { names[id] = it }
+            id
+        }
     }
 }

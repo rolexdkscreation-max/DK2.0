@@ -117,6 +117,8 @@ class GeminiClient(private val key: String, private val model: String) : AiClien
     var fast = false
     var only = false
     var backups: List<String> = BACKUP_MODELS
+    /** नवंबर 2026: Settings → AI दिमाग का "सोचने का स्तर" ([ThinkLevel]). AUTO = पहले जैसा */
+    var think: String = ThinkLevel.AUTO
     override var label = "Gemini ($model)"
         private set
 
@@ -131,7 +133,11 @@ class GeminiClient(private val key: String, private val model: String) : AiClien
         var last: AiException? = null
         for (m in models) {
             try {
-                val r = call(m, system, history, prompt, imageB64)
+                val r = try { call(m, system, history, prompt, imageB64) } catch (e: AiException) {
+                    // चुना "सोचने का स्तर" यह मॉडल न समझे (400) = उसी मॉडल से बिना उसके
+                    if (GeminiModels.thinkingRejected(e.code, e.message.orEmpty(), ThinkLevel.geminiConfig(m, think) != null))
+                        call(m, system, history, prompt, imageB64, thinking = false) else throw e
+                }
                 label = "Gemini ($m)"
                 return r
             } catch (e: AiException) {
@@ -192,8 +198,14 @@ class GeminiClient(private val key: String, private val model: String) : AiClien
         }
         contents.put(JSONObject().put("role", "user").put("parts", JSONArray().put(JSONObject().put("text", prompt))))
         val gen = JSONObject().put("maxOutputTokens", 700)
-        if (thinking && m.startsWith("gemini-3")) gen.put("thinkingConfig", JSONObject().put("thinkingLevel", "minimal"))
-        if (thinking && m.startsWith("gemini-2.5")) gen.put("thinkingConfig", JSONObject().put("thinkingBudget", 0))
+        val chosen = if (thinking) ThinkLevel.geminiConfig(m, think) else null
+        if (chosen != null) {
+            // Settings में चुना स्तर (Low/Medium/High) - सोच के tokens भी गिने जाते हैं, इसलिए जवाब के लिए जगह बढ़ाई
+            gen.put("thinkingConfig", chosen).put("maxOutputTokens", 700 + ThinkLevel.extraTokens(think))
+        } else {
+            if (thinking && m.startsWith("gemini-3")) gen.put("thinkingConfig", JSONObject().put("thinkingLevel", "minimal"))
+            if (thinking && m.startsWith("gemini-2.5")) gen.put("thinkingConfig", JSONObject().put("thinkingBudget", 0))
+        }
         val body = JSONObject()
             .put("system_instruction", JSONObject().put("parts", JSONArray().put(JSONObject().put("text", Lang.sys(system)))))
             .put("contents", contents)
@@ -270,6 +282,9 @@ class GeminiClient(private val key: String, private val model: String) : AiClien
             JSONObject().put("mime_type", "image/jpeg").put("data", imageB64)))
         contents.put(JSONObject().put("role", "user").put("parts", parts))
         val gen = JSONObject().put("responseMimeType", "application/json").put("maxOutputTokens", if (fast) 600 else 2048)
+        if (thinking) ThinkLevel.geminiConfig(m, think)?.let {
+            gen.put("thinkingConfig", it).put("maxOutputTokens", (if (fast) 600 else 2048) + ThinkLevel.extraTokens(think))
+        }
         val body = JSONObject()
             .put("system_instruction", JSONObject().put("parts", JSONArray().put(JSONObject().put("text", Lang.sys(system)))))
             .put("contents", contents)
@@ -301,6 +316,8 @@ class OpenAiCompatClient(
     override val label = "$name ($model)"
     var fast = false
     var backups: List<String> = emptyList()
+    /** नवंबर 2026: Settings → AI दिमाग का "सोचने का स्तर" ([ThinkLevel]). AUTO = पहले जैसा */
+    var think: String = ThinkLevel.AUTO
     @Volatile var usedModel: String = model
         private set
 
@@ -341,15 +358,18 @@ class OpenAiCompatClient(
             msgs.put(JSONObject().put("role", "user").put("content", prompt))
         }
         val body = JSONObject().put("model", model).put("messages", msgs)
-        if (model.contains("gpt-oss")) body.put("reasoning_effort", if (fast) "low" else "medium")
-        val req = Request.Builder()
+        val thought = ThinkLevel.applyOpenAi(body, baseUrl, model, think, if (fast) "low" else "medium")
+        fun req() = Request.Builder()
             .url(baseUrl.trimEnd('/') + "/chat/completions")
             .header("Authorization", "Bearer $key")
             .header("HTTP-Referer", "https://github.com/dk-assistant")
             .header("X-Title", "DK Assistant")
             .post(body.toString().toRequestBody(JSON_TYPE))
             .build()
-        val resp = JSONObject(execute(req))
+        val resp = JSONObject(try { execute(req()) } catch (e: AiException) {
+            // मॉडल ने सोचने का स्तर नहीं समझा (400) = उसी मॉडल से बिना उसके
+            if (thought && ThinkLevel.rejected(e.code, e.message.orEmpty())) { ThinkLevel.strip(body); execute(req()) } else throw e
+        })
         val msg = resp.optJSONArray("choices")?.optJSONObject(0)?.optJSONObject("message")
             ?: throw AiException(0, "$name ne khali jawab diya")
         val c = msg.opt("content")
@@ -379,9 +399,9 @@ class OpenAiCompatClient(
         val msgs = JSONArray().put(JSONObject().put("role", "system").put("content", Lang.sys(system)))
         history.forEach { msgs.put(JSONObject().put("role", if (it.role == "user") "user" else "assistant").put("content", it.text)) }
         msgs.put(JSONObject().put("role", "user").put("content", prompt))
-        val body = JSONObject().put("model", model).put("messages", msgs).put("stream", true).put("max_tokens", 900)
-        if (model.contains("gpt-oss")) body.put("reasoning_effort", "low")
-        val req = Request.Builder()
+        val body = JSONObject().put("model", model).put("messages", msgs).put("stream", true).put("max_tokens", 900 + ThinkLevel.extraTokens(think))
+        val thought = ThinkLevel.applyOpenAi(body, baseUrl, model, think, "low")
+        fun req() = Request.Builder()
             .url(baseUrl.trimEnd('/') + "/chat/completions")
             .header("Authorization", "Bearer $key")
             .header("HTTP-Referer", "https://github.com/dk-assistant")
@@ -389,12 +409,16 @@ class OpenAiCompatClient(
             .post(body.toString().toRequestBody(JSON_TYPE)).build()
         val full = StringBuilder()
         val tf = ThinkFilter()
-        sse(req) { d ->
-            val o = try { JSONObject(d) } catch (_: Exception) { return@sse }
+        val onData: (String) -> Unit = onData@{ d ->
+            val o = try { JSONObject(d) } catch (_: Exception) { return@onData }
             o.optJSONObject("error")?.let { throw AiException(it.optInt("code", 0), it.optString("message")) }
             val c = o.optJSONArray("choices")?.optJSONObject(0)?.optJSONObject("delta")?.opt("content")
             val txt = if (c is String) c else ""
             if (txt.isNotEmpty()) { val clean = tf.feed(txt); if (clean.isNotEmpty()) { full.append(clean); onDelta(clean) } }
+        }
+        try { sse(req(), onData) } catch (e: AiException) {
+            // मॉडल ने सोचने का स्तर नहीं समझा (400, कुछ भी आने से पहले) = उसी मॉडल से बिना उसके
+            if (thought && full.isEmpty() && ThinkLevel.rejected(e.code, e.message.orEmpty())) { ThinkLevel.strip(body); sse(req(), onData) } else throw e
         }
         return full.toString()
     }

@@ -451,6 +451,8 @@ object Prefs {
 
     /** v5: DK लाइव का dk_settings tool कोई भी ऑन-ऑफ सेटिंग पढ़ सके */
     fun bool(c: Context, key: String, def: Boolean): Boolean = sp(c).getBoolean(key, def)
+    /** नवंबर 2026: कोई भी text setting (जैसे सोचने का स्तर, मॉडल के नाम) */
+    fun str(c: Context, key: String, def: String): String = sp(c).getString(key, def) ?: def
 
     fun edit(c: Context, block: SharedPreferences.Editor.() -> Unit) {
         val e = sp(c).edit(); e.block(); e.commit()   // commit = turant disk par save

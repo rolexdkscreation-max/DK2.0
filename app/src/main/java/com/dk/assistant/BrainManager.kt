@@ -841,12 +841,15 @@ fun scopedClient(ctx: Context, p: Provider, scope: String): AiClient? {
     if (key.isBlank()) return null
     val model = Prefs.scopeModel(ctx, scope, p.id)
     if (model.isBlank()) return null
+    // नवंबर 2026: Settings → AI दिमाग का "सोचने का स्तर" इसी हिस्से का (AUTO = पहले जैसा)
+    val think = ThinkLevel.get(ctx, scope)
     return if (p.isGemini) GeminiClient(key, model).apply {
         Prefs.fastModels(ctx, "gemini").takeIf { it.isNotEmpty() }?.let { backups = it + GeminiClient.BACKUP_MODELS }
+        this.think = think
     }
     else {
         val base = Prefs.scopeBase(ctx, scope, p.id)
-        if (base.isBlank()) null else OpenAiCompatClient(p.name, base, key, model).apply { backups = Prefs.scopeBackups(ctx, scope, p.id) }
+        if (base.isBlank()) null else OpenAiCompatClient(p.name, base, key, model).apply { backups = Prefs.scopeBackups(ctx, scope, p.id); this.think = think }
     }
 }
 
