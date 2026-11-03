@@ -308,6 +308,9 @@ object Prefs {
     /** v3.59: यूज़र ने खुद माइक/लाइव बंद किया - जब तक वह खुद चालू न करे, माइक अपने-आप नहीं खुलेगा (wake word भी नहीं) */
     fun micUserOff(c: Context) = sp(c).getBoolean("mic_user_off", false)
     /** v3.74: स्क्रीन देखना - डिफ़ॉल्ट बंद. सिर्फ़ user खुद चालू करे ("स्क्रीन देखो" / सेटिंग) तब */
+    /** v3.156: आपके कहे ChatGPT/Gemini काम में "भेजें" बटन देखकर ढूँढना (बाकी समय स्क्रीन नहीं देखी जाती) */
+    const val TASK_LOOK_KEY = "task_look"
+    fun taskLook(c: Context) = sp(c).getBoolean(TASK_LOOK_KEY, true)
     fun screenshot(c: Context) = ScreenGuard.canView(sp(c).getBoolean(ScreenGuard.PREF_KEY, false), sp(c).getBoolean(ScreenGuard.USER_OK_KEY, false))
     fun ttsRate(c: Context) = sp(c).getFloat("tts_rate", 1.05f)
     fun ttsPitch(c: Context) = sp(c).getFloat("tts_pitch", 1.0f)

@@ -41,6 +41,12 @@ object RingGuard {
  */
 object VolumeRule {
     const val AUTO_CHANGE = false
+    /**
+     * v3.156 मालिक: "कॉल आया तो DK पूरी ज़ोर से, फुल आवाज़ में बोलेगा" - सिर्फ़ यही एक छूट:
+     * कॉल के एलान के लिए DK की अपनी (accessibility) आवाज़ पूरी, कॉल ख़त्म होते ही पहले जितनी.
+     * घंटी / गाना / बाकी आवाज़ें DK कभी नहीं छेड़ता (रिंग जितनी है उतनी ही बजेगी).
+     */
+    const val CALL_FULL = true
 }
 
 object DuckRule {

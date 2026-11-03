@@ -120,6 +120,22 @@ class ImageGenFlow(
             return e.bounds.centerY in (box.bounds.top - pad)..(box.bounds.bottom + pad) && e.bounds.width < o.width / 3
         }
 
+        /**
+         * v3.156: भेजें बटन न नाम से मिले न ढाँचे में - लिखने वाले खाने की पंक्ति के दाएँ सिरे की जगहें.
+         * उस जगह पर आवाज़ / जोड़ो (+) / कैमरा वाला बटन हो तो वहाँ कभी नहीं.
+         */
+        fun blindSendPoints(o: ScreenObservation): List<Pair<Int, Int>> {
+            val box = input(o) ?: return emptyList()
+            val b = box.bounds
+            val h = (b.bottom - b.top).coerceIn(60, 200)
+            val y = b.bottom - h / 2
+            val pts = listOf(b.right - h / 2 to y, b.right + h / 2 to y, o.width - h / 2 to y)
+            return pts.filter { (x, _) -> x in 1 until o.width }.distinct().filter { (x, py) ->
+                o.elements.none { e -> !e.editable && notSend(e.label) && e.label.isNotBlank() &&
+                    x in e.bounds.left..e.bounds.right && py in e.bounds.top..e.bounds.bottom }
+            }
+        }
+
         fun busy(o: ScreenObservation): Boolean = o.elements.any { e ->
             val l = e.label
             (e.clickable && STOP.any { l == it || l.startsWith(it) }) || BUSY.any { l.contains(it) }
@@ -145,6 +161,20 @@ class ImageGenFlow(
             .filter { !it.editable && it.text.length >= 12 && !it.text.contains(prompt.take(20)) }
             .maxByOrNull { it.bounds.bottom }?.text?.take(300).orEmpty()
 
+        /** v3.156: सवाल का पूरा जवाब - आपके संदेश के नीचे और लिखने वाले खाने के ऊपर के सारे लिखे हिस्से */
+        fun answerText(o: ScreenObservation, prompt: String): String {
+            val head = prompt.trim().take(20)
+            val mine = o.elements.filter { !it.editable && head.isNotEmpty() && it.text.contains(head) }.maxByOrNull { it.bounds.bottom }
+            val boxTop = input(o)?.bounds?.top ?: o.height
+            val from = mine?.bounds?.bottom ?: 0
+            val parts = o.elements.filter { e ->
+                !e.editable && e.text.isNotBlank() && e.bounds.top >= from && e.bounds.bottom <= boxTop &&
+                    !(e.clickable && e.text.length < 25) && (mine == null || !e.text.contains(head))
+            }.map { it.text.trim() }.distinct()
+            val all = parts.joinToString(" ").replace(Regex("\\s+"), " ").trim()
+            return if (all.length >= 2) all.take(1500) else lastReply(o, prompt)
+        }
+
         /** DK log के लिए स्क्रीन की छोटी सूची */
         fun dump(o: ScreenObservation?): String = o?.elements?.take(40)?.joinToString("; ") { e ->
             "${e.cls}${if (e.clickable) "*" else ""}${if (e.editable) "E" else ""}'${e.label.take(30)}'@${e.bounds.centerX},${e.bounds.centerY}"
@@ -153,13 +183,14 @@ class ImageGenFlow(
 
     private val how = mutableListOf<String>()
 
-    suspend fun run(want: ImageApp?, prompt: String, download: Boolean = true): ImageGenResult {
-        if (prompt.isBlank()) return ImageGenResult(false, want, error = "क्या इमेज बनानी है, यह नहीं बताया")
+    /** खोलो + लिखो + भेजो - इमेज और सवाल (ask) दोनों में वही रास्ता */
+    private class Sent(val app: ImageApp, val o0: ScreenObservation?, val fail: ImageGenResult?)
+
+    private suspend fun openTypeSend(want: ImageApp?, prompt: String, image: Boolean): Sent {
         val order = listOfNotNull(want) + ImageApp.values().filter { it != want }
         val app = order.firstOrNull { host.installed(it.pkg) }
-            ?: return ImageGenResult(false, want, error = "फ़ोन में ChatGPT या Gemini ऐप नहीं है - Play Store से इंस्टॉल करके एक बार लॉग-इन कर लीजिए")
-        val start = host.now()
-        if (!host.openApp(app.pkg)) return ImageGenResult(false, app, error = "${app.hi} ऐप नहीं खुला")
+            ?: return Sent(want ?: ImageApp.CHATGPT, null, ImageGenResult(false, want, error = "फ़ोन में ChatGPT या Gemini ऐप नहीं है - Play Store से इंस्टॉल करके एक बार लॉग-इन कर लीजिए"))
+        if (!host.openApp(app.pkg)) return Sent(app, null, ImageGenResult(false, app, error = "${app.hi} ऐप नहीं खुला"))
 
         // 1) लिखने का खाना (न मिले तो स्क्रीन देखकर)
         var obs: ScreenObservation? = null
@@ -169,7 +200,7 @@ class ImageGenFlow(
             val o = d.capture()
             if (o != null) {
                 lastSeen = o
-                BlockerDetector.detect(o)?.let { return ImageGenResult(false, app, blocker = it, error = "${app.hi} में ${it.hi} - पहले आप खुद पूरा कीजिए") }
+                BlockerDetector.detect(o)?.let { return Sent(app, null, ImageGenResult(false, app, blocker = it, error = "${app.hi} में ${it.hi} - पहले आप खुद पूरा कीजिए")) }
                 if (i == 0 && newChat(o) != null) { d.pause(900); continue }
                 input(o)?.let { obs = o; box = it }
                 if (box != null) break
@@ -180,15 +211,50 @@ class ImageGenFlow(
             d.pause(800)
         }
         val o0 = obs; val b0 = box
-        if (o0 == null || b0 == null) return fail(app, "${app.hi} में लिखने की जगह नहीं मिली (शायद लॉग-इन करना है)", lastSeen)
-        val before = images(o0).size
-        val text = promptFor(app, prompt)
+        if (o0 == null || b0 == null) return Sent(app, null, fail(app, "${app.hi} में लिखने की जगह नहीं मिली (शायद लॉग-इन करना है)", lastSeen))
+        val text = if (image) promptFor(app, prompt) else prompt.trim()
 
         // 2) लिखो + भेजो
-        if (d.setText(o0, b0, text) != DriverResult.OK) return fail(app, "${app.hi} में prompt नहीं लिख पाया", o0)
+        if (d.setText(o0, b0, text) != DriverResult.OK) return Sent(app, o0, fail(app, "${app.hi} में prompt नहीं लिख पाया", o0))
         d.pause(600)
-        if (!send(o0, text)) return fail(app, "${app.hi} में prompt भेज नहीं पाया - भेजने का बटन न नाम से मिला, न जगह से" +
-            if (!host.canLook()) " (DK स्क्रीन देखकर भी दबा सकता है - इसके लिए \"स्क्रीन देखना चालू करो\" बोलिए)" else " (स्क्रीन देखकर भी नहीं मिला)", d.capture())
+        if (!send(o0, text)) return Sent(app, o0, fail(app, "${app.hi} में prompt भेज नहीं पाया - भेजने का बटन न नाम से मिला, न जगह से" +
+            if (!host.canLook()) " (DK स्क्रीन देखकर भी दबा सकता है - इसके लिए \"स्क्रीन देखना चालू करो\" बोलिए)" else " (स्क्रीन देखकर भी नहीं मिला)", d.capture()))
+        return Sent(app, o0, null)
+    }
+
+    /**
+     * v3.156 (मालिक): ChatGPT / Gemini से कुछ भी पूछो (इमेज नहीं) - लिखो, भेजो, जवाब पूरा होने तक रुको, जवाब पढ़कर लौटाओ.
+     */
+    suspend fun ask(want: ImageApp?, prompt: String): ImageGenResult {
+        if (prompt.isBlank()) return ImageGenResult(false, want, error = "क्या पूछना / लिखना है, यह नहीं बताया")
+        val s = openTypeSend(want, prompt, image = false)
+        s.fail?.let { return it }
+        val app = s.app
+        var waited = 0L; var prev = ""; var same = 0; var last: ScreenObservation? = null; var sawBusy = false
+        while (waited < maxWaitMs) {
+            d.pause(pollMs); waited += pollMs
+            val o = d.capture() ?: continue
+            last = o
+            BlockerDetector.detect(o)?.let { return ImageGenResult(false, app, blocker = it, error = "${app.hi} में ${it.hi}") }
+            if (busy(o)) { sawBusy = true; same = 0; continue }
+            val rep = answerText(o, prompt)
+            same = if (rep.isNotBlank() && rep == prev) same + 1 else 0
+            prev = rep
+            // जवाब लिखना बंद (2 बार वही) = पूरा
+            if (rep.isNotBlank() && same >= 2 && (sawBusy || waited >= pollMs * 3)) break
+        }
+        val reply = last?.let { answerText(it, prompt) }.orEmpty()
+        return if (reply.isNotBlank()) ImageGenResult(true, app, appReply = reply, how = how.joinToString())
+        else ImageGenResult(true, app, how = how.joinToString(), screenDump = dump(last), error = "भेज दिया, पर जवाब पढ़ नहीं पाया")
+    }
+
+    suspend fun run(want: ImageApp?, prompt: String, download: Boolean = true): ImageGenResult {
+        if (prompt.isBlank()) return ImageGenResult(false, want, error = "क्या इमेज बनानी है, यह नहीं बताया")
+        val start = host.now()
+        val s = openTypeSend(want, prompt, image = true)
+        s.fail?.let { return it }
+        val app = s.app
+        val before = s.o0?.let { images(it).size } ?: 0
 
         // 3) बनने तक रुको - इमेज बनने में 30-90 सेकंड; "बना रहा है" न दिखे तब भी रुकते हैं
         var waited = 0L
@@ -256,12 +322,27 @@ class ImageGenFlow(
     private suspend fun send(o0: ScreenObservation, text: String): Boolean {
         val o = d.capture() ?: return false
         val typedVisible = input(o)?.text?.contains(text.take(20)) == true
-        sendButton(o)?.let { press(o, it); how += "send:label"; if (sentOk(text, typedVisible)) return true }
-        d.capture()?.let { o2 -> newButtonAfterTyping(o0, o2)?.let { press(o2, it); how += "send:new-button"; if (sentOk(text, typedVisible)) return true } }
+        sendButton(o)?.let { if (pressSent(o, it, text, typedVisible)) { how += "send:label"; return true } }
+        d.capture()?.let { o2 -> newButtonAfterTyping(o0, o2)?.let { if (pressSent(o2, it, text, typedVisible)) { how += "send:new-button"; return true } } }
         if (host.imeEnter()) { how += "send:enter"; if (sentOk(text, typedVisible)) return true }
         if (host.canLook()) host.look(LOOK_SEND)?.let { (x, y) -> d.tapAt(x, y); how += "send:look"; if (sentOk(text, typedVisible)) return true }
-        d.capture()?.let { o3 -> rightmostInRow(o3)?.let { press(o3, it); how += "send:rightmost"; if (sentOk(text, typedVisible)) return true } }
+        d.capture()?.let { o3 -> rightmostInRow(o3)?.let { if (pressSent(o3, it, text, typedVisible)) { how += "send:rightmost"; return true } } }
+        // v3.156: आख़िरी उपाय - लिखने वाले खाने के दाएँ सिरे पर उँगली से टैप (ChatGPT का ↑ तीर अक्सर बिना नाम/ढाँचे के)
+        d.capture()?.let { o4 ->
+            for ((x, y) in blindSendPoints(o4)) {
+                if (d.tapAt(x, y) == DriverResult.OK) { how += "send:edge-tap"; if (sentOk(text, typedVisible)) return true }
+            }
+        }
         return false
+    }
+
+    /** बटन दबाओ; "दबा" बोले पर भेजा न जाए (Compose में click कहीं और जाता है) तो उसी जगह उँगली से टैप */
+    private suspend fun pressSent(o: ScreenObservation, e: UiElement, text: String, typedVisible: Boolean): Boolean {
+        val clicked = d.click(o, e) == DriverResult.OK
+        if (clicked && sentOk(text, typedVisible)) return true
+        if (d.tapAt(e.bounds.centerX, e.bounds.centerY) != DriverResult.OK) return false
+        how += "tap"
+        return sentOk(text, typedVisible)
     }
 
     private suspend fun newChat(o: ScreenObservation): UiElement? {

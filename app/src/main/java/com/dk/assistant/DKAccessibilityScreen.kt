@@ -201,8 +201,13 @@ internal suspend fun DKAccessibilityService.performSteps(arr: org.json.JSONArray
     return "STEPS_DONE: " + done.joinToString(", ") + "। " + (LocalRouter.userText(last) ?: "")
 }
 
+/**
+ * v3.156: पूरी स्क्रीन की काम की चीज़ें इकट्ठा करो (पहले 140 चीज़ / गहराई 40 पर रुक जाता था - लंबी chat या
+ * लंबी product list में नीचे वाला "भेजें" / search / tab बटन DK को दिखता ही नहीं था, तो वह "टैप नहीं कर सकता" बोलता था).
+ * यहाँ सिर्फ़ इकट्ठा; कौन-सी रखनी हैं और लिखना = readScreen (NodePick).
+ */
 internal fun DKAccessibilityService.walk(node: AccessibilityNodeInfo, out: MutableList<Element>, sb: StringBuilder, depth: Int) {
-    if (out.size >= 140 || depth > 40) return
+    if (out.size >= com.dk.assistant.agent.core.NodePick.RAW_MAX || depth > com.dk.assistant.agent.core.NodePick.DEPTH_MAX) return
     if (node.isVisibleToUser) {
         val text = node.text?.toString()?.trim().orEmpty()
         val desc = node.contentDescription?.toString()?.trim().orEmpty()
@@ -210,31 +215,35 @@ internal fun DKAccessibilityService.walk(node: AccessibilityNodeInfo, out: Mutab
             node.isEditable || node.isScrollable || node.isLongClickable
         if (useful) {
             val r = Rect().also { node.getBoundsInScreen(it) }
-            if (r.width() > 0 && r.height() > 0) {
-                val id = out.size
-                out.add(Element(id, node, r))
-                val cls = node.className?.toString()?.substringAfterLast('.') ?: "View"
-                val flags = buildList {
-                    if (node.isClickable) add("click")
-                    if (node.isLongClickable) add("long")
-                    if (node.isEditable) add("edit")
-                    if (node.isScrollable) add("scroll")
-                    if (node.isChecked) add("checked")
-                    if (node.isSelected) add("selected")
-                    if (node.isFocused) add("focused")
-                }.joinToString(",")
-                sb.append("[").append(id).append("] ").append(cls)
-                if (text.isNotEmpty()) sb.append(" \"").append(text.take(50)).append("\"")
-                if (desc.isNotEmpty() && desc != text) sb.append(" (").append(desc.take(50)).append(")")
-                if (flags.isNotEmpty()) sb.append(" {").append(flags).append("}")
-                sb.append(" @").append(r.centerX()).append(",").append(r.centerY()).append("\n")
-            }
+            if (r.width() > 0 && r.height() > 0) out.add(Element(out.size, node, r))
         }
     }
     for (i in 0 until node.childCount) {
         val child = node.getChild(i) ?: continue
         walk(child, out, sb, depth + 1)
     }
+}
+
+/** AI को दिखने वाली एक पंक्ति: [id] Class "text" (desc) {flags} @x,y */
+internal fun screenLine(e: Element, sb: StringBuilder) {
+    val node = e.node; val r = e.bounds
+    val text = node.text?.toString()?.trim().orEmpty()
+    val desc = node.contentDescription?.toString()?.trim().orEmpty()
+    val cls = node.className?.toString()?.substringAfterLast('.') ?: "View"
+    val flags = buildList {
+        if (node.isClickable) add("click")
+        if (node.isLongClickable) add("long")
+        if (node.isEditable) add("edit")
+        if (node.isScrollable) add("scroll")
+        if (node.isChecked) add("checked")
+        if (node.isSelected) add("selected")
+        if (node.isFocused) add("focused")
+    }.joinToString(",")
+    sb.append("[").append(e.id).append("] ").append(cls)
+    if (text.isNotEmpty()) sb.append(" \"").append(text.take(50)).append("\"")
+    if (desc.isNotEmpty() && desc != text) sb.append(" (").append(desc.take(50)).append(")")
+    if (flags.isNotEmpty()) sb.append(" {").append(flags).append("}")
+    sb.append(" @").append(r.centerX()).append(",").append(r.centerY()).append("\n")
 }
 
 internal fun DKAccessibilityService.element(id: Int): Element? = elements.getOrNull(id)

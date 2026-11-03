@@ -45,25 +45,23 @@ internal suspend fun DKAccessibilityService.onIncomingCall(who0: String, ask: St
     callPending = true
     agent.stop()
     calls.quietRinger()
-    delay(200)
+    delay(80)        // v3.156: 200 -> 80ms (मालिक: "जैसे ही फ़ोन बजे, तुरंत बोले")
     var who = who0
     if (who.isBlank() && ask == null) who = callerFromScreen()
     if (!calls.ringing && (calls.known || ask != null)) { callPending = false; return }
     val msg = ask ?: CallCmd.announce(who)
     if (ask == null) rejectTarget = null
     
-    // भाग 4: नोटिफिकेशन और सवालों का क्रम
-    val isQuestion = DKState.mode == Mode.THINKING || DKState.mode == Mode.LISTENING
-    if (isQuestion) {
-        DKLog.d("नोटिफिकेशन: सवाल चल रहा है, पहले जवाब दो फिर कॉल बताओ")
-        while (DKState.mode == Mode.THINKING || DKState.mode == Mode.LISTENING) delay(500)
-    }
-    
+    // v3.156 मालिक: "कॉल आया तो तुरंत फटाक से बोले" - पहले यहाँ "सवाल चल रहा है तो पहले जवाब" का इंतज़ार था;
+    // Live में DK हमेशा सुन रहा (LISTENING) होता है, तो कॉल का एलान बहुत देर से (या घंटी ख़त्म होने पर) होता था.
+    // अब कॉल सबसे पहले: जो बोल रहा था वह रोको, तुरंत बताओ.
+    if (speaker.busy) try { speaker.stop() } catch (_: Exception) { }
+
     DKState.reply(msg)
     if (DKState.live && gemLive.canTalk()) {
         val whoNote = if (ask == null) who else AppCall.current?.let { r -> "${r.who.ifBlank { "कोई" }} (${r.app}${if (r.video) " वीडियो" else ""} कॉल)" } ?: who
-        gemLive.noteCallAsked(whoNote)
         gemLive.muteMic(true)
+        scope.launch { gemLive.noteCallAsked(whoNote) }     // Live को साथ-साथ बताओ (पहले बोलने से पहले 0.6s रुकता था)
         callAnnouncing = true
         val spoke = try { speaker.speakCall(msg, generic = false) } finally { callAnnouncing = false; gemLive.muteMic(false) }
         gemLive.callAudio(true)
@@ -88,20 +86,15 @@ internal suspend fun DKAccessibilityService.onIncomingCall(who0: String, ask: St
         return
     }
     val until = System.currentTimeMillis() + 30_000
-    var asked = 1
     try {
         while (calls.ringing && callPending && System.currentTimeMillis() < until) {
             DKState.set(Mode.LISTENING)
             val ans = hear()
             DKState.set(Mode.IDLE)
             if (!calls.ringing) break
-            if (ans == null) {
-                if (asked < 2 && System.currentTimeMillis() > until - 18_000) {
-                    asked++; callAnnouncing = true
-                    try { speaker.speakQuick("कॉल उठाऊँ?") } finally { callAnnouncing = false }
-                }
-                continue
-            }
+            // v3.156 मालिक: एक बार पूछने के बाद DK चुप - दोबारा "कॉल उठाऊँ?" नहीं; घंटी जितनी है उतनी बजेगी,
+            // बीच में "उठा लो" / "काट दो" / "स्पीकर पर डालो" बोलो तो वही होगा
+            if (ans == null) continue
             if (handleCallReply(ans)) break
         }
     } finally { callPending = false; DKState.set(Mode.IDLE) }

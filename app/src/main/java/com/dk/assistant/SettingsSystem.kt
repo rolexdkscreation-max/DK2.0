@@ -408,6 +408,10 @@ internal fun SettingsActivity.secPerms() {
             toast(if (on) "अब DK स्क्रीन देख सकता है" else "स्क्रीन देखना बंद")
         }
         hint(box, "बोलकर भी कर सकते हैं: \"डीके, स्क्रीन देखना चालू करो\" / \"स्क्रीन देखना बंद करो\"। बंद रहने पर DK सिर्फ़ स्क्रीन का लिखा हुआ पढ़ता है।")
+        // v3.156 मालिक: "कोई भी ऐप में टैप करने की परमिशन होनी चाहिए" - सिर्फ़ आपके कहे काम (ChatGPT/Gemini) में बटन ढूँढने को
+        val swTask = switch(box, "आपके कहे काम में बटन देखकर दबाए (ChatGPT/Gemini में \"भेजें\")", Prefs.taskLook(this))
+        swTask.setOnCheckedChangeListener { _, on -> Prefs.edit(this) { putBoolean(Prefs.TASK_LOOK_KEY, on) } }
+        hint(box, "ऊपर वाला बंद हो तब भी: जब आप खुद \"ChatGPT में यह लिखकर भेजो\" कहें, और बटन नाम से न मिले, तभी उसी पल की एक तस्वीर आपकी Gemini key से देखी जाती है।")
     }
     card("ज़रूरी परमिशन", null) { box ->
         permStatus = TextView(this).apply { textSize = 14f; setTextColor(0xFFFFFFFF.toInt()); setPadding((4 * dp).toInt(), (6 * dp).toInt(), 0, 0) }
