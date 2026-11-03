@@ -156,6 +156,11 @@ internal suspend fun GeminiLive.phoneTaskOne(req: String, queued: Boolean = fals
         log("रूटर: WhatsApp मैसेज -> whatsapp_task")
         return com.dk.assistant.agent.social.WaRoute.redirect(req)
     }
+    // v3.151: "कल घूमने चलना है, मैसेज कर दो" - नाम अभी-अभी बताया था -> वही नाम लेकर whatsapp_task
+    MsgDraft.redirectPhoneTask(req, MsgDraft.turnsFromState(), System.currentTimeMillis())?.let {
+        log("रूटर: बातचीत वाला मैसेज (नाम याद से) -> whatsapp_task")
+        return it
+    }
     // v3.67: "आखिरी फोटो/स्क्रीनशॉट डिलीट करो" = सीधे फ़ोन पर; Android खुद Allow पूछता है, फिर जाँच कि सच में ट्रैश में गई
     LocalRouter.deleteMedia(req)?.let { q ->
         DKState.set(Mode.WORKING)

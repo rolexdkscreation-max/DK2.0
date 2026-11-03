@@ -61,6 +61,12 @@ object PhoneLockStore {
     }
 
     fun failed(c: Context) { raw(c).edit().putInt(K_FAILS, fails(c) + 1).commit() }
+    /**
+     * v3.151: मालिक ने खुद फ़ोन खोला (Android का अपना गलत-PIN गिनती भी 0) - DK को फिर एक मौका।
+     * पहले दो बार न खुलने पर DK हमेशा के लिए रुक जाता था (जब तक PIN दोबारा सेव न हो), भले गलती
+     * PIN की नहीं, बटन छूटने की थी। एक ही मौका - फिर गलत हुआ तो फिर रुकेगा (Android का ताला कभी नहीं अटकेगा)।
+     */
+    fun userUnlocked(c: Context) { val f = fails(c); if (f >= MAX_FAILS) raw(c).edit().putInt(K_FAILS, MAX_FAILS - 1).commit() }
     fun worked(c: Context) { if (fails(c) != 0) raw(c).edit().putInt(K_FAILS, 0).commit() }
     /** DK अभी PIN डाल सकता है? */
     fun canEnter(c: Context) = unlockOn(c) && hasSecret(c) && fails(c) < MAX_FAILS

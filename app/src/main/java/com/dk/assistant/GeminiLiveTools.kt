@@ -340,6 +340,12 @@ internal fun GeminiLive.runTools(calls: JSONArray) {
                         log("WhatsApp ${if (cmd.video) "वीडियो " else ""}कॉल \"${cmd.name}\" -> ${r.substringBefore(':')}")
                         LiveFast.quickResult(QuickCommands.Quick(WaCall.toJson(cmd), ""), r, already = false)
                     }
+                    // v3.151: पहले बताया नाम/संदेश बातचीत से भरो - दोबारा न पूछे
+                    in setOf("send_message", "send", "message") -> {
+                        val f = MsgDraft.applyTo(args, MsgDraft.turnsFromState(), System.currentTimeMillis())
+                        if (f.fromHistory) log("WhatsApp: बातचीत से भरा - नाम \"${f.contact}\", संदेश ${f.message.length} अक्षर")
+                        MsgDraft.missingNote(f) ?: com.dk.assistant.agent.android.SocialAgent.start(svc, args, com.dk.assistant.agent.social.Platform.WHATSAPP)
+                    }
                     else -> com.dk.assistant.agent.android.SocialAgent.start(svc, args, com.dk.assistant.agent.social.Platform.WHATSAPP)
                 }
                 "social_media_task_control" -> com.dk.assistant.agent.android.SocialAgent.control(args)

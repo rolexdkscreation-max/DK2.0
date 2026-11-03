@@ -113,6 +113,17 @@ object PhoneLockVoice {
         return match(heard, needName, use)
     }
 
+    /**
+     * v3.151: फ़ोन पर PIN/पैटर्न है पर DK के पास नहीं (या आवाज़ से अनलॉक बंद) - DK क्या बोले।
+     * पहले यह सफल गिना जाता था, तो Live "हो गया" बोल देता और फ़ोन बंद रहता।
+     */
+    fun noPinReason(unlockOn: Boolean, hasSecret: Boolean): String = UNLOCK_FAIL + " " + when {
+        !hasSecret -> "फ़ोन पर PIN / पैटर्न लगा है और DK के पास वह सेव नहीं है, इसलिए मैं खोल नहीं सकता। " +
+            "DK की Settings → फ़ोन लॉक / अनलॉक में \"आवाज़ से फ़ोन अनलॉक करो\" चालू करके अपना PIN या पैटर्न एक बार सेव कीजिए। अभी फ़िंगरप्रिंट या PIN से खुद खोलिए।"
+        !unlockOn -> "आवाज़ से अनलॉक Settings में बंद है। DK की Settings → फ़ोन लॉक / अनलॉक में \"आवाज़ से फ़ोन अनलॉक करो\" चालू करके सेव दबाइए।"
+        else -> "स्क्रीन चालू कर दी है, पर PIN डालना अभी रुका है। फ़ोन खुद खोलिए।"
+    }
+
     /** "lock" / "unlock" / "wake" = फ़ोन का ताला वाला काम (दोबारा बोला = दोबारा करो, छोटी दोहराव-खिड़की) */
     fun isLockType(type: String?) = type == "lock" || type == "unlock" || type == "wake"
 

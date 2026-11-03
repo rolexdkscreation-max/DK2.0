@@ -56,7 +56,8 @@ object LiveNet {
         val r = object : BroadcastReceiver() {
             override fun onReceive(ctx: Context, i: Intent) {
                 when (i.action) {
-                    Intent.ACTION_SCREEN_ON, Intent.ACTION_USER_PRESENT -> warm(ctx, "स्क्रीन चालू")
+                    Intent.ACTION_SCREEN_ON -> warm(ctx, "स्क्रीन चालू")
+                    Intent.ACTION_USER_PRESENT -> { warm(ctx, "स्क्रीन चालू"); try { PhoneLockStore.userUnlocked(ctx) } catch (_: Exception) {} }
                     Intent.ACTION_SCREEN_OFF -> screenOff()
                 }
             }
