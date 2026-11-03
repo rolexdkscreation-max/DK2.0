@@ -22,7 +22,7 @@ import org.json.JSONArray
 import org.json.JSONObject
 
 /** v3.152: इमेज बनाना + डाउनलोड + देखना (ChatGPT/Gemini ~30-90s) */
-internal const val IMAGE_TASK_MS = 140_000L
+internal const val IMAGE_TASK_MS = 190_000L
 
 // GeminiLive का हिस्सा: Live के tools: खोज, मौसम/जगह, notification, एजेंट, call, tool call चलाना.
 // यह code पहले GeminiLive.kt में था; सिर्फ़ जगह बदली है, व्यवहार वही (extension functions, वही state GeminiLive में)।

@@ -165,11 +165,12 @@ internal fun GeminiLive.setupJson(m: String, txt: Boolean = connText, resume: Bo
         .put(JSONObject().put("name", "image_task")
             .put("description", "Generate a picture with the REAL ChatGPT or Gemini app on the phone (DK opens the app, types the prompt, waits until the image is made, taps Download, then really looks at the image). " +
                 "Use whenever the user asks to make / generate / create an image, photo, picture, logo, poster or wallpaper (इमेज बनाओ, फोटो बनाओ, ChatGPT/Gemini में इमेज बनाओ). " +
-                "Takes 30-90 seconds - first say one short line like 'बना रहा हूँ, थोड़ा समय लगेगा'. After it returns, tell ONLY what the result says the image shows - never invent it. " +
+                "DK itself turns the idea into a professional prompt. Takes 30-120 seconds - first say one short line like 'बना रहा हूँ, थोड़ा समय लगेगा'. After it returns, tell ONLY what the result says the image shows - never invent it. " +
                 "Not for editing a photo from the gallery.")
             .put("parameters", JSONObject().put("type", "OBJECT")
                 .put("properties", JSONObject()
-                    .put("prompt", JSONObject().put("type", "STRING").put("description", "What the image should show - full detail the user gave, in English or his words"))
+                    .put("prompt", JSONObject().put("type", "STRING").put("description", "YOU write a professional, detailed ENGLISH image prompt from the user's idea (never just copy his words): subject + every detail he gave (names, colours, numbers, exact text to show in quotes), setting/background, style or medium, composition/camera angle, lighting, colour palette, mood, quality, aspect ratio. 60-120 words. Do not add subjects he did not ask for."))
+                    .put("user_words", JSONObject().put("type", "STRING").put("description", "The user's own words for the picture, exactly as he said them"))
                     .put("app", JSONObject().put("type", "STRING").put("enum", JSONArray().put("chatgpt").put("gemini").put("auto")).put("description", "Which app the user named; auto = ChatGPT if installed, else Gemini"))
                     .put("download", JSONObject().put("type", "BOOLEAN").put("description", "Save it to the phone gallery (default true)")))
                 .put("required", JSONArray().put("prompt"))))
