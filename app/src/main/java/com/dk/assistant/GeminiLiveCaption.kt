@@ -78,6 +78,7 @@ internal fun GeminiLive.onCaption(t: String, final: Boolean) {
         synchronized(sendLock) { bargeGate.confirm(); confirmBarge("रुको: ${t.take(30)}") }
     } else if (bargeGate.state == BargeGate.State.TENTATIVE) {
         val dkNow = dkHeardNow()
+        bargeGate.sawCaption(t, System.currentTimeMillis())   // v3.152: caption ज़िंदा है (गूँज भी) - "caption चुप" वाला रोकना नहीं
         // DK ki apni awaaz ya pichhli baat ka der se aaya text = user ka naya bolna nahi
         // (v3.5+: पूरे शब्द मिलाकर, आम शब्द छोड़कर - पहले "है/क्या" से असली सवाल भी गूँज मान लिया जाता था)
         val real = BargeGate.realWords(t) && !BargeGate.isEcho(t, dkNow) && !BargeGate.isRepeat(t, turnUser)

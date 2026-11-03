@@ -256,6 +256,14 @@ class BargeGate(
     private val confirmMs: Long = 1500,
     /** Caption band ho to: itni der lagatar tez awaaz = pakka */
     private val noCaptionMs: Long = 700,
+    /**
+     * v3.152 (एक key मोड): caption चालू पर चुप/धीमा (वही एक key Live + caption दोनों पर) - शक के बाद कोई शब्द नहीं,
+     * और DK की गूँज से ऊपर इतनी देर लगातार आवाज़ = यूज़र ही बोल रहा है, रोक दो।
+     * पहले: 1.5s में शब्द नहीं = "शोर था", DK बोलता रहता और (rearm) अगली बार वही आवाज़ अनदेखी - टोकने पर कभी न रुकता।
+     */
+    private val silentCaptionMs: Long = 1000,
+    /** caption इतना देर से (शक से पहले शब्द तक) लगातार = धीमा, तब caption-बंद वाला तेज़ रास्ता */
+    private val slowLagMs: Long = 1100,
 ) {
     /**
      * HOLD (v3.5+): user sach me bola par "रुको" nahi bola = DK ka jawab chalta rahe, user ki baat sirf caption sune
@@ -267,22 +275,43 @@ class BargeGate(
     var since = 0L
         private set
 
-    fun reset() { state = State.IDLE; since = 0L }
+    fun reset() { state = State.IDLE; since = 0L; capSeen = false }
+
+    /** इस शक के बाद caption ने कुछ भी लिखा (गूँज / एक अक्षर भी) = caption ज़िंदा */
+    @Volatile var capSeen = false
+        private set
+    private val lags = ArrayDeque<Long>()
+    /** पिछली 3 में से 2 बार caption 1.1s से ज़्यादा देर से आया = धीमा caption */
+    val captionSlow: Boolean get() = synchronized(lags) { lags.count { it > slowLagMs } >= 2 }
+    private fun noteLag(ms: Long) = synchronized(lags) { lags.addLast(ms); while (lags.size > 3) lags.removeFirst() }
+
+    /** शक के बीच caption का कोई भी text - caption ज़िंदा, और कितनी देर में आया (धीमा caption पहचानने को) */
+    fun sawCaption(text: String, now: Long) {
+        if (state != State.TENTATIVE || text.isBlank() || capSeen) return
+        capSeen = true
+        if (now > 0 && since > 0) noteLag(now - since)
+    }
 
     /** BargeDetector ne tez awaaz pakdi */
-    fun suspect(now: Long) { if (state == State.IDLE) { state = State.TENTATIVE; since = now } }
+    fun suspect(now: Long) { if (state == State.IDLE) { state = State.TENTATIVE; since = now; capSeen = false } }
 
     /** Caption ka text aaya - asli user shabd? true = abhi pakka hua */
-    fun onText(text: String, dkReply: String): Boolean {
+    fun onText(text: String, dkReply: String, now: Long = 0L): Boolean {
         if (state != State.TENTATIVE) return false
+        sawCaption(text, now)
         if (!realWords(text) || isEcho(text, dkReply)) return false
         state = State.CONFIRMED; return true
     }
 
-    /** Har 40ms: true = galat alarm, ab chhodo. loudNow = abhi bhi tez awaaz hai */
-    fun expired(now: Long, captionOn: Boolean, loudMs: Long): Boolean {
+    /**
+     * Har 40ms: true = galat alarm, ab chhodo.
+     * @param loudMs lagatar tez awaaz
+     * @param overEchoMs lagatar DK ki goonj se bhi oopar awaaz (v3.152)
+     */
+    fun expired(now: Long, captionOn: Boolean, loudMs: Long, overEchoMs: Long = 0L): Boolean {
         if (state != State.TENTATIVE) return false
-        if (!captionOn && loudMs >= noCaptionMs) { state = State.CONFIRMED; return false }
+        if ((!captionOn || captionSlow) && loudMs >= noCaptionMs) { state = State.CONFIRMED; return false }
+        if (captionOn && !capSeen && overEchoMs >= silentCaptionMs) { noteLag(confirmMs); state = State.CONFIRMED; return false }
         if (now - since >= confirmMs) { state = State.IDLE; return true }
         return false
     }

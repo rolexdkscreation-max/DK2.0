@@ -1400,6 +1400,8 @@ class GeminiLive(internal val svc: DKAccessibilityService, internal val agent: A
     internal var nearLearned = 0
 
     @Volatile internal var loudMs = 0L
+    /** v3.152: DK की गूँज से भी ऊपर लगातार आवाज़ (टोकना पहचानने के लिए, caption धीमा हो तब) */
+    @Volatile internal var overEchoMs = 0L
     @Volatile internal var rescueWaits = 0
 
     /** Dheere bolne par bhi saaf awaaz Gemini tak (v3.7) */

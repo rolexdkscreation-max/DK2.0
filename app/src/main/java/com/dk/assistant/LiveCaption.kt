@@ -69,6 +69,9 @@ class LiveCaption(
     /** Kam se kam ek baar sach me text aaya = caption is key par chal raha hai */
     @Volatile var working = false
         private set
+    /** v3.152: आख़िरी बार नया text कब आया (धीमा caption = पुराना अधूरा text, उस पर "बात अधूरी" मत मानो) */
+    @Volatile var textAt = 0L
+        private set
 
     // band hui baat: model uska pakka text thoda der se bhejta hai (DK bolna shuru kar chuka hota hai)
     private var closedCommitted = ""
@@ -283,6 +286,6 @@ class LiveCaption(
             join(committed.toString(), interim)
         }
         late?.let { if (it.isNotBlank()) onLate(it); return }
-        if (shown.isNotBlank()) onText(shown, fin.isNotBlank())
+        if (shown.isNotBlank()) { textAt = System.currentTimeMillis(); onText(shown, fin.isNotBlank()) }
     }
 }

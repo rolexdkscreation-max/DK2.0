@@ -153,7 +153,7 @@ internal suspend fun GeminiLive.micLoop() = coroutineScope {
                     BargeGate.State.IDLE -> {
                         if (bargeDet.feed(rms, now, outLevel(now))) {
                             // SHAK: tez awaaz. DK ki awaaz halki (rokna nahi), caption model ko suno - shabd hain?
-                            bargeGate.suspect(now); barging = true; loudMs = 0L
+                            bargeGate.suspect(now); barging = true; loudMs = 0L; overEchoMs = 0L
                             // मालिक (नवंबर 2026): DK की आवाज़ अपने-आप धीमी-तेज़ नहीं - शक के समय भी पूरी (रोकना पक्के शब्दों पर ही)
                             if (VolumeRule.AUTO_CHANGE) track?.let { try { it.setVolume(SpeakerBoost.SUSPECT_VOLUME) } catch (_: Exception) {} }
                             log("तेज़ आवाज़ (rms=${rms.toInt()}, गूँज=${bargeDet.echoLevel().toInt()}, शोर=${bargeDet.ambient.toInt()}) - यूज़र है? शब्द सुन रहा हूँ (DK की आवाज़ नहीं बदली)")
@@ -168,17 +168,19 @@ internal suspend fun GeminiLive.micLoop() = coroutineScope {
                     }
                     BargeGate.State.TENTATIVE -> {
                         loudMs = if (rms > maxOf(bargeDet.ambient * 2.5, 800.0)) loudMs + CHUNK_MS else 0L
+                        overEchoMs = if (rms > maxOf(bargeDet.ambient * 2.5, bargeDet.echoLevel() * 1.6, 900.0)) overEchoMs + CHUNK_MS else 0L
                         synchronized(bargeBuf) { bargeBuf.addLast(chunk); while (bargeBuf.size > 50) bargeBuf.removeFirst() }
                         capSend(chunk)
                         sendAudio(zeros, silent = true); gatedChunks++
-                        if (bargeGate.expired(now, captionOn(), loudMs)) {
+                        if (bargeGate.expired(now, captionOn(), loudMs, overEchoMs)) {
                             // shabd nahi aaye = shor/TV/log. DK ka jawab poori awaaz me chalta rahe
                             falseAlarms++
                             log("शब्द नहीं मिले - पीछे का शोर था, जवाब जारी (#$falseAlarms)")
                             track?.let { try { it.setVolume(1f) } catch (_: Exception) {} }
                             bargeDet.rearm(rms); barging = false
                             synchronized(bargeBuf) { bargeBuf.clear() }
-                        } else if (bargeGate.state == BargeGate.State.CONFIRMED) confirmBarge("लगातार आवाज़ (caption बंद)")
+                        } else if (bargeGate.state == BargeGate.State.CONFIRMED) confirmBarge(
+                            if (!captionOn()) "लगातार आवाज़ (caption बंद)" else if (bargeGate.captionSlow) "लगातार आवाज़ (caption धीमा)" else "लगातार आवाज़ (caption चुप)")
                     }
                     BargeGate.State.CONFIRMED -> { sendAudio(chunk); capSend(chunk) }
                     BargeGate.State.HOLD -> {
