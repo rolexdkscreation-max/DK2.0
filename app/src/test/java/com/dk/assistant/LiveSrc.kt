@@ -27,6 +27,7 @@ object LiveSrc {
         "GeminiLiveActHold.kt",
         "GeminiLiveTurn.kt",
         "GeminiLiveChecks.kt",
+        "GeminiLiveRotate.kt",
     )
 
     private fun dir(): File {

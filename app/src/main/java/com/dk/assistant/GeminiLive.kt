@@ -237,6 +237,18 @@ class GeminiLive(internal val svc: DKAccessibilityService, internal val agent: A
     @Volatile internal var goAwayDeadline = 0L
     @Volatile internal var spareTriedAt = 0L
     @Volatile internal var spareWanted = false
+    /** नवंबर 2026 (LiveSpare 4, थामो और बदलो): कब से थामा (0 = नहीं); थामे समय आपकी असली आवाज़ जमा हुई?; पिछला थामना कब खत्म */
+    @Volatile internal var rotFreezeAt = 0L
+    @Volatile internal var freezeReal = false
+    @Volatile internal var freezeEndAt = 0L
+    /** server का आखिरी handle कब आया; DK का पिछला जवाब कब पूरा हुआ (handle ताज़ा है?) */
+    @Volatile internal var handleAt = 0L
+    @Volatile internal var lastReplyDoneAt = 0L
+    /** गिनती: थामा / बिना रुकावट बदला / पुराने पर लौटा; आखिरी स्विच में आवाज़ कितनी देर जमा रही */
+    @Volatile internal var rotFreezes = 0
+    @Volatile internal var rotSwitches = 0
+    @Volatile internal var rotFallbacks = 0
+    @Volatile private var frozeLast = -1L
     @Volatile private var weakNetTold = false
     @Volatile private var prevAlive = false
     /** run() की keys/models - goAway पर पीछे से नया connection तैयार करने के लिए */
@@ -820,6 +832,7 @@ class GeminiLive(internal val svc: DKAccessibilityService, internal val agent: A
             " • दोबारा जुड़ा: $slowReconnects • खुद संभला (बिना रुकावट): ${(reconnects - slowReconnects).coerceAtLeast(0)}" +
             (if (zombieN > 0) " • अटका session बदला: $zombieN" else "") + (if (replayedN > 0) " • बात की आवाज़ दोबारा भेजी: $replayedN" else "") +
             " • गर्म connection दोबारा: $warmReuses" +
+            (if (rotFreezes > 0) " • connection बदलना: थामा $rotFreezes, बिना रुकावट $rotSwitches, पुराने पर लौटा $rotFallbacks" else "") +
             " • बीच में टोकना: सिर्फ़ पक्के शब्द (असली $realBarges, शोर अनदेखा $falseAlarms)" +
             " • शोर-गेट: ${gatedChunks * CHUNK_MS / 1000}s शोर नहीं भेजा" +
             (if (unheard > 0) " • Gemini ने नहीं सुना: $unheard (caption से भेजा $rescued)" else "") +
@@ -843,7 +856,7 @@ class GeminiLive(internal val svc: DKAccessibilityService, internal val agent: A
     suspend fun run(): String = withContext(Dispatchers.IO) {
         NowClock.syncAsync()   // v3.80: सही समय (फ़ोन की घड़ी ग़लत हो तो इंटरनेट से)
         stopped = false; goAway = false; idleExit = false; lastAct = System.currentTimeMillis(); callAudioOn = false; lastUserLine = ""; lastDkLine = ""
-        sent = 0; sentBytes = 0; dropped = 0; gaps = 0; readErr = 0; recvAudio = 0; reconnects = 0; slowReconnects = 0; zombieN = 0; replayedN = 0
+        sent = 0; sentBytes = 0; dropped = 0; gaps = 0; readErr = 0; recvAudio = 0; reconnects = 0; slowReconnects = 0; zombieN = 0; rotFreezes = 0; rotSwitches = 0; rotFallbacks = 0; rotFreezeAt = 0L; freezeReal = false; freezeEndAt = 0L; handleAt = 0L; lastReplyDoneAt = 0L; replayedN = 0
         textRescue = LiveStay.textRescueOn(svc); weakNetTold = false
         log("बीच बातचीत का बचाव-text: " + if (textRescue) "चालू (सेटिंग)" else "बंद (डिफ़ॉल्ट - 1011 से बचाव)")
         if (!Setup.hasMic(svc)) throw Fatal("माइक की परमिशन नहीं है", kind = LiveFailWhy.Kind.MIC)
@@ -930,6 +943,12 @@ class GeminiLive(internal val svc: DKAccessibilityService, internal val agent: A
                         closed = pk!!.closed; curClosed = closed
                         ws = pk.ws; warmReuses++; connResumed = pk.resumedFrom != null    // goAway वाला = वही बातचीत (याद दोबारा नहीं)
                         synchronized(sendLock) { sendContext(ws); ready = true; flushPending(); sendReplay() }
+                        if (pk.resumedFrom != null && frozeLast >= 0) {
+                            rotSwitches++
+                            LatencyBoard.stage("Live बदलना: आवाज़ जमा रही", frozeLast)
+                            log("बिना रुकावट बदला (#$rotSwitches): पुराने पर ${frozeLast} ms कुछ नया नहीं गया, जमा आवाज़ नए पर भेजी - बातचीत वहीं से")
+                        }
+                        frozeLast = -1L
                         log("गर्म connection फिर से [$model • key #${keyIdx + 1}] - जुड़ने में 0 ms (${(t0 - pk.at) / 1000}s से standby में था)")
                         DKState.setLink("Live • $model • key #${keyIdx + 1} • 0 ms")
                         svc.liveConnected()          // बैकअप मोड था तो खत्म
@@ -1060,9 +1079,24 @@ class GeminiLive(internal val svc: DKAccessibilityService, internal val agent: A
                         // नवंबर 2026 (मालिक): कटने से पहले ही दूसरा connection तैयार (goAway पर, या connection पुराना होते ही) - LiveSpare
                         val nowL = System.currentTimeMillis()
                         val idleNow = !turnActive && !isPlaying() && toolJobs.isEmpty() && !generating
+                        // नवंबर 2026 (मालिक, LiveSpare 4 थामो और बदलो): लगातार बात में standby हर बात पर पुराना पड़ता था (स्विच कभी नहीं,
+                        // server 10 मिनट पर काटता = gap). अब शांत पल में थामो (पुराने पर कुछ नया नहीं, आवाज़ फ़ोन में) + ताज़ा handle से दूसरा.
+                        if (rotFreezeAt > 0L) {
+                            if (freezeTick(nowL)) { goAwayDrop = true; break }
+                            if (rotFreezeAt > 0L) { delay(50); continue }
+                        }
+                        val quietFrom = maxOf(lastReplyDoneAt, turnDet.lastTalkAt, utt.lastRealAt())
+                        val idleQuiet = idleNow && !turnDet.inSpeech && !muteTurn && !ownerHolding && !startHold.active
+                        if (LiveSpare.startFreeze(LiveSpare.freezeDue(goAway, nowL - upAt), idleQuiet, rotFreezeAt > 0L, spareReady(), handle != null,
+                                curKeys.isNotEmpty(), LiveSpare.handleFresh(handleAt, lastReplyDoneAt), nowL - quietFrom, nowL - freezeEndAt)) {
+                            beginFreeze(if (goAway) "goAway" else "connection ${(nowL - upAt) / 60_000} मिनट चला", nowL)
+                            if (rotFreezeAt > 0L) { delay(50); continue }
+                        }
                         if (LiveSpare.due(goAway, nowL - upAt)) prepareSpare(if (goAway) "goAway" else "${(nowL - upAt) / 60_000} मिनट चला", idleNow)
                         if (goAway && !turnActive && !isPlaying()) {
                             if (LiveSpare.waitForSpare(spareReady(), nowL - spareTriedAt, goAwayDeadline - nowL)) { delay(100); continue }
+                            // DK अभी-अभी चुप हुआ (ताज़ा handle आ रहा) और समय बचा = थामने तक रुको, अभी तोड़कर gap नहीं
+                            if (!spareReady() && LiveSpare.goAwaySettling(idleQuiet && nowL - freezeEndAt >= LiveSpare.FREEZE_RETRY_MS, goAwayDeadline - nowL)) { delay(100); continue }
                             log(if (spareReady()) "goAway - पहले से तैयार connection पर (0 ms, बातचीत वहीं से)" else "goAway - नया connection")
                             goAwayDrop = true; break
                         }
@@ -1172,9 +1206,12 @@ class GeminiLive(internal val svc: DKAccessibilityService, internal val agent: A
                         delay(100)
                     }
                     ready = false
+                    val frozeFor = if (rotFreezeAt > 0L) System.currentTimeMillis() - rotFreezeAt else -1L
+                    rotFreezeAt = 0L; if (frozeFor >= 0) freezeEndAt = System.currentTimeMillis()
                     if (stopped) break
                     prevAlive = !closed.isCompleted          // goAway/बदलाव पर हमने बंद किया (पुराना ज़िंदा था) या खुद कटा
                     val seamless = goAwayDrop && spareReady()          // LiveSpare: दूसरा connection तैयार = बिना रुके
+                    frozeLast = if (seamless) maxOf(frozeFor, 0L) else -1L      // अगला गर्म connection: कितनी देर आवाज़ जमा रही
                     val (code, reason) = if (closed.isCompleted) closed.await() else 1000 to "goAway"
                     // user ki baat khatam ho chuki thi par jawab shuru nahi hua aur connection toot gaya -> woh baat
                     // chupchaap kho jaati thi. Dobara judte hi ek baar text me bhejo.

@@ -248,13 +248,15 @@ internal fun GeminiLive.spareReady(): Boolean = parked?.let {
  * नवंबर 2026 (मालिक): कटने से पहले ही दूसरा connection - goAway पर, या connection [LiveSpare.PREPARE_AT_MS] पुराना होते ही.
  * resume handle से बनता है = वही बातचीत, वही याद. लौटाता है: तैयारी शुरू हुई?
  */
-internal fun GeminiLive.prepareSpare(why: String, idle: Boolean): Boolean {
+internal fun GeminiLive.prepareSpare(why: String, idle: Boolean, force: Boolean = false): Boolean {
     val now = System.currentTimeMillis()
     val p = parked
     val alive = p != null && !p.closed.isCompleted && now - p.at < PARK_MS
     val fresh = alive && p!!.resumedFrom != null && p.resumedFrom == handle
     val stale = alive && !fresh
-    if (!LiveSpare.shouldPrepare(stopped, handle != null, curKeys.isNotEmpty(), fresh, stale, idle, now - spareTriedAt)) return false
+    // force (थामो और बदलो): पिछली तैयारी का 10s इंतज़ार नहीं - अभी के ताज़ा handle से (पुरानी दौड़ startRace में रुकती है)
+    if (force) { if (stopped || handle == null || curKeys.isEmpty() || fresh) return fresh }
+    else if (!LiveSpare.shouldPrepare(stopped, handle != null, curKeys.isNotEmpty(), fresh, stale, idle, now - spareTriedAt)) return false
     if (p != null) { parked = null; closeWs(p.ws, "standby पुराना (बातचीत आगे बढ़ी)") }
     val h = handle; val m = model; val k = keyIdx
     parkHandle = h; spareTriedAt = now; spareWanted = true

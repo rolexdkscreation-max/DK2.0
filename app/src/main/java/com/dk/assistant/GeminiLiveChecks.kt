@@ -156,6 +156,7 @@ internal fun GeminiLive.flushPending() = synchronized(sendLock) {
     val list = synchronized(pending) { pending.toList().also { pending.clear() } }
     list.forEach { sendAudio(it) }
     if (list.isNotEmpty()) log("जुड़ते समय की ${list.size * CHUNK_MS} ms आवाज़ भेजी")
+    sendFrozenEnd()          // नवंबर 2026 (थामो और बदलो): थामे समय कही पूरी बात = जमा आवाज़ के बाद बात-खत्म का संकेत
 }
 
 /**
@@ -176,7 +177,10 @@ internal fun GeminiLive.sendAudio(pcm: ByteArray, silent: Boolean = false): Unit
     } else { liveGate.onReal(); endGate.onReal() }
     val w = ws
     if (w == null || !ready) {
-        synchronized(pending) { pending.addLast(pcm); while (pending.size > 3000 / CHUNK_MS) { pending.removeFirst(); dropped++ } }
+        // नवंबर 2026 (थामो और बदलो): थामे समय ज़्यादा जमा (नया connection बनने तक आपका कोई शब्द न गिरे)
+        if (rotFreezeAt > 0L && !silent) freezeReal = true
+        val capMs = if (rotFreezeAt > 0L) LiveSpare.FREEZE_PENDING_MS else 3000L
+        synchronized(pending) { pending.addLast(pcm); while (pending.size > capMs / CHUNK_MS) { pending.removeFirst(); dropped++ } }
         return@synchronized
     }
     // network dheema: line me atka data. Pehle khaamoshi chhodo (32KB), asli awaaz sirf bahut atakne par (256KB) -

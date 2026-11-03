@@ -35,6 +35,7 @@ internal fun GeminiLive.handleServer(msg: String, setup: CompletableDeferred<Uni
     lastAct = System.currentTimeMillis()
     o.optJSONObject("sessionResumptionUpdate")?.let {
         if (it.optBoolean("resumable") && it.optString("newHandle").isNotBlank()) handle = it.optString("newHandle")
+        if (it.optBoolean("resumable") && it.optString("newHandle").isNotBlank()) handleAt = System.currentTimeMillis()   // नवंबर 2026: handle कब ताज़ा हुआ (LiveSpare.handleFresh)
     }
     o.optJSONObject("goAway")?.let { onGoAway(it.optString("timeLeft")) }
     o.optJSONObject("voiceActivity")?.optString("type")?.let { t ->
@@ -185,6 +186,7 @@ internal fun GeminiLive.handleServer(msg: String, setup: CompletableDeferred<Uni
         commitPending(false)          // jitna bola utna hi likha rahe
         setMode(Mode.LISTENING)
     }
+    if (sc.optBoolean("turnComplete")) lastReplyDoneAt = System.currentTimeMillis()   // नवंबर 2026: इसके बाद आया handle = ताज़ा (LiveSpare.handleFresh)
     if (sc.optBoolean("turnComplete") && muteTurn) {
         muteTurn = false; generating = false
         log("दूसरे की आवाज़ का जवाब नहीं बजाया ($mutedParts टुकड़े छोड़े)")
