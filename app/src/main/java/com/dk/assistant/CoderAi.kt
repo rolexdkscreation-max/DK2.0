@@ -27,7 +27,12 @@ class CoderAi(val provider: Provider, private val key: String, val model: String
     private val selfLabel = "${provider.name} ($model$note)"
     /** v5 (DK कंप्यूटर की chain): इसी API के बैकअप / बिना बैकअप वाली अकेली कॉपी / key-base (chain बनाने को) */
     internal fun fallbackList(): List<CoderAi> = fallbacks
-    internal fun alone(): CoderAi = CoderAi(provider, key, model, base, emptyList(), note, sink)
+    internal fun alone(): CoderAi = CoderAi(provider, key, model, base, emptyList(), note, sink).also { it.think = think }
+
+    /** नवंबर 2026: Settings → AI दिमाग का "सोचने का स्तर" ([ThinkLevel]). AUTO = पहले जैसा */
+    @Volatile var think: String = ThinkLevel.AUTO
+    /** यही स्तर पूरी chain (बैकअप keys/मॉडल/API) पर */
+    internal fun applyThink(level: String): CoderAi { think = level; fallbacks.forEach { it.applyThink(level) }; return this }
     internal fun keyForChain(): String = key
     internal fun baseForChain(): String = base
     /** ऑटोनोमस मोड वाली key का निशान (खाली = आम कोडिंग एजेंट). key नहीं, सिर्फ़ आखिरी 4 अक्षर */
@@ -55,7 +60,7 @@ class CoderAi(val provider: Provider, private val key: String, val model: String
     fun withModel(m: String, modelChain: List<String> = GeminiModels.LIGHT_CHAIN): CoderAi {
         if (!provider.isGemini || m.isBlank() || m == model) return this
         return CoderAi(provider, key, m, base, fallbacks.map { it.withModel(m, modelChain) }, note, sink).also {
-            it.waitOnLimit = waitOnLimit; it.chain = modelChain
+            it.waitOnLimit = waitOnLimit; it.chain = modelChain; it.applyThink(think)
         }
     }
 
@@ -238,9 +243,16 @@ class CoderAi(val provider: Provider, private val key: String, val model: String
             .put("system_instruction", JSONObject().put("parts", JSONArray().put(JSONObject().put("text", Lang.sys(system)))))
             .put("contents", contents)
             .put("generationConfig", JSONObject().put("maxOutputTokens", 32000).put("temperature", 0.2))
-        val req = Request.Builder().url("https://generativelanguage.googleapis.com/v1beta/models/$m:generateContent")
+        val tc = ThinkLevel.geminiConfig(m, think)
+        tc?.let { body.getJSONObject("generationConfig").put("thinkingConfig", it) }
+        fun req() = Request.Builder().url("https://generativelanguage.googleapis.com/v1beta/models/$m:generateContent")
             .header("x-goog-api-key", key).post(body.toString().toRequestBody(JSON)).build()
-        val o = JSONObject(exec(req))
+        val o = JSONObject(try { exec(req()) } catch (e: AiException) {
+            // चुना "सोचने का स्तर" यह मॉडल न समझे (400) = उसी मॉडल से बिना उसके
+            if (GeminiModels.thinkingRejected(e.code, e.message.orEmpty(), tc != null)) {
+                body.getJSONObject("generationConfig").remove("thinkingConfig"); exec(req())
+            } else throw e
+        })
         val p = o.optJSONArray("candidates")?.optJSONObject(0)?.optJSONObject("content")?.optJSONArray("parts")
             ?: throw AiException(0, "Gemini ने खाली जवाब दिया")
         val sb = StringBuilder()
@@ -248,7 +260,7 @@ class CoderAi(val provider: Provider, private val key: String, val model: String
         return sb.toString()
     }
 
-    private fun openAi(system: String, msgs: List<Pair<String, String>>, maxTok: Int, media: List<Pair<String, String>> = emptyList()): String {
+    private fun openAi(system: String, msgs: List<Pair<String, String>>, maxTok: Int, media: List<Pair<String, String>> = emptyList(), noThink: Boolean = false): String {
         val arr = JSONArray().put(JSONObject().put("role", "system").put("content", Lang.sys(system)))
         val at = msgs.indexOfFirst { it.first == "user" }
         msgs.forEachIndexed { i, (r, t) ->
@@ -260,14 +272,16 @@ class CoderAi(val provider: Provider, private val key: String, val model: String
             arr.put(JSONObject().put("role", if (r == "user") "user" else "assistant").put("content", content))
         }
         val body = JSONObject().put("model", model).put("messages", arr).put("max_tokens", maxTok).put("temperature", 0.2)
-        if (model.contains("gpt-oss")) body.put("reasoning_effort", "medium")
-        val req = Request.Builder().url(base.trimEnd('/') + "/chat/completions")
+        val thought = !noThink && ThinkLevel.applyOpenAi(body, base, model, think, "medium")
+        fun req() = Request.Builder().url(base.trimEnd('/') + "/chat/completions")
             .header("Authorization", "Bearer $key")
             .header("HTTP-Referer", "https://github.com/dk-assistant").header("X-Title", "DK Coding Agent")
             .post(body.toString().toRequestBody(JSON)).build()
-        val raw = try { exec(req) } catch (e: AiException) {
+        val raw = try { exec(req()) } catch (e: AiException) {
+            // मॉडल ने सोचने का स्तर नहीं समझा (400) = उसी मॉडल से बिना उसके
+            if (thought && ThinkLevel.rejected(e.code, e.message.orEmpty())) return openAi(system, msgs, maxTok, media, noThink = true)
             // kuch free models itne lambe jawab nahi dete -> chhota maango
-            if (e.code == 400 && maxTok > 4000 && (e.message ?: "").contains("token", true)) return openAi(system, msgs, maxTok / 2, media)
+            if (e.code == 400 && maxTok > 4000 && (e.message ?: "").contains("token", true)) return openAi(system, msgs, maxTok / 2, media, noThink)
             throw e
         }
         val msg = JSONObject(raw).optJSONArray("choices")?.optJSONObject(0)?.optJSONObject("message")
@@ -297,7 +311,7 @@ class CoderAi(val provider: Provider, private val key: String, val model: String
             val parts = PC_CHAIN.mapNotNull { id -> forScope(c, ApiScopes.PC, sink, id) }
             val first = parts.firstOrNull() ?: return forScope(c, ApiScopes.PC, sink)
             val rest = first.fallbackList() + parts.drop(1).flatMap { listOf(it.alone()) + it.fallbackList() }
-            return CoderAi(first.provider, first.keyForChain(), first.model, first.baseForChain(), rest, sink = sink)
+            return CoderAi(first.provider, first.keyForChain(), first.model, first.baseForChain(), rest, sink = sink).applyThink(ThinkLevel.get(c, ApiScopes.PC))
         }
 
         /** DK कंप्यूटर की fallback chain का क्रम (मालिक का नियम) */
@@ -341,7 +355,7 @@ class CoderAi(val provider: Provider, private val key: String, val model: String
             val fb = if (p.isGemini) gemKeys.drop(1).mapIndexed { i, k -> CoderAi(p, k, model, base, note = ", Gemini key ${i + 2}", sink = sink) }
                 else Prefs.scopeBackups(c, scope, p.id)
                 .map { m -> CoderAi(p, key, m, base, note = ", उसी key का दूसरा मॉडल", sink = sink) }
-            return CoderAi(p, key, model, base, fb, sink = sink).also { it.waitOnLimit = scope == ApiScopes.CODER }
+            return CoderAi(p, key, model, base, fb, sink = sink).also { it.waitOnLimit = scope == ApiScopes.CODER }.applyThink(ThinkLevel.get(c, scope))
         }
 
         /** सारी keys की limit पर कुल कितना रुकें (फिर भी बंद = दिन की limit) */

@@ -80,6 +80,31 @@ internal fun SettingsActivity.secBrainMenu() {
             }
         }, button("Key लें") { Setup.openUrl(this, Providers.byId("gemini")!!.keyUrl) })
         box.addView(res)
+        // नवंबर 2026 (मालिक): एक-key मोड में भी मॉडल (नाम + विवरण) और सोचने का स्तर यहीं
+        val gem = Providers.byId("gemini")!!
+        val chatModel = ApiScopes.pref(ApiScopes.CHAT, "model", "gemini")
+        val mLine = TextView(this).apply { setTextColor(0xFFFFFFFF.toInt()); textSize = 14f; setPadding((4 * dp).toInt(), (8 * dp).toInt(), 0, (2 * dp).toInt()) }
+        fun showModel() { val id = Prefs.scopeModel(this, ApiScopes.CHAT, "gemini"); mLine.text = "मॉडल: " + modelLabel(gem, id) + " — " + ModelNames.desc(id) }
+        showModel(); box.addView(mLine)
+        row(box, button("मॉडल चुनें") {
+            val k = Prefs.oneKey(this)
+            val pick: (List<String>) -> Unit = { list ->
+                pickModelThen(gem, Prefs.scopeModel(this, ApiScopes.CHAT, "gemini"), list, ThinkLevel.ONE) { id ->
+                    Prefs.edit(this) { putString(chatModel, id) }; showModel()
+                }
+            }
+            val cached = Prefs.models(this, "gemini")
+            if (cached.isNotEmpty()) pick(cached)
+            else if (k.length < 20) toast("पहले Gemini key डालें")
+            else lifecycleScope.launch {
+                try {
+                    val list = ModelLister.fetch(gem, k, "")
+                    Prefs.edit(this@secBrainMenu) { putString("models_gemini", list.joinToString("\n")) }
+                    saveModelNames(gem, list); pick(list)
+                } catch (e: Exception) { toast("मॉडल नहीं आए: " + BrainManager(this@secBrainMenu).explain(e).take(120)) }
+            }
+        })
+        thinkRow(box, ThinkLevel.ONE)
         hint(box, "अभी: " + (if (Prefs.oneKey(this).isNotBlank()) "✓ बात, चैट, खोज और फ़ोन के काम इसी एक key से" else "✗ key नहीं डाली") +
             " • सुनना भी Gemini से (Groq की ज़रूरत नहीं)। एक free key की limit सब कामों में बँटती है — limit जल्दी खत्म हो तो बटन बंद करके अलग-अलग keys डालें।")
     }
@@ -350,10 +375,11 @@ internal fun SettingsActivity.providerCard(p: Provider, scope: String = ApiScope
                     company?.text = ApiCompanies.label(c)
                     fetchedFor[kName] = k
                     Prefs.edit(this@providerCard) { putString(bName, c.base); putString("models_${p.id}", list.joinToString("\n")) }
+                    saveModelNames(p, list)
                     if (model.text.toString().trim().isBlank() || model.text.toString().trim() !in list) list.firstOrNull()?.let { model.setText(it) }
                     save(false)
                     mInfo.text = "✓ ${c.name} — ${list.size} मॉडल मिले, \"मॉडल चुनें\" दबाएँ"
-                    if (openPicker && list.isNotEmpty()) pickModel(p, model, list)
+                    if (openPicker && list.isNotEmpty()) pickModel(p, model, list, scope)
                 }
                 return
             }
@@ -365,8 +391,9 @@ internal fun SettingsActivity.providerCard(p: Provider, scope: String = ApiScope
                     val list = ModelLister.fetch(p, k, base)
                     fetchedFor[kName] = k
                     Prefs.edit(this@providerCard) { putString("models_${p.id}", list.joinToString("\n")) }
+                    saveModelNames(p, list)
                     mInfo.text = "✓ ${list.size} मॉडल मिले — \"मॉडल चुनें\" दबाएँ"
-                    if (openPicker && list.isNotEmpty()) pickModel(p, model, list)
+                    if (openPicker && list.isNotEmpty()) pickModel(p, model, list, scope)
                 } catch (e: Exception) {
                     mInfo.text = "मॉडल नहीं आए: " + BrainManager(this@providerCard).explain(e).take(160)
                 }
@@ -389,10 +416,12 @@ internal fun SettingsActivity.providerCard(p: Provider, scope: String = ApiScope
         row(box,
             button("मॉडल चुनें") {
                 val cached = Prefs.models(this, p.id)
-                if (cached.isNotEmpty() && fetchedFor[kName] == key.text.toString().trim()) pickModel(p, model, cached)
+                if (cached.isNotEmpty() && fetchedFor[kName] == key.text.toString().trim()) pickModel(p, model, cached, scope)
                 else loadModels(true)
             },
             button("लिस्ट रीफ़्रेश") { loadModels(false) })
+        // नवंबर 2026 (मालिक): सोचने का स्तर (Thinking level) - Low / Medium / High, इसी हिस्से का अपना
+        if (scope != ApiScopes.LIVE) thinkRow(box, scope, withHint = p.isGemini)
         // Extra API: पहचान गलत / न हुई = कंपनी खुद चुनें (फिर उसी के मॉडल)
         if (p.isCustom) row(box, button("कंपनी बदलें") {
             val names = ApiCompanies.ALL.map { it.name }.toTypedArray()
@@ -412,6 +441,7 @@ internal fun SettingsActivity.providerCard(p: Provider, scope: String = ApiScope
                         val list = try { ModelLister.fetch(p, k, c.base) } catch (e: Exception) { c.models }
                         fetchedFor[kName] = k
                         Prefs.edit(this@providerCard) { putString("models_${p.id}", list.joinToString("\n")) }
+                        saveModelNames(p, list)
                         if (model.text.toString().trim() !in list) list.firstOrNull()?.let { model.setText(it); save(false) }
                         mInfo.text = "✓ ${c.name} — ${list.size} मॉडल, \"मॉडल चुनें\" दबाएँ"
                     }
@@ -439,17 +469,109 @@ internal fun SettingsActivity.providerCard(p: Provider, scope: String = ApiScope
     }
 }
 
-internal fun SettingsActivity.pickModel(p: Provider, target: EditText, list: List<String>) {
-    val current = target.text.toString().trim()
-    val items = list.toTypedArray()
-    val sel = items.indexOf(current)
-    UiDialog(this, Glass.DIALOG)
-        .setTitle("${p.name} — मॉडल चुनें (${items.size})")
-        .setSingleChoiceItems(items, sel) { d, which ->
-            target.setText(items[which]); save(false)
-            toast("मॉडल: ${items[which]}"); d.dismiss()
+/** मॉडल चुनने का खाना: [target] में चुना id + सेव ([scope] = किस हिस्से का सोचने का स्तर साथ में दिखे) */
+internal fun SettingsActivity.pickModel(p: Provider, target: EditText, list: List<String>, scope: String = ApiScopes.CHAT) {
+    pickModelThen(p, target.text.toString().trim(), list, if (Prefs.oneKeyOn(this)) ThinkLevel.ONE else scope) { id ->
+        target.setText(id); save(false)
+    }
+}
+
+/** नवंबर 2026: API से आए साफ़ नाम (Gemini displayName / OpenRouter name) फ़ोन में - अगली बार बिना इंटरनेट भी दिखें */
+internal fun SettingsActivity.saveModelNames(p: Provider, list: List<String>) {
+    val old = ModelNames.decode(Prefs.str(this, "model_names_${p.id}", ""))
+    val fresh = list.mapNotNull { id -> ModelLister.names[id]?.let { id to it } }.toMap()
+    if (fresh.isNotEmpty()) Prefs.edit(this) { putString("model_names_${p.id}", ModelNames.encode(old + fresh)) }
+}
+
+internal fun SettingsActivity.modelLabel(p: Provider, id: String): String =
+    ModelNames.label(id, ModelLister.names[id] ?: ModelNames.decode(Prefs.str(this, "model_names_${p.id}", ""))[id])
+
+/** "सोचने का स्तर: Medium — संतुलित गहराई" + बदलें बटन */
+internal fun SettingsActivity.thinkRow(box: LinearLayout, scope: String, withHint: Boolean = true) {
+    val t = TextView(this).apply { setTextColor(0xFFFFFFFF.toInt()); textSize = 14f; setPadding((4 * dp).toInt(), (8 * dp).toInt(), 0, (2 * dp).toInt()) }
+    fun show() { val l = ThinkLevel.norm(Prefs.str(this, ThinkLevel.pref(scope), ThinkLevel.AUTO)); t.text = "सोचने का स्तर (Thinking level): " + ThinkLevel.title(l) + " — " + ThinkLevel.desc(l) }
+    show(); box.addView(t)
+    row(box, button("सोचने का स्तर बदलें") {
+        val cur = ThinkLevel.norm(Prefs.str(this, ThinkLevel.pref(scope), ThinkLevel.AUTO))
+        val items = ThinkLevel.ALL.map { ThinkLevel.title(it) + "\n" + ThinkLevel.desc(it) }.toTypedArray()
+        UiDialog(this, Glass.DIALOG)
+            .setTitle("सोचने का स्तर (Thinking level)")
+            .setSingleChoiceItems(items, ThinkLevel.ALL.indexOf(cur)) { d, which ->
+                ThinkLevel.set(this, scope, ThinkLevel.ALL[which]); show(); d.dismiss()
+                toast("सोचने का स्तर: " + ThinkLevel.title(ThinkLevel.ALL[which]))
+            }
+            .setNegativeButton("बंद करें", null)
+            .show()
+    })
+    if (withHint) hint(box, "Low = जल्दी जवाब, Medium = संतुलित, High = मुश्किल सवाल/कोडिंग में ज़्यादा सोच (थोड़ा धीमा, limit जल्दी खर्च)। Auto = पहले जैसा। जो मॉडल सोचने का स्तर न समझे, वह अपने-आप बिना इसके चलता है।")
+}
+
+/**
+ * नवंबर 2026 (मालिक, Gemini ऐप जैसा): ऊपर मॉडलों की list - हर एक का साफ़ नाम + छोटा विवरण (✓ = चुना हुआ),
+ * नीचे "सोचने का स्तर" - Auto / Low / Medium / High. [thinkScope] = किस हिस्से का स्तर. [onPick] = मॉडल चुना.
+ */
+internal fun SettingsActivity.pickModelThen(p: Provider, current: String, list: List<String>, thinkScope: String, onPick: (String) -> Unit) {
+    val saved = ModelNames.decode(Prefs.str(this, "model_names_${p.id}", ""))
+    var chosen = current
+    val pad = (12 * dp).toInt()
+    val outer = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(pad, (4 * dp).toInt(), pad, 0) }
+    val search = EditText(this).apply {
+        hint = "मॉडल खोजें…"; textSize = 14f; setTextColor(0xFFFFFFFF.toInt()); setHintTextColor(0x99FFFFFF.toInt()); isSingleLine = true
+    }
+    if (list.size > 10) outer.addView(search)
+    val inner = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+    val scroll = android.widget.ScrollView(this).apply { addView(inner) }
+    outer.addView(scroll, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, (resources.displayMetrics.heightPixels * 0.6).toInt()))
+
+    fun item(name: String, desc: String, on: Boolean, click: () -> Unit) = LinearLayout(this).apply {
+        orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
+        setPadding(0, (8 * dp).toInt(), 0, (8 * dp).toInt()); isClickable = true; isFocusable = true
+        addView(TextView(this@pickModelThen).apply {
+            text = if (on) "✓" else ""; textSize = 16f; setTextColor(0xFFD6EEFF.toInt()); width = (28 * dp).toInt()
+        })
+        addView(LinearLayout(this@pickModelThen).apply {
+            orientation = LinearLayout.VERTICAL
+            addView(TextView(this@pickModelThen).apply { text = name; textSize = 17f; setTextColor(0xFFFFFFFF.toInt()); if (on) setTypeface(typeface, Typeface.BOLD) })
+            addView(TextView(this@pickModelThen).apply { text = desc; textSize = 13f; setTextColor(0xA6FFFFFF.toInt()) })
+        })
+        setOnClickListener { click() }
+    }
+
+    lateinit var render: () -> Unit
+    render = {
+        inner.removeAllViews()
+        val q = search.text.toString().trim().lowercase()
+        val shown = list.filter { id -> q.isBlank() || id.lowercase().contains(q) || ModelNames.label(id, ModelLister.names[id] ?: saved[id]).lowercase().contains(q) }
+        shown.forEach { id ->
+            val name = ModelNames.label(id, ModelLister.names[id] ?: saved[id])
+            inner.addView(item(name, ModelNames.desc(id) + "\n" + id, id == chosen) {
+                chosen = id; onPick(id); toast("मॉडल: $name"); render()
+            })
         }
-        .setNegativeButton("बंद करें", null)
+        if (shown.isEmpty()) inner.addView(TextView(this).apply { text = "कोई मॉडल नहीं मिला"; setTextColor(0xA6FFFFFF.toInt()); setPadding(0, pad, 0, pad) })
+        inner.addView(View(this).apply { setBackgroundColor(0x33FFFFFF) },
+            LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, (1 * dp).toInt().coerceAtLeast(1)).apply { topMargin = pad; bottomMargin = (4 * dp).toInt() })
+        inner.addView(TextView(this).apply {
+            text = "सोचने का स्तर (Thinking level)"; textSize = 17f; setTextColor(0xFFFFFFFF.toInt()); setTypeface(typeface, Typeface.BOLD)
+            setPadding(0, (8 * dp).toInt(), 0, (4 * dp).toInt())
+        })
+        val cur = ThinkLevel.norm(Prefs.str(this, ThinkLevel.pref(thinkScope), ThinkLevel.AUTO))
+        ThinkLevel.ALL.forEach { l ->
+            inner.addView(item(ThinkLevel.title(l), ThinkLevel.desc(l), l == cur) {
+                ThinkLevel.set(this, thinkScope, l); toast("सोचने का स्तर: " + ThinkLevel.title(l)); render()
+            })
+        }
+    }
+    search.addTextChangedListener(object : TextWatcher {
+        override fun beforeTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) {}
+        override fun onTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) {}
+        override fun afterTextChanged(s: Editable?) { render() }
+    })
+    render()
+    UiDialog(this, Glass.DIALOG)
+        .setTitle("${p.name} — मॉडल चुनें (${list.size})")
+        .setView(outer)
+        .setPositiveButton("हो गया", null)
         .show()
 }
 
