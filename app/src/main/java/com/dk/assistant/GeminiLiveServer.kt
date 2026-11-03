@@ -25,7 +25,7 @@ internal fun GeminiLive.handleServer(msg: String, setup: CompletableDeferred<Uni
         if (setupSentAt > 0) { trace.rttMs = System.currentTimeMillis() - setupSentAt; log("setup का जवाब ${trace.rttMs} ms (network RTT + server)"); NetSpeed.onSetup(trace.rttMs) }
         // ready + purani (judte samay ki) awaaz ek saath, lock me: mic ka naya tukda purane se pehle na nikle
         // v5.1: पहले याद (छोटे setup के बाद), फिर जुड़ते समय की आवाज़ - फ़ोन ने जो 3s तक जमा की
-        synchronized(sendLock) { sendContext(ws); ready = true; flushPending(); sendReplay() }
+        synchronized(sendLock) { sendContext(ws); ready = true; flushPending(); sendFrozenEnd(); sendReplay() }
         setup.complete(Unit)
         if (firstText != null) openerText = null; sendFirstText(); sendResend(); sendOpener()
         // v3.7: पिछला जवाब सिर्फ़ लिखा गया था (आवाज़ नहीं बनी) - अब Live की अपनी आवाज़ में दोबारा
@@ -34,7 +34,7 @@ internal fun GeminiLive.handleServer(msg: String, setup: CompletableDeferred<Uni
     }
     lastAct = System.currentTimeMillis()
     o.optJSONObject("sessionResumptionUpdate")?.let {
-        if (it.optBoolean("resumable") && it.optString("newHandle").isNotBlank()) handle = it.optString("newHandle")
+        if (it.optBoolean("resumable") && it.optString("newHandle").isNotBlank()) { handle = it.optString("newHandle"); handleAt = System.currentTimeMillis() }
     }
     o.optJSONObject("goAway")?.let { onGoAway(it.optString("timeLeft")) }
     o.optJSONObject("voiceActivity")?.optString("type")?.let { t ->
@@ -185,6 +185,7 @@ internal fun GeminiLive.handleServer(msg: String, setup: CompletableDeferred<Uni
         commitPending(false)          // jitna bola utna hi likha rahe
         setMode(Mode.LISTENING)
     }
+    if (sc.optBoolean("turnComplete")) lastReplyDoneAt = System.currentTimeMillis()   // नवंबर 2026: इसके बाद आया handle = ताज़ा (LiveSpare.handleFresh)
     if (sc.optBoolean("turnComplete") && muteTurn) {
         muteTurn = false; generating = false
         log("दूसरे की आवाज़ का जवाब नहीं बजाया ($mutedParts टुकड़े छोड़े)")

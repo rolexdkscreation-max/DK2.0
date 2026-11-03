@@ -58,4 +58,68 @@ class LiveSpareTest {
         // पुराना नियम: सिर्फ़ DK बोलते समय वाला return हटा
         assertFalse(g.contains("if (!busy || stopped || parked != null || handle == null || curKeys.isEmpty()) return"))
     }
+
+    // ---------------------------------------------------------------- नवंबर 2026: थामो और बदलो (मालिक: बात न रुके, पता न चले)
+    @Test fun freezeStartsOnlyAtAQuietMomentWithFreshHandle() {
+        val r = LiveSpare.FREEZE_RETRY_MS
+        // 8 मिनट हुए, शांत, ताज़ा handle, 400ms शांत = थामो
+        assertTrue(LiveSpare.startFreeze(true, true, false, false, true, true, true, LiveSpare.SETTLE_MS, r))
+        assertFalse(LiveSpare.startFreeze(false, true, false, false, true, true, true, 5_000, r))   // अभी 8 मिनट नहीं, goAway नहीं
+        assertFalse(LiveSpare.startFreeze(true, false, false, false, true, true, true, 5_000, r))   // कोई बोल रहा / काम चल रहा
+        assertFalse(LiveSpare.startFreeze(true, true, true, false, true, true, true, 5_000, r))    // पहले से थामा
+        assertFalse(LiveSpare.startFreeze(true, true, false, true, true, true, true, 5_000, r))    // ताज़ा standby तैयार = सीधा स्विच
+        assertFalse(LiveSpare.startFreeze(true, true, false, false, false, true, true, 5_000, r))  // handle नहीं = नई बातचीत बनती
+        assertFalse(LiveSpare.startFreeze(true, true, false, false, true, false, true, 5_000, r))  // keys नहीं
+        assertFalse(LiveSpare.startFreeze(true, true, false, false, true, true, true, LiveSpare.SETTLE_MS - 1, r))  // अभी-अभी बोले
+        assertFalse(LiveSpare.startFreeze(true, true, false, false, true, true, true, 5_000, r - 1))   // अभी नाकाम हुआ = चक्कर नहीं
+        // जवाब के बाद handle नहीं आया = थोड़ा ज़्यादा रुको, फिर जो है वही
+        assertFalse(LiveSpare.startFreeze(true, true, false, false, true, true, false, LiveSpare.SETTLE_MS, r))
+        assertTrue(LiveSpare.startFreeze(true, true, false, false, true, true, false, LiveSpare.SETTLE_NO_HANDLE_MS, r))
+    }
+
+    @Test fun freezeSwitchesOrFallsBackWithoutLosingSpeech() {
+
+        assertEquals(LiveSpare.Freeze.SWITCH, LiveSpare.freezeStep(spareReady = true, handleSame = true, preparing = false, frozenMs = 900, goAway = false, msLeft = 0))
+        assertEquals(LiveSpare.Freeze.WAIT, LiveSpare.freezeStep(false, true, true, 900, false, 0))
+        assertEquals(LiveSpare.Freeze.RESUME_OLD, LiveSpare.freezeStep(false, true, true, LiveSpare.FREEZE_MAX_MS, false, 0))   // समय पर नहीं बना
+        assertEquals(LiveSpare.Freeze.RESUME_OLD, LiveSpare.freezeStep(false, true, false, 300, false, 0))                      // दौड़ नाकाम
+        assertEquals(LiveSpare.Freeze.RESUME_OLD, LiveSpare.freezeStep(true, false, false, 300, false, 0))                      // बीच में handle बदला
+        // goAway: पुराना जा रहा = पुराने पर लौटना नहीं, सामान्य नया connection (जमा आवाज़ उस पर)
+        assertEquals(LiveSpare.Freeze.WAIT, LiveSpare.freezeStep(false, true, true, 300, true, 5_000))
+        assertEquals(LiveSpare.Freeze.BREAK, LiveSpare.freezeStep(false, true, true, 300, true, LiveSpare.GOAWAY_MARGIN_MS))
+        assertEquals(LiveSpare.Freeze.BREAK, LiveSpare.freezeStep(false, true, false, 300, true, 5_000))
+        assertEquals(LiveSpare.Freeze.SWITCH, LiveSpare.freezeStep(true, true, true, 300, true, 100))
+        // जमा आवाज़ थामने के पूरे समय से ज़्यादा (कोई शब्द न गिरे)
+        assertTrue(LiveSpare.FREEZE_PENDING_MS > LiveSpare.FREEZE_MAX_MS)
+        // 8 मिनट तैयारी (बिना थामे), 9 मिनट से थामना - 10 मिनट से पहले कई मौके
+        assertTrue(LiveSpare.PREPARE_AT_MS < LiveSpare.FREEZE_AT_MS)
+        assertTrue(LiveSpare.FREEZE_AT_MS + LiveSpare.FREEZE_RETRY_MS * 2 < 10 * 60_000L - LiveSpare.FREEZE_MAX_MS)
+        assertFalse(LiveSpare.freezeDue(goAway = false, ageMs = LiveSpare.PREPARE_AT_MS))
+        assertTrue(LiveSpare.freezeDue(goAway = false, ageMs = LiveSpare.FREEZE_AT_MS))
+        assertTrue(LiveSpare.freezeDue(goAway = true, ageMs = 1_000))
+    }
+
+    @Test fun goAwayWaitsForQuietHandleAndFreshness() {
+        assertTrue(LiveSpare.goAwaySettling(true, LiveSpare.FREEZE_MAX_MS + LiveSpare.GOAWAY_MARGIN_MS + 1))
+        assertFalse(LiveSpare.goAwaySettling(true, LiveSpare.FREEZE_MAX_MS))
+        assertFalse(LiveSpare.goAwaySettling(false, 60_000))
+        assertTrue(LiveSpare.handleFresh(handleAt = 0, lastReplyDoneAt = 0))
+        assertTrue(LiveSpare.handleFresh(handleAt = 1_200, lastReplyDoneAt = 1_000))
+        assertFalse(LiveSpare.handleFresh(handleAt = 900, lastReplyDoneAt = 1_000))
+    }
+
+    @Test fun freezeWiredIntoLiveLoop() {
+        val g = LiveSrc.all()
+        assertTrue(g.contains("if (freezeTick(nowL)) { goAwayDrop = true; break }"))
+        assertTrue(g.contains("beginFreeze(if (goAway) \"goAway\" else"))
+        assertTrue(g.contains("LiveSpare.startFreeze(LiveSpare.freezeDue(goAway, nowL - upAt)"))
+        assertTrue(g.contains("synchronized(sendLock) { ready = false }"))                     // थामे = पुराने पर कुछ नहीं
+        assertTrue(g.contains("val capMs = if (rotFreezeAt > 0L) LiveSpare.FREEZE_PENDING_MS else 3000L"))
+        assertTrue(g.contains("ready = true; flushPending(); sendFrozenEnd()"))               // पुराने पर लौटे = जमा आवाज़ वहीं
+        assertTrue(g.contains("flushPending(); sendFrozenEnd(); sendReplay()"))               // नए पर = जमा आवाज़ वहाँ
+        assertTrue(g.contains("handle = it.optString(\"newHandle\"); handleAt = System.currentTimeMillis()"))
+        assertTrue(g.contains("if (sc.optBoolean(\"turnComplete\")) lastReplyDoneAt = System.currentTimeMillis()"))
+        assertTrue(g.contains("prepareSpare(\"\$why (थामा)\", idle = true, force = true)"))
+    }
 }
+
