@@ -58,6 +58,9 @@ object LiveAckRules {
         return pcm.copyOfRange(2 * s, 2 * (e + 1))
     }
 
+    /** DKI-9DC74D: पिछली नाकामी के बाद फिर कोशिश करें? (0 = कभी नाकाम नहीं) */
+    fun retryDue(failAt: Long, now: Long): Boolean = failAt == 0L || now - failAt >= RETRY_MS
+
     /** अभी बनाने की कोशिश करें? Live चालू = नहीं (एक key पर ज़्यादा connection नहीं - Live/caption न टूटें) */
     fun shouldMake(missing: Boolean, liveOn: Boolean, haveKey: Boolean, sinceFailMs: Long, busy: Boolean): Boolean =
         missing && !liveOn && haveKey && !busy && sinceFailMs >= RETRY_MS
