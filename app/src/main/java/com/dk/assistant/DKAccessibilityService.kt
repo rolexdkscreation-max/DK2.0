@@ -201,6 +201,19 @@ class DKAccessibilityService : AccessibilityService() {
      * v5.1: power बटन (default assistant) / DK स्क्रीन खुली = Live अभी, UI के साथ-साथ (UI का इंतज़ार नहीं).
      * माइक की इजाज़त न हो = कुछ नहीं (स्क्रीन इजाज़त का बटन दिखाती है). Accessibility यहाँ कभी चालू नहीं की जाती.
      */
+    /**
+     * नवंबर 2026 (मालिक): power बटन = Google Assistant जैसी एक बार की बातचीत. चुप होने के कुछ देर बाद Live खुद बंद और
+     * माइक वापस सिर्फ़ "Hey DK" सुनता है (पहले power बटन से Live हमेशा के लिए चालू रह जाता था = कुछ भी बोलो, DK जवाब देता).
+     * Live का बटन खुद दबाकर चालू किया = वह पहले जैसा हमेशा वाला.
+     */
+    private fun beginSession() {
+        if (!InvokeSession.useSession(true, Prefs.invokeSession(this), Prefs.wakeMode(this)) || !DKState.live) return
+        if (wakeLive) { gemLive.idleExitMs = maxOf(gemLive.idleExitMs, InvokeSession.IDLE_MS); return }
+        sessionLive = true; gemLive.idleExitMs = InvokeSession.IDLE_MS
+        Prefs.edit(this) { putBoolean("live_mode", false) }   // फ़ोन/ऐप फिर शुरू हो तो हमेशा वाला Live न लौटे
+        DKLog.d("power बटन: एक बार की बातचीत (${InvokeSession.IDLE_MS / 1000}s चुप = वापस Hey DK)")
+    }
+
     fun invokedNow(why: String, session: Boolean = false) {
         if (!Setup.hasMic(this) || callBusy()) return
         DKLog.d("DK बुलाया ($why) - Live तुरंत, पीछे से")
@@ -210,17 +223,7 @@ class DKAccessibilityService : AccessibilityService() {
         val wasConnected = DKState.live && gemLive.ready
         LiveChime.arm()
         if (DKState.live) appOpened() else startLive()
-        // नवंबर 2026 (मालिक): power बटन = Google Assistant जैसी एक बार की बातचीत. चुप होने के कुछ देर बाद Live खुद बंद और
-        // माइक वापस सिर्फ़ "Hey DK" सुनता है (पहले यहीं से Live हमेशा के लिए चालू रह जाता था = कुछ भी बोलो, DK जवाब देता).
-        // Live का बटन खुद दबाकर चालू किया = वह पहले जैसा हमेशा वाला
-        if (InvokeSession.useSession(session, Prefs.invokeSession(this), Prefs.wakeMode(this)) && DKState.live) {
-            if (wakeLive) gemLive.idleExitMs = maxOf(gemLive.idleExitMs, InvokeSession.IDLE_MS)
-            else {
-                sessionLive = true; gemLive.idleExitMs = InvokeSession.IDLE_MS
-                Prefs.edit(this) { putBoolean("live_mode", false) }   // फ़ोन/ऐप फिर शुरू हो तो हमेशा वाला Live न लौटे
-                DKLog.d("power बटन: एक बार की बातचीत (${InvokeSession.IDLE_MS / 1000}s चुप = वापस Hey DK)")
-            }
-        }
+        if (session) beginSession()    // power बटन = एक बार की बातचीत (InvokeSession)
         val inCall = calls.inCall || calls.ringing
         scope.launch(Dispatchers.IO) {
             val how = try { InvokeAck.play(this@DKAccessibilityService, inCall) } catch (_: Exception) { "" }
