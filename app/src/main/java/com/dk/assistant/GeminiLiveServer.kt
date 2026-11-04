@@ -134,7 +134,8 @@ internal fun GeminiLive.handleServer(msg: String, setup: CompletableDeferred<Uni
             recvAudio += pcm.size
             replyPartArrived("पहला ऑडियो चंक")
             timeline.audio(System.currentTimeMillis())
-            if (connSplit) continue              // v3.68: transcript वाला बँटवारा - Live की अपनी आवाज़ नहीं बजती
+            // v3.68: transcript वाला बँटवारा - Live की अपनी आवाज़ नहीं बजती. नवंबर 2026: पर रखी जाती है (SplitRescue)
+            if (connSplit && keepSplitAudio(pcm)) continue
             if (leakMute) continue               // v4.1: "phone task request…" जैसी आवाज़ नहीं - फ़ोन चुपचाप काम कर रहा है
             if (actHold) { holdAct(pcm); continue }
             turnRecvBytes += pcm.size

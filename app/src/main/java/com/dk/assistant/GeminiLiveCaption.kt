@@ -154,7 +154,7 @@ internal fun GeminiLive.revealTick() {
     val full = pend ?: live
     if (full.isBlank()) return
     if (pend != null && !isPlaying()) { commitPending(true); return }
-    if (connSplit) return                                   // v3.68: बँटवारे में screen का text onSpoken से (जितना बोला)
+    if (connSplit && !splitLive) return                     // v3.68: बँटवारे में screen का text onSpoken से (जितना बोला)
     val recv = turnRecvBytes
     if (recv <= 0L) return                                  // awaaz abhi shuru nahi hui
     val played = (turnPlayedBytes - LEAD_BYTES).coerceAtLeast(0L)

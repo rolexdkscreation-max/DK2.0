@@ -39,9 +39,14 @@ class SpeechPipeline(private val ctx: Context, private val hooks: Hooks) {
         fun onSilent(text: String) {}
         /** चुना हुआ इंजन (जैसे Gemini TTS/Worker) नहीं चला - साफ़ कारण स्क्रीन पर */
         fun onEngineError(title: String, why: String) {}
+        /**
+         * नवंबर 2026 (SplitRescue): यह टुकड़ा (जवाब की लिखावट के [at] अक्षर से) Gemini TTS नहीं बोल पाया / अटका.
+         * true = Live की अपनी आवाज़ ने बचा जवाब ले लिया -> यह pipeline इस जवाब में चुप ([handOff]).
+         */
+        fun takeOver(at: Int, why: String): Boolean = false
     }
 
-    private class Seg(val text: String, val gen: Int, val createdAt: Long) {
+    private class Seg(val text: String, val gen: Int, val createdAt: Long, val at: Int = 0) {
         val q = LinkedBlockingQueue<ByteArray>()
         @Volatile var engine = ""
         @Volatile var phone = false
@@ -62,6 +67,10 @@ class SpeechPipeline(private val ctx: Context, private val hooks: Hooks) {
     @Volatile private var speaking = false
     @Volatile private var released = false
     @Volatile private var lastWarmAt = 0L
+    /** नवंबर 2026: इस जवाब का बाकी हिस्सा Live की अपनी आवाज़ बोल रही है - नया text नहीं लेना */
+    @Volatile private var handed = false
+    /** इस जवाब में अब तक टुकड़ों का कितना text (अक्षर) - Live आवाज़ पर जाएँ तो कहाँ से */
+    @Volatile private var segAt = 0
     /** v3.71: इस बारी के पहले वाक्य की आवाज़ इंजन से कब बनकर आई (देरी का हिसाब) */
     @Volatile var firstSegPcmAt = 0L
         private set
@@ -79,6 +88,19 @@ class SpeechPipeline(private val ctx: Context, private val hooks: Hooks) {
     /** कुछ बन रहा / कतार में / बज रहा है */
     val busy: Boolean get() = pending.get() > 0 || System.currentTimeMillis() < playUntil + 120
 
+    /**
+     * नवंबर 2026 (मालिक: "TTS चालू हो तो ठीक से सुनता नहीं"): सच में आवाज़ बज रही है (या जवाब के बीच का छोटा
+     * ठहराव). [busy] टुकड़ा "बन रहा" होने पर भी true था - तब कुछ बजता नहीं, फिर भी माइक आपकी आवाज़ रोकता था.
+     * जवाब की पहली आवाज़ से पहले = false (माइक खुला, जैसे सीधी Live आवाज़ में).
+     */
+    val talking: Boolean get() {
+        val now = System.currentTimeMillis()
+        return now < playUntil + 120 || (!firstPending && pending.get() > 0 && now < playUntil + GAP_HOLD_MS)
+    }
+
+    /** इस जवाब की पहली आवाज़ बज चुकी (या जवाब शुरू ही नहीं हुआ) */
+    val audioStarted: Boolean get() = !firstPending
+
     /** इंजन का कनेक्शन गर्म रखो (हर 20 s में ज़्यादा से ज़्यादा एक बार) */
     fun warm(e: VoiceEngine? = engine ?: VoiceEngines.active(ctx)) {
         val now = System.currentTimeMillis()
@@ -93,12 +115,13 @@ class SpeechPipeline(private val ctx: Context, private val hooks: Hooks) {
         synchronized(chunker) { chunker.reset(profileFor(e.id)) }
         synchronized(spoken) { spoken.setLength(0) }
         firstPending = true
+        handed = false; segAt = 0
         turnAt = System.currentTimeMillis(); lastFeedAt = turnAt
     }
 
     /** जवाब का अगला text (जैसे-जैसे आए) */
     fun feed(t: String) {
-        if (released || t.isEmpty()) return
+        if (released || handed || t.isEmpty()) return
         lastFeedAt = System.currentTimeMillis()
         val pieces = synchronized(chunker) { chunker.feed(t) }
         for (p in pieces) enqueue(p)
@@ -106,6 +129,7 @@ class SpeechPipeline(private val ctx: Context, private val hooks: Hooks) {
 
     /** जवाब पूरा लिखा गया - बचा text आख़िरी टुकड़ा */
     fun endTurn() {
+        if (handed) return
         val rest = synchronized(chunker) { chunker.flush() }
         if (rest != null) enqueue(rest)
     }
@@ -124,6 +148,12 @@ class SpeechPipeline(private val ctx: Context, private val hooks: Hooks) {
         VoiceLevel.clear()
     }
 
+    /** Live की अपनी आवाज़ ने यह जवाब ले लिया: अभी चुप, और इस जवाब का आगे का text भी नहीं (अगले [begin] तक) */
+    fun handOff() {
+        handed = true
+        stop()
+    }
+
     fun release() {
         released = true
         stop()
@@ -136,7 +166,9 @@ class SpeechPipeline(private val ctx: Context, private val hooks: Hooks) {
     // ------------------------------------------------------------------ बनाना
     private fun enqueue(text: String) {
         val e = engine ?: return
-        val s = Seg(text, gen, System.currentTimeMillis())
+        if (handed) return
+        val s = Seg(text, gen, System.currentTimeMillis(), segAt)
+        segAt += text.length + 1
         pending.incrementAndGet()
         segs.put(s)
         try { synth.execute { make(s, e) } } catch (_: Exception) { s.phone = true; s.q.put(end) }
@@ -226,6 +258,9 @@ class SpeechPipeline(private val ctx: Context, private val hooks: Hooks) {
     private fun play(s: Seg) {
         val g = s.gen
         if (s.phone || waitPhone(s)) {
+            if (g != gen) return
+            // नवंबर 2026: आवाज़ नहीं बनी -> पहले Live की अपनी आवाज़ (वही जवाब, वही आवाज़) - चुप नहीं
+            if (rescue(s, SplitRescueWhy.FAILED, 0L)) return
             // v3.74: Gemini/इंजन की आवाज़ नहीं बनी -> फ़ोन TTS नहीं, बस text स्क्रीन पर (चुप)
             noteSpoken(s.text)
             try { hooks.onSilent(s.text) } catch (_: Exception) {}
@@ -252,13 +287,36 @@ class SpeechPipeline(private val ctx: Context, private val hooks: Hooks) {
 
     /** इंजन फ़ेल होकर phone पर आया हो तो END तक रुककर पता चलता है */
     private fun waitPhone(s: Seg): Boolean {
-        val t = System.currentTimeMillis() + 12_000
+        val start = System.currentTimeMillis()
+        val t = start + 12_000
+        // पहला टुकड़ा: जवाब के पहले text से गिनो (इतनी देर आप पहले ही रुक चुके); बाद वाला: पिछला बजने के बाद से
+        val first = firstPending
+        val from = if (first) s.createdAt else maxOf(start, playUntil)
+        var asked = false
         while (s.gen == gen && System.currentTimeMillis() < t) {
             if (s.phone) return true
             if (s.q.isNotEmpty()) return s.phone
+            val waited = System.currentTimeMillis() - from
+            // नवंबर 2026: टुकड़ा अटका (धीमा नेट / TTS देर) - Live की अपनी आवाज़ बचा जवाब बोले
+            if (!asked && com.dk.assistant.SplitRescue.stuck(waited, first)) {
+                asked = true
+                if (rescue(s, SplitRescueWhy.STUCK, waited)) return false
+            }
             Thread.sleep(10)
         }
         return s.phone
+    }
+
+    private enum class SplitRescueWhy { FAILED, STUCK }
+
+    /** Live की अपनी आवाज़ से कहो: [s] से आगे का जवाब तुम बोलो. हाँ = pipeline चुप ([handOff]) */
+    private fun rescue(s: Seg, why: SplitRescueWhy, waited: Long): Boolean {
+        if (s.gen != gen || released) return false
+        val ok = try { hooks.takeOver(s.at, com.dk.assistant.SplitRescue.why(why == SplitRescueWhy.FAILED, waited)) } catch (_: Exception) { false }
+        if (!ok) return false
+        noteSpoken(s.text)
+        handOff()
+        return true
     }
 
     private fun write(tr: AudioTrack, pcm: ByteArray, g: Int, s: Seg) {
@@ -293,9 +351,13 @@ class SpeechPipeline(private val ctx: Context, private val hooks: Hooks) {
     }
 
     companion object {
+        /** जवाब के बीच दो टुकड़ों का ठहराव इतना तक = अब भी "बोल रहा है" (गूँज को आपकी आवाज़ न समझे) */
+        const val GAP_HOLD_MS = 1_200L
+
         /** इंजन के हिसाब से टुकड़ों का नाप (नवंबर 2026: Kokoro हटाया - अब सब इंजन STANDARD; LOCAL फ़ोन में बनने वाली आवाज़ के लिए रखा) */
-        @Suppress("UNUSED_PARAMETER")
-        fun profileFor(engineId: String): TextChunker.Profile = TextChunker.STANDARD
+        /** नवंबर 2026 (मालिक: "बात खत्म होते ही जवाब शुरू"): Gemini TTS = पहला टुकड़ा छोटा (2-6 शब्द, 150 ms रुका तो तुरंत) */
+        fun profileFor(engineId: String): TextChunker.Profile =
+            if (engineId == VoiceEngines.GEMINI_TTS) TextChunker.FAST_NET else TextChunker.STANDARD
 
         /** टुकड़े के बाद ठहराव - हर बार एक-सा (आवाज़ की लय बनी रहे) */
         fun pauseMs(t: String): Int {

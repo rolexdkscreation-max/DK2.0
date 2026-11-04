@@ -26,6 +26,14 @@ object InvokeAck {
     const val AFTER_ACK_MS = 150L
 
     @Volatile var deafUntil = 0L
+    /**
+     * नवंबर 2026: DK बुलाया - ack (Yes Boss / टिंग) अभी शुरू होने वाला है (IO thread पर). तब तक [LiveChime] रुके -
+     * वरना पुराना connection तुरंत जुड़कर chime पहले बजा देता और ack उसके ऊपर बजकर उसे दबा देता.
+     */
+    @Volatile private var expectUntil = 0L
+    const val EXPECT_MS = 1_500L
+    fun expect(now: Long = System.currentTimeMillis()) { expectUntil = now + EXPECT_MS }
+    fun expectNow(now: Long = System.currentTimeMillis()): Boolean = now < expectUntil
     @Volatile private var lastAt = 0L
 
     /** ack बजाएँ? कॉल चल रही हो / DK खुद बोल रहा हो (बीच में रोकने को दबाया) / अभी-अभी बजा हो = नहीं */
@@ -36,7 +44,9 @@ object InvokeAck {
     fun deafNow(now: Long = System.currentTimeMillis()): Boolean = now < deafUntil
 
     /** IO thread पर बुलाओ (ack बजने तक रुकता है ~1 s). @return क्या बजा: "ack" / "tone" / "" */
-    fun play(c: Context, inCall: Boolean): String {
+    fun play(c: Context, inCall: Boolean): String = try { play0(c, inCall) } finally { expectUntil = 0L }
+
+    private fun play0(c: Context, inCall: Boolean): String {
         val now = System.currentTimeMillis()
         if (!wanted(DKState.mode, now - lastAt, inCall)) return ""
         lastAt = now

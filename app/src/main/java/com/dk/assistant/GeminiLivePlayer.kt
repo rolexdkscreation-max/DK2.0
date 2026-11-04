@@ -104,6 +104,7 @@ internal fun GeminiLive.flushPlayback() {
     playEnd = 0L
     track?.let { try { it.pause(); it.flush(); it.play() } catch (_: Exception) {} }
     pipeStop()                                   // v3.68: आवाज़ इंजन की कतार + चलती आवाज़ भी तुरंत
+    dropLiveKeep()                               // नवंबर 2026: टोका = रखी हुई Live आवाज़ भी नहीं बजेगी
     com.dk.assistant.voice.engine.VoiceLevel.clear()
 }
 
