@@ -135,7 +135,8 @@ internal suspend fun GeminiLive.micLoop() = coroutineScope {
             var sum = 0.0
             for (i in 0 until CHUNK_SAMPLES) { val s = buf[i].toInt(); sum += (s * s).toDouble() }
             val rms = sqrt(sum / CHUNK_SAMPLES)
-            val playing = isPlaying()
+            // नवंबर 2026: सच में बज रहा हो तभी "DK बोल रहा" (Gemini TTS का टुकड़ा सिर्फ़ बन रहा हो तो आपकी आवाज़ जाए)
+            val playing = isAudible()
             // dheemi awaaz tez (v3.7): DK chup ho tab hi - DK ki apni goonj ko tez nahi karna
             if (!playing) boost.apply(buf, CHUNK_SAMPLES)
             for (i in 0 until CHUNK_SAMPLES) {
@@ -239,6 +240,7 @@ internal suspend fun GeminiLive.micLoop() = coroutineScope {
                     }
                 }
                 pollStartHold(now)
+                splitRaceCheck(now)
                 if (turnDet.inSpeech || generating || (turnActive && now - eosAt < 8_000)) quietSince = now
                 // v3.53: फ़ोन पर दूसरे ऐप की आवाज़ (वीडियो/गाना) - हर 300ms देखो (DK की अपनी आवाज़ थमने के बाद ही भरोसा)
                 if (now - mediaAt > 300) { mediaAt = now; mediaOn = Ducker.musicActive(svc) }

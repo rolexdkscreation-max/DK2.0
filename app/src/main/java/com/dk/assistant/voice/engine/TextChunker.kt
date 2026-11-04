@@ -181,6 +181,19 @@ class TextChunker(
             stallMs = 150L, stallMin = 2,
             smartCut = true,
         )
+        /**
+         * नवंबर 2026 (मालिक: "मेरी बात खत्म हो तो जवाब तुरंत शुरू"): Gemini TTS (इंटरनेट).
+         * पहला टुकड़ा जितना जल्दी कटे उतनी जल्दी पहली request - अल्पविराम पर 3 शब्द से, ज़बरदस्ती 6 पर, text 150 ms
+         * रुका तो 2 शब्द भी. दूसरा मध्यम (पहला बजते-बजते बन जाए), फिर पुराने बड़े टुकड़े (कम request = कम 429).
+         * कटाव बातचीत के मोड़ पर ([Profile.smartCut]) - छोटे टुकड़े भी वाक्य के बीच से न टूटें.
+         */
+        val FAST_NET = Profile(
+            firstSoft = 3, firstMax = 6,
+            secondMin = 4, secondSoft = 8, secondMax = 16,
+            nextMin = NEXT_MIN, nextSoft = NEXT_SOFT, nextMax = NEXT_MAX,
+            stallMs = 150L, stallMin = 2,
+            smartCut = true,
+        )
         /** इस शब्द से पहले काटना ठीक (नया उपवाक्य शुरू होता है). "पर / तो" नहीं - वे "मेज़ पर", "मैं तो" भी होते हैं */
         val BREAK_BEFORE = setOf(
             "और", "एवं", "लेकिन", "परंतु", "परन्तु", "मगर", "किंतु", "किन्तु", "कि", "क्योंकि", "जो", "जब", "जहाँ",

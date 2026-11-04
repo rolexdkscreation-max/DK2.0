@@ -225,6 +225,7 @@ class DKAccessibilityService : AccessibilityService() {
         // और साथ-साथ फ़ोन में बना छोटा "Yes Boss" / टिंग तुरंत (InvokeAck) - जुड़ने का इंतज़ार कभी चुप्पी में नहीं
         try { LiveNet.warm(this, "DK बुलाया") } catch (_: Exception) {}
         val wasConnected = DKState.live && gemLive.ready
+        InvokeAck.expect()
         LiveChime.arm()
         if (DKState.live) appOpened() else startLive()
         if (session) beginSession()    // power बटन = एक बार की बातचीत (InvokeSession)

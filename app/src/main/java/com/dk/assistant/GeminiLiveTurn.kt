@@ -130,6 +130,7 @@ internal fun GeminiLive.replyPartArrived(what: String) {
         tagFilter = if (connSplit && connText) com.dk.assistant.avatar.EmotionTag.Filter { com.dk.assistant.avatar.MoodState.set(it) } else null
         if (connSplit) {
             splitSpoke = false
+            resetLiveKeep()                                    // नवंबर 2026: नए जवाब की Live आवाज़ शुरू से
             synchronized(turnLock) { splitFedTo = minOf(splitFedTo, replyText.length) }
             val e = splitEngine ?: com.dk.assistant.voice.engine.VoiceEngines.fallback()
             if (e != null) pipeline.begin(e)

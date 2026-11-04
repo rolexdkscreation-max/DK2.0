@@ -71,7 +71,7 @@ internal fun GeminiLive.holdAct(pcm: ByteArray) {
 internal fun GeminiLive.releaseAct(why: String) {
     val l = synchronized(actHeld) { actHeld.toList().also { actHeld.clear() } }
     actHold = false; actHeldBytes = 0
-    if (connSplit) { actReleased++; pumpSplit(); log("काम की बात: रुका text बोलने भेजा ($why)"); return }
+    if (connSplit && !splitLive) { actReleased++; pumpSplit(); log("काम की बात: रुका text बोलने भेजा ($why)"); return }
     if (l.isEmpty()) return
     actReleased++
     for (b in l) { turnRecvBytes += b.size; playOut(b) }

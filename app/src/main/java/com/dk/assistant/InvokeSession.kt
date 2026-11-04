@@ -36,7 +36,22 @@ object LiveChime {
     const val GAP_MS = 25
     const val VOLUME = 0.22
 
+    /**
+     * नवंबर 2026 (मालिक: "power बटन से खोलूँ तो कभी-कभी जुड़ने की आवाज़ नहीं आती"). तीन जड़ें:
+     * 1) usage SONIFICATION था = फ़ोन silent / vibrate / DND हो तो Android उसे चुप कर देता है ("Yes Boss" MEDIA पर
+     *    बजता था, इसलिए वह आता था, यह नहीं). अब [USAGE] = MEDIA - जो आवाज़ "Yes Boss" की, वही इसकी.
+     * 2) पुराना (parked) connection तुरंत जुड़ जाए तो यह "Yes Boss" शुरू होने से पहले ही बज जाता था और ack उसके
+     *    ऊपर बजकर उसे दबा देता था. अब [InvokeAck.expectNow] - ack आने वाला है तो उसके खत्म होने तक रुको.
+     * 3) Bluetooth / ठंडा speaker शुरू के ~100 ms खा जाता है (0.24 s की आवाज़ लगभग पूरी गायब). अब [LEAD_MS] चुप्पी पहले.
+     */
+    val USAGE = AudioAttributes.USAGE_MEDIA
+    /** बजाने से पहले इतनी चुप्पी (Bluetooth / speaker जागे, सुर कटे नहीं) */
+    const val LEAD_MS = 120
+    /** दो बार बुलाने पर (session + activity) दो बार न बजे */
+    const val REPEAT_GAP_MS = 4_000L
+
     @Volatile private var armedAt = 0L
+    @Volatile private var playedAt = 0L
 
     fun arm(now: Long = System.currentTimeMillis()) { armedAt = now }
 
@@ -47,18 +62,19 @@ object LiveChime {
     fun connected(c: Context, inCall: Boolean) {
         val now = System.currentTimeMillis()
         if (!due(armedAt, now, inCall, Prefs.bool(c, "live_chime", true))) return
-        armedAt = 0L
+        if (now - playedAt < REPEAT_GAP_MS) return
+        armedAt = 0L; playedAt = now
         Thread {
             try {
-                // "Yes Boss" अभी बज रहा हो = उसके खत्म होने तक रुको (ज़्यादा से ज़्यादा 2.5s)
-                val until = System.currentTimeMillis() + InvokeAck.ACK_DEAF_MAX_MS + 300
-                while (InvokeAck.deafNow() && System.currentTimeMillis() < until) Thread.sleep(40)
-                if (DKState.mode == Mode.SPEAKING) return@Thread
+                // "Yes Boss" अभी बज रहा हो / बजने वाला हो = उसके खत्म होने तक रुको (ज़्यादा से ज़्यादा ~3s)
+                val until = System.currentTimeMillis() + InvokeAck.ACK_DEAF_MAX_MS + InvokeAck.EXPECT_MS
+                while ((InvokeAck.deafNow() || InvokeAck.expectNow()) && System.currentTimeMillis() < until) Thread.sleep(40)
+                if (DKState.mode == Mode.SPEAKING) { DKLog.d("Live जुड़ा - DK बोल रहा था, जुड़ने की आवाज़ नहीं बजाई"); return@Thread }
                 val pcm = pcm()
-                InvokeAck.deafUntil = System.currentTimeMillis() + durationMs() + 150
+                InvokeAck.deafUntil = System.currentTimeMillis() + LEAD_MS + durationMs() + 150
                 play(pcm)
                 DKLog.d("Live जुड़ा - हल्की आवाज़ बजी")
-            } catch (_: Exception) {}
+            } catch (e: Exception) { DKLog.d("Live जुड़ने की आवाज़ नहीं बजी: ${e.message}") }
         }.start()
     }
 
@@ -81,10 +97,14 @@ object LiveChime {
         return out.toShortArray()
     }
 
-    private fun play(pcm: ShortArray) {
+    /** [LEAD_MS] चुप्पी + सुर (pure, JUnit) */
+    fun withLead(p: ShortArray): ShortArray = ShortArray(RATE * LEAD_MS / 1000 + p.size).also { System.arraycopy(p, 0, it, RATE * LEAD_MS / 1000, p.size) }
+
+    private fun play(pcm0: ShortArray) {
+        val pcm = withLead(pcm0)
         val t = AudioTrack.Builder()
             .setAudioAttributes(AudioAttributes.Builder()
-                .setUsage(AudioAttributes.USAGE_ASSISTANCE_SONIFICATION)
+                .setUsage(USAGE)
                 .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION).build())
             .setAudioFormat(AudioFormat.Builder().setSampleRate(RATE)
                 .setEncoding(AudioFormat.ENCODING_PCM_16BIT).setChannelMask(AudioFormat.CHANNEL_OUT_MONO).build())
@@ -92,9 +112,10 @@ object LiveChime {
             .setBufferSizeInBytes(pcm.size * 2)
             .build()
         try {
-            t.write(pcm, 0, pcm.size)
+            val n = t.write(pcm, 0, pcm.size)
+            if (n < pcm.size) throw IllegalStateException("AudioTrack ने सिर्फ़ $n/${pcm.size} लिया")
             t.play()
-            Thread.sleep(durationMs() + 80L)
+            Thread.sleep(LEAD_MS + durationMs() + 80L)
         } finally { try { t.stop() } catch (_: Exception) {}; t.release() }
     }
 }

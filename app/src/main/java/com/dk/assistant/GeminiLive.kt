@@ -510,6 +510,18 @@ class GeminiLive(internal val svc: DKAccessibilityService, internal val agent: A
     @Volatile internal var tagFilter: com.dk.assistant.avatar.EmotionTag.Filter? = null
     /** इस बारी में pipeline से कुछ बोला गया */
     @Volatile internal var splitSpoke = false
+    /**
+     * नवंबर 2026 (SplitRescue): बँटवारे में इस जवाब की Live की अपनी आवाज़ (बजती नहीं, पर फेंकी भी नहीं) +
+     * हर टुकड़ा आते समय जवाब की लिखावट कितनी थी. Gemini TTS देर करे / चुप रहे तो यही बजती है.
+     */
+    internal val liveKeep = ArrayList<ByteArray>()
+    internal val liveKeepLens = ArrayList<Int>()
+    @Volatile internal var liveKeepBytes = 0
+    @Volatile internal var liveKeepFirstAt = 0L
+    @Volatile internal var liveRaceFrom = 0L
+    /** इस जवाब में Gemini TTS की जगह Live की अपनी आवाज़ बज रही है */
+    @Volatile internal var splitLive = false
+    @Volatile internal var splitRescues = 0
     private val speechHooks = object : com.dk.assistant.voice.engine.SpeechPipeline.Hooks {
         override fun usage() = CallVoice.usage(callAudioOn, btOn)
         override fun log(m: String) = this@GeminiLive.log(m)
@@ -538,7 +550,7 @@ class GeminiLive(internal val svc: DKAccessibilityService, internal val agent: A
         override fun onSpeaking(on: Boolean) {
             if (stopped) return
             if (on) setMode(Mode.SPEAKING)
-            else if (!generating && toolJobs.isEmpty() && !turnActive) setMode(Mode.LISTENING)
+            else if (!generating && toolJobs.isEmpty() && !turnActive && !isPlaying()) setMode(Mode.LISTENING)
             else if (!generating && toolJobs.isNotEmpty() && DKState.mode != Mode.WORKING) setMode(Mode.THINKING)
         }
         override fun onSpoken(soFar: String) { if (connSplit && soFar.isNotBlank()) { shownReply = soFar; DKState.replyLive(soFar) } }
@@ -552,6 +564,8 @@ class GeminiLive(internal val svc: DKAccessibilityService, internal val agent: A
             engineErrShownAt = now; engineErrLast = why
             DKState.reply("सर, $title नहीं बोला: ${why.removePrefix("Gemini TTS: ")}। अभी दूसरी आवाज़ से बोल रही हूँ।")
         }
+        // नवंबर 2026: TTS नहीं बोल पाया / अटका -> रखी हुई Live की अपनी आवाज़ (चुप नहीं)
+        override fun takeOver(at: Int, why: String): Boolean = rescueWithLive(at, why)
         override fun onSilent(text: String) {
             if (!connSplit) return
             splitSilentAt = System.currentTimeMillis()
@@ -600,7 +614,7 @@ class GeminiLive(internal val svc: DKAccessibilityService, internal val agent: A
 
     /** बँटवारे में: replyText का नया हिस्सा pipeline को (DoneGate रोके हो तो नहीं) */
     internal fun pumpSplit() {
-        if (!connSplit || actHold || muteTurn || dropOld || startHold.active) return
+        if (!connSplit || splitLive || actHold || muteTurn || dropOld || startHold.active) return
         val add = synchronized(turnLock) {
             if (splitFedTo > replyText.length) splitFedTo = replyText.length
             val t = replyText.substring(splitFedTo); splitFedTo = replyText.length; t
@@ -610,7 +624,7 @@ class GeminiLive(internal val svc: DKAccessibilityService, internal val agent: A
 
     /** Live की अपनी आवाज़ का टुकड़ा: बँटवारे में बजता नहीं (सिर्फ़ गिनती) */
     internal fun playOut(pcm: ByteArray) {
-        if (connSplit) return
+        if (connSplit && !splitLive) return
         if (startHold.offer(pcm)) return        // नवंबर 2026: आप अभी बोल रहे - पुराना जवाब कतार में नहीं (LiveStartHold)
         playQ.offer(pcm)
     }
@@ -624,7 +638,7 @@ class GeminiLive(internal val svc: DKAccessibilityService, internal val agent: A
             ReplyStartHold.Decision.RELEASE -> {
                 val complete = startHold.heldComplete
                 val held = startHold.release()
-                if (!connSplit) held.forEach { playQ.offer(it) }
+                if (!connSplit || splitLive) held.forEach { playQ.offer(it) }
                 else { pumpSplit(); if (complete && pipelineLazy.isInitialized()) pipeline.endTurn() }
                 LatencyBoard.count("बोलते समय आया जवाब: server ने नहीं रोका, बाद में बजा")
                 if (held.isNotEmpty() || complete) log("server ने पुराना जवाब नहीं रोका (आपकी आवाज़ में नई बात नहीं) - रुका जवाब अब (${held.sumOf { it.size } / 48} ms ऑडियो)")
@@ -633,6 +647,7 @@ class GeminiLive(internal val svc: DKAccessibilityService, internal val agent: A
                 val b = startHold.drop()
                 LatencyBoard.count("आप आगे बोले: पिछले टुकड़े का बासी जवाब नहीं बजा")
                 if (connSplit) synchronized(turnLock) { splitFedTo = replyText.length }
+                if (connSplit) dropLiveKeep()           // बासी जवाब की रखी Live आवाज़ भी नहीं
                 log("आप आगे बोले - पिछले टुकड़े का बासी जवाब नहीं बजाया (${b / 48} ms) • नई बात का जवाब आएगा")
             }
         }
@@ -652,6 +667,12 @@ class GeminiLive(internal val svc: DKAccessibilityService, internal val agent: A
     @Volatile internal var gen = 0
     internal var playThread: Thread? = null
     fun isPlaying() = System.currentTimeMillis() < playEnd + 120 || playQ.isNotEmpty() || pipeBusy()
+
+    /**
+     * नवंबर 2026 (मालिक: "Gemini TTS चालू हो तो ठीक से सुनता नहीं"): माइक के लिए - सच में आवाज़ बज रही है?
+     * [isPlaying] में TTS का "टुकड़ा बन रहा" (कुछ बज नहीं रहा) भी गिना जाता था -> तब आपकी आवाज़ Gemini तक नहीं जाती थी.
+     */
+    fun isAudible() = System.currentTimeMillis() < playEnd + 120 || playQ.isNotEmpty() || (pipelineLazy.isInitialized() && pipeline.talking)
 
     internal val toolJobs = ConcurrentHashMap<String, Job>()
 
