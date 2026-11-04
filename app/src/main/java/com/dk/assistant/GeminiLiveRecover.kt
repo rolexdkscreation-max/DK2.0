@@ -45,3 +45,24 @@ internal fun GeminiLive.onRecovered() {
     val ms = System.currentTimeMillis() - recoverAt
     log("${LiveRecover.OK_MARK} - $why के बाद ${ms / 100 / 10.0}s में server फिर जवाब दे रहा है")
 }
+
+/**
+ * नवंबर 2026 (मालिक: "जो बोल दिया, स्क्रीन पे लिख गया, उसका जवाब आना चाहिए; दोबारा भेजे पर डुप्लीकेट नहीं"):
+ * यह session बात पर अटका = नया connection (पहली बार उसी बातचीत से) + आपकी वही आवाज़ एक बार ([sendReplay]).
+ * डुप्लीकेट नहीं: स्क्रीन पर "आप:" लाइन दोबारा नहीं बनती, आप नई बात बोल चुके तो पुरानी नहीं जाती, एक बात पर एक ही बार
+ * ([ReplyWatchdog.dead] एक बार), और मिनट में [LiveRecover.MAX_SWAPS] बार से ज़्यादा नहीं (चक्कर नहीं).
+ * true = loop तोड़ो (नया connection).
+ */
+internal fun GeminiLive.swapForStuck(now: Long, why: String): Boolean {
+    if (!zombieSwaps.tryTake(now)) {
+        log("Live: $why, पर 1 मिनट में ${LiveRecover.MAX_SWAPS} बार connection बदल चुका - इस बार नहीं (चक्कर नहीं) • ${timeline.summary()}")
+        return false
+    }
+    zombieN++; unheardSwapAt = 0L
+    val again = zombieSwaps.recent(now) > 1
+    replayAudio = utt.snapshot(now); replayAt = now
+    recoverWhy = why; recoverAt = now
+    if (again) handle = null          // फिर अटका = नई बातचीत (याद prompt में)
+    log("Live: $why - नया connection${if (again) " (नई बातचीत)" else " (बातचीत वहीं से)"} और आपकी वही आवाज़ एक बार दोबारा (#$zombieN) • ${timeline.summary()}")
+    return true      // बुलाने वाला: goAway = true; goAwayDrop = true; break
+}

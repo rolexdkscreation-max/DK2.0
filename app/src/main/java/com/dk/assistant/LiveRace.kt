@@ -77,6 +77,33 @@ object LiveRace {
      * इलाज: एक key पर एक समय में सिर्फ़ एक जोड़ी. दौड़ अब keys के बीच (हर key अपनी एक जोड़ी), एक key = एक-एक करके.
      * @return queue में अगली जोड़ी का index जिसकी key पर अभी कोई जोड़ी नहीं चल रही; कोई नहीं = -1 (रुको)
      */
+    /**
+     * नवंबर 2026 (मालिक: "जिस मॉडल से बात हो रही है उसी पे रहे, limit खत्म हो तभी दूसरा; उस key के सारे मॉडल खत्म तो
+     * बैकअप key, फिर तीसरी"): दौड़ का क्रम = चल रही जोड़ी ([stickyId]) सबसे पहले, फिर उसी key के बाकी मॉडल,
+     * फिर अगली key के सारे मॉडल, फिर तीसरी... (पहले हर मॉडल पर हर key = मॉडल-1/key-2 पहले, key-1 का मॉडल-2 बाद में).
+     * चल रही जोड़ी limit से रुकी हो (queue में नहीं) तब भी उसकी key पहले. एक-key (all-rounder) और कई-key दोनों पर यही.
+     */
+    fun stickyOrder(queue: List<Combo>, stickyId: String?): List<Combo> {
+        if (queue.isEmpty()) return queue
+        val sticky = queue.firstOrNull { it.id == stickyId }
+        val keys = queue.map { it.keyIdx }.distinct().sorted()
+        val sk = stickyId?.substringBefore('|')?.toIntOrNull()?.takeIf { it in keys } ?: queue.first().keyIdx
+        val rest = queue.filter { it != sticky }
+        return listOfNotNull(sticky) + (listOf(sk) + keys).distinct().flatMap { k -> rest.filter { it.keyIdx == k } }
+    }
+
+    /**
+     * चल रही जोड़ी (उसी बातचीत/मॉडल) अभी जुड़ रही है = साथ में दूसरी key/मॉडल नहीं खोलना. पहले 1.5s बाद दूसरी key
+     * साथ में खुलती और कभी वह जीत जाती = बिना limit के मॉडल/key बदल जाती (और standby की पुरानी-बातचीत वाली कोशिश मर जाती).
+     * चल रही जोड़ी नाकाम/timeout हो तभी अगली.
+     */
+    fun holdForSticky(inFlightIds: Collection<String>, stickyId: String?): Boolean = stickyId != null && stickyId in inFlightIds
+
+    /** चल रही जोड़ी नेट/timeout से एक बार चूकी = उसी को एक बार और (मॉडल नहीं बदलना); limit/key/मॉडल-गलती पर नहीं */
+    const val STICKY_RETRIES = 1
+    fun retrySticky(isSticky: Boolean, fail: Fail?, retried: Int): Boolean =
+        isSticky && retried < STICKY_RETRIES && (fail == null || fail == Fail.NET)
+
     fun nextLaunchable(queue: List<Combo>, busyKeys: Set<Int>): Int = queue.indexOfFirst { it.keyIdx !in busyKeys }
 
     /** WebSocket खुल गया (setup भेज दिया) - Google तक पहुँच गए, जवाब धीमा: कम से कम इतना रुको (पहले 4s में मार देते थे) */

@@ -364,6 +364,8 @@ class GeminiLive(internal val svc: DKAccessibilityService, internal val agent: A
     @Volatile internal var replayAudio: List<ByteArray>? = null
     @Volatile internal var replayAt = 0L
     internal val zombieSwaps = LiveRecover.SwapLimit()
+    /** नवंबर 2026: caption में बात लिखी गई पर Gemini ने नहीं सुना (बचाव-text बंद) = loop नया connection + वही आवाज़ */
+    @Volatile internal var unheardSwapAt = 0L
     @Volatile internal var zombieN = 0
     @Volatile internal var replayedN = 0
     /** गड़बड़ी (टूटा / अटका) कब और क्या - अगला जवाब आने पर "संभल गया" */
@@ -911,7 +913,7 @@ class GeminiLive(internal val svc: DKAccessibilityService, internal val agent: A
         if (stopped) return@withContext "जुड़ने से पहले बंद"
         mi = 0; var fails = 0
         var lostAt = 0L                                   // नवंबर 2026: connection कब टूटा (फिर जुड़ने तक कितनी रुकावट)
-        zombieSwaps.reset(); zombieFor = 0L; replayAudio = null; recoverWhy = null; utt.clear(); lastAnyServerAt = 0L
+        zombieSwaps.reset(); zombieFor = 0L; unheardSwapAt = 0L; replayAudio = null; recoverWhy = null; utt.clear(); lastAnyServerAt = 0L
         var quickDrops = 0                               // judne ke turant baad baar-baar tootna
         // v3.39: Bluetooth headset जुड़ा = कॉल वाला तरीका (माइक+आवाज़ headset पर), नहीं तो speaker (पहले जैसा)
         drop1007.reset(); endGate.reset(); quietSince = 0L; routeChanged = false
@@ -1174,10 +1176,21 @@ class GeminiLive(internal val svc: DKAccessibilityService, internal val agent: A
                             }
                         }
                         if (replyWatch.due(now)) onNoReply()
+                        if (unheardSwapAt > 0L && !generating && !isPlaying() && toolJobs.isEmpty() && !turnDet.inSpeech) {
+                            unheardSwapAt = 0L
+                            if (swapForStuck(now, "लिखा गया पर Gemini तक नहीं पहुँचा")) { goAway = true; goAwayDrop = true; break }
+                        }
                         if (replyWatch.stalled(now)) onStalled()
                         // v4.6 (मालिक: "बोला हुआ लिखा जाता है, पर जवाब नहीं आता"): बचाव का text भी भेजा, फिर भी server
                         // बिल्कुल चुप = connection खुला पर सत्र अटका. पहले यहाँ कुछ नहीं होता था (DK हमेशा चुप).
                         // अब: तुरंत नया connection (नई बातचीत, अटका सत्र नहीं) + वही बात दोबारा (नीचे resendText).
+                        // नवंबर 2026 (मालिक: "स्क्रीन पे लिख गया तो उसका जवाब आना चाहिए, न जाए तो दोबारा भेजे, डुप्लीकेट नहीं"):
+                        // बचाव-text बंद (डिफ़ॉल्ट) में Gemini ने सुना (लिखावट आई) पर जवाब शुरू नहीं = पहले DK हमेशा चुप रहता था
+                        // (zombie सिर्फ़ तब जब server बिल्कुल चुप). अब: नया connection + आपकी वही आवाज़ एक बार (text नहीं)
+                        if (!textRescue && !generating && !isPlaying() && toolJobs.isEmpty() && !turnDet.inSpeech && replyWatch.dead(now)) {
+                            deadSessions++
+                            if (swapForStuck(now, "सुना पर जवाब अटका")) { goAway = true; goAwayDrop = true; break }
+                        }
                         if (textRescue && !generating && !isPlaying() && toolJobs.isEmpty() && !turnDet.inSpeech && replyWatch.dead(now)) {
                             deadSessions++
                             log("बात भेजी, बचाव भी भेजा, पर ${ReplyWatchdog.DEAD_MS / 1000}s से जवाब नहीं - सत्र अटका, तुरंत नया connection और वही बात दोबारा (#$deadSessions) • ${timeline.summary()}")
@@ -1194,7 +1207,7 @@ class GeminiLive(internal val svc: DKAccessibilityService, internal val agent: A
                             LiveRecover.zombie(now, zEnd, timeline.eventAt, lastAnyServerAt, zBusy, utt.speechMs(), BargeGate.realWords(caption?.text().orEmpty()))) {
                             zombieFor = zEnd
                             if (zombieSwaps.tryTake(now)) {
-                                zombieN++
+                                zombieN++; unheardSwapAt = 0L
                                 val again = zombieSwaps.recent(now) > 1
                                 replayAudio = utt.snapshot(now); replayAt = now
                                 recoverWhy = "session अटका"; recoverAt = now
@@ -1296,6 +1309,11 @@ class GeminiLive(internal val svc: DKAccessibilityService, internal val agent: A
                     if (isQuota(code, reason.lowercase())) {
                         blockModel(model, "बातचीत के बीच", reason)
                         if (turnActive) finishTurn()
+                        // नवंबर 2026 (मालिक): limit खत्म = पहले इसी key का अगला Live मॉडल (दौड़ का क्रम [LiveRace.stickyOrder]),
+                        // इस key के सारे मॉडल खत्म हों तभी बैकअप key, फिर तीसरी
+                        if (models.any { it != model && !Cooldown.blocked(LiveKeys.cooldownName(ki, it)) }) {
+                            handle = null; log("बातचीत के बीच $model की limit खत्म - इसी key ${ki + 1} का अगला Live मॉडल"); continue
+                        }
                         if (switchKey("बातचीत के बीच इस key की limit खत्म")) continue     // v4.7: सीधे दूसरी key
                         else if (mi + 1 < models.size) { mi++; handle = null; continue }
                         else throw Fatal("Gemini Live की फ्री लिमिट खत्म")
