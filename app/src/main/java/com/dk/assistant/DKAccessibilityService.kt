@@ -806,7 +806,7 @@ class DKAccessibilityService : AccessibilityService() {
                 if (FindPhone.active && com.dk.assistant.voice.VoiceCmdMatch.foundText(heard)) {
                     DKState.user(heard); FindPhone.stop("बोला: ${heard.take(30)}"); continue
                 }
-                val findRest = com.dk.assistant.voice.WakeMatch.strictWake(heard, Prefs.wakeWords(this@DKAccessibilityService))
+                val findRest = OfflineListen.findRest(heard, Prefs.wakeWords(this@DKAccessibilityService))   // नवंबर 2026: "डीके कहाँ हो" (बिना "हे") भी
                 if (findRest != null && com.dk.assistant.voice.VoiceCmdMatch.findText(findRest)) {
                     DKState.user(heard); DKState.reply(FindPhone.SAY); FindPhone.start(this@DKAccessibilityService, "बोला: ${heard.take(30)}"); continue
                 }
