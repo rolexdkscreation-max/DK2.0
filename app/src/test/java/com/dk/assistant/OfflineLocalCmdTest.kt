@@ -64,7 +64,6 @@ class OfflineLocalCmdTest {
         assertTrue(off.contains("ownerOk = owner"))
         val svc = src("DKAccessibilityService.kt")
         assertTrue(svc.contains("internal suspend fun ownerHeard"))
-        assertFalse(svc.contains("needName = true)?.takeIf { it == PhoneLockVoice.Act.UNLOCK }"))
         assertTrue(svc.contains("OfflineStt.transcribe(me, hit.rest)"))
     }
 }

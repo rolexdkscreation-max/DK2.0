@@ -16,12 +16,13 @@ object LiveConnect {
     fun features(autoOn: Boolean, autoKinds: List<String>, oneKey: Boolean): String = buildString {
         appendLine("DK's real abilities (each line: what it is -> which tool you use). Use this list to answer 'तुम क्या-क्या कर सकती हो' and to route any task:")
         appendLine("1. Phone control -> phone_task: open apps, settings, alarms/timers, maps & navigation, SMS, normal calls, music, any multi-step action on the phone.")
-        appendLine("2. WhatsApp -> whatsapp_task: send messages, WhatsApp voice call and video call to a saved contact.")
+        appendLine("2. WhatsApp -> whatsapp_task: send messages, send a file DK finds on the phone (photo, video, PDF, document, a website/game DK made: action=send_file), WhatsApp voice call and video call to a saved contact.")
         appendLine("3. Calls from any app (SIM, WhatsApp, Instagram, Facebook, Messenger) -> phone_call: you announce who is calling and ask उठाऊँ या काट दूँ; answer/reject ONLY after the user says so.")
         appendLine("4. Instagram / Facebook posting -> social_media_task (+ social_media_task_control to confirm).")
         appendLine("5. Coding Agent (team of 7 on the user's GitHub repo: Manager (also understands the task), Planner (root cause first), Coder, Reviewer (also Performance), Tester (also QA), Debugger, Git/Release (Git + Deployment), plus a separate Explainer and an Inspector for repo/PR status) -> coding_task.")
         appendLine("6. DK Computer (autonomous background agent: web research, reading sites, calculations, PDF/files/tables/reports, reminders or tasks for later, chains of phone actions) -> computer_task.")
-        appendLine("7. Website Forge (builds a full animated website live on the phone) -> build_website.")
+        appendLine("7. Website Forge (first asks what kind of site, name, sections, style, contact; then builds a full professional animated website live on the phone) -> build_website. Change it by voice / open it in Chrome from the phone's own local server / give or send its link on WhatsApp / deploy it to the internet (ONLY when the user asks) -> website_action.")
+        appendLine("7b. Games -> make_game: DK Computer makes a playable HTML5 game exactly as asked; DK opens it in Chrome and tells what is in it.")
         appendLine("8. Story Mode (Story Writer Agent: long emotional Hindi stories of 10, 15, 20, 25 or 30 minutes, written part by part) -> story_task.")
         appendLine("9. Teacher Mode (whiteboard page; what you explain is written there) -> teacher_mode. It opens ONLY when the user himself asks (टीचर मोड खोलो) - never by itself for a study question.")
         appendLine("10. Autonomous Mode: " + (if (autoOn) "ON" + (if (autoKinds.isNotEmpty()) " for: " + autoKinds.joinToString(", ") else "") + " - phone_task requests of these kinds are planned and done by it automatically."
@@ -62,7 +63,7 @@ object LiveConnect {
 
     /** वेबसाइट तैयार/फ़ेल -> DK लाइव को सच्चा नतीजा */
     fun webDoneNote(ok: Boolean, prompt: String, error: String?): String =
-        if (ok) "SYSTEM NOTE: Website Forge has really finished the website (\"${prompt.take(100)}\"). It is shown on the Forge screen. Tell the user briefly that the website is ready."
+        if (ok) "SYSTEM NOTE: Website Forge has really finished the website (\"${prompt.take(100)}\"). It is shown on the Forge screen. Tell the user briefly that the website is ready, and that he can ask for changes, to open it in Chrome, to send its link, or to deploy it (website_action)."
         else "SYSTEM NOTE: Website Forge could NOT finish the website (\"${prompt.take(100)}\"). Problem: \"${(error ?: "-").take(200)}\". Tell the user this briefly. Do NOT say it is ready."
 
     fun teacherResult(on: Boolean, wasOpen: Boolean): String = when {

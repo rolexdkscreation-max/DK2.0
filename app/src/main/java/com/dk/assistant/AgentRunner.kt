@@ -287,7 +287,20 @@ class AgentRunner(
         }
         if (memoryCommand(goal)) return
         // DK AI Website Forge: "ek cafe ki website banao" -> लाइव 3D build स्क्रीन (कोडिंग एजेंट वाली बात यहाँ नहीं पकड़ी जाती)
-        com.dk.assistant.forge.ForgeIntent.extract(goal)?.let { p ->
+        // नवंबर 2026: "गेम बनाओ" = DK कंप्यूटर गेम बनाता है, फिर DK उसे Chrome में चलाकर दिखाती है
+        com.dk.assistant.forge.GameMaker.extract(goal)?.let { g ->
+            say(com.dk.assistant.forge.GameMaker.startForUser(svc, g)); return
+        }
+        com.dk.assistant.forge.ForgeIntent.extract(goal)?.let { p0 ->
+            // नवंबर 2026: बात बहुत छोटी ("वेबसाइट बनाओ") = पहले पूरा डिटेल पूछो, फिर उसी हिसाब से बनाओ
+            var p = p0
+            if (com.dk.assistant.forge.ForgeBrief.vagueText(p0)) {
+                say(com.dk.assistant.forge.ForgeBrief.TEXT_QUESTION)
+                DKState.set(Mode.LISTENING)
+                val ans = svc.hearForAgent()?.trim().orEmpty()
+                DKState.set(Mode.WORKING)
+                if (ans.isNotBlank()) { DKState.user(ans); p = com.dk.assistant.forge.ForgeBrief.fullPrompt(com.dk.assistant.forge.ForgeBrief.Brief(p0, "", "", "", "", ""), ans) }
+            }
             say(com.dk.assistant.forge.ForgeLauncher.launch(svc, p).second); return
         }
         // कोडिंग टीम: "सुझाव जोड़ दो / नहीं" और "कोडिंग एजेंट, ... बनाओ"
