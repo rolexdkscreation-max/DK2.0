@@ -461,7 +461,7 @@ class DKAccessibilityService : AccessibilityService() {
     private var othersIgnored = 0
 
     /** v3.66: आवाज़ मालिक की है? (पहचान बंद / मॉडल गड़बड़ = हाँ, आवाज़ मत खोओ) */
-    private suspend fun ownerHeard(pcm: ByteArray): Boolean {
+    internal suspend fun ownerHeard(pcm: ByteArray): Boolean {
         if (!com.dk.assistant.voice.OwnerVoice.active(this)) return true
         val G = com.dk.assistant.voice.OwnerGate.Companion
         val cut = pcm.copyOf(minOf(pcm.size, G.RATE * 2 * G.MAX_MS / 1000))
@@ -728,7 +728,9 @@ class DKAccessibilityService : AccessibilityService() {
                     var cmd = ""
                     if (hit.rest != null) {
                         DKState.set(Mode.THINKING)
-                        cmd = com.dk.assistant.voice.WakeMatch.stripWake(Transcriber.transcribe(me, hit.rest) ?: "", Prefs.wakeWords(me))
+                        // नवंबर 2026: बिना नेट cloud STT नहीं चलता - फ़ोन की on-device पहचान (Android 13+)
+                        val said = if (!NetProbe.online(me) && OfflineStt.available(me)) OfflineStt.transcribe(me, hit.rest) else Transcriber.transcribe(me, hit.rest)
+                        cmd = com.dk.assistant.voice.WakeMatch.stripWake(said ?: "", Prefs.wakeWords(me))
                     }
                     if (cmd.isBlank()) {
                         val ack = com.dk.assistant.voice.HeyDk.nextAck(me)

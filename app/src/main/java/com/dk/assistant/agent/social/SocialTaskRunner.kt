@@ -236,6 +236,7 @@ class SocialTaskRunner(
 
     private fun doneMessage(): String = when (task.action) {
         SocialAction.SEND_MESSAGE -> "संदेश भेज दिया"
+        SocialAction.SEND_FILE -> "फ़ाइल भेज दी"
         SocialAction.READ_CHAT, SocialAction.SEARCH_CHAT -> "स्क्रीन पर दिख रही बातें पढ़ लीं"
         SocialAction.MARK_READ -> "चैट खोल दी - अब वह पढ़ी हुई है"
         SocialAction.MUTE -> "चैट म्यूट कर दी"

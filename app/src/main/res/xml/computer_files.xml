@@ -11,4 +11,6 @@
     <cache-path name="teacher_board" path="images/" />
     <!-- कैमरा और अन्य कैश फाइलों के लिए रूट पाथ -->
     <cache-path name="cache_root" path="." />
+    <!-- नवंबर 2026: WhatsApp पर भेजने के लिए फ़ोन की फ़ाइल (Download / Documents…) - "सभी फ़ाइलें" इजाज़त के बाद -->
+    <external-path name="storage" path="." />
 </paths>

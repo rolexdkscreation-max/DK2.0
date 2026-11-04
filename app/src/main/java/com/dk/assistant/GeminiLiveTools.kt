@@ -253,7 +253,9 @@ internal fun GeminiLive.agentTool(name: String, args: JSONObject): String {
     val task = when (name) { "story_task" -> args.optString("topic"); "build_website" -> args.optString("prompt"); else -> args.optString("task") }.trim()
     val result = when (name) {
         "story_task" -> LiveReport.startStory(svc, args.optString("topic"), args.optInt("minutes", 0))
-        "build_website" -> com.dk.assistant.forge.ForgeLauncher.fromVoice(svc, args.optString("prompt"))
+        // नवंबर 2026: पहले ब्रीफ़ (किस काम की / नाम / सेक्शन / स्टाइल / संपर्क) - अधूरा = मॉडल पूछे, Forge अभी नहीं
+        "build_website" -> com.dk.assistant.forge.ForgeBrief.liveGate(args)?.also { handoff = false }
+            ?: com.dk.assistant.forge.ForgeLauncher.fromVoice(svc, com.dk.assistant.forge.ForgeBrief.fullPrompt(args))
         "computer_task" -> {
             val t = args.optString("task").trim()
             val yn = if (ComputerSession.ask != null) ComputerVoice.yesNo(t) else null
@@ -318,6 +320,8 @@ internal fun GeminiLive.runTools(calls: JSONArray) {
                 "dk_features" -> LiveConnect.features(com.dk.assistant.auto.AutoPrefs.on(svc),
                     com.dk.assistant.auto.AutoPrefs.enabledKinds(svc).map { it.title }, Prefs.oneKeyOn(svc) && Prefs.oneKey(svc).isNotBlank())
                 "story_task", "build_website", "computer_task", "coding_task" -> agentTool(name, args)
+                "website_action" -> com.dk.assistant.forge.ForgeVoice.run(svc, args)
+                "make_game" -> com.dk.assistant.forge.GameMaker.start(svc, args.optString("description"), voice = true, change = args.optBoolean("change", false))
                 "teacher_mode" -> LiveReport.teacher(svc, args.optBoolean("on", true))
                 "dk_settings" -> DkSettingsApply.run(svc, args)
                 "dk_inspector" -> com.dk.assistant.inspector.Inspector.liveTool(svc, args)

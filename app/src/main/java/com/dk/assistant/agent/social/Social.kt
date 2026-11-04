@@ -26,7 +26,9 @@ enum class SocialAction(val needsMedia: Boolean, val irreversible: Boolean) {
     POST_PHOTO(true, true), POST_VIDEO(true, true), POST_REEL(true, true), POST_STORY(true, true), POST_TEXT(false, true),
     // WhatsApp
     READ_UNREAD(false, false), SEND_MESSAGE(false, true), READ_CHAT(false, false), SEARCH_CHAT(false, false),
-    MUTE(false, false), UNMUTE(false, false), MARK_READ(false, false);
+    MUTE(false, false), UNMUTE(false, false), MARK_READ(false, false),
+    /** नवंबर 2026: फ़ोन में से फ़ाइल (फोटो / PDF / वीडियो / DK की बनाई वेबसाइट या गेम) ढूँढकर WhatsApp पर भेजो */
+    SEND_FILE(false, true);
 
     companion object {
         fun parse(s: String?): SocialAction? = s.orEmpty().trim().uppercase().replace(' ', '_').replace('-', '_').let { k ->
@@ -37,6 +39,7 @@ enum class SocialAction(val needsMedia: Boolean, val irreversible: Boolean) {
                 "STORY", "STORIES" -> POST_STORY
                 "TEXT", "STATUS_TEXT" -> POST_TEXT
                 "SEND", "MESSAGE" -> SEND_MESSAGE
+                "FILE", "SEND_DOCUMENT", "DOCUMENT", "SEND_PHOTO", "SEND_MEDIA", "SHARE_FILE" -> SEND_FILE
                 "UNREAD", "READ" -> READ_UNREAD
                 else -> null
             }
@@ -52,7 +55,8 @@ enum class TaskStatus { RUNNING, WAITING_CONFIRMATION, WAITING_USER, COMPLETED, 
 
 /** app खोलने का तरीका (Android वाला हिस्सा असल में करता है) */
 sealed class OpenSpec {
-    data class ShareMedia(val pkg: String, val mime: String, val uri: String, val targetHints: List<String>, val text: String = "") : OpenSpec()
+    /** jid = WhatsApp में सीधे उसी की चैट ("91…@s.whatsapp.net") - चुनने वाली सूची नहीं */
+    data class ShareMedia(val pkg: String, val mime: String, val uri: String, val targetHints: List<String>, val text: String = "", val jid: String = "") : OpenSpec()
     data class ShareText(val pkg: String, val text: String, val targetHints: List<String> = emptyList()) : OpenSpec()
     data class Url(val url: String, val pkg: String) : OpenSpec()
     data class Launch(val pkg: String) : OpenSpec()
@@ -109,6 +113,8 @@ data class SocialRequest(
     val contact: String,
     val message: String,
     val query: String,
+    /** SEND_FILE: कौन सी फ़ाइल (यूज़र के शब्द - "आधार कार्ड वाली PDF", "latest_photo") */
+    val file: String = "",
 )
 
 object SocialRequestParser {
@@ -122,7 +128,7 @@ object SocialRequestParser {
         val p = forcePlatform ?: Platform.parse(a.optString("platform")) ?: return Parsed.Err("platform must be instagram, facebook or whatsapp")
         val act = SocialAction.parse(a.optString("action")) ?: return Parsed.Err("unknown action")
         val wa = act in WHATSAPP_ACTIONS
-        if (p == Platform.WHATSAPP && !wa) return Parsed.Err("WhatsApp supports: read_unread, send_message, read_chat, search_chat, mute, unmute, mark_read")
+        if (p == Platform.WHATSAPP && !wa) return Parsed.Err("WhatsApp supports: read_unread, send_message, send_file, read_chat, search_chat, mute, unmute, mark_read")
         if (p != Platform.WHATSAPP && wa) return Parsed.Err("this action is only for WhatsApp")
         if (p == Platform.INSTAGRAM && act == SocialAction.POST_TEXT) return Parsed.Err("Instagram needs a photo or video")
         if (p == Platform.FACEBOOK && act == SocialAction.POST_REEL) return Parsed.Err("Facebook reels are not supported yet - use post_video")
@@ -136,20 +142,21 @@ object SocialRequestParser {
         when (act) {
             SocialAction.POST_TEXT -> if (caption.isEmpty()) return Parsed.Err("post_text needs caption (the text to post)")
             SocialAction.SEND_MESSAGE -> if (contact.isEmpty() || message.isEmpty()) return Parsed.Err("send_message needs contact and message")
+            SocialAction.SEND_FILE -> if (contact.isEmpty() || a.optString("file").isBlank()) return Parsed.Err("send_file needs contact and file (which file, in the user's words, or latest_photo)")
             SocialAction.READ_CHAT, SocialAction.MUTE, SocialAction.UNMUTE, SocialAction.MARK_READ ->
                 if (contact.isEmpty()) return Parsed.Err("${act.name.lowercase()} needs contact")
             SocialAction.SEARCH_CHAT -> if (query.isEmpty() && contact.isEmpty()) return Parsed.Err("search_chat needs query")
             else -> {}
         }
-        return Parsed.Ok(SocialRequest(p, act, mode, caption, a.optString("media").trim(), contact, message, query.ifEmpty { contact }))
+        return Parsed.Ok(SocialRequest(p, act, mode, caption, a.optString("media").trim(), contact, message, query.ifEmpty { contact }, a.optString("file").trim()))
     }
 
     val WHATSAPP_ACTIONS = setOf(SocialAction.READ_UNREAD, SocialAction.SEND_MESSAGE, SocialAction.READ_CHAT, SocialAction.SEARCH_CHAT,
-        SocialAction.MUTE, SocialAction.UNMUTE, SocialAction.MARK_READ)
+        SocialAction.MUTE, SocialAction.UNMUTE, SocialAction.MARK_READ, SocialAction.SEND_FILE)
 }
 
 /** सिर्फ़ वही media जो यूज़र ने खुद DK को share की (कोई और फ़ाइल नहीं) */
-data class SharedItem(val uri: String, val mime: String, val at: Long)
+data class SharedItem(val uri: String, val mime: String, val at: Long, val name: String = "")
 
 object MediaPolicy {
     fun resolve(requested: String, allowed: List<SharedItem>, wantVideo: Boolean?): SharedItem? {

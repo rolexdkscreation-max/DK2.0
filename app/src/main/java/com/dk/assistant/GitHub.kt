@@ -80,6 +80,22 @@ class GitHub(private val token: String) {
     /** Token kiska hai (login naam) */
     fun me(): String = JSONObject(get("/user")).optString("login")
 
+    // ---------------------------------------------------------------- नवंबर 2026: Website Forge -> GitHub Pages (सिर्फ़ मालिक के कहने पर)
+    /** repo है? (404 = नहीं) */
+    fun repoExists(repo: String): Boolean = try { get("/repos/$repo"); true } catch (e: Err) { if (e.code == 404) false else throw e }
+
+    /** नया public repo (README के साथ, ताकि branch हो) - Pages free में public repo पर ही */
+    fun createRepo(name: String, description: String): String =
+        JSONObject(post("/user/repos", JSONObject().put("name", name).put("description", description).put("private", false).put("auto_init", true)))
+            .optString("full_name")
+
+    /** Pages चालू (पहले से चालू = ठीक). return = साइट का पता */
+    fun enablePages(repo: String, branch: String): String {
+        try { post("/repos/$repo/pages", JSONObject().put("source", JSONObject().put("branch", branch).put("path", "/"))) }
+        catch (e: Err) { if (e.code != 409 && e.code != 422) throw e }
+        return try { JSONObject(get("/repos/$repo/pages")).optString("html_url") } catch (_: Exception) { "" }
+    }
+
     /** Aapke repos (naye pehle) */
     fun repos(): List<Repo> {
         val a = JSONArray(get("/user/repos?per_page=100&sort=updated&affiliation=owner,collaborator"))
