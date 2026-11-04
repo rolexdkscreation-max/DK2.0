@@ -80,11 +80,16 @@ object ForgeController {
     private val partial = StringBuilder()
     private var buildSeq = 0
 
+    /** वेबसाइट की key कहाँ डालनी है (संदेशों में) */
+    const val KEY_PLACE = "Settings → AI दिमाग → वेबसाइट बिल्डर"
+
     fun partialHtml(): String = synchronized(partial) { partial.toString() }
 
-    /** Forge के लिए Gemini key: चैट वाली Gemini key, नहीं तो DK लाइव वाली */
-    fun apiKey(c: Context): String =
-        Prefs.scopeKey(c, ApiScopes.CHAT, "gemini").ifBlank { Prefs.scopeKey(c, ApiScopes.CODER, "gemini") }.ifBlank { Prefs.ttsGeminiKey(c) }
+    /**
+     * v3.167 (मालिक): Forge की Gemini key = सिर्फ़ Settings → AI दिमाग → वेबसाइट बिल्डर वाली अपनी key.
+     * DK लाइव / चैट / कोडिंग की key कभी नहीं (पहले चैट -> कोडिंग -> लाइव की key उधार लेते थे).
+     */
+    fun apiKey(c: Context): String = Prefs.forgeKey(c)
 
     fun websitesDir(c: Context): File = File(c.filesDir, DIR).apply { mkdirs() }
 
@@ -122,11 +127,15 @@ object ForgeController {
     }
 
     private fun begin(c: Context, text: String, isEdit: Boolean): StartResult {
-        OneKeyGate.check(c, OneKeyGate.Work.WEBSITE)?.let { return StartResult.MissingKey(it) }
+        // वेबसाइट की अपनी key डली हो = "एक key से सब" की key खर्च नहीं होती, इसलिए एक-key मोड में भी चलेगा
+        if (apiKey(c).isBlank()) OneKeyGate.check(c, OneKeyGate.Work.WEBSITE)?.let {
+            return StartResult.MissingKey(it + " या " + KEY_PLACE + " में वेबसाइट की अपनी Gemini key डालिए।")
+        }
         if (text.isBlank()) return StartResult.NothingToEdit(Lang.pick("कैसी वेबसाइट बनानी है, यह बताइए।", "Tell me what website to build."))
         if (_state.value.phase == ForgePhase.BUILDING) return StartResult.Busy(Lang.pick("एक वेबसाइट अभी बन रही है, पहले वह पूरी होने दें।", "A website is already being built; let it finish first."))
         val key = apiKey(c)
-        if (key.isBlank()) return StartResult.MissingKey(Lang.pick("वेबसाइट बनाने के लिए सेटिंग्स में Gemini key डालें।", "Add a Gemini key in Settings to build websites."))
+        if (key.isBlank()) return StartResult.MissingKey(Lang.pick("वेबसाइट बनाने के लिए $KEY_PLACE में वेबसाइट की अपनी Gemini key डालें — DK दूसरी कोई key इस्तेमाल नहीं करता।",
+            "Add the Website Builder's own Gemini key in Settings → AI Brain → Website Builder. DK never uses any other key for websites."))
         if (!online(c)) return StartResult.Offline(Lang.pick("इंटरनेट नहीं है, वेबसाइट नहीं बन सकती।", "No internet, the website can't be built."))
         val current = if (isEdit) _state.value.file?.takeIf { it.exists() }?.readText() else null
         if (isEdit && current == null) return StartResult.NothingToEdit(Lang.pick("बदलने के लिए अभी कोई वेबसाइट खुली नहीं है।", "There is no website open to edit."))
@@ -172,7 +181,7 @@ object ForgeController {
 
         suspend fun once(prompt: String): Pair<String, String?> {
             synchronized(partial) { partial.setLength(0) }
-            val fr = WebsiteForgeClient.stream(key, prompt) { t -> synchronized(partial) { partial.append(t) }; emit(false) }
+            val fr = WebsiteForgeClient.streamKeys(Prefs.forgeKeys(c).ifEmpty { listOf(key) }, Prefs.forgeModelToUse(c), prompt) { t -> synchronized(partial) { partial.append(t) }; emit(false) }
             return partialHtml() to fr
         }
 

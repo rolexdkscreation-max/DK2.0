@@ -20,7 +20,7 @@ object SettingsSearch {
     val SECTIONS: Map<String, String> = linkedMapOf(
         "profile" to "प्रोफ़ाइल", "lang" to "भाषा / Language", "ui" to "दिखावट (UI कस्टमाइज़ेशन)", "brain" to "AI दिमाग",
         "brain_live" to "AI दिमाग • DK लाइव", "brain_chat" to "AI दिमाग • DK चैट", "brain_coder" to "AI दिमाग • कोडिंग एजेंट",
-        "brain_pc" to "AI दिमाग • DK कंप्यूटर", "brain_extra" to "AI दिमाग • Extra API", "voice" to "आवाज़", "orb" to "ओर्ब और चेहरा",
+        "brain_pc" to "AI दिमाग • DK कंप्यूटर", "brain_extra" to "AI दिमाग • Extra API", "brain_web" to "AI दिमाग • वेबसाइट बिल्डर", "voice" to "आवाज़", "orb" to "ओर्ब और चेहरा",
         "access" to "Accessibility", "phonelock" to "फ़ोन लॉक / अनलॉक", "perms" to "परमिशन", "computer" to "DK कंप्यूटर", "coder" to "कोडिंग एजेंट",
         ACT_AUTO to "ऑटोनोमस मोड", ACT_TEMPLATES to "टेम्पलेट कमांड", ACT_CONNECTORS to "कनेक्टर", ACT_STORY to "स्टोरी राइटर एजेंट",
         "update" to "अपडेट", "debug" to "डिबग लॉग", "about" to "ऐप के बारे में"
@@ -36,6 +36,7 @@ object SettingsSearch {
         "brain_chat" to "chat चैट key api openai groq openrouter",
         "brain_coder" to "coder coding कोडिंग key api",
         "brain_pc" to "computer कंप्यूटर key api",
+        "brain_web" to "website वेबसाइट forge फोर्ज builder बिल्डर site साइट key api gemini मॉडल model",
         "brain_extra" to "extra एक्स्ट्रा custom कस्टम api key openai claude anthropic grok deepseek mistral perplexity कंपनी company मॉडल model",
         "voice" to "voice आवाज़ बोलना सुनना mic माइक tts whatsapp memory याददाश्त dost दोस्त",
         "orb" to "orb ओर्ब चेहरा",
@@ -62,6 +63,7 @@ object SettingsSearch {
         E("brain", "अलग-अलग key वाले हिस्से — बंद", "ऊपर \"एक key से सब\" चालू है, इसलिए DK लाइव / चैट / कोडिंग / कंप्यूटर की अलग keys अभी इस्तेमाल नहीं हो रहीं"),
         E("brain", "हर हिस्से की अपनी API", "हर हिस्सा सिर्फ़ अपनी डाली हुई key से जवाब लेता है — किसी दूसरे की key इस्तेमाल नहीं करता"),
         E("brain_extra", "DK कंप्यूटर का बैकअप क्रम", "पहले Gemini → फिर Groq → फिर OpenRouter → फिर Extra API — जिसकी key डली है और जो चल जाए, उसी से काम होता है"),
+        E("brain_web", "वेबसाइट बिल्डर — अपनी Gemini key", "DK से जब भी वेबसाइट बनवाएँगे, सिर्फ़ यही key लगेगी — DK लाइव, चैट, कोडिंग या कोई दूसरी key नहीं"),
         E("brain_live", "DK लाइव — Google Gemini", "Gemini Live बातचीत, Gemini नेचुरल आवाज़ और सुनना — सिर्फ़ इसी key से"),
         E("brain_live", "लिखना (\"आप:\" वाली लाइन) — अपनी अलग Gemini key", "आप जो बोलते हैं उसे लिखने वाला (gemini-3.5-transcribe-live) इसी key से चलेगा, ताकि बोलने वाले Live की free limit इसमें खर्च न हो"),
         E("brain_live", "खोज — Tavily, Exa, Gemini (बैकअप क्रम)", "DK लाइव और चैट की इंटरनेट खोज पहले Tavily से; न चले तो अपने-आप Exa; वह भी न चले तो Gemini + Google Search"),

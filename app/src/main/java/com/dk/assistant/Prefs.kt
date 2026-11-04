@@ -167,6 +167,24 @@ object Prefs {
     fun exaSearchKey(c: Context): String = sp(c).getString(EXA_SEARCH_KEY, "")?.trim() ?: ""
     fun captionOwnKeyRaw(c: Context): String = sp(c).getString(CAPTION_KEY, "")?.trim() ?: ""
     fun captionKey(c: Context): String = captionOwnKey(c).ifBlank { ttsGeminiKey(c) }
+    /**
+     * v3.167 (मालिक): वेबसाइट बिल्डर (Website Forge) की अपनी अलग Gemini key - वेबसाइट सिर्फ़ इसी से बनेगी,
+     * DK लाइव / चैट / कोडिंग की key कभी नहीं. Key 2 = बैकअप (limit/बंद हो तो). [FORGE_MODEL] खाली = सबसे अच्छा अपने-आप.
+     */
+    const val FORGE_KEY = "forge_key_gemini"
+    const val FORGE_KEY2 = "forge_key_gemini2"
+    const val FORGE_MODEL = "forge_model"
+    const val FORGE_MODELS = "forge_models"
+    fun forgeKeys(c: Context): List<String> = listOf(FORGE_KEY, FORGE_KEY2)
+        .map { sp(c).getString(it, "")?.trim().orEmpty() }.filter { it.isNotBlank() }.distinct()
+    fun forgeKey(c: Context): String = forgeKeys(c).firstOrNull().orEmpty()
+    fun forgeRaw(c: Context, name: String): String = sp(c).getString(name, "")?.trim().orEmpty()
+    fun forgeModel(c: Context): String = sp(c).getString(FORGE_MODEL, "")?.trim().orEmpty()
+    /** Settings में जाँचकर अपने-आप चुना गया सबसे अच्छा मॉडल */
+    const val FORGE_AUTO_MODEL = "forge_model_auto"
+    fun forgeAutoModel(c: Context): String = sp(c).getString(FORGE_AUTO_MODEL, "")?.trim().orEmpty()
+    /** वेबसाइट बनाते समय पहले यह मॉडल: खुद चुना हुआ, नहीं तो अपने-आप वाला सबसे अच्छा (न चले तो बाकी अपने-आप) */
+    fun forgeModelToUse(c: Context): String = forgeModel(c).ifBlank { forgeAutoModel(c) }
 
     // ---- options
     fun wakeMode(c: Context) = sp(c).getBoolean("wake_mode", false)

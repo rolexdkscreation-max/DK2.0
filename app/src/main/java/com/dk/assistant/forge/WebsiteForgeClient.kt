@@ -37,7 +37,8 @@ object WebsiteForgeClient {
 
     class ForgeHttpException(val code: Int, val reason: String?) : IOException(SseParser.friendlyError(code, reason))
 
-    @Volatile private var cachedModels: List<String>? = null
+    /** v3.167: हर key की अपनी मॉडल सूची (वेबसाइट की key बदले तो पुरानी key की सूची नहीं) */
+    private val cachedModels = java.util.concurrent.ConcurrentHashMap<String, List<String>>()
     /** इस process में 404/बंद मिले मॉडल - दोबारा नहीं आज़माते */
     private val gone = java.util.Collections.synchronizedSet(HashSet<String>())
 
@@ -46,7 +47,7 @@ object WebsiteForgeClient {
      * (जड़ - v3.59: पहले सूची का *पहला* "flash" चुनते थे = अक्सर gemini-2.x, जो नए users को 404
      * "no longer available" देता है, और दूसरा मॉडल आज़माते ही नहीं थे -> वेबसाइट कभी नहीं बनती थी।)
      */
-    suspend fun resolveModels(apiKey: String): List<String> = cachedModels ?: withContext(Dispatchers.IO) {
+    suspend fun resolveModels(apiKey: String): List<String> = cachedModels[apiKey] ?: withContext(Dispatchers.IO) {
         val listed = try {
             val req = Request.Builder().url("$BASE/models?pageSize=1000").header("x-goog-api-key", apiKey).get().build()
             await(http.newCall(req)).use { r ->
@@ -59,7 +60,7 @@ object WebsiteForgeClient {
             }
         } catch (e: ForgeHttpException) { throw e } catch (e: Exception) { emptyList() }
         val all = (listed + FALLBACKS).distinct()
-        if (listed.isNotEmpty()) cachedModels = all
+        if (listed.isNotEmpty()) cachedModels[apiKey] = all
         all
     }
 
@@ -115,8 +116,8 @@ object WebsiteForgeClient {
      * HTML stream करो. हर नया टुकड़ा onText में. return = finishReason (null = पता नहीं).
      * coroutine cancel हुआ = HTTP call भी cancel.
      */
-    suspend fun stream(apiKey: String, prompt: String, onText: (String) -> Unit): String? = withContext(Dispatchers.IO) {
-        val models = resolveModels(apiKey).filterNot { it in gone }.ifEmpty { resolveModels(apiKey) }
+    suspend fun stream(apiKey: String, prompt: String, prefer: String = "", onText: (String) -> Unit): String? = withContext(Dispatchers.IO) {
+        val models = withPreferred(rankForWebsite(resolveModels(apiKey)).filterNot { it in gone }.ifEmpty { resolveModels(apiKey) }, prefer)
         var lastErr: ForgeHttpException? = null
         for (model in models.take(4)) {
             var gotText = false
@@ -131,6 +132,74 @@ object WebsiteForgeClient {
             }
         }
         throw lastErr ?: ForgeHttpException(0, "NO_MODEL")
+    }
+
+    /**
+     * v3.167: वेबसाइट की अपनी keys (Key 1, फिर बैकअप Key 2) - दूसरी कोई key नहीं.
+     * Key 1 गलत/बंद/limit खत्म हो और अभी HTML आना शुरू न हुआ हो = Key 2.
+     */
+    suspend fun streamKeys(keys: List<String>, prefer: String, prompt: String, onText: (String) -> Unit): String? {
+        val list = keys.map { it.trim() }.filter { it.isNotBlank() }.distinct()
+        var lastErr: Exception? = null
+        for ((i, k) in list.withIndex()) {
+            var gotText = false
+            try {
+                return stream(k, prompt, prefer) { t -> gotText = true; onText(t) }
+            } catch (e: ForgeHttpException) {
+                if (gotText || i == list.lastIndex || !nextKey(e.code, e.reason)) throw e
+                com.dk.assistant.DKLog.d("Forge: वेबसाइट Key ${i + 1} नहीं चली (${e.code}) - बैकअप key")
+                lastErr = e
+            }
+        }
+        throw lastErr ?: ForgeHttpException(401, "API_KEY_INVALID")
+    }
+
+    /** pure: इस गलती पर वेबसाइट की बैकअप key आज़माएँ? (key गलत/बंद, limit, भीड़, कोई मॉडल नहीं) */
+    fun nextKey(code: Int, reason: String?): Boolean =
+        code == 400 || code == 401 || code == 403 || code == 429 || code == 0 || tryNextModel(code, reason)
+
+    /** pure: पसंद का मॉडल सबसे पहले, बाकी उसी क्रम में (खाली पसंद = सूची जैसी है) */
+    fun withPreferred(models: List<String>, prefer: String): List<String> {
+        val p = prefer.trim().removePrefix("models/")
+        return if (p.isBlank()) models else (listOf(p) + models.filter { it != p })
+    }
+
+    /**
+     * pure: वेबसाइट बनाने के लिए सबसे अच्छे से कम: नया Pro -> नया Flash -> नया Lite -> पुराने 2.x.
+     * (Pro की free limit खत्म हो तो stream अपने-आप अगले पर; [rankModels] वाला क्रम वैसा ही रहता है)
+     */
+    fun rankForWebsite(models: List<String>): List<String> {
+        fun ver(n: String) = Regex("gemini-(\\d+(?:\\.\\d+)?)").find(n)?.groupValues?.get(1)?.toDoubleOrNull() ?: 0.0
+        fun tier(n: String): Int {
+            val l = n.lowercase()
+            if (com.dk.assistant.GeminiModels.isLegacy(n)) return 4
+            if (l.contains("lite")) return 2
+            if (l.contains("pro")) return 0
+            if (l.contains("flash")) return 1
+            return 3
+        }
+        return models.distinct().withIndex().sortedWith(compareBy<IndexedValue<String>>({ tier(it.value) },
+            { if (it.value.contains("latest")) 1 else 0 }, { -ver(it.value) },
+            { if (it.value.contains("preview") || it.value.contains("exp")) 1 else 0 }, { it.index })).map { it.value }
+    }
+
+    /**
+     * Settings के लिए: इस key पर सचमुच चलने वाला सबसे अच्छा वेबसाइट मॉडल (छोटा सा जाँच-अनुरोध) + पूरी सूची.
+     * key गलत = ForgeHttpException.
+     */
+    suspend fun pickBest(apiKey: String): Pair<String?, List<String>> = withContext(Dispatchers.IO) {
+        val all = rankForWebsite(resolveModels(apiKey))
+        var best: String? = null
+        for (m in all.take(6)) {
+            val req = Request.Builder().url("$BASE/models/$m:generateContent").header("x-goog-api-key", apiKey)
+                .post(JSONObject().put("contents", JSONArray().put(JSONObject().put("role", "user")
+                    .put("parts", JSONArray().put(JSONObject().put("text", "Reply OK"))))).toString()
+                    .toRequestBody("application/json".toMediaType())).build()
+            val code = try { await(http.newCall(req)).use { r -> if (r.isSuccessful) 200 else r.code } } catch (_: Exception) { -1 }
+            if (code == 200) { best = m; break }
+            if (code == 401 || code == 403) throw ForgeHttpException(code, "API_KEY_INVALID")
+        }
+        best to all
     }
 
     private suspend fun streamOnce(apiKey: String, model: String, prompt: String, onText: (String) -> Unit): String? = withContext(Dispatchers.IO) {

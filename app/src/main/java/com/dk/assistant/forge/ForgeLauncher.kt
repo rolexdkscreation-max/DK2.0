@@ -14,6 +14,8 @@ object ForgeLauncher {
         val r = ForgeController.start(c, prompt)
         val ok = r is ForgeController.StartResult.Started
         if (ok || r is ForgeController.StartResult.Busy) open(c)
+        // वेबसाइट की अपनी key नहीं = सीधे Settings → AI दिमाग → वेबसाइट बिल्डर खोलो
+        if (r is ForgeController.StartResult.MissingKey) openKeySettings(c)
         DKLog.d("Forge: " + if (ok) "शुरू" else r.message)
         return ok to r.message
     }
@@ -23,6 +25,13 @@ object ForgeLauncher {
             c.startActivity(Intent(c, ForgeActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP)
                 .putExtra(ForgeController.EXTRA_OPEN_FORGE, true))
         } catch (e: Exception) { DKLog.d("Forge: स्क्रीन नहीं खुली - ${e.javaClass.simpleName}") }
+    }
+
+    fun openKeySettings(c: Context) {
+        try {
+            c.startActivity(Intent(c, com.dk.assistant.SettingsActivity::class.java).putExtra("section", "brain_web")
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP))
+        } catch (e: Exception) { DKLog.d("Forge: Settings नहीं खुली - ${e.javaClass.simpleName}") }
     }
 
     /** DK लाइव tool का जवाब (मॉडल के लिए) */
