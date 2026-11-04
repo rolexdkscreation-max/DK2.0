@@ -120,9 +120,11 @@ internal fun SettingsActivity.secVoice() {
     // v3.69: पुराना "आवाज़" हिस्सा (महिला/पुरुष, आवाज़ का प्रकार, सूची, अंदाज़, स्पीड, पिच, फ़ोन TTS) हटाया -
     // बैकअप: branch backup/dk-before-backup-folder-cleanup-1102, फ़ोल्डर backup/v3.69-settings/. अब सिर्फ़ DK लाइव का बोलने वाला इंजन.
     // नवंबर 2026 (मालिक): JARVIS मोड - बोलकर भी, यहाँ से भी
-    card("JARVIS मोड", "JARVIS जैसी आवाज़ और अंदाज़ — काम सारे वही जो DK करता है. बोलें: \"जार्विस मोड ऑन करो\" / \"डीके मोड ऑन करो\"") { box ->
+    card("JARVIS मोड", "JARVIS जैसी आवाज़ और अंदाज़ — काम सारे वही जो DK करता है. बोलें: \"जार्विस मोड ऑन करो\" (\"चार्ज मोड\" सुना जाए तब भी) / \"डीके मोड ऑन करो\"") { box ->
         switch(box, "JARVIS मोड चालू (बंद = DK मोड)", JarvisMode.on(this))
             .setOnCheckedChangeListener { _, on -> JarvisMode.set(this, on); toast(if (on) "JARVIS मोड चालू" else "DK मोड चालू") }
+        switch(box, "JARVIS वाली मशीनी परत (फ़िल्म जैसी हल्की AI गूँज)", Prefs.bool(this, JarvisFx.PREF, true))
+            .setOnCheckedChangeListener { _, on -> Prefs.edit(this) { putBoolean(JarvisFx.PREF, on) } }
         hint(box, "JARVIS की आवाज़:")
         val jv = JarvisMode.VOICES
         radios(box, jv, JarvisMode.voice(this), 2600)
