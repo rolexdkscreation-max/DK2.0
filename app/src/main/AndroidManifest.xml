@@ -43,9 +43,20 @@
     <uses-feature android:name="android.hardware.telephony" android:required="false" />
     <!-- adb se di jaaye to DK apni Accessibility khud ON rakhta hai -->
     <uses-permission android:name="android.permission.WRITE_SECURE_SETTINGS" tools:ignore="ProtectedPermissions" />
+    <!-- नवंबर 2026: पेमेंट ऐप से बाहर आना पहचानने के लिए (Usage access - आप Settings में देते हैं) -->
+    <uses-permission android:name="android.permission.PACKAGE_USAGE_STATS" tools:ignore="ProtectedPermissions" />
 
     <!-- Phone ke saare launcher apps ki list dekhne ke liye (open_app के लिए) -->
     <queries>
+        <!-- नवंबर 2026: फ़ोन के पेमेंट (UPI) ऐप पहचानने के लिए -->
+        <intent>
+            <action android:name="android.intent.action.VIEW" />
+            <data android:scheme="upi" />
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.MAIN" />
+            <category android:name="android.intent.category.HOME" />
+        </intent>
         <intent>
             <action android:name="android.intent.action.MAIN" />
             <category android:name="android.intent.category.LAUNCHER" />
@@ -362,6 +373,10 @@
         </service>
 
         <!-- Background me mic chalu rakhne ke liye notification service -->
+        <receiver
+            android:name=".PayGuardReceiver"
+            android:exported="false" />
+
         <service
             android:name=".KeepAliveService"
             android:exported="false"
