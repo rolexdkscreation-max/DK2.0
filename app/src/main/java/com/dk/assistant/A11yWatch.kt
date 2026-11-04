@@ -46,6 +46,13 @@ object A11yWatch {
     /** सेवा अभी-अभी जुड़ रही हो सकती है - इतना रुककर दोबारा देखो */
     const val SETTLE_MS = 4_000L
 
+    /** ऐप खुलने पर सीधे Accessibility ले जाने के बीच कम से कम इतना (वापस आते ही फिर न खुले) */
+    const val A11Y_ASK_EVERY_MS = 2 * 60_000L
+
+    /** pure: ऐप खुलते ही सीधे DK की Accessibility खोलें? सिर्फ़ "ON दिखे पर रुकी" हालत में, और 2 मिनट में एक बार */
+    fun askOnOpen(s: State, now: Long, lastAsked: Long): Boolean =
+        s == State.ASK_USER && (lastAsked <= 0L || now - lastAsked >= A11Y_ASK_EVERY_MS)
+
     fun shouldNotify(now: Long, lastNotified: Long): Boolean = lastNotified <= 0L || now - lastNotified >= NOTIFY_EVERY_MS
 
     /** pure: notification का लिखा (यूज़र ने Stop दबाया था तो वही बताओ) */

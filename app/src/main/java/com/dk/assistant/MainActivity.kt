@@ -94,7 +94,7 @@ class MainActivity : AppCompatActivity() {
         } else if (!Setup.accessibilityOn() && Setup.enabledInSettings(this)) {
             // नवंबर 2026: Settings में ON पर Android ने रोक दी ("Service is not available") - OFF-ON से ही जुड़ती है
             UiLang.toast(this, "${Prefs.assistantName(this)} को एक बार OFF करके फिर ON करें", Toast.LENGTH_LONG).show()
-            Setup.openAccessibility(this)
+            Setup.openDkAccessibility(this)
         } else if (!Setup.accessibilityOn(this)) {
             UiLang.toast(this, "Installed/Downloaded apps में ${Prefs.assistantName(this)} ON करें", Toast.LENGTH_LONG).show()
             Setup.openAccessibility(this)
@@ -233,10 +233,36 @@ class MainActivity : AppCompatActivity() {
             !Setup.hasMic(this) -> { askPerms(); return false }
             !Setup.accessibilityOn() && !Setup.selfEnableAccessibility(this) && !Setup.enabledInSettings(this) -> {
                 UiLang.toast(this, "Accessibility में ${Prefs.assistantName(this)} ON करें", Toast.LENGTH_LONG).show()
-                Setup.openAccessibility(this); return false
+                Setup.openDkAccessibility(this); return false
+            }
+            // नवंबर 2026 (मालिक): ऊपर से Stop / recents से हटाया = Settings में ON दिखे पर सेवा मरी हुई ("Service is not available").
+            // पहले यहाँ जाँच पास हो जाती थी और बेकार आवाज़ स्क्रीन खुलती थी -> अब orb टैप = सीधे DK की Accessibility (OFF → ON)
+            A11yWatch.state(Setup.accessibilityOn(), Setup.enabledInSettings(this), Setup.canWriteSecure(this)) == A11yWatch.State.ASK_USER -> {
+                askA11yFix(); return false
             }
         }
         return true
+    }
+
+    private val P_A11Y_ASKED = "a11y_open_asked_at"
+
+    /** Accessibility रुकी है (ON दिखती पर चल नहीं रही) = बताओ और सीधे DK की Accessibility खोलो */
+    private fun askA11yFix() {
+        UiLang.toast(this, "${Prefs.assistantName(this)} का फ़ोन कंट्रोल रुक गया है — यहाँ ${Prefs.assistantName(this)} को एक बार OFF करके फिर ON करें", Toast.LENGTH_LONG).show()
+        getSharedPreferences("dk_a11y_ask", MODE_PRIVATE).edit().putLong(P_A11Y_ASKED, System.currentTimeMillis()).apply()
+        Setup.openDkAccessibility(this)
+    }
+
+    /** ऐप खुलते ही: सेवा रुकी मिले (थोड़ा रुककर दोबारा देखकर) तो सीधे वहीं ले जाओ - बार-बार नहीं ([A11yWatch.A11Y_ASK_EVERY_MS]) */
+    private fun a11yOnOpen() {
+        lifecycleScope.launch {
+            kotlinx.coroutines.delay(A11yWatch.SETTLE_MS)
+            if (isFinishing || !lifecycle.currentState.isAtLeast(androidx.lifecycle.Lifecycle.State.RESUMED)) return@launch
+            val st = A11yWatch.state(Setup.accessibilityOn(), Setup.enabledInSettings(this@MainActivity), Setup.canWriteSecure(this@MainActivity))
+            if (st == A11yWatch.State.HEAL) { Setup.healAccessibility(this@MainActivity); return@launch }
+            val last = getSharedPreferences("dk_a11y_ask", MODE_PRIVATE).getLong(P_A11Y_ASKED, 0L)
+            if (A11yWatch.askOnOpen(st, System.currentTimeMillis(), last)) askA11yFix()
+        }
     }
 
     /** want = कैमरा/स्क्रीन शेयर भी चालू करना (v3.102 होम के बटन) */
@@ -258,6 +284,7 @@ class MainActivity : AppCompatActivity() {
         render()
         checkUpdate()
         checkAccessKey()
+        a11yOnOpen()
     }
 
     /** DK AI Part 13: हर बार खुलने पर key की जाँच (3 घंटे में एक बार backend से; नेटवर्क गलती = पुरानी हालत) */
