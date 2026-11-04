@@ -80,6 +80,12 @@ object ForgeController {
     private val partial = StringBuilder()
     private var buildSeq = 0
 
+    /** v3.169: जिस मॉडल से वेबसाइट सच में बनने लगी = वही "सबसे अच्छा (अपने-आप)" - Settings में दिखे, अगली बार पहले */
+    private fun rememberModel(c: Context, m: String) {
+        if (Prefs.forgeModel(c).isBlank() && Prefs.forgeAutoModel(c) != m) Prefs.edit(c) { putString(Prefs.FORGE_AUTO_MODEL, m) }
+        DKLog.d("Forge: मॉडल $m से बन रही है")
+    }
+
     /** वेबसाइट की key कहाँ डालनी है (संदेशों में) */
     const val KEY_PLACE = "Settings → AI दिमाग → वेबसाइट बिल्डर"
 
@@ -181,7 +187,8 @@ object ForgeController {
 
         suspend fun once(prompt: String): Pair<String, String?> {
             synchronized(partial) { partial.setLength(0) }
-            val fr = WebsiteForgeClient.streamKeys(Prefs.forgeKeys(c).ifEmpty { listOf(key) }, Prefs.forgeModelToUse(c), prompt) { t -> synchronized(partial) { partial.append(t) }; emit(false) }
+            val fr = WebsiteForgeClient.streamKeys(Prefs.forgeKeys(c).ifEmpty { listOf(key) }, Prefs.forgeModelToUse(c), prompt,
+                onModel = { m -> rememberModel(c, m) }) { t -> synchronized(partial) { partial.append(t) }; emit(false) }
             return partialHtml() to fr
         }
 

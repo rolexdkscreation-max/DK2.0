@@ -1,6 +1,7 @@
 package com.dk.assistant.forge
 
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.isActive
@@ -116,13 +117,15 @@ object WebsiteForgeClient {
      * HTML stream करो. हर नया टुकड़ा onText में. return = finishReason (null = पता नहीं).
      * coroutine cancel हुआ = HTTP call भी cancel.
      */
-    suspend fun stream(apiKey: String, prompt: String, prefer: String = "", onText: (String) -> Unit): String? = withContext(Dispatchers.IO) {
-        val models = withPreferred(rankForWebsite(resolveModels(apiKey)).filterNot { it in gone }.ifEmpty { resolveModels(apiKey) }, prefer)
+    suspend fun stream(apiKey: String, prompt: String, prefer: String = "", onModel: (String) -> Unit = {}, onText: (String) -> Unit): String? = withContext(Dispatchers.IO) {
+        // v3.169 (मालिक: "limit खत्म / मॉडल नहीं चुन पाया"): पहले सिर्फ़ 4 मॉडल और सब Pro (free key पर Pro की limit 0) =
+        // हमेशा "limit खत्म". अब हर तरह का सबसे नया पहले ([diverse]: Pro, फिर Flash, फिर Lite) और 6 तक
+        val models = withPreferred(diverse(rankForWebsite(resolveModels(apiKey)).filterNot { it in gone }.ifEmpty { resolveModels(apiKey) }), prefer)
         var lastErr: ForgeHttpException? = null
-        for (model in models.take(4)) {
+        for (model in models.take(STREAM_TRIES)) {
             var gotText = false
             try {
-                return@withContext streamOnce(apiKey, model, prompt) { t -> gotText = true; onText(t) }
+                return@withContext streamOnce(apiKey, model, prompt) { t -> if (!gotText) onModel(model); gotText = true; onText(t) }
             } catch (e: ForgeHttpException) {
                 // HTML आना शुरू हो चुका = मॉडल चल रहा है; बीच में बदलना नहीं
                 if (gotText || !tryNextModel(e.code, e.reason)) throw e
@@ -138,13 +141,13 @@ object WebsiteForgeClient {
      * v3.167: वेबसाइट की अपनी keys (Key 1, फिर बैकअप Key 2) - दूसरी कोई key नहीं.
      * Key 1 गलत/बंद/limit खत्म हो और अभी HTML आना शुरू न हुआ हो = Key 2.
      */
-    suspend fun streamKeys(keys: List<String>, prefer: String, prompt: String, onText: (String) -> Unit): String? {
+    suspend fun streamKeys(keys: List<String>, prefer: String, prompt: String, onModel: (String) -> Unit = {}, onText: (String) -> Unit): String? {
         val list = keys.map { it.trim() }.filter { it.isNotBlank() }.distinct()
         var lastErr: Exception? = null
         for ((i, k) in list.withIndex()) {
             var gotText = false
             try {
-                return stream(k, prompt, prefer) { t -> gotText = true; onText(t) }
+                return stream(k, prompt, prefer, onModel) { t -> gotText = true; onText(t) }
             } catch (e: ForgeHttpException) {
                 if (gotText || i == list.lastIndex || !nextKey(e.code, e.reason)) throw e
                 com.dk.assistant.DKLog.d("Forge: वेबसाइट Key ${i + 1} नहीं चली (${e.code}) - बैकअप key")
@@ -168,38 +171,94 @@ object WebsiteForgeClient {
      * pure: वेबसाइट बनाने के लिए सबसे अच्छे से कम: नया Pro -> नया Flash -> नया Lite -> पुराने 2.x.
      * (Pro की free limit खत्म हो तो stream अपने-आप अगले पर; [rankModels] वाला क्रम वैसा ही रहता है)
      */
+    /** pure: 0 = Pro, 1 = Flash, 2 = Lite, 3 = बाकी, 4 = पुराने 2.x */
+    fun tier(n: String): Int {
+        val l = n.lowercase()
+        if (com.dk.assistant.GeminiModels.isLegacy(n)) return 4
+        if (l.contains("lite")) return 2
+        if (l.contains("pro")) return 0
+        if (l.contains("flash")) return 1
+        return 3
+    }
+
+    /** website बनाते समय कितने मॉडल तक आज़माएँ */
+    const val STREAM_TRIES = 6
+    /** Settings की जाँच में कितने मॉडल तक */
+    const val PROBE_MAX = 10
+
+    /**
+     * pure: हर तरह (Pro / Flash / Lite / बाकी / पुराने) का सबसे अच्छा एक-एक पहले, फिर बाकी उसी क्रम में.
+     * free key पर Pro की limit 0 = दूसरी कोशिश ही Flash (पहले 4 के 4 Pro थे = कभी नहीं बनता था).
+     */
+    fun diverse(ranked: List<String>): List<String> {
+        val heads = ranked.groupBy { tier(it) }.toSortedMap().values.map { it.first() }
+        return (heads + ranked).distinct()
+    }
+
     fun rankForWebsite(models: List<String>): List<String> {
         fun ver(n: String) = Regex("gemini-(\\d+(?:\\.\\d+)?)").find(n)?.groupValues?.get(1)?.toDoubleOrNull() ?: 0.0
-        fun tier(n: String): Int {
-            val l = n.lowercase()
-            if (com.dk.assistant.GeminiModels.isLegacy(n)) return 4
-            if (l.contains("lite")) return 2
-            if (l.contains("pro")) return 0
-            if (l.contains("flash")) return 1
-            return 3
-        }
         return models.distinct().withIndex().sortedWith(compareBy<IndexedValue<String>>({ tier(it.value) },
             { if (it.value.contains("latest")) 1 else 0 }, { -ver(it.value) },
             { if (it.value.contains("preview") || it.value.contains("exp")) 1 else 0 }, { it.index })).map { it.value }
     }
 
+    /** Settings की जाँच का नतीजा: [best] = चलने वाला सबसे अच्छा मॉडल (null = कोई नहीं चला), [tried] = मॉडल -> code */
+    data class Check(val best: String?, val all: List<String>, val tried: List<Pair<String, Int>>)
+
+    /** छोटी जाँच के लिए जल्दी जवाब वाला client (वेबसाइट वाले में 180s इंतज़ार) */
+    private val probeHttp: OkHttpClient by lazy { http.newBuilder().readTimeout(25, TimeUnit.SECONDS).callTimeout(30, TimeUnit.SECONDS).build() }
+
+    /** pure: जाँच के code का मतलब (Settings में दिखाने के लिए) */
+    fun probeLabel(code: Int): String = when (code) {
+        200 -> "✓ चला"
+        429 -> "✗ free limit नहीं/खत्म"
+        404 -> "✗ यह मॉडल नहीं मिला"
+        400 -> "✗ नहीं माना (400)"
+        401, 403 -> "✗ key नहीं चली"
+        500, 503 -> "✗ Google व्यस्त"
+        -1 -> "✗ नेट/समय खत्म"
+        else -> "✗ ($code)"
+    }
+
     /**
-     * Settings के लिए: इस key पर सचमुच चलने वाला सबसे अच्छा वेबसाइट मॉडल (छोटा सा जाँच-अनुरोध) + पूरी सूची.
+     * Settings के लिए: इस key पर सचमुच चलने वाला सबसे अच्छा वेबसाइट मॉडल. पहले हर तरह का एक-एक (Pro, Flash, Lite…)
+     * एक साथ जाँचो - जो चले उनमें सबसे ऊपर वाला; कोई न चले तो बाकी एक-एक करके ([PROBE_MAX] तक).
      * key गलत = ForgeHttpException.
      */
-    suspend fun pickBest(apiKey: String): Pair<String?, List<String>> = withContext(Dispatchers.IO) {
+    suspend fun pickBest(apiKey: String): Check = withContext(Dispatchers.IO) {
         val all = rankForWebsite(resolveModels(apiKey))
-        var best: String? = null
-        for (m in all.take(6)) {
-            val req = Request.Builder().url("$BASE/models/$m:generateContent").header("x-goog-api-key", apiKey)
-                .post(JSONObject().put("contents", JSONArray().put(JSONObject().put("role", "user")
-                    .put("parts", JSONArray().put(JSONObject().put("text", "Reply OK"))))).toString()
-                    .toRequestBody("application/json".toMediaType())).build()
-            val code = try { await(http.newCall(req)).use { r -> if (r.isSuccessful) 200 else r.code } } catch (_: Exception) { -1 }
-            if (code == 200) { best = m; break }
-            if (code == 401 || code == 403) throw ForgeHttpException(code, "API_KEY_INVALID")
+        val order = diverse(all).filterNot { it in gone }.take(PROBE_MAX)
+        val heads = order.take(all.groupBy { tier(it) }.size.coerceIn(1, 5))
+        val tried = ArrayList<Pair<String, Int>>()
+        val first = heads.map { m -> async { m to probe(apiKey, m) } }.map { it.await() }
+        tried.addAll(first)
+        if (first.any { it.second == 401 || it.second == 403 || it.second == KEY_BAD }) throw ForgeHttpException(400, "API_KEY_INVALID")
+        var best = first.firstOrNull { it.second == 200 }?.first
+        if (best == null) for (m in order.drop(heads.size)) {
+            val c = probe(apiKey, m); tried.add(m to c)
+            if (c == 200) { best = m; break }
         }
-        best to all
+        tried.filter { it.second == 404 }.forEach { gone.add(it.first) }
+        Check(best, all, tried)
+    }
+
+    private const val KEY_BAD = 4001
+
+    /** एक छोटा अनुरोध: 200 = चला; 4001 = key ही गलत; -1 = नेट/समय */
+    private suspend fun probe(apiKey: String, m: String): Int {
+        val req = Request.Builder().url("$BASE/models/$m:generateContent").header("x-goog-api-key", apiKey)
+            .post(JSONObject().put("contents", JSONArray().put(JSONObject().put("role", "user")
+                .put("parts", JSONArray().put(JSONObject().put("text", "Reply OK")))))
+                .put("generationConfig", JSONObject().put("maxOutputTokens", 2048)).toString()
+                .toRequestBody("application/json".toMediaType())).build()
+        return try {
+            await(probeHttp.newCall(req)).use { r ->
+                if (r.isSuccessful) 200 else {
+                    val b = r.body?.string().orEmpty()
+                    if (r.code == 400 && (b.contains("API_KEY_INVALID") || b.contains("API key not valid"))) KEY_BAD else r.code
+                }
+            }
+        } catch (_: Exception) { -1 }
     }
 
     private suspend fun streamOnce(apiKey: String, model: String, prompt: String, onText: (String) -> Unit): String? = withContext(Dispatchers.IO) {
