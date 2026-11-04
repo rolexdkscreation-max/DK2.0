@@ -480,6 +480,8 @@ class DKAccessibilityService : AccessibilityService() {
     /** Ek baat suno -> text. Bina beep (apna mic + Groq/Gemini) ya Google mic. Har dikkat DK bolkar batata hai. */
     /** @param wakeGate wake word वाला सुनना (Live बंद): caption में DK का नाम न हो तो Groq को मत भेजो */
     suspend fun hear(wakeGate: Boolean = false): String? {
+        // नवंबर 2026: बैकअप + नेट नहीं = फ़ोन का SpeechRecognizer नहीं (हर बार बीप) - अपना माइक, सिर्फ़ आवाज़-कमांड
+        if (OfflineListen.cmdsOnly(backupMode, DKState.live, NetProbe.online(this))) return hearOfflineCmds()
         if (backupMode && DKState.live) return hearBackup()   // Live नहीं जुड़ा - बैकअप मोड (फ़ोन की बोली-पहचान)
         if (!checkMic()) { delay(2000); return null }
         if (DKState.micMuted) { delay(800); return null }   // होम का म्यूट बटन: कुछ मत सुनो
@@ -618,7 +620,8 @@ class DKAccessibilityService : AccessibilityService() {
                     delay(250); continue
                 }
                 // Gemini Live: mic ki awaaz lagatar stream, jawab ki awaaz turant stream (sabse kam deri)
-                if (useGeminiLive() && !callBusy()) {
+                // नवंबर 2026: नेट नहीं (बैकअप) = Live जोड़ने के लिए माइक बंद-चालू नहीं; नेट लौटते ही फिर Live
+                if (useGeminiLive() && !callBusy() && !OfflineListen.cmdsOnly(backupMode, DKState.live, NetProbe.online(this@DKAccessibilityService))) {
                     if (!checkMic()) { delay(2000); continue }
                     ear.release(); listener.release(); earCaptionOff()
                     lastWhyNot = ""
