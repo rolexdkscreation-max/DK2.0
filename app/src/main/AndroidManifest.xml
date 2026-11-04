@@ -39,6 +39,8 @@
     <!-- v3.33 (वैकल्पिक): "सबसे नई फ़ोटो दिखाओ" (न दें तो सिर्फ़ गैलरी खुलती है). सिर्फ़ फ़ोटो पढ़ना - मिटाना नहीं -->
     <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="32" />
+    <!-- नवंबर 2026: "X वाली फ़ाइल WhatsApp पर भेजो" - Download / Documents की फ़ाइल ढूँढने के लिए (मालिक Settings में खुद चालू करता है) -->
+    <uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE" tools:ignore="ScopedStorage" />
     <!-- CALL_PHONE से Android "फ़ोन वाला डिवाइस ज़रूरी" मान लेता है - टैबलेट पर भी चले -->
     <uses-feature android:name="android.hardware.telephony" android:required="false" />
     <!-- adb se di jaaye to DK apni Accessibility khud ON rakhta hai -->

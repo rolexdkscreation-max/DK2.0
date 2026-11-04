@@ -461,7 +461,7 @@ class DKAccessibilityService : AccessibilityService() {
     private var othersIgnored = 0
 
     /** v3.66: आवाज़ मालिक की है? (पहचान बंद / मॉडल गड़बड़ = हाँ, आवाज़ मत खोओ) */
-    private suspend fun ownerHeard(pcm: ByteArray): Boolean {
+    internal suspend fun ownerHeard(pcm: ByteArray): Boolean {
         if (!com.dk.assistant.voice.OwnerVoice.active(this)) return true
         val G = com.dk.assistant.voice.OwnerGate.Companion
         val cut = pcm.copyOf(minOf(pcm.size, G.RATE * 2 * G.MAX_MS / 1000))
@@ -728,7 +728,9 @@ class DKAccessibilityService : AccessibilityService() {
                     var cmd = ""
                     if (hit.rest != null) {
                         DKState.set(Mode.THINKING)
-                        cmd = com.dk.assistant.voice.WakeMatch.stripWake(Transcriber.transcribe(me, hit.rest) ?: "", Prefs.wakeWords(me))
+                        // नवंबर 2026: बिना नेट cloud STT नहीं चलता - फ़ोन की on-device पहचान (Android 13+)
+                        val said = if (!NetProbe.online(me) && OfflineStt.available(me)) OfflineStt.transcribe(me, hit.rest) else Transcriber.transcribe(me, hit.rest)
+                        cmd = com.dk.assistant.voice.WakeMatch.stripWake(said ?: "", Prefs.wakeWords(me))
                     }
                     if (cmd.isBlank()) {
                         val ack = com.dk.assistant.voice.HeyDk.nextAck(me)
@@ -796,8 +798,9 @@ class DKAccessibilityService : AccessibilityService() {
                 PhoneLockStore.reload(this@DKAccessibilityService)
                 // v3.151: Settings में अनलॉक बंद / PIN सेव नहीं हो तब भी "DK फोन अनलॉक करो" पहचाने - स्क्रीन जगाए और सही कारण बोले
                 // (पहले यह बात Live/AI में चली जाती, जो "खुद खोलिए" या "हो गया" बोल देता)। लॉक वाला switch पहले जैसा।
+                // नवंबर 2026: नाम के साथ "फोन लॉक करो" भी सीधे (ऑफलाइन में यही रास्ता - पहले सिर्फ़ अनलॉक)
                 val lockAct = PhoneLockVoice.match(heard, needName = true)
-                    ?: PhoneLockVoice.instant(heard, Prefs.wakeWords(this@DKAccessibilityService), needName = true)?.takeIf { it == PhoneLockVoice.Act.UNLOCK }
+                    ?: PhoneLockVoice.instant(heard, Prefs.wakeWords(this@DKAccessibilityService), needName = true)
                 if (lockAct != null) {
                     DKState.user(heard); DKLog.d("फ़ोन लॉक: आवाज़ से ${lockAct.type}")
                     agent.runQuick(PhoneLockVoice.quick(lockAct)); continue

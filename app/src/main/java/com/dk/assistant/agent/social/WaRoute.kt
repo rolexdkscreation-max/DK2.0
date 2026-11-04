@@ -17,8 +17,21 @@ object WaRoute {
         return SEND.any { t.contains(it) }
     }
 
+    /** नवंबर 2026: "राहुल को WhatsApp पर आधार वाली PDF / फोटो / फ़ाइल भेजो" = फ़ाइल भेजना (send_file), संदेश नहीं */
+    private val FILE = listOf("फाइल", "फ़ाइल", "file", "pdf", "पीडीएफ", "फोटो", "फ़ोटो", "photo", "image", "इमेज", "तस्वीर", "वीडियो", "video",
+        "डॉक्यूमेंट", "document", "वेबसाइट का लिंक", "गेम", "game", "स्क्रीनशॉट", "screenshot")
+
+    fun isFileSend(request: String): Boolean {
+        val t = request.lowercase()
+        return (t.contains("भेज") || t.contains("send") || t.contains("bhej") || t.contains("शेयर") || t.contains("share")) && FILE.any { t.contains(it) }
+    }
+
     /** phone_task का जवाब: मॉडल whatsapp_task बुलाए */
-    fun redirect(request: String): String =
+    fun redirect(request: String): String = if (isFileSend(request))
+        "not_done: WhatsApp files must use the whatsapp_task tool, not phone_task. Nothing was sent. Call whatsapp_task now with " +
+            "action=send_file, contact=<the person's name or number from the request> and file=<which file, in the user's words> " +
+            "(request was: \"" + request.take(200).replace("\"", "'") + "\"). If the contact or the file is missing, ask the user first."
+    else
         "not_done: WhatsApp messages must use the whatsapp_task tool, not phone_task. Nothing was sent. Call whatsapp_task now with " +
             "action=send_message, contact=<the person's name or number from the request> and message=<the exact text to send> " +
             "(request was: \"" + request.take(200).replace("\"", "'") + "\"). If the contact or the text is missing, ask the user first."

@@ -27,14 +27,37 @@ object OfflineListen {
      * (loop वही पुराना लॉक / अनलॉक / "किधर हो" / "मिल गया" वाला हिस्सा चलाए), बाकी सब अनसुना.
      * पहले (#212) सिर्फ़ सिखाए आवाज़-नमूने देखे जाते थे - नमूने न हों तो कुछ भी नहीं सुनता था.
      */
-    fun keepText(text: String?, names: List<String>, findActive: Boolean, lock: PhoneLockVoice.Cfg = PhoneLockVoice.cfg): Boolean {
+    fun keepText(text: String?, names: List<String>, findActive: Boolean, lock: PhoneLockVoice.Cfg = PhoneLockVoice.cfg,
+                 ownerOk: Boolean = false, fg: String = ""): Boolean {
         val t = text?.trim().orEmpty()
         if (t.isEmpty()) return false
         if (PhoneLockVoice.match(t, needName = true, c = lock) != null) return true
-        if (PhoneLockVoice.instant(t, names, needName = true, c = lock) == PhoneLockVoice.Act.UNLOCK) return true
+        // नवंबर 2026 (मालिक: "ऑफलाइन में लॉक स्क्रीन नहीं होता"): जड़ - यहाँ सिर्फ़ UNLOCK माना जाता था, Settings में लॉक का
+        // switch बंद (default) हो तो "DK फोन लॉक करो" अनसुना रह जाता था. अब LOCK भी (नाम के साथ).
+        if (PhoneLockVoice.instant(t, names, needName = true, c = lock) != null) return true
         if (findActive && com.dk.assistant.voice.VoiceCmdMatch.foundText(t)) return true
-        val rest = findRest(t, names) ?: return false
-        return com.dk.assistant.voice.VoiceCmdMatch.findText(rest)
+        // SMS "भेजूँ?" का हाँ / ना - पूछा हुआ सवाल है, नाम दोबारा नहीं बोलते
+        if (OfflineCommands.confirm(t, System.currentTimeMillis()) != null) return true
+        val rest = findRest(t, names)
+        if (rest != null && com.dk.assistant.voice.VoiceCmdMatch.findText(rest)) return true
+        // नवंबर 2026: बाकी फ़ोन वाले काम भी बिना नेट (टॉर्च, आवाज़, ऐप खोलो, अलार्म, टाइमर, कॉल, SMS, होम / बैक, स्क्रीनशॉट…) -
+        // DK का नाम पहले बोला हो, या आवाज़ मालिक की पक्की हो. इंटरनेट वाले काम (YouTube, Maps, सर्च, शॉपिंग) नहीं.
+        val cmd = rest ?: if (ownerOk) t else return false
+        return localCmd(cmd, names, fg)
+    }
+
+    /** ये काम बिना इंटरनेट नहीं होते - ऑफलाइन में इन्हें नहीं चलाते (वरना ऐप खुलकर "नेट नहीं" दिखाता) */
+    val NEEDS_NET = setOf("youtube_play", "youtube_search", "browser_search", "shop_search", "map_search", "directions", "navigate", "distance")
+
+    /** पूरी बात फ़ोन पर ही (LocalRouter) हो सकती है और उसमें नेट नहीं चाहिए? */
+    fun localCmd(text: String, names: List<String>, fg: String = ""): Boolean {
+        if (text.isBlank()) return false
+        if (PhoneLockVoice.instant(text, names, needName = false, c = PhoneLockVoice.cfg) != null) return true
+        val q = try { LocalRouter.route(text, names, fg) } catch (_: Exception) { null } ?: return false
+        val type = q.action.optString("type")
+        // "गाना चलाओ" = आम तौर पर YouTube वाला गाना (नेट) - अंदाज़े से कोई भी प्लेयर नहीं चलाते; रोकना / अगला चलेगा
+        if (type == "media" && q.action.optString("key") == "play") return false
+        return type !in NEEDS_NET
     }
 
     /**

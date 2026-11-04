@@ -58,6 +58,12 @@ object SocialAgent {
             val want = when (req.action) { SocialAction.POST_VIDEO, SocialAction.POST_REEL -> true; SocialAction.POST_PHOTO -> false; else -> null }
             MediaPolicy.resolve(req.media, SharedMedia.all(svc), want)
                 ?: return err("media_not_allowed", "DK के पास कोई ${if (want == true) "वीडियो" else "फोटो"} नहीं है। गैलरी में फ़ाइल खोलकर Share -> DK दबाइए, फिर दोबारा कहिए।")
+        } else if (req.action == SocialAction.SEND_FILE) {
+            // नवंबर 2026: बोली गई फ़ाइल फ़ोन में ढूँढो (DK की बनाई / गैलरी / Download…)
+            when (val f = withContext(Dispatchers.IO) { FileFinder.find(svc, req.file) }) {
+                is FileFinder.Result.Found -> f.item
+                is FileFinder.Result.Ask -> return err(f.code, f.msg)
+            }
         } else null
         // WhatsApp: नाम -> नंबर
         var phone: String? = null; var who = req.contact
@@ -67,7 +73,7 @@ object SocialAgent {
                 is Contact.Ask -> return err(c.code, c.msg)
             }
         }
-        autoSend = !ownConfirm && req.platform == Platform.WHATSAPP && req.action == SocialAction.SEND_MESSAGE && Prefs.waAutoSend(svc)
+        autoSend = !ownConfirm && req.platform == Platform.WHATSAPP && (req.action == SocialAction.SEND_MESSAGE || req.action == SocialAction.SEND_FILE) && Prefs.waAutoSend(svc)
         val id = "social-" + (++seq) + "-" + (System.currentTimeMillis() % 100000)
         val task = SocialPlanner.plan(id, req, media, phone, who)
         val driver = AccessibilityScreenDriver(svc)
@@ -144,7 +150,12 @@ object SocialAgent {
                     val base = Intent(Intent.ACTION_SEND).setType(o.mime).putExtra(Intent.EXTRA_STREAM, uri)
                         .apply { if (o.text.isNotEmpty()) putExtra(Intent.EXTRA_TEXT, o.text) }
                         .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK)
-                    svc.startActivity(pickTarget(svc, base, o.pkg, o.targetHints)); true
+                    if (o.jid.isNotEmpty()) {
+                        // WhatsApp: सीधे उसी की चैट (jid) - चुनने वाली सूची नहीं
+                        val pkg = if (installedPkg(svc, o.pkg)) o.pkg else "com.whatsapp.w4b"
+                        svc.startActivity(Intent(base).setPackage(pkg).putExtra("jid", o.jid))
+                    } else svc.startActivity(pickTarget(svc, base, o.pkg, o.targetHints))
+                    true
                 }
                 is OpenSpec.ShareText -> {
                     val base = Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, o.text).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)

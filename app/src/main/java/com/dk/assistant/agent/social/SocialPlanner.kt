@@ -57,6 +57,15 @@ object SocialPlanner {
                         OpenSpec.Url("https://wa.me/$phoneDigits?text=" + enc(r.message), r.platform.pkg),
                         listOf(PlanStep.Final(S.WA_SEND, listOf(r.message.trim().take(24)), S.WA_SEND, requireBoth = true)),
                         "$contactName को WhatsApp पर यह भेज दूँ: \"${short(r.message)}\"?")
+                    // नवंबर 2026: फ़ाइल सीधे उसी की चैट में (jid) - WhatsApp की Send स्क्रीन पर आख़िरी "भेजें" पूछकर
+                    SocialAction.SEND_FILE -> {
+                        val m = media!!
+                        val label = m.name.ifBlank { "फ़ाइल" }
+                        SocialTask(id, r.platform, r.action, r.mode,
+                            OpenSpec.ShareMedia(r.platform.pkg, m.mime, m.uri, emptyList(), r.message, jid = "$phoneDigits@s.whatsapp.net"),
+                            listOf(PlanStep.Final(S.WA_SEND, listOfNotNull(m.name.substringBeforeLast('.').take(24).takeIf { it.length >= 3 }), S.WA_SEND)),
+                            "$contactName को WhatsApp पर यह फ़ाइल भेज दूँ: \"${short(label)}\"?")
+                    }
                     SocialAction.READ_CHAT -> SocialTask(id, r.platform, r.action, r.mode, chat!!, listOf(PlanStep.Read(25)), "")
                     SocialAction.MARK_READ -> SocialTask(id, r.platform, r.action, r.mode, chat!!, listOf(PlanStep.Read(1)), "")
                     SocialAction.SEARCH_CHAT -> SocialTask(id, r.platform, r.action, r.mode, OpenSpec.Launch(r.platform.pkg),
