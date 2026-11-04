@@ -43,7 +43,7 @@ object LiveNativeEngine : VoiceEngine {
     override fun setVoice(c: Context, v: String) { Prefs.edit(c) { putString("gemini_voice", v) }; VoiceEngines.liveChanged() }
 
     /** v3.69: Live सीधी आवाज़ का अपना "भावना / स्टाइल" - Live सत्र के system instruction में जुड़ता है (GeminiLive.setupJson) */
-    fun style(c: Context): String = VoiceEngines.sp(c).getString("live_native_style", "") ?: ""
+    fun style(c: Context): String = if (Prefs.bool(c, com.dk.assistant.JarvisMode.PREF, false)) com.dk.assistant.JarvisMode.VOICE_STYLE else VoiceEngines.sp(c).getString("live_native_style", "") ?: ""
 
     /** system instruction में जोड़ने लायक पंक्ति (खाली स्टाइल = कुछ नहीं) */
     fun styleNote(style: String): String {

@@ -346,7 +346,7 @@ object Prefs {
     /** v3.74: फ़ोन की आवाज़ (google) बंद - हमेशा "gemini" */
     @Suppress("UNUSED_PARAMETER")
     fun voiceEngine(c: Context) = "gemini"
-    fun voiceStyle(c: Context) = sp(c).getString("voice_style", "natural") ?: "natural"
+    fun voiceStyle(c: Context) = if (JarvisMode.on(c)) JarvisMode.STYLE_ID else sp(c).getString("voice_style", "natural") ?: "natural"
     fun googleVoice(c: Context) = sp(c).getString("google_voice", "") ?: ""
     /** v3.59: किस मॉडल पर कौन-सी Live चीज़ (आवाज़/hi-IN/affective) setup तोड़ती है - अगली बार उसके बिना */
     fun liveExtrasOff(c: Context): Set<String> = LiveVoice.parseOff(sp(c).getString(LiveVoice.OFF_KEY, ""))
@@ -357,6 +357,8 @@ object Prefs {
         // v3.59: कुछ न चुना हो तो हमेशा Sulafat (LiveVoice) - पुरुष आवाज़ चुनी हो तो पुरुष सूची की पहली
         // v4.3 (मालिक): एक बार सबकी आवाज़ Sulafat पर (Live + Gemini TTS एक जैसी). बाद में Settings से बदली तो वही रहेगी
         if (!sp(c).getBoolean("voice_sulafat_v43", false)) edit(c) { putString("gemini_voice", SpeakingStyle.VOICE); putBoolean("voice_sulafat_v43", true) }
+        // नवंबर 2026: JARVIS मोड = उसकी अपनी पुरुष आवाज़ (DK की चुनी आवाज़ वैसी ही सेव रहती है)
+        if (JarvisMode.on(c)) return JarvisMode.voice(c)
         return LiveVoice.pick(sp(c).getString("gemini_voice", "") ?: "", voiceGender(c))
     }
 

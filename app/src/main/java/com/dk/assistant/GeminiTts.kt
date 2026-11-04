@@ -183,7 +183,7 @@ object GeminiTts {
     }
 
     /** v3.76: हर स्टाइल में DK का शांत, मध्यम-ठहराव वाला बोलना (CalmPersona) */
-    fun styleText(s: String) = SpeakingStyle.tts(CalmPersona.ttsStyle(baseStyle(s)))   // v4.3: मालिक का बोलने का तरीका
+    fun styleText(s: String) = if (s == JarvisMode.STYLE_ID) JarvisMode.VOICE_STYLE else SpeakingStyle.tts(CalmPersona.ttsStyle(baseStyle(s)))   // v4.3: मालिक का बोलने का तरीका
 
     private fun baseStyle(s: String) = when (s) {
         "cheerful" -> "cheerful, happy and energetic natural Hindi"

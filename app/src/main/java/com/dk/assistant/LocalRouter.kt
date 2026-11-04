@@ -100,6 +100,8 @@ object LocalRouter {
         OfflineCommands.confirm(raw, System.currentTimeMillis())?.let { return Split(it, null) }
         // नवंबर 2026: Settings → फ़ोन लॉक / अनलॉक - मालिक के अपने वाक्य (DK पहले से बुलाया हुआ, इसलिए नाम ज़रूरी नहीं)
         PhoneLockVoice.match(raw, needName = false)?.let { return Split(PhoneLockVoice.quick(it), null) }
+        // नवंबर 2026 (मालिक): "जार्विस मोड ऑन करो" / "डीके मोड ऑन करो" - तुरंत, बिना AI
+        JarvisMode.parse(raw)?.let { return Split(JarvisMode.quick(it), null) }
         // नवंबर 2026: "DK किधर हो" / "कहाँ हो तुम" - फ़ोन 60 s पूरी आवाज़ में बजे (बजते समय "मिल गया" = बंद)
         if (FindPhone.active && com.dk.assistant.voice.VoiceCmdMatch.foundText(raw)) return Split(QuickCommands.Quick(JSONObject().put("type", "find_phone_stop"), ""), null)
         if (raw.trim().length <= 32 && com.dk.assistant.voice.VoiceCmdMatch.findText(raw)) return Split(QuickCommands.Quick(JSONObject().put("type", "find_phone"), ""), null)
