@@ -39,6 +39,13 @@ class OfflineTextCmdTest {
         assertFalse(OfflineListen.keepText("", names, false, lock))
     }
 
+    @Test fun findPhoneWithNameFirst() {
+        assertTrue(OfflineListen.findRest("डीके कहाँ हो", names) == "कहाँ हो")
+        assertTrue(OfflineListen.findRest("हे डीके किधर हो", names) == "किधर हो")
+        assertTrue(OfflineListen.findRest("DK नहीं दिख रहे हो", names) == "नहीं दिख रहे हो")
+        assertTrue(OfflineListen.findRest("तुम कहाँ हो", names) == null)
+    }
+
     @Test fun offlineEarUsesOnDeviceTextWithoutOwnMic() {
         val s = src("DKAccessibilityOffline.kt")
         assertTrue(s.contains("OfflineStt.transcribe(this, pcm)"))

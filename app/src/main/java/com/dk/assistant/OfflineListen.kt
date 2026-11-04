@@ -33,7 +33,21 @@ object OfflineListen {
         if (PhoneLockVoice.match(t, needName = true, c = lock) != null) return true
         if (PhoneLockVoice.instant(t, names, needName = true, c = lock) == PhoneLockVoice.Act.UNLOCK) return true
         if (findActive && com.dk.assistant.voice.VoiceCmdMatch.foundText(t)) return true
-        val rest = com.dk.assistant.voice.WakeMatch.strictWake(t, names) ?: return false
+        val rest = findRest(t, names) ?: return false
         return com.dk.assistant.voice.VoiceCmdMatch.findText(rest)
+    }
+
+    /**
+     * "किधर हो" वाली बात में नाम: "हे DK किधर हो" (strictWake) या सीधे नाम से शुरू - "डीके कहाँ हो", "DK नहीं दिख रहे हो".
+     * खोया फ़ोन ढूँढते समय "हे" कोई नहीं बोलता; आगे findText का पक्का वाक्य भी चाहिए, इसलिए यूँ ही नहीं बजेगा.
+     */
+    fun findRest(text: String, names: List<String>): String? {
+        com.dk.assistant.voice.WakeMatch.strictWake(text, names)?.let { return it }
+        val t = text.lowercase().replace(Regex("[,.!?।॥:;\"'()\\[\\]{}-]"), " ").split(Regex("\\s+")).filter { it.isNotBlank() }
+        if (t.isEmpty()) return null
+        val forms = com.dk.assistant.voice.WakeMatch.DK_FORMS +
+            names.map { n -> n.lowercase().split(Regex("\\s+")).filter { it.isNotBlank() } }.filter { it.isNotEmpty() }
+        val f = forms.sortedByDescending { it.size }.firstOrNull { it.size <= t.size && t.subList(0, it.size) == it } ?: return null
+        return t.drop(f.size).joinToString(" ")
     }
 }
