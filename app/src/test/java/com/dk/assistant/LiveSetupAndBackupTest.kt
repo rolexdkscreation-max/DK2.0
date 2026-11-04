@@ -1,6 +1,6 @@
 package com.dk.assistant
 
-import com.dk.assistant.voice.engine.WorkerWhy
+import com.dk.assistant.voice.engine.GeminiTtsDirect
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -77,13 +77,19 @@ class LiveSetupAndBackupTest {
         assertTrue(g.contains("lastRaceFail = it"))
     }
 
-    @Test fun workerReasons() {
-        assertTrue(WorkerWhy.http(401, "unauthorized").contains("Worker token"))
-        assertTrue(WorkerWhy.http(500, "GEMINI_API_KEY secret नहीं").contains("GEMINI_API_KEY"))
-        assertTrue(WorkerWhy.http(502, "{}").contains("मॉडल"))
-        assertTrue(WorkerWhy.http(404, "").contains("पता गलत"))
-        assertTrue(WorkerWhy.network("timeout").contains("वर्कर जवाब नहीं दे रहा"))
-        assertTrue(WorkerWhy.network("Unable to resolve host x").contains("पता नहीं मिला"))
+    /** नवंबर 2026: Worker हटा (मालिक) - वही साफ़ कारण अब सीधे Gemini TTS के लिए (पहले WorkerWhy) */
+    @Test fun ttsReasons() {
+        assertTrue(GeminiTtsDirect.why(401, "").contains("key गलत"))
+        assertTrue(GeminiTtsDirect.why(400, "API key not valid. Please pass a valid API key.").contains("key गलत"))
+        assertTrue(GeminiTtsDirect.why(429, "{}").contains("लिमिट"))
+        assertTrue(GeminiTtsDirect.why(404, "").contains("मॉडल"))
+        assertTrue(GeminiTtsDirect.why(503, "").contains("server 503"))
+        assertTrue(GeminiTtsDirect.network("timeout").contains("समय सीमा"))
+        assertTrue(GeminiTtsDirect.network("Unable to resolve host x").contains("इंटरनेट"))
+        assertEquals(GeminiTtsDirect.Next.KEY, GeminiTtsDirect.next(403))
+        assertEquals(GeminiTtsDirect.Next.KEY, GeminiTtsDirect.next(400, "API key not valid"))
+        for (c in listOf(400, 404, 429, 500, 502)) assertEquals("$c", GeminiTtsDirect.Next.MODEL, GeminiTtsDirect.next(c))
+        assertEquals(GeminiTtsDirect.Next.STOP, GeminiTtsDirect.next(418))
     }
 
     @Test fun source_lightModeGone_backupWired() {
@@ -106,10 +112,15 @@ class LiveSetupAndBackupTest {
         assertFalse(src("voice/engine/GeminiTtsEngine.kt").contains(".readTimeout(8, TimeUnit.SECONDS)"))
     }
 
-    @Test fun worker_ttsRequestMatchesDocs() {
-        val w = listOf(File("worker/dk-brain/src/index.js"), File("../worker/dk-brain/src/index.js")).first { it.exists() }.readText()
-        assertTrue(w.contains("\"Api-Revision\": API_REVISION") && w.contains("const API_REVISION = \"2026-05-20\""))
-        assertTrue(w.contains("speech_config: [{ voice }]"))
-        assertTrue(w.contains("delta.type === \"audio\""))
+    /** नवंबर 2026: Worker वाली request अब ऐप से सीधे - वही API revision, वही speech_config, वही audio delta */
+    @Test fun direct_ttsRequestMatchesDocs() {
+        val e = src("voice/engine/GeminiTtsEngine.kt")
+        assertTrue(e.contains(".header(\"Api-Revision\", GeminiTtsDirect.API_REVISION)"))
+        assertEquals("2026-05-20", GeminiTtsDirect.API_REVISION)
+        val b = org.json.JSONObject(GeminiTtsDirect.body("gemini-3.8-flash-tts", "नमस्ते", "Kore", "कोमल"))
+        assertEquals("Kore", b.getJSONObject("generation_config").getJSONArray("speech_config").getJSONObject(0).getString("voice"))
+        assertTrue(b.getBoolean("stream"))
+        val line = "data: {\"event_type\":\"step.delta\",\"delta\":{\"type\":\"audio\",\"data\":\"AQIDBA==\"}}"
+        assertEquals(listOf<Byte>(1, 2, 3, 4), GeminiTtsDirect.pcmFromLine(line)!!.toList())
     }
 }

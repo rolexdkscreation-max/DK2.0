@@ -10,8 +10,6 @@ import java.io.File
 class VoiceGreetLocationTest {
     private fun src(name: String): String = listOf(File("src/main/java/com/dk/assistant/$name"), File("app/src/main/java/com/dk/assistant/$name"))
         .first { it.exists() }.readText()
-    private fun worker(): String = listOf(File("../worker/dk-brain/src/index.js"), File("worker/dk-brain/src/index.js"))
-        .first { it.exists() }.readText()
 
     private val M = ReturnGreet.MIN; private val H = ReturnGreet.HOUR; private val D = ReturnGreet.DAY
 
@@ -21,7 +19,10 @@ class VoiceGreetLocationTest {
         assertEquals("Sulafat", LiveVoice.DEFAULT)
         assertTrue(src("voice/engine/GeminiTtsEngine.kt").contains("com.dk.assistant.Prefs.geminiVoice(c)"))
         assertTrue(src("Prefs.kt").contains("putString(\"gemini_voice\", SpeakingStyle.VOICE)"))
-        assertTrue(worker().contains("VOICES.has(j.voice) ? j.voice : \"Sulafat\""))
+        // नवंबर 2026: Worker हटा - अनजानी आवाज़ = Sulafat, अब ऐप में ही (सीधा Gemini TTS)
+        assertEquals("Sulafat", com.dk.assistant.voice.engine.GeminiTtsDirect.voiceOrDefault("NoSuchVoice"))
+        assertEquals("Sulafat", com.dk.assistant.voice.engine.GeminiTtsDirect.voiceOrDefault(null))
+        assertEquals("Kore", com.dk.assistant.voice.engine.GeminiTtsDirect.voiceOrDefault("Kore"))
     }
 
     @Test fun ttsStyleKeepsOwnerRulesAndFitsWorker() {

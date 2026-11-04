@@ -142,7 +142,7 @@ class VoiceEngineCard private constructor(private val a: Activity, private val d
 
         // Gemini TTS का मॉडल
         label(box, "Gemini TTS का मॉडल (आवाज़ बनाने वाला)")
-        radioList(box, listOf("" to "अपने-आप (Worker जो चले)") + GeminiTtsEngine.MODELS.map { it to it }, GeminiTtsEngine.model(a)) { m ->
+        radioList(box, listOf("" to "अपने-आप (जो चले)") + GeminiTtsEngine.MODELS.map { it to it }, GeminiTtsEngine.model(a)) { m ->
             GeminiTtsEngine.setModel(a, m); refreshNow()
         }
         hint(box, "Gemini TTS चालू हो तो अगले वाक्य से ही इसी मॉडल की आवाज़।")

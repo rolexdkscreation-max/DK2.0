@@ -12,7 +12,7 @@ object SpeakingStyle {
     /** दोनों जगह एक ही आवाज़ */
     const val VOICE = "Sulafat"
 
-    /** Worker (dk-brain) style की सीमा (`slice(0, 600)`) से थोड़ा कम */
+    /** Gemini TTS style की सीमा ([com.dk.assistant.voice.engine.GeminiTtsDirect.MAX_STYLE] = 600) से थोड़ा कम */
     const val TTS_MAX = 590
 
     /** मालिक का लिखा "बोलने का तरीका" (शब्दशः) */

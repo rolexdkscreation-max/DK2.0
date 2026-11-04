@@ -34,7 +34,7 @@ interface VoiceEngine {
     fun voiceGroup(v: String): String? = null
     fun setVoice(c: Context, v: String)
 
-    /** null = चल सकता है; नहीं तो वजह (जैसे "Worker का पता नहीं डाला") */
+    /** null = चल सकता है; नहीं तो वजह (जैसे "DK लाइव की Gemini key नहीं डाली") */
     fun notReady(c: Context): String? = null
 
     /** कनेक्शन पहले से खोलकर रखो (गर्म) - हर बार नया न खुले. सस्ता होना चाहिए (बार-बार बुलाया जाता है) */
