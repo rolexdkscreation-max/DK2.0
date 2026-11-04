@@ -44,7 +44,7 @@ internal fun GeminiLive.startPlayer() {
             }
             // v5.1: छोटा jitter buffer - जवाब के बीच नेट रुका और आवाज़ खत्म हो गई = ~250ms जमा करके फिर बजाओ
             // (टूटी-टूटी आवाज़ नहीं). जवाब का पहला टुकड़ा कभी नहीं रुकता - शुरू में कोई देरी नहीं
-            val b = if (LiveRace.Jitter.underrun(turnPlayedBytes > 0, turnActive, System.currentTimeMillis(), playEnd)) {
+            val bRaw = if (LiveRace.Jitter.underrun(turnPlayedBytes > 0, turnActive, System.currentTimeMillis(), playEnd)) {
                 val g0 = gen; val st = System.currentTimeMillis()
                 val parts = arrayListOf(b0); var ms = b0.size * 1000 / (OUT_RATE * 2)
                 while (g0 == gen && LiveRace.Jitter.keepFilling(ms, System.currentTimeMillis() - st)) {
@@ -55,6 +55,8 @@ internal fun GeminiLive.startPlayer() {
                 if (parts.size == 1) b0 else ByteArray(parts.sumOf { it.size }).also { out ->
                     var o = 0; for (p in parts) { System.arraycopy(p, 0, out, o, p.size); o += p.size } }
             } else b0
+            // नवंबर 2026 (मालिक): JARVIS मोड = JARVIS वाली मशीनी परत (JarvisFx) - बजने से ठीक पहले
+            val b = if (JarvisFx.enabled(svc)) JarvisFx.process(bRaw) else bRaw
             val g = gen
             // pehla tukda: haalat PEHLE "Speaking" (UI turant), awaaz likhne ke baad baaki kaam
             val first = !speakingSet || DKState.mode != Mode.SPEAKING
@@ -102,6 +104,7 @@ internal fun GeminiLive.flushPlayback() {
     startHold.clear()                            // नवंबर 2026: आपके बोलते समय रुका पुराना जवाब भी
     playQ.clear()
     playEnd = 0L
+    JarvisFx.reset()                             // टोका = पुरानी JARVIS गूँज भी नहीं
     track?.let { try { it.pause(); it.flush(); it.play() } catch (_: Exception) {} }
     pipeStop()                                   // v3.68: आवाज़ इंजन की कतार + चलती आवाज़ भी तुरंत
     dropLiveKeep()                               // नवंबर 2026: टोका = रखी हुई Live आवाज़ भी नहीं बजेगी
