@@ -2,11 +2,9 @@ package com.dk.assistant
 
 import android.widget.LinearLayout
 import android.widget.TextView
-import androidx.lifecycle.lifecycleScope
 import com.dk.assistant.voice.VoiceCmdMatch
 import com.dk.assistant.voice.VoiceCmdMatch.Cmd
 import com.dk.assistant.voice.VoiceCmds
-import kotlinx.coroutines.launch
 
 /**
  * नवंबर 2026 (मालिक): Settings → फ़ोन लॉक / अनलॉक → "बिना इंटरनेट वाली आवाज़-कमांड"।
@@ -46,8 +44,7 @@ internal fun SettingsActivity.enrollVoiceCmd(cmd: Cmd, done: () -> Unit) {
     val OV = com.dk.assistant.voice.OwnerVoice
     if (!Setup.hasMic(this)) { requestPermissions(arrayOf(android.Manifest.permission.RECORD_AUDIO), 12); return }
     val (dlg, tv) = ownerDialog("आवाज़-कमांड सिखाओ")
-    ownerJob?.cancel()
-    ownerJob = lifecycleScope.launch {
+    ownerRun {
         try {
             if (cmd.ownerOnly && OV.supported && !OV.hasModel(this@enrollVoiceCmd)) {
                 tv.text = UiLang.s("पहचान वाला मॉडल डाउनलोड हो रहा है…")
@@ -90,10 +87,10 @@ internal fun SettingsActivity.enrollVoiceCmd(cmd: Cmd, done: () -> Unit) {
                     kotlinx.coroutines.delay(600)
                 }
             }
-            if (takes.size < VoiceCmdMatch.TAKES) return@launch
+            if (takes.size < VoiceCmdMatch.TAKES) return@ownerRun
             tv.text = UiLang.s("सीख रहा हूँ…")
             val (err, warn) = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) { VoiceCmds.save(this@enrollVoiceCmd, cmd, takes) }
-            if (err != null) { tv.text = UiLang.s(err); return@launch }
+            if (err != null) { tv.text = UiLang.s(err); return@ownerRun }
             VoiceCmds.setOn(this@enrollVoiceCmd, cmd, true)
             Setup.startKeepAlive(this@enrollVoiceCmd)
             DKAccessibilityService.instance?.startWakeLoopIfEnabled()
@@ -107,5 +104,5 @@ internal fun SettingsActivity.enrollVoiceCmd(cmd: Cmd, done: () -> Unit) {
         } catch (e: kotlinx.coroutines.CancellationException) { throw e
         } catch (e: Exception) { tv.text = UiLang.s("गड़बड़ हुई") + " (${e.javaClass.simpleName})" }
     }
-    dlg.setOnDismissListener { ownerJob?.cancel() }
+    dlg.setOnDismissListener { ownerCancel() }
 }

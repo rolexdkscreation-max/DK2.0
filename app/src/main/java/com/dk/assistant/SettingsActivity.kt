@@ -222,7 +222,12 @@ class SettingsActivity : AppCompatActivity() {
     }
 
     // v4.5: "सिर्फ़ मेरी आवाज़ सुनो" option ऐप से हटाया - मालिक की माँग. ownerJob/ownerDialog "Hey DK सिखाओ" में चलते हैं.
-    internal var ownerJob: kotlinx.coroutines.Job? = null
+    private var ownerJob: kotlinx.coroutines.Job? = null
+    /** नवंबर 2026: आवाज़-कमांड सिखाना (SettingsVoiceCmds) भी इसी एक job/dialog से - दो रिकॉर्डिंग साथ न चलें */
+    internal fun ownerRun(block: suspend kotlinx.coroutines.CoroutineScope.() -> Unit) {
+        ownerJob?.cancel(); ownerJob = lifecycleScope.launch(block = block)
+    }
+    internal fun ownerCancel() { ownerJob?.cancel() }
 
     internal fun enrollHeyDk(done: () -> Unit) {
         val HD = com.dk.assistant.voice.HeyDk
