@@ -1208,3 +1208,26 @@ Live / Text हिसाब	Live / Text tracking
 Gemini Live, text मोड (बैकअप) और पीछे की सेहत-जाँच - हर एक की कॉल, ठीक, गलती अलग	Gemini Live, text mode (backup) and background health-check - calls, successes and errors tracked separately
 DK लाइव (Direct Gemini Live Voice, डिफ़ॉल्ट) • Gemini TTS (बैकअप) — एक समय में एक	DK Live (Direct Gemini Live Voice, default) • Gemini TTS (backup) — one at a time
 बोलने वाला इंजन (Live • Gemini TTS) • सुनना	Speaking engine (Live • Gemini TTS) • Listening
+बिना इंटरनेट वाली आवाज़-कमांड	Offline voice commands
+अपनी आवाज़ में सिखाएँ — फ़ोन दूर पड़ा हो तब भी, बिना AI / API	Teach them in your own voice — works even with the phone far away, no AI / API
+⚠ पहले Settings → Accessibility में DK चालू करें — उसके बिना ये कमांड नहीं चलेंगी।	⚠ First turn on DK in Settings → Accessibility — these commands will not work without it.
+हर वाक्य 5 बार आम आवाज़ में बोलें। लॉक / अनलॉक सिर्फ़ आपकी आवाज़ पर होगा (अनलॉक सबसे कड़ी जाँच से)। "DK किधर हो" कोई भी पूछे तो फ़ोन 60 सेकंड पूरी आवाज़ में बजेगा, फ्लैशलाइट टिमटिमाएगी — छूने, कोई बटन दबाने या "हे DK मिल गया" बोलने पर बंद।	Say each sentence 5 times in your normal voice. Lock / unlock work only for your voice (unlock uses the strictest check). If anyone asks "DK where are you", the phone rings at full volume for 60 seconds with a blinking flashlight — touch, press any button or say "Hey DK found it" to stop.
+ज़रूरी: आवाज़ → "Hey DK" से बुलाना (wake word) चालू रहे — DK तभी पीछे सुनता है। Live चालू हो तो भी पहचान पहले फ़ोन पर ही होती है।	Required: keep Voice → "Hey DK" wake word on — only then DK listens in the background. Even with Live on, recognition happens on the phone first.
+सिखाओ	Teach
+चालू	On
+अभी बजाकर देखें	Test ring now
+आवाज़-कमांड सिखाओ	Teach voice command
+आम आवाज़ में, एक ही तरह बोलिए:	Speak in your normal voice, the same way each time:
+बहुत लंबा हो गया — सिर्फ़ ऊपर वाला वाक्य बोलिए	Too long — say only the sentence above
+आवाज़ नहीं पकड़ी या बहुत छोटा — पूरा वाक्य साफ़ बोलिए	Voice not caught or too short — say the full sentence clearly
+हो गया — अब बोलकर देखिए।	Done — now try saying it.
+मैं इधर हूँ बॉस	I am here, boss
+फ़ोन लॉक	Phone lock
+फ़ोन अनलॉक	Phone unlock
+DK किधर हो (फ़ोन बजाओ)	DK where are you (ring phone)
+मिल गया (बजना बंद)	Found it (stop ringing)
+अभी नहीं सिखाया	Not taught yet
+सिखाया है • बंद	Taught • off
+⚠ सिखाया है, पर आवाज़-पहचान नहीं - दोबारा सिखाइए (मॉडल डाउनलोड होगा)	⚠ Taught, but no voice recognition - teach again (the model will download)
+✓ सिखाया है • चालू • सिर्फ़ आपकी आवाज़	✓ Taught • on • only your voice
+✓ सिखाया है • चालू • कोई भी बोले	✓ Taught • on • anyone can say it

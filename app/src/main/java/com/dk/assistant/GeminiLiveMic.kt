@@ -23,6 +23,7 @@ import kotlin.math.sqrt
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
 
 // GeminiLive का हिस्सा: माइक: खोलना और लगातार सुनने वाला loop (40ms के टुकड़े Gemini तक).
 // यह code पहले GeminiLive.kt में था; सिर्फ़ जगह बदली है, व्यवहार वही (extension functions, वही state GeminiLive में)।
@@ -62,6 +63,8 @@ internal suspend fun GeminiLive.micLoop() = coroutineScope {
         val zeros = ByteArray(CHUNK_SAMPLES * 2)
         // DK bolte samay (gate mode) ki pichhli 320ms asli awaaz - user ki pakdi awaaz ka shuru ka hissa na kate
         val preroll = ArrayDeque<ByteArray>()
+        // नवंबर 2026: पूरी बोली बात - बिना इंटरनेट वाली आवाज़-कमांड (लॉक / अनलॉक / किधर हो) के लिए, Live से अलग
+        val cmdBuf = java.io.ByteArrayOutputStream()
         var last = 0L; var zeroRun = 0; var errRun = 0
         loudMs = 0L
         while (isActive && !stopped) {
@@ -292,6 +295,7 @@ internal suspend fun GeminiLive.micLoop() = coroutineScope {
                     log("पीछे की आवाज़ वापस (3s से सब शांत)")
                 }
                 if (ev == TurnDetector.Event.SPEECH_START) {
+                    cmdBuf.reset(); preroll.forEach { cmdBuf.write(it) }
                     // v3.66: नई बात - मालिक की पहचान शुरू. DK सोच/काम कर रहा हो तो पहचान तक आवाज़ रोको
                     ownerGen++; ownerResult = null; ownerHold.clear()
                     if (ownerOn) owner.start(preroll) else owner.finish()
@@ -301,6 +305,8 @@ internal suspend fun GeminiLive.micLoop() = coroutineScope {
                 }
                 applyOwnerResult(now)
                 val other = owner.active && owner.verdict == com.dk.assistant.voice.OwnerGate.Verdict.OTHER
+                // "किधर हो" किसी की भी आवाज़ पर - इसलिए मालिक-जाँच (other) से पहले, असली आवाज़
+                if ((turnDet.inSpeech || ev == TurnDetector.Event.SPEECH_END) && cmdBuf.size() < IN_RATE * 2 * 7) cmdBuf.write(chunk)
                 // bolte samay + baat khatam hone tak (aakhri 500ms chup bhi) asli awaaz; warna khaamoshi
                 // (khaamoshi 1s tak jaati hai, phir audioStreamEnd aur upload band - SilenceStreamGate)
                 if ((turnDet.inSpeech || ev == TurnDetector.Event.SPEECH_END) && !other) {
@@ -331,6 +337,7 @@ internal suspend fun GeminiLive.micLoop() = coroutineScope {
                         if (DKState.mode != Mode.WORKING) setMode(Mode.LISTENING)
                     }
                     TurnDetector.Event.SPEECH_END -> {
+                        liveVoiceCmd(cmdBuf.toByteArray()); cmdBuf.reset()
                         learnNear()
                         startHold.userEnded(now, BargeGate.realWords(caption?.text().orEmpty()))
                         if (owner.active) ownerEnd(now)
@@ -346,5 +353,22 @@ internal suspend fun GeminiLive.micLoop() = coroutineScope {
         try { r.release() } catch (_: Exception) {}
         try { if (ready) ws?.tx("{\"realtimeInput\":{\"audioStreamEnd\":true}}") } catch (_: Exception) {}
         DKState.level = 0f
+    }
+}
+
+/**
+ * नवंबर 2026 (मालिक): Live चालू हो तब भी लॉक / अनलॉक / "किधर हो" फ़ोन पर ही ([com.dk.assistant.voice.VoiceCmds]) -
+ * Gemini के जवाब का इंतज़ार नहीं. मिलान होते ही इस बात का Live वाला जवाब बंद (muteTurn), काम फ़ोन पर.
+ */
+internal fun GeminiLive.liveVoiceCmd(pcm: ByteArray) {
+    if (pcm.size < IN_RATE * 2 / 2 || !com.dk.assistant.voice.VoiceCmds.anyOn(svc)) return
+    svc.scope.launch(kotlinx.coroutines.Dispatchers.Default) {
+        val hit = com.dk.assistant.voice.VoiceCmds.match(svc, pcm) ?: return@launch
+        kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
+            if (hit.cmd == com.dk.assistant.voice.VoiceCmdMatch.Cmd.FOUND && !FindPhone.active) return@withContext
+            muteTurn = true; muteAt = System.currentTimeMillis()
+            log("आवाज़-कमांड फ़ोन पर (Live का जवाब बंद): ${hit.cmd.hi}")
+            svc.runVoiceCmd(hit, "Live")
+        }
     }
 }

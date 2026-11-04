@@ -507,6 +507,14 @@ class DKAccessibilityService : AccessibilityService() {
             delay(400); return null
         }
         micFails = 0
+        // नवंबर 2026: बिना इंटरनेट वाली आवाज़-कमांड पहले (STT से पहले; "किधर हो" किसी की भी आवाज़ पर - इसलिए मालिक-जाँच से पहले)
+        if (com.dk.assistant.voice.VoiceCmds.anyOn(this)) {
+            val vc = withContext(Dispatchers.Default) { com.dk.assistant.voice.VoiceCmds.match(this@DKAccessibilityService, pcm) }
+            if (vc != null && runVoiceCmd(vc, "सुनना")) {
+                earShowing = false; earCaption?.closeUtterance(); DKState.user(""); DKState.set(Mode.IDLE)
+                return null
+            }
+        }
         // v3.66: सिर्फ़ मालिक की आवाज़ - किसी और की बात STT/जवाब तक नहीं (फ़ोन पर ही, ~50 ms)
         if (!ownerHeard(pcm)) {
             earShowing = false
@@ -705,6 +713,8 @@ class DKAccessibilityService : AccessibilityService() {
                             calls.ringing || DKMic.dictating || Prefs.micUserOff(me) || !Prefs.heyDkOn(me) || !Prefs.wakeMode(me)
                     }
                     if (hit == null) { delay(if (calls.ringing || calls.inCall) 800 else 200); continue }
+                    // नवंबर 2026: लॉक / अनलॉक / किधर हो - फ़ोन पर ही पहचाना (इंटरनेट / STT / Live नहीं)
+                    if (hit.cmd != null) { runVoiceCmd(hit.cmd, "Hey DK"); continue }
                     agent.heardAt = System.currentTimeMillis()
                     Ducker.duck(me, "Hey DK")
                     var cmd = ""
@@ -783,6 +793,14 @@ class DKAccessibilityService : AccessibilityService() {
                 if (lockAct != null) {
                     DKState.user(heard); DKLog.d("फ़ोन लॉक: आवाज़ से ${lockAct.type}")
                     agent.runQuick(PhoneLockVoice.quick(lockAct)); continue
+                }
+                // नवंबर 2026: "DK किधर हो" (लिखी बात से - आवाज़ वाला नमूना न सिखाया हो तब) / बजते समय "मिल गया"
+                if (FindPhone.active && com.dk.assistant.voice.VoiceCmdMatch.foundText(heard)) {
+                    DKState.user(heard); FindPhone.stop("बोला: ${heard.take(30)}"); continue
+                }
+                val findRest = com.dk.assistant.voice.WakeMatch.strictWake(heard, Prefs.wakeWords(this@DKAccessibilityService))
+                if (findRest != null && com.dk.assistant.voice.VoiceCmdMatch.findText(findRest)) {
+                    DKState.user(heard); DKState.reply(FindPhone.SAY); FindPhone.start(this@DKAccessibilityService, "बोला: ${heard.take(30)}"); continue
                 }
 
                 if (DKState.live) {
@@ -1027,6 +1045,8 @@ class DKAccessibilityService : AccessibilityService() {
                 "alarm_off" -> AlarmOff.run(this, AlarmOff.fromJson(a))
                 "distance" -> distance(a.optString("to"), a.optString("from"), a.optString("mode", "driving"))
                 "media" -> DeviceActions.media(this, a.optString("key", "play_pause"))
+                "find_phone" -> FindPhone.start(this, "कमांड")
+                "find_phone_stop" -> { FindPhone.stop("कमांड"); "ठीक है" }
                 "lock" -> if (Build.VERSION.SDK_INT >= 28) global(GLOBAL_ACTION_LOCK_SCREEN) else NativeActionEngine.lockOld()
                 "screenshot_save" -> if (Build.VERSION.SDK_INT >= 28) global(GLOBAL_ACTION_TAKE_SCREENSHOT) else "ERROR"
                 "power_menu" -> global(GLOBAL_ACTION_POWER_DIALOG)

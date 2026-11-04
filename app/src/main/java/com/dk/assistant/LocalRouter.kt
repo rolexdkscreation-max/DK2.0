@@ -100,6 +100,9 @@ object LocalRouter {
         OfflineCommands.confirm(raw, System.currentTimeMillis())?.let { return Split(it, null) }
         // नवंबर 2026: Settings → फ़ोन लॉक / अनलॉक - मालिक के अपने वाक्य (DK पहले से बुलाया हुआ, इसलिए नाम ज़रूरी नहीं)
         PhoneLockVoice.match(raw, needName = false)?.let { return Split(PhoneLockVoice.quick(it), null) }
+        // नवंबर 2026: "DK किधर हो" / "कहाँ हो तुम" - फ़ोन 60 s पूरी आवाज़ में बजे (बजते समय "मिल गया" = बंद)
+        if (FindPhone.active && com.dk.assistant.voice.VoiceCmdMatch.foundText(raw)) return Split(QuickCommands.Quick(JSONObject().put("type", "find_phone_stop"), ""), null)
+        if (raw.trim().length <= 32 && com.dk.assistant.voice.VoiceCmdMatch.findText(raw)) return Split(QuickCommands.Quick(JSONObject().put("type", "find_phone"), ""), null)
         // नवंबर 2026: "do not disturb" = एक नाम (dnd) - इसका "do not" मना करना नहीं
         val t0 = NativeCommands.dndWord(normalize(raw, wakeWords))
         // v4.1: SMS - मैसेज में "और" / "मत" हो सकता है, इसलिए टुकड़े / मना-जाँच से पहले (अपनी मना-जाँच ख़ुद)

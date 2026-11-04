@@ -319,6 +319,19 @@
             android:theme="@android:style/Theme.Translucent.NoTitleBar"
             tools:targetApi="27" />
 
+        <!-- नवंबर 2026: "Hey DK किधर हो" - लॉक स्क्रीन के ऊपर "मैं इधर हूँ बॉस", छूते ही बजना बंद -->
+        <activity
+            android:name=".FindPhoneActivity"
+            android:exported="false"
+            android:excludeFromRecents="true"
+            android:noHistory="true"
+            android:taskAffinity=""
+            android:launchMode="singleInstance"
+            android:showWhenLocked="true"
+            android:turnScreenOn="true"
+            android:theme="@android:style/Theme.Black.NoTitleBar.Fullscreen"
+            tools:targetApi="27" />
+
         <!-- Phone control: screen padhna, click, type, scroll, screenshot -->
         <service
             android:name=".DKAccessibilityService"
