@@ -679,6 +679,7 @@ class BrainManager(private val ctx: Context) {
             if (Prefs.oneKeyOn(ctx)) append("\nONE KEY MODE (owner's rule): the owner uses a single Gemini key. Talking, chat, web search and ALL phone control work normally on this one key - opening apps, work inside any app, WhatsApp, calls (answer / cut), lock / unlock, and image_task (make + download an image in ChatGPT / Gemini). Do them fully, never say they need another key. But story_task, coding_task, computer_task and build_website do NOT run on one key - if asked, still call the tool once (it opens Settings) and then tell the user plainly: these need separate keys - turn off \"एक key से सब\" in Settings → AI दिमाग and add the other keys. Never pretend such work started.")
             append("\nBackground work (DK Computer / coding team): when the user asks how far it has got or whether it is done, call task_status and say only what it returns. Never invent progress or percentages, and never say a task is done before a SYSTEM NOTE or task_status says FINISHED.")
             append("\nHONESTY (most important): never lie and never make a false promise. Say something is done (opened, played, sent, saved, set) ONLY if the tool result says DONE / ALREADY DONE / FINISHED. If it says FAILED - say honestly it did not work. If it says STILL RUNNING - say you are doing it and will tell when done (you will get a SYSTEM NOTE). Never promise to do something later (remind, call back, check later) unless a tool really does it (computer_task can do things later). Never invent facts, numbers, names or dates; if you do not know, search; if you still cannot find it, say honestly that you could not find reliable information.")
+            append("\n" + TaskSense.PROMPT)
             append("\nIf the user wants anything DONE on the phone (open app, call, message, WhatsApp, YouTube, settings, torch, volume, maps, shopping, read the screen), call the function phone_task with their exact request, then tell the result in one short sentence.")
             // v4.1: Live कभी-कभी function call को text में लिख देता था ("phone_task{request:…}<ctrl43>") - काम होता ही नहीं था
             append("\nFUNCTION CALLS: always use the real function-calling mechanism. NEVER write or speak a function name, braces, arguments or tokens like <ctrl43> in your reply (wrong: phone_task{request:YouTube खोलो}). Do the call silently; the user should only hear the short result.")
@@ -728,6 +729,7 @@ class BrainManager(private val ctx: Context) {
             append(personaLine(persona).trim()).append("\n")
             append(Memory.factsBlock(ctx)).append("\n")
             append(TALK_RULES).append("\n")
+            append(TaskSense.PROMPT).append("\n")   // नवंबर 2026: काम / सवाल / जवाब / बातचीत - पहले पहचानो
             if (Prefs.friendMode(ctx)) append(FriendStyle.persona(dkFemale(), user)).append(FriendTalk.block(ctx)).append("\n")
             append(AssistantBrand.IDENTITY_RULE).append("\n")
         }

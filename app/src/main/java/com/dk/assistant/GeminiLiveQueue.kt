@@ -161,6 +161,11 @@ internal suspend fun GeminiLive.phoneTaskOne(req: String, queued: Boolean = fals
         log("रूटर: बातचीत वाला मैसेज (नाम याद से) -> whatsapp_task")
         return it
     }
+    // नवंबर 2026 (मालिक): काम अधूरा ("कॉल करो" - किसे? "याद दिलाना" - क्या / कब?) = पहले पूछो, अंदाज़े से कुछ मत करो
+    if (!queued) TaskSense.need(req)?.let { n ->
+        log("समझ: phone_task अधूरा (${n.task}, छूटा ${n.missing}) -> पहले पूछो")
+        return TaskSense.liveNote(n)
+    }
     // v3.67: "आखिरी फोटो/स्क्रीनशॉट डिलीट करो" = सीधे फ़ोन पर; Android खुद Allow पूछता है, फिर जाँच कि सच में ट्रैश में गई
     LocalRouter.deleteMedia(req)?.let { q ->
         DKState.set(Mode.WORKING)

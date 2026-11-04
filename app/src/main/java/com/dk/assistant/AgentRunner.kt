@@ -262,7 +262,8 @@ class AgentRunner(
     /** v3.33: आवाज़ पहचान (STT) पूरी होने का समय - "सुनना पूरा -> काम" की देरी लॉग में */
     @Volatile var heardAt = 0L
 
-    private suspend fun execute(goal: String, note0: String = "") {
+    private suspend fun execute(goal0: String, note0: String = "") {
+        var goal = goal0
         var note = note0
         autoS = null; brain.override = null
         DKLog.d("Command: $goal")
@@ -270,6 +271,35 @@ class AgentRunner(
         DKState.user(goal)
         // DK AI Part 13: access key चालू नहीं = कोई काम नहीं, साफ़ संदेश (लाइसेंस सेट नहीं = पहले जैसा)
         com.dk.assistant.license.AccessKeyManager.refusalOrNull(svc)?.let { say(it); return }
+        // नवंबर 2026 (मालिक: "DK समझे कि बात काम है, सवाल है या जवाब; 'WhatsApp पर मैसेज भेजो' पर पूछे किसे और क्या भेजूँ"):
+        // पहले समझो. काम है और ज़रूरी चीज़ छूटी (किसे / क्या / कब / कौन-सा ऐप / क्या सर्च / कहाँ) = सिर्फ़ वही पूछो, जवाब भरो,
+        // सब मिल गया = पूरा साफ़ हुक्म आगे (पुराना रास्ता). पूरा बोला ("धीरज कुमार को हेलो मैसेज भेजो") = कोई सवाल नहीं, सीधे काम.
+        if (!note.contains(LocalRouter.DONE_NOTE)) TaskSense.need(goal)?.let { n0 ->
+            var n = n0
+            DKLog.d("समझ: काम ${n.task}, छूटा ${n.missing}")
+            repeat(4) {
+                if (n.done) return@repeat
+                say(n.question)
+                DKState.set(Mode.LISTENING)
+                val ans = svc.hearForAgent()?.trim().orEmpty()
+                DKState.set(Mode.WORKING)
+                if (ans.isBlank()) { say("ठीक है, अभी रहने दिया।"); return }
+                DKState.user(ans)
+                when (val r = TaskSense.answer(n, ans)) {
+                    TaskSense.Reply.Cancel -> { say("ठीक है, रहने दिया।"); return }
+                    is TaskSense.Reply.NewCommand -> { DKLog.d("समझ: जवाब की जगह नया हुक्म"); execute(r.text, note); return }
+                    is TaskSense.Reply.Filled -> n = r.need
+                }
+            }
+            if (!n.done) return
+            goal = n.command
+            DKLog.d("समझ: पूरा काम = $goal")
+        }
+        // DK ने अभी सवाल पूछा था और यह छोटा जवाब है = AI उसी काम को पूरा करे (नई बात न समझे)
+        if (note.isBlank()) {
+            val lastDk = DKState.messages.lastOrNull { it.role == "d" }
+            if (lastDk != null && TaskSense.kind(goal, lastDk.text, System.currentTimeMillis() - lastDk.time) == TaskSense.Kind.REPLY) note = TaskSense.replyNote(lastDk.text)
+        }
         currentGoal = goal
         synchronized(currentAnswer) { currentAnswer.clear() }
         val lower = goal.lowercase().trim()
