@@ -28,7 +28,7 @@ object CallReply {
         fun has(vararg w: String) = w.any { l.contains(it) }
         if (l.isBlank()) return null
         // DK की अपनी आवाज़ की गूँज
-        if (has("उठाऊँ", "उठाऊं") && has("काट दूँ", "काट दूं", "काटूँ", "काटूं")) return null
+        if (askEcho(heard)) return null
         val speaker = has("स्पीकर", "speaker", "लाउड", "loud")
         val pick = has("उठा", "रिसीव", "receive", "answer", "पिक", "pick", "accept", "स्वीकार", "बात करा", "बात करनी", "जोड़ो", "जोड़ दो", "utha") ||
             YES.containsMatchIn(l.trim())
@@ -44,6 +44,30 @@ object CallReply {
             else -> null
         }
     }
+
+    /** DK का अपना सवाल ("उठाऊँ या काट दूँ?") माइक में गूँज बनकर लौटा */
+    fun askEcho(heard: String): Boolean {
+        val l = heard.lowercase()
+        return listOf("उठाऊँ", "उठाऊं").any { l.contains(it) } && listOf("काट दूँ", "काट दूं", "काटूँ", "काटूं").any { l.contains(it) }
+    }
+
+    private val DK_NAMES = listOf("डीके", "दीके", "डी के", "dk", "d k", "डी.के")
+
+    /**
+     * v4.6 मालिक: "कॉल का जवाब देते में (DK बोल ही रहा हो) यूज़र बोलेगा 'डीके फोन उठा लो' तो फटाक से पहले फोन उठाएगा"।
+     * DK के बोलते समय माइक में उसकी अपनी आवाज़ भी आती है ("...उठाऊँ या काट दूँ?") - उसे जवाब न मानें, इसलिए
+     * बीच में टोकने पर DK का नाम ज़रूरी: "डीके फोन उठा लो" = हाँ, अकेला "उठाऊँ" / "काट दूँ" (गूँज) = नहीं.
+     */
+    fun bargeOk(heard: String, names: List<String> = emptyList()): Boolean {
+        if (heard.isBlank() || askEcho(heard)) return false
+        val l = " " + heard.lowercase().replace(Regex("[,.!?।]"), " ").replace(Regex("\\s+"), " ").trim() + " "
+        return (names + DK_NAMES).map { it.trim().lowercase() }.filter { it.length >= 2 }.distinct()
+            .any { n -> l.contains(" $n ") }
+    }
+
+    /** एलान चलते समय की बात -> काम (null = DK का नाम नहीं / गूँज / कॉल की बात नहीं) */
+    fun barge(heard: String, names: List<String> = emptyList()): String? =
+        if (bargeOk(heard, names)) parse(heard)?.takeIf { it != WHO } else null
 
     /** Gemini Live को: कॉल आया - यूज़र से पूछो, खुद मत उठाओ/काटो */
     fun liveNote(who: String): String {

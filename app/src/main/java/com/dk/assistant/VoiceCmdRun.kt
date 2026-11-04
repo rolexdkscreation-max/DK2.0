@@ -10,6 +10,8 @@ import com.dk.assistant.voice.VoiceCmds
  */
 internal fun DKAccessibilityService.runVoiceCmd(hit: VoiceCmds.Hit, from: String): Boolean {
     if (hit.cmd == Cmd.FOUND && !FindPhone.active) return false          // बज ही नहीं रहा - "मिल गया" आम बात है
+    // v4.6: "डीके फोन उठा लो" सिर्फ़ घंटी के समय - वरना आम बात, आगे (STT/AI) जाने दो
+    if ((hit.cmd == Cmd.ANSWER || hit.cmd == Cmd.ANSWER_SPEAKER) && !callRinging()) return false
     if (!VoiceCmds.claim(hit.cmd)) return true
     DKLog.d("आवाज़-कमांड चली ($from, बिना इंटरनेट): ${hit.cmd.hi}")
     LatencyBoard.count("आवाज़-कमांड बिना इंटरनेट: ${hit.cmd.id}")
@@ -18,6 +20,8 @@ internal fun DKAccessibilityService.runVoiceCmd(hit: VoiceCmds.Hit, from: String
         Cmd.UNLOCK -> agent.runQuick(PhoneLockVoice.quick(PhoneLockVoice.Act.UNLOCK))
         Cmd.FIND -> { DKState.reply(FindPhone.SAY); FindPhone.start(this, from) }
         Cmd.FOUND -> { FindPhone.stop("\"मिल गया\" ($from)"); DKState.reply("ठीक है बॉस") }
+        Cmd.ANSWER -> answerByVoice(false, from)
+        Cmd.ANSWER_SPEAKER -> answerByVoice(true, from)
     }
     return true
 }

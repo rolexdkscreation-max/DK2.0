@@ -117,6 +117,14 @@ internal fun GeminiLive.onCaption(t: String, final: Boolean) {
     }
     if (final && svc.callRinging() && System.currentTimeMillis() - playEnd > 600 && !micMuted) {
         CallReply.parse(t)?.takeIf { it != CallReply.WHO }?.let { act -> svc.scope.launch { callTool(act, "फ़ोन ने सुना (तुरंत): \"${t.take(30)}\"") } }
+    } else if (final && svc.callRinging() && (micMuted || svc.callAnnouncing)) {
+        // v4.6 मालिक: एलान ("...उठाऊँ या काट दूँ?") ख़त्म होने का इंतज़ार नहीं - बीच में "डीके फोन उठा लो" = फटाक से उठाओ.
+        // गूँज से बचने को सिर्फ़ DK के नाम वाली बात ([CallReply.barge])
+        CallReply.barge(t, Prefs.wakeWords(svc))?.let { act ->
+            svc.hushForCall()
+            muteTurn = true; muteAt = System.currentTimeMillis()
+            svc.scope.launch { callTool(act, "फ़ोन ने सुना (एलान के बीच): \"${t.take(30)}\"") }
+        }
     }
 }
 

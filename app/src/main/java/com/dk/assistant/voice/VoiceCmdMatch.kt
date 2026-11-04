@@ -15,8 +15,12 @@ object VoiceCmdMatch {
     enum class Cmd(val id: String, val hi: String, val say: String, val ownerOnly: Boolean) {
         LOCK("lock", "फ़ोन लॉक", "हे डीके, फोन लॉक कर दो", true),
         UNLOCK("unlock", "फ़ोन अनलॉक", "हे डीके, फोन अनलॉक कर दो", true),
-        FIND("find", "DK किधर हो (फ़ोन बजाओ)", "हे डीके, किधर हो तुम", false),
-        FOUND("found", "मिल गया (बजना बंद)", "हे डीके, मिल गया", false);
+        FIND("find", "DK कहाँ हो (फ़ोन बजाओ)", "डीके कहाँ हो, फोन बजाओ", false),
+        FOUND("found", "मिल गया (बजना बंद)", "हे डीके, मिल गया", false),
+        // v4.6 मालिक: "कॉल आ रहा है, DK फोन उठा लो - तो फटाक से पहले फोन उठाएगा" / "उठा के स्पीकर पर डाल दो"
+        // सिर्फ़ जब कॉल बज रहा हो तभी चलते हैं (वरना "फोन उठा लो" आम बात है) - देखें VoiceCmdRun
+        ANSWER("answer", "कॉल उठाओ", "डीके, फोन उठा लो", false),
+        ANSWER_SPEAKER("answer_speaker", "कॉल उठाकर स्पीकर", "डीके, फोन उठा के स्पीकर पर डाल दो", false);
 
         companion object { fun of(id: String?): Cmd? = values().firstOrNull { it.id == id } }
     }
@@ -107,6 +111,8 @@ object VoiceCmdMatch {
         "kidhar ho", "kidhar hai tu", "kahan ho", "kaha ho", "where are you", "मुझे नहीं दिख रहे", "तुम नहीं दिख रहे",
         // नवंबर 2026 (मालिक): "DK नहीं दिख रहे हो" - नाम हटने के बाद सिर्फ़ यही बचता है
         "नहीं दिख रहे", "नही दिख रहे", "nahi dikh rahe",
+        // v4.6 मालिक: "डीके कहाँ हो, फोन बजाओ"
+        "फोन बजाओ", "फ़ोन बजाओ", "phone bajao",
     )
     private val FOUND = listOf("मिल गया", "मिल गए", "मिल गई", "मिल गये", "बंद करो", "बस करो", "रुक जाओ", "mil gaya", "stop")
 
