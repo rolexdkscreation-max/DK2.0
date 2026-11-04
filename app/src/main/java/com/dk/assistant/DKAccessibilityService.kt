@@ -998,6 +998,11 @@ class DKAccessibilityService : AccessibilityService() {
                     } catch (_: Exception) {}
                     "ok"
                 }
+                JarvisMode.TYPE -> {
+                    // नवंबर 2026: JARVIS ⇄ DK मोड (काम/tools वही; DK लाइव चुप होते ही नई आवाज़ से जुड़ता है)
+                    JarvisMode.set(this, a.optBoolean("jarvis", true))
+                    "ok"
+                }
                 "screen_view" -> {
                     // v3.74: चालू सिर्फ़ user की अपनी बात/बटन से - AI अपने-आप स्क्रीन नहीं खोल सकता
                     val on = a.optBoolean("on", true)

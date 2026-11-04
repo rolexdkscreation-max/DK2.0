@@ -557,9 +557,9 @@ class BrainManager(private val ctx: Context) {
             append(TalkStyle.CHAT)   // v3.51: इंसान जैसी बात, झूठा "कर दिया" नहीं, notification/रुकने के नियम
             append(Memory.factsBlock(ctx))
             // v3.45: सच्चा दोस्त - लहजा + पिछली बातचीत की याद (आखिरी मुलाकात, सारांश, अधूरी बातें)
-            if (Prefs.friendMode(ctx)) append("\n" + FriendStyle.persona(GirlfriendPersona.female(Prefs.voiceGender(ctx)), user)).append(FriendTalk.block(ctx))
+            if (Prefs.friendMode(ctx)) append("\n" + FriendStyle.persona(dkFemale(), user)).append(FriendTalk.block(ctx))
             append(CareTime.block()).append(LiveSearch.memoryBlock())   // v3.80: समय देखकर फ़िक्र + पिछली खोज के स्रोत
-            append(CalmPersona.block()).append(GirlfriendPersona.block(Prefs.userName(ctx))).append(SpeakingStyle.block(Prefs.userName(ctx)))   // v3.76: मालिक का तय स्वभाव - हमेशा
+            if (JarvisMode.on(ctx)) append(JarvisMode.block(Prefs.userName(ctx))) else append(CalmPersona.block()).append(GirlfriendPersona.block(Prefs.userName(ctx))).append(SpeakingStyle.block(Prefs.userName(ctx)))   // v3.76: मालिक का तय स्वभाव - हमेशा
             append(WorkChatMode.block(live = false)).append(TeacherBoard.block()).append(LocalMemory.promptBlock(ctx)).append(NetProbe.refresh(ctx).let { NetSpeed.promptNote() })   // v3.88: लोकल याददाश्त का छोटा सार | v3.87: काम/बातचीत मोड + टीचर बोर्ड (स्वभाव वही)
         }
     }
@@ -586,7 +586,7 @@ class BrainManager(private val ctx: Context) {
             append(TalkStyle.CHAT)   // v3.51: इंसान जैसी बात, झूठा "कर दिया" नहीं, notification/रुकने के नियम
             append(Memory.factsBlock(ctx))
             append(CareTime.block()).append(LiveSearch.memoryBlock())   // v3.80: समय देखकर फ़िक्र + पिछली खोज के स्रोत
-            append(CalmPersona.block()).append(GirlfriendPersona.block(Prefs.userName(ctx))).append(SpeakingStyle.block(Prefs.userName(ctx)))   // v3.76: मालिक का तय स्वभाव - classic आवाज़ में भी
+            if (JarvisMode.on(ctx)) append(JarvisMode.block(Prefs.userName(ctx))) else append(CalmPersona.block()).append(GirlfriendPersona.block(Prefs.userName(ctx))).append(SpeakingStyle.block(Prefs.userName(ctx)))   // v3.76: मालिक का तय स्वभाव - classic आवाज़ में भी
             append(WorkChatMode.block(live = false)).append(TeacherBoard.block()).append(LocalMemory.promptBlock(ctx)).append(NetProbe.refresh(ctx).let { NetSpeed.promptNote() })   // v3.88: लोकल याददाश्त का छोटा सार | v3.87: काम/बातचीत मोड + टीचर बोर्ड (स्वभाव वही)
         }
     }
@@ -648,6 +648,9 @@ class BrainManager(private val ctx: Context) {
         } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (_: Exception) { null }
     }
 
+    /** DK = लड़की (चुनी आवाज़ से); JARVIS मोड = हमेशा पुरुष */
+    private fun dkFemale(): Boolean = !JarvisMode.on(ctx) && GirlfriendPersona.female(Prefs.voiceGender(ctx))
+
     /**
      * v5.1 (मालिक: "Live का setup message छोटा रहे"): withMemory=false = सिर्फ़ नियम/स्वभाव (setup में);
      * याद (facts, दोस्त वाली बातें, पिछली खोज, लोकल याददाश्त) जुड़ने के बाद liveMemoryContext() से अलग भेजी जाती है.
@@ -665,7 +668,7 @@ class BrainManager(private val ctx: Context) {
             append("\nNEVER say that you could not find it / do not know / have no information / cannot tell (जानकारी नहीं मिली, मुझे नहीं पता, मेरे पास जानकारी नहीं) WITHOUT first calling web_search in that same turn. For any factual question you are not sure about - also big, detailed questions - call web_search (or deep_think for hard reasoning) and answer completely. If web_search returns NO_RESULT, say only the line it gives (it includes the reason).")
             append("\nNever read out links, URLs or website names by yourself - the app shows the sources on screen. But when the user asks where the information came from (कहाँ से पता किया / कौन सी वेबसाइट / source), honestly name the websites listed in the last web_search SOURCES; never invent a source.")
             append("\nFor genuinely HARD questions that need careful multi-step reasoning (multi-step maths, logic puzzles, code, detailed comparisons, planning, exam-level or deep why/how questions), call the function deep_think with the full question, then speak its answer naturally (you may shorten it for speech). Never use deep_think for easy chat.")
-            val f = GirlfriendPersona.female(Prefs.voiceGender(ctx))
+            val f = dkFemale()
             val khol = if (f) "कर रही हूँ" else "कर रहा हूँ"; val bata = if (f) "बताती हूँ" else "बताता हूँ"
             append("\nSPEED: the moment the user stops, start speaking. Quick things (chat, simple facts you know) - answer at once in 1-2 sentences, no preamble. For time/date call current_time (instant).")
             // v3.90 (मालिक का नियम): काम कहा = सिर्फ़ छोटा "ठीक है, कर रहा हूँ" -> काम -> "हो गया". बीच में और कोई बात नहीं.
@@ -698,7 +701,7 @@ class BrainManager(private val ctx: Context) {
             // v3.46: "सच्चा दोस्त" स्वभाव + बातचीत की याद अब आवाज़ (Live) में भी (पहले सिर्फ़ chat में जुड़ा था)
             if (Prefs.friendMode(ctx)) append("\n").append(FriendStyle.persona(f, user)).append(if (withMemory) FriendTalk.block(ctx) else "")
             append(CareTime.block()).append(if (withMemory) LiveSearch.memoryBlock() else "")   // v3.80: समय देखकर फ़िक्र + पिछली खोज के स्रोत
-            append(CalmPersona.block()).append(GirlfriendPersona.block(Prefs.userName(ctx))).append(SpeakingStyle.block(Prefs.userName(ctx)))   // v3.76: मालिक का तय स्वभाव - Live (सीधी आवाज़ / Gemini TTS / Edge) सब में
+            if (JarvisMode.on(ctx)) append(JarvisMode.block(Prefs.userName(ctx))) else append(CalmPersona.block()).append(GirlfriendPersona.block(Prefs.userName(ctx))).append(SpeakingStyle.block(Prefs.userName(ctx)))   // v3.76: मालिक का तय स्वभाव - Live (सीधी आवाज़ / Gemini TTS / Edge) सब में
             append(WorkChatMode.block(live = true)).append(TeacherBoard.block()).append(if (withMemory) LocalMemory.liveBlock(ctx) + (if (!Prefs.localMemoryOn(ctx)) MsgDraft.recentBlock(MsgDraft.turnsFromState(), System.currentTimeMillis()) else "") else "")
             if (Prefs.dkOnly(ctx)) append(DkOnly.PROMPT)   // v4.1: सिर्फ़ "DK ..." वाली बात का जवाब
             append(TaskFirst.prompt(f))   // v3.7 (मालिक): फ़ोन का काम = पहले काम (चुप), फिर "हो गया सर" + "और कुछ?" - आख़िर में ताकि यही चले   // v3.88: लोकल याददाश्त का छोटा सार | v3.87: काम/बातचीत मोड + कई काम की कतार + टीचर बोर्ड (स्वभाव वही)
@@ -725,7 +728,7 @@ class BrainManager(private val ctx: Context) {
             append(personaLine(persona).trim()).append("\n")
             append(Memory.factsBlock(ctx)).append("\n")
             append(TALK_RULES).append("\n")
-            if (Prefs.friendMode(ctx)) append(FriendStyle.persona(GirlfriendPersona.female(Prefs.voiceGender(ctx)), user)).append(FriendTalk.block(ctx)).append("\n")
+            if (Prefs.friendMode(ctx)) append(FriendStyle.persona(dkFemale(), user)).append(FriendTalk.block(ctx)).append("\n")
             append(AssistantBrand.IDENTITY_RULE).append("\n")
         }
         return intro + BASE_PROMPT

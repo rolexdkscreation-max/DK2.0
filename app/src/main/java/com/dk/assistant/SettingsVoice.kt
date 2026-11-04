@@ -119,6 +119,17 @@ internal suspend fun <T> SettingsActivity.withDkMicPaused(block: suspend () -> T
 internal fun SettingsActivity.secVoice() {
     // v3.69: पुराना "आवाज़" हिस्सा (महिला/पुरुष, आवाज़ का प्रकार, सूची, अंदाज़, स्पीड, पिच, फ़ोन TTS) हटाया -
     // बैकअप: branch backup/dk-before-backup-folder-cleanup-1102, फ़ोल्डर backup/v3.69-settings/. अब सिर्फ़ DK लाइव का बोलने वाला इंजन.
+    // नवंबर 2026 (मालिक): JARVIS मोड - बोलकर भी, यहाँ से भी
+    card("JARVIS मोड", "JARVIS जैसी आवाज़ और अंदाज़ — काम सारे वही जो DK करता है. बोलें: \"जार्विस मोड ऑन करो\" / \"डीके मोड ऑन करो\"") { box ->
+        switch(box, "JARVIS मोड चालू (बंद = DK मोड)", JarvisMode.on(this))
+            .setOnCheckedChangeListener { _, on -> JarvisMode.set(this, on); toast(if (on) "JARVIS मोड चालू" else "DK मोड चालू") }
+        hint(box, "JARVIS की आवाज़:")
+        val jv = JarvisMode.VOICES
+        radios(box, jv, JarvisMode.voice(this), 2600)
+            .setOnCheckedChangeListener { _, id -> jv.getOrNull(id - 2600)?.let { JarvisMode.setVoice(this, it.first) } }
+        hint(box, "सिर्फ़ आवाज़ और बात करने का अंदाज़ बदलता है (\"जी सर\", शांत, सधा हुआ) — फ़ोन का कंट्रोल, keys, एजेंट, वेबसाइट, कॉल, WhatsApp सब वैसे ही चलते हैं. चलती बातचीत में DK चुप होते ही नई आवाज़ लगती है. Gemini की अपनी आवाज़ें हैं — फ़िल्म वाले JARVIS की हू-ब-हू नकल नहीं, उसके सबसे करीब.")
+    }
+
     card("बोलने वाला इंजन (DK Live)", "DK लाइव (Direct Gemini Live Voice, डिफ़ॉल्ट) • Gemini TTS (बैकअप) — एक समय में एक") { box ->
         com.dk.assistant.voice.engine.VoiceEngineCard.build(this, box, dp)
     }

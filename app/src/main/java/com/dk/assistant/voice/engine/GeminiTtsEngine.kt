@@ -53,7 +53,7 @@ object GeminiTtsEngine : VoiceEngine {
     override fun voices() = VOICES
     /** v4.3: Live वाली ही आवाज़ (एक ही सेटिंग "gemini_voice") - दोनों जगह बिल्कुल एक जैसी */
     override fun voice(c: Context): String =
-        com.dk.assistant.Prefs.geminiVoice(c).takeIf { v -> VOICES.any { it.first == v } } ?: DEFAULT_VOICE
+        com.dk.assistant.Prefs.geminiVoice(c).takeIf { v -> VOICES.any { it.first == v } || (com.dk.assistant.JarvisMode.on(c) && v == com.dk.assistant.JarvisMode.voice(c)) } ?: DEFAULT_VOICE
     override fun setVoice(c: Context, v: String) {
         VoiceEngines.sp(c).edit().putString("gemini_tts_voice", v).apply()
         com.dk.assistant.Prefs.edit(c) { putString("gemini_voice", v) }; VoiceEngines.liveChanged()
@@ -83,7 +83,7 @@ object GeminiTtsEngine : VoiceEngine {
 
     override fun speak(c: Context, text: String, voice: String, out: PcmOut) {
         notReady(c)?.let { throw IOException("Gemini TTS: $it") }
-        val style = com.dk.assistant.SpeakingStyle.tts(com.dk.assistant.CalmPersona.ttsStyle(com.dk.assistant.avatar.MoodState.voiceStyle(style(c))))   // v4.3: मालिक का बोलने का तरीका   // v3.71: भाव का निर्देश जुड़ता है
+        val style = if (com.dk.assistant.JarvisMode.on(c)) com.dk.assistant.JarvisMode.VOICE_STYLE else com.dk.assistant.SpeakingStyle.tts(com.dk.assistant.CalmPersona.ttsStyle(com.dk.assistant.avatar.MoodState.voiceStyle(style(c))))   // v4.3: मालिक का बोलने का तरीका   // v3.71: भाव का निर्देश जुड़ता है
         var last = ""
         for (key in keys(c)) {
             val now = System.currentTimeMillis()
