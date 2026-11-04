@@ -87,6 +87,7 @@ class DKAccessibilityService : AccessibilityService() {
     override fun onServiceConnected() {
         super.onServiceConnected()
         instance = this
+        try { PayGuard.onServiceBack(this) } catch (_: Exception) {}
         try { PhoneLockStore.reload(this) } catch (_: Exception) {}
         // power बटन वाला "Yes Boss" पहले से बना लो (Live चालू हो तो नहीं - तब Live बंद होने पर)
         com.dk.assistant.voice.LiveAckMaker.ensureAsync(this, "DK शुरू", 15_000L)   // आवाज़ से फ़ोन लॉक / अनलॉक के नाम-वाक्य
@@ -131,7 +132,10 @@ class DKAccessibilityService : AccessibilityService() {
         com.dk.assistant.inspector.Inspector.startTimer(this)
     }
 
-    override fun onAccessibilityEvent(event: AccessibilityEvent?) { /* zarurat nahi, hum on-demand padhte hain */ }
+    override fun onAccessibilityEvent(event: AccessibilityEvent?) {
+        // बाकी सब on-demand पढ़ते हैं. नवंबर 2026: पेमेंट ऐप खुला = फ़ोन कंट्रोल अपने-आप बंद (PayGuard)
+        if (event != null) try { PayGuard.onEvent(this, event) } catch (e: Exception) { DKLog.d("PayGuard: ${e.message}") }
+    }
 
     override fun onUnbind(intent: android.content.Intent?): Boolean {
         DKLog.d("Accessibility service unbind hua")

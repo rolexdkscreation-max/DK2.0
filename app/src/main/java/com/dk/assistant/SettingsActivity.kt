@@ -109,7 +109,7 @@ class SettingsActivity : AppCompatActivity() {
             "voice" -> { title.text = "आवाज़"; secVoice() }
             "orb" -> { title.text = "ओर्ब और चेहरा"; bar.visibility = View.GONE; secOrb() }
             "ui" -> { title.text = "दिखावट"; bar.visibility = View.GONE; secUi() }
-            "access" -> { title.text = "Accessibility"; secAccess() }
+            "access" -> { title.text = "Accessibility"; secAccess(); secPayGuard() }
             "phonelock" -> { title.text = "फ़ोन लॉक / अनलॉक"; secPhoneLock(); secVoiceCmds() }
             "perms" -> { title.text = "परमिशन"; secPerms() }
             "update" -> { title.text = "अपडेट"; secUpdate() }

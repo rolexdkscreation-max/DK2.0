@@ -74,6 +74,7 @@ object A11yWatch {
     /** एक बार जाँचो और जो ठीक हो करो. लौटाता है हालत (log/test) */
     suspend fun check(c: Context, why: String): State {
         val app = c.applicationContext
+        try { PayGuard.recover(app) } catch (_: Exception) {}   // पेमेंट के लिए रुका हो तो देखने वाला फिर चालू
         var s = state(DKAccessibilityService.instance != null, Setup.enabledInSettings(app), Setup.canWriteSecure(app))
         if (s == State.HEAL || s == State.ASK_USER) {
             delay(SETTLE_MS)
