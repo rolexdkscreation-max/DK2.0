@@ -50,6 +50,13 @@ object LiveRecover {
         return if (words) speechMs >= MIN_SPEECH_MS else speechMs >= MIN_SPEECH_NO_WORDS_MS
     }
 
+    /**
+     * नवंबर 2026: बचाव-text बंद में Gemini ने बात नहीं सुनी - स्क्रीन पर (caption) असली शब्द लिखे गए और असली आवाज़ थी =
+     * बात खोनी नहीं चाहिए (नया connection + वही आवाज़). खटखट/शोर (शब्द नहीं / बहुत छोटी आवाज़) पर नहीं.
+     */
+    fun unheardWorthSwap(caption: String, speechMs: Int): Boolean =
+        BargeGate.realWords(caption) && speechMs >= MIN_SPEECH_MS
+
     /** [MAX_SWAPS] / [SWAP_WINDOW_MS] की सीमा - true = अभी बदल सकते हैं (और गिनती में जुड़ गया) */
     class SwapLimit(private val max: Int = MAX_SWAPS, private val windowMs: Long = SWAP_WINDOW_MS) {
         private val at = ArrayDeque<Long>()

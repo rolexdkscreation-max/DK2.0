@@ -62,6 +62,11 @@ internal fun GeminiLive.startRace(keys: List<String>, models: List<String>, live
     // नवंबर 2026 (DKI-D24C3A): setup पर बार-बार अटका मॉडल 30 मिनट सबसे पीछे (हटाया नहीं) - एक key पर एक समय एक ही
     // जोड़ी चलती है, अटका मॉडल पहले = हर बार 10s+ का इंतज़ार
     queue = LiveRecover.Demote.order(queue, now) { it.model }.toMutableList()
+    // नवंबर 2026 (मालिक): चल रही बातचीत की जोड़ी पहले, फिर उसी key के बाकी मॉडल, फिर अगली key ([LiveRace.stickyOrder])
+    val stickyId = resumeId ?: health.lastWin.takeIf { it.isNotBlank() }
+    val hung = queue.filter { LiveRecover.Demote.demoted(it.model, now) }
+    queue = (LiveRace.stickyOrder(queue - hung.toSet(), stickyId) + hung).toMutableList()
+    var stickyRetried = 0
     log("दौड़${if (live) "" else " (पीछे से, माइक नहीं)"}: ${queue.size} जोड़ियाँ, हर एक का इंतज़ार $tmo ms (हाल के नाप: ${health.recentTimes().joinToString()}) • " +
         queue.take(4).joinToString { it.label })
     if (queue.isEmpty()) {
@@ -81,6 +86,10 @@ internal fun GeminiLive.startRace(keys: List<String>, models: List<String>, live
                         inFlight.remove(a)
                         val (code, reason) = a.closed.await()
                         attemptFailed(r, a, code, reason, queue); lastLaunch = 0L      // नाकाम = अगली तुरंत
+                        if (LiveRace.retrySticky(a.c.id == stickyId, LiveRace.classify(code, reason), stickyRetried)) {
+                            stickyRetried++; queue.removeAll { it.id == a.c.id }; queue.add(0, a.c)
+                            log("दौड़: चल रही जोड़ी [${a.c.label}] नेट से चूकी - मॉडल नहीं बदला, उसी पर एक बार और")
+                        }
                     } else if (t - a.t0 > LiveRace.attemptTimeoutMs(tmo, opened = a.sentAt > 0L,
                             othersLeft = queue.isNotEmpty() || inFlight.size > 1)) {
                         inFlight.remove(a); killAttempt(a, "setup timeout")
@@ -95,12 +104,17 @@ internal fun GeminiLive.startRace(keys: List<String>, models: List<String>, live
                             else "setup का जवाब ${tmo / 1000} सेकंड में नहीं आया"); r.lastFailCombo = a.c
                         log("दौड़: [${a.c.label}] ${t - a.t0} ms में setup नहीं - यह जोड़ी 2 मिनट नहीं, अगली तुरंत")
                         lastLaunch = 0L
+                        if (LiveRace.retrySticky(a.c.id == stickyId, null, stickyRetried)) {
+                            stickyRetried++; queue.removeAll { it.id == a.c.id }; queue.add(0, a.c)
+                            log("दौड़: चल रही जोड़ी [${a.c.label}] का setup धीमा - मॉडल नहीं बदला, उसी पर एक बार और")
+                        }
                     }
                 }
                 if (r.winner.isCompleted || r.cancelled) break
                 // नवंबर 2026: एक key पर एक समय में एक ही जोड़ी (फ्री key की ~3 सत्र वाली सीमा - caption/standby भी उसी key पर)
                 val ni = LiveRace.nextLaunchable(queue, inFlight.map { it.c.keyIdx }.toSet())
-                if (ni >= 0 && LiveRace.shouldLaunch(inFlight.size, queue.size, t, lastLaunch)) {
+                if (ni >= 0 && LiveRace.shouldLaunch(inFlight.size, queue.size, t, lastLaunch) &&
+                    !LiveRace.holdForSticky(inFlight.map { it.c.id }, stickyId)) {
                     val c = queue.removeAt(ni)
                     val a = Attempt(c, keys[c.keyIdx], textFor(c.model), resume = c.id == resumeId)
                     inFlight.add(a); r.atts.add(a); lastLaunch = t

@@ -97,6 +97,8 @@ internal fun GeminiLive.onNoReply() {
         // नवंबर 2026: caption का text कभी Gemini को नहीं (पीछे का शोर / फ़ोन की आवाज़ भी caption बनती है; बीच का text = 1011)
         unheard++
         log("Gemini से ${LiveStay.NO_REPLY_MS / 1000}s में कुछ नहीं - caption text नहीं भेजा (बचाव-text बंद), सुन रहा हूँ (#$unheard)")
+        // नवंबर 2026 (मालिक): स्क्रीन पर लिखी बात (caption में असली शब्द) का जवाब आना चाहिए - नया connection + वही आवाज़ (text नहीं)
+        if (LiveRecover.unheardWorthSwap(caption?.text().orEmpty(), utt.speechMs())) unheardSwapAt = now0
         if (DKState.mode == Mode.THINKING) setMode(Mode.LISTENING)
         Ducker.releaseWhenQuiet({ !isPlaying() && !generating })
         return
