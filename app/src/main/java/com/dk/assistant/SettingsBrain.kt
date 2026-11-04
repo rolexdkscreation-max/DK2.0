@@ -152,24 +152,46 @@ internal fun SettingsActivity.secBrainWeb() {
         var models: List<String> = Prefs.forgeRaw(this, Prefs.FORGE_MODELS).split("\n").filter { it.isNotBlank() }
         fun check(silent: Boolean) {
             val k = ed.text.toString().trim()
-            if (k.isBlank()) { if (!silent) res.text = "पहले वेबसाइट बिल्डर की Gemini key डालें"; return }
-            if (ApiScopes.detect(k).let { it != null && it != "gemini" }) { res.text = "यह Gemini की key नहीं लगती (AIza… से शुरू होती है)"; return }
-            save(false); res.text = "key जाँच रहा हूँ, सबसे अच्छा मॉडल ढूँढ रहा हूँ…"
+            if (k.isBlank()) { if (!silent) res.text = "✗ पहले वेबसाइट बिल्डर की Gemini key डालें"; return }
+            if (ApiScopes.detect(k).let { it != null && it != "gemini" }) { res.text = "✗ यह Gemini की key नहीं लगती (AIza… से शुरू होती है)"; return }
+            save(false); res.text = "⏳ key जाँच रहा हूँ — Pro, Flash, Lite एक साथ आज़मा रहा हूँ…"
             lifecycleScope.launch {
                 try {
-                    val (best, all) = com.dk.assistant.forge.WebsiteForgeClient.pickBest(k)
+                    val r = com.dk.assistant.forge.WebsiteForgeClient.pickBest(k)
+                    val best = r.best; val all = r.all
                     models = all
                     Prefs.edit(this@secBrainWeb) {
                         putString(Prefs.FORGE_MODELS, all.joinToString("\n"))
                         if (best != null) putString(Prefs.FORGE_AUTO_MODEL, best)
                     }
-                    res.text = if (best != null) "✓ key चल रही है • ${all.size} मॉडल मिले" else "key ठीक है, पर अभी कोई मॉडल जवाब नहीं दे रहा (limit/भीड़) — थोड़ी देर बाद फिर जाँचें"
+                    // v3.169: हर जाँचे मॉडल का साफ़ नतीजा - मालिक को दिखे key चल रही है या नहीं, और क्यों
+                    val lines = r.tried.joinToString("\n") { (m, c) -> "• $m: " + com.dk.assistant.forge.WebsiteForgeClient.probeLabel(c) }
+                    res.text = (if (best != null) "✓ key चल रही है • सबसे अच्छा मॉडल: $best (${all.size} मॉडल मिले)"
+                        else "✗ key सही है, पर अभी किसी मॉडल की free limit नहीं बची — थोड़ी देर बाद या Key 2 डालकर फिर जाँचें") + "\n" + lines
                     showModel()
-                } catch (e: Exception) { res.text = "✗ " + (e.message ?: "key नहीं चली").take(140) }
+                } catch (e: Exception) {
+                    val m = e.message.orEmpty()
+                    res.text = "✗ " + (if ((e as? com.dk.assistant.forge.WebsiteForgeClient.ForgeHttpException)?.code.let { it == 400 || it == 401 || it == 403 }) "यह key गलत/बंद है — Google AI Studio से नई key लें"
+                        else m.ifBlank { "key नहीं चली (नेट जाँचें)" }).take(160)
+                }
             }
         }
+        // v3.169: key पेस्ट करते ही अपने-आप जाँच (जाँचें दबाना भूलें तो भी नतीजा दिखे)
+        var lastChecked = ed.text.toString().trim()
+        val autoCheck = Runnable { val k = ed.text.toString().trim(); if (k != lastChecked && k.startsWith("AIza") && k.length >= 35) { lastChecked = k; check(true) } }
+        ed.addTextChangedListener(object : TextWatcher {
+            override fun beforeTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) {}
+            override fun onTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) {}
+            override fun afterTextChanged(s: Editable?) { ed.removeCallbacks(autoCheck); ed.postDelayed(autoCheck, 1200) }
+        })
         row(box, showButton(ed), button("जाँचें") { check(false) }, button("Key लें") { Setup.openUrl(this, Providers.byId("gemini")!!.keyUrl) })
         box.addView(res)
+        // v3.169: खोलते ही दिखे key सेव है या नहीं
+        res.text = if (ed.text.isNotBlank()) "✓ key सेव है" + (if (Prefs.forgeAutoModel(this).isNotBlank()) " — चल रही है या नहीं देखने को \"जाँचें\" दबाएँ" else " — जाँच रहा हूँ…")
+            else "✗ वेबसाइट बिल्डर की key नहीं डली — यहाँ Gemini key डालें (कोडिंग/चैट वाली key यहाँ नहीं चलती)"
+        val other = listOf(Prefs.scopeKey(this, ApiScopes.CODER, "gemini"), Prefs.scopeKey(this, ApiScopes.CHAT, "gemini"), Prefs.ttsGeminiKey(this))
+            .firstOrNull { it.isNotBlank() }
+        if (ed.text.isBlank() && other != null) row(box, button("कोडिंग/चैट वाली Gemini key यहाँ लगाएँ") { ed.setText(other); check(false) })
         box.addView(modelTv); showModel()
         row(box, button("मॉडल बदलें") {
             if (models.isEmpty()) { toast("पहले \"जाँचें\" दबाएँ — मॉडल की सूची आ जाएगी"); return@button }
@@ -328,6 +350,7 @@ internal fun SettingsActivity.scopeRadioBase(scope: String) = if (scope == ApiSc
 
 internal fun SettingsActivity.secBrainScope(scope: String) {
     card("${ApiScopes.title(scope)} की AI", "${ApiScopes.title(scope)} सिर्फ़ यहाँ डाली key से चलेगा — DK चैट या किसी और की key नहीं") { box ->
+        if (scope == ApiScopes.CODER) hint(box, "वेबसाइट बनाने की key अलग है: AI दिमाग → वेबसाइट बिल्डर (यहाँ की key से वेबसाइट नहीं बनती)")
         val cur = Prefs.scopeActiveRaw(this, scope)
         val rg = RadioGroup(this).apply { orientation = RadioGroup.VERTICAL }
         Providers.all.forEachIndexed { i, p ->
