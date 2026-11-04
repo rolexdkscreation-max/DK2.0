@@ -84,6 +84,26 @@ object Setup {
     fun openAccessibility(c: Context) =
         c.startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
 
+    /**
+     * नवंबर 2026 (मालिक): सीधे DK की अपनी Accessibility वाली जगह (जहाँ ON/OFF का बटन है).
+     * Android 11+ का details पेज; न खुले तो Accessibility सूची में DK को चमकाकर; वह भी न खुले तो सामान्य सूची.
+     */
+    const val ACTION_A11Y_DETAILS = "android.settings.ACCESSIBILITY_DETAILS_SETTINGS"
+
+    fun openDkAccessibility(c: Context) {
+        val me = component(c)
+        try {
+            c.startActivity(Intent(ACTION_A11Y_DETAILS).putExtra(Intent.EXTRA_COMPONENT_NAME, me)
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)); return
+        } catch (_: Exception) {}
+        try {
+            val args = android.os.Bundle().apply { putString(":settings:fragment_args_key", me) }
+            c.startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS).putExtra(":settings:fragment_args_key", me)
+                .putExtra(":settings:show_fragment_args", args).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)); return
+        } catch (_: Exception) {}
+        try { openAccessibility(c) } catch (e: Exception) { DKLog.d("Accessibility नहीं खुली: ${e.message}") }
+    }
+
     fun openAppInfo(c: Context) = c.startActivity(
         Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:" + c.packageName))
             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)

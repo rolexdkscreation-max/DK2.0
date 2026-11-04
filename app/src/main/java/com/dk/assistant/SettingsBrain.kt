@@ -109,6 +109,8 @@ internal fun SettingsActivity.secBrainMenu() {
             " • सुनना भी Gemini से (Groq की ज़रूरत नहीं)। एक free key की limit सब कामों में बँटती है — limit जल्दी खत्म हो तो बटन बंद करके अलग-अलग keys डालें।")
     }
     // v5 (मालिक): "DK कंप्यूटर में Extra AI API जोड़ने का विकल्प AI दिमाग में भी दिखे" - एक-key मोड में भी
+    // v3.167 (मालिक): वेबसाइट बिल्डर की अपनी अलग key - एक-key मोड में भी दिखे और चले
+    menuRow("brain_web", "वेबसाइट बिल्डर (Website Forge)", forgeStatus() + "\nवेबसाइट बनाने के लिए अलग Gemini key — सिर्फ़ यही इस्तेमाल होगी", "computer")
     menuRow("brain_extra", "Extra API (कोई भी कंपनी)", extraStatus() + "\nOpenAI, Claude, Grok, DeepSeek… किसी की भी key — DK कंप्यूटर का आखिरी बैकअप", "computer")
     if (one) {
         card("अलग-अलग key वाले हिस्से — बंद", "ऊपर \"एक key से सब\" चालू है, इसलिए DK लाइव / चैट / कोडिंग / कंप्यूटर की अलग keys अभी इस्तेमाल नहीं हो रहीं") { box ->
@@ -123,6 +125,66 @@ internal fun SettingsActivity.secBrainMenu() {
     menuRow("brain_chat", "DK चैट", scopeStatus(ApiScopes.CHAT) + "\nलिखकर चैट, जवाब, Google search, गहरी सोच, कहानी", "brain")
     menuRow("brain_coder", "कोडिंग एजेंट", scopeStatus(ApiScopes.CODER) + "\nकोडिंग टीम: बिल्डर, रिव्यूअर, कोऑर्डिनेटर", "coder")
     menuRow("brain_pc", "DK कंप्यूटर", scopeStatus(ApiScopes.PC) + "\nDK कंप्यूटर के काम और उसकी web search", "computer")
+}
+
+internal fun SettingsActivity.forgeStatus(): String {
+    if (Prefs.forgeKey(this).isBlank()) return "✗ key नहीं डाली — वेबसाइट नहीं बनेगी"
+    val m = Prefs.forgeModel(this).ifBlank { Prefs.forgeAutoModel(this).ifBlank { "अपने-आप" } }
+    return "✓ अपनी key • मॉडल: $m"
+}
+
+/** v3.167: वेबसाइट बिल्डर (Website Forge) - अपनी अलग Gemini key + अपने-आप सबसे अच्छा मॉडल */
+internal fun SettingsActivity.secBrainWeb() {
+    card("वेबसाइट बिल्डर — अपनी Gemini key", "DK से जब भी वेबसाइट बनवाएँगे, सिर्फ़ यही key लगेगी — DK लाइव, चैट, कोडिंग या कोई दूसरी key नहीं") { box ->
+        val ed = field(box, "Gemini API Key (वेबसाइट बिल्डर की अपनी)", Prefs.forgeRaw(this, Prefs.FORGE_KEY), "AIza… यहाँ पेस्ट करें", secret = true)
+        keyFields[Prefs.FORGE_KEY] = ed
+        keyFields[Prefs.FORGE_KEY2] = field(box, "Gemini API Key 2 (बैकअप, ज़रूरी नहीं)",
+            Prefs.forgeRaw(this, Prefs.FORGE_KEY2), "दूसरी Gemini key (दूसरे Google account की)", secret = true)
+        val res = TextView(this).apply { setTextColor(0xB3FFFFFF.toInt()); textSize = 13f; setPadding((4 * dp).toInt(), (6 * dp).toInt(), 0, 0) }
+        val modelTv = TextView(this).apply { setTextColor(0xFFFFFFFF.toInt()); textSize = 15f; setPadding((4 * dp).toInt(), (10 * dp).toInt(), 0, 0) }
+        fun showModel() {
+            val auto = Prefs.forgeAutoModel(this)
+            val own = Prefs.forgeModel(this)
+            modelTv.text = if (own.isNotBlank()) "मॉडल: $own (आपका चुना)" + (if (auto.isNotBlank() && auto != own) "\nसबसे अच्छा (अपने-आप): $auto" else "")
+                else if (auto.isNotBlank()) "मॉडल: $auto ✓ (वेबसाइट के लिए सबसे अच्छा — अपने-आप चुना)"
+                else "मॉडल: key डालकर \"जाँचें\" दबाएँ — सबसे अच्छा मॉडल अपने-आप आ जाएगा"
+        }
+        var models: List<String> = Prefs.forgeRaw(this, Prefs.FORGE_MODELS).split("\n").filter { it.isNotBlank() }
+        fun check(silent: Boolean) {
+            val k = ed.text.toString().trim()
+            if (k.isBlank()) { if (!silent) res.text = "पहले वेबसाइट बिल्डर की Gemini key डालें"; return }
+            if (ApiScopes.detect(k).let { it != null && it != "gemini" }) { res.text = "यह Gemini की key नहीं लगती (AIza… से शुरू होती है)"; return }
+            save(false); res.text = "key जाँच रहा हूँ, सबसे अच्छा मॉडल ढूँढ रहा हूँ…"
+            lifecycleScope.launch {
+                try {
+                    val (best, all) = com.dk.assistant.forge.WebsiteForgeClient.pickBest(k)
+                    models = all
+                    Prefs.edit(this@secBrainWeb) {
+                        putString(Prefs.FORGE_MODELS, all.joinToString("\n"))
+                        if (best != null) putString(Prefs.FORGE_AUTO_MODEL, best)
+                    }
+                    res.text = if (best != null) "✓ key चल रही है • ${all.size} मॉडल मिले" else "key ठीक है, पर अभी कोई मॉडल जवाब नहीं दे रहा (limit/भीड़) — थोड़ी देर बाद फिर जाँचें"
+                    showModel()
+                } catch (e: Exception) { res.text = "✗ " + (e.message ?: "key नहीं चली").take(140) }
+            }
+        }
+        row(box, showButton(ed), button("जाँचें") { check(false) }, button("Key लें") { Setup.openUrl(this, Providers.byId("gemini")!!.keyUrl) })
+        box.addView(res)
+        box.addView(modelTv); showModel()
+        row(box, button("मॉडल बदलें") {
+            if (models.isEmpty()) { toast("पहले \"जाँचें\" दबाएँ — मॉडल की सूची आ जाएगी"); return@button }
+            val items = (listOf("अपने-आप (सबसे अच्छा)") + models).toTypedArray()
+            androidx.appcompat.app.AlertDialog.Builder(this).setTitle(UiLang.s("वेबसाइट का मॉडल"))
+                .setItems(items) { _, i ->
+                    Prefs.edit(this) { putString(Prefs.FORGE_MODEL, if (i == 0) "" else models[i - 1]) }
+                    showModel()
+                }.show()
+        }, button("वेबसाइट बिल्डर खोलें") { com.dk.assistant.forge.ForgeLauncher.open(this) })
+        hint(box, "सबसे अच्छा मॉडल अपने-आप: नया Pro → नया Flash → Lite (जो इस key पर सच में चले)। वेबसाइट बनाते समय उस मॉडल की limit खत्म हो तो " +
+            "इसी key के अगले मॉडल पर, फिर भी न चले तो Key 2 पर — DK की दूसरी कोई key कभी नहीं।" +
+            if (Prefs.oneKeyOn(this)) "\n\"एक key से सब\" चालू होने पर भी, यहाँ key डली हो तो वेबसाइट बनेगी।" else "")
+        if (ed.text.isNotBlank() && Prefs.forgeAutoModel(this).isBlank()) check(true)
+    }
 }
 
 /** v5: Extra API - किसी भी कंपनी की key (कंपनी अपने-आप + मॉडल चुनें); DK कंप्यूटर की chain में आखिरी बैकअप */

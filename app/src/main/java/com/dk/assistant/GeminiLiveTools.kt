@@ -245,7 +245,8 @@ internal fun GeminiLive.notifReply(to: String, message: String): String {
 internal fun GeminiLive.agentTool(name: String, args: JSONObject): String {
     val agent = LiveAgentRoute.byTool(name) ?: return "unknown function"
     // v3.6: एक key = सिर्फ़ बातचीत. एजेंट नहीं चलेगा - DK साफ़ बताए + Settings खुले (झूठा "हो गया" नहीं)
-    OneKeyGate.LIVE_TOOLS[name]?.takeIf { OneKeyGate.blocked(svc, it) }?.let { w ->
+    OneKeyGate.LIVE_TOOLS[name]?.takeIf { OneKeyGate.blocked(svc, it) }
+        ?.takeIf { !(name == "build_website" && Prefs.forgeKey(svc).isNotBlank()) }?.let { w -> // वेबसाइट की अपनी key = एक-key मोड में भी
         log("एक key मोड: ${w.hi} नहीं चलेगा - Settings खोली"); OneKeyGate.openSettings(svc)
         return OneKeyGate.liveNote(w)
     }
