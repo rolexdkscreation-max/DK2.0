@@ -604,6 +604,8 @@ class DKAccessibilityService : AccessibilityService() {
         loopJob = scope.launch {
             DKLog.d("Sunna shuru (live=${DKState.live}, wake=${Prefs.wakeMode(this@DKAccessibilityService)}, Gemini Live=${if (liveReady()) "तैयार" else "नहीं: " + liveWhyNot()})")
             listener.muteBeep = true
+            // नवंबर 2026: नेट रहते ही फ़ोन की बिना-नेट हिंदी पहचान (on-device) डाउनलोड करवा लो - वरना ऑफलाइन में कुछ नहीं सुनता
+            if (NetProbe.online(this@DKAccessibilityService)) OfflineStt.prepare(this@DKAccessibilityService)
             // v3.81: "हाँ सर" वगैरह पहले से बना लो (एक बार) - जागते ही बिना इंटरनेट-इंतज़ार के बोले
             if (Prefs.wakeMode(this@DKAccessibilityService)) launch(Dispatchers.IO) {
                 try { com.dk.assistant.voice.HeyDk.prepareAcks(this@DKAccessibilityService) } catch (_: Exception) {}
@@ -741,7 +743,17 @@ class DKAccessibilityService : AccessibilityService() {
                             scope.launch(Dispatchers.IO) { try { com.dk.assistant.voice.HeyDk.prepareAcks(me) } catch (_: Exception) {} }
                         }
                     }
-                    if (liveReady() && !callBusy() && checkMic()) {
+                    // नवंबर 2026 (मालिक: ऑफलाइन में "डीके फोन लॉक / अनलॉक करो" नहीं होता): बिना नेट यह बात Gemini Live को जाती थी,
+                    // जो जुड़ ही नहीं सकता = कुछ नहीं. अब बिना नेट लॉक / अनलॉक सीधे फ़ोन पर, बाकी बात फ़ोन वाले रास्ते (agent) से.
+                    val offlineHey = cmd.isNotBlank() && !NetProbe.online(me)
+                    if (offlineHey) {
+                        val act = PhoneLockVoice.instant(cmd, Prefs.wakeWords(me), needName = false)
+                        if (act != null) {
+                            DKState.user(cmd); DKLog.d("ऑफलाइन Hey DK: आवाज़ से ${act.type}")
+                            agent.runQuick(PhoneLockVoice.quick(act)); Ducker.releaseWhenQuiet({ !speaker.busy }); continue
+                        }
+                    }
+                    if (!offlineHey && liveReady() && !callBusy() && checkMic()) {
                         DKLog.d("Hey DK -> Gemini Live" + if (cmd.isNotBlank()) " (बात: $cmd)" else "")
                         wakeLive = true; LiveChime.arm()
                         gemLive.idleExitMs = 30_000
@@ -798,8 +810,13 @@ class DKAccessibilityService : AccessibilityService() {
                 PhoneLockStore.reload(this@DKAccessibilityService)
                 // v3.151: Settings में अनलॉक बंद / PIN सेव नहीं हो तब भी "DK फोन अनलॉक करो" पहचाने - स्क्रीन जगाए और सही कारण बोले
                 // (पहले यह बात Live/AI में चली जाती, जो "खुद खोलिए" या "हो गया" बोल देता)। लॉक वाला switch पहले जैसा।
+                // नवंबर 2026 (मालिक: "ऑफलाइन में डीके फोन लॉक कर दो नहीं करता"): जड़ - ऑफलाइन सुनना (keepText) LOCK को आगे भेजता था,
+                // पर यहाँ Settings का लॉक switch बंद (default) हो तो LOCK गिरा दिया जाता और बात AI (नेट चाहिए) को चली जाती = कुछ नहीं.
+                // बिना नेट = आम वाक्य से LOCK भी (नाम ज़रूरी, वही पक्की जाँच).
+                val offlineNow = !NetProbe.online(this@DKAccessibilityService)
                 val lockAct = PhoneLockVoice.match(heard, needName = true)
-                    ?: PhoneLockVoice.instant(heard, Prefs.wakeWords(this@DKAccessibilityService), needName = true)?.takeIf { it == PhoneLockVoice.Act.UNLOCK }
+                    ?: PhoneLockVoice.instant(heard, Prefs.wakeWords(this@DKAccessibilityService), needName = true)
+                        ?.takeIf { it == PhoneLockVoice.Act.UNLOCK || offlineNow }
                 if (lockAct != null) {
                     DKState.user(heard); DKLog.d("फ़ोन लॉक: आवाज़ से ${lockAct.type}")
                     agent.runQuick(PhoneLockVoice.quick(lockAct)); continue

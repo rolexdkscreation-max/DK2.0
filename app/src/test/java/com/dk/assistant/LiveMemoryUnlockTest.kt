@@ -128,7 +128,7 @@ class LiveMemoryUnlockTest {
         assertTrue(src("BrainManager.kt").contains("MsgDraft.recentBlock(MsgDraft.turnsFromState()"))
         assertTrue(src("DKAccessibilityScreen.kt").contains("PhoneLockVoice.noPinReason("))
         assertTrue(src("LiveNet.kt").contains("PhoneLockStore.userUnlocked(ctx)"))
-        assertTrue(src("DKAccessibilityService.kt").contains("?.takeIf { it == PhoneLockVoice.Act.UNLOCK }"))
+        assertTrue(src("DKAccessibilityService.kt").contains("?.takeIf { it == PhoneLockVoice.Act.UNLOCK || offlineNow }"))
         assertTrue(src("PhoneUnlocker.kt").contains("delay(SETTLE_MS)"))
     }
 }
