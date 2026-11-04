@@ -112,10 +112,12 @@ class SecretPrefsTest {
         assertFalse(raw.contains("gh_token"))
     }
 
-    @Test fun workerNeedsToken_andLiveKeyOnlyInHeader() {
-        assertTrue(com.dk.assistant.voice.engine.WorkerWhy.http(500, "APP_TOKEN secret नहीं लगी").contains("APP_TOKEN"))
-        assertTrue(com.dk.assistant.voice.engine.WorkerWhy.http(500, "GEMINI_API_KEY missing").contains("GEMINI_API_KEY"))
-        for (f in listOf("GeminiLiveRace.kt", "LiveCaption.kt", "voice/engine/LiveNativeEngine.kt")) {
+    /** नवंबर 2026: Worker (APP_TOKEN) हटा - Gemini TTS भी अब सीधे, उसी तरह key सिर्फ़ header में */
+    @Test fun noWorkerToken_andLiveKeyOnlyInHeader() {
+        val tts = src("voice/engine/GeminiTtsEngine.kt")
+        assertFalse(tts.contains("worker_token")); assertFalse(tts.contains("worker_url")); assertFalse(tts.contains("APP_TOKEN"))
+        assertTrue(com.dk.assistant.voice.engine.GeminiTtsDirect.why(401, "").contains("Gemini key"))
+        for (f in listOf("GeminiLiveRace.kt", "LiveCaption.kt", "voice/engine/LiveNativeEngine.kt", "voice/engine/GeminiTtsEngine.kt")) {
             val s = src(f)
             assertFalse(f, s.contains("?key="))
             assertTrue(f, s.contains(".header(\"x-goog-api-key\", "))

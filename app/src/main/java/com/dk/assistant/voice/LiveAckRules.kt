@@ -58,6 +58,9 @@ object LiveAckRules {
         return pcm.copyOfRange(2 * s, 2 * (e + 1))
     }
 
+    /** एक समय पर एक ही ack बनाना: true = अभी तुम बनाओ (बाद में false करना), false = कोई और बना रहा */
+    fun tryBegin(busy: java.util.concurrent.atomic.AtomicBoolean): Boolean = busy.compareAndSet(false, true)
+
     /** DKI-9DC74D: पिछली नाकामी के बाद फिर कोशिश करें? (0 = कभी नाकाम नहीं) */
     fun retryDue(failAt: Long, now: Long): Boolean = failAt == 0L || now - failAt >= RETRY_MS
 

@@ -937,18 +937,16 @@ WhatsApp संदेश	WhatsApp messages
 बोलना ख़त्म → पहली आवाज़:	Speech end → first sound:
 बातचीत में अभी नापा नहीं	Not measured in conversation yet
 नमूना:	sample:
-भावना/स्टाइल का निर्देश मानता है • key Cloudflare Worker (dk-brain) में	Follows emotion/style instructions • key lives in the Cloudflare Worker (dk-brain)
+भावना/स्टाइल का निर्देश मानता है • DK लाइव वाली Gemini key से (Worker नहीं)	Follows emotion/style instructions • uses the DK Live Gemini key (no Worker)
 Kore — मज़बूत, साफ़ (महिला)	Kore — firm, clear (female)
 Leda — जवान, ताज़ी (महिला)	Leda — youthful, fresh (female)
 Aoede — हल्की, खुली (महिला)	Aoede — light, breezy (female)
 Sulafat — गर्मजोशी भरी (महिला)	Sulafat — warm (female)
 Vindemiatrix — कोमल, प्यारी (महिला)	Vindemiatrix — gentle, sweet (female)
-Cloudflare Worker (dk-brain) का पता नहीं डाला	Cloudflare Worker (dk-brain) address not entered
-Cloudflare Worker (dk-brain) का पता	Cloudflare Worker (dk-brain) address
-Worker का ऐप-टोकन (APP_TOKEN, ज़रूरी नहीं)	Worker app token (APP_TOKEN, optional)
-Worker में APP_TOKEN रखा हो तो वही	Same as APP_TOKEN in the Worker, if set
 भावना / स्टाइल (हर टुकड़े से पहले यही एक निर्देश)	Emotion / style (this one instruction before every piece)
-Gemini की key ऐप में नहीं - Worker में: wrangler secret put GEMINI_API_KEY (worker/dk-brain/README.md)	The Gemini key is not in the app - it is in the Worker: wrangler secret put GEMINI_API_KEY (worker/dk-brain/README.md)
+कुछ नहीं डालना - DK लाइव वाली Gemini key (मुख्य + बैकअप) से ही आवाज़ बनती है	Nothing to enter - the voice is made with the DK Live Gemini key (main + backup)
+DK लाइव की Gemini key नहीं डाली (Settings → AI दिमाग → DK लाइव)	DK Live Gemini key not entered (Settings → AI brain → DK Live)
+अपने-आप (जो चले)	Automatic (whichever works)
 Gemini Live सीधी आवाज़	Gemini Live direct voice
 Live खुद लिखता और खुद बोलता है (native audio) • नीचे का भावना/स्टाइल Live के मुख्य निर्देश में जुड़ता है	Live writes and speaks by itself (native audio) • the emotion/style below is added to Live's main instruction
 भावना / स्टाइल (Live के मुख्य निर्देश में)	Emotion / style (in Live's main instruction)

@@ -17,7 +17,7 @@ class LiveInfoTest {
 
     private fun src(name: String): String = listOf(File("src/main/java/com/dk/assistant/$name"), File("app/src/main/java/com/dk/assistant/$name"))
         .first { it.exists() }.readText()
-    private fun worker(): String = listOf(File("../worker/dk-brain/src/index.js"), File("worker/dk-brain/src/index.js"))
+    private fun direct(): String = listOf(File("src/main/java/com/dk/assistant/voice/engine/GeminiTtsDirect.kt"), File("app/src/main/java/com/dk/assistant/voice/engine/GeminiTtsDirect.kt"))
         .first { it.exists() }.readText()
 
     // ------------------------------------------------------------------ समय
@@ -192,10 +192,13 @@ class LiveInfoTest {
         assertTrue(CalmPersona.block().contains("never like a robot"))
         val tts = src("voice/engine/GeminiTtsEngine.kt")
         assertTrue(tts.contains("const val DEFAULT_VOICE = \"Sulafat\""))   // v4.3: मालिक ने आवाज़ बदलवाई (Achernar -> Sulafat)
-        assertTrue(tts.contains("put(\"model\", it)"))
+        assertTrue(tts.contains("GeminiTtsDirect.models(lastModel(c).ifBlank { null }, model(c))"))   // चुना मॉडल पहले (पहले Worker को "model")
         assertTrue(LiveSrc.all().contains("LiveNativeEngine.style(svc).ifBlank { CalmPersona.VOICE_STYLE }"))
-        val w = worker()
-        assertTrue(w.contains("if (want && list.includes(want))"))
-        assertTrue(w.contains("slice(0, 600)"))
+        val w = direct()
+        assertTrue(w.contains("if (w.isNotEmpty() && w in MODELS)"))
+        assertTrue(w.contains("const val MAX_STYLE = 600"))
+        val D = com.dk.assistant.voice.engine.GeminiTtsDirect
+        assertEquals("gemini-3.8-flash-tts", D.models(null, "gemini-3.8-flash-tts").first())
+        assertEquals(D.MODELS, D.models(null, "not-a-model"))
     }
 }

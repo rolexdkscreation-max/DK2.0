@@ -282,6 +282,12 @@ object HeyDk {
         // ही नहीं; (2) Worker नाकाम = 10 मिनट तक दोबारा नहीं (टिंग/Live वाली आवाज़ चलती रहे).
         val now = System.currentTimeMillis()
         if (!LiveAckRules.retryDue(ackFailAt, now)) return
+        // नवंबर 2026: एक समय पर एक ही - जवाब आने तक दबाया हर बटन नई request न भेजे (एक ही फ़ाइल पर दो लिखने वाले भी नहीं)
+        if (!LiveAckRules.tryBegin(ackBusy)) return
+        try { makeAcks(c, e, voice) } finally { ackBusy.set(false) }
+    }
+
+    private fun makeAcks(c: Context, e: com.dk.assistant.voice.engine.VoiceEngine, voice: String) {
         val liveOn = VoiceEngines.activeId(c) == VoiceEngines.LIVE_NATIVE
         for (t in acks(c)) {
             val f = ackFile(c, e.id, voice, t)
@@ -291,6 +297,12 @@ object HeyDk {
                 val out = ByteArrayOutputStream()
                 e.speak(c, t, voice) { out.write(it) }
                 if (out.size() > 2000) { f.parentFile?.mkdirs(); f.writeBytes(out.toByteArray()); ackFailAt = 0L }
+                else {
+                    // 200 पर भी खाली/कटी आवाज़ = नाकामी (वरना हर बटन पर फिर माँगते)
+                    ackFailAt = System.currentTimeMillis()
+                    DKLog.d("Hey DK जवाब की आवाज़ खाली आई - ${ACK_RETRY_MS / 60_000} मिनट तक दोबारा नहीं")
+                    return
+                }
             } catch (ex: Exception) {
                 ackFailAt = System.currentTimeMillis()
                 DKLog.d("Hey DK जवाब की आवाज़ नहीं बनी: ${ex.message} - ${ACK_RETRY_MS / 60_000} मिनट तक दोबारा नहीं")
@@ -302,6 +314,7 @@ object HeyDk {
     /** Worker/TTS नाकाम होने के बाद इतनी देर दोबारा नहीं */
     const val ACK_RETRY_MS = LiveAckRules.RETRY_MS
     @Volatile private var ackFailAt = 0L
+    private val ackBusy = java.util.concurrent.atomic.AtomicBoolean(false)
 
     /** नवंबर 2026: यह "हाँ सर" फ़ोन में पहले से बना है? (power बटन पर तुरंत - बिना इंटरनेट) */
     fun hasAck(c: Context, text: String): Boolean = ackPick(c, text) != null
