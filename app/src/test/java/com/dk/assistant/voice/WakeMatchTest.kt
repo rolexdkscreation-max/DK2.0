@@ -150,7 +150,7 @@ class WakeMatchTest {
     @Test fun wiring_localWakeBeforeCloudAndBootAndSettings() {
         val svc = com.dk.assistant.AccSrc.all()
         val local = svc.indexOf("com.dk.assistant.voice.HeyDk.listen(")
-        assertTrue(local > 0 && local < svc.indexOf("val heard = hear(wakeGate = !liveBefore)"))
+        assertTrue(local > 0 && local < svc.indexOf("val heard = hear(wakeGate = !liveBefore && !callRinging())"))
         assertTrue(svc.contains("HeyDk.playAck(") && svc.contains("gemLive.idleExitMs = 30_000"))
         assertTrue(svc.contains("HeyDk.on(this) && !Prefs.micUserOff(this)) Setup.startKeepAlive(this)"))
         val hd = src("java/com/dk/assistant/voice/HeyDk.kt")

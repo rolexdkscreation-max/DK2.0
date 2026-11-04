@@ -78,7 +78,10 @@ internal suspend fun DKAccessibilityService.onIncomingCall(who0: String, ask: St
         return
     }
     callAnnouncing = true
-    try { speaker.speakCall(msg) } finally { callAnnouncing = false }
+    // v4.6 मालिक: "जवाब देते में यूज़र बोलेगा 'डीके फोन उठा लो' तो फटाक से पहले फोन उठाएगा" - एलान अलग चलता है,
+    // अपने माइक (callBargeEar) से साथ-साथ सुनना. Google माइक वाले तरीके में पहले जैसा: एलान पूरा, फिर सुनो
+    val announce = scope.launch { try { speaker.speakCall(msg) } finally { callAnnouncing = false } }
+    if (!callBargeEar()) announce.join()
     scope.launch { delay(1_000); while (calls.ringing || calls.inCall) delay(500); speaker.restoreCallVolume() }
 
     if (loopJob?.isActive == true) {
@@ -167,10 +170,33 @@ internal fun DKAccessibilityService.openSmsDraft(number: String, text: String) {
     } catch (e: Exception) { DKLog.d("sms draft: ${e.message}") }
 }
 
+/** v4.6: कॉल का एलान बीच में रोको (उठाना/काटना पहले, बोलना बाद में) */
+internal fun DKAccessibilityService.hushForCall() {
+    if (speaker.busy) try { speaker.stop() } catch (_: Exception) {}
+}
+
+/**
+ * v4.6 मालिक: "डीके फोन उठा लो" / "फोन उठा के स्पीकर पर डाल दो" - रिकॉर्ड की हुई आवाज़ से (बिना इंटरनेट भी), फटाक से.
+ * घंटी बज रही हो तभी; पहले फ़ोन उठाओ, फिर बोलो.
+ */
+internal fun DKAccessibilityService.answerByVoice(speakerOn: Boolean, from: String) {
+    hushForCall()
+    callPending = false
+    DKLog.d("कॉल उठाओ (आवाज़-कमांड, $from)${if (speakerOn) " + स्पीकर" else ""}")
+    agent.runQuick(QuickCommands.Quick(JSONObject().put("type", "answer_call").put("speaker", speakerOn),
+        if (speakerOn) "कॉल उठा कर स्पीकर पर डाल दिया" else "कॉल उठा लिया"))
+}
+
 /** Ghanti ke dauraan boli baat: true = samajh kar kaam kar diya. */
 internal suspend fun DKAccessibilityService.handleCallReply(heard: String): Boolean {
     val l = " " + heard.lowercase().trim().trim('.', '।', '!', '?') + " "
     fun has(vararg w: String) = w.any { l.contains(it) }
+    // v4.6: यह बात DK के एलान के बीच शुरू हुई - माइक में DK की अपनी आवाज़ ("उठाऊँ या काट दूँ") भी हो सकती है.
+    // तब सिर्फ़ DK के नाम वाली बात ("डीके फोन उठा लो") मानो, गूँज से कॉल न उठे न कटे
+    if (callBargeAt > 0L) {
+        callBargeAt = 0L
+        if (!CallReply.bargeOk(heard, Prefs.wakeWords(this))) { DKLog.d("एलान के बीच की बात (DK नाम नहीं / गूँज) - छोड़ी: \"${heard.take(30)}\""); return false }
+    }
     DKState.user(heard)
     // v4.1: काटकर मैसेज / तैयार मैसेज / म्यूट / कॉल काटो
     CallCmd.route(heard, System.currentTimeMillis())?.let { cc ->
@@ -190,11 +216,12 @@ internal suspend fun DKAccessibilityService.handleCallReply(heard: String): Bool
         // "मत उठाओ" / "नहीं उठाना" = kaato (pehle check)
         has("मत उठा", "नहीं उठा", "ना उठा") -> { agent.runQuick(QuickCommands.Quick(JSONObject().put("type", "end_call"), "कॉल काट दिया")).join(); callPending = false; true }
         pick && !has("काट", "reject") -> {
+            hushForCall()      // एलान अभी चल रहा हो तो वहीं रोको - पहले फ़ोन उठे
             agent.runQuick(QuickCommands.Quick(JSONObject().put("type", "answer_call").put("speaker", speakerOn),
                 if (speakerOn) "कॉल उठा कर स्पीकर पर डाल रहा हूँ" else "कॉल उठा रहा हूँ")).join()
             callPending = false; true
         }
-        cut -> { agent.runQuick(QuickCommands.Quick(JSONObject().put("type", "end_call"), "कॉल काट दिया")).join(); callPending = false; true }
+        cut -> { hushForCall(); agent.runQuick(QuickCommands.Quick(JSONObject().put("type", "end_call"), "कॉल काट दिया")).join(); callPending = false; true }
         quiet -> {
             DeviceActions.volume(this, "set", 0, "ring")
             DKState.reply("रिंगटोन धीमी कर दी।"); speaker.speakQuick("रिंगटोन धीमी कर दी।"); false

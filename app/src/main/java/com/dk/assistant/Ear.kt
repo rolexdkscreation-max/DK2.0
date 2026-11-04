@@ -50,6 +50,11 @@ class Ear(
     @Volatile var onFrame: ((ShortArray, Int) -> Unit)? = null
     /** DK ki apni awaaz mic me kitni aati hai (bolte waqt) */
     private var echo = 0.0
+    /**
+     * v4.6 मालिक: "कॉल आने पर DK बता रहा हो और बीच में बोलूँ 'DK फोन उठा लो' तो फटाक से उठाए"।
+     * true = DK बोल रहा हो तब भी सुनो (barge) - जैसे कॉल का एलान चलते समय. गूँज से ऊपर वाली आवाज़ ही पकड़ी जाती है.
+     */
+    @Volatile var bargeWhen: () -> Boolean = { false }
     /** Abhi user ki baat record ho rahi hai? */
     @Volatile var capturing = false
         private set
@@ -133,8 +138,9 @@ class Ear(
                 if (sum == 0.0) { if (++zeroRun > 100 && !talking) { problem = "silent"; return@withContext null } } else zeroRun = 0
 
                 val dkTalking = muted()
+                val bargeNow = barge || (dkTalking && bargeWhen())
                 // DK khud bol raha hai -> (normal sunne me) apni awaaz mat suno
-                if (dkTalking && !barge) { talking = false; speech.reset(); pre.clear(); loud = 0; warm = 4; DKState.level = 0f; continue }
+                if (dkTalking && !bargeNow) { talking = false; speech.reset(); pre.clear(); loud = 0; warm = 4; DKState.level = 0f; continue }
                 if (warm > 0) {
                     // naapte waqt bhi awaaz rakh lo (pehle shabd ke liye), aur boli hui baat ko shor mat maano
                     pre.addLast(buf.copyOf(n)); if (pre.size > PRE_ROLL) pre.removeFirst()
@@ -144,9 +150,9 @@ class Ear(
                 if (dkTalking && !talking) echo = if (echo == 0.0) rms else echo * 0.85 + rms * 0.15
                 // dheemi awaaz bhi pakdo, par pankhe/TV ka shor nahi. DK bol raha ho to uski goonj se kaafi upar.
                 // v3.7: dheemi awaaz ke liye kam seema (pehle noise*2.0 / 260) - dheere bolo tab bhi pakde
-                val startTh = if (barge && dkTalking) maxOf(noise * 2.3, echo * 1.8, 650.0) else maxOf(noise * 1.5, 120.0)   // v4.2: और धीमी आवाज़ (पहले 1.7x / 150)
+                val startTh = if (bargeNow && dkTalking) maxOf(noise * 2.3, echo * 1.8, 650.0) else maxOf(noise * 1.5, 120.0)   // v4.2: और धीमी आवाज़ (पहले 1.7x / 150)
                 val stopTh = maxOf(noise * 1.25, 100.0)
-                val startFrames = if (barge && dkTalking) 7 else START_FRAMES
+                val startFrames = if (bargeNow && dkTalking) 7 else START_FRAMES
 
                 if (!talking) {
                     DKState.level = 0f

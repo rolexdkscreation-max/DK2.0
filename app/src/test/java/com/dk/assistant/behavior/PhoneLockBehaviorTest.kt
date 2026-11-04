@@ -101,12 +101,18 @@ class PhoneLockBehaviorTest {
     private fun open() = Robolectric.buildActivity(SettingsActivity::class.java,
         Intent(c, SettingsActivity::class.java).putExtra("section", "phonelock")).setup()
 
-    @Test fun settingsScreenSavesNamesAndSentences() {
+    /**
+     * v4.6 मालिक: "लॉक-अनलॉक में टेक्स्ट हटाकर वॉइस रिकॉर्डिंग" - नाम/वाक्य लिखने के खाने नहीं, 30 सेकंड रिकॉर्डिंग का बटन.
+     * पहले सेव किए नाम/वाक्य मिटते नहीं (रिकॉर्डिंग न हो तब तक पीछे से चलते हैं).
+     */
+    @Test fun settingsScreenVoiceRecordingNoTextFields() {
+        PhoneLockStore.saveSettings(c, false, false, "मायरा, श्री", "सो जाओ, फोन लॉक करो", "")
         val s = open()
         val a = s.get()
+        assertFalse(Ui.hasText(a, "बुलाने के नाम"))
+        assertFalse(Ui.hasText(a, "लॉक करने के लिए क्या बोलें"))
+        assertTrue(Ui.hasText(a, "30 सेकंड रिकॉर्ड करें"))
         Ui.switch(a, "आवाज़ से फ़ोन लॉक करो").isChecked = true
-        Ui.field(a, "बुलाने के नाम").setText("मायरा, श्री")
-        Ui.field(a, "लॉक करने के लिए क्या बोलें").setText("सो जाओ, फोन लॉक करो")
         s.pause().stop().destroy()
         assertTrue(PhoneLockStore.lockOn(c))
         assertEquals("मायरा, श्री", PhoneLockStore.names(c))

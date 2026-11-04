@@ -368,6 +368,8 @@ internal fun GeminiLive.liveVoiceCmd(pcm: ByteArray) {
         val hit = com.dk.assistant.voice.VoiceCmds.match(svc, pcm) ?: return@launch
         kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
             if (hit.cmd == com.dk.assistant.voice.VoiceCmdMatch.Cmd.FOUND && !FindPhone.active) return@withContext
+            // v4.6: "डीके फोन उठा लो" बिना घंटी = आम बात, Live ही जवाब दे
+            if (hit.cmd.id.startsWith("answer") && !svc.callRinging()) return@withContext
             muteTurn = true; muteAt = System.currentTimeMillis()
             log("आवाज़-कमांड फ़ोन पर (Live का जवाब बंद): ${hit.cmd.hi}")
             svc.runVoiceCmd(hit, "Live")

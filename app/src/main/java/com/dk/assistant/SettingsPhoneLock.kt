@@ -21,9 +21,6 @@ internal fun SettingsActivity.secPhoneLock() {
     lateinit var swLock: SwitchCompat
     lateinit var swUnlock: SwitchCompat
     lateinit var status: TextView
-    lateinit var edNames: EditText
-    lateinit var edLock: EditText
-    lateinit var edUnlock: EditText
 
     fun refresh() {
         val k = PhoneLockStore.kind(this)
@@ -35,7 +32,7 @@ internal fun SettingsActivity.secPhoneLock() {
         }
     }
 
-    card("आवाज़ से फ़ोन लॉक / अनलॉक", "\"हे DK फोन लॉक करो\" • \"हे मायरा फोन अनलॉक करो\" — बिना AI, सीधे फ़ोन पर", startOpen = true) { box ->
+    card("आवाज़ से फ़ोन लॉक / अनलॉक", "अपनी आवाज़ रिकॉर्ड करके — बिना AI, बिना इंटरनेट, सीधे फ़ोन पर", startOpen = true) { box ->
         if (!Setup.accessibilityOn(this)) hint(box, "⚠ पहले Settings → Accessibility में DK चालू करें — उसके बिना फ़ोन लॉक / अनलॉक नहीं होगा।")
         swLock = switch(box, "आवाज़ से फ़ोन लॉक करो", PhoneLockStore.lockOn(this))
         swUnlock = switch(box, "आवाज़ से फ़ोन अनलॉक करो (PIN / पैटर्न DK डालेगा)", PhoneLockStore.unlockOn(this))
@@ -50,7 +47,8 @@ internal fun SettingsActivity.secPhoneLock() {
                 PhoneLockStore.clearSecret(this); swUnlock.isChecked = false; refresh()
                 toast("फ़ोन का PIN / पैटर्न DK से हटा दिया")
             })
-        hint(box, "ध्यान दें: अनलॉक चालू होने पर जो भी आपका नाम-वाक्य बोलेगा, फ़ोन खुल जाएगा। PIN फ़ोन से बाहर कहीं नहीं जाता " +
+        hint(box, "लॉक और अनलॉक का वाक्य नीचे \"आवाज़ रिकॉर्ड करके सिखाएँ\" में अलग-अलग 30 सेकंड रिकॉर्ड करें — उसी आवाज़ से फ़ोन लॉक / अनलॉक होगा, इंटरनेट हो या न हो।")
+        hint(box, "ध्यान दें: PIN फ़ोन से बाहर कहीं नहीं जाता " +
             "(न इंटरनेट, न AI)। फ़ोन का PIN बदलें तो यहाँ भी नया सेव करें। लगातार ${PhoneLockStore.MAX_FAILS} बार न खुले तो DK अपने-आप रुक जाता है।")
         swUnlock.setOnCheckedChangeListener { _, on ->
             txtSaved.text = "बदलाव सेव नहीं हुए — सेव दबाएँ"
@@ -58,21 +56,13 @@ internal fun SettingsActivity.secPhoneLock() {
         }
     }
 
-    card("क्या बोलें", "बुलाने का नाम + वाक्य (कॉमा से अलग, जितने चाहें)", startOpen = true) { box ->
-        edNames = field(box, "बुलाने के नाम", PhoneLockStore.names(this), "जैसे: DK, मायरा, जारवी, श्री, Google")
-        hint(box, "DK के अपने नाम (जिनसे आप उसे बुलाते हैं) भी अपने-आप चलते हैं। \"हे / हेलो / ओके\" आगे लगाना ज़रूरी नहीं।")
-        edLock = field(box, "लॉक करने के लिए क्या बोलें", PhoneLockStore.lockWords(this), PhoneLockVoice.DEFAULT_LOCK, multiLine = true)
-        edUnlock = field(box, "अनलॉक करने के लिए क्या बोलें", PhoneLockStore.unlockWords(this), PhoneLockVoice.DEFAULT_UNLOCK, multiLine = true)
-        hint(box, "उदाहरण: \"हे मायरा फोन अनलॉक करो\", \"हे जारवी फोन अनलॉक करो\", \"हे श्री फोन लॉक करो\", \"हे Google अनलॉक करो\"। " +
-            "\"मत / नहीं\" वाली बात पर कुछ नहीं होता।")
-        row(box, button("पहले जैसे वाक्य") {
-            edLock.setText(PhoneLockVoice.DEFAULT_LOCK); edUnlock.setText(PhoneLockVoice.DEFAULT_UNLOCK)
-        })
-    }
+    // v4.6 मालिक: "लॉक-अनलॉक में टेक्स्ट हटाकर वॉइस रिकॉर्डिंग वाला डालना" - नाम/वाक्य लिखने वाला खाना हटाया.
+    // अब नीचे "आवाज़ रिकॉर्ड करके सिखाएँ" में लॉक और अनलॉक की अलग-अलग 30 सेकंड की रिकॉर्डिंग (वाक्य 5 बार).
+    // पहले लिखे नाम/वाक्य मिटते नहीं - रिकॉर्डिंग न हो तब तक वही (और DK के नाम) पीछे से चलते रहते हैं.
 
     plSave = {
         PhoneLockStore.saveSettings(this, swLock.isChecked, swUnlock.isChecked,
-            edNames.text.toString(), edLock.text.toString(), edUnlock.text.toString())
+            PhoneLockStore.names(this), PhoneLockStore.lockWords(this), PhoneLockStore.unlockWords(this))
         if (swUnlock.isChecked && !PhoneLockStore.hasSecret(this)) swUnlock.isChecked = false
     }
 }

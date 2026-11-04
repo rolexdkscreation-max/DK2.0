@@ -99,7 +99,13 @@ class DKAccessibilityService : AccessibilityService() {
         speaker.callNow = { try { calls.ringing || calls.inCall || callPending } catch (_: Exception) { false } }
         listener = VoiceListener(this)
         // aap bolna shuru karo aur ghanti baj rahi ho -> ringtone turant dheemi (taaki DK saaf sune)
-        ear = Ear(this, { speaker.busy }) { if (::calls.isInitialized && calls.ringing) calls.quietRinger() }
+        ear = Ear(this, { speaker.busy }) {
+            if (::calls.isInitialized && calls.ringing) calls.quietRinger()
+            // v4.6 मालिक: कॉल का एलान चल रहा हो और आप बोल पड़ें ("डीके फोन उठा लो") - DK तुरंत चुप, आपकी बात सुने
+            callBargeAt = if (callBargeEar()) System.currentTimeMillis() else 0L
+            if (callBargeAt > 0) try { speaker.stop() } catch (_: Exception) {}
+        }
+        ear.bargeWhen = { callBargeEar() }
         agent = AgentRunner(this, scope, speaker)
         OfflineQueue.drain(this)        // v3.88: पिछली बार नेटवर्क न होने से रुका काम
         calls = CallManager(this) { who -> scope.launch { onIncomingCall(who) } }
@@ -614,7 +620,7 @@ class DKAccessibilityService : AccessibilityService() {
             while (isActive && (DKState.live || (Prefs.wakeMode(this@DKAccessibilityService) && !Prefs.micUserOff(this@DKAccessibilityService)))) {
                 // v3.59: म्यूट (wake word वाले सुनने में) = माइक छोड़ दो
                 if (DKState.micMuted && !DKState.live) { ear.release(); listener.release(); earCaptionOff(); delay(400); continue }
-                if (agent.isBusy || speaker.busy || DKState.mode == Mode.SPEAKING || callAnnouncing) { delay(250); continue }
+                if ((agent.isBusy || speaker.busy || DKState.mode == Mode.SPEAKING || callAnnouncing) && !callBargeEar()) { delay(250); continue }
                 // आप इनपुट बार में बोलकर लिख रहे हैं - माइक आपका (DK यह बात command नहीं मानता)
                 if (DKMic.dictating && !useGeminiLive()) { ear.release(); listener.release(); delay(300); continue }
                 // call chal rahi hai: mic call ka hai - DK ka mic chhod do (warna saamne wale ko awaaz nahi jaati)
@@ -713,7 +719,9 @@ class DKAccessibilityService : AccessibilityService() {
                     if (why != lastWhyNot) { lastWhyNot = why; DKLog.d("Gemini Live इस्तेमाल नहीं हो रहा: $why") }
                 }
                 // v3.81: "Hey DK" फ़ोन के अंदर (cloud STT नहीं) - सिर्फ़ मालिक की आवाज़ में "Hey DK" पर जागो
-                if (!DKState.live && com.dk.assistant.voice.HeyDk.on(this@DKAccessibilityService)) {
+                // v4.6: घंटी बजते समय "Hey DK" loop रुका रहता था (stop = ringing) और कोई नहीं सुनता था - "डीके फोन उठा लो"
+                // अनसुना. घंटी के समय सीधे नीचे वाला hear() (कॉल का जवाब, आवाज़-कमांड, बिना wake word)
+                if (!DKState.live && !callRinging() && com.dk.assistant.voice.HeyDk.on(this@DKAccessibilityService)) {
                     if (!checkMic()) { delay(2000); continue }
                     ear.release(); listener.release(); earCaptionOff()
                     if (DKState.mode == Mode.LISTENING) DKState.set(Mode.IDLE)
@@ -772,7 +780,7 @@ class DKAccessibilityService : AccessibilityService() {
                     continue
                 }
                 val liveBefore = DKState.live
-                val heard = hear(wakeGate = !liveBefore)
+                val heard = hear(wakeGate = !liveBefore && !callRinging())
                 if (DKState.mode == Mode.LISTENING || DKState.mode == Mode.THINKING) DKState.set(Mode.IDLE)
                 // sunte-sunte Live chalu hua: yeh baat Live se pehle ki (background) - command nahi, Gemini Live khud sunega
                 if (heard != null && LiveStart.staleHeard(liveBefore, DKState.live) && !wakeLive) {
@@ -1125,6 +1133,14 @@ class DKAccessibilityService : AccessibilityService() {
     @Volatile internal var callAnnouncing = false
     /** Call aayi aur abhi jawab (उठाओ / काटो) nahi mila */
     @Volatile internal var callPending = false
+    /** v4.6: आख़िरी बात कॉल के एलान के बीच शुरू हुई (0 = नहीं) - तब DK का नाम ज़रूरी ([CallReply.bargeOk]) */
+    @Volatile internal var callBargeAt = 0L
+    /**
+     * v4.6 मालिक: "जवाब देते में अगर यूज़र बोलेगा डीके फोन उठा लो, तो फटाक से पहले फोन उठाएगा"।
+     * घंटी बज रही + DK कॉल का एलान कर रहा = एलान के ख़त्म होने का इंतज़ार नहीं, अपने माइक से साथ-साथ सुनो.
+     * (Live में यह काम Live का माइक करता है; Google माइक DK की अपनी आवाज़ भी लिख देता, इसलिए सिर्फ़ अपना माइक)
+     */
+    fun callBargeEar(): Boolean = try { callAnnouncing && callRinging() && !useGeminiLive() && silentEar() } catch (_: Exception) { false }
 
     /**
      * Call aate hi:
