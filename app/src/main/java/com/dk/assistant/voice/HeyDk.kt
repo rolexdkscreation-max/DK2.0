@@ -72,7 +72,7 @@ object HeyDk {
      * @param onLevel 0..1 मीटर (IO thread से)
      */
     @SuppressLint("MissingPermission")
-    suspend fun recordTake(source: Int, onLevel: (Float) -> Unit): Take? = withContext(Dispatchers.IO) {
+    suspend fun recordTake(source: Int, maxMs: Int = 3_500, endMs: Int = 500, onLevel: (Float) -> Unit): Take? = withContext(Dispatchers.IO) {
         val chunk = RATE * CHUNK_MS / 1000
         val min = AudioRecord.getMinBufferSize(RATE, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT)
         val r = try {
@@ -80,7 +80,7 @@ object HeyDk {
                 .takeIf { it.state == AudioRecord.STATE_INITIALIZED }
         } catch (_: Exception) { null }
         if (r == null) { lastInfo = "माइक नहीं खुला"; return@withContext null }
-        val vad = WakeMatch.Vad(CHUNK_MS, endMs = 500)
+        val vad = WakeMatch.Vad(CHUNK_MS, endMs = endMs)       // आवाज़-कमांड: "हे डीके, ..." के बीच रुकना भी चले (900)
         val pre = ArrayDeque<ByteArray>(); val out = ByteArrayOutputStream()
         val buf = ShortArray(chunk); val bytes = ByteArray(chunk * 2)
         var started = false; var ms = 0; var peak = 0.0
@@ -103,7 +103,7 @@ object HeyDk {
                     continue
                 }
                 out.write(piece)
-                if (ev == WakeMatch.Vad.Ev.END || out.size() >= RATE * 2 * 7 / 2) break
+                if (ev == WakeMatch.Vad.Ev.END || out.size() >= RATE * 2 * maxMs / 1000) break
             }
         } finally {
             try { r.stop() } catch (_: Exception) {}
@@ -151,7 +151,7 @@ object HeyDk {
     // ------------------------------------------------------------------ सुनना
 
     /** @param rest "Hey DK" के साथ एक साँस में बोली बाकी बात (पूरी आवाज़, शुरू के "Hey DK" समेत) - null = सिर्फ़ "Hey DK" */
-    class Hit(val distance: Float, val owner: Float?, val rest: ByteArray?)
+    class Hit(val distance: Float, val owner: Float?, val rest: ByteArray?, val cmd: VoiceCmds.Hit? = null)
 
     /** दो जागने के बीच कम से कम (एक ही बात दो बार न पकड़े) */
     @Volatile private var lastHitAt = 0L
@@ -178,6 +178,9 @@ object HeyDk {
         var inSeg = false; var preBytes = 0; var cutIdx = 0; var checkedUpTo = 0
         val buf = ShortArray(chunk); val bytes = ByteArray(chunk * 2)
         val sense = Prefs.heyDkSense(c)
+        // नवंबर 2026: बिना इंटरनेट वाली आवाज़-कमांड (लॉक / अनलॉक / किधर हो) - "Hey DK" के साथ एक साँस में, या रुककर
+        val cmdsOn = VoiceCmds.anyOn(c)
+        var prevSeg: ByteArray? = null; var prevEndAt = 0L
         try {
             r.startRecording()
             while (isActive && !stop()) {
@@ -196,6 +199,12 @@ object HeyDk {
                 }
                 seg.write(piece)
                 val ended = ev == WakeMatch.Vad.Ev.END || !det.inSpeech
+                if (ended && cmdsOn) {
+                    val whole = seg.toByteArray()
+                    val joined = prevSeg?.takeIf { System.currentTimeMillis() - prevEndAt < VoiceCmdMatch.JOIN_GAP_MS }?.let { it + whole }
+                    val ch = VoiceCmds.match(c, whole) ?: joined?.let { VoiceCmds.match(c, it) }
+                    if (ch != null) { lastHitAt = System.currentTimeMillis(); return@withContext Hit(0f, ch.owner, null, ch) }
+                }
                 var probe = -1
                 if (cutIdx < cuts.size && seg.size() >= preBytes + cuts[cutIdx]) { probe = preBytes + cuts[cutIdx]; cutIdx++ }
                 else if (ended && seg.size() > checkedUpTo && seg.size() <= maxSeg) probe = seg.size()
@@ -218,10 +227,15 @@ object HeyDk {
                         }
                         // "Hey DK" के बाद बस थोड़ा-सा (साँस/हम्म) = सिर्फ़ "Hey DK"
                         val extra = rest.size() - probe
-                        return@withContext Hit(hit.distance, hit.owner, if (extra > RATE * 2 * 4 / 10) rest.toByteArray() else null)
+                        val all = rest.toByteArray()
+                        val ch = if (cmdsOn && extra > RATE * 2 * 3 / 10) VoiceCmds.match(c, all) else null
+                        return@withContext Hit(hit.distance, hit.owner, if (extra > RATE * 2 * 4 / 10) all else null, ch)
                     }
                 }
-                if (ended || seg.size() > maxSeg * 3) { inSeg = false; seg.reset(); det.reset() }
+                if (ended || seg.size() > maxSeg * 3) {
+                    if (ended) { prevSeg = seg.toByteArray(); prevEndAt = System.currentTimeMillis() } else prevSeg = null
+                    inSeg = false; seg.reset(); det.reset()
+                }
             }
             null
         } finally {
@@ -263,6 +277,12 @@ object HeyDk {
 
     fun nextAck(c: Context): String = WakeMatch.nextAck(acks(c), lastAck).also { lastAck = it }
 
+    /** पहले से बनाकर फ़ोन में रखी आवाज़ें: "हाँ सर" वाले + "मैं इधर हूँ बॉस" (फ़ोन ढूँढना - तब इंटरनेट न हो तो भी) */
+    fun clipTexts(c: Context): List<String> = (acks(c) + com.dk.assistant.FindPhone.SAY).distinct()
+
+    /** बनी हुई आवाज़ (24 kHz PCM) - नहीं बनी = null */
+    fun clipPcm(c: Context, text: String): ByteArray? = ackPick(c, text)?.let { try { it.readBytes() } catch (_: Exception) { null } }
+
     /** जो इंजन अकेले बोल सकता है (Live की अपनी आवाज़ अकेले नहीं बोलती -> Gemini TTS) */
     private fun ackEngine(c: Context) = listOfNotNull(VoiceEngines.active(c), VoiceEngines.byId(VoiceEngines.GEMINI_TTS))
         .firstOrNull { it.id != VoiceEngines.LIVE_NATIVE && it.notReady(c) == null }
@@ -289,7 +309,7 @@ object HeyDk {
 
     private fun makeAcks(c: Context, e: com.dk.assistant.voice.engine.VoiceEngine, voice: String) {
         val liveOn = VoiceEngines.activeId(c) == VoiceEngines.LIVE_NATIVE
-        for (t in acks(c)) {
+        for (t in clipTexts(c)) {
             val f = ackFile(c, e.id, voice, t)
             if (f.exists() && f.length() > 2000) continue
             if (liveOn && hasLiveAck(c, t)) continue

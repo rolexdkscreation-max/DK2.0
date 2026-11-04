@@ -28,7 +28,7 @@ object LiveAckMaker {
         private set
 
     /** कोई ack बनना बाकी है? */
-    fun missing(c: Context): Boolean = HeyDk.acks(c).any { !HeyDk.hasLiveAck(c, it) }
+    fun missing(c: Context): Boolean = HeyDk.clipTexts(c).any { !HeyDk.hasLiveAck(c, it) }
 
     /** पीछे से बनाओ अगर ज़रूरत (Live बंद हो तब). कहीं से भी बुलाओ */
     fun ensureAsync(c: Context, why: String, delayMs: Long = 0L) {
@@ -50,7 +50,7 @@ object LiveAckMaker {
             val keys = Prefs.liveGeminiKeys(c)
             if (keys.isEmpty()) return 0
             val voice = Prefs.geminiVoice(c)
-            val todo = HeyDk.acks(c).filter { !HeyDk.hasLiveAck(c, it) }
+            val todo = HeyDk.clipTexts(c).filter { !HeyDk.hasLiveAck(c, it) }
             if (todo.isEmpty()) return 0
             for (model in LiveAckRules.models(Prefs.liveModel(c), GeminiLive.FALLBACK_MODELS)) {
                 val made = try { session(c, keys[0], model, com.dk.assistant.LiveVoice.start(model, voice, Prefs.liveExtrasOff(c)).voice, voice, todo) } catch (e: Exception) { DKLog.d("Yes Boss आवाज़ ($model): ${e.message}"); -1 }

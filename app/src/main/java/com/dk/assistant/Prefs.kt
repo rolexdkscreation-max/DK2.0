@@ -295,6 +295,10 @@ object Prefs {
     /** सीखते समय जो माइक-रास्ता चला (MediaRecorder.AudioSource) */
     fun heyDkSource(c: Context) = sp(c).getInt("hey_dk_src", android.media.MediaRecorder.AudioSource.VOICE_RECOGNITION)
     fun heyDkPrint(c: Context): FloatArray? = com.dk.assistant.voice.VoicePrint.decode(sp(c).getString("hey_dk_print", null))
+    // ---- नवंबर 2026: बिना इंटरनेट वाली आवाज़-कमांड (लॉक / अनलॉक / किधर हो / मिल गया)
+    fun voiceCmdOn(c: Context, id: String) = sp(c).getBoolean("voice_cmd_on_$id", true)
+    /** उस कमांड को सिखाते समय की आवाज़-पहचान (मालिक) */
+    fun voiceCmdPrint(c: Context, id: String): FloatArray? = com.dk.assistant.voice.VoicePrint.decode(sp(c).getString("voice_cmd_print_$id", null))
     /** v3.65: हटाया गया आकार (dna/tesseract/wormhole/sphere3d) या अनजान -> earth */
     /** v4: जिसने कभी आकार नहीं चुना उसे नया नियॉन ओर्ब; पहले चुना हुआ आकार वैसा ही */
     /** v4.x: जवाब वाले बुलबुले का "लिख रही है" एनीमेशन (TypingStyles) */

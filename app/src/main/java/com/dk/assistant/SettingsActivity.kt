@@ -110,7 +110,7 @@ class SettingsActivity : AppCompatActivity() {
             "orb" -> { title.text = "ओर्ब और चेहरा"; bar.visibility = View.GONE; secOrb() }
             "ui" -> { title.text = "दिखावट"; bar.visibility = View.GONE; secUi() }
             "access" -> { title.text = "Accessibility"; secAccess() }
-            "phonelock" -> { title.text = "फ़ोन लॉक / अनलॉक"; secPhoneLock() }
+            "phonelock" -> { title.text = "फ़ोन लॉक / अनलॉक"; secPhoneLock(); secVoiceCmds() }
             "perms" -> { title.text = "परमिशन"; secPerms() }
             "update" -> { title.text = "अपडेट"; secUpdate() }
             "debug" -> { title.text = "डिबग लॉग"; bar.visibility = View.GONE; secDebug() }
@@ -222,7 +222,7 @@ class SettingsActivity : AppCompatActivity() {
     }
 
     // v4.5: "सिर्फ़ मेरी आवाज़ सुनो" option ऐप से हटाया - मालिक की माँग. ownerJob/ownerDialog "Hey DK सिखाओ" में चलते हैं.
-    private var ownerJob: kotlinx.coroutines.Job? = null
+    internal var ownerJob: kotlinx.coroutines.Job? = null
 
     internal fun enrollHeyDk(done: () -> Unit) {
         val HD = com.dk.assistant.voice.HeyDk
@@ -301,7 +301,7 @@ class SettingsActivity : AppCompatActivity() {
         dlg.setOnDismissListener { ownerJob?.cancel() }
     }
 
-    private fun ownerDialog(title: String): Pair<androidx.appcompat.app.AlertDialog, TextView> {
+    internal fun ownerDialog(title: String): Pair<androidx.appcompat.app.AlertDialog, TextView> {
         val tv = TextView(this).apply { textSize = 16f; setTextColor(0xFFFFFFFF.toInt()); val p = (20 * dp).toInt(); setPadding(p, p, p, p) }
         val d = androidx.appcompat.app.AlertDialog.Builder(this).setTitle(UiLang.s(title)).setView(tv)
             .setNegativeButton(UiLang.s("बंद करें")) { _, _ -> ownerJob?.cancel() }
