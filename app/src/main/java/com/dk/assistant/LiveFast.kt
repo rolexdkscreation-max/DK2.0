@@ -30,6 +30,8 @@ object LiveFast {
     fun pick(text: String, wakeWords: List<String>, fg: String = "", fast: Boolean = false): QuickCommands.Quick? {
         val t = text.trim()
         if (t.length < 2) return null
+        // नवंबर 2026: अधूरा काम ("कॉल करो", "ऐप खोलो") = फ़ोन पर अंदाज़े से नहीं - Gemini पहले पूछे (TaskSense)
+        if (TaskSense.need(t) != null) return null
         val q = LocalRouter.route(t, wakeWords, fg) ?: return null
         val type = q.action.optString("type")
         if (type in SKIP) return null
