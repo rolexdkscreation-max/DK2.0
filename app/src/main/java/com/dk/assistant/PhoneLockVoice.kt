@@ -21,8 +21,19 @@ object PhoneLockVoice {
     }
 
     const val DEFAULT_NAMES = "DK, डीके"
-    const val DEFAULT_LOCK = "फोन लॉक करो, फोन लॉक कर दो, फोन लॉक कीजिए, फोन लॉक, मोबाइल लॉक करो, लॉक करो, लॉक कर दो, lock phone, phone lock karo, phone lock kar do, lock the phone"
-    const val DEFAULT_UNLOCK = "फोन अनलॉक करो, फोन अनलॉक कर दो, फोन अनलॉक कीजिए, फोन अनलॉक, मोबाइल अनलॉक करो, अनलॉक करो, अनलॉक कर दो, अनलॉक, फोन खोलो, unlock phone, phone unlock karo, phone unlock kar do, unlock the phone, unlock"
+    /**
+     * नवंबर 2026 (मालिक: "ऑफलाइन में डीके फोन लॉक कर दो नहीं सुनता"): फ़ोन की on-device (बिना नेट) हिंदी पहचान "डीके" को
+     * अक्सर "डीजे" / "डी जे" / "DJ" / "टीके" लिखती है - नाम न मिला = पूरी बात अनसुनी. ये भी DK (सिर्फ़ लॉक / अनलॉक / किधर हो वाले वाक्यों में).
+     */
+    const val MISHEARD_NAMES = "डीजे, डी जे, दीजे, डिजे, dj, d j, डी के, दी के, डिके, टीके, टी के, deke, decay"
+    const val DEFAULT_LOCK = "फोन लॉक करो, फोन लॉक कर दो, फोन लॉक कीजिए, फोन लॉक, मोबाइल लॉक करो, लॉक करो, लॉक कर दो, lock phone, phone lock karo, phone lock kar do, lock the phone, " +
+        // नवंबर 2026 (मालिक): "डीके फोन ऑफ कर दो" = स्क्रीन बंद / लॉक (DK फ़ोन की बिजली बंद नहीं करता)
+        "फोन ऑफ करो, फोन ऑफ कर दो, फोन ऑफ कीजिए, मोबाइल ऑफ करो, मोबाइल ऑफ कर दो, स्क्रीन ऑफ करो, स्क्रीन ऑफ कर दो, स्क्रीन बंद करो, स्क्रीन बंद कर दो, " +
+        "फोन बंद करो, फोन बंद कर दो, phone off karo, phone off kar do, screen off karo, screen off, phone off"
+    const val DEFAULT_UNLOCK = "फोन अनलॉक करो, फोन अनलॉक कर दो, फोन अनलॉक कीजिए, फोन अनलॉक, मोबाइल अनलॉक करो, अनलॉक करो, अनलॉक कर दो, अनलॉक, फोन खोलो, unlock phone, phone unlock karo, phone unlock kar do, unlock the phone, unlock, " +
+        // नवंबर 2026 (मालिक): "डीके फोन चालू करो" = स्क्रीन जगाओ + अनलॉक
+        "फोन चालू करो, फोन चालू कर दो, फोन ऑन करो, फोन ऑन कर दो, मोबाइल चालू करो, मोबाइल ऑन करो, स्क्रीन ऑन करो, स्क्रीन ऑन कर दो, स्क्रीन चालू करो, " +
+        "phone on karo, phone on kar do, screen on karo, screen on, phone on"
 
     /** इनमें से कोई शब्द = मना (\"फोन लॉक मत करो\") - कुछ नहीं करना */
     private val NEG = setOf("मत", "नहीं", "नही", "mat", "nahi", "nahin", "dont", "don", "not", "never").map { norm(it) }.toSet()
@@ -104,7 +115,7 @@ object PhoneLockVoice {
      * needName = "सिर्फ़ DK बोलने पर सुनो" चालू हो तो नाम ज़रूरी।
      */
     fun instant(heard: String, names: List<String> = emptyList(), needName: Boolean = false, c: Cfg = cfg): Act? {
-        val all = (c.names + list(DEFAULT_NAMES) + names.map { norm(it) }).filter { it.isNotEmpty() }.distinct()
+        val all = (c.names + list(DEFAULT_NAMES) + list(MISHEARD_NAMES) + names.map { norm(it) }).filter { it.isNotEmpty() }.distinct()
         val use = Cfg(
             lockOn = true, unlockOn = true, names = all,
             lock = if (c.lockOn && c.lock.isNotEmpty()) (c.lock + list(DEFAULT_LOCK)).distinct() else list(DEFAULT_LOCK),

@@ -64,11 +64,14 @@ object OfflineListen {
      * "किधर हो" वाली बात में नाम: "हे DK किधर हो" (strictWake) या सीधे नाम से शुरू - "डीके कहाँ हो", "DK नहीं दिख रहे हो".
      * खोया फ़ोन ढूँढते समय "हे" कोई नहीं बोलता; आगे findText का पक्का वाक्य भी चाहिए, इसलिए यूँ ही नहीं बजेगा.
      */
+    /** बिना नेट वाली पहचान "डीके" को ऐसे लिखती है ([PhoneLockVoice.MISHEARD_NAMES]) */
+    private val MISHEARD = listOf(listOf("डीजे"), listOf("डी", "जे"), listOf("दीजे"), listOf("डिजे"), listOf("dj"), listOf("d", "j"), listOf("टीके"), listOf("टी", "के"))
+
     fun findRest(text: String, names: List<String>): String? {
         com.dk.assistant.voice.WakeMatch.strictWake(text, names)?.let { return it }
         val t = text.lowercase().replace(Regex("[,.!?।॥:;\"'()\\[\\]{}-]"), " ").split(Regex("\\s+")).filter { it.isNotBlank() }
         if (t.isEmpty()) return null
-        val forms = com.dk.assistant.voice.WakeMatch.DK_FORMS +
+        val forms = com.dk.assistant.voice.WakeMatch.DK_FORMS + MISHEARD +
             names.map { n -> n.lowercase().split(Regex("\\s+")).filter { it.isNotBlank() } }.filter { it.isNotEmpty() }
         val f = forms.sortedByDescending { it.size }.firstOrNull { it.size <= t.size && t.subList(0, it.size) == it } ?: return null
         return t.drop(f.size).joinToString(" ")
