@@ -17,7 +17,7 @@ import kotlinx.coroutines.withContext
  * नवंबर 2026 (मालिक): ऑफलाइन में माइक एक बार चालू = चालू (कोई बीप नहीं). DK का अपना माइक ([Ear]) लगातार,
  * सिर्फ़ आवाज़-कमांड ([com.dk.assistant.voice.VoiceCmds]: लॉक / अनलॉक मालिक की आवाज़ पर, "किधर हो", "मिल गया").
  * बाकी हर बात अनसुनी. नेट लौटा = सुनना छोड़ो (बोलते समय नहीं) -> loop फिर पुराना रास्ता / Live.
- * हमेशा null (कोई text agent तक नहीं जाता).
+ * सिर्फ़ ऑफलाइन कमांड वाली लिखी बात लौटती है ([OfflineListen.keepText]), बाकी null (agent तक कुछ नहीं).
  */
 internal suspend fun DKAccessibilityService.hearOfflineCmds(): String? {
     if (!checkMic()) { delay(2000); return null }
@@ -49,6 +49,18 @@ internal suspend fun DKAccessibilityService.hearOfflineCmds(): String? {
     if (pcm.isNotEmpty() && com.dk.assistant.voice.VoiceCmds.anyOn(this)) {
         val vc = withContext(Dispatchers.Default) { com.dk.assistant.voice.VoiceCmds.match(me, pcm) }
         if (vc != null && runVoiceCmd(vc, "ऑफलाइन")) { DKState.user(""); DKState.set(Mode.IDLE); return null }
+    }
+    // नमूना न मिला / सिखाया नहीं: वही पकड़ी बात फ़ोन की on-device पहचान को (अपना माइक नहीं खोलती = बीप नहीं)
+    if (pcm.isNotEmpty() && OfflineStt.available(this)) {
+        val text = OfflineStt.transcribe(this, pcm)
+        currentCoroutineContext().ensureActive()
+        PhoneLockStore.reload(this)
+        if (OfflineListen.keepText(text, Prefs.wakeWords(this), FindPhone.active)) {
+            DKLog.d("ऑफलाइन कमांड (लिखी बात): \"${text?.take(40)}\"")
+            DKState.set(Mode.IDLE)
+            return text      // loop का पुराना लॉक / अनलॉक / किधर हो वाला हिस्सा चलेगा
+        }
+        if (!text.isNullOrBlank()) DKLog.d("ऑफलाइन: \"${text.take(40)}\" - कमांड नहीं, अनसुनी")
     }
     DKLog.d("ऑफलाइन: आवाज़-कमांड नहीं मिली - अनसुनी")
     DKState.set(Mode.IDLE)

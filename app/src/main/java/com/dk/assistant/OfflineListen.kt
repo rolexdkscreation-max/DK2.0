@@ -21,4 +21,19 @@ object OfflineListen {
      */
     fun stopNow(online: Boolean, liveOn: Boolean, micMuted: Boolean, inCall: Boolean, capturing: Boolean): Boolean =
         !capturing && (online || !liveOn || micMuted || inCall)
+
+    /**
+     * नवंबर 2026 (ठीक किया): बिना नेट फ़ोन की on-device पहचान से मिली लिखी बात - सिर्फ़ ऑफलाइन कमांड हो तो आगे
+     * (loop वही पुराना लॉक / अनलॉक / "किधर हो" / "मिल गया" वाला हिस्सा चलाए), बाकी सब अनसुना.
+     * पहले (#212) सिर्फ़ सिखाए आवाज़-नमूने देखे जाते थे - नमूने न हों तो कुछ भी नहीं सुनता था.
+     */
+    fun keepText(text: String?, names: List<String>, findActive: Boolean, lock: PhoneLockVoice.Cfg = PhoneLockVoice.cfg): Boolean {
+        val t = text?.trim().orEmpty()
+        if (t.isEmpty()) return false
+        if (PhoneLockVoice.match(t, needName = true, c = lock) != null) return true
+        if (PhoneLockVoice.instant(t, names, needName = true, c = lock) == PhoneLockVoice.Act.UNLOCK) return true
+        if (findActive && com.dk.assistant.voice.VoiceCmdMatch.foundText(t)) return true
+        val rest = com.dk.assistant.voice.WakeMatch.strictWake(t, names) ?: return false
+        return com.dk.assistant.voice.VoiceCmdMatch.findText(rest)
+    }
 }
