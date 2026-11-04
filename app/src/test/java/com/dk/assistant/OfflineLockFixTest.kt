@@ -49,6 +49,8 @@ class OfflineLockFixTest {
         assertNull(PhoneLockVoice.instant("डीजे फोन ऑफ मत करो", names, needName = true, c = off))
         assertNull(PhoneLockVoice.instant("डीके टॉर्च बंद करो", names, needName = true, c = off))
         assertNull(PhoneLockVoice.instant("डीके व्हाट्सएप लॉक करो", names, needName = true, c = off))
+        assertNull(PhoneLockVoice.instant("डीके फ़ोन लॉक कर दिया", names, needName = true, c = off))     // DK की अपनी आवाज़
+        assertNull(PhoneLockVoice.instant("डीके फ़ोन बंद कर दिया", names, needName = true, c = off))
         assertFalse(OfflineListen.keepText("डीजे गाना चलाओ", names, false, off))
         assertFalse(OfflineListen.keepText("आज डीजे पार्टी है", names, false, off))
     }
