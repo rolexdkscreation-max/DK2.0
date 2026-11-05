@@ -2,6 +2,10 @@ package com.dk.assistant.connect
 
 import android.content.Context
 import com.dk.assistant.DKLog
+import com.dk.assistant.insights.Account
+import com.dk.assistant.insights.InsightsApi
+import com.dk.assistant.insights.Platform
+import com.dk.assistant.insights.PlatformData
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.MultipartBody
 import okhttp3.OkHttpClient
@@ -79,7 +83,12 @@ object ConnectorRunner {
     private fun enc(s: String) = URLEncoder.encode(s, "UTF-8")
 
     // ================================================================ Google
-    private fun gToken(c: Context, d: ConnectorDef): String = when (val r = GoogleAuth.tokenBlocking(c, d.scopes)) {
+    /** YouTube के आम काम पुरानी इजाज़त से ही (Analytics की नई इजाज़त सिर्फ़ रिव्यू में - पहले जुड़े लोगों का काम न टूटे) */
+    private fun baseScopes(d: ConnectorDef): List<String> = if (d.id == Catalog.YOUTUBE.id) listOf(Catalog.YT_READ) else d.scopes
+
+    private fun gToken(c: Context, d: ConnectorDef): String = gTokenFor(c, baseScopes(d))
+
+    private fun gTokenFor(c: Context, scopes: List<String>): String = when (val r = GoogleAuth.tokenBlocking(c, scopes)) {
         is GoogleAuth.Res.Token -> r.value
         is GoogleAuth.Res.NeedsUi -> throw NeedLogin()
         is GoogleAuth.Res.Fail -> throw IllegalStateException(r.message)
@@ -96,6 +105,7 @@ object ConnectorRunner {
     }
 
     private fun google(c: Context, d: ConnectorDef, a: String, x: JSONObject): String {
+        if (d.id == "youtube" && a == "insights") return insightsText(youtubeInsights(c))
         val g = G(gToken(c, d))
         return when (d.id) {
             "drive" -> drive(g, a, x)
@@ -311,6 +321,7 @@ object ConnectorRunner {
     }
 
     private fun meta(c: Context, id: String, a: String, x: JSONObject): String {
+        if (a == "insights") return insightsText(if (id == "fb_page") facebookInsights(c, x.optString("page_id")) else instagramInsights(c))
         var pages = ConnectorStore.metaPages(c)
         if (pages.isEmpty()) { pages = loadPages(ConnectorStore.secret(c, "meta_token")); ConnectorStore.setMetaPages(c, pages) }
         if (pages.isEmpty()) return "No Facebook Page found for this token."
@@ -354,6 +365,147 @@ object ConnectorRunner {
             }
         }
     }
+
+    // ================================================================ सोशल रिव्यू (API वाला पक्का तरीका)
+    private const val YTA = "https://youtubeanalytics.googleapis.com/v2/reports"
+    private fun day(daysAgo: Long) = java.time.LocalDate.now(java.time.ZoneOffset.UTC).minusDays(daysAgo).toString()
+
+    /** YouTube: Data API (हर वीडियो) + Analytics API (watch time, औसत देखा, सब्सक्राइबर, कहाँ से व्यूज़, 28 बनाम पिछले 28 दिन) */
+    fun youtubeInsights(c: Context, count: Int = 15): PlatformData {
+        val P = Platform.YOUTUBE
+        if (Catalog.YOUTUBE !in ConnectorStore.connected(c)) return PlatformData(P, problems = listOf("YouTube कनेक्टर जुड़ा नहीं (सेटिंग्स → कनेक्टर → YouTube)"))
+        val problems = mutableListOf<String>()
+        return try {
+            val g = G(gTokenFor(c, listOf(Catalog.YT_READ)))
+            val ch = (g.get("$YT/channels?part=contentDetails,statistics,snippet&mine=true").optJSONArray("items") ?: JSONArray()).optJSONObject(0)
+                ?: return PlatformData(P, problems = listOf("इस Google खाते पर YouTube चैनल नहीं मिला"))
+            val subs = ch.optJSONObject("statistics")?.optString("subscriberCount")?.toLongOrNull()
+            val up = ch.optJSONObject("contentDetails")?.optJSONObject("relatedPlaylists")?.optString("uploads").orEmpty()
+            val pl = g.get("$YT/playlistItems?part=contentDetails&maxResults=${count.coerceIn(5, 50)}&playlistId=" + enc(up)).optJSONArray("items") ?: JSONArray()
+            val ids = (0 until pl.length()).mapNotNull { pl.optJSONObject(it)?.optJSONObject("contentDetails")?.optString("videoId")?.takeIf { v -> v.isNotBlank() } }
+            var posts = if (ids.isEmpty()) emptyList() else InsightsApi.ytVideos(g.get("$YT/videos?part=snippet,statistics,contentDetails&id=" + enc(ids.joinToString(","))))
+            var acc = Account(period = "कुल", followers = subs, views = ch.optJSONObject("statistics")?.optString("viewCount")?.toLongOrNull())
+            // Analytics: नई इजाज़त चाहिए (पहले जुड़े खातों में नहीं होगी)
+            try {
+                val ga = G(gTokenFor(c, Catalog.YOUTUBE.scopes))
+                val m = "views,estimatedMinutesWatched,averageViewDuration,averageViewPercentage,subscribersGained,subscribersLost,likes,comments,shares"
+                if (ids.isNotEmpty()) {
+                    val by = ga.get("$YTA?ids=channel%3D%3DMINE&startDate=${day(365)}&endDate=${day(0)}&metrics=" + enc(m) +
+                        "&dimensions=video&filters=" + enc("video==" + ids.joinToString(",")) + "&sort=-views&maxResults=50")
+                    posts = InsightsApi.ytMerge(posts, InsightsApi.ytAnalyticsByVideo(by))
+                }
+                val tm = "views,estimatedMinutesWatched,subscribersGained,subscribersLost,likes,comments,shares"
+                val now = ga.get("$YTA?ids=channel%3D%3DMINE&startDate=${day(28)}&endDate=${day(0)}&metrics=" + enc(tm))
+                val before = ga.get("$YTA?ids=channel%3D%3DMINE&startDate=${day(56)}&endDate=${day(29)}&metrics=" + enc(tm))
+                acc = InsightsApi.ytTotals(now, before, subs)
+                val traffic = try { InsightsApi.ytTraffic(ga.get("$YTA?ids=channel%3D%3DMINE&startDate=${day(28)}&endDate=${day(0)}&metrics=views&dimensions=insightTrafficSourceType&sort=-views")) } catch (_: Exception) { "" }
+                if (traffic.isNotBlank()) acc = acc.copy(notes = "पिछले 28 दिन में व्यूज़ कहाँ से: $traffic")
+            } catch (e: NeedLogin) {
+                problems += "YouTube Analytics की इजाज़त नहीं मिली - सेटिंग्स → कनेक्टर → YouTube → \"खाता जोड़ो\" एक बार फिर दबाएँ (watch time / औसत देखा / सब्सक्राइबर के लिए)"
+            } catch (e: Exception) {
+                DKLog.d("YouTube Analytics: ${e.javaClass.simpleName} ${e.message?.take(120)}")
+                problems += "YouTube Analytics नहीं चला: ${e.message?.take(120)}"
+            }
+            PlatformData(P, posts.map(InsightsApi::cleanNotes), acc, sources = listOf("YouTube API"), problems = problems)
+        } catch (e: NeedLogin) {
+            PlatformData(P, problems = listOf("YouTube की इजाज़त फिर से चाहिए - सेटिंग्स → कनेक्टर → YouTube → खाता जोड़ो"))
+        } catch (e: Exception) {
+            DKLog.d("YouTube insights: ${e.javaClass.simpleName}")
+            PlatformData(P, problems = listOf("YouTube API नहीं चला: ${e.message?.take(150)}"))
+        }
+    }
+
+    private fun metaPagesOrLoad(c: Context): List<Graph.Page> {
+        var pages = ConnectorStore.metaPages(c)
+        if (pages.isEmpty()) {
+            val t = ConnectorStore.secret(c, "meta_token")
+            if (t.isBlank()) return emptyList()
+            pages = loadPages(t); ConnectorStore.setMetaPages(c, pages)
+        }
+        return pages
+    }
+
+    /** Meta हर कुछ महीने metric बदलता है: पहला चलने वाला सेट */
+    private fun metrics(path: String, token: String, sets: List<String>, extra: String = ""): Map<String, Double> =
+        InsightsApi.firstWorking(sets) { m -> InsightsApi.metaInsights(gget("$path?metric=" + enc(m) + extra, token)).takeIf { it.isNotEmpty() } } ?: emptyMap()
+
+    /** Instagram Graph API: खाता (28 दिन बनाम पिछले 28) + हाल की रील/पोस्ट के insights */
+    fun instagramInsights(c: Context, count: Int = 12): PlatformData {
+        val P = Platform.INSTAGRAM
+        if (Catalog.INSTAGRAM !in ConnectorStore.connected(c)) return PlatformData(P, problems = listOf("Instagram (Business/Creator) कनेक्टर जुड़ा नहीं"))
+        return try {
+            val p = metaPagesOrLoad(c).firstOrNull { it.igId.isNotBlank() }
+                ?: return PlatformData(P, problems = listOf("Facebook Page से कोई Instagram Business/Creator खाता जुड़ा नहीं"))
+            val ig = p.igId; val t = p.token
+            val followers = try { gget("/$ig?fields=followers_count", t).optLong("followers_count").takeIf { it > 0 } } catch (_: Exception) { null }
+            val media = gget("/$ig/media?limit=${count.coerceIn(3, 25)}&fields=" + enc("id,caption,media_type,media_product_type,timestamp,like_count,comments_count,permalink"), t)
+            val posts = InsightsApi.igMedia(media).map { post ->
+                val id = post.notes.substringAfter("id=")
+                val reel = post.type == "reel"
+                val sets = if (reel) listOf(
+                    "views,reach,saved,shares,total_interactions,likes,comments,ig_reels_avg_watch_time,ig_reels_video_view_total_time",
+                    "views,reach,saved,shares,total_interactions", "reach,saved,shares", "reach")
+                else listOf("views,reach,saved,shares,total_interactions,follows", "reach,saved,shares", "reach")
+                InsightsApi.igApply(post, metrics("/$id/insights", t, sets))
+            }
+            val now = System.currentTimeMillis() / 1000
+            val dayS = 86_400L
+            fun acct(since: Long, until: Long) = metrics("/$ig/insights", t,
+                listOf("reach,views,total_interactions,follows_and_unfollows", "reach,views,total_interactions", "reach"),
+                "&period=day&metric_type=total_value&since=$since&until=$until")
+            val a = InsightsApi.igAccount(acct(now - 28 * dayS, now), followers, acct(now - 56 * dayS, now - 28 * dayS))
+            PlatformData(P, posts.map(InsightsApi::cleanNotes), a, sources = listOf("Instagram Graph API (@${p.igUser})"))
+        } catch (e: HttpErr) {
+            PlatformData(P, problems = listOf("Instagram API: HTTP ${e.code} ${e.message?.take(120)} (token में instagram_manage_insights इजाज़त चाहिए)"))
+        } catch (e: Exception) {
+            PlatformData(P, problems = listOf("Instagram API नहीं चला: ${e.message?.take(150)}"))
+        }
+    }
+
+    /** Facebook Page: पेज की पहुँच (28 दिन) + हाल की पोस्ट और रील के insights */
+    fun facebookInsights(c: Context, pageId: String = "", count: Int = 10): PlatformData {
+        val P = Platform.FACEBOOK
+        if (Catalog.FB_PAGE !in ConnectorStore.connected(c)) return PlatformData(P, problems = listOf("Facebook Page कनेक्टर जुड़ा नहीं"))
+        return try {
+            val pages = metaPagesOrLoad(c)
+            val p = pages.firstOrNull { it.id == pageId || it.name.equals(pageId, true) } ?: pages.firstOrNull()
+                ?: return PlatformData(P, problems = listOf("इस token से कोई Facebook Page नहीं मिला"))
+            val t = p.token
+            val info = try { gget("/${p.id}?fields=followers_count,fan_count", t) } catch (_: Exception) { JSONObject() }
+            val followers = info.optLong("followers_count").takeIf { it > 0 } ?: info.optLong("fan_count").takeIf { it > 0 }
+            val reels = try {
+                InsightsApi.fbPosts(gget("/${p.id}/video_reels?limit=${count.coerceIn(3, 25)}&fields=" + enc("id,description,created_time,updated_time,length,permalink_url"), t))
+                    .map { it.copy(type = "reel") }
+                    .map { r -> InsightsApi.fbApply(r, metrics("/${r.notes.substringAfter("id=")}/video_insights", t, listOf(
+                        "blue_reels_play_count,post_impressions_unique,post_video_avg_time_watched,post_video_view_time,post_video_followers",
+                        "blue_reels_play_count,post_impressions_unique", "post_video_views,post_video_views_unique", "post_impressions_unique"))) }
+            } catch (_: Exception) { emptyList() }
+            val posts = try {
+                InsightsApi.fbPosts(gget("/${p.id}/posts?limit=${count.coerceIn(3, 25)}&fields=" + enc("id,message,created_time,permalink_url,shares,reactions.summary(true),comments.summary(true)"), t))
+                    .map { r -> InsightsApi.fbApply(r, metrics("/${r.notes.substringAfter("id=")}/insights", t, listOf(
+                        "post_impressions_unique,post_impressions,post_video_views", "post_total_media_view_unique,post_media_view", "post_impressions_unique"))) }
+            } catch (_: Exception) { emptyList() }
+            val m = metrics("/${p.id}/insights", t, listOf("page_impressions_unique,page_post_engagements,page_video_views",
+                "page_total_media_view_unique,page_post_engagements", "page_post_engagements"), "&period=days_28")
+            val a = Account(period = "पिछले 28 दिन", reach = (m["page_impressions_unique"] ?: m["page_total_media_view_unique"])?.toLong(),
+                interactions = m["page_post_engagements"]?.toLong(), views = m["page_video_views"]?.toLong(), followers = followers)
+            PlatformData(P, (reels + posts).map(InsightsApi::cleanNotes), a, sources = listOf("Facebook Graph API (${p.name})"))
+        } catch (e: HttpErr) {
+            PlatformData(P, problems = listOf("Facebook API: HTTP ${e.code} ${e.message?.take(120)} (token में read_insights इजाज़त चाहिए)"))
+        } catch (e: Exception) {
+            PlatformData(P, problems = listOf("Facebook API नहीं चला: ${e.message?.take(150)}"))
+        }
+    }
+
+    /** DK लाइव (connector_task) के लिए छोटा साफ़ text */
+    private fun insightsText(d: PlatformData): String = buildString {
+        val a = com.dk.assistant.insights.Insights.analyze(d)
+        append(d.platform.en).append(" insights").append(d.sources.joinToString(prefix = " (", postfix = ")")).append('\n')
+        if (!d.account.empty) append("account: ").append(d.account.toJson().toString().take(500)).append('\n')
+        com.dk.assistant.insights.Insights.ordered(d.posts).take(12).forEach { append("- ").append(it.toJson().toString().take(300)).append('\n') }
+        a.findings.forEach { append("* ").append(it).append('\n') }
+        if (d.problems.isNotEmpty()) append("problems: ").append(d.problems.joinToString("; "))
+    }.ifBlank { "No insights found." }
 
     // ================================================================ GitHub (कोडिंग एजेंट वाला GitHub.kt)
     private fun github(c: Context, a: String, x: JSONObject): String {

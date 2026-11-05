@@ -277,6 +277,13 @@ class AgentRunner(
         DKState.user(goal)
         // DK AI Part 13: access key चालू नहीं = कोई काम नहीं, साफ़ संदेश (लाइसेंस सेट नहीं = पहले जैसा)
         com.dk.assistant.license.AccessKeyManager.refusalOrNull(svc)?.let { say(it); return }
+        // नवंबर 2026 (मालिक): "इंस्टाग्राम / फेसबुक / यूट्यूब खोलो और पूरा रिव्यू करके बताओ - किस रील पर कितने व्यूज़, रीच क्यों गिरी"
+        // = सोशल रिव्यू एजेंट: एक बार बोलो, वह API + ऐप की स्क्रीन से आँकड़े लेकर, ट्रेंड खोजकर पूरी रिपोर्ट बताए (background)
+        com.dk.assistant.insights.InsightsVoice.parse(goal)?.let { req ->
+            val sp = speaker
+            say(com.dk.assistant.insights.InsightsAgent.start(svc, req, if (silent) null else { t -> sp.speak(t) }))
+            return
+        }
         // नवंबर 2026 (मालिक: "DK समझे कि बात काम है, सवाल है या जवाब; 'WhatsApp पर मैसेज भेजो' पर पूछे किसे और क्या भेजूँ"):
         // पहले समझो. काम है और ज़रूरी चीज़ छूटी (किसे / क्या / कब / कौन-सा ऐप / क्या सर्च / कहाँ) = सिर्फ़ वही पूछो, जवाब भरो,
         // सब मिल गया = पूरा साफ़ हुक्म आगे (पुराना रास्ता). पूरा बोला ("धीरज कुमार को हेलो मैसेज भेजो") = कोई सवाल नहीं, सीधे काम.

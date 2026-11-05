@@ -22,6 +22,7 @@ object SettingsSearch {
         "brain_live" to "AI दिमाग • DK लाइव", "brain_chat" to "AI दिमाग • DK चैट", "brain_coder" to "AI दिमाग • कोडिंग एजेंट",
         "brain_pc" to "AI दिमाग • DK कंप्यूटर", "brain_extra" to "AI दिमाग • Extra API", "brain_web" to "AI दिमाग • वेबसाइट बिल्डर", "voice" to "आवाज़", "orb" to "ओर्ब और चेहरा",
         "access" to "Accessibility", "phonelock" to "फ़ोन लॉक / अनलॉक", "perms" to "परमिशन", "computer" to "DK कंप्यूटर", "coder" to "कोडिंग एजेंट",
+        "social" to "सोशल रिव्यू",
         ACT_AUTO to "ऑटोनोमस मोड", ACT_TEMPLATES to "टेम्पलेट कमांड", ACT_CONNECTORS to "कनेक्टर", ACT_STORY to "स्टोरी राइटर एजेंट",
         "update" to "अपडेट", "debug" to "डिबग लॉग", "about" to "ऐप के बारे में"
     )
@@ -45,6 +46,7 @@ object SettingsSearch {
         "perms" to "permission परमिशन इजाज़त mic camera notification",
         "computer" to "computer कंप्यूटर reminder रिमाइंडर search",
         "coder" to "coding कोडिंग github गिटहब agent एजेंट",
+        "social" to "social सोशल review रिव्यू instagram इंस्टाग्राम facebook फेसबुक youtube यूट्यूब studio स्टूडियो reel रील views व्यूज़ reach रीच insights analytics trend ट्रेंड",
         ACT_AUTO to "autonomous auto ऑटो ऑटोनॉमस ऑटोनोमस अपने-आप खुद automatic आपातकालीन stop",
         ACT_TEMPLATES to "template टेम्पलेट साँचा command कमांड alarm अलार्म timer whatsapp",
         ACT_CONNECTORS to "connector कनेक्टर gmail drive calendar instagram facebook mcp",
@@ -55,6 +57,11 @@ object SettingsSearch {
     )
 
     val ENTRIES: List<E> = SECTIONS.keys.map { E(it, "", "", SECTION_WORDS[it].orEmpty()) } + listOf(
+        E("social", "सोशल रिव्यू कैसे करें", "एक बार बोलें — DK खुद ऐप खोलकर हर रील / वीडियो के आँकड़े देखकर पूरी रिपोर्ट बताएगा"),
+        E("social", "आँकड़े कहाँ से लें", "हर प्लेटफ़ॉर्म के लिए: दोनों (सबसे पक्का) • सिर्फ़ API • सिर्फ़ ऐप की स्क्रीन"),
+        E("social", "ट्रेंड और आपका विषय", "रिपोर्ट में अभी के ट्रेंडिंग टॉपिक और आपके विषय के हिसाब से सलाह"),
+        E("social", "ज़रूरी तैयारी", "एक बार कर लें — रिव्यू ज़्यादा पक्का होगा"),
+        E("social", "पिछली रिपोर्ट", "आख़िरी सोशल रिव्यू की पूरी रिपोर्ट"),
         E("profile", "प्रोफ़ाइल", "आपका नाम, असिस्टेंट का नाम और बात करने का तरीका"),
         E("profile", "Access key", ""),
         E("lang", "ऐप की भाषा (स्क्रीन)", "पूरे ऐप के बटन, Settings, संदेश — English या हिंदी"),

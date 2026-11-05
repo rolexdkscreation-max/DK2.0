@@ -159,7 +159,7 @@ class ConnectorsActivity : AppCompatActivity() {
             label(box, "Instagram के काम"); actions(box, Catalog.INSTAGRAM, false)
             CollapsibleSection.add(this, box, "Token कैसे मिलेगा (एक बार)", null) { g ->
                 text(g, "1. developers.facebook.com → My Apps → Create app (Business). Facebook Login for Business / Instagram जोड़ें.\n" +
-                    "2. Tools → Graph API Explorer: अपना ऐप चुनें, Get User Access Token - इजाज़तें: pages_show_list, pages_read_engagement, pages_manage_posts, pages_manage_engagement, instagram_basic, instagram_content_publish, instagram_manage_comments.\n" +
+                    "2. Tools → Graph API Explorer: अपना ऐप चुनें, Get User Access Token - इजाज़तें: pages_show_list, pages_read_engagement, pages_manage_posts, pages_manage_engagement, instagram_basic, instagram_content_publish, instagram_manage_comments, read_insights, instagram_manage_insights (सोशल रिव्यू के लिए).\n" +
                     "3. Access Token Debugger में Extend Access Token दबाएँ (लंबा token, ~60 दिन).\n" +
                     "4. वही token नीचे चिपकाएँ - DK खुद आपके पेजों के Page token ले लेता है (जो ख़त्म नहीं होते).\n" +
                     "Instagram: अकाउंट Business या Creator हो और Facebook Page से जुड़ा हो (Instagram ऐप → Settings → Account type). निजी अकाउंट API से नहीं जुड़ता - उसके लिए फ़ोन-एजेंट.\n" +

@@ -217,7 +217,9 @@ class GeminiLive(internal val svc: DKAccessibilityService, internal val agent: A
             if (!waitQuiet(45_000)) { log("Gemini चुप नहीं हुआ (45s) - बीच बातचीत text नहीं भेजा"); return@launch }
             if (stopped || !ready) return@launch
             lastEvidenceAt = System.currentTimeMillis()
-            try { ws?.tx(JSONObject().put("realtimeInput", JSONObject().put("text", TaskStatus.endNote(job))).toString()) } catch (_: Exception) {}
+            // नवंबर 2026: सोशल रिव्यू = पूरा बोलने लायक सार (400 अक्षर वाला छोटा नतीजा नहीं)
+            val note = (if (job.key == com.dk.assistant.insights.InsightsAgent.KEY) com.dk.assistant.insights.InsightsAgent.liveNote(job) else null) ?: TaskStatus.endNote(job)
+            try { ws?.tx(JSONObject().put("realtimeInput", JSONObject().put("text", note)).toString()) } catch (_: Exception) {}
             log("${job.whoEn} का काम खत्म (${job.state.en}) - Gemini को असली नतीजा बताया")
         }
     }
@@ -1216,7 +1218,7 @@ class GeminiLive(internal val svc: DKAccessibilityService, internal val agent: A
                                     "नया connection${if (again) " (नई बातचीत)" else " (बातचीत वहीं से)"} और आपकी वही आवाज़ दोबारा (#$zombieN) • ${timeline.summary()}")
                                 goAway = true; goAwayDrop = true
                                 break
-                            } else log("Live: session फिर अटका पर 1 मिनट में ${LiveRecover.MAX_SWAPS} बार बदल चुका - इस बार नहीं (चक्कर नहीं) • ${timeline.summary()}")
+                            } else { log("Live: session फिर अटका पर 1 मिनट में ${LiveRecover.MAX_SWAPS} बार बदल चुका - इस बार नहीं (चक्कर नहीं) • ${timeline.summary()}"); stuckNoSwap() }
                         }
                         // नवंबर 2026: फ़ोन का नेटवर्क बदला (Wi-Fi <-> mobile) = पुराना socket पुराने रास्ते पर, ping से पता चलने में 30s.
                         // DK चुप होते ही तुरंत नया connection (बातचीत वहीं से); पुराना standby भी पुराने रास्ते का - हटाओ

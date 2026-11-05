@@ -98,6 +98,8 @@ object LocalRouter {
     fun split(raw: String, wakeWords: List<String>, fg: String = ""): Split {
         // v4.1: "SMS भेजूँ?" का हाँ/ना (ना = "मत भेजो" - इसलिए negated से पहले)
         OfflineCommands.confirm(raw, System.currentTimeMillis())?.let { return Split(it, null) }
+        // नवंबर 2026: "इंस्टाग्राम खोलो और पूरा रिव्यू करो" = सोशल रिव्यू (पूरी बात AgentRunner को - सिर्फ़ "ऐप खोलो" नहीं)
+        if (com.dk.assistant.insights.InsightsVoice.parse(raw) != null) return Split(null, raw)
         // नवंबर 2026: Settings → फ़ोन लॉक / अनलॉक - मालिक के अपने वाक्य (DK पहले से बुलाया हुआ, इसलिए नाम ज़रूरी नहीं)
         PhoneLockVoice.match(raw, needName = false)?.let { return Split(PhoneLockVoice.quick(it), null) }
         // नवंबर 2026 (मालिक): "जार्विस मोड ऑन करो" / "डीके मोड ऑन करो" - तुरंत, बिना AI

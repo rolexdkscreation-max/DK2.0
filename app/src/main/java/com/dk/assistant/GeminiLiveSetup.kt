@@ -69,6 +69,15 @@ internal fun GeminiLive.discoverModels(key: String): List<String> {
     return ok.ifEmpty { all }
 }
 
+/** नवंबर 2026: handle के बिना नया सत्र (नई बातचीत) = पिछली कुछ बातें prompt में ([LiveCarry]); handle हो तो server याद रखता है - कुछ नहीं */
+internal fun GeminiLive.carryNote(resume: Boolean): String {
+    if (resume && handle != null) return ""
+    return try {
+        LiveCarry.note(DKState.messages.map { LiveCarry.Turn(it.role, it.text, it.time) }, System.currentTimeMillis())
+            .also { if (it.isNotEmpty()) log("Live: नया सत्र (handle नहीं) - पिछली बातचीत prompt में जोड़ी (${it.length} अक्षर)") }
+    } catch (_: Exception) { "" }
+}
+
 /** v5.1: txt = यह जोड़ी TEXT माँगे (दौड़ में हर मॉडल का अपना); resume = पुरानी बातचीत का handle भेजो (सिर्फ़ उसी जोड़ी पर) */
 internal fun GeminiLive.setupJson(m: String, txt: Boolean = connText, resume: Boolean = true): String {
     NetProbe.refresh(svc)      // v3.88: धीमा नेटवर्क = छोटे जवाब (अपने-आप, कोई सेटिंग नहीं)
@@ -185,6 +194,19 @@ internal fun GeminiLive.setupJson(m: String, txt: Boolean = connText, resume: Bo
                     .put("media", JSONObject().put("type", "STRING").put("description", "latest_shared (default)"))
                     .put("mode", JSONObject().put("type", "STRING").put("enum", JSONArray().put("publish").put("draft"))))
                 .put("required", JSONArray().put("platform").put("action"))))
+        // नवंबर 2026: इंस्टाग्राम / फेसबुक / यूट्यूब का पूरा रिव्यू (API + ऐप की स्क्रीन से असली आँकड़े, ट्रेंड, सलाह)
+        .put(JSONObject().put("name", "social_insights")
+            .put("description", "Full REVIEW of the user's own Instagram / Facebook / YouTube account: DK reads the real numbers (official API if connected + opens the app's dashboard / YouTube Studio and reads every reel/video screen, read-only), " +
+                "finds views per reel/video, why reach is falling, what works, the latest 3-4 reels, trending topics and how to get more views, then makes a full report. " +
+                "Use for 'इंस्टाग्राम का रिव्यू करो', 'मेरी रील पर कितने व्यूज़ आए', 'रीच क्यों गिर रही है', 'यूट्यूब स्टूडियो चेक करो', 'तीनों का एनालिसिस'. Not for posting (social_media_task). " +
+                "It runs in the background for a few minutes: say the returned line, then wait - you get a SYSTEM NOTE with the real summary; never invent numbers before that. action=stop stops it.")
+            .put("parameters", JSONObject().put("type", "OBJECT")
+                .put("properties", JSONObject()
+                    .put("platforms", JSONObject().put("type", "ARRAY").put("items", JSONObject().put("type", "STRING").put("enum", JSONArray().put("instagram").put("facebook").put("youtube")))
+                        .put("description", "Which platforms the user named; all three if he said 'सब / तीनों / सोशल मीडिया'"))
+                    .put("request", JSONObject().put("type", "STRING").put("description", "The user's own words (what he wants to know)"))
+                    .put("action", JSONObject().put("type", "STRING").put("enum", JSONArray().put("start").put("stop")))))
+        )
         .put(JSONObject().put("name", "image_task")
             .put("description", "Generate a picture with the REAL ChatGPT or Gemini app on the phone (DK opens the app, types the prompt, waits until the image is made, taps Download, then really looks at the image). " +
                 "Use whenever the user asks to make / generate / create an image, photo, picture, logo, poster or wallpaper (इमेज बनाओ, फोटो बनाओ, ChatGPT/Gemini में इमेज बनाओ). " +
@@ -307,7 +329,7 @@ internal fun GeminiLive.setupJson(m: String, txt: Boolean = connText, resume: Bo
             .apply { if (!txt) put("speechConfig", JSONObject().put("voiceConfig", JSONObject()
                 .put("prebuiltVoiceConfig", JSONObject().put("voiceName", ex.voice)))
                 .apply { if (ex.lang && LiveSetupRules.sendLanguageCode(m)) put("languageCode", LiveVoice.LANGUAGE) }) })
-        .put("systemInstruction", JSONObject().put("parts", JSONArray().put(JSONObject().put("text", Lang.sys(brain.liveSystemPrompt(withMemory = false)) + FAST_START + NetSpeed.promptNote() + (if (connSplit) SPLIT_NOTE + (if (txt) MOOD_TAG_NOTE else "") else
+        .put("systemInstruction", JSONObject().put("parts", JSONArray().put(JSONObject().put("text", Lang.sys(brain.liveSystemPrompt(withMemory = false)) + FAST_START + NetSpeed.promptNote() + carryNote(resume) + (if (connSplit) SPLIT_NOTE + (if (txt) MOOD_TAG_NOTE else "") else
             com.dk.assistant.voice.engine.LiveNativeEngine.styleNote(com.dk.assistant.voice.engine.LiveNativeEngine.style(svc).ifBlank { CalmPersona.VOICE_STYLE }))))))
         .put("tools", LiveStay.cleanTools(tools))
         .put("realtimeInputConfig", JSONObject()

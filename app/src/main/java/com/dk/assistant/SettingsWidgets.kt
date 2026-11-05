@@ -38,6 +38,7 @@ internal fun SettingsActivity.menuIcon(id: String) = when (id) {
     "computer" -> R.drawable.ic_s_computer
     "story" -> R.drawable.ic_s_story
     "connectors" -> R.drawable.ic_s_connect
+    "social" -> R.drawable.ic_s_story
     "auto" -> R.drawable.ic_s_brain
     "templates" -> R.drawable.ic_s_voice
     "update" -> R.drawable.ic_s_update
