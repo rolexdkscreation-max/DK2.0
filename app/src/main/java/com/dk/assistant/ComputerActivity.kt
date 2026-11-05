@@ -54,6 +54,25 @@ class ComputerActivity : AppCompatActivity() {
     private var busySince = 0L
     private var wasBusy = false
 
+    /** v5 मालिक: फ़ोटो / PDF / text फ़ाइल जोड़ो -> DK कंप्यूटर के फ़ोल्डर में कॉपी, काम में नाम लिख दो (look / read_file से पढ़ेगा) */
+    private val pick = registerForActivityResult(androidx.activity.result.contract.ActivityResultContracts.OpenMultipleDocuments()) { uris ->
+        val names = uris.take(6).mapNotNull { u -> try { copyIn(u) } catch (_: Exception) { null } }
+        if (names.isEmpty()) return@registerForActivityResult
+        val cur = edt.text.toString().trimEnd()
+        edt.setText((if (cur.isBlank()) "" else "$cur\n") + "(जोड़ी गई फ़ाइल: ${names.joinToString()}) ")
+        edt.setSelection(edt.text.length)
+        Toast.makeText(this, "${names.size} फ़ाइल जुड़ी — अब काम लिखिए", Toast.LENGTH_SHORT).show()
+    }
+
+    private fun copyIn(u: android.net.Uri): String? {
+        var name = "file"
+        contentResolver.query(u, arrayOf(android.provider.OpenableColumns.DISPLAY_NAME), null, null, null)?.use { c -> if (c.moveToFirst()) name = c.getString(0) ?: name }
+        val ext = when (contentResolver.getType(u)) { "application/pdf" -> ".pdf"; "image/png" -> ".png"; "image/webp" -> ".webp"; "image/jpeg" -> ".jpg"; else -> ".txt" }
+        val f = java.io.File(ComputerTools.dir(this), ComputerTools.safeName(name, ext))
+        contentResolver.openInputStream(u)?.use { i -> f.outputStream().use { o -> val n = i.copyTo(o, 64 * 1024); if (n > 30L * 1024 * 1024) { f.delete(); return null } } } ?: return null
+        return f.name
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         window.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE)
@@ -73,7 +92,8 @@ class ComputerActivity : AppCompatActivity() {
         sub = TextView(this).apply { textSize = 12f; setTextColor(0x99FFFFFF.toInt()); maxLines = 2 }
         titles.addView(sub)
         top.addView(titles, LinearLayout.LayoutParams(0, -2, 1f))
-        top.addView(smallBtn("फ़ाइलें") { showFiles() })
+        top.addView(smallBtn("+ जोड़ें") { pick.launch(arrayOf("image/*", "application/pdf", "text/*")) })   // v5: फ़ोटो / PDF / text DK कंप्यूटर को
+        top.addView(smallBtn("फ़ाइलें") { showFiles() }, LinearLayout.LayoutParams(-2, -2).apply { marginStart = (6 * dp).toInt() })
         top.addView(smallBtn("इतिहास") { showHistory() }, LinearLayout.LayoutParams(-2, -2).apply { marginStart = (6 * dp).toInt() })
         top.addView(smallBtn("नया") { newSession() }, LinearLayout.LayoutParams(-2, -2).apply { marginStart = (6 * dp).toInt() })
         col.addView(top)

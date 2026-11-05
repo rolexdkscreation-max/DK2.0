@@ -17,6 +17,8 @@ import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
+import kotlinx.coroutines.sync.withPermit
+import org.json.JSONArray
 import org.json.JSONObject
 
 /**
@@ -109,6 +111,7 @@ object ComputerSession {
             try {
                 val out = a.run(task, background)
                 out.files.forEach { add("f", it) }
+                if (!out.question) ComputerPast.add(ctx, task.removePrefix(RESUME_NOTE), out.text, out.files)
                 // v5 (मालिक): जवाब के नीचे "कौन-सा मॉडल चला / क्या गलती हुई" वाली रिपोर्ट नहीं - सिर्फ़ असली जवाब
                 add("d", out.text)
                 TaskStatus.end(TaskStatus.PC, if (out.question) TaskStatus.State.WAITING else TaskStatus.State.DONE, out.text)
@@ -146,6 +149,7 @@ object ComputerSession {
         j.invokeOnCompletion { cause ->
             scope.launch {
                 ask?.answer?.complete(false); ask = null; voiceRunning = false
+                ComputerBrowser.close()     // v5: काम खत्म = छिपा ब्राउज़र बंद
                 if (cause is CancellationException) { if (queue.isNotEmpty()) add("s", "कतार के ${queue.size} काम भी हटा दिए"); queue.clear() }
                 listener?.invoke()
                 if (!busy) queue.removeFirstOrNull()?.let { (t, bg, v) -> runQueued(ctx, t, bg, v) }
@@ -219,6 +223,8 @@ class ComputerAgent(private val c: Context) {
     private val issues = mutableListOf<CoderReport.Item>()
     private val files = mutableListOf<String>()
     private var pendingFail: String? = null
+    /** v5: इस काम का AI (look / sub_agents इसी से) */
+    private var aiNow: CoderAi? = null
 
     private fun issue(p: String, f: String) = synchronized(issues) {
         if (issues.none { it.problem == p && it.fix == f }) issues.add(CoderReport.Item(p.take(220), f.take(220)))
@@ -256,6 +262,7 @@ class ComputerAgent(private val c: Context) {
             ComputerVoice.switchedTo(f)?.let { step("⚙ अब $it पर काम चल रहा है") }
         } ?: throw IllegalStateException("AI key नहीं मिली")
         budget = ai.budget
+        aiNow = ai
         val cap = ComputerPlan.resultCap(budget)
         step("🧠 ${ai.label} से काम शुरू…")
         // 1) v3.88: योजना साथ-साथ बनती है - पहला कदम उसका इंतज़ार नहीं करता (पहले: लंबी योजना के बाद ही काम)
@@ -440,8 +447,68 @@ class ComputerAgent(private val c: Context) {
                 val t = a.optString("task").ifBlank { return "ERROR: task खाली" }
                 val at = ComputerTools.whenMs(System.currentTimeMillis(), a.optInt("minutes", 0).takeIf { it > 0 }, a.optString("at"))
                     ?: return "ERROR: minutes (जैसे 30) या at (\"HH:mm\") दें"
-                ComputerTools.schedule(c, t, at).also { step("⏰ $it") }
+                ComputerTools.schedule(c, t, at, ComputerJobs.everyMs(a.optString("every"))).also { step("⏰ $it") }
             }
+            // ---------------------------------------------------------------- v5: Perplexity Computer जैसे नए टूल
+            "browse" -> {
+                val from = a.optInt("from", 0).coerceAtLeast(0)
+                val u = a.optString("url").takeIf { it.isNotBlank() }
+                step(if (u != null) "🧭 ब्राउज़र में खोला: ${u.take(90)}" else "🧭 ब्राउज़र में आगे: " + (a.optJSONArray("actions")?.toString()?.take(90) ?: "पेज पढ़ रहा हूँ"))
+                val shot = if (a.optBoolean("screenshot")) "screen_${System.currentTimeMillis() % 100000}" else null
+                val (txt, f) = ComputerBrowser.browse(c, u, a.optJSONArray("actions"), from, ComputerPlan.resultCap(budget), shot)
+                f?.let { step("📸 स्क्रीनशॉट: ${it.name}") }
+                txt
+            }
+            "look" -> {
+                val ai = aiNow ?: return "ERROR: AI तैयार नहीं"
+                val (m, what) = withContext(Dispatchers.IO) { ComputerSee.media(c, a.optString("file"), a.optString("url"), a.optString("pages")) }
+                m ?: return what
+                step("👁 देख रहा हूँ: ${(a.optString("file").ifBlank { a.optString("url") }).take(80)}")
+                val q = a.optString("question").ifBlank { "इसमें क्या है? सारा text, नंबर, टेबल और ज़रूरी बातें बताओ।" }
+                "$what\n" + withContext(Dispatchers.IO) { ai.chat(LOOK_SYS, listOf("user" to q), listOf(m)) }
+            }
+            "make_docx" -> {
+                val f = withContext(Dispatchers.IO) {
+                    ComputerTools.writeBytes(c, a.optString("name").ifBlank { "document" }, ".docx", ComputerOffice.docx(a.optString("title"), a.optString("content")))
+                }
+                if (f.name !in files) files.add(f.name)
+                step("📘 Word फ़ाइल बनाई: ${f.name}"); "saved ${f.name} (${f.length() / 1024} KB)"
+            }
+            "make_xlsx" -> {
+                val sheets = sheetsOf(a) ?: return "ERROR: sheets [{\"name\":\"...\",\"rows\":[[\"A\",\"B\"],[1,2]]}] या csv दें"
+                val f = withContext(Dispatchers.IO) { ComputerTools.writeBytes(c, a.optString("name").ifBlank { "data" }, ".xlsx", ComputerOffice.xlsx(sheets)) }
+                if (f.name !in files) files.add(f.name)
+                step("📗 Excel फ़ाइल बनाई: ${f.name}"); "saved ${f.name} (${sheets.size} sheet, ${sheets.sumOf { it.rows.size }} rows)"
+            }
+            "make_chart" -> {
+                val labels = a.optJSONArray("labels")?.let { l -> (0 until l.length()).map { l.optString(it) } } ?: return "ERROR: labels खाली"
+                val ser = a.optJSONArray("series")?.let { sr -> (0 until sr.length()).mapNotNull { i -> sr.optJSONObject(i)?.let { o ->
+                    val v = o.optJSONArray("values") ?: JSONArray()
+                    ComputerOffice.Series(o.optString("name"), (0 until v.length()).map { v.optDouble(it, 0.0) })
+                } } } ?: a.optJSONArray("values")?.let { v -> listOf(ComputerOffice.Series("", (0 until v.length()).map { v.optDouble(it, 0.0) })) }
+                    ?: return "ERROR: series [{\"name\":\"...\",\"values\":[...]}] दें"
+                val type = a.optString("type").lowercase().let { if (it in setOf("bar", "line", "pie")) it else "bar" }
+                val svg = ComputerOffice.chartSvg(type, a.optString("title"), labels, ser)
+                val base = a.optString("name").ifBlank { "chart" }.substringBeforeLast('.')
+                val sv = withContext(Dispatchers.IO) { ComputerTools.writeBytes(c, base, ".svg", svg.toByteArray()) }
+                val png = ComputerBrowser.renderPng(c, ComputerOffice.chartHtml(svg), 900, 540, java.io.File(ComputerTools.dir(c), sv.nameWithoutExtension + ".png"))
+                val out = png ?: sv
+                if (out.name !in files) files.add(out.name)
+                step("📊 चार्ट बनाया: ${out.name}"); "saved ${out.name}" + (if (png != null) " (+ ${sv.name})" else "")
+            }
+            "sub_agents" -> {
+                val arr = a.optJSONArray("tasks") ?: return "ERROR: tasks [\"...\"] दें"
+                val ts = (0 until arr.length()).map { arr.optString(it).trim() }.filter { it.isNotBlank() }.take(SUB_MAX)
+                if (ts.isEmpty()) return "ERROR: tasks खाली"
+                step("👥 ${ts.size} सहायक एक साथ काम कर रहे हैं")
+                val gate = kotlinx.coroutines.sync.Semaphore(SUB_AT_ONCE)
+                kotlinx.coroutines.coroutineScope {
+                    ts.mapIndexed { i, t -> async { gate.withPermit {
+                        "### सहायक ${i + 1}: $t\n" + try { subRun(i + 1, t) } catch (e: CancellationException) { throw e } catch (e: Exception) { "ERROR: " + (e.message ?: "").take(160) }
+                    } } }.map { it.await() }
+                }.joinToString("\n\n========\n\n")
+            }
+            "past_tasks" -> ComputerPast.show(ComputerPast.search(ComputerPast.all(c), a.optString("query"), a.optInt("n", 5).coerceIn(1, 10)))
             // v3.88: एक-दूसरे पर निर्भर न रहने वाले (सिर्फ़ पढ़ने वाले) काम एक साथ
             "parallel" -> {
                 val arr = a.optJSONArray("calls") ?: return "ERROR: calls खाली"
@@ -460,6 +527,63 @@ class ComputerAgent(private val c: Context) {
             }
             else -> "ERROR: unknown tool '${call.tool}'. Use only the listed tools."
         }
+    }
+
+    private fun sheetsOf(a: JSONObject): List<ComputerOffice.Sheet>? {
+        a.optString("csv").takeIf { it.isNotBlank() }?.let { return listOf(ComputerOffice.Sheet(a.optString("sheet", "Sheet1"), ComputerOffice.csv(it))) }
+        val sh = a.optJSONArray("sheets") ?: a.optJSONArray("rows")?.let { JSONArray().put(JSONObject().put("name", "Sheet1").put("rows", it)) } ?: return null
+        val out = (0 until sh.length()).mapNotNull { i ->
+            val o = sh.optJSONObject(i) ?: return@mapNotNull null
+            val rows = o.optJSONArray("rows") ?: return@mapNotNull null
+            ComputerOffice.Sheet(o.optString("name"), (0 until rows.length()).map { r ->
+                val row = rows.optJSONArray(r) ?: JSONArray()
+                (0 until row.length()).map { k -> row.opt(k).let { v -> if (v == null || v == JSONObject.NULL) "" else if (v is Double && v == Math.floor(v) && !v.isInfinite()) v.toLong().toString() else v.toString() } }
+            })
+        }
+        return out.ifEmpty { null }
+    }
+
+    /** v5: एक सहायक एजेंट - अपना छोटा काम (खोज/पढ़ना/हिसाब) करके नतीजा लौटाता है (मुख्य एजेंट जोड़ता है) */
+    private suspend fun subRun(no: Int, task: String): String {
+        val ai = aiNow ?: return "ERROR: AI तैयार नहीं"
+        val m = mutableListOf("user" to "SUB-TASK: $task")
+        val cap = ComputerPlan.resultCap(budget) / 2
+        var bad = 0
+        for (n in 1..SUB_STEPS) {
+            if (n == SUB_STEPS) m.add("user" to "LAST STEP: reply done now with everything you found.")
+            val reply = withContext(Dispatchers.IO) { ai.chat(subSystem(), mergeUsers(m)) }
+            val call = parse(reply)
+            if (call == null) {
+                if (++bad >= 2) return reply.trim().take(6000)
+                m.add("model" to reply.take(2000)); m.add("user" to "FORMAT ERROR: reply with ONE JSON object."); continue
+            }
+            m.add("model" to call.raw.take(4000))
+            if (call.tool == "done") return call.args.optString("answer").ifBlank { reply }.take(8000)
+            if (call.thought.isNotBlank()) step("👤$no " + call.thought.take(160))
+            val res = if (call.tool in SUB_TOOLS) try { runTool(call) } catch (e: CancellationException) { throw e } catch (e: Exception) { "ERROR: " + (e.message ?: "").take(160) }
+                else "ERROR: सहायक सिर्फ़ ये टूल चला सकता है: ${SUB_TOOLS.joinToString()}"
+            m.add("user" to "TOOL RESULT (${call.tool}):\n" + res.take(cap))
+            // पुराने नतीजे छोटे (सहायक की बातचीत भी सीमा में)
+            var tot = m.sumOf { it.second.length }; var i = 1
+            while (tot > ComputerPlan.compactAt(budget) / 2 && i < m.size - 3) { val (r, t) = m[i]; if (t.length > 1500) { m[i] = r to t.take(1200) + "\n…"; tot -= t.length - 1201 }; i++ }
+        }
+        return "(सहायक $no: कदम पूरे, पक्का नतीजा नहीं मिला)"
+    }
+
+    private fun mergeUsers(l: List<Pair<String, String>>): List<Pair<String, String>> {
+        val out = mutableListOf<Pair<String, String>>()
+        l.forEach { (r, t) -> if (out.lastOrNull()?.first == r) out[out.size - 1] = r to (out.last().second + "\n\n" + t) else out.add(r to t) }
+        return out
+    }
+
+    private fun subSystem(): String {
+        val now = java.text.SimpleDateFormat("d MMMM yyyy", java.util.Locale("hi", "IN")).format(java.util.Date())
+        return """You are a HELPER AGENT of DK Computer. Do ONLY your SUB-TASK carefully, using tools, then report.
+Reply with EXACTLY ONE JSON object: {"thought":"short Hindi","tool":"<tool>","args":{...}}
+TOOLS: ${TOOLS.filter { it.first in SUB_TOOLS }.joinToString("\n") { "- " + it.second }}
+- done {"answer":"your findings"} — when finished
+Rules: verify facts with web_search + read_url (several sources); never invent numbers or links; at most $SUB_STEPS steps.
+Answer: compact facts, numbers and figures with their source links [title](url); say clearly what you could not find. Today: $now."""
     }
 
     private suspend fun phone(req: String): String {
@@ -503,9 +627,15 @@ RULES:
 - Do several searches for research tasks (different angles); compare sources; prefer official/primary sources.
 - If a tool returns ERROR, do not repeat the same call blindly — fix the arguments or use another tool/source.
 - For math, data, dates, unit conversion, sorting, tables: use run_js instead of guessing.
-- When the user asks for a document/report/list/file, create it with write_file (md/csv/html/json/txt) or make_pdf, and mention the file name in the answer.
+- When the user asks for a document/report/list/file, create it with write_file (md/csv/html/json/txt), make_pdf, make_docx, make_xlsx or make_chart, and mention the file name in the answer.
 - Phone actions (open app, send message, call, settings) go through phone_task with a clear Hindi command. Never make purchases or payments.
 - Code changes in the user's GitHub repo go through coding_task.
+- WIDE / BIG RESEARCH (compare many products, companies, places, people, options; several independent questions): split the work and use sub_agents {"tasks":[...]} — each helper researches one item in parallel; then you combine their findings, check gaps, and present tables.
+- Pages that need JavaScript, buttons, search boxes, filters, "load more", or several clicks: use browse (a real browser). It shows numbered elements [n]; act with {"click":n}, {"type":[n,"text"]}, {"enter":n}. Never type passwords, OTP, card or UPI details; never buy, pay, book or post — guide the user to do that themselves.
+- Photos, screenshots, scanned documents, PDF files: use look (it can see images and PDF pages). The user's attached files are in the files folder (list_files).
+- Office files: make_docx for Word documents (letters, reports, applications, resumes), make_xlsx for Excel sheets (lists, budgets, comparisons, data), make_chart for graphs (bar / line / pie) — then mention the file names.
+- When the user refers to earlier work ("पिछली बार", "वो रिपोर्ट", "कल वाला"), search it with past_tasks.
+- Recurring work ("रोज़ सुबह", "हर हफ़्ते"): schedule with "every":"daily" / "weekly" / "hourly".
 - GUIDE THE USER: if the task is something the user must do themselves (how-to, setup, a form, an app/website process, a government service, repair, study plan), give exact numbered steps: where to go / what to tap, what to type, what they will see, common mistakes, and what to do if a step fails. Check the CURRENT process with web_search first (apps and websites change).
 - Health / legal / money topics: give careful, sourced information and clearly say when a doctor / lawyer / expert must be consulted.
 - Final answer: in the user's language (default Hindi, Devanagari), clear and well structured:
@@ -523,7 +653,14 @@ ${if (facts.isNotBlank()) "\nWHAT YOU KNOW ABOUT THE USER:\n$facts" else ""}
     companion object {
         /** Settings में चालू/बंद होने वाले टूल */
         val TOOL_IDS = listOf("web_search", "read_url", "run_js", "write_file", "make_pdf", "read_file", "list_files",
-            "phone_task", "coding_task", "remember", "schedule")
+            "phone_task", "coding_task", "remember", "schedule",
+            // v5: Perplexity Computer जैसे
+            "browse", "look", "make_docx", "make_xlsx", "make_chart", "sub_agents", "past_tasks")
+
+        /** v5: सहायक एजेंट */
+        const val SUB_MAX = 6
+        const val SUB_AT_ONCE = 3
+        const val SUB_STEPS = 8
 
         private val TOOLS = listOf(
             "web_search" to "web_search {\"query\":\"...\",\"n\":6} — search the web; returns titles, URLs, snippets",
@@ -538,15 +675,27 @@ ${if (facts.isNotBlank()) "\nWHAT YOU KNOW ABOUT THE USER:\n$facts" else ""}
             "coding_task" to "coding_task {\"task\":\"...\"} — give a code change to DK's coding team (user's GitHub repo); runs in background",
             "remember" to "remember {\"fact\":\"...\"} — save a long-term fact about the user",
             "parallel" to "parallel {\"calls\":[{\"tool\":\"web_search\",\"args\":{...}},{\"tool\":\"read_url\",\"args\":{...}}]} — run up to 4 INDEPENDENT read-only calls at once (web_search, read_url, read_file, list_files, run_js); much faster",
-            "schedule" to "schedule {\"task\":\"...\",\"minutes\":30} or {\"task\":\"...\",\"at\":\"18:30\"} — run a DK Computer task later (reminders, later checks); saved on the phone, survives restart"
+            "schedule" to "schedule {\"task\":\"...\",\"minutes\":30} or {\"task\":\"...\",\"at\":\"18:30\",\"every\":\"daily\"} — run a DK Computer task later (reminders, later checks; every = daily / weekly / hourly to repeat); saved on the phone, survives restart",
+            "browse" to "browse {\"url\":\"https://...\",\"actions\":[{\"type\":[3,\"text\"]},{\"enter\":3},{\"click\":7},{\"scroll\":\"down\"},{\"wait\":2000},{\"back\":true}],\"screenshot\":false,\"from\":0} — REAL browser (JavaScript sites, buttons, forms, search boxes); shows page text + numbered clickable elements [n]; the page stays open for the next browse call (omit url to continue)",
+            "look" to "look {\"file\":\"photo.jpg\"} or {\"url\":\"https://.../image.png\"} + \"question\":\"...\" (+ \"pages\":\"1-3\" for PDF) — SEE an image / screenshot / PDF pages and answer about it (text, tables, objects)",
+            "make_docx" to "make_docx {\"name\":\"letter.docx\",\"title\":\"...\",\"content\":\"markdown: # headings, - bullets, **bold**, | tables |\"} — create a Word document",
+            "make_xlsx" to "make_xlsx {\"name\":\"data.xlsx\",\"sheets\":[{\"name\":\"Sheet1\",\"rows\":[[\"नाम\",\"कीमत\"],[\"A\",1200]]}]} (or \"csv\":\"...\") — create an Excel file (first row = header; numbers stay numbers)",
+            "make_chart" to "make_chart {\"name\":\"chart\",\"type\":\"bar|line|pie\",\"title\":\"...\",\"labels\":[\"Jan\",\"Feb\"],\"series\":[{\"name\":\"बिक्री\",\"values\":[10,20]}]} — create a chart image (PNG)",
+            "sub_agents" to "sub_agents {\"tasks\":[\"research item 1 ...\",\"research item 2 ...\"]} — up to $SUB_MAX helper agents work IN PARALLEL (each searches + reads sources) and return their findings; best for wide research / comparisons",
+            "past_tasks" to "past_tasks {\"query\":\"...\"} — search what DK Computer did for the user before (tasks, answers, files)"
         )
 
+        val SUB_TOOLS = setOf("web_search", "read_url", "read_urls", "run_js", "read_file", "list_files", "look", "past_tasks")
+
+        const val LOOK_SYS = """You are the EYES of DK Computer. Look at the image(s) carefully and answer the question precisely.
+Copy important text / numbers / tables exactly (keep the original language). Describe what is visible; do not guess what is not visible. Answer in Hindi unless the content needs another language."""
+
         /** v3.88: parallel में सिर्फ़ पढ़ने वाले टूल (फ़ोन/फ़ाइल लिखना/कोडिंग एक-एक करके ही) */
-        val PARALLEL_SAFE = setOf("web_search", "read_url", "read_file", "list_files", "run_js")
+        val PARALLEL_SAFE = setOf("web_search", "read_url", "read_file", "list_files", "run_js", "look", "past_tasks")
         const val PARALLEL_MAX = 4
 
         /** योजना बनाने वाला */
-        const val PLAN_SYS = """You are the PLANNER of DK Computer (an AI agent on the user's Android phone with tools: web search, reading web pages, running JavaScript, creating files/PDF, phone control, coding team, reminders).
+        const val PLAN_SYS = """You are the PLANNER of DK Computer (an AI agent on the user's Android phone with tools: web search, reading web pages, a real browser, seeing images/PDF, parallel helper agents for wide research, running JavaScript, creating files/PDF/Word/Excel/charts, phone control, coding team, reminders, memory of past tasks).
 Understand the user's NEW TASK exactly (use the conversation for context) and make a careful step-by-step plan.
 Reply ONLY JSON:
 {"understood":"Hindi, 1-3 simple lines: what the user wants","steps":["Hindi: concrete step 1","..."],"deliverable":"Hindi: what the user will get at the end (answer / file / phone action / guide)"}

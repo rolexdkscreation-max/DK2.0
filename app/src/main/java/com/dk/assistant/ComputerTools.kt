@@ -263,10 +263,17 @@ object ComputerTools {
         val f = File(dir(c), safeName(name)); f.writeText(content); return f
     }
 
+    fun writeBytes(c: Context, name: String, ext: String, bytes: ByteArray): File {
+        val f = File(dir(c), safeName(name.substringBeforeLast('.').ifBlank { name } + ext, ext)); f.writeBytes(bytes); return f
+    }
+
     fun read(c: Context, name: String, max: Int = 12000): String {
         val f = File(dir(c), safeName(name))
         if (!f.exists()) return "ERROR: ${f.name} नहीं मिली। मौजूद: " + list(c).joinToString { it.name }.ifBlank { "(कोई नहीं)" }
-        if (f.extension.lowercase() == "pdf") return "(${f.name} PDF है, ${f.length() / 1024} KB)"
+        when (f.extension.lowercase()) {
+            "pdf", "png", "jpg", "jpeg", "webp" -> return "(${f.name} ${f.extension.uppercase()} है, ${f.length() / 1024} KB — अंदर क्या है देखने के लिए look {\"file\":\"${f.name}\"})"
+            "docx", "xlsx", "pptx", "zip" -> return "(${f.name} ${f.extension.uppercase()} फ़ाइल है, ${f.length() / 1024} KB)"
+        }
         val t = f.readText(); return t.take(max) + if (t.length > max) "\n…(बाकी छोड़ा)" else ""
     }
 
@@ -324,7 +331,10 @@ object ComputerTools {
 
     fun mime(f: File) = when (f.extension.lowercase()) {
         "pdf" -> "application/pdf"; "html", "htm" -> "text/html"; "csv" -> "text/csv"; "json" -> "application/json"
-        "md" -> "text/markdown"; else -> "text/plain"
+        "md" -> "text/markdown"; "svg" -> "image/svg+xml"; "png" -> "image/png"; "jpg", "jpeg" -> "image/jpeg"; "webp" -> "image/webp"
+        "docx" -> "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+        "xlsx" -> "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        else -> "text/plain"
     }
 
     fun uri(c: Context, f: File) = FileProvider.getUriForFile(c, c.packageName + ".files", f)
@@ -354,11 +364,12 @@ object ComputerTools {
         return cal.timeInMillis
     }
 
-    fun schedule(c: Context, task: String, at: Long): String {
+    fun schedule(c: Context, task: String, at: Long, every: Long = 0L): String {
         // फ़ोन में सेव -> restart/update के बाद ComputerBoot फिर से लगाता है
-        ComputerJobs.add(c, at, task)
+        ComputerJobs.add(c, at, task, every)
         val t = java.text.SimpleDateFormat("d MMM, HH:mm", java.util.Locale("hi", "IN")).format(java.util.Date(at))
-        return "तय हो गया: $t पर यह काम चलेगा — \"${task.take(80)}\" (फ़ोन restart होने पर भी याद रहेगा)"
+        val rep = when (every) { ComputerJobs.HOUR -> ", फिर हर घंटे"; ComputerJobs.DAY -> ", फिर रोज़ इसी समय"; ComputerJobs.WEEK -> ", फिर हर हफ़्ते"; else -> "" }
+        return "तय हो गया: $t पर$rep यह काम चलेगा — \"${task.take(80)}\" (फ़ोन restart होने पर भी याद रहेगा)"
     }
 }
 
@@ -367,7 +378,7 @@ class ComputerAlarm : BroadcastReceiver() {
     override fun onReceive(c: Context, i: Intent) {
         val ctx = c.applicationContext
         val id = i.getIntExtra("id", -1)
-        if (id >= 0) try { ComputerJobs.remove(ctx, id) } catch (_: Exception) {}
+        if (id >= 0) try { ComputerJobs.fired(ctx, id) } catch (_: Exception) {}
         val t = i.getStringExtra("task")?.takeIf { it.isNotBlank() } ?: return
         val late = if (i.getBooleanExtra("late", false)) " (फ़ोन बंद/restart था, इसलिए देर से चला)" else ""
         ComputerSession.start(ctx, "⏰ तय किया हुआ काम$late: $t", background = true)
