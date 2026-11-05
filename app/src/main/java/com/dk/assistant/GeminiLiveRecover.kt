@@ -56,6 +56,7 @@ internal fun GeminiLive.onRecovered() {
 internal fun GeminiLive.swapForStuck(now: Long, why: String): Boolean {
     if (!zombieSwaps.tryTake(now)) {
         log("Live: $why, पर 1 मिनट में ${LiveRecover.MAX_SWAPS} बार connection बदल चुका - इस बार नहीं (चक्कर नहीं) • ${timeline.summary()}")
+        stuckNoSwap()
         return false
     }
     zombieN++; unheardSwapAt = 0L
@@ -65,4 +66,13 @@ internal fun GeminiLive.swapForStuck(now: Long, why: String): Boolean {
     if (again) handle = null          // फिर अटका = नई बातचीत (याद prompt में)
     log("Live: $why - नया connection${if (again) " (नई बातचीत)" else " (बातचीत वहीं से)"} और आपकी वही आवाज़ एक बार दोबारा (#$zombieN) • ${timeline.summary()}")
     return true      // बुलाने वाला: goAway = true; goAwayDrop = true; break
+}
+
+/**
+ * नवंबर 2026 (मालिक: "कभी-कभी जवाब ही नहीं देता"): अटका, पर मिनट में 2 बार connection बदल चुका = पहले DK बिल्कुल चुप
+ * ("सोच रहा हूँ" पर अटका भी दिखता). अब: स्क्रीन पर साफ़ बताओ कि फिर बोलें, और सुनने पर लौटो - चुप्पी नहीं.
+ */
+internal fun GeminiLive.stuckNoSwap() {
+    DKState.hint("जवाब अटक गया — कृपया एक बार फिर बोलिए")
+    if (!isPlaying() && DKState.mode == Mode.THINKING) setMode(Mode.LISTENING)
 }

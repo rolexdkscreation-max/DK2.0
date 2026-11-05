@@ -60,10 +60,14 @@ object Catalog {
         ToolSpec("doc_create", listOf("title", "text"), "create a Google Doc"),
         ToolSpec("doc_read", listOf("doc_id"), "read a Google Doc as text")))
 
-    val YOUTUBE = ConnectorDef("youtube", "YouTube", "वीडियो खोजो, मेरे वीडियो, मेरी playlists", Kind.GOOGLE, listOf(G + "youtube.readonly"), listOf(
+    /** नवंबर 2026: + YouTube Analytics (सोशल रिव्यू: watch time, औसत देखा, सब्सक्राइबर, कहाँ से व्यूज़) */
+    const val YT_READ = G + "youtube.readonly"
+    const val YT_ANALYTICS = G + "yt-analytics.readonly"
+    val YOUTUBE = ConnectorDef("youtube", "YouTube", "वीडियो खोजो, मेरे वीडियो, मेरी playlists, चैनल analytics (रिव्यू)", Kind.GOOGLE, listOf(YT_READ, YT_ANALYTICS), listOf(
         ToolSpec("search", listOf("query"), "search videos"),
         ToolSpec("my_videos", emptyList(), "the user's own uploaded videos with views"),
-        ToolSpec("playlists", emptyList(), "the user's playlists")))
+        ToolSpec("playlists", emptyList(), "the user's playlists"),
+        ToolSpec("insights", emptyList(), "channel analytics review: last 28 days vs before, per-video views/watch time/retention/subs, traffic sources")))
 
     val GITHUB = ConnectorDef("github", "GitHub", "repos, फ़ाइलें, कोड खोजो (कोडिंग एजेंट वाला token)", Kind.GITHUB, tools = listOf(
         ToolSpec("repos", emptyList(), "list the user's repositories"),
@@ -75,6 +79,7 @@ object Catalog {
         ToolSpec("pages", emptyList(), "the user's Facebook Pages"),
         ToolSpec("posts", listOf("page_id"), "recent posts of a page"),
         ToolSpec("comments", listOf("post_id"), "comments on a post"),
+        ToolSpec("insights", listOf("page_id"), "page + recent posts/reels insights (views, reach, reactions, shares, watch time)"),
         ToolSpec("post", listOf("page_id", "message", "link"), "publish a text/link post on the page", risky = true),
         ToolSpec("photo", listOf("page_id", "image_url", "caption"), "publish a photo from a public image URL", risky = true),
         ToolSpec("reply", listOf("comment_id", "message"), "reply to a comment", risky = true)))
@@ -82,6 +87,7 @@ object Catalog {
     val INSTAGRAM = ConnectorDef("instagram", "Instagram (Business/Creator)", "प्रोफ़ाइल, पोस्ट, कमेंट, जवाब, फ़ोटो पोस्ट (Graph API)", Kind.META, tools = listOf(
         ToolSpec("profile", emptyList(), "username, followers, posts count"),
         ToolSpec("media", emptyList(), "recent posts with likes/comments"),
+        ToolSpec("insights", emptyList(), "account + recent reels insights (views, reach, saves, shares, avg watch time)"),
         ToolSpec("comments", listOf("media_id"), "comments on a post"),
         ToolSpec("publish_image", listOf("image_url", "caption"), "post a photo from a PUBLIC image URL", risky = true),
         ToolSpec("reply", listOf("comment_id", "message"), "reply to a comment", risky = true)))
