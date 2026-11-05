@@ -15,7 +15,28 @@ import org.json.JSONObject
  * restart के समय जो काम निकल गया, वह फ़ोन चालू होते ही (1 मिनट बाद) "देर से" चलता है; 7 दिन से पुराना हटता है.
  */
 object ComputerJobs {
-    data class Job(val id: Int, val at: Long, val task: String)
+    /** every = दोहराना (ms): 0 = एक बार; रोज़ / हर हफ़्ते / हर घंटे (v5) */
+    data class Job(val id: Int, val at: Long, val task: String, val every: Long = 0L)
+
+    const val HOUR = 3600_000L
+    const val DAY = 24 * HOUR
+    const val WEEK = 7 * DAY
+
+    /** "daily"/"रोज़" -> DAY ... ; अनजाना = 0 (एक बार) */
+    fun everyMs(s: String?): Long = when (s?.trim()?.lowercase().orEmpty()) {
+        "hourly", "hour", "हर घंटे", "घंटा" -> HOUR
+        "daily", "day", "रोज़", "रोज", "हर दिन", "everyday" -> DAY
+        "weekly", "week", "हर हफ़्ते", "हर हफ्ते", "हफ़्ता" -> WEEK
+        else -> 0L
+    }
+
+    /** दोहराने वाला काम: अगला समय (बीच में फ़ोन बंद था तो छूटे हुए छोड़कर अगला आने वाला) */
+    fun next(at: Long, every: Long, now: Long): Long {
+        if (every <= 0) return 0L
+        if (at > now) return at
+        val k = (now - at) / every + 1
+        return at + k * every
+    }
 
     const val PREF = "pc_jobs"
     const val FIRST_ID = 20000
@@ -32,13 +53,13 @@ object ComputerJobs {
                 val o = a.optJSONObject(i) ?: return@mapNotNull null
                 val t = o.optString("task")
                 val at = o.optLong("at", 0L)
-                if (t.isBlank() || at <= 0L) null else Job(o.optInt("id", FIRST_ID), at, t)
+                if (t.isBlank() || at <= 0L) null else Job(o.optInt("id", FIRST_ID), at, t, o.optLong("every", 0L).coerceAtLeast(0L))
             }
         } catch (_: Exception) { emptyList() }
     }
 
     fun encode(jobs: List<Job>): String = JSONArray().apply {
-        jobs.forEach { put(JSONObject().put("id", it.id).put("at", it.at).put("task", it.task)) }
+        jobs.forEach { put(JSONObject().put("id", it.id).put("at", it.at).put("task", it.task).also { o -> if (it.every > 0) o.put("every", it.every) }) }
     }.toString()
 
     /** अगला खाली id (20000..29999 में घूमता है) */
@@ -58,6 +79,7 @@ object ComputerJobs {
     fun plan(jobs: List<Job>, now: Long): List<Plan> = jobs.mapNotNull { j ->
         when {
             j.at > now -> Plan(j, j.at, false)
+            j.every > 0 -> next(j.at, j.every, now).let { n -> Plan(j.copy(at = n), n, false) }
             now - j.at <= MAX_LATE -> Plan(j, now + LATE_DELAY, true)
             else -> null
         }
@@ -69,15 +91,25 @@ object ComputerJobs {
     @Synchronized private fun save(c: Context, jobs: List<Job>) { prefs(c).edit().putString(PREF, encode(jobs)).apply() }
 
     /** नया काम सेव करके alarm लगाओ */
-    @Synchronized fun add(c: Context, at: Long, task: String): Job {
+    @Synchronized fun add(c: Context, at: Long, task: String, every: Long = 0L): Job {
         val jobs = all(c)
-        val j = Job(nextId(jobs), at, task)
+        val j = Job(nextId(jobs), at, task, every)
         save(c, jobs + j)
         arm(c, j, at, late = false)
         return j
     }
 
     @Synchronized fun remove(c: Context, id: Int) { save(c, all(c).filterNot { it.id == id }) }
+
+    /** alarm बजा: एक बार वाला हटाओ; दोहराने वाले का अगला alarm लगाओ */
+    @Synchronized fun fired(c: Context, id: Int) {
+        val jobs = all(c)
+        val j = jobs.firstOrNull { it.id == id } ?: return
+        if (j.every <= 0) { save(c, jobs - j); return }
+        val n = j.copy(at = next(j.at, j.every, System.currentTimeMillis()))
+        save(c, jobs.map { if (it.id == id) n else it })
+        arm(c, n, n.at, late = false)
+    }
 
     @Synchronized fun cancelAll(c: Context): Int {
         val jobs = all(c)
@@ -91,7 +123,7 @@ object ComputerJobs {
     @Synchronized fun rearm(c: Context): Int {
         val all = all(c)
         val p = plan(all, System.currentTimeMillis())
-        if (p.size != all.size) save(c, p.map { it.job })
+        if (p.map { it.job } != all) save(c, p.map { it.job })
         p.forEach { arm(c, it.job, it.fireAt, it.late) }
         return p.size
     }
