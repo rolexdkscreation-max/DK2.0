@@ -429,7 +429,7 @@ class SettingsActivity : AppCompatActivity() {
             else "कुछ परमिशन नहीं मिलीं — App info → Permissions से दें (Android 13+: पहले ⋮ → Allow restricted settings)")
     }
 
-    override fun onPause() { save(false); super.onPause() }
+    override fun onPause() { save(false); stopVoiceCmdPlay(); super.onPause() }
     override fun onDestroy() { if (section == "debug") DKLog.listener = null; speaker?.shutdown(); super.onDestroy() }
 
     // ------------------------------------------------------------ small UI helpers

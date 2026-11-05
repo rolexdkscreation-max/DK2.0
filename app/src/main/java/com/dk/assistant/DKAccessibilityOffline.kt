@@ -20,6 +20,9 @@ import kotlinx.coroutines.withContext
  * सिर्फ़ ऑफलाइन कमांड वाली लिखी बात लौटती है ([OfflineListen.keepText]: लॉक / अनलॉक / किधर हो + टॉर्च, आवाज़, ऐप, अलार्म,
  * कॉल, SMS जैसे फ़ोन वाले काम), बाकी null (agent तक कुछ नहीं).
  */
+/** v4.7: ऑफलाइन बातचीत में DK ने आख़िरी जवाब कब दिया ([OfflineTalk.FOLLOW_MS] तक बिना नाम भी बात चले) */
+@Volatile internal var offlineTalkAt = 0L
+
 internal suspend fun DKAccessibilityService.hearOfflineCmds(): String? {
     if (!checkMic()) { delay(2000); return null }
     if (DKState.micMuted) { delay(800); return null }
@@ -65,7 +68,25 @@ internal suspend fun DKAccessibilityService.hearOfflineCmds(): String? {
             DKState.set(Mode.IDLE)
             return text      // loop का पुराना लॉक / अनलॉक / किधर हो वाला हिस्सा चलेगा
         }
-        if (!text.isNullOrBlank()) DKLog.d("ऑफलाइन: \"${text.take(40)}\" - कमांड नहीं, अनसुनी")
+        // v4.7 मालिक: "ऑफलाइन में नॉर्मल बातें भी - डीके कहाँ हो, क्या कर रहे हो, क्या खाना खाया" ([OfflineTalk]).
+        // DK का नाम लिया / मालिक की आवाज़ / अभी-अभी बात चल रही थी = बात करो. इंटरनेट वाली बात = साफ़ बताओ.
+        if (!text.isNullOrBlank()) {
+            val rest = OfflineListen.findRest(text, Prefs.wakeWords(this))
+            val talking = System.currentTimeMillis() - offlineTalkAt < OfflineTalk.FOLLOW_MS
+            val addressed = rest != null || owner || talking
+            val said = (rest?.takeIf { it.isNotBlank() } ?: text)
+            val reply = if (addressed) OfflineTalk.reply(this, said, addressed = true)
+                else null
+            if (reply != null) {
+                DKLog.d("ऑफलाइन बातचीत: \"${said.take(40)}\" -> \"${reply.take(40)}\"")
+                DKState.user(said); DKState.reply(reply)
+                try { speaker.speak(reply) } catch (e: CancellationException) { throw e } catch (_: Exception) {}
+                offlineTalkAt = System.currentTimeMillis()
+                DKState.set(Mode.IDLE)
+                return null
+            }
+            DKLog.d("ऑफलाइन: \"${text.take(40)}\" - कमांड नहीं, अनसुनी")
+        }
     }
     DKLog.d("ऑफलाइन: आवाज़-कमांड नहीं मिली - अनसुनी")
     DKState.set(Mode.IDLE)

@@ -30,7 +30,7 @@ class OfflineLockFixTest {
         assertEquals(U, PhoneLockVoice.instant("डी जे फोन अनलॉक करो", names, needName = true, c = off))
         assertEquals(L, PhoneLockVoice.instant("टीके फोन लॉक करो", names, needName = true, c = off))
         assertTrue(OfflineListen.keepText("डीजे फोन लॉक कर दो", names, false, off))
-        assertTrue(OfflineListen.keepText("डीजे कहाँ हो", names, false, off))
+        assertTrue(OfflineListen.keepText("डीजे कहाँ हो फोन बजाओ", names, false, off))   // v4.7: सिर्फ़ "कहाँ हो" = बातचीत
         assertTrue(OfflineListen.keepText("डीजे टॉर्च जलाओ", names, false, off))
     }
 

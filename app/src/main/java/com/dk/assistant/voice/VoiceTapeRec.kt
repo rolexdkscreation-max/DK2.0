@@ -17,7 +17,9 @@ object VoiceTapeRec {
     private const val RATE = WakeMatch.RATE
 
     class Tick(val leftMs: Long, val got: Int, val level: Float, val note: String)
-    class Result(val takes: List<ByteArray>, val tooShort: Int, val tooLong: Int, val micOk: Boolean)
+    /** @param noise कमरे का शोर (चुप्पी वाले टुकड़े, ~3 s तक) - "दूर से" वाले नमूनों के लिए. @param quiet बोली बहुत धीमी थी */
+    class Result(val takes: List<ByteArray>, val tooShort: Int, val tooLong: Int, val micOk: Boolean,
+                 val noise: ByteArray = ByteArray(0), val quiet: Boolean = false)
 
     /**
      * @param ok हर कटे हुए बार की जाँच (जैसे बोले फ़्रेम गिनना) - false = गिनो मत
@@ -43,6 +45,8 @@ object VoiceTapeRec {
         val buf = ShortArray(chunk)
         val total = seconds * 1000L
         var ms = 0L; var note = ""; var skipped = 0
+        val noise = java.io.ByteArrayOutputStream(); var floor = Double.MAX_VALUE
+        val levels = ArrayList<Double>()
         try {
             r.startRecording()
             while (isActive && ms < total && takes.size < want) {
@@ -55,9 +59,11 @@ object VoiceTapeRec {
                 }
                 val lv = sqrt(sum / n)
                 ms += n * 1000L / RATE
+                if (ms > 200) floor = minOf(floor, lv)
+                if (!cut.inSpeech && ms > 200 && lv < floor * 3 + 30 && noise.size() < RATE * 2 * 3) noise.write(bytes)
                 val shortBefore = cut.tooShort; val longBefore = cut.tooLong
                 cut.feed(bytes, lv)?.let { seg ->
-                    if (ok(seg)) { takes += seg; note = if (takes.size < want) "✓ सुना - अब फिर बोलिए" else "✓ हो गया" }
+                    if (ok(seg)) { takes += seg; levels += VoiceAug.rms(VoiceAug.toFloat(seg)).toDouble(); note = if (takes.size < want) "✓ सुना - अब फिर बोलिए" else "✓ हो गया" }
                     else { skipped++; note = "साफ़ नहीं आया - फिर बोलिए" }
                 }
                 if (cut.tooShort > shortBefore) note = "बहुत छोटा था - पूरा वाक्य बोलिए"
@@ -71,6 +77,8 @@ object VoiceTapeRec {
             r.release()
         }
         DKLog.d("आवाज़-कमांड 30s: ${takes.size}/$want बार, छोटे ${cut.tooShort}, लंबे ${cut.tooLong}, साफ़ नहीं $skipped, ${ms / 1000}s")
-        Result(takes, cut.tooShort + skipped, cut.tooLong, micOk = true)
+        // बोली का औसत ज़ोर बहुत कम (~ -36 dBFS से नीचे) = अगली बार पास से / थोड़ा ज़ोर से
+        val quiet = levels.isNotEmpty() && levels.average() < 0.016
+        Result(takes, cut.tooShort + skipped, cut.tooLong, micOk = true, noise = noise.toByteArray(), quiet = quiet)
     }
 }

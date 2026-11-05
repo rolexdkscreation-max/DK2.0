@@ -24,12 +24,12 @@ internal fun SettingsActivity.secVoiceCmds() {
 
     card("आवाज़ रिकॉर्ड करके सिखाएँ", "लॉक, अनलॉक, \"DK कहाँ हो\", कॉल उठाना — अपनी आवाज़ में, इंटरनेट हो या न हो", startOpen = true) { box ->
         if (!Setup.accessibilityOn(this)) hint(box, "⚠ पहले Settings → Accessibility में DK चालू करें — उसके बिना ये कमांड नहीं चलेंगी।")
-        hint(box, "हर कमांड की 30 सेकंड की एक रिकॉर्डिंग: उसमें अपना वाक्य ${VoiceTape.TIMES} बार बोलिए, हर बार के बाद 2 सेकंड रुकिए। " +
-            "जिस नाम से बुलाते हैं वही बोलिए (\"हे DK…\", \"हे मायरा…\") — जो बोलेंगे, DK वही याद रखेगा। एक बार रिकॉर्ड करने पर सेव रहता है। " +
+        hint(box, "हर कमांड की 30 सेकंड की एक रिकॉर्डिंग: जो मन करे वो बोलिए, जैसे मन करे वैसे — बस वही बात ${VoiceTape.TIMES} बार, हर बार के बाद 2 सेकंड रुककर। " +
+            "DK वही याद रखेगा। रिकॉर्डिंग सेव रहती है और \"सुनें\" से दोबारा सुन सकते हैं। दूर से या धीरे बोलेंगे तब भी पहचान लेगा। " +
             "लॉक / अनलॉक सिर्फ़ आपकी आवाज़ पर होगा (अनलॉक सबसे कड़ी जाँच से)। \"DK कहाँ हो\" कोई भी पूछे तो फ़ोन 60 सेकंड पूरी आवाज़ में बजेगा। " +
             "कॉल उठाने वाली कमांड सिर्फ़ तब चलती है जब कॉल की घंटी बज रही हो।")
         for (k in Cmd.values()) {
-            label(box, k.hi + " — \"" + k.say + "\"")
+            label(box, k.hi)
             val st = TextView(this).apply { textSize = 13f; setTextColor(0xCCFFFFFF.toInt()); setPadding((4 * dp).toInt(), 0, 0, (4 * dp).toInt()) }
             box.addView(st); rows[k] = st
             val sw = switch(box, "चालू", Prefs.voiceCmdOn(this, k.id))
@@ -39,8 +39,9 @@ internal fun SettingsActivity.secVoiceCmds() {
                 refresh()
             }
             row(box,
-                button("30 सेकंड रिकॉर्ड करें") { enrollVoiceCmd(k) { refresh() } },
-                button("हटाओ") { VoiceCmds.forget(this, k); refresh(); toast("\"${k.hi}\" वाली आवाज़ हटा दी") })
+                button("30 सेकंड रिकॉर्ड करें") { stopVoiceCmdPlay(); enrollVoiceCmd(k) { refresh() } },
+                button("सुनें") { playVoiceCmd(k) },
+                button("हटाओ") { stopVoiceCmdPlay(); VoiceCmds.forget(this, k); refresh(); toast("\"${k.hi}\" वाली आवाज़ हटा दी") })
         }
         refresh()
         row(box, button("अभी बजाकर देखें") { toast(FindPhone.start(this, "Settings test")) })
@@ -48,15 +49,47 @@ internal fun SettingsActivity.secVoiceCmds() {
     }
 }
 
-/** रिकॉर्डिंग के समय की स्क्रीन: वाक्य, बचा समय, कितनी बार, माइक-मीटर */
+/**
+ * रिकॉर्डिंग के समय की स्क्रीन: बचा समय, कितनी बार, माइक-मीटर.
+ * v4.7 मालिक: "क्या बोलना है वो नहीं दिखेगा - जो मन करेगा, जैसा मन करेगा, वो बोलेगा" - कोई तय वाक्य नहीं दिखाते.
+ */
 internal fun voiceTapeText(cmd: Cmd, t: VoiceTapeRec.Tick?): String {
     val head = UiLang.s("${cmd.hi} — 30 सेकंड") + "\n\n" +
-        UiLang.s("यही वाक्य ${VoiceTape.TIMES} बार बोलिए, हर बार के बाद 2 सेकंड रुकिए:") + "\n\"" + cmd.say + "\"\n" +
-        UiLang.s("(अपने नाम से भी बोल सकते हैं — हर बार एक जैसा)")
-    if (t == null) return head + "\n\n" + UiLang.s("तैयार हो जाइए…")
+        UiLang.s("जो मन करे वो बोलिए — बस वही बात ${VoiceTape.TIMES} बार, हर बार के बाद 2 सेकंड रुकिए।") + "\n" +
+        UiLang.s("फ़ोन को मुँह से एक हाथ दूर रखें, आम आवाज़ में बोलें।")
+    if (t == null) return head + "\n\n" + UiLang.s("तैयार हो जाइए… (कमरे का शोर सुन रहा हूँ)")
     val bars = (t.level * 12).toInt().coerceIn(0, 12)
     return head + "\n\n" + UiLang.s(VoiceTape.progress(t.leftMs, t.got)) + "\n" + UiLang.s("माइक:") + " " + "▮".repeat(bars) + "▯".repeat(12 - bars) +
         (if (t.note.isNotBlank()) "\n" + UiLang.s(t.note) else "")
+}
+
+private var voiceCmdPlayer: android.media.MediaPlayer? = null
+
+internal fun stopVoiceCmdPlay() {
+    try { voiceCmdPlayer?.stop() } catch (_: Exception) {}
+    try { voiceCmdPlayer?.release() } catch (_: Exception) {}
+    voiceCmdPlayer = null
+}
+
+/** v4.7 मालिक: "जो रिकॉर्ड करें वह ऑडियो दोबारा सुनने का ऑप्शन हो" - दोबारा दबाओ = रुक जाए */
+internal fun SettingsActivity.playVoiceCmd(cmd: Cmd) {
+    if (voiceCmdPlayer != null) { stopVoiceCmdPlay(); return }
+    val f = VoiceCmds.audioFile(this, cmd)
+    if (!VoiceCmds.hasAudio(this, cmd)) {
+        toast(if (VoiceCmds.trained(this, cmd)) "यह आवाज़ पुराने तरीके से सिखाई थी — सुनने के लिए एक बार फिर 30 सेकंड रिकॉर्ड करें" else "अभी कुछ रिकॉर्ड नहीं किया")
+        return
+    }
+    try {
+        val mp = android.media.MediaPlayer()
+        mp.setAudioAttributes(android.media.AudioAttributes.Builder()
+            .setUsage(android.media.AudioAttributes.USAGE_MEDIA)
+            .setContentType(android.media.AudioAttributes.CONTENT_TYPE_SPEECH).build())
+        mp.setDataSource(f.absolutePath)
+        mp.setOnCompletionListener { stopVoiceCmdPlay() }
+        mp.prepare(); mp.start()
+        voiceCmdPlayer = mp
+        toast("\"${cmd.hi}\" की रिकॉर्डिंग चल रही है (रोकने को फिर \"सुनें\")")
+    } catch (e: Exception) { stopVoiceCmdPlay(); toast("चला नहीं पाया (${e.javaClass.simpleName})") }
 }
 
 internal fun SettingsActivity.enrollVoiceCmd(cmd: Cmd, done: () -> Unit) {
@@ -75,6 +108,7 @@ internal fun SettingsActivity.enrollVoiceCmd(cmd: Cmd, done: () -> Unit) {
             }
             val src = android.media.MediaRecorder.AudioSource.VOICE_RECOGNITION
             var takes: List<ByteArray> = emptyList()
+            var noise = ByteArray(0); var quiet = false
             var why: String? = null
             withDkMicPaused {
                 tv.text = voiceTapeText(cmd, null)
@@ -86,7 +120,7 @@ internal fun SettingsActivity.enrollVoiceCmd(cmd: Cmd, done: () -> Unit) {
                 }
                 if (!r.micOk) { why = "माइक नहीं खुला — कोई दूसरा ऐप माइक इस्तेमाल कर रहा है?"; return@withDkMicPaused }
                 why = VoiceTape.verdict(r.takes.size, r.tooShort, r.tooLong)
-                takes = r.takes
+                takes = r.takes; noise = r.noise; quiet = r.quiet
             }
             if (why != null) { tv.text = UiLang.s(why!!) + "\n\n" + UiLang.s("\"30 सेकंड रिकॉर्ड करें\" फिर दबाइए।"); return@ownerRun }
             tv.text = UiLang.s("सीख रहा हूँ…") + " (${takes.size} " + UiLang.s("बार") + ")"
@@ -95,12 +129,13 @@ internal fun SettingsActivity.enrollVoiceCmd(cmd: Cmd, done: () -> Unit) {
                 val bad = if (takes.size > VoiceTape.MIN_TIMES) VoiceCmdMatch.outlier(takes.map { HD.featuresOf(it) }) else -1
                 if (bad >= 0) takes.filterIndexed { i, _ -> i != bad } else takes
             }
-            val (err, warn) = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) { VoiceCmds.save(this@enrollVoiceCmd, cmd, keep) }
+            val (err, warn) = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) { VoiceCmds.save(this@enrollVoiceCmd, cmd, keep, noise) }
             if (err != null) { tv.text = UiLang.s(err); return@ownerRun }
             VoiceCmds.setOn(this@enrollVoiceCmd, cmd, true)
             Setup.startKeepAlive(this@enrollVoiceCmd)
             DKAccessibilityService.instance?.startWakeLoopIfEnabled()
-            tv.text = UiLang.s("हो गया — आवाज़ सेव हो गई (${keep.size} बार से सीखा)। अब बोलकर देखिए।") + "\n\n" + UiLang.s(VoiceCmds.status(this@enrollVoiceCmd, cmd)) +
+            tv.text = UiLang.s("हो गया — आवाज़ सेव हो गई (${keep.size} बार से सीखा)। \"सुनें\" से सुनकर देखिए, फिर बोलकर आज़माइए।") + "\n\n" + UiLang.s(VoiceCmds.status(this@enrollVoiceCmd, cmd)) +
+                (if (quiet) "\n\n⚠ " + UiLang.s("आवाज़ काफ़ी धीमी आई थी — पहचान कमज़ोर हो तो फ़ोन थोड़ा पास रखकर दोबारा रिकॉर्ड करें") else "") +
                 (if (warn != null) "\n\n⚠ " + UiLang.s(warn) else "")
             done()
             kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
@@ -112,3 +147,4 @@ internal fun SettingsActivity.enrollVoiceCmd(cmd: Cmd, done: () -> Unit) {
     }
     dlg.setOnDismissListener { ownerCancel() }
 }
+

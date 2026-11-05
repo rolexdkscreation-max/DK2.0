@@ -24,7 +24,8 @@ class OfflineTextCmdTest {
     @Test fun offlineCommandsPass() {
         assertTrue(OfflineListen.keepText("डीके फोन लॉक करो", names, false, lock))
         assertTrue(OfflineListen.keepText("डीके फोन अनलॉक करो", names, false, lock))
-        assertTrue(OfflineListen.keepText("डीके कहाँ हो", names, false, lock))
+        assertFalse(OfflineListen.keepText("डीके कहाँ हो", names, false, lock))   // v4.7: बातचीत ([OfflineTalk]), फ़ोन नहीं बजता
+        assertTrue(OfflineListen.keepText("डीके कहाँ हो फोन बजाओ", names, false, lock))
         assertTrue(OfflineListen.keepText("डीके नहीं दिख रहे हो", names, false, lock))
         assertTrue(OfflineListen.keepText("मिल गया", names, true, lock))   // फ़ोन बज रहा हो तब
     }

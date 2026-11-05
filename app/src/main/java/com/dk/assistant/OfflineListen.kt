@@ -39,7 +39,8 @@ object OfflineListen {
         // SMS "भेजूँ?" का हाँ / ना - पूछा हुआ सवाल है, नाम दोबारा नहीं बोलते
         if (OfflineCommands.confirm(t, System.currentTimeMillis()) != null) return true
         val rest = findRest(t, names)
-        if (rest != null && com.dk.assistant.voice.VoiceCmdMatch.findText(rest)) return true
+        // v4.7: ऑफलाइन में "डीके कहाँ हो" = बातचीत ([OfflineTalk] - "मैं यहीं हूँ"); फ़ोन तभी बजे जब ढूँढने वाली बात हो
+        if (rest != null && com.dk.assistant.voice.VoiceCmdMatch.findText(rest)) return com.dk.assistant.voice.VoiceCmdMatch.ringText(rest)
         // नवंबर 2026: बाकी फ़ोन वाले काम भी बिना नेट (टॉर्च, आवाज़, ऐप खोलो, अलार्म, टाइमर, कॉल, SMS, होम / बैक, स्क्रीनशॉट…) -
         // DK का नाम पहले बोला हो, या आवाज़ मालिक की पक्की हो. इंटरनेट वाले काम (YouTube, Maps, सर्च, शॉपिंग) नहीं.
         val cmd = rest ?: if (ownerOk) t else return false
