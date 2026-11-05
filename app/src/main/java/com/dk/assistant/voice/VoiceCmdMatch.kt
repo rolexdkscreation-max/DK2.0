@@ -71,6 +71,16 @@ object VoiceCmdMatch {
                 if (loo.any { !it.isFinite() || it == Float.MAX_VALUE || it <= 0f }) return null
                 return Model(ts, loo.max())
             }
+
+            /**
+             * v4.7: सीमा (base) सिर्फ़ असली बार से - [extra] (दूर से / धीमे वाले बनाए नमूने, [VoiceAug]) बस मिलान में जुड़ते हैं.
+             * यानी सख़्ती वही, पर दूर से या धीरे बोली बात भी किसी नमूने के पास बैठती है.
+             */
+            fun buildAug(templates: List<Array<FloatArray>>, extra: List<Array<FloatArray>>): Model? {
+                val m = build(templates) ?: return null
+                val ex = extra.filter { it.isNotEmpty() }
+                return if (ex.isEmpty()) m else Model(m.templates + ex, m.base)
+            }
         }
     }
 
@@ -123,6 +133,18 @@ object VoiceCmdMatch {
         val t = norm(text)
         if (t.isEmpty() || t.length > 60) return false
         return FIND.any { t.contains(norm(it)) }
+    }
+
+    private val RING = listOf("बजाओ", "बजा दो", "बजा", "नहीं दिख", "नही दिख", "दिख नहीं", "ढूँढ", "ढूंढ", "खो गया", "मिल नहीं",
+        "फोन कहाँ", "फ़ोन कहाँ", "फोन किधर", "फ़ोन किधर", "bajao", "ring", "nahi dikh")
+
+    /**
+     * v4.7 मालिक (ऑफलाइन): "डीके कहाँ हो" आम बात भी है ("मैं यहीं हूँ") - फ़ोन तभी बजे जब बात सच में ढूँढने की हो:
+     * "फोन बजाओ", "नहीं दिख रहे", "फोन कहाँ है", या रिकॉर्ड की हुई "कहाँ हो" वाली आवाज़ मिले.
+     */
+    fun ringText(text: String): Boolean {
+        val t = norm(text)
+        return findText(text) && RING.any { t.contains(norm(it)) }
     }
 
     /** बजते समय: "मिल गया" / "बंद करो" */
