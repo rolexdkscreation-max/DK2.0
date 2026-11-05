@@ -13,8 +13,12 @@ class OfflineListenTest {
     @Test fun offlineBackupUsesCmdsOnly() {
         assertTrue(OfflineListen.cmdsOnly(backup = true, liveOn = true, online = false))
         assertFalse(OfflineListen.cmdsOnly(backup = true, liveOn = true, online = true))    // नेट है = पहले जैसा
-        assertFalse(OfflineListen.cmdsOnly(backup = false, liveOn = true, online = false))  // Live की अपनी रुकावट-जाँच
-        assertFalse(OfflineListen.cmdsOnly(backup = true, liveOn = false, online = false))  // Live बंद = wake वाला सुनना
+        // v4.8: बिना नेट Live चालू (बैकअप न भी हो) = अपना माइक, लगातार
+        assertTrue(OfflineListen.cmdsOnly(backup = false, liveOn = true, online = false))
+        // v4.8: Live बंद पर wake वाला सुनना चालू = भी अपना माइक; DK बंद = नहीं
+        assertTrue(OfflineListen.cmdsOnly(backup = false, liveOn = false, online = false, wakeOn = true))
+        assertFalse(OfflineListen.cmdsOnly(backup = true, liveOn = false, online = false))
+        assertFalse(OfflineListen.cmdsOnly(backup = false, liveOn = false, online = true, wakeOn = true))
     }
 
     @Test fun neverCutsWhileSpeaking() {

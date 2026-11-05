@@ -74,7 +74,7 @@ class Speaker(context: Context) {
     private val LOCAL_DOWN = "आवाज़: फ़ोन की (Gemini TTS नहीं चला)"
 
     private fun why(keys: List<String>): VoicePolicy.Why =
-        if (localOnly) VoicePolicy.Why.OK         // बैकअप मोड: Gemini TTS, वह न चले तो फ़ोन की आवाज़ (बिना नेट भी)
+        if (localOnly || !online()) VoicePolicy.Why.OK   // बैकअप मोड / v4.8 बिना नेट: फ़ोन की आवाज़ (चुप नहीं)
         else VoicePolicy.gemini(keys.isNotEmpty(), online(), System.currentTimeMillis(), geminiCooldownUntil)
 
     // ================================================================ bolna (ek samay me ek hi awaaz)
@@ -195,6 +195,8 @@ class Speaker(context: Context) {
             ensureAudible()
             applyVoiceUsage()
             val keys = keys()
+            // v4.8 मालिक: "ऑफलाइन में भी बोले" - बिना नेट (बैकअप न हो तब भी) तुरंत फ़ोन की अपनी आवाज़, चुप नहीं
+            val localOnly = this.localOnly || !online()
             val voice = Prefs.geminiVoice(appCtx)
             val w0 = why(keys)
             var gem = w0 == VoicePolicy.Why.OK

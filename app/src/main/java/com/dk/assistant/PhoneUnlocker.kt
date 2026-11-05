@@ -41,6 +41,8 @@ internal object PhoneUnlocker {
     const val SETTLE_MS = 180L
     /** PIN वाला हिस्सा दिखने तक देखने का अंतर */
     const val POLL_MS = 100L
+    /** v4.8: PIN वाला हिस्सा न आए तो कितनी बार और ऊपर swipe */
+    const val SWIPE_TRIES = 3
 
     private fun nodes(svc: DKAccessibilityService): List<AccessibilityNodeInfo> {
         val out = ArrayList<AccessibilityNodeInfo>()
@@ -105,11 +107,23 @@ internal object PhoneUnlocker {
         PhoneLockVoice.Kind.PASSWORD -> s.edit != null
     }
 
+    /** v4.8: PIN / पैटर्न / पासवर्ड डालने की जगह अभी स्क्रीन पर है? (तब ऊपर swipe नहीं - वरना बंद हो सकती है) */
+    fun bouncerUp(svc: DKAccessibilityService): Boolean = try {
+        val s = look(svc)
+        val kind = PhoneLockStore.kind(svc)
+        if (kind != null) ready(kind, s) else s.digits.size >= 10 || s.pattern != null || s.edit != null
+    } catch (_: Exception) { false }
+
+    /** v4.8: फ़ेस / फ़िंगरप्रिंट वाली स्क्रीन पर "PIN इस्तेमाल करें" जैसा बटन - दबाओ ताकि डालने की जगह आए */
+    private fun tapUseSecret(svc: DKAccessibilityService): Boolean =
+        svc.clickByText(*PhoneLockVoice.USE_SECRET_WORDS.toTypedArray())
+
     /** PIN वाला हिस्सा / पैटर्न / पासवर्ड का खाना आने तक (ऊपर swipe के बाद) */
     private suspend fun waitBouncer(svc: DKAccessibilityService, kind: PhoneLockVoice.Kind, tries: Int = 25): Screen? {
-        repeat(tries) {
+        repeat(tries) { i ->
             val s = look(svc)
             if (ready(kind, s)) return s
+            if (i == 8) tapUseSecret(svc)
             delay(POLL_MS)
         }
         return null
@@ -131,7 +145,10 @@ internal object PhoneUnlocker {
         val secret = PhoneLockStore.secret(svc) ?: return "$FAIL सेव किया ${kind.hi} खुल नहीं पाया। Settings में दोबारा सेव कीजिए।"
         var s = waitBouncer(svc, kind, if (asked) 15 else 25)
         if (s == null && !km.isKeyguardLocked) return "phone unlock ho gaya"
-        if (s == null) {        // कुछ फ़ोन: पहली swipe से सिर्फ़ घड़ी हटती है / PIN वाला हिस्सा खुद नहीं खुला
+        // कुछ फ़ोन: पहली swipe से सिर्फ़ घड़ी हटती है / PIN वाला हिस्सा खुद नहीं खुला.
+        // v4.8: एक नहीं, [SWIPE_TRIES] बार ऊपर swipe (हर बार डालने की जगह आने तक रुककर)
+        var tries = 0
+        while (s == null && km.isKeyguardLocked && tries++ < SWIPE_TRIES) {
             val dm = svc.resources.displayMetrics
             svc.swipe(dm.widthPixels / 2f, dm.heightPixels * 0.85f, dm.widthPixels / 2f, dm.heightPixels * 0.25f, 250)
             s = waitBouncer(svc, kind)
