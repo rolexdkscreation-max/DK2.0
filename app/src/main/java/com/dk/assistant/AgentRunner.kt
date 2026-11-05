@@ -152,8 +152,10 @@ class AgentRunner(
         // v3.33: फ़ोन ने खुद जाँचा हुआ सच्चा नतीजा (ऐप नहीं है / डायलर खुला / वीडियो खुला पर चलना पक्का नहीं ...) - AI को नहीं
         LocalRouter.userText(r)?.let { m ->
             if (LiveFast.ok(type, r) || LocalRouter.final(r)) {
-                if (r.startsWith("ERROR") || r.startsWith("STEP_FAILED") || r.startsWith(PhoneLockVoice.UNLOCK_FAIL)) DKState.replyFailed(m) else DKState.reply(m)
-                if (!silent) speaker.speakQuick(m)
+                // v4.8 मालिक: "नहीं खुलेगा तो साफ़-साफ़ बता देगा, नहीं खुला है"
+                val say = if (type == "unlock" && r.startsWith(PhoneLockVoice.UNLOCK_FAIL)) PhoneLockVoice.failSay(m) else m
+                if (r.startsWith("ERROR") || r.startsWith("STEP_FAILED") || r.startsWith(PhoneLockVoice.UNLOCK_FAIL)) DKState.replyFailed(say) else DKState.reply(say)
+                if (!silent) speaker.speakQuick(say)
                 return true
             }
         }
@@ -164,7 +166,9 @@ class AgentRunner(
             type == "who_calls" -> if (r.startsWith("CALLER:")) r.removePrefix("CALLER:").trim() + " का कॉल है।" else "पता नहीं चला किसका कॉल है।"
             type == "unlock" -> when {
                 r.contains("PIN") -> "स्क्रीन चालू है, PIN या फिंगरप्रिंट से खोलिए।"
-                r.startsWith("phone unlock ho gaya") && PhoneLockStore.unlockOn(svc) -> "फ़ोन खुल गया।"
+                // v4.8 मालिक: "जैसे ही खुल गया तो बता देगा - लॉक स्क्रीन खुल गया है"
+                r.startsWith("phone unlock ho gaya") || r.startsWith("lock screen khuli") -> PhoneLockVoice.UNLOCK_OK_SAY
+                r.contains("pehle se unlocked") -> "फ़ोन पहले से खुला है।"
                 else -> ""
             }
             type == "open_app" -> ""
@@ -172,8 +176,10 @@ class AgentRunner(
             type == "call_log" -> "कॉल लिस्ट खोल दी"
             else -> Lang.say(q.ack)
         }
-        DKState.reply(msg.ifBlank { "✓ ${q.action.optString("name", type)}" })
-        if (msg.isNotBlank() && !silent) speaker.speakQuick(msg)
+        // v4.8 मालिक: "जो भी काम बोला जाएगा, वह करने के बाद बोलेगा - हाँ, बस कर दिया" (जानकारी / अनलॉक वाला वाक्य वैसा ही)
+        val done = if (type == "who_calls" || type == "unlock") msg else OfflineListen.doneSay(msg)
+        DKState.reply(done.ifBlank { "✓ ${q.action.optString("name", type)}" })
+        if (done.isNotBlank() && !silent) speaker.speakQuick(done)
         return true
     }
 

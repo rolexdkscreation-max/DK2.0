@@ -60,8 +60,9 @@ class OfflineLocalCmdTest {
 
     @Test fun serviceWiring() {
         val off = src("DKAccessibilityOffline.kt")
-        assertTrue(off.contains("if (agentHearing && !text.isNullOrBlank())"))
-        assertTrue(off.contains("ownerOk = owner"))
+        assertTrue(off.contains("if (agentHearing && !raw.isNullOrBlank())"))
+        // v4.8 मालिक: ऑफलाइन में सिर्फ़ "डीके ..." - मालिक की आवाज़ पर भी बिना नाम नहीं
+        assertTrue(off.contains("ownerOk = false"))
         val svc = src("DKAccessibilityService.kt")
         assertTrue(svc.contains("internal suspend fun ownerHeard"))
         assertTrue(svc.contains("OfflineStt.transcribe(me, hit.rest)"))

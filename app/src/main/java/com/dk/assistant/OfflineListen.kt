@@ -13,12 +13,39 @@ object OfflineListen {
     const val WATCH_MS = 1500L
 
     /** बैकअप मोड (Live नहीं जुड़ा) में सुनना: नेट नहीं = सिर्फ़ आवाज़-कमांड, बिना बीप वाला अपना माइक */
-    fun cmdsOnly(backup: Boolean, liveOn: Boolean, online: Boolean): Boolean = backup && liveOn && !online
+    /**
+     * v4.8 मालिक: "एक बार DK ऑन = माइक लगातार सुनता रहे, जब तक मैं खुद बंद न करूँ" - पहले यह सिर्फ़ बैकअप + Live में था;
+     * Live / wake वाला सुनना (बिना Live) बिना नेट फ़ोन के SpeechRecognizer (बीप) / नेट वाले STT पर जाता और कुछ नहीं होता.
+     * अब: DK सुन रहा है (Live या wake) + नेट नहीं = हमेशा अपना माइक, लगातार, सिर्फ़ "DK ..." से शुरू हुई बात.
+     */
+    fun cmdsOnly(backup: Boolean, liveOn: Boolean, online: Boolean, wakeOn: Boolean = false): Boolean =
+        !online && (liveOn || wakeOn)
+
+    /** v4.8: सिर्फ़ "डीके" बोला (बाकी कुछ नहीं) - इतनी देर में बोली अगली बात DK के लिए मानी जाती है */
+    const val NAME_WINDOW_MS = 8_000L
+
+    /** v4.8: "डीके" (अकेला नाम) के बाद की बात: नाम आगे जोड़ दो ताकि आगे का हर रास्ता उसे DK वाली बात समझे */
+    fun withName(text: String, names: List<String>, nameAt: Long, now: Long): String {
+        if (findRest(text, names) != null || nameAt <= 0L || now - nameAt > NAME_WINDOW_MS) return text
+        return (names.firstOrNull { it.isNotBlank() } ?: "डीके") + " " + text.trim()
+    }
+
+    /** बिना नेट काम हो जाने पर DK यह बोले (मालिक: "जो भी काम बोला जाएगा, वह करने के बाद बोलेगा - हाँ, बस कर दिया") */
+    const val DONE = "हाँ, बस कर दिया।"
+
+    /** काम का छोटा वाक्य -> बोलने वाली बात (खाली = DONE, वरना "हाँ, ..." आगे) */
+    fun doneSay(msg: String): String {
+        val m = msg.trim()
+        if (m.isEmpty()) return DONE
+        if (m.startsWith("हाँ") || m.startsWith("जी") || m.startsWith("ठीक")) return m
+        return "हाँ, $m"
+    }
 
     /**
      * चलता सुनना कब छोड़ें: नेट लौटा (Google/Live वाला रास्ता), Live बंद, म्यूट या कॉल.
      * आप बोल रहे हों (capturing) तो बीच में नहीं काटते - बात पूरी होने दो.
      */
+    /** @param liveOn v4.8: "DK सुन रहा है" (Live या wake वाला सुनना चालू, user ने माइक बंद नहीं किया) */
     fun stopNow(online: Boolean, liveOn: Boolean, micMuted: Boolean, inCall: Boolean, capturing: Boolean): Boolean =
         !capturing && (online || !liveOn || micMuted || inCall)
 

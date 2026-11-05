@@ -22,6 +22,8 @@ import kotlinx.coroutines.withContext
  */
 /** v4.7: ऑफलाइन बातचीत में DK ने आख़िरी जवाब कब दिया ([OfflineTalk.FOLLOW_MS] तक बिना नाम भी बात चले) */
 @Volatile internal var offlineTalkAt = 0L
+/** v4.8: अकेला "डीके" कब सुना ([OfflineListen.NAME_WINDOW_MS] तक अगली बात DK के लिए) */
+@Volatile internal var offlineNameAt = 0L
 
 internal suspend fun DKAccessibilityService.hearOfflineCmds(): String? {
     if (!checkMic()) { delay(2000); return null }
@@ -32,12 +34,14 @@ internal suspend fun DKAccessibilityService.hearOfflineCmds(): String? {
     if (since < 350) delay(350 - since)
     DKState.set(Mode.LISTENING)
     val me = this
+    // v4.8: घंटी के समय DK खुद एलान कर रहा हो तो माइक में उसकी अपनी आवाज़ ("उठाऊँ…") भी - तब नाम वाली बात ही मानो
+    val echoRisk = callAnnouncing || speaker.busy
     val pcm = coroutineScope {
         val job = async { ear.nextUtterance() }
         val watch = launch {
             while (isActive && job.isActive) {
                 delay(OfflineListen.WATCH_MS)
-                if (OfflineListen.stopNow(NetProbe.online(me), DKState.live, DKState.micMuted,
+                if (OfflineListen.stopNow(NetProbe.online(me), me.listeningWanted(), DKState.micMuted,
                         calls.inCall && !calls.ringing, ear.capturing)) { job.cancel(); break }
             }
         }
@@ -56,14 +60,35 @@ internal suspend fun DKAccessibilityService.hearOfflineCmds(): String? {
     }
     // नमूना न मिला / सिखाया नहीं: वही पकड़ी बात फ़ोन की on-device पहचान को (अपना माइक नहीं खोलती = बीप नहीं)
     if (pcm.isNotEmpty() && OfflineStt.available(this)) {
-        val text = OfflineStt.transcribe(this, pcm)
+        val raw = OfflineStt.transcribe(this, pcm)
         currentCoroutineContext().ensureActive()
         PhoneLockStore.reload(this)
         // नवंबर 2026: agent ने सवाल पूछा है (SMS हाँ/ना, किसे भेजूँ…) - जवाब बिना छाँटे उसी को
-        if (agentHearing && !text.isNullOrBlank()) { DKState.set(Mode.IDLE); return text }
-        // मालिक की आवाज़ पक्की (पहचान चालू + मिलान) = नाम बोले बिना भी फ़ोन वाले काम; वरना DK का नाम पहले चाहिए
-        val owner = com.dk.assistant.voice.OwnerVoice.active(this) && ownerHeard(pcm)
-        if (OfflineListen.keepText(text, Prefs.wakeWords(this), FindPhone.active, ownerOk = owner, fg = currentPackage())) {
+        if (agentHearing && !raw.isNullOrBlank()) { DKState.set(Mode.IDLE); return raw }
+        // v4.8 मालिक: "फ़ोन आया है तो डीके फोन उठा लो / स्पीकर पर डाल दो - ऑफलाइन में भी". घंटी के समय बात सीधे
+        // loop के कॉल वाले हिस्से (handleCallReply) को; एलान के बीच शुरू हुई बात में DK का नाम ज़रूरी (गूँज से कॉल न उठे)
+        if ((calls.ringing || callPending) && !raw.isNullOrBlank()) {
+            DKState.set(Mode.IDLE)
+            if (echoRisk && !CallReply.bargeOk(raw, Prefs.wakeWords(this))) { DKLog.d("घंटी: एलान की गूँज - छोड़ी"); return null }
+            return raw
+        }
+        val names = Prefs.wakeWords(this)
+        // v4.8 मालिक: "पहला शब्द डीके ही सुनेगा, उसके बाद और कोई बात बोलेगा तो ही सुनेगा" - अकेला "डीके" = "जी",
+        // फिर अगली बात (थोड़ी देर तक) DK के लिए. नाम के बिना बाकी सब अनसुना (पहले मालिक की आवाज़ / बातचीत में बिना नाम भी चलता था)
+        if (!raw.isNullOrBlank()) {
+            val bare = OfflineListen.findRest(raw, names)
+            if (bare != null && bare.isBlank()) {
+                offlineNameAt = System.currentTimeMillis()
+                DKState.set(Mode.IDLE); DKState.reply("जी, बोलिए")
+                try { speaker.speak("जी, बोलिए।") } catch (e: CancellationException) { throw e } catch (_: Exception) {}
+                offlineNameAt = System.currentTimeMillis()
+                return null
+            }
+        }
+        val said0 = raw?.let { OfflineListen.withName(it, names, offlineNameAt, System.currentTimeMillis()) }
+        if (said0 != raw) offlineNameAt = 0L
+        val text = said0
+        if (OfflineListen.keepText(text, names, FindPhone.active, ownerOk = false, fg = currentPackage())) {
             DKLog.d("ऑफलाइन कमांड (लिखी बात): \"${text?.take(40)}\"")
             DKState.set(Mode.IDLE)
             return text      // loop का पुराना लॉक / अनलॉक / किधर हो वाला हिस्सा चलेगा
@@ -71,9 +96,8 @@ internal suspend fun DKAccessibilityService.hearOfflineCmds(): String? {
         // v4.7 मालिक: "ऑफलाइन में नॉर्मल बातें भी - डीके कहाँ हो, क्या कर रहे हो, क्या खाना खाया" ([OfflineTalk]).
         // DK का नाम लिया / मालिक की आवाज़ / अभी-अभी बात चल रही थी = बात करो. इंटरनेट वाली बात = साफ़ बताओ.
         if (!text.isNullOrBlank()) {
-            val rest = OfflineListen.findRest(text, Prefs.wakeWords(this))
-            val talking = System.currentTimeMillis() - offlineTalkAt < OfflineTalk.FOLLOW_MS
-            val addressed = rest != null || owner || talking
+            val rest = OfflineListen.findRest(text, names)
+            val addressed = rest != null     // v4.8: सिर्फ़ "डीके ..." (या अकेले "डीके" के ठीक बाद वाली बात)
             val said = (rest?.takeIf { it.isNotBlank() } ?: text)
             val reply = if (addressed) OfflineTalk.reply(this, said, addressed = true)
                 else null

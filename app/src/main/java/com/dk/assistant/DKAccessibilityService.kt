@@ -489,9 +489,16 @@ class DKAccessibilityService : AccessibilityService() {
 
     /** Ek baat suno -> text. Bina beep (apna mic + Groq/Gemini) ya Google mic. Har dikkat DK bolkar batata hai. */
     /** @param wakeGate wake word वाला सुनना (Live बंद): caption में DK का नाम न हो तो Groq को मत भेजो */
+    /** v4.8: Live बंद, पर DK का wake वाला सुनना चालू (user ने माइक बंद नहीं किया) */
+    internal fun offlineWakeOn(): Boolean = !DKState.live && Prefs.wakeMode(this) && !Prefs.micUserOff(this)
+
+    /** v4.8: DK सुन रहा है (Live या wake) - ऑफलाइन माइक तब तक नहीं छूटता */
+    internal fun listeningWanted(): Boolean = DKState.live || offlineWakeOn()
+
     suspend fun hear(wakeGate: Boolean = false): String? {
         // नवंबर 2026: बैकअप + नेट नहीं = फ़ोन का SpeechRecognizer नहीं (हर बार बीप) - अपना माइक, सिर्फ़ आवाज़-कमांड
-        if (OfflineListen.cmdsOnly(backupMode, DKState.live, NetProbe.online(this))) return hearOfflineCmds()
+        // v4.8: Live बंद पर wake वाला सुनना (DK ऑन) भी - बिना नेट हमेशा अपना माइक, लगातार (बीप / नेट वाला STT नहीं)
+        if (OfflineListen.cmdsOnly(backupMode, DKState.live, NetProbe.online(this), offlineWakeOn())) return hearOfflineCmds()
         if (backupMode && DKState.live) return hearBackup()   // Live नहीं जुड़ा - बैकअप मोड (फ़ोन की बोली-पहचान)
         if (!checkMic()) { delay(2000); return null }
         if (DKState.micMuted) { delay(800); return null }   // होम का म्यूट बटन: कुछ मत सुनो
@@ -721,7 +728,9 @@ class DKAccessibilityService : AccessibilityService() {
                 // v3.81: "Hey DK" फ़ोन के अंदर (cloud STT नहीं) - सिर्फ़ मालिक की आवाज़ में "Hey DK" पर जागो
                 // v4.6: घंटी बजते समय "Hey DK" loop रुका रहता था (stop = ringing) और कोई नहीं सुनता था - "डीके फोन उठा लो"
                 // अनसुना. घंटी के समय सीधे नीचे वाला hear() (कॉल का जवाब, आवाज़-कमांड, बिना wake word)
-                if (!DKState.live && !callRinging() && com.dk.assistant.voice.HeyDk.on(this@DKAccessibilityService)) {
+                // v4.8: बिना नेट (फ़ोन की अपनी पहचान हो तो) "Hey DK" नहीं - सीधे "डीके ..." वाला लगातार सुनना (नीचे hear())
+                val offlineEar = !NetProbe.online(this@DKAccessibilityService) && OfflineStt.available(this@DKAccessibilityService)
+                if (!DKState.live && !callRinging() && !offlineEar && com.dk.assistant.voice.HeyDk.on(this@DKAccessibilityService)) {
                     if (!checkMic()) { delay(2000); continue }
                     ear.release(); listener.release(); earCaptionOff()
                     if (DKState.mode == Mode.LISTENING) DKState.set(Mode.IDLE)
@@ -864,6 +873,17 @@ class DKAccessibilityService : AccessibilityService() {
                     // नवंबर 2026 (मालिक): "कुछ भी बोलूँ तो DK जाग जाता है" - अब सिर्फ़ पूरा "Hey DK / OK DK / Hello DK" (शुरुआत में).
                     // बाकी हर बात = अनसुनी, कुछ नहीं होता. Settings में "सख़्त जागना" बंद = पुराना तरीका (बात में कहीं भी नाम)
                     var cmd: String
+                    // v4.8 मालिक: बिना नेट "पहला शब्द डीके" - "डीके फोन अनलॉक करो" (बिना "हे") भी; बाकी हर बात अनसुनी
+                    if (offlineNow) {
+                        cmd = OfflineListen.findRest(heard, Prefs.wakeWords(this@DKAccessibilityService)) ?: run {
+                            DKLog.d("ऑफलाइन: DK नाम से शुरू नहीं - अनसुना: \"${heard.take(40)}\""); null
+                        } ?: continue
+                        if (cmd.isBlank()) continue      // अकेला "डीके" - hearOfflineCmds ने "जी" बोलकर अगली बात खोली
+                        DKState.user(heard)
+                        agent.run(cmd).join()
+                        Ducker.releaseWhenQuiet({ !speaker.busy })
+                        continue
+                    }
                     if (Prefs.wakeStrict(this@DKAccessibilityService)) {
                         cmd = com.dk.assistant.voice.WakeMatch.strictWake(heard, Prefs.wakeWords(this@DKAccessibilityService)) ?: run {
                             DKLog.d("Hey DK नहीं बोला - अनसुना: \"${heard.take(40)}\""); null
@@ -1140,7 +1160,11 @@ class DKAccessibilityService : AccessibilityService() {
      * घंटी बज रही + DK कॉल का एलान कर रहा = एलान के ख़त्म होने का इंतज़ार नहीं, अपने माइक से साथ-साथ सुनो.
      * (Live में यह काम Live का माइक करता है; Google माइक DK की अपनी आवाज़ भी लिख देता, इसलिए सिर्फ़ अपना माइक)
      */
-    fun callBargeEar(): Boolean = try { callAnnouncing && callRinging() && !useGeminiLive() && silentEar() } catch (_: Exception) { false }
+    /** v4.8: बिना नेट भी (फ़ोन की अपनी पहचान से) - एलान के बीच "डीके फोन उठा लो" */
+    fun callBargeEar(): Boolean = try {
+        callAnnouncing && callRinging() && !useGeminiLive() &&
+            (silentEar() || !NetProbe.online(this) && OfflineStt.available(this))
+    } catch (_: Exception) { false }
 
     /**
      * Call aate hi:

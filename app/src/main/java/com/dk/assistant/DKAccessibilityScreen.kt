@@ -309,18 +309,25 @@ private suspend fun DKAccessibilityService.unlockNow(): String {
     val asked = UnlockWakeActivity.open(this)
     waitScreenOn(pm, 1200)
     val canPin = km.isKeyguardSecure && PhoneLockStore.unlockOn(this) && PhoneLockStore.hasSecret(this)
-    if (!asked) {
-        val dm = resources.displayMetrics
-        swipe(dm.widthPixels / 2f, dm.heightPixels * 0.88f, dm.widthPixels / 2f, dm.heightPixels * 0.3f, 300)
-        delay(400)
-    } else if (!km.isKeyguardSecure) {
-        // सिर्फ़ swipe वाला ताला: Android खुद खोल देता है - न खुले तो swipe
+    // v4.8 मालिक: "पहले स्क्रीन ऑन करेगा, फिर स्वाइप अप करेगा, जैसे ही PIN / पैटर्न डालने का ऑप्शन आएगा, डालना शुरू".
+    // पहले swipe सिर्फ़ तब होती थी जब Android वाला तरीका (asked) न चले - कई फ़ोन पर घड़ी वाली स्क्रीन ही रह जाती थी।
+    // अब: स्क्रीन जगी -> थोड़ा रुको -> PIN वाला हिस्सा पहले से न दिखे तो ऊपर swipe (हर हाल में)
+    if (km.isKeyguardLocked) {
+        delay(if (asked) 350 else 150)
+        if (km.isKeyguardLocked && !PhoneUnlocker.bouncerUp(this)) {
+            val dm = resources.displayMetrics
+            swipe(dm.widthPixels / 2f, dm.heightPixels * 0.88f, dm.widthPixels / 2f, dm.heightPixels * 0.3f, 300)
+            delay(400)
+        }
+    }
+    if (!km.isKeyguardSecure && km.isKeyguardLocked) {
+        // सिर्फ़ swipe वाला ताला: Android खुद खोल देता है - न खुले तो एक और swipe
         var n = 0
         while (km.isKeyguardLocked && n++ < 8) delay(PhoneUnlocker.POLL_MS)
         if (km.isKeyguardLocked) {
             val dm = resources.displayMetrics
             swipe(dm.widthPixels / 2f, dm.heightPixels * 0.88f, dm.widthPixels / 2f, dm.heightPixels * 0.3f, 300)
-            delay(400)
+            delay(600)
         }
     }
     val r = when {
@@ -331,7 +338,8 @@ private suspend fun DKAccessibilityService.unlockNow(): String {
         // v3.151: पहले यह "हो गया" गिना जाता था (LiveFast.ok) - DK चुप या "खुल गया" बोलता, फ़ोन बंद ही रहता।
         // अब सच्चा कारण + क्या करना है (Settings में PIN सेव)
         km.isKeyguardSecure -> PhoneLockVoice.noPinReason(PhoneLockStore.unlockOn(this), PhoneLockStore.hasSecret(this))
-        else -> "lock screen khuli"
+        // v4.8: swipe के बाद भी बंद = साफ़ बताओ (पहले "khuli" मान लिया जाता था)
+        else -> "${PhoneLockVoice.UNLOCK_FAIL} ऊपर स्वाइप करने पर भी लॉक स्क्रीन नहीं हटी। फ़ोन खुद खोलिए।"
     }
     DKLog.d("फ़ोन अनलॉक: ${r.take(50)} (${System.currentTimeMillis() - t0} ms, स्क्रीन ${if (wasOff) "बंद थी" else "चालू थी"}, PIN हिस्सा माँगा=$asked)")
     return r

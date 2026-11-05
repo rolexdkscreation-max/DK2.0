@@ -237,11 +237,17 @@ object LocalRouter {
 
     private val CALL_A = Regex("^(?:मेरे |मेरी |मेरा |my )?(.+?)\\s+(?:को|ko|se|से)\\s+(?:कॉल|call|फोन|फ़ोन|phone|fone)(?:\\s+(?:करो|कर दो|करिए|कीजिए|करना|लगाओ|लगा दो|मिलाओ|मिला दो|karo|kar do|kardo|kro|karna|lagao|laga do|milao|kar))?$")
     private val CALL_B = Regex("^(?:कॉल करो|कॉल कर दो|फोन लगाओ|फ़ोन लगाओ|call karo|call|phone|dial|ring|make a call to|place a call to|give a call to)\\s+(?:to\\s+)?(?:my\\s+|मेरे\\s+|मेरी\\s+)?(.+?)(?:\\s+(?:now|right now|अभी|ko|को))?$")
+    private val CALL_NUM = Regex("^(?:नंबर |number )?(\\+?[0-9][0-9 -]{1,18}[0-9])\\s+(?:नंबर\\s+|number\\s+)?(?:पर|पे|par|pe|को|ko|से|se)?\\s*(?:कॉल|call|फोन|फ़ोन|phone|dial|डायल)(?:\\s+(?:करो|कर दो|करिए|कीजिए|लगाओ|लगा दो|मिलाओ|मिला दो|karo|kar do|lagao|milao))?$")
     private val NOT_A_NAME = listOf("this", "that", "it", "him", "her", "back", "log", "history", "recent", "cut", "end", "answer", "receive",
         "reject", "uthao", "utha", "kaat", "kato", "speaker", "waiting", "इस", "उस", "इसे", "उसे", "यह", "ये", "वो", "वह", "इन", "उन",
         "वापस", "बैक", "उठा", "काट", "कट", "स्पीकर", "app", "ऐप", "open", "ओपन", "kholo", "खोलो", "dialer", "डायलर", "settings", "सेटिंग", "मेरे", "मेरी", "मेरा", "my")
     private fun callContact(t: String): QuickCommands.Quick? {
         if (!hasAny(t, CALLW + listOf("dial", "ring"))) return null
+        // v4.8 मालिक: "बिना इंटरनेट किसी को भी कॉल" - सीधा नंबर बोला ("9876543210 पर कॉल करो")
+        CALL_NUM.find(t)?.let { n ->
+            val d = n.groupValues[1].filter { it.isDigit() || it == '+' }
+            if (d.count { it.isDigit() } >= 3) return QuickCommands.Quick(a("call_contact", "name" to d), "")
+        }
         val m = CALL_A.find(t) ?: CALL_B.find(t) ?: return null
         val name = m.groupValues[1].trim().trim(',', '.')
         if (name.length < 2 || name.split(' ').size > 4) return null

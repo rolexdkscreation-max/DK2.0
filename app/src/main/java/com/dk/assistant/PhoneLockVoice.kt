@@ -12,6 +12,17 @@ import org.json.JSONObject
 object PhoneLockVoice {
     /** फ़ोन नहीं खुला - पीछे सच्चा कारण (बोलकर बताना, AI को "हो गया" नहीं) */
     const val UNLOCK_FAIL = "UNLOCK_FAIL:"
+    /** v4.8: फ़ेस / फ़िंगरप्रिंट स्क्रीन पर PIN / पैटर्न वाली जगह खोलने के बटन */
+    val USE_SECRET_WORDS = listOf("Use PIN", "Use pattern", "Use password", "PIN इस्तेमाल करें", "पिन का उपयोग करें",
+        "पैटर्न का उपयोग करें", "पासवर्ड का उपयोग करें", "PIN का उपयोग करें")
+
+    /** v4.8 मालिक: खुलते ही यही बोले */
+    const val UNLOCK_OK_SAY = "हाँ, लॉक स्क्रीन खुल गया है।"
+    /** v4.8: न खुले तो साफ़ - "लॉक स्क्रीन नहीं खुला" पहले, फिर कारण */
+    fun failSay(reason: String): String {
+        val r = reason.trim()
+        return if (r.startsWith("लॉक स्क्रीन नहीं खुला")) r else "लॉक स्क्रीन नहीं खुला है। $r".trim()
+    }
 
     enum class Act(val type: String) { LOCK("lock"), UNLOCK("unlock") }
 
