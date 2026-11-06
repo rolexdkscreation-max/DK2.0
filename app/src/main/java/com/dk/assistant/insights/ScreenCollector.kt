@@ -31,6 +31,8 @@ class ScreenCollector(
     private val maxSteps: Int = 36,
     private val cancelled: () -> Boolean = { false },
     private val progress: (String) -> Unit = {},
+    /** नवंबर 2026: दबाने से ठीक पहले उस जगह स्क्रीन पर निशान (x, y) - मालिक देखे DK कहाँ दबा रहा है */
+    private val mark: (Int, Int) -> Unit = { _, _ -> },
 ) {
     /** कितनी रील/वीडियो के अंदर जाकर पूरी Insights देखें (मालिक: "रिसेंटली में तीन-चार") */
     var detailTarget = 4
@@ -40,8 +42,9 @@ class ScreenCollector(
     suspend fun collect(p: Platform): PlatformData {
         val pkg = p.pkgs.firstOrNull { installed(it) }
             ?: return PlatformData(p, problems = listOf("${p.hi} ऐप फ़ोन में नहीं मिला" + if (p == Platform.YOUTUBE) " (YouTube Studio ऐप डालें तो पूरे आँकड़े मिलेंगे)" else ""))
-        progress("${p.hi} खोल रही हूँ")
+        progress("${p.hi} ऐप आपके सामने खोल रही हूँ")
         if (!openApp(pkg)) return PlatformData(p, problems = listOf("${p.hi} ऐप नहीं खुला"))
+        progress("${p.hi} खुल गया - अब अंदर आँकड़े ढूँढ रही हूँ")
         driver.pause(2_200)
         val studio = pkg == "com.google.android.apps.youtube.creator"
         var data = PlatformData(p, sources = listOf("स्क्रीन (${if (studio) "YouTube Studio" else p.en} ऐप)"))
@@ -82,6 +85,8 @@ class ScreenCollector(
             if (!got.empty || got.statusChecked) data = data.merge(got)
             reply.detailOf?.let { t -> if (t.isNotBlank()) detailed += Post.norm(t).take(36) }
             if (reply.posts.isNotEmpty() || reply.account != null) progress("${p.hi}: ${data.posts.size} ${p.itemHi} के आँकड़े मिले")
+            // नवंबर 2026: AI ने स्क्रीन पर जो देखा (हिंदी में) - पट्टी पर, ताकि मालिक को दिखे DK ऐप के अंदर क्या कर रहा है
+            if (reply.say.isNotBlank()) progress("${p.hi} • ${reply.say.take(70)}")
             log("Insights ${p.en} कदम $step: +${reply.posts.size} आइटम, कुल ${data.posts.size}, अंदर देखे ${detailed.size}; ${reply.why.take(80)}")
             if (reply.done) break
             if (same >= 4) {
@@ -91,6 +96,8 @@ class ScreenCollector(
             }
             // कदम चलाओ (एक जवाब में ज़्यादा से ज़्यादा 3)
             for (a in reply.actions.take(3)) {
+                progress("${p.hi} • कदम $step: " + InsightsPlan.actHi(a, obs))
+                InsightsPlan.point(a, obs)?.let { (x, y) -> try { mark(x, y) } catch (_: Exception) {} }
                 val r = run(obs, a)
                 history.addLast(a.describe() + (if (r == DriverResult.OK) "" else " [failed]"))
                 while (history.size > 8) history.removeFirst()
@@ -131,6 +138,27 @@ object InsightsPlan {
         fun describe() = when (kind) { "click" -> "click #$id"; "tap" -> "tap $x,$y"; "scroll" -> "scroll $dir"; else -> kind }
     }
 
+    /** पट्टी पर दिखने वाला हिंदी कदम: किस बटन/लिखे हिस्से पर दबा रही है, स्क्रॉल, वापस */
+    fun actHi(a: Act, obs: ScreenObservation?): String = when (a.kind) {
+        "click" -> {
+            val e = obs?.elements?.firstOrNull { it.id == a.id }
+            val name = (e?.text?.takeIf { it.isNotBlank() } ?: e?.desc.orEmpty()).replace(Regex("\\s+"), " ").trim().take(40)
+            if (name.isNotBlank()) "\"$name\" दबा रही हूँ" else "स्क्रीन पर एक बटन दबा रही हूँ"
+        }
+        "tap" -> "स्क्रीन पर दबा रही हूँ"
+        "scroll" -> if (a.dir == "up") "ऊपर स्क्रॉल कर रही हूँ" else "नीचे स्क्रॉल करके और देख रही हूँ"
+        "back" -> "वापस पिछली स्क्रीन पर जा रही हूँ"
+        "wait" -> "स्क्रीन खुलने का इंतज़ार"
+        else -> "अगला कदम"
+    }
+
+    /** स्क्रीन पर निशान की जगह (दबाने वाले कदम पर ही) */
+    fun point(a: Act, obs: ScreenObservation?): Pair<Int, Int>? = when (a.kind) {
+        "click" -> obs?.elements?.firstOrNull { it.id == a.id }?.let { it.bounds.centerX to it.bounds.centerY } ?: if (a.x != null && a.y != null) a.x to a.y else null
+        "tap" -> if (a.x != null && a.y != null) a.x to a.y else null
+        else -> null
+    }
+
     data class Reply(
         val posts: List<JSONObject>,
         val account: JSONObject?,
@@ -139,6 +167,8 @@ object InsightsPlan {
         val actions: List<Act>,
         val done: Boolean,
         val why: String,
+        /** नवंबर 2026: AI का छोटा हिंदी वाक्य - अभी स्क्रीन पर क्या देख/कर रही है (पट्टी के लिए) */
+        val say: String = "",
     )
 
     /** ऐप के अंदर रास्ता (2026 के UI पर; बदला हो तो AI स्क्रीन देखकर ढूँढे) */
@@ -225,7 +255,8 @@ object InsightsPlan {
         append("\"views_change\":\"\",\"reach_change\":\"\",\"status\":\"\",\"notes\":\"\"} or null,\n")
         append(" \"status_checked\":false, \"detail_of\":\"title of the item whose full insights are on this screen, else empty\",\n")
         append(" \"actions\":[{\"do\":\"click\",\"id\":12} | {\"do\":\"scroll\",\"dir\":\"down|up\"} | {\"do\":\"back\"} | {\"do\":\"wait\"} | {\"do\":\"tap\",\"x\":540,\"y\":1200}],\n")
-        append(" \"done\":false, \"why\":\"one short line: what you see and what you do next\"}\n")
+        append(" \"done\":false, \"why\":\"one short line: what you see and what you do next\",\n")
+        append(" \"say\":\"the same in short simple Hindi for the user watching the screen (max 10 words), e.g. 'प्रोफ़ेशनल डैशबोर्ड खोल रही हूँ' / 'रील के व्यूज़ पढ़ रही हूँ'\"}\n")
         append("RULES: copy numbers EXACTLY as shown (\"1.2K\", \"12,345\", \"4.5%\", \"0:07\"); leave a field empty if not visible - never guess. ")
         append("Only include posts whose numbers are on THIS screen. Use 1-2 actions per reply. Set status_checked=true only when the account status page is visible. ")
         append("Set done=true when overview + enough list items + ").append(detailTarget).append(" detailed items + status are collected, or nothing more can be found.")
@@ -254,6 +285,6 @@ object InsightsPlan {
             }
         }
         return Reply(posts, acc, o.optBoolean("status_checked", false), o.optString("detail_of").takeIf { it.isNotBlank() && it != "null" },
-            acts, o.optBoolean("done", false), o.optString("why"))
+            acts, o.optBoolean("done", false), o.optString("why"), o.optString("say").takeIf { it != "null" }.orEmpty().trim())
     }
 }

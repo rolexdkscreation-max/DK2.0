@@ -205,7 +205,7 @@ internal fun GeminiLive.handleServer(msg: String, setup: CompletableDeferred<Uni
         startHold.turnComplete()                 // नवंबर 2026: रुका जवाब पूरा (आप चुप होने पर बजे या फेंका जाए)
         if (connSplit && !wasDropping && !startHold.active) { pumpSplit(); if (pipelineLazy.isInitialized()) pipeline.endTurn() }   // v3.68: बचा text आख़िरी टुकड़ा
         if (timeline.active) { timeline.done(System.currentTimeMillis()); LatencyBoard.timeline(timeline); log("turn पूरा: ${timeline.summary()}") }
-        if (!wasDropping && !agentCheck()) promiseCheck()
+        if (!wasDropping && !socialCheck() && !agentCheck()) promiseCheck()
         finishTurn()
         FriendTalk.touch(svc)   // v4.3: बातचीत का समय फ़ोन में सेव ("इतनी देर कहाँ थे?" के लिए)
         if (wasDropping) commitPending(false)   // toka hua jawab: sirf jitna bola utna hi chat me

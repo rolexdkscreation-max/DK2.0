@@ -42,9 +42,30 @@ class WorkAwake(private val svc: DKAccessibilityService) {
         }
     }
 
-    fun start() { main.post(tick) }
+    fun start() { cur = this; main.post(tick) }
+
+    companion object {
+        @Volatile private var cur: WorkAwake? = null
+        /** नवंबर 2026 (मालिक: "कहाँ कर रहा है, दिखे"): DK जहाँ दबाने वाला है, वहाँ पल भर का नीला गोला (छूने लायक नहीं) */
+        fun mark(x: Int, y: Int) { cur?.markAt(x, y) }
+    }
+
+    private fun markAt(x: Int, y: Int) = main.post {
+        if (released) return@post
+        val size = px(56f)
+        val v = View(svc).apply {
+            importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
+            background = GradientDrawable().apply { shape = GradientDrawable.OVAL; setColor(0x335B8CFF); setStroke(px(3f), 0xFF5B8CFF.toInt()) }
+        }
+        val p = WindowManager.LayoutParams(size, size, WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY, flags(), PixelFormat.TRANSLUCENT).apply {
+            gravity = Gravity.TOP or Gravity.START
+            this.x = (x - size / 2).coerceAtLeast(0); this.y = (y - size / 2).coerceAtLeast(0)
+        }
+        try { wm.addView(v, p); main.postDelayed({ try { wm.removeView(v) } catch (_: Exception) {} }, 650) } catch (_: Exception) {}
+    }
 
     fun release() {
+        if (cur === this) cur = null
         released = true
         main.removeCallbacks(tick)
         removeBanner(); removeKeep()
@@ -82,7 +103,7 @@ class WorkAwake(private val svc: DKAccessibilityService) {
         val tv = TextView(svc).apply {
             textSize = 13f
             setTextColor(0xFFFFFFFF.toInt())
-            maxLines = 1; ellipsize = TextUtils.TruncateAt.END
+            maxLines = 2; ellipsize = TextUtils.TruncateAt.END
             setPadding(px(14f), px(6f), px(14f), px(6f))
             background = GradientDrawable().apply { cornerRadius = px(18f).toFloat(); setColor(0xD9152A5C.toInt()); setStroke(px(1f), 0xFF5B8CFF.toInt()) }
             importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO

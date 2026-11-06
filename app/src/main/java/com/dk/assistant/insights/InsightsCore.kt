@@ -35,10 +35,10 @@ enum class Platform(val id: String, val hi: String, val en: String, val pkgs: Li
 object InsightsVoice {
     data class Request(val platforms: List<Platform>, val text: String)
 
-    private val IG = listOf("instagram", "insta", "इंस्टाग्राम", "इन्स्टाग्राम", "इंस्टा", "इन्स्टा", "instagaram", "इंस्टग्राम")
-    private val FB = listOf("facebook", "fb ", "फेसबुक", "फ़ेसबुक", "फेस बुक", "fesbuk", "meta business")
-    private val YT = listOf("youtube", "you tube", "यूट्यूब", "यू ट्यूब", "युट्यूब", "यूटूब", "yt studio", "youtube studio", "यूट्यूब स्टूडियो", "studio", "स्टूडियो")
-    private val ALL = listOf("तीनों", "सबका", "सब का", "सारे सोशल", "सारा सोशल", "सोशल मीडिया", "social media", "all social", "सब प्लेटफ़ॉर्म", "सब प्लेटफार्म", "हर प्लेटफ़ॉर्म")
+    private val IG = listOf("instagram", "insta", "इंस्टाग्राम", "इन्स्टाग्राम", "इंस्टा", "इन्स्टा", "instagaram", "इंस्टग्राम", "انسٹاگرام", "انسٹا گرام", "انسٹا")
+    private val FB = listOf("facebook", "fb ", "फेसबुक", "फ़ेसबुक", "फेस बुक", "fesbuk", "meta business", "فیس بک", "فیسبک")
+    private val YT = listOf("youtube", "you tube", "यूट्यूब", "यू ट्यूब", "युट्यूब", "यूटूब", "yt studio", "youtube studio", "यूट्यूब स्टूडियो", "studio", "स्टूडियो", "یوٹیوب", "یو ٹیوب", "یوٹیوب اسٹوڈیو")
+    private val ALL = listOf("तीनों", "सबका", "सब का", "सारे सोशल", "सारा सोशल", "सोशल मीडिया", "social media", "all social", "सब प्लेटफ़ॉर्म", "सब प्लेटफार्म", "हर प्लेटफ़ॉर्म", "سوشل میڈیا", "تینوں")
 
     /** रिव्यू / आँकड़े वाले शब्द - सिर्फ़ "इंस्टाग्राम खोलो" रिव्यू नहीं */
     private val REVIEW = listOf(
@@ -47,10 +47,12 @@ object InsightsVoice {
         "व्यूज़", "व्यूज", "views", "व्यू ", "रीच", "reach", "वायरल", "viral", "ग्रोथ", "growth", "स्टैट", "stats",
         "रिपोर्ट", "report", "ऑडिट", "audit", "कितना व्यू", "कितने व्यू", "कितना चल", "क्यों नहीं चल", "क्यों गिर", "गिर रहा", "गिर रही",
         "ट्रेंडिंग", "trending", "सब्सक्राइबर", "subscriber", "फॉलोअर", "follower", "वॉच टाइम", "watch time", "इंप्रेशन", "impression", "ctr",
+        // नवंबर 2026: DK लाइव का caption उर्दू लिपि में भी आता है ("انسٹاگرام کا ریویو کرو") - पहले रिव्यू पहचाना ही नहीं जाता था
+        "ریویو", "ریویوو", "جائزہ", "تجزیہ", "ویوز", "ریچ", "انسائٹ", "ڈیش بورڈ", "رپورٹ", "فالوور", "سبسکرائبر",
     )
     /** "चेक करो" अकेला भी रिव्यू है, अगर साथ में "मेरा / मेरे / अकाउंट / रील / वीडियो / चैनल" हो */
-    private val CHECK = listOf("चेक", "check", "जाँच", "जांच", "देखकर बता", "देख कर बता", "देखो और बता")
-    private val MINE = listOf("मेरा", "मेरे", "मेरी", "my ", "अकाउंट", "account", "रील", "reel", "वीडियो", "video", "चैनल", "channel", "पेज", "page", "प्रोफाइल", "profile", "पोस्ट", "post", "शॉर्ट", "short")
+    private val CHECK = listOf("चेक", "check", "जाँच", "जांच", "देखकर बता", "देख कर बता", "देखो और बता", "چیک", "جانچ", "دیکھ کر بتا", "دیکھ کے بتا")
+    private val MINE = listOf("मेरा", "मेरे", "मेरी", "my ", "अकाउंट", "account", "रील", "reel", "वीडियो", "video", "चैनल", "channel", "पेज", "page", "प्रोफाइल", "profile", "पोस्ट", "post", "शॉर्ट", "short", "میرا", "میری", "میرے", "اکاؤنٹ", "ریل", "ویڈیو", "چینل", "پیج", "پوسٹ")
     /** ये बनाने/भेजने के काम हैं - रिव्यू नहीं (SocialAgent / ऐप वाला रास्ता) */
     private val NOT = listOf(
         "पोस्ट करो", "पोस्ट कर दो", "post kar", "post this", "अपलोड करो", "अपलोड कर दो", "upload kar", "upload this", "शेयर करो", "शेयर कर दो",

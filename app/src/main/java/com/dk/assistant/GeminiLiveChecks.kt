@@ -91,6 +91,42 @@ internal fun GeminiLive.promiseCheck() {
 }
 
 /**
+ * नवंबर 2026 (मालिक: "बोलता है 'हाँ, बैकग्राउंड में रिव्यू कर रहा हूँ' पर दिखता कुछ नहीं - झूठ न बोले"):
+ * बारी खत्म - सोशल रिव्यू की बात थी और DK ने "हाँ" कहा पर social_insights नहीं बुलाया? तो फ़ोन खुद सच में रिव्यू शुरू करे
+ * (ऐप स्क्रीन पर खुले) और Gemini को असली नतीजा. रिव्यू चल रहा है और DK "बैकग्राउंड" बोले = सुधरवाओ. चल नहीं रहा और
+ * "हाँ हो रहा है" बोले = सच बोलवाओ. पहले यह बात promiseCheck में इंटरनेट सर्च बन जाती थी. true = यहीं संभाला.
+ */
+internal fun GeminiLive.socialCheck(): Boolean {
+    val now = System.currentTimeMillis()
+    val (said, heard) = synchronized(turnLock) { replyText.toString().trim() to userText.toString().trim() }
+    val user = (if (!userDone) turnUser.trim() else "").ifBlank { heard }.ifBlank { caption?.text().orEmpty().trim() }
+    val ia = com.dk.assistant.insights.InsightsAgent
+    val truth = com.dk.assistant.insights.InsightsTruth
+    val recent = ia.startedAt > 0 && now - ia.startedAt < 90_000
+    val fix = truth.check(user, said, recent, ia.busy)
+    if (fix == com.dk.assistant.insights.InsightsTruth.Fix.NONE || now - truth.lastFixAt < truth.FIX_GAP_MS) return false
+    truth.lastFixAt = now
+    log("सच-जाँच (सोशल रिव्यू): $fix - DK ने \"${said.take(50)}\" कहा")
+    when (fix) {
+        com.dk.assistant.insights.InsightsTruth.Fix.START -> {
+            agentToolAt = now
+            DKState.hint("ऐप खोलकर आपके सामने रिव्यू शुरू कर रही हूँ…")
+            svc.scope.launch {
+                val r = try { ia.liveTool(svc, JSONObject().put("request", user)) } catch (e: CancellationException) { throw e } catch (e: Exception) {
+                    "NOT STARTED: ${e.javaClass.simpleName}. Tell the user it could not start."
+                }
+                log("सच-जाँच: फ़ोन ने खुद रिव्यू चलाया -> ${r.take(80)}")
+                visionNote(truth.startedNote(r), evidence = r.startsWith("STARTED") || r.startsWith("ALREADY"))
+            }
+        }
+        com.dk.assistant.insights.InsightsTruth.Fix.NOT_RUNNING -> visionNote(truth.notRunningNote(), evidence = false)
+        com.dk.assistant.insights.InsightsTruth.Fix.ON_SCREEN -> visionNote(truth.onScreenNote(TaskStatus.get(ia.KEY)?.last), evidence = true)
+        else -> return false
+    }
+    return true
+}
+
+/**
  * v3.5+: बारी ख़त्म - यूज़र ने किसी एजेंट (कहानी / कोडिंग / DK कंप्यूटर / वेबसाइट) को काम कहा, DK ने "हाँ, कर रही हूँ /
  * हो गया" कहा, पर उसका tool नहीं बुलाया? तो फ़ोन खुद वही tool चलाए - एजेंट की स्क्रीन खुले और काम वहाँ दिखे,
  * फिर Gemini को असली नतीजा (वह सच बोले). true = यहीं संभाल लिया (promiseCheck नहीं).
