@@ -339,7 +339,7 @@ internal fun GeminiLive.runTools(calls: JSONArray) {
                 "notification_reply" -> notifReply(args.optString("to"), args.optString("message"))
                 "social_media_task" -> com.dk.assistant.agent.android.SocialAgent.start(svc, args)
                 // v3.152: असली ChatGPT / Gemini ऐप में इमेज - बनाओ, डाउनलोड, और सच में देखकर बताओ
-                // नवंबर 2026: सोशल रिव्यू (background - नतीजा SYSTEM NOTE से)
+                // नवंबर 2026: सोशल रिव्यू (यूज़र के सामने स्क्रीन पर; नतीजा SYSTEM NOTE से)
                 "social_insights" -> com.dk.assistant.insights.InsightsAgent.liveTool(svc, args)
                 "image_task" -> {
                     DKState.set(Mode.WORKING)

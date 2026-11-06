@@ -38,13 +38,15 @@ internal fun SettingsActivity.secSocial() {
         box.addView(res)
     }
 
-    card("ज़रूरी तैयारी", "एक बार कर लें — रिव्यू ज़्यादा पक्का होगा") { box ->
-        hint(box, "1. Settings → Accessibility में DK चालू रखें (ऐप खोलकर स्क्रीन पढ़ने के लिए)।\n" +
-            "2. \"काम में स्क्रीन देखना\" चालू करें — DK स्क्रीन की फ़ोटो देखकर चार्ट / आँकड़े भी समझेगा।\n" +
-            "3. यूट्यूब के लिए YouTube Studio ऐप इंस्टॉल करें (न हो तो DK YouTube ऐप से देखेगा)।\n" +
-            "4. कनेक्टर → YouTube में \"खाता जोड़ो\" एक बार फिर दबाएँ — अब YouTube Analytics (व्यूज़, देखने का समय) की इजाज़त भी माँगी जाती है।\n" +
-            "5. कनेक्टर → Facebook Page / Instagram के token में read_insights और instagram_manage_insights इजाज़त हो।\n" +
-            "6. DK लाइव / चैट के लिए Gemini key हो — उसी से रिपोर्ट लिखी जाती है।")
+    card("ज़रूरी तैयारी", "कनेक्टर ज़रूरी नहीं — बस ये चीज़ें") { box ->
+        hint(box, "कनेक्टर ज़रूरी नहीं — DK आपके सामने ऐप और उसका डैशबोर्ड खोलकर खुद सब देखता है। ऊपर एक पट्टी में हर कदम दिखता है, " +
+            "और काम चलने तक स्क्रीन बंद नहीं होती।\n\n" +
+            "1. Settings → Accessibility में DK चालू रखें (ऐप खोलकर स्क्रीन पढ़ने के लिए)।\n" +
+            "2. यूट्यूब के लिए YouTube Studio ऐप इंस्टॉल करें (न हो तो DK YouTube ऐप से देखेगा)।\n" +
+            "3. Instagram / Facebook / YouTube Studio ऐप में अपने खाते से लॉग-इन रहें।\n" +
+            "4. चाहें तो (ज़रूरी नहीं): कनेक्टर → YouTube में \"खाता जोड़ो\", और Facebook Page / Instagram token में read_insights, " +
+            "instagram_manage_insights — इससे स्क्रीन के साथ आधिकारिक आँकड़े भी मिलेंगे।\n" +
+            "5. DK लाइव / चैट के लिए Gemini key हो — उसी से रिपोर्ट लिखी जाती है।")
         row(box, button("कनेक्टर खोलें") { startActivity(android.content.Intent(this, com.dk.assistant.connect.ConnectorsActivity::class.java)) })
     }
 

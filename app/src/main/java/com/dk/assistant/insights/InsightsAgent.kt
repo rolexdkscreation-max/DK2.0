@@ -13,6 +13,7 @@ import com.dk.assistant.DKState
 import com.dk.assistant.GeminiModels
 import com.dk.assistant.Prefs
 import com.dk.assistant.TaskStatus
+import com.dk.assistant.unlock
 import com.dk.assistant.agent.android.AccessibilityScreenDriver
 import com.dk.assistant.connect.Catalog
 import com.dk.assistant.connect.ConnectorRunner
@@ -81,11 +82,13 @@ object InsightsAgent {
         val req = InsightsVoice.parse(words)?.let { r -> if (ps.isEmpty()) r else r.copy(platforms = ps) }
             ?: InsightsVoice.Request(ps.ifEmpty { Platform.values().toList() }, words.ifBlank { "सोशल रिव्यू" })
         val msg = start(svc, req, null)
-        return "STARTED (background, a few minutes). Say this to the user in short: \"$msg\". Do NOT give any numbers now - wait for the SYSTEM NOTE with the real result."
+        return "STARTED ON SCREEN: DK is now opening the app in front of the user - he can watch every step on the phone screen (a strip at the top shows what DK is doing). " +
+            "No connector is needed. Say this to the user in short: \"$msg\". Never say it is happening in the background or hidden. " +
+            "Do NOT give any numbers now - wait for the SYSTEM NOTE with the real result."
     }
 
     /**
-     * काम शुरू (background) - तुरंत लौटता है. [speak] = DK लाइव बंद हो तो नतीजा बोलने के लिए (null = सिर्फ़ चैट/लाइव).
+     * काम शुरू - तुरंत लौटता है; काम यूज़र के सामने स्क्रीन पर होता है (ऊपर [com.dk.assistant.WorkAwake] की पट्टी, स्क्रीन जगी). [speak] = DK लाइव बंद हो तो नतीजा बोलने के लिए (null = सिर्फ़ चैट/लाइव).
      */
     fun start(svc: DKAccessibilityService, req: InsightsVoice.Request, speak: (suspend (String) -> Unit)?): String {
         if (busy) return "सोशल रिव्यू पहले से चल रहा है - पूरा होते ही बताऊँगी।"
@@ -117,8 +120,8 @@ object InsightsAgent {
                 TaskStatus.end(KEY, state, short)
             }
         }
-        return "ठीक है, $names का पूरा रिव्यू शुरू कर दिया। मैं ऐप खोलकर हर ${req.platforms.first().itemHi} के आँकड़े देखूँगी - इसमें कुछ मिनट लगेंगे, " +
-            "फ़ोन को बीच में न छुएँ। पूरा होते ही बताऊँगी।"
+        return "ठीक है, $names का पूरा रिव्यू अभी आपके सामने करती हूँ। मैं ऐप और उसका डैशबोर्ड खोलकर हर ${req.platforms.first().itemHi} के आँकड़े देखूँगी - " +
+            "स्क्रीन पर देखते रहिए, ऊपर पट्टी में हर कदम दिखेगा। कुछ मिनट लगेंगे, बीच में फ़ोन न छुएँ। पूरा होते ही बताऊँगी।"
     }
 
     data class Result(val report: String, val spoken: String, val anyData: Boolean)
@@ -149,9 +152,11 @@ object InsightsAgent {
                         Platform.FACEBOOK -> ConnectorRunner.facebookInsights(c)
                     }
                 })
-            } else if (m == Mode.API) d = d.copy(problems = listOf("${p.en} का API कनेक्टर जुड़ा नहीं (सेटिंग्स → कनेक्टर)"))
+            } else if (m == Mode.API) DKLog.d("सोशल रिव्यू ${p.en}: कनेक्टर नहीं जुड़ा - ऐप की स्क्रीन से देख रही हूँ")
             // स्क्रीन: तरीका "दोनों"/"स्क्रीन", या API से कुछ नहीं मिला
             if (m == Mode.SCREEN || m == Mode.BOTH || (m == Mode.API && d.empty)) {
+                // नवंबर 2026 (मालिक): "मेरे सामने करे" - स्क्रीन बंद/लॉक हो तो पहले जगाओ (PIN सिर्फ़ मालिक की इजाज़त से, unlock() का नियम)
+                if (!usedScreen) wakeForScreen(svc)
                 TaskStatus.step(KEY, "${p.hi}: ऐप खोलकर आँकड़े पढ़ रही हूँ")
                 // API से सब मिल गया तो स्क्रीन पर कम कदम (account status + जो छूटा)
                 if (d.posts.size >= 6) { collector.detailTarget = 2; collector.listTarget = 4 } else { collector.detailTarget = 4; collector.listTarget = 8 }
@@ -217,7 +222,17 @@ object InsightsAgent {
     private fun geminiKey(c: Context) = Prefs.liveGeminiKeys(c).firstOrNull { it.isNotBlank() }
 
     /** स्क्रीनशॉट: Android 11+ और मालिक ने इजाज़त दी हो (सेटिंग्स → "काम में स्क्रीन देखना" / स्क्रीन देखना) */
-    private fun canShot(svc: DKAccessibilityService) = Build.VERSION.SDK_INT >= Build.VERSION_CODES.R && (Prefs.screenshot(svc) || Prefs.taskLook(svc))
+    /** नवंबर 2026: रिव्यू = मालिक ने खुद कहा "सच में चेक करो" - चार्ट / आँकड़े स्क्रीन की फ़ोटो से भी (सिर्फ़ इसी काम में) */
+    private fun canShot(svc: DKAccessibilityService) = Build.VERSION.SDK_INT >= Build.VERSION_CODES.R
+
+    private suspend fun wakeForScreen(svc: DKAccessibilityService) {
+        val pm = svc.getSystemService(android.os.PowerManager::class.java)
+        val km = svc.getSystemService(android.app.KeyguardManager::class.java)
+        if (pm?.isInteractive == true && km?.isKeyguardLocked != true) return
+        TaskStatus.step(KEY, "स्क्रीन जगा रही हूँ")
+        try { DKLog.d("सोशल रिव्यू: " + svc.unlock()) } catch (e: Exception) { DKLog.d("सोशल रिव्यू: स्क्रीन नहीं जगी ${e.message}") }
+        if (km?.isKeyguardLocked == true) TaskStatus.step(KEY, "फ़ोन लॉक है - कृपया अनलॉक करें, फिर मैं आगे बढ़ूँगी")
+    }
 
     private suspend fun stepBrain(svc: DKAccessibilityService, prompt: String): String? {
         val shot = if (canShot(svc)) try { svc.screenshotBase64() } catch (_: Exception) { null } else null

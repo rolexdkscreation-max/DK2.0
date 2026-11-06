@@ -77,6 +77,8 @@ class DKAccessibilityService : AccessibilityService() {
 
     /** नवंबर 2026: सिर्फ़ एक तैरता ORB (नीचे बीच में) - पुराना किनारे वाला bubble हटाया */
     private var floatOrb: FloatOrb? = null
+    /** नवंबर 2026: DK काम करे तो हर ऐप के ऊपर "DK क्या कर रहा है" पट्टी + स्क्रीन जगी ([WorkAwake]) */
+    private var workAwake: WorkAwake? = null
     /** v3.57: सुनते/बोलते समय किनारों की चमक (छूने पर कुछ नहीं, नीचे का ऐप चलता रहे) */
     internal var edgeGlow: com.dk.assistant.fx.EdgeGlowView? = null
     lateinit var calls: CallManager
@@ -117,6 +119,7 @@ class DKAccessibilityService : AccessibilityService() {
         // ✕ अब नहीं: पुराने ✕ से छिपा ORB सिर्फ़ एक बार वापस. उसके बाद Settings का switch ही मालिक - ऐप खुलने पर ज़बरदस्ती चालू नहीं
         if (!Prefs.orbNoXMigrated(this)) { Prefs.setFloatOrbOn(this, true); Prefs.setOrbNoXMigrated(this) }
         floatOrb = FloatOrb(this) { onOrbTap() }.also { it.sync() }
+        workAwake = WorkAwake(this).also { it.start() }
         AppVisible.onChange = { _ -> refreshOrb() }
         DKLog.d("DK accessibility service chalu ho gaya")
         A11yWatch.cancel(this)          // नवंबर 2026: "फ़ोन कंट्रोल रुक गया" वाली notification हटाओ
@@ -158,6 +161,7 @@ class DKAccessibilityService : AccessibilityService() {
         instance = null
         AppVisible.onChange = null
         floatOrb?.release(); floatOrb = null
+        workAwake?.release(); workAwake = null
         removeEdgeGlow()
         DKState.setLive(false)
         listener.release()
