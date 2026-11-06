@@ -22,7 +22,7 @@ object SettingsSearch {
         "brain_live" to "AI दिमाग • DK लाइव", "brain_chat" to "AI दिमाग • DK चैट", "brain_coder" to "AI दिमाग • कोडिंग एजेंट",
         "brain_pc" to "AI दिमाग • DK कंप्यूटर", "brain_extra" to "AI दिमाग • Extra API", "brain_web" to "AI दिमाग • वेबसाइट बिल्डर", "voice" to "आवाज़", "orb" to "ओर्ब और चेहरा",
         "access" to "Accessibility", "phonelock" to "फ़ोन लॉक / अनलॉक", "perms" to "परमिशन", "computer" to "DK कंप्यूटर", "coder" to "कोडिंग एजेंट",
-        "social" to "सोशल रिव्यू",
+        "social" to "सोशल रिव्यू", "reels" to "रील गिनती और लिमिट",
         ACT_AUTO to "ऑटोनोमस मोड", ACT_TEMPLATES to "टेम्पलेट कमांड", ACT_CONNECTORS to "कनेक्टर", ACT_STORY to "स्टोरी राइटर एजेंट",
         "update" to "अपडेट", "debug" to "डिबग लॉग", "about" to "ऐप के बारे में"
     )
@@ -47,6 +47,7 @@ object SettingsSearch {
         "computer" to "computer कंप्यूटर reminder रिमाइंडर search",
         "coder" to "coding कोडिंग github गिटहब agent एजेंट",
         "social" to "social सोशल review रिव्यू instagram इंस्टाग्राम facebook फेसबुक youtube यूट्यूब studio स्टूडियो reel रील views व्यूज़ reach रीच insights analytics trend ट्रेंड",
+        "reels" to "reel रील reels रीलें shorts शॉर्ट्स count गिनती limit लिमिट lock लॉक block ब्लॉक बंद instagram इंस्टाग्राम youtube यूट्यूब facebook फेसबुक popup पट्टी समय",
         ACT_AUTO to "autonomous auto ऑटो ऑटोनॉमस ऑटोनोमस अपने-आप खुद automatic आपातकालीन stop",
         ACT_TEMPLATES to "template टेम्पलेट साँचा command कमांड alarm अलार्म timer whatsapp",
         ACT_CONNECTORS to "connector कनेक्टर gmail drive calendar instagram facebook mcp",
@@ -62,6 +63,9 @@ object SettingsSearch {
         E("social", "ट्रेंड और आपका विषय", "रिपोर्ट में अभी के ट्रेंडिंग टॉपिक और आपके विषय के हिसाब से सलाह"),
         E("social", "ज़रूरी तैयारी", "कनेक्टर ज़रूरी नहीं — बस ये चीज़ें"),
         E("social", "पिछली रिपोर्ट", "आख़िरी सोशल रिव्यू की पूरी रिपोर्ट"),
+        E("reels", "रील गिनती (ऊपर छोटी पट्टी)", "रील / शॉर्ट्स देखते समय ऊपर दिखे: आज कितनी रील देखीं"),
+        E("reels", "हर ऐप की रील लिमिट", "रोज़ कितनी रील — पूरी होते ही फ़ोन लॉक या ऐप बंद"),
+        E("reels", "लिमिट से बंद ऐप खोलें", "यहीं से खोलें — तब तक वह ऐप नहीं खुलेगा"),
         E("profile", "प्रोफ़ाइल", "आपका नाम, असिस्टेंट का नाम और बात करने का तरीका"),
         E("profile", "Access key", ""),
         E("lang", "ऐप की भाषा (स्क्रीन)", "पूरे ऐप के बटन, Settings, संदेश — English या हिंदी"),

@@ -20,6 +20,7 @@ object SetSrc {
         "SettingsWidgets.kt",
         "SettingsPhoneLock.kt",
         "SettingsSocial.kt",
+        "SettingsReels.kt",
     )
 
     private fun dir(): File {

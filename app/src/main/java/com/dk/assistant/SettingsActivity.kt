@@ -118,6 +118,7 @@ class SettingsActivity : AppCompatActivity() {
             "coder" -> { title.text = "कोडिंग एजेंट"; secCoder() }
             "computer" -> { title.text = "DK कंप्यूटर"; secComputer() }
             "social" -> { title.text = "सोशल रिव्यू"; bar.visibility = View.GONE; secSocial() }
+            "reels" -> { title.text = "रील गिनती और लिमिट"; bar.visibility = View.GONE; secReels() }
             "about" -> { title.text = "ऐप के बारे में"; bar.visibility = View.GONE; secAbout() }
         }
         space(container, 8)
@@ -142,6 +143,7 @@ class SettingsActivity : AppCompatActivity() {
             Triple("auto", "ऑटोनोमस मोड", (if (com.dk.assistant.auto.AutoPrefs.on(this)) "✓ चालू" else "✗ बंद") + " • DK खुद तय करे और खुद करे • API keys • आपातकालीन STOP"),
             Triple("templates", "टेम्पलेट कमांड", "बिना AI के तय साँचे • WhatsApp • अलार्म • मैप • कॉल"),
             Triple("social", "सोशल रिव्यू", "इंस्टाग्राम • फेसबुक • यूट्यूब स्टूडियो — हर रील के व्यूज़, रीच क्यों गिरी, ट्रेंड, ज़्यादा व्यूज़ कैसे"),
+            Triple("reels", "रील गिनती और लिमिट", "इंस्टाग्राम • YouTube शॉर्ट्स • फेसबुक — ऊपर गिनती की पट्टी • रोज़ की लिमिट • फ़ोन लॉक / ऐप बंद"),
             Triple("connectors", "कनेक्टर", "Gmail • Drive • Calendar • GitHub • Facebook Page • Instagram • MCP — DK लाइव से बोलकर काम"),
             Triple("story", "स्टोरी राइटर एजेंट", "लंबी हिंदी कहानियाँ (10–30 मिनट) • भाग-दर-भाग • कॉपी • फ़ोन में सेव"),
             Triple("update", "अपडेट", "अभी: ${Updater.displayVersion(this)} • नया version चेक करें"),

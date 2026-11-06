@@ -245,7 +245,11 @@ object InsightsAgent {
                 withTimeoutOrNull(45_000) { try { BrainManager(svc).searchAnswer(q) } catch (e: Exception) { DKLog.d("ट्रेंड खोज: ${e.message}"); "" } }.orEmpty()
             }
         }
+        // नवंबर 2026 (मालिक: "टाइम क्यों लगता है, चेक करो"): हर हिस्से का असली समय - log + रिपोर्ट के नीचे
+        val tStart = System.currentTimeMillis()
+        val took = mutableListOf<Pair<String, Long>>()
         for (p in req.platforms) {
+            val tp = System.currentTimeMillis()
             val m = mode(c, p)
             var d = PlatformData(p)
             if (m != Mode.SCREEN && apiConnected(c, p)) {
@@ -271,6 +275,7 @@ object InsightsAgent {
             }
             DKLog.d("सोशल रिव्यू ${p.en}: ${d.posts.size} आइटम, खाता ${!d.account.empty}, समस्या ${d.problems.size}")
             all += d
+            took += p.hi to (System.currentTimeMillis() - tp)
             startTrends()
         }
         if (usedScreen) try { svc.performGlobalAction(android.accessibilityservice.AccessibilityService.GLOBAL_ACTION_HOME) } catch (_: Exception) {}
@@ -283,7 +288,9 @@ object InsightsAgent {
             startTrends()
             val tj = trendJob
             if (tj != null && !tj.isCompleted) TaskStatus.step(KEY, "ट्रेंडिंग टॉपिक खोज रही हूँ")
+            val tt = System.currentTimeMillis()
             trends = tj?.let { withTimeoutOrNull(InsightsSpeed.TREND_WAIT_MS) { it.await() } }.orEmpty()
+            took += "ट्रेंड का इंतज़ार" to (System.currentTimeMillis() - tt)
             if (tj?.isCompleted != true) tj?.cancel()
         }
 
@@ -291,8 +298,10 @@ object InsightsAgent {
         var report = ""
         var spoken = ""
         if (anyData) {
+            val tr = System.currentTimeMillis()
             val ai = withContext(Dispatchers.IO) { reportBrain(svc, InsightsReport.prompt(all, analyses, trends, req.text)) }
             if (!ai.isNullOrBlank()) { val (r, s) = InsightsReport.split(ai); report = r; spoken = s }
+            took += (if (ai.isNullOrBlank()) "रिपोर्ट (AI नहीं आया)" else "रिपोर्ट") to (System.currentTimeMillis() - tr)
         }
         if (report.isBlank()) report = InsightsReport.fallback(all, analyses, trends)
         if (spoken.isBlank()) spoken = InsightsReport.fallbackSpoken(all, analyses)
@@ -301,6 +310,9 @@ object InsightsAgent {
         if (problems.isNotEmpty()) report += "\n\n---\n**कहाँ दिक्कत आई:**\n" + problems.joinToString("\n") { "- $it" }
         val src = all.joinToString("; ") { "${it.platform.en}: ${it.sources.joinToString(" + ").ifBlank { "कुछ नहीं" }}" }
         report += "\n\n_आँकड़े कहाँ से: ${src}_"
+        val timing = InsightsSpeed.timing(took, System.currentTimeMillis() - tStart)
+        DKLog.d("सोशल रिव्यू $timing")
+        report += "\n\n_${timing}_"
         save(c, report)
         return Result(report, spoken, anyData)
     }
@@ -356,18 +368,32 @@ object InsightsAgent {
         // फटाफट: स्क्रीन के text में ही नंबर हों तो स्क्रीनशॉट नहीं (चार्ट/तस्वीर वाली स्क्रीन पर ही)
         val shot = if (canShot(svc) && InsightsSpeed.wantShot(prompt)) try { svc.screenshotBase64() } catch (_: Exception) { null } else null
         geminiKey(svc)?.let { key ->
-            withContext(Dispatchers.IO) { gemini(key, prompt, shot, json = true, maxTokens = 2048, models = (listOf(GeminiModels.CODER) + GeminiModels.CODER_CHAIN).distinct(), fast = stepHttp) }?.let { return it }
+            withContext(Dispatchers.IO) { gemini(key, prompt, shot, json = true, maxTokens = InsightsSpeed.STEP_TOKENS, models = (listOf(GeminiModels.CODER) + GeminiModels.CODER_CHAIN).distinct(), fast = stepHttp) }?.let { return it }
         }
         // Gemini key नहीं = जो दिमाग़ (Groq / OpenRouter …) लगा है, उसी से
         return try { BrainManager(svc).teach("Reply with ONLY one JSON object.", prompt, shot) } catch (e: Exception) { DKLog.d("सोशल रिव्यू AI: ${e.message?.take(80)}"); null }
     }
 
     private suspend fun reportBrain(svc: DKAccessibilityService, prompt: String): String? {
-        geminiKey(svc)?.let { key ->
-            gemini(key, prompt, null, json = false, maxTokens = 8192, models = (GeminiModels.CODER_CHAIN + GeminiModels.LIGHT_CHAIN).distinct())?.let { return it }
+        // नवंबर 2026 (फटाफट): रिपोर्ट का AI ज़्यादा से ज़्यादा REPORT_WAIT_MS - देर = अटकी कॉल काटो, DK की अपनी (बिना AI) सच्ची रिपोर्ट
+        reportCut = false
+        val job = svc.scope.async(Dispatchers.IO) {
+            geminiKey(svc)?.let { key ->
+                gemini(key, prompt, null, json = false, maxTokens = InsightsSpeed.REPORT_TOKENS, models = InsightsSpeed.reportModels(GeminiModels.LIGHT_CHAIN, GeminiModels.CODER_CHAIN), fast = reportHttp)
+            } ?: try { BrainManager(svc).teach("You write clear Hindi social media analytics reports.", prompt, null) } catch (e: Exception) { DKLog.d("रिपोर्ट AI: ${e.message?.take(80)}"); null }
         }
-        return try { BrainManager(svc).teach("You write clear Hindi social media analytics reports.", prompt, null) } catch (e: Exception) { DKLog.d("रिपोर्ट AI: ${e.message?.take(80)}"); null }
+        val r = withTimeoutOrNull(InsightsSpeed.REPORT_WAIT_MS) { job.await() }
+        if (r == null && !job.isCompleted) {
+            reportCut = true; job.cancel()
+            try { liveCall?.cancel() } catch (_: Exception) {}
+            DKLog.d("सोशल रिव्यू: रिपोर्ट का AI ${InsightsSpeed.REPORT_WAIT_MS / 1000} सेकंड में नहीं आया - DK की अपनी रिपोर्ट")
+        }
+        return r
     }
+
+    @Volatile private var reportCut = false
+    /** रिपोर्ट की एक कॉल: 90 सेकंड नहीं, REPORT_WAIT_MS तक */
+    private val reportHttp = com.dk.assistant.NetFix.builder().connectTimeout(10, TimeUnit.SECONDS).readTimeout(InsightsSpeed.REPORT_WAIT_MS, TimeUnit.MILLISECONDS).build()
 
     /** एक कदम की कॉल: छोटा timeout (अटकी कॉल पर 90 सेकंड नहीं) */
     private val stepHttp = com.dk.assistant.NetFix.builder().connectTimeout(10, TimeUnit.SECONDS).readTimeout(InsightsSpeed.STEP_CALL_S, TimeUnit.SECONDS).build()
@@ -384,6 +410,7 @@ object InsightsAgent {
         if (json) cfg.put("responseMimeType", "application/json")
         val client = fast ?: http
         for (m in InsightsSpeed.order(models, if (json) okStep else okReport)) {
+            if (!json && reportCut) return null   // रिपोर्ट का समय ख़त्म - अगला मॉडल नहीं
             try {
                 // फटाफट: Gemini 3 की "सोच" कम (कदम = minimal, रिपोर्ट = low)
                 val gc = JSONObject(cfg.toString())
