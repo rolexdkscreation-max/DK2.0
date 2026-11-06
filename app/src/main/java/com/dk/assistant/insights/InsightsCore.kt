@@ -49,6 +49,9 @@ object InsightsVoice {
         "ट्रेंडिंग", "trending", "सब्सक्राइबर", "subscriber", "फॉलोअर", "follower", "वॉच टाइम", "watch time", "इंप्रेशन", "impression", "ctr",
         // नवंबर 2026: DK लाइव का caption उर्दू लिपि में भी आता है ("انسٹاگرام کا ریویو کرو") - पहले रिव्यू पहचाना ही नहीं जाता था
         "ریویو", "ریویوو", "جائزہ", "تجزیہ", "ویوز", "ریچ", "انسائٹ", "ڈیش بورڈ", "رپورٹ", "فالوور", "سبسکرائبر",
+        // नवंबर 2026: कमाई / रिकमेंडेशन / पॉलिसी के सवाल भी रिव्यू ("फेसबुक का मोनेटाइज़ेशन क्यों हटा")
+        "मोनेटाइज", "मोनेटाइज़", "monetiz", "monetis", "डीमोनेटाइज", "demonetiz", "रिकमेंडेशन", "रेकमेंडेशन", "recommendation",
+        "पॉलिसी", "policy", "एल्गोरिदम", "एल्गोरिथम", "algorithm", "مونیٹائز", "ڈیمونیٹائز", "ریکمنڈیشن", "پالیسی", "الگورتھم",
     )
     /** "चेक करो" अकेला भी रिव्यू है, अगर साथ में "मेरा / मेरे / अकाउंट / रील / वीडियो / चैनल" हो */
     private val CHECK = listOf("चेक", "check", "जाँच", "जांच", "देखकर बता", "देख कर बता", "देखो और बता", "چیک", "جانچ", "دیکھ کر بتا", "دیکھ کے بتا")
@@ -75,6 +78,29 @@ object InsightsVoice {
         return out.sortedBy { it.first }.map { it.second }
     }
 
+    /**
+     * नवंबर 2026 (मालिक: "एक बार बोल दिया रिव्यू रोक दो, तो रोक देगा"): रोकने की बात.
+     * अकेला "रुको / बस करो / रोक दो / stop" या "रिव्यू / काम + रोक दो / बंद करो / cancel". "मत रोको" = नहीं.
+     * "रिकमेंडेशन बंद हो गया - रिव्यू करो" = रोकना नहीं (बंद "हो गया" है, "करो" नहीं).
+     */
+    fun isStop(text: String?): Boolean {
+        val raw = text?.trim()?.trimEnd('…', '।', '.', '!', '?')?.trim().orEmpty()
+        if (raw.isBlank() || raw.length > 70) return false
+        val t = Num.nk(" " + raw.lowercase() + " ")
+        if (has(t, NO_STOP)) return false
+        if (ALONE.matches(raw.lowercase())) return true
+        return has(t, STOP_VERB) && has(t, WORK)
+    }
+    private val ALONE = Regex("^(अरे\\s+|ठीक है\\s*,?\\s*|ok\\s*,?\\s*|okay\\s*,?\\s*|ٹھیک ہے\\s*,?\\s*)?(रुको|रुक\\s*जाओ|रुकिए|बस|बस\\s*करो|बंद\\s*करो|बंद\\s*कर\\s*दो|स्टॉप|stop|cancel|कैंसल|रहने\\s*दो|छोड़ो|छोड़\\s*दो|रोको|रोक\\s*दो|रोक\\s*दीजिए|wait|روکو|روک\\s*دو|رک\\s*جاؤ|رکو|بس\\s*کرو|بند\\s*کرو|بند\\s*کر\\s*دو)(\\s+(करो|जाओ|यार|प्लीज|please|सब|अभी|दो|ना|रे|डीके|dk|karo|now))*$")
+    private val STOP_VERB = listOf(
+        "रोक दो", "रोको", "रोक दीजिए", "रोक दें", "रोकिए", "बंद करो", "बंद कर दो", "बंद कीजिए", "बंद करें", "बंद कर दीजिए",
+        "stop", "cancel", "कैंसल", "बस करो", "छोड़ दो", "रहने दो",
+        // "रुको, एक काम करो..." = दूसरा काम है, रोकना नहीं - इसलिए "रुको" यहाँ नहीं (अकेला "रुको" ऊपर ALONE में)
+        "روک دو", "روکو", "بند کرو", "بند کر دو", "بس کرو", "چھوڑ دو",
+    )
+    private val NO_STOP = listOf("मत रोक", "मत रुक", "रोकना मत", "बंद मत", "मत बंद", "don't stop", "dont stop", "do not stop", "نہ روک", "مت روک", "بند نہ", "بند مت")
+    private val WORK = listOf("रिव्यू", "review", "रीव्यू", "ریویو", "काम", "kaam", "کام", "जाँच", "जांच", "चेक", "check", "چیک", "एनालिसिस", "analysis", "insight", "इनसाइट")
+
     fun parse(text: String?): Request? {
         val raw = text?.trim().orEmpty()
         if (raw.length < 6) return null
@@ -82,6 +108,8 @@ object InsightsVoice {
         val ps = platformsIn(raw)
         if (ps.isEmpty()) return null
         if (has(t, NOT)) return null
+        // "इंस्टाग्राम रिव्यू रोक दो" = रोकना है, नया रिव्यू नहीं
+        if (isStop(raw)) return null
         val review = has(t, REVIEW) || (has(t, CHECK) && has(t, MINE))
         if (!review) return null
         return Request(ps, raw)
@@ -249,6 +277,8 @@ data class Post(
     val traffic: String = "",
     val notes: String = "",
     val source: String = "screen",
+    /** नवंबर 2026: रील खोलकर पढ़े कमेंट - "कौन: क्या लिखा" (जो स्क्रीन पर दिखा, वही) */
+    val commentList: List<String> = emptyList(),
 ) {
     /** एक ही रील दो बार दिखे (सूची + अंदर) - एक ही गिनो */
     val key: String get() = norm(title).take(36).ifBlank { "#" + norm(date) + "|" + (views ?: -1) }
@@ -266,6 +296,7 @@ data class Post(
         durationSec = durationSec ?: o.durationSec, traffic = traffic.ifBlank { o.traffic },
         notes = listOf(notes, o.notes).filter { it.isNotBlank() }.distinct().joinToString("; "),
         source = if (source == o.source) source else "screen+api",
+        commentList = (commentList + o.commentList).distinct().take(15),
     )
 
     fun toJson(): JSONObject = JSONObject().apply {
@@ -276,11 +307,23 @@ data class Post(
         avgWatchSec?.let { put("avg_watch_sec", it) }; watchTimeSec?.let { put("watch_time_sec", it) }; skipRatePct?.let { put("skip_rate_pct", it) }
         durationSec?.let { put("duration_sec", it) }
         if (traffic.isNotBlank()) put("traffic", traffic); if (notes.isNotBlank()) put("notes", notes); put("source", source)
+        if (commentList.isNotEmpty()) put("comment_list", org.json.JSONArray(commentList))
     }
 
     companion object {
         private fun <T : Comparable<T>> maxOf(a: T?, b: T?): T? = when { a == null -> b; b == null -> a; else -> if (a >= b) a else b }
         fun norm(s: String) = s.lowercase().replace(Regex("[^\\p{L}\\p{N}]+"), " ").trim()
+
+        /** ["राहुल: बढ़िया"] या [{"user":"राहुल","text":"बढ़िया"}] -> "राहुल: बढ़िया" */
+        fun commentsOf(a: org.json.JSONArray?): List<String> {
+            if (a == null) return emptyList()
+            return (0 until a.length()).mapNotNull { i ->
+                val o = a.optJSONObject(i)
+                val t = if (o != null) listOf(o.optString("user", o.optString("by")).trim(), o.optString("text", o.optString("comment")).trim())
+                    .filter { it.isNotBlank() }.joinToString(": ") else a.optString(i).trim()
+                t.replace(Regex("\\s+"), " ").take(160).takeIf { it.isNotBlank() && it != "null" }
+            }.distinct().take(15)
+        }
 
         /** AI / स्क्रीन से आया JSON (सब मान string भी हो सकते हैं) -> Post */
         fun fromJson(p: Platform, o: JSONObject, source: String = "screen"): Post? {
@@ -298,6 +341,7 @@ data class Post(
                 skipRatePct = s("skip_rate", "skip_rate_pct")?.let { Pct.parse(it) },
                 durationSec = s("duration", "duration_sec", "length")?.let { Dur.parse(it) },
                 traffic = s("traffic", "traffic_sources", "sources").orEmpty().take(200), notes = s("notes", "note").orEmpty().take(200), source = source,
+                commentList = commentsOf(o.optJSONArray("comment_list") ?: o.optJSONArray("top_comments")),
             )
             // पूरी तरह खाली = कुछ नहीं
             if (post.title.isBlank() && post.views == null && post.reach == null && post.likes == null) return null
@@ -319,8 +363,17 @@ data class Account(
     val reachChangePct: Double? = null,
     val status: String = "",
     val notes: String = "",
+    // नवंबर 2026: प्रोफ़ाइल की पूरी पहचान + कमाई/रिकमेंडेशन की हालत - सिर्फ़ जो स्क्रीन पर लिखा दिखा
+    val name: String = "",
+    val handle: String = "",
+    val following: Long? = null,
+    val postsCount: Long? = null,
+    val lastPost: String = "",
+    val monetization: String = "",
+    val recommendation: String = "",
 ) {
-    val empty get() = views == null && reach == null && interactions == null && followers == null && watchTimeSec == null && status.isBlank() && notes.isBlank()
+    val empty get() = views == null && reach == null && interactions == null && followers == null && watchTimeSec == null && status.isBlank() && notes.isBlank() &&
+        name.isBlank() && handle.isBlank() && following == null && monetization.isBlank() && recommendation.isBlank()
 
     fun merge(o: Account): Account = Account(
         period = period.ifBlank { o.period }, views = views ?: o.views, reach = reach ?: o.reach, interactions = interactions ?: o.interactions,
@@ -328,6 +381,10 @@ data class Account(
         viewsChangePct = viewsChangePct ?: o.viewsChangePct, reachChangePct = reachChangePct ?: o.reachChangePct,
         status = listOf(status, o.status).filter { it.isNotBlank() }.distinct().joinToString("; ").take(400),
         notes = listOf(notes, o.notes).filter { it.isNotBlank() }.distinct().joinToString("; ").take(600),
+        name = name.ifBlank { o.name }, handle = handle.ifBlank { o.handle }, following = following ?: o.following,
+        postsCount = postsCount ?: o.postsCount, lastPost = lastPost.ifBlank { o.lastPost },
+        monetization = listOf(monetization, o.monetization).filter { it.isNotBlank() }.distinct().joinToString("; ").take(500),
+        recommendation = listOf(recommendation, o.recommendation).filter { it.isNotBlank() }.distinct().joinToString("; ").take(500),
     )
 
     fun toJson(): JSONObject = JSONObject().apply {
@@ -335,6 +392,9 @@ data class Account(
         interactions?.let { put("interactions", it) }; followers?.let { put("followers", it) }; followersChange?.let { put("followers_change", it) }
         watchTimeSec?.let { put("watch_time_sec", it) }; viewsChangePct?.let { put("views_change_pct", it) }; reachChangePct?.let { put("reach_change_pct", it) }
         if (status.isNotBlank()) put("status", status); if (notes.isNotBlank()) put("notes", notes)
+        if (name.isNotBlank()) put("name", name); if (handle.isNotBlank()) put("handle", handle); following?.let { put("following", it) }
+        postsCount?.let { put("posts_count", it) }; if (lastPost.isNotBlank()) put("last_post", lastPost)
+        if (monetization.isNotBlank()) put("monetization", monetization); if (recommendation.isNotBlank()) put("recommendation", recommendation)
     }
 
     companion object {
@@ -350,6 +410,11 @@ data class Account(
                 viewsChangePct = s("views_change", "views_change_pct")?.let { Pct.parse(it) },
                 reachChangePct = s("reach_change", "reach_change_pct")?.let { Pct.parse(it) },
                 status = s("status", "account_status").orEmpty().take(300), notes = s("notes").orEmpty().take(400),
+                name = s("name", "profile_name", "channel_name").orEmpty().take(80), handle = s("handle", "username").orEmpty().take(60),
+                following = s("following")?.let { Num.parse(it) }, postsCount = s("posts_count", "posts", "videos_count")?.let { Num.parse(it) },
+                lastPost = s("last_post", "latest_post").orEmpty().take(60),
+                monetization = s("monetization", "monetization_status").orEmpty().take(400),
+                recommendation = s("recommendation", "recommendations").orEmpty().take(400),
             )
         }
     }
@@ -565,17 +630,27 @@ object InsightsReport {
         append("- Use ONLY numbers present in the data. Never invent a number. If something is missing say \"यह आँकड़ा नहीं मिला\".\n")
         append("- Reasons must be tied to data (compare posts: views, watch time, retention, shares, saves, CTR, posting gaps, account status warnings). ")
         append("Say clearly when a reason is a likely guess (\"संभावित वजह\"). No one knows the algorithm exactly.\n")
-        append("- Be specific: name the reels/videos by their title/caption.\n\n")
+        append("- Be specific: name the reels/videos by their title/caption.\n")
+        append("- NEVER LIE: monetization / recommendation status and its reason ONLY from account.monetization / account.recommendation / account.status ")
+        append("(copied from the screen). If empty or 'not found' say \"यह स्क्रीन पर नहीं मिला - पक्का पता नहीं\". Never claim demonetization or a ban that is not in the data. ")
+        append("Policy and algorithm facts ONLY from the POLICY section below (official help pages) - say that it is the company's public rule, not a secret formula.\n\n")
         append("FORMAT (Markdown):\n")
         append("## सार\n3-5 lines: overall what is happening and the #1 reason.\n")
-        append("Then for EACH platform: ## <platform name>\n- a table | रील/वीडियो | तारीख़ | व्यूज़ | रीच | लाइक | कमेंट | शेयर | सेव | औसत देखा | (CTR for YouTube) | for up to 10 items\n")
+        append("Then for EACH platform: ## <platform name>\n")
+        append("- ### प्रोफ़ाइल  (name, @username, followers, following, posts count, when the last reel/video was posted, its comments count and 3-5 of its comments as 'कौन: क्या लिखा' with what they show - only what is in the data)\n")
+        append("- ### मोनेटाइज़ेशन और रिकमेंडेशन  (status exactly as read; if a problem: the reason as read, what that policy means, and step-by-step how to fix / request review; if not read say so)\n")
+        append("- a table | रील/वीडियो | तारीख़ | व्यूज़ | रीच | लाइक | कमेंट | शेयर | सेव | औसत देखा | (CTR for YouTube) | for up to 10 items\n")
         append("- ### क्या चल रहा है  (what works, with numbers)\n- ### रीच क्यों गिरी / बढ़ी  (data-backed reasons)\n- ### क्या करें  (3-6 concrete actions)\n")
+        append("## पॉलिसी और एल्गोरिदम\nfor each reviewed platform: the main monetization rules, what stops recommendations, how the ranking works (from POLICY), with the official links.\n")
         append("## ट्रेंडिंग और नए आइडिया\nUse the trend research below + the creator's own best topics: 5-8 concrete reel/video ideas with a hook line each.\n")
         append("## अगले 7 दिन का प्लान\nday-wise short plan.\n")
         append("Finally a line that starts exactly with \"").append(SPOKEN_MARK).append("\" followed by a 6-9 sentence spoken summary in Hindi ")
-        append("(no markdown, no tables, numbers spoken simply) - this will be read aloud to the creator.\n\n")
+        append("(no markdown, no tables, numbers spoken simply) - this will be read aloud to the creator. ")
+        append("It must include the followers count and the monetization / recommendation status exactly as read (or that it could not be read).\n\n")
         append("DATA (JSON):\n").append(dataJson(all, analyses)).append("\n\n")
         append("TREND RESEARCH (from web search, may be empty):\n").append(trends.take(3500).ifBlank { "(nothing found)" }).append("\n")
+        append("\nPOLICY (official help pages, Nov 2026):\n")
+        all.forEach { append(InsightsPolicy.guide(it.platform)).append("\n\n") }
     }
 
     /** AI के जवाब से बोलने वाला हिस्सा अलग */
@@ -597,6 +672,10 @@ object InsightsReport {
                 return@forEach
             }
             val ac = d.account
+            // नवंबर 2026: प्रोफ़ाइल + कमाई + रिकमेंडेशन - जो पढ़ा वही, न पढ़ा = "पता नहीं चला"
+            append("### प्रोफ़ाइल, मोनेटाइज़ेशन और रिकमेंडेशन\n")
+            InsightsPolicy.profileLines(d).forEach { append("- ").append(it).append("\n") }
+            append("\n")
             if (!ac.empty) {
                 append("**खाता").append(if (ac.period.isNotBlank()) " (${ac.period})" else "").append(":** ")
                 append(listOfNotNull(
@@ -626,6 +705,8 @@ object InsightsReport {
             if (d.problems.isNotEmpty()) append("_ध्यान दें:_ ").append(d.problems.joinToString("; ")).append("\n\n")
         }
         if (trends.isNotBlank()) append("## ट्रेंडिंग\n").append(trends.take(2500)).append("\n")
+        append("\n## पॉलिसी और एल्गोरिदम (कंपनी के अपने help पेज से)\n")
+        all.forEach { append("### ").append(it.platform.hi).append("\n").append(InsightsPolicy.guide(it.platform)).append("\n\n") }
     }
 
     /** बिना AI बोलने वाला छोटा हिस्सा */

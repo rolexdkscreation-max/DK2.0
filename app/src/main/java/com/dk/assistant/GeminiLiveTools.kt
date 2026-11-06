@@ -311,6 +311,8 @@ internal fun GeminiLive.runTools(calls: JSONArray) {
         val j = svc.scope.launch(start = CoroutineStart.LAZY) {
           // v3.75: screen पर दिखे कि DK अभी क्या कर रहा है (सर्च / सोच / फ़ोन का काम)
           LivePromise.hintFor(name, args.optString("query").ifBlank { args.optString("request") }).takeIf { it.isNotEmpty() }?.let { DKState.hint(it) }
+          // नवंबर 2026: सोशल रिव्यू चल रहा और यह काम स्क्रीन चलाएगा = रिव्यू रुककर इंतज़ार, यह खत्म होते ही अपने-आप आगे
+          val held = com.dk.assistant.insights.InsightsAgent.holdFor(name, args)
           try {
             val result = try { when (name) {
                 "phone_task" -> phoneTask(args.optString("request"))
@@ -394,7 +396,7 @@ internal fun GeminiLive.runTools(calls: JSONArray) {
                 "Tool failed (${e.javaClass.simpleName}) - tell the user it could not be done."
             }
             val resp = JSONObject().put("toolResponse", JSONObject().put("functionResponses", JSONArray().put(
-                JSONObject().put("id", id).put("name", name).put("response", JSONObject().put("result", result.take(if (name == "deep_think" || name == "connector_task" || name == "web_search") 4000 else 1500))))))
+                JSONObject().put("id", id).put("name", name).put("response", JSONObject().put("result", result.take(if (name == "deep_think" || name == "connector_task" || name == "web_search") 4000 else 1500) + (if (held) com.dk.assistant.insights.InsightsAgent.HOLD_NOTE else ""))))))
             log("tool $name ${(System.currentTimeMillis() - tStart)} ms: ${result.take(if (name == "connector_task") 24 else 80)}")
             if (name != "remember_fact") lastEvidenceAt = System.currentTimeMillis()
             // v3.67: नतीजा "अभी हुआ नहीं" -> इसके बाद Gemini "हो गया" बोले तो वह नहीं बजेगा
@@ -419,6 +421,7 @@ internal fun GeminiLive.runTools(calls: JSONArray) {
                 } catch (_: Exception) {}
             }
           } finally {
+            if (held) com.dk.assistant.insights.InsightsAgent.releaseHold()
             // hamesha hatao (fail/cancel par bhi) - warna idle-exit aur watchdog band rehte
             coroutineContext[Job]?.let { me -> toolJobs.remove(id, me) }
             if (toolJobs.isEmpty() && promiseJob?.isActive != true) { DKState.hint(""); DKState.refresh() }
