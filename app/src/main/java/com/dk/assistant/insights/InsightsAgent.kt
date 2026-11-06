@@ -21,6 +21,7 @@ import com.dk.assistant.connect.ConnectorStore
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.async
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
@@ -168,6 +169,15 @@ object InsightsAgent {
             mark = { x, y -> com.dk.assistant.WorkAwake.mark(x, y) },
         )
         var usedScreen = false
+        // नवंबर 2026 (फटाफट): ट्रेंड की इंटरनेट खोज पहले प्लेटफ़ॉर्म के आँकड़े आते ही साथ-साथ (पहले सबसे आख़िर में अकेले, 45 सेकंड तक)
+        var trendJob: kotlinx.coroutines.Deferred<String>? = null
+        fun startTrends() {
+            if (trendJob != null || !trendsOn(c) || all.none { !it.empty }) return
+            val q = trendQuery(all.toList(), niche(c))
+            trendJob = svc.scope.async(Dispatchers.IO) {
+                withTimeoutOrNull(45_000) { try { BrainManager(svc).searchAnswer(q) } catch (e: Exception) { DKLog.d("ट्रेंड खोज: ${e.message}"); "" } }.orEmpty()
+            }
+        }
         for (p in req.platforms) {
             val m = mode(c, p)
             var d = PlatformData(p)
@@ -188,12 +198,13 @@ object InsightsAgent {
                 if (!usedScreen) wakeForScreen(svc)
                 TaskStatus.step(KEY, "${p.hi}: ऐप खोलकर आँकड़े पढ़ रही हूँ")
                 // API से सब मिल गया तो स्क्रीन पर कम कदम (account status + जो छूटा)
-                if (d.posts.size >= 6) { collector.detailTarget = 2; collector.listTarget = 4 } else { collector.detailTarget = 4; collector.listTarget = 8 }
+                if (d.posts.size >= 6) { collector.detailTarget = 2; collector.listTarget = 4 } else { collector.detailTarget = 3; collector.listTarget = 6 }   // फटाफट: हाल की 3 अंदर से, 6 की सूची
                 d = d.merge(collector.collect(p))
                 usedScreen = true
             }
             DKLog.d("सोशल रिव्यू ${p.en}: ${d.posts.size} आइटम, खाता ${!d.account.empty}, समस्या ${d.problems.size}")
             all += d
+            startTrends()
         }
         if (usedScreen) try { svc.performGlobalAction(android.accessibilityservice.AccessibilityService.GLOBAL_ACTION_HOME) } catch (_: Exception) {}
         val analyses = all.map { Insights.analyze(it) }
@@ -202,9 +213,11 @@ object InsightsAgent {
         // ट्रेंडिंग (इंटरनेट)
         var trends = ""
         if (anyData && trendsOn(c)) {
-            TaskStatus.step(KEY, "ट्रेंडिंग टॉपिक खोज रही हूँ")
-            val q = trendQuery(all, niche(c))
-            trends = withTimeoutOrNull(45_000) { try { BrainManager(svc).searchAnswer(q) } catch (e: Exception) { DKLog.d("ट्रेंड खोज: ${e.message}"); "" } }.orEmpty()
+            startTrends()
+            val tj = trendJob
+            if (tj != null && !tj.isCompleted) TaskStatus.step(KEY, "ट्रेंडिंग टॉपिक खोज रही हूँ")
+            trends = tj?.let { withTimeoutOrNull(InsightsSpeed.TREND_WAIT_MS) { it.await() } }.orEmpty()
+            if (tj?.isCompleted != true) tj?.cancel()
         }
 
         TaskStatus.step(KEY, "रिपोर्ट बना रही हूँ")
@@ -273,9 +286,10 @@ object InsightsAgent {
     }
 
     private suspend fun stepBrain(svc: DKAccessibilityService, prompt: String): String? {
-        val shot = if (canShot(svc)) try { svc.screenshotBase64() } catch (_: Exception) { null } else null
+        // फटाफट: स्क्रीन के text में ही नंबर हों तो स्क्रीनशॉट नहीं (चार्ट/तस्वीर वाली स्क्रीन पर ही)
+        val shot = if (canShot(svc) && InsightsSpeed.wantShot(prompt)) try { svc.screenshotBase64() } catch (_: Exception) { null } else null
         geminiKey(svc)?.let { key ->
-            withContext(Dispatchers.IO) { gemini(key, prompt, shot, json = true, maxTokens = 2048, models = (listOf(GeminiModels.CODER) + GeminiModels.CODER_CHAIN).distinct()) }?.let { return it }
+            withContext(Dispatchers.IO) { gemini(key, prompt, shot, json = true, maxTokens = 2048, models = (listOf(GeminiModels.CODER) + GeminiModels.CODER_CHAIN).distinct(), fast = stepHttp) }?.let { return it }
         }
         // Gemini key नहीं = जो दिमाग़ (Groq / OpenRouter …) लगा है, उसी से
         return try { BrainManager(svc).teach("Reply with ONLY one JSON object.", prompt, shot) } catch (e: Exception) { DKLog.d("सोशल रिव्यू AI: ${e.message?.take(80)}"); null }
@@ -283,27 +297,45 @@ object InsightsAgent {
 
     private suspend fun reportBrain(svc: DKAccessibilityService, prompt: String): String? {
         geminiKey(svc)?.let { key ->
-            gemini(key, prompt, null, json = false, maxTokens = 8192, models = (GeminiModels.CODER_CHAIN + GeminiModels.LIGHT_CHAIN).distinct())?.let { return it }
+            gemini(key, prompt, null, json = false, maxTokens = 6144, models = (GeminiModels.CODER_CHAIN + GeminiModels.LIGHT_CHAIN).distinct())?.let { return it }
         }
         return try { BrainManager(svc).teach("You write clear Hindi social media analytics reports.", prompt, null) } catch (e: Exception) { DKLog.d("रिपोर्ट AI: ${e.message?.take(80)}"); null }
     }
 
-    private fun gemini(key: String, ask: String, jpegB64: String?, json: Boolean, maxTokens: Int, models: List<String>): String? {
+    /** एक कदम की कॉल: छोटा timeout (अटकी कॉल पर 90 सेकंड नहीं) */
+    private val stepHttp = com.dk.assistant.NetFix.builder().connectTimeout(10, TimeUnit.SECONDS).readTimeout(InsightsSpeed.STEP_CALL_S, TimeUnit.SECONDS).build()
+    /** पिछली बार जो मॉडल चला (कदम / रिपोर्ट) - अगली बार वही पहले */
+    @Volatile private var okStep: String? = null
+    @Volatile private var okReport: String? = null
+    /** इस मॉडल ने thinkingConfig नहीं लिया - उसे बिना भेजो */
+    private val noThink = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
+
+    private fun gemini(key: String, ask: String, jpegB64: String?, json: Boolean, maxTokens: Int, models: List<String>, fast: okhttp3.OkHttpClient? = null): String? {
         val parts = JSONArray().put(JSONObject().put("text", ask))
         if (jpegB64 != null) parts.put(JSONObject().put("inline_data", JSONObject().put("mime_type", "image/jpeg").put("data", jpegB64)))
         val cfg = JSONObject().put("maxOutputTokens", maxTokens).put("temperature", if (json) 0.1 else 0.5)
         if (json) cfg.put("responseMimeType", "application/json")
-        val body = JSONObject().put("contents", JSONArray().put(JSONObject().put("role", "user").put("parts", parts))).put("generationConfig", cfg)
-        for (m in models) {
+        val client = fast ?: http
+        for (m in InsightsSpeed.order(models, if (json) okStep else okReport)) {
             try {
+                // फटाफट: Gemini 3 की "सोच" कम (कदम = minimal, रिपोर्ट = low)
+                val gc = JSONObject(cfg.toString())
+                if (m !in noThink) InsightsSpeed.thinking(m, report = !json)?.let { gc.put("thinkingConfig", it) }
+                val body = JSONObject().put("contents", JSONArray().put(JSONObject().put("role", "user").put("parts", parts))).put("generationConfig", gc)
                 val req = Request.Builder().url("https://generativelanguage.googleapis.com/v1beta/models/$m:generateContent")
                     .header("x-goog-api-key", key).post(body.toString().toRequestBody("application/json".toMediaType())).build()
-                val txt = http.newCall(req).execute().use { r ->
-                    if (!r.isSuccessful) { DKLog.d("सोशल रिव्यू Gemini $m: HTTP ${r.code}"); null }
+                var rejected = false
+                val txt = client.newCall(req).execute().use { r ->
+                    if (!r.isSuccessful) {
+                        val err = r.body?.string().orEmpty()
+                        if (GeminiModels.thinkingRejected(r.code, err, gc.has("thinkingConfig"))) { noThink += m; rejected = true }
+                        DKLog.d("सोशल रिव्यू Gemini $m: HTTP ${r.code}"); null
+                    }
                     else JSONObject(r.body?.string().orEmpty()).optJSONArray("candidates")?.optJSONObject(0)
                         ?.optJSONObject("content")?.optJSONArray("parts")?.let { p -> (0 until p.length()).joinToString("") { p.optJSONObject(it)?.takeIf { o -> !o.optBoolean("thought") }?.optString("text").orEmpty() } }
                 }
-                if (!txt.isNullOrBlank()) return txt.trim()
+                if (rejected) return gemini(key, ask, jpegB64, json, maxTokens, listOf(m) + models.filter { it != m }, fast)
+                if (!txt.isNullOrBlank()) { if (json) okStep = m else okReport = m; return txt.trim() }
             } catch (e: Exception) { DKLog.d("सोशल रिव्यू Gemini $m: ${e.javaClass.simpleName}") }
         }
         return null

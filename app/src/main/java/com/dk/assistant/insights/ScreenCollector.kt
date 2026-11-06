@@ -28,7 +28,7 @@ class ScreenCollector(
     private val brain: suspend (String) -> String?,
     private val log: (String) -> Unit = {},
     /** हर प्लेटफ़ॉर्म पर ज़्यादा से ज़्यादा कदम (हर कदम = एक AI जवाब) */
-    private val maxSteps: Int = 36,
+    private val maxSteps: Int = InsightsSpeed.MAX_STEPS,
     private val cancelled: () -> Boolean = { false },
     private val progress: (String) -> Unit = {},
     /** नवंबर 2026: दबाने से ठीक पहले उस जगह स्क्रीन पर निशान (x, y) - मालिक देखे DK कहाँ दबा रहा है */
@@ -45,7 +45,7 @@ class ScreenCollector(
         progress("${p.hi} ऐप आपके सामने खोल रही हूँ")
         if (!openApp(pkg)) return PlatformData(p, problems = listOf("${p.hi} ऐप नहीं खुला"))
         progress("${p.hi} खुल गया - अब अंदर आँकड़े ढूँढ रही हूँ")
-        driver.pause(2_200)
+        driver.pause(InsightsSpeed.OPEN_SETTLE_MS)
         val studio = pkg == "com.google.android.apps.youtube.creator"
         var data = PlatformData(p, sources = listOf("स्क्रीन (${if (studio) "YouTube Studio" else p.en} ऐप)"))
         val detailed = LinkedHashSet<String>()
@@ -87,26 +87,45 @@ class ScreenCollector(
             if (reply.posts.isNotEmpty() || reply.account != null) progress("${p.hi}: ${data.posts.size} ${p.itemHi} के आँकड़े मिले")
             // नवंबर 2026: AI ने स्क्रीन पर जो देखा (हिंदी में) - पट्टी पर, ताकि मालिक को दिखे DK ऐप के अंदर क्या कर रहा है
             if (reply.say.isNotBlank()) progress("${p.hi} • ${reply.say.take(70)}")
+            // नवंबर 2026 (फटाफट): सब मिल गया = AI के done का इंतज़ार नहीं
+            val overview = data.account.views != null || data.account.reach != null || data.account.watchTimeSec != null
+            if (InsightsSpeed.enough(overview, data.posts.size, listTarget, detailed.size, detailTarget, data.statusChecked)) {
+                log("Insights ${p.en}: सारे आँकड़े मिल गए (कदम $step) - आगे नहीं"); break
+            }
             log("Insights ${p.en} कदम $step: +${reply.posts.size} आइटम, कुल ${data.posts.size}, अंदर देखे ${detailed.size}; ${reply.why.take(80)}")
             if (reply.done) break
             if (same >= 4) {
                 // स्क्रीन बदल ही नहीं रही - एक बार पीछे, फिर भी नहीं = बस
                 if (same >= 7) { data = data.copy(problems = data.problems + "स्क्रीन आगे नहीं बढ़ी"); break }
-                driver.back(); driver.pause(900); history.addLast("back (stuck)"); continue
+                driver.back(); settle(sig); history.addLast("back (stuck)"); continue
             }
             // कदम चलाओ (एक जवाब में ज़्यादा से ज़्यादा 3)
+            var cur = sig
             for (a in reply.actions.take(3)) {
                 progress("${p.hi} • कदम $step: " + InsightsPlan.actHi(a, obs))
                 InsightsPlan.point(a, obs)?.let { (x, y) -> try { mark(x, y) } catch (_: Exception) {} }
                 val r = run(obs, a)
                 history.addLast(a.describe() + (if (r == DriverResult.OK) "" else " [failed]"))
                 while (history.size > 8) history.removeFirst()
-                driver.pause(if (a.kind == "wait") 1_800 else 1_100)
+                // नवंबर 2026 (फटाफट): तय 1.1 सेकंड नहीं - स्क्रीन बदलते ही आगे
+                if (a.kind == "wait") driver.pause(1_200) else cur = settle(cur)
                 if (r != DriverResult.OK && a.kind == "click") break
             }
-            if (reply.actions.isEmpty()) driver.pause(900)
+            if (reply.actions.isEmpty()) driver.pause(500)
         }
         return data
+    }
+
+    /** टैप/स्क्रॉल के बाद: स्क्रीन बदलते ही (+ थोड़ा रुककर) लौटो, ज़्यादा से ज़्यादा [InsightsSpeed.SETTLE_MAX_MS] */
+    private suspend fun settle(before: String): String {
+        var waited = 0L
+        while (waited < InsightsSpeed.SETTLE_MAX_MS) {
+            driver.pause(InsightsSpeed.POLL_MS); waited += InsightsSpeed.POLL_MS
+            val now = driver.capture() ?: continue
+            val sig = Expectation.signature(now)
+            if (sig != before) { driver.pause(InsightsSpeed.SETTLE_AFTER_MS); return sig }
+        }
+        return before
     }
 
     private suspend fun run(obs: ScreenObservation, a: InsightsPlan.Act): DriverResult = when (a.kind) {
@@ -258,7 +277,7 @@ object InsightsPlan {
         append(" \"done\":false, \"why\":\"one short line: what you see and what you do next\",\n")
         append(" \"say\":\"the same in short simple Hindi for the user watching the screen (max 10 words), e.g. 'प्रोफ़ेशनल डैशबोर्ड खोल रही हूँ' / 'रील के व्यूज़ पढ़ रही हूँ'\"}\n")
         append("RULES: copy numbers EXACTLY as shown (\"1.2K\", \"12,345\", \"4.5%\", \"0:07\"); leave a field empty if not visible - never guess. ")
-        append("Only include posts whose numbers are on THIS screen. Use 1-2 actions per reply. Set status_checked=true only when the account status page is visible. ")
+        append("Only include posts whose numbers are on THIS screen. Be FAST: use up to 3 actions per reply when they are safe in a row (e.g. click a tab then scroll), and go straight to the needed page. Set status_checked=true only when the account status page is visible. ")
         append("Set done=true when overview + enough list items + ").append(detailTarget).append(" detailed items + status are collected, or nothing more can be found.")
     }
 
