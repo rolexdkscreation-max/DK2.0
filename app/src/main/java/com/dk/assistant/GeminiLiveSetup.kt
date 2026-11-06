@@ -196,10 +196,10 @@ internal fun GeminiLive.setupJson(m: String, txt: Boolean = connText, resume: Bo
                 .put("required", JSONArray().put("platform").put("action"))))
         // नवंबर 2026: इंस्टाग्राम / फेसबुक / यूट्यूब का पूरा रिव्यू (API + ऐप की स्क्रीन से असली आँकड़े, ट्रेंड, सलाह)
         .put(JSONObject().put("name", "social_insights")
-            .put("description", "Full REVIEW of the user's own Instagram / Facebook / YouTube account: DK reads the real numbers (official API if connected + opens the app's dashboard / YouTube Studio and reads every reel/video screen, read-only), " +
+            .put("description", "Full REVIEW of the user's own Instagram / Facebook / YouTube account: DK opens the app's dashboard / YouTube Studio on the screen in front of the user and reads every reel/video screen (read-only), plus the official API if a connector happens to be connected, " +
                 "finds views per reel/video, why reach is falling, what works, the latest 3-4 reels, trending topics and how to get more views, then makes a full report. " +
                 "Use for 'इंस्टाग्राम का रिव्यू करो', 'मेरी रील पर कितने व्यूज़ आए', 'रीच क्यों गिर रही है', 'यूट्यूब स्टूडियो चेक करो', 'तीनों का एनालिसिस'. Not for posting (social_media_task). " +
-                "It runs in the background for a few minutes: say the returned line, then wait - you get a SYSTEM NOTE with the real summary; never invent numbers before that. action=stop stops it.")
+                "NO connector is needed (the screen method works alone). It runs ON THE SCREEN in front of the user for a few minutes - never call it background or hidden: say the returned line, then wait - you get a SYSTEM NOTE with the real summary; never invent numbers before that. action=stop stops it.")
             .put("parameters", JSONObject().put("type", "OBJECT")
                 .put("properties", JSONObject()
                     .put("platforms", JSONObject().put("type", "ARRAY").put("items", JSONObject().put("type", "STRING").put("enum", JSONArray().put("instagram").put("facebook").put("youtube")))

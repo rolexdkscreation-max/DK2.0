@@ -95,7 +95,7 @@ object LivePromise {
             "whatsapp_task", "social_media_task" -> "संदेश/ऐप का काम कर रहा है…"
             "ai_app_prompt" -> "ऐप में लिखकर भेज रहा है…"
             "shop_search" -> "दिखा रहा है" + (if (a.isNotEmpty()) ": $a" else "") + "…"
-            "social_insights" -> "सोशल रिव्यू शुरू कर रहा है…"
+            "social_insights" -> "ऐप खोलकर आपके सामने रिव्यू कर रहा है…"
             "image_task" -> "इमेज बना रहा है" + (if (a.isNotEmpty()) ": $a" else "") + "…"
             "notifications", "notification_reply" -> "नोटिफ़िकेशन देख रहा है…"
             "connector_task" -> "जुड़े ऐप से जानकारी ला रहा है…"
