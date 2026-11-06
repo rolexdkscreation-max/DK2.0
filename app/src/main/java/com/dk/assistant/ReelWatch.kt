@@ -30,8 +30,9 @@ class ReelWatch(private val svc: DKAccessibilityService) {
     private val bg = Handler(thread.looper)
     private val main = Handler(Looper.getMainLooper())
     private val wm = svc.getSystemService(WindowManager::class.java)
-    // नवंबर 2026 (मालिक: "एक्यूरेट"): तेज़ स्क्रॉल में भी हर दिखी रील - 0.45 सेकंड पर देखो, 0.6 सेकंड टिकी = एक रील
-    private val counters = ReelRules.App.values().associateWith { ReelRules.Counter(stableMs = 600) }
+    // नवंबर 2026 (मालिक: "स्क्रॉल पर गिनती नहीं, जो देखा वही"): 0.45 सेकंड पर देखो, रील / वीडियो 1.5 सेकंड चली = एक (स्क्रॉल में निकली = नहीं)
+    private val counters = ReelRules.App.values().associateWith { ReelRules.Counter(stableMs = ReelRules.WATCH_MS) }
+    private val ytVideo = ReelRules.Counter(stableMs = ReelRules.WATCH_MS)
     @Volatile private var released = false
     private var pill: TextView? = null
     private var lastHome = 0L
@@ -103,22 +104,30 @@ class ReelWatch(private val svc: DKAccessibilityService) {
         if (seenApp != app) { flushSeen(force = true); seenApp = app }
         seenMs += dt
         flushSeen(force = false)
-        val counted = counters[app]!!.feed(inReel, sig, now())
+        // YouTube: शॉर्ट्स और आम वीडियो के अलग गिनने वाले (दोनों YouTube की लिमिट में)
+        val counted = if (app == ReelRules.App.YOUTUBE) {
+            val a = counters[app]!!.feed(isReel, if (isReel) sig else emptySet(), now())
+            val b = ytVideo.feed(isVideo, if (isVideo) sig else emptySet(), now())
+            a || b
+        } else counters[app]!!.feed(inReel, sig, now())
         if (counted) {
             val limit = ReelStore.limit(c, app)
             val (n, stop) = ReelRules.onNewReel(ReelStore.count(c, app), limit)
             if (stop) { limitHit(app); return 700L }
             ReelStore.setCount(c, app, n)
-            val log = "रील गिनती ${app.en()}: $n (${sig.take(3).joinToString(" | ") { it.take(24) }})"
+            if (isVideo) ReelStore.setVideos(c, ReelStore.videos(c) + 1)
+            val log = "रील गिनती ${app.en()}${if (isVideo) " वीडियो" else ""}: $n (${sig.take(3).joinToString(" | ") { it.take(24) }})"
             if (log != lastLog) { lastLog = log; DKLog.d(log) }
-            ReelDaily.addReel(c, app, sig.maxByOrNull { it.length })
+            ReelDaily.addReel(c, app, sig.maxByOrNull { it.length }, video = isVideo)
             ReelDaily.coach(c)
         }
         if (inReel && ReelStore.popupOn(c)) {
             val tn = now()
             val all = allNow?.takeIf { !counted && tn - allAt < 3_000 } ?: ReelDaily.now(c).also { allNow = it; allAt = tn }
             val extra = if (all.limit > 0) " • सब ऐप ${all.total} / ${all.limit}" else if (all.yesterday > 0) " • कल ${all.yesterday}" else ""
-            showPill(ReelRules.pill(app, ReelStore.count(c, app), ReelStore.limit(c, app)) + extra, warn = all.limit > 0 && all.total > all.limit)
+            val text = if (app == ReelRules.App.YOUTUBE) ReelStore.count(c, app).let { yt -> val v = ReelStore.videos(c).coerceAtMost(yt); ReelRules.ytPill(isVideo, yt - v, v, ReelStore.limit(c, app)) }
+                else ReelRules.pill(app, ReelStore.count(c, app), ReelStore.limit(c, app))
+            showPill(text + extra, warn = all.limit > 0 && all.total > all.limit)
         }
         else if (System.currentTimeMillis() > blockedShownUntil) hidePill()
         return if (inReel) 450L else 650L
@@ -139,7 +148,7 @@ class ReelWatch(private val svc: DKAccessibilityService) {
     private fun limitHit(app: ReelRules.App) {
         val c = svc.applicationContext
         ReelStore.setBlocked(c, app, true)
-        counters[app]?.reset()
+        counters[app]?.reset(); if (app == ReelRules.App.YOUTUBE) ytVideo.reset()
         val action = ReelStore.action(c)
         DKLog.d("रील लिमिट पूरी: ${app.hi} (${ReelStore.limit(c, app)}) - ${action.id}")
         blockedShownUntil = System.currentTimeMillis() + 4_000
@@ -169,7 +178,7 @@ class ReelWatch(private val svc: DKAccessibilityService) {
                 val txt = n.text?.toString().orEmpty(); val desc = n.contentDescription?.toString().orEmpty(); val id = n.viewIdResourceName.orEmpty()
                 if (txt.isNotBlank() || desc.isNotBlank() || id.isNotBlank()) {
                     n.getBoundsInScreen(r)
-                    out += ReelRules.Node(id, txt, desc, r.exactCenterX() / w, r.exactCenterY() / h)
+                    out += ReelRules.Node(id, txt, desc, r.exactCenterX() / w, r.exactCenterY() / h, r.width() / w, r.height() / h)
                 }
                 for (i in 0 until n.childCount) n.getChild(i)?.let { stack.add(it) }
             } catch (_: Exception) {}
@@ -224,9 +233,13 @@ object ReelStore {
     fun setBlocked(c: Context, a: ReelRules.App, on: Boolean) = sp(c).edit().putBoolean("reel_blocked_${a.key}", on).apply()
     fun count(c: Context, a: ReelRules.App): Int { newDayCheck(c); return sp(c).getInt("reel_count_${a.key}", 0) }
     fun setCount(c: Context, a: ReelRules.App, n: Int) = sp(c).edit().putInt("reel_count_${a.key}", n).apply()
+    /** आज के YouTube आम वीडियो (YouTube की गिनती "reel_count_yt" में ये भी शामिल - लिमिट कुल पर) */
+    fun videos(c: Context): Int { newDayCheck(c); return sp(c).getInt("reel_count_ytv", 0) }
+    fun setVideos(c: Context, n: Int) = sp(c).edit().putInt("reel_count_ytv", n).apply()
 
     /** DK सेटिंग से "खोलें": ब्लॉक हटा, उस ऐप की आज की गिनती 0 से */
-    fun unblock(c: Context, a: ReelRules.App) = sp(c).edit().putBoolean("reel_blocked_${a.key}", false).putInt("reel_count_${a.key}", 0).apply()
+    fun unblock(c: Context, a: ReelRules.App) = sp(c).edit().putBoolean("reel_blocked_${a.key}", false).putInt("reel_count_${a.key}", 0)
+        .apply { if (a == ReelRules.App.YOUTUBE) putInt("reel_count_ytv", 0) }.apply()
 
     /** नया दिन = गिनती 0 (ब्लॉक अपने-आप नहीं हटता - मालिक की माँग: DK सेटिंग से खोलने तक) */
     fun newDayCheck(c: Context) {
@@ -234,6 +247,7 @@ object ReelStore {
         if (s.getString("reel_day", "") == d) return
         val e = s.edit().putString("reel_day", d)
         ReelRules.App.values().forEach { e.putInt("reel_count_${it.key}", 0) }
+        e.putInt("reel_count_ytv", 0)
         e.apply()
     }
 }

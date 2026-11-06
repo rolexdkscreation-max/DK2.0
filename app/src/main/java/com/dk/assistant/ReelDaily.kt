@@ -39,7 +39,9 @@ object ReelDaily {
         save(c, f(ReelWeek.roll(ReelWeek.decode(sp(c).getString("reel_week", null)), d), d))
     }
 
-    fun addReel(c: Context, app: ReelRules.App, title: String?) = update(c) { w, d -> ReelWeek.addReel(w, d, app.key, title) }
+    /** video = YouTube का आम वीडियो (हफ़्ते में अलग खाना "ytv", शॉर्ट्स "yt") */
+    fun addReel(c: Context, app: ReelRules.App, title: String?, video: Boolean = false) =
+        update(c) { w, d -> ReelWeek.addReel(w, d, if (video && app == ReelRules.App.YOUTUBE) ReelWeek.YT_VIDEO else app.key, title) }
     fun addSeen(c: Context, app: ReelRules.App, ms: Long) = update(c) { w, d -> ReelWeek.addSeen(w, d, app.key, ms) }
 
     // ------------------------------------------------------------ आज की हालत

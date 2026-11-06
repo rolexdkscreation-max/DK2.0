@@ -16,6 +16,8 @@ import org.json.JSONObject
  */
 object ReelWeek {
     const val DAYS = 7
+    /** YouTube के आम (लंबे) वीडियो का खाना - "yt" = शॉर्ट्स */
+    const val YT_VIDEO = "ytv"
 
     data class AppDay(val n: Int = 0, val seen: Long = 0)
 
@@ -110,8 +112,8 @@ object ReelWeek {
             val i = (epochDay(today) - epochDay(d.date)).toInt()
             val t = total(d)
             val prev = day(w, plusDays(d.date, -1))?.let { total(it) }
-            val parts = ReelRules.App.values().map { a -> "${a.short()} ${d.app(a.key).n}" }
-            append("${ago(i)} (${d.date.substring(5)}): $t रील • ${minutes(d)} मिनट • ${parts.joinToString(", ")}")
+            val parts = ReelRules.App.values().flatMap { a -> listOf("${a.short()} ${d.app(a.key).n}") + if (a == ReelRules.App.YOUTUBE) listOf("YouTube वीडियो ${d.app(YT_VIDEO).n}") else emptyList() }
+            append("${ago(i)} (${d.date.substring(5)}): $t रील / वीडियो • ${minutes(d)} मिनट • ${parts.joinToString(", ")}")
             if (prev != null && prev > 0) append(if (t > prev) " • पिछले दिन से ${t - prev} ज़्यादा" else if (t < prev) " • पिछले दिन से ${prev - t} कम" else " • पिछले दिन जितनी")
             if (limit > 0 && t > limit) append(" • लिमिट $limit पार")
             append('\n')
@@ -119,11 +121,12 @@ object ReelWeek {
         append("हफ़्ता ${w.start.substring(5)} से • ${resetDate(w).substring(5)} को अपने-आप नया हफ़्ता")
     }
 
-    private fun ReelRules.App.short() = when (this) { ReelRules.App.INSTAGRAM -> "इंस्टा"; ReelRules.App.YOUTUBE -> "YouTube"; ReelRules.App.FACEBOOK -> "फेसबुक" }
+    private fun ReelRules.App.short() = when (this) { ReelRules.App.INSTAGRAM -> "इंस्टा"; ReelRules.App.YOUTUBE -> "YouTube शॉर्ट्स"; ReelRules.App.FACEBOOK -> "फेसबुक" }
 
     /** DK लाइव का tool जवाब */
     fun liveText(w: Week, today: String, limit: Int, accOn: Boolean): String = buildString {
-        append("REEL / VIDEO WATCHING of the user (Instagram, YouTube incl. Shorts, Facebook) - last 7 days, real counts read on the phone screen. ")
+        append("REEL / VIDEO WATCHING of the user (Instagram, YouTube Shorts, YouTube normal videos, Facebook) - last 7 days, real counts read on the phone screen. " +
+            "Counted only when a reel / Shorts / video is opened full screen and plays about 1.5 seconds; scrolling feeds is never counted. ")
         append("Counting works only while DK's Accessibility is ON (now ${if (accOn) "ON" else "OFF - nothing is being counted right now, tell him to turn it on"}); time when it was off is not counted. ")
         append(if (limit > 0) "Daily limit for all apps together: $limit reels. " else "No daily limit is set. ")
         append("Answer in short Hindi, compare today / yesterday / earlier days, never invent numbers.\n")

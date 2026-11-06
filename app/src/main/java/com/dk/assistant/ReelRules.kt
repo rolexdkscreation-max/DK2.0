@@ -22,8 +22,20 @@ object ReelRules {
 
     fun appOf(pkg: String?): App? = if (pkg.isNullOrBlank()) null else App.values().firstOrNull { pkg in it.pkgs }
 
-    /** स्क्रीन का एक हिस्सा: x/y = बीच का बिंदु, स्क्रीन के 0..1 हिस्से में */
-    data class Node(val id: String, val text: String, val desc: String, val x: Float, val y: Float)
+    /** स्क्रीन का एक हिस्सा: x/y = बीच का बिंदु, w/h = चौड़ाई / ऊँचाई - सब स्क्रीन के 0..1 हिस्से में (w/h 0 = नाप पता नहीं) */
+    data class Node(val id: String, val text: String, val desc: String, val x: Float, val y: Float, val w: Float = 0f, val h: Float = 0f) {
+        val sized get() = w > 0f || h > 0f
+    }
+
+    /*
+     * नवंबर 2026 (मालिक): "फ़ीड स्क्रॉल करें तो गिनती नहीं - YouTube / फेसबुक / इंस्टाग्राम कहीं भी. सिर्फ़ जब रील / वीडियो पर
+     * टैप करके देखना शुरू करें और वह चले, तब गिनो." इसलिए: रील का view id अब तभी माना जाता है जब वह पूरी स्क्रीन जितना बड़ा
+     * हो (फ़ीड में चलती छोटी वीडियो / शॉर्ट्स की कतार = नहीं), और गिनती तब जब वह रील [WATCH_MS] तक चली (स्क्रॉल में निकल गई = नहीं).
+     */
+    const val WATCH_MS = 1_500L
+
+    /** पूरी स्क्रीन वाला प्लेयर (नाप पता न हो तो id पर भरोसा) */
+    private fun fullScreen(n: Node) = !n.sized || (n.w >= 0.8f && n.h >= 0.6f)
 
     private val ACTION = Regex("(?i)\\b(like|likes|liked|comment|comments|share|send|remix|dislike|reply)\\b|लाइक|पसंद|कमेंट|टिप्पणी|शेयर|भेज")
     private val YT_IDS = listOf("reel_", "shorts_")
@@ -33,7 +45,7 @@ object ReelRules {
     /** रील / शॉर्ट्स / वर्टिकल वीडियो वाली स्क्रीन? */
     fun reelMode(app: App, nodes: List<Node>): Boolean {
         val ids = when (app) { App.YOUTUBE -> YT_IDS; App.INSTAGRAM -> IG_IDS; App.FACEBOOK -> FB_IDS }
-        if (nodes.any { n -> val id = n.id.substringAfter(":id/", n.id).lowercase(); ids.any { id.startsWith(it) || id.contains("_$it") } }) return true
+        if (nodes.any { n -> val id = n.id.substringAfter(":id/", n.id).lowercase(); ids.any { id.startsWith(it) || id.contains("_$it") } && fullScreen(n) }) return true
         // दाईं तरफ़ ऊपर-नीचे बटन (लाइक/कमेंट/शेयर) = रील प्लेयर; फ़ीड में ये बटन एक लाइन में आड़े होते हैं
         val rail = nodes.filter { it.x > 0.78f && it.y in 0.35f..0.97f && ACTION.containsMatchIn(it.desc + " " + it.text) }
         return rail.size >= 3 && (rail.maxOf { it.y } - rail.minOf { it.y }) > 0.12f
@@ -45,9 +57,19 @@ object ReelRules {
      */
     private val YT_WATCH = listOf("watch_player", "player_view", "watch_while", "player_fragment")
 
-    /** YouTube का आम वीडियो वाला पेज (शॉर्ट्स नहीं) */
-    fun watchMode(app: App, nodes: List<Node>): Boolean = app == App.YOUTUBE && !reelMode(app, nodes) &&
-        nodes.any { n -> val id = n.id.substringAfter(":id/", n.id).lowercase(); YT_WATCH.any { id.startsWith(it) } }
+    private val WATCH_PAGE = Regex("(?i)^(subscribe|subscribed|सब्सक्राइब|सदस्यता लें)$|dislike|नापसंद")
+
+    /**
+     * YouTube का आम वीडियो वाला पेज (शॉर्ट्स नहीं) - टैप करके खुला वीडियो: player पूरी चौड़ाई का (नीचे का छोटा mini player नहीं)
+     * और उसी पेज पर Subscribe / Dislike (होम फ़ीड में चलती वीडियो पर ये नहीं होते), या पूरी स्क्रीन (आड़ा) वीडियो.
+     */
+    fun watchMode(app: App, nodes: List<Node>): Boolean {
+        if (app != App.YOUTUBE || reelMode(app, nodes)) return false
+        val players = nodes.filter { n -> val id = n.id.substringAfter(":id/", n.id).lowercase(); YT_WATCH.any { id.startsWith(it) } }
+        if (players.any { it.sized && it.w >= 0.8f && it.h >= 0.8f }) return true                       // पूरी स्क्रीन वीडियो
+        if (players.none { !it.sized || it.w >= 0.9f }) return false                                    // mini player / फ़ीड का छोटा
+        return nodes.any { WATCH_PAGE.containsMatchIn(it.text.trim()) || WATCH_PAGE.containsMatchIn(it.desc.trim()) }
+    }
 
     /** आम वीडियो की पहचान: player के नीचे का लिखा (शीर्षक, चैनल) */
     fun watchSignature(nodes: List<Node>): Set<String> = signatureIn(nodes, 0.22f..0.62f, 1.01f)
@@ -114,6 +136,17 @@ object ReelRules {
     /** ऊपर की छोटी पट्टी */
     fun pill(app: App, count: Int, limit: Int): String =
         "${app.hi} रील • आज $count" + (if (limit > 0) " / $limit" else "") + (if (limit > 0 && count >= limit) " • लिमिट पूरी" else "")
+
+    /**
+     * YouTube की पट्टी (मालिक: "शॉर्ट्स हो तो शॉर्ट्स लिखा, वीडियो हो तो वीडियो - कितने वीडियो दिखे वह अलग").
+     * लिमिट = YouTube का कुल (शॉर्ट्स + वीडियो).
+     */
+    fun ytPill(video: Boolean, shorts: Int, videos: Int, limit: Int): String {
+        val total = shorts + videos
+        val main = if (video) "YouTube वीडियो • आज $videos" + (if (shorts > 0) " • शॉर्ट्स $shorts" else "")
+            else "YouTube शॉर्ट्स • आज $shorts" + (if (videos > 0) " • वीडियो $videos" else "")
+        return main + (if (limit > 0) " • कुल $total / $limit" else "") + (if (limit > 0 && total >= limit) " • लिमिट पूरी" else "")
+    }
 
     fun blockedPill(app: App): String = "${app.hi}: आज की रील लिमिट पूरी • DK सेटिंग → रील गिनती और लिमिट से खोलें"
 }
