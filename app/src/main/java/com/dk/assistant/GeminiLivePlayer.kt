@@ -16,7 +16,7 @@ internal fun GeminiLive.startPlayer() {
     val t = AudioTrack.Builder()
         // Bluetooth = कॉल वाली आवाज़ (headset में, गूँज हटाना ठीक); नहीं तो पहले जैसा मीडिया (speaker)
         // v3.51: कॉल (घंटी/बात) के समय media mute होता है -> accessibility (CallVoice)
-        .setAudioAttributes(AudioAttributes.Builder().setUsage(CallVoice.usage(callAudioOn || svc.callRinging(), btOn))
+        .setAudioAttributes(AudioAttributes.Builder().setUsage(CallVoice.usage(callAudioOn || svc.callRinging(), btOn, CallSpeaker.active))
             .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH).build())
         .setAudioFormat(AudioFormat.Builder().setSampleRate(OUT_RATE).setChannelMask(AudioFormat.CHANNEL_OUT_MONO)
             .setEncoding(AudioFormat.ENCODING_PCM_16BIT).build())

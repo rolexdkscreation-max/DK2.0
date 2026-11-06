@@ -299,7 +299,10 @@ internal fun GeminiLive.agentTool(name: String, args: JSONObject): String {
 internal fun GeminiLive.runTools(calls: JSONArray) {
     for (i in 0 until calls.length()) {
         val fc = calls.optJSONObject(i) ?: continue
-        val id = fc.optString("id"); val name = fc.optString("name"); val args = fc.optJSONObject("args") ?: JSONObject()
+        val id = fc.optString("id"); val callName = fc.optString("name")
+        // नवंबर 2026 (Live जाँच #2): dk_agent(tool=..., args_json=...) = वही पुराना tool. जवाब असली call के नाम (callName) से
+        val (name, args) = LiveToolSlim.unwrap(callName, fc.optJSONObject("args") ?: JSONObject())
+        if (callName != name) log("dk_agent -> $name")
         if (!toolDedup.firstTime(id)) { log("tool: $name - यही call (id) पहले आ चुका, दोबारा नहीं"); continue }
         // DK AI Part 12: caption / संदेश / कॉन्टैक्ट log में नहीं
         log("tool: $name " + if (name == "social_media_task" || name == "whatsapp_task") args.optString("action") else if (name == "connector_task") args.optString("connector") + "." + args.optString("action") else args.toString().take(80))
@@ -397,7 +400,7 @@ internal fun GeminiLive.runTools(calls: JSONArray) {
                 "Tool failed (${e.javaClass.simpleName}) - tell the user it could not be done."
             }
             val resp = JSONObject().put("toolResponse", JSONObject().put("functionResponses", JSONArray().put(
-                JSONObject().put("id", id).put("name", name).put("response", JSONObject().put("result", result.take(if (name == "deep_think" || name == "connector_task" || name == "web_search") 4000 else 1500) + (if (held) com.dk.assistant.insights.InsightsAgent.HOLD_NOTE else ""))))))
+                JSONObject().put("id", id).put("name", callName).put("response", JSONObject().put("result", result.take(if (name == "deep_think" || name == "connector_task" || name == "web_search") 4000 else 1500) + (if (held) com.dk.assistant.insights.InsightsAgent.HOLD_NOTE else ""))))))
             log("tool $name ${(System.currentTimeMillis() - tStart)} ms: ${result.take(if (name == "connector_task") 24 else 80)}")
             if (name != "remember_fact") lastEvidenceAt = System.currentTimeMillis()
             // v3.67: नतीजा "अभी हुआ नहीं" -> इसके बाद Gemini "हो गया" बोले तो वह नहीं बजेगा

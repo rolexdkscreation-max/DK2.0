@@ -157,6 +157,19 @@ internal fun SettingsActivity.secVoice() {
         switch(box, "Gemini न सुने तो लिखा हुआ text भेजकर बचाओ (पुराना तरीका)", LiveStay.textRescueOn(this))
             .setOnCheckedChangeListener { _, on -> Prefs.edit(this) { putBoolean(LiveStay.PREF_TEXT_RESCUE, on) } }
         hint(box, "डिफ़ॉल्ट बंद। चालू करने पर बातचीत के बीच text जाता है, जिससे Live का connection (1011) कट सकता है। अगली Live बातचीत से लागू।")
+        // नवंबर 2026 (Live जाँच): बिना रुके, बिना अटके बातचीत
+        switch(box, "कॉल-mode स्पीकर: पक्का echo-cancel, DK बोलते समय टोकते ही रुके", Prefs.bool(this, LiveSmooth.PREF_CALL_SPEAKER, false))
+            .setOnCheckedChangeListener { _, on -> Prefs.edit(this) { putBoolean(LiveSmooth.PREF_CALL_SPEAKER, on) } }
+        hint(box, "डिफ़ॉल्ट बंद। चालू करने पर DK लाइव फ़ोन को कॉल वाले तरीके पर speaker चलाता है - फ़ोन DK की अपनी आवाज़ माइक से हटा देता है, इसलिए आप बीच में बोलें तो DK करीब 0.2 सेकंड में रुकता है। कुछ फ़ोनों पर आवाज़ थोड़ी धीमी लग सकती है (तब call volume बढ़ाएँ)। अगली बार DK लाइव शुरू होने पर लागू।")
+        switch(box, "हल्के tools (तेज़ पहला जवाब)", Prefs.bool(this, LiveSmooth.PREF_SLIM_TOOLS, true))
+            .setOnCheckedChangeListener { _, on -> Prefs.edit(this) { putBoolean(LiveSmooth.PREF_SLIM_TOOLS, on) } }
+        hint(box, "डिफ़ॉल्ट चालू। रोज़ के काम (फ़ोन, खोज, WhatsApp, कॉल…) सीधे; बाकी (कोडिंग, वेबसाइट, गेम, सोशल…) एक dk_agent के पीछे - सारे काम पहले जैसे चलते हैं।")
+        switch(box, "स्मार्ट VAD: पंखा / TV / गाने को बात न माने", Prefs.bool(this, LiveSmooth.PREF_SMART_VAD, true))
+            .setOnCheckedChangeListener { _, on -> Prefs.edit(this) { putBoolean(LiveSmooth.PREF_SMART_VAD, on) } }
+        hint(box, "डिफ़ॉल्ट चालू। फ़ोन के अंदर (बिना इंटरनेट) इंसानी आवाज़ पहचानता है - शोर में भी बात समय पर शुरू और खत्म।")
+        switch(box, "caption न चले तो Live का अपना लिखा इस्तेमाल करो", Prefs.bool(this, LiveSmooth.PREF_HEARD_FALLBACK, true))
+            .setOnCheckedChangeListener { _, on -> Prefs.edit(this) { putBoolean(LiveSmooth.PREF_HEARD_FALLBACK, on) } }
+        hint(box, "डिफ़ॉल्ट चालू। कमज़ोर नेट पर लिखने वाला (caption) पीछे रह जाए तब भी DK समझकर तय करे कि आपकी बात खत्म हुई।")
         hint(box, "आवाज़ की keys (Gemini Live, बोलना, सुनना): सेटिंग्स → AI दिमाग → DK लाइव। अभी: " + scopeStatus(ApiScopes.LIVE))
     }
 

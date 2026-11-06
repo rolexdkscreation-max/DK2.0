@@ -29,9 +29,11 @@ object CallVoice {
      * DK की आवाज़ किस usage पर बजे.
      * कॉल (घंटी/बात) = accessibility (media mute हो जाता है); Bluetooth = पहले जैसा कॉल वाला; बाकी पहले जैसा media.
      */
-    fun usage(callActive: Boolean, bt: Boolean = false): Int = when {
+    fun usage(callActive: Boolean, bt: Boolean = false, callSpeaker: Boolean = false): Int = when {
         bt -> USAGE_VOICE_COMMUNICATION
         callActive -> USAGE_ASSISTANCE_ACCESSIBILITY
+        // नवंबर 2026 (Live जाँच #1): कॉल-mode स्पीकर = AEC को DK की आवाज़ का reference मिले
+        callSpeaker -> USAGE_VOICE_COMMUNICATION
         else -> USAGE_MEDIA
     }
 }

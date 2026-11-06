@@ -55,6 +55,12 @@ internal fun GeminiLive.openMic(): AudioRecord? {
 
 internal suspend fun GeminiLive.micLoop() = coroutineScope {
     var r = openMic() ?: throw Fatal("माइक नहीं खुला (कोई दूसरा ऐप माइक इस्तेमाल कर रहा है?)", recoverable = true)
+    // नवंबर 2026 (Live जाँच #3): स्मार्ट VAD - पंखा / TV / खटखट को बात नहीं माने, बात समय पर खत्म
+    if (vad == null && Prefs.bool(svc, LiveSmooth.PREF_SMART_VAD, true)) {
+        vad = com.dk.assistant.voice.SileroVad.open(svc)
+        log("स्मार्ट VAD (Silero, फ़ोन पर): " + if (vad != null) "चालू" else "नहीं खुला - पुराना RMS")
+    }
+    vad?.reset(); vadProb = -1f; duplex.resetSession(); turnState.reset(System.currentTimeMillis()); heardLiveLogged = false
     try {
         r.startRecording()
         if (r.recordingState != AudioRecord.RECORDSTATE_RECORDING) throw Fatal("माइक रिकॉर्डिंग शुरू नहीं हुई", recoverable = true)
@@ -135,6 +141,10 @@ internal suspend fun GeminiLive.micLoop() = coroutineScope {
             var sum = 0.0
             for (i in 0 until CHUNK_SAMPLES) { val s = buf[i].toInt(); sum += (s * s).toDouble() }
             val rms = sqrt(sum / CHUNK_SAMPLES)
+            // नवंबर 2026 (#3): इंसानी आवाज़ की संभावना (boost से पहले की असली आवाज़ पर)
+            val prob = vad?.feed(buf, CHUNK_SAMPLES) ?: -1f
+            vadProb = prob
+            if (duplex.tick(now)) log("कॉल-mode टोकना: 2 बार बिना शब्द रुका - इस बार पुराना (caption वाला) तरीका")
             // नवंबर 2026: सच में बज रहा हो तभी "DK बोल रहा" (Gemini TTS का टुकड़ा सिर्फ़ बन रहा हो तो आपकी आवाज़ जाए)
             val playing = isAudible()
             // dheemi awaaz tez (v3.7): DK chup ho tab hi - DK ki apni goonj ko tez nahi karna
@@ -146,6 +156,11 @@ internal suspend fun GeminiLive.micLoop() = coroutineScope {
             if (sum == 0.0) { if (++zeroRun == 75) log("माइक से 3 सेकंड से बिल्कुल आवाज़ नहीं (कोई दूसरा ऐप माइक ले रहा है?)") } else zeroRun = 0
             val chunk = bytes.copyOf()
             if (playing) lastPlayingAt = now
+            // नवंबर 2026 (Live जाँच #5): एक ही हालत, अटकने पर साफ़ log (इतिहास के साथ)
+            turnState.observe(LiveTurnState.derive(ready, playing, turnDet.inSpeech, toolJobs.isNotEmpty(),
+                generating || (turnActive && eosAt > 0 && now - eosAt < 20_000)), now)?.let { m ->
+                log(m); LatencyBoard.count("हालत अटकी: ${turnState.state.hi}")
+            }
             // v3.5+: HOLD (यूज़र का अगला सवाल सुन रहे) - DK का जवाब ख़त्म हो जाए तब भी सवाल पूरा होने तक इसी रास्ते
             if (playing || bargeGate.state == BargeGate.State.HOLD) {
                 // ---- DK bol raha hai: mic band NAHI, har 40ms suno. Par Gemini ko sirf PAKKE user shabd.
@@ -158,7 +173,7 @@ internal suspend fun GeminiLive.micLoop() = coroutineScope {
                     BargeGate.State.IDLE -> {
                         if (bargeDet.feed(rms, now, outLevel(now))) {
                             // SHAK: tez awaaz. DK ki awaaz halki (rokna nahi), caption model ko suno - shabd hain?
-                            bargeGate.suspect(now); barging = true; loudMs = 0L; overEchoMs = 0L
+                            bargeGate.suspect(now); barging = true; loudMs = 0L; overEchoMs = 0L; duplex.reset()
                             // मालिक (नवंबर 2026): DK की आवाज़ अपने-आप धीमी-तेज़ नहीं - शक के समय भी पूरी (रोकना पक्के शब्दों पर ही)
                             if (VolumeRule.AUTO_CHANGE) track?.let { try { it.setVolume(SpeakerBoost.SUSPECT_VOLUME) } catch (_: Exception) {} }
                             log("तेज़ आवाज़ (rms=${rms.toInt()}, गूँज=${bargeDet.echoLevel().toInt()}, शोर=${bargeDet.ambient.toInt()}) - यूज़र है? शब्द सुन रहा हूँ (DK की आवाज़ नहीं बदली)")
@@ -177,7 +192,12 @@ internal suspend fun GeminiLive.micLoop() = coroutineScope {
                         synchronized(bargeBuf) { bargeBuf.addLast(chunk); while (bargeBuf.size > 50) bargeBuf.removeFirst() }
                         capSend(chunk)
                         sendAudio(zeros, silent = true); gatedChunks++
-                        if (bargeGate.expired(now, captionOn(), loudMs, overEchoMs)) {
+                        // नवंबर 2026 (Live जाँच #1): कॉल-mode स्पीकर (पक्का AEC) + VAD = इंसानी आवाज़ 0.2s = तुरंत रुको
+                        val duplexOn = CallSpeakerRule.duplexOk(CallSpeaker.active, aecOn, duplex.disabled) && !Prefs.bargeHold(svc)
+                        if (duplexOn && duplex.feed(prob, overEchoMs >= 120, CHUNK_MS.toLong())) {
+                            duplex.onConfirm(now); duplexStops++
+                            confirmBarge("इंसानी आवाज़ - VAD ${"%.2f".format(prob)}, कॉल-mode")
+                        } else if (bargeGate.expired(now, captionOn(), loudMs, overEchoMs)) {
                             // shabd nahi aaye = shor/TV/log. DK ka jawab poori awaaz me chalta rahe
                             falseAlarms++
                             log("शब्द नहीं मिले - पीछे का शोर था, जवाब जारी (#$falseAlarms)")
@@ -219,21 +239,23 @@ internal suspend fun GeminiLive.micLoop() = coroutineScope {
                 // नवंबर 2026 (Smart turn): "बात खत्म" की चुप्पी तय नहीं - caption देखकर हर chunk पर (पूरा वाक्य 0.36s,
                 // "और / to / for…" पर 1.1s, caption पीछे हो तो 0.7s तक, आपकी आदत के ठहराव से थोड़ा ज़्यादा). Hybrid VAD:
                 // यही फ़ैसला audioStreamEnd भेजता है, server का silenceDurationMs सिर्फ़ बचाव ([SERVER_SILENCE_MS]).
-                val capHeard = turnDet.inSpeech && (caption?.textAt ?: 0L) >= turnDet.lastTalkAt
+                // नवंबर 2026 (Live जाँच #4): caption बंद/टूटा = Live का अपना लिखा (उसी connection से) - कमज़ोर नेट पर भी समझदार "बात खत्म"
+                val heard = heardNow(now)
+                val capHeard = turnDet.inSpeech && heard.at >= turnDet.lastTalkAt
                 turnDet.endNeedMs = if (turnDet.inSpeech && !guardHeld)
-                    TurnEnd.adaptiveEndMs(caption?.text().orEmpty(), caption?.textAt ?: 0L, turnDet.lastTalkAt,
-                        turnDet.speechMsNow, turnDet.typicalPauseMs, captionOn(), CLIENT_END_MS, now) else 0
-                var ev = turnDet.feed(rms, now)
+                    TurnEnd.adaptiveEndMs(heard.text, heard.at, turnDet.lastTalkAt,
+                        turnDet.speechMsNow, turnDet.typicalPauseMs, heard.on, CLIENT_END_MS, now) else 0
+                var ev = turnDet.feed(rms, now, prob)
                 // v3.66 (तेज़ी): वाक्य साफ़ पूरा + 0.36s चुप + caption 0.2s से नहीं बदला = अभी "बात खत्म" (0.55s इंतज़ार नहीं)
                 // नवंबर 2026: + caption आपकी आख़िरी आवाज़ के बाद बदला हो (पुराना caption "Kal meeting hai" पर "…to" से पहले न कटे)
-                if (ev == TurnDetector.Event.NONE && turnDet.inSpeech && turnDet.silentMs > 0 && !guardHeld && captionOn()) {
-                    val cap = caption?.text().orEmpty()
+                if (ev == TurnDetector.Event.NONE && turnDet.inSpeech && turnDet.silentMs > 0 && !guardHeld && heard.on) {
+                    val cap = heard.text
                     if (cap != capSeen) { capSeen = cap; capSeenAt = now }
                     if (turnDet.silentMs >= TurnEnd.EARLY_END_MS && turnDet.speechMsNow < TurnEnd.LONG_SPEECH_MS &&
                         now - capSeenAt >= 200 && capHeard && TurnEnd.earlyOk(cap) && turnDet.forceEnd()) {
                         ev = TurnDetector.Event.SPEECH_END; earlyEnds++; LatencyBoard.count("पूरा वाक्य: 0.36s पर बात खत्म")
                         if (earlyEnds <= 3 || earlyEnds % 20 == 0) log("वाक्य पूरा लगा - ${TurnEnd.EARLY_END_MS} ms चुप्पी पर ही बात खत्म (#$earlyEnds)")
-                    } else if (TurnEnd.noiseTail(now, turnDet.lastTalkAt, caption?.textAt ?: 0L, turnDet.endNeedMs, true) && turnDet.forceEnd()) {
+                    } else if (TurnEnd.noiseTail(now, turnDet.lastTalkAt, heard.at, turnDet.endNeedMs, true) && turnDet.forceEnd()) {
                         // नवंबर 2026: पंखा / TV की आवाज़ से "अभी भी बोल रहा" - पर आपकी आवाज़ और नए शब्द 1s से नहीं
                         ev = TurnDetector.Event.SPEECH_END; noiseEnds++; LatencyBoard.count("शोर के बीच बात खत्म पहचानी")
                         if (noiseEnds <= 3 || noiseEnds % 20 == 0) log("पीछे का शोर - आप ${now - turnDet.lastTalkAt} ms से चुप, caption में नए शब्द नहीं = बात खत्म (#$noiseEnds)")
@@ -375,4 +397,16 @@ internal fun GeminiLive.liveVoiceCmd(pcm: ByteArray) {
             svc.runVoiceCmd(hit, "Live")
         }
     }
+}
+
+/**
+ * नवंबर 2026 (Live जाँच #4): "बात खत्म" के फ़ैसले के लिए अभी तक का लिखा - caption चले तो वही, नहीं तो Live का अपना
+ * inputTranscription (सेटिंग [LiveSmooth.PREF_HEARD_FALLBACK], डिफ़ॉल्ट चालू).
+ */
+internal fun GeminiLive.heardNow(now: Long): HeardPick.Heard {
+    if (now - heardCfgAt > 3_000) { heardCfgAt = now; heardFallback = Prefs.bool(svc, LiveSmooth.PREF_HEARD_FALLBACK, true) }
+    val h = HeardPick.pick(captionOn(), caption?.text().orEmpty(), caption?.textAt ?: 0L,
+        heardFallback, liveHeard, liveHeardAt, speechStartAt, now)
+    if (h.src == "live" && !heardLiveLogged) { heardLiveLogged = true; log("caption नहीं चल रहा - बात खत्म का फ़ैसला Live के अपने लिखे से") }
+    return h
 }

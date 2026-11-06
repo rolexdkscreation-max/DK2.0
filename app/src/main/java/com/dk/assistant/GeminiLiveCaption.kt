@@ -55,6 +55,7 @@ internal fun GeminiLive.onCaption(t: String, final: Boolean) {
         log("वीडियो/गाने के बीच DK का नाम सुना (\"${t.take(40)}\") - यूज़र की बात, Gemini को भेज रहा हूँ")
     }
     lastAct = System.currentTimeMillis()
+    if (t.isNotBlank()) duplex.onWords()          // नवंबर 2026 (#1): VAD से रोका था और शब्द आए = सही रोका
     // नवंबर 2026: "फोन लॉक करो" / "DK फोन अनलॉक करो" का पक्का text आते ही - DK बोल रहा हो (जवाब रोके-सुने वाला
     // रास्ता) तब भी, बोलना-खत्म / Gemini के tool का इंतज़ार नहीं। DK की अपनी आवाज़ की गूँज = नहीं।
     if (final && !micMuted && ComputerSession.ask == null) {

@@ -45,6 +45,13 @@ object DkSettings {
             listOf("दोस्त वाला", "फ्रेंड मोड", "friend mode", "दोस्त मोड")),
         Item("opener", "ऐप खोलते ही DK खुद बात शुरू करे", "profile", "friend_opener", true,
             listOf("खुद बात शुरू", "अभिवादन", "greeting", "ग्रीटिंग", "हालचाल")),
+        // नवंबर 2026 (Live जाँच): बिना रुके बातचीत की सेटिंग्स - बोलकर भी बदल सकें
+        Item("call_speaker", "कॉल-mode स्पीकर (पक्का echo-cancel)", "voice", LiveSmooth.PREF_CALL_SPEAKER, false,
+            listOf("कॉल मोड स्पीकर", "कॉल-mode", "call mode", "echo cancel", "इको कैंसल", "गूँज हटाओ")),
+        Item("smart_vad", "स्मार्ट VAD (शोर को बात न माने)", "voice", LiveSmooth.PREF_SMART_VAD, true,
+            listOf("स्मार्ट vad", "smart vad", "स्मार्ट वैड", "शोर को बात", "vad")),
+        Item("slim_tools", "DK लाइव के हल्के tools", "voice", LiveSmooth.PREF_SLIM_TOOLS, true,
+            listOf("हल्के tools", "हल्के टूल", "slim tools", "लाइट टूल")),
         Item("glow", "सुनते/बोलते समय किनारे की चमक", "orb", "edge_glow", true,
             listOf("चमक", "glow", "ग्लो", "किनारे की चमक", "edge")),
         Item("memory", "लोकल याददाश्त", "profile", "local_memory_on", true,
