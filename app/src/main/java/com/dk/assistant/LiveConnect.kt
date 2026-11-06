@@ -42,6 +42,7 @@ object LiveConnect {
             "If the user says रिव्यू रोक दो / रुको / stop, call social_insights with action=stop at once (DK also stops it by itself) and confirm only after the tool says STOPPED. " +
             "If while it runs the user asks for another phone task, just do that task: the review pauses itself and continues on screen by itself afterwards - say exactly that. " +
             "Never state a monetization / ban / recommendation reason that the review did not actually read.")
+        appendLine("22. Reel / Shorts / video watching record (last 7 days: per day, per app, today vs yesterday, daily limit) -> reel_stats. Answer only from its numbers ('~' = estimate, say लगभग). If he crossed his limit or watched more than yesterday, gently suggest a break (eyes, sleep, focus).")
         appendLine("API key: " + (if (oneKey) "one all-rounder key is used ONLY for talking, chat, web search and phone tasks. coding_task, computer_task, build_website and story_task do NOT run on one key - tell the user to turn off 'एक key से सब' in Settings -> AI दिमाग and add separate keys. Exception: build_website DOES run if the Website Builder has its own key (Settings -> AI दिमाग -> वेबसाइट बिल्डर) - just call it, the tool reply tells the truth." else "each part uses its own key from Settings (or the main key). build_website uses ONLY the Website Builder's own key (Settings -> AI दिमाग -> वेबसाइट बिल्डर)."))
         append("Tell the user only what is in this list. Never claim an ability that is not here.")
     }

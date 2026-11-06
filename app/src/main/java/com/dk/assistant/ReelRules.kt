@@ -39,6 +39,19 @@ object ReelRules {
         return rail.size >= 3 && (rail.maxOf { it.y } - rail.minOf { it.y }) > 0.12f
     }
 
+    /*
+     * नवंबर 2026 (मालिक: "रील या वीडियो, कहीं भी देखें, गिनती हो"): YouTube का आम (लंबा) वीडियो भी - वीडियो वाला पेज
+     * (player का view id) और पहचान = player के नीचे का शीर्षक / चैनल. वही वीडियो चलता रहा = +1 नहीं.
+     */
+    private val YT_WATCH = listOf("watch_player", "player_view", "watch_while", "player_fragment")
+
+    /** YouTube का आम वीडियो वाला पेज (शॉर्ट्स नहीं) */
+    fun watchMode(app: App, nodes: List<Node>): Boolean = app == App.YOUTUBE && !reelMode(app, nodes) &&
+        nodes.any { n -> val id = n.id.substringAfter(":id/", n.id).lowercase(); YT_WATCH.any { id.startsWith(it) } }
+
+    /** आम वीडियो की पहचान: player के नीचे का लिखा (शीर्षक, चैनल) */
+    fun watchSignature(nodes: List<Node>): Set<String> = signatureIn(nodes, 0.22f..0.62f, 1.01f)
+
     private val UI_WORDS = Regex(
         "(?i)^(follow|following|subscribe|subscribed|like|likes|comment|comments|share|send|remix|more|less|see more|…|\\.\\.\\.|" +
             "original audio|sponsored|ad|reels|shorts|home|search|profile|create|सब्सक्राइब|फ़ॉलो|फॉलो|और देखें|और|शेयर|कमेंट|लाइक)$"
@@ -46,11 +59,13 @@ object ReelRules {
     private val COUNTER = Regex("^[\\d.,\\s]+[KkMmBb]?$|^\\d+[:.]\\d+$|^[\\d.,]+\\s*(K|M|हज़ार|लाख|views|व्यूज़|likes|comments)?$", RegexOption.IGNORE_CASE)
 
     /** अभी कौन सी रील: नीचे-बाएँ का लिखा (नाम, caption, गाना) - गिनती वाले नंबर / बटन के शब्द नहीं */
-    fun signature(nodes: List<Node>): Set<String> = nodes.asSequence()
-        .filter { it.y in 0.50f..0.97f && it.x < 0.80f }
+    fun signature(nodes: List<Node>): Set<String> = signatureIn(nodes, 0.50f..0.97f, 0.80f)
+
+    private fun signatureIn(nodes: List<Node>, ys: ClosedFloatingPointRange<Float>, maxX: Float): Set<String> = nodes.asSequence()
+        .filter { it.y in ys && it.x < maxX }
         .flatMap { sequenceOf(it.text, it.desc) }
         .map { it.replace(Regex("\\s+"), " ").trim().lowercase().take(60) }
-        .filter { it.length >= 3 && !COUNTER.matches(it) && !UI_WORDS.matches(it) && !ACTION.matches(it) }
+        .filter { it.length >= 3 && !COUNTER.matches(it) && !UI_WORDS.matches(it) && !ACTION.matches(it) && it.count(Char::isDigit) * 5 < it.length * 2 }   // "3:45 / 10:20" जैसा चलता समय नहीं
         .toSet()
 
     /** दो पहचान एक ही रील की? (आधे से ज़्यादा लिखा एक जैसा) */

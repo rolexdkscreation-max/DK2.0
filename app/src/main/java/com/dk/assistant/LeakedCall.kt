@@ -18,7 +18,7 @@ object LeakedCall {
         "computer_task", "build_website", "connector_task", "whatsapp_task", "forget_memory", "remember_fact",
         "screen_share", "teacher_mode", "dk_settings", "dk_inspector", "current_time", "coding_task", "notifications", "dk_features",
         "task_status", "phone_task", "phone_call", "story_task", "web_search", "deep_think", "local_info", "camera", "image_task",
-        "ai_app_prompt", "shop_search", "website_action", "make_game", "social_insights"
+        "ai_app_prompt", "shop_search", "website_action", "make_game", "social_insights", "reel_stats"
     )
 
     /** बिना नाम वाला argument (`phone_task{YouTube खोलो}`) किस key में जाए */
@@ -32,7 +32,7 @@ object LeakedCall {
     )
 
     /** "phone_task" के अलावा जिन tools को बिना किसी argument के भी चलाया जा सकता है */
-    private val NO_ARG_OK = setOf("current_time", "local_info", "task_status", "dk_features", "notifications")
+    private val NO_ARG_OK = setOf("current_time", "local_info", "task_status", "dk_features", "notifications", "reel_stats")
 
     data class Call(val name: String, val args: Map<String, String>)
 

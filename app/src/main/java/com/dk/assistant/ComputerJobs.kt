@@ -146,7 +146,10 @@ class ComputerBoot : BroadcastReceiver() {
     override fun onReceive(c: Context, i: Intent) {
         when (i.action) {
             Intent.ACTION_BOOT_COMPLETED, Intent.ACTION_MY_PACKAGE_REPLACED, "android.intent.action.QUICKBOOT_POWERON" ->
+            {
                 try { val n = ComputerJobs.rearm(c.applicationContext); DKLog.d("DK कंप्यूटर: $n तय काम फिर से लगाए") } catch (_: Exception) {}
+                ReelTimeService.start(c.applicationContext)   // नवंबर 2026: रील हिसाब (Accessibility के बिना भी)
+            }
         }
     }
 }

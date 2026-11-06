@@ -299,6 +299,12 @@ internal fun GeminiLive.setupJson(m: String, txt: Boolean = connText, resume: Bo
             .put("parameters", JSONObject().put("type", "OBJECT")
                 .put("properties", JSONObject().put("question", JSONObject().put("type", "STRING").put("description", "The user's question, his words")))
                 .put("required", JSONArray().put("question"))))
+        // नवंबर 2026: रील / वीडियो देखने का 7 दिन का हिसाब (फ़ोन में - आज, कल, हर दिन, लिमिट)
+        .put(JSONObject().put("name", "reel_stats")
+            .put("description", "The user's own reel / Shorts / video WATCHING record on this phone (Instagram, YouTube, Facebook) for the last 7 days: reels per day per app, minutes, today vs yesterday, the daily limit. " +
+                "Call it when the user asks 'आज कितनी रील देखीं', 'कल कितनी देखी थी', 'इस हफ़्ते का हिसाब', 'मैं ज़्यादा रील देख रहा हूँ?', 'रील लिमिट कितनी है'. Answer only from its numbers, in short Hindi; say 'लगभग' for numbers marked '~'. " +
+                "If he watched more than his limit or more than yesterday, gently tell him to take a break (eyes, sleep, focus). The limit itself is set in DK Settings -> रील गिनती और लिमिट.")
+            .put("parameters", JSONObject().put("type", "OBJECT").put("properties", JSONObject())))
         .put(JSONObject().put("name", "local_info")
             .put("description", "Get the user's CURRENT location (fresh GPS/network, checked right now - never an old saved one): street, area, city, nearby places (temple, market, hospital, petrol pump, school...) and live weather. Call it when the user asks where he is (\"मैं अभी कहाँ खड़ा हूँ\", \"मैं कहाँ हूँ\"), what is around him (आसपास), about weather, his area, nearby events/news/traffic/pandals/melas, or anything 'here/मेरे शहर'. While it runs, say only \"रुकिए सर, देखती हूँ...\". Then answer in short human sentences like \"सर, आप अभी ... के पास हैं। आपके आसपास ... है।\" For local news or events, then use Google Search with the city name.")
             .put("parameters", JSONObject().put("type", "OBJECT").put("properties", JSONObject())))
