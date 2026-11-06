@@ -12,6 +12,9 @@ import java.util.concurrent.CopyOnWriteArrayList
 object TaskStatus {
     const val PC = "pc"
     const val CODER = "coder"
+    /** नवंबर 2026: ये काम फ़ोन की स्क्रीन पर, मालिक के सामने चलते हैं (सोशल रिव्यू) - इन्हें कभी "background" न कहा जाए */
+    val ON_SCREEN_KEYS = setOf("insights")
+    fun onScreen(j: Job) = j.key in ON_SCREEN_KEYS
 
     enum class State(val hi: String, val en: String) {
         RUNNING("चल रहा है", "RUNNING"),
@@ -89,10 +92,11 @@ object TaskStatus {
     /** DK लाइव के task_status tool का जवाब - सिर्फ़ दर्ज सच */
     fun summary(now: Long = clock()): String {
         val list = all().filter { it.active || now - it.ended < 60 * 60_000L }
-        if (list.isEmpty()) return "No background task (DK Computer / coding team) has been started recently. Tell the user honestly that nothing is running."
+        if (list.isEmpty()) return "No background task (DK Computer / coding team) and no on-screen task (social media review) has been started recently. Tell the user honestly that nothing is running."
         return list.joinToString("\n") { j ->
             // हालत सबसे पहले; काम का text साफ़ "निर्देश" (हालत नहीं) - v3.39: model निर्देश को ही नतीजा समझ लेता था
             val head = "STATE: ${j.state.en} - ${j.whoEn}" + (if (j.active) " (NOT DONE YET)" else "") +
+                (if (onScreen(j) && j.active) " - it runs ON THE PHONE SCREEN in front of the user (never call it background)" else "") +
                 " - the request it was given (an instruction, NOT a status): \"${j.task}\""
             when {
                 j.state == State.WAITING -> "$head; waiting for the user since ${ago(now - j.lastAt)}; it asked: \"${j.last.ifBlank { "-" }}\""
@@ -109,7 +113,7 @@ object TaskStatus {
             "SYSTEM NOTE: ${j.whoEn} is NOT done - it is WAITING FOR THE USER's approval/answer. It asked: \"${j.result.ifBlank { j.last }.ifBlank { "-" }}\". " +
                 "Tell the user briefly in the reply language what it understood and that it needs their \"हाँ\" (or a correction) to start. " +
                 "Do NOT say the work is complete, and do not say any APK is ready."
-        else "SYSTEM NOTE: the background task given to ${j.whoEn} (\"${j.task}\") has now really ended - state: ${j.state.en}. " +
+        else "SYSTEM NOTE: the ${if (onScreen(j)) "on-screen task (done in front of the user)" else "background task"} given to ${j.whoEn} (\"${j.task}\") has now really ended - state: ${j.state.en}. " +
             "Result: \"${j.result.ifBlank { "-" }}\". Tell the user this briefly in the reply language. " +
             (if (j.state == State.DONE) "" else "Do NOT say the work is complete. ") +
             "Never say a PR is merged or an APK is ready/released unless the result says exactly that. Do not invent details."

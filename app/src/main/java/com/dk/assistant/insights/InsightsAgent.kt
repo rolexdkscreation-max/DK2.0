@@ -61,6 +61,16 @@ object InsightsAgent {
     @Volatile private var job: Job? = null
     @Volatile private var spokenForLive: String? = null
     val busy get() = job?.isActive == true
+    /** नवंबर 2026 (सच की जाँच): इस रिव्यू में कौन-सा ऐप सच में स्क्रीन पर खुला (null = अभी नहीं), फ़ोन लॉक पर रुका है?, कब शुरू हुआ */
+    @Volatile var openedApp: String? = null
+        private set
+    @Volatile var lockedNow: Boolean = false
+        private set
+    @Volatile var startedAt: Long = 0L
+        private set
+    @Volatile private var apiOnlyRun = false
+    @Volatile private var lastEnd: Pair<Boolean, String>? = null
+    @Volatile private var lastProblem = ""
 
     /** DK लाइव को काम खत्म होने पर जाने वाला नोट (पूरा सार, ताकि वह बोलकर बताए) */
     fun liveNote(j: TaskStatus.Job): String? {
@@ -73,19 +83,32 @@ object InsightsAgent {
 
     fun stop(): Boolean { val j = job; if (j?.isActive == true) { j.cancel(); return true }; return false }
 
-    /** DK लाइव का social_insights tool */
-    fun liveTool(svc: DKAccessibilityService, args: org.json.JSONObject): String {
-        if (args.optString("action").equals("stop", true)) return if (stop()) "STOPPED: the social review was stopped. Tell the user." else "Nothing was running."
+    /**
+     * DK लाइव का social_insights tool.
+     * नवंबर 2026 (मालिक: "झूठ न बोले"): पहले बिना जाँचे हमेशा "STARTED ON SCREEN" लौटता था. अब शुरू करके कुछ सेकंड देखता है
+     * कि ऐप सच में स्क्रीन पर खुला या नहीं (फ़ोन लॉक / ऐप नहीं / खुला नहीं) - और DK लाइव को वही सच ([InsightsTruth.toolReply]).
+     */
+    suspend fun liveTool(svc: DKAccessibilityService, args: org.json.JSONObject): String {
+        if (args.optString("action").equals("stop", true)) return if (stop()) "STOPPED: the social review was stopped. Tell the user." else "Nothing was running. Tell the user honestly that no review was running."
+        if (busy) return InsightsTruth.toolReply(InsightsTruth.Proof.BUSY, "", openedApp.orEmpty(), TaskStatus.get(KEY)?.last.orEmpty())
         val arr = args.optJSONArray("platforms")
         val ps = (0 until (arr?.length() ?: 0)).mapNotNull { Platform.of(arr?.optString(it)) }.distinct()
         val words = args.optString("request").trim()
         val req = InsightsVoice.parse(words)?.let { r -> if (ps.isEmpty()) r else r.copy(platforms = ps) }
             ?: InsightsVoice.Request(ps.ifEmpty { Platform.values().toList() }, words.ifBlank { "सोशल रिव्यू" })
         val msg = start(svc, req, null)
-        return "STARTED ON SCREEN: DK is now opening the app in front of the user - he can watch every step on the phone screen (a strip at the top shows what DK is doing). " +
-            "No connector is needed. Say this to the user in short: \"$msg\". Never say it is happening in the background or hidden. " +
-            "Do NOT give any numbers now - wait for the SYSTEM NOTE with the real result."
+        // सबूत का इंतज़ार: ऐप खुला / API चला / फ़ोन लॉक / काम खत्म (गलती) - 14 सेकंड तक
+        val until = System.currentTimeMillis() + PROOF_WAIT_MS
+        while (System.currentTimeMillis() < until && openedApp == null && !apiOnlyRun && busy) kotlinx.coroutines.delay(300)
+        val end = lastEnd
+        val why = lastProblem.ifBlank { end?.second.orEmpty() }
+        val proof = InsightsTruth.decide(openedApp != null, apiOnlyRun && busy, lockedNow, !busy && end != null, end?.first == true, why)
+        val step = if (busy) TaskStatus.get(KEY)?.last.orEmpty() else why
+        DKLog.d("सोशल रिव्यू सच-जाँच: $proof (${openedApp ?: "-"}) $step")
+        // "STARTED ON SCREEN" सिर्फ़ तब जब ऐप सच में खुला. No connector is needed (स्क्रीन वाला तरीका अकेला काफ़ी).
+        return InsightsTruth.toolReply(proof, msg, openedApp.orEmpty(), step)
     }
+    private const val PROOF_WAIT_MS = 14_000L
 
     /**
      * काम शुरू - तुरंत लौटता है; काम यूज़र के सामने स्क्रीन पर होता है (ऊपर [com.dk.assistant.WorkAwake] की पट्टी, स्क्रीन जगी). [speak] = DK लाइव बंद हो तो नतीजा बोलने के लिए (null = सिर्फ़ चैट/लाइव).
@@ -93,7 +116,8 @@ object InsightsAgent {
     fun start(svc: DKAccessibilityService, req: InsightsVoice.Request, speak: (suspend (String) -> Unit)?): String {
         if (busy) return "सोशल रिव्यू पहले से चल रहा है - पूरा होते ही बताऊँगी।"
         val names = req.platforms.joinToString(", ") { it.hi }
-        TaskStatus.start(KEY, "सोशल रिव्यू", "DK social review", req.text)
+        TaskStatus.start(KEY, "सोशल रिव्यू", "DK social review (on screen)", req.text)
+        openedApp = null; lockedNow = false; apiOnlyRun = false; lastEnd = null; lastProblem = ""; startedAt = System.currentTimeMillis()
         job = svc.scope.launch(Dispatchers.Default) {
             var state = TaskStatus.State.NOT_DONE
             var short = ""
@@ -117,6 +141,8 @@ object InsightsAgent {
                 DKState.replyFailed(short)
                 if (!DKState.live) speak?.invoke(short)
             } finally {
+                lastEnd = (state == TaskStatus.State.DONE) to short
+                lockedNow = false
                 TaskStatus.end(KEY, state, short)
             }
         }
@@ -132,12 +158,14 @@ object InsightsAgent {
         val driver = AccessibilityScreenDriver(svc)
         val collector = ScreenCollector(
             driver = driver,
-            openApp = { pkg -> openApp(svc, pkg) },
+            openApp = { pkg -> openApp(svc, pkg).also { ok -> if (ok) openedApp = Platform.values().firstOrNull { pkg in it.pkgs }?.hi ?: pkg } },
             installed = { pkg -> try { svc.packageManager.getLaunchIntentForPackage(pkg) != null } catch (_: Exception) { false } },
             brain = { prompt -> stepBrain(svc, prompt) },
             log = { DKLog.d(it) },
             cancelled = { job?.isCancelled == true },
             progress = { TaskStatus.step(KEY, it); DKState.hint(it) },
+            // नवंबर 2026: जहाँ DK दबा रहा है, वहाँ स्क्रीन पर गोला (मालिक देखे "कहाँ")
+            mark = { x, y -> com.dk.assistant.WorkAwake.mark(x, y) },
         )
         var usedScreen = false
         for (p in req.platforms) {
@@ -145,6 +173,7 @@ object InsightsAgent {
             var d = PlatformData(p)
             if (m != Mode.SCREEN && apiConnected(c, p)) {
                 TaskStatus.step(KEY, "${p.hi}: API से आँकड़े ला रही हूँ")
+                if (m == Mode.API) apiOnlyRun = true
                 d = d.merge(withContext(Dispatchers.IO) {
                     when (p) {
                         Platform.YOUTUBE -> ConnectorRunner.youtubeInsights(c)
@@ -188,6 +217,7 @@ object InsightsAgent {
         if (report.isBlank()) report = InsightsReport.fallback(all, analyses, trends)
         if (spoken.isBlank()) spoken = InsightsReport.fallbackSpoken(all, analyses)
         val problems = all.flatMap { d -> d.problems.map { "${d.platform.hi}: $it" } }
+        lastProblem = problems.joinToString("; ")
         if (problems.isNotEmpty()) report += "\n\n---\n**कहाँ दिक्कत आई:**\n" + problems.joinToString("\n") { "- $it" }
         val src = all.joinToString("; ") { "${it.platform.en}: ${it.sources.joinToString(" + ").ifBlank { "कुछ नहीं" }}" }
         report += "\n\n_आँकड़े कहाँ से: ${src}_"
@@ -231,7 +261,15 @@ object InsightsAgent {
         if (pm?.isInteractive == true && km?.isKeyguardLocked != true) return
         TaskStatus.step(KEY, "स्क्रीन जगा रही हूँ")
         try { DKLog.d("सोशल रिव्यू: " + svc.unlock()) } catch (e: Exception) { DKLog.d("सोशल रिव्यू: स्क्रीन नहीं जगी ${e.message}") }
-        if (km?.isKeyguardLocked == true) TaskStatus.step(KEY, "फ़ोन लॉक है - कृपया अनलॉक करें, फिर मैं आगे बढ़ूँगी")
+        if (km?.isKeyguardLocked == true) {
+            // नवंबर 2026: लॉक पर ऐप खोलने का दिखावा नहीं - मालिक के अनलॉक करने तक (45 सेकंड) रुको, पट्टी पर साफ़ लिखा
+            lockedNow = true
+            TaskStatus.step(KEY, "फ़ोन लॉक है - कृपया अनलॉक करें, फिर मैं आपके सामने ऐप खोलूँगी")
+            val until = System.currentTimeMillis() + 45_000
+            while (km?.isKeyguardLocked == true && System.currentTimeMillis() < until && job?.isCancelled != true) kotlinx.coroutines.delay(500)
+            lockedNow = false
+            if (km?.isKeyguardLocked != true) TaskStatus.step(KEY, "फ़ोन खुल गया - अब ऐप खोल रही हूँ")
+        }
     }
 
     private suspend fun stepBrain(svc: DKAccessibilityService, prompt: String): String? {

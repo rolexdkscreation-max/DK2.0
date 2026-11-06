@@ -199,7 +199,7 @@ internal fun GeminiLive.setupJson(m: String, txt: Boolean = connText, resume: Bo
             .put("description", "Full REVIEW of the user's own Instagram / Facebook / YouTube account: DK opens the app's dashboard / YouTube Studio on the screen in front of the user and reads every reel/video screen (read-only), plus the official API if a connector happens to be connected, " +
                 "finds views per reel/video, why reach is falling, what works, the latest 3-4 reels, trending topics and how to get more views, then makes a full report. " +
                 "Use for 'इंस्टाग्राम का रिव्यू करो', 'मेरी रील पर कितने व्यूज़ आए', 'रीच क्यों गिर रही है', 'यूट्यूब स्टूडियो चेक करो', 'तीनों का एनालिसिस'. Not for posting (social_media_task). " +
-                "NO connector is needed (the screen method works alone). It runs ON THE SCREEN in front of the user for a few minutes - never call it background or hidden: say the returned line, then wait - you get a SYSTEM NOTE with the real summary; never invent numbers before that. action=stop stops it.")
+                "NO connector is needed (the screen method works alone). ALWAYS call this tool before saying you are reviewing - never say \"हाँ, कर रहा हूँ\" without calling it. It runs ON THE SCREEN in front of the user for a few minutes - never call it background or hidden: say the returned line, then wait - you get a SYSTEM NOTE with the real summary; never invent numbers before that. action=stop stops it.")
             .put("parameters", JSONObject().put("type", "OBJECT")
                 .put("properties", JSONObject()
                     .put("platforms", JSONObject().put("type", "ARRAY").put("items", JSONObject().put("type", "STRING").put("enum", JSONArray().put("instagram").put("facebook").put("youtube")))
@@ -259,7 +259,7 @@ internal fun GeminiLive.setupJson(m: String, txt: Boolean = connText, resume: Bo
                     .put("task_id", JSONObject().put("type", "STRING")))
                 .put("required", JSONArray().put("command"))))
         .put(JSONObject().put("name", "task_status")
-            .put("description", "Get the REAL current status of background work given to DK Computer or the coding team (state, real steps done, latest step, result). Call it whenever the user asks how far a task has got / is it done (काम कहाँ तक पहुँचा, हुआ या नहीं). Tell ONLY what it returns - never guess progress or percentages.")
+            .put("description", "Get the REAL current status of background work given to DK Computer or the coding team, and of the social media review running on the screen (state, real steps done, latest step, result). Call it whenever the user asks how far a task has got / is it done (काम कहाँ तक पहुँचा, हुआ या नहीं). Tell ONLY what it returns - never guess progress or percentages.")
             .put("parameters", JSONObject().put("type", "OBJECT").put("properties", JSONObject())))
         .put(JSONObject().put("name", "phone_call")
             .put("description", "Handle the phone call that is ringing now (or is in progress) - ONLY after the user told you what to do. action: answer = pick up; answer_speaker = pick up and put it on loudspeaker; reject = cut / decline / hang up; speaker_on / speaker_off during a call; who = who is calling. Never answer or reject a call on your own.")
