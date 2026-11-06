@@ -82,7 +82,71 @@ object InsightsAgent {
             "Then say that the full report with every reel/video is in the DK chat and in Download/DK Reports."
     }
 
-    fun stop(): Boolean { val j = job; if (j?.isActive == true) { j.cancel(); return true }; return false }
+    fun stop(): Boolean {
+        val j = job
+        if (j?.isActive == true) {
+            j.cancel()
+            // नवंबर 2026: AI की चलती कॉल भी अभी काटो - वरना रोकने के बाद भी 25 सेकंड तक कदम चलता रहता
+            try { liveCall?.cancel() } catch (_: Exception) {}
+            holds.set(0)
+            stoppedAt = System.currentTimeMillis()
+            return true
+        }
+        return false
+    }
+    @Volatile private var stoppedAt = 0L
+    /** अभी-अभी (5 सेकंड में) रोका गया - "रिव्यू रोक दो" का जवाब देने के लिए (रोकने वाला पहले ही रोक चुका हो) */
+    fun justStopped() = System.currentTimeMillis() - stoppedAt < 5_000
+    @Volatile private var liveCall: okhttp3.Call? = null
+
+    /**
+     * नवंबर 2026 (मालिक: "रिव्यू चल रहा हो और दूसरा काम बोलूँ तो वह भी करे, रिव्यू पीछे होकर फिर अपने-आप चालू"):
+     * स्क्रीन एक है - दोनों एक साथ दबाते तो एक-दूसरे का काम बिगाड़ते (रिव्यू "दूसरा ऐप" देखकर back दबा देता था).
+     * अब: दूसरा स्क्रीन वाला काम चले = रिव्यू वहीं रुककर इंतज़ार ([ScreenCollector] का paused), वह खत्म = ऐप फिर खोलकर अपने-आप आगे.
+     */
+    private val holds = java.util.concurrent.atomic.AtomicInteger()
+    private val SCREEN_TOOLS = setOf("phone_task", "phone_call", "whatsapp_task", "social_media_task", "image_task", "ai_app_prompt",
+        "shop_search", "notification_reply", "website_action", "camera", "screen_share")
+    const val HOLD_NOTE = " (NOTE: DK's social review paused itself while this task used the screen and now continues by itself on screen. " +
+        "Tell the user this honestly in one short line - never say both ran on the screen at the same time.)"
+
+    /** DK लाइव: यह tool स्क्रीन चलाएगा और रिव्यू चल रहा है = रिव्यू रोको (true = रोका, बाद में [releaseHold]) */
+    fun holdFor(tool: String, args: org.json.JSONObject): Boolean {
+        if (!busy || tool !in SCREEN_TOOLS || InsightsVoice.isStop(args.optString("request"))) return false
+        holds.incrementAndGet()
+        DKLog.d("सोशल रिव्यू: \"$tool\" स्क्रीन पर चलेगा - रिव्यू तब तक रुका")
+        return true
+    }
+    fun releaseHold() { if (holds.decrementAndGet() < 0) holds.set(0) }
+
+    /** कोई और काम स्क्रीन चला रहा है? (DK लाइव का tool, DK का आम काम, सोशल/WhatsApp एजेंट) */
+    private fun othersOnScreen(svc: DKAccessibilityService): Boolean {
+        if (holds.get() > 0) return true
+        if (try { com.dk.assistant.agent.android.SocialAgent.busy() } catch (_: Exception) { false }) return true
+        val a = try { svc.agent } catch (_: Exception) { return false }
+        val g = a.currentGoal ?: return false
+        return a.isBusy && InsightsVoice.parse(g) == null && !InsightsVoice.isStop(g)
+    }
+
+    /** "रिव्यू रोक दो / रुको / stop" - यूज़र ने बोला या लिखा (लाइव या आम DK), उसी पल रोको */
+    private fun watchStop(svc: DKAccessibilityService) {
+        val since = DKState.lastUserAt
+        svc.scope.launch(Dispatchers.Default) {
+            var seenAt = since
+            while (busy) {
+                kotlinx.coroutines.delay(250)
+                val at = DKState.lastUserAt
+                if (at == seenAt) continue
+                seenAt = at
+                val u = DKState.lastUser
+                if (InsightsVoice.isStop(u)) {
+                    DKLog.d("सोशल रिव्यू: मालिक ने रोकने को कहा (\"${u.take(40)}\") - रोक दिया")
+                    stop()
+                    break
+                }
+            }
+        }
+    }
 
     /**
      * DK लाइव का social_insights tool.
@@ -90,7 +154,7 @@ object InsightsAgent {
      * कि ऐप सच में स्क्रीन पर खुला या नहीं (फ़ोन लॉक / ऐप नहीं / खुला नहीं) - और DK लाइव को वही सच ([InsightsTruth.toolReply]).
      */
     suspend fun liveTool(svc: DKAccessibilityService, args: org.json.JSONObject): String {
-        if (args.optString("action").equals("stop", true)) return if (stop()) "STOPPED: the social review was stopped. Tell the user." else "Nothing was running. Tell the user honestly that no review was running."
+        if (args.optString("action").equals("stop", true)) return if (stop() || justStopped()) "STOPPED: the social review was stopped. Tell the user." else "Nothing was running. Tell the user honestly that no review was running."
         if (busy) return InsightsTruth.toolReply(InsightsTruth.Proof.BUSY, "", openedApp.orEmpty(), TaskStatus.get(KEY)?.last.orEmpty())
         val arr = args.optJSONArray("platforms")
         val ps = (0 until (arr?.length() ?: 0)).mapNotNull { Platform.of(arr?.optString(it)) }.distinct()
@@ -144,9 +208,11 @@ object InsightsAgent {
             } finally {
                 lastEnd = (state == TaskStatus.State.DONE) to short
                 lockedNow = false
+                holds.set(0)
                 TaskStatus.end(KEY, state, short)
             }
         }
+        watchStop(svc)
         return "ठीक है, $names का पूरा रिव्यू अभी आपके सामने करती हूँ। मैं ऐप और उसका डैशबोर्ड खोलकर हर ${req.platforms.first().itemHi} के आँकड़े देखूँगी - " +
             "स्क्रीन पर देखते रहिए, ऊपर पट्टी में हर कदम दिखेगा। कुछ मिनट लगेंगे, बीच में फ़ोन न छुएँ। पूरा होते ही बताऊँगी।"
     }
@@ -167,6 +233,7 @@ object InsightsAgent {
             progress = { TaskStatus.step(KEY, it); DKState.hint(it) },
             // नवंबर 2026: जहाँ DK दबा रहा है, वहाँ स्क्रीन पर गोला (मालिक देखे "कहाँ")
             mark = { x, y -> com.dk.assistant.WorkAwake.mark(x, y) },
+            paused = { othersOnScreen(svc) },
         )
         var usedScreen = false
         // नवंबर 2026 (फटाफट): ट्रेंड की इंटरनेट खोज पहले प्लेटफ़ॉर्म के आँकड़े आते ही साथ-साथ (पहले सबसे आख़िर में अकेले, 45 सेकंड तक)
@@ -297,7 +364,7 @@ object InsightsAgent {
 
     private suspend fun reportBrain(svc: DKAccessibilityService, prompt: String): String? {
         geminiKey(svc)?.let { key ->
-            gemini(key, prompt, null, json = false, maxTokens = 6144, models = (GeminiModels.CODER_CHAIN + GeminiModels.LIGHT_CHAIN).distinct())?.let { return it }
+            gemini(key, prompt, null, json = false, maxTokens = 8192, models = (GeminiModels.CODER_CHAIN + GeminiModels.LIGHT_CHAIN).distinct())?.let { return it }
         }
         return try { BrainManager(svc).teach("You write clear Hindi social media analytics reports.", prompt, null) } catch (e: Exception) { DKLog.d("रिपोर्ट AI: ${e.message?.take(80)}"); null }
     }
@@ -325,7 +392,8 @@ object InsightsAgent {
                 val req = Request.Builder().url("https://generativelanguage.googleapis.com/v1beta/models/$m:generateContent")
                     .header("x-goog-api-key", key).post(body.toString().toRequestBody("application/json".toMediaType())).build()
                 var rejected = false
-                val txt = client.newCall(req).execute().use { r ->
+                val call = client.newCall(req).also { liveCall = it }
+                val txt = call.execute().use { r ->
                     if (!r.isSuccessful) {
                         val err = r.body?.string().orEmpty()
                         if (GeminiModels.thinkingRejected(r.code, err, gc.has("thinkingConfig"))) { noThink += m; rejected = true }

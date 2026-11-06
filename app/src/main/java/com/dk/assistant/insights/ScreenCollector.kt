@@ -33,6 +33,8 @@ class ScreenCollector(
     private val progress: (String) -> Unit = {},
     /** नवंबर 2026: दबाने से ठीक पहले उस जगह स्क्रीन पर निशान (x, y) - मालिक देखे DK कहाँ दबा रहा है */
     private val mark: (Int, Int) -> Unit = { _, _ -> },
+    /** नवंबर 2026: मालिक ने बीच में दूसरा काम कहा (वह स्क्रीन चला रहा) = रिव्यू रुककर इंतज़ार, फिर अपने-आप आगे */
+    private val paused: () -> Boolean = { false },
 ) {
     /** कितनी रील/वीडियो के अंदर जाकर पूरी Insights देखें (मालिक: "रिसेंटली में तीन-चार") */
     var detailTarget = 4
@@ -54,6 +56,7 @@ class ScreenCollector(
         var same = 0
         var nulls = 0
         for (step in 1..maxSteps) {
+            holdOn(p, pkg)
             if (cancelled()) { data = data.copy(problems = data.problems + "बीच में रोका गया"); break }
             val obs = driver.capture()
             if (obs == null) { driver.pause(800); continue }
@@ -88,8 +91,10 @@ class ScreenCollector(
             // नवंबर 2026: AI ने स्क्रीन पर जो देखा (हिंदी में) - पट्टी पर, ताकि मालिक को दिखे DK ऐप के अंदर क्या कर रहा है
             if (reply.say.isNotBlank()) progress("${p.hi} • ${reply.say.take(70)}")
             // नवंबर 2026 (फटाफट): सब मिल गया = AI के done का इंतज़ार नहीं
-            val overview = data.account.views != null || data.account.reach != null || data.account.watchTimeSec != null
-            if (InsightsSpeed.enough(overview, data.posts.size, listTarget, detailed.size, detailTarget, data.statusChecked)) {
+            // नवंबर 2026: प्रोफ़ाइल (फ़ॉलोअर), आख़िरी रील के कमेंट, कमाई की हालत भी पढ़े बिना "सब मिल गया" नहीं
+            val overview = (data.account.views != null || data.account.reach != null || data.account.watchTimeSec != null) &&
+                data.account.followers != null && InsightsPolicy.commentsRead(data)
+            if (InsightsSpeed.enough(overview, data.posts.size, listTarget, detailed.size, detailTarget, data.statusChecked && data.account.monetization.isNotBlank())) {
                 log("Insights ${p.en}: सारे आँकड़े मिल गए (कदम $step) - आगे नहीं"); break
             }
             log("Insights ${p.en} कदम $step: +${reply.posts.size} आइटम, कुल ${data.posts.size}, अंदर देखे ${detailed.size}; ${reply.why.take(80)}")
@@ -99,6 +104,8 @@ class ScreenCollector(
                 if (same >= 7) { data = data.copy(problems = data.problems + "स्क्रीन आगे नहीं बढ़ी"); break }
                 driver.back(); settle(sig); history.addLast("back (stuck)"); continue
             }
+            // दूसरा काम बीच में आ गया = पुरानी स्क्रीन के कदम नहीं (वे उस काम की स्क्रीन पर दब जाते)
+            if (holdOn(p, pkg)) continue
             // कदम चलाओ (एक जवाब में ज़्यादा से ज़्यादा 3)
             var cur = sig
             for (a in reply.actions.take(3)) {
@@ -114,6 +121,22 @@ class ScreenCollector(
             if (reply.actions.isEmpty()) driver.pause(500)
         }
         return data
+    }
+
+    /**
+     * दूसरा काम स्क्रीन पर चल रहा है = यहीं रुको (उसकी स्क्रीन पर कुछ न दबाओ, back भी नहीं); वह खत्म = ऐप फिर खोलकर आगे.
+     * true = रुका था.
+     */
+    private suspend fun holdOn(p: Platform, pkg: String): Boolean {
+        if (!paused()) return false
+        progress("${p.hi} रिव्यू रुका - पहले आपका दूसरा काम; वह होते ही अपने-आप फिर शुरू")
+        log("Insights ${p.en}: दूसरा काम स्क्रीन पर - रिव्यू इंतज़ार में")
+        while (paused() && !cancelled()) driver.pause(400)
+        if (cancelled()) return true
+        progress("${p.hi}: दूसरा काम हो गया - रिव्यू फिर से, ऐप खोल रही हूँ")
+        log("Insights ${p.en}: दूसरा काम खत्म - रिव्यू फिर शुरू")
+        openApp(pkg); driver.pause(InsightsSpeed.OPEN_SETTLE_MS)
+        return true
     }
 
     /** टैप/स्क्रॉल के बाद: स्क्रीन बदलते ही (+ थोड़ा रुककर) लौटो, ज़्यादा से ज़्यादा [InsightsSpeed.SETTLE_MAX_MS] */
@@ -194,6 +217,7 @@ object InsightsPlan {
     fun guide(p: Platform, studio: Boolean): String = when (p) {
         Platform.INSTAGRAM -> """
             INSTAGRAM (creator/business account):
+            0) PROFILE: the Profile tab shows the name, @username, posts count, followers and following - record them exactly (account.name/handle/posts_count/followers/following).
             1) OVERVIEW: tap the Profile tab (bottom-right avatar) -> "Professional dashboard" (or "Insights" button on profile) -> read the overview
                for the last 30 days: Views, Accounts reached / Reach, Interactions, Followers, net follows and the % change vs previous period.
             2) CONTENT LIST: in the dashboard open "Content you shared" / "Top content" / Reels and choose "Views" as sort if possible; read every
@@ -201,33 +225,50 @@ object InsightsPlan {
             3) DETAILS: open the most recent 3-4 reels one by one -> "View insights" (or the ... menu -> Insights) -> read Views, Reach / Accounts reached,
                Watch time, Average watch time, Skip rate, Likes, Comments, Shares, Saves, Follows, and "Where your views came from" (Feed/Explore/Reels/Profile).
                Then press back to return.
+            3b) LATEST REEL: note its date (account.last_post). Open it -> tap the comments icon -> read up to 10 comments as "username: text"
+               into that post's comment_list (and its comments count). Only read - never like or reply. Then back.
             4) ACCOUNT STATUS: Profile -> menu (≡) -> "Account status" (or Settings and activity -> Account status / "What can't be recommended").
-               Record whatever it says (e.g. "No issues" or which content can't be recommended).
+               Record whatever it says (e.g. "No issues" or which content can't be recommended) - copy the exact reason into account.recommendation.
+            5) MONETIZATION: menu (≡) -> "Creator tools and controls" / "Business tools and controls" -> "Monetization status" (or Account status -> Monetization).
+               Copy exactly what it says (e.g. "You're able to monetize", "Not eligible", the listed policy violations) into account.monetization.
+               If no such page exists, write "monetization page not found".
         """.trimIndent()
         Platform.FACEBOOK -> """
             FACEBOOK (profile in professional mode or a Page):
-            1) OVERVIEW: open the Menu (≡ / profile picture) -> "Professional dashboard" (or switch to your Page -> "Professional dashboard" / "Insights").
+            0) PROFILE: the profile / Page shows the name, followers and following (or likes) - record them exactly (account.name/followers/following).
+            1) OVERVIEW: the dashboard may now be called "Creator Dashboard" or "Business Dashboard". open the Menu (≡ / profile picture) -> "Professional dashboard" (or switch to your Page -> "Professional dashboard" / "Insights").
                Read Views, Viewers / Reach, Content interactions, Net follows, and % change for the last 28 days.
             2) CONTENT LIST: dashboard -> "Content" / "Content performance" / Reels -> read each reel/post with Views/Reach and date; scroll for more.
             3) DETAILS: open the most recent 3-4 reels/posts -> "See insights" / "View insights" -> read Views, Reach, 3-second views, Minutes viewed,
                Average watch time, Reactions, Comments, Shares, Saves, Follows, Distribution / traffic info. Then back.
+            3b) LATEST REEL/POST: note its date (account.last_post). Open it -> comments -> read up to 10 comments as "name: text" into its comment_list. Then back.
             4) ACCOUNT STATUS: Professional dashboard -> "Account status" / "Monetization" / "Recommendations" -> record any warnings about recommendations,
-               violations or copyright, or "no restrictions".
+               violations or copyright, or "no restrictions". Also Menu -> "Help & support" -> "Account Status" (or Page -> Settings -> Page setup -> "Page Status").
+               Copy the exact recommendation text (e.g. "not recommendable", "at risk", "limited originality") into account.recommendation.
+            5) MONETIZATION: dashboard -> "Monetization" -> read "Ready to set up" / "Not yet eligible" / "Policy issues" and copy the exact reason into account.monetization.
+               If no such page exists, write "monetization page not found".
         """.trimIndent()
         Platform.YOUTUBE -> if (studio) """
             YOUTUBE STUDIO app:
+            0) PROFILE: the Dashboard shows the channel name and subscribers - record them (account.name/followers); videos count if shown (posts_count).
             1) OVERVIEW: the Dashboard / Analytics tab -> "Overview": Views, Watch time (hours), Subscribers for the last 28 days and the change vs usual,
                "Realtime" views, "Latest video performance" ranking (e.g. "1 of 10").
             2) CONTENT LIST: Content tab -> Videos and Shorts -> read each item with views, date, likes/comments; scroll for more.
                Analytics -> Content tab also shows Impressions, Click-through rate (CTR), Average view duration.
             3) DETAILS: open the most recent 3-4 videos/shorts -> Analytics -> read Views, Watch time, Average view duration, Average percentage viewed,
                Impressions, CTR, Subscribers gained, "Shown in feed / Chose to view" (Shorts), Traffic sources ("How viewers find this"). Then back.
+            3b) LATEST VIDEO/SHORT: note its date (account.last_post). Open its comments and read up to 10 as "@name: text" into its comment_list. Then back.
             4) ACCOUNT STATUS: Channel / Settings / Notifications for copyright claims, Community Guidelines strikes, monetization; record them or "no issues".
+            5) MONETIZATION: the "Earn" tab -> copy exactly what it says (eligible / in YPP / suspended / "not eligible because ..." / requirement progress like
+               "1,000 subscribers" and "4,000 watch hours") into account.monetization. If no Earn tab, write "monetization page not found".
         """.trimIndent() else """
             YOUTUBE app (YouTube Studio not installed):
+            0) PROFILE: tap "You" -> the channel name, @handle and subscribers count - record them (account.name/handle/followers).
             1) Tap "You" (bottom-right) -> "Your videos" to see own videos with views and date; scroll for more.
             2) Open the most recent 3-4 items -> "Analytics" / view details if available; read views, likes, comments, watch time, avg view duration.
             3) If an "Open YouTube Studio" option is shown, do not install anything - just collect what is visible.
+            4) LATEST VIDEO: note its date (account.last_post); open its comments and read up to 10 as "@name: text" into its comment_list.
+               Monetization cannot be seen in this app: write "monetization page not found (YouTube Studio needed)" into account.monetization.
         """.trimIndent()
     }
 
@@ -259,6 +300,9 @@ object InsightsPlan {
         if (detailed.isNotEmpty()) append(" already opened: ").append(detailed.joinToString("; ") { "\"$it\"" })
         append('\n')
         append("- account status checked: ").append(if (data.statusChecked) "YES" else "no").append('\n')
+        append("- profile (name/followers/following) read: ").append(if (data.account.followers != null) "YES" else "no").append('\n')
+        append("- latest item's comments read: ").append(if (InsightsPolicy.commentsRead(data)) "YES" else "no").append('\n')
+        append("- monetization status read: ").append(if (data.account.monetization.isNotBlank()) "YES" else "no").append('\n')
         if (data.posts.isNotEmpty()) append("- already recorded titles: ").append(data.posts.take(20).joinToString("; ") { "\"${it.title.take(30)}\"" }).append('\n')
         if (history.isNotEmpty()) append("- your last actions: ").append(history.joinToString(", ")).append('\n')
         if (sameScreen >= 2) append("- WARNING: the screen has not changed for ").append(sameScreen).append(" steps - your last action did nothing. Try something different (another element, scroll, or back).\n")
@@ -269,16 +313,18 @@ object InsightsPlan {
         append("Reply with ONLY a JSON object:\n")
         append("{\"posts\":[{\"title\":\"caption/title first words\",\"date\":\"as shown e.g. 3d / 2 Nov\",\"type\":\"reel|video|short|post\",")
         append("\"views\":\"\",\"reach\":\"\",\"likes\":\"\",\"comments\":\"\",\"shares\":\"\",\"saves\":\"\",\"follows\":\"\",\"impressions\":\"\",\"ctr\":\"\",")
-        append("\"avg_watch\":\"\",\"watch_time\":\"\",\"retention\":\"\",\"skip_rate\":\"\",\"duration\":\"\",\"traffic\":\"\",\"notes\":\"\"}],\n")
+        append("\"avg_watch\":\"\",\"watch_time\":\"\",\"retention\":\"\",\"skip_rate\":\"\",\"duration\":\"\",\"traffic\":\"\",\"notes\":\"\",\"comment_list\":[\"username: comment text\"]}],\n")
         append(" \"account\":{\"period\":\"\",\"views\":\"\",\"reach\":\"\",\"interactions\":\"\",\"followers\":\"\",\"followers_change\":\"\",\"watch_time\":\"\",")
-        append("\"views_change\":\"\",\"reach_change\":\"\",\"status\":\"\",\"notes\":\"\"} or null,\n")
+        append("\"views_change\":\"\",\"reach_change\":\"\",\"status\":\"\",\"notes\":\"\",")
+        append("\"name\":\"\",\"handle\":\"\",\"following\":\"\",\"posts_count\":\"\",\"last_post\":\"\",\"monetization\":\"\",\"recommendation\":\"\"} or null,\n")
         append(" \"status_checked\":false, \"detail_of\":\"title of the item whose full insights are on this screen, else empty\",\n")
         append(" \"actions\":[{\"do\":\"click\",\"id\":12} | {\"do\":\"scroll\",\"dir\":\"down|up\"} | {\"do\":\"back\"} | {\"do\":\"wait\"} | {\"do\":\"tap\",\"x\":540,\"y\":1200}],\n")
         append(" \"done\":false, \"why\":\"one short line: what you see and what you do next\",\n")
         append(" \"say\":\"the same in short simple Hindi for the user watching the screen (max 10 words), e.g. 'प्रोफ़ेशनल डैशबोर्ड खोल रही हूँ' / 'रील के व्यूज़ पढ़ रही हूँ'\"}\n")
         append("RULES: copy numbers EXACTLY as shown (\"1.2K\", \"12,345\", \"4.5%\", \"0:07\"); leave a field empty if not visible - never guess. ")
         append("Only include posts whose numbers are on THIS screen. Be FAST: use up to 3 actions per reply when they are safe in a row (e.g. click a tab then scroll), and go straight to the needed page. Set status_checked=true only when the account status page is visible. ")
-        append("Set done=true when overview + enough list items + ").append(detailTarget).append(" detailed items + status are collected, or nothing more can be found.")
+        append("Copy monetization / recommendation reasons WORD FOR WORD from the screen - never write a reason you did not read. ")
+        append("Set done=true when profile + overview + enough list items + ").append(detailTarget).append(" detailed items + latest comments + status + monetization are collected, or nothing more can be found.")
     }
 
     fun parseReply(raw: String?): Reply? {

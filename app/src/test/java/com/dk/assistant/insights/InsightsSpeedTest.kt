@@ -52,8 +52,8 @@ class InsightsSpeedTest {
     @Test fun stopsAsSoonAsEverythingIsCollected_withoutWaitingForDone() = runBlocking {
         val d = TimedDriver(listOf(scr(1, "a"), scr(2, "b"), scr(3, "c")))
         var calls = 0
-        val full = """{"account":{"views":"12K"},"status_checked":true,"detail_of":"R%d",
-            "posts":[{"title":"R%d a","views":"1"},{"title":"R%d b","views":"2"}],"actions":[{"do":"scroll"}],"done":false}"""
+        val full = """{"account":{"views":"12K","followers":"1,204","monetization":"You're able to monetize"},"status_checked":true,"detail_of":"R%d",
+            "posts":[{"title":"R%d a","views":"1","comment_list":["ram: nice"]},{"title":"R%d b","views":"2"}],"actions":[{"do":"scroll"}],"done":false}"""
         val c = ScreenCollector(d, { true }, { true }, { calls++; full.replace("%d", calls.toString()) })
         c.detailTarget = 2; c.listTarget = 4
         val r = c.collect(Platform.INSTAGRAM)

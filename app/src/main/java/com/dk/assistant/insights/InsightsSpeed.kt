@@ -16,7 +16,7 @@ import org.json.JSONObject
  */
 object InsightsSpeed {
     /** हर प्लेटफ़ॉर्म पर ज़्यादा से ज़्यादा AI कदम (पहले 36) */
-    const val MAX_STEPS = 26
+    const val MAX_STEPS = 32
     /** टैप के बाद स्क्रीन बदलने का इंतज़ार: हर इतने ms पर देखो, ज़्यादा से ज़्यादा इतना */
     const val POLL_MS = 150L
     const val SETTLE_MAX_MS = 1_300L
