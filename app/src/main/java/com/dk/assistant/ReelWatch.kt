@@ -20,7 +20,7 @@ import kotlin.math.roundToInt
 /**
  * नवंबर 2026 (मालिक): रील गिनती + ऊपर छोटी पट्टी + हर ऐप की रोज़ की लिमिट. नियम: [ReelRules].
  *
- * - सिर्फ़ जब इंस्टाग्राम / YouTube / फेसबुक सामने हो, हर ~0.65 सेकंड स्क्रीन का लिखा पढ़ता है (दूसरे ऐप में सिर्फ़ ऐप का नाम, हर 1.5 सेकंड).
+ * - सिर्फ़ जब इंस्टाग्राम / YouTube / फेसबुक सामने हो, रील पर हर 0.45 सेकंड (बाकी हर 0.65) स्क्रीन का लिखा पढ़ता है (दूसरे ऐप में सिर्फ़ ऐप का नाम, हर 1.5 सेकंड).
  * - पट्टी = TYPE_ACCESSIBILITY_OVERLAY (नोटिफ़िकेशन नहीं), छूने लायक नहीं - नीचे का ऐप वैसे ही चलता है.
  * - DK खुद स्क्रीन चला रहा हो (सोशल रिव्यू / कोई काम) तो न गिनती, न रोक - रिव्यू कभी नहीं रुकेगा.
  * - लिमिट पूरी: फ़ोन लॉक या होम; वह ऐप "बंद" - जब भी सामने आए, DK होम पर ले जाता है, जब तक DK सेटिंग से खोलें नहीं.
@@ -30,7 +30,8 @@ class ReelWatch(private val svc: DKAccessibilityService) {
     private val bg = Handler(thread.looper)
     private val main = Handler(Looper.getMainLooper())
     private val wm = svc.getSystemService(WindowManager::class.java)
-    private val counters = ReelRules.App.values().associateWith { ReelRules.Counter() }
+    // नवंबर 2026 (मालिक: "एक्यूरेट"): तेज़ स्क्रॉल में भी हर दिखी रील - 0.45 सेकंड पर देखो, 0.6 सेकंड टिकी = एक रील
+    private val counters = ReelRules.App.values().associateWith { ReelRules.Counter(stableMs = 600) }
     @Volatile private var released = false
     private var pill: TextView? = null
     private var lastHome = 0L
@@ -39,7 +40,6 @@ class ReelWatch(private val svc: DKAccessibilityService) {
     // नवंबर 2026: 7 दिन का हिसाब (ReelDaily) - ऐप सामने रहने का समय जोड़कर हर ~10 सेकंड में सेव
     private var seenApp: ReelRules.App? = null
     private var seenMs = 0L
-    private var seenReelMs = 0L
     private var lastTick = 0L
     private var lastFlush = 0L
     private var allNow: ReelDaily.Now? = null
@@ -75,8 +75,7 @@ class ReelWatch(private val svc: DKAccessibilityService) {
         val app = ReelRules.appOf(root?.packageName?.toString())
         val tNow = now(); val dt = if (lastTick == 0L) 0L else (tNow - lastTick).coerceIn(0L, 3_000L); lastTick = tNow
         if (app == null || dkDriving()) {
-            // DK खुद चला रहा (जैसे सोशल रिव्यू) = वह समय "देखा हुआ" (अंदाज़े में रील नहीं बनेगा), गिनती नहीं
-            if (app != null) { if (seenApp != app) { flushSeen(force = true); seenApp = app }; seenMs += dt }
+            // DK खुद चला रहा (जैसे सोशल रिव्यू) = न गिनती, न समय
             flushSeen(force = true)
             app?.let { counters[it]?.feed(false, emptySet(), now()) }
             if (System.currentTimeMillis() > blockedShownUntil) hidePill()
@@ -102,7 +101,7 @@ class ReelWatch(private val svc: DKAccessibilityService) {
         val inReel = isReel || isVideo
         val sig = if (isReel) ReelRules.signature(nodes) else if (isVideo) ReelRules.watchSignature(nodes) else emptySet()
         if (seenApp != app) { flushSeen(force = true); seenApp = app }
-        seenMs += dt; if (inReel) seenReelMs += dt
+        seenMs += dt
         flushSeen(force = false)
         val counted = counters[app]!!.feed(inReel, sig, now())
         if (counted) {
@@ -122,7 +121,7 @@ class ReelWatch(private val svc: DKAccessibilityService) {
             showPill(ReelRules.pill(app, ReelStore.count(c, app), ReelStore.limit(c, app)) + extra, warn = all.limit > 0 && all.total > all.limit)
         }
         else if (System.currentTimeMillis() > blockedShownUntil) hidePill()
-        return 650L
+        return if (inReel) 450L else 650L
     }
 
     private fun ReelRules.App.en() = name.lowercase()
@@ -133,8 +132,8 @@ class ReelWatch(private val svc: DKAccessibilityService) {
         val t = now()
         if (seenMs <= 0L || (!force && t - lastFlush < 10_000)) return
         lastFlush = t
-        try { ReelDaily.addSeen(svc.applicationContext, a, seenMs, seenReelMs) } catch (_: Exception) {}
-        seenMs = 0L; seenReelMs = 0L
+        try { ReelDaily.addSeen(svc.applicationContext, a, seenMs) } catch (_: Exception) {}
+        seenMs = 0L
     }
 
     private fun limitHit(app: ReelRules.App) {
@@ -154,7 +153,7 @@ class ReelWatch(private val svc: DKAccessibilityService) {
 
     private fun now() = android.os.SystemClock.uptimeMillis()
 
-    /** स्क्रीन पर दिख रहा लिखा (ज़्यादा से ज़्यादा 400 हिस्से) */
+    /** स्क्रीन पर दिख रहा लिखा (ज़्यादा से ज़्यादा 700 हिस्से - बड़ी स्क्रीन पर नीचे का नाम / caption न छूटे) */
     private fun read(root: AccessibilityNodeInfo?): List<ReelRules.Node> {
         root ?: return emptyList()
         val dm = svc.resources.displayMetrics
@@ -163,7 +162,7 @@ class ReelWatch(private val svc: DKAccessibilityService) {
         val stack = ArrayDeque<AccessibilityNodeInfo>().apply { add(root) }
         val r = Rect()
         var seen = 0
-        while (stack.isNotEmpty() && seen < 400) {
+        while (stack.isNotEmpty() && seen < 700) {
             val n = stack.removeLast(); seen++
             try {
                 if (!n.isVisibleToUser) continue

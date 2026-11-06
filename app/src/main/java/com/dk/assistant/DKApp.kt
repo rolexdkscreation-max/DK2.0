@@ -31,7 +31,6 @@ class DKApp : Application() {
         try { com.dk.assistant.inspector.Inspector.schedule(this) } catch (_: Throwable) {}
         // नवंबर 2026: Active apps से Stop के बाद रुका फ़ोन कंट्रोल - हर ~15 मिनट जाँच + ऐप शुरू होते ही (A11yWatch)
         A11yWatchJob.schedule(this)
-        ReelTimeService.start(this)   // नवंबर 2026: रील का 7 दिन का हिसाब - Accessibility बंद हो तब भी (Usage access हो तो)
         kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.Default).launch {
             kotlinx.coroutines.delay(6_000)
             try { A11yWatch.check(this@DKApp, "ऐप शुरू") } catch (_: Exception) {}

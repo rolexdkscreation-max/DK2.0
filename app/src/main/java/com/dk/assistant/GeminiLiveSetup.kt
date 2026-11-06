@@ -302,7 +302,7 @@ internal fun GeminiLive.setupJson(m: String, txt: Boolean = connText, resume: Bo
         // नवंबर 2026: रील / वीडियो देखने का 7 दिन का हिसाब (फ़ोन में - आज, कल, हर दिन, लिमिट)
         .put(JSONObject().put("name", "reel_stats")
             .put("description", "The user's own reel / Shorts / video WATCHING record on this phone (Instagram, YouTube, Facebook) for the last 7 days: reels per day per app, minutes, today vs yesterday, the daily limit. " +
-                "Call it when the user asks 'आज कितनी रील देखीं', 'कल कितनी देखी थी', 'इस हफ़्ते का हिसाब', 'मैं ज़्यादा रील देख रहा हूँ?', 'रील लिमिट कितनी है'. Answer only from its numbers, in short Hindi; say 'लगभग' for numbers marked '~'. " +
+                "Call it when the user asks 'आज कितनी रील देखीं', 'कल कितनी देखी थी', 'इस हफ़्ते का हिसाब', 'मैं ज़्यादा रील देख रहा हूँ?', 'रील लिमिट कितनी है'. Answer only from its exact numbers, in short Hindi (counting works only while DK's Accessibility is ON). " +
                 "If he watched more than his limit or more than yesterday, gently tell him to take a break (eyes, sleep, focus). The limit itself is set in DK Settings -> रील गिनती और लिमिट.")
             .put("parameters", JSONObject().put("type", "OBJECT").put("properties", JSONObject())))
         .put(JSONObject().put("name", "local_info")

@@ -11,8 +11,6 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
     <!-- v3.40: DK लाइव स्क्रीन शेयर (सिर्फ़ आपके कहने पर, बंद से शुरू) -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PROJECTION" />
-    <!-- नवंबर 2026: रील का 7 दिन का हिसाब Accessibility बंद होने पर भी (Usage access से समय) -->
-    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.VIBRATE" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
@@ -385,16 +383,6 @@
             android:name=".KeepAliveService"
             android:exported="false"
             android:foregroundServiceType="microphone" />
-
-        <!-- नवंबर 2026: रील / वीडियो का 7 दिन का हिसाब - Accessibility बंद हो तब भी (Usage access से ऐप का समय + DK की आवाज़) -->
-        <service
-            android:name=".ReelTimeService"
-            android:exported="false"
-            android:foregroundServiceType="specialUse">
-            <property
-                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
-                android:value="Owner's own daily reel / short video watching tracker and limit reminder (digital wellbeing)" />
-        </service>
 
     </application>
 </manifest>
