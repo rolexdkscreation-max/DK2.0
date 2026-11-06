@@ -79,6 +79,8 @@ class DKAccessibilityService : AccessibilityService() {
     private var floatOrb: FloatOrb? = null
     /** नवंबर 2026: DK काम करे तो हर ऐप के ऊपर "DK क्या कर रहा है" पट्टी + स्क्रीन जगी ([WorkAwake]) */
     private var workAwake: WorkAwake? = null
+    /** नवंबर 2026: रील गिनती + ऊपर छोटी पट्टी + रोज़ की लिमिट (ReelRules) */
+    private var reelWatch: ReelWatch? = null
     /** v3.57: सुनते/बोलते समय किनारों की चमक (छूने पर कुछ नहीं, नीचे का ऐप चलता रहे) */
     internal var edgeGlow: com.dk.assistant.fx.EdgeGlowView? = null
     lateinit var calls: CallManager
@@ -120,6 +122,7 @@ class DKAccessibilityService : AccessibilityService() {
         if (!Prefs.orbNoXMigrated(this)) { Prefs.setFloatOrbOn(this, true); Prefs.setOrbNoXMigrated(this) }
         floatOrb = FloatOrb(this) { onOrbTap() }.also { it.sync() }
         workAwake = WorkAwake(this).also { it.start() }
+        reelWatch = ReelWatch(this).also { it.start() }
         AppVisible.onChange = { _ -> refreshOrb() }
         DKLog.d("DK accessibility service chalu ho gaya")
         A11yWatch.cancel(this)          // नवंबर 2026: "फ़ोन कंट्रोल रुक गया" वाली notification हटाओ
@@ -162,6 +165,7 @@ class DKAccessibilityService : AccessibilityService() {
         AppVisible.onChange = null
         floatOrb?.release(); floatOrb = null
         workAwake?.release(); workAwake = null
+        reelWatch?.release(); reelWatch = null
         removeEdgeGlow()
         DKState.setLive(false)
         listener.release()

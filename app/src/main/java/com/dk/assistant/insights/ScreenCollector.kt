@@ -106,9 +106,9 @@ class ScreenCollector(
             }
             // दूसरा काम बीच में आ गया = पुरानी स्क्रीन के कदम नहीं (वे उस काम की स्क्रीन पर दब जाते)
             if (holdOn(p, pkg)) continue
-            // कदम चलाओ (एक जवाब में ज़्यादा से ज़्यादा 3)
+            // कदम चलाओ (एक जवाब में ज़्यादा से ज़्यादा 4)
             var cur = sig
-            for (a in reply.actions.take(3)) {
+            for (a in reply.actions.take(InsightsSpeed.ACTIONS_PER_REPLY)) {
                 progress("${p.hi} • कदम $step: " + InsightsPlan.actHi(a, obs))
                 InsightsPlan.point(a, obs)?.let { (x, y) -> try { mark(x, y) } catch (_: Exception) {} }
                 val r = run(obs, a)
@@ -273,7 +273,7 @@ object InsightsPlan {
     }
 
     /** स्क्रीन -> AI के पढ़ने लायक सूची ([id] text | desc (बटन) @ऊपर से जगह) */
-    fun screenText(obs: ScreenObservation, max: Int = 140): String = buildString {
+    fun screenText(obs: ScreenObservation, max: Int = InsightsSpeed.SCREEN_LINES): String = buildString {
         obs.elements.asSequence().filter { (it.text.isNotBlank() || it.desc.isNotBlank()) && it.bounds.bottom > 0 && it.bounds.top < obs.height }
             .take(max).forEach { e ->
                 append('[').append(e.id).append("] ")
@@ -311,18 +311,18 @@ object InsightsPlan {
         append(screenText(obs))
         append("\nA screenshot of the same screen may also be attached.\n\n")
         append("Reply with ONLY a JSON object:\n")
-        append("{\"posts\":[{\"title\":\"caption/title first words\",\"date\":\"as shown e.g. 3d / 2 Nov\",\"type\":\"reel|video|short|post\",")
-        append("\"views\":\"\",\"reach\":\"\",\"likes\":\"\",\"comments\":\"\",\"shares\":\"\",\"saves\":\"\",\"follows\":\"\",\"impressions\":\"\",\"ctr\":\"\",")
-        append("\"avg_watch\":\"\",\"watch_time\":\"\",\"retention\":\"\",\"skip_rate\":\"\",\"duration\":\"\",\"traffic\":\"\",\"notes\":\"\",\"comment_list\":[\"username: comment text\"]}],\n")
-        append(" \"account\":{\"period\":\"\",\"views\":\"\",\"reach\":\"\",\"interactions\":\"\",\"followers\":\"\",\"followers_change\":\"\",\"watch_time\":\"\",")
-        append("\"views_change\":\"\",\"reach_change\":\"\",\"status\":\"\",\"notes\":\"\",")
-        append("\"name\":\"\",\"handle\":\"\",\"following\":\"\",\"posts_count\":\"\",\"last_post\":\"\",\"monetization\":\"\",\"recommendation\":\"\"} or null,\n")
+        // नवंबर 2026 (फटाफट): नमूने में खाली खाने ("views":"") नहीं - वरना AI हर जवाब में सारे खाली खाने लिखता (लंबा = धीमा)
+        append("{\"posts\":[{\"title\":\"caption/title first words\",\"date\":\"as shown e.g. 3d / 2 Nov\",\"type\":\"reel|video|short|post\", ...only the visible ones of: ")
+        append("views, reach, likes, comments, shares, saves, follows, impressions, ctr, avg_watch, watch_time, retention, skip_rate, duration, traffic, notes, ")
+        append("comment_list:[\"username: comment text\"]}],\n")
+        append(" \"account\":{...only the visible ones of: period, views, reach, interactions, followers, followers_change, watch_time, views_change, reach_change, ")
+        append("status, notes, name, handle, following, posts_count, last_post, monetization, recommendation} or null,\n")
         append(" \"status_checked\":false, \"detail_of\":\"title of the item whose full insights are on this screen, else empty\",\n")
         append(" \"actions\":[{\"do\":\"click\",\"id\":12} | {\"do\":\"scroll\",\"dir\":\"down|up\"} | {\"do\":\"back\"} | {\"do\":\"wait\"} | {\"do\":\"tap\",\"x\":540,\"y\":1200}],\n")
         append(" \"done\":false, \"why\":\"one short line: what you see and what you do next\",\n")
         append(" \"say\":\"the same in short simple Hindi for the user watching the screen (max 10 words), e.g. 'प्रोफ़ेशनल डैशबोर्ड खोल रही हूँ' / 'रील के व्यूज़ पढ़ रही हूँ'\"}\n")
-        append("RULES: copy numbers EXACTLY as shown (\"1.2K\", \"12,345\", \"4.5%\", \"0:07\"); leave a field empty if not visible - never guess. ")
-        append("Only include posts whose numbers are on THIS screen. Be FAST: use up to 3 actions per reply when they are safe in a row (e.g. click a tab then scroll), and go straight to the needed page. Set status_checked=true only when the account status page is visible. ")
+        append("RULES: copy numbers EXACTLY as shown (\"1.2K\", \"12,345\", \"4.5%\", \"0:07\"); OMIT every key that is not visible (no empty \"\" fields, keep the reply short) - never guess. ")
+        append("Only include posts whose numbers are on THIS screen. Be FAST: use up to 4 actions per reply when they are safe in a row (e.g. click a tab then scroll), and go straight to the needed page. Set status_checked=true only when the account status page is visible. ")
         append("Copy monetization / recommendation reasons WORD FOR WORD from the screen - never write a reason you did not read. ")
         append("Set done=true when profile + overview + enough list items + ").append(detailTarget).append(" detailed items + latest comments + status + monetization are collected, or nothing more can be found.")
     }
