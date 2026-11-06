@@ -11,7 +11,7 @@ import android.widget.TextView
  * रोज़ की लिमिट, लिमिट पूरी होने पर फ़ोन लॉक या ऐप बंद, और बंद ऐप यहीं से खोलना. [ReelWatch] [ReelRules]
  */
 internal fun SettingsActivity.secReels() {
-    // नवंबर 2026 (मालिक): 7 दिन का हिसाब, सब ऐप की कुल लिमिट + DK की आवाज़, Accessibility के बिना भी
+    // नवंबर 2026 (मालिक): 7 दिन का हिसाब, सब ऐप की कुल लिमिट + DK की आवाज़ (सिर्फ़ Accessibility चालू होने पर सच्ची गिनती)
     card("7 दिन का रील हिसाब", "आज, कल, हर दिन — कितनी रील, कितने मिनट, कम हुई या ज़्यादा", startOpen = true) { box ->
         val t = TextView(this).apply { textSize = 14f; setTextColor(0xFFFFFFFF.toInt()); setPadding((4 * dp).toInt(), (6 * dp).toInt(), 0, (4 * dp).toInt()); setLineSpacing(0f, 1.2f) }
         box.addView(t)
