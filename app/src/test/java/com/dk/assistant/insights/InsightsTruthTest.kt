@@ -148,7 +148,8 @@ class InsightsTruthTest {
 
     @Test fun wiring_liveChecksRunBeforeSearchGuess() {
         val sv = src("GeminiLiveServer.kt")
-        assertTrue(sv.contains("!socialCheck() && !agentCheck()) promiseCheck()"))
+        assertTrue(sv.contains("if (!wasDropping && socialCheck()) Unit"))
+        assertTrue(sv.indexOf("socialCheck()") < sv.indexOf("if (!wasDropping && !agentCheck()) promiseCheck()"))
         val ch = src("GeminiLiveChecks.kt")
         assertTrue(ch.contains("internal fun GeminiLive.socialCheck()"))
         assertTrue(ch.contains("ia.liveTool(svc"))
