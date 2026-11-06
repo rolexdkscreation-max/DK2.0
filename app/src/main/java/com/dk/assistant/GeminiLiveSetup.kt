@@ -320,6 +320,10 @@ internal fun GeminiLive.setupJson(m: String, txt: Boolean = connText, resume: Bo
     // v3.93: Tavily/Exa की key हो तो Live की अपनी Google Search नहीं - हर खोज web_search से (Tavily -> Exa -> Gemini क्रम)
     val ownChain = Prefs.tavilySearchKey(svc).isNotBlank() || Prefs.exaSearchKey(svc).isNotBlank()
     if (useSearch && !ownChain) tools.put(JSONObject().put("googleSearch", JSONObject()))
+    // नवंबर 2026 (Live जाँच #2): रोज़ के tools सीधे, बाकी एक dk_agent router के पीछे = हल्का setup, तेज़ पहला जवाब
+    LiveToolSlim.slimInPlace(tools, Prefs.bool(svc, LiveSmooth.PREF_SLIM_TOOLS, true)).let { r ->
+        if (r.kept >= 0) log("हल्के tools: ${r.kept} सीधे + ${r.routed.size} dk_agent के पीछे (${r.charsBefore} -> ${r.charsAfter} अक्षर)")
+    }
     val setup = JSONObject()
         .put("model", "models/$m")
         .put("generationConfig", JSONObject()

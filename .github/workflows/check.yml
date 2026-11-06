@@ -26,5 +26,10 @@ jobs:
           restore-keys: dk-kokoro-
       - name: Unit tests (aawaaz pehchaan / barge-in / deri ke hisse)
         run: gradle :app:testDebugUnitTest --no-daemon
+      # नवंबर 2026 (Live जाँच #6): बात शुरू/खत्म का golden बेंचमार्क - scorecard PR के job summary में
+      - name: Turn golden scorecard
+        if: always()
+        run: |
+          if [ -f app/build/turn-golden.txt ]; then cat app/build/turn-golden.txt >> "$GITHUB_STEP_SUMMARY"; else echo "turn-golden.txt नहीं बना" >> "$GITHUB_STEP_SUMMARY"; fi
       - name: Debug APK build
         run: gradle :app:assembleDebug --no-daemon

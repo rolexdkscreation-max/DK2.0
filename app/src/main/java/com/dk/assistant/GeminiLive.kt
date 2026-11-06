@@ -399,6 +399,21 @@ class GeminiLive(internal val svc: DKAccessibilityService, internal val agent: A
     @Volatile internal var droppedOld = 0L
     /** Echo-cancel chalu hai -> DK bolte samay bhi mic ki asli awaaz Gemini ko (sach me full-duplex) */
     @Volatile internal var aecOn = false
+    /** नवंबर 2026 (Live जाँच #3): फ़ोन पर चलने वाला Silero VAD (null = model नहीं / सेटिंग बंद = पुराना RMS) */
+    internal var vad: com.dk.assistant.voice.SileroVad? = null
+    /** अभी के 40ms टुकड़े में इंसानी आवाज़ की संभावना (-1 = VAD नहीं) */
+    @Volatile internal var vadProb = -1f
+    /** नवंबर 2026 (Live जाँच #1): कॉल-mode स्पीकर में DK बोलते समय VAD से तुरंत टोकना (caption का इंतज़ार नहीं) */
+    internal val duplex = DuplexBarge()
+    @Volatile internal var duplexStops = 0
+    /** नवंबर 2026 (Live जाँच #4): Live का अपना लिखा (inputTranscription) - caption न चले तो बात-खत्म के लिए */
+    @Volatile internal var liveHeard = ""
+    @Volatile internal var liveHeardAt = 0L
+    @Volatile internal var heardFallback = true
+    @Volatile internal var heardCfgAt = 0L
+    @Volatile internal var heardLiveLogged = false
+    /** नवंबर 2026 (Live जाँच #5): बातचीत की एक ही हालत (सुन / आप बोल / सोच / काम / बोल) + अटकने की पहचान */
+    internal val turnState = LiveTurnState()
     /**
      * v3.9: band. Log (15:37) me dikha: lagatar asli mic = peeche ka shor bhi Gemini tak -> server sochta raha user bol raha hai
      * -> jawab 8-16s der se / aaya hi nahi. Ab DK bolte samay Gemini ko sirf PAKKE user shabd (BargeGate) jaate hain.
@@ -527,7 +542,7 @@ class GeminiLive(internal val svc: DKAccessibilityService, internal val agent: A
     @Volatile internal var splitLive = false
     @Volatile internal var splitRescues = 0
     private val speechHooks = object : com.dk.assistant.voice.engine.SpeechPipeline.Hooks {
-        override fun usage() = CallVoice.usage(callAudioOn, btOn)
+        override fun usage() = CallVoice.usage(callAudioOn, btOn, CallSpeaker.active)
         override fun log(m: String) = this@GeminiLive.log(m)
         override fun onPlay(pcm: ByteArray, now: Long) {
             noteOutLevel(pcm, now)
@@ -738,6 +753,7 @@ class GeminiLive(internal val svc: DKAccessibilityService, internal val agent: A
     fun callAudio(on: Boolean) {
         if (callAudioOn == on) return
         callAudioOn = on
+        if (on) CallSpeaker.pause() else if (!stopped) CallSpeaker.apply(svc, btOn)
         if (stopped || btOn || track == null) return
         try { startPlayer(); log("आवाज़: " + if (on) "कॉल के समय accessibility (घंटी में भी सुनाई दे)" else "वापस speaker (media)") } catch (e: Exception) { log("आवाज़ बदल नहीं पाया: ${e.message}") }
     }
@@ -862,6 +878,9 @@ class GeminiLive(internal val svc: DKAccessibilityService, internal val agent: A
             " • शोर-गेट: ${gatedChunks * CHUNK_MS / 1000}s शोर नहीं भेजा" +
             (if (unheard > 0) " • Gemini ने नहीं सुना: $unheard (caption से भेजा $rescued)" else "") +
             (if (stalledN > 0) " • सुना पर जवाब अटका: $stalledN (दोबारा भेजा)" else "") +
+            (if (duplexStops > 0) " • कॉल-mode में VAD से तुरंत रुका: $duplexStops" else "") +
+            (if (turnState.stuckSummary().isNotEmpty()) " • हालत अटकी: ${turnState.stuckSummary()}" else "") +
+            (if (vad != null) " • स्मार्ट VAD: शोर रोका ${turnDet.vadBlocked}, बीच का शोर चुप माना ${turnDet.vadSilenced}" else "") +
             (if (fastN > 0) " • तुरंत किए काम: $fastN" else "") +
             " • चुप्पी में upload बंद: ${silenceSkipped * CHUNK_MS / 1000}s" +
             (if (noReplyTurns > 0) " • बात पर server से कुछ नहीं: $noReplyTurns" else "") + (if (noiseTurns > 0) " • शोर/खटखट (सही से छोड़े): $noiseTurns" else "") +
@@ -922,13 +941,16 @@ class GeminiLive(internal val svc: DKAccessibilityService, internal val agent: A
         visionBroken = false; synchronized(vision1007) { vision1007.clear() }; micMuted = false
         btOn = BtAudio.acquire(svc, this@GeminiLive) { bt ->
             btOn = bt; routeChanged = true
+            CallSpeaker.apply(svc, bt)                 // नवंबर 2026 (#1): headset हटा = फिर कॉल-mode स्पीकर (सेटिंग चालू हो तो)
             // DK चुप हो तब आवाज़ का रास्ता बदलो (बोलते-बोलते आवाज़ न कटे)
             svc.scope.launch(Dispatchers.IO) {
                 withTimeoutOrNull(6_000) { while (isPlaying()) delay(100) }
                 if (!stopped) { startPlayer(); log("आवाज़: " + if (bt) "Bluetooth headset (कॉल वाला तरीका)" else "फ़ोन का speaker") }
             }
         }
-        log("आवाज़ का रास्ता: " + if (btOn) "Bluetooth headset (कॉल वाला तरीका)" else "फ़ोन का माइक + speaker")
+        // नवंबर 2026 (Live जाँच #1): कॉल-mode स्पीकर (सेटिंग) = फ़ोन का पक्का echo-cancel, DK बोलते समय भी टोकना तेज़
+        val callSpk = CallSpeaker.apply(svc, btOn)
+        log("आवाज़ का रास्ता: " + if (btOn) "Bluetooth headset (कॉल वाला तरीका)" else if (callSpk) "फ़ोन का माइक + speaker (कॉल-mode, पक्का echo-cancel)" else "फ़ोन का माइक + speaker")
         startPlayer()
         // v3.41: "aap:" likhne wala apni alag key se (Settings -> AI dimaag -> DK live) - bolne wale ki free limit bachi rahe
         val capKey = Prefs.captionKey(svc)
@@ -1352,6 +1374,7 @@ class GeminiLive(internal val svc: DKAccessibilityService, internal val agent: A
                 stopPlayer()
                 LiveStay.modeAfterEnd(DKState.mode).let { if (it != DKState.mode) { DKState.set(it); thinkingSince = 0L } }
                 BtAudio.release(this@GeminiLive); btOn = false
+                CallSpeaker.release(svc)
                 LiveVision.onLiveEnded(svc)          // Live बंद = स्क्रीन शेयर / कैमरा भी बंद (कोई तस्वीर कहीं नहीं जाती)
                 if (turnActive) finishTurn()
                 commitPending(true)

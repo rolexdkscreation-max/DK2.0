@@ -131,10 +131,35 @@ class TurnDetector(
     /** DK ko toka (pakka) - user pehle se bol raha hai: seedha "bol raha" haalat (gate khula rahe) */
     fun forceSpeech(now: Long) { inSpeech = true; startRun = 0; speechMs = minSpeechMs; silenceMs = 0; lastVoiceAt = now; lastTalkAt = now }
 
-    fun feed(rms: Double, now: Long): Event {
+    /** नवंबर 2026 (Live जाँच #3): VAD ने कितनी बार शोर को "बात शुरू" बनने से रोका (log के लिए) */
+    var vadBlocked = 0
+        private set
+    /** VAD ने कितनी बार बात के बीच इंसानी आवाज़ न होने पर चुप्पी गिनी (पंखा / TV) */
+    var vadSilenced = 0
+        private set
+
+    /**
+     * @param prob फ़ोन पर चलने वाले VAD (Silero) की "इंसानी आवाज़" संभावना 0..1. -1 = VAD नहीं = पुराना तरीका (सिर्फ़ RMS).
+     *  - बात शुरू: तेज़ हो पर इंसानी आवाज़ नहीं ([VadLevel.SPEECH_P] से कम) = शुरू नहीं (शोर सीखो). पक्की आवाज़ (0.8+)
+     *    पर धीमी = शुरू हो सकती है.
+     *  - बात के बीच: [VadLevel.NOISE_P] से कम = चुप्पी (पंखे/TV से "अभी भी बोल रहा" नहीं - बात समय पर खत्म).
+     */
+    fun feed(rms0: Double, now: Long, prob: Float = -1f): Event {
         val startThr = max(noise * factorFor(noise), startMin)
         // bolte samay dheemi awaaz (shabd ke aakhri hisse) ko chup mat samjho: neecha darwaza (hysteresis)
         val keepThr = max(noise * keepFactor, keepMin)
+        var rms = rms0
+        if (prob >= 0f) {
+            if (!inSpeech) {
+                if (prob < VadLevel.SPEECH_P && rms > startThr) {
+                    if (startRun > 0 || rms > startThr * 1.2) vadBlocked++
+                    startRun = 0
+                    noise = (noise * 0.97 + rms * 0.03).coerceIn(50.0, 3000.0)
+                    return Event.NONE
+                }
+                if (prob >= 0.8f && rms > noise * 1.6 && rms <= startThr) rms = startThr * 1.05
+            } else if (prob < VadLevel.NOISE_P && rms > keepThr) { rms = minOf(rms, keepThr * 0.9); vadSilenced++ }
+        }
         if (!inSpeech) {
             if (rms > startThr && startFloor > 0 && rms < startFloor) {
                 // बोलने जितनी तेज़ पर मालिक की आम आवाज़ से बहुत धीमी = दूर की आवाज़: शुरू नहीं, शोर भी नहीं सीखा
