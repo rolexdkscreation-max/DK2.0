@@ -11,6 +11,56 @@ import android.widget.TextView
  * रोज़ की लिमिट, लिमिट पूरी होने पर फ़ोन लॉक या ऐप बंद, और बंद ऐप यहीं से खोलना. [ReelWatch] [ReelRules]
  */
 internal fun SettingsActivity.secReels() {
+    // नवंबर 2026 (मालिक): 7 दिन का हिसाब, सब ऐप की कुल लिमिट + DK की आवाज़, Accessibility के बिना भी
+    card("7 दिन का रील हिसाब", "आज, कल, हर दिन — कितनी रील, कितने मिनट, कम हुई या ज़्यादा", startOpen = true) { box ->
+        val t = TextView(this).apply { textSize = 14f; setTextColor(0xFFFFFFFF.toInt()); setPadding((4 * dp).toInt(), (6 * dp).toInt(), 0, (4 * dp).toInt()); setLineSpacing(0f, 1.2f) }
+        box.addView(t)
+        fun refresh() {
+            t.text = "देख रहा हूँ…"
+            Thread {
+                try { ReelDaily.refreshUsage(this) } catch (_: Exception) {}
+                val s = ReelDaily.table(this)
+                runOnUiThread { t.text = s }
+            }.start()
+        }
+        refresh()
+        row(box, button("हिसाब ताज़ा करें") { refresh() })
+        hint(box, "7 दिन पूरे होते ही हिसाब अपने-आप साफ़ होकर नया हफ़्ता शुरू होता है। DK लाइव से पूछ सकते हैं: \"आज कितनी रील देखीं?\" / \"इस हफ़्ते का हिसाब बताओ\"।")
+    }
+
+    card("सब ऐप की कुल रोज़ लिमिट और आवाज़", "जैसे 100 — पार हुई तो DK बोलकर बताएगा", startOpen = true) { box ->
+        label(box, "इंस्टाग्राम + YouTube + फेसबुक मिलाकर रोज़ कितनी रील (0 = कोई लिमिट नहीं)")
+        val ed = EditText(this).apply {
+            setText(ReelDaily.totalLimit(this@secReels).toString())
+            inputType = InputType.TYPE_CLASS_NUMBER; isSingleLine = true
+            setBackgroundResource(R.drawable.glass_input)
+            setTextColor(0xFFFFFFFF.toInt()); textSize = 15f
+            val pd = (12 * dp).toInt(); setPadding(pd + 4, pd, pd, pd)
+            box.addView(this, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+        }
+        val res = TextView(this).apply { textSize = 13f; setTextColor(0xB3FFFFFF.toInt()); setPadding((4 * dp).toInt(), (6 * dp).toInt(), 0, 0) }
+        row(box, button("कुल लिमिट सेव करें") { ReelDaily.setTotalLimit(this, ed.text.toString().trim().toIntOrNull() ?: 0); res.text = "✓ सेव हो गया" })
+        box.addView(res)
+        val v = switch(box, "DK बोलकर बताए (लिमिट पार / कल से ज़्यादा / रोज़ कल का हिसाब)", ReelDaily.voiceOn(this))
+        v.setOnCheckedChangeListener { _, on -> ReelDaily.setVoice(this, on) }
+        hint(box, "लिमिट हो: 80% पर एक बार, पार होते ही, फिर हर 10 रील पर DK बोलेगा — \"सर, लिमिट पार हो गई, अब फ़ोन रख दीजिए, आँखों और सेहत के लिए अच्छा नहीं\"। " +
+            "लिमिट न हो: आज कल से ज़्यादा होते ही एक बार बताएगा। हर दिन पहली रील पर कल और परसों का मुक़ाबला बताएगा। " +
+            "यह कुल लिमिट सिर्फ़ बोलती है, ऐप बंद नहीं करती — ऐप बंद / फ़ोन लॉक नीचे \"हर ऐप की रील लिमिट\" से।")
+    }
+
+    card("Accessibility के बिना भी", "Usage access से ऐप का समय — गिनती का अंदाज़ा और आवाज़ चलती रहे") { box ->
+        val usage = PayGuard.usageOk(this)
+        val b = switch(box, "Accessibility बंद हो तब भी हिसाब रखो", ReelDaily.bgOn(this))
+        b.setOnCheckedChangeListener { _, on -> ReelDaily.setBg(this, on); if (on) ReelTimeService.start(this) else ReelTimeService.stop(this) }
+        hint(box, (if (usage) "✓ Usage access मिला है।" else "✗ Usage access नहीं मिला — नीचे बटन से DK को दें।") +
+            " Accessibility बंद हो तो Android किसी ऐप को दूसरे ऐप की स्क्रीन पढ़ने नहीं देता — तब DK हर रील अलग से नहीं गिन सकता। " +
+            "तब DK देखता है कि इंस्टाग्राम / YouTube / फेसबुक कितनी देर खुले रहे, और उससे रील का अंदाज़ा लगाता है (हिसाब में \"~\" लिखा आएगा)। " +
+            "आवाज़ फ़ोन की अपनी आवाज़ से आती है, इसके लिए Accessibility नहीं चाहिए। Android ऐसी चलती सेवा के साथ एक चुप सूचना ज़रूर दिखाता है — उसमें आज की गिनती रहेगी। " +
+            "ऊपर वाली छोटी पट्टी और ऐप बंद / फ़ोन लॉक सिर्फ़ Accessibility चालू होने पर।")
+        if (!usage) row(box, button("Usage access दें") { PayGuard.openUsageAccess(this) })
+        if (usage && ReelDaily.bgOn(this)) ReelTimeService.start(this)
+    }
+
     card("रील गिनती (ऊपर छोटी पट्टी)", "रील / शॉर्ट्स देखते समय ऊपर दिखे: आज कितनी रील देखीं", startOpen = true) { box ->
         val sw = switch(box, "ऊपर गिनती वाली छोटी पट्टी दिखाओ", ReelStore.popupOn(this))
         sw.setOnCheckedChangeListener { _, on -> ReelStore.setPopup(this, on) }
@@ -23,8 +73,8 @@ internal fun SettingsActivity.secReels() {
         }
         refresh()
         row(box, button("गिनती फिर देखें") { refresh() })
-        hint(box, (if (Setup.accessibilityOn()) "✓ Accessibility चालू है — गिनती चल रही है। " else "✗ Accessibility बंद है — इसके बिना न गिनती होगी, न लिमिट। ") +
-            "इंस्टाग्राम रील, YouTube शॉर्ट्स और फेसबुक रील / वीडियो — हर नई रील पर +1, पीछे जाकर वही रील फिर देखी तो भी +1। " +
+        hint(box, (if (Setup.accessibilityOn()) "✓ Accessibility चालू है — गिनती चल रही है। " else "✗ Accessibility बंद है — अभी हर रील अलग से नहीं गिनी जा रही, न ऊपर पट्टी, न ऐप बंद; सिर्फ़ समय से अंदाज़ा (नीचे \"Accessibility के बिना भी\")। ") +
+            "इंस्टाग्राम रील, YouTube शॉर्ट्स और आम वीडियो, फेसबुक रील / वीडियो — हर नई रील / वीडियो पर +1, पीछे जाकर वही रील फिर देखी तो भी +1। " +
             "गिनती हर रात 12 बजे 0 से। यह नोटिफ़िकेशन नहीं — ऊपर एक छोटी पट्टी है जो छूने पर कुछ नहीं करती। " +
             "जब DK खुद फ़ोन चला रहा हो (जैसे सोशल रिव्यू) तब न गिनती, न रोक।")
     }

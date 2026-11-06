@@ -336,6 +336,7 @@ internal fun GeminiLive.runTools(calls: JSONArray) {
                 }
                 "forget_memory" -> { val n = Memory.forget(svc, args.optString("about")); if (n > 0) "Forgotten ($n place(s) deleted)." else "Nothing saved about that - tell the user it is not in memory." }
                 "local_info" -> localInfoTool()
+                "reel_stats" -> withContext(Dispatchers.IO) { ReelDaily.liveTool(svc) }   // नवंबर 2026: रील का 7 दिन का हिसाब
                 "connector_task" -> withContext(Dispatchers.IO) { com.dk.assistant.connect.ConnectorTool.run(svc, args) }
                 "notifications" -> notifTool(args.optString("app"))
                 "notification_reply" -> notifReply(args.optString("to"), args.optString("message"))

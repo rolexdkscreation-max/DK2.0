@@ -36,6 +36,14 @@ class ReelWatch(private val svc: DKAccessibilityService) {
     private var lastHome = 0L
     private var blockedShownUntil = 0L
     private var lastLog = ""
+    // नवंबर 2026: 7 दिन का हिसाब (ReelDaily) - ऐप सामने रहने का समय जोड़कर हर ~10 सेकंड में सेव
+    private var seenApp: ReelRules.App? = null
+    private var seenMs = 0L
+    private var seenReelMs = 0L
+    private var lastTick = 0L
+    private var lastFlush = 0L
+    private var allNow: ReelDaily.Now? = null
+    private var allAt = 0L
 
     fun start() { bg.post(tick) }
 
@@ -65,7 +73,11 @@ class ReelWatch(private val svc: DKAccessibilityService) {
         val c = svc.applicationContext
         val root = try { svc.rootInActiveWindow } catch (_: Exception) { null }
         val app = ReelRules.appOf(root?.packageName?.toString())
+        val tNow = now(); val dt = if (lastTick == 0L) 0L else (tNow - lastTick).coerceIn(0L, 3_000L); lastTick = tNow
         if (app == null || dkDriving()) {
+            // DK खुद चला रहा (जैसे सोशल रिव्यू) = वह समय "देखा हुआ" (अंदाज़े में रील नहीं बनेगा), गिनती नहीं
+            if (app != null) { if (seenApp != app) { flushSeen(force = true); seenApp = app }; seenMs += dt }
+            flushSeen(force = true)
             app?.let { counters[it]?.feed(false, emptySet(), now()) }
             if (System.currentTimeMillis() > blockedShownUntil) hidePill()
             return if (app == null) 1_500L else 900L
@@ -84,8 +96,14 @@ class ReelWatch(private val svc: DKAccessibilityService) {
             return 700L
         }
         val nodes = read(root)
-        val inReel = ReelRules.reelMode(app, nodes)
-        val sig = if (inReel) ReelRules.signature(nodes) else emptySet()
+        // नवंबर 2026 (मालिक: "रील या वीडियो, कहीं भी"): रील / शॉर्ट्स + YouTube का आम वीडियो
+        val isReel = ReelRules.reelMode(app, nodes)
+        val isVideo = !isReel && ReelRules.watchMode(app, nodes)
+        val inReel = isReel || isVideo
+        val sig = if (isReel) ReelRules.signature(nodes) else if (isVideo) ReelRules.watchSignature(nodes) else emptySet()
+        if (seenApp != app) { flushSeen(force = true); seenApp = app }
+        seenMs += dt; if (inReel) seenReelMs += dt
+        flushSeen(force = false)
         val counted = counters[app]!!.feed(inReel, sig, now())
         if (counted) {
             val limit = ReelStore.limit(c, app)
@@ -94,13 +112,30 @@ class ReelWatch(private val svc: DKAccessibilityService) {
             ReelStore.setCount(c, app, n)
             val log = "रील गिनती ${app.en()}: $n (${sig.take(3).joinToString(" | ") { it.take(24) }})"
             if (log != lastLog) { lastLog = log; DKLog.d(log) }
+            ReelDaily.addReel(c, app, sig.maxByOrNull { it.length })
+            ReelDaily.coach(c)
         }
-        if (inReel && ReelStore.popupOn(c)) showPill(ReelRules.pill(app, ReelStore.count(c, app), ReelStore.limit(c, app)), warn = false)
+        if (inReel && ReelStore.popupOn(c)) {
+            val tn = now()
+            val all = allNow?.takeIf { !counted && tn - allAt < 3_000 } ?: ReelDaily.now(c).also { allNow = it; allAt = tn }
+            val extra = if (all.limit > 0) " • सब ऐप ${all.total} / ${all.limit}" else if (all.yesterday > 0) " • कल ${all.yesterday}" else ""
+            showPill(ReelRules.pill(app, ReelStore.count(c, app), ReelStore.limit(c, app)) + extra, warn = all.limit > 0 && all.total > all.limit)
+        }
         else if (System.currentTimeMillis() > blockedShownUntil) hidePill()
         return 650L
     }
 
     private fun ReelRules.App.en() = name.lowercase()
+
+    /** ऐप सामने रहने का समय (DK देख रहा था) 7 दिन वाले हिसाब में */
+    private fun flushSeen(force: Boolean) {
+        val a = seenApp ?: return
+        val t = now()
+        if (seenMs <= 0L || (!force && t - lastFlush < 10_000)) return
+        lastFlush = t
+        try { ReelDaily.addSeen(svc.applicationContext, a, seenMs, seenReelMs) } catch (_: Exception) {}
+        seenMs = 0L; seenReelMs = 0L
+    }
 
     private fun limitHit(app: ReelRules.App) {
         val c = svc.applicationContext
