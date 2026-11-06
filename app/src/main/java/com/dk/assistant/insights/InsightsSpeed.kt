@@ -36,8 +36,8 @@ object InsightsSpeed {
         val end = prompt.indexOf("\nA screenshot", i).let { if (it < 0) prompt.length else it }
         val lines = prompt.substring(i, end).lines().drop(1).filter { it.startsWith("[") }
         if (lines.size < 4) return true
-        // "@y=40%" वाला हिस्सा नंबर नहीं गिना जाता
-        val numeric = lines.count { l -> Regex("\\d").containsMatchIn(l.substringBefore(" @y=")) }
+        // "[12]" (id) और "@y=40%" वाला हिस्सा नंबर नहीं गिना जाता
+        val numeric = lines.count { l -> Regex("\\d").containsMatchIn(l.substringAfter("] ").substringBefore(" @y=")) }
         return numeric < 4 || prompt.contains("WARNING: the screen has not changed")
     }
 
