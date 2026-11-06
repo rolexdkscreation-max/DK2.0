@@ -8,7 +8,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.io.File
 
-/** नवंबर 2026: रील / वीडियो का 7 दिन का हिसाब, कुल लिमिट पर DK की आवाज़, Accessibility के बिना भी (ReelWeek / ReelDaily / ReelTimeService) */
+/** नवंबर 2026: रील / वीडियो का 7 दिन का हिसाब, कुल लिमिट पर DK की आवाज़ (ReelWeek / ReelDaily). मालिक: "जो नहीं हो सकता वह हटाओ" - अंदाज़ा / बिना Accessibility वाला हिस्सा नहीं */
 class ReelWeekTest {
     private fun src(p: String) = listOf(File("src/main/$p"), File("app/src/main/$p")).first { it.exists() }.readText()
 
@@ -25,42 +25,23 @@ class ReelWeekTest {
         w = withReels(w, "2026-11-07", "yt", 9)
         val nw = ReelWeek.roll(w, "2026-11-08")              // 7 दिन पूरे = नया हफ़्ता
         assertEquals("2026-11-08", nw.start); assertEquals(1, nw.days.size)
-        assertEquals(9, ReelWeek.total(ReelWeek.day(nw, "2026-11-07"), 20))   // कल (पिछले हफ़्ते का आख़िरी दिन) तुलना के लिए
+        assertEquals(9, ReelWeek.total(ReelWeek.day(nw, "2026-11-07")))   // कल (पिछले हफ़्ते का आख़िरी दिन) तुलना के लिए
         assertNull(ReelWeek.day(nw, "2026-11-01"))
         assertEquals("2026-11-15", ReelWeek.resetDate(nw))
         // कई दिन बाद खुला = नया हफ़्ता, पुराना "कल" नहीं
         assertNull(ReelWeek.roll(w, "2026-11-20").prev)
     }
 
-    @Test fun counts_exact_plusEstimateOnlyForBlindTime() {
+    @Test fun counts_onlyExact_noEstimate() {
         var w = ReelWeek.roll(null, "2026-11-01")
         w = withReels(w, "2026-11-01", "ig", 10)
-        w = ReelWeek.addSeen(w, "2026-11-01", "ig", 300_000, 250_000)    // DK ने 5 मिनट देखा, 10 रील = 25 सेकंड / रील
-        assertEquals(25, ReelWeek.reelSecs(w))
-        w = ReelWeek.setSecs(w, "2026-11-01", "ig", 300_000)             // Usage access: ऐप कुल 5 मिनट = सब DK ने देखा
+        w = ReelWeek.addSeen(w, "2026-11-01", "ig", 300_000)
         val d = ReelWeek.day(w, "2026-11-01")!!
-        assertEquals(10 to 0, ReelWeek.counts(d.app("ig"), 25))
-        assertFalse(ReelWeek.estimated(d, 25))
-        w = ReelWeek.setSecs(w, "2026-11-01", "ig", 550_000)             // 250 सेकंड Accessibility बंद में = ~10 अंदाज़ा
-        val d2 = ReelWeek.day(w, "2026-11-01")!!
-        assertEquals(10 to 10, ReelWeek.counts(d2.app("ig"), 25))
-        assertTrue(ReelWeek.estimated(d2, 25)); assertEquals(20, ReelWeek.total(d2, 25))
-        assertEquals(20, ReelWeek.reelSecs(ReelWeek.roll(null, "2026-11-01")))   // कुछ गिना नहीं = 20 सेकंड
-    }
-
-    @Test fun usageForegroundTime_fromAndroidEvents_noAccessibility() {
-        val ig = "com.instagram.android"; val wa = "com.whatsapp"
-        val ev = listOf(
-            Triple(ig, true, 500L),        // आधी रात से पहले खुला
-            Triple(ig, false, 1_500L),
-            Triple(wa, true, 2_000L), Triple(wa, false, 3_000L),
-            Triple(ig, true, 4_000L),
-            Triple(wa, true, 6_000L),      // बिना pause के दूसरा ऐप आया
-            Triple(ig, true, 9_000L),
-        )
-        val m = ReelWeek.foregroundMs(ev, 1_000L, 10_000L, setOf(ig))
-        assertEquals(500L + 2_000L + 1_000L, m[ig])      // 1000-1500, 4000-6000, 9000-10000 (अभी भी खुला)
-        assertNull(m[wa])
+        assertEquals(10, ReelWeek.total(d)); assertEquals(5, ReelWeek.minutes(d))
+        assertEquals(10, d.app("ig").n); assertEquals(0, d.app("yt").n)
+        // पुराने (अंदाज़े वाले) सेव डेटा के फ़ालतू खाने = अनदेखे, अंदाज़ा कभी नहीं जुड़ता
+        val old = """{"start":"2026-11-01","days":[{"date":"2026-11-01","titles":[],"apps":{"fb":{"n":2,"seen":1000,"reelS":500,"secs":900000}}}]}"""
+        assertEquals(2, ReelWeek.total(ReelWeek.decode(old)!!.days[0]))
     }
 
     @Test fun dailyCompare_moreLessAndLimit() {
@@ -93,22 +74,24 @@ class ReelWeekTest {
         assertTrue(ReelWeek.alertLine(60, 0, 50).contains("कल पूरे दिन में 50"))
     }
 
-    @Test fun tableAndLive_showAllDays_markEstimate() {
+    @Test fun tableAndLive_showAllDays_exactOnly() {
         var w = ReelWeek.roll(null, "2026-11-01")
         w = withReels(w, "2026-11-01", "ig", 30)
         w = ReelWeek.roll(w, "2026-11-02"); w = withReels(w, "2026-11-02", "yt", 12)
-        w = ReelWeek.setSecs(w, "2026-11-02", "fb", 200_000)     // Accessibility बंद में 200 सेकंड फेसबुक = ~10
+        w = ReelWeek.addSeen(w, "2026-11-02", "yt", 180_000)
         val t = ReelWeek.table(w, "2026-11-02", 25)
-        assertTrue(t, t.contains("आज (11-02): ~22 रील") && t.contains("पिछले दिन से 8 कम"))
+        assertTrue(t, t.contains("आज (11-02): 12 रील / वीडियो • 3 मिनट • इंस्टा 0, YouTube शॉर्ट्स 12, YouTube वीडियो 0, फेसबुक 0") && t.contains("पिछले दिन से 18 कम"))
         assertTrue(t.contains("कल (11-01): 30 रील") && t.contains("लिमिट 25 पार"))
-        assertTrue(t.contains("11-08 को अपने-आप नया हफ़्ता") && t.contains("~ = Accessibility बंद"))
-        val live = ReelWeek.liveText(w, "2026-11-02", 25, accOn = false, usageOn = true)
-        assertTrue(live.contains("Accessibility (now OFF)") && live.contains("Daily limit for all apps together: 25") && live.contains("yt: creator"))
+        assertTrue(t.contains("11-08 को अपने-आप नया हफ़्ता"))
+        assertFalse(t.contains("~") || t.contains("अंदाज़ा"))
+        val live = ReelWeek.liveText(w, "2026-11-02", 25, accOn = false)
+        assertTrue(live.contains("only while DK's Accessibility is ON") && live.contains("nothing is being counted right now") && live.contains("Daily limit for all apps together: 25") && live.contains("yt: creator"))
+        assertFalse(live.contains("estimate") || live.contains("Usage access"))
     }
 
     @Test fun saveAndLoad() {
         var w = ReelWeek.roll(null, "2026-11-01")
-        w = withReels(w, "2026-11-01", "ig", 3); w = ReelWeek.addSeen(w, "2026-11-01", "ig", 9_000, 6_000)
+        w = withReels(w, "2026-11-01", "ig", 3); w = ReelWeek.addSeen(w, "2026-11-01", "ig", 9_000)
         val w7 = ReelWeek.roll(w, "2026-11-07")
         assertEquals(w7, ReelWeek.decode(ReelWeek.encode(w7)))
         w = ReelWeek.roll(w7, "2026-11-08")
@@ -131,26 +114,27 @@ class ReelWeekTest {
         assertEquals(ReelRules.watchSignature(n), ReelRules.watchSignature(later))    // चलता समय = वही वीडियो
     }
 
-    @Test fun wiring_worksWithoutAccessibility_voice_live_settings() {
+    @Test fun wiring_exactOnly_voice_live_settings_noFakeParts() {
         val m = src("AndroidManifest.xml")
-        assertTrue(m.contains("android:name=\".ReelTimeService\"") && m.contains("android:foregroundServiceType=\"specialUse\""))
-        assertTrue(m.contains("FOREGROUND_SERVICE_SPECIAL_USE"))
+        assertFalse(m.contains("ReelTimeService") || m.contains("FOREGROUND_SERVICE_SPECIAL_USE"))   // बिना Accessibility वाला अंदाज़ा हटाया
         assertFalse(m.contains("SYSTEM_ALERT_WINDOW"))
-        val svc = src("java/com/dk/assistant/ReelTimeService.kt")
-        assertTrue(svc.contains("ReelDaily.foregroundNow(this)") && svc.contains("if (app != null && !accOn) ReelDaily.coach(this)"))
-        assertFalse(svc.contains("rootInActiveWindow"))
+        assertFalse(File("src/main/java/com/dk/assistant/ReelTimeService.kt").exists() || File("app/src/main/java/com/dk/assistant/ReelTimeService.kt").exists())
         val d = src("java/com/dk/assistant/ReelDaily.kt")
-        assertTrue(d.contains("PhoneVoice.say(c.applicationContext, text)") && d.contains("um.queryEvents("))
-        assertTrue(src("java/com/dk/assistant/DKApp.kt").contains("ReelTimeService.start(this)"))
-        assertTrue(src("java/com/dk/assistant/ComputerJobs.kt").contains("ReelTimeService.start(c.applicationContext)"))
+        assertTrue(d.contains("PhoneVoice.say(c.applicationContext, text)"))
+        assertFalse(d.contains("queryEvents") || d.contains("refreshUsage") || d.contains("estimated"))
+        assertFalse(src("java/com/dk/assistant/DKApp.kt").contains("ReelTimeService"))
+        assertFalse(src("java/com/dk/assistant/ComputerJobs.kt").contains("ReelTimeService"))
         val w = src("java/com/dk/assistant/ReelWatch.kt")
         assertTrue(w.contains("ReelRules.watchMode(app, nodes)") && w.contains("ReelDaily.addReel(c, app,") && w.contains("ReelDaily.coach(c)"))
+        assertTrue(w.contains("ReelRules.Counter(stableMs = ReelRules.WATCH_MS)") && w.contains("return if (inReel) 450L else 650L"))
         assertTrue(src("java/com/dk/assistant/GeminiLiveSetup.kt").contains("\"name\", \"reel_stats\""))
         assertTrue(src("java/com/dk/assistant/GeminiLiveTools.kt").contains("\"reel_stats\" -> withContext(Dispatchers.IO) { ReelDaily.liveTool(svc) }"))
         assertTrue(src("java/com/dk/assistant/LeakedCall.kt").contains("\"reel_stats\""))
         assertTrue(src("java/com/dk/assistant/LiveConnect.kt").contains("-> reel_stats"))
         val s = src("java/com/dk/assistant/SettingsReels.kt")
-        assertTrue(s.contains("ReelDaily.setTotalLimit(") && s.contains("ReelDaily.table(this)") && s.contains("PayGuard.openUsageAccess(this)"))
+        assertTrue(s.contains("ReelDaily.setTotalLimit(") && s.contains("ReelDaily.table(this)"))
+        assertFalse(s.contains("Accessibility के बिना भी") || s.contains("Usage access") || s.contains("ReelTimeService") || s.contains("अंदाज़ा"))
         assertNotNull(SettingsSearch.search("कुल लिमिट").firstOrNull { it.section == "reels" })
+        assertTrue(SettingsSearch.search("Accessibility के बिना").none { it.section == "reels" })
     }
 }
