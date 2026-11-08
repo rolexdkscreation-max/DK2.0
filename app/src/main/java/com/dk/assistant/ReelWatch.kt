@@ -124,7 +124,8 @@ class ReelWatch(private val svc: DKAccessibilityService) {
         if (inReel && ReelStore.popupOn(c)) {
             val tn = now()
             val all = allNow?.takeIf { !counted && tn - allAt < 3_000 } ?: ReelDaily.now(c).also { allNow = it; allAt = tn }
-            val extra = if (all.limit > 0) " • सब ऐप ${all.total} / ${all.limit}" else if (all.yesterday > 0) " • कल ${all.yesterday}" else ""
+            // नवंबर 2026 (मालिक): पट्टी पर सिर्फ़ आज की गिनती - कल / पुराना हिसाब DK सेटिंग → "7 दिन का रील हिसाब" में
+            val extra = ReelRules.todayExtra(all.total, all.limit)
             val text = if (app == ReelRules.App.YOUTUBE) ReelStore.count(c, app).let { yt -> val v = ReelStore.videos(c).coerceAtMost(yt); ReelRules.ytPill(isVideo, yt - v, v, ReelStore.limit(c, app)) }
                 else ReelRules.pill(app, ReelStore.count(c, app), ReelStore.limit(c, app))
             showPill(text + extra, warn = all.limit > 0 && all.total > all.limit)
