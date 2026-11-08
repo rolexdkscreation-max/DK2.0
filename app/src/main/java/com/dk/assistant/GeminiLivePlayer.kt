@@ -85,8 +85,9 @@ internal fun GeminiLive.startPlayThread() {
         while (!Thread.currentThread().isInterrupted) {
             val b0 = try { playQ.poll(100, TimeUnit.MILLISECONDS) } catch (_: InterruptedException) { break }
             // नवंबर 2026: track नहीं (बना नहीं / रास्ता बदल रहा) - पहले thread बंद हो जाता था (आगे की हर आवाज़ गायब). अब फिर बनाओ
-            var tr = track ?: (if (b0 != null) rebuildTrack("track नहीं था") else null)
-            if (tr == null) { if (b0 != null) LiveAudioDebug.w("टुकड़ा छूटा (${b0.size} bytes) - AudioTrack नहीं"); continue }
+            val tr0 = track ?: (if (b0 != null) rebuildTrack("track नहीं था") else null)
+            if (tr0 == null) { if (b0 != null) LiveAudioDebug.w("टुकड़ा छूटा (${b0.size} bytes) - AudioTrack नहीं"); continue }
+            var tr: AudioTrack = tr0
             try {
             if (b0 == null) {
                 if (speakingSet && !isPlaying()) {
