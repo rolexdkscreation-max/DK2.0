@@ -71,7 +71,11 @@ object LiveSearch {
      * एक खोज ("web") और मिलाने वाला दूसरा AI कॉल नहीं - Live खुद उसी नतीजे से बोलता है. पहले हर सवाल पर 2-3 खोज +
      * मिलाना = एक और पूरा AI चक्कर (कई सेकंड). सरकारी / ख़बर / गहरी = पहले जैसा कई तरफ़ से पक्का.
      */
-    fun quick(question: String, deep: Boolean): Boolean = !deep && !isGov(question) && !isNews(question)
+    fun quick(question: String, deep: Boolean): Boolean = !deep && !isGov(question) && !hardNews(question)
+
+    /** सच की ख़बर वाला सवाल ("आज" / "latest" अकेले नहीं - "आज सोने का भाव" एक खोज में मिल जाता है) */
+    private val SOFT_NEWS = setOf("आज", "latest", "ताज़ा", "ताजा")
+    fun hardNews(q: String): Boolean { val t = q.lowercase(); return NEWS.filter { it !in SOFT_NEWS }.any { t.contains(it) } }
 
     /** लाइव खोज के असली कोण: [quick] = सिर्फ़ पहला ("web"), बाकी = [plan] */
     fun liveAngles(question: String, deep: Boolean): List<Angle> =
