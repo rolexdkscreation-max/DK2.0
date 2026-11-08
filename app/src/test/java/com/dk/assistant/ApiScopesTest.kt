@@ -15,7 +15,7 @@ class ApiScopesTest {
         assertEquals(listOf("gemini", "groq"), ApiScopes.providers(ApiScopes.LIVE))
         assertFalse("openrouter" in ApiScopes.providers(ApiScopes.LIVE))
         ApiScopes.ALL.filter { it != ApiScopes.LIVE }.forEach {
-            assertEquals(listOf("gemini", "groq", "openrouter", "custom"), ApiScopes.providers(it))
+            assertEquals(listOf("gemini", "groq", "openrouter", "zai", "nvidia"), ApiScopes.providers(it))
         }
     }
 

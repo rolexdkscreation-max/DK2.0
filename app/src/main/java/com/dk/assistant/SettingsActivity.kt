@@ -106,7 +106,6 @@ class SettingsActivity : AppCompatActivity() {
             "brain_coder" -> { title.text = "AI दिमाग • कोडिंग एजेंट"; secBrainScope(ApiScopes.CODER) }
             "brain_pc" -> { title.text = "AI दिमाग • DK कंप्यूटर"; secBrainScope(ApiScopes.PC) }
             "brain_web" -> { title.text = "AI दिमाग • वेबसाइट बिल्डर"; secBrainWeb() }
-            "brain_extra" -> { title.text = "AI दिमाग • Extra API"; secBrainExtra() }
             "voice" -> { title.text = "आवाज़"; secVoice() }
             "orb" -> { title.text = "ओर्ब और चेहरा"; bar.visibility = View.GONE; secOrb() }
             "ui" -> { title.text = "दिखावट"; bar.visibility = View.GONE; secUi() }

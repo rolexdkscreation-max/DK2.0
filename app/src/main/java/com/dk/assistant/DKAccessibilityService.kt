@@ -256,6 +256,23 @@ class DKAccessibilityService : AccessibilityService() {
         }
     }
 
+    /** ऐप के अंदर "जुड़ गया" की हल्की आवाज़ बज चुकी (एक बार ही) */
+    @Volatile private var inAppChimed = false
+
+    /**
+     * नवंबर 2026 (मालिक): ऐप के अंदर ओर्ब / काली आवाज़ स्क्रीन पर टैप = पहले से जुड़ा Live वैसे ही चलता रहे.
+     * "जी बॉस" और जुड़ने की आवाज़ सिर्फ़ power बटन (assistant) पर. ऐप के अंदर पहली बार जुड़ने पर हल्की आवाज़ एक ही बार.
+     */
+    fun openedInApp(why: String) {
+        if (!Setup.hasMic(this) || callBusy()) return
+        if (InvokeEntry.keepAsIs(DKState.live, gemLive.ready, gemLive.running)) {
+            DKLog.d("$why - Live पहले से जुड़ा, कुछ नहीं दोहराया"); return
+        }
+        try { LiveNet.warm(this, why) } catch (_: Exception) {}
+        if (InvokeEntry.chimeInApp(inAppChimed)) { inAppChimed = true; LiveChime.arm() }
+        if (DKState.live) appOpened() else startLive()
+    }
+
     // ================================================================ बैकअप मोड (मालिक, नवंबर 2026)
     // "हल्का मोड" पूरी तरह हटा. अब: Gemini Live सच में न जुड़े (GeminiLive.Fatal) = बैकअप मोड -
     // फ़ोन की बोली-पहचान (SpeechRecognizer) सुनती है -> agent.run() = DK Chat का text दिमाग़ (Gemini key हो तो Gemini)

@@ -3,9 +3,9 @@ package com.dk.assistant
 /**
  * AI दिमाग के 4 अलग हिस्से - हर एक की अपनी, निजी API keys (Android पर निर्भर नहीं - unit test हो सकते हैं):
  *  - DK लाइव   (LIVE)  : सिर्फ़ Google Gemini - Gemini Live, Gemini आवाज़ में बोलना, सुनना. सुनने (आवाज़ → text) के लिए Groq भी.
- *  - DK चैट    (CHAT)  : Gemini / Groq / OpenRouter / Custom - चैट, आम जवाब, बिना-Live आवाज़ मोड का जवाब, search, गहरी सोच, कहानी
- *  - कोडिंग एजेंट (CODER): Gemini / Groq / OpenRouter / Custom
- *  - DK कंप्यूटर (PC)  : Gemini / Groq / OpenRouter / Custom
+ *  - DK चैट    (CHAT)  : Gemini / Groq / OpenRouter / Z.ai / NVIDIA - चैट, आम जवाब, बिना-Live आवाज़ मोड का जवाब, search, गहरी सोच, कहानी
+ *  - कोडिंग एजेंट (CODER): Gemini / Groq / OpenRouter / Z.ai / NVIDIA
+ *  - DK कंप्यूटर (PC)  : Gemini / Groq / OpenRouter / Z.ai / NVIDIA
  *
  * नियम: हर हिस्सा सिर्फ़ अपनी चुनी API को कॉल करता है - किसी दूसरे हिस्से की key या दूसरी कंपनी पर नहीं जाता.
  * Limit (429) / मॉडल बंद होने पर सिर्फ़ उसी key के दूसरे (फ्री) मॉडल पर अपने-आप स्विच.
@@ -18,7 +18,7 @@ object ApiScopes {
     val ALL = listOf(LIVE, CHAT, CODER, PC)
 
     /** सारी कंपनियाँ (Providers.all के id) */
-    val PROVIDERS = listOf("gemini", "groq", "openrouter", "custom")
+    val PROVIDERS = listOf("gemini", "groq", "openrouter", "zai", "nvidia")
 
     /** एक बार की नक़ल (पुरानी साझा keys → हर हिस्से की अपनी) हो चुकी - इसका निशान */
     const val MIGRATED = "api_scopes_v1"
@@ -29,6 +29,12 @@ object ApiScopes {
 
     /** इस हिस्से में कौन-सी कंपनियाँ (DK लाइव: सिर्फ़ Gemini जवाब/बोलने के लिए + Groq सिर्फ़ सुनने के लिए) */
     fun providers(scope: String): List<String> = if (scope == LIVE) listOf("gemini", "groq") else PROVIDERS
+
+    /**
+     * नवंबर 2026 (मालिक): DK लाइव में भी Z.ai / NVIDIA का विकल्प. आवाज़ (बोलना-सुनना) Gemini Live ही बनाता है,
+     * इसलिए ये सिर्फ़ Live के text वाले काम (गहरी सोच - deep_think) के लिए - key डली हो तो Gemini से पहले, तेज़.
+     */
+    val LIVE_TEXT = listOf("zai", "nvidia")
 
     /**
      * Setting का नाम. DK चैट = पुराने नाम (key_gemini, model_groq…) ताकि पुरानी keys जैसी की तैसी चलें;
@@ -43,12 +49,16 @@ object ApiScopes {
         else -> "${scope}_active"
     }
 
+    private val ZAI_KEY = Regex("^[A-Za-z0-9]{20,}\\.[A-Za-z0-9]{8,}$")
+
     /** Key के शुरू के अक्षर से कंपनी (KeySetup.detect जैसा) */
     fun detect(k: String): String? = when {
         k.length < 16 -> null
         k.startsWith("AIza") -> "gemini"
         k.startsWith("gsk_") -> "groq"
         k.startsWith("sk-or-") -> "openrouter"
+        k.startsWith("nvapi-") -> "nvidia"
+        ZAI_KEY.matches(k) -> "zai"   // Z.ai key = <id>.<secret> (बीच में बिंदु)
         else -> null
     }
 
@@ -122,6 +132,7 @@ object ApiScopes {
         val fromList = when (provider) {
             "openrouter" -> cached.filter { it.endsWith(":free") } + "openrouter/free"
             "groq" -> cached.filter { m -> notChat.none { m.lowercase().contains(it) } }
+            "zai", "nvidia" -> Providers.fallbackModels(provider)
             else -> emptyList()
         }
         return (fast + fromList).map { it.trim() }.filter { it.isNotBlank() && it != primary.trim() }.distinct().take(max)

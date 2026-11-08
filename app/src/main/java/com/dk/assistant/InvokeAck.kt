@@ -75,3 +75,17 @@ object InvokeAck {
         } catch (_: Exception) {}
     }
 }
+
+/**
+ * नवंबर 2026 (मालिक): "ऐप के अंदर ओर्ब पर टैप करूँ तो फिर से 'जी बॉस' बोलता है और 'जुड़ रहा है' आता है".
+ * नियम: अभिवादन ("जी बॉस" / टिंग) + जुड़ने की आवाज़ सिर्फ़ power बटन / assistant से बुलाने पर.
+ * ऐप के अंदर: Live पहले से जुड़ा = कुछ नहीं करना; न जुड़ा हो = चुपचाप जोड़ो, हल्की आवाज़ बस एक बार.
+ * Pure logic - JVM test ([InvokeEntryTest]).
+ */
+object InvokeEntry {
+    /** ऐप के अंदर: Live चालू और जुड़ा / जुड़ रहा = जैसा है वैसा रहने दो (दोबारा न जोड़ो) */
+    fun keepAsIs(liveOn: Boolean, ready: Boolean, running: Boolean): Boolean = liveOn && (ready || running)
+
+    /** ऐप के अंदर जुड़ने की हल्की आवाज़ - पहले कभी नहीं बजी तो ही */
+    fun chimeInApp(alreadyChimed: Boolean): Boolean = !alreadyChimed
+}

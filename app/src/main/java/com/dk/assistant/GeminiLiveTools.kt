@@ -383,7 +383,7 @@ internal fun GeminiLive.runTools(calls: JSONArray) {
                 "current_time" -> { NowClock.syncAsync(); NowClock.toolAnswer() }
                 "deep_think" -> {
                     DKState.set(Mode.THINKING)
-                    try {
+                    LiveTextBrain.answer(svc, args.optString("question")) ?: try {
                         withTimeoutOrNull(45_000) { BrainManager(svc).also { it.fromLive = true }.think(args.optString("question")) }
                             ?.takeIf { it.text.isNotBlank() }
                             ?.also { if (it.sources.isNotEmpty()) toolSources = Grounding.merge(toolSources, it.sources) }

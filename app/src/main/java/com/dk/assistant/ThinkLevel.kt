@@ -68,7 +68,8 @@ object ThinkLevel {
     fun extraTokens(level: String) = when (norm(level)) { LOW -> 1024; MEDIUM -> 4096; HIGH -> 8192; else -> 0 }
 
     /**
-     * OpenAI-जैसी API (Groq, OpenRouter, Extra API) के body में सोचने का स्तर.
+     * OpenAI-जैसी API (Groq, OpenRouter, Z.ai, NVIDIA) के body में सोचने का स्तर.
+     * Z.ai (GLM-4.7 / 5.x अपने-आप सोचते हैं = धीमा): AUTO / Low = "thinking": disabled (तुरंत जवाब), Medium / High = enabled.
      * AUTO = पुराना नियम (सिर्फ़ gpt-oss पर [autoEffort]). OpenRouter = "reasoning": {"effort"} (जो मॉडल न सोचे वह अनदेखा करता है).
      * बाकी = "reasoning_effort" सिर्फ़ उन मॉडलों पर जो इसे समझते हैं (नहीं तो 400 आता है).
      * लौटाता है: कुछ जोड़ा या नहीं.
@@ -76,6 +77,9 @@ object ThinkLevel {
     fun applyOpenAi(body: JSONObject, baseUrl: String, model: String, level: String, autoEffort: String?): Boolean {
         val l = norm(level)
         val m = model.lowercase()
+        if (baseUrl.contains("api.z.ai") || baseUrl.contains("bigmodel.cn")) {
+            body.put("thinking", JSONObject().put("type", if (l == MEDIUM || l == HIGH) "enabled" else "disabled")); return true
+        }
         if (l == AUTO) {
             if (autoEffort != null && m.contains("gpt-oss")) { body.put("reasoning_effort", autoEffort); return true }
             return false
@@ -97,5 +101,5 @@ object ThinkLevel {
         code == 400 && (msg.contains("reasoning", true) || msg.contains("think", true)) && !msg.contains("API key", true)
 
     /** body से सोचने वाला हिस्सा हटाओ (दोबारा भेजने से पहले) */
-    fun strip(body: JSONObject) { body.remove("reasoning_effort"); body.remove("reasoning") }
+    fun strip(body: JSONObject) { body.remove("reasoning_effort"); body.remove("reasoning"); body.remove("thinking") }
 }

@@ -1,6 +1,6 @@
 package com.dk.assistant
 
-/** Saari AI companies jinka API DK me laga sakte hain: sirf Google Gemini, Groq, OpenRouter aur Custom API (v3.7). */
+/** Saari AI companies jinka API DK me laga sakte hain: Google Gemini, Groq, OpenRouter, Z.ai aur NVIDIA (नवंबर 2026). */
 data class Provider(
     val id: String,
     val name: String,
@@ -10,8 +10,7 @@ data class Provider(
     val defaultModel: String,
     val vision: Boolean,       // screenshot samajh sakta hai?
     val keyUrl: String,
-    val isGemini: Boolean = false,
-    val isCustom: Boolean = false
+    val isGemini: Boolean = false
 )
 
 object Providers {
@@ -22,10 +21,19 @@ object Providers {
             "https://api.groq.com/openai/v1", "openai/gpt-oss-120b", false, "https://console.groq.com/keys"),
         Provider("openrouter", "OpenRouter", true, "फ्री मॉडल • रोज़ ~50 रिक्वेस्ट",
             "https://openrouter.ai/api/v1", "openrouter/free", true, "https://openrouter.ai/keys"),
-        // v5 (मालिक): "Custom API (Base URL)" की जगह - किसी भी कंपनी की key, कंपनी अपने-आप पहचानी जाती है, फिर मॉडल चुनें
-        Provider("custom", "Extra API (कोई भी कंपनी)", true, "OpenAI, Claude, Grok, DeepSeek, Mistral, Perplexity, Kimi, Qwen… किसी की भी key डालें — कंपनी का नाम अपने-आप आएगा, फिर मॉडल चुनें",
-            "", "", true, "", isCustom = true)
+        // नवंबर 2026 (मालिक): "Extra API" (कोई भी कंपनी) काम नहीं करता था - पूरी तरह हटाया. उसकी जगह Z.ai और NVIDIA
+        Provider("zai", "Z.ai (GLM)", true, "फ्री GLM-4.7-Flash • तेज़ • सिर्फ़ टेक्स्ट",
+            "https://api.z.ai/api/paas/v4", "glm-4.7-flash", false, "https://z.ai/manage-apikey/apikey-list"),
+        Provider("nvidia", "NVIDIA NIM", true, "फ्री (nvapi- key) • Llama / Nemotron / DeepSeek • सिर्फ़ टेक्स्ट",
+            "https://integrate.api.nvidia.com/v1", "meta/llama-3.3-70b-instruct", false, "https://build.nvidia.com/settings/api-keys")
     )
 
     fun byId(id: String) = all.firstOrNull { it.id == id }
+
+    /** जिनकी /models list न खुले (Z.ai) - तब ये मॉडल दिखें. पहला = सबसे तेज़/फ्री */
+    fun fallbackModels(id: String): List<String> = when (id) {
+        "zai" -> listOf("glm-4.7-flash", "glm-4.5-flash", "glm-4.6v-flash")
+        "nvidia" -> listOf("meta/llama-3.3-70b-instruct", "meta/llama-3.1-8b-instruct", "nvidia/llama-3.3-nemotron-super-49b-v1.5", "deepseek-ai/deepseek-v3.1")
+        else -> emptyList()
+    }
 }

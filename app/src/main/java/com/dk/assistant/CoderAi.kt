@@ -304,7 +304,7 @@ class CoderAi(val provider: Provider, private val key: String, val model: String
             .readTimeout(150, TimeUnit.SECONDS).callTimeout(180, TimeUnit.SECONDS).build()
 
         /** DK कंप्यूटर की AI: सिर्फ़ Settings → AI दिमाग → DK कंप्यूटर की अपनी key. [sink] = कंप्यूटर की अपनी रिपोर्ट. */
-        // v5 (मालिक): "DK कंप्यूटर पहले Gemini से कोशिश करे, फिर Groq, फिर OpenRouter, फिर Extra API - जिससे भी बने, उससे काम हो".
+        // v5 (मालिक): "DK कंप्यूटर पहले Gemini से कोशिश करे, फिर Groq, फिर OpenRouter, फिर Z.ai, फिर NVIDIA - जिससे भी बने, उससे काम हो".
         // DK कंप्यूटर की अपनी keys (Settings → AI दिमाग → DK कंप्यूटर) में से जिसकी भी key डली है, सब इसी क्रम में एक chain में.
         fun forComputer(c: Context, sink: (String, String) -> Unit): CoderAi? {
             if (Prefs.oneKeyOn(c)) return forScope(c, ApiScopes.PC, sink)
@@ -315,7 +315,7 @@ class CoderAi(val provider: Provider, private val key: String, val model: String
         }
 
         /** DK कंप्यूटर की fallback chain का क्रम (मालिक का नियम) */
-        val PC_CHAIN = listOf("gemini", "openrouter", "custom", "groq")
+        val PC_CHAIN = listOf("gemini", "openrouter", "zai", "nvidia", "groq")
 
         /** कोडिंग एजेंट की AI: सिर्फ़ Settings → AI दिमाग → कोडिंग एजेंट की अपनी key. null = key नहीं */
         // API/मॉडल बदलना, retry, request छोटी करना = अंदर की बात: यूज़र की रिपोर्ट में नहीं, सिर्फ़ डिबग लॉग में
