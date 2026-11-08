@@ -646,6 +646,8 @@ class GeminiLive(internal val svc: DKAccessibilityService, internal val agent: A
         if (connSplit && !splitLive) return
         if (startHold.offer(pcm)) return        // नवंबर 2026: आप अभी बोल रहे - पुराना जवाब कतार में नहीं (LiveStartHold)
         playQ.offer(pcm)
+        // नवंबर 2026 (आवाज़ गायब): बजाने वाला thread मर गया हो तो फिर शुरू - वरना text आता, आवाज़ नहीं
+        if (!stopped && playThread?.isAlive != true) ensurePlayThread()
     }
 
     /** नवंबर 2026 (Smart turn): आप बोल रहे थे तब आया जवाब - बजाएँ / फेंकें? (mic loop हर chunk पर) */
@@ -755,7 +757,7 @@ class GeminiLive(internal val svc: DKAccessibilityService, internal val agent: A
         callAudioOn = on
         if (on) CallSpeaker.pause() else if (!stopped) CallSpeaker.apply(svc, btOn)
         if (stopped || btOn || track == null) return
-        try { startPlayer(); log("आवाज़: " + if (on) "कॉल के समय accessibility (घंटी में भी सुनाई दे)" else "वापस speaker (media)") } catch (e: Exception) { log("आवाज़ बदल नहीं पाया: ${e.message}") }
+        try { rebuildTrack("कॉल " + if (on) "शुरू" else "खत्म"); log("आवाज़: " + if (on) "कॉल के समय accessibility (घंटी में भी सुनाई दे)" else "वापस speaker (media)") } catch (e: Exception) { log("आवाज़ बदल नहीं पाया: ${e.message}") }
     }
 
     /** v3.51: फ़ोन ने खुद पूछ लिया "उठाऊँ या काट दूँ?" - Live को बताओ ताकि जवाब सुने (दोबारा न पूछे) */
@@ -945,7 +947,7 @@ class GeminiLive(internal val svc: DKAccessibilityService, internal val agent: A
             // DK चुप हो तब आवाज़ का रास्ता बदलो (बोलते-बोलते आवाज़ न कटे)
             svc.scope.launch(Dispatchers.IO) {
                 withTimeoutOrNull(6_000) { while (isPlaying()) delay(100) }
-                if (!stopped) { startPlayer(); log("आवाज़: " + if (bt) "Bluetooth headset (कॉल वाला तरीका)" else "फ़ोन का speaker") }
+                if (!stopped) { rebuildTrack(if (bt) "Bluetooth जुड़ा" else "Bluetooth हटा"); log("आवाज़: " + if (bt) "Bluetooth headset (कॉल वाला तरीका)" else "फ़ोन का speaker") }
             }
         }
         // नवंबर 2026 (Live जाँच #1): कॉल-mode स्पीकर (सेटिंग) = फ़ोन का पक्का echo-cancel, DK बोलते समय भी टोकना तेज़

@@ -128,11 +128,17 @@ internal fun GeminiLive.handleServer(msg: String, setup: CompletableDeferred<Uni
                 splitHoldCheck(); pumpSplit()
                 continue
             }
-            val inline = p.optJSONObject("inlineData") ?: continue
+            // नवंबर 2026 (आवाज़ गायब की जाँच): आवाज़ के बिना आया हिस्सा भी DK_AUDIO_DEBUG में दिखे (पहले चुपचाप छूटता)
+            val inline = p.optJSONObject("inlineData") ?: p.optJSONObject("inline_data")
+            val keys = buildSet { val it = p.keys(); while (it.hasNext()) add(it.next()) }
+            LiveAudioGuard.missingAudio(keys, p.optBoolean("thought"), tx.isNotEmpty(), inline?.optString("mimeType"), inline?.optString("data")?.length ?: 0)
+                ?.let { LiveAudioDebug.w("modelTurn part बिना आवाज़: $it") }
+            if (inline == null) continue
             val mime = inline.optString("mimeType")
             if (!mime.startsWith("audio/pcm")) { log("अनजान output: $mime"); continue }
-            val pcm = try { Base64.decode(inline.optString("data"), Base64.DEFAULT) } catch (e: Exception) { log("audio decode गलती"); continue }
+            val pcm = try { Base64.decode(inline.optString("data"), Base64.DEFAULT) } catch (e: Exception) { log("audio decode गलती"); LiveAudioDebug.w("audio base64 decode गलती: ${e.message}"); continue }
             if (pcm.isEmpty()) continue
+            LiveAudioDebug.chunk(pcm.size, LiveAudioGuard.rateOf(mime, GeminiLive.OUT_RATE), playQ.size)
             recvAudio += pcm.size
             replyPartArrived("पहला ऑडियो चंक")
             timeline.audio(System.currentTimeMillis())
