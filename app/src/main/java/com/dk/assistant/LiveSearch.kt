@@ -66,6 +66,24 @@ object LiveSearch {
         return list
     }
 
+    /**
+     * नवंबर 2026 (मालिक: "DK लाइव में जवाब बहुत देर से आता है"): आम सवाल (सरकारी / ख़बर नहीं, गहरी खोज नहीं) = सिर्फ़
+     * एक खोज ("web") और मिलाने वाला दूसरा AI कॉल नहीं - Live खुद उसी नतीजे से बोलता है. पहले हर सवाल पर 2-3 खोज +
+     * मिलाना = एक और पूरा AI चक्कर (कई सेकंड). सरकारी / ख़बर / गहरी = पहले जैसा कई तरफ़ से पक्का.
+     */
+    fun quick(question: String, deep: Boolean): Boolean = !deep && !isGov(question) && !hardNews(question)
+
+    /** सच की ख़बर वाला सवाल ("आज" / "latest" अकेले नहीं - "आज सोने का भाव" एक खोज में मिल जाता है) */
+    private val SOFT_NEWS = setOf("आज", "latest", "ताज़ा", "ताजा")
+    fun hardNews(q: String): Boolean { val t = q.lowercase(); return NEWS.filter { it !in SOFT_NEWS }.any { t.contains(it) } }
+
+    /** लाइव खोज के असली कोण: [quick] = सिर्फ़ पहला ("web"), बाकी = [plan] */
+    fun liveAngles(question: String, deep: Boolean): List<Angle> =
+        if (quick(question, deep)) plan(question).filter { it.id == "web" }.ifEmpty { plan(question).take(1) } else plan(question, deep)
+
+    /** एक ही नतीजा + तेज़ रास्ता = मिलाने वाला AI कॉल छोड़ो */
+    fun skipMerge(goodReports: Int, deep: Boolean): Boolean = !deep && goodReports == 1
+
     /** हर एक खोज का system निर्देश */
     fun angleSystem(a: Angle, nowLine: String, name: String, deep: Boolean = false): String =
         "You are the research helper of $name, a Hindi voice assistant. $nowLine\n" +

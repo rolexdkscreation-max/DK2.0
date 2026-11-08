@@ -92,7 +92,8 @@ class DkLiveSettingsExtraApiTest {
         assertTrue(DkSettings.prefFor(barge, true).not())
         val cat = DkSettings.catalog { false }
         assertTrue(cat.contains("[wake]: OFF"))
-        assertTrue(cat.contains("AI दिमाग • Extra API"))
+        assertTrue(cat.contains("AI दिमाग • DK कंप्यूटर"))
+        assertFalse(cat.contains("Extra API"))            // नवंबर 2026: Extra API पूरी तरह हटी
         val g = LiveSrc.all()
         assertTrue(g.contains("put(\"name\", \"dk_settings\")"))
         assertTrue(g.contains("\"dk_settings\" -> DkSettingsApply.run(svc, args)"))
@@ -115,38 +116,20 @@ class DkLiveSettingsExtraApiTest {
         assertFalse(LiveConnect.features(false, emptyList(), false).contains("opens by itself"))
     }
 
-    // ---- 6) Extra API + DK कंप्यूटर
-    @Test fun extraApi_detectsCompanyFromKey() {
-        assertEquals("anthropic", ApiCompanies.sure("sk-ant-api03-abcdefghijklmnopqrstuvwxyz")?.id)
-        assertEquals("openrouter", ApiCompanies.sure("sk-or-v1-abcdefghijklmnopqrstuvwxyz")?.id)
-        assertEquals("xai", ApiCompanies.sure("xai-abcdefghijklmnopqrstuvwxyz0123")?.id)
-        assertEquals("perplexity", ApiCompanies.sure("pplx-abcdefghijklmnopqrstuvwxyz")?.id)
-        assertEquals("groq", ApiCompanies.sure("gsk_abcdefghijklmnopqrstuvwxyz")?.id)
-        assertEquals("gemini", ApiCompanies.sure("AIzaSyAbcdefghijklmnopqrstuvwxyz")?.id)
-        assertEquals("openai", ApiCompanies.sure("sk-proj-abcdefghijklmnopqrstuvwxyz")?.id)
-        // "sk-" अकेला = OpenAI पहले, फिर DeepSeek / Kimi / Qwen (फ़ोन /models से जाँचता है)
-        val sk = ApiCompanies.candidates("sk-abcdefghijklmnopqrstuvwxyz0123").map { it.id }
-        assertEquals("openai", sk.first()); assertTrue("deepseek" in sk)
-        assertNull(ApiCompanies.sure("sk-abcdefghijklmnopqrstuvwxyz0123"))
-        assertTrue(ApiCompanies.candidates("short").isEmpty())
-        assertEquals("zhipu", ApiCompanies.candidates("abcdef0123456789abcdef.ABCDEFGHIJ").first().id)
-        assertTrue(ApiCompanies.ALL.all { it.base.startsWith("https://") && it.models.isNotEmpty() })
-        assertEquals("anthropic", ApiCompanies.byBase("https://api.anthropic.com/v1/")?.id)
-        assertTrue(ApiCompanies.label(ApiCompanies.byId("openai")).contains("OpenAI"))
-    }
-
-    @Test fun extraApi_noBaseUrlField_companyAndModelPicker() {
+    // ---- 6) नवंबर 2026: Extra API हटी, उसकी जगह Z.ai और NVIDIA; DK कंप्यूटर: Gemini -> OpenRouter -> Z.ai -> NVIDIA -> Groq
+    @Test fun extraApi_removed_zaiAndNvidiaInstead() {
         val s = com.dk.assistant.SetSrc.all()
         assertFalse(s.contains("field(box, \"Base URL\""))
-        assertTrue(s.contains("ModelLister.detectCompany(k)"))
-        assertTrue(s.contains("button(\"कंपनी बदलें\")"))
-        assertTrue(s.contains("menuRow(\"brain_extra\""))
-        assertFalse(Providers.byId("custom")!!.name.contains("Custom API"))
-        assertTrue(Providers.byId("custom")!!.isCustom)
+        assertFalse(s.contains("ModelLister.detectCompany(k)"))
+        assertFalse(s.contains("button(\"कंपनी बदलें\")"))
+        assertFalse(s.contains("menuRow(\"brain_extra\""))
+        assertNull(Providers.byId("custom"))
+        assertTrue(Providers.byId("zai")!!.baseUrl.startsWith("https://api.z.ai/"))
+        assertTrue(Providers.byId("nvidia")!!.baseUrl.startsWith("https://integrate.api.nvidia.com/"))
     }
 
     @Test fun computer_fallbackChain_andCleanScreen() {
-        assertEquals(listOf("gemini", "openrouter", "custom", "groq"), CoderAi.PC_CHAIN)
+        assertEquals(listOf("gemini", "openrouter", "zai", "nvidia", "groq"), CoderAi.PC_CHAIN)
         // खोज: Gemini → Tavily → OpenRouter → Exa
         assertEquals(listOf("gemini", "tavily", "openrouter", "exa"), ComputerTools.SEARCH_CHAIN)
         assertEquals(listOf("gemini", "tavily", "openrouter", "exa"), ComputerTools.searchChain("auto", true, true, true, true))

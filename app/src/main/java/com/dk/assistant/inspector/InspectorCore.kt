@@ -203,7 +203,7 @@ object InspectorCore {
         Rule("api_limit", Component.API, Certainty.CONFIRMED, Severity.HIGH,
             Regex("(?i)(limit खत्म|quota|RESOURCE_EXHAUSTED|\\b429\\b|rate.?limit)"),
             "API की limit/quota खत्म", "API company ने और अनुरोध लेने से मना किया (रोज़/मिनट की सीमा)।",
-            "उस API वाला फ़ीचर रुकता है या दूसरे model पर चला जाता है।", "दूसरी key जोड़ें या limit reset होने दें; Extra API रखें।",
+            "उस API वाला फ़ीचर रुकता है या दूसरे model पर चला जाता है।", "दूसरी key जोड़ें या limit reset होने दें; Z.ai / NVIDIA की बैकअप key रखें।",
             "कोड बदलाव ज़रूरी नहीं, fallback पहले से है - fallback न चले तो जाँच।", "थोड़ी देर बाद फिर चलाएँ; 429 न आए।"),
         Rule("api_auth", Component.API, Certainty.CONFIRMED, Severity.HIGH,
             Regex("(?i)(\\b401\\b|\\b403\\b|PERMISSION_DENIED|invalid.{0,6}(api)?.?key|API key not valid|key गलत|key नहीं मिली|unauthorized|service account[^.]{0,40}(deleted|disabled)|api key expired)"),

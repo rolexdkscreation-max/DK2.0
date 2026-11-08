@@ -18,15 +18,20 @@ object ModelLister {
         "dall-e", "transcribe", "realtime", "native-audio", "live", "aqa", "guard", "rerank", "ocr", "search-preview")
 
     suspend fun fetch(p: Provider, key: String, baseUrl: String): List<String> = withContext(Dispatchers.IO) {
-        val list = if (p.isGemini) gemini(key) else openAi(baseUrl.trimEnd('/'), key)
+        // नवंबर 2026: Z.ai की /models सूची न खुले (404) = उसके जाने-माने फ्री मॉडल. गलत key (401/403) = वही गलती
+        val list = if (p.isGemini) gemini(key) else try { openAi(baseUrl.trimEnd('/'), key) } catch (e: AiException) {
+            if (e.code == 404 || e.code == 405) Providers.fallbackModels(p.id).ifEmpty { throw e } else throw e
+        }
         val clean = list.filter { m -> SKIP.none { m.lowercase().contains(it) } }.distinct()
         val sorted = when (p.id) {
             // OpenRouter: sirf FREE models (paise na kate)
             "openrouter" -> listOf("openrouter/free") + clean.filter { it.endsWith(":free") }.sorted()
             "gemini" -> clean.sortedWith(compareByDescending<String> { it.contains("flash") }.thenByDescending { it })
+            // Z.ai / NVIDIA: तेज़ फ्री मॉडल सबसे ऊपर
+            "zai", "nvidia" -> (Providers.fallbackModels(p.id).filter { it in clean } + clean.sorted()).distinct()
             else -> clean.sorted()
         }
-        sorted.ifEmpty { list }
+        sorted.ifEmpty { list }.ifEmpty { Providers.fallbackModels(p.id) }
     }
 
     /** Bina chhante poori list (key sahi hai ya nahi + whisper hai ya nahi) */
@@ -67,33 +72,6 @@ object ModelLister {
             if (token.isBlank()) return out
         }
         return out
-    }
-
-    /**
-     * v5 (Extra API): key से असली कंपनी - हर उम्मीदवार की /models जाँचो, जो खुले वही कंपनी (साथ में उसके मॉडल).
-     * किसी की /models न खुले पर निशान पक्का हो (जैसे pplx-) = वही कंपनी, उसके जाने-माने मॉडल. null = पहचान नहीं.
-     */
-    suspend fun detectCompany(key: String): Pair<ApiCompanies.Company, List<String>>? = withContext(Dispatchers.IO) {
-        val cands = ApiCompanies.candidates(key)
-        for (c in cands) {
-            try {
-                val list = openAi(c.base, key.trim()).filter { m -> SKIP.none { m.lowercase().contains(it) } }.distinct().sorted()
-                if (list.isNotEmpty()) return@withContext c to list
-            } catch (e: AiException) {
-                // 401/403 = इस कंपनी की key नहीं; 404/500/etc = अगला उम्मीदवार
-                DKLog.d("Extra API: ${c.name} -> ${e.code}")
-            } catch (e: Exception) {
-                DKLog.d("Extra API: ${c.name} -> ${e.javaClass.simpleName}: ${e.message}")
-            }
-        }
-        ApiCompanies.sure(key)?.let { company ->
-            val fallbackModels = try {
-                openAi(company.base, key.trim()).filter { m -> SKIP.none { m.lowercase().contains(it) } }.distinct().sorted()
-            } catch (e: Exception) {
-                emptyList()
-            }
-            company to (fallbackModels.ifEmpty { company.models })
-        }
     }
 
     private fun openAi(base: String, key: String): List<String> {

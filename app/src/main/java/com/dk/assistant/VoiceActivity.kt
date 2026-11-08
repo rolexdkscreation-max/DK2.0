@@ -47,7 +47,8 @@ class VoiceActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         // v5.1 (मालिक): स्क्रीन खुलते ही Live पीछे से जुड़ना शुरू - ओर्ब/UI बनने का इंतज़ार नहीं (माइक की इजाज़त हो तभी)
-        if (plainOpen(intent)) DKAccessibilityService.instance?.invokedNow("DK स्क्रीन खुली")
+        // नवंबर 2026 (मालिक): ऐप के अंदर = पहले से जुड़ा Live वैसे ही; "जी बॉस" / दोबारा जुड़ना सिर्फ़ power बटन पर
+        if (plainOpen(intent)) DKAccessibilityService.instance?.openedInApp("DK स्क्रीन खुली")
         // आवाज़ स्क्रीन: पूरी काली - पीछे ऐप (aurora/चैट/बटन) नहीं, सिर्फ़ आवाज़ का चलता गोला + बाहर निकलने का बटन
         // v4 Neon Glass: काले के पास गहरा मिडनाइट ढलान (aurora/चैट अब भी नहीं) - बीच में चमकता ओर्ब ही मुख्य
         val root = FrameLayout(this).apply {

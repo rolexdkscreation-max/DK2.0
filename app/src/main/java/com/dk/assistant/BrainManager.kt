@@ -397,7 +397,7 @@ class BrainManager(private val ctx: Context) {
         // v3.90: खोज की अपनी key से = गहरी खोज (Gemini ऐप जैसी): एक और "पूरी जानकारी" वाला कोण, हर कोण में ज़्यादा सोच/लंबी रिपोर्ट, ज़्यादा समय.
         // Live/चैट की key से = पहले जैसी तेज़ खोज (उनकी free limit बचे)
         val deepS = LiveSearch.deepFor(key, Prefs.searchOwnKey(ctx))
-        val angles = LiveSearch.plan(question, deepS)
+        val angles = LiveSearch.liveAngles(question, deepS)   // नवंबर 2026: आम सवाल = एक खोज, तुरंत
         val angleMs = LiveSearch.angleTimeoutMs(deepS)
         var firstKeyError: Exception? = null
         val reports = coroutineScope {
@@ -429,7 +429,7 @@ class BrainManager(private val ctx: Context) {
                 searchOnceWith(key, question, deep = false, thorough = false, think = false, maxModels = 2)
             } ?: throw AiException(0, "timeout")
         }
-        val merged = try {
+        val merged = if (LiveSearch.skipMerge(good.size, deepS)) null else try {
             kotlinx.coroutines.withTimeoutOrNull(if (deepS) 15_000L else 10_000L) {
                 kotlinx.coroutines.runInterruptible {
                     val client = GeminiClient(key, model)
