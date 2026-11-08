@@ -250,54 +250,43 @@ class SettingsActivity : AppCompatActivity() {
                     }
                     if (err != null) { tv.text = UiLang.s(err); kotlinx.coroutines.delay(2500) }
                 }
-                val takes = ArrayList<ByteArray>()
-                // पहले सुनने वाला माइक-रास्ता; उस पर आवाज़ न आए तो Live वाला (कई फ़ोन पर पहला बहुत धीमा आता है)
+                // नवंबर 2026 (मालिक): "Hey DK" भी 30 सेकंड की एक रिकॉर्डिंग में 5 बार (एक-एक नमूने वाला तरीका हटाया).
+                // चुप्पी वाले हिस्से से कमरे का शोर - उसी से "दूर से बोले" जैसे नमूने भी बनते हैं (HeyDk.save)
+                val VT = com.dk.assistant.voice.VoiceTape
                 val sources = listOf(android.media.MediaRecorder.AudioSource.VOICE_RECOGNITION, android.media.MediaRecorder.AudioSource.VOICE_COMMUNICATION)
                 var srcIdx = 0
+                var takes: List<ByteArray> = emptyList()
+                var noise = ByteArray(0); var quiet = false
+                var why: String? = null
                 withDkMicPaused {
-                    var tries = 0; var redo = -1; var outlierDone = false
-                    while (takes.size < WM.TAKES || redo >= 0) {
-                        val n = if (redo >= 0) redo + 1 else takes.size + 1
-                        val ask = UiLang.s("नमूना") + " $n/${WM.TAKES} — " + UiLang.s("आम आवाज़ में, जैसे रोज़ बुलाएँगे, बोलिए:") + "\n\n\"हे डीके\" (Hey DK)"
-                        tv.text = ask
-                        val take = HD.recordTake(sources[srcIdx]) { lv ->
-                            val bars = (lv * 12).toInt().coerceIn(0, 12)
-                            runOnUiThread { tv.text = ask + "\n\n" + UiLang.s("माइक:") + " " + "▮".repeat(bars) + "▯".repeat(12 - bars) }
+                    while (true) {
+                        tv.text = heyDkTapeText(null)
+                        kotlinx.coroutines.delay(1200)
+                        var lastUi = 0L
+                        val r = com.dk.assistant.voice.VoiceTapeRec.record(sources[srcIdx], ok = { pcm -> HD.spokenFrames(pcm) in 20..300 }) { t ->
+                            val now = System.currentTimeMillis()
+                            if (now - lastUi >= 120 || t.got >= VT.TIMES) { lastUi = now; runOnUiThread { tv.text = heyDkTapeText(t) } }
                         }
-                        val frames = if (take == null) 0 else kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) { HD.spokenFrames(take.pcm) }
-                        if (take == null || frames !in 20..300) {
-                            tries++
-                            // इस रास्ते पर दो बार कुछ नहीं आया -> दूसरा माइक-रास्ता, शुरू से
-                            if (tries >= 2 && srcIdx == 0 && takes.isEmpty()) {
-                                srcIdx = 1; tries = 0
-                                tv.text = UiLang.s("माइक दूसरे तरीके से खोल रहा हूँ — फिर से बोलिए"); kotlinx.coroutines.delay(1200); continue
-                            }
-                            if (tries >= 4) {
-                                tv.text = UiLang.s("आवाज़ ठीक से नहीं आई — शांत जगह पर फिर कोशिश करें") + "\n(" + HD.lastInfo + ")"
-                                return@withDkMicPaused
-                            }
-                            tv.text = UiLang.s(if (frames > 300) "बहुत लंबा हो गया — सिर्फ़ \"हे डीके\" बोलिए" else "आवाज़ नहीं पकड़ी — फ़ोन मुँह के पास रखकर थोड़ा साफ़ बोलिए") + "\n(" + HD.lastInfo + ")"
-                            kotlinx.coroutines.delay(1500); continue
+                        // इस माइक-रास्ते पर कुछ नहीं आया (कई फ़ोन पर पहला बहुत धीमा) -> Live वाला रास्ता, एक बार फिर
+                        if (srcIdx == 0 && (!r.micOk || r.takes.isEmpty())) {
+                            srcIdx = 1; tv.text = UiLang.s("माइक दूसरे तरीके से खोल रहा हूँ — फिर से बोलिए"); kotlinx.coroutines.delay(1200); continue
                         }
-                        tries = 0
-                        if (redo >= 0) { takes[redo] = take.pcm; redo = -1 } else takes.add(take.pcm)
-                        if (takes.size >= WM.TAKES && !outlierDone) {
-                            outlierDone = true
-                            tv.text = UiLang.s("सीख रहा हूँ…")
-                            val bad = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) { WM.outlier(takes.map { HD.featuresOf(it) }) }
-                            if (bad >= 0) {
-                                tv.text = UiLang.s("एक नमूना बाकियों से अलग लगा — उसे एक बार फिर बोलिए"); kotlinx.coroutines.delay(1200)
-                                redo = bad; continue
-                            }
-                        }
-                        tv.text = UiLang.s("ठीक है") + " ✓"
-                        kotlinx.coroutines.delay(600)
+                        if (!r.micOk) { why = "माइक नहीं खुला — कोई दूसरा ऐप माइक इस्तेमाल कर रहा है?"; break }
+                        why = VT.verdict(r.takes.size, r.tooShort, r.tooLong)
+                        takes = r.takes; noise = r.noise; quiet = r.quiet
+                        break
                     }
                 }
-                if (takes.size < WM.TAKES) return@launch
-                tv.text = UiLang.s("सीख रहा हूँ…")
-                val err = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) { HD.save(this@SettingsActivity, takes, sources[srcIdx]) }
+                if (why != null) { tv.text = UiLang.s(why!!) + "\n\n" + UiLang.s("\"Hey DK सिखाओ\" फिर दबाइए।"); return@launch }
+                tv.text = UiLang.s("सीख रहा हूँ…") + " (${takes.size} " + UiLang.s("बार") + ")"
+                // एक बार बाकियों से बहुत अलग (खाँसी / कोई और बोला) = उसे छोड़कर बाकी से सीखो
+                val keep = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) {
+                    val bad = if (takes.size > VT.MIN_TIMES) WM.outlier(takes.map { HD.featuresOf(it) }) else -1
+                    if (bad >= 0) takes.filterIndexed { i, _ -> i != bad } else takes
+                }
+                val err = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) { HD.save(this@SettingsActivity, keep, sources[srcIdx], noise) }
                 if (err != null) { tv.text = UiLang.s(err); return@launch }
+                if (quiet) DKLog.d("Hey DK: सिखाते समय आवाज़ धीमी थी")
                 if (::swWake.isInitialized) swWake.isChecked = true
                 Setup.startKeepAlive(this@SettingsActivity)
                 DKAccessibilityService.instance?.startWakeLoopIfEnabled()
@@ -308,6 +297,18 @@ class SettingsActivity : AppCompatActivity() {
             } catch (e: Exception) { tv.text = UiLang.s("गड़बड़ हुई") + " (${e.javaClass.simpleName})" }
         }
         dlg.setOnDismissListener { ownerJob?.cancel() }
+    }
+
+    /** "Hey DK सिखाओ" - 30 सेकंड की रिकॉर्डिंग का हाल */
+    private fun heyDkTapeText(t: com.dk.assistant.voice.VoiceTapeRec.Tick?): String {
+        val VT = com.dk.assistant.voice.VoiceTape
+        val head = UiLang.s("Hey DK — 30 सेकंड") + "\n\n" +
+            UiLang.s("\"हे डीके\" (Hey DK) ${VT.TIMES} बार बोलिए, हर बार के बाद 2 सेकंड रुकिए।") + "\n" +
+            UiLang.s("आम आवाज़ में, जैसे रोज़ बुलाएँगे। फ़ोन एक हाथ दूर रखें।")
+        if (t == null) return head + "\n\n" + UiLang.s("तैयार हो जाइए… (कमरे का शोर सुन रहा हूँ)")
+        val bars = (t.level * 12).toInt().coerceIn(0, 12)
+        return head + "\n\n" + UiLang.s(VT.progress(t.leftMs, t.got)) + "\n" + UiLang.s("माइक:") + " " + "▮".repeat(bars) + "▯".repeat(12 - bars) +
+            (if (t.note.isNotBlank()) "\n" + UiLang.s(t.note) else "")
     }
 
     internal fun ownerDialog(title: String): Pair<androidx.appcompat.app.AlertDialog, TextView> {

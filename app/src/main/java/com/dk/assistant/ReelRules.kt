@@ -148,5 +148,8 @@ object ReelRules {
         return main + (if (limit > 0) " • कुल $total / $limit" else "") + (if (limit > 0 && total >= limit) " • लिमिट पूरी" else "")
     }
 
+    /** पट्टी का आख़िरी हिस्सा: सिर्फ़ आज (सब ऐप मिलाकर, लिमिट हो तो). कल का कभी नहीं - वह Settings के 7 दिन वाले हिसाब में */
+    fun todayExtra(total: Int, limit: Int): String = if (limit > 0) " • आज सब ऐप $total / $limit" else ""
+
     fun blockedPill(app: App): String = "${app.hi}: आज की रील लिमिट पूरी • DK सेटिंग → रील गिनती और लिमिट से खोलें"
 }

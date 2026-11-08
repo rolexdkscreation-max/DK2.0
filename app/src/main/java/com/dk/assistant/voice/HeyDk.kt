@@ -123,10 +123,17 @@ object HeyDk {
      * नमूने सेव. @return null = ठीक, वरना हिंदी कारण
      * आवाज़ (PCM) सेव नहीं होती - सिर्फ़ अंक (MFCC + पहचान).
      */
-    fun save(c: Context, takes: List<ByteArray>, source: Int = MediaRecorder.AudioSource.VOICE_RECOGNITION): String? {
-        val feats = takes.map { featuresOf(it) }.filter { it.size >= 15 }
+    fun save(c: Context, takes: List<ByteArray>, source: Int = MediaRecorder.AudioSource.VOICE_RECOGNITION, noise: ByteArray? = null): String? {
+        val good = takes.map { it to featuresOf(it) }.filter { it.second.size >= 15 }
+        val feats = good.map { it.second }
         if (feats.size < 3) return "आवाज़ साफ़ नहीं आई - शांत जगह पर दोबारा सिखाइए"
-        val m = WakeMatch.Model.build(feats) ?: return "नमूने आपस में नहीं मिले - हर बार एक ही तरह \"Hey DK\" बोलिए"
+        // नवंबर 2026 (मालिक: "दूर रखे फ़ोन से भी सुने"): हर असली नमूने से एक "कमरे के उस पार से" वाला नमूना (कमरे का असली शोर मिलाकर).
+        // सीमा असली नमूनों से ही - सख़्ती वही, दूर की आवाज़ पर पकड़ ज़्यादा
+        val nz = noise?.takeIf { it.size > RATE / 5 }?.let { VoiceAug.toFloat(it) }
+        val far = good.mapIndexed { i, (pcm, _) ->
+            try { featuresOf(VoiceAug.toPcm(VoiceAug.far(VoiceAug.toFloat(pcm), nz, seed = i + 1))) } catch (_: Exception) { emptyArray() }
+        }.filter { it.size >= 15 }
+        val m = WakeMatch.Model.buildAug(feats, far) ?: return "नमूने आपस में नहीं मिले - हर बार एक ही तरह \"Hey DK\" बोलिए"
         modelFile(c).parentFile?.mkdirs()
         modelFile(c).writeText(m.toJson())
         cached = null
@@ -138,7 +145,7 @@ object HeyDk {
             putInt("hey_dk_src", source)
             putBoolean("wake_mode", true)       // सुनने वाला loop चले
         }
-        DKLog.d("Hey DK सीखा: ${feats.size} नमूने, सीमा ${"%.2f".format(m.base)}, आवाज़-पहचान ${if (print != null) "हाँ" else "नहीं"}")
+        DKLog.d("Hey DK सीखा: ${feats.size} नमूने (+${m.templates.size - feats.size} दूर वाले), सीमा ${"%.2f".format(m.base)}, आवाज़-पहचान ${if (print != null) "हाँ" else "नहीं"}")
         return null
     }
 
@@ -169,7 +176,8 @@ object HeyDk {
             AudioRecord(source(c), RATE, AudioFormat.CHANNEL_IN_MONO,
                 AudioFormat.ENCODING_PCM_16BIT, maxOf(min * 2, RATE * 2)).takeIf { it.state == AudioRecord.STATE_INITIALIZED }
         } catch (_: Exception) { null } ?: return@withContext null
-        val det = WakeMatch.Vad(CHUNK_MS, endMs = 350)
+        // नवंबर 2026: दूर की धीमी आवाज़ भी "बोलना शुरू" (far) - असली फ़ैसला शब्द + आवाज़ की जाँच से
+        val det = WakeMatch.Vad(CHUNK_MS, endMs = 350, far = true)
         val pre = ArrayDeque<ByteArray>()
         val seg = ByteArrayOutputStream()
         // बात चलती रहे तो शुरू के कुछ कटों पर जाँचो (एक साँस में "Hey DK, ..." भी पकड़ में आए)
@@ -233,6 +241,7 @@ object HeyDk {
                     }
                 }
                 if (ended || seg.size() > maxSeg * 3) {
+                    if (nearSeen) { nearSeen = false; nearAt = System.currentTimeMillis() }
                     if (ended) { prevSeg = seg.toByteArray(); prevEndAt = System.currentTimeMillis() } else prevSeg = null
                     inSeg = false; seg.reset(); det.reset()
                 }
@@ -244,6 +253,11 @@ object HeyDk {
         }
     }
 
+    /** पिछला "लगभग Hey DK" कब ([WakeMatch.RETRY_MS] तक अगली बार आसान) */
+    @Volatile private var nearAt = 0L
+    /** इस बात में "लगभग" सुना - बात खत्म होने पर [nearAt] बनता है (उसी बात में सीमा ढीली नहीं, सिर्फ़ अगली बार) */
+    @Volatile private var nearSeen = false
+
     /** शब्द + आवाज़ जाँच (माइक thread पर ही - छोटा काम, बोलने के बाद एक बार) */
     private fun check(c: Context, model: WakeMatch.Model, sense: WakeMatch.Sense, pcm: ByteArray): Hit? {
         val ms = pcm.size / 2 * 1000 / RATE
@@ -251,20 +265,27 @@ object HeyDk {
         val f = featuresOf(pcm)
         if (f.size < 15) return null
         val (d1, d2) = model.distances(f)
-        val th = model.threshold(sense)
-        if (!(d1 <= th && d2 <= th * 1.15f)) return null
+        // नवंबर 2026 (मालिक: "अनसुना नहीं करना"): अभी-अभी "लगभग Hey DK" सुना था = दूसरी बार सीमा थोड़ी ढीली
+        val now = System.currentTimeMillis()
+        val th = WakeMatch.liveThreshold(model.threshold(sense), nearAt, now)
+        if (!(d1 <= th && d2 <= th * 1.15f)) {
+            if (WakeMatch.nearMiss(d1, th) && !nearSeen) { nearSeen = true; DKLog.d("Hey DK लगभग सुना (दूरी ${"%.2f".format(d1)}/${"%.2f".format(th)}) - दोबारा बोलें तो पकड़ लूँगा") }
+            return null
+        }
         var owner: Float? = null
         if (ownerCheck(c)) {
             val print = Prefs.heyDkPrint(c)
             val e = OwnerVoice.embed(c, pcm)
             if (print != null && e != null) {
                 owner = VoicePrint.cosine(print, e)
-                if (owner < VoicePrint.threshold(Prefs.ownerVoiceStrict(c))) {
-                    DKLog.d("Hey DK जैसा सुना, पर आवाज़ आपकी नहीं (${"%.2f".format(owner)}) - नहीं जागा")
+                val oth = WakeMatch.ownerThreshold(VoicePrint.threshold(Prefs.ownerVoiceStrict(c)), strongWord = d1 <= model.base)
+                if (owner < oth) {
+                    DKLog.d("Hey DK जैसा सुना, पर आवाज़ आपकी नहीं (${"%.2f".format(owner)}/${"%.2f".format(oth)}) - नहीं जागा")
                     return null
                 }
             }
         }
+        nearAt = 0L; nearSeen = false
         DKLog.d("Hey DK सुना (दूरी ${"%.2f".format(d1)}/${"%.2f".format(th)}${owner?.let { ", आवाज़ %.2f".format(it) } ?: ""})")
         return Hit(d1, owner, null)
     }

@@ -28,6 +28,28 @@ object WakeMatch {
     const val MIN_MS = 300
     const val MAX_MS = 2500
     const val TAKES = 5
+    /** दूर वाला VAD: शोर से इतने गुना पर "बोलना शुरू" (पहले 2.2) */
+    const val FAR_START_K = 1.6
+    /** "लगभग Hey DK" सुना पर पक्का नहीं - इतनी देर में दोबारा बोले तो सीमा थोड़ी ढीली (दूसरी बार अनसुना नहीं) */
+    const val RETRY_MS = 6_000L
+    const val RETRY_BOOST = 1.15f
+    /** "लगभग" = सीमा से इतने गुना तक */
+    const val NEAR_K = 1.30f
+    /** शब्द साफ़ मिला (दूरी सीमा के अंदर) तो आवाज़-पहचान में इतनी छूट - छोटा "Hey DK" / दूर की आवाज़ पर score कम आता है */
+    const val OWNER_SLACK = 0.06f
+    /** सबसे ढीली आवाज़-पहचान सीमा (इससे नीचे कभी नहीं - कोई और न जगा पाए) */
+    const val OWNER_FLOOR = 0.26f
+
+    /** अभी कितनी सीमा: पिछले [RETRY_MS] में "लगभग" सुना था = [RETRY_BOOST] गुना */
+    fun liveThreshold(base: Float, nearAt: Long, now: Long): Float =
+        if (nearAt > 0 && now - nearAt in 0..RETRY_MS) base * RETRY_BOOST else base
+
+    /** यह दूरी "लगभग Hey DK" है? (जागा नहीं, पर अगली बार आसान) */
+    fun nearMiss(d1: Float, th: Float): Boolean = d1 > th && d1 <= th * NEAR_K
+
+    /** आवाज़-पहचान की सीमा: शब्द बहुत साफ़ मिला (d1 <= base) = थोड़ी छूट, पर [OWNER_FLOOR] से नीचे नहीं */
+    fun ownerThreshold(normal: Float, strongWord: Boolean): Float =
+        if (strongWord) (normal - OWNER_SLACK).coerceAtLeast(OWNER_FLOOR).coerceAtMost(normal) else normal
 
     /** संवेदनशीलता: कम = कम ग़लत जागना (कभी दोबारा बोलना पड़े), ज़्यादा = आसानी से जागे */
     enum class Sense(val factor: Float, val label: String) {
@@ -207,6 +229,16 @@ object WakeMatch {
              * नमूनों से मॉडल. हर नमूने की बाकी से सबसे कम दूरी (leave-one-out) -> उनमें सबसे बड़ी = base.
              * (मालिक का अपना "Hey DK" आपस में कितना अलग होता है - उतनी छूट, बस.)
              */
+            /**
+             * नवंबर 2026: सीमा (base) सिर्फ़ असली नमूनों से, फिर "दूर से / धीरे" बनाए नमूने भी जोड़ो - सख़्ती वही, पकड़ ज़्यादा
+             * (जैसे आवाज़-कमांड में [VoiceCmdMatch.Model.buildAug]).
+             */
+            fun buildAug(templates: List<Array<FloatArray>>, extra: List<Array<FloatArray>>): Model? {
+                val m = build(templates) ?: return null
+                val ex = extra.filter { it.isNotEmpty() && it.all { f -> f.size == DIMS } }
+                return if (ex.isEmpty()) m else Model(m.templates + ex, m.base)
+            }
+
             fun build(templates: List<Array<FloatArray>>): Model? {
                 val ts = templates.filter { it.isNotEmpty() }
                 if (ts.size < 2) return null
@@ -239,7 +271,7 @@ object WakeMatch {
      * VOICE_RECOGNITION माइक इससे धीमा आता है -> "Hey DK" तुरंत कट जाता था और गिनती न बनने से 8 s तक
      * रिकॉर्ड चलता रहा ("बहुत लंबा" / "आवाज़ नहीं पकड़ी"). यह अपने शोर के हिसाब से दरवाज़ा बनाता है.
      */
-    class Vad(private val chunkMs: Int = 40, private val endMs: Int = 450) {
+    class Vad(private val chunkMs: Int = 40, private val endMs: Int = 450, private val far: Boolean = false) {
         enum class Ev { NONE, START, END }
         var noise = 0.0
             private set
@@ -249,8 +281,12 @@ object WakeMatch {
         var speechMs = 0
             private set
 
-        fun startThr() = max(noise * 2.2, noise + 50.0).coerceAtLeast(60.0)
-        fun keepThr() = max(noise * 1.5, noise + 25.0).coerceAtLeast(40.0)
+        /**
+         * नवंबर 2026 (मालिक: "दूर रखे फ़ोन से भी Hey DK सुने, अनसुना न करे"): [far] = Hey DK सुनने वाला -
+         * दूर की धीमी आवाज़ भी "बोलना शुरू" मानो (शब्द + आवाज़ की जाँच बाद में वैसी ही पक्की). सिखाना / कमांड वाले पहले जैसे.
+         */
+        fun startThr() = if (far) max(noise * FAR_START_K, noise + 30.0).coerceAtLeast(40.0) else max(noise * 2.2, noise + 50.0).coerceAtLeast(60.0)
+        fun keepThr() = if (far) max(noise * 1.25, noise + 15.0).coerceAtLeast(28.0) else max(noise * 1.5, noise + 25.0).coerceAtLeast(40.0)
 
         fun feed(rms: Double): Ev {
             if (warm < 5) {        // पहले 200 ms: शोर सीखो
