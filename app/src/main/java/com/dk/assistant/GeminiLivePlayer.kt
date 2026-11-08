@@ -12,29 +12,83 @@ import kotlin.math.sqrt
 
 internal fun GeminiLive.startPlayer() {
     stopPlayer()
-    val min = AudioTrack.getMinBufferSize(OUT_RATE, AudioFormat.CHANNEL_OUT_MONO, AudioFormat.ENCODING_PCM_16BIT)
-    val t = AudioTrack.Builder()
-        // Bluetooth = कॉल वाली आवाज़ (headset में, गूँज हटाना ठीक); नहीं तो पहले जैसा मीडिया (speaker)
-        // v3.51: कॉल (घंटी/बात) के समय media mute होता है -> accessibility (CallVoice)
-        .setAudioAttributes(AudioAttributes.Builder().setUsage(CallVoice.usage(callAudioOn || svc.callRinging(), btOn, CallSpeaker.active))
-            .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH).build())
-        .setAudioFormat(AudioFormat.Builder().setSampleRate(OUT_RATE).setChannelMask(AudioFormat.CHANNEL_OUT_MONO)
-            .setEncoding(AudioFormat.ENCODING_PCM_16BIT).build())
-        .setBufferSizeInBytes(maxOf(min * 2, OUT_RATE * 2 / 5))      // ~200ms buffer: jaldi shuru, atke bina
-        .setTransferMode(AudioTrack.MODE_STREAM)
-        .build()
-    com.dk.assistant.voice.engine.VoiceTune.load(svc)
-    var tuneVer = com.dk.assistant.voice.engine.VoiceTune.apply(t, -1)   // v3.80: गति / पिच (सेटिंग्स -> आवाज़)
-    // v3.6: speaker पर DK की आवाज़ फ़ोन की बाकी आवाज़ से धीमी थी - थोड़ा boost (Bluetooth पर नहीं)
-    spkBoost = SpeakerBoost.attach(t.audioSessionId, btOn)
-    t.play()
+    val t = buildTrack() ?: run { log("आवाज़: AudioTrack नहीं बना - अगले टुकड़े पर फिर कोशिश"); null }
     track = t
-    log((if (btOn) "आवाज़: Bluetooth headset" else "स्पीकर" + (if (spkBoost != null) " (+${SpeakerBoost.GAIN_MB / 100} dB)" else "")) + ": $OUT_RATE Hz PCM16 mono stream • " + com.dk.assistant.voice.engine.VoiceTune.label())
+    startPlayThread()
+}
+
+/**
+ * नवंबर 2026 (आवाज़ गायब होने की जड़ #4): AudioTrack बनाओ + जाँचो कि सच में बना (STATE_INITIALIZED), तभी play().
+ * पहले तरीका (कॉल / Bluetooth / speaker वाला usage) न बने तो सीधा मीडिया तरीका, बड़ा buffer.
+ */
+internal fun GeminiLive.buildTrack(): AudioTrack? {
+    val min = AudioTrack.getMinBufferSize(OUT_RATE, AudioFormat.CHANNEL_OUT_MONO, AudioFormat.ENCODING_PCM_16BIT)
+    val fmt = AudioFormat.Builder().setSampleRate(OUT_RATE).setChannelMask(AudioFormat.CHANNEL_OUT_MONO)
+        .setEncoding(AudioFormat.ENCODING_PCM_16BIT).build()
+    // Bluetooth = कॉल वाली आवाज़ (headset में, गूँज हटाना ठीक); नहीं तो पहले जैसा मीडिया (speaker)
+    // v3.51: कॉल (घंटी/बात) के समय media mute होता है -> accessibility (CallVoice)
+    val usages = listOf(CallVoice.usage(callAudioOn || svc.callRinging(), btOn, CallSpeaker.active), AudioAttributes.USAGE_MEDIA).distinct()
+    for ((i, u) in usages.withIndex()) {
+        val t = try {
+            AudioTrack.Builder()
+                .setAudioAttributes(AudioAttributes.Builder().setUsage(u).setContentType(AudioAttributes.CONTENT_TYPE_SPEECH).build())
+                .setAudioFormat(fmt)
+                .setBufferSizeInBytes(maxOf(min * (2 + i), OUT_RATE * 2 / 5))      // ~200ms buffer: jaldi shuru, atke bina
+                .setTransferMode(AudioTrack.MODE_STREAM)
+                .build()
+        } catch (e: Exception) { LiveAudioDebug.w("AudioTrack बना नहीं (usage $u): ${e.javaClass.simpleName} ${e.message}"); null } ?: continue
+        if (!LiveAudioGuard.canPlay(t.state)) {
+            LiveAudioDebug.w("AudioTrack STATE_UNINITIALIZED (usage $u, buffer ${min * (2 + i)}) - दूसरा तरीका")
+            try { t.release() } catch (_: Exception) {}
+            continue
+        }
+        com.dk.assistant.voice.engine.VoiceTune.load(svc)
+        com.dk.assistant.voice.engine.VoiceTune.apply(t, -1)   // v3.80: गति / पिच (सेटिंग्स -> आवाज़)
+        // v3.6: speaker पर DK की आवाज़ फ़ोन की बाकी आवाज़ से धीमी थी - थोड़ा boost (Bluetooth पर नहीं)
+        SpeakerBoost.release(spkBoost)
+        spkBoost = SpeakerBoost.attach(t.audioSessionId, btOn)
+        try { t.play() } catch (e: Exception) { LiveAudioDebug.w("AudioTrack.play() गलती: ${e.message}"); try { t.release() } catch (_: Exception) {}; continue }
+        log((if (btOn) "आवाज़: Bluetooth headset" else "स्पीकर" + (if (spkBoost != null) " (+${SpeakerBoost.GAIN_MB / 100} dB)" else "")) + ": $OUT_RATE Hz PCM16 mono stream • " +
+            com.dk.assistant.voice.engine.VoiceTune.label() + if (i > 0) " • (मीडिया वाला तरीका)" else "")
+        LiveAudioDebug.d("AudioTrack तैयार: $OUT_RATE Hz mono PCM16, usage $u, session ${t.audioSessionId}")
+        return t
+    }
+    return null
+}
+
+/**
+ * नवंबर 2026 (जड़ #1 / #3): सिर्फ़ AudioTrack बदलो - कतार (playQ) और बजाने वाला thread वही (चलते जवाब का बचा हिस्सा नहीं खोता).
+ * आवाज़ का रास्ता बदला (Bluetooth / कॉल) या track मर गया (ERROR_DEAD_OBJECT) तब.
+ */
+internal fun GeminiLive.rebuildTrack(why: String): AudioTrack? {
+    val old = track
+    val t = buildTrack()
+    track = t
+    old?.let { try { it.pause(); it.flush() } catch (_: Exception) {}; try { it.release() } catch (_: Exception) {} }
+    LiveAudioDebug.w("AudioTrack दोबारा बना ($why) - कतार में ${playQ.size} टुकड़े बचे" + if (t == null) " • नहीं बना" else "")
+    if (playThread?.isAlive != true) startPlayThread()
+    return t
+}
+
+/** बजाने वाला thread ज़िंदा नहीं (गलती से मरा) = नया - कतार वही (जड़ #2) */
+internal fun GeminiLive.ensurePlayThread() {
+    if (playThread?.isAlive == true) return
+    LiveAudioDebug.w("बजाने वाला thread बंद मिला - फिर शुरू (कतार ${playQ.size})")
+    if (track == null) track = buildTrack()
+    startPlayThread()
+}
+
+internal fun GeminiLive.startPlayThread() {
+    var tuneVer = com.dk.assistant.voice.engine.VoiceTune.version
     playThread = Thread {
         var speakingSet = false
         while (!Thread.currentThread().isInterrupted) {
             val b0 = try { playQ.poll(100, TimeUnit.MILLISECONDS) } catch (_: InterruptedException) { break }
-            val tr = track ?: break
+            // नवंबर 2026: track नहीं (बना नहीं / रास्ता बदल रहा) - पहले thread बंद हो जाता था (आगे की हर आवाज़ गायब). अब फिर बनाओ
+            val tr0 = track ?: (if (b0 != null) rebuildTrack("track नहीं था") else null)
+            if (tr0 == null) { if (b0 != null) LiveAudioDebug.w("टुकड़ा छूटा (${b0.size} bytes) - AudioTrack नहीं"); continue }
+            var tr: AudioTrack = tr0
+            try {
             if (b0 == null) {
                 if (speakingSet && !isPlaying()) {
                     speakingSet = false
@@ -68,10 +122,24 @@ internal fun GeminiLive.startPlayer() {
             playEnd = maxOf(playEnd, now) + com.dk.assistant.voice.engine.VoiceTune.playMs(b.size, OUT_RATE)
             // DK की अपनी आवाज़ कितनी तेज़ (गूँज पहचानने के लिए - BargeDetector)
             noteOutLevel(b, now)
-            var off = 0
+            var off = 0; var rebuilds = 0; var zeros = 0
             while (off < b.size && g == gen) {
-                val n = try { tr.write(b, off, b.size - off) } catch (_: Exception) { -1 }
-                if (n <= 0) break
+                val n = try { tr.write(b, off, b.size - off) } catch (e: Exception) { LiveAudioDebug.w("AudioTrack.write exception: ${e.javaClass.simpleName}"); LiveAudioGuard.ERROR }
+                // नवंबर 2026 (जड़ #1): गलती = पहले यह टुकड़ा और आगे सब चुपचाप छूटता था. अब: log, track दोबारा, वही टुकड़ा फिर
+                // रास्ता बदलने पर दूसरी जगह track पहले ही बदल गया = नया वाला लो (दोबारा मत बनाओ)
+                val cur = track
+                if (n <= 0 && cur != null && cur !== tr) { tr = cur; zeros = 0; continue }
+                when (LiveAudioGuard.onWrite(n, rebuilds, zeros)) {
+                    LiveAudioGuard.Write.OK -> zeros = 0
+                    LiveAudioGuard.Write.RETRY -> { zeros++; try { Thread.sleep(10) } catch (_: InterruptedException) { break }; continue }
+                    LiveAudioGuard.Write.REBUILD -> {
+                        LiveAudioDebug.w("AudioTrack.write() = ${LiveAudioGuard.errName(n)} (${b.size - off} bytes बाकी) - track दोबारा बना रहा हूँ")
+                        rebuilds++; zeros = 0
+                        tr = rebuildTrack("write ${LiveAudioGuard.errName(n)}") ?: break
+                        continue
+                    }
+                    LiveAudioGuard.Write.SKIP -> { LiveAudioDebug.w("AudioTrack.write() = ${LiveAudioGuard.errName(n)} - टुकड़ा छोड़ा (${b.size - off} bytes)"); break }
+                }
                 // v3.46: आवाज़ पहले हिस्से के लिखते ही शुरू हो जाती है - पहले पूरा टुकड़ा लिखने (buffer भरा हो तो
                 // ~800ms रुकना) के बाद गिनते थे = "playback 818ms" असल में नाप की गलती थी
                 if (off == 0) { val pt = System.currentTimeMillis(); timeline.play(pt); if (trace.firstChunkAt > 0 && trace.firstPlayAt == 0L) firstWriteAt = pt }
@@ -94,6 +162,11 @@ internal fun GeminiLive.startPlayer() {
                 trace.reset()                // agli baari nayi ginti (purane aankde na chipkein)
             }
             if (first) svc.speaker.ensureAudible()      // awaaz mute to nahi (system calls - awaaz shuru hone ke baad)
+            } catch (e: InterruptedException) { break
+            } catch (e: Exception) {
+                // नवंबर 2026 (जड़ #2): एक टुकड़े की गलती से thread खत्म नहीं - वरना आगे का हर जवाब बिना आवाज़
+                LiveAudioDebug.w("बजाने में गलती (${e.javaClass.simpleName}: ${e.message?.take(60)}) - अगला टुकड़ा")
+            }
         }
     }.apply { name = "dk-live-play"; isDaemon = true; start() }
 }
