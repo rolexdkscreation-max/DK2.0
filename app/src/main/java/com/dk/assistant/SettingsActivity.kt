@@ -97,7 +97,15 @@ class SettingsActivity : AppCompatActivity() {
         val title = findViewById<TextView>(R.id.txtTitle)
         val bar = findViewById<View>(R.id.saveBar)
         when (section) {
-            null -> { title.text = "CONTROL CENTER"; title.letterSpacing = 0.06f; title.maxLines = 1; title.textSize = 20f; bar.visibility = View.GONE; setupSearch(); menu() }
+            null -> { title.text = "CONTROL CENTER"; title.letterSpacing = 0.05f; title.maxLines = 1
+                // छोटे फ़ोन पर भी एक ही लाइन: जगह के हिसाब से 22sp से 14sp तक छोटा (एक बार, layout के बाद)
+                title.post {
+                    val room = title.width - title.paddingLeft - title.paddingRight
+                    var sz = 22f
+                    while (room > 0 && sz > 14f && title.paint.measureText(title.text.toString()) > room) { sz -= 1f; title.textSize = sz }
+                    FutureViews.goldShader(title)
+                }
+                bar.visibility = View.GONE; setupSearch(); menu() }
             "profile" -> { title.text = "प्रोफ़ाइल"; secProfile() }
             "lang" -> { title.text = "भाषा / Language"; secLang() }
             "brain" -> { title.text = "AI दिमाग"; bar.visibility = View.GONE; secBrainMenu() }
