@@ -31,6 +31,7 @@ import java.util.concurrent.Executors
  */
 class GuardAlarmActivity : AppCompatActivity() {
     private var cam: FaceCam? = null
+    private val livenessTracker = FaceMatch.LivenessTracker()
     private val work = Executors.newSingleThreadExecutor { r -> Thread(r, "dk-guard-face").apply { isDaemon = true } }
     @Volatile private var busy = false
     @Volatile private var shots = 0
@@ -118,9 +119,10 @@ class GuardAlarmActivity : AppCompatActivity() {
                     if (Guard.savePhoto(this, copy) != null) { shots++; lastShot = now }
                 }
                 if (face && det != null) {
+                    val live = livenessTracker.isLive(det)
                     val e = FaceAI.embed(this, copy, det)
                     val s = e?.let { FaceAI.score(this, it) }
-                    if (s != null && FaceMath.decide(s, Prefs.faceStrict(this)) == MatchResult.ACCESS_GRANTED) {
+                    if (s != null && FaceMath.decide(s, Prefs.faceStrict(this)) == MatchResult.ACCESS_GRANTED && live) {
                         ownerHits++
                         faceUi("✓ मालिक पहचाने गए (${(s * 100).toInt()}%)")
                         if (ownerHits >= GuardRules.OWNER_HITS) {
@@ -129,7 +131,14 @@ class GuardAlarmActivity : AppCompatActivity() {
                         }
                     } else {
                         ownerHits = 0
-                        if (s != null && now - lastFaceUi > 1_000) { lastFaceUi = now; faceUi("✗ यह चेहरा मालिक का नहीं (${(s * 100).toInt()}%)") }
+                        if (s != null && now - lastFaceUi > 1_000) {
+                            lastFaceUi = now
+                            if (!live) {
+                                faceUi("✗ असली चेहरा नहीं (2D फ़ोटो)")
+                            } else {
+                                faceUi("✗ यह चेहरा मालिक का नहीं (${(s * 100).toInt()}%)")
+                            }
+                        }
                     }
                 }
             } catch (_: Throwable) {
