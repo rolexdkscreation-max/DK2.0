@@ -171,6 +171,7 @@ internal fun SettingsActivity.secUpdate() {
                 Updater.isDownloading(rel) -> {
                     bar.visibility = View.VISIBLE; bar.progress = Updater.progress
                     UiLang.setText(btnAct, "डाउनलोड हो रहा है… ${Updater.progress}%"); btnAct.isEnabled = false
+                    Updater.retryNote?.let { UiLang.setText(status, it) }      // नवंबर 2026: 504 पर "दोबारा कोशिश 2/6"
                 }
                 else -> {
                     bar.visibility = View.GONE
@@ -204,6 +205,11 @@ internal fun SettingsActivity.secUpdate() {
                 } catch (e: Exception) {
                     // v3.64: असली वजह (403 = GitHub की घंटे वाली सीमा) - पहले हर बार "इंटरनेट देखें"
                     status.text = "चेक नहीं हो पाया: ${e.message ?: ReleaseFeed.friendly(0)}"
+                    // नवंबर 2026: पिछली बार मिला नया version याद है = उसी का डाउनलोड बटन (GitHub का 504 डाउनलोड न रोके)
+                    Updater.cached(this@secUpdate)?.let { old ->
+                        pendingRelease = old; show(old)
+                        if (Updater.isDownloading(old)) follow(old)
+                    }
                 }
             }
         }

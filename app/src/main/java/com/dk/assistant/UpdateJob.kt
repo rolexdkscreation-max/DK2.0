@@ -23,6 +23,9 @@ class UpdateJob : JobService() {
             try {
                 val rel = Updater.check(applicationContext)
                 if (rel != null) Updater.notifyNew(applicationContext, rel)
+                // नवंबर 2026: डाउनलोड 504/इंटरनेट से रुका था = अब अपने-आप वहीं से आगे
+                if (rel != null && p?.jobId == RESUME_ID && Updater.downloaded(applicationContext, rel) == null)
+                    Updater.startDownload(applicationContext, rel)
             } catch (e: Exception) { DKLog.d("update job: ${e.message}"); DKBug.report("update", e, "अपने-आप update जाँच") }
             jobFinished(p, false)
         }
@@ -34,6 +37,20 @@ class UpdateJob : JobService() {
     companion object {
         const val JOB_ID = 4202
         const val EVERY_MS = 6L * 60 * 60 * 1000
+
+        /** नवंबर 2026: रुका हुआ अपडेट-डाउनलोड - इंटरनेट हो तब, 10 मिनट बाद एक बार (504 / टूटा connection के बाद) */
+        const val RESUME_ID = 4204
+        const val RESUME_AFTER_MS = 10L * 60 * 1000
+
+        fun scheduleResume(c: Context) = try {
+            val js = c.getSystemService(Context.JOB_SCHEDULER_SERVICE) as JobScheduler
+            js.schedule(JobInfo.Builder(RESUME_ID, ComponentName(c, UpdateJob::class.java))
+                .setRequiredNetworkType(JobInfo.NETWORK_TYPE_ANY)
+                .setMinimumLatency(RESUME_AFTER_MS)
+                .build())
+            DKLog.d("अपडेट डाउनलोड: 10 मिनट बाद अपने-आप फिर")
+            Unit
+        } catch (e: Exception) { DKLog.d("update resume schedule: ${e.message}") }
 
         fun schedule(c: Context) = try {
             val js = c.getSystemService(Context.JOB_SCHEDULER_SERVICE) as JobScheduler
