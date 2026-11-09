@@ -10,7 +10,11 @@ data class Provider(
     val defaultModel: String,
     val vision: Boolean,       // screenshot samajh sakta hai?
     val keyUrl: String,
-    val isGemini: Boolean = false
+    val isGemini: Boolean = false,
+    /** नवंबर 2026 (मज़बूत मॉडल): जवाब की लंबाई वाला field (OpenAI के नए मॉडल = max_completion_tokens) */
+    val tokenField: String = "max_tokens",
+    /** false = temperature न भेजो (नए Claude/OpenAI reasoning मॉडल 0.2 पर 400 देते हैं) */
+    val sendTemp: Boolean = true
 )
 
 object Providers {

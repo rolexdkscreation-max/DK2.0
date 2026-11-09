@@ -351,6 +351,9 @@ class SettingsActivity : AppCompatActivity() {
     internal lateinit var swAutoPush: SwitchCompat
     internal lateinit var edCoderSteps: EditText
     internal lateinit var edCoderLight: EditText
+    internal lateinit var rgStrong: android.widget.RadioGroup
+    internal lateinit var edStrongKey: EditText
+    internal lateinit var edStrongModel: EditText
     internal lateinit var swBuildFix: SwitchCompat
     internal lateinit var swTeam: SwitchCompat
     internal lateinit var swSeven: SwitchCompat
@@ -392,6 +395,11 @@ class SettingsActivity : AppCompatActivity() {
                 putBoolean("coder_autopush", swAutoPush.isChecked)
                 putString("coder_max_steps", (edCoderSteps.text.toString().trim().toIntOrNull() ?: CodingAgent.DEFAULT_STEPS).coerceIn(3, 30).toString())
                 if (::edCoderLight.isInitialized) putString("coder_light_model", edCoderLight.text.toString().trim())
+                if (::edStrongKey.isInitialized) {
+                    putString(StrongAi.PREF_PROVIDER, radioValue(rgStrong, StrongAi.CHOICES.map { it.id }, STRONG_RADIO))
+                    putString(StrongAi.PREF_KEY, edStrongKey.text.toString().trim())
+                    putString(StrongAi.PREF_MODEL, edStrongModel.text.toString().trim())
+                }
                 putBoolean("coder_buildfix", swBuildFix.isChecked)
                 putBoolean("coder_team", swTeam.isChecked)
                 putBoolean("coder_seven", swSeven.isChecked)
