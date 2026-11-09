@@ -39,6 +39,10 @@ class MainActivity : AppCompatActivity() {
         findViewById<ImageButton>(R.id.btnSettings).setOnClickListener { openSettings() }
         findViewById<ImageButton>(R.id.btnHomeCam).setOnClickListener { openVoice(VoiceActivity.WANT_CAMERA) }
         findViewById<ImageButton>(R.id.btnHomeShare).setOnClickListener { openVoice(VoiceActivity.WANT_SCREEN) }
+        // नीचे की glass dock: लिखकर बात = चैट, माइक = लाइव आवाज़, + = वही मेनू (☰)
+        findViewById<TextView>(R.id.btnDockType).setOnClickListener { openChat() }
+        findViewById<android.view.View>(R.id.btnDockMic).setOnClickListener { openVoice() }
+        findViewById<ImageButton>(R.id.btnDockTools).setOnClickListener { findViewById<ImageButton>(R.id.btnMenu).performClick() }
         // orb par tap = chehra dikh raha ho to hatao, warna live awaaz screen
         findViewById<OrbView>(R.id.orb).setOnClickListener {
             if (System.currentTimeMillis() < DKState.faceUntil) DKState.hideFace() else openVoice()
@@ -132,8 +136,13 @@ class MainActivity : AppCompatActivity() {
         box.layoutParams = (box.layoutParams as android.widget.LinearLayout.LayoutParams).apply {
             if (min) { height = (140 * dp).toInt(); weight = 0f } else { height = 0; weight = 1f }
         }
-        txtDk.layoutParams = (txtDk.layoutParams as android.widget.LinearLayout.LayoutParams).apply {
+        // txtDk अब glass डिब्बे (dkBox) के अंदर: बड़ा/छोटा डिब्बा होता है, text उसे भरता है
+        val dkBox = findViewById<android.view.View>(R.id.dkBox)
+        dkBox.layoutParams = (dkBox.layoutParams as android.widget.LinearLayout.LayoutParams).apply {
             if (min) { height = 0; weight = 1f } else { height = android.widget.LinearLayout.LayoutParams.WRAP_CONTENT; weight = 0f }
+        }
+        txtDk.layoutParams = (txtDk.layoutParams as android.widget.LinearLayout.LayoutParams).apply {
+            height = if (min) android.widget.LinearLayout.LayoutParams.MATCH_PARENT else android.widget.LinearLayout.LayoutParams.WRAP_CONTENT
         }
         txtDk.maxLines = if (min) 200 else 2
         txtDk.ellipsize = if (min) null else android.text.TextUtils.TruncateAt.END

@@ -45,7 +45,7 @@
                     android:id="@+id/txtHello"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:text="नमस्ते सर 😊\nइतनी देर कहाँ थे?"
+                    android:text="नमस्ते"
                     android:textColor="@color/text_secondary"
                     android:textSize="13sp" />
 
@@ -66,12 +66,11 @@
                 android:layout_height="40dp"
                 android:layout_marginEnd="6dp"
                 android:background="@drawable/glass_circle"
-                android:contentDescription="कैमरा"
+                android:contentDescription="कैमरा से दिखाएँ"
                 android:padding="10dp"
                 android:scaleType="fitCenter"
                 android:src="@drawable/ic_camera"
-                app:tint="@color/text_primary"
-                android:visibility="gone" />
+                app:tint="@color/text_primary" />
 
             <ImageButton
                 android:id="@+id/btnHomeShare"
@@ -83,8 +82,7 @@
                 android:padding="10dp"
                 android:scaleType="fitCenter"
                 android:src="@drawable/ic_screen_share"
-                app:tint="@color/text_primary"
-                android:visibility="gone" />
+                app:tint="@color/text_primary" />
 
             <ImageButton
                 android:id="@+id/btnMute"
@@ -153,8 +151,7 @@
                 android:focusable="false"
                 android:importantForAccessibility="no"
                 android:src="@drawable/ic_mic"
-                app:tint="@color/text_primary"
-                android:visibility="gone" />
+                app:tint="@color/text_primary" />
 
             <ImageButton
                 android:id="@+id/btnOrbMin"
@@ -180,14 +177,15 @@
                 android:paddingTop="8dp"
                 android:paddingEnd="18dp"
                 android:paddingBottom="8dp"
-                android:text="सुन रहा हूँ..."
+                android:text="ओर्ब पर टैप करके बोलिए"
                 android:textColor="@color/neon_electric_cyan"
                 android:textSize="14sp"
                 android:textStyle="bold" />
         </FrameLayout>
 
-        <!-- Recent Interaction Box -->
+        <!-- Recent Interaction Box: DK की आख़िरी बात (MainActivity भरता है; ओर्ब छोटा = यह डिब्बा बड़ा) -->
         <LinearLayout
+            android:id="@+id/dkBox"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:background="@drawable/bg_glass_card"
@@ -197,25 +195,16 @@
             android:layout_marginBottom="8dp">
 
             <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="नमस्ते सर भी चौन होना इतनी देर कहाँ चेली है?"
-                android:textColor="@color/neon_electric_cyan"
-                android:textSize="13sp" />
-
-            <TextView
                 android:id="@+id/txtDk"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="4dp"
                 android:ellipsize="end"
                 android:maxLines="3"
-                android:text="DK: केवल वोच चानी कर अपना तालमेल पाकर ले सुधारा अवगाह कार्य करता है।"
                 android:textColor="@color/text_primary"
                 android:textSize="13sp" />
         </LinearLayout>
 
-        <!-- Bottom Control Deck (bg_glow_dock) -->
+        <!-- Bottom Control Deck (bg_glow_dock): लिखकर बात = चैट, + = मेनू, माइक = लाइव आवाज़ -->
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
@@ -224,19 +213,10 @@
             android:orientation="horizontal"
             android:padding="8dp">
 
-            <Button
-                style="?android:attr/borderlessButtonStyle"
-                android:layout_width="wrap_content"
-                android:layout_height="40dp"
-                android:background="@drawable/bg_glass_card"
-                android:text="Keyboard"
-                android:textColor="@color/text_primary"
-                android:textSize="12sp" />
-
             <ImageButton
-                android:layout_width="40dp"
-                android:layout_height="40dp"
-                android:layout_marginStart="8dp"
+                android:id="@+id/btnDockTools"
+                android:layout_width="44dp"
+                android:layout_height="44dp"
                 android:background="@drawable/glass_circle"
                 android:contentDescription="टूल"
                 android:padding="10dp"
@@ -244,24 +224,27 @@
                 android:src="@drawable/ic_add"
                 app:tint="@color/text_primary" />
 
-            <EditText
+            <TextView
+                android:id="@+id/btnDockType"
                 android:layout_width="0dp"
-                android:layout_height="40dp"
+                android:layout_height="44dp"
                 android:layout_marginStart="8dp"
                 android:layout_weight="1"
-                android:background="@android:color/transparent"
-                android:hint="Type a message..."
-                android:inputType="text"
-                android:textColor="@color/text_primary"
-                android:textColorHint="@color/text_secondary"
+                android:background="@drawable/bg_glass_card"
+                android:gravity="center_vertical"
+                android:paddingStart="14dp"
+                android:paddingEnd="14dp"
+                android:singleLine="true"
+                android:text="लिखकर बात"
+                android:textColor="@color/text_secondary"
                 android:textSize="14sp" />
 
             <com.google.android.material.floatingactionbutton.FloatingActionButton
+                android:id="@+id/btnDockMic"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:layout_marginStart="8dp"
-                android:clickable="true"
-                android:focusable="true"
+                android:contentDescription="बोलने के लिए टैप करें"
                 app:backgroundTint="@color/neon_electric_cyan"
                 app:fabSize="mini"
                 app:srcCompat="@drawable/ic_mic"
