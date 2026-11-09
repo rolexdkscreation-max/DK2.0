@@ -355,6 +355,18 @@
             android:theme="@android:style/Theme.Black.NoTitleBar.Fullscreen"
             tools:targetApi="27" />
 
+        <!-- नवंबर 2026: गार्ड मोड - कोई फ़ोन छुए तो लॉक स्क्रीन के ऊपर लाल चेतावनी + सायरन (छूने से बंद नहीं) -->
+        <activity
+            android:name=".GuardAlarmActivity"
+            android:exported="false"
+            android:excludeFromRecents="true"
+            android:taskAffinity=""
+            android:launchMode="singleInstance"
+            android:showWhenLocked="true"
+            android:turnScreenOn="true"
+            android:screenOrientation="portrait"
+            tools:targetApi="27" />
+
         <!-- Phone control: screen padhna, click, type, scroll, screenshot -->
         <service
             android:name=".DKAccessibilityService"

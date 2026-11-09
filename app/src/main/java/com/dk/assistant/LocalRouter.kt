@@ -102,6 +102,9 @@ object LocalRouter {
         if (com.dk.assistant.insights.InsightsVoice.parse(raw) != null) return Split(null, raw)
         // नवंबर 2026: Settings → फ़ोन लॉक / अनलॉक - मालिक के अपने वाक्य (DK पहले से बुलाया हुआ, इसलिए नाम ज़रूरी नहीं)
         PhoneLockVoice.match(raw, needName = false)?.let { return Split(PhoneLockVoice.quick(it), null) }
+        // नवंबर 2026: गार्ड मोड - "DK गार्ड मोड चालू करो" / अलार्म बजते समय गुप्त शब्द = बंद (तुरंत, बिना AI)
+        GuardRules.parse(raw, Guard.alarming)?.let { return Split(Guard.quick(it), null) }
+        if (Guard.active() && GuardRules.codeOk(raw, Guard.codeNow)) return Split(Guard.quick(GuardRules.Cmd.Off(raw)), null)
         // नवंबर 2026 (मालिक): "जार्विस मोड ऑन करो" / "डीके मोड ऑन करो" - तुरंत, बिना AI
         JarvisMode.parse(raw)?.let { return Split(JarvisMode.quick(it), null) }
         // नवंबर 2026: "DK किधर हो" / "कहाँ हो तुम" - फ़ोन 60 s पूरी आवाज़ में बजे (बजते समय "मिल गया" = बंद)

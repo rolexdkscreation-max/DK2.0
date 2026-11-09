@@ -299,7 +299,7 @@ object HeyDk {
     fun nextAck(c: Context): String = WakeMatch.nextAck(acks(c), lastAck).also { lastAck = it }
 
     /** पहले से बनाकर फ़ोन में रखी आवाज़ें: "हाँ सर" वाले + "मैं इधर हूँ बॉस" (फ़ोन ढूँढना - तब इंटरनेट न हो तो भी) */
-    fun clipTexts(c: Context): List<String> = (acks(c) + com.dk.assistant.FindPhone.SAY).distinct()
+    fun clipTexts(c: Context): List<String> = (acks(c) + com.dk.assistant.FindPhone.SAY + com.dk.assistant.GuardRules.SAY).distinct()
 
     /** बनी हुई आवाज़ (24 kHz PCM) - नहीं बनी = null */
     fun clipPcm(c: Context, text: String): ByteArray? = ackPick(c, text)?.let { try { it.readBytes() } catch (_: Exception) { null } }
