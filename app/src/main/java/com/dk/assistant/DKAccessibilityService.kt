@@ -93,6 +93,7 @@ class DKAccessibilityService : AccessibilityService() {
         instance = this
         try { PayGuard.onServiceBack(this) } catch (_: Exception) {}
         try { PhoneLockStore.reload(this) } catch (_: Exception) {}
+        try { Guard.resume(this) } catch (e: Exception) { DKLog.d("गार्ड: ${e.message}") }   // नवंबर 2026: गार्ड मोड चालू था तो फिर से पहरा
         // power बटन वाला "Yes Boss" पहले से बना लो (Live चालू हो तो नहीं - तब Live बंद होने पर)
         com.dk.assistant.voice.LiveAckMaker.ensureAsync(this, "DK शुरू", 15_000L)   // आवाज़ से फ़ोन लॉक / अनलॉक के नाम-वाक्य
         // v3.39: Bluetooth माइक अब BtAudio से (सिर्फ़ headset जुड़ा हो तब, सुनते/बात करते समय). पहले (PR #48) यहाँ
@@ -147,6 +148,7 @@ class DKAccessibilityService : AccessibilityService() {
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
         // बाकी सब on-demand पढ़ते हैं. नवंबर 2026: पेमेंट ऐप खुला = फ़ोन कंट्रोल अपने-आप बंद (PayGuard)
         if (event != null) try { PayGuard.onEvent(this, event) } catch (e: Exception) { DKLog.d("PayGuard: ${e.message}") }
+        if (event != null) try { Guard.onEvent(this, event) } catch (e: Exception) { DKLog.d("गार्ड: ${e.message}") }   // नवंबर 2026: लॉक में पावर मेनू / PIN खाना
     }
 
     override fun onUnbind(intent: android.content.Intent?): Boolean {
@@ -867,6 +869,8 @@ class DKAccessibilityService : AccessibilityService() {
                 if (FindPhone.active && com.dk.assistant.voice.VoiceCmdMatch.foundText(heard)) {
                     DKState.user(heard); FindPhone.stop("बोला: ${heard.take(30)}"); continue
                 }
+                // नवंबर 2026: गार्ड मोड - अलार्म / पहरे में गुप्त शब्द (या अलार्म में "सायरन बंद" + गुप्त शब्द) = बंद
+                if (Guard.active() && Guard.heardStop(this@DKAccessibilityService, heard)) { DKState.user(heard); continue }
                 val findRest = OfflineListen.findRest(heard, Prefs.wakeWords(this@DKAccessibilityService))   // नवंबर 2026: "डीके कहाँ हो" (बिना "हे") भी
                 if (findRest != null && com.dk.assistant.voice.VoiceCmdMatch.findText(findRest)) {
                     DKState.user(heard); DKState.reply(FindPhone.SAY); FindPhone.start(this@DKAccessibilityService, "बोला: ${heard.take(30)}"); continue
@@ -1132,6 +1136,7 @@ class DKAccessibilityService : AccessibilityService() {
                 "media" -> DeviceActions.media(this, a.optString("key", "play_pause"))
                 "find_phone" -> FindPhone.start(this, "कमांड")
                 "find_phone_stop" -> { FindPhone.stop("कमांड"); "ठीक है" }
+                GuardRules.TYPE -> Guard.run(this, a)   // नवंबर 2026: गार्ड मोड चालू / बंद
                 "lock" -> if (Build.VERSION.SDK_INT >= 28) global(GLOBAL_ACTION_LOCK_SCREEN) else NativeActionEngine.lockOld()
                 "screenshot_save" -> if (Build.VERSION.SDK_INT >= 28) global(GLOBAL_ACTION_TAKE_SCREENSHOT) else "ERROR"
                 "power_menu" -> global(GLOBAL_ACTION_POWER_DIALOG)

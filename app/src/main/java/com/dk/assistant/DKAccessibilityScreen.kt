@@ -283,6 +283,8 @@ internal fun DKAccessibilityService.pressEnter(): String {
 
 /** Screen jagao; swipe-lock ho to khol do. PIN/pattern: सिर्फ़ तब जब मालिक ने आवाज़ से अनलॉक चालू करके सेव किया हो, वरना user खुद (suraksha). */
 internal suspend fun DKAccessibilityService.unlock(): String =
+    // नवंबर 2026: गार्ड मोड चालू = DK फ़ोन नहीं खोलेगा (कोई और "DK फ़ोन खोलो" बोलकर न खोल ले)
+    Guard.blocksUnlock() ?:
     // नवंबर 2026: एक समय में एक ही अनलॉक, और शुरू हुआ तो पूरा (Live में बीच में रद्द होकर आधा PIN नहीं)
     PhoneUnlocker.gate.withLock { withContext(NonCancellable) { unlockNow() } }
 
