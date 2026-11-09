@@ -118,4 +118,15 @@ object ComputerPlan {
 
     /** पुराना नतीजा छोटा करते समय कितना रहे */
     fun keepOld(budget: Int): Int = (budget / 200).coerceIn(700, 3_000)
+
+    /** नवंबर 2026 (मालिक): पहले योजना, फिर काम - इतनी देर तक योजना का इंतज़ार (फिर बिना योजना आगे) */
+    const val PLAN_WAIT_MS = 15_000L
+    private val SMALL_TALK = Regex("^(hi|hello|hey|ok|okay|thanks|thank you|नमस्ते|हाय|हेलो|ठीक है|धन्यवाद|शुक्रिया|हाँ|नहीं)[\\s!.,?।]*$", RegexOption.IGNORE_CASE)
+    /** बड़ा / कई हिस्सों वाला काम? (छोटी बातचीत, एक लाइन का सवाल = सीधे काम, योजना साथ-साथ) */
+    fun planFirst(task: String): Boolean {
+        val t = task.trim()
+        if (t.isEmpty() || SMALL_TALK.matches(t)) return false
+        val words = t.split(Regex("\\s+")).size
+        return words >= 8 || t.contains('\n')
+    }
 }
