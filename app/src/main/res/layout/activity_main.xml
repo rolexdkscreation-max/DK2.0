@@ -1,13 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="@drawable/bg_sky">
-
-    <com.dk.assistant.AuroraView
-        android:layout_width="match_parent"
-        android:layout_height="match_parent"
-        android:alpha="0.85" />
+    android:background="@color/bg_space_dark">
 
     <LinearLayout
         android:layout_width="match_parent"
@@ -18,24 +14,26 @@
         android:paddingEnd="20dp"
         android:paddingBottom="16dp">
 
-        <!-- upar: naam + settings + mute button -->
+        <!-- Top App Bar: Frosted container -->
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
+            android:background="@drawable/bg_glass_card"
             android:gravity="center_vertical"
-            android:orientation="horizontal">
+            android:orientation="horizontal"
+            android:padding="12dp">
 
-            <!-- v4: मेनू (चैट, लाइव आवाज़, मेमोरी, DK कंप्यूटर, वेबसाइट, सेटिंग्स) - होम पर बड़े कार्ड/नीचे की बार नहीं -->
             <ImageButton
                 android:id="@+id/btnMenu"
-                android:layout_width="48dp"
-                android:layout_height="48dp"
+                android:layout_width="44dp"
+                android:layout_height="44dp"
                 android:layout_marginEnd="12dp"
                 android:background="@drawable/glass_circle"
                 android:contentDescription="मेनू खोलें"
-                android:padding="12dp"
+                android:padding="10dp"
                 android:scaleType="fitCenter"
-                android:src="@drawable/ic_menu" />
+                android:src="@drawable/ic_menu"
+                app:tint="@color/text_primary" />
 
             <LinearLayout
                 android:layout_width="0dp"
@@ -47,74 +45,77 @@
                     android:id="@+id/txtHello"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:text="नमस्ते"
-                    android:textColor="@color/text2"
-                    android:textSize="15sp" />
+                    android:text="नमस्ते सर 😊\nइतनी देर कहाँ थे?"
+                    android:textColor="@color/text_secondary"
+                    android:textSize="13sp" />
 
                 <TextView
                     android:id="@+id/txtName"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:letterSpacing="0.08"
-                    android:text="DK"
-                    android:textColor="@color/text"
-                    android:textSize="34sp"
+                    android:text="DK Voice Assistant"
+                    android:textColor="@color/text_primary"
+                    android:textSize="18sp"
                     android:textStyle="bold" />
             </LinearLayout>
 
-            <!-- v3.102: होम पर कैमरा / स्क्रीन शेयर (टैप = DK लाइव चालू होकर देखे) -->
             <ImageButton
                 android:id="@+id/btnHomeCam"
-                android:layout_width="44dp"
-                android:layout_height="44dp"
-                android:layout_marginEnd="8dp"
+                android:layout_width="40dp"
+                android:layout_height="40dp"
+                android:layout_marginEnd="6dp"
                 android:background="@drawable/glass_circle"
-                android:contentDescription="कैमरा से दिखाएँ"
-                android:padding="11dp"
+                android:contentDescription="कैमरा"
+                android:padding="10dp"
                 android:scaleType="fitCenter"
-                android:src="@drawable/ic_camera" />
+                android:src="@drawable/ic_camera"
+                app:tint="@color/text_primary"
+                android:visibility="gone" />
 
             <ImageButton
                 android:id="@+id/btnHomeShare"
-                android:layout_width="44dp"
-                android:layout_height="44dp"
-                android:layout_marginEnd="8dp"
+                android:layout_width="40dp"
+                android:layout_height="40dp"
+                android:layout_marginEnd="6dp"
                 android:background="@drawable/glass_circle"
                 android:contentDescription="स्क्रीन शेयर"
-                android:padding="11dp"
+                android:padding="10dp"
                 android:scaleType="fitCenter"
-                android:src="@drawable/ic_screen_share" />
+                android:src="@drawable/ic_screen_share"
+                app:tint="@color/text_primary"
+                android:visibility="gone" />
 
             <ImageButton
                 android:id="@+id/btnMute"
-                android:layout_width="48dp"
-                android:layout_height="48dp"
-                android:layout_marginEnd="8dp"
+                android:layout_width="40dp"
+                android:layout_height="40dp"
+                android:layout_marginEnd="6dp"
                 android:background="@drawable/glass_circle"
                 android:contentDescription="म्यूट करें"
-                android:padding="12dp"
+                android:padding="10dp"
                 android:scaleType="fitCenter"
-                android:src="@drawable/ic_mic" />
+                android:src="@drawable/ic_mic"
+                app:tint="@color/text_primary" />
 
             <ImageButton
                 android:id="@+id/btnSettings"
-                android:layout_width="52dp"
-                android:layout_height="52dp"
+                android:layout_width="44dp"
+                android:layout_height="44dp"
                 android:background="@drawable/glass_circle"
                 android:contentDescription="सेटिंग्स"
-                android:padding="14dp"
+                android:padding="10dp"
                 android:scaleType="fitCenter"
-                android:src="@drawable/ic_settings" />
+                android:src="@drawable/ic_settings"
+                app:tint="@color/text_primary" />
         </LinearLayout>
 
-        <!-- v3.88: होम साफ़ - फ़ोन कंट्रोल / माइक / DK कंप्यूटर / DK टीचर / वेबसाइट अब मेन्यू (☰) में.
-             यहाँ सिर्फ़ ज़रूरी सूचना (नया अपडेट / access key), वो भी तभी जब हो - वरना यह पट्टी है ही नहीं -->
         <LinearLayout
             android:id="@+id/alertRow"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_gravity="center_horizontal"
-            android:layout_marginTop="10dp"
+            android:layout_marginTop="8dp"
             android:orientation="horizontal"
             android:visibility="gone">
 
@@ -129,20 +130,23 @@
                 android:visibility="gone" />
         </LinearLayout>
 
-        <!-- beech me ORB -->
+        <!-- Central Holographic 3D Energy Orb & Waveform -->
         <FrameLayout
             android:id="@+id/orbBox"
             android:layout_width="match_parent"
             android:layout_height="0dp"
-            android:layout_weight="1">
+            android:layout_weight="1"
+            android:layout_marginTop="8dp">
 
-            <com.dk.assistant.OrbView
+            <com.airbnb.android.lottie.LottieAnimationView
                 android:id="@+id/orb"
                 android:layout_width="match_parent"
                 android:layout_height="match_parent"
-                android:contentDescription="बोलने के लिए टैप करें" />
+                android:contentDescription="बोलने के लिए टैप करें"
+                app:lottie_autoPlay="true"
+                app:lottie_loop="true"
+                app:lottie_rawRes="@raw/energy_orb" />
 
-            <!-- v4: नियॉन ओर्ब के बीच माइक (सिर्फ़ निशान - टैप ओर्ब ही लेता है) -->
             <ImageView
                 android:id="@+id/orbMic"
                 android:layout_width="56dp"
@@ -152,10 +156,9 @@
                 android:focusable="false"
                 android:importantForAccessibility="no"
                 android:src="@drawable/ic_mic"
-                android:tint="#FFFFFFFF"
+                app:tint="@color/text_primary"
                 android:visibility="gone" />
 
-            <!-- orb chhota/bada karne ka button -->
             <ImageButton
                 android:id="@+id/btnOrbMin"
                 android:layout_width="40dp"
@@ -166,7 +169,8 @@
                 android:contentDescription="ओर्ब छोटा करें"
                 android:padding="10dp"
                 android:scaleType="fitCenter"
-                android:src="@drawable/ic_minimize" />
+                android:src="@drawable/ic_minimize"
+                app:tint="@color/text_primary" />
 
             <TextView
                 android:id="@+id/txtState"
@@ -174,28 +178,99 @@
                 android:layout_height="wrap_content"
                 android:layout_gravity="bottom|center_horizontal"
                 android:layout_marginBottom="8dp"
-                android:background="@drawable/glass_pill"
+                android:background="@drawable/bg_glass_card"
                 android:paddingStart="18dp"
                 android:paddingTop="8dp"
                 android:paddingEnd="18dp"
                 android:paddingBottom="8dp"
-                android:text="ओर्ब पर टैप करके बोलिए"
-                android:textColor="@color/text"
-                android:textSize="14sp" />
+                android:text="सुन रहा हूँ..."
+                android:textColor="@color/neon_electric_cyan"
+                android:textSize="14sp"
+                android:textStyle="bold" />
         </FrameLayout>
 
-        <!-- aakhri baat (chhoti line) -->
-        <TextView
-            android:id="@+id/txtDk"
+        <!-- Recent Interaction Box -->
+        <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="4dp"
-            android:layout_marginBottom="6dp"
-            android:ellipsize="end"
-            android:gravity="center"
-            android:maxLines="3"
-            android:textColor="@color/text2"
-            android:textSize="13sp" />
+            android:background="@drawable/bg_glass_card"
+            android:orientation="vertical"
+            android:padding="12dp"
+            android:layout_marginTop="8dp"
+            android:layout_marginBottom="8dp">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="नमस्ते सर भी चौन होना इतनी देर कहाँ चेली है?"
+                android:textColor="@color/neon_electric_cyan"
+                android:textSize="13sp" />
+
+            <TextView
+                android:id="@+id/txtDk"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="4dp"
+                android:ellipsize="end"
+                android:maxLines="3"
+                android:text="DK: केवल वोच चानी कर अपना तालमेल पाकर ले सुधारा अवगाह कार्य करता है।"
+                android:textColor="@color/text_primary"
+                android:textSize="13sp" />
+        </LinearLayout>
+
+        <!-- Bottom Control Deck (bg_glow_dock) -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:background="@drawable/bg_glow_dock"
+            android:gravity="center_vertical"
+            android:orientation="horizontal"
+            android:padding="8dp">
+
+            <Button
+                style="?android:attr/borderlessButtonStyle"
+                android:layout_width="wrap_content"
+                android:layout_height="40dp"
+                android:background="@drawable/bg_glass_card"
+                android:text="Keyboard"
+                android:textColor="@color/text_primary"
+                android:textSize="12sp" />
+
+            <ImageButton
+                android:layout_width="40dp"
+                android:layout_height="40dp"
+                android:layout_marginStart="8dp"
+                android:background="@drawable/glass_circle"
+                android:contentDescription="टूल"
+                android:padding="10dp"
+                android:scaleType="fitCenter"
+                android:src="@drawable/ic_add"
+                app:tint="@color/text_primary" />
+
+            <EditText
+                android:layout_width="0dp"
+                android:layout_height="40dp"
+                android:layout_marginStart="8dp"
+                android:layout_weight="1"
+                android:background="@android:color/transparent"
+                android:hint="Type a message..."
+                android:inputType="text"
+                android:textColor="@color/text_primary"
+                android:textColorHint="@color/text_secondary"
+                android:textSize="14sp" />
+
+            <com.google.android.material.floatingactionbutton.FloatingActionButton
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="8dp"
+                android:clickable="true"
+                android:focusable="true"
+                app:backgroundTint="@color/neon_electric_cyan"
+                app:fabSize="mini"
+                app:srcCompat="@drawable/ic_mic"
+                app:tint="@color/bg_space_dark" />
+
+        </LinearLayout>
 
     </LinearLayout>
 </FrameLayout>

@@ -1,0 +1,268 @@
+<?xml version="1.0" encoding="utf-8"?>
+<androidx.constraintlayout.widget.ConstraintLayout
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@color/bg_space_dark">
+
+    <!-- Header & Context Tags -->
+    <TextView
+        android:id="@+id/txtTitle"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_marginStart="20dp"
+        android:layout_marginTop="20dp"
+        android:layout_marginEnd="20dp"
+        android:text="DK CODING AGENT"
+        android:textColor="@color/metallic_gold_accent"
+        android:textSize="20sp"
+        android:textStyle="bold"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toTopOf="parent" />
+
+    <LinearLayout
+        android:id="@+id/containerTags"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp"
+        android:orientation="horizontal"
+        app:layout_constraintEnd_toEndOf="@id/txtTitle"
+        app:layout_constraintStart_toStartOf="@id/txtTitle"
+        app:layout_constraintTop_toBottomOf="@id/txtTitle">
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginEnd="8dp"
+            android:background="@drawable/bg_glass_card"
+            android:paddingHorizontal="10dp"
+            android:paddingVertical="4dp"
+            android:text="Code running data"
+            android:textColor="@color/neon_electric_cyan"
+            android:textSize="11sp" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginEnd="8dp"
+            android:background="@drawable/bg_glass_card"
+            android:paddingHorizontal="10dp"
+            android:paddingVertical="4dp"
+            android:text="Engine file"
+            android:textColor="@color/text_secondary"
+            android:textSize="11sp" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:background="@drawable/bg_glass_card"
+            android:paddingHorizontal="10dp"
+            android:paddingVertical="4dp"
+            android:text="Repo mode"
+            android:textColor="@color/neon_cyber_violet"
+            android:textSize="11sp" />
+    </LinearLayout>
+
+    <!-- Top Task Card & Repo Map (Dual Panel Top) -->
+    <androidx.constraintlayout.widget.ConstraintLayout
+        android:id="@+id/cardTask"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="16dp"
+        android:background="@drawable/bg_glass_card"
+        android:padding="16dp"
+        app:layout_constraintEnd_toEndOf="@id/txtTitle"
+        app:layout_constraintStart_toStartOf="@id/txtTitle"
+        app:layout_constraintTop_toBottomOf="@id/containerTags">
+
+        <TextView
+            android:id="@+id/txtCurrentTask"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:text="Current Task: UI Engine Rebuild"
+            android:textColor="@color/text_primary"
+            android:textSize="14sp"
+            android:textStyle="bold"
+            app:layout_constraintEnd_toStartOf="@id/txtRepoMap"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintTop_toTopOf="parent" />
+
+        <TextView
+            android:id="@+id/txtExecuting"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="4dp"
+            android:text="Executing Build..."
+            android:textColor="@color/neon_electric_cyan"
+            android:textSize="12sp"
+            app:layout_constraintEnd_toStartOf="@id/txtRepoMap"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintTop_toBottomOf="@id/txtCurrentTask" />
+
+        <ProgressBar
+            android:id="@+id/progressBarAgent"
+            style="?android:attr/progressBarStyleHorizontal"
+            android:layout_width="0dp"
+            android:layout_height="6dp"
+            android:layout_marginTop="10dp"
+            android:indeterminate="true"
+            android:indeterminateTint="@color/neon_electric_cyan"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintTop_toBottomOf="@id/txtExecuting" />
+
+        <TextView
+            android:id="@+id/txtRepoMap"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:background="@drawable/bg_glass_card"
+            android:paddingHorizontal="8dp"
+            android:paddingVertical="4dp"
+            android:text="Repo Map 📁"
+            android:textColor="@color/text_secondary"
+            android:textSize="12sp"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintTop_toTopOf="parent" />
+    </androidx.constraintlayout.widget.ConstraintLayout>
+
+    <!-- Center IDE Panel -->
+    <ScrollView
+        android:id="@+id/scrollIde"
+        android:layout_width="0dp"
+        android:layout_height="0dp"
+        android:layout_marginTop="12dp"
+        android:layout_marginBottom="12dp"
+        android:background="@drawable/bg_glass_card"
+        android:padding="12dp"
+        app:layout_constraintBottom_toTopOf="@id/cardPatchStatus"
+        app:layout_constraintEnd_toEndOf="@id/txtTitle"
+        app:layout_constraintStart_toStartOf="@id/txtTitle"
+        app:layout_constraintTop_toBottomOf="@id/cardTask">
+
+        <TextView
+            android:id="@+id/txtIdeCode"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:fontFamily="monospace"
+            android:text="import code from 'code';\n\nconst textoreactivities = {\n    init() {\n        const textAcreta = getSovaIco();\n        return textAcreta;\n    },\n    render() {\n        return () => {\n            // DK Agent compilation active\n            console.log('Building UI v4.0');\n        };\n    }\n};"
+            android:textColor="@color/neon_electric_cyan"
+            android:textSize="13sp" />
+    </ScrollView>
+
+    <!-- Patch Status Box -->
+    <LinearLayout
+        android:id="@+id/cardPatchStatus"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_marginBottom="12dp"
+        android:background="@drawable/bg_glass_card"
+        android:orientation="vertical"
+        android:padding="12dp"
+        app:layout_constraintBottom_toTopOf="@id/containerTerminal"
+        app:layout_constraintEnd_toEndOf="@id/txtTitle"
+        app:layout_constraintStart_toStartOf="@id/txtTitle">
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Coding Agent: Patch Applied ✅"
+            android:textColor="@color/text_primary"
+            android:textSize="13sp"
+            android:textStyle="bold" />
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="6dp"
+            android:orientation="horizontal">
+
+            <Button
+                android:layout_width="0dp"
+                android:layout_height="32dp"
+                android:layout_weight="1"
+                android:backgroundTint="@color/bg_surface_navy"
+                android:text="Commands"
+                android:textAllCaps="false"
+                android:textColor="@color/text_secondary"
+                android:textSize="11sp" />
+
+            <Button
+                android:layout_width="0dp"
+                android:layout_height="32dp"
+                android:layout_weight="1"
+                android:layout_marginStart="6dp"
+                android:backgroundTint="@color/bg_surface_navy"
+                android:text="Repo File"
+                android:textAllCaps="false"
+                android:textColor="@color/text_secondary"
+                android:textSize="11sp" />
+
+            <Button
+                android:layout_width="0dp"
+                android:layout_height="32dp"
+                android:layout_weight="1"
+                android:layout_marginStart="6dp"
+                android:backgroundTint="@color/bg_surface_navy"
+                android:text="Execute"
+                android:textAllCaps="false"
+                android:textColor="@color/neon_electric_cyan"
+                android:textSize="11sp" />
+        </LinearLayout>
+    </LinearLayout>
+
+    <!-- Bottom Terminal Input Bar -->
+    <androidx.constraintlayout.widget.ConstraintLayout
+        android:id="@+id/containerTerminal"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_marginBottom="20dp"
+        android:background="@drawable/bg_glow_dock"
+        android:padding="8dp"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintEnd_toEndOf="@id/txtTitle"
+        app:layout_constraintStart_toStartOf="@id/txtTitle">
+
+        <EditText
+            android:id="@+id/edtTerminal"
+            android:layout_width="0dp"
+            android:layout_height="46dp"
+            android:background="@android:color/transparent"
+            android:hint="Write command or instruct DK Agent..."
+            android:imeOptions="actionSend"
+            android:inputType="text"
+            android:paddingHorizontal="12dp"
+            android:textColor="@color/text_primary"
+            android:textColorHint="@color/text_secondary"
+            android:textSize="13sp"
+            app:layout_constraintBottom_toBottomOf="parent"
+            app:layout_constraintEnd_toStartOf="@id/btnMicAgent"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintTop_toTopOf="parent" />
+
+        <ImageButton
+            android:id="@+id/btnMicAgent"
+            android:layout_width="40dp"
+            android:layout_height="40dp"
+            android:layout_marginEnd="4dp"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:src="@android:drawable/ic_btn_speak_now"
+            app:layout_constraintBottom_toBottomOf="parent"
+            app:layout_constraintEnd_toStartOf="@id/btnExecuteAgent"
+            app:layout_constraintTop_toTopOf="parent"
+            app:tint="@color/neon_electric_cyan" />
+
+        <ImageButton
+            android:id="@+id/btnExecuteAgent"
+            android:layout_width="44dp"
+            android:layout_height="44dp"
+            android:background="@drawable/bg_glass_card"
+            android:src="@android:drawable/ic_media_play"
+            app:layout_constraintBottom_toBottomOf="parent"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintTop_toTopOf="parent"
+            app:tint="@color/neon_electric_cyan" />
+    </androidx.constraintlayout.widget.ConstraintLayout>
+
+</androidx.constraintlayout.widget.ConstraintLayout>
