@@ -55,6 +55,16 @@ internal fun GeminiLive.onCaption(t: String, final: Boolean) {
         log("वीडियो/गाने के बीच DK का नाम सुना (\"${t.take(40)}\") - यूज़र की बात, Gemini को भेज रहा हूँ")
     }
     lastAct = System.currentTimeMillis()
+    // नवंबर 2026 (मालिक): घंटी बजते ही "डीके कॉल उठा लो" / "काट दो" = तुरंत - DK (Live / बैकअप) बोल रहा हो, अभी बोलना शुरू
+    // भी न किया हो, या बात का पक्का text अभी न आया हो. उठते / कटते ही DK की आवाज़ वहीं बंद (नाम-नंबर दोबारा नहीं).
+    // (काटकर मैसेज / म्यूट जैसी कॉल कमांड नीचे वाला पुराना रास्ता ही करे)
+    if (svc.callRinging() && CallCmd.route(t, System.currentTimeMillis()) == null) CallReply.instant(t, final, isPlaying() || svc.callAnnouncing || micMuted, Prefs.wakeWords(svc))?.let { act ->
+        svc.hushForCall()
+        if (isPlaying()) flushPlayback()
+        muteTurn = true; muteAt = System.currentTimeMillis()
+        svc.scope.launch { callTool(act, "फ़ोन ने सुना (तुरंत${if (final) "" else ", अधूरे text से"}): \"${t.take(30)}\"") }
+        return
+    }
     if (t.isNotBlank()) duplex.onWords()          // नवंबर 2026 (#1): VAD से रोका था और शब्द आए = सही रोका
     // नवंबर 2026: "फोन लॉक करो" / "DK फोन अनलॉक करो" का पक्का text आते ही - DK बोल रहा हो (जवाब रोके-सुने वाला
     // रास्ता) तब भी, बोलना-खत्म / Gemini के tool का इंतज़ार नहीं। DK की अपनी आवाज़ की गूँज = नहीं।

@@ -15,6 +15,8 @@ object CallReply {
     const val SPEAKER_OFF = "speaker_off"
     const val WHO = "who"
     val ACTIONS = listOf(ANSWER, ANSWER_SPEAKER, REJECT, SPEAKER_ON, SPEAKER_OFF, WHO)
+    /** नवंबर 2026: कॉल पर DK लाइव इतनी देर में बोलना शुरू न करे = बैकअप आवाज़ तुरंत */
+    const val LIVE_CALL_WAIT_MS = 1_300L
 
     private val YES = Regex("(^| )(हाँ|हां|हा|हम्म|yes|yeah|ok|okay|ओके|ठीक है|जी|जी हाँ|जी हां|बिलकुल|बिल्कुल|उठाओ|haan|han)( |$)")
     private val NO = Regex("(^| )(नहीं|नही|ना|no|nahi|nahin)( |$)")
@@ -68,6 +70,26 @@ object CallReply {
     /** एलान चलते समय की बात -> काम (null = DK का नाम नहीं / गूँज / कॉल की बात नहीं) */
     fun barge(heard: String, names: List<String> = emptyList()): String? =
         if (bargeOk(heard, names)) parse(heard)?.takeIf { it != WHO } else null
+
+    // नवंबर 2026 (मालिक): "उठा लो" / "काट दो" बोलते ही काम - पक्का text आने (बात खत्म) का इंतज़ार नहीं.
+    // अधूरा text ("डीके उठा...") तभी माना जब पूरा हुक्म आख़िर में हो - "उठाना मत" जैसी बात आधी सुनकर कॉल न उठे.
+    private val DONE_WORDS = Regex("(उठा लो|उठा लीजिए|उठा लीजिये|उठाओ|उठा दो|उठा ले|उठा लें|रिसीव करो|रिसीव कर लो|receive|pick up|pick karo|answer|accept|utha lo|uthao|" +
+        "काट दो|काट दीजिए|काट दीजिये|काटो|कट करो|कट कर दो|कट कर|reject|decline|cut karo|cut kar do|kaat do|स्पीकर पर डालो|स्पीकर पर डाल दो|स्पीकर पर|speaker par daal do|speaker pe daalo)$")
+
+    /**
+     * घंटी बजते समय Live का caption -> तुरंत काम (null = अभी नहीं).
+     * dkTalking = DK (Live या बैकअप आवाज़) अभी बोल रहा: तब गूँज से बचने को DK का नाम ज़रूरी ([barge]).
+     */
+    fun instant(heard: String, final: Boolean, dkTalking: Boolean, names: List<String> = emptyList()): String? {
+        val l = heard.lowercase().trim().trim('.', '।', '!', '?', ',').replace(Regex("\\s+"), " ")
+        if (l.isEmpty() || askEcho(heard)) return null
+        if (listOf("मत काट", "मत कट", "ना काट", "नहीं काट", "mat kaat", "mat cut").any { l.contains(it) }) return null
+        if (!final && !DONE_WORDS.containsMatchIn(l)) return null
+        val act = (if (dkTalking) barge(heard, names) else parse(heard)) ?: return null
+        // अधूरे text पर काटना नहीं: "काट दो और मैसेज भेजो कि..." अभी पूरा बोला जा रहा हो सकता है (पक्का text आधे सेकंड में आता है)
+        if (!final && act == REJECT) return null
+        return act.takeIf { it != WHO }
+    }
 
     /** Gemini Live को: कॉल आया - यूज़र से पूछो, खुद मत उठाओ/काटो */
     fun liveNote(who: String): String {

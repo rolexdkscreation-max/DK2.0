@@ -60,18 +60,23 @@ internal suspend fun DKAccessibilityService.onIncomingCall(who0: String, ask: St
     DKState.reply(msg)
     if (DKState.live && gemLive.canTalk()) {
         val whoNote = if (ask == null) who else AppCall.current?.let { r -> "${r.who.ifBlank { "कोई" }} (${r.app}${if (r.video) " वीडियो" else ""} कॉल)" } ?: who
-        gemLive.muteMic(true)
-        scope.launch { gemLive.noteCallAsked(whoNote) }     // Live को साथ-साथ बताओ (पहले बोलने से पहले 0.6s रुकता था)
-        callAnnouncing = true
-        val spoke = try { speaker.speakCall(msg, generic = false) } finally { callAnnouncing = false; gemLive.muteMic(false) }
+        // नवंबर 2026 (मालिक): "इंटरनेट है तो DK लाइव खुद तुरंत बोले; न बोले तो बैकअप तुरंत".
+        // पहले यहाँ फ़ोन की सहेजी आवाज़ पहले बजती थी और Live का माइक बंद रहता था - "DK उठा लो" सुनाई नहीं देता था.
+        // अब: माइक खुला, Live पहले (1.3s तक); न बोले = बैकअप आवाज़ उसी पल. बीच में उठा / काट दिया = कुछ नहीं बोलना.
         gemLive.callAudio(true)
-        if (spoke == Speaker.CallSpoke.NONE) {
-            speaker.fullCallVolume()
-            val liveSaid = gemLive.announceCall(whoNote)
-            if (!liveSaid) {
-                gemLive.muteMic(true); callAnnouncing = true
-                try { speaker.speakCall("", generic = true) } finally { callAnnouncing = false; gemLive.muteMic(false) }
-            }
+        speaker.fullCallVolume()
+        val liveSaid = gemLive.announceCall(whoNote)
+        if (!liveSaid && calls.ringing && callPending) {
+            if (gemLive.isPlaying()) gemLive.flushPlayback()
+            // माइक खुला रहे: बैकअप बोलते समय भी "डीके उठा लो" सुनाई दे (गूँज से बचने को तब DK का नाम ज़रूरी - CallReply.instant)
+            scope.launch { gemLive.noteCallAsked(whoNote) }     // Live को साथ-साथ बताओ - वह चुप रहे, बैकअप बोल रहा
+            callAnnouncing = true
+            // बैकअप बोलते समय Live देर से बोलने लगे = दो आवाज़ें नहीं
+            val quiet = scope.launch { while (callAnnouncing) { if (gemLive.isPlaying()) gemLive.flushPlayback(); delay(100) } }
+            try {
+                val spoke = speaker.speakCall(msg, generic = false)
+                if (spoke == Speaker.CallSpoke.NONE && calls.ringing && callPending) speaker.speakCall("", generic = true)
+            } finally { callAnnouncing = false; quiet.cancel() }
         }
         scope.launch { while (calls.ringing) delay(500); callPending = false; if (!calls.inCall) gemLive.callAudio(false) }
         scope.launch { delay(1_000); while (calls.ringing || calls.inCall) delay(500); speaker.restoreCallVolume() }

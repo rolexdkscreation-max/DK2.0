@@ -433,6 +433,11 @@ internal fun SettingsActivity.secPerms() {
         })
         hint(box, "कैमरा permission यहाँ सिर्फ़ टॉर्च चालू/बंद करने के लिए है; DK फ़ोटो नहीं लेता।")
         row(box, button("Notification पढ़ने की इजाज़त") { DKNotifListener.openSettings(this) })
+        // नवंबर 2026: "आज के स्क्रीनशॉट डिलीट करो" - यह इजाज़त हो तो Android हर बार Allow नहीं पूछता
+        if (android.os.Build.VERSION.SDK_INT >= 31) row(box, button("फ़ोटो बिना पूछे मिटाना (मीडिया मैनेजमेंट)") {
+            try { startActivity(android.content.Intent(android.provider.Settings.ACTION_REQUEST_MANAGE_MEDIA, android.net.Uri.parse("package:$packageName"))) }
+            catch (_: Exception) { UiLang.toast(this, "सेटिंग्स → ऐप्स → खास ऐक्सेस → मीडिया मैनेजमेंट → DK चालू करें", android.widget.Toast.LENGTH_LONG).show() }
+        })
         hint(box, "इससे DK लाइव चलते समय आए notification बता सकता है (\"क्या notification आया?\") और आपके कहने पर उनका reply भेज सकता है। notification सिर्फ़ फ़ोन की memory में रहते हैं।")
     }
     refreshPerms()
@@ -450,5 +455,6 @@ internal fun SettingsActivity.refreshPerms() {
         (if (DKNotifListener.enabled(this)) "✓" else "✗") + " notification पढ़ना / reply\n" +
         (if (ok(PhoneActions.CALL_PERM)) "✓" else "✗") + " सीधी कॉल (न हो तो डायलर खुलता है)\n" +
         (if (ok(PhoneActions.PHOTO_PERM)) "✓" else "✗") + " फ़ोटो (सबसे नई फ़ोटो खोलना)\n" +
+        (if (MediaDelete.canManage(this)) "✓" else "✗") + " मीडिया मैनेजमेंट (फ़ोटो / स्क्रीनशॉट बिना Allow पूछे मिटाना)\n" +
         (if (Updater.canInstall(this)) "✓" else "✗") + " ऐप इंस्टॉल (अपडेट)"
 }

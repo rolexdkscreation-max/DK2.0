@@ -13,6 +13,8 @@ object WaRoute {
     fun isWhatsAppSend(request: String): Boolean {
         val t = request.lowercase()
         if (WA.none { t.contains(it) }) return false
+        // नवंबर 2026: "WhatsApp पर भेजा मैसेज डिलीट करो" = मिटाना (WaDelete), नया मैसेज भेजना नहीं
+        if (WaDelete.isDelete(request)) return false
         if (NOT.any { t.contains(it) } && !t.contains("भेज") && !t.contains("send")) return false
         return SEND.any { t.contains(it) }
     }

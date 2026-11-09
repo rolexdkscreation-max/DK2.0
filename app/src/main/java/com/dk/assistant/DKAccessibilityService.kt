@@ -1094,7 +1094,7 @@ class DKAccessibilityService : AccessibilityService() {
                 "call_log" -> PhoneActions.callLog(this)
                 "open_dialer" -> PhoneActions.openDialer(this)
                 "gallery_latest" -> PhoneActions.latestPhoto(this)
-                "delete_media" -> MediaDelete.latest(this, a.optString("kind", "photo"), a.optInt("count", 1))
+                "delete_media" -> MediaDelete.run(this, MediaPick.fromJson(a))
                 "steps" -> performSteps(a.optJSONArray("steps"))
                 "web_search" -> AppLauncher.webSearch(this, a.optString("query"))
                 "open_url" -> AppLauncher.openUrl(this, a.optString("url"))

@@ -27,16 +27,28 @@ object MediaDelete {
 
     private const val ASK_MS = 60_000L
 
-    suspend fun latest(svc: DKAccessibilityService, kind: String, count: Int): String {
+    /** पुराना रास्ता ("आखिरी 1-20") - अब [run] से */
+    suspend fun latest(svc: DKAccessibilityService, kind: String, count: Int): String =
+        run(svc, MediaPick.Spec(if (kind == "screenshot") "screenshot" else "photo", count.coerceIn(1, 20)))
+
+    /**
+     * नवंबर 2026: गिनती 500 तक, दिन (आज / कल / परसों), ऊपर से (नई) / नीचे से (पुरानी), उस दिन की सारी.
+     * "मीडिया मैनेजमेंट" (MANAGE_MEDIA, Android 12+) की इजाज़त हो तो Android Allow नहीं पूछता = फटाक से.
+     */
+    suspend fun run(svc: DKAccessibilityService, spec: MediaPick.Spec): String {
         if (Build.VERSION.SDK_INT < 30)
             return "ERROR_OLD_ANDROID: इस फ़ोन का Android (10 या पुराना) DK को फ़ोटो मिटाने की इजाज़त-वाली खिड़की नहीं देता - गैलरी से खुद मिटाइए।"
         val perm = PhoneActions.granted(svc, PhoneActions.PHOTO_PERM)
         if (!perm) return "ERROR_PERM: फ़ोटो मिटाने के लिए फ़ोटो की परमिशन चाहिए - सेटिंग्स → परमिशन → फ़ोटो दीजिए।"
-        val n = count.coerceIn(1, 20)
-        val shot = kind == "screenshot"
-        val uris = withContext(Dispatchers.IO) { newest(svc, shot, n) }
-        if (uris.isEmpty()) return "ERROR_NO_PHOTO: फ़ोन में कोई ${if (shot) "स्क्रीनशॉट" else "फ़ोटो"} नहीं मिला।"
-        val what = (if (uris.size == 1) "" else "${uris.size} ") + (if (shot) "स्क्रीनशॉट" else "फ़ोटो")
+        val n = spec.count.coerceIn(1, MediaPick.MAX)
+        val range = if (spec.day >= 0) MediaPick.dayRange(spec.day, System.currentTimeMillis()) else null
+        val uris = withContext(Dispatchers.IO) { pick(svc, spec.shot, n, range, spec.from == MediaPick.From.OLD) }
+        if (uris.isEmpty()) {
+            val d = when (spec.day) { 0 -> "आज का "; 1 -> "कल का "; 2 -> "परसों का "; else -> "" }
+            return "ERROR_NO_PHOTO: फ़ोन में ${d}कोई ${if (spec.shot) "स्क्रीनशॉट" else "फ़ोटो"} नहीं मिला।"
+        }
+        val what = spec.hi(uris.size)
+        val silent = canManage(svc)
 
         val pi = try { MediaStore.createTrashRequest(svc.contentResolver, uris, true) }
             catch (e: Exception) { DKLog.d("मिटाना: Android ने मना किया ${e.javaClass.simpleName}"); return "ERROR_LAUNCH: Android ने मिटाने की खिड़की नहीं खोली।" }
@@ -54,24 +66,30 @@ object MediaDelete {
         if (!yes) return "ERROR_DENIED: आपने Allow नहीं दबाया - कुछ नहीं मिटाया।"
         // सच में ट्रैश में गई? (Android कभी-कभी OK देकर भी कुछ नहीं करता)
         val left = withContext(Dispatchers.IO) { uris.count { stillThere(svc, it) } }
-        DKLog.d("मिटाना: ${uris.size} में से ${uris.size - left} ट्रैश में")
+        DKLog.d("मिटाना: ${uris.size} में से ${uris.size - left} ट्रैश में (बिना पूछे: $silent)")
+        val tip = if (!silent && Build.VERSION.SDK_INT >= 31) " हर बार Allow पूछे बिना मिटाने के लिए: सेटिंग्स → ऐप्स → खास ऐक्सेस → मीडिया मैनेजमेंट → DK चालू करें।" else ""
         return when {
-            left == 0 -> "DELETED: आखिरी $what मिटा दी (ट्रैश में - 30 दिन तक गैलरी से वापस ला सकते हैं)।"
+            left == 0 -> "DELETED: $what मिटा दिए (ट्रैश में - 30 दिन तक गैलरी से वापस ला सकते हैं)।$tip"
             left < uris.size -> "DELETE_UNVERIFIED: ${uris.size} में से ${uris.size - left} ही मिटीं, $left वैसी ही हैं।"
             else -> "DELETE_UNVERIFIED: Allow के बाद भी फ़ोटो वहीं है - मिटना पक्का नहीं हुआ।"
         }
     }
 
+    /** Android 12+: "मीडिया मैनेजमेंट" की इजाज़त = मिटाने पर Allow नहीं पूछा जाता */
+    fun canManage(c: android.content.Context): Boolean = Build.VERSION.SDK_INT >= 31 && try { MediaStore.canManageMedia(c) } catch (_: Exception) { false }
+
     internal fun done(ok: Boolean) { pending?.complete(ok) }
 
-    private fun newest(svc: DKAccessibilityService, shot: Boolean, n: Int): List<Uri> {
+    private fun pick(svc: DKAccessibilityService, shot: Boolean, n: Int, range: LongRange?, oldest: Boolean): List<Uri> {
         val base = MediaStore.Images.Media.EXTERNAL_CONTENT_URI
         val out = ArrayList<Uri>()
-        val sel = if (shot) "(${MediaStore.Images.Media.RELATIVE_PATH} LIKE ? OR ${MediaStore.Images.Media.DISPLAY_NAME} LIKE ?)" else null
-        val args = if (shot) arrayOf("%Screenshot%", "Screenshot%") else null
+        val parts = ArrayList<String>(); val args = ArrayList<String>()
+        if (shot) { parts += "(${MediaStore.Images.Media.RELATIVE_PATH} LIKE ? OR ${MediaStore.Images.Media.DISPLAY_NAME} LIKE ?)"; args += "%Screenshot%"; args += "Screenshot%" }
+        if (range != null) { parts += "${MediaStore.Images.Media.DATE_ADDED} >= ? AND ${MediaStore.Images.Media.DATE_ADDED} < ?"; args += range.first.toString(); args += (range.last + 1).toString() }
+        val sel = parts.takeIf { it.isNotEmpty() }?.joinToString(" AND ")
         try {
-            svc.contentResolver.query(base, arrayOf(MediaStore.Images.Media._ID), sel, args,
-                "${MediaStore.Images.Media.DATE_ADDED} DESC")?.use { c ->
+            svc.contentResolver.query(base, arrayOf(MediaStore.Images.Media._ID), sel, args.takeIf { it.isNotEmpty() }?.toTypedArray(),
+                "${MediaStore.Images.Media.DATE_ADDED} ${if (oldest) "ASC" else "DESC"}")?.use { c ->
                 while (out.size < n && c.moveToNext()) out.add(ContentUris.withAppendedId(base, c.getLong(0)))
             }
         } catch (e: Exception) { DKLog.d("मिटाना: फ़ोटो सूची नहीं पढ़ी ${e.javaClass.simpleName}") }

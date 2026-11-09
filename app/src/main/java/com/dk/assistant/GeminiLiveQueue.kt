@@ -77,7 +77,7 @@ internal fun GeminiLive.stopQueue(why: String) {
 
 /** अगले काम से पहले फ़ोन ठीक हालत में: अगला काम स्क्रीन पर चलेगा (AI एजेंट) या पिछला अटका = होम */
 internal suspend fun GeminiLive.queuePrepare(prev: TaskQueue.Item, next: TaskQueue.Item, prevOk: Boolean) {
-    val direct = next.kind == TaskQueue.Kind.WHATSAPP_SEND || LocalRouter.deleteMedia(next.text) != null ||
+    val direct = next.kind == TaskQueue.Kind.WHATSAPP_SEND || MediaPick.quick(next.text) is MediaPick.Out.Go ||
         LiveFast.pick(next.text, Prefs.wakeWords(svc), svc.currentPackage()) != null
     if (!prevOk || !direct) {
         try { svc.perform(JSONObject().put("type", "home")) } catch (e: CancellationException) { throw e } catch (_: Exception) {}
@@ -151,6 +151,12 @@ internal suspend fun GeminiLive.queueAsk(question: String): String? {
 }
 
 internal suspend fun GeminiLive.phoneTaskOne(req: String, queued: Boolean = false): String {
+    // नवंबर 2026: "WhatsApp पर गलती से गया मैसेज डिलीट करो" = सीधे सबके लिए डिलीट (पहले यह "भेजो" बन जाता था)
+    if (com.dk.assistant.agent.social.WaDelete.isDelete(req, com.dk.assistant.agent.social.WaDelete.recent() != null)) {
+        log("रूटर: WhatsApp भेजा मैसेज डिलीट (बिना AI एजेंट)")
+        DKState.set(Mode.WORKING)
+        return com.dk.assistant.agent.android.WaDeleteRunner.run(svc, req)
+    }
     // v3.59: WhatsApp मैसेज = whatsapp_task (पक्का भेजना + जाँच), phone_task नहीं
     if (com.dk.assistant.agent.social.WaRoute.isWhatsAppSend(req)) {
         log("रूटर: WhatsApp मैसेज -> whatsapp_task")
@@ -167,12 +173,21 @@ internal suspend fun GeminiLive.phoneTaskOne(req: String, queued: Boolean = fals
         return TaskSense.liveNote(n)
     }
     // v3.67: "आखिरी फोटो/स्क्रीनशॉट डिलीट करो" = सीधे फ़ोन पर; Android खुद Allow पूछता है, फिर जाँच कि सच में ट्रैश में गई
-    LocalRouter.deleteMedia(req)?.let { q ->
-        DKState.set(Mode.WORKING)
-        val t0 = System.currentTimeMillis()
-        val r = try { svc.perform(q.action) } catch (e: CancellationException) { throw e } catch (e: Exception) { "ERROR ${e.message}" }
-        log("phone_task मिटाना (बिना AI एजेंट) ${System.currentTimeMillis() - t0} ms: ${r.substringBefore(':')}")
-        return LiveFast.quickResult(q, r, already = false)
+    // नवंबर 2026: + "आज / कल के सारे स्क्रीनशॉट", "ऊपर से 50", "नीचे से 10" (MediaPick); गोल-मोल = पहले पूछो
+    when (val m = MediaPick.quick(req)) {
+        is MediaPick.Out.Go -> {
+            val q = QuickCommands.Quick(m.spec.toJson(), "")
+            DKState.set(Mode.WORKING)
+            val t0 = System.currentTimeMillis()
+            val r = try { svc.perform(q.action) } catch (e: CancellationException) { throw e } catch (e: Exception) { "ERROR ${e.message}" }
+            log("phone_task मिटाना (बिना AI एजेंट) ${System.currentTimeMillis() - t0} ms: ${r.substringBefore(':')}")
+            return LiveFast.quickResult(q, r, already = false)
+        }
+        is MediaPick.Out.Ask -> {
+            log("phone_task मिटाना: गोल-मोल -> पहले पूछो")
+            return "NEEDS USER CHOICE (nothing was deleted yet): ${m.msg} Ask the user exactly this, then call phone_task again with his full answer (e.g. 'ऊपर से 20 फोटो डिलीट करो')."
+        }
+        null -> {}
     }
     val wake = Prefs.wakeWords(svc)
     val fg = svc.currentPackage()
