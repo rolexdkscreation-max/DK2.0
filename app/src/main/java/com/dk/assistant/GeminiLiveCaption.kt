@@ -196,3 +196,33 @@ internal fun GeminiLive.commitPending(full: Boolean) {
     // search hua = chat/caption me click hone wale sources; nahi hua = khali (koi "Sources" nahi)
     DKState.reply(out, src)
 }
+
+/**
+ * नवंबर 2026 (मालिक: "DK कॉल उठा लो" बोलते ही उठे): घंटी के समय Live (server) ने जो सुना -> वही तुरंत काम जो caption करता है.
+ * add = टुकड़ा जोड़ो (inputTranscription), false = अधूरा अंदाज़ा (interim) - जुड़ा नहीं, बस साथ में जाँचो.
+ * शब्द आते रहें = "उठा लो / पिक करो" पर तुरंत; बात 0.9s रुकी = पक्का मानकर (काट दो भी). दो बार नहीं (callTool का callDone).
+ */
+internal fun GeminiLive.liveHeardCall(part: String, add: Boolean) {
+    val now = System.currentTimeMillis()
+    val heard = CallReply.joinHeard(callHeard, callHeardAt, part, now)
+    if (add) { callHeard = heard; callHeardAt = now }
+    if (liveCallAct(heard, false, now)) return
+    if (!add) return
+    callHeardJob?.cancel()
+    callHeardJob = svc.scope.launch {
+        delay(900)
+        if (callHeard == heard && svc.callRinging()) liveCallAct(heard, true, System.currentTimeMillis())
+    }
+}
+
+private fun GeminiLive.liveCallAct(heard: String, final: Boolean, now: Long): Boolean {
+    val t = heard.trim()
+    if (t.isEmpty() || CallCmd.route(t, now) != null) return false     // काटकर मैसेज / म्यूट = पुराना रास्ता
+    val act = CallReply.instant(t, final, isPlaying() || svc.callAnnouncing || micMuted, Prefs.wakeWords(svc)) ?: return false
+    callHeard = ""; callHeardAt = 0L; callHeardJob?.cancel()
+    svc.hushForCall()
+    if (isPlaying()) flushPlayback()
+    muteTurn = true; muteAt = now
+    svc.scope.launch { callTool(act, "Live ने सुना (तुरंत${if (final) "" else ", अधूरे text से"}): \"${t.take(30)}\"") }
+    return true
+}

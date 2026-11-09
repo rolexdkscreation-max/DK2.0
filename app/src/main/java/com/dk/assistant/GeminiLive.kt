@@ -742,6 +742,9 @@ class GeminiLive(internal val svc: DKAccessibilityService, internal val agent: A
         if (!canTalk() || toolJobs.isNotEmpty()) return false
         callDone = null
         if (isPlaying()) { flushPlayback(); commitPending(false) }
+        // नवंबर 2026 (जड़): पिछली बात "चुप" (muteTurn/dropOld) पर थी तो Live का कॉल वाला जवाब फेंक दिया जाता था -> बैकअप बोलता था
+        muteTurn = false; dropOld = false
+        callHeard = ""; callHeardAt = 0L; callAnsweredAt = 0L; callNoteAt = System.currentTimeMillis()
         val ok = try { ws?.tx(JSONObject().put("realtimeInput", JSONObject().put("text", CallReply.liveNote(who))).toString()) == true } catch (_: Exception) { false }
         log("कॉल आया (${who.ifBlank { "नंबर पता नहीं" }}) - DK लाइव से पूछ रहा हूँ" + if (ok) "" else " (भेज नहीं पाया)")
         if (!ok) return false
@@ -749,8 +752,21 @@ class GeminiLive(internal val svc: DKAccessibilityService, internal val agent: A
         // v3.41: 5s -> 3s; na bole to phone ki awaaz (ghanti ke 25-30s me har second keemti)
         // नवंबर 2026 (मालिक: "Live न बोले तो बैकअप तुरंत"): 3s -> 1.3s; बीच में कॉल उठ/कट गई = रुको, कुछ मत बोलो
         withTimeoutOrNull(CallReply.LIVE_CALL_WAIT_MS) { while (!isPlaying() && svc.callRinging()) delay(50) }
+        // नवंबर 2026 (मालिक: "कॉल आए तो DK लाइव ही बोले"): Live का जवाब आना शुरू हो चुका (आवाज़ रास्ते में) = बैकअप नहीं, थोड़ा और रुको
+        if (CallReply.liveStillComing(callAnsweredAt, callNoteAt, isPlaying(), svc.callRinging())) {
+            log("कॉल: DK लाइव जवाब बना रहा है - उसी की आवाज़ का इंतज़ार")
+            withTimeoutOrNull(CallReply.LIVE_CALL_MORE_MS) { while (!isPlaying() && svc.callRinging()) delay(50) }
+        }
         return isPlaying()
     }
+
+    /** नवंबर 2026: कॉल की बात भेजी कब / Live का जवाब (modelTurn) पहली बार कब आया - ताकि Live बोल रहा हो तो बैकअप न टोके */
+    @Volatile internal var callNoteAt = 0L
+    @Volatile internal var callAnsweredAt = 0L
+    /** घंटी के समय Live ने जो सुना (caption बंद हो / बात खत्म न पकड़ी जाए तब भी "DK कॉल उठा लो" तुरंत) */
+    @Volatile internal var callHeard = ""
+    @Volatile internal var callHeardAt = 0L
+    @Volatile internal var callHeardJob: Job? = null
 
     /** v3.51: कॉल के समय Live की आवाज़ accessibility पर (media घंटी/कॉल में mute) */
     @Volatile internal var callAudioOn = false

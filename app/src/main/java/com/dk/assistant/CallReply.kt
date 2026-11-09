@@ -17,6 +17,18 @@ object CallReply {
     val ACTIONS = listOf(ANSWER, ANSWER_SPEAKER, REJECT, SPEAKER_ON, SPEAKER_OFF, WHO)
     /** नवंबर 2026: कॉल पर DK लाइव इतनी देर में बोलना शुरू न करे = बैकअप आवाज़ तुरंत */
     const val LIVE_CALL_WAIT_MS = 1_300L
+    /** नवंबर 2026 (मालिक: "कॉल पर DK लाइव ही बोले"): 1.3s में Live का जवाब (text/आवाज़) आना शुरू हो गया = उसकी आवाज़ का इतना और इंतज़ार, बैकअप नहीं */
+    const val LIVE_CALL_MORE_MS = 3_500L
+    /** घंटी के समय Live के सुने टुकड़े इतनी देर के अंदर = एक ही बात */
+    const val HEARD_GAP_MS = 2_500L
+
+    /** Live ने 1.3s में जवाब शुरू किया पर आवाज़ अभी बजी नहीं = और रुको (true) */
+    fun liveStillComing(answeredAt: Long, sentAt: Long, playing: Boolean, ringing: Boolean): Boolean =
+        !playing && ringing && answeredAt >= sentAt && sentAt > 0L
+
+    /** घंटी के समय Live (inputTranscription) के टुकड़े जोड़ो - caption बंद हो तब भी "DK कॉल उठा लो" पूरा मिले */
+    fun joinHeard(prev: String, prevAt: Long, part: String, now: Long): String =
+        ((if (prevAt > 0L && now - prevAt <= HEARD_GAP_MS) prev else "") + part).takeLast(160)
 
     private val YES = Regex("(^| )(हाँ|हां|हा|हम्म|yes|yeah|ok|okay|ओके|ठीक है|जी|जी हाँ|जी हां|बिलकुल|बिल्कुल|उठाओ|haan|han)( |$)")
     private val NO = Regex("(^| )(नहीं|नही|ना|no|nahi|nahin)( |$)")
@@ -74,7 +86,10 @@ object CallReply {
     // नवंबर 2026 (मालिक): "उठा लो" / "काट दो" बोलते ही काम - पक्का text आने (बात खत्म) का इंतज़ार नहीं.
     // अधूरा text ("डीके उठा...") तभी माना जब पूरा हुक्म आख़िर में हो - "उठाना मत" जैसी बात आधी सुनकर कॉल न उठे.
     private val DONE_WORDS = Regex("(उठा लो|उठा लीजिए|उठा लीजिये|उठाओ|उठा दो|उठा ले|उठा लें|रिसीव करो|रिसीव कर लो|receive|pick up|pick karo|answer|accept|utha lo|uthao|" +
-        "काट दो|काट दीजिए|काट दीजिये|काटो|कट करो|कट कर दो|कट कर|reject|decline|cut karo|cut kar do|kaat do|स्पीकर पर डालो|स्पीकर पर डाल दो|स्पीकर पर|speaker par daal do|speaker pe daalo)$")
+        "काट दो|काट दीजिए|काट दीजिये|काटो|कट करो|कट कर दो|कट कर|reject|decline|cut karo|cut kar do|kaat do|स्पीकर पर डालो|स्पीकर पर डाल दो|स्पीकर पर|speaker par daal do|speaker pe daalo|" +
+        // नवंबर 2026 (मालिक: "DK कॉल उठा लो" बोलते ही उठे): "पिक करो", "answer the call", "उठा लो ना/यार/जल्दी" भी
+        "पिक करो|पिक कर लो|पिक कर दो|पिक अप करो|पिक अप|अटेंड करो|attend karo|answer karo|answer kar lo|receive karo|receive kar lo|pick kar lo|रिसीव कर दो|रिसीव कर लीजिए)" +
+        "( (the call|call|कॉल|फोन|फ़ोन|ना|न|यार|जल्दी|जल्दी से|प्लीज़|प्लीज|please|plz|भाई|सर|sir|bhai|yaar|na|jaldi|जी|ji))*$")
 
     /**
      * घंटी बजते समय Live का caption -> तुरंत काम (null = अभी नहीं).
