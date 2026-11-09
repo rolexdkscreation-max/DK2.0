@@ -116,11 +116,11 @@ class FaceMatchTest {
         var isLive = false
         for (i in 0 until 6) {
             val kps = floatArrayOf(
-                10.0f + i * 0.5f, 10.0f + (i % 2) * 0.4f,
-                20.0f - i * 0.3f, 10.0f,
-                15.0f, 15.0f + i * 0.2f,
-                11.0f + i * 0.1f, 20.0f,
-                19.0f, 20.0f - i * 0.2f
+                10.0f + i * 1.5f, 10.0f + (i % 2) * 1.2f,
+                20.0f - i * 1.1f, 10.0f,
+                15.0f, 15.0f + i * 1.3f,
+                11.0f + i * 1.0f, 20.0f,
+                19.0f, 20.0f - i * 1.2f
             )
             val det = FaceMath.Det(0.9f, 0.0f, 0.0f, 100.0f, 100.0f, kps)
             isLive = tracker.processFrame(det)
