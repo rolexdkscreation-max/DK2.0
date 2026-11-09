@@ -1032,6 +1032,7 @@ class SevenTeam(
         staged.forEach { (p, c) -> if (c != null) Syntax.check(p, c)?.let { stat.add("$p: $it") } }
         val orig = staged.keys.associateWith { files.original(it) }
         stat.addAll(SafePr.testGuard(staged, orig, SafePr.removesOldFeature(task)))
+        stat.addAll(uiTextCheck(staged))
         if (stat.isNotEmpty()) return TeamTest(false, "STATIC CHECK FAILED:\n" + stat.joinToString("\n"))
         if (staged.isEmpty()) return TeamTest(false, "NOTHING CHANGED: no file was changed for the task")
         val g = git
@@ -1180,6 +1181,27 @@ class SevenTeam(
         if (s.uses.isEmpty()) return ""
         val m = readMap(s.uses.map { it.substringBefore(':').trim() }.distinct())
         return SevenSymbols.signatures(s.uses) { m[it] }
+    }
+
+    /**
+     * नवंबर 2026 (PR #252): layout या ui_en.tsv बदला हो तो UiTextTest वाली जाँच push से पहले यहीं (बिना CI, सेकंडों में).
+     * पहले हर गायब शब्द के लिए ~10 मिनट का CI राउंड लगता था और हर राउंड में बस एक शब्द पता चलता था.
+     * जिस रिपो में assets/ui_en.tsv नहीं, वहाँ कुछ नहीं.
+     */
+    private suspend fun uiTextCheck(staged: Map<String, String?>): List<String> {
+        val touched = staged.keys.any { (it.contains("/res/layout/") && it.endsWith(".xml")) || it.endsWith("assets/ui_en.tsv") }
+        if (!touched) return emptyList()
+        return try {
+            val list = files.list()
+            val tsvPath = list.firstOrNull { it.endsWith("src/main/assets/ui_en.tsv") } ?: return emptyList()
+            val tsv = files.read(tsvPath) ?: return emptyList()
+            val layouts = LinkedHashMap<String, String>()
+            for (p in list) if (p.contains("/main/res/layout/") && p.endsWith(".xml")) files.read(p)?.let { layouts[p] = it }
+            val miss = UiText.missing(layouts, tsv)
+            if (miss.isEmpty()) emptyList()
+            else listOf("$tsvPath: ${miss.size} layout text का English नहीं (UiTextTest fail होगा). हर एक के लिए नई लाइन \"हिंदी<TAB>English\" जोड़ें " +
+                "(पहले से मौजूद शब्द दोबारा न जोड़ें, layout का text न बदलें):\n" + miss.take(40).joinToString("\n"))
+        } catch (_: Exception) { emptyList() }
     }
 
     /** log से असली एरर लाइनें (Kotlin "e: file:line", error:, FAILED, Exception) */

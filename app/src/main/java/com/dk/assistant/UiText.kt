@@ -51,6 +51,22 @@ class UiText(entries: Map<String, String>) {
         const val MIN_PART = 3
         fun dev(c: Char) = c in '\u0900'..'\u097F'
 
+        private val LAYOUT_TEXT = Regex("""android:(?:text|hint|contentDescription)="([^"]*)"""")
+
+        /**
+         * नवंबर 2026 (PR #252): layout के जिन हिंदी text का English नहीं बनता - सारे एक साथ (पहले पर रुकना नहीं).
+         * layouts = फ़ाइल का नाम/path -> XML. लौटाता है "activity_main.xml: \"टूल\"" जैसी लाइनें (दोहराव नहीं).
+         */
+        fun missing(layouts: Map<String, String>, tsv: String): List<String> {
+            val d = UiText(parse(tsv))
+            val out = LinkedHashSet<String>()
+            for ((name, xml) in layouts) for (m in LAYOUT_TEXT.findAll(xml)) {
+                val s = m.groupValues[1]
+                if (s.any { dev(it) } && d.tr(s).any { dev(it) }) out.add("${name.substringAfterLast('/')}: \"$s\"")
+            }
+            return out.toList()
+        }
+
         /** \"हिंदी<TAB>English\" लाइनें; # = टिप्पणी */
         fun parse(tsv: String): Map<String, String> {
             val m = LinkedHashMap<String, String>()

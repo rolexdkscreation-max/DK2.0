@@ -51,11 +51,15 @@ class UiTextTest {
 
     @Test fun everyLayoutText_hasEnglish() {
         val dir = listOf(File("src/main/res/layout"), File("app/src/main/res/layout")).first { it.exists() }
-        val re = Regex("""android:(?:text|hint|contentDescription)="([^"]*)"""")
-        dir.listFiles()!!.filter { it.name.endsWith(".xml") }.forEach { f ->
-            re.findAll(f.readText()).map { it.groupValues[1] }.filter { s -> s.any { UiText.dev(it) } }.forEach { s ->
-                assertFalse("${f.name}: \"$s\" का English नहीं", real.tr(s).any { UiText.dev(it) })
-            }
-        }
+        val layouts = dir.listFiles()!!.filter { it.name.endsWith(".xml") }.sortedBy { it.name }.associate { it.name to it.readText() }
+        // एक बार में सारी कमियाँ - कोडिंग एजेंट को हर CI राउंड में बस एक शब्द न मिले (PR #252: 4 राउंड, हर बार एक शब्द)
+        val miss = UiText.missing(layouts, tsvFile().readText())
+        assertTrue("${miss.size} layout text का English नहीं (ui_en.tsv में \"हिंदी<TAB>English\" जोड़ें):\n" + miss.joinToString("\n"), miss.isEmpty())
+    }
+
+    @Test fun missing_listsAllAtOnce() {
+        val xml = """<A android:text="पहला" android:hint="दूसरा" android:contentDescription="हाँ" android:text="Plain"/>"""
+        assertEquals(listOf("a.xml: \"पहला\"", "a.xml: \"दूसरा\""), UiText.missing(mapOf("res/layout/a.xml" to xml), "हाँ\tYes\n"))
+        assertTrue(UiText.missing(mapOf("a.xml" to xml), "पहला\tFirst\nदूसरा\tSecond\nहाँ\tYes\n").isEmpty())
     }
 }

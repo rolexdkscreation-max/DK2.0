@@ -51,6 +51,24 @@ class BuildLogTest {
         assertEquals("app/src/test/java/com/dk/assistant/FaceMatchTest.kt", BuildLog.resolve(s[0].path, keys))
     }
 
+    /** PR #252: site के संदेश में असली कारण (कौन-सा text, कौन-सी फ़ाइल), "at ..." लाइन नहीं */
+    @Test fun testFailureSiteCarriesAssertionMessage() {
+        val log = """
+2026-11-09T18:04:33.1234135Z com.dk.assistant.UiTextTest > everyLayoutText_hasEnglish FAILED
+2026-11-09T18:04:33.1235685Z     java.lang.AssertionError: activity_main.xml: "टूल" का English नहीं
+2026-11-09T18:04:33.1236693Z         at org.junit.Assert.fail(Assert.java:89)
+2026-11-09T18:04:33.1237563Z         at org.junit.Assert.assertTrue(Assert.java:42)
+2026-11-09T18:04:33.1237563Z         at com.dk.assistant.UiTextTest.everyLayoutText_hasEnglish(UiTextTest.kt:57)
+""".trimIndent()
+        val s = BuildLog.sites(log).single()
+        assertEquals("UiTextTest.kt", s.path); assertEquals(57, s.line)
+        assertTrue(s.msg, s.msg.contains("activity_main.xml: \"टूल\" का English नहीं"))
+        assertFalse(s.msg, s.msg.contains("at com.dk"))
+        assertTrue(BuildLog.digest(log).contains("UiTextTest.kt:57 - test UiTextTest.everyLayoutText_hasEnglish failed: activity_main.xml"))
+        // पुराना FaceMatch log: expected/actual वाला कारण
+        assertTrue(BuildLog.sites(testLog).single().msg.contains("expected:<NO_TARGET> but was:<NO_MATCH>"))
+    }
+
     @Test fun shortAssertFormatToo() {
         val s = BuildLog.sites("com.x.FooTest > bar FAILED\n    java.lang.AssertionError at FooTest.kt:12\n")
         assertEquals(12, s.single().line)

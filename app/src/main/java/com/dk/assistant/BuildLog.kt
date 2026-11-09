@@ -22,24 +22,31 @@ object BuildLog {
     private val JAVA_ERR = Regex("""^([\w./-]+\.java):(\d+):\s*error:\s*(.*)$""")
     private val AT_FILE = Regex("""\bat\s+(?:[\w.$]+\()?([\w$]+\.(?:kt|java)):(\d+)\)?""")
     private val TEST_FAIL = Regex("""^([\w.$]+)\s+>\s+(.+?)\s+FAILED$""")
+    // test fail के नीचे का कारण: "java.lang.AssertionError: ..." / "org.junit.ComparisonFailure: ..." / "...Exception: ..."
+    private val REASON = Regex("""^((?:[\w$]+\.)*[\w$]*(?:Error|Exception|Failure)[\w$]*)(?::\s*(.*))?""")
     private val AAPT = Regex("""^(?:ERROR:\s*)?([\w./-]+\.xml):(\d+):\s*(?:AAPT:\s*)?error:\s*(.*)$""", RegexOption.IGNORE_CASE)
 
     /** एरर की जगहें (क्रम से, दोहराव नहीं). test की जगह "FaceMatchTest.kt" जैसा छोटा नाम हो सकता है - resolve से पूरा path */
     fun sites(log: String): List<Site> {
         val out = LinkedHashMap<String, Site>()
         var testName = ""
+        var reason = ""
         for (raw in log.lines()) {
             val l = clean(raw).trim()
             KOTLIN_ERR.find(l)?.let { m -> add(out, Site(m.groupValues[1], m.groupValues[2].toInt(), m.groupValues[3].take(240), "compile")) ; return@let }
                 ?: JAVA_ERR.find(l)?.let { m -> add(out, Site(m.groupValues[1], m.groupValues[2].toInt(), m.groupValues[3].take(240), "compile")) }
                 ?: AAPT.find(l)?.let { m -> add(out, Site(m.groupValues[1], m.groupValues[2].toInt(), m.groupValues[3].take(240), "resource")) }
-            TEST_FAIL.find(l)?.let { m -> testName = m.groupValues[1].substringAfterLast('.') + "." + m.groupValues[2] }
+            val failLine = TEST_FAIL.find(l)?.also { m -> testName = m.groupValues[1].substringAfterLast('.') + "." + m.groupValues[2]; reason = "" } != null
+            // PR #252: पहले site में सिर्फ़ "at com.dk...Test.kt:57" जाता था - डिबगर को पता ही नहीं चलता था कि क्या टूटा
+            if (!failLine && testName.isNotEmpty() && reason.isEmpty() && !l.startsWith("at ")) REASON.find(l)?.let { m ->
+                reason = (if (m.groupValues[2].isNotBlank()) m.groupValues[2] else m.groupValues[1].substringAfterLast('.')).trim()
+            }
             if (testName.isNotEmpty()) AT_FILE.find(l)?.let { m ->
                 val f = m.groupValues[1]
                 // सिर्फ़ अपनी (रिपो की) फ़ाइल; junit/kotlin की अंदर की नहीं
                 if (!f.startsWith("Assert") && !f.startsWith("Junit") && !f.startsWith("Kotlin")) {
-                    add(out, Site(f, m.groupValues[2].toInt(), "test $testName failed: " + l.take(200), "test"))
-                    testName = ""
+                    add(out, Site(f, m.groupValues[2].toInt(), "test $testName failed: " + (reason.ifBlank { l }).take(400), "test"))
+                    testName = ""; reason = ""
                 }
             }
         }
