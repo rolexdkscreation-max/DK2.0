@@ -81,8 +81,10 @@ class ComputerActivity : AppCompatActivity() {
         window.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE)
         val root = FrameLayout(this).apply { setBackgroundColor(getColor(R.color.bg)) }
         root.addView(AuroraView(this), FrameLayout.LayoutParams(-1, -1))
-        val col = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; val p = (14 * dp).toInt(); setPadding(p, p, p, p) }
+        // नवंबर 2026 (मालिक): पूरी स्क्रीन भरी - किनारे की जगह डिवाइस के हिसाब से (UiFit), notch / नीचे की पट्टी से बचाव
+        val col = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; val e = UiFit.edgePx(this@ComputerActivity); val p = (14 * dp).toInt(); setPadding(e, p, e, (10 * dp).toInt()) }
         root.addView(col, FrameLayout.LayoutParams(-1, -1))
+        UiFit.safeArea(root)
 
         // नवंबर 2026 (मालिक): फ़ोन पर बटन नाम को दबा देते थे - अब दो लाइन (UiFit.header), बटन कभी कटते नहीं
         val back = ImageButton(this).apply {
