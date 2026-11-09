@@ -82,7 +82,7 @@ object Prefs {
     }
     /** उसी key के बैकअप मॉडल (limit खत्म हो तो) - दूसरी कंपनी नहीं */
     fun scopeBackups(c: Context, scope: String, id: String): List<String> =
-        ApiScopes.backupModels(id, scopeModel(c, scope, id), fastModels(c, id), models(c, id))
+        ApiScopes.backupModels(id, scopeModel(c, scope, id), fastModels(c, id), models(c, id), ApiScopes.BACKUP_MAX)
 
     // ---- profile
     fun userName(c: Context) = sp(c).getString("user_name", "") ?: ""

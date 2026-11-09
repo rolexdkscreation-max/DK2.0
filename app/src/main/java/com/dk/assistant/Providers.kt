@@ -33,7 +33,11 @@ object Providers {
     /** जिनकी /models list न खुले (Z.ai) - तब ये मॉडल दिखें. पहला = सबसे तेज़/फ्री */
     fun fallbackModels(id: String): List<String> = when (id) {
         "zai" -> listOf("glm-4.7-flash", "glm-4.5-flash", "glm-4.6v-flash")
-        "nvidia" -> listOf("meta/llama-3.3-70b-instruct", "meta/llama-3.1-8b-instruct", "nvidia/llama-3.3-nemotron-super-49b-v1.5", "deepseek-ai/deepseek-v3.1")
+        "nvidia" -> listOf("meta/llama-3.3-70b-instruct", "meta/llama-3.1-8b-instruct", "nvidia/llama-3.3-nemotron-super-49b-v1.5", "deepseek-ai/deepseek-v3.1",
+            "openai/gpt-oss-120b", "qwen/qwen3-coder-480b-a35b-instruct")
+        // नवंबर 2026 (मालिक): हर API के अपने फ्री मॉडल - एक की limit खत्म = उसी API का अगला (Settings में सूची न खोली हो तब भी)
+        "groq" -> listOf("openai/gpt-oss-120b", "openai/gpt-oss-20b", "llama-3.3-70b-versatile", "llama-3.1-8b-instant")
+        "openrouter" -> listOf("openrouter/free", "google/gemma-4-31b-it:free", "google/gemma-4-26b-a4b-it:free")
         else -> emptyList()
     }
 }

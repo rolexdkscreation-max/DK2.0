@@ -330,7 +330,11 @@ class OpenAiCompatClient(
         val (ok, wait) = all.partition { !Cooldown.blocked(mKey(it)) }
         return ok + wait
     }
-    private fun noteFail(m: String, e: AiException) { if (e.code == 429 && !RateLimit.accountWide(e)) Cooldown.block(mKey(m), RateLimit.backoffMs(1, e.retryAfter)) }
+    private fun noteFail(m: String, e: AiException) {
+        if (e.code == 429 && !RateLimit.accountWide(e)) Cooldown.block(mKey(m), RateLimit.backoffMs(1, e.retryAfter))
+        // नवंबर 2026: मॉडल मौजूद नहीं (404) = 6 घंटे उसे आख़िर में, अगला फ्री मॉडल पहले
+        if (e.code == 404) Cooldown.block(mKey(m), 6 * 60 * 60 * 1000L)
+    }
 
     override fun complete(system: String, history: List<Turn>, prompt: String, imageB64: String?): String {
         var last: AiException? = null
