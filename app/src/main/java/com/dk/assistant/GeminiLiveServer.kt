@@ -87,6 +87,14 @@ internal fun GeminiLive.handleServer(msg: String, setup: CompletableDeferred<Uni
     if (sc.optBoolean("waitingForInput") && !waitingLogged) { waitingLogged = true; log("server: waitingForInput (मॉडल मान रहा है user आगे बोलेगा) • ${timeline.summary()}") }
     if (sc.optBoolean("generationComplete")) timeline.genDone(System.currentTimeMillis())
     if (!oldReply && (sc.has("modelTurn") || sc.has("outputTranscription"))) { replyWatch.onServerAnswered(); utt.clear() }
+    // नवंबर 2026 (मालिक: "कॉल आए तो DK लाइव ही बोले"): कॉल की बात के बाद Live का जवाब आना शुरू = बैकअप न बोले (announceCall)
+    if (callNoteAt > 0L && callAnsweredAt < callNoteAt && (sc.has("modelTurn") || sc.has("outputTranscription"))) callAnsweredAt = System.currentTimeMillis()
+    // नवंबर 2026 (मालिक: "DK कॉल उठा लो" बोलते ही उठे): घंटी के समय Live ने जो सुना वह भी तुरंत जाँचो - caption बंद हो,
+    // घंटी के शोर में बात-खत्म न पकड़ी जाए, या पिछली बात "चुप" (muteTurn) पर हो तब भी
+    if (svc.callRinging()) {
+        sc.optJSONObject("inputTranscription")?.optString("text")?.takeIf { it.isNotBlank() }?.let { liveHeardCall(it, true) }
+        sc.optJSONObject("interimInputTranscription")?.optString("text")?.takeIf { it.isNotBlank() }?.let { liveHeardCall(it, false) }
+    }
     sc.optJSONObject("inputTranscription")?.optString("text")?.takeIf { it.isNotBlank() && !muteTurn }?.let { t ->
         if (!turnActive) startTurn()
         Ducker.duck(svc, "Live: user बोल रहा")
