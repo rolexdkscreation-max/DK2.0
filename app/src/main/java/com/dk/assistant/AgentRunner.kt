@@ -351,6 +351,11 @@ class AgentRunner(
             say(com.dk.assistant.forge.GameMaker.startForUser(svc, g)); return
         }
         // नवंबर 2026 (ऐप स्टूडियो): "DK, एक todo ऐप बनाओ" = DK कंप्यूटर फ़ोन पर ही ऐप बनाता है, स्टूडियो में चलता preview (वेबसाइट = Forge, गेम = ऊपर)
+        // नवंबर 2026 (मालिक): "स्टूडियो में क्या बन रहा है / उसमें X बदलो / रोको" - स्टूडियो की असली हालत से
+        com.dk.assistant.studio.StudioLink.parse(goal)?.let { cmd ->
+            val r = com.dk.assistant.studio.StudioLink.handle(svc, goal, com.dk.assistant.studio.StudioSession.WHO_COMPUTER)
+            if (r != null) { say(if (cmd.act == com.dk.assistant.studio.StudioLink.Act.BUILD && r.second) com.dk.assistant.studio.StudioRoute.STARTED_VOICE else r.first.take(600)); return }
+        }
         com.dk.assistant.studio.StudioRoute.voiceApp(goal)?.let { want ->
             val err = com.dk.assistant.studio.StudioSession.startFrom(svc, want, com.dk.assistant.studio.StudioSession.WHO_COMPUTER, voice = true)
             say(err ?: com.dk.assistant.studio.StudioRoute.STARTED_VOICE); return

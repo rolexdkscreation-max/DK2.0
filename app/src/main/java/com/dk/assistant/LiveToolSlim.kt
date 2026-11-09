@@ -20,7 +20,7 @@ object LiveToolSlim {
     val CORE: Set<String> = setOf(
         "phone_task", "web_search", "current_time", "deep_think", "whatsapp_task", "phone_call",
         "task_status", "notifications", "notification_reply", "local_info", "remember_fact",
-        "recall_conversation", "screen_share", "camera", "social_media_task_control",
+        "recall_conversation", "screen_share", "camera", "social_media_task_control", "look_screen",
     )
 
     /** router की एक लाइन में विवरण कितना लंबा */

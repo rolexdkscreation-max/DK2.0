@@ -192,6 +192,10 @@ class ComputerActivity : AppCompatActivity() {
         val t = edt.text.toString().trim()
         if (t.isEmpty()) return
         edt.setText("")
+        // नवंबर 2026 (मालिक): ऐप स्टूडियो से जुड़ा - "स्टूडियो में क्या बन रहा है / उसमें X बदलो / रोको / खोलो"
+        com.dk.assistant.studio.StudioLink.handle(this, t, com.dk.assistant.studio.StudioSession.WHO_COMPUTER)?.let { (msg, ok) ->
+            ComputerSession.add("u", t); ComputerSession.add(if (ok) "a" else "e", msg); render(); return
+        }
         // नवंबर 2026 (ऐप स्टूडियो): "ऐप / वेब ऐप / वेबसाइट / गेम बनाओ" = फ़ोन पर project + वहीं चलता preview
         if (!ComputerSession.busy) com.dk.assistant.studio.StudioCore.extract(t)?.let { want ->
             ComputerSession.add("u", t)

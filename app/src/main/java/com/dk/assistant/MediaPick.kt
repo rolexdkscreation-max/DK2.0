@@ -69,10 +69,13 @@ object MediaPick {
         "facebook", "वीडियो", "video", "फ़ाइल", "फाइल", "file", "pdf")
     private val THIS = listOf("यह", "ये", "इस", "this", "ye", "yeh", "खुली", "स्क्रीन पर")
     private val OLD = listOf("नीचे से", "नीचे वाल", "नीचे की", "नीचे के", "neeche", "niche se", "bottom", "पुरान", "purani", "purane", "oldest", "old ")
-    private val NEW = listOf("ऊपर से", "ऊपर वाल", "ऊपर की", "ऊपर के", "upar", "top", "आखिरी", "आख़िरी", "last", "latest", "नई", "नए", "नयी", "new", "recent", "हाल की", "अभी")
+    private val NEW = listOf("ऊपर से", "ऊपर वाल", "ऊपर की", "ऊपर के", "upar", "top", "आखिरी", "आख़िरी", "last", "latest", "नई", "नए", "नयी", "new", "recent", "हाल की", "अभी",
+        // नवंबर 2026 (मालिक: "लास्ट स्क्रीनशॉट डिलीट करो" पर पूछता था)
+        "लास्ट", "आखरी", "आख़री", "अखिरी", "लेटेस्ट", "न्यू", "नया", "akhri", "aakhri", "akhiri")
     private val ALL = listOf("सारी", "सारे", "सारा", "सभी", "सब ", "सबको", "all", "पूरी", "पूरे", "saari", "saare", "sab ", "sabhi", "जितनी", "जितने", "जितना", "jitne", "jitni")
     private val SOME = listOf("कुछ", "kuch", "some", "few", "थोड़ी", "थोड़े")
-    private val DAY = mapOf("आज" to 0, "today" to 0, "aaj" to 0, "aj" to 0, "कल" to 1, "yesterday" to 1, "kal" to 1, "परसों" to 2, "parso" to 2, "parson" to 2)
+    private val DAY = mapOf("आज" to 0, "today" to 0, "aaj" to 0, "aj" to 0, "कल" to 1, "yesterday" to 1, "kal" to 1, "परसों" to 2, "parso" to 2, "parson" to 2,
+        "today's" to 0, "todays" to 0, "टुडे" to 0, "yesterday's" to 1, "yesterdays" to 1)
     private val NUM = mapOf("एक" to 1, "दो" to 2, "तीन" to 3, "चार" to 4, "पांच" to 5, "पाँच" to 5, "छह" to 6, "छः" to 6, "सात" to 7, "आठ" to 8, "नौ" to 9,
         "दस" to 10, "ग्यारह" to 11, "बारह" to 12, "पंद्रह" to 15, "बीस" to 20, "पच्चीस" to 25, "तीस" to 30, "चालीस" to 40, "पचास" to 50, "साठ" to 60,
         "सत्तर" to 70, "अस्सी" to 80, "नब्बे" to 90, "सौ" to 100, "one" to 1, "two" to 2, "three" to 3, "four" to 4, "five" to 5, "ten" to 10,
@@ -82,6 +85,15 @@ object MediaPick {
     private val GLUE = Regex("(कर|दे|हटा|मिटा|डिलीट|डिलिट|उड़ा|साफ़|साफ)\\s+(दो|दीजिए|दीजिये|देना)(?=\\s|$)|(?<=\\s)(kar|de|hata|mita|delete)\\s+do(?=\\s|$)")
 
     private fun has(t: String, w: List<String>) = w.any { t.contains(it) }
+
+    /**
+     * नवंबर 2026: अंग्रेज़ी शब्द पूरे शब्द की तरह ("gallery" में "all" नहीं, "stop" में "top" नहीं) -
+     * पहले "delete my last screenshot from gallery" = \"सारे\" = 500 तक मिट सकते थे.
+     */
+    private fun hasW(t: String, w: List<String>) = w.any { k ->
+        val k2 = k.trim()
+        if (k2.isNotEmpty() && k2.all { it in 'a'..'z' }) Regex("(?<![a-z])$k2(?![a-z])").containsMatchIn(t) else t.contains(k)
+    }
 
     /** null = यह फ़ोटो मिटाने वाली बात नहीं (या स्क्रीन पर खुली "यह फ़ोटो" - वह एजेंट देखे) */
     fun parse(raw: String): Out? {
@@ -94,9 +106,9 @@ object MediaPick {
         val words = clean.split(Regex("[\\s,.!?।\\-–/]+")).filter { it.isNotEmpty() }
         val day = words.firstNotNullOfOrNull { DAY[it] }
         val count = words.firstNotNullOfOrNull { w -> w.toIntOrNull() ?: NUM[w] }
-        val old = has(clean, OLD)
-        val newer = has(clean, NEW)
-        val all = has(clean, ALL)
+        val old = hasW(clean, OLD)
+        val newer = hasW(clean, NEW)
+        val all = hasW(clean, ALL)
         val kind = if (shot) "screenshot" else "photo"
         val what = if (shot) "स्क्रीनशॉट" else "फ़ोटो"
         if (count == null && day == null && !all && has(t, THIS)) return null
@@ -108,14 +120,55 @@ object MediaPick {
             day != null -> Out.Go(Spec(kind, MAX, day, from, all = true))
             all && shot -> Out.Go(Spec(kind, MAX, -1, from, all = true))
             all -> Out.Ask("फ़ोन की सारी फ़ोटो एक साथ नहीं मिटाता - आज की, कल की, या कितनी (ऊपर से नई / नीचे से पुरानी) बताइए।")
-            has(clean, SOME) -> Out.Ask("कितनी $what मिटाऊँ - और ऊपर से (नई) या नीचे से (पुरानी)?")
+            hasW(clean, SOME) -> Out.Ask("कितनी $what मिटाऊँ - और ऊपर से (नई) या नीचे से (पुरानी)?")
             old || newer -> Out.Go(Spec(kind, 1, -1, from))
             else -> Out.Ask("कौन-सी $what मिटाऊँ - आखिरी वाली, आज की, या कितनी (ऊपर से / नीचे से)?")
         }
     }
 
-    /** Live / AgentRunner: पहले पुराना पक्का रास्ता (आखिरी 1-20), फिर नया */
-    fun quick(raw: String): Out? = LocalRouter.deleteMedia(raw)?.let { Out.Go(fromJson(it.action)) } ?: parse(raw)
+    /** Live / AgentRunner: पहले पुराना पक्का रास्ता (आखिरी 1-20), फिर नया; फिर पिछले सवाल का छोटा जवाब */
+    fun quick(raw: String, now: Long = System.currentTimeMillis()): Out? {
+        val direct = LocalRouter.deleteMedia(raw)?.let { Out.Go(fromJson(it.action)) } ?: parse(raw)
+        val out = direct ?: answer(raw, now)
+        when (out) {
+            is Out.Ask -> if (direct != null) asked = raw.trim() to now else asked = asked?.first?.let { it to now }
+            is Out.Go -> asked = null
+            null -> {}
+        }
+        return out
+    }
+
+    /**
+     * नवंबर 2026 (मालिक: "फ़ोटो डिलीट नहीं हो रही"): DK ने पूछा "कौन-सी फ़ोटो मिटाऊँ - आखिरी वाली, आज की, या कितनी?"
+     * और जवाब आया "आखिरी वाली" / "10" / "आज की" - वह खो जाता था (उसमें \"डिलीट\" / \"फ़ोटो\" नहीं).
+     * अब 90 सेकंड तक पिछली बात याद: जवाब में सिर्फ़ जवाब वाले शब्द हों (गिनती / दिन / ऊपर-नीचे / सारे) तभी जोड़ते हैं -
+     * \"10 बजे का अलार्म लगाओ\" जैसी नई बात कभी नहीं जुड़ती.
+     */
+    @Volatile private var asked: Pair<String, Long>? = null
+    const val ASK_FRESH_MS = 90_000L
+    private val FILL = setOf("वाली", "वाले", "वाला", "की", "के", "का", "से", "को", "सिर्फ़", "सिर्फ", "बस", "हाँ", "हां", "हा", "जी", "ठीक", "है",
+        "करो", "कर", "दो", "दीजिए", "दीजिये", "मिटाओ", "मिटा", "डिलीट", "डिलिट", "हटाओ", "हटा", "वो", "वह", "वे", "ही", "भी",
+        "फोटो", "फ़ोटो", "स्क्रीनशॉट", "ok", "okay", "yes", "the", "ones", "only", "just", "wali", "wale", "vali", "vale", "ki", "ke", "se",
+        "delete", "do", "it", "them", "photo", "photos", "screenshot", "screenshots")
+
+    private fun answer(raw: String, now: Long): Out? {
+        val (orig, at) = asked ?: return null
+        if (now - at > ASK_FRESH_MS || now < at) { asked = null; return null }
+        val t = " " + raw.trim().lowercase().replace(Regex("[०-९]")) { m -> ('0' + (m.value[0] - '०')).toString() } + " "
+        val words = t.split(Regex("[\\s,.!?।\\-–/]+")).filter { it.isNotEmpty() }
+        if (words.isEmpty() || words.size > 6 || LocalRouter.negated(t)) return null
+        val key = words.filter { it !in FILL }
+        if (key.isEmpty()) return null
+        val ok = key.all { w -> w.toIntOrNull() != null || NUM.containsKey(w) || DAY.containsKey(w) || ANS.any { a -> w == a || w.startsWith(a) } }
+        if (!ok) return null
+        return parse("$orig $raw")
+    }
+    private val ANS = listOf("ऊपर", "नीचे", "upar", "neeche", "niche", "top", "bottom", "पुरान", "purani", "purane", "oldest", "old", "आखिरी", "आख़िरी",
+        "आखरी", "आख़री", "अखिरी", "लास्ट", "last", "latest", "लेटेस्ट", "नई", "नए", "नयी", "नया", "न्यू", "new", "recent", "अभी", "सारी", "सारे", "सारा",
+        "सब", "सभी", "सबको", "sab", "all", "पूरी", "पूरे", "saari", "saare", "sabhi", "akhri", "aakhri", "akhiri")
+
+    /** टेस्ट / दूसरा काम शुरू: पिछला सवाल भूलो */
+    fun forgetAsk() { asked = null }
 
     /** "DELETED: ..." / "NEEDS USER CHOICE (...): ... Ask the user" -> बोलने लायक हिंदी */
     fun spoken(r: String): String {

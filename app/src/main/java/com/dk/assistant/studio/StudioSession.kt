@@ -40,6 +40,7 @@ object StudioSession {
     private fun step(t: String) {
         synchronized(steps) { steps.add(t); while (steps.size > 60) steps.removeAt(0) }
         DKLog.d("स्टूडियो: $t")
+        com.dk.assistant.TaskStatus.step(StudioLink.KEY, t)      // नवंबर 2026: DK लाइव / notification को असली कदम
         listener?.invoke()
     }
 
@@ -70,8 +71,8 @@ object StudioSession {
         if (to == WHO_CODER) com.dk.assistant.CoderSession.add(role, text) else com.dk.assistant.ComputerSession.add(role, text)
         if (reportVoice) {
             val say = if (ok) "आपका ऐप तैयार है, स्टूडियो में चल रहा है। चेक कर लीजिए, और जो बदलना हो वहीं बोल दीजिए।" else "ऐप नहीं बन पाया। " + text.lineSequence().first().take(140)
-            if (com.dk.assistant.DKState.live) com.dk.assistant.LiveReport.note("SYSTEM NOTE: App Studio finished (${if (ok) "ready, preview open" else "failed"}). Tell the user briefly: $say")
-            else {
+            // नवंबर 2026: Live चालू = TaskStatus के खत्म होने पर GeminiLive खुद SYSTEM NOTE भेजता है (StudioLink.liveNote) - दो बार नहीं
+            if (!com.dk.assistant.DKState.live) {
                 com.dk.assistant.DKState.reply(say)
                 com.dk.assistant.DKAccessibilityService.instance?.let { svc -> svc.scope.launch { try { svc.speaker.speak(say) } catch (_: Exception) {} } }
             }
@@ -121,11 +122,23 @@ object StudioSession {
     fun stop() { job?.cancel(); step("⏹ रोक दिया") }
 
     private fun launch(c: Context, p: StudioProject, text: String, errors: List<String>, isNew: Boolean) {
+        // नवंबर 2026 (मालिक): स्टूडियो का काम भी TaskStatus में - DK लाइव (task_status), notification, इतिहास सबको पता
+        com.dk.assistant.TaskStatus.start(StudioLink.KEY, StudioLink.WHO, StudioLink.WHO_EN, when {
+            isNew -> "नया ऐप: $text"
+            errors.isNotEmpty() -> "\"${p.title}\" के preview की ${errors.size} गलती ठीक करना"
+            else -> "\"${p.title}\" में बदलाव: $text"
+        })
         job = scope.launch {
-            val r = try { run(c, p, text, errors, isNew) } catch (e: kotlinx.coroutines.CancellationException) { "रोक दिया।" to false }
+            var cancelled = false
+            val r = try { run(c, p, text, errors, isNew) } catch (e: kotlinx.coroutines.CancellationException) { cancelled = true; "रोक दिया।" to false }
             catch (e: Exception) { ("ऐप स्टूडियो में गलती: " + (e.message ?: e.javaClass.simpleName).take(200)) to false }
             lastResult = r.first
             step(if (r.second) "✅ पूरा" else "⚠ " + r.first.lineSequence().first().take(120))
+            com.dk.assistant.TaskStatus.end(StudioLink.KEY, when {
+                cancelled -> com.dk.assistant.TaskStatus.State.CANCELLED
+                r.second -> com.dk.assistant.TaskStatus.State.DONE
+                else -> com.dk.assistant.TaskStatus.State.FAILED
+            }, r.first.lineSequence().first())
             try { report(r.first, r.second) } catch (_: Exception) {}
             try { onDone?.invoke(p.who, r.first, r.second) } catch (_: Exception) {}
             listener?.invoke()

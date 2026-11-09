@@ -100,6 +100,8 @@ object LivePromise {
             "notifications", "notification_reply" -> "नोटिफ़िकेशन देख रहा है…"
             "connector_task" -> "जुड़े ऐप से जानकारी ला रहा है…"
             "local_info" -> "जगह/मौसम देख रहा है…"
+            "look_screen" -> "स्क्रीन देख रहा है…"
+            "app_studio" -> "ऐप स्टूडियो देख रहा है…"
             else -> ""
         }
     }

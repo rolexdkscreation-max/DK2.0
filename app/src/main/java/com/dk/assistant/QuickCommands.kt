@@ -16,6 +16,8 @@ object QuickCommands {
 
     private val FILLER = listOf("प्लीज़", "please", "प्लीज", "ज़रा", "जरा", "जल्दी", "अभी", "तुरंत", "भाई", "यार", "जी", "ना")
 
+    /** मिटाने वाले शब्द - इन पर \"स्क्रीनशॉट ले लो\" कभी नहीं */
+    internal val DEL_WORDS = arrayOf("डिलीट", "डिलिट", "delete", "dilit", "मिटा", "हटा", "remove", "trash", "ट्रैश", "साफ", "साफ़", "उड़ा")
     private val MULTI = listOf(" और ", " फिर ", " then ", " and ", " उसके बाद", "भेज", "मैसेज", "message", "सर्च", "search",
         "ढूंढ", "ढूँढ", " कार्ट", " cart", "पोस्ट", "डिलीट", "delete", "टाइप", "लिख", "बता", "क्या", "कैसे", "क्यों", "कौन", "किसका")
 
@@ -116,7 +118,9 @@ object QuickCommands {
             val dir = when { has("ऊपर", "up") -> "up"; has("बाएँ", "बाएं", "left") -> "left"; has("दाएँ", "दाएं", "right") -> "right"; else -> "down" }
             return Quick(a("scroll", "direction" to dir), "")
         }
-        if (has("स्क्रीनशॉट", "screenshot")) return Quick(a("screenshot_save"), "स्क्रीनशॉट ले लिया")
+        // नवंबर 2026 (मालिक: "स्क्रीनशॉट डिलीट नहीं हो रहा"): "स्क्रीनशॉट मिटाओ / हटाओ / remove" पर नया स्क्रीनशॉट ले लेते थे
+        // (MULTI सिर्फ़ \"डिलीट\" रोकता है) - मिटाने वाली बात यहाँ नहीं, MediaPick के पास जाती है
+        if (has("स्क्रीनशॉट", "screenshot") && !has(*DEL_WORDS)) return Quick(a("screenshot_save"), "स्क्रीनशॉट ले लिया")
         if (has("सारे ऐप", "सब ऐप", "सभी ऐप", "clear all", "close all", "सारे app", "सब app")) return Quick(a("close_all_apps"), "सारे ऐप बंद कर दिए")
         if ((has("ऐप", "app", "एप") && offW) || t == "बंद करो इसे" || t == "इसे बंद करो") return Quick(a("close_app"), "ऐप बंद कर दिया")
 

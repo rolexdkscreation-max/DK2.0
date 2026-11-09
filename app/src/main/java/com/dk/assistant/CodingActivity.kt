@@ -345,6 +345,10 @@ class CodingActivity : AppCompatActivity() {
     private fun doSend() {
         val typed = edt.text.toString().trim()
         val hasMedia = CoderSession.media.isNotEmpty()
+        // नवंबर 2026 (मालिक): ऐप स्टूडियो से जुड़ा - "स्टूडियो में क्या बन रहा है / उसमें X बदलो / रोको / खोलो" (कोडिंग टीम का काम चलते समय भी)
+        if (!hasMedia && typed.isNotEmpty()) com.dk.assistant.studio.StudioLink.handle(this, typed, com.dk.assistant.studio.StudioSession.WHO_CODER)?.let { (msg, ok) ->
+            edt.setText(""); CoderSession.add("u", typed); CoderSession.add(if (ok) "a" else "e", msg); render(); return
+        }
         // काम चलते समय भी "क्या चल रहा है / रिपो चेक करो" पूछा जा सकता है (सिर्फ़ पढ़ना)
         if (typed.isEmpty() && !hasMedia || CoderSession.busy && !RepoDoctor.isStatusAsk(typed)) return
         // सिर्फ़ फ़ोटो/वीडियो भेजी: टीम उन्हें देखकर समझे

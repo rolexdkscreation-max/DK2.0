@@ -1023,7 +1023,7 @@ class DKAccessibilityService : AccessibilityService() {
     }
 
     /** Screenshot (Android 11+), chhota JPEG base64 me - AI ko "dikhane" ke liye. */
-    suspend fun screenshotBase64(): String? {
+    suspend fun screenshotBase64(width: Int = 540, quality: Int = 60): String? {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) return null
         return suspendCancellableCoroutine { cont ->
             try {
@@ -1034,11 +1034,11 @@ class DKAccessibilityService : AccessibilityService() {
                             val bmp = hw?.copy(Bitmap.Config.ARGB_8888, false)
                             result.hardwareBuffer.close()
                             if (bmp == null) null else {
-                                val w = 540
+                                val w = width.coerceIn(240, bmp.width.coerceAtLeast(240))
                                 val h = (bmp.height * (w.toFloat() / bmp.width)).toInt()
                                 val small = Bitmap.createScaledBitmap(bmp, w, h, true)
                                 val bos = ByteArrayOutputStream()
-                                small.compress(Bitmap.CompressFormat.JPEG, 60, bos)
+                                small.compress(Bitmap.CompressFormat.JPEG, quality.coerceIn(30, 95), bos)
                                 Base64.encodeToString(bos.toByteArray(), Base64.NO_WRAP)
                             }
                         } catch (e: Exception) { null }
