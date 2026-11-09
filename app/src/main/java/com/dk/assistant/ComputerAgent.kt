@@ -270,6 +270,8 @@ class ComputerAgent(private val c: Context) {
         val planJob = CoroutineScope(currentCoroutineContext()).async { makePlan(ai, task, before) }.also { planJ = it }
         var planSent = false
         addUser((if (msgs.isEmpty()) "TASK: " else "USER: ") + task + if (background) "\n(यह तय समय पर अपने-आप चला काम है — user अभी स्क्रीन पर नहीं है)" else "")
+        // नवंबर 2026 (मालिक): बड़ा काम = पहले समझकर योजना, फिर काम (ज़्यादा से ज़्यादा PLAN_WAIT_MS इंतज़ार; छोटा काम/बातचीत = सीधे)
+        if (ComputerPlan.planFirst(task)) withTimeoutOrNull(ComputerPlan.PLAN_WAIT_MS) { planJob.await() }
         val max = Prefs.computerMaxSteps(c)
         var bad = 0; var tools = 0; var verifyRound = 0
         for (n in 1..max) {
@@ -516,14 +518,18 @@ class ComputerAgent(private val c: Context) {
                     arr.optJSONObject(i)?.let { o -> Call(o.optString("tool"), o.optJSONObject("args") ?: JSONObject(), "", o.toString()) }
                 }
                 if (calls.isEmpty()) return "ERROR: calls खाली"
-                calls.firstOrNull { it.tool !in PARALLEL_SAFE }?.let {
-                    return "ERROR: parallel में सिर्फ़ ये टूल: ${PARALLEL_SAFE.joinToString()} ('${it.tool}' अलग से चलाएँ)"
+                calls.firstOrNull { it.tool in CONTROL_TOOLS }?.let {
+                    return "ERROR: '${it.tool}' को calls में नहीं, अलग JSON में भेजें"
                 }
+                // नवंबर 2026: सिर्फ़ पढ़ने वाले टूल एक साथ; बाकी (फ़ाइल बनाना, फ़ोन, कोडिंग...) उसके बाद क्रम से - पूरा batch एक कदम में
                 step("⚡ ${calls.size} काम एक साथ चला रहा हूँ")
+                val out = arrayOfNulls<String>(calls.size)
+                val one: suspend (Call) -> String = { cl -> "[${cl.tool}] " + try { runTool(cl) } catch (e: CancellationException) { throw e } catch (e: Exception) { "ERROR: " + (e.message ?: "").take(160) } }
                 kotlinx.coroutines.coroutineScope {
-                    calls.map { cl -> async { "[${cl.tool}] " + try { runTool(cl) } catch (e: CancellationException) { throw e } catch (e: Exception) { "ERROR: " + (e.message ?: "").take(160) } } }
-                        .map { it.await() }
-                }.joinToString("\n\n========\n\n")
+                    calls.indices.filter { calls[it].tool in PARALLEL_SAFE }.map { i -> async { out[i] = one(calls[i]) } }.forEach { it.await() }
+                }
+                for (i in calls.indices) if (out[i] == null) out[i] = one(calls[i])
+                out.joinToString("\n\n========\n\n")
             }
             else -> "ERROR: unknown tool '${call.tool}'. Use only the listed tools."
         }
@@ -613,6 +619,7 @@ You are "$name कंप्यूटर" (DK Computer), an autonomous agent runn
 Reply with EXACTLY ONE JSON object and nothing else (no markdown fences):
 {"thought":"1-2 simple Hindi lines for the user: what you do now and why","step":N,"tool":"<tool name>","args":{...}}
 ("step" = number of the plan step you are working on now.)
+SEVERAL INDEPENDENT ACTIONS AT ONCE (faster): {"thought":"...","step":N,"calls":[{"tool":"web_search","args":{...}},{"tool":"read_url","args":{...}}]} — up to $PARALLEL_MAX calls; read-only tools run together, others (files, phone, coding) run after them in order. Never put done / ask_user / update_plan inside calls.
 
 TOOLS:
 $tools
@@ -674,7 +681,7 @@ ${if (facts.isNotBlank()) "\nWHAT YOU KNOW ABOUT THE USER:\n$facts" else ""}
             "phone_task" to "phone_task {\"request\":\"Hindi command, e.g. YouTube खोलकर lofi songs चलाओ\"} — control the phone (apps, messages, calls, settings)",
             "coding_task" to "coding_task {\"task\":\"...\"} — give a code change to DK's coding team (user's GitHub repo); runs in background",
             "remember" to "remember {\"fact\":\"...\"} — save a long-term fact about the user",
-            "parallel" to "parallel {\"calls\":[{\"tool\":\"web_search\",\"args\":{...}},{\"tool\":\"read_url\",\"args\":{...}}]} — run up to 4 INDEPENDENT read-only calls at once (web_search, read_url, read_file, list_files, run_js); much faster",
+            "parallel" to "parallel {\"calls\":[{\"tool\":\"web_search\",\"args\":{...}},{\"tool\":\"read_url\",\"args\":{...}}]} — run up to 6 INDEPENDENT calls at once (read-only ones together, others after them in order); much faster",
             "schedule" to "schedule {\"task\":\"...\",\"minutes\":30} or {\"task\":\"...\",\"at\":\"18:30\",\"every\":\"daily\"} — run a DK Computer task later (reminders, later checks; every = daily / weekly / hourly to repeat); saved on the phone, survives restart",
             "browse" to "browse {\"url\":\"https://...\",\"actions\":[{\"type\":[3,\"text\"]},{\"enter\":3},{\"click\":7},{\"scroll\":\"down\"},{\"wait\":2000},{\"back\":true}],\"screenshot\":false,\"from\":0} — REAL browser (JavaScript sites, buttons, forms, search boxes); shows page text + numbered clickable elements [n]; the page stays open for the next browse call (omit url to continue)",
             "look" to "look {\"file\":\"photo.jpg\"} or {\"url\":\"https://.../image.png\"} + \"question\":\"...\" (+ \"pages\":\"1-3\" for PDF) — SEE an image / screenshot / PDF pages and answer about it (text, tables, objects)",
@@ -692,7 +699,9 @@ Copy important text / numbers / tables exactly (keep the original language). Des
 
         /** v3.88: parallel में सिर्फ़ पढ़ने वाले टूल (फ़ोन/फ़ाइल लिखना/कोडिंग एक-एक करके ही) */
         val PARALLEL_SAFE = setOf("web_search", "read_url", "read_file", "list_files", "run_js", "look", "past_tasks")
-        const val PARALLEL_MAX = 4
+        const val PARALLEL_MAX = 6
+        /** ये calls batch में नहीं चलते (काम का क्रम बदलते हैं) */
+        val CONTROL_TOOLS = setOf("done", "ask_user", "update_plan", "parallel")
 
         /** योजना बनाने वाला */
         const val PLAN_SYS = """You are the PLANNER of DK Computer (an AI agent on the user's Android phone with tools: web search, reading web pages, a real browser, seeing images/PDF, parallel helper agents for wide research, running JavaScript, creating files/PDF/Word/Excel/charts, phone control, coding team, reminders, memory of past tasks).
@@ -713,16 +722,42 @@ Be fair: if the task is simple and the answer is complete, ok=true with empty mi
             val o = try { JSONObject(t) } catch (_: Exception) {
                 val i = t.indexOf('{'); val j = t.lastIndexOf('}')
                 if (i < 0 || j <= i) return null
-                try { JSONObject(t.substring(i, j + 1)) } catch (_: Exception) { return null }
+                try { JSONObject(t.substring(i, j + 1)) } catch (_: Exception) {
+                    // नवंबर 2026: मॉडल ने कई JSON एक के बाद एक लिख दिए - पहला पूरा JSON लो
+                    firstObject(t)?.let { f -> try { JSONObject(f) } catch (_: Exception) { null } } ?: return null
+                }
             }
             var tool = o.optString("tool").trim()
             val args = o.optJSONObject("args") ?: JSONObject()
             if (tool.isBlank() && o.has("answer")) { tool = "done"; args.put("answer", o.optString("answer")) }
+            // नवंबर 2026: एक जवाब में कई टूल {"calls":[{"tool":..,"args":{..}}, ...]} = parallel (एक हो तो सीधे वही)
+            if (tool.isBlank()) o.optJSONArray("calls")?.takeIf { it.length() > 0 }?.let { arr ->
+                val only = arr.optJSONObject(0)
+                if (arr.length() == 1 && only != null && only.optString("tool").isNotBlank())
+                    return Call(only.optString("tool").trim(), only.optJSONObject("args") ?: JSONObject(), o.optString("thought"), o.toString(), o.optInt("step", 0).takeIf { it > 0 })
+                return Call("parallel", JSONObject().put("calls", arr), o.optString("thought"), o.toString(), o.optInt("step", 0).takeIf { it > 0 })
+            }
             if (tool.isBlank()) return null
             // कुछ मॉडल args ऊपर ही रख देते हैं
             if (o.optJSONObject("args") == null) o.keys().forEach { k -> if (k != "tool" && k != "thought") args.put(k, o.get(k)) }
             args.remove("step")
             return Call(tool, args, o.optString("thought"), o.toString(), o.optInt("step", 0).takeIf { it > 0 })
+        }
+
+        /** text में पहला पूरा {...} (string के अंदर के { } गिने नहीं जाते) */
+        fun firstObject(t: String): String? {
+            val start = t.indexOf('{'); if (start < 0) return null
+            var depth = 0; var inStr = false; var esc = false
+            for (k in start until t.length) {
+                val ch = t[k]
+                if (inStr) { if (esc) esc = false else if (ch == '\\') esc = true else if (ch == '"') inStr = false; continue }
+                when (ch) {
+                    '"' -> inStr = true
+                    '{' -> depth++
+                    '}' -> { depth--; if (depth == 0) return t.substring(start, k + 1) }
+                }
+            }
+            return null
         }
 
         /** मैसेज, कॉल, पेमेंट, पोस्ट, डिलीट जैसे काम = पहले पूछो */

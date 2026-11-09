@@ -73,6 +73,9 @@ class ComputerActivity : AppCompatActivity() {
         return f.name
     }
 
+    /** नवंबर 2026: फ़ोन और टैब पर एक जैसे अक्षर (बहुत बड़े system font से लेआउट नहीं टूटता) */
+    override fun attachBaseContext(newBase: android.content.Context) { super.attachBaseContext(UiFit.wrap(newBase)) }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         window.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE)
@@ -81,22 +84,22 @@ class ComputerActivity : AppCompatActivity() {
         val col = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; val p = (14 * dp).toInt(); setPadding(p, p, p, p) }
         root.addView(col, FrameLayout.LayoutParams(-1, -1))
 
-        val top = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
-        top.addView(ImageButton(this).apply {
+        // नवंबर 2026 (मालिक): फ़ोन पर बटन नाम को दबा देते थे - अब दो लाइन (UiFit.header), बटन कभी कटते नहीं
+        val back = ImageButton(this).apply {
             setImageResource(R.drawable.ic_back); setBackgroundResource(R.drawable.glass_circle)
             val p = (12 * dp).toInt(); setPadding(p, p, p, p); scaleType = android.widget.ImageView.ScaleType.FIT_CENTER
             contentDescription = "वापस"; setOnClickListener { finish() }
-        }, LinearLayout.LayoutParams((46 * dp).toInt(), (46 * dp).toInt()))
+        }
         val titles = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding((12 * dp).toInt(), 0, 0, 0) }
-        titles.addView(TextView(this).apply { text = "${Prefs.assistantName(this@ComputerActivity)} कंप्यूटर"; textSize = 20f; setTypeface(typeface, Typeface.BOLD); setTextColor(0xFFFFFFFF.toInt()) })
-        sub = TextView(this).apply { textSize = 12f; setTextColor(0x99FFFFFF.toInt()); maxLines = 2 }
+        titles.addView(TextView(this).apply { text = "${Prefs.assistantName(this@ComputerActivity)} कंप्यूटर"; textSize = 20f; setTypeface(typeface, Typeface.BOLD); setTextColor(0xFFFFFFFF.toInt()); maxLines = 1; ellipsize = android.text.TextUtils.TruncateAt.END })
+        sub = TextView(this).apply { textSize = 12f; setTextColor(0x99FFFFFF.toInt()); maxLines = 2; ellipsize = android.text.TextUtils.TruncateAt.END }
         titles.addView(sub)
-        top.addView(titles, LinearLayout.LayoutParams(0, -2, 1f))
-        top.addView(smallBtn("+ जोड़ें") { pick.launch(arrayOf("image/*", "application/pdf", "text/*")) })   // v5: फ़ोटो / PDF / text DK कंप्यूटर को
-        top.addView(smallBtn("फ़ाइलें") { showFiles() }, LinearLayout.LayoutParams(-2, -2).apply { marginStart = (6 * dp).toInt() })
-        top.addView(smallBtn("इतिहास") { showHistory() }, LinearLayout.LayoutParams(-2, -2).apply { marginStart = (6 * dp).toInt() })
-        top.addView(smallBtn("नया") { newSession() }, LinearLayout.LayoutParams(-2, -2).apply { marginStart = (6 * dp).toInt() })
-        top.addView(smallBtn("स्टूडियो") { com.dk.assistant.studio.StudioSession.open(this, null) }, LinearLayout.LayoutParams(-2, -2).apply { marginStart = (6 * dp).toInt() })
+        val top = UiFit.header(this, back, titles, listOf(
+            smallBtn("+ जोड़ें") { pick.launch(arrayOf("image/*", "application/pdf", "text/*")) },   // v5: फ़ोटो / PDF / text DK कंप्यूटर को
+            smallBtn("फ़ाइलें") { showFiles() },
+            smallBtn("इतिहास") { showHistory() },
+            smallBtn("नया") { newSession() },
+            smallBtn("स्टूडियो") { com.dk.assistant.studio.StudioSession.open(this, null) }))
         col.addView(top)
         col.addView(buildWork(), LinearLayout.LayoutParams(-1, -2).apply { topMargin = (10 * dp).toInt() })
 
@@ -113,7 +116,7 @@ class ComputerActivity : AppCompatActivity() {
         col.addView(askBox, LinearLayout.LayoutParams(-1, -2).apply { topMargin = (6 * dp).toInt() })
 
         // साझा इनपुट बॉक्स (हल्के कोनों वाला आयत; 🎤 बार के अंदर बोलकर लिखना - Google पॉप-अप नहीं)
-        composer = DKComposer(this, "कोई भी काम बताइए… (जैसे: Nashik के 5 अच्छे स्कूलों की फ़ीस की PDF रिपोर्ट बनाओ)", maxLines = 5)
+        composer = DKComposer(this, "कोई भी काम लिखिए…", maxLines = 5)
         edt = composer.edt
         send = composer.send
         col.addView(composer, LinearLayout.LayoutParams(-1, -2).apply { topMargin = (8 * dp).toInt() })
@@ -179,19 +182,21 @@ class ComputerActivity : AppCompatActivity() {
         val ai = CoderAi.forComputer(this) { _, _ -> }
         if (!Prefs.computerOn(this)) return "DK कंप्यूटर बंद है — Settings → DK कंप्यूटर में चालू करें।"
         if (ai == null) return "पहले Settings → AI दिमाग → DK कंप्यूटर में API key डालें (Gemini / OpenRouter / Z.ai / NVIDIA / Groq)।"
-        return "नमस्ते। मैं ${Prefs.assistantName(this)} कंप्यूटर हूँ — कोई भी काम दीजिए, मैं कदम-दर-कदम पूरा करूँगा और आखिर में रिपोर्ट दूँगा।\n\n" +
-            "कैसे काम करता हूँ:\n📋 पहले आपको योजना दिखाता हूँ (क्या समझा, कौन-से कदम, आपको क्या मिलेगा)\n▶ ऊपर हर पल दिखता है कि अभी कौन-सा कदम चल रहा है\n🧐 जवाब देने से पहले खुद जाँचता हूँ कि काम पूरा और सही है\n🪜 जो आपको खुद करना हो, उसके एक-एक कदम समझाता हूँ\n\n" +
-            "मैं कर सकता हूँ:\n• इंटरनेट पर खोज और वेबसाइटें पढ़कर रिसर्च (स्रोत के लिंक के साथ)\n• हिसाब, डेटा, तुलना (कोड चलाकर)\n" +
-            "• रिपोर्ट, लिस्ट, टेबल — Markdown / CSV / HTML / PDF फ़ाइल\n• फ़ोन के काम (ऐप खोलना, मैसेज, कॉल — पहले आपसे पूछकर)\n" +
-            "• कोई भी ऐप बनाना — वेबसाइट, वेब ऐप, PWA, गेम, Android नेटिव / Flutter (ऐप स्टूडियो में, वहीं चलता preview)\n" +
-            "• GitHub पर कोड बदलवाना (कोडिंग टीम)\n• बातें याद रखना, बाद में काम चलाना / रिमाइंडर\n\n" +
-            "उदाहरण: \"आज की भारत की 5 बड़ी टेक खबरें स्रोत के साथ\", \"₹15 लाख के होम लोन की EMI 8.5% पर 20 साल\", \"शाम 6 बजे मुझे पानी पीने की याद दिलाना\""
+        // नवंबर 2026 (मालिक): खुलते ही लंबी सूची नहीं - पूछने पर ही (AgentIntro.computerCapabilities)
+        return AgentIntro.computerHello(Prefs.assistantName(this))
     }
+
+    /** इस समय चालू टूल (Settings → DK कंप्यूटर) */
+    private fun enabledTools(): List<String> = ComputerAgent.TOOL_IDS.filter { Prefs.computerTool(this, it) }
 
     private fun doSend() {
         val t = edt.text.toString().trim()
         if (t.isEmpty()) return
         edt.setText("")
+        // नवंबर 2026 (मालिक): "तुम क्या-क्या कर सकते हो" = उसी समय चालू टूल की सूची (AI कॉल नहीं)
+        if (!ComputerSession.busy && AgentIntro.isCapabilityQuestion(t)) {
+            ComputerSession.add("u", t); ComputerSession.add("a", AgentIntro.computerCapabilities(Prefs.assistantName(this), enabledTools())); render(); return
+        }
         // नवंबर 2026 (मालिक): ऐप स्टूडियो से जुड़ा - "स्टूडियो में क्या बन रहा है / उसमें X बदलो / रोको / खोलो"
         com.dk.assistant.studio.StudioLink.handle(this, t, com.dk.assistant.studio.StudioSession.WHO_COMPUTER)?.let { (msg, ok) ->
             ComputerSession.add("u", t); ComputerSession.add(if (ok) "a" else "e", msg); render(); return
@@ -209,7 +214,7 @@ class ComputerActivity : AppCompatActivity() {
 
     /** बुलबुले में तरंग के बगल का संदेश: अभी का कदम (v5, मालिक: रुकावट / दोबारा कोशिश / सीमा जैसी गलतियाँ नहीं दिखतीं) */
     private fun busyLabel(): String =
-        ComputerSession.now.trim().lineSequence().firstOrNull().orEmpty().take(90)
+        ComputerSession.plan.let { p -> ChatClean.busyLabel(p?.doneCount, p?.total) }   // नवंबर 2026: लंबा कदम-पाठ नहीं, छोटा "काम चल रहा है"
 
     private fun newSession() {
         ComputerSession.reset(); shown = 0; list.removeAllViews()
@@ -287,6 +292,8 @@ class ComputerActivity : AppCompatActivity() {
                 val b = inline.answer(l.text, if (l.role == "e") 0xFFFFB4B4.toInt() else 0xFFFFFFFF.toInt())
                 if (b != null) { b.body.setLinkTextColor(0xFF9FD2FF.toInt()); Linkify.addLinks(b.body, Linkify.WEB_URLS); continue }
             }
+            // नवंबर 2026 (मालिक): "क्या कर रहा है" वाली कदम-लाइनें चैट के बीच में नहीं (ऊपर प्रगति पट्टी में दिखती हैं)
+            if (!ChatClean.showInChat(l.role, busy, shown == lines.size)) continue
             bubble(l); inline.keepLast()
         }
         if (busy) inline.show(busyLabel(), WorkState.WORKING)

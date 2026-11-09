@@ -718,7 +718,7 @@ class CodingAgent(internal val gh: GitHub, var repo: String, var branch: String,
 
     companion object {
         /** एक काम में default कदम (Settings में 3-30) */
-        const val DEFAULT_STEPS = 5
+        const val DEFAULT_STEPS = 15      // नवंबर 2026 (मालिक): 5 कदम में बड़ा काम अधूरा रह जाता था
         /** हर कदम के बीच रुकना (ms) */
         const val STEP_DELAY_MS = 1500L
         /** बदलाव से पहले समझने (पढ़ने) के लिए अलग कदम */
