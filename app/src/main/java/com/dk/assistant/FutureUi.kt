@@ -302,7 +302,7 @@ class HoloWaveView @JvmOverloads constructor(ctx: Context, attrs: android.util.A
             Mode.LISTENING -> 0.25f + DKState.level.coerceIn(0f, 1f) * 0.75f
             Mode.SPEAKING -> 0.7f
             Mode.THINKING, Mode.WORKING -> 0.35f
-            else -> if (DKState.live) 0.12f else 0.04f
+            else -> if (DKState.live) 0.2f else 0.14f          // चुप में भी हल्की स्थिर तरंग (फ़्रेम नहीं बनते)
         }
         amp += (target - amp) * 0.15f
         val t = SystemClock.uptimeMillis() / 1000f
@@ -324,7 +324,7 @@ class HoloWaveView @JvmOverloads constructor(ctx: Context, attrs: android.util.A
             paint.alpha = 255 - k * 80
             c.drawPath(path, paint)
         }
-        val active = mode != Mode.IDLE || DKState.live || amp > 0.06f
+        val active = mode != Mode.IDLE || DKState.live || kotlin.math.abs(amp - 0.14f) > 0.01f
         if (active) postInvalidateOnAnimation() else { removeCallbacks(idleCheck); postDelayed(idleCheck, 300) }
     }
 }

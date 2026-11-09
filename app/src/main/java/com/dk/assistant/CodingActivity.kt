@@ -817,7 +817,7 @@ class CodingActivity : AppCompatActivity() {
             add((if (CoderSession.busy) "● काम चल रहा है" else "● तैयार") to (if (CoderSession.busy) FutureViews.CYAN else FutureViews.GREEN))
             if (Prefs.coderSeven(this@CodingActivity)) {
                 add("7 एजेंट + 🎓" to FutureViews.VIOLET)
-                add(sevenModeLine().substringBefore(" — ").substringBefore(" •").removePrefix("मोड: ") to FutureViews.AMBER)
+                add(sevenModeLine().substringBefore(" — ").substringBefore(" •").removePrefix("मोड: ").let { if ('(' in it && ')' !in it) "$it)" else it } to FutureViews.AMBER)
             } else {
                 add(Prefs.ghRepo(this@CodingActivity).ifBlank { "repo नहीं चुना" } to FutureViews.VIOLET)
                 add((a?.branch ?: Prefs.ghBranch(this@CodingActivity)) to FutureViews.AMBER)
