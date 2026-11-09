@@ -83,3 +83,68 @@ object FaceMatch {
         return Pair(result, score)
     }
 }
+
+class LivenessTracker(
+    private val windowSize: Int = 5,
+    private val minVariance: Float = 0.00001f
+) {
+    private val history = mutableListOf<FloatArray>()
+
+    fun processFrame(det: FaceMath.Det?): Boolean {
+        if (det == null || det.kps.isEmpty() || det.w <= 0f || det.h <= 0f) {
+            history.clear()
+            return false
+        }
+
+        val kps = det.kps
+        val count = kps.size / 2
+        if (count < 2) return false
+
+        val normalized = FloatArray(kps.size)
+        for (i in 0 until count) {
+            normalized[i * 2] = (kps[i * 2] - det.x) / det.w
+            normalized[i * 2 + 1] = (kps[i * 2 + 1] - det.y) / det.h
+        }
+
+        history.add(normalized)
+        if (history.size > windowSize) {
+            history.removeAt(0)
+        }
+
+        return isLive()
+    }
+
+    fun isLive(): Boolean {
+        if (history.size < windowSize) return false
+        return calculateVariance() >= minVariance
+    }
+
+    fun isReady(): Boolean {
+        return history.size >= windowSize
+    }
+
+    fun reset() {
+        history.clear()
+    }
+
+    private fun calculateVariance(): Float {
+        if (history.size < 2) return 0f
+        val numFeatures = history[0].size
+        var totalVariance = 0f
+
+        for (i in 0 until numFeatures) {
+            var sum = 0f
+            for (frame in history) {
+                sum += frame[i]
+            }
+            val mean = sum / history.size
+            var sqDiffSum = 0f
+            for (frame in history) {
+                val diff = frame[i] - mean
+                sqDiffSum += diff * diff
+            }
+            totalVariance += sqDiffSum / history.size
+        }
+        return totalVariance / numFeatures
+    }
+}
