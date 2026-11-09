@@ -339,6 +339,11 @@ class AgentRunner(
         com.dk.assistant.forge.GameMaker.extract(goal)?.let { g ->
             say(com.dk.assistant.forge.GameMaker.startForUser(svc, g)); return
         }
+        // नवंबर 2026 (ऐप स्टूडियो): "DK, एक todo ऐप बनाओ" = DK कंप्यूटर फ़ोन पर ही ऐप बनाता है, स्टूडियो में चलता preview (वेबसाइट = Forge, गेम = ऊपर)
+        com.dk.assistant.studio.StudioRoute.voiceApp(goal)?.let { want ->
+            val err = com.dk.assistant.studio.StudioSession.startFrom(svc, want, com.dk.assistant.studio.StudioSession.WHO_COMPUTER, voice = true)
+            say(err ?: com.dk.assistant.studio.StudioRoute.STARTED_VOICE); return
+        }
         com.dk.assistant.forge.ForgeIntent.extract(goal)?.let { p0 ->
             // नवंबर 2026: बात बहुत छोटी ("वेबसाइट बनाओ") = पहले पूरा डिटेल पूछो, फिर उसी हिसाब से बनाओ
             var p = p0

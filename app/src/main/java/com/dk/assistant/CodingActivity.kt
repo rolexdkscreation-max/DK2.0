@@ -198,6 +198,7 @@ class CodingActivity : AppCompatActivity() {
         top.addView(smallBtn("रिपो") { if (Prefs.coderSeven(this)) sevenPicker() else chooseRepo() })
         top.addView(smallBtn("इतिहास") { showHistory() }, LinearLayout.LayoutParams(-2, -2).apply { marginStart = (6 * dp).toInt() })
         top.addView(smallBtn("नया") { newSession() }, LinearLayout.LayoutParams(-2, -2).apply { marginStart = (6 * dp).toInt() })
+        top.addView(smallBtn("स्टूडियो") { com.dk.assistant.studio.StudioSession.open(this, null) }, LinearLayout.LayoutParams(-2, -2).apply { marginStart = (6 * dp).toInt() })
         col.addView(top)
 
         busyBar = LinearLayout(this).apply {
@@ -351,6 +352,13 @@ class CodingActivity : AppCompatActivity() {
         OneKeyGate.check(this, OneKeyGate.Work.CODING)?.let { CoderSession.add("u", t); CoderSession.add("e", it); render(); return }
         edt.setText("")
         keepTyping()
+        // नवंबर 2026 (ऐप स्टूडियो): GitHub नहीं जुड़ा / नॉर्मल मोड + "ऐप / वेबसाइट / गेम बनाओ" = फ़ोन पर ही बनाओ, वहीं preview
+        if (!hasMedia && com.dk.assistant.studio.StudioRoute.noGithub(this)) com.dk.assistant.studio.StudioCore.extract(t)?.let { want ->
+            CoderSession.add("u", t)
+            val err = com.dk.assistant.studio.StudioSession.startFrom(this, want, com.dk.assistant.studio.StudioSession.WHO_CODER)
+            CoderSession.add(if (err == null) "s" else "e", err ?: com.dk.assistant.studio.StudioRoute.STARTED_CODER)
+            render(); return
+        }
         // रिपो डॉक्टर: रिपो की हालत / किसी PR को ठीक या merge करना / उसकी योजना की हाँ (फ़ोटो के साथ = नया काम)
         if (!hasMedia) RepoDoctorRunner.intercept(this, t, false)?.let { r -> r.err?.let { CoderSession.add("e", it) }; render(); return }
         // 7 एजेंट वाला नया सिस्टम (चालू हो तो): GitHub मोड / नॉर्मल मोड खुद तय करता है
@@ -631,7 +639,7 @@ class CodingActivity : AppCompatActivity() {
     private fun sevenModeLine(): String {
         val repo = Prefs.ghRepo(this)
         return when {
-            Prefs.ghToken(this).isBlank() -> "मोड: नॉर्मल (GitHub नहीं जुड़ा — Settings → कोडिंग एजेंट में token डालें तो GitHub मोड)"
+            Prefs.ghToken(this).isBlank() -> "मोड: नॉर्मल (GitHub नहीं जुड़ा — Settings → कोडिंग एजेंट में token डालें तो GitHub मोड) • ऐप / वेबसाइट बनाने को कहें = ऐप स्टूडियो (फ़ोन पर, preview के साथ)"
             Prefs.coderNormal(this) -> "मोड: नॉर्मल (आपने चुना) — ऊपर \"रिपो\" से रिपो चुनें तो GitHub मोड"
             !repo.contains('/') -> "मोड: नॉर्मल (कोई रिपो नहीं चुना) — ऊपर \"रिपो\" से चुनें"
             else -> "मोड: GitHub — $repo (${Prefs.ghBranch(this)}) • बदलने के लिए ऊपर \"रिपो\""
