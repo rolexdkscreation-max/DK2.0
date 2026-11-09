@@ -31,7 +31,7 @@ import java.util.concurrent.Executors
  */
 class GuardAlarmActivity : AppCompatActivity() {
     private var cam: FaceCam? = null
-    private val livenessTracker = FaceMatch.LivenessTracker()
+    private val livenessTracker = LivenessTracker()
     private val work = Executors.newSingleThreadExecutor { r -> Thread(r, "dk-guard-face").apply { isDaemon = true } }
     @Volatile private var busy = false
     @Volatile private var shots = 0
@@ -119,7 +119,7 @@ class GuardAlarmActivity : AppCompatActivity() {
                     if (Guard.savePhoto(this, copy) != null) { shots++; lastShot = now }
                 }
                 if (face && det != null) {
-                    val live = livenessTracker.isLive(det)
+                    val live = livenessTracker.processFrame(det)
                     val e = FaceAI.embed(this, copy, det)
                     val s = e?.let { FaceAI.score(this, it) }
                     if (s != null && FaceMath.decide(s, Prefs.faceStrict(this)) == MatchResult.ACCESS_GRANTED && live) {

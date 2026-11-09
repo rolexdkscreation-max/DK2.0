@@ -100,19 +100,19 @@ class FaceMatchTest {
 
     @Test
     fun testLivenessTrackerStatic2DPhoto() {
-        val tracker = FaceMatch.LivenessTracker()
+        val tracker = LivenessTracker()
         val staticKps = floatArrayOf(10.0f, 10.0f, 20.0f, 10.0f, 15.0f, 15.0f, 11.0f, 20.0f, 19.0f, 20.0f)
-        val det = Det(0.9f, 0.0f, 0.0f, 100.0f, 100.0f, staticKps)
+        val det = FaceMath.Det(0.9f, 0.0f, 0.0f, 100.0f, 100.0f, staticKps)
         var isLive = false
         for (i in 0 until 6) {
-            isLive = tracker.addDetection(det)
+            isLive = tracker.processFrame(det)
         }
         assertFalse(isLive)
     }
 
     @Test
     fun testLivenessTrackerMicroMovingLive() {
-        val tracker = FaceMatch.LivenessTracker()
+        val tracker = LivenessTracker()
         var isLive = false
         for (i in 0 until 6) {
             val kps = floatArrayOf(
@@ -122,8 +122,8 @@ class FaceMatchTest {
                 11.0f + i * 0.1f, 20.0f,
                 19.0f, 20.0f - i * 0.2f
             )
-            val det = Det(0.9f, 0.0f, 0.0f, 100.0f, 100.0f, kps)
-            isLive = tracker.addDetection(det)
+            val det = FaceMath.Det(0.9f, 0.0f, 0.0f, 100.0f, 100.0f, kps)
+            isLive = tracker.processFrame(det)
         }
         assertTrue(isLive)
     }

@@ -90,7 +90,7 @@ class LivenessTracker(
 ) {
     private val history = mutableListOf<FloatArray>()
 
-    fun processFrame(det: Det?): Boolean {
+    fun processFrame(det: FaceMath.Det?): Boolean {
         if (det == null || det.kps.isEmpty() || det.w <= 0f || det.h <= 0f) {
             history.clear()
             return false
