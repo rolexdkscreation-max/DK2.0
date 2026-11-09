@@ -43,6 +43,8 @@ object Updater {
         val type: String = "software",
         /** Dikhane wala version, jaise "3.1" ya "3.1.2" */
         val version: String = "",
+        /** नवंबर 2026: GitHub API का asset पता - सीधा पता 504 दे तो दूसरा रास्ता ([UpdateRetry]) */
+        val assetApi: String = "",
     ) {
         val isSecurity get() = type == "security"
         /** "सॉफ़्टवेयर अपडेट" / "सिक्योरिटी पैच" */
@@ -70,12 +72,13 @@ object Updater {
     private fun parse(o: JSONObject): Release? {
         val tag = o.optString("tag_name")
         val assets = o.optJSONArray("assets")
-        var url = ""; var size = 0L
+        var url = ""; var size = 0L; var api = ""
         if (assets != null) for (i in 0 until assets.length()) {
             val a = assets.getJSONObject(i)
-            if (a.optString("name").endsWith(".apk")) { url = a.optString("browser_download_url"); size = a.optLong("size"); break }
+            if (a.optString("name").endsWith(".apk")) { url = a.optString("browser_download_url"); size = a.optLong("size"); api = a.optString("url"); break }
         }
         return build(tag, o.optString("name", tag), o.optString("body", ""), url, size, o.optString("html_url"))
+            ?.copy(assetApi = if (UpdateRetry.isApiAsset(api)) api else "")
     }
 
     /** API और feed दोनों से एक ही तरह का Release (TYPE:/VERSION: लाइनें, notes) */
@@ -130,7 +133,24 @@ object Updater {
 
     /** GitHub se sabse naya release. token = Settings वाला GitHub token (हो तो घंटे में 5000 बार) */
     suspend fun latest(token: String = ""): Release? = withContext(Dispatchers.IO) {
-        try {
+        // नवंबर 2026 (मालिक: "504 आता है"): GitHub का अस्थायी 5xx / टूटा connection = थोड़ा रुककर खुद दोबारा (3 बार तक)
+        var n = 0
+        var out: Release? = null
+        while (true) {
+            try { out = latestOnce(token); break }
+            catch (e: java.io.IOException) {
+                val code = (e as? GhHttp)?.code ?: 0
+                n++
+                if (n >= UpdateRetry.CHECK_TRIES || !UpdateRetry.retryable(code)) throw e
+                DKLog.d("अपडेट चेक: ${if (code > 0) "GitHub $code" else e.message} - दोबारा कोशिश $n")
+                kotlinx.coroutines.delay(UpdateRetry.checkBackoffMs(n))
+            }
+        }
+        out
+    }
+
+    private fun latestOnce(token: String): Release? {
+        return try {
             getJson("https://api.github.com/repos/$REPO/releases/latest", token)?.let { parse(it) }
         } catch (e: GhHttp) {
             if (!ReleaseFeed.shouldFallback(e.code)) throw e
@@ -157,6 +177,7 @@ object Updater {
             putString("upd_notes_${rel.code}", rel.notes.take(3000))
             // poora release yaad rakho: bina internet ke bhi chip/download/install sahi chale
             putString("upd_url", rel.apkUrl); putLong("upd_size", rel.size); putString("upd_name", rel.name)
+            putString("upd_asset", rel.assetApi)
         }
         return if (rel.code > currentCode(c)) rel else null
     }
@@ -168,7 +189,8 @@ object Updater {
         val url = sp.getString("upd_url", "").orEmpty()
         if (code <= currentCode(c) || url.isBlank()) return null
         return Release(code, sp.getString("upd_name", "").orEmpty(), ReleaseNotes.clean(sp.getString("upd_notes_$code", "").orEmpty()), url,
-            sp.getLong("upd_size", 0L), "", sp.getString("upd_type", "software") ?: "software", sp.getString("upd_version", "").orEmpty())
+            sp.getLong("upd_size", 0L), "", sp.getString("upd_type", "software") ?: "software", sp.getString("upd_version", "").orEmpty(),
+            sp.getString("upd_asset", "").orEmpty())
     }
 
     fun canInstall(c: Context) =
@@ -191,6 +213,9 @@ object Updater {
     @Volatile var progress = 0
         private set
     @Volatile var lastError: String? = null
+        private set
+    /** नवंबर 2026: डाउनलोड दोबारा कोशिश कर रहा है तो वजह ("GitHub का सर्वर धीमा (504) - दोबारा कोशिश 2/6"), वरना null */
+    @Volatile var retryNote: String? = null
         private set
 
     private fun dir(c: Context) = java.io.File(c.filesDir, "updates").apply { mkdirs() }
@@ -233,34 +258,35 @@ object Updater {
             try {
                 notifyProgress(c, rel, 0)
                 val part = partFile(c, rel.code)
-                var have = if (part.exists()) part.length() else 0L
-                if (rel.size > 0 && have >= rel.size) { part.delete(); have = 0 }
-                val rb = Request.Builder().url(rel.apkUrl).header("User-Agent", "DK-Assistant")
-                if (have > 0) rb.header("Range", "bytes=$have-")
-                http.newCall(rb.build()).execute().use { r ->
-                    if (!r.isSuccessful) throw java.io.IOException("Download fail ${r.code}")
-                    val body = r.body ?: throw java.io.IOException("Khali download")
-                    if (r.code != 206) have = 0                       // server ne aage se nahi diya -> shuru se
-                    val total = if (rel.size > 0) rel.size else have + body.contentLength()
-                    java.io.FileOutputStream(part, have > 0).use { out ->
-                        body.byteStream().use { inp ->
-                            val buf = ByteArray(64 * 1024)
-                            var done = have; var last = -1; var lastNotif = 0L
-                            while (isActive) {
-                                val n = inp.read(buf); if (n < 0) break
-                                out.write(buf, 0, n); done += n
-                                val p = if (total > 0) (done * 100 / total).toInt().coerceIn(0, 100) else 0
-                                if (p != last) {
-                                    last = p; progress = p
-                                    val now = System.currentTimeMillis()
-                                    if (now - lastNotif > 700) { lastNotif = now; notifyProgress(c, rel, p) }
-                                }
-                            }
-                        }
+                // नवंबर 2026 (मालिक: "504 आता है, अपडेट नहीं होता"): GitHub की अस्थायी गलती पर खुद दोबारा,
+                // बारी-बारी दो रास्ते (सीधा पता / API asset), हर बार जहाँ रुका वहीं से ([UpdateRetry])
+                // (जाँच 09 नवंबर: github.com/.../releases/download बार-बार 504, उसी समय API वाला रास्ता 200/206 - इसलिए API पहले)
+                val urls = UpdateRetry.order(rel.apkUrl, rel.assetApi)
+                var attempt = 0
+                while (isActive) {
+                    val url = UpdateRetry.pick(urls, attempt)
+                    val code = try { fetchOnce(c, rel, part, url); -1 }
+                        catch (e: GhHttp) { e.code }
+                        catch (e: kotlinx.coroutines.CancellationException) { throw e }
+                        catch (e: java.io.IOException) { DKLog.d("Update download: ${e.message}"); 0 }
+                    if (code == -1) break                                   // पूरा
+                    if (code == 416 && attempt < UpdateRetry.MAX_TRIES) { part.delete(); attempt++; continue }  // आधी फ़ाइल गड़बड़ - शुरू से
+                    attempt++
+                    // दूसरे रास्ते (API) की गलती पक्की नहीं मानते - अगली बारी सीधा पता; सीधे पते की पक्की गलती (404…) = रुको
+                    val fatal = !UpdateRetry.retryable(code) && url == rel.apkUrl && urls.size == 1
+                    if (attempt >= UpdateRetry.MAX_TRIES || fatal) {
+                        retryNote = null
+                        if (UpdateRetry.retryable(code)) UpdateJob.scheduleResume(c)   // इंटरनेट/GitHub ठीक होते ही अपने-आप
+                        throw java.io.IOException(UpdateRetry.friendly(code))
                     }
+                    retryNote = UpdateRetry.retryNote(code, attempt + 1)
+                    DKLog.d("Update download: $retryNote ($url)")
+                    kotlinx.coroutines.delay(UpdateRetry.backoffMs(attempt))
                 }
+                retryNote = null
                 if (!isActive) return@launch
                 if (rel.size > 0 && part.length() != rel.size) throw java.io.IOException("अधूरा download (${part.length()}/${rel.size})")
+                if (!headIsApk(part)) { part.delete(); throw java.io.IOException("डाउनलोड हुई फ़ाइल APK नहीं थी - फिर दबाएँ") }
                 val apk = apkFile(c, rel.code)
                 apk.delete(); part.renameTo(apk)
                 progress = 100
@@ -268,6 +294,7 @@ object Updater {
                 notifyReady(c, rel)
             } catch (e: Exception) {
                 if (e is kotlinx.coroutines.CancellationException) { clearNotification(c); throw e }
+                retryNote = null
                 lastError = e.message ?: e.javaClass.simpleName
                 DKLog.d("Update download fail: $lastError")
                 DKBug.report("update", e, "नया version download")
@@ -277,6 +304,48 @@ object Updater {
                 try { if (wl.isHeld) wl.release() } catch (_: Exception) {}
                 try { wifi?.release() } catch (_: Exception) {}
             }
+        }
+    }
+
+    private fun headIsApk(f: java.io.File): Boolean = try {
+        f.inputStream().use { val b = ByteArray(4); it.read(b) == 4 && UpdateRetry.looksLikeApk(b) }
+    } catch (_: Exception) { false }
+
+    /**
+     * एक कोशिश: [url] से [part] में (पहले से कुछ है तो Range से आगे). पूरा = लौटता है;
+     * HTTP गलती = [GhHttp] (कोड के साथ), connection टूटा = IOException.
+     */
+    private suspend fun fetchOnce(c: Context, rel: Release, part: java.io.File, url: String) = kotlinx.coroutines.coroutineScope {
+        var have = if (part.exists()) part.length() else 0L
+        if (rel.size > 0 && have >= rel.size) { if (headIsApk(part) && have == rel.size) return@coroutineScope; part.delete(); have = 0 }
+        val rb = Request.Builder().url(url).header("User-Agent", "DK-Assistant")
+        if (UpdateRetry.isApiAsset(url)) {
+            rb.header("Accept", "application/octet-stream")      // public repo - token नहीं (गलत token = 401)
+        }
+        if (have > 0) rb.header("Range", "bytes=$have-")
+        http.newCall(rb.build()).execute().use { r ->
+            if (!r.isSuccessful) throw GhHttp(r.code)
+            val body = r.body ?: throw java.io.IOException("Khali download")
+            if (r.code != 206) have = 0                       // server ने आगे से नहीं दिया -> शुरू से
+            val total = if (rel.size > 0) rel.size else have + body.contentLength()
+            java.io.FileOutputStream(part, have > 0).use { out ->
+                body.byteStream().use { inp ->
+                    val buf = ByteArray(64 * 1024)
+                    var done = have; var last = -1; var lastNotif = 0L
+                    while (isActive) {
+                        val n = inp.read(buf); if (n < 0) break
+                        out.write(buf, 0, n); done += n
+                        val p = if (total > 0) (done * 100 / total).toInt().coerceIn(0, 100) else 0
+                        if (p != last) {
+                            last = p; progress = p; retryNote = null
+                            val now = System.currentTimeMillis()
+                            if (now - lastNotif > 700) { lastNotif = now; notifyProgress(c, rel, p) }
+                        }
+                    }
+                }
+            }
+            // बीच में connection टूटा (कम byte) = अगली कोशिश वहीं से
+            if (rel.size > 0 && part.length() < rel.size) throw java.io.IOException("अधूरा (${part.length()}/${rel.size})")
         }
     }
 
