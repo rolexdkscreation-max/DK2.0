@@ -97,7 +97,7 @@ class SettingsActivity : AppCompatActivity() {
         val title = findViewById<TextView>(R.id.txtTitle)
         val bar = findViewById<View>(R.id.saveBar)
         when (section) {
-            null -> { title.text = "सेटिंग्स"; bar.visibility = View.GONE; setupSearch(); menu() }
+            null -> { title.text = "CONTROL CENTER"; title.letterSpacing = 0.1f; bar.visibility = View.GONE; setupSearch(); menu() }
             "profile" -> { title.text = "प्रोफ़ाइल"; secProfile() }
             "lang" -> { title.text = "भाषा / Language"; secLang() }
             "brain" -> { title.text = "AI दिमाग"; bar.visibility = View.GONE; secBrainMenu() }
@@ -122,6 +122,7 @@ class SettingsActivity : AppCompatActivity() {
             "about" -> { title.text = "ऐप के बारे में"; bar.visibility = View.GONE; secAbout() }
         }
         space(container, 8)
+        FutureViews.goldShader(title)          // नवंबर 2026: शीर्षक धातु जैसा सुनहरा (Control Center रूप)
     }
 
 
@@ -174,7 +175,8 @@ class SettingsActivity : AppCompatActivity() {
             }
             // har section ka apna rangeen icon (rang neele background se alag) glass gole me
             box.addView(android.widget.ImageView(this).apply {
-                setImageResource(menuIcon(icon)); setBackgroundResource(R.drawable.glass_circle)
+                // नवंबर 2026: गोल की जगह रंगीन squircle (हर section का अपना निऑन रंग)
+                setImageResource(menuIcon(icon)); background = FutureViews.squircle(this@SettingsActivity, menuTint(icon))
                 val ip = (10 * dp).toInt(); setPadding(ip, ip, ip, ip); importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
             }, LinearLayout.LayoutParams((44 * dp).toInt(), (44 * dp).toInt()).apply { marginEnd = (14 * dp).toInt() })
             val txt = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }

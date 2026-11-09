@@ -25,7 +25,7 @@ class ComputerActivity : AppCompatActivity() {
 
     private lateinit var list: LinearLayout
     private lateinit var scroll: ScrollView
-    private lateinit var sub: TextView
+    private lateinit var tele: FutureViews.Telemetry          // नवंबर 2026: Status • इंजन • खोज (पहले एक लाइन का sub)
     private lateinit var edt: EditText
     private lateinit var send: ImageButton
     private lateinit var askBox: LinearLayout
@@ -93,9 +93,10 @@ class ComputerActivity : AppCompatActivity() {
             contentDescription = "वापस"; setOnClickListener { finish() }
         }
         val titles = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding((12 * dp).toInt(), 0, 0, 0) }
-        titles.addView(TextView(this).apply { text = "${Prefs.assistantName(this@ComputerActivity)} कंप्यूटर"; textSize = 20f; setTypeface(typeface, Typeface.BOLD); setTextColor(0xFFFFFFFF.toInt()); maxLines = 1; ellipsize = android.text.TextUtils.TruncateAt.END })
-        sub = TextView(this).apply { textSize = 12f; setTextColor(0x99FFFFFF.toInt()); maxLines = 2; ellipsize = android.text.TextUtils.TruncateAt.END }
-        titles.addView(sub)
+        // नवंबर 2026 (मालिक): Futuristic रूप - चमकदार "DK COMPUTER" + नीचे टेलीमेट्री टैग (असली हालत)
+        titles.addView(FutureViews.title(this, Prefs.assistantName(this).uppercase() + " COMPUTER"))
+        tele = FutureViews.Telemetry(this)
+        titles.addView(tele.view, LinearLayout.LayoutParams(-1, -2).apply { topMargin = (4 * dp).toInt() })
         val top = UiFit.header(this, back, titles, listOf(
             smallBtn("+ जोड़ें") { pick.launch(arrayOf("image/*", "application/pdf", "text/*")) },   // v5: फ़ोटो / PDF / text DK कंप्यूटर को
             smallBtn("फ़ाइलें") { showFiles() },
@@ -279,7 +280,13 @@ class ComputerActivity : AppCompatActivity() {
     private fun render() {
         val ai = CoderAi.forComputer(this) { _, _ -> }
         val src = ComputerTools.searchChain(this).firstOrNull()?.let { ComputerTools.searchLabel(it) } ?: "search नहीं"
-        sub.text = "${ai?.label ?: "AI नहीं"} • खोज: $src" + if (ComputerSession.busy) " • काम चल रहा है…" else ""
+        val plan = ComputerSession.plan
+        tele.set(buildList {
+            add((if (ComputerSession.busy) "● काम चल रहा है" else "● तैयार") to (if (ComputerSession.busy) FutureViews.CYAN else FutureViews.GREEN))
+            if (ComputerSession.busy && plan != null) add("कदम ${plan.doneCount}/${plan.total}" to FutureViews.AMBER)
+            add(FutureUi.engineTag(ai?.label) to FutureViews.CYAN)
+            add("खोज: $src" to FutureViews.VIOLET)
+        })
         send.setImageResource(if (ComputerSession.busy) android.R.drawable.ic_media_pause else R.drawable.ic_send)
         send.contentDescription = if (ComputerSession.busy) "रोकें" else "भेजें"
         val lines = ComputerSession.lines
@@ -292,7 +299,10 @@ class ComputerActivity : AppCompatActivity() {
             // जवाब/गलती = उसी बुलबुले में जहाँ तरंग चल रही थी (links भी छूने लायक)
             if (l.role == "d" || l.role == "e") {
                 val b = inline.answer(l.text, if (l.role == "e") 0xFFFFB4B4.toInt() else 0xFFFFFFFF.toInt())
-                if (b != null) { b.body.setLinkTextColor(0xFF9FD2FF.toInt()); Linkify.addLinks(b.body, Linkify.WEB_URLS); continue }
+                if (b != null) {
+                    FutureViews.addCodeParts(b, b.body, l.text, ::copyCode)      // ``` कोड = IDE जैसा पैनल + कॉपी
+                    b.body.setLinkTextColor(0xFF9FD2FF.toInt()); Linkify.addLinks(b.body, Linkify.WEB_URLS); continue
+                }
             }
             // नवंबर 2026 (मालिक): "क्या कर रहा है" वाली कदम-लाइनें चैट के बीच में नहीं (ऊपर प्रगति पट्टी में दिखती हैं)
             if (!ChatClean.showInChat(l.role, busy, shown == lines.size)) continue
@@ -321,6 +331,10 @@ class ComputerActivity : AppCompatActivity() {
     private fun bubble(l: ComputerSession.Line) {
         if (l.role == "f") { fileChip(l.text); return }
         val mine = l.role == "u"
+        if (l.role == "d") FutureViews.dkCodeBubble(this, l.text, (resources.displayMetrics.widthPixels * 0.86).toInt(), 0xFFFFFFFF.toInt(), ::copyCode)?.let {
+            list.addView(it, LinearLayout.LayoutParams(-1, -2).apply { topMargin = (8 * dp).toInt() })
+            scroll.post { scroll.smoothScrollTo(0, list.height) }; return
+        }
         val tv = TextView(this).apply {
             text = l.text; setTextIsSelectable(true)
             when (l.role) {
@@ -332,7 +346,8 @@ class ComputerActivity : AppCompatActivity() {
                 }
                 else -> {
                     textSize = 15f; setTextColor(if (l.role == "e") 0xFFFFB4B4.toInt() else 0xFFFFFFFF.toInt())
-                    setBackgroundResource(if (mine) R.drawable.glass_bubble_me else R.drawable.glass_bubble_dk)
+                    // नवंबर 2026: आपका बुलबुला = गहरा नीला → बैंगनी (16dp), DK का = काँच
+                    if (mine) background = FutureViews.userBubble(this@ComputerActivity) else setBackgroundResource(R.drawable.glass_bubble_dk)
                     val ph = (14 * dp).toInt(); val pv = (10 * dp).toInt(); setPadding(ph, pv, ph, pv)
                     maxWidth = (resources.displayMetrics.widthPixels * 0.86).toInt()
                     setLinkTextColor(0xFF9FD2FF.toInt())
@@ -361,6 +376,11 @@ class ComputerActivity : AppCompatActivity() {
         val ph = (12 * dp).toInt(); setPadding(ph, (6 * dp).toInt(), ph, (6 * dp).toInt())
         isFocusable = false
         setOnClickListener { onClick() }
+    }
+
+    private fun copyCode(code: String) {
+        val cm = getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+        cm.setPrimaryClip(android.content.ClipData.newPlainText("code", code)); toast("कोड कॉपी हो गया")
     }
 
     private fun toast(t: String) = UiLang.toast(this, t, Toast.LENGTH_SHORT).show()

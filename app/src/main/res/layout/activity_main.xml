@@ -183,6 +183,14 @@
                 android:textStyle="bold" />
         </FrameLayout>
 
+        <!-- Gradient waveform (cyan → violet): DKState की असली हालत/माइक से चलती है (HoloWaveView) -->
+        <com.dk.assistant.HoloWaveView
+            android:id="@+id/homeWave"
+            android:layout_width="match_parent"
+            android:layout_height="36dp"
+            android:layout_marginStart="24dp"
+            android:layout_marginEnd="24dp" />
+
         <!-- Recent Interaction Box: DK की आख़िरी बात (MainActivity भरता है; ओर्ब छोटा = यह डिब्बा बड़ा) -->
         <LinearLayout
             android:id="@+id/dkBox"
