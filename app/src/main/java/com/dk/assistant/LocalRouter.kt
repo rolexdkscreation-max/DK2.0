@@ -434,7 +434,7 @@ object LocalRouter {
     /** इन prefix वाले नतीजे में ":" के बाद user को बोलने वाली साफ़ हिंदी बात होती है */
     private val SAY_PREFIX = listOf("ASK:", "ERROR_NOT_INSTALLED:", "ERROR_LAUNCH:", "ERROR_NO_CONTACT:", "ERROR_PERM:", "ERROR_NO_PHOTO:",
         "CALLING:", "CALL_UNVERIFIED:", "DIALER:", "PHOTO_OPENED:", "GALLERY_OPENED:", "VIDEO_OPENED:", "STEPS_DONE:", "STEP_FAILED:",
-        "DELETED:", "DELETE_UNVERIFIED:", "ERROR_DENIED:", "ERROR_OLD_ANDROID:", "SEARCHED:", "SEARCH_UNVERIFIED:", "SAID:", PhoneLockVoice.UNLOCK_FAIL)
+        "DELETED:", "DELETE_UNVERIFIED:", "ERROR_DENIED:", "ERROR_POPUP_BLOCKED:", "ERROR_OLD_ANDROID:", "SEARCHED:", "SEARCH_UNVERIFIED:", "SAID:", PhoneLockVoice.UNLOCK_FAIL)
 
     /** फ़ोन ने जो किया उसका साफ़ हिंदी वाक्य (null = यह नतीजा ऐसा नहीं) */
     fun userText(r: String): String? {
@@ -444,7 +444,7 @@ object LocalRouter {
 
     /** यह नतीजा आख़िरी है - AI को देने से कुछ नहीं सुधरेगा (ऐप है ही नहीं / कॉन्टैक्ट नहीं / user से पूछना है) */
     fun final(r: String) = listOf("ASK:", "ERROR_NOT_INSTALLED:", "ERROR_NO_CONTACT:", "ERROR_PERM:", "ERROR_NO_PHOTO:", "STEP_FAILED:",
-        "DELETED:", "ERROR_DENIED:", "ERROR_OLD_ANDROID:", "SAID:", PhoneLockVoice.UNLOCK_FAIL).any { r.startsWith(it) }
+        "DELETED:", "ERROR_DENIED:", "ERROR_POPUP_BLOCKED:", "ERROR_OLD_ANDROID:", "SAID:", PhoneLockVoice.UNLOCK_FAIL).any { r.startsWith(it) }
 
     fun needsUser(r: String) = r.startsWith("ASK:")
 

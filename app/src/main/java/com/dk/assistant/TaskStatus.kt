@@ -92,7 +92,7 @@ object TaskStatus {
     /** DK लाइव के task_status tool का जवाब - सिर्फ़ दर्ज सच */
     fun summary(now: Long = clock()): String {
         val list = all().filter { it.active || now - it.ended < 60 * 60_000L }
-        if (list.isEmpty()) return "No background task (DK Computer / coding team) and no on-screen task (social media review) has been started recently. Tell the user honestly that nothing is running."
+        if (list.isEmpty()) return "No background task (DK Computer / coding team / App Studio) and no on-screen task (social media review) has been started recently. Tell the user honestly that nothing is running."
         return list.joinToString("\n") { j ->
             // हालत सबसे पहले; काम का text साफ़ "निर्देश" (हालत नहीं) - v3.39: model निर्देश को ही नतीजा समझ लेता था
             val head = "STATE: ${j.state.en} - ${j.whoEn}" + (if (j.active) " (NOT DONE YET)" else "") +

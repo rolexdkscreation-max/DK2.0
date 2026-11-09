@@ -16,6 +16,7 @@ object StatusNotify {
     private const val ID_PC = 7402
     private const val ID_CODER = 7403
     private const val ID_INSIGHTS = 7404
+    private const val ID_STUDIO = 7405
     private val lastAt = HashMap<String, Long>()
 
     fun install(c: Context) {
@@ -25,7 +26,7 @@ object StatusNotify {
 
     private fun show(c: Context, j: TaskStatus.Job, ended: Boolean) = try {
         val nm = c.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-        val id = when (j.key) { TaskStatus.PC -> ID_PC; com.dk.assistant.insights.InsightsAgent.KEY -> ID_INSIGHTS; else -> ID_CODER }
+        val id = when (j.key) { TaskStatus.PC -> ID_PC; com.dk.assistant.insights.InsightsAgent.KEY -> ID_INSIGHTS; com.dk.assistant.studio.StudioLink.KEY -> ID_STUDIO; else -> ID_CODER }
         if (ended) { nm.cancel(id); synchronized(lastAt) { lastAt.remove(j.key) } }
         else {
             val now = System.currentTimeMillis()
@@ -37,7 +38,8 @@ object StatusNotify {
             if (!skip) {
                 if (Build.VERSION.SDK_INT >= 26 && nm.getNotificationChannel(CH) == null)
                     nm.createNotificationChannel(NotificationChannel(CH, "DK काम की हालत", NotificationManager.IMPORTANCE_LOW))
-                val target = when (j.key) { TaskStatus.PC -> ComputerActivity::class.java; com.dk.assistant.insights.InsightsAgent.KEY -> ChatActivity::class.java; else -> CodingActivity::class.java }
+                val target = when (j.key) { TaskStatus.PC -> ComputerActivity::class.java; com.dk.assistant.insights.InsightsAgent.KEY -> ChatActivity::class.java
+                    com.dk.assistant.studio.StudioLink.KEY -> com.dk.assistant.studio.StudioActivity::class.java; else -> CodingActivity::class.java }
                 val pi = PendingIntent.getActivity(c, id, Intent(c, target).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
                     PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
                 val text = TaskStatus.line(j)

@@ -266,7 +266,8 @@ internal fun GeminiLive.agentTool(name: String, args: JSONObject): String {
                 yn != null -> { handoff = false; ComputerSession.answer(yn); if (yn) "Permission given - DK Computer continues." else "Permission refused - DK Computer will not do it." }
                 !Prefs.computerOn(svc) -> "DK Computer is OFF in settings - tell the user to turn it on (सेटिंग्स → DK कंप्यूटर)."
                 t.length < 3 -> "Ask the user what DK Computer should do."
-                else -> {
+                // नवंबर 2026: ऐप स्टूडियो DK कंप्यूटर से जुड़ा - "स्टूडियो में क्या बन रहा है" / "ऐप बनाओ" = स्टूडियो
+                else -> com.dk.assistant.studio.StudioLink.fromLive(svc, t, com.dk.assistant.studio.StudioSession.WHO_COMPUTER, noGithub = true)?.also { handoff = false } ?: run {
                     val wasBusy = ComputerSession.busy
                     ComputerSession.start(svc, t, voice = true)?.let { "Could not start: $it" }
                         ?: if (wasBusy) "Queued - DK Computer will start it after the current task."
@@ -279,7 +280,10 @@ internal fun GeminiLive.agentTool(name: String, args: JSONObject): String {
             // pehle setting jaancho - band ho to merge/sujhav ka faisla bhi nahi (AgentRunner jaisa)
             when {
                 !Prefs.coderOn(svc) -> "Coding agent is OFF in settings - tell the user to turn it on (सेटिंग्स → कोडिंग एजेंट)."
-                else -> CoderTeam.voiceDecision(svc, t)?.also { handoff = false } ?: when {
+                else -> CoderTeam.voiceDecision(svc, t)?.also { handoff = false }
+                    // नवंबर 2026: ऐप स्टूडियो कोडिंग एजेंट से जुड़ा (GitHub नहीं जुड़ा = फ़ोन पर स्टूडियो में, CodingActivity जैसा)
+                    ?: com.dk.assistant.studio.StudioLink.fromLive(svc, t, com.dk.assistant.studio.StudioSession.WHO_CODER,
+                        com.dk.assistant.studio.StudioRoute.noGithub(svc))?.also { handoff = false } ?: when {
                     // 7-एजेंट चालू = पुराना टीम switch ज़रूरी नहीं
                     !Prefs.coderSeven(svc) && !Prefs.coderTeam(svc) -> "Coding team is OFF in settings (सेटिंग्स → कोडिंग एजेंट → टीम)."
                     else -> CoderTeam.start(svc, t, fromVoice = true)?.let { "Could not start: $it" }
@@ -322,6 +326,8 @@ internal fun GeminiLive.runTools(calls: JSONArray) {
             val result = try { when (name) {
                 "phone_task" -> phoneTask(args.optString("request"))
                 "task_status" -> TaskStatus.summary()
+                "look_screen" -> ScreenLook.liveTool(svc, args.optString("question").ifBlank { DKState.lastUser.trimEnd('…') })
+                "app_studio" -> com.dk.assistant.studio.StudioLink.liveTool(svc, args.optString("action"), args.optString("text"))
                 "phone_call" -> callTool(args.optString("action"), "Gemini")
                 "screen_share" -> LiveVision.setScreen(svc, args.optBoolean("on", true))
                 "camera" -> LiveVision.setCamera(svc, args.optBoolean("on", true), args.optString("facing"))

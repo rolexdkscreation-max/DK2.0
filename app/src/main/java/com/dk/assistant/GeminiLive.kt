@@ -118,7 +118,7 @@ class GeminiLive(internal val svc: DKAccessibilityService, internal val agent: A
         const val LEAK_ID = "dk-leak-"
         const val LEAK_DEDUP_MS = 20_000L
         /** v3.80: इनका नतीजा = यूज़र को जवाब बोलना ज़रूरी */
-        internal val ANSWER_TOOLS = setOf("web_search", "deep_think", "current_time", "local_info", "connector_task", "task_status", "dk_features")
+        internal val ANSWER_TOOLS = setOf("web_search", "deep_think", "current_time", "local_info", "connector_task", "task_status", "dk_features", "look_screen", "app_studio")
         /**
          * Jawab "ban raha" (generating) tha par itni der server se ek bhi sandesh nahi aur awaaz bhi nahi baj rahi =
          * turnComplete kho gaya / stream atak gaya. Tab turn band (stream ya connection nahi kaata - aage kuch aaye to
@@ -218,7 +218,8 @@ class GeminiLive(internal val svc: DKAccessibilityService, internal val agent: A
             if (stopped || !ready) return@launch
             lastEvidenceAt = System.currentTimeMillis()
             // नवंबर 2026: सोशल रिव्यू = पूरा बोलने लायक सार (400 अक्षर वाला छोटा नतीजा नहीं)
-            val note = (if (job.key == com.dk.assistant.insights.InsightsAgent.KEY) com.dk.assistant.insights.InsightsAgent.liveNote(job) else null) ?: TaskStatus.endNote(job)
+            val note = (if (job.key == com.dk.assistant.insights.InsightsAgent.KEY) com.dk.assistant.insights.InsightsAgent.liveNote(job) else null)
+                ?: com.dk.assistant.studio.StudioLink.liveNote(job) ?: TaskStatus.endNote(job)
             try { ws?.tx(JSONObject().put("realtimeInput", JSONObject().put("text", note)).toString()) } catch (_: Exception) {}
             log("${job.whoEn} का काम खत्म (${job.state.en}) - Gemini को असली नतीजा बताया")
         }
