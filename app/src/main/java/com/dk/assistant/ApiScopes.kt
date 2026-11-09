@@ -120,6 +120,19 @@ object ApiScopes {
     /** एक-key मोड में किस कंपनी की key: Gemini = वही एक key; Groq/OpenRouter/Custom/बैकअप keys = कोई नहीं (सब Gemini से) */
     fun oneKeyFor(id: String, oneKey: String): String = if (id == "gemini") oneKey.trim() else ""
 
+    /** नवंबर 2026 (मालिक): एक API के कितने बैकअप फ्री मॉडल आज़माएँ (उसके बाद अगली API) */
+    const val BACKUP_MAX = 6
+
+    /** नवंबर 2026 (मालिक): सारी API का fallback क्रम - "एक API के सारे मॉडल की limit खत्म = अगली API" */
+    val CROSS_ORDER = listOf("gemini", "openrouter", "zai", "nvidia", "groq")
+
+    /**
+     * किसी हिस्से की API का क्रम: चुनी API सबसे पहले, फिर [CROSS_ORDER] की बाकी (सिर्फ़ उसी हिस्से की keys - दूसरे हिस्से की key नहीं).
+     * Pure - JUnit से जाँच.
+     */
+    fun crossOrder(active: String): List<String> =
+        (listOf(active.trim()) + CROSS_ORDER + PROVIDERS).filter { it.isNotBlank() }.distinct()
+
     private val notChat = listOf("whisper", "tts", "guard", "safeguard", "playai", "orpheus", "distil", "embed", "image", "audio", "transcribe", "compound")
 
     /**
@@ -130,8 +143,8 @@ object ApiScopes {
      */
     fun backupModels(provider: String, primary: String, fast: List<String>, cached: List<String>, max: Int = 4): List<String> {
         val fromList = when (provider) {
-            "openrouter" -> cached.filter { it.endsWith(":free") } + "openrouter/free"
-            "groq" -> cached.filter { m -> notChat.none { m.lowercase().contains(it) } }
+            "openrouter" -> cached.filter { it.endsWith(":free") } + "openrouter/free" + Providers.fallbackModels(provider)
+            "groq" -> cached.filter { m -> notChat.none { m.lowercase().contains(it) } } + Providers.fallbackModels(provider)
             "zai", "nvidia" -> Providers.fallbackModels(provider)
             else -> emptyList()
         }

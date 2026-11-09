@@ -59,8 +59,11 @@ object ComputerTools {
     }
 
     fun searchChain(c: Context): List<String> = searchChain(Prefs.computerSearch(c),
-        Prefs.scopeKey(c, ApiScopes.PC, "gemini").isNotBlank(), Prefs.tavilyKey(c).isNotBlank(),
+        Prefs.scopeKey(c, ApiScopes.PC, "gemini").isNotBlank(), pcTavily(c).isNotBlank(),
         Prefs.scopeKey(c, ApiScopes.PC, "openrouter").isNotBlank(), Prefs.exaSearchKey(c).isNotBlank())
+
+    /** नवंबर 2026: DK कंप्यूटर की Tavily key खाली = Settings → इंटरनेट खोज वाली Tavily key (खोज बिना रुके चले) */
+    fun pcTavily(c: Context): String = Prefs.tavilyKey(c).ifBlank { Prefs.tavilySearchKey(c) }
 
     fun searchLabel(s: String) = when (s) { "gemini" -> "Google (Gemini)"; "tavily" -> "Tavily"; "openrouter" -> "OpenRouter"; "exa" -> "Exa"; else -> s }
 
@@ -73,7 +76,7 @@ object ComputerTools {
             try {
                 val out = when (s) {
                     "exa" -> exa(Prefs.exaSearchKey(c), query, n)
-                    "tavily" -> tavily(Prefs.tavilyKey(c), query, n)
+                    "tavily" -> tavily(pcTavily(c), query, n)
                     "openrouter" -> openRouter(Prefs.scopeKey(c, ApiScopes.PC, "openrouter"), Prefs.scopeModel(c, ApiScopes.PC, "openrouter"), query, n)
                     else -> gemini(c, query)
                 }

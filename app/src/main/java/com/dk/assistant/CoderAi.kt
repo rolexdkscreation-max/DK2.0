@@ -104,7 +104,9 @@ class CoderAi(val provider: Provider, private val key: String, val model: String
     /** एक बार पूरी chain: चुनी API → बाकी API (limit/server गलती पर अगली) */
     private fun chatChain(system: String, msgs: List<Pair<String, String>>, media: List<CoderMedia>): String {
         val chain = listOf(this) + fallbacks
+        // नवंबर 2026: जो मॉडल हाल में "मौजूद नहीं" (404) मिला, वह आख़िर में (हर बार उसी पर समय न जाए)
         val ordered = orderChain(chain.map { it.selfLabel }, sticky()).map { l -> chain.first { it.selfLabel == l } }
+            .partition { !Cooldown.blocked(goneKey(it)) }.let { (ok, gone) -> ok + gone }
         val errs = mutableListOf<Pair<CoderAi, java.io.IOException>>()
         var n429 = 0
         for (ai in ordered) {
@@ -124,6 +126,7 @@ class CoderAi(val provider: Provider, private val key: String, val model: String
                 // AiException (429/413/5xx/401...) ya network timeout - agla API
                 errs.add(ai to e)
                 if ((e as? AiException)?.code == 429) n429++
+                if ((e as? AiException)?.code == 404 && !ai.provider.isGemini) Cooldown.block(goneKey(ai), GONE_MS)
                 if (chain.size > 1) DKLog.d("Coder: ${ai.selfLabel} -> ${reason(e)}, अगला API")
                 if (ai !== ordered.last()) DKStatus.post(DKStatus.forCode((e as? AiException)?.code ?: -1))
             }
@@ -308,11 +311,36 @@ class CoderAi(val provider: Provider, private val key: String, val model: String
         // DK कंप्यूटर की अपनी keys (Settings → AI दिमाग → DK कंप्यूटर) में से जिसकी भी key डली है, सब इसी क्रम में एक chain में.
         fun forComputer(c: Context, sink: (String, String) -> Unit): CoderAi? {
             if (Prefs.oneKeyOn(c)) return forScope(c, ApiScopes.PC, sink)
-            val parts = PC_CHAIN.mapNotNull { id -> forScope(c, ApiScopes.PC, sink, id) }
-            val first = parts.firstOrNull() ?: return forScope(c, ApiScopes.PC, sink)
-            val rest = first.fallbackList() + parts.drop(1).flatMap { listOf(it.alone()) + it.fallbackList() }
-            return CoderAi(first.provider, first.keyForChain(), first.model, first.baseForChain(), rest, sink = sink).applyThink(ThinkLevel.get(c, ApiScopes.PC))
+            return forScopeChain(c, ApiScopes.PC, sink, PC_CHAIN) ?: forScope(c, ApiScopes.PC, sink)
         }
+
+        /**
+         * नवंबर 2026 (मालिक): "एक मॉडल की limit खत्म = उसी API का अगला फ्री मॉडल; उस API के सारे खत्म = अगली API".
+         * [order] की हर API (इसी हिस्से की key डली हो) एक chain में: API 1 + उसके बैकअप मॉडल/keys → API 2 + उसके ... .
+         * null = इस हिस्से में कोई key नहीं.
+         */
+        fun forScopeChain(c: Context, scope: String, sink: (String, String) -> Unit, order: List<String>): CoderAi? {
+            val parts = order.distinct().mapNotNull { id -> forScope(c, scope, sink, id) }
+            val first = parts.firstOrNull() ?: return null
+            if (parts.size == 1) return first
+            val rest = first.fallbackList() + parts.drop(1).flatMap { listOf(it.alone()) + it.fallbackList() }
+            return CoderAi(first.provider, first.keyForChain(), first.model, first.baseForChain(), rest, sink = sink)
+                .also { it.waitOnLimit = scope == ApiScopes.CODER }.applyThink(ThinkLevel.get(c, scope))
+        }
+
+        /**
+         * नवंबर 2026 (मालिक): कोडिंग एजेंट भी DK कंप्यूटर जैसा - चुनी API पहले, उसके सारे मॉडल/keys की limit खत्म
+         * तो कोडिंग एजेंट की बाकी API (Gemini → OpenRouter → Z.ai → NVIDIA → Groq), जिसकी भी key डली हो.
+         */
+        fun forCoder(c: Context, sink: (String, String) -> Unit): CoderAi? {
+            if (Prefs.oneKeyOn(c)) return forScope(c, ApiScopes.CODER, sink)
+            return forScopeChain(c, ApiScopes.CODER, sink, ApiScopes.crossOrder(Prefs.scopeActive(c, ApiScopes.CODER)))
+                ?: forScope(c, ApiScopes.CODER, sink)
+        }
+
+        /** 404 (मॉडल मौजूद नहीं) वाला मॉडल इतनी देर chain में आख़िर में */
+        const val GONE_MS = 6 * 60 * 60 * 1000L
+        private fun goneKey(ai: CoderAi) = "coder404|${ai.provider.id}|${ai.model}"
 
         /** DK कंप्यूटर की fallback chain का क्रम (मालिक का नियम) */
         val PC_CHAIN = listOf("gemini", "openrouter", "zai", "nvidia", "groq")
@@ -322,7 +350,7 @@ class CoderAi(val provider: Provider, private val key: String, val model: String
         // ऑटोनोमस मोड ने कोडिंग शुरू की हो: उसकी अपनी key -> (खाली) कोडिंग एजेंट की key -> (वो भी नहीं) DK की मुख्य key.
         // ऑटोनोमस बंद / उसका काम नहीं = पहले जैसा, सिर्फ़ कोडिंग एजेंट की key.
         fun fromPrefs(c: Context): CoderAi? = com.dk.assistant.auto.AutoMode.coderOverride(c)
-            ?: forScope(c, ApiScopes.CODER) { p, f -> DKLog.d("कोडिंग AI: $p → $f") }
+            ?: forCoder(c) { p, f -> DKLog.d("कोडिंग AI: $p → $f") }
             ?: com.dk.assistant.auto.AutoMode.coderMainFallback(c)
 
         /**
