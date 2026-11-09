@@ -39,6 +39,8 @@ internal suspend fun GeminiLive.callTool(action: String, from: String): String {
         }
         if (a in pick) callDone = a to now
     }
+    // नवंबर 2026 (मालिक): उठाया / काटा = उसी पल DK का बोलना बंद (Live या बैकअप) - "पूरा नाम / नंबर" फिर से नहीं
+    if (a in pick) { svc.hushForCall(); if (isPlaying()) flushPlayback() }
     val r = svc.liveCallAction(a)
     if (a in pick && (r.startsWith("ERROR") || r == "NO_CALL")) synchronized(callLock) { if (callDone?.second == now) callDone = null }
     if (a != CallReply.WHO && a !in pick && !r.startsWith("ERROR") && r != "NO_CALL") callDone = a to now
@@ -362,6 +364,14 @@ internal fun GeminiLive.runTools(calls: JSONArray) {
                 "shop_search" -> com.dk.assistant.ShopOpen.tool(svc, args)
                 "whatsapp_task" -> when (val act = args.optString("action").trim().lowercase()) {
                     in setOf("read_unread", "unread", "read") -> notifTool("WhatsApp")
+                    // नवंबर 2026: भेजा हुआ (गलती वाला) मैसेज सबके लिए डिलीट - मालिक का कहना ही हुक्म, सीधे
+                    in setOf("delete_message", "delete", "unsend", "delete_last") -> {
+                        DKState.set(Mode.WORKING)
+                        val r = com.dk.assistant.agent.android.WaDeleteRunner.run(svc, DKState.lastUser, args.optString("contact"),
+                            if (args.has("for_me")) args.optBoolean("for_me") else null, args.optString("message"))
+                        log("WhatsApp भेजा मैसेज डिलीट -> ${r.substringBefore(':')}")
+                        r
+                    }
                     // v4: WhatsApp आवाज़ / वीडियो कॉल - सीधे (स्क्रीन पर बटन ढूँढे बिना)
                     in setOf("voice_call", "video_call", "call", "audio_call") -> {
                         val cmd = WaCall.Cmd(args.optString("contact").trim(), act == "video_call")

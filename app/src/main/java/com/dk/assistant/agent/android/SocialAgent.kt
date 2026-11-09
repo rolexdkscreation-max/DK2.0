@@ -38,6 +38,7 @@ object SocialAgent {
     private var seq = 0
     /** v3.67: यह काम WhatsApp संदेश है और मालिक ने "बिना पूछे भेजो" चालू किया है */
     @Volatile private var autoSend = false
+    @Volatile private var sending: Triple<String, String, String>? = null
 
     private fun err(code: String, msg: String) = JSONObject().put("status", "error").put("error", code).put("message", msg).toString()
 
@@ -73,6 +74,8 @@ object SocialAgent {
                 is Contact.Ask -> return err(c.code, c.msg)
             }
         }
+        // नवंबर 2026: "गलती से चला गया, डिलीट करो" के लिए याद रखो किसे क्या भेजा (भेजना पूरा होने पर)
+        sending = if (req.platform == Platform.WHATSAPP && req.action == SocialAction.SEND_MESSAGE && phone != null) Triple(who, phone, req.message) else null
         autoSend = !ownConfirm && req.platform == Platform.WHATSAPP && (req.action == SocialAction.SEND_MESSAGE || req.action == SocialAction.SEND_FILE) && Prefs.waAutoSend(svc)
         val id = "social-" + (++seq) + "-" + (System.currentTimeMillis() % 100000)
         val task = SocialPlanner.plan(id, req, media, phone, who)
@@ -122,6 +125,8 @@ object SocialAgent {
 
     private fun onUpdate(svc: DKAccessibilityService, rep: TaskReport) {
         lastReport = rep
+        if (rep.status == TaskStatus.COMPLETED || rep.status == TaskStatus.SUBMITTED_UNVERIFIED)
+            sending?.let { (n, d, m) -> com.dk.assistant.agent.social.WaDelete.remember(n, d, m); sending = null }
         DKLog.d("Social ${rep.taskId}: ${rep.status.name.lowercase()} (${rep.step}/${rep.totalSteps})")
         if (rep.status == TaskStatus.RUNNING && rep.step > 0) return   // बीच की हर बात नहीं
         // मालिक ने सेटिंग में पहले ही "हाँ" दे रखी है -> सवाल नहीं, सीधा भेजो (पूरा होने का SYSTEM NOTE बाद में आता है)
@@ -142,7 +147,7 @@ object SocialAgent {
         svc.packageManager.getPackageInfo(pkg, 0); true
     } catch (_: Exception) { pkg == Platform.WHATSAPP.pkg && try { svc.packageManager.getPackageInfo("com.whatsapp.w4b", 0); true } catch (_: Exception) { false } }
 
-    private suspend fun open(svc: DKAccessibilityService, o: OpenSpec): Boolean = withContext(Dispatchers.Main) {
+    internal suspend fun open(svc: DKAccessibilityService, o: OpenSpec): Boolean = withContext(Dispatchers.Main) {
         try {
             when (o) {
                 is OpenSpec.ShareMedia -> {
@@ -184,12 +189,12 @@ object SocialAgent {
         return if (best != null) Intent(base).setClassName(best.activityInfo.packageName, best.activityInfo.name) else i
     }
 
-    private sealed class Contact {
+    internal sealed class Contact {
         data class Found(val name: String, val digits: String) : Contact()
         data class Ask(val code: String, val msg: String) : Contact()
     }
 
-    private suspend fun contact(svc: DKAccessibilityService, name: String): Contact {
+    internal suspend fun contact(svc: DKAccessibilityService, name: String): Contact {
         // सीधे नंबर बोला
         SocialPlanner.waDigits(name)?.takeIf { name.count { it.isDigit() } >= 10 }?.let { return Contact.Found(name, it) }
         if (svc.checkSelfPermission(Manifest.permission.READ_CONTACTS) != PackageManager.PERMISSION_GRANTED)

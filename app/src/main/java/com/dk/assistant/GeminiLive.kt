@@ -746,7 +746,8 @@ class GeminiLive(internal val svc: DKAccessibilityService, internal val agent: A
         if (!ok) return false
         lastAct = System.currentTimeMillis()
         // v3.41: 5s -> 3s; na bole to phone ki awaaz (ghanti ke 25-30s me har second keemti)
-        withTimeoutOrNull(3_000) { while (!isPlaying()) delay(100) }
+        // नवंबर 2026 (मालिक: "Live न बोले तो बैकअप तुरंत"): 3s -> 1.3s; बीच में कॉल उठ/कट गई = रुको, कुछ मत बोलो
+        withTimeoutOrNull(CallReply.LIVE_CALL_WAIT_MS) { while (!isPlaying() && svc.callRinging()) delay(50) }
         return isPlaying()
     }
 

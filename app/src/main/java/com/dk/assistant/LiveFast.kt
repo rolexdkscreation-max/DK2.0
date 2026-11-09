@@ -86,7 +86,7 @@ object LiveFast {
         "wa_call" -> (if (a.optBoolean("video")) "WhatsApp video call " else "WhatsApp call ") + a.optString("name")
         "call_log" -> "opened recent calls"
         "gallery_latest" -> "opened the latest photo"
-        "delete_media" -> "moved the last ${a.optInt("count", 1)} ${a.optString("kind", "photo")}(s) to trash"
+        "delete_media" -> MediaPick.fromJson(a).en()
         "steps" -> a.optJSONArray("steps")?.let { arr -> (0 until arr.length()).mapNotNull { arr.optJSONObject(it)?.let { o -> describe(o) } }.joinToString(", then ") } ?: "steps"
         else -> NativeCommands.describe(a) ?: a.optString("type").replace('_', ' ')
     }

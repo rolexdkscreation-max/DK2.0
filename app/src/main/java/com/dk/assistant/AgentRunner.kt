@@ -334,6 +334,17 @@ class AgentRunner(
             com.dk.assistant.auto.AutoMode.emergencyStop(svc); say("ठीक है, सारा ऑटोनोमस काम रोक दिया।"); return
         }
         if (memoryCommand(goal)) return
+        // नवंबर 2026 (मालिक): "WhatsApp पर गलती से गया मैसेज डिलीट करो" = सीधे सबके लिए डिलीट (AI एजेंट नहीं)
+        if (com.dk.assistant.agent.social.WaDelete.isDelete(goal, com.dk.assistant.agent.social.WaDelete.recent() != null)) {
+            DKState.set(Mode.WORKING)
+            say(MediaPick.spoken(com.dk.assistant.agent.android.WaDeleteRunner.run(svc, goal))); return
+        }
+        // नवंबर 2026: "आज के सारे स्क्रीनशॉट / ऊपर से 50 फोटो / नीचे से 10 फोटो डिलीट करो" = सीधे (ट्रैश में); गोल-मोल = पूछो
+        when (val m = MediaPick.quick(goal)) {
+            is MediaPick.Out.Go -> { DKState.set(Mode.WORKING); say(MediaPick.spoken(svc.perform(m.spec.toJson()))); return }
+            is MediaPick.Out.Ask -> { say(m.msg); return }
+            null -> {}
+        }
         // DK AI Website Forge: "ek cafe ki website banao" -> लाइव 3D build स्क्रीन (कोडिंग एजेंट वाली बात यहाँ नहीं पकड़ी जाती)
         // नवंबर 2026: "गेम बनाओ" = DK कंप्यूटर गेम बनाता है, फिर DK उसे Chrome में चलाकर दिखाती है
         com.dk.assistant.forge.GameMaker.extract(goal)?.let { g ->
