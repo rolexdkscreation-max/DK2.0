@@ -138,14 +138,11 @@
             android:layout_weight="1"
             android:layout_marginTop="8dp">
 
-            <com.airbnb.android.lottie.LottieAnimationView
+            <com.dk.assistant.OrbView
                 android:id="@+id/orb"
                 android:layout_width="match_parent"
                 android:layout_height="match_parent"
-                android:contentDescription="बोलने के लिए टैप करें"
-                app:lottie_autoPlay="true"
-                app:lottie_loop="true"
-                app:lottie_rawRes="@raw/energy_orb" />
+                android:contentDescription="बोलने के लिए टैप करें" />
 
             <ImageView
                 android:id="@+id/orbMic"
