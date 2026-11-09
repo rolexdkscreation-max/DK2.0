@@ -290,6 +290,11 @@ internal fun GeminiLive.setupJson(m: String, txt: Boolean = connText, resume: Bo
                 .put("properties", JSONObject().put("on", JSONObject().put("type", "BOOLEAN"))
                     .put("facing", JSONObject().put("type", "STRING").put("description", "back or front")))
                 .put("required", JSONArray().put("on"))))
+        // नवंबर 2026 (मालिक): DK लाइव से "स्क्रीन गार्ड चालू करो" - सिर्फ़ चालू. बंद सिर्फ़ मालिक: फ़ोन खोलना / चेहरा / गुप्त शब्द
+        .put(JSONObject().put("name", "screen_guard")
+            .put("description", "Turn ON Screen Guard (स्क्रीन गार्ड, old name गार्ड मोड / anti-theft): 5 seconds later the phone locks; if anyone else touches / picks up the phone a loud siren rings, a warning shows, a photo is taken and the trusted number gets SMS with the exact GPS location again every few minutes. Call it when the user asks to turn on / start Screen Guard / गार्ड मोड / phone की रखवाली (optionally for N minutes). It can ONLY turn it ON - you can never turn it off: if asked to turn it off, tell him to unlock the phone himself, show his face to the warning screen camera, or say his secret word. Tell the user exactly what it returns.")
+            .put("parameters", JSONObject().put("type", "OBJECT")
+                .put("properties", JSONObject().put("minutes", JSONObject().put("type", "INTEGER").put("description", "Optional: for how many minutes (0 or empty = until the owner turns it off)")))))
         .put(JSONObject().put("name", "notifications")
             .put("description", "Read the phone's recent notifications (messages, WhatsApp, calls missed, apps). Call it when the user asks क्या notification आया / किसका मैसेज आया / क्या लिखा है / कोई मैसेज आया क्या. Optional app = app or sender name to filter (e.g. WhatsApp, Rahul). Tell the user briefly who sent what - only what it returns.")
             .put("parameters", JSONObject().put("type", "OBJECT")

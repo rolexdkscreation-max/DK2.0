@@ -11,7 +11,7 @@ import androidx.appcompat.widget.SwitchCompat
 import androidx.core.content.ContextCompat
 
 /**
- * नवंबर 2026: Settings → गार्ड मोड (चोरी से बचाव)।
+ * नवंबर 2026: Settings → स्क्रीन गार्ड (चोरी से बचाव)।
  * चालू = फ़ोन लॉक, फिर कोई उठाए / हिलाए / PIN डालने लगे / पावर मेनू खोले / चार्जर निकाले / SIM निकाले
  * तो तेज़ सायरन + "यह फ़ोन आपका नहीं है" + फ़ोटो + भरोसेमंद नंबर पर SMS (जगह के साथ)।
  * यहाँ हर बदलाव तुरंत सेव होता है (सेव बटन नहीं)।
@@ -26,9 +26,9 @@ internal fun SettingsActivity.secGuard() {
         quiet = true; swOn.isChecked = Guard.active(); quiet = false
     }
 
-    card("गार्ड मोड", "कोई और फ़ोन छुए / उठाए तो सायरन + चेतावनी", startOpen = true) { box ->
-        if (!Setup.accessibilityOn(this)) hint(box, "⚠ पहले Settings → Accessibility में DK चालू करें — उसके बिना गार्ड मोड नहीं चलेगा।")
-        swOn = switch(box, "गार्ड मोड चालू", Guard.active())
+    card("स्क्रीन गार्ड", "कोई और फ़ोन छुए / उठाए तो सायरन + चेतावनी", startOpen = true) { box ->
+        if (!Setup.accessibilityOn(this)) hint(box, "⚠ पहले Settings → Accessibility में DK चालू करें — उसके बिना स्क्रीन गार्ड नहीं चलेगा।")
+        swOn = switch(box, "स्क्रीन गार्ड चालू", Guard.active())
         status = TextView(this).apply {
             textSize = 13f; setTextColor(0xCCFFFFFF.toInt()); setPadding((4 * dp).toInt(), (8 * dp).toInt(), 0, 0)
         }
@@ -36,14 +36,40 @@ internal fun SettingsActivity.secGuard() {
         refresh()
         swOn.setOnCheckedChangeListener { _, on ->
             if (quiet) return@setOnCheckedChangeListener
-            if (on) toast(Guard.arm(this, 0, "सेटिंग्स")) else Guard.disarm(this, "सेटिंग्स से बंद")
+            if (on) {
+                toast(Guard.arm(this, 0, "सेटिंग्स"))
+                if (Guard.faceOn(this) && !GuardFaceSetup.enrolled(this)) toast("ध्यान दें: मालिक का चेहरा सेट नहीं — नीचे \"मालिक का चेहरा सेट करें\" दबाएँ, तभी चेहरे से सायरन बंद होगा")
+            } else Guard.disarm(this, "सेटिंग्स से बंद")
             status.postDelayed({ refresh() }, 300)
         }
-        hint(box, "बोलकर: \"DK गार्ड मोड चालू करो\" / \"DK 1 घंटे के लिए गार्ड मोड चालू करो\"। चालू होने के 5 सेकंड बाद फ़ोन लॉक होगा — फ़ोन नीचे रख दें।")
+        hint(box, "बोलकर: \"DK स्क्रीन गार्ड चालू करो\" / \"DK 1 घंटे के लिए स्क्रीन गार्ड चालू करो\"। चालू होने के 5 सेकंड बाद फ़ोन लॉक होगा — फ़ोन नीचे रख दें।")
         hint(box, "बंद करने के तरीके: फ़ोन को अपने PIN / फ़िंगरप्रिंट से खोलें • चेतावनी स्क्रीन पर कैमरे के सामने अपना चेहरा (DK ने चेहरा सीखा हो) • नीचे लिखा गुप्त शब्द बोलें।")
         row(box,
             button("अभी आज़माएँ (10 सेकंड)") { Guard.test(this); toast("10 सेकंड सायरन — अपने-आप बंद होगा") },
             button("सायरन रोकें") { Guard.disarm(this, "सेटिंग्स से रोका"); refresh() })
+    }
+
+    // नवंबर 2026 (मालिक): पहले चेहरा सेट करने की जगह ही नहीं थी (29 अक्टूबर को "चेहरा पहचान" Settings से हटी) -
+    // इसलिए चेतावनी स्क्रीन मालिक को पहचान नहीं पाती थी और सायरन बंद नहीं होता था. अब यहीं, सिर्फ़ स्क्रीन गार्ड के लिए.
+    card("मालिक का चेहरा", "पहली बार एक बार सेट करें — फिर अलार्म बजे और कैमरा आपको देखे तो सायरन अपने-आप बंद", startOpen = true) { box ->
+        val st = TextView(this).apply { textSize = 14f; setTextColor(0xFFFFFFFF.toInt()); setPadding((4 * dp).toInt(), (4 * dp).toInt(), 0, (4 * dp).toInt()) }
+        box.addView(st)
+        fun refreshFace() { st.text = UiLang.s(GuardFaceSetup.status(this)) }
+        refreshFace()
+        row(box,
+            button(if (GuardFaceSetup.enrolled(this)) "चेहरा फिर से सेट करें" else "मालिक का चेहरा सेट करें") { GuardFaceSetup.dialog(this, enroll = true) { refreshFace() } },
+            button("जाँचें") {
+                if (!GuardFaceSetup.enrolled(this)) { toast("पहले \"मालिक का चेहरा सेट करें\" दबाएँ"); return@button }
+                GuardFaceSetup.dialog(this, enroll = false) { refreshFace() }
+            })
+        row(box, button("चेहरा मिटाएँ") {
+            AlertDialog.Builder(this).setTitle(UiLang.s("मालिक का चेहरा मिटाएँ?"))
+                .setMessage(UiLang.s("फिर चेहरे से सायरन बंद नहीं होगा, जब तक दोबारा सेट न करें।"))
+                .setPositiveButton(UiLang.s("मिटाएँ")) { _, _ -> GuardFaceSetup.forget(this); refreshFace(); toast("चेहरा मिटा दिया") }
+                .setNegativeButton(UiLang.s("रहने दें"), null).show()
+        })
+        hint(box, "कैसे: आगे वाले कैमरे से ~8 फ़्रेम लेकर आपके चेहरे की पहचान (128 अंक) बनती है — सिर्फ़ इसी फ़ोन में, encrypted; तस्वीर सेव नहीं होती। पहली बार मॉडल (~10 MB) एक बार डाउनलोड होता है।")
+        hint(box, "अलार्म बजे तो चेतावनी स्क्रीन के कैमरे में सीधे देखें — 2 बार लगातार मिलान होते ही सायरन और स्क्रीन गार्ड बंद। अंधेरे में न पहचाने तो फ़ोन PIN से खोलें या गुप्त शब्द बोलें। फ़ोटो दिखाकर धोखा यह पूरी तरह नहीं पकड़ता।")
     }
 
     card("कितना संवेदनशील", "उठाने / छूने पर कब बजे") { box ->
@@ -60,7 +86,7 @@ internal fun SettingsActivity.secGuard() {
         hint(box, "अलार्म बजे तो यह शब्द बोलें — DK सायरन बंद कर देगा। किसी को न बताएँ। (फ़ोन में PIN न हो तो गुप्त शब्द ज़रूरी है)")
         val num = field(box, "भरोसेमंद मोबाइल नंबर (घर वाले / दोस्त)", Guard.smsNumber(this), "+91XXXXXXXXXX")
         num.inputType = InputType.TYPE_CLASS_PHONE
-        val swSms = switch(box, "अलार्म बजे तो इस नंबर पर SMS भेजें (जगह के लिंक के साथ)", Guard.smsOn(this))
+        val swSms = switch(box, "अलार्म बजे तो इस नंबर पर SMS भेजें (सटीक GPS जगह के लिंक के साथ, फिर हर कुछ मिनट नई जगह — जब तक आप फ़ोन न खोलें)", Guard.smsOn(this))
         swSms.setOnCheckedChangeListener { _, on -> Prefs.edit(this) { putBoolean(Guard.P_SMS_ON, on) } }
         row(box, button("सेव करें") {
             val c = code.text.toString().trim()
@@ -80,17 +106,17 @@ internal fun SettingsActivity.secGuard() {
         fun opt(t: String, key: String, on: Boolean) =
             switch(box, t, on).setOnCheckedChangeListener { _, v -> Prefs.edit(this) { putBoolean(key, v) } }
         opt("छूने वाले की फ़ोटो लें (आगे वाला कैमरा)", Guard.P_PHOTO, Guard.photoOn(this))
-        opt("मालिक का चेहरा दिखे तो सायरन बंद (चेहरा DK में सीखा हो)", Guard.P_FACE, Guard.faceOn(this))
+        opt("मालिक का चेहरा दिखे तो सायरन बंद (ऊपर \"मालिक का चेहरा\" में सेट हो)", Guard.P_FACE, Guard.faceOn(this))
         opt("लॉक में पावर मेनू / ऊपर का पैनल खुले तो बंद करो + सायरन", Guard.P_BLOCK, Guard.blockMenus(this))
         opt("चार्जर निकाले तो सायरन", Guard.P_CHARGER, Guard.chargerOn(this))
         opt("SIM निकाले तो सायरन", Guard.P_SIM, Guard.simOn(this))
         val need = listOf(Manifest.permission.CAMERA, Manifest.permission.SEND_SMS, Manifest.permission.ACCESS_FINE_LOCATION)
             .filter { ContextCompat.checkSelfPermission(this, it) != PackageManager.PERMISSION_GRANTED }
         if (need.isNotEmpty()) {
-            hint(box, "⚠ फ़ोटो, SMS और जगह के लिए परमिशन चाहिए")
+            hint(box, "⚠ फ़ोटो, SMS और सटीक जगह (GPS) के लिए परमिशन चाहिए — लोकेशन में \"सटीक\" चुनें")
             row(box, button("परमिशन दें") { androidx.core.app.ActivityCompat.requestPermissions(this, need.toTypedArray(), 15) })
         }
-        hint(box, "ध्यान दें: कुछ फ़ोन में लॉक पर भी पावर बटन लंबा दबाकर फ़ोन बंद हो सकता है — DK हर फ़ोन में इसे पूरा नहीं रोक सकता। गार्ड मोड में बैटरी थोड़ी ज़्यादा लगती है।")
+        hint(box, "ध्यान दें: कुछ फ़ोन में लॉक पर भी पावर बटन लंबा दबाकर फ़ोन बंद हो सकता है — DK हर फ़ोन में इसे पूरा नहीं रोक सकता। स्क्रीन गार्ड में बैटरी थोड़ी ज़्यादा लगती है।")
     }
 
     card("घुसपैठिए का रिकॉर्ड", "फ़ोटो और क्या-क्या हुआ") { box ->
@@ -118,3 +144,4 @@ internal fun SettingsActivity.secGuard() {
             })
     }
 }
+

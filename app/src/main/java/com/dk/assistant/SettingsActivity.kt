@@ -111,7 +111,7 @@ class SettingsActivity : AppCompatActivity() {
             "ui" -> { title.text = "दिखावट"; bar.visibility = View.GONE; secUi() }
             "access" -> { title.text = "Accessibility"; secAccess(); secPayGuard() }
             "phonelock" -> { title.text = "फ़ोन लॉक / अनलॉक"; secPhoneLock(); secVoiceCmds() }
-            "guard" -> { title.text = "गार्ड मोड"; bar.visibility = View.GONE; secGuard() }
+            "guard" -> { title.text = "स्क्रीन गार्ड"; bar.visibility = View.GONE; secGuard() }
             "perms" -> { title.text = "परमिशन"; secPerms() }
             "update" -> { title.text = "अपडेट"; secUpdate() }
             "debug" -> { title.text = "डिबग लॉग"; bar.visibility = View.GONE; secDebug() }
@@ -137,7 +137,7 @@ class SettingsActivity : AppCompatActivity() {
             Triple("orb", "ओर्ब और चेहरा", "पृथ्वी, गैलेक्सी, एटम, छल्ला, पुरुष/महिला HD चेहरा"),
             Triple("access", "Accessibility", (Setup.a11yMark(this) + when { Setup.accessibilityOn() -> "चालू"; Setup.enabledInSettings(this) -> "रुका है"; else -> "बंद" }) + " • फ़ोन कंट्रोल • हमेशा सुनना • कॉल • बैटरी"),
             Triple("phonelock", "फ़ोन लॉक / अनलॉक", (if (PhoneLockStore.lockOn(this) || PhoneLockStore.unlockOn(this)) "✓ चालू" else "✗ बंद") + " • \"हे DK फोन लॉक करो\" • अपना नाम और वाक्य • PIN / पैटर्न"),
-            Triple("guard", "गार्ड मोड", (if (Guard.active()) "✓ चालू" else "✗ बंद") + " • कोई फ़ोन छुए तो सायरन • फ़ोटो • SMS • \"DK गार्ड मोड चालू करो\""),
+            Triple("guard", "स्क्रीन गार्ड", (if (Guard.active()) "✓ चालू" else "✗ बंद") + " • कोई फ़ोन छुए तो सायरन • फ़ोटो • SMS • \"DK स्क्रीन गार्ड चालू करो\""),
             Triple("perms", "परमिशन", "माइक • स्क्रीन देखना • नोटिफ़िकेशन • कॉल • ऐप इंस्टॉल"),
             Triple("computer", "DK कंप्यूटर", (if (Prefs.computerOn(this)) "✓ चालू" else "✗ बंद") + " • कोई भी काम: खोज, रिसर्च, फ़ाइल/PDF, हिसाब, फ़ोन, रिमाइंडर"),
             Triple("coder", "कोडिंग एजेंट", (if (Prefs.coderOn(this)) "✓ चालू" else "✗ बंद") + " • GitHub से जुड़ें • कोड लिखें/बदलें/हटाएँ • push • अलग AI key"),

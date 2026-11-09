@@ -6,11 +6,13 @@ import kotlin.math.sin
 import kotlin.math.sqrt
 
 /**
- * नवंबर 2026 (मालिक): "गार्ड मोड" - कोई दूसरा फ़ोन छुए / उठाए तो फ़ोन लॉक, ज़ोर का सायरन, DK खुद चेतावनी बोले.
+ * नवंबर 2026 (मालिक): "स्क्रीन गार्ड" (पहले नाम "गार्ड मोड") - कोई दूसरा फ़ोन छुए / उठाए तो फ़ोन लॉक, ज़ोर का सायरन, DK खुद चेतावनी बोले.
  * यह हिस्सा बिल्कुल सादा (Android नहीं) - JVM test ([GuardRulesTest]). Android वाला हिस्सा [Guard].
  */
 object GuardRules {
     const val TYPE = "guard"
+    /** मालिक का रखा नाम - हर जगह (Settings, DK की बोली, SMS) यही दिखे */
+    const val NAME_HI = "स्क्रीन गार्ड"
 
     // ------------------------------------------------------------------ बोलकर चालू / बंद
 
@@ -21,7 +23,7 @@ object GuardRules {
         data class Off(val heard: String) : Cmd()
     }
 
-    private val NAME = listOf("गार्ड", "गार्ड्स", "गाड", "गारड", "गार्ड़", "guard", "gard", "garde", "सिक्योरिटी", "सेक्यूरिटी", "security",
+    private val NAME = listOf("स्क्रीन गार्ड", "स्क्रीनगार्ड", "screen guard", "screenguard", "गार्ड", "गार्ड्स", "गाड", "गारड", "गार्ड़", "guard", "gard", "garde", "सिक्योरिटी", "सेक्यूरिटी", "security",
         "सुरक्षा", "चौकीदार", "रखवाली", "एंटी थेफ्ट", "एंटीथेफ्ट", "anti theft", "antitheft", "चोर पकड़", "चोर वाला")
     private val MODE = listOf("मोड", "मॉड", "mode", "moad", "सिस्टम", "system")
     private val ON = listOf("ऑन", "आन", " on", "चालू", "शुरू", "स्टार्ट", "start", "लगा", "एक्टिव", "activate", "active", "chalu", "enable", "इनेबल")
@@ -181,7 +183,7 @@ object GuardRules {
     // ------------------------------------------------------------------ सायरन / चेतावनी
 
     const val SAY = "चेतावनी! यह फ़ोन आपका नहीं है। इसे तुरंत वापस रखिए। आपकी फ़ोटो ले ली गई है।"
-    const val ARM_SAY = "गार्ड मोड चालू हो रहा है। फ़ोन नीचे रख दीजिए।"
+    const val ARM_SAY = "स्क्रीन गार्ड चालू हो रहा है। फ़ोन नीचे रख दीजिए।"
     /** सायरन कितनी देर तक (फिर चुप, पर गार्ड और लॉक बने रहते हैं - फिर हिला तो फिर बजेगा) */
     const val ALARM_MAX_MS = 10 * 60_000L
     /** इतनी देर सायरन, फिर DK की चेतावनी, फिर थोड़ा चुप (ताकि मालिक का गुप्त शब्द सुनाई दे) */
@@ -210,10 +212,77 @@ object GuardRules {
         return out
     }
 
-    /** भरोसेमंद नंबर को SMS */
-    fun smsText(why: String, at: String, lat: Double?, lon: Double?): String =
-        "DK गार्ड: आपका फ़ोन किसी ने छुआ/उठाया ($why) - $at." +
-            (if (lat != null && lon != null) " लोकेशन: https://maps.google.com/?q=${"%.5f".format(java.util.Locale.US, lat)},${"%.5f".format(java.util.Locale.US, lon)}" else " लोकेशन नहीं मिली.")
+    /**
+     * भरोसेमंद नंबर को SMS. [accM] = लोकेशन कितनी सटीक (मीटर), [n] = कौन-सा SMS (0 = पहला, 1.. = बाद की अपडेट).
+     * 5 दशमलव (~1 मीटर, GPS की अपनी सटीकता से बेहतर) - और अब GPS वाली सटीक, ताज़ा जगह ही भेजी जाती है ([pickBest]).
+     */
+    fun smsText(why: String, at: String, lat: Double?, lon: Double?, accM: Float? = null, n: Int = 0, gps: Boolean = true): String =
+        (if (n == 0) "DK $NAME_HI: आपका फ़ोन किसी ने छुआ/उठाया ($why) - $at."
+            else "DK $NAME_HI: लोकेशन अपडेट #$n - $at (फ़ोन अभी भी मालिक के पास नहीं).") +
+            (if (lat != null && lon != null) " सटीक लोकेशन: https://maps.google.com/?q=${"%.5f".format(java.util.Locale.US, lat)},${"%.5f".format(java.util.Locale.US, lon)}" +
+                (accM?.let { " (±${accLabel(it)}${if (gps) ", GPS" else ", नेटवर्क - GPS नहीं मिला"})" } ?: "")
+            else " लोकेशन नहीं मिली (GPS / लोकेशन बंद या सिग्नल नहीं) - अगली अपडेट में फिर कोशिश.")
+
+    fun accLabel(m: Float): String = if (m < 1000f) "${m.toInt().coerceAtLeast(1)} मीटर" else "${"%.1f".format(java.util.Locale.US, m / 1000f)} किमी"
+
+    // ------------------------------------------------------------------ सटीक लोकेशन (GPS) + बार-बार भेजना
+
+    /** एक लोकेशन (Android Location से अलग, ताकि JVM test चल सके). [ageMs] = कितनी पुरानी */
+    data class Fix(val lat: Double, val lon: Double, val accM: Float, val gps: Boolean, val ageMs: Long = 0L)
+
+    /** इतनी सटीक (मीटर) मिल गई = और इंतज़ार नहीं */
+    const val LOC_GOOD_M = 20f
+    /** सटीक GPS के लिए ज़्यादा से ज़्यादा इंतज़ार (खुले में GPS को ठंडी शुरुआत पर 20-40 s लगते हैं) */
+    const val LOC_WAIT_MS = 45_000L
+    /** इससे पुरानी लोकेशन (फ़ोन की याद में पड़ी) कभी नहीं - वह "उधर की" पुरानी जगह होती है */
+    const val LOC_MAX_AGE_MS = 60_000L
+    /** इससे कम सटीक (जैसे मोबाइल टावर वाली ~1-3 किमी) - तभी भेजें जब कुछ और न मिले, साफ़ लिखकर */
+    const val LOC_ROUGH_M = 500f
+
+    /**
+     * कई providers (GPS / नेटवर्क / fused) से आई लोकेशनों में सबसे सटीक, ताज़ा वाली.
+     * पुरानी (> [LOC_MAX_AGE_MS]) या बेकार (accuracy 0 / NaN) छोड़ो. बराबर हो तो GPS वाली.
+     */
+    fun pickBest(fixes: List<Fix>): Fix? = fixes
+        .filter { it.ageMs in 0..LOC_MAX_AGE_MS && it.accM > 0f && !it.accM.isNaN() && it.lat in -90.0..90.0 && it.lon in -180.0..180.0 && !(it.lat == 0.0 && it.lon == 0.0) }
+        .minWithOrNull(compareBy<Fix> { it.accM }.thenBy { if (it.gps) 0 else 1 })
+
+    /** अब और इंतज़ार की ज़रूरत नहीं? (GPS से [LOC_GOOD_M] के अंदर) */
+    fun goodEnough(f: Fix?): Boolean = f != null && f.gps && f.accM <= LOC_GOOD_M
+
+    /**
+     * पहला SMS भेजने के बाद अगली लोकेशन कब: पहले आधे घंटे हर 2 मिनट (चोर अभी पास ही होगा), फिर 2 घंटे तक हर 5 मिनट,
+     * फिर हर 15 मिनट - जब तक मालिक फ़ोन न खोले / चेहरा / गुप्त शब्द से स्क्रीन गार्ड बंद न हो.
+     * @param sent अब तक कितने SMS गए (पहला मिलाकर)
+     */
+    fun nextLocDelayMs(sent: Int): Long = when {
+        sent < 15 -> 2 * 60_000L          // 15 x 2 मिनट = 30 मिनट
+        sent < 39 -> 5 * 60_000L          // + 24 x 5 मिनट = 2.5 घंटे
+        else -> 15 * 60_000L
+    }
+
+    /** एक बार में ज़्यादा से ज़्यादा इतने SMS (कोई गड़बड़ हो तो SMS का बिल न बढ़े) - ~24 घंटे */
+    const val LOC_MAX_SMS = 120
+
+    /** दो लोकेशन SMS के बीच कम से कम इतना समय (कई जगह से trigger हो तब भी एक साथ 2 SMS नहीं) */
+    const val LOC_MIN_GAP_MS = 60_000L
+
+    // ------------------------------------------------------------------ मालिक का चेहरा (सायरन अपने-आप बंद)
+
+    /** चेतावनी स्क्रीन पर कैमरे से मालिक को पहचानें? सब सच हो तभी */
+    fun faceCheck(faceOn: Boolean, enrolled: Boolean, ready: Boolean, camOk: Boolean): Boolean = faceOn && enrolled && ready && camOk
+
+    /** चेहरा पहचान क्यों नहीं चलेगी - Settings / इतिहास में यही लिखा जाए. null = चलेगी */
+    fun faceWhyNot(faceOn: Boolean, enrolled: Boolean, ready: Boolean, camOk: Boolean): String? = when {
+        !faceOn -> "चेहरे से बंद करना Settings में बंद है"
+        !enrolled -> "मालिक का चेहरा सेट नहीं - Settings → $NAME_HI → \"मालिक का चेहरा सेट करें\""
+        !ready -> "चेहरा पहचान मॉडल तैयार नहीं - Settings → $NAME_HI में चेहरा फिर से सेट करें"
+        !camOk -> "कैमरे की इजाज़त नहीं"
+        else -> null
+    }
+
+    /** लगातार इतने फ़्रेम में मालिक मिले = सायरन बंद (एक फ़्रेम के धोखे से नहीं) */
+    const val OWNER_HITS = 2
 
     /** मोबाइल नंबर ठीक है? (+91 / 0 / 10 अंक) */
     fun validNumber(n: String): Boolean = n.replace(Regex("[\\s-]"), "").matches(Regex("\\+?\\d{10,13}"))
@@ -223,7 +292,7 @@ object GuardRules {
 
     /** चालू करते समय DK क्या बोले */
     fun armSay(minutes: Int, hasCode: Boolean): String =
-        (if (minutes > 0) "${label(minutes)} के लिए गार्ड मोड" else "गार्ड मोड") + " 5 सेकंड में चालू। फ़ोन नीचे रख दीजिए।" +
+        (if (minutes > 0) "${label(minutes)} के लिए $NAME_HI" else NAME_HI) + " 5 सेकंड में चालू। फ़ोन नीचे रख दीजिए।" +
             if (hasCode) "" else " बंद करने के लिए फ़ोन अनलॉक करें, या सेटिंग्स में गुप्त शब्द रखें।"
 
     fun label(minutes: Int): String = when {

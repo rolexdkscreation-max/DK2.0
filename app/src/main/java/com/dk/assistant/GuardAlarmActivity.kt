@@ -39,6 +39,8 @@ class GuardAlarmActivity : AppCompatActivity() {
     private var startedAt = 0L
     private var blinkOn = false
     private lateinit var root: LinearLayout
+    private var faceTv: TextView? = null
+    @Volatile private var lastFaceUi = 0L
 
     @Suppress("DEPRECATION")
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -70,6 +72,7 @@ class GuardAlarmActivity : AppCompatActivity() {
             setOnClickListener { askUnlock() }
         })
         root.addView(tv("मालिक: फ़ोन खोलें, चेहरा कैमरे के सामने करें, या गुप्त शब्द बोलें", 13f, 0xCCFFFFFF.toInt()))
+        faceTv = tv("", 13f, 0xEEFFFFFF.toInt()).also { root.addView(it) }
         setContentView(root)
         blink()
         startCam(preview)
@@ -82,12 +85,24 @@ class GuardAlarmActivity : AppCompatActivity() {
         root.postDelayed({ blink() }, 500)
     }
 
+    private fun faceUi(t: String) { runOnUiThread { faceTv?.text = UiLang.s(t) } }
+
+    /**
+     * नवंबर 2026 (मालिक की शिकायत): "मालिक ने फ़ोन उठाया, कैमरे ने देखा, फिर भी सायरन बंद नहीं हुआ".
+     * जड़: चेहरा सिखाने वाला हिस्सा 29 अक्टूबर को Settings से हट गया था, तो [FaceAI.enrolled] हमेशा false -
+     * यहाँ face = false और कैमरा सिर्फ़ फ़ोटो लेता था, पहचानता नहीं था (और कहीं बताया भी नहीं).
+     * अब चेहरा Settings → स्क्रीन गार्ड में सेट होता है; न हो तो यहाँ और इतिहास में साफ़ कारण.
+     */
     private fun startCam(preview: PreviewView) {
-        if (ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) return
-        val photo = Guard.photoOn(this)
-        val face = Guard.faceOn(this) && FaceAI.enrolled(this) && FaceAI.ready(this)
+        val camOk = ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED
+        val photo = Guard.photoOn(this) && camOk
+        val faceOn = Guard.faceOn(this); val enrolled = FaceAI.enrolled(this); val ready = FaceAI.ready(this)
+        val face = GuardRules.faceCheck(faceOn, enrolled, ready, camOk)
+        val why = GuardRules.faceWhyNot(faceOn, enrolled, ready, camOk)
+        if (why != null && faceOn) { Guard.note(this, "चेहरे से सायरन बंद नहीं होगा: $why"); faceUi("चेहरा पहचान बंद: $why") }
+        else if (face) faceUi("मालिक का चेहरा देख रहा हूँ…")
         if (!photo && !face) return
-        cam = FaceCam(this, preview) { b -> onFrame(b, photo, face) }.also { it.start { DKLog.d("गार्ड: कैमरा नहीं खुला ($it)") } }
+        cam = FaceCam(this, preview) { b -> onFrame(b, photo, face) }.also { it.start { w -> DKLog.d("स्क्रीन गार्ड: कैमरा नहीं खुला ($w)"); faceUi("कैमरा नहीं खुला: $w") } }
     }
 
     private fun onFrame(b: Bitmap, photo: Boolean, face: Boolean) {
@@ -107,8 +122,15 @@ class GuardAlarmActivity : AppCompatActivity() {
                     val s = e?.let { FaceAI.score(this, it) }
                     if (s != null && FaceMath.decide(s, Prefs.faceStrict(this)) == MatchResult.ACCESS_GRANTED) {
                         ownerHits++
-                        if (ownerHits >= 2) { Guard.disarm(this, "मालिक का चेहरा पहचाना"); runOnUiThread { finish() } }
-                    } else ownerHits = 0
+                        faceUi("✓ मालिक पहचाने गए (${(s * 100).toInt()}%)")
+                        if (ownerHits >= GuardRules.OWNER_HITS) {
+                            Guard.disarm(this, "मालिक का चेहरा पहचाना (${(s * 100).toInt()}%)")
+                            runOnUiThread { finish() }
+                        }
+                    } else {
+                        ownerHits = 0
+                        if (s != null && now - lastFaceUi > 1_000) { lastFaceUi = now; faceUi("✗ यह चेहरा मालिक का नहीं (${(s * 100).toInt()}%)") }
+                    }
                 }
             } catch (_: Throwable) {
             } finally { copy.recycle(); busy = false }
