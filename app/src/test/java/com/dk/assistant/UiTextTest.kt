@@ -14,6 +14,7 @@ class UiTextTest {
 
     @Test fun greetingTranslation() {
         assertEquals("Hello sir 😊\nWhere were you for so long?", real.tr("नमस्ते सर 😊\nइतनी देर कहाँ थे?"))
+        assertEquals("Listening...", real.tr("सुन रहा हूँ..."))
     }
 
     @Test fun exactAndTrimmed() {
