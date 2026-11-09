@@ -31,7 +31,8 @@ import java.util.concurrent.Executors
  */
 class GuardAlarmActivity : AppCompatActivity() {
     private var cam: FaceCam? = null
-    private val livenessTracker = LivenessTracker()
+    /** नवंबर 2026: फ़ोटो से सायरन न रुके - सिर घुमाकर 3D जाँच ([FaceLiveness]) */
+    private val liveness = FaceLiveness()
     private val work = Executors.newSingleThreadExecutor { r -> Thread(r, "dk-guard-face").apply { isDaemon = true } }
     @Volatile private var busy = false
     @Volatile private var shots = 0
@@ -72,7 +73,7 @@ class GuardAlarmActivity : AppCompatActivity() {
             text = UiLang.s("मैं मालिक हूँ — फ़ोन खोलें")
             setOnClickListener { askUnlock() }
         })
-        root.addView(tv("मालिक: फ़ोन खोलें, चेहरा कैमरे के सामने करें, या गुप्त शब्द बोलें", 13f, 0xCCFFFFFF.toInt()))
+        root.addView(tv("मालिक: फ़ोन खोलें, चेहरा कैमरे के सामने करके सिर धीरे से दाएँ-बाएँ घुमाएँ, या गुप्त शब्द बोलें", 13f, 0xCCFFFFFF.toInt()))
         faceTv = tv("", 13f, 0xEEFFFFFF.toInt()).also { root.addView(it) }
         setContentView(root)
         blink()
@@ -118,26 +119,34 @@ class GuardAlarmActivity : AppCompatActivity() {
                 if (photo && shots < 3 && now - lastShot > 2_500 && (det != null || (shots == 0 && now - startedAt > 1_500))) {
                     if (Guard.savePhoto(this, copy) != null) { shots++; lastShot = now }
                 }
-                if (face && det != null) {
-                    val live = livenessTracker.processFrame(det)
+                if (face) {
+                    // असली इंसान? (फ़ोटो / फ़ोन की स्क्रीन वाली फ़ोटो सिर घुमाने पर नहीं बदलती) - चेहरा न हो तब भी गिनती चले
+                    val live = liveness.update(det, now)
+                    if (det == null) { ownerHits = 0; return@execute }
                     val e = FaceAI.embed(this, copy, det)
                     val s = e?.let { FaceAI.score(this, it) }
-                    if (s != null && FaceMath.decide(s, Prefs.faceStrict(this)) == MatchResult.ACCESS_GRANTED && live) {
+                    val owner = s != null && FaceMath.decide(s, Prefs.faceStrict(this)) == MatchResult.ACCESS_GRANTED
+                    val front = FaceLiveness.yaw(det.kps)?.let { kotlin.math.abs(it) <= FaceLiveness.CENTER } == true
+                    // किसी और का चेहरा (मालिक से बिल्कुल नहीं मिलता) = जाँच फिर से - किसी और का सिर घुमाना + फिर मालिक की फ़ोटो नहीं चलेगा
+                    if (s != null && s < TURNED_MIN) liveness.reset()
+                    if (owner && live && front) {
                         ownerHits++
-                        faceUi("✓ मालिक पहचाने गए (${(s * 100).toInt()}%)")
+                        faceUi("✓ मालिक पहचाने गए (${(s!! * 100).toInt()}%) — असली इंसान")
                         if (ownerHits >= GuardRules.OWNER_HITS) {
-                            Guard.disarm(this, "मालिक का चेहरा पहचाना (${(s * 100).toInt()}%)")
+                            Guard.disarm(this, "मालिक का चेहरा पहचाना (${(s * 100).toInt()}%, सिर घुमाकर असली इंसान जाँचा)")
                             runOnUiThread { finish() }
                         }
                     } else {
                         ownerHits = 0
                         if (s != null && now - lastFaceUi > 1_000) {
                             lastFaceUi = now
-                            if (!live && livenessTracker.isReady()) {
-                                faceUi("✗ असली चेहरा नहीं (2D फ़ोटो)")
-                            } else {
-                                faceUi("✗ यह चेहरा मालिक का नहीं (${(s * 100).toInt()}%)")
-                            }
+                            faceUi(when {
+                                !owner && liveness.step == FaceLiveness.Step.TURN_ONE -> "✗ यह चेहरा मालिक का नहीं (${(s * 100).toInt()}%)"
+                                // बहुत देर सिर्फ़ सीधा, कोई घुमाव नहीं = शायद फ़ोटो/स्क्रीन
+                                liveness.step == FaceLiveness.Step.TURN_ONE && liveness.flatCount() >= FLAT_WARN ->
+                                    "✗ असली चेहरा नहीं (2D फ़ोटो?) — फ़ोटो से सायरन बंद नहीं होगा। असली इंसान सिर दाएँ-बाएँ घुमाए"
+                                else -> "चेहरा मिला (${(s * 100).toInt()}%) — ${liveness.hint()}"
+                            })
                         }
                     }
                 }
@@ -177,6 +186,10 @@ class GuardAlarmActivity : AppCompatActivity() {
     }
 
     companion object {
+        /** घूमे चेहरे का मालिक से कम-से-कम इतना मिलना (वरना कोई और) */
+        const val TURNED_MIN = 0.20f
+        /** इतने फ़्रेम सिर्फ़ सीधा चेहरा (कोई घुमाव नहीं) = फ़ोटो की चेतावनी */
+        const val FLAT_WARN = 12
         @Volatile private var current: WeakReference<GuardAlarmActivity>? = null
         @Volatile private var shown = false
 

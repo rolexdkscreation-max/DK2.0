@@ -21,7 +21,7 @@ import java.util.concurrent.TimeUnit
  * - चेहरा ढूँढना: YuNet 2023mar (OpenCV Zoo, MIT, ~0.2 MB)
  * - पहचान: SFace 2021dec int8 (MobileFaceNet, OpenCV Zoo, Apache-2.0, ~9.9 MB, LFW पर 99.3%)
  * दोनों "चेहरा सिखाओ" पर एक बार डाउनलोड (SHA-256 जाँच), फिर filesDir/face में.
- * सीमा: यह फ़ोटो/वीडियो वाले धोखे (liveness) नहीं पकड़ता - फ़ोन के अपने लॉक जितना पक्का नहीं.
+ * सीमा: पहचान ख़ुद फ़ोटो/वीडियो नहीं पकड़ती - गार्ड का सायरन बंद करने से पहले [FaceLiveness] (सिर घुमाकर 3D जाँच) लगती है.
  */
 object FaceAI {
     class Model(val file: String, val urls: List<String>, val sha256: String, val bytes: Long)
