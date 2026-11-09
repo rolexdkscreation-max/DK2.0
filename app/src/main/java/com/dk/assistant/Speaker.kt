@@ -167,7 +167,7 @@ class Speaker(context: Context) {
             val a = CallVoice.STREAM_ACCESSIBILITY; val am = audio.getStreamMaxVolume(a)
             if (am <= 0) return
             val cur = audio.getStreamVolume(a)
-            if (cur < am) { if (accBefore < 0) accBefore = cur; audio.setStreamVolume(a, am, 0) }
+            if (cur < am) { if (accBefore < 0) accBefore = cur; VolumeKeep.keepMedia(audio) { audio.setStreamVolume(a, am, 0) } }   // मीडिया जितना था उतना (नवंबर 2026)
         } catch (_: Exception) {}
     }
 
@@ -175,7 +175,7 @@ class Speaker(context: Context) {
     fun restoreCallVolume() {
         val b = accBefore; accBefore = -1
         if (b < 0 || Build.VERSION.SDK_INT < 26) return
-        try { audio.setStreamVolume(CallVoice.STREAM_ACCESSIBILITY, b, 0) } catch (_: Exception) {}
+        try { VolumeKeep.keepMedia(audio) { audio.setStreamVolume(CallVoice.STREAM_ACCESSIBILITY, b, 0) } } catch (_: Exception) {}
     }
 
     /**

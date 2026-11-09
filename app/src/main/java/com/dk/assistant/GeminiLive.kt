@@ -756,7 +756,7 @@ class GeminiLive(internal val svc: DKAccessibilityService, internal val agent: A
     fun callAudio(on: Boolean) {
         if (callAudioOn == on) return
         callAudioOn = on
-        if (on) CallSpeaker.pause() else if (!stopped) CallSpeaker.apply(svc, btOn)
+        if (on) CallSpeaker.pause(svc) else if (!stopped) CallSpeaker.apply(svc, btOn)
         if (stopped || btOn || track == null) return
         try { rebuildTrack("कॉल " + if (on) "शुरू" else "खत्म"); log("आवाज़: " + if (on) "कॉल के समय accessibility (घंटी में भी सुनाई दे)" else "वापस speaker (media)") } catch (e: Exception) { log("आवाज़ बदल नहीं पाया: ${e.message}") }
     }
