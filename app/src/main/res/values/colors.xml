@@ -12,4 +12,16 @@
     <color name="accent">#3D8BFF</color>
     <color name="accent2">#8B5CF6</color>
     <color name="dialog_bg">#E6FFFFFF</color>
+
+    <!-- Master Prompt Design System Colors -->
+    <color name="bg_space_dark">#040711</color>
+    <color name="bg_surface_navy">#090D1A</color>
+    <color name="glass_surface_fill">#12FFFFFF</color>
+    <color name="glass_border_stroke">#26FFFFFF</color>
+    <color name="neon_electric_cyan">#00E5FF</color>
+    <color name="neon_cyber_violet">#7928CA</color>
+    <color name="neon_magenta">#FF007A</color>
+    <color name="metallic_gold_accent">#FFD700</color>
+    <color name="text_primary">#FFFFFF</color>
+    <color name="text_secondary">#94A3B8</color>
 </resources>

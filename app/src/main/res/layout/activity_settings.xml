@@ -2,18 +2,14 @@
 <FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="@color/bg">
-
-    <com.dk.assistant.AuroraView
-        android:layout_width="match_parent"
-        android:layout_height="match_parent" />
+    android:background="@color/bg_space_dark">
 
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="match_parent"
         android:orientation="vertical">
 
-        <!-- header (v4: काँच की पट्टी) -->
+        <!-- header (Control Center Screen 2) -->
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
@@ -21,7 +17,7 @@
             android:layout_marginTop="12dp"
             android:layout_marginEnd="12dp"
             android:layout_marginBottom="4dp"
-            android:background="@drawable/glass_card"
+            android:background="@drawable/bg_glass_card"
             android:gravity="center_vertical"
             android:orientation="horizontal"
             android:paddingStart="10dp"
@@ -45,9 +41,9 @@
                 android:layout_height="wrap_content"
                 android:layout_marginStart="16dp"
                 android:layout_weight="1"
-                android:text="Settings"
-                android:textColor="@color/text"
-                android:textSize="24sp"
+                android:text="CONTROL CENTER"
+                android:textColor="@color/metallic_gold_accent"
+                android:textSize="22sp"
                 android:textStyle="bold" />
 
             <ImageButton
@@ -76,7 +72,7 @@
             android:layout_marginTop="6dp"
             android:layout_marginEnd="16dp"
             android:layout_marginBottom="4dp"
-            android:background="@drawable/glass_input"
+            android:background="@drawable/bg_glass_card"
             android:drawableStart="@android:drawable/ic_menu_search"
             android:drawablePadding="10dp"
             android:hint="सेटिंग्स में खोजें… (जैसे ऑटोनोमस, key, आवाज़)"
@@ -89,8 +85,8 @@
             android:paddingEnd="14dp"
             android:paddingBottom="10dp"
             android:singleLine="true"
-            android:textColor="@color/text"
-            android:textColorHint="#80FFFFFF"
+            android:textColor="@color/text_primary"
+            android:textColorHint="@color/text_secondary"
             android:textSize="15sp"
             android:visibility="gone" />
 
@@ -119,7 +115,7 @@
             android:layout_marginStart="16dp"
             android:layout_marginEnd="16dp"
             android:layout_marginBottom="16dp"
-            android:background="@drawable/glass_pill"
+            android:background="@drawable/bg_glow_dock"
             android:gravity="center_vertical"
             android:orientation="horizontal"
             android:padding="8dp">
@@ -130,20 +126,20 @@
                 android:layout_height="wrap_content"
                 android:layout_marginStart="16dp"
                 android:layout_weight="1"
-                android:text="Changes save automatically"
-                android:textColor="@color/text2"
+                android:text="Status: NVB | Status: 00:3B"
+                android:textColor="@color/text_secondary"
                 android:textSize="14sp" />
 
             <Button
                 android:id="@+id/btnSave"
                 android:layout_width="wrap_content"
                 android:layout_height="48dp"
-                android:background="@drawable/btn_accent"
+                android:background="@drawable/bg_glass_card"
                 android:paddingStart="28dp"
                 android:paddingEnd="28dp"
                 android:text="Save"
                 android:textAllCaps="false"
-                android:textColor="#FFFFFF"
+                android:textColor="@color/neon_electric_cyan"
                 android:textSize="16sp"
                 android:textStyle="bold" />
         </LinearLayout>
