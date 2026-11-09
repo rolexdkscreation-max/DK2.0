@@ -5,15 +5,10 @@ import android.content.pm.PackageManager
 import android.graphics.BitmapFactory
 import android.text.InputType
 import android.widget.ImageView
-import android.widget.LinearLayout
 import android.widget.TextView
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.widget.SwitchCompat
 import androidx.core.content.ContextCompat
-import androidx.lifecycle.lifecycleScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 
 /**
  * नवंबर 2026: Settings → स्क्रीन गार्ड (चोरी से बचाव)।
@@ -43,7 +38,7 @@ internal fun SettingsActivity.secGuard() {
             if (quiet) return@setOnCheckedChangeListener
             if (on) {
                 toast(Guard.arm(this, 0, "सेटिंग्स"))
-                if (Guard.faceOn(this) && !FaceAI.enrolled(this)) toast("ध्यान दें: मालिक का चेहरा सेट नहीं — नीचे \"मालिक का चेहरा सेट करें\" दबाएँ, तभी चेहरे से सायरन बंद होगा")
+                if (Guard.faceOn(this) && !GuardFaceSetup.enrolled(this)) toast("ध्यान दें: मालिक का चेहरा सेट नहीं — नीचे \"मालिक का चेहरा सेट करें\" दबाएँ, तभी चेहरे से सायरन बंद होगा")
             } else Guard.disarm(this, "सेटिंग्स से बंद")
             status.postDelayed({ refresh() }, 300)
         }
@@ -59,18 +54,18 @@ internal fun SettingsActivity.secGuard() {
     card("मालिक का चेहरा", "पहली बार एक बार सेट करें — फिर अलार्म बजे और कैमरा आपको देखे तो सायरन अपने-आप बंद", startOpen = true) { box ->
         val st = TextView(this).apply { textSize = 14f; setTextColor(0xFFFFFFFF.toInt()); setPadding((4 * dp).toInt(), (4 * dp).toInt(), 0, (4 * dp).toInt()) }
         box.addView(st)
-        fun refreshFace() { st.text = UiLang.s(guardFaceStatus()) }
+        fun refreshFace() { st.text = UiLang.s(GuardFaceSetup.status(this)) }
         refreshFace()
         row(box,
-            button(if (FaceAI.enrolled(this)) "चेहरा फिर से सेट करें" else "मालिक का चेहरा सेट करें") { guardFaceDialog(enroll = true) { refreshFace() } },
+            button(if (GuardFaceSetup.enrolled(this)) "चेहरा फिर से सेट करें" else "मालिक का चेहरा सेट करें") { GuardFaceSetup.dialog(this, enroll = true) { refreshFace() } },
             button("जाँचें") {
-                if (!FaceAI.enrolled(this)) { toast("पहले \"मालिक का चेहरा सेट करें\" दबाएँ"); return@button }
-                guardFaceDialog(enroll = false) { refreshFace() }
+                if (!GuardFaceSetup.enrolled(this)) { toast("पहले \"मालिक का चेहरा सेट करें\" दबाएँ"); return@button }
+                GuardFaceSetup.dialog(this, enroll = false) { refreshFace() }
             })
         row(box, button("चेहरा मिटाएँ") {
             AlertDialog.Builder(this).setTitle(UiLang.s("मालिक का चेहरा मिटाएँ?"))
                 .setMessage(UiLang.s("फिर चेहरे से सायरन बंद नहीं होगा, जब तक दोबारा सेट न करें।"))
-                .setPositiveButton(UiLang.s("मिटाएँ")) { _, _ -> FaceAI.forget(this); refreshFace(); toast("चेहरा मिटा दिया") }
+                .setPositiveButton(UiLang.s("मिटाएँ")) { _, _ -> GuardFaceSetup.forget(this); refreshFace(); toast("चेहरा मिटा दिया") }
                 .setNegativeButton(UiLang.s("रहने दें"), null).show()
         })
         hint(box, "कैसे: आगे वाले कैमरे से ~8 फ़्रेम लेकर आपके चेहरे की पहचान (128 अंक) बनती है — सिर्फ़ इसी फ़ोन में, encrypted; तस्वीर सेव नहीं होती। पहली बार मॉडल (~10 MB) एक बार डाउनलोड होता है।")
@@ -150,75 +145,3 @@ internal fun SettingsActivity.secGuard() {
     }
 }
 
-private fun SettingsActivity.guardFaceStatus(): String = when {
-    !FaceAI.supported -> "✗ यह फ़ोन 64-bit ARM नहीं है — चेहरा पहचान यहाँ नहीं चलेगी (PIN / गुप्त शब्द से बंद करें)"
-    FaceAI.enrolled(this) && FaceAI.ready(this) -> "✓ मालिक का चेहरा सेट है — अलार्म में कैमरा आपको पहचानकर सायरन बंद करेगा"
-    FaceAI.enrolled(this) -> "⚠ चेहरा सेट है पर पहचान मॉडल नहीं मिला — \"चेहरा फिर से सेट करें\" दबाएँ"
-    else -> "✗ अभी मालिक का चेहरा सेट नहीं — इसके बिना कैमरा आपको पहचान नहीं पाएगा"
-}
-
-private var guardFaceCam: FaceCam? = null
-
-/** मालिक का चेहरा सेट (enroll) या जाँचने का कैमरा वाला डायलॉग - पहले वाले \"चेहरा पहचान\" (v3.91) जैसा, सिर्फ़ स्क्रीन गार्ड में */
-private fun SettingsActivity.guardFaceDialog(enroll: Boolean, done: () -> Unit) {
-    if (!FaceAI.supported) { toast("यह फ़ोन 64-bit ARM नहीं है — चेहरा पहचान यहाँ नहीं चलेगी"); return }
-    if (checkSelfPermission(Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) {
-        requestPermissions(arrayOf(Manifest.permission.CAMERA), 16); toast("कैमरा की परमिशन दें, फिर दोबारा दबाएँ"); return
-    }
-    val wrap = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; val p = (16 * dp).toInt(); setPadding(p, p, p, p) }
-    val pv = androidx.camera.view.PreviewView(this).apply {
-        implementationMode = androidx.camera.view.PreviewView.ImplementationMode.COMPATIBLE
-        scaleType = androidx.camera.view.PreviewView.ScaleType.FILL_CENTER
-    }
-    wrap.addView(pv, LinearLayout.LayoutParams(-1, (300 * dp).toInt()))
-    val tv = TextView(this).apply { textSize = 16f; setTextColor(0xFFFFFFFF.toInt()); setPadding(0, (12 * dp).toInt(), 0, 0) }
-    wrap.addView(tv)
-    val dlg = AlertDialog.Builder(this).setTitle(UiLang.s(if (enroll) "मालिक का चेहरा सेट करें" else "चेहरा जाँचें")).setView(wrap)
-        .setNegativeButton(UiLang.s("बंद करें"), null).show()
-    val ui = { t: String -> runOnUiThread { tv.text = UiLang.s(t) } }
-    val prints = ArrayList<FloatArray>()
-    var saved = false
-    fun startCam() {
-        ui(if (enroll) "फ़ोन आँखों के सामने रखें, रोशनी में सीधे कैमरे में देखें…" else "कैमरे में देखें…")
-        val cam = FaceCam(this, pv) { b ->
-            if (saved) return@FaceCam
-            val d = FaceAI.detect(this, b, minScore = 0.6f)
-            if (enroll) {
-                FaceMath.enrollProblem(d, b.width)?.let { ui(it + "  (${prints.size}/${FaceMath.ENROLL_FRAMES})"); return@FaceCam }
-                val e = FaceAI.embed(this, b, d!!) ?: run { ui(FaceAI.status(this)); return@FaceCam }
-                val mean = FaceMatch.aggregateEmbeddings(prints)
-                if (mean != null && FaceMatch.cosineSimilarity(mean, e) < FaceMath.ENROLL_SAME) {
-                    prints.clear(); ui("बीच में चेहरा बदल गया — फिर से शुरू, अकेले कैमरे में देखें"); return@FaceCam
-                }
-                prints.add(e)
-                if (prints.size < FaceMath.ENROLL_FRAMES) { ui("सीख रहा हूँ… ${prints.size}/${FaceMath.ENROLL_FRAMES} — सिर थोड़ा-सा दाएँ-बाएँ घुमाएँ"); return@FaceCam }
-                saved = true
-                FaceAI.save(this, FaceMatch.aggregateEmbeddings(prints)!!)
-                Guard.note(this, "मालिक का चेहरा सेट हुआ")
-                ui("हो गया — मालिक का चेहरा सेट। अब अलार्म में कैमरा आपको देखते ही सायरन बंद करेगा। \"जाँचें\" दबाकर देख सकते हैं।")
-                runOnUiThread { guardFaceCam?.stop(); done() }
-            } else {
-                if (d == null) { ui("चेहरा नहीं दिखा — सामने आएँ"); return@FaceCam }
-                val e = FaceAI.embed(this, b, d) ?: run { ui(FaceAI.status(this)); return@FaceCam }
-                val sc = FaceAI.score(this, e) ?: return@FaceCam
-                val ok = FaceMath.decide(sc, Prefs.faceStrict(this)) == MatchResult.ACCESS_GRANTED
-                ui((if (ok) "✓ आप हैं — मालिक पहचाने गए (सायरन बंद होगा)" else "✗ यह चेहरा मालिक से नहीं मिला") +
-                    "\nमिलान: ${(sc * 100).toInt()}% (पास: ${((if (Prefs.faceStrict(this)) FaceMath.STRICT else FaceMath.MATCH) * 100).toInt()}% से ऊपर)")
-            }
-        }
-        guardFaceCam?.stop(); guardFaceCam = cam
-        cam.start { why -> ui("कैमरा नहीं खुला: $why") }
-    }
-    val job = lifecycleScope.launch {
-        if (!FaceAI.hasModels(this@guardFaceDialog)) {
-            tv.text = UiLang.s("चेहरा पहचान मॉडल डाउनलोड हो रहा है (~10 MB, एक बार)…")
-            val err = withContext(Dispatchers.IO) {
-                FaceAI.download(this@guardFaceDialog) { pct -> runOnUiThread { tv.text = UiLang.s("चेहरा पहचान मॉडल डाउनलोड हो रहा है (~10 MB, एक बार)…") + " $pct%" } }
-            }
-            if (err != null) { tv.text = UiLang.s(err); return@launch }
-        }
-        if (!FaceAI.ready(this@guardFaceDialog)) { tv.text = UiLang.s(FaceAI.status(this@guardFaceDialog)); return@launch }
-        startCam()
-    }
-    dlg.setOnDismissListener { job.cancel(); guardFaceCam?.stop(); guardFaceCam = null; done() }
-}

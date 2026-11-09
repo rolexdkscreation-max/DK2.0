@@ -68,13 +68,13 @@ class ScreenGuardModeTest {
 
     @Test fun smsText_exactLink_accuracy_updates() {
         val m = GuardRules.smsText("फ़ोन उठाया", "9 नव, 02:10 PM", 19.9975123, 73.7898456, 7.4f, 0, true)
-        assertTrue(m, m.contains("q=19.997512,73.789846"))         // 6 दशमलव
+        assertTrue(m, m.contains("q=19.99751,73.78985"))           // 5 दशमलव (~1 मीटर)
         assertTrue(m, m.contains("सटीक लोकेशन") && m.contains("±7 मीटर") && m.contains("GPS"))
         val u = GuardRules.smsText("अपडेट", "अभी", 19.99, 73.78, 1_500f, 3, false)
         assertTrue(u, u.contains("लोकेशन अपडेट #3") && u.contains("±1.5 किमी") && u.contains("GPS नहीं मिला"))
         assertTrue(GuardRules.smsText("x", "अभी", null, null).contains("लोकेशन नहीं मिली"))
         // पुराना तरीका (4 चीज़ें) चलता रहे
-        assertTrue(GuardRules.smsText("x", "अभी", 1.0, 2.0).contains("maps.google.com/?q=1.000000,2.000000"))
+        assertTrue(GuardRules.smsText("x", "अभी", 1.0, 2.0).contains("maps.google.com/?q=1.00000,2.00000"))
     }
 
     @Test fun resendSchedule_untilOwnerBack() {
@@ -116,8 +116,9 @@ class ScreenGuardModeTest {
     @Test fun ownerFaceSetup_inScreenGuardSettings() {
         val g = src("SettingsGuard.kt")
         assertTrue(g.contains("card(\"मालिक का चेहरा\""))
-        assertTrue(g.contains("FaceAI.save(") && g.contains("FaceAI.download(") && g.contains("FaceAI.forget("))
-        assertTrue(g.contains("guardFaceDialog(enroll = true)") && g.contains("guardFaceDialog(enroll = false)"))
+        assertTrue(g.contains("GuardFaceSetup.dialog(this, enroll = true)") && g.contains("GuardFaceSetup.dialog(this, enroll = false)"))
+        val f = src("GuardFaceSetup.kt")
+        assertTrue(f.contains("FaceAI.save(") && f.contains("FaceAI.download(") && f.contains("FaceAI.forget("))
         assertTrue(SettingsSearch.ENTRIES.any { it.section == "guard" && it.card == "मालिक का चेहरा" })
         // पुराना \"चेहरा पहचान\" अलग section वापस नहीं (मालिक ने हटवाया था)
         assertTrue("face" !in SettingsSearch.SECTIONS)

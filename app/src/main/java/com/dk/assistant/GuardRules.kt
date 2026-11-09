@@ -214,12 +214,12 @@ object GuardRules {
 
     /**
      * भरोसेमंद नंबर को SMS. [accM] = लोकेशन कितनी सटीक (मीटर), [n] = कौन-सा SMS (0 = पहला, 1.. = बाद की अपडेट).
-     * 6 दशमलव (~10 सेमी) - पहले 5 थे (~1 मीटर), और GPS वाली सटीक जगह ही भेजी जाती है ([pickBest]).
+     * 5 दशमलव (~1 मीटर, GPS की अपनी सटीकता से बेहतर) - और अब GPS वाली सटीक, ताज़ा जगह ही भेजी जाती है ([pickBest]).
      */
     fun smsText(why: String, at: String, lat: Double?, lon: Double?, accM: Float? = null, n: Int = 0, gps: Boolean = true): String =
         (if (n == 0) "DK $NAME_HI: आपका फ़ोन किसी ने छुआ/उठाया ($why) - $at."
             else "DK $NAME_HI: लोकेशन अपडेट #$n - $at (फ़ोन अभी भी मालिक के पास नहीं).") +
-            (if (lat != null && lon != null) " सटीक लोकेशन: https://maps.google.com/?q=${"%.6f".format(java.util.Locale.US, lat)},${"%.6f".format(java.util.Locale.US, lon)}" +
+            (if (lat != null && lon != null) " सटीक लोकेशन: https://maps.google.com/?q=${"%.5f".format(java.util.Locale.US, lat)},${"%.5f".format(java.util.Locale.US, lon)}" +
                 (accM?.let { " (±${accLabel(it)}${if (gps) ", GPS" else ", नेटवर्क - GPS नहीं मिला"})" } ?: "")
             else " लोकेशन नहीं मिली (GPS / लोकेशन बंद या सिग्नल नहीं) - अगली अपडेट में फिर कोशिश.")
 
