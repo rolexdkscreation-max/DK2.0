@@ -25,12 +25,15 @@ object LocalSite {
     @Volatile private var server: ServerSocket? = null
     @Volatile var port: Int = 0; private set
     @Volatile private var roots: List<File> = emptyList()
+    /** नवंबर 2026: ऐप स्टूडियो के project (कई फ़ाइलें, फ़ोल्डर) - /studio/<project>/<रास्ता> */
+    @Volatile private var studioRoot: File? = null
 
     val running get() = server?.isClosed == false
 
     /** सर्वर चालू करो (पहले से चालू = वही). return = port, या 0 (नहीं चला) */
     @Synchronized fun ensure(c: Context): Int {
         roots = listOf(ForgeController.websitesDir(c), com.dk.assistant.ComputerTools.dir(c))
+        studioRoot = com.dk.assistant.studio.StudioProject.root(c)
         if (running) return port
         for (p in PORT until PORT + 10) {
             try {
@@ -59,7 +62,7 @@ object LocalSite {
         val line = sock.getInputStream().bufferedReader().readLine() ?: return
         val path = line.split(' ').getOrNull(1) ?: "/"
         val out = BufferedOutputStream(sock.getOutputStream())
-        val f = resolve(path, roots)
+        val f = if (path.startsWith(STUDIO)) studioRoot?.let { resolveStudio(path, it) } else resolve(path, roots)
         if (f == null) {
             val body = indexHtml(roots).toByteArray()
             val code = if (path == "/" || path.isBlank()) "200 OK" else "404 Not Found"
@@ -86,6 +89,39 @@ object LocalSite {
         return dirs.map { File(it, n) }.firstOrNull { it.isFile && it.parentFile?.canonicalPath == it.canonicalFile.parentFile?.canonicalPath }
     }
 
+    const val STUDIO = "/studio/"
+
+    /**
+     * "/studio/todo-app-123/css/style.css" -> उसी project के अंदर की फ़ाइल. फ़ोल्डर माँगा = उसका index.html.
+     * ".." / छिपी फ़ाइल / project के बाहर = null
+     */
+    fun resolveStudio(path: String, root: File): File? {
+        val p = try { URLDecoder.decode(path.substringBefore('?').substringBefore('#'), "UTF-8") } catch (_: Exception) { return null }
+        val rest = p.removePrefix(STUDIO).trim('/')
+        if (rest.isEmpty() || rest.contains('\\')) return null
+        val parts = rest.split('/')
+        if (parts.any { it.isEmpty() || it == "." || it == ".." || it.startsWith(".") }) return null
+        if (!parts[0].matches(Regex("[a-z0-9-]{1,48}"))) return null
+        var f = File(root, parts.joinToString("/"))
+        if (f.isDirectory) f = File(f, "index.html")
+        val base = File(root, parts[0]).canonicalPath + File.separator
+        return f.takeIf { it.isFile && it.canonicalPath.startsWith(base) }
+    }
+
+    fun studioUrl(slug: String, entry: String, p: Int = port) = "http://127.0.0.1:$p$STUDIO$slug/" + entry.split('/').joinToString("/") { enc(it) }
+    fun lanStudioUrl(slug: String, entry: String, p: Int = port): String? = lanIp()?.let { "http://$it:$p$STUDIO$slug/" + entry.split('/').joinToString("/") { e -> enc(e) } }
+
+    /** ऐप स्टूडियो का project Chrome में (PWA install भी वहीं से). return = लिंक या null */
+    fun openStudio(c: Context, slug: String, entry: String): String? {
+        val p = ensure(c)
+        if (p == 0) return null
+        val url = studioUrl(slug, entry, p)
+        val base = Intent(Intent.ACTION_VIEW, Uri.parse(url)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        val ok = try { c.startActivity(Intent(base).setPackage("com.android.chrome")); true } catch (_: Exception) { false }
+            || try { c.startActivity(base); true } catch (_: Exception) { false }
+        return if (ok) url else null
+    }
+
     fun isPage(name: String) = name.lowercase().let { it.endsWith(".html") || it.endsWith(".htm") }
 
     fun contentType(name: String): String = when (name.substringAfterLast('.', "").lowercase()) {
@@ -98,6 +134,12 @@ object LocalSite {
         "svg" -> "image/svg+xml"
         "webp" -> "image/webp"
         "txt", "md" -> "text/plain; charset=utf-8"
+        "webmanifest" -> "application/manifest+json"
+        "ico" -> "image/x-icon"
+        "gif" -> "image/gif"
+        "mp3" -> "audio/mpeg"
+        "wav" -> "audio/wav"
+        "woff2" -> "font/woff2"
         else -> "application/octet-stream"
     }
 

@@ -247,6 +247,14 @@
             android:configChanges="orientation|screenSize|screenLayout|keyboardHidden"
             android:windowSoftInputMode="adjustResize" />
 
+        <!-- नवंबर 2026: ऐप स्टूडियो (फ़ोन पर ऐप बनाना + चलता preview) -->
+        <activity
+            android:name=".studio.StudioActivity"
+            android:exported="false"
+            android:launchMode="singleTop"
+            android:configChanges="orientation|screenSize|screenLayout|keyboardHidden"
+            android:windowSoftInputMode="adjustResize" />
+
         <activity
             android:name=".ComputerActivity"
             android:exported="false"

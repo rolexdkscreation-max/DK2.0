@@ -96,6 +96,7 @@ class ComputerActivity : AppCompatActivity() {
         top.addView(smallBtn("फ़ाइलें") { showFiles() }, LinearLayout.LayoutParams(-2, -2).apply { marginStart = (6 * dp).toInt() })
         top.addView(smallBtn("इतिहास") { showHistory() }, LinearLayout.LayoutParams(-2, -2).apply { marginStart = (6 * dp).toInt() })
         top.addView(smallBtn("नया") { newSession() }, LinearLayout.LayoutParams(-2, -2).apply { marginStart = (6 * dp).toInt() })
+        top.addView(smallBtn("स्टूडियो") { com.dk.assistant.studio.StudioSession.open(this, null) }, LinearLayout.LayoutParams(-2, -2).apply { marginStart = (6 * dp).toInt() })
         col.addView(top)
         col.addView(buildWork(), LinearLayout.LayoutParams(-1, -2).apply { topMargin = (10 * dp).toInt() })
 
@@ -182,6 +183,7 @@ class ComputerActivity : AppCompatActivity() {
             "कैसे काम करता हूँ:\n📋 पहले आपको योजना दिखाता हूँ (क्या समझा, कौन-से कदम, आपको क्या मिलेगा)\n▶ ऊपर हर पल दिखता है कि अभी कौन-सा कदम चल रहा है\n🧐 जवाब देने से पहले खुद जाँचता हूँ कि काम पूरा और सही है\n🪜 जो आपको खुद करना हो, उसके एक-एक कदम समझाता हूँ\n\n" +
             "मैं कर सकता हूँ:\n• इंटरनेट पर खोज और वेबसाइटें पढ़कर रिसर्च (स्रोत के लिंक के साथ)\n• हिसाब, डेटा, तुलना (कोड चलाकर)\n" +
             "• रिपोर्ट, लिस्ट, टेबल — Markdown / CSV / HTML / PDF फ़ाइल\n• फ़ोन के काम (ऐप खोलना, मैसेज, कॉल — पहले आपसे पूछकर)\n" +
+            "• कोई भी ऐप बनाना — वेबसाइट, वेब ऐप, PWA, गेम, Android नेटिव / Flutter (ऐप स्टूडियो में, वहीं चलता preview)\n" +
             "• GitHub पर कोड बदलवाना (कोडिंग टीम)\n• बातें याद रखना, बाद में काम चलाना / रिमाइंडर\n\n" +
             "उदाहरण: \"आज की भारत की 5 बड़ी टेक खबरें स्रोत के साथ\", \"₹15 लाख के होम लोन की EMI 8.5% पर 20 साल\", \"शाम 6 बजे मुझे पानी पीने की याद दिलाना\""
     }
@@ -190,6 +192,13 @@ class ComputerActivity : AppCompatActivity() {
         val t = edt.text.toString().trim()
         if (t.isEmpty()) return
         edt.setText("")
+        // नवंबर 2026 (ऐप स्टूडियो): "ऐप / वेब ऐप / वेबसाइट / गेम बनाओ" = फ़ोन पर project + वहीं चलता preview
+        if (!ComputerSession.busy) com.dk.assistant.studio.StudioCore.extract(t)?.let { want ->
+            ComputerSession.add("u", t)
+            val err = com.dk.assistant.studio.StudioSession.startFrom(this, want, com.dk.assistant.studio.StudioSession.WHO_COMPUTER)
+            ComputerSession.add(if (err == null) "s" else "e", err ?: com.dk.assistant.studio.StudioRoute.STARTED_COMPUTER)
+            render(); return
+        }
         ComputerSession.start(this, t)?.let { toast(it); ComputerSession.add("e", it) }
         render()
     }
