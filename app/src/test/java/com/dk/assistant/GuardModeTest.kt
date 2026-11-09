@@ -151,7 +151,7 @@ class GuardModeTest {
         assertFalse(GuardRules.expired(2_000, 1_000))
         assertEquals("1 घंटे", GuardRules.label(60))
         assertEquals("1 घंटे 30 मिनट", GuardRules.label(90))
-        assertTrue(GuardRules.armSay(60, true).startsWith("1 घंटे के लिए गार्ड मोड"))
+        assertTrue(GuardRules.armSay(60, true).startsWith("1 घंटे के लिए स्क्रीन गार्ड"))   // नवंबर 2026: नाम बदला (मालिक)
         assertTrue(GuardRules.armSay(0, false).contains("गुप्त शब्द"))
         assertTrue(GuardRules.SAY.contains("यह फ़ोन आपका नहीं है"))
     }
@@ -184,7 +184,7 @@ class GuardModeTest {
         val manifest = src("../../../../AndroidManifest.xml")
         assertTrue(manifest.contains(".GuardAlarmActivity"))
         val set = SetSrc.all()
-        assertTrue(set.contains("\"guard\" -> { title.text = \"गार्ड मोड\""))
+        assertTrue(set.contains("\"guard\" -> { title.text = \"स्क्रीन गार्ड\""))   // नवंबर 2026: नाम बदला (मालिक)
         assertTrue(set.contains("secGuard()"))
         assertTrue(SettingsSearch.SECTIONS.containsKey("guard"))
     }

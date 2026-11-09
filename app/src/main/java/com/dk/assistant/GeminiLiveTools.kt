@@ -331,6 +331,7 @@ internal fun GeminiLive.runTools(calls: JSONArray) {
                 "phone_call" -> callTool(args.optString("action"), "Gemini")
                 "screen_share" -> LiveVision.setScreen(svc, args.optBoolean("on", true))
                 "camera" -> LiveVision.setCamera(svc, args.optBoolean("on", true), args.optString("facing"))
+                "screen_guard" -> Guard.liveTool(svc, args.optInt("minutes", 0))
                 "dk_features" -> LiveConnect.features(com.dk.assistant.auto.AutoPrefs.on(svc),
                     com.dk.assistant.auto.AutoPrefs.enabledKinds(svc).map { it.title }, Prefs.oneKeyOn(svc) && Prefs.oneKey(svc).isNotBlank())
                 "story_task", "build_website", "computer_task", "coding_task" -> agentTool(name, args)

@@ -15,12 +15,17 @@ import android.hardware.SensorEventListener
 import android.hardware.SensorManager
 import android.hardware.camera2.CameraCharacteristics
 import android.hardware.camera2.CameraManager
+import android.location.Location
+import android.location.LocationListener
+import android.location.LocationManager
 import android.media.AudioAttributes
 import android.media.AudioFormat
 import android.media.AudioManager
 import android.media.AudioTrack
 import android.os.BatteryManager
 import android.os.Build
+import android.os.Looper
+import android.os.SystemClock
 import android.os.PowerManager
 import android.os.VibrationEffect
 import android.os.Vibrator
@@ -36,6 +41,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
@@ -44,7 +50,7 @@ import java.util.Date
 import java.util.Locale
 
 /**
- * नवंबर 2026 (मालिक): "गार्ड मोड" - "DK गार्ड मोड चालू करो" -> 5 सेकंड बाद फ़ोन लॉक और पहरा शुरू.
+ * नवंबर 2026 (मालिक): "स्क्रीन गार्ड" - "DK स्क्रीन गार्ड चालू करो" -> 5 सेकंड बाद फ़ोन लॉक और पहरा शुरू.
  * कोई फ़ोन छुए / उठाए / खिसकाए (accelerometer), PIN डालने की कोशिश करे, पावर मेनू या ऊपर का पैनल खोले,
  * चार्जर / सिम निकाले = फ़ोन लॉक + पूरी आवाज़ में सायरन + flashlight + vibrate + DK की चेतावनी, आगे वाले कैमरे से फ़ोटो,
  * भरोसेमंद नंबर पर SMS (लोकेशन के साथ).
@@ -66,6 +72,8 @@ object Guard {
     const val P_CHARGER = "guard_charger"
     const val P_SIM = "guard_sim"
     const val P_LOG = "guard_log"
+    /** अलार्म हुआ और फ़ोन अभी मालिक के पास नहीं लौटा = लोकेशन बार-बार भेजते रहो (restart के बाद भी) */
+    const val P_TRACK = "guard_track"
 
     fun untilOf(c: Context): Long = Prefs.str(c, P_UNTIL, "0").toLongOrNull() ?: 0L
     fun code(c: Context) = Prefs.str(c, P_CODE, "").trim()
@@ -107,6 +115,9 @@ object Guard {
     private var appCtx: Context? = null
     private var wasCharging = false
     @Volatile private var smsSentFor = 0L
+    /** बार-बार सटीक लोकेशन SMS ([trackLoop]) */
+    private var locJob: Job? = null
+    @Volatile private var locSent = 0
 
     /** फ़ोन में असली PIN / पैटर्न / पासवर्ड है (तभी "फ़ोन खुला" = मालिक) */
     fun secure(c: Context) = try { c.getSystemService(KeyguardManager::class.java)?.isDeviceSecure == true } catch (_: Exception) { false }
@@ -125,14 +136,22 @@ object Guard {
         if (a.optBoolean("on", true)) "SAID: " + arm(svc, a.optInt("minutes", 0), "आवाज़")
         else "SAID: " + offByVoice(svc, a.optString("heard"))
 
-    /** बोलकर बंद: गुप्त शब्द ज़रूरी (वरना कोई भी "गार्ड मोड बंद करो" बोल दे) */
+    /**
+     * DK लाइव का screen_guard tool: सिर्फ़ चालू (मालिक, नवंबर 2026). बंद करना tool से कभी नहीं -
+     * बंद के तरीके वही: फ़ोन खोलना / चेहरा / गुप्त शब्द ([offByVoice], [heardStop]).
+     */
+    fun liveTool(svc: DKAccessibilityService, minutes: Int): String =
+        "Phone says: \"" + arm(svc, minutes.coerceIn(0, 24 * 60), "DK लाइव") + "\" - tell the user exactly this in a few words. " +
+            "Screen Guard can only be turned OFF by the owner (unlock the phone, face to the warning camera, or secret word) - never by you."
+
+    /** बोलकर बंद: गुप्त शब्द ज़रूरी (वरना कोई भी "स्क्रीन गार्ड बंद करो" बोल दे) */
     fun offByVoice(c: Context, heard: String): String {
-        if (!active()) return "गार्ड मोड पहले से बंद है।"
+        if (!active()) return "स्क्रीन गार्ड पहले से बंद है।"
         val code = code(c)
-        if (code.length < GuardRules.MIN_CODE) return "गार्ड मोड बोलकर बंद करने के लिए सेटिंग्स में गुप्त शब्द रखिए। अभी फ़ोन खुद खोलिए, गार्ड अपने-आप बंद हो जाएगा।"
+        if (code.length < GuardRules.MIN_CODE) return "स्क्रीन गार्ड बोलकर बंद करने के लिए सेटिंग्स में गुप्त शब्द रखिए। अभी फ़ोन खुद खोलिए, गार्ड अपने-आप बंद हो जाएगा।"
         if (!GuardRules.codeOk(heard, code)) { note(c, "बोलकर बंद करने की कोशिश - गुप्त शब्द गलत / नहीं"); return "गुप्त शब्द के साथ बोलिए, या फ़ोन खुद खोलिए।" }
         disarm(c, "गुप्त शब्द बोला")
-        return "ठीक है, गार्ड मोड बंद।"
+        return "ठीक है, स्क्रीन गार्ड बंद।"
     }
 
     /** सुनने वाले loop से: बजते / पहरे के समय सिर्फ़ गुप्त शब्द भी काफ़ी. true = बात यहीं खत्म */
@@ -141,23 +160,23 @@ object Guard {
         val code = code(c)
         if (!GuardRules.codeOk(heard, code)) return false
         disarm(c, "गुप्त शब्द बोला")
-        DKState.reply("ठीक है, गार्ड मोड बंद।")
+        DKState.reply("ठीक है, स्क्रीन गार्ड बंद।")
         return true
     }
 
     /** @return DK क्या बोले */
     fun arm(c: Context, minutes: Int, why: String): String {
-        val svc = svcOf(c) ?: return "पहले सेटिंग्स में DK का Accessibility चालू कीजिए, उसके बिना गार्ड मोड नहीं चलेगा।"
+        val svc = svcOf(c) ?: return "पहले सेटिंग्स में DK का Accessibility चालू कीजिए, उसके बिना स्क्रीन गार्ड नहीं चलेगा।"
         val app = svc.applicationContext
-        if (active()) return "गार्ड मोड पहले से चालू है।"
+        if (active()) return "स्क्रीन गार्ड पहले से चालू है।"
         val hasCode = code(app).length >= GuardRules.MIN_CODE
         if (!secure(app) && !hasCode)
-            return "गार्ड मोड के लिए फ़ोन में PIN या पैटर्न लगाइए, या सेटिंग्स में गुप्त शब्द रखिए - वरना कोई भी इसे बंद कर देगा।"
+            return "स्क्रीन गार्ड के लिए फ़ोन में PIN या पैटर्न लगाइए, या सेटिंग्स में गुप्त शब्द रखिए - वरना कोई भी इसे बंद कर देगा।"
         val until = if (minutes > 0) System.currentTimeMillis() + minutes * 60_000L else 0L
         Prefs.edit(app) { putBoolean(P_ARMED, true); putString(P_UNTIL, until.toString()) }
         codeNow = code(app)
         arming = true
-        note(app, "गार्ड मोड चालू ($why)" + if (minutes > 0) " - ${GuardRules.label(minutes)}" else "")
+        note(app, "स्क्रीन गार्ड चालू ($why)" + if (minutes > 0) " - ${GuardRules.label(minutes)}" else "")
         armJob?.cancel()
         armJob = scope.launch {
             delay(GuardRules.ARM_DELAY_MS)
@@ -176,25 +195,29 @@ object Guard {
         val until = untilOf(app)
         if (GuardRules.expired(until, System.currentTimeMillis())) { Prefs.edit(app) { putBoolean(P_ARMED, false) }; return }
         codeNow = code(app)
-        note(app, "गार्ड मोड फिर से चालू (DK दोबारा शुरू हुआ)")
+        note(app, "स्क्रीन गार्ड फिर से चालू (DK दोबारा शुरू हुआ)")
         startWatch(svc, until)
+        // अलार्म के बाद फ़ोन बंद-चालू (restart) किया गया = चोर के पास है, लोकेशन भेजना जारी
+        if (Prefs.bool(app, P_TRACK, false)) startTracking(app, "फ़ोन दोबारा चालू हुआ (स्क्रीन गार्ड अलार्म के बाद)")
     }
 
     fun disarm(c: Context, why: String) {
         val app = c.applicationContext
         if (!active() && !Prefs.bool(app, P_ARMED, false)) return
-        Prefs.edit(app) { putBoolean(P_ARMED, false); putString(P_UNTIL, "0") }
+        Prefs.edit(app) { putBoolean(P_ARMED, false); putString(P_UNTIL, "0"); putBoolean(P_TRACK, false) }
         arming = false; armed = false
         armJob?.cancel(); timerJob?.cancel()
+        if (locJob?.isActive == true) note(app, "लोकेशन भेजना बंद ($locSent SMS गए)")
+        locJob?.cancel(); locJob = null; locSent = 0
         stopAlarm()
         stopWatch(app)
-        note(app, "गार्ड मोड बंद ($why)")
-        DKLog.d("गार्ड मोड बंद: $why")
+        note(app, "स्क्रीन गार्ड बंद ($why)")
+        DKLog.d("स्क्रीन गार्ड बंद: $why")
     }
 
     /** गार्ड चालू = DK खुद PIN डालकर फ़ोन नहीं खोलेगा (कोई "DK फोन अनलॉक करो" बोलकर न खुलवा ले) */
     fun blocksUnlock(): String? = if (active())
-        PhoneLockVoice.UNLOCK_FAIL + " गार्ड मोड चालू है, इसलिए DK फ़ोन नहीं खोलेगा। पहले गार्ड मोड बंद कीजिए - गुप्त शब्द बोलकर या फ़ोन खुद खोलकर।"
+        PhoneLockVoice.UNLOCK_FAIL + " स्क्रीन गार्ड चालू है, इसलिए DK फ़ोन नहीं खोलेगा। पहले स्क्रीन गार्ड बंद कीजिए - गुप्त शब्द बोलकर या फ़ोन खुद खोलकर।"
     else null
 
     // ------------------------------------------------------------------ पहरा
@@ -263,9 +286,10 @@ object Guard {
         timerJob?.cancel()
         if (until > 0) timerJob = scope.launch {
             while (isActive && !GuardRules.expired(until, System.currentTimeMillis())) delay(15_000)
-            if (isActive && !alarming) disarm(app, "समय पूरा") else if (isActive) Prefs.edit(app) { putString(P_UNTIL, "0") }
+            // अलार्म बज रहा हो या लोकेशन भेजी जा रही हो (फ़ोन किसी और के पास) = समय पूरा होने पर भी बंद नहीं
+            if (isActive && !alarming && locJob?.isActive != true) disarm(app, "समय पूरा") else if (isActive) Prefs.edit(app) { putString(P_UNTIL, "0") }
         }
-        DKLog.d("गार्ड मोड: पहरा शुरू (संवेदनशीलता ${sense(app).hi})")
+        DKLog.d("स्क्रीन गार्ड: पहरा शुरू (संवेदनशीलता ${sense(app).hi})")
     }
 
     @Synchronized
@@ -331,11 +355,78 @@ object Guard {
     fun trigger(c: Context, why: String) {
         if (alarming || !armed) return
         val app = c.applicationContext
-        DKLog.d("गार्ड मोड: अलार्म - $why")
+        DKLog.d("स्क्रीन गार्ड: अलार्म - $why")
         note(app, "⚠ $why")
         svcOf(app)?.let { lockNow(it) }
         startAlarm(app, why, test = false)
-        if (smsOn(app) && System.currentTimeMillis() - smsSentFor > 5 * 60_000L) { smsSentFor = System.currentTimeMillis(); scope.launch { sendSms(app, why) } }
+        if (smsOn(app)) startTracking(app, why)
+    }
+
+    /**
+     * मालिक (नवंबर 2026): अलार्म के बाद सटीक (GPS) लोकेशन SMS, फिर जब तक फ़ोन मालिक के पास न लौटे
+     * (फ़ोन खोले / चेहरा / गुप्त शब्द = [disarm]) थोड़ी-थोड़ी देर पर अपने-आप नई लोकेशन ([GuardRules.nextLocDelayMs]).
+     * पहले: एक ही SMS, और उसमें जो लोकेशन सबसे पहले आए (अक्सर मोबाइल टावर वाली, 1-3 किमी दूर) - सटीक नहीं.
+     */
+    @Synchronized
+    private fun startTracking(app: Context, why: String) {
+        if (locJob?.isActive == true) return
+        Prefs.edit(app) { putBoolean(P_TRACK, true) }
+        locSent = 0
+        note(app, "सटीक लोकेशन भेजना शुरू (हर कुछ मिनट, जब तक मालिक फ़ोन न खोले)")
+        locJob = scope.launch {
+            var reason = why
+            while (isActive && Prefs.bool(app, P_ARMED, false) && locSent < GuardRules.LOC_MAX_SMS) {
+                if (System.currentTimeMillis() - smsSentFor >= GuardRules.LOC_MIN_GAP_MS) {
+                    smsSentFor = System.currentTimeMillis()
+                    if (sendSms(app, reason, locSent)) locSent++
+                    else if (!smsReady(app)) break          // नंबर / इजाज़त ही नहीं - बार-बार कोशिश बेकार
+                }
+                reason = "अपडेट"
+                delay(GuardRules.nextLocDelayMs(locSent.coerceAtLeast(1)))
+            }
+        }
+    }
+
+    private fun smsReady(c: Context) = GuardRules.validNumber(smsNumber(c)) &&
+        ContextCompat.checkSelfPermission(c, Manifest.permission.SEND_SMS) == PackageManager.PERMISSION_GRANTED
+
+    /**
+     * सटीक लोकेशन: GPS + नेटवर्क (+ fused) तीनों से लगातार माँगो, [GuardRules.LOC_WAIT_MS] तक सबसे सटीक रखो,
+     * GPS से [GuardRules.LOC_GOOD_M] मीटर के अंदर मिलते ही रुको. फ़ोन की याद वाली पुरानी लोकेशन (getLastKnown) नहीं.
+     * GPS बंद हो और DK के पास WRITE_SECURE_SETTINGS हो तो लोकेशन (high accuracy) खुद चालू करता है.
+     */
+    suspend fun preciseFix(c: Context, waitMs: Long = GuardRules.LOC_WAIT_MS): GuardRules.Fix? {
+        if (!LocalInfo.hasPermission(c)) { note(c, "लोकेशन नहीं - लोकेशन की इजाज़त नहीं"); return null }
+        if (ContextCompat.checkSelfPermission(c, Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED)
+            note(c, "सिर्फ़ अंदाज़न लोकेशन की इजाज़त है - सटीक के लिए Settings → स्क्रीन गार्ड → परमिशन दें (\"सटीक\" चुनें)")
+        val lm = c.getSystemService(LocationManager::class.java) ?: return null
+        fun on(p: String) = try { lm.isProviderEnabled(p) } catch (_: Exception) { false }
+        if (!on(LocationManager.GPS_PROVIDER)) {
+            try {
+                @Suppress("DEPRECATION")
+                android.provider.Settings.Secure.putInt(c.contentResolver, android.provider.Settings.Secure.LOCATION_MODE, android.provider.Settings.Secure.LOCATION_MODE_HIGH_ACCURACY)
+                delay(1_500)
+            } catch (_: Exception) {}
+        }
+        val providers = buildList {
+            add(LocationManager.GPS_PROVIDER); add(LocationManager.NETWORK_PROVIDER)
+            if (Build.VERSION.SDK_INT >= 31) add(LocationManager.FUSED_PROVIDER)
+        }.filter { on(it) }
+        if (providers.isEmpty()) { note(c, "लोकेशन नहीं - फ़ोन की लोकेशन (GPS) बंद है"); return null }
+        val got = java.util.Collections.synchronizedList(ArrayList<GuardRules.Fix>())
+        val done = kotlinx.coroutines.CompletableDeferred<Unit>()
+        fun toFix(l: Location) = GuardRules.Fix(l.latitude, l.longitude, if (l.hasAccuracy()) l.accuracy else 9_999f,
+            gps = l.provider == LocationManager.GPS_PROVIDER || (l.provider == "fused" && l.hasAccuracy() && l.accuracy <= GuardRules.LOC_GOOD_M * 2),
+            ageMs = (SystemClock.elapsedRealtimeNanos() - l.elapsedRealtimeNanos) / 1_000_000L)
+        val listener = LocationListener { l -> val f = toFix(l); got.add(f); if (GuardRules.goodEnough(f)) done.complete(Unit) }
+        withContext(Dispatchers.Main) {
+            for (p in providers) try {
+                @Suppress("MissingPermission") lm.requestLocationUpdates(p, 1_000L, 0f, listener, Looper.getMainLooper())
+            } catch (e: Exception) { DKLog.d("स्क्रीन गार्ड: $p लोकेशन नहीं (${e.message})") }
+        }
+        try { kotlinx.coroutines.withTimeoutOrNull(waitMs) { done.await() } }
+        finally { withContext(kotlinx.coroutines.NonCancellable + Dispatchers.Main) { try { lm.removeUpdates(listener) } catch (_: Exception) {} } }
+        return GuardRules.pickBest(synchronized(got) { got.toList() })
     }
 
     private class State {
@@ -455,18 +546,21 @@ object Guard {
 
     // ------------------------------------------------------------------ SMS / रिकॉर्ड
 
-    private suspend fun sendSms(c: Context, why: String) {
+    /** @param n 0 = पहला SMS, 1.. = लोकेशन अपडेट. @return true = SMS गया */
+    private suspend fun sendSms(c: Context, why: String, n: Int = 0): Boolean {
         val num = smsNumber(c)
-        if (!GuardRules.validNumber(num)) { note(c, "SMS नहीं भेजा - भरोसेमंद नंबर ठीक नहीं"); return }
-        if (ContextCompat.checkSelfPermission(c, Manifest.permission.SEND_SMS) != PackageManager.PERMISSION_GRANTED) { note(c, "SMS नहीं भेजा - SMS की इजाज़त नहीं"); return }
-        val loc = try { LocalInfo.fresh(c, 12_000) } catch (_: Exception) { null }
-        val msg = GuardRules.smsText(why, now(), loc?.latitude, loc?.longitude)
+        if (!GuardRules.validNumber(num)) { note(c, "SMS नहीं भेजा - भरोसेमंद नंबर ठीक नहीं"); return false }
+        if (ContextCompat.checkSelfPermission(c, Manifest.permission.SEND_SMS) != PackageManager.PERMISSION_GRANTED) { note(c, "SMS नहीं भेजा - SMS की इजाज़त नहीं"); return false }
+        val loc = try { preciseFix(c) } catch (e: Exception) { if (e is kotlinx.coroutines.CancellationException) throw e; null }
+        if (!Prefs.bool(c, P_ARMED, false) && n > 0) return false      // इंतज़ार के बीच मालिक ने खोल लिया
+        val msg = GuardRules.smsText(why, now(), loc?.lat, loc?.lon, loc?.accM, n, loc?.gps ?: false)
         try {
             @Suppress("DEPRECATION")
             val sms = if (Build.VERSION.SDK_INT >= 31) c.getSystemService(android.telephony.SmsManager::class.java) else android.telephony.SmsManager.getDefault()
             sms.sendMultipartTextMessage(num, null, sms.divideMessage(msg), null, null)
-            note(c, "SMS भेजा: $num")
-        } catch (e: Exception) { note(c, "SMS नहीं गया (${e.message?.take(40)})") }
+            note(c, "SMS भेजा: $num" + (loc?.let { " • लोकेशन ±${GuardRules.accLabel(it.accM)}" + if (it.gps) " (GPS)" else " (नेटवर्क)" } ?: " • लोकेशन नहीं मिली") + if (n > 0) " • अपडेट #$n" else "")
+            return true
+        } catch (e: Exception) { note(c, "SMS नहीं गया (${e.message?.take(40)})"); return false }
     }
 
     private fun now(): String = SimpleDateFormat("dd MMM, hh:mm a", Locale("hi", "IN")).format(Date())
@@ -508,6 +602,7 @@ object Guard {
     fun status(c: Context): String = when {
         alarming -> "⚠ अलार्म बज रहा है"
         arming -> "⏳ 5 सेकंड में चालू हो रहा है"
+        armed && locJob?.isActive == true -> "⚠ अलार्म हुआ था - सटीक लोकेशन हर कुछ मिनट भेजी जा रही है ($locSent SMS)"
         armed -> "✓ चालू - फ़ोन पर पहरा है" + (untilOf(c).takeIf { it > 0 }?.let { " (" + SimpleDateFormat("hh:mm a", Locale("hi", "IN")).format(Date(it)) + " तक)" } ?: "")
         else -> "✗ बंद"
     }
