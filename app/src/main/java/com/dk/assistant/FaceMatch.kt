@@ -86,7 +86,7 @@ object FaceMatch {
 
 class LivenessTracker(
     private val windowSize: Int = 5,
-    private val minVariance: Float = 0.0001f
+    private val minVariance: Float = 0.00001f
 ) {
     private val history = mutableListOf<FloatArray>()
 
@@ -117,6 +117,10 @@ class LivenessTracker(
     fun isLive(): Boolean {
         if (history.size < windowSize) return false
         return calculateVariance() >= minVariance
+    }
+
+    fun isReady(): Boolean {
+        return history.size >= windowSize
     }
 
     fun reset() {

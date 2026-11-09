@@ -133,7 +133,7 @@ class GuardAlarmActivity : AppCompatActivity() {
                         ownerHits = 0
                         if (s != null && now - lastFaceUi > 1_000) {
                             lastFaceUi = now
-                            if (!live) {
+                            if (!live && livenessTracker.isReady()) {
                                 faceUi("✗ असली चेहरा नहीं (2D फ़ोटो)")
                             } else {
                                 faceUi("✗ यह चेहरा मालिक का नहीं (${(s * 100).toInt()}%)")
