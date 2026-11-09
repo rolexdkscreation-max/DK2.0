@@ -12,6 +12,10 @@ class UiTextTest {
     private fun tsvFile(): File = listOf(File("src/main/assets/ui_en.tsv"), File("app/src/main/assets/ui_en.tsv")).first { it.exists() }
     private val real by lazy { UiText(UiText.parse(tsvFile().readText())) }
 
+    @Test fun greetingTranslation() {
+        assertEquals("Hello sir 😊\nWhere were you for so long?", real.tr("नमस्ते सर 😊\nइतनी देर कहाँ थे?"))
+    }
+
     @Test fun exactAndTrimmed() {
         val d = UiText(mapOf("सेव करें" to "Save", "रोकें" to "Stop"))
         assertEquals("Save", d.tr("सेव करें"))
