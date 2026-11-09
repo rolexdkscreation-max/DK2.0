@@ -41,6 +41,11 @@ object CallSpeaker {
     @Synchronized @Suppress("DEPRECATION")
     fun apply(c: Context, bt: Boolean): Boolean {
         val m = c.applicationContext.getSystemService(AudioManager::class.java) ?: return false
+        return VolumeKeep.keepMedia(m) { applyOn(m, c, bt) }   // नवंबर 2026: mode बदलने से मीडिया वॉल्यूम न बदले
+    }
+
+    @Suppress("DEPRECATION")
+    private fun applyOn(m: AudioManager, c: Context, bt: Boolean): Boolean {
         val want = CallSpeakerRule.want(prefOn(c), bt, phoneCall(m))
         if (want == active) return active
         // Bluetooth ने रास्ता ले लिया ([BtAudio] खुद कॉल वाला तरीका लगाता है) - उसका लगाया mode/डिवाइस मत छेड़ो
@@ -64,7 +69,20 @@ object CallSpeaker {
     }
 
     /** असली फ़ोन कॉल आया: फ़ोन अपना रास्ता लगाता है - हम कुछ न छेड़ें, कॉल के बाद [apply] फिर से */
-    @Synchronized fun pause() { if (active) { active = false; log("फ़ोन कॉल - रुका (कॉल के बाद फिर)") } }
+    @Synchronized fun pause(c: Context? = null) {
+        if (!active) return
+        active = false
+        // नवंबर 2026 (मालिक: "रिंगटोन कम नहीं होनी चाहिए"): घंटी बजते समय हमारा कॉल-mode (MODE_IN_COMMUNICATION) लगा रहे
+        // तो कई फ़ोन रिंगटोन धीमी (कॉल-वेटिंग जैसी) बजाते हैं -> घंटी पर हमारा mode हटाओ; कॉल के बाद [apply] फिर लगाता है.
+        val m = c?.applicationContext?.getSystemService(AudioManager::class.java)
+        if (m != null && !phoneCall(m)) VolumeKeep.keepMedia(m) {
+            try {
+                if (Build.VERSION.SDK_INT >= 31) m.clearCommunicationDevice() else m.isSpeakerphoneOn = prevSpeaker
+                if (m.mode == AudioManager.MODE_IN_COMMUNICATION) m.mode = if (prevMode == AudioManager.MODE_IN_COMMUNICATION) AudioManager.MODE_NORMAL else prevMode
+            } catch (_: Exception) {}
+        }
+        log("फ़ोन कॉल - रुका (कॉल के बाद फिर)")
+    }
 
     @Synchronized @Suppress("DEPRECATION")
     fun release(c: Context) {
@@ -72,10 +90,12 @@ object CallSpeaker {
         active = false
         val m = c.applicationContext.getSystemService(AudioManager::class.java) ?: return
         if (phoneCall(m)) return
-        try {
-            if (Build.VERSION.SDK_INT >= 31) m.clearCommunicationDevice() else m.isSpeakerphoneOn = prevSpeaker
-            if (m.mode == AudioManager.MODE_IN_COMMUNICATION) m.mode = if (prevMode == AudioManager.MODE_IN_COMMUNICATION) AudioManager.MODE_NORMAL else prevMode
-        } catch (_: Exception) {}
+        VolumeKeep.keepMedia(m) {
+            try {
+                if (Build.VERSION.SDK_INT >= 31) m.clearCommunicationDevice() else m.isSpeakerphoneOn = prevSpeaker
+                if (m.mode == AudioManager.MODE_IN_COMMUNICATION) m.mode = if (prevMode == AudioManager.MODE_IN_COMMUNICATION) AudioManager.MODE_NORMAL else prevMode
+            } catch (_: Exception) {}
+        }
         log("बंद - आवाज़ वापस normal (media)")
     }
 }

@@ -43,6 +43,7 @@ import org.json.JSONObject
 internal suspend fun DKAccessibilityService.onIncomingCall(who0: String, ask: String? = null) {
     if (!Prefs.announceCalls(this)) return
     callPending = true
+    VolumeKeep.raiseForCall(this)   // मालिक (नवंबर 2026): रिंगटोन / कॉल की आवाज़ कम हो तो फुल, कभी कम नहीं
     agent.stop()
     calls.quietRinger()
     delay(80)        // v3.156: 200 -> 80ms (मालिक: "जैसे ही फ़ोन बजे, तुरंत बोले")

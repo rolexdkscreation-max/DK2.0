@@ -108,6 +108,7 @@ object DeviceActions {
             else -> AudioManager.STREAM_MUSIC
         }
         val max = am.getStreamMaxVolume(s).coerceAtLeast(1)
+        VolumeKeep.markUserAsked()   // यूज़र ने खुद कहा - VolumeKeep इसे वापस नहीं करेगा
         try {
             when (dir.lowercase()) {
                 "up" -> repeat(2) { am.adjustStreamVolume(s, AudioManager.ADJUST_RAISE, AudioManager.FLAG_SHOW_UI) }
