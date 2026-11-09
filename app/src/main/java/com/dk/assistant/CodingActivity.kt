@@ -175,30 +175,35 @@ class CodingActivity : AppCompatActivity() {
         addMedia(uris)
     }
 
+    /** नवंबर 2026: फ़ोन और टैब पर एक जैसे अक्षर (बहुत बड़े system font से लेआउट नहीं टूटता) */
+    override fun attachBaseContext(newBase: android.content.Context) { super.attachBaseContext(UiFit.wrap(newBase)) }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         // likhne ki jagah hamesha khuli: keyboard turant aur bhejne ke baad bhi
         window.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE or WindowManager.LayoutParams.SOFT_INPUT_STATE_ALWAYS_VISIBLE)
         val root = FrameLayout(this).apply { setBackgroundColor(getColor(R.color.bg)) }
         root.addView(AuroraView(this), FrameLayout.LayoutParams(-1, -1))
-        val col = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; val p = (14 * dp).toInt(); setPadding(p, p, p, p) }
+        // नवंबर 2026 (मालिक): पूरी स्क्रीन भरी - किनारे की जगह डिवाइस के हिसाब से (UiFit), notch / नीचे की पट्टी से बचाव
+        val col = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; val e = UiFit.edgePx(this@CodingActivity); val p = (14 * dp).toInt(); setPadding(e, p, e, (10 * dp).toInt()) }
         root.addView(col, FrameLayout.LayoutParams(-1, -1))
+        UiFit.safeArea(root)
 
-        val top = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
-        top.addView(ImageButton(this).apply {
+        // नवंबर 2026 (मालिक): फ़ोन पर बटन नाम को दबा देते थे - अब दो लाइन (UiFit.header), बटन कभी कटते नहीं
+        val back = ImageButton(this).apply {
             setImageResource(R.drawable.ic_back); setBackgroundResource(R.drawable.glass_circle)
             val p = (12 * dp).toInt(); setPadding(p, p, p, p); scaleType = android.widget.ImageView.ScaleType.FIT_CENTER
-            setOnClickListener { finish() }
-        }, LinearLayout.LayoutParams((46 * dp).toInt(), (46 * dp).toInt()))
+            contentDescription = "वापस"; setOnClickListener { finish() }
+        }
         val titles = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding((12 * dp).toInt(), 0, 0, 0) }
-        titles.addView(TextView(this).apply { text = "कोडिंग एजेंट"; textSize = 20f; setTypeface(typeface, Typeface.BOLD); setTextColor(0xFFFFFFFF.toInt()) })
-        sub = TextView(this).apply { textSize = 12f; setTextColor(0x99FFFFFF.toInt()); maxLines = 2 }
+        titles.addView(TextView(this).apply { text = "कोडिंग एजेंट"; textSize = 20f; setTypeface(typeface, Typeface.BOLD); setTextColor(0xFFFFFFFF.toInt()); maxLines = 1; ellipsize = android.text.TextUtils.TruncateAt.END })
+        sub = TextView(this).apply { textSize = 12f; setTextColor(0x99FFFFFF.toInt()); maxLines = 2; ellipsize = android.text.TextUtils.TruncateAt.END }
         titles.addView(sub)
-        top.addView(titles, LinearLayout.LayoutParams(0, -2, 1f))
-        top.addView(smallBtn("रिपो") { if (Prefs.coderSeven(this)) sevenPicker() else chooseRepo() })
-        top.addView(smallBtn("इतिहास") { showHistory() }, LinearLayout.LayoutParams(-2, -2).apply { marginStart = (6 * dp).toInt() })
-        top.addView(smallBtn("नया") { newSession() }, LinearLayout.LayoutParams(-2, -2).apply { marginStart = (6 * dp).toInt() })
-        top.addView(smallBtn("स्टूडियो") { com.dk.assistant.studio.StudioSession.open(this, null) }, LinearLayout.LayoutParams(-2, -2).apply { marginStart = (6 * dp).toInt() })
+        val top = UiFit.header(this, back, titles, listOf(
+            smallBtn("रिपो") { if (Prefs.coderSeven(this)) sevenPicker() else chooseRepo() },
+            smallBtn("इतिहास") { showHistory() },
+            smallBtn("नया") { newSession() },
+            smallBtn("स्टूडियो") { com.dk.assistant.studio.StudioSession.open(this, null) }))
         col.addView(top)
 
         busyBar = LinearLayout(this).apply {
@@ -236,7 +241,7 @@ class CodingActivity : AppCompatActivity() {
         col.addView(sugBox, LinearLayout.LayoutParams(-1, -2).apply { topMargin = (6 * dp).toInt() })
 
         // साझा इनपुट बॉक्स: 📎 फ़ोटो/वीडियो (चुनने के बाद cursor वापस), लिखना, 🎤 बार के अंदर बोलकर लिखना, भेजें/रोकें
-        composer = DKComposer(this, "क्या बदलना है? (जैसे: Settings में dark mode switch जोड़ो)", maxLines = 5, attach = { openPicker() })
+        composer = DKComposer(this, "क्या बनाना या ठीक करना है?", maxLines = 5, attach = { openPicker() })
         edt = composer.edt
         send = composer.send
         mediaRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
@@ -311,18 +316,18 @@ class CodingActivity : AppCompatActivity() {
     }
 
     private fun welcome(): String {
-        if (Prefs.coderSeven(this)) return "नमस्ते। 7 एजेंट वाली टीम तैयार है: मैनेजर → प्लानर → कोडर → रिव्यूअर → टेस्टर → डिबगर → गिट/रिलीज़, और अलग से 🎓 समझाने वाला।\n" + sevenModeLine() +
-            "\nबताइए क्या बनाना/ठीक करना है। पहले मैं बताऊँगा कि मैंने क्या समझा — आपकी \"हाँ\" के बाद ही code छुआ जाएगा। GitHub मोड में: backup branch, नई branch, टेस्ट, QA, PR — merge और APK release सिर्फ़ आपकी मंज़ूरी से।" +
-            " नॉर्मल मोड में: कोड हर फ़ाइल के नाम के साथ अलग मिलेगा (कॉपी बटन के साथ)। अपना कोड ```घेरे``` में भेजें तो उसी पर काम होगा।"
+        // नवंबर 2026 (मालिक): खुलते ही लंबी सूची नहीं - सिर्फ़ एक लाइन; "क्या-क्या कर सकते हो" पूछने पर पूरी (AgentIntro.coderCapabilities)
         val problems = problems()
-        return if (problems.isEmpty() && Prefs.coderTeam(this))
-            "नमस्ते। कोडिंग टीम तैयार है — ${Prefs.ghRepo(this)} (${Prefs.ghBranch(this)}).\n" +
-                "एक बार बताइए (लिखकर या 🎤 से) क्या बनाना है। बिल्डर लिखेगा → रिव्यूअर खुद जाँचेगा → गड़बड़ी हो तो वापस ठीक → अपने-आप push → GitHub tests + build जाँच → पूरा होने पर बताऊँगा और \"Merge करें\" बटन दिखेगा (merge होते ही नई APK release)।\n" +
-                "कोई अतिरिक्त चीज़ ज़रूरी लगी तो खुद नहीं जोड़ूँगा — आपसे पूछूँगा।" + safeNote()
-        else if (problems.isEmpty())
-            "नमस्ते। मैं ${Prefs.ghRepo(this)} (${Prefs.ghBranch(this)}) पर काम करूँगा।\nबताइए क्या बनाना/बदलना/हटाना है। मैं पहले बदलाव दिखाऊँगा, फिर \"Push करें\" दबाने पर GitHub पर भेजूँगा" +
-                (if (Prefs.coderAutoPush(this)) " (अभी: बिना पूछे push चालू)।" else "।") + safeNote()
+        if (Prefs.coderSeven(this)) return AgentIntro.coderHello(sevenModeLine().substringBefore(" • ").substringBefore(" — "))
+        return if (problems.isEmpty()) AgentIntro.coderHello("${Prefs.ghRepo(this)} (${Prefs.ghBranch(this)})")
         else "पहले ये ठीक करें (सेटिंग्स → कोडिंग एजेंट):\n• " + problems.joinToString("\n• ")
+    }
+
+    /** "तुम क्या-क्या कर सकते हो" का पूरा जवाब (अभी का मोड देखकर) */
+    private fun capabilities(): String {
+        val seven = Prefs.coderSeven(this)
+        val github = Prefs.ghToken(this).isNotBlank() && Prefs.ghRepo(this).contains('/') && !(seven && Prefs.coderNormal(this))
+        return AgentIntro.coderCapabilities(seven, github) + (if (seven) "\n" + sevenModeLine() else "") + safeNote()
     }
 
     private fun safeNote() = if (Prefs.coderSafePr(this))
@@ -348,6 +353,10 @@ class CodingActivity : AppCompatActivity() {
         // नवंबर 2026 (मालिक): ऐप स्टूडियो से जुड़ा - "स्टूडियो में क्या बन रहा है / उसमें X बदलो / रोको / खोलो" (कोडिंग टीम का काम चलते समय भी)
         if (!hasMedia && typed.isNotEmpty()) com.dk.assistant.studio.StudioLink.handle(this, typed, com.dk.assistant.studio.StudioSession.WHO_CODER)?.let { (msg, ok) ->
             edt.setText(""); CoderSession.add("u", typed); CoderSession.add(if (ok) "a" else "e", msg); render(); return
+        }
+        // नवंबर 2026 (मालिक): "तुम क्या-क्या कर सकते हो" = तुरंत पूरी सूची (AI कॉल नहीं)
+        if (!hasMedia && AgentIntro.isCapabilityQuestion(typed)) {
+            edt.setText(""); CoderSession.add("u", typed); CoderSession.add("a", capabilities()); render(); return
         }
         // काम चलते समय भी "क्या चल रहा है / रिपो चेक करो" पूछा जा सकता है (सिर्फ़ पढ़ना)
         if (typed.isEmpty() && !hasMedia || CoderSession.busy && !RepoDoctor.isStatusAsk(typed)) return
@@ -816,6 +825,8 @@ class CodingActivity : AppCompatActivity() {
             val l = lines[shown]; shown++
             // एजेंट का जवाब/गलती = उसी बुलबुले में जहाँ तरंग चल रही थी
             if ((l.role == "d" || l.role == "e") && inline.answer(l.text, if (l.role == "e") 0xFFFFB4B4.toInt() else 0xFFFFFFFF.toInt()) != null) continue
+            // नवंबर 2026 (मालिक): काम के कदम चैट के बीच में नहीं (ऊपर एजेंट पट्टी में दिखते हैं)
+            if (!ChatClean.showInChat(l.role, CoderSession.busy, shown == lines.size)) continue
             bubble(l); inline.keepLast()
         }
         if (CoderSession.busy) inline.show(busyLabel(), WorkState.WORKING)
