@@ -195,7 +195,7 @@ class SevenTeam(
         const val NO_CI = "NO_CI"
         /** audit K3: ड्राई-रन का जवाब नहीं मिला - टेस्ट हुआ ही नहीं (पहले इसे "पास" मान लिया जाता था) */
         const val DRY_RUN_MISSING = "syntax जाँच पास, पर टेस्टर (AI ड्राई-रन) का जवाब 2 बार माँगने पर भी नहीं मिला — code बदला गया है लेकिन जाँचा नहीं गया। \"आगे करो\" से दोबारा जाँच करवाएँ या खुद चलाकर देखें।"
-        /** पुराना: QA कितनी बार काम वापस भेज सकता था. v5.2 से गिनती-सीमा नहीं (FixLoop.TEAM_SAME_LIMIT वाला नियम) - नाम पुराने code/रिपोर्ट के लिए */
+        /** पुराना: QA कितनी बार काम वापस भेज सकता था. अब AGENTS.md नियम 15 (FixLoop.TEAM_SAME_LIMIT / TEAM_CAP) - नाम पुराने code/रिपोर्ट के लिए */
         const val QA_ROUNDS = 2
         /** 11-एजेंट डिबगर: कुल राउंड, और आख़िरी कितने राउंड में खोज/पढ़ाई बंद (सिर्फ़ फ़ैसला) */
         const val DEBUG_ROUNDS = 14
@@ -494,10 +494,12 @@ class SevenTeam(
                     val miss = qa()
                     if (miss.isNotEmpty()) {
                         qaRounds++
-                        // v5.2: गिनती-सीमा नहीं - रुकना सिर्फ़ तब जब हूबहू वही कमी लगातार 10 बार लौटे
+                        // AGENTS.md नियम 15: वही कमी 3 बार लगातार, या 8 राउंड = रुककर रिपोर्ट
                         qaMiss.add(miss.joinToString("; "))
                         tried.add("QA की कमी ठीक की: " + miss.joinToString("; ").take(120))
                         if (FixLoop.stuck(qaMiss)) return finish(false, "टेस्टर (QA जाँच) ने हूबहू वही कमी ${FixLoop.TEAM_SAME_LIMIT} बार लगातार बताई: " +
+                            miss.joinToString("; ").take(300) + stuckNote(miss.joinToString("; ")))
+                        if (FixLoop.capped(qaRounds)) return finish(false, "टेस्टर (QA जाँच) के ${FixLoop.TEAM_CAP} सुधार-राउंड के बाद भी कमी बाकी: " +
                             miss.joinToString("; ").take(300) + stuckNote(miss.joinToString("; ")))
                         ev(Agent.MANAGER, "टेस्टर (QA जाँच) ने कमी बताई — प्लानर से सुधार करवा रहा हूँ (राउंड $qaRounds)")
                         val fix = makePlan("QA FOUND THE TASK INCOMPLETE OR WRONG.\nMISSING:\n" + miss.joinToString("\n") { "- $it" } +
@@ -531,9 +533,11 @@ class SevenTeam(
             val errs = errorLines(t.log)
             ev(Agent.TESTER, "✗ फ़ेल — log पढ़कर असली एरर डिबगर को दिया" + (if (errs.isNotBlank()) "\nअसली एरर:\n$errs" else "") + if (t.url.isNotBlank()) "\n${t.url}" else "")
             sigs.add(FixLoop.signature(t.log))
-            // v5.2: कोई गिनती-सीमा नहीं - काम पूरा होने तक; रुकना सिर्फ़ जब हूबहू वही गलती लगातार 10 बार
+            // AGENTS.md नियम 15: वही गलती 3 बार लगातार (अटक गए) या 8 fix-राउंड = रुककर user को साफ़ रिपोर्ट
             when (FixLoop.nextTeam(sigs)) {
-                FixLoop.Next.STOP_STUCK, FixLoop.Next.STOP_CAP -> return finish(false, "वही गलती ${FixLoop.TEAM_SAME_LIMIT} बार लगातार लौटी, रणनीति बदलकर भी नहीं गई: ${sigs.last().take(200)}" +
+                FixLoop.Next.STOP_STUCK -> return finish(false, "वही गलती ${FixLoop.TEAM_SAME_LIMIT} बार लगातार लौटी, रणनीति बदलकर भी नहीं गई: ${sigs.last().take(200)}" +
+                    stuckNote(sigs.last()))
+                FixLoop.Next.STOP_CAP -> return finish(false, "${FixLoop.TEAM_CAP} fix-राउंड के बाद भी build/tests पास नहीं हुए (हर बार गलती बदलती रही): ${sigs.last().take(200)}" +
                     stuckNote(sigs.last()))
                 FixLoop.Next.FIX_AGAIN -> {}
             }
@@ -913,9 +917,9 @@ class SevenTeam(
         if (strat == Seven.Strategy.REWRITE) ev(Agent.MANAGER, "रणनीति: ${s.file} पूरी पढ़कर पूरी दोबारा लिखवा रहा हूँ" + if (backup.isNotBlank()) " (backup: $backup)" else " (पुरानी फ़ाइल याद रखी है)")
         val defs = definitions(s)
         var msgs = mutableListOf("user" to coderBrief(s, cur, strat, defs))
-        // v5.2: गिनती-सीमा नहीं - कदम लागू होने तक; रुकना (और दूसरा रास्ता) सिर्फ़ जब हूबहू वही गलती लगातार 10 बार
+        // AGENTS.md नियम 15: वही गलती 3 बार लगातार या 8 कोशिशें = रुककर मैनेजर दूसरा रास्ता लेता है
         var attempt = 0
-        while (!FixLoop.stuck(errors)) {
+        while (!FixLoop.stuck(errors) && !FixLoop.capped(attempt)) {
             attempt++
             val sys = Seven.Prompts.CODER + if (strat == Seven.Strategy.REWRITE) "\n\n" + Seven.Prompts.CODER_REWRITE else ""
             val reply = aiAsk(Agent.CODER, sys, msgs)
@@ -957,7 +961,7 @@ class SevenTeam(
                     "\nSend the corrected change in the same format.")
             }
         }
-        lastBlock = "हूबहू वही गलती ${FixLoop.TEAM_SAME_LIMIT} बार लगातार: " + lastBlock
+        lastBlock = (if (FixLoop.stuck(errors)) "हूबहू वही गलती ${FixLoop.TEAM_SAME_LIMIT} बार लगातार: " else "${FixLoop.TEAM_CAP} कोशिशों के बाद भी लागू नहीं: ") + lastBlock
         return false
     }
 
@@ -1246,7 +1250,7 @@ class SevenTeam(
         return null
     }
 
-    /** रुकना पड़ा (हूबहू वही गलती 10 बार): क्या-क्या आज़माया + शक कहाँ है */
+    /** रुकना पड़ा (वही गलती 3 बार / 8 राउंड): क्या-क्या आज़माया + शक कहाँ है */
     private fun stuckNote(last: String): String = "\nक्या-क्या आज़माया:\n" +
         (tried.takeLast(10).ifEmpty { listOf("कोडर → रिव्यूअर → टेस्टर → डिबगर चक्र") }).joinToString("\n") { "• $it" } +
         "\nशक: जड़ शायद वह नहीं जो अब तक मानी गई (या ज़रूरी code/फ़ाइल रिपो में नहीं) — एरर: ${last.take(200)}"

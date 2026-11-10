@@ -115,4 +115,23 @@ class AuditFixesTest {
         val out = SevenTeam(ai, MemoryFiles(mapOf("src/Calc.kt" to calc)), null) { _, _ -> }.run("Calc में sub() जोड़ो")
         assertEquals(true, out.testOk)
     }
+
+    // ------------------------------------------------------------ K1: AGENTS.md नियम 15 - हर बार अलग गलती हो तब भी 8 राउंड पर रुको
+    @Test fun fixLoop_differentErrorsEachTime_stopsAfter8Rounds() = runBlocking<Unit> {
+        val gitMsg = """{"commit":"Add sub()","title":"sub() जोड़ा"}"""
+        val dbg = """{"root_cause":"src/Calc.kt:7 - x","where":"src/Calc.kt:7","fix":"x","files":["src/Calc.kt"]}"""
+        val fixPlan = """{"steps":[{"file":"src/Calc.kt","action":"edit","change":"fix","anchor":"fun sub"}]}"""
+        fun fixEdit(n: Int) = "FILE: src/Calc.kt\n<<<FIND\n    return a - b${if (n == 0) "" else " // $n"}\nFIND>>>\n<<<REPLACE\n    return a - b // ${n + 1}\nREPLACE>>>"
+        val script = mutableListOf(Agent.MANAGER to managerFeature, Agent.PLANNER to planOne, Agent.CODER to goodEdit, Agent.REVIEWER to pass, Agent.GIT to gitMsg)
+        for (n in 0 until FixLoop.TEAM_CAP + 2) script += listOf(Agent.DEBUGGER to dbg, Agent.PLANNER to fixPlan, Agent.CODER to fixEdit(n), Agent.REVIEWER to pass, Agent.GIT to gitMsg)
+        val ai = FakeAi(*script.toTypedArray())
+        // हर बार अलग गलती (पहले ऐसे में चक्र कभी नहीं रुकता था)
+        val fails = (1..FixLoop.TEAM_CAP + 4).map { TeamTest(false, "e: file:///src/Calc.kt:7:5 Unresolved reference: foo$it") }
+        val git = SevenTeamTest.FakeGit(ArrayDeque(fails))
+        val out = SevenTeam(ai, MemoryFiles(mapOf("src/Calc.kt" to calc)), git) { _, _ -> }.run("sub() जोड़ो")
+        assertEquals(false, out.testOk)
+        assertEquals(FixLoop.TEAM_CAP - 1, ai.calls.count { it == Agent.DEBUGGER })   // 8वीं fail पर रुका, 9वाँ राउंड नहीं
+        assertTrue(out.report, out.report.contains("${FixLoop.TEAM_CAP} fix-राउंड"))
+        assertFalse(git.log.contains("ready"))
+    }
 }

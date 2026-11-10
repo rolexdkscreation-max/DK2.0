@@ -79,13 +79,18 @@ object FixLoop {
     }
 
     /**
-     * v5.2 (मालिक: "max 3 कोशिश की सीमा हटाओ - काम पूरा होने तक चलते रहो, बीच में मत पूछो"):
-     * कोडिंग टीम (कोडर → रिव्यूअर → टेस्टर → डिबगर) का चक्र. कोई गिनती-सीमा नहीं (STOP_CAP कभी नहीं);
-     * रुकना सिर्फ़ तब जब आख़िरी [TEAM_SAME_LIMIT] कोशिशों में हूबहू एक ही गलती लौटी हो.
+     * नवंबर 2026 (मालिक, audit K1): AGENTS.md नियम 15 वापस - कोडिंग टीम (कोडर → रिव्यूअर → टेस्टर → डिबगर) का चक्र भी
+     * वही गलती [TEAM_SAME_LIMIT] बार लगातार = अटक गए (STOP_STUCK), या [TEAM_CAP] fix-राउंड = रुककर user को रिपोर्ट (STOP_CAP).
+     * (v5.2 में गिनती-सीमा हटाई थी और रुकना सिर्फ़ हूबहू वही गलती 10 बार पर था - अलग-अलग गलतियों पर चक्र कभी नहीं रुकता था.
+     *  पुराना तरीका branch backup/dk-1110-0805-k1-fixloop में है.)
      */
-    const val TEAM_SAME_LIMIT = 10
+    const val TEAM_SAME_LIMIT = SAME_LIMIT
+    const val TEAM_CAP = HARD_CAP
 
-    fun nextTeam(history: List<String>): Next = if (stuck(history)) Next.STOP_STUCK else Next.FIX_AGAIN
+    fun nextTeam(history: List<String>): Next = next(history, TEAM_CAP)
+
+    /** गिनती-सीमा पूरी? (कोडर-रिव्यूअर की कोशिशें, QA के राउंड) */
+    fun capped(rounds: Int): Boolean = rounds >= TEAM_CAP
 
     /** आख़िरी [limit] चीज़ें हूबहू एक जैसी (और खाली नहीं) = अटक गए */
     fun stuck(history: List<String>, limit: Int = TEAM_SAME_LIMIT): Boolean =
