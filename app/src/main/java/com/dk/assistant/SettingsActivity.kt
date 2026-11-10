@@ -91,7 +91,6 @@ class SettingsActivity : AppCompatActivity() {
         setContentView(R.layout.activity_settings)
         Glass.install(this)
         container = findViewById(R.id.container)
-        txtSaved = findViewById(R.id.txtSaved)
         findViewById<OrbView>(R.id.miniOrb).mini = true
         findViewById<ImageButton>(R.id.btnBack).setOnClickListener { save(false); finish() }
         build()
