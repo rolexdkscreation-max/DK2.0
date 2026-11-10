@@ -284,10 +284,28 @@ object CoderHistory {
     }
 
     // ------------------------------------------------------------------ चौकी (resume)
-    fun checkpoint(c: Context): Checkpoint? = synchronized(lock) { Logic.ck(try { ckFile(c).takeIf { it.exists() }?.readText() } catch (_: Exception) { null }) }
+    /**
+     * नवंबर 2026 (अटकना): कोडिंग स्क्रीन हर render पर यह पढ़ती थी - main thread फ़ाइल पढ़ता था और उसी lock पर रुकता था
+     * जिस पर पीछे पूरी बातचीत (300 लाइन) फ़ाइल में लिखी जा रही होती थी = स्क्रीन रुक-रुककर. अब याद में (फ़ाइल वही, सिर्फ़ पहली बार पढ़ी जाती है)
+     */
+    @Volatile private var ckMem: Checkpoint? = null
+    @Volatile private var ckPath: String? = null
+
+    fun checkpoint(c: Context): Checkpoint? {
+        if (ckPath != null) return ckMem
+        return synchronized(lock) {
+            if (ckPath != null) return@synchronized ckMem
+            val path = ckFile(c).path
+            val k = Logic.ck(try { File(path).takeIf { it.exists() }?.readText() } catch (_: Exception) { null })
+            ckMem = k; ckPath = path; k
+        }
+    }
 
     fun saveCheckpoint(c: Context, k: Checkpoint) = synchronized(lock) {
-        try { ckFile(c).writeText(Logic.ckJson(k.copy(at = System.currentTimeMillis()))) } catch (_: Exception) {}
+        val f = ckFile(c)
+        val json = Logic.ckJson(k.copy(at = System.currentTimeMillis()))
+        ckMem = Logic.ck(json); ckPath = f.path
+        try { f.writeText(json) } catch (_: Exception) {}
     }
 
     /** चौकी में बदलाव (staged, branch, आख़िरी कदम) - background में */
@@ -295,5 +313,5 @@ object CoderHistory {
         io.execute { checkpoint(c)?.let { saveCheckpoint(c, f(it)) } }
     }
 
-    fun clearCheckpoint(c: Context) = synchronized(lock) { ckFile(c).delete(); Unit }
+    fun clearCheckpoint(c: Context) = synchronized(lock) { val f = ckFile(c); f.delete(); ckMem = null; ckPath = f.path; Unit }
 }

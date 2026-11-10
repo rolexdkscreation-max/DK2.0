@@ -33,6 +33,13 @@ class CoderAi(val provider: Provider, private val key: String, val model: String
     @Volatile var think: String = ThinkLevel.AUTO
     /** यही स्तर पूरी chain (बैकअप keys/मॉडल/API) पर */
     internal fun applyThink(level: String): CoderAi { think = level; fallbacks.forEach { it.applyThink(level) }; return this }
+    /** नवंबर 2026 (तेज़): इसी chain की कॉपी, बस सोचने का अलग स्तर (असली object/Settings नहीं बदलते) */
+    internal fun withThink(level: String): CoderAi {
+        if (level == think) return this
+        return CoderAi(provider, key, model, base, fallbacks.map { it.withThink(level) }, note, sink).also {
+            it.waitOnLimit = waitOnLimit; it.chain = chain; it.think = level
+        }
+    }
     internal fun keyForChain(): String = key
     internal fun baseForChain(): String = base
     /** ऑटोनोमस मोड वाली key का निशान (खाली = आम कोडिंग एजेंट). key नहीं, सिर्फ़ आखिरी 4 अक्षर */

@@ -52,10 +52,13 @@ object ComputerSession {
      * audit C5: [lines] सिर्फ़ main thread पर बदलती है (स्क्रीन उसी को पढ़ती है). टूल/AI के callback IO thread से
      * step() बुलाते हैं - वहाँ से आया add main thread पर भेजो (पहले दोनों threads एक साथ list बदलते = crash का ख़तरा)
      */
+    /** नवंबर 2026 (बग): 400 से ऊपर आगे से हटी लाइनें - स्क्रीन इसी से नई लाइनें पहचानती है */
+    @Volatile var dropped = 0L
+        private set
     fun add(role: String, t: String) {
         val main = try { android.os.Looper.getMainLooper() } catch (_: Throwable) { null }
         if (main != null && android.os.Looper.myLooper() != main) { android.os.Handler(main).post { add(role, t) }; return }
-        lines.add(Line(role, t)); while (lines.size > 400) lines.removeAt(0); listener?.invoke()
+        lines.add(Line(role, t)); while (lines.size > 400) { lines.removeAt(0); dropped++ }; listener?.invoke()
         if (role == "s") { now = t; TaskStatus.step(TaskStatus.PC, t) }     // असली कदम (live status)
         ComputerSaved.dirty()
     }

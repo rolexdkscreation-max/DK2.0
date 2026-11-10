@@ -37,7 +37,14 @@ object SevenRunner {
         // नवंबर 2026 (मालिक): बाकी का default भी 3.8 Flash - तब उसकी limit पर पहले 3.6 Flash / 3 Flash, फिर Lite (CODER_CHAIN)
         private val light = ai.withModel(lightModel, if (lightModel == GeminiModels.CODER) GeminiModels.CODER_CHAIN else GeminiModels.LIGHT_CHAIN)
         // नवंबर 2026: मज़बूत (paid) मॉडल की key डली हो तो कोडर/डिबगर/प्लानर उसी पर (न चले तो पीछे वही पुरानी chain)
-        private fun pick(agent: Seven.Agent) = TeamModels.pick(agent, ai, light, strong, scope)
+        private fun pick(agent: Seven.Agent): CoderAi {
+            val base = TeamModels.pick(agent, ai, light, strong, scope)
+            val level = TeamModels.thinkFor(agent, base.think)
+            if (level == base.think) return base
+            // नवंबर 2026 (तेज़): बात वाले एजेंट कम सोच पर - हर chain की एक ही कॉपी (बार-बार नई नहीं)
+            return synchronized(quick) { quick.getOrPut(base) { base.withThink(level) } }
+        }
+        private val quick = java.util.IdentityHashMap<CoderAi, CoderAi>()
         // runInterruptible: "रोकें" दबाते ही limit वाला इंतज़ार (Thread.sleep) भी रुके
         override suspend fun ask(agent: Seven.Agent, system: String, msgs: List<Pair<String, String>>): String =
             kotlinx.coroutines.runInterruptible(Dispatchers.IO) { pick(agent).chat(system, msgs) }

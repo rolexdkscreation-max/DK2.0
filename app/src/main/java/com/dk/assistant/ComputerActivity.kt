@@ -29,6 +29,11 @@ class ComputerActivity : AppCompatActivity() {
     private lateinit var send: ImageButton
     private lateinit var askBox: LinearLayout
     private var shown = 0
+    /** नवंबर 2026 (बग/स्मूथ): ComputerSession.dropped का आख़िरी देखा मान + एक frame में एक render */
+    private var seenDrop = 0L
+    private var renderQueued = false
+    private val renderNow = Runnable { renderQueued = false; if (!isDestroyed) render() }
+    private fun scheduleRender() { if (renderQueued) return; renderQueued = true; list.postOnAnimation(renderNow) }
     private val dp get() = resources.displayMetrics.density
     // ऊपर: "DK कंप्यूटर काम कर रहा है" - animation + अभी का कदम + प्रगति + योजना
     private lateinit var workBox: LinearLayout
@@ -252,7 +257,7 @@ class ComputerActivity : AppCompatActivity() {
         ComputerSession.plan.let { p -> ChatClean.busyLabel(p?.doneCount, p?.total) }   // नवंबर 2026: लंबा कदम-पाठ नहीं, छोटा "काम चल रहा है"
 
     private fun newSession() {
-        ComputerSession.reset(); shown = 0; list.removeAllViews()
+        ComputerSession.reset(); shown = 0; seenDrop = ComputerSession.dropped; list.removeAllViews()
         ComputerSession.add("d", welcome())
     }
 
@@ -303,7 +308,7 @@ class ComputerActivity : AppCompatActivity() {
     override fun onResume() {
         super.onResume()
         ComputerSession.visible = true
-        ComputerSession.listener = { runOnUiThread { render() } }
+        ComputerSession.listener = { runOnUiThread { scheduleRender() } }
         render()
     }
 
@@ -316,6 +321,8 @@ class ComputerActivity : AppCompatActivity() {
         val busy = ComputerSession.busy
         if (busy && !wasBusy) busySince = System.currentTimeMillis()
         wasBusy = busy
+        val drop = ComputerSession.dropped
+        shown = UiPace.shownAfterDrop(shown, seenDrop, drop); seenDrop = drop
         if (lines.size < shown) { inline.drop(); list.removeAllViews(); shown = 0 }
         while (shown < lines.size) {
             val l = lines[shown]; shown++

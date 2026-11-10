@@ -23,6 +23,8 @@ object Glass {
     const val ACCENT = 0xFFD6EEFF.toInt()
 
     private val TAG_KEY = R.id.glass_press   // view par nishaan: animation lag chuki
+    /** नए बटन/बुलबुले पर press animation कितनी देर में (कई layout = एक जाँच) */
+    const val DECORATE_GAP_MS = 150L
 
     /**
      * Screen ke har dabne-wale view (Button, ImageButton, clickable card/row/TextView) par halki "press" animation.
@@ -31,9 +33,12 @@ object Glass {
      */
     fun install(a: Activity) {
         val root = a.window?.decorView ?: return
-        val apply = { decorate(root) }
-        root.viewTreeObserver.addOnGlobalLayoutListener { apply() }
-        root.post { apply() }
+        // नवंबर 2026 (स्मूथ): पहले हर layout पर (टाइप करना, हर सेकंड का status) पूरी स्क्रीन का हर view दोबारा जाँचा जाता था.
+        // अब कई layout मिलकर एक जाँच, थोड़ा रुककर - press animation वैसी ही, बस बेवजह का काम नहीं
+        var queued = false
+        val pass = Runnable { queued = false; try { decorate(root) } catch (_: Exception) {} }
+        root.viewTreeObserver.addOnGlobalLayoutListener { if (!queued) { queued = true; root.postDelayed(pass, DECORATE_GAP_MS) } }
+        root.post { decorate(root) }
     }
 
     private fun decorate(v: View) {

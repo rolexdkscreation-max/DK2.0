@@ -386,7 +386,9 @@ internal fun SettingsActivity.secAccess() {
         row(box,
             button("कॉपी करें") {
                 val cm = getSystemService(android.content.ClipboardManager::class.java)
-                cm.setPrimaryClip(android.content.ClipData.newPlainText("DK crash", crash)); toast("कॉपी हो गया — मुझे भेज दें")
+                // नवंबर 2026: पिछली कई गलतियाँ साथ (एक से जड़ नहीं मिलती तो बाकी से)
+                val all = DKApp.crashHistory(this).ifBlank { crash }
+                cm.setPrimaryClip(android.content.ClipData.newPlainText("DK crash", all)); toast("कॉपी हो गया — मुझे भेज दें")
             },
             button("हटाएँ") { DKApp.clearCrash(this); toast("हटा दिया") })
     }
