@@ -1033,6 +1033,7 @@ class SevenTeam(
         val orig = staged.keys.associateWith { files.original(it) }
         stat.addAll(SafePr.testGuard(staged, orig, SafePr.removesOldFeature(task)))
         stat.addAll(uiTextCheck(staged))
+        stat.addAll(prAudit(staged))
         if (stat.isNotEmpty()) return TeamTest(false, "STATIC CHECK FAILED:\n" + stat.joinToString("\n"))
         if (staged.isEmpty()) return TeamTest(false, "NOTHING CHANGED: no file was changed for the task")
         val g = git
@@ -1204,10 +1205,23 @@ class SevenTeam(
         } catch (_: Exception) { emptyList() }
     }
 
+    /**
+     * नवंबर 2026 (PR #252): पूरे बदलाव की पक्की जाँच (PrAudit) - दोहराए शब्द, गायब किए पुराने बटन, बेजान नए बटन,
+     * बेकार layout/raw/drawable/dependency. पहले reviewer हर step अलग देखता था, ये पूरे PR को main के मुकाबले देखता है.
+     */
+    private suspend fun prAudit(staged: Map<String, String?>): List<String> = try {
+        val base = files.all()
+        val all = base?.let { HashMap(it).apply { staged.forEach { (p, c) -> if (c == null) remove(p) else put(p, c) } } }
+        val low = task.lowercase()
+        val hide = SafePr.removesOldFeature(task) || listOf("छिपा", "छुपा", "hide", "gone", "chhupa", "chupa").any { low.contains(it) }
+        val orig = HashMap<String, String?>(); for (p in staged.keys) orig[p] = files.original(p)
+        PrAudit.audit(staged, { p -> orig[p] }, all, hide)
+    } catch (_: Exception) { emptyList() }
+
     /** log से असली एरर लाइनें (Kotlin "e: file:line", error:, FAILED, Exception) */
     private fun errorLines(log: String): String = log.lines().map { it.trim() }.filter { l ->
         l.startsWith("e: ") || l.contains("error:", true) || l.contains("Unresolved reference") || l.contains("FAILED") ||
-            l.contains("AssertionError") || l.contains("Exception:") || l.startsWith("STATIC CHECK") || l.startsWith("DRY-RUN")
+            l.contains("AssertionError") || l.contains("Exception:") || l.startsWith("STATIC CHECK") || l.startsWith("DRY-RUN") || l.startsWith("AUDIT ")
     }.distinct().take(8).joinToString("\n") { it.take(240) }
 
     // ------------------------------------------------------------------ मदद
