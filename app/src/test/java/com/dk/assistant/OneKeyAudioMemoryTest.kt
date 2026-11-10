@@ -6,18 +6,21 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * v3.6 (owner के नियम): एक key = सिर्फ़ बातचीत/चैट/खोज/फ़ोन के काम; Bluetooth पर आवाज़ सच में headset में;
+ * v3.6 (owner के नियम; नवंबर 2026 से एक key = सारे काम): Bluetooth पर आवाज़ सच में headset में;
  * speaker पर DK तेज़; घंटी हमेशा वापस; धीमी आवाज़ भी सुने; "सुना पर किया नहीं" = फ़ोन खुद करे; हाल की बातें याद.
  */
 class OneKeyAudioMemoryTest {
 
     // ------------------------------------------------------------------ एक key
-    @Test fun oneKeyBlocksOnlyHeavyAgents() {
+    // नवंबर 2026 (मालिक): एक key = सारे काम. रोक सिर्फ़ तब जब एक-key मोड चालू हो पर key डाली ही न हो
+    @Test fun oneKeyBlocksOnlyWhenKeyMissing() {
         for (w in OneKeyGate.Work.values()) {
-            assertTrue(OneKeyGate.blocked(true, w))
-            assertFalse(OneKeyGate.blocked(false, w))
+            assertTrue(OneKeyGate.blocked(true, w, keyBlank = true))
+            assertFalse("${w.hi} एक key डली हो तो चले", OneKeyGate.blocked(true, w, keyBlank = false))
+            assertFalse(OneKeyGate.blocked(false, w, keyBlank = true))
+            assertFalse(OneKeyGate.blocked(false, w, keyBlank = false))
         }
-        assertFalse(OneKeyGate.blocked(true, null))                     // बात/चैट/खोज/फ़ोन के काम = रोक नहीं
+        assertFalse(OneKeyGate.blocked(true, null, keyBlank = true))    // बात/चैट/खोज/फ़ोन के काम = रोक नहीं
         assertEquals(LiveAgentRoute.TOOLS, OneKeyGate.LIVE_TOOLS.keys)  // चारों एजेंट tool, न कम न ज़्यादा
         assertFalse(OneKeyGate.LIVE_TOOLS.containsKey("phone_task"))
         assertFalse(OneKeyGate.LIVE_TOOLS.containsKey("web_search"))
@@ -32,10 +35,12 @@ class OneKeyAudioMemoryTest {
         assertFalse(LiveAgentRoute.started(n))                          // एजेंट की स्क्रीन पर "काम मिला" नहीं दिखेगा
     }
 
-    @Test fun featuresSayOneKeyIsOnlyForTalk() {
+    @Test fun featuresSayOneKeyRunsEverything() {
         val f = LiveConnect.features(autoOn = false, autoKinds = emptyList(), oneKey = true)
-        assertTrue(f.contains("one all-rounder key") && f.contains("ONLY for talking"))
-        assertFalse(LiveConnect.features(autoOn = false, autoKinds = emptyList(), oneKey = false).contains("ONLY for talking"))
+        assertTrue(f.contains("one all-rounder key") && f.contains("runs ALL work"))
+        for (t in listOf("coding_task", "computer_task", "story_task", "build_website", "image_task")) assertTrue(t, f.contains(t))
+        assertFalse(f.contains("ONLY for talking"))
+        assertFalse(LiveConnect.features(autoOn = false, autoKinds = emptyList(), oneKey = false).contains("runs ALL work"))
     }
 
     @Test fun agentEntryPointsAreGated() {

@@ -76,8 +76,10 @@ class OneKeyBargeImageTest {
     /** मालिक: अलग-अलग key वाले मोड में भी यही सब काम चालू रहें - कोई मोड-शर्त नहीं */
     @Test fun multiKeyMode_sameWorkOn() {
         for (t in listOf("image_task", "phone_task", "whatsapp_task", "phone_call")) {
-            assertFalse(t, OneKeyGate.blocked(false, OneKeyGate.LIVE_TOOLS[t]))
-            assertFalse(t, OneKeyGate.blocked(true, OneKeyGate.LIVE_TOOLS[t]))
+            for (blank in listOf(true, false)) {
+                assertFalse(t, OneKeyGate.blocked(false, OneKeyGate.LIVE_TOOLS[t], blank))
+                assertFalse(t, OneKeyGate.blocked(true, OneKeyGate.LIVE_TOOLS[t], blank))
+            }
         }
         assertFalse("tools की सूची मोड पर नहीं बदलती", src("GeminiLiveSetup.kt").contains("oneKeyOn"))
         for (f in listOf("GeminiLiveMic.kt", "GeminiLiveTurnEnd.kt", "VoiceTurn.kt")) assertFalse(f, src(f).contains("oneKeyOn"))

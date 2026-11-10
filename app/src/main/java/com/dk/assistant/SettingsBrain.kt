@@ -42,7 +42,8 @@ internal fun SettingsActivity.scopeStatus(scope: String): String {
 internal fun SettingsActivity.secBrainMenu() {
     // v3.91: "एक key से सब" - नया install = चालू (एक Gemini key से सारे काम); अलग-अलग keys वाले हिस्से बंद (मिटते नहीं)
     val one = Prefs.oneKeyOn(this)
-    card("एक key से सब (ऑल-राउंडर)", "सिर्फ़ एक Gemini key — DK लाइव में बात, चैट, सुनना-लिखना, Google खोज और फ़ोन के काम। कोडिंग एजेंट, स्टोरी मोड, DK कंप्यूटर, वेबसाइट के लिए इसे बंद करके अलग-अलग keys डालें", startOpen = one) { box ->
+    // नवंबर 2026 (मालिक): "एक key डालेगा तो सारे काम" - कोडिंग, स्टोरी, DK कंप्यूटर, वेबसाइट भी इसी एक key से
+    card("एक key से सब (ऑल-राउंडर)", "सिर्फ़ एक Gemini key — DK लाइव में बात, चैट, सुनना-लिखना, Google खोज, फ़ोन के काम, फ़ोटो बनाना, कोडिंग एजेंट, स्टोरी मोड, DK कंप्यूटर और वेबसाइट — सारे काम इसी एक key से", startOpen = one) { box ->
         val sw = switch(box, "एक key से सब चलाओ", one)
         sw.setOnCheckedChangeListener { _, on ->
             save(false)
@@ -54,7 +55,7 @@ internal fun SettingsActivity.secBrainMenu() {
             hint(box, "अभी बंद है — हर हिस्सा नीचे अपनी अलग key से चल रहा है। चालू करें तो सारे काम ऊपर की एक key से होंगे (अलग keys मिटेंगी नहीं, बंद करते ही फिर चलेंगी)।")
             return@card
         }
-        val ed = field(box, "Gemini API Key (बात + चैट इसी से)", Prefs.oneKey(this), "AIza… यहाँ पेस्ट करें", secret = true)
+        val ed = field(box, "Gemini API Key (सारे काम इसी से)", Prefs.oneKey(this), "AIza… यहाँ पेस्ट करें", secret = true)
         keyFields[ApiScopes.ONE_KEY] = ed
         // v3.6: पहली बार माइक दबाया और key नहीं = सीधे यहीं, keyboard खुला
         if (intent.getBooleanExtra(EXTRA_FOCUS_KEY, false) && Prefs.oneKey(this).isBlank()) ed.post {
@@ -98,13 +99,14 @@ internal fun SettingsActivity.secBrainMenu() {
             }
         })
         thinkRow(box, ThinkLevel.ONE)
-        hint(box, "अभी: " + (if (Prefs.oneKey(this).isNotBlank()) "✓ बात, चैट, खोज और फ़ोन के काम इसी एक key से" else "✗ key नहीं डाली") +
+        hint(box, "अभी: " + (if (Prefs.oneKey(this).isNotBlank()) "✓ सारे काम (बात, चैट, खोज, फ़ोन, कोडिंग, स्टोरी, DK कंप्यूटर, वेबसाइट) इसी एक key से" else "✗ key नहीं डाली") +
             " • सुनना भी Gemini से (Groq की ज़रूरत नहीं)। एक free key की limit सब कामों में बँटती है — limit जल्दी खत्म हो तो बटन बंद करके अलग-अलग keys डालें।")
     }
-    // v3.167 (मालिक): वेबसाइट बिल्डर की अपनी अलग key - एक-key मोड में भी दिखे और चले
-    menuRow("brain_web", "वेबसाइट बिल्डर (Website Forge)", forgeStatus() + "\nवेबसाइट बनाने के लिए अलग Gemini key — सिर्फ़ यही इस्तेमाल होगी", "computer")
+    // v3.167 (मालिक): वेबसाइट बिल्डर की अपनी अलग key - एक-key मोड में भी दिखे और चले (नवंबर 2026: न डाली हो तो एक key से)
+    menuRow("brain_web", "वेबसाइट बिल्डर (Website Forge)", forgeStatus() + "\nवेबसाइट बनाने के लिए अलग Gemini key (ज़रूरी नहीं) — डली हो तो पहले यही" +
+        (if (one) ", नहीं तो ऊपर की एक key" else ""), "computer")
     if (one) {
-        card("अलग-अलग key वाले हिस्से — बंद", "ऊपर \"एक key से सब\" चालू है, इसलिए DK लाइव / चैट / कोडिंग / कंप्यूटर की अलग keys अभी इस्तेमाल नहीं हो रहीं") { box ->
+        card("अलग-अलग key वाले हिस्से — बंद", "ऊपर \"एक key से सब\" चालू है, इसलिए DK लाइव / चैट / कोडिंग / कंप्यूटर / स्टोरी सब उसी एक key से — उनकी अलग keys अभी इस्तेमाल नहीं हो रहीं") { box ->
             hint(box, "अलग-अलग key चाहिए तो ऊपर वाला बटन बंद करें — पहले डाली हुई अलग keys वैसी ही सुरक्षित हैं।")
         }
         return
@@ -120,13 +122,16 @@ internal fun SettingsActivity.secBrainMenu() {
 
 internal fun SettingsActivity.forgeStatus(): String {
     if (Prefs.forgeKey(this).isBlank()) return "✗ key नहीं डाली — वेबसाइट नहीं बनेगी"
+    // नवंबर 2026: अपनी key नहीं, पर "एक key से सब" वाली key है = वेबसाइट उसी से
+    if (Prefs.forgeRaw(this, Prefs.FORGE_KEY).isBlank() && Prefs.forgeRaw(this, Prefs.FORGE_KEY2).isBlank())
+        return "✓ \"एक key से सब\" वाली key से • मॉडल: " + Prefs.forgeModelToUse(this).ifBlank { "अपने-आप" }
     val m = Prefs.forgeModel(this).ifBlank { Prefs.forgeAutoModel(this).ifBlank { "अपने-आप" } }
     return "✓ अपनी key • मॉडल: $m"
 }
 
 /** v3.167: वेबसाइट बिल्डर (Website Forge) - अपनी अलग Gemini key + अपने-आप सबसे अच्छा मॉडल */
 internal fun SettingsActivity.secBrainWeb() {
-    card("वेबसाइट बिल्डर — अपनी Gemini key", "DK से जब भी वेबसाइट बनवाएँगे, सिर्फ़ यही key लगेगी — DK लाइव, चैट, कोडिंग या कोई दूसरी key नहीं") { box ->
+    card("वेबसाइट बिल्डर — अपनी Gemini key", "यहाँ key डली हो तो वेबसाइट सिर्फ़ इसी से बनेगी — DK लाइव, चैट, कोडिंग की key नहीं। खाली छोड़ें और \"एक key से सब\" चालू हो तो वही एक key") { box ->
         val ed = field(box, "Gemini API Key (वेबसाइट बिल्डर की अपनी)", Prefs.forgeRaw(this, Prefs.FORGE_KEY), "AIza… यहाँ पेस्ट करें", secret = true)
         keyFields[Prefs.FORGE_KEY] = ed
         keyFields[Prefs.FORGE_KEY2] = field(box, "Gemini API Key 2 (बैकअप, ज़रूरी नहीं)",
@@ -194,8 +199,8 @@ internal fun SettingsActivity.secBrainWeb() {
                 }.show()
         }, button("वेबसाइट बिल्डर खोलें") { com.dk.assistant.forge.ForgeLauncher.open(this) })
         hint(box, "सबसे अच्छा मॉडल अपने-आप: नया Pro → नया Flash → Lite (जो इस key पर सच में चले)। वेबसाइट बनाते समय उस मॉडल की limit खत्म हो तो " +
-            "इसी key के अगले मॉडल पर, फिर भी न चले तो Key 2 पर — DK की दूसरी कोई key कभी नहीं।" +
-            if (Prefs.oneKeyOn(this)) "\n\"एक key से सब\" चालू होने पर भी, यहाँ key डली हो तो वेबसाइट बनेगी।" else "")
+            "इसी key के अगले मॉडल पर, फिर भी न चले तो Key 2 पर — यहाँ key डली हो तो DK की दूसरी कोई key नहीं।" +
+            if (Prefs.oneKeyOn(this)) "\n\"एक key से सब\" चालू है: यहाँ key डली हो तो वेबसाइट इसी से, नहीं तो उसी एक key से बनेगी।" else "")
         if (ed.text.isNotBlank() && Prefs.forgeAutoModel(this).isBlank()) check(true)
     }
 }
