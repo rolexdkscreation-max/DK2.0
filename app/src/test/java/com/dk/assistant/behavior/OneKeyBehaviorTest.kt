@@ -20,7 +20,7 @@ import org.robolectric.Robolectric
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 
-/** "एक key से सब": भारी काम (कोडिंग, स्टोरी, कंप्यूटर, वेबसाइट) सच में रुकें, बंद करने पर चलें */
+/** "एक key से सब": key न डली हो तो भारी काम (कोडिंग, स्टोरी, कंप्यूटर, वेबसाइट) सच में रुकें; key डली हो या मोड बंद = चलें */
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [34], application = Application::class)
 class OneKeyBehaviorTest {
@@ -35,6 +35,20 @@ class OneKeyBehaviorTest {
         for (w in OneKeyGate.Work.values()) assertNotNull("${w.hi} एक key पर रुकना चाहिए", OneKeyGate.check(c, w))
         oneKey(false)
         for (w in OneKeyGate.Work.values()) assertNull("${w.hi} अलग keys पर चलना चाहिए", OneKeyGate.check(c, w))
+    }
+
+    /** नवंबर 2026 (मालिक): "एक key डालेगा तो सारे काम" - key डली हो तो कोई भी काम नहीं रुकता, सब उसी key से */
+    @Test fun oneKeyWithKeyRunsAllWork() {
+        Prefs.edit(c) { putBoolean(ApiScopes.ONE_KEY_ON, true); putString(ApiScopes.ONE_KEY, "AIzaTEST_one_key_all_work") }
+        try {
+            for (w in OneKeyGate.Work.values()) assertNull("${w.hi} एक key पर चलना चाहिए", OneKeyGate.check(c, w))
+            for (s in listOf(ApiScopes.CODER, ApiScopes.PC)) assertEquals("AIzaTEST_one_key_all_work", Prefs.scopeKey(c, s, "gemini"))
+            assertEquals("AIzaTEST_one_key_all_work", Prefs.forgeKey(c))          // वेबसाइट बिल्डर भी उसी key से
+            Prefs.edit(c) { putString(Prefs.FORGE_KEY, "AIzaFORGE_own") }
+            assertEquals("AIzaFORGE_own", Prefs.forgeKey(c))                      // अपनी key डली हो तो पहले वही
+        } finally {
+            Prefs.edit(c) { remove(ApiScopes.ONE_KEY); remove(Prefs.FORGE_KEY); putBoolean(ApiScopes.ONE_KEY_ON, false) }
+        }
     }
 
     @Test fun codingScreenRefusesOnOneKey() {

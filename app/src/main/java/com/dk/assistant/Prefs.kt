@@ -178,8 +178,16 @@ object Prefs {
     const val FORGE_KEY2 = "forge_key_gemini2"
     const val FORGE_MODEL = "forge_model"
     const val FORGE_MODELS = "forge_models"
-    fun forgeKeys(c: Context): List<String> = listOf(FORGE_KEY, FORGE_KEY2)
-        .map { sp(c).getString(it, "")?.trim().orEmpty() }.filter { it.isNotBlank() }.distinct()
+    fun forgeKeys(c: Context): List<String> = forgeKeysFor(listOf(FORGE_KEY, FORGE_KEY2).map { sp(c).getString(it, "")?.trim().orEmpty() },
+        oneKeyOn(c), oneKey(c))
+    /**
+     * नवंबर 2026 (मालिक: "एक key डालेगा तो सारे काम"): वेबसाइट बिल्डर की अपनी key पहले; अपनी key नहीं डली और "एक key से सब"
+     * चालू = वही एक key. अलग-अलग keys वाले मोड में पहले जैसा - सिर्फ़ अपनी key. Pure - JUnit से जाँच.
+     */
+    fun forgeKeysFor(own: List<String>, oneKeyOn: Boolean, oneKey: String): List<String> {
+        val mine = own.map { it.trim() }.filter { it.isNotBlank() }.distinct()
+        return if (mine.isEmpty() && oneKeyOn && oneKey.isNotBlank()) listOf(oneKey.trim()) else mine
+    }
     fun forgeKey(c: Context): String = forgeKeys(c).firstOrNull().orEmpty()
     fun forgeRaw(c: Context, name: String): String = sp(c).getString(name, "")?.trim().orEmpty()
     fun forgeModel(c: Context): String = sp(c).getString(FORGE_MODEL, "")?.trim().orEmpty()
