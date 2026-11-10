@@ -91,11 +91,8 @@ class OrbView @JvmOverloads constructor(
             styleCache = Prefs.orbStyle(context); genderCache = Prefs.voiceGender(context)
         }
         // छोटा ORB: पहले जैसा पृथ्वी; नया futuristic ORB चुना हो तो वही (अपने एनीमेशन के साथ)
-        if (mini) return when {
-            FutureOrbs.has(styleCache) -> styleCache
-            StateOrbs.has(styleCache) -> StateOrbs.key(styleCache, StateOrbs.state(mode))
-            else -> "earth"
-        }
+        if (mini && StateOrbs.has(styleCache)) return StateOrbs.key(styleCache, StateOrbs.state(mode))
+        if (mini) return if (FutureOrbs.has(styleCache)) styleCache else "earth"
         if (now < DKState.faceUntil) return if (genderCache == "male") "face_male" else "face_female"
         // हालत वाला ORB: सुनना / सोचना / बोलना / खाली - हर हालत का अपना आकार
         if (StateOrbs.has(styleCache)) return StateOrbs.key(styleCache, StateOrbs.state(mode))
@@ -115,7 +112,8 @@ class OrbView @JvmOverloads constructor(
         cloud = Shapes.make(style, n)
         target = style
         stateOrb = StateOrbs.isKey(style)
-        fxCode = if (stateOrb) StateOrbs.code(style) else FutureOrbs.code(style)
+        fxCode = FutureOrbs.code(style)
+        if (stateOrb) fxCode = StateOrbs.code(style)
         morphStart = SystemClock.uptimeMillis()
         angStart = atan2(sin(ang), cos(ang)); tiltFrom = tilt
     }
