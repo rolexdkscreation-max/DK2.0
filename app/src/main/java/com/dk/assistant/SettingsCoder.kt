@@ -155,6 +155,8 @@ internal fun SettingsActivity.secCoder() {
 
 /** रेडियो id की शुरुआत (मज़बूत मॉडल की कंपनी) */
 internal const val STRONG_RADIO = 7700
+/** रेडियो id की शुरुआत (मज़बूत मॉडल किन एजेंट को) */
+internal const val SCOPE_RADIO = 7750
 
 /**
  * नवंबर 2026 (मालिक): "कोडर, डिबगर और प्लानर के लिए ताक़तवर मॉडल" - अपनी paid key + मॉडल ([StrongAi]).
@@ -179,6 +181,8 @@ internal fun SettingsActivity.strongModelBox(box: LinearLayout) {
         if (now.isBlank() || StrongAi.CHOICES.any { it.model == now }) edStrongModel.setText(ch.model)
         edStrongModel.hint = ch.model
     }
+    label(box, "मज़बूत मॉडल किन एजेंट को")
+    rgStrongScope = radios(box, StrongAi.SCOPES, Prefs.coderStrongScope(this), SCOPE_RADIO)
     hint(box, "अंदाज़न खर्च (1 काम ≈ 2–6 लाख token): DeepSeek सबसे सस्ता, OpenAI/Gemini बीच में, Claude Opus सबसे मज़बूत पर महँगा। " +
         "Key या पैसे खत्म, limit या server गलती पर उसी काम में अपने-आप पुरानी (फ्री) API — काम रुकता नहीं।")
 }

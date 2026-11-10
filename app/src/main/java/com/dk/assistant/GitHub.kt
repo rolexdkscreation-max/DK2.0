@@ -16,7 +16,6 @@ import java.util.concurrent.TimeUnit
  * Pull requests: Read and write (सुरक्षित PR मोड), Actions: Read (build/tests देखना).
  */
 class GitHub(private val token: String) {
-
     class Err(val code: Int, msg: String) : java.io.IOException(msg)
     data class Repo(val fullName: String, val branch: String, val private: Boolean)
     data class Entry(val path: String, val size: Int)
@@ -184,7 +183,11 @@ class GitHub(private val token: String) {
      * Poore repo ki ek copy (zip) - har file alag-alag API se maangne ki jagah EK request.
      * Sirf text files (binary / 400 KB se badi chhod di). path -> content
      */
-    fun snapshot(repo: String, branch: String): Map<String, String> {
+    /**
+     * skipped (नवंबर 2026): जो फ़ाइलें text नहीं (png/webp/jar…) या 1MB से बड़ी होने से map में नहीं आईं, उनके path -
+     * ताकि "@drawable/x मौजूद है?" वाली जाँच png वाले drawable को गायब न समझे. रिपो 80MB से बड़ा = [TRUNCATED] भी.
+     */
+    fun snapshot(repo: String, branch: String, skipped: MutableSet<String>? = null): Map<String, String> {
         val out = LinkedHashMap<String, String>()
         val r = zipHttp.newCall(req("/repos/$repo/zipball/${enc(branch)}").get().build()).execute()
         r.use { resp ->
@@ -199,8 +202,9 @@ class GitHub(private val token: String) {
                     total += bytes.size
                     if (path.isNotBlank() && bytes.size <= 1_000_000 && !bytes.take(4000).contains(0.toByte()))
                         out[path] = String(bytes, Charsets.UTF_8)
+                    else if (path.isNotBlank()) skipped?.add(path)
                 }
-                if (total > 80_000_000L) break                        // bahut bada repo - baaki API se
+                if (total > 80_000_000L) { skipped?.add(TRUNCATED); break }   // bahut bada repo - baaki API se
                 e = zin.nextEntry
             }
         }
@@ -510,6 +514,8 @@ class GitHub(private val token: String) {
         private val zipHttp = com.dk.assistant.NetFix.builder()
             .connectTimeout(15, TimeUnit.SECONDS).readTimeout(60, TimeUnit.SECONDS).callTimeout(120, TimeUnit.SECONDS).build()
         const val TOKEN_URL = "https://github.com/settings/personal-access-tokens/new"
+        /** snapshot पूरा नहीं आया (रिपो 80MB से बड़ा) - skipped में यह निशान */
+        const val TRUNCATED = "\u0000truncated"
         /**
          * 403/404 पर साफ़ हिंदी: token में क्या बदलना है.
          * accepted = X-Accepted-GitHub-Permissions (fine-grained), scopes = X-OAuth-Scopes (classic).

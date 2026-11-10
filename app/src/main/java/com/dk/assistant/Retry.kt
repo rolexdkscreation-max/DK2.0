@@ -92,6 +92,38 @@ object FixLoop {
     /** गिनती-सीमा पूरी? (कोडर-रिव्यूअर की कोशिशें, QA के राउंड) */
     fun capped(rounds: Int): Boolean = rounds >= TEAM_CAP
 
+    /**
+     * नवंबर 2026 (PR #252 + feature/dk-1110-0955): गलती की "जगह" - शब्द नहीं.
+     * एक ही जगह (फ़ाइल / test) बार-बार fail होती रही पर संदेश हर बार थोड़ा अलग (ui_en.tsv 5 बार, ChatActivity.kt 3 बार
+     * अलग-अलग गायब नाम) = हूबहू signature कभी नहीं मिलती थी -> "रणनीति बदलो" कभी नहीं चलता था.
+     * @return "file:ChatActivity.kt", "test:UiTextTest.greetingTranslation" जैसी पहचान
+     */
+    fun sites(log: String): Set<String> {
+        val out = LinkedHashSet<String>()
+        for (raw in log.lines()) {
+            val l = raw.trim()
+            Regex("""^e: (?:file://)?\S*?([\w$-]+\.(?:kt|java|xml|kts|tsv|json))""").find(l)?.let { out.add("file:" + it.groupValues[1]) }
+            Regex("""(?:ERROR|error):?\s*(?:\S*/)?([\w-]+\.(?:xml|kt|java|tsv))[:\s]""").find(l)?.let { out.add("file:" + it.groupValues[1]) }
+            Regex("""([\w.$]+)\s*>\s*(\w+)(?:\(\))?\s+FAILED""").find(l)?.let { out.add("test:" + it.groupValues[1].substringAfterLast('.') + "." + it.groupValues[2]) }
+            Regex("""^(?:AUDIT|STATIC CHECK)?\s*([\w/.-]+\.(?:kt|java|xml|tsv|kts)):""").find(l)?.let { out.add("file:" + it.groupValues[1].substringAfterLast('/')) }
+            if (out.size >= 12) break
+        }
+        return out
+    }
+
+    /** दो fail एक ही गलती (हूबहू वही, या वही जगहें - शब्द चाहे अलग हों)? */
+    fun similar(logA: String, logB: String): Boolean {
+        if (signature(logA).isNotBlank() && signature(logA) == signature(logB)) return true
+        val a = sites(logA); val b = sites(logB)
+        if (a.isEmpty() || b.isEmpty()) return false
+        val common = a.intersect(b).size
+        return common * 2 >= maxOf(a.size, b.size)      // आधी या ज़्यादा जगहें वही
+    }
+
+    /** आख़िरी [limit] fail एक ही जगह (similar) पर = रणनीति बदलो / अटके */
+    fun sameSpot(logs: List<String>, limit: Int = 2): Boolean =
+        logs.size >= limit && logs.takeLast(limit).zipWithNext().all { (x, y) -> similar(x, y) }
+
     /** आख़िरी [limit] चीज़ें हूबहू एक जैसी (और खाली नहीं) = अटक गए */
     fun stuck(history: List<String>, limit: Int = TEAM_SAME_LIMIT): Boolean =
         history.size >= limit && history.takeLast(limit).distinct().size == 1 && history.last().isNotBlank()

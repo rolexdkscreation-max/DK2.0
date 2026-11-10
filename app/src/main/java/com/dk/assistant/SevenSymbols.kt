@@ -43,6 +43,21 @@ object SevenSymbols {
         "produce", "actor", "select", "awaitAll", "joinAll", "cancel", "isActive", "require", "lazyFast", "contract", "enumValues", "enumValueOf",
     )
 
+    private val ANY_MEMBERS = setOf("toString", "equals", "hashCode", "javaClass", "let", "also", "apply", "run", "takeIf", "takeUnless")
+
+    /**
+     * फ़ाइल ने यह नाम बाहर की library से import किया (import okhttp3.Request) जबकि रिपो में भी उसी नाम की class है
+     * = यहाँ बाहर वाली है, रिपो वाली से मिलाना गलत (Request.Builder() झूठा "नहीं है").
+     */
+    private fun importedFromOutside(file: String, type: String, repo: Map<String, String>): Boolean {
+        val imp = Regex("(?m)^\\s*import\\s+([\\w.]+)\\.${Regex.escape(type)}\\s*$").find(file)?.groupValues?.get(1) ?: return false
+        return typeFiles(repo, type).none { (_, c) -> Regex("(?m)^\\s*package\\s+${Regex.escape(imp)}\\s*$").containsMatchIn(c) }
+    }
+
+    /** हर class/enum/collection पर Kotlin की अपनी properties (रिपो में declare नहीं होतीं) */
+    private val PROP_OK = setOf("name", "ordinal", "entries", "javaClass", "size", "length", "indices", "lastIndex", "keys", "values",
+        "companion", "class", "java", "kotlin", "message", "cause", "stackTrace", "isInitialized", "first", "second", "third")
+
     /** Kotlin/Java के आम type (import बिना मिलते हैं) */
     private val TYPE_OK = setOf(
         "String", "Int", "Long", "Short", "Byte", "Float", "Double", "Boolean", "Char", "Unit", "Any", "Nothing", "Number", "Array",
@@ -181,11 +196,15 @@ object SevenSymbols {
         if (repo.values.any { Regex("\\b(?:fun|val|var)\\s+(?:<[^>]*>\\s*)?${Regex.escape(type)}\\??\\.$n\\b").containsMatchIn(it) }) return true
         val files = typeFiles(repo, type)
         if (files.isEmpty()) return null
+        // Kotlin हर class को देता है; data class को copy/componentN भी
+        if (name in ANY_MEMBERS) return true
+        if (Regex("^(copy|component\\d+)$").matches(name) && files.any { Regex("\\bdata\\s+class\\s+${Regex.escape(type)}\\b").containsMatchIn(it.second) }) return true
         var unknown = false
         for ((p, src) in files) {
             // पूरी फ़ाइल (companion/nested समेत) - brace गिनने की ग़लती से बचने को
             if (Regex("\\b(?:fun|val|var)\\s+(?:<[^>]*>\\s*)?$n\\b").containsMatchIn(src)) return true
             if (p.endsWith(".java") && Regex("\\b$n\\s*\\(").containsMatchIn(src)) return true
+            if (p.endsWith(".java") && Regex("[\\w>\\]]\\s+$n\\s*[;=]").containsMatchIn(src)) return true
             if (Regex("\\b(?:class|object|interface)\\s+$n\\b").containsMatchIn(src)) return true
             if (Regex("\\benum\\s+class\\s+${Regex.escape(type)}\\b").containsMatchIn(src) && Regex("(?m)^\\s*$n\\s*[,(;{]").containsMatchIn(src)) return true
             for (sup in superTypes(src, type)) {
@@ -201,21 +220,44 @@ object SevenSymbols {
         return files.values.any { src -> re.findAll(src).any { typeAt(src, it.groupValues[1], it.range.first) == type } }
     }
 
+    /** रिपो में कहीं `x.name` (property) जहाँ x इसी type का है? */
+    private fun usedPropOnType(files: Map<String, String>, type: String, name: String): Boolean {
+        val re = Regex("\\b([A-Za-z_]\\w*)\\s*(?:\\?|!!)?\\.\\s*${Regex.escape(name)}\\b(?!\\s*\\()")
+        return files.values.any { src -> re.findAll(src).any { typeAt(src, it.groupValues[1], it.range.first) == type } }
+    }
+
     /** किन फ़ाइलों में name का fun/val/var है */
     private fun declaredIn(files: Map<String, String>, name: String): List<String> =
         files.filter { declRe(name).containsMatchIn(it.value) }.keys.map { it.substringAfterLast('/') }
+
+    /** Type के fun name(…): Ret का Ret (रिपो की class हो, return type लिखा हो तभी; Nullable का ? हटाकर) */
+    internal fun returnType(repo: Map<String, String>, type: String, name: String): String? {
+        for ((_, src) in typeFiles(repo, type)) {
+            for (m in Regex("\\bfun\\s+(?:<[^>]*>\\s*)?${Regex.escape(name)}\\s*\\(").findAll(src)) {
+                var i = m.range.last; var depth = 0
+                while (i < src.length) { val ch = src[i]; if (ch == '(') depth++ else if (ch == ')') { depth--; if (depth == 0) break }; i++ }
+                val t = Regex("^\\s*:\\s*([A-Z]\\w*)").find(src.substring(minOf(src.length, i + 1), minOf(src.length, i + 80)))?.groupValues?.get(1)
+                if (t != null && t !in TYPE_OK) return t
+            }
+        }
+        return null
+    }
 
     /**
      * recv का type: इस्तेमाल की जगह (pos) से पहले वाली **सबसे नज़दीकी** declaration से.
      * वह बिना type वाली हो (val x = …, lambda का x ->, for (x in …)) = पता नहीं (null).
      */
-    private fun typeAt(file: String, recv: String, pos: Int): String? {
+    private fun typeAt(file: String, recv: String, pos: Int, repo: Map<String, String>? = null): String? {
         if (recv[0].isUpperCase()) return recv
         val r = Regex.escape(recv)
         data class D(val at: Int, val type: String?)
         val ds = ArrayList<D>()
         fun typed(re: Regex) = re.findAll(file).forEach { ds.add(D(it.range.first, it.groupValues[1])) }
-        fun untyped(re: Regex) = re.findAll(file).forEach { ds.add(D(it.range.first, null)) }
+        fun untyped(re: Regex) = re.findAll(file).forEach { m -> if (ds.none { it.at == m.range.first && it.type != null }) ds.add(D(m.range.first, null)) }
+        // नवंबर 2026: val x = Type.fn(…) -> fn का लिखा return type (feature/dk-1110-0955: val prep = MediaPrep.prepare(…); prep.isImage)
+        if (repo != null) Regex("\\b(?:val|var)\\s+$r\\s*=\\s*([A-Z]\\w*)\\s*\\.\\s*([a-zA-Z_]\\w*)\\s*\\(").findAll(file).forEach { m ->
+            returnType(repo, m.groupValues[1], m.groupValues[2])?.let { ds.add(D(m.range.first, it)) }
+        }
         typed(Regex("\\b(?:val|var)\\s+$r\\s*:\\s*([A-Z]\\w*)"))
         typed(Regex("[(,]\\s*(?:@\\w+\\s+)*(?:private\\s+|internal\\s+|protected\\s+|public\\s+|override\\s+|vararg\\s+)*(?:val\\s+|var\\s+)?$r\\s*:\\s*([A-Z]\\w*)"))
         typed(Regex("\\b(?:val|var)\\s+$r\\s*=\\s*([A-Z]\\w*)\\s*\\("))
@@ -265,8 +307,8 @@ object SevenSymbols {
             if (recv in KEYWORDS || name in KEYWORDS) return@forEach
             // पहले से (package/qualified नाम: a.b.C.d) - पीछे भी . हो तो छोड़ो
             if (m.range.first > 0 && file[m.range.first - 1] == '.') return@forEach
-            val type = typeAt(file, recv, m.range.first) ?: return@forEach
-            if (type in TYPE_OK) return@forEach
+            val type = typeAt(file, recv, m.range.first, all) ?: return@forEach
+            if (type in TYPE_OK || importedFromOutside(file, type, all)) return@forEach
             val key = "$type.$name"
             if (key in out) return@forEach
             val tfs = typeFiles(all, type)
@@ -285,6 +327,35 @@ object SevenSymbols {
                         sure = true, known = members(typeBody(tf.second, type)))
                 else Miss("$recv.$name()", "$type (${tf.first.substringAfterLast('/')}) में नहीं मिला; सिर्फ़ उसकी बाहर वाली parent class (${superTypes(tf.second, type).joinToString()}) में हो सकता है",
                     sure = false, known = members(typeBody(tf.second, type)))
+            }
+        }
+        // 1b) नवंबर 2026 (feature/dk-1110-0955): recv.name (बिना "(") - property भी सच में है? पहले सिर्फ़ function call जाँचे जाते थे,
+        //     इसलिए composer.onPlus = { … }, prep.isImage, prep.name जैसे गढ़े नाम CI तक पहुँचकर ही पकड़े गए (3 राउंड)
+        Regex("\\b([A-Za-z_]\\w*)\\s*(?:\\?|!!)?\\.\\s*([a-z_]\\w*)\\b(?![ \\t]*[({<\\w])").findAll(file).forEach { m ->
+            if (!isNew(m.range.first)) return@forEach
+            val recv = m.groupValues[1]; val name = m.groupValues[2]
+            if (recv in KEYWORDS || name in KEYWORDS || name in PROP_OK) return@forEach
+            if (m.range.first > 0 && file[m.range.first - 1] == '.') return@forEach
+            val type = typeAt(file, recv, m.range.first, all) ?: return@forEach
+            if (type in TYPE_OK || importedFromOutside(file, type, all)) return@forEach
+            val key = "$type.$name"
+            if (key in out) return@forEach
+            val tfs = typeFiles(all, type)
+            if (tfs.isEmpty()) return@forEach
+            val tf = tfs.first()
+            when (hasMember(all, type, name)) {
+                false -> out[key] = Miss("$recv.$name", "$type (${tf.first.substringAfterLast('/')}) में $name नाम की property/function नहीं है",
+                    sure = true, known = members(typeBody(tf.second, type)))
+                null -> if (!usedOnType(others + (path to oldStripped), type, name) && !usedPropOnType(others + (path to oldStripped), type, name)) {
+                    // Android View की parent class में "onX = { }" जैसी lambda property नहीं होती (setOnXListener होता है)
+                    val assignsLambda = Regex("^on[A-Z]\\w*$").matches(name) && !name.endsWith("Listener") && !name.endsWith("Callback") &&
+                        Regex("^\\s*=").containsMatchIn(file.substring(m.range.last + 1, minOf(file.length, m.range.last + 6)))
+                    out[key] = Miss("$recv.$name", "$type (${tf.first.substringAfterLast('/')}) में $name नहीं मिला" +
+                        (if (assignsLambda) " - Android की parent class (${superTypes(tf.second, type).joinToString()}) में भी \"$name = { }\" जैसी property नहीं होती; " +
+                            "पहले $type में var $name: (() -> Unit)? बनाएँ और उसे सही जगह बुलाएँ" else "; सिर्फ़ उसकी बाहर वाली parent class (${superTypes(tf.second, type).joinToString()}) में हो सकता है"),
+                        sure = assignsLambda, known = members(typeBody(tf.second, type)))
+                }
+                true -> {}
             }
         }
         if (!whole) return out.values.toList()

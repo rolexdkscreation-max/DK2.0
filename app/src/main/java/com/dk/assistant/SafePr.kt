@@ -176,4 +176,64 @@ object SafePr {
         }
         return out
     }
+
+    // ---------------------------------------------------------------- test की ईमानदारी (नवंबर 2026)
+
+    private val ASSERT_LINE = Regex("""\b(assert\w*|expect\w*|verify|shouldBe|shouldEqual|check\s*\(|fail\s*\()""")
+
+    /**
+     * पुराने (main वाले) test का कोई assertion बदला या हटाया = पुराना फ़ीचर अब बिना पहरे के.
+     * test पास कराने के लिए पुराने test का अपेक्षित मान बदलना मना (AGENTS.md: पुराने tests कमज़ोर नहीं). नई test जोड़ना ठीक.
+     * allowed = user ने खुद पुराना फ़ीचर बदलने/हटाने को कहा.
+     */
+    fun oldAssertsChanged(staged: Map<String, String?>, original: Map<String, String?>, allowed: Boolean): List<String> {
+        if (allowed) return emptyList()
+        val out = mutableListOf<String>()
+        staged.forEach { (p, now) ->
+            if (!isTestFile(p) || now == null) return@forEach
+            val before = original[p] ?: return@forEach
+            val nowLines = now.lines().map { it.trim() }.toHashSet()
+            val gone = before.lines().map { it.trim() }.filter { it.isNotBlank() && !it.startsWith("//") && ASSERT_LINE.containsMatchIn(it) && it !in nowLines }
+            if (gone.isNotEmpty()) out.add("$p: existing test assertion changed/removed - an old test must not be edited to make the build pass; " +
+                "fix the main code so the old test passes as it is (restore these lines): " + gone.take(4).joinToString(" | ") { it.take(140) })
+        }
+        return out
+    }
+
+    private val LIMIT_NAME = Regex("""(?i)(min|max|threshold|limit|toleran|variance|timeout|confidence|score|margin|epsilon|eps\b|ratio|cap\b|attempt|retr|distance|similar)""")
+    private val SECURE_FILE = Regex("""(?i)(guard|lock|liveness|face|auth|login|pin\b|password|secur|payment|otp|verif|biometric|permission|safe|alarm)""")
+    private val NUM_DECL = Regex("""\b(?:const\s+)?(?:val|var)\s+(\w+)\s*(?::\s*[\w<>?]+)?\s*=\s*(-?\d[\d_]*(?:\.\d+)?(?:[eE]-?\d+)?[fFdDlL]?)\b""")
+    private val NUM_PARAM = Regex("""\b(\w+)\s*:\s*(?:Float|Double|Int|Long)\s*=\s*(-?\d[\d_]*(?:\.\d+)?(?:[eE]-?\d+)?[fFdDlL]?)\b""")
+
+    /** फ़ाइल की नामवाली संख्या-सीमाएँ: name -> मान (जैसे minVariance -> 0.0001f) */
+    fun limits(src: String): Map<String, String> {
+        val m = LinkedHashMap<String, String>()
+        for (re in listOf(NUM_DECL, NUM_PARAM)) re.findAll(src).forEach { val n = it.groupValues[1]; if (LIMIT_NAME.containsMatchIn(n)) m.putIfAbsent(n, it.groupValues[2]) }
+        return m
+    }
+
+    /**
+     * नवंबर 2026 (PR #249: test fail हुआ तो liveness की सीमा minVariance 10 गुना ढीली + test की हलचल बढ़ा दी = "गोलपोस्ट खिसकाना").
+     * failed = पिछली बार जब CI fail हुआ तब की staged हालत, now = अब. उस fail के बाद:
+     *  - सुरक्षा वाली फ़ाइल (guard/lock/face/auth/payment…) में कोई सीमा बदली, या
+     *  - कोई सीमा बदली और उसी राउंड में किसी test फ़ाइल के मान/assertion भी बदले
+     * = रोक. user ने काम में वही नाम/सीमा बदलने को कहा हो तो छूट.
+     */
+    fun goalposts(failed: Map<String, String?>, now: Map<String, String?>, task: String): List<String> {
+        val low = task.lowercase(Locale.ROOT)
+        val changedLimits = mutableListOf<Triple<String, String, String>>()   // path, name, "a -> b"
+        var testTouched = false
+        for ((p, c) in now) {
+            val was = failed[p]
+            if (c == null || was == null || c == was) continue
+            if (isTestFile(p)) { testTouched = true; continue }
+            val a = limits(was); val b = limits(c)
+            for ((n, v) in a) { val nv = b[n] ?: continue; if (nv != v && !low.contains(n.lowercase(Locale.ROOT))) changedLimits.add(Triple(p, n, "$v -> $nv")) }
+        }
+        if (changedLimits.isEmpty()) return emptyList()
+        return changedLimits.filter { (p, _, _) -> SECURE_FILE.containsMatchIn(p) || testTouched }.map { (p, n, ch) ->
+            "$p: limit \"$n\" changed ($ch) right after the test failed" + (if (testTouched) " AND the test was changed in the same fix" else " in a security file") +
+                " - that only makes the test pass, the behaviour is not fixed. Restore the limit and fix the real logic (or explain with evidence why the old value was wrong)"
+        }
+    }
 }

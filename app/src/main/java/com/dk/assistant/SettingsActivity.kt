@@ -393,6 +393,7 @@ class SettingsActivity : AppCompatActivity() {
     internal lateinit var edCoderSteps: EditText
     internal lateinit var edCoderLight: EditText
     internal lateinit var rgStrong: android.widget.RadioGroup
+    internal lateinit var rgStrongScope: android.widget.RadioGroup
     internal lateinit var edStrongKey: EditText
     internal lateinit var edStrongModel: EditText
     internal lateinit var swBuildFix: SwitchCompat
@@ -440,6 +441,7 @@ class SettingsActivity : AppCompatActivity() {
                     putString(StrongAi.PREF_PROVIDER, radioValue(rgStrong, StrongAi.CHOICES.map { it.id }, STRONG_RADIO))
                     putString(StrongAi.PREF_KEY, edStrongKey.text.toString().trim())
                     putString(StrongAi.PREF_MODEL, edStrongModel.text.toString().trim())
+                    if (::rgStrongScope.isInitialized) putString(StrongAi.PREF_SCOPE, radioValue(rgStrongScope, StrongAi.SCOPES.map { it.first }, SCOPE_RADIO))
                 }
                 putBoolean("coder_buildfix", swBuildFix.isChecked)
                 putBoolean("coder_team", swTeam.isChecked)

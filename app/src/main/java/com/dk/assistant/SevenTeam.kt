@@ -23,6 +23,8 @@ interface TeamFiles {
     fun staged(): Map<String, String?>
     /** पूरा workspace (नाम-जाँच के लिए): path -> content, बदलाव समेत. null = नहीं दे सकते */
     suspend fun all(): Map<String, String>? = null
+    /** snapshot में न आई (binary/बड़ी) फ़ाइलों के path - resource जाँच के लिए */
+    suspend fun skippedPaths(): Set<String> = emptySet()
     /** all() पूरा रिपो है (GitHub मोड)? false = user की भेजी कुछ फ़ाइलें */
     val whole: Boolean get() = false
     /** v4.4: पूरे काम का हिसाब base branch (main) से - पहले के push/पिछली बार चला काम भी. "" = नहीं दे सकते */
@@ -187,6 +189,7 @@ class SevenTeam(
         const val FILE_CHARS = 40_000          // एक फ़ाइल इससे बड़ी = anchor के आस-पास का हिस्सा
         const val READ_BUDGET = 150_000        // प्लानर/डिबगर एक बार में इतना पढ़ें
         const val LIST_MAX = 800
+        const val CODER_LOOKUPS = 3            // कोडर लिखने से पहले इतनी बार ढूँढ/पढ़ सकता है (कोशिश नहीं गिनी)
         /** v3.6: प्रॉम्प्ट इंजीनियर का नक्शा (प्लानर/डिबगर को पूरा वाला ही) */
         const val PROMPT_MAP_CHARS = 30_000
         /** v5.1: समझाने वाले के खोज/पढ़ने के चक्कर */
@@ -363,6 +366,9 @@ class SevenTeam(
         else ev(Agent.PROMPT, "फ़ोटो/वीडियो में देखा:\n" + mediaNotes.take(600))
     }
 
+    /** पिछली बार CI fail होते समय की staged हालत (test की ईमानदारी जाँच के लिए) */
+    private var failBase: Map<String, String?>? = null
+
     private fun map(ws: Map<String, String>): String = repoMap ?: SevenPlus.RepoMap.build(ws, mapChars).also { repoMap = it }
 
     /** @param pre user की मंज़ूर की हुई समझ (11-एजेंट). null = मैनेजर यहीं समझेगा (पुराना क्रम) */
@@ -468,6 +474,23 @@ class SevenTeam(
         note.state("प्लान बना: ${plan.steps.size} कदम — कोड बदल रहा है", "कदम पूरे करके build/tests")
         pushNote()
         if (!execute(plan, emptySet())) return finish(false, lastBlock)
+        // नवंबर 2026 (बड़ा प्रोजेक्ट मोड): काम 10 कदम से बड़ा = प्लानर ने बाकी काम "more" में लिखा -> अगला चरण, उसी branch/PR में
+        var left = plan.more
+        var phaseNo = 1
+        while (left.isNotBlank() && phaseNo < Seven.MAX_PHASES) {
+            phaseNo++
+            ev(Agent.MANAGER, "बड़ा काम — चरण ${phaseNo - 1} पूरा. अब चरण $phaseNo (बाकी: ${left.take(200)})")
+            note.state("चरण ${phaseNo - 1} पूरा — चरण $phaseNo का प्लान", "बाकी चरण, फिर build/tests")
+            pushNote()
+            val next = makePlan("CONTINUE THE SAME TASK - PHASE $phaseNo.\nORIGINAL TASK: $task\n" +
+                (if (brief.isNotBlank()) "BRIEF: $brief\n" else "") +
+                "ALREADY DONE IN EARLIER PHASES (do not redo): " + changes.entries.joinToString("; ") { "${it.key}: ${it.value.take(100)}" } +
+                "\nLEFT FOR THIS PHASE: $left", changes.keys.toList())
+                ?: return finish(false, "चरण $phaseNo का प्लान नहीं बना: $lastBlock")
+            if (!execute(next, emptySet())) return finish(false, lastBlock)
+            left = next.more
+        }
+        if (left.isNotBlank()) ev(Agent.MANAGER, "⚠ ${Seven.MAX_PHASES} चरणों के बाद भी कुछ बाकी — QA जाँचेगा, बाकी काम रिपोर्ट में: ${left.take(200)}")
         save { it.copy(phase = TeamProgress.CODED, steps = emptyList(), stepsDone = 0, failLog = "", failUrl = "") }
         // 3b. परफॉरमेंस: बदले code में UI जाम / leak / बेवजह का काम
         if (full) perf()
@@ -478,6 +501,7 @@ class SevenTeam(
         var passedBefore = r != null && prog.phase >= TeamProgress.PASSED
         var oldFail = if (r != null && !passedBefore && prog.failLog.isNotBlank()) TeamTest(false, prog.failLog, prog.failUrl) else null
         val sigs = mutableListOf<String>()
+        val failLogs = mutableListOf<String>()
         while (true) {
             val t = when {
                 passedBefore -> { passedBefore = false; TeamTest(true, "", "", "पिछली बार build + tests पास हो चुके थे", if (git?.prUrl.isNullOrBlank()) TeamTest.BRANCH else "") }
@@ -541,8 +565,12 @@ class SevenTeam(
                     stuckNote(sigs.last()))
                 FixLoop.Next.FIX_AGAIN -> {}
             }
-            val repeat = sigs.size >= 2 && sigs[sigs.size - 1] == sigs[sigs.size - 2]
-            if (repeat) ev(Agent.MANAGER, "वही गलती दोबारा आई — रणनीति बदल रहा हूँ: डिबगर दूसरी जड़ देखेगा, कोडर पूरी फ़ाइल दोबारा लिखेगा")
+            failLogs.add(t.log)
+            // नवंबर 2026: "वही गलती" = हूबहू वही, या वही जगह (फ़ाइल/test) - शब्द चाहे अलग हों (PR #252: ui_en.tsv 5 बार)
+            val exact = sigs.size >= 2 && sigs[sigs.size - 1] == sigs[sigs.size - 2]
+            val repeat = exact || FixLoop.sameSpot(failLogs)
+            if (repeat) ev(Agent.MANAGER, (if (exact) "वही गलती दोबारा आई" else "उसी जगह (${FixLoop.sites(t.log).take(3).joinToString().ifBlank { "वही फ़ाइल" }}) फिर fail — शब्द अलग पर गलती वही") +
+                " — रणनीति बदल रहा हूँ: डिबगर दूसरी जड़ देखेगा, कोडर पूरी फ़ाइल दोबारा लिखेगा")
             // v4.4: पहले पक्की जाँच - एरर उन्हीं नामों के हैं जो इसी काम की हटाई/आधी फ़ाइल में थे? तो जड़ वही: main से हूबहू वापस
             val restored = try { files.restoreDamaged(t.log) } catch (_: Exception) { emptyList() }
             if (restored.isNotEmpty()) {
@@ -550,7 +578,9 @@ class SevenTeam(
                 ev(Agent.DEBUGGER, "असली जड़ मिली — इसी काम ने ये फ़ाइलें हटाई/आधी कर दी थीं, एरर इन्हीं के नामों के हैं:\n" +
                     restored.joinToString("\n") { "• ${it.path}" + if (it.names.isNotEmpty()) " (${it.names.take(5).joinToString()})" else "" } + "\nमुख्य branch से हूबहू वापस लाई — अब सिर्फ़ ज़रूरी छोटा बदलाव")
             }
-            val d = debug("TEST/BUILD FAILED.\n" + (if (restored.isNotEmpty()) CodeGuard.damageNote(restored, "main") + "\n\n" else "") +
+            val triedNote = if (repeat && tried.isNotEmpty()) "THE SAME PLACE FAILED AGAIN. These root causes / fixes were ALREADY TRIED and did NOT work - find a DIFFERENT real cause (re-read the exact current file lines, check the real names/types/resources):\n" +
+                tried.takeLast(4).joinToString("\n") { "- $it" } + "\n\n" else ""
+            val d = debug("TEST/BUILD FAILED.\n" + triedNote + (if (restored.isNotEmpty()) CodeGuard.damageNote(restored, "main") + "\n\n" else "") +
                 (if (errs.isNotBlank()) "EXACT ERROR LINES FROM THE LOG:\n$errs\n\n" else "") + "FULL LOG (important part):\n${t.log.take(maxOf(30_000, big / 4))}", repeat)
                 ?: fallbackDiag(t.log)
                 ?: return finish(false, "डिबगर टेस्ट फ़ेल होने की जड़ नहीं ढूँढ पाया (log में फ़ाइल:लाइन वाला कोई एरर भी नहीं मिला)")
@@ -919,10 +949,24 @@ class SevenTeam(
         var msgs = mutableListOf("user" to coderBrief(s, cur, strat, defs))
         // AGENTS.md नियम 15: वही गलती 3 बार लगातार या 8 कोशिशें = रुककर मैनेजर दूसरा रास्ता लेता है
         var attempt = 0
+        var lookups = 0
         while (!FixLoop.stuck(errors) && !FixLoop.capped(attempt)) {
             attempt++
             val sys = Seven.Prompts.CODER + if (strat == Seven.Strategy.REWRITE) "\n\n" + Seven.Prompts.CODER_REWRITE else ""
             val reply = aiAsk(Agent.CODER, sys, msgs)
+            // नवंबर 2026 (मालिक: "कोडिंग एजेंट मेरे जैसा"): कोडर को नाम पक्का न हो तो खुद रिपो में ढूँढे/पढ़े (3 बार तक, कोशिश नहीं गिनी)
+            // - जैसे Perplexity लिखने से पहले rg/read करता है. पहले वह अंदाज़े से नाम बना देता था (onPlus, isImage... feature/dk-1110-0955)
+            if (lookups < CODER_LOOKUPS && Seven.isLookup(reply)) {
+                lookups++; attempt--
+                val terms = SevenPlus.RepoSearch.terms(reply)
+                val found = if (terms != null) SevenPlus.RepoSearch.search(ws(), terms)
+                    else Seven.planReads(reply)?.let { readFiles(it.take(4)) }.orEmpty()
+                ev(Agent.CODER, "लिखने से पहले रिपो में देख रहा हूँ: " + (terms ?: Seven.planReads(reply).orEmpty()).joinToString(", ").take(120))
+                msgs.add("model" to reply)
+                msgs.add("user" to found.ifBlank { "(nothing found)" } + "\nNow write the change in the exact format (FILE: + <<<FIND/<<<REPLACE or <<<FILE)." +
+                    if (lookups >= CODER_LOOKUPS) " No more lookups." else "")
+                continue
+            }
             val edit = Seven.parseEdit(reply, s.file)
             val chk = Seven.check(edit, s, cur, allowRewrite = strat == Seven.Strategy.REWRITE || cur == null)
             var problems = chk.problems
@@ -1044,6 +1088,9 @@ class SevenTeam(
         staged.forEach { (p, c) -> if (c != null) Syntax.check(p, c)?.let { stat.add("$p: $it") } }
         val orig = staged.keys.associateWith { files.original(it) }
         stat.addAll(SafePr.testGuard(staged, orig, SafePr.removesOldFeature(task)))
+        // नवंबर 2026: पुराने test का assertion बदलना / test fail होने पर सीमा ढीली करना (PR #249) = रोक, code ठीक करो
+        stat.addAll(SafePr.oldAssertsChanged(staged, orig, SafePr.removesOldFeature(task)))
+        failBase?.let { stat.addAll(SafePr.goalposts(it, staged, task)) }
         // audit K2: आख़िरी पहरा - कोई सुरक्षित फ़ाइल किसी भी रास्ते से बदली हो (और माँगी न गई हो) तो push नहीं
         SafePr.blockedIn(staged.keys, task).forEach { stat.add("$it: PROTECTED FILE changed but the task did not ask for it — revert this file (AGENTS.md)") }
         stat.addAll(uiTextCheck(staged))
@@ -1060,6 +1107,8 @@ class SevenTeam(
             val commit = cm.first; val title = cm.second
             ev(Agent.GIT, if (g.prUrl.isBlank()) "branch पर push — PR अभी नहीं, पहले build/tests" else "उसी PR की branch पर push, PR का चेक…")
             val r = g.pushAndTest(commit, title, changes.entries.joinToString("\n") { "• ${it.key} — ${it.value}" }, rootCause) { ev(Agent.TESTER, it) }
+            // असली CI fail = यह हालत याद (अगले सुधार में "सीमा ढीली करके पास" पकड़ने को); पास = भूल जाओ
+            when (r.ok) { false -> failBase = HashMap(staged); true -> failBase = null; null -> {} }
             if (r.ok == null && r.log == NO_CI) {
                 noCi = true
                 ev(Agent.TESTER, "इस रिपो में GitHub Actions का कोई test/build नहीं — syntax जाँच + ड्राई-रन से जाँच रहा हूँ")
@@ -1230,7 +1279,14 @@ class SevenTeam(
         val low = task.lowercase()
         val hide = SafePr.removesOldFeature(task) || listOf("छिपा", "छुपा", "hide", "gone", "chhupa", "chupa").any { low.contains(it) }
         val orig = HashMap<String, String?>(); for (p in staged.keys) orig[p] = files.original(p)
-        PrAudit.audit(staged, { p -> orig[p] }, all, hide)
+        val audit = PrAudit.audit(staged, { p -> orig[p] }, all, hide)
+        // नवंबर 2026: इस्तेमाल किया resource / custom View सच में है? नई फ़ाइल कहीं इस्तेमाल? बिन माँगी नई library?
+        val refs = if (all == null || !files.whole) emptyList() else {
+            val skipped = try { files.skippedPaths() } catch (_: Exception) { emptySet() }
+            RefCheck.missingResources(staged, { p -> orig[p] }, all, skipped) + RefCheck.missingViews(staged, { p -> orig[p] }, all) +
+                RefCheck.deadNewCode(staged, { p -> orig[p] }, all)
+        }
+        (audit + refs + RefCheck.unaskedDependencies(staged, { p -> orig[p] }, task)).distinct()
     } catch (_: Exception) { emptyList() }
 
     /** log से असली एरर लाइनें (Kotlin "e: file:line", error:, FAILED, Exception) */

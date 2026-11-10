@@ -77,6 +77,8 @@ class CodingAgent(internal val gh: GitHub, var repo: String, var branch: String,
     internal var files: List<GitHub.Entry>? = null
     /** Poore repo ki copy (zip se) - null = nahi mili, tab har file API se */
     internal var snap: Map<String, String>? = null
+    /** snapshot में न आई (binary/बड़ी) फ़ाइलों के path - resource जाँच के लिए (GitHub.TRUNCATED = रिपो पूरा नहीं आया) */
+    internal var snapSkipped: Set<String> = emptySet()
     private var checkWarned = false
     /** इस काम में कौन-सी फ़ाइलें पढ़ीं - बिना पढ़े पूरी फ़ाइल दोबारा नहीं लिखनी */
     internal val readInTask = mutableSetOf<String>()
@@ -90,7 +92,7 @@ class CodingAgent(internal val gh: GitHub, var repo: String, var branch: String,
     private var writeChecked = false
 
     fun reset() {
-        staged.clear(); original.clear(); msgs.clear(); files = null; snap = null; checkWarned = false
+        staged.clear(); original.clear(); msgs.clear(); files = null; snap = null; snapSkipped = emptySet(); checkWarned = false
         branch = baseBranch; pr = null; prError = ""; lastTask = ""; lastSummary = ""; projectCtx = ""
         lastPushMsg = ""; lastChangeText = ""
         intentional = false; backupBranch = ""; rootCause = ""; pushedToBranch = false
@@ -103,9 +105,9 @@ class CodingAgent(internal val gh: GitHub, var repo: String, var branch: String,
      */
     fun resetKeepFiles(resumeBranch: String) {
         val keep = snap != null && (resumeBranch.isBlank() || resumeBranch == branch)
-        val s = snap; val f = files
+        val s = snap; val f = files; val sk = snapSkipped
         reset()
-        if (keep) { snap = s; files = f }
+        if (keep) { snap = s; files = f; snapSkipped = sk }
     }
 
     /** App restart ke baad pichhla khula PR wapas (Merge card ke liye). GitHub par band/merge mila to mergePr/push khud saaf karte hain */
@@ -164,7 +166,9 @@ class CodingAgent(internal val gh: GitHub, var repo: String, var branch: String,
     suspend fun teamLoad(onStep: (String) -> Unit) = withContext(Dispatchers.IO) {
         if (files != null || snap != null) return@withContext
         onStep("$repo ($branch) की फ़ाइलें ला रहा हूँ…")
-        snap = try { gh.snapshot(repo, branch).also { onStep("पूरा रिपो फ़ोन में आ गया (${it.size} फ़ाइलें)") } } catch (e: Exception) { null }
+        val skip = HashSet<String>()
+        snap = try { gh.snapshot(repo, branch, skip).also { onStep("पूरा रिपो फ़ोन में आ गया (${it.size} फ़ाइलें)") } } catch (e: Exception) { null }
+        snapSkipped = skip
         files = snap?.let { m -> m.map { GitHub.Entry(it.key, it.value.length) } } ?: gh.tree(repo, branch)
     }
     fun teamList(): List<String> = allPaths()
@@ -329,8 +333,10 @@ class CodingAgent(internal val gh: GitHub, var repo: String, var branch: String,
     suspend fun run(task: String, onStep: (String) -> Unit): Outcome = withContext(Dispatchers.IO) {
         if (msgs.isEmpty()) {
             onStep("$repo ($branch) की फ़ाइलें ला रहा हूँ…")
-            snap = try { gh.snapshot(repo, branch).also { onStep("पूरा repo फ़ोन में आ गया (${it.size} फ़ाइलें)") } }
+            val skip = HashSet<String>()
+            snap = try { gh.snapshot(repo, branch, skip).also { onStep("पूरा repo फ़ोन में आ गया (${it.size} फ़ाइलें)") } }
                    catch (e: Exception) { DKLog.d("Coder: zip nahi mila (${e.message}) - har file API se"); null }
+            snapSkipped = skip
             files = snap?.let { m -> m.map { GitHub.Entry(it.key, it.value.length) } } ?: gh.tree(repo, branch)
             // पूरी list नहीं - सिर्फ़ ज़रूरी (code/res/build) फ़ाइलें; बाकी list/grep से
             val list = importantPaths(files!!.map { it.path }, 250).joinToString("\n")
