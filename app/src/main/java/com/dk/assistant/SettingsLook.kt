@@ -213,7 +213,7 @@ internal fun SettingsActivity.themeGallery() {
     val P = com.dk.assistant.ui.ThemePacks
     card("थीम गैलरी", "पूरी थीम: पृष्ठभूमि चित्र, काँच, रंग और ओर्ब", startOpen = true) { box ->
         val cur = P.selectedId(this)
-        val all = listOf(P.Entry(P.DEFAULT_ID, P.DEFAULT.name, P.DEFAULT.desc, P.DEFAULT.accent)) + P.CATALOG
+        val all = listOf(com.dk.assistant.ui.ThemePacks.Entry(P.DEFAULT_ID, P.DEFAULT.name, P.DEFAULT.desc, P.DEFAULT.accent)) + P.CATALOG
         for (e in all) {
             val line = LinearLayout(this).apply {
                 orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
