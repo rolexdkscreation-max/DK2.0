@@ -131,11 +131,42 @@ object FutureViews {
     fun goldShader(tv: TextView) {
         tv.post {
             val h = tv.textSize.coerceAtLeast(1f)
+            // रंग पूरी थीम से (डिफ़ॉल्ट = सुनहरा; दूसरी थीम का अपना शीर्षक रंग)
+            val (a, b) = com.dk.assistant.ui.NeonTheme.title().let { it[0] to it[1] }
+            val T = com.dk.assistant.ui.NeonTheme
             tv.paint.shader = LinearGradient(0f, 0f, 0f, h,
-                intArrayOf(0xFFFFF3C4.toInt(), 0xFFE8B64C.toInt(), 0xFF9C6B1E.toInt(), 0xFFFFE7A0.toInt()),
+                intArrayOf(T.mix(a, Color.WHITE, 0.45f), b, T.mix(b, Color.BLACK, 0.38f), a),
                 floatArrayOf(0f, 0.45f, 0.7f, 1f), Shader.TileMode.CLAMP)
             tv.invalidate()
         }
+    }
+
+    /**
+     * नवंबर 2026 (मालिक, संदर्भ चित्र): ऊपर की काँच वाली पट्टी - वापस + नाम एक ही चमकती काँच की पट्टी में.
+     * UiFit.header की पहली लाइन (back + titles) पर लगती है; नीचे के बटन (WrapRow) वैसे ही रहते हैं.
+     */
+    fun glassTopBar(header: LinearLayout) {
+        val row1 = header.getChildAt(0) as? LinearLayout ?: return
+        val d = dp(header.context)
+        row1.setBackgroundResource(com.dk.assistant.R.drawable.glass_card)
+        row1.setPadding((6 * d).toInt(), (6 * d).toInt(), (14 * d).toInt(), (6 * d).toInt())
+        row1.minimumHeight = (58 * d).toInt()
+        (row1.getChildAt(1) as? LinearLayout)?.let { t ->
+            t.gravity = Gravity.CENTER
+            for (k in 0 until t.childCount) (t.getChildAt(k) as? TextView)?.gravity = Gravity.CENTER
+        }
+    }
+
+    /** नीचे का कमांड बार: काँच + पतला नियॉन किनारा (सियान → बैंगनी), थीम के रंग से */
+    fun glassCommandBar(v: View) {
+        val d = dp(v.context)
+        val base = v.background ?: return
+        val l = com.dk.assistant.ui.NeonTheme.look
+        val rim = GradientDrawable(GradientDrawable.Orientation.LEFT_RIGHT, intArrayOf(0x00000000, 0x00000000)).apply {
+            cornerRadius = com.dk.assistant.ComposerShape.RADIUS_DP * d
+            setStroke((1.3f * d).toInt().coerceAtLeast(1), com.dk.assistant.ui.NeonTheme.alpha(com.dk.assistant.ui.NeonTheme.mix(l.main, CYAN, 0.4f), 0x99))
+        }
+        v.background = android.graphics.drawable.LayerDrawable(arrayOf(base, rim))
     }
 
     /** टेलीमेट्री का छोटा निऑन टैग */
@@ -257,21 +288,6 @@ object FutureViews {
     }
 
     /** टेलीमेट्री पट्टी (Status • इंजन • …). वही टैग हों तो दोबारा नहीं बनती */
-    class Telemetry(c: Context) {
-        private val row = LinearLayout(c).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
-        val view = HorizontalScrollView(c).apply { isHorizontalScrollBarEnabled = false; addView(row) }
-        private var last: List<Pair<String, Int>> = emptyList()
-        private val gap = (6 * c.resources.displayMetrics.density).toInt()
-
-        fun set(items: List<Pair<String, Int>>) {
-            if (items == last) return
-            last = items
-            row.removeAllViews()
-            items.forEach { (t, col) ->
-                row.addView(chip(row.context, t, col), LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { marginEnd = gap })
-            }
-        }
-    }
 }
 
 /**

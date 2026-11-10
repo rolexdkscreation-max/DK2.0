@@ -1,0 +1,20 @@
+{
+  "id": "galaxy_violet",
+  "name": "Galaxy Violet",
+  "desc": "बैंगनी नेबुला और तारे",
+  "bg": [
+    "#0B0620",
+    "#170A33",
+    "#05030F"
+  ],
+  "glassTop": "#24113F",
+  "glassBottom": "#120A24",
+  "accent": "#A855F7",
+  "partner": "#60A5FA",
+  "titleA": "#E9D5FF",
+  "titleB": "#A855F7",
+  "orbA": "#A855F7",
+  "orbB": "#60A5FA",
+  "dim": 0.38,
+  "version": 1
+}

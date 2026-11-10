@@ -4,6 +4,11 @@
     android:layout_height="match_parent"
     android:background="@color/bg_space_dark">
 
+    <!-- नवंबर 2026 (मालिक, संदर्भ चित्र): पूरी थीम की पृष्ठभूमि (चित्र + धीमी रोशनी) -->
+    <com.dk.assistant.AuroraView
+        android:layout_width="match_parent"
+        android:layout_height="match_parent" />
+
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="match_parent"
@@ -114,17 +119,34 @@
             android:layout_height="wrap_content"
             android:layout_marginStart="16dp"
             android:layout_marginEnd="16dp"
-            android:layout_marginBottom="16dp"
-            android:background="@drawable/bg_glow_dock"
+            android:layout_marginBottom="12dp"
+            android:background="@drawable/bg_black_strip"
             android:gravity="center_vertical"
             android:orientation="horizontal"
             android:padding="8dp">
+
+            <!-- काली पट्टी का ‹ वापस (मेनू / दिखावट में; Save वाले हिस्सों में छिपा) -->
+            <Button
+                android:id="@+id/btnBarBack"
+                android:layout_width="wrap_content"
+                android:layout_height="44dp"
+                android:background="@drawable/glass_pill"
+                android:minWidth="0dp"
+                android:paddingStart="18dp"
+                android:paddingEnd="20dp"
+                android:text="‹ वापस"
+                android:textAllCaps="false"
+                android:textColor="@color/text_primary"
+                android:textSize="14sp"
+                android:textStyle="bold"
+                android:visibility="gone" />
 
             <TextView
                 android:id="@+id/txtSaved"
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
-                android:layout_marginStart="16dp"
+                android:layout_marginStart="12dp"
+                android:layout_marginEnd="8dp"
                 android:layout_weight="1"
                 android:text="Changes save automatically"
                 android:textColor="@color/text_secondary"

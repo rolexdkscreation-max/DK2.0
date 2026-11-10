@@ -41,6 +41,7 @@ class MainActivity : AppCompatActivity() {
         findViewById<ImageButton>(R.id.btnHomeShare).setOnClickListener { openVoice(VoiceActivity.WANT_SCREEN) }
         // नीचे की glass dock: लिखकर बात = चैट, माइक = लाइव आवाज़, + = वही मेनू (☰)
         findViewById<TextView>(R.id.btnDockType).setOnClickListener { openChat() }
+        findViewById<TextView>(R.id.btnDockKeys).setOnClickListener { openChat() }   // कीबोर्ड पिल = लिखकर बात (चैट)
         findViewById<android.view.View>(R.id.btnDockMic).setOnClickListener { openVoice() }
         findViewById<ImageButton>(R.id.btnDockTools).setOnClickListener { findViewById<ImageButton>(R.id.btnMenu).performClick() }
         // orb par tap = chehra dikh raha ho to hatao, warna live awaaz screen
@@ -116,16 +117,15 @@ class MainActivity : AppCompatActivity() {
     private fun applyNeon() {
         val l = com.dk.assistant.ui.NeonTheme.look
         txtName.post {
-            val w = txtName.paint.measureText(txtName.text.toString()).coerceAtLeast(1f)
+            val w = txtName.width.toFloat().coerceAtLeast(txtName.paint.measureText(txtName.text.toString())).coerceAtLeast(1f)   // नाम अब बीच में
             txtName.paint.shader = android.graphics.LinearGradient(0f, 0f, w, 0f,
-                intArrayOf(com.dk.assistant.ui.NeonTheme.mix(l.accent.main, android.graphics.Color.WHITE, 0.35f), l.accent.partner),
+                intArrayOf(com.dk.assistant.ui.NeonTheme.mix(l.main, android.graphics.Color.WHITE, 0.35f), l.partner),
                 null, android.graphics.Shader.TileMode.CLAMP)
             txtName.invalidate()
         }
-        val orbShown = findViewById<android.view.View>(R.id.orb).visibility == android.view.View.VISIBLE
-        val neon = Prefs.orbStyle(this) == Shapes.NEON && System.currentTimeMillis() >= DKState.faceUntil
-        findViewById<android.view.View>(R.id.orbMic).visibility =
-            if (orbShown && neon && !Prefs.orbMin(this)) android.view.View.VISIBLE else android.view.View.GONE
+        // नवंबर 2026 (मालिक, संदर्भ चित्र): नया होलोग्राफ़िक ORB - बीच में अपनी घूमती ऊर्जा है, ऊपर माइक का निशान नहीं
+        // (ORB छूकर बोलना पहले जैसा; माइक नीचे के डॉक में चमकता है)
+        findViewById<android.view.View>(R.id.orbMic).visibility = android.view.View.GONE
     }
 
     /** Orb chhota = upar chhoti jagah, DK ka aakhri jawab zyada dikhe. Bada = poori jagah. */

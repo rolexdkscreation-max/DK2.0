@@ -41,6 +41,21 @@ object DkSettingsApply {
         try { DKAccessibilityService.instance?.startWakeLoopIfEnabled() } catch (_: Exception) {}
     }
 
+    /**
+     * नवंबर 2026: Settings के मुख्य मेनू वाले कार्ड का स्विच (यूज़र ने खुद छुआ - दो बार पूछना नहीं).
+     * वही pref + alsoOn/alsoOff जो अंदर वाले हिस्से का स्विच / बोलकर बदलना लिखता है.
+     */
+    fun setFromUi(c: Context, id: String, on: Boolean): Boolean {
+        val it = DkSettings.ITEMS.firstOrNull { x -> x.id == id } ?: return false
+        Prefs.edit(c) {
+            putBoolean(it.pref, DkSettings.prefFor(it, on))
+            (if (on) it.alsoOn else it.alsoOff).forEach { (k, v) -> putBoolean(k, v) }
+        }
+        DKLog.d("Settings मेनू से बदली: ${it.name} -> ${DkSettings.onOff(on)}")
+        try { DKAccessibilityService.instance?.startWakeLoopIfEnabled() } catch (_: Exception) {}
+        return true
+    }
+
     /** सेटिंग्स का वह हिस्सा / कॉलम खोलो (खोलना = कुछ बदलता नहीं, इसलिए पक्का करना नहीं) */
     private fun open(c: Context, q: String): String {
         val hit = SettingsSearch.search(q, 1).firstOrNull()

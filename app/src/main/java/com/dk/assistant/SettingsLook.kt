@@ -47,6 +47,7 @@ internal fun SettingsActivity.secUi() {
             },
             button("काँच का बटन") {}.apply { isClickable = false })
     }
+    themeGallery()
     card("थीम", "पृष्ठभूमि का रंग", startOpen = true) { box ->
         val g = radios(box, T.THEMES, T.look.theme, 6100)
         g.setOnCheckedChangeListener { _, id ->
@@ -199,5 +200,66 @@ internal fun SettingsActivity.secOrb() {
                 startActivity(android.content.Intent(this, VoiceActivity::class.java).putExtra("face", true))
             })
         hint(box, "अभी की आवाज़: " + (if (Prefs.voiceGender(this) == "male") "पुरुष" else "महिला") + " — बदलने के लिए सेटिंग्स → आवाज़")
+    }
+}
+
+
+// ------------------------------------------------------------ नवंबर 2026: थीम गैलरी (पूरी थीम = पृष्ठभूमि चित्र + काँच + रंग + ओर्ब)
+/**
+ * "DK Futuristic" ऐप में ही है (कोई डाउनलोड नहीं). बाकी थीमें GitHub के themes/ से एक बार डाउनलोड होती हैं
+ * (theme.json + bg.webp, फ़ोन की अपनी जगह filesDir/themes में). लागू करते ही पूरा ऐप उसी थीम में.
+ */
+internal fun SettingsActivity.themeGallery() {
+    val P = com.dk.assistant.ui.ThemePacks
+    card("थीम गैलरी", "पूरी थीम: पृष्ठभूमि चित्र, काँच, रंग और ओर्ब", startOpen = true) { box ->
+        val cur = P.selectedId(this)
+        val all = listOf(P.Entry(P.DEFAULT_ID, P.DEFAULT.name, P.DEFAULT.desc, P.DEFAULT.accent)) + P.CATALOG
+        for (e in all) {
+            val line = LinearLayout(this).apply {
+                orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
+                setPadding(0, (6 * dp).toInt(), 0, (6 * dp).toInt())
+            }
+            line.addView(View(this).apply {
+                background = android.graphics.drawable.GradientDrawable().apply {
+                    shape = android.graphics.drawable.GradientDrawable.OVAL; setColor(e.accent); setStroke((2 * dp).toInt(), 0x66FFFFFF)
+                }
+                importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
+            }, LinearLayout.LayoutParams((26 * dp).toInt(), (26 * dp).toInt()).apply { marginEnd = (12 * dp).toInt() })
+            val txt = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+            txt.addView(TextView(this).apply { text = e.name; textSize = 15f; setTypeface(typeface, Typeface.BOLD); setTextColor(0xFFFFFFFF.toInt()) })
+            txt.addView(TextView(this).apply {
+                text = UiLang.s(e.desc)
+                textSize = 12f; setTextColor(0x99FFFFFF.toInt())
+            })
+            line.addView(txt, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+            val has = P.installed(this, e.id)
+            val act = button(when { e.id == cur -> "लागू है"; has -> "लागू करें"; else -> "डाउनलोड" }) { v ->
+                val b = v as Button
+                if (P.installed(this, e.id)) {
+                    P.select(this, e.id)
+                    com.dk.assistant.ui.NeonRefresh.bars(this)
+                    toast("थीम लागू हो गई")
+                    recreate()
+                } else {
+                    b.isEnabled = false; b.text = UiLang.s("डाउनलोड हो रहा है…")
+                    val app = applicationContext
+                    Thread {
+                        val err = P.download(app, e.id)
+                        runOnUiThread {
+                            if (isFinishing || isDestroyed) return@runOnUiThread
+                            b.isEnabled = true
+                            if (err == null) { b.text = UiLang.s("लागू करें"); toast("डाउनलोड हो गई") }
+                            else { b.text = UiLang.s("डाउनलोड"); toast(err) }
+                        }
+                    }.start()
+                }
+            }.apply { isEnabled = e.id != cur; minHeight = (44 * dp).toInt() }
+            line.addView(act)
+            if (has && e.id != P.DEFAULT_ID) line.addView(button("हटाएँ") {
+                P.remove(this, e.id); com.dk.assistant.ui.NeonRefresh.bars(this); recreate()
+            }.apply { minHeight = (44 * dp).toInt() }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { marginStart = (6 * dp).toInt() })
+            box.addView(line)
+        }
+        hint(box, "रंग बदलना अलग है (नीचे 'मुख्य रंग'). थीम बदलने पर पूरा रूप बदलता है. डाउनलोड वाली थीम एक बार इंटरनेट से आती है, फिर बिना इंटरनेट चलती है.")
     }
 }

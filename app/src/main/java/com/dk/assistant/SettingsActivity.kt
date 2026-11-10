@@ -105,7 +105,8 @@ class SettingsActivity : AppCompatActivity() {
                     while (room > 0 && sz > 14f && title.paint.measureText(title.text.toString()) > room) { sz -= 1f; title.textSize = sz }
                     FutureViews.goldShader(title)
                 }
-                bar.visibility = View.GONE; setupSearch(); menu() }
+                MenuQuick.blackStrip(this, findViewById(R.id.btnBarBack), findViewById(R.id.btnSave), txtSaved)
+                setupSearch(); menu() }
             "profile" -> { title.text = "प्रोफ़ाइल"; secProfile() }
             "lang" -> { title.text = "भाषा / Language"; secLang() }
             "brain" -> { title.text = "AI दिमाग"; bar.visibility = View.GONE; secBrainMenu() }
@@ -116,7 +117,7 @@ class SettingsActivity : AppCompatActivity() {
             "brain_web" -> { title.text = "AI दिमाग • वेबसाइट बिल्डर"; secBrainWeb() }
             "voice" -> { title.text = "आवाज़"; secVoice() }
             "orb" -> { title.text = "ओर्ब और चेहरा"; bar.visibility = View.GONE; secOrb() }
-            "ui" -> { title.text = "दिखावट"; bar.visibility = View.GONE; secUi() }
+            "ui" -> { title.text = "दिखावट"; MenuQuick.blackStrip(this, findViewById(R.id.btnBarBack), findViewById(R.id.btnSave), txtSaved); secUi() }
             "access" -> { title.text = "Accessibility"; secAccess(); secPayGuard() }
             "phonelock" -> { title.text = "फ़ोन लॉक / अनलॉक"; secPhoneLock(); secVoiceCmds() }
             "guard" -> { title.text = "स्क्रीन गार्ड"; bar.visibility = View.GONE; secGuard() }
@@ -188,10 +189,22 @@ class SettingsActivity : AppCompatActivity() {
                 val ip = (10 * dp).toInt(); setPadding(ip, ip, ip, ip); importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
             }, LinearLayout.LayoutParams((44 * dp).toInt(), (44 * dp).toInt()).apply { marginEnd = (14 * dp).toInt() })
             val txt = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
-            txt.addView(TextView(this).apply { text = t; textSize = 18f; setTypeface(typeface, Typeface.BOLD); setTextColor(0xFFFFFFFF.toInt()) })
-            txt.addView(TextView(this).apply { text = sub; textSize = 13f; setTextColor(0x99FFFFFF.toInt()); setPadding(0, (3 * dp).toInt(), 0, 0) })
+            txt.addView(TextView(this).apply { text = t; textSize = 17f; setTypeface(typeface, Typeface.BOLD); setTextColor(0xFFFFFFFF.toInt()) })
+            val subTv = TextView(this).apply { text = sub; textSize = 12.5f; setTextColor(0x99FFFFFF.toInt()); setPadding(0, (3 * dp).toInt(), 0, 0) }
+            txt.addView(subTv)
             box.addView(txt, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
-            box.addView(TextView(this).apply { text = "›"; textSize = 28f; setTextColor(0x99FFFFFF.toInt()) })
+            // नवंबर 2026 (मालिक, संदर्भ चित्र): कार्ड पर ही असली स्विच / slider - बाकी पर ›
+            val sw = if (searchHit == null) MenuQuick.switchFor(id, this) else null
+            if (sw != null) {
+                box.addView(SwitchCompat(this).apply {
+                    isChecked = sw.first; contentDescription = UiLang.s(t)
+                    setOnCheckedChangeListener { _, on ->
+                        sw.second(on)
+                        subTv.text = (if (on) "✓ चालू" else "✗ बंद") + sub.substringAfter(" • ", "").let { if (it.isEmpty()) "" else " • $it" }
+                    }
+                }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, (48 * dp).toInt()).apply { marginStart = (6 * dp).toInt() })
+            } else box.addView(TextView(this).apply { text = "›"; textSize = 28f; setTextColor(0x99FFFFFF.toInt()) })
+            if (id == "ui" && searchHit == null) txt.addView(MenuQuick.glassSlider(this), LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, (40 * dp).toInt()).apply { topMargin = (4 * dp).toInt() })
             val lp = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
             lp.topMargin = (12 * dp).toInt()
             container.addView(box, lp)

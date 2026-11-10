@@ -25,7 +25,6 @@ class ComputerActivity : AppCompatActivity() {
 
     private lateinit var list: LinearLayout
     private lateinit var scroll: ScrollView
-    private lateinit var tele: FutureViews.Telemetry          // नवंबर 2026: Status • इंजन • खोज (पहले एक लाइन का sub)
     private lateinit var edt: EditText
     private lateinit var send: ImageButton
     private lateinit var askBox: LinearLayout
@@ -93,16 +92,15 @@ class ComputerActivity : AppCompatActivity() {
             contentDescription = "वापस"; setOnClickListener { finish() }
         }
         val titles = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding((12 * dp).toInt(), 0, 0, 0) }
-        // नवंबर 2026 (मालिक): Futuristic रूप - चमकदार "DK COMPUTER" + नीचे टेलीमेट्री टैग (असली हालत)
+        // नवंबर 2026 (मालिक): Futuristic रूप - चमकदार "DK COMPUTER" (मालिक: ऊपर सिर्फ़ काँच की पट्टी + नाम, status टैग नहीं)
         titles.addView(FutureViews.title(this, Prefs.assistantName(this).uppercase() + " COMPUTER"))
-        tele = FutureViews.Telemetry(this)
-        titles.addView(tele.view, LinearLayout.LayoutParams(-1, -2).apply { topMargin = (4 * dp).toInt() })
         val top = UiFit.header(this, back, titles, listOf(
             smallBtn("+ जोड़ें") { pick.launch(arrayOf("image/*", "application/pdf", "text/*")) },   // v5: फ़ोटो / PDF / text DK कंप्यूटर को
             smallBtn("फ़ाइलें") { showFiles() },
             smallBtn("इतिहास") { showHistory() },
             smallBtn("नया") { newSession() },
             smallBtn("स्टूडियो") { com.dk.assistant.studio.StudioSession.open(this, null) }))
+        FutureViews.glassTopBar(top)      // संदर्भ चित्र: ऊपर काँच की पट्टी (सिर्फ़ नाम)
         col.addView(top)
         col.addView(buildWork(), LinearLayout.LayoutParams(-1, -2).apply { topMargin = (10 * dp).toInt() })
 
@@ -120,6 +118,7 @@ class ComputerActivity : AppCompatActivity() {
 
         // साझा इनपुट बॉक्स (हल्के कोनों वाला आयत; 🎤 बार के अंदर बोलकर लिखना - Google पॉप-अप नहीं)
         composer = DKComposer(this, "कोई भी काम लिखिए…", maxLines = 5)
+        FutureViews.glassCommandBar(composer)   // नीचे काँच का कमांड बार (नियॉन किनारा)
         edt = composer.edt
         send = composer.send
         col.addView(composer, LinearLayout.LayoutParams(-1, -2).apply { topMargin = (8 * dp).toInt() })
@@ -278,15 +277,6 @@ class ComputerActivity : AppCompatActivity() {
     override fun onPause() { ComputerSession.visible = false; ComputerSession.listener = null; tick.removeCallbacks(dotTick); workOrb.running = false; workBar.running = false; super.onPause() }
 
     private fun render() {
-        val ai = CoderAi.forComputer(this) { _, _ -> }
-        val src = ComputerTools.searchChain(this).firstOrNull()?.let { ComputerTools.searchLabel(it) } ?: "search नहीं"
-        val plan = ComputerSession.plan
-        tele.set(buildList {
-            add((if (ComputerSession.busy) "● काम चल रहा है" else "● तैयार") to (if (ComputerSession.busy) FutureViews.CYAN else FutureViews.GREEN))
-            if (ComputerSession.busy && plan != null) add("कदम ${plan.doneCount}/${plan.total}" to FutureViews.AMBER)
-            add(FutureUi.engineTag(ai?.label) to FutureViews.CYAN)
-            add("खोज: $src" to FutureViews.VIOLET)
-        })
         send.setImageResource(if (ComputerSession.busy) android.R.drawable.ic_media_pause else R.drawable.ic_send)
         send.contentDescription = if (ComputerSession.busy) "रोकें" else "भेजें"
         val lines = ComputerSession.lines
