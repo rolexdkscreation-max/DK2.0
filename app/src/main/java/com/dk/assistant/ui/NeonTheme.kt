@@ -18,7 +18,7 @@ object NeonTheme {
     const val K_GLASS = "ui_glass"
     const val K_GLOW = "ui_glow"
     const val K_MOTION = "ui_motion"
-    val KEYS = listOf(K_THEME, K_ACCENT, K_GLASS, K_GLOW, K_MOTION, ThemePacks.K_PACK)
+    val KEYS = listOf(K_THEME, K_ACCENT, K_GLASS, K_GLOW, K_MOTION, ThemePacks.K_PACK, Wallpapers.K_WALL)
 
     const val THEME_DARK = "dark"
     const val THEME_AMOLED = "amoled"
@@ -53,7 +53,9 @@ object NeonTheme {
         val glow: Int = DEF_GLOW,
         val motion: String = MOTION_STANDARD,
         /** पूरी थीम (पृष्ठभूमि चित्र, काँच, रंग जोड़ी, शीर्षक, ORB) - ThemePacks; शुरुआती = ऐप के अंदर वाली */
-        val pack: ThemePack = ThemePacks.DEFAULT
+        val pack: ThemePack = ThemePacks.DEFAULT,
+        /** वॉलपेपर (Wallpapers.key): "" = थीम वाला चित्र; बदलते ही version++ और हर स्क्रीन का पीछे का चित्र नया */
+        val wallpaper: String = Wallpapers.NONE
     ) {
         private val packOn get() = pack.id != ThemePacks.DEFAULT_ID
         /** मुख्य रंग: डिफ़ॉल्ट थीम में यूज़र का चुना रंग, दूसरी थीम में उस थीम का अपना */
@@ -86,7 +88,7 @@ object NeonTheme {
         val sp = c.getSharedPreferences("dk_prefs", Context.MODE_PRIVATE)
         set(sanitize(sp.getString(K_THEME, null), sp.getString(K_ACCENT, null),
             sp.getInt(K_GLASS, DEF_GLASS), sp.getInt(K_GLOW, DEF_GLOW), sp.getString(K_MOTION, null))
-            .copy(pack = ThemePacks.load(c, ThemePacks.selectedId(c))))
+            .copy(pack = ThemePacks.load(c, ThemePacks.selectedId(c)), wallpaper = Wallpapers.currentKey(c)))
         systemNoAnim = try {
             android.provider.Settings.Global.getFloat(c.contentResolver, android.provider.Settings.Global.ANIMATOR_DURATION_SCALE, 1f) == 0f
         } catch (_: Exception) { false }

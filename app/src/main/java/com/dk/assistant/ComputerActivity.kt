@@ -58,18 +58,46 @@ class ComputerActivity : AppCompatActivity() {
         val names = uris.take(6).mapNotNull { u -> try { copyIn(u) } catch (_: Exception) { null } }
         if (names.isEmpty()) return@registerForActivityResult
         val cur = edt.text.toString().trimEnd()
-        edt.setText((if (cur.isBlank()) "" else "$cur\n") + "(जोड़ी गई फ़ाइल: ${names.joinToString()}) ")
+        edt.setText((if (cur.isBlank()) "" else "$cur\n") + attachNote(names))
         edt.setSelection(edt.text.length)
         Toast.makeText(this, "${names.size} फ़ाइल जुड़ी — अब काम लिखिए", Toast.LENGTH_SHORT).show()
     }
 
-    private fun copyIn(u: android.net.Uri): String? {
-        var name = "file"
-        contentResolver.query(u, arrayOf(android.provider.OpenableColumns.DISPLAY_NAME), null, null, null)?.use { c -> if (c.moveToFirst()) name = c.getString(0) ?: name }
-        val ext = when (contentResolver.getType(u)) { "application/pdf" -> ".pdf"; "image/png" -> ".png"; "image/webp" -> ".webp"; "image/jpeg" -> ".jpg"; else -> ".txt" }
-        val f = java.io.File(ComputerTools.dir(this), ComputerTools.safeName(name, ext))
-        contentResolver.openInputStream(u)?.use { i -> f.outputStream().use { o -> val n = i.copyTo(o, 64 * 1024); if (n > 30L * 1024 * 1024) { f.delete(); return null } } } ?: return null
-        return f.name
+    private fun copyIn(u: android.net.Uri): String? = copyIn(this, u)
+
+    companion object {
+        /** होम के + (फोटो / फ़ाइल अपलोड) से आई फ़ाइलें: DK कंप्यूटर के फ़ोल्डर में पहले से कॉपी, यहाँ बस नाम */
+        const val EXTRA_ATTACHED = "attached"
+        const val MAX_BYTES = 30L * 1024 * 1024
+        /** जो DK कंप्यूटर पढ़/देख सकता है: फ़ोटो, PDF, text */
+        val PICK_TYPES = arrayOf("image/*", "application/pdf", "text/*")
+
+        fun attachNote(names: List<String>) = "(जोड़ी गई फ़ाइल: ${names.joinToString()}) "
+
+        /** null = तस्वीर है पर DK सीधे नहीं पढ़ता (HEIC वगैरह) - JPEG में बदलो */
+        fun extFor(mime: String?): String? = when (mime) {
+            "application/pdf" -> ".pdf"; "image/png" -> ".png"; "image/webp" -> ".webp"; "image/jpeg", "image/jpg" -> ".jpg"
+            else -> if (mime != null && mime.startsWith("image/")) null else ".txt"
+        }
+
+        /** फ़ोटो / PDF / text -> DK कंप्यूटर का फ़ोल्डर (30MB तक). सफल = फ़ाइल का नाम */
+        fun copyIn(c: android.content.Context, u: android.net.Uri): String? {
+            var name = "file"
+            c.contentResolver.query(u, arrayOf(android.provider.OpenableColumns.DISPLAY_NAME), null, null, null)?.use { q -> if (q.moveToFirst()) name = q.getString(0) ?: name }
+            val ext = extFor(c.contentResolver.getType(u))
+            if (ext == null) {
+                val bmp = (if (android.os.Build.VERSION.SDK_INT >= 28)
+                    android.graphics.ImageDecoder.decodeBitmap(android.graphics.ImageDecoder.createSource(c.contentResolver, u)) { d, _, _ ->
+                        d.allocator = android.graphics.ImageDecoder.ALLOCATOR_SOFTWARE }
+                else c.contentResolver.openInputStream(u)?.use { android.graphics.BitmapFactory.decodeStream(it) }) ?: return null
+                val f = java.io.File(ComputerTools.dir(c), ComputerTools.safeName(name.substringBeforeLast('.') + ".jpg", ".jpg"))
+                f.outputStream().use { o -> bmp.compress(android.graphics.Bitmap.CompressFormat.JPEG, 90, o) }
+                return f.name
+            }
+            val f = java.io.File(ComputerTools.dir(c), ComputerTools.safeName(name, ext))
+            c.contentResolver.openInputStream(u)?.use { i -> f.outputStream().use { o -> val n = i.copyTo(o, 64 * 1024); if (n > MAX_BYTES) { f.delete(); return null } } } ?: return null
+            return f.name
+        }
     }
 
     /** नवंबर 2026: फ़ोन और टैब पर एक जैसे अक्षर (बहुत बड़े system font से लेआउट नहीं टूटता) */
@@ -95,7 +123,7 @@ class ComputerActivity : AppCompatActivity() {
         // नवंबर 2026 (मालिक): Futuristic रूप - चमकदार "DK COMPUTER" (मालिक: ऊपर सिर्फ़ काँच की पट्टी + नाम, status टैग नहीं)
         titles.addView(FutureViews.title(this, Prefs.assistantName(this).uppercase() + " COMPUTER"))
         val top = UiFit.header(this, back, titles, listOf(
-            smallBtn("+ जोड़ें") { pick.launch(arrayOf("image/*", "application/pdf", "text/*")) },   // v5: फ़ोटो / PDF / text DK कंप्यूटर को
+            smallBtn("+ जोड़ें") { pick.launch(PICK_TYPES) },   // v5: फ़ोटो / PDF / text DK कंप्यूटर को
             smallBtn("फ़ाइलें") { showFiles() },
             smallBtn("इतिहास") { showHistory() },
             smallBtn("नया") { newSession() },
@@ -133,6 +161,11 @@ class ComputerActivity : AppCompatActivity() {
         ComputerSession.pendingResume(this)?.let { s -> if (intent.getStringExtra("task").isNullOrBlank()) askResume(s) }
         // बाहर से काम आया हो (जैसे Settings / आवाज़)
         intent.getStringExtra("task")?.takeIf { it.isNotBlank() }?.let { ComputerSession.start(this, it)?.let { e -> ComputerSession.add("e", e) } }
+        // होम का + (फोटो / फ़ाइल अपलोड): फ़ाइल पहले से फ़ोल्डर में - बस नाम लिख दो, मालिक काम लिखे
+        intent.getStringArrayListExtra(EXTRA_ATTACHED)?.filter { it.isNotBlank() }?.takeIf { it.isNotEmpty() }?.let { names ->
+            edt.setText(attachNote(names)); edt.setSelection(edt.text.length); edt.requestFocus()
+            UiLang.toast(this, "${names.size} फ़ाइल जुड़ी — अब काम लिखिए", Toast.LENGTH_SHORT).show()
+        }
     }
 
     private fun buildWork(): View {
