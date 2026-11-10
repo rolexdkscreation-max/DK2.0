@@ -34,6 +34,38 @@ class ChatActivity : AppCompatActivity() {
     private val listener: () -> Unit = { render() }
     private var localBrain: BrainManager? = null
 
+    /**
+     * नवंबर 2026 (मालिक): चैट का + = फोटो / फ़ाइल अपलोड - होम के + जैसा ही (MainActivity.attachToComputer).
+     * चुनी फ़ाइल DK कंप्यूटर के फ़ोल्डर में कॉपी होती है, वहाँ DK फोटो देख (look) और PDF / text पढ़ (read_file) सकता है.
+     */
+    private val pickPhoto = registerForActivityResult(androidx.activity.result.contract.ActivityResultContracts.PickMultipleVisualMedia(6)) { uris -> attachToComputer(uris) }
+    private val pickFile = registerForActivityResult(androidx.activity.result.contract.ActivityResultContracts.OpenMultipleDocuments()) { uris -> attachToComputer(uris) }
+
+    private fun attachMenu() {
+        com.dk.assistant.ui.HomeMenu.show(this, composer, listOf(
+            com.dk.assistant.ui.HomeMenu.Item(R.drawable.ic_camera, "फोटो अपलोड", "गैलरी से फोटो चुनें") {
+                pickPhoto.launch(androidx.activity.result.PickVisualMediaRequest(
+                    androidx.activity.result.contract.ActivityResultContracts.PickVisualMedia.ImageOnly))
+            },
+            com.dk.assistant.ui.HomeMenu.Item(R.drawable.ic_attach, "फ़ाइल अपलोड", "PDF, text या फोटो फ़ाइल") {
+                pickFile.launch(ComputerActivity.PICK_TYPES)
+            }
+        ))
+    }
+
+    private fun attachToComputer(uris: List<android.net.Uri>) {
+        if (uris.isEmpty()) return
+        val app = applicationContext
+        Thread {
+            val names = uris.take(6).mapNotNull { u -> try { ComputerActivity.copyIn(app, u) } catch (_: Throwable) { null } }
+            runOnUiThread {
+                if (isFinishing || isDestroyed) return@runOnUiThread
+                if (names.isEmpty()) { UiLang.toast(this, "फ़ाइल नहीं जुड़ पाई (30MB तक की फोटो / PDF / text)", android.widget.Toast.LENGTH_SHORT).show(); return@runOnUiThread }
+                startActivity(android.content.Intent(this, ComputerActivity::class.java).putStringArrayListExtra(ComputerActivity.EXTRA_ATTACHED, ArrayList(names)))
+            }
+        }.start()
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         // likhne ki jagah hamesha khuli rahe (keyboard turant, bhejne ke baad bhi)
@@ -83,7 +115,7 @@ class ChatActivity : AppCompatActivity() {
         col.addView(scroll, LinearLayout.LayoutParams(-1, 0, 1f).apply { topMargin = (10 * dp).toInt() })
 
         // ---- neeche likhne ki jagah: साझा इनपुट बॉक्स (हल्के कोनों वाला आयत, माइक बार के अंदर)
-        composer = DKComposer(this, "कुछ भी लिखिए… (जैसे: WhatsApp खोलो, आज का मौसम?)", maxLines = 4)
+        composer = DKComposer(this, "कुछ भी लिखिए… (जैसे: WhatsApp खोलो, आज का मौसम?)", maxLines = 4, attach = { attachMenu() })
         edt = composer.edt
         // DK का सोचना/लिखना अब जवाब वाले बुलबुले के अंदर (नीचे अलग animation नहीं)
         col.addView(composer, LinearLayout.LayoutParams(-1, -2).apply { topMargin = (8 * dp).toInt() })

@@ -285,7 +285,8 @@ object SevenSymbols {
      * @param repo   पूरा रिपो (बदलाव समेत) - path -> content
      * @param whole  repo पूरा है (GitHub मोड). false = user की भेजी कुछ फ़ाइलें (नॉर्मल मोड) - सिर्फ़ पक्की member जाँच
      */
-    fun check(path: String, before: String?, after: String, repo: Map<String, String>, whole: Boolean): List<Miss> {
+    fun check(path: String, before: String?, after: String, repo: Map<String, String>, whole: Boolean,
+              proven: Proven = Proven()): List<Miss> {
         if (!path.endsWith(".kt") && !path.endsWith(".java")) return emptyList()
         val idx = addedIdx(before, after)
         if (idx.isEmpty()) return emptyList()
@@ -315,7 +316,12 @@ object SevenSymbols {
             if (tfs.isEmpty()) return@forEach                       // बाहर की class (JSONObject…) - नहीं जानते
             val has = hasMember(all, type, name)
             val tf = tfs.first()
-            if (has == false) {
+            if (has == true && privateOnly(all, type, name) && tfs.none { it.first == path }) {
+                out[key] = Miss("$recv.$name()", "$type (${tf.first.substringAfterLast('/')}) में $name private है — बाहर से नहीं बुला सकते",
+                    sure = true, known = publicMembers(typeBody(tf.second, type)))
+            } else if (has == null && proven.blocks(type, name, oldUse)) {
+                out[key] = Miss("$recv.$name()", proven.why(type, name, tf.first.substringAfterLast('/')), sure = true, known = publicMembers(typeBody(tf.second, type)))
+            } else if (has == false) {
                 out[key] = Miss("$recv.$name()", "$type (${tf.first.substringAfterLast('/')}) में $name नाम का function/property नहीं है",
                     sure = true, known = members(typeBody(tf.second, type)))
             } else if (has == null && !usedOnType(others + (path to oldStripped), type, name)) {
@@ -343,7 +349,17 @@ object SevenSymbols {
             val tfs = typeFiles(all, type)
             if (tfs.isEmpty()) return@forEach
             val tf = tfs.first()
-            when (hasMember(all, type, name)) {
+            val has1b = hasMember(all, type, name)
+            if (has1b == true && privateOnly(all, type, name) && tfs.none { it.first == path }) {
+                out[key] = Miss("$recv.$name", "$type (${tf.first.substringAfterLast('/')}) में $name private है — बाहर से नहीं छू सकते",
+                    sure = true, known = publicMembers(typeBody(tf.second, type)))
+                return@forEach
+            }
+            if (has1b == null && proven.blocks(type, name, oldUse)) {
+                out[key] = Miss("$recv.$name", proven.why(type, name, tf.first.substringAfterLast('/')), sure = true, known = publicMembers(typeBody(tf.second, type)))
+                return@forEach
+            }
+            when (has1b) {
                 false -> out[key] = Miss("$recv.$name", "$type (${tf.first.substringAfterLast('/')}) में $name नाम की property/function नहीं है",
                     sure = true, known = members(typeBody(tf.second, type)))
                 null -> if (!usedOnType(others + (path to oldStripped), type, name) && !usedPropOnType(others + (path to oldStripped), type, name)) {
@@ -356,6 +372,23 @@ object SevenSymbols {
                         sure = assignsLambda, known = members(typeBody(tf.second, type)))
                 }
                 true -> {}
+            }
+        }
+        // 1c) नवंबर 2026 (feature/dk-user-correction-follow-this-1110-1139): Type(…, naam = …) - रिपो की class के constructor में
+        //     वह parameter सच में है? (DKComposer(…, onAttachClick = …) - असली नाम attach था; CI तक पहुँचकर पकड़ा गया)
+        Regex("(?<![.\\w])([A-Z]\\w*)\\s*\\(").findAll(file).forEach { m ->
+            if (!isNew(m.range.first)) return@forEach
+            val type = m.groupValues[1]
+            if (type in TYPE_OK || importedFromOutside(file, type, all)) return@forEach
+            val tfs = typeFiles(all, type).filter { Regex("\\b(?:class)\\s+${Regex.escape(type)}\\b").containsMatchIn(it.second) }
+            if (tfs.isEmpty()) return@forEach
+            val params = tfs.flatMap { ctorParams(it.second, type) ?: return@forEach }.toSet()
+            for (arg in namedArgs(file, m.range.last)) {
+                if (arg in params) continue
+                val k = "$type($arg=)"
+                if (k in out) continue
+                out[k] = Miss("$type($arg = …)", "$type (${tfs.first().first.substringAfterLast('/')}) के constructor में \"$arg\" नाम का parameter नहीं है",
+                    sure = true, known = params.toList())
             }
         }
         if (!whole) return out.values.toList()
@@ -390,6 +423,126 @@ object SevenSymbols {
             out[name] = Miss(name, "रिपो में \"$name\" नाम की class/object नहीं है और import भी नहीं", sure = true)
         }
         return out.values.toList()
+    }
+
+    /**
+     * CI (असली Kotlin compiler) का सबूत: पिछली push पर "Unresolved reference: X" / "Cannot find a parameter with this name: X"
+     * आया था, और X किस रिपो-class (type) पर बुलाया गया था.
+     * नवंबर 2026 (feature/dk-user-correction-follow-this-1110-1139): DKComposer = LinearLayout, इसलिए उस पर गढ़े नाम
+     * (attachMedia, setMedia, onPlusClick, plusBtn, clearMedia…) "पक्का नहीं" मानकर AI रिव्यूअर पर छोड़े जाते थे, वह पास कर देता था
+     * -> 4 CI राउंड, हर बार नया गढ़ा नाम. अब: जिस type पर compiler एक बार गढ़ा नाम पकड़ चुका, उस पर कोई भी अनजाना नाम
+     * (रिपो में कहीं इस्तेमाल नहीं) = पक्की गलती; और compiler का बताया नाम दोबारा = पक्की गलती.
+     */
+    data class Proven(val names: Set<String> = emptySet(), val types: Set<String> = emptySet()) {
+        val isEmpty get() = names.isEmpty() && types.isEmpty()
+        fun plus(o: Proven) = Proven(names + o.names, types + o.types)
+        internal fun blocks(type: String, name: String, oldUse: String): Boolean {
+            if (name in names) return true
+            if (type !in types) return false
+            // Android की parent class का असली नाम (setPadding, addView…) रिपो में कहीं न कहीं इस्तेमाल हुआ होता है - वह नहीं रोकते
+            return !Regex("(?<![\\w])${Regex.escape(name)}\\b").containsMatchIn(oldUse)
+        }
+        internal fun why(type: String, name: String, file: String) =
+            if (name in names) "$type ($file) में $name नहीं है — पिछली बार CI (Kotlin compiler) ने यही नाम \"Unresolved reference\" बताया था, दोबारा मत लिखो"
+            else "$type ($file) में $name नहीं है — CI (Kotlin compiler) पहले ही इस class पर गढ़ा नाम पकड़ चुका है; सिर्फ़ नीचे लिखे असली नाम इस्तेमाल करो"
+    }
+
+    private val CI_NAME = Regex("""(?:Unresolved reference:?|Cannot find a parameter with this name:?)\s*'?([A-Za-z_]\w*)""", RegexOption.IGNORE_CASE)
+
+    /** CI log + उस समय की फ़ाइलें (path -> content) से Proven: कौन-से नाम गढ़े थे और किस repo-type पर */
+    fun proven(log: String, files: Map<String, String>, repo: Map<String, String>): Proven {
+        val names = CI_NAME.findAll(log).map { it.groupValues[1] }.filter { it !in KEYWORDS }.toSet()
+        if (names.isEmpty()) return Proven()
+        val all = repo.mapValues { strip(it.value) } + files.mapValues { strip(it.value) }
+        val types = HashSet<String>()
+        for ((p, raw) in files) {
+            if (!p.endsWith(".kt") && !p.endsWith(".java")) continue
+            val f = strip(raw)
+            for (n in names) {
+                Regex("\\b([A-Za-z_]\\w*)\\s*(?:\\?|!!)?\\.\\s*${Regex.escape(n)}\\b").findAll(f).forEach { m ->
+                    val t = typeAt(f, m.groupValues[1], m.range.first, all) ?: return@forEach
+                    if (t !in TYPE_OK && typeFiles(all, t).isNotEmpty()) types.add(t)
+                }
+                // Type(…, n = …) - constructor का गलत नाम
+                Regex("(?<![.\\w])([A-Z]\\w*)\\s*\\(").findAll(f).forEach { m ->
+                    if (n in namedArgs(f, m.range.last) && typeFiles(all, m.groupValues[1]).isNotEmpty()) types.add(m.groupValues[1])
+                }
+            }
+        }
+        return Proven(names, types)
+    }
+
+    /** name इस type की फ़ाइलों में सिर्फ़ private declare है? (तब बाहर की फ़ाइल से इस्तेमाल = compile error) */
+    private fun privateOnly(repo: Map<String, String>, type: String, name: String): Boolean {
+        val n = Regex.escape(name)
+        val decl = Regex("(?m)^([^\\n]*)\\b(?:fun|val|var)\\s+(?:<[^>]*>\\s*)?$n\\b")
+        val lines = typeFiles(repo, type).flatMap { (_, src) -> decl.findAll(typeBody(src, type)).map { it.groupValues[1] }.toList() }
+        if (lines.isEmpty()) return false
+        if (repo.values.any { Regex("\\b(?:fun|val|var)\\s+(?:<[^>]*>\\s*)?${Regex.escape(type)}\\??\\.$n\\b").containsMatchIn(it) }) return false
+        return lines.all { Regex("\\bprivate\\b").containsMatchIn(declPrefix(it)) }
+    }
+
+    /** "class Foo(private val a: Int, val b" -> b का अपना हिस्सा ("val b" से पहले वाला, आख़िरी , या ( के बाद) */
+    private fun declPrefix(linePrefix: String) = linePrefix.substringAfterLast(',').substringAfterLast('(')
+
+    /** बाहर से इस्तेमाल हो सकने वाले members (private नहीं) - कोडर को असली रास्ता दिखाने के लिए */
+    private fun publicMembers(body: String): List<String> =
+        Regex("(?m)^([^\\n]*?)\\b(?:fun|val|var)\\s+(?:<[^>]*>\\s*)?(?:[\\w.<>?]+\\.)?([a-zA-Z_]\\w*)").findAll(body)
+            .filter { !Regex("\\bprivate\\b").containsMatchIn(declPrefix(it.groupValues[1])) }.map { it.groupValues[2] }.distinct().toList()
+            .ifEmpty { members(body) }
+
+    /** class Type(…) के primary constructor + secondary constructor(…) के parameter नाम. null = constructor पढ़ा नहीं जा सका (जाँच मत करो) */
+    internal fun ctorParams(src: String, type: String): List<String>? {
+        val s = strip(src)
+        val m = Regex("\\bclass\\s+${Regex.escape(type)}\\b\\s*(?:<[^>]*>)?\\s*(?:(?:private|internal|public|protected)\\s+)?(?:@\\w+\\s+)*(?:constructor\\s*)?").find(s) ?: return null
+        val out = ArrayList<String>()
+        var any = false
+        fun params(open: Int) {
+            val inner = group(s, open) ?: return
+            any = true
+            splitTop(inner).forEach { a ->
+                Regex("^\\s*(?:@\\w+(?:\\([^)]*\\))?\\s+)*(?:(?:private|internal|protected|public|override|open|vararg|crossinline|noinline)\\s+)*(?:val\\s+|var\\s+)?([a-zA-Z_]\\w*)\\s*:")
+                    .find(a)?.let { out.add(it.groupValues[1]) }
+            }
+        }
+        if (m.range.last + 1 < s.length && s[m.range.last + 1] == '(') params(m.range.last + 1)
+        val body = typeBody(s, type)
+        Regex("\\bconstructor\\s*\\(").findAll(body).forEach { c -> val at = s.indexOf(body); if (at >= 0) params(at + c.range.last) }
+        return if (any) out else null
+    }
+
+    /** s[open] == '(' : बंद होने तक का अंदर का हिस्सा */
+    private fun group(s: String, open: Int): String? {
+        if (open !in s.indices || s[open] != '(') return null
+        var d = 0
+        for (i in open until s.length) {
+            when (s[i]) { '(', '[', '{' -> d++; ')', ']', '}' -> { d--; if (d == 0) return s.substring(open + 1, i) } }
+        }
+        return null
+    }
+
+    /** ऊपरी स्तर की commas पर तोड़ो (lambda / generic / nested call के अंदर नहीं) */
+    private fun splitTop(inner: String): List<String> {
+        val out = ArrayList<String>(); var d = 0; var start = 0
+        for ((i, ch) in inner.withIndex()) {
+            when (ch) { '(', '[', '{', '<' -> d++; ')', ']', '}', '>' -> if (d > 0) d--; ',' -> if (d == 0) { out.add(inner.substring(start, i)); start = i + 1 } }
+        }
+        out.add(inner.substring(start))
+        return out
+    }
+
+    /** call के ( से: named arguments के नाम (x = …), == / -> नहीं */
+    internal fun namedArgs(src: String, open: Int): List<String> {
+        val inner = group(src, open) ?: return emptyList()
+        // splitTop '<' '>' को भी गिनता है - "->" और तुलना वाले > से गड़बड़ न हो, इसलिए यहाँ सिर्फ़ () [] {} गिनो
+        val out = ArrayList<String>(); var d = 0; var start = 0
+        val parts = ArrayList<String>()
+        for ((i, ch) in inner.withIndex()) {
+            when (ch) { '(', '[', '{' -> d++; ')', ']', '}' -> if (d > 0) d--; ',' -> if (d == 0) { parts.add(inner.substring(start, i)); start = i + 1 } }
+        }
+        parts.add(inner.substring(start))
+        parts.forEach { a -> Regex("^\\s*([a-zA-Z_]\\w*)\\s*=(?![=>])").find(a)?.let { out.add(it.groupValues[1]) } }
+        return out
     }
 
     /** प्लानर की "uses" जाँच: "path: name" - फ़ाइल में name सच में है? @return गलत entries */
