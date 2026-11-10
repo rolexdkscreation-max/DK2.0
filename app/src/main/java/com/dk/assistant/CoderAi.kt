@@ -274,7 +274,8 @@ class CoderAi(val provider: Provider, private val key: String, val model: String
             } else t
             arr.put(JSONObject().put("role", if (r == "user") "user" else "assistant").put("content", content))
         }
-        val body = JSONObject().put("model", model).put("messages", arr).put("max_tokens", maxTok).put("temperature", 0.2)
+        val body = JSONObject().put("model", model).put("messages", arr).put(provider.tokenField, maxTok)
+        if (provider.sendTemp) body.put("temperature", 0.2)
         val thought = !noThink && ThinkLevel.applyOpenAi(body, base, model, think, "medium")
         fun req() = Request.Builder().url(base.trimEnd('/') + "/chat/completions")
             .header("Authorization", "Bearer $key")
@@ -336,6 +337,22 @@ class CoderAi(val provider: Provider, private val key: String, val model: String
             if (Prefs.oneKeyOn(c)) return forScope(c, ApiScopes.CODER, sink)
             return forScopeChain(c, ApiScopes.CODER, sink, ApiScopes.crossOrder(Prefs.scopeActive(c, ApiScopes.CODER)))
                 ?: forScope(c, ApiScopes.CODER, sink)
+        }
+
+        /**
+         * नवंबर 2026 (मालिक): कोडर/डिबगर/प्लानर का मज़बूत (paid) मॉडल - Settings → कोडिंग एजेंट → मज़बूत मॉडल.
+         * उसकी गलती (key/पैसे/limit/server) पर [backup] की पूरी chain अपने-आप. null = key नहीं डली (बंद).
+         */
+        fun forStrong(c: Context, backup: CoderAi?, sink: (String, String) -> Unit = { p, f -> DKLog.d("मज़बूत मॉडल: $p → $f") }): CoderAi? {
+            val st = StrongAi.setup(Prefs.coderStrongProvider(c), Prefs.coderStrongKey(c), Prefs.coderStrongModel(c)) ?: return null
+            return strong(st, backup, sink).applyThink(ThinkLevel.get(c, ApiScopes.CODER))
+        }
+
+        /** मज़बूत मॉडल + पीछे [backup] की chain (test के लिए अलग) */
+        internal fun strong(st: StrongAi.Setup, backup: CoderAi?, sink: (String, String) -> Unit): CoderAi {
+            val fb = backup?.let { listOf(it.alone()) + it.fallbackList() }.orEmpty()
+            return CoderAi(st.provider, st.key, st.model, st.base, fb, note = ", मज़बूत मॉडल", sink = sink)
+                .also { it.waitOnLimit = backup?.waitOnLimit ?: true }
         }
 
         /** 404 (मॉडल मौजूद नहीं) वाला मॉडल इतनी देर chain में आख़िर में */

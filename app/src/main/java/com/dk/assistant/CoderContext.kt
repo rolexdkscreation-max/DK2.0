@@ -23,7 +23,7 @@ object CoderContext {
         val m = model.lowercase()
         return when {
             gemini -> GEMINI_BUDGET
-            m.contains("gemini") || m.contains("claude") || m.contains("gpt-4.1") || m.contains("gpt-5") -> 500_000   // v4.4: 5 लाख
+            m.contains("gemini") || m.contains("claude") || m.contains("gpt-4.1") || m.contains("gpt-5") || m.contains("gpt-6") || m.contains("deepseek-v4") -> 500_000   // v4.4: 5 लाख
             else -> OTHER_BUDGET
         }
     }
