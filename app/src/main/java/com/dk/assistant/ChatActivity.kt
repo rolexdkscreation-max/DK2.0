@@ -82,13 +82,6 @@ class ChatActivity : AppCompatActivity() {
         scroll.addView(list)
         col.addView(scroll, LinearLayout.LayoutParams(-1, 0, 1f).apply { topMargin = (10 * dp).toInt() })
 
-        // ---- neeche likhne ki jagah: साझा इनपुट बॉक्स (हल्के कोनों वाला आयत, माइक बार के अंदर)
-        composer = DKComposer(this, "कुछ भी लिखिए… (जैसे: WhatsApp खोलो, आज का मौसम?)", maxLines = 4)
-        edt = composer.edt
-        // DK का सोचना/लिखना अब जवाब वाले बुलबुले के अंदर (नीचे अलग animation नहीं)
-        col.addView(composer, LinearLayout.LayoutParams(-1, -2).apply { topMargin = (8 * dp).toInt() })
-        inline = DKInlineReply(list, scroll, 0.78f)
-
         val pickImage = registerForActivityResult(androidx.activity.result.contract.ActivityResultContracts.GetContent()) { uri ->
             if (uri != null) {
                 try {
@@ -114,7 +107,8 @@ class ChatActivity : AppCompatActivity() {
             }
         }
 
-        composer.onPlusClick = {
+        // ---- neeche likhne ki jagah: साझा इनपुट बॉक्स (हल्के कोनों वाला आयत, माइक बार के अंदर)
+        composer = DKComposer(this, "कुछ भी लिखिए… (जैसे: WhatsApp खोलो, आज का मौसम?)", maxLines = 4, attach = {
             val popup = android.widget.PopupMenu(this, composer.plusBtn)
             popup.menu.add("फोटो चुनें (Gallery)")
             popup.menu.add("डॉक्यूमेंट चुनें (File)")
@@ -127,7 +121,11 @@ class ChatActivity : AppCompatActivity() {
                 true
             }
             popup.show()
-        }
+        })
+        edt = composer.edt
+        // DK का सोचना/लिखना अब जवाब वाले बुलबुले के अंदर (नीचे अलग animation नहीं)
+        col.addView(composer, LinearLayout.LayoutParams(-1, -2).apply { topMargin = (8 * dp).toInt() })
+        inline = DKInlineReply(list, scroll, 0.78f)
 
         composer.onRemoveMedia = {
             composer.clearMedia()
@@ -148,7 +146,7 @@ class ChatActivity : AppCompatActivity() {
         keepTyping()
     }
 
-    /** Cursor + keyboard hamesha likhne ki jagah par - har message के baad dobara tap na karna pade */
+    /** Cursor + keyboard hamesha likhne ki jagah par - har message के baad dobara tap na pade */
     private fun keepTyping() {
         edt.requestFocus()
         edt.post {
@@ -202,7 +200,7 @@ class ChatActivity : AppCompatActivity() {
     // ---------------------------------------------------------------- v3.8: typing indicator + timeout/retry
     private var localJob: kotlinx.coroutines.Job? = null
     private var lastSent = ""
-    /** Message bheja, abhi DK ka pehla shabd nahi aaya */
+    /** Message bheja, abhi DK का पेहला shabd nahi aaya */
     private var awaiting = false
     private var awaitSince = 0L
     private var timedOut = false
