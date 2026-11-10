@@ -59,12 +59,15 @@ object Prefs {
         if (oneKeyOn(c)) ApiScopes.oneKeyFor(id, oneKey(c)) else scopeKeyRaw(c, scope, id)
     fun scopeKeyRaw(c: Context, scope: String, id: String) = (sp(c).getString(ApiScopes.pref(scope, "key", id), "") ?: "").trim()
     fun scopeModel(c: Context, scope: String, id: String): String {
-        val def = if (scope == ApiScopes.CODER && id == "gemini") GeminiModels.CODER else Providers.byId(id)?.defaultModel ?: ""
+        // नवंबर 2026 (मालिक): "3.8 Flash सिर्फ़ कोडिंग एजेंट और DK कंप्यूटर के लिए" - दोनों का Gemini default 3.8 Flash
+        val flash38 = (scope == ApiScopes.CODER || scope == ApiScopes.PC) && id == "gemini"
+        val def = if (flash38) GeminiModels.CODER else Providers.byId(id)?.defaultModel ?: ""
         val p = sp(c)
-        // v3.70: कोडिंग एजेंट का पुराना default (flash-lite) एक बार 3.8 Flash पर (coding के लिए सबसे तेज़ + अच्छा). बाद में user जो चुने वही
-        if (scope == ApiScopes.CODER && id == "gemini" && !p.getBoolean("coder_model_v370", false)) {
+        // v3.70 (कोडिंग एजेंट) / नवंबर 2026 (DK कंप्यूटर): पुराना default (flash-lite) एक बार 3.8 Flash पर. बाद में user जो चुने वही
+        val flag = if (scope == ApiScopes.PC) "pc_model_v380" else "coder_model_v370"
+        if (flash38 && !p.getBoolean(flag, false)) {
             val cur = p.getString(ApiScopes.pref(scope, "model", id), "").orEmpty().trim()
-            p.edit().apply { if (GeminiModels.oldCoderDefault(cur)) putString(ApiScopes.pref(scope, "model", id), GeminiModels.CODER); putBoolean("coder_model_v370", true) }.apply()
+            p.edit().apply { if (GeminiModels.oldCoderDefault(cur)) putString(ApiScopes.pref(scope, "model", id), GeminiModels.CODER); putBoolean(flag, true) }.apply()
             if (GeminiModels.oldCoderDefault(cur)) return GeminiModels.CODER
         }
         return (p.getString(ApiScopes.pref(scope, "model", id), def) ?: def).ifBlank { def }
@@ -426,8 +429,20 @@ object Prefs {
     /** true = bina pooche push (default: pehle dikhao, phir "Push" dabane par) */
     fun coderAutoPush(c: Context) = sp(c).getBoolean("coder_autopush", false)
     /** कोडिंग एजेंट: एक काम में ज़्यादा से ज़्यादा कदम (3-30, default 5) */
-    /** v3.6: हल्के एजेंटों (प्रॉम्प्ट इंजीनियर, मैनेजर...) का Gemini मॉडल */
-    fun coderLightModel(c: Context): String = sp(c).getString("coder_light_model", null)?.trim()?.removePrefix("models/")?.ifBlank { null } ?: GeminiModels.LIGHT
+    /**
+     * v3.6: बाकी एजेंटों (प्रॉम्प्ट इंजीनियर, मैनेजर, टेस्टर...) का Gemini मॉडल.
+     * नवंबर 2026 (मालिक: "सारे एजेंट एक के बाद एक वही 3.8 Flash"): default 3.8 Flash; पुराना default (flash-lite) एक बार 3.8 पर.
+     * limit खत्म = उसी key पर CODER_CHAIN के अगले मॉडल, फिर key 2-5, फिर OpenRouter/Z.ai/NVIDIA/Groq (पहले जैसा).
+     */
+    fun coderLightModel(c: Context): String {
+        val p = sp(c)
+        val cur = p.getString("coder_light_model", null)?.trim()?.removePrefix("models/").orEmpty()
+        if (!p.getBoolean("coder_light_v380", false)) {
+            p.edit().apply { if (GeminiModels.oldCoderDefault(cur)) putString("coder_light_model", GeminiModels.CODER); putBoolean("coder_light_v380", true) }.apply()
+            if (GeminiModels.oldCoderDefault(cur)) return GeminiModels.CODER
+        }
+        return cur.ifBlank { GeminiModels.CODER }
+    }
     /** नवंबर 2026: कोडर/डिबगर/प्लानर का मज़बूत (paid) मॉडल - [StrongAi]. key खाली = बंद */
     fun coderStrongProvider(c: Context) = sp(c).getString(StrongAi.PREF_PROVIDER, "anthropic") ?: "anthropic"
     fun coderStrongKey(c: Context) = (sp(c).getString(StrongAi.PREF_KEY, "") ?: "").trim()

@@ -111,7 +111,7 @@ To DELETE a file reply: DELETE: <path> (ONLY when the step's action is delete)
 PRECISION: change ONLY the lines the step needs; copy every other line exactly. Never invert a condition (if (!x) -> if (x)), never drop a "!", else-branch, return, argument or call unless the step asks for it.
 UI (owner, PR #252): every new button/input gets an android:id AND a real action wired in its Activity in the same plan; never set an existing view to visibility="gone" unless the task says hide/remove; never add placeholder, sample or made-up UI text (only text the task or the existing app uses); never add a word to a *.tsv that is already there; never add a layout, raw/drawable file or dependency that nothing uses.
 RESOURCES: every @drawable/@raw/@string/@layout/R.x.name you use must already exist or be created in this same plan. Never add a library or change build.gradle unless the task asks for it.
-LOOKUP (not counted as a step): if you are not sure a name exists, reply ONLY {"search":["word", ...]} (max 6) or {"read":["path", ...]} (max 4) and you will get the results; then write the change."""
+LOOKUP (not counted as a step): whenever you are not sure how a name, class, constructor or related file really looks, reply ONLY {"search":["word", ...]} (max 6) or {"read":["path", ...]} (max 8 whole files) and you will get the results; you may look up to 8 times, then write the change. Never guess a member name - read it."""
 
         const val CODER_REWRITE = """MANAGER CHANGED STRATEGY: the FIND approach failed. Rewrite the WHOLE file instead:
 FILE: <path>

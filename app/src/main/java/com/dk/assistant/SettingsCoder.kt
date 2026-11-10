@@ -140,7 +140,7 @@ internal fun SettingsActivity.secCoder() {
         swAutoPush = switch(box, "बिना पूछे push करो (बंद = पहले बदलाव दिखाओ, फिर \"Push करें\" दबाने पर)", Prefs.coderAutoPush(this))
         // v3.6: हर एजेंट का अपना मॉडल - कोडर/डिबगर/प्लानर/रिव्यूअर = कोडिंग एजेंट का मॉडल (3.8 Flash), बाकी हल्का
         edCoderLight = field(box, "हल्के एजेंटों का मॉडल (मैनेजर, गिट/रिलीज़, टेस्टर)",
-            Prefs.coderLightModel(this), GeminiModels.LIGHT + " (सुझाया — जल्दी जवाब, धीमे नेटवर्क पर भी)")
+            Prefs.coderLightModel(this), GeminiModels.CODER + " (सुझाया — सारे एजेंट एक ही 3.8 Flash; धीमे नेटवर्क पर " + GeminiModels.LIGHT + ")")
         hint(box, "कोडर, डिबगर, प्लानर और रिव्यूअर AI दिमाग → कोडिंग एजेंट में चुना मॉडल लेते हैं (सुझाया: ${GeminiModels.CODER})। 5 Gemini keys हों तो limit, धीमा नेटवर्क या server गलती पर अगली key अपने-आप।")
         strongModelBox(box)
         edCoderSteps = field(box, "एक काम में ज़्यादा से ज़्यादा कदम (3–30)", Prefs.coderMaxSteps(this).toString(),

@@ -29,12 +29,13 @@ object SevenRunner {
         SevenPlus.resolve(input, p?.task, p?.u, p?.forceNormal == true, forceNormal)
 
     /** कोडिंग एजेंट की अपनी API (Settings → AI दिमाग → कोडिंग एजेंट); limit पर उसी key के दूसरे मॉडल - CoderAi खुद */
-    private class Ai(private val ai: CoderAi, lightModel: String = GeminiModels.LIGHT, private val strong: CoderAi? = null) : TeamAi {
+    private class Ai(private val ai: CoderAi, lightModel: String = GeminiModels.CODER, private val strong: CoderAi? = null) : TeamAi {
         /** Settings → मज़बूत मॉडल किन एजेंट को ([StrongAi.PREF_SCOPE]) */
         private var scope: String = StrongAi.SCOPE_GATES
         fun scoped(s: String) = apply { scope = StrongAi.scope(s) }
-        // v3.6: हर एजेंट का अपना मॉडल - कोडर/डिबगर/प्लानर/रिव्यूअर = तेज़ (कोडिंग एजेंट का चुना, 3.8 Flash), बाकी हल्का (3.5 Flash Lite)
-        private val light = ai.withModel(lightModel)
+        // v3.6: हर एजेंट का अपना मॉडल - कोडर/डिबगर/प्लानर/रिव्यूअर = कोडिंग एजेंट का चुना (3.8 Flash), बाकी = Settings का "बाकी एजेंटों का मॉडल".
+        // नवंबर 2026 (मालिक): बाकी का default भी 3.8 Flash - तब उसकी limit पर पहले 3.6 Flash / 3 Flash, फिर Lite (CODER_CHAIN)
+        private val light = ai.withModel(lightModel, if (lightModel == GeminiModels.CODER) GeminiModels.CODER_CHAIN else GeminiModels.LIGHT_CHAIN)
         // नवंबर 2026: मज़बूत (paid) मॉडल की key डली हो तो कोडर/डिबगर/प्लानर उसी पर (न चले तो पीछे वही पुरानी chain)
         private fun pick(agent: Seven.Agent) = TeamModels.pick(agent, ai, light, strong, scope)
         // runInterruptible: "रोकें" दबाते ही limit वाला इंतज़ार (Thread.sleep) भी रुके
