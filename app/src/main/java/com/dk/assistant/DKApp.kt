@@ -45,11 +45,7 @@ class DKApp : Application() {
         }, 6000)
         val prev = Thread.getDefaultUncaughtExceptionHandler()
         Thread.setDefaultUncaughtExceptionHandler { t, e ->
-            try {
-                File(filesDir, "last_crash.txt").writeText(
-                    java.text.SimpleDateFormat("dd MMM HH:mm:ss", java.util.Locale.US).format(java.util.Date()) +
-                        " [${t.name}] version ${Updater.currentName(this)}\n" + e.stackTraceToString().take(4000))
-            } catch (_: Exception) {}
+            saveCrash("[${t.name}]", e)
             // Background thread ki galti se poora app (aur Accessibility) band na ho.
             // Baar-baar crash hone par Android khud Accessibility OFF kar deta tha.
             if (t !== android.os.Looper.getMainLooper().thread) {
@@ -64,18 +60,17 @@ class DKApp : Application() {
             while (true) {
                 try { android.os.Looper.loop() } catch (e: Throwable) {
                     saved++
-                    try {
-                        File(filesDir, "last_crash.txt").writeText(
-                            java.text.SimpleDateFormat("dd MMM HH:mm:ss", java.util.Locale.US).format(java.util.Date()) +
-                                " [main, sambhala gaya] version ${Updater.currentName(this)}\n" + e.stackTraceToString().take(4000))
-                    } catch (_: Exception) {}
+                    saveCrash("[main, sambhala gaya]", e)
                     if (saved > 20) throw e
+                    // नवंबर 2026 ("स्क्रीन डूबकर फिर चालू"): गलती बीच frame में हो तो स्क्रीन अधूरी/काली रह जाती थी -
+                    // अब सामने वाली स्क्रीन को फिर से नाप + draw करवाओ (data/काम नहीं छूता)
+                    try { top?.get()?.window?.decorView?.let { v -> v.post { v.requestLayout(); v.invalidate() } } } catch (_: Throwable) {}
                 }
             }
         }
 
         registerActivityLifecycleCallbacks(object : ActivityLifecycleCallbacks {
-            override fun onActivityResumed(a: Activity) { AppVisible.set(true); try { UiLang.onResumed(a) } catch (_: Exception) {} }
+            override fun onActivityResumed(a: Activity) { top = java.lang.ref.WeakReference(a); AppVisible.set(true); try { UiLang.onResumed(a) } catch (_: Exception) {} }
             override fun onActivityPaused(a: Activity) { AppVisible.set(false) }
             override fun onActivityCreated(a: Activity, b: Bundle?) {}
             override fun onActivityStarted(a: Activity) {}
@@ -83,6 +78,25 @@ class DKApp : Application() {
             override fun onActivitySaveInstanceState(a: Activity, b: Bundle) {}
             override fun onActivityDestroyed(a: Activity) {}
         })
+    }
+
+    /** सामने वाली स्क्रीन (गलती के बाद दोबारा draw के लिए) */
+    @Volatile private var top: java.lang.ref.WeakReference<Activity>? = null
+
+    /**
+     * नवंबर 2026: गलती की रिपोर्ट - last_crash.txt (Settings → गड़बड़ी रिपोर्ट, पहले जैसा) + crash_history.txt में
+     * आख़िरी [CrashLog.KEEP] गलतियाँ (पहले हर नई गलती पुरानी को मिटा देती थी, तो असली जड़ छूट जाती थी)
+     */
+    private fun saveCrash(where: String, e: Throwable) {
+        try {
+            val head = java.text.SimpleDateFormat("dd MMM HH:mm:ss", java.util.Locale.US).format(java.util.Date()) +
+                " $where version ${Updater.currentName(this)}"
+            val entry = head + "\n" + e.stackTraceToString().take(4000)
+            File(filesDir, "last_crash.txt").writeText(entry)
+            val h = File(filesDir, "crash_history.txt")
+            val old = try { if (h.exists()) h.readText() else "" } catch (_: Exception) { "" }
+            h.writeText(CrashLog.push(old, entry))
+        } catch (_: Throwable) {}
     }
 
     /** Existing installs may still have the old guard's device-admin flag and notification channel. */
@@ -106,7 +120,10 @@ class DKApp : Application() {
     companion object {
         fun lastCrash(c: android.content.Context): String =
             try { File(c.filesDir, "last_crash.txt").takeIf { it.exists() }?.readText() ?: "" } catch (e: Exception) { "" }
-        fun clearCrash(c: android.content.Context) { try { File(c.filesDir, "last_crash.txt").delete() } catch (_: Exception) {} }
+        fun clearCrash(c: android.content.Context) { try { File(c.filesDir, "last_crash.txt").delete(); File(c.filesDir, "crash_history.txt").delete() } catch (_: Exception) {} }
+        /** पिछली कई गलतियाँ (नई सबसे ऊपर) */
+        fun crashHistory(c: android.content.Context): String =
+            try { File(c.filesDir, "crash_history.txt").takeIf { it.exists() }?.readText() ?: "" } catch (e: Exception) { "" }
     }
 }
 

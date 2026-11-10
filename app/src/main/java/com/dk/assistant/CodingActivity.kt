@@ -43,10 +43,16 @@ object CoderSession {
     val normalFiles = LinkedHashMap<String, String>()
     val scope = CoroutineScope(Dispatchers.Main + SupervisorJob())
     @Volatile var listener: (() -> Unit)? = null
+    /** नवंबर 2026 (स्मूथ): 300 से ऊपर होने पर आगे से कितनी लाइनें हटीं - स्क्रीन इसी से नई लाइनें पहचानती है */
+    @Volatile var dropped = 0L
+        private set
     fun add(role: String, t: String) {
+        // नवंबर 2026 (crash): lines सिर्फ़ main thread पर बदले (स्क्रीन उसी समय पढ़ती है - दो thread = crash/स्क्रीन डूबना)
+        val main = try { android.os.Looper.getMainLooper() } catch (_: Throwable) { null }
+        if (main != null && android.os.Looper.myLooper() != main) { android.os.Handler(main).post { add(role, t) }; return }
         // एक ही संदेश दो बार नहीं (हर कदम पर वही चेतावनी/गलती)
         if (lines.takeLast(3).any { it.role == role && it.text == t }) return
-        lines.add(Line(role, t)); if (lines.size > 300) lines.removeAt(0); listener?.invoke()
+        lines.add(Line(role, t)); if (lines.size > 300) { lines.removeAt(0); dropped++ }; listener?.invoke()
         if (role == "s") TaskStatus.step(TaskStatus.CODER, t)      // असली कदम (live status)
         CoderHistory.onLine(role, t)                                // इतिहास: फ़ोन में (ऐप बंद होकर खुले तो वही बातचीत)
     }
@@ -167,6 +173,12 @@ class CodingActivity : AppCompatActivity() {
     private lateinit var composer: DKComposer
     private var busySince = 0L
     private var shown = 0
+    /** नवंबर 2026 (स्मूथ): CoderSession.dropped का आख़िरी देखा मान */
+    private var seenDrop = 0L
+    /** एक frame में एक ही render (हर लाइन पर पूरा render = अटकना) */
+    private var renderQueued = false
+    private val renderNow = Runnable { renderQueued = false; if (!isDestroyed) render() }
+    private fun scheduleRender() { if (renderQueued) return; renderQueued = true; list.postOnAnimation(renderNow) }
     private val dp get() = resources.displayMetrics.density
     // 📎 फ़ोटो/वीडियो: typing bar के ऊपर छोटी पट्टी (भेजने तक)
     private lateinit var mediaScroll: android.widget.HorizontalScrollView
@@ -572,7 +584,7 @@ class CodingActivity : AppCompatActivity() {
         CoderSession.agent?.reset(); CoderSession.savePr(this); CoderSession.agent = null
         CoderTeam.suggestions.clear(); SevenRunner.pending = null; RepoDoctorRunner.pending = null
         CoderHistory.newThread(this)                                // पुरानी बातचीत इतिहास में रहती है
-        CoderSession.lines.clear(); shown = 0; list.removeAllViews()
+        CoderSession.lines.clear(); shown = 0; seenDrop = CoderSession.dropped; list.removeAllViews()
         CoderSession.add("d", welcome())
     }
 
@@ -647,7 +659,7 @@ class CodingActivity : AppCompatActivity() {
         if (t.id == CoderHistory.current) return
         val l = CoderHistory.open(this, t.id)
         CoderTeam.suggestions.clear(); SevenRunner.pending = null; RepoDoctorRunner.pending = null
-        CoderSession.lines.clear(); CoderSession.lines.addAll(l); shown = 0; inline.drop(); list.removeAllViews()
+        CoderSession.lines.clear(); CoderSession.lines.addAll(l); shown = 0; seenDrop = CoderSession.dropped; inline.drop(); list.removeAllViews()
         // उस बातचीत का PR अभी खुला हो (merge नहीं) तो वही वापस - वरना साफ़ शुरुआत
         CoderSession.agent?.let { a ->
             a.reset()
@@ -782,7 +794,7 @@ class CodingActivity : AppCompatActivity() {
 
     override fun onResume() {
         super.onResume()
-        CoderSession.listener = { runOnUiThread { render() } }
+        CoderSession.listener = { runOnUiThread { scheduleRender() } }
         // app दोबारा खुली हो तो पिछला खुला PR (Merge card) वापस लाओ
         if (CoderSession.agent == null && problems().isEmpty()) CoderSession.agentFor(this)
         // ऐप बंद होने से रुका काम: अपने-आप वहीं से आगे (या "वहीं से आगे" बटन)
@@ -842,6 +854,9 @@ class CodingActivity : AppCompatActivity() {
         send.contentDescription = if (CoderSession.busy) "रोकें" else "भेजें"
         showBusy(CoderSession.busy)
         val lines = CoderSession.lines
+        // नवंबर 2026 (बग): 300 लाइन के बाद आगे से हटी लाइनें गिनो - पहले यहीं अटककर नए संदेश दिखना बंद हो जाते थे
+        val drop = CoderSession.dropped
+        shown = UiPace.shownAfterDrop(shown, seenDrop, drop); seenDrop = drop
         if (lines.size < shown) { inline.drop(); list.removeAllViews(); shown = 0 }
         while (shown < lines.size) {
             val l = lines[shown]; shown++
@@ -854,6 +869,8 @@ class CodingActivity : AppCompatActivity() {
             if (!ChatClean.showInChat(l.role, CoderSession.busy, shown == lines.size)) continue
             bubble(l); inline.keepLast()
         }
+        // नवंबर 2026 (स्मूथ): बहुत लंबी बातचीत में सबसे पुराने बुलबुले स्क्रीन से हटें (इतिहास में पूरी बची रहती है)
+        UiPace.trimCount(list.childCount).let { if (it > 0) list.removeViews(0, it) }
         if (CoderSession.busy) inline.show(busyLabel(), WorkState.WORKING)
         else if (inline.bubble?.isWorking == true) inline.hide()
         renderSuggestions()

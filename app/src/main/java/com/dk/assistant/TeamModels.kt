@@ -20,6 +20,16 @@ object TeamModels {
         fast(a) -> fastAi
         else -> lightAi
     }
+    /**
+     * नवंबर 2026 (मालिक: "काम समझने और समझाने में बहुत समय"): बात करने वाले एजेंट (समझना/सौंपना/समझाना/branch) -
+     * Settings में सोचने का स्तर "ऑटो" हो तो इन पर कम सोच (low) = जवाब कई गुना जल्दी. कोड लिखने/जाँचने वाले
+     * (प्लानर, कोडर, रिव्यूअर, डिबगर, टेस्टर, QA) पहले जैसे पूरी सोच के साथ - गुणवत्ता वही.
+     */
+    val QUICK_TALK: Set<Seven.Agent> = setOf(Seven.Agent.MANAGER, Seven.Agent.PROMPT, Seven.Agent.EXPLAINER, Seven.Agent.GIT)
+    /** इस एजेंट के लिए सोचने का स्तर: user ने खुद चुना हो तो वही, ऑटो हो तो बात वाले एजेंट = low */
+    fun thinkFor(a: Seven.Agent, userLevel: String): String =
+        if (ThinkLevel.norm(userLevel) == ThinkLevel.AUTO && a in QUICK_TALK) ThinkLevel.LOW else userLevel
+
     /** नवंबर 2026: Settings वाला दायरा ([StrongAi.PREF_SCOPE]) - "gates" = जाँचने वाले भी मज़बूत मॉडल पर */
     fun <T> pick(a: Seven.Agent, fastAi: T, lightAi: T, strongAi: T?, scope: String): T = when {
         strongAi != null && StrongAi.uses(a, scope) -> strongAi
