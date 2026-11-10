@@ -58,7 +58,6 @@ class ConnectorsActivity : AppCompatActivity() {
         container = findViewById(R.id.container)
         findViewById<OrbView>(R.id.miniOrb).mini = true
         findViewById<ImageButton>(R.id.btnBack).setOnClickListener { finish() }
-        findViewById<View>(R.id.saveBar).visibility = View.GONE
         findViewById<TextView>(R.id.txtTitle).text = "कनेक्टर"
         build()
     }

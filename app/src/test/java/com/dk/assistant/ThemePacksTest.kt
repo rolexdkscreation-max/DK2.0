@@ -72,6 +72,6 @@ class ThemePacksTest {
         assertTrue(look.contains("themeGallery()"))
         assertTrue(look.contains("ThemePacks.download") || look.contains("P.download"))
         val xml = File("src/main/res/layout/activity_settings.xml").readText()
-        assertTrue(xml.contains("btnBarBack") && xml.contains("bg_black_strip") && xml.contains("AuroraView"))
+        assertTrue(xml.contains("AuroraView"))
     }
 }

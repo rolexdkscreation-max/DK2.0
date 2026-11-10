@@ -42,7 +42,7 @@ import kotlinx.coroutines.launch
 class SettingsActivity : AppCompatActivity() {
 
     internal lateinit var container: LinearLayout
-    internal lateinit var txtSaved: TextView
+    internal var txtSaved: TextView? = null
     internal var speaker: Speaker? = null
 
     // form fields
@@ -91,13 +91,8 @@ class SettingsActivity : AppCompatActivity() {
         setContentView(R.layout.activity_settings)
         Glass.install(this)
         container = findViewById(R.id.container)
-        txtSaved = findViewById(R.id.txtSaved)
         findViewById<OrbView>(R.id.miniOrb).mini = true
         findViewById<ImageButton>(R.id.btnBack).setOnClickListener { save(false); finish() }
-        findViewById<Button>(R.id.btnSave).apply {
-            backgroundTintList = null      // v4: Material का पक्का नीला tint हटाओ - नियॉन accent काँच (btn_accent) दिखे
-            setOnClickListener { save(true) }
-        }
         build()
     }
 
@@ -113,7 +108,6 @@ class SettingsActivity : AppCompatActivity() {
 
     private fun build() {
         val title = findViewById<TextView>(R.id.txtTitle)
-        val bar = findViewById<View>(R.id.saveBar)
         when (section) {
             null -> { title.text = "CONTROL CENTER"; title.letterSpacing = 0.05f; title.maxLines = 1
                 // छोटे फ़ोन पर भी एक ही लाइन: जगह के हिसाब से 22sp से 14sp तक छोटा (एक बार, layout के बाद)
@@ -123,30 +117,29 @@ class SettingsActivity : AppCompatActivity() {
                     while (room > 0 && sz > 14f && title.paint.measureText(title.text.toString()) > room) { sz -= 1f; title.textSize = sz }
                     FutureViews.goldShader(title)
                 }
-                MenuQuick.blackStrip(this, findViewById(R.id.btnBarBack), findViewById(R.id.btnSave), txtSaved)
                 setupSearch(); menu() }
             "profile" -> { title.text = "प्रोफ़ाइल"; secProfile() }
             "lang" -> { title.text = "भाषा / Language"; secLang() }
-            "brain" -> { title.text = "AI दिमाग"; bar.visibility = View.GONE; secBrainMenu() }
+            "brain" -> { title.text = "AI दिमाग"; secBrainMenu() }
             "brain_live" -> { title.text = "AI दिमाग • DK लाइव"; secBrainLive() }
             "brain_chat" -> { title.text = "AI दिमाग • DK चैट"; secBrain() }
             "brain_coder" -> { title.text = "AI दिमाग • कोडिंग एजेंट"; secBrainScope(ApiScopes.CODER) }
             "brain_pc" -> { title.text = "AI दिमाग • DK कंप्यूटर"; secBrainScope(ApiScopes.PC) }
             "brain_web" -> { title.text = "AI दिमाग • वेबसाइट बिल्डर"; secBrainWeb() }
             "voice" -> { title.text = "आवाज़"; secVoice() }
-            "orb" -> { title.text = "ओर्ब और चेहरा"; bar.visibility = View.GONE; secOrb() }
-            "ui" -> { title.text = "दिखावट"; MenuQuick.blackStrip(this, findViewById(R.id.btnBarBack), findViewById(R.id.btnSave), txtSaved); secUi() }
+            "orb" -> { title.text = "ओर्ब और चेहरा"; secOrb() }
+            "ui" -> { title.text = "दिखावट"; secUi() }
             "access" -> { title.text = "Accessibility"; secAccess(); secPayGuard() }
             "phonelock" -> { title.text = "फ़ोन लॉक / अनलॉक"; secPhoneLock(); secVoiceCmds() }
-            "guard" -> { title.text = "स्क्रीन गार्ड"; bar.visibility = View.GONE; secGuard() }
+            "guard" -> { title.text = "स्क्रीन गार्ड"; secGuard() }
             "perms" -> { title.text = "परमिशन"; secPerms() }
             "update" -> { title.text = "अपडेट"; secUpdate() }
-            "debug" -> { title.text = "डिबग लॉग"; bar.visibility = View.GONE; secDebug() }
+            "debug" -> { title.text = "डिबग लॉग"; secDebug() }
             "coder" -> { title.text = "कोडिंग एजेंट"; secCoder() }
             "computer" -> { title.text = "DK कंप्यूटर"; secComputer() }
-            "social" -> { title.text = "सोशल रिव्यू"; bar.visibility = View.GONE; secSocial() }
-            "reels" -> { title.text = "रील गिनती और लिमिट"; bar.visibility = View.GONE; secReels() }
-            "about" -> { title.text = "ऐप के बारे में"; bar.visibility = View.GONE; secAbout() }
+            "social" -> { title.text = "सोशल रिव्यू"; secSocial() }
+            "reels" -> { title.text = "रील गिनती और लिमिट"; secReels() }
+            "about" -> { title.text = "ऐप के बारे में"; secAbout() }
         }
         space(container, 8)
         FutureViews.goldShader(title)          // नवंबर 2026: शीर्षक धातु जैसा सुनहरा (Control Center रूप)
@@ -469,7 +462,7 @@ class SettingsActivity : AppCompatActivity() {
         }
         plSave?.invoke()
         DKAccessibilityService.instance?.startWakeLoopIfEnabled()
-        txtSaved.text = "✓ सेव हो गया"
+        txtSaved?.text = "✓ सेव हो गया"
         if (showToast) {
             val active2 = Providers.byId(active)
             val warn = if (::rgProvider.isInitialized && Prefs.keyRaw(this, active).isBlank()) " (पर ${active2?.name} की key खाली है)" else ""
@@ -493,7 +486,7 @@ class SettingsActivity : AppCompatActivity() {
     internal val watcher = object : TextWatcher {
         override fun beforeTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) {}
         override fun onTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) {}
-        override fun afterTextChanged(s: Editable?) { txtSaved.text = "बदलाव सेव नहीं हुए — सेव दबाएँ" }
+        override fun afterTextChanged(s: Editable?) { txtSaved?.text = "बदलाव सेव नहीं हुए — सेव दबाएँ" }
     }
 
     // ------------------------------------------------------------ सेटिंग्स में खोज (टॉगल होने वाला लॉजिक)
