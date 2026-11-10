@@ -89,9 +89,72 @@ class ChatActivity : AppCompatActivity() {
         col.addView(composer, LinearLayout.LayoutParams(-1, -2).apply { topMargin = (8 * dp).toInt() })
         inline = DKInlineReply(list, scroll, 0.78f)
 
+        val pickImage = registerForActivityResult(androidx.activity.result.contract.ActivityResultContracts.GetContent()) { uri ->
+            if (uri != null) {
+                try {
+                    val bytes = contentResolver.openInputStream(uri)?.use { it.readBytes() }
+                    if (bytes != null) {
+                        val media = CoderMedia(bytes, "image/jpeg", "photo.jpg")
+                        composer.setMedia(media)
+                    }
+                } catch (_: Exception) {}
+            }
+        }
+
+        val pickDoc = registerForActivityResult(androidx.activity.result.contract.ActivityResultContracts.GetContent()) { uri ->
+            if (uri != null) {
+                try {
+                    val bytes = contentResolver.openInputStream(uri)?.use { it.readBytes() }
+                    val name = uri.lastPathSegment ?: "document.file"
+                    if (bytes != null) {
+                        val media = CoderMedia(bytes, "application/octet-stream", name)
+                        composer.setMedia(media)
+                    }
+                } catch (_: Exception) {}
+            }
+        }
+
+        composer.onPlusClick = {
+            val popup = android.widget.PopupMenu(this, composer.iconBtn)
+            popup.menu.add("फोटो चुनें (Gallery)")
+            popup.menu.add("डॉक्यूमेंट चुनें (File)")
+            popup.setOnMenuItemClickListener { item ->
+                if (item.title?.toString()?.contains("फोटो") == true) {
+                    pickImage.launch("image/*")
+                } else {
+                    pickDoc.launch("*/*")
+                }
+                true
+            }
+            popup.show()
+        }
+        composer.iconBtn.setOnClickListener {
+            val popup = android.widget.PopupMenu(this, composer.iconBtn)
+            popup.menu.add("फोटो चुनें (Gallery)")
+            popup.menu.add("डॉक्यूमेंट चुनें (File)")
+            popup.setOnMenuItemClickListener { item ->
+                if (item.title?.toString()?.contains("फोटो") == true) {
+                    pickImage.launch("image/*")
+                } else {
+                    pickDoc.launch("*/*")
+                }
+                true
+            }
+            popup.show()
+        }
+
+        composer.onRemoveMedia = {
+            composer.setMedia(null)
+        }
+
         composer.onSend = {
             val t = edt.text.toString().trim()
-            if (t.isNotEmpty()) { edt.setText(""); sendText(t) }
+            val media = composer.attachedMedia
+            if (t.isNotEmpty() || media != null) {
+                edt.setText("")
+                composer.setMedia(null)
+                sendTextWithMedia(t, media)
+            }
             keepTyping()
         }
         setContentView(root)
@@ -99,7 +162,7 @@ class ChatActivity : AppCompatActivity() {
         keepTyping()
     }
 
-    /** Cursor + keyboard hamesha likhne ki jagah par - har message ke baad dobara tap na karna pade */
+    /** Cursor + keyboard hamesha likhne ki jagah par - har message के baad dobara tap na karna pade */
     private fun keepTyping() {
         edt.requestFocus()
         edt.post {
@@ -110,13 +173,18 @@ class ChatActivity : AppCompatActivity() {
     }
 
     private fun sendText(t: String) {
+        sendTextWithMedia(t, null)
+    }
+
+    private fun sendTextWithMedia(t: String, media: CoderMedia?) {
         if (!Prefs.hasAnyKey(this)) { bubble("d", "पहले सेटिंग्स में किसी AI की API key डालकर सेव कीजिए।"); return }
         lastSent = t
         // 1) TURANT apna message chat me (optimistic, local state) + typing indicator - AI/server ka intezaar nahi
-        DKState.userNow(t)
+        val displayTxt = if (media != null) "$t [अटैच किया गया मीडिया: ${media.name}]" else t
+        DKState.userNow(displayTxt)
         awaiting = true; awaitSince = System.currentTimeMillis(); timedOut = false
         render()
-        // 2) request bina kisi debounce/delay ke usi pal (background me)
+        // 2) request bina kisi debounce/delay के usi pal (background me)
         val svc = DKAccessibilityService.instance
         if (svc != null) { svc.runCommand(t, speak = swSpeak.isChecked); return }
         // Accessibility band hai -> sirf baatcheet (phone ke kaam nahi) - jawab tukdon me turant dikhe
