@@ -67,6 +67,24 @@ class SettingsActivity : AppCompatActivity() {
 
     internal val dp get() = resources.displayMetrics.density
 
+    /** वॉलपेपर: गैलरी से अपना चित्र (SettingsLook.wallpaperGallery) - फ़ोन में ही सेव, फिर पूरे ऐप में लागू */
+    internal val pickWall = registerForActivityResult(androidx.activity.result.contract.ActivityResultContracts.PickVisualMedia()) { uri ->
+        if (uri == null) return@registerForActivityResult
+        toast("वॉलपेपर लग रहा है…")
+        val app = applicationContext
+        Thread {
+            val err = com.dk.assistant.ui.Wallpapers.saveCustom(app, uri)
+            runOnUiThread {
+                if (isFinishing || isDestroyed) return@runOnUiThread
+                if (err != null) { toast(err); return@runOnUiThread }
+                com.dk.assistant.ui.Wallpapers.select(this, com.dk.assistant.ui.Wallpapers.CUSTOM)
+                com.dk.assistant.ui.NeonRefresh.bars(this)
+                toast("वॉलपेपर लागू हो गया")
+                recreate()
+            }
+        }.start()
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         window.setSoftInputMode(android.view.WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE)

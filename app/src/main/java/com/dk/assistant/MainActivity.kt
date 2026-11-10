@@ -23,6 +23,23 @@ class MainActivity : AppCompatActivity() {
 
     private val stateListener: () -> Unit = { render() }
 
+    /** होम का + : चुनी फोटो / फ़ाइल DK कंप्यूटर के फ़ोल्डर में (वहाँ DK फोटो देख और PDF / text पढ़ सकता है) */
+    private val pickPhoto = registerForActivityResult(androidx.activity.result.contract.ActivityResultContracts.PickMultipleVisualMedia(6)) { uris -> attachToComputer(uris) }
+    private val pickFile = registerForActivityResult(androidx.activity.result.contract.ActivityResultContracts.OpenMultipleDocuments()) { uris -> attachToComputer(uris) }
+
+    private fun attachToComputer(uris: List<android.net.Uri>) {
+        if (uris.isEmpty()) return
+        val app = applicationContext
+        Thread {
+            val names = uris.take(6).mapNotNull { u -> try { ComputerActivity.copyIn(app, u) } catch (_: Throwable) { null } }
+            runOnUiThread {
+                if (isFinishing || isDestroyed) return@runOnUiThread
+                if (names.isEmpty()) { UiLang.toast(this, "फ़ाइल नहीं जुड़ पाई (30MB तक की फोटो / PDF / text)", Toast.LENGTH_SHORT).show(); return@runOnUiThread }
+                startActivity(Intent(this, ComputerActivity::class.java).putStringArrayListExtra(ComputerActivity.EXTRA_ATTACHED, ArrayList(names)))
+            }
+        }.start()
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
@@ -39,11 +56,21 @@ class MainActivity : AppCompatActivity() {
         findViewById<ImageButton>(R.id.btnSettings).setOnClickListener { openSettings() }
         findViewById<ImageButton>(R.id.btnHomeCam).setOnClickListener { openVoice(VoiceActivity.WANT_CAMERA) }
         findViewById<ImageButton>(R.id.btnHomeShare).setOnClickListener { openVoice(VoiceActivity.WANT_SCREEN) }
-        // नीचे की glass dock: लिखकर बात = चैट, माइक = लाइव आवाज़, + = वही मेनू (☰)
+        // नीचे की glass dock: + = फोटो / फ़ाइल अपलोड, लिखकर बात = चैट, माइक = लाइव आवाज़
+        // (नवंबर 2026 मालिक: "कीबोर्ड" पिल हटाई - लिखने की जगह ही चैट खोलती है; + उसकी जगह पहले)
         findViewById<TextView>(R.id.btnDockType).setOnClickListener { openChat() }
-        findViewById<TextView>(R.id.btnDockKeys).setOnClickListener { openChat() }   // कीबोर्ड पिल = लिखकर बात (चैट)
         findViewById<android.view.View>(R.id.btnDockMic).setOnClickListener { openVoice() }
-        findViewById<ImageButton>(R.id.btnDockTools).setOnClickListener { findViewById<ImageButton>(R.id.btnMenu).performClick() }
+        findViewById<ImageButton>(R.id.btnDockTools).setOnClickListener { v ->
+            com.dk.assistant.ui.HomeMenu.show(this, v, listOf(
+                com.dk.assistant.ui.HomeMenu.Item(R.drawable.ic_camera, "फोटो अपलोड", "गैलरी से फोटो चुनें") {
+                    pickPhoto.launch(androidx.activity.result.PickVisualMediaRequest(
+                        androidx.activity.result.contract.ActivityResultContracts.PickVisualMedia.ImageOnly))
+                },
+                com.dk.assistant.ui.HomeMenu.Item(R.drawable.ic_attach, "फ़ाइल अपलोड", "PDF, text या फोटो फ़ाइल") {
+                    pickFile.launch(ComputerActivity.PICK_TYPES)
+                }
+            ))
+        }
         // orb par tap = chehra dikh raha ho to hatao, warna live awaaz screen
         findViewById<OrbView>(R.id.orb).setOnClickListener {
             if (System.currentTimeMillis() < DKState.faceUntil) DKState.hideFace() else openVoice()

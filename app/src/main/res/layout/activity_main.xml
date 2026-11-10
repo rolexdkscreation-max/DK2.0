@@ -223,8 +223,9 @@
                 android:textSize="13sp" />
         </LinearLayout>
 
-        <!-- नीचे का डॉक (संदर्भ चित्र): कीबोर्ड पिल | + | लिखने की जगह | चमकता नियॉन माइक (छल्लों के साथ)
-             कीबोर्ड / लिखने की जगह = चैट, + = मेनू, माइक = लाइव आवाज़ (पहले जैसे ही काम) -->
+        <!-- नीचे का डॉक: + | लिखने की जगह | चमकता नियॉन माइक (छल्लों के साथ)
+             + = फोटो / फ़ाइल अपलोड (DK कंप्यूटर में), लिखने की जगह = चैट, माइक = लाइव आवाज़.
+             नवंबर 2026 मालिक: "कीबोर्ड" पिल हटाई, + उसकी जगह सबसे पहले -->
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
@@ -236,28 +237,12 @@
             android:paddingEnd="4dp"
             android:paddingBottom="4dp">
 
-            <TextView
-                android:id="@+id/btnDockKeys"
-                android:layout_width="wrap_content"
-                android:layout_height="40dp"
-                android:background="@drawable/glass_pill"
-                android:contentDescription="कीबोर्ड"
-                android:gravity="center"
-                android:paddingStart="12dp"
-                android:paddingEnd="12dp"
-                android:singleLine="true"
-                android:text="कीबोर्ड"
-                android:textColor="@color/text_primary"
-                android:textSize="13sp"
-                android:textStyle="bold" />
-
             <ImageButton
                 android:id="@+id/btnDockTools"
-                android:layout_width="40dp"
-                android:layout_height="40dp"
-                android:layout_marginStart="6dp"
+                android:layout_width="44dp"
+                android:layout_height="44dp"
                 android:background="@drawable/glass_circle"
-                android:contentDescription="टूल"
+                android:contentDescription="फोटो या फ़ाइल जोड़ें"
                 android:padding="10dp"
                 android:scaleType="fitCenter"
                 android:src="@drawable/ic_add"
