@@ -193,6 +193,8 @@ class SevenTeam(
         const val EXPLAIN_ROUNDS = 10
         /** गिट: रिपो में GitHub Actions का कोई workflow नहीं */
         const val NO_CI = "NO_CI"
+        /** audit K3: ड्राई-रन का जवाब नहीं मिला - टेस्ट हुआ ही नहीं (पहले इसे "पास" मान लिया जाता था) */
+        const val DRY_RUN_MISSING = "syntax जाँच पास, पर टेस्टर (AI ड्राई-रन) का जवाब 2 बार माँगने पर भी नहीं मिला — code बदला गया है लेकिन जाँचा नहीं गया। \"आगे करो\" से दोबारा जाँच करवाएँ या खुद चलाकर देखें।"
         /** पुराना: QA कितनी बार काम वापस भेज सकता था. v5.2 से गिनती-सीमा नहीं (FixLoop.TEAM_SAME_LIMIT वाला नियम) - नाम पुराने code/रिपोर्ट के लिए */
         const val QA_ROUNDS = 2
         /** 11-एजेंट डिबगर: कुल राउंड, और आख़िरी कितने राउंड में खोज/पढ़ाई बंद (सिर्फ़ फ़ैसला) */
@@ -898,6 +900,12 @@ class SevenTeam(
     private suspend fun step(s: Seven.Step, forceRewrite: Boolean): Boolean {
         val cur = files.read(s.file)
         if (s.action == "edit" && cur == null) { lastBlock = "${s.file} मौजूद नहीं"; return false }
+        // audit K2: सुरक्षित फ़ाइल (workflows, AGENTS.md, gradle/signing) - यूज़र ने साफ़ न माँगी हो तो code से रोक (सिर्फ़ prompt पर भरोसा नहीं)
+        if (!SafePr.askedFor(task, s.file) && SafePr.isProtected(s.file)) {
+            lastBlock = "${s.file} सुरक्षित फ़ाइल है (AGENTS.md: छेड़ना मना) — काम में यह फ़ाइल साफ़ नहीं माँगी गई, इसलिए बदलाव रोका"
+            ev(Agent.REVIEWER, "✗ " + lastBlock)
+            return false
+        }
         if (s.action == "delete") return deleteStep(s, cur)
         val errors = mutableListOf<String>()
         var misses = 0
@@ -1032,6 +1040,8 @@ class SevenTeam(
         staged.forEach { (p, c) -> if (c != null) Syntax.check(p, c)?.let { stat.add("$p: $it") } }
         val orig = staged.keys.associateWith { files.original(it) }
         stat.addAll(SafePr.testGuard(staged, orig, SafePr.removesOldFeature(task)))
+        // audit K2: आख़िरी पहरा - कोई सुरक्षित फ़ाइल किसी भी रास्ते से बदली हो (और माँगी न गई हो) तो push नहीं
+        SafePr.blockedIn(staged.keys, task).forEach { stat.add("$it: PROTECTED FILE changed but the task did not ask for it — revert this file (AGENTS.md)") }
         stat.addAll(uiTextCheck(staged))
         stat.addAll(prAudit(staged))
         if (stat.isNotEmpty()) return TeamTest(false, "STATIC CHECK FAILED:\n" + stat.joinToString("\n"))
@@ -1060,7 +1070,8 @@ class SevenTeam(
     private suspend fun dryRun(staged: Map<String, String?>, note: String): TeamTest {
         val body = staged.entries.joinToString("\n\n") { (p, c) -> "----- $p -----\n" + (c ?: "(deleted)").take(fileChars) }
         val o = askJson(Agent.TESTER, "TASK: $task\nACCEPTANCE:\n" + acceptance.joinToString("\n") + "\nCHANGED FILES:\n$body")
-            ?: return TeamTest(true, "", note = "syntax जाँच पास; AI ड्राई-रन का जवाब नहीं मिला")
+            // audit K3: टेस्टर ने (2 बार माँगने पर भी) जवाब नहीं दिया = टेस्ट हुआ ही नहीं - "पास" नहीं मानना
+            ?: return TeamTest(null, "", note = DRY_RUN_MISSING)
         val cases = Seven.strings(o.optJSONArray("cases"))
         if (cases.isNotEmpty()) ev(Agent.TESTER, "जाँचे गए हालात:\n" + cases.take(6).joinToString("\n") { "• $it" })
         return if (o.optBoolean("pass", false)) TeamTest(true, "", note = note)

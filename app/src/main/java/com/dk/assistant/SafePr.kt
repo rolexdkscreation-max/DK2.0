@@ -27,6 +27,27 @@ object SafePr {
 
     fun protectedIn(paths: Collection<String>): List<String> = paths.filter { isProtected(it) }
 
+    /**
+     * audit K2: यूज़र ने काम में यह सुरक्षित फ़ाइल साफ़ माँगी है? (फ़ाइल का नाम, या workflow/signing जैसा शब्द).
+     * न माँगी हो तो 7-एजेंट टीम उसे बदल नहीं सकती - पहले यह रोक सिर्फ़ prompt में लिखी थी.
+     */
+    fun askedFor(task: String, path: String): Boolean {
+        val t = task.lowercase(Locale.ROOT)
+        val p = path.trim().trimStart('/').lowercase(Locale.ROOT)
+        val name = p.substringAfterLast('/')
+        if (name.isNotBlank() && t.contains(name)) return true
+        if (p.startsWith(".github/workflows/")) return WORKFLOW_WORDS.any { t.contains(it) }
+        if (name.substringAfterLast('.', "") in protectedExt) return SIGNING_WORDS.any { t.contains(it) }
+        if (name.startsWith("gradlew")) return t.contains("gradle wrapper") || t.contains("gradlew")
+        return false
+    }
+
+    /** बदली गई सुरक्षित फ़ाइलें जो यूज़र ने नहीं माँगीं (खाली = ठीक) */
+    fun blockedIn(paths: Collection<String>, task: String): List<String> = paths.filter { isProtected(it) && !askedFor(task, it) }
+
+    private val WORKFLOW_WORDS = listOf("workflow", ".github", "github actions", "github action", "वर्कफ़्लो", "वर्कफ्लो")
+    private val SIGNING_WORDS = listOf("keystore", "signing", "jks", "p12", "साइनिंग", "कीस्टोर")
+
     /** Kaam ke shabdon se branch ka naam: feature/dk-<shabd>-<MMdd-HHmm> (sirf a-z 0-9 -) */
     fun branchName(task: String, now: Date = Date()): String {
         val slug = task.lowercase(Locale.US)
