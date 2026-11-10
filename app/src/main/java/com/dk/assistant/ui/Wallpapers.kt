@@ -135,7 +135,7 @@ object Wallpapers {
     fun decode(c: Context, key: String, maxW: Int): Bitmap? {
         val id = idOf(key)
         if (id == NONE) return null
-        val o = BitmapFactory.Options().apply { inPreferredConfig = Bitmap.Config.RGB_565 }
+        val o = BitmapFactory.Options().apply { inPreferredConfig = Bitmap.Config.ARGB_8888 }
         return try {
             if (id == CUSTOM) {
                 val f = customFile(c); if (!f.isFile) return null
@@ -154,7 +154,7 @@ object Wallpapers {
 
     /** सेटिंग की छोटी झलक के लिए */
     fun thumb(c: Context, id: String, w: Int): Bitmap? = try {
-        val o = BitmapFactory.Options().apply { inPreferredConfig = Bitmap.Config.RGB_565 }
+        val o = BitmapFactory.Options().apply { inPreferredConfig = Bitmap.Config.ARGB_8888 }
         when (id) {
             NONE -> {
                 o.inSampleSize = 4; o.inScaled = false

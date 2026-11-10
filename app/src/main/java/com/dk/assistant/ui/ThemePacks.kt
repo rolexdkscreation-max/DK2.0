@@ -195,7 +195,7 @@ object ThemePacks {
         bmp?.let { if (bmpKey == key) return it }
         // वॉलपेपर चुना है तो वही (न खुले तो थीम वाला चित्र)
         val b = (if (wallpaper != Wallpapers.NONE) Wallpapers.decode(c, wallpaper, maxW) else null) ?: try {
-            val o = android.graphics.BitmapFactory.Options().apply { inPreferredConfig = android.graphics.Bitmap.Config.RGB_565 }
+            val o = android.graphics.BitmapFactory.Options().apply { inPreferredConfig = android.graphics.Bitmap.Config.ARGB_8888 }
             if (p.id == DEFAULT_ID) {
                 o.inScaled = false
                 android.graphics.BitmapFactory.decodeResource(c.resources, com.dk.assistant.R.drawable.dk_theme_bg, o)
