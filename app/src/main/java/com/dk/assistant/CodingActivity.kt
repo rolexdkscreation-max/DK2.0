@@ -144,11 +144,10 @@ class CodingActivity : AppCompatActivity() {
     private lateinit var send: ImageButton
     private lateinit var changes: LinearLayout
     private lateinit var sugBox: LinearLayout
-    // काम चलते समय: चलती पट्टी + "काम कर रहा है..." (बिंदु बढ़ते हैं)
-    private lateinit var busyBar: LinearLayout
-    private lateinit var busyText: TextView
+    // नवंबर 2026 (मालिक): काम चलते समय ऊपर की हेडर पट्टी में ही "मौजूदा काम" (अलग कार्ड नहीं)
+    private lateinit var headTitle: TextView
+    private lateinit var headTask: LinearLayout
     private lateinit var busyTask: TextView
-    private lateinit var busyRepo: TextView
     private lateinit var agentWork: AgentWorkView
     private val busyHandler = android.os.Handler(android.os.Looper.getMainLooper())
     private var busyStep = 0
@@ -158,7 +157,6 @@ class CodingActivity : AppCompatActivity() {
             if (!CoderSession.busy) { showBusy(false); return }
             busyStep++
             if (inline.active) inline.show(busyLabel(), WorkState.WORKING)
-            busyText.text = BusyLabel.text(busyStep)
             fillTaskCard()
             showAgent()
             busyHandler.postDelayed(this, BusyLabel.TICK_MS)
@@ -199,7 +197,26 @@ class CodingActivity : AppCompatActivity() {
         }
         val titles = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding((12 * dp).toInt(), 0, 0, 0) }
         // नवंबर 2026 (मालिक): Futuristic रूप - चमकदार "DK CODING AGENT" (मालिक: ऊपर सिर्फ़ काँच की पट्टी + नाम, status टैग नहीं)
-        titles.addView(FutureViews.title(this, Prefs.assistantName(this).uppercase() + " CODING AGENT"))
+        // नवंबर 2026 (मालिक): हेडर का आकार वही - खाली = "DK CODING AGENT", काम चालू = उसी जगह मौजूदा काम + घूमता निशान
+        headTitle = FutureViews.title(this, Prefs.assistantName(this).uppercase() + " CODING AGENT").apply { gravity = Gravity.CENTER }
+        busyTask = TextView(this).apply {
+            textSize = 15f; setTypeface(typeface, Typeface.BOLD); setTextColor(0xFFFFFFFF.toInt()); maxLines = 1; isSingleLine = true
+            ellipsize = android.text.TextUtils.TruncateAt.END; UiLang.keep(this); gravity = Gravity.CENTER_VERTICAL
+        }
+        headTask = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER; visibility = View.INVISIBLE; alpha = 0f
+            addView(ProgressBar(this@CodingActivity).apply {
+                isIndeterminate = true
+                indeterminateTintList = android.content.res.ColorStateList.valueOf(FutureViews.CYAN)
+            }, LinearLayout.LayoutParams((16 * dp).toInt(), (16 * dp).toInt()).apply { marginEnd = (8 * dp).toInt() })
+            addView(busyTask, LinearLayout.LayoutParams(-2, -2).apply { weight = 0f })
+        }
+        // दोनों एक ही जगह (FrameLayout) - नाम हटे तो भी जगह/ऊँचाई वैसी ही रहती है
+        val headSlot = FrameLayout(this).apply {
+            addView(headTitle, FrameLayout.LayoutParams(-1, -2, Gravity.CENTER))
+            addView(headTask, FrameLayout.LayoutParams(-1, -1, Gravity.CENTER))
+        }
+        titles.addView(headSlot, LinearLayout.LayoutParams(-1, -2))
         val top = UiFit.header(this, back, titles, listOf(
             smallBtn("रिपो") { if (Prefs.coderSeven(this)) sevenPicker() else chooseRepo() },
             smallBtn("इतिहास") { showHistory() },
@@ -208,31 +225,7 @@ class CodingActivity : AppCompatActivity() {
         FutureViews.glassTopBar(top)      // संदर्भ चित्र: ऊपर काँच की पट्टी (सिर्फ़ नाम)
         col.addView(top)
 
-        // नवंबर 2026 (मालिक): "मौजूदा काम" कार्ड (संदर्भ चित्र जैसा) - सिर्फ़ काम चलते समय; खाली हो तो छिपा
-        busyBar = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setBackgroundResource(R.drawable.glass_card)
-            val p = (12 * dp).toInt(); setPadding(p, (10 * dp).toInt(), p, (10 * dp).toInt())
-            visibility = View.GONE
-        }
-        busyBar.addView(TextView(this).apply {
-            text = "मौजूदा काम"; textSize = 11.5f; letterSpacing = 0.08f; setTextColor(FutureViews.CYAN)
-            setTypeface(typeface, Typeface.BOLD)
-        })
-        busyTask = TextView(this).apply {
-            textSize = 14f; setTypeface(typeface, Typeface.BOLD); setTextColor(0xFFFFFFFF.toInt()); maxLines = 2
-            ellipsize = android.text.TextUtils.TruncateAt.END; UiLang.keep(this); setPadding(0, (2 * dp).toInt(), 0, 0)
-        }
-        busyBar.addView(busyTask)
-        busyRepo = TextView(this).apply { textSize = 11.5f; setTextColor(0xB3FFFFFF.toInt()); maxLines = 1; ellipsize = android.text.TextUtils.TruncateAt.END; UiLang.keep(this) }
-        busyBar.addView(busyRepo)
-        busyText = TextView(this).apply { text = BusyLabel.text(0); textSize = 12.5f; setTextColor(FutureViews.GREEN); setPadding(0, (6 * dp).toInt(), 0, 0) }
-        busyBar.addView(busyText)
-        busyBar.addView(ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal).apply {
-            isIndeterminate = true
-            indeterminateTintList = android.content.res.ColorStateList.valueOf(FutureViews.CYAN)
-        }, LinearLayout.LayoutParams(-1, (4 * dp).toInt()).apply { topMargin = (6 * dp).toInt() })
-        col.addView(busyBar, LinearLayout.LayoutParams(-1, -2).apply { topMargin = (6 * dp).toInt() })
+        // नवंबर 2026 (मालिक): बड़ा "मौजूदा काम" कार्ड हटाया - वह अब ऊपर हेडर में; उसकी जगह (बटनों के नीचे) एजेंट स्टेटस पट्टी
         // v5.1: कौन सा एजेंट काम कर रहा है - सारे एजेंट मैनेजर के नीचे, चलता हुआ चमकता है
         agentWork = AgentWorkView(this).apply { visibility = View.GONE; setBackgroundResource(R.drawable.glass_card); val p = (8 * dp).toInt(); setPadding(p, p, p, p) }
         col.addView(agentWork, LinearLayout.LayoutParams(-1, -2).apply { topMargin = (6 * dp).toInt() })
@@ -809,28 +802,35 @@ class CodingActivity : AppCompatActivity() {
         busyOn = on
         busyHandler.removeCallbacks(busyTick)
         if (on) {
-            busyStep = 0; busyText.text = BusyLabel.text(0)
+            busyStep = 0
             busySince = System.currentTimeMillis()
-            // नवंबर 2026 (मालिक): "मौजूदा काम" कार्ड सिर्फ़ काम चलते समय (असली task / repo / branch)
-            fillTaskCard(); busyBar.visibility = View.VISIBLE
+            // नवंबर 2026 (मालिक): हेडर में "DK CODING AGENT" की जगह मौजूदा काम (मुलायम बदलाव)
+            fillTaskCard(); headMode(true)
             showAgent()
             busyHandler.postDelayed(busyTick, BusyLabel.TICK_MS)
-        } else { busyBar.visibility = View.GONE; agentWork.visibility = View.GONE; CoderSession.activeAgent = null; CoderSession.activeNote = "" }
+        } else { headMode(false); agentWork.visibility = View.GONE; CoderSession.activeAgent = null; CoderSession.activeNote = "" }
+    }
+
+    /** हेडर: true = मौजूदा काम + घूमता निशान, false = "DK CODING AGENT". आकार कभी नहीं बदलता (सिर्फ़ alpha) */
+    private fun headMode(working: Boolean) {
+        val show = if (working) headTask else headTitle
+        val hide = if (working) headTitle else headTask
+        hide.animate().cancel(); show.animate().cancel()
+        show.visibility = View.VISIBLE
+        show.animate().alpha(1f).setDuration(220).start()
+        hide.animate().alpha(0f).setDuration(180).withEndAction { if (hide.alpha == 0f) hide.visibility = View.INVISIBLE }.start()
     }
 
     private fun fillTaskCard() {
         val t = CoderSession.task?.trim().orEmpty()
-        busyTask.text = if (t.isBlank()) busyLabel().ifBlank { "काम चल रहा है" } else CoderHistory.Logic.title(t)
-        val a = CoderSession.agent
-        val repo = a?.repo ?: Prefs.ghRepo(this)
-        busyRepo.text = if (repo.isBlank()) "" else "$repo • ${a?.branch ?: Prefs.ghBranch(this)}"
-        busyRepo.visibility = if (repo.isBlank()) View.GONE else View.VISIBLE
+        val v = if (t.isBlank()) busyLabel().ifBlank { "काम चल रहा है" } else CoderHistory.Logic.title(t)
+        if (busyTask.text.toString() != v) busyTask.text = v
     }
 
     /** 7 एजेंट वाली टीम चल रही हो तो: कौन सा एजेंट काम कर रहा है (नाम + animation) */
     private fun showAgent() {
         if (!Prefs.coderSeven(this)) { agentWork.visibility = View.GONE; return }
-        agentWork.visibility = View.VISIBLE
+        if (agentWork.visibility != View.VISIBLE) { agentWork.alpha = 0f; agentWork.visibility = View.VISIBLE; agentWork.animate().alpha(1f).setDuration(220).start() }
         agentWork.active = CoderSession.activeAgent
         agentWork.note = CoderSession.activeNote
     }
