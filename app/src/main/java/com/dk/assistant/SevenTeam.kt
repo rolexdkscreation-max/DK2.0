@@ -80,7 +80,16 @@ class SevenTeam(
     ev: (Agent, String) -> Unit
 ) {
     private val sink = ev
-    private fun ev(a: Agent, t: String) = sink(a, t)
+    private fun ev(a: Agent, t: String) { memory.event(a.name, t); sink(a, t) }
+
+    /**
+     * नवंबर 2026 (मालिक: "मैनेजर पूरी बात याद रखेगा और सबको एक सारांश में समझा देगा"): पूरी टीम की साझा याददाश्त.
+     * पहले हर एजेंट को सिर्फ़ उसका हिस्सा मिलता था (कोडर को कदम, रिव्यूअर को diff) - बाकी बात (user के असली शब्द, पिछली
+     * गलतियाँ, CI ने क्या पकड़ा) उसे पता नहीं होती थी. अब हर AI कॉल में मैनेजर की यह कॉपी जाती है ([teamBrief]).
+     */
+    val memory = TeamMemory()
+    private var briefCache = ""
+    private var briefVer = -1
 
     /**
      * v5.2 (मालिक: "प्लानर पहले जड़/कारण ढूँढकर लिखे, कारण पता होने के बाद ही कोडर"): बग के काम में शुरू की जड़-खोज
@@ -182,16 +191,43 @@ class SevenTeam(
 
     /** हर एजेंट की AI कॉल: टीम के नियम (सावधानी, पूरा पढ़ना, पूरा समझाकर आगे देना) + फ़ोटो/वीडियो का विवरण; देखने वाले एजेंटों को असली फ़ोटो भी */
     private suspend fun aiAsk(a: Agent, system: String, msgs: List<Pair<String, String>>): String {
+        val tb = teamBrief()
         val sys = system + "\n\n" + (if (a == Agent.CODER) Seven.Prompts.RULES_CODER else Seven.Prompts.RULES) +
-            if (mediaNotes.isNotBlank()) "\n\nUSER'S PHOTOS / VIDEO - what the prompt engineer saw in them (the user attached them to this task):\n$mediaNotes" else ""
+            (if (mediaNotes.isNotBlank()) "\n\nUSER'S PHOTOS / VIDEO - what the prompt engineer saw in them (the user attached them to this task):\n$mediaNotes" else "") +
+            if (tb.isNotBlank()) "\n\n" + TeamMemory.HEADER + tb else ""
         return if (media.isNotEmpty() && a in SEES_MEDIA) ai.askMedia(a, sys, msgs, media) else ai.ask(a, sys, msgs)
+    }
+
+    /**
+     * मैनेजर की कॉपी हर एजेंट के लिए: छोटी हो तो पूरी; बड़ी हो तो मैनेजर (AI) एक बार छोटा सारांश लिखता है (याददाश्त बदले तभी
+     * दोबारा), AI न लिख पाए तो पक्का छोटा रूप. user के अपने शब्द कभी गायब नहीं.
+     */
+    private suspend fun teamBrief(): String {
+        if (memory.isEmpty) return ""
+        val max = TeamMemory.maxFor(big)
+        val full = memory.full()
+        if (full.length <= max) return full
+        // छोटे मॉडल (कम पढ़ने वाले) पर अलग AI कॉल नहीं - पक्का छोटा रूप ही (एक request बचती है)
+        if (big < SUMMARY_AI_MIN) return memory.short(max)
+        val v = memory.version()
+        if (v == briefVer && briefCache.isNotBlank()) return briefCache
+        val sum = try { ai.ask(Agent.MANAGER, "You keep the team's memory and brief every member.", listOf("user" to memory.summaryAsk(max))) }
+            catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (_: Exception) { null }
+        briefCache = memory.accept(sum, max); briefVer = v
+        return briefCache
     }
 
     companion object {
         const val FILE_CHARS = 40_000          // एक फ़ाइल इससे बड़ी = anchor के आस-पास का हिस्सा
         const val READ_BUDGET = 150_000        // प्लानर/डिबगर एक बार में इतना पढ़ें
         const val LIST_MAX = 800
-        const val CODER_LOOKUPS = 3            // कोडर लिखने से पहले इतनी बार ढूँढ/पढ़ सकता है (कोशिश नहीं गिनी)
+        const val CODER_LOOKUPS = 8            // कोडर लिखने से पहले इतनी बार ढूँढ/पढ़ सकता है (कोशिश नहीं गिनी). नवंबर 2026: 3 -> 8 (मालिक: "जब चाहे पूरी फ़ाइल और जुड़ी फ़ाइल पढ़ सके")
+        /** एक बार में कोडर/रिव्यूअर इतनी फ़ाइलें पूरी पढ़ सकते हैं */
+        const val READS_PER_LOOKUP = 8
+        /** रिव्यूअर फ़ैसले से पहले इतनी बार दूसरी फ़ाइलें माँग सकता है */
+        const val REVIEW_READS = 3
+        /** मैनेजर (AI) से सारांश तभी लिखवाओ जब मॉडल इतना पढ़ सके (Gemini) - नहीं तो बिना AI का छोटा रूप */
+        const val SUMMARY_AI_MIN = 200_000
         /** v3.6: प्रॉम्प्ट इंजीनियर का नक्शा (प्लानर/डिबगर को पूरा वाला ही) */
         const val PROMPT_MAP_CHARS = 30_000
         /** v5.1: समझाने वाले के खोज/पढ़ने के चक्कर */
@@ -218,6 +254,7 @@ class SevenTeam(
      */
     suspend fun understand(userTask: String): SevenPlus.Understanding {
         task = userTask
+        memory.userWords = userTask
         if (media.isNotEmpty()) seeMedia()
         ev(Agent.MANAGER, "काम समझ रहा हूँ…")
         val fileList = files.list()
@@ -376,11 +413,13 @@ class SevenTeam(
     /** @param pre user की मंज़ूर की हुई समझ (11-एजेंट). null = मैनेजर यहीं समझेगा (पुराना क्रम) */
     suspend fun run(userTask: String, pre: SevenPlus.Understanding? = null): Outcome {
         task = userTask
+        memory.userWords = userTask
         val kind: Seven.Kind
         if (pre != null) {
             // 1. मैनेजर: समझ user ने मंज़ूर कर दी - वही spec सबको
             kind = pre.kind
             spec = pre.spec; brief = pre.spec.ifBlank { pre.brief }; acceptance = pre.acceptance; notTouch = pre.notTouch; area = pre.area
+            memory.understanding = pre.brief; memory.spec = pre.spec; memory.acceptance = pre.acceptance; memory.notTouch = pre.notTouch
             if (pre.mediaNotes.isNotBlank()) mediaNotes = pre.mediaNotes
             ev(Agent.MANAGER, "आपकी मंज़ूरी मिली — मंज़ूर की हुई समझ के हिसाब से काम सौंप रहा हूँ")
         } else {
@@ -399,6 +438,7 @@ class SevenTeam(
             }
             brief = m?.optString("brief").orEmpty().trim()
             acceptance = Seven.strings(m?.optJSONArray("acceptance"))
+            memory.understanding = brief; memory.acceptance = acceptance
         }
         val bug = kind == Seven.Kind.BUG
         // 📒 पहले से खुले PR की काम-कॉपी: पिछले राउंड/एजेंट ने जो पढ़ा और किया - वहीं से, शुरू से नहीं
@@ -461,6 +501,7 @@ class SevenTeam(
                     "ROOT CAUSE FIRST: in every step's \"why\" write the root cause you found (what is wrong or missing, and where).", readByDebugger)
             } else {
                 rootCause = d.second
+                memory.found("Root cause found: ${d.second.take(250)}")
                 ev(Agent.PLANNER, "जड़ (कारण) लिखी: ${d.second.take(300)}\nअब इसी कारण पर सुधार का प्लान — कोडर इसके बाद")
                 makePlan((if (d.first.missing) "ADD THE MISSING CODE for this user problem (it is not implemented anywhere yet) - smallest complete change, wired to the place given.\n"
                     else "MINIMAL FIX for this bug.\n") + "ROOT CAUSE: ${d.second}\nFIX: ${d.third}", d.first.files)
@@ -568,6 +609,7 @@ class SevenTeam(
                 FixLoop.Next.FIX_AGAIN -> {}
             }
             failLogs.add(t.log)
+            memory.found("CI failed: " + (errs.ifBlank { FixLoop.signature(t.log) }).lines().take(3).joinToString(" / ").take(300))
             learnFromCi(t.log)
             // नवंबर 2026: "वही गलती" = हूबहू वही, या वही जगह (फ़ाइल/test) - शब्द चाहे अलग हों (PR #252: ui_en.tsv 5 बार)
             val exact = sigs.size >= 2 && sigs[sigs.size - 1] == sigs[sigs.size - 2]
@@ -589,6 +631,7 @@ class SevenTeam(
                 ?: return finish(false, "डिबगर टेस्ट फ़ेल होने की जड़ नहीं ढूँढ पाया (log में फ़ाइल:लाइन वाला कोई एरर भी नहीं मिला)")
             rootCause = d.second
             tried.add("जड़ मानी: " + d.second.take(160))
+            memory.found("Build/test failed; root cause taken: ${d.second.take(250)} | fix: ${d.third.take(120)}")
             save { it.copy(rootCause = rootCause) }
             note.did("जड़ मिली: " + d.second.take(160))
             val fix = makePlan("MINIMAL FIX for the failed test/build.\nROOT CAUSE: ${d.second}\nFIX: ${d.third}", d.first.files)
@@ -911,11 +954,12 @@ class SevenTeam(
     /** @param done "आगे करो": इतने कदम पहले ही हो चुके - वे छोड़ो */
     private suspend fun execute(plan: Seven.Plan, rewrite: Set<String>, done: Int = 0): Boolean {
         curPlan = plan
+        memory.plan = plan.steps.map { stepText(it) }; memory.stepsDone = done
         save { it.copy(steps = plan.steps, stepsDone = done) }
         plan.steps.forEachIndexed { i, s ->
             if (i < done) return@forEachIndexed
             ev(Agent.CODER, "कदम ${i + 1}/${plan.steps.size}: ${s.file} — ${s.change.take(140)}")
-            if (step(s, s.file in rewrite)) { save { it.copy(stepsDone = i + 1) }; note.did(stepText(s)); pushNote(); return@forEachIndexed }
+            if (step(s, s.file in rewrite)) { memory.stepsDone = i + 1; save { it.copy(stepsDone = i + 1) }; note.did(stepText(s)); pushNote(); return@forEachIndexed }
             // मैनेजर: अटके कदम पर दूसरा रास्ता - प्लानर से इसी हिस्से का नया प्लान
             ev(Agent.MANAGER, "कदम ${i + 1} अटका (${lastBlock.take(160)}) — रोककर दूसरा रास्ता: प्लानर से इस हिस्से का नया प्लान")
             val alt = planOnce("ONLY THIS PART of the task: ${s.change}\nFILE: ${s.file}\nThe previous attempt failed: $lastBlock\n" +
@@ -928,6 +972,7 @@ class SevenTeam(
                     return false
                 }
             }
+            memory.stepsDone = i + 1; memory.found("Step ${i + 1} (${s.file}) failed first (${lastBlock.take(150)}) - done by a different approach")
             save { it.copy(stepsDone = i + 1) }
             note.did(stepText(s) + " (दूसरे रास्ते से)"); pushNote()
         }
@@ -963,7 +1008,7 @@ class SevenTeam(
                 lookups++; attempt--
                 val terms = SevenPlus.RepoSearch.terms(reply)
                 val found = if (terms != null) SevenPlus.RepoSearch.search(ws(), terms)
-                    else Seven.planReads(reply)?.let { readFiles(it.take(4)) }.orEmpty()
+                    else Seven.planReads(reply)?.let { readFiles(it.take(READS_PER_LOOKUP)) }.orEmpty()
                 ev(Agent.CODER, "लिखने से पहले रिपो में देख रहा हूँ: " + (terms ?: Seven.planReads(reply).orEmpty()).joinToString(", ").take(120))
                 msgs.add("model" to reply)
                 msgs.add("user" to found.ifBlank { "(nothing found)" } + "\nNow write the change in the exact format (FILE: + <<<FIND/<<<REPLACE or <<<FILE)." +
@@ -1070,10 +1115,27 @@ class SevenTeam(
         val dropped = CodeGuard.droppedGuards(cur, after).filter { g -> flips.none { it.contains(g) } }
         val flipNote = (if (flips.isEmpty()) "" else "\nCONDITION FLIPPED by this change (a bug unless the STEP explicitly asks to invert it - check each):\n" + flips.joinToString("\n") { "- $it" }) +
             (if (dropped.isEmpty()) "" else "\nSAFETY / CONDITION REMOVED by this change (old check / retry / fallback / catch is gone - reject unless the STEP asks to remove it or the same protection exists in the new code):\n" + dropped.joinToString("\n") { "- $it" })
-        for (t in 0..1) {
-            val nameCheck = flipNote + if (unsure.isEmpty()) "" else "\nNAME CHECK (not found in this repository - only valid if it really exists in the external parent class / SDK):\n" +
-                unsure.joinToString("\n") { "- " + it.english() }
-            val o = askJson(Agent.REVIEWER, "TASK: $task\nSTEP: ${s.change}\nFILE: ${s.file}\n" + handOff(s) + "CHANGE:\n$change$ctx$nameCheck") ?: continue
+        val nameCheck = flipNote + if (unsure.isEmpty()) "" else "\nNAME CHECK (not found in this repository - only valid if it really exists in the external parent class / SDK):\n" +
+            unsure.joinToString("\n") { "- " + it.english() }
+        // नवंबर 2026: रिव्यूअर को भी नए code की जुड़ी classes की असली API + ज़रूरत हो तो खुद दूसरी फ़ाइलें पूरी पढ़े (पहले बस diff देखता था)
+        val api = relatedApi(s.file, after ?: change)
+        val apiNote = if (api.isBlank()) "" else "\nREAL API OF REPO CLASSES USED (read from the files - a constructor arg or member not listed is not declared in that class; only an Android/SDK parent class could add it):\n$api"
+        val msgs = mutableListOf("user" to "TASK: $task\nSTEP: ${s.change}\nFILE: ${s.file}\n" + handOff(s) + "CHANGE:\n$change$ctx$nameCheck$apiNote" +
+            "\n\nIf you must see another file before deciding, reply ONLY {\"read\":[\"path\", ...]} (up to $READS_PER_LOOKUP files, $REVIEW_READS times). Otherwise reply the verdict JSON.")
+        var reads = 0; var bad = 0
+        while (bad < 2) {
+            val reply = aiAsk(Agent.REVIEWER, Seven.Prompts.of(Agent.REVIEWER), msgs)
+            val o = Seven.json(reply)
+            if (o == null) { bad++; msgs.add("model" to reply); msgs.add("user" to "Reply ONLY valid JSON in the required format."); continue }
+            val want = Seven.strings(o.optJSONArray("read"))
+            if (want.isNotEmpty() && !o.has("pass") && reads < REVIEW_READS) {
+                reads++
+                ev(Agent.REVIEWER, "फ़ैसले से पहले पढ़ रहा हूँ: " + want.take(READS_PER_LOOKUP).joinToString(", ").take(140))
+                msgs.add("model" to reply)
+                msgs.add("user" to readFiles(want.take(READS_PER_LOOKUP)) + "\nNow reply the verdict JSON" + if (reads >= REVIEW_READS) " (no more reads)." else ".")
+                continue
+            }
+            if (want.isNotEmpty() && !o.has("pass")) { bad++; msgs.add("model" to reply); msgs.add("user" to "No more reads. Reply ONLY the verdict JSON now."); continue }
             if (o.optBoolean("pass", false)) return emptyList()
             return Seven.strings(o.optJSONArray("problems")).ifEmpty { listOf("रिव्यूअर ने बदलाव ठीक नहीं माना (वजह नहीं बताई)") }
         }
@@ -1244,6 +1306,8 @@ class SevenTeam(
             val p = SevenSymbols.proven(log, staged, workspace())
             if (p.isEmpty) return
             ciProven = ciProven.plus(p)
+            memory.found("Compiler proved these names do NOT exist (never use them): ${p.names.take(12).joinToString()}" +
+                if (p.types.isNotEmpty()) " (on ${p.types.joinToString()})" else "")
             ev(Agent.REVIEWER, "CI ने ये नाम गढ़े हुए पकड़े: ${p.names.take(8).joinToString()}" +
                 (if (p.types.isNotEmpty()) " — अब ${p.types.joinToString()} पर कोई भी अनजाना नाम push से पहले ही रुकेगा" else ""))
         } catch (_: Exception) {}
@@ -1263,10 +1327,17 @@ class SevenTeam(
     }
 
     private suspend fun definitions(s: Seven.Step): String {
-        if (s.uses.isEmpty()) return ""
         val m = readMap(s.uses.map { it.substringBefore(':').trim() }.distinct())
-        return SevenSymbols.signatures(s.uses) { m[it] }
+        val used = if (s.uses.isEmpty()) "" else SevenSymbols.signatures(s.uses) { m[it] }
+        val api = relatedApi(s.file, (files.read(s.file).orEmpty()) + "\n" + s.change + "\n" + s.uses.joinToString("\n"))
+        return listOf(used, if (api.isBlank()) "" else "REPO CLASSES THIS FILE / STEP USES (real constructors and public members read from the files - use exactly these; a name not listed is not declared there, only an Android/SDK parent class could add it - if unsure, read the file):\n$api")
+            .filter { it.isNotBlank() }.joinToString("\n")
     }
+
+    /** नवंबर 2026: इस फ़ाइल का code जिन repo classes को छूता है, उनकी असली API (constructor + public members) */
+    private suspend fun relatedApi(path: String, code: String): String = try {
+        SevenSymbols.apiOf(path, code, workspace(), maxOf(12_000, big / 25))
+    } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (_: Exception) { "" }
 
     /**
      * नवंबर 2026 (PR #252): layout या ui_en.tsv बदला हो तो UiTextTest वाली जाँच push से पहले यहीं (बिना CI, सेकंडों में).

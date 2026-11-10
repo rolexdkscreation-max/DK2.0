@@ -562,4 +562,89 @@ object SevenSymbols {
             .map { it.trim().take(220) }.take(4)
         if (lines.isEmpty()) null else "$path:\n" + lines.joinToString("\n") { "  $it" }
     }.joinToString("\n")
+
+    /**
+     * नवंबर 2026 (मालिक: "कोडिंग एजेंट जब चाहे पूरी फ़ाइल और जुड़ी फ़ाइल भी पढ़ सके"): इस फ़ाइल का code रिपो की जिन
+     * classes/objects को इस्तेमाल करता है, उनकी असली "API": class की header (constructor के parameters) + बाहर से
+     * इस्तेमाल हो सकने वाले members की declaration लाइनें (private नहीं, function के अंदर के local val नहीं).
+     * पहले कोडर को सिर्फ़ planner के "uses" वाले नाम मिलते थे - बाकी जुड़ी classes के नाम वह अंदाज़े से बनाता था
+     * (DKComposer.attachMedia, CoderMedia(bytes) ...).
+     * @param path यही फ़ाइल (इसकी अपनी classes नहीं दोहराते)
+     * @return "path:\n  class X(…)\n  fun a(…)" ब्लॉक, कुल [maxChars] तक (ज़्यादा इस्तेमाल हुई class पहले)
+     */
+    fun apiOf(path: String, code: String, repo: Map<String, String>, maxChars: Int = 12_000): String {
+        val s = strip(code)
+        val own = Regex("\\b(?:class|object|interface)\\s+([A-Z]\\w*)").findAll(s).map { it.groupValues[1] }.toSet()
+        val count = HashMap<String, Int>()
+        Regex("\\b([A-Z][A-Za-z0-9_]+)\\b").findAll(s).forEach { val t = it.groupValues[1]; if (t !in own) count[t] = (count[t] ?: 0) + 1 }
+        val out = StringBuilder()
+        for (t in count.entries.sortedByDescending { it.value }.map { it.key }) {
+            if (out.length >= maxChars) break
+            if (importedFromOutside(code, t, repo)) continue
+            val (p, src) = typeFiles(repo, t).firstOrNull { it.first != path } ?: continue
+            val api = typeApi(src, t)
+            if (api.isEmpty()) continue
+            val block = "$p:\n" + api.joinToString("\n") { "  $it" } + "\n"
+            if (out.length + block.length > maxChars) {
+                val room = maxChars - out.length
+                if (room > 200) out.append(block.take(room)).append("…\n")
+                break
+            }
+            out.append(block)
+        }
+        return out.toString().trimEnd()
+    }
+
+    private val DECL = Regex("^\\s*(?:@\\w+(?:\\([^)]*\\))?\\s+)*(?:(?:override|open|internal|public|protected|private|suspend|inline|const|lateinit|abstract|operator|infix|data|enum|sealed|inner|companion|annotation|tailrec|external)\\s+)*(fun|val|var|class|object|interface|constructor)\\b")
+
+    /** type की header + उसके (और companion/nested object के) बाहर दिखने वाले members - हर एक लाइन छोटी */
+    internal fun typeApi(src: String, type: String): List<String> {
+        val lines = strip(src).lines()
+        val headRe = Regex("\\b(?:class|object|interface)\\s+${Regex.escape(type)}\\b")
+        val start = lines.indexOfFirst { headRe.containsMatchIn(it) }
+        if (start < 0) return emptyList()
+        val out = ArrayList<String>()
+        // header: constructor कई लाइनों में हो सकता है - "{" या खाली depth तक
+        val head = StringBuilder()
+        var k = start; var par = 0
+        while (k < lines.size) {
+            val l = lines[k]
+            val cut = if (par == 0 && l.indexOf('{') >= 0 && (k > start || l.indexOf('{') > l.indexOf(type))) l.substring(0, l.indexOf('{')) else l
+            head.append(cut.trim()).append(' ')
+            cut.forEach { if (it == '(') par++ else if (it == ')') par-- }
+            if (cut.length < l.length || (par <= 0 && k > start && !l.trimEnd().endsWith(",")) || (par <= 0 && k == start && !l.contains('('))) break
+            k++
+        }
+        out.add(head.toString().replace(Regex("\\s+"), " ").trim().take(600))
+        // body: depth गिनो; सिर्फ़ "type scope" (class/object/interface के सीधे अंदर) की declarations
+        val scope = ArrayList<Boolean>()          // हर खुले { पर: यह type scope है?
+        var begun = false
+        for (j in start until lines.size) {
+            val l = lines[j]
+            val inType = begun && scope.isNotEmpty() && scope.last()
+            val m = DECL.find(l)
+            if (inType && j > start && m != null && !Regex("\\bprivate\\b").containsMatchIn(l.substring(0, m.range.last + 1))) {
+                var d = l.trim()
+                // body हटाओ: "{" या " = " के बाद (signature ही)
+                val br = d.indexOf('{').takeIf { it >= 0 && m.groupValues[1] in setOf("fun", "constructor", "class", "object", "interface") }
+                if (br != null) d = d.substring(0, br)
+                if (m.groupValues[1] == "fun") { val eq = d.indexOf(") ="); if (eq >= 0) d = d.substring(0, eq + 1) + d.substring(eq + 1).substringBefore(" =") }
+                out.add(d.trim().take(220))
+            }
+            for (ch in l) {
+                if (ch == '{') {
+                    val typeOpen = !begun || (m != null && m.groupValues[1] in setOf("class", "object", "interface") && inType)
+                    if (!begun) begun = true
+                    scope.add(typeOpen)
+                } else if (ch == '}') {
+                    if (scope.isNotEmpty()) scope.removeAt(scope.size - 1)
+                    if (begun && scope.isEmpty()) return out.take(API_LINES)
+                }
+            }
+            if (!begun && j > k) break     // body नहीं (data class X(...) बिना {})
+        }
+        return out.take(API_LINES)
+    }
+
+    const val API_LINES = 80
 }
