@@ -43,6 +43,8 @@ class OrbView @JvmOverloads constructor(
     private var fb = FloatArray(0)
     private val fxOut = FloatArray(4)
     private var fxCode = 0
+    /** हालत वाला ORB (StateOrbs) - हालत बदलते ही जल्दी नया आकार */
+    private var stateOrb = false
     /** नए ORB के एनीमेशन का समय - हालत के हिसाब से तेज़/धीमा, बिना झटके */
     private var fxT = 0f
     private var cloud: Cloud = Shapes.earth(1)
@@ -81,17 +83,29 @@ class OrbView @JvmOverloads constructor(
         target = "earth"; morphStart = 0L; tilt = cloud.tilt
     }
 
-    private fun wanted(): String {
-        previewStyle?.let { return it }
+    private fun wanted(mode: Mode): String {
+        previewStyle?.let { return if (StateOrbs.has(it)) StateOrbs.key(it, previewState()) else it }
         val now = System.currentTimeMillis()
         if (now - cacheT > 700) {
             cacheT = now
             styleCache = Prefs.orbStyle(context); genderCache = Prefs.voiceGender(context)
         }
         // छोटा ORB: पहले जैसा पृथ्वी; नया futuristic ORB चुना हो तो वही (अपने एनीमेशन के साथ)
-        if (mini) return if (FutureOrbs.has(styleCache)) styleCache else "earth"
+        if (mini) return when {
+            FutureOrbs.has(styleCache) -> styleCache
+            StateOrbs.has(styleCache) -> StateOrbs.key(styleCache, StateOrbs.state(mode))
+            else -> "earth"
+        }
         if (now < DKState.faceUntil) return if (genderCache == "male") "face_male" else "face_female"
+        // हालत वाला ORB: सुनना / सोचना / बोलना / खाली - हर हालत का अपना आकार
+        if (StateOrbs.has(styleCache)) return StateOrbs.key(styleCache, StateOrbs.state(mode))
         return styleCache
+    }
+
+    /** Settings की झलक में हालत वाला ORB: चारों हालत बारी-बारी (हर ~2.8 सेकंड) - ताकि सब आकार दिखें */
+    private fun previewState(): Int = ((SystemClock.uptimeMillis() / 2800L) % 4L).toInt()
+    private fun previewMode(): Mode = when (previewState()) {
+        StateOrbs.LISTEN -> Mode.LISTENING; StateOrbs.THINK -> Mode.THINKING; StateOrbs.SPEAK -> Mode.SPEAKING; else -> Mode.IDLE
     }
 
     private fun morphTo(style: String) {
@@ -100,12 +114,13 @@ class OrbView @JvmOverloads constructor(
         for (i in 0 until n) kFrom[i] = old.kind[i]
         cloud = Shapes.make(style, n)
         target = style
-        fxCode = FutureOrbs.code(style)
+        stateOrb = StateOrbs.isKey(style)
+        fxCode = if (stateOrb) StateOrbs.code(style) else FutureOrbs.code(style)
         morphStart = SystemClock.uptimeMillis()
         angStart = atan2(sin(ang), cos(ang)); tiltFrom = tilt
     }
 
-    private fun targetColors(m: Mode): Pair<Int, Int> = when (m) {
+    private fun targetColors(m: Mode): Pair<Int, Int> = if (stateOrb) StateOrbs.colors(target, StateOrbs.state(m)).let { it[0] to it[1] } else when (m) {
         Mode.IDLE -> Color.parseColor("#2979FF") to Color.parseColor("#00E5FF")
         Mode.LISTENING -> Color.parseColor("#FF1744") to Color.parseColor("#FF80AB")
         Mode.THINKING -> Color.parseColor("#AA00FF") to Color.parseColor("#FFAB40")
@@ -135,15 +150,16 @@ class OrbView @JvmOverloads constructor(
         lastT = now
         val t = now / 1000f
         // v3.88: सिर्फ़ तीन रूप - Listening / Thinking (WORKING भी) / Speaking
-        val mode = ThreeState.look(DKState.mode, DKState.live, DKState.working())
+        val preview = previewStyle?.let { StateOrbs.has(it) } == true
+        val mode = if (preview) previewMode() else ThreeState.look(DKState.mode, DKState.live, DKState.working())
 
-        val want = wanted()
+        val want = wanted(mode)
         if (want != target) morphTo(want)
         // v4: नियॉन ओर्ब - डॉट नहीं, परतों वाला चमकदार गोला (रंग/चमक DK की असली हालत से)
         if (target == Shapes.NEON && !mini) { drawNeon(c, mode, now, dt); return }
         val cl = cloud
         val isFace = cl.sway
-        val morphMs = if (isFace) 2300f else 1600f
+        val morphMs = if (isFace) 2300f else if (stateOrb) 950f else 1600f
         val p = if (morphStart == 0L) 1f else ((now - morphStart) / morphMs).coerceIn(0f, 1f)
         val morphing = p < 1f
         val ep = ease(p)
@@ -158,8 +174,13 @@ class OrbView @JvmOverloads constructor(
             ang = if (morphing) angStart + (sw - angStart) * ep else sw
             val nod = 0.06f * sin(t * 0.6f)
             tilt = if (morphing) tiltFrom + (nod - tiltFrom) * ep else nod
+        } else if (stateOrb && cl.spin == 0f) {
+            // सामने की ओर वाले आकार (छल्ले, पट्टियाँ): घूमना बंद, सीधे सामने
+            ang = if (morphing) angStart * (1f - ep) else 0f
+            tilt = if (morphing) tiltFrom + (cl.tilt - tiltFrom) * ep else cl.tilt
         } else {
             ang += speed * cl.spin * dt
+            if (ang > 1000f) ang -= (2 * PI * 150).toFloat()
             tilt = if (morphing) tiltFrom + (cl.tilt - tiltFrom) * ep else cl.tilt
         }
         lvl += (DKState.level - lvl) * 0.25f
@@ -180,7 +201,8 @@ class OrbView @JvmOverloads constructor(
 
         val w = width.toFloat(); val h = height.toFloat()
         val cx = w / 2f; val cy = h / 2f
-        val baseR = minOf(w, h) * (if (mini) 0.36f else if (isFace) 0.40f else 0.30f) *
+        // चेहरा + आधा धड़: ऊँचाई में भी पूरा आए (फ़ोन लंबा, टैबलेट चौड़ा)
+        val baseR = (if (isFace && !mini) minOf(minOf(w, h) * 0.42f, h * 0.335f) else minOf(w, h) * (if (mini) 0.36f else 0.30f)) *
             (if (morphing && isFace) 0.75f + 0.25f * ep else 1f)
         val breathe = 1f + 0.025f * sin(t * 1.6f)
         // v3.68: लिप-सिंक - जो आवाज़ सच में बज रही है उसका ज़ोर (कोई भी आवाज़ इंजन); न हो तो पुराना अंदाज़ा
@@ -219,7 +241,11 @@ class OrbView @JvmOverloads constructor(
         // chehra: palak jhapakna + bolte waqt muh khulna
         val blinkPh = (t % 4.2f)
         val blink = if (blinkPh < 0.14f) (1f - sin(blinkPh / 0.14f * PI.toFloat())).coerceAtLeast(0.08f) else 1f
-        val fxAmp = when (mode) { Mode.SPEAKING -> voice ?: (0.5f + 0.5f * sin(t * 7f)); Mode.LISTENING -> lvl; else -> 0f }
+        val fxAmp = when (mode) {
+            Mode.SPEAKING -> voice ?: (0.5f + 0.5f * sin(t * 7f))
+            Mode.LISTENING -> if (preview) 0.35f + 0.35f * sin(t * 5f) else lvl
+            else -> 0f
+        }
         val talk = if (voice != null) (voice * 1.15f).coerceIn(0f, 1f)
             else if (mode == Mode.SPEAKING) (0.5f + 0.5f * sin(t * 13f)) * (0.6f + 0.4f * sin(t * 3.7f)).coerceAtLeast(0.2f)
             else if (mode == Mode.LISTENING) 0.05f else 0f
@@ -233,18 +259,28 @@ class OrbView @JvmOverloads constructor(
             if (isFace && e > 0.95f) {
                 val k = cl.kind[i].toInt()
                 if (k == 2) y0 = cl.anc[i] + (y0 - cl.anc[i]) * blink
-                else if (k == 3) y0 += if (cl.lower[i]) -talk * 0.05f else talk * 0.012f
+                else if (k == 3) y0 += (if (cl.lower[i]) -talk * 0.05f else talk * 0.012f) * FaceBust.S
+                else if (k == FaceBust.GLOW) {
+                    // अंदर की रोशनी: धीरे-धीरे तैरते कण
+                    val a = cl.anc[i]
+                    x0 += 0.014f * sin(t * 0.8f + a * 31f); y0 += 0.02f * sin(t * 0.6f + a * 17f); z0 += 0.012f * sin(t * 0.7f + a * 11f)
+                } else if (cl.lower[i]) {
+                    // धड़: हल्की साँस (बोलते समय थोड़ी ज़्यादा)
+                    val br = 1f + 0.012f * sin(t * 1.6f) + 0.01f * talk
+                    x0 *= br; z0 *= br
+                }
             }
             if (fxCode != 0) {
                 // नए ORB: डॉट अपनी जगह पर चलते हैं (आकार बदलते समय धीरे-धीरे शुरू - e)
-                FutureOrbs.move(fxCode, i, cl.x[i], cl.y[i], cl.z[i], cl.anc[i], fxT, fxAmp, fxOut)
+                if (stateOrb) StateOrbs.move(fxCode, i, cl.x[i], cl.y[i], cl.z[i], cl.anc[i], fxT, fxAmp, fxOut)
+                else FutureOrbs.move(fxCode, i, cl.x[i], cl.y[i], cl.z[i], cl.anc[i], fxT, fxAmp, fxOut)
                 x0 += (fxOut[0] - cl.x[i]) * e; y0 += (fxOut[1] - cl.y[i]) * e; z0 += (fxOut[2] - cl.z[i]) * e
                 fb[i] = 1f + (fxOut[3] - 1f) * e
             } else fb[i] = 1f
             mx[i] = x0; my[i] = y0; mz[i] = z0
             if (morphing) {
                 // bikhar kar udna (burst) + ghoomte hue jagah par aana
-                val burst = 1f + 0.75f * sin(PI.toFloat() * e) * (0.6f + 0.8f * delay[i])
+                val burst = 1f + (if (stateOrb) 0.3f else 0.75f) * sin(PI.toFloat() * e) * (0.6f + 0.8f * delay[i])
                 val sw = (1f - e) * e * 5f * (if (i % 2 == 0) 1f else -1f)
                 val cs = cos(sw); val sn = sin(sw)
                 val rx = x0 * cs + z0 * sn; val rz = -x0 * sn + z0 * cs
@@ -275,6 +311,12 @@ class OrbView @JvmOverloads constructor(
                     2 -> { a0 = (150 + 105 * depth).toInt(); col = lerpColor(faceB, Color.WHITE, 0.6f); sc = 1.15f }
                     3 -> { a0 = (120 + 135 * depth).toInt(); col = lerpColor(faceB, tint, 0.5f); sc = 1.15f }
                     4 -> { a0 = (45 + 150 * pw13(depth)).toInt(); col = lerpColor(faceA, faceB, 0.35f); sc = 0.8f }
+                    FaceBust.GLOW -> {
+                        // अंदर की हल्की रोशनी: टिमटिमाते कण (बोलते समय थोड़े ज़्यादा) - चेहरा ढके नहीं
+                        val ph = cl.anc[i]
+                        val tw = 0.5f + 0.5f * sin(t * (1.1f + ph) + ph * 40f)
+                        a0 = ((22 + 88 * tw * tw) * (1f + 0.7f * talk)).toInt(); col = lerpColor(faceB, Color.WHITE, 0.55f); sc = 0.9f
+                    }
                     else -> {
                         a0 = if (isFace && !morphing) (30 + 150 * pw14(depth)).toInt() else (18 + 100 * pw16(depth)).toInt()
                         col = faceA; sc = 0.7f

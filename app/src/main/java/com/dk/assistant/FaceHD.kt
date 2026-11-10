@@ -24,10 +24,10 @@ import kotlin.random.Random
  * सब हिसाब बिना Android के (JVM test) - एक बार बनता है, हर frame नहीं.
  */
 object FaceHD {
-    private const val K = 1.2f / 17.7f
-    private const val YC = -0.57f
-    private const val ZC = -2.0f
-    private const val YOFF = 0.22f
+    internal const val K = 1.2f / 17.7f
+    internal const val YC = -0.57f
+    internal const val ZC = -2.0f
+    internal const val YOFF = 0.22f
     private val HC = floatArrayOf(0f, 0.8f, -2.6f)
     private val SK = floatArrayOf(8.1f, 10.0f, 9.4f)
     private val LIGHT = run { val l = floatArrayOf(-0.45f, 0.55f, 0.75f); val d = len(l); floatArrayOf(l[0] / d, l[1] / d, l[2] / d) }
