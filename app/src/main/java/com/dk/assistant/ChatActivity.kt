@@ -108,8 +108,8 @@ class ChatActivity : AppCompatActivity() {
         }
 
         // ---- neeche likhne ki jagah: साझा इनपुट बॉक्स (हल्के कोनों वाला आयत, माइक बार के अंदर)
-        composer = DKComposer(this, "कुछ भी लिखिए… (जैसे: WhatsApp खोलो, आज का मौसम?)", maxLines = 4, attach = {
-            val popup = android.widget.PopupMenu(this, composer.plusBtn)
+        composer = DKComposer(this, "कुछ भी लिखिए… (जैसे: WhatsApp खोलो, आज का मौसम?)", maxLines = 4, onAttachClick = { anchorView ->
+            val popup = android.widget.PopupMenu(this, anchorView)
             popup.menu.add("फोटो चुनें (Gallery)")
             popup.menu.add("डॉक्यूमेंट चुनें (File)")
             popup.setOnMenuItemClickListener { item ->
