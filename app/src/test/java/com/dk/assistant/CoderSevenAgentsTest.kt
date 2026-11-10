@@ -44,19 +44,25 @@ class CoderSevenAgentsTest {
         assertFalse(TeamModels.fast(Agent.PROMPT))        // मैनेजर का हिस्सा
     }
 
-    @Test fun loop_noCountLimit_stopsOnlyAfter10SameErrorsInARow() {
-        assertEquals(10, FixLoop.TEAM_SAME_LIMIT)
-        // अलग-अलग गलतियाँ = आगे बढ़ रहे हैं: कितनी भी बार, रुकना नहीं (पहले 8 पर रुक जाता था)
-        assertEquals(FixLoop.Next.FIX_AGAIN, FixLoop.nextTeam((1..50).map { "e$it" }))
-        // वही गलती 3 बार (पहले यहीं रुकता था) और 9 बार = अभी भी कोशिश
-        assertEquals(FixLoop.Next.FIX_AGAIN, FixLoop.nextTeam(List(3) { "same" }))
-        assertEquals(FixLoop.Next.FIX_AGAIN, FixLoop.nextTeam(List(9) { "same" }))
+    // नवंबर 2026 (मालिक, audit K1): v5.2 का "गिनती-सीमा नहीं, 10 बार वही गलती" हटाकर AGENTS.md नियम 15 (3 बार वही गलती / 8 राउंड)
+    @Test fun loop_followsAgentsMdRule15_3SameOr8Rounds() {
+        assertEquals(3, FixLoop.TEAM_SAME_LIMIT)
+        assertEquals(8, FixLoop.TEAM_CAP)
+        // अलग-अलग गलतियाँ = आगे बढ़ रहे हैं, पर 8 राउंड पर रुककर रिपोर्ट
+        assertEquals(FixLoop.Next.FIX_AGAIN, FixLoop.nextTeam((1..7).map { "e$it" }))
+        assertEquals(FixLoop.Next.STOP_CAP, FixLoop.nextTeam((1..8).map { "e$it" }))
+        assertEquals(FixLoop.Next.STOP_CAP, FixLoop.nextTeam((1..50).map { "e$it" }))
+        // वही गलती 2 बार = अभी कोशिश; 3 बार लगातार = अटक गए
+        assertEquals(FixLoop.Next.FIX_AGAIN, FixLoop.nextTeam(List(2) { "same" }))
+        assertEquals(FixLoop.Next.STOP_STUCK, FixLoop.nextTeam(List(3) { "same" }))
+        assertEquals(FixLoop.Next.STOP_STUCK, FixLoop.nextTeam(listOf("a", "b") + List(3) { "same" }))
         // बीच में एक अलग गलती = गिनती फिर से
-        assertEquals(FixLoop.Next.FIX_AGAIN, FixLoop.nextTeam(List(9) { "same" } + "other" + List(9) { "same" }))
-        // हूबहू वही गलती लगातार 10 बार = रुककर पूछो
-        assertEquals(FixLoop.Next.STOP_STUCK, FixLoop.nextTeam(listOf("a", "b") + List(10) { "same" }))
-        // खाली signature पर कभी "अटका" नहीं
-        assertEquals(FixLoop.Next.FIX_AGAIN, FixLoop.nextTeam(List(12) { "" }))
+        assertEquals(FixLoop.Next.FIX_AGAIN, FixLoop.nextTeam(List(2) { "same" } + "other" + List(2) { "same" }))
+        // खाली signature पर कभी "अटका" नहीं (पर 8 की सीमा फिर भी)
+        assertEquals(FixLoop.Next.FIX_AGAIN, FixLoop.nextTeam(List(5) { "" }))
+        assertEquals(FixLoop.Next.STOP_CAP, FixLoop.nextTeam(List(12) { "" }))
+        // कोडर/QA की कोशिशें भी 8 पर रुकें
+        assertFalse(FixLoop.capped(7)); assertTrue(FixLoop.capped(8))
         // पुराना नियम (पुरानी टीम के लिए) जैसा का तैसा
         assertEquals(FixLoop.Next.STOP_STUCK, FixLoop.next(List(FixLoop.SAME_LIMIT) { "x" }))
     }

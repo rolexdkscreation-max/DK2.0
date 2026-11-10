@@ -106,6 +106,12 @@ object ComputerPlan {
         return Verdict(ok || miss.isEmpty(), if (ok) emptyList() else miss)
     }
 
+    /** audit C1: जाँचकर्ता का जवाब JSON में पढ़ा जा सका? (नहीं = जाँच हुई ही नहीं, "पूरा ✓" नहीं दिखाना) */
+    fun readable(text: String): Boolean = obj(text) != null
+
+    /** जाँच न हो पाए तो जवाब के नीचे यह लाइन (user को पता रहे कि जवाब जाँचा नहीं गया) */
+    const val UNVERIFIED_NOTE = "\n\nℹ ध्यान दें: यह जवाब आख़िरी जाँच के बिना है (जाँच करने वाला AI जवाब नहीं दे पाया)।"
+
     /** जाँच की ज़रूरत? (सीधी बातचीत / सवाल-पूछना पर नहीं) */
     fun needsVerify(p: Plan?, toolSteps: Int, round: Int): Boolean =
         round < VERIFY_ROUNDS && (toolSteps >= 1 || (p?.total ?: 0) >= 2)
