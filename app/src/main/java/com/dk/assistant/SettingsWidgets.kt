@@ -133,7 +133,7 @@ internal fun SettingsActivity.switch(box: LinearLayout, t: String, on: Boolean):
     val s = SwitchCompat(this).apply {
         text = t; isChecked = on; textSize = 14f; setTextColor(0xFFFFFFFF.toInt())
         setPadding((4 * dp).toInt(), (10 * dp).toInt(), 0, (6 * dp).toInt())
-        setOnCheckedChangeListener { _, _ -> txtSaved.text = "बदलाव सेव नहीं हुए — सेव दबाएँ" }
+        setOnCheckedChangeListener { _, _ -> txtSaved?.text = "बदलाव सेव नहीं हुए — सेव दबाएँ" }
     }
     box.addView(s, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
     return s

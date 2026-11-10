@@ -1,13 +1,10 @@
 package com.dk.assistant
 
-import android.view.View
-import android.widget.Button
 import android.widget.SeekBar
-import android.widget.TextView
 
 /**
- * नवंबर 2026 (मालिक, संदर्भ चित्र "CONTROL CENTER"): मुख्य मेनू के कार्ड पर ही असली स्विच / slider,
- * और नीचे की काली पट्टी (‹ वापस + असली हालत). कोई नया नियम नहीं - वही pref जो अंदर वाले हिस्से लिखते हैं.
+ * नवंबर 2026 (मालिक, संदर्भ चित्र "CONTROL CENTER"): मुख्य मेनू के कार्ड पर ही असली स्विच / slider.
+ * कोई नया नियम नहीं - वही pref जो अंदर वाले हिस्से लिखते हैं.
  */
 internal object MenuQuick {
 
@@ -38,13 +35,4 @@ internal object MenuQuick {
         }
     }
 
-    /** नीचे की काली पट्टी: बाएँ ‹ वापस, दाएँ असली हालत (version • Accessibility) - Save की ज़रूरत नहीं वाले हिस्सों में */
-    fun blackStrip(a: SettingsActivity, back: Button, save: Button, status: TextView) {
-        save.visibility = View.GONE
-        back.visibility = View.VISIBLE
-        back.setOnClickListener { a.save(false); a.finish() }
-        val acc = when { Setup.accessibilityOn() -> "चालू"; Setup.enabledInSettings(a) -> "रुका है"; else -> "बंद" }
-        status.gravity = android.view.Gravity.END or android.view.Gravity.CENTER_VERTICAL
-        status.text = UiLang.s("सिस्टम") + ": ${Updater.displayVersion(a)}\nAccessibility: " + UiLang.s(acc)
-    }
 }
