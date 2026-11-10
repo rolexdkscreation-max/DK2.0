@@ -92,15 +92,15 @@ class ChatActivity : AppCompatActivity() {
         val mediaLauncher = registerForActivityResult(androidx.activity.result.contract.ActivityResultContracts.StartActivityForResult()) { result ->
             if (result.resultCode == RESULT_OK) {
                 result.data?.data?.let { uri ->
-                    val prep = MediaPrep.prepare(this, uri)
+                    val prep = MediaPrep.prepare(this, uri, 1)
                     if (prep != null) {
-                        val label = if (prep.isImage) "यह इमेज देखिए" else "यह फाइल देखिए"
-                        sendText("$label: ${prep.name}")
+                        val label = if (prep.media.isImage) "यह इमेज देखिए" else "यह फाइल देखिए"
+                        sendText("$label: ${prep.media.name}")
                         val svc = DKAccessibilityService.instance
                         if (svc != null) {
-                            svc.agent.currentMedia = prep
+                            svc.agent.currentMedia = prep.media
                         } else {
-                            localBrain?.let { it.currentMedia = prep }
+                            localBrain?.let { it.currentMedia = prep.media }
                         }
                     }
                 }
