@@ -20,4 +20,10 @@ object TeamModels {
         fast(a) -> fastAi
         else -> lightAi
     }
+    /** नवंबर 2026: Settings वाला दायरा ([StrongAi.PREF_SCOPE]) - "gates" = जाँचने वाले भी मज़बूत मॉडल पर */
+    fun <T> pick(a: Seven.Agent, fastAi: T, lightAi: T, strongAi: T?, scope: String): T = when {
+        strongAi != null && StrongAi.uses(a, scope) -> strongAi
+        fast(a) -> fastAi
+        else -> lightAi
+    }
 }

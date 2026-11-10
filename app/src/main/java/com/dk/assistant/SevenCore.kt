@@ -84,6 +84,9 @@ WHERE: never guess the file from its name. Use the REPO MAP and search, then REA
 When you have read enough reply ONLY:
 {"steps":[{"file":"path","action":"edit|create|delete","change":"ONE precise change in English","anchor":"short exact text from the file near the change (edit only)","why":"which function/screen this is and why the change belongs exactly here","uses":["path: name"]}],"risks":["Hindi: old feature that could break and why"]}
 Rules: one step = one file + one change. Max 10 steps. Change only what the task needs. Keep every old feature working.
+BIG TASK (needs more than 10 steps): plan the FIRST complete, compiling phase (max 10 steps - the base pieces that later steps need, e.g. data/classes before the screens that use them) and add "more":"English: exactly what is still left for the next phase". You get the next phase after these steps are done. Never cram a big task into 10 vague steps.
+COMPLETE: every resource (@drawable/@raw/@layout/@string/@color, R.x.y), class, function or custom View a step uses must already exist (you READ it) or be CREATED by a step in this same plan (before or with the step that uses it).
+DEPENDENCIES: never add a new library/dependency or change build.gradle / build.gradle.kts unless the task explicitly asks for it - use what the app already has (a new library can break the build or the unit tests).
 NAMES: for every function, class, property or variable from ANOTHER file (or another class) that a step will use, put it in that step's "uses" as "path: name".
 List ONLY names you have actually READ in that file. Never guess a name from memory - if you have not read the file that defines it, read it first.
 Never delete or weaken existing tests. Never plan changes to .github/workflows, gradle wrapper, signing/keystore files unless the task says so.
@@ -106,7 +109,9 @@ Never invent or guess a name (e.g. do not write svc.speak() unless speak really 
 For a NEW file reply: FILE: <path> then <<<FILE on its own line, the complete content, then FILE>>> on its own line.
 To DELETE a file reply: DELETE: <path> (ONLY when the step's action is delete)
 PRECISION: change ONLY the lines the step needs; copy every other line exactly. Never invert a condition (if (!x) -> if (x)), never drop a "!", else-branch, return, argument or call unless the step asks for it.
-UI (owner, PR #252): every new button/input gets an android:id AND a real action wired in its Activity in the same plan; never set an existing view to visibility="gone" unless the task says hide/remove; never add placeholder, sample or made-up UI text (only text the task or the existing app uses); never add a word to a *.tsv that is already there; never add a layout, raw/drawable file or dependency that nothing uses."""
+UI (owner, PR #252): every new button/input gets an android:id AND a real action wired in its Activity in the same plan; never set an existing view to visibility="gone" unless the task says hide/remove; never add placeholder, sample or made-up UI text (only text the task or the existing app uses); never add a word to a *.tsv that is already there; never add a layout, raw/drawable file or dependency that nothing uses.
+RESOURCES: every @drawable/@raw/@string/@layout/R.x.name you use must already exist or be created in this same plan. Never add a library or change build.gradle unless the task asks for it.
+LOOKUP (not counted as a step): if you are not sure a name exists, reply ONLY {"search":["word", ...]} (max 6) or {"read":["path", ...]} (max 4) and you will get the results; then write the change."""
 
         const val CODER_REWRITE = """MANAGER CHANGED STRATEGY: the FIND approach failed. Rewrite the WHOLE file instead:
 FILE: <path>
@@ -120,6 +125,8 @@ Check: 1) it does the step correctly and completely 2) it cannot break an existi
 3) compile errors (missing import, wrong types, undefined names, wrong API)
 4) NAME CHECK: every function/class/variable the new code calls must really exist. If a NAME CHECK section lists a name that was not found, reject unless you are 100% sure it exists (e.g. a real Android/Java SDK method of the parent class).
 5) LINE BY LINE: compare each FIND with its REPLACE. An inverted condition ("!" added/removed, == vs !=, < vs >=, && vs ||), a dropped else/return/argument/call, or a changed default value is a bug unless the step asks for it. A CONDITION FLIPPED section lists such lines found automatically - reject unless the step explicitly needs it.
+6) APP NAMES: a property/method of an APP class (not Android/Java/Kotlin SDK) that is not visible in the given code or DEFINITIONS = reject ("unsure" is a reject, ask to read the class or create the member).
+7) TESTS: an old test's assertion changed, or a limit/threshold loosened (e.g. 0.0001f -> 0.00001f) only to make a test pass = reject.
 Reply ONLY JSON: {"pass":true|false,"problems":["exact problem + how to fix"]}"""
 
         val TESTER = """You are the TESTER. Your ONLY job: decide whether the changed code works for the task.
@@ -130,7 +137,9 @@ Say pass only if EVERY case passes. (In GitHub mode the real build runs on the b
         val DEBUGGER = """You are the DEBUGGER. Your ONLY job: find the REAL root cause of a reported bug or a failed test/build. Never guess, never patch the symptom.
 To read files reply ONLY: {"read":["path", ...]} (max 8). When you are sure reply ONLY:
 {"root_cause":"file:line - what is wrong and WHY it happens","bug":"Hindi: बग क्या था","where":"file:line","fix":"the MINIMAL fix in English: which file, what change","files":["paths to change"]}
-For a failed build/check: start from the EXACT error lines of the log (file:line + message); your root cause must explain THAT error. Read the files it points to before deciding."""
+For a failed build/check: start from the EXACT error lines of the log (file:line + message); your root cause must explain THAT error. Read the files it points to before deciding.
+FIX THE CODE, NOT THE TEST: never loosen a limit/threshold/tolerance, never edit or delete an old test assertion, never add @Ignore just to pass. If an old test fails, the new code broke it - fix the new code.
+If root causes ALREADY TRIED are listed, they did NOT fix it - find a DIFFERENT, deeper cause (read more files)."""
 
         val GIT = """You are the GIT agent. Your ONLY job: write a short commit message and PR title for the finished change.
 Reply ONLY JSON: {"commit":"short English commit message","title":"short PR title (Hindi or English)"}
@@ -159,6 +168,7 @@ Put something in "must" only if it is a real problem in the new code, not a styl
 You get: the user's request, the prompt engineer's spec, the acceptance checks, and the full diff. For EVERY acceptance check decide: done or not, with the file/line that proves it.
 Reject if: a check is not met; the code only pretends (fake progress, hard-coded result, a function that is never called / never wired to the UI, a button with no action); something was left half-done (TODO, empty handler); an existing feature was changed or removed without the user asking.
 Also reject (owner, PR #252): new UI text that is nonsense, sample or made up; a view hidden (visibility=gone) that the user did not ask to hide; a new layout/file/dependency that nothing uses; a translation word added twice.
+Also reject: a new file/class/function that nothing calls (dead code); an old test assertion changed or a limit/threshold loosened to make tests pass; a resource (@drawable/@raw/...) used but not created.
 Reply ONLY JSON: {"pass":true|false,"checks":["Hindi: शर्त → ✓/✗ + सबूत (file:line)"],"missing":["Hindi: what is missing / wrong + file"],"fix":"English: the minimal change that would make it complete"}"""
 
         val DEPLOY = """You are the DEPLOYMENT agent. Your ONLY job: release a new APK ONLY after the user said yes.
@@ -323,9 +333,21 @@ Explain every technical word in a few simple words. Be complete but short - no f
 
     // ------------------------------------------------------------------ प्लान
     data class Step(val file: String, val action: String, val change: String, val anchor: String = "", val uses: List<String> = emptyList(), val why: String = "")
-    data class Plan(val steps: List<Step>, val risks: List<String>)
+    /**
+     * more = नवंबर 2026 (बड़ा प्रोजेक्ट मोड): इस प्लान के बाद भी बाकी काम (अगला चरण). खाली = काम इसी प्लान में पूरा.
+     * प्लानर 10 से ज़्यादा कदम भेजे तो बचे कदम पहले चुपचाप गिर जाते थे - अब वे भी more में (अगला चरण).
+     */
+    data class Plan(val steps: List<Step>, val risks: List<String>, val more: String = "")
 
     const val MAX_STEPS = 10
+    /** बड़ा प्रोजेक्ट: एक काम ज़्यादा से ज़्यादा इतने चरणों में (हर चरण ≤ MAX_STEPS कदम) */
+    const val MAX_PHASES = 5
+
+    /** कोडर का जवाब बदलाव नहीं, बस ढूँढना/पढ़ना है ({"search":…} / {"read":…}) */
+    fun isLookup(reply: String): Boolean {
+        if (Regex("<<<(FIND|FILE|REPLACE)|(?m)^\\s*(FILE|DELETE):").containsMatchIn(reply)) return false
+        return SevenPlus.RepoSearch.terms(reply) != null || planReads(reply) != null
+    }
 
     /** प्लानर का जवाब: पढ़ने की list (read) या प्लान (steps). दोनों नहीं = null */
     fun planReads(text: String): List<String>? = json(text)?.optJSONArray("read")?.let { strings(it).take(8) }?.takeIf { it.isNotEmpty() }
@@ -341,7 +363,9 @@ Explain every technical word in a few simple words. Be complete but short - no f
             if (f.isBlank() || ch.isBlank() && act != "delete") null else Step(f, act, ch, s.optString("anchor").trim(), strings(s.optJSONArray("uses")).take(12), s.optString("why").trim())
         }
         if (steps.isEmpty()) return null
-        return Plan(steps.take(MAX_STEPS), strings(o.optJSONArray("risks")))
+        val dropped = steps.drop(MAX_STEPS).joinToString("; ") { "${it.file} - ${it.change}" }
+        val more = listOf(o.optString("more").trim(), dropped).filter { it.isNotBlank() }.joinToString("\nALSO: ")
+        return Plan(steps.take(MAX_STEPS), strings(o.optJSONArray("risks")), more)
     }
 
     // ------------------------------------------------------------------ कोडर का बदलाव
@@ -532,10 +556,27 @@ Explain every technical word in a few simple words. Be complete but short - no f
      * PR से पहले branch पर चलाने लायक workflow: जो PR पर चलता है (pull_request) और हाथ से भी चल सकता है (workflow_dispatch).
      * @return workflow फ़ाइल का नाम, या null (तब draft PR पर build, पास होने पर ही असली PR)
      */
-    fun dispatchable(workflows: List<Pair<String, String>>): String? = workflows.firstOrNull { (_, y) ->
-        val t = y.lines().filterNot { it.trimStart().startsWith("#") }.joinToString("\n")
-        Regex("\\bworkflow_dispatch\\b").containsMatchIn(t) && Regex("\\bpull_request\\b").containsMatchIn(t)
-    }?.first
+    fun dispatchable(workflows: List<Pair<String, String>>): String? {
+        val ok = workflows.filter { (_, y) ->
+            val t = noComments(y)
+            Regex("\\bworkflow_dispatch\\b").containsMatchIn(t) && Regex("\\bpull_request\\b").containsMatchIn(t)
+        }
+        // नवंबर 2026 (मालिक: "DK भी वैसे ही test करे जैसे Perplexity करता है"): कई हों तो वह जो unit tests चलाता है
+        // (जैसे check.yml: testDebugUnitTest + assembleDebug, ~4 मिनट) - release/emulator वाला भारी build नहीं.
+        // पहले पहला मिला चुनता था = build.yml (13 मिनट, unit tests नहीं) -> test fail PR खुलने के बाद ही पता चलता था.
+        return (ok.maxByOrNull { (_, y) -> testScore(y) } ?: return null).let { best -> if (testScore(best.second) > 0) best.first else ok.first().first }
+    }
+
+    private fun noComments(y: String) = y.lines().filterNot { it.trimStart().startsWith("#") }.joinToString("\n")
+
+    /** workflow कितना "test वाला" है: unit tests चलाता है = +, release/emulator/deploy = - (0 या कम = test नहीं) */
+    fun testScore(yml: String): Int {
+        val t = noComments(yml)
+        var s = 0
+        if (Regex("(?i)\\b(test\\w*UnitTest|gradlew?\\s+(:\\w+:)?test\\b|:app:test|npm\\s+(run\\s+)?test|pytest|go\\s+test|cargo\\s+test|flutter\\s+test|mvn\\s+\\S*\\s*test)").containsMatchIn(t)) s += 10
+        if (Regex("(?i)assembleRelease|bundleRelease|emulator|gh\\s+release|softprops/action-gh-release|deploy").containsMatchIn(t)) s -= 3
+        return s
+    }
 
     /** चेक (GitHub Actions) की हालत - रिपोर्ट में हमेशा */
     enum class CheckState(val hi: String) { PASS("✅ पास"), FAIL("❌ फ़ेल"), RUNNING("⏳ नतीजा अभी नहीं मिला"), NONE("— नहीं चला") }

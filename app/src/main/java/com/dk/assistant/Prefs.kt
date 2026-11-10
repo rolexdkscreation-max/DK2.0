@@ -432,6 +432,8 @@ object Prefs {
     fun coderStrongProvider(c: Context) = sp(c).getString(StrongAi.PREF_PROVIDER, "anthropic") ?: "anthropic"
     fun coderStrongKey(c: Context) = (sp(c).getString(StrongAi.PREF_KEY, "") ?: "").trim()
     fun coderStrongModel(c: Context) = (sp(c).getString(StrongAi.PREF_MODEL, "") ?: "").trim()
+    /** मज़बूत मॉडल किन एजेंट को - default "gates" (कोडर/डिबगर/प्लानर + रिव्यूअर/QA/मैनेजर) */
+    fun coderStrongScope(c: Context) = StrongAi.scope(sp(c).getString(StrongAi.PREF_SCOPE, StrongAi.SCOPE_GATES))
     fun coderMaxSteps(c: Context) = (sp(c).getString("coder_max_steps", null)?.trim()?.toIntOrNull() ?: CodingAgent.DEFAULT_STEPS).coerceIn(3, 30)
     fun coderBuildFix(c: Context) = sp(c).getBoolean("coder_buildfix", true)
     /** सुरक्षित PR मोड (default चालू): main पर सीधे push नहीं - नई feature branch → PR → tests/build → आप review करके Merge */
