@@ -1,0 +1,20 @@
+{
+  "id": "solar_gold",
+  "name": "Solar Gold",
+  "desc": "काला-सुनहरा प्रीमियम",
+  "bg": [
+    "#0D0904",
+    "#1A1206",
+    "#060402"
+  ],
+  "glassTop": "#2A1E0A",
+  "glassBottom": "#140E05",
+  "accent": "#F5B83D",
+  "partner": "#F97316",
+  "titleA": "#FDE68A",
+  "titleB": "#F5B83D",
+  "orbA": "#F5B83D",
+  "orbB": "#F97316",
+  "dim": 0.4,
+  "version": 1
+}

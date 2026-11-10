@@ -307,8 +307,8 @@ class OrbView @JvmOverloads constructor(
     private fun neonColors(m: Mode): Pair<Int, Int> {
         val l = com.dk.assistant.ui.NeonTheme.look
         return when (m) {
-            Mode.IDLE -> l.accent.main to l.accent.partner
-            Mode.LISTENING -> com.dk.assistant.ui.NeonTheme.CYAN to l.accent.main
+            Mode.IDLE -> if (l.pack.id == com.dk.assistant.ui.ThemePacks.DEFAULT_ID) l.main to l.partner else l.pack.orbA to l.pack.orbB
+            Mode.LISTENING -> com.dk.assistant.ui.NeonTheme.CYAN to l.main
             // v3.88: सोचते समय अलग रंग (सुनहरा-नारंगी), बोलते समय गुलाबी - तीनों साफ़ अलग
             Mode.THINKING, Mode.WORKING -> THINK_A to THINK_B
             Mode.SPEAKING -> SPEAK_A to SPEAK_B
@@ -319,6 +319,18 @@ class OrbView @JvmOverloads constructor(
         for (sh in intArrayOf(0, 8, 16, 24)) if (kotlin.math.abs(((a ushr sh) and 0xFF) - ((b ushr sh) and 0xFF)) > 2) return false
         return true
     }
+
+    // ---- होलोग्राफ़िक ORB (संदर्भ चित्र जैसा): काँच का गोला + अंदर घूमती ऊर्जा + झुके छल्ले + धूमकेतु बिंदु + चमक कण
+    private val hRing = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE; strokeCap = Paint.Cap.ROUND }
+    private val hSwirl = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE; strokeCap = Paint.Cap.ROUND; strokeJoin = Paint.Join.ROUND }
+    private val hDot = Paint(Paint.ANTI_ALIAS_FLAG)
+    private val hPath = android.graphics.Path()
+    private val hClip = android.graphics.Path()
+    private val hOval = android.graphics.RectF()
+    private var hT = 0f
+    /** छल्ले: x-त्रिज्या (R के गुणा), y/x अनुपात, झुकाव (डिग्री), गति */
+    private val RINGS = arrayOf(floatArrayOf(1.55f, 0.26f, -18f, 0.55f), floatArrayOf(1.38f, 0.34f, 24f, -0.75f), floatArrayOf(1.70f, 0.18f, 6f, 0.38f))
+    private val SPARK = Array(16) { i -> val r = Random(40 + i); floatArrayOf(r.nextFloat() * 6.283f, 1.15f + r.nextFloat() * 0.75f, r.nextFloat() * 6.283f, 0.6f + r.nextFloat()) }
 
     private fun drawNeon(c: Canvas, mode: Mode, now: Long, dt: Float) {
         val T = com.dk.assistant.ui.NeonTheme
@@ -341,34 +353,100 @@ class OrbView @JvmOverloads constructor(
             Mode.THINKING -> 1f + 0.04f * (0.5f + 0.5f * sin(t * 5.6f))
             else -> 1f + 0.018f * sin(t * 1.4f)
         }
-        val R = minOf(w, h) * 0.27f * pulse
+        // हालत से ऊर्जा की गति: खाली = धीमी, सुनना = आवाज़ के साथ, सोचना = तेज़
+        val speed = when (mode) { Mode.IDLE -> 0.45f; Mode.LISTENING -> 0.9f + lvl * 1.6f; Mode.THINKING, Mode.WORKING -> 2.2f; Mode.SPEAKING -> 1.2f + (voice ?: 0f) }
+        if (!still) { hT += dt * speed; if (hT > 10000f) hT -= 10000f }
+        val R = minOf(w, h) * 0.235f * pulse
         val glowF = 0.35f + 0.65f * T.look.glowF
+        val dpx = resources.displayMetrics.density
 
-        // शेडर सिर्फ़ रंग/चमक बदलने पर नए (हर frame नहीं) - जगह/नाप Matrix से
         val key = (colA.toLong() shl 32) xor colB.toLong() xor (T.version.toLong() shl 50)
         if (key != nKey || nBody.shader == null) {
             nKey = key
             nHalo.shader = RadialGradient(0f, 0f, 1f,
-                intArrayOf(T.alphaF(colA, 0.55f * glowF), T.alphaF(colB, 0.22f * glowF), T.alpha(colB, 0)),
-                floatArrayOf(0.42f, 0.68f, 1f), Shader.TileMode.CLAMP)
+                intArrayOf(T.alphaF(colA, 0.50f * glowF), T.alphaF(colB, 0.20f * glowF), T.alpha(colB, 0)),
+                floatArrayOf(0.40f, 0.66f, 1f), Shader.TileMode.CLAMP)
+            // काँच जैसा गोला: बीच चमकीला, किनारे गहरे (ऊर्जा अंदर से दिखे)
             nBody.shader = RadialGradient(0f, 0f, 1f,
-                intArrayOf(T.mix(colA, Color.WHITE, 0.55f), colA, T.mix(colB, 0xFF0A0F3A.toInt(), 0.25f), T.mix(colB, 0xFF050A1F.toInt(), 0.55f)),
-                floatArrayOf(0f, 0.38f, 0.78f, 1f), Shader.TileMode.CLAMP)
-            nSpec.shader = RadialGradient(0f, 0f, 1f, intArrayOf(0x8CFFFFFF.toInt(), 0x00FFFFFF), floatArrayOf(0f, 1f), Shader.TileMode.CLAMP)
+                intArrayOf(T.mix(colA, Color.WHITE, 0.35f), T.mix(colA, 0xFF0A0F3A.toInt(), 0.25f), T.mix(colB, 0xFF0A0F3A.toInt(), 0.55f), T.mix(colB, 0xFF050A1F.toInt(), 0.78f)),
+                floatArrayOf(0f, 0.35f, 0.78f, 1f), Shader.TileMode.CLAMP)
+            nSpec.shader = RadialGradient(0f, 0f, 1f, intArrayOf(0x99FFFFFF.toInt(), 0x00FFFFFF), floatArrayOf(0f, 1f), Shader.TileMode.CLAMP)
         }
-        // 1. बाहर की नियॉन चमक
-        nM.setScale(R * 1.9f, R * 1.9f); nM.postTranslate(cx, cy); nHalo.shader.setLocalMatrix(nM)
-        c.drawCircle(cx, cy, R * 1.9f, nHalo)
-        val dpx = resources.displayMetrics.density
-        // 3. गोला (ऊपर-बाएँ से रोशनी) - बाहरी रिंग या बॉर्डर पूरी तरह हटा दी गई है ताकि चालू होने पर भी न दिखे
-        nM.setScale(R * 1.25f, R * 1.25f); nM.postTranslate(cx - R * 0.28f, cy - R * 0.32f); nBody.shader.setLocalMatrix(nM)
+        // 1. बाहर की चमक
+        nM.setScale(R * 2.0f, R * 2.0f); nM.postTranslate(cx, cy); nHalo.shader.setLocalMatrix(nM)
+        c.drawCircle(cx, cy, R * 2.0f, nHalo)
+        // 2. चमक के कण (टिमटिमाते)
+        for (sp in SPARK) {
+            val a = sp[0] + hT * 0.08f * sp[3]
+            val px = cx + cos(a) * R * sp[1] * 1.1f; val py = cy + sin(a) * R * sp[1] * 0.9f
+            val tw = if (still) 0.6f else 0.35f + 0.65f * (0.5f + 0.5f * sin(t * 2.2f * sp[3] + sp[2]))
+            hDot.color = T.alphaF(T.mix(colB, Color.WHITE, 0.6f), tw * 0.85f)
+            c.drawCircle(px, py, dpx * (0.9f + 0.9f * sp[3] * 0.5f), hDot)
+        }
+        // 3. छल्लों का पीछे वाला आधा (गोले के पीछे)
+        drawRings(c, cx, cy, R, back = true, dpx = dpx, glowF = glowF)
+        // 4. गोला
+        nM.setScale(R * 1.2f, R * 1.2f); nM.postTranslate(cx - R * 0.15f, cy - R * 0.2f); nBody.shader.setLocalMatrix(nM)
         c.drawCircle(cx, cy, R, nBody)
-        // 4. चमकदार किनारा + ऊपर की चमक
-        nM.setScale(R * 0.42f, R * 0.30f); nM.postTranslate(cx - R * 0.32f, cy - R * 0.48f); nSpec.shader.setLocalMatrix(nM)
-        c.drawCircle(cx - R * 0.32f, cy - R * 0.48f, R * 0.42f, nSpec)
+        // 5. अंदर घूमती ऊर्जा (तीन सर्पिल भुजाएँ, गोले के अंदर ही)
+        hClip.rewind(); hClip.addCircle(cx, cy, R * 0.97f, android.graphics.Path.Direction.CW)
+        c.save(); c.clipPath(hClip)
+        for (arm in 0 until 3) {
+            hPath.rewind()
+            val base = hT * 1.1f + arm * 2.0944f
+            for (j in 0..26) {
+                val f = j / 26f
+                val rr = R * (0.06f + 0.92f * f)
+                val th = base + f * 3.1f + 0.25f * sin(hT * 0.7f + arm)
+                val x = cx + cos(th) * rr; val y = cy + sin(th) * rr * 0.82f
+                if (j == 0) hPath.moveTo(x, y) else hPath.lineTo(x, y)
+            }
+            val col = if (arm == 1) T.mix(colB, Color.WHITE, 0.25f) else T.mix(colA, Color.WHITE, 0.45f)
+            hSwirl.strokeWidth = R * 0.16f; hSwirl.color = T.alphaF(col, 0.16f * glowF)
+            c.drawPath(hPath, hSwirl)
+            hSwirl.strokeWidth = R * 0.05f; hSwirl.color = T.alphaF(col, 0.55f)
+            c.drawPath(hPath, hSwirl)
+            hSwirl.strokeWidth = maxOf(1f, R * 0.014f); hSwirl.color = 0xCCFFFFFF.toInt()
+            c.drawPath(hPath, hSwirl)
+        }
+        c.restore()
+        // 6. ऊपर की चमक (काँच)
+        nM.setScale(R * 0.45f, R * 0.30f); nM.postTranslate(cx - R * 0.34f, cy - R * 0.50f); nSpec.shader.setLocalMatrix(nM)
+        c.drawCircle(cx - R * 0.34f, cy - R * 0.50f, R * 0.45f, nSpec)
+        // 7. छल्लों का आगे वाला आधा + धूमकेतु बिंदु
+        drawRings(c, cx, cy, R, back = false, dpx = dpx, glowF = glowF)
+
         if (still) postInvalidateDelayed(if (mode == Mode.LISTENING || mode == Mode.SPEAKING) 120 else 400)
         else if (mode == Mode.IDLE) postInvalidateDelayed(33)      // खाली हालत: ~30fps काफ़ी (कमज़ोर फ़ोन/बैटरी)
         else postInvalidateOnAnimation()
+    }
+
+    private fun drawRings(c: Canvas, cx: Float, cy: Float, R: Float, back: Boolean, dpx: Float, glowF: Float) {
+        val T = com.dk.assistant.ui.NeonTheme
+        for ((i, r) in RINGS.withIndex()) {
+            val rx = R * r[0]; val ry = rx * r[1]
+            c.save(); c.rotate(r[2], cx, cy)
+            hOval.set(cx - rx, cy - ry, cx + rx, cy + ry)
+            val col = if (i == 1) T.mix(colB, Color.WHITE, 0.2f) else T.mix(colA, Color.WHITE, 0.3f)
+            // ऊपर वाला आधा = पीछे (180..360), नीचे वाला = आगे (0..180)
+            val start = if (back) 180f else 0f
+            hRing.strokeWidth = dpx * 5f; hRing.color = T.alphaF(col, (if (back) 0.07f else 0.14f) * glowF)
+            c.drawArc(hOval, start, 180f, false, hRing)
+            hRing.strokeWidth = dpx * (if (back) 1f else 1.6f); hRing.color = T.alphaF(col, if (back) 0.35f else 0.85f)
+            c.drawArc(hOval, start, 180f, false, hRing)
+            // धूमकेतु: छल्ले पर घूमता चमकीला बिंदु + पूँछ
+            val a = hT * r[3] + i * 2.1f
+            val sa = sin(a)
+            if ((sa >= 0f) != back) {
+                for (q in 0..5) {
+                    val aa = a - q * 0.07f * kotlin.math.sign(r[3])
+                    val px = cx + cos(aa) * rx; val py = cy + sin(aa) * ry
+                    hDot.color = T.alphaF(if (q == 0) Color.WHITE else col, (1f - q / 6f) * 0.9f)
+                    c.drawCircle(px, py, dpx * (if (q == 0) 3.2f else 2.6f - q * 0.35f), hDot)
+                }
+            }
+            c.restore()
+        }
     }
 
     // ------------------------------------------------------------------ v3.88: तीन हालत, तीन अलग एनिमेशन

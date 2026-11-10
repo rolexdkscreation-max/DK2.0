@@ -140,7 +140,6 @@ class CodingActivity : AppCompatActivity() {
 
     private lateinit var list: LinearLayout
     private lateinit var scroll: ScrollView
-    private lateinit var sub: TextView
     private lateinit var edt: EditText
     private lateinit var send: ImageButton
     private lateinit var changes: LinearLayout
@@ -148,6 +147,8 @@ class CodingActivity : AppCompatActivity() {
     // काम चलते समय: चलती पट्टी + "काम कर रहा है..." (बिंदु बढ़ते हैं)
     private lateinit var busyBar: LinearLayout
     private lateinit var busyText: TextView
+    private lateinit var busyTask: TextView
+    private lateinit var busyRepo: TextView
     private lateinit var agentWork: AgentWorkView
     private val busyHandler = android.os.Handler(android.os.Looper.getMainLooper())
     private var busyStep = 0
@@ -158,6 +159,7 @@ class CodingActivity : AppCompatActivity() {
             busyStep++
             if (inline.active) inline.show(busyLabel(), WorkState.WORKING)
             busyText.text = BusyLabel.text(busyStep)
+            fillTaskCard()
             showAgent()
             busyHandler.postDelayed(this, BusyLabel.TICK_MS)
         }
@@ -196,26 +198,40 @@ class CodingActivity : AppCompatActivity() {
             contentDescription = "वापस"; setOnClickListener { finish() }
         }
         val titles = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding((12 * dp).toInt(), 0, 0, 0) }
-        titles.addView(TextView(this).apply { text = "कोडिंग एजेंट"; textSize = 20f; setTypeface(typeface, Typeface.BOLD); setTextColor(0xFFFFFFFF.toInt()); maxLines = 1; ellipsize = android.text.TextUtils.TruncateAt.END })
-        sub = TextView(this).apply { textSize = 12f; setTextColor(0x99FFFFFF.toInt()); maxLines = 2; ellipsize = android.text.TextUtils.TruncateAt.END }
-        titles.addView(sub)
+        // नवंबर 2026 (मालिक): Futuristic रूप - चमकदार "DK CODING AGENT" (मालिक: ऊपर सिर्फ़ काँच की पट्टी + नाम, status टैग नहीं)
+        titles.addView(FutureViews.title(this, Prefs.assistantName(this).uppercase() + " CODING AGENT"))
         val top = UiFit.header(this, back, titles, listOf(
             smallBtn("रिपो") { if (Prefs.coderSeven(this)) sevenPicker() else chooseRepo() },
             smallBtn("इतिहास") { showHistory() },
             smallBtn("नया") { newSession() },
             smallBtn("स्टूडियो") { com.dk.assistant.studio.StudioSession.open(this, null) }))
+        FutureViews.glassTopBar(top)      // संदर्भ चित्र: ऊपर काँच की पट्टी (सिर्फ़ नाम)
         col.addView(top)
 
+        // नवंबर 2026 (मालिक): "मौजूदा काम" कार्ड (संदर्भ चित्र जैसा) - सिर्फ़ काम चलते समय; खाली हो तो छिपा
         busyBar = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setBackgroundResource(R.drawable.glass_card)
-            val p = (10 * dp).toInt(); setPadding(p, (6 * dp).toInt(), p, (6 * dp).toInt())
+            val p = (12 * dp).toInt(); setPadding(p, (10 * dp).toInt(), p, (10 * dp).toInt())
             visibility = View.GONE
         }
-        busyText = TextView(this).apply { text = BusyLabel.text(0); textSize = 13f; setTextColor(0xFF00E676.toInt()) }
+        busyBar.addView(TextView(this).apply {
+            text = "मौजूदा काम"; textSize = 11.5f; letterSpacing = 0.08f; setTextColor(FutureViews.CYAN)
+            setTypeface(typeface, Typeface.BOLD)
+        })
+        busyTask = TextView(this).apply {
+            textSize = 14f; setTypeface(typeface, Typeface.BOLD); setTextColor(0xFFFFFFFF.toInt()); maxLines = 2
+            ellipsize = android.text.TextUtils.TruncateAt.END; UiLang.keep(this); setPadding(0, (2 * dp).toInt(), 0, 0)
+        }
+        busyBar.addView(busyTask)
+        busyRepo = TextView(this).apply { textSize = 11.5f; setTextColor(0xB3FFFFFF.toInt()); maxLines = 1; ellipsize = android.text.TextUtils.TruncateAt.END; UiLang.keep(this) }
+        busyBar.addView(busyRepo)
+        busyText = TextView(this).apply { text = BusyLabel.text(0); textSize = 12.5f; setTextColor(FutureViews.GREEN); setPadding(0, (6 * dp).toInt(), 0, 0) }
         busyBar.addView(busyText)
-        busyBar.addView(ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal).apply { isIndeterminate = true },
-            LinearLayout.LayoutParams(-1, (4 * dp).toInt()).apply { topMargin = (4 * dp).toInt() })
+        busyBar.addView(ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal).apply {
+            isIndeterminate = true
+            indeterminateTintList = android.content.res.ColorStateList.valueOf(FutureViews.CYAN)
+        }, LinearLayout.LayoutParams(-1, (4 * dp).toInt()).apply { topMargin = (6 * dp).toInt() })
         col.addView(busyBar, LinearLayout.LayoutParams(-1, -2).apply { topMargin = (6 * dp).toInt() })
         // v5.1: कौन सा एजेंट काम कर रहा है - सारे एजेंट मैनेजर के नीचे, चलता हुआ चमकता है
         agentWork = AgentWorkView(this).apply { visibility = View.GONE; setBackgroundResource(R.drawable.glass_card); val p = (8 * dp).toInt(); setPadding(p, p, p, p) }
@@ -242,6 +258,7 @@ class CodingActivity : AppCompatActivity() {
 
         // साझा इनपुट बॉक्स: 📎 फ़ोटो/वीडियो (चुनने के बाद cursor वापस), लिखना, 🎤 बार के अंदर बोलकर लिखना, भेजें/रोकें
         composer = DKComposer(this, "क्या बनाना या ठीक करना है?", maxLines = 5, attach = { openPicker() })
+        FutureViews.glassCommandBar(composer)   // नीचे काँच का कमांड बार (नियॉन किनारा)
         edt = composer.edt
         send = composer.send
         mediaRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
@@ -794,11 +811,20 @@ class CodingActivity : AppCompatActivity() {
         if (on) {
             busyStep = 0; busyText.text = BusyLabel.text(0)
             busySince = System.currentTimeMillis()
-            // ऊपर वाली चलती पट्टी अब नहीं - DK का काम जवाब वाले बुलबुले के अंदर तरंग से दिखता है
-            busyBar.visibility = View.GONE
+            // नवंबर 2026 (मालिक): "मौजूदा काम" कार्ड सिर्फ़ काम चलते समय (असली task / repo / branch)
+            fillTaskCard(); busyBar.visibility = View.VISIBLE
             showAgent()
             busyHandler.postDelayed(busyTick, BusyLabel.TICK_MS)
         } else { busyBar.visibility = View.GONE; agentWork.visibility = View.GONE; CoderSession.activeAgent = null; CoderSession.activeNote = "" }
+    }
+
+    private fun fillTaskCard() {
+        val t = CoderSession.task?.trim().orEmpty()
+        busyTask.text = if (t.isBlank()) busyLabel().ifBlank { "काम चल रहा है" } else CoderHistory.Logic.title(t)
+        val a = CoderSession.agent
+        val repo = a?.repo ?: Prefs.ghRepo(this)
+        busyRepo.text = if (repo.isBlank()) "" else "$repo • ${a?.branch ?: Prefs.ghBranch(this)}"
+        busyRepo.visibility = if (repo.isBlank()) View.GONE else View.VISIBLE
     }
 
     /** 7 एजेंट वाली टीम चल रही हो तो: कौन सा एजेंट काम कर रहा है (नाम + animation) */
@@ -811,10 +837,6 @@ class CodingActivity : AppCompatActivity() {
 
     private fun render() {
         val a = CoderSession.agent
-        val ai = CoderAi.fromPrefs(this)
-        sub.text = (if (Prefs.coderSeven(this)) "7 एजेंट + 🎓 • " + sevenModeLine().substringBefore(" — ").substringBefore(" •").removePrefix("मोड: ") + " • ${ai?.label ?: "AI नहीं"}"
-            else "${Prefs.ghRepo(this).ifBlank { "repo नहीं चुना" }} • ${a?.branch ?: Prefs.ghBranch(this)} • ${ai?.label ?: "AI नहीं"}") +
-            if (CoderSession.busy) " • काम चल रहा है…" else ""
         maybeOfferNormal()
         send.setImageResource(if (CoderSession.busy) android.R.drawable.ic_media_pause else R.drawable.ic_send)
         send.contentDescription = if (CoderSession.busy) "रोकें" else "भेजें"
@@ -824,7 +846,10 @@ class CodingActivity : AppCompatActivity() {
         while (shown < lines.size) {
             val l = lines[shown]; shown++
             // एजेंट का जवाब/गलती = उसी बुलबुले में जहाँ तरंग चल रही थी
-            if ((l.role == "d" || l.role == "e") && inline.answer(l.text, if (l.role == "e") 0xFFFFB4B4.toInt() else 0xFFFFFFFF.toInt()) != null) continue
+            if (l.role == "d" || l.role == "e") {
+                val b = inline.answer(l.text, if (l.role == "e") 0xFFFFB4B4.toInt() else 0xFFFFFFFF.toInt())
+                if (b != null) { FutureViews.addCodeParts(b, b.body, l.text, ::copyCode); continue }   // ``` कोड = IDE पैनल
+            }
             // नवंबर 2026 (मालिक): काम के कदम चैट के बीच में नहीं (ऊपर एजेंट पट्टी में दिखते हैं)
             if (!ChatClean.showInChat(l.role, CoderSession.busy, shown == lines.size)) continue
             bubble(l); inline.keepLast()
@@ -890,7 +915,7 @@ class CodingActivity : AppCompatActivity() {
             changes.visibility = View.VISIBLE
             changes.addView(TextView(this).apply {
                 text = "🔀 PR #${p.number} review के लिए तैयार"; textSize = 14f
-                setTypeface(typeface, Typeface.BOLD); setTextColor(0xFFFFFFFF.toInt())
+                setTypeface(typeface, Typeface.BOLD); setTextColor(FutureViews.GREEN)   // Patch तैयार = हरा निऑन
             })
             changes.addView(TextView(this).apply {
                 text = "${a.branch} → ${a.baseBranch}\nGitHub पर बदलाव देखें; tests + build पास हों तो Merge करें (या DK से बोलें: \"PR merge कर दो\")। Merge होते ही नई APK release बनेगी। और बदलाव चाहिए तो बस लिखिए — उसी PR में जुड़ेंगे।"
@@ -927,27 +952,20 @@ class CodingActivity : AppCompatActivity() {
         } else changes.visibility = View.GONE
     }
 
-    /** नॉर्मल मोड की फ़ाइल: नाम + कोड + कॉपी बटन (पहली लाइन = फ़ाइल का नाम) */
+    /** नॉर्मल मोड की फ़ाइल: नाम + IDE जैसा कोड पैनल (लाइन नंबर, रंग) + कॉपी बटन (पहली लाइन = फ़ाइल का नाम) */
     private fun fileCard(l: CoderSession.Line) {
         val path = l.text.substringBefore('\n'); val code = l.text.substringAfter('\n', "")
         val card = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL; setBackgroundResource(R.drawable.glass_card)
             val p = (10 * dp).toInt(); setPadding(p, p, p, p)
         }
-        val head = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
-        head.addView(TextView(this).apply { text = "📄 $path"; textSize = 14f; setTypeface(typeface, Typeface.BOLD); setTextColor(0xFFFFFFFF.toInt()) },
-            LinearLayout.LayoutParams(0, -2, 1f))
-        head.addView(smallBtn("कॉपी") {
+        card.addView(TextView(this).apply {
+            text = "📄 $path"; textSize = 14f; setTypeface(typeface, Typeface.BOLD); setTextColor(0xFFFFFFFF.toInt()); UiLang.keep(this)
+        })
+        card.addView(FutureViews.codePanel(this, code, path.substringAfterLast('.', "").ifBlank { "code" }) { c ->
             val cm = getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
-            cm.setPrimaryClip(android.content.ClipData.newPlainText(path, code)); toast("$path कॉपी हो गया")
-        })
-        card.addView(head)
-        val hs = android.widget.HorizontalScrollView(this)
-        hs.addView(TextView(this).apply {
-            text = code; textSize = 12f; typeface = Typeface.MONOSPACE; setTextColor(0xE6FFFFFF.toInt()); setTextIsSelectable(true)
-            setPadding(0, (6 * dp).toInt(), 0, 0)
-        })
-        card.addView(hs)
+            cm.setPrimaryClip(android.content.ClipData.newPlainText(path, c)); toast("$path कॉपी हो गया")
+        }, LinearLayout.LayoutParams(-1, -2).apply { topMargin = (6 * dp).toInt() })
         list.addView(card, LinearLayout.LayoutParams(-1, -2).apply { topMargin = (8 * dp).toInt() })
         scroll.post { scroll.smoothScrollTo(0, list.height) }
     }
@@ -1003,6 +1021,10 @@ class CodingActivity : AppCompatActivity() {
     private fun bubble(l: CoderSession.Line) {
         if (l.role == "f") { fileCard(l); return }
         if (l.role == "i") { shotsCard(l); return }
+        if (l.role == "d") FutureViews.dkCodeBubble(this, l.text, (resources.displayMetrics.widthPixels * 0.82).toInt(), 0xFFFFFFFF.toInt(), ::copyCode)?.let {
+            list.addView(it, LinearLayout.LayoutParams(-1, -2).apply { topMargin = (8 * dp).toInt() })
+            scroll.post { scroll.smoothScrollTo(0, list.height) }; return
+        }
         val mine = l.role == "u"
         val tv = TextView(this).apply {
             text = l.text; setTextIsSelectable(true)
@@ -1010,7 +1032,8 @@ class CodingActivity : AppCompatActivity() {
                 "s" -> { textSize = 12f; setTextColor(0x99FFFFFF.toInt()); setPadding((6 * dp).toInt(), (2 * dp).toInt(), 0, 0) }
                 else -> {
                     textSize = 15f; setTextColor(if (l.role == "e") 0xFFFFB4B4.toInt() else 0xFFFFFFFF.toInt())
-                    setBackgroundResource(if (mine) R.drawable.glass_bubble_me else R.drawable.glass_bubble_dk)
+                    // नवंबर 2026: आपका बुलबुला = गहरा नीला → बैंगनी (16dp), DK का = काँच
+                    if (mine) background = FutureViews.userBubble(this@CodingActivity) else setBackgroundResource(R.drawable.glass_bubble_dk)
                     val ph = (14 * dp).toInt(); val pv = (10 * dp).toInt(); setPadding(ph, pv, ph, pv)
                     maxWidth = (resources.displayMetrics.widthPixels * 0.82).toInt()
                 }
@@ -1031,6 +1054,11 @@ class CodingActivity : AppCompatActivity() {
         val ph = (12 * dp).toInt(); setPadding(ph, (6 * dp).toInt(), ph, (6 * dp).toInt())
         isFocusable = false
         setOnClickListener { onClick() }
+    }
+
+    private fun copyCode(code: String) {
+        val cm = getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+        cm.setPrimaryClip(android.content.ClipData.newPlainText("code", code)); toast("कोड कॉपी हो गया")
     }
 
     private fun toast(t: String) = UiLang.toast(this, t, Toast.LENGTH_SHORT).show()

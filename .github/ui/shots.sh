@@ -105,6 +105,7 @@ run() {
   adb shell input keyevent KEYCODE_BACK
   adb shell am force-stop $PKG
   adb shell am start -S -W -n $PKG/.CodingActivity;                        shot ${tag}_10_coding 5
+  go .ComputerActivity;                      shot ${tag}_11_computer 6
   adb shell input keyevent KEYCODE_BACK; sleep 1;                        shot ${tag}_11_coding_nokb 2
   timeout 20 adb logcat -d -b crash > "$OUT/${tag}_crash.txt" || true
   timeout 20 adb logcat -d | grep -E "FATAL|AndroidRuntime|LiquidGlass|InflateException" > "$OUT/${tag}_errors.txt" || true

@@ -47,6 +47,18 @@ internal fun SettingsActivity.menuIcon(id: String) = when (id) {
     else -> R.drawable.ic_s_debug
 }
 
+/** नवंबर 2026: squircle आइकन का निऑन रंग (हर section अलग, ताकि मेनू में पहचान आसान) */
+internal fun SettingsActivity.menuTint(id: String): Int = when (id) {
+    "profile", "about" -> 0xFF22D3EE.toInt()
+    "voice", "templates" -> 0xFFA855F7.toInt()
+    "brain", "auto", "coder" -> 0xFF6366F1.toInt()
+    "ui", "orb", "reels" -> 0xFFEC4899.toInt()
+    "access", "perms", "phonelock", "guard" -> 0xFF34D399.toInt()
+    "computer", "connectors", "lang" -> 0xFF38BDF8.toInt()
+    "update", "story", "social" -> 0xFFFBBF24.toInt()
+    else -> 0xFF94A3B8.toInt()
+}
+
 internal fun SettingsActivity.radios(box: LinearLayout, items: List<Pair<String, String>>, current: String, base: Int): RadioGroup {
     val g = RadioGroup(this).apply { orientation = RadioGroup.VERTICAL }
     items.forEachIndexed { i, (v, t) ->

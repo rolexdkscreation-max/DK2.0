@@ -39,6 +39,11 @@ class AuroraView @JvmOverloads constructor(context: Context, attrs: AttributeSet
     private val blobPaint = List(blobs.size) { Paint().apply { isDither = true } }
     private val blobR = FloatArray(blobs.size)
     private val m = Matrix()
+    /** पूरी थीम का पृष्ठभूमि चित्र (center-crop) + ऊपर हल्की काली परत ताकि text साफ़ रहे */
+    private var photo: android.graphics.Bitmap? = null
+    private val photoPaint = Paint(Paint.FILTER_BITMAP_FLAG or Paint.DITHER_FLAG)
+    private val photoM = Matrix()
+    private val dimPaint = Paint()
     private var sizeW = -1
     private var sizeH = -1
     /** scroll / touch abhi hua: background thoda ruk kar (scroll ko poora GPU mile) */
@@ -61,6 +66,18 @@ class AuroraView @JvmOverloads constructor(context: Context, attrs: AttributeSet
         val look = com.dk.assistant.ui.NeonTheme.look
         sky.shader = LinearGradient(0f, 0f, 0f, h, com.dk.assistant.ui.NeonTheme.bg(look),   // v4: नेवी → मिडनाइट → गहरा बैंगनी
             floatArrayOf(0f, 0.55f, 1f), Shader.TileMode.CLAMP)
+        photo = com.dk.assistant.ui.ThemePacks.background(context, look.pack, width)
+        photo?.let { b ->
+            val sc = maxOf(w / b.width, h / b.height)
+            photoM.setScale(sc, sc); photoM.postTranslate((w - b.width * sc) / 2f, (h - b.height * sc) / 2f)
+            // ऊपर-नीचे थोड़ा ज़्यादा गहरा (शीर्षक और नीचे की पट्टी साफ़), बीच में चित्र दिखे
+            val d = look.pack.dim
+            val amoled = look.theme == com.dk.assistant.ui.NeonTheme.THEME_AMOLED
+            val top = ((if (amoled) d + 0.35f else d + 0.12f).coerceAtMost(0.92f) * 255).toInt()
+            val mid = ((if (amoled) d + 0.30f else d).coerceAtMost(0.9f) * 255).toInt()
+            dimPaint.shader = LinearGradient(0f, 0f, 0f, h, intArrayOf(top shl 24, mid shl 24, top shl 24),
+                floatArrayOf(0f, 0.5f, 1f), Shader.TileMode.CLAMP)
+        }
         val cols = com.dk.assistant.ui.NeonTheme.auroraColors(look)
         // tirchhi roshni ki patti (kaanch par padti dhoop jaisi)
         sheen.shader = LinearGradient(0f, h * 0.05f, w, h * 0.45f,
@@ -70,7 +87,7 @@ class AuroraView @JvmOverloads constructor(context: Context, attrs: AttributeSet
             val r = w * b[2]; blobR[i] = r
             // (0,0) par ek baar; har frame sirf Matrix se khiskao (naya shader nahi)
             // blur ki jagah: gaussian jaisa naram dhalaan (beech ka nukeela hissa nahi dikhta)
-            val a = com.dk.assistant.ui.NeonTheme.auroraAlpha(look, b[4].toInt()); val rgb = col and 0xFFFFFF
+            val a = com.dk.assistant.ui.NeonTheme.auroraAlpha(look, (if (photo != null) b[4] * 0.55f else b[4]).toInt()); val rgb = col and 0xFFFFFF
             blobPaint[i].shader = RadialGradient(0f, 0f, r,
                 intArrayOf((a shl 24) or rgb, ((a * 0.72f).toInt() shl 24) or rgb, ((a * 0.28f).toInt() shl 24) or rgb, rgb),
                 floatArrayOf(0f, 0.32f, 0.68f, 1f), Shader.TileMode.CLAMP)
@@ -85,6 +102,7 @@ class AuroraView @JvmOverloads constructor(context: Context, attrs: AttributeSet
         // कम एनिमेशन (Settings या फ़ोन में एनिमेशन बंद): रोशनी अपनी जगह स्थिर
         val still = com.dk.assistant.ui.NeonTheme.reducedMotion()
         c.drawRect(0f, 0f, w, h, sky)
+        photo?.let { c.drawBitmap(it, photoM, photoPaint); c.drawRect(0f, 0f, w, h, dimPaint) }
         val now = SystemClock.uptimeMillis()
         val t = if (still) 0f else now / 1000f
         blobs.forEachIndexed { i, b ->

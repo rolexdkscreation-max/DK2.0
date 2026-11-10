@@ -1,0 +1,20 @@
+{
+  "id": "cyber_neon",
+  "name": "Cyber Neon City",
+  "desc": "मैजेंटा नियॉन रात का शहर",
+  "bg": [
+    "#0A0418",
+    "#14052A",
+    "#05020E"
+  ],
+  "glassTop": "#2A0C3A",
+  "glassBottom": "#12061F",
+  "accent": "#FF3EA5",
+  "partner": "#22D3EE",
+  "titleA": "#FF7AC8",
+  "titleB": "#22D3EE",
+  "orbA": "#FF3EA5",
+  "orbB": "#22D3EE",
+  "dim": 0.42,
+  "version": 1
+}

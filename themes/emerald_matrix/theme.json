@@ -1,0 +1,20 @@
+{
+  "id": "emerald_matrix",
+  "name": "Emerald Matrix",
+  "desc": "हरा कोड-रेन हैकर लुक",
+  "bg": [
+    "#020D08",
+    "#04170F",
+    "#010604"
+  ],
+  "glassTop": "#0A2A1C",
+  "glassBottom": "#05140D",
+  "accent": "#22E58B",
+  "partner": "#14B8A6",
+  "titleA": "#86EFAC",
+  "titleB": "#22E58B",
+  "orbA": "#22E58B",
+  "orbB": "#14B8A6",
+  "dim": 0.45,
+  "version": 1
+}

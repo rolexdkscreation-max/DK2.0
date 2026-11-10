@@ -1,0 +1,32 @@
+{
+  "themes": [
+    {
+      "id": "cyber_neon",
+      "name": "Cyber Neon City",
+      "desc": "मैजेंटा नियॉन रात का शहर",
+      "accent": "#FF3EA5",
+      "version": 1
+    },
+    {
+      "id": "galaxy_violet",
+      "name": "Galaxy Violet",
+      "desc": "बैंगनी नेबुला और तारे",
+      "accent": "#A855F7",
+      "version": 1
+    },
+    {
+      "id": "emerald_matrix",
+      "name": "Emerald Matrix",
+      "desc": "हरा कोड-रेन हैकर लुक",
+      "accent": "#22E58B",
+      "version": 1
+    },
+    {
+      "id": "solar_gold",
+      "name": "Solar Gold",
+      "desc": "काला-सुनहरा प्रीमियम",
+      "accent": "#F5B83D",
+      "version": 1
+    }
+  ]
+}

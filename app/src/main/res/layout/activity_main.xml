@@ -5,6 +5,11 @@
     android:layout_height="match_parent"
     android:background="@color/bg_space_dark">
 
+    <!-- नवंबर 2026 (मालिक, संदर्भ चित्र): पूरी थीम की पृष्ठभूमि (चित्र + धीमी रोशनी) - ui/ThemePacks -->
+    <com.dk.assistant.AuroraView
+        android:layout_width="match_parent"
+        android:layout_height="match_parent" />
+
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="match_parent"
@@ -14,99 +19,103 @@
         android:paddingEnd="20dp"
         android:paddingBottom="16dp">
 
-        <!-- Top App Bar: Frosted container -->
+        <!-- Top App Bar (संदर्भ चित्र): काँच की पट्टी - ≡ | नाम (बीच में) | बटन -->
         <LinearLayout
             android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:background="@drawable/bg_glass_card"
+            android:layout_height="58dp"
+            android:background="@drawable/glass_card"
             android:gravity="center_vertical"
             android:orientation="horizontal"
-            android:padding="12dp">
+            android:paddingStart="6dp"
+            android:paddingEnd="6dp">
 
             <ImageButton
                 android:id="@+id/btnMenu"
                 android:layout_width="44dp"
                 android:layout_height="44dp"
-                android:layout_marginEnd="12dp"
-                android:background="@drawable/glass_circle"
+                android:background="@android:color/transparent"
                 android:contentDescription="मेनू खोलें"
                 android:padding="10dp"
                 android:scaleType="fitCenter"
                 android:src="@drawable/ic_menu"
                 app:tint="@color/text_primary" />
 
-            <LinearLayout
+            <TextView
+                android:id="@+id/txtName"
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
-                android:orientation="vertical">
-
-                <TextView
-                    android:id="@+id/txtHello"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="नमस्ते"
-                    android:textColor="@color/text_secondary"
-                    android:textSize="13sp" />
-
-                <TextView
-                    android:id="@+id/txtName"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:letterSpacing="0.08"
-                    android:text="DK Voice Assistant"
-                    android:textColor="@color/text_primary"
-                    android:textSize="18sp"
-                    android:textStyle="bold" />
-            </LinearLayout>
+                android:ellipsize="end"
+                android:gravity="center"
+                android:letterSpacing="0.06"
+                android:maxLines="1"
+                android:text="DK Voice Assistant"
+                android:textColor="@color/text_primary"
+                android:textSize="17sp"
+                android:textStyle="bold" />
 
             <ImageButton
                 android:id="@+id/btnHomeCam"
-                android:layout_width="40dp"
-                android:layout_height="40dp"
-                android:layout_marginEnd="6dp"
-                android:background="@drawable/glass_circle"
+                android:layout_width="36dp"
+                android:layout_height="44dp"
+                android:background="@android:color/transparent"
                 android:contentDescription="कैमरा से दिखाएँ"
-                android:padding="10dp"
+                android:padding="8dp"
                 android:scaleType="fitCenter"
                 android:src="@drawable/ic_camera"
                 app:tint="@color/text_primary" />
 
             <ImageButton
                 android:id="@+id/btnHomeShare"
-                android:layout_width="40dp"
-                android:layout_height="40dp"
-                android:layout_marginEnd="6dp"
-                android:background="@drawable/glass_circle"
+                android:layout_width="36dp"
+                android:layout_height="44dp"
+                android:background="@android:color/transparent"
                 android:contentDescription="स्क्रीन शेयर"
-                android:padding="10dp"
+                android:padding="8dp"
                 android:scaleType="fitCenter"
                 android:src="@drawable/ic_screen_share"
                 app:tint="@color/text_primary" />
 
             <ImageButton
                 android:id="@+id/btnMute"
-                android:layout_width="40dp"
-                android:layout_height="40dp"
-                android:layout_marginEnd="6dp"
-                android:background="@drawable/glass_circle"
+                android:layout_width="36dp"
+                android:layout_height="44dp"
+                android:background="@android:color/transparent"
                 android:contentDescription="म्यूट करें"
-                android:padding="10dp"
+                android:padding="8dp"
                 android:scaleType="fitCenter"
                 android:src="@drawable/ic_mic"
                 app:tint="@color/text_primary" />
 
             <ImageButton
                 android:id="@+id/btnSettings"
-                android:layout_width="44dp"
-                android:layout_height="44dp"
+                android:layout_width="40dp"
+                android:layout_height="40dp"
+                android:layout_marginStart="2dp"
                 android:background="@drawable/glass_circle"
                 android:contentDescription="सेटिंग्स"
-                android:padding="10dp"
+                android:padding="9dp"
                 android:scaleType="fitCenter"
                 android:src="@drawable/ic_settings"
                 app:tint="@color/text_primary" />
         </LinearLayout>
+
+        <!-- बड़ा अभिवादन (संदर्भ चित्र: "नमस्ते सर 😊") - समय के हिसाब से, MainActivity भरता है -->
+        <TextView
+            android:id="@+id/txtHello"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="14dp"
+            android:paddingStart="6dp"
+            android:paddingEnd="6dp"
+            android:maxLines="2"
+            android:ellipsize="end"
+            android:shadowColor="#AA22D3EE"
+            android:shadowRadius="12"
+            android:text="नमस्ते"
+            android:textColor="@color/text_primary"
+            android:textSize="24sp"
+            android:textStyle="bold" />
 
         <LinearLayout
             android:id="@+id/alertRow"
@@ -171,24 +180,34 @@
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:layout_gravity="bottom|center_horizontal"
-                android:layout_marginBottom="8dp"
-                android:background="@drawable/bg_glass_card"
+                android:layout_marginBottom="4dp"
                 android:paddingStart="18dp"
-                android:paddingTop="8dp"
+                android:paddingTop="6dp"
                 android:paddingEnd="18dp"
-                android:paddingBottom="8dp"
+                android:paddingBottom="6dp"
+                android:letterSpacing="0.04"
+                android:shadowColor="#CC22D3EE"
+                android:shadowRadius="14"
                 android:text="ओर्ब पर टैप करके बोलिए"
                 android:textColor="@color/neon_electric_cyan"
                 android:textSize="14sp"
                 android:textStyle="bold" />
         </FrameLayout>
 
+        <!-- Gradient waveform (cyan → violet): DKState की असली हालत/माइक से चलती है (HoloWaveView) -->
+        <com.dk.assistant.HoloWaveView
+            android:id="@+id/homeWave"
+            android:layout_width="match_parent"
+            android:layout_height="36dp"
+            android:layout_marginStart="24dp"
+            android:layout_marginEnd="24dp" />
+
         <!-- Recent Interaction Box: DK की आख़िरी बात (MainActivity भरता है; ओर्ब छोटा = यह डिब्बा बड़ा) -->
         <LinearLayout
             android:id="@+id/dkBox"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:background="@drawable/bg_glass_card"
+            android:background="@drawable/glass_card"
             android:orientation="vertical"
             android:padding="12dp"
             android:layout_marginTop="8dp"
@@ -204,19 +223,39 @@
                 android:textSize="13sp" />
         </LinearLayout>
 
-        <!-- Bottom Control Deck (bg_glow_dock): लिखकर बात = चैट, + = मेनू, माइक = लाइव आवाज़ -->
+        <!-- नीचे का डॉक (संदर्भ चित्र): कीबोर्ड पिल | + | लिखने की जगह | चमकता नियॉन माइक (छल्लों के साथ)
+             कीबोर्ड / लिखने की जगह = चैट, + = मेनू, माइक = लाइव आवाज़ (पहले जैसे ही काम) -->
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:background="@drawable/bg_glow_dock"
+            android:background="@drawable/glass_composer"
             android:gravity="center_vertical"
             android:orientation="horizontal"
-            android:padding="8dp">
+            android:paddingStart="8dp"
+            android:paddingTop="4dp"
+            android:paddingEnd="4dp"
+            android:paddingBottom="4dp">
+
+            <TextView
+                android:id="@+id/btnDockKeys"
+                android:layout_width="wrap_content"
+                android:layout_height="40dp"
+                android:background="@drawable/glass_pill"
+                android:contentDescription="कीबोर्ड"
+                android:gravity="center"
+                android:paddingStart="12dp"
+                android:paddingEnd="12dp"
+                android:singleLine="true"
+                android:text="कीबोर्ड"
+                android:textColor="@color/text_primary"
+                android:textSize="13sp"
+                android:textStyle="bold" />
 
             <ImageButton
                 android:id="@+id/btnDockTools"
-                android:layout_width="44dp"
-                android:layout_height="44dp"
+                android:layout_width="40dp"
+                android:layout_height="40dp"
+                android:layout_marginStart="6dp"
                 android:background="@drawable/glass_circle"
                 android:contentDescription="टूल"
                 android:padding="10dp"
@@ -228,27 +267,22 @@
                 android:id="@+id/btnDockType"
                 android:layout_width="0dp"
                 android:layout_height="44dp"
-                android:layout_marginStart="8dp"
+                android:layout_marginStart="6dp"
                 android:layout_weight="1"
-                android:background="@drawable/bg_glass_card"
+                android:background="@android:color/transparent"
                 android:gravity="center_vertical"
-                android:paddingStart="14dp"
-                android:paddingEnd="14dp"
+                android:paddingStart="8dp"
+                android:paddingEnd="8dp"
                 android:singleLine="true"
-                android:text="लिखकर बात"
+                android:text="लिखकर पूछें…"
                 android:textColor="@color/text_secondary"
                 android:textSize="14sp" />
 
-            <com.google.android.material.floatingactionbutton.FloatingActionButton
+            <com.dk.assistant.NeonMicView
                 android:id="@+id/btnDockMic"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_marginStart="8dp"
-                android:contentDescription="बोलने के लिए टैप करें"
-                app:backgroundTint="@color/neon_electric_cyan"
-                app:fabSize="mini"
-                app:srcCompat="@drawable/ic_mic"
-                app:tint="@color/bg_space_dark" />
+                android:layout_width="64dp"
+                android:layout_height="64dp"
+                android:contentDescription="बोलने के लिए टैप करें" />
 
         </LinearLayout>
 
