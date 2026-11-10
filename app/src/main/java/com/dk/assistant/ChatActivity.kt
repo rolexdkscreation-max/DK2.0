@@ -94,13 +94,13 @@ class ChatActivity : AppCompatActivity() {
                 result.data?.data?.let { uri ->
                     val prep = MediaPrep.prepare(this, uri, 1)
                     if (prep != null) {
-                        val label = if (prep.media.isImage) "यह इमेज देखिए" else "यह फाइल देखिए"
-                        sendText("$label: ${prep.media.name}")
+                        val label = if (prep.media.kind == CoderMedia.IMAGE) "यह इमेज देखिए" else "यह फाइल देखिए"
+                        sendText("$label: ${prep.media.label}")
                         val svc = DKAccessibilityService.instance
                         if (svc != null) {
-                            svc.agent.currentMedia = prep.media
+                            svc.agent.media = prep.media
                         } else {
-                            localBrain?.let { it.currentMedia = prep.media }
+                            localBrain?.media = prep.media
                         }
                     }
                 }
