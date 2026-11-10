@@ -1032,6 +1032,8 @@ class SevenTeam(
         staged.forEach { (p, c) -> if (c != null) Syntax.check(p, c)?.let { stat.add("$p: $it") } }
         val orig = staged.keys.associateWith { files.original(it) }
         stat.addAll(SafePr.testGuard(staged, orig, SafePr.removesOldFeature(task)))
+        stat.addAll(uiTextCheck(staged))
+        stat.addAll(prAudit(staged))
         if (stat.isNotEmpty()) return TeamTest(false, "STATIC CHECK FAILED:\n" + stat.joinToString("\n"))
         if (staged.isEmpty()) return TeamTest(false, "NOTHING CHANGED: no file was changed for the task")
         val g = git
@@ -1182,10 +1184,44 @@ class SevenTeam(
         return SevenSymbols.signatures(s.uses) { m[it] }
     }
 
+    /**
+     * नवंबर 2026 (PR #252): layout या ui_en.tsv बदला हो तो UiTextTest वाली जाँच push से पहले यहीं (बिना CI, सेकंडों में).
+     * पहले हर गायब शब्द के लिए ~10 मिनट का CI राउंड लगता था और हर राउंड में बस एक शब्द पता चलता था.
+     * जिस रिपो में assets/ui_en.tsv नहीं, वहाँ कुछ नहीं.
+     */
+    private suspend fun uiTextCheck(staged: Map<String, String?>): List<String> {
+        val touched = staged.keys.any { (it.contains("/res/layout/") && it.endsWith(".xml")) || it.endsWith("assets/ui_en.tsv") }
+        if (!touched) return emptyList()
+        return try {
+            val list = files.list()
+            val tsvPath = list.firstOrNull { it.endsWith("src/main/assets/ui_en.tsv") } ?: return emptyList()
+            val tsv = files.read(tsvPath) ?: return emptyList()
+            val layouts = LinkedHashMap<String, String>()
+            for (p in list) if (p.contains("/main/res/layout/") && p.endsWith(".xml")) files.read(p)?.let { layouts[p] = it }
+            val miss = UiText.missing(layouts, tsv)
+            if (miss.isEmpty()) emptyList()
+            else listOf("$tsvPath: ${miss.size} layout text का English नहीं (UiTextTest fail होगा). हर एक के लिए नई लाइन \"हिंदी<TAB>English\" जोड़ें " +
+                "(पहले से मौजूद शब्द दोबारा न जोड़ें, layout का text न बदलें):\n" + miss.take(40).joinToString("\n"))
+        } catch (_: Exception) { emptyList() }
+    }
+
+    /**
+     * नवंबर 2026 (PR #252): पूरे बदलाव की पक्की जाँच (PrAudit) - दोहराए शब्द, गायब किए पुराने बटन, बेजान नए बटन,
+     * बेकार layout/raw/drawable/dependency. पहले reviewer हर step अलग देखता था, ये पूरे PR को main के मुकाबले देखता है.
+     */
+    private suspend fun prAudit(staged: Map<String, String?>): List<String> = try {
+        val base = files.all()
+        val all = base?.let { HashMap(it).apply { staged.forEach { (p, c) -> if (c == null) remove(p) else put(p, c) } } }
+        val low = task.lowercase()
+        val hide = SafePr.removesOldFeature(task) || listOf("छिपा", "छुपा", "hide", "gone", "chhupa", "chupa").any { low.contains(it) }
+        val orig = HashMap<String, String?>(); for (p in staged.keys) orig[p] = files.original(p)
+        PrAudit.audit(staged, { p -> orig[p] }, all, hide)
+    } catch (_: Exception) { emptyList() }
+
     /** log से असली एरर लाइनें (Kotlin "e: file:line", error:, FAILED, Exception) */
     private fun errorLines(log: String): String = log.lines().map { it.trim() }.filter { l ->
         l.startsWith("e: ") || l.contains("error:", true) || l.contains("Unresolved reference") || l.contains("FAILED") ||
-            l.contains("AssertionError") || l.contains("Exception:") || l.startsWith("STATIC CHECK") || l.startsWith("DRY-RUN")
+            l.contains("AssertionError") || l.contains("Exception:") || l.startsWith("STATIC CHECK") || l.startsWith("DRY-RUN") || l.startsWith("AUDIT ")
     }.distinct().take(8).joinToString("\n") { it.take(240) }
 
     // ------------------------------------------------------------------ मदद

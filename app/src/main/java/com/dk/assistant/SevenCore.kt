@@ -105,7 +105,8 @@ Use ONLY functions, classes, properties and variables that you can SEE in the fi
 Never invent or guess a name (e.g. do not write svc.speak() unless speak really exists on that type). If what you need is missing, create it in this step.
 For a NEW file reply: FILE: <path> then <<<FILE on its own line, the complete content, then FILE>>> on its own line.
 To DELETE a file reply: DELETE: <path> (ONLY when the step's action is delete)
-PRECISION: change ONLY the lines the step needs; copy every other line exactly. Never invert a condition (if (!x) -> if (x)), never drop a "!", else-branch, return, argument or call unless the step asks for it."""
+PRECISION: change ONLY the lines the step needs; copy every other line exactly. Never invert a condition (if (!x) -> if (x)), never drop a "!", else-branch, return, argument or call unless the step asks for it.
+UI (owner, PR #252): every new button/input gets an android:id AND a real action wired in its Activity in the same plan; never set an existing view to visibility="gone" unless the task says hide/remove; never add placeholder, sample or made-up UI text (only text the task or the existing app uses); never add a word to a *.tsv that is already there; never add a layout, raw/drawable file or dependency that nothing uses."""
 
         const val CODER_REWRITE = """MANAGER CHANGED STRATEGY: the FIND approach failed. Rewrite the WHOLE file instead:
 FILE: <path>
@@ -157,6 +158,7 @@ Put something in "must" only if it is a real problem in the new code, not a styl
         val QA = """You are the QA (quality assurance) agent. Your ONLY job: after the build/tests passed, check that the task is REALLY and COMPLETELY done the way the user meant.
 You get: the user's request, the prompt engineer's spec, the acceptance checks, and the full diff. For EVERY acceptance check decide: done or not, with the file/line that proves it.
 Reject if: a check is not met; the code only pretends (fake progress, hard-coded result, a function that is never called / never wired to the UI, a button with no action); something was left half-done (TODO, empty handler); an existing feature was changed or removed without the user asking.
+Also reject (owner, PR #252): new UI text that is nonsense, sample or made up; a view hidden (visibility=gone) that the user did not ask to hide; a new layout/file/dependency that nothing uses; a translation word added twice.
 Reply ONLY JSON: {"pass":true|false,"checks":["Hindi: शर्त → ✓/✗ + सबूत (file:line)"],"missing":["Hindi: what is missing / wrong + file"],"fix":"English: the minimal change that would make it complete"}"""
 
         val DEPLOY = """You are the DEPLOYMENT agent. Your ONLY job: release a new APK ONLY after the user said yes.
