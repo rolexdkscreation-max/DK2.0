@@ -142,6 +142,7 @@ internal fun SettingsActivity.secCoder() {
         edCoderLight = field(box, "हल्के एजेंटों का मॉडल (मैनेजर, गिट/रिलीज़, टेस्टर)",
             Prefs.coderLightModel(this), GeminiModels.LIGHT + " (सुझाया — जल्दी जवाब, धीमे नेटवर्क पर भी)")
         hint(box, "कोडर, डिबगर, प्लानर और रिव्यूअर AI दिमाग → कोडिंग एजेंट में चुना मॉडल लेते हैं (सुझाया: ${GeminiModels.CODER})। 5 Gemini keys हों तो limit, धीमा नेटवर्क या server गलती पर अगली key अपने-आप।")
+        strongModelBox(box)
         edCoderSteps = field(box, "एक काम में ज़्यादा से ज़्यादा कदम (3–30)", Prefs.coderMaxSteps(this).toString(),
             "5 (सुझाया) — कम कदम = कम API खर्च, limit/413 कम").apply { inputType = InputType.TYPE_CLASS_NUMBER }
         swBuildFix = switch(box, "Push के बाद tests + build जाँचो, fail हो तो पहले जड़ ढूँढकर खुद ठीक करो (पास होने तक)", Prefs.coderBuildFix(this))
@@ -151,3 +152,34 @@ internal fun SettingsActivity.secCoder() {
     }
     apiLinkCard(ApiScopes.CODER, "brain_coder")
 }
+
+/** रेडियो id की शुरुआत (मज़बूत मॉडल की कंपनी) */
+internal const val STRONG_RADIO = 7700
+
+/**
+ * नवंबर 2026 (मालिक): "कोडर, डिबगर और प्लानर के लिए ताक़तवर मॉडल" - अपनी paid key + मॉडल ([StrongAi]).
+ * Key खाली = बंद (सब पहले जैसा). न चले = अपने-आप कोडिंग एजेंट की पुरानी API पर.
+ */
+internal fun SettingsActivity.strongModelBox(box: LinearLayout) {
+    label(box, "💪 मज़बूत मॉडल — कोडर, डिबगर, प्लानर")
+    hint(box, "कोड लिखना, गलती की जड़ ढूँढना और प्लान बनाना सबसे कठिन काम हैं — इनके लिए अपनी paid key डालें। " +
+        "बाकी एजेंट ऊपर वाले मॉडल पर ही रहेंगे (खर्च कम)। Key खाली = बंद।")
+    val cur = StrongAi.choice(Prefs.coderStrongProvider(this))
+    rgStrong = radios(box, StrongAi.CHOICES.map { it.id to it.label }, cur.id, STRONG_RADIO)
+    edStrongKey = field(box, "मज़बूत मॉडल की API key", Prefs.coderStrongKey(this), "sk-ant-… / sk-… / AIza… / sk-or-…", secret = true)
+    row(box, showButton(edStrongKey), button("Key बनाएँ") {
+        val ch = StrongAi.CHOICES.getOrElse(rgStrong.checkedRadioButtonId - STRONG_RADIO) { StrongAi.CHOICES.first() }
+        Setup.openUrl(this, ch.provider.keyUrl)
+    })
+    edStrongModel = field(box, "मॉडल का नाम", Prefs.coderStrongModel(this).ifBlank { cur.model }, cur.model)
+    // कंपनी बदली और मॉडल उसी पुरानी कंपनी का सुझाया था = नई कंपनी का सुझाया भरो
+    rgStrong.setOnCheckedChangeListener { _, id ->
+        val ch = StrongAi.CHOICES.getOrNull(id - STRONG_RADIO) ?: return@setOnCheckedChangeListener
+        val now = edStrongModel.text.toString().trim()
+        if (now.isBlank() || StrongAi.CHOICES.any { it.model == now }) edStrongModel.setText(ch.model)
+        edStrongModel.hint = ch.model
+    }
+    hint(box, "अंदाज़न खर्च (1 काम ≈ 2–6 लाख token): DeepSeek सबसे सस्ता, OpenAI/Gemini बीच में, Claude Opus सबसे मज़बूत पर महँगा। " +
+        "Key या पैसे खत्म, limit या server गलती पर उसी काम में अपने-आप पुरानी (फ्री) API — काम रुकता नहीं।")
+}
+

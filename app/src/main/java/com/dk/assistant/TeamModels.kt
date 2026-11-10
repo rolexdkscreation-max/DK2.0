@@ -14,4 +14,10 @@ object TeamModels {
     val FAST: Set<Seven.Agent> = Seven.Agent.values().filter { it.member in FAST_MEMBERS }.toSet()
     fun fast(a: Seven.Agent): Boolean = a in FAST
     fun modelFor(a: Seven.Agent, fastModel: String, lightModel: String): String = if (fast(a)) fastModel else lightModel
+    /** नवंबर 2026: मज़बूत मॉडल (Settings → कोडिंग एजेंट) हो तो कोडर/डिबगर/प्लानर उस पर, बाकी तेज़/हल्का पहले जैसा */
+    fun <T> pick(a: Seven.Agent, fastAi: T, lightAi: T, strongAi: T?): T = when {
+        strongAi != null && StrongAi.uses(a) -> strongAi
+        fast(a) -> fastAi
+        else -> lightAi
+    }
 }

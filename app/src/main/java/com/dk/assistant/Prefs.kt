@@ -428,6 +428,10 @@ object Prefs {
     /** कोडिंग एजेंट: एक काम में ज़्यादा से ज़्यादा कदम (3-30, default 5) */
     /** v3.6: हल्के एजेंटों (प्रॉम्प्ट इंजीनियर, मैनेजर...) का Gemini मॉडल */
     fun coderLightModel(c: Context): String = sp(c).getString("coder_light_model", null)?.trim()?.removePrefix("models/")?.ifBlank { null } ?: GeminiModels.LIGHT
+    /** नवंबर 2026: कोडर/डिबगर/प्लानर का मज़बूत (paid) मॉडल - [StrongAi]. key खाली = बंद */
+    fun coderStrongProvider(c: Context) = sp(c).getString(StrongAi.PREF_PROVIDER, "anthropic") ?: "anthropic"
+    fun coderStrongKey(c: Context) = (sp(c).getString(StrongAi.PREF_KEY, "") ?: "").trim()
+    fun coderStrongModel(c: Context) = (sp(c).getString(StrongAi.PREF_MODEL, "") ?: "").trim()
     fun coderMaxSteps(c: Context) = (sp(c).getString("coder_max_steps", null)?.trim()?.toIntOrNull() ?: CodingAgent.DEFAULT_STEPS).coerceIn(3, 30)
     fun coderBuildFix(c: Context) = sp(c).getBoolean("coder_buildfix", true)
     /** सुरक्षित PR मोड (default चालू): main पर सीधे push नहीं - नई feature branch → PR → tests/build → आप review करके Merge */

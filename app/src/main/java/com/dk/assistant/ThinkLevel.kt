@@ -92,7 +92,7 @@ object ThinkLevel {
     /** कौन-से मॉडल "reasoning_effort" (low/medium/high) लेते हैं */
     fun supportsEffort(model: String): Boolean {
         val m = model.lowercase().substringAfterLast('/')
-        return m.contains("gpt-oss") || Regex("^o[1-9]").containsMatchIn(m) || m.startsWith("gpt-5") ||
+        return m.contains("gpt-oss") || Regex("^o[1-9]").containsMatchIn(m) || m.startsWith("gpt-5") || m.startsWith("gpt-6") ||
             m.contains("grok-3-mini") || m.contains("grok-4") || m.contains("magistral") || m.contains("reasoner")
     }
 
