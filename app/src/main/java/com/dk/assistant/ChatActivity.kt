@@ -89,6 +89,32 @@ class ChatActivity : AppCompatActivity() {
         col.addView(composer, LinearLayout.LayoutParams(-1, -2).apply { topMargin = (8 * dp).toInt() })
         inline = DKInlineReply(list, scroll, 0.78f)
 
+        val mediaLauncher = registerForActivityResult(androidx.activity.result.contract.ActivityResultContracts.StartActivityForResult()) { result ->
+            if (result.resultCode == RESULT_OK) {
+                result.data?.data?.let { uri ->
+                    val prep = MediaPrep.prepare(this, uri)
+                    if (prep != null) {
+                        val label = if (prep.isImage) "यह इमेज देखिए" else "यह फाइल देखिए"
+                        sendText("$label: ${prep.name}")
+                        val svc = DKAccessibilityService.instance
+                        if (svc != null) {
+                            svc.agent.currentMedia = prep
+                        } else {
+                            localBrain?.let { it.currentMedia = prep }
+                        }
+                    }
+                }
+            }
+        }
+
+        composer.onPlus = {
+            val intent = android.content.Intent(android.content.Intent.ACTION_GET_CONTENT).apply {
+                type = "*/*"
+                putExtra(android.content.Intent.EXTRA_MIME_TYPES, arrayOf("image/*", "application/pdf", "text/*", "application/msword", "application/vnd.openxmlformats-officedocument.wordprocessingml.document"))
+            }
+            mediaLauncher.launch(android.content.Intent.createChooser(intent, "फाइल या इमेज चुनें"))
+        }
+
         composer.onSend = {
             val t = edt.text.toString().trim()
             if (t.isNotEmpty()) { edt.setText(""); sendText(t) }
