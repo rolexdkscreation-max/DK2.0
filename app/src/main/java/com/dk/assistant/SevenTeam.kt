@@ -92,6 +92,8 @@ class SevenTeam(
     fun shownAs(a: Agent): Seven.Member = if (rootByPlanner && a == Agent.DEBUGGER) Seven.Member.PLANNER else a.member
     /** हर राउंड की जड़ (रुकना पड़े तो user को "क्या-क्या आज़माया") */
     private val tried = mutableListOf<String>()
+    /** CI (Kotlin compiler) ने जो नाम "Unresolved reference" बताए + वे किस repo-class पर थे - अगले fix में वही/नया गढ़ा नाम पक्का रुके */
+    private var ciProven = SevenSymbols.Proven()
     /**
      * report = पूरी तकनीकी रिपोर्ट (डिबग लॉग / PR के लिए).
      * short = यूज़र को दिखने वाली छोटी रिपोर्ट: हुआ/नहीं, API चली/नहीं, वजह, हल (ShortReport). खाली = report ही दिखाओ.
@@ -566,6 +568,7 @@ class SevenTeam(
                 FixLoop.Next.FIX_AGAIN -> {}
             }
             failLogs.add(t.log)
+            learnFromCi(t.log)
             // नवंबर 2026: "वही गलती" = हूबहू वही, या वही जगह (फ़ाइल/test) - शब्द चाहे अलग हों (PR #252: ui_en.tsv 5 बार)
             val exact = sigs.size >= 2 && sigs[sigs.size - 1] == sigs[sigs.size - 2]
             val repeat = exact || FixLoop.sameSpot(failLogs)
@@ -1226,8 +1229,25 @@ class SevenTeam(
 
     private suspend fun names(path: String, before: String?, after: String): List<SevenSymbols.Miss> = try {
         val ws = HashMap(workspace()); ws[path] = after
-        SevenSymbols.check(path, before, after, ws, files.whole)
+        SevenSymbols.check(path, before, after, ws, files.whole, ciProven)
     } catch (e: Exception) { emptyList() }
+
+    /**
+     * नवंबर 2026 (feature/dk-user-correction-follow-this-1110-1139, 4 CI राउंड): compiler का "Unresolved reference: X" सबूत याद रखो.
+     * उस समय की बदली फ़ाइलों में X किस repo-class पर बुलाया गया था -> उस class पर अगला अनजाना नाम भी पक्का रुकेगा
+     * (पहले AI रिव्यूअर "Android parent class में होगा" मानकर पास कर देता था).
+     */
+    private suspend fun learnFromCi(log: String) {
+        try {
+            val staged = files.staged().filterValues { it != null }.mapValues { it.value!! }
+            if (staged.isEmpty()) return
+            val p = SevenSymbols.proven(log, staged, workspace())
+            if (p.isEmpty) return
+            ciProven = ciProven.plus(p)
+            ev(Agent.REVIEWER, "CI ने ये नाम गढ़े हुए पकड़े: ${p.names.take(8).joinToString()}" +
+                (if (p.types.isNotEmpty()) " — अब ${p.types.joinToString()} पर कोई भी अनजाना नाम push से पहले ही रुकेगा" else ""))
+        } catch (_: Exception) {}
+    }
 
     private suspend fun readMap(paths: Collection<String>): Map<String, String?> {
         val m = HashMap<String, String?>()
