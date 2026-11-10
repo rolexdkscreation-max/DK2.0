@@ -51,7 +51,7 @@ internal fun SettingsActivity.secPhoneLock() {
         hint(box, "ध्यान दें: PIN फ़ोन से बाहर कहीं नहीं जाता " +
             "(न इंटरनेट, न AI)। फ़ोन का PIN बदलें तो यहाँ भी नया सेव करें। लगातार ${PhoneLockStore.MAX_FAILS} बार न खुले तो DK अपने-आप रुक जाता है।")
         swUnlock.setOnCheckedChangeListener { _, on ->
-            txtSaved.text = "बदलाव सेव नहीं हुए — सेव दबाएँ"
+            txtSaved?.text = "बदलाव सेव नहीं हुए — सेव दबाएँ"
             if (on && !PhoneLockStore.hasSecret(this)) askPhoneSecret { ok -> refresh(); if (!ok) swUnlock.isChecked = false else plSave?.invoke() }
         }
     }
