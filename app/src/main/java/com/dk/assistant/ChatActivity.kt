@@ -95,7 +95,7 @@ class ChatActivity : AppCompatActivity() {
                     val bytes = contentResolver.openInputStream(uri)?.use { it.readBytes() }
                     if (bytes != null) {
                         val media = CoderMedia(bytes, "image/jpeg", "photo.jpg")
-                        composer.setMedia(media)
+                        composer.attachMedia(media)
                     }
                 } catch (_: Exception) {}
             }
@@ -108,28 +108,14 @@ class ChatActivity : AppCompatActivity() {
                     val name = uri.lastPathSegment ?: "document.file"
                     if (bytes != null) {
                         val media = CoderMedia(bytes, "application/octet-stream", name)
-                        composer.setMedia(media)
+                        composer.attachMedia(media)
                     }
                 } catch (_: Exception) {}
             }
         }
 
         composer.onPlusClick = {
-            val popup = android.widget.PopupMenu(this, composer.iconBtn)
-            popup.menu.add("फोटो चुनें (Gallery)")
-            popup.menu.add("डॉक्यूमेंट चुनें (File)")
-            popup.setOnMenuItemClickListener { item ->
-                if (item.title?.toString()?.contains("फोटो") == true) {
-                    pickImage.launch("image/*")
-                } else {
-                    pickDoc.launch("*/*")
-                }
-                true
-            }
-            popup.show()
-        }
-        composer.iconBtn.setOnClickListener {
-            val popup = android.widget.PopupMenu(this, composer.iconBtn)
+            val popup = android.widget.PopupMenu(this, composer.plusBtn)
             popup.menu.add("फोटो चुनें (Gallery)")
             popup.menu.add("डॉक्यूमेंट चुनें (File)")
             popup.setOnMenuItemClickListener { item ->
@@ -144,15 +130,15 @@ class ChatActivity : AppCompatActivity() {
         }
 
         composer.onRemoveMedia = {
-            composer.setMedia(null)
+            composer.clearMedia()
         }
 
         composer.onSend = {
             val t = edt.text.toString().trim()
-            val media = composer.attachedMedia
+            val media = composer.media
             if (t.isNotEmpty() || media != null) {
                 edt.setText("")
-                composer.setMedia(null)
+                composer.clearMedia()
                 sendTextWithMedia(t, media)
             }
             keepTyping()
