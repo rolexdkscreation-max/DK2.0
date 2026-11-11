@@ -114,15 +114,31 @@ class CoderAi(val provider: Provider, private val key: String, val model: String
         // नवंबर 2026: जो मॉडल हाल में "मौजूद नहीं" (404) मिला, वह आख़िर में (हर बार उसी पर समय न जाए)
         val ordered = orderChain(chain.map { it.selfLabel }, sticky()).map { l -> chain.first { it.selfLabel == l } }
             .partition { !Cooldown.blocked(goneKey(it)) }.let { (ok, gone) -> ok + gone }
+        // नवंबर 2026 (मालिक): कई Gemini keys (वही मॉडल-क्रम) = मॉडल-पहले: 3.8 Flash सारी keys पर, फिर अगला मॉडल सारी keys पर
+        // ([GeminiModels.modelFirst]). अकेली key / दूसरी कंपनी = पहले जैसा (m = null: उसी key पर पूरा क्रम).
+        val now = System.currentTimeMillis()
+        val groups = chain.filter { it.provider.isGemini }.groupBy { it.model to it.chain }.values.filter { it.size > 1 }
+        val steps = mutableListOf<Pair<CoderAi, String?>>()
+        for (ai in ordered) {
+            val g = groups.firstOrNull { ai in it }
+            if (g == null) steps.add(ai to null)
+            else if (steps.none { it.first in g }) steps.addAll(GeminiModels.modelFirst(g, { it.geminiOrder() }) { k, m -> k.coolUntil(m) > now })
+        }
+        val dead = mutableSetOf<CoderAi>()
         val errs = mutableListOf<Pair<CoderAi, java.io.IOException>>()
         var n429 = 0
-        for (ai in ordered) {
-            // 429 के बाद: थोड़ा रुककर (2s, 4s, 8s) अगला मॉडल/API - एक साथ सब पर धावा नहीं
-            if (n429 > 0 && (errs.lastOrNull()?.second as? AiException)?.code == 429) Thread.sleep(CoderContext.backoffMs(n429))
+        for ((i, step) in steps.withIndex()) {
+            val (ai, only) = step
+            if (ai in dead) continue
+            // 429 के बाद: थोड़ा रुककर (2s, 4s, 8s) अगला मॉडल/API - एक साथ सब पर धावा नहीं (Gemini keys के बीच 1.5s, जैसे एक key के मॉडलों में)
+            if (n429 > 0 && (errs.lastOrNull()?.second as? AiException)?.code == 429) Thread.sleep(if (only != null) 1500L else CoderContext.backoffMs(n429))
             try {
-                val r = ai.chatOne(system, msgs, media)
+                val r = ai.chatOne(system, msgs, media, only)
                 val prev = sticky() ?: selfLabel
-                if (ai.selfLabel != prev) {
+                if (only != null && only != ai.model && errs.isNotEmpty()) {
+                    DKLog.d("Coder: सारी Gemini keys पर ऊपर वाले मॉडल की limit खत्म -> $only (${ai.selfLabel})")
+                    sink("सारी Gemini keys पर ${ai.model} की limit खत्म (${reason(errs.last().second)})", "अपने आप $only पर — यह भी पहले सारी keys पर, उसके बाद ही इससे कम वाला मॉडल")
+                } else if (ai.selfLabel != prev) {
                     val why = errs.lastOrNull()?.let { (who, e) -> "${who.selfLabel}: ${reason(e)}" } ?: "$prev अब नहीं चल रहा था"
                     DKLog.d("Coder: $why -> ${ai.selfLabel} पर स्विच")
                     sink(why, "अपने आप ${ai.selfLabel} पर स्विच किया, काम बिना रुके जारी रहा")
@@ -133,9 +149,11 @@ class CoderAi(val provider: Provider, private val key: String, val model: String
                 // AiException (429/413/5xx/401...) ya network timeout - agla API
                 errs.add(ai to e)
                 if ((e as? AiException)?.code == 429) n429++
+                // key गलत / इजाज़त नहीं / नेटवर्क = इस key के बाकी मॉडल भी बेकार, इस बार छोड़ो
+                if (only != null && (e as? AiException)?.code !in listOf(404, 429, 500, 503)) dead.add(ai)
                 if ((e as? AiException)?.code == 404 && !ai.provider.isGemini) Cooldown.block(goneKey(ai), GONE_MS)
                 if (chain.size > 1) DKLog.d("Coder: ${ai.selfLabel} -> ${reason(e)}, अगला API")
-                if (ai !== ordered.last()) DKStatus.post(DKStatus.forCode((e as? AiException)?.code ?: -1))
+                if (i != steps.lastIndex) DKStatus.post(DKStatus.forCode((e as? AiException)?.code ?: -1))
             }
         }
         // सब fail. सब की limit (429) खत्म = लगातार कोशिश नहीं - रुककर user को बताओ
@@ -159,7 +177,7 @@ class CoderAi(val provider: Provider, private val key: String, val model: String
      * एक API पर request. 413 / "बहुत बड़ी" मिले तो वही request दोबारा नहीं - इतिहास छोटा करके (ज़्यादा से ज़्यादा 2 बार)
      * और इस मॉडल की सीमा याद रखो ताकि अगले कदम पहले से छोटे जाएँ.
      */
-    private fun chatOne(system: String, msgs: List<Pair<String, String>>, media: List<CoderMedia> = emptyList()): String {
+    private fun chatOne(system: String, msgs: List<Pair<String, String>>, media: List<CoderMedia> = emptyList(), only: String? = null): String {
         val k = capKey()
         var (budget, maxTok) = sizeCap[k] ?: (CoderContext.budgetFor(provider.isGemini, model) to 16000)
         var shrinks = 0
@@ -169,7 +187,7 @@ class CoderAi(val provider: Provider, private val key: String, val model: String
             val room = (budget - system.length).coerceAtLeast(CoderContext.MIN_BUDGET)
             val send = if (CoderContext.total(msgs) > room) CoderContext.compact(msgs, room) else msgs
             try {
-                return if (provider.isGemini) gemini(system, send, parts) else openAi(system, send, maxTok, parts)
+                return if (provider.isGemini) gemini(system, send, parts, only) else openAi(system, send, maxTok, parts)
             } catch (e: AiException) {
                 // यह मॉडल फ़ोटो/वीडियो नहीं ले सकता -> बिना फ़ोटो (लिखा विवरण साथ जाता है), काम न रुके
                 if (parts.isNotEmpty() && e.code in listOf(400, 413, 415, 422)) {
@@ -188,16 +206,23 @@ class CoderAi(val provider: Provider, private val key: String, val model: String
         }
     }
 
-    private fun gemini(system: String, msgs: List<Pair<String, String>>, parts: List<Pair<String, String>> = emptyList()): String {
+    /** इस key का Gemini मॉडल-क्रम (404 वाले बंद मॉडल हटे) */
+    private fun geminiOrder(): List<String> {
+        val kt = key.takeLast(6)
+        return GeminiModels.orderSkippingGone(model, chain) { Cooldown.blocked(GeminiModels.goneKey(it, kt)) }
+    }
+    /** इस key पर यह मॉडल limit (429) की वजह से कब तक छोड़ा है */
+    private fun coolUntil(m: String): Long = cool["${key.takeLast(6)}|$m"] ?: 0L
+
+    /** only = सिर्फ़ यही मॉडल (मॉडल-पहले क्रम में, [chatChain]); null = पहले जैसा पूरा क्रम */
+    private fun gemini(system: String, msgs: List<Pair<String, String>>, parts: List<Pair<String, String>> = emptyList(), only: String? = null): String {
         // चुना मॉडल -> 3.8 Flash (coding के लिए सबसे अच्छा) -> बाकी नए मॉडल. 2.5 वाले backup नहीं (नए users के लिए बंद)
         // 404 "no longer available" दे चुके मॉडल (phone में याद) दोबारा नहीं - पहले हर कदम पर 2.5-pro का 404
         val kt = key.takeLast(6)
-        val all = GeminiModels.orderSkippingGone(model, chain) {
-            Cooldown.blocked(GeminiModels.goneKey(it, kt))
-        }
+        val all = geminiOrder()
         // jis model ki limit abhi khatm hui thi use thodi der chhodo (har kadam par wahi 429 dobara na khaayein)
         val now = System.currentTimeMillis()
-        val order = all.filter { (cool["${key.takeLast(6)}|$it"] ?: 0L) < now }.ifEmpty { all }
+        val order = if (only != null) listOf(only) else all.filter { (cool["${key.takeLast(6)}|$it"] ?: 0L) < now }.ifEmpty { all }
         val errs = mutableListOf<Pair<String, AiException>>()
         for (m in order) {
             var waited = false
@@ -387,7 +412,7 @@ class CoderAi(val provider: Provider, private val key: String, val model: String
 
         fun forScope(c: Context, scope: String, sink: (String, String) -> Unit, providerId: String): CoderAi? {
             val p = Providers.byId(providerId) ?: return null
-            // कोडिंग एजेंट + Gemini: 5 तक keys (key 1 के सारे मॉडल की limit खत्म -> key 2 के सारे मॉडल -> key 3 -> key 4 -> key 5)
+            // कोडिंग एजेंट + Gemini: 5 तक keys. नवंबर 2026: मॉडल-पहले - 3.8 Flash key 1-5 पर, फिर अगला मॉडल key 1-5 पर ([chatChain])
             val gemKeys = if (p.isGemini && scope == ApiScopes.CODER) Prefs.coderGeminiKeys(c) else emptyList()
             val key = gemKeys.firstOrNull() ?: Prefs.scopeKey(c, scope, p.id)
             var model = Prefs.scopeModel(c, scope, p.id)
