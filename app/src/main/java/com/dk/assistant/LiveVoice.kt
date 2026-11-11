@@ -46,7 +46,9 @@ object LiveVoice {
     data class Step(val next: Extras, val offEntry: String, val what: String)
 
     fun degrade(model: String, cur: Extras, reason: String, code: Int): Step? {
-        val r = reason.lowercase()
+        // नवंबर 2026 (DKI-C7025E): server का नाम (generativelanguage…) "language" नहीं गिना जाए; नेट की गलती = आवाज़/भाषा की नहीं
+        if (LiveRace.isNetError(reason)) return null
+        val r = LiveRace.scrub(reason)
         // मॉडल ही नहीं मिला / API key / कोटा -> यह आवाज़-भाषा की गलती नहीं, पुराना रास्ता
         if (r.contains("not found") || r.contains("api key") || r.contains("quota") || code == 401 || code == 403 || code == 404) return null
         val voiceOk = cur.voice != FALLBACK
@@ -65,6 +67,13 @@ object LiveVoice {
         if (voiceOk) return Step(cur.copy(voice = FALLBACK), "$model|voice:${cur.voice}", "आवाज़ ${cur.voice}")
         return null
     }
+
+    /**
+     * नवंबर 2026 (DKI-C7025E): पुराने बग में नेट टूटने पर "$model|lang" (hi-IN बंद) गलती से save हुआ. एक बार सारे "|lang" हटाओ -
+     * जो मॉडल सच में languageCode नहीं लेता, वह पहली बार जुड़ते ही अपने-आप फिर से जुड़ जाएगा (degrade).
+     */
+    const val LANG_FIX_KEY = "live_lang_fix_dki_c7025e"
+    fun dropLangOff(off: Set<String>): Set<String> = off.filterNot { it.endsWith("|lang") }.toSet()
 
     fun parseOff(s: String?): Set<String> = s.orEmpty().split('\n').map { it.trim() }.filter { it.isNotEmpty() }.toSet()
     fun joinOff(set: Set<String>): String = set.joinToString("\n")
