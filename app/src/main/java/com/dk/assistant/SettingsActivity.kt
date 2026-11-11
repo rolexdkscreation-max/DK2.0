@@ -116,14 +116,8 @@ class SettingsActivity : AppCompatActivity() {
     )
 
     override fun onBackPressed() {
-        val p = parentMap[section]
-        if (p != null && intent.getBooleanExtra("from_search", false)) {
-            startActivity(android.content.Intent(this, SettingsActivity::class.java).putExtra("section", p))
-            finish()
-        } else {
-            save(false)
-            super.onBackPressed()
-        }
+        save(false)
+        super.onBackPressed()
     }
 
     private fun openHit(e: SettingsSearch.E) {
