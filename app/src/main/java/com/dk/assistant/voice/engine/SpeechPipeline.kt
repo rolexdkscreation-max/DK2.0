@@ -83,6 +83,7 @@ class SpeechPipeline(private val ctx: Context, private val hooks: Hooks) {
 
     init {
         player = Thread({ loop() }, "dk-tts-play").apply { isDaemon = true; start() }
+        synchronized(alive) { alive[this] = true }
     }
 
     /** कुछ बन रहा / कतार में / बज रहा है */
@@ -177,7 +178,8 @@ class SpeechPipeline(private val ctx: Context, private val hooks: Hooks) {
     private fun make(s: Seg, chosen: VoiceEngine) {
         val chain = buildList {
             add(chosen)
-            VoiceEngines.fallback()?.let { if (it.id != chosen.id) add(it) }
+            // नवंबर 2026: Piper न चले तो Gemini TTS नहीं - सीधे Live की अपनी आवाज़ (rescue), यानी Piper OFF जैसा
+            VoiceEngines.fallback()?.let { if (it.id != chosen.id && chosen.id != PiperTtsEngine.ID) add(it) }
         }
         var ok = false
         for ((i, e) in chain.withIndex()) {
@@ -282,7 +284,7 @@ class SpeechPipeline(private val ctx: Context, private val hooks: Hooks) {
             }
         }
         if (g != gen) return
-        for (piece in shape.finish(pauseMs(s.text))) write(tr, piece, g, s)
+        for (piece in shape.finish(PiperTtsEngine.gap(ctx, s.engine, pauseMs(s.text)))) write(tr, piece, g, s)
     }
 
     /** इंजन फ़ेल होकर phone पर आया हो तो END तक रुककर पता चलता है */
@@ -357,7 +359,11 @@ class SpeechPipeline(private val ctx: Context, private val hooks: Hooks) {
         /** इंजन के हिसाब से टुकड़ों का नाप (नवंबर 2026: Kokoro हटाया - अब सब इंजन STANDARD; LOCAL फ़ोन में बनने वाली आवाज़ के लिए रखा) */
         /** नवंबर 2026 (मालिक: "बात खत्म होते ही जवाब शुरू"): Gemini TTS = पहला टुकड़ा छोटा (2-6 शब्द, 150 ms रुका तो तुरंत) */
         fun profileFor(engineId: String): TextChunker.Profile =
-            if (engineId == VoiceEngines.GEMINI_TTS) TextChunker.FAST_NET else TextChunker.STANDARD
+            if (engineId == VoiceEngines.GEMINI_TTS) TextChunker.FAST_NET else if (engineId == PiperTtsEngine.ID) PiperTtsEngine.CHUNKS else TextChunker.STANDARD
+
+        /** नवंबर 2026: Piper का स्विच OFF - जो भी pipeline बोल रही हो, उसी पल चुप (कतार भी) */
+        private val alive = java.util.WeakHashMap<SpeechPipeline, Boolean>()
+        fun stopAll() { synchronized(alive) { alive.keys.toList() }.forEach { try { it.stop() } catch (_: Exception) {} } }
 
         /** टुकड़े के बाद ठहराव - हर बार एक-सा (आवाज़ की लय बनी रहे) */
         fun pauseMs(t: String): Int {
