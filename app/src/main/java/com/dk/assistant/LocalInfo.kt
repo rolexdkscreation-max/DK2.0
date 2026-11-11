@@ -123,7 +123,9 @@ object LocalInfo {
             @Suppress("DEPRECATION")
             val a = Geocoder(c, Locale("hi", "IN")).getFromLocation(lat, lon, 1)?.firstOrNull()
             if (a != null) {
-                val ad = NearbyPlaces.Addr(a.thoroughfare ?: "", a.subLocality ?: "", a.locality ?: a.subAdminArea ?: "", a.adminArea ?: "")
+                val ad = NearbyPlaces.Addr(a.thoroughfare ?: "", a.subLocality ?: "", a.locality ?: a.subAdminArea ?: "", a.adminArea ?: "",
+                    house = a.subThoroughfare ?: "", spot = a.featureName?.takeIf { it != a.subThoroughfare && it != a.thoroughfare } ?: "",
+                    full = try { a.getAddressLine(0) ?: "" } catch (_: Exception) { "" })
                 if (ad.area.isNotBlank() || ad.street.isNotBlank()) return@withContext ad
             }
         } catch (_: Exception) {}
@@ -149,12 +151,81 @@ object LocalInfo {
      * null = लोकेशन नहीं मिली (वजह [hasPermission]/[locationOn] से).
      */
     suspend fun where(c: Context): String? = kotlinx.coroutines.coroutineScope {
-        val l = fresh(c, 10_000) ?: return@coroutineScope null
+        // नवंबर 2026 (मालिक: "एग्ज़ैक्ट जहाँ मैं हूँ"): पहली fix अक्सर टावर/WiFi वाली (100-2000 m) - कुछ सेकंड और GPS सुनो
+        val l = fresh(c, 10_000)?.let { sharpen(c, it) } ?: return@coroutineScope null
         val addr = async { address(c, l.latitude, l.longitude) }
         val spots = async { nearby(l.latitude, l.longitude) }
+        val shops = async { shops(l.latitude, l.longitude) }
         val w = async { weather(l.latitude, l.longitude) }
         val ad = addr.await(); val sp = spots.await()
-        DKLog.d("ताज़ा जगह: ${ad.text().ifBlank { "नाम नहीं मिला" }} | आसपास ${sp.size}")
-        NearbyPlaces.toolText(ad, sp, w.await())
+        val acc = if (l.hasAccuracy()) l.accuracy.toInt() else -1
+        DKLog.d("ताज़ा जगह: ${ad.text().ifBlank { "नाम नहीं मिला" }} (±$acc m) | आसपास ${sp.size}")
+        NearbyPlaces.toolText(ad, sp, w.await(), acc, shops.await(), precise(c))
+    }
+
+    /** Android 12+: "Approximate" वाली इजाज़त = सिर्फ़ ~2 km तक सही */
+    fun precise(c: Context) = c.checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED
+
+    /**
+     * नवंबर 2026: [first] काफ़ी सही नहीं (> [NearbyPlaces.GOOD_ACC_M]) = GPS/fused से [waitMs] तक और fix लो, सबसे सही लौटाओ
+     * (हर बार ताज़ा - पुरानी सेव लोकेशन नहीं).
+     */
+    @SuppressLint("MissingPermission")
+    suspend fun sharpen(c: Context, first: Location, waitMs: Long = 7_000): Location {
+        if (first.hasAccuracy() && first.accuracy <= NearbyPlaces.GOOD_ACC_M) return first
+        if (!precise(c)) return first
+        val lm = c.getSystemService(LocationManager::class.java) ?: return first
+        val providers = buildList {
+            add(LocationManager.GPS_PROVIDER)
+            if (Build.VERSION.SDK_INT >= 31) add(LocationManager.FUSED_PROVIDER)
+        }.filter { p -> try { lm.allProviders.contains(p) && lm.isProviderEnabled(p) } catch (_: Exception) { false } }
+        if (providers.isEmpty()) return first
+        var best = first
+        val listeners = mutableListOf<LocationListener>()
+        try {
+            withTimeoutOrNull(waitMs) {
+                suspendCancellableCoroutine<Unit> { cont ->
+                    for (p in providers) {
+                        val ll = LocationListener { l ->
+                            if (NearbyPlaces.better(if (best.hasAccuracy()) best.accuracy else null, if (l.hasAccuracy()) l.accuracy else null)) best = l
+                            if (best.hasAccuracy() && best.accuracy <= NearbyPlaces.GOOD_ACC_M && cont.isActive) cont.resume(Unit)
+                        }
+                        listeners.add(ll)
+                        try { lm.requestLocationUpdates(p, 500L, 0f, ll, Looper.getMainLooper()) } catch (e: Exception) { runCatching { DKLog.d("लोकेशन $p: ${e.message}") } }
+                    }
+                }
+            }
+        } finally { listeners.forEach { try { lm.removeUpdates(it) } catch (_: Exception) {} } }
+        return best
+    }
+
+    /** "बाजू की दुकानें" (~250 m, कोई भी नाम वाली दुकान) */
+    suspend fun shops(lat: Double, lon: Double): List<NearbyPlaces.Spot> = overpass(NearbyPlaces.shopsQuery(lat, lon)) {
+        NearbyPlaces.parseFound(it, lat, lon, listOf("shop=*"), 4)
+    }
+
+    private suspend fun overpass(q: String, parse: (String) -> List<NearbyPlaces.Spot>): List<NearbyPlaces.Spot> = withContext(Dispatchers.IO) {
+        try {
+            val body = okhttp3.FormBody.Builder().add("data", q).build()
+            val slow = http.newBuilder().callTimeout(12, TimeUnit.SECONDS).build()
+            slow.newCall(Request.Builder().url(NearbyPlaces.OVERPASS).header("User-Agent", NearbyPlaces.UA).post(body).build()).execute().use { r ->
+                if (r.isSuccessful) parse(r.body?.string() ?: "") else emptyList()
+            }
+        } catch (e: Exception) { runCatching { DKLog.d("Overpass नहीं चला: ${e.message}") }; emptyList() }
+    }
+
+    /**
+     * नवंबर 2026 (मालिक): "मेरे पास पेट्रोल पंप / ATM / मेडिकल / किराना दुकान कहाँ है" - ताज़ा लोकेशन से 3 km में, सबसे पास वाले पहले.
+     * null = लोकेशन नहीं मिली.
+     */
+    suspend fun find(c: Context, what: String): String? = kotlinx.coroutines.coroutineScope {
+        val l = fresh(c, 10_000)?.let { sharpen(c, it, 4_000) } ?: return@coroutineScope null
+        val tags = NearbyPlaces.findTags(what)
+        val addr = async { address(c, l.latitude, l.longitude) }
+        val found = if (tags.isEmpty()) emptyList() else overpass(NearbyPlaces.findQuery(l.latitude, l.longitude, tags)) {
+            NearbyPlaces.parseFound(it, l.latitude, l.longitude, tags)
+        }
+        DKLog.d("पास में \"${what.take(30)}\": ${found.size} मिले")
+        NearbyPlaces.findText(what.trim(), addr.await(), found, if (l.hasAccuracy()) l.accuracy.toInt() else -1, tags.isNotEmpty())
     }
 }
