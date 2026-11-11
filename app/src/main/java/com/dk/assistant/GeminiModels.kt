@@ -28,6 +28,18 @@ object GeminiModels {
     /** v3.69 तक कोडिंग एजेंट का default flash-lite था (coding के लिए कमज़ोर) - एक बार 3.8 Flash पर */
     fun oldCoderDefault(model: String): Boolean = model.trim().removePrefix("models/").let { it.isBlank() || it == "gemini-3.5-flash-lite" || it == "gemini-3.1-flash-lite" }
 
+    /**
+     * नवंबर 2026 (मालिक): कई Gemini keys = "मॉडल-पहले" क्रम. सबसे अच्छा मॉडल (3.8 Flash) पहले सारी keys पर,
+     * उसकी limit सारी keys पर खत्म हो तभी अगला (कम ताक़त वाला) मॉडल, वह भी सारी keys पर - और ऐसे ही नीचे.
+     * models(k) = key k का मॉडल-क्रम (बंद/404 वाले पहले से हटे); skip(k, m) = यह जोड़ी अभी limit पर (थोड़ी देर).
+     * सब skip हों तो बिना skip (पहले जैसा: कोई न कोई कोशिश ज़रूर).
+     */
+    fun <T> modelFirst(keys: List<T>, models: (T) -> List<String>, skip: (T, String) -> Boolean): List<Pair<T, String>> {
+        val levels = keys.flatMap(models).distinct()
+        val all = levels.flatMap { m -> keys.filter { m in models(it) }.map { it to m } }
+        return all.filterNot { (k, m) -> skip(k, m) }.ifEmpty { all }
+    }
+
     /** keys: खाली हटाओ, एक जैसी (दोहराई) एक बार */
     fun distinctKeys(keys: List<String>): List<String> = keys.map { it.trim() }.filter { it.isNotBlank() }.distinct()
 
