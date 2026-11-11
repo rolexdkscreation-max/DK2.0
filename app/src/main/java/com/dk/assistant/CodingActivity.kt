@@ -69,6 +69,58 @@ object CoderSession {
     fun takeMedia(): List<CoderMedia> = media.map { it.first }.also { media.clear() }
     @Volatile private var appCtx: Context? = null
 
+    // ---- नवंबर 2026 (मालिक): काम चलते समय नई बात - उसी काम की = साथ में, अलग = यह पूरा होने के बाद
+    /** उसी काम में जोड़ी बातें (टीम / एजेंट अगले कदम पर उठाते हैं) */
+    val inbox = FollowUp.Inbox()
+    /** अलग काम - अभी वाला पूरा होते ही क्रम से */
+    val queue = ArrayDeque<String>()
+    /** बीच में भेजी आख़िरी बात कहाँ गई (बटन से पलटने के लिए) */
+    @Volatile var routed: FollowUp.Routed? = null
+    /** अभी चल रहे कोडिंग काम की बात (किसी भी रास्ते से शुरू हुआ) */
+    @Volatile var current: String? = null
+    /** स्क्रीन खुली हो तो कतार का काम उसी के भेजने वाले रास्ते से (सारे नियम वही) */
+    @Volatile var starter: ((String) -> Unit)? = null
+
+    /** काम चलते समय user की नई बात. [canJoin] = यह काम बीच में नई बात ले सकता है (पुरानी 3-एजेंट टीम नहीं) */
+    fun followUp(c: Context, text: String, shown: String = text, canJoin: Boolean = true) {
+        add("u", shown)
+        if (canJoin && FollowUp.route(current, text) == FollowUp.Route.NOW) {
+            routed = FollowUp.Routed(inbox.add(text), text, FollowUp.Route.NOW)
+            add("s", FollowUp.ADDED_NOW)
+        } else {
+            queue.addLast(text)
+            routed = FollowUp.Routed(0, text, FollowUp.Route.NEXT).takeIf { canJoin }
+            add("s", FollowUp.ADDED_NEXT + " (कतार में ${queue.size})")
+        }
+        listener?.invoke()
+    }
+
+    /** बीच में भेजी बात का रास्ता पलटो: साथ में ⇄ बाद में */
+    fun reroute() {
+        val r = routed ?: return
+        if (r.route == FollowUp.Route.NOW) {
+            val t = inbox.take(r.id)
+            if (t == null) { routed = null; add("s", "यह बात काम में पहले ही जुड़ चुकी है — अब अलग नहीं हो सकती।"); return }
+            queue.addLast(t); routed = r.copy(route = FollowUp.Route.NEXT)
+            add("s", "⏭ ठीक है — इसे अलग काम माना, अभी वाला पूरा होते ही होगा।")
+        } else {
+            if (!queue.remove(r.text)) { routed = null; listener?.invoke(); return }
+            routed = FollowUp.Routed(inbox.add(r.text), r.text, FollowUp.Route.NOW)
+            add("s", "🔗 ठीक है — इसे चल रहे काम में जोड़ दिया।")
+        }
+    }
+
+    /** कतार का अगला काम (कोई काम न चल रहा हो और टीम \"हाँ\" का इंतज़ार न कर रही हो) */
+    fun runNext(c: Context) {
+        if (busy || SevenRunner.pending != null) return
+        val t = queue.removeFirstOrNull() ?: return
+        add("s", "▶ कतार का अगला काम शुरू: ${t.lineSequence().first().take(120)}")
+        val s = starter
+        if (s != null) s(t)
+        else if (Prefs.coderSeven(c)) SevenRunner.start(c, t)?.let { add("e", it) }
+        else queue.addFirst(t)          // पुराना एजेंट: स्क्रीन खुलते ही चलेगा
+    }
+
     /**
      * Har kaam isi se chalao. Kaam KHATAM hone ke baad (busy = false) screen dobara banti hai —
      * pehle listener kaam ke andar hi chalta tha (tab busy = true), isliye "Merge करें" card chhupa reh jaata tha.
@@ -78,6 +130,7 @@ object CoderSession {
         // task = कोडिंग का असली काम (live status में दिखे). merge/push जैसे छोटे काम: null
         if (task != null) TaskStatus.start(TaskStatus.CODER, "कोडिंग टीम", "the coding team", task)
         this.task = task
+        if (task != null) current = task
         val from = lines.size
         val j = scope.launch(block = block)
         job = j
@@ -92,7 +145,17 @@ object CoderSession {
                 TaskStatus.end(TaskStatus.CODER, TaskStatus.coderState(last?.role, last?.text, cause is kotlinx.coroutines.CancellationException),
                     last?.text.orEmpty().lines().filter { it.isNotBlank() }.take(4).joinToString(" • "))
             }
-            scope.launch { savePr(appCtx); listener?.invoke() }
+            scope.launch {
+                // बीच में जोड़ी बात उठी नहीं (काम खत्म हो गया) = छूटे नहीं, अगला काम बनकर कतार में सबसे आगे
+                val doing = current
+                inbox.drain().asReversed().forEach { queue.addFirst(FollowUp.leftover(doing, it)) }
+                routed = null; current = null
+                savePr(appCtx); listener?.invoke()
+                if (cause is kotlinx.coroutines.CancellationException) {
+                    if (queue.isNotEmpty()) add("s", "कतार के ${queue.size} काम भी हटा दिए")
+                    queue.clear()
+                } else appCtx?.let { runNext(it) }
+            }
         }
         return j
     }
@@ -150,6 +213,8 @@ class CodingActivity : AppCompatActivity() {
     private lateinit var send: ImageButton
     private lateinit var changes: LinearLayout
     private lateinit var sugBox: LinearLayout
+    /** नवंबर 2026: "आगे क्या करें" के बटन (डिब्बे के ऊपर) */
+    private lateinit var choiceBar: ChoiceBar
     // नवंबर 2026 (मालिक): काम चलते समय ऊपर की हेडर पट्टी में ही "मौजूदा काम" (अलग कार्ड नहीं)
     private lateinit var headTitle: TextView
     private lateinit var headTask: LinearLayout
@@ -260,6 +325,11 @@ class CodingActivity : AppCompatActivity() {
             val p = (12 * dp).toInt(); setPadding(p, p, p, p); visibility = View.GONE
         }
         col.addView(sugBox, LinearLayout.LayoutParams(-1, -2).apply { topMargin = (6 * dp).toInt() })
+        choiceBar = ChoiceBar(this).apply {
+            onPick = { ch -> if (ch.act == FollowUp.Act.REROUTE) CoderSession.reroute() else { edt.setText(ch.text); doSend() }; render() }
+            onEdit = { t -> edt.setText(t); edt.setSelection(edt.text.length); keepTyping() }
+        }
+        col.addView(choiceBar, LinearLayout.LayoutParams(-1, -2).apply { topMargin = (4 * dp).toInt() })
 
         // साझा इनपुट बॉक्स: 📎 फ़ोटो/वीडियो (चुनने के बाद cursor वापस), लिखना, 🎤 बार के अंदर बोलकर लिखना, भेजें/रोकें
         composer = DKComposer(this, "क्या बनाना या ठीक करना है?", maxLines = 5, attach = { openPicker() })
@@ -276,7 +346,10 @@ class CodingActivity : AppCompatActivity() {
         inline = DKInlineReply(list, scroll, 0.82f)
 
         // बटन: काम चलते समय = रोकें; keyboard/माइक का भेजें = हमेशा भेजना (doSend खुद तय करता है)
-        send.setOnClickListener { if (CoderSession.busy) stopJob() else doSend() }
+        // नवंबर 2026: काम चलते समय डिब्बा खाली = रोकें; कुछ लिखा = भेजें (उसी काम का = साथ में, अलग = बाद में)
+        send.setOnClickListener { if (ChoiceBar.stops(edt, CoderSession.busy)) stopJob() else doSend() }
+        ChoiceBar.wireSend(edt, send) { CoderSession.busy }
+        CoderSession.starter = { t -> runOnUiThread { edt.setText(t); doSend() } }
         composer.onSend = { doSend() }
         setContentView(root)
         Glass.install(this)
@@ -381,7 +454,14 @@ class CodingActivity : AppCompatActivity() {
             edt.setText(""); CoderSession.add("u", typed); CoderSession.add("a", capabilities()); render(); return
         }
         // काम चलते समय भी "क्या चल रहा है / रिपो चेक करो" पूछा जा सकता है (सिर्फ़ पढ़ना)
-        if (typed.isEmpty() && !hasMedia || CoderSession.busy && !RepoDoctor.isStatusAsk(typed)) return
+        if (typed.isEmpty() && !hasMedia) return
+        // नवंबर 2026 (मालिक): काम चलते समय नई बात - उसी काम की = साथ में जुड़ेगी, अलग = यह काम पूरा होते ही
+        if (CoderSession.busy && !RepoDoctor.isStatusAsk(typed)) {
+            if (typed.isEmpty()) return
+            edt.setText("")
+            CoderSession.followUp(this, typed, canJoin = Prefs.coderSeven(this) || !Prefs.coderTeam(this))
+            render(); return
+        }
         // सिर्फ़ फ़ोटो/वीडियो भेजी: टीम उन्हें देखकर समझे
         val t = typed.ifEmpty { "इस फ़ोटो/वीडियो को ध्यान से देखकर समझो कि क्या ठीक करना / बदलना है" }
         OneKeyGate.check(this, OneKeyGate.Work.CODING)?.let { CoderSession.add("u", t); CoderSession.add("e", it); render(); return }
@@ -417,6 +497,8 @@ class CodingActivity : AppCompatActivity() {
         if (Prefs.coderTeam(this)) { CoderTeam.start(this, t)?.let { CoderSession.add("e", it) }; render(); return }
         val a = agent() ?: return
         CoderSession.add("u", t)
+        a.inbox = CoderSession.inbox
+        CoderSession.current = t
         CoderSession.launch(this) {
             try {
                 CoderReport.begin()
@@ -460,6 +542,18 @@ class CodingActivity : AppCompatActivity() {
 
     /** बुलबुले में तरंग के बगल का संदेश: असली रुकावट (दोबारा कोशिश / मॉडल बदला / सीमा) ही; कदम ऊपर सूची में दिखते हैं */
     private fun busyLabel(): String = DKStatus.fresh(busySince).orEmpty()
+
+    /** नवंबर 2026: काम चलते समय = बीच में भेजी बात पलटने का बटन; रुका हो = अभी जिसका इंतज़ार है उसके बटन */
+    private fun renderChoices() {
+        val r = CoderSession.routed
+        choiceBar.show(if (CoderSession.busy) when (r?.route) {
+            FollowUp.Route.NOW -> listOf(FollowUp.TO_NEXT); FollowUp.Route.NEXT -> listOf(FollowUp.TO_NOW); null -> emptyList()
+        } else {
+            val last = CoderSession.lines.lastOrNull { it.role != "s" }?.role
+            val ck = if (last == "e") CoderHistory.checkpoint(this) else null
+            FollowUp.coder(SevenRunner.pending?.u, CoderSession.agent?.pr != null, last, ck != null && ck.stage != "pending")
+        })
+    }
 
     /** Pending सुझाव: क्या, क्यों, और हाँ/नहीं */
     private fun renderSuggestions() {
@@ -799,6 +893,8 @@ class CodingActivity : AppCompatActivity() {
         if (CoderSession.agent == null && problems().isEmpty()) CoderSession.agentFor(this)
         // ऐप बंद होने से रुका काम: अपने-आप वहीं से आगे (या "वहीं से आगे" बटन)
         if (Prefs.coderSeven(this)) SevenRunner.reopen(this)
+        CoderSession.starter = { t -> runOnUiThread { edt.setText(t); doSend() } }
+        CoderSession.runNext(this)
         render(); keepTyping()
         // 7-एजेंट: बीच में GitHub जोड़ा (token है, रिपो नहीं, नॉर्मल खुद नहीं चुना) → रिपो चुनने का विकल्प
         if (Prefs.coderSeven(this) && !pickerShown && Prefs.ghToken(this).isNotBlank() && !Prefs.ghRepo(this).contains('/') && !Prefs.coderNormal(this)) {
@@ -807,6 +903,8 @@ class CodingActivity : AppCompatActivity() {
     }
 
     override fun onPause() { CoderSession.listener = null; showBusy(false); super.onPause() }
+
+    override fun onDestroy() { CoderSession.starter = null; super.onDestroy() }
 
     /** चलती पट्टी दिखाओ/छिपाओ. एक ही tick चलता है (दोबारा start नहीं होता). */
     private fun showBusy(on: Boolean) {
@@ -850,9 +948,9 @@ class CodingActivity : AppCompatActivity() {
     private fun render() {
         val a = CoderSession.agent
         maybeOfferNormal()
-        send.setImageResource(if (CoderSession.busy) android.R.drawable.ic_media_pause else R.drawable.ic_send)
-        send.contentDescription = if (CoderSession.busy) "रोकें" else "भेजें"
+        ChoiceBar.icon(edt, send, CoderSession.busy)
         showBusy(CoderSession.busy)
+        renderChoices()
         val lines = CoderSession.lines
         // नवंबर 2026 (बग): 300 लाइन के बाद आगे से हटी लाइनें गिनो - पहले यहीं अटककर नए संदेश दिखना बंद हो जाते थे
         val drop = CoderSession.dropped

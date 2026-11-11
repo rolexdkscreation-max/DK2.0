@@ -213,7 +213,9 @@ object SevenPlus {
         /** अभी कोड में क्या हो रहा है / समस्या की वजह - सीधी भाषा में */
         val now: String = "",
         /** v3.6: काम के साथ पूछे गए सवालों का मैनेजर का जवाब (काम नहीं रुकता - पहले समझाना, फिर "हाँ") */
-        val reply: String = ""
+        val reply: String = "",
+        /** नवंबर 2026: user के छूने वाले जवाब/बदलाव (सवाल हों तो सवाल के जवाब, वरना छोटे जोड़/बदलाव) */
+        val choices: List<String> = emptyList()
     ) {
         val needsAnswer get() = questions.isNotEmpty()
 
@@ -248,7 +250,8 @@ object SevenPlus {
                     changes = Seven.strings(o?.optJSONArray("changes")).take(12),
                     steps = Seven.strings(o?.optJSONArray("steps")).take(10),
                     wants = Seven.strings(o?.optJSONArray("wants")).take(10),
-                    now = o?.optString("now").orEmpty().trim())
+                    now = o?.optString("now").orEmpty().trim(),
+                    choices = Seven.strings(o?.optJSONArray("choices")).take(4))
             }
         }
     }

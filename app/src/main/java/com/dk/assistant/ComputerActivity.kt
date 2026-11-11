@@ -28,6 +28,8 @@ class ComputerActivity : AppCompatActivity() {
     private lateinit var edt: EditText
     private lateinit var send: ImageButton
     private lateinit var askBox: LinearLayout
+    /** नवंबर 2026: "आगे क्या करें" के बटन (डिब्बे के ऊपर) */
+    private lateinit var choiceBar: ChoiceBar
     private var shown = 0
     /** नवंबर 2026 (बग/स्मूथ): ComputerSession.dropped का आख़िरी देखा मान + एक frame में एक render */
     private var seenDrop = 0L
@@ -148,6 +150,16 @@ class ComputerActivity : AppCompatActivity() {
             val p = (12 * dp).toInt(); setPadding(p, p, p, p); visibility = View.GONE
         }
         col.addView(askBox, LinearLayout.LayoutParams(-1, -2).apply { topMargin = (6 * dp).toInt() })
+        choiceBar = ChoiceBar(this).apply {
+            onPick = { ch ->
+                if (ch.act == FollowUp.Act.REROUTE) ComputerSession.reroute()
+                else { ComputerSession.choices = emptyList(); edt.setText(ch.text); doSend() }
+                render()
+            }
+            onEdit = { t -> edt.setText(t); edt.setSelection(edt.text.length); edt.requestFocus()
+                getSystemService(android.view.inputmethod.InputMethodManager::class.java)?.showSoftInput(edt, android.view.inputmethod.InputMethodManager.SHOW_IMPLICIT) }
+        }
+        col.addView(choiceBar, LinearLayout.LayoutParams(-1, -2).apply { topMargin = (4 * dp).toInt() })
 
         // साझा इनपुट बॉक्स (हल्के कोनों वाला आयत; 🎤 बार के अंदर बोलकर लिखना - Google पॉप-अप नहीं)
         composer = DKComposer(this, "कोई भी काम लिखिए…", maxLines = 5)
@@ -158,7 +170,9 @@ class ComputerActivity : AppCompatActivity() {
         inline = DKInlineReply(list, scroll, 0.86f)
         composer.onSend = { doSend() }
 
-        send.setOnClickListener { if (ComputerSession.busy) ComputerSession.stop() else doSend() }
+        // काम चलते समय: डिब्बा खाली = रोकें; कुछ लिखा = भेजें (उसी काम का = साथ में, अलग = बाद में)
+        send.setOnClickListener { if (ChoiceBar.stops(edt, ComputerSession.busy)) ComputerSession.stop() else doSend() }
+        ChoiceBar.wireSend(edt, send) { ComputerSession.busy }
         setContentView(root)
         Glass.install(this)
         ComputerSession.restoreLines(this)          // v3.88: ऐप बंद हुआ था - पिछली बातचीत वापस
@@ -233,6 +247,7 @@ class ComputerActivity : AppCompatActivity() {
         val t = edt.text.toString().trim()
         if (t.isEmpty()) return
         edt.setText("")
+        ComputerSession.choices = emptyList()
         // नवंबर 2026 (मालिक): "तुम क्या-क्या कर सकते हो" = उसी समय चालू टूल की सूची (AI कॉल नहीं)
         if (!ComputerSession.busy && AgentIntro.isCapabilityQuestion(t)) {
             ComputerSession.add("u", t); ComputerSession.add("a", AgentIntro.computerCapabilities(Prefs.assistantName(this), enabledTools())); render(); return
@@ -315,8 +330,7 @@ class ComputerActivity : AppCompatActivity() {
     override fun onPause() { ComputerSession.visible = false; ComputerSession.listener = null; tick.removeCallbacks(dotTick); workOrb.running = false; workBar.running = false; super.onPause() }
 
     private fun render() {
-        send.setImageResource(if (ComputerSession.busy) android.R.drawable.ic_media_pause else R.drawable.ic_send)
-        send.contentDescription = if (ComputerSession.busy) "रोकें" else "भेजें"
+        ChoiceBar.icon(edt, send, ComputerSession.busy)
         val lines = ComputerSession.lines
         val busy = ComputerSession.busy
         if (busy && !wasBusy) busySince = System.currentTimeMillis()
@@ -341,8 +355,19 @@ class ComputerActivity : AppCompatActivity() {
         if (busy) inline.show(busyLabel(), WorkState.WORKING)
         else if (inline.bubble?.isWorking == true) inline.hide()
         renderAsk()
+        renderChoices()
         renderWork()
         if (ComputerSession.busy) { tick.removeCallbacks(dotTick); tick.postDelayed(dotTick, 500) }
+    }
+
+    /** काम चलते समय: बीच में भेजी बात का रास्ता पलटने का बटन; काम पूरा/सवाल: आगे के बटन */
+    private fun renderChoices() {
+        val r = ComputerSession.routed
+        choiceBar.show(when {
+            ComputerSession.ask != null -> emptyList()
+            ComputerSession.busy -> when (r?.route) { FollowUp.Route.NOW -> listOf(FollowUp.TO_NEXT); FollowUp.Route.NEXT -> listOf(FollowUp.TO_NOW); null -> emptyList() }
+            else -> ComputerSession.choices
+        })
     }
 
     private fun renderAsk() {
