@@ -533,6 +533,7 @@ class SevenTeam(
             if (!execute(next, emptySet())) return finish(false, lastBlock)
             left = next.more
         }
+        if (!takeAdded()) return finish(false, lastBlock)
         if (left.isNotBlank()) ev(Agent.MANAGER, "⚠ ${Seven.MAX_PHASES} चरणों के बाद भी कुछ बाकी — QA जाँचेगा, बाकी काम रिपोर्ट में: ${left.take(200)}")
         save { it.copy(phase = TeamProgress.CODED, steps = emptyList(), stepsDone = 0, failLog = "", failUrl = "") }
         // 3b. परफॉरमेंस: बदले code में UI जाम / leak / बेवजह का काम
@@ -546,6 +547,11 @@ class SevenTeam(
         val sigs = mutableListOf<String>()
         val failLogs = mutableListOf<String>()
         while (true) {
+            // काम के बीच user की जोड़ी बात: पहले वह, फिर नई जाँच (पुराना पास/फ़ेल अब पुराना)
+            if ((inbox?.size ?: 0) > 0) {
+                if (!takeAdded()) return finish(false, lastBlock)
+                passedBefore = false; oldFail = null
+            }
             val t = when {
                 passedBefore -> { passedBefore = false; TeamTest(true, "", "", "पिछली बार build + tests पास हो चुके थे", if (git?.prUrl.isNullOrBlank()) TeamTest.BRANCH else "") }
                 oldFail != null -> oldFail.also { oldFail = null }
@@ -645,6 +651,25 @@ class SevenTeam(
         var pr = ""
         git?.let { g -> pr = g.ready(); ev(Agent.GIT, "PR तैयार: $pr — merge सिर्फ़ आपकी मंज़ूरी से") }
         return finish(true, "", pr)
+    }
+
+    /** नवंबर 2026 (मालिक): काम चलते समय user ने इसी काम में कुछ और जोड़ा - टीम उसे भी करे (स्क्रीन यहाँ डालती है) */
+    var inbox: FollowUp.Inbox? = null
+
+    /** जोड़ी गई बातें उठाकर उनका छोटा प्लान + कोड. false = कोड बदलना fail */
+    private suspend fun takeAdded(): Boolean {
+        val add = inbox?.drain().orEmpty()
+        if (add.isEmpty()) return true
+        memory.userWords = memory.userWords.trim() + "\n\nUSER ADDED WHILE THE TEAM WAS WORKING (same task):\n" + add.joinToString("\n") { "- $it" }
+        acceptance = acceptance + add
+        memory.acceptance = acceptance
+        task = task + "\n\n" + FollowUp.forAi(add)
+        qaOk = false
+        ev(Agent.MANAGER, "📩 आपकी नई बात मिली — इसी काम में जोड़ रहा हूँ:\n" + add.joinToString("\n") { "• $it" })
+        val p = makePlan("USER ADDED TO THE SAME TASK WHILE THE TEAM WAS WORKING - do ONLY this addition now, keep everything already done:\n" +
+            add.joinToString("\n") { "- $it" } + "\nORIGINAL TASK: $task\nALREADY CHANGED: " + changes.keys.joinToString(), changes.keys.toList())
+        if (p == null) { ev(Agent.MANAGER, "⚠ नई बात का प्लान नहीं बना ($lastBlock) — रिपोर्ट में लिखा"); return true }
+        return execute(p, emptySet())
     }
 
     // ------------------------------------------------------------------ प्लानर

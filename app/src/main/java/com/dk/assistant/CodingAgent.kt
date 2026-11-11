@@ -350,6 +350,9 @@ class CodingAgent(internal val gh: GitHub, var repo: String, var branch: String,
     }
 
     /** Ek kaam chalao (ya pichhle "ask" ka jawab). onStep = UI ke liye chhoti line */
+    /** नवंबर 2026: काम चलते समय user की उसी काम में जोड़ी बातें (कोडिंग स्क्रीन डालती है) */
+    @Volatile var inbox: FollowUp.Inbox? = null
+
     suspend fun run(task: String, onStep: (String) -> Unit): Outcome = withContext(Dispatchers.IO) {
         if (msgs.isEmpty()) {
             onStep("$repo ($branch) की फ़ाइलें ला रहा हूँ…")
@@ -392,6 +395,11 @@ class CodingAgent(internal val gh: GitHub, var repo: String, var branch: String,
         val changedFiles = mutableSetOf<String>()   // हर बदली फ़ाइल = 1 अतिरिक्त कदम (कई फ़ाइलों वाला काम आधा न रहे)
         while (true) {
             ensureActive()
+            // नवंबर 2026 (मालिक): काम के बीच user ने इसी काम में कुछ जोड़ा = अगले कदम से वह भी
+            inbox?.drain()?.takeIf { it.isNotEmpty() }?.let { add ->
+                onStep("📩 आपकी नई बात काम में जोड़ी: " + add.joinToString(" • ").take(200))
+                msgs.add("user" to FollowUp.forAi(add))
+            }
             // पहले समझना: बदलाव से पहले के 2 पढ़ने वाले कदम सीमा में नहीं गिने जाते
             if (++step > stepLimit(maxSteps, looks, changedFiles.size)) return@withContext Outcome("$maxSteps कदम हो गए, यहीं रोका। अब तक के बदलाव नीचे हैं। " +
                 "(ज़्यादा कदम चाहिए तो Settings → कोडिंग एजेंट → \"एक काम में ज़्यादा से ज़्यादा कदम\")", "DK: partial changes", false)

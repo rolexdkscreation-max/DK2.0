@@ -111,13 +111,14 @@ object CoderHistory {
             .put("understood", u.understood).put("spec", u.spec).put("acceptance", arr(u.acceptance)).put("notTouch", arr(u.notTouch))
             .put("questions", arr(u.questions)).put("area", arr(u.area)).put("answer", u.answer).put("changes", arr(u.changes))
             .put("steps", arr(u.steps)).put("mediaNotes", u.mediaNotes).put("wants", arr(u.wants)).put("now", u.now)
+            .put("choices", arr(u.choices))
 
         fun u(o: JSONObject): SevenPlus.Understanding = SevenPlus.Understanding(
             try { Seven.Kind.valueOf(o.optString("kind")) } catch (_: Exception) { Seven.Kind.FEATURE },
             o.optString("brief"), o.optString("understood"), o.optString("spec"), strs(o.optJSONArray("acceptance")),
             strs(o.optJSONArray("notTouch")), strs(o.optJSONArray("questions")), strs(o.optJSONArray("area")), o.optString("answer"),
             strs(o.optJSONArray("changes")), strs(o.optJSONArray("steps")), o.optString("mediaNotes"),
-            strs(o.optJSONArray("wants")), o.optString("now"))
+            strs(o.optJSONArray("wants")), o.optString("now"), choices = strs(o.optJSONArray("choices")))
 
         fun ckJson(k: Checkpoint): String = JSONObject().put("thread", k.thread).put("task", k.task).put("u", uJson(k.u))
             .put("stage", k.stage).put("normal", k.normal).put("repo", k.repo).put("base", k.base).put("branch", k.branch)

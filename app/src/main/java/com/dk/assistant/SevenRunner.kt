@@ -253,7 +253,8 @@ object SevenRunner {
         OneKeyGate.check(c, OneKeyGate.Work.CODING)?.let { return it }
         if (!Prefs.coderOn(c)) return "कोडिंग एजेंट बंद है — Settings में चालू करें"
         val ai = CoderAi.fromPrefs(c) ?: return "कोडिंग एजेंट की AI key नहीं — Settings → AI दिमाग → कोडिंग एजेंट में डालें"
-        if (CoderSession.busy) return "अभी एक काम चल रहा है — पूरा होने दें या रोकें"
+        // नवंबर 2026 (मालिक): काम चलते समय नई बात (आवाज़ से भी) - उसी काम की = साथ में, अलग = यह पूरा होते ही
+        if (CoderSession.busy) { CoderSession.followUp(c, input, (if (fromVoice) "🎤 " else "") + input); return null }
         CoderSession.offerNormal = null
         // रुका काम है और user ने "आगे बढ़ो / continue" लिखा = वहीं से आगे (नया काम नहीं)
         val ck = CoderHistory.checkpoint(c)
@@ -285,7 +286,7 @@ object SevenRunner {
         if (r == null) {
             say("s", "ठीक है — यह काम रद्द। कुछ भी नहीं बदला।")
             CoderHistory.clearCheckpoint(c); CoderHistory.setStatus(c, "chat")
-            CoderSession.listener?.invoke(); return null
+            CoderSession.listener?.invoke(); CoderSession.runNext(c); return null
         }
         val (task, approved, normal) = r
         if (approved != null) say("s", "✅ आपकी मंज़ूरी मिली — अब 7 एजेंट की टीम (+ समझाने वाला) काम शुरू कर रही है")
@@ -377,17 +378,26 @@ object SevenRunner {
                         team = SevenTeam(Ai(ai, Prefs.coderLightModel(c), CoderAi.forStrong(c, ai)).scoped(Prefs.coderStrongScope(c)), MemoryFiles(start), null, full = true, aiResult = true, ev = teamEvents(c, shown, sound = false)).also { shown.team = it }
                     }
                     team.media = allMedia
+                    team.inbox = CoderSession.inbox
                     if (approved == null) {
                         // चरण 1: सिर्फ़ समझ (कोई branch / बदलाव नहीं) - user को दिखाकर "हाँ" का इंतज़ार
-                        val u = team.understand(task)
+                        var ask = task
+                        var u = team.understand(ask)
+                        // नवंबर 2026: समझते समय user ने इसी काम में कुछ जोड़ा = उसे मिलाकर एक बार फिर समझो (मंज़ूरी पूरी बात पर)
+                        val added = if (u.answer.isBlank() && u.kind != Seven.Kind.STATUS) CoderSession.inbox.drain() else emptyList()
+                        if (added.isNotEmpty()) {
+                            ask = ask + "\n\n" + FollowUp.forAi(added)
+                            say("s", "📩 आपकी नई बात भी समझ में जोड़ रहा हूँ…")
+                            u = team.understand(ask)
+                        }
                         if (u.answer.isNotBlank()) { say("d", u.answer); return@work }
                         // मैनेजर: रिपो / PR / काम की हालत का सवाल → जाँचकर्ता (कोड नहीं छूता, मंज़ूरी की ज़रूरत नहीं)
                         if (u.kind == Seven.Kind.STATUS) { inspect(c, task); return@work }
                         // मैनेजर: "हाँ" माँगने से पहले रिपो जाँच (खुले PR + इसी जगह का टकराव) - सिर्फ़ पढ़ना
                         if (d.mode == Seven.Mode.GITHUB && gh != null) say("s", preCheck(gh, repo, u, agent?.pr?.number, Prefs.ghBranch(c)))
-                        pending = Pending(task, u, normal, allMedia)
+                        pending = Pending(ask, u, normal, allMedia)
                         // ऐप बंद होकर खुले तो भी यही समझ "हाँ" का इंतज़ार करे
-                        CoderHistory.saveCheckpoint(c, CoderHistory.Checkpoint(CoderHistory.current, task, u, "pending", normal, repo, Prefs.ghBranch(c)))
+                        CoderHistory.saveCheckpoint(c, CoderHistory.Checkpoint(CoderHistory.current, ask, u, "pending", normal, repo, Prefs.ghBranch(c)))
                         say("d", u.hindi())
                         CoderTeam.announce(c, if (u.needsAnswer) "कोडिंग टीम: एक सवाल है" else "कोडिंग टीम: आपकी मंज़ूरी चाहिए",
                             u.understood.ifBlank { u.brief }.take(120),
