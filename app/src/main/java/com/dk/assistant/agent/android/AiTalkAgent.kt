@@ -35,6 +35,8 @@ object AiTalkAgent {
     @Volatile private var job: Job? = null
     @Volatile private var stopAsked = false
     @Volatile private var spoken: String? = null
+    /** आख़िरी बार जिस AI ऐप से बात हुई - "क्या जवाब आया / उससे यह भी पूछो" में ऐप का नाम न बोले तो वही */
+    @Volatile private var lastApp: com.dk.assistant.agent.core.ChatTarget? = null
     val busy get() = job?.isActive == true
 
     fun stop(): Boolean {
@@ -49,12 +51,37 @@ object AiTalkAgent {
         val action = args.optString("action").trim().lowercase()
         if (action in setOf("stop", "cancel", "रोको")) return if (stop()) "STOPPED: DK stopped the AI-app conversation. Tell the user in one short line." else "Nothing was running. Tell the user no AI-app conversation is running."
         if (action == "status") return TaskStatus.summary()
+        // नवंबर 2026 (मालिक: "ऐप में क्या हो रहा है, DK को दिखे; मैं सवाल बोलूँ तो वह वहीं पूछे और जवाब बताए")
+        if (action in setOf("read", "see", "देखो", "पढ़ो") || action == "ask") {
+            val h = ImageGenAgent.Host(svc)
+            val words = args.optString("goal").ifBlank { args.optString("question") }.ifBlank { DKState.lastUser.trimEnd('…') }.trim()
+            val t = AiTalkPlan.target(args.optString("app"), words) { h.findApp(it) } ?: lastApp
+                ?: return "ERROR: which AI app is not clear. Ask the user in one short Hindi line which app."
+            if (action != "ask") return ImageGenAgent.read(svc, t)
+            if (busy) return "BUSY: DK is in the middle of its own conversation with ${t.hi}. Ask the user if he wants to stop it first (ai_talk action=stop), then ask."
+            val q = args.optString("question").ifBlank { args.optString("goal") }.trim()
+            if (q.isBlank()) return "ERROR: what to ask is not clear. Ask the user in one short Hindi line what to ask ${t.hi}."
+            lastApp = t
+            if (!WakeForWork.ensure(svc) { DKState.hint(it) }) return "ERROR: फ़ोन लॉक है - ${t.hi} नहीं खोल पाया. Tell the user to unlock the phone, then ask again."
+            DKState.set(com.dk.assistant.Mode.WORKING)          // काम के बीच स्क्रीन जगी (WorkAwake)
+            DKState.hint("${t.hi} से पूछ रही हूँ…")
+            val flow = ImageGenFlow(AccessibilityScreenDriver(svc), h)
+            // वही chat (सामने हो तो) - New chat नहीं; ऐप सामने न हो तो खोलकर उसकी आख़िरी chat में
+            val r = flow.askIn(t, q, fresh = false)
+            LocalMemory.record(svc, "d", "मैंने ${t.hi} से पूछा: $q", "ai_talk")
+            if (!r.ok) return "ERROR: " + r.error.ifBlank { "भेज नहीं पाया" } + ". Tell the user exactly this in one short Hindi line."
+            if (r.appReply.isBlank()) return "SENT: DK typed and sent the question in ${t.hi}, but could not read the answer yet. Tell the user it is sent and visible on the screen; he can say 'क्या जवाब आया' (ai_talk action=read)."
+            LocalMemory.record(svc, "d", "${t.hi} ने कहा: ${r.appReply}", "ai_talk")
+            return "ASKED_AND_ANSWERED: DK typed the user's question in ${t.hi} (same chat), pressed Send, and ${t.hi} replied: \"${r.appReply}\". " +
+                "Tell the user this reply in short Hindi without adding anything. ${t.hi} stays open on the screen - ask the next question the same way (ai_talk action=ask)."
+        }
         if (busy) return "BUSY: DK is already talking with an AI app (${TaskStatus.get(KEY)?.task ?: "-"}). Ask the user if he wants to stop it first (ai_talk action=stop)."
         val goal = args.optString("goal").ifBlank { args.optString("request") }.ifBlank { DKState.lastUser.trimEnd('…') }.trim()
         val host = ImageGenAgent.Host(svc)
         val app = AiTalkPlan.target(args.optString("app"), goal) { host.findApp(it) }
             ?: return "ERROR: which AI app is not clear. Ask the user in one short Hindi line which app (ChatGPT, Claude, Gemini, Perplexity, Copilot, DeepSeek, Grok, Meta AI या कोई और)."
         if (!host.installed(app.pkg)) return "ERROR: ${app.hi} ऐप इस फ़ोन में नहीं है. Tell the user to install it from Play Store and log in once, then ask again."
+        lastApp = app
         val mode = TalkMode.parse(args.optString("mode"), goal)
         val max = AiTalkPlan.rounds(args.optInt("rounds", 0), mode)
         val flow = ImageGenFlow(AccessibilityScreenDriver(svc), host)
@@ -68,6 +95,12 @@ object AiTalkAgent {
             var state = TaskStatus.State.FAILED
             var result = ""
             try {
+                // नवंबर 2026: स्क्रीन बंद / लॉक = पहले जगाओ, वरना ऐप खुलता ही नहीं (बीच में स्क्रीन WorkAwake जगाए रखता है)
+                if (!WakeForWork.ensure(svc) { TaskStatus.step(KEY, it) }) {
+                    result = "फ़ोन लॉक रहा - ${app.hi} नहीं खोल पाया (अनलॉक करके फिर बोलिए)"
+                    spoken = result
+                    return@launch
+                }
                 val talk = AiTalk(
                     app = app.hi, mode = mode, goal = goal, max = max,
                     send = { text, fresh -> flow.askIn(app, text, fresh) },
