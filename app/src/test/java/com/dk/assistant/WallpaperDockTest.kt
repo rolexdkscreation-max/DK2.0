@@ -34,6 +34,15 @@ class WallpaperDockTest {
         assertEquals(Wallpapers.CUSTOM, Wallpapers.resolve(Wallpapers.CUSTOM, true))
     }
 
+    @Test fun wallpaperDecoding_usesARGB8888_highQuality() {
+        val wallpapersCode = f("java/com/dk/assistant/ui/Wallpapers.kt").readText()
+        assertTrue(wallpapersCode.contains("Bitmap.Config.ARGB_8888"))
+        assertFalse(wallpapersCode.contains("Bitmap.Config.RGB_565"))
+        val themePacksCode = f("java/com/dk/assistant/ui/ThemePacks.kt").readText()
+        assertTrue(themePacksCode.contains("Bitmap.Config.ARGB_8888"))
+        assertFalse(themePacksCode.contains("Bitmap.Config.RGB_565"))
+    }
+
     @Test fun newCustomPhoto_changesLook_soEveryScreenRedraws() {
         val a = Wallpapers.key(Wallpapers.CUSTOM, 100L); val b = Wallpapers.key(Wallpapers.CUSTOM, 200L)
         assertNotEquals(a, b)
