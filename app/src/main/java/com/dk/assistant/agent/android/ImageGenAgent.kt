@@ -10,6 +10,7 @@ import android.util.Base64
 import android.view.accessibility.AccessibilityNodeInfo
 import com.dk.assistant.DKAccessibilityService
 import com.dk.assistant.DKLog
+import com.dk.assistant.DKState
 import com.dk.assistant.GeminiModels
 import com.dk.assistant.Prefs
 import com.dk.assistant.agent.core.ImageApp
@@ -163,8 +164,11 @@ object ImageGenAgent {
         val prompt = args.optString("prompt").ifBlank { args.optString("request") }.trim()
         if (prompt.isBlank()) return "ERROR: क्या लिखना / पूछना है, यह नहीं बताया. Ask the user what to type."
         val app = ImageApp.parse(args.optString("app"))
-        DKLog.d("AiAsk: ${app?.hi ?: "auto"} (देखना=${canSee(svc)}) prompt: ${prompt.take(160)}")
-        val r = ImageGenFlow(AccessibilityScreenDriver(svc), Host(svc)).ask(app, prompt)
+        val newChat = args.optBoolean("new_chat", false)
+        DKLog.d("AiAsk: ${app?.hi ?: "auto"} (देखना=${canSee(svc)}, नई chat=$newChat) prompt: ${prompt.take(160)}")
+        // नवंबर 2026: स्क्रीन बंद / लॉक = पहले जगाओ (अंधेरी स्क्रीन पर ऐप नहीं खुलता था)
+        if (!WakeForWork.ensure(svc) { DKState.hint(it) }) return "ERROR: फ़ोन लॉक है - DK ऐप नहीं खोल पाया. Tell the user in one short Hindi line to unlock the phone, then ask again."
+        val r = ImageGenFlow(AccessibilityScreenDriver(svc), Host(svc)).ask(app, prompt, newChat)
         DKLog.d("AiAsk: नतीजा ok=${r.ok} app=${r.app?.hi} तरीका=[${r.how}] ${r.error}")
         if (r.screenDump.isNotBlank()) DKLog.d("AiAsk स्क्रीन: ${r.screenDump.take(1500)}")
         if (!r.ok) return "ERROR: " + r.error.ifBlank { "भेज नहीं पाया" } +
@@ -173,7 +177,19 @@ object ImageGenAgent {
         if (r.appReply.isBlank()) return "SENT: the prompt was typed AND sent in ${r.app?.hi}, but DK could not read the answer. " +
             "Tell the user it is sent and the answer is on the screen in ${r.app?.hi}."
         return "SENT_AND_ANSWERED: DK typed and sent the prompt in ${r.app?.hi}. ${r.app?.hi} replied: \"${r.appReply}\". " +
-            "Tell the user the gist of this reply in short Hindi (do not invent anything beyond it). The app is open on the screen now."
+            "Tell the user the gist of this reply in short Hindi (do not invent anything beyond it). The app stays open on the screen in the SAME chat - " +
+            "for the user's next question to ${r.app?.hi} call ai_app_prompt again (it continues this chat)."
+    }
+
+    /**
+     * नवंबर 2026 (मालिक: "जो ऐप में हो रहा है, क्या लिखा है - DK को पूरा दिखे"): खुले AI ऐप की स्क्रीन का सारा लिखा (कुछ दबाए बिना).
+     */
+    suspend fun read(svc: DKAccessibilityService, app: com.dk.assistant.agent.core.ChatTarget): String {
+        if (!WakeForWork.ensure(svc) { DKState.hint(it) }) return "ERROR: फ़ोन लॉक है. Tell the user to unlock the phone, then ask again."
+        val r = ImageGenFlow(AccessibilityScreenDriver(svc), Host(svc)).read(app)
+        if (!r.ok) return "ERROR: " + r.error + ". Tell the user exactly this in one short Hindi line."
+        return "SCREEN_TEXT of ${r.appName} (everything written on the screen now, top to bottom; [लिखने की जगह] = the message box):\n${r.appReply}\n" +
+            "Answer the user's question from THIS text only (what is written, what the app replied, whether a message was sent). Never invent anything that is not here."
     }
 
     suspend fun run(svc: DKAccessibilityService, args: JSONObject, show: (ByteArray) -> Unit = {}): String {

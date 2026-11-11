@@ -223,11 +223,13 @@ internal fun GeminiLive.setupJson(m: String, txt: Boolean = connText, resume: Bo
         .put(JSONObject().put("name", "ai_app_prompt")
             .put("description", "Type ANY prompt or question into the REAL ChatGPT or Gemini app on the phone, press Send (DK taps it itself) and read the app's answer back. " +
                 "Use when the user says e.g. 'ChatGPT में यह पूछो / लिखो / भेजो', 'Gemini ऐप से पूछो', 'ChatGPT पर prompt डालो'. For making a picture use image_task instead. " +
-                "DK CAN tap and send in these apps - never tell the user that you cannot tap, touch or send. First say one short line like 'भेज रहा हूँ'.")
+                "DK CAN tap and send in these apps - never tell the user that you cannot tap, touch or send. First say one short line like 'भेज रहा हूँ'. " +
+                "If that app is already open on the screen, DK continues the SAME chat (no new chat) - so for every follow-up question the user wants to ask that app, call this again; set new_chat=true only if the user asks for a new chat.")
             .put("parameters", JSONObject().put("type", "OBJECT")
                 .put("properties", JSONObject()
                     .put("prompt", JSONObject().put("type", "STRING").put("description", "Exactly what to type in the app (the user's words / the prompt he wants)"))
-                    .put("app", JSONObject().put("type", "STRING").put("enum", JSONArray().put("chatgpt").put("gemini").put("claude").put("perplexity").put("copilot").put("deepseek").put("grok").put("meta_ai").put("auto")).put("description", "Which app the user named; auto = ChatGPT if installed, else Gemini")))
+                    .put("app", JSONObject().put("type", "STRING").put("enum", JSONArray().put("chatgpt").put("gemini").put("claude").put("perplexity").put("copilot").put("deepseek").put("grok").put("meta_ai").put("auto")).put("description", "Which app the user named; auto = ChatGPT if installed, else Gemini"))
+                    .put("new_chat", JSONObject().put("type", "BOOLEAN").put("description", "Start a new chat (only if the user asked); default false = continue the open chat")))
                 .put("required", JSONArray().put("prompt"))))
         // नवंबर 2026 (मालिक): DK खुद किसी भी AI ऐप से लंबी बातचीत / मुकाबला / सवाल-जवाब / सीखना / काम करवाना
         .put(JSONObject().put("name", "ai_talk")
@@ -235,7 +237,10 @@ internal fun GeminiLive.setupJson(m: String, txt: Boolean = connText, resume: Bo
                 "DK writes each message, sends it, reads the reply, answers that AI's questions itself and decides the next message - the user only watches and listens. " +
                 "Use for 'जाओ Claude से बात करो', 'ChatGPT से मुकाबला करो / बहस करो', 'Gemini से सवाल-जवाब करो', 'Claude से कुछ सीखो / उसका काम करने का तरीका सीखो', 'Perplexity से यह काम करवाओ'. " +
                 "When the user says प्रोफेसर / परप्लेक्सिटी / पर्पलेक्सिटी he means Perplexity; क्लाउड means Claude. In mode=learn DK saves the learned methods FOREVER and uses them itself later. " +
-                "For ONE single question with an answer read back use ai_app_prompt instead. It runs a few minutes: say the returned line, then wait - you get a SYSTEM NOTE with the real summary; never invent what the app said. action=stop stops it.")
+                "Also 'जाओ GPT / जीपीटी से बात करो', 'जाकर Claude से बातचीत करो', 'ChatGPT से कुछ बात करो' = action=start (DK really opens the app, types and presses the SEND button itself). " +
+                "action=ask + question = type the user's OWN question into that app (same chat, it stays open), press Send, wait and return the real answer - use it when the user says 'उससे पूछो …', 'ChatGPT से यह पूछो', 'Claude से पूछकर बताओ'. " +
+                "action=read = read everything written on that app's screen right now (use for 'क्या जवाब आया', 'उसने क्या लिखा', 'स्क्रीन पर क्या चल रहा है'). " +
+                "For ONE single question with an answer read back use action=ask (or ai_app_prompt). action=start runs a few minutes: say the returned line, then wait - you get a SYSTEM NOTE with the real summary; never invent what the app said. action=stop stops it.")
             .put("parameters", JSONObject().put("type", "OBJECT")
                 .put("properties", JSONObject()
                     .put("app", JSONObject().put("type", "STRING").put("description", "The app name the user said (claude, chatgpt, gemini, perplexity, copilot, deepseek, grok, meta_ai, or any other app's name)"))
@@ -243,7 +248,8 @@ internal fun GeminiLive.setupJson(m: String, txt: Boolean = connText, resume: Bo
                     .put("mode", JSONObject().put("type", "STRING").put("enum", JSONArray().put("talk").put("debate").put("quiz").put("learn").put("task"))
                         .put("description", "talk = conversation, debate = मुकाबला/बहस, quiz = सवाल-जवाब, learn = सीखना (methods saved forever), task = get a job done by that AI"))
                     .put("rounds", JSONObject().put("type", "INTEGER").put("description", "How many messages DK sends (only if the user said a number; default about 6, max 20)"))
-                    .put("action", JSONObject().put("type", "STRING").put("enum", JSONArray().put("start").put("stop").put("status"))))))
+                    .put("question", JSONObject().put("type", "STRING").put("description", "For action=ask: exactly the user's question to type in that app"))
+                    .put("action", JSONObject().put("type", "STRING").put("enum", JSONArray().put("start").put("ask").put("read").put("stop").put("status"))))))
         // v3.156: "मुझे शर्ट देखनी है" - shopping ऐप (पूछकर) में वही चीज़
         .put(JSONObject().put("name", "shop_search")
             .put("description", "Show a product the user wants to see or buy (shirt, jeans, lower/track pants, shoes, watch, kurta, saree, bag...) in a shopping app on the phone. " +

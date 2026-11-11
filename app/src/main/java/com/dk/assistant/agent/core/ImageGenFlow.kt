@@ -31,7 +31,7 @@ enum class ImageApp(val hi: String, val pkg: String, val images: Boolean = false
                 t.contains("deepseek") || t.contains("deep seek") || t.contains("डीपसीक") || t.contains("डीप सीक") -> DEEPSEEK
                 t.contains("grok") || t.contains("ग्रोक") || t.contains("ग्रॉक") -> GROK
                 t.contains("meta ai") || t.contains("metaai") || t.contains("मेटा") -> META_AI
-                t.contains("chat") || t.contains("gpt") || t.contains("openai") || t.contains("चैट") -> CHATGPT
+                t.contains("chat") || t.contains("gpt") || t.contains("openai") || t.contains("चैट") || t.contains("जीपीटी") || t.contains("जी पी टी") -> CHATGPT
                 t.contains("gemini") || t.contains("जेमिनी") || t.contains("bard") -> GEMINI
                 else -> null
             }
@@ -132,10 +132,23 @@ class ImageGenFlow(
         }
 
         /** लिखने वाले खाने की पंक्ति का सबसे दाईं ओर का बटन (आख़िरी उपाय) */
-        fun rightmostInRow(o: ScreenObservation): UiElement? {
+        fun rightmostInRow(o: ScreenObservation, before: ScreenObservation? = null): UiElement? {
             val box = input(o) ?: return null
-            return o.elements.filter { it.clickable && it.enabled && !it.editable && !notSend(it.label) && nearRow(it, box, o) && it.bounds.centerX > box.bounds.centerX }
+            val old = unchanged(before, o)
+            return o.elements.filter { it.clickable && it.enabled && !it.editable && !notSend(it.label) && nearRow(it, box, o) && it.bounds.centerX > box.bounds.centerX && key(it) !in old }
                 .maxByOrNull { it.bounds.right }
+        }
+
+        private fun key(e: UiElement) = Triple(e.label, e.bounds, e.enabled)
+
+        /**
+         * नवंबर 2026 (मालिक: "भेजने वाले बटन पर दबाए, माइक पर नहीं"): लिखने से पहले भी जो बटन बिल्कुल वैसा ही था (वही नाम, वही जगह) वह
+         * भेजो बटन नहीं हो सकता - भेजो बटन लिखने के बाद ही आता / चालू होता है. माइक / आवाज़ वाला बटन लिखने से पहले भी वहीं होता है.
+         */
+        private fun unchanged(before: ScreenObservation?, now: ScreenObservation): Set<Triple<String, Box, Boolean>> {
+            if (before == null) return emptySet()
+            val nowKeys = now.elements.map { key(it) }.toSet()
+            return before.elements.filter { !it.editable && (it.clickable || notSend(it.label)) }.map { key(it) }.filter { it in nowKeys }.toSet()
         }
 
         private fun nearRow(e: UiElement, box: UiElement, o: ScreenObservation): Boolean {
@@ -147,17 +160,40 @@ class ImageGenFlow(
          * v3.156: भेजें बटन न नाम से मिले न ढाँचे में - लिखने वाले खाने की पंक्ति के दाएँ सिरे की जगहें.
          * उस जगह पर आवाज़ / जोड़ो (+) / कैमरा वाला बटन हो तो वहाँ कभी नहीं.
          */
-        fun blindSendPoints(o: ScreenObservation): List<Pair<Int, Int>> {
+        fun blindSendPoints(o: ScreenObservation, before: ScreenObservation? = null): List<Pair<Int, Int>> {
             val box = input(o) ?: return emptyList()
+            val old = unchanged(before, o)
             val b = box.bounds
             val h = (b.bottom - b.top).coerceIn(60, 200)
             val y = b.bottom - h / 2
             val pts = listOf(b.right - h / 2 to y, b.right + h / 2 to y, o.width - h / 2 to y)
             return pts.filter { (x, _) -> x in 1 until o.width }.distinct().filter { (x, py) ->
-                o.elements.none { e -> !e.editable && notSend(e.label) && e.label.isNotBlank() &&
+                o.elements.none { e -> !e.editable && (notSend(e.label) && e.label.isNotBlank() || key(e) in old) &&
                     x in e.bounds.left..e.bounds.right && py in e.bounds.top..e.bounds.bottom }
             }
         }
+
+        /** ग़लती से माइक / voice mode खुल गया? (ChatGPT / Gemini की "Listening…" वाली स्क्रीन) */
+        val VOICE_SCREEN = listOf("listening", "tap to interrupt", "end voice", "stop recording", "speak now", "start speaking", "सुन रहा", "सुन रही", "बोलना शुरू")
+        fun voiceScreen(o: ScreenObservation): Boolean = o.elements.any { e ->
+            !e.editable && e.label.length <= 40 && VOICE_SCREEN.any { e.label.startsWith(it) }
+        }
+
+        /** उस जगह अभी कौन-सा (सबसे छोटा) element है */
+        fun at(o: ScreenObservation, x: Int, y: Int): UiElement? = o.elements
+            .filter { !it.editable && x in it.bounds.left..it.bounds.right && y in it.bounds.top..it.bounds.bottom }
+            .minByOrNull { it.bounds.width.toLong() * it.bounds.height }
+
+        /**
+         * नवंबर 2026 (मालिक: "जो ऐप में हो रहा है, DK को पूरा दिखे"): खुले ऐप की स्क्रीन का सारा लिखा - ऊपर से नीचे, दोहराव नहीं.
+         * लिखने वाले खाने में जो लिखा है वह "[लिखने की जगह] ..." से.
+         */
+        fun screenText(o: ScreenObservation, max: Int = 3000): String = o.elements
+            .filter { it.bounds.width > 0 && (it.text.isNotBlank() || it.desc.isNotBlank()) }
+            .sortedWith(compareBy<UiElement> { it.bounds.top }.thenBy { it.bounds.left })
+            .map { e -> val t = e.text.trim().ifBlank { e.desc.trim() }.replace(Regex("\\s+"), " "); if (e.editable) "[लिखने की जगह] $t" else t }
+            .filter { it.isNotBlank() }.distinct()
+            .joinToString("\n").take(max)
 
         fun busy(o: ScreenObservation): Boolean = o.elements.any { e ->
             val l = e.label
@@ -211,12 +247,14 @@ class ImageGenFlow(
     /** खोलो + लिखो + भेजो - इमेज और सवाल (ask) दोनों में वही रास्ता */
     private class Sent(val app: ChatTarget, val o0: ScreenObservation?, val fail: ImageGenResult?)
 
-    private suspend fun openTypeSend(want: ImageApp?, prompt: String, image: Boolean): Sent {
+    private suspend fun openTypeSend(want: ImageApp?, prompt: String, image: Boolean, newChat: Boolean = false): Sent {
         // इमेज = सिर्फ़ ChatGPT/Gemini (बाकी ऐप तस्वीर नहीं बनाते); सवाल = पहले की तरह ChatGPT/Gemini में से जो हो
         val order = listOfNotNull(want) + ImageApp.values().filter { it != want && it.images }
         val app = order.firstOrNull { host.installed(it.pkg) }
             ?: return Sent((want ?: ImageApp.CHATGPT).target, null, ImageGenResult(false, want, error = "फ़ोन में ChatGPT या Gemini ऐप नहीं है - Play Store से इंस्टॉल करके एक बार लॉग-इन कर लीजिए"))
-        return typeSend(app.target, prompt, image, fresh = true)
+        // नवंबर 2026 (मालिक: "वहीं पर रहेगी"): वही ऐप पहले से सामने = उसी chat में आगे (New chat नहीं) - आगे का सवाल उसी बातचीत में
+        val here = !image && !newChat && d.capture()?.pkg == app.pkg
+        return typeSend(app.target, prompt, image, fresh = !here)
     }
 
     /**
@@ -260,9 +298,9 @@ class ImageGenFlow(
     /**
      * v3.156 (मालिक): ChatGPT / Gemini से कुछ भी पूछो (इमेज नहीं) - लिखो, भेजो, जवाब पूरा होने तक रुको, जवाब पढ़कर लौटाओ.
      */
-    suspend fun ask(want: ImageApp?, prompt: String): ImageGenResult {
+    suspend fun ask(want: ImageApp?, prompt: String, newChat: Boolean = false): ImageGenResult {
         if (prompt.isBlank()) return ImageGenResult(false, want, error = "क्या पूछना / लिखना है, यह नहीं बताया")
-        val s = openTypeSend(want, prompt, image = false)
+        val s = openTypeSend(want, prompt, image = false, newChat = newChat)
         s.fail?.let { return it }
         return waitAnswer(s.app, prompt)
     }
@@ -276,6 +314,23 @@ class ImageGenFlow(
         val s = typeSend(app, prompt, image = false, fresh = fresh)
         s.fail?.let { return it }
         return waitAnswer(app, prompt)
+    }
+
+    /**
+     * नवंबर 2026 (मालिक: "ऐप में क्या लिखा है, DK को पूरा दिखे"): ऐप सामने न हो तो खोलो (chat वही), फिर स्क्रीन का सारा लिखा.
+     * कुछ भी दबाता / लिखता नहीं.
+     */
+    suspend fun read(app: ChatTarget): ImageGenResult {
+        if (d.capture()?.pkg != app.pkg) {
+            if (!host.installed(app.pkg)) return ImageGenResult(false, app.known, error = "फ़ोन में ${app.hi} ऐप नहीं है", appName = app.hi)
+            if (!host.openApp(app.pkg)) return ImageGenResult(false, app.known, error = "${app.hi} ऐप नहीं खुला", appName = app.hi)
+            d.pause(900)
+        }
+        val o = d.capture() ?: return ImageGenResult(false, app.known, error = "${app.hi} की स्क्रीन पढ़ नहीं पाया", appName = app.hi)
+        BlockerDetector.detect(o)?.let { return ImageGenResult(false, app.known, blocker = it, error = "${app.hi} में ${it.hi}", appName = app.hi) }
+        val t = screenText(o)
+        return if (t.isBlank()) ImageGenResult(false, app.known, error = "${app.hi} की स्क्रीन पर पढ़ने लायक कुछ नहीं मिला", screenDump = dump(o), appName = app.hi)
+        else ImageGenResult(true, app.known, appReply = t, appName = app.hi)
     }
 
     /** जवाब पूरा होने तक रुको (लिखना बंद = 2 बार वही), फिर पढ़ो */
@@ -357,7 +412,7 @@ class ImageGenFlow(
 
     /** भेजा गया? - "बना रहा है" / आपका संदेश chat में आ गया / लिखने वाला खाना खाली हुआ */
     private suspend fun sentOk(text: String, typedVisible: Boolean): Boolean {
-        for (i in 0 until 3) {
+        for (i in 0 until 5) {
             d.pause(700)
             val o = d.capture() ?: continue
             if (busy(o)) return true
@@ -376,21 +431,52 @@ class ImageGenFlow(
         sendButton(o)?.let { if (pressSent(o, it, text, typedVisible)) { how += "send:label"; return true } }
         d.capture()?.let { o2 -> newButtonAfterTyping(o0, o2)?.let { if (pressSent(o2, it, text, typedVisible)) { how += "send:new-button"; return true } } }
         if (host.imeEnter()) { how += "send:enter"; if (sentOk(text, typedVisible)) return true }
-        if (host.canLook()) host.look(LOOK_SEND)?.let { (x, y) -> d.tapAt(x, y); how += "send:look"; if (sentOk(text, typedVisible)) return true }
-        d.capture()?.let { o3 -> rightmostInRow(o3)?.let { if (pressSent(o3, it, text, typedVisible)) { how += "send:rightmost"; return true } } }
-        // v3.156: आख़िरी उपाय - लिखने वाले खाने के दाएँ सिरे पर उँगली से टैप (ChatGPT का ↑ तीर अक्सर बिना नाम/ढाँचे के)
+        if (host.canLook()) host.look(LOOK_SEND)?.let { (x, y) -> d.tapAt(x, y); how += "send:look"; if (sentOk(text, typedVisible)) return true; undoVoice() }
+        d.capture()?.let { o3 -> rightmostInRow(o3, o0)?.let { if (pressSent(o3, it, text, typedVisible)) { how += "send:rightmost"; return true } } }
+        // v3.156: आख़िरी उपाय - लिखने वाले खाने के दाएँ सिरे पर उँगली से टैप (ChatGPT का ↑ तीर अक्सर बिना नाम/ढाँचे के).
+        // नवंबर 2026: लिखने से पहले भी वहीं जो बटन था (माइक) उस पर नहीं; हर टैप से पहले फिर देखो - कहीं पहले ही तो नहीं चला गया
         d.capture()?.let { o4 ->
-            for ((x, y) in blindSendPoints(o4)) {
-                if (d.tapAt(x, y) == DriverResult.OK) { how += "send:edge-tap"; if (sentOk(text, typedVisible)) return true }
+            for ((x, y) in blindSendPoints(o4, o0)) {
+                val now = d.capture() ?: break
+                if (gone(now, text, typedVisible)) { how += "send:already"; return true }
+                if (at(now, x, y)?.label?.let { it.isNotBlank() && notSend(it) } == true) continue
+                if (d.tapAt(x, y) == DriverResult.OK) { how += "send:edge-tap"; if (sentOk(text, typedVisible)) return true; if (undoVoice()) break }
             }
         }
         return false
+    }
+
+    /** लिखा हुआ अब लिखने वाले खाने में नहीं / chat में आ गया = भेजा जा चुका */
+    private fun gone(o: ScreenObservation, text: String, typedVisible: Boolean): Boolean {
+        val head = text.take(20)
+        if (busy(o) || o.elements.any { !it.editable && it.text.contains(head) }) return true
+        val box = input(o) ?: return false
+        return typedVisible && !box.text.contains(head)
+    }
+
+    /** ग़लती से माइक / voice mode खुला = तुरंत वापस (मालिक: "माइक पर नहीं") */
+    private suspend fun undoVoice(): Boolean {
+        val o = d.capture() ?: return false
+        if (!voiceScreen(o)) return false
+        how += "voice:back"
+        d.back(); d.pause(600)
+        return true
     }
 
     /** बटन दबाओ; "दबा" बोले पर भेजा न जाए (Compose में click कहीं और जाता है) तो उसी जगह उँगली से टैप */
     private suspend fun pressSent(o: ScreenObservation, e: UiElement, text: String, typedVisible: Boolean): Boolean {
         val clicked = d.click(o, e) == DriverResult.OK
         if (clicked && sentOk(text, typedVisible)) return true
+        // नवंबर 2026 (मालिक: "माइक पर टाइप कर देता है"): दोबारा उसी जगह उँगली से पहले देखो - भेजने के बाद ChatGPT में वहीं माइक /
+        // voice mode आ जाता है. उस जगह का बटन बदल गया = संदेश जा चुका (या कुछ और हुआ) - दोबारा नहीं दबाना
+        if (clicked && undoVoice()) return false
+        val now = d.capture()
+        if (now != null) {
+            if (clicked && gone(now, text, typedVisible)) return true
+            val there = at(now, e.bounds.centerX, e.bounds.centerY)
+            // वहाँ माइक: अभी आया = भेजो बटन माइक बन गया (संदेश गया); पहले से था = वहाँ कभी टैप नहीं
+            if (there != null && there.label.isNotBlank() && notSend(there.label)) return clicked && o.elements.none { key(it) == key(there) }
+        }
         if (d.tapAt(e.bounds.centerX, e.bounds.centerY) != DriverResult.OK) return false
         how += "tap"
         return sentOk(text, typedVisible)
