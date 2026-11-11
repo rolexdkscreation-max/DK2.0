@@ -38,6 +38,7 @@ internal fun SettingsActivity.menuIcon(id: String) = when (id) {
     "computer" -> R.drawable.ic_s_computer
     "story" -> R.drawable.ic_s_story
     "connectors" -> R.drawable.ic_s_connect
+    "backup" -> R.drawable.ic_s_update
     "social" -> R.drawable.ic_s_story
     "reels" -> R.drawable.ic_s_ui
     "auto" -> R.drawable.ic_s_brain
@@ -53,7 +54,7 @@ internal fun SettingsActivity.menuTint(id: String): Int = when (id) {
     "voice", "templates" -> 0xFFA855F7.toInt()
     "brain", "auto", "coder" -> 0xFF6366F1.toInt()
     "ui", "orb", "reels" -> 0xFFEC4899.toInt()
-    "access", "perms", "phonelock", "guard" -> 0xFF34D399.toInt()
+    "access", "perms", "phonelock", "guard", "backup" -> 0xFF34D399.toInt()
     "computer", "connectors", "lang" -> 0xFF38BDF8.toInt()
     "update", "story", "social" -> 0xFFFBBF24.toInt()
     else -> 0xFF94A3B8.toInt()
@@ -92,6 +93,7 @@ internal fun SettingsActivity.openHit(e: SettingsSearch.E) {
         SettingsSearch.ACT_TEMPLATES -> android.content.Intent(this, com.dk.assistant.template.TemplateSettingsActivity::class.java)
         SettingsSearch.ACT_CONNECTORS -> android.content.Intent(this, com.dk.assistant.connect.ConnectorsActivity::class.java)
         SettingsSearch.ACT_STORY -> android.content.Intent(this, StoryWriterActivity::class.java)
+        SettingsSearch.ACT_BACKUP -> android.content.Intent(this, com.dk.assistant.backup.BackupActivity::class.java)
         else -> android.content.Intent(this, SettingsActivity::class.java).putExtra("section", e.section).also { if (e.card.isNotBlank()) it.putExtra("focus", e.card) }
     }
     startActivity(i)

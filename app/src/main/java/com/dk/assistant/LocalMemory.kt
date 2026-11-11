@@ -14,7 +14,8 @@ import kotlinx.coroutines.withContext
 import java.util.concurrent.Executors
 
 /**
- * v3.88: फ़ोन की लोकल याददाश्त (SQLite, सिर्फ़ इसी फ़ोन में - कहीं upload नहीं).
+ * v3.88: फ़ोन की लोकल याददाश्त (SQLite, सिर्फ़ इसी फ़ोन में - कहीं upload नहीं;
+ * नवंबर 2026: user खुद सेटिंग्स → बैकअप दबाए तभी उसके अपने Google Drive में - [com.dk.assistant.backup.MemoryBackup]).
  *
  *  turns  = हर बात (यूज़र / DK, आवाज़ / टेक्स्ट, तारीख-समय). नवंबर 2026: हमेशा रहती है - कभी अपने-आप नहीं मिटती
  *           (सिर्फ़ मालिक के "भूल जाओ" / याददाश्त स्क्रीन से मिटाने पर).
@@ -222,6 +223,51 @@ object LocalMemory {
             d.delete("points", "id=?", arrayOf(id.toString()))
         } catch (_: Exception) { 0 }
     }
+
+    /**
+     * नवंबर 2026: Google Drive बैकअप ([com.dk.assistant.backup.MemoryBackup]) - पूरी लोकल याद (हर बात शुरू से + सार).
+     * पीछे वाले उसी thread पर (लिखना-पढ़ना क्रम से), इंतज़ार के साथ.
+     */
+    fun exportBlocking(c: Context): Triple<List<com.dk.assistant.backup.MemoryBackup.T>, List<com.dk.assistant.backup.MemoryBackup.P>, Pair<List<String>, List<String>>> =
+        io.submit<Triple<List<com.dk.assistant.backup.MemoryBackup.T>, List<com.dk.assistant.backup.MemoryBackup.P>, Pair<List<String>, List<String>>>> {
+            val d = db(c.applicationContext)
+            val turns = ArrayList<com.dk.assistant.backup.MemoryBackup.T>()
+            d.rawQuery("SELECT who, text, at, src, day FROM turns ORDER BY at, id", null).use { k ->
+                while (k.moveToNext()) turns.add(com.dk.assistant.backup.MemoryBackup.T(k.getString(0), k.getString(1), k.getLong(2), k.getString(3).orEmpty(), k.getString(4)))
+            }
+            val points = allPoints(d).map { com.dk.assistant.backup.MemoryBackup.P(it.day, it.text, it.at) }
+            val days = ArrayList<String>(); d.rawQuery("SELECT day FROM days", null).use { k -> while (k.moveToNext()) days.add(k.getString(0)) }
+            val dropped = ArrayList<String>(); d.rawQuery("SELECT norm FROM dropped", null).use { k -> while (k.moveToNext()) dropped.add(k.getString(0)) }
+            Triple(turns, points, days to dropped)
+        }.get(120, java.util.concurrent.TimeUnit.SECONDS)
+
+    /** रिस्टोर: सिर्फ़ जोड़ना (फ़ोन में जो है वह नहीं मिटता), एक transaction में. वापस: कितनी बातें + सार जुड़े */
+    fun importBlocking(c: Context, turns: List<com.dk.assistant.backup.MemoryBackup.T>, points: List<com.dk.assistant.backup.MemoryBackup.P>, days: List<String>, dropped: List<String>): Pair<Int, Int> =
+        io.submit<Pair<Int, Int>> {
+            val d = db(c.applicationContext)
+            var nt = 0; var np = 0
+            d.beginTransaction()
+            try {
+                for (t in turns) {
+                    val dup = d.rawQuery("SELECT 1 FROM turns WHERE at=? AND who=? AND text=? LIMIT 1", arrayOf(t.at.toString(), t.who, t.text)).use { it.moveToFirst() }
+                    if (dup) continue
+                    d.insert("turns", null, ContentValues().apply {
+                        put("who", t.who); put("text", t.text); put("at", t.at); put("src", t.src); put("day", t.day.ifBlank { LocalRecall.dayOf(t.at) })
+                    }); nt++
+                }
+                for (p in points) {
+                    val dup = d.rawQuery("SELECT 1 FROM points WHERE text=? LIMIT 1", arrayOf(p.text)).use { it.moveToFirst() }
+                    if (dup) continue
+                    d.insert("points", null, ContentValues().apply { put("day", p.day.ifBlank { LocalRecall.dayOf(p.at) }); put("text", p.text); put("at", p.at) }); np++
+                }
+                for (day in days) d.insertWithOnConflict("days", null, ContentValues().apply { put("day", day); put("done", 1) }, SQLiteDatabase.CONFLICT_IGNORE)
+                for (n in dropped) d.insertWithOnConflict("dropped", null, ContentValues().apply { put("norm", n) }, SQLiteDatabase.CONFLICT_IGNORE)
+                d.setTransactionSuccessful()
+            } finally { d.endTransaction() }
+            blockCache = 0L to ""
+            DKLog.d("याददाश्त: बैकअप से $nt बातें, $np सार जुड़े")
+            nt to np
+        }.get(300, java.util.concurrent.TimeUnit.SECONDS)
 
     suspend fun clearAll(c: Context) = withContext(dispatcher) {
         try { val d = db(c); d.delete("turns", null, null); d.delete("points", null, null); d.delete("days", null, null); d.delete("dropped", null, null) } catch (_: Exception) {}

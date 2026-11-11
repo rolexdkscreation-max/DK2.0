@@ -15,6 +15,7 @@ object SettingsSearch {
     const val ACT_TEMPLATES = "act:templates"
     const val ACT_CONNECTORS = "act:connectors"
     const val ACT_STORY = "act:story"
+    const val ACT_BACKUP = "act:backup"
 
     /** हिस्सों के नाम (मेनू की पंक्ति) */
     val SECTIONS: Map<String, String> = linkedMapOf(
@@ -23,7 +24,7 @@ object SettingsSearch {
         "brain_pc" to "AI दिमाग • DK कंप्यूटर", "brain_web" to "AI दिमाग • वेबसाइट बिल्डर", "voice" to "आवाज़", "orb" to "ओर्ब और चेहरा",
         "access" to "Accessibility", "phonelock" to "फ़ोन लॉक / अनलॉक", "guard" to "स्क्रीन गार्ड", "perms" to "परमिशन", "computer" to "DK कंप्यूटर", "coder" to "कोडिंग एजेंट",
         "social" to "सोशल रिव्यू", "reels" to "रील गिनती और लिमिट",
-        ACT_AUTO to "ऑटोनोमस मोड", ACT_TEMPLATES to "टेम्पलेट कमांड", ACT_CONNECTORS to "कनेक्टर", ACT_STORY to "स्टोरी राइटर एजेंट",
+        ACT_AUTO to "ऑटोनोमस मोड", ACT_TEMPLATES to "टेम्पलेट कमांड", ACT_CONNECTORS to "कनेक्टर", ACT_STORY to "स्टोरी राइटर एजेंट", ACT_BACKUP to "बैकअप",
         "update" to "अपडेट", "debug" to "डिबग लॉग", "about" to "ऐप के बारे में"
     )
 
@@ -52,6 +53,7 @@ object SettingsSearch {
         ACT_TEMPLATES to "template टेम्पलेट साँचा command कमांड alarm अलार्म timer whatsapp",
         ACT_CONNECTORS to "connector कनेक्टर gmail drive calendar instagram facebook mcp",
         ACT_STORY to "story कहानी writer लेखक",
+        ACT_BACKUP to "backup बैकअप restore रिस्टोर drive ड्राइव google गूगल email ईमेल याददाश्त memory बातचीत",
         "update" to "update अपडेट version वर्ज़न",
         "debug" to "debug log लॉग गलती error",
         "about" to "about privacy निजता version"

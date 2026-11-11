@@ -136,6 +136,18 @@ object Memory {
         writeArr(c, "dk_chat.json", a)
     }
 
+    // ------------------------------------------------------------ नवंबर 2026: Google Drive बैकअप / रिस्टोर
+    /** बैकअप के लिए: facts, AI का context (history), चैट स्क्रीन - जैसे फ़ाइल में हैं */
+    fun backupFiles(c: Context): Triple<List<String>, String, String> =
+        Triple(facts(c), synchronized(historyLock) { readArr(c, "dk_history.json").toString() }, readArr(c, "dk_chat.json").toString())
+
+    /** रिस्टोर: जोड़ी हुई facts + (फ़ोन में खाली हो तो) बैकअप वाला context और चैट */
+    fun restoreFiles(c: Context, facts: List<String>, history: String, chat: String) {
+        writeArr(c, "dk_facts.json", JSONArray(facts))
+        try { val h = JSONArray(history); synchronized(historyLock) { writeArr(c, "dk_history.json", h); historyVersion++ } } catch (_: Exception) {}
+        try { writeArr(c, "dk_chat.json", JSONArray(chat)) } catch (_: Exception) {}
+    }
+
     // ------------------------------------------------------------ bolkar yaad karana / bhulana
     data class Cmd(val kind: String, val text: String)   // kind: remember | forget | forget_all | recall
 

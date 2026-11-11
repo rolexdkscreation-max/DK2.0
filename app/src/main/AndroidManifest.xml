@@ -324,6 +324,12 @@
             android:windowSoftInputMode="adjustResize" />
 
         <!-- v3.72: कनेक्टर हब (Google / GitHub / Facebook Page / Instagram / MCP) -->
+        <!-- नवंबर 2026: सेटिंग्स → बैकअप (याददाश्त Google Drive में) -->
+        <activity
+            android:name=".backup.BackupActivity"
+            android:exported="false"
+            android:windowSoftInputMode="adjustResize" />
+
         <activity
             android:name=".connect.ConnectorsActivity"
             android:exported="false"

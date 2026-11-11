@@ -84,5 +84,11 @@ object LearnedWays {
         old.size - keep.size
     }
 
+    /** नवंबर 2026: Drive बैकअप - फ़ाइल जैसी है वैसी / रिस्टोर पर जोड़ी हुई पूरी सूची */
+    fun rawJson(c: Context): String = synchronized(lock) { toJson(all(c)) }
+    fun replaceAll(c: Context, json: String) = synchronized(lock) {
+        try { file(c).writeText(toJson(fromJson(json))) } catch (e: Exception) { DKLog.d("सीखा हुआ रिस्टोर नहीं हुआ: ${e.message}") }
+    }
+
     fun promptBlock(c: Context): String = try { block(all(c)) } catch (_: Exception) { "" }
 }
