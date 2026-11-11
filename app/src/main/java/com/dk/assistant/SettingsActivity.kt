@@ -131,8 +131,6 @@ class SettingsActivity : AppCompatActivity() {
             .putExtra("section", e.section).putExtra("from_search", true))
     }
 
-    internal fun secCategory(id: String) {}
-
     private fun build() {
         val title = findViewById<TextView>(R.id.txtTitle)
         when (section) {
