@@ -60,7 +60,7 @@ run_one() { # $1=sha $2=key
     echo "secs=$secs"
     echo "sha=$sha"
     # पहले असली गलतियाँ (compile की e: लाइनें, fail हुए tests), फिर आख़िर का हिस्सा
-    grep -E "^e: |FAILED|AssertionError|Exception:|What went wrong|^> " "$out" | head -80
+    grep -E "^e: |FAILED|AssertionError|Exception:|What went wrong|^> [^T]" "$out" | head -80
     echo "-----"
     tail -n 60 "$out"
   } > "$res"
