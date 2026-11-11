@@ -106,6 +106,33 @@ class SettingsActivity : AppCompatActivity() {
 
     private val section: String? get() = intent.getStringExtra("section")
 
+    private val parentMap = mapOf(
+        "profile" to "cat_dk", "lang" to "cat_dk", "ui" to "cat_dk", "orb" to "cat_dk",
+        "brain" to "cat_brain", "brain_live" to "cat_brain", "brain_chat" to "cat_brain", "brain_coder" to "cat_brain", "brain_pc" to "cat_brain", "brain_web" to "cat_brain", "voice" to "cat_brain", "coder" to "cat_brain", "computer" to "cat_brain",
+        "access" to "cat_auto", "auto" to "cat_auto", "templates" to "cat_auto",
+        "phonelock" to "cat_security", "guard" to "cat_security", "perms" to "cat_security",
+        "social" to "cat_social", "reels" to "cat_social", "story" to "cat_social",
+        "connectors" to "cat_data", "backup" to "cat_data", "update" to "cat_data", "debug" to "cat_data", "about" to "cat_data"
+    )
+
+    override fun onBackPressed() {
+        val p = parentMap[section]
+        if (p != null && intent.getBooleanExtra("from_search", false)) {
+            startActivity(android.content.Intent(this, SettingsActivity::class.java).putExtra("section", p))
+            finish()
+        } else {
+            save(false)
+            super.onBackPressed()
+        }
+    }
+
+    private fun openHit(e: SettingsSearch.E) {
+        startActivity(android.content.Intent(this, SettingsActivity::class.java)
+            .putExtra("section", e.section).putExtra("from_search", true))
+    }
+
+    internal fun secCategory(id: String) {}
+
     private fun build() {
         val title = findViewById<TextView>(R.id.txtTitle)
         when (section) {
@@ -118,6 +145,12 @@ class SettingsActivity : AppCompatActivity() {
                     FutureViews.goldShader(title)
                 }
                 setupSearch(); menu() }
+            "cat_dk" -> { title.text = "मेरा DK"; secCategory("cat_dk") }
+            "cat_brain" -> { title.text = "दिमाग और आवाज़"; secCategory("cat_brain") }
+            "cat_auto" -> { title.text = "ऑटोमेशन"; secCategory("cat_auto") }
+            "cat_security" -> { title.text = "सुरक्षा"; secCategory("cat_security") }
+            "cat_social" -> { title.text = "सोशल और कहानी"; secCategory("cat_social") }
+            "cat_data" -> { title.text = "डेटा और ऐप"; secCategory("cat_data") }
             "profile" -> { title.text = "प्रोफ़ाइल"; secProfile() }
             "lang" -> { title.text = "भाषा / Language"; secLang() }
             "brain" -> { title.text = "AI दिमाग"; secBrainMenu() }
@@ -148,32 +181,52 @@ class SettingsActivity : AppCompatActivity() {
 
     // ------------------------------------------------------------ mukhya menu
     private fun menu() {
-        val name = Prefs.assistantName(this)
         val items = listOf(
-            Triple("profile", "प्रोफ़ाइल", "आपका नाम • असिस्टेंट का नाम ($name) • बात करने का तरीका"),
-            Triple("lang", "भाषा / Language", "ऐप: ${if (UiLang.en()) "English" else "हिंदी"} • DK के जवाब: ${Lang.short(Prefs.replyLang(this))}"),
-            Triple("ui", "दिखावट (UI कस्टमाइज़ेशन)", "थीम • मुख्य रंग • काँच की पारदर्शिता • चमक • एनिमेशन"),
-            Triple("brain", "AI दिमाग", "DK लाइव • DK चैट • कोडिंग एजेंट • DK कंप्यूटर — हर एक की अपनी API key"),
-            Triple("voice", "आवाज़", "बोलने वाला इंजन (Live • Gemini TTS) • सुनना"),
-            Triple("orb", "ओर्ब और चेहरा", "पृथ्वी, गैलेक्सी, एटम, छल्ला, पुरुष/महिला HD चेहरा"),
-            Triple("access", "Accessibility", (Setup.a11yMark(this) + when { Setup.accessibilityOn() -> "चालू"; Setup.enabledInSettings(this) -> "रुका है"; else -> "बंद" }) + " • फ़ोन कंट्रोल • हमेशा सुनना • कॉल • बैटरी"),
-            Triple("phonelock", "फ़ोन लॉक / अनलॉक", (if (PhoneLockStore.lockOn(this) || PhoneLockStore.unlockOn(this)) "✓ चालू" else "✗ बंद") + " • \"हे DK फोन लॉक करो\" • अपना नाम और वाक्य • PIN / पैटर्न"),
-            Triple("guard", "स्क्रीन गार्ड", (if (Guard.active()) "✓ चालू" else "✗ बंद") + " • कोई फ़ोन छुए तो सायरन • फ़ोटो • SMS • \"DK स्क्रीन गार्ड चालू करो\""),
-            Triple("perms", "परमिशन", "माइक • स्क्रीन देखना • नोटिफ़िकेशन • कॉल • ऐप इंस्टॉल"),
-            Triple("computer", "DK कंप्यूटर", (if (Prefs.computerOn(this)) "✓ चालू" else "✗ बंद") + " • कोई भी काम: खोज, रिसर्च, फ़ाइल/PDF, हिसाब, फ़ोन, रिमाइंडर"),
-            Triple("coder", "कोडिंग एजेंट", (if (Prefs.coderOn(this)) "✓ चालू" else "✗ बंद") + " • GitHub से जुड़ें • कोड लिखें/बदलें/हटाएँ • push • अलग AI key"),
-            Triple("auto", "ऑटोनोमस मोड", (if (com.dk.assistant.auto.AutoPrefs.on(this)) "✓ चालू" else "✗ बंद") + " • DK खुद तय करे और खुद करे • API keys • आपातकालीन STOP"),
-            Triple("templates", "टेम्पलेट कमांड", "बिना AI के तय साँचे • WhatsApp • अलार्म • मैप • कॉल"),
-            Triple("social", "सोशल रिव्यू", "इंस्टाग्राम • फेसबुक • यूट्यूब स्टूडियो — हर रील के व्यूज़, रीच क्यों गिरी, ट्रेंड, ज़्यादा व्यूज़ कैसे"),
-            Triple("reels", "रील गिनती और लिमिट", "इंस्टाग्राम • YouTube शॉर्ट्स • फेसबुक — ऊपर गिनती की पट्टी • रोज़ की लिमिट • फ़ोन लॉक / ऐप बंद"),
-            Triple("backup", "बैकअप", "DK की याददाश्त Google Drive में • अपना ईमेल डालें • बैकअप / रिस्टोर (ऐप दोबारा डालने पर सब वापस)"),
-            Triple("connectors", "कनेक्टर", "Gmail • Drive • Calendar • GitHub • Facebook Page • Instagram • MCP — DK लाइव से बोलकर काम"),
-            Triple("story", "स्टोरी राइटर एजेंट", "लंबी हिंदी कहानियाँ (10–30 मिनट) • भाग-दर-भाग • कॉपी • फ़ोन में सेव"),
-            Triple("update", "अपडेट", "अभी: ${Updater.displayVersion(this)} • नया version चेक करें"),
-            Triple("debug", "डिबग लॉग", "माइक, कनेक्शन, देरी और गलतियों का पूरा हाल"),
-            Triple("about", "ऐप के बारे में", "version • बनाने वाले • निजता (privacy)")
+            Triple("cat_dk", "मेरा DK", "प्रोफ़ाइल • भाषा • दिखावट • ऑर्ब और चेहरा"),
+            Triple("cat_brain", "दिमाग और आवाज़", "AI ब्रेन • वॉइस"),
+            Triple("cat_auto", "ऑटोमेशन", "ऑटोनोमस मोड • टेम्पलेट कमांड • एक्सेसिबिलिटी"),
+            Triple("cat_security", "सुरक्षा", "फ़ोन लॉक • स्क्रीन गार्ड • परमिशन"),
+            Triple("cat_social", "सोशल और कहानी", "सोशल रिव्यू • रील गिनती और लिमिट • स्टोरी राइटर"),
+            Triple("cat_data", "डेटा और ऐप", "कनेक्टर्स • बैकअप • अपडेट • डिबग लॉग • ऐप के बारे में")
         )
         items.forEach { (id, t, sub) -> menuRow(id, t, sub) }
+    }
+
+    internal fun secCategory(id: String) {
+        when (id) {
+            "cat_dk" -> {
+                menuRow("profile", "प्रोफ़ाइल", "आपका नाम • असिस्टेंट का नाम • बात करने का तरीका")
+                menuRow("lang", "भाषा / Language", "ऐप की भाषा • DK के जवाब")
+                menuRow("ui", "दिखावट", "थीम • मुख्य रंग • काँच की पारदर्शिता")
+                menuRow("orb", "ओर्ब और चेहरा", "पृथ्वी, गैलेक्सी, एटम, छल्ला, पुरुष/महिला HD चेहरा")
+            }
+            "cat_brain" -> {
+                menuRow("brain", "AI दिमाग", "DK लाइव • DK चैट • कोडिंग एजेंट • DK कंप्यूटर")
+                menuRow("voice", "आवाज़", "बोलने वाला इंजन • सुनना")
+            }
+            "cat_auto" -> {
+                menuRow("auto", "ऑटोनोमस मोड", "DK खुद तय करे और खुद करे")
+                menuRow("templates", "टेम्पलेट कमांड", "बिना AI के तय साँचे")
+                menuRow("access", "Accessibility", "फ़ोन कंट्रोल • हमेशा सुनना • कॉल")
+            }
+            "cat_security" -> {
+                menuRow("phonelock", "फ़ोन लॉक / अनलॉक", "PIN • पैटर्न • वाक्य")
+                menuRow("guard", "स्क्रीन गार्ड", "सायरन • फ़ोटो • SMS")
+                menuRow("perms", "परमिशन", "माइक • स्क्रीन देखना • नोटिफ़िकेशन")
+            }
+            "cat_social" -> {
+                menuRow("social", "सोशल रिव्यू", "इंस्टाग्राम • फेसबुक • यूट्यूब स्टूडियो")
+                menuRow("reels", "रील गिनती और लिमिट", "व्यूज़ • रोज़ की लिमिट")
+                menuRow("story", "स्टोरी राइटर एजेंट", "लंबी हिंदी कहानियाँ")
+            }
+            "cat_data" -> {
+                menuRow("connectors", "कनेक्टर्स", "Gmail • Drive • Calendar • GitHub")
+                menuRow("backup", "बैकअप", "DK की याददाश्त Google Drive में")
+                menuRow("update", "अपडेट", "वर्ज़न नंबर • नया चेक करें")
+                menuRow("debug", "डिबग लॉग", "माइक, कनेक्शन, देरी का हाल")
+                menuRow("about", "ऐप के बारे में", "version • बनाने वाले • निजता")
+            }
+        }
     }
 
     /** मेनू की एक पंक्ति (icon + नाम + विवरण + ›) - दबाने पर वह section */
@@ -369,6 +422,7 @@ class SettingsActivity : AppCompatActivity() {
         super.onResume()
         refreshAccess(); refreshPerms()
         if (section == null && container.childCount > 0) { container.removeAllViews(); menu(); space(container, 8) }
+        if (section?.startsWith("cat_") == true && container.childCount > 0) { container.removeAllViews(); secCategory(section!!); space(container, 8) }
         if (section == "brain" && container.childCount > 0) { container.removeAllViews(); secBrainMenu(); space(container, 8) }
     }
 
@@ -400,7 +454,7 @@ class SettingsActivity : AppCompatActivity() {
 
     // ------------------------------------------------------------ save
     internal fun save(showToast: Boolean) {
-        if (section == null || section == "orb" || section == "ui" || section == "face") return
+        if (section == null || section?.startsWith("cat_") == true || section == "orb" || section == "ui" || section == "face" || section == "brain") return
         val active = if (::rgProvider.isInitialized)
             Providers.all.getOrNull(rgProvider.checkedRadioButtonId - 1000)?.id ?: Prefs.activeProviderRaw(this)
         else Prefs.activeProviderRaw(this)

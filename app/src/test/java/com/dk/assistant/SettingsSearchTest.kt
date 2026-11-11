@@ -26,6 +26,16 @@ class SettingsSearchTest {
         assertTrue((ids - SettingsSearch.SECTIONS.keys).isEmpty())
     }
 
+    @Test fun controlCenterHasSixMainCategoriesAndSubItems() {
+        val s = com.dk.assistant.SetSrc.all()
+        assertTrue(s.contains("cat_dk"))
+        assertTrue(s.contains("cat_brain"))
+        assertTrue(s.contains("cat_auto"))
+        assertTrue(s.contains("cat_security"))
+        assertTrue(s.contains("cat_social"))
+        assertTrue(s.contains("cat_data"))
+    }
+
     @Test fun autonomous_foundBySpellings() {
         for (q in listOf("ऑटोनोमस", "ऑटोनॉमस", "autonomous", "Auto", "ऑटो")) {
             val r = SettingsSearch.search(q)

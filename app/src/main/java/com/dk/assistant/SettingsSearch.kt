@@ -19,6 +19,8 @@ object SettingsSearch {
 
     /** हिस्सों के नाम (मेनू की पंक्ति) */
     val SECTIONS: Map<String, String> = linkedMapOf(
+        "cat_dk" to "मेरा DK", "cat_brain" to "दिमाग और आवाज़", "cat_auto" to "ऑटोमेशन",
+        "cat_security" to "सुरक्षा", "cat_social" to "सोशल और कहानी", "cat_data" to "डेटा और ऐप",
         "profile" to "प्रोफ़ाइल", "lang" to "भाषा / Language", "ui" to "दिखावट (UI कस्टमाइज़ेशन)", "brain" to "AI दिमाग",
         "brain_live" to "AI दिमाग • DK लाइव", "brain_chat" to "AI दिमाग • DK चैट", "brain_coder" to "AI दिमाग • कोडिंग एजेंट",
         "brain_pc" to "AI दिमाग • DK कंप्यूटर", "brain_web" to "AI दिमाग • वेबसाइट बिल्डर", "voice" to "आवाज़", "orb" to "ओर्ब और चेहरा",
@@ -30,6 +32,12 @@ object SettingsSearch {
 
     /** हर हिस्से के आम शब्द (हिंदी + English + बोलचाल) - सर्च में मदद */
     private val SECTION_WORDS = mapOf(
+        "cat_dk" to "मेरा dk profile प्रोफ़ाइल भाषा language दिखावट appearance orb ऑर्ब चेहरा",
+        "cat_brain" to "दिमाग और आवाज़ ai ब्रेन brain voice आवाज़ piper",
+        "cat_auto" to "ऑटोमेशन autonomous ऑटोनोमस मोड टेम्पलेट template कमांड accessibility एक्सेसिबिलिटी",
+        "cat_security" to "सुरक्षा phone lock फ़ोन लॉक screen guard स्क्रीन गार्ड permissions परमिशन",
+        "cat_social" to "सोशल और कहानी social review सोशल रिव्यू reel रील गिनती लिमिट story writer एजेंट",
+        "cat_data" to "डेटा और ऐप connectors कनेक्टर्स backup बैकअप update अपडेट debug डिबग लॉग about ऐप के बारे में",
         "profile" to "नाम name profile असिस्टेंट assistant",
         "lang" to "भाषा language hindi english हिंदी अंग्रेज़ी",
         "ui" to "theme थीम रंग color colour design look दिखावट animation",

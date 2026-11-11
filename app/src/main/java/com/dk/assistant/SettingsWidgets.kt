@@ -26,37 +26,50 @@ import kotlinx.coroutines.launch
 // यह code पहले SettingsActivity.kt में था; सिर्फ़ जगह बदली है, व्यवहार वही (extension functions, वही state SettingsActivity में)।
 
 internal fun SettingsActivity.menuIcon(id: String) = when (id) {
-    "profile" -> R.drawable.ic_s_profile
-    "lang" -> R.drawable.ic_s_lang
-    "brain" -> R.drawable.ic_s_brain
-    "voice" -> R.drawable.ic_s_voice
-    "orb" -> R.drawable.ic_s_orb
-    "ui" -> R.drawable.ic_s_ui
-    "access" -> R.drawable.ic_s_access
-    "perms" -> R.drawable.ic_s_perms
-    "coder" -> R.drawable.ic_s_coder
-    "computer" -> R.drawable.ic_s_computer
-    "story" -> R.drawable.ic_s_story
-    "connectors" -> R.drawable.ic_s_connect
-    "backup" -> R.drawable.ic_s_update
-    "social" -> R.drawable.ic_s_story
-    "reels" -> R.drawable.ic_s_ui
-    "auto" -> R.drawable.ic_s_brain
-    "templates" -> R.drawable.ic_s_voice
-    "update" -> R.drawable.ic_s_update
-    "about" -> R.drawable.ic_s_profile
-    else -> R.drawable.ic_s_debug
+    "cat_dk" -> com.dk.assistant.R.drawable.ic_s_profile
+    "cat_brain" -> com.dk.assistant.R.drawable.ic_s_brain
+    "cat_auto" -> com.dk.assistant.R.drawable.ic_s_access
+    "cat_security" -> com.dk.assistant.R.drawable.ic_s_perms
+    "cat_social" -> com.dk.assistant.R.drawable.ic_s_story
+    "cat_data" -> com.dk.assistant.R.drawable.ic_s_connect
+    "profile" -> com.dk.assistant.R.drawable.ic_s_profile
+    "lang" -> com.dk.assistant.R.drawable.ic_s_lang
+    "brain" -> com.dk.assistant.R.drawable.ic_s_brain
+    "voice" -> com.dk.assistant.R.drawable.ic_s_voice
+    "orb" -> com.dk.assistant.R.drawable.ic_s_orb
+    "ui" -> com.dk.assistant.R.drawable.ic_s_ui
+    "access" -> com.dk.assistant.R.drawable.ic_s_access
+    "perms" -> com.dk.assistant.R.drawable.ic_s_perms
+    "phonelock" -> com.dk.assistant.R.drawable.ic_s_perms
+    "guard" -> com.dk.assistant.R.drawable.ic_s_perms
+    "coder" -> com.dk.assistant.R.drawable.ic_s_coder
+    "computer" -> com.dk.assistant.R.drawable.ic_s_computer
+    "story" -> com.dk.assistant.R.drawable.ic_s_story
+    "connectors" -> com.dk.assistant.R.drawable.ic_s_connect
+    "backup" -> com.dk.assistant.R.drawable.ic_s_update
+    "social" -> com.dk.assistant.R.drawable.ic_s_story
+    "reels" -> com.dk.assistant.R.drawable.ic_s_ui
+    "auto" -> com.dk.assistant.R.drawable.ic_s_brain
+    "templates" -> com.dk.assistant.R.drawable.ic_s_voice
+    "update" -> com.dk.assistant.R.drawable.ic_s_update
+    "about" -> com.dk.assistant.R.drawable.ic_s_profile
+    else -> com.dk.assistant.R.drawable.ic_s_debug
 }
 
 /** नवंबर 2026: squircle आइकन का निऑन रंग (हर section अलग, ताकि मेनू में पहचान आसान) */
 internal fun SettingsActivity.menuTint(id: String): Int = when (id) {
-    "profile", "about" -> 0xFF22D3EE.toInt()
-    "voice", "templates" -> 0xFFA855F7.toInt()
-    "brain", "auto", "coder" -> 0xFF6366F1.toInt()
-    "ui", "orb", "reels" -> 0xFFEC4899.toInt()
-    "access", "perms", "phonelock", "guard", "backup" -> 0xFF34D399.toInt()
-    "computer", "connectors", "lang" -> 0xFF38BDF8.toInt()
-    "update", "story", "social" -> 0xFFFBBF24.toInt()
+    "cat_dk" -> 0xFF22D3EE.toInt()
+    "cat_brain" -> 0xFF6366F1.toInt()
+    "cat_auto" -> 0xFFA855F7.toInt()
+    "cat_security" -> 0xFF34D399.toInt()
+    "cat_social" -> 0xFFFBBF24.toInt()
+    "cat_data" -> 0xFF38BDF8.toInt()
+    "profile", "lang", "ui", "orb" -> 0xFF22D3EE.toInt()
+    "brain", "voice", "coder", "computer" -> 0xFF6366F1.toInt()
+    "auto", "templates", "access" -> 0xFFA855F7.toInt()
+    "perms", "phonelock", "guard" -> 0xFF34D399.toInt()
+    "social", "reels", "story" -> 0xFFFBBF24.toInt()
+    "connectors", "backup", "update", "about" -> 0xFF38BDF8.toInt()
     else -> 0xFF94A3B8.toInt()
 }
 
