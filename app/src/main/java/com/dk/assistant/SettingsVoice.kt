@@ -136,6 +136,9 @@ internal fun SettingsActivity.secVoice() {
         com.dk.assistant.voice.engine.VoiceEngineCard.build(this, box, dp)
     }
 
+    // नवंबर 2026 (मालिक): वैकल्पिक Piper TTS (हिंदी, ऑफ़लाइन) - डिफ़ॉल्ट बंद. सारा code SettingsPiper.kt में
+    card("Piper आवाज़", "हिंदी, बिना इंटरनेट — डिफ़ॉल्ट बंद, खुद डाउनलोड करके चालू करें") { box -> piperCard(box) }
+
     // ---- Listening
     card("सुनना (माइक)", "लगातार सुनना — बिना बीप की आवाज़") { box ->
         rgListen = radios(box, listOf(

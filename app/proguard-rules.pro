@@ -29,3 +29,9 @@
 # v3.68: आवाज़ इंजन नाम से (Class.forName + INSTANCE) ढूँढे जाते हैं - फ़ाइल हटाओ तो इंजन अपने-आप सूची से हट जाता है
 -keep class com.dk.assistant.voice.engine.GeminiTtsEngine { *; }
 -keep class com.dk.assistant.voice.engine.LiveNativeEngine { *; }
+
+# नवंबर 2026: Piper (ऑफ़लाइन हिंदी आवाज़) - sherpa-onnx की native लाइब्रेरी (पहली बार डाउनलोड) इन classes / fields को JNI से नाम से पढ़ती है
+-keep class com.k2fsa.sherpa.onnx.** { *; }
+-keep class com.dk.assistant.voice.engine.PiperTtsEngine { *; }
+# native callback typed method invoke(float[]):Integer ढूँढता है - R8 इसे न हटाए/न बदले
+-keepclassmembers class * implements kotlin.jvm.functions.Function1 { java.lang.Integer invoke(float[]); }

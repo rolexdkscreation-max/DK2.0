@@ -54,7 +54,7 @@ object VoiceEngines {
         }
     }
 
-    fun byId(id: String?): VoiceEngine? = all.firstOrNull { it.id == id }
+    fun byId(id: String?): VoiceEngine? = all.firstOrNull { it.id == id } ?: PiperTtsEngine.takeIf { id == PiperTtsEngine.ID }
 
     /** सुरक्षा: worker_token ताले में ([com.dk.assistant.SecretPrefs]) - बाकी settings वैसी ही */
     fun sp(c: Context): SharedPreferences =
@@ -82,7 +82,8 @@ object VoiceEngines {
         return all.firstOrNull { it.defaultOn }?.id ?: LIVE_NATIVE
     }
 
-    fun active(c: Context): VoiceEngine? = byId(activeId(c))
+    /** नवंबर 2026: Piper का स्विच ON (और डाउनलोड पूरा) = Piper; OFF = पहले जैसा (सेव पसंद छुई तक नहीं) */
+    fun active(c: Context): VoiceEngine? = PiperTtsEngine.override(c) ?: byId(activeId(c))
 
     /** बदला तो गिनती बढ़ती है - चलता Live इसे देखकर अगली बार नया इंजन लेता है */
     @Volatile var version = 0
@@ -96,6 +97,9 @@ object VoiceEngines {
         private set
 
     fun liveChanged() { liveVersion++ }
+
+    /** नवंबर 2026: Piper का स्विच बदला - चलता Live चुप होते ही सही आवाज़ ले (सेव पसंद नहीं बदलती) */
+    fun changed() { version++ }
 
     fun setActive(c: Context, id: String) {
         if (byId(id) == null) return
