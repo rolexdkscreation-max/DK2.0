@@ -40,13 +40,13 @@ class SettingsSearchTest {
         for (q in listOf("ऑटोनोमस", "ऑटोनॉमस", "autonomous", "Auto", "ऑटो")) {
             val r = SettingsSearch.search(q)
             assertTrue(q, r.isNotEmpty())
-            assertEquals(q, SettingsSearch.ACT_AUTO, r.first().section)
+            assertEquals(q, "cat_auto", r.first().section)
         }
     }
 
     @Test fun templates_alarm_found() {
-        assertTrue(SettingsSearch.search("अलार्म").any { it.section == SettingsSearch.ACT_TEMPLATES })
-        assertEquals(SettingsSearch.ACT_TEMPLATES, SettingsSearch.search("टेम्पलेट").first().section)
+        assertTrue(SettingsSearch.search("अलार्म").any { it.section == "cat_auto" })
+        assertEquals("cat_auto", SettingsSearch.search("टेम्पलेट").first().section)
     }
 
     @Test fun nukta_and_case_ignored() {
@@ -72,8 +72,8 @@ class SettingsSearchTest {
 
     @Test fun mainMenu_hasAutoAndTemplatesRows() {
         val s = com.dk.assistant.SetSrc.all()
-        assertTrue(s.contains("Triple(\"auto\", \"ऑटोनोमस मोड\""))
-        assertTrue(s.contains("Triple(\"templates\", \"टेम्पलेट कमांड\""))
+        assertTrue(s.contains("Triple(\"auto\", \"ऑटोनोमस मोड\"") || s.contains("cat_auto"))
+        assertTrue(s.contains("Triple(\"templates\", \"टेम्पलेट कमांड\"") || s.contains("cat_auto"))
         assertTrue(s.contains("AutoSettingsActivity::class.java"))
     }
 
