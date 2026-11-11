@@ -173,7 +173,11 @@ class CodingAgent(internal val gh: GitHub, var repo: String, var branch: String,
     }
     fun teamList(): List<String> = allPaths()
     fun teamRead(path: String): String? = try { current(path) } catch (e: GitHub.Err) { if (e.code == 404) null else throw e }
-    fun teamStage(path: String, content: String?) { remember(path); staged[path] = content }
+    fun teamStage(path: String, content: String?) {
+        // नवंबर 2026: binary (तस्वीर/font) text से लिखी तो टूटती है (dk_theme_bg.webp) - कभी stage नहीं
+        if (content != null && BinaryGuard.isBinary(path)) { DKLog.d("Coder: " + BinaryGuard.refusal(path)); return }
+        remember(path); staged[path] = content
+    }
     /** PR के विवरण के लिए: काम, क्या बदला, जड़ */
     fun teamInfo(task: String, summary: String, root: String) { lastTask = task; lastSummary = summary; rootCause = root }
 
@@ -239,6 +243,22 @@ class CodingAgent(internal val gh: GitHub, var repo: String, var branch: String,
         d.forEach { teamStage(it.path, it.baseContent) }
         if (d.isNotEmpty()) DKLog.d("Coder: main से वापस लाई: " + d.joinToString { it.path })
         return d
+    }
+
+    /**
+     * नवंबर 2026 (feature/dk-1110-2225): test fail + उसी test/log में इसी काम की बदली binary फ़ाइल का नाम =
+     * फ़ाइल main से हूबहू वापस (blob sha से, सीधा commit). @return वापस आई फ़ाइलें
+     */
+    fun restoreBinaries(log: String): List<String> {
+        if (branch.isBlank() || branch == baseBranch) return emptyList()
+        val changed = try { gh.compareFiles(repo, baseBranch, branch).map { it.path }.filter { BinaryGuard.isBinary(it) } } catch (_: Exception) { emptyList() }
+        if (changed.isEmpty()) return emptyList()
+        val bad = BinaryGuard.culprits(log, changed, { p -> try { teamRead(p) } catch (_: Exception) { null } }, allPaths())
+        if (bad.isEmpty()) return emptyList()
+        val url = gh.restoreFromBase(repo, branch, baseBranch, bad, "DK: binary फ़ाइल $baseBranch से हूबहू वापस (" + bad.joinToString { it.substringAfterLast('/') } + ")")
+        if (url.isNotBlank()) { lastSha = url.substringAfterLast('/'); pushedToBranch = true }
+        DKLog.d("Coder: binary main से वापस: " + bad.joinToString())
+        return bad
     }
 
     /** v4.4: फ़ाइल हटाने से पहले - बाकी रिपो में इस्तेमाल है? (रिपो की copy न हो तो GitHub खोज) */
@@ -559,6 +579,9 @@ class CodingAgent(internal val gh: GitHub, var repo: String, var branch: String,
         }
         // v4.4: आख़िरी पहरा - इस्तेमाल हो रही फ़ाइल हटाने वाला commit कभी नहीं (किसी भी रास्ते से आया हो)
         staged.filterValues { it == null }.keys.forEach { p -> deleteBlock(p, original[p] ?: baseRead(p))?.let { throw IllegalStateException("push रोका: $it") } }
+        // नवंबर 2026: binary फ़ाइल text से लिखी हो तो commit से बाहर (रिपो की copy भी साफ़ रहे)
+        BinaryGuard.blockedWrites(staged).forEach { staged.remove(it) }
+        if (staged.isEmpty()) throw GitHub.NoChange("सिर्फ़ binary फ़ाइलें लिखनी थीं — रोकीं, कोई commit नहीं")
         // GitHub API से सीधा commit (git push नहीं); commit() खुद पक्का करता है कि branch नए commit पर पहुँची
         val url = gh.commit(repo, branch, staged.toMap(), msg)
         pushedToBranch = true

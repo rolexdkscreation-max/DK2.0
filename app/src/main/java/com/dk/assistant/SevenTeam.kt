@@ -988,6 +988,11 @@ class SevenTeam(
             ev(Agent.REVIEWER, "✗ " + lastBlock)
             return false
         }
+        // नवंबर 2026 (dk_theme_bg.webp टूटी): तस्वीर/font जैसी binary फ़ाइल text से नहीं लिखी जाती - यह कदम छोड़ो
+        if (s.action != "delete" && BinaryGuard.isBinary(s.file)) {
+            ev(Agent.REVIEWER, "✗ " + BinaryGuard.refusal(s.file) + " — यह कदम छोड़ा")
+            return true
+        }
         if (s.action == "delete") return deleteStep(s, cur)
         val errors = mutableListOf<String>()
         var misses = 0

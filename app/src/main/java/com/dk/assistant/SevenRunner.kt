@@ -68,6 +68,7 @@ object SevenRunner {
         }
         override suspend fun original(path: String) = if (path in before) before[path] else read(path).also { before[path] = it }
         override suspend fun stage(path: String, content: String?) {
+            if (content != null && BinaryGuard.isBinary(path)) return      // नवंबर 2026: binary text से कभी नहीं
             if (path !in before) before[path] = withContext(Dispatchers.IO) { try { a.teamRead(path) } catch (_: Exception) { null } }
             mine[path] = content
             withContext(Dispatchers.IO) { a.teamStage(path, content) }
@@ -79,8 +80,11 @@ object SevenRunner {
         override suspend fun footprint(): String = withContext(Dispatchers.IO) { a.footprintText() }
         override suspend fun restoreDamaged(log: String): List<CodeGuard.Damage> {
             val d = withContext(Dispatchers.IO) { try { CodeGuard.damage(log, a.taskChanges()) { a.baseRead(it) } } catch (_: Exception) { emptyList() } }
+                .filterNot { BinaryGuard.isBinary(it.path) }
             d.forEach { stage(it.path, it.baseContent) }
-            return d
+            // नवंबर 2026: टूटी तस्वीर/font (binary) main से हूबहू - blob से, text नहीं
+            val bin = withContext(Dispatchers.IO) { try { a.restoreBinaries(log) } catch (_: Exception) { emptyList() } }
+            return d + bin.map { CodeGuard.Damage(it, "", emptyList(), false) }
         }
         override suspend fun all(): Map<String, String>? = a.teamSnapshot()
         override suspend fun skippedPaths(): Set<String> = a.snapSkipped
@@ -110,10 +114,29 @@ object SevenRunner {
         override suspend fun pushAndTest(commit: String, title: String, summary: String, rootCause: String, onStep: (String) -> Unit): TeamTest {
             a.teamInfo(task, summary, rootCause)
             if (a.staged.isNotEmpty()) {
-                a.push(commit)
-                if (a.prError.isNotBlank()) onStep("PR: ${a.prError.take(200)}")
+                try {
+                    a.push(commit)
+                    if (a.prError.isNotBlank()) onStep("PR: ${a.prError.take(200)}")
+                } catch (e: GitHub.NoChange) { a.staged.clear(); onStep("सुधार से कोई फ़ाइल नहीं बदली — खाली commit नहीं बनाया") }
                 saveCk()
             }
+            // नवंबर 2026 (feature/dk-1110-2225: 3 खाली commit, हर बार वही fail): वही commit पहले fail हो चुका =
+            // वही build दोबारा नहीं; डिबगर को साफ़ कि पिछला सुधार कुछ नहीं बदला (FixLoop इसे "वही गलती" गिनता है)
+            if (failedSha.isNotBlank() && a.lastSha == failedSha) {
+                onStep("यह commit पहले ही fail हो चुका (कोई नया बदलाव नहीं) — build दोबारा नहीं चला रहा, डिबगर को असली वजह पर भेज रहा हूँ")
+                return TeamTest(false, BinaryGuard.NO_CHANGE + "\n\n" + failedLog, failedUrl, "", if (a.pr == null) TeamTest.BRANCH else TeamTest.PR)
+            }
+            return remember(test(onStep))
+        }
+        private var failedSha = ""
+        private var failedLog = ""
+        private var failedUrl = ""
+        private fun remember(t: TeamTest): TeamTest {
+            if (t.ok == false) { failedSha = a.lastSha; failedLog = t.log.removePrefix(BinaryGuard.NO_CHANGE).trimStart(); failedUrl = t.url }
+            else if (t.ok == true) { failedSha = ""; failedLog = ""; failedUrl = "" }
+            return t
+        }
+        private suspend fun test(onStep: (String) -> Unit): TeamTest {
             val wfs = withContext(Dispatchers.IO) { a.teamWorkflows() }
             if (wfs.isEmpty()) return TeamTest(null, SevenTeam.NO_CI, a.pr?.url.orEmpty())
             if (a.pr == null) {

@@ -479,13 +479,44 @@ class GitHub(private val token: String) {
      * Saare badlaav EK commit me push. changes: path -> naya content (null = file mitao).
      * @return commit ka link
      */
-    fun commit(repo: String, branch: String, changes: Map<String, String?>, message: String): String {
-        require(changes.isNotEmpty()) { "कोई बदलाव नहीं" }
+    fun commit(repo: String, branch: String, changes0: Map<String, String?>, message: String): String {
+        require(changes0.isNotEmpty()) { "कोई बदलाव नहीं" }
+        // नवंबर 2026: तस्वीर/font जैसी binary फ़ाइल text से कभी नहीं (dk_theme_bg.webp 789 byte की टूटी बनी थी)
+        BinaryGuard.blockedWrites(changes0).forEach { DKLog.d("GitHub: binary लिखना रोका: $it") }
+        val changes = BinaryGuard.safeChanges(changes0)
+        if (changes.isEmpty()) throw NoChange("सिर्फ़ binary फ़ाइलें लिखनी थीं — रोकीं, कोई commit नहीं")
         return try { commitOnce(repo, branch, changes, message) } catch (e: Err) {
             // बीच में branch पर कोई और commit आ गया (fast forward नहीं) -> नए head पर एक बार और
             if (e.code != 422 || !e.message.orEmpty().contains("fast forward", true)) throw e
             commitOnce(repo, branch, changes, message)
         }
+    }
+
+    /** सुधार से tree हूबहू वही रहा - खाली commit नहीं बनाया (वही build दोबारा चलाना बेकार) */
+    class NoChange(msg: String) : IllegalStateException(msg)
+
+    /**
+     * नवंबर 2026: binary फ़ाइलें (तस्वीर/font) base branch से हूबहू वापस - blob sha से, bytes text नहीं बनते.
+     * base पर न हो तो branch से हटाओ. @return commit का link, कुछ न बदला हो तो ""
+     */
+    fun restoreFromBase(repo: String, branch: String, base: String, paths: Collection<String>, message: String): String {
+        if (paths.isEmpty()) return ""
+        val baseTree = JSONObject(get("/repos/$repo/git/trees/${enc(base)}?recursive=1")).optJSONArray("tree") ?: JSONArray()
+        val sha = (0 until baseTree.length()).map { baseTree.getJSONObject(it) }.filter { it.optString("type") == "blob" }
+            .associate { it.optString("path") to it.optString("sha") }
+        val head = JSONObject(get("/repos/$repo/git/ref/heads/${enc(branch)}")).getJSONObject("object").getString("sha")
+        val headTree = JSONObject(get("/repos/$repo/git/commits/$head")).getJSONObject("tree").getString("sha")
+        val items = JSONArray()
+        paths.forEach { p ->
+            items.put(JSONObject().put("path", p.trimStart('/')).put("mode", "100644").put("type", "blob")
+                .put("sha", sha[p.trimStart('/')] ?: JSONObject.NULL))
+        }
+        val tree = JSONObject(post("/repos/$repo/git/trees", JSONObject().put("base_tree", headTree).put("tree", items))).getString("sha")
+        if (tree == headTree) return ""
+        val c = JSONObject(post("/repos/$repo/git/commits", JSONObject().put("message", message)
+            .put("tree", tree).put("parents", JSONArray().put(head))))
+        patch("/repos/$repo/git/refs/heads/${enc(branch)}", JSONObject().put("sha", c.getString("sha")).put("force", false))
+        return c.optString("html_url").ifBlank { "https://github.com/$repo/commit/${c.getString("sha")}" }
     }
 
     private fun commitOnce(repo: String, branch: String, changes: Map<String, String?>, message: String): String {
@@ -498,6 +529,8 @@ class GitHub(private val token: String) {
             items.put(it)
         }
         val tree = JSONObject(post("/repos/$repo/git/trees", JSONObject().put("base_tree", baseTree).put("tree", items))).getString("sha")
+        // नवंबर 2026: feature/dk-1110-2225 पर 3 खाली commit बने (सुधार ने कुछ नहीं बदला, फिर भी वही build) - अब नहीं
+        if (tree == baseTree) throw NoChange("सुधार से कोई फ़ाइल नहीं बदली (खाली commit नहीं बनाया)")
         val c = JSONObject(post("/repos/$repo/git/commits", JSONObject().put("message", message)
             .put("tree", tree).put("parents", JSONArray().put(head))))
         val sha = c.getString("sha")
