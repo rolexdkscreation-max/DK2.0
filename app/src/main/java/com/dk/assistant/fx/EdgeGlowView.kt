@@ -2,40 +2,84 @@ package com.dk.assistant.fx
 
 import android.content.Context
 import android.graphics.Canvas
-import android.graphics.LinearGradient
+import android.graphics.Matrix
 import android.graphics.Paint
-import android.graphics.Shader
+import android.graphics.Path
+import android.graphics.RectF
+import android.graphics.SweepGradient
+import android.os.Build
 import android.os.SystemClock
+import android.view.RoundedCorner
 import android.view.View
 import com.dk.assistant.DKState
 import com.dk.assistant.Prefs
 
 /**
- * v3.57 (Part 10): DK सुन/बोल रहा हो तो स्क्रीन के चारों किनारों पर हल्की चमक (~26dp)।
- * सुनना/सोचना = बैंगनी, बोलना = गुलाबी। छूने पर कुछ नहीं होता (नीचे का ऐप वैसे ही चलता है)।
- * DK चुप/बंद हो तो कुछ नहीं बनाता (बैटरी नहीं खाता)।
+ * v3.57 (Part 10): DK सुन/बोल रहा हो तो स्क्रीन के चारों किनारों पर चमक। छूने पर कुछ नहीं होता।
+ * v4.x: रंग-बिरंगी चमक - रंग एक के बाद एक किनारों पर घूमते हैं, और चमक ठीक स्क्रीन के किनारे से
+ *       चिपककर चलती है - कोनों की गोलाई के साथ-साथ (थोड़ा दूर नहीं)।
+ * चमक की परतें: बाहर चौड़ी हल्की धुंध -> अंदर पतली तेज़ रेखा (ठीक किनारे पर)।
+ * DK चुप/बंद हो तो कुछ नहीं बनाता (बैटरी नहीं खाता)। Shader एक ही बार बनता है, हर frame सिर्फ़ घुमाया जाता है।
  */
 class EdgeGlowView(context: Context) : View(context) {
     private val dp = resources.displayMetrics.density
-    private val band = 26f * dp
-    private val paint = Paint(Paint.ANTI_ALIAS_FLAG)
-    private var color: Int? = null
+    private val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE; strokeJoin = Paint.Join.ROUND }
+    private val path = Path()
+    private val box = RectF()
+    private val m = Matrix()
+    private var shader: SweepGradient? = null
+    private var corner = 0f
+    private var show = false
     private var shown = 0f
     private var lastT = 0L
+    private var spin = 0f
     private var reduced = false
     private var enabledCache = true
     private var cacheT = 0L
     private val onState: () -> Unit = { post { refresh() } }
 
+    /** परतें: चौड़ाई (dp), तेज़ी - बाहर से अंदर */
+    private val layers = arrayOf(floatArrayOf(30f, 0.10f), floatArrayOf(18f, 0.18f), floatArrayOf(9f, 0.34f), floatArrayOf(4f, 0.62f), floatArrayOf(1.8f, 1f))
+
     override fun onAttachedToWindow() { super.onAttachedToWindow(); DKState.listen(onState); refresh() }
     override fun onDetachedFromWindow() { DKState.unlisten(onState); super.onDetachedFromWindow() }
+
+    override fun onSizeChanged(w: Int, h: Int, ow: Int, oh: Int) {
+        super.onSizeChanged(w, h, ow, oh)
+        corner = screenCorner()
+        shader = if (w > 0 && h > 0) SweepGradient(w / 2f, h / 2f, EdgeGlowRules.RAINBOW, null) else null
+        path.rewind()
+        // रेखा ठीक किनारे पर: बीच की पतली तेज़ रेखा पूरी दिखे, इसलिए उसकी आधी मोटाई अंदर
+        val inset = 0.9f * dp
+        box.set(inset, inset, w - inset, h - inset)
+        val r = (corner - inset).coerceAtLeast(0f)
+        path.addRoundRect(box, r, r, Path.Direction.CW)
+    }
+
+    /** स्क्रीन के कोने की असली गोलाई (Android 12+); पुराने फ़ोन पर सिस्टम वाला नाप, वो भी न मिले तो सीधा कोना */
+    private fun screenCorner(): Float {
+        if (Build.VERSION.SDK_INT >= 31) {
+            val ins = rootWindowInsets
+            if (ins != null) {
+                var best = 0
+                for (pos in intArrayOf(RoundedCorner.POSITION_TOP_LEFT, RoundedCorner.POSITION_TOP_RIGHT,
+                        RoundedCorner.POSITION_BOTTOM_LEFT, RoundedCorner.POSITION_BOTTOM_RIGHT)) {
+                    ins.getRoundedCorner(pos)?.let { if (it.radius > best) best = it.radius }
+                }
+                if (best > 0) return best.toFloat()
+            }
+        }
+        return try {
+            val id = android.content.res.Resources.getSystem().getIdentifier("rounded_corner_radius", "dimen", "android")
+            if (id != 0) android.content.res.Resources.getSystem().getDimension(id) else 0f
+        } catch (_: Exception) { 0f }
+    }
 
     private fun refresh() {
         val now = System.currentTimeMillis()
         if (now - cacheT > 1500) { cacheT = now; enabledCache = Prefs.edgeGlow(context); reduced = Motion.reduced(context) }
-        val c = EdgeGlowRules.color(enabledCache, DKState.live, DKState.shownMode())
-        if (c != null) color = c
-        if (c != null || shown > 0f) { lastT = 0L; invalidate() }
+        show = EdgeGlowRules.color(enabledCache, DKState.live, DKState.shownMode()) != null
+        if (show || shown > 0f) { lastT = 0L; invalidate() }
     }
 
     override fun onDraw(c: Canvas) {
@@ -43,32 +87,28 @@ class EdgeGlowView(context: Context) : View(context) {
         val now = SystemClock.uptimeMillis()
         val dt = if (lastT == 0L) 0.016f else ((now - lastT) / 1000f).coerceAtMost(0.05f)
         lastT = now
-        val target = EdgeGlowRules.color(enabledCache, DKState.live, DKState.shownMode())
-        if (target != null) color = target
+        val mode = DKState.shownMode()
+        val target = EdgeGlowRules.color(enabledCache, DKState.live, mode) != null
+        show = target
         // धीरे से आना-जाना (~250ms)
         shown = when {
-            reduced -> if (target != null) 1f else 0f
-            target != null -> (shown + dt * 4f).coerceAtMost(1f)
+            reduced -> if (target) 1f else 0f
+            target -> (shown + dt * 4f).coerceAtMost(1f)
             else -> (shown - dt * 4f).coerceAtLeast(0f)
         }
-        val col = color ?: return
+        val sh = shader ?: return
         if (shown <= 0f) return
-        val inten = EdgeGlowRules.intensity(DKState.shownMode(), DKState.level, now / 1000f, reduced) * shown
-        val a = (200 * inten).toInt().coerceIn(0, 255)
-        val solid = (col and 0x00FFFFFF) or (a shl 24)
-        val clear = col and 0x00FFFFFF
-        val w = width.toFloat(); val h = height.toFloat()
-        // ऊपर, नीचे, बाएँ, दाएँ
-        edge(c, 0f, 0f, 0f, band, solid, clear, 0f, 0f, w, band)
-        edge(c, 0f, h, 0f, h - band, solid, clear, 0f, h - band, w, h)
-        edge(c, 0f, 0f, band, 0f, solid, clear, 0f, 0f, band, h)
-        edge(c, w, 0f, w - band, 0f, solid, clear, w - band, 0f, w, h)
-        if (!reduced || target == null) postInvalidateOnAnimation()
-    }
-
-    private fun edge(c: Canvas, x0: Float, y0: Float, x1: Float, y1: Float, from: Int, to: Int,
-                     l: Float, t: Float, r: Float, b: Float) {
-        paint.shader = LinearGradient(x0, y0, x1, y1, from, to, Shader.TileMode.CLAMP)
-        c.drawRect(l, t, r, b, paint)
+        val inten = EdgeGlowRules.intensity(mode, DKState.level, now / 1000f, reduced) * shown
+        // रंग एक के बाद एक घूमें
+        spin = (spin + 360f * EdgeGlowRules.flowSpeed(mode, DKState.level, reduced) * dt) % 360f
+        m.setRotate(spin, width / 2f, height / 2f)
+        sh.setLocalMatrix(m)
+        paint.shader = sh
+        for (l in layers) {
+            paint.strokeWidth = l[0] * dp
+            paint.alpha = (255 * l[1] * (0.35f + 0.65f * inten)).toInt().coerceIn(0, 255)
+            c.drawPath(path, paint)
+        }
+        if (!reduced || !target) postInvalidateOnAnimation()
     }
 }

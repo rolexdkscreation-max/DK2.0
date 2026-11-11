@@ -50,7 +50,7 @@ object ForgeDeploy {
             var repo = if (reuseLast) prefs(c).getString(key, null) else null
             if (repo == null || !gh.repoExists(repo)) repo = gh.createRepo(repoName(prompt, f.name), "DK Website Forge: " + prompt.take(120)).ifBlank { "$login/${repoName(prompt, f.name)}" }
             val branch = gh.defaultBranch(repo)
-            gh.commit(repo, branch, mapOf("index.html" to f.readText()), "DK Website Forge: ${f.name}")
+            try { gh.commit(repo, branch, mapOf("index.html" to f.readText()), "DK Website Forge: ${f.name}") } catch (_: GitHub.NoChange) { /* वही वेबसाइट पहले से */ }
             val url = gh.enablePages(repo, branch).ifBlank { "https://${login.lowercase()}.github.io/${repo.substringAfter('/')}/" }
             prefs(c).edit().putString(key, repo).putString("url:" + f.name, url).apply()
             DKLog.d("Forge deploy: $repo -> $url")

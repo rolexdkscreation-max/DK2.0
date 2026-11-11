@@ -242,7 +242,16 @@ internal fun DKAccessibilityService.showEdgeGlow() {
             WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE or
                 WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
             PixelFormat.TRANSLUCENT
-        ).apply { gravity = Gravity.TOP or Gravity.START }
+        ).apply {
+            gravity = Gravity.TOP or Gravity.START
+            // v4.x: चमक पूरी स्क्रीन के ठीक किनारे तक - कैमरा-कटआउट / status bar / नीचे की पट्टी के पीछे भी (थोड़ा दूर नहीं)
+            if (android.os.Build.VERSION.SDK_INT >= 30) {
+                layoutInDisplayCutoutMode = WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_ALWAYS
+                setFitInsetsTypes(0)
+            } else if (android.os.Build.VERSION.SDK_INT >= 28) {
+                layoutInDisplayCutoutMode = WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
+            }
+        }
         val v = com.dk.assistant.fx.EdgeGlowView(this)
         wm.addView(v, params)
         edgeGlow = v

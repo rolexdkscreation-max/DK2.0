@@ -181,7 +181,7 @@ internal fun SettingsActivity.secOrb() {
         }
         box.addView(preview, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, (260 * dp).toInt()))
     }
-    card("ओर्ब का आकार", "सब छोटे-छोटे 3D डॉट से बने हैं — जो पसंद हो चुनें") { box ->
+    card("ओर्ब का आकार", "सब छोटे-छोटे 3D डॉट से बने हैं — जो पसंद हो चुनें। \"हालत के साथ\" वाले ORB सुनते, सोचते और बोलते समय अलग आकार और रंग लेते हैं (झलक में चारों बारी-बारी दिखते हैं)") { box ->
         val g = radios(box, styles, chosen, 2400)
         g.setOnCheckedChangeListener { _, id ->
             chosen = styles.getOrNull(id - 2400)?.first ?: "earth"
@@ -190,7 +190,7 @@ internal fun SettingsActivity.secOrb() {
         }
     }
     card("किनारों की चमक", "DK सुन या बोल रहा हो तो स्क्रीन के किनारे चमकें") { box ->
-        switch(box, "सुनते समय बैंगनी, बोलते समय गुलाबी चमक", Prefs.edgeGlow(this))
+        switch(box, "रंग-बिरंगी चमक — रंग एक के बाद एक, स्क्रीन के चारों किनारों और कोनों पर घूमते हैं", Prefs.edgeGlow(this))
             .setOnCheckedChangeListener { _, on -> Prefs.edit(this) { putBoolean("edge_glow", on) } }
         hint(box, "चमक छूने पर कुछ नहीं करती — नीचे का ऐप वैसे ही चलता है। फ़ोन में animation बंद हों तो चमक स्थिर रहती है।")
     }

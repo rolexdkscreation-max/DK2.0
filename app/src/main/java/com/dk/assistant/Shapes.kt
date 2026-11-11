@@ -59,7 +59,8 @@ object Shapes {
         "geodesic" to "जियोडेसिक गोला (त्रिकोण जाली)",
         "knot" to "क्वांटम गाँठ (ट्रेफ़ॉइल)",
         "dyson" to "डायसन कवच (जाली + कोर)"
-    ) + FutureOrbs.STYLES      // v4.x: नए futuristic ORB - हर एक का अपना चलता एनीमेशन
+    ) + FutureOrbs.STYLES +     // v4.x: नए futuristic ORB - हर एक का अपना चलता एनीमेशन
+        StateOrbs.STYLES            // v4.x: सुनना / सोचना / बोलना पर अलग आकार + अलग रंग
 
     /** v3.65: मालिक के कहने पर पूरी तरह हटाए गए आकार - पहले चुने हों तो पृथ्वी */
     val REMOVED = setOf("dna", "tesseract", "wormhole", "sphere3d")
@@ -70,9 +71,14 @@ object Shapes {
     fun valid(style: String?): String = if (style != null && STYLES.any { it.first == style }) style else "earth"
 
     fun make(style: String, n: Int): Cloud {
-        if (style == "face_male") return FaceHD.build(n, female = false)
-        if (style == "face_female") return FaceHD.build(n, female = true)
+        if (style == "face_male") return FaceBust.build(n, female = false)
+        if (style == "face_female") return FaceBust.build(n, female = true)
         val m = minOf(n, PLAIN_DOTS)
+        // हालत वाला ORB: "sx_nova|2" (OrbView हालत जोड़ता है); सिर्फ़ बेस नाम = खाली हालत का आकार
+        if (StateOrbs.has(style)) {
+            val b = StateOrbs.build(if (StateOrbs.isKey(style)) style else StateOrbs.key(style, StateOrbs.IDLE), m)
+            return if (m == n) b else pad(b, n)
+        }
         val base = when (valid(style)) {
             "galaxy" -> galaxy(m)
             "atom" -> atom(m)
