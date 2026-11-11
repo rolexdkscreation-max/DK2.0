@@ -385,6 +385,11 @@ class GitHub(private val token: String) {
 
     private fun put(path: String, body: JSONObject) = run(req(path).put(body.toString().toRequestBody(JSON)))
     private fun delete(path: String) = run(req(path).delete())
+    /** नवंबर 2026: Codespaces sandbox ([CoderSandbox]) के लिए सीधी कॉल - वही token/retry/गलती-संदेश */
+    internal fun call(method: String, path: String, body: JSONObject? = null): String = when (method) {
+        "GET" -> get(path); "POST" -> post(path, body ?: JSONObject()); "DELETE" -> delete(path)
+        else -> throw IllegalArgumentException(method)
+    }
 
     data class Pull(val number: Int, val url: String, val head: String, val base: String)
 

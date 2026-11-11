@@ -99,7 +99,10 @@ object SevenRunner {
         }
         override suspend fun branch(task: String) = a.ensureBranch(task).also { br ->
             c?.let { ctx -> CoderHistory.updateCheckpoint(ctx) { it.copy(branch = br) } }
+            box?.let { b -> withContext(Dispatchers.IO) { b.warm() } }   // नवंबर 2026: push तक codespace गरम
         }
+        /** नवंबर 2026: GitHub Codespaces sandbox - push के बाद CI से पहले असली compile + unit tests ([CoderSandbox]). इजाज़त न हो = अपने-आप बंद */
+        private val box: CoderSandbox? by lazy { c?.let { ctx -> GitHub.fromPrefs(ctx)?.let { gh -> CoderSandbox({ m, p, b -> gh.call(m, p, b) }, a.repo) } } }
         /** build पूरा होने पर emulator के screenshot ऐप में (अलग से - टीम नहीं रुकती) */
         private fun shots() {
             val ctx = c ?: return
@@ -137,6 +140,8 @@ object SevenRunner {
             return t
         }
         private suspend fun test(onStep: (String) -> Unit): TeamTest {
+            // नवंबर 2026: पहले Codespace sandbox (1-2 मिनट) - गलती हो तो CI (5-10 मिनट) का इंतज़ार नहीं; पास / न चले = पहले जैसा CI
+            box?.takeIf { a.lastSha.isNotBlank() }?.let { b -> withContext(Dispatchers.IO) { b.check(a.lastSha, onStep) } }?.let { if (it.ok == false) return it }
             val wfs = withContext(Dispatchers.IO) { a.teamWorkflows() }
             if (wfs.isEmpty()) return TeamTest(null, SevenTeam.NO_CI, a.pr?.url.orEmpty())
             if (a.pr == null) {
@@ -189,6 +194,7 @@ object SevenRunner {
             return if (local != null && WorkNote.fromBody(local) != null) local else a.teamPrBody()
         }
         override suspend fun ready(): String {
+            box?.let { b -> withContext(Dispatchers.IO) { b.stop() } }   // नवंबर 2026: काम पूरा = codespace बंद (फ़्री घंटे बचें)
             val why = a.teamReady()
             val url = a.pr?.url.orEmpty()
             return if (why.isBlank()) url else "$url (draft नहीं हटा: ${why.take(120)} — GitHub पर \"Ready for review\" दबाएँ)"
