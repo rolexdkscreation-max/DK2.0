@@ -42,7 +42,17 @@ class KeepAliveService : Service() {
         // Android 14: background se mic wali service shuru karna mana hai -> crash na ho (isi se DK band hota tha)
         try {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                startForeground(1, notif, ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE)
+                // नवंबर 2026 (मालिक: स्क्रीन बंद / लॉक पर भी "मैं कहाँ हूँ"): लोकेशन की इजाज़त हो तो service में location भी,
+                // वरना Android पीछे से ताज़ा लोकेशन नहीं देता. न चले (Android 14 की शर्तें) = पहले जैसा सिर्फ़ माइक
+                val loc = LocalInfo.hasPermission(this)
+                try {
+                    startForeground(1, notif, ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE or
+                        (if (loc) ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION else 0))
+                } catch (e: Exception) {
+                    if (!loc) throw e
+                    DKLog.d("KeepAlive: location type नहीं चला, सिर्फ़ माइक: ${e.message}")
+                    startForeground(1, notif, ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE)
+                }
             } else {
                 startForeground(1, notif)
             }

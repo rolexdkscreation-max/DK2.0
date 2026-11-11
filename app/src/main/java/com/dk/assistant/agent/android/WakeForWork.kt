@@ -18,7 +18,7 @@ object WakeForWork {
     fun needWake(interactive: Boolean, locked: Boolean): Boolean = !interactive || locked
 
     /** true = स्क्रीन जगी और खुली - ऐप में काम हो सकता है */
-    suspend fun ensure(svc: DKAccessibilityService, step: (String) -> Unit = {}): Boolean {
+    suspend fun ensure(svc: DKAccessibilityService, waitMs: Long = WAIT_UNLOCK_MS, step: (String) -> Unit = {}): Boolean {
         val pm = svc.getSystemService(android.os.PowerManager::class.java)
         val km = svc.getSystemService(android.app.KeyguardManager::class.java)
         if (!needWake(pm?.isInteractive != false, km?.isKeyguardLocked == true)) return true
@@ -26,7 +26,7 @@ object WakeForWork {
         try { DKLog.d("WakeForWork: " + svc.unlock()) } catch (e: Exception) { DKLog.d("WakeForWork: स्क्रीन नहीं जगी ${e.message}") }
         if (km?.isKeyguardLocked == true) {
             step("फ़ोन लॉक है - कृपया अनलॉक करें, फिर मैं आपके सामने ऐप खोलूँगी")
-            val until = System.currentTimeMillis() + WAIT_UNLOCK_MS
+            val until = System.currentTimeMillis() + waitMs
             while (km.isKeyguardLocked && System.currentTimeMillis() < until) delay(500)
         }
         return km?.isKeyguardLocked != true && pm?.isInteractive != false

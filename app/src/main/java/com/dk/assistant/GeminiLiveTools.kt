@@ -189,7 +189,7 @@ internal suspend fun GeminiLive.preparedSearch(query: String): SearchResult? {
 /** v4.3: user ने जगह/आसपास पूछा (सिर्फ़ मौसम नहीं) - तब पूरा पता + आसपास की जगहें */
 internal fun GeminiLive.wantsWhere(): Boolean = NearbyPlaces.wantsWhere(DKState.lastUser)
 
-internal suspend fun GeminiLive.localInfoTool(): String {
+internal suspend fun GeminiLive.localInfoTool(find: String = ""): String {
     // v4.3 (मालिक): इजाज़त नहीं / GPS बंद = साफ़ बताओ कि क्या चालू करना है
     if (!LocalInfo.hasPermission(svc)) {
         try {
@@ -199,12 +199,27 @@ internal suspend fun GeminiLive.localInfoTool(): String {
         return "Location permission is OFF, so you cannot know where he is. I opened the DK app to ask for it. Tell him clearly and briefly: allow Location for DK on the screen (\"Allow\" / \"While using the app\"), then ask again."
     }
     if (!LocalInfo.locationOn(svc)) return "The phone's Location (GPS) is turned OFF, so you cannot see where he is. Tell him clearly: turn ON Location from the quick settings (pull down from the top, tap 'Location'), then ask again."
+    // नवंबर 2026: "पास में पेट्रोल पंप / ATM / दुकान कहाँ है" = उसी तरह की सबसे पास वाली जगहें
+    if (find.isNotBlank()) {
+        LocalInfo.find(svc, find)?.let { return it }
+        return "Could not get a fresh location fix right now (weak GPS/network). Tell him honestly; suggest stepping near a window/open area with Location ON and asking again."
+    }
     if (wantsWhere()) {
         LocalInfo.where(svc)?.let { return it }
         return "Could not get a fresh location fix right now (weak GPS/network). Tell him honestly; suggest stepping near a window/open area with Location ON and asking again."
     }
     val r = preparedWeather()?.also { log("local_info: पहले से तैयार मौसम इस्तेमाल किया") } ?: LocalInfo.now(svc) ?: return "Could not get the current location right now (GPS/location may be off). Tell the user honestly."
     return "Current place: ${r.first.name.ifBlank { "unknown area (%.3f, %.3f)".format(java.util.Locale.US, r.first.lat, r.first.lon) }}. Weather now: ${r.second.substringAfter(" — ", r.second)}"
+}
+
+/** नवंबर 2026 (मालिक: WhatsApp पर DK Hinglish में लिखे): देवनागरी संदेश -> Roman Hinglish (न बने = वही संदेश) */
+internal suspend fun GeminiLive.waHinglish(args: JSONObject) {
+    val msg = args.optString("message")
+    if (!com.dk.assistant.agent.social.WaHinglish.need(msg)) return
+    val out = try {
+        withTimeoutOrNull(6_000) { BrainManager(svc).quickText(com.dk.assistant.agent.social.WaHinglish.SYSTEM, msg) }
+    } catch (e: CancellationException) { throw e } catch (_: Exception) { null }
+    com.dk.assistant.agent.social.WaHinglish.clean(out, msg)?.let { args.put("message", it); log("WhatsApp संदेश Hinglish में बदला") }
 }
 
 /** v3.41: फ़ोन के notification (DKNotifListener -> NotifStore) */
@@ -347,7 +362,7 @@ internal fun GeminiLive.runTools(calls: JSONArray) {
                     else "FOUND on the phone (saved conversation). Tell the user this briefly, in your voice, keep the quoted words exact:\n$a"
                 }
                 "forget_memory" -> { val n = Memory.forget(svc, args.optString("about")); if (n > 0) "Forgotten ($n place(s) deleted)." else "Nothing saved about that - tell the user it is not in memory." }
-                "local_info" -> localInfoTool()
+                "local_info" -> localInfoTool(args.optString("find"))
                 "reel_stats" -> withContext(Dispatchers.IO) { ReelDaily.liveTool(svc) }   // नवंबर 2026: रील का 7 दिन का हिसाब
                 "connector_task" -> withContext(Dispatchers.IO) { com.dk.assistant.connect.ConnectorTool.run(svc, args) }
                 "notifications" -> notifTool(args.optString("app"))
@@ -371,7 +386,8 @@ internal fun GeminiLive.runTools(calls: JSONArray) {
                 "ai_talk" -> com.dk.assistant.agent.android.AiTalkAgent.start(svc, args)
                 // v3.156: "मुझे शर्ट देखनी है" - फ़ोन में जो shopping ऐप हैं उनमें से (पूछकर) उसी चीज़ को खोजो
                 "shop_search" -> com.dk.assistant.ShopOpen.tool(svc, args)
-                "whatsapp_task" -> when (val act = args.optString("action").trim().lowercase()) {
+                // नवंबर 2026 (मालिक): फ़ोन लॉक हो तब भी - पहले खोलो (PIN सेव हो तो खुद), काम के बाद फिर लॉक
+                "whatsapp_task" -> com.dk.assistant.agent.android.LockedWork.wa(svc, args.optString("action")) { when (val act = args.optString("action").trim().lowercase()) {
                     // नवंबर 2026 (मालिक: "WhatsApp खोल के ही बताएगा"): स्क्रीन पढ़कर; न पढ़ पाए तो पहले जैसा notification से
                     in setOf("read_unread", "unread", "read", "screen_chats", "chats", "screen") -> {
                         DKState.set(Mode.WORKING)
@@ -402,10 +418,13 @@ internal fun GeminiLive.runTools(calls: JSONArray) {
                     in setOf("send_message", "send", "message") -> {
                         val f = MsgDraft.applyTo(args, MsgDraft.turnsFromState(), System.currentTimeMillis())
                         if (f.fromHistory) log("WhatsApp: बातचीत से भरा - नाम \"${f.contact}\", संदेश ${f.message.length} अक्षर")
-                        MsgDraft.missingNote(f) ?: com.dk.assistant.agent.android.SocialAgent.start(svc, args, com.dk.assistant.agent.social.Platform.WHATSAPP)
+                        MsgDraft.missingNote(f) ?: run {
+                            waHinglish(args)
+                            com.dk.assistant.agent.android.SocialAgent.start(svc, args, com.dk.assistant.agent.social.Platform.WHATSAPP)
+                        }
                     }
                     else -> com.dk.assistant.agent.android.SocialAgent.start(svc, args, com.dk.assistant.agent.social.Platform.WHATSAPP)
-                }
+                } }
                 "social_media_task_control" -> com.dk.assistant.agent.android.SocialAgent.control(args)
                 "web_search" -> webSearchTool(args.optString("query"))
                 "current_time" -> { NowClock.syncAsync(); NowClock.toolAnswer() }

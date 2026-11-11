@@ -194,6 +194,13 @@ internal suspend fun GeminiLive.phoneTaskOne(req: String, queued: Boolean = fals
     val tc = System.nanoTime()
     val q = LiveFast.pick(req, wake, fg)
     log("रूटर: phone_task \"${req.take(30)}\" -> ${q?.action?.optString("type") ?: "फ़ोन पर पूरा नहीं"} (${(System.nanoTime() - tc) / 1_000_000} ms)")
+    // नवंबर 2026 (मालिक: "स्क्रीन लॉक रहे फिर भी काम करे"): कॉल/SMS/अलार्म/टॉर्च… लॉक पर ही; ऐप की स्क्रीन वाले काम से पहले
+    // स्क्रीन जगाओ + (PIN सेव हो तो) खोलो, वरना साफ़ बताओ
+    val lw = com.dk.assistant.agent.android.LockedWork
+    if ((q == null || lw.needsScreen(q.action.optString("type"))) && lw.locked(svc) && !lw.open(svc)) {
+        log("phone_task: फ़ोन लॉक, खुला नहीं -> मालिक को बताया")
+        return lw.LOCKED_NOTE
+    }
     var same = fastMemo.same(q, System.currentTimeMillis())
     if (same != LiveFast.Memo.NOT_SAME) {
         val until = System.currentTimeMillis() + 4000
