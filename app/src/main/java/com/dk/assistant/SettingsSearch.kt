@@ -25,7 +25,21 @@ object SettingsSearch {
         "access" to "Accessibility", "phonelock" to "फ़ोन लॉक / अनलॉक", "guard" to "स्क्रीन गार्ड", "perms" to "परमिशन", "computer" to "DK कंप्यूटर", "coder" to "कोडिंग एजेंट",
         "social" to "सोशल रिव्यू", "reels" to "रील गिनती और लिमिट",
         ACT_AUTO to "ऑटोनोमस मोड", ACT_TEMPLATES to "टेम्पलेट कमांड", ACT_CONNECTORS to "कनेक्टर", ACT_STORY to "स्टोरी राइटर एजेंट", ACT_BACKUP to "बैकअप",
-        "update" to "अपडेट", "debug" to "डिबग लॉग", "about" to "ऐप के बारे में"
+        "update" to "अपडेट", "debug" to "डिबग लॉग", "about" to "ऐप के बारे में",
+        // नवंबर 2026: Control Center के 6 श्रेणी कार्ड (आख़िर में, ताकि पुराने नतीजों का क्रम न बदले)
+        "cat_dk" to "मेरा DK", "cat_brain" to "दिमाग और आवाज़", "cat_auto" to "ऑटोमेशन",
+        "cat_security" to "सुरक्षा", "cat_social" to "सोशल और कहानी", "cat_data" to "डेटा और ऐप"
+    )
+
+    /** नवंबर 2026: Control Center का मुख्य पेज = ये 6 कार्ड (id, नाम, छोटा विवरण, अंदर की पुरानी पंक्तियाँ - इसी क्रम में).
+     *  हर पुरानी पंक्ति ठीक एक कार्ड में - CategoriesTest जाँचता है कि कोई छूटी नहीं. */
+    val CATEGORIES: List<Pair<Triple<String, String, String>, List<String>>> = listOf(
+        Triple("cat_dk", "मेरा DK", "प्रोफ़ाइल • भाषा • दिखावट • ओर्ब और चेहरा") to listOf("profile", "lang", "ui", "orb"),
+        Triple("cat_brain", "दिमाग और आवाज़", "AI दिमाग • आवाज़ • कोडिंग एजेंट • DK कंप्यूटर") to listOf("brain", "voice", "coder", "computer"),
+        Triple("cat_auto", "ऑटोमेशन", "ऑटोनोमस मोड • टेम्पलेट कमांड • Accessibility") to listOf("auto", "templates", "access"),
+        Triple("cat_security", "सुरक्षा", "फ़ोन लॉक • स्क्रीन गार्ड • परमिशन") to listOf("phonelock", "guard", "perms"),
+        Triple("cat_social", "सोशल और कहानी", "सोशल रिव्यू • रील गिनती और लिमिट • स्टोरी राइटर") to listOf("social", "reels", "story"),
+        Triple("cat_data", "डेटा और ऐप", "कनेक्टर • बैकअप • अपडेट • डिबग लॉग • ऐप के बारे में") to listOf("connectors", "backup", "update", "debug", "about")
     )
 
     /** हर हिस्से के आम शब्द (हिंदी + English + बोलचाल) - सर्च में मदद */

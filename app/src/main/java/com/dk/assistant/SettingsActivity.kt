@@ -118,6 +118,12 @@ class SettingsActivity : AppCompatActivity() {
                     FutureViews.goldShader(title)
                 }
                 setupSearch(); menu() }
+            "cat_dk" -> { title.text = "मेरा DK"; menu("cat_dk") }
+            "cat_brain" -> { title.text = "दिमाग और आवाज़"; menu("cat_brain") }
+            "cat_auto" -> { title.text = "ऑटोमेशन"; menu("cat_auto") }
+            "cat_security" -> { title.text = "सुरक्षा"; menu("cat_security") }
+            "cat_social" -> { title.text = "सोशल और कहानी"; menu("cat_social") }
+            "cat_data" -> { title.text = "डेटा और ऐप"; menu("cat_data") }
             "profile" -> { title.text = "प्रोफ़ाइल"; secProfile() }
             "lang" -> { title.text = "भाषा / Language"; secLang() }
             "brain" -> { title.text = "AI दिमाग"; secBrainMenu() }
@@ -147,7 +153,8 @@ class SettingsActivity : AppCompatActivity() {
 
 
     // ------------------------------------------------------------ mukhya menu
-    private fun menu() {
+    /** नवंबर 2026 (Control Center): cat = null -> 6 श्रेणी कार्ड; cat = "cat_…" -> उस श्रेणी की वही पुरानी पंक्तियाँ */
+    private fun menu(cat: String? = null) {
         val name = Prefs.assistantName(this)
         val items = listOf(
             Triple("profile", "प्रोफ़ाइल", "आपका नाम • असिस्टेंट का नाम ($name) • बात करने का तरीका"),
@@ -173,7 +180,9 @@ class SettingsActivity : AppCompatActivity() {
             Triple("debug", "डिबग लॉग", "माइक, कनेक्शन, देरी और गलतियों का पूरा हाल"),
             Triple("about", "ऐप के बारे में", "version • बनाने वाले • निजता (privacy)")
         )
-        items.forEach { (id, t, sub) -> menuRow(id, t, sub) }
+        if (cat == null) { SettingsSearch.CATEGORIES.forEach { (c, _) -> menuRow(c.first, c.second, c.third) }; return }
+        val ids = SettingsSearch.CATEGORIES.firstOrNull { it.first.first == cat }?.second.orEmpty()
+        items.filter { it.first in ids }.sortedBy { ids.indexOf(it.first) }.forEach { (id, t, sub) -> menuRow(id, t, sub) }
     }
 
     /** मेनू की एक पंक्ति (icon + नाम + विवरण + ›) - दबाने पर वह section */
@@ -370,6 +379,7 @@ class SettingsActivity : AppCompatActivity() {
         refreshAccess(); refreshPerms()
         if (section == null && container.childCount > 0) { container.removeAllViews(); menu(); space(container, 8) }
         if (section == "brain" && container.childCount > 0) { container.removeAllViews(); secBrainMenu(); space(container, 8) }
+        if (section?.startsWith("cat_") == true && container.childCount > 0) { container.removeAllViews(); menu(section); space(container, 8) }
     }
 
     // ------------------------------------------------------------ DK कंप्यूटर
@@ -400,7 +410,7 @@ class SettingsActivity : AppCompatActivity() {
 
     // ------------------------------------------------------------ save
     internal fun save(showToast: Boolean) {
-        if (section == null || section == "orb" || section == "ui" || section == "face") return
+        if (section == null || section?.startsWith("cat_") == true || section == "orb" || section == "ui" || section == "face") return
         val active = if (::rgProvider.isInitialized)
             Providers.all.getOrNull(rgProvider.checkedRadioButtonId - 1000)?.id ?: Prefs.activeProviderRaw(this)
         else Prefs.activeProviderRaw(this)
