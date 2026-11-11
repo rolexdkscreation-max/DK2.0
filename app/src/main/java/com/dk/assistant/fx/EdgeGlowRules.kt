@@ -5,6 +5,26 @@ import kotlin.math.sin
 
 /** सुनते/बोलते समय स्क्रीन के किनारों की चमक - कब और किस रंग में */
 object EdgeGlowRules {
+    /**
+     * v4.x: रंग-बिरंगी चमक - ये रंग एक के बाद एक स्क्रीन के चारों किनारों (और कोनों) पर घूमते रहते हैं.
+     * आख़िरी = पहला, ताकि घेरे में कहीं जोड़ न दिखे.
+     */
+    val RAINBOW = intArrayOf(
+        0xFFFF2D55.toInt(), 0xFFFF9500.toInt(), 0xFFFFE600.toInt(), 0xFF34FF6B.toInt(),
+        0xFF00E5FF.toInt(), 0xFF2F6BFF.toInt(), 0xFFB04DFF.toInt(), 0xFFFF2DCB.toInt(), 0xFFFF2D55.toInt()
+    )
+
+    /** रंग कितनी तेज़ घूमें (पूरे चक्कर प्रति सेकंड): सुनते समय आवाज़ के साथ, सोचते समय तेज़, बोलते समय मध्यम */
+    fun flowSpeed(mode: Mode, level: Float, reducedMotion: Boolean): Float {
+        if (reducedMotion) return 0f
+        return when (mode) {
+            Mode.LISTENING -> 0.18f + 0.35f * level.coerceIn(0f, 1f)
+            Mode.THINKING, Mode.WORKING -> 0.45f
+            Mode.SPEAKING -> 0.28f
+            Mode.IDLE -> 0.10f
+        }
+    }
+
     const val VIOLET = 0xFF8B5CF6.toInt()   // सुन रहा
     const val AMBER = 0xFFFFB300.toInt()    // v3.88: सोच रहा (अलग रंग)
     const val PINK = 0xFFFF6FAE.toInt()     // बोल रहा
