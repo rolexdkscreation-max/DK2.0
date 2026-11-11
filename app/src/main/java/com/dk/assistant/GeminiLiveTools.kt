@@ -372,7 +372,16 @@ internal fun GeminiLive.runTools(calls: JSONArray) {
                 // v3.156: "मुझे शर्ट देखनी है" - फ़ोन में जो shopping ऐप हैं उनमें से (पूछकर) उसी चीज़ को खोजो
                 "shop_search" -> com.dk.assistant.ShopOpen.tool(svc, args)
                 "whatsapp_task" -> when (val act = args.optString("action").trim().lowercase()) {
-                    in setOf("read_unread", "unread", "read") -> notifTool("WhatsApp")
+                    // नवंबर 2026 (मालिक: "WhatsApp खोल के ही बताएगा"): स्क्रीन पढ़कर; न पढ़ पाए तो पहले जैसा notification से
+                    in setOf("read_unread", "unread", "read", "screen_chats", "chats", "screen") -> {
+                        DKState.set(Mode.WORKING)
+                        com.dk.assistant.agent.android.WaLook.screenChats(svc).takeUnless { it.startsWith("FAILED") }
+                            ?: notifTool("WhatsApp")
+                    }
+                    in setOf("open_chat", "read_chat_screen") -> { DKState.set(Mode.WORKING); com.dk.assistant.agent.android.WaLook.openChat(svc, args.optString("contact")) }
+                    in setOf("smart_reply", "reply_for_me", "reply") -> { DKState.set(Mode.WORKING); com.dk.assistant.agent.android.WaLook.smartReply(svc, args.optString("contact"), args.optString("message")) }
+                    in setOf("auto_chat_on", "auto_chat", "auto_reply_on") -> com.dk.assistant.agent.android.WaAutoChat.on(args.optString("contact"), args.optInt("minutes", 0), args.optString("message"))
+                    in setOf("auto_chat_off", "auto_reply_off") -> com.dk.assistant.agent.android.WaAutoChat.off()
                     // नवंबर 2026: भेजा हुआ (गलती वाला) मैसेज सबके लिए डिलीट - मालिक का कहना ही हुक्म, सीधे
                     in setOf("delete_message", "delete", "unsend", "delete_last") -> {
                         DKState.set(Mode.WORKING)
