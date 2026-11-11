@@ -1,0 +1,19 @@
+{
+  // नवंबर 2026: DK कोडिंग एजेंट का cloud sandbox (GitHub Codespaces). DK खुद API से बनाता/चालू/बंद करता है.
+  // अंदर dk-runner.sh: dk-run/<sha> वाली माँग देखकर असली compile + unit tests, नतीजा dk-result/<sha> branch में.
+  "name": "dk-sandbox",
+  "image": "mcr.microsoft.com/devcontainers/base:ubuntu",
+  "features": {
+    "ghcr.io/devcontainers/features/java:1": {
+      "version": "17",
+      "jdkDistro": "tem",
+      "installGradle": true,
+      "gradleVersion": "8.7"
+    }
+  },
+  "containerEnv": {
+    "ANDROID_HOME": "/home/vscode/android-sdk",
+    "ANDROID_SDK_ROOT": "/home/vscode/android-sdk"
+  },
+  "postStartCommand": "bash .devcontainer/dk-runner-start.sh"
+}
