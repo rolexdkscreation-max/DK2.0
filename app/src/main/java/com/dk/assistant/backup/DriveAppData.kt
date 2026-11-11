@@ -57,7 +57,7 @@ class DriveAppData(private val token: String, private val http: OkHttpClient = C
         private const val GZ = "application/gzip"
         private val JSON = "application/json; charset=utf-8".toMediaType()
         private val CLIENT by lazy {
-            OkHttpClient.Builder().connectTimeout(20, TimeUnit.SECONDS).readTimeout(120, TimeUnit.SECONDS).writeTimeout(180, TimeUnit.SECONDS).build()
+            com.dk.assistant.NetFix.builder().connectTimeout(20, TimeUnit.SECONDS).readTimeout(120, TimeUnit.SECONDS).writeTimeout(180, TimeUnit.SECONDS).build()
         }
         private fun enc(s: String) = URLEncoder.encode(s, "UTF-8").replace("+", "%20")
 
