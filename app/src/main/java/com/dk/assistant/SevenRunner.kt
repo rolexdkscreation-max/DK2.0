@@ -227,7 +227,7 @@ object SevenRunner {
         try {
             a.teamLoad { say("s", it) }
             val shown = Shown()
-            val team = SevenTeam(Ai(ai, Prefs.coderLightModel(c), CoderAi.forStrong(c, ai)).scoped(Prefs.coderStrongScope(c)), RepoFiles(a), Git(a, task), full = true, aiResult = true, ev = teamEvents(c, shown)).also { shown.team = it }
+            val team = SevenTeam(Ai(ai, Prefs.coderLightModel(c), CoderAi.forStrong(c, ai)).scoped(Prefs.coderStrongScope(c)), RepoFiles(a), Git(a, task), full = true, aiResult = true, fast = true, ev = teamEvents(c, shown)).also { shown.team = it }
             val u = SevenPlus.Understanding(Seven.Kind.BUG, title, "रिपो डॉक्टर: $title — जड़ ढूँढकर ठीक करना, ताकि सारे checks पास हों", task,
                 listOf("जो check fail था वह पास हो", "बाकी सारे checks और पुराने tests पास हों", "कोई पुराना फ़ीचर न बदले"),
                 listOf("सारे मौजूदा फ़ीचर और tests"), emptyList(), emptyList())
@@ -362,7 +362,7 @@ object SevenRunner {
                         val files = RepoFiles(a, c)
                         resume?.staged?.forEach { (p, content) -> files.stage(p, content) }
                         val shown = Shown()
-                        team = SevenTeam(Ai(ai, Prefs.coderLightModel(c), CoderAi.forStrong(c, ai)).scoped(Prefs.coderStrongScope(c)), files, Git(a, task, c, resume?.backup.orEmpty()), full = true, aiResult = true, ev = teamEvents(c, shown)).also { shown.team = it }
+                        team = SevenTeam(Ai(ai, Prefs.coderLightModel(c), CoderAi.forStrong(c, ai)).scoped(Prefs.coderStrongScope(c)), files, Git(a, task, c, resume?.backup.orEmpty()), full = true, aiResult = true, fast = true, ev = teamEvents(c, shown)).also { shown.team = it }
                         // "आगे करो": टीम कहाँ तक पहुँची थी - वहीं से (पूरे हुए हिस्से दोबारा नहीं)
                         team.resumeFrom = TeamProgress.parse(resume?.team)
                         if (approved != null) team.onProgress = { p -> val j = p.json(); CoderHistory.updateCheckpoint(c) { it.copy(team = j) } }
@@ -375,7 +375,7 @@ object SevenRunner {
                         val start = LinkedHashMap(CoderSession.normalFiles).apply { putAll(Seven.filesFromMessage(task)) }
                         if (start.isNotEmpty()) say("s", "फ़ाइलें: " + start.keys.joinToString())
                         val shown = Shown()
-                        team = SevenTeam(Ai(ai, Prefs.coderLightModel(c), CoderAi.forStrong(c, ai)).scoped(Prefs.coderStrongScope(c)), MemoryFiles(start), null, full = true, aiResult = true, ev = teamEvents(c, shown, sound = false)).also { shown.team = it }
+                        team = SevenTeam(Ai(ai, Prefs.coderLightModel(c), CoderAi.forStrong(c, ai)).scoped(Prefs.coderStrongScope(c)), MemoryFiles(start), null, full = true, aiResult = true, fast = true, ev = teamEvents(c, shown, sound = false)).also { shown.team = it }
                     }
                     team.media = allMedia
                     team.inbox = CoderSession.inbox
