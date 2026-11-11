@@ -26,6 +26,12 @@ import kotlinx.coroutines.launch
 // यह code पहले SettingsActivity.kt में था; सिर्फ़ जगह बदली है, व्यवहार वही (extension functions, वही state SettingsActivity में)।
 
 internal fun SettingsActivity.menuIcon(id: String) = when (id) {
+    "cat_dk" -> R.drawable.ic_s_profile
+    "cat_brain" -> R.drawable.ic_s_brain
+    "cat_auto" -> R.drawable.ic_s_access
+    "cat_security" -> R.drawable.ic_s_perms
+    "cat_social" -> R.drawable.ic_s_story
+    "cat_data" -> R.drawable.ic_s_connect
     "profile" -> R.drawable.ic_s_profile
     "lang" -> R.drawable.ic_s_lang
     "brain" -> R.drawable.ic_s_brain
@@ -50,6 +56,12 @@ internal fun SettingsActivity.menuIcon(id: String) = when (id) {
 
 /** नवंबर 2026: squircle आइकन का निऑन रंग (हर section अलग, ताकि मेनू में पहचान आसान) */
 internal fun SettingsActivity.menuTint(id: String): Int = when (id) {
+    "cat_dk" -> 0xFF22D3EE.toInt()
+    "cat_brain" -> 0xFF6366F1.toInt()
+    "cat_auto" -> 0xFFA855F7.toInt()
+    "cat_security" -> 0xFF34D399.toInt()
+    "cat_social" -> 0xFFFBBF24.toInt()
+    "cat_data" -> 0xFF38BDF8.toInt()
     "profile", "about" -> 0xFF22D3EE.toInt()
     "voice", "templates" -> 0xFFA855F7.toInt()
     "brain", "auto", "coder" -> 0xFF6366F1.toInt()
