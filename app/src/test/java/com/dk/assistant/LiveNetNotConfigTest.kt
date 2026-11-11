@@ -36,7 +36,7 @@ class LiveNetNotConfigTest {
     }
 
     @Test fun realSetupErrorsStillConfig() {
-        assertEquals(LiveRace.Fail.CONFIG, LiveRace.classify(1007, "language_code is not supported for this model"))
+        assertEquals(LiveRace.Fail.CONFIG, LiveRace.classify(1007, "Invalid value at 'setup.generation_config.speech_config.language_code'"))
         assertEquals(LiveRace.Fail.CONFIG, LiveRace.classify(1007, "Voice name Sulafat is not supported"))
         assertEquals(LiveRace.Fail.CONFIG, LiveRace.classify(1007, "Request contains an invalid argument."))
         assertEquals(LiveRace.Fail.KEY, LiveRace.classify(1007, "API key not valid. Please pass a valid API key."))
