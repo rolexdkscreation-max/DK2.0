@@ -94,6 +94,7 @@ object LivePromise {
             "build_website" -> "वेबसाइट बना रहा है…"
             "whatsapp_task", "social_media_task" -> "संदेश/ऐप का काम कर रहा है…"
             "ai_app_prompt" -> "ऐप में लिखकर भेज रहा है…"
+            "ai_talk" -> "AI ऐप से बात कर रहा है" + (if (a.isNotEmpty()) ": $a" else "") + "…"
             "shop_search" -> "दिखा रहा है" + (if (a.isNotEmpty()) ": $a" else "") + "…"
             "social_insights" -> "ऐप खोलकर आपके सामने रिव्यू कर रहा है…"
             "image_task" -> "इमेज बना रहा है" + (if (a.isNotEmpty()) ": $a" else "") + "…"

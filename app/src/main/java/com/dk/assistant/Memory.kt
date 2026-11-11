@@ -45,14 +45,15 @@ object Memory {
         val key = f.lowercase().split(' ').take(3).joinToString(" ")
         if (key.length > 6) list.removeAll { it.lowercase().startsWith(key) }
         list.add(f)
-        while (list.size > MAX_FACTS) list.removeAt(0)
+        // नवंबर 2026 (मालिक: "एक भी बात नहीं भूलेगी"): छोटी सूची भरी = पुरानी बात मिटती नहीं, फ़ोन की पक्की याद में चली जाती है
+        while (list.size > MAX_FACTS) LocalMemory.keepPoint(c, list.removeAt(0))
         writeArr(c, "dk_facts.json", JSONArray(list))
         return true
     }
 
     /** "X भूल जाओ" - jisme yeh shabd ho woh baatein hatao. Wapas: kitni hatin. */
     fun forget(c: Context, about: String): Int {
-        // v3.88: फ़ोन की लोकल याददाश्त (30 दिन की बातें + सार) से भी - "ये भूल जाओ" = पिछली बात
+        // v3.88: फ़ोन की लोकल याददाश्त (सारी बातें + सार - अब हमेशा रहती हैं) से भी - "ये भूल जाओ" = पिछली बात
         val local = LocalMemory.forgetBlocking(c, about)
         val words = about.lowercase().split(' ').filter { it.length >= 2 }
         if (words.isEmpty() || LocalRecall.forgetsLast(about)) return local
@@ -61,7 +62,7 @@ object Memory {
         list.removeAll { f -> val l = f.lowercase(); words.all { l.contains(it) } }
         writeArr(c, "dk_facts.json", JSONArray(list))
         // v3.45: बातचीत के सारांश + अधूरी बातों से भी मिटाओ
-        return local + before - list.size + FriendTalk.forget(c, about)
+        return local + before - list.size + FriendTalk.forget(c, about) + LearnedWays.forget(c, about)
     }
 
     fun clearFacts(c: Context) = writeArr(c, "dk_facts.json", JSONArray())
@@ -86,9 +87,11 @@ object Memory {
     /** AI ke prompt me jodne ke liye. */
     fun factsBlock(c: Context): String {
         val f = facts(c)
-        if (f.isEmpty()) return ""
+        // नवंबर 2026: दूसरे AI (Claude/ChatGPT/...) से सीखे तरीके भी हर prompt में - DK खुद वैसे काम करे
+        val learned = LearnedWays.promptBlock(c)
+        if (f.isEmpty()) return learned
         return "\nTHINGS THE USER ASKED YOU TO REMEMBER (use them when relevant, never say you don't know these):\n" +
-            f.joinToString("\n") { "- $it" }
+            f.joinToString("\n") { "- $it" } + learned
     }
 
     // ------------------------------------------------------------ baatcheet ka itihaas

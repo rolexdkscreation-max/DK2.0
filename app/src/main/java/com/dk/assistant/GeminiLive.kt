@@ -219,6 +219,7 @@ class GeminiLive(internal val svc: DKAccessibilityService, internal val agent: A
             lastEvidenceAt = System.currentTimeMillis()
             // नवंबर 2026: सोशल रिव्यू = पूरा बोलने लायक सार (400 अक्षर वाला छोटा नतीजा नहीं)
             val note = (if (job.key == com.dk.assistant.insights.InsightsAgent.KEY) com.dk.assistant.insights.InsightsAgent.liveNote(job) else null)
+                ?: com.dk.assistant.agent.android.AiTalkAgent.liveNote(job)   // नवंबर 2026: AI ऐप से बातचीत का पूरा सार
                 ?: com.dk.assistant.studio.StudioLink.liveNote(job) ?: TaskStatus.endNote(job)
             try { ws?.tx(JSONObject().put("realtimeInput", JSONObject().put("text", note)).toString()) } catch (_: Exception) {}
             log("${job.whoEn} का काम खत्म (${job.state.en}) - Gemini को असली नतीजा बताया")

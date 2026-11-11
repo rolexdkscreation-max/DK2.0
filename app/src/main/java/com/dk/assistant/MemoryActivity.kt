@@ -19,7 +19,7 @@ import kotlinx.coroutines.launch
 class MemoryActivity : AppCompatActivity() {
 
     private lateinit var list: LinearLayout
-    // v3.88: फ़ोन की लोकल याददाश्त (30 दिन की बातें + हमेशा वाले सार)
+    // v3.88: फ़ोन की लोकल याददाश्त (नवंबर 2026: सारी बातें हमेशा + सार)
     private lateinit var localInfo: TextView
     private lateinit var pointList: LinearLayout
     private lateinit var turnList: LinearLayout
@@ -97,7 +97,7 @@ class MemoryActivity : AppCompatActivity() {
 
         // ---- v3.88: Memory - फ़ोन की लोकल याददाश्त
         val localCard = card(col, "Memory (फ़ोन की याददाश्त)",
-            "हर बातचीत (आवाज़ + टेक्स्ट) सिर्फ़ इसी फ़ोन में सेव होती है — 30 दिन बाद अपने-आप मिटती है, उससे पहले ज़रूरी बातों का छोटा सार बनता है जो हमेशा रहता है। पासवर्ड/बैंक/कार्ड नंबर सेव नहीं होते। कुछ भी upload नहीं होता।")
+            "हर बातचीत (आवाज़ + टेक्स्ट) सिर्फ़ इसी फ़ोन में सेव होती है — हमेशा रहती है, अपने-आप कभी नहीं मिटती। ज़रूरी बातों का छोटा सार भी बनता है। पासवर्ड/बैंक/कार्ड नंबर सेव नहीं होते। कुछ भी upload नहीं होता।")
         localInfo = TextView(this).apply { textSize = 13f; setTextColor(0x99FFFFFF.toInt()); UiLang.keep(this) }
         localCard.addView(localInfo)
         localCard.addView(androidx.appcompat.widget.SwitchCompat(this).apply {
@@ -109,7 +109,7 @@ class MemoryActivity : AppCompatActivity() {
         localCard.addView(TextView(this).apply { text = "हमेशा वाले सार"; textSize = 15f; setTypeface(typeface, Typeface.BOLD); setTextColor(0xFFFFFFFF.toInt()); setPadding(0, (10 * dp).toInt(), 0, 0) })
         pointList = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         localCard.addView(pointList)
-        localCard.addView(TextView(this).apply { text = "पिछले 30 दिन की बातचीत (नई ऊपर)"; textSize = 15f; setTypeface(typeface, Typeface.BOLD); setTextColor(0xFFFFFFFF.toInt()); setPadding(0, (14 * dp).toInt(), 0, 0) })
+        localCard.addView(TextView(this).apply { text = "हाल की बातचीत (नई ऊपर) - पुरानी भी सब सुरक्षित"; textSize = 15f; setTypeface(typeface, Typeface.BOLD); setTextColor(0xFFFFFFFF.toInt()); setPadding(0, (14 * dp).toInt(), 0, 0) })
         turnList = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         localCard.addView(turnList)
         localCard.addView(button("सारी लोकल याददाश्त मिटाएँ") {
@@ -164,7 +164,7 @@ class MemoryActivity : AppCompatActivity() {
             val pts = LocalMemory.points(this@MemoryActivity)
             val turns = LocalMemory.recent(this@MemoryActivity, 150)
             if (isFinishing || isDestroyed) return@launch
-            localInfo.text = "$nt बातें (30 दिन) • $np सार • सब सिर्फ़ इसी फ़ोन में"
+            localInfo.text = "$nt बातें (हमेशा) • $np सार • सब सिर्फ़ इसी फ़ोन में"
             pointList.removeAllViews(); turnList.removeAllViews()
             if (pts.isEmpty()) pointList.addView(dim("अभी कोई सार नहीं — बातचीत खत्म होने पर / रोज़ बनता है"))
             pts.forEach { p -> pointList.addView(row("${p.day} • ${p.text}") { lifecycleScope.launch { LocalMemory.deletePoint(this@MemoryActivity, p.id); refreshLocal() } }) }
