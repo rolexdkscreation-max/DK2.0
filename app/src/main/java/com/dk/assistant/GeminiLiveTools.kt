@@ -367,6 +367,8 @@ internal fun GeminiLive.runTools(calls: JSONArray) {
                     withTimeoutOrNull(IMAGE_TASK_MS) { com.dk.assistant.agent.android.ImageGenAgent.ask(svc, args) }
                         ?: "SENT: the app took too long to answer. Tell the user it is sent and the answer is in the app."
                 }
+                // नवंबर 2026: किसी भी AI ऐप से DK की खुद की लंबी बातचीत / मुकाबला / सीखना (स्क्रीन पर, पीछे से नतीजा SYSTEM NOTE)
+                "ai_talk" -> com.dk.assistant.agent.android.AiTalkAgent.start(svc, args)
                 // v3.156: "मुझे शर्ट देखनी है" - फ़ोन में जो shopping ऐप हैं उनमें से (पूछकर) उसी चीज़ को खोजो
                 "shop_search" -> com.dk.assistant.ShopOpen.tool(svc, args)
                 "whatsapp_task" -> when (val act = args.optString("action").trim().lowercase()) {

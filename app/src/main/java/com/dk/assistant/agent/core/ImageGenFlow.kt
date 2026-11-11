@@ -7,14 +7,30 @@ package com.dk.assistant.agent.core
  * तस्वीर में क्या है, यह ImageGenAgent (Android हिस्सा) बताता है - यहाँ नहीं।
  * लॉग-इन / CAPTCHA / इजाज़त वाली स्क्रीन पर रुकता है (BlockerDetector) - यूज़र खुद करे।
  */
-enum class ImageApp(val hi: String, val pkg: String) {
-    CHATGPT("ChatGPT", "com.openai.chatgpt"),
-    GEMINI("Gemini", "com.google.android.apps.bard");
+enum class ImageApp(val hi: String, val pkg: String, val images: Boolean = false) {
+    CHATGPT("ChatGPT", "com.openai.chatgpt", images = true),
+    GEMINI("Gemini", "com.google.android.apps.bard", images = true),
+    // नवंबर 2026 (मालिक: "DK सभी AI से बात करे - Claude, Perplexity, Gemini, ChatGPT या कोई भी ऐप"): बात/सवाल/सीखना
+    CLAUDE("Claude", "com.anthropic.claude"),
+    PERPLEXITY("Perplexity", "ai.perplexity.app.android"),
+    COPILOT("Copilot", "com.microsoft.copilot"),
+    DEEPSEEK("DeepSeek", "com.deepseek.chat"),
+    GROK("Grok", "ai.x.grok"),
+    META_AI("Meta AI", "com.facebook.stella");
+
+    val target get() = ChatTarget(hi, pkg, this)
 
     companion object {
         fun parse(s: String?): ImageApp? {
             val t = s.orEmpty().lowercase()
             return when {
+                // पहले नए नाम (\"deepseek chat\" जैसे में \"chat\" से ChatGPT न बने)
+                t.contains("claude") || t.contains("क्लाउड") || t.contains("क्लॉड") || t.contains("क्लोड") || t.contains("anthropic") -> CLAUDE
+                t.contains("perplex") || t.contains("परप्लेक्स") || t.contains("पर्प्लेक्स") || t.contains("प्रप्लेक्स") || t.contains("परप्लैक्स") -> PERPLEXITY
+                t.contains("copilot") || t.contains("कोपायलट") || t.contains("को-पायलट") || t.contains("कोपाइलट") -> COPILOT
+                t.contains("deepseek") || t.contains("deep seek") || t.contains("डीपसीक") || t.contains("डीप सीक") -> DEEPSEEK
+                t.contains("grok") || t.contains("ग्रोक") || t.contains("ग्रॉक") -> GROK
+                t.contains("meta ai") || t.contains("metaai") || t.contains("मेटा") -> META_AI
                 t.contains("chat") || t.contains("gpt") || t.contains("openai") || t.contains("चैट") -> CHATGPT
                 t.contains("gemini") || t.contains("जेमिनी") || t.contains("bard") -> GEMINI
                 else -> null
@@ -22,6 +38,9 @@ enum class ImageApp(val hi: String, val pkg: String) {
         }
     }
 }
+
+/** नवंबर 2026: जिस chat ऐप में लिखना है - जाना-पहचाना ([known]) या फ़ोन का कोई भी ऐप (नाम से मिला) */
+data class ChatTarget(val hi: String, val pkg: String, val known: ImageApp? = null)
 
 /** Android हिस्सा जो ScreenDriver में नहीं: ऐप खोलना, long-press, गैलरी में नई तस्वीर, स्क्रीन देखना */
 interface ImageGenHost {
@@ -37,6 +56,8 @@ interface ImageGenHost {
     suspend fun look(goal: String): Pair<Int, Int>? = null
     /** स्क्रीन देखना चालू है (मालिक ने "स्क्रीन देखना" ऑन किया + Android 11+) */
     fun canLook(): Boolean = false
+    /** नवंबर 2026: फ़ोन में इस नाम का कोई भी ऐप (launcher का नाम) -> (नाम, package); न मिले = null */
+    fun findApp(name: String): Pair<String, String>? = null
 }
 
 data class ImageGenResult(
@@ -54,6 +75,8 @@ data class ImageGenResult(
     val screenDump: String = "",
     /** कौन-से तरीके से काम हुआ (log) */
     val how: String = "",
+    /** नवंबर 2026: ऐप का नाम (कोई भी ऐप - [app] सिर्फ़ जाने-पहचाने के लिए) */
+    val appName: String = app?.hi.orEmpty(),
 )
 
 class ImageGenFlow(
@@ -172,6 +195,8 @@ class ImageGenFlow(
                     !(e.clickable && e.text.length < 25) && (mine == null || !e.text.contains(head))
             }.map { it.text.trim() }.distinct()
             val all = parts.joinToString(" ").replace(Regex("\\s+"), " ").trim()
+            // नवंबर 2026: अपना संदेश दिख रहा है पर उसके नीचे अभी कुछ नहीं = जवाब आया ही नहीं (लंबी बातचीत में ऊपर वाला पुराना जवाब नहीं उठाना)
+            if (all.length < 2 && mine != null) return ""
             return if (all.length >= 2) all.take(1500) else lastReply(o, prompt)
         }
 
@@ -184,13 +209,23 @@ class ImageGenFlow(
     private val how = mutableListOf<String>()
 
     /** खोलो + लिखो + भेजो - इमेज और सवाल (ask) दोनों में वही रास्ता */
-    private class Sent(val app: ImageApp, val o0: ScreenObservation?, val fail: ImageGenResult?)
+    private class Sent(val app: ChatTarget, val o0: ScreenObservation?, val fail: ImageGenResult?)
 
     private suspend fun openTypeSend(want: ImageApp?, prompt: String, image: Boolean): Sent {
-        val order = listOfNotNull(want) + ImageApp.values().filter { it != want }
+        // इमेज = सिर्फ़ ChatGPT/Gemini (बाकी ऐप तस्वीर नहीं बनाते); सवाल = पहले की तरह ChatGPT/Gemini में से जो हो
+        val order = listOfNotNull(want) + ImageApp.values().filter { it != want && it.images }
         val app = order.firstOrNull { host.installed(it.pkg) }
-            ?: return Sent(want ?: ImageApp.CHATGPT, null, ImageGenResult(false, want, error = "फ़ोन में ChatGPT या Gemini ऐप नहीं है - Play Store से इंस्टॉल करके एक बार लॉग-इन कर लीजिए"))
-        if (!host.openApp(app.pkg)) return Sent(app, null, ImageGenResult(false, app, error = "${app.hi} ऐप नहीं खुला"))
+            ?: return Sent((want ?: ImageApp.CHATGPT).target, null, ImageGenResult(false, want, error = "फ़ोन में ChatGPT या Gemini ऐप नहीं है - Play Store से इंस्टॉल करके एक बार लॉग-इन कर लीजिए"))
+        return typeSend(app.target, prompt, image, fresh = true)
+    }
+
+    /**
+     * नवंबर 2026: किसी भी chat ऐप में खोलो + लिखो + भेजो. [fresh] = false: वही chat चलती रहे (\"New chat\" कभी नहीं दबाना) -
+     * DK की AI से लंबी बातचीत ([AiTalk]) में हर अगला संदेश उसी बातचीत में.
+     */
+    private suspend fun typeSend(app: ChatTarget, prompt: String, image: Boolean, fresh: Boolean): Sent {
+        if (!host.installed(app.pkg)) return Sent(app, null, ImageGenResult(false, app.known, error = "फ़ोन में ${app.hi} ऐप नहीं है - Play Store से इंस्टॉल करके एक बार लॉग-इन कर लीजिए"))
+        if (!host.openApp(app.pkg)) return Sent(app, null, ImageGenResult(false, app.known, error = "${app.hi} ऐप नहीं खुला"))
 
         // 1) लिखने का खाना (न मिले तो स्क्रीन देखकर)
         var obs: ScreenObservation? = null
@@ -200,8 +235,8 @@ class ImageGenFlow(
             val o = d.capture()
             if (o != null) {
                 lastSeen = o
-                BlockerDetector.detect(o)?.let { return Sent(app, null, ImageGenResult(false, app, blocker = it, error = "${app.hi} में ${it.hi} - पहले आप खुद पूरा कीजिए")) }
-                if (i == 0 && newChat(o) != null) { d.pause(900); continue }
+                BlockerDetector.detect(o)?.let { return Sent(app, null, ImageGenResult(false, app.known, blocker = it, error = "${app.hi} में ${it.hi} - पहले आप खुद पूरा कीजिए")) }
+                if (fresh && i == 0 && newChat(o) != null) { d.pause(900); continue }
                 input(o)?.let { obs = o; box = it }
                 if (box != null) break
                 if (i == 3 && host.canLook()) {
@@ -212,7 +247,7 @@ class ImageGenFlow(
         }
         val o0 = obs; val b0 = box
         if (o0 == null || b0 == null) return Sent(app, null, fail(app, "${app.hi} में लिखने की जगह नहीं मिली (शायद लॉग-इन करना है)", lastSeen))
-        val text = if (image) promptFor(app, prompt) else prompt.trim()
+        val text = if (image && app.known != null) promptFor(app.known, prompt) else prompt.trim()
 
         // 2) लिखो + भेजो
         if (d.setText(o0, b0, text) != DriverResult.OK) return Sent(app, o0, fail(app, "${app.hi} में prompt नहीं लिख पाया", o0))
@@ -229,13 +264,28 @@ class ImageGenFlow(
         if (prompt.isBlank()) return ImageGenResult(false, want, error = "क्या पूछना / लिखना है, यह नहीं बताया")
         val s = openTypeSend(want, prompt, image = false)
         s.fail?.let { return it }
-        val app = s.app
+        return waitAnswer(s.app, prompt)
+    }
+
+    /**
+     * नवंबर 2026: इसी (मालिक के बताए) ऐप में - दूसरे ऐप पर कभी नहीं जाना. [fresh] = false = वही chat आगे.
+     * DK की AI से बातचीत / सीखना ([AiTalk]) इसी से हर संदेश भेजती है.
+     */
+    suspend fun askIn(app: ChatTarget, prompt: String, fresh: Boolean): ImageGenResult {
+        if (prompt.isBlank()) return ImageGenResult(false, app.known, error = "क्या पूछना / लिखना है, यह नहीं बताया")
+        val s = typeSend(app, prompt, image = false, fresh = fresh)
+        s.fail?.let { return it }
+        return waitAnswer(app, prompt)
+    }
+
+    /** जवाब पूरा होने तक रुको (लिखना बंद = 2 बार वही), फिर पढ़ो */
+    private suspend fun waitAnswer(app: ChatTarget, prompt: String): ImageGenResult {
         var waited = 0L; var prev = ""; var same = 0; var last: ScreenObservation? = null; var sawBusy = false
         while (waited < maxWaitMs) {
             d.pause(pollMs); waited += pollMs
             val o = d.capture() ?: continue
             last = o
-            BlockerDetector.detect(o)?.let { return ImageGenResult(false, app, blocker = it, error = "${app.hi} में ${it.hi}") }
+            BlockerDetector.detect(o)?.let { return ImageGenResult(false, app.known, blocker = it, error = "${app.hi} में ${it.hi}") }
             if (busy(o)) { sawBusy = true; same = 0; continue }
             val rep = answerText(o, prompt)
             same = if (rep.isNotBlank() && rep == prev) same + 1 else 0
@@ -244,8 +294,8 @@ class ImageGenFlow(
             if (rep.isNotBlank() && same >= 2 && (sawBusy || waited >= pollMs * 3)) break
         }
         val reply = last?.let { answerText(it, prompt) }.orEmpty()
-        return if (reply.isNotBlank()) ImageGenResult(true, app, appReply = reply, how = how.joinToString())
-        else ImageGenResult(true, app, how = how.joinToString(), screenDump = dump(last), error = "भेज दिया, पर जवाब पढ़ नहीं पाया")
+        return if (reply.isNotBlank()) ImageGenResult(true, app.known, appReply = reply, how = how.joinToString(), appName = app.hi)
+        else ImageGenResult(true, app.known, how = how.joinToString(), screenDump = dump(last), error = "भेज दिया, पर जवाब पढ़ नहीं पाया", appName = app.hi)
     }
 
     suspend fun run(want: ImageApp?, prompt: String, download: Boolean = true): ImageGenResult {
@@ -253,7 +303,7 @@ class ImageGenFlow(
         val start = host.now()
         val s = openTypeSend(want, prompt, image = true)
         s.fail?.let { return it }
-        val app = s.app
+        val app = s.app.known ?: ImageApp.CHATGPT
         val before = s.o0?.let { images(it).size } ?: 0
 
         // 3) बनने तक रुको - इमेज बनने में 30-90 सेकंड; "बना रहा है" न दिखे तब भी रुकते हैं
@@ -299,6 +349,7 @@ class ImageGenFlow(
     }
 
     private fun fail(app: ImageApp, msg: String, o: ScreenObservation?) = ImageGenResult(false, app, error = msg, screenDump = dump(o), how = how.joinToString())
+    private fun fail(app: ChatTarget, msg: String, o: ScreenObservation?) = ImageGenResult(false, app.known, error = msg, screenDump = dump(o), how = how.joinToString(), appName = app.hi)
 
     private suspend fun press(o: ScreenObservation, e: UiElement) {
         if (d.click(o, e) != DriverResult.OK) d.tapAt(e.bounds.centerX, e.bounds.centerY)

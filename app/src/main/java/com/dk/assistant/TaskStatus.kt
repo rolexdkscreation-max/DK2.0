@@ -13,7 +13,7 @@ object TaskStatus {
     const val PC = "pc"
     const val CODER = "coder"
     /** नवंबर 2026: ये काम फ़ोन की स्क्रीन पर, मालिक के सामने चलते हैं (सोशल रिव्यू) - इन्हें कभी "background" न कहा जाए */
-    val ON_SCREEN_KEYS = setOf("insights")
+    val ON_SCREEN_KEYS = setOf("insights", "aitalk")   // नवंबर 2026: AI ऐप से DK की बातचीत भी स्क्रीन पर
     fun onScreen(j: Job) = j.key in ON_SCREEN_KEYS
 
     enum class State(val hi: String, val en: String) {

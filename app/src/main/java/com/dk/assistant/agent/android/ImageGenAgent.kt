@@ -39,7 +39,7 @@ object ImageGenAgent {
         com.dk.assistant.NetFix.builder().connectTimeout(10, TimeUnit.SECONDS).readTimeout(30, TimeUnit.SECONDS).callTimeout(35, TimeUnit.SECONDS).build()
     }
 
-    private class Host(private val svc: DKAccessibilityService) : ImageGenHost {
+    internal class Host(private val svc: DKAccessibilityService) : ImageGenHost {
         override fun installed(pkg: String) = try { svc.packageManager.getLaunchIntentForPackage(pkg) != null } catch (_: Exception) { false }
         override suspend fun openApp(pkg: String): Boolean {
             val i = svc.packageManager.getLaunchIntentForPackage(pkg) ?: return false
@@ -59,7 +59,19 @@ object ImageGenAgent {
         }
         override fun canLook() = canSee(svc)
         override suspend fun look(goal: String): Pair<Int, Int>? = lookAt(svc, goal)
+        /** नवंबर 2026: फ़ोन का कोई भी ऐप नाम से (launcher का नाम - पूरा वही, फिर शुरू/अंदर) */
+        override fun findApp(name: String): Pair<String, String>? {
+            val q = name.trim().lowercase().removeSuffix(" app").removeSuffix(" ऐप").trim()
+            if (q.length < 2) return null
+            val apps = try { com.dk.assistant.AppLauncher.appList(svc) } catch (_: Exception) { return null }
+            return apps.firstOrNull { it.first.lowercase() == q } ?: apps.firstOrNull { it.first.lowercase().startsWith(q) }
+                ?: apps.firstOrNull { q.length >= 4 && it.first.lowercase().contains(q) }
+        }
     }
+
+    /** नवंबर 2026: DK की AI बातचीत ([AiTalkAgent]) के लिए - Live वाली Gemini key से सिर्फ़ text (DK कंप्यूटर की key न हो तब) */
+    internal fun textAsk(svc: DKAccessibilityService, ask: String): String? =
+        gemini(svc, ask, null, json = true, maxTokens = 1500, models = (listOf(GeminiModels.CODER) + GeminiModels.LIGHT_CHAIN).distinct())
 
     /**
      * स्क्रीन देखना: मालिक ने खुद चालू किया हो (ScreenGuard) + Android 11+ + key हो.

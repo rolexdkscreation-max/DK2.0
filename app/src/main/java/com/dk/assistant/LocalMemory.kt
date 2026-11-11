@@ -16,7 +16,8 @@ import java.util.concurrent.Executors
 /**
  * v3.88: फ़ोन की लोकल याददाश्त (SQLite, सिर्फ़ इसी फ़ोन में - कहीं upload नहीं).
  *
- *  turns  = हर बात (यूज़र / DK, आवाज़ / टेक्स्ट, तारीख-समय). 30 दिन बाद अपने-आप मिटती है.
+ *  turns  = हर बात (यूज़र / DK, आवाज़ / टेक्स्ट, तारीख-समय). नवंबर 2026: हमेशा रहती है - कभी अपने-आप नहीं मिटती
+ *           (सिर्फ़ मालिक के "भूल जाओ" / याददाश्त स्क्रीन से मिटाने पर).
  *  points = हर दिन का छोटा सार (पसंद, लोग, काम, तारीखें, वादे...). कभी अपने-आप नहीं मिटता - यूज़र कहे तभी.
  *  days   = किन दिनों का सार बन चुका (पुरानी बात मिटाने से पहले सार ज़रूर बने).
  *  dropped = यूज़र ने जो सार मिटाया - दोबारा न जुड़े.
@@ -65,6 +66,28 @@ object LocalMemory {
         }
     }
 
+    /**
+     * नवंबर 2026: हमेशा रहने वाली एक याद (सार की टेबल में) - जैसे "याद रखना" वाली पुरानी बात जो छोटी सूची से बाहर हुई,
+     * या DK ने किसी AI से जो सीखा. याद वाली खोज में मिलती है, अपने-आप कभी नहीं मिटती.
+     */
+    fun keepPoint(c: Context?, text: String) {
+        val ctx = c?.applicationContext ?: return
+        val t = LocalRecall.storable(text) ?: return
+        io.execute {
+            try {
+                val d = db(ctx)
+                val n = LocalRecall.norm(t)
+                val dup = d.rawQuery("SELECT COUNT(*) FROM points WHERE text=?", arrayOf(t)).use { it.moveToFirst() && it.getInt(0) > 0 }
+                if (!dup) {
+                    val now = System.currentTimeMillis()
+                    d.insert("points", null, ContentValues().apply { put("day", LocalRecall.dayOf(now)); put("text", t); put("at", now) })
+                    d.delete("dropped", "norm=?", arrayOf(n))
+                    blockCache = 0L to ""
+                }
+            } catch (e: Exception) { DKLog.d("याददाश्त: पक्की याद सेव नहीं हुई - ${e.message}") }
+        }
+    }
+
     /** आख़िरी "आप" वाली बात का पक्का text बाद में आया */
     fun fixLastUser(c: Context?, text: String) {
         val ctx = c?.applicationContext ?: return
@@ -97,14 +120,41 @@ object LocalMemory {
         return out
     }
 
-    /** याद वाले सवाल का जवाब - पूरा फ़ोन पर (कोई API/इंटरनेट नहीं). पहले 30 दिन की बातें, फिर सार */
+    /**
+     * नवंबर 2026: पूरी याद (शुरू से) में खोज. बहुत बड़ी याद में भी तेज़ - आख़िरी [RECENT_SCAN] बातें पूरी,
+     * उससे पुरानी में सिर्फ़ वे जिनमें सवाल का कोई शब्द है (SQL LIKE).
+     */
+    private const val RECENT_SCAN = 20_000
+    private const val OLD_MATCH = 5_000
+    private fun turnsFor(d: SQLiteDatabase, q: LocalRecall.Query): List<LocalRecall.Turn> {
+        // समय बोला हो (कल/आज/2 दिन पहले) - उससे एक दिन पहले से (याद वाले सवाल पहचानने को), बस
+        if (q.from > LocalRecall.ALL_TIME) return turnsSince(d, maxOf(0L, q.from - LocalRecall.DAY_MS))
+        val recent = ArrayList<LocalRecall.Turn>()
+        d.rawQuery("SELECT id, who, text, at, src FROM turns ORDER BY at DESC, id DESC LIMIT $RECENT_SCAN", null).use { c ->
+            while (c.moveToNext()) recent.add(LocalRecall.Turn(c.getLong(0), c.getString(1), c.getString(2), c.getLong(3), c.getString(4)))
+        }
+        recent.reverse()
+        if (recent.size < RECENT_SCAN || q.words.isEmpty()) return recent
+        val oldest = recent.first().at
+        val ws = q.words.take(6)
+        val like = ws.joinToString(" OR ") { "text LIKE ?" }
+        val args = arrayOf(oldest.toString()) + ws.map { "%$it%" }
+        val old = ArrayList<LocalRecall.Turn>()
+        d.rawQuery("SELECT id, who, text, at, src FROM turns WHERE at<? AND ($like) ORDER BY at DESC, id DESC LIMIT $OLD_MATCH", args).use { c ->
+            while (c.moveToNext()) old.add(LocalRecall.Turn(c.getLong(0), c.getString(1), c.getString(2), c.getLong(3), c.getString(4)))
+        }
+        old.reverse()
+        return old + recent
+    }
+
+    /** याद वाले सवाल का जवाब - पूरा फ़ोन पर (कोई API/इंटरनेट नहीं). पूरी याद (शुरू से) की बातें, फिर सार */
     suspend fun answer(c: Context, question: String): String = withContext(dispatcher) {
         try {
             val now = System.currentTimeMillis()
             val q = LocalRecall.parse(question, now)
             val d = db(c)
-            val h = LocalRecall.search(q, turnsSince(d, minOf(q.from, LocalRecall.cutoff(now))), allPoints(d))
-            DKLog.d("याददाश्त खोज: \"${question.take(40)}\" → ${h.turns.size} बातें, ${h.points.size} सार (${q.label.ifBlank { "30 दिन" }}, शब्द: ${q.words})")
+            val h = LocalRecall.search(q, turnsFor(d, q), allPoints(d))
+            DKLog.d("याददाश्त खोज: \"${question.take(40)}\" → ${h.turns.size} बातें, ${h.points.size} सार (${q.label.ifBlank { "पूरी याद" }}, शब्द: ${q.words})")
             LocalRecall.answer(q, h, now)
         } catch (e: Exception) { DKLog.d("याददाश्त खोज गड़बड़: ${e.message}"); LocalRecall.NOT_FOUND }
     }
@@ -214,7 +264,7 @@ object LocalMemory {
         }.get(5, java.util.concurrent.TimeUnit.SECONDS)
     } catch (_: Exception) { 0 }
 
-    // ------------------------------------------------------------------ सार + 30 दिन की सफ़ाई
+    // ------------------------------------------------------------------ सार (अब कोई अपने-आप सफ़ाई नहीं)
     /** एक दिन का सार (पहले से जुड़ा / यूज़र का मिटाया दोबारा नहीं) */
     private fun summarizeDay(d: SQLiteDatabase, day: String, final: Boolean): Int {
         val turns = ArrayList<LocalRecall.Turn>()
@@ -237,8 +287,8 @@ object LocalMemory {
 
     /**
      * ऐप खुलने पर + रोज़ एक बार + बातचीत खत्म होने पर:
-     * 1) आज से पहले के जिन दिनों का सार नहीं बना - बनाओ  2) आज का अब तक का सार  3) 30 दिन से पुरानी बातें मिटाओ
-     * (सिर्फ़ उन्हीं दिनों की जिनका सार बन चुका - सार पहले, मिटाना बाद में)
+     * 1) आज से पहले के जिन दिनों का सार नहीं बना - बनाओ  2) आज का अब तक का सार.
+     * नवंबर 2026 (मालिक): पहले 3) 30 दिन से पुरानी बातें मिटती थीं - अब कभी नहीं. पूरी बातचीत फ़ोन में हमेशा रहती है.
      */
     fun maintain(c: Context, why: String) {
         val ctx = c.applicationContext
@@ -254,15 +304,9 @@ object LocalMemory {
                 var added = 0
                 for (day in LocalRecall.daysToSummarize(days, done, today)) added += summarizeDay(d, day, final = true)
                 if (today in days) added += summarizeDay(d, today, final = false)
-                done.clear()
-                d.rawQuery("SELECT day FROM days", null).use { cur -> while (cur.moveToNext()) done.add(cur.getString(0)) }
-                val cut = LocalRecall.cutoff(now)
-                var removed = 0
-                val old = ArrayList<String>()
-                d.rawQuery("SELECT DISTINCT day FROM turns WHERE at<?", arrayOf(cut.toString())).use { cur -> while (cur.moveToNext()) old.add(cur.getString(0)) }
-                for (day in old) if (day in done) removed += d.delete("turns", "day=? AND at<?", arrayOf(day, cut.toString()))
+                // कोई बात अपने-आप नहीं मिटती (LocalRecall.cutoff = null)
                 if (added > 0) blockCache = 0L to ""
-                DKLog.d("याददाश्त ($why): $added नए सार, 30 दिन से पुरानी $removed बातें मिटाईं")
+                DKLog.d("याददाश्त ($why): $added नए सार - सारी बातें सुरक्षित, कुछ नहीं मिटाया")
             } catch (e: Exception) { DKLog.d("याददाश्त सफ़ाई गड़बड़: ${e.message}") }
         }
     }

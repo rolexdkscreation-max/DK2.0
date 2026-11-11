@@ -25,7 +25,7 @@ class DKApp : Application() {
         registerActivityLifecycleCallbacks(com.dk.assistant.ui.NeonRefresh)
         registerActivityLifecycleCallbacks(ScreenAwake)   // v4.1: DK सामने = स्क्रीन जगी (wake lock नहीं)
         StatusNotify.install(this)
-        // v3.88: लोकल याददाश्त - ऐप खुलते ही सार + 30 दिन की सफ़ाई, और रोज़ एक बार
+        // v3.88: लोकल याददाश्त - ऐप खुलते ही सार, और रोज़ एक बार (नवंबर 2026: कुछ भी अपने-आप नहीं मिटता)
         try { LocalMemory.maintain(this, "ऐप खुला"); LocalMemory.scheduleDaily(this) } catch (_: Exception) {}
         // v5.1: DK Inspector - हर 20 मिनट जाँच (inexact, फ़ोन नहीं जगाता; Accessibility चालू हो तो पक्का timer भी)
         try { com.dk.assistant.inspector.Inspector.schedule(this) } catch (_: Throwable) {}

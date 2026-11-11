@@ -227,8 +227,23 @@ internal fun GeminiLive.setupJson(m: String, txt: Boolean = connText, resume: Bo
             .put("parameters", JSONObject().put("type", "OBJECT")
                 .put("properties", JSONObject()
                     .put("prompt", JSONObject().put("type", "STRING").put("description", "Exactly what to type in the app (the user's words / the prompt he wants)"))
-                    .put("app", JSONObject().put("type", "STRING").put("enum", JSONArray().put("chatgpt").put("gemini").put("auto")).put("description", "Which app the user named; auto = ChatGPT if installed, else Gemini")))
+                    .put("app", JSONObject().put("type", "STRING").put("enum", JSONArray().put("chatgpt").put("gemini").put("claude").put("perplexity").put("copilot").put("deepseek").put("grok").put("meta_ai").put("auto")).put("description", "Which app the user named; auto = ChatGPT if installed, else Gemini")))
                 .put("required", JSONArray().put("prompt"))))
+        // नवंबर 2026 (मालिक): DK खुद किसी भी AI ऐप से लंबी बातचीत / मुकाबला / सवाल-जवाब / सीखना / काम करवाना
+        .put(JSONObject().put("name", "ai_talk")
+            .put("description", "DK itself opens a REAL AI chat app on the phone (ChatGPT, Claude, Gemini, Perplexity, Copilot, DeepSeek, Grok, Meta AI or ANY other app by name) and has a whole multi-turn conversation with it ON THE SCREEN: " +
+                "DK writes each message, sends it, reads the reply, answers that AI's questions itself and decides the next message - the user only watches and listens. " +
+                "Use for 'जाओ Claude से बात करो', 'ChatGPT से मुकाबला करो / बहस करो', 'Gemini से सवाल-जवाब करो', 'Claude से कुछ सीखो / उसका काम करने का तरीका सीखो', 'Perplexity से यह काम करवाओ'. " +
+                "When the user says प्रोफेसर / परप्लेक्सिटी / पर्पलेक्सिटी he means Perplexity; क्लाउड means Claude. In mode=learn DK saves the learned methods FOREVER and uses them itself later. " +
+                "For ONE single question with an answer read back use ai_app_prompt instead. It runs a few minutes: say the returned line, then wait - you get a SYSTEM NOTE with the real summary; never invent what the app said. action=stop stops it.")
+            .put("parameters", JSONObject().put("type", "OBJECT")
+                .put("properties", JSONObject()
+                    .put("app", JSONObject().put("type", "STRING").put("description", "The app name the user said (claude, chatgpt, gemini, perplexity, copilot, deepseek, grok, meta_ai, or any other app's name)"))
+                    .put("goal", JSONObject().put("type", "STRING").put("description", "The user's own words: what to talk about / debate / ask / learn / get done"))
+                    .put("mode", JSONObject().put("type", "STRING").put("enum", JSONArray().put("talk").put("debate").put("quiz").put("learn").put("task"))
+                        .put("description", "talk = conversation, debate = मुकाबला/बहस, quiz = सवाल-जवाब, learn = सीखना (methods saved forever), task = get a job done by that AI"))
+                    .put("rounds", JSONObject().put("type", "INTEGER").put("description", "How many messages DK sends (only if the user said a number; default about 6, max 20)"))
+                    .put("action", JSONObject().put("type", "STRING").put("enum", JSONArray().put("start").put("stop").put("status"))))))
         // v3.156: "मुझे शर्ट देखनी है" - shopping ऐप (पूछकर) में वही चीज़
         .put(JSONObject().put("name", "shop_search")
             .put("description", "Show a product the user wants to see or buy (shirt, jeans, lower/track pants, shoes, watch, kurta, saree, bag...) in a shopping app on the phone. " +
@@ -312,7 +327,7 @@ internal fun GeminiLive.setupJson(m: String, txt: Boolean = connText, resume: Bo
                 .put("properties", JSONObject().put("about", JSONObject().put("type", "STRING").put("description", "The topic to forget, a few words")))
                 .put("required", JSONArray().put("about"))))
         .put(JSONObject().put("name", "recall_conversation")
-            .put("description", "The user asks what HE said earlier or what you two talked about (मैंने क्या बोला था / अभी मैंने क्या कहा था / कल क्या बात हुई थी / मैंने उस बारे में क्या बताया था / तुमने क्या कहा था). Searches the conversation saved ONLY on this phone (last 30 days + permanent short notes) - no internet. question = the user's question in his own words (include the time like अभी/कल/आज and the topic). Then say the result to the user briefly in your own voice; if it says it was not found, say exactly 'बॉस, मुझे ये याद नहीं मिल रहा।' - never invent.")
+            .put("description", "The user asks what HE said earlier or what you two talked about (मैंने क्या बोला था / अभी मैंने क्या कहा था / कल क्या बात हुई थी / मैंने उस बारे में क्या बताया था / तुमने क्या कहा था). Searches the conversation saved ONLY on this phone (ALL of it, from the very first day - nothing is ever auto-deleted - + permanent short notes) - no internet. question = the user's question in his own words (include the time like अभी/कल/आज and the topic). Then say the result to the user briefly in your own voice; if it says it was not found, say exactly 'बॉस, मुझे ये याद नहीं मिल रहा।' - never invent.")
             .put("parameters", JSONObject().put("type", "OBJECT")
                 .put("properties", JSONObject().put("question", JSONObject().put("type", "STRING").put("description", "The user's question, his words")))
                 .put("required", JSONArray().put("question"))))

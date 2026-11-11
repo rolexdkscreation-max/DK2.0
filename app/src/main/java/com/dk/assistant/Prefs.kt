@@ -221,7 +221,7 @@ object Prefs {
     fun setFloatOrbPos(c: Context, fx: Float, fy: Float) = edit(c) {
         putFloat("float_orb_fx", fx.coerceIn(0f, 1f)); putFloat("float_orb_fy", fy.coerceIn(0f, 1f))
     }
-    /** v3.88: हर बातचीत फ़ोन की लोकल याददाश्त (SQLite) में - 30 दिन, फिर सिर्फ़ सार */
+    /** v3.88: हर बातचीत फ़ोन की लोकल याददाश्त (SQLite) में - नवंबर 2026: हमेशा (अपने-आप कभी नहीं मिटती) + सार */
     fun localMemoryOn(c: Context) = sp(c).getBoolean("local_memory_on", true)
     // ---- v3.66: सिर्फ़ मालिक की आवाज़ (voiceprint सिर्फ़ इसी फ़ोन में - backup बंद है, GitHub/इंटरनेट पर नहीं)
     /** परत 3: सिर्फ़ मालिक की आवाज़ पर जवाब */

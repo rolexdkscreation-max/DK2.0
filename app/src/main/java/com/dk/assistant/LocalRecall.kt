@@ -9,8 +9,9 @@ import java.util.Locale
 /**
  * v3.88: लोकल याददाश्त का दिमाग (Android import नहीं -> JVM unit test).
  *
- *  - हर बातचीत (यूज़र + DK, आवाज़ + टेक्स्ट) फ़ोन के SQLite में ([LocalMemory]). 30 दिन बाद पूरी बातचीत मिटती है,
- *    उससे पहले हर दिन का छोटा सार ([summarize]) अलग टेबल में - वह कभी अपने-आप नहीं मिटता.
+ *  - हर बातचीत (यूज़र + DK, आवाज़ + टेक्स्ट) फ़ोन के SQLite में ([LocalMemory]). नवंबर 2026 (मालिक: "मेमोरी कभी अपने-आप
+ *    डिलीट न हो, एक भी बात न भूले"): पूरी बातचीत हमेशा रहती है - अपने-आप कुछ नहीं मिटता (सिर्फ़ मालिक के "भूल जाओ" / मिटाओ पर).
+ *    हर दिन का छोटा सार ([summarize]) भी अलग टेबल में बनता है.
  *  - "मैंने क्या बोला था / कल क्या बात हुई थी / मैंने उस बारे में क्या बताया था" = [isRecall] + [parse] +
  *    [search] + [answer] - पूरा फ़ोन पर, कोई API/इंटरनेट नहीं. न मिले तो झूठ नहीं: [NOT_FOUND].
  *  - सार भी फ़ोन पर नियमों से (AI को बातचीत नहीं भेजी जाती - कुछ भी upload नहीं).
@@ -27,7 +28,10 @@ object LocalRecall {
     data class Hits(val turns: List<Turn>, val points: List<Point>)
 
     const val NOT_FOUND = "बॉस, मुझे ये याद नहीं मिल रहा।"
-    const val KEEP_DAYS = 30
+    /** नवंबर 2026: पहले 30 था (उसके बाद बातें मिटती थीं). अब 0 = हमेशा रखो, कभी अपने-आप नहीं मिटता */
+    const val KEEP_DAYS = 0
+    /** समय न बोला हो तो खोज पूरी याद में (शुरू से) */
+    const val ALL_TIME = 0L
     const val DAY_MS = 24 * 60 * 60 * 1000L
 
     // ------------------------------------------------------------------ "याद वाला सवाल" है?
@@ -58,7 +62,7 @@ object LocalRecall {
         val t = norm(raw)
         val today = Instant.ofEpochMilli(now).atZone(zone).toLocalDate()
         fun dayStart(d: LocalDate) = d.atStartOfDay(zone).toInstant().toEpochMilli()
-        var from = now - KEEP_DAYS * DAY_MS
+        var from = ALL_TIME
         var to = now
         var label = ""
         var recent = false
@@ -265,10 +269,12 @@ object LocalRecall {
         return out.values.toList()
     }
 
-    // ------------------------------------------------------------------ 30 दिन
-    fun cutoff(now: Long) = now - KEEP_DAYS * DAY_MS
+    // ------------------------------------------------------------------ कभी अपने-आप नहीं मिटता
+    /** नवंबर 2026: अपने-आप मिटाने की सीमा अब कोई नहीं - null = कुछ भी नहीं मिटेगा */
+    @Suppress("UNUSED_PARAMETER")
+    fun cutoff(now: Long): Long? = null
 
-    /** मिटाने से पहले जिन दिनों का सार बनना है: [cutoff] से पुराने + आज से पहले वाले, जिनका सार अभी नहीं बना */
+    /** आज से पहले वाले जिन दिनों का सार अभी नहीं बना */
     fun daysToSummarize(turnDays: Collection<String>, doneDays: Set<String>, today: String): List<String> =
         turnDays.filter { it < today && it !in doneDays }.distinct().sorted()
 
