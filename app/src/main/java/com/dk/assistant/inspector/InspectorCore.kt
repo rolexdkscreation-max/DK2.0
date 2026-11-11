@@ -266,6 +266,12 @@ object InspectorCore {
             "AI ने समय पर जवाब नहीं दिया (timeout)", "पीछे चल रहे काम का AI (जैसे OpenRouter free) धीमा रहा - ऐप crash नहीं हुआ।",
             "पीछे वाला काम धीमा या अधूरा रह सकता है।", "Gemini key ठीक रखें - बंद key पर DK धीमे free मॉडल पर जाता है।",
             "कोड बदलाव ज़रूरी नहीं (fallback पहले से)।", "वही काम दोबारा करें; timeout बार-बार न आए।"),
+        // नवंबर 2026 (DKI-C7025E, "Critical crash" 67 बार): ConnectException/UnknownHost = फ़ोन से Google तक नेट नहीं - ऐप crash नहीं
+        Rule("live_net", Component.LIVE_CONNECTION, Certainty.CONFIRMED, Severity.LOW,
+            Regex("(?i)(ConnectException|UnknownHostException|NoRouteToHostException|SocketTimeoutException|SocketException|SSLHandshakeException|Failed to connect to|Unable to resolve host|का पता नहीं मिला|Software caused connection abort|Network is unreachable)"),
+            "इंटरनेट से Google server तक नहीं पहुँचा", "फ़ोन से Gemini (Google) server तक नेट का रास्ता नहीं बना (DNS / IPv6 / नेट बदला या टूटा) - ऐप crash नहीं हुआ।",
+            "उतनी देर DK Live नहीं जुड़ता; नेट लौटते ही अपने-आप जुड़ता है।", "Wi-Fi / mobile data बदलें; VPN, Private DNS या ad-blocker बंद करके देखें।",
+            "कोड बदलाव ज़रूरी नहीं (LiveRace.classify इसे NET मानता है, जोड़ी 2 मिनट रुकती है)।", "नेट ठीक होने पर DK Live चालू करें; 'जुड़ गया' आए।"),
         Rule("crash", Component.CRASH, Certainty.CONFIRMED, Severity.HIGH,
             Regex("(FATAL|[A-Za-z]+Exception|OutOfMemoryError|StackOverflowError|crash)"),
             "App में exception आया", "कोड में exception (गलती) उठा - लॉग में उसका नाम लिखा है।",
@@ -351,7 +357,7 @@ object InspectorCore {
      */
     private val RECOVERED = Regex("(जुड़ गया \\[|गर्म connection फिर से \\[|Live संभल गया)")
     private val NOT_RECOVERABLE = Regex("रुकावट दिखी")
-    private val RECOVERABLE = setOf("live_conn_drop", "live_setup_failed", "live_stall")
+    private val RECOVERABLE = setOf("live_conn_drop", "live_setup_failed", "live_stall", "live_net")
     const val RECOVER_MS = 12_000L
 
     /** यह गड़बड़ी [RECOVER_MS] में अपने-आप संभल गई? (okAt = संभलने वाली लाइनों का समय, बढ़ते क्रम में) */

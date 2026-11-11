@@ -360,7 +360,14 @@ object Prefs {
     fun voiceStyle(c: Context) = if (JarvisMode.on(c)) JarvisMode.STYLE_ID else sp(c).getString("voice_style", "natural") ?: "natural"
     fun googleVoice(c: Context) = sp(c).getString("google_voice", "") ?: ""
     /** v3.59: किस मॉडल पर कौन-सी Live चीज़ (आवाज़/hi-IN/affective) setup तोड़ती है - अगली बार उसके बिना */
-    fun liveExtrasOff(c: Context): Set<String> = LiveVoice.parseOff(sp(c).getString(LiveVoice.OFF_KEY, ""))
+    fun liveExtrasOff(c: Context): Set<String> {
+        val off = LiveVoice.parseOff(sp(c).getString(LiveVoice.OFF_KEY, ""))
+        // नवंबर 2026 (DKI-C7025E): नेट की गलती से बंद हुआ hi-IN एक बार वापस
+        if (sp(c).getBoolean(LiveVoice.LANG_FIX_KEY, false)) return off
+        val fixed = LiveVoice.dropLangOff(off)
+        edit(c) { putString(LiveVoice.OFF_KEY, LiveVoice.joinOff(fixed)); putBoolean(LiveVoice.LANG_FIX_KEY, true) }
+        return fixed
+    }
     fun addLiveExtrasOff(c: Context, entry: String) = edit(c) { putString(LiveVoice.OFF_KEY, LiveVoice.joinOff(liveExtrasOff(c) + entry)) }
     /** v4.3: लोकेशन की इजाज़त एक बार अपने-आप माँग ली (फिर हर बार ऐप खुलने पर नहीं) */
     fun locAsked(c: Context) = sp(c).getBoolean("loc_asked_v43", false)

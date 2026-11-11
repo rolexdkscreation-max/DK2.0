@@ -34,16 +34,35 @@ object LiveRace {
 
     /** गलती किस तरह की: key की (10 मिनट), setup की बनावट की (उसे ठीक करके फिर), मॉडल नहीं, या नेट/timeout (2 मिनट) */
     fun classify(code: Int, reason: String): Fail {
-        val r = reason.lowercase()
+        val r = scrub(reason)
         if (code == 401 || code == 403 || code == 429 || isQuota(code, r) ||
             r.contains("api key") || r.contains("api_key") || r.contains("permission") || r.contains("unauthenticated") ||
             r.contains("billing")) return Fail.KEY
+        // नवंबर 2026 (DKI-C7025E): फ़ोन से server तक रास्ता ही नहीं बना = नेट, कभी setup की बनावट नहीं
+        if (isNetError(r)) return Fail.NET
         if (r.contains("not found") || code == 404 || code == 1008 || (r.contains("model") && r.contains("not supported"))) return Fail.MODEL
         if (code == 1007 || r.contains("modalit") || r.contains("search") || r.contains("tool") || r.contains("voice") ||
             r.contains("language") || r.contains("affective") || r.contains("think") || r.contains("handle") ||
             r.contains("resum") || r.contains("invalid")) return Fail.CONFIG
         return Fail.NET
     }
+
+    /**
+     * नवंबर 2026 (DKI-C7025E, 67 बार): server का नाम ही "generativelanguage.googleapis.com" है - उसमें "language" शब्द.
+     * ConnectException/UnknownHostException के संदेश में यह नाम आता था -> classify() उसे "language" (setup की बनावट) मानता था,
+     * और LiveVoice.degrade() उसी शब्द से मॉडल का hi-IN हमेशा के लिए बंद कर देता था. जाँच से पहले host/IP हटाओ.
+     */
+    fun scrub(reason: String): String = reason.lowercase()
+        .replace(Regex("[a-z0-9.-]*googleapis\\.com\\S*"), "<host>")
+        .replace(Regex("\\[?[0-9a-f]{1,4}:[0-9a-f:.]*\\]?"), "<ip>")
+        .replace(Regex("\\b\\d{1,3}(\\.\\d{1,3}){3}\\b"), "<ip>")
+
+    private val NET_RX = Regex("(connectexception|unknownhostexception|noroutetohostexception|sockettimeoutexception|" +
+        "socketexception|sslhandshakeexception|sslexception|eofexception|failed to connect|unable to resolve host|" +
+        "connection reset|connection refused|software caused connection abort|network is unreachable|का पता नहीं मिला)")
+
+    /** फ़ोन से server तक रास्ता नहीं बना (DNS / IPv6 / नेट बदला / टूटा) - key/मॉडल/बनावट की गलती नहीं */
+    fun isNetError(reason: String): Boolean = NET_RX.containsMatchIn(reason.lowercase())
 
     fun isQuota(code: Int, reason: String): Boolean {
         val r = reason.lowercase()
