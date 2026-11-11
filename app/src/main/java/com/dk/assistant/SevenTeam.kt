@@ -77,6 +77,8 @@ class SevenTeam(
     private val full: Boolean = false,
     /** नवंबर 2026: काम ख़त्म = समझाने वाला असली diff पढ़कर AI से समझाए (क्या, क्यों, कैसे चलेगा, बग कहाँ था, कैसे जाँचें). false = सिर्फ़ पक्का ढाँचा */
     private val aiResult: Boolean = false,
+    /** नवंबर 2026 (मालिक: "बहुत स्लो"): true = छोटे साफ़ बदलाव का अलग AI रिव्यू नहीं + AI सारांश 10 मिनट में एक बार ([CoderSpeed]). false = पुराना जैसा का तैसा */
+    private val fast: Boolean = false,
     ev: (Agent, String) -> Unit
 ) {
     private val sink = ev
@@ -90,6 +92,9 @@ class SevenTeam(
     val memory = TeamMemory()
     private var briefCache = ""
     private var briefVer = -1
+    /** नवंबर 2026 (तेज़): आख़िरी AI सारांश कब बना + पूरे काम का समय-हिसाब ([CoderSpeed]) */
+    private var briefAt = 0L
+    val clock = CoderSpeed.Clock()
 
     /**
      * v5.2 (मालिक: "प्लानर पहले जड़/कारण ढूँढकर लिखे, कारण पता होने के बाद ही कोडर"): बग के काम में शुरू की जड़-खोज
@@ -195,7 +200,12 @@ class SevenTeam(
         val sys = system + "\n\n" + (if (a == Agent.CODER) Seven.Prompts.RULES_CODER else Seven.Prompts.RULES) +
             (if (mediaNotes.isNotBlank()) "\n\nUSER'S PHOTOS / VIDEO - what the prompt engineer saw in them (the user attached them to this task):\n$mediaNotes" else "") +
             if (tb.isNotBlank()) "\n\n" + TeamMemory.HEADER + tb else ""
-        return if (media.isNotEmpty() && a in SEES_MEDIA) ai.askMedia(a, sys, msgs, media) else ai.ask(a, sys, msgs)
+        val t0 = clock.start()
+        try {
+            return if (media.isNotEmpty() && a in SEES_MEDIA) ai.askMedia(a, sys, msgs, media) else ai.ask(a, sys, msgs)
+        } finally {
+            CoderSpeed.slowNote(shownAs(a).hi, clock.done(t0))?.let { sink(a, it) }   // सिर्फ़ स्क्रीन पर, टीम की याद में नहीं
+        }
     }
 
     /**
@@ -211,6 +221,9 @@ class SevenTeam(
         if (big < SUMMARY_AI_MIN) return memory.short(max)
         val v = memory.version()
         if (v == briefVer && briefCache.isNotBlank()) return briefCache
+        // नवंबर 2026 (तेज़): याद हर थोड़ी देर में बदलती है - हर बार नया AI सारांश = हर कदम पर एक फ़ालतू कॉल. 10 मिनट में एक बार, बीच में पक्का छोटा रूप
+        if (fast && !CoderSpeed.briefByAi(briefCache.isBlank(), briefAt, System.currentTimeMillis())) { clock.briefSkipped(); return memory.short(max) }
+        briefAt = System.currentTimeMillis()
         val sum = try { ai.ask(Agent.MANAGER, "You keep the team's memory and brief every member.", listOf("user" to memory.summaryAsk(max))) }
             catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (_: Exception) { null }
         briefCache = memory.accept(sum, max); briefVer = v
@@ -1057,7 +1070,11 @@ class SevenTeam(
                 forCoder = "\nNAME CHECK FAILED (these names do not exist - read the definitions and use the real names):\n" + sure.joinToString("\n") { "- " + it.english() }
             } else if (chk.ok) {
                 // रिव्यूअर (AI): पुराना फ़ीचर / compile / कदम पूरा? (+ जो नाम पक्के नहीं, उनका सबूत)
-                val r = review(s, cur, edit, chk.content, miss)
+                // नवंबर 2026 (तेज़): छोटा साफ़ बदलाव जो सारी पक्की जाँच पास कर चुका = अलग AI रिव्यू कॉल नहीं ([CoderSpeed.quickPass])
+                val quick = fast && CoderSpeed.quickPass(edit.pairs, edit.full != null, cur != null, miss.size,
+                    CodeGuard.flips(cur, chk.content).size, CodeGuard.droppedGuards(cur, chk.content).size, attempt)
+                if (quick) { clock.reviewSkipped(); ev(Agent.REVIEWER, "छोटा साफ़ बदलाव — पक्की जाँच (FIND एक जगह, syntax, नाम, शर्तें) पास, अलग AI रिव्यू नहीं (तेज़)") }
+                val r = if (quick) emptyList() else review(s, cur, edit, chk.content, miss)
                 if (r.isEmpty()) {
                     files.stage(s.file, chk.content)
                     changes[s.file] = (changes[s.file]?.let { "$it; " } ?: "") + s.change.take(160)
@@ -1434,6 +1451,7 @@ class SevenTeam(
 
     private suspend fun finish(testOk: Boolean?, problem: String, pr: String = git?.prUrl.orEmpty()): Outcome {
         if (problem.isNotBlank()) ev(Agent.MANAGER, (if (testOk == null) "⚠ " else "✗ ") + problem)
+        sink(Agent.MANAGER, clock.report())   // नवंबर 2026: समय कहाँ गया (अगली बार धीमेपन की वजह साफ़)
         when (testOk) {
             true -> note.state("✅ काम पूरा — build/tests पास, PR review के लिए तैयार", "merge सिर्फ़ आपकी हाँ से (\"हाँ, merge करो\")")
             false -> note.state("❌ रुका: " + problem.take(160), "\"आगे करो\" — यही काम-कॉपी पढ़कर वहीं से")
