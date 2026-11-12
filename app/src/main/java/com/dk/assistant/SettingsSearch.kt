@@ -25,6 +25,8 @@ object SettingsSearch {
         "access" to "Accessibility", "phonelock" to "फ़ोन लॉक / अनलॉक", "guard" to "स्क्रीन गार्ड", "perms" to "परमिशन", "computer" to "DK कंप्यूटर", "coder" to "कोडिंग एजेंट",
         "social" to "सोशल रिव्यू", "reels" to "रील गिनती और लिमिट",
         ACT_AUTO to "ऑटोनोमस मोड", ACT_TEMPLATES to "टेम्पलेट कमांड", ACT_CONNECTORS to "कनेक्टर", ACT_STORY to "स्टोरी राइटर एजेंट", ACT_BACKUP to "बैकअप",
+        // नवंबर 2026: ऑटो रिप्लाई (ऑटोनोमस मोड के बाद - "ऑटो" खोजने पर पहले ऑटोनोमस मोड ही आए)
+        "autoreply" to "ऑटो रिप्लाई",
         "update" to "अपडेट", "debug" to "डिबग लॉग", "about" to "ऐप के बारे में",
         // नवंबर 2026: Control Center के 6 श्रेणी कार्ड (आख़िर में, ताकि पुराने नतीजों का क्रम न बदले)
         "cat_dk" to "मेरा DK", "cat_brain" to "दिमाग और आवाज़", "cat_auto" to "ऑटोमेशन",
@@ -36,7 +38,7 @@ object SettingsSearch {
     val CATEGORIES: List<Pair<Triple<String, String, String>, List<String>>> = listOf(
         Triple("cat_dk", "मेरा DK", "प्रोफ़ाइल • भाषा • दिखावट • ओर्ब और चेहरा") to listOf("profile", "lang", "ui", "orb"),
         Triple("cat_brain", "दिमाग और आवाज़", "AI दिमाग • आवाज़ • कोडिंग एजेंट • DK कंप्यूटर") to listOf("brain", "voice", "coder", "computer"),
-        Triple("cat_auto", "ऑटोमेशन", "ऑटोनोमस मोड • टेम्पलेट कमांड • Accessibility") to listOf("auto", "templates", "access"),
+        Triple("cat_auto", "ऑटोमेशन", "ऑटोनोमस मोड • टेम्पलेट कमांड • ऑटो रिप्लाई • Accessibility") to listOf("auto", "templates", "autoreply", "access"),
         Triple("cat_security", "सुरक्षा", "फ़ोन लॉक • स्क्रीन गार्ड • परमिशन") to listOf("phonelock", "guard", "perms"),
         Triple("cat_social", "सोशल और कहानी", "सोशल रिव्यू • रील गिनती और लिमिट • स्टोरी राइटर") to listOf("social", "reels", "story"),
         Triple("cat_data", "डेटा और ऐप", "कनेक्टर • बैकअप • अपडेट • डिबग लॉग • ऐप के बारे में") to listOf("connectors", "backup", "update", "debug", "about")
@@ -68,12 +70,17 @@ object SettingsSearch {
         ACT_CONNECTORS to "connector कनेक्टर gmail drive calendar instagram facebook mcp",
         ACT_STORY to "story कहानी writer लेखक",
         ACT_BACKUP to "backup बैकअप restore रिस्टोर drive ड्राइव google गूगल email ईमेल याददाश्त memory बातचीत",
+        "autoreply" to "auto reply ऑटो रिप्लाई autoreply जवाब अपने-आप खुद-ब-खुद whatsapp व्हाट्सएप business बिजनेस telegram टेलीग्राम messenger मैसेंजर message मैसेज signal sms instagram reply रिप्लाई",
         "update" to "update अपडेट version वर्ज़न",
         "debug" to "debug log लॉग गलती error",
         "about" to "about privacy निजता version"
     )
 
     val ENTRIES: List<E> = SECTIONS.keys.map { E(it, "", "", SECTION_WORDS[it].orEmpty()) } + listOf(
+        E("autoreply", "ऑटो रिप्लाई कैसे काम करता है", "मैसेज आए तो DK आपकी ओर से, आपके ही ढंग में, सिर्फ़ उसी बात का जवाब"),
+        E("autoreply", "ऑटो रिप्लाई चालू / बंद", "एक मुख्य स्विच — बंद = किसी भी ऐप में अपने-आप जवाब नहीं"),
+        E("autoreply", "किन ऐप पर ऑटो रिप्लाई", "फ़ोन में मिले मैसेज वाले ऐप — हर एक का अपना स्विच (शुरू में बंद)"),
+        E("autoreply", "आपका लिखने का ढंग", "DK ने आपके भेजे मैसेज से कितना सीखा • मिटाएँ"),
         E("social", "सोशल रिव्यू कैसे करें", "एक बार बोलें — DK खुद ऐप खोलकर हर रील / वीडियो के आँकड़े देखकर पूरी रिपोर्ट बताएगा"),
         E("social", "आँकड़े कहाँ से लें", "हर प्लेटफ़ॉर्म के लिए: दोनों (सबसे पक्का) • सिर्फ़ API • सिर्फ़ ऐप की स्क्रीन"),
         E("social", "ट्रेंड और आपका विषय", "रिपोर्ट में अभी के ट्रेंडिंग टॉपिक और आपके विषय के हिसाब से सलाह"),

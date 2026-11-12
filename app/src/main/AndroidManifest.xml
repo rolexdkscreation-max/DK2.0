@@ -89,6 +89,11 @@
         <package android:name="com.facebook.katana" />
         <package android:name="com.whatsapp" />
         <package android:name="com.whatsapp.w4b" />
+        <!-- नवंबर 2026: ऑटो रिप्लाई - फ़ोन में कौन-से मैसेज ऐप हैं -->
+        <package android:name="org.telegram.messenger" />
+        <package android:name="com.facebook.orca" />
+        <package android:name="com.google.android.apps.messaging" />
+        <package android:name="org.thoughtcrime.securesms" />
     </queries>
 
     <application

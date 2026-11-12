@@ -155,6 +155,7 @@ object SideTalk {
         val risky = when (tool) {
             "notification_reply", "phone_call", "dk_settings", "forget_memory" -> true
             "whatsapp_task", "social_media_task", "connector_task" -> args.optString("action").lowercase().let { a -> ACTION_RISK.any { a.contains(it) } }
+            "form_fill" -> args.optString("action").lowercase() == "submit"
             "phone_task" -> (" " + args.optString("request").lowercase() + " ").let { r -> PHONE_RISK.any { r.contains(it) } }
             else -> false
         }

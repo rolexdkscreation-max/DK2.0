@@ -145,6 +145,7 @@ class SettingsActivity : AppCompatActivity() {
             "computer" -> { title.text = "DK कंप्यूटर"; secComputer() }
             "social" -> { title.text = "सोशल रिव्यू"; secSocial() }
             "reels" -> { title.text = "रील गिनती और लिमिट"; secReels() }
+            "autoreply" -> { title.text = "ऑटो रिप्लाई"; secAutoReply() }
             "about" -> { title.text = "ऐप के बारे में"; secAbout() }
         }
         space(container, 8)
@@ -171,6 +172,7 @@ class SettingsActivity : AppCompatActivity() {
             Triple("coder", "कोडिंग एजेंट", (if (Prefs.coderOn(this)) "✓ चालू" else "✗ बंद") + " • GitHub से जुड़ें • कोड लिखें/बदलें/हटाएँ • push • अलग AI key"),
             Triple("auto", "ऑटोनोमस मोड", (if (com.dk.assistant.auto.AutoPrefs.on(this)) "✓ चालू" else "✗ बंद") + " • DK खुद तय करे और खुद करे • API keys • आपातकालीन STOP"),
             Triple("templates", "टेम्पलेट कमांड", "बिना AI के तय साँचे • WhatsApp • अलार्म • मैप • कॉल"),
+            Triple("autoreply", "ऑटो रिप्लाई", (if (com.dk.assistant.autoreply.AutoReply.on(this)) "✓ चालू" else "✗ बंद") + " • WhatsApp • WhatsApp Business • Telegram • Messenger — हर ऐप का अपना स्विच"),
             Triple("social", "सोशल रिव्यू", "इंस्टाग्राम • फेसबुक • यूट्यूब स्टूडियो — हर रील के व्यूज़, रीच क्यों गिरी, ट्रेंड, ज़्यादा व्यूज़ कैसे"),
             Triple("reels", "रील गिनती और लिमिट", "इंस्टाग्राम • YouTube शॉर्ट्स • फेसबुक — ऊपर गिनती की पट्टी • रोज़ की लिमिट • फ़ोन लॉक / ऐप बंद"),
             Triple("backup", "बैकअप", "DK की याददाश्त Google Drive में • अपना ईमेल डालें • बैकअप / रिस्टोर (ऐप दोबारा डालने पर सब वापस)"),
