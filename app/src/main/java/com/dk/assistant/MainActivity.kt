@@ -176,6 +176,9 @@ class MainActivity : AppCompatActivity() {
                     com.dk.assistant.ui.HomeMenu.Item(R.drawable.ic_s_story, "DK टीचर", "व्हाइटबोर्ड पर कदम-दर-कदम पढ़ाई") { startActivity(Intent(this, TeacherActivity::class.java)) },
                     com.dk.assistant.ui.HomeMenu.Item(R.drawable.ic_globe, "वेबसाइट", "वेबसाइट बनाने वाला Forge") { startActivity(Intent(this, com.dk.assistant.forge.ForgeActivity::class.java)) },
                     com.dk.assistant.ui.HomeMenu.Item(R.drawable.ic_settings, "सेटिंग्स", "दिखावट, आवाज़, AI दिमाग और बाकी सब") { openSettings() },
+                    com.dk.assistant.ui.HomeMenu.Item(R.drawable.ic_globe, "Orb बदलें", "अभी: " + com.dk.assistant.dkai.DkaiOrbs.label(com.dk.assistant.dkai.DkaiOrbs.get(this))) {
+                        com.dk.assistant.dkai.DkaiOrbs.pick(this) {}
+                    },
                     com.dk.assistant.ui.HomeMenu.Item(R.drawable.ic_s_coder, "क्लासिक होम", "पुराना orb वाला होम (यहाँ से फिर DKAI)") {
                         com.dk.assistant.dkai.Dkai.set(this, false); recreate()
                     }

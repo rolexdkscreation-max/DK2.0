@@ -1454,3 +1454,25 @@ DK Privacy (बगल से न दिखे)	DK Privacy (hidden from the side)
 घंटा	hour
 🧠 सिंगल एजेंट: एक ही एजेंट पूरा काम करता है। 📎 से फ़ोटो / वीडियो भेजकर भी पूछ सकते हैं, और "यह क्यों / कैसे हो रहा है" पूछें तो असली कोड पढ़कर समझाता है।	🧠 Single agent: one agent does the whole job. You can also ask by sending a photo / video with 📎, and if you ask "why / how is this happening" it reads the real code and explains.
 🧠 सिंगल एजेंट: एक ही एजेंट पूरा काम करता है — खोजे, पढ़े, सारे बदलाव करे, खुद जाँचे, CI की गलती भी खुद ठीक करे। 📎 से फ़ोटो / स्क्रीनशॉट / वीडियो भेजें तो वह उन्हें देखकर समझता है कि क्या करना है। "यह क्यों हो रहा है / कैसे काम करता है" पूछें तो असली कोड पढ़कर समझाता है (कोड नहीं बदलता)। GitHub token + चुना रिपो = GitHub मोड (नई branch, PR, मंज़ूरी से merge); नहीं = नॉर्मल मोड (कोड फ़ाइल-नाम के साथ स्क्रीन पर)।	🧠 Single agent: one agent does the whole job - searches, reads, makes all changes, checks itself and fixes CI errors itself. Send photos / screenshots / videos with 📎 and it looks at them to understand what to do. Ask "why is this happening / how does it work" and it reads the real code and explains (without changing code). GitHub token + chosen repo = GitHub mode (new branch, PR, merge with approval); otherwise = normal mode (code on screen with file names).
+output copy करें	Copy output
+चलाएँ	Run
+नाम पूरा करें	Complete name
+चलती कमांड रोकें	Stop running command
+Terminal का output copy हो गया	Terminal output copied
+copy नहीं हुआ	Copy failed
+रोकें (खाली हो तो) / जवाब भेजें	Stop (when empty) / send reply
+Orb बदलें	Change orb
+पुराने DK orb का आकार	Classic DK orb shape
+यही रहने दें	Keep this
+Fluid (नीला-बैंगनी)	Fluid (blue-purple)
+Aurora (हरा-फ़िरोज़ी)	Aurora (green-teal)
+Sunset (नारंगी-गुलाबी)	Sunset (orange-pink)
+Arc Reactor (घूमते छल्ले)	Arc Reactor (spinning rings)
+Solar (सूरज की किरणें)	Solar (sun rays)
+Crystal (घूमता क्रिस्टल)	Crystal (spinning crystal)
+Particle Swarm (डॉट का गोला)	Particle Swarm (dot sphere)
+पुराना DK orb (Settings वाला)	Classic DK orb (from Settings)
+DK orb - बदलने के लिए टैप	DK orb - tap to change
+🔎 स्रोत •	🔎 Sources •
+स्रोत	Source
+Terminal में चला रहा है	Running in Terminal

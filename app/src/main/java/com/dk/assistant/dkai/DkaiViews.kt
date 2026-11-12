@@ -42,6 +42,11 @@ abstract class DkaiAnimView(c: Context) : View(c) {
  */
 class FluidOrbView(c: Context) : DkaiAnimView(c) {
     var glow = true
+    /** कौन सा orb ([DkaiOrbs.ORBS]) - 13 नवंबर 2026 (मालिक): Terminal / DKAI के लिए 4-5 नए orb */
+    var style: () -> String = { DkaiOrbs.FLUID }
+    private var pal = DkaiOrbs.palette(DkaiOrbs.FLUID)
+    private val ln = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE; strokeCap = Paint.Cap.ROUND }
+    private val dot = Paint(Paint.ANTI_ALIAS_FLAG)
     private val body = Paint(Paint.ANTI_ALIAS_FLAG)
     private val blob = Paint(Paint.ANTI_ALIAS_FLAG).apply { xfermode = PorterDuffXfermode(PorterDuff.Mode.SCREEN) }
     private val shade = Paint(Paint.ANTI_ALIAS_FLAG)
@@ -62,11 +67,19 @@ class FluidOrbView(c: Context) : DkaiAnimView(c) {
         val on = try { active() } catch (_: Exception) { false }
         val breathe = sin(t * (if (on) 2.4f else 1.3f)) * 0.025f
         val R = min(w, h) / 2f * (if (glow) 0.66f else 0.86f) * (1f + breathe + lv * 0.12f)
+        val st = try { style() } catch (_: Exception) { DkaiOrbs.FLUID }
+        pal = DkaiOrbs.palette(st)
+        when (st) {
+            DkaiOrbs.REACTOR -> { reactor(canvas, cx, cy, R, t, on, w, h); again(); return }
+            DkaiOrbs.SOLAR -> { solar(canvas, cx, cy, R, t, on, w, h); again(); return }
+            DkaiOrbs.CRYSTAL -> { crystal(canvas, cx, cy, R, t, on, w, h); again(); return }
+            DkaiOrbs.SWARM -> { swarm(canvas, cx, cy, R, t, on, w, h); again(); return }
+        }
 
         // बाहर की चमक
         if (glow) {
             val gr = min(R * (1.55f + lv * 0.25f), min(w, h) / 2f * 0.98f)      // view के किनारे से न कटे (कटी चमक = लकीरें)
-            halo.shader = RadialGradient(cx, cy, gr, intArrayOf(0x7000E5FF, 0x40A855F7, 0x00A855F7), floatArrayOf(0.35f, 0.7f, 1f), Shader.TileMode.CLAMP)
+            halo.shader = RadialGradient(cx, cy, gr, intArrayOf(DkaiOrbs.a(pal[0], 0x70), DkaiOrbs.a(pal[2], 0x40), DkaiOrbs.a(pal[2], 0)), floatArrayOf(0.35f, 0.7f, 1f), Shader.TileMode.CLAMP)
             canvas.drawCircle(cx, cy, gr, halo)
         }
 
@@ -83,7 +96,7 @@ class FluidOrbView(c: Context) : DkaiAnimView(c) {
         path.close()
 
         // घूमता cyan->violet रंग
-        val lg = LinearGradient(cx - R, cy - R, cx + R, cy + R, intArrayOf(DkaiTheme.CYAN, 0xFF3B82F6.toInt(), DkaiTheme.VIOLET), floatArrayOf(0f, 0.5f, 1f), Shader.TileMode.CLAMP)
+        val lg = LinearGradient(cx - R, cy - R, cx + R, cy + R, intArrayOf(pal[0], pal[1], pal[2]), floatArrayOf(0f, 0.5f, 1f), Shader.TileMode.CLAMP)
         m.reset(); m.setRotate((t * 25f) % 360f, cx, cy); lg.setLocalMatrix(m)
         body.shader = lg
         canvas.drawPath(path, body)
@@ -93,10 +106,10 @@ class FluidOrbView(c: Context) : DkaiAnimView(c) {
         canvas.clipPath(path)
         val br = R * 0.75f
         val p1x = cx + cos(t * 0.9f) * R * 0.45f; val p1y = cy + sin(t * 1.2f) * R * 0.35f
-        blob.shader = RadialGradient(p1x, p1y, br, intArrayOf(0xCC00E5FF.toInt(), 0x0000E5FF), null, Shader.TileMode.CLAMP)
+        blob.shader = RadialGradient(p1x, p1y, br, intArrayOf(DkaiOrbs.a(pal[0], 0xCC), DkaiOrbs.a(pal[0], 0)), null, Shader.TileMode.CLAMP)
         canvas.drawCircle(p1x, p1y, br, blob)
         val p2x = cx + cos(t * -1.1f + 2f) * R * 0.5f; val p2y = cy + sin(t * 0.8f + 1f) * R * 0.45f
-        blob.shader = RadialGradient(p2x, p2y, br, intArrayOf(0xCCA855F7.toInt(), 0x00A855F7), null, Shader.TileMode.CLAMP)
+        blob.shader = RadialGradient(p2x, p2y, br, intArrayOf(DkaiOrbs.a(pal[2], 0xCC), DkaiOrbs.a(pal[2], 0)), null, Shader.TileMode.CLAMP)
         canvas.drawCircle(p2x, p2y, br, blob)
         val p3x = cx + cos(t * 1.5f + 4f) * R * 0.3f; val p3y = cy + sin(t * -1.3f + 3f) * R * 0.3f
         blob.shader = RadialGradient(p3x, p3y, br * 0.6f, intArrayOf((0x66 + (lv * 0x80).toInt()).coerceAtMost(0xE6) shl 24 or 0xFFFFFF, 0x00FFFFFF), null, Shader.TileMode.CLAMP)
@@ -108,12 +121,92 @@ class FluidOrbView(c: Context) : DkaiAnimView(c) {
 
         // किनारे की पतली रोशनी + ऊपर की चमक
         rim.strokeWidth = max(1f, R * 0.025f)
-        rim.shader = LinearGradient(cx, cy - R, cx, cy + R, 0xAAE0FBFF.toInt(), 0x33A855F7, Shader.TileMode.CLAMP)
+        rim.shader = LinearGradient(cx, cy - R, cx, cy + R, 0xAAE0FBFF.toInt(), DkaiOrbs.a(pal[2], 0x33), Shader.TileMode.CLAMP)
         canvas.drawPath(path, rim)
         val sx = cx - R * 0.38f; val sy = cy - R * 0.42f
         spec.shader = RadialGradient(sx, sy, R * 0.32f, intArrayOf(0xB3FFFFFF.toInt(), 0x00FFFFFF), null, Shader.TileMode.CLAMP)
         canvas.drawOval(sx - R * 0.32f, sy - R * 0.22f, sx + R * 0.32f, sy + R * 0.22f, spec)
         again()
+    }
+
+    private fun halo(canvas: Canvas, cx: Float, cy: Float, R: Float, w: Float, h: Float, k: Float) {
+        if (!glow) return
+        val gr = min(R * k, min(w, h) / 2f * 0.98f)
+        halo.shader = RadialGradient(cx, cy, gr, intArrayOf(DkaiOrbs.a(pal[0], 0x66), DkaiOrbs.a(pal[2], 0x30), DkaiOrbs.a(pal[2], 0)), floatArrayOf(0.3f, 0.7f, 1f), Shader.TileMode.CLAMP)
+        canvas.drawCircle(cx, cy, gr, halo)
+    }
+
+    /** Arc Reactor: बीच में चमकता core + उलटे घूमते छल्ले, आवाज़ पर तेज़ */
+    private fun reactor(canvas: Canvas, cx: Float, cy: Float, R: Float, t: Float, on: Boolean, w: Float, h: Float) {
+        halo(canvas, cx, cy, R, w, h, 1.5f + lv * 0.3f)
+        val sp = if (on) 1.8f else 0.7f
+        body.shader = RadialGradient(cx, cy, R * 0.5f, intArrayOf(0xFFFFFFFF.toInt(), pal[0], DkaiOrbs.a(pal[1], 0)), floatArrayOf(0f, 0.45f, 1f), Shader.TileMode.CLAMP)
+        canvas.drawCircle(cx, cy, R * (0.42f + lv * 0.12f), body)
+        for (ring in 0 until 3) {
+            val rr = R * (0.6f + ring * 0.2f)
+            ln.strokeWidth = max(1.5f, R * (0.06f - ring * 0.012f))
+            ln.color = if (ring == 1) pal[2] else pal[0]
+            ln.alpha = 230 - ring * 50
+            val rot = (t * 60f * sp * (if (ring % 2 == 0) 1 else -1) * (1f + ring * 0.3f)) % 360f
+            val segs = 3 + ring * 2
+            val sweep = 360f / segs * 0.62f
+            for (k in 0 until segs) canvas.drawArc(cx - rr, cy - rr, cx + rr, cy + rr, rot + k * 360f / segs, sweep, false, ln)
+        }
+    }
+
+    /** Solar: गोल सूरज + नाचती किरणें (आवाज़ जितनी तेज़, किरणें उतनी लंबी) */
+    private fun solar(canvas: Canvas, cx: Float, cy: Float, R: Float, t: Float, on: Boolean, w: Float, h: Float) {
+        halo(canvas, cx, cy, R, w, h, 1.6f + lv * 0.3f)
+        val n = 28
+        ln.strokeWidth = max(1.5f, R * 0.045f)
+        for (i in 0 until n) {
+            val a = i * 2f * PI.toFloat() / n + t * (if (on) 0.5f else 0.15f)
+            val len = R * (0.18f + 0.12f * (sin(t * 3f + i * 1.7f) * 0.5f + 0.5f) + lv * 0.35f)
+            ln.color = if (i % 2 == 0) pal[0] else pal[2]; ln.alpha = 210
+            canvas.drawLine(cx + cos(a) * R * 0.78f, cy + sin(a) * R * 0.78f, cx + cos(a) * (R * 0.78f + len), cy + sin(a) * (R * 0.78f + len), ln)
+        }
+        body.shader = RadialGradient(cx - R * 0.2f, cy - R * 0.2f, R * 0.9f, intArrayOf(0xFFFFF7D6.toInt(), pal[0], pal[1]), floatArrayOf(0f, 0.5f, 1f), Shader.TileMode.CLAMP)
+        canvas.drawCircle(cx, cy, R * 0.72f, body)
+    }
+
+    /** Crystal: घूमता 3D हीरा (8 कोने) - आवाज़ पर फैलता */
+    private fun crystal(canvas: Canvas, cx: Float, cy: Float, R: Float, t: Float, on: Boolean, w: Float, h: Float) {
+        halo(canvas, cx, cy, R, w, h, 1.45f + lv * 0.3f)
+        val rot = t * (if (on) 1.2f else 0.5f)
+        val k = R * (0.85f + lv * 0.15f)
+        val pts = ArrayList<FloatArray>()
+        for (i in 0 until 6) { val a = rot + i * PI.toFloat() / 3f; pts.add(floatArrayOf(cx + cos(a) * k, cy + sin(a) * k * 0.35f)) }
+        val top = floatArrayOf(cx, cy - k); val bot = floatArrayOf(cx, cy + k)
+        for (i in 0 until 6) {
+            val p1 = pts[i]; val p2 = pts[(i + 1) % 6]
+            val front = sin(rot + i * PI.toFloat() / 3f + PI.toFloat() / 6f) > 0
+            for (apex in listOf(top, bot)) {
+                path.reset(); path.moveTo(apex[0], apex[1]); path.lineTo(p1[0], p1[1]); path.lineTo(p2[0], p2[1]); path.close()
+                dot.shader = null; dot.color = DkaiOrbs.a(if ((i + (if (apex === top) 0 else 1)) % 2 == 0) pal[0] else pal[2], if (front) 0xCC else 0x55)
+                canvas.drawPath(path, dot)
+                ln.strokeWidth = max(1f, R * 0.015f); ln.color = 0x88FFFFFF.toInt(); canvas.drawPath(path, ln)
+            }
+        }
+    }
+
+    /** Particle Swarm: सैकड़ों छोटे dot का घूमता गोला, बोलने पर फैलता */
+    private fun swarm(canvas: Canvas, cx: Float, cy: Float, R: Float, t: Float, on: Boolean, w: Float, h: Float) {
+        halo(canvas, cx, cy, R, w, h, 1.35f + lv * 0.3f)
+        val n = 220
+        val gold = 2.39996f
+        val sp = if (on) 0.9f else 0.35f
+        for (i in 0 until n) {
+            val yy = 1f - 2f * (i + 0.5f) / n
+            val rr = kotlin.math.sqrt(1f - yy * yy)
+            val th = i * gold + t * sp
+            val x = cos(th) * rr; val z = sin(th) * rr
+            val wob = 1f + lv * 0.35f * sin(t * 6f + i)
+            val px = cx + x * R * wob; val py = cy + yy * R * wob
+            val depth = (z + 1f) / 2f
+            dot.shader = null
+            dot.color = DkaiOrbs.a(if (i % 3 == 0) pal[2] else pal[0], (60 + depth * 195).toInt())
+            canvas.drawCircle(px, py, max(1f, R * (0.018f + depth * 0.03f)), dot)
+        }
     }
 }
 

@@ -512,14 +512,51 @@ class DkaiScreen(val activity: ComponentActivity, private val host: DkaiHost) : 
         val msgs = DKState.messages.toList().takeLast(60)
         val liveR = DKState.liveReply
         val thinking = DKState.mode == Mode.THINKING && msgs.lastOrNull()?.role == "u" && liveR.isBlank()
-        val sig = "${msgs.size}|${msgs.lastOrNull()?.time}|${msgs.lastOrNull()?.text?.length}|$thinking|${DKState.hintText}".hashCode()
+        val sig = "${msgs.size}|${msgs.lastOrNull()?.time}|${msgs.lastOrNull()?.text?.length}|${msgs.lastOrNull()?.src?.size}|$thinking|${DKState.hintText}".hashCode()
         if (sig == shownMsgs && liveR == shownLive) return
         shownMsgs = sig; shownLive = liveR
         chatList.removeAllViews()
-        for (m in msgs) chatList.addView(bubble(m.role == "u", m.text))
+        for (m in msgs) {
+            chatList.addView(bubble(m.role == "u", m.text))
+            if (m.role != "u" && m.src.isNotEmpty()) chatList.addView(sources(m.src))     // 13 नवंबर 2026: कौन-सी वेबसाइट से
+        }
         if (liveR.isNotBlank()) chatList.addView(bubble(false, liveR))
         else if (thinking) chatList.addView(bubble(false, DKState.hintText.ifBlank { "सोच रहा हूँ…" }, faint = true))
         if (tab == DkaiTab.HOME && msgs.isNotEmpty()) homeScroll.post { homeScroll.smoothScrollTo(0, homeCol.height) }
+    }
+
+    /**
+     * 13 नवंबर 2026 (मालिक): "जानकारी कहाँ से ली, सारे सोर्सेस दिखें - कौन-कौन सी वेबसाइट पर जाकर खोजा".
+     * हर स्रोत: नंबर + पेज का नाम + वेबसाइट; टैप = वह पेज खुले.
+     */
+    private fun sources(src: List<Pair<String, String>>): View {
+        val box = LinearLayout(c).apply {
+            orientation = LinearLayout.VERTICAL; setPadding(d(12f), d(10f), d(12f), d(8f))
+            background = DkaiTheme.round(c, 0xFF0B1324.toInt(), 14f, DkaiTheme.BORDER)
+        }
+        val sites = com.dk.assistant.Grounding.sites(src)
+        val via = com.dk.assistant.WebSearch.viaOf(src)
+        box.addView(DkaiTheme.text(c, "🔎 स्रोत • ${sites.size} वेबसाइट" + (via?.let { " • $it" } ?: ""), 12f, DkaiTheme.CYAN, DkaiTheme.SANS_BOLD))
+        if (sites.isNotEmpty()) box.addView(DkaiTheme.text(c, sites.joinToString(", "), 11f, DkaiTheme.GRAY).apply { setPadding(0, d(2f), 0, d(4f)); UiLang.keep(this) })
+        src.forEachIndexed { i, (title, url) ->
+            val site = com.dk.assistant.Grounding.site(title, url)
+            val row = LinearLayout(c).apply {
+                orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; minimumHeight = d(40f)
+                isClickable = true; isFocusable = true; contentDescription = "स्रोत ${i + 1}: ${title.ifBlank { site }} ($site), खोलें"
+                background = DkaiTheme.press(DkaiTheme.round(c, 0, 10f), DkaiTheme.round(c, 0xFFFFFFFF.toInt(), 10f))
+                setOnClickListener { com.dk.assistant.SourcesView.open(c, url) }
+            }
+            row.addView(DkaiTheme.pill(c, "${i + 1}", DkaiTheme.PILL, DkaiTheme.CYAN, 11f).apply { minWidth = d(26f); gravity = Gravity.CENTER },
+                LinearLayout.LayoutParams(-2, -2).apply { rightMargin = d(8f) })
+            val col = LinearLayout(c).apply { orientation = LinearLayout.VERTICAL }
+            col.addView(DkaiTheme.text(c, com.dk.assistant.Grounding.label(title.ifBlank { site }, 60), 13f, DkaiTheme.WHITE).apply { maxLines = 1; ellipsize = android.text.TextUtils.TruncateAt.END; UiLang.keep(this) })
+            if (site.isNotBlank()) col.addView(DkaiTheme.text(c, site, 11f, 0xFF60A5FA.toInt()).apply { maxLines = 1; UiLang.keep(this) })
+            row.addView(col, LinearLayout.LayoutParams(0, -2, 1f))
+            box.addView(row, LinearLayout.LayoutParams(-1, -2))
+        }
+        return box.apply {
+            layoutParams = LinearLayout.LayoutParams((c.resources.displayMetrics.widthPixels * 0.86f).toInt(), -2).apply { gravity = Gravity.START; bottomMargin = d(10f) }
+        }
     }
 
     private fun bubble(user: Boolean, text: String, faint: Boolean = false): View = TextView(c).apply {
