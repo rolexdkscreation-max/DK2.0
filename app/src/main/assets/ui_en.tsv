@@ -1290,13 +1290,13 @@ PDF, text या फोटो फ़ाइल	PDF, text or photo file
 चित्र बहुत बड़ा है	The image is too large
 चित्र सेव नहीं हो पाया	Could not save the image
 वॉलपेपर पूरे ऐप में एक साथ लगता है: होम, सेटिंग, चैट, DK कंप्यूटर - हर स्क्रीन के पीछे. थीम के रंग और काँच वैसे ही रहते हैं. गैलरी वाला चित्र फ़ोन में ही रहता है, कहीं भेजा नहीं जाता.	The wallpaper applies across the whole app: home, settings, chat, DK Computer - behind every screen. Theme colours and glass stay the same. Your gallery photo stays on the phone and is never sent anywhere.
-Piper आवाज़	Piper voice
-हिंदी, बिना इंटरनेट — डिफ़ॉल्ट बंद, खुद डाउनलोड करके चालू करें	Hindi, no internet — off by default, download and turn on yourself
+Supertonic 3 आवाज़	Supertonic 3 voice
+हिंदी, 4 नेचुरल महिला आवाज़ें, बिना इंटरनेट — डिफ़ॉल्ट बंद, मॉडल इंटरनेट से डाउनलोड करके चालू करें	Hindi, 4 natural female voices, no internet needed — off by default, download the model and turn it on
 डाउनलोड करें	Download
 दोबारा कोशिश करें	Try again
 रोकें	Stop
 मॉडल हटाएँ	Delete model
-Piper आवाज़ चालू (बंद = Gemini Live की सीधी आवाज़, पहले जैसी)	Piper voice on (off = Gemini Live direct voice, as before)
+Supertonic 3 आवाज़ चालू (चालू = सिर्फ़ Supertonic बोलेगा, DK लाइव / Gemini TTS अपने-आप बंद)	Supertonic 3 voice on (on = only Supertonic speaks, DK Live / Gemini TTS turn off automatically)
 रिवर्ब (हल्की गूँज — भरी-भरी, सुरीली आवाज़)	Reverb (light echo — fuller, richer voice)
 ▶ टेस्ट — नमूना सुनें	▶ Test — play a sample
 सब डिफ़ॉल्ट पर	Reset all to default

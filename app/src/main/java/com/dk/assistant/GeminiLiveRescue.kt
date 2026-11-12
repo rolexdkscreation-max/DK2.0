@@ -70,10 +70,10 @@ internal fun GeminiLive.splitRaceCheck(now: Long) {
     if (liveRaceFrom == 0L) liveRaceFrom = now
     val since = maxOf(liveKeepFirstAt, liveRaceFrom)
     val started = pipelineLazy.isInitialized() && pipeline.audioStarted
-    // नवंबर 2026 (मालिक: "Piper इस्तेमाल ही नहीं हो पाता, देर करके सीधे Gemini"): 900 ms की दौड़ Gemini TTS (नेट) के लिए है.
-    // Piper फ़ोन में बनता है (लिखावट आने + वाक्य बनने में ज़्यादा) - उसे उसके नापे समय जितनी सीमा (PiperTiming)
-    if (splitEngine?.id == com.dk.assistant.voice.engine.PiperTtsEngine.ID) {
-        val P = com.dk.assistant.voice.engine.PiperTiming
+    // नवंबर 2026 (मालिक: "Supertonic इस्तेमाल ही नहीं हो पाता, देर करके सीधे Gemini"): 900 ms की दौड़ Gemini TTS (नेट) के लिए है.
+    // Supertonic फ़ोन में बनता है (लिखावट आने + वाक्य बनने में ज़्यादा) - उसे उसके नापे समय जितनी सीमा (SupertonicTiming)
+    if (splitEngine?.id == com.dk.assistant.voice.engine.SupertonicTtsEngine.ID) {
+        val P = com.dk.assistant.voice.engine.SupertonicTiming
         if (P.firstTooSlow(now, since, started, open, P.typicalFirstMs())) rescueWithLive(0, P.rescueWhy(now - since, false))
         return
     }

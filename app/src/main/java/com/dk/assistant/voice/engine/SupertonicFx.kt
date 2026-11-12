@@ -10,16 +10,16 @@ import kotlin.math.sqrt
 import kotlin.math.tanh
 
 /**
- * नवंबर 2026 (मालिक: Piper आवाज़ को अपने हिसाब से): Piper की बनी आवाज़ पर बाद में लगने वाले इफ़ेक्ट.
+ * नवंबर 2026 (मालिक: Supertonic आवाज़ को अपने हिसाब से): Supertonic की बनी आवाज़ पर बाद में लगने वाले इफ़ेक्ट.
  *
  * - बास: 160 Hz के नीचे low-shelf (0 dB = बंद, ज़्यादा से ज़्यादा +12 dB) - आवाज़ में गहराई.
  * - रिवर्ब: हल्की गूँज (Schroeder: 4 comb + 2 all-pass) - 0 = बंद. आवाज़ भरी-भरी लगे, कमरे जैसी नहीं.
  * - दोनों बंद = आवाज़ बिल्कुल वैसी ही (एक भी sample नहीं बदलता).
  * - ज़्यादा ज़ोर हो तो 0.9 के ऊपर नरम सीमा (soft clip) - फटी आवाज़ नहीं.
  *
- * बिना Android के (JVM test). एक [PiperFx] = एक टुकड़ा (वाक्य) - हर टुकड़े पर नया.
+ * बिना Android के (JVM test). एक [SupertonicFx] = एक टुकड़ा (वाक्य) - हर टुकड़े पर नया.
  */
-class PiperFx(private val rate: Int, bassDb: Float = 0f, reverb: Float = 0f) {
+class SupertonicFx(private val rate: Int, bassDb: Float = 0f, reverb: Float = 0f) {
     private val bass = bassDb.coerceIn(0f, MAX_BASS_DB)
     private val wet = reverb.coerceIn(0f, 1f)
     val identity: Boolean get() = bass <= 0f && wet <= 0f

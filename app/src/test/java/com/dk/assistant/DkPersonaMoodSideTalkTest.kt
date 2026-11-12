@@ -248,7 +248,7 @@ class DkPersonaMoodSideTalkTest {
         assertEquals(3, Regex("sideTalkCheck\\(\\)").findAll(srv).count())
         assertTrue(src("GeminiLiveTools.kt").contains("SideTalk.blockFor(name, args, sideWho())"))
         assertTrue(src("GeminiLiveMic.kt").contains("whoCheckAsync(cmdBuf.toByteArray(), now, whoSeq)"))
-        assertTrue(src("voice/engine/PiperTtsEngine.kt").contains("HumanVoice.breath("))
+        assertTrue(src("voice/engine/SupertonicTtsEngine.kt").contains("HumanVoice.breath("))
         assertTrue(src("voice/engine/GeminiTtsEngine.kt").contains("DkPersona.ttsStyle(c, "))
         assertTrue(src("SettingsVoice.kt").contains("DK का स्वभाव"))
     }
