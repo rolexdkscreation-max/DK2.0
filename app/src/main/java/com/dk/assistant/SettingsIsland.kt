@@ -39,36 +39,15 @@ internal fun SettingsActivity.secIsland() {
 }
 
 internal fun SettingsActivity.secPrivacy() {
-    card("प्राइवेसी स्क्रीन (बगल से न दिखे)", "Samsung S26 Ultra जैसा - सामने वाले को दिखे, बगल वाले को कम", startOpen = false) { box ->
+    card("प्राइवेसी (चुने ऐप के notification छिपाएँ)", "चुने हुए ऐप के notification आने पर किसी को नहीं दिखेंगे", startOpen = false) { box ->
         val master = switch(box, "चालू", PrivacyScreen.on(this))
         master.setOnCheckedChangeListener { _, v -> PrivacyScreen.setOn(this, v) }
 
-        label(box, "कहाँ लगे")
-        val scopes = PrivacyCore.Scope.values().toList()
-        val g = radios(box, scopes.map { it.id to it.hi }, PrivacyScreen.scope(this).id, 7600)
-        g.setOnCheckedChangeListener { grp, _ ->
-            PrivacyScreen.setScope(this, PrivacyCore.Scope.of(radioValue(grp, scopes.map { it.id }, 7600)))
-        }
-
-        label(box, "कितना गहरा")
-        val str = SeekBar(this).apply {
-            max = PrivacyCore.MAX_STRENGTH - PrivacyCore.MIN_STRENGTH
-            progress = PrivacyScreen.strength(this@secPrivacy) - PrivacyCore.MIN_STRENGTH
-            setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
-                override fun onProgressChanged(s: SeekBar, p: Int, fromUser: Boolean) { if (fromUser) PrivacyScreen.setStrength(this@secPrivacy, PrivacyCore.MIN_STRENGTH + p) }
-                override fun onStartTrackingTouch(s: SeekBar) {}
-                override fun onStopTrackingTouch(s: SeekBar) {}
-            })
-        }
-        box.addView(str, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
-
         val hide = switch(box, "चुने ऐप के notification popup न दिखें (island में ताला दिखेगा)", PrivacyScreen.hideNotifs(this))
         hide.setOnCheckedChangeListener { _, v -> PrivacyScreen.setHideNotifs(this, v) }
-        val pop = switch(box, "बाकी सब ऐप के popup आते समय भी ऊपर परदा", PrivacyScreen.popups(this))
-        pop.setOnCheckedChangeListener { _, v -> PrivacyScreen.setPopups(this, v) }
-        if (!DKNotifListener.enabled(this)) row(box, button("Notification access दें (popup छिपाने के लिए)") { DKNotifListener.openSettings(this) })
+        if (!DKNotifListener.enabled(this)) row(box, button("Notification access दें") { DKNotifListener.openSettings(this) })
 
-        label(box, "किन ऐप में (\"सिर्फ़ चुने ऐप\" और notification के लिए)")
+        label(box, "किन ऐप के notification छिपाने हैं")
         val list = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         box.addView(list)
         fun fill(apps: List<PrivacyScreen.App>) {
@@ -86,9 +65,7 @@ internal fun SettingsActivity.secPrivacy() {
         }
         rescan()
         row(box, button("फिर से खोजें") { rescan() })
-        hint(box, "Samsung S26 Ultra में यह hardware से होता है (स्क्रीन के pixel ही बगल की तरफ़ रोशनी कम भेजते हैं)। दूसरे फ़ोन में ऐसा hardware नहीं होता, " +
-            "इसलिए DK software से वैसा ही करता है: स्क्रीन पर हल्का काला परदा (किनारों पर ज़्यादा गहरा, बारीक लाइनें) ताकि सामने से पढ़ा जाए " +
-            "और बगल / तिरछे से पढ़ना मुश्किल हो। चुने ऐप के notification popup नहीं आते - DK उन्हें पढ़ / जवाब दे सकता है और island में ताले के साथ दिखते हैं, टैप करें तो वही ऐप खुले। " +
-            "इसके लिए Accessibility चालू होना चाहिए।")
+        hint(box, "चुने हुए ऐप के notification आने पर उनका popup नहीं दिखेगा। DK उन्हें island में ताले के साथ दिखाएगा, जिस पर टैप करने से वही ऐप खुलेगा। " +
+            "इससे आपके निजी मैसेज बगल वाले को नहीं दिखेंगे। इसके लिए Accessibility और Notification access चालू होना चाहिए।")
     }
 }

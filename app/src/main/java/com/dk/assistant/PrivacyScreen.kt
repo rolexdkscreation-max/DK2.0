@@ -28,30 +28,21 @@ import java.util.concurrent.ConcurrentHashMap
  */
 object PrivacyScreen {
     private const val P_ON = "privacy_on"
-    private const val P_SCOPE = "privacy_scope"
     private const val P_APPS = "privacy_apps"
-    private const val P_STRENGTH = "privacy_strength"
     private const val P_HIDE_NOTIF = "privacy_hide_notif"
-    private const val P_POPUPS = "privacy_popups"
 
     private fun sp(c: Context) = c.applicationContext.getSharedPreferences("dk_prefs", Context.MODE_PRIVATE)
 
     fun on(c: Context) = sp(c).getBoolean(P_ON, false)
     fun setOn(c: Context, v: Boolean) { sp(c).edit().putBoolean(P_ON, v).apply(); refresh() }
-    fun scope(c: Context) = PrivacyCore.Scope.of(sp(c).getString(P_SCOPE, null))
-    fun setScope(c: Context, s: PrivacyCore.Scope) { sp(c).edit().putString(P_SCOPE, s.id).apply(); refresh() }
     fun apps(c: Context): Set<String> = PrivacyCore.parse(sp(c).getString(P_APPS, ""))
     fun appOn(c: Context, pkg: String) = pkg in apps(c)
     fun setAppOn(c: Context, pkg: String, v: Boolean) {
         val s = apps(c).toMutableSet(); if (v) s.add(pkg) else s.remove(pkg)
         sp(c).edit().putString(P_APPS, PrivacyCore.join(s)).apply(); refresh()
     }
-    fun strength(c: Context) = PrivacyCore.clampStrength(sp(c).getInt(P_STRENGTH, PrivacyCore.DEF_STRENGTH))
-    fun setStrength(c: Context, p: Int) { sp(c).edit().putInt(P_STRENGTH, PrivacyCore.clampStrength(p)).apply(); refresh() }
     fun hideNotifs(c: Context) = sp(c).getBoolean(P_HIDE_NOTIF, true)
     fun setHideNotifs(c: Context, v: Boolean) = sp(c).edit().putBoolean(P_HIDE_NOTIF, v).apply()
-    fun popups(c: Context) = sp(c).getBoolean(P_POPUPS, false)
-    fun setPopups(c: Context, v: Boolean) = sp(c).edit().putBoolean(P_POPUPS, v).apply()
 
     // ------------------------------------------------------------ फ़ोन के ऐप (Settings की लिस्ट)
     data class App(val pkg: String, val label: String)
@@ -66,17 +57,12 @@ object PrivacyScreen {
             .distinctBy { it.pkg }.sortedBy { it.label.lowercase() }
     }
 
-    // ------------------------------------------------------------ परत (overlay)
+    // ------------------------------------------------------------ प्राइवेसी (सिर्फ़ notification)
     @Volatile private var svcRef: DKAccessibilityService? = null
-    @Volatile private var fgPkg: String? = null
     private val main = Handler(Looper.getMainLooper())
-    private var shield: View? = null
-    private var shieldAlpha = -1
-    private var top: View? = null
-    private val topOff = Runnable { removeTop() }
 
     fun start(svc: DKAccessibilityService) { svcRef = svc; main.post(recheck) }
-    fun stop() { main.post { removeShield(); removeTop() }; svcRef = null }
+    fun stop() { svcRef = null }
 
     /** accessibility: खिड़की बदली = सामने वाला ऐप बदला हो सकता है */
     fun onEvent(svc: DKAccessibilityService, e: AccessibilityEvent) {
@@ -90,94 +76,11 @@ object PrivacyScreen {
         val p = try { s.rootInActiveWindow?.packageName?.toString() } catch (_: Exception) { null }
         // सिस्टम की पट्टी / कीबोर्ड = ऐप नहीं बदला
         if (!p.isNullOrBlank() && p != "com.android.systemui" && !p.contains("inputmethod") && !p.contains("keyboard")) {
-            fgPkg = p
             PrivacyLocked.opened(p)       // वही ऐप खोल लिया = उसका 🔒 हटाओ
         }
-        refresh()
     }
 
-    fun refresh() = main.post {
-        val s = svcRef
-        if (s == null) { removeShield(); return@post }
-        val want = PrivacyCore.shieldNow(on(s), scope(s), fgPkg, apps(s))
-        if (want) showShield(s) else removeShield()
-    }
-
-    private fun lp(h: Int) = WindowManager.LayoutParams(
-        WindowManager.LayoutParams.MATCH_PARENT, h,
-        WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY,
-        WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE or
-            WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
-        PixelFormat.TRANSLUCENT
-    ).apply {
-        gravity = Gravity.TOP or Gravity.START
-        if (Build.VERSION.SDK_INT >= 28) layoutInDisplayCutoutMode = WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
-    }
-
-    private fun showShield(s: DKAccessibilityService) {
-        val st = strength(s)
-        if (shield != null && shieldAlpha == st) return
-        removeShield()
-        val v = ShieldView(s, st)
-        val wm = s.getSystemService(Context.WINDOW_SERVICE) as WindowManager
-        val dm = s.resources.displayMetrics
-        try { wm.addView(v, lp(dm.heightPixels + (200 * dm.density).toInt())); shield = v; shieldAlpha = st }
-        catch (e: Exception) { DKLog.d("प्राइवेसी परत नहीं लगी: ${e.javaClass.simpleName}") }
-    }
-
-    private fun removeShield() {
-        val v = shield ?: return
-        shield = null; shieldAlpha = -1
-        try { (v.context.getSystemService(Context.WINDOW_SERVICE) as WindowManager).removeView(v) } catch (_: Exception) {}
-    }
-
-    /** notification popup के समय ऊपर का हिस्सा कुछ सेकंड ढको */
-    private fun showTop(s: DKAccessibilityService) = main.post {
-        main.removeCallbacks(topOff)
-        if (top == null) {
-            val dm = s.resources.displayMetrics
-            val v = ShieldView(s, strength(s), topBand = true)
-            try { (s.getSystemService(Context.WINDOW_SERVICE) as WindowManager).addView(v, lp((170 * dm.density).toInt())); top = v }
-            catch (e: Exception) { DKLog.d("popup परत नहीं लगी: ${e.javaClass.simpleName}") }
-        }
-        main.postDelayed(topOff, PrivacyCore.POPUP_SHIELD_MS)
-    }
-
-    private fun removeTop() {
-        val v = top ?: return
-        top = null
-        try { (v.context.getSystemService(Context.WINDOW_SERVICE) as WindowManager).removeView(v) } catch (_: Exception) {}
-    }
-
-    /**
-     * गहरी परत: बीच हल्की, बाएँ/दाएँ/ऊपर/नीचे किनारे गहरे + बारीक खड़ी धारियाँ (privacy filter जैसी) -
-     * सामने से पढ़ा जाए, तिरछे से देखने वाले को रोशनी बहुत कम. onDraw में कुछ नया नहीं बनता.
-     */
-    private class ShieldView(c: Context, strength: Int, private val topBand: Boolean = false) : View(c) {
-        private val center = PrivacyCore.alphaCenter(strength)
-        private val edge = PrivacyCore.alphaEdge(strength)
-        private val fill = Paint().apply { color = center shl 24 }
-        private val sideL = Paint(); private val sideR = Paint(); private val sideB = Paint()
-        private val line = Paint().apply { color = ((edge / 5).coerceIn(10, 50)) shl 24 }
-        init { importantForAccessibility = IMPORTANT_FOR_ACCESSIBILITY_NO }
-        override fun onSizeChanged(w: Int, h: Int, ow: Int, oh: Int) {
-            val e = edge shl 24; val z = 0
-            val band = w * 0.28f
-            sideL.shader = LinearGradient(0f, 0f, band, 0f, e, z, Shader.TileMode.CLAMP)
-            sideR.shader = LinearGradient(w.toFloat(), 0f, w - band, 0f, e, z, Shader.TileMode.CLAMP)
-            sideB.shader = if (topBand) LinearGradient(0f, h.toFloat(), 0f, h * 0.55f, z, center shl 24, Shader.TileMode.CLAMP)
-                else LinearGradient(0f, h.toFloat(), 0f, h - h * 0.12f, e, z, Shader.TileMode.CLAMP)
-        }
-        override fun onDraw(cv: Canvas) {
-            val w = width.toFloat(); val h = height.toFloat()
-            if (topBand) { cv.drawRect(0f, 0f, w, h * 0.55f, fill); cv.drawRect(0f, h * 0.55f, w, h, sideB) }
-            else { cv.drawRect(0f, 0f, w, h, fill); cv.drawRect(0f, h - h * 0.12f, w, h, sideB) }
-            cv.drawRect(0f, 0f, w * 0.28f, h, sideL); cv.drawRect(w - w * 0.28f, 0f, w, h, sideR)
-            // बारीक खड़ी धारियाँ (हर 3px पर 1px)
-            var x = 0f
-            while (x < w) { cv.drawRect(x, 0f, x + 1f, h, line); x += 3f }
-        }
-    }
+    fun refresh() { /* अब कोई overlay नहीं है */ }
 
     // ------------------------------------------------------------ notification
     /**
@@ -203,7 +106,6 @@ object PrivacyScreen {
             DKIsland.poke()
             return true
         }
-        if (PrivacyCore.shieldPopup(true, popups(c), sbn.packageName, c.packageName, ongoing)) svcRef?.let { showTop(it) }
         return false
     }
 
