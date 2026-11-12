@@ -143,6 +143,7 @@ object PiperTtsEngine : VoiceEngine {
         val key = modelKey(v)
         tts?.let { if (loaded == key) return it; try { it.release() } catch (_: Throwable) {}; tts = null }
         val t0 = System.currentTimeMillis()
+        audioPriority()
         try {
             loadLib(c)
             val vo = PiperStore.voiceOf(v)
@@ -183,7 +184,11 @@ object PiperTtsEngine : VoiceEngine {
     }
 
     /** HQ मॉडल भारी है - 8 कोर वाले फ़ोन पर 4 धागे (पहली आवाज़ जल्दी), बाकी पहले जैसा */
-    private fun threads(hq: Boolean): Int = threadsFor(Runtime.getRuntime().availableProcessors(), hq)
+    /** नवंबर 2026: सिर्फ़ तेज़ (बड़े) कोर जितने धागे ([PiperSpeed.threads]) - धीमे कोर मिलाने से हर चरण धीमा */
+    private fun threads(hq: Boolean): Int = try { PiperSpeed.threadsHere(hq) } catch (_: Throwable) { threadsFor(Runtime.getRuntime().availableProcessors(), hq) }
+
+    /** बनाने वाला धागा आवाज़ वाली प्राथमिकता पर (ONNX के अपने धागे मॉडल खुलते समय यही प्राथमिकता लेते हैं) */
+    private fun audioPriority() { try { android.os.Process.setThreadPriority(android.os.Process.THREAD_PRIORITY_AUDIO) } catch (_: Throwable) {} }
     fun threadsFor(cores: Int, hq: Boolean): Int = when {
         hq && cores >= 8 -> 4
         hq && cores >= 4 -> 3
@@ -194,6 +199,7 @@ object PiperTtsEngine : VoiceEngine {
     override fun speak(c: Context, text: String, voice: String, out: PcmOut) {
         if (!PiperStore.on(c) && !previewing) throw IOException("Piper बंद है")
         val g = gen.get()
+        audioPriority()
         val t0 = System.currentTimeMillis()
         val wasLoaded = tts != null
         val t = ensure(c)
@@ -215,6 +221,7 @@ object PiperTtsEngine : VoiceEngine {
         fun pcm(x: FloatArray): ByteArray = Resample.to24k(PiperFx.pcm16(lp?.process(x) ?: x), src)
         // नवंबर 2026 (मालिक: "Piper कितनी देर में बोलता है, पता नहीं चलता"): हर वाक्य का असली नाप ([PiperTiming])
         var firstAt = 0L; var nSamp = 0L
+        val steps = PiperSpeed.steps(c)                // नवंबर 2026: HQ के चरण फ़ोन की रफ़्तार से अपने-आप
         try {
             synchronized(lock) {                   // एक मॉडल - एक समय में एक वाक्य (दूसरा धागा कतार में)
                 if (gen.get() != g) return
@@ -228,12 +235,13 @@ object PiperTtsEngine : VoiceEngine {
                         return 1
                     }
                 }
-                if (hq) t.generateWithConfigAndCallback(say, hqConfig(PiperStore.voiceOf(PiperStore.voice(c)).sid, PiperFx.genSpeed(tune.speed, tune.pitch)), cb)
+                if (hq) t.generateWithConfigAndCallback(say, hqConfig(PiperStore.voiceOf(PiperStore.voice(c)).sid, PiperFx.genSpeed(tune.speed, tune.pitch), steps), cb)
                 else t.generateWithCallback(say, 0, PiperFx.genSpeed(tune.speed, tune.pitch), cb)
             }
             if (gen.get() == g) fx.tail().takeIf { it.isNotEmpty() }?.let { out.write(pcm(it)) }
             fails.set(0)
             if (!previewing) note(g, t0, firstAt, nSamp, say.length, if (wasLoaded) -1L else lastLoadMs)
+            if (gen.get() == g && firstAt > 0 && wasLoaded) adapt(c, steps, firstAt - t0, if (rate > 0) nSamp * 1000L / rate else -1L)
         } catch (e: Throwable) {
             if (gen.get() != g) return
             if (fails.incrementAndGet() >= 2) { fails.set(0); fail(c, "Piper आवाज़ नहीं बना पाया (${e.javaClass.simpleName})") }
@@ -252,9 +260,21 @@ object PiperTtsEngine : VoiceEngine {
             (if (loadMs >= 0) ", मॉडल लोड $loadMs ms" else "") + (if (hq) " (HQ)" else ""))
     }
 
-    /** HQ (Supertonic-3): कौन-सी आवाज़ (sid), हिंदी, हाई क्वालिटी चरण. pure (JVM test) */
-    fun hqConfig(sid: Int, speed: Float): GenerationConfig =
-        GenerationConfig(sid = sid.coerceAtLeast(0), speed = speed, numSteps = PiperStore.ST_STEPS, extra = mapOf("lang" to "hi"))
+    /** इस वाक्य की रफ़्तार देखकर HQ के अगले चरण ([PiperSpeed.nextSteps]); स्क्रीन के लिए [PiperTiming] में */
+    private fun adapt(c: Context, steps: Int, genMs: Long, audioMs: Long) {
+        val r = PiperSpeed.rtf(genMs, audioMs)
+        PiperTiming.speed(if (hq) steps else 0, threads(hq), r)
+        if (!hq) return
+        val next = PiperSpeed.nextSteps(steps, genMs, audioMs)
+        if (next != steps) {
+            PiperSpeed.setSteps(c, next)
+            DKLog.d("Piper HQ: रफ़्तार ${String.format(java.util.Locale.US, "%.2f", r)} (बनना/आवाज़) - चरण $steps → $next")
+        }
+    }
+
+    /** HQ (Supertonic-3): कौन-सी आवाज़ (sid), हिंदी, कितने चरण ([steps], फ़ोन की रफ़्तार से [PiperSpeed]). pure (JVM test) */
+    fun hqConfig(sid: Int, speed: Float, steps: Int = PiperStore.ST_STEPS): GenerationConfig =
+        GenerationConfig(sid = sid.coerceAtLeast(0), speed = speed, numSteps = steps, extra = mapOf("lang" to "hi"))
 
     /** ▶ टेस्ट: स्विच कुछ भी हो, नमूना बोले */
     override fun preview(c: Context, text: String, voice: String): Long {
