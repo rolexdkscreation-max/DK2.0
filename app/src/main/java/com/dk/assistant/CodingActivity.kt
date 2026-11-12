@@ -440,7 +440,12 @@ class CodingActivity : AppCompatActivity() {
     private fun capabilities(): String {
         val seven = Prefs.coderSeven(this)
         val github = Prefs.ghToken(this).isNotBlank() && Prefs.ghRepo(this).contains('/') && !(seven && Prefs.coderNormal(this))
-        return AgentIntro.coderCapabilities(seven, github) + (if (seven) "\n" + sevenModeLine() else "") + safeNote()
+        // 13 नवंबर 2026 (मालिक): 7 एजेंट वाली टीम हटी - सिर्फ़ सिंगल एजेंट (टीम की लाइन नहीं)
+        return AgentIntro.coderCapabilities(false, github) + "\n" + SOLO_LINE + (if (seven) "\n" + sevenModeLine() else "") + safeNote()
+    }
+
+    private companion object {
+        const val SOLO_LINE = "🧠 सिंगल एजेंट: एक ही एजेंट पूरा काम करता है। 📎 से फ़ोटो / वीडियो भेजकर भी पूछ सकते हैं, और \"यह क्यों / कैसे हो रहा है\" पूछें तो असली कोड पढ़कर समझाता है।"
     }
 
     private fun safeNote() = if (Prefs.coderSafePr(this))
@@ -975,7 +980,8 @@ class CodingActivity : AppCompatActivity() {
 
     /** 7 एजेंट वाली टीम चल रही हो तो: कौन सा एजेंट काम कर रहा है (नाम + animation) */
     private fun showAgent() {
-        if (!Prefs.coderSeven(this)) { agentWork.visibility = View.GONE; return }
+        // 13 नवंबर 2026 (मालिक: "7 एजेंट वाला हटा दो"): अब एक ही एजेंट - 7 एजेंट की पंक्ति नहीं दिखती
+        if (!Prefs.coderSeven(this) || Prefs.coderSolo(this)) { agentWork.visibility = View.GONE; return }
         if (agentWork.visibility != View.VISIBLE) { agentWork.alpha = 0f; agentWork.visibility = View.VISIBLE; agentWork.animate().alpha(1f).setDuration(220).start() }
         agentWork.active = CoderSession.activeAgent
         agentWork.note = CoderSession.activeNote

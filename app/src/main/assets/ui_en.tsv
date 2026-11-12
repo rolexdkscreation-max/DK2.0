@@ -799,7 +799,6 @@ DK के जवाब:	DK replies:
 पूरे ऐप के बटन, Settings, संदेश — English या हिंदी	Buttons, Settings and messages of the whole app — English or Hindi
 भाषा:	Language:
 — अगले जवाब से लागू	— applies from the next reply
-भाषा / Language	Language
 से जवाब नहीं - timeout	no reply - timeout
 पर्सनैलिटी	Personality
 DK किस अंदाज़ में बात करे - 10 में से चुनें	How DK should talk - pick one of 10
@@ -839,7 +838,6 @@ Auto — आप जिस भाषा में बोलें, उसी म�
 यह वेबसाइट हटाएँ?	Delete this website?
 रद्द कर दिया	Cancelled
 रद्द करें	Cancel
-रहने दो	Never mind
 लेआउट	Layout
 वेबसाइट का मेन्यू	Website menu
 वेबसाइट नहीं बन पाई।	The website could not be built.
@@ -1173,7 +1171,6 @@ Hey DK मिटा दिया	Hey DK deleted
 बिना सिखाए चलाओ	Use without teaching
 अब "हे डीके" या "हेलो डीके" बोलिए	Now say "Hey DK" or "Hello DK"
 माइक:	Mic:
-ठीक है	OK
 माइक दूसरे तरीके से खोल रहा हूँ — फिर से बोलिए	Opening the mic another way — please say it again
 आवाज़ नहीं पकड़ी — फ़ोन मुँह के पास रखकर थोड़ा साफ़ बोलिए	Voice not caught — hold the phone closer and speak clearly
 बहुत लंबा हो गया — सिर्फ़ "हे डीके" बोलिए	Too long — say only "Hey DK"
@@ -1290,9 +1287,7 @@ PDF, text या फोटो फ़ाइल	PDF, text or photo file
 चित्र बहुत बड़ा है	The image is too large
 चित्र सेव नहीं हो पाया	Could not save the image
 वॉलपेपर पूरे ऐप में एक साथ लगता है: होम, सेटिंग, चैट, DK कंप्यूटर - हर स्क्रीन के पीछे. थीम के रंग और काँच वैसे ही रहते हैं. गैलरी वाला चित्र फ़ोन में ही रहता है, कहीं भेजा नहीं जाता.	The wallpaper applies across the whole app: home, settings, chat, DK Computer - behind every screen. Theme colours and glass stay the same. Your gallery photo stays on the phone and is never sent anywhere.
-डाउनलोड करें	Download
 दोबारा कोशिश करें	Try again
-रोकें	Stop
 ऑटो रिप्लाई	Auto reply
 ऑटो रिप्लाई कैसे काम करता है	How auto reply works
 ऑटो रिप्लाई चालू / बंद	Auto reply on / off
@@ -1436,3 +1431,26 @@ DK लाइव जुड़ते ही स्क्रीन शेयर ह
 फ़ाइल बहुत बड़ी है (1.5MB से ज़्यादा)	File is too large (over 1.5MB)
 यह text फ़ाइल नहीं (फोटो/बाइनरी) - Editor में नहीं खुलेगी	Not a text file (photo/binary) - it won't open in Editor
 यह फ़ोल्डर GitHub से नहीं लाया गया	This folder was not imported from GitHub
+DK से बाहर हों तो ऊपर काली गोली - टैप पर काम, कॉल, गाना, सारे notification, चार्जिंग	Outside DK a black pill on top - tap for tasks, calls, music, all notifications, charging
+फ़ोन के सारे notification island में (टैप = वहीं खुले, स्लाइड = हटे, सब साफ़ करें)	All phone notifications in the island (tap = opens there, slide = removes, clear all)
+चार्जिंग animation (बैटरी % + कितनी देर में पूरा)	Charging animation (battery % + time to full)
+✓ Notification access: मिला (notification / गाना / वीडियो दिखेंगे)	✓ Notification access: granted (notifications / music / video will show)
+✗ Notification access: नहीं - notification / गाना / वीडियो नहीं दिखेंगे	✗ Notification access: no - notifications / music / video will not show
+DK Privacy (बगल से न दिखे)	DK Privacy (hidden from the side)
+सामने वाले को दिखे, बगल वाले को कम	Visible to you in front, less to people at the side
+🔔 सूचनाएँ	🔔 Notifications
+स्लाइड करके हटाएँ	slide to remove
+🧹 सब साफ़ करें	🧹 Clear all
+चार्ज हो रहा है	Charging
+पूरा चार्ज हो गया	Fully charged
+पूरा होने में 1 मिनट से कम	Less than 1 minute to full
+पूरा होने में	Full in
+समय निकाल रहा हूँ…	Estimating time…
+🔒 DK Privacy से छिपे notification	🔒 Notifications hidden by DK Privacy
+भेजा (पक्का नहीं)	Sent (not confirmed)
+ड्राफ़्ट तैयार	Draft ready
+वायरलेस	Wireless
+चार्जर (AC)	Charger (AC)
+घंटा	hour
+🧠 सिंगल एजेंट: एक ही एजेंट पूरा काम करता है। 📎 से फ़ोटो / वीडियो भेजकर भी पूछ सकते हैं, और "यह क्यों / कैसे हो रहा है" पूछें तो असली कोड पढ़कर समझाता है।	🧠 Single agent: one agent does the whole job. You can also ask by sending a photo / video with 📎, and if you ask "why / how is this happening" it reads the real code and explains.
+🧠 सिंगल एजेंट: एक ही एजेंट पूरा काम करता है — खोजे, पढ़े, सारे बदलाव करे, खुद जाँचे, CI की गलती भी खुद ठीक करे। 📎 से फ़ोटो / स्क्रीनशॉट / वीडियो भेजें तो वह उन्हें देखकर समझता है कि क्या करना है। "यह क्यों हो रहा है / कैसे काम करता है" पूछें तो असली कोड पढ़कर समझाता है (कोड नहीं बदलता)। GitHub token + चुना रिपो = GitHub मोड (नई branch, PR, मंज़ूरी से merge); नहीं = नॉर्मल मोड (कोड फ़ाइल-नाम के साथ स्क्रीन पर)।	🧠 Single agent: one agent does the whole job - searches, reads, makes all changes, checks itself and fixes CI errors itself. Send photos / screenshots / videos with 📎 and it looks at them to understand what to do. Ask "why is this happening / how does it work" and it reads the real code and explains (without changing code). GitHub token + chosen repo = GitHub mode (new branch, PR, merge with approval); otherwise = normal mode (code on screen with file names).

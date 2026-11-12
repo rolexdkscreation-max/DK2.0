@@ -331,7 +331,7 @@ internal fun GeminiLive.agentTool(name: String, args: JSONObject): String {
                     // 7-एजेंट चालू = पुराना टीम switch ज़रूरी नहीं
                     !Prefs.coderSeven(svc) && !Prefs.coderTeam(svc) -> "Coding team is OFF in settings (सेटिंग्स → कोडिंग एजेंट → टीम)."
                     else -> CoderTeam.start(svc, t, fromVoice = true)?.let { "Could not start: $it" }
-                        ?: if (Prefs.coderSeven(svc)) "Started (7-agent team + Explainer). FIRST its manager shows the user what it understood and WAITS: when the user confirms (हाँ / yes), call this tool again with task='हाँ'; if the user corrects or answers its question, call this tool again with exactly that answer; 'रद्द' cancels. It is NOT done yet - real progress: call task_status. You will get a SYSTEM NOTE when it really finishes; never say it is done before that."
+                        ?: if (Prefs.coderSeven(svc)) "Started (one single coding agent - it can also look at attached photos/videos and explain why/how code works). If it needs the user's approval or an answer it shows what it understood and WAITS: when the user confirms (हाँ / yes), call this tool again with task='हाँ'; if the user corrects or answers its question, call this tool again with exactly that answer; 'रद्द' cancels. It is NOT done yet - real progress: call task_status. You will get a SYSTEM NOTE when it really finishes; never say it is done before that."
                         else "Started. Builder writes, Reviewer checks, Coordinator pushes and will notify when done. It is NOT done yet - real progress: call task_status."
                 }
             }

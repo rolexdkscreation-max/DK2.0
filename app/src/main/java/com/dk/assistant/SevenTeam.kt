@@ -203,6 +203,9 @@ class SevenTeam(
         SevenDebug.compact(msgs, keepLast = if (big >= 300_000) 8 else 4, bigChars = maxOf(3_000, big / 40))
 
     /** हर एजेंट की AI कॉल: टीम के नियम (सावधानी, पूरा पढ़ना, पूरा समझाकर आगे देना) + फ़ोटो/वीडियो का विवरण; देखने वाले एजेंटों को असली फ़ोटो भी */
+    /** 13 नवंबर 2026 (मालिक: "सिंगल एजेंट फ़ोटो / वीडियो देखकर काम करे और समझाए"): सिंगल कोडर और समझाने वाला भी असली फ़ोटो / frame देखें */
+    private fun seesMedia(a: Agent) = a in SEES_MEDIA || (solo && a == Agent.CODER) || a == Agent.EXPLAINER
+
     private suspend fun aiAsk(a: Agent, system: String, msgs: List<Pair<String, String>>): String {
         val tb = teamBrief()
         val sys = system + "\n\n" + (if (a == Agent.CODER && solo) "" else if (a == Agent.CODER) Seven.Prompts.RULES_CODER else Seven.Prompts.RULES) +
@@ -210,7 +213,7 @@ class SevenTeam(
             if (tb.isNotBlank()) "\n\n" + TeamMemory.HEADER + tb else ""
         val t0 = clock.start()
         try {
-            return if (media.isNotEmpty() && a in SEES_MEDIA) ai.askMedia(a, sys, msgs, media) else ai.ask(a, sys, msgs)
+            return if (media.isNotEmpty() && seesMedia(a)) ai.askMedia(a, sys, msgs, media) else ai.ask(a, sys, msgs)
         } finally {
             CoderSpeed.slowNote(shownAs(a).hi, clock.done(t0, shownAs(a).hi))?.let { sink(a, it) }   // सिर्फ़ स्क्रीन पर, टीम की याद में नहीं
         }

@@ -475,18 +475,19 @@ object Prefs {
     fun coderSafePr(c: Context) = true
     /** Multi-agent coding team (Builder -> Reviewer -> Coordinator), ek baar bolo baaki apne-aap */
     fun coderTeam(c: Context) = sp(c).getBoolean("coder_team", true)
-    /** 7 एजेंट वाला नया सिस्टम (मैनेजर/प्लानर/कोडर/रिव्यूअर/टेस्टर/डिबगर/गिट). बंद = पुराना एजेंट/टीम जैसी की तैसी */
-    fun coderSeven(c: Context): Boolean {
-        val p = sp(c)
-        // 11-एजेंट सिस्टम अब default चालू (एक बार, user के कहने पर). बाद में Settings से बंद किया तो बंद ही रहेगा
-        if (!p.getBoolean("eleven_default_v1", false)) p.edit().putBoolean("coder_seven", true).putBoolean("eleven_default_v1", true).apply()
-        return p.getBoolean("coder_seven", true)
-    }
+    /**
+     * 7 एजेंट वाला ढाँचा (SevenRunner: GitHub/नॉर्मल मोड, branch, PR, CI, फ़ोटो/वीडियो देखना, समझाने वाला).
+     * 13 नवंबर 2026 (मालिक: "7 एजेंट वाला हटा दो, सिंगल वाला ही रहने दो, वह बढ़िया काम कर रहा है"): अब हमेशा चालू -
+     * इसके अंदर काम हमेशा एक ही एजेंट ([coderSolo]) करता है. Settings के पुराने switch हटे; पुरानी सेव "बंद" भी नज़रअंदाज़.
+     */
+    @Suppress("UNUSED_PARAMETER")
+    fun coderSeven(c: Context): Boolean = true
     /**
      * नवंबर 2026 (मालिक: "एक ही एजेंट सब काम कर लेगा"): एक-दिमाग वाला कोडर ([Solo]) - 7 एजेंट की हाथ-बदली की जगह एक ही
-     * एजेंट पूरा काम (खोज, पढ़ना, बदलाव, जाँच, CI की गलती ठीक करना). default चालू; Settings से बंद = पुराना 7 एजेंट क्रम.
+     * एजेंट पूरा काम (खोज, पढ़ना, बदलाव, जाँच, CI की गलती ठीक करना). 13 नवंबर 2026: हमेशा चालू (7 एजेंट क्रम हटा).
      */
-    fun coderSolo(c: Context) = sp(c).getBoolean(CODER_SOLO, true)
+    @Suppress("UNUSED_PARAMETER")
+    fun coderSolo(c: Context): Boolean = true
     const val CODER_SOLO = "coder_solo"
     /** user ने खुद नॉर्मल मोड चुना (GitHub होते हुए भी गिट के बिना) */
     fun coderNormal(c: Context) = sp(c).getBoolean("coder_normal", false)

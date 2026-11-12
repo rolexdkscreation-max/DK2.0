@@ -122,7 +122,7 @@ class DKAccessibilityService : AccessibilityService() {
         // ✕ अब नहीं: पुराने ✕ से छिपा ORB सिर्फ़ एक बार वापस. उसके बाद Settings का switch ही मालिक - ऐप खुलने पर ज़बरदस्ती चालू नहीं
         if (!Prefs.orbNoXMigrated(this)) { Prefs.setFloatOrbOn(this, true); Prefs.setOrbNoXMigrated(this) }
         floatOrb = FloatOrb(this) { onOrbTap() }.also { it.sync() }
-        // 12 नवंबर 2026 (मालिक): iPhone जैसा DK island (ऊपर), प्राइवेसी स्क्रीन, Live की notification में कॉल काटें / म्यूट
+        // 12 नवंबर 2026 (मालिक): DK Island (ऊपर), DK Privacy, Live की notification में कॉल काटें / म्यूट
         try { DKIsland.start(this) } catch (e: Exception) { DKLog.d("island: ${e.message}") }
         try { PrivacyScreen.start(this) } catch (e: Exception) { DKLog.d("प्राइवेसी: ${e.message}") }
         try { LiveNotify.install(this) } catch (e: Exception) { DKLog.d("लाइव notification: ${e.message}") }

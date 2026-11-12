@@ -21,7 +21,7 @@ import android.view.accessibility.AccessibilityEvent
 import java.util.concurrent.ConcurrentHashMap
 
 /**
- * मालिक (12 नवंबर 2026): Samsung S26 Ultra जैसा "प्राइवेसी स्क्रीन" - नियम [PrivacyCore] में.
+ * DK Privacy - मालिक (12 नवंबर 2026; 13 नवंबर: नाम "DK Privacy") - नियम [PrivacyCore] में.
  * - पूरे फ़ोन में या सिर्फ़ चुने ऐप खुलें तब: गहरी प्राइवेसी परत (Accessibility overlay, छूना आर-पार).
  * - चुने ऐप का notification: popup नहीं आता (DK तुरंत छिपाता है), island में "🔒 ऐप • N नए" - टैप = वही खुले.
  * - चाहें तो हर notification popup के समय ऊपर का हिस्सा ढका (Samsung का "Notification pop-ups").
@@ -229,7 +229,7 @@ object PrivacyScreen {
     }
 }
 
-/** प्राइवेसी से छिपे notification (सिर्फ़ memory) - island में "🔒 ऐप • N नए" */
+/** DK Privacy से छिपे notification (सिर्फ़ memory) - island में "🔒 ऐप • N नए" */
 object PrivacyLocked {
     private class Rec(val key: String, val pkg: String, val app: String, var count: Int, var at: Long, var pi: PendingIntent?, val seen: MutableSet<String>)
     private val map = LinkedHashMap<String, Rec>()
