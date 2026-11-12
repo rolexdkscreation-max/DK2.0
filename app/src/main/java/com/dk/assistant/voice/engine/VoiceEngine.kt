@@ -26,15 +26,6 @@ interface VoiceEngine {
     val split: Boolean
     /** कुछ न चुना हो तो यही चालू */
     val defaultOn: Boolean
-    /**
-     * नवंबर 2026: true = यह चुना हो पर अभी न चल सके (डाउनलोड बाकी / अभी-अभी टूटा) तो उस समय Gemini Live की सीधी
-     * आवाज़ - कभी अपने-आप Gemini TTS नहीं ([VoiceEngines.active], SpeechPipeline/GeminiLive में Gemini TTS बैकअप नहीं).
-     */
-    val liveOnTrouble: Boolean get() = false
-    /** true = Settings में इसका अपना अलग card - "बोलने वाला इंजन" card में नहीं दिखता */
-    val ownCard: Boolean get() = false
-    /** true = स्पीड/पिच इंजन खुद लगाता है - ऊपर वाली आम गति/पिच ([VoiceTune]) इसकी आवाज़ पर नहीं */
-    val ownTune: Boolean get() = false
 
     /** (आवाज़ का पक्का नाम, दिखने वाला नाम) */
     fun voices(): List<Pair<String, String>>
@@ -92,7 +83,7 @@ object PreviewPlayer {
     fun stop() { cur?.let { try { it.pause(); it.flush(); it.stop() } catch (_: Exception) {} } }
 
     /** synth को PcmOut दो, जो आए तुरंत बजाओ. लौटाता: शुरू से पहली आवाज़ तक ms (-1 = कुछ नहीं बजा) */
-    fun play(c: Context, neutral: Boolean = false, synth: (PcmOut) -> Unit): Long {
+    fun play(c: Context, synth: (PcmOut) -> Unit): Long {
         stop()
         val t0 = System.currentTimeMillis()
         val min = AudioTrack.getMinBufferSize(VoiceEngine.RATE, AudioFormat.CHANNEL_OUT_MONO, AudioFormat.ENCODING_PCM_16BIT)
@@ -103,7 +94,7 @@ object PreviewPlayer {
                 .setEncoding(AudioFormat.ENCODING_PCM_16BIT).build())
             .setBufferSizeInBytes(maxOf(min * 2, VoiceEngine.RATE * 2 / 5))
             .setTransferMode(AudioTrack.MODE_STREAM).build()
-        VoiceTune.load(c); VoiceTune.applyFor(tr, -1, neutral)      // v3.80: सुनो में भी वही गति / पिच (अपनी गति/पिच वाले इंजन पर नहीं)
+        VoiceTune.load(c); VoiceTune.apply(tr, -1)      // v3.80: सुनो में भी वही गति / पिच
         cur = tr
         var first = -1L
         var frames = 0L
