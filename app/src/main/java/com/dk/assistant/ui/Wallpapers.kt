@@ -17,15 +17,16 @@ object Wallpapers {
     const val K_WALL = "ui_wallpaper"
     const val NONE = ""
     const val CUSTOM = "custom"
+    const val DEFAULT_ID = "wp_dk_badge"
 
     data class Wall(val id: String, val name: String, val res: Int)
 
     val BUILT_IN = listOf(
-        Wall("wp_1", "उत्तरी रोशनी", com.dk.assistant.R.drawable.dk_wp_1),
-        Wall("wp_2", "गैलेक्सी", com.dk.assistant.R.drawable.dk_wp_2),
-        Wall("wp_3", "पहाड़ों की शाम", com.dk.assistant.R.drawable.dk_wp_3),
+        Wall("wp_dk_badge", "DK बैज", com.dk.assistant.R.drawable.dk_wp_dk_badge),
+        Wall("wp_cyber1", "साइबर फ्रेम", com.dk.assistant.R.drawable.dk_wp_cyber1),
+        Wall("wp_cyber2", "लिक्विड नियॉन", com.dk.assistant.R.drawable.dk_wp_cyber2),
         Wall("wp_4", "काला-सुनहरा", com.dk.assistant.R.drawable.dk_wp_4),
-        Wall("wp_5", "रात का जंगल", com.dk.assistant.R.drawable.dk_wp_5)
+        Wall("wp_1", "उत्तरी रोशनी", com.dk.assistant.R.drawable.dk_wp_1)
     )
 
     /** गैलरी वाला चित्र इससे बड़ा नहीं रखा जाता (लंबी तरफ़, px) */
@@ -34,9 +35,9 @@ object Wallpapers {
     // ------------------------------------------------------------------ शुद्ध नियम (JUnit)
     fun valid(id: String?) = id == NONE || id == CUSTOM || BUILT_IN.any { it.id == id }
 
-    /** गलत/पुराना मान = थीम वाला; custom पर फ़ाइल न हो तो भी थीम वाला */
+    /** गलत/पुराना मान = NONE (थीम); custom पर फ़ाइल न हो तो भी NONE */
     fun resolve(id: String?, customExists: Boolean): String = when {
-        id == null || !valid(id) -> NONE
+        id == null || id == NONE || !valid(id) -> NONE
         id == CUSTOM && !customExists -> NONE
         else -> id
     }
@@ -77,8 +78,9 @@ object Wallpapers {
     fun customFile(c: Context) = File(File(c.filesDir, "wallpaper"), "custom.jpg")
 
     fun selectedId(c: Context): String {
-        val raw = c.getSharedPreferences("dk_prefs", Context.MODE_PRIVATE).getString(K_WALL, NONE)
-        return resolve(raw, customFile(c).isFile)
+        val raw = c.getSharedPreferences("dk_prefs", Context.MODE_PRIVATE).getString(K_WALL, DEFAULT_ID)
+        val res = resolve(raw, customFile(c).isFile)
+        return if (res == NONE) DEFAULT_ID else res
     }
 
     fun currentKey(c: Context): String {
@@ -111,8 +113,28 @@ object Wallpapers {
 
     fun removeCustom(c: Context) {
         customFile(c).delete()
-        if (c.getSharedPreferences("dk_prefs", Context.MODE_PRIVATE).getString(K_WALL, NONE) == CUSTOM) select(c, NONE)
+        if (c.getSharedPreferences("dk_prefs", Context.MODE_PRIVATE).getString(K_WALL, DEFAULT_ID) == CUSTOM) select(c, DEFAULT_ID)
     }
+
+    /** डिवाइस में ओरिजिनल क्वालिटी में सेव करें (MediaStore) */
+    fun downloadWallpaper(c: Context, id: String): String? = try {
+        val bmp = if (id == CUSTOM) {
+            val f = customFile(c); if (!f.isFile) return "चित्र नहीं मिला"
+            BitmapFactory.decodeFile(f.path)
+        } else {
+            val w = BUILT_IN.firstOrNull { it.id == id } ?: return "वॉलपेपर नहीं मिला"
+            BitmapFactory.decodeResource(c.resources, w.res, BitmapFactory.Options().apply { inScaled = false })
+        } ?: return "चित्र लोड नहीं हो पाया"
+        val name = "DK_WP_${id}_${System.currentTimeMillis() / 1000}.jpg"
+        val cv = android.content.ContentValues().apply {
+            put(android.provider.MediaStore.MediaColumns.DISPLAY_NAME, name)
+            put(android.provider.MediaStore.MediaColumns.MIME_TYPE, "image/jpeg")
+            if (android.os.Build.VERSION.SDK_INT >= 29) put(android.provider.MediaStore.MediaColumns.RELATIVE_PATH, "Pictures/DK_Assistant")
+        }
+        val uri = c.contentResolver.insert(android.provider.MediaStore.Images.Media.EXTERNAL_CONTENT_URI, cv) ?: throw Exception("Insert failed")
+        c.contentResolver.openOutputStream(uri)?.use { bmp.compress(Bitmap.CompressFormat.JPEG, 100, it) } ?: throw Exception("Open failed")
+        null
+    } catch (e: Exception) { e.message ?: "त्रुटि" }
 
     /** Android 9+ पर ImageDecoder फ़ोटो का घुमाव (EXIF) खुद सीधा करता है; पुराने पर सीधा decode */
     private fun decodeUri(c: Context, uri: Uri): Bitmap? {

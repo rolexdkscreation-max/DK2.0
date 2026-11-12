@@ -1,0 +1,72 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="900dp"
+    android:height="1600dp"
+    android:viewportWidth="900"
+    android:viewportHeight="1600">
+    <!-- Dark Metallic Cyberpunk Background -->
+    <path
+        android:pathData="M0,0h900v1600h-900z"
+        android:fillColor="#080A0F"/>
+    
+    <!-- Outer Metallic Border -->
+    <path
+        android:pathData="M20,20 L880,20 L880,1580 L20,1580 Z"
+        android:strokeColor="#1F293D"
+        android:strokeWidth="6"/>
+
+    <!-- Corner Neon Accents - Top Left (Cyan) -->
+    <path
+        android:pathData="M20,140 L20,20 L140,20"
+        android:strokeColor="#00E5FF"
+        android:strokeWidth="4"/>
+    <path
+        android:pathData="M40,100 L40,40 L100,40"
+        android:strokeColor="#00B0FF"
+        android:strokeWidth="2"/>
+
+    <!-- Corner Neon Accents - Top Right (Magenta) -->
+    <path
+        android:pathData="M760,20 L880,20 L880,140"
+        android:strokeColor="#D500F9"
+        android:strokeWidth="4"/>
+    <path
+        android:pathData="M800,40 L860,40 L860,100"
+        android:strokeColor="#AA00FF"
+        android:strokeWidth="2"/>
+
+    <!-- Corner Neon Accents - Bottom Left (Magenta) -->
+    <path
+        android:pathData="M20,1460 L20,1580 L140,1580"
+        android:strokeColor="#D500F9"
+        android:strokeWidth="4"/>
+    <path
+        android:pathData="M40,1500 L40,1560 L100,1560"
+        android:strokeColor="#AA00FF"
+        android:strokeWidth="2"/>
+
+    <!-- Corner Neon Accents - Bottom Right (Cyan) -->
+    <path
+        android:pathData="M760,1580 L880,1580 L880,1460"
+        android:strokeColor="#00E5FF"
+        android:strokeWidth="4"/>
+    <path
+        android:pathData="M800,1560 L860,1560 L860,1500"
+        android:strokeColor="#00B0FF"
+        android:strokeWidth="2"/>
+
+    <!-- Cyberpunk Frame Edges -->
+    <path
+        android:pathData="M50,180 L180,50 M720,50 L850,180 M50,1420 L180,1550 M720,1550 L850,1420"
+        android:strokeColor="#00E5FF"
+        android:strokeWidth="2"/>
+
+    <!-- Tech Grid Subtle Background Overlay -->
+    <path
+        android:pathData="M0,300 L900,300 M0,500 L900,500 M0,1100 L900,1100 M0,1300 L900,1300"
+        android:strokeColor="#0A1830"
+        android:strokeWidth="1"/>
+    <path
+        android:pathData="M150,0 L150,1600 M300,0 L300,1600 M600,0 L600,1600 M750,0 L750,1600"
+        android:strokeColor="#0A1830"
+        android:strokeWidth="1"/>
+</vector>
