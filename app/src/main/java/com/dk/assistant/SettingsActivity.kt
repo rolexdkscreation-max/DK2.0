@@ -405,9 +405,6 @@ class SettingsActivity : AppCompatActivity() {
     internal lateinit var edStrongModel: EditText
     internal lateinit var swBuildFix: SwitchCompat
     internal lateinit var swCoderLite: SwitchCompat
-    internal lateinit var swTeam: SwitchCompat
-    internal lateinit var swSeven: SwitchCompat
-    internal lateinit var swSolo: SwitchCompat
     internal lateinit var edGhToken: EditText
     internal lateinit var edGhRepo: EditText
     internal lateinit var edGhBranch: EditText
@@ -454,9 +451,6 @@ class SettingsActivity : AppCompatActivity() {
                 }
                 putBoolean("coder_buildfix", swBuildFix.isChecked)
                 if (::swCoderLite.isInitialized) putBoolean(Prefs.CODER_LITE_SIDE, swCoderLite.isChecked)
-                putBoolean("coder_team", swTeam.isChecked)
-                putBoolean("coder_seven", swSeven.isChecked)
-                if (::swSolo.isInitialized) putBoolean(Prefs.CODER_SOLO, swSolo.isChecked)
                 putString("gh_token", edGhToken.text.toString().trim())
                 putString("gh_repo", Prefs.cleanRepo(edGhRepo.text.toString()))
                 putString("gh_branch", edGhBranch.text.toString().trim())

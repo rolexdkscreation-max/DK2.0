@@ -7,7 +7,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.io.File
 
-/** 12 नवंबर 2026: DK island (iPhone Dynamic Island जैसा) के नियम */
+/** 12 नवंबर 2026: DK Island के नियम (13 नवंबर: नाम सिर्फ़ "DK Island") */
 class IslandCoreTest {
     private val now = 1_000_000_000L
     private fun task(id: String, active: Boolean, started: Long, ended: Long = 0L, ok: Boolean = false) =
@@ -78,6 +78,6 @@ class IslandCoreTest {
         assertTrue(a.contains("DKIsland.start(this)") && a.contains("DKIsland.stop()") && a.contains("DKIsland.poke()"))
         val set = SetSrc.all()
         assertTrue(set.contains("secOrb(); secIsland()"))
-        assertTrue(SettingsSearch.ENTRIES.any { it.section == "orb" && it.card == "DK island (iPhone जैसा)" })
+        assertTrue(SettingsSearch.ENTRIES.any { it.section == "orb" && it.card == "DK Island" })
     }
 }

@@ -52,7 +52,7 @@ class ReelWatch(private val svc: DKAccessibilityService) {
         released = true
         bg.removeCallbacksAndMessages(null)
         thread.quitSafely()
-        main.post { removePill() }
+        main.post { removePill(); DKIsland.reelOff() }
     }
 
     private val tick = object : Runnable {
@@ -192,12 +192,14 @@ class ReelWatch(private val svc: DKAccessibilityService) {
 
     private fun showPill(text: String, warn: Boolean) = main.post {
         if (released) return@post
+        // 13 नवंबर 2026 (मालिक: "रील गिनती का popup भी DK Island के अंदर ही"): island चालू = गिनती वहीं (पॉप के साथ), अलग पट्टी नहीं
+        if (DKIsland.takesReel(svc)) { removePill(); DKIsland.reel(text, warn); return@post }
         val tv = pill ?: makePill() ?: return@post
         if (tv.text != text) tv.text = text
         (tv.background as? GradientDrawable)?.setColor(if (warn) 0xE6B3261E.toInt() else 0xD9152A5C.toInt())
     }
 
-    private fun hidePill() = main.post { removePill() }
+    private fun hidePill() = main.post { removePill(); DKIsland.reelOff() }
 
     private fun makePill(): TextView? {
         val tv = TextView(svc).apply {

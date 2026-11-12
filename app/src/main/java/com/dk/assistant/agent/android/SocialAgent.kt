@@ -43,6 +43,11 @@ object SocialAgent {
     private fun err(code: String, msg: String) = JSONObject().put("status", "error").put("error", code).put("message", msg).toString()
 
     fun busy() = job?.isActive == true
+    /** 13 नवंबर 2026: DK Island में सोशल काम (कब शुरू / कब खत्म) */
+    @Volatile var startedAt = 0L
+        private set
+    @Volatile var endedAt = 0L
+        private set
 
     /** tool: social_media_task / whatsapp_task. return = मॉडल के लिए JSON */
     /** ownConfirm = true: भेजने से पहले पूछना बुलाने वाला (टेम्पलेट कमांड) खुद करता है, फिर [confirmByDk]. false = पहले जैसा */
@@ -82,6 +87,7 @@ object SocialAgent {
         val driver = AccessibilityScreenDriver(svc)
         val r = SocialTaskRunner(driver, { open(svc, it) }, { rep -> onUpdate(svc, rep) })
         runner = r
+        startedAt = System.currentTimeMillis(); endedAt = 0L; lastReport = null
         job = svc.scope.launch {
             try { r.run(task) } catch (e: Exception) { DKLog.d("Social: गलती ${e.javaClass.simpleName}") }
             finally { if (runner === r) runner = null }
@@ -125,6 +131,9 @@ object SocialAgent {
 
     private fun onUpdate(svc: DKAccessibilityService, rep: TaskReport) {
         lastReport = rep
+        // 13 नवंबर 2026 (मालिक): YouTube / फेसबुक / इंस्टाग्राम का काम DK Island के अंदर (हर कदम)
+        if (rep.status.finished && endedAt == 0L) endedAt = System.currentTimeMillis()
+        com.dk.assistant.DKIsland.poke()
         if (rep.status == TaskStatus.COMPLETED || rep.status == TaskStatus.SUBMITTED_UNVERIFIED)
             sending?.let { (n, d, m) -> com.dk.assistant.agent.social.WaDelete.remember(n, d, m); sending = null }
         DKLog.d("Social ${rep.taskId}: ${rep.status.name.lowercase()} (${rep.step}/${rep.totalSteps})")

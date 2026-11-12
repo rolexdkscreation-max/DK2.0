@@ -6,7 +6,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.io.File
 
-/** 12 नवंबर 2026: Samsung S26 Ultra जैसी प्राइवेसी स्क्रीन के नियम */
+/** 12 नवंबर 2026: DK Privacy (privacy display) के नियम */
 class PrivacyCoreTest {
     private val own = "com.dk.assistant"
     private val wa = "com.whatsapp"
@@ -63,6 +63,6 @@ class PrivacyCoreTest {
         val n = src("src/main/java/com/dk/assistant/DKNotifListener.kt")
         assertTrue(n.contains("PrivacyScreen.onPosted(this, it)") && n.contains("PrivacyScreen.hidByUs(it)"))
         assertTrue(SetSrc.all().contains("secGuard(); secPrivacy()"))
-        assertTrue(SettingsSearch.ENTRIES.any { it.section == "guard" && it.card == "प्राइवेसी स्क्रीन (बगल से न दिखे)" })
+        assertTrue(SettingsSearch.ENTRIES.any { it.section == "guard" && it.card == "DK Privacy (बगल से न दिखे)" })
     }
 }

@@ -79,6 +79,8 @@ class DKNotifListener : NotificationListenerService() {
         instance = this
         // पहले से पड़े notification भी ले लो (DK लाइव शुरू होने से पहले वाले)
         try { activeNotifications?.forEach { take(it, push = false) } } catch (_: Exception) {}
+        // 13 नवंबर 2026: DK Island - फ़ोन पर पहले से पड़े सारे notification भी
+        try { activeNotifications?.forEach { IslandFeed.posted(this, it) } } catch (_: Exception) {}
         // v4: अलग रहने के दौरान ख़त्म हुई ऐप कॉल अटकी न रहे
         try { AppCall.current?.key?.let { k -> if (activeNotifications?.none { it.key == k } != false) AppCall.removed(k) } } catch (_: Exception) {}
     }
@@ -88,14 +90,18 @@ class DKNotifListener : NotificationListenerService() {
 
     override fun onNotificationPosted(sbn: StatusBarNotification?) {
         sbn?.let { take(it, push = true) }
-        // 12 नवंबर 2026: प्राइवेसी स्क्रीन - चुने ऐप का notification popup नहीं (पढ़ना / ऑटो रिप्लाई ऊपर पहले ही हो चुका)
-        sbn?.let { try { PrivacyScreen.onPosted(this, it) } catch (e: Exception) { DKLog.d("प्राइवेसी: ${e.message}") } }
+        // 12 नवंबर 2026: DK Privacy - चुने ऐप का notification popup नहीं (पढ़ना / ऑटो रिप्लाई ऊपर पहले ही हो चुका)
+        // 13 नवंबर 2026: DK Privacy ने न छिपाया हो तो DK Island की notification सूची में (टैप = वहीं खुले, स्लाइड = हटे)
+        sbn?.let {
+            val hid = try { PrivacyScreen.onPosted(this, it) } catch (e: Exception) { DKLog.d("DK Privacy: ${e.message}"); false }
+            if (!hid) IslandFeed.posted(this, it)
+        }
     }
 
     override fun onNotificationRemoved(sbn: StatusBarNotification?) {
         // हटाया गया notification: reply action बेकार; पर याद रखो (user पूछ सकता है "क्या आया था")
-        // प्राइवेसी स्क्रीन ने खुद छिपाया = reply वाला बटन याद रहे (ऑटो रिप्लाई / "इसको रिप्लाई कर दो" चलता रहे)
-        sbn?.key?.let { if (!PrivacyScreen.hidByUs(it)) replyActions.remove(it); AppCall.removed(it) }
+        // DK Privacy ने खुद छिपाया = reply वाला बटन याद रहे (ऑटो रिप्लाई / "इसको रिप्लाई कर दो" चलता रहे)
+        sbn?.key?.let { if (!PrivacyScreen.hidByUs(it)) replyActions.remove(it); AppCall.removed(it); IslandFeed.removed(it) }
     }
 
     private fun take(sbn: StatusBarNotification, push: Boolean) {
