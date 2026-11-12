@@ -493,9 +493,13 @@ class ComputerAgent(private val c: Context) {
                     }
                 }.joinToString("\n\n========\n\n")
             }
-            "run_js" -> { step("⚙ JavaScript चला रहा हूँ"); ComputerTools.runJs(c, a.optString("code")) }
+            "run_js" -> { step("⚙ JavaScript चला रहा हूँ"); CodeLive.put(CodeLive.WHO_COMPUTER, "run_js.js", a.optString("code")); ComputerTools.runJs(c, a.optString("code")) }
             "write_file" -> {
-                val f = withContext(Dispatchers.IO) { ComputerTools.write(c, a.optString("name"), a.optString("content")) }
+                val (f, old) = withContext(Dispatchers.IO) {
+                    val before = try { java.io.File(ComputerTools.dir(c), ComputerTools.safeName(a.optString("name"))).takeIf { it.isFile && it.length() < 2_000_000 }?.readText() } catch (_: Exception) { null }
+                    ComputerTools.write(c, a.optString("name"), a.optString("content")) to before
+                }
+                CodeLive.put(CodeLive.WHO_COMPUTER, f.name, a.optString("content"), old)   // साइड का लाइव कोड
                 if (f.name !in files) files.add(f.name)
                 step("📄 फ़ाइल बनाई: ${f.name}"); "saved ${f.name} (${f.length()} bytes)"
             }

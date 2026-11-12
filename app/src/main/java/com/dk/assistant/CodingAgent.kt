@@ -176,7 +176,11 @@ class CodingAgent(internal val gh: GitHub, var repo: String, var branch: String,
     fun teamStage(path: String, content: String?) {
         // नवंबर 2026: binary (तस्वीर/font) text से लिखी तो टूटती है (dk_theme_bg.webp) - कभी stage नहीं
         if (content != null && BinaryGuard.isBinary(path)) { DKLog.d("Coder: " + BinaryGuard.refusal(path)); return }
-        remember(path); staged[path] = content
+        val had = staged.containsKey(path); val prev = staged[path]
+        remember(path)
+        val before = if (had) prev else original[path]
+        staged[path] = content
+        if (content != null) CodeLive.put(CodeLive.WHO_CODER, path, content, before) else CodeLive.gone(CodeLive.WHO_CODER, path, before)   // साइड का लाइव कोड
     }
     /** PR के विवरण के लिए: काम, क्या बदला, जड़ */
     fun teamInfo(task: String, summary: String, root: String) { lastTask = task; lastSummary = summary; rootCause = root }

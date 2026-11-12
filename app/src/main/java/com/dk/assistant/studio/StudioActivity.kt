@@ -1,8 +1,6 @@
 package com.dk.assistant.studio
 
 import android.annotation.SuppressLint
-import android.content.ClipData
-import android.content.ClipboardManager
 import android.graphics.Typeface
 import android.os.Bundle
 import android.os.Handler
@@ -23,7 +21,6 @@ import android.widget.FrameLayout
 import android.widget.HorizontalScrollView
 import android.widget.ImageButton
 import android.widget.LinearLayout
-import android.widget.ScrollView
 import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
@@ -58,6 +55,9 @@ class StudioActivity : AppCompatActivity() {
     private var shownSlug = ""
     private var wasBusy = false
     private val errors = mutableListOf<String>()
+    /** नवंबर 2026 (मालिक): साइड में लाइव कोड - बनते समय हर फ़ाइल पूरी टाइप होती दिखे + project की बाकी फ़ाइलें; रंग बदलने का विकल्प */
+    private lateinit var codePanel: com.dk.assistant.CodeLivePanel
+    private lateinit var codeBtn: Button
 
     private val loader by lazy {
         WebViewAssetLoader.Builder().setDomain(HOST)
@@ -87,7 +87,8 @@ class StudioActivity : AppCompatActivity() {
         val btns = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; setPadding(pad, 0, pad, (6 * dp).toInt()) }
         fun addBtn(t: String, f: () -> Unit) = btns.addView(pill(t, f), LinearLayout.LayoutParams(-2, -2).apply { marginEnd = (6 * dp).toInt() })
         addBtn("↻ ताज़ा") { reload(true) }
-        addBtn("📁 कोड") { showFiles() }
+        addBtn(com.dk.assistant.CodeLivePanel.label(0)) { codePanel.toggle() }
+        codeBtn = btns.getChildAt(btns.childCount - 1) as Button
         addBtn("🌐 Chrome") { openChrome() }
         addBtn("📶 Wi-Fi लिंक") { shareLan() }
         addBtn("📦 ZIP") { shareZip() }
@@ -127,7 +128,14 @@ class StudioActivity : AppCompatActivity() {
         composer.send.setOnClickListener { if (StudioSession.busy) StudioSession.stop() else send() }
         root.addView(composer, LinearLayout.LayoutParams(-1, -2).apply { setMargins(pad, (6 * dp).toInt(), pad, pad) })
 
-        setContentView(root)
+        val frame = FrameLayout(this).apply { addView(root, FrameLayout.LayoutParams(-1, -1)) }
+        codePanel = com.dk.assistant.CodeLivePanel(this, { who -> StudioSession.project?.let { who == com.dk.assistant.CodeLive.studio(it.slug) } == true }, extra = { diskFiles() }) { n ->
+            codeBtn.text = UiLang.s(com.dk.assistant.CodeLivePanel.label(n)) }
+        codePanel.attachTo(frame)
+        onBackPressedDispatcher.addCallback(this, object : androidx.activity.OnBackPressedCallback(true) {
+            override fun handleOnBackPressed() { if (codePanel.isOpen) codePanel.close() else { isEnabled = false; onBackPressedDispatcher.onBackPressed() } }
+        })
+        setContentView(frame)
         Glass.install(this)
         intent.getStringExtra("slug")?.let { s -> StudioProject.open(this, s)?.let { StudioSession.project = it } }
     }
@@ -264,25 +272,11 @@ class StudioActivity : AppCompatActivity() {
             }.setNegativeButton("बंद करें", null).show()
     }
 
-    private fun showFiles() {
-        val p = StudioSession.project ?: run { toast("अभी कोई project नहीं"); return }
-        val fs = p.files()
-        if (fs.isEmpty()) { toast("अभी कोई फ़ाइल नहीं"); return }
-        UiDialog(this, Glass.DIALOG).setTitle("${p.title.take(30)} — ${fs.size} फ़ाइलें")
-            .setItems(fs.toTypedArray()) { _, i -> showCode(p, fs[i]) }.setNegativeButton("बंद करें", null).show()
-    }
-
-    private fun showCode(p: StudioProject, path: String) {
-        val code = p.read(path).orEmpty()
-        val tv = TextView(this).apply {
-            text = code.take(200_000); typeface = Typeface.MONOSPACE; textSize = 11.5f; setTextColor(0xFFE8ECFF.toInt()); setTextIsSelectable(true)
-            val q = (12 * dp).toInt(); setPadding(q, q, q, q)
-        }
-        val sv = ScrollView(this).apply { addView(HorizontalScrollView(this@StudioActivity).apply { addView(tv) }) }
-        UiDialog(this, Glass.DIALOG).setTitle(path).setView(sv)
-            .setPositiveButton("कॉपी") { _, _ ->
-                (getSystemService(CLIPBOARD_SERVICE) as ClipboardManager).setPrimaryClip(ClipData.newPlainText(path, code)); toast("कॉपी हो गया")
-            }.setNegativeButton("बंद करें", null).show()
+    /** लाइव कोड पैनल के लिए: इस project की सारी (text) फ़ाइलें, डिस्क से */
+    private fun diskFiles(): List<Pair<String, String>> {
+        val p = StudioSession.project ?: return emptyList()
+        return p.files().filter { !com.dk.assistant.BinaryGuard.isBinary(it) }.take(80)
+            .mapNotNull { f -> try { p.read(f)?.let { f to it.take(com.dk.assistant.CodeLive.MAX_CHARS) } } catch (_: Exception) { null } }
     }
 
     private fun openChrome() {
