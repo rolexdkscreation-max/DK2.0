@@ -17,8 +17,15 @@ object Wallpapers {
     const val K_WALL = "ui_wallpaper"
     const val NONE = ""
     const val CUSTOM = "custom"
+    const val DEFAULT_ID = "wp_logo"
 
     data class Wall(val id: String, val name: String, val res: Int)
+
+    val NEW_BUILT_IN = listOf(
+        Wall("wp_logo", "डीके लोगो", com.dk.assistant.R.drawable.dk_wp_logo),
+        Wall("wp_cyber", "साइबर फ्रेम", com.dk.assistant.R.drawable.dk_wp_cyber),
+        Wall("wp_neon", "नियॉन वेव्स", com.dk.assistant.R.drawable.dk_wp_neon)
+    )
 
     val BUILT_IN = listOf(
         Wall("wp_1", "उत्तरी रोशनी", com.dk.assistant.R.drawable.dk_wp_1),
@@ -28,13 +35,15 @@ object Wallpapers {
         Wall("wp_5", "रात का जंगल", com.dk.assistant.R.drawable.dk_wp_5)
     )
 
+    val ALL = NEW_BUILT_IN + BUILT_IN
+
     /** गैलरी वाला चित्र इससे बड़ा नहीं रखा जाता (लंबी तरफ़, px) */
     const val CUSTOM_MAX = 1920
 
     // ------------------------------------------------------------------ शुद्ध नियम (JUnit)
-    fun valid(id: String?) = id == NONE || id == CUSTOM || BUILT_IN.any { it.id == id }
+    fun valid(id: String?) = id == NONE || id == CUSTOM || ALL.any { it.id == id }
 
-    /** गलत/पुराना मान = थीम वाला; custom पर फ़ाइल न हो तो भी थीम वाला */
+    /** गलत/पुराना मान = empty (NONE); custom पर फ़ाइल न हो तो भी NONE */
     fun resolve(id: String?, customExists: Boolean): String = when {
         id == null || !valid(id) -> NONE
         id == CUSTOM && !customExists -> NONE
@@ -77,8 +86,45 @@ object Wallpapers {
     fun customFile(c: Context) = File(File(c.filesDir, "wallpaper"), "custom.jpg")
 
     fun selectedId(c: Context): String {
-        val raw = c.getSharedPreferences("dk_prefs", Context.MODE_PRIVATE).getString(K_WALL, NONE)
+        val raw = c.getSharedPreferences("dk_prefs", Context.MODE_PRIVATE).getString(K_WALL, DEFAULT_ID)
         return resolve(raw, customFile(c).isFile)
+    }
+
+    /** डिवाइस गैलरी में वॉलपेपर सेव करें (पूरी क्वालिटी में) */
+    fun saveToGallery(c: Context, id: String): Boolean {
+        return try {
+            val bmp = if (id == CUSTOM) {
+                val f = customFile(c)
+                if (!f.isFile) return false
+                BitmapFactory.decodeFile(f.path)
+            } else {
+                val targetId = if (id == NONE) DEFAULT_ID else id
+                val w = ALL.firstOrNull { it.id == targetId } ?: return false
+                val opts = BitmapFactory.Options().apply { inScaled = false }
+                BitmapFactory.decodeResource(c.resources, w.res, opts)
+            } ?: return false
+
+            val filename = "DK_Wallpaper_${System.currentTimeMillis()}.jpg"
+            val cv = android.content.ContentValues().apply {
+                put(android.provider.MediaStore.Images.Media.DISPLAY_NAME, filename)
+                put(android.provider.MediaStore.Images.Media.MIME_TYPE, "image/jpeg")
+                if (android.os.Build.VERSION.SDK_INT >= 29) {
+                    put(android.provider.MediaStore.Images.Media.RELATIVE_PATH, android.os.Environment.DIRECTORY_PICTURES + "/DKAssistant")
+                    put(android.provider.MediaStore.Images.Media.IS_PENDING, 1)
+                }
+            }
+            val cr = c.contentResolver
+            val uri = cr.insert(android.provider.MediaStore.Images.Media.EXTERNAL_CONTENT_URI, cv) ?: return false
+            cr.openOutputStream(uri)?.use { os ->
+                bmp.compress(Bitmap.CompressFormat.JPEG, 100, os)
+            }
+            if (android.os.Build.VERSION.SDK_INT >= 29) {
+                cv.clear()
+                cv.put(android.provider.MediaStore.Images.Media.IS_PENDING, 0)
+                cr.update(uri, cv, null, null)
+            }
+            true
+        } catch (_: Throwable) { false }
     }
 
     fun currentKey(c: Context): String {
@@ -145,7 +191,7 @@ object Wallpapers {
                 o.inSampleSize = s
                 BitmapFactory.decodeFile(f.path, o)
             } else {
-                val w = BUILT_IN.firstOrNull { it.id == id } ?: return null
+                val w = ALL.firstOrNull { it.id == id } ?: return null
                 o.inScaled = false
                 BitmapFactory.decodeResource(c.resources, w.res, o)
             }
@@ -168,7 +214,7 @@ object Wallpapers {
                 o.inSampleSize = sampleSize(bo.outWidth, bo.outHeight, w * 2)
                 BitmapFactory.decodeFile(f.path, o)
             }
-            else -> BUILT_IN.firstOrNull { it.id == id }?.let { o.inSampleSize = 4; o.inScaled = false; BitmapFactory.decodeResource(c.resources, it.res, o) }
+            else -> ALL.firstOrNull { it.id == id }?.let { o.inSampleSize = 4; o.inScaled = false; BitmapFactory.decodeResource(c.resources, it.res, o) }
         }
     } catch (_: Throwable) { null }
 }

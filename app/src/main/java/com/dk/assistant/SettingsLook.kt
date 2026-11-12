@@ -278,7 +278,7 @@ internal fun SettingsActivity.wallpaperGallery() {
         val accent = com.dk.assistant.ui.NeonTheme.look.main
         val tw = (78 * dp).toInt(); val th = (138 * dp).toInt()
         val strip = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; setPadding(0, (4 * dp).toInt(), 0, (4 * dp).toInt()) }
-        val items = listOf(W.NONE to "थीम वाला") + W.BUILT_IN.map { it.id to it.name } +
+        val items = listOf(W.NONE to "थीम वाला") + W.ALL.map { it.id to it.name } +
             (if (W.customFile(this).isFile) listOf(W.CUSTOM to "मेरा चित्र") else emptyList())
         for ((id, name) in items) {
             val on = id == cur
@@ -322,10 +322,14 @@ internal fun SettingsActivity.wallpaperGallery() {
             pickWall.launch(androidx.activity.result.PickVisualMediaRequest(
                 androidx.activity.result.contract.ActivityResultContracts.PickVisualMedia.ImageOnly))
         }.apply { minHeight = (44 * dp).toInt() }
-        if (W.customFile(this).isFile) row(box, pick, button("अपना चित्र हटाएँ") {
+        val saveBtn = button("गैलरी में सेव करें") {
+            val ok = W.saveToGallery(this, cur)
+            if (ok) toast("गैलरी में सेव हो गया") else toast("सेव नहीं हो सका")
+        }.apply { minHeight = (44 * dp).toInt() }
+        if (W.customFile(this).isFile) row(box, pick, saveBtn, button("अपना चित्र हटाएँ") {
             W.removeCustom(this); com.dk.assistant.ui.NeonRefresh.bars(this); toast("अपना चित्र हटा दिया"); recreate()
         }.apply { minHeight = (44 * dp).toInt() })
-        else box.addView(pick)
+        else row(box, pick, saveBtn)
         hint(box, "वॉलपेपर पूरे ऐप में एक साथ लगता है: होम, सेटिंग, चैट, DK कंप्यूटर - हर स्क्रीन के पीछे. " +
             "थीम के रंग और काँच वैसे ही रहते हैं. गैलरी वाला चित्र फ़ोन में ही रहता है, कहीं भेजा नहीं जाता.")
     }
