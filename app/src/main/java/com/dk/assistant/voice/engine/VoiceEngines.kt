@@ -27,6 +27,8 @@ object VoiceEngines {
     private val CLASSES = listOf(
         "com.dk.assistant.voice.engine.LiveNativeEngine",
         "com.dk.assistant.voice.engine.GeminiTtsEngine",
+        // नवंबर 2026: Supertonic 3 (नया, फ़ोन में बनने वाली हिंदी आवाज़) - अपना अलग Settings card ([VoiceEngine.ownCard])
+        "com.dk.assistant.voice.engine.SupertonicTtsEngine",
     )
 
     /** एक बार का बदलाव: पुराना डिफ़ॉल्ट (Gemini TTS) सेव था -> DK लाइव. इसके बाद यूज़र जो चुने वही रहे */
@@ -85,7 +87,20 @@ object VoiceEngines {
         return all.firstOrNull { it.defaultOn }?.id ?: LIVE_NATIVE
     }
 
-    fun active(c: Context): VoiceEngine? = byId(activeId(c))
+    /**
+     * अभी कौन बोलेगा. नवंबर 2026: चुना इंजन [VoiceEngine.liveOnTrouble] (Supertonic 3) हो और अभी न चल सके
+     * (डाउनलोड बाकी / अभी-अभी टूटा) = Gemini Live की सीधी आवाज़ - पसंद वही रहती है, ठीक होते ही फिर वही.
+     */
+    fun active(c: Context): VoiceEngine? {
+        val e = byId(activeId(c)) ?: return null
+        if (!e.liveOnTrouble) return e
+        val notReady = try { e.notReady(c) != null } catch (_: Throwable) { true }
+        return byId(troublePick(e.id, true, notReady, isFailed(e.id))) ?: e
+    }
+
+    /** pure (JVM test): [active] का नियम */
+    fun troublePick(chosen: String, liveOnTrouble: Boolean, notReady: Boolean, failed: Boolean): String =
+        if (liveOnTrouble && (notReady || failed)) LIVE_NATIVE else chosen
 
     /**
      * नवंबर 2026 (मालिक: "जो TTS लगाया था पूरी तरह डिलीट करो, Piper का भी कुछ बचा न रहे - फ़ोन में गड़बड़ है"):
