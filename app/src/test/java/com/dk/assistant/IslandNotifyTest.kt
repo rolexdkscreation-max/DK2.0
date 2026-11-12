@@ -133,3 +133,38 @@ class IslandNotifyTest {
         assertFalse(main("CodingActivity.kt").contains("AgentIntro.coderCapabilities(seven, github)"))
     }
 }
+
+/** 13 नवंबर 2026 (मालिक): DK Island में सिर्फ़ पीछे (background) चलती चीज़ें - जो ऐप सामने है उसकी नहीं */
+class IslandBackgroundOnlyTest {
+    private val now = 2_000_000_000L
+    private val yt = IslandCore.Media("गाना", "कलाकार", "YouTube", "com.google.android.youtube", true)
+    private fun n(pkg: String) = IslandCore.Notif("k-$pkg", pkg, pkg, "t", "x", now)
+
+    @Test fun youtubeInFront_notShown_backgroundShown() {
+        val s = IslandCore.Snap(media = yt)
+        assertNull(IslandCore.lead(IslandCore.background(s, "com.google.android.youtube"), now))      // YouTube सामने = नहीं
+        assertEquals(IslandCore.Kind.MEDIA, IslandCore.lead(IslandCore.background(s, "com.whatsapp"), now))   // पीछे = दिखे
+        assertEquals(IslandCore.Kind.MEDIA, IslandCore.lead(IslandCore.background(s, "com.sec.android.app.launcher"), now))
+        assertEquals(IslandCore.Kind.MEDIA, IslandCore.lead(IslandCore.background(s, ""), now))
+    }
+
+    @Test fun frontAppNotifs_andCallScreen_hidden_dkWorkStays() {
+        val call = IslandCore.Call("माँ", false, now - 5_000, "WhatsApp", "com.whatsapp")
+        val task = IslandCore.Task("pc:1", "pc", "PC", "काम", "चल रहा है", "", 0, now - 1000, 0, true)
+        val s = IslandCore.Snap(call = call, tasks = listOf(task), notifs = listOf(n("com.whatsapp"), n("com.instagram.android")),
+            charge = IslandCore.Charge(50, true, false, 0, -1), reel = IslandCore.Reel("रील: 3", false, now))
+        val b = IslandCore.background(s, "com.whatsapp")
+        assertNull(b.call)                                                     // कॉल स्क्रीन सामने = island में नहीं
+        assertEquals(listOf("com.instagram.android"), b.notifs.map { it.pkg })
+        assertEquals(1, b.tasks.size); assertTrue(b.charge != null); assertTrue(b.reel != null)
+        assertEquals(call, IslandCore.background(s, "com.android.chrome").call)  // दूसरा ऐप सामने = कॉल दिखे
+        val sim = s.copy(call = IslandCore.Call("राहुल", false, now, ""))
+        assertNull(IslandCore.background(sim, "com.google.android.dialer").call)
+        assertEquals(sim.call, IslandCore.background(sim, "com.android.chrome").call)
+    }
+
+    @Test fun wired_inDkIsland() {
+        val f = listOf(File("src/main/java/com/dk/assistant/DKIsland.kt"), File("app/src/main/java/com/dk/assistant/DKIsland.kt")).first { it.exists() }.readText()
+        assertTrue(f.contains("IslandCore.background(all, frontPkg(s))") && f.contains("s.currentPackage()"))
+    }
+}

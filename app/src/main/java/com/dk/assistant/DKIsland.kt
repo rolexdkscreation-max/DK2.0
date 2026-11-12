@@ -185,8 +185,8 @@ object DKIsland {
             if (ringing || inCall) {
                 if (inCall && callSince == 0L) callSince = now
                 if (!inCall) callSince = 0L
-                val app = AppCall.current?.takeIf { AppCall.active() }?.app.orEmpty()
-                IslandCore.Call(calls.caller, ringing && !inCall, if (callSince > 0) callSince else now, app)
+                val ac = AppCall.current?.takeIf { AppCall.active() }
+                IslandCore.Call(calls.caller, ringing && !inCall, if (callSince > 0) callSince else now, ac?.app.orEmpty(), ac?.pkg.orEmpty())
             } else { callSince = 0L; null }
         } catch (_: Exception) { null }
         // DK लाइव / फ़ोन पर DK का काम (बिना Live भी)
@@ -210,7 +210,17 @@ object DKIsland {
         val allTasks = if (social == null) tasks else IslandCore.recent((tasks + social).filter { it.active }, (tasks + social).filter { !it.active })
         val notifs = if (notifsOn(s)) IslandFeed.list() else emptyList()
         val charge = if (chargeOn(s)) chargeNow(s) else null
-        return IslandCore.Snap(call, live, allTasks, media, PrivacyLocked.list(), notifs, charge, reel?.takeIf { IslandCore.reelOn(it, now) })
+        val all = IslandCore.Snap(call, live, allTasks, media, PrivacyLocked.list(), notifs, charge, reel?.takeIf { IslandCore.reelOn(it, now) })
+        // 13 नवंबर 2026 (मालिक): सिर्फ़ पीछे चलती चीज़ें - जो ऐप सामने खुला है उसका गाना / वीडियो / notification / कॉल island में नहीं
+        return IslandCore.background(all, frontPkg(s))
+    }
+
+    /** अभी सामने वाला ऐप. DK का अपना island / overlay सामने आए तो पिछला ऐप ही माना जाए */
+    private var lastFront = ""
+    private fun frontPkg(s: DKAccessibilityService): String {
+        val p = s.currentPackage()
+        if (p.isNotBlank() && p != s.packageName) lastFront = p
+        return lastFront
     }
 
     /** फ़ोन में अभी बजता गाना/वीडियो (कोई भी ऐप, YouTube भी) - Notification access चाहिए, न हो तो कुछ नहीं */

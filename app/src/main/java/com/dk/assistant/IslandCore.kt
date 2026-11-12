@@ -14,7 +14,7 @@ object IslandCore {
 
     enum class Kind { CALL, LIVE, TASK, MEDIA, LOCKED, NOTIF, CHARGING, REEL }
 
-    data class Call(val who: String, val ringing: Boolean, val since: Long, val app: String = "")
+    data class Call(val who: String, val ringing: Boolean, val since: Long, val app: String = "", val pkg: String = "")
     data class Live(val mode: Mode, val muted: Boolean)
     data class Task(
         val id: String, val key: String, val who: String, val task: String, val state: String,
@@ -241,5 +241,36 @@ object IslandCore {
         val last = message + if (total > 0 && !finished) " ($step/$total)" else ""
         return Task("social:$id", "social", app, "$app: $what", state, last, step, started, if (finished) maxOf(ended, started) else 0L,
             active = !finished, ok = status == "COMPLETED")
+    }
+
+    // ------------------------------------------------------------ सिर्फ़ पीछे (background) चलती चीज़ें (13 नवंबर 2026, मालिक)
+    /**
+     * मालिक: "DK Island में वही दिखे जो बैकग्राउंड में चल रहा है - YouTube वहीं देख रहा हूँ तो नहीं, YouTube पीछे किया तो दिखे.
+     * गाना हो या कुछ भी - उसी ऐप में हूँ तो नहीं दिखे."
+     * fg = अभी सामने वाला ऐप ("" / launcher / systemui = कोई ऐप सामने नहीं = सब दिखे).
+     * हटता है: सामने वाले ऐप का गाना/वीडियो, उसके notification, उसके छिपे (DK Privacy) notification, और कॉल अगर कॉल वाली स्क्रीन ही सामने है.
+     * रहता है: DK के अपने काम (PC / Coder / Studio / सोशल रिव्यू), DK लाइव, रील गिनती (DK पीछे से गिनता है), चार्जिंग.
+     */
+    fun background(s: Snap, fg: String): Snap {
+        if (fg.isBlank() || noApp(fg)) return s
+        val callFront = s.call != null && (fg == s.call.pkg || (s.call.pkg.isBlank() && phoneApp(fg)))
+        return s.copy(
+            call = if (callFront) null else s.call,
+            media = s.media?.takeIf { it.pkg != fg },
+            notifs = s.notifs.filter { it.pkg != fg },
+            locked = s.locked.filter { it.pkg != fg },
+        )
+    }
+
+    /** फ़ोन की अपनी (SIM) कॉल वाली स्क्रीन (AppCall.isPhoneApp जैसा) */
+    fun phoneApp(pkg: String): Boolean {
+        val p = pkg.lowercase()
+        return listOf("dialer", "incallui", "telecom", "com.android.phone", "com.samsung.android.app.telephonyui", "contacts").any { p.contains(it) }
+    }
+
+    /** होम स्क्रीन / ऊपर का पर्दा = कोई ऐप सामने नहीं */
+    fun noApp(pkg: String): Boolean {
+        val p = pkg.lowercase()
+        return p == "com.android.systemui" || p.contains("launcher") || p == "com.google.android.apps.nexuslauncher" || p == "com.sec.android.app.launcher"
     }
 }
