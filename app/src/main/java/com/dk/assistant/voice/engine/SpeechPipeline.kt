@@ -279,7 +279,7 @@ class SpeechPipeline(private val ctx: Context, private val hooks: Hooks) {
             if (b === end) break
             val p = even.take(b) ?: continue
             for (piece in shape.push(p)) {
-                if (!announced) { announced = true; noteSpoken(s.text) }
+                if (!announced) { announced = true; noteSpoken(s.text); showVoice(s) }
                 write(tr, piece, g, s)
             }
         }
@@ -346,6 +346,17 @@ class SpeechPipeline(private val ctx: Context, private val hooks: Hooks) {
     }
 
     private fun markSpeaking() { if (!speaking) { speaking = true; hooks.onSpeaking(true) } }
+
+    /** नवंबर 2026 (मालिक): स्क्रीन पर - यह टुकड़ा सच में किस इंजन / आवाज़ से बजा */
+    private fun showVoice(s: Seg) {
+        try {
+            val e = VoiceEngines.byId(s.engine) ?: return
+            val v = e.voice(ctx)
+            val vt = try { e.voices().firstOrNull { it.first == v }?.second ?: v } catch (_: Throwable) { v }
+            val chosen = engine
+            VoiceNow.played(e.id, e.title, vt.substringBefore(" —").take(40), if (chosen != null && chosen.id != e.id) "${chosen.title} नहीं चला" else "")
+        } catch (_: Throwable) {}
+    }
 
     private fun noteSpoken(t: String) {
         val all = synchronized(spoken) { if (spoken.isNotEmpty()) spoken.append(' '); spoken.append(t); spoken.toString() }

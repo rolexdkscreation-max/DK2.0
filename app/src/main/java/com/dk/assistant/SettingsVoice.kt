@@ -150,7 +150,12 @@ internal fun SettingsActivity.secVoice() {
     }
 
     // नवंबर 2026 (मालिक): वैकल्पिक Piper TTS (हिंदी, ऑफ़लाइन) - डिफ़ॉल्ट बंद. सारा code SettingsPiper.kt में
-    card("Piper आवाज़", "हिंदी, बिना इंटरनेट — डिफ़ॉल्ट बंद, खुद डाउनलोड करके चालू करें") { box -> piperCard(box) }
+    card("Piper आवाज़", "हिंदी, बिना इंटरनेट — डिफ़ॉल्ट बंद, खुद डाउनलोड करके चालू करें") { box ->
+        piperCard(box)
+        // नवंबर 2026 (मालिक): सच में आख़िरी बार किस इंजन ने बोला (Piper चालू होकर भी Live की आवाज़ = वजह के साथ)
+        hint(box, com.dk.assistant.voice.engine.VoiceNow.shown().ifBlank { "अभी तक DK लाइव में कुछ नहीं बोला — बोलते समय DK लाइव स्क्रीन पर दिखेगा कि आवाज़ किससे आ रही है" }
+            .let { if (it.startsWith("आवाज़:")) "आख़िरी बार बोला — " + it.removePrefix("आवाज़: ") else it })
+    }
 
     // ---- Listening
     card("सुनना (माइक)", "लगातार सुनना — बिना बीप की आवाज़") { box ->
