@@ -14,21 +14,30 @@ import java.io.File
 class WallpaperDockTest {
     private fun f(p: String) = listOf(File("src/main/$p"), File("app/src/main/$p")).first { it.exists() }
 
-    @Test fun fiveBuiltInWallpapers_shipInsideApp() {
+    @Test fun builtInWallpapers_shipInsideApp() {
         assertEquals(5, Wallpapers.BUILT_IN.size)
         assertEquals(5, Wallpapers.BUILT_IN.map { it.id }.toSet().size)
+        assertEquals("wp_dk_badge", Wallpapers.DEFAULT_ID)
+        assertTrue(Wallpapers.BUILT_IN.any { it.id == "wp_dk_badge" })
+        assertTrue(Wallpapers.BUILT_IN.any { it.id == "wp_cyber1" })
+        assertTrue(Wallpapers.BUILT_IN.any { it.id == "wp_cyber2" })
         for (i in 1..5) {
             val w = f("res/drawable-nodpi/dk_wp_$i.webp")
             assertTrue("dk_wp_$i बहुत बड़ी (APK भारी)", w.length() in 2_000..200_000)
         }
     }
 
+    @Test fun downloadWallpaper_isAvailable() {
+        val wallpapersCode = f("java/com/dk/assistant/ui/Wallpapers.kt").readText()
+        assertTrue(wallpapersCode.contains("fun downloadWallpaper"))
+    }
+
     @Test fun validAndResolve_fallBackToTheme() {
-        assertTrue(Wallpapers.valid(Wallpapers.NONE)); assertTrue(Wallpapers.valid("wp_3")); assertTrue(Wallpapers.valid(Wallpapers.CUSTOM))
+        assertTrue(Wallpapers.valid(Wallpapers.NONE)); assertTrue(Wallpapers.valid("wp_1")); assertTrue(Wallpapers.valid(Wallpapers.CUSTOM))
         assertFalse(Wallpapers.valid("wp_9")); assertFalse(Wallpapers.valid("../x")); assertFalse(Wallpapers.valid(null))
         assertEquals(Wallpapers.NONE, Wallpapers.resolve("wp_9", true))
         assertEquals(Wallpapers.NONE, Wallpapers.resolve(null, true))
-        assertEquals("wp_2", Wallpapers.resolve("wp_2", false))
+        assertEquals("wp_1", Wallpapers.resolve("wp_1", false))
         // गैलरी वाला चित्र मिट गया हो तो खाली स्क्रीन नहीं - थीम वाला चित्र
         assertEquals(Wallpapers.NONE, Wallpapers.resolve(Wallpapers.CUSTOM, false))
         assertEquals(Wallpapers.CUSTOM, Wallpapers.resolve(Wallpapers.CUSTOM, true))

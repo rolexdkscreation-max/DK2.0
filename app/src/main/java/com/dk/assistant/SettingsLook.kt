@@ -322,10 +322,25 @@ internal fun SettingsActivity.wallpaperGallery() {
             pickWall.launch(androidx.activity.result.PickVisualMediaRequest(
                 androidx.activity.result.contract.ActivityResultContracts.PickVisualMedia.ImageOnly))
         }.apply { minHeight = (44 * dp).toInt() }
-        if (W.customFile(this).isFile) row(box, pick, button("अपना चित्र हटाएँ") {
-            W.removeCustom(this); com.dk.assistant.ui.NeonRefresh.bars(this); toast("अपना चित्र हटा दिया"); recreate()
-        }.apply { minHeight = (44 * dp).toInt() })
-        else box.addView(pick)
+        val dlBtn = button("वॉलपेपर डाउनलोड करें") {
+            val app = applicationContext
+            Thread {
+                val err = W.downloadWallpaper(app, cur)
+                runOnUiThread {
+                    if (isFinishing || isDestroyed) return@runOnUiThread
+                    if (err == null) toast("वॉलपेपर डाउनलोड हो गया")
+                    else toast("डाउनलोड विफल: $err")
+                }
+            }.start()
+        }.apply { minHeight = (44 * dp).toInt() }
+        if (W.customFile(this).isFile) {
+            row(box, pick, button("अपना चित्र हटाएँ") {
+                W.removeCustom(this); com.dk.assistant.ui.NeonRefresh.bars(this); toast("अपना चित्र हटा दिया"); recreate()
+            }.apply { minHeight = (44 * dp).toInt() })
+            if (cur != W.NONE) box.addView(dlBtn)
+        } else {
+            if (cur != W.NONE) row(box, pick, dlBtn) else box.addView(pick)
+        }
         hint(box, "वॉलपेपर पूरे ऐप में एक साथ लगता है: होम, सेटिंग, चैट, DK कंप्यूटर - हर स्क्रीन के पीछे. " +
             "थीम के रंग और काँच वैसे ही रहते हैं. गैलरी वाला चित्र फ़ोन में ही रहता है, कहीं भेजा नहीं जाता.")
     }

@@ -1,0 +1,92 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:aapt="http://schemas.android.com/aapt"
+    android:width="900dp"
+    android:height="1600dp"
+    android:viewportWidth="900"
+    android:viewportHeight="1600">
+
+    <!-- Deep metallic dark background -->
+    <path
+        android:pathData="M0,0h900v1600h-900z"
+        android:fillColor="#07090E"/>
+
+    <!-- Subtle Hex Grid Pattern -->
+    <path
+        android:pathData="M50,100l30,17.3v34.6l-30,17.3-30,-17.3v-34.6z M150,100l30,17.3v34.6l-30,17.3-30,-17.3v-34.6z M250,100l30,17.3v34.6l-30,17.3-30,-17.3v-34.6z M650,100l30,17.3v34.6l-30,17.3-30,-17.3v-34.6z M750,100l30,17.3v34.6l-30,17.3-30,-17.3v-34.6z M850,100l30,17.3v34.6l-30,17.3-30,-17.3v-34.6z M50,1400l30,17.3v34.6l-30,17.3-30,-17.3v-34.6z M150,1400l30,17.3v34.6l-30,17.3-30,-17.3v-34.6z M750,1400l30,17.3v34.6l-30,17.3-30,-17.3v-34.6z M850,1400l30,17.3v34.6l-30,17.3-30,-17.3v-34.6z"
+        android:strokeWidth="1.5"
+        android:strokeColor="#1800E5FF"/>
+
+    <!-- Top Metallic Liquid Waves with Cyan Gradient -->
+    <path
+        android:pathData="M0,0 L900,0 L900,320 C750,280 600,380 450,300 C300,220 150,340 0,260 Z">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:startX="0"
+                android:startY="0"
+                android:endX="900"
+                android:endY="350"
+                android:type="linear">
+                <item android:offset="0.0" android:color="#FF0D131D"/>
+                <item android:offset="0.5" android:color="#FF161D2B"/>
+                <item android:offset="1.0" android:color="#FF0B0E17"/>
+            </gradient>
+        </aapt:attr>
+    </path>
+
+    <!-- Top Wavy Cyan Glow Accent Strip -->
+    <path
+        android:pathData="M0,260 C150,340 300,220 450,300 C600,380 750,280 900,320"
+        android:strokeWidth="5"
+        android:strokeColor="#00E5FF"/>
+
+    <path
+        android:pathData="M0,260 C150,340 300,220 450,300 C600,380 750,280 900,320"
+        android:strokeWidth="16"
+        android:strokeColor="#4000E5FF"/>
+
+    <!-- Bottom Metallic Liquid Waves with Magenta Gradient -->
+    <path
+        android:pathData="M0,1600 L900,1600 L900,1280 C750,1320 600,1220 450,1300 C300,1380 150,1260 0,1340 Z">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:startX="0"
+                android:startY="1600"
+                android:endX="900"
+                android:endY="1250"
+                android:type="linear">
+                <item android:offset="0.0" android:color="#FF150B1D"/>
+                <item android:offset="0.5" android:color="#FF20112B"/>
+                <item android:offset="1.0" android:color="#FF0E0716"/>
+            </gradient>
+        </aapt:attr>
+    </path>
+
+    <!-- Bottom Wavy Magenta Glow Accent Strip -->
+    <path
+        android:pathData="M0,1340 C150,1260 300,1380 450,1300 C600,1220 750,1320 900,1280"
+        android:strokeWidth="5"
+        android:strokeColor="#D500F9"/>
+
+    <path
+        android:pathData="M0,1340 C150,1260 300,1380 450,1300 C600,1220 750,1320 900,1280"
+        android:strokeWidth="16"
+        android:strokeColor="#40D500F9"/>
+
+    <!-- Additional Metallic Curve Overlay Left -->
+    <path
+        android:pathData="M0,450 C120,520 160,680 0,800 Z"
+        android:fillColor="#151A24"/>
+    <path
+        android:pathData="M0,450 C120,520 160,680 0,800"
+        android:strokeWidth="3"
+        android:strokeColor="#00E5FF"/>
+
+    <!-- Additional Metallic Curve Overlay Right -->
+    <path
+        android:pathData="M900,800 C740,920 780,1080 900,1150 Z"
+        android:fillColor="#1F1226"/>
+    <path
+        android:pathData="M900,800 C740,920 780,1080 900,1150"
+        android:strokeWidth="3"
+        android:strokeColor="#D500F9"/>
+</vector>

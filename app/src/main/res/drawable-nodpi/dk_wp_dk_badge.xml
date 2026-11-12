@@ -1,0 +1,213 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:aapt="http://schemas.android.com/aapt"
+    android:width="900dp"
+    android:height="1600dp"
+    android:viewportWidth="900"
+    android:viewportHeight="1600">
+
+    <!-- Deep dark background -->
+    <path
+        android:pathData="M0,0h900v1600h-900z"
+        android:fillColor="#06060D" />
+
+    <!-- Top Wavy Neon Ribbon (Cyan/Purple Gradient) -->
+    <path
+        android:pathData="M-50,0 Q225,120 450,40 T950,20 L950,0 Z">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:startX="0"
+                android:startY="0"
+                android:endX="900"
+                android:endY="100"
+                android:type="linear">
+                <item android:color="#FF00F0FF" android:offset="0.0" />
+                <item android:color="#FFB000FF" android:offset="1.0" />
+            </gradient>
+        </aapt:attr>
+    </path>
+    <path
+        android:pathData="M-50,30 Q225,150 450,70 T950,50 L950,0 L-50,0 Z"
+        android:fillAlpha="0.4">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:startX="0"
+                android:startY="0"
+                android:endX="900"
+                android:endY="150"
+                android:type="linear">
+                <item android:color="#FF00D2FF" android:offset="0.0" />
+                <item android:color="#FFE000FF" android:offset="1.0" />
+            </gradient>
+        </aapt:attr>
+    </path>
+
+    <!-- Bottom Wavy Neon Ribbon -->
+    <path
+        android:pathData="M-50,1600 Q225,1480 450,1560 T950,1580 L950,1600 Z">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:startX="0"
+                android:startY="1600"
+                android:endX="900"
+                android:endY="1500"
+                android:type="linear">
+                <item android:color="#FF9D00FF" android:offset="0.0" />
+                <item android:color="#FF00F0FF" android:offset="1.0" />
+            </gradient>
+        </aapt:attr>
+    </path>
+    <path
+        android:pathData="M-50,1570 Q225,1450 450,1530 T950,1550 L950,1600 L-50,1600 Z"
+        android:fillAlpha="0.35">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:startX="0"
+                android:startY="1600"
+                android:endX="900"
+                android:endY="1450"
+                android:type="linear">
+                <item android:color="#FFB000FF" android:offset="0.0" />
+                <item android:color="#FF00E5FF" android:offset="1.0" />
+            </gradient>
+        </aapt:attr>
+    </path>
+
+    <!-- Hexagonal Grid Overlay Subtle -->
+    <path
+        android:pathData="M150,300 L250,358 L250,474 L150,532 L50,474 L50,358 Z M350,300 L450,358 L450,474 L350,532 L250,474 L250,358 Z M550,300 L650,358 L650,474 L550,532 L450,474 L450,358 Z M750,300 L850,358 L850,474 L750,532 L650,474 L650,358 Z"
+        android:strokeWidth="1.5"
+        android:strokeColor="#1800E5FF"
+        android:fillColor="#00000000" />
+    <path
+        android:pathData="M150,1060 L250,1118 L250,1234 L150,1292 L50,1234 L50,1118 Z M350,1060 L450,1118 L450,1234 L350,1292 L250,1234 L250,1118 Z M550,1060 L650,1118 L650,1234 L550,1292 L450,1234 L450,1118 Z M750,1060 L850,1118 L850,1234 L750,1292 L650,1234 L650,1118 Z"
+        android:strokeWidth="1.5"
+        android:strokeColor="#18B000FF"
+        android:fillColor="#00000000" />
+
+    <!-- Outer Circular Glow Ring -->
+    <path
+        android:pathData="M450,520 A280,280 0 1,0 450.01,520 Z"
+        android:strokeWidth="12"
+        android:fillColor="#00000000">
+        <aapt:attr name="android:strokeColor">
+            <gradient
+                android:startX="200"
+                android:startY="520"
+                android:endX="700"
+                android:endY="1080"
+                android:type="linear">
+                <item android:color="#FF00F0FF" android:offset="0.0" />
+                <item android:color="#FFD000FF" android:offset="0.5" />
+                <item android:color="#FF00E5FF" android:offset="1.0" />
+            </gradient>
+        </aapt:attr>
+    </path>
+
+    <!-- Outer Glow Soft Ring -->
+    <path
+        android:pathData="M450,500 A300,300 0 1,0 450.01,500 Z"
+        android:strokeWidth="6"
+        android:strokeColor="#5500F0FF"
+        android:fillColor="#00000000" />
+    <path
+        android:pathData="M450,540 A260,260 0 1,0 450.01,540 Z"
+        android:strokeWidth="4"
+        android:strokeColor="#55D000FF"
+        android:fillColor="#00000000" />
+
+    <!-- Inner Metallic Badge Circle Background -->
+    <path
+        android:pathData="M450,560 A240,240 0 1,0 450.01,560 Z">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:startX="450"
+                android:startY="560"
+                android:endX="450"
+                android:endY="1040"
+                android:type="linear">
+                <item android:color="#FF0D0F18" android:offset="0.0" />
+                <item android:color="#FF05060A" android:offset="1.0" />
+            </gradient>
+        </aapt:attr>
+    </path>
+
+    <!-- Audio Equalizer Waveform Bars Inside Badge Ring -->
+    <path android:pathData="M310,750 L310,710" android:strokeWidth="10" android:strokeLineCap="round">
+        <aapt:attr name="android:strokeColor"><gradient android:startX="310" android:startY="750" android:endX="310" android:endY="710" android:type="linear"><item android:color="#FF00F0FF" android:offset="0"/><item android:color="#FF7000FF" android:offset="1"/></gradient></aapt:attr>
+    </path>
+    <path android:pathData="M335,750 L335,680" android:strokeWidth="10" android:strokeLineCap="round">
+        <aapt:attr name="android:strokeColor"><gradient android:startX="335" android:startY="750" android:endX="335" android:endY="680" android:type="linear"><item android:color="#FF00F0FF" android:offset="0"/><item android:color="#FF8000FF" android:offset="1"/></gradient></aapt:attr>
+    </path>
+    <path android:pathData="M360,750 L360,650" android:strokeWidth="10" android:strokeLineCap="round">
+        <aapt:attr name="android:strokeColor"><gradient android:startX="360" android:startY="750" android:endX="360" android:endY="650" android:type="linear"><item android:color="#FF00E5FF" android:offset="0"/><item android:color="#FF9000FF" android:offset="1"/></gradient></aapt:attr>
+    </path>
+    <path android:pathData="M385,750 L385,690" android:strokeWidth="10" android:strokeLineCap="round">
+        <aapt:attr name="android:strokeColor"><gradient android:startX="385" android:startY="750" android:endX="385" android:endY="690" android:type="linear"><item android:color="#FF00D5FF" android:offset="0"/><item android:color="#FFA000FF" android:offset="1"/></gradient></aapt:attr>
+    </path>
+    <path android:pathData="M410,750 L410,630" android:strokeWidth="10" android:strokeLineCap="round">
+        <aapt:attr name="android:strokeColor"><gradient android:startX="410" android:startY="750" android:endX="410" android:endY="630" android:type="linear"><item android:color="#FF00C5FF" android:offset="0"/><item android:color="#FFB000FF" android:offset="1"/></gradient></aapt:attr>
+    </path>
+    <path android:pathData="M435,750 L435,610" android:strokeWidth="10" android:strokeLineCap="round">
+        <aapt:attr name="android:strokeColor"><gradient android:startX="435" android:startY="750" android:endX="435" android:endY="610" android:type="linear"><item android:color="#FF00F0FF" android:offset="0"/><item android:color="#FFC000FF" android:offset="1"/></gradient></aapt:attr>
+    </path>
+    <path android:pathData="M465,750 L465,610" android:strokeWidth="10" android:strokeLineCap="round">
+        <aapt:attr name="android:strokeColor"><gradient android:startX="465" android:startY="750" android:endX="465" android:endY="610" android:type="linear"><item android:color="#FF00F0FF" android:offset="0"/><item android:color="#FFC000FF" android:offset="1"/></gradient></aapt:attr>
+    </path>
+    <path android:pathData="M490,750 L490,630" android:strokeWidth="10" android:strokeLineCap="round">
+        <aapt:attr name="android:strokeColor"><gradient android:startX="490" android:startY="750" android:endX="490" android:endY="630" android:type="linear"><item android:color="#FF20D0FF" android:offset="0"/><item android:color="#FFD000FF" android:offset="1"/></gradient></aapt:attr>
+    </path>
+    <path android:pathData="M515,750 L515,690" android:strokeWidth="10" android:strokeLineCap="round">
+        <aapt:attr name="android:strokeColor"><gradient android:startX="515" android:startY="750" android:endX="515" android:endY="690" android:type="linear"><item android:color="#FF40C0FF" android:offset="0"/><item android:color="#FFE000FF" android:offset="1"/></gradient></aapt:attr>
+    </path>
+    <path android:pathData="M540,750 L540,650" android:strokeWidth="10" android:strokeLineCap="round">
+        <aapt:attr name="android:strokeColor"><gradient android:startX="540" android:startY="750" android:endX="540" android:endY="650" android:type="linear"><item android:color="#FF60B0FF" android:offset="0"/><item android:color="#FFF000FF" android:offset="1"/></gradient></aapt:attr>
+    </path>
+    <path android:pathData="M565,750 L565,680" android:strokeWidth="10" android:strokeLineCap="round">
+        <aapt:attr name="android:strokeColor"><gradient android:startX="565" android:startY="750" android:endX="565" android:endY="680" android:type="linear"><item android:color="#FF8090FF" android:offset="0"/><item android:color="#FFF040FF" android:offset="1"/></gradient></aapt:attr>
+    </path>
+    <path android:pathData="M590,750 L590,710" android:strokeWidth="10" android:strokeLineCap="round">
+        <aapt:attr name="android:strokeColor"><gradient android:startX="590" android:startY="750" android:endX="590" android:endY="710" android:type="linear"><item android:color="#FFA070FF" android:offset="0"/><item android:color="#FFF080FF" android:offset="1"/></gradient></aapt:attr>
+    </path>
+
+    <!-- Metallic Bold "DK" Text Below Equalizer inside badge -->
+    <path
+        android:pathData="M340,790 L400,790 C430,790 445,805 445,835 L445,875 C445,905 430,920 400,920 L340,920 Z M372,820 L372,890 L398,890 C412,890 416,884 416,870 L416,840 C416,826 412,820 398,820 Z">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:startX="340"
+                android:startY="790"
+                android:endX="445"
+                android:endY="920"
+                android:type="linear">
+                <item android:color="#FFFFFFFF" android:offset="0.0" />
+                <item android:color="#FFB0B8C8" android:offset="0.5" />
+                <item android:color="#FF657085" android:offset="1.0" />
+            </gradient>
+        </aapt:attr>
+    </path>
+
+    <path
+        android:pathData="M465,790 L497,790 L497,838 L533,790 L568,790 L526,845 L570,920 L535,920 L497,855 L497,920 L465,920 Z">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:startX="465"
+                android:startY="790"
+                android:endX="570"
+                android:endY="920"
+                android:type="linear">
+                <item android:color="#FFFFFFFF" android:offset="0.0" />
+                <item android:color="#FFB0B8C8" android:offset="0.5" />
+                <item android:color="#FF657085" android:offset="1.0" />
+            </gradient>
+        </aapt:attr>
+    </path>
+
+    <!-- Metallic Shine Highlights on DK Text -->
+    <path
+        android:pathData="M340,790 L445,790 L435,802 L340,802 Z"
+        android:fillColor="#80FFFFFF" />
+    <path
+        android:pathData="M465,790 L568,790 L555,802 L465,802 Z"
+        android:fillColor="#80FFFFFF" />
+</vector>
