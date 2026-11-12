@@ -23,7 +23,7 @@ object DKLog {
 
     @Synchronized
     fun d(msg: String) {
-        Log.d("DK", msg)
+        try { Log.d("DK", msg) } catch (_: Throwable) {}
         val line = fmt.format(java.util.Date()) + " " + msg
         lines.addLast(line)
         // नवंबर 2026: DK Inspector के लिए फ़ाइल में भी (ऐप बंद होने पर भी बचे) - key/बातचीत छिपाकर, अलग thread पर
