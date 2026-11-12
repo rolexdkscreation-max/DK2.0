@@ -65,7 +65,7 @@ class FluidOrbView(c: Context) : DkaiAnimView(c) {
 
         // बाहर की चमक
         if (glow) {
-            val gr = R * (1.55f + lv * 0.25f)
+            val gr = min(R * (1.55f + lv * 0.25f), min(w, h) / 2f * 0.98f)      // view के किनारे से न कटे (कटी चमक = लकीरें)
             halo.shader = RadialGradient(cx, cy, gr, intArrayOf(0x7000E5FF, 0x40A855F7, 0x00A855F7), floatArrayOf(0.35f, 0.7f, 1f), Shader.TileMode.CLAMP)
             canvas.drawCircle(cx, cy, gr, halo)
         }
@@ -216,7 +216,7 @@ class AiBadgeView(c: Context) : DkaiAnimView(c) {
         val w = width.toFloat(); val h = height.toFloat(); val cx = w / 2f; val cy = h / 2f
         val r = min(w, h) / 2f * 0.62f
         val t = secs()
-        val gr = r * (1.6f + 0.06f * sin(t * 2f))
+        val gr = min(r * (1.6f + 0.06f * sin(t * 2f)), min(w, h) / 2f * 0.98f)
         glowP.shader = RadialGradient(cx, cy, gr, intArrayOf(0x6600E5FF, 0x33A855F7, 0x00A855F7), floatArrayOf(0.4f, 0.75f, 1f), Shader.TileMode.CLAMP)
         canvas.drawCircle(cx, cy, gr, glowP)
         fill.shader = RadialGradient(cx - r * 0.3f, cy - r * 0.3f, r * 1.4f, intArrayOf(0xFF1B2A4A.toInt(), DkaiTheme.CARD), null, Shader.TileMode.CLAMP)

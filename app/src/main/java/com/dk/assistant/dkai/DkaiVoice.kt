@@ -134,7 +134,7 @@ class DkaiVoice(private val s: DkaiScreen) {
         orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER; minimumHeight = d(44f); tag = m
         isClickable = true; isFocusable = true; contentDescription = m.label
         background = DkaiTheme.press(DkaiTheme.round(c, 0, 10f), DkaiTheme.round(c, 0xFFFFFFFF.toInt(), 10f))
-        addView(DkaiTheme.text(c, m.label, 13f, DkaiTheme.GRAY, DkaiTheme.SANS_MED).apply { maxLines = 1 })
+        addView(DkaiTheme.text(c, m.label, 13f, DkaiTheme.GRAY, DkaiTheme.SANS_MED).apply { maxLines = 1; gravity = Gravity.CENTER }, LinearLayout.LayoutParams(-2, -2))
         addView(View(c).apply { background = DkaiTheme.round(c, DkaiTheme.BLUE, 2f) }, LinearLayout.LayoutParams(d(26f), d(3f)).apply { topMargin = d(6f) })
         setOnClickListener { pickTab(m) }
     }

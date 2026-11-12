@@ -97,6 +97,7 @@ class DkaiScreen(val activity: ComponentActivity, private val host: DkaiHost) : 
         root.addView(content, FrameLayout.LayoutParams(-1, -1))
         buildHeader(); buildHome(); buildInput(); buildNav()
         voice = DkaiVoice(this)
+        pickMode(mode)                                          // कार्ड शुरू से अपने डिब्बे (#161E31 + पतली लकीर) में
         root.addView(voice.mini, voice.miniParams())
         root.addView(voice.sheet, FrameLayout.LayoutParams(-1, -1))
         c.addContentView(root, ViewGroup.LayoutParams(-1, -1))
@@ -160,7 +161,7 @@ class DkaiScreen(val activity: ComponentActivity, private val host: DkaiHost) : 
         homeCol.addView(DkaiTheme.text(c, "What would you like to build or explore?", 21f, DkaiTheme.WHITE, DkaiTheme.SANS_MED).apply {
             gravity = Gravity.CENTER; setLineSpacing(0f, 1.15f); setPadding(d(28f), d(14f), d(28f), d(18f))
         }, LinearLayout.LayoutParams(-1, -2))
-        cardRow = LinearLayout(c).apply { orientation = LinearLayout.HORIZONTAL; setPadding(d(16f), d(2f), d(8f), d(6f)) }
+        cardRow = LinearLayout(c).apply { orientation = LinearLayout.HORIZONTAL; setPadding(d(16f), d(2f), d(16f), d(6f)) }
         for (m in DkaiMode.CARDS) cardRow.addView(card(m))
         homeCol.addView(HorizontalScrollView(c).apply { isHorizontalScrollBarEnabled = false; isFillViewport = true; addView(cardRow) })
         chatList = LinearLayout(c).apply { orientation = LinearLayout.VERTICAL; setPadding(d(14f), d(14f), d(14f), 0) }
@@ -185,7 +186,9 @@ class DkaiScreen(val activity: ComponentActivity, private val host: DkaiHost) : 
             addView(glow, LinearLayout.LayoutParams(d(48f), d(48f)))
             addView(DkaiTheme.text(c, m.label, 13f, DkaiTheme.WHITE, DkaiTheme.SANS_MED).apply { setPadding(0, d(8f), 0, 0); gravity = Gravity.CENTER })
             setOnClickListener { pickMode(m) }
-            layoutParams = LinearLayout.LayoutParams(d(96f), -2).apply { rightMargin = d(10f) }
+            // चारों कार्ड एक लाइन में पूरे दिखें (छोटी स्क्रीन पर कम-से-कम 78dp - तब sideways scroll)
+            val cw = ((c.resources.displayMetrics.widthPixels - d(32f) - 3 * d(10f)) / 4).coerceAtLeast(d(78f))
+            layoutParams = LinearLayout.LayoutParams(cw, -2).apply { if (m != DkaiMode.CARDS.last()) rightMargin = d(10f) }
         }
     }
 
@@ -273,8 +276,8 @@ class DkaiScreen(val activity: ComponentActivity, private val host: DkaiHost) : 
             }
             val ic = ImageView(c).apply { setImageDrawable(DkaiIcon(kind, DkaiTheme.GRAY)) }
             col.addView(ic, LinearLayout.LayoutParams(d(21f), d(21f)))
-            val lb = DkaiTheme.text(c, t.label, 10.5f, DkaiTheme.GRAY, DkaiTheme.SANS_MED).apply { setPadding(0, d(4f), 0, 0); maxLines = 1 }
-            col.addView(lb)
+            val lb = DkaiTheme.text(c, t.label, 10.5f, DkaiTheme.GRAY, DkaiTheme.SANS_MED).apply { setPadding(0, d(4f), 0, 0); maxLines = 1; gravity = Gravity.CENTER }
+            col.addView(lb, LinearLayout.LayoutParams(-2, -2))
             navItems[t] = ic to lb
             nav.addView(col, LinearLayout.LayoutParams(0, -2, 1f))
         }

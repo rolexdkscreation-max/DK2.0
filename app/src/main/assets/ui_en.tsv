@@ -1328,3 +1328,111 @@ ZIP नहीं बन पाया, फिर से कोशिश करे
 गड़बड़ हुई, फिर से कोशिश करें	Something went wrong, please try again
 गैलरी नहीं खुली	Could not open the gallery
 चला नहीं पाया	Could not play it
+# नवंबर 2026: DKAI होम (Files / Editor / Terminal / Preview / GitHub / आवाज़)
+नया फ़ोल्डर	New folder
+ऊपर का फ़ोल्डर	Parent folder
+बदलाव गिन रहा हूँ…	Counting changes…
+कोई बदलाव नहीं	No changes
+फ़ाइल बदली	files changed
+यह फ़ोल्डर खाली है।	This folder is empty.
+ऊपर + से नई फ़ाइल बनाइए।	Create a new file with + above.
+चीज़ें	items
+के विकल्प	options
+Editor में खोलें	Open in Editor
+Preview में चलाएँ	Run in Preview
+Terminal में चलाएँ	Run in Terminal
+यहाँ Terminal खोलें	Open Terminal here
+नाम बदलें	Rename
+नया नाम	New name
+नाम नहीं बदला (गलत नाम या पहले से मौजूद)	Not renamed (invalid name or already exists)
+हटाएँ?	Delete?
+फ़ोल्डर और उसके अंदर का सब कुछ हमेशा के लिए हट जाएगा।	The folder and everything inside it will be deleted permanently.
+यह फ़ाइल हमेशा के लिए हट जाएगी।	This file will be deleted permanently.
+हटा नहीं पाया	Could not delete
+फ़ोल्डर का नाम	Folder name
+जैसे index.html	e.g. index.html
+नहीं बना (गलत नाम या पहले से मौजूद)	Not created (invalid name or already exists)
+पहले GitHub token जोड़ें (सेटिंग्स → कोडिंग एजेंट)	Add a GitHub token first (Settings → Coding agent)
+कोई बदलाव नहीं - भेजने को कुछ नहीं	No changes - nothing to push
+नई branch + PR बनाएँ?	Create a new branch + PR?
+GitHub पर भेज रहा हूँ…	Pushing to GitHub…
+✓ PR बन गया	✓ PR created
+नहीं भेज पाया:	Could not push:
+लाइन लपेटें	Wrap lines
+सेव हो गया	Saved
+कोई फ़ाइल खुली नहीं।	No file open.
+Files से फ़ाइल चुनिए या नई बनाइए।	Pick a file in Files or create a new one.
+Files खोलें	Open Files
+नहीं खुली	could not open
+में बदलाव सेव नहीं हुए	has unsaved changes
+सेव करें?	Save?
+सेव नहीं हुआ:	Not saved:
+लाइन लपेटना चालू	Line wrap on
+लाइन लपेटना बंद	Line wrap off
+पिछली कमांड	Previous command
+अगली कमांड	Next command
+command लिखें (help)	type a command (help)
+DKAI Terminal — ऐप का अपना Linux shell (Android sh/toybox).	DKAI Terminal — the app's own Linux shell (Android sh/toybox).
+फ़ोल्डर: Workspace. 'help' लिखें।	Folder: Workspace. Type 'help'.
+पहले वाली कमांड चल रही है - ■ से रोकें	The previous command is still running - stop it with ■
+यह फ़ोल्डर नहीं (या ऐप के फ़ोल्डर से बाहर)	not a folder (or outside the app folders)
+फ़ाइल नहीं मिली	file not found
+चल नहीं पाई:	could not run:
+ऐप का अपना shell (Android का sh + toybox): ls, cat, echo, mkdir, cp, mv, rm, grep, sed, find, wc, date…	The app's own shell (Android sh + toybox): ls, cat, echo, mkdir, cp, mv, rm, grep, sed, find, wc, date…
+cd <फ़ोल्डर>   - Workspace / App Studio / DK Computer के अंदर	cd <folder>   - inside Workspace / App Studio / DK Computer
+open <फ़ाइल>   - Editor में खोलें	open <file>   - open in Editor
+preview <फ़ाइल> - HTML को Preview में चलाएँ	preview <file> - run HTML in Preview
+clear         - स्क्रीन साफ़	clear         - clear the screen
+↑ ↓           - पिछली कमांड;  ■ = चलती कमांड रोकें	↑ ↓           - previous command;  ■ = stop the running command
+HTML फ़ाइल चुनें	Pick an HTML file
+फिर से चलाएँ	Run again
+कोई HTML फ़ाइल नहीं मिली - Files में index.html बनाइए	No HTML file found - create index.html in Files
+कौन-सी फ़ाइल चलाएँ?	Which file to run?
+WebView नहीं चला:	WebView failed:
+चलाने को कोई HTML नहीं चुनी।	No HTML picked to run.
+ऊपर फ़ोल्डर वाले बटन से फ़ाइल चुनें।	Pick a file with the folder button above.
+फ़ाइल चुनें	Pick file
+चल रहा है:	Running:
+रिपो फिर से लाएँ	Reload repos
+रिपो खोजें	Search repos
+GitHub से जोड़ने के लिए token चाहिए।	A token is needed to connect GitHub.
+सेटिंग्स → कोडिंग एजेंट में GitHub token डालिए।	Add a GitHub token in Settings → Coding agent.
+token जोड़ें	Add token
+GitHub से नहीं जुड़ पाया:	Could not connect to GitHub:
+फिर कोशिश	Retry
+WORKSPACE में	IN WORKSPACE
+फ़ोल्डर खोलें • बदलाव भेजें	Open folder • push changes
+आपके रिपो	Your repos
+कोई रिपो नहीं	No repos
+नहीं मिला	not found
+रिपो की text फ़ाइलें Workspace/	Bring the repo's text files into Workspace/
+में लाऊँ?	?
+ध्यान दें: पहले से लाया फ़ोल्डर नए से बदल जाएगा (बिना भेजे बदलाव हट जाएँगे)।	Note: an already imported folder will be replaced (unpushed changes will be lost).
+लाएँ	Import
+ला रहा हूँ…	importing…
+✓ ला दिया	✓ Imported
+फोटो/बड़ी फ़ाइलें छोड़ीं	photos/large files skipped
+नहीं ला पाया:	Could not import:
+नई चैट	New chat
+फोटो / फ़ाइल जोड़ें	Add photo / file
+AI मॉडल चुनें	Choose AI model
+माइक - आवाज़ से बात	Mic - talk by voice
+Builder: ऐप स्टूडियो में बन रहा है…	Builder: building in App Studio…
+नई चैट शुरू करें?	Start a new chat?
+स्क्रीन की बातचीत साफ़ होगी (DK की यादें वैसी ही रहेंगी)।	The on-screen chat will be cleared (DK's memories stay).
+और AI / मॉडल (सेटिंग्स)…	More AI / models (Settings)…
+सोच रहा हूँ…	Thinking…
+बोलने की गति	Speaking speed
+छोटा करें	Minimize
+बातचीत बंद करें	End conversation
+DK बातचीत - बड़ा करने के लिए टैप	DK conversation - tap to expand
+माइक म्यूट / चालू	Mic mute / unmute
+बड़ा करें	Expand
+DK लाइव जुड़ते ही स्क्रीन शेयर होगी — पहले माइक दबाइए	Screen sharing starts once DK Live connects — tap the mic first
+यह Gemini Live मॉडल तस्वीर नहीं लेता — सेटिंग्स में दूसरा मॉडल चुनें	This Gemini Live model can't take images — choose another model in Settings
+अभी JARVIS मोड चालू है, उसकी अपनी आवाज़ बोलेगी	JARVIS mode is on now, it speaks with its own voice
+अगले जवाब से	from the next reply
+हालत:	Status:
+फ़ाइल बहुत बड़ी है (1.5MB से ज़्यादा)	File is too large (over 1.5MB)
+यह text फ़ाइल नहीं (फोटो/बाइनरी) - Editor में नहीं खुलेगी	Not a text file (photo/binary) - it won't open in Editor
+यह फ़ोल्डर GitHub से नहीं लाया गया	This folder was not imported from GitHub
