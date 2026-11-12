@@ -205,7 +205,7 @@ class SevenTeam(
     /** हर एजेंट की AI कॉल: टीम के नियम (सावधानी, पूरा पढ़ना, पूरा समझाकर आगे देना) + फ़ोटो/वीडियो का विवरण; देखने वाले एजेंटों को असली फ़ोटो भी */
     private suspend fun aiAsk(a: Agent, system: String, msgs: List<Pair<String, String>>): String {
         val tb = teamBrief()
-        val sys = system + "\n\n" + (if (a == Agent.CODER) Seven.Prompts.RULES_CODER else Seven.Prompts.RULES) +
+        val sys = system + "\n\n" + (if (a == Agent.CODER && solo) "" else if (a == Agent.CODER) Seven.Prompts.RULES_CODER else Seven.Prompts.RULES) +
             (if (mediaNotes.isNotBlank()) "\n\nUSER'S PHOTOS / VIDEO - what the prompt engineer saw in them (the user attached them to this task):\n$mediaNotes" else "") +
             if (tb.isNotBlank()) "\n\n" + TeamMemory.HEADER + tb else ""
         val t0 = clock.start()
@@ -505,7 +505,15 @@ class SevenTeam(
             save { it.copy(phase = maxOf(it.phase, TeamProgress.CODED), steps = emptyList(), stepsDone = 0, failLog = "", failUrl = "") }
         }
         val coded = prog.phase >= TeamProgress.CODED
-        if (!coded) {
+        if (!coded && solo) {
+            // एक-दिमाग: पूरा काम एक ही एजेंट (खोज → पढ़ना → सारे बदलाव → जाँच), हाथ-बदली नहीं
+            ev(Agent.CODER, "एक ही एजेंट पूरा काम करेगा: पहले कोड खोजकर पढ़ेगा, फिर सारे बदलाव, फिर खुद जाँच")
+            val order = Solo.firstOrder(task, brief, spec, acceptance, notTouch, git != null, files.list().size,
+                try { map(ws()) } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (_: Exception) { "" })
+            if (!soloWork(order)) return finish(false, lastBlock)
+            if (!takeAdded()) return finish(false, lastBlock)
+            save { it.copy(phase = TeamProgress.CODED, steps = emptyList(), stepsDone = 0, failLog = "", failUrl = "") }
+        } else if (!coded) {
         val plan = if (bug) {
             ev(Agent.PLANNER, "पहले बग की जड़ ढूँढ रहा हूँ (कोड अभी नहीं बदलेगा)…")
             rootByPlanner = true
@@ -597,6 +605,13 @@ class SevenTeam(
                             miss.joinToString("; ").take(300) + stuckNote(miss.joinToString("; ")))
                         if (FixLoop.capped(qaRounds)) return finish(false, "टेस्टर (QA जाँच) के ${FixLoop.TEAM_CAP} सुधार-राउंड के बाद भी कमी बाकी: " +
                             miss.joinToString("; ").take(300) + stuckNote(miss.joinToString("; ")))
+                        if (solo) {
+                            ev(Agent.MANAGER, "टेस्टर (QA जाँच) ने कमी बताई — वही कोडर पूरा करेगा (राउंड $qaRounds)")
+                            if (!soloWork("QA CHECK: THE TASK IS NOT COMPLETE OR WRONG. Missing:\n" + miss.joinToString("\n") { "- $it" } +
+                                    (if (qaFix.isNotBlank()) "\nQA suggested: $qaFix" else "") + "\nFix all of it, CHECK, then DONE.", Solo.FIX_TURNS)) return finish(false, lastBlock)
+                            save { it.copy(phase = TeamProgress.CODED, steps = emptyList(), stepsDone = 0, failLog = "", failUrl = "") }
+                            continue
+                        }
                         ev(Agent.MANAGER, "टेस्टर (QA जाँच) ने कमी बताई — प्लानर से सुधार करवा रहा हूँ (राउंड $qaRounds)")
                         val fix = makePlan("QA FOUND THE TASK INCOMPLETE OR WRONG.\nMISSING:\n" + miss.joinToString("\n") { "- $it" } +
                             (if (qaFix.isNotBlank()) "\nQA SUGGESTED FIX: $qaFix" else ""), files.staged().keys.toList())
@@ -657,6 +672,17 @@ class SevenTeam(
             // नवंबर 2026 (तेज़): "Unresolved reference" किसी R.<type>.x का है जो रिपो में है ही नहीं = पक्की जड़ + मौजूद नाम (AI अंदाज़ा नहीं)
             val resNote = resourceNote(t.log)
             if (resNote.isNotBlank()) ev(Agent.DEBUGGER, resNote.take(600))
+            if (solo) {
+                // एक-दिमाग: गलती उसी कोडर को, उसी बातचीत में - उसे पता है उसने क्या बदला और क्या पहले आज़माया
+                soloFixes++
+                tried.add("सुधार $soloFixes: " + (errs.ifBlank { FixLoop.signature(t.log) }).lines().first().take(150))
+                ev(Agent.CODER, "✗ जाँच fail — वही कोडर असली गलती पढ़कर जड़ से ठीक कर रहा है (राउंड $soloFixes)")
+                val extra = (if (resNote.isNotBlank()) resNote + "\n" else "") + if (restored.isNotEmpty()) CodeGuard.damageNote(restored, "main") else ""
+                if (!soloWork(Solo.failOrder(soloFixes, errs, t.log.take(maxOf(20_000, big / 6)), t.url, extra, tried.dropLast(1), repeat), Solo.FIX_TURNS))
+                    return finish(false, lastBlock)
+                save { it.copy(phase = TeamProgress.CODED, steps = emptyList(), stepsDone = 0, failLog = "", failUrl = "") }
+                continue
+            }
             val d = debug("TEST/BUILD FAILED.\n" + triedNote + (if (resNote.isNotBlank()) resNote + "\n\n" else "") + (if (restored.isNotEmpty()) CodeGuard.damageNote(restored, "main") + "\n\n" else "") +
                 (if (errs.isNotBlank()) "EXACT ERROR LINES FROM THE LOG:\n$errs\n\n" else "") + "FULL LOG (important part):\n${t.log.take(maxOf(30_000, big / 4))}", repeat)
                 ?: fallbackDiag(t.log)
@@ -682,6 +708,159 @@ class SevenTeam(
     /** नवंबर 2026 (मालिक): काम चलते समय user ने इसी काम में कुछ और जोड़ा - टीम उसे भी करे (स्क्रीन यहाँ डालती है) */
     var inbox: FollowUp.Inbox? = null
 
+    /**
+     * नवंबर 2026 (मालिक: "एक ही एजेंट सब काम कर लेगा... पूरा फिनिश करके ही दे"): true = प्लानर → कोडर → रिव्यूअर → डिबगर
+     * की हाथ-बदली की जगह एक ही एजेंट ([Solo]) पूरी बातचीत याद रखकर खोजता, पढ़ता, बदलता, जाँचता है. पक्की जाँचें, टेस्टर
+     * (CI), QA, गिट (branch/PR) और रिपोर्ट वही रहते हैं. false = पुराना 7 एजेंट क्रम जैसा का तैसा.
+     */
+    var solo = false
+    /** एक-दिमाग वाले कोडर की पूरी बातचीत - हर राउंड (पहला काम, CI fail, QA कमी, नई बात) इसी में जुड़ता है */
+    private val soloMsgs = mutableListOf<Pair<String, String>>()
+    private var soloFixes = 0
+
+    /**
+     * एक-दिमाग वाला कोडर: order बातचीत में जोड़कर AI से कमांड लो, लागू करो, नतीजा वापस - DONE + पक्की जाँच साफ़ होने तक.
+     * @return true = बदलाव तैयार (जाँच साफ़), false = नहीं हुआ (वजह [lastBlock] में)
+     */
+    private suspend fun soloWork(order: String, turns: Int = Solo.MAX_TURNS): Boolean {
+        soloMsgs.add("user" to order)
+        val formatErrs = mutableListOf<String>()
+        val checkErrs = mutableListOf<String>()
+        for (turn in 1..turns) {
+            compactOld(soloMsgs)
+            val reply = try { aiAsk(Agent.CODER, Solo.SYSTEM, soloMsgs) } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (e: Exception) {
+                lastBlock = "AI से जवाब नहीं मिला: " + (e.message ?: e.javaClass.simpleName).take(200); return false
+            }
+            soloMsgs.add("model" to reply)
+            val acts = Solo.parse(reply)
+            if (acts.isEmpty()) {
+                formatErrs.add("no-command")
+                if (FixLoop.stuck(formatErrs)) { lastBlock = "AI ने ${FixLoop.TEAM_SAME_LIMIT} बार लगातार काम की कोई कमांड नहीं भेजी"; return false }
+                soloMsgs.add("user" to Solo.NO_ACTION); continue
+            }
+            formatErrs.clear()
+            val out = StringBuilder()
+            val did = mutableListOf<String>()
+            var done: Solo.Act.Done? = null
+            for (a in acts) {
+                when (a) {
+                    is Solo.Act.Read -> {
+                        val c = files.read(a.path)
+                        if (c == null) out.append("----- ${a.path} NOT FOUND -----\n")
+                        else { out.append(Solo.numbered(a.path, c, a.from, a.to, fileChars)).append('\n'); readSolo.add(a.path) }
+                        did.add("📖 " + a.path.substringAfterLast('/') + (if (a.from != null) ":${a.from}-${a.to}" else ""))
+                    }
+                    is Solo.Act.Grep -> {
+                        val hits = Solo.grep(ws(), a.pattern, a.under)
+                        out.append("=== SEARCH ${a.pattern}${if (a.under.isNotEmpty()) " IN ${a.under}" else ""} (${hits.size}${if (hits.size >= Solo.GREP_MAX) "+, narrow it" else ""}) ===\n")
+                            .append(hits.joinToString("\n").ifBlank { "(nothing found)" }).append('\n')
+                        did.add("🔎 " + a.pattern.take(40))
+                    }
+                    is Solo.Act.ListFiles -> {
+                        val all = files.list().filter { a.prefix.isEmpty() || it.startsWith(a.prefix) }
+                        out.append("=== FILES ${a.prefix.ifEmpty { "(all)" }} (${all.size}) ===\n").append(all.take(Solo.LIST_MAX).joinToString("\n"))
+                            .append(if (all.size > Solo.LIST_MAX) "\n(… ${all.size - Solo.LIST_MAX} more - use a longer prefix)" else "").append('\n')
+                        did.add("📂 " + a.prefix.ifEmpty { "सब फ़ाइलें" })
+                    }
+                    is Solo.Act.Edit, is Solo.Act.Write, is Solo.Act.Delete -> {
+                        val path = when (a) { is Solo.Act.Edit -> a.path; is Solo.Act.Write -> a.path; else -> (a as Solo.Act.Delete).path }
+                        val r = soloChange(a, path)
+                        out.append(r).append('\n')
+                        did.add((if (r.startsWith("OK")) "✏ " else "✗ ") + path.substringAfterLast('/'))
+                    }
+                    is Solo.Act.Check -> {
+                        val probs = soloProblems()
+                        out.append(if (probs.isEmpty()) "CHECK: clean ✓ (${files.staged().size} files changed)\n" else "CHECK FOUND PROBLEMS - fix them:\n" + probs.joinToString("\n") { "- $it" } + "\n")
+                        did.add(if (probs.isEmpty()) "✓ जाँच साफ़" else "⚠ जाँच: ${probs.size} कमी")
+                    }
+                    is Solo.Act.Bad -> out.append("FORMAT PROBLEM: ${a.why}\n")
+                    is Solo.Act.Ask -> {
+                        lastBlock = "कोडर को आपसे एक बात जाननी है: " + a.question.take(400)
+                        ev(Agent.CODER, "❓ " + a.question.take(400))
+                        return false
+                    }
+                    is Solo.Act.Done -> done = a
+                }
+            }
+            if (did.isNotEmpty()) ev(Agent.CODER, did.take(12).joinToString(" • ") + if (did.size > 12) " • +${did.size - 12}" else "")
+            val d = done
+            if (d != null) {
+                val probs = soloProblems().toMutableList()
+                if (files.staged().isEmpty()) probs.add("NOTHING CHANGED: no file was changed yet - the task needs real code changes")
+                if (probs.isEmpty()) {
+                    val title = d.title.ifBlank { task.lines().first().take(70) }.take(90)
+                    commitMsg = ("DK: " + title).take(100) to title
+                    files.staged().keys.forEach { p -> if (p !in changes) changes[p] = title }
+                    if (d.summary.isNotBlank()) { soloSummary = d.summary; memory.found("Coder finished: ${d.summary.take(300)}") }
+                    ev(Agent.CODER, "✓ बदलाव पूरे — ${files.staged().size} फ़ाइलें" + if (d.summary.isNotBlank()) "\n" + d.summary.take(600) else "")
+                    return true
+                }
+                checkErrs.add(probs.joinToString(" | ").take(400))
+                if (FixLoop.stuck(checkErrs) || FixLoop.capped(checkErrs.size)) {
+                    lastBlock = "पक्की जाँच की कमी ठीक नहीं हुई: " + probs.joinToString("; ").take(300); return false
+                }
+                ev(Agent.CODER, "⚠ DONE से पहले पक्की जाँच ने ${probs.size} कमी पकड़ी — ठीक कर रहा हूँ")
+                out.append("NOT DONE - the strict check found problems. Fix ALL of them, CHECK, then DONE again:\n").append(probs.joinToString("\n") { "- $it" }).append('\n')
+            }
+            val left = turns - turn
+            soloMsgs.add("user" to out.toString().trim().ifBlank { "(no output)" } + if (left <= Solo.WARN_LEFT) Solo.turnsLeft(left) else "")
+        }
+        lastBlock = "कोडर $turns जवाबों में काम पूरा नहीं कर पाया" + if (files.staged().isNotEmpty()) " (${files.staged().size} फ़ाइलें बदलीं, पर DONE नहीं हुआ)" else ""
+        return false
+    }
+
+    /** इस काम में कोडर ने कौन-सी फ़ाइलें पढ़ीं - बिना पढ़े मौजूदा फ़ाइल पूरी दोबारा नहीं लिखनी */
+    private val readSolo = mutableSetOf<String>()
+    private var soloSummary = ""
+
+    /** एक बदलाव लागू करो (सुरक्षित फ़ाइल / binary / बिना पढ़े पूरी फ़ाइल = मना). @return नतीजा AI के लिए ("OK …" या वजह) */
+    private suspend fun soloChange(a: Solo.Act, path: String): String {
+        if (!SafePr.askedFor(task, path) && SafePr.isProtected(path)) return "REFUSED $path: protected file (AGENTS.md) - the task did not ask for it"
+        if (a !is Solo.Act.Delete && BinaryGuard.isBinary(path)) return "REFUSED $path: binary files (png/webp/jpg/mp3/font…) cannot be written as text. Use a vector drawable / shape XML in res/drawable or draw it in code."
+        val cur = files.read(path)
+        return when (a) {
+            is Solo.Act.Delete -> {
+                if (cur == null) "OK $path already does not exist"
+                else { files.stage(path, null); changes[path] = "हटाई"; "OK deleted $path" }
+            }
+            is Solo.Act.Write -> {
+                if (cur != null && path !in readSolo && cur.length > 4_000) "REFUSED $path: it already exists and you did not READ it - READ it, then use FIND/REPLACE"
+                else {
+                    val bad = Syntax.check(path, a.content)
+                    files.stage(path, a.content)
+                    (if (cur == null) "OK created $path" else "OK rewrote $path") + " (${a.content.lines().size} lines)" + if (bad != null) " - WARNING: $bad" else ""
+                }
+            }
+            is Solo.Act.Edit -> {
+                if (cur == null) "FAILED $path: file does not exist (to create it use FILE: + <<<FILE)"
+                else {
+                    val r = Solo.apply(cur, a.pairs)
+                    val now = r.content
+                    if (now == null) "FAILED $path (nothing applied):\n" + r.errors.joinToString("\n") { "  - $it" }
+                    else if (now == cur) "OK $path (no difference - the REPLACE was the same as FIND)"
+                    else {
+                        files.stage(path, now)
+                        val bad = Syntax.check(path, now)
+                        "OK edited $path (${a.pairs.size} change${if (a.pairs.size > 1) "s" else ""})" + if (bad != null) " - WARNING: $bad" else ""
+                    }
+                }
+            }
+            else -> "?"
+        }
+    }
+
+    /** पक्की जाँच + नाम-जाँच (नया code जो नाम बुलाता है वह सच में है?) - सिर्फ़ इस काम की बदली फ़ाइलें */
+    private suspend fun soloProblems(): List<String> {
+        val staged = files.staged()
+        if (staged.isEmpty()) return emptyList()
+        val out = staticCheck(staged).toMutableList()
+        for ((p, c) in staged) {
+            if (c == null || !(p.endsWith(".kt") || p.endsWith(".java"))) continue
+            names(p, files.original(p), c).filter { it.sure }.take(8).forEach { out.add("$p: NAME DOES NOT EXIST - " + it.english()) }
+        }
+        return out
+    }
+
     /** जोड़ी गई बातें उठाकर उनका छोटा प्लान + कोड. false = कोड बदलना fail */
     private suspend fun takeAdded(): Boolean {
         val add = inbox?.drain().orEmpty()
@@ -692,6 +871,8 @@ class SevenTeam(
         task = task + "\n\n" + FollowUp.forAi(add)
         qaOk = false
         ev(Agent.MANAGER, "📩 आपकी नई बात मिली — इसी काम में जोड़ रहा हूँ:\n" + add.joinToString("\n") { "• $it" })
+        if (solo) return soloWork("THE USER ADDED THIS TO THE SAME TASK while you were working - do it too, keep everything already done:\n" +
+            add.joinToString("\n") { "- $it" } + "\nThen CHECK and DONE.", Solo.FIX_TURNS)
         val p = makePlan("USER ADDED TO THE SAME TASK WHILE THE TEAM WAS WORKING - do ONLY this addition now, keep everything already done:\n" +
             add.joinToString("\n") { "- $it" } + "\nORIGINAL TASK: $task\nALREADY CHANGED: " + changes.keys.joinToString(), changes.keys.toList())
         if (p == null) { ev(Agent.MANAGER, "⚠ नई बात का प्लान नहीं बना ($lastBlock) — रिपोर्ट में लिखा"); return true }
@@ -1208,24 +1389,13 @@ class SevenTeam(
     private suspend fun test(rootCause: String): TeamTest {
         ev(Agent.TESTER, "टेस्ट चला रहा हूँ…")
         val staged = files.staged()
-        // पहले पक्की जाँच: हर बदली फ़ाइल की syntax + पुराने tests हटे/कमज़ोर तो नहीं
-        val stat = mutableListOf<String>()
-        staged.forEach { (p, c) -> if (c != null) Syntax.check(p, c)?.let { stat.add("$p: $it") } }
-        val orig = staged.keys.associateWith { files.original(it) }
-        stat.addAll(SafePr.testGuard(staged, orig, SafePr.removesOldFeature(task)))
-        // नवंबर 2026: पुराने test का assertion बदलना / test fail होने पर सीमा ढीली करना (PR #249) = रोक, code ठीक करो
-        stat.addAll(SafePr.oldAssertsChanged(staged, orig, SafePr.removesOldFeature(task)))
-        failBase?.let { stat.addAll(SafePr.goalposts(it, staged, task)) }
+        val stat = staticCheck(staged).toMutableList()
         // नवंबर 2026 (तेज़, feature/dk-1112-1236): सुधार ने गलती वाली लाइनें छुई ही नहीं (सिर्फ़ comment/दूसरी लाइनें) = push + CI का
         // 6-10 मिनट वाला राउंड नहीं; उसी असली गलती के साथ सीधे डिबगर को
         if (fast) failBase?.let { fb -> if (failLogCi.isNotBlank()) FixAim.missed(failLogCi, fb, staged)?.let { m ->
             stat.add(m)
             errorLines(failLogCi).takeIf { it.isNotBlank() }?.let { stat.add("EXACT ERROR LINES (previous build):\n$it") }
         } }
-        // audit K2: आख़िरी पहरा - कोई सुरक्षित फ़ाइल किसी भी रास्ते से बदली हो (और माँगी न गई हो) तो push नहीं
-        SafePr.blockedIn(staged.keys, task).forEach { stat.add("$it: PROTECTED FILE changed but the task did not ask for it — revert this file (AGENTS.md)") }
-        stat.addAll(uiTextCheck(staged))
-        stat.addAll(prAudit(staged))
         if (stat.isNotEmpty()) return TeamTest(false, "STATIC CHECK FAILED:\n" + stat.joinToString("\n"))
         if (staged.isEmpty()) return TeamTest(false, "NOTHING CHANGED: no file was changed for the task")
         val g = git
@@ -1250,6 +1420,26 @@ class SevenTeam(
             return r
         }
         return dryRun(staged, "syntax जाँच + ड्राई-रन (फ़ोन पर build नहीं चलता)")
+    }
+
+    /**
+     * push से पहले की पक्की जाँच (AI के बिना): syntax, पुराने tests हटे/कमज़ोर नहीं, सुरक्षित फ़ाइलें, UI text, गायब resource/view.
+     * टेस्टर ([test]) और एक-दिमाग वाले कोडर की CHECK/DONE ([soloWork]) - दोनों यही इस्तेमाल करते हैं.
+     */
+    private suspend fun staticCheck(staged: Map<String, String?>): List<String> {
+        val stat = mutableListOf<String>()
+        // पहले पक्की जाँच: हर बदली फ़ाइल की syntax + पुराने tests हटे/कमज़ोर तो नहीं
+        staged.forEach { (p, c) -> if (c != null) Syntax.check(p, c)?.let { stat.add("$p: $it") } }
+        val orig = staged.keys.associateWith { files.original(it) }
+        stat.addAll(SafePr.testGuard(staged, orig, SafePr.removesOldFeature(task)))
+        // नवंबर 2026: पुराने test का assertion बदलना / test fail होने पर सीमा ढीली करना (PR #249) = रोक, code ठीक करो
+        stat.addAll(SafePr.oldAssertsChanged(staged, orig, SafePr.removesOldFeature(task)))
+        failBase?.let { stat.addAll(SafePr.goalposts(it, staged, task)) }
+        // audit K2: आख़िरी पहरा - कोई सुरक्षित फ़ाइल किसी भी रास्ते से बदली हो (और माँगी न गई हो) तो push नहीं
+        SafePr.blockedIn(staged.keys, task).forEach { stat.add("$it: PROTECTED FILE changed but the task did not ask for it — revert this file (AGENTS.md)") }
+        stat.addAll(uiTextCheck(staged))
+        stat.addAll(prAudit(staged))
+        return stat
     }
 
     /** फ़ोन पर build नहीं चलता: पक्की जाँच (हो चुकी) + टेस्टर का कोड को मन में चलाकर देखना */
@@ -1507,6 +1697,7 @@ class SevenTeam(
             if (testOk == true && git != null) rep += "\n\n🚀 डिप्लॉयमेंट (गिट/रिलीज़): \"हाँ, merge करो\" / \"Merge करें\" कहने पर ही — PR दोबारा जाँच → merge → APK build → " +
                 "release में APK सच में है, यह पक्का करके version बताऊँगा। आपकी हाँ के बिना कुछ merge या release नहीं होगा।"
         }
+        if (solo && soloSummary.isNotBlank()) rep += "\n\n🧠 कोडर ने क्या किया:\n" + soloSummary.take(1_200)
         if (testOk != true && problem.isNotBlank()) rep += "\n\n• रुकने की वजह: $problem" +
             if (mode == Seven.Mode.GITHUB) "\n• main अछूता है${if (backup.isNotBlank()) ", backup: $backup" else ""}। आगे क्या करूँ, बताइए।" else ""
         // यूज़र को सिर्फ़ छोटी रिपोर्ट: हुआ/नहीं, API चली/नहीं, वजह, हल. पूरी रिपोर्ट (ऊपर) डिबग लॉग के लिए
