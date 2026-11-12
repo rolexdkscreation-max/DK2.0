@@ -86,11 +86,16 @@ class DKNotifListener : NotificationListenerService() {
     override fun onListenerDisconnected() { if (instance === this) instance = null }
     override fun onDestroy() { if (instance === this) instance = null; super.onDestroy() }
 
-    override fun onNotificationPosted(sbn: StatusBarNotification?) { sbn?.let { take(it, push = true) } }
+    override fun onNotificationPosted(sbn: StatusBarNotification?) {
+        sbn?.let { take(it, push = true) }
+        // 12 नवंबर 2026: प्राइवेसी स्क्रीन - चुने ऐप का notification popup नहीं (पढ़ना / ऑटो रिप्लाई ऊपर पहले ही हो चुका)
+        sbn?.let { try { PrivacyScreen.onPosted(this, it) } catch (e: Exception) { DKLog.d("प्राइवेसी: ${e.message}") } }
+    }
 
     override fun onNotificationRemoved(sbn: StatusBarNotification?) {
         // हटाया गया notification: reply action बेकार; पर याद रखो (user पूछ सकता है "क्या आया था")
-        sbn?.key?.let { replyActions.remove(it); AppCall.removed(it) }
+        // प्राइवेसी स्क्रीन ने खुद छिपाया = reply वाला बटन याद रहे (ऑटो रिप्लाई / "इसको रिप्लाई कर दो" चलता रहे)
+        sbn?.key?.let { if (!PrivacyScreen.hidByUs(it)) replyActions.remove(it); AppCall.removed(it) }
     }
 
     private fun take(sbn: StatusBarNotification, push: Boolean) {

@@ -133,11 +133,11 @@ class SettingsActivity : AppCompatActivity() {
             "brain_pc" -> { title.text = "AI दिमाग • DK कंप्यूटर"; secBrainScope(ApiScopes.PC) }
             "brain_web" -> { title.text = "AI दिमाग • वेबसाइट बिल्डर"; secBrainWeb() }
             "voice" -> { title.text = "आवाज़"; secVoice() }
-            "orb" -> { title.text = "ओर्ब और चेहरा"; secOrb() }
+            "orb" -> { title.text = "ओर्ब और चेहरा"; secOrb(); secIsland() }
             "ui" -> { title.text = "दिखावट"; secUi() }
             "access" -> { title.text = "Accessibility"; secAccess(); secPayGuard() }
             "phonelock" -> { title.text = "फ़ोन लॉक / अनलॉक"; secPhoneLock(); secVoiceCmds() }
-            "guard" -> { title.text = "स्क्रीन गार्ड"; secGuard() }
+            "guard" -> { title.text = "स्क्रीन गार्ड"; secGuard(); secPrivacy() }
             "perms" -> { title.text = "परमिशन"; secPerms() }
             "update" -> { title.text = "अपडेट"; secUpdate() }
             "debug" -> { title.text = "डिबग लॉग"; secDebug() }
