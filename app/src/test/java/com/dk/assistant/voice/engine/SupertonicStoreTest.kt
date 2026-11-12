@@ -66,8 +66,11 @@ class SupertonicStoreTest {
             assertFalse(n, File(dir, "voice/engine/$n.kt").exists())
         assertFalse(File(dir, "SettingsPiper.kt").exists())
         val store = src("voice/engine/SupertonicStore.kt"); val dl = src("voice/engine/SupertonicDownload.kt"); val e = src("voice/engine/SupertonicTtsEngine.kt")
+        // सिर्फ़ कोड (टिप्पणी में "Piper हटाया" वाला इतिहास ठीक है)
+        fun code(s: String) = s.lines().map { it.trim() }.filterNot { it.startsWith("//") || it.startsWith("*") || it.startsWith("/*") }
+            .joinToString("\n") { it.substringBefore(" // ") }
         for (bad in listOf("espeak-ng-data", "vits-piper", "OfflineTtsVitsModelConfig", "tokens.txt", "priyamvada"))
-            for ((n, s) in listOf("store" to store, "download" to dl, "engine" to e)) assertFalse("$n: $bad", s.contains(bad))
+            for ((n, s) in listOf("store" to store, "download" to dl, "engine" to e)) assertFalse("$n: $bad", code(s).contains(bad))
         assertTrue(e.contains("supertonic = OfflineTtsSupertonicModelConfig("))
         // पहले से उतरा Supertonic मॉडल नई जगह (दोबारा डाउनलोड नहीं), बाकी Piper फ़ाइलें मिटें
         assertTrue(store.contains("oldModel.renameTo(modelDir(app))"))
