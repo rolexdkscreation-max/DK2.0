@@ -129,17 +129,55 @@ class VoiceEnginesTest {
     @Test fun oldOfflineTtsFullyRemoved() {
         assertEquals("supertonic_hi", VoiceEngines.OLD_SUPERTONIC_ID)
         assertEquals(null, VoiceEngines.byId(VoiceEngines.OLD_SUPERTONIC_ID))
+        assertEquals(VoiceEngines.LIVE_NATIVE, VoiceEngines.directMigrated(VoiceEngines.OLD_SUPERTONIC_ID, true))
         for (n in listOf("supertonic", "piper", "piper.gone.1731400000000", "supertonic.part")) assertTrue(n, VoiceEngines.isOldOffline(n))
         // नया TTS अलग फ़ोल्डर में रहे तो उसे न मिटाए; आवाज़-पहचान का मॉडल भी नहीं
         for (n in listOf("supertonic3", "voice", "wallpaper", "files")) assertFalse(n, VoiceEngines.isOldOffline(n))
         val root = listOf(java.io.File("src/main/java"), java.io.File("app/src/main/java")).first { it.exists() }
-        for (f in listOf("com/dk/assistant/voice/engine/SupertonicTtsEngine.kt", "com/dk/assistant/voice/engine/SupertonicStore.kt",
-            "com/dk/assistant/voice/engine/SupertonicDownload.kt", "com/dk/assistant/voice/engine/HumanVoice.kt",
-            "com/dk/assistant/SettingsSupertonic.kt", "com/k2fsa/sherpa/onnx/Tts.kt"))
+        for (f in listOf("com/dk/assistant/voice/engine/HumanVoice.kt", "com/dk/assistant/voice/engine/SupertonicFx.kt"))
             assertFalse(f, java.io.File(root, f).exists())
         val code = root.walkTopDown().filter { it.isFile && it.name.endsWith(".kt") }
             .joinToString("\n") { f -> f.readLines().filterNot { it.trimStart().let { t -> t.startsWith("//") || t.startsWith("*") || t.startsWith("/*") } }.joinToString("\n") }
-        for (bad in listOf("SupertonicTtsEngine", "SupertonicStore", "PiperTtsEngine", "PiperStore", "com.k2fsa.sherpa.onnx.OfflineTts", "HumanVoice"))
+        for (bad in listOf("PiperTtsEngine", "PiperStore", "HumanVoice", "SupertonicFx", "SupertonicStore.on(", "SupertonicStore.reverb"))
             assertFalse(bad, code.contains(bad))
+    }
+
+    /** नवंबर 2026: नया Supertonic 3 - बिल्कुल नई पहचान (पुराने की कोई चीज़ नहीं), पुराने wipe से सुरक्षित */
+    @Test fun freshSupertonicHasNewIdentity() {
+        assertEquals("supertonic3_hi", SupertonicTtsEngine.ID)
+        assertTrue(SupertonicTtsEngine.ID != VoiceEngines.OLD_SUPERTONIC_ID)
+        assertFalse(SupertonicStore.PREFS in VoiceEngines.OLD_PREFS)
+        assertFalse(VoiceEngines.isOldOffline(SupertonicStore.DIR))
+        assertEquals(SupertonicTtsEngine, VoiceEngines.byId(SupertonicTtsEngine.ID))
+        assertFalse(SupertonicTtsEngine.defaultOn)
+        assertTrue(SupertonicTtsEngine.split && SupertonicTtsEngine.liveOnTrouble && SupertonicTtsEngine.ownCard && SupertonicTtsEngine.ownTune)
+        // DK लाइव / Gemini TTS पर इनमें से कुछ नहीं
+        for (id in listOf(VoiceEngines.LIVE_NATIVE, VoiceEngines.GEMINI_TTS)) {
+            val e = VoiceEngines.byId(id)!!
+            assertFalse(id, e.liveOnTrouble || e.ownCard || e.ownTune)
+        }
+        // डिफ़ॉल्ट अब भी DK लाइव
+        assertEquals(VoiceEngines.LIVE_NATIVE, VoiceEngines.all.firstOrNull { it.defaultOn }?.id)
+    }
+
+    /** मालिक: "खराबी हो तो Gemini TTS नहीं, सीधे Gemini Live की आवाज़" */
+    @Test fun supertonicTroubleGoesToLiveNeverGeminiTts() {
+        val st = SupertonicTtsEngine.ID
+        assertEquals(st, VoiceEngines.troublePick(st, true, notReady = false, failed = false))
+        assertEquals(VoiceEngines.LIVE_NATIVE, VoiceEngines.troublePick(st, true, notReady = true, failed = false))
+        assertEquals(VoiceEngines.LIVE_NATIVE, VoiceEngines.troublePick(st, true, notReady = false, failed = true))
+        // बाकी इंजन पर कोई असर नहीं
+        assertEquals(VoiceEngines.GEMINI_TTS, VoiceEngines.troublePick(VoiceEngines.GEMINI_TTS, false, notReady = true, failed = true))
+    }
+
+    /** एक समय में एक: Supertonic चुना = बाकी बंद; बंद दबाने से अपने-आप दूसरा नहीं */
+    @Test fun exclusiveChooseWithSupertonic() {
+        val all = VoiceModeController.available()
+        assertTrue(SupertonicTtsEngine.ID in all)
+        val st = SupertonicTtsEngine.ID; val l = VoiceEngines.LIVE_NATIVE; val g = VoiceEngines.GEMINI_TTS
+        assertEquals(st, VoiceModeController.choose(l, st, true, all))
+        assertEquals(st, VoiceModeController.choose(st, st, false, all))
+        assertEquals(l, VoiceModeController.choose(st, l, true, all))
+        assertEquals(g, VoiceModeController.choose(st, g, true, all))
     }
 }

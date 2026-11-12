@@ -67,6 +67,22 @@ object VoiceTune {
      * इस track पर अभी की गति/पिच लगाओ (बदली हो तभी). लौटाता है: लगा version (track के साथ रखो).
      * कुछ फ़ोन पर PlaybackParams न चले -> वैसे ही बजता रहे (टूटे नहीं).
      */
+    /**
+     * नवंबर 2026: जिस इंजन की अपनी स्पीड/पिच है ([VoiceEngine.ownTune], जैसे Supertonic 3) उसके टुकड़ों पर यह आम
+     * गति/पिच दोबारा नहीं लगती (नहीं तो दो बार - आवाज़ बिगड़े). track पर 1x / 1x, version = [NEUTRAL_VER].
+     */
+    const val NEUTRAL_VER = -2
+
+    /** pure (JVM test): इस टुकड़े के बजने का समय किस गति से नापें */
+    fun speedFor(neutral: Boolean): Int = if (neutral) NORMAL else speedPct
+
+    fun applyFor(t: AudioTrack, appliedVer: Int, neutral: Boolean): Int {
+        if (!neutral) return apply(t, appliedVer)
+        if (appliedVer == NEUTRAL_VER) return NEUTRAL_VER
+        try { t.playbackParams = PlaybackParams().allowDefaults().setSpeed(1f).setPitch(1f) } catch (_: Exception) {}
+        return NEUTRAL_VER
+    }
+
     fun apply(t: AudioTrack, appliedVer: Int): Int {
         val v = version
         if (v == appliedVer) return v

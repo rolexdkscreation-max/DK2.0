@@ -150,6 +150,11 @@ internal fun SettingsActivity.secVoice() {
             .let { if (it.startsWith("आवाज़:")) "आख़िरी बार बोला — " + it.removePrefix("आवाज़: ") else it })
     }
 
+    // नवंबर 2026 (मालिक): Supertonic 3 नए सिरे से (पहला पूरा हटाया) - डिफ़ॉल्ट बंद. सारा code SettingsSupertonic.kt में
+    card("Supertonic 3 आवाज़", "हिंदी, 5 नेचुरल महिला आवाज़ें, बिना इंटरनेट — डिफ़ॉल्ट बंद, मॉडल इंटरनेट से डाउनलोड करके चालू करें") { box ->
+        supertonicCard(box)
+    }
+
 
     // ---- Listening
     card("सुनना (माइक)", "लगातार सुनना — बिना बीप की आवाज़") { box ->
