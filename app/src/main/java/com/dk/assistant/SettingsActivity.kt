@@ -246,7 +246,7 @@ class SettingsActivity : AppCompatActivity() {
         card("तुरंत सेटअप — कोई भी फ्री key डालें", "DK खुद पहचानेगा कि key किस कंपनी की है, उसके फ्री मॉडल जाँचकर सबसे तेज़ चुनेगा और बात शुरू कर देगा") { box ->
             val edText = field(box, "API key", "", "Gemini / Groq / OpenRouter — कोई भी", secret = true)
             val res1 = TextView(this).apply { setTextColor(0xB3FFFFFF.toInt()); textSize = 13f; setPadding((4 * dp).toInt(), (6 * dp).toInt(), 0, 0) }
-            val cur = Prefs.activeProviderRaw(this).let { id -> if (Prefs.keyRaw(this, id).isNotBlank()) "अभी: ${KeySetup.name(id)} • ${Prefs.model(this, id)}" else "अभी कोई key नहीं" }
+            val cur = Prefs.activeProviderRaw(this).let { id -> if (Prefs.keyRaw(this, id).isNotBlank()) "अभी: ${KeySetup.name(id)} ✓ key लगी है" else "अभी कोई key नहीं" }
             res1.text = cur
             row(box, button("जोड़ें और सबसे तेज़ चुनें") {
                 val k = edText.text.toString().trim()
@@ -343,7 +343,7 @@ class SettingsActivity : AppCompatActivity() {
                 kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { try { HD.prepareAcks(this@SettingsActivity) } catch (_: Exception) {} }
                 done()
             } catch (e: kotlinx.coroutines.CancellationException) { throw e
-            } catch (e: Exception) { tv.text = UiLang.s("गड़बड़ हुई") + " (${e.javaClass.simpleName})" }
+            } catch (e: Exception) { DKLog.d("Hey DK सिखाना: ${e.javaClass.simpleName} ${e.message?.take(160)}"); tv.text = UiLang.s("गड़बड़ हुई, फिर से कोशिश करें") }
         }
         dlg.setOnDismissListener { ownerJob?.cancel() }
     }

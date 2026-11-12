@@ -326,7 +326,7 @@ class ComputerActivity : AppCompatActivity() {
                         1 -> ComputerTools.share(this, f)
                         else -> { f.delete(); toast("हटा दी") }
                     }
-                } catch (e: Exception) { toast("नहीं खुली: ${e.message?.take(80)}") }
+                } catch (e: Exception) { DKLog.d("Computer: फ़ाइल नहीं खुली ${e.javaClass.simpleName}: ${e.message?.take(160)}"); toast("फ़ाइल नहीं खुली") }
             }.show()
     }
 

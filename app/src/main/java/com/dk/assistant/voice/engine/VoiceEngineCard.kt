@@ -60,7 +60,8 @@ class VoiceEngineCard private constructor(private val a: Activity, private val d
         box.addView(sw, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
         switches[e.id] = sw
         small(box, e.note, 0x99FFFFFF.toInt())
-        latency[e.id] = small(box, VoiceEngines.latencyLine(a, e.id), 0xFF8FD3FF.toInt())
+        // नवंबर 2026 (मालिक: "बैक एंड वाली चीज़ फ्रंटेंड में नहीं"): देरी का नाप पीछे चलता रहे, कार्ड पर न दिखे
+        latency[e.id] = small(box, VoiceEngines.latencyLine(a, e.id), 0xFF8FD3FF.toInt()).apply { visibility = View.GONE }
         status[e.id] = small(box, "", 0xCCFFFFFF.toInt()).apply { visibility = View.GONE }
         e.notReady(a)?.let { small(box, "अभी नहीं चलेगा: $it", 0xFFFFC46B.toInt()) }
         // आवाज़ें: हर एक के आगे ▶ सुनो

@@ -89,7 +89,7 @@ internal fun SettingsActivity.playVoiceCmd(cmd: Cmd) {
         mp.prepare(); mp.start()
         voiceCmdPlayer = mp
         toast("\"${cmd.hi}\" की रिकॉर्डिंग चल रही है (रोकने को फिर \"सुनें\")")
-    } catch (e: Exception) { stopVoiceCmdPlay(); toast("चला नहीं पाया (${e.javaClass.simpleName})") }
+    } catch (e: Exception) { stopVoiceCmdPlay(); DKLog.d("आवाज़-कमांड बजाना: ${e.javaClass.simpleName} ${e.message?.take(160)}"); toast("चला नहीं पाया") }
 }
 
 internal fun SettingsActivity.enrollVoiceCmd(cmd: Cmd, done: () -> Unit) {
@@ -143,7 +143,7 @@ internal fun SettingsActivity.enrollVoiceCmd(cmd: Cmd, done: () -> Unit) {
                 try { com.dk.assistant.voice.LiveAckMaker.ensureAsync(this@enrollVoiceCmd, "voice cmd") } catch (_: Exception) {}
             }
         } catch (e: kotlinx.coroutines.CancellationException) { throw e
-        } catch (e: Exception) { tv.text = UiLang.s("गड़बड़ हुई") + " (${e.javaClass.simpleName})" }
+        } catch (e: Exception) { DKLog.d("आवाज़-कमांड सिखाना: ${e.javaClass.simpleName} ${e.message?.take(160)}"); tv.text = UiLang.s("गड़बड़ हुई, फिर से कोशिश करें") }
     }
     dlg.setOnDismissListener { ownerCancel() }
 }

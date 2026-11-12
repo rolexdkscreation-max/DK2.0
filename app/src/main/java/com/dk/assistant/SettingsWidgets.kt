@@ -145,6 +145,19 @@ internal fun SettingsActivity.field(box: LinearLayout, title: String, value: Str
     return e
 }
 
+/**
+ * नवंबर 2026 (मालिक: "जो बैक एंड में रहना चाहिए वो फ्रंटेंड में मत दिखाओ, बैक एंड में रख दो"):
+ * तकनीकी / इंजन वाले विकल्प इसी छिपे हिस्से में बनते हैं - पसंद सेव और लागू वैसे ही, बस स्क्रीन पर नहीं दिखते.
+ */
+internal fun SettingsActivity.backend(box: LinearLayout, body: (LinearLayout) -> Unit): LinearLayout {
+    val b = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; visibility = View.GONE; tag = BACKEND_TAG }
+    box.addView(b, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+    body(b)
+    return b
+}
+
+internal const val BACKEND_TAG = "dk_backend"
+
 internal fun SettingsActivity.switch(box: LinearLayout, t: String, on: Boolean): SwitchCompat {
     val s = SwitchCompat(this).apply {
         text = t; isChecked = on; textSize = 14f; setTextColor(0xFFFFFFFF.toInt())

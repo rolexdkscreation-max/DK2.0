@@ -242,5 +242,8 @@ class LiveSmoothTest {
         listOf("PREF_CALL_SPEAKER", "PREF_SLIM_TOOLS", "PREF_SMART_VAD", "PREF_HEARD_FALLBACK").forEach {
             assertTrue("सेटिंग्स में $it", v.contains("LiveSmooth.$it"))
         }
+        // नवंबर 2026 (मालिक: "बैक एंड वाली चीज़ फ्रंटेंड में नहीं"): ये विकल्प छिपे backend हिस्से में - सेव/लागू वैसे ही
+        val back = v.substringAfter("backend(box) { b ->")
+        listOf("PREF_CALL_SPEAKER", "PREF_SLIM_TOOLS", "PREF_SMART_VAD", "PREF_HEARD_FALLBACK").forEach { assertTrue(it, back.contains("LiveSmooth.$it")) }
     }
 }

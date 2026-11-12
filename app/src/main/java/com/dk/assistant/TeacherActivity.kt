@@ -99,7 +99,7 @@ class TeacherActivity : AppCompatActivity() {
                         }
                     }
                 } catch (e: Exception) {
-                    Toast.makeText(this, "फोटो लोड करने में त्रुटि: ${e.message}", Toast.LENGTH_SHORT).show()
+                    DKLog.d("Teacher: फोटो लोड गलती ${e.javaClass.simpleName}: ${e.message?.take(160)}"); Toast.makeText(this, "फोटो लोड नहीं हो पाई, फिर से कोशिश करें", Toast.LENGTH_SHORT).show()
                 }
             }
         }
@@ -276,7 +276,7 @@ class TeacherActivity : AppCompatActivity() {
                         cameraLauncher.launch(uri)
                     }
                 } catch (e: Exception) {
-                    Toast.makeText(this@TeacherActivity, "कैमरा शुरू करने में त्रुटि: ${e.message}", Toast.LENGTH_SHORT).show()
+                    DKLog.d("Teacher: कैमरा गलती ${e.javaClass.simpleName}: ${e.message?.take(160)}"); Toast.makeText(this@TeacherActivity, "कैमरा शुरू नहीं हो पाया, फिर से कोशिश करें", Toast.LENGTH_SHORT).show()
                 }
             }
         }
@@ -480,7 +480,7 @@ class TeacherActivity : AppCompatActivity() {
             }
             startActivity(Intent.createChooser(shareIntent, "व्हाइटबोर्ड शेयर करें"))
         } catch (e: Exception) {
-            Toast.makeText(this, "शेयर करने में त्रुटि: ${e.message}", Toast.LENGTH_SHORT).show()
+            DKLog.d("Teacher: शेयर गलती ${e.javaClass.simpleName}: ${e.message?.take(160)}"); Toast.makeText(this, "शेयर नहीं हो पाया, फिर से कोशिश करें", Toast.LENGTH_SHORT).show()
         }
     }
 
