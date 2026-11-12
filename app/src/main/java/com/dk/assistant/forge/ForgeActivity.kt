@@ -412,7 +412,7 @@ class ForgeActivity : AppCompatActivity() {
                 when { !on -> 0x33FFFFFF; i == s.stage.ordinal && building -> ForgeTheme.ACCENT; else -> ForgeTheme.LAGOON })
         }
         val m = s.metrics
-        statsTxt.text = "${m.chars / 1024} KB  •  ${m.sections} " + UiLang.s("हिस्से") + "  •  ${m.tokensPerSec} tok/s  •  ${m.elapsedSec} s"
+        statsTxt.text = "${m.chars / 1024} KB  •  ${m.sections} " + UiLang.s("हिस्से") + "  •  ${m.elapsedSec} s"
         when (s.phase) {
             ForgePhase.FAILED -> {
                 errorTxt.visibility = View.VISIBLE; errorTxt.text = s.error ?: UiLang.s("वेबसाइट नहीं बन पाई।")

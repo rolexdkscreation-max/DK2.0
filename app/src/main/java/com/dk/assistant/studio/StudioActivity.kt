@@ -299,7 +299,7 @@ class StudioActivity : AppCompatActivity() {
         try {
             val z = p.zip(File(File(cacheDir, "studio_zip"), "${p.slug}.zip"))
             ComputerTools.share(this, z)
-        } catch (e: Exception) { toast("ZIP नहीं बना: ${e.message?.take(80)}") }
+        } catch (e: Exception) { com.dk.assistant.DKLog.d("Studio: ZIP गलती ${e.javaClass.simpleName}: ${e.message?.take(160)}"); toast("ZIP नहीं बन पाया, फिर से कोशिश करें") }
     }
 
     private fun pill(t: String, f: () -> Unit) = Button(this).apply {
