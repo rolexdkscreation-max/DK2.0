@@ -886,8 +886,12 @@ class DKAccessibilityService : AccessibilityService() {
                     val othersPlaying = am?.isMusicActive == true && System.currentTimeMillis() - speaker.lastSpokeAt > 2500
                     var cmdText = heard
                     // v4.1: "सिर्फ़ DK बोलने पर सुनो" - शुरुआत में DK वाले वाक्य ही, बाकी पूरी तरह अनदेखे
-                    if (Prefs.dkOnly(this@DKAccessibilityService)) {
+                    // नवंबर 2026: सुनने वाला मोड ("मैं किसी से बात कर रहा हूँ") = वही नियम; नाम लेकर बोले = मोड खत्म
+                    SideTalk.global.touch(System.currentTimeMillis())
+                    val sideListen = SideTalk.global.listening(System.currentTimeMillis())
+                    if (Prefs.dkOnly(this@DKAccessibilityService) || sideListen) {
                         cmdText = DkOnly.filter(heard) ?: continue
+                        if (sideListen) SideTalk.apply(false)
                         if (cmdText.isBlank()) continue
                     } else if (othersPlaying) {
                         val w = Prefs.wakeWords(this@DKAccessibilityService).firstOrNull { low.contains(it) } ?: continue
@@ -922,7 +926,7 @@ class DKAccessibilityService : AccessibilityService() {
                         cmd = heard.substring((low.indexOf(wake) + wake.length).coerceAtMost(heard.length))
                             .trim(' ', ',', '.', '!')
                         // v4.1: "सिर्फ़ DK बोलने पर सुनो" - नाम बात की शुरुआत में हो तभी (बीच में आया नाम = अनदेखा)
-                        if (Prefs.dkOnly(this@DKAccessibilityService)) cmd = DkOnly.filter(heard) ?: continue
+                        if (Prefs.dkOnly(this@DKAccessibilityService) || SideTalk.global.listening(System.currentTimeMillis())) cmd = DkOnly.filter(heard) ?: continue
                     }
                     // naam suna = user DK se baat kar raha hai -> peeche ka gaana/video dheema (Live ho to jawab ke baad wahi wapas badhayega)
                     Ducker.duck(this@DKAccessibilityService, "wake word")
@@ -1070,6 +1074,14 @@ class DKAccessibilityService : AccessibilityService() {
                             .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK or android.content.Intent.FLAG_ACTIVITY_SINGLE_TOP)
                             .putExtra("face", true))
                     } catch (_: Exception) {}
+                    "ok"
+                }
+                DkPersona.TYPE -> {
+                    DkPersona.set(this, DkPersona.of(a.optString("persona")))
+                    "ok"
+                }
+                SideTalk.TYPE -> {
+                    SideTalk.apply(a.optBoolean("on", true))
                     "ok"
                 }
                 JarvisMode.TYPE -> {

@@ -132,12 +132,30 @@ internal fun SettingsActivity.secVoice() {
         hint(box, "सिर्फ़ आवाज़ और बात करने का अंदाज़ बदलता है (\"जी सर\", शांत, सधा हुआ) — फ़ोन का कंट्रोल, keys, एजेंट, वेबसाइट, कॉल, WhatsApp सब वैसे ही चलते हैं. चलती बातचीत में DK चुप होते ही नई आवाज़ लगती है. Gemini की अपनी आवाज़ें हैं — फ़िल्म वाले JARVIS की हू-ब-हू नकल नहीं, उसके सबसे करीब.")
     }
 
+    // नवंबर 2026 (मालिक): DK का स्वभाव + मूड समझकर बात + बगल की बातचीत + इंसान जैसी साँस/ठहराव
+    card("DK का स्वभाव", "DK किस अंदाज़ में बात करे (डिफ़ॉल्ट: दोस्ताना). हर स्वभाव में DK आपका मूड पहचानती है — उदास हों तो शरारत बंद, पहले सहारा") { box ->
+        val ps = DkPersona.P.values().toList()
+        radios(box, ps.map { it.id to "${it.title} — ${it.sub}" }, DkPersona.get(this).id, 2800)
+            .setOnCheckedChangeListener { _, id -> ps.getOrNull(id - 2800)?.let { DkPersona.set(this, it); toast("स्वभाव: ${it.title}") } }
+        hint(box, "बोलकर भी: \"DK, नटखट मोड ऑन करो\" / \"प्रोफ़ेशनल मोड\" / \"गर्लफ्रेंड मोड\" / \"शांत मोड\" / \"नॉर्मल मोड\". JARVIS चालू हो तो पहले वह (स्वभाव चुनते ही JARVIS बंद).")
+        switch(box, "बगल की बातचीत पहचानो (सुनेगी, जवाब नहीं देगी)", SideTalk.on(this))
+            .setOnCheckedChangeListener { _, on -> Prefs.edit(this) { putBoolean(SideTalk.PREF, on) }; com.dk.assistant.voice.engine.VoiceEngines.liveChanged() }
+        hint(box, "बोलें \"DK, मैं किसी से बात कर रहा हूँ\" / \"थोड़ी देर चुप रहो\" = DK सुनती रहेगी, जवाब सिर्फ़ जब आप \"DK…\" कहें (या \"DK वापस आओ\"). 3 मिनट शांति = अपने-आप वापस. \"मेरी आवाज़ सिखाओ\" किया हो तो DK आपकी और दूसरों की आवाज़ भी पहचानती है — दूसरों के कहने पर पैसे, मैसेज भेजना, कॉल, डिलीट, सेटिंग जैसे बड़े काम नहीं.")
+        switch(box, "Piper में हल्की साँस और ठहराव (मूड के हिसाब से रफ़्तार)", Prefs.bool(this, com.dk.assistant.voice.engine.HumanVoice.PREF, true))
+            .setOnCheckedChangeListener { _, on -> Prefs.edit(this) { putBoolean(com.dk.assistant.voice.engine.HumanVoice.PREF, on) } }
+    }
+
     card("बोलने वाला इंजन (DK Live)", "DK लाइव (Direct Gemini Live Voice, डिफ़ॉल्ट) • Gemini TTS (बैकअप) — एक समय में एक") { box ->
         com.dk.assistant.voice.engine.VoiceEngineCard.build(this, box, dp)
     }
 
     // नवंबर 2026 (मालिक): वैकल्पिक Piper TTS (हिंदी, ऑफ़लाइन) - डिफ़ॉल्ट बंद. सारा code SettingsPiper.kt में
-    card("Piper आवाज़", "हिंदी, बिना इंटरनेट — डिफ़ॉल्ट बंद, खुद डाउनलोड करके चालू करें") { box -> piperCard(box) }
+    card("Piper आवाज़", "हिंदी, बिना इंटरनेट — डिफ़ॉल्ट बंद, खुद डाउनलोड करके चालू करें") { box ->
+        piperCard(box)
+        // नवंबर 2026 (मालिक): सच में आख़िरी बार किस इंजन ने बोला (Piper चालू होकर भी Live की आवाज़ = वजह के साथ)
+        hint(box, com.dk.assistant.voice.engine.VoiceNow.shown().ifBlank { "अभी तक DK लाइव में कुछ नहीं बोला — बोलते समय DK लाइव स्क्रीन पर दिखेगा कि आवाज़ किससे आ रही है" }
+            .let { if (it.startsWith("आवाज़:")) "आख़िरी बार बोला — " + it.removePrefix("आवाज़: ") else it })
+    }
 
     // ---- Listening
     card("सुनना (माइक)", "लगातार सुनना — बिना बीप की आवाज़") { box ->

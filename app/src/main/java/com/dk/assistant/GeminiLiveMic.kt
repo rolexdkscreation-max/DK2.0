@@ -268,7 +268,7 @@ internal suspend fun GeminiLive.micLoop() = coroutineScope {
                 if (now - mediaAt > 300) { mediaAt = now; mediaOn = Ducker.musicActive(svc) }
                 // v4.1: "सिर्फ़ DK बोलने पर सुनो" चालू = हर बात रोको, caption में शुरुआत में DK हो तभी Gemini को
                 // (घंटी / कॉल के ठीक बाद के कुछ सेकंड में नहीं - तब कॉल की कमांड बिना DK)
-                if (now - dkOnlyAt > 3_000) { dkOnlyAt = now; dkOnlyNow = Prefs.dkOnly(svc) }
+                if (now - dkOnlyAt > 3_000) { dkOnlyAt = now; dkOnlyNow = Prefs.dkOnly(svc) || SideTalk.global.listening(now) }   // नवंबर 2026: सुनने वाला मोड = कुछ देर "सिर्फ़ DK"
                 val dkGate = dkOnlyNow && caption?.usable == true && !CallCmd.windowOpen(now)
                 guardOn = !svc.callRinging() && !callAudioOn && (dkGate || PhoneAudioGuard.active(mediaOn, now - playEnd))
                 if (guardPass && (ev == TurnDetector.Event.SPEECH_END || !turnDet.inSpeech)) guardPass = false
@@ -320,6 +320,7 @@ internal suspend fun GeminiLive.micLoop() = coroutineScope {
                 }
                 if (ev == TurnDetector.Event.SPEECH_START) {
                     cmdBuf.reset(); preroll.forEach { cmdBuf.write(it) }
+                    whoSeq = SideTalk.global.begin(now)
                     // v3.66: नई बात - मालिक की पहचान शुरू. DK सोच/काम कर रहा हो तो पहचान तक आवाज़ रोको
                     ownerGen++; ownerResult = null; ownerHold.clear()
                     if (ownerOn) owner.start(preroll) else owner.finish()
@@ -361,6 +362,7 @@ internal suspend fun GeminiLive.micLoop() = coroutineScope {
                         if (DKState.mode != Mode.WORKING) setMode(Mode.LISTENING)
                     }
                     TurnDetector.Event.SPEECH_END -> {
+                        if (whoOn) whoCheckAsync(cmdBuf.toByteArray(), now, whoSeq)   // नवंबर 2026: बॉस या कोई और (बगल की बातचीत)
                         liveVoiceCmd(cmdBuf.toByteArray()); cmdBuf.reset()
                         learnNear()
                         startHold.userEnded(now, BargeGate.realWords(caption?.text().orEmpty()))

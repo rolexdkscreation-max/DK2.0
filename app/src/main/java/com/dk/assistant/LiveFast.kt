@@ -43,7 +43,7 @@ object LiveFast {
      * नवंबर 2026 (DKI-87912D): ये काम छोटे और पलटने लायक हैं - बात खत्म होते ही. बाकी (app में खोज, ऐप खोलना,
      * वीडियो चलाना...) आधी बात पर न चलें: [SETTLE_MS] और चुप्पी + caption वही रहे तभी.
      */
-    private val INSTANT = setOf(JarvisMode.TYPE, GuardRules.TYPE, "volume", "media", "torch", "speaker", "screen_view", "panel", "lock", "unlock", "back", "home",
+    private val INSTANT = setOf(JarvisMode.TYPE, DkPersona.TYPE, SideTalk.TYPE, GuardRules.TYPE, "volume", "media", "torch", "speaker", "screen_view", "panel", "lock", "unlock", "back", "home",
         "recents", "scroll", "notifications", "quick_settings", "answer_call", "end_call", "who_calls", "screenshot_save", "show_face",
         "brightness", "rotation", "dnd")
     const val SETTLE_MS = 700L

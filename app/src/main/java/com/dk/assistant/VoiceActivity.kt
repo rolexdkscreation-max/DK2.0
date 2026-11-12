@@ -25,6 +25,7 @@ class VoiceActivity : AppCompatActivity() {
     private lateinit var orb: OrbView
     private lateinit var state: TextView
     private lateinit var link: TextView
+    private lateinit var voiceNow: TextView
     private lateinit var permBtn: TextView
     private lateinit var you: TextView
     private lateinit var dk: TextView
@@ -143,6 +144,14 @@ class VoiceActivity : AppCompatActivity() {
             visibility = android.view.View.GONE
         }
         col.addView(link, LinearLayout.LayoutParams(-2, -2).apply { gravity = Gravity.CENTER_HORIZONTAL })
+        // नवंबर 2026 (मालिक): अभी आवाज़ किससे आ रही - Piper / Gemini TTS / Gemini Live (सीधी) + वजह
+        voiceNow = TextView(this).apply {
+            setTextColor(0xB3FFFFFF.toInt()); textSize = 11f; gravity = Gravity.CENTER
+            val h = (12 * dp).toInt(); setPadding(h, 0, h, (4 * dp).toInt())
+            visibility = android.view.View.GONE
+        }
+        col.addView(voiceNow, LinearLayout.LayoutParams(-2, -2).apply { gravity = Gravity.CENTER_HORIZONTAL })
+        com.dk.assistant.voice.engine.VoiceNow.onChange = { DKState.refresh() }
         // v5.1: माइक की इजाज़त नहीं = साफ़ बटन (बिना इजाज़त माइक कभी नहीं खुलता)
         permBtn = TextView(this).apply {
             setBackgroundResource(R.drawable.glass_pill); setTextColor(0xFFFFFFFF.toInt()); textSize = 14f
@@ -411,6 +420,11 @@ class VoiceActivity : AppCompatActivity() {
         if (::link.isInitialized) {
             link.visibility = if (ls.isBlank()) android.view.View.GONE else android.view.View.VISIBLE
             if (ls.isNotBlank()) link.text = ls        // मॉडल का नाम/नंबर - अनुवाद नहीं
+        }
+        if (::voiceNow.isInitialized) {
+            val vn = com.dk.assistant.voice.engine.VoiceNow.shown()
+            voiceNow.visibility = if (vn.isBlank()) android.view.View.GONE else android.view.View.VISIBLE
+            if (vn.isNotBlank() && voiceNow.text.toString() != vn) voiceNow.text = vn
         }
         if (::permBtn.isInitialized) permBtn.visibility = if (Setup.hasMic(this)) android.view.View.GONE else android.view.View.VISIBLE
         val min = Prefs.orbMin(this)

@@ -450,6 +450,9 @@ class GeminiLive(internal val svc: DKAccessibilityService, internal val agent: A
     /** इस बात का फ़ैसला (mic thread पर ही) */
     internal val owner = com.dk.assistant.voice.OwnerGate(CHUNK_MS)
     @Volatile internal var ownerOn = false
+    /** नवंबर 2026: आवाज़ सीखी हुई पर "सिर्फ़ मेरी आवाज़" बंद = सिर्फ़ पहचान (बॉस / कोई और), बगल की बातचीत के लिए */
+    @Volatile internal var whoOn = false
+    @Volatile internal var whoSeq = 0
     @Volatile internal var ownerTh = com.dk.assistant.voice.VoicePrint.TH_NORMAL
     internal var ownerCfgAt = 0L
     /** हर नई बात पर +1 - पुरानी बात का देर से आया मिलान नई पर न लगे */
@@ -612,14 +615,17 @@ class GeminiLive(internal val svc: DKAccessibilityService, internal val agent: A
         connEngVer = engines.version
         connLiveVer = engines.liveVersion
         val chosen = engines.active(svc)
+        try { liveVoiceName = if (JarvisMode.on(svc)) JarvisMode.voice(svc) else com.dk.assistant.voice.engine.VoiceEngines.byId(com.dk.assistant.voice.engine.VoiceEngines.LIVE_NATIVE)?.voice(svc).orEmpty() } catch (_: Throwable) {}
         if (chosen != null && chosen.split && System.currentTimeMillis() < splitOffUntil) {
             connSplit = false; connText = false; splitEngine = null
             log("आवाज़ इंजन ${chosen.title} अभी चुप रहा था - ${SilentVoice.OFF_MS / 60_000} मिनट तक Gemini Live की अपनी आवाज़ (ताकि DK की आवाज़ आती रहे)")
+            com.dk.assistant.voice.engine.VoiceNow.plan(com.dk.assistant.voice.engine.VoiceNow.LIVE_TITLE, "${chosen.title} अभी चुप रहा था, ${SilentVoice.OFF_MS / 60_000} मिनट तक Live की आवाज़")
             return
         }
         if (chosen == null || !chosen.split) {
             connSplit = false; connText = false; splitEngine = null
             log("बोलने वाला: ${chosen?.title ?: "Gemini Live"} (सीधी आवाज़, बँटवारा नहीं)")
+            com.dk.assistant.voice.engine.VoiceNow.plan(com.dk.assistant.voice.engine.VoiceNow.LIVE_TITLE, piperWhy())
             return
         }
         // नवंबर 2026 (मालिक): Piper चुना = Gemini TTS कभी नहीं - Piper तैयार न हो तो सीधे Live की अपनी आवाज़
@@ -628,13 +634,29 @@ class GeminiLive(internal val svc: DKAccessibilityService, internal val agent: A
         if (usable == null) {
             connSplit = false; connText = false; splitEngine = null
             log("आवाज़ इंजन ${chosen.title} अभी तैयार नहीं (${chosen.notReady(svc)}) - तब तक Gemini Live की अपनी आवाज़")
+            com.dk.assistant.voice.engine.VoiceNow.plan(com.dk.assistant.voice.engine.VoiceNow.LIVE_TITLE, "${chosen.title} तैयार नहीं: ${chosen.notReady(svc)}")
             return
         }
         connSplit = true; splitEngine = usable   // v3.80: चुना तैयार न हो तो जो सच में बोलेगा वही
         connText = LiveSetupRules.askText(m, split = true)   // हमेशा false: native-audio Live सिर्फ़ AUDIO (TEXT = setup मना)
         log("बँटवारा: Live लिखेगा (${if (connText) "TEXT" else "AUDIO की लिखावट"}), बोलेगा ${usable.title} • ${usable.voice(svc)}")
+        com.dk.assistant.voice.engine.VoiceNow.plan(usable.title, if (usable.id != chosen.id) "${chosen.title} तैयार नहीं" else "")
         pipeline.warm(usable)
     }
+
+    /** Live की सीधी आवाज़ का voice नाम (स्क्रीन पर) */
+    @Volatile internal var liveVoiceName = ""
+
+    /** Piper चालू है पर Live की सीधी आवाज़ बोल रही = क्यों (खाली = Piper चालू ही नहीं) */
+    private fun piperWhy(): String = try {
+        val P = com.dk.assistant.voice.engine.PiperTtsEngine
+        when {
+            !com.dk.assistant.voice.engine.PiperStore.on(svc) -> ""
+            !com.dk.assistant.voice.engine.PiperStore.installed(svc) -> "Piper चालू है, पर उसकी आवाज़ अभी डाउनलोड नहीं हुई"
+            com.dk.assistant.voice.engine.VoiceEngines.isFailed(P.ID) -> "Piper अभी नहीं चला (${com.dk.assistant.voice.engine.VoiceEngines.lastError(P.ID)?.take(50) ?: "गड़बड़"}), 2 मिनट बाद फिर Piper"
+            else -> "Piper अगले जुड़ाव पर (DK चुप होते ही)"
+        }
+    } catch (_: Throwable) { "" }
 
     /** बँटवारे में: replyText का नया हिस्सा pipeline को (DoneGate रोके हो तो नहीं) */
     internal fun pumpSplit() {
@@ -649,6 +671,8 @@ class GeminiLive(internal val svc: DKAccessibilityService, internal val agent: A
     /** Live की अपनी आवाज़ का टुकड़ा: बँटवारे में बजता नहीं (सिर्फ़ गिनती) */
     internal fun playOut(pcm: ByteArray) {
         if (connSplit && !splitLive) return
+        com.dk.assistant.voice.engine.VoiceNow.played(com.dk.assistant.voice.engine.VoiceEngines.LIVE_NATIVE, com.dk.assistant.voice.engine.VoiceNow.LIVE_TITLE, liveVoiceName,
+            if (connSplit && splitLive) "${splitEngine?.title ?: "चुना इंजन"} देर से/चुप रहा, बचा जवाब Live ने बोला" else com.dk.assistant.voice.engine.VoiceNow.planWhy)
         if (startHold.offer(pcm)) return        // नवंबर 2026: आप अभी बोल रहे - पुराना जवाब कतार में नहीं (LiveStartHold)
         playQ.offer(pcm)
         // नवंबर 2026 (आवाज़ गायब): बजाने वाला thread मर गया हो तो फिर शुरू - वरना text आता, आवाज़ नहीं

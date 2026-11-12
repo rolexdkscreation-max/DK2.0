@@ -107,6 +107,10 @@ object LocalRouter {
         if (Guard.active() && GuardRules.codeOk(raw, Guard.codeNow)) return Split(Guard.quick(GuardRules.Cmd.Off(raw)), null)
         // नवंबर 2026 (मालिक): "जार्विस मोड ऑन करो" / "डीके मोड ऑन करो" - तुरंत, बिना AI
         JarvisMode.parse(raw)?.let { return Split(JarvisMode.quick(it), null) }
+        // नवंबर 2026 (मालिक): "नटखट मोड ऑन करो" / "प्रोफ़ेशनल मोड" / "नॉर्मल मोड" = DK का स्वभाव (तुरंत)
+        DkPersona.parse(raw)?.let { return Split(DkPersona.quick(it), null) }
+        // नवंबर 2026: "DK, मैं किसी से बात कर रहा हूँ" = सुनो पर जवाब नहीं; "DK वापस आओ" = फिर से
+        SideTalk.parse(raw)?.let { return Split(SideTalk.quick(it), null) }
         // नवंबर 2026: "DK किधर हो" / "कहाँ हो तुम" - फ़ोन 60 s पूरी आवाज़ में बजे (बजते समय "मिल गया" = बंद)
         if (FindPhone.active && com.dk.assistant.voice.VoiceCmdMatch.foundText(raw)) return Split(QuickCommands.Quick(JSONObject().put("type", "find_phone_stop"), ""), null)
         if (raw.trim().length <= 32 && com.dk.assistant.voice.VoiceCmdMatch.findText(raw)) return Split(QuickCommands.Quick(JSONObject().put("type", "find_phone"), ""), null)
