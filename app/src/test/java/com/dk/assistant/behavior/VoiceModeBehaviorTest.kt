@@ -81,27 +81,21 @@ class VoiceModeBehaviorTest {
         assertTrue(VoiceEngines.sp(c).getBoolean(VoiceEngines.WIPE_KEY, false))
     }
 
-    /**
-     * नवंबर 2026 (नया Supertonic 3): अपनी नई जगह (supertonic3 / dk_supertonic3) - पुराने का wipe इसे नहीं छूता.
-     * चुना पर डाउनलोड नहीं = उस समय DK लाइव की सीधी आवाज़ (कभी Gemini TTS नहीं), पसंद Supertonic ही रहती है.
-     */
-    @Test fun freshSupertonicSurvivesWipeAndFallsBackToLive() {
-        val mine = java.io.File(c.filesDir, com.dk.assistant.voice.engine.SupertonicStore.DIR + "/model").apply { mkdirs() }
-        java.io.File(mine, "tts.json").writeText("{}")
-        com.dk.assistant.voice.engine.SupertonicStore.setVoice(c, "st3-f5-kavya")
-        VoiceEngines.sp(c).edit().putBoolean(VoiceEngines.MIGRATE_KEY, true).putBoolean(VoiceEngines.DIRECT_KEY, true).commit()
-        VoiceModeController.switch(c, com.dk.assistant.voice.engine.SupertonicTtsEngine.ID, true)
-        assertEquals(com.dk.assistant.voice.engine.SupertonicTtsEngine.ID, VoiceEngines.activeId(c))
-        assertEquals(VoiceEngines.LIVE_NATIVE, VoiceEngines.active(c)?.id)
-        Thread.sleep(300)
-        assertTrue(java.io.File(mine, "tts.json").exists())
-        assertEquals("st3-f5-kavya", com.dk.assistant.voice.engine.SupertonicStore.voice(c))
-        // Settings: card दिखे, डाउनलोड से पहले स्विच नहीं; "बोलने वाला इंजन" card में Supertonic का स्विच नहीं
-        val s = open().get()
-        assertTrue(Ui.hasText(s, "Supertonic 3 आवाज़"))
-        assertTrue(Ui.hasText(s, "डाउनलोड करें"))
-        assertFalse(Ui.hasText(s, com.dk.assistant.voice.engine.SupertonicTtsEngine.title))
-        assertFalse(Ui.hasText(s, "रिवर्ब"))
+    /** नवंबर 2026 (मालिक: "जो TTS अभी लगाया वो भी पूरा हटाओ"): दूसरा Supertonic 3 भी फ़ोन से मिटे - v1 वाला wipe पहले चल चुका हो तब भी */
+    @Test fun secondSupertonicWipedEvenAfterFirstWipe() {
+        val st = java.io.File(c.filesDir, "supertonic3/model").apply { mkdirs() }
+        java.io.File(st, "model.int8.onnx").writeText("x")
+        val keep = java.io.File(c.filesDir, "voice").apply { mkdirs() }
+        c.getSharedPreferences("dk_supertonic3", Context.MODE_PRIVATE).edit().putBoolean("on", true).putInt("speed", 120).commit()
+        VoiceEngines.sp(c).edit().putString("active", VoiceEngines.OLD_SUPERTONIC3_ID).putBoolean(VoiceEngines.MIGRATE_KEY, true)
+            .putBoolean(VoiceEngines.DIRECT_KEY, true).putBoolean("old_offline_tts_wiped_v1", true).commit()
+        assertEquals(VoiceEngines.LIVE_NATIVE, VoiceEngines.activeId(c))
+        val until = System.currentTimeMillis() + 5_000
+        while (st.exists() && System.currentTimeMillis() < until) Thread.sleep(20)
+        assertFalse(java.io.File(c.filesDir, "supertonic3").exists())
+        assertTrue(keep.exists())
+        assertFalse(c.getSharedPreferences("dk_supertonic3", Context.MODE_PRIVATE).contains("on"))
+        assertTrue(VoiceEngines.sp(c).getBoolean(VoiceEngines.WIPE_KEY, false))
     }
 
     @Test fun settingsShowOnlyDirectLiveAndGeminiTts() {
@@ -110,6 +104,9 @@ class VoiceModeBehaviorTest {
         val tts = Ui.switch(s, GeminiTtsEngine.title)
         assertTrue(live.isChecked); assertFalse(tts.isChecked)
         assertFalse(Ui.hasText(s, "Kokoro"))
+        assertFalse(Ui.hasText(s, "Supertonic"))
+        // सिर्फ़ दो इंजन: डायरेक्ट Live + Gemini TTS
+        assertEquals(listOf(VoiceEngines.LIVE_NATIVE, VoiceEngines.GEMINI_TTS), VoiceEngines.all.map { it.id })
     }
 
     /**

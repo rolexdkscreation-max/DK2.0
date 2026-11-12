@@ -178,8 +178,7 @@ class SpeechPipeline(private val ctx: Context, private val hooks: Hooks) {
     private fun make(s: Seg, chosen: VoiceEngine) {
         val chain = buildList {
             add(chosen)
-            // नवंबर 2026: Supertonic जैसा इंजन ([VoiceEngine.liveOnTrouble]) न चले तो Gemini TTS नहीं - सीधे Live की अपनी आवाज़ (rescue)
-            VoiceEngines.fallback()?.let { if (it.id != chosen.id && !chosen.liveOnTrouble) add(it) }
+            VoiceEngines.fallback()?.let { if (it.id != chosen.id) add(it) }
         }
         var ok = false
         for ((i, e) in chain.withIndex()) {
@@ -300,7 +299,7 @@ class SpeechPipeline(private val ctx: Context, private val hooks: Hooks) {
             if (s.q.isNotEmpty()) return s.phone
             val waited = System.currentTimeMillis() - from
             // नवंबर 2026: टुकड़ा अटका (धीमा नेट / TTS देर) - Live की अपनी आवाज़ बचा जवाब बोले
-            val late = if (engine?.id == SupertonicTtsEngine.ID) SupertonicTiming.stuck(waited, first) else com.dk.assistant.SplitRescue.stuck(waited, first)
+            val late = com.dk.assistant.SplitRescue.stuck(waited, first)
             if (!asked && late) {
                 asked = true
                 if (rescue(s, SplitRescueWhy.STUCK, waited)) return false
@@ -315,8 +314,7 @@ class SpeechPipeline(private val ctx: Context, private val hooks: Hooks) {
     /** Live की अपनी आवाज़ से कहो: [s] से आगे का जवाब तुम बोलो. हाँ = pipeline चुप ([handOff]) */
     private fun rescue(s: Seg, why: SplitRescueWhy, waited: Long): Boolean {
         if (s.gen != gen || released) return false
-        val st = engine?.id == SupertonicTtsEngine.ID
-        val text = if (st) SupertonicTiming.rescueWhy(waited, why == SplitRescueWhy.FAILED) else com.dk.assistant.SplitRescue.why(why == SplitRescueWhy.FAILED, waited)
+        val text = com.dk.assistant.SplitRescue.why(why == SplitRescueWhy.FAILED, waited)
         val ok = try { hooks.takeOver(s.at, text) } catch (_: Exception) { false }
         if (!ok) return false
         noteSpoken(s.text)
@@ -335,11 +333,9 @@ class SpeechPipeline(private val ctx: Context, private val hooks: Hooks) {
             hooks.log("पहला टुकड़ा: \"${s.text.take(40)}\" • text आने के ${s.createdAt - turnAt} ms बाद कटा • " +
                 "इंजन ने ${if (s.firstPcmAt > 0) s.firstPcmAt - s.createdAt else -1} ms में पहली आवाज़ दी")
         }
-        // v3.80: गति / पिच बदली -> अगले टुकड़े से ही. नवंबर 2026: अपनी गति/पिच वाला इंजन (Supertonic 3) = आम गति/पिच नहीं
-        val neutral = (VoiceEngines.byId(s.engine.ifBlank { engine?.id ?: "" }) ?: engine)?.ownTune == true
-        tuneVer = if (neutral) VoiceTune.applyFor(tr, tuneVer, true) else VoiceTune.apply(tr, tuneVer)
+        tuneVer = VoiceTune.apply(tr, tuneVer)      // v3.80: गति / पिच बदली -> अगले टुकड़े से ही
         val startAt = maxOf(playUntil, now)
-        playUntil = startAt + VoiceTune.playMs(pcm.size, VoiceEngine.RATE, VoiceTune.speedFor(neutral))
+        playUntil = startAt + VoiceTune.playMs(pcm.size, VoiceEngine.RATE)
         VoiceLevel.schedule(pcm, startAt)
         hooks.onPlay(pcm, now)
         var off = 0
@@ -361,8 +357,6 @@ class SpeechPipeline(private val ctx: Context, private val hooks: Hooks) {
             val chosen = engine
             val why = when {
                 chosen != null && chosen.id != e.id -> "${chosen.title} नहीं चला"
-                // नवंबर 2026 (मालिक: "Supertonic कितनी देर में बोलता है पता नहीं चलता") - असली नाप स्क्रीन पर
-                e.id == SupertonicTtsEngine.ID && SupertonicTiming.lastFirstMs >= 0 -> "पिछला वाक्य ${SupertonicTiming.s(SupertonicTiming.lastFirstMs)} में बना"
                 else -> ""
             }
             VoiceNow.played(e.id, e.title, vt.substringBefore(" —").take(40), why)
@@ -381,7 +375,7 @@ class SpeechPipeline(private val ctx: Context, private val hooks: Hooks) {
         /** इंजन के हिसाब से टुकड़ों का नाप (नवंबर 2026: Kokoro हटाया - अब सब इंजन STANDARD; LOCAL फ़ोन में बनने वाली आवाज़ के लिए रखा) */
         /** नवंबर 2026 (मालिक: "बात खत्म होते ही जवाब शुरू"): Gemini TTS = पहला टुकड़ा छोटा (2-6 शब्द, 150 ms रुका तो तुरंत) */
         fun profileFor(engineId: String): TextChunker.Profile =
-            if (engineId == VoiceEngines.GEMINI_TTS) TextChunker.FAST_NET else if (engineId == SupertonicTtsEngine.ID) SupertonicTtsEngine.CHUNKS else TextChunker.STANDARD
+            if (engineId == VoiceEngines.GEMINI_TTS) TextChunker.FAST_NET else TextChunker.STANDARD
 
         /** नवंबर 2026: आवाज़ इंजन बदला - जो भी pipeline बोल रही हो, उसी पल चुप (कतार भी) */
         private val alive = java.util.WeakHashMap<SpeechPipeline, Boolean>()
