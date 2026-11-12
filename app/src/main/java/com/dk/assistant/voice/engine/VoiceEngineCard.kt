@@ -42,11 +42,11 @@ class VoiceEngineCard private constructor(private val a: Activity, private val d
     private fun render(box: LinearLayout) {
         val engines = VoiceEngines.all
         // v3.69: ऊपर का शीर्षक अब card का नाम है; नमूना-वाक्य, "तीनों बारी-बारी सुनो" और "रोको" हटाए (बैकअप: branch backup/dk-before-backup-folder-cleanup-1102, फ़ोल्डर backup/v3.69-settings)
-        hint(box, "जवाब Gemini Live लिखता है; बोलता यह इंजन है. एक समय में एक ही चालू (DK लाइव / Gemini TTS / नीचे \"Supertonic आवाज़\") - जो चालू करो सिर्फ़ वही, बंद करने से अपने-आप कोई दूसरा चालू नहीं होता. मेरे बोलना ख़त्म करने से पहली आवाज़ तक का " +
+        hint(box, "जवाब Gemini Live लिखता है; बोलता यह इंजन है. एक समय में एक ही चालू (DK लाइव / Gemini TTS) - जो चालू करो सिर्फ़ वही, बंद करने से अपने-आप कोई दूसरा चालू नहीं होता. मेरे बोलना ख़त्म करने से पहली आवाज़ तक का " +
             "समय हर इंजन के नीचे दिखता है (पिछली बार नापा). डिफ़ॉल्ट: DK लाइव (Direct Gemini Live Voice). \"DK लाइव\" का स्विच = Direct Gemini Live Voice (Gemini की अपनी आवाज़ सीधे). Live या Gemini TTS में दिक़्क़त आए तो ऐप अपने-आप दूसरी आवाज़ पर (आख़िर में फ़ोन की अपनी आवाज़) लौटता है. ये बदलाव तुरंत सेव होते हैं.")
         nowBlock(box)            // v3.80: अभी कौन बोल रहा (इंजन / आवाज़ / मॉडल) + मॉडल बदलो + गति-पिच
         divider(box)
-        val activeId = VoiceModeController.currentId(a)      // Supertonic चालू = यहाँ दोनों बंद दिखें
+        val activeId = VoiceModeController.currentId(a)
         engines.forEachIndexed { i, e -> if (i > 0) divider(box); engineBlock(box, e, e.id == activeId) }
         if (engines.isEmpty()) hint(box, "कोई आवाज़ इंजन नहीं मिला - DK लाइव अपनी आवाज़ में बोलेगा")
     }
@@ -86,7 +86,7 @@ class VoiceEngineCard private constructor(private val a: Activity, private val d
 
     private fun onSwitch(id: String, on: Boolean) {
         val cur = VoiceModeController.currentId(a)
-        // नवंबर 2026 (मालिक): चालू किया = सिर्फ़ यही (Supertonic भी बंद). बंद किया = अपने-आप दूसरा चालू नहीं - यही चालू रहता है
+        // नवंबर 2026 (मालिक): चालू किया = सिर्फ़ यही. बंद किया = अपने-आप दूसरा चालू नहीं - यही चालू रहता है
         val next = VoiceModeController.switch(a, id, on)
         syncSwitches(next)
         val t = VoiceEngines.byId(next)?.title ?: next
@@ -98,7 +98,7 @@ class VoiceEngineCard private constructor(private val a: Activity, private val d
         refreshNow()
     }
 
-    /** स्विच वही दिखें जो सच में चुना है (Supertonic चालू = दोनों बंद) */
+    /** स्विच वही दिखें जो सच में चुना है */
     private fun syncSwitches(cur: String = VoiceModeController.currentId(a)) {
         muteSwitch = true
         switches.forEach { (k, s) -> if (s.isChecked != (k == cur)) s.isChecked = k == cur }

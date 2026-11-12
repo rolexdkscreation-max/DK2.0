@@ -144,7 +144,7 @@ class VoiceActivity : AppCompatActivity() {
             visibility = android.view.View.GONE
         }
         col.addView(link, LinearLayout.LayoutParams(-2, -2).apply { gravity = Gravity.CENTER_HORIZONTAL })
-        // नवंबर 2026 (मालिक): अभी आवाज़ किससे आ रही - Supertonic / Gemini TTS / Gemini Live (सीधी) + वजह
+        // नवंबर 2026 (मालिक): अभी आवाज़ किससे आ रही - Gemini TTS / Gemini Live (सीधी) + वजह
         voiceNow = TextView(this).apply {
             setTextColor(0xB3FFFFFF.toInt()); textSize = 11f; gravity = Gravity.CENTER
             val h = (12 * dp).toInt(); setPadding(h, 0, h, (4 * dp).toInt())

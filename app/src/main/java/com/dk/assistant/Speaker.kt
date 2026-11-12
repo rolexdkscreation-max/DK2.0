@@ -196,7 +196,7 @@ class Speaker(context: Context) {
             applyVoiceUsage()
             // नवंबर 2026 (मालिक): स्क्रीन पर कौन बोल रहा - बैकअप मोड (DK लाइव नहीं जुड़ा) = Gemini TTS
             if (!OrbRules.liveUp(DKState.linkStatus)) try { com.dk.assistant.voice.engine.VoiceNow.played("backup_gemini_tts", "Gemini TTS (बैकअप मोड)", Prefs.geminiVoice(appCtx),
-                "DK लाइव नहीं जुड़ा; Supertonic सिर्फ़ DK लाइव में बोलता है") } catch (_: Throwable) {}
+                "DK लाइव नहीं जुड़ा") } catch (_: Throwable) {}
             val keys = keys()
             // v4.8 मालिक: "ऑफलाइन में भी बोले" - बिना नेट (बैकअप न हो तब भी) तुरंत फ़ोन की अपनी आवाज़, चुप नहीं
             val localOnly = this.localOnly || !online()

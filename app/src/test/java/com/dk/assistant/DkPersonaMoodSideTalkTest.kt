@@ -1,7 +1,5 @@
 package com.dk.assistant
 
-import com.dk.assistant.avatar.Mood
-import com.dk.assistant.voice.engine.HumanVoice
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -12,7 +10,7 @@ import org.junit.Test
 import java.io.File
 
 /**
- * नवंबर 2026 (मालिक): मूड समझकर बात, स्वभाव चुनना (डिफ़ॉल्ट दोस्ताना), Piper में साँस/ठहराव,
+ * नवंबर 2026 (मालिक): मूड समझकर बात, स्वभाव चुनना (डिफ़ॉल्ट दोस्ताना),
  * बॉस बनाम कोई और, बगल की बातचीत = सुनेगी पर जवाब नहीं.
  */
 class DkPersonaMoodSideTalkTest {
@@ -86,51 +84,6 @@ class DkPersonaMoodSideTalkTest {
         assertTrue(t.contains("playful"))
         assertTrue(t.contains("natural breaths"))
         assertTrue(DkPersona.ttsFor(DkPersona.P.PRO, "").contains("professional"))
-    }
-
-    // ------------------------------------------------------------------ Piper: इंसान जैसी आवाज़
-    @Test fun human_moodTune() {
-        assertTrue(HumanVoice.tune(Mood.SAD).speedMul < 1f)
-        assertTrue(HumanVoice.tune(Mood.SAD).gapPct > 100)
-        assertTrue(HumanVoice.tune(Mood.HAPPY).speedMul > 1f)
-        assertEquals(HumanVoice.Tune(1f, 1f, 100), HumanVoice.tune(Mood.NORMAL))
-        assertEquals(560, HumanVoice.gap(400, Mood.SAD))
-        assertEquals(400, HumanVoice.gap(400, Mood.NORMAL))
-    }
-
-    @Test fun human_jitterSmallAndStable() {
-        for (s in listOf("नमस्ते", "आप कैसे हैं?", "आज मौसम अच्छा है", "")) {
-            val j = HumanVoice.jitter(s)
-            assertTrue(j in 0.97f..1.03f)
-            assertEquals(j, HumanVoice.jitter(s))
-        }
-        assertTrue(HumanVoice.questionLift("कैसे हैं?") > 1f)
-        assertEquals(1f, HumanVoice.questionLift("ठीक है।"))
-    }
-
-    @Test fun human_breathOnlyInLongReplies() {
-        val b = HumanVoice.Breather()
-        val long = "आज मैंने आपके लिए मौसम देखा और बाहर हल्की बारिश हो रही है तो छाता लेकर जाइए"
-        assertFalse(b.next(long, 1_000))                  // पहला वाक्य - साँस नहीं
-        assertFalse(b.next(long, 1_300))                  // अभी 110 अक्षर नहीं हुए
-        assertFalse(b.next("हाँ", 1_500))                  // छोटा वाक्य - नहीं
-        assertTrue(b.next(long, 2_000))                    // काफ़ी बोल चुकी + लंबा वाक्य = साँस
-        assertFalse(b.next(long, 2_500))                   // अभी-अभी ली
-        assertFalse(b.next(long, 20_000))                  // नई बात - गिनती फिर से
-    }
-
-    @Test fun human_breathPcmIsQuietAndFaded() {
-        val p = HumanVoice.breath(220, 3)
-        assertEquals(HumanVoice.RATE * 220 / 1000 * 2, p.size)
-        fun s(i: Int) = ((p[2 * i + 1].toInt() shl 8) or (p[2 * i].toInt() and 0xff)).toShort().toInt()
-        val n = p.size / 2
-        var max = 0
-        for (i in 0 until n) max = maxOf(max, kotlin.math.abs(s(i)))
-        assertTrue("बहुत ज़ोर की साँस: $max", max < 32767 * 0.2)
-        assertTrue("साँस सुनाई ही न दे: $max", max > 50)
-        assertTrue(kotlin.math.abs(s(0)) < 10 && kotlin.math.abs(s(n - 1)) < 10)
-        val ms = HumanVoice.breathMs("कुछ भी")
-        assertTrue(ms in 180..260)
     }
 
     // ------------------------------------------------------------------ बगल की बातचीत
@@ -248,7 +201,6 @@ class DkPersonaMoodSideTalkTest {
         assertEquals(3, Regex("sideTalkCheck\\(\\)").findAll(srv).count())
         assertTrue(src("GeminiLiveTools.kt").contains("SideTalk.blockFor(name, args, sideWho())"))
         assertTrue(src("GeminiLiveMic.kt").contains("whoCheckAsync(cmdBuf.toByteArray(), now, whoSeq)"))
-        assertTrue(src("voice/engine/SupertonicTtsEngine.kt").contains("HumanVoice.breath("))
         assertTrue(src("voice/engine/GeminiTtsEngine.kt").contains("DkPersona.ttsStyle(c, "))
         assertTrue(src("SettingsVoice.kt").contains("DK का स्वभाव"))
     }

@@ -60,6 +60,27 @@ class VoiceModeBehaviorTest {
         }
     }
 
+    /** नवंबर 2026 (मालिक: "पहला TTS पूरी तरह डिलीट, फ़ोन में जो गड़बड़ है वो भी"): पुराना Supertonic / Piper सब मिटे, पसंद = DK लाइव */
+    @Test fun oldSupertonicAndPiperWipedFromPhone() {
+        val st = java.io.File(c.filesDir, "supertonic/model").apply { mkdirs() }
+        java.io.File(st, "voice.bin").writeText("x")
+        val pp = java.io.File(c.filesDir, "piper.gone.123").apply { mkdirs() }
+        val keep = java.io.File(c.filesDir, "voice").apply { mkdirs() }
+        c.getSharedPreferences("dk_supertonic", Context.MODE_PRIVATE).edit().putBoolean("on", true).commit()
+        c.getSharedPreferences("dk_piper", Context.MODE_PRIVATE).edit().putString("voice", "x").commit()
+        VoiceEngines.sp(c).edit().putString("active", VoiceEngines.OLD_SUPERTONIC_ID).putBoolean(VoiceEngines.MIGRATE_KEY, true)
+            .putBoolean(VoiceEngines.DIRECT_KEY, true).commit()
+        assertEquals(VoiceEngines.LIVE_NATIVE, VoiceEngines.activeId(c))
+        val until = System.currentTimeMillis() + 5_000
+        while ((st.exists() || pp.exists()) && System.currentTimeMillis() < until) Thread.sleep(20)
+        assertFalse(java.io.File(c.filesDir, "supertonic").exists())
+        assertFalse(pp.exists())
+        assertTrue(keep.exists())
+        assertFalse(c.getSharedPreferences("dk_supertonic", Context.MODE_PRIVATE).contains("on"))
+        assertFalse(c.getSharedPreferences("dk_piper", Context.MODE_PRIVATE).contains("voice"))
+        assertTrue(VoiceEngines.sp(c).getBoolean(VoiceEngines.WIPE_KEY, false))
+    }
+
     @Test fun settingsShowOnlyDirectLiveAndGeminiTts() {
         val s = open().get()
         val live = Ui.switch(s, LiveNativeEngine.title)
