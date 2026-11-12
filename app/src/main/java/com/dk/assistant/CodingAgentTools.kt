@@ -82,6 +82,7 @@ internal fun CodingAgent.runTool(tool: String, path: String, c: Call, onStep: (S
                     "(more than half the file). Keep every other line exactly - use edit with FIND/REPLACE to change only what the task needs."
             remember(path)
             staged[path] = content
+            CodeLive.put(CodeLive.WHO_CODER, path, content, old)   // साइड का लाइव कोड
             onStep("लिखा: $path (${content.lines().size} लाइन)")
             return "OK staged $path (${content.length} chars)"
         }
@@ -89,6 +90,7 @@ internal fun CodingAgent.runTool(tool: String, path: String, c: Call, onStep: (S
             if (c.finds.isEmpty() || c.finds.size != c.replaces.size)
                 return "ERROR: need matching <<<FIND ... FIND>>> and <<<REPLACE ... REPLACE>>> blocks (${c.finds.size} FIND, ${c.replaces.size} REPLACE)"
             var cur = current(path) ?: return "NOT FOUND: $path" + similar(path)
+            val before = cur
             val notes = mutableListOf<String>()
             for ((k, f) in c.finds.withIndex()) {
                 val r = c.replaces[k]
@@ -102,6 +104,7 @@ internal fun CodingAgent.runTool(tool: String, path: String, c: Call, onStep: (S
                 }
             }
             remember(path); staged[path] = cur
+            CodeLive.put(CodeLive.WHO_CODER, path, cur, before)   // साइड का लाइव कोड
             onStep("बदला: $path" + if (c.finds.size > 1) " (${c.finds.size} जगह)" else "")
             return "OK edited $path (${c.finds.size} change${if (c.finds.size > 1) "s" else ""})" + if (notes.isNotEmpty()) " - " + notes.joinToString() else ""
         }
@@ -110,6 +113,7 @@ internal fun CodingAgent.runTool(tool: String, path: String, c: Call, onStep: (S
             // v4.4: इस्तेमाल हो रही फ़ाइल कभी नहीं हटती (पहले "option हटाओ" पर पूरी Prefs.kt/SettingsActivity.kt हट गई थीं)
             deleteBlock(path, cur)?.let { return "ERROR: NOT deleted. $it" }
             remember(path); staged[path] = null
+            CodeLive.gone(CodeLive.WHO_CODER, path, cur)
             onStep("हटाया: $path"); return "OK staged delete $path"
         }
         "suggest" -> {

@@ -207,6 +207,9 @@ object CoderSession {
 
 class CodingActivity : AppCompatActivity() {
 
+    /** नवंबर 2026 (मालिक): साइड में लाइव कोड - AI जो फ़ाइल लिख रहा है, पूरी दिखती है (रंग बदलने का विकल्प) */
+    private lateinit var codePanel: CodeLivePanel
+    private lateinit var codeBtn: android.widget.Button
     private lateinit var list: LinearLayout
     private lateinit var scroll: ScrollView
     private lateinit var edt: EditText
@@ -298,6 +301,7 @@ class CodingActivity : AppCompatActivity() {
             smallBtn("रिपो") { if (Prefs.coderSeven(this)) sevenPicker() else chooseRepo() },
             smallBtn("इतिहास") { showHistory() },
             smallBtn("नया") { newSession() },
+            smallBtn(CodeLivePanel.label(0)) { codePanel.toggle() }.also { codeBtn = it },
             smallBtn("स्टूडियो") { com.dk.assistant.studio.StudioSession.open(this, null) }))
         FutureViews.glassTopBar(top)      // संदर्भ चित्र: ऊपर काँच की पट्टी (सिर्फ़ नाम)
         col.addView(top)
@@ -359,6 +363,12 @@ class CodingActivity : AppCompatActivity() {
         ChoiceBar.wireSend(edt, send) { CoderSession.busy }
         CoderSession.starter = { t -> runOnUiThread { edt.setText(t); doSend() } }
         composer.onSend = { doSend() }
+        // कोडिंग एजेंट (और 7 एजेंट की टीम) की फ़ाइलें + इससे बने स्टूडियो ऐप की फ़ाइलें
+        codePanel = CodeLivePanel(this, { it == CodeLive.WHO_CODER || CodeLive.isStudio(it) }) { n -> codeBtn.text = UiLang.s(CodeLivePanel.label(n)) }
+        codePanel.attachTo(root)
+        onBackPressedDispatcher.addCallback(this, object : androidx.activity.OnBackPressedCallback(true) {
+            override fun handleOnBackPressed() { if (codePanel.isOpen) codePanel.close() else { isEnabled = false; onBackPressedDispatcher.onBackPressed() } }
+        })
         setContentView(root)
         Glass.install(this)
         CoderHistory.init(this)                                     // पिछली बातचीत वापस (ऐप बंद होकर खुली हो तो)

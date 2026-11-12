@@ -193,12 +193,17 @@ object StudioSession {
     private suspend fun apply(p: StudioProject, r: StudioCore.Reply): Int {
         var n = 0
         for ((path, body) in r.files) {
+            val old = withContext(Dispatchers.IO) { try { p.read(path) } catch (_: Exception) { null } }
             val w = withContext(Dispatchers.IO) { p.write(path, body) } ?: continue
+            com.dk.assistant.CodeLive.put(com.dk.assistant.CodeLive.studio(p.slug), w, body, old)   // साइड का लाइव कोड
             n++; version++
             step("📄 $w (${maxOf(1, body.length / 1024)} KB)")
             delay(80)
         }
-        for (d in r.deleted) if (withContext(Dispatchers.IO) { p.delete(d) }) { n++; version++; step("🗑 $d") }
+        for (d in r.deleted) {
+            val old = withContext(Dispatchers.IO) { try { p.read(d) } catch (_: Exception) { null } }
+            if (withContext(Dispatchers.IO) { p.delete(d) }) { com.dk.assistant.CodeLive.gone(com.dk.assistant.CodeLive.studio(p.slug), d, old); n++; version++; step("🗑 $d") }
+        }
         return n
     }
 }

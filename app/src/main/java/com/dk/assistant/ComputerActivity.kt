@@ -30,6 +30,9 @@ class ComputerActivity : AppCompatActivity() {
     private lateinit var askBox: LinearLayout
     /** नवंबर 2026: "आगे क्या करें" के बटन (डिब्बे के ऊपर) */
     private lateinit var choiceBar: ChoiceBar
+    /** नवंबर 2026 (मालिक): साइड में लाइव कोड - AI जो फ़ाइल लिख रहा है, पूरी दिखती है (रंग बदलने का विकल्प) */
+    private lateinit var codePanel: CodeLivePanel
+    private lateinit var codeBtn: Button
     private var shown = 0
     /** नवंबर 2026 (बग/स्मूथ): ComputerSession.dropped का आख़िरी देखा मान + एक frame में एक render */
     private var seenDrop = 0L
@@ -134,6 +137,7 @@ class ComputerActivity : AppCompatActivity() {
             smallBtn("फ़ाइलें") { showFiles() },
             smallBtn("इतिहास") { showHistory() },
             smallBtn("नया") { newSession() },
+            smallBtn(CodeLivePanel.label(0)) { codePanel.toggle() }.also { codeBtn = it },
             smallBtn("स्टूडियो") { com.dk.assistant.studio.StudioSession.open(this, null) }))
         FutureViews.glassTopBar(top)      // संदर्भ चित्र: ऊपर काँच की पट्टी (सिर्फ़ नाम)
         col.addView(top)
@@ -173,6 +177,12 @@ class ComputerActivity : AppCompatActivity() {
         // काम चलते समय: डिब्बा खाली = रोकें; कुछ लिखा = भेजें (उसी काम का = साथ में, अलग = बाद में)
         send.setOnClickListener { if (ChoiceBar.stops(edt, ComputerSession.busy)) ComputerSession.stop() else doSend() }
         ChoiceBar.wireSend(edt, send) { ComputerSession.busy }
+        // DK कंप्यूटर की फ़ाइलें + इससे बने स्टूडियो ऐप की फ़ाइलें
+        codePanel = CodeLivePanel(this, { it == CodeLive.WHO_COMPUTER || CodeLive.isStudio(it) }) { n -> codeBtn.text = UiLang.s(CodeLivePanel.label(n)) }
+        codePanel.attachTo(root)
+        onBackPressedDispatcher.addCallback(this, object : androidx.activity.OnBackPressedCallback(true) {
+            override fun handleOnBackPressed() { if (codePanel.isOpen) codePanel.close() else { isEnabled = false; onBackPressedDispatcher.onBackPressed() } }
+        })
         setContentView(root)
         Glass.install(this)
         ComputerSession.restoreLines(this)          // v3.88: ऐप बंद हुआ था - पिछली बातचीत वापस
