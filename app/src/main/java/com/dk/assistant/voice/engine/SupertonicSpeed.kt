@@ -4,18 +4,17 @@ import android.content.Context
 
 /**
  * नवंबर 2026 (मालिक का फ़ोन-नाप: "टेस्ट 29.95 s में पहली आवाज़; बातचीत में 75 अक्षर का वाक्य 33.87 s में, आवाज़ 8.52 s").
- * यानी HQ (Supertonic-3, 8 चरण) इस फ़ोन पर 1 s आवाज़ ~4 s में बनाता था - बोलने से 4 गुना धीमा. ऐसे में टुकड़ों में
+ * यानी Supertonic 3 (8 चरण) इस फ़ोन पर 1 s आवाज़ ~4 s में बनाता था - बोलने से 4 गुना धीमा. ऐसे में टुकड़ों में
  * बोलना भी काम नहीं करता (हर टुकड़ा बजने से पहले अगला तैयार नहीं), और Live की आवाज़ हर बार आगे निकल जाती थी.
  *
  * sandbox नाप (वही मॉडल, 2 धागे, "नमस्ते, मैं DK हूँ। …" 3.4 s आवाज़): 8 चरण 1.13 s • 5 = 0.77 • 4 = 0.67 • 3 = 0.50 • 2 = 0.38 s.
- * Piper medium (VITS, प्रियंवदा) उसी वाक्य पर 0.24 s, छोटे टुकड़े ("जी बिल्कुल,") पर 0.06 s बनाम HQ 0.79 s.
  *
  * अब (pure, JVM test):
- * - HQ के चरण अपने-आप: शुरू 4; हर वाक्य की रफ़्तार (बनने का समय / आवाज़ की लंबाई) देखकर धीमा = कम चरण, बहुत तेज़ = एक चरण ज़्यादा.
+ * - चरण अपने-आप: शुरू 4; हर वाक्य की रफ़्तार (बनने का समय / आवाज़ की लंबाई) देखकर धीमा = कम चरण, बहुत तेज़ = एक चरण ज़्यादा.
  * - धागे सिर्फ़ फ़ोन के तेज़ (बड़े) कोर जितने - धीमे छोटे कोर मिलाने से ONNX हर चरण पर सबसे धीमे कोर का इंतज़ार करता है.
- * - सबसे कम चरण पर भी धीमा = साफ़ सलाह: Piper medium आवाज़ (कई गुना तेज़).
+ * - सबसे कम चरण पर भी धीमा = साफ़ सलाह (Piper हटाया - देर हो तो उस वाक्य में Gemini Live की सीधी आवाज़ बचाती है).
  */
-object PiperSpeed {
+object SupertonicSpeed {
     /** ज़्यादा से कम (8 = पहले वाली हाई क्वालिटी) */
     val STEPS = listOf(8, 5, 4, 3, 2)
     const val START_STEPS = 4
@@ -25,10 +24,12 @@ object PiperSpeed {
     const val FAST_RTF = 0.3
     /** इतनी छोटी आवाज़ पर नाप भरोसे का नहीं (हर बार का तय खर्च ज़्यादा दिखता है) */
     const val MIN_AUDIO_MS = 1_200L
-    const val PREF = "hq_steps"
+    const val PREF = "steps"
+    /** हटाए Piper के समय का नाम - [SupertonicStore] की एक बार की migration */
+    const val OLD_PREF = "hq_steps"
 
-    fun steps(c: Context): Int = try { norm(PiperStore.sp(c).getInt(PREF, START_STEPS)) } catch (_: Throwable) { START_STEPS }
-    fun setSteps(c: Context, v: Int) { try { PiperStore.sp(c).edit().putInt(PREF, norm(v)).apply() } catch (_: Throwable) {} }
+    fun steps(c: Context): Int = try { norm(SupertonicStore.sp(c).getInt(PREF, START_STEPS)) } catch (_: Throwable) { START_STEPS }
+    fun setSteps(c: Context, v: Int) { try { SupertonicStore.sp(c).edit().putInt(PREF, norm(v)).apply() } catch (_: Throwable) {} }
 
     fun norm(v: Int): Int = STEPS.firstOrNull { it == v } ?: STEPS.minByOrNull { kotlin.math.abs(it - v) } ?: START_STEPS
 
@@ -48,22 +49,22 @@ object PiperSpeed {
         }
     }
 
-    /** pure: सबसे कम चरण पर भी बोलने से धीमा = यह फ़ोन HQ के लिए धीमा */
-    fun tooSlowForHq(steps: Int, rtf: Double): Boolean = norm(steps) == STEPS.last() && rtf > 1.0
+    /** pure: सबसे कम चरण पर भी बोलने से धीमा = यह फ़ोन Supertonic के लिए धीमा */
+    fun tooSlow(steps: Int, rtf: Double): Boolean = norm(steps) == STEPS.last() && rtf > 1.0
 
-    const val ADVICE = "यह फ़ोन HQ आवाज़ के लिए धीमा है — Piper medium आवाज़ (प्रियंवदा / प्रथम / रोहन) चुनें, वह कई गुना तेज़ बनती है"
+    const val ADVICE = "यह फ़ोन Supertonic आवाज़ के लिए धीमा है — बीच-बीच में रुकेगी; देर होने पर DK उस वाक्य में Gemini Live की सीधी आवाज़ में बोलेगा. स्पीड थोड़ी बढ़ाने से भी मदद मिलती है"
 
     /**
      * pure: कितने धागे. [power] = हर कोर की ताक़त ([cpuPower]: पहले cpu_capacity, न मिले तो सबसे ऊँची रफ़्तार);
-     * खाली = पता नहीं -> पुराना [PiperTtsEngine.threadsFor]. तेज़ कोर = सबसे तेज़ के [bigShare] या ज़्यादा.
-     * HQ: तेज़ कोर जितने (2-4), बाकी: 1-2.
+     * खाली = पता नहीं -> पुराना [SupertonicTtsEngine.threadsFor]. तेज़ कोर = सबसे तेज़ के [bigShare] या ज़्यादा.
+     * तेज़ कोर जितने (2-4).
      */
-    fun threads(power: List<Long>, cores: Int, hq: Boolean, bigShare: Double = 0.6): Int {
+    fun threads(power: List<Long>, cores: Int, bigShare: Double = 0.6): Int {
         val f = power.filter { it > 0 }
-        if (f.size < 2) return PiperTtsEngine.threadsFor(cores, hq)
+        if (f.size < 2) return SupertonicTtsEngine.threadsFor(cores)
         val top = f.max().toDouble()
         val big = f.count { it >= top * bigShare }
-        return if (hq) big.coerceIn(2, 4).coerceAtMost(maxOf(cores, 2)) else big.coerceIn(1, 2)
+        return big.coerceIn(2, 4).coerceAtMost(maxOf(cores, 2))
     }
 
     /** फ़ोन के कोर की ताक़त: cpu_capacity (Android के ज़्यादातर फ़ोन, बड़े/छोटे कोर का सही फ़र्क) - न हो तो रफ़्तार (kHz) */
@@ -75,9 +76,9 @@ object PiperSpeed {
     } catch (_: Throwable) { emptyList<Long>() to 0.6 }
 
     /** इस फ़ोन पर कितने धागे (एक बार नापकर) */
-    fun threadsHere(hq: Boolean): Int {
+    fun threadsHere(): Int {
         val cores = Runtime.getRuntime().availableProcessors()
         val (p, share) = cpuPower(cores)
-        return threads(p, cores, hq, share)
+        return threads(p, cores, share)
     }
 }

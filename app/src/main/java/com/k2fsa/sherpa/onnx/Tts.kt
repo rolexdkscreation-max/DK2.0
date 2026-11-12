@@ -3,7 +3,7 @@
 // DK: k2-fsa/sherpa-onnx v1.13.8 का Kotlin API (sherpa-onnx/kotlin-api/Tts.kt) - Apache License 2.0
 // https://github.com/k2-fsa/sherpa-onnx/blob/v1.13.8/LICENSE
 // बदलाव: (1) companion का System.loadLibrary हटाया - native लाइब्रेरी ऐप के अंदर नहीं, पहली बार डाउनलोड होकर
-//        PiperTtsEngine उसे System.load(पूरा पता) से खोलता है (APK का साइज़ वही रहे).
+//        SupertonicTtsEngine उसे System.load(पूरा पता) से खोलता है (APK का साइज़ वही रहे).
 //        (2) getOfflineTtsConfig() सहायक हटाया (इस्तेमाल नहीं). बाकी classes / field के नाम बिल्कुल वही -
 //        native कोड इन्हें JNI से नाम से पढ़ता है.
 package com.k2fsa.sherpa.onnx

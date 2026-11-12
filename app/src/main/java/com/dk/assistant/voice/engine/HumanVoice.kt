@@ -7,14 +7,14 @@ import kotlin.math.sin
 
 /**
  * नवंबर 2026 (मालिक): "सारे TTS में साँस लेने, रुकने और उतार-चढ़ाव जैसी इंसानी बात."
- * Piper / HQ के लिए (Gemini TTS / Live को prompt से): 
+ * Supertonic 3 के लिए (Gemini TTS / Live को prompt से): 
  *  - भाव के हिसाब से रफ़्तार / सुर / ठहराव (उदास = धीमा, थोड़ा नीचा, लंबा ठहराव; खुश = थोड़ा तेज़ और ऊँचा)
  *  - हर वाक्य की रफ़्तार में ±3% का हल्का फ़र्क (एक जैसी मशीनी लय नहीं)
  *  - लंबी बात में बीच-बीच में बहुत धीमी, मुलायम साँस (~0.2 s) - वाक्य शुरू होने से पहले
- * Settings → आवाज़ → "Piper में हल्की साँस और ठहराव" (शुरू में चालू). Pure - JVM test.
+ * Settings → आवाज़ → "Supertonic में हल्की साँस और ठहराव" (शुरू में चालू). Pure - JVM test.
  */
 object HumanVoice {
-    const val PREF = "piper_breath"
+    const val PREF = "piper_breath"   // पुराना नाम ही - यूज़र की सेव पसंद बनी रहे (Piper इंजन हटाया जा चुका)
     const val RATE = VoiceEngine.RATE
 
     /** इतने अक्षर बोलने के बाद अगली लंबी बात से पहले साँस */
@@ -39,7 +39,7 @@ object HumanVoice {
         return 0.97f + h / 1000f
     }
 
-    /** सवाल = आख़िर में थोड़ा ऊँचा सुर (Piper ख़ुद कम उठाता है) */
+    /** सवाल = आख़िर में थोड़ा ऊँचा सुर (Supertonic ख़ुद कम उठाता है) */
     fun questionLift(text: String): Float = if (text.trimEnd().endsWith("?")) 1.015f else 1f
 
     /** वाक्यों के बीच ठहराव भाव के हिसाब से */

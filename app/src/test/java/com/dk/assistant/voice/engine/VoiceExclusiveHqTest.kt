@@ -9,8 +9,8 @@ import org.junit.Test
 import java.io.File
 
 /**
- * नवंबर 2026 (मालिक): (1) DK लाइव / Gemini TTS / Piper - जो चालू करूँ वही एक, बंद करने से अपने-आप दूसरा नहीं;
- * (2) Piper चुना = हमेशा Piper, ख़राबी = Gemini Live की सीधी आवाज़ (Gemini TTS नहीं); (3) हाई क्वालिटी महिला आवाज़ें
+ * नवंबर 2026 (मालिक): (1) DK लाइव / Gemini TTS / Supertonic (पहले Piper) - जो चालू करूँ वही एक, बंद करने से अपने-आप दूसरा नहीं;
+ * (2) Supertonic चुना = हमेशा Supertonic, ख़राबी = Gemini Live की सीधी आवाज़ (Gemini TTS नहीं); (3) हाई क्वालिटी महिला आवाज़ें
  * इंटरनेट से; (4) WhatsApp: खुली चैट में ही रुककर बात, बार-बार बैक / सर्च नहीं.
  */
 class VoiceExclusiveHqTest {
@@ -19,13 +19,13 @@ class VoiceExclusiveHqTest {
 
     private val l = VoiceEngines.LIVE_NATIVE
     private val g = VoiceEngines.GEMINI_TTS
-    private val p = PiperTtsEngine.ID
+    private val p = SupertonicTtsEngine.ID
     private val all = setOf(l, g)
 
     @Test fun onlyWhatIsTurnedOnSpeaks() {
         assertEquals(g, VoiceModeController.choose(l, g, true, all))
         assertEquals(l, VoiceModeController.choose(g, l, true, all))
-        assertEquals(l, VoiceModeController.choose(p, l, true, all))      // Piper चालू था, DK लाइव चालू किया = सिर्फ़ DK लाइव
+        assertEquals(l, VoiceModeController.choose(p, l, true, all))      // Supertonic चालू था, DK लाइव चालू किया = सिर्फ़ DK लाइव
         // बंद करना = कुछ नहीं बदलता (अपने-आप दूसरा नहीं)
         assertEquals(l, VoiceModeController.choose(l, l, false, all))
         assertEquals(g, VoiceModeController.choose(g, g, false, all))
@@ -33,47 +33,42 @@ class VoiceExclusiveHqTest {
         assertEquals(g, VoiceModeController.choose(g, "edge_tts", true, all))   // जो इंजन है ही नहीं
     }
 
-    @Test fun piperFailureGoesToLiveNeverGeminiTts() {
-        assertEquals(PiperTtsEngine.Pick.NONE, PiperTtsEngine.pick(on = false, installed = true, failed = false))
-        assertEquals(PiperTtsEngine.Pick.PIPER, PiperTtsEngine.pick(on = true, installed = true, failed = false))
-        assertEquals(PiperTtsEngine.Pick.LIVE, PiperTtsEngine.pick(on = true, installed = true, failed = true))
-        assertEquals(PiperTtsEngine.Pick.LIVE, PiperTtsEngine.pick(on = true, installed = false, failed = false))
-        val e = src("voice/engine/PiperTtsEngine.kt")
+    @Test fun supertonicFailureGoesToLiveNeverGeminiTts() {
+        assertEquals(SupertonicTtsEngine.Pick.NONE, SupertonicTtsEngine.pick(on = false, installed = true, failed = false))
+        assertEquals(SupertonicTtsEngine.Pick.SUPERTONIC, SupertonicTtsEngine.pick(on = true, installed = true, failed = false))
+        assertEquals(SupertonicTtsEngine.Pick.LIVE, SupertonicTtsEngine.pick(on = true, installed = true, failed = true))
+        assertEquals(SupertonicTtsEngine.Pick.LIVE, SupertonicTtsEngine.pick(on = true, installed = false, failed = false))
+        val e = src("voice/engine/SupertonicTtsEngine.kt")
         val fail = e.substringAfter("fun fail(c: Context, why: String)")
         assertFalse(fail.contains("setOn(app, false)"))                  // ख़राबी पर स्विच अपने-आप OFF नहीं
         assertTrue(fail.contains("VoiceEngines.markFailed(ID"))
         val live = src("GeminiLive.kt")
-        assertTrue(live.contains("engines.fallback()?.takeIf { chosen.id != com.dk.assistant.voice.engine.PiperTtsEngine.ID }"))
-        val card = src("SettingsPiper.kt")
-        assertTrue(card.contains("Piper बंद नहीं हुआ"))
+        assertTrue(live.contains("engines.fallback()?.takeIf { chosen.id != com.dk.assistant.voice.engine.SupertonicTtsEngine.ID }"))
+        val card = src("SettingsSupertonic.kt")
+        assertTrue(card.contains("Supertonic बंद नहीं हुआ"))
     }
 
     @Test fun highQualityFemaleVoicesFromInternet() {
-        assertEquals(3, PiperStore.HQ_VOICES.size)
-        assertTrue(PiperStore.HQ_VOICES.all { it.hq && it.sid in 0..4 && it.title.contains("महिला") && it.title.contains("हाई क्वालिटी") })
-        assertEquals(PiperStore.HQ_VOICES.size, PiperStore.HQ_VOICES.map { it.sid }.toSet().size)
-        assertTrue(PiperStore.VOICES.none { it.hq })
-        assertEquals(6, PiperStore.ALL_VOICES.map { it.id }.toSet().size)
-        assertEquals(7, PiperStore.ST_FILES.size)
-        assertTrue(PiperStore.ST_FILES.all { it.sha256.length == 64 && it.size > 0 })
-        assertTrue(PiperStore.ST_SIZE in 140_000_000L..150_000_000L)
-        assertEquals(40, PiperStore.ST_REV.length)
-        val v = PiperStore.HQ_VOICES.first()
-        assertEquals("https://huggingface.co/${PiperStore.ST_REPO}/resolve/${PiperStore.ST_REV}/voice.bin", PiperStore.fileUrl(v, "voice.bin"))
-        // एक ही मॉडल: HQ आवाज़ बदलने पर दोबारा लोड नहीं
-        assertEquals(PiperStore.ST_DIR, PiperTtsEngine.modelKey(PiperStore.HQ_VOICES[1].id))
-        assertEquals("hi_IN-rohan-medium", PiperTtsEngine.modelKey("hi_IN-rohan-medium"))
-        // नया = HQ, पहले से Piper medium फ़ोन में = वही (दोबारा डाउनलोड नहीं), सेव पसंद = वही
-        assertEquals(PiperStore.BEST_VOICE, PiperStore.pickDefault(null, false))
-        assertEquals(PiperStore.DEFAULT_VOICE, PiperStore.pickDefault(null, true))
-        assertEquals("hi-hq-f3-siya", PiperStore.pickDefault("hi-hq-f3-siya", true))
-        assertEquals(PiperStore.BEST_VOICE, PiperStore.pickDefault("gone", false))
-        val c = PiperTtsEngine.hqConfig(2, 1.0f)
-        assertEquals(2, c.sid); assertEquals(PiperStore.ST_STEPS, c.numSteps); assertEquals("hi", c.extra?.get("lang"))
-        assertEquals(4, PiperTtsEngine.threadsFor(8, true)); assertEquals(2, PiperTtsEngine.threadsFor(8, false))
-        assertEquals(1, PiperTtsEngine.threadsFor(2, true))
-        val dl = src("voice/engine/PiperDownload.kt")
-        assertTrue(dl.contains("if (v.hq) { fetchHq(c, v, done, tick); return }"))
+        // नवंबर 2026 (मालिक): Piper हटाया - सिर्फ़ Supertonic 3, 4 नेचुरल महिला आवाज़ें, इंटरनेट से
+        assertEquals(4, SupertonicStore.VOICES.size)
+        assertTrue(SupertonicStore.VOICES.all { it.sid in 0..4 && it.title.contains("महिला") })
+        assertEquals(SupertonicStore.VOICES.size, SupertonicStore.VOICES.map { it.sid }.toSet().size)
+        assertEquals(7, SupertonicStore.FILES.size)
+        assertTrue(SupertonicStore.FILES.all { it.sha256.length == 64 && it.size > 0 })
+        assertTrue(SupertonicStore.MODEL_SIZE in 140_000_000L..150_000_000L)
+        assertEquals(40, SupertonicStore.REV.length)
+        assertEquals("https://huggingface.co/${SupertonicStore.REPO}/resolve/${SupertonicStore.REV}/voice.bin", SupertonicStore.fileUrl("voice.bin"))
+        assertEquals(SupertonicStore.DEFAULT_VOICE, SupertonicStore.pickDefault(null))
+        assertEquals("hi-hq-f3-siya", SupertonicStore.pickDefault("hi-hq-f3-siya"))
+        assertEquals(SupertonicStore.DEFAULT_VOICE, SupertonicStore.pickDefault("gone"))
+        val c = SupertonicTtsEngine.genConfig(2, 1.0f)
+        assertEquals(2, c.sid); assertEquals(SupertonicStore.STEPS, c.numSteps); assertEquals("hi", c.extra?.get("lang"))
+        assertEquals(4, SupertonicTtsEngine.threadsFor(8))
+        assertEquals(1, SupertonicTtsEngine.threadsFor(2))
+        val dl = src("voice/engine/SupertonicDownload.kt")
+        assertTrue(dl.contains("fetchModel(c, done)"))
+        // एक ही मॉडल: आवाज़ बदलना = सिर्फ़ sid बदलना (दोबारा लोड / डाउनलोड नहीं)
+        assertTrue(src("voice/engine/SupertonicTtsEngine.kt").contains("SupertonicStore.voiceOf(voice.takeIf"))
     }
 
     @Test fun lowpassRemovesHarshHighs() {
