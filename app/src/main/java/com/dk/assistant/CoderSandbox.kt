@@ -20,7 +20,10 @@ class CoderSandbox(
     private val repo: String,
     private val now: () -> Long = System::currentTimeMillis,
     private val sleep: suspend (Long) -> Unit = { kotlinx.coroutines.delay(it) },
+    /** नवंबर 2026: फ़्री घंटों का हिसाब ([CodespaceMeter]) - कब चालू, कब बंद */
+    private val meter: Meter? = null,
 ) {
+    interface Meter { fun up(cores: Int); fun down() }
     /** GitHub REST (असल में [GitHub.call]; JUnit में नकली) */
     fun interface Api { fun call(method: String, path: String, body: JSONObject?): String }
 
@@ -35,6 +38,7 @@ class CoderSandbox(
             val cs = find() ?: create().also { onStep("☁ Codespace sandbox पहली बार बन रहा है (Android SDK लगेगा - पहली जाँच में कुछ मिनट लगेंगे)") }
             name = cs.optString("name")
             if (Sandbox.needsStart(cs.optString("state"))) start()
+            meter?.up(cs.optJSONObject("machine")?.optInt("cpus", CodespaceMeter.CORES) ?: CodespaceMeter.CORES)
         } catch (e: Exception) { disable(e) }
     }
 
@@ -80,6 +84,7 @@ class CoderSandbox(
     fun stop() {
         val n = name.ifEmpty { return }
         try { api.call("POST", "/user/codespaces/$n/stop", null) } catch (_: Exception) {}
+        meter?.down()
     }
 
     // ---- GitHub कॉल ----
@@ -125,7 +130,7 @@ object Sandbox {
     const val RUN = "dk-run/"
     const val RESULT = "dk-result/"
     const val FILE = "dk-result.txt"
-    const val IDLE_MIN = 20
+    const val IDLE_MIN = 10   // नवंबर 2026: 20 -> 10 (खाली codespace जल्दी बंद = फ़्री घंटे बचें)
     /** रुका codespace 30 दिन तक रखा (SDK/Gradle cache बचे); उसके बाद GitHub हटाता है, अगली बार फिर बनेगा */
     const val KEEP_MIN = 43_200
     const val POLL_MS = 8_000L

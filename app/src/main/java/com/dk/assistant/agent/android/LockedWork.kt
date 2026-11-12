@@ -28,7 +28,8 @@ object LockedWork {
     fun needsScreen(type: String): Boolean = type.trim().lowercase() in SCREEN
 
     /** whatsapp_task: किनमें स्क्रीन नहीं चाहिए (notification से / पीछे से) */
-    private val WA_NO_SCREEN = setOf("auto_chat_on", "auto_chat", "auto_reply_on", "auto_chat_off", "auto_reply_off")
+    private val WA_NO_SCREEN = setOf("auto_chat_on", "auto_chat", "auto_reply_on", "auto_chat_off", "auto_reply_off", "auto_chat_confirm", "auto_chat_cancel",
+        "chat_mode_off", "chat_pick", "chat_self", "chat_boss", "chat_reply")
     /** whatsapp_task: कॉल - काम के बाद लॉक नहीं (कॉल की स्क्रीन चाहिए) */
     private val WA_NO_RELOCK = setOf("voice_call", "video_call", "call", "audio_call")
 

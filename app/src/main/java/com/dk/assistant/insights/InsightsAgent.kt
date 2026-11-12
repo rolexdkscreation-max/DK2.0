@@ -58,6 +58,12 @@ object InsightsAgent {
     fun niche(c: Context) = c.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString("niche", "").orEmpty()
     fun setNiche(c: Context, s: String) = c.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putString("niche", s.trim().take(120)).apply()
     fun lastReport(c: Context) = c.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString("last_report", "").orEmpty()
+    /** नवंबर 2026: पिछले रिव्यू के असली आँकड़े (फ़ॉलोअर, रीच, सबसे नई / सबसे पॉपुलर...) - बाद के सवालों का तुरंत जवाब */
+    fun facts(c: Context): InsightsFacts.Saved? = InsightsFacts.fromJson(c.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString("facts", null))
+
+    /** मालिक ने कहा "बैकग्राउंड में करो" - इस बार ऐप नहीं खुलेगा (सिर्फ़ API), ऊपर सूचना में कदम */
+    @Volatile var background = false
+        private set
 
     @Volatile private var job: Job? = null
     @Volatile private var spokenForLive: String? = null
@@ -155,12 +161,22 @@ object InsightsAgent {
      */
     suspend fun liveTool(svc: DKAccessibilityService, args: org.json.JSONObject): String {
         if (args.optString("action").equals("stop", true)) return if (stop() || justStopped()) "STOPPED: the social review was stopped. Tell the user." else "Nothing was running. Tell the user honestly that no review was running."
-        if (busy) return InsightsTruth.toolReply(InsightsTruth.Proof.BUSY, "", openedApp.orEmpty(), TaskStatus.get(KEY)?.last.orEmpty())
         val arr = args.optJSONArray("platforms")
         val ps = (0 until (arr?.length() ?: 0)).mapNotNull { Platform.of(arr?.optString(it)) }.distinct()
+        // नवंबर 2026: "कितने फ़ॉलोअर / लास्ट वीडियो पर कितने व्यू / सबसे पॉपुलर" = सेव आँकड़ों से तुरंत (ऐप खोले बिना)
+        if (args.optString("action").lowercase() in setOf("ask", "facts", "numbers")) return InsightsFacts.answer(facts(svc), ps, System.currentTimeMillis())
+        if (busy) return if (background) InsightsTruth.bgReply(TaskStatus.get(KEY)?.last.orEmpty(), true)
+            else InsightsTruth.toolReply(InsightsTruth.Proof.BUSY, "", openedApp.orEmpty(), TaskStatus.get(KEY)?.last.orEmpty())
         val words = args.optString("request").trim()
         val req = InsightsVoice.parse(words)?.let { r -> if (ps.isEmpty()) r else r.copy(platforms = ps) }
             ?: InsightsVoice.Request(ps.ifEmpty { Platform.values().toList() }, words.ifBlank { "सोशल रिव्यू" })
+        if (args.optBoolean("background", false)) {
+            val api = req.platforms.filter { apiConnected(svc, it) }
+            if (api.isEmpty()) return InsightsTruth.bgImpossible(req.platforms.joinToString(", ") { it.en }, facts(svc)?.let { InsightsFacts.ago(System.currentTimeMillis() - it.at) })
+            start(svc, req.copy(platforms = api), null, bg = true)
+            val skipped = req.platforms - api.toSet()
+            return InsightsTruth.bgReply("", false) + (if (skipped.isNotEmpty()) " NOTE: ${skipped.joinToString { it.en }} has no API connector, so it is NOT included in this background review (it needs the app on screen) - tell him that too." else "")
+        }
         val msg = start(svc, req, null)
         // सबूत का इंतज़ार: ऐप खुला / API चला / फ़ोन लॉक / काम खत्म (गलती) - 14 सेकंड तक
         val until = System.currentTimeMillis() + PROOF_WAIT_MS
@@ -178,21 +194,24 @@ object InsightsAgent {
     /**
      * काम शुरू - तुरंत लौटता है; काम यूज़र के सामने स्क्रीन पर होता है (ऊपर [com.dk.assistant.WorkAwake] की पट्टी, स्क्रीन जगी). [speak] = DK लाइव बंद हो तो नतीजा बोलने के लिए (null = सिर्फ़ चैट/लाइव).
      */
-    fun start(svc: DKAccessibilityService, req: InsightsVoice.Request, speak: (suspend (String) -> Unit)?): String {
+    fun start(svc: DKAccessibilityService, req: InsightsVoice.Request, speak: (suspend (String) -> Unit)?, bg: Boolean = false): String {
         if (busy) return "सोशल रिव्यू पहले से चल रहा है - पूरा होते ही बताऊँगी।"
         val names = req.platforms.joinToString(", ") { it.hi }
-        TaskStatus.start(KEY, "सोशल रिव्यू", "DK social review (on screen)", req.text)
+        background = bg
+        if (bg) TaskStatus.start(KEY, "सोशल रिव्यू (बैकग्राउंड)", "DK social review (background, app not opened - official API only)", req.text)
+        else TaskStatus.start(KEY, "सोशल रिव्यू", "DK social review (on screen)", req.text)
         openedApp = null; lockedNow = false; apiOnlyRun = false; lastEnd = null; lastProblem = ""; startedAt = System.currentTimeMillis()
         job = svc.scope.launch(Dispatchers.Default) {
             var state = TaskStatus.State.NOT_DONE
             var short = ""
             try {
-                val r = run(svc, req)
+                val r = run(svc, req, bg)
                 state = if (r.anyData) TaskStatus.State.DONE else TaskStatus.State.NOT_DONE
                 short = r.spoken.take(380)
                 withContext(Dispatchers.Main) {
                     DKState.reply(r.report)
-                    try { svc.startActivity(Intent(svc, com.dk.assistant.ChatActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_REORDER_TO_FRONT)) } catch (_: Exception) {}
+                    // बैकग्राउंड = मालिक दूसरा काम कर रहा है - DK चैट बीच में नहीं खोलते (रिपोर्ट चैट में पड़ी है, सूचना में "पूरा")
+                    if (!bg) try { svc.startActivity(Intent(svc, com.dk.assistant.ChatActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_REORDER_TO_FRONT)) } catch (_: Exception) {}
                 }
                 if (DKState.live) spokenForLive = r.spoken
                 else speak?.invoke(r.spoken)
@@ -213,13 +232,14 @@ object InsightsAgent {
             }
         }
         watchStop(svc)
+        if (bg) return "ठीक है, $names का रिव्यू बैकग्राउंड में (ऐप खोले बिना, सिर्फ़ आधिकारिक API से) कर रही हूँ - ऊपर सूचना में हर कदम दिखेगा, आप अपना काम करते रहिए। पूरा होते ही बताऊँगी।"
         return "ठीक है, $names का पूरा रिव्यू अभी आपके सामने करती हूँ। मैं ऐप और उसका डैशबोर्ड खोलकर हर ${req.platforms.first().itemHi} के आँकड़े देखूँगी - " +
             "स्क्रीन पर देखते रहिए, ऊपर पट्टी में हर कदम दिखेगा। कुछ मिनट लगेंगे, बीच में फ़ोन न छुएँ। पूरा होते ही बताऊँगी।"
     }
 
     data class Result(val report: String, val spoken: String, val anyData: Boolean)
 
-    suspend fun run(svc: DKAccessibilityService, req: InsightsVoice.Request): Result {
+    suspend fun run(svc: DKAccessibilityService, req: InsightsVoice.Request, bg: Boolean = false): Result {
         val c = svc.applicationContext
         val all = mutableListOf<PlatformData>()
         val driver = AccessibilityScreenDriver(svc)
@@ -252,7 +272,8 @@ object InsightsAgent {
             val tp = System.currentTimeMillis()
             val m = mode(c, p)
             var d = PlatformData(p)
-            if (m != Mode.SCREEN && apiConnected(c, p)) {
+            val api = apiConnected(c, p)
+            if ((m != Mode.SCREEN || bg) && api) {
                 TaskStatus.step(KEY, "${p.hi}: API से आँकड़े ला रही हूँ")
                 if (m == Mode.API) apiOnlyRun = true
                 d = d.merge(withContext(Dispatchers.IO) {
@@ -264,7 +285,14 @@ object InsightsAgent {
                 })
             } else if (m == Mode.API) DKLog.d("सोशल रिव्यू ${p.en}: कनेक्टर नहीं जुड़ा - ऐप की स्क्रीन से देख रही हूँ")
             // स्क्रीन: तरीका "दोनों"/"स्क्रीन", या API से कुछ नहीं मिला
-            if (m == Mode.SCREEN || m == Mode.BOTH || (m == Mode.API && d.empty)) {
+            if (bg) {
+                // बैकग्राउंड: ऐप कभी नहीं खोलते (मालिक दूसरा काम कर रहा) - Android दूसरे ऐप की स्क्रीन छिपकर नहीं पढ़ने देता
+                if (!api) d = d.copy(problems = d.problems + "बैकग्राउंड में ऐप नहीं खोला और API (कनेक्टर) नहीं जुड़ा - इसके आँकड़े नहीं पढ़े")
+            } else if (m == Mode.BOTH && api && !InsightsFacts.screenNeeded(d, req.text)) {
+                // फटाफट: API से पूरे आँकड़े मिल गए और खाते की हालत नहीं पूछी = स्क्रीन पर दोबारा पढ़ने के कई मिनट बचे
+                DKLog.d("सोशल रिव्यू ${p.en}: API से पूरे आँकड़े (${d.posts.size} आइटम + खाता) - स्क्रीन वाला हिस्सा छोड़ा (फटाफट)")
+                TaskStatus.step(KEY, "${p.hi}: API से पूरे आँकड़े मिल गए - ऐप खोलने की ज़रूरत नहीं")
+            } else if (m == Mode.SCREEN || m == Mode.BOTH || (m == Mode.API && d.empty)) {
                 // नवंबर 2026 (मालिक): "मेरे सामने करे" - स्क्रीन बंद/लॉक हो तो पहले जगाओ (PIN सिर्फ़ मालिक की इजाज़त से, unlock() का नियम)
                 if (!usedScreen) wakeForScreen(svc)
                 TaskStatus.step(KEY, "${p.hi}: ऐप खोलकर आँकड़े पढ़ रही हूँ")
@@ -313,7 +341,7 @@ object InsightsAgent {
         val timing = InsightsSpeed.timing(took, System.currentTimeMillis() - tStart)
         DKLog.d("सोशल रिव्यू $timing")
         report += "\n\n_${timing}_"
-        save(c, report)
+        save(c, report, all)
         return Result(report, spoken, anyData)
     }
 
@@ -437,8 +465,10 @@ object InsightsAgent {
     }
 
     // ------------------------------------------------------------ फ़ाइल
-    private fun save(c: Context, report: String) {
-        c.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putString("last_report", report.take(60_000)).apply()
+    private fun save(c: Context, report: String, all: List<PlatformData> = emptyList()) {
+        val keep = InsightsFacts.keep(facts(c), all)
+        c.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putString("last_report", report.take(60_000))
+            .apply { if (keep.isNotEmpty()) putString("facts", InsightsFacts.toJson(keep, System.currentTimeMillis())) }.apply()
         val name = "सोशल रिव्यू " + java.text.SimpleDateFormat("yyyy-MM-dd HH-mm", java.util.Locale.US).format(java.util.Date()) + ".md"
         try {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {

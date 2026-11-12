@@ -103,7 +103,7 @@ internal fun GeminiLive.socialCheck(): Boolean {
     val ia = com.dk.assistant.insights.InsightsAgent
     val truth = com.dk.assistant.insights.InsightsTruth
     val recent = ia.startedAt > 0 && now - ia.startedAt < 90_000
-    val fix = truth.check(user, said, recent, ia.busy)
+    val fix = truth.check(user, said, recent, ia.busy, ia.background)
     if (fix == com.dk.assistant.insights.InsightsTruth.Fix.NONE || now - truth.lastFixAt < truth.FIX_GAP_MS) return false
     truth.lastFixAt = now
     log("सच-जाँच (सोशल रिव्यू): $fix - DK ने \"${said.take(50)}\" कहा")

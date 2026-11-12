@@ -212,6 +212,35 @@ internal suspend fun GeminiLive.localInfoTool(find: String = ""): String {
     return "Current place: ${r.first.name.ifBlank { "unknown area (%.3f, %.3f)".format(java.util.Locale.US, r.first.lat, r.first.lon) }}. Weather now: ${r.second.substringAfter(" — ", r.second)}"
 }
 
+/** नवंबर 2026: अभी की लोकेशन -> Google Maps लिंक वाला संदेश -> वही send_message रास्ता (पूछकर भेजना) */
+internal suspend fun GeminiLive.waLocation(args: JSONObject): String {
+    if (args.optString("contact").isBlank()) return "NEEDS USER CHOICE: किसे लोकेशन भेजनी है? Ask the user for the name."
+    DKState.set(Mode.WORKING)
+    if (!LocalInfo.hasPermission(svc)) return "NOT SENT: DK has no location permission. Tell the user to allow Location for DK in phone settings, then ask again."
+    val l = LocalInfo.fresh(svc) ?: return "NOT SENT: could not get a fresh location fix right now (Location off / weak GPS). Tell the user honestly; nothing was sent."
+    val place = try { withTimeoutOrNull(5_000) { LocalInfo.placeName(svc, l.latitude, l.longitude) }.orEmpty() } catch (e: CancellationException) { throw e } catch (_: Exception) { "" }
+    args.put("action", "send_message").put("message", com.dk.assistant.agent.social.WaShare.locationText(l.latitude, l.longitude, place))
+    log("WhatsApp: लोकेशन का लिंक बनाया (भेजने से पहले पूछेगा)")
+    return com.dk.assistant.agent.android.SocialAgent.start(svc, args, com.dk.assistant.agent.social.Platform.WHATSAPP)
+}
+
+/** नवंबर 2026: किसी का सेव नंबर (query) -> "Rahul ka number: ..." -> send_message रास्ता (पूछकर भेजना) */
+internal suspend fun GeminiLive.waContact(args: JSONObject): String {
+    val whose = args.optString("query").trim()
+    if (whose.isEmpty()) return "NEEDS USER CHOICE: किसका नंबर भेजना है? Ask the user."
+    if (args.optString("contact").isBlank()) return "NEEDS USER CHOICE: $whose का नंबर किसे भेजना है? Ask the user."
+    val all = try { PhoneActions.contacts(svc) } catch (_: SecurityException) { return "NOT SENT: DK has no Contacts permission. Tell the user to allow Contacts for DK." }
+    val found = all.filter { com.dk.assistant.agent.social.WaScreen.nameMatches(whose, it.name) }.distinctBy { it.number.filter { ch -> ch.isDigit() }.takeLast(10) }
+    return when {
+        found.isEmpty() -> "NOT FOUND: '$whose' नाम का कोई नंबर फ़ोन में सेव नहीं मिला। Tell the user; nothing was sent."
+        found.size > 1 -> "NEEDS USER CHOICE (nothing sent): '$whose' नाम के ${found.size} कॉन्टैक्ट हैं: ${found.take(5).joinToString(", ") { it.name }}. Ask which one, then call send_contact again with that exact name."
+        else -> {
+            args.put("action", "send_message").put("message", com.dk.assistant.agent.social.WaShare.contactText(found[0].name, found[0].number))
+            com.dk.assistant.agent.android.SocialAgent.start(svc, args, com.dk.assistant.agent.social.Platform.WHATSAPP)
+        }
+    }
+}
+
 /** नवंबर 2026 (मालिक: WhatsApp पर DK Hinglish में लिखे): देवनागरी संदेश -> Roman Hinglish (न बने = वही संदेश) */
 internal suspend fun GeminiLive.waHinglish(args: JSONObject) {
     val msg = args.optString("message")
@@ -398,6 +427,25 @@ internal fun GeminiLive.runTools(calls: JSONArray) {
                     in setOf("smart_reply", "reply_for_me", "reply") -> { DKState.set(Mode.WORKING); com.dk.assistant.agent.android.WaLook.smartReply(svc, args.optString("contact"), args.optString("message")) }
                     in setOf("auto_chat_on", "auto_chat", "auto_reply_on") -> com.dk.assistant.agent.android.WaAutoChat.startWithConfirm(args.optString("contact"), args.optInt("minutes", 0), args.optString("message"))
                     in setOf("auto_chat_off", "auto_reply_off") -> com.dk.assistant.agent.android.WaAutoChat.off()
+                    // नवंबर 2026 (PR #281 की कमी): "हाँ" के बाद चालू - पहले confirmOk() कहीं से बुलाया ही नहीं जाता था
+                    in setOf("auto_chat_confirm", "auto_chat_yes") -> com.dk.assistant.agent.android.WaAutoChat.confirmTool()
+                    in setOf("auto_chat_cancel", "auto_chat_no") -> com.dk.assistant.agent.android.WaAutoChat.cancelTool()
+                    // नवंबर 2026 (मालिक): चैटिंग मोड - पहले WhatsApp खोलकर कौन-कौन लिख रहा, फिर हर मैसेज पर बॉस से पूछो
+                    in setOf("chat_mode_on", "chatting_mode_on", "whatsapp_mode_on") -> {
+                        DKState.set(Mode.WORKING)
+                        val chats = com.dk.assistant.agent.android.WaLook.screenChats(svc).takeUnless { it.startsWith("FAILED") } ?: ""
+                        com.dk.assistant.agent.android.WaAutoChat.chatOn(args.optInt("minutes", 0), chats)
+                    }
+                    in setOf("chat_mode_off", "chatting_mode_off", "whatsapp_mode_off") -> com.dk.assistant.agent.android.WaAutoChat.chatOff()
+                    "chat_pick" -> com.dk.assistant.agent.android.WaAutoChat.chatPick(args.optString("contact"))
+                    "chat_self" -> com.dk.assistant.agent.android.WaAutoChat.chatSelf(svc, args.optString("contact"))
+                    "chat_boss" -> com.dk.assistant.agent.android.WaAutoChat.chatBoss(args.optString("contact"))
+                    "chat_reply" -> { waHinglish(args); com.dk.assistant.agent.android.WaAutoChat.chatReply(svc, args.optString("contact"), args.optString("message")) }
+                    // नवंबर 2026 (मालिक): लोकेशन / लाइव लोकेशन / कैमरा फ़ोटो / किसी का नंबर
+                    in setOf("send_location", "current_location") -> waLocation(args)
+                    "send_live_location" -> { DKState.set(Mode.WORKING); com.dk.assistant.agent.android.WaLook.uiSteps(svc, args.optString("contact"), "लाइव लोकेशन", com.dk.assistant.agent.social.WaShare.LIVE_LOCATION_STEPS) }
+                    in setOf("send_camera_photo", "camera_photo") -> { DKState.set(Mode.WORKING); com.dk.assistant.agent.android.WaLook.uiSteps(svc, args.optString("contact"), "कैमरा से खींची फ़ोटो", com.dk.assistant.agent.social.WaShare.CAMERA_STEPS) }
+                    "send_contact" -> waContact(args)
                     // नवंबर 2026: भेजा हुआ (गलती वाला) मैसेज सबके लिए डिलीट - मालिक का कहना ही हुक्म, सीधे
                     in setOf("delete_message", "delete", "unsend", "delete_last") -> {
                         DKState.set(Mode.WORKING)

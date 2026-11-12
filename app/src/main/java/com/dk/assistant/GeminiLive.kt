@@ -23,6 +23,7 @@ import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 import okhttp3.OkHttpClient
@@ -1517,6 +1518,21 @@ class GeminiLive(internal val svc: DKAccessibilityService, internal val agent: A
     /** v3.51: नया notification आया - Live को तुरंत बताओ (कुछ सेकंड के सब एक साथ) */
     private val notifQ = ArrayList<Triple<String, String, String>>()
     @Volatile private var notifFlushing = false
+    /** नवंबर 2026 (WhatsApp चैटिंग मोड): सीधा SYSTEM NOTE - Live चुप हो तब (बीच में नहीं काटता), एक-एक करके क्रम से */
+    private val noteLock = kotlinx.coroutines.sync.Mutex()
+    fun pushNote(text: String) {
+        if (!canTalk() || svc.callBusy()) return
+        svc.scope.launch {
+            noteLock.withLock {
+                if (!waitQuiet(60_000)) { log("चैटिंग मोड: Gemini चुप नहीं हुआ (60s) - सूचना नहीं भेजी"); return@withLock }
+                val ok = try { ws?.tx(JSONObject().put("realtimeInput", JSONObject().put("text", text)).toString()) == true } catch (_: Exception) { false }
+                lastAct = System.currentTimeMillis()
+                log("💬 WhatsApp चैटिंग मोड: नया मैसेज Live को बताया" + if (ok) "" else " (भेज नहीं पाया)")
+                delay(1_500)
+            }
+        }
+    }
+
     fun pushNotif(app: String, title: String, text: String) {
         if (!canTalk() || svc.callBusy()) return
         synchronized(notifQ) { notifQ.add(Triple(app, title, text)); if (notifFlushing) return; notifFlushing = true }
