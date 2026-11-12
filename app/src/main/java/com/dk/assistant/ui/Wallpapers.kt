@@ -43,7 +43,7 @@ object Wallpapers {
     // ------------------------------------------------------------------ शुद्ध नियम (JUnit)
     fun valid(id: String?) = id == NONE || id == CUSTOM || ALL.any { it.id == id }
 
-    /** गलत/पुराना मान = NONE; custom पर फ़ाइल न हो तो भी NONE */
+    /** गलत/पुराना मान = NONE (थीम वाला); custom पर फ़ाइल न हो तो भी NONE */
     fun resolve(id: String?, customExists: Boolean): String = when {
         id == null || !valid(id) -> NONE
         id == CUSTOM && !customExists -> NONE
@@ -147,7 +147,7 @@ object Wallpapers {
                 (bmp.height * sc).toInt().coerceAtLeast(1), true) else bmp
             val f = customFile(c); f.parentFile?.mkdirs()
             val tmp = File(f.parentFile, "custom.tmp")
-            tmp.outputStream().use { out.compress(Bitmap.CompressFormat.JPEG, 88, it) }
+            tmp.outputStream().use { out.compress(Bitmap.CompressFormat.JPEG, 100, it) }
             if (!tmp.renameTo(f)) { tmp.copyTo(f, overwrite = true); tmp.delete() }
             f.setLastModified(System.currentTimeMillis())
             c.getSharedPreferences("dk_prefs", Context.MODE_PRIVATE).edit().putString(K_WALL, CUSTOM).apply()

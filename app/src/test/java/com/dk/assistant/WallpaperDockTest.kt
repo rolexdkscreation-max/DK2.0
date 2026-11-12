@@ -34,7 +34,7 @@ class WallpaperDockTest {
         assertEquals(Wallpapers.NONE, Wallpapers.resolve("wp_9", true))
         assertEquals(Wallpapers.NONE, Wallpapers.resolve(null, true))
         assertEquals("wp_2", Wallpapers.resolve("wp_2", false))
-        // गैलरी वाला चित्र मिट गया हो तो खाली स्क्रीन नहीं - थीम का डिफ़ॉल्ट (NONE)
+        // गैलरी वाला चित्र मिट गया हो तो खाली स्क्रीन नहीं - थीम का रंग (NONE)
         assertEquals(Wallpapers.NONE, Wallpapers.resolve(Wallpapers.CUSTOM, false))
         assertEquals(Wallpapers.CUSTOM, Wallpapers.resolve(Wallpapers.CUSTOM, true))
     }
