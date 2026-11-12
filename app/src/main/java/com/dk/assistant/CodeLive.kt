@@ -105,7 +105,7 @@ object CodeLive {
 
     enum class Kind { KEYWORD, STRING, COMMENT, NUMBER, TYPE, TAG }
     data class Span(val start: Int, val end: Int, val kind: Kind)
-    /** एक लाइन के रंग + लाइन के आख़िर में टिप्पणी (/* या <!--) खुली रही? */
+    /** एक लाइन के रंग + लाइन के आख़िर में टिप्पणी (C जैसी या HTML वाली) खुली रही? */
     data class LineSpans(val spans: List<Span>, val inBlock: Boolean)
 
     val KEYWORDS = setOf(
