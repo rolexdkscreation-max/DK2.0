@@ -43,6 +43,12 @@ object PiperTiming {
     @Volatile var spoken = 0; private set
     @Volatile var cutByLive = 0; private set
     @Volatile var lastCutAfterMs = -1L; private set
+    /** HQ के चरण (0 = medium आवाज़), धागे, रफ़्तार (बनना / आवाज़ की लंबाई; 1 से ऊपर = बोलने से धीमा) */
+    @Volatile var steps = 0; private set
+    @Volatile var threads = 0; private set
+    @Volatile var rtf = -1.0; private set
+    fun speed(steps: Int, threads: Int, rtf: Double) { this.steps = steps; this.threads = threads; this.rtf = rtf }
+
     /** कुछ वाक्यों का औसत - एक धीमा वाक्य सीमा न बिगाड़े */
     private val recent = ArrayDeque<Long>()
 
@@ -63,12 +69,16 @@ object PiperTiming {
 
     @Synchronized fun reset() {
         lastFirstMs = -1; lastTotalMs = -1; lastAudioMs = -1; lastChars = 0; lastLoadMs = -1
-        spoken = 0; cutByLive = 0; lastCutAfterMs = -1; recent.clear()
+        spoken = 0; cutByLive = 0; lastCutAfterMs = -1; recent.clear(); steps = 0; threads = 0; rtf = -1.0
     }
 
     /** pure: "Piper: पहली आवाज़ 0.84 s • वाक्य 1.90 s (आवाज़ 2.40 s, 38 अक्षर) • Live ने बीच में लिया 2 बार" */
     fun line(): String = buildString {
-        if (spoken == 0 && cutByLive == 0) { append("Piper ने इस बार अभी कोई वाक्य नहीं बोला"); return@buildString }
+        if (spoken == 0 && cutByLive == 0) {
+            append("Piper ने इस बार अभी कोई वाक्य नहीं बोला")
+            speedLine().takeIf { it.isNotBlank() }?.let { append("\n").append(it) }
+            return@buildString
+        }
         append("Piper: ")
         if (lastFirstMs >= 0) {
             append("पहली आवाज़ ").append(s(lastFirstMs))
@@ -80,6 +90,19 @@ object PiperTiming {
         if (cutByLive > 0) {
             append(" • Live ने बीच में लिया ").append(cutByLive).append(" बार")
             if (lastCutAfterMs >= 0) append(" (Piper ").append(s(lastCutAfterMs)).append(" से बना रहा था)")
+        }
+        speedLine().takeIf { it.isNotBlank() }?.let { append("\n").append(it) }
+    }
+
+    /** pure: "रफ़्तार: 1 s आवाज़ 0.45 s में • HQ 4 चरण • 4 धागे" (+ बहुत धीमा हो तो सलाह) */
+    fun speedLine(): String {
+        if (rtf < 0) return ""
+        return buildString {
+            append("रफ़्तार: 1 s आवाज़ ").append(String.format(java.util.Locale.US, "%.2f", rtf)).append(" s में बनी")
+            append(if (rtf <= 1.0) " (बोलने से तेज़ ✓)" else " (बोलने से धीमी — बीच में रुकेगी)")
+            if (steps > 0) append(" • HQ ").append(steps).append(" चरण (अपने-आप)")
+            if (threads > 0) append(" • ").append(threads).append(" धागे")
+            if (steps > 0 && PiperSpeed.tooSlowForHq(steps, rtf)) append("\n").append(PiperSpeed.ADVICE)
         }
     }
 

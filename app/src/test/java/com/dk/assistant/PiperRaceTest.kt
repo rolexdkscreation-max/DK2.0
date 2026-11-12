@@ -68,3 +68,56 @@ class PiperRaceTest {
         assertTrue(File(dir(), "SettingsPiper.kt").readText().contains("PiperTiming.line()"))
     }
 }
+
+/** नवंबर 2026 (मालिक का फ़ोन: HQ 75 अक्षर 33.87 s में, आवाज़ 8.52 s = बोलने से 4 गुना धीमा) */
+class PiperSpeedTest {
+    @Before fun clean() = PiperTiming.reset()
+    @After fun clean2() = PiperTiming.reset()
+    private fun dir(): File = listOf(File("src/main/java/com/dk/assistant"), File("app/src/main/java/com/dk/assistant")).first { it.exists() }
+    private val S = com.dk.assistant.voice.engine.PiperSpeed
+
+    @Test fun stepsAdaptToPhoneSpeed() {
+        assertEquals(4, S.START_STEPS)
+        assertEquals(2, S.nextSteps(4, genMs = 33_870, audioMs = 8_520))      // मालिक का फ़ोन (~4 गुना धीमा) = दो चरण कम
+        assertEquals(3, S.nextSteps(4, 6_000, 4_000))                          // थोड़ा धीमा = एक चरण कम
+        assertEquals(2, S.nextSteps(8, 0, 0).let { S.nextSteps(4, 9_000, 4_000) })
+        assertEquals(2, S.nextSteps(3, 20_000, 8_000))
+        assertEquals(2, S.nextSteps(2, 20_000, 8_000))                         // सबसे कम पर रुकता है
+        assertEquals(5, S.nextSteps(4, 500, 4_000))                            // बहुत तेज़ = बेहतर आवाज़
+        assertEquals(8, S.nextSteps(5, 500, 4_000))
+        assertEquals(8, S.nextSteps(8, 500, 4_000))
+        assertEquals(4, S.nextSteps(4, 2_000, 4_000))                          // ठीक-ठाक = वही
+        assertEquals(4, S.nextSteps(4, 5_000, 800))                            // छोटी आवाज़ पर नाप भरोसे का नहीं
+        assertEquals(5, S.norm(6)); assertEquals(8, S.norm(32)); assertEquals(2, S.norm(1))
+        assertTrue(S.tooSlowForHq(2, 1.4)); assertFalse(S.tooSlowForHq(4, 1.4)); assertFalse(S.tooSlowForHq(2, 0.7))
+    }
+
+    @Test fun threadsOnlyOnBigCores() {
+        // 2 बड़े + 6 छोटे (cpu_capacity): पहले HQ में 4 धागे (2 छोटे कोर मिलकर हर चरण धीमा) - अब 2
+        assertEquals(2, S.threads(listOf(400L, 400, 400, 400, 400, 400, 1024, 1024), 8, true))
+        // 1 + 3 + 4: बड़े 4
+        assertEquals(4, S.threads(listOf(250L, 250, 250, 250, 800, 800, 800, 1024), 8, true))
+        assertEquals(2, S.threads(listOf(250L, 250, 250, 250, 800, 800, 800, 1024), 8, false))
+        // पता न चले = पुराना हिसाब
+        assertEquals(com.dk.assistant.voice.engine.PiperTtsEngine.threadsFor(8, true), S.threads(emptyList(), 8, true))
+    }
+
+    @Test fun speedShownWithAdvice() {
+        assertEquals("", PiperTiming.speedLine())
+        PiperTiming.speed(2, 2, 1.6)
+        val l = PiperTiming.line()
+        assertTrue(l, l.contains("1 s आवाज़ 1.60 s में बनी") && l.contains("HQ 2 चरण") && l.contains("2 धागे") && l.contains(S.ADVICE))
+        PiperTiming.speed(4, 4, 0.4)
+        assertTrue(PiperTiming.speedLine().contains("बोलने से तेज़") && !PiperTiming.speedLine().contains(S.ADVICE))
+    }
+
+    @Test fun wired() {
+        val e = File(dir(), "voice/engine/PiperTtsEngine.kt").readText()
+        assertTrue(e.contains("hqConfig(PiperStore.voiceOf(PiperStore.voice(c)).sid, PiperFx.genSpeed(tune.speed, tune.pitch), steps)"))
+        assertTrue(e.contains("val steps = PiperSpeed.steps(c)"))
+        assertTrue(e.contains("adapt(c, steps, firstAt - t0"))
+        assertTrue(e.contains("PiperSpeed.threadsHere(hq)"))
+        assertTrue(e.contains("THREAD_PRIORITY_AUDIO"))
+        assertEquals(3, com.dk.assistant.voice.engine.PiperTtsEngine.hqConfig(0, 1f, 3).numSteps)
+    }
+}
