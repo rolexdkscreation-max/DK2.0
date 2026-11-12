@@ -61,6 +61,16 @@ object WaLook {
             if (wa(o) && WaScreen.isChat(o!!)) return ready(o, WaScreen.chatTitle(o), "")
             return "NEEDS USER CHOICE: किसकी चैट खोलूँ? Ask the user for the name (or call action=screen_chats to see who is on screen)." to null
         }
+        // नवंबर 2026 (मालिक: "बार-बार बैक / सर्च नहीं"): उसी की चैट पहले से खुली है = वहीं रहो, पीछे जाकर दोबारा मत ढूँढो
+        d.capture()?.let { cur ->
+            if (wa(cur) && WaScreen.isChat(cur)) {
+                val t = WaScreen.chatTitle(cur)
+                if (com.dk.assistant.agent.social.WaChatMode.sameChat(said, t)) {
+                    DKLog.d("WhatsApp: चैट पहले से खुली है - वहीं लिख रहा हूँ (बैक/सर्च नहीं)")
+                    return ready(cur, t.ifBlank { said }, "")
+                }
+            }
+        }
         // पहले स्क्रीन पर दिख रही पंक्ति (मालिक ने वहीं से नाम चुना)
         val list = chatList(svc, d)
         val row = list?.let { WaScreen.pick(said, WaScreen.rows(it)) }
@@ -143,6 +153,27 @@ object WaLook {
         }
         DKLog.d("WhatsApp $what: $who को भेजें दबा दिया")
         "SENT: $who को $what भेज दिया (भेजें दबा दिया)। Tell the boss in a few words; ask him to glance at WhatsApp once if he wants to be sure."
+    }
+
+    /** अभी स्क्रीन पर खुली WhatsApp चैट: (नाम, मैसेज) - कोई चैट नहीं खुली = null. कहीं जाता नहीं, सिर्फ़ देखता है */
+    suspend fun openNow(svc: DKAccessibilityService): Pair<String, List<WaScreen.Msg>>? {
+        val o = AccessibilityScreenDriver(svc).capture() ?: return null
+        if (!wa(o) || !WaScreen.isChat(o)) return null
+        val t = WaScreen.chatTitle(o)
+        return if (t.isBlank()) null else t to WaScreen.messages(o)
+    }
+
+    /**
+     * नवंबर 2026: इसी खुली चैट में लिखकर भेजो - बैक / सर्च / दोबारा खोलना नहीं. स्क्रीन पर अब वह चैट नहीं (मालिक ने कहीं और
+     * खोल लिया) = कुछ नहीं भेजा. दूसरा WhatsApp काम चल रहा हो = अभी नहीं (अगली बार).
+     */
+    suspend fun sendHere(svc: DKAccessibilityService, title: String, text: String): String? {
+        if (!lock.tryLock()) return "BUSY"
+        try {
+            val now = openNow(svc) ?: return "FAILED: चैट अब स्क्रीन पर नहीं"
+            if (!com.dk.assistant.agent.social.WaChatMode.sameChat(title, now.first)) return "FAILED: स्क्रीन पर अब दूसरी चैट है"
+            return send(svc, text)
+        } finally { lock.unlock() }
     }
 
     /** खुली चैट में text लिखो और भेजो. null = भेज दिया (स्क्रीन पर दिखा), वरना कारण */

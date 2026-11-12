@@ -622,7 +622,9 @@ class GeminiLive(internal val svc: DKAccessibilityService, internal val agent: A
             log("बोलने वाला: ${chosen?.title ?: "Gemini Live"} (सीधी आवाज़, बँटवारा नहीं)")
             return
         }
-        val usable = listOfNotNull(chosen, engines.fallback()).firstOrNull { it.notReady(svc) == null }
+        // नवंबर 2026 (मालिक): Piper चुना = Gemini TTS कभी नहीं - Piper तैयार न हो तो सीधे Live की अपनी आवाज़
+        val usable = listOfNotNull(chosen, engines.fallback()?.takeIf { chosen.id != com.dk.assistant.voice.engine.PiperTtsEngine.ID })
+            .firstOrNull { it.notReady(svc) == null }
         if (usable == null) {
             connSplit = false; connText = false; splitEngine = null
             log("आवाज़ इंजन ${chosen.title} अभी तैयार नहीं (${chosen.notReady(svc)}) - तब तक Gemini Live की अपनी आवाज़")

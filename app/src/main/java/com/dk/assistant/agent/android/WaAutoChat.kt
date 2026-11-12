@@ -13,6 +13,7 @@ import com.dk.assistant.agent.social.WaChatMode
 import com.dk.assistant.agent.social.WaScreen
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -96,12 +97,14 @@ object WaAutoChat {
         val m = WaChatMode.minutes(minutes)
         chat = WaChatMode.State(System.currentTimeMillis() + m * 60_000L)
         synchronized(notifKey) { notifKey.clear(); chatHist.clear() }
+        synchronized(handled) { handled.clear() }
         DKLog.d("WhatsApp चैटिंग मोड: चालू ($m मिनट)")
         return WaChatMode.onNote(m, chats)
     }
 
     fun chatOff(): String {
         val s = chat; chat = null
+        watchJob?.cancel(); watchJob = null
         DKLog.d("WhatsApp चैटिंग मोड: बंद")
         return if (s == null) "CHAT MODE was already off." else "CHAT MODE OFF: ${s.replies} जवाब भेजे थे। Say in short Hindi: 'ठीक है बॉस, चैटिंग मोड बंद कर दिया।'"
     }
@@ -128,6 +131,7 @@ object WaAutoChat {
         val who = WaChatMode.selfOn(s, contact)
         val now = s.waiting.filterKeys { s.selfAll || it in s.self }.keys.toList()
         now.forEach { k -> autoReply(c, s, k) }
+        watch()                         // जिस चैट में DK है, वहीं रुककर आगे की बात भी खुद
         return "OK: $who के मैसेज का जवाब अब DK खुद देगा (पैसे/OTP/बैंक वाली बात पर फिर भी बॉस से पूछेगा)" +
             (if (now.isNotEmpty()) " - अभी ${now.size} चैट का जवाब बना रहा हूँ।" else "।") + " Tell the boss in one short Hindi line."
     }
@@ -148,8 +152,60 @@ object WaAutoChat {
             return "SENT to $name: \"$text\". Tell the boss in a few words: 'भेज दिया'. Then wait for the next message."
         }
         val r = WaLook.exactReply(svc, name, text)
-        if (r.startsWith("SENT")) s?.let { WaChatMode.answered(it, k, text) }
+        if (r.startsWith("SENT")) s?.let { WaChatMode.answered(it, k, text); claim(k, it.waiting[k]?.text ?: "") }
         return r
+    }
+
+    // ---------- नवंबर 2026 (मालिक: "एक बार उस व्यक्ति की चैट में जाए तो वहीं रुककर, जो भी आए वहीं टाइप करके बात
+    // करता रहे - बार-बार बैक / इधर-उधर नहीं") ----------
+    // WhatsApp खुली चैट का notification नहीं देता - इसलिए "खुद कर दो" के बाद DK खुली चैट पर नज़र रखता है (हर 2 सेकंड,
+    // सिर्फ़ देखना). नया मैसेज = उसी चैट में लिखकर भेजो और बॉस को बताओ. कभी बैक / सर्च / दूसरी चैट नहीं खोलता.
+
+    @Volatile private var watchJob: Job? = null
+    /** हर चैट की जिस बात का जवाब दिया / दिया जा रहा (notification और स्क्रीन - दोनों से एक ही बार) */
+    private val handled = HashMap<String, String>()
+    private const val WATCH_MS = 2_000L
+
+    /** true = यह बात अब मेरी (पहले किसी ने नहीं ली) */
+    private fun claim(k: String, text: String): Boolean = synchronized(handled) {
+        val t = text.trim()
+        if (t.isEmpty() || handled[k] == t) false else { handled[k] = t; true }
+    }
+
+    private fun watch() {
+        if (watchJob?.isActive == true) return
+        watchJob = scope.launch {
+            DKLog.d("WhatsApp चैटिंग मोड: खुली चैट पर नज़र चालू (वहीं लिखेगा, बैक/सर्च नहीं)")
+            while (true) {
+                delay(WATCH_MS)
+                val s = chat ?: break
+                val svc = DKAccessibilityService.instance ?: continue
+                val open = (try { WaLook.openNow(svc) } catch (_: Throwable) { null }) ?: continue
+                val (title, msgs) = open
+                val k = WaScreen.key(title)
+                when (val h = WaChatMode.here(s, title, msgs, synchronized(handled) { handled[k] }, false, System.currentTimeMillis())) {
+                    WaChatMode.Here.Stop -> { if (chat === s) chat = null; break }
+                    is WaChatMode.Here.Wait -> Unit
+                    is WaChatMode.Here.Ask -> if (claim(k, h.msg.text)) tell(WaChatMode.askNote(h.msg, true))
+                    is WaChatMode.Here.Reply -> {
+                        if (!claim(k, h.msg.text)) continue
+                        synchronized(gen) { gen[k] = (gen[k] ?: 0) + 1 }        // notification वाला पुराना जवाब (अगर कतार में) रद्द
+                        val text = WaScreen.clean(BrainManager(svc).quickText(WaScreen.SYSTEM, WaScreen.replyPrompt(title, msgs, "")))
+                        if (text == null || WaScreen.unsafe(text)) { tell(WaChatMode.askNote(h.msg, false)); continue }
+                        val r = WaLook.sendHere(svc, title, text)
+                        if (r == null || r.startsWith("SUBMITTED")) {
+                            WaChatMode.answered(s, k, text)
+                            DKLog.d("WhatsApp चैटिंग मोड: खुली चैट में ही जवाब भेजा (${s.replies})")
+                            tell(WaChatMode.autoNote(h.msg, text))
+                        } else {
+                            synchronized(handled) { if (handled[k] == h.msg.text) handled.remove(k) }   // अगली बार फिर
+                            DKLog.d("WhatsApp चैटिंग मोड: खुली चैट में नहीं भेज पाया - ${r.take(80)}")
+                        }
+                    }
+                }
+            }
+            DKLog.d("WhatsApp चैटिंग मोड: खुली चैट पर नज़र बंद")
+        }
     }
 
     private fun tell(note: String) {
@@ -159,11 +215,13 @@ object WaAutoChat {
     private fun autoReply(c: Context, s: WaChatMode.State, k: String) {
         val inc = s.waiting[k] ?: return
         val key = synchronized(notifKey) { notifKey[k] } ?: return
+        watch()
         val h = synchronized(notifKey) { chatHist[k] }.orEmpty()
         val my = synchronized(gen) { (gen[k] ?: 0).plus(1).also { gen[k] = it } }
         scope.launch {
             delay(SETTLE_MS)
             if (synchronized(gen) { gen[k] } != my || chat !== s) return@launch
+            if (!claim(k, inc.text)) return@launch                 // खुली चैट वाले ने यह बात पहले ही ले ली
             val msgs = h.takeLast(14).map { WaScreen.Msg(it.second, it.first.isEmpty()) }.ifEmpty { listOf(WaScreen.Msg(inc.text, false)) }
             val text = WaScreen.clean(BrainManager(c).quickText(WaScreen.SYSTEM, WaScreen.replyPrompt(inc.chat, msgs, "")))
             if (text == null || WaScreen.unsafe(text)) { tell(WaChatMode.askNote(inc, false)); return@launch }

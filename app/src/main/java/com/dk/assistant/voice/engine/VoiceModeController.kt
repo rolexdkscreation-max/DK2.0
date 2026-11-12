@@ -33,14 +33,31 @@ object VoiceModeController {
     /** जो इंजन इस फ़ोन पर चुने जा सकते हैं */
     fun available(): Set<String> = VoiceEngines.all.map { it.id }.toSet()
 
-    /** सेटिंग्स का स्विच: बदलो, सेव करो. लौटाता है अब कौन चालू */
+    /**
+     * नवंबर 2026 (मालिक: "Gemini TTS / Piper / सीधी Live - मैं जो चालू करूँ वही एक चले; एक बंद करूँ तो अपने-आप दूसरा
+     * चालू न हो जाए"): pure (JVM test). चालू किया = वही अकेला (बाकी बंद). बंद किया = कुछ नहीं बदलता (एक आवाज़ हमेशा
+     * चालू रहती है - दूसरी चाहिए तो उसी का स्विच चालू करो).
+     */
+    fun choose(current: String, id: String, on: Boolean, available: Set<String>): String =
+        if (on && id in available) id else current
+
+    /** अभी असल में कौन चुना है: Piper का स्विच ON = Piper (बाकी दोनों बंद दिखें), नहीं तो सेव इंजन */
+    fun currentId(c: Context): String = if (PiperStore.on(c)) PiperTtsEngine.ID else VoiceEngines.activeId(c)
+
+    /** सेटिंग्स का स्विच (DK लाइव / Gemini TTS): बदलो, सेव करो. लौटाता है अब कौन चालू (Piper भी हो सकता है) */
     fun switch(c: Context, id: String, on: Boolean): String {
-        val cur = VoiceEngines.activeId(c)
-        val next = next(cur, id, on, available())
-        if (next != cur) VoiceEngines.setActive(c, next)
+        val cur = currentId(c)
+        val next = choose(cur, id, on, available())
+        if (next == cur) return cur
+        if (PiperStore.on(c)) {                       // DK लाइव / Gemini TTS चालू किया = Piper अपने-आप बंद (एक ही चले)
+            PiperStore.setOn(c, false)
+            PiperTtsEngine.stop()
+            Thread({ PiperTtsEngine.release() }, "dk-piper-release").apply { isDaemon = true; start() }
+        }
+        VoiceEngines.setActive(c, next)
         return next
     }
 
-    /** "Direct Gemini Live Voice" चालू / बंद */
-    fun setDirectLive(c: Context, on: Boolean): String = switch(c, VoiceEngines.LIVE_NATIVE, on)
+    /** "Direct Gemini Live Voice" चालू / बंद - साफ़ चुनाव: चालू = DK लाइव, बंद = Gemini TTS (खुद चुना, अपने-आप नहीं) */
+    fun setDirectLive(c: Context, on: Boolean): String = switch(c, if (on) VoiceEngines.LIVE_NATIVE else VoiceEngines.GEMINI_TTS, true)
 }

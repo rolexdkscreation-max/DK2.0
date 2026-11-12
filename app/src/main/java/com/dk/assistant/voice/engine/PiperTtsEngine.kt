@@ -8,6 +8,8 @@ import com.dk.assistant.DKLog
 import com.k2fsa.sherpa.onnx.OfflineTts
 import com.k2fsa.sherpa.onnx.OfflineTtsConfig
 import com.k2fsa.sherpa.onnx.OfflineTtsModelConfig
+import com.k2fsa.sherpa.onnx.OfflineTtsSupertonicModelConfig
+import com.k2fsa.sherpa.onnx.GenerationConfig
 import com.k2fsa.sherpa.onnx.OfflineTtsVitsModelConfig
 import java.io.IOException
 import java.util.concurrent.atomic.AtomicInteger
@@ -21,7 +23,7 @@ import java.util.concurrent.atomic.AtomicInteger
  * - ON: Gemini Live सिर्फ़ जवाब लिखता है (उसकी अपनी आवाज़ नहीं बजती - मौजूदा "बँटवारा"), हर वाक्य Piper बोलता है.
  * - तेज़ी: [SpeechPipeline] वाक्य (। ? !) बनते ही काटता है, पहला बनते ही बजता है, बाकी पीछे कतार में बनते हैं.
  *   मॉडल ऐप खुलते ही / स्विच ON होते ही मेमोरी में ([warm]). सारा काम पीछे के धागों पर.
- * - गड़बड़ (मॉडल न खुले / बार-बार न बोले): Piper अपने-आप OFF ([fail]), साफ़ हिंदी संदेश, DK Gemini Live की आवाज़ पर.
+ * - गड़बड़ (मॉडल न खुले / बार-बार न बोले): स्विच ON ही ([fail]) - थोड़ी देर Gemini Live की सीधी आवाज़ (Gemini TTS नहीं), फिर Piper.
  *   एक वाक्य न बने = उस जवाब का बाकी हिस्सा Live की अपनी आवाज़ (SpeechPipeline का मौजूदा बचाव) - चुप नहीं.
  */
 object PiperTtsEngine : VoiceEngine {
@@ -50,9 +52,26 @@ object PiperTtsEngine : VoiceEngine {
     /** pure (JVM test): Piper बोलेगा? = स्विच ON + फ़ाइलें फ़ोन में */
     fun gate(on: Boolean, installed: Boolean): Boolean = on && installed
 
-    /** स्विच ON + डाउनलोड पूरा = Piper; नहीं तो null (= पहले वाला इंजन, कुछ नहीं बदला) */
-    fun override(c: Context): VoiceEngine? =
-        try { if (gate(PiperStore.on(c), PiperStore.installed(c))) this else null } catch (_: Throwable) { null }
+    /**
+     * pure (JVM test) - नवंबर 2026 (मालिक: "Piper चुना तो हमेशा Piper; खराबी हो तो Gemini TTS नहीं, सीधे Gemini Live की आवाज़"):
+     * स्विच OFF = null (पहले वाला इंजन). ON + तैयार = Piper. ON पर अभी न चले (डाउनलोड बाकी / अभी-अभी टूटा) = Live की सीधी आवाज़ -
+     * स्विच ON ही रहता है, ठीक होते ही फिर Piper. कभी अपने-आप Gemini TTS नहीं.
+     */
+    enum class Pick { NONE, PIPER, LIVE }
+    fun pick(on: Boolean, installed: Boolean, failed: Boolean): Pick = when {
+        !on -> Pick.NONE
+        gate(on, installed) && !failed -> Pick.PIPER
+        else -> Pick.LIVE
+    }
+
+    /** स्विच ON + डाउनलोड पूरा = Piper; ON पर अभी न चले = Live की सीधी आवाज़; OFF = null (= पहले वाला इंजन) */
+    fun override(c: Context): VoiceEngine? = try {
+        when (pick(PiperStore.on(c), PiperStore.installed(c), VoiceEngines.isFailed(ID))) {
+            Pick.NONE -> null
+            Pick.PIPER -> this
+            Pick.LIVE -> VoiceEngines.byId(VoiceEngines.LIVE_NATIVE)
+        }
+    } catch (_: Throwable) { null }
 
     /** वाक्यों के बीच ठहराव - सिर्फ़ Piper के टुकड़ों पर Settings का "ठहराव" (बाकी इंजन जस के तस) */
     fun gap(c: Context, engineId: String, base: Int): Int =
@@ -83,6 +102,7 @@ object PiperTtsEngine : VoiceEngine {
     @Volatile private var tts: OfflineTts? = null
     @Volatile private var loaded = ""
     @Volatile private var rate = 22050
+    @Volatile private var hq = false
     @Volatile private var libLoaded = false
     @Volatile var lastLoadMs = -1L
         private set
@@ -102,30 +122,46 @@ object PiperTtsEngine : VoiceEngine {
         }
     }
 
+    /** मॉडल की पहचान: HQ की सारी आवाज़ें एक ही मॉडल (आवाज़ बदलने पर दोबारा लोड नहीं) */
+    fun modelKey(id: String): String = PiperStore.voiceOf(id).let { if (it.hq) PiperStore.ST_DIR else it.id }
+
     private fun ensure(c: Context): OfflineTts = synchronized(lock) {
         val v = PiperStore.voice(c).let { if (PiperStore.voiceOk(c, it)) it else PiperStore.installedVoices(c).firstOrNull()?.id ?: it }
-        tts?.let { if (loaded == v) return it; try { it.release() } catch (_: Throwable) {}; tts = null }
+        val key = modelKey(v)
+        tts?.let { if (loaded == key) return it; try { it.release() } catch (_: Throwable) {}; tts = null }
         val t0 = System.currentTimeMillis()
         try {
             loadLib(c)
             val vo = PiperStore.voiceOf(v)
             val dir = PiperStore.voiceDir(c, v)
-            val cfg = OfflineTtsConfig(
+            fun f(n: String) = java.io.File(dir, n).absolutePath
+            val cfg = if (vo.hq) OfflineTtsConfig(
+                model = OfflineTtsModelConfig(
+                    supertonic = OfflineTtsSupertonicModelConfig(
+                        durationPredictor = f("duration_predictor.int8.onnx"), textEncoder = f("text_encoder.int8.onnx"),
+                        vectorEstimator = f("vector_estimator.int8.onnx"), vocoder = f("vocoder.int8.onnx"),
+                        ttsJson = f("tts.json"), unicodeIndexer = f("unicode_indexer.bin"), voiceStyle = f("voice.bin"),
+                    ),
+                    numThreads = threads(true), debug = false, provider = "cpu",
+                ),
+                maxNumSentences = 1,
+            ) else OfflineTtsConfig(
                 model = OfflineTtsModelConfig(
                     vits = OfflineTtsVitsModelConfig(
                         model = java.io.File(dir, vo.onnxName).absolutePath,
                         tokens = java.io.File(dir, "tokens.txt").absolutePath,
                         dataDir = PiperStore.espeakDir(c).absolutePath,
                     ),
-                    numThreads = threads(), debug = false, provider = "cpu",
+                    numThreads = threads(false), debug = false, provider = "cpu",
                 ),
                 maxNumSentences = 1,
             )
             val t = OfflineTts(null, cfg)
-            rate = t.sampleRate().takeIf { it > 0 } ?: 22050
-            tts = t; loaded = v
+            rate = t.sampleRate().takeIf { it > 0 } ?: (if (vo.hq) 44100 else 22050)
+            hq = vo.hq
+            tts = t; loaded = key
             lastLoadMs = System.currentTimeMillis() - t0
-            DKLog.d("Piper: मॉडल मेमोरी में ($v, ${rate} Hz, ${threads()} धागे) $lastLoadMs ms")
+            DKLog.d("Piper: मॉडल मेमोरी में ($v, ${rate} Hz, ${threads(vo.hq)} धागे) $lastLoadMs ms")
             t
         } catch (e: Throwable) {
             fail(c, "Piper का मॉडल नहीं खुला (${e.javaClass.simpleName})")
@@ -133,7 +169,14 @@ object PiperTtsEngine : VoiceEngine {
         }
     }
 
-    private fun threads(): Int = if (Runtime.getRuntime().availableProcessors() >= 4) 2 else 1
+    /** HQ मॉडल भारी है - 8 कोर वाले फ़ोन पर 4 धागे (पहली आवाज़ जल्दी), बाकी पहले जैसा */
+    private fun threads(hq: Boolean): Int = threadsFor(Runtime.getRuntime().availableProcessors(), hq)
+    fun threadsFor(cores: Int, hq: Boolean): Int = when {
+        hq && cores >= 8 -> 4
+        hq && cores >= 4 -> 3
+        cores >= 4 -> 2
+        else -> 1
+    }
 
     override fun speak(c: Context, text: String, voice: String, out: PcmOut) {
         if (!PiperStore.on(c) && !previewing) throw IOException("Piper बंद है")
@@ -144,26 +187,35 @@ object PiperTtsEngine : VoiceEngine {
         val tune = PiperStore.tune(c)
         val fx = PiperFx(rate, tune.bassDb, tune.reverb)
         val src = PiperFx.srcRate(rate, tune.pitch)
+        // HQ = 44.1 kHz: 24 kHz पर लाने से पहले ऊँची आवृत्ति हटाओ (नहीं तो खरखराहट / aliasing) - आवाज़ साफ़ और मुलायम
+        val lp = if (rate > VoiceEngine.RATE) SoftLowpass.forRates(src, VoiceEngine.RATE) else null
+        fun pcm(x: FloatArray): ByteArray = Resample.to24k(PiperFx.pcm16(lp?.process(x) ?: x), src)
         try {
             synchronized(lock) {                   // एक मॉडल - एक समय में एक वाक्य (दूसरा धागा कतार में)
                 if (gen.get() != g) return
                 // अलग object (lambda नहीं): native कोड ठीक invoke([F)Ljava/lang/Integer; ढूँढता है - Kotlin 2 के indy-lambda में वह नहीं बनता
-                t.generateWithCallback(say, 0, PiperFx.genSpeed(tune.speed, tune.pitch), object : (FloatArray) -> Int {
+                val cb = object : (FloatArray) -> Int {
                     override fun invoke(samples: FloatArray): Int {
                         if (gen.get() != g) return 0                        // रोका गया - बाकी मत बनाओ
-                        out.write(Resample.to24k(PiperFx.pcm16(fx.process(samples)), src))
+                        out.write(pcm(fx.process(samples)))
                         return 1
                     }
-                })
+                }
+                if (hq) t.generateWithConfigAndCallback(say, hqConfig(PiperStore.voiceOf(PiperStore.voice(c)).sid, PiperFx.genSpeed(tune.speed, tune.pitch)), cb)
+                else t.generateWithCallback(say, 0, PiperFx.genSpeed(tune.speed, tune.pitch), cb)
             }
-            if (gen.get() == g) fx.tail().takeIf { it.isNotEmpty() }?.let { out.write(Resample.to24k(PiperFx.pcm16(it), src)) }
+            if (gen.get() == g) fx.tail().takeIf { it.isNotEmpty() }?.let { out.write(pcm(it)) }
             fails.set(0)
         } catch (e: Throwable) {
             if (gen.get() != g) return
-            if (fails.incrementAndGet() >= 2) fail(c, "Piper आवाज़ नहीं बना पाया (${e.javaClass.simpleName})")
+            if (fails.incrementAndGet() >= 2) { fails.set(0); fail(c, "Piper आवाज़ नहीं बना पाया (${e.javaClass.simpleName})") }
             throw IOException("Piper: ${e.message ?: e.javaClass.simpleName}", e)
         }
     }
+
+    /** HQ (Supertonic-3): कौन-सी आवाज़ (sid), हिंदी, हाई क्वालिटी चरण. pure (JVM test) */
+    fun hqConfig(sid: Int, speed: Float): GenerationConfig =
+        GenerationConfig(sid = sid.coerceAtLeast(0), speed = speed, numSteps = PiperStore.ST_STEPS, extra = mapOf("lang" to "hi"))
 
     /** ▶ टेस्ट: स्विच कुछ भी हो, नमूना बोले */
     override fun preview(c: Context, text: String, voice: String): Long {
@@ -187,21 +239,23 @@ object PiperTtsEngine : VoiceEngine {
     }
 
     /**
-     * Piper अपने-आप OFF: स्विच बंद, वजह सेव (Settings में दिखे), चलता Live चुप होते ही अपनी सीधी आवाज़ पर
-     * ([VoiceEngines.changed]), और यूज़र को छोटा संदेश.
+     * नवंबर 2026 (मालिक: "Piper चुना है तो हमेशा Piper; कोई ख़राबी हो तो तुरंत Gemini की सीधी आवाज़ - Gemini TTS नहीं"):
+     * पहले यहाँ स्विच अपने-आप OFF होता था (और फिर पुरानी पसंद - कभी Gemini TTS - चल पड़ती थी). अब स्विच ON ही रहता है:
+     * [VoiceEngines.FAIL_MS] (2 मिनट) तक [override] = Gemini Live की सीधी आवाज़, फिर अपने-आप दोबारा Piper.
      */
     fun fail(c: Context, why: String) {
         val app = c.applicationContext
-        DKLog.d("Piper: अपने-आप बंद - $why")
-        try {
-            PiperStore.setOn(app, false)
-            PiperStore.setError(app, "$why — Piper अपने-आप बंद किया, DK पहले की तरह Gemini Live की आवाज़ में बोलेगा।")
-        } catch (_: Throwable) {}
+        DKLog.d("Piper: अभी नहीं चला - $why (स्विच ON ही, थोड़ी देर Gemini Live की सीधी आवाज़)")
+        try { PiperStore.setError(app, "$why — Piper चालू ही है; तब तक DK Gemini Live की सीधी आवाज़ में बोला, थोड़ी देर में फिर Piper से।") } catch (_: Throwable) {}
+        VoiceEngines.markFailed(ID, why)
         stop()
         VoiceEngines.changed()
-        Handler(Looper.getMainLooper()).post {
-            try { Toast.makeText(app, "Piper आवाज़ में दिक़्क़त — DK अब पहले की तरह Gemini Live की आवाज़ में बोलेगा", Toast.LENGTH_LONG).show() } catch (_: Throwable) {}
+        val main = Handler(Looper.getMainLooper())
+        main.post {
+            try { Toast.makeText(app, "Piper आवाज़ में अभी दिक़्क़त — इस बीच DK Gemini Live की सीधी आवाज़ में बोलेगा (Piper चालू ही है)", Toast.LENGTH_LONG).show() } catch (_: Throwable) {}
         }
+        // 2 मिनट बाद: चलता Live चुप होते ही फिर Piper पर (नया connection)
+        main.postDelayed({ VoiceEngines.changed() }, VoiceEngines.FAIL_MS + 1_000L)
         Thread({ release() }, "dk-piper-release").apply { isDaemon = true; start() }
     }
 }

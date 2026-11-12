@@ -16,8 +16,10 @@ object PiperStore {
     const val PREFS = "dk_piper"
 
     /** Hugging Face पर sherpa-onnx वाला Piper हिंदी मॉडल - [rev] पक्का commit (बाद में बदले तो भी यही फ़ाइल) */
-    data class Voice(val id: String, val title: String, val repo: String, val rev: String, val onnxSha256: String, val onnxSize: Long) {
+    data class Voice(val id: String, val title: String, val repo: String, val rev: String, val onnxSha256: String, val onnxSize: Long, val sid: Int = -1) {
         val onnxName: String get() = "$id.onnx"
+        /** हाई क्वालिटी (Supertonic-3, उसी sherpa-onnx इंजन में) - सारी HQ आवाज़ें एक ही मॉडल की अलग-अलग [sid] */
+        val hq: Boolean get() = sid >= 0
     }
 
     /** सब medium क्वालिटी (Hugging Face पर हिंदी का low / high मॉडल है ही नहीं) - पहली = डिफ़ॉल्ट */
@@ -30,6 +32,46 @@ object PiperStore {
             "fe149a55f4949f711d42bfca3e214d5c6c8d797b", "353d2a20bdb6dd03b74e1aff82b7a10a1646f677f8474c6c81fd606705536224", 62946428L),
     )
     val DEFAULT_VOICE = VOICES.first().id
+
+    /**
+     * नवंबर 2026 (मालिक: "आवाज़ हाई क्वालिटी, 2-3 और महिला आवाज़ें - नेचुरल, कोमल, इमोशनल; इंटरनेट से, APK में नहीं"):
+     * हिंदी Piper का high मॉडल है ही नहीं, इसलिए उसी sherpa-onnx इंजन में Supertonic-3 (Supertone, OpenRAIL-M) -
+     * 44.1 kHz, हिंदी सीधे देवनागरी से (espeak नहीं), इंसान जैसी लय. एक ही मॉडल (~138 MB, एक बार) में सारी आवाज़ें.
+     * sandbox नाप (हिंदी वाक्य): sid 0-4 महिला (औसत पिच 163-208 Hz), 5-9 पुरुष. ये 3 महिला चुनीं.
+     */
+    const val ST_DIR = "supertonic-3"
+    const val ST_REPO = "csukuangfj2/sherpa-onnx-supertonic-3-tts-int8-2026-05-11"
+    const val ST_REV = "cca5a0e6c96e1d2c720986bf7e75fcc81dee3ae4"
+    /** एक वाक्य कितने चरण में साफ़ हो (ज़्यादा = साफ़ पर धीमा). 8 = Supertone की सुझाई हाई क्वालिटी */
+    const val ST_STEPS = 8
+    data class StFile(val name: String, val sha256: String, val size: Long)
+    val ST_FILES = listOf(
+        StFile("tts.json", "42078d3aef1cd43ab43021f3c54f47d2d75ceb4e75f627f118890128b06a0d09", 8_253L),
+        StFile("unicode_indexer.bin", "8402ca48e5189a8950138580b0fff64db6f072f24ac07cd54ba8b2fbb9883b30", 262_144L),
+        StFile("voice.bin", "67d5209b0ee8ce6c74105ffbe12fe6a7628aea3b4ba2fcb308a4a67938a93ce8", 517_168L),
+        StFile("duration_predictor.int8.onnx", "c3eb91414d5ff8a7a239b7fe9e34e7e2bf8a8140d8375ffb14718b1c639325db", 3_700_147L),
+        StFile("vocoder.int8.onnx", "e923d60f53f95eb1ce235f1dc33ec56d9c057823c96fa6f8acf98f32b0da6152", 25_991_073L),
+        StFile("text_encoder.int8.onnx", "c7befd5ea8c3119769e8a6c1486c4edc6a3bc8365c67621c881bbb774b9902ff", 36_416_150L),
+        StFile("vector_estimator.int8.onnx", "20cd86fa5c6effedfda0e7cffe5b0569ca401c440a0c3a1d72bf39286c0db3fd", 78_400_833L),
+    )
+    val ST_SIZE: Long = ST_FILES.sumOf { it.size }
+    private fun hqVoice(id: String, title: String, sid: Int) = Voice(id, title, ST_REPO, ST_REV, "", ST_SIZE, sid)
+    val HQ_VOICES = listOf(
+        hqVoice("hi-hq-f1-meera", "मीरा — कोमल महिला (हाई क्वालिटी)", 0),
+        hqVoice("hi-hq-f2-anaya", "अनाया — भावुक महिला (हाई क्वालिटी)", 1),
+        hqVoice("hi-hq-f3-siya", "सिया — शांत, गहरी महिला (हाई क्वालिटी)", 2),
+    )
+    /** स्क्रीन पर क्रम: पहले हाई क्वालिटी, फिर पुराने Piper medium */
+    val ALL_VOICES: List<Voice> = HQ_VOICES + VOICES
+    /** नई पसंद का डिफ़ॉल्ट = हाई क्वालिटी महिला (पहले से Piper medium फ़ोन में हो तो वही - दोबारा डाउनलोड न करना पड़े) */
+    val BEST_VOICE = HQ_VOICES.first().id
+
+    /** pure (JVM test): सेव पसंद न हो तो कौन-सी आवाज़ */
+    fun pickDefault(saved: String?, oldInstalled: Boolean): String = when {
+        saved != null && ALL_VOICES.any { it.id == saved } -> saved
+        oldInstalled -> DEFAULT_VOICE
+        else -> BEST_VOICE
+    }
 
     /**
      * आवाज़ बनाने वाला इंजन (sherpa-onnx 1.13.8, Apache-2.0) - उसकी .aar (zip) में से सिर्फ़ इस फ़ोन की एक .so.
@@ -56,8 +98,8 @@ object PiperStore {
 
     fun on(c: Context): Boolean = sp(c).getBoolean("on", false)
     fun setOn(c: Context, v: Boolean) { sp(c).edit().putBoolean("on", v).apply() }
-    fun voice(c: Context): String = sp(c).getString("voice", null)?.takeIf { id -> VOICES.any { it.id == id } } ?: DEFAULT_VOICE
-    fun setVoice(c: Context, v: String) { if (VOICES.any { it.id == v }) sp(c).edit().putString("voice", v).apply() }
+    fun voice(c: Context): String = pickDefault(sp(c).getString("voice", null), voiceOk(c, DEFAULT_VOICE))
+    fun setVoice(c: Context, v: String) { if (ALL_VOICES.any { it.id == v }) sp(c).edit().putString("voice", v).apply() }
     /** % (100 = 1x) */
     fun speed(c: Context): Int = sp(c).getInt("speed", SPEED_DEF).coerceIn(50, 200)
     /** % (100 = सामान्य) */
@@ -88,14 +130,15 @@ object PiperStore {
     fun libOk(c: Context) = File(libDir(c), ".ok").exists() && libFile(c).exists()
     fun espeakDir(c: Context) = File(root(c), ESPEAK)
     fun espeakOk(c: Context) = File(root(c), ".espeak_ok").exists() && espeakDir(c).isDirectory
-    fun voiceDir(c: Context, id: String) = File(File(root(c), "voices"), id)
+    /** HQ आवाज़ें सब एक ही फ़ोल्डर (एक मॉडल) में */
+    fun voiceDir(c: Context, id: String) = File(File(root(c), "voices"), if (voiceOf(id).hq) ST_DIR else id)
     fun voiceOk(c: Context, id: String) = File(voiceDir(c, id), ".ok").exists()
-    fun voiceOf(id: String): Voice = VOICES.firstOrNull { it.id == id } ?: VOICES.first()
+    fun voiceOf(id: String): Voice = ALL_VOICES.firstOrNull { it.id == id } ?: VOICES.first()
 
     /** इंजन + भाषा फ़ाइलें + यह आवाज़ - सब फ़ोन में */
     fun installed(c: Context, id: String = voice(c)): Boolean = libOk(c) && espeakOk(c) && voiceOk(c, id)
-    fun anyInstalled(c: Context): Boolean = libOk(c) && espeakOk(c) && VOICES.any { voiceOk(c, it.id) }
-    fun installedVoices(c: Context): List<Voice> = VOICES.filter { voiceOk(c, it.id) }
+    fun anyInstalled(c: Context): Boolean = libOk(c) && espeakOk(c) && ALL_VOICES.any { voiceOk(c, it.id) }
+    fun installedVoices(c: Context): List<Voice> = ALL_VOICES.filter { voiceOk(c, it.id) }
 
     fun diskBytes(c: Context): Long = root(c).walkTopDown().filter { it.isFile }.sumOf { it.length() }
 
