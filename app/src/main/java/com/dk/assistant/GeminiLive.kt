@@ -627,11 +627,10 @@ class GeminiLive(internal val svc: DKAccessibilityService, internal val agent: A
         if (chosen == null || !chosen.split) {
             connSplit = false; connText = false; splitEngine = null
             log("बोलने वाला: ${chosen?.title ?: "Gemini Live"} (सीधी आवाज़, बँटवारा नहीं)")
-            com.dk.assistant.voice.engine.VoiceNow.plan(com.dk.assistant.voice.engine.VoiceNow.LIVE_TITLE, supertonicWhy())
+            com.dk.assistant.voice.engine.VoiceNow.plan(com.dk.assistant.voice.engine.VoiceNow.LIVE_TITLE, "")
             return
         }
-        // नवंबर 2026 (मालिक): Supertonic चुना = Gemini TTS कभी नहीं - Supertonic तैयार न हो तो सीधे Live की अपनी आवाज़
-        val usable = listOfNotNull(chosen, engines.fallback()?.takeIf { chosen.id != com.dk.assistant.voice.engine.SupertonicTtsEngine.ID })
+        val usable = listOfNotNull(chosen, engines.fallback())
             .firstOrNull { it.notReady(svc) == null }
         if (usable == null) {
             connSplit = false; connText = false; splitEngine = null
@@ -648,17 +647,6 @@ class GeminiLive(internal val svc: DKAccessibilityService, internal val agent: A
 
     /** Live की सीधी आवाज़ का voice नाम (स्क्रीन पर) */
     @Volatile internal var liveVoiceName = ""
-
-    /** Supertonic चालू है पर Live की सीधी आवाज़ बोल रही = क्यों (खाली = Supertonic चालू ही नहीं) */
-    private fun supertonicWhy(): String = try {
-        val P = com.dk.assistant.voice.engine.SupertonicTtsEngine
-        when {
-            !com.dk.assistant.voice.engine.SupertonicStore.on(svc) -> ""
-            !com.dk.assistant.voice.engine.SupertonicStore.installed(svc) -> "Supertonic चालू है, पर उसकी आवाज़ अभी डाउनलोड नहीं हुई"
-            com.dk.assistant.voice.engine.VoiceEngines.isFailed(P.ID) -> "Supertonic अभी नहीं चला (${com.dk.assistant.voice.engine.VoiceEngines.lastError(P.ID)?.take(50) ?: "गड़बड़"}), 2 मिनट बाद फिर Supertonic"
-            else -> "Supertonic अगले जुड़ाव पर (DK चुप होते ही)"
-        }
-    } catch (_: Throwable) { "" }
 
     /** बँटवारे में: replyText का नया हिस्सा pipeline को (DoneGate रोके हो तो नहीं) */
     internal fun pumpSplit() {

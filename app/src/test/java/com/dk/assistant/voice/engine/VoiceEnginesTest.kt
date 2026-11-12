@@ -62,7 +62,7 @@ class VoiceEnginesTest {
         assertEquals(VoiceEngines.GEMINI_TTS, VoiceEngines.directMigrated(VoiceEngines.GEMINI_TTS, done = true))
         assertEquals(VoiceEngines.LIVE_NATIVE, VoiceEngines.directMigrated(VoiceEngines.LIVE_NATIVE, done = true))
         // हटाए इंजन (Kokoro / Piper / Edge) = हमेशा Direct Live
-        for (old in listOf(VoiceEngines.OLD_KOKORO_ID, VoiceEngines.OLD_PIPER_ID, VoiceEngines.OLD_EDGE_ID))
+        for (old in listOf(VoiceEngines.OLD_KOKORO_ID, VoiceEngines.OLD_PIPER_ID, VoiceEngines.OLD_EDGE_ID, VoiceEngines.OLD_SUPERTONIC_ID))
             assertEquals(old, VoiceEngines.LIVE_NATIVE, VoiceEngines.directMigrated(old, done = true))
         assertEquals("kokoro_tts", VoiceEngines.OLD_KOKORO_ID)
     }
@@ -123,5 +123,23 @@ class VoiceEnginesTest {
     @Test fun resampleTo24k() {
         val in16 = ByteArray(16000 * 2)
         assertEquals(24000 * 2, Resample.to24k(in16, 16000).size)
+    }
+
+    /** नवंबर 2026 (मालिक: "पहला Supertonic / Piper पूरी तरह हटाओ, बैकअप भी नहीं"): कोड में कुछ न बचे, फ़ोन की पुरानी चीज़ें मिटें */
+    @Test fun oldOfflineTtsFullyRemoved() {
+        assertEquals("supertonic_hi", VoiceEngines.OLD_SUPERTONIC_ID)
+        assertEquals(null, VoiceEngines.byId(VoiceEngines.OLD_SUPERTONIC_ID))
+        for (n in listOf("supertonic", "piper", "piper.gone.1731400000000", "supertonic.part")) assertTrue(n, VoiceEngines.isOldOffline(n))
+        // नया TTS अलग फ़ोल्डर में रहे तो उसे न मिटाए; आवाज़-पहचान का मॉडल भी नहीं
+        for (n in listOf("supertonic3", "voice", "wallpaper", "files")) assertFalse(n, VoiceEngines.isOldOffline(n))
+        val root = listOf(java.io.File("src/main/java"), java.io.File("app/src/main/java")).first { it.exists() }
+        for (f in listOf("com/dk/assistant/voice/engine/SupertonicTtsEngine.kt", "com/dk/assistant/voice/engine/SupertonicStore.kt",
+            "com/dk/assistant/voice/engine/SupertonicDownload.kt", "com/dk/assistant/voice/engine/HumanVoice.kt",
+            "com/dk/assistant/SettingsSupertonic.kt", "com/k2fsa/sherpa/onnx/Tts.kt"))
+            assertFalse(f, java.io.File(root, f).exists())
+        val code = root.walkTopDown().filter { it.isFile && it.name.endsWith(".kt") }
+            .joinToString("\n") { f -> f.readLines().filterNot { it.trimStart().let { t -> t.startsWith("//") || t.startsWith("*") || t.startsWith("/*") } }.joinToString("\n") }
+        for (bad in listOf("SupertonicTtsEngine", "SupertonicStore", "PiperTtsEngine", "PiperStore", "com.k2fsa.sherpa.onnx.OfflineTts", "HumanVoice"))
+            assertFalse(bad, code.contains(bad))
     }
 }

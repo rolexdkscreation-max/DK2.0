@@ -1,12 +1,12 @@
 package com.dk.assistant.voice.engine
 
 /**
- * नवंबर 2026 (मालिक): "Supertonic चालू करके बात करता हूँ, फिर भी लगता है आवाज़ सीधे Gemini से आ रही है. जहाँ आवाज़ है वहाँ
+ * नवंबर 2026 (मालिक): "जहाँ आवाज़ है वहाँ
  * दिखना चाहिए कि अभी कौन-सा TTS / कौन-सी आवाज़ बोल रही है."
  *
  * जो सच में बजा उसी से (तय किया हुआ नहीं): बँटवारे का टुकड़ा बजा = वही इंजन; Live की अपनी आवाज़ का टुकड़ा बजा =
- * "Gemini Live (सीधी आवाज़)" + कारण (Supertonic तैयार नहीं / चुप रहा / बीच में बचाव…). बैकअप मोड = Gemini TTS.
- * DK लाइव स्क्रीन पर (जुड़ाव वाली लाइन के नीचे) और Settings → Supertonic card में दिखता है. Pure हिस्सा JVM test में.
+ * "Gemini Live (सीधी आवाज़)" + कारण (चुना इंजन तैयार नहीं / चुप रहा / बीच में बचाव…). बैकअप मोड = Gemini TTS.
+ * DK लाइव स्क्रीन पर (जुड़ाव वाली लाइन के नीचे) और Settings → बोलने वाला इंजन card में दिखता है. Pure हिस्सा JVM test में.
  */
 object VoiceNow {
     /** स्क्रीन वाली लाइन (खाली = अभी कुछ नहीं बोला) */
@@ -31,7 +31,7 @@ object VoiceNow {
 
     fun reset() { label = ""; at = 0; engineId = ""; planWhy = ""; planTitle = "" }
 
-    /** pure: "आवाज़: Supertonic (हिंदी, ऑफ़लाइन) • मीरा" / "आवाज़: Gemini Live (सीधी आवाज़) • Kore — Supertonic अभी तैयार नहीं" */
+    /** pure: "आवाज़: Gemini TTS • Kore" / "आवाज़: Gemini Live (सीधी आवाज़) • Kore — Gemini TTS नहीं चला" */
     fun line(title: String, voice: String = "", why: String = ""): String = buildString {
         append("आवाज़: ").append(title.trim().ifEmpty { "—" })
         if (voice.isNotBlank()) append(" • ").append(voice.trim())

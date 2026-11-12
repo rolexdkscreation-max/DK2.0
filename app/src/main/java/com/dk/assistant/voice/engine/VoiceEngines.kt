@@ -16,6 +16,8 @@ object VoiceEngines {
     const val OLD_KOKORO_ID = "kokoro_tts"
     /** नवंबर 2026: हटाया गया Piper TTS - सिर्फ़ पुरानी सेव पसंद पहचानने के लिए (migration) */
     const val OLD_PIPER_ID = "piper_tts"
+    /** नवंबर 2026: हटाया गया Supertonic 3 (पहला वाला, फ़ोन में गड़बड़) - सिर्फ़ पुरानी सेव पसंद पहचानने के लिए (migration) */
+    const val OLD_SUPERTONIC_ID = "supertonic_hi"
     /** नवंबर 2026: हटाया गया Microsoft Edge TTS - सिर्फ़ पुरानी सेव पसंद पहचानने के लिए (migration) */
     const val OLD_EDGE_ID = "edge_tts"
     const val LIVE_NATIVE = "live_native"
@@ -39,7 +41,7 @@ object VoiceEngines {
      * हटाए गए इंजन (Kokoro / Piper / Edge) की पुरानी पसंद = हमेशा DK लाइव.
      */
     const val DIRECT_KEY = "live_direct_default_v2"
-    private val REMOVED = setOf(OLD_KOKORO_ID, OLD_PIPER_ID, OLD_EDGE_ID)
+    private val REMOVED = setOf(OLD_KOKORO_ID, OLD_PIPER_ID, OLD_EDGE_ID, OLD_SUPERTONIC_ID)
 
     /** pure (JVM test) */
     fun directMigrated(saved: String?, done: Boolean): String? = when {
@@ -54,7 +56,7 @@ object VoiceEngines {
         }
     }
 
-    fun byId(id: String?): VoiceEngine? = all.firstOrNull { it.id == id } ?: SupertonicTtsEngine.takeIf { id == SupertonicTtsEngine.ID }
+    fun byId(id: String?): VoiceEngine? = all.firstOrNull { it.id == id }
 
     /** सुरक्षा: worker_token ताले में ([com.dk.assistant.SecretPrefs]) - बाकी settings वैसी ही */
     fun sp(c: Context): SharedPreferences =
@@ -63,6 +65,7 @@ object VoiceEngines {
     /** कौन-सा इंजन चालू (कुछ न चुना = जिसका defaultOn; वह भी न हो = Live की अपनी आवाज़) */
     fun activeId(c: Context): String {
         val p = sp(c)
+        wipeOldOffline(c)
         if (!p.getBoolean(MIGRATE_KEY, false)) {
             val m = migrated(p.getString("active", null), false)
             val ed = p.edit().putBoolean(MIGRATE_KEY, true)
@@ -82,8 +85,41 @@ object VoiceEngines {
         return all.firstOrNull { it.defaultOn }?.id ?: LIVE_NATIVE
     }
 
-    /** नवंबर 2026: Supertonic 3 का स्विच ON (और डाउनलोड पूरा) = Supertonic 3; OFF = पहले जैसा (सेव पसंद छुई तक नहीं) */
-    fun active(c: Context): VoiceEngine? = SupertonicTtsEngine.override(c) ?: byId(activeId(c))
+    fun active(c: Context): VoiceEngine? = byId(activeId(c))
+
+    /**
+     * नवंबर 2026 (मालिक: "जो TTS लगाया था पूरी तरह डिलीट करो, Piper का भी कुछ बचा न रहे - फ़ोन में गड़बड़ है"):
+     * एक बार हर फ़ोन पर पुराने ऑफ़लाइन TTS (Supertonic 3 / Piper) की हर चीज़ मिटाओ - डाउनलोड मॉडल, native lib,
+     * उनकी settings (SharedPreferences) और पुरानी सेव पसंद. नया TTS (अगर लगे) अलग नाम / अलग फ़ोल्डर में रहेगा.
+     */
+    const val WIPE_KEY = "old_offline_tts_wiped_v1"
+    /** फ़ोन के filesDir में पुराने TTS के फ़ोल्डर */
+    val OLD_DIRS = listOf("supertonic", "piper", "piper_model", "piper_voices", "sherpa", "kokoro_model")
+    /** पुराने TTS की SharedPreferences फ़ाइलें */
+    val OLD_PREFS = listOf("dk_supertonic", "dk_piper")
+    /** pure (JVM test): filesDir की कौन-सी चीज़ मिटानी है */
+    fun isOldOffline(name: String): Boolean = name in OLD_DIRS || name.startsWith("piper.gone") || name.startsWith("supertonic.gone") ||
+        name.startsWith("supertonic.part") || name.startsWith("piper.part")
+
+    fun wipeOldOffline(c: Context) {
+        val p = sp(c)
+        if (p.getBoolean(WIPE_KEY, false)) return
+        val app = c.applicationContext
+        // बड़ी फ़ाइलें (~140 MB) पीछे के thread में - स्क्रीन न अटके
+        Thread({
+            try { app.filesDir.listFiles()?.filter { isOldOffline(it.name) }?.forEach { it.deleteRecursively() } } catch (_: Throwable) {}
+            try { app.cacheDir.listFiles()?.filter { isOldOffline(it.name) }?.forEach { it.deleteRecursively() } } catch (_: Throwable) {}
+        }, "dk-old-tts-wipe").apply { isDaemon = true; start() }
+        for (n in OLD_PREFS) try {
+            app.getSharedPreferences(n, Context.MODE_PRIVATE).edit().clear().commit()
+            if (android.os.Build.VERSION.SDK_INT >= 24) app.deleteSharedPreferences(n)
+        } catch (_: Throwable) {}
+        // DK की आम settings में पड़ी पुरानी TTS चाबियाँ (साँस/ठहराव वाला स्विच)
+        try { com.dk.assistant.Prefs.edit(app) { remove("piper_breath") } } catch (_: Throwable) {}
+        val ed = p.edit().putBoolean(WIPE_KEY, true)
+        if (p.getString("active", null) == OLD_SUPERTONIC_ID || p.getString("active", null) == OLD_PIPER_ID) ed.putString("active", LIVE_NATIVE)
+        ed.apply()
+    }
 
     /** बदला तो गिनती बढ़ती है - चलता Live इसे देखकर अगली बार नया इंजन लेता है */
     @Volatile var version = 0
@@ -98,7 +134,7 @@ object VoiceEngines {
 
     fun liveChanged() { liveVersion++ }
 
-    /** नवंबर 2026: Supertonic का स्विच बदला - चलता Live चुप होते ही सही आवाज़ ले (सेव पसंद नहीं बदलती) */
+    /** आवाज़ इंजन बदला - चलता Live चुप होते ही सही आवाज़ ले */
     fun changed() { version++ }
 
     fun setActive(c: Context, id: String) {
