@@ -23,6 +23,7 @@ object SetSrc {
         "SettingsReels.kt",
         "SettingsGuard.kt",
         "SettingsAutoReply.kt",
+        "SettingsIsland.kt",
     )
 
     private fun dir(): File {
