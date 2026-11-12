@@ -43,10 +43,10 @@ object Wallpapers {
     // ------------------------------------------------------------------ शुद्ध नियम (JUnit)
     fun valid(id: String?) = id == NONE || id == CUSTOM || ALL.any { it.id == id }
 
-    /** गलत/पुराना मान = DEFAULT_ID; custom पर फ़ाइल न हो तो भी DEFAULT_ID */
+    /** गलत/पुराना मान = NONE; custom पर फ़ाइल न हो तो भी NONE */
     fun resolve(id: String?, customExists: Boolean): String = when {
-        id == null || !valid(id) -> DEFAULT_ID
-        id == CUSTOM && !customExists -> DEFAULT_ID
+        id == null || !valid(id) -> NONE
+        id == CUSTOM && !customExists -> NONE
         else -> id
     }
 
