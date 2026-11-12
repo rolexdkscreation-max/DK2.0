@@ -337,7 +337,7 @@ class SpeechPipeline(private val ctx: Context, private val hooks: Hooks) {
         }
         // v3.80: गति / पिच बदली -> अगले टुकड़े से ही. नवंबर 2026: अपनी गति/पिच वाला इंजन (Supertonic 3) = आम गति/पिच नहीं
         val neutral = (VoiceEngines.byId(s.engine.ifBlank { engine?.id ?: "" }) ?: engine)?.ownTune == true
-        tuneVer = VoiceTune.applyFor(tr, tuneVer, neutral)
+        tuneVer = if (neutral) VoiceTune.applyFor(tr, tuneVer, true) else VoiceTune.apply(tr, tuneVer)
         val startAt = maxOf(playUntil, now)
         playUntil = startAt + VoiceTune.playMs(pcm.size, VoiceEngine.RATE, VoiceTune.speedFor(neutral))
         VoiceLevel.schedule(pcm, startAt)

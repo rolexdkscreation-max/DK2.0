@@ -30,8 +30,11 @@ class SupertonicStoreTest {
     @Test fun onlySpeedAndPitch() {
         assertEquals(50, SupertonicStore.SPEED_MIN); assertEquals(200, SupertonicStore.SPEED_MAX)
         assertEquals(70, SupertonicStore.PITCH_MIN); assertEquals(140, SupertonicStore.PITCH_MAX)
-        val store = src("voice/engine/SupertonicStore.kt")
-        val card = src("SettingsSupertonic.kt")
+        // सिर्फ़ कोड (टिप्पणी में "रिवर्ब ... कुछ नहीं" वाला इतिहास ठीक है)
+        fun code(s: String) = s.lines().map { it.trim() }.filterNot { it.startsWith("//") || it.startsWith("*") || it.startsWith("/*") }
+            .joinToString("\n") { it.substringBefore(" // ") }
+        val store = code(src("voice/engine/SupertonicStore.kt"))
+        val card = code(src("SettingsSupertonic.kt"))
         for (bad in listOf("reverb", "bass", "pause", "breath")) assertFalse(bad, store.lowercase().contains(bad))
         for (bad in listOf("रिवर्ब", "बास", "ठहराव", "साँस", "resetTune")) assertFalse(bad, card.contains(bad))
         for (t in listOf("डाउनलोड करें", "दोबारा कोशिश करें", "रोकें", "मॉडल हटाएँ", "\"स्पीड\"", "\"पिच\"", "▶ सुनो"))

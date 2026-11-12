@@ -33,7 +33,7 @@ class SupertonicWiringTest {
         assertEquals(VoiceTune.speedPct, VoiceTune.speedFor(false))
         assertTrue(VoiceTune.NEUTRAL_VER < 0)
         val p = src("voice/engine/SpeechPipeline.kt")
-        assertTrue(p.contains("tuneVer = VoiceTune.applyFor(tr, tuneVer, neutral)"))
+        assertTrue(p.contains("tuneVer = if (neutral) VoiceTune.applyFor(tr, tuneVer, true) else VoiceTune.apply(tr, tuneVer)"))
         assertTrue(p.contains("VoiceTune.playMs(pcm.size, VoiceEngine.RATE, VoiceTune.speedFor(neutral))"))
         assertTrue(src("voice/engine/SupertonicTtsEngine.kt").contains("PreviewPlayer.play(c, neutral = true)"))
     }
