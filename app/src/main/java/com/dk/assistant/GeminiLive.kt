@@ -450,6 +450,9 @@ class GeminiLive(internal val svc: DKAccessibilityService, internal val agent: A
     /** इस बात का फ़ैसला (mic thread पर ही) */
     internal val owner = com.dk.assistant.voice.OwnerGate(CHUNK_MS)
     @Volatile internal var ownerOn = false
+    /** नवंबर 2026: आवाज़ सीखी हुई पर "सिर्फ़ मेरी आवाज़" बंद = सिर्फ़ पहचान (बॉस / कोई और), बगल की बातचीत के लिए */
+    @Volatile internal var whoOn = false
+    @Volatile internal var whoSeq = 0
     @Volatile internal var ownerTh = com.dk.assistant.voice.VoicePrint.TH_NORMAL
     internal var ownerCfgAt = 0L
     /** हर नई बात पर +1 - पुरानी बात का देर से आया मिलान नई पर न लगे */

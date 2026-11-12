@@ -45,6 +45,10 @@ object OwnerVoice {
     fun active(c: Context) = supported && Prefs.ownerVoiceOn(c) && enrolled(c) && hasModel(c) && broken == null
 
     /** मॉडल पहले से लोड (Live शुरू होते समय, अलग thread पर) - पहली बात पर देरी न हो */
+    /** नवंबर 2026: आवाज़ सीखी हुई है (स्विच बंद भी हो) - "कौन बोल रहा" पहचानने के लिए (रोकने के लिए नहीं) */
+    fun ready(c: Context) = supported && enrolled(c) && hasModel(c) && broken == null
+    fun warmAny(c: Context) { if (ready(c) && session == null) exec.execute { try { open(c) } catch (_: Throwable) {} } }
+
     fun warm(c: Context) { if (active(c) && session == null) exec.execute { try { open(c) } catch (_: Throwable) {} } }
 
     private fun open(c: Context): OrtSession? {

@@ -59,6 +59,9 @@ internal fun GeminiLive.refreshOwnerCfg(now: Long) {
     ownerCfgAt = now
     ownerOn = com.dk.assistant.voice.OwnerVoice.active(svc)
     ownerTh = com.dk.assistant.voice.VoicePrint.threshold(Prefs.ownerVoiceStrict(svc))
+    val wasWho = whoOn
+    whoOn = !ownerOn && SideTalk.on(svc) && com.dk.assistant.voice.OwnerVoice.ready(svc)
+    if (whoOn && !wasWho) com.dk.assistant.voice.OwnerVoice.warmAny(svc)
     // v3.6: "दूर की आवाज़ अनसुनी" सिर्फ़ जब "सिर्फ़ मेरी आवाज़" चालू हो - वरना धीमी बोली हुई बात भी फेंक देता था
     turnDet.startFloor = LiveHear.farFloor(ownerOn, com.dk.assistant.voice.OwnerVoice.farFloor(svc, btOn))
     // v4.7: बिना आवाज़ सिखाए भी दूर की आवाज़ अनसुनी - आपकी पास वाली आवाज़ से सीखा (Bluetooth पर बंद: माइक मुँह के पास)

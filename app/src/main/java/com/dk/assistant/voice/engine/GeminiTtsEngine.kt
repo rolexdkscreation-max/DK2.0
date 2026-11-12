@@ -83,7 +83,7 @@ object GeminiTtsEngine : VoiceEngine {
 
     override fun speak(c: Context, text: String, voice: String, out: PcmOut) {
         notReady(c)?.let { throw IOException("Gemini TTS: $it") }
-        val style = if (com.dk.assistant.JarvisMode.on(c)) com.dk.assistant.JarvisMode.VOICE_STYLE else com.dk.assistant.SpeakingStyle.tts(com.dk.assistant.CalmPersona.ttsStyle(com.dk.assistant.avatar.MoodState.voiceStyle(style(c))))   // v4.3: मालिक का बोलने का तरीका   // v3.71: भाव का निर्देश जुड़ता है
+        val style = if (com.dk.assistant.JarvisMode.on(c)) com.dk.assistant.JarvisMode.VOICE_STYLE else com.dk.assistant.SpeakingStyle.tts(com.dk.assistant.CalmPersona.ttsStyle(com.dk.assistant.DkPersona.ttsStyle(c, com.dk.assistant.avatar.MoodState.voiceStyle(style(c)))))   // v4.3: मालिक का बोलने का तरीका   // v3.71: भाव का निर्देश जुड़ता है
         var last = ""
         for (key in keys(c)) {
             val now = System.currentTimeMillis()

@@ -367,7 +367,8 @@ internal fun GeminiLive.runTools(calls: JSONArray) {
           // नवंबर 2026: सोशल रिव्यू चल रहा और यह काम स्क्रीन चलाएगा = रिव्यू रुककर इंतज़ार, यह खत्म होते ही अपने-आप आगे
           val held = com.dk.assistant.insights.InsightsAgent.holdFor(name, args)
           try {
-            val result = try { when (name) {
+            // नवंबर 2026: आवाज़ बॉस की नहीं = पैसे / भेजना / कॉल / डिलीट / सेटिंग नहीं
+            val result = try { SideTalk.blockFor(name, args, sideWho())?.also { log("tool $name - आवाज़ बॉस की नहीं, रोका") } ?: when (name) {
                 "phone_task" -> phoneTask(args.optString("request"))
                 "task_status" -> TaskStatus.summary()
                 "look_screen" -> ScreenLook.liveTool(svc, args.optString("question").ifBlank { DKState.lastUser.trimEnd('…') })

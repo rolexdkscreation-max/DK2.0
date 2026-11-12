@@ -59,6 +59,7 @@ internal fun GeminiLive.handleServer(msg: String, setup: CompletableDeferred<Uni
     o.optJSONObject("toolCall")?.optJSONArray("functionCalls")?.let {
         lastServerAt = System.currentTimeMillis(); lastAnyServerAt = lastServerAt; utt.clear(); onRecovered(); toolCallAt = lastServerAt
         // v3.66: किसी और की आवाज़ पर बना काम - कुछ मत करो (फ़ोन पर कोई काम नहीं), Gemini को बता दो
+        sideTalkCheck()                          // नवंबर 2026: बॉस किसी और से बात कर रहे = कोई काम नहीं
         if (muteTurn) { ignoreTools(it); return@let }
         // v3.67: tool से पहले बोला "कर दिया" = झूठ (काम अभी शुरू हुआ) - वह हिस्सा नहीं बजता; "ठीक है बॉस" बजता है
         // v3.90: काम से पहले की बातें ("ठीक है, खोल रहा हूँ…" / इधर-उधर की बात) नहीं - पहले काम, फिर नतीजे वाली बात
@@ -121,6 +122,7 @@ internal fun GeminiLive.handleServer(msg: String, setup: CompletableDeferred<Uni
         // user ne toka hai: purane jawab ke bache tukde - mat bajao (server "interrupted" bhejega)
         if (dropOld) { droppedOld++; return@let }
         // v3.66: किसी और की आवाज़ का जवाब - बजाओ मत
+        sideTalkCheck()                          // नवंबर 2026: बगल की बातचीत = सुना, जवाब नहीं
         if (muteTurn) { mutedParts++; generating = true; return@let }
         if (!turnActive) startTurn()
         generating = true
@@ -158,7 +160,7 @@ internal fun GeminiLive.handleServer(msg: String, setup: CompletableDeferred<Uni
             playOut(pcm)
         }
     }
-    sc.optJSONObject("outputTranscription")?.optString("text")?.takeIf { it.isNotBlank() && !dropOld && !muteTurn }?.let { t ->
+    sc.optJSONObject("outputTranscription")?.optString("text")?.takeIf { it.isNotBlank() && !dropOld && !sideTalkCheck() && !muteTurn }?.let { t ->
         if (!turnActive) startTurn()
         generating = true
         // screen par abhi nahi - revealTick() awaaz ke saath-saath dikhata hai

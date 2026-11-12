@@ -75,7 +75,20 @@ object PiperTtsEngine : VoiceEngine {
 
     /** वाक्यों के बीच ठहराव - सिर्फ़ Piper के टुकड़ों पर Settings का "ठहराव" (बाकी इंजन जस के तस) */
     fun gap(c: Context, engineId: String, base: Int): Int =
-        if (engineId == ID) try { PiperFx.gap(base, PiperStore.pause(c)) } catch (_: Throwable) { base } else base
+        if (engineId == ID) try {
+            PiperFx.gap(base, PiperStore.pause(c)).let { if (humanOn(c)) HumanVoice.gap(it, com.dk.assistant.avatar.MoodState.current()) else it }
+        } catch (_: Throwable) { base } else base
+
+    /** नवंबर 2026: साँस / ठहराव / भाव (Settings, शुरू में चालू) */
+    fun humanOn(c: Context): Boolean = try { com.dk.assistant.Prefs.bool(c, HumanVoice.PREF, true) } catch (_: Throwable) { false }
+
+    private val breather = HumanVoice.Breather()
+
+    /** जवाब का भाव (अवतार वाला); न हो तो इसी वाक्य के शब्दों से */
+    private fun humanMood(text: String): com.dk.assistant.avatar.Mood = try {
+        com.dk.assistant.avatar.MoodState.current().takeIf { it != com.dk.assistant.avatar.Mood.NORMAL }
+            ?: com.dk.assistant.avatar.EmotionGuess.of(text)
+    } catch (_: Throwable) { com.dk.assistant.avatar.Mood.NORMAL }
 
     // ------------------------------------------------------------------ VoiceEngine
     override fun voices(): List<Pair<String, String>> = PiperStore.VOICES.map { it.id to it.title }
@@ -184,7 +197,15 @@ object PiperTtsEngine : VoiceEngine {
         val t = ensure(c)
         val say = speakable(text)
         if (say.isBlank()) { out.write(ByteArray(480)); return }      // बोलने लायक कुछ नहीं (जैसे सिर्फ़ emoji) - चुप्पी, ग़लती नहीं
-        val tune = PiperStore.tune(c)
+        val tune0 = PiperStore.tune(c)
+        // नवंबर 2026: इंसान जैसी बोली - भाव से रफ़्तार/सुर, हर वाक्य में हल्का फ़र्क, लंबी बात में धीमी साँस
+        val human = humanOn(c)
+        val mood = if (human) humanMood(say) else com.dk.assistant.avatar.Mood.NORMAL
+        val ht = HumanVoice.tune(mood)
+        val tune = if (!human) tune0 else tune0.copy(
+            speed = tune0.speed * ht.speedMul * HumanVoice.jitter(say),
+            pitch = tune0.pitch * ht.pitchMul * HumanVoice.questionLift(say))
+        if (human && !previewing && breather.next(say, System.currentTimeMillis())) out.write(HumanVoice.breath(HumanVoice.breathMs(say), say.length))
         val fx = PiperFx(rate, tune.bassDb, tune.reverb)
         val src = PiperFx.srcRate(rate, tune.pitch)
         // HQ = 44.1 kHz: 24 kHz पर लाने से पहले ऊँची आवृत्ति हटाओ (नहीं तो खरखराहट / aliasing) - आवाज़ साफ़ और मुलायम
