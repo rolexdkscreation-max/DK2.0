@@ -3,7 +3,11 @@ package com.dk.assistant.ui
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import android.graphics.Canvas
+import android.graphics.drawable.BitmapDrawable
+import android.graphics.drawable.Drawable
 import android.net.Uri
+import androidx.core.content.ContextCompat
 import java.io.File
 
 /**
@@ -117,24 +121,26 @@ object Wallpapers {
     }
 
     /** डिवाइस में ओरिजिनल क्वालिटी में सेव करें (MediaStore) */
-    fun downloadWallpaper(c: Context, id: String): String? = try {
-        val bmp = if (id == CUSTOM) {
-            val f = customFile(c); if (!f.isFile) return "चित्र नहीं मिला"
-            BitmapFactory.decodeFile(f.path)
-        } else {
-            val w = BUILT_IN.firstOrNull { it.id == id } ?: return "वॉलपेपर नहीं मिला"
-            BitmapFactory.decodeResource(c.resources, w.res, BitmapFactory.Options().apply { inScaled = false })
-        } ?: return "चित्र लोड नहीं हो पाया"
-        val name = "DK_WP_${id}_${System.currentTimeMillis() / 1000}.jpg"
-        val cv = android.content.ContentValues().apply {
-            put(android.provider.MediaStore.MediaColumns.DISPLAY_NAME, name)
-            put(android.provider.MediaStore.MediaColumns.MIME_TYPE, "image/jpeg")
-            if (android.os.Build.VERSION.SDK_INT >= 29) put(android.provider.MediaStore.MediaColumns.RELATIVE_PATH, "Pictures/DK_Assistant")
-        }
-        val uri = c.contentResolver.insert(android.provider.MediaStore.Images.Media.EXTERNAL_CONTENT_URI, cv) ?: throw Exception("Insert failed")
-        c.contentResolver.openOutputStream(uri)?.use { bmp.compress(Bitmap.CompressFormat.JPEG, 100, it) } ?: throw Exception("Open failed")
-        null
-    } catch (e: Exception) { e.message ?: "त्रुटि" }
+    fun downloadWallpaper(c: Context, id: String): String? {
+        return try {
+            val bmp = if (id == CUSTOM) {
+                val f = customFile(c); if (!f.isFile) return "चित्र नहीं मिला"
+                BitmapFactory.decodeFile(f.path)
+            } else {
+                val w = BUILT_IN.firstOrNull { it.id == id } ?: return "वॉलपेपर नहीं मिला"
+                decodeRes(c, w.res)
+            } ?: return "चित्र लोड नहीं हो पाया"
+            val name = "DK_WP_${id}_${System.currentTimeMillis() / 1000}.jpg"
+            val cv = android.content.ContentValues().apply {
+                put(android.provider.MediaStore.MediaColumns.DISPLAY_NAME, name)
+                put(android.provider.MediaStore.MediaColumns.MIME_TYPE, "image/jpeg")
+                if (android.os.Build.VERSION.SDK_INT >= 29) put(android.provider.MediaStore.MediaColumns.RELATIVE_PATH, "Pictures/DK_Assistant")
+            }
+            val uri = c.contentResolver.insert(android.provider.MediaStore.Images.Media.EXTERNAL_CONTENT_URI, cv) ?: throw Exception("Insert failed")
+            c.contentResolver.openOutputStream(uri)?.use { bmp.compress(Bitmap.CompressFormat.JPEG, 100, it) } ?: throw Exception("Open failed")
+            null
+        } catch (e: Exception) { e.message ?: "त्रुटि" }
+    }
 
     /** Android 9+ पर ImageDecoder फ़ोटो का घुमाव (EXIF) खुद सीधा करता है; पुराने पर सीधा decode */
     private fun decodeUri(c: Context, uri: Uri): Bitmap? {
@@ -168,8 +174,7 @@ object Wallpapers {
                 BitmapFactory.decodeFile(f.path, o)
             } else {
                 val w = BUILT_IN.firstOrNull { it.id == id } ?: return null
-                o.inScaled = false
-                BitmapFactory.decodeResource(c.resources, w.res, o)
+                decodeRes(c, w.res)
             }
         } catch (_: Throwable) { null }
     }
@@ -190,7 +195,19 @@ object Wallpapers {
                 o.inSampleSize = sampleSize(bo.outWidth, bo.outHeight, w * 2)
                 BitmapFactory.decodeFile(f.path, o)
             }
-            else -> BUILT_IN.firstOrNull { it.id == id }?.let { o.inSampleSize = 4; o.inScaled = false; BitmapFactory.decodeResource(c.resources, it.res, o) }
+            else -> BUILT_IN.firstOrNull { it.id == id }?.let { decodeRes(c, it.res) }
         }
     } catch (_: Throwable) { null }
+
+    private fun decodeRes(c: Context, resId: Int): Bitmap? {
+        val d = ContextCompat.getDrawable(c, resId) ?: return null
+        if (d is BitmapDrawable) return d.bitmap
+        val w = d.intrinsicWidth.coerceAtLeast(1)
+        val h = d.intrinsicHeight.coerceAtLeast(1)
+        val bmp = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
+        val canvas = Canvas(bmp)
+        d.setBounds(0, 0, w, h)
+        d.draw(canvas)
+        return bmp
+    }
 }
