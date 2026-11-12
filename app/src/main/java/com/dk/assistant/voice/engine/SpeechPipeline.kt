@@ -300,7 +300,8 @@ class SpeechPipeline(private val ctx: Context, private val hooks: Hooks) {
             if (s.q.isNotEmpty()) return s.phone
             val waited = System.currentTimeMillis() - from
             // नवंबर 2026: टुकड़ा अटका (धीमा नेट / TTS देर) - Live की अपनी आवाज़ बचा जवाब बोले
-            if (!asked && com.dk.assistant.SplitRescue.stuck(waited, first)) {
+            val late = if (engine?.id == PiperTtsEngine.ID) PiperTiming.stuck(waited, first) else com.dk.assistant.SplitRescue.stuck(waited, first)
+            if (!asked && late) {
                 asked = true
                 if (rescue(s, SplitRescueWhy.STUCK, waited)) return false
             }
@@ -314,7 +315,9 @@ class SpeechPipeline(private val ctx: Context, private val hooks: Hooks) {
     /** Live की अपनी आवाज़ से कहो: [s] से आगे का जवाब तुम बोलो. हाँ = pipeline चुप ([handOff]) */
     private fun rescue(s: Seg, why: SplitRescueWhy, waited: Long): Boolean {
         if (s.gen != gen || released) return false
-        val ok = try { hooks.takeOver(s.at, com.dk.assistant.SplitRescue.why(why == SplitRescueWhy.FAILED, waited)) } catch (_: Exception) { false }
+        val piper = engine?.id == PiperTtsEngine.ID
+        val text = if (piper) PiperTiming.rescueWhy(waited, why == SplitRescueWhy.FAILED) else com.dk.assistant.SplitRescue.why(why == SplitRescueWhy.FAILED, waited)
+        val ok = try { hooks.takeOver(s.at, text) } catch (_: Exception) { false }
         if (!ok) return false
         noteSpoken(s.text)
         handOff()
@@ -354,7 +357,13 @@ class SpeechPipeline(private val ctx: Context, private val hooks: Hooks) {
             val v = e.voice(ctx)
             val vt = try { e.voices().firstOrNull { it.first == v }?.second ?: v } catch (_: Throwable) { v }
             val chosen = engine
-            VoiceNow.played(e.id, e.title, vt.substringBefore(" —").take(40), if (chosen != null && chosen.id != e.id) "${chosen.title} नहीं चला" else "")
+            val why = when {
+                chosen != null && chosen.id != e.id -> "${chosen.title} नहीं चला"
+                // नवंबर 2026 (मालिक: "Piper कितनी देर में बोलता है पता नहीं चलता") - असली नाप स्क्रीन पर
+                e.id == PiperTtsEngine.ID && PiperTiming.lastFirstMs >= 0 -> "पिछला वाक्य ${PiperTiming.s(PiperTiming.lastFirstMs)} में बना"
+                else -> ""
+            }
+            VoiceNow.played(e.id, e.title, vt.substringBefore(" —").take(40), why)
         } catch (_: Throwable) {}
     }
 
