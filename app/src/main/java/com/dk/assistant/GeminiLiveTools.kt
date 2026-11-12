@@ -396,7 +396,7 @@ internal fun GeminiLive.runTools(calls: JSONArray) {
                     }
                     in setOf("open_chat", "read_chat_screen") -> { DKState.set(Mode.WORKING); com.dk.assistant.agent.android.WaLook.openChat(svc, args.optString("contact")) }
                     in setOf("smart_reply", "reply_for_me", "reply") -> { DKState.set(Mode.WORKING); com.dk.assistant.agent.android.WaLook.smartReply(svc, args.optString("contact"), args.optString("message")) }
-                    in setOf("auto_chat_on", "auto_chat", "auto_reply_on") -> com.dk.assistant.agent.android.WaAutoChat.on(args.optString("contact"), args.optInt("minutes", 0), args.optString("message"))
+                    in setOf("auto_chat_on", "auto_chat", "auto_reply_on") -> com.dk.assistant.agent.android.WaAutoChat.startWithConfirm(args.optString("contact"), args.optInt("minutes", 0), args.optString("message"))
                     in setOf("auto_chat_off", "auto_reply_off") -> com.dk.assistant.agent.android.WaAutoChat.off()
                     // नवंबर 2026: भेजा हुआ (गलती वाला) मैसेज सबके लिए डिलीट - मालिक का कहना ही हुक्म, सीधे
                     in setOf("delete_message", "delete", "unsend", "delete_last") -> {

@@ -1,5 +1,6 @@
 package com.dk.assistant
 
+import com.dk.assistant.agent.android.WaAutoChat
 import com.dk.assistant.agent.core.Box
 import com.dk.assistant.agent.core.ScreenObservation
 import com.dk.assistant.agent.core.UiElement
@@ -128,5 +129,32 @@ class WaScreenTest {
         assertEquals(30, WaScreen.minutes(0))
         assertEquals(15, WaScreen.minutes(15))
         assertEquals(180, WaScreen.minutes(500))
+    }
+
+    @Test fun autoChatDoubleConfirmation() {
+        WaAutoChat.off()
+        WaAutoChat.cancelPending()
+
+        val q = WaAutoChat.startWithConfirm("Rahul Sharma", 30, "")
+        assertNotNull(WaAutoChat.pendingConfirm)
+        assertEquals("Rahul Sharma", WaAutoChat.pendingConfirm?.target)
+        assertTrue(q, q.contains("Rahul Sharma"))
+        assertTrue(q, q.contains("मैसेज करना है"))
+        assertFalse(WaAutoChat.active())
+
+        val okRes = WaAutoChat.confirmOk()
+        assertNotNull(okRes)
+        assertTrue(okRes!!, okRes.contains("Rahul Sharma"))
+        assertTrue(WaAutoChat.active())
+        assertNull(WaAutoChat.pendingConfirm)
+
+        WaAutoChat.off()
+        WaAutoChat.startWithConfirm("Mummy", 15, "")
+        WaAutoChat.cancelPending()
+        assertNull(WaAutoChat.pendingConfirm)
+        assertFalse(WaAutoChat.active())
+        assertNull(WaAutoChat.confirmOk())
+
+        WaAutoChat.off()
     }
 }
