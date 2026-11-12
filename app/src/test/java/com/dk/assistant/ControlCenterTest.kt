@@ -8,7 +8,7 @@ import org.junit.Test
 class ControlCenterTest {
     private val oldRows = listOf(
         "profile", "lang", "ui", "brain", "voice", "orb", "access", "phonelock", "guard", "perms", "computer",
-        "coder", "auto", "templates", "social", "reels", "backup", "connectors", "story", "update", "debug", "about"
+        "coder", "auto", "templates", "autoreply", "social", "reels", "backup", "connectors", "story", "update", "debug", "about"
     )
 
     @Test fun sixCategories_inOrder() {

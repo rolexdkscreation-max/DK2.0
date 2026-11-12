@@ -126,6 +126,8 @@ class DKNotifListener : NotificationListenerService() {
             NotifStore.add(NotifStore.Item(sbn.key, sbn.packageName, app, title.trim(), text.trim(), sbn.postTime.takeIf { it > 0 } ?: System.currentTimeMillis(), r != null))
             // नवंबर 2026: WhatsApp पर "अपने-आप बात" चालू हो तो उसी बातचीत का जवाब (बंद = कुछ नहीं होता)
             if (push) com.dk.assistant.agent.android.WaAutoChat.onPosted(this, sbn.key, sbn.packageName, title.trim(), ex, r != null)
+            // नवंबर 2026 (मालिक): सेटिंग → ऑटो रिप्लाई - जिस मैसेज ऐप का स्विच चालू, उसका जवाब मालिक के ढंग में (बंद = कुछ नहीं)
+            if (push) com.dk.assistant.autoreply.AutoReply.onPosted(this, sbn.key, sbn.packageName, title.trim(), ex, r != null)
             if (DKState.live) DKLog.d("🔔 notification: [$app] ${title.take(30)}" + if (r != null) " (reply हो सकता है)" else "")
             // v3.51: Live चालू है -> नया notification तुरंत DK को बताओ (पहले सिर्फ़ याद रखा जाता था, DK को पता नहीं चलता था)
             val at = sbn.postTime.takeIf { it > 0 } ?: System.currentTimeMillis()

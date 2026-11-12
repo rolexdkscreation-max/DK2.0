@@ -414,6 +414,8 @@ internal fun GeminiLive.runTools(calls: JSONArray) {
                 }
                 // नवंबर 2026: किसी भी AI ऐप से DK की खुद की लंबी बातचीत / मुकाबला / सीखना (स्क्रीन पर, पीछे से नतीजा SYSTEM NOTE)
                 "ai_talk" -> com.dk.assistant.agent.android.AiTalkAgent.start(svc, args)
+                // नवंबर 2026 (मालिक): किसी भी ऐप / ब्राउज़र में फ़ॉर्म - पूरा पढ़ो, एक-एक खाना पूछकर उसी ऐप में भरो (बैक नहीं)
+                "form_fill" -> com.dk.assistant.agent.android.FormFillAgent.liveTool(svc, args)
                 // v3.156: "मुझे शर्ट देखनी है" - फ़ोन में जो shopping ऐप हैं उनमें से (पूछकर) उसी चीज़ को खोजो
                 "shop_search" -> com.dk.assistant.ShopOpen.tool(svc, args)
                 // नवंबर 2026 (मालिक): फ़ोन लॉक हो तब भी - पहले खोलो (PIN सेव हो तो खुद), काम के बाद फिर लॉक

@@ -49,6 +49,7 @@ internal fun SettingsActivity.menuIcon(id: String) = when (id) {
     "reels" -> R.drawable.ic_s_ui
     "auto" -> R.drawable.ic_s_brain
     "templates" -> R.drawable.ic_s_voice
+    "autoreply" -> R.drawable.ic_s_connect
     "update" -> R.drawable.ic_s_update
     "about" -> R.drawable.ic_s_profile
     else -> R.drawable.ic_s_debug
@@ -64,6 +65,7 @@ internal fun SettingsActivity.menuTint(id: String): Int = when (id) {
     "cat_data" -> 0xFF38BDF8.toInt()
     "profile", "about" -> 0xFF22D3EE.toInt()
     "voice", "templates" -> 0xFFA855F7.toInt()
+    "autoreply" -> 0xFF22C55E.toInt()
     "brain", "auto", "coder" -> 0xFF6366F1.toInt()
     "ui", "orb", "reels" -> 0xFFEC4899.toInt()
     "access", "perms", "phonelock", "guard", "backup" -> 0xFF34D399.toInt()

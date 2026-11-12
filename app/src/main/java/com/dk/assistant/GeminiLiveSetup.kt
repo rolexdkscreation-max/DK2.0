@@ -235,6 +235,21 @@ internal fun GeminiLive.setupJson(m: String, txt: Boolean = connText, resume: Bo
                     .put("new_chat", JSONObject().put("type", "BOOLEAN").put("description", "Start a new chat (only if the user asked); default false = continue the open chat")))
                 .put("required", JSONArray().put("prompt"))))
         // नवंबर 2026 (मालिक): DK खुद किसी भी AI ऐप से लंबी बातचीत / मुकाबला / सवाल-जवाब / सीखना / काम करवाना
+        // नवंबर 2026 (मालिक): किसी भी ऐप / ब्राउज़र में फ़ॉर्म भरना - जो भरना है वह पूछकर, उसी ऐप में रुककर
+        .put(JSONObject().put("name", "form_fill")
+            .put("description", "Fill ANY form in ANY app or browser on the phone (sign-up, application, booking, KYC, Google Form, website form...). " +
+                "Use when the user says 'यह फ़ॉर्म भरो', 'फ़ॉर्म फिल करो', 'इसमें मेरी डिटेल भर दो', 'Chrome में यह फ़ॉर्म भरो'. " +
+                "action=read FIRST: DK stays in the app that is open (or opens the named app ONCE), scrolls the whole page and returns everything written on it plus the list of fields. " +
+                "Then ask the user for ONE field at a time and after each answer call action=fill field=<number or name> value=<his exact words>; DK types it in the SAME app (never presses back, never switches apps). " +
+                "Never invent or guess values; passwords / OTP / PIN the user types himself. action=submit confirm=true ONLY after the user clearly says yes. action=status = what is filled, action=stop = end.")
+            .put("parameters", JSONObject().put("type", "OBJECT")
+                .put("properties", JSONObject()
+                    .put("action", JSONObject().put("type", "STRING").put("enum", JSONArray().put("read").put("fill").put("submit").put("status").put("stop")))
+                    .put("field", JSONObject().put("type", "STRING").put("description", "For fill: the field's number from the list or its name"))
+                    .put("value", JSONObject().put("type", "STRING").put("description", "For fill: exactly what the user said to put there (for a tick box: yes/no; for a list: the option)"))
+                    .put("app", JSONObject().put("type", "STRING").put("description", "For read: app name only if the user named an app that is not open yet"))
+                    .put("confirm", JSONObject().put("type", "BOOLEAN").put("description", "For submit: true only after the user's clear yes")))
+                .put("required", JSONArray().put("action"))))
         .put(JSONObject().put("name", "ai_talk")
             .put("description", "DK itself opens a REAL AI chat app on the phone (ChatGPT, Claude, Gemini, Perplexity, Copilot, DeepSeek, Grok, Meta AI or ANY other app by name) and has a whole multi-turn conversation with it ON THE SCREEN: " +
                 "DK writes each message, sends it, reads the reply, answers that AI's questions itself and decides the next message - the user only watches and listens. " +

@@ -12,6 +12,7 @@ internal object MenuQuick {
     fun switchFor(id: String, a: SettingsActivity): Pair<Boolean, (Boolean) -> Unit>? = when (id) {
         "computer" -> Prefs.computerOn(a) to { on: Boolean -> DkSettingsApply.setFromUi(a, "computer", on); Unit }
         "coder" -> Prefs.coderOn(a) to { on: Boolean -> DkSettingsApply.setFromUi(a, "coder", on); Unit }
+        "autoreply" -> com.dk.assistant.autoreply.AutoReply.on(a) to { on: Boolean -> com.dk.assistant.autoreply.AutoReply.setOn(a, on); Unit }
         else -> null
     }
 
