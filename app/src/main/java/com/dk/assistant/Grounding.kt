@@ -42,6 +42,21 @@ object Grounding {
     fun host(url: String): String =
         Regex("^https?://([^/?#:]+)").find(url)?.groupValues?.get(1)?.removePrefix("www.").orEmpty()
 
+    /**
+     * 13 नवंबर 2026 (मालिक): "कौन-सी वेबसाइट से निकाला" - असली वेबसाइट का नाम.
+     * Google grounding के link redirect (vertexaisearch.cloud.google.com) होते हैं - तब title ही वेबसाइट (जैसे "ndtv.com").
+     */
+    fun site(title: String, url: String): String {
+        val h = host(url)
+        val redirect = h.isBlank() || h.contains("vertexaisearch") || h.endsWith("googleusercontent.com") || (h.startsWith("google.") && url.contains("/url?"))
+        val t = title.trim()
+        return if (redirect && t.isNotBlank()) (if (DOMAIN.matches(t)) t.removePrefix("www.") else t) else h.ifBlank { t }
+    }
+    private val DOMAIN = Regex("^[A-Za-z0-9.-]+\\.[A-Za-z]{2,}$")
+
+    /** अलग-अलग वेबसाइटें (गिनती के लिए) */
+    fun sites(sources: List<Pair<String, String>>): List<String> = sources.map { site(it.first, it.second) }.filter { it.isNotBlank() }.distinct()
+
     /** Chip par chhota naam: "ndtv.com", lamba title kaata hua */
     fun label(title: String, max: Int = 32): String {
         val t = title.trim()

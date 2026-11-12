@@ -347,7 +347,12 @@ class EditorPanel(nav: DkaiNav) : DkaiPanel(nav) {
 }
 
 // =====================================================================================================================
-/** Terminal: असली shell (ऐप के अपने फ़ोल्डर में), output लाइव, रोकें, इतिहास ↑ ↓ */
+/**
+ * Terminal: असली shell (ऐप के अपने फ़ोल्डर में) - 13 नवंबर 2026 (मालिक): और एडवांस / पावरफुल.
+ * output लाइव, ■ रोकें (Ctrl+C), चलती कमांड को जवाब (stdin) भेजें, Tab से नाम पूरा, ↑ ↓ इतिहास (फ़ोन में सेव),
+ * जल्दी वाले बटन, output copy, alias / export / wget / curl / zip / unzip / tree / sysinfo ([DkaiShell]).
+ * DK लाइव की चलाई कमांड भी यहीं दिखती है (वही सत्र).
+ */
 class TerminalPanel(nav: DkaiNav) : DkaiPanel(nav) {
     private lateinit var out: TextView
     private lateinit var scroll: ScrollView
@@ -355,16 +360,26 @@ class TerminalPanel(nav: DkaiNav) : DkaiPanel(nav) {
     private lateinit var promptTv: TextView
     private lateinit var runBtn: ImageView
     private val buf = StringBuilder()
-    private val history = ArrayList<String>()
     private var hIdx = 0
     @Volatile private var proc: Process? = null
-    var cwd: File? = null; private set
+    @Volatile private var busy = false
+    private var stdin: java.io.Writer? = null
+    val cwd: File? get() = DkaiShell.cwd
     private val home get() = DkaiWorkspace.workspace(c)
+    private val fromLive = object : (String) -> Unit {
+        override fun invoke(s: String) {
+            if (c.isDestroyed) { DkaiShell.listeners.remove(this); return }       // पुरानी स्क्रीन - पकड़कर न रखें
+            ui.post { if (::out.isInitialized) { print(s); prompt() } }
+        }
+    }
 
     override fun build(box: LinearLayout) {
+        DkaiShell.load(c)
+        hIdx = DkaiShell.history.size
         val (row, _) = bar("Terminal")
         row.addView(iconBtn(DkaiIcon.Kind.UP, "पिछली कमांड", DkaiTheme.GRAY) { hist(-1) })
         row.addView(iconBtn(DkaiIcon.Kind.DOWN, "अगली कमांड", DkaiTheme.GRAY) { hist(1) })
+        row.addView(iconBtn(DkaiIcon.Kind.COPY, "output copy करें", DkaiTheme.GRAY) { copyOut() })
         row.addView(iconBtn(DkaiIcon.Kind.TRASH, "साफ़ करें", DkaiTheme.GRAY) { buf.setLength(0); out.text = "" })
         box.addView(row)
         out = TextView(c).apply {
@@ -373,7 +388,16 @@ class TerminalPanel(nav: DkaiNav) : DkaiPanel(nav) {
         }
         UiLang.keep(out)
         scroll = ScrollView(c).apply { background = DkaiTheme.round(c, 0xFF070B14.toInt(), 14f, DkaiTheme.BORDER); addView(out) }
-        box.addView(scroll, LinearLayout.LayoutParams(-1, 0, 1f).apply { setMargins(d(12f), 0, d(12f), d(8f)) })
+        box.addView(scroll, LinearLayout.LayoutParams(-1, 0, 1f).apply { setMargins(d(12f), 0, d(12f), d(6f)) })
+
+        // जल्दी वाली कमांड
+        val chips = LinearLayout(c).apply { orientation = LinearLayout.HORIZONTAL; setPadding(d(12f), 0, d(12f), 0) }
+        for (q in QUICK) chips.addView(DkaiTheme.pill(c, q, DkaiTheme.PILL, 0xFF93C5FD.toInt(), 12f).apply {
+            typeface = DkaiTheme.MONO; minHeight = d(34f); contentDescription = "चलाएँ: $q"
+            setOnClickListener { input.setText(q); submit() }
+        }, LinearLayout.LayoutParams(-2, -2).apply { rightMargin = d(6f) })
+        box.addView(HorizontalScrollView(c).apply { isHorizontalScrollBarEnabled = false; addView(chips) }, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = d(6f) })
+
         val inRow = LinearLayout(c).apply {
             orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
             background = DkaiTheme.round(c, DkaiTheme.CARD, 14f, DkaiTheme.BORDER); setPadding(d(12f), 0, d(2f), 0)
@@ -389,98 +413,150 @@ class TerminalPanel(nav: DkaiNav) : DkaiPanel(nav) {
         }
         UiLang.keep(input)
         inRow.addView(input, LinearLayout.LayoutParams(0, -2, 1f))
-        runBtn = iconBtn(DkaiIcon.Kind.PLAY, "चलाएँ", DkaiTheme.CYAN) { if (proc != null) stop() else submit() }
+        runBtn = iconBtn(DkaiIcon.Kind.PLAY, "चलाएँ", DkaiTheme.CYAN) { if (input.text.isBlank() && (proc != null || busy)) stop() else submit() }
         inRow.addView(runBtn)
-        box.addView(inRow, LinearLayout.LayoutParams(-1, -2).apply { setMargins(d(12f), 0, d(12f), d(10f)) })
-        if (cwd == null) cwd = home
-        print("DKAI Terminal — ऐप का अपना Linux shell (Android sh/toybox).\nफ़ोल्डर: Workspace. 'help' लिखें।\n\n")
+        box.addView(inRow, LinearLayout.LayoutParams(-1, -2).apply { setMargins(d(12f), 0, d(12f), d(6f)) })
+
+        // कीबोर्ड में न मिलने वाले बटन
+        val keys = LinearLayout(c).apply { orientation = LinearLayout.HORIZONTAL; setPadding(d(12f), 0, d(12f), d(8f)) }
+        for (k in KEYS) keys.addView(DkaiTheme.pill(c, k, 0xFF111827.toInt(), if (k == "^C") DkaiTheme.RED else DkaiTheme.WHITE, 13f).apply {
+            typeface = DkaiTheme.MONO; minHeight = d(36f); minWidth = d(44f); gravity = Gravity.CENTER
+            contentDescription = when (k) { "Tab" -> "नाम पूरा करें"; "^C" -> "चलती कमांड रोकें"; else -> "लिखें $k" }
+            setOnClickListener { key(k) }
+        }, LinearLayout.LayoutParams(-2, -2).apply { rightMargin = d(6f) })
+        box.addView(HorizontalScrollView(c).apply { isHorizontalScrollBarEnabled = false; addView(keys) })
+
+        print("DKAI Terminal — ऐप का अपना Linux shell (Android sh/toybox) + DK की कमांड (wget, curl, zip, tree, sysinfo…).\n" +
+            "फ़ोल्डर: Workspace. 'help' लिखें. DK लाइव से भी बोलकर चला सकते हैं.\n\n")
         prompt()
+        DkaiShell.listeners.add(fromLive)
     }
 
-    override fun onShow() { if (::input.isInitialized) input.requestFocus() }
+    override fun onShow() { if (::input.isInitialized) { input.requestFocus(); prompt() } }
 
     fun run(cmd: String, dir: File) {
         root            // पहली बार: पैनल अभी बनाओ
-        cwd = dir; prompt(); input.setText(cmd); submit()
+        if (dir.isDirectory && DkaiWorkspace.rootOf(c, dir) != null) DkaiShell.cwd = dir
+        prompt(); input.setText(cmd); submit()
     }
 
     private fun hist(dir: Int) {
-        if (history.isEmpty()) return
-        hIdx = DkaiCore.historyAt(history, hIdx, dir)
-        input.setText(history.getOrNull(hIdx) ?: ""); input.setSelection(input.text.length)
+        val h = DkaiShell.history
+        if (h.isEmpty()) return
+        hIdx = DkaiCore.historyAt(h, hIdx, dir)
+        input.setText(h.getOrNull(hIdx) ?: ""); input.setSelection(input.text.length)
     }
 
-    private fun prompt() { if (::promptTv.isInitialized) promptTv.text = DkaiCore.prompt(cwd ?: home, home) + " $" }
+    private fun prompt() { if (::promptTv.isInitialized) promptTv.text = (if (proc != null) "›" else DkaiShell.prompt(c) + " $") }
 
     private fun print(s: String) {
+        if (s.isEmpty()) return
         buf.append(s)
-        if (buf.length > 60_000) buf.delete(0, buf.length - 50_000)
+        if (buf.length > 80_000) buf.delete(0, buf.length - 60_000)
         out.text = buf
         scroll.post { scroll.fullScroll(View.FOCUS_DOWN) }
     }
 
+    private fun copyOut() {
+        try {
+            (c.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager)
+                .setPrimaryClip(android.content.ClipData.newPlainText("DKAI Terminal", buf.toString().takeLast(60_000)))
+            nav.toast("Terminal का output copy हो गया")
+        } catch (_: Exception) { nav.toast("copy नहीं हुआ") }
+    }
+
+    private fun key(k: String) {
+        when (k) {
+            "Tab" -> tab()
+            "^C" -> stop()
+            else -> { val st = input.selectionStart.coerceAtLeast(0); input.text.insert(st, k) }
+        }
+    }
+
+    /** Tab: आख़िरी शब्द का फ़ाइल / फ़ोल्डर नाम पूरा */
+    private fun tab() {
+        val line = input.text.toString()
+        val word = line.substring(line.lastIndexOf(' ') + 1)
+        val base = DkaiShell.dir(c)
+        val inDir = if (word.contains('/')) File(if (word.startsWith("/")) File("/") else base, word.substringBeforeLast('/')) else base
+        val names = (inDir.listFiles()?.toList() ?: emptyList()).map { it.name + if (it.isDirectory) "/" else "" } +
+            (if (!line.contains(' ')) DkaiTerm.BUILTINS.toList() + DkaiShell.aliases.keys else emptyList())
+        val (done, many) = DkaiTerm.complete(line, names)
+        input.setText(done); input.setSelection(done.length)
+        if (many.isNotEmpty()) print(many.joinToString("  ") + "\n")
+    }
+
     private fun submit() {
-        val cmd = input.text.toString().trim()
+        val raw = input.text.toString()
         input.setText("")
-        if (cmd.isEmpty()) return
-        if (proc != null) { nav.toast("पहले वाली कमांड चल रही है - ■ से रोकें"); return }
-        if (history.lastOrNull() != cmd) history.add(cmd)
-        hIdx = history.size
-        val dir = cwd ?: home
-        print("${DkaiCore.prompt(dir, home)} $ $cmd\n")
-        // अपनी कमांड
-        DkaiCore.cd(cmd, dir, home)?.let { to ->
-            if (to.isDirectory && DkaiWorkspace.rootOf(c, to) != null) { cwd = to; prompt() }
-            else print("cd: $to: यह फ़ोल्डर नहीं (या ऐप के फ़ोल्डर से बाहर)\n")
+        // चलती कमांड जवाब माँग रही (read / y/n) = यह लाइन उसी को
+        if (proc != null) {
+            try { stdin?.apply { write(raw + "\n"); flush() }; print(raw + "\n") } catch (_: Exception) { print("(कमांड जवाब नहीं ले रही)\n") }
             return
         }
-        when {
-            cmd == "clear" -> { buf.setLength(0); out.text = ""; return }
-            cmd == "help" -> { print(HELP); return }
-            cmd.startsWith("open ") -> { val f = File(dir, cmd.removePrefix("open ").trim()); if (f.isFile) nav.openInEditor(f) else print("open: फ़ाइल नहीं मिली\n"); return }
-            cmd.startsWith("preview ") -> { val f = File(dir, cmd.removePrefix("preview ").trim()); if (f.isFile) nav.openPreview(f) else print("preview: फ़ाइल नहीं मिली\n"); return }
+        val typed = raw.trim()
+        if (typed.isEmpty()) return
+        if (busy) { nav.toast("पहले वाली कमांड चल रही है - ■ से रोकें"); return }
+        val cmd = DkaiShell.prepare(c, typed)
+        if (cmd == null) { print("${DkaiShell.prompt(c)} $ $typed\nइतिहास में ऐसी कमांड नहीं\n"); return }
+        DkaiShell.remember(c, cmd)
+        hIdx = DkaiShell.history.size
+        val dir = DkaiShell.dir(c)
+        print("${DkaiCore.prompt(dir, home)} $ $typed\n" + (if (cmd != typed) "→ $cmd\n" else ""))
+        val h = DkaiTerm.head(cmd); val arg = cmd.removePrefix(h).trim()
+        when (h) {
+            "clear" -> { buf.setLength(0); out.text = ""; return }
+            "open" -> { val f = File(dir, arg); if (f.isFile) nav.openInEditor(f) else print("open: फ़ाइल नहीं मिली\n"); return }
+            "preview" -> { val f = File(dir, arg); if (f.isFile) nav.openPreview(f) else print("preview: फ़ाइल नहीं मिली\n"); return }
+            "cd" -> { DkaiShell.builtin(c, cmd)?.let { print(it) }; prompt(); return }
+        }
+        if (DkaiTerm.isBuiltin(cmd)) {
+            busy = true; setRunning(true)
+            Thread {
+                val r = try { DkaiShell.builtin(c, cmd) ?: "" } catch (e: Exception) { "नहीं हुआ: ${e.message}\n" }
+                ui.post { print(r); busy = false; setRunning(false); prompt() }
+            }.start()
+            return
         }
         exec(cmd, dir)
     }
 
     private fun exec(cmd: String, dir: File) {
-        val sh = if (File("/system/bin/sh").exists()) "/system/bin/sh" else "sh"
-        val p = try {
-            ProcessBuilder(sh, "-c", cmd).directory(dir).redirectErrorStream(true).apply {
-                environment()["HOME"] = home.absolutePath
-                environment()["TMPDIR"] = c.cacheDir.absolutePath
-                environment()["TERM"] = "dumb"
-            }.start()
-        } catch (e: Exception) { print("चल नहीं पाई: ${e.message}\n"); return }
-        proc = p; setRunning(true)
+        val p = try { DkaiShell.start(c, cmd, dir) } catch (e: Exception) { print("चल नहीं पाई: ${e.message}\n"); return }
+        proc = p; stdin = try { p.outputStream.bufferedWriter() } catch (_: Exception) { null }
+        setRunning(true); prompt()
         Thread {
             try {
                 val r = p.inputStream.bufferedReader()
                 val chunk = CharArray(2048)
                 while (true) {
                     val n = r.read(chunk); if (n < 0) break
-                    val s = String(chunk, 0, n); main { print(s) }
+                    val s = DkaiTerm.stripAnsi(String(chunk, 0, n)); ui.post { print(s) }
                 }
                 val code = p.waitFor()
-                main { if (code != 0) print("[exit $code]\n"); proc = null; setRunning(false) }
-            } catch (_: Throwable) { main { proc = null; setRunning(false) } }
+                ui.post {
+                    if (code == 127) print("[exit 127] यह कमांड फ़ोन में नहीं है - 'help' देखें\n") else if (code != 0) print("[exit $code]\n")
+                    proc = null; stdin = null; setRunning(false); prompt()
+                }
+            } catch (_: Throwable) { ui.post { proc = null; stdin = null; setRunning(false); prompt() } }
         }.start()
     }
 
-    fun stop() { proc?.let { try { it.destroy() } catch (_: Exception) {} ; print("^C\n") } }
+    fun stop() {
+        val p = proc ?: return
+        try { p.destroy() } catch (_: Exception) {}
+        print("^C\n")
+    }
 
     private fun setRunning(on: Boolean) {
         runBtn.setImageDrawable(DkaiIcon(if (on) DkaiIcon.Kind.STOP else DkaiIcon.Kind.PLAY, if (on) DkaiTheme.RED else DkaiTheme.CYAN))
-        runBtn.contentDescription = if (on) "रोकें" else "चलाएँ"
+        runBtn.contentDescription = if (on) "रोकें (खाली हो तो) / जवाब भेजें" else "चलाएँ"
     }
 
     companion object {
-        const val HELP = "ऐप का अपना shell (Android का sh + toybox): ls, cat, echo, mkdir, cp, mv, rm, grep, sed, find, wc, date…\n" +
-            "cd <फ़ोल्डर>   - Workspace / App Studio / DK Computer के अंदर\n" +
-            "open <फ़ाइल>   - Editor में खोलें\n" +
-            "preview <फ़ाइल> - HTML को Preview में चलाएँ\n" +
-            "clear         - स्क्रीन साफ़\n" +
-            "↑ ↓           - पिछली कमांड;  ■ = चलती कमांड रोकें\n\n"
+        const val HELP = DkaiTerm.HELP
+        val QUICK = listOf("ls -la", "tree", "sysinfo", "history", "du -sh *", "df -h", "ps -A", "env", "help")
+        val KEYS = listOf("Tab", "^C", "|", "/", "-", "~/", ">", "&&", "*", "$", "\"")
     }
 }
 

@@ -34,6 +34,8 @@ class DkaiVoice(private val s: DkaiScreen) {
     private lateinit var badgeDot: PulseDot
     private lateinit var badgeTxt: TextView
     private lateinit var orb: FluidOrbView
+    private lateinit var classicOrb: OrbView
+    private lateinit var orbBox: FrameLayout
     private lateinit var transcript: TextView
     private lateinit var wave: WaveformView
     private lateinit var tabs: LinearLayout
@@ -96,8 +98,16 @@ class DkaiVoice(private val s: DkaiScreen) {
 
         col.addView(View(c), LinearLayout.LayoutParams(1, 0, 1f))
         val size = minOf((c.resources.displayMetrics.widthPixels * 0.78f).toInt(), d(320f))
-        orb = FluidOrbView(c).apply { level = this@DkaiVoice.level; active = this@DkaiVoice.active; contentDescription = "DK orb" }
-        col.addView(orb, LinearLayout.LayoutParams(size, size))
+        // 13 नवंबर 2026 (मालिक): orb बदल सकें - orb पर टैप = सूची (5+ नए orb या पुराना DK orb)
+        orb = FluidOrbView(c).apply { level = this@DkaiVoice.level; active = this@DkaiVoice.active; style = { DkaiOrbs.get(c) } }
+        classicOrb = OrbView(c).apply { importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO }
+        orbBox = FrameLayout(c).apply {
+            isClickable = true; contentDescription = "DK orb - बदलने के लिए टैप"
+            addView(orb, FrameLayout.LayoutParams(-1, -1)); addView(classicOrb, FrameLayout.LayoutParams(-1, -1))
+            setOnClickListener { DkaiOrbs.pick(c) { orbStyle() } }
+        }
+        orbStyle()
+        col.addView(orbBox, LinearLayout.LayoutParams(size, size))
         transcript = DkaiTheme.text(c, DkaiCore.HELLO, 20f, DkaiTheme.WHITE, DkaiTheme.SANS_MED).apply {
             gravity = Gravity.CENTER; maxLines = 4; setLineSpacing(0f, 1.2f); setPadding(d(28f), d(6f), d(28f), d(10f))
             ellipsize = android.text.TextUtils.TruncateAt.START
@@ -158,7 +168,8 @@ class DkaiVoice(private val s: DkaiScreen) {
         mini.isClickable = true
         mini.setOnClickListener { s.event(VoiceEvent.EXPAND) }
         mini.contentDescription = "DK बातचीत - बड़ा करने के लिए टैप"
-        miniOrb = FluidOrbView(c).apply { glow = false; level = this@DkaiVoice.level; active = this@DkaiVoice.active }
+        miniOrb = FluidOrbView(c).apply { glow = false; level = this@DkaiVoice.level; active = this@DkaiVoice.active
+            style = { DkaiOrbs.get(c).let { if (it == DkaiOrbs.CLASSIC) DkaiOrbs.FLUID else it } } }
         mini.addView(miniOrb, LinearLayout.LayoutParams(d(46f), d(46f)))
         val mid = LinearLayout(c).apply { orientation = LinearLayout.VERTICAL; setPadding(d(10f), 0, d(6f), 0) }
         val st = LinearLayout(c).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
@@ -256,6 +267,15 @@ class DkaiVoice(private val s: DkaiScreen) {
         render()
     }
 
+    /** चुना orb दिखाओ: पुराना = OrbView (DK की हालत ख़ुद देखता), बाकी = FluidOrbView की ड्रॉइंग */
+    fun orbStyle() {
+        if (!::orb.isInitialized) return
+        val classic = DkaiOrbs.get(c) == DkaiOrbs.CLASSIC
+        classicOrb.visibility = if (classic) View.VISIBLE else View.GONE
+        orb.visibility = if (classic) View.INVISIBLE else View.VISIBLE
+        orb.invalidate(); classicOrb.invalidate(); if (::miniOrb.isInitialized) miniOrb.invalidate()
+    }
+
     // ------------------------------------------------------------------ dropdown
     private fun menu(anchor: View, rows: List<Triple<DkaiIcon.Kind?, String, Boolean>>, tint: (Int) -> Int, onPick: (Int) -> Unit) {
         menuLayer.removeAllViews()
@@ -281,9 +301,13 @@ class DkaiVoice(private val s: DkaiScreen) {
         }
         val loc = IntArray(2); val sl = IntArray(2)
         anchor.getLocationInWindow(loc); sheet.getLocationInWindow(sl)
-        val w = d(200f)
+        val w = if (rows.any { it.second.length > 18 }) d(260f) else d(200f)
         val left = (loc[0] - sl[0]).coerceAtMost(sheet.width - w - d(12f)).coerceAtLeast(d(12f))
-        val lp = FrameLayout.LayoutParams(w, -2).apply { leftMargin = left; topMargin = loc[1] - sl[1] + anchor.height + d(6f) }
+        // नीचे जगह कम = ऊपर खोलो (स्क्रीन से बाहर न जाए)
+        val est = rows.size * d(48f) + d(12f)
+        var top = loc[1] - sl[1] + anchor.height + d(6f)
+        if (sheet.height > 0 && top + est > sheet.height - d(12f)) top = (loc[1] - sl[1] - est - d(6f)).coerceAtLeast(d(12f))
+        val lp = FrameLayout.LayoutParams(w, -2).apply { leftMargin = left; topMargin = top }
         menuLayer.addView(card, lp)
         menuLayer.visibility = View.VISIBLE; menuLayer.alpha = 0f
         card.scaleX = 0.92f; card.scaleY = 0.92f; card.pivotX = 0f; card.pivotY = 0f
@@ -374,7 +398,7 @@ class DkaiVoice(private val s: DkaiScreen) {
             t.getChildAt(1).visibility = if (on) View.VISIBLE else View.INVISIBLE
             t.isSelected = on
         }
-        orb.invalidate(); wave.invalidate(); miniOrb.invalidate()
+        orbStyle(); wave.invalidate()
     }
 
     init { VoiceTune.load(c) }
