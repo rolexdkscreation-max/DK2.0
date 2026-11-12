@@ -381,7 +381,7 @@ class CodingActivity : AppCompatActivity() {
         if (CoderSession.media.size >= CoderMedia.MAX_ITEMS) { Toast.makeText(this, "एक बार में ${CoderMedia.MAX_ITEMS} तक फ़ोटो/वीडियो", Toast.LENGTH_SHORT).show(); return }
         try {
             pickMedia.launch(androidx.activity.result.PickVisualMediaRequest(androidx.activity.result.contract.ActivityResultContracts.PickVisualMedia.ImageAndVideo))
-        } catch (e: Exception) { Toast.makeText(this, "गैलरी नहीं खुली: ${e.message}", Toast.LENGTH_SHORT).show() }
+        } catch (e: Exception) { DKLog.d("Coder: गैलरी गलती ${e.javaClass.simpleName}: ${e.message?.take(160)}"); Toast.makeText(this, "गैलरी नहीं खुली", Toast.LENGTH_SHORT).show() }
     }
 
     /** चुनी फ़ाइलें background में तैयार (फ़ोटो छोटी, वीडियो के frames) → पट्टी में; cursor लिखने की जगह पर */

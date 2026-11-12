@@ -18,6 +18,8 @@ object VoiceEngines {
     const val OLD_PIPER_ID = "piper_tts"
     /** नवंबर 2026: हटाया गया Supertonic 3 (पहला वाला, फ़ोन में गड़बड़) - सिर्फ़ पुरानी सेव पसंद पहचानने के लिए (migration) */
     const val OLD_SUPERTONIC_ID = "supertonic_hi"
+    /** नवंबर 2026 (मालिक: "जो TTS अभी लगाया वो भी पूरा हटाओ, बैकअप भी नहीं - सिर्फ़ डायरेक्ट Live + Gemini TTS"): दूसरा Supertonic 3 भी हटाया */
+    const val OLD_SUPERTONIC3_ID = "supertonic3_hi"
     /** नवंबर 2026: हटाया गया Microsoft Edge TTS - सिर्फ़ पुरानी सेव पसंद पहचानने के लिए (migration) */
     const val OLD_EDGE_ID = "edge_tts"
     const val LIVE_NATIVE = "live_native"
@@ -27,8 +29,6 @@ object VoiceEngines {
     private val CLASSES = listOf(
         "com.dk.assistant.voice.engine.LiveNativeEngine",
         "com.dk.assistant.voice.engine.GeminiTtsEngine",
-        // नवंबर 2026: Supertonic 3 (नया, फ़ोन में बनने वाली हिंदी आवाज़) - अपना अलग Settings card ([VoiceEngine.ownCard])
-        "com.dk.assistant.voice.engine.SupertonicTtsEngine",
     )
 
     /** एक बार का बदलाव: पुराना डिफ़ॉल्ट (Gemini TTS) सेव था -> DK लाइव. इसके बाद यूज़र जो चुने वही रहे */
@@ -43,7 +43,7 @@ object VoiceEngines {
      * हटाए गए इंजन (Kokoro / Piper / Edge) की पुरानी पसंद = हमेशा DK लाइव.
      */
     const val DIRECT_KEY = "live_direct_default_v2"
-    private val REMOVED = setOf(OLD_KOKORO_ID, OLD_PIPER_ID, OLD_EDGE_ID, OLD_SUPERTONIC_ID)
+    private val REMOVED = setOf(OLD_KOKORO_ID, OLD_PIPER_ID, OLD_EDGE_ID, OLD_SUPERTONIC_ID, OLD_SUPERTONIC3_ID)
 
     /** pure (JVM test) */
     fun directMigrated(saved: String?, done: Boolean): String? = when {
@@ -87,34 +87,22 @@ object VoiceEngines {
         return all.firstOrNull { it.defaultOn }?.id ?: LIVE_NATIVE
     }
 
-    /**
-     * अभी कौन बोलेगा. नवंबर 2026: चुना इंजन [VoiceEngine.liveOnTrouble] (Supertonic 3) हो और अभी न चल सके
-     * (डाउनलोड बाकी / अभी-अभी टूटा) = Gemini Live की सीधी आवाज़ - पसंद वही रहती है, ठीक होते ही फिर वही.
-     */
-    fun active(c: Context): VoiceEngine? {
-        val e = byId(activeId(c)) ?: return null
-        if (!e.liveOnTrouble) return e
-        val notReady = try { e.notReady(c) != null } catch (_: Throwable) { true }
-        return byId(troublePick(e.id, true, notReady, isFailed(e.id))) ?: e
-    }
-
-    /** pure (JVM test): [active] का नियम */
-    fun troublePick(chosen: String, liveOnTrouble: Boolean, notReady: Boolean, failed: Boolean): String =
-        if (liveOnTrouble && (notReady || failed)) LIVE_NATIVE else chosen
+    fun active(c: Context): VoiceEngine? = byId(activeId(c))
 
     /**
      * नवंबर 2026 (मालिक: "जो TTS लगाया था पूरी तरह डिलीट करो, Piper का भी कुछ बचा न रहे - फ़ोन में गड़बड़ है"):
      * एक बार हर फ़ोन पर पुराने ऑफ़लाइन TTS (Supertonic 3 / Piper) की हर चीज़ मिटाओ - डाउनलोड मॉडल, native lib,
      * उनकी settings (SharedPreferences) और पुरानी सेव पसंद. नया TTS (अगर लगे) अलग नाम / अलग फ़ोल्डर में रहेगा.
      */
-    const val WIPE_KEY = "old_offline_tts_wiped_v1"
+    // v2: दूसरा Supertonic 3 (supertonic3 फ़ोल्डर / dk_supertonic3) भी - जिन फ़ोनों पर v1 चल चुका, वहाँ भी एक बार फिर
+    const val WIPE_KEY = "old_offline_tts_wiped_v2"
     /** फ़ोन के filesDir में पुराने TTS के फ़ोल्डर */
-    val OLD_DIRS = listOf("supertonic", "piper", "piper_model", "piper_voices", "sherpa", "kokoro_model")
+    val OLD_DIRS = listOf("supertonic", "supertonic3", "piper", "piper_model", "piper_voices", "sherpa", "kokoro_model")
     /** पुराने TTS की SharedPreferences फ़ाइलें */
-    val OLD_PREFS = listOf("dk_supertonic", "dk_piper")
+    val OLD_PREFS = listOf("dk_supertonic", "dk_supertonic3", "dk_piper")
     /** pure (JVM test): filesDir की कौन-सी चीज़ मिटानी है */
-    fun isOldOffline(name: String): Boolean = name in OLD_DIRS || name.startsWith("piper.gone") || name.startsWith("supertonic.gone") ||
-        name.startsWith("supertonic.part") || name.startsWith("piper.part")
+    fun isOldOffline(name: String): Boolean = name in OLD_DIRS || name.startsWith("piper.") || name.startsWith("supertonic") ||
+        name.startsWith("sherpa")
 
     fun wipeOldOffline(c: Context) {
         val p = sp(c)
@@ -132,7 +120,7 @@ object VoiceEngines {
         // DK की आम settings में पड़ी पुरानी TTS चाबियाँ (साँस/ठहराव वाला स्विच)
         try { com.dk.assistant.Prefs.edit(app) { remove("piper_breath") } } catch (_: Throwable) {}
         val ed = p.edit().putBoolean(WIPE_KEY, true)
-        if (p.getString("active", null) == OLD_SUPERTONIC_ID || p.getString("active", null) == OLD_PIPER_ID) ed.putString("active", LIVE_NATIVE)
+        if (p.getString("active", null) in REMOVED) ed.putString("active", LIVE_NATIVE)
         ed.apply()
     }
 

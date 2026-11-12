@@ -122,6 +122,10 @@ class DKAccessibilityService : AccessibilityService() {
         // ✕ अब नहीं: पुराने ✕ से छिपा ORB सिर्फ़ एक बार वापस. उसके बाद Settings का switch ही मालिक - ऐप खुलने पर ज़बरदस्ती चालू नहीं
         if (!Prefs.orbNoXMigrated(this)) { Prefs.setFloatOrbOn(this, true); Prefs.setOrbNoXMigrated(this) }
         floatOrb = FloatOrb(this) { onOrbTap() }.also { it.sync() }
+        // 12 नवंबर 2026 (मालिक): iPhone जैसा DK island (ऊपर), प्राइवेसी स्क्रीन, Live की notification में कॉल काटें / म्यूट
+        try { DKIsland.start(this) } catch (e: Exception) { DKLog.d("island: ${e.message}") }
+        try { PrivacyScreen.start(this) } catch (e: Exception) { DKLog.d("प्राइवेसी: ${e.message}") }
+        try { LiveNotify.install(this) } catch (e: Exception) { DKLog.d("लाइव notification: ${e.message}") }
         workAwake = WorkAwake(this).also { it.start() }
         reelWatch = ReelWatch(this).also { it.start() }
         AppVisible.onChange = { _ -> refreshOrb() }
@@ -149,6 +153,7 @@ class DKAccessibilityService : AccessibilityService() {
         // बाकी सब on-demand पढ़ते हैं. नवंबर 2026: पेमेंट ऐप खुला = फ़ोन कंट्रोल अपने-आप बंद (PayGuard)
         if (event != null) try { PayGuard.onEvent(this, event) } catch (e: Exception) { DKLog.d("PayGuard: ${e.message}") }
         if (event != null) try { Guard.onEvent(this, event) } catch (e: Exception) { DKLog.d("गार्ड: ${e.message}") }   // नवंबर 2026: लॉक में पावर मेनू / PIN खाना
+        if (event != null) try { PrivacyScreen.onEvent(this, event) } catch (e: Exception) { DKLog.d("प्राइवेसी: ${e.message}") }   // सामने वाला ऐप बदला
     }
 
     override fun onUnbind(intent: android.content.Intent?): Boolean {
@@ -166,6 +171,7 @@ class DKAccessibilityService : AccessibilityService() {
         instance = null
         AppVisible.onChange = null
         floatOrb?.release(); floatOrb = null
+        try { DKIsland.stop(); PrivacyScreen.stop(); LiveNotify.release(this) } catch (_: Exception) {}
         workAwake?.release(); workAwake = null
         reelWatch?.release(); reelWatch = null
         removeEdgeGlow()
@@ -1272,7 +1278,7 @@ class DKAccessibilityService : AccessibilityService() {
     // ---------------------------------------------------------------- तैरता ORB (FloatOrb.kt)
     /** Settings switch / slider, notification बटन, ऐप खुलना - सब यहीं से ORB ठीक करते हैं */
     fun refreshOrb() {
-        android.os.Handler(android.os.Looper.getMainLooper()).post { floatOrb?.sync() }
+        android.os.Handler(android.os.Looper.getMainLooper()).post { floatOrb?.sync(); DKIsland.poke(); LiveNotify.sync(this) }
     }
 
     /** ORB टैप = पहले वाले किनारे के ORB जैसा */

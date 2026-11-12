@@ -165,6 +165,12 @@ object CoderHistory {
             return words.any { t.contains(it) }
         }
 
+        /**
+         * branch/backup का नाम user के काम से - "आगे करो" वाली अंदर की RESUME टिप्पणी से कभी नहीं
+         * (नवंबर 2026: feature/dk-resume-this-work-was-1112-2054 - हिंदी काम में अंग्रेज़ी शब्द सिर्फ़ टिप्पणी के थे)
+         */
+        fun withoutResumeNote(task: String): String = task.substringBefore("\n\n(RESUME:").substringBefore("(RESUME:").trim().ifBlank { task }
+
         /** आगे बढ़ाते समय टीम को बताना कि पहले क्या हो चुका (वही काम दोबारा न करे) */
         fun resumeNote(k: Checkpoint): String = buildString {
             append("\n\n(RESUME: this work was interrupted (the app was closed or stopped). Continue from where it stopped - do NOT redo finished parts.")

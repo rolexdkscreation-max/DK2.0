@@ -59,7 +59,7 @@ class StoryWriterActivity : AppCompatActivity() {
         try {
             contentResolver.openOutputStream(uri)?.use { it.write(StorySession.fullText().toByteArray()) }
             toast("कहानी सेव हो गई")
-        } catch (e: Exception) { toast("सेव नहीं हुई: ${e.message}") }
+        } catch (e: Exception) { DKLog.d("Story: सेव गलती ${e.javaClass.simpleName}: ${e.message?.take(160)}"); toast("कहानी सेव नहीं हुई, फिर से कोशिश करें") }
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {

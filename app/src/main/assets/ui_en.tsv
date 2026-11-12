@@ -173,11 +173,6 @@ review के लिए तैयार	ready for review
 रुको	Wait
 रोक दिया।	Stopped.
 रोकें	Stop
-Supertonic 3 आवाज़	Supertonic 3 voice
-हिंदी, 5 नेचुरल महिला आवाज़ें, बिना इंटरनेट — डिफ़ॉल्ट बंद, मॉडल इंटरनेट से डाउनलोड करके चालू करें	Hindi, 5 natural female voices, no internet needed — off by default, download the model and turn it on
-मॉडल हटाएँ	Delete model
-Supertonic 3 आवाज़ चालू (चालू = सिर्फ़ Supertonic बोलेगा, DK लाइव / Gemini TTS अपने-आप बंद)	Supertonic 3 voice on (on = only Supertonic speaks, DK Live / Gemini TTS turn off automatically)
-स्पीड और पिच अगले वाक्य से लगते हैं और फ़ोन में सेव रहते हैं।	Speed and pitch apply from the next sentence and stay saved on the phone.
 वही गलती	Same error
 सारे बदलाव हटा दिए (GitHub पर कुछ नहीं बदला)	All changes removed (nothing changed on GitHub)
 हटाओ	Remove
@@ -1325,3 +1320,11 @@ DK नियॉन	DK Neon
 हटाई	Deleted
 कोई लाइन नहीं	no lines
 लाइन	lines
+फोटो लोड नहीं हो पाई, फिर से कोशिश करें	Could not load the photo, please try again
+कैमरा शुरू नहीं हो पाया, फिर से कोशिश करें	Could not start the camera, please try again
+शेयर नहीं हो पाया, फिर से कोशिश करें	Could not share, please try again
+ZIP नहीं बन पाया, फिर से कोशिश करें	Could not create the ZIP, please try again
+कहानी सेव नहीं हुई, फिर से कोशिश करें	Story was not saved, please try again
+गड़बड़ हुई, फिर से कोशिश करें	Something went wrong, please try again
+गैलरी नहीं खुली	Could not open the gallery
+चला नहीं पाया	Could not play it

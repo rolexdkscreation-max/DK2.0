@@ -100,10 +100,10 @@ object SevenRunner {
     /** गिट एजेंट के हाथ = CodingAgent की सुरक्षित PR वाली सुविधाएँ */
     private class Git(private val a: CodingAgent, private val task: String, private val c: Context? = null, private val resumeBackup: String = "") : TeamGit {
         // "वहीं से आगे": backup पहली बार बन चुका - दोबारा नहीं
-        override suspend fun backup(task: String) = resumeBackup.ifBlank { a.backupOld(task) }.also { b ->
+        override suspend fun backup(task: String) = resumeBackup.ifBlank { a.backupOld(CoderHistory.Logic.withoutResumeNote(task)) }.also { b ->
             c?.let { ctx -> CoderHistory.updateCheckpoint(ctx) { it.copy(backup = b) } }
         }
-        override suspend fun branch(task: String) = a.ensureBranch(task).also { br ->
+        override suspend fun branch(task: String) = a.ensureBranch(CoderHistory.Logic.withoutResumeNote(task)).also { br ->
             c?.let { ctx -> CoderHistory.updateCheckpoint(ctx) { it.copy(branch = br) } }
             // नवंबर 2026 (फ़्री घंटे बचाओ): codespace अब यहाँ नहीं - योजना/कोड लिखते समय खाली चलता था. अब push से ठीक पहले
         }
@@ -321,7 +321,7 @@ object SevenRunner {
             CoderSession.listener?.invoke(); CoderSession.runNext(c); return null
         }
         val (task, approved, normal) = r
-        if (approved != null) say("s", "✅ आपकी मंज़ूरी मिली — अब 7 एजेंट की टीम (+ समझाने वाला) काम शुरू कर रही है")
+        if (approved != null) say("s", if (Prefs.coderSolo(c)) "✅ आपकी मंज़ूरी मिली — कोडर काम शुरू कर रहा है (पूरा होने तक)" else "✅ आपकी मंज़ूरी मिली — अब 7 एजेंट की टीम (+ समझाने वाला) काम शुरू कर रही है")
         launchTeam(c, ai, task, approved, normal, allMedia, null)
         CoderSession.listener?.invoke()
         return null
@@ -350,6 +350,8 @@ object SevenRunner {
             Prefs.ghRepo(c), Prefs.ghBranch(c)))
         val workTask = if (resume != null) task + CoderHistory.Logic.resumeNote(resume) else task
         CoderSession.launch(c, task) {
+            /** मंज़ूर समझ: user की "हाँ" से, या एक-दिमाग मोड में साफ़ काम पर अपने-आप ([SoloStart]) */
+            var approvedNow = approved
             var agent: CodingAgent? = null
             var hands: Git? = null
             var finished = false
@@ -412,6 +414,9 @@ object SevenRunner {
                     }
                     team.media = allMedia
                     team.inbox = CoderSession.inbox
+                    // नवंबर 2026 (मालिक): एक-दिमाग वाला कोडर (default) - एक ही एजेंट पूरा काम, हाथ-बदली नहीं
+                    team.solo = Prefs.coderSolo(c)
+                    var runTask = workTask
                     if (approved == null) {
                         // चरण 1: सिर्फ़ समझ (कोई branch / बदलाव नहीं) - user को दिखाकर "हाँ" का इंतज़ार
                         var ask = task
@@ -428,6 +433,15 @@ object SevenRunner {
                         if (u.kind == Seven.Kind.STATUS) { inspect(c, task); return@work }
                         // मैनेजर: "हाँ" माँगने से पहले रिपो जाँच (खुले PR + इसी जगह का टकराव) - सिर्फ़ पढ़ना
                         if (d.mode == Seven.Mode.GITHUB && gh != null) say("s", preCheck(gh, repo, u, agent?.pr?.number, Prefs.ghBranch(c)))
+                        if (SoloStart.now(team.solo, u.needsAnswer)) {
+                            // नवंबर 2026 (मालिक: "जो काम दूँ, तुरंत करे"): काम साफ़ है (कोई सवाल नहीं) = "हाँ" का इंतज़ार नहीं.
+                            // main फिर भी अछूता: नई branch + PR, और merge सिर्फ़ आपकी हाँ से
+                            say("s", "✅ काम साफ़ समझ आया — बिना रुके शुरू कर रहा हूँ:\n" + u.understood.ifBlank { u.brief }.take(400))
+                            CoderHistory.saveCheckpoint(c, CoderHistory.Checkpoint(CoderHistory.current, ask, u, "run", normal, repo, Prefs.ghBranch(c)))
+                            if (d.mode == Seven.Mode.GITHUB) team.onProgress = { p -> val j = p.json(); CoderHistory.updateCheckpoint(c) { it.copy(team = j) } }
+                            approvedNow = u
+                            runTask = ask
+                        } else {
                         pending = Pending(ask, u, normal, allMedia)
                         // ऐप बंद होकर खुले तो भी यही समझ "हाँ" का इंतज़ार करे
                         CoderHistory.saveCheckpoint(c, CoderHistory.Checkpoint(CoderHistory.current, ask, u, "pending", normal, repo, Prefs.ghBranch(c)))
@@ -437,8 +451,9 @@ object SevenRunner {
                             if (u.needsAnswer) "बॉस, काम शुरू करने से पहले एक बात साफ़ कीजिए: " + u.questions.first().take(200)
                             else "बॉस, मैंने काम ऐसे समझा: " + u.understood.ifBlank { u.brief }.take(220) + "। सही है तो हाँ बोलिए, वरना बताइए क्या बदलना है।", kind = CoderSound.WAIT)
                         return@work
+                        }
                     }
-                    val out = team.run(workTask, approved)
+                    val out = team.run(runTask, approvedNow)
                     // काम पूरा (या सिर्फ़ जवाब) = चौकी साफ़. नहीं हुआ = चौकी बची रहे, ताकि "आगे करो" वहीं से चले
                     finished = out.testOk == true || out.answerOnly
                     if (out.answerOnly && out.report == SevenTeam.STATUS_ASK) { inspect(c, task); return@work }
@@ -469,7 +484,7 @@ object SevenRunner {
             } finally {
                 // पूरा हुआ (पास/फ़ेल की रिपोर्ट) = चौकी साफ़. बीच में रुका = "pause" (बटन से आगे). मंज़ूरी का इंतज़ार = वही रहे
                 withContext(NonCancellable) {
-                    val k = if (approved != null) CoderHistory.checkpoint(c) else null
+                    val k = if (approvedNow != null) CoderHistory.checkpoint(c) else null
                     if (k != null && k.stage != "pending") {
                         if (finished) CoderHistory.clearCheckpoint(c)
                         else {

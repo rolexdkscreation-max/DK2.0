@@ -30,9 +30,3 @@
 -keep class com.dk.assistant.voice.engine.GeminiTtsEngine { *; }
 -keep class com.dk.assistant.voice.engine.LiveNativeEngine { *; }
 
-
-# नवंबर 2026: Supertonic 3 (नया, ऑफ़लाइन हिंदी आवाज़) - sherpa-onnx की native लाइब्रेरी (पहली बार डाउनलोड) इन classes / fields को JNI से नाम से पढ़ती है
--keep class com.k2fsa.sherpa.onnx.** { *; }
--keep class com.dk.assistant.voice.engine.SupertonicTtsEngine { *; }
-# native callback typed method invoke(float[]):Integer ढूँढता है - R8 इसे न हटाए/न बदले
--keepclassmembers class * implements kotlin.jvm.functions.Function1 { java.lang.Integer invoke(float[]); }

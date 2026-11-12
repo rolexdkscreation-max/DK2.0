@@ -40,7 +40,7 @@ class VoiceEngineCard private constructor(private val a: Activity, private val d
     private var muteSwitch = false
 
     private fun render(box: LinearLayout) {
-        val engines = VoiceEngines.all.filter { !it.ownCard }      // नवंबर 2026: Supertonic 3 का अपना card (नीचे)
+        val engines = VoiceEngines.all
         // v3.69: ऊपर का शीर्षक अब card का नाम है; नमूना-वाक्य, "तीनों बारी-बारी सुनो" और "रोको" हटाए (बैकअप: branch backup/dk-before-backup-folder-cleanup-1102, फ़ोल्डर backup/v3.69-settings)
         hint(box, "जवाब Gemini Live लिखता है; बोलता यह इंजन है. एक समय में एक ही चालू (DK लाइव / Gemini TTS) - जो चालू करो सिर्फ़ वही, बंद करने से अपने-आप कोई दूसरा चालू नहीं होता. मेरे बोलना ख़त्म करने से पहली आवाज़ तक का " +
             "समय हर इंजन के नीचे दिखता है (पिछली बार नापा). डिफ़ॉल्ट: DK लाइव (Direct Gemini Live Voice). \"DK लाइव\" का स्विच = Direct Gemini Live Voice (Gemini की अपनी आवाज़ सीधे). Live या Gemini TTS में दिक़्क़त आए तो ऐप अपने-आप दूसरी आवाज़ पर (आख़िर में फ़ोन की अपनी आवाज़) लौटता है. ये बदलाव तुरंत सेव होते हैं.")
@@ -60,7 +60,8 @@ class VoiceEngineCard private constructor(private val a: Activity, private val d
         box.addView(sw, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
         switches[e.id] = sw
         small(box, e.note, 0x99FFFFFF.toInt())
-        latency[e.id] = small(box, VoiceEngines.latencyLine(a, e.id), 0xFF8FD3FF.toInt())
+        // नवंबर 2026 (मालिक: "बैक एंड वाली चीज़ फ्रंटेंड में नहीं"): देरी का नाप पीछे चलता रहे, कार्ड पर न दिखे
+        latency[e.id] = small(box, VoiceEngines.latencyLine(a, e.id), 0xFF8FD3FF.toInt()).apply { visibility = View.GONE }
         status[e.id] = small(box, "", 0xCCFFFFFF.toInt()).apply { visibility = View.GONE }
         e.notReady(a)?.let { small(box, "अभी नहीं चलेगा: $it", 0xFFFFC46B.toInt()) }
         // आवाज़ें: हर एक के आगे ▶ सुनो
@@ -160,7 +161,7 @@ class VoiceEngineCard private constructor(private val a: Activity, private val d
         label(box, "गति और पिच (जो आवाज़ चालू है, उसी पर - तुरंत)")
         slider(box, "गति", VoiceTune.MIN_SPEED, VoiceTune.MAX_SPEED, VoiceTune.speedPct, { v -> VoiceTune.fmt(v) }) { v -> VoiceTune.setSpeed(a, v); refreshNow() }
         slider(box, "पिच (आवाज़ का ऊँचा-नीचापन)", VoiceTune.MIN_PITCH, VoiceTune.MAX_PITCH, VoiceTune.pitchPct, { v -> VoiceTune.fmt(v) }) { v -> VoiceTune.setPitch(a, v); refreshNow() }
-        hint(box, "100% = सामान्य। कोमल आवाज़ के लिए गति 90-95% और पिच 100-104% अच्छी लगती है। DK लाइव और Gemini TTS - दोनों पर एक ही। गति 0.5x-2.0x, पिच 0.5x-1.5x। Supertonic 3 की अपनी स्पीड/पिच उसके card में है (यह उस पर नहीं लगती)।")
+        hint(box, "100% = सामान्य। कोमल आवाज़ के लिए गति 90-95% और पिच 100-104% अच्छी लगती है। DK लाइव और Gemini TTS - दोनों पर एक ही। गति 0.5x-2.0x, पिच 0.5x-1.5x।")
     }
 
     private fun radioList(box: LinearLayout, items: List<Pair<String, String>>, cur: String, onPick: (String) -> Unit) {

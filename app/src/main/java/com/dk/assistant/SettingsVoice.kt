@@ -150,11 +150,6 @@ internal fun SettingsActivity.secVoice() {
             .let { if (it.startsWith("आवाज़:")) "आख़िरी बार बोला — " + it.removePrefix("आवाज़: ") else it })
     }
 
-    // नवंबर 2026 (मालिक): Supertonic 3 नए सिरे से (पहला पूरा हटाया) - डिफ़ॉल्ट बंद. सारा code SettingsSupertonic.kt में
-    card("Supertonic 3 आवाज़", "हिंदी, 5 नेचुरल महिला आवाज़ें, बिना इंटरनेट — डिफ़ॉल्ट बंद, मॉडल इंटरनेट से डाउनलोड करके चालू करें") { box ->
-        supertonicCard(box)
-    }
-
 
     // ---- Listening
     card("सुनना (माइक)", "लगातार सुनना — बिना बीप की आवाज़") { box ->
@@ -173,23 +168,27 @@ internal fun SettingsActivity.secVoice() {
         hint(box, "DK आपकी पहली कुछ बातों से आपकी पास वाली आवाज़ अपने आप सीखता है। उससे बहुत धीमी (दूसरे कमरे / दूर की) आवाज़ पर जवाब नहीं देगा। Bluetooth headset पर यह रोक बंद रहती है।")
         switch(box, "DK के जवाब के बीच बोलूँ तो DK रुककर मेरी बात सुने", !Prefs.bargeHold(this))
             .setOnCheckedChangeListener { _, on -> Prefs.edit(this) { putBoolean("barge_hold", !on) } }
-        // नवंबर 2026: बीच बातचीत text (1011 की जड़) - डिफ़ॉल्ट बंद
-        switch(box, "Gemini न सुने तो लिखा हुआ text भेजकर बचाओ (पुराना तरीका)", LiveStay.textRescueOn(this))
-            .setOnCheckedChangeListener { _, on -> Prefs.edit(this) { putBoolean(LiveStay.PREF_TEXT_RESCUE, on) } }
-        hint(box, "डिफ़ॉल्ट बंद। चालू करने पर बातचीत के बीच text जाता है, जिससे Live का connection (1011) कट सकता है। अगली Live बातचीत से लागू।")
-        // नवंबर 2026 (Live जाँच): बिना रुके, बिना अटके बातचीत
-        switch(box, "कॉल-mode स्पीकर: पक्का echo-cancel, DK बोलते समय टोकते ही रुके", Prefs.bool(this, LiveSmooth.PREF_CALL_SPEAKER, false))
-            .setOnCheckedChangeListener { _, on -> Prefs.edit(this) { putBoolean(LiveSmooth.PREF_CALL_SPEAKER, on) } }
-        hint(box, "डिफ़ॉल्ट बंद। चालू करने पर DK लाइव फ़ोन को कॉल वाले तरीके पर speaker चलाता है - फ़ोन DK की अपनी आवाज़ माइक से हटा देता है, इसलिए आप बीच में बोलें तो DK करीब 0.2 सेकंड में रुकता है। कुछ फ़ोनों पर आवाज़ थोड़ी धीमी लग सकती है (तब call volume बढ़ाएँ)। अगली बार DK लाइव शुरू होने पर लागू।")
-        switch(box, "हल्के tools (तेज़ पहला जवाब)", Prefs.bool(this, LiveSmooth.PREF_SLIM_TOOLS, true))
-            .setOnCheckedChangeListener { _, on -> Prefs.edit(this) { putBoolean(LiveSmooth.PREF_SLIM_TOOLS, on) } }
-        hint(box, "डिफ़ॉल्ट चालू। रोज़ के काम (फ़ोन, खोज, WhatsApp, कॉल…) सीधे; बाकी (कोडिंग, वेबसाइट, गेम, सोशल…) एक dk_agent के पीछे - सारे काम पहले जैसे चलते हैं।")
-        switch(box, "स्मार्ट VAD: पंखा / TV / गाने को बात न माने", Prefs.bool(this, LiveSmooth.PREF_SMART_VAD, true))
-            .setOnCheckedChangeListener { _, on -> Prefs.edit(this) { putBoolean(LiveSmooth.PREF_SMART_VAD, on) } }
-        hint(box, "डिफ़ॉल्ट चालू। फ़ोन के अंदर (बिना इंटरनेट) इंसानी आवाज़ पहचानता है - शोर में भी बात समय पर शुरू और खत्म।")
-        switch(box, "caption न चले तो Live का अपना लिखा इस्तेमाल करो", Prefs.bool(this, LiveSmooth.PREF_HEARD_FALLBACK, true))
-            .setOnCheckedChangeListener { _, on -> Prefs.edit(this) { putBoolean(LiveSmooth.PREF_HEARD_FALLBACK, on) } }
-        hint(box, "डिफ़ॉल्ट चालू। कमज़ोर नेट पर लिखने वाला (caption) पीछे रह जाए तब भी DK समझकर तय करे कि आपकी बात खत्म हुई।")
+        // नवंबर 2026 (मालिक: "जो बैक एंड में रहना चाहिए वो फ्रंटेंड में मत दिखाओ"): Live इंजन के तकनीकी विकल्प
+        // (text-बचाव, कॉल-mode स्पीकर, हल्के tools, स्मार्ट VAD, caption-बचाव) पीछे - डिफ़ॉल्ट वैसे ही लागू, स्क्रीन पर नहीं
+        backend(box) { b ->
+            // नवंबर 2026: बीच बातचीत text (1011 की जड़) - डिफ़ॉल्ट बंद
+            switch(b, "Gemini न सुने तो लिखा हुआ text भेजकर बचाओ (पुराना तरीका)", LiveStay.textRescueOn(this))
+                .setOnCheckedChangeListener { _, on -> Prefs.edit(this) { putBoolean(LiveStay.PREF_TEXT_RESCUE, on) } }
+            hint(b, "डिफ़ॉल्ट बंद। चालू करने पर बातचीत के बीच text जाता है, जिससे Live का connection (1011) कट सकता है। अगली Live बातचीत से लागू।")
+            // नवंबर 2026 (Live जाँच): बिना रुके, बिना अटके बातचीत
+            switch(b, "कॉल-mode स्पीकर: पक्का echo-cancel, DK बोलते समय टोकते ही रुके", Prefs.bool(this, LiveSmooth.PREF_CALL_SPEAKER, false))
+                .setOnCheckedChangeListener { _, on -> Prefs.edit(this) { putBoolean(LiveSmooth.PREF_CALL_SPEAKER, on) } }
+            hint(b, "डिफ़ॉल्ट बंद। चालू करने पर DK लाइव फ़ोन को कॉल वाले तरीके पर speaker चलाता है - फ़ोन DK की अपनी आवाज़ माइक से हटा देता है, इसलिए आप बीच में बोलें तो DK करीब 0.2 सेकंड में रुकता है। कुछ फ़ोनों पर आवाज़ थोड़ी धीमी लग सकती है (तब call volume बढ़ाएँ)। अगली बार DK लाइव शुरू होने पर लागू।")
+            switch(b, "हल्के tools (तेज़ पहला जवाब)", Prefs.bool(this, LiveSmooth.PREF_SLIM_TOOLS, true))
+                .setOnCheckedChangeListener { _, on -> Prefs.edit(this) { putBoolean(LiveSmooth.PREF_SLIM_TOOLS, on) } }
+            hint(b, "डिफ़ॉल्ट चालू। रोज़ के काम (फ़ोन, खोज, WhatsApp, कॉल…) सीधे; बाकी (कोडिंग, वेबसाइट, गेम, सोशल…) एक dk_agent के पीछे - सारे काम पहले जैसे चलते हैं।")
+            switch(b, "स्मार्ट VAD: पंखा / TV / गाने को बात न माने", Prefs.bool(this, LiveSmooth.PREF_SMART_VAD, true))
+                .setOnCheckedChangeListener { _, on -> Prefs.edit(this) { putBoolean(LiveSmooth.PREF_SMART_VAD, on) } }
+            hint(b, "डिफ़ॉल्ट चालू। फ़ोन के अंदर (बिना इंटरनेट) इंसानी आवाज़ पहचानता है - शोर में भी बात समय पर शुरू और खत्म।")
+            switch(b, "caption न चले तो Live का अपना लिखा इस्तेमाल करो", Prefs.bool(this, LiveSmooth.PREF_HEARD_FALLBACK, true))
+                .setOnCheckedChangeListener { _, on -> Prefs.edit(this) { putBoolean(LiveSmooth.PREF_HEARD_FALLBACK, on) } }
+            hint(b, "डिफ़ॉल्ट चालू। कमज़ोर नेट पर लिखने वाला (caption) पीछे रह जाए तब भी DK समझकर तय करे कि आपकी बात खत्म हुई।")
+        }
         hint(box, "आवाज़ की keys (Gemini Live, बोलना, सुनना): सेटिंग्स → AI दिमाग → DK लाइव। अभी: " + scopeStatus(ApiScopes.LIVE))
     }
 
