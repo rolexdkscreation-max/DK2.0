@@ -547,6 +547,8 @@ class GeminiLive(internal val svc: DKAccessibilityService, internal val agent: A
     /** इस जवाब में Gemini TTS की जगह Live की अपनी आवाज़ बज रही है */
     @Volatile internal var splitLive = false
     @Volatile internal var splitRescues = 0
+    /** Live ने बचा जवाब क्यों लिया (स्क्रीन की "आवाज़:" लाइन में) */
+    @Volatile internal var splitLiveWhy = ""
     private val speechHooks = object : com.dk.assistant.voice.engine.SpeechPipeline.Hooks {
         override fun usage() = CallVoice.usage(callAudioOn, btOn, CallSpeaker.active)
         override fun log(m: String) = this@GeminiLive.log(m)
@@ -672,7 +674,7 @@ class GeminiLive(internal val svc: DKAccessibilityService, internal val agent: A
     internal fun playOut(pcm: ByteArray) {
         if (connSplit && !splitLive) return
         com.dk.assistant.voice.engine.VoiceNow.played(com.dk.assistant.voice.engine.VoiceEngines.LIVE_NATIVE, com.dk.assistant.voice.engine.VoiceNow.LIVE_TITLE, liveVoiceName,
-            if (connSplit && splitLive) "${splitEngine?.title ?: "चुना इंजन"} देर से/चुप रहा, बचा जवाब Live ने बोला" else com.dk.assistant.voice.engine.VoiceNow.planWhy)
+            if (connSplit && splitLive) "${splitLiveWhy.ifBlank { "${splitEngine?.title ?: "चुना इंजन"} देर से/चुप रहा" }}, बचा जवाब Live ने बोला" else com.dk.assistant.voice.engine.VoiceNow.planWhy)
         if (startHold.offer(pcm)) return        // नवंबर 2026: आप अभी बोल रहे - पुराना जवाब कतार में नहीं (LiveStartHold)
         playQ.offer(pcm)
         // नवंबर 2026 (आवाज़ गायब): बजाने वाला thread मर गया हो तो फिर शुरू - वरना text आता, आवाज़ नहीं

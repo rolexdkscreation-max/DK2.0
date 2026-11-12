@@ -23,7 +23,7 @@ internal fun GeminiLive.keepSplitAudio(pcm: ByteArray): Boolean {
 
 /** नया जवाब: रखी आवाज़ खाली, फिर से Gemini TTS बोलेगा */
 internal fun GeminiLive.resetLiveKeep() {
-    synchronized(liveKeep) { dropKeepLocked(); splitLive = false }
+    synchronized(liveKeep) { dropKeepLocked(); splitLive = false; splitLiveWhy = "" }
 }
 
 /** टोका / बासी जवाब: रखी आवाज़ फेंको (बजेगी नहीं) */
@@ -55,6 +55,7 @@ internal fun GeminiLive.rescueWithLive(at: Int, why: String): Boolean {
         dropKeepLocked()
     }
     splitRescues++
+    splitLiveWhy = why
     if (pipelineLazy.isInitialized()) pipeline.handOff()
     LatencyBoard.count("Gemini TTS देर/चुप: Live की अपनी आवाज़ ने बोला")
     log("आवाज़: $why - बचा जवाब Live की अपनी आवाज़ में (टुकड़ा $from से, ${n} टुकड़े, ${(total - played) * 1000 / (OUT_RATE * 2)} ms) • #$splitRescues")
@@ -69,5 +70,12 @@ internal fun GeminiLive.splitRaceCheck(now: Long) {
     if (liveRaceFrom == 0L) liveRaceFrom = now
     val since = maxOf(liveKeepFirstAt, liveRaceFrom)
     val started = pipelineLazy.isInitialized() && pipeline.audioStarted
+    // नवंबर 2026 (मालिक: "Piper इस्तेमाल ही नहीं हो पाता, देर करके सीधे Gemini"): 900 ms की दौड़ Gemini TTS (नेट) के लिए है.
+    // Piper फ़ोन में बनता है (लिखावट आने + वाक्य बनने में ज़्यादा) - उसे उसके नापे समय जितनी सीमा (PiperTiming)
+    if (splitEngine?.id == com.dk.assistant.voice.engine.PiperTtsEngine.ID) {
+        val P = com.dk.assistant.voice.engine.PiperTiming
+        if (P.firstTooSlow(now, since, started, open, P.typicalFirstMs())) rescueWithLive(0, P.rescueWhy(now - since, false))
+        return
+    }
     if (SplitRescue.firstTooSlow(now, since, started, open)) rescueWithLive(0, "Gemini TTS की पहली आवाज़ ${now - since} ms में नहीं आई")
 }

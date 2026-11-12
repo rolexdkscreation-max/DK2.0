@@ -221,7 +221,7 @@ private fun SettingsActivity.piperLatency(): String {
     val p = VoiceEngines.lastPreview(this, PiperTtsEngine.ID); val l = VoiceEngines.lastLatency(this, PiperTtsEngine.ID)
     val a = if (p >= 0) "टेस्ट: दबाने से पहली आवाज़ ${VoiceEngines.secs(p)}" else "टेस्ट दबाकर पहली आवाज़ का समय देखें"
     val b = if (l >= 0) " • बातचीत में (आपकी बात ख़त्म → पहली आवाज़): ${VoiceEngines.secs(l)}" else ""
-    return a + b
+    return a + b + "\n" + com.dk.assistant.voice.engine.PiperTiming.line()
 }
 
 private fun SettingsActivity.piperSmall(box: LinearLayout, t: String, color: Int): TextView {

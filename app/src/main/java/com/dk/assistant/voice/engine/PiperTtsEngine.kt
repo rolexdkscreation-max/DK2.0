@@ -194,6 +194,8 @@ object PiperTtsEngine : VoiceEngine {
     override fun speak(c: Context, text: String, voice: String, out: PcmOut) {
         if (!PiperStore.on(c) && !previewing) throw IOException("Piper बंद है")
         val g = gen.get()
+        val t0 = System.currentTimeMillis()
+        val wasLoaded = tts != null
         val t = ensure(c)
         val say = speakable(text)
         if (say.isBlank()) { out.write(ByteArray(480)); return }      // बोलने लायक कुछ नहीं (जैसे सिर्फ़ emoji) - चुप्पी, ग़लती नहीं
@@ -211,6 +213,8 @@ object PiperTtsEngine : VoiceEngine {
         // HQ = 44.1 kHz: 24 kHz पर लाने से पहले ऊँची आवृत्ति हटाओ (नहीं तो खरखराहट / aliasing) - आवाज़ साफ़ और मुलायम
         val lp = if (rate > VoiceEngine.RATE) SoftLowpass.forRates(src, VoiceEngine.RATE) else null
         fun pcm(x: FloatArray): ByteArray = Resample.to24k(PiperFx.pcm16(lp?.process(x) ?: x), src)
+        // नवंबर 2026 (मालिक: "Piper कितनी देर में बोलता है, पता नहीं चलता"): हर वाक्य का असली नाप ([PiperTiming])
+        var firstAt = 0L; var nSamp = 0L
         try {
             synchronized(lock) {                   // एक मॉडल - एक समय में एक वाक्य (दूसरा धागा कतार में)
                 if (gen.get() != g) return
@@ -218,6 +222,8 @@ object PiperTtsEngine : VoiceEngine {
                 val cb = object : (FloatArray) -> Int {
                     override fun invoke(samples: FloatArray): Int {
                         if (gen.get() != g) return 0                        // रोका गया - बाकी मत बनाओ
+                        if (firstAt == 0L) firstAt = System.currentTimeMillis()
+                        nSamp += samples.size
                         out.write(pcm(fx.process(samples)))
                         return 1
                     }
@@ -227,11 +233,23 @@ object PiperTtsEngine : VoiceEngine {
             }
             if (gen.get() == g) fx.tail().takeIf { it.isNotEmpty() }?.let { out.write(pcm(it)) }
             fails.set(0)
+            if (!previewing) note(g, t0, firstAt, nSamp, say.length, if (wasLoaded) -1L else lastLoadMs)
         } catch (e: Throwable) {
             if (gen.get() != g) return
             if (fails.incrementAndGet() >= 2) { fails.set(0); fail(c, "Piper आवाज़ नहीं बना पाया (${e.javaClass.simpleName})") }
             throw IOException("Piper: ${e.message ?: e.javaClass.simpleName}", e)
         }
+    }
+
+    /** एक वाक्य का नाप: पूरा बना = [PiperTiming.spoke]; पहली आवाज़ से पहले रोका गया (Live ने लिया) = [PiperTiming.cut] */
+    private fun note(g: Int, t0: Long, firstAt: Long, nSamp: Long, chars: Int, loadMs: Long) {
+        val now = System.currentTimeMillis()
+        if (gen.get() != g) { if (firstAt == 0L) PiperTiming.cut(now - t0); return }
+        if (firstAt == 0L) return
+        val audio = if (rate > 0) nSamp * 1000L / rate else -1L
+        PiperTiming.spoke(firstAt - t0, now - t0, audio, chars, loadMs)
+        DKLog.d("Piper: वाक्य ($chars अक्षर) - पहली आवाज़ ${firstAt - t0} ms, पूरा ${now - t0} ms, आवाज़ $audio ms" +
+            (if (loadMs >= 0) ", मॉडल लोड $loadMs ms" else "") + (if (hq) " (HQ)" else ""))
     }
 
     /** HQ (Supertonic-3): कौन-सी आवाज़ (sid), हिंदी, हाई क्वालिटी चरण. pure (JVM test) */
