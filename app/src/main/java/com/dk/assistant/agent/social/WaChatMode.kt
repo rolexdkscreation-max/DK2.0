@@ -152,6 +152,53 @@ object WaChatMode {
         s.askedPick = emptySet()
     }
 
+    // ---------- नवंबर 2026 (मालिक: "एक बार उस व्यक्ति की चैट में जाए तो वहीं रुककर टाइप करके बात करता रहे - बार-बार
+    // बैक / सर्च नहीं") - खुली चैट पर नज़र. WhatsApp खुली चैट का notification नहीं देता, इसलिए स्क्रीन ही देखनी पड़ती है ----------
+
+    /** बोला गया नाम = अभी स्क्रीन पर खुली चैट? (हाँ = वहीं लिखो, पीछे जाकर दोबारा ढूँढो मत) */
+    fun sameChat(said: String, openTitle: String): Boolean {
+        val a = said.trim(); val b = openTitle.trim()
+        if (a.isEmpty() || b.isEmpty()) return false
+        return WaScreen.key(a) == WaScreen.key(b) || WaScreen.nameMatches(a, b)
+    }
+
+    /** इस खुली चैट में DK खुद जवाब दे? (बॉस ने इसके लिए / सबके लिए "तुम खुद कर दो" कहा हो) */
+    fun selfFor(s: State, title: String): Boolean {
+        if (title.isBlank()) return false
+        if (s.selfAll) return true
+        val k = WaScreen.key(title)
+        return s.self.contains(k) || s.self.any { WaScreen.nameMatches(s.names[it] ?: it, title) }
+    }
+
+    sealed class Here {
+        /** कुछ नहीं करना (नई बात नहीं / यह चैट खुद-जवाब वाली नहीं) - स्क्रीन जस की तस, कहीं मत जाओ */
+        data class Wait(val why: String) : Here()
+        /** यहीं (इसी खुली चैट में) जवाब लिखो */
+        data class Reply(val msg: Incoming) : Here()
+        /** पैसे/OTP जैसी बात - खुद नहीं, बॉस से पूछो */
+        data class Ask(val msg: Incoming) : Here()
+        object Stop : Here()
+    }
+
+    /**
+     * खुली चैट में अभी क्या करें. [msgs] = स्क्रीन पर दिख रहे मैसेज (पुराने पहले), [handled] = इस चैट की जिस बात का
+     * जवाब DK दे चुका / दे रहा है (दोबारा नहीं).
+     */
+    fun here(s: State?, title: String, msgs: List<WaScreen.Msg>, handled: String?, isGroup: Boolean, now: Long): Here {
+        if (s == null || now > s.until) return Here.Stop
+        if (!selfFor(s, title)) return Here.Wait("not self")
+        if (isGroup && !s.self.contains(WaScreen.key(title))) return Here.Wait("group")
+        val last = msgs.lastOrNull() ?: return Here.Wait("empty")
+        if (last.mine) return Here.Wait("mine")
+        val t = last.text.trim()
+        if (t.isEmpty()) return Here.Wait("empty")
+        val k = WaScreen.key(title)
+        if (handled?.trim() == t || s.lastSent[k]?.trim() == t) return Here.Wait("done")
+        s.names[k] = title.trim()
+        val inc = Incoming(title.trim(), t, now)
+        return if (WaScreen.needsOwner(t)) Here.Ask(inc) else Here.Reply(inc)
+    }
+
     private fun q(t: String, max: Int = 220) = "\"" + t.replace("\"", "'").replace('\n', ' ').take(max) + "\""
 
     // ---------- Live (Gemini) के लिए SYSTEM NOTE - बॉस से बात हिंदी में, WhatsApp पर Hinglish ----------

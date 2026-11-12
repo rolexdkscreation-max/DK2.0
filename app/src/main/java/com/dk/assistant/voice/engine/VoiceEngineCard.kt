@@ -42,11 +42,11 @@ class VoiceEngineCard private constructor(private val a: Activity, private val d
     private fun render(box: LinearLayout) {
         val engines = VoiceEngines.all
         // v3.69: ऊपर का शीर्षक अब card का नाम है; नमूना-वाक्य, "तीनों बारी-बारी सुनो" और "रोको" हटाए (बैकअप: branch backup/dk-before-backup-folder-cleanup-1102, फ़ोल्डर backup/v3.69-settings)
-        hint(box, "जवाब Gemini Live लिखता है; बोलता यह इंजन है. एक समय में एक ही चालू. मेरे बोलना ख़त्म करने से पहली आवाज़ तक का " +
+        hint(box, "जवाब Gemini Live लिखता है; बोलता यह इंजन है. एक समय में एक ही चालू (DK लाइव / Gemini TTS / नीचे \"Piper आवाज़\") - जो चालू करो सिर्फ़ वही, बंद करने से अपने-आप कोई दूसरा चालू नहीं होता. मेरे बोलना ख़त्म करने से पहली आवाज़ तक का " +
             "समय हर इंजन के नीचे दिखता है (पिछली बार नापा). डिफ़ॉल्ट: DK लाइव (Direct Gemini Live Voice). \"DK लाइव\" का स्विच = Direct Gemini Live Voice (Gemini की अपनी आवाज़ सीधे). Live या Gemini TTS में दिक़्क़त आए तो ऐप अपने-आप दूसरी आवाज़ पर (आख़िर में फ़ोन की अपनी आवाज़) लौटता है. ये बदलाव तुरंत सेव होते हैं.")
         nowBlock(box)            // v3.80: अभी कौन बोल रहा (इंजन / आवाज़ / मॉडल) + मॉडल बदलो + गति-पिच
         divider(box)
-        val activeId = VoiceEngines.activeId(a)
+        val activeId = VoiceModeController.currentId(a)      // Piper चालू = यहाँ दोनों बंद दिखें
         engines.forEachIndexed { i, e -> if (i > 0) divider(box); engineBlock(box, e, e.id == activeId) }
         if (engines.isEmpty()) hint(box, "कोई आवाज़ इंजन नहीं मिला - DK लाइव अपनी आवाज़ में बोलेगा")
     }
@@ -85,15 +85,24 @@ class VoiceEngineCard private constructor(private val a: Activity, private val d
     }
 
     private fun onSwitch(id: String, on: Boolean) {
-        val cur = VoiceEngines.activeId(a)
-        val next = VoiceModeController.switch(a, id, on)      // नवंबर 2026: बंद = Direct Live पर लौटो (Direct Live बंद = Gemini TTS)
-        muteSwitch = true
-        switches.forEach { (k, s) -> s.isChecked = k == next }
-        muteSwitch = false
+        val cur = VoiceModeController.currentId(a)
+        // नवंबर 2026 (मालिक): चालू किया = सिर्फ़ यही (Piper भी बंद). बंद किया = अपने-आप दूसरा चालू नहीं - यही चालू रहता है
+        val next = VoiceModeController.switch(a, id, on)
+        syncSwitches(next)
         val t = VoiceEngines.byId(next)?.title ?: next
-        say(id, if (next == cur && !on) "कम से कम एक इंजन चालू रहता है - अभी: $t" else if (on) "अब बोलेगा: $t (चलती बातचीत में भी - अभी का जवाब पूरा होते ही)" else "")
-        if (next != id) say(next, "अब बोलेगा: $t (चलती बातचीत में भी - अभी का जवाब पूरा होते ही)")
+        say(id, when {
+            !on && next == cur -> "यह बंद नहीं होगा — एक आवाज़ हमेशा चालू रहती है। दूसरी चाहिए तो उसी का स्विच चालू करें, यह अपने-आप बंद हो जाएगा। अभी: $t"
+            on && next == id -> "अब सिर्फ़ यही बोलेगा: $t (बाकी बंद; चलती बातचीत में भी - अभी का जवाब पूरा होते ही)"
+            else -> ""
+        })
         refreshNow()
+    }
+
+    /** स्विच वही दिखें जो सच में चुना है (Piper चालू = दोनों बंद) */
+    private fun syncSwitches(cur: String = VoiceModeController.currentId(a)) {
+        muteSwitch = true
+        switches.forEach { (k, s) -> if (s.isChecked != (k == cur)) s.isChecked = k == cur }
+        muteSwitch = false
     }
 
     // ------------------------------------------------------------------ v3.80: अभी कौन बोल रहा + मॉडल + गति/पिच
@@ -118,7 +127,7 @@ class VoiceEngineCard private constructor(private val a: Activity, private val d
         }
     }
 
-    private fun refreshNow() { nowText?.text = nowLine() }
+    private fun refreshNow() { nowText?.text = nowLine(); syncSwitches() }
 
     private fun nowBlock(box: LinearLayout) {
         VoiceTune.load(a)

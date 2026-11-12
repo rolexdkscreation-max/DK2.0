@@ -215,6 +215,7 @@ object PiperDownload {
 
     // ------------------------------------------------------------------ 3. आवाज़ मॉडल
     private fun fetchVoice(c: Context, v: PiperStore.Voice, done: AtomicLong, tick: () -> Unit) {
+        if (v.hq) { fetchHq(c, v, done, tick); return }
         val dir = PiperStore.voiceDir(c, v.id).apply { mkdirs() }
         val tokens = File(dir, "tokens.txt")
         if (!tokens.exists() || tokens.length() == 0L) {
@@ -242,6 +243,37 @@ object PiperDownload {
             if (sha256(part) != v.onnxSha256) { part.delete(); throw IOException("मॉडल फ़ाइल ख़राब निकली") }
             if (!part.renameTo(model)) throw IOException("मॉडल रखा नहीं जा सका")
         } else done.addAndGet(v.onnxSize)
+        File(dir, ".ok").writeText(v.rev)
+    }
+
+    /**
+     * नवंबर 2026: हाई क्वालिटी (Supertonic-3) - 7 फ़ाइलें, हर एक टूटे तो जहाँ रुकी वहीं से (Range), हर एक की sha256 जाँच.
+     * एक बार उतरा = तीनों HQ आवाज़ें (एक ही मॉडल).
+     */
+    private fun fetchHq(c: Context, v: PiperStore.Voice, done: AtomicLong, tick: () -> Unit) {
+        val dir = PiperStore.voiceDir(c, v.id).apply { mkdirs() }
+        for (f in PiperStore.ST_FILES) {
+            val out = File(dir, f.name)
+            if (out.exists() && out.length() == f.size) { done.addAndGet(f.size); continue }
+            val part = File(dir, f.name + ".part")
+            var have = if (part.exists()) part.length() else 0L
+            if (have > f.size) { part.delete(); have = 0L }
+            done.addAndGet(have)
+            if (have < f.size) {
+                get(PiperStore.fileUrl(v, f.name), have).use { r ->
+                    val append = have > 0 && r.code == 206
+                    if (have > 0 && !append) { done.addAndGet(-have); have = 0L }
+                    Counting(r.body!!.byteStream(), done, tick).use { i ->
+                        java.io.FileOutputStream(part, append).use { o -> i.copyTo(o, 256 * 1024) }
+                    }
+                }
+            }
+            if (part.length() != f.size) throw IOException("${f.name} अधूरी (${part.length()} / ${f.size})")
+            tick()
+            if (sha256(part) != f.sha256) { part.delete(); throw IOException("${f.name} ख़राब निकली") }
+            out.delete()
+            if (!part.renameTo(out)) throw IOException("${f.name} रखी नहीं जा सकी")
+        }
         File(dir, ".ok").writeText(v.rev)
     }
 

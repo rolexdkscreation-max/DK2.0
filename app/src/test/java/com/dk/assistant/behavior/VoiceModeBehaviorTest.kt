@@ -68,14 +68,22 @@ class VoiceModeBehaviorTest {
         assertFalse(Ui.hasText(s, "Kokoro"))
     }
 
-    @Test fun directLiveSwitchOnScreenIsSavedAndOffGoesToGeminiTts() {
+    /**
+     * नवंबर 2026 (मालिक: "Live बंद करूँ तो Gemini TTS अपने-आप चालू हो जाता है - ऐसा नहीं, मैं जो चालू करूँ वही एक"):
+     * पहले यह टेस्ट "Direct बंद = अपने-आप Gemini TTS" जाँचता था - मालिक ने वही व्यवहार हटवाया. अब: बंद करने से कुछ
+     * नहीं बदलता, दूसरा चालू करने पर वही अकेला; सेव + दोबारा खोलने वाली जाँच वैसी ही.
+     */
+    @Test fun directLiveSwitchOnScreenIsSavedAndOffDoesNotAutoSwitch() {
         val s = open()
         val live = Ui.switch(s.get(), LiveNativeEngine.title)
         val tts = Ui.switch(s.get(), GeminiTtsEngine.title)
         assertTrue(live.isChecked)
         live.isChecked = false
+        assertEquals(VoiceEngines.LIVE_NATIVE, VoiceEngines.activeId(c))   // अपने-आप Gemini TTS नहीं
+        assertTrue(live.isChecked); assertFalse(tts.isChecked)
+        tts.isChecked = true
         assertEquals(VoiceEngines.GEMINI_TTS, VoiceEngines.activeId(c))
-        assertTrue(tts.isChecked)                                       // एक समय में एक
+        assertTrue(tts.isChecked); assertFalse(live.isChecked)          // एक समय में एक
         s.pause().stop().destroy()
         // दोबारा खोलो: Gemini TTS चालू ही दिखे (सेव); Direct फिर चालू करो
         val again = open()

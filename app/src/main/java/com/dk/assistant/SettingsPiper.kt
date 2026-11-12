@@ -51,6 +51,17 @@ internal fun SettingsActivity.piperCard(box: LinearLayout) {
     body.tag = l                 // view ही listener को पकड़े (card बंद = अपने-आप छूटे)
     PiperDownload.listen(l)
     draw()
+    // नवंबर 2026: ऊपर DK लाइव / Gemini TTS चालू किया = Piper अपने-आप बंद - यह card भी तुरंत वही दिखाए
+    var shownOn = PiperStore.on(applicationContext)
+    val sync = object : Runnable {
+        override fun run() {
+            if (!body.isAttachedToWindow || isFinishing || isDestroyed) return
+            val now = PiperStore.on(applicationContext)
+            if (now != shownOn && !PiperDownload.running) { shownOn = now; draw() }
+            body.postDelayed(this, 1_000)
+        }
+    }
+    body.post { body.postDelayed(sync, 1_000) }
 }
 
 private fun SettingsActivity.piperBody(body: LinearLayout, redraw: () -> Unit, keep: (ProgressBar?, TextView?) -> Unit) {
@@ -79,27 +90,37 @@ private fun SettingsActivity.piperBody(body: LinearLayout, redraw: () -> Unit, k
         } else {
             row(body, button("डाउनलोड करें") { PiperDownload.start(app, PiperStore.voice(app)); redraw() })
         }
-        hint(body, "एक बार करीब 73 MB डाउनलोड (Wi-Fi बेहतर), फ़ोन में करीब 90 MB जगह। उसके बाद बिना इंटरनेट चलेगा। " +
-            "हिंदी आवाज़: ${PiperStore.voiceOf(PiperStore.DEFAULT_VOICE).title}, medium क्वालिटी। ऐप का साइज़ नहीं बढ़ता।")
+        val dv = PiperStore.voiceOf(PiperStore.voice(app))
+        hint(body, "एक बार करीब ${(dv.onnxSize + PiperStore.LIBS.first().zipEnd + 1_000_000L) shr 20} MB डाउनलोड (Wi-Fi बेहतर), इंटरनेट से — ऐप के अंदर नहीं, ऐप का साइज़ नहीं बढ़ता। उसके बाद बिना इंटरनेट चलेगा। " +
+            "आवाज़: ${dv.title}${if (dv.hq) " — नेचुरल, कोमल; साथ में 2 और HQ महिला आवाज़ें" else ", medium क्वालिटी"}।")
         return
     }
 
     // ---- डाउनलोड हो चुका: ON/OFF स्विच (डिफ़ॉल्ट OFF)
     val on = PiperStore.on(app) && PiperStore.installed(app)
-    val sw = switch(body, "Piper आवाज़ चालू (बंद = Gemini Live की सीधी आवाज़, पहले जैसी)", on)
-    sw.setOnCheckedChangeListener { _, v -> piperToggle(v); redraw() }
+    val sw = switch(body, "Piper आवाज़ चालू (चालू = सिर्फ़ Piper बोलेगा, DK लाइव / Gemini TTS अपने-आप बंद)", on)
+    sw.setOnCheckedChangeListener { _, v ->
+        if (!v && PiperStore.on(app)) {
+            // नवंबर 2026 (मालिक): बंद करने से अपने-आप कोई दूसरा इंजन चालू नहीं - एक आवाज़ हमेशा चालू, दूसरी खुद चुनो
+            toast("Piper बंद नहीं हुआ — एक आवाज़ हमेशा चालू रहती है। ऊपर \"बोलने वाला इंजन\" में DK लाइव या Gemini TTS चालू करें, Piper अपने-आप बंद हो जाएगा")
+        } else piperToggle(v)
+        redraw()
+    }
     if (st.kind == PiperDownload.Kind.FAILED && st.msg != null) {
         piperSmall(body, st.msg, 0xFFFF8A80.toInt())
         row(body, button("दोबारा कोशिश करें") { PiperDownload.start(app, st.voice); redraw() })
     }
-    if (on) piperTune(body, redraw)
-    else hint(body, "बंद है — DK पहले की तरह Gemini Live की अपनी आवाज़ में बोल रहा है। चालू करने पर Gemini सिर्फ़ जवाब लिखेगा और Piper फ़ोन में ही बोलेगा।")
+    if (on) {
+        hint(body, "चालू है — Gemini सिर्फ़ जवाब लिखता है, बोलता हमेशा Piper है (अपने-आप Gemini TTS पर नहीं जाता)। Piper में कभी दिक़्क़त हो तो उसी पल Gemini Live की सीधी आवाज़, और थोड़ी देर में फिर Piper।")
+        piperTune(body, redraw)
+    }
+    else hint(body, "बंद है — DK ऊपर चुने इंजन (DK लाइव / Gemini TTS) से बोल रहा है। चालू करने पर सिर्फ़ Piper बोलेगा, बाकी दोनों अपने-आप बंद।")
 
     row(body, button("मॉडल हटाएँ (${PiperDownload.mb(PiperStore.diskBytes(app))} MB खाली करें)") {
         AlertDialog.Builder(this).setTitle("Piper मॉडल हटाएँ?")
             .setMessage("फ़ोन से Piper की सारी फ़ाइलें हट जाएँगी और DK Gemini Live की आवाज़ में बोलेगा। दोबारा चाहिए तो फिर डाउनलोड करना होगा।")
             .setPositiveButton("हटाएँ") { _, _ ->
-                piperToggle(false)
+                piperToggle(false)            // मॉडल ही नहीं रहा - तब ऊपर चुना इंजन (DK लाइव / Gemini TTS)
                 Thread({
                     PiperDownload.stop(); PiperTtsEngine.release()
                     PiperStore.delete(app)
@@ -107,7 +128,7 @@ private fun SettingsActivity.piperBody(body: LinearLayout, redraw: () -> Unit, k
                 }, "dk-piper-delete").apply { isDaemon = true; start() }
             }.setNegativeButton("रहने दें", null).show()
     })
-    hint(body, "आवाज़ें: Piper (rhasspy) हिंदी मॉडल — लाइसेंस CC BY-NC-SA 4.0 (सिर्फ़ ग़ैर-व्यावसायिक इस्तेमाल)। इंजन: sherpa-onnx (Apache-2.0)।")
+    hint(body, "आवाज़ें: Piper (rhasspy) हिंदी मॉडल — लाइसेंस CC BY-NC-SA 4.0 (सिर्फ़ ग़ैर-व्यावसायिक इस्तेमाल); हाई क्वालिटी: Supertonic-3 (Supertone) — OpenRAIL-M। इंजन: sherpa-onnx (Apache-2.0)।")
 }
 
 /** स्विच: ON = स्विच सेव + मॉडल मेमोरी में; OFF = चल रही/कतार की आवाज़ उसी पल बंद. दोनों में पुरानी सेटिंग वैसी ही */
@@ -117,12 +138,13 @@ private fun SettingsActivity.piperToggle(on: Boolean) {
     PiperStore.setOn(app, on)
     if (on) {
         PiperStore.setError(app, null)
-        toast("Piper आवाज़ चालू — DK चुप होते ही अगला जवाब Piper में")
+        VoiceEngines.clearFailed(PiperTtsEngine.ID)
+        toast("Piper आवाज़ चालू — अब सिर्फ़ Piper बोलेगा (DK लाइव / Gemini TTS बंद), DK चुप होते ही अगला जवाब Piper में")
         Thread({ PiperTtsEngine.warm(app) }, "dk-piper-warm").apply { isDaemon = true; start() }
     } else {
         PiperTtsEngine.stop()
         SpeechPipeline.stopAll()
-        toast("Piper बंद — DK फिर Gemini Live की सीधी आवाज़ में")
+        toast("Piper बंद — DK अब ऊपर चुने इंजन से बोलेगा")
         Thread({ PiperTtsEngine.release() }, "dk-piper-release").apply { isDaemon = true; start() }
     }
     VoiceEngines.changed()
@@ -134,22 +156,22 @@ private fun SettingsActivity.piperTune(body: LinearLayout, redraw: () -> Unit) {
     label(body, "आवाज़")
     val g = RadioGroup(this).apply { orientation = RadioGroup.VERTICAL }
     val cur = PiperStore.voice(app)
-    PiperStore.VOICES.forEachIndexed { i, v ->
+    PiperStore.ALL_VOICES.forEachIndexed { i, v ->
         val have = PiperStore.voiceOk(app, v.id)
         g.addView(RadioButton(this).apply {
-            id = 3300 + i; text = if (have) v.title else "${v.title} — डाउनलोड करें (~${v.onnxSize shr 20} MB)"
+            id = 3300 + i; text = if (have) v.title else "${v.title} — डाउनलोड करें (~${v.onnxSize shr 20} MB${if (v.hq) ", तीनों HQ आवाज़ें एक साथ" else ""})"
             textSize = 14f; setTextColor(0xFFFFFFFF.toInt())
             setPadding((6 * dp).toInt(), (5 * dp).toInt(), 0, (5 * dp).toInt())
         })
         if (v.id == cur) g.check(3300 + i)
     }
     g.setOnCheckedChangeListener { _, id ->
-        val v = PiperStore.VOICES.getOrNull(id - 3300) ?: return@setOnCheckedChangeListener
+        val v = PiperStore.ALL_VOICES.getOrNull(id - 3300) ?: return@setOnCheckedChangeListener
         if (PiperStore.voiceOk(app, v.id)) Thread({ PiperTtsEngine.setVoice(app, v.id); PiperTtsEngine.warm(app) }, "dk-piper-voice").apply { isDaemon = true; start() }
         else { PiperDownload.start(app, v.id); redraw() }
     }
     body.addView(g)
-    hint(body, "सारी आवाज़ें medium क्वालिटी की हैं (हिंदी के लिए Piper में low / high मॉडल उपलब्ध नहीं)।")
+    hint(body, "ऊपर की तीन \"हाई क्वालिटी\" महिला आवाज़ें (Supertonic-3, 44 kHz) ज़्यादा नेचुरल और भावों वाली हैं — एक बार ~${PiperStore.ST_SIZE shr 20} MB, इंटरनेट से (ऐप के अंदर नहीं)। नीचे वाली Piper medium क्वालिटी (हिंदी Piper का high मॉडल है ही नहीं)।")
 
     pSlider(body, "स्पीड", 50, 200, PiperStore.speed(app), { if (it == 100) "1.00x (सामान्य)" else String.format(java.util.Locale.US, "%.2fx", it / 100f) }) { PiperStore.setInt(app, "speed", it) }
     pSlider(body, "पिच", 70, 140, PiperStore.pitch(app), { if (it == 100) "सामान्य" else if (it > 100) "+${it - 100}% ऊँची" else "${it - 100}% नीची" }) { PiperStore.setInt(app, "pitch", it) }
