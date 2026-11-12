@@ -29,7 +29,10 @@ object SevenRunner {
         SevenPlus.resolve(input, p?.task, p?.u, p?.forceNormal == true, forceNormal)
 
     /** कोडिंग एजेंट की अपनी API (Settings → AI दिमाग → कोडिंग एजेंट); limit पर उसी key के दूसरे मॉडल - CoderAi खुद */
-    private class Ai(private val ai: CoderAi, lightModel: String = GeminiModels.CODER, private val strong: CoderAi? = null) : TeamAi {
+    private class Ai(private val ai: CoderAi, private val lightModel: String = GeminiModels.CODER, private val strong: CoderAi? = null) : TeamAi {
+        /** नवंबर 2026 (तेज़): छोटे काम वाले एजेंट Flash-Lite पर ([TeamModels.LITE]); Settings से बंद हो सकता है */
+        private var liteOn = false
+        fun lite(on: Boolean) = apply { liteOn = on }
         /** Settings → मज़बूत मॉडल किन एजेंट को ([StrongAi.PREF_SCOPE]) */
         private var scope: String = StrongAi.SCOPE_GATES
         fun scoped(s: String) = apply { scope = StrongAi.scope(s) }
@@ -37,8 +40,11 @@ object SevenRunner {
         // नवंबर 2026 (मालिक): बाकी का default भी 3.8 Flash - तब उसकी limit पर पहले 3.6 Flash / 3 Flash, फिर Lite (CODER_CHAIN)
         private val light = ai.withModel(lightModel, if (lightModel == GeminiModels.CODER) GeminiModels.CODER_CHAIN else GeminiModels.LIGHT_CHAIN)
         // नवंबर 2026: मज़बूत (paid) मॉडल की key डली हो तो कोडर/डिबगर/प्लानर उसी पर (न चले तो पीछे वही पुरानी chain)
+        // Flash-Lite पहले, उसकी limit/गलती पर अपने-आप 3.8 Flash (LIGHT_CHAIN में आगे) - तभी बनती है जब पहली बार चाहिए
+        private val lite by lazy { ai.withModel(GeminiModels.LIGHT, GeminiModels.LIGHT_CHAIN) }
         private fun pick(agent: Seven.Agent): CoderAi {
-            val base = TeamModels.pick(agent, ai, light, strong, scope)
+            val pref = TeamModels.pick(agent, ai, light, strong, scope)
+            val base = if (TeamModels.useLite(agent, liteOn, lightModel, strong != null && pref === strong)) lite else pref
             val level = TeamModels.thinkFor(agent, base.think)
             if (level == base.think) return base
             // नवंबर 2026 (तेज़): बात वाले एजेंट कम सोच पर - हर chain की एक ही कॉपी (बार-बार नई नहीं)
@@ -253,7 +259,7 @@ object SevenRunner {
         try {
             a.teamLoad { say("s", it) }
             val shown = Shown()
-            val team = SevenTeam(Ai(ai, Prefs.coderLightModel(c), CoderAi.forStrong(c, ai)).scoped(Prefs.coderStrongScope(c)), RepoFiles(a), Git(a, task), full = true, aiResult = true, fast = true, ev = teamEvents(c, shown)).also { shown.team = it }
+            val team = SevenTeam(Ai(ai, Prefs.coderLightModel(c), CoderAi.forStrong(c, ai)).scoped(Prefs.coderStrongScope(c)).lite(Prefs.coderLiteSide(c)), RepoFiles(a), Git(a, task), full = true, aiResult = true, fast = true, ev = teamEvents(c, shown)).also { shown.team = it }
             val u = SevenPlus.Understanding(Seven.Kind.BUG, title, "रिपो डॉक्टर: $title — जड़ ढूँढकर ठीक करना, ताकि सारे checks पास हों", task,
                 listOf("जो check fail था वह पास हो", "बाकी सारे checks और पुराने tests पास हों", "कोई पुराना फ़ीचर न बदले"),
                 listOf("सारे मौजूदा फ़ीचर और tests"), emptyList(), emptyList())
@@ -389,7 +395,7 @@ object SevenRunner {
                         val files = RepoFiles(a, c)
                         resume?.staged?.forEach { (p, content) -> files.stage(p, content) }
                         val shown = Shown()
-                        team = SevenTeam(Ai(ai, Prefs.coderLightModel(c), CoderAi.forStrong(c, ai)).scoped(Prefs.coderStrongScope(c)), files, Git(a, task, c, resume?.backup.orEmpty()).also { hands = it }, full = true, aiResult = true, fast = true, ev = teamEvents(c, shown)).also { shown.team = it }
+                        team = SevenTeam(Ai(ai, Prefs.coderLightModel(c), CoderAi.forStrong(c, ai)).scoped(Prefs.coderStrongScope(c)).lite(Prefs.coderLiteSide(c)), files, Git(a, task, c, resume?.backup.orEmpty()).also { hands = it }, full = true, aiResult = true, fast = true, ev = teamEvents(c, shown)).also { shown.team = it }
                         // "आगे करो": टीम कहाँ तक पहुँची थी - वहीं से (पूरे हुए हिस्से दोबारा नहीं)
                         team.resumeFrom = TeamProgress.parse(resume?.team)
                         if (approved != null) team.onProgress = { p -> val j = p.json(); CoderHistory.updateCheckpoint(c) { it.copy(team = j) } }
@@ -402,7 +408,7 @@ object SevenRunner {
                         val start = LinkedHashMap(CoderSession.normalFiles).apply { putAll(Seven.filesFromMessage(task)) }
                         if (start.isNotEmpty()) say("s", "फ़ाइलें: " + start.keys.joinToString())
                         val shown = Shown()
-                        team = SevenTeam(Ai(ai, Prefs.coderLightModel(c), CoderAi.forStrong(c, ai)).scoped(Prefs.coderStrongScope(c)), MemoryFiles(start), null, full = true, aiResult = true, fast = true, ev = teamEvents(c, shown, sound = false)).also { shown.team = it }
+                        team = SevenTeam(Ai(ai, Prefs.coderLightModel(c), CoderAi.forStrong(c, ai)).scoped(Prefs.coderStrongScope(c)).lite(Prefs.coderLiteSide(c)), MemoryFiles(start), null, full = true, aiResult = true, fast = true, ev = teamEvents(c, shown, sound = false)).also { shown.team = it }
                     }
                     team.media = allMedia
                     team.inbox = CoderSession.inbox

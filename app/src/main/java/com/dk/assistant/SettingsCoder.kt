@@ -142,6 +142,9 @@ internal fun SettingsActivity.secCoder() {
         edCoderLight = field(box, "हल्के एजेंटों का मॉडल (मैनेजर, गिट/रिलीज़, टेस्टर)",
             Prefs.coderLightModel(this), GeminiModels.CODER + " (सुझाया — सारे एजेंट एक ही 3.8 Flash; धीमे नेटवर्क पर " + GeminiModels.LIGHT + ")")
         hint(box, "कोडर, डिबगर, प्लानर और रिव्यूअर AI दिमाग → कोडिंग एजेंट में चुना मॉडल लेते हैं (सुझाया: ${GeminiModels.CODER})। 5 Gemini keys हों तो limit, धीमा नेटवर्क या server गलती पर अगली key अपने-आप।")
+        // नवंबर 2026 (मालिक: "कम वाला मॉडल जिसमें ज़्यादा request"): छोटे काम Flash-Lite पर
+        swCoderLite = switch(box, "तेज़: छोटे काम वाले एजेंट (प्रॉम्प्ट, गिट, डिप्लॉयमेंट, परफॉरमेंस, ड्राई-रन टेस्टर) ${GeminiModels.LIGHT} पर", Prefs.coderLiteSide(this))
+        hint(box, "Flash-Lite की limit ज़्यादा है और जवाब जल्दी आता है, तो 3.8 Flash की limit सिर्फ़ code लिखने/जाँचने में खर्च होती है। Lite न चले तो अपने-आप 3.8 Flash। कोडर, डिबगर, प्लानर, रिव्यूअर, QA, मैनेजर और समझाने वाला हमेशा मज़बूत मॉडल पर।")
         strongModelBox(box)
         edCoderSteps = field(box, "एक काम में ज़्यादा से ज़्यादा कदम (3–30)", Prefs.coderMaxSteps(this).toString(),
             "5 (सुझाया) — कम कदम = कम API खर्च, limit/413 कम").apply { inputType = InputType.TYPE_CLASS_NUMBER }

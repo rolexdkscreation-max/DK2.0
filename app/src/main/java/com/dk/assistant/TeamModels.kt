@@ -30,6 +30,22 @@ object TeamModels {
     fun thinkFor(a: Seven.Agent, userLevel: String): String =
         if (ThinkLevel.norm(userLevel) == ThinkLevel.AUTO && a in QUICK_TALK) ThinkLevel.LOW else userLevel
 
+    /**
+     * नवंबर 2026 (मालिक: "कोई agent को कम वाला मॉडल दे सकते हो, जिसमें ज़्यादा request रहता है"): छोटे, बात/हिसाब वाले काम -
+     * प्रॉम्प्ट इंजीनियर (फ़ोटो/काम का छोटा रूप), गिट (commit/PR का नाम), डिप्लॉयमेंट, परफॉरमेंस की जाँच, टेस्टर का ड्राई-रन -
+     * [GeminiModels.LIGHT] (Flash-Lite: ज़्यादा request/मिनट, जल्दी जवाब) पर. उसकी limit/गलती = अपने-आप 3.8 Flash ([GeminiModels.LIGHT_CHAIN]).
+     * कोडर, डिबगर, प्लानर, रिव्यूअर, QA, मैनेजर (काम समझना) और समझाने वाला वैसे ही 3.8 Flash पर - गुणवत्ता वही.
+     * इससे 3.8 Flash की limit सिर्फ़ असली code लिखने/जाँचने में खर्च होती है = 429 वाला इंतज़ार कम.
+     */
+    val LITE: Set<Seven.Agent> = setOf(Seven.Agent.PROMPT, Seven.Agent.GIT, Seven.Agent.DEPLOY, Seven.Agent.PERF, Seven.Agent.TESTER)
+
+    /**
+     * यह एजेंट Flash-Lite पर? सिर्फ़ तब, जब Settings में "हल्के काम Flash-Lite पर" चालू हो, user ने हल्के एजेंटों का अपना
+     * मॉडल न चुना हो (default 3.8 Flash ही हो) और इस एजेंट पर मज़बूत (paid) मॉडल न लगा हो.
+     */
+    fun useLite(a: Seven.Agent, on: Boolean, lightModel: String, strongUsed: Boolean): Boolean =
+        on && !strongUsed && a in LITE && lightModel.trim().removePrefix("models/").let { it.isBlank() || it == GeminiModels.CODER }
+
     /** नवंबर 2026: Settings वाला दायरा ([StrongAi.PREF_SCOPE]) - "gates" = जाँचने वाले भी मज़बूत मॉडल पर */
     fun <T> pick(a: Seven.Agent, fastAi: T, lightAi: T, strongAi: T?, scope: String): T = when {
         strongAi != null && StrongAi.uses(a, scope) -> strongAi

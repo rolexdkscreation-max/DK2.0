@@ -402,6 +402,7 @@ class SettingsActivity : AppCompatActivity() {
     internal lateinit var edStrongKey: EditText
     internal lateinit var edStrongModel: EditText
     internal lateinit var swBuildFix: SwitchCompat
+    internal lateinit var swCoderLite: SwitchCompat
     internal lateinit var swTeam: SwitchCompat
     internal lateinit var swSeven: SwitchCompat
     internal lateinit var edGhToken: EditText
@@ -449,6 +450,7 @@ class SettingsActivity : AppCompatActivity() {
                     if (::rgStrongScope.isInitialized) putString(StrongAi.PREF_SCOPE, radioValue(rgStrongScope, StrongAi.SCOPES.map { it.first }, SCOPE_RADIO))
                 }
                 putBoolean("coder_buildfix", swBuildFix.isChecked)
+                if (::swCoderLite.isInitialized) putBoolean(Prefs.CODER_LITE_SIDE, swCoderLite.isChecked)
                 putBoolean("coder_team", swTeam.isChecked)
                 putBoolean("coder_seven", swSeven.isChecked)
                 putString("gh_token", edGhToken.text.toString().trim())

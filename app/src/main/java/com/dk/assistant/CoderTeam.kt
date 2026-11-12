@@ -289,7 +289,8 @@ object CoderTeam {
         val p = a.pr ?: return if (a.canRetryPr) "PR बना ही नहीं था: ${a.prError}" else "अभी merge के लिए कोई PR तैयार नहीं है।"
         if (fromVoice) say("u", "🎤 PR #${p.number} merge करो")
         CoderSession.launch(c) {
-            mergeAndRelease(c, a, p)
+            // नवंबर 2026 (तेज़): merge होते ही अगला (कतार वाला) काम; APK release (~14 मिनट) की निगरानी पीछे चलती रहती है
+            mergeAndRelease(c, a, p, background = true)
         }
         // merge के दौरान कतार में जुड़े काम merge के बाद चलें (पहले वे कभी शुरू नहीं होते थे)
         CoderSession.job?.let { runQueueAfter(c, it) }
@@ -301,9 +302,11 @@ object CoderTeam {
      * डिप्लॉयमेंट: PR की दोबारा जाँच → merge → APK release (पक्का). रिपो डॉक्टर भी अपने काम के अंदर यही चलाता है.
      * @return true = merge हुआ और नई APK release पक्की
      */
-    suspend fun mergeAndRelease(c: Context, a: CodingAgent, p: GitHub.Pull): Boolean {
+    suspend fun mergeAndRelease(c: Context, a: CodingAgent, p: GitHub.Pull, background: Boolean = false): Boolean {
         val repo = a.repo; val base = a.baseBranch
         CoderReport.begin()
+        // नवंबर 2026 (मालिक का screenshot): merge/release के समय स्क्रीन पर "मैनेजर काम बाँट रहा है" लिखा आता था - असल में गिट/रिलीज़ काम कर रहा है
+        CoderSession.activeAgent = Seven.Member.GIT_RELEASE; CoderSession.activeNote = MergeBg.MERGING
         say("s", "🚀 डिप्लॉयमेंट: PR #${p.number} की दोबारा जाँच (tests/build/conflict, main आगे बढ़ा तो update + tests) करके merge कर रहा हूँ…")
         val mergedMs = System.currentTimeMillis()
         val res = try { a.mergePr { st -> step(st) } } catch (e: CancellationException) { throw e } catch (e: Exception) {
@@ -325,6 +328,23 @@ object CoderTeam {
             return false
         }
         say("d", res)
+        if (background) {
+            // merge हो गया: यह काम (और "काम चल रहा है") यहीं ख़त्म, अगला काम तुरंत; release की खबर आते ही चैट + आवाज़ में
+            say("s", MergeBg.note(base))
+            deployJob?.cancel()
+            deployJob = CoderSession.scope.launch { try { release(c, a, p, sha, mergedMs, false) } catch (_: CancellationException) {} }
+            return true
+        }
+        return release(c, a, p, sha, mergedMs, true)
+    }
+
+    /** नवंबर 2026: पीछे चलती APK release निगरानी (merge के बाद). नया merge आए तो पुरानी रुकती है */
+    @Volatile private var deployJob: kotlinx.coroutines.Job? = null
+
+    /** merge के बाद: main पर APK release build देखो / न चले तो खुद चलाओ, नतीजा बताओ. true = नई APK release पक्की */
+    private suspend fun release(c: Context, a: CodingAgent, p: GitHub.Pull, sha: String, mergedMs: Long, shown: Boolean): Boolean {
+        val repo = a.repo; val base = a.baseBranch
+        if (shown) CoderSession.activeNote = MergeBg.RELEASING
         say("s", "🚀 डिप्लॉयमेंट: $base पर release build (APK) देख रहा हूँ — अपने-आप न चले तो खुद चलाऊँगा…")
         val (b, rl, why) = try { a.deployRelease(sha, mergedMs) { st -> step(st) } } catch (e: CancellationException) { throw e }
             catch (e: Exception) { Triple(null, null, (e.message ?: e.javaClass.simpleName).take(200)) }

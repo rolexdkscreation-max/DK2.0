@@ -24,6 +24,13 @@ object RefCheck {
 
     private val XML_REF = Regex("""@(\w+)/([\w.]+)""")                 // @+id / @android: / ?attr नहीं पकड़ता
     private val CODE_REF = Regex("""(?<![\w.])R\.(\w+)\.(\w+)""")      // android.R.x / material.R.x नहीं
+    /**
+     * नवंबर 2026 (feature/dk-1112-1236: `com.dk.assistant.R.drawable.dk_wp_logo` - तस्वीर थी ही नहीं, यह जाँच उसे छोड़ देती थी
+     * क्योंकि ऊपर वाला regex \".R\" से पहले बिंदु देखकर रुक जाता है. 3 CI राउंड बर्बाद). पूरा नाम वाला R भी पकड़ो -
+     * सिर्फ़ android./androidx./com.google./com.android. वाले (library के) नहीं.
+     */
+    private val QUAL_REF = Regex("""(?<![\w.])((?:[a-z_]\w*\.)+)R\.(\w+)\.(\w+)""")
+    private val LIB_PKG = listOf("android.", "androidx.", "com.google.", "com.android.", "kotlin.", "java.")
     private val RES_PATH = Regex("""/res/([a-z]+)(?:-[\w-]+)?/([^/]+)$""")
     private val VALUE_DECL = Regex("""<(string-array|integer-array|array|string|color|dimen|bool|integer|plurals|item)\b([^>]*)>""")
     private val NAME_ATTR = Regex("""\bname\s*=\s*"([^"]+)"""")
@@ -64,9 +71,16 @@ object RefCheck {
                 val type = m.groupValues[1]; val name = m.groupValues[2]
                 if (type in CHECKED) out.add("$type:${norm(name)}")
             }
-            path.endsWith(".kt") || path.endsWith(".java") -> CODE_REF.findAll(SevenSymbols.strip(src)).forEach { m ->
-                val type = m.groupValues[1]; val name = m.groupValues[2]
-                if (type in CHECKED) out.add("$type:$name")
+            path.endsWith(".kt") || path.endsWith(".java") -> {
+                val code = SevenSymbols.strip(src)
+                CODE_REF.findAll(code).forEach { m ->
+                    val type = m.groupValues[1]; val name = m.groupValues[2]
+                    if (type in CHECKED) out.add("$type:$name")
+                }
+                QUAL_REF.findAll(code).forEach { m ->
+                    val pkg = m.groupValues[1]; val type = m.groupValues[2]; val name = m.groupValues[3]
+                    if (type in CHECKED && LIB_PKG.none { pkg.startsWith(it) }) out.add("$type:$name")
+                }
             }
         }
         return out.filterNot { r -> LIB_PREFIX.any { r.substringAfter(':').startsWith(it) } }.toSet()
@@ -75,7 +89,9 @@ object RefCheck {
     private fun isAppFile(p: String) = p.contains("/src/") && (p.endsWith(".xml") || p.endsWith(".kt") || p.endsWith(".java"))
 
     /** 1) इस काम के नए resource इस्तेमाल जो रिपो में कहीं नहीं (बदलाव समेत) */
-    fun missingResources(changed: Map<String, String?>, before: (String) -> String?, all: Map<String, String>, extra: Set<String> = emptySet()): List<String> {
+    /** hint = true: साथ में उसी तरह के मौजूद नाम + "AI तस्वीर नहीं बना सकता" ([nearby]) - टीम की पक्की जाँच में */
+    fun missingResources(changed: Map<String, String?>, before: (String) -> String?, all: Map<String, String>, extra: Set<String> = emptySet(),
+                         hint: Boolean = false): List<String> {
         if (all.keys.none { it.contains("/res/values") }) return emptyList()     // Android रिपो नहीं
         if (GitHub.TRUNCATED in extra) return emptyList()                         // रिपो पूरा नहीं आया - पक्का नहीं कह सकते
         val have = existing(all, extra)
@@ -89,9 +105,53 @@ object RefCheck {
             }
             if (miss.isNotEmpty()) out += "AUDIT $p: ये resource इस्तेमाल किए पर रिपो में कहीं नहीं (build fail होगा - AAPT/Unresolved reference): " +
                 miss.take(12).joinToString(", ") { r -> "@" + r.replace(':', '/') } +
-                " - या तो इन्हें इसी काम में बनाएँ (res/<type>/<name> या values/*.xml में), या मौजूद नाम इस्तेमाल करें"
+                " - या तो इन्हें इसी काम में बनाएँ (res/<type>/<name> या values/*.xml में), या मौजूद नाम इस्तेमाल करें" +
+                (if (hint) nearby(miss, have) else "")
         }
         return out
+    }
+
+    /** फ़ाइल वाले resource जो AI text से बना ही नहीं सकता (png/webp/jpg/mp3...) - सिर्फ़ XML (vector/shape) बन सकता है */
+    private val BINARY_ONLY = setOf("drawable", "mipmap", "raw", "font")
+
+    /**
+     * नवंबर 2026: गायब नाम के साथ उसी तरह के मौजूद नाम (डिबगर/कोडर को सीधा रास्ता) + binary की सच्चाई.
+     * जैसे: "मौजूद drawable: dk_wp_1, dk_wp_2 ..." और "AI नई png/webp/jpg तस्वीर नहीं बना सकता".
+     */
+    fun nearby(miss: Collection<String>, have: Set<String>, max: Int = 25): String {
+        val types = miss.map { it.substringBefore(':') }.distinct()
+        val sb = StringBuilder()
+        for (t in types) {
+            val want = miss.filter { it.startsWith("$t:") }.map { it.substringAfter(':') }
+            val names = have.filter { it.startsWith("$t:") }.map { it.substringAfter(':') }
+            if (names.isEmpty()) continue
+            // पहले वे जिनका शुरू का हिस्सा गायब नाम जैसा (dk_wp_logo -> dk_wp_1..5), फिर बाकी
+            val pre = want.map { w -> w.substringBeforeLast('_', w) }.toSet()
+            val close = names.filter { n -> pre.any { p -> p.length >= 3 && n.startsWith(p) } }.sorted()
+            val list = (close + names.sorted()).distinct().take(max)
+            sb.append("\nमौजूद $t (इन्हीं में से चुनें): ").append(list.joinToString(", ")).append(if (names.size > list.size) " …" else "")
+        }
+        if (types.any { it in BINARY_ONLY })
+            sb.append("\nध्यान: AI नई png/webp/jpg तस्वीर, आवाज़ या font फ़ाइल नहीं बना सकता. drawable के लिए या तो ऊपर का मौजूद नाम लें, " +
+                "या res/drawable/<name>.xml में vector/shape XML बनाएँ; असली तस्वीर चाहिए तो रिपोर्ट में लिखें कि user तस्वीर दे")
+        return sb.toString()
+    }
+
+    /**
+     * CI/sandbox log की "Unresolved reference: x" जिनका इस्तेमाल code में R.<type>.x है पर रिपो में वह resource नहीं -
+     * डिबगर को पक्की बात (AI अंदाज़ा नहीं): यह resource है ही नहीं + मौजूद नाम. खाली = ऐसी कोई गलती नहीं.
+     */
+    fun ciMissing(log: String, all: Map<String, String>, extra: Set<String> = emptySet()): String {
+        if (all.keys.none { it.contains("/res/values") } || GitHub.TRUNCATED in extra) return ""
+        val names = Regex("""Unresolved reference:?\s*'?(\w+)'?""").findAll(log).map { it.groupValues[1] }.toSet()
+        if (names.isEmpty()) return ""
+        val have = existing(all, extra)
+        val used = HashSet<String>()
+        for ((p, c) in all) if (p.endsWith(".kt") || p.endsWith(".java")) refs(p, c).forEach { r -> if (r.substringAfter(':') in names) used.add(r) }
+        val miss = used.filter { it !in have }.sorted()
+        if (miss.isEmpty()) return ""
+        return "RESOURCE MISSING (पक्का - रिपो में यह फ़ाइल/नाम है ही नहीं, इसलिए Unresolved reference): " +
+            miss.joinToString(", ") { "R." + it.replace(':', '.') } + nearby(miss, have)
     }
 
     /** रिपो की Kotlin/Java classes: "package.Name" */

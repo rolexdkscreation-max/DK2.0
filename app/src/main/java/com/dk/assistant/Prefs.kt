@@ -458,6 +458,9 @@ object Prefs {
         }
         return cur.ifBlank { GeminiModels.CODER }
     }
+    /** नवंबर 2026 (तेज़): छोटे काम वाले एजेंट ([TeamModels.LITE]) Flash-Lite पर - default चालू */
+    const val CODER_LITE_SIDE = "coder_lite_side"
+    fun coderLiteSide(c: Context) = sp(c).getBoolean(CODER_LITE_SIDE, true)
     /** नवंबर 2026: कोडर/डिबगर/प्लानर का मज़बूत (paid) मॉडल - [StrongAi]. key खाली = बंद */
     fun coderStrongProvider(c: Context) = sp(c).getString(StrongAi.PREF_PROVIDER, "anthropic") ?: "anthropic"
     fun coderStrongKey(c: Context) = (sp(c).getString(StrongAi.PREF_KEY, "") ?: "").trim()
