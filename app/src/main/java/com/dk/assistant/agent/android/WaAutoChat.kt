@@ -22,13 +22,38 @@ import kotlinx.coroutines.launch
  * (स्क्रीन नहीं छीनता). नियम ([WaScreen.decide]): तय समय/गिनती तक, ग्रुप नहीं (नाम से कहा हो तो ही), पैसे/OTP वाली बात = खुद नहीं, मालिक को बताओ.
  */
 object WaAutoChat {
+    data class PendingConfirm(val target: String, val minutes: Int, val hint: String)
+
+    @Volatile var pendingConfirm: PendingConfirm? = null
     @Volatile private var session: WaScreen.Session? = null
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     /** हर चैट की आख़िरी notification - कई मैसेज जल्दी-जल्दी आएँ तो एक ही जवाब */
     private val gen = HashMap<String, Int>()
     private const val SETTLE_MS = 3_500L
 
+    fun askConfirm(target: String): String {
+        val t = target.trim()
+        val who = if (t.isBlank()) "सामने वाले" else t
+        return "$who को मैसेज करना है, क्या इसी को मैसेज करना है?"
+    }
+
+    fun startWithConfirm(target: String, minutes: Int, hint: String): String {
+        pendingConfirm = PendingConfirm(target.trim(), minutes, hint.trim())
+        return askConfirm(target)
+    }
+
+    fun confirmOk(): String? {
+        val p = pendingConfirm ?: return null
+        pendingConfirm = null
+        return on(p.target, p.minutes, p.hint)
+    }
+
+    fun cancelPending() {
+        pendingConfirm = null
+    }
+
     fun on(target: String, minutes: Int, hint: String): String {
+        pendingConfirm = null
         val m = WaScreen.minutes(minutes)
         session = WaScreen.Session(target.trim(), System.currentTimeMillis() + m * 60_000L, hint = hint.trim())
         DKLog.d("WhatsApp अपने-आप बात: चालू ($m मिनट, ${if (target.isBlank()) "सब" else "एक व्यक्ति"})")
@@ -39,6 +64,7 @@ object WaAutoChat {
     }
 
     fun off(): String {
+        pendingConfirm = null
         val s = session; session = null
         return if (s == null) "AUTO CHAT was already off." else "AUTO CHAT OFF: ${s.replies} जवाब भेजे थे। Tell the user."
     }

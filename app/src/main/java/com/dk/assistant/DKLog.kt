@@ -7,7 +7,9 @@ import android.util.Log
 /** Chhota sa logger: Logcat me bhi likhta hai aur app screen par bhi dikhata hai. */
 object DKLog {
     private val lines = ArrayDeque<String>()
-    private val main = Handler(Looper.getMainLooper())
+    private val main: Handler? by lazy {
+        try { Handler(Looper.getMainLooper()) } catch (_: Throwable) { null }
+    }
     var listener: ((String) -> Unit)? = null
 
     private val fmt = java.text.SimpleDateFormat("HH:mm:ss.SSS", java.util.Locale.US)
@@ -21,17 +23,17 @@ object DKLog {
 
     @Synchronized
     fun d(msg: String) {
-        Log.d("DK", msg)
+        try { Log.d("DK", msg) } catch (_: Throwable) {}
         val line = fmt.format(java.util.Date()) + " " + msg
         lines.addLast(line)
         // नवंबर 2026: DK Inspector के लिए फ़ाइल में भी (ऐप बंद होने पर भी बचे) - key/बातचीत छिपाकर, अलग thread पर
         DKBug.logFile?.append(System.currentTimeMillis(), line)
         while (lines.size > 300) lines.removeFirst()
-        if (listener != null && !postQueued) { postQueued = true; main.postDelayed(emit, 100) }
+        if (listener != null && !postQueued) { postQueued = true; main?.postDelayed(emit, 100) }
     }
 
     @Synchronized
-    fun clear() { lines.clear(); main.post { listener?.invoke("") } }
+    fun clear() { lines.clear(); main?.post { listener?.invoke("") } }
 
     @Synchronized
     fun all(): String = lines.joinToString("\n")
