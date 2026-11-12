@@ -482,6 +482,12 @@ object Prefs {
         if (!p.getBoolean("eleven_default_v1", false)) p.edit().putBoolean("coder_seven", true).putBoolean("eleven_default_v1", true).apply()
         return p.getBoolean("coder_seven", true)
     }
+    /**
+     * नवंबर 2026 (मालिक: "एक ही एजेंट सब काम कर लेगा"): एक-दिमाग वाला कोडर ([Solo]) - 7 एजेंट की हाथ-बदली की जगह एक ही
+     * एजेंट पूरा काम (खोज, पढ़ना, बदलाव, जाँच, CI की गलती ठीक करना). default चालू; Settings से बंद = पुराना 7 एजेंट क्रम.
+     */
+    fun coderSolo(c: Context) = sp(c).getBoolean(CODER_SOLO, true)
+    const val CODER_SOLO = "coder_solo"
     /** user ने खुद नॉर्मल मोड चुना (GitHub होते हुए भी गिट के बिना) */
     fun coderNormal(c: Context) = sp(c).getBoolean("coder_normal", false)
     /** Coding agent ka khula PR (app restart ke baad bhi "Merge करें" card ke liye) */
