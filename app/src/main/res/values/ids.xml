@@ -3,4 +3,5 @@
     <item name="ui_keep" type="id" />
     <item name="ui_stamp" type="id" />
     <item name="ui_raw" type="id" />
+    <item name="dkai_root" type="id" />
 </resources>

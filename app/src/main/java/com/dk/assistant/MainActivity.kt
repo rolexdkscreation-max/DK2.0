@@ -44,6 +44,7 @@ class MainActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
         Glass.install(this)
+        dkaiAttach()                                            // नवंबर 2026: DKAI होम (पुराना होम नीचे वैसा ही - मेन्यू से क्लासिक)
         if (savedInstanceState == null) DKSplash.show(this)     // ऐप खुलते ही DK logo (overlay, ~1.2s)
         if (savedInstanceState == null) com.dk.assistant.onboard.OnboardingActivity.maybeShow(this)   // v3.58: सिर्फ़ नए install पर परिचय
 
@@ -94,7 +95,10 @@ class MainActivity : AppCompatActivity() {
                 com.dk.assistant.ui.HomeMenu.Item(R.drawable.ic_s_computer, "DK कंप्यूटर", "कोई भी काम कदम-दर-कदम") { startActivity(Intent(this, ComputerActivity::class.java)) },
                 com.dk.assistant.ui.HomeMenu.Item(R.drawable.ic_s_story, "DK टीचर", "व्हाइटबोर्ड पर कदम-दर-कदम पढ़ाई") { startActivity(Intent(this, TeacherActivity::class.java)) },
                 com.dk.assistant.ui.HomeMenu.Item(R.drawable.ic_globe, "वेबसाइट", "वेबसाइट बनाने वाला Forge") { startActivity(Intent(this, com.dk.assistant.forge.ForgeActivity::class.java)) },
-                com.dk.assistant.ui.HomeMenu.Item(R.drawable.ic_settings, "सेटिंग्स", "दिखावट, आवाज़, AI दिमाग और बाकी सब") { openSettings() }
+                com.dk.assistant.ui.HomeMenu.Item(R.drawable.ic_settings, "सेटिंग्स", "दिखावट, आवाज़, AI दिमाग और बाकी सब") { openSettings() },
+                com.dk.assistant.ui.HomeMenu.Item(R.drawable.ic_s_coder, "DKAI होम", "नया होम: आवाज़ orb + Files / Editor / Terminal / Preview / GitHub") {
+                    com.dk.assistant.dkai.Dkai.set(this, true); recreate()
+                }
             ))
         }
         btnMute.setOnClickListener {
@@ -138,6 +142,51 @@ class MainActivity : AppCompatActivity() {
         val any = findViewById<android.view.View>(R.id.chipUpdate).visibility == android.view.View.VISIBLE ||
             findViewById<android.view.View>(R.id.chipKey).visibility == android.view.View.VISIBLE
         findViewById<android.view.View>(R.id.alertRow).visibility = if (any) android.view.View.VISIBLE else android.view.View.GONE
+        dkai?.render()                                          // DKAI होम में भी वही सूचना
+    }
+
+    // ---------------------------------------------------------------- नवंबर 2026 (मालिक): DKAI होम
+    // 3 हालत: होम/चैट (inactive) -> पूरी आवाज़ (active_full) -> छोटी तैरती पट्टी (active_minimized) + 6 टैब वाली IDE.
+    // सब असली रास्तों से: Live (DKAccessibilityService), चैट (runCommand / BrainManager), स्टूडियो, DK कंप्यूटर, कोडिंग टीम, GitHub.
+    private var dkai: com.dk.assistant.dkai.DkaiScreen? = null
+
+    private fun dkaiAttach() {
+        if (!com.dk.assistant.dkai.Dkai.on(this)) return
+        dkai = com.dk.assistant.dkai.DkaiScreen(this, com.dk.assistant.dkai.DkaiHost(
+            ready = { ready() },
+            attachMenu = { v ->
+                com.dk.assistant.ui.HomeMenu.show(this, v, listOf(
+                    com.dk.assistant.ui.HomeMenu.Item(R.drawable.ic_camera, "फोटो अपलोड", "गैलरी से फोटो चुनें") {
+                        pickPhoto.launch(androidx.activity.result.PickVisualMediaRequest(
+                            androidx.activity.result.contract.ActivityResultContracts.PickVisualMedia.ImageOnly))
+                    },
+                    com.dk.assistant.ui.HomeMenu.Item(R.drawable.ic_attach, "फ़ाइल अपलोड", "PDF, text या फोटो फ़ाइल") {
+                        pickFile.launch(ComputerActivity.PICK_TYPES)
+                    }
+                ))
+            },
+            moreMenu = { v ->
+                com.dk.assistant.ui.HomeMenu.show(this, v, listOf(
+                    com.dk.assistant.ui.HomeMenu.Item(R.drawable.ic_chat, "चैट", "पूरी चैट स्क्रीन") { openChat() },
+                    com.dk.assistant.ui.HomeMenu.Item(R.drawable.ic_memory, "मेमोरी", "यादें देखें") { startActivity(Intent(this, MemoryActivity::class.java)) },
+                    com.dk.assistant.ui.HomeMenu.Item(R.drawable.ic_s_access, Setup.a11yMark(this) + "फ़ोन कंट्रोल",
+                        when { Setup.accessibilityOn() -> "चालू है"; Setup.enabledInSettings(this) -> "रुका है — ठीक करने के लिए टैप करें"; else -> "चालू करने के लिए टैप करें" }) { openPhoneControl() },
+                    com.dk.assistant.ui.HomeMenu.Item(R.drawable.ic_s_perms, (if (Setup.hasMic(this)) "✓ " else "✗ ") + "माइक",
+                        if (Setup.hasMic(this)) "अनुमति मिली हुई है" else "माइक की अनुमति दें") { askPerms() },
+                    com.dk.assistant.ui.HomeMenu.Item(R.drawable.ic_s_story, "DK टीचर", "व्हाइटबोर्ड पर कदम-दर-कदम पढ़ाई") { startActivity(Intent(this, TeacherActivity::class.java)) },
+                    com.dk.assistant.ui.HomeMenu.Item(R.drawable.ic_globe, "वेबसाइट", "वेबसाइट बनाने वाला Forge") { startActivity(Intent(this, com.dk.assistant.forge.ForgeActivity::class.java)) },
+                    com.dk.assistant.ui.HomeMenu.Item(R.drawable.ic_settings, "सेटिंग्स", "दिखावट, आवाज़, AI दिमाग और बाकी सब") { openSettings() },
+                    com.dk.assistant.ui.HomeMenu.Item(R.drawable.ic_s_coder, "क्लासिक होम", "पुराना orb वाला होम (यहाँ से फिर DKAI)") {
+                        com.dk.assistant.dkai.Dkai.set(this, false); recreate()
+                    }
+                ))
+            },
+            alerts = {
+                listOf(R.id.chipUpdate, R.id.chipKey).mapNotNull { id ->
+                    findViewById<TextView>(id)?.takeIf { it.visibility == android.view.View.VISIBLE && it.text.isNotBlank() }?.let { ch -> ch.text.toString() to { ch.performClick(); Unit } }
+                }
+            }
+        )).attach()
     }
 
     /** v4: brand नाम पर accent → violet नियॉन रंग; नियॉन ओर्ब हो तो बीच में माइक */
@@ -321,6 +370,7 @@ class MainActivity : AppCompatActivity() {
         checkUpdate()
         checkAccessKey()
         a11yOnOpen()
+        dkai?.onResume()
     }
 
     /** DK AI Part 13: हर बार खुलने पर key की जाँच (3 घंटे में एक बार backend से; नेटवर्क गलती = पुरानी हालत) */
@@ -392,6 +442,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     override fun onPause() {
+        dkai?.onPause()
         DKState.unlisten(stateListener)
         super.onPause()
     }
