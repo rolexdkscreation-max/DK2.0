@@ -188,10 +188,16 @@ class SevenTeam(
     private val big get() = ai.budget.coerceAtLeast(CoderContext.MIN_BUDGET)
     /** एक फ़ाइल इतनी तक पूरी (बड़े मॉडल पर पूरी बड़ी फ़ाइल) */
     private val fileChars get() = maxOf(FILE_CHARS, big / 4)
-    private val readBudget get() = maxOf(READ_BUDGET, big * 6 / 10)
-    private val debugBudget get() = maxOf(SevenDebug.DEBUG_READ_BUDGET, big / 2)
+    /**
+     * नवंबर 2026 (मालिक: "coding agent slow"): एक बार में पढ़ने/खोजने की सीमा [CoderSpeed.LEAN_BUDGET] तक. पहले Gemini पर
+     * 5 लाख अक्षर के हिसाब से प्लानर 3 लाख, डिबगर 2.5 लाख एक साथ पढ़ते थे = हर जवाब धीमा + हर-मिनट वाली limit (429) जल्दी.
+     * एक पूरी फ़ाइल ([fileChars]) पहले जितनी ही - कोडर को फ़ाइल कभी अधूरी नहीं मिलती.
+     */
+    private val lean get() = CoderSpeed.lean(big)
+    private val readBudget get() = maxOf(READ_BUDGET, lean * 6 / 10)
+    private val debugBudget get() = maxOf(SevenDebug.DEBUG_READ_BUDGET, lean / 2)
     private val listMax get() = maxOf(LIST_MAX, 2_000)
-    private val mapChars get() = maxOf(24_000, big / 8)
+    private val mapChars get() = maxOf(24_000, lean / 8)
     /** पुराने पढ़े नतीजे कितने बड़े तक वैसे ही रहें */
     private fun compactOld(msgs: MutableList<Pair<String, String>>) =
         SevenDebug.compact(msgs, keepLast = if (big >= 300_000) 8 else 4, bigChars = maxOf(3_000, big / 40))
@@ -206,7 +212,7 @@ class SevenTeam(
         try {
             return if (media.isNotEmpty() && a in SEES_MEDIA) ai.askMedia(a, sys, msgs, media) else ai.ask(a, sys, msgs)
         } finally {
-            CoderSpeed.slowNote(shownAs(a).hi, clock.done(t0))?.let { sink(a, it) }   // सिर्फ़ स्क्रीन पर, टीम की याद में नहीं
+            CoderSpeed.slowNote(shownAs(a).hi, clock.done(t0, shownAs(a).hi))?.let { sink(a, it) }   // सिर्फ़ स्क्रीन पर, टीम की याद में नहीं
         }
     }
 
@@ -422,6 +428,8 @@ class SevenTeam(
 
     /** पिछली बार CI fail होते समय की staged हालत (test की ईमानदारी जाँच के लिए) */
     private var failBase: Map<String, String?>? = null
+    /** नवंबर 2026 (तेज़): failBase वाले commit का असली log - अगला सुधार उसी गलती पर निशाना लगाता है? ([FixAim]) */
+    private var failLogCi = ""
 
     private fun map(ws: Map<String, String>): String = repoMap ?: SevenPlus.RepoMap.build(ws, mapChars).also { repoMap = it }
 
@@ -646,7 +654,10 @@ class SevenTeam(
             }
             val triedNote = if (repeat && tried.isNotEmpty()) "THE SAME PLACE FAILED AGAIN. These root causes / fixes were ALREADY TRIED and did NOT work - find a DIFFERENT real cause (re-read the exact current file lines, check the real names/types/resources):\n" +
                 tried.takeLast(4).joinToString("\n") { "- $it" } + "\n\n" else ""
-            val d = debug("TEST/BUILD FAILED.\n" + triedNote + (if (restored.isNotEmpty()) CodeGuard.damageNote(restored, "main") + "\n\n" else "") +
+            // नवंबर 2026 (तेज़): "Unresolved reference" किसी R.<type>.x का है जो रिपो में है ही नहीं = पक्की जड़ + मौजूद नाम (AI अंदाज़ा नहीं)
+            val resNote = resourceNote(t.log)
+            if (resNote.isNotBlank()) ev(Agent.DEBUGGER, resNote.take(600))
+            val d = debug("TEST/BUILD FAILED.\n" + triedNote + (if (resNote.isNotBlank()) resNote + "\n\n" else "") + (if (restored.isNotEmpty()) CodeGuard.damageNote(restored, "main") + "\n\n" else "") +
                 (if (errs.isNotBlank()) "EXACT ERROR LINES FROM THE LOG:\n$errs\n\n" else "") + "FULL LOG (important part):\n${t.log.take(maxOf(30_000, big / 4))}", repeat)
                 ?: fallbackDiag(t.log)
                 ?: return finish(false, "डिबगर टेस्ट फ़ेल होने की जड़ नहीं ढूँढ पाया (log में फ़ाइल:लाइन वाला कोई एरर भी नहीं मिला)")
@@ -1205,6 +1216,12 @@ class SevenTeam(
         // नवंबर 2026: पुराने test का assertion बदलना / test fail होने पर सीमा ढीली करना (PR #249) = रोक, code ठीक करो
         stat.addAll(SafePr.oldAssertsChanged(staged, orig, SafePr.removesOldFeature(task)))
         failBase?.let { stat.addAll(SafePr.goalposts(it, staged, task)) }
+        // नवंबर 2026 (तेज़, feature/dk-1112-1236): सुधार ने गलती वाली लाइनें छुई ही नहीं (सिर्फ़ comment/दूसरी लाइनें) = push + CI का
+        // 6-10 मिनट वाला राउंड नहीं; उसी असली गलती के साथ सीधे डिबगर को
+        if (fast) failBase?.let { fb -> if (failLogCi.isNotBlank()) FixAim.missed(failLogCi, fb, staged)?.let { m ->
+            stat.add(m)
+            errorLines(failLogCi).takeIf { it.isNotBlank() }?.let { stat.add("EXACT ERROR LINES (previous build):\n$it") }
+        } }
         // audit K2: आख़िरी पहरा - कोई सुरक्षित फ़ाइल किसी भी रास्ते से बदली हो (और माँगी न गई हो) तो push नहीं
         SafePr.blockedIn(staged.keys, task).forEach { stat.add("$it: PROTECTED FILE changed but the task did not ask for it — revert this file (AGENTS.md)") }
         stat.addAll(uiTextCheck(staged))
@@ -1220,9 +1237,11 @@ class SevenTeam(
             }
             val commit = cm.first; val title = cm.second
             ev(Agent.GIT, if (g.prUrl.isBlank()) "branch पर push — PR अभी नहीं, पहले build/tests" else "उसी PR की branch पर push, PR का चेक…")
+            val tb = clock.start()
             val r = g.pushAndTest(commit, title, changes.entries.joinToString("\n") { "• ${it.key} — ${it.value}" }, rootCause) { ev(Agent.TESTER, it) }
+            ev(Agent.TESTER, "⏱ push + build/tests: ${CoderSpeed.mins(clock.built(tb))}")
             // असली CI fail = यह हालत याद (अगले सुधार में "सीमा ढीली करके पास" पकड़ने को); पास = भूल जाओ
-            when (r.ok) { false -> failBase = HashMap(staged); true -> failBase = null; null -> {} }
+            when (r.ok) { false -> { failBase = HashMap(staged); failLogCi = r.log }; true -> { failBase = null; failLogCi = "" }; null -> {} }
             if (r.ok == null && r.log == NO_CI) {
                 noCi = true
                 ev(Agent.TESTER, "इस रिपो में GitHub Actions का कोई test/build नहीं — syntax जाँच + ड्राई-रन से जाँच रहा हूँ")
@@ -1251,7 +1270,12 @@ class SevenTeam(
         if (staged.isEmpty()) return
         ev(Agent.PERF, "बदले code में UI जाम / leak / बेवजह का काम देख रहा हूँ…")
         val hard = mutableListOf<String>()
-        staged.forEach { (p, c) -> if (c != null) hard.addAll(SevenPlus.Perf.scan(p, files.original(p), c)) }
+        val olds = HashMap<String, String?>()
+        staged.forEach { (p, c) -> olds[p] = files.original(p); if (c != null) hard.addAll(SevenPlus.Perf.scan(p, olds[p], c)) }
+        // नवंबर 2026 (तेज़): छोटा बदलाव + पक्की perf-जाँच साफ़ = अलग AI कॉल नहीं (QA/build वैसे ही चलते हैं)
+        if (fast && hard.isEmpty() && CoderSpeed.perfQuick(staged.map { (p, c) -> Triple(p, olds[p], c) })) {
+            clock.reviewSkipped(); ev(Agent.PERF, "✓ छोटा बदलाव, पक्की परफॉरमेंस जाँच साफ़ — अलग AI जाँच नहीं (तेज़)"); return
+        }
         val o = askJson(Agent.PERF, "TASK: $task\nCHANGED CODE (only new/changed lines matter):\n" + diffText(staged, maxOf(30_000, big / 4)))
         val must = (hard + Seven.strings(o?.optJSONArray("must"))).distinct()
         perfNotes.addAll(Seven.strings(o?.optJSONArray("should")).take(5))
@@ -1423,14 +1447,19 @@ class SevenTeam(
         // नवंबर 2026: इस्तेमाल किया resource / custom View सच में है? नई फ़ाइल कहीं इस्तेमाल? बिन माँगी नई library?
         val refs = if (all == null || !files.whole) emptyList() else {
             val skipped = try { files.skippedPaths() } catch (_: Exception) { emptySet() }
-            RefCheck.missingResources(staged, { p -> orig[p] }, all, skipped) + RefCheck.missingViews(staged, { p -> orig[p] }, all) +
+            RefCheck.missingResources(staged, { p -> orig[p] }, all, skipped, hint = true) + RefCheck.missingViews(staged, { p -> orig[p] }, all) +
                 RefCheck.deadNewCode(staged, { p -> orig[p] }, all)
         }
         (audit + refs + RefCheck.unaskedDependencies(staged, { p -> orig[p] }, task)).distinct()
     } catch (_: Exception) { emptyList() }
 
-    /** log से असली एरर लाइनें (Kotlin "e: file:line", error:, FAILED, Exception) */
-    private fun errorLines(log: String): String = log.lines().map { it.trim() }.filter { l ->
+    /** CI log की गलती = रिपो में न मौजूद resource? (सिर्फ़ GitHub मोड, पूरा रिपो हो तब) */
+    private suspend fun resourceNote(log: String): String = try {
+        if (!files.whole) "" else RefCheck.ciMissing(log, ws(), try { files.skippedPaths() } catch (_: Exception) { emptySet() })
+    } catch (_: Exception) { "" }
+
+    /** log से असली एरर लाइनें (Kotlin "e: file:line", error:, FAILED, Exception). नवंबर 2026: path रिपो वाले (CI/Codespace के नहीं) */
+    private fun errorLines(log: String): String = log.lines().map { BuildLog.clean(it).trim() }.filter { l ->
         l.startsWith("e: ") || l.contains("error:", true) || l.contains("Unresolved reference") || l.contains("FAILED") ||
             l.contains("AssertionError") || l.contains("Exception:") || l.startsWith("STATIC CHECK") || l.startsWith("DRY-RUN") || l.startsWith("AUDIT ")
     }.distinct().take(8).joinToString("\n") { it.take(240) }

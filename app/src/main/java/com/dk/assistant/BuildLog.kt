@@ -13,10 +13,16 @@ object BuildLog {
 
     // GitHub runner का पूरा path -> रिपो के अंदर का path
     private val RUNNER = Regex("""(?:file://)?/home/runner/work/[^/\s]+/[^/\s]+/""")
+    /**
+     * नवंबर 2026 (feature/dk-1112-1236): Codespace sandbox के log में path "file:///home/codespace/dk-run/app/..." आता है -
+     * वह रिपो का path नहीं, तो डिबगर को गलती वाली लाइन का code मिलता ही नहीं था और वह अंदाज़े से दूसरी लाइनें बदलता रहा.
+     * sandbox (dk-run) / codespace (/workspaces/<repo>/) के path भी रिपो वाले करो.
+     */
+    private val SANDBOX = Regex("""(?:file://)?(?:/home/[^/\s]+/dk-run/|/workspaces/[^/\s]+/)""")
     private val TS = Regex("""^\d{4}-\d\d-\d\dT[\d:.]+Z\s""")
     private val ANSI = Regex("""\u001B\[[0-9;]*[A-Za-z]""")
 
-    fun clean(line: String): String = line.replace(TS, "").replace(ANSI, "").replace(RUNNER, "").trimEnd()
+    fun clean(line: String): String = line.replace(TS, "").replace(ANSI, "").replace(RUNNER, "").replace(SANDBOX, "").trimEnd()
 
     private val KOTLIN_ERR = Regex("""^e:\s+(?:file://)?([\w./-]+\.(?:kt|kts|java)):(\d+)(?::\d+)?\s+(.*)$""")
     private val JAVA_ERR = Regex("""^([\w./-]+\.java):(\d+):\s*error:\s*(.*)$""")
