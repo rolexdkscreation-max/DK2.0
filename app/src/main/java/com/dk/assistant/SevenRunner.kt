@@ -99,10 +99,23 @@ object SevenRunner {
         }
         override suspend fun branch(task: String) = a.ensureBranch(task).also { br ->
             c?.let { ctx -> CoderHistory.updateCheckpoint(ctx) { it.copy(branch = br) } }
-            box?.let { b -> withContext(Dispatchers.IO) { b.warm() } }   // नवंबर 2026: push तक codespace गरम
+            // नवंबर 2026 (फ़्री घंटे बचाओ): codespace अब यहाँ नहीं - योजना/कोड लिखते समय खाली चलता था. अब push से ठीक पहले
         }
         /** नवंबर 2026: GitHub Codespaces sandbox - push के बाद CI से पहले असली compile + unit tests ([CoderSandbox]). इजाज़त न हो = अपने-आप बंद */
-        private val box: CoderSandbox? by lazy { c?.let { ctx -> GitHub.fromPrefs(ctx)?.let { gh -> CoderSandbox({ m, p, b -> gh.call(m, p, b) }, a.repo) } } }
+        private val box: CoderSandbox? by lazy { c?.let { ctx -> GitHub.fromPrefs(ctx)?.let { gh -> CoderSandbox({ m, p, b -> gh.call(m, p, b) }, a.repo, meter = CodespaceUsage.init(ctx)) } } }
+        /** नवंबर 2026: फ़्री घंटे 10% से कम बचे = sandbox नहीं (सिर्फ़ GitHub Actions) - एक बार बताया */
+        private var boxSkip: Boolean? = null
+        private fun boxOk(onStep: (String) -> Unit): Boolean {
+            boxSkip?.let { return !it }
+            val ctx = c ?: return false
+            val u = try { CodespaceUsage.current(ctx) } catch (_: Exception) { null }
+            val ok = CodespaceMeter.allow(u)
+            if (!ok) onStep("☁ Codespace के फ़्री घंटे ${CodespaceMeter.SAVE_BELOW_PCT}% से कम बचे (${u?.leftPct ?: 0}%) — बचाने के लिए sandbox छोड़कर सिर्फ़ GitHub Actions से जाँच")
+            boxSkip = !ok
+            return ok
+        }
+        /** काम ख़त्म / रुका / fail: codespace बंद (पहले सिर्फ़ PR ready होने पर बंद होता था) */
+        fun close() { box?.stop() }
         /** build पूरा होने पर emulator के screenshot ऐप में (अलग से - टीम नहीं रुकती) */
         private fun shots() {
             val ctx = c ?: return
@@ -117,6 +130,8 @@ object SevenRunner {
         override suspend fun pushAndTest(commit: String, title: String, summary: String, rootCause: String, onStep: (String) -> Unit): TeamTest {
             a.teamInfo(task, summary, rootCause)
             if (a.staged.isNotEmpty()) {
+                // नवंबर 2026: codespace push से ठीक पहले चालू (बनने/चालू होने में push जितना समय) - पहले काम शुरू होते ही चालू होकर खाली चलता था
+                if (boxOk(onStep)) box?.let { b -> withContext(Dispatchers.IO) { b.warm(onStep) } }
                 try {
                     a.push(commit)
                     if (a.prError.isNotBlank()) onStep("PR: ${a.prError.take(200)}")
@@ -141,7 +156,12 @@ object SevenRunner {
         }
         private suspend fun test(onStep: (String) -> Unit): TeamTest {
             // नवंबर 2026: पहले Codespace sandbox (1-2 मिनट) - गलती हो तो CI (5-10 मिनट) का इंतज़ार नहीं; पास / न चले = पहले जैसा CI
-            box?.takeIf { a.lastSha.isNotBlank() }?.let { b -> withContext(Dispatchers.IO) { b.check(a.lastSha, onStep) } }?.let { if (it.ok == false) return it }
+            // नवंबर 2026: पास / न चला = तुरंत बंद (आगे CI का इंतज़ार codespace के घंटों में नहीं). fail = गरम रहे (सुधार के बाद तुरंत दोबारा)
+            box?.takeIf { a.lastSha.isNotBlank() && boxOk(onStep) }?.let { b ->
+                val r = withContext(Dispatchers.IO) { b.check(a.lastSha, onStep) }
+                if (r?.ok == false) return r
+                withContext(Dispatchers.IO) { b.stop() }
+            }
             val wfs = withContext(Dispatchers.IO) { a.teamWorkflows() }
             if (wfs.isEmpty()) return TeamTest(null, SevenTeam.NO_CI, a.pr?.url.orEmpty())
             if (a.pr == null) {
@@ -239,7 +259,7 @@ object SevenRunner {
                 listOf("सारे मौजूदा फ़ीचर और tests"), emptyList(), emptyList())
             val out = team.run(task, u)
             DKLog.d("रिपो डॉक्टर - कोडिंग टीम की पूरी रिपोर्ट:\n" + out.report)
-            say(if (out.testOk == true) "d" else "e", out.short.ifBlank { out.report })
+            say(if (out.testOk == true) "d" else "e", out.brief.ifBlank { out.short.ifBlank { out.report } })
             return out
         } finally {
             a.draftPr = false; a.prLater = false
@@ -325,6 +345,7 @@ object SevenRunner {
         val workTask = if (resume != null) task + CoderHistory.Logic.resumeNote(resume) else task
         CoderSession.launch(c, task) {
             var agent: CodingAgent? = null
+            var hands: Git? = null
             var finished = false
             try {
                 // v5.1 (मालिक): जो काम लिया उसे पूरा करो - कोई समय-सीमा नहीं (अटकने की पहचान FixLoop/राउंड से)
@@ -368,7 +389,7 @@ object SevenRunner {
                         val files = RepoFiles(a, c)
                         resume?.staged?.forEach { (p, content) -> files.stage(p, content) }
                         val shown = Shown()
-                        team = SevenTeam(Ai(ai, Prefs.coderLightModel(c), CoderAi.forStrong(c, ai)).scoped(Prefs.coderStrongScope(c)), files, Git(a, task, c, resume?.backup.orEmpty()), full = true, aiResult = true, fast = true, ev = teamEvents(c, shown)).also { shown.team = it }
+                        team = SevenTeam(Ai(ai, Prefs.coderLightModel(c), CoderAi.forStrong(c, ai)).scoped(Prefs.coderStrongScope(c)), files, Git(a, task, c, resume?.backup.orEmpty()).also { hands = it }, full = true, aiResult = true, fast = true, ev = teamEvents(c, shown)).also { shown.team = it }
                         // "आगे करो": टीम कहाँ तक पहुँची थी - वहीं से (पूरे हुए हिस्से दोबारा नहीं)
                         team.resumeFrom = TeamProgress.parse(resume?.team)
                         if (approved != null) team.onProgress = { p -> val j = p.json(); CoderHistory.updateCheckpoint(c) { it.copy(team = j) } }
@@ -418,7 +439,7 @@ object SevenRunner {
                     if (out.answerOnly) { say("d", out.report); return@work }
                     // यूज़र को सिर्फ़ छोटी रिपोर्ट (हुआ/नहीं, API, वजह, हल). पूरी तकनीकी रिपोर्ट डिबग लॉग में
                     DKLog.d("कोडिंग टीम की पूरी रिपोर्ट:\n" + out.report)
-                    say(if (out.testOk == true) "d" else "e", out.short.ifBlank { out.report })
+                    say(if (out.testOk == true) "d" else "e", out.brief.ifBlank { out.short.ifBlank { out.report } })
                     if (out.mode == Seven.Mode.NORMAL) out.files.forEach { (p, content) ->
                         say("f", p + "\n" + (content ?: "(यह फ़ाइल हटानी है)"))
                         if (content != null) CoderSession.normalFiles[p] = content else CoderSession.normalFiles.remove(p)
@@ -452,6 +473,8 @@ object SevenRunner {
                         }
                     }
                 }
+                // नवंबर 2026: कैसे भी ख़त्म हो (पास / fail / रोका) - codespace बंद, फ़्री घंटे न जलें
+                hands?.let { h -> withContext(NonCancellable + Dispatchers.IO) { try { h.close() } catch (_: Exception) {} } }
                 agent?.let { a ->
                     a.draftPr = false; a.prLater = false
                     withContext(NonCancellable) { try { a.dropEmptyBranch() } catch (_: Exception) {} }

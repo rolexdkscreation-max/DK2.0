@@ -301,6 +301,14 @@ class CodingActivity : AppCompatActivity() {
             smallBtn("स्टूडियो") { com.dk.assistant.studio.StudioSession.open(this, null) }))
         FutureViews.glassTopBar(top)      // संदर्भ चित्र: ऊपर काँच की पट्टी (सिर्फ़ नाम)
         col.addView(top)
+        // नवंबर 2026 (मालिक): Codespaces के महीने के फ़्री घंटे - छोटी पट्टी (कितना इस्तेमाल / कितना बाकी). छूने पर पूरा ब्योरा + ताज़ा
+        csMeter = TextView(this).apply {
+            textSize = 11f; setTextColor(FutureViews.CYAN); gravity = Gravity.CENTER
+            val p = (4 * dp).toInt(); setPadding(p, p, p, p)
+            text = CodespaceMeter.line(null)
+            setOnClickListener { codespaceDetail() }
+        }
+        col.addView(csMeter, LinearLayout.LayoutParams(-1, -2))
 
         // नवंबर 2026 (मालिक): बड़ा "मौजूदा काम" कार्ड हटाया - वह अब ऊपर हेडर में; उसकी जगह (बटनों के नीचे) एजेंट स्टेटस पट्टी
         // v5.1: कौन सा एजेंट काम कर रहा है - सारे एजेंट मैनेजर के नीचे, चलता हुआ चमकता है
@@ -886,8 +894,26 @@ class CodingActivity : AppCompatActivity() {
         }
     }
 
+    private var csMeter: TextView? = null
+    private fun refreshMeter(force: Boolean = false, then: (() -> Unit)? = null) {
+        CoderSession.scope.launch {
+            val u = withContext(Dispatchers.IO) { try { CodespaceUsage.init(this@CodingActivity).refresh(this@CodingActivity, force) } catch (_: Exception) { null } }
+            csMeter?.text = CodespaceMeter.line(u)
+            then?.invoke()
+        }
+    }
+    private fun codespaceDetail() {
+        refreshMeter(force = true) {
+            val u = try { CodespaceUsage.current(this) } catch (_: Exception) { null }
+            androidx.appcompat.app.AlertDialog.Builder(this).setTitle("☁ Codespaces फ़्री घंटे")
+                .setMessage(CodespaceMeter.detail(u, CodespaceUsage.apiWhy(this)))
+                .setPositiveButton("ठीक है", null).show()
+        }
+    }
+
     override fun onResume() {
         super.onResume()
+        refreshMeter()
         CoderSession.listener = { runOnUiThread { scheduleRender() } }
         // app दोबारा खुली हो तो पिछला खुला PR (Merge card) वापस लाओ
         if (CoderSession.agent == null && problems().isEmpty()) CoderSession.agentFor(this)

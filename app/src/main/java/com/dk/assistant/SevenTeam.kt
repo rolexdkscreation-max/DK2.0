@@ -113,7 +113,9 @@ class SevenTeam(
      * short = यूज़र को दिखने वाली छोटी रिपोर्ट: हुआ/नहीं, API चली/नहीं, वजह, हल (ShortReport). खाली = report ही दिखाओ.
      */
     data class Outcome(val report: String, val files: Map<String, String?>, val testOk: Boolean?, val mode: Seven.Mode,
-                       val answerOnly: Boolean = false, val short: String = "")
+                       val answerOnly: Boolean = false, val short: String = "",
+                       /** नवंबर 2026: merge से पहले चैट में पूरा ब्योरा ([MergeBrief]) - क्या कहा था, क्या बदला, कैसे चलेगा */
+                       val brief: String = "")
 
     /** "आगे करो": पिछली बार टीम कहाँ तक पहुँची थी (null = नया काम) */
     var resumeFrom: TeamProgress? = null
@@ -1490,7 +1492,9 @@ class SevenTeam(
         val shown = if (deep != null) "${Seven.Member.EXPLAINER.icon} ${Seven.Member.EXPLAINER.hi} — क्या हुआ, कैसे हुआ, आसान भाषा में:\n$deep\n\n$told" else told
         ev(Agent.EXPLAINER, shown)
         rep += "\n\n" + shown
-        return Outcome(rep, files.staged(), testOk, mode, short = short)
+        val brief = MergeBrief.text(short, task, changes.entries.map { it.key to it.value }, deep.orEmpty(), told.substringAfter('\n', told),
+            testOk, pr.substringBefore(" ("), git != null, if (testOk == true) passNote else "", backup)
+        return Outcome(rep, files.staged(), testOk, mode, short = short, brief = brief)
     }
 }
 

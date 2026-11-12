@@ -49,9 +49,11 @@ object InsightsTruth {
      *  - NOT_RUNNING = यूज़र ने पूछा "रिव्यू हो रहा है?" और DK ने हाँ कहा, पर कुछ नहीं चल रहा -> सच बोलवाओ
      *  - ON_SCREEN   = DK ने "बैकग्राउंड में" कहा -> सुधरवाओ: यह स्क्रीन पर, आपके सामने है (अभी का असली कदम)
      */
-    fun check(user: String, said: String, toolRecent: Boolean, running: Boolean): Fix {
+    fun check(user: String, said: String, toolRecent: Boolean, running: Boolean, bg: Boolean = false): Fix {
         val u = user.trim(); val s = said.trim()
         if (s.isEmpty()) return Fix.NONE
+        // नवंबर 2026 (मालिक ने खुद कहा "बैकग्राउंड में करो"): तब "बैकग्राउंड में" सच है - सुधारना गलत
+        if (bg && (running || toolRecent) && claimsBackground(s)) return Fix.NONE
         val asked = u.length >= 3 && InsightsVoice.parse(u) != null
         val talk = asked || (mentionsReview(s) && (InsightsVoice.platformsIn("$s $u").isNotEmpty() || running || toolRecent)) ||
             ((running || toolRecent) && mentionsReview(u))
@@ -81,6 +83,23 @@ object InsightsTruth {
                 "(he will see it). Do not claim you are already reviewing, never say background, no numbers."
         }
     }
+
+    /**
+     * नवंबर 2026: मालिक ने खुद "बैकग्राउंड में करो / ऐप मत खोलो" कहा - सच: ऐप नहीं खुलेगा, सिर्फ़ आधिकारिक API, कदम ऊपर सूचना में.
+     */
+    fun bgReply(step: String, already: Boolean): String =
+        (if (already) "ALREADY RUNNING IN THE BACKGROUND (the user asked for it): " else "STARTED IN THE BACKGROUND (the user asked for it): ") +
+            "DK is NOT opening any app; it reads only the official API numbers, and the progress is shown in the notification at the top" +
+            (if (step.isNotBlank()) " (latest real step: \"${step.take(140)}\")" else "") +
+            ". Tell the user in one short line that it is running without opening the app and he can keep doing his work. No numbers now - wait for the SYSTEM NOTE."
+
+    /** बैकग्राउंड माँगा पर कोई API (कनेक्टर) नहीं जुड़ा - बिना ऐप खोले पढ़ना मुमकिन नहीं; सच बताओ, विकल्प दो */
+    fun bgImpossible(platforms: String, savedAgo: String?): String =
+        "NOT STARTED: the user asked for a background review of $platforms, but no official API connector is connected for it, and Android does not let DK " +
+            "read another app's screen without opening it. Tell him truthfully in short Hindi and give the choices: " +
+            (if (savedAgo != null) "(1) answer right now from the numbers DK saved in the last review ($savedAgo) - social_insights action=ask; " else "") +
+            "(2) do it on screen in front of him now (social_insights action=start without background); " +
+            "(3) connect the connector once in DK Settings -> कनेक्टर, after that background reviews work. Do NOT say you are reviewing."
 
     /** Proof का फ़ैसला (pure): ऐप खुला? API? फ़ोन लॉक? काम खत्म हो गया? */
     fun decide(opened: Boolean, apiOnly: Boolean, locked: Boolean, ended: Boolean, endedWithData: Boolean, problem: String): Proof = when {

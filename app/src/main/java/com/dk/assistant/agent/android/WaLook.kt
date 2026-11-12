@@ -3,6 +3,7 @@ package com.dk.assistant.agent.android
 import com.dk.assistant.BrainManager
 import com.dk.assistant.DKAccessibilityService
 import com.dk.assistant.DKLog
+import com.dk.assistant.agent.core.DriverResult
 import com.dk.assistant.agent.core.ScreenObservation
 import com.dk.assistant.agent.social.OpenSpec
 import com.dk.assistant.agent.social.Platform
@@ -105,6 +106,43 @@ object WaLook {
             return "SENT on the user's behalf to $who: \"$text\". Tell the user briefly what $who had said and what DK replied."
         }
         return r
+    }
+
+    /** नवंबर 2026 (चैटिंग मोड): बॉस ने जो बोला वही (बिना AI बदले) उस चैट में लिखकर भेजो */
+    suspend fun exactReply(svc: DKAccessibilityService, contact: String, text: String): String = lock.withLock {
+        val (note, got) = open(svc, contact)
+        val (_, who, digits) = got ?: return note
+        val r = send(svc, text)
+        if (r == null) {
+            if (digits.isNotBlank()) WaDelete.remember(who, digits, text)
+            return "SENT to $who: \"$text\". Tell the boss in a few words: 'भेज दिया'."
+        }
+        return r
+    }
+
+    /**
+     * नवंबर 2026: चैट खोलकर WhatsApp के बटन क्रम से दबाओ (कैमरा से फ़ोटो / लाइव लोकेशन). कोई बटन न मिले = वहीं रुककर सच बताओ.
+     */
+    suspend fun uiSteps(svc: DKAccessibilityService, contact: String, what: String, steps: List<com.dk.assistant.agent.social.WaShare.Step>): String = lock.withLock {
+        val (note, got) = open(svc, contact)
+        val (_, who, _) = got ?: return note
+        val d = AccessibilityScreenDriver(svc)
+        for ((i, st) in steps.withIndex()) {
+            var done = false
+            for (t in 0 until 12) {
+                delay(if (t == 0) (if (i == 0) 400L else 1_200L) else 450L)
+                val o = d.capture() ?: continue
+                val el = o.elements.firstOrNull { com.dk.assistant.agent.social.WaShare.matches(st, it.viewId, it.desc, it.text) } ?: continue
+                if (d.click(o, el) == DriverResult.OK) { done = true; break }
+            }
+            if (!done) {
+                DKLog.d("WhatsApp $what: '${st.what}' बटन नहीं मिला - रुका")
+                return "FAILED: $who की चैट में '${st.what}' का बटन नहीं मिला, इसलिए $what नहीं भेजा (" +
+                    (if (i == 0) "कुछ नहीं दबाया" else "पिछले ${i} कदम हो गए") + "). WhatsApp स्क्रीन पर खुला है - Tell the boss honestly; he can tap it himself."
+            }
+        }
+        DKLog.d("WhatsApp $what: $who को भेजें दबा दिया")
+        "SENT: $who को $what भेज दिया (भेजें दबा दिया)। Tell the boss in a few words; ask him to glance at WhatsApp once if he wants to be sure."
     }
 
     /** खुली चैट में text लिखो और भेजो. null = भेज दिया (स्क्रीन पर दिखा), वरना कारण */
