@@ -190,7 +190,7 @@ object DkaiSheets {
         val meta = listOf(name, whenTxt, if (e.count > 0) "${e.count} संदेश" else "").filter { it.isNotBlank() }.joinToString(" • ")
         col.addView(DkaiTheme.text(c, meta, 12f, DkaiTheme.GRAY).apply { setPadding(0, d(4f), 0, 0); maxLines = 1; ellipsize = android.text.TextUtils.TruncateAt.END })
         addView(col, LinearLayout.LayoutParams(0, -2, 1f))
-        if (current) addView(DkaiTheme.text(c, "अभी", 11f, DkaiTheme.ON, DkaiTheme.SANS_BOLD).apply {
+        if (current) addView(DkaiTheme.text(c, "अभी खुली", 11f, DkaiTheme.ON, DkaiTheme.SANS_BOLD).apply {
             setPadding(d(8f), d(3f), d(8f), d(3f)); background = DkaiTheme.round(c, DkaiTheme.BLUE, 99f)
         }, LinearLayout.LayoutParams(-2, -2).apply { leftMargin = d(8f) })
         setOnClickListener { onTap() }
