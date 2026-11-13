@@ -42,8 +42,11 @@ object Memory {
         val list = facts(c).toMutableList()
         if (list.any { it.equals(f, true) }) return true
         // same vishay (pehle 3 shabd same) -> purani hatao, nayi rakho (jaise naya number)
-        val key = f.lowercase().split(' ').take(3).joinToString(" ")
-        if (key.length > 6) list.removeAll { it.lowercase().startsWith(key) }
+        // 13 नवंबर 2026: DKAI Memory के खाने ("Preference: …") - निशान के बाद वाले 3 शब्द मिलाओ (हर Preference एक-दूसरे को न मिटाए)
+        val low = f.lowercase()
+        val tagLen = Regex("^(preference|profile|project):\\s*").find(low)?.value?.length ?: 0
+        val key = low.substring(0, tagLen) + low.substring(tagLen).split(' ').take(3).joinToString(" ")
+        if (key.length - tagLen > 6) list.removeAll { it.lowercase().startsWith(key) }
         list.add(f)
         // नवंबर 2026 (मालिक: "एक भी बात नहीं भूलेगी"): छोटी सूची भरी = पुरानी बात मिटती नहीं, फ़ोन की पक्की याद में चली जाती है
         while (list.size > MAX_FACTS) LocalMemory.keepPoint(c, list.removeAt(0))
@@ -84,11 +87,26 @@ object Memory {
     /** History padhna-jodna-likhna ek saath (kai BrainManager ek doosre ki baatein na mitayein) */
     val historyLock = Any()
 
+    const val PREF_PERSONAL = "dkai_memory_on"
+    fun personalOn(c: Context) = Prefs.bool(c, PREF_PERSONAL, true)
+    fun setPersonal(c: Context, on: Boolean) = Prefs.edit(c) { putBoolean(PREF_PERSONAL, on) }
+
+    /** एक बात बदलो (वही जगह) */
+    fun editFact(c: Context, old: String, new: String): Boolean {
+        val n = new.trim().take(300)
+        if (n.length < 3 || Sensitive.isSensitive(n)) return false
+        val list = facts(c).toMutableList()
+        val i = list.indexOf(old); if (i < 0) return addFact(c, n)
+        list[i] = n; writeArr(c, "dk_facts.json", JSONArray(list)); return true
+    }
+
     /** AI ke prompt me jodne ke liye. */
     fun factsBlock(c: Context): String {
         val f = facts(c)
         // नवंबर 2026: दूसरे AI (Claude/ChatGPT/...) से सीखे तरीके भी हर prompt में - DK खुद वैसे काम करे
         val learned = LearnedWays.promptBlock(c)
+        // 13 नवंबर 2026: DKAI → AI Long-Term Memory में "Personalized Memory Active" बंद = यादें prompt में नहीं (मिटती नहीं)
+        if (!personalOn(c)) return learned
         if (f.isEmpty()) return learned
         return "\nTHINGS THE USER ASKED YOU TO REMEMBER (use them when relevant, never say you don't know these):\n" +
             f.joinToString("\n") { "- $it" } + learned

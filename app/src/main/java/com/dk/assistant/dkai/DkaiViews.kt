@@ -58,6 +58,19 @@ class FluidOrbView(c: Context) : DkaiAnimView(c) {
 
     init { setLayerType(LAYER_TYPE_HARDWARE, null); importantForAccessibility = IMPORTANT_FOR_ACCESSIBILITY_NO }
 
+    /** 13 नवंबर 2026 (मालिक): orb के बीच में DK लोगो (हर orb style पर) */
+    var logo = true
+    private val dkLogo: android.graphics.drawable.Drawable? by lazy { try { androidx.core.content.ContextCompat.getDrawable(context, com.dk.assistant.R.drawable.ic_dk)?.mutate() } catch (_: Throwable) { null } }
+    override fun onDrawForeground(canvas: Canvas) {
+        super.onDrawForeground(canvas)
+        if (!logo) return
+        val lg = dkLogo ?: return
+        val half = (min(width, height) / 2f * (if (glow) 0.66f else 0.86f) * 0.42f * (1f + lv * 0.08f)).toInt()
+        if (half <= 2) return
+        val cx = width / 2; val cy = height / 2
+        lg.setBounds(cx - half, cy - half, cx + half, cy + half); lg.alpha = 235; lg.draw(canvas)
+    }
+
     override fun onDraw(canvas: Canvas) {
         step()
         val t = secs()
@@ -304,6 +317,7 @@ class AiBadgeView(c: Context) : DkaiAnimView(c) {
     private val glowP = Paint(Paint.ANTI_ALIAS_FLAG)
     private val tp = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = DkaiTheme.WHITE; textAlign = Paint.Align.CENTER; typeface = Typeface.create("sans-serif", Typeface.BOLD) }
     private val m = Matrix()
+    private val logo: android.graphics.drawable.Drawable? = try { androidx.core.content.ContextCompat.getDrawable(c, com.dk.assistant.R.drawable.ic_dk)?.mutate() } catch (_: Throwable) { null }
     init { contentDescription = "DKAI" }
     override fun onDraw(canvas: Canvas) {
         val w = width.toFloat(); val h = height.toFloat(); val cx = w / 2f; val cy = h / 2f
@@ -312,15 +326,22 @@ class AiBadgeView(c: Context) : DkaiAnimView(c) {
         val gr = min(r * (1.6f + 0.06f * sin(t * 2f)), min(w, h) / 2f * 0.98f)
         glowP.shader = RadialGradient(cx, cy, gr, intArrayOf(0x6600E5FF, 0x33A855F7, 0x00A855F7), floatArrayOf(0.4f, 0.75f, 1f), Shader.TileMode.CLAMP)
         canvas.drawCircle(cx, cy, gr, glowP)
-        fill.shader = RadialGradient(cx - r * 0.3f, cy - r * 0.3f, r * 1.4f, intArrayOf(0xFF1B2A4A.toInt(), DkaiTheme.CARD), null, Shader.TileMode.CLAMP)
+        fill.shader = RadialGradient(cx - r * 0.3f, cy - r * 0.3f, r * 1.4f, intArrayOf(if (DkaiTheme.light) 0xFFE8EEFF.toInt() else 0xFF1B2A4A.toInt(), DkaiTheme.CARD), null, Shader.TileMode.CLAMP)
         canvas.drawCircle(cx, cy, r, fill)
         val sg = SweepGradient(cx, cy, intArrayOf(DkaiTheme.CYAN, DkaiTheme.VIOLET, DkaiTheme.BLUE, DkaiTheme.CYAN), null)
         m.reset(); m.setRotate((t * 60f) % 360f, cx, cy); sg.setLocalMatrix(m)
         ring.shader = sg; ring.strokeWidth = r * 0.12f
         canvas.drawCircle(cx, cy, r, ring)
-        tp.textSize = r * 0.72f
-        tp.shader = LinearGradient(cx - r, cy, cx + r, cy, DkaiTheme.CYAN, DkaiTheme.VIOLET, Shader.TileMode.CLAMP)
-        canvas.drawText("AI", cx, cy - (tp.descent() + tp.ascent()) / 2f, tp)
+        // 13 नवंबर 2026 (मालिक): बीच में "AI" की जगह अपना DK लोगो
+        val lg = logo
+        if (lg != null) {
+            val half = (r * 0.82f).toInt()
+            lg.setBounds((cx - half).toInt(), (cy - half).toInt(), (cx + half).toInt(), (cy + half).toInt()); lg.draw(canvas)
+        } else {
+            tp.textSize = r * 0.72f
+            tp.shader = LinearGradient(cx - r, cy, cx + r, cy, DkaiTheme.CYAN, DkaiTheme.VIOLET, Shader.TileMode.CLAMP)
+            canvas.drawText("DK", cx, cy - (tp.descent() + tp.ascent()) / 2f, tp)
+        }
         again()
     }
 }

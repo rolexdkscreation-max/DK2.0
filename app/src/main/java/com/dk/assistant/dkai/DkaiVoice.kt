@@ -69,7 +69,7 @@ class DkaiVoice(private val s: DkaiScreen) {
     private fun buildSheet() {
         sheet.visibility = View.GONE
         sheet.isClickable = true; sheet.isFocusable = true           // नीचे की स्क्रीन पर छूना न जाए
-        sheet.background = GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM, intArrayOf(0xFF0B101D.toInt(), 0xFF101634.toInt(), 0xFF0B101D.toInt()))
+        sheet.background = GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM, intArrayOf(DkaiTheme.BG, if (DkaiTheme.light) 0xFFE6ECFA.toInt() else 0xFF101634.toInt(), DkaiTheme.BG))
         col = LinearLayout(c).apply { orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER_HORIZONTAL }
         sheet.addView(col, FrameLayout.LayoutParams(-1, -1))
 
@@ -77,7 +77,8 @@ class DkaiVoice(private val s: DkaiScreen) {
         val top = FrameLayout(c).apply { setPadding(d(16f), d(12f), d(16f), d(8f)) }
         voicePill = DkaiTheme.pill(c, "Emma", DkaiTheme.PILL, DkaiTheme.WHITE, 14f).apply {
             minHeight = d(40f); compoundDrawablePadding = d(6f); contentDescription = "आवाज़ चुनें"
-            setOnClickListener { voiceMenu(it) }
+            setOnClickListener { voiceSheet() }
+            setOnLongClickListener { voiceMenu(it); true }
         }
         top.addView(voicePill, FrameLayout.LayoutParams(-2, -2, Gravity.START or Gravity.CENTER_VERTICAL))
         badge = LinearLayout(c).apply {
@@ -91,7 +92,8 @@ class DkaiVoice(private val s: DkaiScreen) {
         top.addView(badge, FrameLayout.LayoutParams(-2, -2, Gravity.CENTER))
         speedPill = DkaiTheme.pill(c, "1.0x", DkaiTheme.PILL, DkaiTheme.WHITE, 14f).apply {
             minHeight = d(40f); compoundDrawablePadding = d(4f); contentDescription = "बोलने की गति"
-            setOnClickListener { speedMenu(it) }
+            setOnClickListener { voiceSheet() }
+            setOnLongClickListener { speedMenu(it); true }
         }
         top.addView(speedPill, FrameLayout.LayoutParams(-2, -2, Gravity.END or Gravity.CENTER_VERTICAL))
         col.addView(top, LinearLayout.LayoutParams(-1, -2))
@@ -162,7 +164,7 @@ class DkaiVoice(private val s: DkaiScreen) {
     private fun buildMini() {
         mini.visibility = View.GONE
         mini.orientation = LinearLayout.HORIZONTAL; mini.gravity = Gravity.CENTER_VERTICAL
-        mini.background = DkaiTheme.round(c, 0xF2161E31.toInt(), 22f, 0xFF33406A.toInt())
+        mini.background = DkaiTheme.round(c, DkaiTheme.CARD, 22f, DkaiTheme.BORDER)
         mini.elevation = d(12f).toFloat()
         mini.setPadding(d(8f), d(6f), d(6f), d(6f))
         mini.isClickable = true
@@ -288,14 +290,14 @@ class DkaiVoice(private val s: DkaiScreen) {
             val r = LinearLayout(c).apply {
                 orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; minimumHeight = d(48f)
                 setPadding(d(12f), 0, d(14f), 0); isClickable = true; isFocusable = true
-                background = DkaiTheme.press(DkaiTheme.round(c, if (on) 0xFF1E2A47.toInt() else 0, 10f), DkaiTheme.round(c, 0xFFFFFFFF.toInt(), 10f))
+                background = DkaiTheme.press(DkaiTheme.round(c, if (on) DkaiTheme.SEL else 0, 10f), DkaiTheme.round(c, 0xFFFFFFFF.toInt(), 10f))
                 setOnClickListener { closeMenu(); onPick(i) }
             }
             if (icon != null) r.addView(FrameLayout(c).apply {
                 background = DkaiTheme.oval(tint(i) and 0x26FFFFFF)
                 addView(ImageView(c).apply { setImageDrawable(DkaiIcon(icon, tint(i))) }, FrameLayout.LayoutParams(d(16f), d(16f), Gravity.CENTER))
             }, LinearLayout.LayoutParams(d(30f), d(30f)).apply { rightMargin = d(10f) })
-            r.addView(DkaiTheme.text(c, label, 15f, if (on) DkaiTheme.WHITE else 0xFFCBD5E1.toInt(), if (on) DkaiTheme.SANS_BOLD else DkaiTheme.SANS), LinearLayout.LayoutParams(0, -2, 1f))
+            r.addView(DkaiTheme.text(c, label, 15f, if (on) DkaiTheme.WHITE else DkaiTheme.SUB, if (on) DkaiTheme.SANS_BOLD else DkaiTheme.SANS), LinearLayout.LayoutParams(0, -2, 1f))
             if (on) r.addView(ImageView(c).apply { setImageDrawable(DkaiIcon(DkaiIcon.Kind.CHECK, DkaiTheme.BLUE)) }, LinearLayout.LayoutParams(d(18f), d(18f)).apply { leftMargin = d(12f) })
             card.addView(r, LinearLayout.LayoutParams(-1, -2))
         }
@@ -337,6 +339,37 @@ class DkaiVoice(private val s: DkaiScreen) {
             render()
         }
     }
+
+    /** 13 नवंबर 2026 (मालिक - M2): Voices & Speed एक ही नीचे वाली sheet - टैप करते ही लागू */
+    private fun voiceSheet() {
+        lateinit var layer: DkaiUi.Layer
+        val (card, body) = DkaiUi.sheet(c, "Voices & Speed", "आवाज़ और बोलने की गति - तुरंत लागू") { DkaiUi.close(s.root, layer) }
+        fun fill() {
+            body.removeAllViews()
+            VoiceTune.load(c)
+            val cur = currentVoice()
+            body.addView(DkaiUi.label(c, "Voice"))
+            for (v in DkaiCore.VOICES) {
+                body.addView(DkaiUi.row(c, if (v.female) DkaiIcon.Kind.FEMALE else DkaiIcon.Kind.MALE, v.name, DkaiKit.voiceTag(v.name, v.female), v == cur,
+                    if (v.female) DkaiTheme.PINK else DkaiTheme.CYAN) {
+                    Prefs.edit(c) { putString("gemini_voice", v.api); putString("voice_gender", v.gender) }
+                    VoiceEngines.liveChanged()
+                    UiLang.toast(c, "आवाज़: ${v.name} — अगले जवाब से", Toast.LENGTH_SHORT).show()
+                    render(); fill()
+                }, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = d(6f) })
+            }
+            body.addView(DkaiUi.label(c, "Speed"))
+            val sp = DkaiCore.nearestSpeed(VoiceTune.speedPct)
+            val names = DkaiCore.SPEEDS.map { DkaiCore.speedLabel(it) + " " + speedName(it) }
+            body.addView(DkaiUi.chips(c, names, DkaiCore.SPEEDS.indexOf(sp)) { i ->
+                VoiceTune.setSpeed(c, DkaiCore.SPEEDS[i]); render(); fill()
+            })
+        }
+        fill()
+        layer = DkaiUi.open(s.root, card, DkaiUi.Place.BOTTOM)
+    }
+
+    private fun speedName(p: Int) = when { p <= 100 -> "Normal"; p <= 120 -> "Fast"; p <= 130 -> "Faster"; p < 200 -> "Turbo"; else -> "Ultra" }
 
     private fun speedMenu(anchor: View) {
         VoiceTune.load(c)
