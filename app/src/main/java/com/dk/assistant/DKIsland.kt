@@ -26,7 +26,14 @@ import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
 import android.text.TextUtils
+import android.text.InputType
 import android.view.Gravity
+import android.view.KeyEvent
+import android.view.inputmethod.EditorInfo
+import android.view.inputmethod.InputMethodManager
+import android.widget.EditText
+import android.widget.Toast
+import android.media.AudioManager
 import android.view.MotionEvent
 import android.view.View
 import android.view.ViewConfiguration
@@ -85,6 +92,11 @@ object DKIsland {
 
     private val main = Handler(Looper.getMainLooper())
     @Volatile private var svc: DKAccessibilityService? = null
+
+    /** island अभी सच में दिख सकता है? (DK Accessibility चालू + Settings में चालू + DK ऐप सामने नहीं) - Android वाला popup हटाने से पहले */
+    fun canShow(c: Context): Boolean = svc != null && on(c) && !AppVisible.visible
+    /** अभी सामने वाला ऐप (island का पिछला देखा) */
+    fun front(): String = lastFront
     private var wm: WindowManager? = null
     private var root: FrameLayout? = null
     private var lp: WindowManager.LayoutParams? = null
@@ -116,6 +128,13 @@ object DKIsland {
     private var historyAt = 0L
     private var lastSig = ""
     private val updaters = ArrayList<(IslandCore.Snap, Long) -> Unit>()
+    /** 13 नवंबर 2026 (मालिक): island में ही मैसेज का जवाब - किसे लिख रहे हैं (null = नहीं लिख रहे) */
+    private var replyTo: IslandCore.Notif? = null
+    private var replyEdit: EditText? = null
+    private var replyMsg: TextView? = null
+    /** ऐप कॉल के अपने म्यूट / स्पीकर बटन दबाए = हमारी याद (ऐप हालत नहीं बताता) */
+    private val appMuted = HashMap<String, Boolean>()
+    private val appSpeaker = HashMap<String, Boolean>()
     private var mediaCtl: MediaController? = null
     private var mediaArt: Bitmap? = null
 
@@ -275,7 +294,11 @@ object DKIsland {
     private var lastFront = ""
     private fun frontPkg(s: DKAccessibilityService): String {
         val p = s.currentPackage()
-        if (p.isNotBlank() && p != s.packageName) lastFront = p
+        if (p.isNotBlank() && p != s.packageName) {
+            // ऐप खुला = उसके जो notification हमने Android से हटाए थे वे island से भी हटें (पढ़ लिए)
+            if (p != lastFront) IslandQuiet.appOpened(p)
+            lastFront = p
+        }
         return lastFront
     }
 
@@ -301,6 +324,7 @@ object DKIsland {
         main.removeCallbacks(ticker)
         val s = svc ?: return
         lastTickAt = SystemClock.uptimeMillis()
+        IslandQuiet.poll()
         val now = System.currentTimeMillis()
         val up = SystemClock.uptimeMillis()
         val sn = snap(s, now)
@@ -312,7 +336,8 @@ object DKIsland {
         }
         if (root == null) show(s)
         // अपने-आप छोटा: कॉल चलते समय भी (पहले कॉल में कभी छोटा नहीं होता था = island अटका रहता था). बजती कॉल = बड़ा रहे
-        if (IslandCore.autoCollapse(expanded, up - touchedAt, holding(), sn)) collapse()
+        // जवाब लिखते समय अपने-आप छोटा नहीं (लिखा हुआ न मिटे)
+        if (replyTo == null && IslandCore.autoCollapse(expanded, up - touchedAt, holding(), sn)) collapse()
         if (!expanded) updatePeek(s, sn, now, up)
         render(s, sn, now)
         renderBubble(s, sn, now)
@@ -364,6 +389,14 @@ object DKIsland {
                 }
                 return super.dispatchTouchEvent(ev)
             }
+            // जवाब लिखते समय पीछे (Back) = जवाब बंद (कीबोर्ड पहले ख़ुद हटता है)
+            override fun dispatchKeyEvent(ev: KeyEvent): Boolean {
+                if (ev.keyCode == KeyEvent.KEYCODE_BACK && replyTo != null) {
+                    if (ev.action == KeyEvent.ACTION_UP) main.post { collapse() }
+                    return true
+                }
+                return super.dispatchKeyEvent(ev)
+            }
         }.apply {
             background = GradientDrawable().apply { setColor(0xFF000000.toInt()); cornerRadius = px(s, 22f).toFloat(); setStroke(dpx(s, 1f), 0x22FFFFFF) }
             elevation = px(s, 8f).toFloat()
@@ -381,7 +414,8 @@ object DKIsland {
             if (Build.VERSION.SDK_INT >= 28) layoutInDisplayCutoutMode = WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
         }
         box.setOnTouchListener { _, ev ->
-            if (ev.actionMasked == MotionEvent.ACTION_OUTSIDE) { if (expanded || peeking) closeBig(); true } else false
+            // जवाब लिखते समय बाहर छूना = कीबोर्ड पर टाइप करना भी हो सकता है -> बंद नहीं (✕ / भेजें / Back से बंद)
+            if (ev.actionMasked == MotionEvent.ACTION_OUTSIDE) { if (replyTo == null && (expanded || peeking)) closeBig(); true } else false
         }
         // टैप = उसी चीज़ का ऐप / स्क्रीन (कॉल = कॉल स्क्रीन, गाना = गाने वाला ऐप, काम = वह स्क्रीन); देर तक दबाएँ = फैलकर पूरा
         box.setOnClickListener {
@@ -411,6 +445,7 @@ object DKIsland {
         removeBubble()
         val r = root ?: return
         root = null; lp = null; expanded = false; peeking = false; fingerDown = false; focus = null; lastSig = ""; updaters.clear()
+        replyTo = null; replyEdit = null; replyMsg = null
         r.animate().alpha(0f).scaleX(0.5f).scaleY(0.6f).setDuration(200).withEndAction { try { wm?.removeView(r) } catch (_: Exception) {} }.start()
     }
 
@@ -443,6 +478,7 @@ object DKIsland {
     private fun collapse() {
         val r = root ?: return; val s = svc ?: return
         val was = expanded || peeking
+        endReply(s)
         // थोड़ी देर वाला बड़ा रूप बंद = वही दोबारा न उछले (बजती कॉल गोली में रहे, कटने / उठने तक)
         if (peeking) IslandCore.allCalls(snap(s, System.currentTimeMillis())).filter { it.ringing }.forEach { ringClosed.add(it.key.ifBlank { it.who }) }
         peekUntil = 0L; peekNotif = null; peekTask = null
@@ -564,13 +600,15 @@ object DKIsland {
     /** ढाँचा तभी दोबारा जब कुछ असली बदले (सिर्फ़ समय बदले तो [updaters] वही लाइनें बदलते हैं) */
     private fun render(s: DKAccessibilityService, sn: IslandCore.Snap, now: Long) {
         val r = root ?: return
-        val mode = if (expanded) "E|" else if (peeking) "P|" else "C|"
+        val mode = if (replyTo != null && expanded) "R|" else if (expanded) "E|" else if (peeking) "P|" else "C|"
         val sig = mode + sig(sn, now) + "|b${IslandCore.bubble(sn, now)}|f$focus|pk${peekNotif?.key}${peekTask?.id}|k$k"
         // छूते समय / छूने के ठीक बाद ढाँचा न बदले (वरना बटन उँगली के नीचे से हट जाता था, स्क्रॉल ऊपर कूदता था = "अटक गया").
         // खुलना / बंद होना (mode बदला) हमेशा तुरंत.
         val hold = holding() || SystemClock.uptimeMillis() - touchedAt < IslandCore.TOUCH_HOLD_MS
         val sameMode = lastSig.startsWith(mode)
-        if (sig != lastSig && !(hold && sameMode && r.childCount > 0)) {
+        // जवाब लिखते समय ढाँचा दोबारा नहीं (लिखा हुआ / कीबोर्ड न जाए) - बस समय वाली लाइनें बदलें
+        val typing = replyTo != null && sameMode && r.childCount > 0
+        if (sig != lastSig && !typing && !(hold && sameMode && r.childCount > 0)) {
             val sy = (r.findViewWithTag<ScrollView>("island_scroll"))?.scrollY ?: 0
             lastSig = sig; updaters.clear(); r.removeAllViews()
             r.addView(when { expanded -> big(s, sn, now); peeking -> peekView(s, sn, now); else -> small(s, sn, now) })
@@ -723,6 +761,8 @@ object DKIsland {
         head.addView(pill(s, "DK खोलें", 0xFF1E293B.toInt()) { openDk(s) })
         head.addView(pill(s, "छोटा करें", 0xFF1E293B.toInt()) { collapse() }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { marginStart = px(s, 6f) })
         col.addView(head)
+        // 13 नवंबर 2026 (मालिक): मैसेज का जवाब यहीं (सबसे ऊपर)
+        replyTo?.let { n -> col.addView(section(s, replyCard(s, n))) }
 
         // जिसे दबाकर खोला (गोली या बुलबुला) वह सबसे ऊपर; हर कॉल का अलग कार्ड (अपने उठाएँ / काटें)
         val f = focus
@@ -802,8 +842,106 @@ object DKIsland {
         // ऐप कॉल = उसी कॉल का बटन (key से); SIM कॉल = फ़ोन का
         val app = c.key.isNotBlank() && c.key != "sim"
         val end = pill(s, "काटें", 0xFFDC2626.toInt()) { if (app) AppCall.endKey(s, c.key) else s.calls.end() }
-        row.addView(if (c.ringing) buttons(s, pill(s, "उठाएँ", 0xFF16A34A.toInt()) { if (app) AppCall.answerKey(s, c.key) else s.calls.answer() }, end) else buttons(s, end))
-        return row
+        if (c.ringing) { row.addView(buttons(s, pill(s, "उठाएँ", 0xFF16A34A.toInt()) { if (app) AppCall.answerKey(s, c.key) else s.calls.answer() }, end)); return row }
+        // 13 नवंबर 2026 (मालिक): चलती कॉल में वहीं म्यूट और स्पीकर (नीचे अलग लाइन - नाम दबे नहीं)
+        val col = LinearLayout(s).apply { orientation = LinearLayout.VERTICAL }
+        col.addView(row)
+        val mute = pill(s, IslandCore.muteLabel(callMuted(s, c)), 0xFF374151.toInt()) { toggleMute(s, c) }
+        val spk = pill(s, IslandCore.speakerLabel(speakerOn(s, c)), 0xFF374151.toInt()) { toggleSpeaker(s, c) }
+        updaters.add { _, _ ->
+            val m = callMuted(s, c); val o = speakerOn(s, c)
+            mute.text = UiLang.s(IslandCore.muteLabel(m)); spk.text = UiLang.s(IslandCore.speakerLabel(o))
+            (mute.background as? GradientDrawable)?.setColor(if (m) 0xFFB45309.toInt() else 0xFF374151.toInt())
+            (spk.background as? GradientDrawable)?.setColor(if (o) 0xFF2563EB.toInt() else 0xFF374151.toInt())
+        }
+        col.addView(buttons(s, mute, spk, end), LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = px(s, 8f) })
+        return col
+    }
+
+    /** ऐप कॉल (WhatsApp…) का अपना बटन हो तो वही, नहीं तो फ़ोन का माइक / स्पीकर (SIM कॉल में सीधे फ़ोन वाला) */
+    private fun appKey(c: IslandCore.Call) = c.key.isNotBlank() && c.key != "sim"
+    private fun callMuted(s: DKAccessibilityService, c: IslandCore.Call): Boolean =
+        if (appKey(c) && AppCall.hasMute(c.key)) appMuted[c.key] == true
+        else try { s.getSystemService(AudioManager::class.java)?.isMicrophoneMute == true } catch (_: Exception) { false }
+    private fun speakerOn(s: DKAccessibilityService, c: IslandCore.Call): Boolean =
+        if (appKey(c) && AppCall.hasSpeaker(c.key)) appSpeaker[c.key] == true else s.calls.speakerIsOn() == true
+    private fun toggleMute(s: DKAccessibilityService, c: IslandCore.Call) {
+        val on = !callMuted(s, c)
+        if (appKey(c) && AppCall.hasMute(c.key)) { if (AppCall.muteKey(s, c.key)) appMuted[c.key] = on; return }
+        if (!s.calls.muteApi(on)) Toast.makeText(s, UiLang.s("फ़ोन ने माइक बंद नहीं होने दिया - कॉल स्क्रीन से करें"), Toast.LENGTH_SHORT).show()
+    }
+    private fun toggleSpeaker(s: DKAccessibilityService, c: IslandCore.Call) {
+        val on = !speakerOn(s, c)
+        if (appKey(c) && AppCall.hasSpeaker(c.key)) { if (AppCall.speakerKey(s, c.key)) appSpeaker[c.key] = on; return }
+        s.calls.speakerApi(on)
+    }
+
+    // ------------------------------------------------------------ 13 नवंबर 2026 (मालिक): island में ही मैसेज का जवाब
+    // "WhatsApp में प्राइवेसी नहीं लगाई तो मैसेज आए तो वहीं से रिप्लाई का option." DK Privacy वाले ऐप island में आते ही नहीं.
+
+    /** "↩ जवाब" दबाया: island फैले, ऊपर लिखने की जगह, कीबोर्ड खुले */
+    private fun startReply(s: DKAccessibilityService, n: IslandCore.Notif) {
+        replyTo = n; peekUntil = 0L; peekNotif = null
+        typingWindow(s, true)
+        if (!expanded) expand(IslandCore.Item(IslandCore.Kind.NOTIF)) else { lastSig = ""; tick() }
+        main.postDelayed({
+            replyEdit?.let { e -> e.requestFocus(); try { s.getSystemService(InputMethodManager::class.java)?.showSoftInput(e, InputMethodManager.SHOW_IMPLICIT) } catch (_: Exception) {} }
+        }, 180L)
+    }
+
+    /** जवाब बंद (भेजा / ✕ / Back / छोटा किया): कीबोर्ड हटे, island फिर से बिना-focus (दूसरे ऐप में टाइप न रुके) */
+    private fun endReply(s: DKAccessibilityService) {
+        if (replyTo == null) return
+        try { replyEdit?.let { e -> s.getSystemService(InputMethodManager::class.java)?.hideSoftInputFromWindow(e.windowToken, 0) } } catch (_: Exception) {}
+        replyTo = null; replyEdit = null; replyMsg = null
+        typingWindow(s, false)
+    }
+
+    /** लिखने के लिए island की खिड़की को कीबोर्ड मिले (बाकी समय FLAG_NOT_FOCUSABLE - दूसरे ऐप का कीबोर्ड न छीने) */
+    private fun typingWindow(s: DKAccessibilityService, on: Boolean) {
+        val r = root ?: return; val p = lp ?: return
+        p.flags = if (on) p.flags and WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE.inv() else p.flags or WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
+        p.softInputMode = if (on) WindowManager.LayoutParams.SOFT_INPUT_STATE_VISIBLE or WindowManager.LayoutParams.SOFT_INPUT_ADJUST_NOTHING
+            else WindowManager.LayoutParams.SOFT_INPUT_STATE_UNSPECIFIED
+        try { wm?.updateViewLayout(r, p) } catch (e: Exception) { DKLog.d("island कीबोर्ड: ${e.javaClass.simpleName}") }
+    }
+
+    private fun replyCard(s: DKAccessibilityService, n: IslandCore.Notif): View {
+        val col = LinearLayout(s).apply { orientation = LinearLayout.VERTICAL }
+        val head = LinearLayout(s).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
+        head.addView(appIcon(s, n.pkg, 26f))
+        head.addView(tv(s, 13f, 0xFFFFFFFF.toInt(), bold = true).apply { text = UiLang.s("↩ जवाब • ") + n.title.ifBlank { n.app }; setPadding(px(s, 8f), 0, 0, 0) },
+            LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+        col.addView(head)
+        if (n.text.isNotBlank()) col.addView(tv(s, 12f, 0xCCFFFFFF.toInt(), lines = 2).apply { text = n.text; setPadding(0, px(s, 6f), 0, 0) })
+        val edit = EditText(s).apply {
+            hint = UiLang.s("जवाब लिखें…"); setHintTextColor(0x88FFFFFF.toInt()); setTextColor(0xFFFFFFFF.toInt()); textSize = 14f * k
+            background = GradientDrawable().apply { cornerRadius = px(s, 12f).toFloat(); setColor(0xFF1F2937.toInt()) }
+            setPadding(px(s, 12f), px(s, 10f), px(s, 12f), px(s, 10f))
+            inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_CAP_SENTENCES
+            imeOptions = EditorInfo.IME_ACTION_SEND
+            setHorizontallyScrolling(false); maxLines = 4
+            setOnEditorActionListener { _, id, _ -> if (id == EditorInfo.IME_ACTION_SEND) { sendReply(s, n); true } else false }
+        }
+        replyEdit = edit
+        col.addView(edit, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = px(s, 8f) })
+        val msg = tv(s, 12f, 0xFFFCA5A5.toInt(), lines = 2).apply { visibility = View.GONE; setPadding(0, px(s, 6f), 0, 0) }
+        replyMsg = msg
+        col.addView(msg)
+        col.addView(buttons(s, pill(s, "✕ रहने दें", 0xFF374151.toInt()) { collapse() }, pill(s, "➤ भेजें", 0xFF16A34A.toInt()) { sendReply(s, n) }),
+            LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = px(s, 8f) })
+        return col
+    }
+
+    /** उसी notification के अंदर से जवाब (DKNotifListener.reply) - भेजा = island छोटा; नहीं गया = कारण वहीं दिखे */
+    private fun sendReply(s: DKAccessibilityService, n: IslandCore.Notif) {
+        val t = IslandCore.replyText(replyEdit?.text?.toString().orEmpty())
+        if (t.isEmpty()) { replyMsg?.apply { text = UiLang.s("पहले कुछ लिखें"); visibility = View.VISIBLE }; return }
+        val err = DKNotifListener.reply(s, n.key, t)
+        if (err != null) { replyMsg?.apply { text = UiLang.s(IslandCore.replyResult(err, n.title)); visibility = View.VISIBLE }; return }
+        Toast.makeText(s, UiLang.s(IslandCore.replyResult(null, n.title)), Toast.LENGTH_SHORT).show()
+        IslandFeed.dismiss(n.key)
+        collapse()
     }
 
     private fun liveCard(s: DKAccessibilityService, l: IslandCore.Live): View {
@@ -884,6 +1022,9 @@ object DKIsland {
         if (n.title.isNotBlank()) txt.addView(tv(s, 13f, 0xFFFFFFFF.toInt(), bold = true).apply { text = n.title })
         if (n.text.isNotBlank()) txt.addView(tv(s, 12f, 0xCCFFFFFF.toInt(), lines = 2).apply { text = n.text })
         row.addView(txt, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+        // 13 नवंबर 2026 (मालिक): WhatsApp वगैरह (DK Privacy वाले नहीं) का जवाब island में ही
+        if (IslandCore.replyButton(n)) row.addView(pill(s, "↩ जवाब", 0xFF2563EB.toInt()) { startReply(s, n) },
+            LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { marginStart = px(s, 8f) })
         val slop = ViewConfiguration.get(s).scaledTouchSlop
         var downX = 0f; var downY = 0f; var drag = false; var moved = false
         row.setOnTouchListener { v, ev ->

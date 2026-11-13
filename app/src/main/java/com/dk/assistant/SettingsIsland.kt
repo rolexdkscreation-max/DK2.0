@@ -28,6 +28,9 @@ internal fun SettingsActivity.secIsland() {
         charge.setOnCheckedChangeListener { _, v -> DKIsland.setChargeOn(this, v) }
         val peek = switch(box, "नई सूचना / बजती कॉल / काम पूरा = थोड़ी देर अपने-आप बड़ा", DKIsland.peekOn(this))
         peek.setOnCheckedChangeListener { _, v -> DKIsland.setPeekOn(this, v) }
+        // 13 नवंबर 2026 (मालिक): डबल नहीं - island चालू है तो Android वाला popup / ऊपर की पट्टी नहीं, सिर्फ़ DK Island
+        val quiet = switch(box, "एक ही दिखे: मैसेज / कॉल सिर्फ़ DK Island में (Android वाला ऊपर का popup नहीं)", IslandQuiet.on(this))
+        quiet.setOnCheckedChangeListener { _, v -> IslandQuiet.setOn(this, v) }
 
         islandLook(box)
 
@@ -47,6 +50,8 @@ internal fun SettingsActivity.secIsland() {
             "चलती कॉल पर छोटे island को टैप = सीधे कॉल स्क्रीन; देर तक दबाएँ = पूरा island। बाहर टैप करें या ${IslandCore.AUTO_COLLAPSE_MS / 1000} सेकंड छोड़ दें तो फिर छोटा (कॉल चलते समय भी)। " +
             "दो चीज़ें एक साथ (जैसे दो कॉल, या कॉल + गाना) = पहली गोली में, दूसरी उसके दाएँ अलग छोटे गोल बुलबुले में - हर एक पर टैप = उसी का ऐप / कॉल, देर तक दबाएँ = वही सबसे ऊपर फैलकर। " +
             "कॉल आए तो island अपने-आप बड़ा होकर उठाएँ / काटें दिखाता है; नई सूचना कुछ सेकंड बड़ी दिखती है - ऊपर खींचें या बाहर छुएँ तो छोटा। " +
+            "मैसेज में \"↩ जवाब\" = island में ही लिखकर भेजें (WhatsApp, Messages, Telegram… - DK Privacy वाले ऐप नहीं); चलती कॉल में वहीं म्यूट और स्पीकर। " +
+            "\"एक ही दिखे\" चालू = फ़ोन खुला हो तो मैसेज / बजती कॉल सिर्फ़ island में (Android वाला popup हटता है); फ़ोन lock हो या वही ऐप सामने हो तो Android वाला ही। " +
             "आकार, ऊपर से दूरी और बाएँ-दाएँ ऊपर की पट्टियों से बदलें; \"नमूना देखें\" से कुछ सेकंड island यहीं दिखता है।")
     }
 }

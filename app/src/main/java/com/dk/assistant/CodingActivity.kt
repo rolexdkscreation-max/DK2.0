@@ -564,7 +564,9 @@ class CodingActivity : AppCompatActivity() {
     private fun stopJob() { CoderSession.job?.cancel() }
 
     /** बुलबुले में तरंग के बगल का संदेश: असली रुकावट (दोबारा कोशिश / मॉडल बदला / सीमा) ही; कदम ऊपर सूची में दिखते हैं */
-    private fun busyLabel(): String = DKStatus.fresh(busySince).orEmpty()
+    // 13 नवंबर 2026 (मालिक): एजेंट अभी क्या कर रहा है - एक लाइन, हर नए कदम पर वही लाइन बदले (CoderNow)
+    private fun busyLabel(): String = CoderNow.label(DKStatus.fresh(busySince),
+        CoderNow.line(CoderSession.lines, CoderSession.busy, { it.role }, { it.text }))
 
     /** नवंबर 2026: काम चलते समय = बीच में भेजी बात पलटने का बटन; रुका हो = अभी जिसका इंतज़ार है उसके बटन */
     private fun renderChoices() {
