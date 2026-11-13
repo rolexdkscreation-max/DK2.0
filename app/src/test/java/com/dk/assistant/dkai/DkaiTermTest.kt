@@ -143,4 +143,35 @@ class DkaiTermTest {
         assertTrue(screen.contains("Grounding.sites"))
         assertTrue(src("SourcesView.kt").contains("Grounding.site("))
     }
+
+    // ऑडिट 13 नवंबर 2026: पहले ये बिना पूछे चल जाती थीं
+    @Test fun riskyCatchesWrappersAndOutside() {
+        for (c in listOf("toybox rm -rf /sdcard/DCIM", "sh -c 'rm -rf x'", "env rm -rf x", "command rm -r x", "busybox rm x",
+                "cp /dev/null important.txt", "cat a | tee b", "/system/bin/rm x", "ls\nrm x", "echo cm0= | base64 -d | sh",
+                "ls /sdcard", "cat ../../shared_prefs/x.xml", "pm uninstall com.x", "settings put global x 1"))
+            assertTrue(c, DkaiTerm.risky(c))
+        for (c in listOf("git status", "cd ..", "ls ../x", "wget https://a.com/f.zip", "unzip a.zip", "npm install", "pip install x",
+                "python3 app.py", "cat README.md", "echo shell"))
+            assertFalse(c, DkaiTerm.risky(c))
+    }
+
+    @Test fun liveGateNeedsOwnersOwnYes() {
+        val cmd = "rm -rf old"
+        val t0 = 1_000_000L
+        // सुरक्षित कमांड = सीधे
+        assertEquals(DkaiTerm.Gate.Run, DkaiTerm.liveGate("ls -la", false, null, 0L, "", t0))
+        // AI पहली बार में ही confirmed=true भेजे = फिर भी पहले पूछो
+        assertEquals(DkaiTerm.Gate.Ask, DkaiTerm.liveGate(cmd, true, null, t0 - 5, "हाँ", t0))
+        val p = DkaiTerm.Pending(cmd, t0)
+        // पूछने के बाद मालिक ने कुछ नहीं कहा (आख़िरी बात पूछने से पहले की)
+        assertEquals(DkaiTerm.Gate.NotHeard, DkaiTerm.liveGate(cmd, true, p, t0 - 10, "हाँ", t0 + 3_000))
+        // पूछने के बाद "नहीं"
+        assertEquals(DkaiTerm.Gate.NotHeard, DkaiTerm.liveGate(cmd, true, p, t0 + 2_000, "नहीं मत करो", t0 + 3_000))
+        // पूछने के बाद साफ़ "हाँ" = चलाओ
+        assertEquals(DkaiTerm.Gate.Run, DkaiTerm.liveGate(cmd, true, p, t0 + 2_000, "हाँ कर दो", t0 + 3_000))
+        // दूसरी कमांड पर पुरानी हाँ नहीं चलेगी
+        assertEquals(DkaiTerm.Gate.Ask, DkaiTerm.liveGate("rm -rf /sdcard", true, p, t0 + 2_000, "हाँ", t0 + 3_000))
+        // 2 मिनट से पुरानी पूछ = दोबारा पूछो
+        assertEquals(DkaiTerm.Gate.Ask, DkaiTerm.liveGate(cmd, true, p, t0 + 2_000, "हाँ", t0 + DkaiTerm.CONFIRM_WINDOW_MS + 1))
+    }
 }

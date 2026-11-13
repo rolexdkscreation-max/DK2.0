@@ -37,6 +37,8 @@ object DkaiShell {
     val aliases = LinkedHashMap<String, String>(DkaiTerm.DEFAULT_ALIASES)
     val history = CopyOnWriteArrayList<String>()
     @Volatile private var loaded = false
+    /** DK लाइव की खतरनाक कमांड जो मालिक की "हाँ" का इंतज़ार कर रही है ([DkaiTerm.liveGate]) */
+    @Volatile private var pending: DkaiTerm.Pending? = null
 
     const val MAX_HISTORY = 300
     const val LIVE_TIMEOUT_MS = 30_000L
@@ -252,8 +254,22 @@ object DkaiShell {
         val cmd = args.optString("command").trim()
         val ok = args.optBoolean("confirmed", false)
         if (cmd.isBlank() || cmd == "help") return@withContext "TERMINAL INFO: " + DkaiTerm.KNOWLEDGE + "\nNow at: ${prompt(c)}. Explain to the user in short simple Hindi what he wants to know."
-        if (DkaiTerm.risky(cmd) && !ok) return@withContext "CONFIRM_NEEDED: the command `$cmd` can delete / move / overwrite files (in ${prompt(c)}). " +
-            "Tell the user in one short Hindi line exactly what it will do and ask हाँ या ना. Only if he clearly says yes, call terminal again with the same command and confirmed=true."
+        // ऑडिट 13 नवंबर 2026: "हाँ" ऐप खुद मालिक की बात से जाँचता है - AI का confirmed=true अकेले काफ़ी नहीं
+        when (DkaiTerm.liveGate(cmd, ok, pending, com.dk.assistant.DKState.lastUserAt, com.dk.assistant.DKState.lastUser, System.currentTimeMillis())) {
+            DkaiTerm.Gate.Ask -> {
+                pending = DkaiTerm.Pending(cmd, System.currentTimeMillis())
+                DKLog.d("terminal (लाइव): पुष्टि माँगी - ${cmd.take(80)}")
+                return@withContext "CONFIRM_NEEDED: the command `$cmd` can delete / move / overwrite files or reach outside the DKAI workspace (in ${prompt(c)}). " +
+                    "Tell the user in one short Hindi line exactly what it will do and ask हाँ या ना. Only after he himself clearly says yes, call terminal again with the same command and confirmed=true. " +
+                    "The app checks his own words - it will not run without his yes."
+            }
+            DkaiTerm.Gate.NotHeard -> {
+                DKLog.d("terminal (लाइव): confirmed=true पर मालिक की हाँ नहीं सुनी - नहीं चलाई: ${cmd.take(80)}")
+                return@withContext "NOT_RUN: the app did not hear the user himself say a clear yes after the question, so `$cmd` was NOT run. " +
+                    "Ask him again in one short Hindi line (हाँ या ना) and wait for his answer. Never say it ran."
+            }
+            DkaiTerm.Gate.Run -> pending = null
+        }
         val before = prompt(c)
         listeners.forEach { l -> try { l("🎤 DK लाइव: $before \$ $cmd\n") } catch (_: Exception) {} }
         val r = runAll(c, cmd)

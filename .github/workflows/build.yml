@@ -40,14 +40,6 @@ jobs:
         with:
           gradle-version: '8.7'
 
-      # Kokoro TTS: sherpa-onnx AAR + Kokoro-82M int8 (~160 MB) - app/build.gradle.kts sha256 जाँचकर लाता है.
-      # cache = हर build में दोबारा डाउनलोड नहीं (बदलें तो Gradle खुद नई लाता है)
-      - name: Kokoro TTS files cache
-        uses: actions/cache@v4
-        with:
-          path: .dk-cache
-          key: dk-kokoro-${{ hashFiles('app/build.gradle.kts') }}
-          restore-keys: dk-kokoro-
 
       - name: Signing key (hamesha ek hi)
         env:
@@ -118,6 +110,13 @@ jobs:
           name: DK-apk
           path: DK.apk
 
+      # ऑडिट 13 नवंबर 2026: KVM चालू - पहले emulator बिना hardware acceleration के बहुत धीमा चलता था ("ProbeKVM: permissions")
+      - name: KVM chalu
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
       - name: UAAG Android Emulator & Screenshots Test
         uses: reactivecircus/android-emulator-runner@v2
         with:
@@ -143,6 +142,8 @@ jobs:
             timeout 30 adb logcat -d -b crash > screenshots/crash_log.txt || true
             cat screenshots/status.txt
             echo "Screenshot successfully capture ho gaya hai!"
+            # ऑडिट 13 नवंबर 2026: पहले ऐप crash हो तब भी build हरा रहता था (और crash वाला APK release हो जाता). अब crash = build लाल
+            if grep -q "band ho gaya" screenshots/status.txt; then echo "::error::DK emulator में खुलते ही बंद हो गया (crash) - screenshots/crash_log.txt देखें"; exit 1; fi
 
       - name: Screenshots upload (Artifacts)
         if: always()

@@ -909,7 +909,9 @@ class PreviewPanel(nav: DkaiNav) : DkaiPanel(nav) {
         w.settings.javaScriptEnabled = true
         w.settings.domStorageEnabled = true
         @Suppress("DEPRECATION")
-        run { w.settings.allowFileAccess = true; w.settings.allowFileAccessFromFileURLs = true }
+        // ऑडिट 13 नवंबर 2026: file:// वाले पेज का JavaScript फ़ोन की दूसरी फ़ाइलें (XHR/fetch से) न पढ़ सके.
+        // HTML खुद (और उसकी <script>/<img>/<link>) पहले जैसी खुलती है - सिर्फ़ JS से दूसरी फ़ाइल पढ़ना बंद
+        run { w.settings.allowFileAccess = true; w.settings.allowFileAccessFromFileURLs = false; w.settings.allowUniversalAccessFromFileURLs = false }
         w.webViewClient = object : android.webkit.WebViewClient() {
             override fun onPageStarted(v: android.webkit.WebView?, u: String?, fav: android.graphics.Bitmap?) { main { paintState("LOADING"); u?.let { url.setText(it.removePrefix("http://")) } } }
             override fun onPageFinished(v: android.webkit.WebView?, u: String?) { main { paintState("READY") } }

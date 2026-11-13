@@ -61,12 +61,18 @@ object DkaiServer {
                 sock.soTimeout = 10_000
                 val inp = BufferedInputStream(sock.getInputStream())
                 val line = readLine(inp) ?: return
-                while (true) { val h = readLine(inp) ?: break; if (h.isEmpty()) break }
+                var host: String? = null
+                while (true) {
+                    val h = readLine(inp) ?: break; if (h.isEmpty()) break
+                    if (h.startsWith("host:", ignoreCase = true)) host = h.substringAfter(':').trim()
+                }
                 val parts = line.split(' ')
                 val method = parts.getOrNull(0) ?: "GET"
                 val path = parts.getOrNull(1) ?: "/"
                 val out = sock.getOutputStream()
                 r.hits++
+                // ऑडिट 13 नवंबर 2026: DNS rebinding से बचाव - सिर्फ़ localhost / 127.0.0.1 वाला Host
+                if (!hostOk(host, r.port)) { head(out, 403, "text/plain", 0); out.flush(); return }
                 if (method != "GET" && method != "HEAD") { head(out, 405, "text/plain", 0); return }
                 val f = DkaiKit.resolve(r.root, path)
                 if (f == null || !f.isFile) {
@@ -81,10 +87,22 @@ object DkaiServer {
     }
 
     private fun head(o: OutputStream, code: Int, type: String, len: Long) {
-        val msg = when (code) { 200 -> "OK"; 404 -> "Not Found"; 405 -> "Method Not Allowed"; else -> "Error" }
-        o.write(("HTTP/1.1 $code $msg\r\nContent-Type: $type\r\nContent-Length: $len\r\nCache-Control: no-store\r\n" +
-            "Access-Control-Allow-Origin: *\r\nConnection: close\r\n\r\n").toByteArray())
+        val msg = when (code) { 200 -> "OK"; 403 -> "Forbidden"; 404 -> "Not Found"; 405 -> "Method Not Allowed"; else -> "Error" }
+        // ऑडिट 13 नवंबर 2026: "Access-Control-Allow-Origin: *" हटाया - Preview उसी localhost से चलता है, उसे इसकी ज़रूरत नहीं.
+        // वह header रहने पर फ़ोन के browser में खुली कोई भी वेबसाइट प्रोजेक्ट की फ़ाइलें पढ़ सकती थी
+        o.write(headerText(code, msg, type, len).toByteArray())
     }
+
+    /** Host header सिर्फ़ इसी फ़ोन का (localhost / 127.0.0.1, वही port). Host न हो (पुराना HTTP/1.0) = ठीक */
+    internal fun hostOk(host: String?, port: Int): Boolean {
+        if (host == null) return true
+        val h = host.trim().lowercase()
+        return h in setOf("localhost", "127.0.0.1", "localhost:$port", "127.0.0.1:$port")
+    }
+
+    internal fun headerText(code: Int, msg: String, type: String, len: Long): String =
+        "HTTP/1.1 $code $msg\r\nContent-Type: $type\r\nContent-Length: $len\r\nCache-Control: no-store\r\n" +
+            "X-Content-Type-Options: nosniff\r\nConnection: close\r\n\r\n"
 
     private fun readLine(i: BufferedInputStream): String? {
         val sb = StringBuilder()
