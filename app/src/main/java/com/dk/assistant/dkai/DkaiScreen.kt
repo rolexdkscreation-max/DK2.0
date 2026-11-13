@@ -249,6 +249,7 @@ class DkaiScreen(val activity: ComponentActivity, val host: DkaiHost) : DkaiNav 
             DkaiMode.BUILDER -> "Describe the app or website to build..."
             DkaiMode.AGENT -> "Give DK Computer a multi-step task..."
             DkaiMode.PIPELINE -> "Describe a big goal - Pipeline plans it step by step..."
+            DkaiMode.BROADCAST -> "Broadcast topic - news, podcast, story, lecture..."
             else -> "Build apps, create websites, or write code..."
         }
         if (::modePill.isInitialized) modePill.text = m.label + " ▾"
@@ -386,7 +387,9 @@ class DkaiScreen(val activity: ComponentActivity, val host: DkaiHost) : DkaiNav 
         val t = input.text.toString().trim()
         if (t.isEmpty()) return
         when (mode) {
-            DkaiMode.CHAT, DkaiMode.BROADCAST -> { if (!sendChat(t)) return }
+            DkaiMode.CHAT -> { if (!sendChat(t)) return }
+            // 13 नवंबर 2026 (मालिक): Broadcast चुना = लिखा विषय सीधे Broadcast का काम (रिसर्च -> स्क्रिप्ट -> आवाज़), Pipeline की तरह
+            DkaiMode.BROADCAST -> DkaiBroadcast(this).open(t)
             DkaiMode.BUILDER -> {
                 val err = com.dk.assistant.studio.StudioSession.start(c, t, com.dk.assistant.studio.StudioSession.WHO_COMPUTER)
                 if (err != null) { toast(err); return }
