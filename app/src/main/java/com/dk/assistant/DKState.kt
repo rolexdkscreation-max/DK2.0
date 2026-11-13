@@ -125,12 +125,14 @@ object DKState {
     fun reply(t: String, sources: List<Pair<String, String>> = emptyList(), g: GroundCite.G? = null) {
         val src = if (g != null) (GroundCite.unique(g) + sources).distinctBy { it.second } else sources
         lastReply = t; liveReply = ""; hintText = ""; lastSources = src; lastGround = g
-        TeacherBoard.onReply(t, final = true)   // v3.87: पढ़ाई का जवाब टीचर के पन्ने पर
-        if (t.isNotBlank()) { messages.add(Msg("d", t, src = src, g = g)); trim(); LocalMemory.record(appCtx, "d", t, if (live) "voice" else "text") }
+        TeacherBoard.onReply(WebCite.strip(t), final = true)   // v3.87: पढ़ाई का जवाब टीचर के पन्ने पर (बिना [n] निशान)
+        // 13 नवंबर 2026: चैट में [n] निशान रहते हैं (वहीं चिप बनते हैं); याद में बिना निशान
+        if (t.isNotBlank()) { messages.add(Msg("d", t, src = src, g = g)); trim(); LocalMemory.record(appCtx, "d", WebCite.strip(t), if (live) "voice" else "text") }
         emit()
     }
     /** Jawab abhi ban raha hai (tukdon me) - screen par dikhao, chat list me abhi mat jodo */
-    fun replyLive(t: String) { if (liveReply.isEmpty()) { lastSources = emptyList(); lastGround = null }; lastReply = t; liveReply = t; TeacherBoard.onReply(t, final = false); emit() }
+    /** 13 नवंबर 2026: टुकड़ों में आते जवाब में [n] निशान (और आख़िर का अधूरा "[1") नहीं दिखते - चिप जवाब पूरा होने पर */
+    fun replyLive(t0: String) { val t = WebCite.streamSafe(t0); if (liveReply.isEmpty()) { lastSources = emptyList(); lastGround = null }; lastReply = t; liveReply = t; TeacherBoard.onReply(t, final = false); emit() }
     private fun trim() { while (messages.size > 200) messages.removeAt(0); persist() }
 
     // ---- chat phone me save (app band/restart ke baad bhi baatcheet dikhe)

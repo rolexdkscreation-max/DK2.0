@@ -15,7 +15,9 @@ import org.json.JSONObject
  */
 object GroundCite {
     /** एक वाक्य/बुलेट जिसे स्रोत मिला: [anchor] = उसका text (साफ़ किए जवाब में जगह ढूँढने को), [end] = कच्चे जवाब में अक्षर-जगह (-1 = पता नहीं) */
-    data class Cite(val anchor: String, val end: Int, val chunks: List<Int>)
+    data class Cite(val anchor: String, val end: Int, val chunks: List<Int>,
+                    /** कच्चे जवाब में UTF-8 बाइट-जगह (segment.endIndex जैसी आई) - [WebCite.insertMarkers]; -1 = पता नहीं */
+                    val endByte: Int = -1)
 
     data class G(
         val chunks: List<Pair<String, String>>,     // (title, uri) - groundingChunks के क्रम में (index वही)
@@ -25,6 +27,12 @@ object GroundCite {
         val raw: String = "",
         /** DK लाइव (आवाज़): लिखा रूप बोले गए से बना - जगह न मिले तो चिप नीचे एक कतार में */
         val live: Boolean = false,
+        /** 13 नवंबर 2026: किस खोज-सेवा से (Tavily / Exa / Google) - [WebCite] */
+        val provider: String = "",
+        /** फ़ॉलबैक: पहले जो सेवाएँ फ़ेल हुईं ("Exa (Tavily फ़ेल)") */
+        val failed: List<String> = emptyList(),
+        /** साझा साँचे के स्रोत - जवाब के [n] इन्हीं की id हैं. खाली = Google ग्राउंडिंग (chunks + cites से) */
+        val srcs: List<WebCite.Src> = emptyList(),
     )
 
     // ---------------------------------------------------------------- UTF-8 बाइट <-> अक्षर (TextEncoder / TextDecoder जैसा)
@@ -73,11 +81,12 @@ object GroundCite {
                 val seg = s.optJSONObject("segment") ?: continue
                 val endB = seg.optInt("endIndex", -1)
                 val startB = seg.optInt("startIndex", 0)
-                val (anchor, end) = if (raw.isNotEmpty() && endB > 0 && endB <= utf8(raw).size)
+                val inRaw = raw.isNotEmpty() && endB > 0 && endB <= utf8(raw).size
+                val (anchor, end) = if (inRaw)
                     sliceBytes(raw, startB, endB).ifBlank { seg.optString("text") } to charIndex(raw, endB)
                 else seg.optString("text") to -1
                 if (anchor.isBlank() && end < 0) continue
-                cites.add(Cite(anchor, end, idx))
+                cites.add(Cite(anchor, end, idx, if (inRaw) endB else -1))
             }
         }
         val q = meta.optJSONArray("webSearchQueries")?.let { a -> (0 until a.length()).map { a.optString(it) }.filter { it.isNotBlank() } }.orEmpty()
@@ -90,8 +99,13 @@ object GroundCite {
         if (a == null) return b
         if (b == null) return a
         val off = a.chunks.size
-        return G(a.chunks + b.chunks, a.cites + b.cites.map { it.copy(chunks = it.chunks.map { i -> i + off }, end = -1) },
-            (a.queries + b.queries).distinct(), b.entryHtml.ifBlank { a.entryHtml }, "", a.live || b.live)
+        // साझा साँचे के स्रोत भी साथ (दूसरे की id आगे खिसकाकर) - एक तरफ़ सिर्फ़ Google chunks हों तो उन्हें भी साँचे में
+        val sa = if (a.srcs.isEmpty() && b.srcs.isEmpty()) emptyList() else a.srcs.ifEmpty { WebCite.googleSrcs(a) }
+        val sb = if (sa.isEmpty()) emptyList() else b.srcs.ifEmpty { WebCite.googleSrcs(b) }
+        val srcs = sa + sb.map { it.copy(id = it.id + off) }
+        return G(a.chunks + b.chunks, a.cites + b.cites.map { it.copy(chunks = it.chunks.map { i -> i + off }, end = -1, endByte = -1) },
+            (a.queries + b.queries).distinct(), b.entryHtml.ifBlank { a.entryHtml }, "", a.live || b.live,
+            a.provider.ifBlank { b.provider }, (a.failed + b.failed).distinct(), srcs)
     }
 
     /** नीचे की "स्रोत" सूची: हर स्रोत एक बार (वही link / वही शीर्षक दोबारा नहीं) */
@@ -180,8 +194,9 @@ object GroundCite {
 
     fun toJson(g: G): JSONObject = JSONObject()
         .put("c", JSONArray().apply { g.chunks.forEach { put(JSONArray().put(it.first).put(it.second)) } })
-        .put("s", JSONArray().apply { g.cites.forEach { put(JSONObject().put("a", it.anchor).put("e", it.end).put("i", JSONArray(it.chunks))) } })
+        .put("s", JSONArray().apply { g.cites.forEach { put(JSONObject().put("a", it.anchor).put("e", it.end).put("b", it.endByte).put("i", JSONArray(it.chunks))) } })
         .put("q", JSONArray(g.queries)).put("h", g.entryHtml).put("r", g.raw).put("l", g.live)
+        .put("p", g.provider).put("f", JSONArray(g.failed)).put("x", JSONArray().apply { g.srcs.forEach { put(WebCite.toJson(it)) } })
 
     fun fromJson(o: JSONObject?): G? {
         if (o == null) return null
@@ -191,10 +206,14 @@ object GroundCite {
             val s = o.optJSONArray("s") ?: JSONArray()
             val cites = (0 until s.length()).mapNotNull { i -> s.optJSONObject(i)?.let { x ->
                 val a = x.optJSONArray("i") ?: JSONArray()
-                Cite(x.optString("a"), x.optInt("e", -1), (0 until a.length()).map { a.optInt(it) })
+                Cite(x.optString("a"), x.optInt("e", -1), (0 until a.length()).map { a.optInt(it) }, x.optInt("b", -1))
             } }
             val q = o.optJSONArray("q") ?: JSONArray()
-            G(chunks, cites, (0 until q.length()).map { q.optString(it) }, o.optString("h"), o.optString("r"), o.optBoolean("l"))
+            val f = o.optJSONArray("f") ?: JSONArray()
+            val x = o.optJSONArray("x") ?: JSONArray()
+            G(chunks, cites, (0 until q.length()).map { q.optString(it) }, o.optString("h"), o.optString("r"), o.optBoolean("l"),
+                o.optString("p"), (0 until f.length()).map { f.optString(it) }.filter { it.isNotBlank() },
+                (0 until x.length()).mapNotNull { i -> x.optJSONObject(i)?.let { WebCite.fromJson(it) } })
                 .takeIf { it.chunks.any { ch -> ch.second.isNotEmpty() } }
         } catch (_: Exception) { null }
     }

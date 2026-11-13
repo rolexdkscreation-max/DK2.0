@@ -39,6 +39,19 @@ object WebSearchNet {
         return WebSearch.parseExa(call(req))
     }
 
+    /**
+     * 13 नवंबर 2026: कच्चा JSON (साझा साँचे [WebCite.normalizeResults] के लिए). [q] = Gemini से सुधरा अंग्रेज़ी खोज-वाक्य.
+     * Key सिर्फ़ header में (ऐप की स्क्रीन के कोड में कभी नहीं - [Prefs] की सुरक्षित जगह से आती है).
+     */
+    fun tavilyRaw(key: String, q: String, news: Boolean): String = call(Request.Builder().url("https://api.tavily.com/search")
+        .header("Authorization", "Bearer $key")
+        .post(WebSearch.tavilyBody(q, news = news).toString().toRequestBody(JSON)).build())
+
+    /** Exa: ख़बर = category news + startPublishedDate ([since]) */
+    fun exaRaw(key: String, q: String, since: String): String = call(Request.Builder().url("https://api.exa.ai/search")
+        .header("x-api-key", key)
+        .post(WebSearch.exaBody(q, since = since).toString().toRequestBody(JSON)).build())
+
     // ---------------------------------------------------------------- "जाँचें" बटन
     private fun codeOf(req: Request): Pair<Int, String> = http.newCall(req).execute().use { r ->
         r.code to WebSearch.errorText(r.body?.string().orEmpty())

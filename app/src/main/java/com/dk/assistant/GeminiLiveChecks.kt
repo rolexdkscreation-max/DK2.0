@@ -87,7 +87,7 @@ internal fun GeminiLive.promiseCheck() {
         if (r == null || r.text.isBlank()) { visionNote(LivePromise.searchFailNote(user, why), evidence = false); return@launch }
         if (r.sources.isNotEmpty()) toolSources = Grounding.merge(toolSources, r.sources)
         r.g?.let { toolGround = GroundCite.merge(toolGround, it) }
-        visionNote(LivePromise.searchNote(user, r.text), evidence = true)
+        visionNote(LivePromise.searchNote(user, WebCite.strip(r.text)), evidence = true)
     }
 }
 

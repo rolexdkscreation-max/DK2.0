@@ -430,7 +430,8 @@ class VoiceActivity : AppCompatActivity() {
         if (::permBtn.isInitialized) permBtn.visibility = if (Setup.hasMic(this)) android.view.View.GONE else android.view.View.VISIBLE
         val min = Prefs.orbMin(this)
         UiLang.setText(you, UiLang.s("आप:") + " " + tail(DKState.lastUser, if (min) 400 else 90).ifBlank { "—" })
-        UiLang.setText(dk, "$name: " + tail(DKState.lastReply, if (min) 100_000 else 200).ifBlank { "—" })
+        // 13 नवंबर 2026: लिखे रूप में [n] निशान नहीं - उनके चिप + "स्रोत (N)" सूची ठीक नीचे (srcBox)
+        UiLang.setText(dk, "$name: " + tail(WebCite.strip(DKState.lastReply), if (min) 100_000 else 200).ifBlank { "—" })
         val src = DKState.lastSources
         val g = DKState.lastGround
         if (src != srcShown || g !== groundShown) {

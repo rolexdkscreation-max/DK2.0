@@ -96,13 +96,16 @@ object WebSearch {
     fun skip(q: String): Boolean = SearchPolicy.timeless(q) && !SearchPolicy.fresh(q)
 
     // ---------- Tavily ----------
-    fun tavilyBody(q: String, n: Int = RESULTS): JSONObject = JSONObject()
+    /** [news] = ख़बर वाला सवाल: topic "news" + time_range "day" (पिछला एक दिन); बाकी में तारीख़ भी साथ ([WebCite.normalizeResults]) */
+    fun tavilyBody(q: String, n: Int = RESULTS, news: Boolean = false): JSONObject = JSONObject()
         .put("query", q.trim().take(380))
         .put("max_results", n.coerceIn(5, 8))
         .put("search_depth", "basic")          // 1 क्रेडिट (advanced = 2)
         .put("include_answer", "basic")
         .put("include_raw_content", false)
         .put("include_images", false)
+        .put("include_published_date", true)
+        .apply { if (news) put("topic", "news").put("time_range", "day") }
 
     fun parseTavily(raw: String): Found {
         val o = JSONObject(raw)
@@ -117,11 +120,13 @@ object WebSearch {
 
     // ---------- Exa ----------
     /** सिर्फ़ सार (summary) - text/highlights नहीं माँगते (पूरा पेज = ज़्यादा क्रेडिट) */
-    fun exaBody(q: String, n: Int = RESULTS): JSONObject = JSONObject()
+    /** [since] (ISO 8601) = ख़बर वाला सवाल: category "news" + startPublishedDate (पिछला एक दिन) */
+    fun exaBody(q: String, n: Int = RESULTS, since: String = ""): JSONObject = JSONObject()
         .put("query", q.trim().take(380))
         .put("numResults", n.coerceIn(5, 8))
         .put("type", "auto")
         .put("contents", JSONObject().put("summary", JSONObject().put("query", q.trim().take(200))))
+        .apply { if (since.isNotBlank()) put("category", "news").put("startPublishedDate", since) }
 
     fun parseExa(raw: String): Found {
         val o = JSONObject(raw)

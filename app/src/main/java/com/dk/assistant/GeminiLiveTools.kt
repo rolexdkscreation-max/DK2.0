@@ -101,7 +101,7 @@ internal suspend fun GeminiLive.webSearchTool(query: String): String {
     if (res.sources.isNotEmpty()) toolSources = Grounding.merge(toolSources, res.sources)
     res.g?.let { toolGround = GroundCite.merge(toolGround, it) }
     log("web_search: \"${q.take(40)}\" -> ${res.text.length} अक्षर, ${res.sources.size} स्रोत")
-    return "SEARCH RESULT (verified from several websites): " + res.text.take(3200) + "\n" + LiveSearch.sourcesLine(res.sources) +
+    return "SEARCH RESULT (verified from several websites): " + WebCite.strip(res.text).take(3200) + "\n" + LiveSearch.sourcesLine(res.sources) +
         "\nSpeak the answer from this result now, briefly and naturally. Do not read URLs."
 }
 
@@ -487,7 +487,7 @@ internal fun GeminiLive.runTools(calls: JSONArray) {
                         withTimeoutOrNull(45_000) { BrainManager(svc).also { it.fromLive = true }.think(args.optString("question")) }
                             ?.takeIf { it.text.isNotBlank() }
                             ?.also { if (it.sources.isNotEmpty()) toolSources = Grounding.merge(toolSources, it.sources); it.g?.let { g -> toolGround = GroundCite.merge(toolGround, g) } }
-                            ?.text ?: "Deep thinking timed out - answer it yourself carefully."
+                            ?.text?.let { WebCite.strip(it) } ?: "Deep thinking timed out - answer it yourself carefully."
                     } catch (e: Exception) {
                         log("deep_think fail: ${e.message}")
                         "Deep thinking unavailable - answer it yourself carefully."
