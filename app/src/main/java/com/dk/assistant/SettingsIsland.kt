@@ -26,6 +26,10 @@ internal fun SettingsActivity.secIsland() {
         notifs.setOnCheckedChangeListener { _, v -> DKIsland.setNotifsOn(this, v) }
         val charge = switch(box, "चार्जिंग animation (बैटरी % + कितनी देर में पूरा)", DKIsland.chargeOn(this))
         charge.setOnCheckedChangeListener { _, v -> DKIsland.setChargeOn(this, v) }
+        val peek = switch(box, "नई सूचना / बजती कॉल / काम पूरा = थोड़ी देर अपने-आप बड़ा", DKIsland.peekOn(this))
+        peek.setOnCheckedChangeListener { _, v -> DKIsland.setPeekOn(this, v) }
+
+        islandLook(box)
 
         val need = TextView(this).apply { textSize = 13f; setTextColor(0xCCFFFFFF.toInt()); setPadding((4 * dp).toInt(), (6 * dp).toInt(), 0, (4 * dp).toInt()) }
         box.addView(need)
@@ -40,7 +44,10 @@ internal fun SettingsActivity.secIsland() {
             "DK Island (छोटी काली गोली) दिखता है - सिर्फ़ वही जो पीछे चल रहा है (जिस ऐप में आप अभी हैं उसका गाना / वीडियो / notification नहीं दिखता)। उस पर टैप करें तो बड़ा होकर सब दिखाता है: कॉल (उठाएँ / काटें, कार्ड पर टैप = चलती कॉल), DK लाइव (म्यूट / कॉल काटें), " +
             "गाना (पीछे / रोकें / आगे), हाल के ${IslandCore.MAX_TASKS} काम और फ़ोन के सारे notification। notification पर टैप = वही चैट / जगह खुले, बाएँ-दाएँ स्लाइड = हटे, " +
             "आख़िर में \"सब साफ़ करें\" = सब हटें। चार्जर लगाते ही बैटरी भरने का animation, % और पूरा होने में कितना समय। रील देखते समय रील की गिनती भी island में ही। " +
-            "चलती कॉल पर छोटे island को टैप = सीधे कॉल स्क्रीन; देर तक दबाएँ = पूरा island। बाहर टैप करें या ${IslandCore.AUTO_COLLAPSE_MS / 1000} सेकंड छोड़ दें तो फिर छोटा।")
+            "चलती कॉल पर छोटे island को टैप = सीधे कॉल स्क्रीन; देर तक दबाएँ = पूरा island। बाहर टैप करें या ${IslandCore.AUTO_COLLAPSE_MS / 1000} सेकंड छोड़ दें तो फिर छोटा (कॉल चलते समय भी)। " +
+            "दो चीज़ें एक साथ (जैसे दो कॉल, या कॉल + गाना) = पहली गोली में, दूसरी उसके दाएँ अलग छोटे गोल बुलबुले में - हर एक पर टैप = उसी का ऐप / कॉल, देर तक दबाएँ = वही सबसे ऊपर फैलकर। " +
+            "कॉल आए तो island अपने-आप बड़ा होकर उठाएँ / काटें दिखाता है; नई सूचना कुछ सेकंड बड़ी दिखती है - ऊपर खींचें या बाहर छुएँ तो छोटा। " +
+            "आकार, ऊपर से दूरी और बाएँ-दाएँ ऊपर की पट्टियों से बदलें; \"नमूना देखें\" से कुछ सेकंड island यहीं दिखता है।")
     }
 }
 
@@ -98,3 +105,4 @@ internal fun SettingsActivity.secPrivacy() {
             "इसके लिए Notification access चाहिए; island में ताला देखने के लिए DK Island और Accessibility चालू रखें।")
     }
 }
+

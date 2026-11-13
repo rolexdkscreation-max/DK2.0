@@ -14,7 +14,7 @@ object IslandCore {
 
     enum class Kind { CALL, LIVE, TASK, MEDIA, LOCKED, NOTIF, CHARGING, REEL }
 
-    data class Call(val who: String, val ringing: Boolean, val since: Long, val app: String = "", val pkg: String = "")
+    data class Call(val who: String, val ringing: Boolean, val since: Long, val app: String = "", val pkg: String = "", val key: String = "", val video: Boolean = false)
     data class Live(val mode: Mode, val muted: Boolean)
     data class Task(
         val id: String, val key: String, val who: String, val task: String, val state: String,
@@ -39,6 +39,8 @@ object IslandCore {
         val call: Call? = null, val live: Live? = null, val tasks: List<Task> = emptyList(),
         val media: Media? = null, val locked: List<Locked> = emptyList(),
         val notifs: List<Notif> = emptyList(), val charge: Charge? = null, val reel: Reel? = null,
+        /** 13 नवंबर 2026: सारी कॉल (पहली = [call]). खाली = सिर्फ़ [call] */
+        val calls: List<Call> = emptyList(),
     )
 
     /** बड़े island में ज़्यादा से ज़्यादा इतने हाल के काम (मालिक: "1, 2, 3, 4, 5") */
@@ -254,8 +256,11 @@ object IslandCore {
     fun background(s: Snap, fg: String): Snap {
         if (fg.isBlank() || noApp(fg)) return s
         val callFront = s.call != null && (fg == s.call.pkg || (s.call.pkg.isBlank() && phoneApp(fg)))
+        // कई कॉल: जिस कॉल का ऐप सामने खुला है सिर्फ़ वही छिपे, बाकी island में
+        val rest = s.calls.filter { c -> !(fg == c.pkg || (c.pkg.isBlank() && phoneApp(fg))) }
         return s.copy(
-            call = if (callFront) null else s.call,
+            call = if (s.calls.isNotEmpty()) rest.firstOrNull() else if (callFront) null else s.call,
+            calls = rest,
             media = s.media?.takeIf { it.pkg != fg },
             notifs = s.notifs.filter { it.pkg != fg },
             locked = s.locked.filter { it.pkg != fg },
@@ -273,4 +278,95 @@ object IslandCore {
         val p = pkg.lowercase()
         return p == "com.android.systemui" || p.contains("launcher") || p == "com.google.android.apps.nexuslauncher" || p == "com.sec.android.app.launcher"
     }
+
+    // ------------------------------------------------------------ 13 नवंबर 2026: फ़ोन के ऊपर वाले island जैसा बर्ताव
+    // मालिक: "2 कॉल चल रही हैं तो अलग-अलग, वैसा ही मैनेज हो; अटकना नहीं चाहिए; छोटा-बड़ा और ऊपर से दूरी का option."
+    // नियम: एक चीज़ = एक गोली (बाएँ निशान, दाएँ समय). दो या ज़्यादा = पहली गोली से जुड़ी, दूसरी अलग गोल बुलबुले में.
+    // टैप = उसी चीज़ का ऐप / स्क्रीन. देर तक दबाएँ = फैलकर पूरा. नई सूचना / बजती कॉल = थोड़ी देर अपने-आप बड़ा.
+
+    /** island की एक चीज़ (कॉल के लिए idx = कौन सी कॉल) */
+    data class Item(val kind: Kind, val idx: Int = 0)
+
+    /** सारी कॉल - [Snap.calls] खाली हो तो [Snap.call] */
+    fun allCalls(s: Snap): List<Call> = s.calls.ifEmpty { listOfNotNull(s.call) }
+
+    /** SIM + ऐप कॉल एक सूची में: बजती पहले, फिर सबसे नई; एक ही key दो बार नहीं */
+    fun mergeCalls(sim: Call?, apps: List<Call>): List<Call> =
+        (listOfNotNull(sim) + apps).distinctBy { it.key.ifBlank { "${it.pkg}|${it.who}" } }
+            .sortedWith(compareBy<Call>({ if (it.ringing) 0 else 1 }, { -it.since }))
+
+    /** island की चीज़ें, ज़रूरी पहले ([lead] वाला क्रम). हर कॉल अलग चीज़ */
+    fun items(s: Snap, now: Long): List<Item> {
+        val out = ArrayList<Item>()
+        allCalls(s).indices.forEach { out.add(Item(Kind.CALL, it)) }
+        val pop = s.charge?.let { chargePop(it, now) } == true
+        if (pop) out.add(Item(Kind.CHARGING))
+        if (s.live != null) out.add(Item(Kind.LIVE))
+        if (reelOn(s.reel, now)) out.add(Item(Kind.REEL))
+        val taskOn = s.tasks.any { it.active } || s.tasks.any { justEnded(it, now) }
+        if (s.tasks.any { it.active }) out.add(Item(Kind.TASK))
+        if (s.media?.playing == true) out.add(Item(Kind.MEDIA))
+        if (taskOn && out.none { it.kind == Kind.TASK }) out.add(Item(Kind.TASK))
+        if (s.locked.isNotEmpty()) out.add(Item(Kind.LOCKED))
+        if (!pop && s.charge?.charging == true) out.add(Item(Kind.CHARGING))
+        if (s.notifs.isNotEmpty()) out.add(Item(Kind.NOTIF))
+        return out
+    }
+
+    /** अलग गोल बुलबुले में दूसरी चीज़ (null = सिर्फ़ एक गोली). चार्जर अभी लगा (बड़ा animation) = बुलबुला नहीं */
+    fun bubble(s: Snap, now: Long): Item? {
+        val all = items(s, now)
+        if (all.isEmpty() || (all[0].kind == Kind.CHARGING && s.charge?.let { chargePop(it, now) } == true)) return null
+        return all.getOrNull(1)
+    }
+
+    /** छोटी गोली के दाएँ: [compactRight] जैसा, पर बुलबुले में दिख रही चीज़ "+N" में दोबारा न गिने */
+    fun compactRightWith(s: Snap, now: Long, bubbled: Boolean): String {
+        val r = compactRight(s, now)
+        val o = others(s, now)
+        if (!bubbled || o <= 0) return r
+        val base = r.removeSuffix("+$o").trim()
+        val left = o - 1
+        return if (left > 0) "$base +$left".trim() else base
+    }
+
+    /** दूसरी (या कोई भी) कॉल की छोटी लाइन */
+    fun callText(c: Call): String = (if (c.ringing) "कॉल: " else "") + c.who.ifBlank { "अनजान नंबर" }
+    fun callRight(c: Call, now: Long): String = if (c.ringing) "बज रहा" else timer(now - c.since)
+
+    /** छोटी गोली पर टैप: true = उसी चीज़ का ऐप / स्क्रीन खुले; false = island फैले (जिसका अपना ऐप नहीं) */
+    fun tapOpens(kind: Kind): Boolean = when (kind) {
+        Kind.CALL, Kind.MEDIA, Kind.TASK, Kind.LIVE, Kind.NOTIF, Kind.LOCKED -> true
+        Kind.CHARGING, Kind.REEL -> false
+    }
+
+    /** नई सूचना / काम पूरा = इतनी देर अपने-आप थोड़ा बड़ा (फिर छोटा) */
+    const val PEEK_MS = 4_000L
+    /** छूने के बाद इतनी देर ढाँचा दोबारा न बने (उँगली के नीचे से बटन न हटे = अटकना नहीं) */
+    const val TOUCH_HOLD_MS = 1_200L
+
+    /** बड़ा island अपने-आप छोटा हो? - कॉल चलते समय भी (पहले कॉल में कभी छोटा नहीं होता था = अटका). सिर्फ़ बजती कॉल रुके */
+    fun autoCollapse(expanded: Boolean, idleMs: Long, fingerDown: Boolean, s: Snap): Boolean =
+        expanded && !fingerDown && idleMs > AUTO_COLLAPSE_MS && allCalls(s).none { it.ringing }
+
+    /** पहले न देखे नए notification में से सबसे नया (पहली बार = कुछ नहीं, पुराने सब देखे मान लो) */
+    fun freshNotif(seen: Set<String>, cur: List<Notif>, first: Boolean): Notif? =
+        if (first) null else cur.filter { it.key !in seen && !it.ongoing }.maxByOrNull { it.at }
+
+    /** island का आकार (% में) और जगह (dp में) - Settings की पट्टी कुछ भी दे, यहाँ सही दायरे में */
+    const val SIZE_MIN = 80
+    const val SIZE_MAX = 130
+    const val SIZE_DEF = 100
+    const val TOP_MIN = 0
+    const val TOP_MAX = 80
+    const val TOP_DEF = 8
+    const val SIDE_MIN = -120
+    const val SIDE_MAX = 120
+    fun size(v: Int) = v.coerceIn(SIZE_MIN, SIZE_MAX)
+    fun top(v: Int) = v.coerceIn(TOP_MIN, TOP_MAX)
+    fun side(v: Int) = v.coerceIn(SIDE_MIN, SIDE_MAX)
+    fun sizeLabel(v: Int): String = when (size(v)) { in SIZE_MIN..90 -> "छोटा"; in 91..110 -> "मध्यम"; else -> "बड़ा" }
+
+    /** बुलबुला गोली के दाएँ: गोली के बीच से कितनी दूर (px) */
+    fun bubbleX(centerX: Int, mainW: Int, gap: Int, bubbleW: Int): Int = centerX + mainW / 2 + gap + bubbleW / 2
 }

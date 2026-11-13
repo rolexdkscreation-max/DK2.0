@@ -1497,3 +1497,17 @@ Notification access दें (ताले के लिए ज़रूरी)
 सब चुनें	Select all
 कोई नहीं	None
 DK Privacy: चुने ऐप (या "सभी ऐप") का notification आते ही ताले में चला जाता है - ऊपर status bar / popup में नहीं दिखता, island में सिर्फ़ "🔒 ऐप • N नए" दिखता है। उस पर टैप करें या वह ऐप खुद खोलें, तभी अंदर बात दिखती है। कॉल, गाना और फ़ोन के अपने ज़रूरी notification कभी नहीं छिपते। DK छिपे संदेश पढ़ / ऑटो रिप्लाई कर सकता है। इसके लिए Notification access चाहिए; island में ताला देखने के लिए DK Island और Accessibility चालू रखें।	DK Privacy: as soon as a notification from a chosen app (or "All apps") arrives it goes behind a lock - it does not show in the status bar / popup, the island only shows "🔒 App • N new". Tap it or open that app yourself, and only then the message shows inside. Calls, music and the phone's own important notifications are never hidden. DK can still read / auto-reply to hidden messages. This needs Notification access; to see the lock in the island keep DK Island and Accessibility on.
+नई सूचना / बजती कॉल / काम पूरा = थोड़ी देर अपने-आप बड़ा	New notification / ringing call / task done = briefly expands
+दिखावट (खिसकाते ही चलता island बदलता है)	Look (the island changes as you slide)
+आकार	Size
+छोटा	Small
+मध्यम	Medium
+बड़ा	Large
+ऊपर से दूरी	Distance from top
+बाएँ / दाएँ	Left / Right
+बीच में	Centered
+नमूना देखें	Show preview
+पहले जैसा	Reset
+DK Island - टैप = खोलें, दबाकर रखें = पूरा देखें	DK Island - tap = open, hold = see all
+DK Island - दूसरी चीज़	DK Island - second item
+दूसरी कॉल: 	Second call: 
