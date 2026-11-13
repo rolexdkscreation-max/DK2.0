@@ -240,7 +240,13 @@ object GeminiTts {
     }
 
     /** v3.76: हर स्टाइल में DK का शांत, मध्यम-ठहराव वाला बोलना (CalmPersona) */
-    fun styleText(s: String) = if (s == JarvisMode.STYLE_ID) JarvisMode.VOICE_STYLE else SpeakingStyle.tts(CalmPersona.ttsStyle(baseStyle(s)))   // v4.3: मालिक का बोलने का तरीका
+    /**
+     * 13 नवंबर 2026 (Broadcast): पहले Studio का अपना style ("clear news-anchor, pure Hindi ...") [baseStyle] के else में
+     * बदलकर हमेशा "...conversational Hindi" हो जाता था - English/Marathi Broadcast भी हिंदी लहजे में. [FREE] से शुरू = वही style जैसा का तैसा.
+     */
+    const val FREE = "free:"
+    fun styleText(s: String) = if (s.startsWith(FREE)) s.removePrefix(FREE).trim() else
+        if (s == JarvisMode.STYLE_ID) JarvisMode.VOICE_STYLE else SpeakingStyle.tts(CalmPersona.ttsStyle(baseStyle(s)))   // v4.3: मालिक का बोलने का तरीका
 
     private fun baseStyle(s: String) = when (s) {
         "cheerful" -> "cheerful, happy and energetic natural Hindi"

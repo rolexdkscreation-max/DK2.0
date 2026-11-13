@@ -49,31 +49,31 @@ object DkaiSheets {
     fun models(s: DkaiScreen) {
         val c = s.activity
         lateinit var layer: DkaiUi.Layer
-        val (card, body) = DkaiUi.sheet(c, "Select AI Model", "Gemini मॉडल चुनें - तुरंत लागू") { DkaiUi.close(s.root, layer) }
-        val pid = Prefs.activeProvider(c)
-        val cur = DkaiKit.modelCardOf(pid, Prefs.model(c, pid))
-        DkaiKit.MODEL_CARDS.forEachIndexed { i, m ->
-            body.addView(DkaiUi.row(c, if (m.model == null) DkaiIcon.Kind.LOCK else DkaiIcon.Kind.ZAP, m.title, m.sub, i == cur,
-                if (i == 1) DkaiTheme.VIOLET else DkaiTheme.CYAN) {
+        // 13 नवंबर 2026 (मालिक): सिर्फ़ फ्री मॉडल, और सिर्फ़ उन्हीं कंपनियों के जिनकी key AI दिमाग में डली है. Paid = सिर्फ़ paid key बताई हो तब
+        val (card, body) = DkaiUi.sheet(c, "Select AI Model", "सिर्फ़ फ्री मॉडल • जिनकी key AI दिमाग में डली है") { DkaiUi.close(s.root, layer) }
+        val list = DkaiKit.homeModels(hasKey = { hasKey(c, it) }, geminiPaid = Prefs.bool(c, DkaiKit.PREF_GEMINI_PAID, false),
+            cached = { Prefs.models(c, it) }, fallback = { Providers.fallbackModels(it) }, name = { ModelNames.fromId(it) })
+        val pid = Prefs.activeProvider(c); val curModel = Prefs.model(c, pid)
+        if (list.isEmpty()) body.addView(DkaiTheme.text(c, "अभी कोई फ्री key नहीं डली - सेटिंग्स → AI दिमाग में Gemini / Groq / OpenRouter / Z.ai / NVIDIA की फ्री key डालें।",
+            13f, DkaiTheme.SUB).apply { setPadding(DkaiUi.d(c, 6f), DkaiUi.d(c, 6f), DkaiUi.d(c, 6f), DkaiUi.d(c, 10f)) })
+        for (m in list) {
+            val on = m.provider == pid && m.model.equals(curModel.removePrefix("models/"), true)
+            body.addView(DkaiUi.row(c, DkaiIcon.Kind.ZAP, m.title, m.sub, on, if (m.paid) DkaiTheme.VIOLET else DkaiTheme.CYAN) {
                 DkaiUi.close(s.root, layer)
-                if (m.model == null) {
-                    c.startActivity(Intent(c, SettingsActivity::class.java).putExtra("section", "brain"))
-                    s.toast("Pro (API): सेटिंग्स → AI दिमाग में अपनी key / endpoint डालें")
-                } else {
-                    if (Prefs.oneKeyOn(c) || Prefs.key(c, "gemini").isNotBlank() || Prefs.liveGeminiKeys(c).isNotEmpty()) {
-                        Prefs.edit(c) { putString("active_provider", "gemini"); putString("model_gemini", m.model) }
-                        s.renderModel(); s.toast("मॉडल: ${m.title}")
-                    } else {
-                        s.toast("पहले Gemini की API key डालें"); c.startActivity(Intent(c, SettingsActivity::class.java).putExtra("section", "brain"))
-                    }
-                }
+                Prefs.edit(c) { putString("active_provider", m.provider); putString("model_${m.provider}", m.model) }
+                s.renderModel(); s.toast("मॉडल: ${m.title}")
             })
         }
-        body.addView(DkaiUi.button(c, "और AI / मॉडल (सेटिंग्स)…", DkaiTheme.FIELD, DkaiTheme.SUB) {
+        body.addView(DkaiUi.button(c, "और AI / key (सेटिंग्स → AI दिमाग)…", DkaiTheme.FIELD, DkaiTheme.SUB) {
             DkaiUi.close(s.root, layer); c.startActivity(Intent(c, SettingsActivity::class.java).putExtra("section", "brain"))
         }, LinearLayout.LayoutParams(-1, -2).apply { topMargin = DkaiUi.d(c, 4f) })
         layer = DkaiUi.open(s.root, card)
     }
+
+    /** इस कंपनी की key डली है? (Gemini: एक-key / चैट key / DK लाइव की key - पहले जैसा) */
+    fun hasKey(c: android.content.Context, id: String): Boolean =
+        if (id == "gemini") Prefs.oneKeyOn(c) || Prefs.key(c, "gemini").isNotBlank() || Prefs.liveGeminiKeys(c).isNotEmpty()
+        else !Prefs.oneKeyOn(c) && Prefs.key(c, id).isNotBlank()
 
     // ================================================================== + (Add to Prompt)
     fun attach(s: DkaiScreen, anchor: View) {
