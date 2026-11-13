@@ -152,6 +152,51 @@ object DkaiSheets {
         q.requestFocus()
     }
 
+    // ================================================================== पुरानी चैट की सूची (Recents)
+    /** 13 नवंबर 2026 (मालिक): "Chat #11" टैप = सारी चैट, सबसे नई ऊपर; टैप = वह चैट खुले. बंद = back / बाहर टैप / ✕ */
+    fun history(s: DkaiScreen) {
+        val c = s.activity
+        val cur = Dkai.chatNo(c)
+        val list = DkaiChats.entries(DkaiChats.dir(c), cur, DKState.messages.toList())
+        lateinit var layer: DkaiUi.Layer
+        val (card, body) = DkaiUi.sheet(c, "सभी चैट", "${list.size} चैट • सबसे नई ऊपर") { DkaiUi.close(s.root, layer) }
+        body.addView(DkaiUi.button(c, "+ नई चैट", DkaiTheme.PILL, DkaiTheme.WHITE, DkaiIcon.Kind.PLUS) {
+            DkaiUi.close(s.root, layer); s.startNewChat()
+        }, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = DkaiUi.d(c, 12f) })
+        for (e in list) body.addView(historyRow(c, e, e.no == cur) {
+            DkaiUi.close(s.root, layer); s.openChat(e.no)
+        })
+        layer = DkaiUi.open(s.root, card, maxWidth = DkaiUi.d(c, 560f))
+    }
+
+    private fun historyRow(c: android.content.Context, e: DkaiChats.Entry, current: Boolean, onTap: () -> Unit): LinearLayout = LinearLayout(c).apply {
+        val d = { v: Float -> DkaiUi.d(c, v) }
+        orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; minimumHeight = d(60f)
+        setPadding(d(12f), d(10f), d(12f), d(10f))
+        background = DkaiTheme.press(DkaiTheme.round(c, if (current) DkaiTheme.SEL else DkaiTheme.FIELD, 14f,
+            if (current) DkaiTheme.BLUE else DkaiTheme.BORDER, if (current) 1.5f else 1f))
+        isClickable = true; isFocusable = true
+        val name = DkaiCore.chatLabel(e.no)
+        val title = e.title.ifBlank { if (current) "नई चैट (अभी खाली)" else name }
+        val whenTxt = DkaiChats.whenText(e.time)
+        contentDescription = "$name, $title" + (if (whenTxt.isNotBlank()) ", $whenTxt" else "") + (if (current) ", अभी खुली" else "")
+        val ic = FrameLayout(c).apply { background = DkaiTheme.round(c, DkaiTheme.ICON_CYAN and 0x26FFFFFF, 12f) }
+        ic.addView(ImageView(c).apply { setImageDrawable(DkaiIcon(DkaiIcon.Kind.CHAT, DkaiTheme.ICON_CYAN)) }, FrameLayout.LayoutParams(d(20f), d(20f), Gravity.CENTER))
+        addView(ic, LinearLayout.LayoutParams(d(38f), d(38f)).apply { rightMargin = d(12f) })
+        val col = LinearLayout(c).apply { orientation = LinearLayout.VERTICAL }
+        col.addView(DkaiTheme.text(c, title, 14.5f, DkaiTheme.WHITE, DkaiTheme.SANS_MED).apply {
+            maxLines = 2; ellipsize = android.text.TextUtils.TruncateAt.END; setLineSpacing(0f, 1.1f); UiLang.keep(this)
+        })
+        val meta = listOf(name, whenTxt, if (e.count > 0) "${e.count} संदेश" else "").filter { it.isNotBlank() }.joinToString(" • ")
+        col.addView(DkaiTheme.text(c, meta, 12f, DkaiTheme.GRAY).apply { setPadding(0, d(4f), 0, 0); maxLines = 1; ellipsize = android.text.TextUtils.TruncateAt.END })
+        addView(col, LinearLayout.LayoutParams(0, -2, 1f))
+        if (current) addView(DkaiTheme.text(c, "अभी", 11f, DkaiTheme.ON, DkaiTheme.SANS_BOLD).apply {
+            setPadding(d(8f), d(3f), d(8f), d(3f)); background = DkaiTheme.round(c, DkaiTheme.BLUE, 99f)
+        }, LinearLayout.LayoutParams(-2, -2).apply { leftMargin = d(8f) })
+        setOnClickListener { onTap() }
+        layoutParams = LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = d(8f) }
+    }
+
     /** पूरी चैट का साफ़ text (कॉपी / शेयर) */
     fun chatText(c: android.content.Context): String =
         DkaiKit.chatText(DKState.messages.toList().map { it.role to it.text }, DkaiCore.chatLabel(Dkai.chatNo(c)))

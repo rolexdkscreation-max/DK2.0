@@ -30,7 +30,7 @@ object DkaiTheme {
     val WHITE get() = t(0xFFFFFFFF, 0xFF0F172A)
     /** नीले/लाल बटन के ऊपर - हमेशा सफ़ेद */
     const val ON = 0xFFFFFFFF.toInt()
-    val GRAY get() = t(0xFF94A3B8, 0xFF64748B)
+    val GRAY get() = t(0xFF94A3B8, 0xFF475569)             // उजाले में थोड़ा और गहरा - साफ़ पढ़ा जाए
     const val GREEN = 0xFF22C55E.toInt()
     const val MINT = 0xFFA7F3D0.toInt()
     const val MINT_TEXT = 0xFF065F46.toInt()
@@ -45,6 +45,21 @@ object DkaiTheme {
     val SEL get() = t(0xFF1E2A47, 0xFFE0E7FF)
     val SUB get() = t(0xFFCBD5E1, 0xFF334155)
     val HINT get() = t(0xFF64748B, 0xFF94A3B8)
+    /** ऊपर की सूचना-पट्टी (अपडेट / key) */
+    val ALERT_BG get() = t(0xFF2A1F0A, 0xFFFEF3C7)
+    val ALERT_TEXT get() = t(0xFFF59E0B, 0xFF92400E)
+
+    /*
+     * 13 नवंबर 2026 (मालिक): फ़ोन की Settings जैसा - Light/Dark में सिर्फ़ पृष्ठभूमि और लिखावट बदले,
+     * रंगीन icons / लोगो / गोला हमेशा Dark वाले असली रंग में (थीम से कभी नहीं बदलते).
+     */
+    const val ICON_CYAN = 0xFF00E5FF.toInt()
+    const val ICON_AGENT = 0xFF60A5FA.toInt()
+    const val ICON_PIPELINE = 0xFF34D399.toInt()
+    /** DK लोगो का डिब्बा और बीच वाले गोले का अंदर - दोनों थीम में एक जैसा (सफ़ेद डिब्बा नहीं) */
+    const val LOGO_TILE = 0xFF161E31.toInt()
+    const val LOGO_TILE_EDGE = 0xFF26324D.toInt()
+    const val BADGE_CORE = 0xFF1B2A4A.toInt()
 
     val SANS: Typeface = Typeface.create("sans-serif", Typeface.NORMAL)
     val SANS_MED: Typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
