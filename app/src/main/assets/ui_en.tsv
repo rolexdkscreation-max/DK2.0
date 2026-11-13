@@ -1487,3 +1487,13 @@ DKAI का orb	DKAI orb
 नए DKAI होम में आवाज़ वाला orb — 7 नए या पुराना DK orb	The voice orb in the new DKAI home — 7 new ones or the classic DK orb
 पुराना DK orb चुना = उसका आकार "ओर्ब और चेहरा" वाले हिस्से से। DKAI में orb पर टैप करके भी बदल सकते हैं।	Classic DK orb chosen = its shape comes from "Orb and face". You can also tap the orb in DKAI to change it.
 नया DKAI होम (नया UI; ऑफ = क्लासिक होम)	New DKAI home (new UI; off = classic home)
+notification ताले में - ऊपर से न दिखे, ऐप खोलें तब दिखे	Notifications locked - hidden from the top, shown when you open the app
+चालू (notification ताले में)	On (notifications locked)
+Notification access दें (ताले के लिए ज़रूरी)	Give Notification access (needed for the lock)
+किन ऐप के notification	Which apps' notifications
+सभी ऐप	All apps
+सिर्फ़ चुने ऐप	Only chosen apps
+एक-एक ऐप चुनें ("सिर्फ़ चुने ऐप" के लिए)	Choose apps one by one (for "Only chosen apps")
+सब चुनें	Select all
+कोई नहीं	None
+DK Privacy: चुने ऐप (या "सभी ऐप") का notification आते ही ताले में चला जाता है - ऊपर status bar / popup में नहीं दिखता, island में सिर्फ़ "🔒 ऐप • N नए" दिखता है। उस पर टैप करें या वह ऐप खुद खोलें, तभी अंदर बात दिखती है। कॉल, गाना और फ़ोन के अपने ज़रूरी notification कभी नहीं छिपते। DK छिपे संदेश पढ़ / ऑटो रिप्लाई कर सकता है। इसके लिए Notification access चाहिए; island में ताला देखने के लिए DK Island और Accessibility चालू रखें।	DK Privacy: as soon as a notification from a chosen app (or "All apps") arrives it goes behind a lock - it does not show in the status bar / popup, the island only shows "🔒 App • N new". Tap it or open that app yourself, and only then the message shows inside. Calls, music and the phone's own important notifications are never hidden. DK can still read / auto-reply to hidden messages. This needs Notification access; to see the lock in the island keep DK Island and Accessibility on.

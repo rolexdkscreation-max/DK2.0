@@ -1,7 +1,6 @@
 package com.dk.assistant
 
 import android.widget.LinearLayout
-import android.widget.SeekBar
 import android.widget.TextView
 import androidx.lifecycle.lifecycleScope
 import kotlinx.coroutines.Dispatchers
@@ -11,7 +10,7 @@ import kotlinx.coroutines.withContext
 /**
  * 12 नवंबर 2026 (मालिक):
  *  - Settings → ओर्ब और चेहरा → "DK Island"  [DKIsland]
- *  - Settings → स्क्रीन गार्ड → "DK Privacy (बगल से न दिखे)"  [PrivacyScreen]
+ *  - Settings → स्क्रीन गार्ड → "DK Privacy (बगल से न दिखे)"  [PrivacyScreen] - 13 नवंबर 2026 से सिर्फ़ notification का ताला
  * 13 नवंबर 2026 (मालिक): नाम सिर्फ़ "DK Island" / "DK Privacy"; island में सारे notification, चार्जिंग, रील गिनती.
  * नई menu row नहीं (ControlCenterTest) - पुराने section में ही नया card.
  */
@@ -46,56 +45,56 @@ internal fun SettingsActivity.secIsland() {
 }
 
 internal fun SettingsActivity.secPrivacy() {
-    card("DK Privacy (बगल से न दिखे)", "सामने वाले को दिखे, बगल वाले को कम", startOpen = false) { box ->
-        val master = switch(box, "चालू", PrivacyScreen.on(this))
+    // 13 नवंबर 2026 (मालिक): स्क्रीन वाली परत हटाई (काम नहीं करती थी) - सिर्फ़ notification का ताला; सभी ऐप या एक-एक ऐप
+    card("DK Privacy (बगल से न दिखे)", "notification ताले में - ऊपर से न दिखे, ऐप खोलें तब दिखे", startOpen = false) { box ->
+        val master = switch(box, "चालू (notification ताले में)", PrivacyScreen.on(this))
         master.setOnCheckedChangeListener { _, v -> PrivacyScreen.setOn(this, v) }
+        if (!DKNotifListener.enabled(this)) row(box, button("Notification access दें (ताले के लिए ज़रूरी)") { DKNotifListener.openSettings(this) })
 
-        label(box, "कहाँ लगे")
+        label(box, "किन ऐप के notification")
         val scopes = PrivacyCore.Scope.values().toList()
         val g = radios(box, scopes.map { it.id to it.hi }, PrivacyScreen.scope(this).id, 7600)
+
+        val list = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        val switches = ArrayList<Pair<String, android.widget.CompoundButton>>()
+        var apps: List<PrivacyScreen.App> = emptyList()
+        fun applyScope() {
+            val all = PrivacyScreen.scope(this) == PrivacyCore.Scope.ALL
+            list.alpha = if (all) 0.45f else 1f
+            switches.forEach { it.second.isEnabled = !all }
+        }
         g.setOnCheckedChangeListener { grp, _ ->
             PrivacyScreen.setScope(this, PrivacyCore.Scope.of(radioValue(grp, scopes.map { it.id }, 7600)))
+            applyScope()
         }
 
-        label(box, "कितना गहरा")
-        val str = SeekBar(this).apply {
-            max = PrivacyCore.MAX_STRENGTH - PrivacyCore.MIN_STRENGTH
-            progress = PrivacyScreen.strength(this@secPrivacy) - PrivacyCore.MIN_STRENGTH
-            setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
-                override fun onProgressChanged(s: SeekBar, p: Int, fromUser: Boolean) { if (fromUser) PrivacyScreen.setStrength(this@secPrivacy, PrivacyCore.MIN_STRENGTH + p) }
-                override fun onStartTrackingTouch(s: SeekBar) {}
-                override fun onStopTrackingTouch(s: SeekBar) {}
-            })
+        label(box, "एक-एक ऐप चुनें (\"सिर्फ़ चुने ऐप\" के लिए)")
+        fun setAll(v: Boolean) {
+            PrivacyScreen.setApps(this, if (v) apps.map { it.pkg }.toSet() else emptySet())
+            switches.forEach { it.second.isChecked = v }
         }
-        box.addView(str, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
-
-        val hide = switch(box, "चुने ऐप के notification popup न दिखें (island में ताला दिखेगा)", PrivacyScreen.hideNotifs(this))
-        hide.setOnCheckedChangeListener { _, v -> PrivacyScreen.setHideNotifs(this, v) }
-        val pop = switch(box, "बाकी सब ऐप के popup आते समय भी ऊपर परदा", PrivacyScreen.popups(this))
-        pop.setOnCheckedChangeListener { _, v -> PrivacyScreen.setPopups(this, v) }
-        if (!DKNotifListener.enabled(this)) row(box, button("Notification access दें (popup छिपाने के लिए)") { DKNotifListener.openSettings(this) })
-
-        label(box, "किन ऐप में (\"सिर्फ़ चुने ऐप\" और notification के लिए)")
-        val list = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        row(box, button("सब चुनें") { setAll(true) }, button("कोई नहीं") { setAll(false) })
         box.addView(list)
-        fun fill(apps: List<PrivacyScreen.App>) {
-            list.removeAllViews()
+        fun fill(found: List<PrivacyScreen.App>) {
+            list.removeAllViews(); switches.clear(); apps = found.filter { it.pkg != packageName }
             if (apps.isEmpty()) { hint(list, "कोई ऐप नहीं मिला।"); return }
             for (a in apps) {
                 val sw = switch(list, a.label, PrivacyScreen.appOn(this, a.pkg))
                 sw.setOnCheckedChangeListener { _, v -> PrivacyScreen.setAppOn(this, a.pkg, v) }
+                switches.add(a.pkg to sw)
             }
+            applyScope()
         }
         hint(list, "ऐप खोज रहा हूँ…")
         fun rescan() = lifecycleScope.launch {
-            val apps = withContext(Dispatchers.IO) { try { PrivacyScreen.scan(this@secPrivacy) } catch (_: Exception) { emptyList() } }
-            fill(apps)
+            val found = withContext(Dispatchers.IO) { try { PrivacyScreen.scan(this@secPrivacy) } catch (_: Exception) { emptyList() } }
+            fill(found)
         }
         rescan()
         row(box, button("फिर से खोजें") { rescan() })
-        hint(box, "DK Privacy: कुछ फ़ोन में यह hardware से होता है (स्क्रीन के pixel ही बगल की तरफ़ रोशनी कम भेजते हैं)। ज़्यादातर फ़ोन में ऐसा hardware नहीं होता, " +
-            "इसलिए DK software से वैसा ही करता है: स्क्रीन पर हल्का काला परदा (किनारों पर ज़्यादा गहरा, बारीक लाइनें) ताकि सामने से पढ़ा जाए " +
-            "और बगल / तिरछे से पढ़ना मुश्किल हो। चुने ऐप के notification popup नहीं आते - DK उन्हें पढ़ / जवाब दे सकता है और island में ताले के साथ दिखते हैं, टैप करें तो वही ऐप खुले। " +
-            "इसके लिए Accessibility चालू होना चाहिए।")
+        hint(box, "DK Privacy: चुने ऐप (या \"सभी ऐप\") का notification आते ही ताले में चला जाता है - ऊपर status bar / popup में नहीं दिखता, " +
+            "island में सिर्फ़ \"🔒 ऐप • N नए\" दिखता है। उस पर टैप करें या वह ऐप खुद खोलें, तभी अंदर बात दिखती है। " +
+            "कॉल, गाना और फ़ोन के अपने ज़रूरी notification कभी नहीं छिपते। DK छिपे संदेश पढ़ / ऑटो रिप्लाई कर सकता है। " +
+            "इसके लिए Notification access चाहिए; island में ताला देखने के लिए DK Island और Accessibility चालू रखें।")
     }
 }
