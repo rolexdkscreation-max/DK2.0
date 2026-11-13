@@ -179,7 +179,10 @@ class MainActivity : AppCompatActivity() {
                 listOf(R.id.chipUpdate, R.id.chipKey).mapNotNull { id ->
                     findViewById<TextView>(id)?.takeIf { it.visibility == android.view.View.VISIBLE && it.text.isNotBlank() }?.let { ch -> ch.text.toString() to { ch.performClick(); Unit } }
                 }
-            }
+            },
+            pickPhoto = { pickPhoto.launch(androidx.activity.result.PickVisualMediaRequest(
+                androidx.activity.result.contract.ActivityResultContracts.PickVisualMedia.ImageOnly)) },
+            pickFile = { pickFile.launch(ComputerActivity.PICK_TYPES) }
         )).attach()
     }
 

@@ -13,4 +13,6 @@
     <cache-path name="cache_root" path="." />
     <!-- नवंबर 2026: WhatsApp पर भेजने के लिए फ़ोन की फ़ाइल (Download / Documents…) - "सभी फ़ाइलें" इजाज़त के बाद -->
     <external-path name="storage" path="." />
+    <!-- 13 नवंबर 2026: DK AI Broadcast Studio की बनी आवाज़ (filesDir/dkai_broadcast) शेयर -->
+    <files-path name="dkai_broadcast" path="dkai_broadcast/" />
 </paths>

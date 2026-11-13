@@ -98,13 +98,56 @@ class FilesPanel(nav: DkaiNav) : DkaiPanel(nav) {
     private lateinit var repoBar: LinearLayout
     private lateinit var repoTxt: TextView
     var cwd: File? = null; private set
+    private lateinit var projPill: TextView
+    private lateinit var searchBox: EditText
+    private var sort = DkaiKit.Sort.NAME
+    private var query = ""
+
+    companion object {
+        /** रंगीन प्रकार-निशान: HTML / CSS / JS / MD / TXT / ICO … (फ़ोल्डर = पीला फ़ोल्डर) */
+        fun badge(c: android.content.Context, name: String, dir: Boolean): View {
+            val k = DkaiKit.kindOf(name, dir)
+            if (dir) return ImageView(c).apply {
+                setImageDrawable(DkaiIcon(DkaiIcon.Kind.FILES, if (k == DkaiKit.Kind.CONFIG) DkaiTheme.VIOLET else DkaiTheme.AMBER))
+                scaleType = ImageView.ScaleType.CENTER_INSIDE; minimumHeight = dp(c, 22f)
+            }
+            val ext = name.substringAfterLast('.', "").uppercase(java.util.Locale.ROOT).take(4).ifEmpty { "FILE" }
+            val col = when (k) {
+                DkaiKit.Kind.WEB -> 0xFFF97316.toInt(); DkaiKit.Kind.STYLE -> DkaiTheme.BLUE; DkaiKit.Kind.SCRIPT -> 0xFFEAB308.toInt()
+                DkaiKit.Kind.CODE -> DkaiTheme.VIOLET; DkaiKit.Kind.DATA -> DkaiKit.EMERALD; DkaiKit.Kind.IMAGE -> DkaiTheme.PINK
+                DkaiKit.Kind.AUDIO -> DkaiTheme.MINT; DkaiKit.Kind.DOC -> DkaiTheme.GRAY; else -> DkaiTheme.GRAY
+            }
+            return DkaiTheme.text(c, ext, 9f, col, DkaiTheme.SANS_BOLD).apply {
+                gravity = Gravity.CENTER; setPadding(dp(c, 3f), dp(c, 3f), dp(c, 3f), dp(c, 3f))
+                background = DkaiTheme.round(c, (col and 0x00FFFFFF) or 0x26000000, 6f, (col and 0x00FFFFFF) or 0x66000000)
+            }
+        }
+    }
 
     override fun build(box: LinearLayout) {
         val (row, _) = bar("Files")
+        row.addView(iconBtn(DkaiIcon.Kind.SEARCH, "खोजें") { searchBox.visibility = if (searchBox.visibility == View.VISIBLE) View.GONE else View.VISIBLE
+            if (searchBox.visibility == View.VISIBLE) searchBox.requestFocus() else { searchBox.setText(""); query = ""; refresh() } })
+        row.addView(iconBtn(DkaiIcon.Kind.SORT, "क्रम बदलें") { sort = DkaiKit.nextSort(sort); nav.toast("क्रम: ${sort.label}"); refresh() })
         row.addView(iconBtn(DkaiIcon.Kind.FILE_PLUS, "नई फ़ाइल") { newItem(false) })
         row.addView(iconBtn(DkaiIcon.Kind.FOLDER_PLUS, "नया फ़ोल्डर") { newItem(true) })
         row.addView(iconBtn(DkaiIcon.Kind.REFRESH, "ताज़ा करें") { refresh() })
         box.addView(row)
+        // प्रोजेक्ट चुनने वाली पट्टी (2048 ▾ + पूरा रास्ता)
+        projPill = DkaiTheme.text(c, "", 13f, DkaiTheme.WHITE, DkaiTheme.SANS_MED).apply {
+            minHeight = d(44f); gravity = Gravity.CENTER_VERTICAL; setPadding(d(12f), d(6f), d(12f), d(6f)); maxLines = 2
+            ellipsize = android.text.TextUtils.TruncateAt.MIDDLE
+            background = DkaiTheme.press(DkaiTheme.round(c, DkaiTheme.FIELD, 12f, DkaiTheme.BORDER)); isClickable = true; contentDescription = "प्रोजेक्ट चुनें"
+            setOnClickListener { (nav as? DkaiScreen)?.let { s -> DkaiModals.projects(s) { p -> open(p) } } }
+        }
+        box.addView(projPill, LinearLayout.LayoutParams(-1, -2).apply { setMargins(d(12f), 0, d(12f), d(6f)) })
+        searchBox = DkaiUi.field(c, "फ़ाइल खोजें (इस प्रोजेक्ट में)…").apply { visibility = View.GONE
+            addTextChangedListener(object : TextWatcher {
+                override fun beforeTextChanged(s: CharSequence?, a: Int, b: Int, cnt: Int) {}
+                override fun onTextChanged(s: CharSequence?, a: Int, b: Int, cnt: Int) {}
+                override fun afterTextChanged(e: Editable?) { query = e?.toString().orEmpty().trim(); refresh() }
+            }) }
+        box.addView(searchBox, LinearLayout.LayoutParams(-1, -2).apply { setMargins(d(12f), 0, d(12f), d(6f)) })
         roots = LinearLayout(c).apply { orientation = LinearLayout.HORIZONTAL; setPadding(d(12f), 0, d(12f), d(6f)) }
         box.addView(HorizontalScrollView(c).apply { isHorizontalScrollBarEnabled = false; addView(roots) })
         val pathRow = LinearLayout(c).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; setPadding(d(4f), 0, d(16f), 0) }
@@ -114,7 +157,7 @@ class FilesPanel(nav: DkaiNav) : DkaiPanel(nav) {
         box.addView(pathRow)
         repoBar = LinearLayout(c).apply {
             orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; visibility = View.GONE
-            background = DkaiTheme.round(c, 0xFF14213A.toInt(), 14f, DkaiTheme.BORDER); setPadding(d(12f), d(4f), d(4f), d(4f))
+            background = DkaiTheme.round(c, DkaiTheme.SEL, 14f, DkaiTheme.BORDER); setPadding(d(12f), d(4f), d(4f), d(4f))
         }
         repoBar.addView(ImageView(c).apply { setImageDrawable(DkaiIcon(DkaiIcon.Kind.GITHUB, DkaiTheme.CYAN)) }, LinearLayout.LayoutParams(d(18f), d(18f)))
         repoTxt = DkaiTheme.text(c, "", 12f, DkaiTheme.WHITE).apply { setPadding(d(8f), 0, d(8f), 0); maxLines = 2 }
@@ -156,6 +199,8 @@ class FilesPanel(nav: DkaiNav) : DkaiPanel(nav) {
         val cur = cwd!!
         val rel = cur.canonicalPath.removePrefix(root.dir.canonicalPath).trimStart('/')
         path.text = root.name + if (rel.isEmpty()) "" else " / " + rel.replace("/", " / ")
+        val proj = DkaiWorkspace.activeProject(c)
+        projPill.text = (proj?.name ?: "प्रोजेक्ट चुनें") + "  ▾\n" + DkaiKit.shownPath(cur)
         // GitHub से लाया रिपो?
         val repo = DkaiWorkspace.repoDirOf(c, cur)
         repoBar.visibility = if (repo != null) View.VISIBLE else View.GONE
@@ -165,23 +210,31 @@ class FilesPanel(nav: DkaiNav) : DkaiPanel(nav) {
             bg { val n = DkaiWorkspace.pending(repo).size; main { repoTxt.text = "${m?.repo} • ${m?.branch}\n" + if (n == 0) "कोई बदलाव नहीं" else "$n फ़ाइल बदली" } }
         }
         list.removeAllViews()
-        val items = DkaiWorkspace.list(cur)
+        if (query.isNotEmpty()) {
+            val hits = cur.walkTopDown().maxDepth(8).onEnter { it.name != ".git" && it.name != "node_modules" }
+                .filter { it != cur && it.name.contains(query, true) }.take(200).toList()
+            if (hits.isEmpty()) { list.addView(empty("\"$query\" से कोई फ़ाइल नहीं मिली")); return }
+            for (f in hits) list.addView(row(f, f.relativeTo(cur).path))
+            return
+        }
+        val raw = DkaiWorkspace.list(cur)
+        val byName = raw.associateBy { it.name }
+        val items = DkaiKit.sorted(raw.map { DkaiKit.Entry(it.name, it.isDirectory, it.lastModified(), if (it.isFile) it.length() else 0L) }, sort).mapNotNull { byName[it.name] }
         if (items.isEmpty()) { list.addView(empty("यह फ़ोल्डर खाली है।\nऊपर + से नई फ़ाइल बनाइए।", "नई फ़ाइल") { newItem(false) }); return }
         for (f in items.take(400)) list.addView(row(f))
         if (items.size > 400) list.addView(DkaiTheme.text(c, "+${items.size - 400} और", 12f, DkaiTheme.GRAY).apply { setPadding(d(8f), d(8f), 0, 0) })
     }
 
-    private fun row(f: File): View {
+    private fun row(f: File, shown: String = f.name): View {
         val r = LinearLayout(c).apply {
             orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; minimumHeight = d(52f)
             setPadding(d(12f), d(6f), d(4f), d(6f))
             background = DkaiTheme.press(DkaiTheme.round(c, DkaiTheme.CARD, 12f, DkaiTheme.BORDER))
             isClickable = true; isFocusable = true
         }
-        val kind = if (f.isDirectory) DkaiIcon.Kind.FILES else DkaiIcon.Kind.FILE
-        r.addView(ImageView(c).apply { setImageDrawable(DkaiIcon(kind, if (f.isDirectory) DkaiTheme.CYAN else DkaiTheme.GRAY)) }, LinearLayout.LayoutParams(d(20f), d(20f)))
+        r.addView(badge(c, f.name, f.isDirectory), LinearLayout.LayoutParams(d(36f), -2))
         val col = LinearLayout(c).apply { orientation = LinearLayout.VERTICAL; setPadding(d(12f), 0, d(8f), 0) }
-        col.addView(DkaiTheme.text(c, f.name, 14f, DkaiTheme.WHITE).apply { maxLines = 1; ellipsize = android.text.TextUtils.TruncateAt.MIDDLE })
+        col.addView(DkaiTheme.text(c, shown, 14f, DkaiTheme.WHITE).apply { maxLines = 1; ellipsize = android.text.TextUtils.TruncateAt.MIDDLE })
         val sub = if (f.isDirectory) "${f.list()?.size ?: 0} चीज़ें" else sizeOf(f.length())
         col.addView(DkaiTheme.text(c, sub, 11f, DkaiTheme.GRAY).apply { setPadding(0, d(3f), 0, 0) })
         r.addView(col, LinearLayout.LayoutParams(0, -2, 1f))
@@ -197,18 +250,23 @@ class FilesPanel(nav: DkaiNav) : DkaiPanel(nav) {
         if (f.isFile) acts.add("Editor में खोलें" to { nav.openInEditor(f) })
         if (f.isFile && DkaiCore.isHtml(f.name)) acts.add("Preview में चलाएँ" to { nav.openPreview(f) })
         if (f.isFile && f.name.endsWith(".sh")) acts.add("Terminal में चलाएँ" to { nav.runInTerminal("sh '${f.name}'", f.parentFile ?: f) })
+        if (f.isDirectory) acts.add("Open Folder" to { cwd = f; refresh() })
         if (f.isDirectory) acts.add("यहाँ Terminal खोलें" to { nav.runInTerminal("ls -la", f) })
+        if (f.isDirectory && f.parentFile?.canonicalPath == DkaiWorkspace.projectsRoot(c).canonicalPath) acts.add("Active Project बनाएँ" to { DkaiWorkspace.setProject(c, f); nav.toast("प्रोजेक्ट: ${f.name}"); refresh() })
         acts.add("नाम बदलें" to {
             ask("नाम बदलें", "नया नाम", f.name) { n ->
                 if (DkaiWorkspace.rename(f, n) == null) nav.toast("नाम नहीं बदला (गलत नाम या पहले से मौजूद)") else refresh()
             }
         })
-        acts.add("हटाएँ" to {
+        acts.add("Copy Absolute Path" to { DkaiUi.copy(c, "path", DkaiKit.shownPath(f)) })
+        acts.add("Delete (हटाएँ)" to {
             AlertDialog.Builder(c).setTitle("\"${f.name}\" हटाएँ?").setMessage(if (f.isDirectory) "फ़ोल्डर और उसके अंदर का सब कुछ हमेशा के लिए हट जाएगा।" else "यह फ़ाइल हमेशा के लिए हट जाएगी।")
                 .setPositiveButton("हटाएँ") { _, _ -> if (DkaiWorkspace.delete(f)) { nav.toast("हटा दिया"); refresh() } else nav.toast("हटा नहीं पाया") }
                 .setNegativeButton("रद्द", null).show()
         })
-        AlertDialog.Builder(c).setTitle(f.name).setItems(acts.map { it.first }.toTypedArray()) { _, i -> acts[i].second() }.show()
+        // Delete लाल रंग में (M5 context menu)
+        val names = acts.map { (t, _) -> if (t.startsWith("Delete")) android.text.SpannableString(t).apply { setSpan(android.text.style.ForegroundColorSpan(DkaiTheme.RED), 0, t.length, 0) } else t }
+        AlertDialog.Builder(c).setTitle(f.name).setItems(names.toTypedArray<CharSequence>()) { _, i -> acts[i].second() }.show()
     }
 
     private fun newItem(folder: Boolean) {
@@ -264,6 +322,13 @@ class EditorPanel(nav: DkaiNav) : DkaiPanel(nav) {
     private lateinit var runBtn: View
     private var saved = ""
     private var wrap = false
+    private lateinit var gutter: TextView
+    private lateinit var tabRow: LinearLayout
+    private lateinit var review: LinearLayout
+    private lateinit var reviewTxt: TextView
+    private var tabs = listOf<String>()
+    private val hl = Runnable { paintSyntax() }
+    private val onCopilot: () -> Unit = { ui.post { if (!c.isDestroyed) paintReview() } }
     val dirty get() = ::edit.isInitialized && file != null && edit.text.toString() != saved
 
     override fun build(box: LinearLayout) {
@@ -274,30 +339,144 @@ class EditorPanel(nav: DkaiNav) : DkaiPanel(nav) {
         row.addView(iconBtn(DkaiIcon.Kind.WRAP, "लाइन लपेटें") { wrap = !wrap; applyWrap() })
         row.addView(iconBtn(DkaiIcon.Kind.SAVE, "सेव करें", DkaiTheme.CYAN) { if (save()) nav.toast("सेव हो गया") })
         box.addView(row)
+        // खुली फ़ाइलों के टैब
+        tabRow = LinearLayout(c).apply { orientation = LinearLayout.HORIZONTAL; setPadding(d(12f), 0, d(12f), d(4f)) }
+        box.addView(HorizontalScrollView(c).apply { isHorizontalScrollBarEnabled = false; addView(tabRow) })
+        // Preview / Save / AI Edit
+        val acts = LinearLayout(c).apply { orientation = LinearLayout.HORIZONTAL; setPadding(d(12f), 0, d(12f), d(6f)) }
+        acts.addView(DkaiTheme.pill(c, "▶ Preview", DkaiTheme.PILL, DkaiKit.EMERALD, 12f).apply { minHeight = d(38f)
+            setOnClickListener { file?.let { save(); if (DkaiCore.isHtml(it.name)) nav.openPreview(it) else nav.toast("Preview सिर्फ़ HTML के लिए") } } })
+        acts.addView(DkaiTheme.pill(c, "Save", DkaiTheme.PILL, DkaiTheme.CYAN, 12f).apply { minHeight = d(38f); setOnClickListener { if (save()) nav.toast("सेव हो गया") } },
+            LinearLayout.LayoutParams(-2, -2).apply { leftMargin = d(6f) })
+        acts.addView(DkaiTheme.pill(c, "✦ AI Edit", DkaiTheme.BLUE, DkaiTheme.ON, 12f).apply { minHeight = d(38f); setOnClickListener { aiEdit() } },
+            LinearLayout.LayoutParams(-2, -2).apply { leftMargin = d(6f) })
+        box.addView(acts)
+        // Review Changes पट्टी (Copilot के बदलाव)
+        review = LinearLayout(c).apply { orientation = LinearLayout.VERTICAL; visibility = View.GONE; setPadding(d(12f), d(8f), d(12f), d(8f))
+            background = DkaiTheme.round(c, DkaiTheme.SEL, 12f, DkaiTheme.BLUE) }
+        reviewTxt = DkaiTheme.text(c, "", 12f, DkaiTheme.WHITE).apply { maxLines = 3 }
+        review.addView(reviewTxt)
+        review.addView(LinearLayout(c).apply { orientation = LinearLayout.HORIZONTAL; setPadding(0, d(6f), 0, 0)
+            addView(DkaiTheme.pill(c, "Undo Task", DkaiTheme.RED_BG, DkaiTheme.RED, 12f).apply { minHeight = d(38f); setOnClickListener { DkaiCopilot.undo(); reload(); paintReview() } })
+            addView(DkaiTheme.pill(c, "Keep all changes", DkaiKit.EMERALD, DkaiTheme.ON, 12f).apply { minHeight = d(38f); setOnClickListener { DkaiCopilot.keep(); paintReview() } },
+                LinearLayout.LayoutParams(-2, -2).apply { leftMargin = d(8f) }) })
+        box.addView(review, LinearLayout.LayoutParams(-1, -2).apply { setMargins(d(12f), 0, d(12f), d(6f)) })
         val frame = FrameLayout(c)
+        val codeRow = LinearLayout(c).apply { orientation = LinearLayout.HORIZONTAL; background = DkaiTheme.round(c, 0xFF0F1626.toInt(), 14f, DkaiTheme.BORDER) }
+        gutter = TextView(c).apply { typeface = DkaiTheme.MONO; textSize = 13f; setTextColor(0xFF64748B.toInt()); gravity = Gravity.END
+            setPadding(d(8f), d(10f), d(6f), d(10f)); isVerticalScrollBarEnabled = false; setLineSpacing(0f, 1f) }
+        codeRow.addView(gutter, LinearLayout.LayoutParams(-2, -1))
         edit = EditText(c).apply {
             typeface = DkaiTheme.MONO; textSize = 13f; setTextColor(0xFFE2E8F0.toInt()); setHintTextColor(DkaiTheme.GRAY)
             gravity = Gravity.TOP or Gravity.START
-            background = DkaiTheme.round(c, 0xFF0F1626.toInt(), 14f, DkaiTheme.BORDER)
-            setPadding(d(12f), d(10f), d(12f), d(10f))
+            background = null
+            setPadding(d(6f), d(10f), d(12f), d(10f))
             inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_MULTI_LINE or InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS
             imeOptions = EditorInfo.IME_FLAG_NO_EXTRACT_UI
             isVerticalScrollBarEnabled = true; setHorizontallyScrolling(true)
             addTextChangedListener(object : TextWatcher {
                 override fun beforeTextChanged(s: CharSequence?, a: Int, b: Int, cnt: Int) {}
                 override fun onTextChanged(s: CharSequence?, a: Int, b: Int, cnt: Int) {}
-                override fun afterTextChanged(s: Editable?) { stat() }
+                override fun afterTextChanged(s: Editable?) { stat(); paintGutter(); ui.removeCallbacks(hl); ui.postDelayed(hl, 450) }
             })
+            setOnScrollChangeListener { _, _, y, _, _ -> gutter.scrollTo(0, y) }
         }
         UiLang.keep(edit)
-        frame.addView(edit, FrameLayout.LayoutParams(-1, -1))
+        codeRow.addView(edit, LinearLayout.LayoutParams(0, -1, 1f))
+        frame.addView(codeRow, FrameLayout.LayoutParams(-1, -1))
         emptyBox = empty("कोई फ़ाइल खुली नहीं।\nFiles से फ़ाइल चुनिए या नई बनाइए।", "Files खोलें") { nav.openFiles(DkaiWorkspace.workspace(c)) }
             .apply { setBackgroundColor(DkaiTheme.BG) }
         frame.addView(emptyBox, FrameLayout.LayoutParams(-1, -1))
         box.addView(frame, LinearLayout.LayoutParams(-1, 0, 1f).apply { setMargins(d(12f), 0, d(12f), 0) })
+        // चिन्ह-पट्टी: TAB ( ) { } [ ] < > / = ;
+        val sym = LinearLayout(c).apply { orientation = LinearLayout.HORIZONTAL; setPadding(d(12f), d(6f), d(12f), 0) }
+        for (k in DkaiKit.SYMBOLS) sym.addView(DkaiTheme.pill(c, k, DkaiTheme.PILL, DkaiTheme.WHITE, 13f).apply {
+            typeface = DkaiTheme.MONO; minHeight = d(38f); minWidth = d(40f); gravity = Gravity.CENTER; contentDescription = "डालें $k"
+            setOnClickListener { insert(DkaiKit.symbolText(k)) }
+        }, LinearLayout.LayoutParams(-2, -2).apply { rightMargin = d(6f) })
+        box.addView(HorizontalScrollView(c).apply { isHorizontalScrollBarEnabled = false; addView(sym) })
         status = DkaiTheme.text(c, "", 11f, DkaiTheme.GRAY, DkaiTheme.MONO).apply { setPadding(d(16f), d(6f), d(16f), d(6f)) }
         box.addView(status)
         show()
+    }
+
+    override fun onShow() {
+        if (!DkaiCopilot.listeners.contains(onCopilot)) DkaiCopilot.listeners.add(onCopilot)
+        paintReview()
+    }
+
+    private fun insert(t: String) {
+        if (file == null) return
+        val a = edit.selectionStart.coerceAtLeast(0); val b = edit.selectionEnd.coerceAtLeast(0)
+        edit.text.replace(minOf(a, b), maxOf(a, b), t)
+        edit.requestFocus()
+    }
+
+    private fun paintGutter() {
+        if (!::gutter.isInitialized) return
+        gutter.visibility = if (wrap || file == null) View.GONE else View.VISIBLE
+        if (gutter.visibility == View.VISIBLE) { val g = DkaiKit.gutter(edit.text.toString()); if (gutter.text.toString() != g) gutter.text = g }
+    }
+
+    /** रंगीन code (keyword / string / comment / tag / number) - टाइप रुकने पर */
+    private fun paintSyntax() {
+        val f = file ?: return
+        val e = edit.text
+        for (sp in e.getSpans(0, e.length, android.text.style.ForegroundColorSpan::class.java)) e.removeSpan(sp)
+        for (sp in DkaiKit.highlight(e.toString(), f.name)) {
+            if (sp.end > e.length) continue
+            val col = when (sp.tok) {
+                DkaiKit.Tok.KEYWORD -> 0xFFC084FC.toInt(); DkaiKit.Tok.STRING -> 0xFF34D399.toInt(); DkaiKit.Tok.COMMENT -> 0xFF64748B.toInt()
+                DkaiKit.Tok.TAG -> 0xFF60A5FA.toInt(); DkaiKit.Tok.NUMBER -> 0xFFFBBF24.toInt()
+            }
+            e.setSpan(android.text.style.ForegroundColorSpan(col), sp.start, sp.end, android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+        }
+    }
+
+    private fun paintTabs() {
+        if (!::tabRow.isInitialized) return
+        tabRow.removeAllViews()
+        val cur = file?.absolutePath
+        for (p in tabs) {
+            val f = File(p); val on = p == cur
+            tabRow.addView(DkaiTheme.pill(c, f.name + if (on) "  ×" else "", if (on) DkaiTheme.SEL else DkaiTheme.PILL, if (on) DkaiTheme.WHITE else DkaiTheme.GRAY, 12f).apply {
+                minHeight = d(36f); contentDescription = f.name
+                setOnClickListener {
+                    if (!on) confirmLeave { open(f) }
+                    else confirmLeave { tabs = tabs - p; val n = tabs.lastOrNull(); if (n != null) open(File(n)) else { file = null; show(); paintTabs() } }
+                }
+            }, LinearLayout.LayoutParams(-2, -2).apply { rightMargin = d(6f) })
+        }
+    }
+
+    private fun paintReview() {
+        if (!::review.isInitialized) return
+        val r = DkaiCopilot.review
+        review.visibility = if (r != null) View.VISIBLE else View.GONE
+        if (r != null) reviewTxt.text = "Review Changes • " + DkaiCopilot.reviewText(r)
+        reload()
+    }
+
+    /** Copilot ने यही फ़ाइल बदली हो तो दोबारा पढ़ो (बिना सेव बदलाव न हों तब) */
+    private fun reload() {
+        val f = file ?: return
+        if (dirty) return
+        val (txt, _) = DkaiWorkspace.readText(f)
+        if (txt != null && txt != saved) { saved = txt; edit.setText(txt); show() }
+    }
+
+    private fun aiEdit() {
+        val f = file ?: run { nav.toast("पहले फ़ाइल खोलें"); return }
+        ask("✦ AI Edit • ${f.name}", "क्या बदलना है? (जैसे: dark mode बटन जोड़ो)") { t ->
+            if (t.isBlank()) return@ask
+            save()
+            val proj = DkaiWorkspace.repoDirOf(c, f) ?: DkaiWorkspace.activeProject(c)?.takeIf { DkaiCore.inside(it, f) } ?: f.parentFile ?: return@ask
+            val rel = try { f.relativeTo(proj).path } catch (_: Exception) { f.name }
+            nav.toast("${DkaiKit.COPILOT} बदल रहा है…")
+            DkaiCopilot.run(c, proj, "Edit the file $rel: $t") { r, err ->
+                if (err != null) nav.toast("AI Edit: ${err.take(120)}") else { nav.toast("✓ ${r?.changes?.size ?: 0} फ़ाइल बदली - Undo / Keep चुनें"); reload(); paintReview() }
+            }
+        }
     }
 
     fun open(f: File): Boolean {
@@ -306,6 +485,7 @@ class EditorPanel(nav: DkaiNav) : DkaiPanel(nav) {
         file = f; saved = txt
         root            // पहली बार: पैनल अभी बनाओ
         edit.setText(txt); edit.setSelection(0); show()
+        tabs = DkaiKit.openTabs(tabs, f.absolutePath, 6); paintTabs()
         return true
     }
 
@@ -323,7 +503,7 @@ class EditorPanel(nav: DkaiNav) : DkaiPanel(nav) {
         return try { val s = edit.text.toString(); f.writeText(s); saved = s; stat(); true } catch (e: Exception) { nav.toast("सेव नहीं हुआ: ${e.message}"); false }
     }
 
-    private fun applyWrap() { edit.setHorizontallyScrolling(!wrap); nav.toast(if (wrap) "लाइन लपेटना चालू" else "लाइन लपेटना बंद") }
+    private fun applyWrap() { edit.setHorizontallyScrolling(!wrap); paintGutter(); nav.toast(if (wrap) "लाइन लपेटना चालू" else "लाइन लपेटना बंद") }
 
     private fun show() {
         val f = file
@@ -331,7 +511,7 @@ class EditorPanel(nav: DkaiNav) : DkaiPanel(nav) {
         title.text = f?.name ?: "Editor"
         previewBtn.visibility = if (f != null && DkaiCore.isHtml(f.name)) View.VISIBLE else View.GONE
         runBtn.visibility = if (f != null && f.name.endsWith(".sh")) View.VISIBLE else View.GONE
-        stat()
+        stat(); paintGutter(); ui.removeCallbacks(hl); ui.postDelayed(hl, 120)
     }
 
     private fun stat() {
@@ -405,7 +585,7 @@ class TerminalPanel(nav: DkaiNav) : DkaiPanel(nav) {
         promptTv = DkaiTheme.text(c, "~ $", 13f, DkaiTheme.GREEN, DkaiTheme.MONO)
         inRow.addView(promptTv)
         input = EditText(c).apply {
-            typeface = DkaiTheme.MONO; textSize = 13f; setTextColor(DkaiTheme.WHITE); setHintTextColor(0xFF64748B.toInt()); hint = "command लिखें (help)"
+            typeface = DkaiTheme.MONO; textSize = 13f; setTextColor(DkaiTheme.WHITE); setHintTextColor(DkaiTheme.HINT); hint = "command लिखें (help)"
             background = null; setSingleLine(); setPadding(d(8f), d(12f), d(8f), d(12f))
             inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS
             imeOptions = EditorInfo.IME_ACTION_GO or EditorInfo.IME_FLAG_NO_EXTRACT_UI
@@ -567,18 +747,62 @@ class PreviewPanel(nav: DkaiNav) : DkaiPanel(nav) {
     private lateinit var frame: FrameLayout
     private lateinit var title: TextView
     private lateinit var log: TextView
+    private lateinit var tabs: LinearLayout
+    private lateinit var url: EditText
+    private lateinit var autopilot: TextView
+    private lateinit var drawer: LinearLayout
+    private lateinit var drawerTxt: TextView
+    private lateinit var drawerBtn: TextView
     private var web: android.webkit.WebView? = null
     private var errors = 0
+    private val logs = ArrayList<String>()
+    private var opened = listOf<String>()          // खुले टैब (पूरे रास्ते)
+    private var state = "READY"
 
     override fun build(box: LinearLayout) {
         val (row, t) = bar("Preview"); title = t
         row.addView(iconBtn(DkaiIcon.Kind.FILES, "HTML फ़ाइल चुनें") { pick() })
         row.addView(iconBtn(DkaiIcon.Kind.REFRESH, "फिर से चलाएँ", DkaiTheme.CYAN) { load() })
         box.addView(row)
+        // ब्राउज़र जैसी टैब पट्टी
+        tabs = LinearLayout(c).apply { orientation = LinearLayout.HORIZONTAL; setPadding(d(12f), 0, d(12f), d(4f)) }
+        box.addView(HorizontalScrollView(c).apply { isHorizontalScrollBarEnabled = false; addView(tabs) })
+        // URL पट्टी: localhost:8080 + ✦ AI Sparkle / Share / Reload
+        val ub = LinearLayout(c).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
+            background = DkaiTheme.round(c, DkaiTheme.FIELD, 22f, DkaiTheme.BORDER); setPadding(d(12f), 0, d(2f), 0) }
+        ub.addView(ImageView(c).apply { setImageDrawable(DkaiIcon(DkaiIcon.Kind.LOCK, DkaiKit.EMERALD)) }, LinearLayout.LayoutParams(d(14f), d(14f)))
+        url = EditText(c).apply { textSize = 13f; typeface = DkaiTheme.MONO; setTextColor(DkaiTheme.WHITE); background = null; setSingleLine()
+            setPadding(d(8f), d(6f), d(4f), d(6f)); imeOptions = EditorInfo.IME_ACTION_GO; inputType = InputType.TYPE_TEXT_VARIATION_URI
+            setOnEditorActionListener { _, a, _ -> if (a == EditorInfo.IME_ACTION_GO) { go(text.toString()); true } else false } }
+        UiLang.keep(url)
+        ub.addView(url, LinearLayout.LayoutParams(0, -2, 1f))
+        ub.addView(DkaiUi.iconBtn(c, DkaiIcon.Kind.SPARKLE, "AI Sparkle: ${DkaiKit.COPILOT} Enhancement", DkaiTheme.VIOLET, 40f) { sparkle() })
+        ub.addView(DkaiUi.iconBtn(c, DkaiIcon.Kind.SHARE, "शेयर करें", DkaiTheme.GRAY, 40f) { shareIt() })
+        ub.addView(DkaiUi.iconBtn(c, DkaiIcon.Kind.REFRESH, "Reload", DkaiTheme.CYAN, 40f) { web?.reload() ?: load() })
+        box.addView(ub, LinearLayout.LayoutParams(-1, -2).apply { setMargins(d(12f), 0, d(12f), d(6f)) })
+        autopilot = DkaiTheme.text(c, "", 11.5f, DkaiKit.EMERALD, DkaiTheme.SANS_BOLD).apply { setPadding(d(16f), 0, d(16f), d(6f)) }
+        box.addView(autopilot)
         frame = FrameLayout(c).apply { background = DkaiTheme.round(c, 0xFFFFFFFF.toInt(), 14f); clipToOutline = true }
         box.addView(frame, LinearLayout.LayoutParams(-1, 0, 1f).apply { setMargins(d(12f), 0, d(12f), 0) })
-        log = DkaiTheme.text(c, "", 11f, DkaiTheme.GRAY, DkaiTheme.MONO).apply { setPadding(d(16f), d(6f), d(16f), d(6f)); maxLines = 2 }
+        log = DkaiTheme.text(c, "", 11f, DkaiTheme.GRAY, DkaiTheme.MONO).apply { setPadding(d(16f), d(6f), d(16f), d(2f)); maxLines = 2 }
         box.addView(log)
+        // Console Logs (N) दराज़ + AI Inspect
+        val bot = LinearLayout(c).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; setPadding(d(12f), d(2f), d(12f), d(6f)) }
+        drawerBtn = DkaiTheme.pill(c, "Console Logs (0)", DkaiTheme.PILL, DkaiTheme.SUB, 12f).apply { minHeight = d(40f)
+            setOnClickListener { drawer.visibility = if (drawer.visibility == View.VISIBLE) View.GONE else View.VISIBLE; paintLogs() } }
+        bot.addView(drawerBtn)
+        bot.addView(View(c), LinearLayout.LayoutParams(0, 1, 1f))
+        bot.addView(DkaiTheme.pill(c, "✦ AI Inspect", DkaiTheme.BLUE, DkaiTheme.ON, 12f).apply { minHeight = d(40f); setOnClickListener { inspect() } })
+        box.addView(bot)
+        drawer = LinearLayout(c).apply { orientation = LinearLayout.VERTICAL; visibility = View.GONE; setPadding(d(10f), d(8f), d(10f), d(8f))
+            background = DkaiTheme.round(c, DkaiTheme.CARD, 12f, DkaiTheme.BORDER) }
+        drawerTxt = DkaiTheme.text(c, "", 11f, DkaiTheme.SUB, DkaiTheme.MONO).apply { setTextIsSelectable(true) }
+        drawer.addView(MaxScroll(c, d(180f)).apply { addView(drawerTxt) })
+        drawer.addView(LinearLayout(c).apply { orientation = LinearLayout.HORIZONTAL
+            addView(DkaiTheme.pill(c, "Clear", DkaiTheme.PILL, DkaiTheme.GRAY, 11.5f).apply { setOnClickListener { logs.clear(); errors = 0; paintLogs() } })
+            addView(DkaiTheme.pill(c, "Copy", DkaiTheme.PILL, DkaiTheme.GRAY, 11.5f).apply { setOnClickListener { DkaiUi.copy(c, "console", logs.joinToString("\n")) } },
+                LinearLayout.LayoutParams(-2, -2).apply { leftMargin = d(6f) }) })
+        box.addView(drawer, LinearLayout.LayoutParams(-1, -2).apply { setMargins(d(12f), 0, d(12f), d(6f)) })
         load()
     }
 
@@ -589,7 +813,8 @@ class PreviewPanel(nav: DkaiNav) : DkaiPanel(nav) {
     fun open(f: File) { file = f; if (::frame.isInitialized) load() }
 
     /** कोई फ़ाइल न चुनी हो: App Studio / Workspace का सबसे नया index.html */
-    private fun guess(): File? = htmlFiles().firstOrNull { it.name.equals("index.html", true) } ?: htmlFiles().firstOrNull()
+    private fun guess(): File? = DkaiWorkspace.activeProject(c)?.let { DkaiWorkspace.entryOf(it) }
+        ?: htmlFiles().firstOrNull { it.name.equals("index.html", true) } ?: htmlFiles().firstOrNull()
 
     private fun htmlFiles(): List<File> = DkaiWorkspace.roots(c).flatMap { r ->
         r.dir.walkTopDown().maxDepth(5).onEnter { it.name != "node_modules" && it.name != ".git" }.filter { it.isFile && DkaiCore.isHtml(it.name) }.take(60).toList()
@@ -602,6 +827,81 @@ class PreviewPanel(nav: DkaiNav) : DkaiPanel(nav) {
         AlertDialog.Builder(c).setTitle("कौन-सी फ़ाइल चलाएँ?").setItems(names.toTypedArray()) { _, i -> file = fs[i]; load() }.show()
     }
 
+    /** फ़ाइल किस प्रोजेक्ट की? (DKAIProjects/<नाम>) - न हो तो उसका फ़ोल्डर */
+    private fun projectOf(f: File): File {
+        val pr = try { DkaiWorkspace.projectsRoot(c).canonicalFile } catch (_: Exception) { null }
+        var d: File? = f.canonicalFile.parentFile
+        while (d != null && pr != null) { if (d.parentFile?.canonicalPath == pr.path) return d; d = d.parentFile }
+        DkaiWorkspace.repoDirOf(c, f)?.let { return it }
+        return f.parentFile ?: f
+    }
+
+    private fun addLog(s: String, err: Boolean) {
+        if (err) errors++
+        logs.add((if (err) "✗ " else "› ") + s); while (logs.size > 300) logs.removeAt(0)
+        log.text = "console: ${s.take(140)}" + if (errors > 0) "  • $errors error" else ""
+        paintLogs()
+    }
+
+    private fun paintLogs() {
+        if (!::drawerBtn.isInitialized) return
+        drawerBtn.text = "Console Logs (${logs.size})" + if (errors > 0) " • $errors ✗" else ""
+        drawerBtn.setTextColor(if (errors > 0) DkaiTheme.RED else DkaiTheme.SUB)
+        if (drawer.visibility == View.VISIBLE) drawerTxt.text = if (logs.isEmpty()) "(अभी कोई console संदेश नहीं)" else logs.joinToString("\n")
+    }
+
+    private fun paintState(s: String) {
+        state = s
+        val on = DkaiServer.running()
+        autopilot.text = "● AUTOPILOT " + (if (on) "RUNNING" else "OFFLINE") + " [$s]"
+        autopilot.setTextColor(if (!on) DkaiTheme.GRAY else if (s == "READY") DkaiKit.EMERALD else DkaiTheme.AMBER)
+    }
+
+    private fun paintTabs() {
+        tabs.removeAllViews()
+        val cur = file?.absolutePath
+        for (p in opened) {
+            val f = File(p); val on = p == cur
+            tabs.addView(DkaiTheme.pill(c, f.name + "  ×", if (on) DkaiTheme.SEL else DkaiTheme.PILL, if (on) DkaiTheme.WHITE else DkaiTheme.GRAY, 12f).apply {
+                minHeight = d(36f); contentDescription = f.name
+                setOnClickListener { if (on) { opened = opened - p; if (opened.isEmpty()) { file = null } else file = File(opened.last()); load() } else { file = f; load() } }
+            }, LinearLayout.LayoutParams(-2, -2).apply { rightMargin = d(6f) })
+        }
+        tabs.addView(DkaiTheme.pill(c, "+", DkaiTheme.PILL, DkaiTheme.CYAN, 13f).apply { minHeight = d(36f); contentDescription = "नया टैब"; setOnClickListener { pick() } })
+    }
+
+    private fun go(typed: String) {
+        val t = typed.trim(); if (t.isEmpty()) return
+        val w = ensureWeb() ?: return
+        val u = if (t.startsWith("http://") || t.startsWith("https://") || t.startsWith("file:")) t else if (t.startsWith("localhost")) "http://$t" else "https://$t"
+        (nav as? DkaiScreen)?.hideKeyboard()
+        w.loadUrl(u)
+    }
+
+    private fun sparkle() {
+        val s = nav as? DkaiScreen ?: return
+        val f = file ?: run { pick(); return }
+        DkaiModals.enhance(s, projectOf(f), f) { r -> if (r != null) { addLog("${DkaiKit.COPILOT}: ${r.changes.size} फ़ाइल बदली", false); load() } }
+    }
+
+    private fun shareIt() {
+        val f = file ?: return
+        DkaiUi.shareText(c, "${f.name} • ${url.text}\n${DkaiKit.BRAND} Preview (${DkaiKit.shownPath(f)})")
+    }
+
+    /** AI Inspect: console की गलतियाँ + फ़ाइल -> Copilot से ठीक करवाओ */
+    private fun inspect() {
+        val f = file ?: run { nav.toast("पहले HTML चलाएँ"); return }
+        val errs = logs.filter { it.startsWith("✗") }.takeLast(20)
+        val cmd = if (errs.isEmpty()) "Inspect ${f.name}: find visual/layout/JS bugs, broken links, accessibility and mobile responsiveness issues and fix them."
+            else "Fix these browser console errors in ${f.name}:\n" + errs.joinToString("\n")
+        addLog("AI Inspect चल रहा है…", false); paintState("INSPECTING")
+        DkaiCopilot.run(c, projectOf(f), cmd) { r, err ->
+            if (err != null) { addLog("AI Inspect: $err", true); paintState("READY") }
+            else { addLog("AI Inspect: ${r?.changes?.size ?: 0} फ़ाइल ठीक की (GitHub → Root Project में Undo / Keep)", false); load() }
+        }
+    }
+
     @SuppressLint("SetJavaScriptEnabled")
     private fun ensureWeb(): android.webkit.WebView? {
         web?.let { return it }
@@ -610,12 +910,15 @@ class PreviewPanel(nav: DkaiNav) : DkaiPanel(nav) {
         w.settings.domStorageEnabled = true
         @Suppress("DEPRECATION")
         run { w.settings.allowFileAccess = true; w.settings.allowFileAccessFromFileURLs = true }
-        w.webViewClient = android.webkit.WebViewClient()
+        w.webViewClient = object : android.webkit.WebViewClient() {
+            override fun onPageStarted(v: android.webkit.WebView?, u: String?, fav: android.graphics.Bitmap?) { main { paintState("LOADING"); u?.let { url.setText(it.removePrefix("http://")) } } }
+            override fun onPageFinished(v: android.webkit.WebView?, u: String?) { main { paintState("READY") } }
+        }
         w.webChromeClient = object : android.webkit.WebChromeClient() {
             override fun onConsoleMessage(m: android.webkit.ConsoleMessage?): Boolean {
                 if (m == null) return false
-                if (m.messageLevel() == android.webkit.ConsoleMessage.MessageLevel.ERROR) errors++
-                log.text = "console: ${m.message().take(140)}" + if (errors > 0) "  • $errors error" else ""
+                addLog(m.message().take(300) + if (m.lineNumber() > 0) "  (${m.sourceId()?.substringAfterLast('/')}:${m.lineNumber()})" else "",
+                    m.messageLevel() == android.webkit.ConsoleMessage.MessageLevel.ERROR)
                 return true
             }
         }
@@ -629,12 +932,25 @@ class PreviewPanel(nav: DkaiNav) : DkaiPanel(nav) {
         if (f == null || !f.isFile) {
             frame.removeAllViews(); web = null
             frame.addView(empty("चलाने को कोई HTML नहीं चुनी।\nऊपर फ़ोल्डर वाले बटन से फ़ाइल चुनें।", "फ़ाइल चुनें") { pick() }.apply { setBackgroundColor(DkaiTheme.BG) })
-            title.text = "Preview"; return
+            title.text = "Preview"; url.setText(""); paintTabs(); paintState("IDLE"); return
         }
+        opened = DkaiKit.openTabs(opened, f.absolutePath, 5)
+        paintTabs()
         if (web == null) frame.removeAllViews()
         val w = ensureWeb() ?: return
-        errors = 0; title.text = f.name; log.text = "चल रहा है: ${f.name}"
-        w.loadUrl(Uri.fromFile(f).toString())
+        errors = 0; logs.clear(); paintLogs(); title.text = f.name; log.text = "चल रहा है: ${f.name}"
+        // असली localhost:8080 - प्रोजेक्ट फ़ोल्डर परोसो (नहीं खुला तो file:// से)
+        val root = projectOf(f)
+        val err = DkaiServer.start(root)
+        val rel = try { f.canonicalFile.relativeTo(root.canonicalFile).path.replace('\\', '/') } catch (_: Exception) { null }
+        if (err == null && rel != null && !rel.startsWith("..")) {
+            val u = DkaiKit.localUrl(DkaiKit.PORT, "/" + rel.split('/').joinToString("/") { Uri.encode(it) })
+            url.setText(u.removePrefix("http://")); w.loadUrl(u)
+        } else {
+            if (err != null) addLog(err, true)
+            url.setText(Uri.fromFile(f).toString()); w.loadUrl(Uri.fromFile(f).toString())
+        }
+        paintState("LOADING")
     }
 }
 
@@ -654,7 +970,7 @@ class GithubPanel(nav: DkaiNav) : DkaiPanel(nav) {
         who = DkaiTheme.text(c, "", 12f, DkaiTheme.GRAY).apply { setPadding(d(16f), 0, d(16f), d(6f)) }
         box.addView(who)
         search = EditText(c).apply {
-            hint = "रिपो खोजें"; setSingleLine(); textSize = 14f; setTextColor(DkaiTheme.WHITE); setHintTextColor(0xFF64748B.toInt())
+            hint = "रिपो खोजें"; setSingleLine(); textSize = 14f; setTextColor(DkaiTheme.WHITE); setHintTextColor(DkaiTheme.HINT)
             background = DkaiTheme.round(c, DkaiTheme.CARD, 14f, DkaiTheme.BORDER); setPadding(d(14f), d(10f), d(14f), d(10f))
             addTextChangedListener(object : TextWatcher {
                 override fun beforeTextChanged(s: CharSequence?, a: Int, b: Int, cnt: Int) {}

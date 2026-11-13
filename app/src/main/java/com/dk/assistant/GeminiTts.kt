@@ -162,6 +162,63 @@ object GeminiTts {
         return if (isWav(bytes)) bytes else pcmToWav(bytes, 24000)
     }
 
+    // ------------------------------------------------------------------ 13 नवंबर 2026: DKAI Broadcast Studio (सिर्फ़ आवाज़)
+    private val dialogMissing = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
+    private val longHttp by lazy {
+        com.dk.assistant.NetFix.builder().connectTimeout(10, TimeUnit.SECONDS).readTimeout(120, TimeUnit.SECONDS).callTimeout(150, TimeUnit.SECONDS).build()
+    }
+
+    /**
+     * कई बोलने वालों की बातचीत एक WAV में ([lines] = (नाम, बात), [voices] = नाम -> Gemini आवाज़).
+     * 1 नाम = एक आवाज़; 2 नाम = Gemini का multi-speaker (हर नाम की अपनी आवाज़). मुख्य key, फिर बैकअप keys.
+     */
+    fun synthesizeDialog(keys: List<String>, lines: List<Pair<String, String>>, voices: Map<String, String>, style: String = ""): ByteArray {
+        val list = keys.filter { it.isNotBlank() }.distinct()
+        if (list.isEmpty()) throw AiException(401, "Gemini की key नहीं है")
+        val names = lines.map { it.first }.distinct()
+        val script = if (names.size <= 1) lines.joinToString("\n") { it.second }
+            else "TTS the following conversation between ${names.joinToString(" and ")}:\n" + lines.joinToString("\n") { "${it.first}: ${it.second}" }
+        val speech = if (names.size <= 1) JSONObject().put("voiceConfig", JSONObject().put("prebuiltVoiceConfig", JSONObject().put("voiceName", voices[names.firstOrNull()] ?: "Sulafat")))
+            else JSONObject().put("multiSpeakerVoiceConfig", JSONObject().put("speakerVoiceConfigs", JSONArray().apply {
+                for (n in names.take(2)) put(JSONObject().put("speaker", n).put("voiceConfig", JSONObject().put("prebuiltVoiceConfig", JSONObject().put("voiceName", voices[n] ?: "Puck"))))
+            }))
+        val text = (if (style.isNotBlank()) "Read aloud in a $style way.\n" else "") + script
+        val body = JSONObject()
+            .put("contents", JSONArray().put(JSONObject().put("parts", JSONArray().put(JSONObject().put("text", text)))))
+            .put("generationConfig", JSONObject().put("responseModalities", JSONArray().put("AUDIO")).put("speechConfig", speech))
+        var last: Exception? = null
+        val now = System.currentTimeMillis()
+        // multi-speaker सिर्फ़ generateContent वाले मॉडल पर (नए interactions मॉडल पर नहीं) - न चले तो Studio हर लाइन अलग बनाता है
+        for (k in list) for (m in OLD_MODELS.filter { it !in missing && it !in dialogMissing && !blocked(k, it, now) }) {
+            try {
+                val req = Request.Builder().url("https://generativelanguage.googleapis.com/v1beta/models/$m:generateContent").header("x-goog-api-key", k)
+                    .post(body.toString().toRequestBody(JSON)).build()
+                val o = longHttp.newCall(req).execute().use { r ->
+                    val s = r.body?.string() ?: ""
+                    if (!r.isSuccessful) throw AiException(r.code, try { JSONObject(s).optJSONObject("error")?.optString("message") ?: s.take(200) } catch (_: Exception) { s.take(200) })
+                    JSONObject(s)
+                }
+                val parts = o.optJSONArray("candidates")?.optJSONObject(0)?.optJSONObject("content")?.optJSONArray("parts") ?: throw AiException(0, "audio nahi mila")
+                for (i in 0 until parts.length()) {
+                    val inl = parts.optJSONObject(i)?.let { it.optJSONObject("inlineData") ?: it.optJSONObject("inline_data") } ?: continue
+                    val bytes = Base64.decode(inl.optString("data"), Base64.DEFAULT)
+                    val rate = Regex("rate=(\\d+)").find(inl.optString("mimeType"))?.groupValues?.get(1)?.toIntOrNull() ?: 24000
+                    return if (isWav(bytes)) bytes else pcmToWav(bytes, rate)
+                }
+                throw AiException(0, "audio nahi mila")
+            } catch (e: AiException) {
+                last = e
+                when (e.code) {
+                    401, 403 -> break
+                    429 -> { val ms = retryMs(e.message ?: ""); blockedUntil[slot(k, m)] = System.currentTimeMillis() + ms; Cooldown.block(cdName(k, m), ms) }
+                    404 -> dialogMissing.add(m)
+                }
+                DKLog.d("Broadcast TTS $m -> ${e.code} ${e.message?.take(80)}")
+            } catch (e: java.io.IOException) { last = e; DKLog.d("Broadcast TTS $m -> ${e.message?.take(80)}") }
+        }
+        throw (last as? AiException) ?: AiException(0, last?.message ?: "Gemini TTS fail")
+    }
+
     /** Purana generateContent tareeka (PCM 24kHz). */
     private fun legacy(key: String, model: String, text: String, voice: String, style: String): ByteArray {
         val body = JSONObject()

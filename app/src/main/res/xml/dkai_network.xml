@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 13 नवंबर 2026: DK AI Preview का अपना लोकल सर्वर (http://localhost:8080) - सिर्फ़ फ़ोन के अंदर, बाकी सब पहले जैसा (HTTPS) -->
+<network-security-config>
+    <domain-config cleartextTrafficPermitted="true">
+        <domain includeSubdomains="false">localhost</domain>
+        <domain includeSubdomains="false">127.0.0.1</domain>
+    </domain-config>
+</network-security-config>

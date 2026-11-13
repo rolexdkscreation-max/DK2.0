@@ -105,6 +105,7 @@
         android:roundIcon="@mipmap/ic_launcher_round"
         android:label="@string/app_name"
         android:supportsRtl="true"
+        android:networkSecurityConfig="@xml/dkai_network"
         android:theme="@style/Theme.DK">
 
         <!-- v3.66: ONNX Runtime का telemetry provider नहीं (कुछ भी बाहर न जाए, और x86 पर .so के बिना ऐप न रुके) -->

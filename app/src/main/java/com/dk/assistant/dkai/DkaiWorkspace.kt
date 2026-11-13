@@ -22,7 +22,63 @@ object DkaiWorkspace {
         Root("Workspace", workspace(c)),
         Root("App Studio", File(c.filesDir, "studio").apply { mkdirs() }),
         Root("DK Computer", try { ComputerTools.dir(c) } catch (_: Exception) { File(c.filesDir, "computer").apply { mkdirs() } }),
+        Root("DKAIProjects", projectsRoot(c)),
     )
+
+    // ------------------------------------------------------------------ 13 नवंबर 2026: DK AI प्रोजेक्ट (/storage/emulated/0/DKAIProjects/...)
+    /** "सभी फ़ाइलें" इजाज़त = फ़ोन का /storage/emulated/0/DKAIProjects; नहीं = ऐप का अपना बाहरी फ़ोल्डर (बिना इजाज़त भी चले) */
+    fun projectsRoot(c: Context): File {
+        if (allFiles()) {
+            val f = File(android.os.Environment.getExternalStorageDirectory(), DkaiKit.PROJECTS_DIR)
+            if ((f.isDirectory || f.mkdirs()) && f.canWrite()) return f
+        }
+        return File(c.getExternalFilesDir(null) ?: c.filesDir, DkaiKit.PROJECTS_DIR).apply { mkdirs() }
+    }
+
+    fun allFiles(): Boolean = android.os.Build.VERSION.SDK_INT >= 30 && try { android.os.Environment.isExternalStorageManager() } catch (_: Throwable) { false }
+
+    /** DKAIProjects के प्रोजेक्ट + Workspace में लाए GitHub रिपो */
+    fun projects(c: Context): List<File> {
+        val a = list(projectsRoot(c)).filter { it.isDirectory && !it.name.startsWith(".") }
+        val b = list(workspace(c)).filter { it.isDirectory && meta(it) != null }
+        return a + b
+    }
+
+    private const val PREF_PROJECT = "dkai_project"
+
+    /** अभी चुना प्रोजेक्ट (Files / GitHub / Preview का Root Project) */
+    fun activeProject(c: Context): File? {
+        val p = com.dk.assistant.Prefs.str(c, PREF_PROJECT, "")
+        val f = if (p.isNotBlank()) File(p) else null
+        if (f != null && f.isDirectory) return f
+        return projects(c).firstOrNull()
+    }
+
+    fun setProject(c: Context, f: File) = com.dk.assistant.Prefs.edit(c) { putString(PREF_PROJECT, f.absolutePath) }
+
+    /** नया प्रोजेक्ट: .dkai/config.json + शुरू की फ़ाइलें (index.html, style, js, meta) */
+    fun createProject(c: Context, name: String): File? {
+        if (!DkaiCore.validName(name)) return null
+        val dir = File(projectsRoot(c), name.trim())
+        if (dir.exists()) return null
+        if (!dir.mkdirs()) return null
+        try {
+            File(dir, DkaiKit.CONFIG_DIR).mkdirs()
+            File(dir, DkaiKit.CONFIG_DIR + "/config.json").writeText(JSONObject().put("name", name.trim()).put("brand", DkaiKit.BRAND)
+                .put("entry", "index.html").put("port", DkaiKit.PORT).put("created", System.currentTimeMillis()).toString(2))
+            File(dir, "style").mkdirs(); File(dir, "js").mkdirs(); File(dir, "meta").mkdirs()
+            File(dir, "style/style.css").writeText("body{margin:0;font-family:system-ui,sans-serif;background:#0b101d;color:#e2e8f0;display:grid;place-items:center;min-height:100vh}\nh1{color:#3b82f6}\n")
+            File(dir, "js/app.js").writeText("document.getElementById('t').textContent = 'Hello from ${'$'}{document.title}';\n")
+            File(dir, "meta/manifest.json").writeText(JSONObject().put("name", name.trim()).put("start_url", "/index.html").toString(2))
+            File(dir, "index.html").writeText("<!doctype html>\n<html lang=\"en\">\n<head>\n  <meta charset=\"utf-8\">\n  <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\n  <title>${name.trim()}</title>\n  <link rel=\"stylesheet\" href=\"style/style.css\">\n</head>\n<body>\n  <h1 id=\"t\">${name.trim()}</h1>\n  <script src=\"js/app.js\"></script>\n</body>\n</html>\n")
+        } catch (_: Exception) {}
+        setProject(c, dir)
+        return dir
+    }
+
+    /** प्रोजेक्ट का index.html (या पहली HTML) */
+    fun entryOf(dir: File): File? = File(dir, "index.html").takeIf { it.isFile }
+        ?: dir.walkTopDown().maxDepth(3).onEnter { it.name != "node_modules" && it.name != ".git" }.firstOrNull { it.isFile && DkaiCore.isHtml(it.name) }
 
     fun rootOf(c: Context, f: File): Root? = roots(c).firstOrNull { DkaiCore.inside(it.dir, f) }
 
