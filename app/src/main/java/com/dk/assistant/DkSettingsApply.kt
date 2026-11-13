@@ -39,6 +39,7 @@ object DkSettingsApply {
         DKLog.d("DK ने सेटिंग बदली (यूज़र ने दो बार पक्का किया): ${it.name} -> ${DkSettings.onOff(on)}")
         try { if (it.pref == "duck_media" && !on) Ducker.releaseNow() } catch (_: Exception) {}
         try { DKAccessibilityService.instance?.startWakeLoopIfEnabled() } catch (_: Exception) {}
+        if (it.pref == com.dk.assistant.dkai.Dkai.PREF) MainActivity.homeChanged()      // नया UI / क्लासिक: खुला होम तुरंत बदले
     }
 
     /**

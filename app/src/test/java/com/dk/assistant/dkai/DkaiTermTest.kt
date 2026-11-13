@@ -129,7 +129,9 @@ class DkaiTermTest {
         val views = src("dkai/DkaiViews.kt")
         for (f in listOf("fun reactor(", "fun solar(", "fun crystal(", "fun swarm(")) assertTrue(f, views.contains(f))
         assertTrue(src("dkai/DkaiVoice.kt").contains("DkaiOrbs.pick"))
-        assertTrue(src("MainActivity.kt").contains("Orb बदलें"))
+        // 13 नवंबर 2026 (मालिक): orb बदलना ☰ मेनू से हटकर Settings → दिखावट में
+        assertTrue(src("SettingsLook.kt").contains("card(\"DKAI का orb\""))
+        assertTrue(src("SettingsLook.kt").contains("DkaiOrbs.ORBS"))
     }
 
     @Test fun chatShowsSources() {

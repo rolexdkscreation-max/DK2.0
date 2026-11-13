@@ -95,10 +95,7 @@ class MainActivity : AppCompatActivity() {
                 com.dk.assistant.ui.HomeMenu.Item(R.drawable.ic_s_computer, "DK कंप्यूटर", "कोई भी काम कदम-दर-कदम") { startActivity(Intent(this, ComputerActivity::class.java)) },
                 com.dk.assistant.ui.HomeMenu.Item(R.drawable.ic_s_story, "DK टीचर", "व्हाइटबोर्ड पर कदम-दर-कदम पढ़ाई") { startActivity(Intent(this, TeacherActivity::class.java)) },
                 com.dk.assistant.ui.HomeMenu.Item(R.drawable.ic_globe, "वेबसाइट", "वेबसाइट बनाने वाला Forge") { startActivity(Intent(this, com.dk.assistant.forge.ForgeActivity::class.java)) },
-                com.dk.assistant.ui.HomeMenu.Item(R.drawable.ic_settings, "सेटिंग्स", "दिखावट, आवाज़, AI दिमाग और बाकी सब") { openSettings() },
-                com.dk.assistant.ui.HomeMenu.Item(R.drawable.ic_s_coder, "DKAI होम", "नया होम: आवाज़ orb + Files / Editor / Terminal / Preview / GitHub") {
-                    com.dk.assistant.dkai.Dkai.set(this, true); recreate()
-                }
+                com.dk.assistant.ui.HomeMenu.Item(R.drawable.ic_settings, "सेटिंग्स", "दिखावट, आवाज़, AI दिमाग और बाकी सब") { openSettings() }
             ))
         }
         btnMute.setOnClickListener {
@@ -175,13 +172,7 @@ class MainActivity : AppCompatActivity() {
                         if (Setup.hasMic(this)) "अनुमति मिली हुई है" else "माइक की अनुमति दें") { askPerms() },
                     com.dk.assistant.ui.HomeMenu.Item(R.drawable.ic_s_story, "DK टीचर", "व्हाइटबोर्ड पर कदम-दर-कदम पढ़ाई") { startActivity(Intent(this, TeacherActivity::class.java)) },
                     com.dk.assistant.ui.HomeMenu.Item(R.drawable.ic_globe, "वेबसाइट", "वेबसाइट बनाने वाला Forge") { startActivity(Intent(this, com.dk.assistant.forge.ForgeActivity::class.java)) },
-                    com.dk.assistant.ui.HomeMenu.Item(R.drawable.ic_settings, "सेटिंग्स", "दिखावट, आवाज़, AI दिमाग और बाकी सब") { openSettings() },
-                    com.dk.assistant.ui.HomeMenu.Item(R.drawable.ic_globe, "Orb बदलें", "अभी: " + com.dk.assistant.dkai.DkaiOrbs.label(com.dk.assistant.dkai.DkaiOrbs.get(this))) {
-                        com.dk.assistant.dkai.DkaiOrbs.pick(this) {}
-                    },
-                    com.dk.assistant.ui.HomeMenu.Item(R.drawable.ic_s_coder, "क्लासिक होम", "पुराना orb वाला होम (यहाँ से फिर DKAI)") {
-                        com.dk.assistant.dkai.Dkai.set(this, false); recreate()
-                    }
+                    com.dk.assistant.ui.HomeMenu.Item(R.drawable.ic_settings, "सेटिंग्स", "दिखावट, आवाज़, AI दिमाग और बाकी सब") { openSettings() }
                 ))
             },
             alerts = {
@@ -360,6 +351,9 @@ class MainActivity : AppCompatActivity() {
 
     override fun onResume() {
         super.onResume()
+        live = java.lang.ref.WeakReference(this)
+        // 13 नवंबर 2026: Settings / DK लाइव से नया UI ↔ क्लासिक बदला = लौटते ही वही होम
+        if (com.dk.assistant.dkai.Dkai.on(this) != (dkai != null)) { recreate(); return }
         DKState.listen(stateListener)
         VoiceWarm.onAppOpen(this)      // v3.71: ऐप खुलते ही Worker/TTS का कनेक्शन तैयार
         Setup.startKeepAlive(this)
@@ -466,5 +460,14 @@ class MainActivity : AppCompatActivity() {
         val dkText = if (DKState.lastReply.isBlank()) "" else "$name: " + DKState.lastReply
         UiLang.setText(txtDk, userText + dkText)
         applyNeon()
+    }
+
+    companion object {
+        @Volatile private var live: java.lang.ref.WeakReference<MainActivity>? = null
+        /** Settings / DK लाइव ने होम का रूप बदला: खुली होम स्क्रीन तुरंत नई (बंद हो तो अगली बार खुलते ही) */
+        fun homeChanged() {
+            val a = live?.get() ?: return
+            a.runOnUiThread { if (!a.isFinishing && !a.isDestroyed && com.dk.assistant.dkai.Dkai.on(a) != (a.dkai != null)) a.recreate() }
+        }
     }
 }
