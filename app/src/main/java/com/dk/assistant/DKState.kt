@@ -21,6 +21,8 @@ object DKState {
         private set
     /** Aakhri jawab ke sources (voice screen ke caption ke neeche) - khali = apne gyaan se jawab */
     @Volatile var lastSources: List<Pair<String, String>> = emptyList()
+    /** 13 नवंबर 2026: आख़िरी जवाब का groundingMetadata (आवाज़ वाली स्क्रीन पर चिप) */
+    @Volatile var lastGround: GroundCite.G? = null
         private set
 
     private val main = Handler(Looper.getMainLooper())
@@ -59,7 +61,9 @@ object DKState {
     /** Chat screen ke liye poori baatcheet (role "u" = aap, "d" = DK) */
     data class Msg(val role: String, val text: String, val time: Long = System.currentTimeMillis(),
                    /** Web search ke sources (title, url) - sirf jab jawab sach me search se aaya; warna khali */
-                   val src: List<Pair<String, String>> = emptyList())
+                   val src: List<Pair<String, String>> = emptyList(),
+                   /** 13 नवंबर 2026: Gemini googleSearch का groundingMetadata - वाक्य के अंत में चिप + नीचे स्रोत; खोज नहीं = null */
+                   val g: GroundCite.G? = null)
     val messages = java.util.concurrent.CopyOnWriteArrayList<Msg>()
 
     fun user(t: String) {
@@ -97,7 +101,7 @@ object DKState {
     @Volatile var failedAt = 0L
         private set
     fun replyFailed(t: String) {
-        lastReply = t; liveReply = ""; hintText = ""; lastSources = emptyList()
+        lastReply = t; liveReply = ""; hintText = ""; lastSources = emptyList(); lastGround = null
         val m = Msg("d", t); failedAt = m.time
         messages.add(m); trim()
         emit()
@@ -118,14 +122,15 @@ object DKState {
     @Volatile var hintText: String = ""
         private set
     fun hint(t: String) { hintText = t; emit() }
-    fun reply(t: String, sources: List<Pair<String, String>> = emptyList()) {
-        lastReply = t; liveReply = ""; hintText = ""; lastSources = sources
+    fun reply(t: String, sources: List<Pair<String, String>> = emptyList(), g: GroundCite.G? = null) {
+        val src = if (g != null) (GroundCite.unique(g) + sources).distinctBy { it.second } else sources
+        lastReply = t; liveReply = ""; hintText = ""; lastSources = src; lastGround = g
         TeacherBoard.onReply(t, final = true)   // v3.87: पढ़ाई का जवाब टीचर के पन्ने पर
-        if (t.isNotBlank()) { messages.add(Msg("d", t, src = sources)); trim(); LocalMemory.record(appCtx, "d", t, if (live) "voice" else "text") }
+        if (t.isNotBlank()) { messages.add(Msg("d", t, src = src, g = g)); trim(); LocalMemory.record(appCtx, "d", t, if (live) "voice" else "text") }
         emit()
     }
     /** Jawab abhi ban raha hai (tukdon me) - screen par dikhao, chat list me abhi mat jodo */
-    fun replyLive(t: String) { if (liveReply.isEmpty()) lastSources = emptyList(); lastReply = t; liveReply = t; TeacherBoard.onReply(t, final = false); emit() }
+    fun replyLive(t: String) { if (liveReply.isEmpty()) { lastSources = emptyList(); lastGround = null }; lastReply = t; liveReply = t; TeacherBoard.onReply(t, final = false); emit() }
     private fun trim() { while (messages.size > 200) messages.removeAt(0); persist() }
 
     // ---- chat phone me save (app band/restart ke baad bhi baatcheet dikhe)
@@ -147,7 +152,7 @@ object DKState {
         lastReply = ""
         liveReply = ""
         hintText = ""
-        lastSources = emptyList()
+        lastSources = emptyList(); lastGround = null
         failedAt = 0L
         sentAt = 0L
         live = false

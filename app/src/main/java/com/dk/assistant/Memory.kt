@@ -121,7 +121,7 @@ object Memory {
             a.optJSONObject(i)?.let { o ->
                 val sa = o.optJSONArray("s")
                 val src = (0 until (sa?.length() ?: 0)).mapNotNull { k -> sa!!.optJSONArray(k)?.let { it.optString(0) to it.optString(1) } }
-                DKState.Msg(o.optString("r"), o.optString("t"), o.optLong("w"), src)
+                DKState.Msg(o.optString("r"), o.optString("t"), o.optLong("w"), src, GroundCite.fromJson(o.optJSONObject("g")))
             }
         }
     }
@@ -131,6 +131,7 @@ object Memory {
         msgs.takeLast(MAX_CHAT).forEach { m ->
             val o = JSONObject().put("r", m.role).put("t", m.text).put("w", m.time)
             if (m.src.isNotEmpty()) o.put("s", JSONArray().apply { m.src.forEach { put(JSONArray().put(it.first).put(it.second)) } })
+            m.g?.let { o.put("g", GroundCite.toJson(it)) }
             a.put(o)
         }
         writeArr(c, "dk_chat.json", a)

@@ -176,7 +176,7 @@ internal fun GeminiLive.handleServer(msg: String, setup: CompletableDeferred<Uni
     (sc.optJSONObject("groundingMetadata") ?: o.optJSONObject("groundingMetadata"))?.let { gm ->
         val add = Grounding.sources(gm).also { WebSearch.tag(it, WebSearch.Provider.GEMINI) }
         if (add.isNotEmpty()) {
-            synchronized(turnLock) { turnSources = Grounding.merge(turnSources, add) }
+            synchronized(turnLock) { turnSources = Grounding.merge(turnSources, add); turnGround = GroundCite.merge(turnGround, GroundCite.parse(gm, "", live = true)) }
             if (toolJobs.isEmpty()) DKState.hint("")
             log("Google Search हुआ - ${add.size} स्रोत: ${add.joinToString { Grounding.host(it.second).ifBlank { it.first } }}")
         }

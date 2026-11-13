@@ -12,7 +12,9 @@ import java.util.concurrent.TimeUnit
 data class Turn(val role: String, val text: String)   // role = "user" ya "model"
 
 /** Internet search ka jawab + sources (title, link) */
-data class SearchResult(val text: String, val sources: List<Pair<String, String>>)
+data class SearchResult(val text: String, val sources: List<Pair<String, String>>,
+                        /** 13 नवंबर 2026: Gemini googleSearch का groundingMetadata (वाक्य-वाले चिप) - और खोज सेवाओं में null */
+                        val g: GroundCite.G? = null)
 
 /** retryAfter = Google ne kitne second baad dobara bola (429), 0 = pata nahi */
 class AiException(val code: Int, message: String, val retryAfter: Int = 0) : IOException(message)
@@ -151,7 +153,24 @@ class GeminiClient(private val key: String, private val model: String) : AiClien
         throw last ?: AiException(0, "Gemini fail")
     }
 
+    /**
+     * 13 नवंबर 2026 (मालिक): चैट के हर Gemini जवाब में googleSearch चालू ([BrainManager.streamChat] में true) - ज़रूरत हो तो मॉडल खुद वेब खोजे.
+     * अंदरूनी काम (खोज मिलाना, ऑटो रिप्लाई, key टेस्ट) = false.
+     * खोजा = [lastGround] में groundingMetadata (वाक्य-वाले चिप + स्रोत); नहीं खोजा = null.
+     */
+    var groundChat = false
+    @Volatile var lastGround: GroundCite.G? = null
+        private set
+    @Volatile private var streamMeta: JSONObject? = null
+
     override fun stream(system: String, history: List<Turn>, prompt: String, onDelta: (String) -> Unit): String {
+        lastGround = null
+        val full = streamModels(system, history, prompt, onDelta)
+        lastGround = GroundCite.parse(streamMeta, full)
+        return full
+    }
+
+    private fun streamModels(system: String, history: List<Turn>, prompt: String, onDelta: (String) -> Unit): String {
         val models = if (only) listOf(model) else GeminiModels.order(model, backups).take(3)
         var last: AiException? = null
         for (m in models) {
@@ -190,7 +209,21 @@ class GeminiClient(private val key: String, private val model: String) : AiClien
         throw last ?: AiException(0, "Gemini fail")
     }
 
+    /** googleSearch के साथ; मॉडल/खाता tool न माने (400) तो उसी मॉडल से बिना tool एक बार (जवाब रुके नहीं) */
     private fun streamOnce(m: String, system: String, history: List<Turn>, prompt: String, thinking: Boolean, onDelta: (String) -> Unit) {
+        streamMeta = null
+        if (!groundChat) { streamRaw(m, system, history, prompt, thinking, false, onDelta); return }
+        var got = false
+        try { streamRaw(m, system, history, prompt, thinking, true) { got = true; onDelta(it) } }
+        catch (e: AiException) {
+            if (got || !GroundCite.toolRejected(e.code, e.message.orEmpty())) throw e
+            DKLog.d("Gemini ($m): googleSearch tool नहीं चला (${e.code}) - बिना खोज वाला जवाब")
+            streamMeta = null
+            streamRaw(m, system, history, prompt, thinking, false, onDelta)
+        }
+    }
+
+    private fun streamRaw(m: String, system: String, history: List<Turn>, prompt: String, thinking: Boolean, search: Boolean, onDelta: (String) -> Unit) {
         val contents = JSONArray()
         history.forEach {
             contents.put(JSONObject().put("role", if (it.role == "user") "user" else "model")
@@ -210,6 +243,7 @@ class GeminiClient(private val key: String, private val model: String) : AiClien
             .put("system_instruction", JSONObject().put("parts", JSONArray().put(JSONObject().put("text", Lang.sys(system)))))
             .put("contents", contents)
             .put("generationConfig", gen)
+        if (search) body.put("tools", JSONArray().put(JSONObject().put("googleSearch", JSONObject())))
         val req = Request.Builder()
             .url("https://generativelanguage.googleapis.com/v1beta/models/$m:streamGenerateContent?alt=sse")
             .header("x-goog-api-key", key)
@@ -217,7 +251,9 @@ class GeminiClient(private val key: String, private val model: String) : AiClien
         sse(req) { d ->
             val o = try { JSONObject(d) } catch (_: Exception) { return@sse }
             o.optJSONObject("error")?.let { throw AiException(it.optInt("code", 0), it.optString("message")) }
-            val p = o.optJSONArray("candidates")?.optJSONObject(0)?.optJSONObject("content")?.optJSONArray("parts") ?: return@sse
+            val cand = o.optJSONArray("candidates")?.optJSONObject(0) ?: return@sse
+            cand.optJSONObject("groundingMetadata")?.let { streamMeta = it }       // आख़िरी टुकड़े में पूरा आता है
+            val p = cand.optJSONObject("content")?.optJSONArray("parts") ?: return@sse
             for (i in 0 until p.length()) {
                 val x = p.optJSONObject(i) ?: continue
                 if (!x.optBoolean("thought", false)) x.optString("text").takeIf { it.isNotEmpty() }?.let(onDelta)
@@ -257,10 +293,12 @@ class GeminiClient(private val key: String, private val model: String) : AiClien
                 val p = cand?.optJSONObject("content")?.optJSONArray("parts") ?: throw AiException(0, "khali jawab")
                 val sb = StringBuilder()
                 for (i in 0 until p.length()) { val o = p.optJSONObject(i) ?: continue; if (!o.optBoolean("thought")) sb.append(o.optString("text")) }
-                val sources = Grounding.sources(cand.optJSONObject("groundingMetadata"))
+                val gm = cand.optJSONObject("groundingMetadata")
+                val g = GroundCite.parse(gm, sb.toString())
+                val sources = if (g != null) GroundCite.unique(g) else Grounding.sources(gm)
                 label = (if (think) "Gemini गहरी सोच" else "Gemini+Search") + " ($m)"
                 if (sb.isBlank()) throw AiException(0, "khali jawab")
-                return SearchResult(sb.toString(), sources)
+                return SearchResult(sb.toString(), sources, g)
             } catch (e: AiException) {
                 if (last == null || GeminiModels.isGone(last.code, last.message.orEmpty())) last = e
                 val msg = (e.message ?: "").lowercase()

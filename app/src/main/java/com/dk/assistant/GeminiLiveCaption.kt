@@ -190,11 +190,12 @@ internal fun GeminiLive.commitPending(full: Boolean) {
     val (text, src) = synchronized(turnLock) {
         (pendingReply to pendingSources).also { pendingReply = null; pendingSources = emptyList() }
     }
+    val g = synchronized(turnLock) { pendingGround.also { pendingGround = null } }
     if (text == null) return
     val out = if (full || shownReply.isBlank()) text else "$shownReply…"
     shownReply = ""
     // search hua = chat/caption me click hone wale sources; nahi hua = khali (koi "Sources" nahi)
-    DKState.reply(out, src)
+    DKState.reply(out, src, g)
 }
 
 /**
