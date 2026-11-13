@@ -135,7 +135,7 @@ class DkaiBroadcast(private val s: DkaiScreen) {
         bot.addView(ir)
         body.addView(bot, LinearLayout.LayoutParams(-1, -2))
 
-        layer = DkaiUi.open(s.root, page, DkaiUi.Place.FULL) { release() }
+        layer = DkaiUi.open(s.root, page, DkaiUi.Place.FULL, onClose = { release() })
         loadLatest()
     }
 
