@@ -83,6 +83,8 @@ class DKNotifListener : NotificationListenerService() {
         try { activeNotifications?.forEach { IslandFeed.posted(this, it) } } catch (_: Exception) {}
         // v4: अलग रहने के दौरान ख़त्म हुई ऐप कॉल अटकी न रहे
         try { AppCall.current?.key?.let { k -> if (activeNotifications?.none { it.key == k } != false) AppCall.removed(k) } } catch (_: Exception) {}
+        // 13 नवंबर 2026: एक से ज़्यादा ऐप कॉल - जो notification अब नहीं, वह कॉल island में अटकी न रहे
+        try { activeNotifications?.let { a -> AppCall.prune(a.map { it.key }.toSet()) } } catch (_: Exception) {}
     }
 
     override fun onListenerDisconnected() { if (instance === this) instance = null }

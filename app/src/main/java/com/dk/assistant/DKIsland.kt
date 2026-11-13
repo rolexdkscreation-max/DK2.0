@@ -68,6 +68,20 @@ object DKIsland {
     fun setNotifsOn(c: Context, v: Boolean) { sp(c).edit().putBoolean(P_NOTIF, v).apply(); poke() }
     fun chargeOn(c: Context) = sp(c).getBoolean(P_CHARGE, true)
     fun setChargeOn(c: Context, v: Boolean) { sp(c).edit().putBoolean(P_CHARGE, v).apply(); poke() }
+    // 13 नवंबर 2026 (मालिक): island छोटा-बड़ा, ऊपर से कितनी दूर, बाएँ-दाएँ; नई चीज़ पर थोड़ी देर अपने-आप बड़ा
+    private const val P_SIZE = "island_size"
+    private const val P_TOP = "island_y"
+    private const val P_SIDE = "island_x"
+    private const val P_PEEK = "island_peek"
+    fun sizePct(c: Context) = IslandCore.size(sp(c).getInt(P_SIZE, IslandCore.SIZE_DEF))
+    fun setSizePct(c: Context, v: Int) { sp(c).edit().putInt(P_SIZE, IslandCore.size(v)).apply(); relayout() }
+    fun topDp(c: Context) = IslandCore.top(sp(c).getInt(P_TOP, IslandCore.TOP_DEF))
+    fun setTopDp(c: Context, v: Int) { sp(c).edit().putInt(P_TOP, IslandCore.top(v)).apply(); relayout() }
+    fun sideDp(c: Context) = IslandCore.side(sp(c).getInt(P_SIDE, 0))
+    fun setSideDp(c: Context, v: Int) { sp(c).edit().putInt(P_SIDE, IslandCore.side(v)).apply(); relayout() }
+    fun peekOn(c: Context) = sp(c).getBoolean(P_PEEK, true)
+    fun setPeekOn(c: Context, v: Boolean) { sp(c).edit().putBoolean(P_PEEK, v).apply(); poke() }
+    fun resetLook(c: Context) { sp(c).edit().remove(P_SIZE).remove(P_TOP).remove(P_SIDE).apply(); relayout() }
 
     private val main = Handler(Looper.getMainLooper())
     @Volatile private var svc: DKAccessibilityService? = null
@@ -75,6 +89,27 @@ object DKIsland {
     private var root: FrameLayout? = null
     private var lp: WindowManager.LayoutParams? = null
     private var expanded = false
+    /** थोड़ी देर का बड़ा रूप (नई सूचना / बजती कॉल / काम पूरा) - छूने पर नहीं, अपने-आप */
+    private var peeking = false
+    private var peekUntil = 0L
+    private var peekNotif: IslandCore.Notif? = null
+    private var peekTask: IslandCore.Task? = null
+    private val seenNotifs = HashSet<String>()
+    private var seenFirst = true
+    private val seenDone = HashSet<String>()
+    private val ringClosed = HashSet<String>()
+    /** फैलाते समय किस चीज़ को सबसे ऊपर रखना है (गोली या बुलबुला जिसे दबाया) */
+    private var focus: IslandCore.Item? = null
+    /** उँगली अभी island पर है - तब ढाँचा दोबारा न बने (बटन उँगली के नीचे से न हटे = अटकना नहीं) */
+    private var fingerDown = false
+    /** उँगली रखी है - पर कोई UP छूट जाए तो 5 सेकंड बाद अपने-आप छोड़ो (island कभी हमेशा के लिए न जमे) */
+    private fun holding() = fingerDown && SystemClock.uptimeMillis() - touchedAt < 5_000L
+    private var previewUntil = 0L
+    /** island का आकार (Settings: छोटा-बड़ा) */
+    private var k = 1f
+    private var bub: FrameLayout? = null
+    private var bubLp: WindowManager.LayoutParams? = null
+    private var bubSig = ""
     private var touchedAt = 0L
     private var callSince = 0L
     private var history: List<IslandCore.Task> = emptyList()
@@ -118,7 +153,25 @@ object DKIsland {
     private var mediaAt = 0L
     private var lastMedia: IslandCore.Media? = null
 
-    private fun px(c: Context, dp: Float) = (dp * c.resources.displayMetrics.density).roundToInt()
+    /** island के अंदर का नाप - Settings वाले आकार (k) से छोटा-बड़ा */
+    private fun px(c: Context, dp: Float) = (dp * k * c.resources.displayMetrics.density).roundToInt()
+    /** सिर्फ़ जगह (ऊपर से दूरी / बाएँ-दाएँ) - आकार से नहीं बदलती */
+    private fun dpx(c: Context, dp: Float) = (dp * c.resources.displayMetrics.density).roundToInt()
+
+    /** Settings में आकार / जगह बदली = चलता island अभी नए नाप में (बंद-चालू किए बिना) */
+    fun relayout() {
+        main.post {
+            val s = svc ?: return@post
+            k = sizePct(s) / 100f
+            lp?.let { p -> p.y = dpx(s, topDp(s).toFloat()); p.x = dpx(s, sideDp(s).toFloat()); root?.let { r -> try { wm?.updateViewLayout(r, p) } catch (_: Exception) {} } }
+            (root?.background as? GradientDrawable)?.cornerRadius = px(s, if (expanded || peeking) 30f else 22f).toFloat()
+            lastSig = ""; bubSig = ""
+            poke()
+        }
+    }
+
+    /** Settings में "नमूना देखें": कुछ सेकंड island दिखे (DK खुला हो तब भी) ताकि आकार / दूरी देखकर सेट करें */
+    fun preview() { previewUntil = SystemClock.uptimeMillis() + 6_000L; relayout() }
 
     // ------------------------------------------------------------ रील गिनती (ReelWatch) - पहले अलग पट्टी, अब island में
     @Volatile private var reel: IslandCore.Reel? = null
@@ -179,16 +232,19 @@ object DKIsland {
     // ------------------------------------------------------------ हालत इकट्ठा करना (असली)
     private fun snap(s: DKAccessibilityService, now: Long): IslandCore.Snap {
         // कॉल: SIM या WhatsApp/Instagram… वाली
-        val call = try {
-            val calls = s.calls
-            val ringing = calls.ringing; val inCall = calls.inCall
-            if (ringing || inCall) {
-                if (inCall && callSince == 0L) callSince = now
-                if (!inCall) callSince = 0L
-                val ac = AppCall.current?.takeIf { AppCall.active() }
-                IslandCore.Call(calls.caller, ringing && !inCall, if (callSince > 0) callSince else now, ac?.app.orEmpty(), ac?.pkg.orEmpty())
+        // 13 नवंबर 2026 (मालिक): 2 कॉल = अलग-अलग (SIM + WhatsApp, या दो ऐप कॉल) - हर कॉल का अपना नाम, समय, बटन
+        val calls = try {
+            val cm = s.calls
+            val apps = AppCall.all(now).map { r -> IslandCore.Call(r.who, r.state == AppCall.State.RINGING, r.since, r.app, r.pkg, r.key, r.video) }
+            val offhook = cm.state == android.telephony.TelephonyManager.CALL_STATE_OFFHOOK
+            val simOn = offhook || (cm.simRinging && (cm.known || apps.isEmpty()))
+            val sim = if (simOn) {
+                if (offhook && callSince == 0L) callSince = now
+                if (!offhook) callSince = 0L
+                IslandCore.Call(cm.simWho, !offhook, if (callSince > 0) callSince else now, "", "", "sim")
             } else { callSince = 0L; null }
-        } catch (_: Exception) { null }
+            IslandCore.mergeCalls(sim, apps)
+        } catch (_: Exception) { emptyList() }
         // DK लाइव / फ़ोन पर DK का काम (बिना Live भी)
         val live = if (liveOn(s) && (DKState.live || DKState.mode == Mode.WORKING)) IslandCore.Live(DKState.shownMode(), DKState.micMuted) else null
         // काम: चलते (TaskStatus) + फ़ोन में सेव इतिहास (TaskHistory) - इतिहास हर 5 सेकंड या बदलाव पर ही पढ़ो
@@ -210,7 +266,7 @@ object DKIsland {
         val allTasks = if (social == null) tasks else IslandCore.recent((tasks + social).filter { it.active }, (tasks + social).filter { !it.active })
         val notifs = if (notifsOn(s)) IslandFeed.list() else emptyList()
         val charge = if (chargeOn(s)) chargeNow(s) else null
-        val all = IslandCore.Snap(call, live, allTasks, media, PrivacyLocked.list(), notifs, charge, reel?.takeIf { IslandCore.reelOn(it, now) })
+        val all = IslandCore.Snap(calls.firstOrNull(), live, allTasks, media, PrivacyLocked.list(), notifs, charge, reel?.takeIf { IslandCore.reelOn(it, now) }, calls)
         // 13 नवंबर 2026 (मालिक): सिर्फ़ पीछे चलती चीज़ें - जो ऐप सामने खुला है उसका गाना / वीडियो / notification / कॉल island में नहीं
         return IslandCore.background(all, frontPkg(s))
     }
@@ -246,23 +302,70 @@ object DKIsland {
         val s = svc ?: return
         lastTickAt = SystemClock.uptimeMillis()
         val now = System.currentTimeMillis()
+        val up = SystemClock.uptimeMillis()
         val sn = snap(s, now)
-        if (!IslandCore.wanted(on(s), AppVisible.visible, sn, now)) { remove(); main.postDelayed(ticker, 1_500L); return }
+        val demo = up < previewUntil && on(s)
+        if (!demo && !IslandCore.wanted(on(s), AppVisible.visible, sn, now)) {
+            // छिपे रहते भी देखे notification याद रहें - बाद में island आए तो पुराना notification "नया" बनकर न उछले
+            seenFirst = false; seenNotifs.clear(); sn.notifs.forEach { seenNotifs.add(it.key) }
+            remove(); main.postDelayed(ticker, 1_500L); return
+        }
         if (root == null) show(s)
-        if (expanded && SystemClock.uptimeMillis() - touchedAt > IslandCore.AUTO_COLLAPSE_MS && sn.call == null) collapse()
+        // अपने-आप छोटा: कॉल चलते समय भी (पहले कॉल में कभी छोटा नहीं होता था = island अटका रहता था). बजती कॉल = बड़ा रहे
+        if (IslandCore.autoCollapse(expanded, up - touchedAt, holding(), sn)) collapse()
+        if (!expanded) updatePeek(s, sn, now, up)
         render(s, sn, now)
+        renderBubble(s, sn, now)
         main.postDelayed(ticker, 1_000L)
+    }
+
+    /** थोड़ी देर का बड़ा रूप: बजती कॉल (जब तक बजे), नई सूचना / काम पूरा (कुछ सेकंड) - फिर अपने-आप छोटा */
+    private fun updatePeek(s: DKAccessibilityService, sn: IslandCore.Snap, now: Long, up: Long) {
+        val calls = IslandCore.allCalls(sn)
+        ringClosed.retainAll(calls.filter { it.ringing }.map { it.key.ifBlank { it.who } }.toSet())
+        val ring = calls.any { it.ringing && it.key.ifBlank { it.who } !in ringClosed }
+        val fresh = IslandCore.freshNotif(seenNotifs, sn.notifs, seenFirst)
+        seenFirst = false
+        seenNotifs.clear(); sn.notifs.forEach { seenNotifs.add(it.key) }
+        val done = sn.tasks.firstOrNull { IslandCore.justEnded(it, now) && it.id !in seenDone }
+        if (seenDone.size > 300) seenDone.clear()
+        sn.tasks.filter { !it.active }.forEach { seenDone.add(it.id) }
+        if (peekOn(s) && !holding()) {
+            if (fresh != null && !ring) { peekNotif = fresh; peekTask = null; peekUntil = up + IslandCore.PEEK_MS }
+            else if (done != null && !ring) { peekTask = done; peekNotif = null; peekUntil = up + IslandCore.PEEK_MS }
+        }
+        val want = ring || (peekOn(s) && up < peekUntil && (peekNotif != null || peekTask != null))
+        if (want != peeking) { if (want) setWide(s, true) else setWide(s, false); peeking = want; lastSig = "" }
+        if (!want) { peekNotif = null; peekTask = null }
     }
 
     // ------------------------------------------------------------ खिड़की
     @SuppressLint("ClickableViewAccessibility")
     private fun show(s: DKAccessibilityService) {
         val w = wm ?: return
-        // कोई भी छुअन (स्क्रॉल भी) = अभी पढ़ रहे हैं, अपने-आप छोटा न हो
+        k = sizePct(s) / 100f
+        val slop = ViewConfiguration.get(s).scaledTouchSlop
+        var downY = 0f
+        // कोई भी छुअन (स्क्रॉल भी) = अभी पढ़ रहे हैं, अपने-आप छोटा न हो; उँगली रहते ढाँचा न बदले
         val box = object : FrameLayout(s) {
-            override fun dispatchTouchEvent(ev: MotionEvent): Boolean { touchedAt = SystemClock.uptimeMillis(); return super.dispatchTouchEvent(ev) }
+            override fun dispatchTouchEvent(ev: MotionEvent): Boolean {
+                // बाहर (दूसरे ऐप) का छूना island का छूना नहीं - वरना island कभी ताज़ा न होता
+                if (ev.actionMasked != MotionEvent.ACTION_OUTSIDE) touchedAt = SystemClock.uptimeMillis()
+                when (ev.actionMasked) {
+                    MotionEvent.ACTION_DOWN -> { fingerDown = true; downY = ev.rawY }
+                    MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                        fingerDown = false
+                        // ऊपर की ओर खींचा = छोटा (थोड़ी देर वाला बड़ा रूप; फैले island में ऊपर खींचना = स्क्रॉल)
+                        if (ev.actionMasked == MotionEvent.ACTION_UP && downY - ev.rawY > slop * 3 && peeking) {
+                            main.post { closeBig() }; return true
+                        }
+                    }
+                    MotionEvent.ACTION_OUTSIDE -> fingerDown = false
+                }
+                return super.dispatchTouchEvent(ev)
+            }
         }.apply {
-            background = GradientDrawable().apply { setColor(0xFF000000.toInt()); cornerRadius = px(s, 22f).toFloat(); setStroke(px(s, 1f), 0x22FFFFFF) }
+            background = GradientDrawable().apply { setColor(0xFF000000.toInt()); cornerRadius = px(s, 22f).toFloat(); setStroke(dpx(s, 1f), 0x22FFFFFF) }
             elevation = px(s, 8f).toFloat()
             importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_YES
         }
@@ -274,90 +377,229 @@ object DKIsland {
             PixelFormat.TRANSLUCENT
         ).apply {
             gravity = Gravity.TOP or Gravity.CENTER_HORIZONTAL
-            y = px(s, 8f)
+            y = dpx(s, topDp(s).toFloat()); x = dpx(s, sideDp(s).toFloat())
             if (Build.VERSION.SDK_INT >= 28) layoutInDisplayCutoutMode = WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
         }
         box.setOnTouchListener { _, ev ->
-            if (ev.actionMasked == MotionEvent.ACTION_OUTSIDE) { if (expanded) collapse(); true } else false
+            if (ev.actionMasked == MotionEvent.ACTION_OUTSIDE) { if (expanded || peeking) closeBig(); true } else false
         }
+        // टैप = उसी चीज़ का ऐप / स्क्रीन (कॉल = कॉल स्क्रीन, गाना = गाने वाला ऐप, काम = वह स्क्रीन); देर तक दबाएँ = फैलकर पूरा
         box.setOnClickListener {
             touchedAt = SystemClock.uptimeMillis()
-            // 13 नवंबर 2026 (मालिक: "कॉल चल रही हो तो कॉल पर टैप = सीधे चलती कॉल"): छोटे island पर चलती कॉल = कॉल की स्क्रीन; देर तक दबाएँ = पूरा island
-            val sn = svc?.let { snap(it, System.currentTimeMillis()) }
-            if (!expanded && sn?.call?.ringing == false && IslandCore.lead(sn, System.currentTimeMillis()) == IslandCore.Kind.CALL) openCall(s)
-            else if (expanded) collapse() else expand()
+            if (expanded || peeking) { closeBig(); return@setOnClickListener }
+            val now = System.currentTimeMillis()
+            val sn = svc?.let { snap(it, now) } ?: return@setOnClickListener
+            val first = IslandCore.items(sn, now).firstOrNull()
+            if (first == null || !openItem(s, sn, first)) expand(first)
         }
-        box.setOnLongClickListener { touchedAt = SystemClock.uptimeMillis(); if (!expanded) expand(); true }
+        box.setOnLongClickListener {
+            touchedAt = SystemClock.uptimeMillis()
+            if (!expanded) { val now = System.currentTimeMillis(); expand(svc?.let { IslandCore.items(snap(it, now), now).firstOrNull() }) }
+            true
+        }
+        // गोली की चौड़ाई बदली = बुलबुला उसके साथ-साथ खिसके
+        box.addOnLayoutChangeListener { v, l, _, r, _, _, _, _, _ -> if (r - l > 0) placeBubble(s, v.width) }
         // आते समय: छोटी बूँद से फैलकर
         box.alpha = 0f; box.scaleX = 0.5f; box.scaleY = 0.6f
         try { w.addView(box, p) } catch (e: Exception) { DKLog.d("island नहीं लगा: ${e.javaClass.simpleName}"); return }
-        root = box; lp = p; expanded = false; lastSig = ""
+        root = box; lp = p; expanded = false; peeking = false; fingerDown = false; lastSig = ""
         box.post { box.pivotX = box.width / 2f; box.pivotY = 0f
             box.animate().alpha(1f).scaleX(1f).scaleY(1f).setDuration(320).setInterpolator(OvershootInterpolator(1.2f)).start() }
     }
 
     private fun remove() {
+        removeBubble()
         val r = root ?: return
-        root = null; lp = null; expanded = false; lastSig = ""; updaters.clear()
+        root = null; lp = null; expanded = false; peeking = false; fingerDown = false; focus = null; lastSig = ""; updaters.clear()
         r.animate().alpha(0f).scaleX(0.5f).scaleY(0.6f).setDuration(200).withEndAction { try { wm?.removeView(r) } catch (_: Exception) {} }.start()
     }
 
-    private fun expand() {
-        val r = root ?: return; val p = lp ?: return; val s = svc ?: return
-        expanded = true; touchedAt = SystemClock.uptimeMillis(); lastSig = ""
-        p.width = s.resources.displayMetrics.widthPixels - px(s, 16f)
+    /** चौड़ा (फैला / थोड़ी देर का बड़ा) या वापस गोली */
+    private fun setWide(s: DKAccessibilityService, wide: Boolean) {
+        val r = root ?: return; val p = lp ?: return
+        p.width = if (wide) s.resources.displayMetrics.widthPixels - dpx(s, 16f) else WindowManager.LayoutParams.WRAP_CONTENT
+        // चौड़ा island बीच में; बाएँ-दाएँ खिसकाना सिर्फ़ गोली पर
+        p.x = if (wide) 0 else dpx(s, sideDp(s).toFloat())
         try { wm?.updateViewLayout(r, p) } catch (_: Exception) {}
-        (r.background as? GradientDrawable)?.cornerRadius = px(s, 30f).toFloat()
+        (r.background as? GradientDrawable)?.cornerRadius = px(s, if (wide) 30f else 22f).toFloat()
+        if (wide) removeBubble()
+    }
+
+    private fun expand(f: IslandCore.Item? = null) {
+        val r = root ?: return; val s = svc ?: return
+        focus = f
+        expanded = true; peeking = false; peekUntil = 0L; touchedAt = SystemClock.uptimeMillis(); lastSig = ""
+        setWide(s, true)
         historyAt = 0L
         tick()
-        r.pivotX = p.width / 2f; r.pivotY = 0f
+        r.pivotX = (lp?.width ?: r.width) / 2f; r.pivotY = 0f
         r.scaleX = 0.55f; r.scaleY = 0.35f; r.alpha = 0.6f
         r.animate().scaleX(1f).scaleY(1f).alpha(1f).setDuration(340).setInterpolator(OvershootInterpolator(0.9f)).start()
     }
 
+    /** बाहर छुआ / ऊपर खींचा: थोड़ी देर वाला बड़ा रूप बंद (बजती कॉल भी - वह कॉल गोली में रहे), फैला island छोटा */
+    private fun closeBig() = collapse()
+
     private fun collapse() {
-        val r = root ?: return; val p = lp ?: return; val s = svc ?: return
-        expanded = false; lastSig = ""
-        p.width = WindowManager.LayoutParams.WRAP_CONTENT
-        try { wm?.updateViewLayout(r, p) } catch (_: Exception) {}
-        (r.background as? GradientDrawable)?.cornerRadius = px(s, 22f).toFloat()
+        val r = root ?: return; val s = svc ?: return
+        val was = expanded || peeking
+        // थोड़ी देर वाला बड़ा रूप बंद = वही दोबारा न उछले (बजती कॉल गोली में रहे, कटने / उठने तक)
+        if (peeking) IslandCore.allCalls(snap(s, System.currentTimeMillis())).filter { it.ringing }.forEach { ringClosed.add(it.key.ifBlank { it.who }) }
+        peekUntil = 0L; peekNotif = null; peekTask = null
+        expanded = false; peeking = false; focus = null; fingerDown = false; lastSig = ""
+        setWide(s, false)
         tick()
-        r.pivotY = 0f; r.scaleX = 1.25f; r.scaleY = 1.1f
-        r.animate().scaleX(1f).scaleY(1f).setDuration(260).setInterpolator(OvershootInterpolator(1.1f)).start()
+        if (was) {
+            r.pivotY = 0f; r.scaleX = 1.25f; r.scaleY = 1.1f
+            r.animate().scaleX(1f).scaleY(1f).setDuration(260).setInterpolator(OvershootInterpolator(1.1f)).start()
+        }
+    }
+
+    // ------------------------------------------------------------ अलग बुलबुला (दूसरी चीज़ - जैसे दूसरी कॉल)
+    private fun removeBubble() {
+        val b = bub ?: return
+        bub = null; bubLp = null; bubSig = ""
+        b.animate().alpha(0f).scaleX(0.4f).scaleY(0.4f).setDuration(160).withEndAction { try { wm?.removeView(b) } catch (_: Exception) {} }.start()
+    }
+
+    private fun placeBubble(s: DKAccessibilityService, mainW: Int) {
+        val b = bub ?: return; val p = bubLp ?: return
+        val bw = b.width.takeIf { it > 0 } ?: px(s, 34f)
+        val nx = IslandCore.bubbleX(dpx(s, sideDp(s).toFloat()), mainW, px(s, 6f), bw)
+        if (p.x != nx || p.y != (lp?.y ?: p.y)) { p.x = nx; p.y = lp?.y ?: p.y; try { wm?.updateViewLayout(b, p) } catch (_: Exception) {} }
+    }
+
+    @SuppressLint("ClickableViewAccessibility")
+    private fun renderBubble(s: DKAccessibilityService, sn: IslandCore.Snap, now: Long) {
+        val it2 = if (expanded || peeking || root == null) null else IslandCore.bubble(sn, now)
+        if (it2 == null) { removeBubble(); return }
+        val calls = IslandCore.allCalls(sn)
+        val c2 = if (it2.kind == IslandCore.Kind.CALL) calls.getOrNull(it2.idx) else null
+        val sig = "${it2.kind}|${c2?.key}|${c2?.ringing}|${if (it2.kind == IslandCore.Kind.NOTIF) sn.notifs.first().pkg else ""}|${sn.live?.mode}|${sn.live?.muted}|$k"
+        val w = wm ?: return
+        if (bub == null) {
+            val box = FrameLayout(s).apply {
+                background = GradientDrawable().apply { setColor(0xFF000000.toInt()); cornerRadius = px(s, 17f).toFloat(); setStroke(dpx(s, 1f), 0x22FFFFFF) }
+                elevation = px(s, 8f).toFloat(); minimumWidth = px(s, 34f); minimumHeight = px(s, 34f)
+                importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_YES
+            }
+            val p = WindowManager.LayoutParams(
+                WindowManager.LayoutParams.WRAP_CONTENT, WindowManager.LayoutParams.WRAP_CONTENT,
+                WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY,
+                WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
+                PixelFormat.TRANSLUCENT
+            ).apply {
+                gravity = Gravity.TOP or Gravity.CENTER_HORIZONTAL
+                y = lp?.y ?: dpx(s, topDp(s).toFloat())
+                x = IslandCore.bubbleX(dpx(s, sideDp(s).toFloat()), root?.width ?: px(s, 150f), px(s, 6f), px(s, 34f))
+                if (Build.VERSION.SDK_INT >= 28) layoutInDisplayCutoutMode = WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
+            }
+            box.setOnTouchListener { _, ev ->
+                touchedAt = SystemClock.uptimeMillis()
+                when (ev.actionMasked) {
+                    MotionEvent.ACTION_DOWN -> fingerDown = true
+                    MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> fingerDown = false
+                }
+                false
+            }
+            box.alpha = 0f; box.scaleX = 0.4f; box.scaleY = 0.4f
+            try { w.addView(box, p) } catch (e: Exception) { DKLog.d("island बुलबुला नहीं लगा: ${e.javaClass.simpleName}"); return }
+            bub = box; bubLp = p; bubSig = ""
+            box.addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ -> root?.let { r -> placeBubble(s, r.width) } }
+            box.animate().alpha(1f).scaleX(1f).scaleY(1f).setDuration(260).setInterpolator(OvershootInterpolator(1.4f)).start()
+        }
+        val b = bub ?: return
+        // टैप = उसी चीज़ का ऐप (दूसरी कॉल = उसकी कॉल स्क्रीन); देर तक दबाएँ = फैलकर, यही चीज़ सबसे ऊपर
+        b.setOnClickListener { touchedAt = SystemClock.uptimeMillis(); val n = System.currentTimeMillis(); val x = svc?.let { snap(it, n) }
+            val item = x?.let { IslandCore.bubble(it, n) }; if (x == null || item == null || !openItem(s, x, item)) expand(item) }
+        b.setOnLongClickListener { touchedAt = SystemClock.uptimeMillis(); val n = System.currentTimeMillis(); expand(svc?.let { IslandCore.bubble(snap(it, n), n) }); true }
+        if (sig != bubSig && !holding()) {
+            bubSig = sig; b.removeAllViews()
+            val row = LinearLayout(s).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; setPadding(px(s, 5f), px(s, 5f), px(s, 5f), px(s, 5f)) }
+            row.addView(itemIcon(s, sn, it2, 24f))
+            if (c2 != null) {
+                val t = tv(s, 11f, 0xFF4ADE80.toInt(), bold = true)
+                row.addView(t, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { marginStart = px(s, 5f); marginEnd = px(s, 4f) })
+                b.tag = t
+            } else b.tag = null
+            b.addView(row, FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.CENTER))
+            b.contentDescription = UiLang.s(c2?.let { "दूसरी कॉल: " + IslandCore.callText(it) } ?: "DK Island - दूसरी चीज़")
+        }
+        (b.tag as? TextView)?.let { t -> c2?.let { t.text = UiLang.s(IslandCore.callRight(it, now)) } }
+    }
+
+    /** किसी चीज़ का छोटा निशान (गोली / बुलबुला) */
+    private fun itemIcon(s: DKAccessibilityService, sn: IslandCore.Snap, it: IslandCore.Item, dp: Float): View = when (it.kind) {
+        IslandCore.Kind.CALL -> dot(s, if (IslandCore.allCalls(sn).getOrNull(it.idx)?.video == true) "🎥" else "📞", 0xFF22C55E.toInt(), dp)
+        IslandCore.Kind.MEDIA -> mediaArt?.let { b -> ImageView(s).apply { setImageBitmap(b); scaleType = ImageView.ScaleType.CENTER_CROP
+            clipToOutline = true; background = GradientDrawable().apply { cornerRadius = px(s, 6f).toFloat(); setColor(0xFF222222.toInt()) }
+            layoutParams = LinearLayout.LayoutParams(px(s, dp), px(s, dp)) } } ?: dot(s, "♪", 0xFFF97316.toInt(), dp)
+        IslandCore.Kind.LOCKED -> dot(s, "🔒", 0xFF334155.toInt(), dp)
+        IslandCore.Kind.CHARGING -> dot(s, "⚡", 0xFF16A34A.toInt(), dp)
+        IslandCore.Kind.REEL -> dot(s, "🎬", if (sn.reel?.warn == true) 0xFFDC2626.toInt() else 0xFF4F46E5.toInt(), dp)
+        IslandCore.Kind.NOTIF -> appIcon(s, sn.notifs.first().pkg, dp)
+        else -> DKWorkingIndicator(s).apply {
+            state = if (it.kind == IslandCore.Kind.LIVE) sn.live?.let { l -> if (l.muted) WorkState.IDLE else workState(l.mode) } ?: WorkState.IDLE
+                else if (sn.tasks.any { t -> t.active }) WorkState.WORKING else WorkState.IDLE
+            layoutParams = LinearLayout.LayoutParams(px(s, dp), px(s, dp))
+        }
+    }
+
+    /** छोटी गोली / बुलबुले पर टैप: उसी चीज़ का ऐप या स्क्रीन. false = उसका अपना ऐप नहीं (तो island फैले) */
+    private fun openItem(s: DKAccessibilityService, sn: IslandCore.Snap, it: IslandCore.Item): Boolean {
+        if (!IslandCore.tapOpens(it.kind)) return false
+        val now = System.currentTimeMillis()
+        return when (it.kind) {
+            IslandCore.Kind.CALL -> IslandCore.allCalls(sn).getOrNull(it.idx)?.let { c -> openCall(s, c) } ?: false
+            IslandCore.Kind.MEDIA -> sn.media?.let { m -> openMediaApp(s, m); true } ?: false
+            IslandCore.Kind.TASK -> (sn.tasks.firstOrNull { t -> t.active } ?: sn.tasks.firstOrNull { t -> IslandCore.justEnded(t, now) })?.let { t -> openTask(s, t); true } ?: false
+            IslandCore.Kind.LIVE -> { openDk(s); true }
+            IslandCore.Kind.NOTIF -> sn.notifs.firstOrNull()?.let { n -> IslandFeed.open(s, n.key).also { ok -> if (ok) collapse() } } ?: false
+            IslandCore.Kind.LOCKED -> sn.locked.singleOrNull()?.let { l -> PrivacyScreen.open(s, l.pkg); collapse(); true } ?: false
+            else -> false
+        }
     }
 
     // ------------------------------------------------------------ बनाना
     /** ढाँचा तभी दोबारा जब कुछ असली बदले (सिर्फ़ समय बदले तो [updaters] वही लाइनें बदलते हैं) */
     private fun render(s: DKAccessibilityService, sn: IslandCore.Snap, now: Long) {
         val r = root ?: return
-        val sig = (if (expanded) "E|" else "C|") + sig(sn, now)
-        if (sig != lastSig) {
+        val mode = if (expanded) "E|" else if (peeking) "P|" else "C|"
+        val sig = mode + sig(sn, now) + "|b${IslandCore.bubble(sn, now)}|f$focus|pk${peekNotif?.key}${peekTask?.id}|k$k"
+        // छूते समय / छूने के ठीक बाद ढाँचा न बदले (वरना बटन उँगली के नीचे से हट जाता था, स्क्रॉल ऊपर कूदता था = "अटक गया").
+        // खुलना / बंद होना (mode बदला) हमेशा तुरंत.
+        val hold = holding() || SystemClock.uptimeMillis() - touchedAt < IslandCore.TOUCH_HOLD_MS
+        val sameMode = lastSig.startsWith(mode)
+        if (sig != lastSig && !(hold && sameMode && r.childCount > 0)) {
+            val sy = (r.findViewWithTag<ScrollView>("island_scroll"))?.scrollY ?: 0
             lastSig = sig; updaters.clear(); r.removeAllViews()
-            r.addView(if (expanded) big(s, sn, now) else small(s, sn, now))
+            r.addView(when { expanded -> big(s, sn, now); peeking -> peekView(s, sn, now); else -> small(s, sn, now) })
+            if (sameMode && sy > 0) r.findViewWithTag<ScrollView>("island_scroll")?.let { v -> v.post { v.scrollTo(0, sy) } }
         }
         updaters.forEach { try { it(sn, now) } catch (_: Exception) {} }
     }
 
     private fun sig(sn: IslandCore.Snap, now: Long): String = buildString {
         append(IslandCore.lead(sn, now)); append('|')
-        sn.call?.let { append("c${it.who}${it.ringing}") }; append('|')
+        IslandCore.allCalls(sn).forEach { append("c${it.key}${it.who}${it.ringing}${it.video}") }; append('|')
         sn.live?.let { append("l${it.mode}${it.muted}") }; append('|')
         sn.tasks.forEach { append("t${it.id}${it.state}${it.steps}${it.last.hashCode()}${IslandCore.justEnded(it, now)}") }; append('|')
         sn.media?.let { append("m${it.title}${it.artist}${it.playing}") }; append('|')
         sn.locked.forEach { append("k${it.pkg}${it.count}") }; append('|')
-        sn.notifs.forEach { append("n${it.key}${it.at}") }; append('|')
+        // समय (at) नहीं - download / progress वाले notification हर सेकंड बदलते थे = island हर सेकंड नया बनता (अटकता)
+        sn.notifs.forEach { append("n${it.key}${it.title.hashCode()}${it.text.hashCode()}") }; append('|')
         sn.charge?.let { append("b${it.pct}${it.charging}${it.full}${IslandCore.chargePop(it, now)}") }; append('|')
         if (sn.reel != null) append("r${sn.reel.warn}")
     }
 
     private fun tv(c: Context, size: Float, color: Int, bold: Boolean = false, lines: Int = 1) = TextView(c).apply {
-        textSize = size; setTextColor(color); maxLines = lines; ellipsize = TextUtils.TruncateAt.END
+        textSize = size * k; setTextColor(color); maxLines = lines; ellipsize = TextUtils.TruncateAt.END
         if (bold) setTypeface(typeface, Typeface.BOLD)
         includeFontPadding = false
     }
 
     private fun dot(c: Context, glyph: String, bg: Int, dp: Float = 24f) = TextView(c).apply {
-        text = glyph; gravity = Gravity.CENTER; textSize = dp * 0.5f; setTextColor(0xFFFFFFFF.toInt())
+        text = glyph; gravity = Gravity.CENTER; textSize = dp * 0.5f * k; setTextColor(0xFFFFFFFF.toInt())
         background = GradientDrawable().apply { shape = GradientDrawable.OVAL; setColor(bg) }
         layoutParams = LinearLayout.LayoutParams(px(c, dp), px(c, dp))
     }
@@ -367,33 +609,30 @@ object DKIsland {
         Mode.SPEAKING -> WorkState.SPEAKING; Mode.WORKING -> WorkState.WORKING; Mode.IDLE -> WorkState.IDLE
     }
 
-    /** छोटा island: [निशान] लाइन ............ दाईं ओर (समय / कदम / +2) */
+    /** छोटा island: [निशान] लाइन ............ दाईं ओर (समय / कदम / +2). दूसरी चीज़ अलग बुलबुले में */
     private fun small(s: DKAccessibilityService, sn: IslandCore.Snap, now: Long): View {
         val row = LinearLayout(s).apply {
             orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
             setPadding(px(s, 8f), px(s, 6f), px(s, 14f), px(s, 6f))
             minimumWidth = px(s, 150f)
         }
-        val icon: View = when (IslandCore.lead(sn, now)) {
-            IslandCore.Kind.CALL -> dot(s, "📞", 0xFF22C55E.toInt())
-            IslandCore.Kind.MEDIA -> mediaArt?.let { b -> ImageView(s).apply { setImageBitmap(b); scaleType = ImageView.ScaleType.CENTER_CROP
-                clipToOutline = true; background = GradientDrawable().apply { cornerRadius = px(s, 6f).toFloat(); setColor(0xFF222222.toInt()) }
-                layoutParams = LinearLayout.LayoutParams(px(s, 24f), px(s, 24f)) } } ?: dot(s, "♪", 0xFFF97316.toInt())
-            IslandCore.Kind.LOCKED -> dot(s, "🔒", 0xFF334155.toInt())
-            IslandCore.Kind.CHARGING -> return chargeSmall(s, sn, now)
-            IslandCore.Kind.REEL -> dot(s, "🎬", if (sn.reel?.warn == true) 0xFFDC2626.toInt() else 0xFF4F46E5.toInt())
-            IslandCore.Kind.NOTIF -> appIcon(s, sn.notifs.first().pkg, 24f)
-            else -> DKWorkingIndicator(s).apply {
-                state = sn.live?.let { if (it.muted) WorkState.IDLE else workState(it.mode) } ?: if (sn.tasks.any { it.active }) WorkState.WORKING else WorkState.IDLE
-                layoutParams = LinearLayout.LayoutParams(px(s, 24f), px(s, 24f))
-            }
+        val first = IslandCore.items(sn, now).firstOrNull()
+        if (first == null) {
+            // Settings का "नमूना देखें" - अभी दिखाने को कुछ नहीं, बस आकार / जगह दिखे
+            row.addView(dot(s, "DK", 0xFF4F46E5.toInt()))
+            row.addView(tv(s, 13f, 0xFFFFFFFF.toInt(), bold = true).apply { text = "DK Island" },
+                LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f).apply { marginStart = px(s, 8f) })
+            row.addView(tv(s, 12f, 0xFFA5B4FC.toInt()).apply { text = UiLang.s("नमूना") },
+                LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { marginStart = px(s, 10f) })
+            return row
         }
-        row.addView(icon)
+        if (first.kind == IslandCore.Kind.CHARGING) return chargeSmall(s, sn, now)
+        row.addView(itemIcon(s, sn, first, 24f))
         val left = tv(s, 13f, 0xFFFFFFFF.toInt(), bold = true).apply { maxWidth = px(s, 170f) }
         row.addView(left, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f).apply { marginStart = px(s, 8f) })
         val right = tv(s, 12f, rightColor(sn, now)).apply { gravity = Gravity.END }
         row.addView(right, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { marginStart = px(s, 10f) })
-        if (IslandCore.lead(sn, now) == IslandCore.Kind.REEL) { left.maxLines = 2; left.maxWidth = px(s, 230f) }
+        if (first.kind == IslandCore.Kind.REEL) { left.maxLines = 2; left.maxWidth = px(s, 230f) }
         updaters.add { a, t ->
             val nt = UiLang.s(IslandCore.compactText(a, t))
             // रील गिनती बढ़ी = छोटा "पॉप" (पहले वाली पट्टी जैसा, अब island में)
@@ -403,10 +642,25 @@ object DKIsland {
                 left.animate().scaleX(1f).scaleY(1f).setDuration(320).setInterpolator(OvershootInterpolator(2f)).start()
             }
             if (left.text.toString() != nt) left.text = nt
-            right.text = UiLang.s(IslandCore.compactRight(a, t))
+            right.text = UiLang.s(IslandCore.compactRightWith(a, t, IslandCore.bubble(a, t) != null))
         }
-        row.contentDescription = UiLang.s("DK Island - दबाकर पूरा देखें")
+        row.contentDescription = UiLang.s("DK Island - टैप = खोलें, दबाकर रखें = पूरा देखें")
         return row
+    }
+
+    /** थोड़ी देर का बड़ा रूप: बजती कॉल (हर कॉल के उठाएँ / काटें) या नई सूचना / पूरा हुआ काम - ऊपर खींचो या बाहर छुओ = छोटा */
+    private fun peekView(s: DKAccessibilityService, sn: IslandCore.Snap, now: Long): View {
+        val col = LinearLayout(s).apply { orientation = LinearLayout.VERTICAL; setPadding(px(s, 12f), px(s, 10f), px(s, 12f), px(s, 10f)) }
+        val ringing = IslandCore.allCalls(sn).filter { it.ringing && it.key.ifBlank { it.who } !in ringClosed }
+        if (ringing.isNotEmpty()) {
+            ringing.forEach { c -> col.addView(section(s, callCard(s, c)).apply { (layoutParams as? LinearLayout.LayoutParams)?.topMargin = if (col.childCount == 0) 0 else px(s, 8f) }) }
+            // पहले से चलती कॉल भी दिखे (दूसरी कॉल आई = पहली कहाँ है पता रहे)
+            IslandCore.allCalls(sn).filter { !it.ringing }.forEach { c -> col.addView(section(s, callCard(s, c))) }
+            return col
+        }
+        peekNotif?.let { n -> col.addView(notifRow(s, n).apply { (layoutParams as? LinearLayout.LayoutParams)?.topMargin = 0 }); return col }
+        peekTask?.let { t -> col.addView(taskRow(s, 1, t).apply { (layoutParams as? LinearLayout.LayoutParams)?.topMargin = 0 }); return col }
+        return small(s, sn, now)
     }
 
     private fun rightColor(sn: IslandCore.Snap, now: Long): Int = when (IslandCore.lead(sn, now)) {
@@ -449,7 +703,7 @@ object DKIsland {
             bv.pct = k.pct; bv.charging = k.charging && !k.full
             big.text = if (pop) UiLang.s(if (k.full) "पूरा चार्ज ${k.pct}%" else "चार्ज हो रहा है ${k.pct}%") else "⚡ ${k.pct}%"
             sub.text = UiLang.s(IslandCore.chargeLeft(k.fullInMs, k.full))
-            right.text = UiLang.s(IslandCore.compactRight(a, t))
+            right.text = UiLang.s(IslandCore.compactRightWith(a, t, IslandCore.bubble(a, t) != null))
         } }
         row.contentDescription = UiLang.s("DK Island - चार्जिंग")
         return row
@@ -470,11 +724,17 @@ object DKIsland {
         head.addView(pill(s, "छोटा करें", 0xFF1E293B.toInt()) { collapse() }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { marginStart = px(s, 6f) })
         col.addView(head)
 
-        sn.call?.let { c -> col.addView(section(s, callCard(s, c))) }
-        sn.charge?.takeIf { it.charging }?.let { b -> col.addView(section(s, chargeCard(s, b))) }
-        sn.live?.let { l -> col.addView(section(s, liveCard(s, l))) }
-        sn.reel?.let { r -> col.addView(section(s, reelCard(s, r))) }
-        sn.media?.let { m -> col.addView(section(s, mediaCard(s, m))) }
+        // जिसे दबाकर खोला (गोली या बुलबुला) वह सबसे ऊपर; हर कॉल का अलग कार्ड (अपने उठाएँ / काटें)
+        val f = focus
+        val calls = IslandCore.allCalls(sn).let { all -> if (f != null && f.kind == IslandCore.Kind.CALL && f.idx in all.indices) listOf(all[f.idx]) + all.filterIndexed { i, _ -> i != f.idx } else all }
+        val tops: List<Pair<IslandCore.Kind, () -> Unit>> = listOf(
+            Pair(IslandCore.Kind.CALL, fun() { calls.forEach { c -> col.addView(section(s, callCard(s, c))) } }),
+            Pair(IslandCore.Kind.CHARGING, fun() { sn.charge?.takeIf { it.charging }?.let { b -> col.addView(section(s, chargeCard(s, b))) } }),
+            Pair(IslandCore.Kind.LIVE, fun() { sn.live?.let { l -> col.addView(section(s, liveCard(s, l))) } }),
+            Pair(IslandCore.Kind.REEL, fun() { sn.reel?.let { r -> col.addView(section(s, reelCard(s, r))) } }),
+            Pair(IslandCore.Kind.MEDIA, fun() { sn.media?.let { m -> col.addView(section(s, mediaCard(s, m))) } }),
+        )
+        tops.sortedBy { if (it.first == f?.kind) 0 else 1 }.forEach { it.second() }
 
         // हाल के काम (1-5)
         col.addView(tv(s, 12f, 0x99FFFFFF.toInt(), bold = true).apply {
@@ -498,7 +758,7 @@ object DKIsland {
             list.addView(pill(s, "🧹 सब साफ़ करें", 0xFFB91C1C.toInt()) { IslandFeed.clearAll() },
                 LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = px(s, 10f) })
         }
-        val scroll = ScrollView(s).apply { isVerticalScrollBarEnabled = false; addView(list) }
+        val scroll = ScrollView(s).apply { isVerticalScrollBarEnabled = false; tag = "island_scroll"; addView(list) }
         val maxH = (s.resources.displayMetrics.heightPixels * 0.5f).roundToInt()
         scroll.layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
         col.addView(object : FrameLayout(s) {
@@ -514,7 +774,7 @@ object DKIsland {
     }
 
     private fun pill(c: Context, t: String, bg: Int, fg: Int = 0xFFFFFFFF.toInt(), onTap: () -> Unit) = TextView(c).apply {
-        text = UiLang.s(t); textSize = 12.5f; setTextColor(fg); gravity = Gravity.CENTER
+        text = UiLang.s(t); textSize = 12.5f * k; setTextColor(fg); gravity = Gravity.CENTER
         setTypeface(typeface, Typeface.BOLD)
         setPadding(px(c, 12f), px(c, 7f), px(c, 12f), px(c, 7f))
         background = GradientDrawable().apply { cornerRadius = px(c, 16f).toFloat(); setColor(bg) }
@@ -529,17 +789,20 @@ object DKIsland {
 
     private fun callCard(s: DKAccessibilityService, c: IslandCore.Call): View {
         val row = LinearLayout(s).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
-            // टैप = सीधे चलती / आती कॉल की स्क्रीन
-            isClickable = true; setOnClickListener { touchedAt = SystemClock.uptimeMillis(); openCall(s) } }
-        row.addView(dot(s, "📞", 0xFF22C55E.toInt(), 36f))
+            // टैप = सीधे इसी कॉल की स्क्रीन (दो कॉल = हर एक की अपनी)
+            isClickable = true; setOnClickListener { touchedAt = SystemClock.uptimeMillis(); if (!openCall(s, c) && !expanded) expand(IslandCore.Item(IslandCore.Kind.CALL)) } }
+        row.addView(dot(s, if (c.video) "🎥" else "📞", 0xFF22C55E.toInt(), 36f))
         val txt = LinearLayout(s).apply { orientation = LinearLayout.VERTICAL; setPadding(px(s, 10f), 0, px(s, 8f), 0) }
         txt.addView(tv(s, 15f, 0xFFFFFFFF.toInt(), bold = true).apply { text = c.who.ifBlank { UiLang.s("अनजान नंबर") } })
         val sub = tv(s, 12f, 0xFF86EFAC.toInt())
         txt.addView(sub)
-        updaters.add { a, t -> a.call?.let { k -> sub.text = UiLang.s((if (k.app.isNotBlank()) "${k.app} कॉल • " else "फ़ोन कॉल • ") + (if (k.ringing) "आ रहा है" else "चल रही है ${IslandCore.timer(t - k.since)}")) } }
+        updaters.add { a, t -> (IslandCore.allCalls(a).firstOrNull { c.key.isNotBlank() && it.key == c.key } ?: a.call?.takeIf { c.key.isBlank() })?.let { k ->
+            sub.text = UiLang.s((if (k.app.isNotBlank()) "${k.app} कॉल • " else "फ़ोन कॉल • ") + (if (k.ringing) "आ रहा है" else "चल रही है ${IslandCore.timer(t - k.since)}")) } }
         row.addView(txt, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
-        val end = pill(s, "काटें", 0xFFDC2626.toInt()) { s.calls.end() }
-        row.addView(if (c.ringing) buttons(s, pill(s, "उठाएँ", 0xFF16A34A.toInt()) { s.calls.answer() }, end) else buttons(s, end))
+        // ऐप कॉल = उसी कॉल का बटन (key से); SIM कॉल = फ़ोन का
+        val app = c.key.isNotBlank() && c.key != "sim"
+        val end = pill(s, "काटें", 0xFFDC2626.toInt()) { if (app) AppCall.endKey(s, c.key) else s.calls.end() }
+        row.addView(if (c.ringing) buttons(s, pill(s, "उठाएँ", 0xFF16A34A.toInt()) { if (app) AppCall.answerKey(s, c.key) else s.calls.answer() }, end) else buttons(s, end))
         return row
     }
 
@@ -713,22 +976,21 @@ object DKIsland {
         c.packageManager.getLaunchIntentForPackage(m.pkg)?.let { launch(c, it) }
     }
 
-    /** चलती / आती कॉल की स्क्रीन: WhatsApp… कॉल = उसी ऐप की कॉल; SIM कॉल = फ़ोन की कॉल स्क्रीन */
-    private fun openCall(c: Context) {
-        val ac = AppCall.current?.takeIf { AppCall.active() }
-        if (ac != null) {
-            ac.open?.let { if (IslandFeed.send(c, it)) { collapse(); return } }
-            IslandFeed.callIntent(ac.key)?.let { if (IslandFeed.send(c, it)) { collapse(); return } }
+    /** इसी कॉल की स्क्रीन: WhatsApp… कॉल = उसी ऐप की कॉल; SIM कॉल = फ़ोन की कॉल स्क्रीन. false = नहीं खुली */
+    private fun openCall(c: Context, call: IslandCore.Call): Boolean {
+        if (call.key.isNotBlank() && call.key != "sim") {
+            AppCall.openFor(call.key)?.let { if (IslandFeed.send(c, it)) { collapse(); return true } }
+            IslandFeed.callIntent(call.key)?.let { if (IslandFeed.send(c, it)) { collapse(); return true } }
         } else {
             try {
                 val tm = c.getSystemService(android.telecom.TelecomManager::class.java)
                 if (tm != null && c.checkSelfPermission(Manifest.permission.READ_PHONE_STATE) == PackageManager.PERMISSION_GRANTED) {
-                    tm.showInCallScreen(false); collapse(); return
+                    tm.showInCallScreen(false); collapse(); return true
                 }
             } catch (e: Exception) { DKLog.d("island: कॉल स्क्रीन नहीं खुली: ${e.javaClass.simpleName}") }
-            IslandFeed.callIntent(null)?.let { if (IslandFeed.send(c, it)) { collapse(); return } }
+            IslandFeed.callIntent(null)?.let { if (IslandFeed.send(c, it)) { collapse(); return true } }
         }
-        if (!expanded) expand()
+        return false
     }
 
     private fun launch(c: Context, i: Intent) {

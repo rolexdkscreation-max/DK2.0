@@ -26,6 +26,8 @@ class CallManager(private val ctx: Context, private val onRinging: (String) -> U
         private set
     /** v4: SIM कॉल का नाम, नहीं तो WhatsApp/Instagram… वाली कॉल का */
     val caller: String get() = simCaller.ifBlank { if (AppCall.active()) AppCall.who() else "" }
+    /** 13 नवंबर 2026: सिर्फ़ SIM कॉल वाले का नाम (island में हर कॉल अलग) */
+    val simWho: String get() = simCaller
     private var listener: PhoneStateListener? = null
 
     private fun granted(p: String) = ContextCompat.checkSelfPermission(ctx, p) == PackageManager.PERMISSION_GRANTED

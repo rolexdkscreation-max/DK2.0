@@ -24,6 +24,8 @@ object AppCall {
 
     @Volatile var current: Ring? = null
         private set
+    /** 13 नवंबर 2026 (मालिक: "2 कॉल चल रही हों तो अलग-अलग"): सारी चलती / बजती ऐप कॉल, key से (current = सबसे नई) */
+    private val rings = java.util.concurrent.ConcurrentHashMap<String, Ring>()
     /** बज रही कॉल ख़त्म (उठी / कटी / missed) - घंटी की आवाज़ वापस */
     @Volatile var onGone: (() -> Unit)? = null
 
@@ -94,18 +96,51 @@ object AppCall {
         val hang = extraPi("android.hangUpIntent") ?: acts.getOrNull(pickHangup(titles))?.actionIntent
         if (ans == null && dec == null && hang == null) return false    // बिना बटन (missed call वगैरह) - कुछ करने को नहीं
         val state = if (ans != null) State.RINGING else State.ONGOING
-        val prev = current
+        val prev = rings[key] ?: current
         val r = Ring(key, pkg, app, caller(title, text, app).ifBlank { prev?.takeIf { it.key == key }?.who.orEmpty() },
             isVideo(title, text, *titles.toTypedArray()) || (prev?.key == key && prev.video), state, ans, dec, hang ?: dec,
             n.fullScreenIntent ?: n.contentIntent,
             if (prev?.key == key && prev.state == state) prev.since else System.currentTimeMillis())
         current = r
+        rings[key] = r
         return state == State.RINGING && !(prev?.key == key && prev.state == State.RINGING)
     }
 
     fun removed(key: String) {
-        if (current?.key == key) { current = null; onGone?.invoke() }
+        rings.remove(key)
+        if (current?.key == key) {
+            // दूसरी कॉल अभी चल रही हो तो वही अब current (पहली कटते ही दूसरी ग़ायब न हो)
+            current = all().firstOrNull()
+            onGone?.invoke()
+        }
     }
+
+    /** सारी ऐप कॉल जो अभी सच में बज रही / चल रही हैं (बजती पहले, फिर सबसे नई) */
+    fun all(now: Long = System.currentTimeMillis()): List<Ring> =
+        rings.values.filter { it.state == State.ONGOING || now - it.since < RING_MAX_MS }
+            .sortedWith(compareBy<Ring>({ if (it.state == State.RINGING) 0 else 1 }, { -it.since }))
+
+    /** फ़ोन पर जो notification अब हैं उनके अलावा वाली कॉल हटाओ (अटकी कॉल न रहे) */
+    fun prune(alive: Set<String>) { rings.keys.filter { it !in alive }.forEach { removed(it) } }
+
+    /** किसी एक कॉल को उठाओ (key से) - island में हर कॉल का अपना बटन */
+    fun answerKey(c: Context, key: String): Boolean {
+        val r = rings[key] ?: return false
+        if (r.state != State.RINGING) return false
+        if (send(c, r.answer)) return true
+        send(c, r.open); return false
+    }
+
+    /** किसी एक कॉल को काटो (key से): बजती = Decline, चल रही = Hang up */
+    fun endKey(c: Context, key: String): Boolean {
+        val r = rings[key] ?: return false
+        val ok = if (r.state == State.RINGING) send(c, r.decline) else send(c, r.hangup)
+        if (ok && r.state == State.RINGING) removed(r.key)
+        return ok
+    }
+
+    /** उस कॉल की अपनी स्क्रीन */
+    fun openFor(key: String): PendingIntent? = rings[key]?.open
 
     // ------------------------------------------------------------ बटन दबाना
 
@@ -138,5 +173,5 @@ object AppCall {
     }
 
     /** tests के लिए */
-    internal fun reset() { current = null }
+    internal fun reset() { current = null; rings.clear() }
 }
