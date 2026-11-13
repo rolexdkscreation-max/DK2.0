@@ -358,6 +358,17 @@ class DkaiScreen(val activity: ComponentActivity, private val host: DkaiHost) : 
         return col.apply { layoutParams = LinearLayout.LayoutParams((c.resources.displayMetrics.widthPixels * 0.86f).toInt(), -2).apply { gravity = Gravity.START; bottomMargin = d(10f) } }
     }
 
+    /** साझा साँचे वाले जवाब के नीचे: [com.dk.assistant.GroundView.footer] (वही चिप, वही "स्रोत (N)" सूची) DKAI के रंग में */
+    private fun citeBox(m: DKState.Msg): View? {
+        val foot = com.dk.assistant.GroundView.footer(c, m.text, m.src, m.g, DkaiTheme.WHITE, DkaiTheme.GRAY, DkaiTheme.CYAN) ?: return null
+        return LinearLayout(c).apply {
+            orientation = LinearLayout.VERTICAL; setPadding(d(12f), d(6f), d(12f), d(6f))
+            background = DkaiTheme.round(c, 0xFF0B1324.toInt(), 14f, DkaiTheme.BORDER)
+            addView(foot, LinearLayout.LayoutParams(-1, -2))
+            layoutParams = LinearLayout.LayoutParams((c.resources.displayMetrics.widthPixels * 0.86f).toInt(), -2).apply { gravity = Gravity.START; bottomMargin = d(10f) }
+        }
+    }
+
     /** चैट वाला भेजना (ChatActivity जैसा): Accessibility चालू = DK का पूरा दिमाग़ (फ़ोन के काम भी), नहीं = सिर्फ़ बातचीत */
     private fun sendChat(t: String): Boolean {
         if (!Prefs.hasAnyKey(c)) { toast("पहले सेटिंग्स में किसी AI की API key डालकर सेव कीजिए।"); host.ready(); return false }
@@ -530,8 +541,13 @@ class DkaiScreen(val activity: ComponentActivity, private val host: DkaiHost) : 
         for (m in msgs) {
             // 13 नवंबर 2026 (मालिक): जिस वाक्य को स्रोत मिला उसके ठीक अंत में छोटे चिप (github, wikipedia…), टैप = पूरा link
             chatList.addView(bubble(m.role == "u", m.text, ground = if (m.role != "u") m.g else null))
-            if (m.role != "u" && m.src.isNotEmpty()) chatList.addView(sources(m.src))     // 13 नवंबर 2026: कौन-सी वेबसाइट से
-            if (m.role != "u") groundExtra(m)?.let { chatList.addView(it) }              // चिप-कतार (जगह न मिली) + Google खोज सुझाव
+            // 13 नवंबर 2026: खोज वाला जवाब (Tavily / Exa / Google एक जैसे) = "स्रोत (N) · प्रदाता" सिकुड़ने वाली सूची + Google खोज सुझाव
+            val card = if (m.role != "u") com.dk.assistant.WebCite.card(m.text, m.g) else null
+            if (card != null) citeBox(m)?.let { chatList.addView(it) }
+            else {
+                if (m.role != "u" && m.src.isNotEmpty()) chatList.addView(sources(m.src))     // 13 नवंबर 2026: कौन-सी वेबसाइट से
+                if (m.role != "u") groundExtra(m)?.let { chatList.addView(it) }              // चिप-कतार (जगह न मिली) + Google खोज सुझाव
+            }
         }
         if (liveR.isNotBlank()) chatList.addView(bubble(false, liveR))
         else if (thinking) chatList.addView(bubble(false, DKState.hintText.ifBlank { "सोच रहा हूँ…" }, faint = true))
@@ -563,9 +579,6 @@ class DkaiScreen(val activity: ComponentActivity, private val host: DkaiHost) : 
             val col = LinearLayout(c).apply { orientation = LinearLayout.VERTICAL }
             col.addView(DkaiTheme.text(c, com.dk.assistant.Grounding.label(title.ifBlank { site }, 60), 13f, DkaiTheme.WHITE).apply { maxLines = 1; ellipsize = android.text.TextUtils.TruncateAt.END; UiLang.keep(this) })
             if (site.isNotBlank()) col.addView(DkaiTheme.text(c, site, 11f, 0xFF60A5FA.toInt()).apply { maxLines = 1; UiLang.keep(this) })
-            // पूरा link (टैप करने लायक)
-            col.addView(DkaiTheme.text(c, url, 10.5f, DkaiTheme.GRAY).apply { maxLines = 1; ellipsize = android.text.TextUtils.TruncateAt.MIDDLE
-                paintFlags = paintFlags or android.graphics.Paint.UNDERLINE_TEXT_FLAG; UiLang.keep(this) })
             row.addView(col, LinearLayout.LayoutParams(0, -2, 1f))
             box.addView(row, LinearLayout.LayoutParams(-1, -2))
         }
@@ -575,7 +588,7 @@ class DkaiScreen(val activity: ComponentActivity, private val host: DkaiHost) : 
     }
 
     private fun bubble(user: Boolean, text: String, faint: Boolean = false, ground: com.dk.assistant.GroundCite.G? = null): View = TextView(c).apply {
-        this.text = if (ground == null) text else com.dk.assistant.GroundView.decorate(c, text, ground, DkaiTheme.WHITE)
+        this.text = if (user) text else com.dk.assistant.GroundView.decorate(c, text, ground, DkaiTheme.WHITE)
         textSize = 15f; setLineSpacing(0f, 1.2f); setTextIsSelectable(true)
         com.dk.assistant.GroundView.links(this)
         setTextColor(if (faint) DkaiTheme.GRAY else DkaiTheme.WHITE)

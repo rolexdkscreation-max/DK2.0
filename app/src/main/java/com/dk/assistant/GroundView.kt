@@ -48,16 +48,20 @@ object GroundView {
         override fun updateDrawState(ds: TextPaint) { /* चिप खुद रंग देता है - underline नहीं */ }
     }
 
-    /** जवाब का text + चिप (स्रोत न हों = वही text, कुछ नहीं जुड़ता) */
+    /**
+     * जवाब का text + चिप. 13 नवंबर 2026: सब प्रदाता (Tavily / Exa / Google) एक जैसे - जवाब के [n] निशान ([WebCite]) की जगह
+     * वाक्य के अंत में वेबसाइट के छोटे नाम वाले गोल चिप; टैप = उसी खबर का पूरा link (नया टैब / नया task).
+     * खोज नहीं हुई (g = null) = वही text, कोई चिप नहीं; बिना स्रोत वाले [n] भी हटते हैं (नकली लिंक कभी नहीं).
+     */
     fun decorate(c: Context, text: CharSequence, g: GroundCite.G?, fg: Int): CharSequence {
         val s = text.toString()
-        val pts = GroundCite.points(s, g)
-        if (g == null || pts.isEmpty()) return text
+        val card = WebCite.card(s, g) ?: return if (WebCite.ids(s).isEmpty()) text else WebCite.strip(s)
+        val lay = WebCite.layout(card.text)
         val dp = c.resources.displayMetrics.density
         val sp = c.resources.displayMetrics.scaledDensity
-        val out = SpannableStringBuilder(text)
-        for ((pos, idx) in pts.asReversed()) {
-            val chips = GroundCite.chips(g, idx)
+        val out = SpannableStringBuilder(lay.text)
+        for ((pos, ids) in lay.at.asReversed()) {
+            val chips = chipsFor(card, ids)
             if (chips.isEmpty()) continue
             val add = SpannableStringBuilder()
             for ((name, url) in chips) {
@@ -72,6 +76,18 @@ object GroundView {
         return out
     }
 
+    /** एक जगह के चिप: (site, link) - एक ही वेबसाइट दो बार नहीं, सिर्फ़ असली स्रोत */
+    private fun chipsFor(card: WebCite.Card, ids: List<Int>): List<Pair<String, String>> {
+        val out = ArrayList<Pair<String, String>>()
+        for (id in ids) {
+            val s = card.srcs.firstOrNull { it.id == id } ?: continue
+            val n = s.site.ifBlank { Grounding.host(s.url) }
+            if (n.isBlank() || !s.url.startsWith("http") || out.any { it.first == n }) continue
+            out.add(n to s.url)
+        }
+        return out
+    }
+
     /** चिप वाले text पर टैप काम करे */
     fun links(tv: TextView?) {
         val t = tv?.text as? Spanned ?: return
@@ -80,7 +96,8 @@ object GroundView {
 
     /** लाइव/जहाँ वाक्य की जगह न मिली: सारे स्रोत छोटे चिप की कतार में (लाइन भरे तो अगली लाइन) */
     fun chipRow(c: Context, g: GroundCite.G?, fg: Int): View? {
-        val chips = GroundCite.allChips(g)
+        val card = WebCite.card("", g)
+        val chips = if (card != null) chipsFor(card, WebCite.used(card).map { it.id }) else GroundCite.allChips(g)
         if (chips.isEmpty()) return null
         val tv = TextView(c).apply { textSize = 12f; setTextColor(fg); setLineSpacing(0f, 1.35f); UiLang.keep(this) }
         tv.text = decorateAll(c, chips, fg)
@@ -112,7 +129,7 @@ object GroundView {
         val dp = c.resources.displayMetrics.density
         val box = LinearLayout(c).apply { orientation = LinearLayout.VERTICAL }
         box.addView(TextView(c).apply {
-            text = UiLang.s("स्रोत"); textSize = 12f; setTextColor(dim); setTypeface(typeface, android.graphics.Typeface.BOLD)
+            text = WebCite.title(uniq.size); textSize = 12f; setTextColor(dim); setTypeface(typeface, android.graphics.Typeface.BOLD)
             setPadding(0, 0, 0, (4 * dp).toInt())
         })
         uniq.forEachIndexed { i, (title, url) ->
@@ -129,8 +146,6 @@ object GroundView {
             col.addView(TextView(c).apply { text = Grounding.label(title.ifBlank { site }, 80); textSize = 13f; setTextColor(fg); maxLines = 2
                 ellipsize = android.text.TextUtils.TruncateAt.END; UiLang.keep(this) })
             if (site.isNotBlank()) col.addView(TextView(c).apply { text = site; textSize = 11f; setTextColor(dim); maxLines = 1; UiLang.keep(this) })
-            col.addView(TextView(c).apply { text = url; textSize = 10.5f; setTextColor(accent); maxLines = 1; paintFlags = paintFlags or Paint.UNDERLINE_TEXT_FLAG
-                ellipsize = android.text.TextUtils.TruncateAt.MIDDLE; UiLang.keep(this) })
             row.addView(col, LinearLayout.LayoutParams(0, -2, 1f))
             box.addView(row, LinearLayout.LayoutParams(-1, -2))
         }
@@ -158,19 +173,84 @@ object GroundView {
     }
 
     /**
-     * जवाब के नीचे का पूरा हिस्सा: (लाइव/जगह न मिली = चिप कतार) + "स्रोत" सूची + Google searchEntryPoint.
-     * कोई स्रोत नहीं = null (कुछ नहीं दिखता).
+     * 13 नवंबर 2026: "स्रोत (N)" - सिकुड़ने लायक बटन, उसी हेडर में प्रदाता (usedProvider) और फ़ॉलबैक हुआ हो तो छोटे अक्षरों में
+     * "(Tavily फ़ेल)". सूची में सिर्फ़ जवाब में सच में इस्तेमाल हुए स्रोत; हर पंक्ति: क्रम संख्या, शीर्षक (दो लाइन तक),
+     * वेबसाइट · तारीख़. पूरा url नहीं छपता - पूरी पंक्ति टैप = link.
+     */
+    fun sourcesList(c: Context, card: WebCite.Card, fg: Int, dim: Int, accent: Int, open: Boolean = false): View? {
+        val used = WebCite.used(card)
+        if (used.isEmpty()) return null
+        val dp = c.resources.displayMetrics.density
+        val box = LinearLayout(c).apply { orientation = LinearLayout.VERTICAL }
+        val rows = LinearLayout(c).apply { orientation = LinearLayout.VERTICAL; visibility = if (open) View.VISIBLE else View.GONE }
+        val head = TextView(c).apply {
+            textSize = 12.5f; setTextColor(fg); minHeight = (36 * dp).toInt(); gravity = Gravity.CENTER_VERTICAL
+            isClickable = true; isFocusable = true; UiLang.keep(this)
+            setPadding(0, (2 * dp).toInt(), 0, (2 * dp).toInt())
+        }
+        fun paint() {
+            val shown = rows.visibility == View.VISIBLE
+            val b = SpannableStringBuilder()
+            b.append(if (shown) "▾ " else "▸ ")
+            val st = b.length; b.append(WebCite.title(used.size))
+            b.setSpan(android.text.style.StyleSpan(android.graphics.Typeface.BOLD), st, b.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+            if (card.provider.isNotBlank()) {
+                b.append("  ·  ")
+                val p0 = b.length; b.append(card.provider)
+                b.setSpan(android.text.style.ForegroundColorSpan(accent), p0, b.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+            }
+            val note = WebCite.failNote(card.failed)
+            if (note.isNotBlank()) {
+                b.append(" ")
+                val n0 = b.length; b.append(note)
+                b.setSpan(android.text.style.RelativeSizeSpan(0.8f), n0, b.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+                b.setSpan(android.text.style.ForegroundColorSpan(dim), n0, b.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+            }
+            head.text = b
+            head.contentDescription = WebCite.title(used.size) + ", " + WebCite.providerLine(card.provider, card.failed) + if (shown) ", बंद करें" else ", खोलें"
+        }
+        head.setOnClickListener { rows.visibility = if (rows.visibility == View.VISIBLE) View.GONE else View.VISIBLE; paint() }
+        paint()
+        box.addView(head, LinearLayout.LayoutParams(-1, -2))
+        for (s in used) {
+            val row = LinearLayout(c).apply {
+                orientation = LinearLayout.HORIZONTAL; gravity = Gravity.TOP
+                isClickable = true; isFocusable = true; minimumHeight = (40 * dp).toInt()
+                setPadding(0, (4 * dp).toInt(), 0, (4 * dp).toInt())
+                contentDescription = "स्रोत ${s.id}: ${s.title.ifBlank { s.site }} (${s.site}), खोलें"
+                setOnClickListener { SourcesView.open(c, s.url) }
+            }
+            row.addView(TextView(c).apply { text = "${s.id}."; textSize = 12f; setTextColor(accent); minWidth = (24 * dp).toInt() })
+            val col = LinearLayout(c).apply { orientation = LinearLayout.VERTICAL }
+            col.addView(TextView(c).apply { text = s.title.ifBlank { s.site }; textSize = 13f; setTextColor(fg); maxLines = 2
+                ellipsize = android.text.TextUtils.TruncateAt.END; UiLang.keep(this) })
+            val meta = listOf(s.site, s.date).filter { it.isNotBlank() }.joinToString(" · ")
+            if (meta.isNotBlank()) col.addView(TextView(c).apply { text = meta; textSize = 11f; setTextColor(dim); maxLines = 1
+                ellipsize = android.text.TextUtils.TruncateAt.END; UiLang.keep(this) })
+            row.addView(col, LinearLayout.LayoutParams(0, -2, 1f))
+            rows.addView(row, LinearLayout.LayoutParams(-1, -2))
+        }
+        box.addView(rows, LinearLayout.LayoutParams(-1, -2))
+        return box
+    }
+
+    /**
+     * जवाब के नीचे का पूरा हिस्सा: (लाइव/जगह न मिली = चिप कतार) + "स्रोत (N)" सूची + Google searchEntryPoint (Google की शर्त).
+     * कोई स्रोत नहीं = null (कुछ नहीं दिखता). पुराने सहेजे जवाब (साँचे से पहले के) = पहले जैसी सूची.
      */
     fun footer(c: Context, text: String, sources: List<Pair<String, String>>, g: GroundCite.G?, fg: Int, dim: Int, accent: Int, forceRow: Boolean = false): View? {
-        val all = if (g != null) (GroundCite.unique(g) + sources) else sources
-        if (all.isEmpty()) return null
         val dp = c.resources.displayMetrics.density
+        val card = WebCite.card(text, g)
+        if (card == null) {
+            if (sources.isEmpty()) return null
+            return list(c, sources, fg, dim, accent)
+        }
         val col = LinearLayout(c).apply { orientation = LinearLayout.VERTICAL }
-        if (g != null && (forceRow || GroundCite.points(text, g).isEmpty())) chipRow(c, g, fg)?.let {
+        if (forceRow || !card.marked) chipRow(c, g, fg)?.let {
             col.addView(it, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = (6 * dp).toInt() })
         }
-        list(c, all, fg, dim, accent)?.let { col.addView(it, LinearLayout.LayoutParams(-1, -2)) }
-        g?.entryHtml?.let { h -> entry(c, h)?.let { col.addView(it, LinearLayout.LayoutParams(-1, -2).apply { topMargin = (6 * dp).toInt() }) } }
+        sourcesList(c, card, fg, dim, accent)?.let { col.addView(it, LinearLayout.LayoutParams(-1, -2)) }
+        entry(c, card.entryHtml)?.let { col.addView(it, LinearLayout.LayoutParams(-1, -2).apply { topMargin = (6 * dp).toInt() }) }
         return if (col.childCount == 0) null else col
     }
 }

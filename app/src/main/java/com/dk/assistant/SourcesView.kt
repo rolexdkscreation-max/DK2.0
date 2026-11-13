@@ -26,7 +26,8 @@ object SourcesView {
         }
         box.addView(foot)
         // v3.93: खोज किस सेवा से हुई - छोटे अक्षरों में (Tavily / Exa / Gemini); पता न हो = कुछ नहीं
-        WebSearch.viaOf(sources)?.let { via ->
+        // 13 नवंबर 2026: साझा साँचे वाले जवाब में प्रदाता "स्रोत (N)" के हेडर में ही - यह पुरानी लाइन सिर्फ़ पुराने सहेजे जवाबों के लिए
+        if (WebCite.card(text, g) == null) WebSearch.viaOf(sources)?.let { via ->
             box.addView(TextView(c).apply { this.text = UiLang.s("खोज") + ": $via"; textSize = 10f; setTextColor(0x80FFFFFF.toInt()); setPadding(0, (4 * dp).toInt(), 0, 0) })
         }
         return box

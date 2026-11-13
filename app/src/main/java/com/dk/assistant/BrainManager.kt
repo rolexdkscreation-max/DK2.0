@@ -286,7 +286,7 @@ class BrainManager(private val ctx: Context) {
     }
 
     /** Internet (Google Search) se pata karke sahi jawab - bolne layak chhota text. */
-    suspend fun searchAnswer(question: String): String = search(question, deep = false).text
+    suspend fun searchAnswer(question: String): String = WebCite.strip(search(question, deep = false).text)
 
     /**
      * Internet se jaanch kar jawab.
@@ -334,18 +334,31 @@ class BrainManager(private val ctx: Context) {
                 val order = WebSearch.order(tKey.isNotBlank(), eKey.isNotBlank(), searchKeys().isNotEmpty())
                 var last: Exception? = null
                 var lastFail = SearchGuard.Fail.NO_KEY
+                // 13 नवंबर 2026: फ़ॉलबैक के साथ नाम याद - key है पर 1 घंटे बंद (पिछली बार फ़ेल) / अभी फ़ेल = हेडर में "(Tavily फ़ेल)"
+                val failed = ArrayList<String>()
+                listOf(WebSearch.Provider.TAVILY to tKey.isNotBlank(), WebSearch.Provider.EXA to eKey.isNotBlank())
+                    .forEach { (p, has) -> if (has && WebSearch.isDown(p)) failed.add(WebCite.nameOf(p)) }
+                // यूज़र का सीधा text नहीं: Gemini से साफ़ अंग्रेज़ी खोज-वाक्य (आज की तारीख़ के साथ); ख़बर = पिछले एक दिन का फ़िल्टर
+                val news = WebCite.isNews(question)
+                val query = if (order.isEmpty()) "" else rewriteQuery(question, news)
+                searchQuery = query
                 for (p in order) {
                     try {
                         val r = when (p) {
-                            WebSearch.Provider.TAVILY -> fromFound(question, withContext(Dispatchers.IO) { WebSearchNet.tavily(tKey, question) })
-                            WebSearch.Provider.EXA -> fromFound(question, withContext(Dispatchers.IO) { WebSearchNet.exa(eKey, question) })
-                            WebSearch.Provider.GEMINI -> gemini()
+                            WebSearch.Provider.TAVILY -> fromRaw(question, query, WebCite.TAVILY, failed,
+                                withContext(Dispatchers.IO) { WebSearchNet.tavilyRaw(tKey, query, news) })
+                            WebSearch.Provider.EXA -> fromRaw(question, query, WebCite.EXA, failed,
+                                withContext(Dispatchers.IO) { WebSearchNet.exaRaw(eKey, query, if (news) WebCite.sinceIso(System.currentTimeMillis()) else "") })
+                            WebSearch.Provider.GEMINI -> gemini().let { g ->
+                                g.copy(g = g.g?.copy(provider = WebCite.GOOGLE, failed = failed.toList()))
+                            }
                         }
                         if (r.text.isBlank()) throw AiException(0, "empty")
+                        DKLog.d("खोज: usedProvider = ${WebCite.nameOf(p)}${if (failed.isNotEmpty()) " (${failed.joinToString()} फ़ेल)" else ""}")
                         WebSearch.tag(r.sources, p); WebSearch.clearDown(p); WebSearch.put(question, r)
                         if (p != WebSearch.Provider.GEMINI) {
                             LiveSearch.remember(question, r.sources)
-                            remember("USER SAYS: $question", JSONObject().put("say", r.text.take(1200)).put("done", true).toString())
+                            remember("USER SAYS: $question", JSONObject().put("say", WebCite.strip(r.text).take(1200)).put("done", true).toString())
                         }
                         DKLog.d("खोज: ${p.label} से (${r.sources.size} स्रोत)")
                         return@run r
@@ -361,6 +374,7 @@ class BrainManager(private val ctx: Context) {
                             WebSearch.markDown(p, f); DKLog.d("खोज: ${p.label} नहीं चली (${SearchGuard.hindi(f)}${if (code > 0) ", code $code" else ""}) - 1 घंटे छोड़ी, अगली सेवा")
                         } else DKLog.d("खोज: ${p.label} नहीं चली (${SearchGuard.hindi(f)}${if (code > 0) ", code $code" else ""}) - अगली सेवा")
                         last = e; lastFail = f
+                        if (p != WebSearch.Provider.GEMINI) failed.add(WebCite.nameOf(p))
                     }
                 }
                 if (order.isEmpty()) lastFail = WebSearch.downReason() ?: SearchGuard.Fail.NO_KEY
@@ -370,24 +384,60 @@ class BrainManager(private val ctx: Context) {
         }
     }
 
+    /** 13 नवंबर 2026: इस खोज का सुधरा खोज-वाक्य (Google वाली खोज भी इसी से) */
+    @Volatile private var searchQuery = ""
+
     /**
-     * Tavily/Exa के नतीजे -> SearchResult. Live: नतीजे सीधे Live को (वह ख़ुद बोलकर जवाब बनाता है, कोई और AI call नहीं).
-     * चैट: चैट वाले AI से छोटा हिंदी जवाब (खोज दोबारा नहीं - सिर्फ़ मिलाना); वह न चले = सीधा सार.
+     * खोज का सवाल सुधारो: Gemini से साफ़, ठोस अंग्रेज़ी खोज-वाक्य जिसमें आज की तारीख़ हो.
+     * Gemini key न हो / 5 सेकंड (DK लाइव में 2.5) में न आए = सवाल + आज की तारीख़ (यूज़र को कुछ नहीं पूछते).
      */
-    private suspend fun fromFound(question: String, f: WebSearch.Found): SearchResult {
-        if (f.hits.isEmpty() && f.answer.isBlank()) throw AiException(0, "empty")
-        val sources = WebSearch.sources(f)
-        val report = WebSearch.report(f)
-        if (fromLive) return SearchResult(report, sources)
-        val merged = try {
-            kotlinx.coroutines.withTimeoutOrNull(10_000L) {
-                quickText(LiveSearch.mergeSystem(NowClock.line(), Prefs.assistantName(ctx), Prefs.userName(ctx)) + Memory.factsBlock(ctx),
-                    LiveSearch.mergeInput(question, listOf("web" to report)))
+    private suspend fun rewriteQuery(question: String, news: Boolean): String {
+        val date = NowClock.dateEn()
+        val key = searchKeys().firstOrNull().orEmpty()
+        val out = if (key.isBlank()) null else try {
+            kotlinx.coroutines.withTimeoutOrNull(if (fromLive) 2_500L else 5_000L) {
+                kotlinx.coroutines.runInterruptible(Dispatchers.IO) {
+                    GeminiClient(key, GeminiClient.BACKUP_MODELS.first()).apply { backups = GeminiClient.BACKUP_MODELS }
+                        .complete(WebCite.rewriteSystem(date, news), emptyList(), question.trim().take(600), null)
+                }
+            }
+        } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (e: Exception) { DKLog.d("खोज-वाक्य सुधार fail: ${e.message?.take(80)}"); null }
+        return WebCite.cleanQuery(out, question, date).also { DKLog.d("खोज-वाक्य: \"${it.take(120)}\"${if (news) " (ख़बर: पिछला 1 दिन)" else ""}") }
+    }
+
+    /**
+     * Tavily/Exa के कच्चे नतीजे -> साझा साँचा ([WebCite.normalizeResults]) -> SearchResult.
+     * खाली / सारे होमपेज = "empty" (अगला प्रदाता; नतीजे आपस में नहीं मिलाते).
+     * Live: क्रम वाले स्रोत सीधे Live को (वह ख़ुद बोलकर जवाब बनाता है). चैट: जवाब बनाने का एक ही तरीका -
+     * क्रम संख्या वाले स्रोत Gemini को + [WebCite.RULES], जवाब में [1] / [2][3] (दिखाते समय चिप).
+     */
+    private suspend fun fromRaw(question: String, query: String, provider: String, failed: List<String>, raw: String): SearchResult {
+        val srcs = WebCite.normalizeResults(provider, raw)
+        if (WebCite.useless(srcs)) {
+            DKLog.d("खोज: $provider - ${if (srcs.isEmpty()) "कोई नतीजा नहीं" else "सारे link सिर्फ़ होमपेज"}, अगली सेवा")
+            throw AiException(0, "empty")
+        }
+        val sources = srcs.map { it.title to it.url }
+        val g = WebCite.toG(srcs, provider, failed.toList(), live = fromLive)
+        if (fromLive) return SearchResult(WebCite.liveReport(srcs), sources, g)
+        val sys = WebCite.answerSystem(NowClock.line(), Prefs.assistantName(ctx), Prefs.userName(ctx)) + Memory.factsBlock(ctx)
+        val input = WebCite.answerInput(question, srcs, query)
+        val made = try {
+            kotlinx.coroutines.withTimeoutOrNull(12_000L) {
+                val key = searchKeys().firstOrNull().orEmpty()
+                (if (key.isBlank()) null else try {
+                    kotlinx.coroutines.runInterruptible(Dispatchers.IO) {
+                        val c = GeminiClient(key, Prefs.model(ctx, "gemini"))
+                        c.complete(sys, emptyList(), input, null).also { lastUsed = c.label }
+                    }
+                } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (e: Exception) { DKLog.d("खोज जवाब (Gemini) fail: ${e.message?.take(80)}"); null })
+                    ?.takeIf { it.isNotBlank() } ?: quickText(sys, input)
             }
         } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (_: Exception) { null }
-        val ans = (merged?.takeIf { it.isNotBlank() } ?: WebSearch.plainAnswer(f))
-            .replace(Regex("[*#`]"), "").replace(Regex("\\[\\d+(,\\s*\\d+)*\\]"), "").trim()
-        return SearchResult(ans.ifBlank { report }, sources)
+        val ans = WebCite.sanitize((made?.takeIf { it.isNotBlank() } ?: WebCite.extractive(srcs)).replace(Regex("[*#`]"), "").trim(),
+            srcs.map { it.id }.toSet())
+        if (ans.isBlank()) return SearchResult("इस बारे में ठोस खबर नहीं मिली।", sources, g)
+        return SearchResult(ans, sources, g)
     }
 
     /**
@@ -417,7 +467,8 @@ class BrainManager(private val ctx: Context) {
                         kotlinx.coroutines.withTimeoutOrNull(angleMs) {
                             kotlinx.coroutines.runInterruptible {
                                 GeminiClient(key, model).search(LiveSearch.angleSystem(a, nowLine, name, deepS), emptyList(),
-                                    "$question\n(Search date: ${NowClock.dateEn()})", deep = deepS, maxModels = 2)
+                                    "$question\n(Search date: ${NowClock.dateEn()})" + searchQuery.takeIf { it.isNotBlank() }?.let { "\n(Search for: $it)" }.orEmpty(),
+                                    deep = deepS, maxModels = 2)
                             }
                         }?.let { a.id to it }
                     } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (e: Exception) {
@@ -437,24 +488,37 @@ class BrainManager(private val ctx: Context) {
                 searchOnceWith(key, question, deep = false, thorough = false, think = false, maxModels = 2)
             } ?: throw AiException(0, "timeout")
         }
+        // 13 नवंबर 2026: हर खोज के जवाब में बाइट से [n] (Google ग्राउंडिंग) - id सारी खोजों में आगे-आगे, ताकि मिलाने के बाद भी सही स्रोत
+        var off = 0
+        val marked = good.map { (id, res) ->
+            val g = res.g
+            val t = if (g != null) WebCite.markGoogle(res.text, g, off) else res.text
+            val srcs = if (g != null) WebCite.googleSrcs(g, off) else emptyList()
+            off += g?.chunks?.size ?: 0
+            Triple(id, t, srcs)
+        }
+        val allSrcs = marked.flatMap { it.third }
         val merged = if (LiveSearch.skipMerge(good.size, deepS)) null else try {
             kotlinx.coroutines.withTimeoutOrNull(if (deepS) 15_000L else 10_000L) {
                 kotlinx.coroutines.runInterruptible {
                     val client = GeminiClient(key, model)
-                    val t = client.stream(LiveSearch.mergeSystem(nowLine, name, user, deepS) + Memory.factsBlock(ctx), emptyList(),
-                        LiveSearch.mergeInput(question, good.map { it.first to it.second.text })) { }
+                    // जवाब बनाने का एक ही तरीका: क्रम वाले स्रोत + वही चार नियम (Google = रिपोर्ट में पहले से [n])
+                    val t = client.stream(LiveSearch.mergeSystem(nowLine, name, user, deepS) + "\n" +
+                        WebCite.answerSystem(nowLine, name, user) + Memory.factsBlock(ctx), emptyList(),
+                        LiveSearch.mergeInput(question, marked.map { it.first to it.second }) + "\n\n" + WebCite.answerInput(question, allSrcs, searchQuery)) { }
                     lastUsed = client.label
                     t
                 }
             }
         } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (e: Exception) { DKLog.d("लाइव खोज मिलाना fail: ${e.message}"); null }
-        val ans = (merged?.takeIf { it.isNotBlank() } ?: good.first().second.text)
-            .replace(Regex("[*#`]"), "").replace(Regex("\\[\\d+(,\\s*\\d+)*\\]"), "").trim()
+        val ans = WebCite.sanitize((merged?.takeIf { it.isNotBlank() } ?: marked.first().second).replace(Regex("[*#`]"), "").trim(),
+            allSrcs.map { it.id }.toSet())
         // 13 नवंबर 2026: हर खोज का groundingMetadata (चिप + स्रोत) - एक ही खोज = वाक्य के अंत में चिप; मिलाया जवाब = चिप नीचे कतार में
-        val ground = good.map { it.second.g }.fold(null as GroundCite.G?) { a, b -> GroundCite.merge(a, b) }
+        val ground0 = good.map { it.second.g }.fold(null as GroundCite.G?) { a, b -> GroundCite.merge(a, b) }
+        val ground = ground0?.let { g0 -> g0.copy(provider = WebCite.GOOGLE, srcs = allSrcs.ifEmpty { g0.srcs }, live = fromLive || g0.live) }
         DKLog.d("लाइव खोज${if (deepS) " (गहरी, खोज की अपनी key)" else ""}: ${angles.joinToString { it.id }} -> ${good.size} नतीजे, ${sources.size} वेबसाइटें")
         LiveSearch.remember(question, sources)
-        remember("USER SAYS: $question", JSONObject().put("say", ans).put("done", true).toString())
+        remember("USER SAYS: $question", JSONObject().put("say", WebCite.strip(ans)).put("done", true).toString())
         SearchResult(ans, if (ground != null) (GroundCite.unique(ground) + sources).distinctBy { it.second } else sources, ground)
     }
 
@@ -508,11 +572,14 @@ class BrainManager(private val ctx: Context) {
             append(Memory.factsBlock(ctx))
         }
         val r = kotlinx.coroutines.runInterruptible { client.search(sys, history, question, deep || thorough, think, maxModels) }
-        val ans = r.text.replace(Regex("[*#`]"), "").replace(Regex("\\[\\d+(,\\s*\\d+)*\\]"), "").trim()
+        // 13 नवंबर 2026: Google ग्राउंडिंग = बाइट (endIndex) से [n] खुद डालो, फिर markdown हटाओ - आगे बाकी प्रदाताओं जैसा
+        val g = r.g
+        val ans = WebCite.sanitize((if (g != null) WebCite.markGoogle(r.text, g) else WebCite.strip(r.text)).replace(Regex("[*#`]"), "").trim(),
+            if (g != null) WebCite.googleSrcs(g).map { it.id }.toSet() else emptySet())
         lastUsed = client.label
         LiveSearch.remember(question, r.sources)
-        remember("USER SAYS: $question", JSONObject().put("say", ans).put("done", true).toString())
-        SearchResult(ans, r.sources, r.g)
+        remember("USER SAYS: $question", JSONObject().put("say", WebCite.strip(ans)).put("done", true).toString())
+        SearchResult(ans, r.sources, g?.copy(provider = WebCite.GOOGLE, srcs = WebCite.googleSrcs(g), live = fromLive))
     }
 
     /** Settings me "टेस्ट" button ke liye. */

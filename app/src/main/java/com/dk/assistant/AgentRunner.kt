@@ -835,9 +835,10 @@ class AgentRunner(
             if (r.text.isBlank()) false else {
                 // sources sirf screen par (click ho sakne wale), awaaz me sirf jawab. Search nahi hua = sources khali
                 DKState.reply(r.text, r.sources, r.g)
-                if (!silent) speaker.speak(r.text)
+                // 13 नवंबर 2026: [n] निशान सिर्फ़ स्क्रीन के चिप के लिए - बोलकर कभी नहीं
+                if (!silent) speaker.speak(WebCite.strip(r.text))
                 // taaza (search wala) jawab yaad mat karo - kal purana ho jayega
-                if (r.sources.isEmpty()) LocalBrain.learn(svc, goal, r.text)
+                if (r.sources.isEmpty()) LocalBrain.learn(svc, goal, WebCite.strip(r.text))
                 true
             }
         } catch (e: Exception) {
@@ -865,7 +866,7 @@ class AgentRunner(
             if (r.text.isBlank()) false else {
                 // screen par jawab + kahan se mila (click ho sakne wale links); bolkar sirf jawab
                 DKState.reply(r.text, r.sources, r.g)
-                if (!silent) speaker.speak(r.text)
+                if (!silent) speaker.speak(WebCite.strip(r.text))   // [n] निशान बोले नहीं जाते
                 true
             }
         } catch (e: kotlinx.coroutines.CancellationException) { throw e
