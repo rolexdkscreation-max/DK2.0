@@ -347,6 +347,17 @@ class DkaiScreen(val activity: ComponentActivity, private val host: DkaiHost) : 
 
     private var localJob: kotlinx.coroutines.Job? = null
 
+    /** 13 नवंबर 2026: वाक्य पर जगह न मिली (मिलाया जवाब / DK लाइव) = सारे चिप एक कतार में; + Google का searchEntryPoint (उसकी शर्त) */
+    private fun groundExtra(m: DKState.Msg): View? {
+        val g = m.g ?: return null
+        val col = LinearLayout(c).apply { orientation = LinearLayout.VERTICAL }
+        if (com.dk.assistant.GroundCite.points(m.text, g).isEmpty())
+            com.dk.assistant.GroundView.chipRow(c, g, DkaiTheme.WHITE)?.let { col.addView(it, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = d(4f) }) }
+        com.dk.assistant.GroundView.entry(c, g.entryHtml)?.let { col.addView(it, LinearLayout.LayoutParams(-1, -2)) }
+        if (col.childCount == 0) return null
+        return col.apply { layoutParams = LinearLayout.LayoutParams((c.resources.displayMetrics.widthPixels * 0.86f).toInt(), -2).apply { gravity = Gravity.START; bottomMargin = d(10f) } }
+    }
+
     /** चैट वाला भेजना (ChatActivity जैसा): Accessibility चालू = DK का पूरा दिमाग़ (फ़ोन के काम भी), नहीं = सिर्फ़ बातचीत */
     private fun sendChat(t: String): Boolean {
         if (!Prefs.hasAnyKey(c)) { toast("पहले सेटिंग्स में किसी AI की API key डालकर सेव कीजिए।"); host.ready(); return false }
@@ -369,7 +380,7 @@ class DkaiScreen(val activity: ComponentActivity, private val host: DkaiHost) : 
                     full.contains("[SCREEN]") || full.contains("need_screen") -> "फ़ोन पर काम करने के लिए पहले Accessibility में DK चालू करें।"
                     cl.startsWith("{") -> try { org.json.JSONObject(cl.substring(0, cl.lastIndexOf('}') + 1)).optString("say") } catch (_: Exception) { cl }.ifBlank { "…" }
                     else -> cl.ifBlank { "…" }
-                })
+                }, emptyList(), b.lastGround)
             } catch (e: kotlinx.coroutines.CancellationException) { throw e
             } catch (e: Exception) { DKState.replyFailed(b.explainAll(e))
             } finally { DKState.set(Mode.IDLE) }
@@ -512,13 +523,15 @@ class DkaiScreen(val activity: ComponentActivity, private val host: DkaiHost) : 
         val msgs = DKState.messages.toList().takeLast(60)
         val liveR = DKState.liveReply
         val thinking = DKState.mode == Mode.THINKING && msgs.lastOrNull()?.role == "u" && liveR.isBlank()
-        val sig = "${msgs.size}|${msgs.lastOrNull()?.time}|${msgs.lastOrNull()?.text?.length}|${msgs.lastOrNull()?.src?.size}|$thinking|${DKState.hintText}".hashCode()
+        val sig = "${msgs.size}|${msgs.lastOrNull()?.time}|${msgs.lastOrNull()?.text?.length}|${msgs.lastOrNull()?.src?.size}|${msgs.lastOrNull()?.g?.chunks?.size}|$thinking|${DKState.hintText}".hashCode()
         if (sig == shownMsgs && liveR == shownLive) return
         shownMsgs = sig; shownLive = liveR
         chatList.removeAllViews()
         for (m in msgs) {
-            chatList.addView(bubble(m.role == "u", m.text))
+            // 13 नवंबर 2026 (मालिक): जिस वाक्य को स्रोत मिला उसके ठीक अंत में छोटे चिप (github, wikipedia…), टैप = पूरा link
+            chatList.addView(bubble(m.role == "u", m.text, ground = if (m.role != "u") m.g else null))
             if (m.role != "u" && m.src.isNotEmpty()) chatList.addView(sources(m.src))     // 13 नवंबर 2026: कौन-सी वेबसाइट से
+            if (m.role != "u") groundExtra(m)?.let { chatList.addView(it) }              // चिप-कतार (जगह न मिली) + Google खोज सुझाव
         }
         if (liveR.isNotBlank()) chatList.addView(bubble(false, liveR))
         else if (thinking) chatList.addView(bubble(false, DKState.hintText.ifBlank { "सोच रहा हूँ…" }, faint = true))
@@ -537,7 +550,6 @@ class DkaiScreen(val activity: ComponentActivity, private val host: DkaiHost) : 
         val sites = com.dk.assistant.Grounding.sites(src)
         val via = com.dk.assistant.WebSearch.viaOf(src)
         box.addView(DkaiTheme.text(c, "🔎 स्रोत • ${sites.size} वेबसाइट" + (via?.let { " • $it" } ?: ""), 12f, DkaiTheme.CYAN, DkaiTheme.SANS_BOLD))
-        if (sites.isNotEmpty()) box.addView(DkaiTheme.text(c, sites.joinToString(", "), 11f, DkaiTheme.GRAY).apply { setPadding(0, d(2f), 0, d(4f)); UiLang.keep(this) })
         src.forEachIndexed { i, (title, url) ->
             val site = com.dk.assistant.Grounding.site(title, url)
             val row = LinearLayout(c).apply {
@@ -551,6 +563,9 @@ class DkaiScreen(val activity: ComponentActivity, private val host: DkaiHost) : 
             val col = LinearLayout(c).apply { orientation = LinearLayout.VERTICAL }
             col.addView(DkaiTheme.text(c, com.dk.assistant.Grounding.label(title.ifBlank { site }, 60), 13f, DkaiTheme.WHITE).apply { maxLines = 1; ellipsize = android.text.TextUtils.TruncateAt.END; UiLang.keep(this) })
             if (site.isNotBlank()) col.addView(DkaiTheme.text(c, site, 11f, 0xFF60A5FA.toInt()).apply { maxLines = 1; UiLang.keep(this) })
+            // पूरा link (टैप करने लायक)
+            col.addView(DkaiTheme.text(c, url, 10.5f, DkaiTheme.GRAY).apply { maxLines = 1; ellipsize = android.text.TextUtils.TruncateAt.MIDDLE
+                paintFlags = paintFlags or android.graphics.Paint.UNDERLINE_TEXT_FLAG; UiLang.keep(this) })
             row.addView(col, LinearLayout.LayoutParams(0, -2, 1f))
             box.addView(row, LinearLayout.LayoutParams(-1, -2))
         }
@@ -559,8 +574,10 @@ class DkaiScreen(val activity: ComponentActivity, private val host: DkaiHost) : 
         }
     }
 
-    private fun bubble(user: Boolean, text: String, faint: Boolean = false): View = TextView(c).apply {
-        this.text = text; textSize = 15f; setLineSpacing(0f, 1.2f); setTextIsSelectable(true)
+    private fun bubble(user: Boolean, text: String, faint: Boolean = false, ground: com.dk.assistant.GroundCite.G? = null): View = TextView(c).apply {
+        this.text = if (ground == null) text else com.dk.assistant.GroundView.decorate(c, text, ground, DkaiTheme.WHITE)
+        textSize = 15f; setLineSpacing(0f, 1.2f); setTextIsSelectable(true)
+        com.dk.assistant.GroundView.links(this)
         setTextColor(if (faint) DkaiTheme.GRAY else DkaiTheme.WHITE)
         setPadding(d(14f), d(10f), d(14f), d(10f))
         background = if (user) DkaiTheme.round(c, 0xFF1D4ED8.toInt(), 18f) else DkaiTheme.round(c, DkaiTheme.CARD, 18f, DkaiTheme.BORDER)

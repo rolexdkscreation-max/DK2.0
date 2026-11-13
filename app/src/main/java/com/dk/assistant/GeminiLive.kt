@@ -309,6 +309,10 @@ class GeminiLive(internal val svc: DKAccessibilityService, internal val agent: A
     internal var pendingSources: List<Pair<String, String>> = emptyList()
     /** deep_think tool ne search kiya ho to uske sources (agle jawab ke saath) */
     @Volatile internal var toolSources: List<Pair<String, String>> = emptyList()
+    /** 13 नवंबर 2026: इसी बारी का groundingMetadata (चिप + स्रोत सूची लिखे रूप के नीचे); खोज नहीं = null */
+    internal var turnGround: GroundCite.G? = null
+    internal var pendingGround: GroundCite.G? = null
+    @Volatile internal var toolGround: GroundCite.G? = null
     @Volatile internal var shownReply = ""
     @Volatile internal var eosAt = 0L
     @Volatile internal var firstAudioAt = 0L

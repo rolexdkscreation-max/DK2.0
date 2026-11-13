@@ -818,9 +818,11 @@ class AgentRunner(
             val m = "माफ़ कीजिए, जवाब खाली आया। एक बार फिर बोलिए।"
             DKState.reply(m); if (!silent) speaker.speak(m); return ChatOut.DONE
         }
-        DKState.reply(answer)
-        // roz seekho: agli baar yahi sawaal = turant jawab
-        if (note.isBlank()) scope.launch(Dispatchers.IO) { LocalBrain.learn(svc, goal, answer) }
+        // 13 नवंबर 2026: Gemini ने googleSearch से खोजा = वाक्य के अंत में चिप + नीचे स्रोत (नहीं खोजा = null, कुछ नहीं)
+        val ground = brain.lastGround
+        DKState.reply(answer, emptyList(), ground)
+        // roz seekho: agli baar yahi sawaal = turant jawab (ताज़ा खोज वाला जवाब नहीं - कल पुराना हो जाएगा)
+        if (note.isBlank() && ground == null) scope.launch(Dispatchers.IO) { LocalBrain.learn(svc, goal, answer) }
         speakJob?.join()
         return ChatOut.DONE
     }
@@ -832,7 +834,7 @@ class AgentRunner(
             val r = brain.think(goal)
             if (r.text.isBlank()) false else {
                 // sources sirf screen par (click ho sakne wale), awaaz me sirf jawab. Search nahi hua = sources khali
-                DKState.reply(r.text, r.sources)
+                DKState.reply(r.text, r.sources, r.g)
                 if (!silent) speaker.speak(r.text)
                 // taaza (search wala) jawab yaad mat karo - kal purana ho jayega
                 if (r.sources.isEmpty()) LocalBrain.learn(svc, goal, r.text)
@@ -862,7 +864,7 @@ class AgentRunner(
             }
             if (r.text.isBlank()) false else {
                 // screen par jawab + kahan se mila (click ho sakne wale links); bolkar sirf jawab
-                DKState.reply(r.text, r.sources)
+                DKState.reply(r.text, r.sources, r.g)
                 if (!silent) speaker.speak(r.text)
                 true
             }

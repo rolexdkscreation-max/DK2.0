@@ -163,7 +163,7 @@ internal fun GeminiLive.splitHoldCheck() {
 internal fun GeminiLive.startTurn() {
     turnActive = true; routeDedupe.reset(); clearAct(); actEvidence = false
     leakFilter = newLeakFilter(); leakMute = false
-    synchronized(turnLock) { userText.clear(); replyText.clear(); turnSources = emptyList(); splitFedTo = 0 }
+    synchronized(turnLock) { userText.clear(); replyText.clear(); turnSources = emptyList(); turnGround = null; splitFedTo = 0 }
 }
 
 internal fun GeminiLive.finishTurn(close: Boolean = true) {
@@ -182,8 +182,9 @@ internal fun GeminiLive.finishTurn(close: Boolean = true) {
     if (r.isNotBlank()) { lastDkLine = r; checkHonest(r) }
     // jawab: awaaz abhi baj rahi hai to revealTick() saath-saath poora karega
     synchronized(turnLock) {
-        if (r.isNotBlank()) { pendingReply = r; pendingSources = Grounding.merge(turnSources, toolSources); toolSources = emptyList() }
-        turnSources = emptyList()
+        if (r.isNotBlank()) { pendingReply = r; pendingSources = Grounding.merge(turnSources, toolSources); toolSources = emptyList()
+            pendingGround = GroundCite.merge(turnGround, toolGround)?.copy(live = true); toolGround = null }
+        turnSources = emptyList(); turnGround = null
     }
     firstAudioAt = 0; replyStarted = false
     if (!isPlaying()) idleMode()

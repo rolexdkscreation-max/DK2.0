@@ -89,8 +89,16 @@ class BrainManager(private val ctx: Context) {
      * Kai keys ho to: sabse tez wali se shuru; 1.5 sec me pehla shabd na aaye to agli key bhi saath me -
      * jo pehle jawab de, wahi jeetegi. Fail ho to turant agli key.
      */
+    /**
+     * 13 नवंबर 2026: आख़िरी [streamChat] जवाब में Gemini ने googleSearch से खोजा हो तो उसका groundingMetadata (चिप + स्रोत).
+     * नहीं खोजा / Gemini नहीं जीता = null (कोई चिप, कोई सूची नहीं).
+     */
+    @Volatile var lastGround: GroundCite.G? = null
+        private set
+
     suspend fun streamChat(prompt: String, note: String, onDelta: (String) -> Unit): String = withContext(Dispatchers.IO) {
         syncEpoch()
+        lastGround = null
         val system = buildChatStreamPrompt()
         // purane JSON jawab ko saada text bana ke bhejo (AI saada text hi likhe)
         val hist = history.takeLast(10).map { t ->
@@ -99,7 +107,7 @@ class BrainManager(private val ctx: Context) {
             else t
         }
         val cands = rankedForChat().mapNotNull { p -> clientFor(p)?.let { c ->
-            if (c is GeminiClient) c.fast = true
+            if (c is GeminiClient) { c.fast = true; c.groundChat = true }     // 13 नवंबर 2026: चैट = googleSearch चालू
             if (c is OpenAiCompatClient) c.fast = true
             p to c } }
         if (cands.isEmpty()) {
@@ -135,7 +143,7 @@ class BrainManager(private val ctx: Context) {
                             onDelta(d)
                         }
                         val won = synchronized(lock) { running--; counted = true; if (winner == null && full.isNotBlank()) winner = p.id; winner == p.id }
-                        if (won) { lastUsed = client.label; result.complete(full) }
+                        if (won) { lastUsed = client.label; lastGround = (client as? GeminiClient)?.lastGround; result.complete(full) }
                         else if (full.isBlank()) throw AiException(0, "khali jawab")
                     } catch (e: LoserException) {
                         synchronized(lock) { if (!counted) { running--; counted = true } }
@@ -442,10 +450,12 @@ class BrainManager(private val ctx: Context) {
         } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (e: Exception) { DKLog.d("लाइव खोज मिलाना fail: ${e.message}"); null }
         val ans = (merged?.takeIf { it.isNotBlank() } ?: good.first().second.text)
             .replace(Regex("[*#`]"), "").replace(Regex("\\[\\d+(,\\s*\\d+)*\\]"), "").trim()
+        // 13 नवंबर 2026: हर खोज का groundingMetadata (चिप + स्रोत) - एक ही खोज = वाक्य के अंत में चिप; मिलाया जवाब = चिप नीचे कतार में
+        val ground = good.map { it.second.g }.fold(null as GroundCite.G?) { a, b -> GroundCite.merge(a, b) }
         DKLog.d("लाइव खोज${if (deepS) " (गहरी, खोज की अपनी key)" else ""}: ${angles.joinToString { it.id }} -> ${good.size} नतीजे, ${sources.size} वेबसाइटें")
         LiveSearch.remember(question, sources)
         remember("USER SAYS: $question", JSONObject().put("say", ans).put("done", true).toString())
-        SearchResult(ans, sources)
+        SearchResult(ans, if (ground != null) (GroundCite.unique(ground) + sources).distinctBy { it.second } else sources, ground)
     }
 
     private suspend fun searchOnce(question: String, deep: Boolean, thorough: Boolean = false, think: Boolean = false): SearchResult =
@@ -502,7 +512,7 @@ class BrainManager(private val ctx: Context) {
         lastUsed = client.label
         LiveSearch.remember(question, r.sources)
         remember("USER SAYS: $question", JSONObject().put("say", ans).put("done", true).toString())
-        SearchResult(ans, r.sources)
+        SearchResult(ans, r.sources, r.g)
     }
 
     /** Settings me "टेस्ट" button ke liye. */

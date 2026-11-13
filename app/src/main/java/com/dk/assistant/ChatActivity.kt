@@ -169,7 +169,7 @@ class ChatActivity : AppCompatActivity() {
                     full.contains("[SCREEN]") || full.contains("need_screen") -> "फ़ोन पर काम करने के लिए पहले Accessibility में DK चालू करें।"
                     c.startsWith("{") -> try { org.json.JSONObject(c.substring(0, c.lastIndexOf('}') + 1)).optString("say") } catch (_: Exception) { c }.ifBlank { "…" }
                     else -> c.ifBlank { "…" }
-                })
+                }, emptyList(), b.lastGround)
             } catch (e: kotlinx.coroutines.CancellationException) { throw e
             } catch (e: Exception) {
                 DKState.replyFailed(b.explainAll(e))
@@ -277,10 +277,13 @@ class ChatActivity : AppCompatActivity() {
             val m = msgs[idx]; lastShown = m
             placeholder?.let { list.removeView(it); placeholder = null }
             // DK का जवाब = उसी बुलबुले में जहाँ तरंग चल रही थी (नया बुलबुला नहीं)
-            if (m.role == "d" && inline.answer(m.text) != null) Unit else bubble(m.role, m.text)
+            // 13 नवंबर 2026: जिस वाक्य को स्रोत मिला उसके अंत में छोटे चिप (github, wikipedia…) - टैप = पूरा link
+            val shown: CharSequence = if (m.role == "d") GroundView.decorate(this, m.text, m.g, 0xFFFFFFFF.toInt()) else m.text
+            val ib = if (m.role == "d") inline.answer(shown) else null
+            if (ib != null) GroundView.links(ib.body) else bubble(m.role, shown)
             inline.keepLast()
-            // web search se aaya jawab -> uske theek neeche chhote, click hone wale sources (apne gyaan wale par kuch nahi)
-            if (m.role == "d" && m.src.isNotEmpty()) SourcesView.build(this, m.src)?.let { v ->
+            // web search se aaya jawab -> uske theek neeche "स्रोत" सूची + Google खोज सुझाव (apne gyaan wale par kuch nahi)
+            if (m.role == "d" && (m.src.isNotEmpty() || m.g != null)) SourcesView.build(this, m.src, m.g, m.text)?.let { v ->
                 list.addView(v, LinearLayout.LayoutParams(-2, -2).apply { gravity = Gravity.START; topMargin = (5 * dp).toInt() })
             }
             // jawab nahi aa paya -> wahi message dobara bhejne ka button
@@ -294,7 +297,7 @@ class ChatActivity : AppCompatActivity() {
 
     private var placeholder: View? = null
 
-    private fun bubble(role: String, text: String, keep: Boolean = true) {
+    private fun bubble(role: String, text: CharSequence, keep: Boolean = true) {
         placeholder?.let { list.removeView(it); placeholder = null }
         val mine = role == "u"
         val tv = TextView(this).apply {
@@ -307,6 +310,7 @@ class ChatActivity : AppCompatActivity() {
             gravity = if (mine) Gravity.END else Gravity.START
             topMargin = (8 * dp).toInt()
         }
+        GroundView.links(tv)
         list.addView(tv, lp)
         if (!keep) placeholder = tv
         scroll.post { scroll.smoothScrollTo(0, list.height) }
