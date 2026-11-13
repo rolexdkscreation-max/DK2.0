@@ -48,7 +48,9 @@ class DkaiBehaviorTest {
         assertTrue(t.any { it.contains("READY") || it.contains("SETUP") })
         assertTrue("+ New" in t || t.any { it.trim() == "New" })
         assertTrue("What would you like to build or explore?" in t)
-        for (c in listOf("Chat", "Builder", "Agent", "Pipeline")) assertTrue("कार्ड $c नहीं", c in t)
+        // 13 नवंबर 2026 (मालिक): Chat/Builder/Agent/Pipeline कार्ड-पंक्ति होम से हटी - मोड नीचे "Chat ▾" से (modeOnlyFromDropdown)
+        for (c in listOf("Builder", "Agent", "Pipeline")) assertFalse("कार्ड $c अब होम पर नहीं होना चाहिए", c in t)
+        assertTrue("Chat ▾" in t)
         for (tab in listOf("Home", "Files", "Editor", "Terminal", "Preview", "GitHub")) assertTrue("टैब $tab नहीं", tab in t)
         assertEquals("Build apps, create websites, or write code...", s.input.hint.toString())
         assertEquals(VoiceSessionState.INACTIVE, s.voiceSessionState)
@@ -118,5 +120,62 @@ class DkaiBehaviorTest {
         // शेल न हो (कुछ JVM) तो बस खुलना जाँचो
         s.runInTerminal("echo dkai-ok", ws)
         assertEquals(DkaiTab.TERMINAL, s.tab)
+    }
+
+    private fun byDescStart(v: View, d: String): View? {
+        if (v.visibility == View.VISIBLE && v.contentDescription?.toString()?.startsWith(d) == true) return v
+        if (v is ViewGroup) for (i in v.childCount - 1 downTo 0) byDescStart(v.getChildAt(i), d)?.let { return it }
+        return null
+    }
+    private fun idle() = shadowOf(Looper.getMainLooper()).idle()
+
+    // 13 नवंबर 2026 (मालिक): मोड सिर्फ़ नीचे वाले dropdown से - चारों वहाँ, चुनना वही काम करे
+    @Test fun modeOnlyFromDropdown() {
+        val (_, s) = open()
+        byDesc(s.root, "मोड चुनें")!!.performClick(); idle()
+        val shown = texts(s.root)
+        for (m in listOf("Chat", "Builder", "Agent", "Pipeline")) assertTrue("dropdown में $m नहीं", m in shown)
+        byDescStart(s.root, "Builder, ")!!.performClick(); idle()
+        assertEquals(DkaiMode.BUILDER, s.mode)
+        assertEquals("Describe the app or website to build...", s.input.hint.toString())
+        assertTrue("Builder ▾" in texts(s.root))
+        byDesc(s.root, "मोड चुनें")!!.performClick(); idle()
+        byDescStart(s.root, "Chat, ")!!.performClick(); idle()
+        assertEquals(DkaiMode.CHAT, s.mode)
+    }
+
+    // 13 नवंबर 2026 (मालिक): "Chat #N" टैप = सारी चैट (सबसे नई ऊपर); टैप = वह चैट पूरी खुले; "+ New" सूची में जुड़े
+    @Test fun chatHistoryListAndOpen() {
+        val (a, s) = open()
+        val dir = DkaiChats.dir(a); dir.deleteRecursively()
+        try {
+            DkaiChats.save(dir, 2, listOf(com.dk.assistant.DKState.Msg("u", "पुरानी बेकरी वाली चैट", 1000), com.dk.assistant.DKState.Msg("d", "पुराना जवाब", 2000)))
+            Dkai.setChat(a, 5)
+            com.dk.assistant.DKState.replaceChat(listOf(com.dk.assistant.DKState.Msg("u", "अभी की बात", 3000)))
+            byDesc(s.root, "पुरानी सारी चैट देखें")!!.performClick(); idle()
+            val t = texts(s.root)
+            assertTrue("सभी चैट" in t)
+            val iNew = t.lastIndexOf("अभी की बात"); val iOld = t.lastIndexOf("पुरानी बेकरी वाली चैट")      // (आख़िरी = सूची वाली, होम का बुलबुला नहीं)
+            assertTrue(t.toString(), iNew >= 0 && iOld > iNew)                      // सबसे नई ऊपर
+            assertTrue(byDescStart(s.root, "Chat #5, अभी की बात")!!.contentDescription.contains("अभी खुली"))
+            byDescStart(s.root, "Chat #2, ")!!.performClick(); idle()
+            assertEquals(2, Dkai.chatNo(a))
+            assertEquals(listOf("पुरानी बेकरी वाली चैट", "पुराना जवाब"), com.dk.assistant.DKState.messages.map { it.text })
+            assertTrue("पुराना जवाब" in texts(s.root))                               // पूरी पुरानी बातचीत स्क्रीन पर
+            assertEquals(listOf("अभी की बात"), DkaiChats.load(dir, 5).map { it.text })   // छोड़ी हुई चैट सेव
+            assertFalse(com.dk.assistant.dkai.DkaiUi.anyOpen(s.root))                 // सूची बंद
+            // back से भी बंद
+            byDesc(s.root, "पुरानी सारी चैट देखें")!!.performClick(); idle()
+            assertTrue(com.dk.assistant.dkai.DkaiUi.anyOpen(s.root))
+            a.onBackPressedDispatcher.onBackPressed(); idle()
+            assertFalse(com.dk.assistant.dkai.DkaiUi.anyOpen(s.root))
+            // नई चैट = सबसे बड़ा + 1, पुरानी सूची में
+            s.startNewChat()
+            assertEquals(6, Dkai.chatNo(a))
+            assertTrue(com.dk.assistant.DKState.messages.isEmpty())
+            assertEquals(listOf(5, 2), DkaiChats.saved(dir).sortedDescending())
+        } finally {
+            com.dk.assistant.DKState.replaceChat(emptyList()); dir.deleteRecursively()
+        }
     }
 }
