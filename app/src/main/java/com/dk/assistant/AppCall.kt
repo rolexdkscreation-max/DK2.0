@@ -20,6 +20,8 @@ object AppCall {
         val key: String, val pkg: String, val app: String, val who: String, val video: Boolean, val state: State,
         val answer: PendingIntent?, val decline: PendingIntent?, val hangup: PendingIntent?, val open: PendingIntent?,
         val since: Long,
+        /** 13 नवंबर 2026: ऐप के अपने म्यूट / स्पीकर बटन (कुछ ऐप देते हैं; न हों तो फ़ोन का माइक / स्पीकर) */
+        val mute: PendingIntent? = null, val speaker: PendingIntent? = null,
     )
 
     @Volatile var current: Ring? = null
@@ -49,6 +51,11 @@ object AppCall {
     private val ANSWER = listOf("answer", "accept", "pick up", "join", "उत्तर", "जवाब", "स्वीकार", "उठाएं", "उठाएँ", "रिसीव")
     private val DECLINE = listOf("decline", "reject", "dismiss", "ignore", "अस्वीकार", "मना", "काटें", "कट करें", "ठुकराएं")
     private val HANGUP = listOf("hang up", "end call", "end", "leave", "कॉल समाप्त", "समाप्त", "कॉल बंद", "काटें", "कट करें")
+
+    private val MUTE = listOf("mute", "unmute", "microphone", "mic", "म्यूट", "माइक")
+    private val SPEAKER = listOf("speaker", "speakerphone", "loudspeaker", "स्पीकर", "लाउडस्पीकर")
+    fun pickMute(titles: List<String>) = titles.indexOfFirst { t -> MUTE.any { words(t).contains(" $it ") } }
+    fun pickSpeaker(titles: List<String>) = titles.indexOfFirst { t -> SPEAKER.any { words(t).contains(" $it ") } }
 
     /** बटन के नाम में से Answer / Decline / Hang up का नंबर (-1 = नहीं) */
     fun pickAnswer(titles: List<String>) = titles.indexOfFirst { t -> ANSWER.any { words(t).contains(" $it ") } }
@@ -100,7 +107,8 @@ object AppCall {
         val r = Ring(key, pkg, app, caller(title, text, app).ifBlank { prev?.takeIf { it.key == key }?.who.orEmpty() },
             isVideo(title, text, *titles.toTypedArray()) || (prev?.key == key && prev.video), state, ans, dec, hang ?: dec,
             n.fullScreenIntent ?: n.contentIntent,
-            if (prev?.key == key && prev.state == state) prev.since else System.currentTimeMillis())
+            if (prev?.key == key && prev.state == state) prev.since else System.currentTimeMillis(),
+            mute = acts.getOrNull(pickMute(titles))?.actionIntent, speaker = acts.getOrNull(pickSpeaker(titles))?.actionIntent)
         current = r
         rings[key] = r
         return state == State.RINGING && !(prev?.key == key && prev.state == State.RINGING)
@@ -138,6 +146,16 @@ object AppCall {
         if (ok && r.state == State.RINGING) removed(r.key)
         return ok
     }
+
+    /** उस कॉल का ऐप वाला म्यूट / स्पीकर बटन है? (island: है तो वही, नहीं तो फ़ोन का माइक / स्पीकर) */
+    fun hasMute(key: String): Boolean = rings[key]?.mute != null
+    fun hasSpeaker(key: String): Boolean = rings[key]?.speaker != null
+    fun muteKey(c: Context, key: String): Boolean = send(c, rings[key]?.mute)
+    fun speakerKey(c: Context, key: String): Boolean = send(c, rings[key]?.speaker)
+    /** बजती है? (island का Android वाला popup छिपाना सिर्फ़ बजती कॉल का) */
+    fun ringingKey(key: String, now: Long = System.currentTimeMillis()): Boolean =
+        rings[key]?.let { it.state == State.RINGING && now - it.since < RING_MAX_MS } == true
+    fun has(key: String): Boolean = rings.containsKey(key)
 
     /** उस कॉल की अपनी स्क्रीन */
     fun openFor(key: String): PendingIntent? = rings[key]?.open

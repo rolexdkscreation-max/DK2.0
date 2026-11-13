@@ -43,12 +43,14 @@ object IslandFeed {
             val ongoing = (n.flags and Notification.FLAG_ONGOING_EVENT) != 0 || (n.flags and Notification.FLAG_FOREGROUND_SERVICE) != 0
             val call = n.category == Notification.CATEGORY_CALL || AppCall.current?.key == sbn.key
             val app = try { l.packageManager.getApplicationLabel(l.packageManager.getApplicationInfo(sbn.packageName, 0)).toString() } catch (_: Exception) { sbn.packageName }
+            // 13 नवंबर 2026 (मालिक): लिखकर जवाब वाला बटन (DK Privacy वाले ऐप यहाँ आते ही नहीं) = island में ही जवाब
+            val canReply = !call && n.actions?.any { a -> a.remoteInputs?.any { it.allowFreeFormInput } == true } == true
             val at = sbn.postTime.takeIf { it > 0 } ?: System.currentTimeMillis()
             n.contentIntent?.let { intents[sbn.key] = it } ?: intents.remove(sbn.key)
             if ((n.flags and Notification.FLAG_AUTO_CANCEL) != 0) autoCancel.add(sbn.key) else autoCancel.remove(sbn.key)
             synchronized(this) {
                 items.remove(sbn.key)
-                items[sbn.key] = IslandCore.Notif(sbn.key, sbn.packageName, app, title, text.take(300), at, ongoing, call)
+                items[sbn.key] = IslandCore.Notif(sbn.key, sbn.packageName, app, title, text.take(300), at, ongoing, call, canReply)
                 while (items.size > IslandCore.MAX_NOTIFS * 2) items.remove(items.keys.first())
             }
             DKIsland.poke()
@@ -62,6 +64,9 @@ object IslandFeed {
         intents.remove(key); autoCancel.remove(key); hidden.remove(key)
         if (had) DKIsland.poke()
     }
+
+    /** उस ऐप के सारे island वाले notification (ऐप खुला = Android से हटाए हुए भी island से हटें) */
+    fun keysOf(pkg: String): List<String> = synchronized(this) { items.values.filter { it.pkg == pkg }.map { it.key } }
 
     /** island की सूची (island से छिपाए हुए नहीं) */
     fun list(): List<IslandCore.Notif> = synchronized(this) { IslandCore.notifOrder(items.values.filter { it.key !in hidden }) }

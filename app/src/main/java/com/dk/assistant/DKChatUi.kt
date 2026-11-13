@@ -39,10 +39,16 @@ import androidx.lifecycle.LifecycleEventObserver
 
 /** जवाब वाला बुलबुला. working() = तरंग + संदेश; showText() = तरंग फीकी, उसी बुलबुले में जवाब */
 class DKReplyBubble(ctx: Context) : LinearLayout(ctx) {
+    companion object {
+        /** एक लाइन बदलते समय: पुरानी कितनी जल्दी जाए / नई कितनी देर में आए (ms) */
+        const val LINE_OUT_MS = 110L
+        const val LINE_IN_MS = 170L
+    }
     private val dp = resources.displayMetrics.density
     val wave = DKWorkingIndicator(ctx).apply { bare = true; state = WorkState.THINKING }
     private val status = TextView(ctx).apply {
-        textSize = 13f; setTextColor(0x99FFFFFF.toInt()); maxLines = 2; ellipsize = TextUtils.TruncateAt.END
+        // 13 नवंबर 2026 (मालिक): "क्या कर रहा है" एक ही लाइन में (नई बात = वही लाइन बदले, नीचे नहीं बढ़े)
+        textSize = 13f; setTextColor(0xB3FFFFFF.toInt()); isSingleLine = true; maxLines = 1; ellipsize = TextUtils.TruncateAt.END
         visibility = GONE
     }
     private val head = LinearLayout(ctx).apply { orientation = HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
@@ -75,12 +81,24 @@ class DKReplyBubble(ctx: Context) : LinearLayout(ctx) {
     fun working(label: String, st: WorkState = WorkState.THINKING) {
         if (!isWorking) return
         wave.state = st
-        if (status.text.toString() != label) {
-            status.text = label
+        if (shownLabel == label) return
+        val old = shownLabel
+        shownLabel = label
+        contentDescription = if (label.isEmpty()) "जवाब लिखा जा रहा है" else label
+        status.animate().cancel()
+        if (label.isEmpty() || old.isEmpty() || status.visibility != VISIBLE) {
+            status.alpha = 1f; status.translationY = 0f; status.text = label
             status.visibility = if (label.isEmpty()) GONE else VISIBLE
-            contentDescription = if (label.isEmpty()) "जवाब लिखा जा रहा है" else label
+            return
         }
+        // पुरानी लाइन ऊपर सरककर फीकी, नई नीचे से उभरे (उसी जगह - जैसे "repo देख रहा हूँ" हटकर "PR मिला रहा हूँ")
+        val d = 6 * dp
+        status.animate().alpha(0f).translationY(-d).setDuration(LINE_OUT_MS).withEndAction {
+            status.text = shownLabel; status.translationY = d
+            status.animate().alpha(1f).translationY(0f).setDuration(LINE_IN_MS).start()
+        }.start()
     }
+    private var shownLabel = ""
 
     /** जवाब का पाठ: पहली बार = तरंग+संदेश स्मूद फीके, फिर उसी जगह पाठ धीरे से उभरे. बाद में = सिर्फ़ पाठ बदले */
     fun showText(t: CharSequence, color: Int = 0xFFFFFFFF.toInt()) {

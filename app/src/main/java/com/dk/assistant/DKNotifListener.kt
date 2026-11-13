@@ -96,8 +96,17 @@ class DKNotifListener : NotificationListenerService() {
         // 13 नवंबर 2026: DK Privacy ने न छिपाया हो तो DK Island की notification सूची में (टैप = वहीं खुले, स्लाइड = हटे)
         sbn?.let {
             val hid = try { PrivacyScreen.onPosted(this, it) } catch (e: Exception) { DKLog.d("DK Privacy: ${e.message}"); false }
-            if (!hid) IslandFeed.posted(this, it)
+            val inIsland = !hid && IslandFeed.posted(this, it)
+            // 13 नवंबर 2026 (मालिक): एक ही दिखे - island चालू है तो Android वाला popup / ऊपर वाली पट्टी नहीं (डबल नहीं)
+            if (!hid) IslandQuiet.onPosted(this, it, inIsland)
         }
+    }
+
+    /** हमने ख़ुद (island के लिए) हटाया / छिपाया = island में और reply का बटन बना रहे; बाकी सब पहले जैसा */
+    override fun onNotificationRemoved(sbn: StatusBarNotification?, rankingMap: NotificationListenerService.RankingMap?, reason: Int) {
+        if (sbn != null && IslandQuiet.keep(sbn.key, sbn.packageName, reason)) return
+        sbn?.key?.let { IslandQuiet.gone(it) }
+        super.onNotificationRemoved(sbn, rankingMap, reason)
     }
 
     override fun onNotificationRemoved(sbn: StatusBarNotification?) {

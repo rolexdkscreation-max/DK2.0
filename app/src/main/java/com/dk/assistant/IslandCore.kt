@@ -29,6 +29,8 @@ object IslandCore {
     data class Notif(
         val key: String, val pkg: String, val app: String, val title: String, val text: String, val at: Long,
         val ongoing: Boolean = false, val call: Boolean = false,
+        /** 13 नवंबर 2026 (मालिक): इसमें लिखकर जवाब का बटन है (WhatsApp / Messages / Telegram…) = island में ही "↩ जवाब" */
+        val canReply: Boolean = false,
     )
     /** बैटरी: pct 0-100, charging = चार्जर लगा और भर रहा, plugAt = कब लगा, fullInMs = पूरा होने में (-1 = पता नहीं) */
     data class Charge(val pct: Int, val charging: Boolean, val full: Boolean, val plugAt: Long, val fullInMs: Long, val source: String = "")
@@ -369,4 +371,46 @@ object IslandCore {
 
     /** बुलबुला गोली के दाएँ: गोली के बीच से कितनी दूर (px) */
     fun bubbleX(centerX: Int, mainW: Int, gap: Int, bubbleW: Int): Int = centerX + mainW / 2 + gap + bubbleW / 2
+
+    // ------------------------------------------------------------ 13 नवंबर 2026 (मालिक): एक ही दिखे - Android वाला popup नहीं
+    // "WhatsApp का मैसेज / कोई कॉल आए और island चालू है तो सिर्फ़ DK Island में दिखे. ऊपर से Android वाला अलग से नहीं (डबल नहीं)."
+
+    /** Android के notification का क्या करें: NONE = छोड़ो, CANCEL = ऊपर से हटाओ (island में रहे), SNOOZE = बजती कॉल - थोड़ी देर छिपाओ */
+    enum class Quiet { NONE, CANCEL, SNOOZE }
+
+    /** बजती कॉल का Android वाला popup इतनी देर छिपे (फिर कॉल चल रही हो तो वापस आ जाता है - कुछ खोता नहीं) */
+    const val CALL_SNOOZE_MS = 60_000L
+
+    /** ये Android में ही रहें (अलार्म / रास्ता / डाउनलोड / सिस्टम…) - island में दिखें तो भी ऊपर से न हटें */
+    private val KEEP_CATS = setOf("alarm", "progress", "navigation", "service", "sys", "status", "stopwatch", "transport", "location_sharing")
+
+    /**
+     * Android वाला popup हटे? सिर्फ़ तब जब: स्विच चालू, island सच में दिख सकता है, फ़ोन खुला (lock नहीं), DK / सिस्टम / गाना नहीं,
+     * वही ऐप सामने नहीं (सामने वाले ऐप की चीज़ island में नहीं दिखती - तब Android वाला रहे, वरना कुछ दिखेगा ही नहीं).
+     * कॉल: सिर्फ़ बजती (चलती कॉल का notification Android नहीं हटाने देता). मैसेज: island की सूची में लिया हो तभी.
+     */
+    fun quiet(
+        pref: Boolean, islandUp: Boolean, notifsOn: Boolean, usable: Boolean, fg: String, pkg: String, own: String,
+        system: Boolean, ongoing: Boolean, call: Boolean, ringing: Boolean, media: Boolean, category: String?, inIsland: Boolean,
+    ): Quiet {
+        if (!pref || !islandUp || !usable || pkg.isBlank() || pkg == own || system || media) return Quiet.NONE
+        val front = fg.isNotBlank() && !noApp(fg) && (fg == pkg || (phoneApp(pkg) && phoneApp(fg)))
+        if (call) return if (ringing && !front) Quiet.SNOOZE else Quiet.NONE
+        if (ongoing || !notifsOn || !inIsland || front) return Quiet.NONE
+        if (category != null && category in KEEP_CATS) return Quiet.NONE
+        return Quiet.CANCEL
+    }
+
+    // ------------------------------------------------------------ 13 नवंबर 2026 (मालिक): कॉल में वहीं म्यूट / स्पीकर, मैसेज का वहीं जवाब
+
+    /** म्यूट बटन पर क्या लिखा हो (muted = अभी माइक बंद) */
+    fun muteLabel(muted: Boolean): String = if (muted) "🎙 माइक चालू" else "🔇 म्यूट"
+    /** स्पीकर बटन (on = अभी स्पीकर पर) */
+    fun speakerLabel(on: Boolean): String = if (on) "🔈 स्पीकर बंद" else "🔊 स्पीकर"
+    /** जवाब का बटन सिर्फ़ जवाब वाले (कॉल नहीं) notification में */
+    fun replyButton(n: Notif): Boolean = n.canReply && !n.call
+    /** भेजने लायक जवाब (खाली / सिर्फ़ जगह नहीं), बहुत लंबा कटे */
+    fun replyText(t: String): String = t.trim().take(1000)
+    /** भेजने के बाद क्या दिखे (err = null -> भेज दिया) */
+    fun replyResult(err: String?, to: String): String = if (err == null) "✓ ${to.ifBlank { "जवाब" }} को भेज दिया" else err
 }
