@@ -75,6 +75,7 @@ internal fun GeminiLive.promiseCheck() {
         return
     }
     promiseJob = svc.scope.launch {
+        com.dk.assistant.dkai.DkaiSearchLive.start(user)          // 13 नवंबर 2026: चैट में लाइव सर्च कार्ड
         DKState.hint(LivePromise.hintFor("web_search", user))
         setMode(Mode.THINKING)
         val brain = BrainManager(svc).also { it.fromLive = true }
@@ -84,7 +85,8 @@ internal fun GeminiLive.promiseCheck() {
         // v3.90: यहाँ भी बचाव वाली खोज, और fail हो तो असली वजह यूज़र को
         if (r == null || r.text.isBlank()) { val fb = fallbackSearch(user, why, brain); r = fb.first; why = fb.second }
         DKState.hint("")
-        if (r == null || r.text.isBlank()) { visionNote(LivePromise.searchFailNote(user, why), evidence = false); return@launch }
+        if (r == null || r.text.isBlank()) { com.dk.assistant.dkai.DkaiSearchLive.cancel(); DKState.refresh(); visionNote(LivePromise.searchFailNote(user, why), evidence = false); return@launch }
+        com.dk.assistant.dkai.DkaiSearchLive.found(Grounding.sites(r.sources))
         if (r.sources.isNotEmpty()) toolSources = Grounding.merge(toolSources, r.sources)
         r.g?.let { toolGround = GroundCite.merge(toolGround, it) }
         visionNote(LivePromise.searchNote(user, WebCite.strip(r.text)), evidence = true)

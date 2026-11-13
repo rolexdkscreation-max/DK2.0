@@ -615,7 +615,14 @@ class DkaiScreen(val activity: ComponentActivity, val host: DkaiHost) : DkaiNav 
         val msgs = DKState.messages.toList().takeLast(60)
         val liveR = DKState.liveReply
         val thinking = DKState.mode == Mode.THINKING && msgs.lastOrNull()?.role == "u" && liveR.isBlank()
-        val sig = "${msgs.size}|${msgs.lastOrNull()?.time}|${msgs.lastOrNull()?.text?.length}|${msgs.lastOrNull()?.src?.size}|${msgs.lastOrNull()?.g?.chunks?.size}|$thinking|${DKState.hintText}".hashCode()
+        // 13 नवंबर 2026 (मालिक): लाइव सर्च कार्ड - असली खोज चल रही हो तब; जवाब आते ही हटे (नीचे स्रोत-चिप दिखते हैं)
+        var searchDone = false
+        val sStart = DkaiSearchLive.startedAt()
+        if (sStart > 0L && (liveR.isNotBlank() || msgs.any { it.role != "u" && it.time > sStart } || !DkaiSearchLive.active())) {
+            DkaiSearchLive.cancel(); searchDone = true
+        }
+        val searchOn = DkaiSearchLive.active()
+        val sig = "${msgs.size}|${msgs.lastOrNull()?.time}|${msgs.lastOrNull()?.text?.length}|${msgs.lastOrNull()?.src?.size}|${msgs.lastOrNull()?.g?.chunks?.size}|$thinking|${DKState.hintText}|$searchOn".hashCode()
         if (sig == shownMsgs && liveR == shownLive) return
         shownMsgs = sig; shownLive = liveR
         chatList.removeAllViews()
@@ -630,9 +637,20 @@ class DkaiScreen(val activity: ComponentActivity, val host: DkaiHost) : DkaiNav 
                 if (m.role != "u") groundExtra(m)?.let { chatList.addView(it) }              // चिप-कतार (जगह न मिली) + Google खोज सुझाव
             }
         }
+        if (searchDone) shrinkIn(chatList.childCount - 1)
         if (liveR.isNotBlank()) chatList.addView(bubble(false, liveR))
+        else if (searchOn) chatList.addView(DkaiSearchCard(c).apply {
+            layoutParams = LinearLayout.LayoutParams(minOf((c.resources.displayMetrics.widthPixels * 0.86f).toInt(), d(520f)), -2).apply { gravity = Gravity.START; bottomMargin = d(10f) }
+        })
         else if (thinking) chatList.addView(bubble(false, DKState.hintText.ifBlank { "सोच रहा हूँ…" }, faint = true))
         if (tab == DkaiTab.HOME && msgs.isNotEmpty()) homeScroll.post { homeScroll.smoothScrollTo(0, homeCol.height) }
+    }
+
+    /** खोज वाला कार्ड हटा: आख़िरी स्रोत-डिब्बा सिकुड़ा-सा आकर अपनी जगह बैठे (कार्ड से चिप बनने जैसा) */
+    private fun shrinkIn(i: Int) {
+        val v = chatList.getChildAt(i) ?: return
+        v.pivotX = 0f; v.pivotY = 0f; v.scaleX = 1.06f; v.scaleY = 1.25f; v.alpha = 0.4f
+        v.animate().scaleX(1f).scaleY(1f).alpha(1f).setDuration(260).setInterpolator(android.view.animation.DecelerateInterpolator()).start()
     }
 
     /**
