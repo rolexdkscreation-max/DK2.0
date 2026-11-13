@@ -104,6 +104,7 @@ object SettingsSearch {
         E("brain_live", "लिखना (\"आप:\" वाली लाइन) — अपनी अलग Gemini key", "आप जो बोलते हैं उसे लिखने वाला (gemini-3.5-transcribe-live) इसी key से चलेगा, ताकि बोलने वाले Live की free limit इसमें खर्च न हो"),
         E("brain_live", "खोज — Tavily, Exa, Gemini (बैकअप क्रम)", "DK लाइव और चैट की इंटरनेट खोज पहले Tavily से; न चले तो अपने-आप Exa; वह भी न चले तो Gemini + Google Search"),
         E("brain_live", "सुनना (आवाज़ → text) — Groq, चाहें तो", "Groq Whisper सबसे तेज़ सुनता है। खाली छोड़ें = ऊपर वाली Gemini key से सुनेगा"),
+        E("brain_chat", "मेरी Gemini key paid है", "DKAI होम पर सिर्फ़ फ्री मॉडल - paid key हो तो Pro जैसे paid मॉडल भी दिखें"),
         E("brain_chat", "DK चैट की AI", "चैट, आम जवाब, बिना-Live आवाज़ मोड का जवाब, search, गहरी सोच और कहानी — सिर्फ़ इसी की key से"),
         E("brain_chat", "तुरंत सेटअप — कोई भी फ्री key डालें", "DK खुद पहचानेगा कि key किस कंपनी की है, उसके फ्री मॉडल जाँचकर सबसे तेज़ चुनेगा और बात शुरू कर देगा"),
         E("voice", "JARVIS मोड", "JARVIS जैसी आवाज़ और अंदाज़ — काम सारे वही जो DK करता है. बोलें: \"जार्विस मोड ऑन करो\" / \"डीके मोड ऑन करो\""),

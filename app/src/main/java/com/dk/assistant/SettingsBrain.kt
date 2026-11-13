@@ -99,6 +99,7 @@ internal fun SettingsActivity.secBrainMenu() {
             }
         })
         thinkRow(box, ThinkLevel.ONE)
+        geminiPaidSwitch(box)
         hint(box, "अभी: " + (if (Prefs.oneKey(this).isNotBlank()) "✓ सारे काम (बात, चैट, खोज, फ़ोन, कोडिंग, स्टोरी, DK कंप्यूटर, वेबसाइट) इसी एक key से" else "✗ key नहीं डाली") +
             " • सुनना भी Gemini से (Groq की ज़रूरत नहीं)। एक free key की limit सब कामों में बँटती है — limit जल्दी खत्म हो तो बटन बंद करके अलग-अलग keys डालें।")
     }
@@ -408,6 +409,7 @@ internal fun SettingsActivity.providerCard(p: Provider, scope: String = ApiScope
                 textSize = 12f; setTextColor(0xB3FFFFFF.toInt()); setPadding((4 * dp).toInt(), (4 * dp).toInt(), 0, (4 * dp).toInt())
             })
         }
+        if (p.isGemini && scope == ApiScopes.CHAT) geminiPaidSwitch(box)
         val model = field(box, "मॉडल", Prefs.scopeModel(this, scope, p.id), (if (p.isGemini && scope == ApiScopes.CODER) GeminiModels.CODER else p.defaultModel).ifBlank { "model-name" })
         modelFields[mName] = model
         val result = TextView(this).apply {
@@ -600,4 +602,17 @@ internal fun SettingsActivity.apiLinkCard(scope: String, section: String) {
             startActivity(android.content.Intent(this, SettingsActivity::class.java).putExtra("section", if (Prefs.oneKeyOn(this)) "brain" else section))
         })
     }
+}
+
+/**
+ * 13 नवंबर 2026 (मालिक): DKAI होम पर सिर्फ़ फ्री मॉडल दिखते हैं. Gemini key paid (billing चालू) हो तो यहाँ बताएँ -
+ * तभी होम पर Gemini Pro जैसे paid मॉडल भी दिखेंगे. (तुरंत सेव)
+ */
+internal fun SettingsActivity.geminiPaidSwitch(box: LinearLayout) {
+    val sw = switch(box, "मेरी Gemini key paid है (billing चालू) — होम पर Pro जैसे paid मॉडल भी दिखाओ", Prefs.bool(this, com.dk.assistant.dkai.DkaiKit.PREF_GEMINI_PAID, false))
+    sw.setOnCheckedChangeListener { _, on ->
+        Prefs.edit(this) { putBoolean(com.dk.assistant.dkai.DkaiKit.PREF_GEMINI_PAID, on) }
+        toast(if (on) "✓ होम पर paid Gemini मॉडल भी दिखेंगे" else "✓ होम पर सिर्फ़ फ्री मॉडल")
+    }
+    hint(box, "बंद (default) = होम के मॉडल चुनने में सिर्फ़ फ्री मॉडल। फ्री key पर paid मॉडल चुनने से गलती आती है, इसलिए वे छिपे रहते हैं।")
 }

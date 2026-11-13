@@ -18,6 +18,9 @@ import android.text.style.StyleSpan
 import android.view.Gravity
 import android.view.View
 import android.widget.*
+import android.speech.RecognitionListener
+import android.speech.RecognizerIntent
+import android.speech.SpeechRecognizer
 import androidx.lifecycle.lifecycleScope
 import com.dk.assistant.*
 import kotlinx.coroutines.Dispatchers
@@ -31,6 +34,10 @@ import java.io.File
  * 13 नवंबर 2026 (मालिक - M3): DKAI Broadcast Studio - सिर्फ़ आवाज़ (वीडियो बिल्कुल नहीं).
  * विषय लिखो -> AI स्क्रिप्ट ([Host] / [Narrator] …) -> हर बोलने वाले की अपनी महिला/पुरुष आवाज़ (Gemini TTS)
  * -> एक WAV -> चलाओ / रफ़्तार / WhatsApp-Telegram पर भेजो / Downloads में सेव.
+ *
+ * 13 नवंबर 2026 (मालिक - अपग्रेड): पहले विषय पर रिसर्च (इंटरनेट खोज), फिर स्क्रिप्ट; All Voices = दो किरदारों की असली बातचीत
+ * (मोनोलॉग आए तो दोबारा); भाषा Auto / शुद्ध हिंदी / English / मराठी / ગુજરાતી / বাংলা; रफ़्तार 0.5x-2.0x (default 1.3x) -
+ * चलाने में भी और शेयर/सेव फ़ाइल में भी; माइक से विषय बोलना; Seekbar; WhatsApp/Telegram पर M4A (वहाँ WAV नहीं चलता).
  */
 class DkaiBroadcast(private val s: DkaiScreen) {
     private val c = s.activity
@@ -45,6 +52,10 @@ class DkaiBroadcast(private val s: DkaiScreen) {
     private lateinit var wave: Wave
     private lateinit var time: TextView
     private lateinit var speedPill: TextView
+    private lateinit var seekBar: SeekBar
+    private lateinit var micBtn: ImageView
+    private var rec: SpeechRecognizer? = null
+    private var listening = false
     private lateinit var voicePill: TextView
     private lateinit var langPill: TextView
     private lateinit var prompt: EditText
@@ -53,8 +64,8 @@ class DkaiBroadcast(private val s: DkaiScreen) {
     private var wav: File? = null
     private var format = DkaiKit.FORMATS[0]
     private var voicePick = Prefs.str(c, PREF_VOICE, DkaiKit.ALL_VOICES)
-    private var lang = Prefs.str(c, PREF_LANG, DkaiKit.LANGS[0])
-    private var speed = Prefs.str(c, PREF_SPEED, "100").toIntOrNull() ?: 100
+    private var lang = DkaiKit.normLang(Prefs.str(c, PREF_LANG, DkaiKit.LANGS[0]))
+    private var speed = DkaiKit.clampSpeed(Prefs.str(c, PREF_SPEED, DkaiKit.DEFAULT_SPEED.toString()).toIntOrNull() ?: DkaiKit.DEFAULT_SPEED)
     private var busy = false
 
     companion object {
@@ -62,7 +73,8 @@ class DkaiBroadcast(private val s: DkaiScreen) {
         const val PREF_NO = "dkai_broadcast_no"
         const val PREF_VOICE = "dkai_bc_voice"
         const val PREF_LANG = "dkai_bc_lang"
-        const val PREF_SPEED = "dkai_bc_speed"
+        /** v2: नया default 1.3x (पुरानी सेव 1.0x सिर्फ़ पुराना default थी) */
+        const val PREF_SPEED = "dkai_bc_speed_v2"
         fun no(c: Context) = Prefs.str(c, PREF_NO, "1").toIntOrNull() ?: 1
         fun dir(c: Context) = File(c.filesDir, DIR).apply { mkdirs() }
     }
@@ -101,14 +113,36 @@ class DkaiBroadcast(private val s: DkaiScreen) {
         wave = Wave(c).apply { setOnTouchListener { v, e -> seek(e.x / v.width.coerceAtLeast(1)); true } }
         pr.addView(wave, LinearLayout.LayoutParams(0, d(44f), 1f).apply { leftMargin = d(10f) })
         pc.addView(pr)
+        seekBar = SeekBar(c).apply {
+            max = 1000; contentDescription = "आवाज़ में आगे-पीछे"
+            setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
+                override fun onProgressChanged(b: SeekBar?, v: Int, user: Boolean) { if (user) seek(v / 1000f) }
+                override fun onStartTrackingTouch(b: SeekBar?) {}
+                override fun onStopTrackingTouch(b: SeekBar?) {}
+            })
+        }
+        pc.addView(seekBar, LinearLayout.LayoutParams(-1, -2))
         val tr = LinearLayout(c).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
         time = DkaiTheme.text(c, "00:00 / 00:00", 12f, DkaiTheme.GRAY, DkaiTheme.MONO)
         tr.addView(time, LinearLayout.LayoutParams(0, -2, 1f))
-        speedPill = DkaiTheme.pill(c, DkaiCore.speedLabel(speed), DkaiTheme.PILL, DkaiTheme.WHITE, 12f).apply { minHeight = d(34f); contentDescription = "रफ़्तार"; setOnClickListener { pickSpeed() } }
-        tr.addView(speedPill)
         tr.addView(DkaiUi.iconBtn(c, DkaiIcon.Kind.SHARE, "शेयर (WhatsApp / Telegram)", DkaiTheme.CYAN, 42f) { share() })
         tr.addView(DkaiUi.iconBtn(c, DkaiIcon.Kind.DOWNLOAD, "Download Audio", DkaiTheme.GREEN, 42f) { download() })
         pc.addView(tr)
+        // रफ़्तार: 0.5x - 2.0x का slider (default 1.3x) - चलाने और शेयर/सेव फ़ाइल दोनों में
+        val sr = LinearLayout(c).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; setPadding(0, d(6f), 0, 0) }
+        sr.addView(DkaiTheme.text(c, "Speed", 12f, DkaiTheme.GRAY, DkaiTheme.SANS_BOLD))
+        val speedBar = SeekBar(c).apply {
+            max = DkaiKit.STUDIO_SPEEDS.size - 1; progress = DkaiKit.STUDIO_SPEEDS.indexOf(speed).coerceAtLeast(0); contentDescription = "रफ़्तार"
+            setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
+                override fun onProgressChanged(b: SeekBar?, v: Int, user: Boolean) { setSpeed(DkaiKit.STUDIO_SPEEDS[v.coerceIn(0, DkaiKit.STUDIO_SPEEDS.size - 1)]) }
+                override fun onStartTrackingTouch(b: SeekBar?) {}
+                override fun onStopTrackingTouch(b: SeekBar?) {}
+            })
+        }
+        sr.addView(speedBar, LinearLayout.LayoutParams(0, -2, 1f))
+        speedPill = DkaiTheme.pill(c, DkaiCore.speedLabel(speed), DkaiTheme.PILL, DkaiTheme.WHITE, 12f).apply { minHeight = d(34f); contentDescription = "रफ़्तार चुनें"; setOnClickListener { pickSpeed { speedBar.progress = DkaiKit.STUDIO_SPEEDS.indexOf(speed).coerceAtLeast(0) } } }
+        sr.addView(speedPill)
+        pc.addView(sr)
         col.addView(pc, LinearLayout.LayoutParams(-1, -2).apply { topMargin = d(12f) })
 
         // ---- format
@@ -126,6 +160,8 @@ class DkaiBroadcast(private val s: DkaiScreen) {
         val ir = LinearLayout(c).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; setPadding(0, d(8f), 0, 0) }
         prompt = DkaiUi.field(c, "Direct news bulletins, podcasts, speeches, stories, or lectures...", multi = true).apply { minLines = 1; maxLines = 4 }
         ir.addView(prompt, LinearLayout.LayoutParams(0, -2, 1f))
+        micBtn = DkaiUi.iconBtn(c, DkaiIcon.Kind.MIC, "माइक से विषय बोलें", DkaiTheme.WHITE, 44f) { mic() }
+        ir.addView(micBtn, LinearLayout.LayoutParams(d(44f), d(44f)).apply { leftMargin = d(6f) })
         goBtn = FrameLayout(c).apply {
             background = DkaiTheme.press(DkaiTheme.oval(DkaiTheme.RED), DkaiTheme.oval(0xFFFFFFFF.toInt())); elevation = d(4f).toFloat()
             isClickable = true; isFocusable = true; contentDescription = "आवाज़ बनाएँ"; setOnClickListener { generate() }
@@ -135,7 +171,7 @@ class DkaiBroadcast(private val s: DkaiScreen) {
         bot.addView(ir)
         body.addView(bot, LinearLayout.LayoutParams(-1, -2))
 
-        layer = DkaiUi.open(s.root, page, DkaiUi.Place.FULL, onClose = { release() })
+        layer = DkaiUi.open(s.root, page, DkaiUi.Place.FULL, onClose = { releaseAll() })
         loadLatest()
     }
 
@@ -143,10 +179,13 @@ class DkaiBroadcast(private val s: DkaiScreen) {
 
     private fun release() { ui.removeCallbacks(tick); try { player?.release() } catch (_: Exception) {}; player = null }
 
+    private fun releaseAll() { release(); stopMic() }
+
     // ================================================================== चुनाव
     private fun pickVoice() {
-        val items = listOf(DkaiKit.ALL_VOICES) + DkaiKit.STUDIO_VOICES.map { it.name }
-        val labels = listOf("All Voices (अपने-आप महिला/पुरुष)") + DkaiKit.STUDIO_VOICES.map { "${it.name} - ${if (it.female) "Female" else "Male"}" }
+        val vs = DkaiKit.VOICE_MENU.mapNotNull { n -> DkaiKit.STUDIO_VOICES.firstOrNull { it.name == n } }
+        val items = listOf(DkaiKit.ALL_VOICES) + vs.map { it.name }
+        val labels = listOf("All Voices (दो किरदारों की बातचीत - महिला + पुरुष)") + vs.map { "${it.name} - ${if (it.female) "Female" else "Male"} (सिंगल वॉइस)" }
         android.app.AlertDialog.Builder(c).setTitle("आवाज़").setItems(labels.toTypedArray()) { _, i ->
             voicePick = items[i]; Prefs.edit(c) { putString(PREF_VOICE, voicePick) }; voicePill.text = voicePick + "  ▾"
         }.show()
@@ -158,11 +197,69 @@ class DkaiBroadcast(private val s: DkaiScreen) {
         }.show()
     }
 
-    private fun pickSpeed() {
+    private fun pickSpeed(after: () -> Unit) {
         val sp = DkaiKit.STUDIO_SPEEDS
-        android.app.AlertDialog.Builder(c).setTitle("Speed").setItems(sp.map { DkaiCore.speedLabel(it) }.toTypedArray()) { _, i ->
-            speed = sp[i]; Prefs.edit(c) { putString(PREF_SPEED, speed.toString()) }; speedPill.text = DkaiCore.speedLabel(speed); applySpeed()
+        android.app.AlertDialog.Builder(c).setTitle("Speed").setItems(sp.map { (if (it == DkaiKit.DEFAULT_SPEED) "★ " else "") + DkaiCore.speedLabel(it) }.toTypedArray()) { _, i ->
+            setSpeed(sp[i]); after()
         }.show()
+    }
+
+    private fun setSpeed(v: Int) {
+        val n = DkaiKit.clampSpeed(v)
+        if (n == speed && speedPill.text == DkaiCore.speedLabel(n)) return
+        speed = n; Prefs.edit(c) { putString(PREF_SPEED, speed.toString()) }; speedPill.text = DkaiCore.speedLabel(speed)
+        if (player?.isPlaying == true) applySpeed()
+    }
+
+    // ================================================================== माइक से विषय
+    private fun mic() {
+        if (listening) { stopMic(); return }
+        if (androidx.core.content.ContextCompat.checkSelfPermission(c, android.Manifest.permission.RECORD_AUDIO) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+            androidx.core.app.ActivityCompat.requestPermissions(c, arrayOf(android.Manifest.permission.RECORD_AUDIO), 4711)
+            s.toast("माइक की अनुमति दें, फिर माइक दोबारा दबाएँ"); return
+        }
+        if (!SpeechRecognizer.isRecognitionAvailable(c)) { s.toast("इस फ़ोन पर बोलकर लिखना उपलब्ध नहीं - विषय लिखें"); return }
+        val before = prompt.text.toString().trim()
+        try {
+            rec?.destroy()
+            rec = SpeechRecognizer.createSpeechRecognizer(c).apply {
+                setRecognitionListener(object : RecognitionListener {
+                    override fun onReadyForSpeech(p: android.os.Bundle?) { setState("LISTENING", DkaiTheme.PINK) }
+                    override fun onBeginningOfSpeech() {}
+                    override fun onRmsChanged(v: Float) {}
+                    override fun onBufferReceived(b: ByteArray?) {}
+                    override fun onEndOfSpeech() {}
+                    override fun onEvent(t: Int, p: android.os.Bundle?) {}
+                    override fun onPartialResults(r: android.os.Bundle?) {
+                        val t = r?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)?.firstOrNull().orEmpty()
+                        if (t.isNotBlank()) prompt.setText(listOf(before, t).filter { it.isNotBlank() }.joinToString(" "))
+                    }
+                    override fun onResults(r: android.os.Bundle?) {
+                        val t = r?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)?.firstOrNull().orEmpty().trim()
+                        stopMic()
+                        if (t.isBlank()) { setState("READY", DkaiKit.EMERALD); s.toast("कुछ सुनाई नहीं दिया - फिर बोलें"); return }
+                        prompt.setText(listOf(before, t).filter { it.isNotBlank() }.joinToString(" ")); prompt.setSelection(prompt.text.length)
+                        generate()                                   // बोला विषय = सीधे रिसर्च + स्क्रिप्ट + आवाज़
+                    }
+                    override fun onError(e: Int) {
+                        stopMic(); setState("READY", DkaiKit.EMERALD)
+                        s.toast(if (e == SpeechRecognizer.ERROR_NO_MATCH || e == SpeechRecognizer.ERROR_SPEECH_TIMEOUT) "कुछ सुनाई नहीं दिया - फिर बोलें" else "माइक नहीं चला ($e) - विषय लिख दें")
+                    }
+                })
+                startListening(Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH)
+                    .putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+                    .putExtra(RecognizerIntent.EXTRA_LANGUAGE, DkaiKit.micLocale(lang))
+                    .putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true))
+            }
+            listening = true; micBtn.setImageDrawable(DkaiIcon(DkaiIcon.Kind.MIC, DkaiTheme.PINK)); s.hideKeyboard()
+        } catch (e: Exception) { stopMic(); s.toast("माइक नहीं चला: ${e.message?.take(60)}") }
+    }
+
+    private fun stopMic() {
+        listening = false
+        try { rec?.destroy() } catch (_: Exception) {}
+        rec = null
+        if (::micBtn.isInitialized) micBtn.setImageDrawable(DkaiIcon(DkaiIcon.Kind.MIC, DkaiTheme.WHITE))
     }
 
     private fun editScript() {
@@ -190,7 +287,7 @@ class DkaiBroadcast(private val s: DkaiScreen) {
             if (v != null) { val b = sb.length; sb.append(" · ${v.name}"); sb.setSpan(ForegroundColorSpan(DkaiTheme.HINT), b, sb.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE) }
             sb.append("\n").append(l.text).append("\n\n")
         }
-        script.text = if (sb.isEmpty()) "विषय लिखें और लाल बटन दबाएँ - DK स्क्रिप्ट लिखकर हर किरदार की अलग आवाज़ बनाएगा।" else sb.trimEnd()
+        script.text = if (sb.isEmpty()) "विषय लिखें या माइक से बोलें, फिर लाल बटन - DK पहले रिसर्च करेगा, फिर स्क्रिप्ट लिखकर हर किरदार की अलग आवाज़ बनाएगा।" else sb.trimEnd()
     }
 
     /** [own] = खुद लिखी स्क्रिप्ट (AI से नहीं लिखवानी) */
@@ -204,24 +301,35 @@ class DkaiBroadcast(private val s: DkaiScreen) {
         val multi = voicePick == DkaiKit.ALL_VOICES
         c.lifecycleScope.launch {
             try {
-                // 1) स्क्रिप्ट
+                // 1) रिसर्च (इंटरनेट खोज - न हो सके तो AI की अपनी जानकारी) -> 2) स्क्रिप्ट
                 var lines = if (own != null) DkaiKit.parseScript(own) else DkaiKit.ownScript(topic)
+                var sources: List<Pair<String, String>> = emptyList()
                 if (lines.isEmpty()) {
+                    setState("RESEARCHING", DkaiTheme.AMBER)
+                    val found = withContext(Dispatchers.IO) { research(topic) }
+                    val facts = found?.text.orEmpty(); sources = found?.sources.orEmpty()
                     setState("WRITING SCRIPT", DkaiTheme.VIOLET)
-                    val sys = DkaiKit.scriptSystem(format, lang, multi)
-                    // लंबी स्क्रिप्ट: कहानी वाली AI (8k token) - न मिले तो छोटा तेज़ रास्ता
-                    val raw = withContext(Dispatchers.IO) {
-                        try { StoryAi.fromPrefs(c)?.write(sys, listOf("user" to topic))?.text?.takeIf { it.isNotBlank() } } catch (e: Exception) { DKLog.d("Broadcast script: ${e.message?.take(80)}"); null }
-                    } ?: BrainManager(c).quickText(sys, topic)
-                        ?: throw IllegalStateException("AI ने स्क्रिप्ट नहीं लिखी (AI की key / limit देखें)")
-                    lines = DkaiKit.parseScript(raw)
+                    lines = DkaiKit.parseScript(writeScript(DkaiKit.scriptSystem(format, lang, multi, facts), topic))
+                    // नियम टूटा (All Voices में मोनोलॉग / शुद्ध हिंदी में अंग्रेज़ी) = एक बार दोबारा, कड़े निर्देश से
+                    val why = when {
+                        lines.isEmpty() -> ""
+                        multi && !DkaiKit.isDialogue(lines) -> "Your previous script was a monologue. Write it again as a real back-and-forth conversation between the two characters, alternating every turn."
+                        DkaiKit.needsPureHindi(lang, lines) -> "Your previous script used English words or Latin letters. Write it again using ONLY Devanagari Hindi words in the spoken text."
+                        else -> ""
+                    }
+                    if (why.isNotEmpty()) {
+                        setState("REWRITING", DkaiTheme.VIOLET)
+                        val again = try { DkaiKit.parseScript(writeScript(DkaiKit.scriptSystem(format, lang, multi, facts, why), topic)) } catch (e: Exception) { emptyList() }
+                        if (again.isNotEmpty() && (!multi || DkaiKit.isDialogue(again) || !DkaiKit.isDialogue(lines)) &&
+                            DkaiKit.latinShare(again) <= DkaiKit.latinShare(lines) + 0.05f) lines = again
+                    }
                 }
                 if (lines.isEmpty()) throw IllegalStateException("स्क्रिप्ट खाली आई")
                 showScript(lines)
                 // 2) आवाज़ें
                 val cast = DkaiKit.studioCast(lines, voicePick)
                 val segs = DkaiKit.segments(lines)
-                val style = DkaiKit.formatStyle(format)
+                val style = DkaiKit.studioStyle(format, lang)
                 val pcm = ByteArrayOutputStream(); var rate = 24000
                 for ((i, seg) in segs.withIndex()) {
                     setState("VOICE ${i + 1}/${segs.size}", DkaiTheme.CYAN)
@@ -236,7 +344,8 @@ class DkaiBroadcast(private val s: DkaiScreen) {
                     val f = File(dir(c), "broadcast_$n.wav")
                     f.writeBytes(GeminiTts.pcmToWav(pcm.toByteArray(), rate))
                     File(dir(c), "broadcast_$n.json").writeText(JSONObject().put("topic", topic).put("format", format).put("lang", lang)
-                        .put("voice", voicePick).put("script", lines.joinToString("\n") { "${it.speaker} (${if (it.female) "female" else "male"}): ${it.text}" }).toString())
+                        .put("voice", voicePick).put("speed", speed)
+                        .put("sources", org.json.JSONArray().apply { sources.forEach { (t, u) -> put(JSONObject().put("t", t).put("u", u)) } }).put("script", lines.joinToString("\n") { "${it.speaker} (${if (it.female) "female" else "male"}): ${it.text}" }).toString())
                     f
                 }
                 load(out, pcm.toByteArray())
@@ -251,6 +360,18 @@ class DkaiBroadcast(private val s: DkaiScreen) {
         }
     }
 
+    /** विषय पर रिसर्च: इंटरनेट खोज (Tavily / Exa / Gemini + Google) - न हो सके तो null (तब AI अपनी पक्की जानकारी से) */
+    private suspend fun research(topic: String): SearchResult? = try {
+        val b = BrainManager(c)
+        if (!b.anySearch()) null
+        else b.search(DkaiKit.researchQuery(topic, format), deep = true).let { r -> r.copy(text = WebCite.strip(r.text)) }.takeIf { it.text.isNotBlank() }
+    } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (e: Exception) { DKLog.d("Broadcast research: ${e.message?.take(80)}"); null }
+
+    /** लंबी स्क्रिप्ट: कहानी वाली AI (8k token) - न मिले तो छोटा तेज़ रास्ता */
+    private suspend fun writeScript(sys: String, topic: String): String = withContext(Dispatchers.IO) {
+        try { StoryAi.fromPrefs(c)?.write(sys, listOf("user" to topic))?.text?.takeIf { it.isNotBlank() } } catch (e: Exception) { DKLog.d("Broadcast script: ${e.message?.take(80)}"); null }
+    } ?: BrainManager(c).quickText(sys, topic) ?: throw IllegalStateException("AI ने स्क्रिप्ट नहीं लिखी (AI की key / limit देखें)")
+
     /** एक टुकड़ा (<= 2 बोलने वाले): पहले Gemini multi-speaker, न चले तो हर लाइन अलग आवाज़ में */
     private fun segmentPcm(keys: List<String>, seg: List<DkaiKit.Line>, cast: Map<String, DkaiKit.StudioVoice>, style: String): Pair<ByteArray, Int> {
         val names = seg.map { it.speaker }.distinct()
@@ -262,7 +383,7 @@ class DkaiBroadcast(private val s: DkaiScreen) {
         } catch (e: Exception) { DKLog.d("Broadcast multi-speaker नहीं चला (${e.message?.take(60)}) - हर लाइन अलग") }
         val out = ByteArrayOutputStream(); var rate = 24000
         for (l in seg) {
-            val w = GeminiTts.synthesizeAny(keys, l.text, cast[l.speaker]?.api ?: "Sulafat", style)
+            val w = GeminiTts.synthesizeAny(keys, l.text, cast[l.speaker]?.api ?: "Sulafat", GeminiTts.FREE + style)
             val (p, r) = DkaiKit.wavPcm(w); rate = r
             if (out.size() > 0) out.write(ByteArray(rate / 6 * 2))
             out.write(p)
@@ -279,7 +400,7 @@ class DkaiBroadcast(private val s: DkaiScreen) {
         try {
             player = MediaPlayer().apply {
                 setDataSource(f.absolutePath); prepare()
-                setOnCompletionListener { playBtn.setImageDrawable(DkaiIcon(DkaiIcon.Kind.PLAY_FILL, DkaiTheme.ON)); wave.progress = 1f; wave.invalidate(); showTime() }
+                setOnCompletionListener { playBtn.setImageDrawable(DkaiIcon(DkaiIcon.Kind.PLAY_FILL, DkaiTheme.ON)); wave.playing = false; wave.progress = 1f; wave.invalidate(); showTime() }
             }
         } catch (e: Exception) { s.toast("चल नहीं पाया: ${e.message?.take(80)}") }
         showTime()
@@ -316,6 +437,7 @@ class DkaiBroadcast(private val s: DkaiScreen) {
         val cur = try { p?.currentPosition ?: 0 } catch (_: Exception) { 0 }
         val dur = try { p?.duration ?: 0 } catch (_: Exception) { 0 }
         time.text = DkaiKit.clock(cur.toLong()) + " / " + DkaiKit.clock(dur.toLong())
+        if (::seekBar.isInitialized && !seekBar.isPressed) seekBar.progress = if (dur > 0) (cur * 1000L / dur).toInt() else 0
     }
 
     private fun loadLatest() {
@@ -338,37 +460,64 @@ class DkaiBroadcast(private val s: DkaiScreen) {
     // ================================================================== भेजना / सेव
     private fun uri(f: File) = androidx.core.content.FileProvider.getUriForFile(c, c.packageName + ".files", f)
 
+    /**
+     * शेयर/सेव वाली फ़ाइल चुनी रफ़्तार पर (1.0x = वही WAV). [m4a] = WhatsApp/Telegram के लिए AAC (.m4a) -
+     * WhatsApp WAV को ऑडियो की तरह नहीं लेता. M4A न बने तो WAV. (IO thread)
+     */
+    private fun exported(f: File, m4a: Boolean): File {
+        val tag = "x$speed"
+        val out = File(File(dir(c), "share").apply { mkdirs() }, f.nameWithoutExtension + "_" + tag + if (m4a) ".m4a" else ".wav")
+        if (out.isFile && out.lastModified() >= f.lastModified() && out.length() > 0) return out
+        if (!m4a && speed == 100) return f
+        val (pcm, rate) = DkaiKit.wavPcm(f.readBytes())
+        val fast = if (speed == 100) pcm else DkaiKit.toBytes(DkaiKit.stretch(DkaiKit.toShorts(pcm), rate, speed / 100f))
+        if (m4a) {
+            try { BroadcastM4a.encode(fast, rate, out); if (out.length() > 0) return out } catch (e: Exception) { DKLog.d("Broadcast m4a: ${e.message?.take(80)}"); out.delete() }
+            val w = File(out.parentFile, f.nameWithoutExtension + "_" + tag + ".wav"); w.writeBytes(GeminiTts.pcmToWav(fast, rate)); return w
+        }
+        out.writeBytes(GeminiTts.pcmToWav(fast, rate)); return out
+    }
+
     private fun share() {
         val f = wav?.takeIf { it.isFile } ?: run { s.toast("पहले आवाज़ बनाएँ"); return }
-        val apps = listOf("WhatsApp" to "com.whatsapp", "Telegram" to "org.telegram.messenger", "और ऐप…" to "")
-        android.app.AlertDialog.Builder(c).setTitle("Share Audio").setItems(apps.map { it.first }.toTypedArray()) { _, i ->
-            val send = Intent(Intent.ACTION_SEND).setType("audio/wav").putExtra(Intent.EXTRA_STREAM, uri(f))
-                .putExtra(Intent.EXTRA_TEXT, title.text.toString() + " - DKAI Broadcast Studio").addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-            val pkg = apps[i].second
-            try {
-                if (pkg.isNotEmpty()) c.startActivity(Intent(send).setPackage(pkg)) else c.startActivity(Intent.createChooser(send, "Share Audio"))
-            } catch (_: Exception) {
-                s.toast("${apps[i].first} नहीं मिला - दूसरा ऐप चुनें"); try { c.startActivity(Intent.createChooser(send, "Share Audio")) } catch (_: Exception) {}
+        val apps = listOf("WhatsApp" to "com.whatsapp", "WhatsApp Business" to "com.whatsapp.w4b", "Telegram" to "org.telegram.messenger", "और ऐप…" to "")
+        android.app.AlertDialog.Builder(c).setTitle("Share Audio (${DkaiCore.speedLabel(speed)})").setItems(apps.map { it.first }.toTypedArray()) { _, i ->
+            s.toast("ऑडियो तैयार हो रहा है…")
+            c.lifecycleScope.launch {
+                val out = try { withContext(Dispatchers.IO) { exported(f, m4a = true) } } catch (e: Exception) { s.toast("शेयर फ़ाइल नहीं बनी: ${e.message?.take(80)}"); return@launch }
+                val u = uri(out)
+                val send = Intent(Intent.ACTION_SEND).setType(if (out.extension == "m4a") "audio/mp4" else "audio/wav").putExtra(Intent.EXTRA_STREAM, u)
+                    .putExtra(Intent.EXTRA_TEXT, title.text.toString() + " - DKAI Broadcast Studio").addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                send.clipData = android.content.ClipData.newRawUri(out.name, u)
+                val pkg = apps[i].second
+                val chooser = Intent.createChooser(send, "Share Audio").addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                try {
+                    if (pkg.isNotEmpty()) c.startActivity(Intent(send).setPackage(pkg)) else c.startActivity(chooser)
+                } catch (_: Exception) {
+                    s.toast("${apps[i].first} नहीं मिला - दूसरा ऐप चुनें"); try { c.startActivity(chooser) } catch (_: Exception) {}
+                }
             }
         }.show()
     }
 
     private fun download() {
         val f = wav?.takeIf { it.isFile } ?: run { s.toast("पहले आवाज़ बनाएँ"); return }
-        val name = "DKAI_${title.text.toString().replace(Regex("[^A-Za-z0-9]+"), "_").trim('_')}_${System.currentTimeMillis() / 1000}.wav"
+        val base = "DKAI_${title.text.toString().replace(Regex("[^A-Za-z0-9]+"), "_").trim('_')}_${DkaiCore.speedLabel(speed).replace('.', '_')}_${System.currentTimeMillis() / 1000}"
         Thread {
             val where = try {
+                val src = exported(f, m4a = false)
+                val name = "$base.wav"
                 if (Build.VERSION.SDK_INT >= 29) {
                     val v = ContentValues().apply {
                         put(android.provider.MediaStore.MediaColumns.DISPLAY_NAME, name); put(android.provider.MediaStore.MediaColumns.MIME_TYPE, "audio/wav")
                         put(android.provider.MediaStore.MediaColumns.RELATIVE_PATH, android.os.Environment.DIRECTORY_DOWNLOADS + "/DKAI")
                     }
                     val u = c.contentResolver.insert(android.provider.MediaStore.Downloads.EXTERNAL_CONTENT_URI, v) ?: throw IllegalStateException("जगह नहीं मिली")
-                    c.contentResolver.openOutputStream(u)?.use { o -> f.inputStream().use { it.copyTo(o) } }
+                    c.contentResolver.openOutputStream(u)?.use { o -> src.inputStream().use { it.copyTo(o) } }
                     "Downloads/DKAI/$name"
                 } else {
                     val dd = File(c.getExternalFilesDir(android.os.Environment.DIRECTORY_DOWNLOADS), "DKAI").apply { mkdirs() }
-                    f.copyTo(File(dd, name), overwrite = true).absolutePath
+                    src.copyTo(File(dd, name), overwrite = true).absolutePath
                 }
             } catch (e: Exception) { null.also { ui.post { s.toast("सेव नहीं हुआ: ${e.message?.take(80)}") } } }
             if (where != null) ui.post { s.toast("सेव हुआ: $where") }
@@ -396,6 +545,50 @@ class DkaiBroadcast(private val s: DkaiScreen) {
                 p.alpha = if (i / n.toFloat() <= progress) 255 else 80
                 canvas.drawLine(x, h / 2 - a, x, h / 2 + a, p)
             }
+        }
+    }
+}
+
+/** PCM (16-bit mono) -> AAC .m4a (MediaCodec + MediaMuxer) - WhatsApp / Telegram पर आवाज़ की तरह चले */
+object BroadcastM4a {
+    fun encode(pcm: ByteArray, rate: Int, out: File) {
+        val mime = android.media.MediaFormat.MIMETYPE_AUDIO_AAC
+        val fmt = android.media.MediaFormat.createAudioFormat(mime, rate, 1).apply {
+            setInteger(android.media.MediaFormat.KEY_AAC_PROFILE, android.media.MediaCodecInfo.CodecProfileLevel.AACObjectLC)
+            setInteger(android.media.MediaFormat.KEY_BIT_RATE, 64_000); setInteger(android.media.MediaFormat.KEY_MAX_INPUT_SIZE, 16_384)
+        }
+        val codec = android.media.MediaCodec.createEncoderByType(mime)
+        val mux = android.media.MediaMuxer(out.path, android.media.MediaMuxer.OutputFormat.MUXER_OUTPUT_MPEG_4)
+        var track = -1; var started = false
+        try {
+            codec.configure(fmt, null, null, android.media.MediaCodec.CONFIGURE_FLAG_ENCODE); codec.start()
+            val info = android.media.MediaCodec.BufferInfo()
+            var pos = 0; var inDone = false; var done = false; var guard = 0
+            fun pts(bytes: Int) = bytes / 2L * 1_000_000L / rate
+            while (!done && guard++ < 2_000_000) {
+                if (!inDone) {
+                    val i = codec.dequeueInputBuffer(10_000)
+                    if (i >= 0) {
+                        val buf = codec.getInputBuffer(i)!!; buf.clear()
+                        val n = minOf(buf.remaining(), pcm.size - pos) and 1.inv()
+                        if (n <= 0) { codec.queueInputBuffer(i, 0, 0, pts(pos), android.media.MediaCodec.BUFFER_FLAG_END_OF_STREAM); inDone = true }
+                        else { buf.put(pcm, pos, n); codec.queueInputBuffer(i, 0, n, pts(pos), 0); pos += n }
+                    }
+                }
+                val o = codec.dequeueOutputBuffer(info, 10_000)
+                if (o == android.media.MediaCodec.INFO_OUTPUT_FORMAT_CHANGED) { track = mux.addTrack(codec.outputFormat); mux.start(); started = true }
+                else if (o >= 0) {
+                    val ob = codec.getOutputBuffer(o)!!
+                    if (info.flags and android.media.MediaCodec.BUFFER_FLAG_CODEC_CONFIG != 0) info.size = 0
+                    if (info.size > 0 && started) { ob.position(info.offset); ob.limit(info.offset + info.size); mux.writeSampleData(track, ob, info) }
+                    codec.releaseOutputBuffer(o, false)
+                    if (info.flags and android.media.MediaCodec.BUFFER_FLAG_END_OF_STREAM != 0) done = true
+                }
+            }
+            if (!done) throw IllegalStateException("AAC पूरा नहीं बना")
+        } finally {
+            try { codec.stop() } catch (_: Exception) {}; try { codec.release() } catch (_: Exception) {}
+            try { if (started) mux.stop() } catch (_: Exception) {}; try { mux.release() } catch (_: Exception) {}
         }
     }
 }

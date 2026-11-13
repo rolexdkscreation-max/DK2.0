@@ -248,7 +248,7 @@ class DkaiScreen(val activity: ComponentActivity, val host: DkaiHost) : DkaiNav 
         input.hint = when (m) {
             DkaiMode.BUILDER -> "Describe the app or website to build..."
             DkaiMode.AGENT -> "Give DK Computer a multi-step task..."
-            DkaiMode.PIPELINE -> "Describe a code change for your GitHub repo..."
+            DkaiMode.PIPELINE -> "Describe a big goal - Pipeline plans it step by step..."
             else -> "Build apps, create websites, or write code..."
         }
         if (::modePill.isInitialized) modePill.text = m.label + " ▾"
@@ -396,8 +396,9 @@ class DkaiScreen(val activity: ComponentActivity, val host: DkaiHost) : DkaiNav 
                 c.startActivity(Intent(c, ComputerActivity::class.java).putExtra("task", t))
             }
             DkaiMode.PIPELINE -> {
-                CoderSession.queue.addLast(t)          // कोडिंग स्क्रीन खुलते ही उसी के भेजने वाले रास्ते से (सारे नियम वही)
-                c.startActivity(Intent(c, CodingActivity::class.java))
+                // 13 नवंबर 2026 (मालिक): पहले Blueprint (कदम) -> एक-एक कदम + जाँच -> Final Build Check -> Keep All / Preview.
+                // पुराना रास्ता (CoderSession.queue + CodingActivity = GitHub कोडिंग एजेंट) Pipeline पन्ने के GitHub बटन में.
+                DkaiPipeline(this).open(t)
             }
         }
         input.setText("")
@@ -491,7 +492,9 @@ class DkaiScreen(val activity: ComponentActivity, val host: DkaiHost) : DkaiNav 
     private fun pickModel(anchor: View) {
         val id = Prefs.activeProvider(c)
         val cur = Prefs.model(c, id)
-        val list = (listOf(cur) + Prefs.models(c, id)).filter { it.isNotBlank() }.distinct().take(40)
+        // 13 नवंबर 2026 (मालिक): यहाँ भी सिर्फ़ फ्री मॉडल (paid key बताई हो तो Gemini के सब)
+        val list = DkaiKit.pickable(id, (listOf(cur) + Prefs.models(c, id) + Providers.fallbackModels(id)).filter { it.isNotBlank() }.distinct(),
+            Prefs.bool(c, DkaiKit.PREF_GEMINI_PAID, false)).take(40)
         val items = list.map { m -> (if (m == cur) "✓ " else "    ") + ModelNames.fromId(m) }.toMutableList()
         items.add("और AI / मॉडल (सेटिंग्स)…")
         android.app.AlertDialog.Builder(c).setTitle((Providers.byId(id)?.name ?: id) + " मॉडल")

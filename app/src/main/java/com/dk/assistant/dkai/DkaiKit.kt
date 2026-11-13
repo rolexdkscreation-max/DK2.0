@@ -134,7 +134,56 @@ object DkaiKit {
 
     // ------------------------------------------------------------------ Broadcast Studio (सिर्फ़ आवाज़ - वीडियो नहीं)
     val FORMATS = listOf("News Bulletin", "Podcast", "Speech", "Story", "Lecture")
-    val LANGS = listOf("Auto-Detect", "Hindi", "Hinglish", "English")
+    /** 13 नवंबर 2026 (मालिक): Auto, शुद्ध हिंदी (देवनागरी), English, मराठी, ગુજરાતી, বাংলা (+ पुराना Hinglish रहा) */
+    const val HINDI = "Hindi (Devanagari)"
+    val LANGS = listOf("Auto", HINDI, "English", "Marathi", "Gujarati", "Bengali", "Hinglish")
+
+    /** पुरानी सेव भाषा ("Auto-Detect", "Hindi") -> नई सूची का नाम */
+    fun normLang(saved: String?): String = when (saved?.trim()) {
+        null, "", "Auto-Detect", "Auto" -> "Auto"
+        "Hindi" -> HINDI
+        else -> saved.trim().takeIf { it in LANGS } ?: "Auto"
+    }
+
+    /** माइक से विषय बोलने की भाषा (Android SpeechRecognizer) */
+    fun micLocale(lang: String): String = when (normLang(lang)) {
+        "English" -> "en-IN"; "Marathi" -> "mr-IN"; "Gujarati" -> "gu-IN"; "Bengali" -> "bn-IN"
+        else -> "hi-IN"
+    }
+
+    /** TTS का उच्चारण (Gemini को style में) - शुद्ध हिंदी चुनी = शुद्ध हिंदी लहजा */
+    fun ttsAccent(lang: String): String = when (normLang(lang)) {
+        HINDI -> "pure, standard Hindi with clear Devanagari pronunciation and a natural Indian Hindi accent (no English accent)"
+        "Marathi" -> "natural Marathi with native Marathi pronunciation"
+        "Gujarati" -> "natural Gujarati with native Gujarati pronunciation"
+        "Bengali" -> "natural Bengali with native Bengali pronunciation"
+        "English" -> "clear, natural Indian English"
+        "Hinglish" -> "natural Indian Hinglish"
+        else -> ""
+    }
+
+    /** Gemini TTS का पूरा style: format का अंदाज़ + भाषा का लहजा */
+    fun studioStyle(format: String, lang: String): String =
+        formatStyle(format) + ttsAccent(lang).takeIf { it.isNotBlank() }?.let { ", speaking $it" }.orEmpty()
+
+    /** All Voices की बातचीत के दो किरदार (भाषा के हिसाब से नाम): होस्ट (महिला) + सवाल पूछने वाला देसी दोस्त (पुरुष) */
+    fun duo(lang: String): Pair<String, String> = if (normLang(lang) == "English") "Emma" to "Rohan" else "Swara" to "Aarav"
+
+    /** सच में बातचीत है? (कम-से-कम 2 किरदार, 4+ बारी, 3+ बार बोलने वाला बदला) - नहीं तो एक ही मोनोलॉग */
+    fun isDialogue(lines: List<Line>): Boolean {
+        if (lines.map { it.speaker }.distinct().size < 2 || lines.size < 4) return false
+        return lines.zipWithNext().count { (a, b) -> a.speaker != b.speaker } >= 3
+    }
+
+    /** बोले जाने वाले text में अंग्रेज़ी (Latin) अक्षरों का हिस्सा (0..1) - शुद्ध हिंदी की जाँच */
+    fun latinShare(lines: List<Line>): Float {
+        var lat = 0; var all = 0
+        for (l in lines) for (ch in l.text) if (ch.isLetter()) { all++; if (ch in 'a'..'z' || ch in 'A'..'Z') lat++ }
+        return if (all == 0) 0f else lat / all.toFloat()
+    }
+
+    /** शुद्ध हिंदी चुनी और स्क्रिप्ट में अंग्रेज़ी ज़्यादा (12%+) = दोबारा लिखवाओ */
+    fun needsPureHindi(lang: String, lines: List<Line>) = normLang(lang) == HINDI && latinShare(lines) > 0.12f
     const val ALL_VOICES = "All Voices"
 
     data class Line(val speaker: String, val female: Boolean, val text: String)
@@ -236,20 +285,43 @@ object DkaiKit {
         else -> "natural, warm"
     }
 
-    fun scriptSystem(format: String, lang: String, multi: Boolean): String = buildString {
+    /**
+     * स्क्रिप्ट लिखने का निर्देश. [multi] (All Voices) = ठीक दो किरदारों की असली बातचीत (मोनोलॉग नहीं);
+     * [facts] = पहले की गई रिसर्च (खाली = AI की अपनी पक्की जानकारी); [strict] = दोबारा लिखवाना (पिछली बार नियम टूटा).
+     */
+    fun scriptSystem(format: String, lang: String, multi: Boolean, facts: String = "", strict: String = ""): String = buildString {
+        val l = normLang(lang)
         append("You are DK AI Broadcast Studio, a script writer for an AUDIO-ONLY ").append(format.lowercase(Locale.ROOT)).append(". ")
         append("Write ONLY the spoken script, no titles, no music cues, no stage directions, no markdown. ")
         append("Every line must be exactly: Name (female): text   or   Name (male): text. ")
-        if (multi) append("Use 2 to 4 distinct speakers with a mix of female and male voices that suit the content (for a story: narrator + characters; for news: anchor + reporter; for a podcast: host + guest). ")
-        else append("Use exactly ONE speaker for every line. ")
-        append(when (lang) {
+        append("Speaker names before the colon must be in English letters. ")
+        if (multi) {
+            val (h, g) = duo(l)
+            append("Write a natural, engaging CONVERSATION (never a monologue) between exactly TWO characters: ")
+            append("$h (female) - the warm, knowledgeable host who explains clearly, and ")
+            append("$g (male) - a friendly, curious desi character who asks simple questions, reacts naturally and sometimes adds light humour. ")
+            append("They must take turns (host, guest, host, guest ...), each turn 1 to 3 short sentences, at least 12 turns in total. ")
+            append("Let the guest's questions drive the topic step by step (for a recipe: ingredients, quantities, each step, tips; for information: what, why, how, examples). ")
+        } else append("Use exactly ONE speaker for every line. Make it engaging, like a real presenter talking to listeners. ")
+        append(when (l) {
             "English" -> "Write in natural English. "
-            "Hinglish", "Multilingual" -> "Write naturally mixing Hindi and English (Hinglish) as Indians speak, Hindi in Devanagari. "
-            "Hindi" -> "Write in natural, simple Hindi (Devanagari). "
+            "Hinglish" -> "Write naturally mixing Hindi and English (Hinglish) as Indians speak, Hindi in Devanagari. "
+            HINDI -> "Write the spoken text ONLY in pure, standard Hindi in Devanagari script. Do not use English words or Latin letters; use common Hindi words, " +
+                "and if a name or term has no Hindi word, write it in Devanagari letters. Write numbers and quantities in Hindi words. "
+            "Marathi" -> "Write the spoken text entirely in natural Marathi (Devanagari script). "
+            "Gujarati" -> "Write the spoken text entirely in natural Gujarati (Gujarati script). "
+            "Bengali" -> "Write the spoken text entirely in natural Bengali (Bengali script). "
             else -> "Write in the same language the user used for the topic (Hindi in Devanagari, English in English, Hinglish if mixed). "
         })
-        append("Keep it about 250 to 450 words in total.")
+        if (facts.isNotBlank()) append("Base the content on these researched facts (stay accurate, do not invent numbers or claims):\n").append(facts.trim().take(6000)).append("\n")
+        else append("Use only accurate, well-known facts; do not invent numbers or claims. ")
+        append(if (multi) "Keep it about 300 to 550 words in total." else "Keep it about 250 to 450 words in total.")
+        if (strict.isNotBlank()) append(" IMPORTANT: ").append(strict)
     }
+
+    /** स्क्रिप्ट से पहले की रिसर्च का सवाल */
+    fun researchQuery(topic: String, format: String): String =
+        "Research this topic thoroughly for an audio $format and list the key accurate facts, steps, numbers and tips as short bullet points: ${topic.trim()}"
 
     // ------------------------------------------------------------------ Copilot (GitHub टैब): AI के बदलाव
     val COPILOT_CHIPS = listOf("Auto-Fix Code", "Make 100% Responsive", "Cyberpunk Dark Theme")
@@ -394,6 +466,55 @@ object DkaiKit {
         }
     }
 
+    // ------------------------------------------------------------------ 13 नवंबर 2026 (मालिक): होम पर सिर्फ़ फ्री मॉडल
+    /** होम के मॉडल शीट की एक पंक्ति ([paid] = सिर्फ़ तब जब AI दिमाग में paid key बताई हो) */
+    data class HomeModel(val provider: String, val model: String, val title: String, val sub: String, val paid: Boolean = false)
+
+    const val PREF_GEMINI_PAID = "gemini_paid_key"
+    private val NOT_CHAT = Regex("tts|image|imagen|embed|whisper|guard|live|native-audio|veo|lyria|robotics|computer-use|aqa", RegexOption.IGNORE_CASE)
+
+    /** यह मॉडल उस कंपनी के free tier में है? (Gemini Pro/Ultra/Argon नहीं; OpenRouter सिर्फ़ :free; Z.ai सिर्फ़ flash) */
+    fun isFreeModel(provider: String, model: String): Boolean {
+        val m = model.lowercase(Locale.ROOT).removePrefix("models/").trim()
+        if (m.isEmpty() || NOT_CHAT.containsMatchIn(m)) return false
+        return when (provider) {
+            "gemini" -> m.contains("flash") && !Regex("pro|ultra|argon").containsMatchIn(m)
+            "openrouter" -> m == "openrouter/free" || m.endsWith(":free")
+            "zai" -> m.contains("flash")
+            "groq", "nvidia" -> true
+            else -> false
+        }
+    }
+
+    /**
+     * होम पर दिखने वाले मॉडल: सिर्फ़ उन कंपनियों के जिनकी key AI दिमाग में डली है, और सिर्फ़ फ्री मॉडल.
+     * Paid (Gemini Pro) सिर्फ़ तब जब AI दिमाग में "मेरी Gemini key paid है" चालू हो.
+     */
+    fun homeModels(hasKey: (String) -> Boolean, geminiPaid: Boolean, cached: (String) -> List<String>,
+                   fallback: (String) -> List<String>, name: (String) -> String, maxEach: Int = 5): List<HomeModel> {
+        val out = ArrayList<HomeModel>()
+        if (hasKey("gemini")) {
+            for (c in MODEL_CARDS) {
+                val m = c.model ?: continue
+                val free = isFreeModel("gemini", m)
+                if (free) out.add(HomeModel("gemini", m, c.title, c.sub + " • Free"))
+                else if (geminiPaid) out.add(HomeModel("gemini", m, c.title, c.sub + " • Paid key", paid = true))
+            }
+        }
+        for (id in listOf("groq", "openrouter", "zai", "nvidia")) {
+            if (!hasKey(id)) continue
+            (fallback(id) + cached(id)).map { it.trim() }.filter { isFreeModel(id, it) }.distinct().take(maxEach)
+                .forEach { out.add(HomeModel(id, it, name(it), providerName(id) + " • Free")) }
+        }
+        return out
+    }
+
+    fun providerName(id: String) = when (id) { "gemini" -> "Google Gemini"; "groq" -> "Groq"; "openrouter" -> "OpenRouter"; "zai" -> "Z.ai (GLM)"; "nvidia" -> "NVIDIA NIM"; else -> id }
+
+    /** long-press वाली सूची भी: फ्री वाले ही (Gemini paid key बताई हो तो Gemini के सब) */
+    fun pickable(provider: String, models: List<String>, geminiPaid: Boolean): List<String> =
+        models.filter { (provider == "gemini" && geminiPaid && !NOT_CHAT.containsMatchIn(it)) || isFreeModel(provider, it) }
+
     /** + (Add to Prompt) शीट */
     val ATTACH = listOf(
         Row("IDE Image Scan", "Visual UI & screenshot analysis"),
@@ -409,6 +530,8 @@ object DkaiKit {
     val STUDIO_VOICES = listOf(
         StudioVoice("Madhur", "Orus", false), StudioVoice("Swara", "Kore", true), StudioVoice("Andrew", "Puck", false),
         StudioVoice("Emma", "Sulafat", true), StudioVoice("Ava", "Aoede", true), StudioVoice("Brian", "Fenrir", false),
+        // 13 नवंबर 2026 (मालिक): Anaya, Aarav, Rohan भी
+        StudioVoice("Anaya", "Leda", true), StudioVoice("Aarav", "Charon", false), StudioVoice("Rohan", "Alnilam", false),
     )
 
     /** स्टूडियो के लिए cast: "All Voices" = लिंग से बारी-बारी; एक नाम = सब उसी आवाज़ में */
@@ -419,12 +542,59 @@ object DkaiKit {
         var fi = 0; var mi = 0
         for (l in lines) {
             if (out.containsKey(l.speaker)) continue
-            out[l.speaker] = single ?: if (l.female) fem[fi++ % fem.size] else mal[mi++ % mal.size]
+            // किरदार का नाम ही किसी आवाज़ का नाम (Swara / Aarav ...) = वही आवाज़
+            val named = STUDIO_VOICES.firstOrNull { it.name.equals(l.speaker.trim(), true) && it.female == l.female }
+            out[l.speaker] = single ?: named ?: if (l.female) fem[fi++ % fem.size] else mal[mi++ % mal.size]
         }
         return out
     }
 
-    val STUDIO_SPEEDS = listOf(100, 120, 130, 150, 200)
+    /** आवाज़ चुनने की सूची का क्रम (मालिक के बताए पहले) */
+    val VOICE_MENU = listOf("Emma", "Swara", "Anaya", "Aarav", "Rohan", "Madhur", "Andrew", "Ava", "Brian")
+
+    /** रफ़्तार 0.5x - 2.0x (0.1 के कदम), default 1.3x */
+    val STUDIO_SPEEDS = (50..200 step 10).toList()
+    const val DEFAULT_SPEED = 130
+    fun clampSpeed(pct: Int) = ((pct + 5) / 10 * 10).coerceIn(50, 200)
+
+    /**
+     * आवाज़ की रफ़्तार बदलना, सुर (pitch) वही - WSOLA (16-bit mono PCM). शेयर/सेव की फ़ाइल भी चुनी रफ़्तार पर बने.
+     * [speed] 1.3 = 1.3 गुना तेज़ (छोटी फ़ाइल).
+     */
+    fun stretch(pcm: ShortArray, rate: Int, speed: Float): ShortArray {
+        if (pcm.isEmpty() || kotlin.math.abs(speed - 1f) < 0.01f) return pcm.copyOf()
+        val n = (rate * 0.03f).toInt().coerceAtLeast(64) and 1.inv()   // 30ms फ्रेम
+        val hs = n / 2; val tol = (rate * 0.006f).toInt().coerceAtLeast(8)
+        val ha = hs * speed
+        val outLen = (pcm.size / speed).toInt() + n
+        val out = FloatArray(outLen); val win = FloatArray(n) { (0.5 - 0.5 * kotlin.math.cos(2 * Math.PI * it / n)).toFloat() }
+        var prev = 0; var k = 0
+        while (true) {
+            val target = (k * ha).toInt()
+            if (target + n + tol >= pcm.size) break
+            var best = target
+            if (k > 0) {
+                val nat = prev + hs; var bestC = Double.NEGATIVE_INFINITY
+                var cand = (target - tol).coerceAtLeast(0)
+                val end = (target + tol).coerceAtMost(pcm.size - n - 1)
+                while (cand <= end) {
+                    var cc = 0.0; var j = 0
+                    while (j < hs && nat + j < pcm.size) { cc += pcm[cand + j] * pcm[nat + j].toDouble(); j += 2 }
+                    if (cc > bestC) { bestC = cc; best = cand }
+                    cand += 1
+                }
+            }
+            val o = k * hs
+            if (o + n > outLen) break
+            for (j in 0 until n) out[o + j] += pcm[best + j] * win[j]
+            prev = best; k++
+        }
+        val len = (k * hs + hs).coerceAtMost(outLen)
+        return ShortArray(len) { out[it].toInt().coerceIn(-32768, 32767).toShort() }
+    }
+
+    fun toShorts(b: ByteArray): ShortArray = ShortArray(b.size / 2) { ((b[it * 2].toInt() and 0xff) or (b[it * 2 + 1].toInt() shl 8)).toShort() }
+    fun toBytes(s: ShortArray): ByteArray = ByteArray(s.size * 2).also { for (i in s.indices) { it[i * 2] = (s[i].toInt() and 0xff).toByte(); it[i * 2 + 1] = (s[i].toInt() shr 8).toByte() } }
 
     /** Gemini TTS के लिए बोलने वाले का साफ़ नाम (अंग्रेज़ी अक्षर) - वरना Speaker1/2 */
     fun ttsName(name: String, idx: Int): String {
