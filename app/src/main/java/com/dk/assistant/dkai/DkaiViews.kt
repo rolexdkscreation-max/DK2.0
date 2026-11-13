@@ -315,7 +315,7 @@ class AiBadgeView(c: Context) : DkaiAnimView(c) {
     private val ring = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE }
     private val fill = Paint(Paint.ANTI_ALIAS_FLAG)
     private val glowP = Paint(Paint.ANTI_ALIAS_FLAG)
-    private val tp = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = DkaiTheme.WHITE; textAlign = Paint.Align.CENTER; typeface = Typeface.create("sans-serif", Typeface.BOLD) }
+    private val tp = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = DkaiTheme.ON; textAlign = Paint.Align.CENTER; typeface = Typeface.create("sans-serif", Typeface.BOLD) }
     private val m = Matrix()
     private val logo: android.graphics.drawable.Drawable? = try { androidx.core.content.ContextCompat.getDrawable(c, com.dk.assistant.R.drawable.ic_dk)?.mutate() } catch (_: Throwable) { null }
     init { contentDescription = "DKAI" }
@@ -326,9 +326,9 @@ class AiBadgeView(c: Context) : DkaiAnimView(c) {
         val gr = min(r * (1.6f + 0.06f * sin(t * 2f)), min(w, h) / 2f * 0.98f)
         glowP.shader = RadialGradient(cx, cy, gr, intArrayOf(0x6600E5FF, 0x33A855F7, 0x00A855F7), floatArrayOf(0.4f, 0.75f, 1f), Shader.TileMode.CLAMP)
         canvas.drawCircle(cx, cy, gr, glowP)
-        fill.shader = RadialGradient(cx - r * 0.3f, cy - r * 0.3f, r * 1.4f, intArrayOf(if (DkaiTheme.light) 0xFFE8EEFF.toInt() else 0xFF1B2A4A.toInt(), DkaiTheme.CARD), null, Shader.TileMode.CLAMP)
+        fill.shader = RadialGradient(cx - r * 0.3f, cy - r * 0.3f, r * 1.4f, intArrayOf(DkaiTheme.BADGE_CORE, DkaiTheme.LOGO_TILE), null, Shader.TileMode.CLAMP)
         canvas.drawCircle(cx, cy, r, fill)
-        val sg = SweepGradient(cx, cy, intArrayOf(DkaiTheme.CYAN, DkaiTheme.VIOLET, DkaiTheme.BLUE, DkaiTheme.CYAN), null)
+        val sg = SweepGradient(cx, cy, intArrayOf(DkaiTheme.ICON_CYAN, DkaiTheme.VIOLET, DkaiTheme.BLUE, DkaiTheme.ICON_CYAN), null)
         m.reset(); m.setRotate((t * 60f) % 360f, cx, cy); sg.setLocalMatrix(m)
         ring.shader = sg; ring.strokeWidth = r * 0.12f
         canvas.drawCircle(cx, cy, r, ring)
@@ -339,7 +339,7 @@ class AiBadgeView(c: Context) : DkaiAnimView(c) {
             lg.setBounds((cx - half).toInt(), (cy - half).toInt(), (cx + half).toInt(), (cy + half).toInt()); lg.draw(canvas)
         } else {
             tp.textSize = r * 0.72f
-            tp.shader = LinearGradient(cx - r, cy, cx + r, cy, DkaiTheme.CYAN, DkaiTheme.VIOLET, Shader.TileMode.CLAMP)
+            tp.shader = LinearGradient(cx - r, cy, cx + r, cy, DkaiTheme.ICON_CYAN, DkaiTheme.VIOLET, Shader.TileMode.CLAMP)
             canvas.drawText("DK", cx, cy - (tp.descent() + tp.ascent()) / 2f, tp)
         }
         again()

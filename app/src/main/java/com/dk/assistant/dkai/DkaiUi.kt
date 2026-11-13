@@ -28,7 +28,7 @@ object DkaiUi {
 
     /** परत खोलो: [body] नीचे (sheet) / बीच में (modal) / पूरी स्क्रीन; बाहर टैप = बंद (FULL को छोड़कर) */
     fun open(root: FrameLayout, body: View, place: Place = Place.BOTTOM, onClose: (() -> Unit)? = null,
-             anchorBottom: Int = 0, anchorEnd: Int = 0): Layer {
+             anchorBottom: Int = 0, anchorEnd: Int = 0, maxWidth: Int = 0): Layer {
         val c = root.context
         val layer = FrameLayout(c).apply {
             isClickable = true; isFocusable = true
@@ -40,6 +40,8 @@ object DkaiUi {
             Place.FULL -> FrameLayout.LayoutParams(-1, -1)
             Place.ANCHOR -> FrameLayout.LayoutParams(-2, -2, Gravity.BOTTOM or Gravity.END).apply { setMargins(dp(c, 12f), 0, anchorEnd, anchorBottom) }
         }
+        // 13 नवंबर 2026: tablet / चौड़ी स्क्रीन पर sheet बीच में, तय चौड़ाई तक (पूरी चौड़ाई में खिंचे नहीं)
+        if (maxWidth > 0 && place == Place.BOTTOM && root.width > maxWidth) { lp.width = maxWidth; lp.gravity = Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL }
         if (place == Place.BOTTOM) body.setPadding(body.paddingLeft, body.paddingTop, body.paddingRight, body.paddingBottom + insetBottom)
         if (place == Place.FULL) body.setPadding(body.paddingLeft, body.paddingTop + insetTop, body.paddingRight, body.paddingBottom + insetBottom)
         body.isClickable = true
