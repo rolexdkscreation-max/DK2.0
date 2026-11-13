@@ -104,6 +104,86 @@ object AutoReplyCore {
 
     fun key(pkg: String, title: String) = pkg + "|" + title.trim().lowercase()
 
+    // ---------- 13 नवंबर 2026 (मालिक): "कभी-कभी डबल मैसेज करता है" - सामने से एक मैसेज = एक ही जवाब, समझदारी से ----------
+
+    /** notification की बातचीत का एक मैसेज. at = ऐप का दिया समय (0 = पता नहीं), mine = मालिक / DK का भेजा */
+    data class In(val who: String, val text: String, val at: Long, val mine: Boolean)
+
+    private val COUNT_SUFFIX = Regex(
+        "\\s*[(（]\\s*\\d+\\s*(new\\s+|नए\\s+|नये\\s+)?(messages?|msgs?|संदेश|मैसेज)\\s*[)）]\\s*$|\\s*[:·-]\\s*\\d+\\s*(new\\s+)?messages?\\s*$",
+        RegexOption.IGNORE_CASE)
+
+    /** बातचीत का नाम: WhatsApp "Rahul (2 messages)" / "Rahul (3 नए संदेश)" = वही Rahul - नाम बदलने से दूसरा जवाब नहीं */
+    fun chatName(title: String): String = title.trim().replace(COUNT_SUFFIX, "").trim().replace(Regex("\\s+"), " ").lowercase()
+
+    /** एक बातचीत की एक ही पहचान (ऐप + नाम बिना गिनती) */
+    fun chatKey(pkg: String, title: String) = pkg + "|" + chatName(title)
+
+    /**
+     * कौन-सा मैसेज मालिक का (या DK का भेजा) है: भेजने वाला खाली, या मालिक का अपना नाम (WhatsApp कभी "You"/"आप"/मालिक का नाम देता है),
+     * या वही text जो DK ने अभी भेजा - ताकि DK के अपने जवाब को सामने वाले का नया मैसेज समझकर फिर जवाब न दे.
+     */
+    fun markMine(list: List<In>, selfName: String, dkSent: Collection<String>): List<In> {
+        val self = selfName.trim().lowercase()
+        val sent = dkSent.map { norm(it) }.toHashSet()
+        return list.map { m ->
+            val w = m.who.trim().lowercase()
+            val mine = m.mine || w.isEmpty() || (self.isNotEmpty() && w == self) || w in SELF_WORDS || norm(m.text) in sent
+            if (mine == m.mine) m else m.copy(mine = mine)
+        }
+    }
+    private val SELF_WORDS = setOf("you", "me", "आप", "मैं", "तुम")
+    private fun norm(t: String) = t.trim().replace(Regex("\\s+"), " ").lowercase()
+
+    /** आख़िरी मालिक/DK वाले मैसेज के बाद सामने वाले के जो मैसेज अभी बिना जवाब हैं (एक साथ एक ही जवाब) */
+    fun unanswered(list: List<In>): List<In> {
+        val i = list.indexOfLast { it.mine }
+        return list.drop(i + 1).filter { !it.mine && it.text.isNotBlank() }
+    }
+
+    /** एक मैसेज की पक्की पहचान (समय + text) - वही मैसेज दोबारा notification में आए तो दूसरा जवाब नहीं */
+    fun fp(m: In): String = (if (m.at > 0) m.at.toString() else "") + "|" + norm(m.text)
+
+    private val CLOSER = Regex(
+        "^(ok+|okay|okk+|k+|kk|ohk|acha+|accha+|achha+|thik (hai|h|he)|theek (hai|h|he)|thk|hmm+|hm+|ji|ha+n? ji|thanks?|thank you|thanku|thx|ty|" +
+            "dhanyavaad|dhanyawad|shukriya|bye+|ok bye|gn|good night|tc|take care|👍+|🙏+|👌+|ठीक है|ओके|हम्म+|अच्छा|धन्यवाद|शुक्रिया|बाय)[\\s.!🙂😊👍🙏👌]*$",
+        RegexOption.IGNORE_CASE)
+    private val ONLY_EMOJI = Regex("^[\\p{So}\\p{Sk}\\p{Cs}\\u200d\\ufe0f\\s]+$")
+
+    /** "ok", "thik hai", "👍", "thanks" - बात ख़त्म; इस पर फिर जवाब = बेवजह मैसेज (और कभी न रुकने वाली बात) */
+    fun isCloser(text: String): Boolean { val t = text.trim(); return t.isNotEmpty() && (CLOSER.matches(t) || ONLY_EMOJI.matches(t)) }
+
+    /**
+     * notification आया - जवाब बनाना है या नहीं (decide के ऊपर): बिना जवाब वाले मैसेज चाहिए, उनमें सबसे नया पहले से जवाब पा चुका
+     * न हो ([answeredFp] = इस बातचीत में आख़िरी जवाब दिए मैसेज की पहचान, ऐप बंद-चालू होने पर भी याद), और बात सिर्फ़ "ok/👍" वाली न हो.
+     */
+    fun pendingSkip(pending: List<In>, answeredFp: String): String? {
+        if (pending.isEmpty()) return "nothing new"
+        if (answeredFp.isNotEmpty() && fp(pending.last()) == answeredFp) return "already answered"   // उसके बाद कुछ नया नहीं
+        if (afterAnswered(pending, answeredFp).all { isCloser(it.text) }) return "just ok/thanks"
+        return null
+    }
+
+    /** जवाब दिए मैसेज के बाद वाले ही (पहले जवाब पा चुके दोबारा नहीं गिनने) */
+    fun afterAnswered(pending: List<In>, answeredFp: String): List<In> {
+        val i = pending.indexOfLast { fp(it) == answeredFp }
+        return if (i < 0) pending else pending.drop(i + 1)
+    }
+
+    const val NO_REPLY = "NO_REPLY"
+
+    /** समझदारी वाला prompt: पूरी बातचीत + सामने वाले के सारे नए मैसेज का एक ही जवाब, दोहराव नहीं, ज़रूरत न हो तो NO_REPLY */
+    fun promptAll(who: String, msgs: List<In>, pending: List<In>, max: Int = 14): String {
+        val name = who.ifBlank { "Them" }
+        val chat = msgs.takeLast(max).joinToString("\n") { (if (it.mine) "Me" else name) + ": " + it.text.take(400) }
+        val newOnes = pending.joinToString("\n") { "- " + it.text.take(300) }
+        return "Chat with ${who.ifBlank { "this person" }} (oldest first):\n$chat\n\n" +
+            "Their new message(s) I have NOT answered yet:\n$newOnes\n\n" +
+            "Write ONE single reply message that answers all of these new message(s) together (never send separate replies). " +
+            "Do not repeat or re-send anything 'Me' already said above, do not greet again if already greeted, and keep it consistent with what Me said earlier. " +
+            "If they only acknowledged (ok / thanks / emoji / bye) or nothing needs a reply, output exactly $NO_REPLY."
+    }
+
     // ---------- मालिक का लिखने का ढंग ----------
 
     /** मालिक के भेजे मैसेज (notification की बातचीत में भेजने वाला खाली) से ढंग के नमूने - नए आगे, दोहराव नहीं */
@@ -119,6 +199,7 @@ object AutoReplyCore {
     const val BASE_SYSTEM = "You reply AS the phone owner himself (first person, his own voice) - never as an assistant, bot or AI, never say you are DK. " +
         "Read the chat and answer ONLY what the other person last said or asked, staying exactly on that topic - never start a new topic, " +
         "never add your own suggestions, news, questions or small talk that they did not ask for. " +
+        "Send only ONE message per turn; if they sent several messages, answer them together in that one message. " +
         "Never invent facts, promises, amounts, addresses, times, plans or meetings the owner has not told you - if the answer needs that, " +
         "give a short polite holding reply in the owner's style (e.g. 'Abhi thoda busy hoon, thodi der mein batata hoon'). " +
         "Never share OTP, passwords, PIN, bank or card details. Keep it short and natural like a real chat text. " +
@@ -151,6 +232,7 @@ object AutoReplyCore {
         t = t.replace(Regex("^(reply|message|me|मैं|जवाब|answer)\\s*[:：-]\\s*", RegexOption.IGNORE_CASE), "")
         t = t.trim().trim('"', '“', '”', '\'').trim()
         if (t.isEmpty()) return null
+        if (t.equals(NO_REPLY, true) || t.uppercase().startsWith(NO_REPLY)) return null
         if (Regex("\\b(as an ai|language model|i am an assistant|मैं एक (ai|एआई))\\b", RegexOption.IGNORE_CASE).containsMatchIn(t)) return null
         return t.take(500)
     }
