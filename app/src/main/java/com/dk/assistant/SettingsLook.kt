@@ -37,6 +37,24 @@ internal fun SettingsActivity.secUi() {
         com.dk.assistant.ui.NeonRefresh.bars(this)
         com.dk.assistant.ui.NeonRefresh.invalidateAll(window.decorView)
     }
+    // 13 नवंबर 2026 (मालिक): नया DKAI होम / क्लासिक होम बदलना ☰ मेनू में नहीं - यहीं Settings में (और DK लाइव से बोलकर: dk_settings "dkai_home")
+    card("होम का रूप (नया UI)", "नया DKAI होम (आवाज़ orb + Files / Editor / Terminal / Preview / GitHub) या पुराना क्लासिक होम", startOpen = true) { box ->
+        val homes = listOf("dkai" to "नया DKAI होम", "classic" to "क्लासिक होम (पुराना orb वाला)")
+        val g = radios(box, homes, if (com.dk.assistant.dkai.Dkai.on(this)) "dkai" else "classic", 6500)
+        g.setOnCheckedChangeListener { _, id ->
+            val on = id - 6500 == 0
+            if (on == com.dk.assistant.dkai.Dkai.on(this)) return@setOnCheckedChangeListener
+            com.dk.assistant.dkai.Dkai.set(this, on)
+            UiLang.toast(this, if (on) "नया DKAI होम चालू - होम पर लौटते ही दिखेगा" else "क्लासिक होम चालू - होम पर लौटते ही दिखेगा", android.widget.Toast.LENGTH_SHORT).show()
+        }
+        hint(box, "DK लाइव से भी बोल सकते हैं: \"नया UI चालू करो\" या \"क्लासिक होम कर दो\" - DK एक बार पक्का करके बदल देगी.")
+    }
+    card("DKAI का orb", "नए DKAI होम में आवाज़ वाला orb — 7 नए या पुराना DK orb", startOpen = true) { box ->
+        val orbs = com.dk.assistant.dkai.DkaiOrbs.ORBS
+        val g = radios(box, orbs, com.dk.assistant.dkai.DkaiOrbs.get(this), 6600)
+        g.setOnCheckedChangeListener { _, id -> orbs.getOrNull(id - 6600)?.let { com.dk.assistant.dkai.DkaiOrbs.set(this, it.first) } }
+        hint(box, "पुराना DK orb चुना = उसका आकार \"ओर्ब और चेहरा\" वाले हिस्से से। DKAI में orb पर टैप करके भी बदल सकते हैं।")
+    }
     card("झलक", "बदलाव यहीं तुरंत दिखता है", startOpen = true) { box ->
         box.addView(OrbView(this).apply { previewStyle = Shapes.NEON; importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO },
             LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, (170 * dp).toInt()))

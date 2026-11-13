@@ -365,10 +365,40 @@ class CoderAi(val provider: Provider, private val key: String, val model: String
          * नवंबर 2026 (मालिक): कोडिंग एजेंट भी DK कंप्यूटर जैसा - चुनी API पहले, उसके सारे मॉडल/keys की limit खत्म
          * तो कोडिंग एजेंट की बाकी API (Gemini → OpenRouter → Z.ai → NVIDIA → Groq), जिसकी भी key डली हो.
          */
-        fun forCoder(c: Context, sink: (String, String) -> Unit): CoderAi? {
+        fun forCoder(c: Context, sink: (String, String) -> Unit): CoderAi? = withSpares(c, coderOwn(c, sink), sink)
+
+        private fun coderOwn(c: Context, sink: (String, String) -> Unit): CoderAi? {
             if (Prefs.oneKeyOn(c)) return forScope(c, ApiScopes.CODER, sink)
             return forScopeChain(c, ApiScopes.CODER, sink, ApiScopes.crossOrder(Prefs.scopeActive(c, ApiScopes.CODER)))
                 ?: forScope(c, ApiScopes.CODER, sink)
+        }
+
+        /**
+         * 13 नवंबर 2026 (मालिक): "जितनी भी API दी गई है सब पर fallback" - कोडिंग एजेंट की अपनी chain (Gemini key 1-5 → OpenRouter →
+         * Z.ai → NVIDIA → Groq) के बाद ऐप में कहीं भी डली बाकी keys ([ApiScopes.spareKeys]): एक-key मोड में बची सेव keys,
+         * DK कंप्यूटर / DK चैट / DK लाइव की keys. मॉडल = कोडिंग एजेंट वाला (Gemini = 3.8 Flash क्रम), उसी API के फ्री बैकअप मॉडल भी.
+         * कोडिंग एजेंट की अपनी कोई key नहीं = यही बाकी keys से काम (पहले "key नहीं" कहकर रुक जाता था).
+         */
+        internal fun withSpares(c: Context, own: CoderAi?, sink: (String, String) -> Unit): CoderAi? {
+            val have = own?.let { (listOf(it) + it.fallbackList()).map { a -> a.provider.id to a.keyForChain() }.toSet() }.orEmpty()
+            val spare = ApiScopes.spareKeys({ sc, slot -> Prefs.scopeKeyRaw(c, sc, slot).ifBlank { if (sc == ApiScopes.CODER && slot == "gemini") Prefs.oneKey(c) else "" } }, have)
+                .mapNotNull { (sc, id, k) -> spare(c, sc, id, k, sink) }
+            if (spare.isEmpty()) return own
+            DKLog.d("कोडिंग AI: ${spare.size} और API keys fallback में (${spare.joinToString { it.provider.name }})")
+            val first = own ?: spare.first().alone()
+            val rest = (own?.fallbackList().orEmpty()) + (if (own == null) spare.first().fallbackList() + spare.drop(1) else spare).flatMap { listOf(it.alone()) + it.fallbackList() }
+            return CoderAi(first.provider, first.keyForChain(), first.model, first.baseForChain(), rest, sink = sink)
+                .also { it.waitOnLimit = true }.applyThink(ThinkLevel.get(c, ApiScopes.CODER))
+        }
+
+        private fun spare(c: Context, scope: String, id: String, key: String, sink: (String, String) -> Unit): CoderAi? {
+            val p = Providers.byId(id) ?: return null
+            val model = if (p.isGemini) GeminiModels.CODER else Prefs.scopeModel(c, ApiScopes.CODER, id).ifBlank { p.defaultModel }
+            val base = Prefs.scopeBase(c, scope, id).ifBlank { p.baseUrl }
+            if (model.isBlank() || (!p.isGemini && base.isBlank())) return null
+            val note = ", ${ApiScopes.title(scope)} की key"
+            val fb = if (p.isGemini) emptyList() else Prefs.scopeBackups(c, ApiScopes.CODER, id).map { m -> CoderAi(p, key, m, base, note = "$note, दूसरा मॉडल", sink = sink) }
+            return CoderAi(p, key, model, base, fb, note = note, sink = sink)
         }
 
         /**

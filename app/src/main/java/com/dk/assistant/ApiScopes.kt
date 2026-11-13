@@ -130,6 +130,29 @@ object ApiScopes {
      * किसी हिस्से की API का क्रम: चुनी API सबसे पहले, फिर [CROSS_ORDER] की बाकी (सिर्फ़ उसी हिस्से की keys - दूसरे हिस्से की key नहीं).
      * Pure - JUnit से जाँच.
      */
+    /**
+     * 13 नवंबर 2026 (मालिक): "कोडिंग एजेंट को जितनी भी API दी गई हैं, सब पर fallback - Gemini की पाँचवीं key भी न चले तो
+     * OpenRouter, Z.ai, NVIDIA, Groq…". कोडिंग एजेंट की अपनी chain के बाद, ऐप में कहीं भी डली बाकी keys
+     * (कोडिंग एजेंट की बची keys, DK कंप्यूटर, DK चैट, DK लाइव) - [CROSS_ORDER] के क्रम में, कोई key दो बार नहीं.
+     * [get] = (हिस्सा, slot) की सेव key (slot: gemini, gemini2..5, groq…). [have] = जो (कंपनी, key) chain में पहले से हैं.
+     * @return (हिस्सा, कंपनी, key). Pure - JUnit से जाँच.
+     */
+    val SPARE_SCOPES = listOf(CODER, PC, CHAT, LIVE)
+    fun spareKeys(get: (String, String) -> String, have: Set<Pair<String, String>>): List<Triple<String, String, String>> {
+        val seen = have.map { it.first to it.second.trim() }.toMutableSet()
+        val out = mutableListOf<Triple<String, String, String>>()
+        for (id in CROSS_ORDER) for (scope in SPARE_SCOPES) {
+            if (id !in providers(scope)) continue
+            val slots = if (id == "gemini" && scope == CODER) listOf("gemini", "gemini2", "gemini3", "gemini4", "gemini5") else listOf(id)
+            for (slot in slots) {
+                val k = get(scope, slot).trim()
+                if (k.isBlank() || !seen.add(id to k)) continue
+                out.add(Triple(scope, id, k))
+            }
+        }
+        return out
+    }
+
     fun crossOrder(active: String): List<String> =
         (listOf(active.trim()) + CROSS_ORDER + PROVIDERS).filter { it.isNotBlank() }.distinct()
 
