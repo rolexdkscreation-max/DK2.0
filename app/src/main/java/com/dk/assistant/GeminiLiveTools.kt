@@ -60,6 +60,8 @@ internal suspend fun GeminiLive.webSearchTool(query: String): String {
         log("web_search: \"${q.take(40)}\" - सामान्य सवाल, खोज नहीं")
         return "NO_SEARCH_NEEDED: this is general knowledge (not live or changing). Answer it now from your own knowledge, briefly. Do not call web_search for it again."
     }
+    com.dk.assistant.dkai.DkaiSearchLive.start(q)                 // 13 नवंबर 2026: चैट में लाइव सर्च कार्ड (सिर्फ़ असली खोज पर)
+    DKState.refresh()
     val brain = BrainManager(svc).also { it.fromLive = true }
     // v3.88: यूज़र के बोलते ही शुरू हुई खोज उसी बात की है = वही नतीजा (इंतज़ार कम)
     prepFail = null
@@ -95,9 +97,11 @@ internal suspend fun GeminiLive.webSearchTool(query: String): String {
             SearchGuard.Fail.NETWORK -> "${WebSearch.ALL_FAILED_LINE} - इंटरनेट की दिक्कत है"
             else -> WebSearch.ALL_FAILED_LINE
         })
+        com.dk.assistant.dkai.DkaiSearchLive.cancel()
         return SearchGuard.failResult(q, why)
     }
     // स्रोत सिर्फ़ तब, जब सच में खोज से जवाब आया
+    com.dk.assistant.dkai.DkaiSearchLive.found(Grounding.sites(res.sources))
     if (res.sources.isNotEmpty()) toolSources = Grounding.merge(toolSources, res.sources)
     res.g?.let { toolGround = GroundCite.merge(toolGround, it) }
     log("web_search: \"${q.take(40)}\" -> ${res.text.length} अक्षर, ${res.sources.size} स्रोत")

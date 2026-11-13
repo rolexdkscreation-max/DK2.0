@@ -98,6 +98,47 @@ object DkaiCore {
         else -> Status.LISTENING
     }
 
+    /**
+     * 13 नवंबर 2026 (मालिक - वॉइस-कॉल स्क्रीन): कॉल पर सिर्फ़ तीन हालत - LISTENING / PROCESSING / SPEAKING.
+     * [voiceStatus] वैसा ही रहता है; यहाँ उसे तीन में समेटा: सोच / जुड़ रहा = PROCESSING, बाकी (म्यूट भी) = LISTENING.
+     */
+    enum class Call(val label: String, val title: String, val hint: String) {
+        LISTENING("LISTENING", "Listening…", "Tap to stop"),
+        PROCESSING("PROCESSING", "Processing…", "One moment…"),
+        SPEAKING("SPEAKING", "Speaking…", "Here's what I found for you")
+    }
+    const val MUTED_LINE = "Microphone is muted."
+    const val MUTED_HINT = "Tap the mic to talk again"
+
+    fun callState(st: Status): Call = when (st) {
+        Status.SPEAKING -> Call.SPEAKING
+        Status.THINKING, Status.CONNECTING -> Call.PROCESSING
+        else -> Call.LISTENING
+    }
+
+    /** टेक्स्ट बॉक्स: (ऊपर की लाइन, बात, बात असली है या सिर्फ़ इशारा) */
+    data class CallText(val title: String, val body: String, val placeholder: Boolean)
+
+    /**
+     * एक समय पर सिर्फ़ वही जो अभी बोल रहा है: सुनते समय यूज़र की लाइव बात (सिर्फ़ वही जो DK के आख़िरी जवाब के बाद बोली),
+     * बोलते समय DK का जवाब, सोचते समय बॉक्स साफ़. म्यूट (सुनने की हालत में) = "Microphone is muted."
+     */
+    fun callText(call: Call, muted: Boolean, user: String, userAt: Long, reply: String, lastDk: String, lastDkAt: Long, sessionStart: Long): CallText {
+        return when (call) {
+            Call.SPEAKING -> {
+                val r = reply.ifBlank { if (lastDkAt >= sessionStart && lastDkAt >= userAt) lastDk else "" }
+                if (r.isNotBlank()) CallText(call.title, tail(r), false) else CallText(call.title, call.hint, true)
+            }
+            Call.PROCESSING -> CallText(call.title, call.hint, true)
+            Call.LISTENING -> {
+                if (muted) return CallText(MUTED_LINE, MUTED_HINT, true)
+                val u = user.trim().removeSuffix("…").trim()
+                if (u.isNotBlank() && userAt >= sessionStart && userAt > lastDkAt) CallText(call.title, tail(u), false)
+                else CallText(call.title, call.hint, true)
+            }
+        }
+    }
+
     /** होम का बैज: कुछ न चले = READY (key नहीं = SETUP) */
     fun homeStatus(hasKey: Boolean, mode: Mode, live: Boolean, work: Boolean): Status = when {
         !hasKey -> Status.SETUP

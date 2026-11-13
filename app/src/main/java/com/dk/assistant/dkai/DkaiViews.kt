@@ -56,6 +56,31 @@ class FluidOrbView(c: Context) : DkaiAnimView(c) {
     private val path = Path()
     private val m = Matrix()
 
+    /**
+     * 13 नवंबर 2026 (मालिक - वॉइस-कॉल): कॉल की हालत (-1 = कोई नहीं / पुराना जैसा, [LISTEN], [THINK], [SPEAK]).
+     * सिर्फ़ FLUID orb पर: सुनना = गुलाबी/नीली/आसमानी लहरें + धीमी साँस, बोलना = आवाज़ के साथ लहरें और बाहर की
+     * पतली आसमानी रिंग फैले-सिकुड़े, सोचना = बैंगनी-गुलाबी घूमता रंग. रंग अचानक नहीं, धीरे-धीरे बदलते हैं.
+     */
+    var call: () -> Int = { -1 }
+    private val cur = intArrayOf(0, 0, 0)
+    private var curSet = false
+    private val ring = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE }
+    private val flow = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE; strokeCap = Paint.Cap.ROUND }
+    private val flowPath = Path()
+    private var spin = 0f
+    private var lastT = 0f
+
+    companion object {
+        const val LISTEN = 0; const val THINK = 1; const val SPEAK = 2
+        private val P_LISTEN = intArrayOf(0xFFF472B6.toInt(), 0xFF3B82F6.toInt(), 0xFF22D3EE.toInt())
+        private val P_THINK = intArrayOf(0xFFA855F7.toInt(), 0xFFEC4899.toInt(), 0xFF7C3AED.toInt())
+        private val P_SPEAK = intArrayOf(0xFF38BDF8.toInt(), 0xFF2563EB.toInt(), 0xFF1E3A8A.toInt())
+        fun mix(a: Int, b: Int, k: Float): Int {
+            fun ch(sh: Int) = (((a shr sh) and 0xFF) + ((((b shr sh) and 0xFF) - ((a shr sh) and 0xFF)) * k)).toInt().coerceIn(0, 255)
+            return (ch(24) shl 24) or (ch(16) shl 16) or (ch(8) shl 8) or ch(0)
+        }
+    }
+
     init { setLayerType(LAYER_TYPE_HARDWARE, null); importantForAccessibility = IMPORTANT_FOR_ACCESSIBILITY_NO }
 
     /** 13 नवंबर 2026 (मालिक): orb के बीच में DK लोगो (हर orb style पर) */
@@ -78,10 +103,24 @@ class FluidOrbView(c: Context) : DkaiAnimView(c) {
         if (w <= 0f || h <= 0f) { again(); return }
         val cx = w / 2f; val cy = h / 2f
         val on = try { active() } catch (_: Exception) { false }
-        val breathe = sin(t * (if (on) 2.4f else 1.3f)) * 0.025f
-        val R = min(w, h) / 2f * (if (glow) 0.66f else 0.86f) * (1f + breathe + lv * 0.12f)
         val st = try { style() } catch (_: Exception) { DkaiOrbs.FLUID }
+        val cs = if (st == DkaiOrbs.FLUID) (try { call() } catch (_: Exception) { -1 }) else -1
+        val dt = (t - lastT).coerceIn(0f, 0.1f); lastT = t
+        val breathe = when (cs) {
+            LISTEN -> sin(t * 1.1f) * 0.035f                                   // धीमी साँस
+            THINK -> sin(t * 3.2f) * 0.012f
+            else -> sin(t * (if (on) 2.4f else 1.3f)) * 0.025f
+        }
+        val R = min(w, h) / 2f * (if (glow) 0.66f else 0.86f) * (1f + breathe + lv * (if (cs == SPEAK) 0.16f else 0.12f))
         pal = DkaiOrbs.palette(st)
+        if (cs >= 0) {
+            val target = when (cs) { THINK -> P_THINK; SPEAK -> P_SPEAK; else -> P_LISTEN }
+            if (!curSet) { target.copyInto(cur); curSet = true }
+            val k = (dt * 6f).coerceIn(0.05f, 1f)                              // ~0.2 सेकंड में नया रंग
+            for (i in 0..2) cur[i] = mix(cur[i], target[i], k)
+            pal = cur
+        }
+        spin = (spin + dt * (if (cs == THINK) 150f else 25f)) % 360f
         when (st) {
             DkaiOrbs.REACTOR -> { reactor(canvas, cx, cy, R, t, on, w, h); again(); return }
             DkaiOrbs.SOLAR -> { solar(canvas, cx, cy, R, t, on, w, h); again(); return }
@@ -109,8 +148,9 @@ class FluidOrbView(c: Context) : DkaiAnimView(c) {
         path.close()
 
         // घूमता cyan->violet रंग
-        val lg = LinearGradient(cx - R, cy - R, cx + R, cy + R, intArrayOf(pal[0], pal[1], pal[2]), floatArrayOf(0f, 0.5f, 1f), Shader.TileMode.CLAMP)
-        m.reset(); m.setRotate((t * 25f) % 360f, cx, cy); lg.setLocalMatrix(m)
+        val lg: Shader = if (cs == THINK) SweepGradient(cx, cy, intArrayOf(pal[0], pal[1], pal[2], pal[0]), null)
+            else LinearGradient(cx - R, cy - R, cx + R, cy + R, intArrayOf(pal[0], pal[1], pal[2]), floatArrayOf(0f, 0.5f, 1f), Shader.TileMode.CLAMP)
+        m.reset(); m.setRotate(if (cs >= 0) spin else (t * 25f) % 360f, cx, cy); lg.setLocalMatrix(m)
         body.shader = lg
         canvas.drawPath(path, body)
 
@@ -127,6 +167,7 @@ class FluidOrbView(c: Context) : DkaiAnimView(c) {
         val p3x = cx + cos(t * 1.5f + 4f) * R * 0.3f; val p3y = cy + sin(t * -1.3f + 3f) * R * 0.3f
         blob.shader = RadialGradient(p3x, p3y, br * 0.6f, intArrayOf((0x66 + (lv * 0x80).toInt()).coerceAtMost(0xE6) shl 24 or 0xFFFFFF, 0x00FFFFFF), null, Shader.TileMode.CLAMP)
         canvas.drawCircle(p3x, p3y, br * 0.6f, blob)
+        if (cs >= 0) flowWaves(canvas, cx, cy, R, t, cs)
         // 3D: नीचे-दाएँ छाया
         shade.shader = RadialGradient(cx - R * 0.35f, cy - R * 0.4f, R * 1.7f, intArrayOf(0x00000000, 0x00000000, 0xA0050818.toInt()), floatArrayOf(0f, 0.45f, 1f), Shader.TileMode.CLAMP)
         canvas.drawRect(cx - R * 1.3f, cy - R * 1.3f, cx + R * 1.3f, cy + R * 1.3f, shade)
@@ -139,7 +180,38 @@ class FluidOrbView(c: Context) : DkaiAnimView(c) {
         val sx = cx - R * 0.38f; val sy = cy - R * 0.42f
         spec.shader = RadialGradient(sx, sy, R * 0.32f, intArrayOf(0xB3FFFFFF.toInt(), 0x00FFFFFF), null, Shader.TileMode.CLAMP)
         canvas.drawOval(sx - R * 0.32f, sy - R * 0.22f, sx + R * 0.32f, sy + R * 0.22f, spec)
+        if (cs >= 0 && glow) {
+            // बाहर की पतली आसमानी रिंग: बोलते समय आवाज़ के साथ फैले-सिकुड़े, सुनते समय साँस के साथ
+            val grow = when (cs) { SPEAK -> 0.06f + lv * 0.16f; THINK -> 0.08f + sin(t * 4f) * 0.015f; else -> 0.08f + breathe }
+            val rr = min(R * (1.12f + grow), min(w, h) / 2f * 0.97f)
+            ring.strokeWidth = DkaiTheme.dpf(context, 1.6f)
+            ring.color = if (DkaiTheme.light) 0xFF38BDF8.toInt() else 0xFF7DD3FC.toInt()
+            ring.alpha = (150 + lv * 90).toInt().coerceAtMost(240)
+            canvas.drawCircle(cx, cy, rr, ring)
+        }
         again()
+    }
+
+    /** orb के अंदर बहती चमकदार लहरें (बोलते समय ऊँची, सुनते समय धीमी) - Path दोबारा इस्तेमाल, हर फ़्रेम नई चीज़ नहीं */
+    private fun flowWaves(canvas: Canvas, cx: Float, cy: Float, R: Float, t: Float, cs: Int) {
+        val speed = when (cs) { SPEAK -> 2.6f + lv * 3f; THINK -> 3.4f; else -> 1.2f }
+        val ampK = when (cs) { SPEAK -> 0.06f + lv * 0.2f; THINK -> 0.08f; else -> 0.06f }
+        flow.strokeWidth = max(1.5f, R * 0.045f)
+        for (k in 0 until 3) {
+            flowPath.reset()
+            val y0 = cy + (k - 1) * R * 0.28f
+            val amp = R * ampK * (1f - k * 0.18f)
+            var x = cx - R
+            while (x <= cx + R) {
+                val u = (x - cx) / R
+                val y = y0 + amp * sin(u * (3.2f + k) + t * speed * (if (k % 2 == 0) 1f else -0.8f) + k * 1.7f)
+                if (x == cx - R) flowPath.moveTo(x, y) else flowPath.lineTo(x, y)
+                x += R / 18f
+            }
+            flow.color = if (k == 1) 0xFFFFFFFF.toInt() else pal[k]
+            flow.alpha = (if (k == 1) 0x70 else 0x9A) + (lv * 0x40).toInt()
+            canvas.drawPath(flowPath, flow)
+        }
     }
 
     private fun halo(canvas: Canvas, cx: Float, cy: Float, R: Float, w: Float, h: Float, k: Float) {
@@ -229,8 +301,48 @@ class WaveformView(c: Context) : DkaiAnimView(c) {
     private val path = Path()
     init { importantForAccessibility = IMPORTANT_FOR_ACCESSIBILITY_NO }
 
+    /**
+     * 13 नवंबर 2026 (मालिक - वॉइस-कॉल): null = पुरानी लहरें. दिया हो = खड़ी नीली पट्टियाँ (true = DK बोल रहा,
+     * आवाज़ के हिसाब से ऊपर-नीचे) / छोटे बिंदुओं की कतार (false = सुन रहा या चुप).
+     */
+    var bars: (() -> Boolean)? = null
+    /** पट्टियों की गिनती (छोटी पट्टी में कम) */
+    var count = 28
+    private val bp = Paint(Paint.ANTI_ALIAS_FLAG).apply { strokeCap = Paint.Cap.ROUND; style = Paint.Style.STROKE }
+    private var show = 0f                                    // 0 = बिंदु, 1 = पट्टियाँ (धीरे बदले)
+
+    private fun drawBars(canvas: Canvas, speaking: Boolean, t: Float, w: Float, h: Float) {
+        show += ((if (speaking) 1f else 0f) - show) * 0.25f
+        val n = count.coerceAtLeast(4)
+        val gap = w / n
+        val bw = min(gap * 0.5f, DkaiTheme.dpf(context, 4f))
+        val dotR = min(bw * 0.5f, DkaiTheme.dpf(context, 2f))
+        val mid = h / 2f
+        bp.strokeWidth = bw
+        val c1 = if (DkaiTheme.light) 0xFF2563EB.toInt() else 0xFF38BDF8.toInt()
+        val c2 = if (DkaiTheme.light) 0xFF0EA5E9.toInt() else 0xFF3B82F6.toInt()
+        for (i in 0 until n) {
+            val x = gap * (i + 0.5f)
+            val u = i / (n - 1f)
+            val env = 0.35f + 0.65f * sin(u * PI.toFloat())
+            // आवाज़ के ज़ोर से: हर पट्टी अपनी रफ़्तार से (असली ज़ोर lv पर टिकी)
+            val wob = 0.5f + 0.5f * sin(t * (7f + (i % 5) * 1.3f) + i * 0.9f)
+            val barH = (h * 0.9f) * env * (0.12f + lv * 0.88f) * (0.45f + 0.55f * wob)
+            val hh = max(dotR * 2f, barH * show + dotR * 2f * (1f - show))
+            bp.color = FluidOrbView.mix(c1, c2, u)
+            bp.alpha = (150 + 105 * show).toInt()
+            canvas.drawLine(x, mid - hh / 2f + bw / 2f, x, mid + hh / 2f - bw / 2f, bp)
+        }
+    }
+
     override fun onDraw(canvas: Canvas) {
         step()
+        val b = bars
+        if (b != null) {
+            val w = width.toFloat(); val h = height.toFloat()
+            if (w > 0f) drawBars(canvas, try { b() } catch (_: Exception) { false }, secs(), w, h)
+            again(); return
+        }
         val t = secs(); val w = width.toFloat(); val h = height.toFloat()
         if (w <= 0f) { again(); return }
         val mid = h / 2f
@@ -277,7 +389,7 @@ class PulseDot(c: Context) : DkaiAnimView(c) {
     }
 }
 
-/** बड़ा नीला माइक - बाहर लहरें (ripple) फैलती हैं; [muted] = शांत */
+/** बड़ा नीला माइक - बाहर लहरें (ripple) फैलती हैं; [muted] = लाल कटा माइक, शांत */
 @SuppressLint("ViewConstructor")
 class RippleMicView(c: Context, private val coreDp: Float) : DkaiAnimView(c) {
     var muted = false
@@ -298,10 +410,12 @@ class RippleMicView(c: Context, private val coreDp: Float) : DkaiAnimView(c) {
             p.color = DkaiTheme.BLUE; p.alpha = (120 * (1f - ph)).toInt()
             canvas.drawCircle(cx, cy, core + (maxR - core) * ph, p)
         }
-        g.shader = RadialGradient(cx, cy, core * 1.45f, intArrayOf(0x883B82F6.toInt(), 0x003B82F6), null, Shader.TileMode.CLAMP)
+        // 13 नवंबर 2026 (मालिक - वॉइस-कॉल): म्यूट = लाल गोला + कटा हुआ माइक
+        g.shader = if (muted) RadialGradient(cx, cy, core * 1.45f, intArrayOf(0x66EF4444, 0x00EF4444), null, Shader.TileMode.CLAMP)
+            else RadialGradient(cx, cy, core * 1.45f, intArrayOf(0x883B82F6.toInt(), 0x003B82F6), null, Shader.TileMode.CLAMP)
         canvas.drawCircle(cx, cy, core * 1.45f, g)
         p.alpha = 255
-        p.color = if (muted) 0xFF334155.toInt() else DkaiTheme.BLUE
+        p.color = if (muted) DkaiTheme.RED else DkaiTheme.BLUE
         canvas.drawCircle(cx, cy, core * (1f + lv * 0.06f), p)
         val s = (core * 0.9f).toInt()
         icon.setBounds((cx - s / 2f).toInt(), (cy - s / 2f).toInt(), (cx + s / 2f).toInt(), (cy + s / 2f).toInt())

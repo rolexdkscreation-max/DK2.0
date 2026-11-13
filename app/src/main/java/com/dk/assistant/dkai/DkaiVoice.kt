@@ -37,6 +37,10 @@ class DkaiVoice(private val s: DkaiScreen) {
     private lateinit var classicOrb: OrbView
     private lateinit var orbBox: FrameLayout
     private lateinit var transcript: TextView
+    private lateinit var box: LinearLayout
+    private lateinit var boxTitle: TextView
+    private lateinit var boxDot: PulseDot
+    private lateinit var miniWave: WaveformView
     private lateinit var wave: WaveformView
     private lateinit var tabs: LinearLayout
     private lateinit var bigMic: RippleMicView
@@ -49,6 +53,12 @@ class DkaiVoice(private val s: DkaiScreen) {
     private lateinit var miniMic: ImageView
 
     var voiceTab = DkaiMode.CHAT; private set
+    /** 13 नवंबर 2026 (मालिक - वॉइस-कॉल): अभी की तीन में से एक हालत (orb / वेव हर फ़्रेम यही पढ़ते हैं) */
+    private var callNow = DkaiCore.Call.LISTENING
+    private val callInt: () -> Int = {
+        when (callNow) { DkaiCore.Call.SPEAKING -> FluidOrbView.SPEAK; DkaiCore.Call.PROCESSING -> FluidOrbView.THINK; else -> FluidOrbView.LISTEN }
+    }
+    private val speaking: () -> Boolean = { callNow == DkaiCore.Call.SPEAKING }
     private var sessionStart = 0L
     private var closedAt = 0L
     private var pendingNote: String? = null
@@ -99,9 +109,12 @@ class DkaiVoice(private val s: DkaiScreen) {
         col.addView(top, LinearLayout.LayoutParams(-1, -2))
 
         col.addView(View(c), LinearLayout.LayoutParams(1, 0, 1f))
-        val size = minOf((c.resources.displayMetrics.widthPixels * 0.78f).toInt(), d(320f))
+        // 13 नवंबर 2026 (वॉइस-कॉल): फ़ोन और टैबलेट दोनों - orb चौड़ाई और ऊँचाई दोनों से नपे (छोटे फ़ोन पर नीचे के बटन न कटें)
+        val dm = c.resources.displayMetrics
+        val size = minOf((dm.widthPixels * 0.72f).toInt(), (dm.heightPixels * 0.34f).toInt(), d(320f))
+        val boxW = minOf(dm.widthPixels - d(40f), d(560f))
         // 13 नवंबर 2026 (मालिक): orb बदल सकें - orb पर टैप = सूची (5+ नए orb या पुराना DK orb)
-        orb = FluidOrbView(c).apply { level = this@DkaiVoice.level; active = this@DkaiVoice.active; style = { DkaiOrbs.get(c) } }
+        orb = FluidOrbView(c).apply { level = this@DkaiVoice.level; active = this@DkaiVoice.active; style = { DkaiOrbs.get(c) }; call = callInt }
         classicOrb = OrbView(c).apply { importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO }
         orbBox = FrameLayout(c).apply {
             isClickable = true; contentDescription = "DK orb - बदलने के लिए टैप"
@@ -110,14 +123,30 @@ class DkaiVoice(private val s: DkaiScreen) {
         }
         orbStyle()
         col.addView(orbBox, LinearLayout.LayoutParams(size, size))
-        transcript = DkaiTheme.text(c, DkaiCore.HELLO, 20f, DkaiTheme.WHITE, DkaiTheme.SANS_MED).apply {
-            gravity = Gravity.CENTER; maxLines = 4; setLineSpacing(0f, 1.2f); setPadding(d(28f), d(6f), d(28f), d(10f))
+        // साउंड-वेव: बोलते समय खड़ी नीली पट्टियाँ, सुनते / चुप में छोटे बिंदु
+        wave = WaveformView(c).apply { level = this@DkaiVoice.level; active = this@DkaiVoice.active; bars = speaking; count = 32 }
+        col.addView(wave, LinearLayout.LayoutParams(minOf((dm.widthPixels * 0.7f).toInt(), d(420f)), d(44f)).apply { topMargin = d(6f) })
+        // 13 नवंबर 2026 (मालिक): सफ़ेद, गोल कोनों वाला टेक्स्ट बॉक्स - ऊपर हालत ("Listening…"), नीचे जो अभी बोल रहा उसकी बात
+        box = LinearLayout(c).apply {
+            orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER_HORIZONTAL
+            background = DkaiTheme.press(DkaiTheme.round(c, 0xFFFFFFFF.toInt(), 22f, if (DkaiTheme.light) 0xFFE2E8F0.toInt() else 0), DkaiTheme.round(c, 0xFFF1F5F9.toInt(), 22f))
+            elevation = d(6f).toFloat(); setPadding(d(18f), d(12f), d(18f), d(14f))
+            isClickable = true; isFocusable = true; contentDescription = "बातचीत - टैप करें"
+            setOnClickListener { boxTap() }
+        }
+        val head = LinearLayout(c).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
+        boxDot = PulseDot(c).apply { color = 0xFF2563EB.toInt() }
+        head.addView(boxDot, LinearLayout.LayoutParams(d(10f), d(10f)))
+        boxTitle = DkaiTheme.text(c, DkaiCore.Call.LISTENING.title, 13f, 0xFF2563EB.toInt(), DkaiTheme.SANS_BOLD).apply { setPadding(d(6f), 0, 0, 0) }
+        head.addView(boxTitle)
+        box.addView(head, LinearLayout.LayoutParams(-2, -2))
+        transcript = DkaiTheme.text(c, DkaiCore.Call.LISTENING.hint, 17f, 0xFF0F172A.toInt(), DkaiTheme.SANS_MED).apply {
+            gravity = Gravity.CENTER; maxLines = 4; setLineSpacing(0f, 1.2f); setPadding(0, d(6f), 0, 0)
             ellipsize = android.text.TextUtils.TruncateAt.START
         }
         UiLang.keep(transcript)
-        col.addView(transcript, LinearLayout.LayoutParams(-1, -2))
-        wave = WaveformView(c).apply { level = this@DkaiVoice.level; active = this@DkaiVoice.active }
-        col.addView(wave, LinearLayout.LayoutParams((c.resources.displayMetrics.widthPixels * 0.78f).toInt(), d(56f)))
+        box.addView(transcript, LinearLayout.LayoutParams(-1, -2))
+        col.addView(box, LinearLayout.LayoutParams(boxW, -2).apply { topMargin = d(10f) })
         col.addView(View(c), LinearLayout.LayoutParams(1, 0, 1f))
 
         // मोड टैब
@@ -126,15 +155,16 @@ class DkaiVoice(private val s: DkaiScreen) {
         col.addView(tabs, LinearLayout.LayoutParams(-1, -2))
 
         // नीचे: (v) | माइक | (X)
-        val bottom = FrameLayout(c).apply { setPadding(d(28f), d(4f), d(28f), d(20f)) }
+        val bottom = FrameLayout(c).apply { setPadding(d(28f), d(2f), d(28f), d(16f)) }
         bottom.addView(roundBtn(DkaiIcon.Kind.DOWN, DkaiTheme.WHITE, DkaiTheme.PILL, "छोटा करें") { s.event(VoiceEvent.MINIMIZE) },
             FrameLayout.LayoutParams(d(56f), d(56f), Gravity.START or Gravity.CENTER_VERTICAL))
         bigMic = RippleMicView(c, 84f).apply {
             level = this@DkaiVoice.level; active = this@DkaiVoice.active; contentDescription = "माइक"
             setOnClickListener { micToggle() }
         }
-        bottom.addView(bigMic, FrameLayout.LayoutParams(d(150f), d(150f), Gravity.CENTER))
-        bottom.addView(roundBtn(DkaiIcon.Kind.X, DkaiTheme.RED, DkaiTheme.RED_BG, "बातचीत बंद करें", DkaiTheme.RED and 0x66FFFFFF) { close() },
+        bottom.addView(bigMic, FrameLayout.LayoutParams(d(136f), d(136f), Gravity.CENTER))
+        // 13 नवंबर 2026 (मालिक): दाएँ लाल कॉल-कट बटन
+        bottom.addView(roundBtn(DkaiIcon.Kind.CALL_END, DkaiTheme.WHITE, DkaiTheme.RED, "कॉल काटें - बातचीत बंद", DkaiTheme.RED) { close() },
             FrameLayout.LayoutParams(d(56f), d(56f), Gravity.END or Gravity.CENTER_VERTICAL))
         col.addView(bottom, LinearLayout.LayoutParams(-1, -2))
 
@@ -145,11 +175,16 @@ class DkaiVoice(private val s: DkaiScreen) {
     private fun tabView(m: DkaiMode): View = LinearLayout(c).apply {
         orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER; minimumHeight = d(44f); tag = m
         isClickable = true; isFocusable = true; contentDescription = m.label
-        background = DkaiTheme.press(DkaiTheme.round(c, 0, 10f), DkaiTheme.round(c, 0xFFFFFFFF.toInt(), 10f))
+        background = DkaiTheme.press(DkaiTheme.round(c, 0, 12f), DkaiTheme.round(c, 0xFFFFFFFF.toInt(), 12f))
+        setPadding(d(2f), d(6f), d(2f), d(6f))
         addView(DkaiTheme.text(c, m.label, 13f, DkaiTheme.GRAY, DkaiTheme.SANS_MED).apply { maxLines = 1; gravity = Gravity.CENTER }, LinearLayout.LayoutParams(-2, -2))
-        addView(View(c).apply { background = DkaiTheme.round(c, DkaiTheme.BLUE, 2f) }, LinearLayout.LayoutParams(d(26f), d(3f)).apply { topMargin = d(6f) })
+        // 13 नवंबर 2026 (मालिक): चुना हुआ मोड आसमानी रंग में चमके (नीचे चमकती लकीर + हल्की आसमानी पृष्ठभूमि)
+        addView(View(c).apply { background = DkaiTheme.round(c, CYAN_ON, 2f); elevation = d(3f).toFloat() }, LinearLayout.LayoutParams(d(26f), d(3f)).apply { topMargin = d(5f) })
         setOnClickListener { pickTab(m) }
     }
+
+    private val CYAN_ON get() = if (DkaiTheme.light) 0xFF0284C7.toInt() else 0xFF22D3EE.toInt()
+    private fun tabOn() = DkaiTheme.round(c, if (DkaiTheme.light) 0x1F0284C7 else 0x2622D3EE, 12f, if (DkaiTheme.light) 0x660284C7 else 0x8822D3EE.toInt())
 
     private fun roundBtn(k: DkaiIcon.Kind, tint: Int, fill: Int, desc: String, stroke: Int = DkaiTheme.BORDER, onTap: () -> Unit) = FrameLayout(c).apply {
         background = DkaiTheme.press(DkaiTheme.oval(fill, stroke, d(1f)), DkaiTheme.oval(0xFFFFFFFF.toInt()))
@@ -164,13 +199,13 @@ class DkaiVoice(private val s: DkaiScreen) {
     private fun buildMini() {
         mini.visibility = View.GONE
         mini.orientation = LinearLayout.HORIZONTAL; mini.gravity = Gravity.CENTER_VERTICAL
-        mini.background = DkaiTheme.round(c, DkaiTheme.CARD, 22f, DkaiTheme.BORDER)
+        mini.background = DkaiTheme.round(c, DkaiTheme.CARD, 999f, DkaiTheme.BORDER)       // तैरती गोली
         mini.elevation = d(12f).toFloat()
-        mini.setPadding(d(8f), d(6f), d(6f), d(6f))
+        mini.setPadding(d(8f), d(6f), d(8f), d(6f))
         mini.isClickable = true
         mini.setOnClickListener { s.event(VoiceEvent.EXPAND) }
         mini.contentDescription = "DK बातचीत - बड़ा करने के लिए टैप"
-        miniOrb = FluidOrbView(c).apply { glow = false; level = this@DkaiVoice.level; active = this@DkaiVoice.active
+        miniOrb = FluidOrbView(c).apply { glow = false; level = this@DkaiVoice.level; active = this@DkaiVoice.active; call = callInt
             style = { DkaiOrbs.get(c).let { if (it == DkaiOrbs.CLASSIC) DkaiOrbs.FLUID else it } } }
         mini.addView(miniOrb, LinearLayout.LayoutParams(d(46f), d(46f)))
         val mid = LinearLayout(c).apply { orientation = LinearLayout.VERTICAL; setPadding(d(10f), 0, d(6f), 0) }
@@ -179,6 +214,9 @@ class DkaiVoice(private val s: DkaiScreen) {
         st.addView(miniDot, LinearLayout.LayoutParams(d(10f), d(10f)))
         miniStatus = DkaiTheme.text(c, "LISTENING...", 11f, DkaiTheme.GREEN, DkaiTheme.SANS_BOLD).apply { letterSpacing = 0.1f; setPadding(d(5f), 0, 0, 0) }
         st.addView(miniStatus)
+        // 13 नवंबर 2026 (मालिक): छोटी पट्टी में भी छोटी वेव
+        miniWave = WaveformView(c).apply { level = this@DkaiVoice.level; active = this@DkaiVoice.active; bars = speaking; count = 9 }
+        st.addView(miniWave, LinearLayout.LayoutParams(d(40f), d(16f)).apply { leftMargin = d(6f) })
         mid.addView(st)
         miniText = DkaiTheme.text(c, DkaiCore.preview(DkaiCore.HELLO), 13f, DkaiTheme.WHITE).apply { maxLines = 1; setPadding(0, d(4f), 0, 0) }
         UiLang.keep(miniText)
@@ -187,7 +225,7 @@ class DkaiVoice(private val s: DkaiScreen) {
         miniMic = ImageView(c).apply { setImageDrawable(DkaiIcon(DkaiIcon.Kind.MIC, DkaiTheme.WHITE)) }
         mini.addView(miniBtn(miniMic, DkaiTheme.PILL, "माइक म्यूट / चालू") { micToggle() })
         mini.addView(miniBtn(ImageView(c).apply { setImageDrawable(DkaiIcon(DkaiIcon.Kind.UP, DkaiTheme.WHITE)) }, DkaiTheme.PILL, "बड़ा करें") { s.event(VoiceEvent.EXPAND) })
-        mini.addView(miniBtn(ImageView(c).apply { setImageDrawable(DkaiIcon(DkaiIcon.Kind.X, DkaiTheme.RED)) }, DkaiTheme.RED_BG, "बातचीत बंद करें") { close() })
+        mini.addView(miniBtn(ImageView(c).apply { setImageDrawable(DkaiIcon(DkaiIcon.Kind.CALL_END, DkaiTheme.WHITE)) }, DkaiTheme.RED, "कॉल काटें - बातचीत बंद") { close() })
     }
 
     private fun miniBtn(icon: ImageView, fill: Int, desc: String, onTap: () -> Unit): View = FrameLayout(c).apply {
@@ -198,7 +236,8 @@ class DkaiVoice(private val s: DkaiScreen) {
         layoutParams = LinearLayout.LayoutParams(d(44f), d(44f)).apply { leftMargin = d(4f) }
     }
 
-    fun miniParams() = FrameLayout.LayoutParams(-1, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.BOTTOM).apply {
+    /** टैबलेट पर पूरी चौड़ाई की जगह बीच में (560dp तक) */
+    fun miniParams() = FrameLayout.LayoutParams(minOf(c.resources.displayMetrics.widthPixels - d(24f), d(560f)), ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL).apply {
         leftMargin = d(12f); rightMargin = d(12f); bottomMargin = d(140f)
     }
 
@@ -249,6 +288,19 @@ class DkaiVoice(private val s: DkaiScreen) {
         DKState.setMicMuted(m)
         UiLang.toast(c, if (m) "माइक म्यूट - DK अभी कुछ नहीं सुनेगा" else "माइक चालू - DK फिर से सुन रहा है", Toast.LENGTH_SHORT).show()
         render()
+    }
+
+    /**
+     * 13 नवंबर 2026 (मालिक): बॉक्स पर टैप - DK बोल रहा हो = तुरंत चुप होकर सुनने लगे (बीच में टोकना),
+     * सुन रहा हो = "Tap to stop" (माइक रुके), म्यूट हो = फिर से सुनना.
+     */
+    private fun boxTap() {
+        if (!DKState.live) { s.startLive(); return }
+        if (callNow == DkaiCore.Call.SPEAKING) {
+            try { DKAccessibilityService.instance?.gemLive?.bargeIn("बॉक्स पर टैप") } catch (_: Exception) {}
+            render(); return
+        }
+        micToggle()
     }
 
     private fun liveTalk(): Boolean = DKState.live && try { DKAccessibilityService.instance?.gemLive?.canTalk() == true } catch (_: Exception) { false }
@@ -394,23 +446,32 @@ class DkaiVoice(private val s: DkaiScreen) {
         // Live जुड़ते ही बाकी SYSTEM NOTE भेजो (टैब पहले चुना था)
         pendingNote?.let { n -> if (connected) { pendingNote = null; DKAccessibilityService.instance?.gemLive?.pushNote(n) } }
         val st = DkaiCore.voiceStatus(DKState.mode, DKState.live, DKState.micMuted, DKState.working(), connected)
-        val (bg, fg, dot) = when (st) {
-            DkaiCore.Status.SPEAKING -> Triple(0xFFBAE6FD.toInt(), 0xFF075985.toInt(), 0xFF0284C7.toInt())
-            DkaiCore.Status.THINKING -> Triple(0xFFE9D5FF.toInt(), 0xFF5B21B6.toInt(), 0xFF7C3AED.toInt())
-            DkaiCore.Status.MUTED, DkaiCore.Status.OFFLINE -> Triple(0xFFE2E8F0.toInt(), 0xFF334155.toInt(), 0xFF64748B.toInt())
-            DkaiCore.Status.CONNECTING -> Triple(0xFFFDE68A.toInt(), 0xFF78350F.toInt(), 0xFFD97706.toInt())
+
+        // 13 नवंबर 2026 (मालिक): सिर्फ़ तीन हालत; बॉक्स में एक समय पर सिर्फ़ वही जो अभी बोल रहा है
+        val call = DkaiCore.callState(st)
+        callNow = call
+        val (cbg, cfg, cdot) = when (call) {
+            DkaiCore.Call.SPEAKING -> Triple(0xFFBAE6FD.toInt(), 0xFF075985.toInt(), 0xFF0284C7.toInt())
+            DkaiCore.Call.PROCESSING -> Triple(0xFFE9D5FF.toInt(), 0xFF5B21B6.toInt(), 0xFF7C3AED.toInt())
             else -> Triple(DkaiTheme.MINT, DkaiTheme.MINT_TEXT, 0xFF059669.toInt())
         }
-        (badge.background as? GradientDrawable)?.setColor(bg)
-        badgeTxt.text = st.label; badgeTxt.setTextColor(fg)
-        badgeDot.color = dot; badgeDot.pulsing = st != DkaiCore.Status.MUTED && st != DkaiCore.Status.OFFLINE; badgeDot.invalidate()
-        badge.contentDescription = "हालत: ${st.label}"
-
-        val text = shownText()
-        if (transcript.text.toString() != DkaiCore.tail(text)) transcript.text = DkaiCore.tail(text)
-        miniText.text = DkaiCore.preview(text, 22)
-        miniStatus.text = st.label + "..."
-        val miniCol = when (st) { DkaiCore.Status.SPEAKING -> DkaiTheme.CYAN; DkaiCore.Status.THINKING -> DkaiTheme.VIOLET; DkaiCore.Status.LISTENING -> DkaiTheme.GREEN; else -> DkaiTheme.GRAY }
+        (badge.background as? GradientDrawable)?.setColor(cbg)
+        badgeTxt.text = call.label; badgeTxt.setTextColor(cfg)
+        badgeDot.color = cdot; badgeDot.pulsing = true; badgeDot.invalidate()
+        badge.contentDescription = "हालत: ${call.label}"
+        val lastDk = DKState.messages.lastOrNull { it.role != "u" }
+        val ct = DkaiCore.callText(call, DKState.micMuted, DKState.lastUser, DKState.lastUserAt, DKState.liveReply, lastDk?.text.orEmpty(), lastDk?.time ?: 0L, sessionStart)
+        if (boxTitle.text.toString() != ct.title) boxTitle.text = ct.title
+        if (transcript.text.toString() != ct.body) transcript.text = ct.body
+        val muteLine = call == DkaiCore.Call.LISTENING && DKState.micMuted
+        val tc = when { muteLine -> 0xFFDC2626.toInt(); call == DkaiCore.Call.PROCESSING -> 0xFF7C3AED.toInt(); call == DkaiCore.Call.SPEAKING -> 0xFF0284C7.toInt(); else -> 0xFF2563EB.toInt() }
+        boxTitle.setTextColor(tc); boxDot.color = tc; boxDot.pulsing = !muteLine; boxDot.invalidate()
+        transcript.setTextColor(if (ct.placeholder) 0xFF64748B.toInt() else 0xFF0F172A.toInt())
+        transcript.textSize = if (ct.placeholder) 15f else 17f
+        val text = if (ct.placeholder) shownText() else ct.body
+        miniText.text = DkaiCore.preview(if (muteLine) DkaiCore.MUTED_LINE else text, 26)
+        miniStatus.text = call.label
+        val miniCol = when (call) { DkaiCore.Call.SPEAKING -> DkaiTheme.CYAN; DkaiCore.Call.PROCESSING -> DkaiTheme.VIOLET; else -> if (DKState.micMuted) DkaiTheme.RED else DkaiTheme.GREEN }
         miniStatus.setTextColor(miniCol); miniDot.color = miniCol; miniDot.invalidate()
         miniMic.setImageDrawable(DkaiIcon(if (DKState.micMuted) DkaiIcon.Kind.MIC_OFF else DkaiIcon.Kind.MIC, if (DKState.micMuted) DkaiTheme.RED else DkaiTheme.WHITE))
         bigMic.muted = DKState.micMuted; bigMic.invalidate()
@@ -427,11 +488,13 @@ class DkaiVoice(private val s: DkaiScreen) {
             val t = tabs.getChildAt(i) as LinearLayout
             val m = t.tag as DkaiMode
             val on = if (m == DkaiMode.BROADCAST) sharing else m == voiceTab
-            (t.getChildAt(0) as TextView).setTextColor(if (on) DkaiTheme.WHITE else DkaiTheme.GRAY)
+            (t.getChildAt(0) as TextView).setTextColor(if (on) CYAN_ON else DkaiTheme.GRAY)
+            (t.getChildAt(0) as TextView).setShadowLayer(if (on) d(8f).toFloat() else 0f, 0f, 0f, if (on) CYAN_ON else 0)
             t.getChildAt(1).visibility = if (on) View.VISIBLE else View.INVISIBLE
+            t.background = DkaiTheme.press(if (on) tabOn() else DkaiTheme.round(c, 0, 12f), DkaiTheme.round(c, 0xFFFFFFFF.toInt(), 12f))
             t.isSelected = on
         }
-        orbStyle(); wave.invalidate()
+        orbStyle(); wave.invalidate(); miniWave.invalidate()
     }
 
     init { VoiceTune.load(c) }
