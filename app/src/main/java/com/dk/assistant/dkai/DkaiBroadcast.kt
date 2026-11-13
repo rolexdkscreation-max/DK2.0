@@ -79,7 +79,8 @@ class DkaiBroadcast(private val s: DkaiScreen) {
         fun dir(c: Context) = File(c.filesDir, DIR).apply { mkdirs() }
     }
 
-    fun open() {
+    /** [topic] दिया = होम पर Broadcast मोड में लिखा विषय: नया Broadcast बनाकर तुरंत बनाना शुरू */
+    fun open(topic: String? = null) {
         val (page, body, right) = DkaiUi.page(c, "Broadcast Studio") { close() }
         state = DkaiUi.status(c, "READY", DkaiKit.EMERALD)
         right.addView(state)
@@ -173,6 +174,8 @@ class DkaiBroadcast(private val s: DkaiScreen) {
 
         layer = DkaiUi.open(s.root, page, DkaiUi.Place.FULL, onClose = { releaseAll() })
         loadLatest()
+        val t = topic?.trim().orEmpty()
+        if (t.isNotEmpty()) { newOne(); prompt.setText(t); prompt.setSelection(t.length); generate() }
     }
 
     private fun close() = DkaiUi.close(s.root, layer)

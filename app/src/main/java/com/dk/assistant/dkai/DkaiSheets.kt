@@ -36,7 +36,8 @@ object DkaiSheets {
             val r = DkaiKit.modeRow(m)
             box.addView(DkaiUi.row(c, iconOf(m), r.title, r.sub, m == s.mode, tintOf(m)) {
                 DkaiUi.close(s.root, layer)
-                if (m == DkaiMode.BROADCAST) DkaiBroadcast(s).open() else s.pickMode(m)
+                // 13 नवंबर 2026 (मालिक): Broadcast भी बाकी मोड जैसा - चुनते ही अलग पन्ना नहीं, यहीं मोड बदले; विषय भेजते ही काम
+                s.pickMode(m)
             }.apply { minimumWidth = (c.resources.displayMetrics.widthPixels * 0.78f).toInt() })
         }
         val loc = IntArray(2); val rl = IntArray(2)
