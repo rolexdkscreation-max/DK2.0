@@ -63,10 +63,49 @@ object DkaiTerm {
         Regex("""\bsed\b[^|;&]*\s-i"""),
         Regex("""\bunzip\b[^|;&]*\s-o\b"""),
         Regex("""\bfind\b[^|;&]*\s-delete\b"""),
+        // ऑडिट 13 नवंबर 2026: पहले "toybox rm", "sh -c 'rm …'", "env rm", "busybox rm", "cp /dev/null f", "tee f" बच निकलते थे.
+        // अब खतरनाक शब्द कमांड में कहीं भी हो (आगे कोई भी wrapper लगा हो) = पहले पूछो
+        Regex("""(?<![\w.-])(rm|rmdir|mv|cp|dd|truncate|chmod|chown|kill|pkill|killall|shred|tee|ln|unlink|rsync|mkfs[\w.]*|wipe|reboot|setprop)(?![\w-])"""),
+        // दूसरी कमांड चलाने वाले (इनके अंदर कुछ भी छिप सकता है)
+        Regex("""(?<![\w.-])(sh|bash|zsh|ash|mksh|eval|source|exec|xargs|nohup|su|sudo)(?![\w-])"""),
+        Regex("""(^|[\s;&|(`{])\.\s+\S"""),           // ". script.sh"
+        // फ़ोन / सिस्टम की सेटिंग और ऐप बदलना
+        Regex("""\b(pm\s+(uninstall|clear|disable|hide|grant|revoke|install)|am\s+(force-stop|kill)|settings\s+(put|delete)|svc\s+\w+|cmd\s+\w+)"""),
+        // ऐप के workspace से बाहर की जगहें (पूरी फ़ोन storage, ऐप का निजी डेटा, सिस्टम)
+        Regex("""(^|[\s=:'"(])(/sdcard|/storage|/data|/mnt|/system|/vendor|/proc|/apex|~)(/|\s|$|'|")"""),
+        Regex("""\.\./\.\."""),                          // दो या ज़्यादा "../" = workspace से बाहर
     )
 
-    /** कुछ मिटा / बदल / ऊपर लिख सकती है? (DK लाइव पहले पूछे) */
-    fun risky(cmd: String): Boolean = RISKY.any { it.containsMatchIn(" " + cmd.trim()) }
+    /** कुछ मिटा / बदल / ऊपर लिख सकती है, या workspace से बाहर जाती है? (DK लाइव पहले पूछे) */
+    fun risky(cmd: String): Boolean {
+        val c = " " + cmd.trim().replace('\n', ';').replace('\r', ';')
+        return RISKY.any { it.containsMatchIn(c) }
+    }
+
+    /** DK लाइव की खतरनाक कमांड जो मालिक की "हाँ" का इंतज़ार कर रही है */
+    data class Pending(val cmd: String, val askedAt: Long)
+
+    sealed class Gate {
+        /** चलाओ */
+        object Run : Gate()
+        /** पहले मालिक से पूछो (नई pending बनाओ) */
+        object Ask : Gate()
+        /** AI ने confirmed=true भेजा, पर ऐप ने मालिक की अपनी "हाँ" नहीं सुनी */
+        object NotHeard : Gate()
+    }
+
+    const val CONFIRM_WINDOW_MS = 2 * 60_000L
+
+    /**
+     * ऑडिट 13 नवंबर 2026: "हाँ" की जाँच अब ऐप करता है, AI नहीं. पहले AI पहली बार में ही confirmed=true भेज दे तो
+     * खतरनाक कमांड बिना पूछे चल जाती थी. अब: वही कमांड पहले पूछी गई हो, 2 मिनट के अंदर, और पूछने के बाद मालिक की
+     * अपनी आवाज़/लिखी बात (DKState.lastUser) में साफ़ "हाँ" हो ([com.dk.assistant.agent.core.ConfirmGate]).
+     */
+    fun liveGate(cmd: String, aiConfirmed: Boolean, pending: Pending?, userAt: Long, userText: String, now: Long): Gate {
+        if (!risky(cmd)) return Gate.Run
+        if (!aiConfirmed || pending == null || pending.cmd != cmd.trim() || now - pending.askedAt > CONFIRM_WINDOW_MS) return Gate.Ask
+        return if (com.dk.assistant.agent.core.ConfirmGate.accept(pending.askedAt, userAt, userText)) Gate.Run else Gate.NotHeard
+    }
 
     /** लंबा output: शुरू + आख़िर, बीच का "… N अक्षर छोड़े …" */
     fun clip(s: String, max: Int): String {

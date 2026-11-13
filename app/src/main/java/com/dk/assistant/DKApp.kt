@@ -15,6 +15,7 @@ class DKApp : Application() {
 
     override fun onCreate() {
         super.onCreate()
+        DKLog.toLogcat = (applicationInfo.flags and android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE) != 0
         DKBug.init(this)      // नवंबर 2026: DK Inspector पूरे ऐप से जुड़ा - लॉग + हर हिस्से की गलती फ़ाइल में (सबसे पहले)
         DKState.init(this)
         ModeTrack.sink = { DKLog.d(it) }   // नवंबर 2026: [LIVE] / [TEXT] / [PROBE] की कॉल और गलतियाँ अलग-अलग लॉग में

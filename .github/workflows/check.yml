@@ -17,13 +17,6 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.7'
-      # Kokoro TTS की बड़ी फ़ाइलें (app/build.gradle.kts लाता है) - हर बार दोबारा डाउनलोड नहीं
-      - name: Kokoro TTS files cache
-        uses: actions/cache@v4
-        with:
-          path: .dk-cache
-          key: dk-kokoro-${{ hashFiles('app/build.gradle.kts') }}
-          restore-keys: dk-kokoro-
       - name: Unit tests (aawaaz pehchaan / barge-in / deri ke hisse)
         run: gradle :app:testDebugUnitTest --no-daemon
       # नवंबर 2026 (Live जाँच #6): बात शुरू/खत्म का golden बेंचमार्क - scorecard PR के job summary में

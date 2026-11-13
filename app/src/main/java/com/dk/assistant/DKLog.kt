@@ -11,6 +11,9 @@ object DKLog {
         try { Handler(Looper.getMainLooper()) } catch (_: Throwable) { null }
     }
     var listener: ((String) -> Unit)? = null
+    /** ऑडिट 13 नवंबर 2026: Logcat में सिर्फ़ debug build पर (DKApp तय करता है). Release APK में बातचीत / key वाली
+     *  लाइनें Logcat (adb से कोई भी पढ़ सके) में नहीं जातीं - ऐप की डिबग लॉग स्क्रीन और Inspector पहले जैसे */
+    @Volatile var toLogcat = false
 
     private val fmt = java.text.SimpleDateFormat("HH:mm:ss.SSS", java.util.Locale.US)
     private var postQueued = false
@@ -23,7 +26,7 @@ object DKLog {
 
     @Synchronized
     fun d(msg: String) {
-        try { Log.d("DK", msg) } catch (_: Throwable) {}
+        if (toLogcat) try { Log.d("DK", msg) } catch (_: Throwable) {}
         val line = fmt.format(java.util.Date()) + " " + msg
         lines.addLast(line)
         // नवंबर 2026: DK Inspector के लिए फ़ाइल में भी (ऐप बंद होने पर भी बचे) - key/बातचीत छिपाकर, अलग thread पर

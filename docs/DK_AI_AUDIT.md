@@ -1,3 +1,6 @@
+> **पुराना दस्तावेज़ (24 अक्टूबर 2026, DK 3.53):** यह उस समय की जाँच है — आँकड़े (लाइनें, test फ़ाइलें) अब पुराने हैं।
+> नया पूरा ऑडिट: [`docs/AUDIT_2026-11-13.md`](AUDIT_2026-11-13.md)।
+
 # DK AI brief — audit checklist (Step 1)
 
 Audit date: 24 Oct 2026, base: `main` @ `fdb913e` (DK 3.53). Owner/admin: **धीरज कुमार सिंह** (`AssistantBrand.OWNER_NAME`).
