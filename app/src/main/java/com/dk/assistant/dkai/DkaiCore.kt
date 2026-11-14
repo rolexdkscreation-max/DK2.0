@@ -119,6 +119,11 @@ object DkaiCore {
         PROCESSING("PROCESSING", "Processing…", "One moment…"),
         SPEAKING("SPEAKING", "Speaking…", "Here's what I found for you")
     }
+    /** 14 नवंबर 2026 (मालिक): Live जुड़ते समय "Processing…" नहीं, "Connecting…" */
+    const val CONNECTING_TITLE = "Connecting…"
+    const val CONNECTING_HINT = "DK Live से जुड़ रहा है…"
+    fun callBadge(st: Status): String = if (st == Status.CONNECTING) Status.CONNECTING.label else callState(st).label
+    fun connectingOr(st: Status, ct: CallText): CallText = if (st == Status.CONNECTING) CallText(CONNECTING_TITLE, CONNECTING_HINT, true) else ct
     const val MUTED_LINE = "Microphone is muted."
     const val MUTED_HINT = "Tap the mic to talk again"
 
@@ -194,17 +199,52 @@ object DkaiCore {
 
     const val HELLO = "Hello, how can I help you today?"
 
-    fun chatLabel(n: Int) = "Chat #${n.coerceAtLeast(1)}"
+    /** 14 नवंबर 2026 (मालिक): "Chat #1" का # अच्छा नहीं दिखता - सिर्फ़ "Chat 1" */
+    fun chatLabel(n: Int) = "Chat ${n.coerceAtLeast(1)}"
 
     /** आवाज़ वाले टैब बदले -> Live को SYSTEM NOTE (जो टूल असल में हैं उन्हीं के नाम) */
     fun voiceModeNote(m: DkaiMode): String = "SYSTEM NOTE (do not read this aloud): the user switched the DKAI voice screen to the " +
-        m.label.uppercase() + " tab. " + when (m) {
-            DkaiMode.CHAT -> "Just talk normally and answer questions."
-            DkaiMode.BUILDER -> "From now on, when the user asks you to make or change an app, use the app_studio tool (build_website for a website)."
-            DkaiMode.AGENT -> "From now on, when the user asks for a multi-step task, use the computer_task tool."
-            DkaiMode.PIPELINE -> "From now on, when the user asks for code changes in their GitHub repository, use the coding_task tool."
-            DkaiMode.BROADCAST -> "Screen sharing is being turned on so you can see the user's screen."
+        m.label.uppercase() + " tab. Everything he asks now belongs to this tab. " + when (m) {
+            DkaiMode.CHAT -> "Just talk normally and answer questions; a story he asks for is written into the chat (story_task)."
+            DkaiMode.BUILDER -> "From now on, when the user asks you to make or change an app, use the app_studio tool (build_website for a website) - it is built in the Builder."
+            DkaiMode.AGENT -> "From now on, when the user asks for a multi-step task, use the computer_task tool - it runs in the Agent (DK Computer)."
+            DkaiMode.PIPELINE -> "From now on, when the user asks for code, an app, a website or a game, use the coding_task tool - it is built step by step in the Pipeline."
+            DkaiMode.BROADCAST -> "From now on, when the user asks for a story, podcast, news bulletin, speech or lecture, call story_task with his topic: " +
+                "the script is written live on his screen, every character gets its own voice and tone, and the audio is made and played automatically. Do not tell the story yourself."
         } + " Confirm in one very short sentence in the user's language."
+
+    /** 14 नवंबर 2026: DK लाइव का tool किस मोड में कहाँ जाए */
+    sealed class Route {
+        /** इसी मोड में चलाओ: cast / pipeline / builder / agent / chat */
+        data class Run(val target: String) : Route()
+        /** यह काम इस मोड का नहीं - मालिक से [suggest] टैब पर जाने को कहो */
+        data class Ask(val suggest: DkaiMode) : Route()
+        /** मोड से कोई लेना-देना नहीं - पुराना रास्ता */
+        object Pass : Route()
+    }
+
+    val BUILD_TOOLS = setOf("coding_task", "build_website", "make_game", "computer_task")
+
+    /**
+     * मालिक: "बोर्ड कास्ट सेलेक्ट किया हूँ तो उसी के ऊपर काम… पाइपलाइन तो पाइपलाइन… चैट तो चैट… बिल्डर… एजेंट".
+     * [mode] = DKAI आवाज़ वाली स्क्रीन का चुना टैब (null = DKAI से बाहर का DK लाइव = पुराना रास्ता).
+     */
+    fun routeFor(mode: DkaiMode?, tool: String): Route {
+        if (mode == null) return Route.Pass
+        val story = tool == "story_task"; val build = tool in BUILD_TOOLS
+        if (!story && !build) return Route.Pass
+        return when (mode) {
+            DkaiMode.BROADCAST -> if (story) Route.Run("cast") else Route.Ask(if (tool == "computer_task") DkaiMode.AGENT else DkaiMode.PIPELINE)
+            DkaiMode.PIPELINE -> if (build && tool != "computer_task") Route.Run("pipeline") else Route.Ask(if (story) DkaiMode.BROADCAST else DkaiMode.AGENT)
+            DkaiMode.BUILDER -> if (build && tool != "computer_task") Route.Run("builder") else Route.Ask(if (story) DkaiMode.BROADCAST else DkaiMode.AGENT)
+            DkaiMode.AGENT -> Route.Run("agent")
+            DkaiMode.CHAT -> if (story) Route.Run("chat") else Route.Ask(if (tool == "computer_task") DkaiMode.AGENT else DkaiMode.PIPELINE)
+        }
+    }
+
+    fun routeAskNote(cur: DkaiMode, suggest: DkaiMode): String =
+        "NOT_STARTED: the user has the ${cur.label.uppercase()} tab selected and this job belongs to the ${suggest.label.uppercase()} tab. " +
+            "In one short sentence in his language tell him to tap the ${suggest.label} tab at the top (or say it) and then ask again. Do not start it here."
 
     // ------------------------------------------------------------------ फ़ाइलें (रास्ता हमेशा अपने फ़ोल्डर के अंदर)
     fun inside(root: File, f: File): Boolean = try {

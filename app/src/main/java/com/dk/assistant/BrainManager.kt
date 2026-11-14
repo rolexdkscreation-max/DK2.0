@@ -725,6 +725,33 @@ class BrainManager(private val ctx: Context) {
         } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (_: Exception) { null }
     }
 
+    /**
+     * 14 नवंबर 2026 (मालिक: "स्टोरी उसी टाइम लाइव लिखेगा"): [quickText] जैसा, पर हर नए टुकड़े पर [onText] (अब तक का पूरा text).
+     * दूसरी key / provider पर जाते ही text फिर से शुरू (onText("")). IO thread से बुलाया जाता है - UI पर post करें.
+     */
+    suspend fun quickStream(system: String, prompt: String, onText: (String) -> Unit): String? = withContext(Dispatchers.IO) {
+        for (p in rankedForChat()) {
+            val c = clientFor(p) ?: continue
+            val sb = StringBuilder()
+            try {
+                onText("")
+                val r = c.stream(system, emptyList(), prompt) { d -> sb.append(d); onText(sb.toString()) }
+                if (r.isNotBlank()) { onText(r); return@withContext r }
+            } catch (e: kotlinx.coroutines.CancellationException) { throw e
+            } catch (e: Exception) { DKLog.d("quickStream ${p.id}: ${e.message?.take(80)}") }
+        }
+        try {
+            val k = Prefs.ttsGeminiKey(ctx)
+            if (k.isBlank()) null
+            else {
+                val sb = StringBuilder(); onText("")
+                GeminiClient(k, GeminiClient.BACKUP_MODELS.first()).apply { backups = GeminiClient.BACKUP_MODELS }
+                    .stream(system, emptyList(), prompt) { d -> sb.append(d); onText(sb.toString()) }
+                    .takeIf { it.isNotBlank() }?.also { onText(it) }
+            }
+        } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (_: Exception) { null }
+    }
+
     /** DK = लड़की (चुनी आवाज़ से); JARVIS मोड = हमेशा पुरुष */
     private fun dkFemale(): Boolean = !JarvisMode.on(ctx) && GirlfriendPersona.female(Prefs.voiceGender(ctx))
 

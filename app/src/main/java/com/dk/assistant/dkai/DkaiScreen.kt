@@ -35,6 +35,8 @@ class DkaiHost(
     /** 13 नवंबर 2026: + sheet - सीधे गैलरी / फ़ाइल चुनने वाला (null = attachMenu) */
     val pickPhoto: (() -> Unit)? = null,
     val pickFile: (() -> Unit)? = null,
+    /** 14 नवंबर 2026: ⚙ Settings में "पूरा DK" वाले रास्ते (title, विवरण, टैप) - फ़ोन कंट्रोल, माइक, चैट, टीचर, Forge… */
+    val settingsItems: () -> List<Triple<String, String, () -> Unit>> = { emptyList() },
 )
 
 object Dkai {
@@ -86,6 +88,9 @@ class DkaiScreen(val activity: ComponentActivity, val host: DkaiHost) : DkaiNav 
     private lateinit var nav: LinearLayout
     private val navItems = HashMap<DkaiTab, Pair<ImageView, TextView>>()
     lateinit var voice: DkaiVoice; private set
+    private lateinit var castBox: LinearLayout
+    /** 14 नवंबर 2026: होम पर Broadcast कार्ड */
+    lateinit var cast: DkaiCastCard; private set
 
     val files by lazy { FilesPanel(this) }
     val editor by lazy { EditorPanel(this) }
@@ -125,9 +130,50 @@ class DkaiScreen(val activity: ComponentActivity, val host: DkaiHost) : DkaiNav 
         }
         root.addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ -> placeMini() }
         activity.onBackPressedDispatcher.addCallback(activity, back)
+        DkaiLive.attach(this)
+        renumberChats()
         showTab(DkaiTab.HOME, animate = false)
         render()
         return this
+    }
+
+    /** 14 नवंबर 2026 (मालिक): चैट के नंबर 1 से, बीच में खाली जगह नहीं (अभी वाली भी उसी हिसाब से) */
+    fun renumberChats() {
+        try {
+            val dir = DkaiChats.dir(c); val cur = Dkai.chatNo(c)
+            if (DKState.messages.isNotEmpty()) DkaiChats.save(dir, cur, DKState.messages.toList())
+            val n = DkaiChats.renumber(dir, cur)
+            if (n != cur) Dkai.setChat(c, n)
+            if (::chatLabel.isInitialized) chatLabel.text = DkaiCore.chatLabel(n)
+        } catch (_: Exception) {}
+    }
+
+    /** 14 नवंबर 2026 (मालिक): पुरानी चैट मिटाओ (अभी वाली हो तो स्क्रीन खाली) - फिर नंबर 1 से */
+    fun deleteChat(no: Int) {
+        val dir = DkaiChats.dir(c)
+        if (no == Dkai.chatNo(c)) { localJob?.cancel(); DKState.clearChat() }
+        DkaiChats.delete(dir, no)
+        renumberChats(); shownMsgs = -1; render()
+    }
+
+    /** सारी पुरानी चैट मिटाओ - सिर्फ़ अभी वाली बचे (वह Chat 1 बने) */
+    fun deleteOldChats() {
+        val dir = DkaiChats.dir(c); val cur = Dkai.chatNo(c)
+        for (n in DkaiChats.saved(dir)) if (n != cur) DkaiChats.delete(dir, n)
+        renumberChats(); shownMsgs = -1; render()
+    }
+
+    /** संदेश लंबा दबाया: कॉपी / मिटाएँ */
+    private fun msgMenu(m: DKState.Msg) {
+        android.app.AlertDialog.Builder(c).setTitle(if (m.role == "u") "आपका संदेश" else "DK का जवाब")
+            .setItems(arrayOf("कॉपी करें", "यह संदेश मिटाएँ")) { _, w ->
+                if (w == 0) {
+                    (c.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager)
+                        .setPrimaryClip(android.content.ClipData.newPlainText("DKAI", m.text)); toast("कॉपी हो गया")
+                } else android.app.AlertDialog.Builder(c).setMessage("यह संदेश मिटा दें?")
+                    .setPositiveButton("मिटाएँ") { _, _ -> if (DKState.removeMsg(m.time, m.text)) { shownMsgs = -1; render(); toast("संदेश मिटा दिया") } }
+                    .setNegativeButton("रद्द", null).show()
+            }.show()
     }
 
     // ================================================================== State 1: ऊपर
@@ -135,7 +181,7 @@ class DkaiScreen(val activity: ComponentActivity, val host: DkaiHost) : DkaiNav 
         DkaiUi.iconBtn(c, kind, desc, tint, 38f, fill) {}.apply { setOnClickListener { v -> go(v) } }
 
     private fun buildHeader() {
-        // ☰  [DK लोगो] DKAI          ▶  🔧  ⚙  👤  ↗
+        // ☰  [DK लोगो] DKAI          ▶  ⚙
         val head = LinearLayout(c).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; setPadding(d(4f), d(6f), d(6f), 0) }
         head.addView(ImageView(c).apply {
             setImageDrawable(DkaiIcon(DkaiIcon.Kind.MENU, DkaiTheme.GRAY)); scaleType = ImageView.ScaleType.CENTER_INSIDE
@@ -150,12 +196,8 @@ class DkaiScreen(val activity: ComponentActivity, val host: DkaiHost) : DkaiNav 
             LinearLayout.LayoutParams(0, -2, 1f))
         head.addView(headIcon(DkaiIcon.Kind.PLAY_FILL, "आवाज़ से बात शुरू करें", DkaiTheme.ON, DkaiTheme.BLUE) { micTap() },
             LinearLayout.LayoutParams(d(36f), d(36f)).apply { rightMargin = d(4f) })
-        head.addView(headIcon(DkaiIcon.Kind.TOOL, "Dev Tools") { DkaiDevTools(this).open() })
-        head.addView(headIcon(DkaiIcon.Kind.GEAR, "IDE Settings") { DkaiSettings(this).open() })
-        head.addView(headIcon(DkaiIcon.Kind.USER, "प्रोफ़ाइल") { DkaiSheets.profile(this) })
-        head.addView(headIcon(DkaiIcon.Kind.SHARE, "DKAI शेयर करें") {
-            DkaiUi.shareText(c, "${DkaiKit.BRAND} - AI coding, voice & broadcast studio\nhttps://github.com/rolexdkscreation-max/DK2.0", "DKAI शेयर करें")
-        })
+        // 14 नवंबर 2026 (मालिक: "इधर-उधर जो बिखरा हुआ है, वो सारे चीज़ें सेटिंग के अंदर"): Dev Tools / प्रोफ़ाइल / शेयर अब ⚙ Settings में
+        head.addView(headIcon(DkaiIcon.Kind.GEAR, "Settings - सब कुछ एक जगह") { DkaiSettings(this).open() })
         content.addView(head, LinearLayout.LayoutParams(-1, d(52f)))
 
         // Chat #1  • READY            🔍  ⧉  ↗  + New
@@ -214,6 +256,10 @@ class DkaiScreen(val activity: ComponentActivity, val host: DkaiHost) : DkaiNav 
         chatList = LinearLayout(c).apply { orientation = LinearLayout.VERTICAL; setPadding(d(14f), d(14f), d(14f), 0) }
         UiLang.keep(chatList)
         homeCol.addView(chatList)
+        // 14 नवंबर 2026 (मालिक): Broadcast यहीं होम पर बनता दिखे (स्क्रिप्ट लाइव लिखती, फिर आवाज़ अपने-आप)
+        castBox = LinearLayout(c).apply { orientation = LinearLayout.VERTICAL }
+        homeCol.addView(castBox)
+        cast = DkaiCastCard(this, castBox)
         homeScroll = ScrollView(c).apply { isFillViewport = true; clipToPadding = false; addView(homeCol) }
     }
 
@@ -253,6 +299,7 @@ class DkaiScreen(val activity: ComponentActivity, val host: DkaiHost) : DkaiNav 
             else -> "Build apps, create websites, or write code..."
         }
         if (::modePill.isInitialized) modePill.text = m.label + " ▾"
+        if (::voice.isInitialized) voice.follow(m)          // आवाज़ वाला टैब भी वही
         if (tab != DkaiTab.HOME) showTab(DkaiTab.HOME)
     }
 
@@ -395,8 +442,9 @@ class DkaiScreen(val activity: ComponentActivity, val host: DkaiHost) : DkaiNav 
         if (t.isEmpty()) return
         when (mode) {
             DkaiMode.CHAT -> { if (!sendChat(t)) return }
-            // 13 नवंबर 2026 (मालिक): Broadcast चुना = लिखा विषय सीधे Broadcast का काम (रिसर्च -> स्क्रिप्ट -> आवाज़), Pipeline की तरह
-            DkaiMode.BROADCAST -> DkaiBroadcast(this).open(t)
+            // 13 नवंबर 2026 (मालिक): Broadcast चुना = लिखा विषय सीधे Broadcast का काम (रिसर्च -> स्क्रिप्ट -> आवाज़), Pipeline की तरह.
+            // 14 नवंबर 2026 (मालिक: "वहीं पे वही स्क्रीन पे स्टोरी बनेगी"): अलग पन्ना नहीं - होम पर कार्ड, स्क्रिप्ट लाइव, आवाज़ अपने-आप
+            DkaiMode.BROADCAST -> cast.start(t)?.let { toast(it); return }
             DkaiMode.BUILDER -> {
                 val err = com.dk.assistant.studio.StudioSession.start(c, t, com.dk.assistant.studio.StudioSession.WHO_COMPUTER)
                 if (err != null) { toast(err); return }
@@ -470,7 +518,7 @@ class DkaiScreen(val activity: ComponentActivity, val host: DkaiHost) : DkaiNav 
 
     private fun newChat() {
         if (DKState.messages.isEmpty()) startNewChat()
-        else android.app.AlertDialog.Builder(c).setTitle("नई चैट शुरू करें?").setMessage("यह चैट \"सभी चैट\" सूची में सेव रहेगी (ऊपर Chat # पर टैप करके फिर खोल सकते हैं)।")
+        else android.app.AlertDialog.Builder(c).setTitle("नई चैट शुरू करें?").setMessage("यह चैट \"सभी चैट\" सूची में सेव रहेगी (ऊपर Chat नंबर पर टैप करके फिर खोल सकते हैं)।")
             .setPositiveButton("नई चैट") { _, _ -> startNewChat() }.setNegativeButton("रद्द", null).show()
     }
 
@@ -529,11 +577,31 @@ class DkaiScreen(val activity: ComponentActivity, val host: DkaiHost) : DkaiNav 
         startLive()
     }
 
+    /** DK लाइव के लिए: अभी किस टैब का काम (DKAI आवाज़ सत्र चालू न हो = null = पुराना रास्ता) */
+    /** 14 नवंबर 2026: Dev Tools का header icon हटा - अब सेटिंग्स → "सब कुछ एक जगह" से */
+    fun devTools() = DkaiDevTools(this).open()
+
+    fun liveMode(): DkaiMode? = if (::voice.isInitialized && voiceSessionState.active) voice.voiceTab else null
+
+    fun scrollHomeEnd() { if (tab != DkaiTab.HOME) showTab(DkaiTab.HOME); homeScroll.post { homeScroll.smoothScrollTo(0, homeCol.height) } }
+
+    /** आवाज़ की बड़ी स्क्रीन छोटी पट्टी बने - ताकि पीछे बनता काम दिखे */
+    private fun peek() { if (voiceSessionState == VoiceSessionState.ACTIVE_FULL) setState(DkaiCore.next(voiceSessionState, VoiceEvent.MINIMIZE)) }
+
+    /** DK लाइव (Broadcast टैब): कहानी / पॉडकास्ट होम पर ही लाइव लिखो, फिर आवाज़ अपने-आप. null = शुरू हुआ */
+    fun castFromLive(topic: String): String? { peek(); pickMode(DkaiMode.BROADCAST); return cast.start(topic) }
+
+    /** DK लाइव (Pipeline टैब) */
+    fun pipelineFromLive(goal: String) { peek(); DkaiPipeline(this).open(goal) }
+
+    /** DK लाइव (Chat टैब): कहानी चैट में लिखी जाए */
+    fun chatFromLive(t: String): Boolean { peek(); showTab(DkaiTab.HOME); return sendChat(t) }
+
     fun startLive() {
         val svc = DKAccessibilityService.instance
         when {
             svc == null -> { if (!Setup.selfEnableAccessibility(c)) toast("सेटिंग्स → Accessibility में ${Prefs.assistantName(c)} ON करें") }
-            else -> svc.openedInApp("DKAI माइक")
+            else -> svc.micPressed("DKAI माइक")      // 14 नवंबर 2026: एक बार वाला छोटा टाइमर साफ़ (Live जल्दी न कटे)
         }
     }
 
@@ -638,7 +706,9 @@ class DkaiScreen(val activity: ComponentActivity, val host: DkaiHost) : DkaiNav 
         chatList.removeAllViews()
         for (m in msgs) {
             // 13 नवंबर 2026 (मालिक): जिस वाक्य को स्रोत मिला उसके ठीक अंत में छोटे चिप (github, wikipedia…), टैप = पूरा link
-            chatList.addView(bubble(m.role == "u", m.text, ground = if (m.role != "u") m.g else null))
+            chatList.addView(bubble(m.role == "u", m.text, ground = if (m.role != "u") m.g else null).apply {
+                setOnLongClickListener { msgMenu(m); true }        // 14 नवंबर 2026: लंबा दबाओ = कॉपी / मिटाएँ
+            })
             // 13 नवंबर 2026: खोज वाला जवाब (Tavily / Exa / Google एक जैसे) = "स्रोत (N) · प्रदाता" सिकुड़ने वाली सूची + Google खोज सुझाव
             val card = if (m.role != "u") com.dk.assistant.WebCite.card(m.text, m.g) else null
             if (card != null) citeBox(m)?.let { chatList.addView(it) }

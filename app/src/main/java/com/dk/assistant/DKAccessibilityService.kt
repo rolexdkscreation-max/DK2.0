@@ -264,6 +264,24 @@ class DKAccessibilityService : AccessibilityService() {
         }
     }
 
+    /**
+     * 14 नवंबर 2026 (मालिक: "लाइव जल्दी डिस्कनेक्ट हो जाता है") - जड़: Live पहले "Hey DK" / power बटन से चालू हुआ हो
+     * (उसमें 30-45 सेकंड चुप = Live बंद) और फिर DKAI का माइक दबाया जाए, तो [openedInApp] "पहले से जुड़ा" देखकर लौट
+     * जाता था - वह छोटा टाइमर ([GeminiLive.idleExitMs]) वैसा ही रहता और थोड़ी चुप्पी पर Live कट जाता.
+     * अब माइक दबाना = खुद चालू किया हुआ हमेशा वाला Live (✕ दबाने तक): टाइमर साफ़, और जुड़ते ही (या पहले से जुड़ा हो तो अभी) आवाज़.
+     */
+    fun micPressed(why: String) {
+        if (!Setup.hasMic(this) || callBusy()) return
+        if (InvokeSession.keepOnMic(wakeLive, sessionLive, gemLive.idleExitMs)) {
+            DKLog.d("$why: एक बार वाली बातचीत (${gemLive.idleExitMs / 1000}s चुप = बंद) अब हमेशा वाला Live")
+            wakeLive = false; sessionLive = false; gemLive.idleExitMs = 0
+            Prefs.edit(this) { putBoolean("live_mode", true) }
+        }
+        LiveChime.arm()
+        if (DKState.live && gemLive.ready) LiveChime.connected(this, calls.inCall || calls.ringing)
+        openedInApp(why)
+    }
+
     /** ऐप के अंदर "जुड़ गया" की हल्की आवाज़ बज चुकी (एक बार ही) */
     @Volatile private var inAppChimed = false
 

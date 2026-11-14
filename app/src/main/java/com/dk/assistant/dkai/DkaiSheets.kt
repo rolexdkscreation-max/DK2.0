@@ -166,7 +166,23 @@ object DkaiSheets {
         }, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = DkaiUi.d(c, 12f) })
         for (e in list) body.addView(historyRow(c, e, e.no == cur) {
             DkaiUi.close(s.root, layer); s.openChat(e.no)
+        }.apply {
+            // 14 नवंबर 2026 (मालिक): लंबा दबाओ = यह चैट मिटाओ (पूछकर)
+            setOnLongClickListener {
+                android.app.AlertDialog.Builder(c).setTitle("${DkaiCore.chatLabel(e.no)} मिटाएँ?")
+                    .setMessage(e.title.ifBlank { "यह चैट" } + "\n\nयह चैट हमेशा के लिए मिट जाएगी।")
+                    .setPositiveButton("मिटाएँ") { _, _ -> DkaiUi.close(s.root, layer); s.deleteChat(e.no); s.toast("चैट मिटा दी"); history(s) }
+                    .setNegativeButton("रद्द", null).show()
+                true
+            }
         })
+        if (list.size > 1) body.addView(DkaiUi.button(c, "सारी पुरानी चैट मिटाएँ", DkaiTheme.FIELD, DkaiTheme.RED) {
+            android.app.AlertDialog.Builder(c).setTitle("सारी पुरानी चैट मिटाएँ?").setMessage("अभी वाली चैट बचेगी, बाकी सब हमेशा के लिए मिट जाएँगी। नंबर फिर 1 से।")
+                .setPositiveButton("मिटाएँ") { _, _ -> DkaiUi.close(s.root, layer); s.deleteOldChats(); s.toast("पुरानी चैट मिटा दीं") }
+                .setNegativeButton("रद्द", null).show()
+        }, LinearLayout.LayoutParams(-1, -2).apply { topMargin = DkaiUi.d(c, 6f) })
+        body.addView(DkaiTheme.text(c, "किसी चैट को लंबा दबाएँ = मिटाएँ", 11f, DkaiTheme.HINT).apply { gravity = Gravity.CENTER; setPadding(0, DkaiUi.d(c, 8f), 0, 0) },
+            LinearLayout.LayoutParams(-1, -2))
         layer = DkaiUi.open(s.root, card, maxWidth = DkaiUi.d(c, 560f))
     }
 

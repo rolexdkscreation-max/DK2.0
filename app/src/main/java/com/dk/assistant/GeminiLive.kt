@@ -724,6 +724,8 @@ class GeminiLive(internal val svc: DKAccessibilityService, internal val agent: A
     @Volatile var firstText: String? = null
     /** >0 = itni der koi baat na ho to Live khud band (wake mode me wapas) */
     @Volatile var idleExitMs = 0L
+    /** 14 नवंबर 2026: इस run में कभी जुड़ा? (बंद होने पर "कट गया" वाली आवाज़ सिर्फ़ तब) */
+    @Volatile private var hadUp = false
     @Volatile internal var lastAct = 0L
     @Volatile private var idleExit = false
     /** नवंबर 2026: पिछला run चुप रहने से (idleExitMs) रुका? - power बटन वाली एक बार की बातचीत यहीं खत्म होती है */
@@ -1149,7 +1151,7 @@ class GeminiLive(internal val svc: DKAccessibilityService, internal val agent: A
                         val gap = upAt - lostAt; lostAt = 0L
                         if (gap > LiveRecover.RECOVER_MS) { slowReconnects++; log("Live: connection टूटा रहा ${gap / 1000}s - यूज़र को रुकावट दिखी (#$slowReconnects)") }
                     }
-                    upSince = upAt
+                    upSince = upAt; hadUp = true
                     log("जुड़ गया [$model • key #${keyIdx + 1}] ${System.currentTimeMillis() - t0} ms" + if (handle != null) " (पुरानी बातचीत जारी)" else "")
                     DKState.setLink("Live • $model • key #${keyIdx + 1} • ${System.currentTimeMillis() - t0} ms")
                     svc.liveConnected()              // बैकअप मोड था तो खत्म, वापस DK लाइव
@@ -1312,6 +1314,8 @@ class GeminiLive(internal val svc: DKAccessibilityService, internal val agent: A
                     prevAlive = !closed.isCompleted          // goAway/बदलाव पर हमने बंद किया (पुराना ज़िंदा था) या खुद कटा
                     val seamless = goAwayDrop && spareReady()          // LiveSpare: दूसरा connection तैयार = बिना रुके
                     frozeLast = if (seamless) maxOf(frozeFor, 0L) else -1L      // अगला गर्म connection: कितनी देर आवाज़ जमा रही
+                    // 14 नवंबर 2026 (मालिक): सच में कटा (बिना तैयार connection) = "कट गया" वाली हल्की आवाज़; जुड़ते ही "जुड़ गया"
+                    if (!seamless) LiveChime.disconnected(svc, svc.callBusy())
                     val (code, reason) = if (closed.isCompleted) closed.await() else 1000 to "goAway"
                     // user ki baat khatam ho chuki thi par jawab shuru nahi hua aur connection toot gaya -> woh baat
                     // chupchaap kho jaati thi. Dobara judte hi ek baar text me bhejo.
@@ -1418,6 +1422,7 @@ class GeminiLive(internal val svc: DKAccessibilityService, internal val agent: A
                 BtAudio.release(this@GeminiLive); btOn = false
                 CallSpeaker.release(svc)
                 LiveVision.onLiveEnded(svc)          // Live बंद = स्क्रीन शेयर / कैमरा भी बंद (कोई तस्वीर कहीं नहीं जाती)
+                if (hadUp) { hadUp = false; LiveChime.disconnected(svc, svc.callBusy()) }     // 14 नवंबर 2026: Live बंद = कटने की आवाज़
                 if (turnActive) finishTurn()
                 commitPending(true)
                 Ducker.releaseNow()

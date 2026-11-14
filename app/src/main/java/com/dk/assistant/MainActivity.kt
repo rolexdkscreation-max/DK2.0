@@ -182,7 +182,19 @@ class MainActivity : AppCompatActivity() {
             },
             pickPhoto = { pickPhoto.launch(androidx.activity.result.PickVisualMediaRequest(
                 androidx.activity.result.contract.ActivityResultContracts.PickVisualMedia.ImageOnly)) },
-            pickFile = { pickFile.launch(ComputerActivity.PICK_TYPES) }
+            pickFile = { pickFile.launch(ComputerActivity.PICK_TYPES) },
+            settingsItems = {
+                listOf(
+                    Triple("पूरी DK सेटिंग्स", "दिखावट, आवाज़, AI दिमाग, keys और बाकी सब") { openSettings() },
+                    Triple(Setup.a11yMark(this) + "फ़ोन कंट्रोल", when { Setup.accessibilityOn() -> "चालू है"; Setup.enabledInSettings(this) -> "रुका है — ठीक करने के लिए टैप करें"; else -> "चालू करने के लिए टैप करें" }) { openPhoneControl() },
+                    Triple((if (Setup.hasMic(this)) "✓ " else "✗ ") + "माइक", if (Setup.hasMic(this)) "अनुमति मिली हुई है" else "माइक की अनुमति दें") { askPerms() },
+                    Triple("चैट", "पूरी चैट स्क्रीन") { openChat() },
+                    Triple("मेमोरी (पूरी)", "DK की सारी यादें") { startActivity(Intent(this, MemoryActivity::class.java)) },
+                    Triple("Story Writer", "लंबी कहानी, हर भाग की आवाज़") { startActivity(Intent(this, StoryWriterActivity::class.java)) },
+                    Triple("DK टीचर", "व्हाइटबोर्ड पर कदम-दर-कदम पढ़ाई") { startActivity(Intent(this, TeacherActivity::class.java)) },
+                    Triple("वेबसाइट Forge", "वेबसाइट बनाने वाला Forge") { startActivity(Intent(this, com.dk.assistant.forge.ForgeActivity::class.java)) },
+                )
+            }
         )).attach()
     }
 

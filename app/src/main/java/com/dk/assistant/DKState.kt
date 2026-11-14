@@ -148,6 +148,12 @@ object DKState {
     fun clearChat() { messages.clear(); persist(); emit() }
     /** 13 नवंबर 2026: DKAI में पुरानी चैट खोलना - स्क्रीन की बातचीत उस चैट से बदलो (सेव भी) */
     fun replaceChat(list: List<Msg>) { messages.clear(); messages.addAll(list.takeLast(200)); persist(); emit() }
+    /** 14 नवंबर 2026 (मालिक): चैट का एक संदेश लंबा दबाकर मिटाओ (वही संदेश - समय + बात से पहचान) */
+    fun removeMsg(time: Long, text: String): Boolean {
+        val i = messages.indexOfFirst { it.time == time && it.text == text }
+        if (i < 0) return false
+        messages.removeAt(i); persist(); emit(); return true
+    }
 
     /** Reset chat history, active states and clear workspace memory to fresh state on reset trigger */
     fun resetToFresh() {

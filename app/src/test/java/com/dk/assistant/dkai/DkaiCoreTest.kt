@@ -77,7 +77,7 @@ class DkaiCoreTest {
         assertEquals("Gemini Pro", DkaiCore.modelPill("Google", "models/gemini-3.1-pro-preview"))
         assertEquals("Hello, how can I...", DkaiCore.preview(DkaiCore.HELLO))
         assertEquals("ठीक है", DkaiCore.preview("  ठीक   है "))
-        assertEquals("Chat #1", DkaiCore.chatLabel(0)); assertEquals("Chat #7", DkaiCore.chatLabel(7))
+        assertEquals("Chat 1", DkaiCore.chatLabel(0)); assertEquals("Chat 7", DkaiCore.chatLabel(7))
         assertTrue(DkaiCore.voiceModeNote(DkaiMode.BUILDER).contains("app_studio"))
     }
 

@@ -240,6 +240,24 @@ class AgentRunner(
         return true
     }
 
+    /**
+     * 14 नवंबर 2026 (मालिक: "जो काम डिफिकल्ट हो… गलती से सुन ले, तो उसे दोबारा कन्फर्मेशन जरूर करे… पुराने OS में भी"):
+     * बोलकर दिया बड़ा काम (ऐप / वेबसाइट / गेम / कोड / DK कंप्यूटर) = पहले एक बार पूछो, मालिक की अपनी "हाँ" पर ही शुरू.
+     * लिखकर दिया (Chat screen, [silent]) = वहीं लिखा है, गलती से सुनने का डर नहीं - बिना पूछे. "ऐप खोलो" जैसे छोटे काम यहाँ आते ही नहीं.
+     */
+    private suspend fun confirmVoice(what: String): Boolean {
+        if (silent) return true
+        say("$what — क्या मैं शुरू करूँ? हाँ या ना बोलिए।")
+        DKState.set(Mode.LISTENING)
+        val ans = svc.hearForAgent()?.trim().orEmpty()
+        DKState.set(Mode.WORKING)
+        if (ans.isNotBlank()) DKState.user(ans)
+        val yes = ans.isNotBlank() && com.dk.assistant.agent.core.ConfirmGate.isYes(ans)
+        if (!yes) say("ठीक है, शुरू नहीं किया।")
+        DKLog.d("बड़ा काम (आवाज़): ${what.take(60)} - ${if (yes) "हाँ मिली" else "हाँ नहीं"}")
+        return yes
+    }
+
     /** आवाज़ से DK कंप्यूटर. false = DK कंप्यूटर बंद, आम रास्ते से चलने दो */
     private suspend fun computerFromVoice(cmd: ComputerVoice.Cmd): Boolean {
         if (!Prefs.computerOn(svc)) return false
@@ -248,6 +266,7 @@ class AgentRunner(
             say("DK कंप्यूटर खोल दिया। बोलिए या लिखिए, क्या काम करना है।")
             return true
         }
+        if (!confirmVoice("DK कंप्यूटर का काम: ${cmd.task.take(80)}")) return true
         val wasBusy = ComputerSession.busy
         val err = ComputerSession.start(svc, cmd.task, voice = true)
         say(err ?: if (wasBusy) "ठीक है, यह काम DK कंप्यूटर की कतार में रख दिया। पहले वाला पूरा होते ही शुरू होगा।"
@@ -348,15 +367,18 @@ class AgentRunner(
         // DK AI Website Forge: "ek cafe ki website banao" -> लाइव 3D build स्क्रीन (कोडिंग एजेंट वाली बात यहाँ नहीं पकड़ी जाती)
         // नवंबर 2026: "गेम बनाओ" = DK कंप्यूटर गेम बनाता है, फिर DK उसे Chrome में चलाकर दिखाती है
         com.dk.assistant.forge.GameMaker.extract(goal)?.let { g ->
+            if (!confirmVoice("गेम बनाना: ${g.take(80)}")) return
             say(com.dk.assistant.forge.GameMaker.startForUser(svc, g)); return
         }
         // नवंबर 2026 (ऐप स्टूडियो): "DK, एक todo ऐप बनाओ" = DK कंप्यूटर फ़ोन पर ही ऐप बनाता है, स्टूडियो में चलता preview (वेबसाइट = Forge, गेम = ऊपर)
         // नवंबर 2026 (मालिक): "स्टूडियो में क्या बन रहा है / उसमें X बदलो / रोको" - स्टूडियो की असली हालत से
         com.dk.assistant.studio.StudioLink.parse(goal)?.let { cmd ->
+            if ((cmd.act == com.dk.assistant.studio.StudioLink.Act.BUILD || cmd.act == com.dk.assistant.studio.StudioLink.Act.CHANGE) && !confirmVoice("ऐप स्टूडियो: ${goal.take(80)}")) return
             val r = com.dk.assistant.studio.StudioLink.handle(svc, goal, com.dk.assistant.studio.StudioSession.WHO_COMPUTER)
             if (r != null) { say(if (cmd.act == com.dk.assistant.studio.StudioLink.Act.BUILD && r.second) com.dk.assistant.studio.StudioRoute.STARTED_VOICE else r.first.take(600)); return }
         }
         com.dk.assistant.studio.StudioRoute.voiceApp(goal)?.let { want ->
+            if (!confirmVoice("ऐप बनाना: ${want.take(80)}")) return
             val err = com.dk.assistant.studio.StudioSession.startFrom(svc, want, com.dk.assistant.studio.StudioSession.WHO_COMPUTER, voice = true)
             say(err ?: com.dk.assistant.studio.StudioRoute.STARTED_VOICE); return
         }
@@ -370,6 +392,7 @@ class AgentRunner(
                 DKState.set(Mode.WORKING)
                 if (ans.isNotBlank()) { DKState.user(ans); p = com.dk.assistant.forge.ForgeBrief.fullPrompt(com.dk.assistant.forge.ForgeBrief.Brief(p0, "", "", "", "", ""), ans) }
             }
+            if (!confirmVoice("वेबसाइट बनाना: ${p.take(80)}")) return
             say(com.dk.assistant.forge.ForgeLauncher.launch(svc, p).second); return
         }
         // कोडिंग टीम: "सुझाव जोड़ दो / नहीं" और "कोडिंग एजेंट, ... बनाओ"
@@ -379,6 +402,7 @@ class AgentRunner(
                 // 7-एजेंट सिस्टम चालू = पुराना "मल्टी-एजेंट टीम" switch ज़रूरी नहीं (CoderTeam.start खुद 7-एजेंट पर भेजता है)
                 val seven = Prefs.coderSeven(svc)
                 if (!seven && !Prefs.coderTeam(svc)) { say("कोडिंग टीम सेटिंग्स में बंद है। सेटिंग्स → कोडिंग एजेंट में टीम चालू करें।"); return }
+                if (!confirmVoice("कोडिंग का काम: ${task.take(80)}")) return
                 val err = CoderTeam.start(svc, task, fromVoice = true)
                 say(err ?: if (seven) Lang.pick("ठीक है, कोडिंग एजेंट (सिंगल एजेंट) काम समझकर शुरू कर रहा है। कुछ साफ़ नहीं होगा तो पहले आपसे पूछेगा, पूरा होने पर मैं बताऊँगी।",
                     "Okay, the coding agent (single agent) is understanding the task and starting. If something is unclear it will ask you first; I will tell you when it is done.")

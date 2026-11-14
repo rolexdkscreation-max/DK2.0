@@ -48,12 +48,16 @@ object DkaiModals {
     }
 
     // ================================================================== GitHub Clone
-    fun clone(s: DkaiScreen, done: (File) -> Unit) {
+    fun clone(s: DkaiScreen, done: (File) -> Unit) = clone(s, "", done)
+
+    /** [prefill] = पहले से भरा पता */
+    fun clone(s: DkaiScreen, prefill: String, done: (File) -> Unit) {
         val c = s.activity
         lateinit var layer: DkaiUi.Layer
         val (card, body) = DkaiUi.modal(c, "Clone Repository", "GitHub -> ${DkaiKit.PROJECTS_DIR}") { DkaiUi.close(s.root, layer) }
         val url = DkaiUi.field(c, "https://github.com/owner/repo  या  owner/repo")
         val folder = DkaiUi.field(c, "Local Folder Name")
+        if (prefill.isNotBlank()) { url.setText(prefill); folder.setText(DkaiKit.folderFor(prefill, "")) }
         body.addView(DkaiUi.label(c, "Repo URL")); body.addView(url, LinearLayout.LayoutParams(-1, -2))
         body.addView(DkaiUi.label(c, "Local Folder Name")); body.addView(folder, LinearLayout.LayoutParams(-1, -2))
         body.addView(DkaiUi.label(c, "Presets"))

@@ -23,6 +23,32 @@ class DkaiSettings(private val s: DkaiScreen) {
         var depth = DkaiKit.depthOf(ThinkLevel.get(c, ApiScopes.CHAT))
         var voice = DkaiCore.voiceFor(Prefs.str(c, "gemini_voice", LiveVoice.DEFAULT), Prefs.voiceGender(c))
 
+        // ---- 14 नवंबर 2026 (मालिक: "जो चीज़ इधर-उधर बिखरा हुआ है, वो सारे चीज़ें सेटिंग के अंदर दिखना चाहिए")
+        body.addView(DkaiUi.label(c, "सब कुछ एक जगह"))
+        fun row(kind: DkaiIcon.Kind, tint: Int, title: String, sub: String, go: () -> Unit) {
+            body.addView(LinearLayout(c).apply {
+                orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; setPadding(d(14f), d(11f), d(10f), d(11f))
+                background = DkaiTheme.press(DkaiTheme.round(c, DkaiTheme.FIELD, 14f, DkaiTheme.BORDER)); isClickable = true; isFocusable = true
+                contentDescription = title
+                addView(ImageView(c).apply { setImageDrawable(DkaiIcon(kind, tint)) }, LinearLayout.LayoutParams(d(20f), d(20f)))
+                val tc = LinearLayout(c).apply { orientation = LinearLayout.VERTICAL; setPadding(d(12f), 0, d(6f), 0) }
+                tc.addView(DkaiTheme.text(c, title, 13.5f, DkaiTheme.WHITE, DkaiTheme.SANS_MED))
+                if (sub.isNotBlank()) tc.addView(DkaiTheme.text(c, sub, 11f, DkaiTheme.GRAY).apply { setPadding(0, d(2f), 0, 0) })
+                addView(tc, LinearLayout.LayoutParams(0, -2, 1f))
+                addView(ImageView(c).apply { setImageDrawable(DkaiIcon(DkaiIcon.Kind.CHEVRON_RIGHT, DkaiTheme.GRAY)) }, LinearLayout.LayoutParams(d(16f), d(16f)))
+                setOnClickListener { DkaiUi.close(s.root, layer); go() }
+            }, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = d(6f) })
+        }
+        row(DkaiIcon.Kind.USER, DkaiTheme.CYAN, "प्रोफ़ाइल", "नाम, खाता") { DkaiSheets.profile(s) }
+        row(DkaiIcon.Kind.DATABASE, DkaiTheme.VIOLET, "AI Memory", "${Memory.facts(c).size} बातें याद - जोड़ें / बदलें / हटाएँ") { memory() }
+        row(DkaiIcon.Kind.TOOL, DkaiTheme.AMBER, "Dev Tools", "ZIP, Clone, Terminal") { s.devTools() }
+        row(DkaiIcon.Kind.GITHUB, DkaiTheme.WHITE, "GitHub", "Token, repo, Clone (URL से)") { s.showTab(DkaiTab.GITHUB) }
+        row(DkaiIcon.Kind.BROADCAST, DkaiTheme.PINK, "Broadcast Studio", "आवाज़, भाषा, रफ़्तार, पुराने Broadcast") { DkaiBroadcast(s).open() }
+        row(DkaiIcon.Kind.SHARE, DkaiTheme.GREEN, "DKAI शेयर करें", "दोस्तों को भेजें") {
+            DkaiUi.shareText(c, "${DkaiKit.BRAND} - AI coding, voice & broadcast studio\nhttps://github.com/rolexdkscreation-max/DK2.0", "DKAI शेयर करें")
+        }
+        for ((t, sub, go) in try { s.host.settingsItems() } catch (_: Exception) { emptyList() }) row(DkaiIcon.Kind.GEAR, DkaiTheme.GRAY, t, sub, go)
+
         // ---- थीम
         body.addView(DkaiUi.label(c, "Theme"))
         val themes = LinearLayout(c).apply { orientation = LinearLayout.HORIZONTAL }

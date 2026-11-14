@@ -17,6 +17,9 @@ object InvokeSession {
     /** इतनी देर कोई बात नहीं = बातचीत खत्म (Hey DK वाले जैसा 30s) */
     const val IDLE_MS = 30_000L
 
+    /** 14 नवंबर 2026: माइक खुद दबाया - एक बार वाली (चुप = बंद) बातचीत चल रही है तो उसे हमेशा वाला बनाओ? (pure) */
+    fun keepOnMic(wakeLive: Boolean, sessionLive: Boolean, idleExitMs: Long): Boolean = wakeLive || sessionLive || idleExitMs > 0
+
     fun useSession(fromPowerButton: Boolean, settingOn: Boolean, wakeMode: Boolean): Boolean =
         fromPowerButton && settingOn && wakeMode
 }
@@ -78,12 +81,43 @@ object LiveChime {
         }.start()
     }
 
-    fun durationMs(): Int = NOTES.sumOf { it.second } + GAP_MS * (NOTES.size - 1)
+    fun durationMs(): Int = durationOf(NOTES)
+    fun durationOf(notes: List<Pair<Double, Int>>): Int = notes.sumOf { it.second } + GAP_MS * (notes.size - 1)
+
+    // ------------------------------------------------------------------ कटने की आवाज़
+    /**
+     * 14 नवंबर 2026 (मालिक): "कनेक्ट होते ही आवाज़ आती है, डिस्कनेक्ट हो तो उस समय भी आवाज़ आनी चाहिए".
+     * दो सुर नीचे जाते (C6 -> G5) = "कट गया". बीच बातचीत का बिना रुके बदलाव (पहले से तैयार connection) = कोई आवाज़ नहीं.
+     * बार-बार टूटे तो [DROP_GAP_MS] में एक ही बार. फिर जुड़ते ही "जुड़ गया" वाली आवाज़ (arm).
+     */
+    val DROP_NOTES = listOf(1046.5 to 95, 659.3 to 150)
+    const val DROP_GAP_MS = 15_000L
+    @Volatile private var droppedAt = 0L
+
+    /** pure: अभी कटने की आवाज़ बजाएँ? */
+    fun dropDue(seamless: Boolean, enabled: Boolean, inCall: Boolean, lastAt: Long, now: Long): Boolean =
+        enabled && !seamless && !inCall && now - lastAt >= DROP_GAP_MS
+
+    fun disconnected(c: Context, inCall: Boolean, seamless: Boolean = false) {
+        val now = System.currentTimeMillis()
+        if (!dropDue(seamless, Prefs.bool(c, "live_chime", true), inCall, droppedAt, now)) return
+        droppedAt = now
+        arm(now)          // दोबारा जुड़ते ही "जुड़ गया"
+        Thread {
+            try {
+                if (DKState.mode == Mode.SPEAKING) return@Thread
+                play(pcmOf(DROP_NOTES), durationOf(DROP_NOTES))
+                DKLog.d("Live कटा - कटने की आवाज़ बजी")
+            } catch (e: Exception) { DKLog.d("Live कटने की आवाज़ नहीं बजी: ${e.message}") }
+        }.start()
+    }
 
     /** 16-bit mono PCM - हर सुर में धीरे शुरू, धीरे खत्म (क्लिक नहीं) */
-    fun pcm(): ShortArray {
+    fun pcm(): ShortArray = pcmOf(NOTES)
+
+    fun pcmOf(notes: List<Pair<Double, Int>>): ShortArray {
         val out = ArrayList<Short>()
-        NOTES.forEachIndexed { i, (hz, ms) ->
+        notes.forEachIndexed { i, (hz, ms) ->
             val n = RATE * ms / 1000
             val fade = (RATE * 0.012).toInt()
             for (k in 0 until n) {
@@ -92,7 +126,7 @@ object LiveChime {
                 val v = (sin(2 * PI * hz * k / RATE) * 0.85 + sin(4 * PI * hz * k / RATE) * 0.15) * env * VOLUME
                 out.add((v * Short.MAX_VALUE).toInt().toShort())
             }
-            if (i < NOTES.size - 1) repeat(RATE * GAP_MS / 1000) { out.add(0) }
+            if (i < notes.size - 1) repeat(RATE * GAP_MS / 1000) { out.add(0) }
         }
         return out.toShortArray()
     }
@@ -100,7 +134,7 @@ object LiveChime {
     /** [LEAD_MS] चुप्पी + सुर (pure, JUnit) */
     fun withLead(p: ShortArray): ShortArray = ShortArray(RATE * LEAD_MS / 1000 + p.size).also { System.arraycopy(p, 0, it, RATE * LEAD_MS / 1000, p.size) }
 
-    private fun play(pcm0: ShortArray) {
+    private fun play(pcm0: ShortArray, durMs: Int = durationMs()) {
         val pcm = withLead(pcm0)
         val t = AudioTrack.Builder()
             .setAudioAttributes(AudioAttributes.Builder()
@@ -115,7 +149,7 @@ object LiveChime {
             val n = t.write(pcm, 0, pcm.size)
             if (n < pcm.size) throw IllegalStateException("AudioTrack ने सिर्फ़ $n/${pcm.size} लिया")
             t.play()
-            Thread.sleep(LEAD_MS + durationMs() + 80L)
+            Thread.sleep(LEAD_MS + durMs + 80L)
         } finally { try { t.stop() } catch (_: Exception) {}; t.release() }
     }
 }

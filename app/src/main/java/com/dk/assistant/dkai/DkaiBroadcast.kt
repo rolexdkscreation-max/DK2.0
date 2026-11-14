@@ -100,6 +100,7 @@ class DkaiBroadcast(private val s: DkaiScreen) {
         sh.addView(DkaiUi.label(c, "Script").apply { setPadding(0, 0, 0, 0) }, LinearLayout.LayoutParams(0, -2, 1f))
         sh.addView(DkaiUi.iconBtn(c, DkaiIcon.Kind.EDIT, "स्क्रिप्ट खुद लिखें / बदलें", DkaiTheme.CYAN, 38f) { editScript() })
         sh.addView(DkaiUi.iconBtn(c, DkaiIcon.Kind.COPY, "स्क्रिप्ट कॉपी", DkaiTheme.GRAY, 38f) { DkaiUi.copy(c, "Script", script.text.toString()) })
+        sh.addView(DkaiUi.iconBtn(c, DkaiIcon.Kind.TRASH, "स्क्रिप्ट और आवाज़ मिटाएँ", DkaiTheme.RED, 38f) { deleteCurrent() })
         sc.addView(sh)
         sc.addView(MaxScroll(c, d(220f)).apply { addView(script) }, LinearLayout.LayoutParams(-1, -2))
         col.addView(sc, LinearLayout.LayoutParams(-1, -2))
@@ -128,6 +129,7 @@ class DkaiBroadcast(private val s: DkaiScreen) {
         tr.addView(time, LinearLayout.LayoutParams(0, -2, 1f))
         tr.addView(DkaiUi.iconBtn(c, DkaiIcon.Kind.SHARE, "शेयर (WhatsApp / Telegram)", DkaiTheme.CYAN, 42f) { share() })
         tr.addView(DkaiUi.iconBtn(c, DkaiIcon.Kind.DOWNLOAD, "Download Audio", DkaiTheme.GREEN, 42f) { download() })
+        tr.addView(DkaiUi.iconBtn(c, DkaiIcon.Kind.TRASH, "आवाज़ मिटाएँ", DkaiTheme.RED, 42f) { deleteCurrent() })
         pc.addView(tr)
         // रफ़्तार: 0.5x - 2.0x का slider (default 1.3x) - चलाने और शेयर/सेव फ़ाइल दोनों में
         val sr = LinearLayout(c).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; setPadding(0, d(6f), 0, 0) }
@@ -148,7 +150,9 @@ class DkaiBroadcast(private val s: DkaiScreen) {
 
         // ---- format
         col.addView(DkaiUi.label(c, "Format"))
-        col.addView(DkaiUi.chips(c, DkaiKit.FORMATS, 0) { format = DkaiKit.FORMATS[it] })
+        // 14 नवंबर 2026: विषय के साथ खुला = format विषय से (कहानी -> Story, खबर -> News …)
+        topic?.trim()?.takeIf { it.isNotEmpty() }?.let { format = DkaiKit.formatFor(it) }
+        col.addView(DkaiUi.chips(c, DkaiKit.FORMATS, DkaiKit.FORMATS.indexOf(format).coerceAtLeast(0)) { format = DkaiKit.FORMATS[it] })
         body.addView(ScrollView(c).apply { addView(col) }, LinearLayout.LayoutParams(-1, 0, 1f))
 
         // ---- नीचे के controls + prompt
@@ -288,6 +292,8 @@ class DkaiBroadcast(private val s: DkaiScreen) {
             sb.setSpan(ForegroundColorSpan(col), a, sb.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
             sb.setSpan(StyleSpan(android.graphics.Typeface.BOLD), a, sb.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
             if (v != null) { val b = sb.length; sb.append(" · ${v.name}"); sb.setSpan(ForegroundColorSpan(DkaiTheme.HINT), b, sb.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE) }
+            // 14 नवंबर 2026 (मालिक): किस अंदाज़ में बोला जाएगा, वह भी लिखा दिखे
+            if (l.tone.isNotBlank()) { val b = sb.length; sb.append(" · अंदाज़: ${l.tone}"); sb.setSpan(ForegroundColorSpan(DkaiTheme.AMBER), b, sb.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE) }
             sb.append("\n").append(l.text).append("\n\n")
         }
         script.text = if (sb.isEmpty()) "विषय लिखें या माइक से बोलें, फिर लाल बटन - DK पहले रिसर्च करेगा, फिर स्क्रिप्ट लिखकर हर किरदार की अलग आवाज़ बनाएगा।" else sb.trimEnd()
@@ -348,7 +354,7 @@ class DkaiBroadcast(private val s: DkaiScreen) {
                     f.writeBytes(GeminiTts.pcmToWav(pcm.toByteArray(), rate))
                     File(dir(c), "broadcast_$n.json").writeText(JSONObject().put("topic", topic).put("format", format).put("lang", lang)
                         .put("voice", voicePick).put("speed", speed)
-                        .put("sources", org.json.JSONArray().apply { sources.forEach { (t, u) -> put(JSONObject().put("t", t).put("u", u)) } }).put("script", lines.joinToString("\n") { "${it.speaker} (${if (it.female) "female" else "male"}): ${it.text}" }).toString())
+                        .put("sources", org.json.JSONArray().apply { sources.forEach { (t, u) -> put(JSONObject().put("t", t).put("u", u)) } }).put("script", DkaiCast.scriptText(lines)).toString())
                     f
                 }
                 load(out, pcm.toByteArray())
@@ -375,24 +381,9 @@ class DkaiBroadcast(private val s: DkaiScreen) {
         try { StoryAi.fromPrefs(c)?.write(sys, listOf("user" to topic))?.text?.takeIf { it.isNotBlank() } } catch (e: Exception) { DKLog.d("Broadcast script: ${e.message?.take(80)}"); null }
     } ?: BrainManager(c).quickText(sys, topic) ?: throw IllegalStateException("AI ने स्क्रिप्ट नहीं लिखी (AI की key / limit देखें)")
 
-    /** एक टुकड़ा (<= 2 बोलने वाले): पहले Gemini multi-speaker, न चले तो हर लाइन अलग आवाज़ में */
-    private fun segmentPcm(keys: List<String>, seg: List<DkaiKit.Line>, cast: Map<String, DkaiKit.StudioVoice>, style: String): Pair<ByteArray, Int> {
-        val names = seg.map { it.speaker }.distinct()
-        val tts = names.mapIndexed { i, n -> n to DkaiKit.ttsName(n, i) }.toMap()
-        val voices = names.associate { (tts[it] ?: it) to (cast[it]?.api ?: "Sulafat") }
-        try {
-            val w = GeminiTts.synthesizeDialog(keys, seg.map { (tts[it.speaker] ?: it.speaker) to it.text }, voices, style)
-            return DkaiKit.wavPcm(w)
-        } catch (e: Exception) { DKLog.d("Broadcast multi-speaker नहीं चला (${e.message?.take(60)}) - हर लाइन अलग") }
-        val out = ByteArrayOutputStream(); var rate = 24000
-        for (l in seg) {
-            val w = GeminiTts.synthesizeAny(keys, l.text, cast[l.speaker]?.api ?: "Sulafat", GeminiTts.FREE + style)
-            val (p, r) = DkaiKit.wavPcm(w); rate = r
-            if (out.size() > 0) out.write(ByteArray(rate / 6 * 2))
-            out.write(p)
-        }
-        return out.toByteArray() to rate
-    }
+    /** एक टुकड़ा (<= 2 बोलने वाले) - 14 नवंबर 2026: साझा इंजन ([DkaiCastTts]) - हर लाइन का अंदाज़ भी */
+    private fun segmentPcm(keys: List<String>, seg: List<DkaiKit.Line>, cast: Map<String, DkaiKit.StudioVoice>, style: String): Pair<ByteArray, Int> =
+        DkaiCastTts.segmentPcm(keys, seg, cast, style)
 
     // ================================================================== चलाना
     private fun load(f: File, pcm: ByteArray?) {
@@ -458,6 +449,20 @@ class DkaiBroadcast(private val s: DkaiScreen) {
         if (File(dir(c), "broadcast_${no(c)}.wav").isFile) Prefs.edit(c) { putString(PREF_NO, (no(c) + 1).toString()) }
         title.text = "Broadcast #${no(c)}"; wav = null; wave.peaks = null; wave.progress = 0f; wave.invalidate()
         showScript(emptyList()); showTime(); prompt.setText(""); prompt.requestFocus(); setState("READY", DkaiKit.EMERALD)
+    }
+
+    /** 14 नवंबर 2026 (मालिक): बनी आवाज़ / स्क्रिप्ट मिटाने का विकल्प (पूछकर) */
+    private fun deleteCurrent() {
+        if (busy) { s.toast("अभी बन रहा है…"); return }
+        val n = no(c)
+        val files = DkaiCast.files(dir(c), n)
+        if (files.none { it.isFile }) { s.toast("मिटाने को कुछ नहीं"); return }
+        android.app.AlertDialog.Builder(c).setTitle("Broadcast #$n मिटाएँ?").setMessage("इसकी स्क्रिप्ट और आवाज़ हमेशा के लिए मिट जाएगी।")
+            .setPositiveButton("मिटाएँ") { _, _ ->
+                release(); DkaiCast.delete(dir(c), n)
+                wav = null; wave.peaks = null; wave.progress = 0f; wave.invalidate()
+                showScript(emptyList()); showTime(); setState("READY", DkaiKit.EMERALD); s.toast("मिटा दिया")
+            }.setNegativeButton("रद्द", null).show()
     }
 
     // ================================================================== भेजना / सेव

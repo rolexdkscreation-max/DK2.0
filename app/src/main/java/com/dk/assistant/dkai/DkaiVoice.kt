@@ -181,6 +181,8 @@ class DkaiVoice(private val s: DkaiScreen) {
         // 13 नवंबर 2026 (मालिक): चुना हुआ मोड आसमानी रंग में चमके (नीचे चमकती लकीर + हल्की आसमानी पृष्ठभूमि)
         addView(View(c).apply { background = DkaiTheme.round(c, CYAN_ON, 2f); elevation = d(3f).toFloat() }, LinearLayout.LayoutParams(d(26f), d(3f)).apply { topMargin = d(5f) })
         setOnClickListener { pickTab(m) }
+        // 14 नवंबर 2026: Broadcast टैब अब Broadcast का काम है; स्क्रीन शेयर = उसी टैब को देर तक दबाएँ (या "स्क्रीन देखो" बोलें)
+        if (m == DkaiMode.BROADCAST) setOnLongClickListener { toggleScreenShare(); true }
     }
 
     private val CYAN_ON get() = if (DkaiTheme.light) 0xFF0284C7.toInt() else 0xFF22D3EE.toInt()
@@ -277,7 +279,30 @@ class DkaiVoice(private val s: DkaiScreen) {
     }
 
     // ================================================================== काम
-    fun newSession() { sessionStart = System.currentTimeMillis(); if (voiceTab != DkaiMode.BROADCAST) voiceTab = DkaiMode.CHAT }
+    /**
+     * 14 नवंबर 2026 (मालिक: "बोर्ड कास्ट सेलेक्ट किया है तो उसी के ऊपर काम होना चाहिए"): पहले हर नए सत्र में टैब Chat पर लौट
+     * जाता था और Live को चुना मोड बताया ही नहीं जाता था - इसलिए Broadcast चुनकर कहानी बोलने पर Story Writer खुलता था.
+     * अब होम पर चुना मोड ही आवाज़ का टैब, और जुड़ते ही Live को उसका नियम ([DkaiCore.voiceModeNote]).
+     */
+    fun newSession() { sessionStart = System.currentTimeMillis(); voiceTab = s.mode; pendingNote = DkaiCore.voiceModeNote(voiceTab); render() }
+
+    /** होम पर मोड बदला = आवाज़ का टैब भी वही (सत्र चालू हो तो Live को बताओ) */
+    fun follow(m: DkaiMode) {
+        if (m == voiceTab) return
+        voiceTab = m
+        if (s.voiceSessionState.active) { val note = DkaiCore.voiceModeNote(m); if (liveTalk()) DKAccessibilityService.instance?.gemLive?.pushNote(note) else pendingNote = note }
+        render()
+    }
+
+    private fun toggleScreenShare() {
+        if (!liveTalk()) { UiLang.toast(c, "DK लाइव जुड़ते ही स्क्रीन शेयर होगी — पहले माइक दबाइए", Toast.LENGTH_SHORT).show(); return }
+        val turningOn = !(LiveVision.screenOn || LiveVision.asking)
+        val r = LiveVision.toggleScreen(c)
+        if (turningOn && r.startsWith("This Live model")) UiLang.toast(c, "यह Gemini Live मॉडल तस्वीर नहीं लेता — सेटिंग्स में दूसरा मॉडल चुनें", Toast.LENGTH_LONG).show()
+        else if (turningOn) UiLang.toast(c, "Android पूछेगा — \"Start / शुरू करें\" दबाते ही DK आपकी स्क्रीन देखेगा", Toast.LENGTH_SHORT).show()
+        else UiLang.toast(c, "स्क्रीन शेयर बंद", Toast.LENGTH_SHORT).show()
+        render()
+    }
     fun closedRecently() = System.currentTimeMillis() - closedAt < 3_000
 
     private fun close() { s.event(VoiceEvent.CLOSE); if (LiveVision.screenOn || LiveVision.asking) LiveVision.setScreen(c, false) }
@@ -306,18 +331,19 @@ class DkaiVoice(private val s: DkaiScreen) {
     private fun liveTalk(): Boolean = DKState.live && try { DKAccessibilityService.instance?.gemLive?.canTalk() == true } catch (_: Exception) { false }
 
     private fun pickTab(m: DkaiMode) {
-        if (m == DkaiMode.BROADCAST) {
-            if (!liveTalk()) { UiLang.toast(c, "DK लाइव जुड़ते ही स्क्रीन शेयर होगी — पहले माइक दबाइए", Toast.LENGTH_SHORT).show(); return }
-            val turningOn = !(LiveVision.screenOn || LiveVision.asking)
-            val r = LiveVision.toggleScreen(c)
-            if (turningOn && r.startsWith("This Live model")) UiLang.toast(c, "यह Gemini Live मॉडल तस्वीर नहीं लेता — सेटिंग्स में दूसरा मॉडल चुनें", Toast.LENGTH_LONG).show()
-            else if (turningOn) UiLang.toast(c, "Android पूछेगा — \"Start / शुरू करें\" दबाते ही DK आपकी स्क्रीन देखेगा", Toast.LENGTH_SHORT).show()
-            render(); return
-        }
         if (m == voiceTab) return
         voiceTab = m
+        s.pickMode(m)                       // होम का मोड भी वही (लिखकर भेजो तो भी उसी मोड में)
         val note = DkaiCore.voiceModeNote(m)
         if (liveTalk()) DKAccessibilityService.instance?.gemLive?.pushNote(note) else pendingNote = note
+        val tip = when (m) {
+            DkaiMode.BROADCAST -> "Broadcast: कहानी / पॉडकास्ट / खबर बोलिए - यहीं लिखी जाएगी और आवाज़ अपने-आप बनेगी (स्क्रीन शेयर = देर तक दबाएँ)"
+            DkaiMode.PIPELINE -> "Pipeline: ऐप / वेबसाइट / कोड का काम यहीं कदम-दर-कदम"
+            DkaiMode.BUILDER -> "Builder: ऐप / वेबसाइट Builder में बनेगी"
+            DkaiMode.AGENT -> "Agent: कई कदम वाला काम DK कंप्यूटर करेगा"
+            DkaiMode.CHAT -> "Chat: सिर्फ़ बातचीत"
+        }
+        UiLang.toast(c, tip, Toast.LENGTH_SHORT).show()
         render()
     }
 
@@ -456,11 +482,11 @@ class DkaiVoice(private val s: DkaiScreen) {
             else -> Triple(DkaiTheme.MINT, DkaiTheme.MINT_TEXT, 0xFF059669.toInt())
         }
         (badge.background as? GradientDrawable)?.setColor(cbg)
-        badgeTxt.text = call.label; badgeTxt.setTextColor(cfg)
+        badgeTxt.text = DkaiCore.callBadge(st); badgeTxt.setTextColor(cfg)
         badgeDot.color = cdot; badgeDot.pulsing = true; badgeDot.invalidate()
-        badge.contentDescription = "हालत: ${call.label}"
+        badge.contentDescription = "हालत: ${DkaiCore.callBadge(st)}"
         val lastDk = DKState.messages.lastOrNull { it.role != "u" }
-        val ct = DkaiCore.callText(call, DKState.micMuted, DKState.lastUser, DKState.lastUserAt, DKState.liveReply, lastDk?.text.orEmpty(), lastDk?.time ?: 0L, sessionStart)
+        val ct = DkaiCore.connectingOr(st, DkaiCore.callText(call, DKState.micMuted, DKState.lastUser, DKState.lastUserAt, DKState.liveReply, lastDk?.text.orEmpty(), lastDk?.time ?: 0L, sessionStart))
         if (boxTitle.text.toString() != ct.title) boxTitle.text = ct.title
         if (transcript.text.toString() != ct.body) transcript.text = ct.body
         val muteLine = call == DkaiCore.Call.LISTENING && DKState.micMuted
@@ -470,7 +496,7 @@ class DkaiVoice(private val s: DkaiScreen) {
         transcript.textSize = if (ct.placeholder) 15f else 17f
         val text = if (ct.placeholder) shownText() else ct.body
         miniText.text = DkaiCore.preview(if (muteLine) DkaiCore.MUTED_LINE else text, 26)
-        miniStatus.text = call.label
+        miniStatus.text = DkaiCore.callBadge(st)
         val miniCol = when (call) { DkaiCore.Call.SPEAKING -> DkaiTheme.CYAN; DkaiCore.Call.PROCESSING -> DkaiTheme.VIOLET; else -> if (DKState.micMuted) DkaiTheme.RED else DkaiTheme.GREEN }
         miniStatus.setTextColor(miniCol); miniDot.color = miniCol; miniDot.invalidate()
         miniMic.setImageDrawable(DkaiIcon(if (DKState.micMuted) DkaiIcon.Kind.MIC_OFF else DkaiIcon.Kind.MIC, if (DKState.micMuted) DkaiTheme.RED else DkaiTheme.WHITE))
@@ -483,11 +509,10 @@ class DkaiVoice(private val s: DkaiScreen) {
         speedPill.text = DkaiCore.speedLabel(VoiceTune.speedPct)
         speedPill.setCompoundDrawablesRelative(null, null, DkaiTheme.icon(c, DkaiIcon.Kind.DOWN, DkaiTheme.GRAY, 14f), null)
 
-        val sharing = LiveVision.screenOn || LiveVision.asking
         for (i in 0 until tabs.childCount) {
             val t = tabs.getChildAt(i) as LinearLayout
             val m = t.tag as DkaiMode
-            val on = if (m == DkaiMode.BROADCAST) sharing else m == voiceTab
+            val on = m == voiceTab
             (t.getChildAt(0) as TextView).setTextColor(if (on) CYAN_ON else DkaiTheme.GRAY)
             (t.getChildAt(0) as TextView).setShadowLayer(if (on) d(8f).toFloat() else 0f, 0f, 0f, if (on) CYAN_ON else 0)
             t.getChildAt(1).visibility = if (on) View.VISIBLE else View.INVISIBLE

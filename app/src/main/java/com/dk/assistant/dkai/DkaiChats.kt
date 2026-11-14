@@ -72,6 +72,31 @@ object DkaiChats {
     /** अगली नई चैट का नंबर: अब तक की सबसे बड़ी + 1 (पुरानी चैट खोलकर "+ New" दबाने पर भी नंबर नहीं टकराता) */
     fun nextNo(dir: File, cur: Int): Int = (saved(dir) + cur).maxOf { it }.coerceAtLeast(0) + 1
 
+    // ------------------------------------------------------------------ मिटाना + नंबर फिर 1 से
+    /** 14 नवंबर 2026 (मालिक): पुरानी चैट लंबा दबाकर मिटाओ */
+    fun delete(dir: File, no: Int): Boolean = try { file(dir, no).delete() } catch (_: Exception) { false }
+
+    /**
+     * 14 नवंबर 2026 (मालिक: "12 / 10 दिख रहा है, वह 1 से होना चाहिए"): नंबर हमेशा 1, 2, 3… बिना खाली जगह -
+     * सबसे पुरानी = 1. (pure) पुराना नंबर -> नया नंबर.
+     */
+    fun renumberPlan(nums: Collection<Int>): Map<Int, Int> =
+        nums.filter { it > 0 }.distinct().sorted().mapIndexed { i, n -> n to i + 1 }.toMap()
+
+    /**
+     * सेव की हुई चैट की फ़ाइलें 1..N पर (दो चरण में - कोई फ़ाइल दूसरी के ऊपर नहीं लिखी जाती).
+     * लौटाता है: अभी वाली चैट का नया नंबर ([cur] की फ़ाइल न हो = आख़िरी + 1).
+     */
+    fun renumber(dir: File, cur: Int): Int {
+        val plan = renumberPlan(saved(dir))
+        val moves = plan.filter { (o, n) -> o != n }
+        if (moves.isNotEmpty()) try {
+            for (o in moves.keys) file(dir, o).renameTo(File(dir, "chat_$o.json.mv"))
+            for ((o, n) in moves) File(dir, "chat_$o.json.mv").renameTo(file(dir, n))
+        } catch (_: Exception) {}
+        return plan[cur] ?: (plan.size + 1)
+    }
+
     // ------------------------------------------------------------------ सूची
     /** चैट का नाम = आपकी पहली बात की पहली लाइन (नहीं तो पहला संदेश) */
     fun title(msgs: List<DKState.Msg>): String {
