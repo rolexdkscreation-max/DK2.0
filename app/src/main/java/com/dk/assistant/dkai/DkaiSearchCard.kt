@@ -74,7 +74,7 @@ class DkaiSearchCard(c: Context) : LinearLayout(c) {
         searching.text = "Searching$dots"
         while (shownChips < s.shown && shownChips < s.sites.size) { chipRow.addView(chip(s.sites[shownChips])); shownChips++ }
         count.text = if (s.found) "${s.visited} visited" else ""
-        exploring.text = if (s.found && s.sites.isEmpty()) "Reading the answer…" else "Exploring live web sources$dots"
+        exploring.text = if (s.stage.isNotBlank()) s.stage else if (s.found && s.sites.isEmpty()) "Reading the answer…" else "Exploring live web sources$dots"
         chipRow.visibility = if (shownChips > 0) View.VISIBLE else View.GONE
     }
 

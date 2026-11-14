@@ -186,6 +186,9 @@ class AgentRunner(
     /** Kya sawaal ko internet se taaza jawab chahiye? (sirf sach me badalne wali jaankari - baaki AI apne gyaan se) */
     private fun needsSearch(t: String): Boolean = SearchPolicy.needsSearch(t)
 
+    /** "रिसर्च / गहराई से / पूरी जानकारी" = गहरी खोज; सिर्फ़ "सर्च करो / खोजो" = तेज़ */
+    private fun strongResearch(t: String): Boolean = listOf("रिसर्च", "research", "खंगाल", "गहराई से", "गहराई में", "पूरी जानकारी", "डीटेल में", "डिटेल में", "अच्छे से पता", "अच्छी तरह पता").any { t.contains(it) }
+
     /** User ne saaf kaha "सर्च/रिसर्च करो"? (YouTube/Amazon jaise app me search wali command nahi) */
     private fun explicitResearch(t: String): Boolean {
         val apps = listOf("यूट्यूब", "youtube", "अमेज़न", "अमेजन", "amazon", "फ्लिपकार्ट", "flipkart", "इंस्टाग्राम", "instagram",
@@ -468,7 +471,9 @@ class AgentRunner(
         // "सर्च करो / रिसर्च करो / डीप रिसर्च करो" -> poori gehri khoj, phir vistaar se pakka jawab
         searchFailed = false
         if (autoS == null && !note.contains(LocalRouter.DONE_NOTE) && explicitResearch(lower) && brain.canSearch()) {
-            if (searchAndSay(goal, deep = true, thorough = true)) return
+            // 14 नवंबर 2026 (मालिक: "जवाब जल्दी आए"): सिर्फ़ "सर्च करो / खोजो / पता करो" = तेज़ असली खोज; "रिसर्च / गहराई से" = गहरी
+            val strong = strongResearch(lower)
+            if (searchAndSay(goal, deep = strong, thorough = strong, asked = true)) return
         }
         if (lower.contains("नई बात") || lower.contains("new chat") || lower.contains("भूल जाओ")) {
             brain.reset(); say("ठीक है, नई बातचीत शुरू करते हैं।"); return
@@ -875,26 +880,30 @@ class AgentRunner(
         "Start your reply with exactly \"${WebSearch.ALL_FAILED_LINE}।\" then answer from your own knowledge, and say it may not be the latest. " +
         "Never invent exact live figures (today's price, score, weather, results) - for those just say you could not check right now."
 
-    private suspend fun searchAndSay(goal: String, fillerSaid: Boolean = false, deep: Boolean = false, thorough: Boolean = false): Boolean {
+    private suspend fun searchAndSay(goal: String, fillerSaid: Boolean = false, deep: Boolean = false, thorough: Boolean = false, asked: Boolean = false): Boolean {
+        // 14 नवंबर 2026 (मालिक: "चैट में सच में खोजे और लाइव दिखे कौन-कौन सी वेबसाइट"): DK होम चैट में लाइव सर्च कार्ड - असली साइटें
+        com.dk.assistant.dkai.DkaiSearchLive.start(goal)
         // v3.29 (user ki maang): search karna pade to sach bolo - "एक सेकंड, सर्च करके बताता हूँ" (search saath-saath chalta hai, deri nahi)
         DKState.set(Mode.THINKING); DKState.hint(if (deep) "इंटरनेट पर गहराई से खोज रहा है…" else "इंटरनेट पर खोज रहा है…")
         return try {
             val r = kotlinx.coroutines.coroutineScope {
-                val d = async(Dispatchers.IO) { brain.search(goal, deep, thorough) }
+                val d = async(Dispatchers.IO) { brain.search(goal, deep, thorough, asked = asked) }
                 if (!silent && !fillerSaid) {
                     val ack = Lang.pick("एक सेकंड, सर्च करके " + (if (Prefs.voiceGender(svc) != "male") "बताती हूँ।" else "बताता हूँ।"), "One second, let me search and tell you.")
                     try { speaker.speakQuick(ack) } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (_: Exception) {}
                 }
                 d.await()
             }
-            if (r.text.isBlank()) false else {
+            if (r.text.isBlank()) { com.dk.assistant.dkai.DkaiSearchLive.cancel(); false } else {
+                com.dk.assistant.dkai.DkaiSearchLive.add(Grounding.sites(r.sources))
                 // screen par jawab + kahan se mila (click ho sakne wale links); bolkar sirf jawab
                 DKState.reply(r.text, r.sources, r.g)
                 if (!silent) speaker.speak(WebCite.strip(r.text))   // [n] निशान बोले नहीं जाते
                 true
             }
-        } catch (e: kotlinx.coroutines.CancellationException) { throw e
+        } catch (e: kotlinx.coroutines.CancellationException) { com.dk.assistant.dkai.DkaiSearchLive.cancel(); throw e
         } catch (e: Exception) {
+            com.dk.assistant.dkai.DkaiSearchLive.cancel()
             DKLog.d("Search fail: ${e.message?.take(120)}")
             // "no_search_needed" = खोज की ज़रूरत ही नहीं थी (सामान्य ज्ञान) - वह "खोज नहीं हो पाई" नहीं
             if (e.message != "no_search_needed") searchFailed = true

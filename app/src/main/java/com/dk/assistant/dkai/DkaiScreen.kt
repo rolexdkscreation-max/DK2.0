@@ -599,10 +599,14 @@ class DkaiScreen(val activity: ComponentActivity, val host: DkaiHost) {
         localJob = activity.lifecycleScope.launch {
             try {
                 DKState.hint("डीप रिसर्च शुरू…")
-                val r = com.dk.assistant.research.DeepResearchRun(c.applicationContext) { step -> activity.runOnUiThread { DKState.hint(step) } }.run(t)
+                // 14 नवंबर 2026 (मालिक: "लाइव दिखे कौन-कौन सी वेबसाइट पर जा रहा है"): हर कदम + असली वेबसाइटें लाइव सर्च कार्ड में
+                DkaiSearchLive.start(com.dk.assistant.research.DeepResearch.topic(t), maxMs = DkaiSearchLive.DEEP_MS)
+                DkaiSearchLive.stage("डीप रिसर्च शुरू…")
+                val r = com.dk.assistant.research.DeepResearchRun(c.applicationContext, { urls -> DkaiSearchLive.add(urls) }) { step ->
+                    DkaiSearchLive.stage(step); activity.runOnUiThread { DKState.hint(step) } }.run(t)
                 DKState.reply(r.text, r.sources)
-            } catch (e: kotlinx.coroutines.CancellationException) { throw e
-            } catch (e: Exception) { DKState.replyFailed("डीप रिसर्च नहीं हो पाई — " + (e.message?.take(120) ?: "गड़बड़ी"))
+            } catch (e: kotlinx.coroutines.CancellationException) { DkaiSearchLive.cancel(); throw e
+            } catch (e: Exception) { DkaiSearchLive.cancel(); DKState.replyFailed("डीप रिसर्च नहीं हो पाई — " + (e.message?.take(120) ?: "गड़बड़ी"))
             } finally { DKState.set(Mode.IDLE) }
         }
     }
