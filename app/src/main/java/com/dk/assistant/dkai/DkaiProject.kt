@@ -50,7 +50,7 @@ object DkaiModals {
     // ================================================================== GitHub Clone
     fun clone(s: DkaiScreen, done: (File) -> Unit) = clone(s, "", done)
 
-    /** [prefill] = पहले से भरा पता (Creator कार्ड से: DK2.0) */
+    /** [prefill] = पहले से भरा पता */
     fun clone(s: DkaiScreen, prefill: String, done: (File) -> Unit) {
         val c = s.activity
         lateinit var layer: DkaiUi.Layer

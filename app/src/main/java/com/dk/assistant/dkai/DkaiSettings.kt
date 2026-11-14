@@ -41,7 +41,7 @@ class DkaiSettings(private val s: DkaiScreen) {
         }
         row(DkaiIcon.Kind.USER, DkaiTheme.CYAN, "प्रोफ़ाइल", "नाम, खाता") { DkaiSheets.profile(s) }
         row(DkaiIcon.Kind.DATABASE, DkaiTheme.VIOLET, "AI Memory", "${Memory.facts(c).size} बातें याद - जोड़ें / बदलें / हटाएँ") { memory() }
-        row(DkaiIcon.Kind.TOOL, DkaiTheme.AMBER, "Dev Tools", "Creator & Community, ZIP, Clone, Terminal") { s.devTools() }
+        row(DkaiIcon.Kind.TOOL, DkaiTheme.AMBER, "Dev Tools", "ZIP, Clone, Terminal") { s.devTools() }
         row(DkaiIcon.Kind.GITHUB, DkaiTheme.WHITE, "GitHub", "Token, repo, Clone (URL से)") { s.showTab(DkaiTab.GITHUB) }
         row(DkaiIcon.Kind.BROADCAST, DkaiTheme.PINK, "Broadcast Studio", "आवाज़, भाषा, रफ़्तार, पुराने Broadcast") { DkaiBroadcast(s).open() }
         row(DkaiIcon.Kind.SHARE, DkaiTheme.GREEN, "DKAI शेयर करें", "दोस्तों को भेजें") {

@@ -189,10 +189,10 @@ class DkaiLiveModeTest {
         } finally { tmp.deleteRecursively() }
     }
 
-    @Test fun creatorAsksBeforeLeavingApp() {
+    @Test fun noOfficialGithubCard() {
         val d = src("dkai/DkaiDevTools.kt")
-        assertTrue(d.contains("GitHub खोलें?"))
-        assertTrue(d.contains("DkaiModals.clone(s, COMMUNITY)"))
+        assertFalse("DKAI Official कार्ड हटा (मालिक का GitHub नहीं खुलना चाहिए)", d.contains("Creator & Community\")"))
+        assertFalse(d.contains("Uri.parse(COMMUNITY)"))
         assertTrue(src("dkai/DkaiSettings.kt").contains("s.devTools()"))   // Dev Tools अब सेटिंग्स के अंदर
     }
 }
