@@ -119,7 +119,7 @@ class GeminiLive(internal val svc: DKAccessibilityService, internal val agent: A
         const val LEAK_ID = "dk-leak-"
         const val LEAK_DEDUP_MS = 20_000L
         /** v3.80: इनका नतीजा = यूज़र को जवाब बोलना ज़रूरी */
-        internal val ANSWER_TOOLS = setOf("web_search", "deep_think", "current_time", "local_info", "connector_task", "task_status", "dk_features", "look_screen", "app_studio")
+        internal val ANSWER_TOOLS = setOf("web_search", "deep_research", "look_photo", "deep_think", "current_time", "local_info", "connector_task", "task_status", "dk_features", "look_screen", "app_studio")
         /**
          * Jawab "ban raha" (generating) tha par itni der server se ek bhi sandesh nahi aur awaaz bhi nahi baj rahi =
          * turnComplete kho gaya / stream atak gaya. Tab turn band (stream ya connection nahi kaata - aage kuch aaye to
@@ -1315,7 +1315,13 @@ class GeminiLive(internal val svc: DKAccessibilityService, internal val agent: A
                     val seamless = goAwayDrop && spareReady()          // LiveSpare: दूसरा connection तैयार = बिना रुके
                     frozeLast = if (seamless) maxOf(frozeFor, 0L) else -1L      // अगला गर्म connection: कितनी देर आवाज़ जमा रही
                     // 14 नवंबर 2026 (मालिक): सच में कटा (बिना तैयार connection) = "कट गया" वाली हल्की आवाज़; जुड़ते ही "जुड़ गया"
-                    if (!seamless) LiveChime.disconnected(svc, svc.callBusy())
+                    // 14 नवंबर 2026 (मालिक: "बार-बार कनेक्शन टूट रहा"): Google हर ~10 मिनट goAway / 1011 भेजता है और हम चुपचाप
+                    // फिर जोड़ लेते हैं - पहले हर ऐसे बदलाव पर "कट गया" बजता था, लगता था बार-बार टूट रहा. अब आवाज़ तभी जब
+                    // LiveRecover.RECOVER_MS (12s) में भी दोबारा न जुड़ पाए (सच में रुकावट).
+                    if (!seamless) svc.scope.launch {
+                        delay(LiveRecover.RECOVER_MS)
+                        if (!ready && !stopped) LiveChime.disconnected(svc, svc.callBusy())
+                    }
                     val (code, reason) = if (closed.isCompleted) closed.await() else 1000 to "goAway"
                     // user ki baat khatam ho chuki thi par jawab shuru nahi hua aur connection toot gaya -> woh baat
                     // chupchaap kho jaati thi. Dobara judte hi ek baar text me bhejo.

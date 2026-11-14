@@ -282,6 +282,18 @@ class DKAccessibilityService : AccessibilityService() {
         openedInApp(why)
     }
 
+    /**
+     * 14 नवंबर 2026 (मालिक: "DK लाइव बार-बार टूटता है, एक बार जुड़ा तो बात चलती रहे"). एक जड़: Live "Hey DK" / power बटन से
+     * जुड़ा हो (30-45s चुप = खुद बंद, वापस Hey DK) और फिर ऐप के अंदर ओर्ब / आवाज़ स्क्रीन खोली - [openedInApp] "पहले से जुड़ा"
+     * देखकर लौट जाता था, छोटा टाइमर बना रहता और थोड़ी चुप्पी पर Live कट जाता. अब ऐप के अंदर से खोला = हमेशा वाला Live (✕ तक).
+     */
+    private fun keepLiveOn(why: String) {
+        if (!InvokeSession.keepOnMic(wakeLive, sessionLive, gemLive.idleExitMs)) return
+        DKLog.d("$why: एक बार वाली बातचीत (${gemLive.idleExitMs / 1000}s चुप = बंद) अब हमेशा वाला Live")
+        wakeLive = false; sessionLive = false; gemLive.idleExitMs = 0
+        Prefs.edit(this) { putBoolean("live_mode", true) }
+    }
+
     /** ऐप के अंदर "जुड़ गया" की हल्की आवाज़ बज चुकी (एक बार ही) */
     @Volatile private var inAppChimed = false
 
@@ -292,7 +304,7 @@ class DKAccessibilityService : AccessibilityService() {
     fun openedInApp(why: String) {
         if (!Setup.hasMic(this) || callBusy()) return
         if (InvokeEntry.keepAsIs(DKState.live, gemLive.ready, gemLive.running)) {
-            DKLog.d("$why - Live पहले से जुड़ा, कुछ नहीं दोहराया"); return
+            keepLiveOn(why); DKLog.d("$why - Live पहले से जुड़ा, कुछ नहीं दोहराया"); return
         }
         try { LiveNet.warm(this, why) } catch (_: Exception) {}
         if (InvokeEntry.chimeInApp(inAppChimed)) { inAppChimed = true; LiveChime.arm() }

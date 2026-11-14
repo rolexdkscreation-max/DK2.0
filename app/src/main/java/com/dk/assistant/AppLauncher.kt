@@ -232,7 +232,8 @@ object AppLauncher {
         return launchMatch(ctx, match.first, match.second)
     }
 
-    fun youtubeSearch(ctx: Context, q: String): String {
+    fun youtubeSearch(ctx: Context, q0: String): String {
+        val q = SearchFocus.core(q0)      // 14 नवंबर 2026: बोली की भरती ("जो नया वाला … आया है उसे") खोज में नहीं
         return try {
             val i = Intent(Intent.ACTION_SEARCH)
                 .setPackage("com.google.android.youtube")

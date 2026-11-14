@@ -103,6 +103,8 @@ object LivePromise {
             "connector_task" -> "जुड़े ऐप से जानकारी ला रहा है…"
             "local_info" -> "जगह/मौसम देख रहा है…"
             "look_screen" -> "स्क्रीन देख रहा है…"
+            "deep_research" -> "डीप रिसर्च कर रहा है" + (if (a.isNotEmpty()) ": $a" else "") + "…"
+            "look_photo" -> "फोटो देख रहा है…"
             "app_studio" -> "ऐप स्टूडियो देख रहा है…"
             else -> ""
         }

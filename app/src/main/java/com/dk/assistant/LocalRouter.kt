@@ -334,19 +334,19 @@ object LocalRouter {
         if (hasAny(t, OTHER_MEDIA) || (shopOf(t) != null)) return null
         // YouTube का नाम + सर्च (और "चलाओ" भी हो तो सीधे पहला वीडियो)
         if (yt && search) {
-            val q = clean(t, YT + SEARCH + PLAY + listOf("open", "खोलो", "kholo"))
+            val q = SearchFocus.core(clean(t, YT + SEARCH + PLAY + listOf("open", "खोलो", "kholo")))
             if (q.length < 2) return QuickCommands.Quick(a("open_app", "name" to "youtube"), "")
             return if (play) QuickCommands.Quick(a("youtube_play", "query" to q), "")
             else QuickCommands.Quick(a("youtube_search", "query" to q), "YouTube पर खोज दिया")
         }
         // ऐप का नाम नहीं, पर "गाना / वीडियो चलाओ" -> YouTube पर पहला वीडियो
         if (play && hasAny(t, SONG)) {
-            val q = clean(t, PLAY + YT)
+            val q = SearchFocus.core(clean(t, PLAY + YT))
             if (q.length >= 3 && !hasWord(q, listOf("this", "यह", "ये", "इसे", "वो", "that", "it", "first", "पहला"))) return QuickCommands.Quick(a("youtube_play", "query" to q), "")
         }
         // YouTube सामने खुला है और "X सर्च करो" -> उसी में खोजो
         if (fg == YT_PKG && search) {
-            val q = clean(t, SEARCH + YT)
+            val q = SearchFocus.core(clean(t, SEARCH + YT))
             if (q.length >= 2) return QuickCommands.Quick(a("youtube_search", "query" to q), "YouTube पर खोज दिया")
         }
         return null
@@ -378,7 +378,7 @@ object LocalRouter {
             var replacePrev = false
             when {
                 ctx == "youtube" && hasAny(c, SEARCH) -> {
-                    val s = clean(c, SEARCH + YT + PLAY)
+                    val s = SearchFocus.core(clean(c, SEARCH + YT + PLAY))      // 14 नवंबर 2026: सिर्फ़ खोज के मुख्य शब्द
                     // v3.67: "उसपे X सर्च करके प्ले कर दो" = सीधे पहला वीडियो चलाओ (पहले सिर्फ़ खोज होती थी, चलता नहीं था)
                     if (s.length >= 2 && hasAny(c, PLAY)) { lastQuery = s; q = QuickCommands.Quick(a("youtube_play", "query" to s), ""); replacePrev = prevType == "open_app" }
                     else if (s.length >= 2) { lastQuery = s; q = QuickCommands.Quick(a("youtube_search", "query" to s), "YouTube पर खोज दिया"); replacePrev = prevType == "open_app" }
@@ -388,7 +388,7 @@ object LocalRouter {
                     q = QuickCommands.Quick(a("youtube_play", "query" to lastQuery!!), ""); replacePrev = prevType == "youtube_search"
                 }
                 ctx == "youtube" && hasAny(c, PLAY) && lastQuery == null -> {
-                    val s = clean(c, PLAY + YT)
+                    val s = SearchFocus.core(clean(c, PLAY + YT))
                     if (s.length >= 2 && !refersBack(s)) { q = QuickCommands.Quick(a("youtube_play", "query" to s), ""); replacePrev = prevType == "open_app" }
                 }
                 ctx != null && SHOPS.containsKey(ctx) && hasAny(c, SEARCH) -> {

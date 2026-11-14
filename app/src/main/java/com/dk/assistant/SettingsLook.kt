@@ -37,6 +37,19 @@ internal fun SettingsActivity.secUi() {
         com.dk.assistant.ui.NeonRefresh.bars(this)
         com.dk.assistant.ui.NeonRefresh.invalidateAll(window.decorView)
     }
+    // 14 नवंबर 2026 (मालिक: "सेटिंग में डार्क / लाइट थीम का मोड नहीं दिख रहा"): जड़ - यह बदलाव सिर्फ़ ⚙ लंबा दबाने वाली
+    // सूची में छिपा था. अब यहाँ सबसे ऊपर - DKAI होम, मेनू, सेटिंग और DK Computer चुने रंग में
+    card("डार्क / लाइट मोड", "DKAI होम, मेनू, सेटिंग और DK Computer का रंग", startOpen = true) { box ->
+        val g = radios(box, SettingsThemeMode.ITEMS, SettingsThemeMode.current(com.dk.assistant.dkai.DkaiTheme.light), 6050)
+        g.setOnCheckedChangeListener { _, id ->
+            val light = SettingsThemeMode.isLight(SettingsThemeMode.ITEMS.getOrNull(id - 6050)?.first ?: return@setOnCheckedChangeListener)
+            if (light == com.dk.assistant.dkai.DkaiTheme.light) return@setOnCheckedChangeListener
+            com.dk.assistant.dkai.DkaiTheme.setLight(this, light)
+            toast(if (light) "लाइट मोड चालू" else "डार्क मोड चालू")
+            save(false); recreate()
+        }
+        hint(box, "बदलते ही यह स्क्रीन नए रंग में खुलती है; DKAI होम लौटते ही नए रंग में दिखेगा।")
+    }
     card("DKAI का orb", "नए DKAI होम में आवाज़ वाला orb — 7 नए या पुराना DK orb", startOpen = true) { box ->
         val orbs = com.dk.assistant.dkai.DkaiOrbs.ORBS
         val g = radios(box, orbs, com.dk.assistant.dkai.DkaiOrbs.get(this), 6600)
@@ -61,8 +74,7 @@ internal fun SettingsActivity.secUi() {
             val v = T.THEMES.getOrNull(id - 6100)?.first ?: return@setOnCheckedChangeListener
             applyLook(T.look.copy(theme = v))
         }
-        hint(box, "हल्की (Light) थीम अभी नहीं है: ऐप की ज़्यादातर स्क्रीनों पर सफ़ेद अक्षर हैं, हल्की पृष्ठभूमि पर वे पढ़ने में नहीं आते। " +
-            "\"फ़ोन जैसी (System)\" भी इसी वजह से नहीं — ऐप हमेशा गहरी थीम में रहता है।")
+        hint(box, "डार्क / लाइट मोड ऊपर \"${SettingsThemeMode.TITLE}\" में है। यहाँ पुरानी स्क्रीनों (आवाज़ / ओर्ब) की पृष्ठभूमि का रंग चुनें।")
     }
     card("मुख्य रंग (Accent)", "किनारे, चमक, मुख्य बटन और ओर्ब का रंग", startOpen = true) { box ->
         val items = com.dk.assistant.ui.NeonTheme.Accent.values().map { it.key to it.label }
@@ -350,4 +362,12 @@ internal fun SettingsActivity.wallpaperGallery() {
         hint(box, "वॉलपेपर पूरे ऐप में एक साथ लगता है: होम, सेटिंग, चैट, DK कंप्यूटर - हर स्क्रीन के पीछे. " +
             "थीम के रंग और काँच वैसे ही रहते हैं. गैलरी वाला चित्र फ़ोन में ही रहता है, कहीं भेजा नहीं जाता.")
     }
+}
+
+/** 14 नवंबर 2026: सेटिंग का डार्क / लाइट मोड (pure, JUnit) */
+object SettingsThemeMode {
+    const val TITLE = "डार्क / लाइट मोड"
+    val ITEMS = listOf("dark" to "डार्क (गहरा)", "light" to "लाइट (उजला)")
+    fun current(light: Boolean) = if (light) "light" else "dark"
+    fun isLight(key: String) = key == "light"
 }

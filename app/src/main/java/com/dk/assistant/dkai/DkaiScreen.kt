@@ -107,6 +107,7 @@ class DkaiScreen(val activity: ComponentActivity, val host: DkaiHost) {
 
     fun attach(): DkaiScreen {
         DkaiTheme.load(c)                                       // Luminous Light / Obsidian Dark
+        builtLight = DkaiTheme.light
         root = FrameLayout(c).apply { setBackgroundColor(DkaiTheme.BG); isClickable = true; id = R.id.dkai_root; tag = this@DkaiScreen }
         content = LinearLayout(c).apply { orientation = LinearLayout.VERTICAL }
         root.addView(content, FrameLayout.LayoutParams(-1, -1))
@@ -449,6 +450,7 @@ class DkaiScreen(val activity: ComponentActivity, val host: DkaiHost) {
                 DKState.hint("फ़ाइल पढ़ रहा हूँ…")
                 val r = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { DkaiChatFiles.prepare(app, pics) }
                 if (r.imageB64 == null && r.texts.isEmpty()) { DKState.replyFailed("यह फ़ाइल नहीं खुल पाई — फोटो (JPG/PNG), PDF या text फ़ाइल जोड़िए।"); return@launch }
+                DkaiChatFiles.remember(r.imageB64)      // DK Live से "इस फोटो में क्या है" भी पूछ सकें
                 DKState.hint("देखकर जवाब लिख रहा हूँ…")
                 val raw = b.teach(DkaiChatFiles.SYSTEM, DkaiChatFiles.prompt(t, r.names, r.texts, r.images), r.imageB64)
                 DKState.reply(DkaiChatFiles.parseSay(raw).ifBlank { "…" })
@@ -722,7 +724,12 @@ class DkaiScreen(val activity: ComponentActivity, val host: DkaiHost) {
         }
     }
 
+    /** किस रंग (लाइट/डार्क) में बना था - सेटिंग में बदला हो तो लौटते ही नए रंग में (14 नवंबर 2026) */
+    private var builtLight = false
+
     fun onResume() {
+        DkaiTheme.load(c)
+        if (DkaiTheme.light != builtLight) { activity.recreate(); return }
         resumed = true
         ui.removeCallbacks(eyesTick); ui.post(eyesTick)
         DKState.listen(stateL); com.dk.assistant.LiveVision.listen(visionL)
