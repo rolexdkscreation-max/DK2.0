@@ -1,5 +1,6 @@
 <resources>
     <item name="glass_press" type="id" />
+    <item name="plain_look" type="id" />
     <item name="ui_keep" type="id" />
     <item name="ui_stamp" type="id" />
     <item name="ui_raw" type="id" />

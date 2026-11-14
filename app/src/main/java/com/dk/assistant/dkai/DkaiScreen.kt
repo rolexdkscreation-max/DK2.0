@@ -196,7 +196,10 @@ class DkaiScreen(val activity: ComponentActivity, val host: DkaiHost) {
         head.addView(DkaiTheme.text(c, "DKAI", 21f, DkaiTheme.WHITE, DkaiTheme.SANS_BOLD).apply { letterSpacing = 0.04f; setPadding(d(8f), 0, 0, 0); maxLines = 1 },
             LinearLayout.LayoutParams(0, -2, 1f))
         // 14 नवंबर 2026 (मालिक): आवाज़ वाला बटन अब नीचे "Ask anything" डिब्बे में (Perplexity जैसा) - ऊपर सिर्फ़ ⚙
-        head.addView(headIcon(DkaiIcon.Kind.GEAR, "Settings - सब कुछ एक जगह") { settingsList() })
+        // 14 नवंबर 2026 (मालिक): ⚙ दबाते ही सीधे Settings खुले. लंबा दबाओ = पुरानी छोटी सूची (प्रोफ़ाइल / थीम / बाकी रास्ते)
+        head.addView(headIcon(DkaiIcon.Kind.GEAR, "Settings - सब कुछ एक जगह") { openSettings() }.apply {
+            setOnLongClickListener { settingsList(); true }
+        })
         content.addView(head, LinearLayout.LayoutParams(-1, d(52f)))
 
         // Chat #1  • READY            🔍  ⧉  ↗  + New
@@ -236,7 +239,12 @@ class DkaiScreen(val activity: ComponentActivity, val host: DkaiHost) {
         content.addView(panelHost, LinearLayout.LayoutParams(-1, 0, 1f))
     }
 
-    /** ⚙: पूरी DK सेटिंग्स + बाकी रास्ते (फ़ोन कंट्रोल, माइक, Story Writer, टीचर, Forge…) + प्रोफ़ाइल + थीम */
+    /** ⚙ = सीधे DK Settings (न खुले तो पुरानी सूची) */
+    private fun openSettings() {
+        try { c.startActivity(Intent(c, SettingsActivity::class.java)) } catch (_: Exception) { settingsList() }
+    }
+
+    /** ⚙ लंबा दबाना: पूरी DK सेटिंग्स + बाकी रास्ते (फ़ोन कंट्रोल, माइक, Story Writer, टीचर, Forge…) + प्रोफ़ाइल + थीम */
     private fun settingsList() {
         val items = ArrayList<Pair<String, () -> Unit>>()
         try { for ((t, sub, go) in host.settingsItems()) items.add("$t — $sub" to go) } catch (_: Exception) {}
@@ -407,6 +415,7 @@ class DkaiScreen(val activity: ComponentActivity, val host: DkaiHost) {
             DkaiHomeCore.SendRoute.CHAT -> { if (!sendChat(t)) return }
             DkaiHomeCore.SendRoute.COMPUTER -> c.startActivity(Intent(c, ComputerActivity::class.java).putExtra("task", t))
             DkaiHomeCore.SendRoute.COMPUTER_FILES -> sendFiles(pics, t)
+            DkaiHomeCore.SendRoute.CHAT_FILES -> { if (!sendChatFiles(pics, t)) return }
         }
         input.setText(""); clearAttached()
     }
@@ -425,6 +434,29 @@ class DkaiScreen(val activity: ComponentActivity, val host: DkaiHost) {
                 c.startActivity(i)
             }
         }.start()
+    }
+
+    /** 14 नवंबर 2026 (मालिक): चैट में जुड़ी फोटो / फ़ाइल चैट में ही - AI देखकर यहीं जवाब दे */
+    private fun sendChatFiles(pics: List<android.net.Uri>, t: String): Boolean {
+        if (!Prefs.hasAnyKey(c)) { toast("पहले सेटिंग्स में किसी AI की API key डालकर सेव कीजिए।"); host.ready(); return false }
+        val n = pics.size.coerceAtMost(DkaiHomeCore.MAX_ATTACH)
+        DKState.userNow("📎 $n फ़ाइल" + if (t.isNotBlank()) " • $t" else "")
+        val app = c.applicationContext
+        val b = BrainManager(c)
+        localJob?.cancel()
+        localJob = activity.lifecycleScope.launch {
+            try {
+                DKState.hint("फ़ाइल पढ़ रहा हूँ…")
+                val r = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { DkaiChatFiles.prepare(app, pics) }
+                if (r.imageB64 == null && r.texts.isEmpty()) { DKState.replyFailed("यह फ़ाइल नहीं खुल पाई — फोटो (JPG/PNG), PDF या text फ़ाइल जोड़िए।"); return@launch }
+                DKState.hint("देखकर जवाब लिख रहा हूँ…")
+                val raw = b.teach(DkaiChatFiles.SYSTEM, DkaiChatFiles.prompt(t, r.names, r.texts, r.images), r.imageB64)
+                DKState.reply(DkaiChatFiles.parseSay(raw).ifBlank { "…" })
+            } catch (e: kotlinx.coroutines.CancellationException) { throw e
+            } catch (e: Exception) { DKState.replyFailed(b.explainAll(e))
+            } finally { DKState.set(Mode.IDLE) }
+        }
+        return true
     }
 
     // ================================================================== + : फोटो चिप
@@ -520,6 +552,8 @@ class DkaiScreen(val activity: ComponentActivity, val host: DkaiHost) {
     private fun sendChat(t: String): Boolean {
         if (!Prefs.hasAnyKey(c)) { toast("पहले सेटिंग्स में किसी AI की API key डालकर सेव कीजिए।"); host.ready(); return false }
         DKState.userNow(t)
+        // 14 नवंबर 2026 (मालिक): "डीप रिसर्च" - Exa + Tavily + Linkup एक साथ, Firecrawl से पूरे पेज, Gemini की हिंदी रिपोर्ट
+        if (com.dk.assistant.research.DeepResearch.wanted(t, Prefs.deepAuto(c))) { deepResearch(t); return true }
         val svc = DKAccessibilityService.instance
         if (svc != null) { svc.runCommand(t, speak = false); return true }
         val b = BrainManager(c)
@@ -544,6 +578,19 @@ class DkaiScreen(val activity: ComponentActivity, val host: DkaiHost) {
             } finally { DKState.set(Mode.IDLE) }
         }
         return true
+    }
+
+    private fun deepResearch(t: String) {
+        localJob?.cancel()
+        localJob = activity.lifecycleScope.launch {
+            try {
+                DKState.hint("डीप रिसर्च शुरू…")
+                val r = com.dk.assistant.research.DeepResearchRun(c.applicationContext) { step -> activity.runOnUiThread { DKState.hint(step) } }.run(t)
+                DKState.reply(r.text, r.sources)
+            } catch (e: kotlinx.coroutines.CancellationException) { throw e
+            } catch (e: Exception) { DKState.replyFailed("डीप रिसर्च नहीं हो पाई — " + (e.message?.take(120) ?: "गड़बड़ी"))
+            } finally { DKState.set(Mode.IDLE) }
+        }
     }
 
     private fun newChat() {

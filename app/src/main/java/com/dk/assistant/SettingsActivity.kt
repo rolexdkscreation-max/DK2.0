@@ -90,6 +90,7 @@ class SettingsActivity : AppCompatActivity() {
         window.setSoftInputMode(android.view.WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE)
         setContentView(R.layout.activity_settings)
         Glass.install(this)
+        PlainLook.install(this)   // 14 नवंबर 2026 (मालिक): सेटिंग पैनल होम जैसा साधारण (काँच/ग्लासी नहीं)
         container = findViewById(R.id.container)
         findViewById<OrbView>(R.id.miniOrb).mini = true
         findViewById<ImageButton>(R.id.btnBack).setOnClickListener { save(false); finish() }

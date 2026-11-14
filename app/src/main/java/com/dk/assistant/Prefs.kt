@@ -168,6 +168,14 @@ object Prefs {
     const val EXA_SEARCH_KEY = "search_key_exa"
     fun tavilySearchKey(c: Context): String = sp(c).getString(TAVILY_SEARCH_KEY, "")?.trim() ?: ""
     fun exaSearchKey(c: Context): String = sp(c).getString(EXA_SEARCH_KEY, "")?.trim() ?: ""
+    /** 14 नवंबर 2026 (मालिक): डीप रिसर्च - Linkup (तीसरा खोजी) और Firecrawl (पूरा पेज पढ़ना). खाली = वह टूल छोड़ो */
+    const val LINKUP_KEY = "search_key_linkup"
+    const val FIRECRAWL_KEY = "search_key_firecrawl"
+    /** सवाल कई वेबसाइटों से जोड़ने वाला लगे तो बिना "डीप रिसर्च" बोले भी गहरी खोज (डिफ़ॉल्ट बंद = क्रेडिट बचे) */
+    const val DEEP_AUTO = "deep_research_auto"
+    fun linkupKey(c: Context): String = sp(c).getString(LINKUP_KEY, "")?.trim() ?: ""
+    fun firecrawlKey(c: Context): String = sp(c).getString(FIRECRAWL_KEY, "")?.trim() ?: ""
+    fun deepAuto(c: Context): Boolean = sp(c).getBoolean(DEEP_AUTO, false)
     fun captionOwnKeyRaw(c: Context): String = sp(c).getString(CAPTION_KEY, "")?.trim() ?: ""
     fun captionKey(c: Context): String = captionOwnKey(c).ifBlank { ttsGeminiKey(c) }
     /**

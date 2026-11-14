@@ -15,8 +15,8 @@ class DkaiHomeCoreTest {
     @Test fun sendGoesToRightPlace() {
         assertEquals(DkaiHomeCore.SendRoute.CHAT, DkaiHomeCore.sendRoute(false, 0))
         assertEquals(DkaiHomeCore.SendRoute.COMPUTER, DkaiHomeCore.sendRoute(true, 0))
-        // फोटो जुड़ी = हमेशा DK Computer (वही देख सकता है)
-        assertEquals(DkaiHomeCore.SendRoute.COMPUTER_FILES, DkaiHomeCore.sendRoute(false, 3))
+        // 14 नवंबर 2026 (मालिक): चैट में जुड़ी फोटो = चैट में ही; 🖥 चुना हो तभी DK Computer
+        assertEquals(DkaiHomeCore.SendRoute.CHAT_FILES, DkaiHomeCore.sendRoute(false, 3))
         assertEquals(DkaiHomeCore.SendRoute.COMPUTER_FILES, DkaiHomeCore.sendRoute(true, 1))
     }
 

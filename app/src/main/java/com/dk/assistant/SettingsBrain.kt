@@ -280,6 +280,39 @@ internal fun SettingsActivity.secBrainLive() {
             ". जो सेवा न चले (key गलत / limit / गड़बड़ी) उसे 1 घंटे छोड़कर अगली से खोज — आपसे कुछ नहीं पूछा जाता। " +
             "खोज सिर्फ़ ताज़ा जानकारी (आज, ख़बर, भाव, मौसम, स्कोर) पर, एक सवाल पर एक बार, नतीजे 10 मिनट याद। Gemini खाली हो तो DK लाइव / चैट वाली key से।")
     }
+    // 14 नवंबर 2026 (मालिक): डीप रिसर्च (गहरी खोज) - Exa + Tavily + Linkup एक साथ, Firecrawl से पूरे पेज, Gemini की हिंदी रिपोर्ट
+    card("गहरी खोज (डीप रिसर्च) — Exa, Tavily, Linkup, Firecrawl", "चैट में \"डीप रिसर्च …\" लिखें: कई वेबसाइटों से पूरा पढ़कर हिंदी रिपोर्ट (स्रोत + भरोसा के साथ)") { box ->
+        fun deepKey(title: String, pref: String, value: String, ph: String, url: String, tool: com.dk.assistant.research.DeepResearch.Tool) {
+            val ed = field(box, title, value, ph, secret = true)
+            keyFields[pref] = ed
+            val res = TextView(this).apply { setTextColor(0xB3FFFFFF.toInt()); textSize = 13f; setPadding((4 * dp).toInt(), (6 * dp).toInt(), 0, 0) }
+            row(box, showButton(ed), button("जाँचें") {
+                val k = ed.text.toString().trim()
+                if (k.isBlank()) { res.text = "खाली है — डीप रिसर्च इसे छोड़कर बाकी टूल से चलेगी"; return@button }
+                res.text = "जाँच रहा हूँ…"
+                lifecycleScope.launch {
+                    res.text = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { com.dk.assistant.research.DeepResearchNet.check(tool, k) }
+                    save(false)
+                }
+            }, button("Key लें") { Setup.openUrl(this, url) })
+            box.addView(res)
+        }
+        hint(box, "Exa और Tavily की key ऊपर वाले \"खोज\" डिब्बे से ही ली जाती है (वहीं डालें)। यहाँ बाकी दो:")
+        deepKey("Linkup API Key (तीसरा खोजी)", Prefs.LINKUP_KEY, Prefs.linkupKey(this), "Linkup key (ज़रूरी नहीं)",
+            "https://app.linkup.so/api-keys", com.dk.assistant.research.DeepResearch.Tool.LINKUP)
+        deepKey("Firecrawl API Key (पूरा पेज पढ़ना)", Prefs.FIRECRAWL_KEY, Prefs.firecrawlKey(this), "fc-… (ज़रूरी नहीं)",
+            "https://www.firecrawl.dev/app/api-keys", com.dk.assistant.research.DeepResearch.Tool.FIRECRAWL)
+        val auto = switch(box, "सवाल कई वेबसाइटों वाला लगे तो अपने-आप गहरी खोज", Prefs.deepAuto(this))
+        auto.setOnCheckedChangeListener { _, on -> Prefs.edit(this) { putBoolean(Prefs.DEEP_AUTO, on) } }
+        val ready = listOfNotNull(
+            "Exa".takeIf { Prefs.exaSearchKey(this).isNotBlank() },
+            "Tavily".takeIf { Prefs.tavilySearchKey(this).isNotBlank() },
+            "Linkup".takeIf { Prefs.linkupKey(this).isNotBlank() },
+            "Firecrawl".takeIf { Prefs.firecrawlKey(this).isNotBlank() })
+        hint(box, "अभी तैयार: " + (if (ready.isEmpty()) "कोई नहीं — तब Gemini की अपनी Google खोज से जवाब (साफ़ लिखा जाएगा कि गहरी खोज नहीं हुई)" else ready.joinToString(", ")) +
+            ". कोई टूल error / 429 / क्रेडिट खत्म बताए तो उस रिसर्च में अपने-आप छूट जाता है। एक रिसर्च में ज़्यादा से ज़्यादा 15 पेज, 3 चक्कर। " +
+            "साधारण सवाल पर गहरी खोज नहीं चलती (क्रेडिट बचे)।")
+    }
     card("सुनना (आवाज़ → text) — Groq, चाहें तो", "Groq Whisper सबसे तेज़ सुनता है। खाली छोड़ें = ऊपर वाली Gemini key से सुनेगा") { box ->
         val ed = field(box, "Groq API Key (सिर्फ़ सुनने के लिए)", Prefs.scopeKeyRaw(this, ApiScopes.LIVE, "groq"), "gsk_… (ज़रूरी नहीं)", secret = true)
         keyFields[ApiScopes.pref(ApiScopes.LIVE, "key", "groq")] = ed
