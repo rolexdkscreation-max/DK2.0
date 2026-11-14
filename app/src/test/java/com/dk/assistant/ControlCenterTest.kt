@@ -24,6 +24,14 @@ class ControlCenterTest {
         assertEquals(oldRows.toSet(), all.toSet())
     }
 
+    // 14 नवंबर 2026 (मालिक): सेटिंग खोलते ही सबसे नीचे "अपडेट" (श्रेणी के अंदर भी रहता है)
+    @Test fun updateRow_atBottomOfMainPage() {
+        val s = SetSrc.all()
+        val cats = s.indexOf("SettingsSearch.CATEGORIES.forEach { (c, _) -> menuRow(c.first, c.second, c.third) }")
+        val upd = s.indexOf("items.firstOrNull { it.first == \"update\" }?.let { (id, t, sub) -> menuRow(id, t, sub) }")
+        assertTrue(cats > 0 && upd > cats)
+    }
+
     @Test fun everyOldRow_stillInMenuSource() {
         val s = SetSrc.all()
         for (id in oldRows) assertTrue(id, s.contains("Triple(\"$id\", "))
