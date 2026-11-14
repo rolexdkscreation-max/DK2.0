@@ -140,20 +140,20 @@ class DeepResearchRun(private val c: Context, private val step: (String) -> Unit
                 }
             } }.awaitAll()
         }
-        var left = links.filter { DeepResearch.normalize(it.url) !in got }
+        var left = links.filter { !got.containsKey(DeepResearch.normalize(it.url)) }
         if (left.isNotEmpty() && alive(Tool.TAVILY, tavilyKey)) {
             try {
                 val m = DeepResearchNet.tavilyExtract(tavilyKey, left.map { it.url })
                 for (l in left) m[DeepResearch.normalize(l.url)]?.let { got[DeepResearch.normalize(l.url)] = DeepResearch.Page(l.title, l.url, it, l.date, true) }
             } catch (e: Exception) { kill(Tool.TAVILY, e) }
-            left = links.filter { DeepResearch.normalize(it.url) !in got }
+            left = links.filter { !got.containsKey(DeepResearch.normalize(it.url)) }
         }
         if (left.isNotEmpty() && alive(Tool.EXA, exaKey)) {
             try {
                 val m = DeepResearchNet.exaContents(exaKey, left.map { it.url })
                 for (l in left) m[DeepResearch.normalize(l.url)]?.let { got[DeepResearch.normalize(l.url)] = DeepResearch.Page(l.title, l.url, it, l.date, true) }
             } catch (e: Exception) { kill(Tool.EXA, e) }
-            left = links.filter { DeepResearch.normalize(it.url) !in got }
+            left = links.filter { !got.containsKey(DeepResearch.normalize(it.url)) }
         }
         // पूरा पेज न खुले तो छोटा अंश (रिपोर्ट में साफ़ लिखा जाता है: "सिर्फ़ छोटा अंश")
         for (l in left) if (l.snippet.isNotBlank()) got[DeepResearch.normalize(l.url)] = DeepResearch.Page(l.title, l.url, l.snippet, l.date, false)
