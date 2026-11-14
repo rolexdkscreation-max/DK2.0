@@ -135,7 +135,7 @@ object ForgeController {
     private fun begin(c: Context, text: String, isEdit: Boolean): StartResult {
         // वेबसाइट की अपनी key डली हो = "एक key से सब" की key खर्च नहीं होती, इसलिए एक-key मोड में भी चलेगा
         val pinned = com.dk.assistant.BrainPin.resolve(c, com.dk.assistant.BrainPin.SITE)
-        if (pinned == null && apiKey(c).isBlank()) OneKeyGate.check(c, OneKeyGate.Work.WEBSITE)?.let {
+        if (pinned == null) if (apiKey(c).isBlank()) OneKeyGate.check(c, OneKeyGate.Work.WEBSITE)?.let {
             return StartResult.MissingKey(it + " या " + KEY_PLACE + " में वेबसाइट की अपनी Gemini key डालिए।")
         }
         if (text.isBlank()) return StartResult.NothingToEdit(Lang.pick("कैसी वेबसाइट बनानी है, यह बताइए।", "Tell me what website to build."))
