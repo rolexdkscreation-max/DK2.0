@@ -1,6 +1,5 @@
 package com.dk.assistant
 
-import com.dk.assistant.dkai.DkaiTermFix
 import org.junit.Assert.*
 import org.junit.Test
 import java.io.File
@@ -22,43 +21,8 @@ class SoloScreenTermTest {
         assertTrue(ScreenLook.asked("देखो क्या दिख रहा है"))
     }
 
-    // ------------------------------------------------------------ टर्मिनल
-    @Test fun jobContinuesWithoutNewYesButNotRisky() {
-        val t = 1_000_000L
-        val j = DkaiTermFix.Job(t)
-        assertTrue(DkaiTermFix.canContinue(j, risky = false, now = t + 60_000))
-        assertFalse("खतरनाक कमांड हर बार पूछे", DkaiTermFix.canContinue(j, risky = true, now = t + 60_000))
-        assertFalse(DkaiTermFix.canContinue(null, false, t))
-        assertFalse(DkaiTermFix.canContinue(j, false, t + DkaiTermFix.JOB_WINDOW_MS + 1))
-        assertFalse(DkaiTermFix.canContinue(j.copy(fails = DkaiTermFix.MAX_FIXES), false, t))
-        assertFalse(DkaiTermFix.canContinue(j.copy(steps = DkaiTermFix.MAX_STEPS), false, t))
-        val f1 = DkaiTermFix.after(j, failed = true); assertEquals(1, f1.fails); assertEquals(1, f1.steps)
-        assertEquals("सफल कदम = fail गिनती शून्य", 0, DkaiTermFix.after(f1, failed = false).fails)
-    }
 
-    @Test fun failureIsDiagnosed() {
-        assertTrue(DkaiTermFix.failed(1, ""))
-        assertTrue(DkaiTermFix.failed(0, "apk build: x में index.html नहीं. पहले index.html बनाएँ"))
-        assertFalse(DkaiTermFix.failed(0, "a.txt\nb.txt\n"))
-        assertTrue(DkaiTermFix.diagnose("apk build site", "apk build: site में index.html नहीं")!!.fix.contains("apk make"))
-        assertTrue(DkaiTermFix.diagnose("npm install", "sh: npm: not found")!!.why.contains("npm"))
-        assertTrue(DkaiTermFix.diagnose("cat x.txt", "cat: x.txt: No such file or directory")!!.fix.contains("ls"))
-        assertTrue(DkaiTermFix.diagnose("./run.sh", "sh: ./run.sh: Permission denied")!!.fix.contains("sh script.sh"))
-        assertNull(DkaiTermFix.diagnose("ls", "weird"))
-    }
 
-    @Test fun everyStepIsTold() {
-        val j = DkaiTermFix.Job(0L, steps = 2, fails = 1)
-        assertTrue(DkaiTermFix.stepNote("ls", false, j, null).contains("ONE short Hindi line"))
-        val fail = DkaiTermFix.stepNote("npm i", true, j, DkaiTermFix.diagnose("npm i", "npm: not found"))
-        assertTrue(fail.contains("try 1 of 3")); assertTrue(fail.contains("call terminal again"))
-        assertTrue(DkaiTermFix.stepNote("x", true, j.copy(fails = 3), null).startsWith("STOP"))
-        assertTrue(DkaiTermFix.stepLine(j, true, null).contains("ठीक कर रहा है"))
-        assertTrue(DkaiTermFix.stepLine(j, false, null).startsWith("✓ कदम 2"))
-        val shell = src("dkai/DkaiShell.kt")
-        assertTrue(shell.contains("DkaiTermFix.canContinue(job, DkaiTerm.risky(cmd), now)"))
-        assertTrue(shell.contains("DkaiTermFix.stepNote("))
-    }
 
     // ------------------------------------------------------------ Solo = DK एजेंट
     @Test fun soloShowsOnlyDkAgent() {

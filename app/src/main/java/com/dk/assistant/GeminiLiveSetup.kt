@@ -336,19 +336,6 @@ internal fun GeminiLive.setupJson(m: String, txt: Boolean = connText, resume: Bo
             .put("description", "Turn ON Screen Guard (स्क्रीन गार्ड, old name गार्ड मोड / anti-theft): 5 seconds later the phone locks; if anyone else touches / picks up the phone a loud siren rings, a warning shows, a photo is taken and the trusted number gets SMS with the exact GPS location again every few minutes. Call it when the user asks to turn on / start Screen Guard / गार्ड मोड / phone की रखवाली (optionally for N minutes). It can ONLY turn it ON - you can never turn it off: if asked to turn it off, tell him to unlock the phone himself, show his face to the warning screen camera, or say his secret word. Tell the user exactly what it returns.")
             .put("parameters", JSONObject().put("type", "OBJECT")
                 .put("properties", JSONObject().put("minutes", JSONObject().put("type", "INTEGER").put("description", "Optional: for how many minutes (0 or empty = until the owner turns it off)")))))
-        // 13 नवंबर 2026 (मालिक): DK लाइव बोलने पर DKAI Terminal में खुद कमांड चलाए + Terminal की पूरी जानकारी
-        .put(JSONObject().put("name", "terminal")
-            .put("description", "Run a shell command in the DKAI Terminal and get its real output, or (command empty / help) get full info about the terminal. " +
-                "Use when the user asks to run / चलाओ a command, do file work in the Workspace (folder बनाओ, फ़ाइलें दिखाओ, zip खोलो, डाउनलोड करो, फ़ोन की जानकारी), " +
-                "or asks what the terminal is / what it can do / how it works. Turn his words into ONE correct command yourself (e.g. फ़ाइलें दिखाओ -> ls -la, test फ़ोल्डर बनाओ -> mkdir test). " +
-                "If it returns CONFIRM_NEEDED, ask him first and call again with confirmed=true only after a clear yes. Tell only what it returns. " +
-                "WORK MODE (owner's rule): for a bigger job (e.g. बनाओ / ऐप बनाकर इंस्टॉल करो) do it step by step - one command per call, and after EVERY result tell him in one short Hindi line what happened and what is next. " +
-                "If a step FAILS, read the error, find the cause and run the fixing command yourself (the result says when no new yes is needed); stop after the result says STOP and explain what is stuck. " +
-                "Apps: `apk make <description>` writes the app and builds + installs the APK on this phone (no GitHub needed). " + com.dk.assistant.dkai.DkaiTerm.KNOWLEDGE)
-            .put("parameters", JSONObject().put("type", "OBJECT")
-                .put("properties", JSONObject()
-                    .put("command", JSONObject().put("type", "STRING").put("description", "The exact shell command (empty or help = info about the terminal)"))
-                    .put("confirmed", JSONObject().put("type", "BOOLEAN").put("description", "true only after the user clearly said yes to a command that deletes / moves / overwrites")))))
         .put(JSONObject().put("name", "notifications")
             .put("description", "Read the phone's recent notifications (messages, WhatsApp, calls missed, apps). Call it when the user asks क्या notification आया / किसका मैसेज आया / क्या लिखा है / कोई मैसेज आया क्या. Optional app = app or sender name to filter (e.g. WhatsApp, Rahul). Tell the user briefly who sent what - only what it returns.")
             .put("parameters", JSONObject().put("type", "OBJECT")

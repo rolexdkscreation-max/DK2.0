@@ -88,7 +88,6 @@ object LivePromise {
             "web_search" -> "इंटरनेट पर खोज रहा है" + (if (a.isNotEmpty()) ": $a" else "") + "…"
             "google_search" -> "इंटरनेट पर खोज रहा है…"
             "deep_think" -> "गहराई से सोच रहा है…"
-            "terminal" -> "Terminal में चला रहा है" + (if (a.isNotEmpty()) ": $a" else "") + "…"
             "phone_task" -> "फ़ोन पर काम कर रहा है" + (if (a.isNotEmpty()) ": $a" else "") + "…"
             "computer_task" -> "DK Computer काम शुरू कर रहा है…"
             "coding_task" -> "कोडिंग टीम को काम दे रहा है…"

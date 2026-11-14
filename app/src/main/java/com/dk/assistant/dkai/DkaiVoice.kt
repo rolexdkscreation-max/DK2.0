@@ -151,7 +151,7 @@ class DkaiVoice(private val s: DkaiScreen) {
 
         // मोड टैब
         tabs = LinearLayout(c).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER; setPadding(d(8f), 0, d(8f), d(10f)) }
-        for (m in DkaiMode.VOICE_TABS) tabs.addView(tabView(m), LinearLayout.LayoutParams(0, -2, 1f))
+        // 14 नवंबर 2026 (मालिक): Chat / Builder / Agent / Pipeline / Broadcast वाले मोड हटे - आवाज़ में अब टैब नहीं
         col.addView(tabs, LinearLayout.LayoutParams(-1, -2))
 
         // नीचे: (v) | माइक | (X)
@@ -333,7 +333,6 @@ class DkaiVoice(private val s: DkaiScreen) {
     private fun pickTab(m: DkaiMode) {
         if (m == voiceTab) return
         voiceTab = m
-        s.pickMode(m)                       // होम का मोड भी वही (लिखकर भेजो तो भी उसी मोड में)
         val note = DkaiCore.voiceModeNote(m)
         if (liveTalk()) DKAccessibilityService.instance?.gemLive?.pushNote(note) else pendingNote = note
         val tip = when (m) {

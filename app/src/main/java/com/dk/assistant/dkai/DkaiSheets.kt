@@ -15,39 +15,6 @@ import com.dk.assistant.*
  */
 object DkaiSheets {
 
-    private fun iconOf(m: DkaiMode) = when (m) {
-        DkaiMode.CHAT -> DkaiIcon.Kind.CHAT; DkaiMode.BUILDER -> DkaiIcon.Kind.BUILDER; DkaiMode.AGENT -> DkaiIcon.Kind.AGENT
-        DkaiMode.PIPELINE -> DkaiIcon.Kind.PIPELINE; DkaiMode.BROADCAST -> DkaiIcon.Kind.BROADCAST
-    }
-
-    private fun tintOf(m: DkaiMode) = when (m) {
-        DkaiMode.CHAT -> DkaiTheme.CYAN; DkaiMode.BUILDER -> DkaiTheme.VIOLET; DkaiMode.AGENT -> 0xFF60A5FA.toInt()
-        DkaiMode.PIPELINE -> 0xFF34D399.toInt(); DkaiMode.BROADCAST -> DkaiTheme.PINK
-    }
-
-    // ================================================================== Mode popup (Chat v)
-    fun modes(s: DkaiScreen, anchor: View) {
-        val c = s.activity
-        val box = LinearLayout(c).apply {
-            orientation = LinearLayout.VERTICAL; setPadding(DkaiUi.d(c, 10f), DkaiUi.d(c, 10f), DkaiUi.d(c, 10f), DkaiUi.d(c, 4f))
-            background = DkaiTheme.round(c, DkaiTheme.CARD, 18f, DkaiTheme.BORDER); elevation = DkaiUi.d(c, 12f).toFloat()
-        }
-        box.addView(DkaiUi.label(c, "Select Mode").apply { setPadding(DkaiUi.d(c, 6f), DkaiUi.d(c, 2f), 0, DkaiUi.d(c, 8f)) })
-        lateinit var layer: DkaiUi.Layer
-        for (m in DkaiKit.HOME_MODES) {
-            val r = DkaiKit.modeRow(m)
-            box.addView(DkaiUi.row(c, iconOf(m), r.title, r.sub, m == s.mode, tintOf(m)) {
-                DkaiUi.close(s.root, layer)
-                // 13 नवंबर 2026 (मालिक): Broadcast भी बाकी मोड जैसा - चुनते ही अलग पन्ना नहीं, यहीं मोड बदले; विषय भेजते ही काम
-                s.pickMode(m)
-            }.apply { minimumWidth = (c.resources.displayMetrics.widthPixels * 0.78f).toInt() })
-        }
-        val loc = IntArray(2); val rl = IntArray(2)
-        anchor.getLocationInWindow(loc); s.root.getLocationInWindow(rl)
-        val bottom = (s.root.height - (loc[1] - rl[1]) + DkaiUi.d(c, 8f)).coerceAtLeast(DkaiUi.d(c, 80f))
-        layer = DkaiUi.open(s.root, box, DkaiUi.Place.ANCHOR, anchorBottom = bottom, anchorEnd = DkaiUi.d(c, 12f))
-    }
-
     // ================================================================== AI Model sheet
     fun models(s: DkaiScreen) {
         val c = s.activity
@@ -90,30 +57,21 @@ object DkaiSheets {
         else !Prefs.oneKeyOn(c) && Prefs.key(c, id).isNotBlank()
 
     // ================================================================== + (Add to Prompt)
+    /** 14 नवंबर 2026 (मालिक): + = एक बार में 5 तक फोटो (Perplexity जैसा), या फ़ाइल / ऑडियो. zip प्रोजेक्ट (IDE) हटा */
     fun attach(s: DkaiScreen, anchor: View) {
         val c = s.activity
         lateinit var layer: DkaiUi.Layer
-        val (card, body) = DkaiUi.sheet(c, "Add to Prompt", "फोटो, आवाज़, zip प्रोजेक्ट, दस्तावेज़") { DkaiUi.close(s.root, layer) }
-        val kinds = listOf(DkaiIcon.Kind.IMAGE, DkaiIcon.Kind.MUSIC, DkaiIcon.Kind.ARCHIVE, DkaiIcon.Kind.DOC, DkaiIcon.Kind.SPARKLE)
-        val tints = listOf(DkaiTheme.CYAN, DkaiTheme.PINK, DkaiTheme.AMBER, 0xFF60A5FA.toInt(), DkaiTheme.VIOLET)
-        DkaiKit.ATTACH.forEachIndexed { i, r ->
-            body.addView(DkaiUi.row(c, kinds[i], r.title, r.sub, false, tints[i]) {
-                DkaiUi.close(s.root, layer)
-                when (i) {
-                    0 -> s.host.pickPhoto?.invoke() ?: s.host.attachMenu(anchor)
-                    1 -> s.pickAudio()
-                    2 -> s.pickZip()
-                    3 -> s.host.pickFile?.invoke() ?: s.host.attachMenu(anchor)
-                    else -> {
-                        val t = s.input.text.toString().trim()
-                        c.startActivity(Intent(c, ComputerActivity::class.java).putExtra("task",
-                            if (t.isNotEmpty()) "Create a well-formatted deliverable (report / document): $t" else "Create a well-formatted report on: "))
-                        if (t.isNotEmpty()) s.input.setText("")
-                    }
-                }
-            })
+        val (card, body) = DkaiUi.sheet(c, "Add to Prompt", "फोटो (${DkaiHomeCore.MAX_ATTACH} तक), फ़ाइल, आवाज़") { DkaiUi.close(s.root, layer) }
+        val rows = listOf(
+            Triple(DkaiIcon.Kind.IMAGE, "फोटो (${DkaiHomeCore.MAX_ATTACH} तक)" to "गैलरी से एक साथ कई फोटो - DK Computer देखेगा", DkaiTheme.CYAN) to { s.pickImages() },
+            Triple(DkaiIcon.Kind.DOC, "फ़ाइल" to "PDF, text या फोटो फ़ाइल", 0xFF60A5FA.toInt()) to { s.pickFiles() },
+            Triple(DkaiIcon.Kind.MUSIC, "ऑडियो से लिखो" to "आवाज़ की फ़ाइल -> लिखा हुआ text", DkaiTheme.PINK) to { s.pickAudio() },
+        )
+        for ((r, go) in rows) {
+            body.addView(DkaiUi.row(c, r.first, r.second.first, r.second.second, false, r.third) { DkaiUi.close(s.root, layer); go() })
         }
         layer = DkaiUi.open(s.root, card)
+        anchor.isPressed = false
     }
 
     // ================================================================== Profile (Avatar)
@@ -128,7 +86,7 @@ object DkaiSheets {
             setPadding(DkaiUi.d(c, 2f), DkaiUi.d(c, 12f), 0, 0)
         })
         body.addView(DkaiUi.twoButtons(c,
-            DkaiUi.button(c, "Manage Memory", DkaiTheme.FIELD, DkaiTheme.SUB) { DkaiUi.close(s.root, layer); DkaiSettings(s).memory() },
+            DkaiUi.button(c, "Manage Memory", DkaiTheme.FIELD, DkaiTheme.SUB) { DkaiUi.close(s.root, layer); c.startActivity(android.content.Intent(c, MemoryActivity::class.java)) },
             DkaiUi.button(c, "Save") {
                 Prefs.edit(c) { putString("user_name", name.text.toString().trim().take(40)) }
                 DkaiUi.close(s.root, layer); s.toast("नाम सेव हो गया")

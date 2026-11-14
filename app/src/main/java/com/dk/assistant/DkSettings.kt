@@ -52,9 +52,6 @@ object DkSettings {
             listOf("स्मार्ट vad", "smart vad", "स्मार्ट वैड", "शोर को बात", "vad")),
         Item("slim_tools", "DK लाइव के हल्के tools", "voice", LiveSmooth.PREF_SLIM_TOOLS, true,
             listOf("हल्के tools", "हल्के टूल", "slim tools", "लाइट टूल")),
-        // 13 नवंबर 2026 (मालिक): नया UI (DKAI होम) बोलकर भी - ऑफ = क्लासिक होम
-        Item("dkai_home", "नया DKAI होम (नया UI; ऑफ = क्लासिक होम)", "ui", "dkai_home", true,
-            listOf("नया ui", "नया यूआई", "new ui", "dkai", "डीकेएआई", "नया होम", "क्लासिक होम", "classic home", "पुराना होम", "पुराना ui")),
         Item("glow", "सुनते/बोलते समय किनारे की चमक", "orb", "edge_glow", true,
             listOf("चमक", "glow", "ग्लो", "किनारे की चमक", "edge")),
         Item("memory", "लोकल याददाश्त", "profile", "local_memory_on", true,

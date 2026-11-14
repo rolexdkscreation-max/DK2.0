@@ -8,7 +8,6 @@ import android.view.View
 import android.view.ViewGroup
 import android.view.animation.DecelerateInterpolator
 import android.widget.FrameLayout
-import android.widget.ImageView
 
 /**
  * ऐप खुलते ही: गहरी पृष्ठभूमि पर DK logo हल्के नीयन ग्लो के साथ स्मूद उभरे (~1.2s), फिर home पर fade.
@@ -43,14 +42,15 @@ object DKSplash {
         }
         root.addView(glow, FrameLayout.LayoutParams(glowSize, glowSize, Gravity.CENTER))
         val logoSize = (288 * dp).toInt()        // Android 12 splash icon जितना - वही जगह
-        val logo = ImageView(a).apply {
-            setImageResource(R.drawable.dk_splash_logo)
+        // 14 नवंबर 2026 (मालिक: "Perplexity के लोगो जैसा"): लोगो 3D में एक पूरा चक्कर घूमकर आए
+        val logo = com.dk.assistant.dkai.Logo3D(a, R.drawable.dk_splash_logo).apply {
             alpha = 0f; scaleX = 0.88f; scaleY = 0.88f; translationY = 10 * dp
         }
         root.addView(logo, FrameLayout.LayoutParams(logoSize, logoSize, Gravity.CENTER))
         decor.addView(root, ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
 
         val ease = DecelerateInterpolator(1.6f)
+        logo.spin(TOTAL_MS - 100)
         logo.animate().alpha(1f).scaleX(1f).scaleY(1f).translationY(0f).setDuration(650).setStartDelay(60).setInterpolator(ease).withLayer().start()
         glow.animate().alpha(1f).scaleX(1f).scaleY(1f).setDuration(800).setStartDelay(120).setInterpolator(ease)
             .withEndAction { glow.animate().alpha(0.65f).setDuration(280).start() }.start()

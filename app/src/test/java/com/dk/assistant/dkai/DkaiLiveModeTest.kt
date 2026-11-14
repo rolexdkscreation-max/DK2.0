@@ -46,19 +46,6 @@ class DkaiLiveModeTest {
         assertFalse(DkaiCore.chatLabel(4).contains("#"))
     }
 
-    // ---------------------------------------------------------------- Broadcast: किरदार + अंदाज़
-    @Test fun scriptKeepsTone() {
-        val l = DkaiKit.parseScript("Narrator (female, calm storytelling): एक गाँव था।\nRamu (male) [scared]: कौन है वहाँ?\nSita (female): (धीरे से) मैं हूँ।")
-        assertEquals(3, l.size)
-        assertEquals("calm storytelling", l[0].tone)
-        assertTrue(l[0].female)
-        assertEquals("scared", l[1].tone); assertFalse(l[1].female)
-        assertEquals("धीरे से", l[2].tone); assertEquals("मैं हूँ।", l[2].text)
-        // सेव -> फिर पढ़ो = वही
-        val back = DkaiKit.parseScript(DkaiCast.scriptText(l))
-        assertEquals(l.map { Triple(it.speaker, it.female, it.tone) }, back.map { Triple(it.speaker, it.female, it.tone) })
-        assertEquals(l.map { it.text }, back.map { it.text })
-    }
 
     @Test fun everyCharacterOwnVoice() {
         val names = listOf("Narrator" to true, "Ramu" to false, "Sita" to true, "Raja" to false, "Rani" to true, "Mantri" to false)
@@ -95,31 +82,8 @@ class DkaiLiveModeTest {
         assertEquals("Podcast", DkaiKit.formatFor("AI का भविष्य"))
     }
 
-    @Test fun partialScriptShowsTail() {
-        val (done, tail) = DkaiCast.partial("Narrator (female): पहली लाइन\nRamu (male): आधी ला")
-        assertEquals(1, done.size); assertEquals("Ramu (male): आधी ला", tail)
-        assertTrue(DkaiCast.partial("बस शुरू").first.isEmpty())
-    }
 
-    @Test fun broadcastFilesDeleteTogether() {
-        val dir = createTempDir("bcast")
-        try {
-            File(dir, "broadcast_3.wav").writeText("w"); File(dir, "broadcast_3.json").writeText("j")
-            File(dir, "share").mkdirs(); File(dir, "share/broadcast_3_x100.m4a").writeText("m"); File(dir, "share/broadcast_30_x100.m4a").writeText("other")
-            File(dir, "broadcast_4.wav").writeText("w")
-            assertEquals(3, DkaiCast.delete(dir, 3))
-            assertFalse(File(dir, "broadcast_3.wav").exists())
-            assertTrue("दूसरा Broadcast बचा रहे", File(dir, "broadcast_4.wav").exists())
-            assertTrue(File(dir, "share/broadcast_30_x100.m4a").exists())
-        } finally { dir.deleteRecursively() }
-    }
 
-    @Test fun broadcastModeBuildsOnHome() {
-        val sc = src("dkai/DkaiScreen.kt")
-        assertTrue(sc.contains("DkaiMode.BROADCAST -> cast.start(t)"))
-        assertTrue(src("dkai/DkaiCastCard.kt").contains("quickStream"))       // लाइव लिखना
-        assertTrue(src("dkai/DkaiCastCard.kt").contains("v.play()"))          // आवाज़ अपने-आप
-    }
 
     // ---------------------------------------------------------------- चुने टैब में ही काम
     @Test fun liveFollowsSelectedTab() {
@@ -158,18 +122,6 @@ class DkaiLiveModeTest {
         assertTrue(src("AgentRunner.kt").contains("confirmVoice("))
     }
 
-    @Test fun terminalAsksForAnythingThatChanges() {
-        assertTrue(DkaiTerm.readOnly("ls -la"))
-        assertTrue(DkaiTerm.readOnly("cat a.txt | grep x"))
-        assertTrue(DkaiTerm.readOnly("git status"))
-        assertFalse(DkaiTerm.readOnly("git clone https://github.com/a/b"))
-        assertFalse(DkaiTerm.readOnly("mkdir x"))
-        assertFalse(DkaiTerm.readOnly("ls; touch y"))
-        assertFalse(DkaiTerm.readOnly("echo hi > a.txt"))
-        assertFalse(DkaiTerm.readOnly("find . -delete"))
-        assertEquals(DkaiTerm.Gate.Run, DkaiTerm.liveGate("ls -la", false, null, 0L, "", 1L))
-        assertEquals(DkaiTerm.Gate.Ask, DkaiTerm.liveGate("npm install", false, null, 0L, "", 1L))
-    }
 
     // ---------------------------------------------------------------- GitHub Clone (codeload zip की ऊपर वाली परत हटे)
     @Test fun cloneZipStripsTopFolder() {
@@ -185,14 +137,8 @@ class DkaiLiveModeTest {
             assertEquals(2, DkaiZip.unzip(zip, dest))
             assertEquals("hi", File(dest, "README.md").readText())
             assertTrue(File(dest, "app/a.kt").isFile)
-            assertTrue(src("dkai/DkaiPanels.kt").contains("Clone (URL से)"))
+            assertTrue(src("dkai/DkaiZip.kt").contains("fun clone(c: Context, owner: String, repo: String, folder: String)"))
         } finally { tmp.deleteRecursively() }
     }
 
-    @Test fun noOfficialGithubCard() {
-        val d = src("dkai/DkaiDevTools.kt")
-        assertFalse("DKAI Official कार्ड हटा (मालिक का GitHub नहीं खुलना चाहिए)", d.contains("Creator & Community\")"))
-        assertFalse(d.contains("Uri.parse(COMMUNITY)"))
-        assertTrue(src("dkai/DkaiSettings.kt").contains("s.devTools()"))   // Dev Tools अब सेटिंग्स के अंदर
-    }
 }
