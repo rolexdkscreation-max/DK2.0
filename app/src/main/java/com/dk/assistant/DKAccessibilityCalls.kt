@@ -275,7 +275,12 @@ internal fun DKAccessibilityService.callerFromScreen(): String {
     } catch (e: Exception) { "" }
 }
 
-internal suspend fun DKAccessibilityService.answerCall(speakerOn: Boolean): String {
+internal suspend fun DKAccessibilityService.answerCall(askedSpeaker: Boolean): String {
+    // 14 नवंबर 2026 (मालिक): Bluetooth जुड़ा = आवाज़ Bluetooth पर, नहीं = speaker पर ही
+    val bt = CallRoute.btConnected(this)
+    val speakerOn = CallRoute.wantSpeaker(bt)
+    if (askedSpeaker && bt) DKLog.d("कॉल: Bluetooth जुड़ा है - speaker की जगह Bluetooth")
+    if (bt) scope.launch { delay(1500); if (calls.inCall || AppCall.ongoing()) CallRoute.toBt(this@answerCall) }
     // v4: WhatsApp / Instagram / Facebook / Messenger… की कॉल = उसी notification का Answer बटन, फिर जाँच कि सच में उठी
     if (!calls.simRinging && AppCall.ringing()) {
         val app = AppCall.current?.app.orEmpty()
