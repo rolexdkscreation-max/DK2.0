@@ -21,6 +21,13 @@ object DkaiChatFiles {
     const val CELL = 640
     const val PDF_PAGES = 2
 
+    /** 14 नवंबर 2026: आख़िरी जोड़ी फोटो (JPEG base64) - DK Live का look_photo इसे देखता है */
+    @Volatile var lastImage: String? = null
+        private set
+    @Volatile var lastImageAt = 0L
+        private set
+    fun remember(b64: String?, now: Long = System.currentTimeMillis()) { if (b64 != null) { lastImage = b64; lastImageAt = now } }
+
     class Ready(val imageB64: String?, val names: List<String>, val texts: List<Pair<String, String>>, val images: Int)
 
     /** कितनी फोटो -> (कॉलम, पंक्ति) */
@@ -34,7 +41,7 @@ object DkaiChatFiles {
         mime.startsWith("text/") || mime.contains("json") || mime.contains("xml") ||
             Regex("\\.(txt|md|csv|json|xml|kt|java|py|js|ts|html|css|log)$", RegexOption.IGNORE_CASE).containsMatchIn(name)
 
-    const val SYSTEM = "तुम DK AI हो। यूज़र ने चैट में फोटो/फ़ाइल भेजी है। जो दिख रहा है / लिखा है उसी के आधार पर हिंदी में साफ़ जवाब दो। " +
+    const val SYSTEM = "तुम DK AI हो। यूज़र ने चैट में फोटो/फ़ाइल भेजी है (फोटो इसी संदेश के साथ जुड़ी है - तुम उसे देख सकते हो, कभी मत कहो कि फोटो नहीं पढ़ सकते)। जो दिख रहा है / लिखा है उसी के आधार पर हिंदी में साफ़ जवाब दो। " +
         "जो फोटो/फ़ाइल में नहीं है, उसे अपने मन से मत जोड़ो। जवाब सिर्फ़ JSON में: {\"say\": \"जवाब\"}"
 
     /** AI को जाने वाला सवाल (फ़ाइलों के नाम + text फ़ाइलों का लिखा) */

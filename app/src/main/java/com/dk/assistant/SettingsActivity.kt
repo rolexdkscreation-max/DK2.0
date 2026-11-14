@@ -230,6 +230,12 @@ class SettingsActivity : AppCompatActivity() {
                 }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, (48 * dp).toInt()).apply { marginStart = (6 * dp).toInt() })
             } else box.addView(TextView(this).apply { text = "›"; textSize = 28f; setTextColor(0x99FFFFFF.toInt()) })
             if (id == "ui" && searchHit == null) txt.addView(MenuQuick.glassSlider(this), LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, (40 * dp).toInt()).apply { topMargin = (4 * dp).toInt() })
+            // 14 नवंबर 2026 (मालिक): डार्क / लाइट मोड सेटिंग खोलते ही दिखे (अंदर जाए बिना)
+            if (id == "ui" && searchHit == null) txt.addView(SwitchCompat(this).apply {
+                text = "लाइट मोड (बंद = डार्क)"; textSize = 13f; setTextColor(0xCCFFFFFF.toInt())
+                isChecked = com.dk.assistant.dkai.DkaiTheme.light
+                setOnCheckedChangeListener { _, on -> com.dk.assistant.dkai.DkaiTheme.setLight(this@SettingsActivity, on); save(false); recreate() }
+            }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, (44 * dp).toInt()))
             val lp = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
             lp.topMargin = (12 * dp).toInt()
             container.addView(box, lp)

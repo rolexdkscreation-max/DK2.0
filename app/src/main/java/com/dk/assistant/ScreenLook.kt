@@ -73,7 +73,7 @@ object ScreenLook {
             "Tell the user exactly this, briefly, in his language; do not add anything:$ownNote\n$ans"
     }
 
-    private fun vision(keys: List<String>, ask: String, jpegB64: String?): String? {
+    internal fun vision(keys: List<String>, ask: String, jpegB64: String?): String? {
         val parts = JSONArray().put(JSONObject().put("text", ask))
         if (jpegB64 != null) parts.put(JSONObject().put("inline_data", JSONObject().put("mime_type", "image/jpeg").put("data", jpegB64)))
         val body = JSONObject().put("contents", JSONArray().put(JSONObject().put("role", "user").put("parts", parts)))

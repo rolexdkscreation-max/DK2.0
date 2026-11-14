@@ -348,10 +348,13 @@ class BrainManager(private val ctx: Context) {
                 for (p in order) {
                     try {
                         val r = when (p) {
-                            WebSearch.Provider.TAVILY -> fromRaw(question, query, WebCite.TAVILY, failed,
-                                withContext(Dispatchers.IO) { WebSearchNet.tavilyRaw(tKey, query, news) })
-                            WebSearch.Provider.EXA -> fromRaw(question, query, WebCite.EXA, failed,
-                                withContext(Dispatchers.IO) { WebSearchNet.exaRaw(eKey, query, if (news) WebCite.sinceIso(System.currentTimeMillis()) else "") })
+                            // 14 नवंबर 2026 (मालिक: "लेटेस्ट जानकारी नहीं निकाल पाता"): ख़बर वाले सवाल पर सिर्फ़ पिछले 1 दिन का फ़िल्टर था -
+                            // उस दिन कुछ न छपा हो (नया गाना / 2-3 दिन पुरानी ख़बर) = खाली = अगली सेवा = आख़िर में कुछ नहीं.
+                            // अब खाली मिले तो उसी सेवा से बिना दिन-फ़िल्टर एक बार और (ताज़ा तारीख़ खोज-वाक्य में पहले से है)
+                            WebSearch.Provider.TAVILY -> freshOrWide(news) { n -> fromRaw(question, query, WebCite.TAVILY, failed,
+                                withContext(Dispatchers.IO) { WebSearchNet.tavilyRaw(tKey, query, n) }) }
+                            WebSearch.Provider.EXA -> freshOrWide(news) { n -> fromRaw(question, query, WebCite.EXA, failed,
+                                withContext(Dispatchers.IO) { WebSearchNet.exaRaw(eKey, query, if (n) WebCite.sinceIso(System.currentTimeMillis()) else "") }) }
                             WebSearch.Provider.GEMINI -> gemini().let { g ->
                                 g.copy(g = g.g?.copy(provider = WebCite.GOOGLE, failed = failed.toList()))
                             }
@@ -385,6 +388,12 @@ class BrainManager(private val ctx: Context) {
                 throw last ?: AiException(0, if (lastFail == SearchGuard.Fail.NO_KEY) "NO_KEY" else "all_down")
             }
         }
+    }
+
+    /** ख़बर-फ़िल्टर (1 दिन) से खाली = वही सेवा बिना फ़िल्टर ([SearchFocus.wideRetry]) */
+    private suspend fun freshOrWide(news: Boolean, run: suspend (Boolean) -> SearchResult): SearchResult = try { run(news) } catch (e: AiException) {
+        if (!SearchFocus.wideRetry(news, e.code, e.message)) throw e
+        DKLog.d("खोज: पिछले 1 दिन में कुछ नहीं - बिना दिन-फ़िल्टर दोबारा"); run(false)
     }
 
     /** 13 नवंबर 2026: इस खोज का सुधरा खोज-वाक्य (Google वाली खोज भी इसी से) */
@@ -681,7 +690,14 @@ class BrainManager(private val ctx: Context) {
      * चैट का इतिहास न भेजा जाता है, न बदला जाता है. फ़ोटो सिर्फ़ उन AI को जो फ़ोटो पढ़ते हैं.
      */
     suspend fun teach(system: String, prompt: String, imageB64: String?): String = withContext(Dispatchers.IO) {
-        val list = rankedForChat()
+        // 14 नवंबर 2026 (मालिक: फोटो डाली तो "फोटो पढ़ने की क्षमता नहीं"): जड़ - पहली चुनी कंपनी फोटो न समझे (जैसे Groq)
+        // तो फोटो हटाकर सिर्फ़ text जाता था. अब फोटो हो तो फोटो समझने वाली कंपनियाँ पहले ([visionFirst]);
+        // चैट में कोई ऐसी न हो तो DK Live वाली Gemini key से फोटो देखो.
+        val list = visionFirst(rankedForChat(), imageB64 != null)
+        if (imageB64 != null && list.none { it.vision }) {
+            val keys = (Prefs.liveGeminiKeys(ctx) + searchKeys()).filter { it.isNotBlank() }.distinct()
+            if (keys.isNotEmpty()) ScreenLook.vision(keys, system + "\n\n" + prompt, imageB64)?.let { lastUsed = "Google Gemini"; return@withContext it }
+        }
         if (list.isEmpty()) {
             val all = Providers.all.filter { clientFor(it) != null }
             throw if (all.isEmpty()) AiException(-1, "NO_KEY") else exhausted(all)
@@ -709,6 +725,9 @@ class BrainManager(private val ctx: Context) {
         }
         throw lastError ?: AiException(-1, "NO_KEY")
     }
+
+    /** फोटो साथ हो = फोटो समझने वाली कंपनियाँ पहले (बाकी क्रम वही) */
+    private fun visionFirst(list: List<Provider>, image: Boolean): List<Provider> = if (image) LivePhoto.visionFirst(list) { it.vision } else list
 
     suspend fun quickText(system: String, prompt: String): String? = withContext(Dispatchers.IO) {
         for (p in rankedForChat()) {

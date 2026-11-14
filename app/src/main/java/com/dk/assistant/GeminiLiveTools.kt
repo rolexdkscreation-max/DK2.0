@@ -52,6 +52,8 @@ internal suspend fun GeminiLive.callTool(action: String, from: String): String {
 internal suspend fun GeminiLive.webSearchTool(query: String): String {
     val q = query.trim().ifBlank { turnUser.trim() }
     if (q.length < 2) return "Ask the user what to search."
+    // 14 नवंबर 2026 (मालिक): DK Live में "डीप रिसर्च" बोला = Exa / Tavily / Linkup / Firecrawl वाली गहरी खोज (पहले सिर्फ़ चैट में थी)
+    if (com.dk.assistant.research.DeepResearch.asked(q) || com.dk.assistant.research.DeepResearch.asked(turnUser)) return deepResearchTool(q)
     DKState.hint(LivePromise.hintFor("web_search", q))
     setMode(Mode.THINKING)
     // v3.87: Live की खोज = Live की अपनी Gemini key पहले; fail = ख़ुद एक बार दोबारा (छोटी, तेज़ खोज)
@@ -107,6 +109,31 @@ internal suspend fun GeminiLive.webSearchTool(query: String): String {
     log("web_search: \"${q.take(40)}\" -> ${res.text.length} अक्षर, ${res.sources.size} स्रोत")
     return "SEARCH RESULT (verified from several websites): " + WebCite.strip(res.text).take(3200) + "\n" + LiveSearch.sourcesLine(res.sources) +
         "\nSpeak the answer from this result now, briefly and naturally. Do not read URLs."
+}
+
+/**
+ * 14 नवंबर 2026 (मालिक: "DK Live में डीप रिसर्च नहीं करता, सारी key डाली है"): जड़ - गहरी खोज सिर्फ़ DKAI चैट से जुड़ी थी,
+ * Live के पास उसका कोई tool ही नहीं था (web_search = एक छोटी खोज). अब deep_research tool = वही [DeepResearchRun]
+ * (कई उप-सवाल, कई वेबसाइट, पूरे पेज, 2 स्रोत से पक्का). ज़्यादा देर लगे = साधारण ताज़ा खोज से जवाब (यूज़र रुके नहीं).
+ */
+internal suspend fun GeminiLive.deepResearchTool(query: String): String {
+    val q = query.trim().ifBlank { turnUser.trim() }
+    if (q.length < 2) return "Ask the user what to research."
+    setMode(Mode.THINKING)
+    DKState.hint("डीप रिसर्च शुरू…")
+    log("deep_research: \"${q.take(60)}\"")
+    val r = try {
+        withTimeoutOrNull(LiveDeep.TIMEOUT_MS) {
+            com.dk.assistant.research.DeepResearchRun(svc.applicationContext) { step -> DKState.hint(step) }.run(q)
+        }
+    } catch (e: CancellationException) { throw e } catch (e: Exception) { log("deep_research fail: ${e.message?.take(100)}"); null }
+    if (r == null || r.text.isBlank()) {
+        log("deep_research: समय पर पूरी नहीं - साधारण ताज़ा खोज")
+        return webSearchTool(com.dk.assistant.research.DeepResearch.topic(q))
+    }
+    if (r.sources.isNotEmpty()) toolSources = Grounding.merge(toolSources, r.sources)
+    log("deep_research: ${r.text.length} अक्षर, ${r.sources.size} स्रोत" + if (r.deep) "" else " (गहरी खोज नहीं हो पाई)")
+    return LiveDeep.result(r.text, r.deep) + "\n" + LiveSearch.sourcesLine(r.sources)
 }
 
 /**
@@ -499,6 +526,9 @@ internal fun GeminiLive.runTools(calls: JSONArray) {
                 } }
                 "social_media_task_control" -> com.dk.assistant.agent.android.SocialAgent.control(args)
                 "web_search" -> webSearchTool(args.optString("query"))
+                "deep_research" -> deepResearchTool(args.optString("query"))
+                // 14 नवंबर 2026 (मालिक: "DK Live बोलता है फोटो पढ़ने की क्षमता नहीं"): चैट में जोड़ी / गैलरी की ताज़ा फोटो देखो
+                "look_photo" -> LivePhoto.liveTool(svc, args.optString("question").ifBlank { DKState.lastUser.trimEnd('…') })
                 "current_time" -> { NowClock.syncAsync(); NowClock.toolAnswer() }
                 "deep_think" -> {
                     DKState.set(Mode.THINKING)
@@ -519,7 +549,7 @@ internal fun GeminiLive.runTools(calls: JSONArray) {
                 "Tool failed (${e.javaClass.simpleName}) - tell the user it could not be done."
             }
             val resp = JSONObject().put("toolResponse", JSONObject().put("functionResponses", JSONArray().put(
-                JSONObject().put("id", id).put("name", callName).put("response", JSONObject().put("result", result.take(if (name == "deep_think" || name == "connector_task" || name == "web_search") 4000 else 1500) + (if (held) com.dk.assistant.insights.InsightsAgent.HOLD_NOTE else ""))))))
+                JSONObject().put("id", id).put("name", callName).put("response", JSONObject().put("result", result.take(if (name == "deep_think" || name == "connector_task" || name == "web_search" || name == "deep_research") 4000 else 1500) + (if (held) com.dk.assistant.insights.InsightsAgent.HOLD_NOTE else ""))))))
             log("tool $name ${(System.currentTimeMillis() - tStart)} ms: ${result.take(if (name == "connector_task") 24 else 80)}")
             if (name != "remember_fact") lastEvidenceAt = System.currentTimeMillis()
             // v3.67: नतीजा "अभी हुआ नहीं" -> इसके बाद Gemini "हो गया" बोले तो वह नहीं बजेगा
