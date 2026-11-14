@@ -130,6 +130,13 @@ object TurnEnd {
         return !(IMPERATIVE.containsMatchIn(last) || IMPERATIVE_LATIN.matches(last)) || words.size <= EARLY_CMD_MAX_WORDS
     }
 
+    /** 14 नवंबर 2026: एक ही शब्द और वह खुद पूरा जवाब नहीं ("हाँ / नहीं / ठीक / ok / धन्यवाद" जैसे नहीं) = बात का टुकड़ा */
+    private val ONE_WORD_DONE = Regex("(?i)^(हाँ|हां|नहीं|नही|ना|जी|ठीक|अच्छा|ओके|धन्यवाद|शुक्रिया|बस|रुको|चुप|हेलो|हैलो|नमस्ते|yes|no|ok|okay|haan|nahi|stop|thanks|hello|hi|hey)[?.!।]*$")
+    fun fragment(caption: String): Boolean {
+        val words = caption.trim().trimEnd('.', ',', '।', '…', ' ').split(Regex("\\s+")).filter { it.isNotBlank() }
+        return words.size == 1 && !caption.trim().endsWith("?") && !ONE_WORD_DONE.matches(words[0])
+    }
+
     /** caption का text पूरा वाक्य लगता है (आखिरी शब्द से) - "और / तो / कि" वाले continues() पहले ही रोकता है */
     fun complete(caption: String): Boolean {
         val t = caption.trim().trimEnd('.', ',', '।', '…', ' ')
@@ -184,6 +191,8 @@ object TurnEnd {
         // caption आपकी आख़िरी आवाज़ के बाद बदला = आख़िरी शब्द (लगभग) लिखे जा चुके
         val heard = captionAt > 0 && captionAt >= lastTalkAt
         if (heard && complete(caption)) return if (long) base.coerceAtMost(neutral) else if (earlyOk(caption)) EARLY_END_MS else base
+        // 14 नवंबर 2026 (मालिक: "DK पहले पूरा सुने, आधी बात पर जवाब न दे"): सिर्फ़ एक अधूरा शब्द ("मेरा" / "वो") = आगे बोलेंगे
+        if (heard && fragment(caption)) return CONT_END_MS
         if (heard && now - captionAt >= CAPTION_SETTLE_MS) return neutral
         // पूरा नहीं लगता / caption पीछे: Live caption आवाज़ से ~0.4-0.6s पीछे चलता है - "…और" लिखा जाए उतना रुको
         return maxOf(neutral, CAPTION_WAIT_MS)

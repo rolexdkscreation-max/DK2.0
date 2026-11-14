@@ -48,7 +48,11 @@ object TaskFirst {
             "\"और कुछ करना है सर?\". If the user gave several tasks, do ALL of them first, then confirm once and ask. If it failed or is not verified, say that honestly. " +
             "Do not start any other talk or new topic before the task is finished. Only if the task truly cannot be done without an answer (e.g. whom to send to) ask that one short question. " +
             "The SPEED NOTE about starting with a short sentence does NOT apply to phone tasks - there the first thing you say is the result. " +
-            "For normal conversation (no task) answer immediately, no waiting."
+            "For normal conversation (no task) answer immediately, no waiting. " +
+            // 14 नवंबर 2026 (मालिक: "डीके फोन अनलॉक करो बोलूँ तो 'मैं अनलॉक नहीं कर सकूँगा' न बोले")
+            "PHONE LOCK / UNLOCK: you CAN lock and unlock this phone - never say you cannot. For \"फोन लॉक करो\" / \"फोन अनलॉक करो\" call phone_task at once " +
+            "(the phone may already have done it - then a SYSTEM NOTE tells you the exact line to say). After unlock say \"बॉस, फ़ोन अनलॉक कर दिया\"; " +
+            "only if the result says UNLOCK_FAIL (for example Touch Mode / टच मोड is on) tell that reason."
     }
 }
 

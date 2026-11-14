@@ -983,6 +983,17 @@ class GeminiLive(internal val svc: DKAccessibilityService, internal val agent: A
         curKeys = keys; curModels = models
         if (stopped) return@withContext "जुड़ने से पहले बंद"
         mi = 0; var fails = 0
+        var softQuota = 0                                 // 14 नवंबर 2026: एक key पर छोटी रोक (प्रति मिनट / एक साथ सत्र) कितनी बार
+        /** एक key पर छोटी रोक: मॉडल बंद नहीं - लिखने वाला (उसी key पर दूसरा सत्र) बंद करके जगह, थोड़ा रुककर उसी से फिर ([LiveOneKey]) */
+        suspend fun softWait(where: String) {
+            if (LiveOneKey.dropCaption(keys.size, Prefs.captionOwnKey(svc).isNotBlank()) && caption != null) {
+                caption?.stop(); caption = null
+                log("एक key: लिखने वाला (caption) बंद किया - उसी key पर Live की जगह खाली")
+            }
+            val w = LiveOneKey.waitMs(softQuota); softQuota++
+            log("एक key पर छोटी रोक ($where) - मॉडल बंद नहीं, ${w} ms रुककर उसी से फिर (#$softQuota)")
+            delay(w)
+        }
         var lostAt = 0L                                   // नवंबर 2026: connection कब टूटा (फिर जुड़ने तक कितनी रुकावट)
         zombieSwaps.reset(); zombieFor = 0L; unheardSwapAt = 0L; replayAudio = null; recoverWhy = null; utt.clear(); lastAnyServerAt = 0L
         var quickDrops = 0                               // judne ke turant baad baar-baar tootna
@@ -1104,6 +1115,7 @@ class GeminiLive(internal val svc: DKAccessibilityService, internal val agent: A
                             r.contains("api key") || r.contains("api_key") || code == 401 || code == 403 ->
                                 if (switchKey("key गलत/बंद (code=$code)")) continue else throw Fatal("Gemini key गलत है या Live की इजाज़त नहीं (${LiveFailWhy.detail(code, reason)})", kind = LiveFailWhy.Kind.KEY)
                             LiveRace.shouldBlockModel(code, r, tried = rc.lastFailCombo != null) -> {
+                                if (LiveOneKey.soft(keys.size, r, softQuota)) { softWait("setup"); continue }
                                 blockModel(model, "setup", r)
                                 // v4.7 (मालिक: "limit खत्म = तुरंत दूसरी key"): पहले उसी key के बाकी मॉडल एक-एक कर (हर एक पर
                                 // नया connection = सेकंडों की देर), फिर दूसरी key. अब सीधे दूसरी key; वह न हो तो बाकी मॉडल
@@ -1389,6 +1401,8 @@ class GeminiLive(internal val svc: DKAccessibilityService, internal val agent: A
                         if (switchKey("key बंद हो गई")) continue else throw Fatal("Gemini key बंद हो गई")
                     }
                     if (isQuota(code, reason.lowercase())) {
+                        if (turnActive && LiveOneKey.soft(keys.size, reason, softQuota)) finishTurn()
+                        if (LiveOneKey.soft(keys.size, reason, softQuota)) { softWait("बातचीत के बीच"); continue }
                         blockModel(model, "बातचीत के बीच", reason)
                         if (turnActive) finishTurn()
                         // नवंबर 2026 (मालिक): limit खत्म = पहले इसी key का अगला Live मॉडल (दौड़ का क्रम [LiveRace.stickyOrder]),
@@ -1403,7 +1417,7 @@ class GeminiLive(internal val svc: DKAccessibilityService, internal val agent: A
                     if (turnActive) finishTurn()
                     // 20 sec se pehle toota = network/server dikkat -> har baar zyada ruko (battery bachao)
                     val lasted = System.currentTimeMillis() - upAt
-                    if (goAwayDrop || lasted >= 20_000) quickDrops = 0 else quickDrops++
+                    if (goAwayDrop || lasted >= 20_000) { quickDrops = 0; softQuota = 0 } else quickDrops++
                     goAwayDrop = false
                     // नवंबर 2026 (मालिक): 7 बार के बाद हार नहीं - ✕ दबाने तक कोशिश. इंतज़ार 1, 2, 4, 8, 15s (+ random)
                     if (quickDrops >= LiveStay.WEAK_NET_TELL_AT && !weakNetTold) {

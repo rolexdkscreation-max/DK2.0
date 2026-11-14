@@ -22,7 +22,7 @@ object SettingsSearch {
         "profile" to "प्रोफ़ाइल", "lang" to "भाषा / Language", "ui" to "दिखावट (UI कस्टमाइज़ेशन)", "brain" to "AI दिमाग",
         "brain_live" to "AI दिमाग • DK लाइव", "brain_chat" to "AI दिमाग • DK चैट", "brain_coder" to "AI दिमाग • कोडिंग एजेंट",
         "brain_pc" to "AI दिमाग • DK कंप्यूटर", "brain_web" to "AI दिमाग • वेबसाइट बिल्डर", "voice" to "आवाज़", "orb" to "ओर्ब और चेहरा",
-        "access" to "Accessibility", "phonelock" to "फ़ोन लॉक / अनलॉक", "guard" to "स्क्रीन गार्ड", "perms" to "परमिशन", "computer" to "DK कंप्यूटर", "coder" to "कोडिंग एजेंट",
+        "access" to "Accessibility", "phonelock" to "फ़ोन लॉक / अनलॉक", "guard" to "टच मोड", "perms" to "परमिशन", "computer" to "DK कंप्यूटर", "coder" to "कोडिंग एजेंट",
         "social" to "सोशल रिव्यू", "reels" to "रील गिनती और लिमिट",
         ACT_AUTO to "ऑटोनोमस मोड", ACT_TEMPLATES to "टेम्पलेट कमांड", ACT_CONNECTORS to "कनेक्टर", ACT_STORY to "स्टोरी राइटर एजेंट", ACT_BACKUP to "बैकअप",
         // नवंबर 2026: ऑटो रिप्लाई (ऑटोनोमस मोड के बाद - "ऑटो" खोजने पर पहले ऑटोनोमस मोड ही आए)
@@ -39,7 +39,7 @@ object SettingsSearch {
         Triple("cat_dk", "मेरा DK", "प्रोफ़ाइल • भाषा • दिखावट • ओर्ब और चेहरा") to listOf("profile", "lang", "ui", "orb"),
         Triple("cat_brain", "दिमाग और आवाज़", "AI दिमाग • आवाज़ • कोडिंग एजेंट • DK कंप्यूटर") to listOf("brain", "voice", "coder", "computer"),
         Triple("cat_auto", "ऑटोमेशन", "ऑटोनोमस मोड • टेम्पलेट कमांड • ऑटो रिप्लाई • Accessibility") to listOf("auto", "templates", "autoreply", "access"),
-        Triple("cat_security", "सुरक्षा", "फ़ोन लॉक • स्क्रीन गार्ड • परमिशन") to listOf("phonelock", "guard", "perms"),
+        Triple("cat_security", "सुरक्षा", "फ़ोन लॉक • टच मोड • परमिशन") to listOf("phonelock", "guard", "perms"),
         Triple("cat_social", "सोशल और कहानी", "सोशल रिव्यू • रील गिनती और लिमिट • स्टोरी राइटर") to listOf("social", "reels", "story"),
         Triple("cat_data", "डेटा और ऐप", "कनेक्टर • बैकअप • अपडेट • डिबग लॉग • ऐप के बारे में") to listOf("connectors", "backup", "update", "debug", "about")
     )
@@ -58,7 +58,7 @@ object SettingsSearch {
         "voice" to "voice आवाज़ बोलना सुनना mic माइक tts whatsapp memory याददाश्त dost दोस्त",
         "orb" to "orb ओर्ब चेहरा",
         "access" to "accessibility फ़ोन कंट्रोल control battery बैटरी call कॉल",
-        "guard" to "screen guard स्क्रीन गार्ड गार्ड मोड guard गार्ड security सुरक्षा chor चोर चोरी theft anti alarm siren सायरन intruder घुसपैठिया पहरा चौकीदार",
+        "guard" to "touch mode टच मोड screen guard स्क्रीन गार्ड गार्ड मोड guard गार्ड security सुरक्षा chor चोर चोरी theft anti alarm siren सायरन intruder घुसपैठिया पहरा चौकीदार",
         "phonelock" to "lock unlock लॉक अनलॉक फ़ोन फोन phone pin पिन pattern पैटर्न password पासवर्ड screen स्क्रीन खोलो बंद",
         "perms" to "permission परमिशन इजाज़त mic camera notification",
         "computer" to "computer कंप्यूटर reminder रिमाइंडर search",
@@ -139,7 +139,7 @@ object SettingsSearch {
         E("access", "बार-बार बंद न हो", "Android बैटरी बचाने के लिए DK को बंद कर देता है — यह रोकें"),
         E("access", "सुनना और कॉल", ""),
         E("access", "गड़बड़ी रिपोर्ट", "पिछली बार DK किस वजह से बंद हुआ"),
-        E("guard", "स्क्रीन गार्ड", "कोई और फ़ोन छुए / उठाए तो सायरन + \"यह फ़ोन आपका नहीं है\""),
+        E("guard", "टच मोड", "कोई और फ़ोन छुए / उठाए तो सायरन + \"यह फ़ोन आपका नहीं है\""),
         E("guard", "गुप्त शब्द और भरोसेमंद नंबर", "बोलकर सायरन बंद • चोरी पर SMS जगह के साथ"),
         E("guard", "मालिक का चेहरा", "पहली बार एक बार चेहरा सेट करें — अलार्म में कैमरा मालिक को पहचानकर सायरन बंद करे"),
         E("guard", "कितना संवेदनशील", "उठाने / छूने पर कब बजे — कम • मध्यम • ज़्यादा"),

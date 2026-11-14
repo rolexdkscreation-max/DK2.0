@@ -93,7 +93,7 @@ class GuardAlarmActivity : AppCompatActivity() {
      * नवंबर 2026 (मालिक की शिकायत): "मालिक ने फ़ोन उठाया, कैमरे ने देखा, फिर भी सायरन बंद नहीं हुआ".
      * जड़: चेहरा सिखाने वाला हिस्सा 29 अक्टूबर को Settings से हट गया था, तो [FaceAI.enrolled] हमेशा false -
      * यहाँ face = false और कैमरा सिर्फ़ फ़ोटो लेता था, पहचानता नहीं था (और कहीं बताया भी नहीं).
-     * अब चेहरा Settings → स्क्रीन गार्ड में सेट होता है; न हो तो यहाँ और इतिहास में साफ़ कारण.
+     * अब चेहरा Settings → टच मोड में सेट होता है; न हो तो यहाँ और इतिहास में साफ़ कारण.
      */
     private fun startCam(preview: PreviewView) {
         val camOk = ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED
@@ -102,9 +102,9 @@ class GuardAlarmActivity : AppCompatActivity() {
         val face = GuardRules.faceCheck(faceOn, enrolled, ready, camOk)
         val why = GuardRules.faceWhyNot(faceOn, enrolled, ready, camOk)
         if (why != null && faceOn) { Guard.note(this, "चेहरे से सायरन बंद नहीं होगा: $why"); faceUi("चेहरा पहचान बंद: $why") }
-        else if (face) faceUi("मालिक का चेहरा देख रहा हूँ…")
+        else if (face) faceUi("मालिक का चेहरा देख रहा हूँ…\n" + FaceLiveness.GUIDE)
         if (!photo && !face) return
-        cam = FaceCam(this, preview) { b -> onFrame(b, photo, face) }.also { it.start { w -> DKLog.d("स्क्रीन गार्ड: कैमरा नहीं खुला ($w)"); faceUi("कैमरा नहीं खुला: $w") } }
+        cam = FaceCam(this, preview) { b -> onFrame(b, photo, face) }.also { it.start { w -> DKLog.d("टच मोड: कैमरा नहीं खुला ($w)"); faceUi("कैमरा नहीं खुला: $w") } }
     }
 
     private fun onFrame(b: Bitmap, photo: Boolean, face: Boolean) {
@@ -123,10 +123,16 @@ class GuardAlarmActivity : AppCompatActivity() {
                     // असली इंसान? (फ़ोटो / फ़ोन की स्क्रीन वाली फ़ोटो सिर घुमाने पर नहीं बदलती) - चेहरा न हो तब भी गिनती चले
                     val live = liveness.update(det, now)
                     if (det == null) { ownerHits = 0; return@execute }
+                    val front = FaceLiveness.yaw(det.kps)?.let { kotlin.math.abs(it) <= FaceLiveness.CENTER } == true
+                    // 14 नवंबर 2026: सिर घुमाते समय पहचान (धीमी) नहीं - सिर्फ़ शुरू के सीधे चेहरे पर और आख़िरी कदम पर (तेज़)
+                    if (!liveness.idNow(front)) {
+                        ownerHits = 0
+                        if (now - lastFaceUi > UI_MS) { lastFaceUi = now; faceUi("${"●".repeat(liveness.done())}${"○".repeat(3 - liveness.done())}  ${liveness.hint()}") }
+                        return@execute
+                    }
                     val e = FaceAI.embed(this, copy, det)
                     val s = e?.let { FaceAI.score(this, it) }
                     val owner = s != null && FaceMath.decide(s, Prefs.faceStrict(this)) == MatchResult.ACCESS_GRANTED
-                    val front = FaceLiveness.yaw(det.kps)?.let { kotlin.math.abs(it) <= FaceLiveness.CENTER } == true
                     // किसी और का चेहरा (मालिक से बिल्कुल नहीं मिलता) = जाँच फिर से - किसी और का सिर घुमाना + फिर मालिक की फ़ोटो नहीं चलेगा
                     if (s != null && s < TURNED_MIN) liveness.reset()
                     if (owner && live && front) {
@@ -138,7 +144,7 @@ class GuardAlarmActivity : AppCompatActivity() {
                         }
                     } else {
                         ownerHits = 0
-                        if (s != null && now - lastFaceUi > 1_000) {
+                        if (s != null && now - lastFaceUi > UI_MS) {
                             lastFaceUi = now
                             faceUi(when {
                                 !owner && liveness.step == FaceLiveness.Step.TURN_ONE -> "✗ यह चेहरा मालिक का नहीं (${(s * 100).toInt()}%)"
@@ -190,6 +196,8 @@ class GuardAlarmActivity : AppCompatActivity() {
         const val TURNED_MIN = 0.20f
         /** इतने फ़्रेम सिर्फ़ सीधा चेहरा (कोई घुमाव नहीं) = फ़ोटो की चेतावनी */
         const val FLAT_WARN = 12
+        /** 14 नवंबर 2026: स्क्रीन पर अगला कदम जल्दी दिखे (पहले 1 s) */
+        const val UI_MS = 400L
         @Volatile private var current: WeakReference<GuardAlarmActivity>? = null
         @Volatile private var shown = false
 

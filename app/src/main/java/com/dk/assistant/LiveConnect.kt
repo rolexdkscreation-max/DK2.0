@@ -30,7 +30,7 @@ object LiveConnect {
         appendLine("9. Teacher Mode (whiteboard page; what you explain is written there) -> teacher_mode. It opens ONLY when the user himself asks (टीचर मोड खोलो) - never by itself for a study question.")
         appendLine("10. Autonomous Mode: " + (if (autoOn) "ON" + (if (autoKinds.isNotEmpty()) " for: " + autoKinds.joinToString(", ") else "") + " - phone_task requests of these kinds are planned and done by it automatically."
             else "OFF - the user can turn it on in Settings -> ऑटोनोमस मोड. Never claim it is on."))
-        appendLine("10b. Screen Guard (स्क्रीन गार्ड / गार्ड मोड, anti-theft) ON -> screen_guard (only ON; OFF only by the owner: unlock phone / face / secret word).")
+        appendLine("10b. Touch Mode (टच मोड, old name स्क्रीन गार्ड, anti-theft) ON -> screen_guard (only ON, and only when the owner himself says \"टच मोड ऑन करो\"; OFF only by the owner: unlock phone / face / secret word).")
         appendLine("11. Camera inside DK -> camera (front = look at the user, back = look at what the user shows). \"स्क्रीन देखो\" / what is on the screen -> look_screen AT ONCE (no popup, never ask about sharing first). Continuous screen share only when he asks to share -> screen_share. One look at the phone screen when he asks about it (which product, its colour, price, brand/company, offers, rating; what is written there) -> look_screen.")
         appendLine("12. Web search -> web_search, hard questions -> deep_think, time -> current_time, nearby/weather/location -> local_info.")
         appendLine("13. Notifications -> notifications (read) and notification_reply (reply).")

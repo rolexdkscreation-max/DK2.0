@@ -50,7 +50,7 @@ import java.util.Date
 import java.util.Locale
 
 /**
- * नवंबर 2026 (मालिक): "स्क्रीन गार्ड" - "DK स्क्रीन गार्ड चालू करो" -> 5 सेकंड बाद फ़ोन लॉक और पहरा शुरू.
+ * नवंबर 2026 (मालिक): "टच मोड" - "DK टच मोड चालू करो" -> 5 सेकंड बाद फ़ोन लॉक और पहरा शुरू.
  * कोई फ़ोन छुए / उठाए / खिसकाए (accelerometer), PIN डालने की कोशिश करे, पावर मेनू या ऊपर का पैनल खोले,
  * चार्जर / सिम निकाले = फ़ोन लॉक + पूरी आवाज़ में सायरन + flashlight + vibrate + DK की चेतावनी, आगे वाले कैमरे से फ़ोटो,
  * भरोसेमंद नंबर पर SMS (लोकेशन के साथ).
@@ -141,17 +141,22 @@ object Guard {
      * बंद के तरीके वही: फ़ोन खोलना / चेहरा / गुप्त शब्द ([offByVoice], [heardStop]).
      */
     fun liveTool(svc: DKAccessibilityService, minutes: Int): String =
-        "Phone says: \"" + arm(svc, minutes.coerceIn(0, 24 * 60), "DK लाइव") + "\" - tell the user exactly this in a few words. " +
-            "Screen Guard can only be turned OFF by the owner (unlock the phone, face to the warning camera, or secret word) - never by you."
+        // 14 नवंबर 2026 (मालिक: "जब बोला जाए 'DK टच मोड ऑन करो' तभी ऑन, नहीं तो नहीं"): मालिक के अपने शब्द जाँचो - AI के कहने पर नहीं
+        if (!GuardRules.touchOn(DKState.lastUser) || System.currentTimeMillis() - DKState.lastUserAt > 60_000L) TOUCH_NOT_ASKED
+        else "Phone says: \"" + arm(svc, minutes.coerceIn(0, 24 * 60), "DK लाइव") + "\" - tell the user exactly this in a few words. " +
+            "Touch Mode can only be turned OFF by the owner (unlock the phone, face to the warning camera, or secret word) - never by you."
 
-    /** बोलकर बंद: गुप्त शब्द ज़रूरी (वरना कोई भी "स्क्रीन गार्ड बंद करो" बोल दे) */
+    const val TOUCH_NOT_ASKED = "NOT_STARTED: Touch Mode (टच मोड) turns ON only when the owner himself clearly says \"DK टच मोड ऑन करो\". " +
+        "He did not say that, so nothing was turned on. Never turn it on by yourself; if he wants it, tell him in one short line to say \"टच मोड ऑन करो\"."
+
+    /** बोलकर बंद: गुप्त शब्द ज़रूरी (वरना कोई भी "टच मोड बंद करो" बोल दे) */
     fun offByVoice(c: Context, heard: String): String {
-        if (!active()) return "स्क्रीन गार्ड पहले से बंद है।"
+        if (!active()) return "टच मोड पहले से बंद है।"
         val code = code(c)
-        if (code.length < GuardRules.MIN_CODE) return "स्क्रीन गार्ड बोलकर बंद करने के लिए सेटिंग्स में गुप्त शब्द रखिए। अभी फ़ोन खुद खोलिए, गार्ड अपने-आप बंद हो जाएगा।"
+        if (code.length < GuardRules.MIN_CODE) return "टच मोड बोलकर बंद करने के लिए सेटिंग्स में गुप्त शब्द रखिए। अभी फ़ोन खुद खोलिए, गार्ड अपने-आप बंद हो जाएगा।"
         if (!GuardRules.codeOk(heard, code)) { note(c, "बोलकर बंद करने की कोशिश - गुप्त शब्द गलत / नहीं"); return "गुप्त शब्द के साथ बोलिए, या फ़ोन खुद खोलिए।" }
         disarm(c, "गुप्त शब्द बोला")
-        return "ठीक है, स्क्रीन गार्ड बंद।"
+        return "ठीक है, टच मोड बंद।"
     }
 
     /** सुनने वाले loop से: बजते / पहरे के समय सिर्फ़ गुप्त शब्द भी काफ़ी. true = बात यहीं खत्म */
@@ -160,23 +165,23 @@ object Guard {
         val code = code(c)
         if (!GuardRules.codeOk(heard, code)) return false
         disarm(c, "गुप्त शब्द बोला")
-        DKState.reply("ठीक है, स्क्रीन गार्ड बंद।")
+        DKState.reply("ठीक है, टच मोड बंद।")
         return true
     }
 
     /** @return DK क्या बोले */
     fun arm(c: Context, minutes: Int, why: String): String {
-        val svc = svcOf(c) ?: return "पहले सेटिंग्स में DK का Accessibility चालू कीजिए, उसके बिना स्क्रीन गार्ड नहीं चलेगा।"
+        val svc = svcOf(c) ?: return "पहले सेटिंग्स में DK का Accessibility चालू कीजिए, उसके बिना टच मोड नहीं चलेगा।"
         val app = svc.applicationContext
-        if (active()) return "स्क्रीन गार्ड पहले से चालू है।"
+        if (active()) return "टच मोड पहले से चालू है।"
         val hasCode = code(app).length >= GuardRules.MIN_CODE
         if (!secure(app) && !hasCode)
-            return "स्क्रीन गार्ड के लिए फ़ोन में PIN या पैटर्न लगाइए, या सेटिंग्स में गुप्त शब्द रखिए - वरना कोई भी इसे बंद कर देगा।"
+            return "टच मोड के लिए फ़ोन में PIN या पैटर्न लगाइए, या सेटिंग्स में गुप्त शब्द रखिए - वरना कोई भी इसे बंद कर देगा।"
         val until = if (minutes > 0) System.currentTimeMillis() + minutes * 60_000L else 0L
         Prefs.edit(app) { putBoolean(P_ARMED, true); putString(P_UNTIL, until.toString()) }
         codeNow = code(app)
         arming = true
-        note(app, "स्क्रीन गार्ड चालू ($why)" + if (minutes > 0) " - ${GuardRules.label(minutes)}" else "")
+        note(app, "टच मोड चालू ($why)" + if (minutes > 0) " - ${GuardRules.label(minutes)}" else "")
         armJob?.cancel()
         armJob = scope.launch {
             delay(GuardRules.ARM_DELAY_MS)
@@ -195,10 +200,10 @@ object Guard {
         val until = untilOf(app)
         if (GuardRules.expired(until, System.currentTimeMillis())) { Prefs.edit(app) { putBoolean(P_ARMED, false) }; return }
         codeNow = code(app)
-        note(app, "स्क्रीन गार्ड फिर से चालू (DK दोबारा शुरू हुआ)")
+        note(app, "टच मोड फिर से चालू (DK दोबारा शुरू हुआ)")
         startWatch(svc, until)
         // अलार्म के बाद फ़ोन बंद-चालू (restart) किया गया = चोर के पास है, लोकेशन भेजना जारी
-        if (Prefs.bool(app, P_TRACK, false)) startTracking(app, "फ़ोन दोबारा चालू हुआ (स्क्रीन गार्ड अलार्म के बाद)")
+        if (Prefs.bool(app, P_TRACK, false)) startTracking(app, "फ़ोन दोबारा चालू हुआ (टच मोड अलार्म के बाद)")
     }
 
     fun disarm(c: Context, why: String) {
@@ -211,13 +216,13 @@ object Guard {
         locJob?.cancel(); locJob = null; locSent = 0
         stopAlarm()
         stopWatch(app)
-        note(app, "स्क्रीन गार्ड बंद ($why)")
-        DKLog.d("स्क्रीन गार्ड बंद: $why")
+        note(app, "टच मोड बंद ($why)")
+        DKLog.d("टच मोड बंद: $why")
     }
 
     /** गार्ड चालू = DK खुद PIN डालकर फ़ोन नहीं खोलेगा (कोई "DK फोन अनलॉक करो" बोलकर न खुलवा ले) */
     fun blocksUnlock(): String? = if (active())
-        PhoneLockVoice.UNLOCK_FAIL + " स्क्रीन गार्ड चालू है, इसलिए DK फ़ोन नहीं खोलेगा। पहले स्क्रीन गार्ड बंद कीजिए - गुप्त शब्द बोलकर या फ़ोन खुद खोलकर।"
+        PhoneLockVoice.UNLOCK_FAIL + " टच मोड चालू है, इसलिए DK फ़ोन नहीं खोलेगा। पहले टच मोड बंद कीजिए - गुप्त शब्द बोलकर या फ़ोन खुद खोलकर।"
     else null
 
     // ------------------------------------------------------------------ पहरा
@@ -289,7 +294,7 @@ object Guard {
             // अलार्म बज रहा हो या लोकेशन भेजी जा रही हो (फ़ोन किसी और के पास) = समय पूरा होने पर भी बंद नहीं
             if (isActive && !alarming && locJob?.isActive != true) disarm(app, "समय पूरा") else if (isActive) Prefs.edit(app) { putString(P_UNTIL, "0") }
         }
-        DKLog.d("स्क्रीन गार्ड: पहरा शुरू (संवेदनशीलता ${sense(app).hi})")
+        DKLog.d("टच मोड: पहरा शुरू (संवेदनशीलता ${sense(app).hi})")
     }
 
     @Synchronized
@@ -355,7 +360,7 @@ object Guard {
     fun trigger(c: Context, why: String) {
         if (alarming || !armed) return
         val app = c.applicationContext
-        DKLog.d("स्क्रीन गार्ड: अलार्म - $why")
+        DKLog.d("टच मोड: अलार्म - $why")
         note(app, "⚠ $why")
         svcOf(app)?.let { lockNow(it) }
         startAlarm(app, why, test = false)
@@ -398,7 +403,7 @@ object Guard {
     suspend fun preciseFix(c: Context, waitMs: Long = GuardRules.LOC_WAIT_MS): GuardRules.Fix? {
         if (!LocalInfo.hasPermission(c)) { note(c, "लोकेशन नहीं - लोकेशन की इजाज़त नहीं"); return null }
         if (ContextCompat.checkSelfPermission(c, Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED)
-            note(c, "सिर्फ़ अंदाज़न लोकेशन की इजाज़त है - सटीक के लिए Settings → स्क्रीन गार्ड → परमिशन दें (\"सटीक\" चुनें)")
+            note(c, "सिर्फ़ अंदाज़न लोकेशन की इजाज़त है - सटीक के लिए Settings → टच मोड → परमिशन दें (\"सटीक\" चुनें)")
         val lm = c.getSystemService(LocationManager::class.java) ?: return null
         fun on(p: String) = try { lm.isProviderEnabled(p) } catch (_: Exception) { false }
         if (!on(LocationManager.GPS_PROVIDER)) {
@@ -422,7 +427,7 @@ object Guard {
         withContext(Dispatchers.Main) {
             for (p in providers) try {
                 @Suppress("MissingPermission") lm.requestLocationUpdates(p, 1_000L, 0f, listener, Looper.getMainLooper())
-            } catch (e: Exception) { DKLog.d("स्क्रीन गार्ड: $p लोकेशन नहीं (${e.message})") }
+            } catch (e: Exception) { DKLog.d("टच मोड: $p लोकेशन नहीं (${e.message})") }
         }
         try { kotlinx.coroutines.withTimeoutOrNull(waitMs) { done.await() } }
         finally { withContext(kotlinx.coroutines.NonCancellable + Dispatchers.Main) { try { lm.removeUpdates(listener) } catch (_: Exception) {} } }

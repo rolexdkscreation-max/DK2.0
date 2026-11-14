@@ -146,6 +146,14 @@ internal fun GeminiLive.agentCheck(): Boolean {
     DKState.hint("${agent.title} को काम दे रही हूँ…")
     svc.scope.launch {
         val a = JSONObject(); LiveAgentRoute.args(agent, user).forEach { (k, v) -> a.put(k, v) }
+        // 14 नवंबर 2026 (मालिक: "कोडिंग / DK कंप्यूटर का काम सुन ले तो पहले मुझसे कन्फ़र्म करे"): अपने-आप चलाने से पहले भी
+        // वही मालिक की हाँ वाला गेट ([workGate]) - हाँ नहीं सुनी = कुछ शुरू नहीं, सिर्फ़ पूछो
+        workGate(agent.tool, a)?.let { ask ->
+            log("एजेंट-जाँच: ${agent.tool} - पहले मालिक की हाँ (अपने-आप शुरू नहीं किया)")
+            DKState.hint("")
+            visionNote(ask, evidence = true)
+            return@launch
+        }
         val r = try { agentTool(agent.tool, a) } catch (e: CancellationException) { throw e } catch (e: Exception) {
             log("एजेंट-जाँच: ${agent.tool} fail: ${e.message}"); "Tool failed (${e.javaClass.simpleName}) - tell the user it could not be done."
         }

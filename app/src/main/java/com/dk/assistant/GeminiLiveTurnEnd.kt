@@ -283,11 +283,19 @@ internal fun GeminiLive.flushAsks(now: Long) {
 internal fun GeminiLive.runLockNow(q: QuickCommands.Quick, heard: String, from: String) {
     if (stopped || !fastMemo.begin(q, System.currentTimeMillis())) return
     val type = q.action.optString("type")
+    // 14 नवंबर 2026 (मालिक: "अनलॉक करो बोलूँ तो 'सर, मैं अनलॉक नहीं कर सकूँगा' न बोले"): इस बात का Gemini वाला जवाब बंद -
+    // काम फ़ोन करेगा, फिर Gemini ठीक वही एक लाइन बोलेगा जो फ़ोन ने सच में किया (PhoneLockVoice.liveSay)
+    muteTurn = true; muteAt = System.currentTimeMillis()
+    if (isPlaying()) flushPlayback()
     svc.scope.launch {
         val t0 = System.currentTimeMillis()
         val r = try { svc.perform(q.action) } catch (e: CancellationException) { throw e } catch (e: Exception) { "ERROR ${e.message}" }
         fastMemo.finish(q, r); fastN++
         if (LiveFast.ok(type, r)) lastFastOkAt = System.currentTimeMillis()
         log("तुरंत फ़ोन $type ($from, Gemini से पहले) \"${heard.take(40)}\" -> ${r.take(60)} (${System.currentTimeMillis() - t0} ms)")
+        // बंद किया हुआ जवाब पूरा होने दो (turnComplete पर muteTurn अपने-आप हटता है); Gemini ने कुछ शुरू ही न किया हो तो खुद हटाओ
+        withTimeoutOrNull(3_000) { while (muteTurn && (generating || System.currentTimeMillis() - muteAt < 1_200)) delay(80) }
+        if (muteTurn && !generating) muteTurn = false
+        if (!stopped) visionNote(PhoneLockVoice.liveNote(type, r), evidence = true)
     }
 }

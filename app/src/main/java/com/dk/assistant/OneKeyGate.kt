@@ -23,7 +23,8 @@ object OneKeyGate {
 
     /** @param keyBlank एक-key मोड की key खाली है? (key डली हो = सब चलता है) */
     fun blocked(oneKeyOn: Boolean, w: Work?, keyBlank: Boolean): Boolean = oneKeyOn && keyBlank && w != null
-    fun blocked(c: Context, w: Work): Boolean = blocked(Prefs.oneKeyOn(c), w, Prefs.oneKey(c).isBlank())
+    // 14 नवंबर 2026 (मालिक): एक key खाली पर किसी और हिस्से (जैसे DK लाइव) में Gemini key डली = उसी से काम, रोक नहीं
+    fun blocked(c: Context, w: Work): Boolean = blocked(Prefs.oneKeyOn(c), w, Prefs.oneKey(c).isBlank() && Prefs.borrowKey(c, ApiScopes.CHAT, "gemini").isBlank())
 
     fun message(w: Work): String =
         "${w.hi} के लिए अभी कोई key नहीं डली। Settings → AI दिमाग → \"एक key से सब\" में अपनी एक Gemini key पेस्ट करें — " +

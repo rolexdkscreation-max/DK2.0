@@ -17,23 +17,33 @@ class ScreenGuardModeTest {
 
     // ------------------------------------------------------------ नाम
 
+    // 14 नवंबर 2026 (मालिक): "स्क्रीन गार्ड" का नया नाम "टच मोड" - नाम वाली जाँच नए नाम पर
     @Test fun newName_everywhere() {
-        assertEquals("स्क्रीन गार्ड", GuardRules.NAME_HI)
-        assertTrue(GuardRules.ARM_SAY.startsWith("स्क्रीन गार्ड"))
-        assertTrue(GuardRules.armSay(0, true).startsWith("स्क्रीन गार्ड 5 सेकंड"))
-        assertTrue(GuardRules.smsText("x", "अभी", 1.0, 2.0).startsWith("DK स्क्रीन गार्ड:"))
-        assertEquals("स्क्रीन गार्ड", SettingsSearch.SECTIONS["guard"])
-        assertTrue(SettingsSearch.search("स्क्रीन गार्ड").any { it.section == "guard" })
-        assertTrue(SettingsSearch.search("गार्ड मोड").any { it.section == "guard" })      // पुराना नाम भी खोज में
+        assertEquals("टच मोड", GuardRules.NAME_HI)
+        assertTrue(GuardRules.ARM_SAY.startsWith("टच मोड"))
+        assertTrue(GuardRules.armSay(0, true).startsWith("टच मोड 5 सेकंड"))
+        assertTrue(GuardRules.smsText("x", "अभी", 1.0, 2.0).startsWith("DK टच मोड:"))
+        assertEquals("टच मोड", SettingsSearch.SECTIONS["guard"])
+        assertTrue(SettingsSearch.search("टच मोड").any { it.section == "guard" })
+        assertTrue(SettingsSearch.search("स्क्रीन गार्ड").any { it.section == "guard" })   // पुराना नाम भी खोज में
+        assertTrue(SettingsSearch.search("गार्ड मोड").any { it.section == "guard" })
     }
 
     @Test fun voice_newAndOldName() {
-        listOf("स्क्रीन गार्ड चालू करो", "DK स्क्रीन गार्ड ऑन करो", "screen guard on", "स्क्रीन गार्ड लगाओ", "गार्ड मोड चालू करो")
+        // चालू सिर्फ़ "टच मोड" + चालू वाला शब्द
+        listOf("टच मोड चालू करो", "DK टच मोड ऑन करो", "touch mode on", "टच मोड लगाओ", "डीके टच मोड ऑन कर दो")
             .forEach { assertEquals(it, GuardRules.Cmd.On(0), GuardRules.parse(it)) }
-        assertEquals(GuardRules.Cmd.On(60), GuardRules.parse("1 घंटे के लिए स्क्रीन गार्ड चालू करो"))
+        assertEquals(GuardRules.Cmd.On(60), GuardRules.parse("1 घंटे के लिए टच मोड चालू करो"))
+        // पुराने नाम से अब चालू नहीं (मालिक: "जब बोला जाए टच मोड ऑन करो तभी")
+        listOf("स्क्रीन गार्ड चालू करो", "DK स्क्रीन गार्ड ऑन करो", "screen guard on", "गार्ड मोड चालू करो", "टच मोड करो")
+            .forEach { assertNull(it, GuardRules.parse(it)) }
+        // बंद नए और पुराने दोनों नाम से
+        assertTrue(GuardRules.parse("टच मोड बंद करो") is GuardRules.Cmd.Off)
         assertTrue(GuardRules.parse("स्क्रीन गार्ड बंद करो") is GuardRules.Cmd.Off)
-        assertNull(GuardRules.parse("स्क्रीन गार्ड क्या है"))
-        assertNull(GuardRules.parse("स्क्रीन गार्ड चालू मत करो"))
+        assertNull(GuardRules.parse("टच मोड क्या है"))
+        assertNull(GuardRules.parse("टच मोड चालू मत करो"))
+        assertTrue(GuardRules.touchOn("DK टच मोड ऑन करो"))
+        assertFalse(GuardRules.touchOn("फ़ोन की सुरक्षा चालू करो"))
         // "स्क्रीन देखना चालू करो" (स्क्रीन शेयर) गार्ड नहीं
         assertNull(GuardRules.parse("स्क्रीन देखना चालू करो"))
         // फ़ोन लॉक वाले वाक्य से नहीं टकराता

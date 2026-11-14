@@ -18,6 +18,19 @@ object PhoneLockVoice {
 
     /** v4.8 मालिक: खुलते ही यही बोले */
     const val UNLOCK_OK_SAY = "हाँ, लॉक स्क्रीन खुल गया है।"
+    /** 14 नवंबर 2026 (मालिक: "अनलॉक होने के बाद बोले - बॉस, फ़ोन मैंने अनलॉक कर दिया"): DK लाइव में काम होते ही यही */
+    const val LIVE_UNLOCK_SAY = "बॉस, फ़ोन अनलॉक कर दिया।"
+    const val LIVE_LOCK_SAY = "बॉस, फ़ोन लॉक कर दिया।"
+    /** DK लाइव में फ़ोन ने लॉक / अनलॉक कर दिया (या नहीं) - Gemini ठीक यही बोले, "मैं नहीं कर सकता" कभी नहीं */
+    fun liveSay(type: String, r: String): String {
+        val fail = r.startsWith(UNLOCK_FAIL) || r.startsWith("ERROR") || r.startsWith("STEP_FAILED")
+        if (fail) return failSay(r.removePrefix(UNLOCK_FAIL).removePrefix("ERROR").trim())
+        return if (type == Act.UNLOCK.type || type == "wake") LIVE_UNLOCK_SAY else LIVE_LOCK_SAY
+    }
+    fun liveNote(type: String, r: String): String =
+        "SYSTEM NOTE: the phone itself has ALREADY done the owner's phone ${if (type == "lock") "lock" else "unlock"} command (do NOT call any tool for it again). " +
+            "Say exactly this one line in Hindi and nothing else: \"" + liveSay(type, r) + "\". Never say you cannot lock / unlock the phone."
+
     /** v4.8: न खुले तो साफ़ - "लॉक स्क्रीन नहीं खुला" पहले, फिर कारण */
     fun failSay(reason: String): String {
         val r = reason.trim()
@@ -40,18 +53,27 @@ object PhoneLockVoice {
     const val DEFAULT_LOCK = "फोन लॉक करो, फोन लॉक कर दो, फोन लॉक कीजिए, फोन लॉक, मोबाइल लॉक करो, लॉक करो, लॉक कर दो, lock phone, phone lock karo, phone lock kar do, lock the phone, " +
         // नवंबर 2026 (मालिक): "डीके फोन ऑफ कर दो" = स्क्रीन बंद / लॉक (DK फ़ोन की बिजली बंद नहीं करता)
         "फोन ऑफ करो, फोन ऑफ कर दो, फोन ऑफ कीजिए, मोबाइल ऑफ करो, मोबाइल ऑफ कर दो, स्क्रीन ऑफ करो, स्क्रीन ऑफ कर दो, स्क्रीन बंद करो, स्क्रीन बंद कर दो, " +
-        "फोन बंद करो, फोन बंद कर दो, phone off karo, phone off kar do, screen off karo, screen off, phone off"
+        "फोन बंद करो, फोन बंद कर दो, phone off karo, phone off kar do, screen off karo, screen off, phone off, " +
+        // 14 नवंबर 2026: फ़ोन की पहचान "लॉक" को अक्सर "लॉग" / "लोक" / "लाक" लिखती है
+        "फोन लॉग करो, फोन लॉग कर दो, फोन लॉग, फोन लाक करो, फोन लाक, मोबाइल लॉक, मोबाइल लॉक कर दो, phone lock, lock karo"
     const val DEFAULT_UNLOCK = "फोन अनलॉक करो, फोन अनलॉक कर दो, फोन अनलॉक कीजिए, फोन अनलॉक, मोबाइल अनलॉक करो, अनलॉक करो, अनलॉक कर दो, अनलॉक, फोन खोलो, unlock phone, phone unlock karo, phone unlock kar do, unlock the phone, unlock, " +
         // नवंबर 2026 (मालिक): "डीके फोन चालू करो" = स्क्रीन जगाओ + अनलॉक
         "फोन चालू करो, फोन चालू कर दो, फोन ऑन करो, फोन ऑन कर दो, मोबाइल चालू करो, मोबाइल ऑन करो, स्क्रीन ऑन करो, स्क्रीन ऑन कर दो, स्क्रीन चालू करो, " +
-        "phone on karo, phone on kar do, screen on karo, screen on, phone on"
+        "phone on karo, phone on kar do, screen on karo, screen on, phone on, " +
+        // 14 नवंबर 2026: "अनलॉक" के गलत लिखे रूप
+        "फोन अनलॉग करो, फोन अनलॉग, फोन अन लॉक करो, फोन अन लॉक, अनलॉग करो, अन लॉक करो, फोन अनलाक, मोबाइल अनलॉक, मोबाइल अनलॉक कर दो, phone unlock, unlock karo, फोन ओपन करो, phone open karo"
 
     /** इनमें से कोई शब्द = मना (\"फोन लॉक मत करो\") - कुछ नहीं करना */
     private val NEG = setOf("मत", "नहीं", "नही", "mat", "nahi", "nahin", "dont", "don", "not", "never").map { norm(it) }.toSet()
     /** नाम से पहले / बीच के आम शब्द - गिनती में नहीं */
     private val FILL = setOf("हे", "है", "हाय", "हेलो", "हैलो", "ओके", "ओ", "सुनो", "अरे", "जरा", "प्लीज", "please", "plz",
         "hey", "hi", "hello", "ok", "okay", "o", "suno", "are", "arey", "zara", "jara", "भाई", "bhai", "यार", "yaar", "जी", "ji",
-        "मेरा", "मेरे", "my", "अभी", "abhi", "now", "तुरंत", "जल्दी", "jaldi", "से", "se", "ना", "na", "the").map { norm(it) }.toSet()
+        "मेरा", "मेरे", "my", "अभी", "abhi", "now", "तुरंत", "जल्दी", "jaldi", "से", "se", "ना", "na", "the",
+        // 14 नवंबर 2026 (मालिक: "डीके फोन लॉक करो कभी-कभी नहीं सुनता"): "फोन को लॉक कर दीजिए" / "लॉक कर दे" जैसे क्रिया वाले हिस्से
+        // (\"कर\" नहीं - वरना DK की अपनी आवाज़ \"फ़ोन लॉक कर दिया\" फिर से हुक्म बन जाती)
+        "को", "ko", "करो", "karo", "दो", "do", "दे", "de", "दीजिए", "दीजिये", "dijiye", "कीजिए", "कीजिये", "kijiye", "करिए", "kariye",
+        "देना", "dena", "जी", "बॉस", "boss", "सर", "sir").map { norm(it) }.toSet()
+    private val SKIP = setOf("को", "ko").map { norm(it) }.toSet()
     private val DEVICE = setOf("फोन", "मोबाइल", "स्क्रीन", "phone", "mobile", "screen", "fon").map { norm(it) }.toSet()
     /** नाम + वाक्य के अलावा इससे ज़्यादा शब्द = लंबी बात (किसी और बात में \"लॉक\" आया) - नहीं */
     const val MAX_EXTRA_WORDS = 1
@@ -90,7 +112,8 @@ object PhoneLockVoice {
      */
     fun match(heard: String, needName: Boolean, c: Cfg = cfg): Act? {
         if (!c.on) return null
-        val tw = words(norm(heard)); if (tw.isEmpty()) return null
+        // "फोन को लॉक करो" = "फोन लॉक करो" (बीच का "को" वाक्य तोड़ता था)
+        val tw = words(norm(heard)).filter { it !in SKIP }; if (tw.isEmpty()) return null
         if (tw.any { it in NEG }) return null
         val used = BooleanArray(tw.size)
         var named = false

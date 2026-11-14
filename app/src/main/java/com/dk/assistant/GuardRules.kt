@@ -6,13 +6,13 @@ import kotlin.math.sin
 import kotlin.math.sqrt
 
 /**
- * नवंबर 2026 (मालिक): "स्क्रीन गार्ड" (पहले नाम "गार्ड मोड") - कोई दूसरा फ़ोन छुए / उठाए तो फ़ोन लॉक, ज़ोर का सायरन, DK खुद चेतावनी बोले.
+ * नवंबर 2026 (मालिक): "टच मोड" (पहले नाम "गार्ड मोड") - कोई दूसरा फ़ोन छुए / उठाए तो फ़ोन लॉक, ज़ोर का सायरन, DK खुद चेतावनी बोले.
  * यह हिस्सा बिल्कुल सादा (Android नहीं) - JVM test ([GuardRulesTest]). Android वाला हिस्सा [Guard].
  */
 object GuardRules {
     const val TYPE = "guard"
     /** मालिक का रखा नाम - हर जगह (Settings, DK की बोली, SMS) यही दिखे */
-    const val NAME_HI = "स्क्रीन गार्ड"
+    const val NAME_HI = "टच मोड"
 
     // ------------------------------------------------------------------ बोलकर चालू / बंद
 
@@ -25,6 +25,14 @@ object GuardRules {
 
     private val NAME = listOf("स्क्रीन गार्ड", "स्क्रीनगार्ड", "screen guard", "screenguard", "गार्ड", "गार्ड्स", "गाड", "गारड", "गार्ड़", "guard", "gard", "garde", "सिक्योरिटी", "सेक्यूरिटी", "security",
         "सुरक्षा", "चौकीदार", "रखवाली", "एंटी थेफ्ट", "एंटीथेफ्ट", "anti theft", "antitheft", "चोर पकड़", "चोर वाला")
+    /**
+     * 14 नवंबर 2026 (मालिक: "स्क्रीन गार्ड का नाम टच मोड; जब बोला जाए 'DK टच मोड ऑन करो' तभी ऑन, नहीं तो नहीं"):
+     * चालू सिर्फ़ इन नामों + चालू वाले शब्द से. पुराने नाम (स्क्रीन गार्ड / गार्ड / सुरक्षा…) से सिर्फ़ बंद.
+     */
+    private val TOUCH = listOf("टच मोड", "टचमोड", "टच मॉड", "टच मोड़", "टच मोद", "touch mode", "touchmode", "touch mod", "tach mode",
+        "टच गार्ड", "touch guard")
+    /** यह बात मालिक का साफ़ "टच मोड ऑन करो" है? (DK लाइव का screen_guard tool भी इसी से जाँचता है) */
+    fun touchOn(raw: String): Boolean = parse(raw) is Cmd.On
     private val MODE = listOf("मोड", "मॉड", "mode", "moad", "सिस्टम", "system")
     private val ON = listOf("ऑन", "आन", " on", "चालू", "शुरू", "स्टार्ट", "start", "लगा", "एक्टिव", "activate", "active", "chalu", "enable", "इनेबल")
     private val OFF = listOf("ऑफ", " off", "बंद", "हटा", "band", "disable", "deactivate", "रोक", "stop", "स्टॉप")
@@ -44,14 +52,16 @@ object GuardRules {
     fun parse(raw: String, alarming: Boolean = false): Cmd? {
         val t = norm(raw)
         if (t.length > 120) return null
-        val named = has(t, NAME)
+        val touch = has(t, TOUCH)
+        val named = touch || has(t, NAME)
         val siren = alarming && has(t, SIREN) && has(t, OFF)
         if (!named && !siren) return null
         if (named && !has(t, MODE) && !has(t, ON) && !has(t, OFF)) return null
         if (has(t, NOT) || has(t, ASK)) return null
-        // "बंद" पहले देखो: "गार्ड मोड चालू है तो बंद करो" = बंद
+        // "बंद" पहले देखो: "टच मोड चालू है तो बंद करो" = बंद
         if (siren || has(t, OFF)) return Cmd.Off(raw)
-        if (has(t, ON) || (named && has(t, MODE) && (t.contains(" करो") || t.contains(" कर दो") || t.contains(" karo")))) return Cmd.On(minutes(t))
+        // चालू = सिर्फ़ "टच मोड" नाम + साफ़ चालू वाला शब्द (ऑन / चालू / शुरू / लगाओ…). "गार्ड मोड करो" / "सुरक्षा चालू" से नहीं
+        if (touch && has(t, ON)) return Cmd.On(minutes(t))
         return null
     }
 
@@ -183,7 +193,7 @@ object GuardRules {
     // ------------------------------------------------------------------ सायरन / चेतावनी
 
     const val SAY = "चेतावनी! यह फ़ोन आपका नहीं है। इसे तुरंत वापस रखिए। आपकी फ़ोटो ले ली गई है।"
-    const val ARM_SAY = "स्क्रीन गार्ड चालू हो रहा है। फ़ोन नीचे रख दीजिए।"
+    const val ARM_SAY = "टच मोड चालू हो रहा है। फ़ोन नीचे रख दीजिए।"
     /** सायरन कितनी देर तक (फिर चुप, पर गार्ड और लॉक बने रहते हैं - फिर हिला तो फिर बजेगा) */
     const val ALARM_MAX_MS = 10 * 60_000L
     /** इतनी देर सायरन, फिर DK की चेतावनी, फिर थोड़ा चुप (ताकि मालिक का गुप्त शब्द सुनाई दे) */
@@ -252,7 +262,7 @@ object GuardRules {
 
     /**
      * पहला SMS भेजने के बाद अगली लोकेशन कब: पहले आधे घंटे हर 2 मिनट (चोर अभी पास ही होगा), फिर 2 घंटे तक हर 5 मिनट,
-     * फिर हर 15 मिनट - जब तक मालिक फ़ोन न खोले / चेहरा / गुप्त शब्द से स्क्रीन गार्ड बंद न हो.
+     * फिर हर 15 मिनट - जब तक मालिक फ़ोन न खोले / चेहरा / गुप्त शब्द से टच मोड बंद न हो.
      * @param sent अब तक कितने SMS गए (पहला मिलाकर)
      */
     fun nextLocDelayMs(sent: Int): Long = when {
