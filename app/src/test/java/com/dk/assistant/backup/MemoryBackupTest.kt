@@ -55,9 +55,10 @@ class MemoryBackupTest {
         assertTrue(MemoryBackup.pack(big).size < MemoryBackup.toJson(big).toByteArray().size / 4)
     }
 
+    // 14 नवंबर 2026: "brain" = DK के अपने दिमाग की सीखी बातें (मालिक: "सीखी हुई बातें भी बैकअप में जाएँ") - यह भी याददाश्त ही है
     @Test fun onlyMemory_isInBackup_nothingElse() {
         val o = JSONObject(MemoryBackup.toJson(snap()))
-        assertEquals(setOf("kind", "v", "at", "facts", "history", "chat", "learned", "turns", "points", "days", "dropped"), o.keys().asSequence().toSet())
+        assertEquals(setOf("kind", "v", "at", "facts", "history", "chat", "learned", "turns", "points", "days", "dropped", "brain"), o.keys().asSequence().toSet())
         // फ़ोन वाला हिस्सा भी सिर्फ़ याद पढ़ता है - keys / Prefs / फ़ोटो नहीं
         val phone = src("src/main/java/com/dk/assistant/backup/BackupPhone.kt")
         for (no in listOf("Prefs.", "Key", "license", "wallpaper", "photo")) assertFalse(no, phone.substringAfter("fun snapshot").substringBefore("fun apply").contains(no))

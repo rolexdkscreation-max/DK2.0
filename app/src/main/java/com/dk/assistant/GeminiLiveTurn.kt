@@ -180,6 +180,11 @@ internal fun GeminiLive.finishTurn(close: Boolean = true) {
     if (u.isNotBlank()) DKState.user(u)
     if (u.isNotBlank()) lastUserLine = u
     if (r.isNotBlank()) { lastDkLine = r; checkHonest(r) }
+    // 14 नवंबर 2026 (मालिक): DK लाइव की आम बातचीत से भी DK का अपना दिमाग सीखे ([DkMind]) - खोज वाली / फ़ोन के काम
+    // वाली बारी नहीं (वह ताज़ा / काम है, याद से पक्की नहीं)
+    val searched = synchronized(turnLock) { turnSources.isNotEmpty() || turnGround != null || toolSources.isNotEmpty() || toolGround != null }
+    if (DkMind.liveTeach(u, r, searched, toolJobs.isNotEmpty(), System.currentTimeMillis() - lastToolAt))
+        svc.scope.launch(kotlinx.coroutines.Dispatchers.IO) { try { LocalBrain.learn(svc, u, r) } catch (_: Exception) {} }
     // jawab: awaaz abhi baj rahi hai to revealTick() saath-saath poora karega
     synchronized(turnLock) {
         if (r.isNotBlank()) { pendingReply = r; pendingSources = Grounding.merge(turnSources, toolSources); toolSources = emptyList()

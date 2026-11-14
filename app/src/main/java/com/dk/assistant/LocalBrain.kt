@@ -1,8 +1,6 @@
 package com.dk.assistant
 
 import android.content.Context
-import org.json.JSONArray
-import org.json.JSONObject
 import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -15,8 +13,13 @@ import java.util.Locale
  */
 object LocalBrain {
 
-    private const val FILE = "dk_learned.json"
-    private const val MAX = 400
+    /*
+     * 14 नवंबर 2026 review: पहले यहाँ "dk_learned.json" था - वही नाम [LearnedWays] (दूसरे AI से सीखे तरीके) का भी!
+     * दोनों एक-दूसरे की फ़ाइल मिटाते थे (चैट से एक जवाब सीखा = सारे सीखे तरीके गायब, और उल्टा). अब अलग फ़ाइल;
+     * पुरानी फ़ाइल में बची सवाल-जवाब वाली बातें पहली बार अपने-आप यहाँ आ जाती हैं ([DkMind.oldEntries]).
+     */
+    private const val FILE = "dk_mind.json"
+    private const val OLD_FILE = "dk_learned.json"
 
     // ---------------------------------------------------------------- turant jawab
     fun instant(c: Context, raw: String): String? {
@@ -87,55 +90,55 @@ object LocalBrain {
     private fun monthHi(d: Date) = listOf("जनवरी", "फ़रवरी", "मार्च", "अप्रैल", "मई", "जून", "जुलाई", "अगस्त", "सितंबर", "अक्टूबर", "नवंबर", "दिसंबर")[
         SimpleDateFormat("M", Locale.ENGLISH).format(d).toInt() - 1]
 
-    // ---------------------------------------------------------------- roz seekhna
-    /** Woh sawaal jinka jawab badalta rehta hai ya pichhli baat par tika hai - inhe yaad mat karo */
-    private fun learnable(q: String): Boolean {
-        val w = q.split(' ').filter { it.isNotBlank() }
-        if (w.size < 3) return false
-        val ctx = listOf("ये", "यह", "वो", "वह", "इसका", "उसका", "इसके", "उसके", "इसे", "उसे", "और बताओ", "फिर", "पहले वाला", "ऊपर वाला")
-        val time = listOf("आज", "अभी", "कल", "परसों", "इस हफ्ते", "मौसम", "भाव", "रेट", "न्यूज", "न्यूज़", "खबर", "स्कोर", "मैच", "टाइम", "समय", "बजे", "तारीख")
-        return ctx.none { if (it.contains(' ')) q.contains(it) else w.contains(it) } && time.none { q.contains(it) }
+    // ---------------------------------------------------------------- roz seekhna = DK का अपना दिमाग ([DkMind])
+    /*
+     * 14 नवंबर 2026 (मालिक): पहले यहाँ सिर्फ़ 400 बातें, 30 दिन बाद बेकार, बैकअप में नहीं, और Live की बातचीत से कुछ नहीं सीखता था.
+     * अब: 20,000 तक (सिर्फ़ इसी फ़ोन में), कभी अपने-आप बेकार नहीं (key न चले तब), बैकअप/रिस्टोर में साथ,
+     * DK चैट + DK लाइव दोनों से रोज़ सीखता है. ऐप में कहीं दिखता नहीं - बस काम करता है.
+     */
+    @Volatile private var cache: List<DkMind.Entry>? = null
+    @Volatile private var cacheOf = ""          // किस फ़ाइल का cache (नया install / test = नई फ़ाइल)
+
+    @Synchronized fun all(c: Context): List<DkMind.Entry> {
+        val f = File(c.filesDir, FILE)
+        cache?.takeIf { cacheOf == f.path && (it.isEmpty() || f.exists()) }?.let { return it }   // फ़ाइल मिटी (ऐप का डेटा साफ़) = फिर से पढ़ो
+        return (try {
+            if (f.exists()) DkMind.fromJson(f.readText())
+            else File(c.filesDir, OLD_FILE).takeIf { it.exists() }?.let { DkMind.oldEntries(it.readText()) }.orEmpty()
+        } catch (_: Exception) { emptyList() })
+            .also { cache = it; cacheOf = f.path }
     }
 
-    @Synchronized private fun load(c: Context): JSONArray = try {
-        val f = File(c.filesDir, FILE); if (f.exists()) JSONArray(f.readText()) else JSONArray()
-    } catch (_: Exception) { JSONArray() }
+    @Synchronized private fun save(c: Context, list: List<DkMind.Entry>) {
+        cache = list; cacheOf = File(c.filesDir, FILE).path
+        try {
+            val f = File(c.filesDir, FILE); val tmp = File(c.filesDir, "$FILE.tmp")
+            tmp.writeText(DkMind.toJson(list)); if (!tmp.renameTo(f)) { f.writeText(tmp.readText()); tmp.delete() }
+        } catch (_: Exception) {}
+    }
 
-    @Synchronized private fun save(c: Context, a: JSONArray) { try { File(c.filesDir, FILE).writeText(a.toString()) } catch (_: Exception) {} }
-
-    /** AI ka achha jawab mila -> seekh lo (agli baar turant, internet na ho tab bhi) */
+    /** अच्छा जवाब मिला (AI से, बिना खोज / बिना फ़ोन के काम) -> सीख लो. अगली बार key न चले तब भी यही */
     fun learn(c: Context, question: String, answer: String) {
-        val q = norm(question)
-        if (!learnable(q) || answer.length < 4 || answer.length > 900) return
-        val a = load(c)
-        val out = JSONArray()
-        for (i in 0 until a.length()) { val o = a.optJSONObject(i) ?: continue; if (o.optString("q") != q) out.put(o) }
-        out.put(JSONObject().put("q", q).put("a", answer).put("t", System.currentTimeMillis()))
-        while (out.length() > MAX) out.remove(0)
-        save(c, out)
+        val q = norm(question); val a = answer.trim()
+        if (!DkMind.teachable(q, a)) return
+        synchronized(this) { save(c, DkMind.add(all(c), q, a, System.currentTimeMillis())) }
     }
 
-    /** exact = bilkul wahi sawaal (turant jawab). fuzzy = milta-julta (sirf jab AI na chale). */
+    /**
+     * exact = API चलती है: सिर्फ़ बिल्कुल वही, ताज़ा, न बदलने वाला सवाल (तब API से पहले अपना दिमाग).
+     * fuzzy = key / AI नहीं चली: मिलता-जुलता भी (अंक / "नहीं" अलग हों तो कभी नहीं). बदलने वाली बात = कभी नहीं.
+     */
     fun recall(c: Context, question: String, exact: Boolean): String? {
         val q = norm(question)
-        if (!learnable(q)) return null
-        val a = load(c)
-        var best: String? = null; var bestScore = 0.0
-        val qs = q.split(' ').filter { it.length > 1 }.toSet()
-        for (i in a.length() - 1 downTo 0) {
-            val o = a.optJSONObject(i) ?: continue
-            val k = o.optString("q")
-            // 30 din se purana jawab = dobara AI se pucho
-            if (System.currentTimeMillis() - o.optLong("t") > 30L * 86_400_000L) continue
-            if (k == q) return o.optString("a")
-            if (!exact) {
-                val ks = k.split(' ').filter { it.length > 1 }.toSet()
-                val inter = qs.intersect(ks).size.toDouble(); val uni = (qs + ks).size.toDouble()
-                val s = if (uni == 0.0) 0.0 else inter / uni
-                if (s > bestScore) { bestScore = s; best = o.optString("a") }
-            }
-        }
-        return if (!exact && bestScore >= 0.7) best else null
+        return DkMind.match(all(c), q, exact, System.currentTimeMillis())?.a
+    }
+
+    /** बैकअप के लिए (सिर्फ़ याददाश्त - कोई key नहीं) */
+    fun exportJson(c: Context): String = DkMind.toJson(all(c))
+
+    /** रिस्टोर: फ़ोन वाली + बैकअप वाली जोड़ो (कुछ नहीं मिटता). वापस = कुल कितनी बातें */
+    fun importJson(c: Context, json: String): Int = synchronized(this) {
+        val m = DkMind.merge(all(c), DkMind.fromJson(json)); save(c, m); m.size
     }
 
     fun norm(s: String): String {

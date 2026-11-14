@@ -174,21 +174,26 @@ internal fun GeminiLive.scheduleFast() {
         PhoneLockVoice.instant(b, Prefs.wakeWords(svc), needName = dkOnlyNow)?.let { act ->
             runLockNow(PhoneLockVoice.quick(act), b, "बोलना खत्म"); return@launch
         }
-        // 14 नवंबर 2026 (मालिक): Groq key हो तो वही आवाज़ Whisper large-v3 से भी - सही शब्दों पर काम (देर = caption वाला).
+        // v3.46: वही बात दोबारा router में नहीं (हर ठहराव/शोर पर वही caption दोबारा जाता था)
+        if (!routeDedupe.fresh(b, System.currentTimeMillis())) return@launch
+        val tc = System.nanoTime()
+        var q = LiveFast.pick(b, Prefs.wakeWords(svc), svc.currentPackage(), fast = true)
+        val classMs = (System.nanoTime() - tc) / 1_000_000
+        // 14 नवंबर 2026 (मालिक): Groq key हो तो वही आवाज़ Whisper large-v3 से भी - सही शब्दों पर काम.
+        // Review (14 नवंबर): पहले हर बार Whisper का इंतज़ार (1.4s तक) होता था - टॉर्च / ऐप खोलो जैसे सीधे काम भी देर से.
+        // अब caption से काम पहचान में आ गया = तुरंत; caption से कुछ न समझ आए तभी Whisper का सही text लेकर फिर से देखो.
         // लॉक / अनलॉक / घंटी ऊपर caption से तुरंत (उनमें देर नहीं)
         val cap = b
-        if (!ringing && LiveWhisper.on(svc)) {
+        if (q == null && !ringing && LiveWhisper.on(svc)) {
             val chunks = whisperUtt.snapshot(System.currentTimeMillis()); val ms = whisperUtt.speechMs(); whisperUtt.clear()
             val w = LiveWhisper.hear(svc, chunks, ms)
             if (turnDet.inSpeech || isPlaying() || stopped) return@launch
             b = LiveWhisper.pick(w, cap, dkHeardNow())
-            if (b != cap) log("Whisper ने सही सुना: \"${b.take(50)}\" (caption: \"${cap.take(30)}\")")
-        }
-        // v3.46: वही बात दोबारा router में नहीं (हर ठहराव/शोर पर वही caption दोबारा जाता था)
-        if (!routeDedupe.fresh(b, System.currentTimeMillis())) return@launch
-        val tc = System.nanoTime()
-        val q = LiveFast.pick(b, Prefs.wakeWords(svc), svc.currentPackage(), fast = true)
-        val classMs = (System.nanoTime() - tc) / 1_000_000
+            if (b != cap) {
+                log("Whisper ने सही सुना: \"${b.take(50)}\" (caption: \"${cap.take(30)}\")")
+                q = LiveFast.pick(b, Prefs.wakeWords(svc), svc.currentPackage(), fast = true)
+            }
+        } else whisperUtt.clear()
         // "स्क्रीन शेयर करो / बंद करो" Live में = असली स्क्रीन शेयर (Gemini देखे), पुराना screenshot switch नहीं
         if (q != null && q.action.optString("type") == "screen_view") {
             val r = LiveVision.setScreen(svc, q.action.optBoolean("on", true))
