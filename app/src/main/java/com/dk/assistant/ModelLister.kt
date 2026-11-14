@@ -15,7 +15,9 @@ object ModelLister {
     val names = java.util.concurrent.ConcurrentHashMap<String, String>()
 
     private val SKIP = listOf("embedding", "embed", "tts", "whisper", "audio", "image", "imagen", "veo", "moderation",
-        "dall-e", "transcribe", "realtime", "native-audio", "live", "aqa", "guard", "rerank", "ocr", "search-preview")
+        "dall-e", "transcribe", "realtime", "native-audio", "live", "aqa", "guard", "rerank", "ocr", "search-preview",
+        // 14 नवंबर 2026: Groq की सूची में आवाज़ / जाँच वाले मॉडल (चैट नहीं लेते = "मॉडल ने सवाल नहीं लिया")
+        "orpheus", "playai", "distil", "safeguard", "compound")
 
     suspend fun fetch(p: Provider, key: String, baseUrl: String): List<String> = withContext(Dispatchers.IO) {
         // नवंबर 2026: Z.ai की /models सूची न खुले (404) = उसके जाने-माने फ्री मॉडल. गलत key (401/403) = वही गलती

@@ -18,18 +18,20 @@ class ControlCenterTest {
         )
     }
 
+    // 14 नवंबर 2026 (मालिक): "अपडेट" अब किसी श्रेणी में नहीं - सिर्फ़ मुख्य पन्ने पर सबसे ऊपर (बाकी हर पंक्ति ठीक एक श्रेणी में)
     @Test fun everyOldRow_inExactlyOneCategory() {
         val all = SettingsSearch.CATEGORIES.flatMap { it.second }
         assertEquals(all.size, all.toSet().size)
-        assertEquals(oldRows.toSet(), all.toSet())
+        assertEquals(oldRows.toSet() - "update", all.toSet())
     }
 
-    // 14 नवंबर 2026 (मालिक): सेटिंग खोलते ही सबसे नीचे "अपडेट" (श्रेणी के अंदर भी रहता है)
-    @Test fun updateRow_atBottomOfMainPage() {
+    // 14 नवंबर 2026 (मालिक): "डाउनलोड अपडेट एक ही जगह, ऊपर ही - अंदर नहीं" (पहले: सबसे नीचे + श्रेणी के अंदर भी)
+    @Test fun updateRow_onlyAtTopOfMainPage() {
         val s = SetSrc.all()
         val cats = s.indexOf("SettingsSearch.CATEGORIES.forEach { (c, _) -> menuRow(c.first, c.second, c.third) }")
         val upd = s.indexOf("items.firstOrNull { it.first == \"update\" }?.let { (id, t, sub) -> menuRow(id, t, sub) }")
-        assertTrue(cats > 0 && upd > cats)
+        assertTrue(upd > 0 && cats > upd)
+        assertTrue(SettingsSearch.CATEGORIES.none { "update" in it.second })
     }
 
     @Test fun everyOldRow_stillInMenuSource() {

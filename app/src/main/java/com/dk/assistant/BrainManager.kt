@@ -90,6 +90,20 @@ class BrainManager(private val ctx: Context) {
         return ordered + bad.filter { ProviderHealth.retryable(it.id) }
     }
 
+    /**
+     * 14 नवंबर 2026 (मालिक: "चैट में कभी रुकना ही नहीं चाहिए - जितनी भी API डाली है, limit रहने तक फटाफट जवाब"):
+     * चैट का मॉडल खुद चुना हो तो वह सबसे पहले; वह न चले (गलत मॉडल / limit) तो बाकी सारी डली keys (चैट की अपनी,
+     * फिर DK लाइव / कोडिंग / कंप्यूटर वाली उधार) पीछे-पीछे - पहले चुना मॉडल अटकते ही "जवाब नहीं आ पाया" बार-बार आता था.
+     */
+    private fun chatSpares(): List<Pair<Provider, AiClient>> {
+        if (override != null || BrainPin.chatClient(ctx) == null) return emptyList()
+        val pinned = BrainPin.get(ctx, BrainPin.CHAT)?.provider
+        val withKey = Providers.all.mapNotNull { p -> (scopedClient(ctx, p, ApiScopes.CHAT) ?: BrainPin.borrowed(ctx, p))?.let { p to it } }
+        val (good, bad) = withKey.partition { ProviderHealth.usable(it.first.id) }
+        return good.sortedBy { ProviderHealth.speed(it.first.id) - (if (it.first.id == pinned) 150 else 0) } +
+            bad.filter { ProviderHealth.retryable(it.first.id) }
+    }
+
     /** कोई key आज़माने लायक नहीं बची - साफ़ कारण के साथ (बिना नेट पर गए) */
     private fun exhausted(list: List<Provider>): AllFailedException =
         AllFailedException(list.filter { clientFor(it) != null }.map { it to AiException(429, ProviderHealth.reason(it.id).ifBlank { "limit" }) })
@@ -116,10 +130,10 @@ class BrainManager(private val ctx: Context) {
                 Turn("model", try { JSONObject(t.text).optString("say").ifBlank { "(phone par kaam kiya)" } } catch (_: Exception) { t.text })
             else t
         }
-        val cands = rankedForChat().mapNotNull { p -> clientFor(p)?.let { c ->
+        val cands = (rankedForChat().mapNotNull { p -> clientFor(p)?.let { p to it } } + chatSpares()).map { (p, c) ->
             if (c is GeminiClient) { c.fast = true; c.groundChat = true }     // 13 नवंबर 2026: चैट = googleSearch चालू
             if (c is OpenAiCompatClient) c.fast = true
-            p to c } }
+            p to c }
         if (cands.isEmpty()) {
             val all = Providers.all.filter { clientFor(it) != null }
             throw if (all.isEmpty()) AiException(-1, "NO_KEY") else exhausted(all)
@@ -193,6 +207,8 @@ class BrainManager(private val ctx: Context) {
                 e.errors.all { ProviderHealth.dailyOut(it.first.id) } -> "आज सब फ्री limit खत्म हैं। सेटिंग्स में कोई दूसरी फ्री key डालिए, जैसे Groq या Gemini।"
                 e.errors.all { (it.second as? AiException)?.code == 429 } -> "थोड़ी देर बाद पूछिए, या सेटिंग्स में कोई दूसरी फ्री key डालिए, जैसे Groq।"
                 e.errors.any { val c = (it.second as? AiException)?.code; c == 401 || c == 403 } -> "सेटिंग्स में key दोबारा डालकर टेस्ट दबाइए।"
+                // 14 नवंबर 2026: मॉडल ने सवाल लिया ही नहीं (400/404) = "फिर से बोलिए" से कुछ नहीं बदलता - सही जगह बताओ
+                e.errors.all { val c = (it.second as? AiException)?.code; c == 400 || c == 404 } -> "सेटिंग्स → AI दिमाग → DK चैट में दूसरा मॉडल चुनें, या कोई और key डालें।"
                 else -> "फिर से बोलिए।"
             }
             return "जवाब नहीं आ पाया। $parts। $fix"
@@ -991,7 +1007,8 @@ Rules:
 fun scopedClient(ctx: Context, p: Provider, scope: String): AiClient? {
     val key = Prefs.scopeKey(ctx, scope, p.id)
     if (key.isBlank()) return null
-    val model = Prefs.scopeModel(ctx, scope, p.id)
+    // 14 नवंबर 2026: चैट में सुनने/आवाज़ वाला मॉडल (Whisper, TTS) = कंपनी का default (पहले हर बार 400)
+    val model = Prefs.scopeModel(ctx, scope, p.id).let { if (scope == ApiScopes.CHAT && !p.isGemini) ApiScopes.chatModel(it, p.defaultModel) else it }
     if (model.isBlank()) return null
     // नवंबर 2026: Settings → AI दिमाग का "सोचने का स्तर" इसी हिस्से का (AUTO = पहले जैसा)
     val think = ThinkLevel.get(ctx, scope)

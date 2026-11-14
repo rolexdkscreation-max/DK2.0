@@ -21,7 +21,7 @@ object SettingsSearch {
     val SECTIONS: Map<String, String> = linkedMapOf(
         "profile" to "प्रोफ़ाइल", "lang" to "भाषा / Language", "ui" to "दिखावट (UI कस्टमाइज़ेशन)", "brain" to "AI दिमाग",
         "brain_live" to "AI दिमाग • DK लाइव", "brain_chat" to "AI दिमाग • DK चैट", "brain_coder" to "AI दिमाग • कोडिंग एजेंट",
-        "brain_pc" to "AI दिमाग • DK कंप्यूटर", "brain_web" to "AI दिमाग • वेबसाइट बिल्डर", "voice" to "आवाज़", "orb" to "ओर्ब और चेहरा",
+        "brain_pc" to "AI दिमाग • DK कंप्यूटर", "voice" to "आवाज़", "orb" to "ओर्ब और चेहरा",
         "access" to "Accessibility", "phonelock" to "फ़ोन लॉक / अनलॉक", "guard" to "टच मोड", "perms" to "परमिशन", "computer" to "DK कंप्यूटर", "coder" to "कोडिंग एजेंट",
         "social" to "सोशल रिव्यू", "reels" to "रील गिनती और लिमिट",
         ACT_AUTO to "ऑटोनोमस मोड", ACT_TEMPLATES to "टेम्पलेट कमांड", ACT_CONNECTORS to "कनेक्टर", ACT_STORY to "स्टोरी राइटर एजेंट", ACT_BACKUP to "बैकअप",
@@ -41,7 +41,7 @@ object SettingsSearch {
         Triple("cat_auto", "ऑटोमेशन", "ऑटोनोमस मोड • टेम्पलेट कमांड • ऑटो रिप्लाई • Accessibility") to listOf("auto", "templates", "autoreply", "access"),
         Triple("cat_security", "सुरक्षा", "फ़ोन लॉक • टच मोड • परमिशन") to listOf("phonelock", "guard", "perms"),
         Triple("cat_social", "सोशल और कहानी", "सोशल रिव्यू • रील गिनती और लिमिट • स्टोरी राइटर") to listOf("social", "reels", "story"),
-        Triple("cat_data", "डेटा और ऐप", "कनेक्टर • बैकअप • अपडेट • डिबग लॉग • ऐप के बारे में") to listOf("connectors", "backup", "update", "debug", "about")
+        Triple("cat_data", "डेटा और ऐप", "कनेक्टर • बैकअप • डिबग लॉग • ऐप के बारे में") to listOf("connectors", "backup", "debug", "about")
     )
 
     /** हर हिस्से के आम शब्द (हिंदी + English + बोलचाल) - सर्च में मदद */
@@ -54,7 +54,6 @@ object SettingsSearch {
         "brain_chat" to "chat चैट key api openai groq openrouter z.ai zai glm nvidia एनवीडिया nim",
         "brain_coder" to "coder coding कोडिंग key api",
         "brain_pc" to "computer कंप्यूटर key api z.ai zai glm nvidia एनवीडिया nim",
-        "brain_web" to "website वेबसाइट forge फोर्ज builder बिल्डर site साइट key api gemini मॉडल model",
         "voice" to "voice आवाज़ बोलना सुनना mic माइक tts whatsapp memory याददाश्त dost दोस्त",
         "orb" to "orb ओर्ब चेहरा",
         "access" to "accessibility फ़ोन कंट्रोल control battery बैटरी call कॉल",
@@ -96,10 +95,10 @@ object SettingsSearch {
         E("lang", "ऐप की भाषा (स्क्रीन)", "पूरे ऐप के बटन, Settings, संदेश — English या हिंदी"),
         E("lang", "DK किस भाषा में जवाब दे", "DK लाइव, DK चैट, बिना-Live आवाज़, DK कंप्यूटर और कोडिंग एजेंट — सब पर एक साथ"),
         E("brain", "एक key से सब (ऑल-राउंडर)", "सिर्फ़ एक Gemini key — DK लाइव में बात, चैट, सुनना-लिखना, Google खोज और फ़ोन के काम। कोडिंग एजेंट, स्टोरी मोड, DK कंप्यूटर, वेबसाइट के लिए इसे बंद करके अलग-अलग keys डालें"),
-        E("brain", "अलग-अलग key वाले हिस्से — बंद", "ऊपर \"एक key से सब\" चालू है, इसलिए DK लाइव / चैट / कोडिंग / कंप्यूटर की अलग keys अभी इस्तेमाल नहीं हो रहीं"),
-        E("brain", "हर काम का मॉडल — खुद चुनें", "चैट, लाइव, कोडिंग एजेंट, DK कंप्यूटर, वेबसाइट, कहानी — हर काम के लिए कोई भी डली key और उसका मॉडल चुनें (नया मॉडल भी); खाली = fallback"),
-        E("brain", "हर हिस्से की अपनी API", "हर हिस्सा सिर्फ़ अपनी डाली हुई key से जवाब लेता है — किसी दूसरे की key इस्तेमाल नहीं करता"),
-        E("brain_web", "वेबसाइट बिल्डर — अपनी Gemini key", "DK से जब भी वेबसाइट बनवाएँगे, सिर्फ़ यही key लगेगी — DK लाइव, चैट, कोडिंग या कोई दूसरी key नहीं"),
+        E("brain_live", "इस हिस्से का मॉडल — खुद चुनें", "DK लाइव के लिए कोई भी डली Gemini key और उसका मॉडल चुनें (नया मॉडल भी); खाली = fallback"),
+        E("brain_chat", "इस हिस्से का मॉडल — खुद चुनें", "DK चैट और कहानी के लिए कोई भी डली key और उसका मॉडल चुनें; खाली = fallback"),
+        E("brain_coder", "इस हिस्से का मॉडल — खुद चुनें", "कोडिंग एजेंट और वेबसाइट बनाने के लिए कोई भी डली key और उसका मॉडल चुनें; खाली = fallback"),
+        E("brain_pc", "इस हिस्से का मॉडल — खुद चुनें", "DK कंप्यूटर के लिए कोई भी डली key और उसका मॉडल चुनें; खाली = fallback"),
         E("brain_live", "गहरी सोच — Z.ai / NVIDIA, चाहें तो", "कठिन सवाल पर DK लाइव Z.ai (GLM) या NVIDIA की key से सोचकर बोलता है — आवाज़ Gemini Live की ही"),
         E("brain_live", "DK लाइव — Google Gemini", "Gemini Live बातचीत, Gemini नेचुरल आवाज़ और सुनना — सिर्फ़ इसी key से"),
         E("brain_live", "लिखना (\"आप:\" वाली लाइन) — अपनी अलग Gemini key", "आप जो बोलते हैं उसे लिखने वाला (gemini-3.5-transcribe-live) इसी key से चलेगा, ताकि बोलने वाले Live की free limit इसमें खर्च न हो"),

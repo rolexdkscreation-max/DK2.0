@@ -27,17 +27,24 @@ class ForgeOwnKeyTest {
         assertTrue(p.contains("fun forgeModelToUse(c: Context): String = forgeModel(c).ifBlank { forgeAutoModel(c) }"))
     }
 
-    @Test fun settingsHasWebsiteBuilderSection() {
+    /**
+     * 14 नवंबर 2026 (मालिक): "साइट बिल्डर वाला key डालने का ऑप्शन हटा दो - वेबसाइट कोडिंग एजेंट की API से बने".
+     * पहले यह test अलग "वेबसाइट बिल्डर" menuRow/section माँगता था - वह feature जानबूझकर हटाया गया, इसलिए अब उल्टा जाँचता है.
+     */
+    @Test fun websiteUsesCodingAgentKey_noSeparateSection() {
         val b = src("SettingsBrain.kt")
-        assertTrue(b.contains("menuRow(\"brain_web\""))
-        assertTrue(b.contains("keyFields[Prefs.FORGE_KEY] = ed"))
-        assertTrue(b.contains("keyFields[Prefs.FORGE_KEY2]"))
-        assertTrue(b.contains("WebsiteForgeClient.pickBest(k)"))
-        // एक-key मोड में भी दिखे: "if (one)" वाले return से पहले
-        assertTrue(b.indexOf("menuRow(\"brain_web\"") < b.indexOf("    if (one) {\n        card(\"अलग-अलग key वाले हिस्से"))
-        assertTrue(src("SettingsActivity.kt").contains("\"brain_web\" -> { title.text = \"AI दिमाग • वेबसाइट बिल्डर\"; secBrainWeb() }"))
-        assertTrue(src("SettingsSearch.kt").contains("\"brain_web\" to \"AI दिमाग • वेबसाइट बिल्डर\""))
-        assertTrue(src("forge/ForgeLauncher.kt").contains("putExtra(\"section\", \"brain_web\")"))
+        assertFalse(b.contains("menuRow(\"brain_web\""))
+        assertFalse(b.contains("secBrainWeb"))
+        assertFalse(src("SettingsActivity.kt").contains("\"brain_web\""))
+        assertFalse(src("SettingsSearch.kt").contains("\"brain_web\""))
+        assertTrue(src("forge/ForgeLauncher.kt").contains("putExtra(\"section\", \"brain_coder\")"))
+        assertTrue(b.contains("वेबसाइट भी इसी की API से"))
+        val p = src("Prefs.kt")
+        assertTrue(p.contains("ApiScopes.CODER, it) }"))
+        assertTrue(p.contains("forgeKeysFor(listOf(FORGE_KEY, FORGE_KEY2)"))   // पुरानी सेव की हुई वेबसाइट key भी चलती रहे
+        // क्रम: कोडिंग एजेंट की → पुरानी वेबसाइट/एक key → उधार; खाली और दोहराई गायब
+        assertEquals(listOf("C1", "C2", "F1", "B1"), com.dk.assistant.Prefs.forgeOrder(listOf("C1", " ", "C2"), listOf("F1", "C1"), listOf("", "B1", "C2")))
+        assertEquals(emptyList<String>(), com.dk.assistant.Prefs.forgeOrder(emptyList(), emptyList(), listOf("")))
     }
 
     @Test fun ownKeyRunsEvenInOneKeyMode() {

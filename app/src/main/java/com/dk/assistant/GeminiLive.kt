@@ -369,6 +369,8 @@ class GeminiLive(internal val svc: DKAccessibilityService, internal val agent: A
     @Volatile internal var lastAnyServerAt = 0L
     /** नवंबर 2026: अभी की बात की आवाज़ (session अटके तो नए connection पर यही दोबारा - text नहीं) */
     internal val utt = LiveRecover.Utterance(CHUNK_MS)
+    /** 14 नवंबर 2026: अभी की बात की आवाज़ - बात खत्म होते ही Groq Whisper (large-v3) से सही text ([LiveWhisper]) */
+    internal val whisperUtt = LiveRecover.Utterance(CHUNK_MS)
     /** नए connection पर दोबारा भेजनी है (null = कुछ नहीं) */
     @Volatile internal var replayAudio: List<ByteArray>? = null
     @Volatile internal var replayAt = 0L

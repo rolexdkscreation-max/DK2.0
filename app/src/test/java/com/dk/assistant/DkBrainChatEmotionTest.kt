@@ -1,0 +1,92 @@
+package com.dk.assistant
+
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
+import org.junit.Test
+import java.io.File
+
+/**
+ * 14 नवंबर 2026 (मालिक): चैट "जवाब नहीं आ पाया / मॉडल ने सवाल नहीं लिया" पर अटकता था; हर हिस्से के अंदर मॉडल चुनना;
+ * वेबसाइट कोडिंग एजेंट की key से; DK लाइव Whisper से सटीक सुने; DK के दिल में भावनाएँ; key डालते ही हरा ✓ + आवाज़;
+ * लाइट थीम भी रंगीन; अपडेट सिर्फ़ ऊपर.
+ */
+class DkBrainChatEmotionTest {
+    private fun src(path: String) = listOf(File("src/main/java/com/dk/assistant/$path"), File("app/src/main/java/com/dk/assistant/$path")).first { it.exists() }.readText()
+
+    @Test fun chatNeverUsesWhisperOrTtsModels() {
+        assertFalse(ApiScopes.chatCapable("whisper-large-v3"))
+        assertFalse(ApiScopes.chatCapable("playai-tts"))
+        assertFalse(ApiScopes.chatCapable("canopylabs/orpheus-v1-english"))
+        assertFalse(ApiScopes.chatCapable("compound-beta"))
+        assertFalse(ApiScopes.chatCapable(""))
+        assertTrue(ApiScopes.chatCapable("llama-3.3-70b-versatile"))
+        assertEquals("llama-3.1-8b-instant", ApiScopes.chatModel("whisper-large-v3-turbo", "llama-3.1-8b-instant"))
+        assertEquals("openai/gpt-oss-120b", ApiScopes.chatModel(" openai/gpt-oss-120b ", "x"))
+        assertTrue(src("BrainPin.kt").contains("ApiScopes.chatModel(Prefs.scopeModel(c, ApiScopes.CHAT, p.id).takeIf { ApiScopes.chatCapable(it) }"))
+    }
+
+    @Test fun chatFallsThroughOnAny400AndPinHasSpares() {
+        val a = src("AiClients.kt")
+        assertEquals(2, Regex("""\(e\.code == 400 && !\(e\.message \?: ""\)\.contains\("API key", (ignoreCase = )?true\)\)""").findAll(a).count())
+        val b = src("BrainManager.kt")
+        assertTrue(b.contains("private fun chatSpares(): List<Pair<Provider, AiClient>>"))
+        assertTrue(b.contains("(rankedForChat().mapNotNull { p -> clientFor(p)?.let { p to it } } + chatSpares())"))
+        assertTrue(b.contains("सेटिंग्स → AI दिमाग → DK चैट में दूसरा मॉडल चुनें"))
+    }
+
+    @Test fun whisperPicksAccurateWordsButNeverDkEcho() {
+        assertEquals("caption", LiveWhisper.pick(null, "caption"))
+        assertEquals("caption", LiveWhisper.pick("  ", "caption"))
+        assertEquals("मेरा अलार्म सुबह छह बजे लगा दो", LiveWhisper.pick("मेरा अलार्म सुबह छह बजे लगा दो.", "मेरा अलार्म सुबह बजे"))
+        assertEquals("cap", LiveWhisper.pick("आज मौसम बहुत अच्छा है सर", "cap", dkSaid = "आज मौसम बहुत अच्छा है सर"))
+        assertEquals("whisper-large-v3", LiveWhisper.MODEL)
+        val t = src("GeminiLiveTurnEnd.kt")
+        assertTrue(t.contains("b = LiveWhisper.pick(w, cap, dkHeardNow())"))
+        assertTrue(t.indexOf("runLockNow(PhoneLockVoice.quick(act), b, \"बोलना खत्म\")") < t.indexOf("LiveWhisper.on(svc)"))
+    }
+
+    @Test fun dkHasAHeart() {
+        val h = DkPersona.HEART_RULES
+        for (w in listOf("{sir}")) assertTrue(h.contains(w))
+        val p = src("DkPersona.kt")
+        assertTrue(p.contains("append(HEART_RULES.replace(\"{sir}\", sir))"))
+        assertTrue(h.length in 200..2500)
+    }
+
+    @Test fun keyTickKnowsTheCompanyAndIsWired() {
+        assertEquals("gemini", KeyTick.provider("AIzaSyA1234567890abcdefghijklmnopqrstu"))
+        assertEquals("groq", KeyTick.provider("gsk_1234567890abcdefghijklmnopqrstuvwxyz"))
+        assertNull(KeyTick.provider("short"))
+        assertNull(KeyTick.provider("hello there this is not a key at all"))
+        assertTrue(KeyTick.OK_TEXT.startsWith("✓"))
+        assertTrue(src("SettingsWidgets.kt").contains("if (secret) keyTick(box, e)"))
+        val k = src("KeyTick.kt")
+        assertTrue(k.contains("PhoneVoice.say"))
+        assertTrue(k.contains("KeyTick.SHOW_MS"))
+    }
+
+    @Test fun lightThemeIsColourful() {
+        assertEquals(0xFFFFFFFF.toInt(), PlainLook.pastel(0xFF6366F1.toInt(), 0f))
+        assertEquals(0xFF6366F1.toInt(), PlainLook.pastel(0xFF6366F1.toInt(), 1f))
+        val p = PlainLook.pastel(0xFF6366F1.toInt(), 0.2f)
+        assertTrue((p shr 16 and 0xFF) > 0xD0 && (p and 0xFF) > (p shr 8 and 0xFF))   // हल्का, पर नीला-बैंगनी झलक
+        assertEquals(0xFF000000.toInt(), PlainLook.deep(0xFF6366F1.toInt(), 1f))
+        assertTrue(PlainLook.LIGHT_TINTS.size >= 6)
+        assertEquals(PlainLook.lightTint(0), PlainLook.lightTint(PlainLook.LIGHT_TINTS.size))
+        assertTrue(PlainLook.LIGHT_TINTS.toSet().size == PlainLook.LIGHT_TINTS.size)
+        assertTrue(src("PlainLook.kt").contains("light && kind == Kind.CARD -> colorCard(tintFor(v), 18 * dp, dp.toInt())"))
+        val a = src("SettingsActivity.kt")
+        assertTrue(a.contains("PlainLook.colorCard(menuTint(icon), 20 * dp"))
+        assertTrue(a.contains("PlainLook.deep(menuTint(icon))"))
+    }
+
+    @Test fun brainMenuHasNoTopPinAndOneKeyHidesParts() {
+        val b = src("SettingsBrain.kt")
+        val menu = b.substring(b.indexOf("fun SettingsActivity.secBrainMenu()"), b.indexOf("fun SettingsActivity.secBrainLive()"))
+        assertFalse(menu.contains("हर हिस्से की अपनी API"))
+        assertFalse(menu.contains("अलग-अलग key वाले हिस्से — बंद"))
+        assertTrue(menu.indexOf("if (one) return") < menu.indexOf("menuRow(\"brain_live\""))
+    }
+}

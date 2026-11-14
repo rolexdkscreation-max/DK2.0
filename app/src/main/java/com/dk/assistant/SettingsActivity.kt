@@ -132,7 +132,6 @@ class SettingsActivity : AppCompatActivity() {
             "brain_chat" -> { title.text = "AI दिमाग • DK चैट"; secBrain() }
             "brain_coder" -> { title.text = "AI दिमाग • कोडिंग एजेंट"; secBrainScope(ApiScopes.CODER) }
             "brain_pc" -> { title.text = "AI दिमाग • DK कंप्यूटर"; secBrainScope(ApiScopes.PC) }
-            "brain_web" -> { title.text = "AI दिमाग • वेबसाइट बिल्डर"; secBrainWeb() }
             "voice" -> { title.text = "आवाज़"; secVoice() }
             "orb" -> { title.text = "ओर्ब और चेहरा"; secOrb(); secIsland() }
             "ui" -> { title.text = "दिखावट"; secUi() }
@@ -162,7 +161,7 @@ class SettingsActivity : AppCompatActivity() {
             Triple("profile", "प्रोफ़ाइल", "आपका नाम • असिस्टेंट का नाम ($name) • बात करने का तरीका"),
             Triple("lang", "भाषा / Language", "ऐप: ${if (UiLang.en()) "English" else "हिंदी"} • DK के जवाब: ${Lang.short(Prefs.replyLang(this))}"),
             Triple("ui", "दिखावट (UI कस्टमाइज़ेशन)", "थीम • मुख्य रंग • काँच की पारदर्शिता • चमक • एनिमेशन"),
-            Triple("brain", "AI दिमाग", "DK लाइव • DK चैट • कोडिंग एजेंट • DK कंप्यूटर — हर एक की अपनी API key"),
+            Triple("brain", "AI दिमाग", "DK लाइव • DK चैट • कोडिंग एजेंट • DK कंप्यूटर • एक key से सब"),
             Triple("voice", "आवाज़", "बोलने वाला इंजन (Live • Gemini TTS) • सुनना"),
             Triple("orb", "ओर्ब और चेहरा", "पृथ्वी, गैलेक्सी, एटम, छल्ला, पुरुष/महिला HD चेहरा"),
             Triple("access", "Accessibility", (Setup.a11yMark(this) + when { Setup.accessibilityOn() -> "चालू"; Setup.enabledInSettings(this) -> "रुका है"; else -> "बंद" }) + " • फ़ोन कंट्रोल • हमेशा सुनना • कॉल • बैटरी"),
@@ -184,9 +183,10 @@ class SettingsActivity : AppCompatActivity() {
             Triple("about", "ऐप के बारे में", "version • बनाने वाले • निजता (privacy)")
         )
         if (cat == null) {
-            SettingsSearch.CATEGORIES.forEach { (c, _) -> menuRow(c.first, c.second, c.third) }
-            // 14 नवंबर 2026 (मालिक: "अपडेट अंदर न रहे, सेटिंग खोलें तो सबसे नीचे दिखे"): मुख्य पन्ने पर सबसे नीचे भी
+            // 14 नवंबर 2026 (मालिक: "डाउनलोड अपडेट वाला एक ही जगह, ऊपर ही दिखे - अंदर नहीं"): मुख्य पन्ने पर सबसे ऊपर,
+            // किसी श्रेणी के अंदर नहीं
             items.firstOrNull { it.first == "update" }?.let { (id, t, sub) -> menuRow(id, t, sub) }
+            SettingsSearch.CATEGORIES.forEach { (c, _) -> menuRow(c.first, c.second, c.third) }
             return
         }
         val ids = SettingsSearch.CATEGORIES.firstOrNull { it.first.first == cat }?.second.orEmpty()
@@ -218,8 +218,13 @@ class SettingsActivity : AppCompatActivity() {
                 setImageResource(menuIcon(icon)); background = FutureViews.squircle(this@SettingsActivity, menuTint(icon))
                 val ip = (10 * dp).toInt(); setPadding(ip, ip, ip, ip); importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
             }, LinearLayout.LayoutParams((44 * dp).toInt(), (44 * dp).toInt()).apply { marginEnd = (14 * dp).toInt() })
+            // 14 नवंबर 2026 (मालिक): लाइट में भी पूरा रंगीन - हर पंक्ति अपने रंग के हल्के डिब्बे में, नाम उसी रंग में गहरा
+            val light = com.dk.assistant.dkai.DkaiTheme.light
+            if (light) box.background = android.graphics.drawable.RippleDrawable(android.content.res.ColorStateList.valueOf(0x220F172A),
+                PlainLook.colorCard(menuTint(icon), 20 * dp, (1.2f * dp).toInt()), null).also { (18 * dp).toInt().let { pd -> box.setPadding(pd, pd, pd, pd) } }
             val txt = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
-            txt.addView(TextView(this).apply { text = t; textSize = 17f; setTypeface(typeface, Typeface.BOLD); setTextColor(0xFFFFFFFF.toInt()) })
+            txt.addView(TextView(this).apply { text = t; textSize = 17f; setTypeface(typeface, Typeface.BOLD)
+                setTextColor(if (light) PlainLook.deep(menuTint(icon)) else 0xFFFFFFFF.toInt()) })
             val subTv = TextView(this).apply { text = sub; textSize = 12.5f; setTextColor(0x99FFFFFF.toInt()); setPadding(0, (3 * dp).toInt(), 0, 0) }
             txt.addView(subTv)
             box.addView(txt, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))

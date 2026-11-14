@@ -71,10 +71,17 @@ class BrainPinTest {
 
     @Test fun settingsCardAndSearch() {
         val s = src("SettingsBrain.kt")
-        assertTrue(s.contains("card(\"हर काम का मॉडल — खुद चुनें\""))
+        // 14 नवंबर 2026 (मालिक): "हर काम का मॉडल" ऊपर एक जगह नहीं - DK लाइव, DK चैट, कोडिंग एजेंट, DK कंप्यूटर हर एक के अंदर
+        assertTrue(s.contains("internal const val PIN_CARD = \"इस हिस्से का मॉडल — खुद चुनें\""))
+        assertTrue(s.contains("card(PIN_CARD,"))
+        for (f in listOf("brainPinCard(listOf(BrainPin.LIVE))", "brainPinCard(listOf(BrainPin.CHAT, BrainPin.STORY))",
+                "listOf(BrainPin.CODER, BrainPin.SITE) else listOf(BrainPin.PC)")) assertTrue(f, s.contains(f))
+        val menu = s.substring(s.indexOf("fun SettingsActivity.secBrainMenu()"), s.indexOf("fun SettingsActivity.secBrainLive()"))
+        assertFalse(menu.contains("brainPinCard"))
         assertTrue(s.contains("ModelLister.liveModels(o.key)"))
         assertTrue(s.contains("BrainPin.set(this, f, null)"))
-        assertTrue(src("SettingsSearch.kt").contains("E(\"brain\", \"हर काम का मॉडल — खुद चुनें\""))
+        for (sec in listOf("brain_live", "brain_chat", "brain_coder", "brain_pc"))
+            assertTrue(sec, src("SettingsSearch.kt").contains("E(\"$sec\", \"इस हिस्से का मॉडल — खुद चुनें\""))
     }
 
     @Test fun fallbackUsesEveryEnteredKey() {
