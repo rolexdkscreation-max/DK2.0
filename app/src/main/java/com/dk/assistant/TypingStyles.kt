@@ -21,7 +21,25 @@ object TypingStyles {
         "matrix" to "डॉट-ग्रिड स्कैन",
     )
 
-    fun valid(s: String?): String = if (s != null && STYLES.any { it.first == s }) s else BARS
+    /** 14 नवंबर 2026 (मालिक): छोटा रंगीन कंप्यूटर जो काम चलते समय इधर-उधर हिलता रहे (DK कंप्यूटर / कोडिंग एजेंट का डिफ़ॉल्ट) */
+    const val COMPUTER = "computer"
+    /** Settings में दिखने वाली पूरी सूची = पुराने 6 + कंप्यूटर वाला */
+    val ALL = STYLES + (COMPUTER to "छोटा कंप्यूटर (DK कंप्यूटर वाला)")
+
+    fun valid(s: String?): String = if (s != null && ALL.any { it.first == s }) s else BARS
+    fun validAgent(s: String?): String = if (s != null && ALL.any { it.first == s }) s else COMPUTER
+
+    /**
+     * कंप्यूटर कहाँ बने: [phase] चलता समय, [act] 0..1 (काम का ज़ोर). लौटाता है (dx, dy, झुकाव°, कर्सर 0..1) -
+     * dx/dy छोटे चौकोर के हिस्से में; कंप्यूटर हमेशा चौकोर के अंदर रहे.
+     */
+    fun computer(phase: Double, act: Float, out: FloatArray) {
+        val p = phase.toFloat(); val a = act.coerceIn(0f, 1f)
+        out[0] = 0.09f * a * sin(p * 0.45f)
+        out[1] = 0.05f * a * sin(p * 0.9f + 1f)
+        out[2] = 7f * a * sin(p * 0.6f)
+        out[3] = ((p * 0.5f) % 1f + 1f) % 1f
+    }
 
     /** ज़्यादा से ज़्यादा डॉट (out का आकार = MAX * 4) */
     const val MAX = 16

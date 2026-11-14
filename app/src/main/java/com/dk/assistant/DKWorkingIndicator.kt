@@ -42,7 +42,13 @@ class DKWorkingIndicator(context: Context) : View(context) {
     /** Settings की झलक के लिए - null = Prefs वाला टाइपिंग एनीमेशन (सिर्फ़ bare बुलबुले में) */
     var typingPreview: String? = null
         set(v) { field = v; styleT = 0L; kick() }
+    /** DK कंप्यूटर / कोडिंग एजेंट का बुलबुला = उनका अलग टाइपिंग एनीमेशन (डिफ़ॉल्ट छोटा कंप्यूटर) */
+    var agent = false
+        set(v) { if (field != v) { field = v; styleT = 0L; invalidate() } }
     private var typing = TypingStyles.BARS
+    private val pcBox = FloatArray(4)
+    private val pcLine = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE; strokeCap = Paint.Cap.ROUND; strokeJoin = Paint.Join.ROUND }
+    private val pcFill = Paint(Paint.ANTI_ALIAS_FLAG)
     private var styleT = 0L
     private val tDots = FloatArray(TypingStyles.MAX * 4)
     private val dotP = Paint(Paint.ANTI_ALIAS_FLAG)
@@ -74,6 +80,11 @@ class DKWorkingIndicator(context: Context) : View(context) {
         val s = minOf(w, h).toFloat()
         val cx = w / 2f; val cy = h / 2f
         bar.shader = LinearGradient(cx - s * 0.32f, cy - s * 0.3f, cx + s * 0.32f, cy + s * 0.3f,
+            intArrayOf(BLUE, MID, PURPLE), floatArrayOf(0f, 0.5f, 1f), Shader.TileMode.CLAMP)
+        pcLine.shader = LinearGradient(cx - s * 0.4f, cy - s * 0.4f, cx + s * 0.4f, cy + s * 0.4f,
+            intArrayOf(BLUE, MID, PURPLE), floatArrayOf(0f, 0.5f, 1f), Shader.TileMode.CLAMP)
+        pcLine.strokeWidth = (s * 0.075f).coerceAtLeast(1.2f * dp)
+        pcFill.shader = LinearGradient(cx - s * 0.4f, cy - s * 0.4f, cx + s * 0.4f, cy + s * 0.4f,
             intArrayOf(BLUE, MID, PURPLE), floatArrayOf(0f, 0.5f, 1f), Shader.TileMode.CLAMP)
         dotP.shader = LinearGradient(cx - s * 0.4f, cy - s * 0.4f, cx + s * 0.4f, cy + s * 0.4f,
             intArrayOf(BLUE, MID, PURPLE), floatArrayOf(0f, 0.5f, 1f), Shader.TileMode.CLAMP)
@@ -124,7 +135,15 @@ class DKWorkingIndicator(context: Context) : View(context) {
         }
         // v4.x: बुलबुले में चुना हुआ टाइपिंग एनीमेशन (डॉट वाला) - बार की जगह
         if (bare) {
-            if (now - styleT > 1000) { styleT = now; typing = typingPreview ?: Prefs.typingStyle(context) }
+            if (now - styleT > 1000) { styleT = now; typing = typingPreview ?: if (agent) Prefs.typingStyleAgent(context) else Prefs.typingStyle(context) }
+            if (typing == TypingStyles.COMPUTER) {
+                drawComputer(c, cx, cy, s)
+                val idle = state == WorkState.IDLE && amp < 0.004f
+                if (idle) { amp = 0f; ringA = 0f; pulse = 0f; running = false; last = 0L }
+                else if (canAnimate()) postInvalidateOnAnimation()
+                else { running = false; last = 0L }
+                return
+            }
             if (typing != TypingStyles.BARS) {
                 val cnt = TypingStyles.dots(typing, phase, amp / 0.85f, tDots)
                 for (i in 0 until cnt) {
@@ -161,6 +180,33 @@ class DKWorkingIndicator(context: Context) : View(context) {
         if (settled) { amp = 0f; ringA = 0f; pulse = 0f; running = false; last = 0L }
         else if (canAnimate()) postInvalidateOnAnimation()
         else { running = false; last = 0L }
+    }
+
+    /** छोटा रंगीन कंप्यूटर (स्क्रीन + कर्सर + स्टैंड) - काम चलते समय इधर-उधर हिलता, रुकते ही फीका */
+    private fun drawComputer(c: Canvas, cx: Float, cy: Float, s: Float) {
+        val act = (amp / 0.38f).coerceIn(0f, 1f)
+        TypingStyles.computer(phase, act, pcBox)
+        val a = (255 * (0.3f + 0.7f * act)).toInt().coerceIn(0, 255)
+        pcLine.alpha = a
+        c.save()
+        c.translate(cx + pcBox[0] * s, cy + pcBox[1] * s)
+        c.rotate(pcBox[2])
+        val sw = s * 0.30f; val sh = s * 0.21f; val top = -s * 0.26f
+        r.set(-sw, top, sw, top + sh * 2)
+        c.drawRoundRect(r, s * 0.07f, s * 0.07f, pcLine)
+        // स्क्रीन के अंदर लिखता कर्सर (बाएँ से दाएँ)
+        pcFill.alpha = (a * (0.55f + 0.45f * sin(phase * 2.2).toFloat())).toInt().coerceIn(0, 255)
+        val lx = -sw * 0.62f; val ly = top + sh * 0.85f
+        val len = sw * 1.24f * pcBox[3]
+        r.set(lx, ly, lx + len.coerceAtLeast(s * 0.04f), ly + s * 0.05f)
+        c.drawRoundRect(r, s * 0.025f, s * 0.025f, pcFill)
+        r.set(lx, ly + s * 0.09f, lx + sw * 0.7f, ly + s * 0.14f)
+        pcFill.alpha = (a * 0.45f).toInt(); c.drawRoundRect(r, s * 0.025f, s * 0.025f, pcFill)
+        // स्टैंड
+        val by = top + sh * 2
+        c.drawLine(0f, by, 0f, by + s * 0.1f, pcLine)
+        c.drawLine(-s * 0.13f, by + s * 0.12f, s * 0.13f, by + s * 0.12f, pcLine)
+        c.restore()
     }
 
     private fun canAnimate() = isAttachedToWindow && isShown && windowVisibility == VISIBLE && ValueAnimator.areAnimatorsEnabled()
