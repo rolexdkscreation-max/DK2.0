@@ -134,12 +134,13 @@ object ForgeController {
 
     private fun begin(c: Context, text: String, isEdit: Boolean): StartResult {
         // वेबसाइट की अपनी key डली हो = "एक key से सब" की key खर्च नहीं होती, इसलिए एक-key मोड में भी चलेगा
-        if (apiKey(c).isBlank()) OneKeyGate.check(c, OneKeyGate.Work.WEBSITE)?.let {
+        val pinned = com.dk.assistant.BrainPin.resolve(c, com.dk.assistant.BrainPin.SITE)
+        if (pinned == null && apiKey(c).isBlank()) OneKeyGate.check(c, OneKeyGate.Work.WEBSITE)?.let {
             return StartResult.MissingKey(it + " या " + KEY_PLACE + " में वेबसाइट की अपनी Gemini key डालिए।")
         }
         if (text.isBlank()) return StartResult.NothingToEdit(Lang.pick("कैसी वेबसाइट बनानी है, यह बताइए।", "Tell me what website to build."))
         if (_state.value.phase == ForgePhase.BUILDING) return StartResult.Busy(Lang.pick("एक वेबसाइट अभी बन रही है, पहले वह पूरी होने दें।", "A website is already being built; let it finish first."))
-        val key = apiKey(c)
+        val key = apiKey(c).ifBlank { pinned?.key.orEmpty() }
         if (key.isBlank()) return StartResult.MissingKey(Lang.pick("वेबसाइट बनाने के लिए $KEY_PLACE में वेबसाइट की अपनी Gemini key डालें — DK दूसरी कोई key इस्तेमाल नहीं करता।",
             "Add the Website Builder's own Gemini key in Settings → AI Brain → Website Builder. DK never uses any other key for websites."))
         if (!online(c)) return StartResult.Offline(Lang.pick("इंटरनेट नहीं है, वेबसाइट नहीं बन सकती।", "No internet, the website can't be built."))
@@ -187,7 +188,10 @@ object ForgeController {
 
         suspend fun once(prompt: String): Pair<String, String?> {
             synchronized(partial) { partial.setLength(0) }
-            val fr = WebsiteForgeClient.streamKeys(Prefs.forgeKeys(c).ifEmpty { listOf(key) }, Prefs.forgeModelToUse(c), prompt,
+            // 14 नवंबर 2026 (मालिक): AI दिमाग में खुद चुना मॉडल = सिर्फ़ वही; न चुना = वेबसाइट की keys, फिर बाकी डली Gemini keys
+            val pin = com.dk.assistant.BrainPin.resolve(c, com.dk.assistant.BrainPin.SITE)
+            val fr = if (pin != null) WebsiteForgeClient.streamPinned(pin.key, pin.model, prompt) { t -> synchronized(partial) { partial.append(t) }; emit(false) }
+            else WebsiteForgeClient.streamKeys(Prefs.forgeKeys(c).ifEmpty { listOf(key) } + com.dk.assistant.BrainPin.spareGemini(c, Prefs.forgeKeys(c) + key), Prefs.forgeModelToUse(c), prompt,
                 onModel = { m -> rememberModel(c, m) }) { t -> synchronized(partial) { partial.append(t) }; emit(false) }
             return partialHtml() to fr
         }

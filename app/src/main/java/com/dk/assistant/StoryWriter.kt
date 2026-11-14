@@ -94,6 +94,8 @@ object StoryPlan {
 /** Kahani likhne wali AI: "AI दिमाग" me chuni company/key/model. Apna HTTP - Coding/DK ka koi client nahi badla */
 class StoryAi(val provider: Provider, private val key: String, val model: String, private val base: String) {
     val label get() = "${provider.name} ($model)"
+    /** 14 नवंबर 2026 (मालिक): AI दिमाग में कहानी का मॉडल खुद चुना ([BrainPin]) = सिर्फ़ वही, बैकअप मॉडल नहीं */
+    var only = false
 
     data class Out(val text: String, val cut: Boolean)
 
@@ -102,7 +104,7 @@ class StoryAi(val provider: Provider, private val key: String, val model: String
 
     private fun gemini(system: String, msgs: List<Pair<String, String>>): Out {
         var last: AiException? = null
-        for (m in GeminiModels.order(model, GeminiClient.BACKUP_MODELS)) {
+        for (m in if (only) listOf(model) else GeminiModels.order(model, GeminiClient.BACKUP_MODELS)) {
             try { return geminiOnce(m, system, msgs) } catch (e: AiException) {
                 if (last == null || GeminiModels.isGone(last.code, last.message.orEmpty())) last = e
                 if (e.code !in listOf(404, 429, 500, 503)) throw e
@@ -162,6 +164,7 @@ class StoryAi(val provider: Provider, private val key: String, val model: String
 
         /** "AI दिमाग" wali company. null = key/model nahi */
         fun fromPrefs(c: Context): StoryAi? {
+            BrainPin.resolve(c, BrainPin.STORY)?.let { r -> return StoryAi(r.provider, r.key, r.model, r.base).also { it.only = true } }
             val p = Providers.byId(Prefs.activeProvider(c)) ?: return null
             val key = Prefs.key(c, p.id); val model = Prefs.model(c, p.id); val base = Prefs.baseUrl(c, p.id)
             if (key.isBlank() || model.isBlank() || (!p.isGemini && base.isBlank())) return null
