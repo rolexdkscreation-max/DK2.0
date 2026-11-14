@@ -118,6 +118,12 @@ class DkaiLiveModeTest {
         assertEquals(LiveWorkGate.Gate.Run, LiveWorkGate.check("story_task", p, t0 + 500, "हाँ बनाओ", t0 + 1_000))
         assertEquals(LiveWorkGate.Gate.Ask, LiveWorkGate.check("coding_task", p, t0 + 500, "हाँ", t0 + 1_000))     // दूसरा काम
         assertEquals(LiveWorkGate.Gate.Ask, LiveWorkGate.check("story_task", p, t0 + 500, "हाँ", t0 + LiveWorkGate.WINDOW_MS + 1))
+
+        // coding_task confirmation flow tests
+        val pc = LiveWorkGate.Pending("coding_task", "login page fix", t0)
+        assertEquals(LiveWorkGate.Gate.NotHeard, LiveWorkGate.check("coding_task", pc, t0 - 10, "हाँ", t0 + 1_000))  // पूछने से पहले का हाँ
+        assertEquals(LiveWorkGate.Gate.NotHeard, LiveWorkGate.check("coding_task", pc, t0 + 500, "नहीं मत करो", t0 + 1_000)) // ना बोलने पर नहीं सौपेगा
+        assertEquals(LiveWorkGate.Gate.Run, LiveWorkGate.check("coding_task", pc, t0 + 500, "हाँ करो", t0 + 1_000)) // हाँ बोलने पर सौपेगा
         assertTrue(src("GeminiLiveTools.kt").contains("workGate(name, args)"))
         assertTrue(src("AgentRunner.kt").contains("confirmVoice("))
     }
