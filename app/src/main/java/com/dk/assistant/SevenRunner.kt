@@ -432,9 +432,10 @@ object SevenRunner {
                         if (u.answer.isNotBlank()) { say("d", u.answer); return@work }
                         // मैनेजर: रिपो / PR / काम की हालत का सवाल → जाँचकर्ता (कोड नहीं छूता, मंज़ूरी की ज़रूरत नहीं)
                         if (u.kind == Seven.Kind.STATUS) { inspect(c, task); return@work }
-                        // मैनेजर: "हाँ" माँगने से पहले रिपो जाँच (खुले PR + इसी जगह का टकराव) - सिर्फ़ पढ़ना
-                        if (d.mode == Seven.Mode.GITHUB && gh != null) say("s", preCheck(gh, repo, u, agent?.pr?.number, Prefs.ghBranch(c)))
-                        if (SoloStart.now(team.solo, u.needsAnswer)) {
+                        // 14 नवंबर 2026 (मालिक: "पहले PR जाँच दिखाता है, फिर छोड़ देता है - पहले मेरी बात समझे, मुझे बताए, मेरी हाँ के बाद काम"):
+                        // जड़: (1) एक-दिमाग मोड (default) में SoloStart साफ़ काम पर "हाँ" पूछे बिना शुरू कर देता था,
+                        // (2) समझ दिखाने से पहले ही रिपो/PR जाँच का संदेश आता था. अब: पहले सिर्फ़ समझ + बटन/popup, PR जाँच हाँ के बाद.
+                        if (CoderConfirm.autoStart(team.solo, u.needsAnswer)) {
                             // नवंबर 2026 (मालिक: "जो काम दूँ, तुरंत करे"): काम साफ़ है (कोई सवाल नहीं) = "हाँ" का इंतज़ार नहीं.
                             // main फिर भी अछूता: नई branch + PR, और merge सिर्फ़ आपकी हाँ से
                             say("s", "✅ काम साफ़ समझ आया — बिना रुके शुरू कर रहा हूँ:\n" + u.understood.ifBlank { u.brief }.take(400))
@@ -454,6 +455,10 @@ object SevenRunner {
                         return@work
                         }
                     }
+                    // मंज़ूरी के बाद ही रिपो जाँच (खुले PR + इसी जगह का टकराव) - सिर्फ़ पढ़ना
+                    val okU = approvedNow
+                    if (okU != null && resume == null && d.mode == Seven.Mode.GITHUB && gh != null)
+                        say("s", preCheck(gh, repo, okU, agent?.pr?.number, Prefs.ghBranch(c)))
                     val out = team.run(runTask, approvedNow)
                     // काम पूरा (या सिर्फ़ जवाब) = चौकी साफ़. नहीं हुआ = चौकी बची रहे, ताकि "आगे करो" वहीं से चले
                     finished = out.testOk == true || out.answerOnly
