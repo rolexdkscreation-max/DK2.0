@@ -30,16 +30,20 @@ object TypingStyles {
     fun validAgent(s: String?): String = if (s != null && ALL.any { it.first == s }) s else COMPUTER
 
     /**
-     * कंप्यूटर कहाँ बने: [phase] चलता समय, [act] 0..1 (काम का ज़ोर). लौटाता है (dx, dy, झुकाव°, कर्सर 0..1) -
-     * dx/dy छोटे चौकोर के हिस्से में; कंप्यूटर हमेशा चौकोर के अंदर रहे.
+     * 14 नवंबर 2026 (मालिक: "कंप्यूटर स्थिर रहे, सिर्फ़ उसकी दो छोटी आँखें इधर-उधर हों - काम चले तभी"):
+     * कंप्यूटर अब कभी नहीं हिलता / झुकता. लौटाता है (आँख dx, आँख dy, झुकाव° = हमेशा 0, आँख खुली = 1) -
+     * dx/dy छोटे चौकोर के हिस्से में ([EYE_X] / [EYE_Y] तक, स्क्रीन के अंदर). [act] 0 (काम नहीं) = आँखें बीच में, स्थिर.
      */
     fun computer(phase: Double, act: Float, out: FloatArray) {
         val p = phase.toFloat(); val a = act.coerceIn(0f, 1f)
-        out[0] = 0.09f * a * sin(p * 0.45f)
-        out[1] = 0.05f * a * sin(p * 0.9f + 1f)
-        out[2] = 7f * a * sin(p * 0.6f)
-        out[3] = ((p * 0.5f) % 1f + 1f) % 1f
+        out[0] = EYE_X * a * sin(p * 0.55f)
+        out[1] = EYE_Y * a * sin(p * 0.8f + 1f)
+        out[2] = 0f
+        out[3] = 1f
     }
+    /** आँखें बीच से कितनी दूर तक (चौकोर के हिस्से में) */
+    const val EYE_X = 0.07f
+    const val EYE_Y = 0.035f
 
     /** ज़्यादा से ज़्यादा डॉट (out का आकार = MAX * 4) */
     const val MAX = 16

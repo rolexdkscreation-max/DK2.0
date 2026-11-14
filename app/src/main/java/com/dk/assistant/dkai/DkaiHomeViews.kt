@@ -99,6 +99,7 @@ object Logo3DMath {
 }
 
 /**
+ * 14 नवंबर 2026 (बाद में, मालिक): मॉनिटर स्थिर, सिर्फ़ आँखें इधर-उधर, और सिर्फ़ काम चलते समय (खाली = कोई animation नहीं).
  * 14 नवंबर 2026 (मालिक: "DK Computer का आइकन, Perplexity Computer जैसा - काम करते समय छोटी-छोटी आँखें इधर-उधर घूमें").
  * छोटा मॉनिटर + दो आँखें. [working] = आँखें घूमें + पलक; नहीं = बीच में, कभी-कभी पलक.
  */
@@ -118,10 +119,11 @@ class ComputerEyes(c: Context) : View(c) {
     override fun onDetachedFromWindow() { anim?.cancel(); anim = null; super.onDetachedFromWindow() }
 
     private fun restart() {
-        anim?.cancel()
-        if (!ValueAnimator.areAnimatorsEnabled()) { t = 0f; invalidate(); return }
+        anim?.cancel(); anim = null
+        // 14 नवंबर 2026 (मालिक: "काम नहीं चल रहा तो आँखें नहीं हिलें"): खाली = कोई animation नहीं, आँखें बीच में स्थिर
+        if (!working || !ValueAnimator.areAnimatorsEnabled()) { t = 0f; invalidate(); return }
         anim = ValueAnimator.ofFloat(0f, 1f).apply {
-            duration = if (working) EyesMath.WORK_MS else EyesMath.IDLE_MS
+            duration = EyesMath.WORK_MS
             repeatCount = ValueAnimator.INFINITE; interpolator = LinearInterpolator()
             addUpdateListener { t = it.animatedFraction; invalidate() }
             start()
@@ -139,9 +141,9 @@ class ComputerEyes(c: Context) : View(c) {
         cv.drawLine(ox + s * 0.50f, oy + s * 0.70f, ox + s * 0.50f, oy + s * 0.82f, line)
         cv.drawLine(ox + s * 0.32f, oy + s * 0.86f, ox + s * 0.68f, oy + s * 0.86f, line)
         // आँखें
+        // कंप्यूटर स्थिर; सिर्फ़ आँखें इधर-उधर (काम चलते समय) - पलक / बाकी हिलना नहीं
         val (dx, dy) = EyesMath.look(t, working)
-        val open = EyesMath.open(t, working)
-        val ex = s * 0.11f; val ey = s * 0.13f * open
+        val ex = s * 0.11f; val ey = s * 0.13f
         val cy = oy + s * 0.42f + dy * s * 0.06f
         for (cx0 in floatArrayOf(0.36f, 0.64f)) {
             val cx = ox + s * cx0 + dx * s * 0.07f
