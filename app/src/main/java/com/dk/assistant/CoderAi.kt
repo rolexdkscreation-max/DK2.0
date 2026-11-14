@@ -37,7 +37,7 @@ class CoderAi(val provider: Provider, private val key: String, val model: String
     internal fun withThink(level: String): CoderAi {
         if (level == think) return this
         return CoderAi(provider, key, model, base, fallbacks.map { it.withThink(level) }, note, sink).also {
-            it.waitOnLimit = waitOnLimit; it.chain = chain; it.think = level
+            it.waitOnLimit = waitOnLimit; it.chain = chain; it.think = level; it.pinned = pinned
         }
     }
     internal fun keyForChain(): String = key
@@ -60,11 +60,17 @@ class CoderAi(val provider: Provider, private val key: String, val model: String
     /** v3.6: Gemini मॉडलों का क्रम (चुना मॉडल पहले, फिर ये) - हल्के एजेंट = LIGHT_CHAIN */
     private var chain: List<String> = GeminiModels.CODER_CHAIN
 
+    /** 14 नवंबर 2026 (मालिक): Settings → AI दिमाग में खुद चुना मॉडल ([BrainPin]) = सिर्फ़ वही, Gemini के बाकी मॉडल भी नहीं */
+    @Volatile var pinned = false
+        private set
+    internal fun pinOnly(): CoderAi { pinned = true; chain = emptyList(); return this }
+
     /**
      * v3.6 (owner का नियम): हल्के एजेंटों के लिए वही keys (5 तक, वही fallback), पर हल्का मॉडल.
      * Gemini नहीं (Groq/OpenRouter...) = वही AI (उनके मॉडल का नाम Gemini वाला नहीं हो सकता).
      */
     fun withModel(m: String, modelChain: List<String> = GeminiModels.LIGHT_CHAIN): CoderAi {
+        if (pinned) return this
         if (!provider.isGemini || m.isBlank() || m == model) return this
         return CoderAi(provider, key, m, base, fallbacks.map { it.withModel(m, modelChain) }, note, sink).also {
             it.waitOnLimit = waitOnLimit; it.chain = modelChain; it.applyThink(think)
@@ -343,8 +349,12 @@ class CoderAi(val provider: Provider, private val key: String, val model: String
         // v5 (मालिक): "DK कंप्यूटर पहले Gemini से कोशिश करे, फिर Groq, फिर OpenRouter, फिर Z.ai, फिर NVIDIA - जिससे भी बने, उससे काम हो".
         // DK कंप्यूटर की अपनी keys (Settings → AI दिमाग → DK कंप्यूटर) में से जिसकी भी key डली है, सब इसी क्रम में एक chain में.
         fun forComputer(c: Context, sink: (String, String) -> Unit): CoderAi? {
-            if (Prefs.oneKeyOn(c)) return forScope(c, ApiScopes.PC, sink)
-            return forScopeChain(c, ApiScopes.PC, sink, PC_CHAIN) ?: forScope(c, ApiScopes.PC, sink)
+            // 14 नवंबर 2026 (मालिक): Settings → AI दिमाग में DK कंप्यूटर का मॉडल खुद चुना = सिर्फ़ वही, कोई fallback नहीं
+            BrainPin.coder(c, BrainPin.PC, sink)?.let { return it }
+            val own = if (Prefs.oneKeyOn(c)) forScope(c, ApiScopes.PC, sink)
+                else forScopeChain(c, ApiScopes.PC, sink, PC_CHAIN) ?: forScope(c, ApiScopes.PC, sink)
+            // मालिक: "जो भी key डाली है सब पर fallback, क्रम से" - DK कंप्यूटर की keys के बाद बाकी हिस्सों की keys
+            return withSpares(c, own, sink)?.also { it.waitOnLimit = false }?.applyThink(ThinkLevel.get(c, ApiScopes.PC))
         }
 
         /**
@@ -406,6 +416,7 @@ class CoderAi(val provider: Provider, private val key: String, val model: String
          * उसकी गलती (key/पैसे/limit/server) पर [backup] की पूरी chain अपने-आप. null = key नहीं डली (बंद).
          */
         fun forStrong(c: Context, backup: CoderAi?, sink: (String, String) -> Unit = { p, f -> DKLog.d("मज़बूत मॉडल: $p → $f") }): CoderAi? {
+            if (backup?.pinned == true) return null   // खुद चुना मॉडल = सिर्फ़ वही (मज़बूत मॉडल भी नहीं)
             val st = StrongAi.setup(Prefs.coderStrongProvider(c), Prefs.coderStrongKey(c), Prefs.coderStrongModel(c)) ?: return null
             return strong(st, backup, sink).applyThink(ThinkLevel.get(c, ApiScopes.CODER))
         }
@@ -429,6 +440,7 @@ class CoderAi(val provider: Provider, private val key: String, val model: String
         // ऑटोनोमस मोड ने कोडिंग शुरू की हो: उसकी अपनी key -> (खाली) कोडिंग एजेंट की key -> (वो भी नहीं) DK की मुख्य key.
         // ऑटोनोमस बंद / उसका काम नहीं = पहले जैसा, सिर्फ़ कोडिंग एजेंट की key.
         fun fromPrefs(c: Context): CoderAi? = com.dk.assistant.auto.AutoMode.coderOverride(c)
+            ?: BrainPin.coder(c, BrainPin.CODER) { p, f -> DKLog.d("कोडिंग AI (चुना): $p → $f") }
             ?: forCoder(c) { p, f -> DKLog.d("कोडिंग AI: $p → $f") }
             ?: com.dk.assistant.auto.AutoMode.coderMainFallback(c)
 

@@ -949,11 +949,17 @@ class GeminiLive(internal val svc: DKAccessibilityService, internal val agent: A
         log("बीच बातचीत का बचाव-text: " + if (textRescue) "चालू (सेटिंग)" else "बंद (डिफ़ॉल्ट - 1011 से बचाव)")
         if (!Setup.hasMic(svc)) throw Fatal("माइक की परमिशन नहीं है", kind = LiveFailWhy.Kind.MIC)
         // v3.94: मुख्य key + बैकअप keys - एक बंद/गलत/limit खत्म = चुपचाप अगली (user को पता न चले)
-        val keys = Prefs.liveGeminiKeys(svc).ifEmpty { throw Fatal("Gemini की key नहीं है", kind = LiveFailWhy.Kind.NO_KEY) }
+        // 14 नवंबर 2026 (मालिक): AI दिमाग में Live का मॉडल खुद चुना ([BrainPin]) = सिर्फ़ वही key + वही मॉडल, कोई fallback नहीं.
+        // न चुना = Live की keys, फिर AI दिमाग में कहीं और डली Gemini keys (सब पर fallback, क्रम से)
+        val livePin = BrainPin.resolve(svc, BrainPin.LIVE)
+        val ownKeys = Prefs.liveGeminiKeys(svc)
+        val keys = (livePin?.let { listOf(it.key) } ?: (ownKeys + BrainPin.spareGemini(svc, ownKeys))).ifEmpty { throw Fatal("Gemini की key नहीं है", kind = LiveFailWhy.Kind.NO_KEY) }
+        if (livePin != null) log("Live: आपका चुना मॉडल ${livePin.model} (सिर्फ़ यही, fallback बंद)")
         var ki = 0; keyIdx = 0; var mi = 0
         var key = keys[0]
         var models: List<String> = emptyList()
         while (true) {
+            if (livePin != null) { models = listOf(livePin.model.removePrefix("models/")); break }
             try { models = LiveModelPick.order(LiveModelPick.get(svc), discoverModels(key)); break }   // v3.80: चुना हुआ Live मॉडल पहले
             catch (e: Fatal) {
                 val nk = LiveKeys.next(ki, keys.size); if (nk < 0) throw e
@@ -1209,7 +1215,7 @@ class GeminiLive(internal val svc: DKAccessibilityService, internal val agent: A
                             connLiveVer = com.dk.assistant.voice.engine.VoiceEngines.liveVersion
                             val pick = LiveModelPick.get(svc)
                             val reordered = LiveModelPick.order(pick, models)
-                            if (pick.isNotBlank() && reordered.first() != model) {
+                            if (livePin == null && pick.isNotBlank() && reordered.first() != model) {
                                 models = reordered; mi = 0; handle = null
                                 log("Live मॉडल बदला -> $pick - नया connection (नई बातचीत)"); goAway = true; goAwayDrop = true
                             } else if (!connSplit) {

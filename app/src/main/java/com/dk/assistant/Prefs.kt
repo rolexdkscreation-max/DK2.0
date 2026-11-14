@@ -171,11 +171,14 @@ object Prefs {
     /** 14 नवंबर 2026 (मालिक): डीप रिसर्च - Linkup (तीसरा खोजी) और Firecrawl (पूरा पेज पढ़ना). खाली = वह टूल छोड़ो */
     const val LINKUP_KEY = "search_key_linkup"
     const val FIRECRAWL_KEY = "search_key_firecrawl"
-    /** सवाल कई वेबसाइटों से जोड़ने वाला लगे तो बिना "डीप रिसर्च" बोले भी गहरी खोज (डिफ़ॉल्ट बंद = क्रेडिट बचे) */
+    /** सवाल कई वेबसाइटों से जोड़ने वाला लगे तो बिना "डीप रिसर्च" बोले भी गहरी खोज */
     const val DEEP_AUTO = "deep_research_auto"
     fun linkupKey(c: Context): String = sp(c).getString(LINKUP_KEY, "")?.trim() ?: ""
     fun firecrawlKey(c: Context): String = sp(c).getString(FIRECRAWL_KEY, "")?.trim() ?: ""
-    fun deepAuto(c: Context): Boolean = sp(c).getBoolean(DEEP_AUTO, false)
+    // 14 नवंबर 2026 (मालिक: "डीप रिसर्च न भी बोलूँ तो अपना दिमाग यूज़ करे") - डिफ़ॉल्ट चालू (साधारण सवाल पर फिर भी नहीं)
+    // अपने-आप वाली गहरी खोज तभी जब खोज की कोई key (Exa / Tavily / Linkup) डली हो - बिना key "गहरी खोज नहीं हो पाई" न लिखे
+    fun deepAuto(c: Context): Boolean = deepAutoSwitch(c) && listOf(exaSearchKey(c), tavilySearchKey(c), linkupKey(c)).any { it.isNotBlank() }
+    fun deepAutoSwitch(c: Context): Boolean = sp(c).getBoolean(DEEP_AUTO, true)
     fun captionOwnKeyRaw(c: Context): String = sp(c).getString(CAPTION_KEY, "")?.trim() ?: ""
     fun captionKey(c: Context): String = captionOwnKey(c).ifBlank { ttsGeminiKey(c) }
     /**
@@ -198,6 +201,8 @@ object Prefs {
     }
     fun forgeKey(c: Context): String = forgeKeys(c).firstOrNull().orEmpty()
     fun forgeRaw(c: Context, name: String): String = sp(c).getString(name, "")?.trim().orEmpty()
+    /** कोई भी सेव लिखा (AI दिमाग का "हर काम का मॉडल" [BrainPin]) */
+    fun raw(c: Context, name: String): String = sp(c).getString(name, "")?.trim().orEmpty()
     fun forgeModel(c: Context): String = sp(c).getString(FORGE_MODEL, "")?.trim().orEmpty()
     /** Settings में जाँचकर अपने-आप चुना गया सबसे अच्छा मॉडल */
     const val FORGE_AUTO_MODEL = "forge_model_auto"

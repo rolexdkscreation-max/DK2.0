@@ -43,17 +43,29 @@ class DeepResearchRun(private val c: Context, private val step: (String) -> Unit
     private val tavilyKey = Prefs.tavilySearchKey(c)
     private val linkupKey = Prefs.linkupKey(c)
     private val fireKey = Prefs.firecrawlKey(c)
+    // मालिक: "जो भी key डाली है सब पर fallback" - खोज वाली keys के बाद AI दिमाग में कहीं भी डली Gemini keys
     private val geminiKeys: List<String> = (BrainManager(c).searchKeys() + Prefs.key(c, "gemini")).filter { it.isNotBlank() }.distinct()
+        .let { it + com.dk.assistant.BrainPin.spareGemini(c, it) }
 
-    /** Gemini से सीधा लंबा जवाब (keys/models बदल-बदलकर); कोई न चले = null */
-    private fun gemini(prompt: String, maxTokens: Int, json: Boolean): String? {
-        for (k in geminiKeys) for (m in GeminiClient.DEEP_MODELS + GeminiClient.BACKUP_MODELS.reversed()) {
-            try { return DeepResearchNet.gemini(k, m, prompt, maxTokens, json) }
+    /**
+     * Gemini से सीधा लंबा जवाब (keys/models बदल-बदलकर); कोई न चले = null.
+     * 14 नवंबर 2026 (मालिक: "बहुत देर लगाता है"): पहले हर key पर 3.8 Flash दो बार + हर बार 45 सेकंड तक इंतज़ार.
+     * अब [fast] काम (सवाल तोड़ना / कमी देखना) = हल्का मॉडल, कम सोच, छोटी समय-सीमा; हर काम की कुल समय-सीमा [limitMs].
+     */
+    private fun gemini(prompt: String, maxTokens: Int, json: Boolean, fast: Boolean = false, limitMs: Long = 120_000): String? {
+        val models = (if (fast) GeminiClient.BACKUP_MODELS else GeminiClient.DEEP_MODELS + GeminiClient.BACKUP_MODELS.reversed()).distinct()
+        val until = System.currentTimeMillis() + limitMs
+        for (k in geminiKeys) for (m in models) {
+            if (System.currentTimeMillis() > until) return null
+            try { return DeepResearchNet.gemini(k, m, prompt, maxTokens, json, fast) }
             catch (e: AiException) { if (e.code == 401 || e.code == 403) break }
             catch (e: Exception) {}
         }
         return null
     }
+
+    /** ताज़ा सवाल = इस तारीख़ ("yyyy-MM-dd") से नए पेज; खाली = कोई सीमा नहीं */
+    @Volatile private var since = ""
 
     suspend fun run(question: String): Result = withContext(Dispatchers.IO) {
         val topic = DeepResearch.topic(question)
@@ -65,7 +77,10 @@ class DeepResearchRun(private val c: Context, private val step: (String) -> Unit
 
         // 1. सवाल तोड़ो
         step("सवाल को छोटे हिस्सों में तोड़ रहा हूँ…")
-        var subs = gemini(DeepResearch.planPrompt(topic), 600, json = true)?.let { DeepResearch.parsePlan(it, topic) } ?: DeepResearch.fallbackSubs(topic)
+        // 14 नवंबर 2026 (मालिक: "आज / कल की तारीख़ से रिसर्च करे"): आज की तारीख़ AI को, ताज़ा सवाल पर खोज में तारीख़ की सीमा
+        val todayEn = SimpleDateFormat("d MMMM yyyy", Locale.ENGLISH).format(Date())
+        since = if (DeepResearch.fresh(question)) SimpleDateFormat("yyyy-MM-dd", Locale.ENGLISH).format(Date(System.currentTimeMillis() - 45L * 86_400_000L)) else ""
+        var subs = gemini(DeepResearch.planPrompt(topic, todayEn), 600, json = true, fast = true, limitMs = 25_000)?.let { DeepResearch.parsePlan(it, topic) } ?: DeepResearch.fallbackSubs(topic)
 
         val pages = ArrayList<DeepResearch.Page>()
         val seen = HashSet<String>()
@@ -88,8 +103,10 @@ class DeepResearchRun(private val c: Context, private val step: (String) -> Unit
             pages.addAll(read(chosen))
             // 5. कमी हो तो फिर (ज़्यादा से ज़्यादा 3 चक्कर)
             if (round == DeepResearch.MAX_ROUNDS || pages.size >= DeepResearch.MAX_PAGES) break
+            // तेज़: काफ़ी पूरे पेज पढ़ लिए = दूसरा चक्कर नहीं (पहले हर बार कमी देखने + फिर खोजने में मिनट लगते थे)
+            if (pages.count { it.full } >= DeepResearch.MIN_PICK) break
             step("जाँच रहा हूँ — कोई हिस्सा छूटा तो नहीं…")
-            val gaps = gemini(DeepResearch.gapPrompt(topic, pages), 300, json = true)?.let { DeepResearch.parseGaps(it) }.orEmpty()
+            val gaps = gemini(DeepResearch.gapPrompt(topic, pages), 300, json = true, fast = true, limitMs = 20_000)?.let { DeepResearch.parseGaps(it) }.orEmpty()
             if (gaps.isEmpty()) break
             subs = gaps.map { DeepResearch.Kind.MAIN to it }
         }
@@ -112,13 +129,13 @@ class DeepResearchRun(private val c: Context, private val step: (String) -> Unit
         val jobs = ArrayList<kotlinx.coroutines.Deferred<List<DeepResearch.Hit>>>()
         for ((kind, q) in subs) {
             if (alive(Tool.EXA, exaKey)) jobs.add(async {
-                try { DeepResearchNet.exa(exaKey, DeepResearch.phrase(Tool.EXA, kind, q)) } catch (e: Exception) { kill(Tool.EXA, e); emptyList() }
+                try { DeepResearchNet.exa(exaKey, DeepResearch.phrase(Tool.EXA, kind, q), since = since) } catch (e: Exception) { kill(Tool.EXA, e); emptyList() }
             })
             if (alive(Tool.TAVILY, tavilyKey)) jobs.add(async {
-                try { DeepResearchNet.tavily(tavilyKey, DeepResearch.phrase(Tool.TAVILY, kind, q), news = kind == DeepResearch.Kind.NEWS) } catch (e: Exception) { kill(Tool.TAVILY, e); emptyList() }
+                try { DeepResearchNet.tavily(tavilyKey, DeepResearch.phrase(Tool.TAVILY, kind, q), news = kind == DeepResearch.Kind.NEWS, since = since) } catch (e: Exception) { kill(Tool.TAVILY, e); emptyList() }
             })
             if (alive(Tool.LINKUP, linkupKey)) jobs.add(async {
-                try { DeepResearchNet.linkup(linkupKey, DeepResearch.phrase(Tool.LINKUP, kind, q)) } catch (e: Exception) { kill(Tool.LINKUP, e); emptyList() }
+                try { DeepResearchNet.linkup(linkupKey, DeepResearch.phrase(Tool.LINKUP, kind, q), since = since) } catch (e: Exception) { kill(Tool.LINKUP, e); emptyList() }
             })
         }
         jobs.awaitAll().flatten()
@@ -128,7 +145,7 @@ class DeepResearchRun(private val c: Context, private val step: (String) -> Unit
     private suspend fun read(links: List<DeepResearch.Link>): List<DeepResearch.Page> = coroutineScope {
         val got = ConcurrentHashMap<String, DeepResearch.Page>()
         if (alive(Tool.FIRECRAWL, fireKey)) {
-            val gate = Semaphore(4)
+            val gate = Semaphore(8)   // तेज़: 8 पेज एक साथ (हर पेज की सीमा 22 सेकंड)
             links.map { l -> async {
                 gate.withPermit {
                     if (!alive(Tool.FIRECRAWL, fireKey)) return@withPermit

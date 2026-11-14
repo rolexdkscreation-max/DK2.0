@@ -34,6 +34,20 @@ object ModelLister {
         sorted.ifEmpty { list }.ifEmpty { Providers.fallbackModels(p.id) }
     }
 
+    /** 14 नवंबर 2026 (मालिक): AI दिमाग → "हर काम का मॉडल" में DK लाइव के लिए - इस key के सारे Live (bidiGenerateContent) मॉडल, नए पहले */
+    suspend fun liveModels(key: String): List<String> = withContext(Dispatchers.IO) {
+        val o = get("https://generativelanguage.googleapis.com/v1beta/models?pageSize=1000", mapOf("x-goog-api-key" to key))
+        val arr = o.optJSONArray("models")
+        val out = mutableListOf<String>()
+        for (i in 0 until (arr?.length() ?: 0)) {
+            val m = arr!!.optJSONObject(i) ?: continue
+            if (m.optJSONArray("supportedGenerationMethods")?.toString()?.contains("bidiGenerateContent") != true) continue
+            val id = m.optString("name").removePrefix("models/")
+            out.add(id); m.optString("displayName").takeIf { it.isNotBlank() }?.let { names[id] = it }
+        }
+        out.distinct().sortedDescending()
+    }
+
     /** Bina chhante poori list (key sahi hai ya nahi + whisper hai ya nahi) */
     suspend fun fetchRaw(p: Provider, key: String, baseUrl: String): List<String> = withContext(Dispatchers.IO) {
         if (p.isGemini) gemini(key) else openAi(baseUrl.trimEnd('/'), key)

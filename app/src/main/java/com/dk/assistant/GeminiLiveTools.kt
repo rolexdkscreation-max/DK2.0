@@ -411,7 +411,11 @@ internal fun GeminiLive.runTools(calls: JSONArray) {
           val held = com.dk.assistant.insights.InsightsAgent.holdFor(name, args)
           try {
             // नवंबर 2026: आवाज़ बॉस की नहीं = पैसे / भेजना / कॉल / डिलीट / सेटिंग नहीं
+            // 14 नवंबर 2026 (मालिक: "मैं अपने बॉस की बात मानूँगा"): मालिक की आवाज़ ने काम दिया = याद; अभी-अभी दिया हो तो कोई और नहीं बदल सकता
+            val whoNow = sideWho(); val nowMs = System.currentTimeMillis()
+            if (whoNow == SideTalk.Who.BOSS && SideTalk.isAction(name, args)) SideTalk.global.bossDid(nowMs)
             val result = try { SideTalk.blockFor(name, args, sideWho())?.also { log("tool $name - आवाज़ बॉस की नहीं, रोका") }
+                ?: SideTalk.ownerFirst(name, args, whoNow, SideTalk.global.bossTaskAt, nowMs)?.also { log("tool $name - मालिक का काम चल रहा, दूसरी आवाज़ का काम रोका") }
                 // 14 नवंबर 2026: DKAI पर चुना टैब + बड़े काम से पहले मालिक की हाँ ([workGate])
                 ?: workGate(name, args)
                 // 14 नवंबर 2026 (मालिक): "पास की दुकान/मॉल का रास्ता लगा दो" = ढूँढो + Maps navigation तुरंत ([localGoTool])

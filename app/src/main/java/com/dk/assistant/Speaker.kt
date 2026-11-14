@@ -91,8 +91,9 @@ class Speaker(context: Context) {
     fun spokenSoFar(): String = synchronized(spoken) { spoken.toString().trim() }
 
     /** Bolta hai aur bolna khatam hone tak wait karta hai. */
-    suspend fun speak(text: String) {
-        if (text.isBlank()) return
+    suspend fun speak(text0: String) {
+        if (text0.isBlank()) return
+        val text = NameRule.swap(text0, Prefs.userName(appCtx))   // 14 नवंबर 2026 (मालिक): "बॉस" = "जी <नाम>"
         val ch = kotlinx.coroutines.channels.Channel<String>(kotlinx.coroutines.channels.Channel.UNLIMITED)
         sentences(text).forEach { ch.trySend(it) }
         ch.close()

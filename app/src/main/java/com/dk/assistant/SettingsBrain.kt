@@ -103,6 +103,7 @@ internal fun SettingsActivity.secBrainMenu() {
         hint(box, "अभी: " + (if (Prefs.oneKey(this).isNotBlank()) "✓ सारे काम (बात, चैट, खोज, फ़ोन, कोडिंग, स्टोरी, DK कंप्यूटर, वेबसाइट) इसी एक key से" else "✗ key नहीं डाली") +
             " • सुनना भी Gemini से (Groq की ज़रूरत नहीं)। एक free key की limit सब कामों में बँटती है — limit जल्दी खत्म हो तो बटन बंद करके अलग-अलग keys डालें।")
     }
+    brainPinCard()
     // v3.167 (मालिक): वेबसाइट बिल्डर की अपनी अलग key - एक-key मोड में भी दिखे और चले (नवंबर 2026: न डाली हो तो एक key से)
     menuRow("brain_web", "वेबसाइट बिल्डर (Website Forge)", forgeStatus() + "\nवेबसाइट बनाने के लिए अलग Gemini key (ज़रूरी नहीं) — डली हो तो पहले यही" +
         (if (one) ", नहीं तो ऊपर की एक key" else ""), "computer")
@@ -302,7 +303,7 @@ internal fun SettingsActivity.secBrainLive() {
             "https://app.linkup.so/api-keys", com.dk.assistant.research.DeepResearch.Tool.LINKUP)
         deepKey("Firecrawl API Key (पूरा पेज पढ़ना)", Prefs.FIRECRAWL_KEY, Prefs.firecrawlKey(this), "fc-… (ज़रूरी नहीं)",
             "https://www.firecrawl.dev/app/api-keys", com.dk.assistant.research.DeepResearch.Tool.FIRECRAWL)
-        val auto = switch(box, "सवाल कई वेबसाइटों वाला लगे तो अपने-आप गहरी खोज", Prefs.deepAuto(this))
+        val auto = switch(box, "सवाल कई वेबसाइटों वाला लगे तो अपने-आप गहरी खोज", Prefs.deepAutoSwitch(this))
         auto.setOnCheckedChangeListener { _, on -> Prefs.edit(this) { putBoolean(Prefs.DEEP_AUTO, on) } }
         val ready = listOfNotNull(
             "Exa".takeIf { Prefs.exaSearchKey(this).isNotBlank() },
@@ -648,4 +649,52 @@ internal fun SettingsActivity.geminiPaidSwitch(box: LinearLayout) {
         toast(if (on) "✓ होम पर paid Gemini मॉडल भी दिखेंगे" else "✓ होम पर सिर्फ़ फ्री मॉडल")
     }
     hint(box, "बंद (default) = होम के मॉडल चुनने में सिर्फ़ फ्री मॉडल। फ्री key पर paid मॉडल चुनने से गलती आती है, इसलिए वे छिपे रहते हैं।")
+}
+
+/**
+ * 14 नवंबर 2026 (मालिक): "हर काम के लिए चुनने का विकल्प - डिफ़ॉल्ट खाली. AI दिमाग में जो भी key डाली (किसी भी कंपनी की),
+ * वही यहाँ चुनने को आए, उसके मॉडल हमेशा ताज़ा (नया लॉन्च हुआ फ्री वाला भी). चुना = सिर्फ़ उसी पर काम, fallback नहीं.
+ * हटाया = पहले जैसा fallback." देखें [BrainPin].
+ */
+internal fun SettingsActivity.brainPinCard() {
+    card("हर काम का मॉडल — खुद चुनें", "डिफ़ॉल्ट खाली = अपने-आप (सारी डली keys पर fallback, क्रम से)। चुनें = सिर्फ़ वही key + वही मॉडल, कोई fallback नहीं") { box ->
+        hint(box, "AI दिमाग में डली हर key (Gemini, Groq, OpenRouter, Z.ai, NVIDIA — किसी भी हिस्से की) यहाँ चुनने को आती है। key चुनते ही उस key के सारे मॉडल अभी-अभी की सूची से आते हैं — नया लॉन्च हुआ मॉडल भी। \"हटाओ\" दबाते ही वह काम फिर पहले जैसा fallback से चलेगा।")
+        BrainPin.FEATURES.forEach { (f, name) ->
+            label(box, name)
+            val line = TextView(this).apply { setTextColor(0xFFFFFFFF.toInt()); textSize = 13f; setPadding((4 * dp).toInt(), (2 * dp).toInt(), 0, (2 * dp).toInt()) }
+            fun show() {
+                val pin = BrainPin.get(this, f)
+                val opt = pin?.let { p -> BrainPin.keyOptions(this).firstOrNull { it.ref == p.ref && it.provider == p.provider } }
+                line.text = BrainPin.line(f, pin, opt?.label)
+            }
+            show(); box.addView(line)
+            row(box, button("चुनें") { pickPin(f) { show() } }, button("हटाओ") {
+                BrainPin.set(this, f, null); show(); toast("✓ ${BrainPin.title(f)}: अपने-आप (fallback) चालू")
+            })
+        }
+    }
+}
+
+private fun SettingsActivity.pickPin(f: String, done: () -> Unit) {
+    save(false)   // अभी डाली key भी सूची में आए
+    val opts = BrainPin.allowed(f, BrainPin.keyOptions(this))
+    if (opts.isEmpty()) { toast(if (BrainPin.geminiOnly(f)) "पहले AI दिमाग में कोई Gemini key डालें" else "पहले AI दिमाग में कोई API key डालें"); return }
+    androidx.appcompat.app.AlertDialog.Builder(this).setTitle(UiLang.s("${BrainPin.title(f)} — कौन-सी key?"))
+        .setItems(opts.map { it.label }.toTypedArray()) { _, i ->
+            val o = opts[i]
+            val p = Providers.byId(o.provider) ?: return@setItems
+            val (sc, _) = BrainPin.split(o.ref)
+            val base = if (p.isGemini) "" else (if (sc in ApiScopes.ALL) Prefs.scopeBase(this, sc, p.id) else "").ifBlank { p.baseUrl }
+            toast("${p.name} के मॉडल ला रहा हूँ…")
+            lifecycleScope.launch {
+                val list = try { if (f == BrainPin.LIVE) ModelLister.liveModels(o.key) else ModelLister.fetch(p, o.key, base) }
+                    catch (e: Exception) { toast("मॉडल नहीं आए: " + BrainManager(this@pickPin).explain(e).take(120)); return@launch }
+                if (list.isEmpty()) { toast("इस key पर कोई मॉडल नहीं मिला"); return@launch }
+                androidx.appcompat.app.AlertDialog.Builder(this@pickPin).setTitle(UiLang.s("${p.name} — कौन-सा मॉडल?"))
+                    .setItems(list.map { m -> ModelLister.names[m]?.takeIf { it != m }?.let { "$it  ($m)" } ?: m }.toTypedArray()) { _, j ->
+                        BrainPin.set(this@pickPin, f, BrainPin.Pin(p.id, o.ref, list[j]))
+                        done(); toast("✓ ${BrainPin.title(f)}: सिर्फ़ ${list[j]} (fallback बंद)")
+                    }.setNegativeButton(UiLang.s("रद्द"), null).show()
+            }
+        }.setNegativeButton(UiLang.s("रद्द"), null).show()
 }

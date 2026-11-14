@@ -81,7 +81,11 @@ object SideTalk {
         /** इस बात की (ताज़ा) आवाज़ */
         fun current(now: Long): Who = if (whoAt > 0 && now - whoAt < VERDICT_FRESH_MS) who else Who.UNKNOWN
 
-        fun reset() { startedAt = 0; lastSpeechAt = 0; who = Who.UNKNOWN; whoAt = 0; lastOtherAt = 0; lastBossAt = 0; prevWho = Who.UNKNOWN; seq++ }
+        fun reset() { startedAt = 0; lastSpeechAt = 0; who = Who.UNKNOWN; whoAt = 0; lastOtherAt = 0; lastBossAt = 0; prevWho = Who.UNKNOWN; bossTaskAt = 0; seq++ }
+
+        /** 14 नवंबर 2026 (मालिक: "मैं अपने बॉस की बात मानूँगा"): मालिक की आवाज़ ने आख़िरी काम (गाना, ऐप, मैसेज…) कब दिया */
+        @Volatile var bossTaskAt = 0L; private set
+        fun bossDid(now: Long) { bossTaskAt = now }
 
         /**
          * जवाब बजे या नहीं. @return null = बजे; वरना कारण (log के लिए).
@@ -163,6 +167,30 @@ object SideTalk {
             "BLOCKED: this voice is not the owner's (another person). Do NOT do it. Tell them politely in one short line that only the owner can ask for this."
     }
 
+    // ------------------------------------------------------------------ मालिक पहले (14 नवंबर 2026)
+    /** मालिक का काम दिए इतनी देर तक कोई और उसे बदलवा / रुकवा नहीं सकता */
+    const val OWNER_HOLD_MS = 3 * 60_000L
+
+    /** सिर्फ़ जानकारी वाले tool (कुछ बदलते नहीं) - कोई और भी पूछ सकता है */
+    private val INFO_TOOLS = setOf("current_time", "deep_research", "deep_think", "dk_features", "dk_inspector", "look_photo", "look_screen",
+        "notifications", "recall_conversation", "reel_stats", "remember_fact", "shop_search", "social_insights", "task_status", "web_search")
+
+    /** यह tool फ़ोन पर कुछ करता/बदलता है? (जानकारी = नहीं) */
+    fun isAction(tool: String, args: JSONObject): Boolean =
+        if (tool == "local_info") args.optBoolean("go") else tool !in INFO_TOOLS
+
+    /**
+     * मालिक: "मैंने कुछ बोला और मेरा दोस्त कुछ और करने को बोले, तो DK मेरी बात माने." मालिक की आवाज़ ने अभी-अभी
+     * ([OWNER_HOLD_MS]) कोई काम दिया और अब दूसरी आवाज़ (आवाज़ सिखाई हो तभी पता चलता है) कोई काम माँगे = नहीं.
+     * छोटे काम मालिक के न होने पर (या बहुत देर बाद) चलते रहते हैं. @return null = करने दो.
+     */
+    fun ownerFirst(tool: String, args: JSONObject, who: Who, bossTaskAt: Long, now: Long): String? {
+        if (who != Who.OTHER || !isAction(tool, args) || bossTaskAt <= 0 || now - bossTaskAt > OWNER_HOLD_MS) return null
+        return "BLOCKED: the owner gave you a task a moment ago and this is a different voice (not the owner) asking for another action. " +
+            "The owner always comes first - do NOT do it and do not change or stop the owner's task. Say politely in one short line: " +
+            "\"माफ़ कीजिए, अभी मैं अपने बॉस का काम कर रही हूँ — मैं अपने बॉस की बात ही मानूँगी।\""
+    }
+
     /** Live prompt में (Settings चालू हो तो) */
     const val PROMPT = "\nWHO IS SPEAKING / SIDE TALK:\n" +
         "- The owner (your boss) is the main person you serve. Other people may be near him (family, friends, colleagues).\n" +
@@ -171,6 +199,8 @@ object SideTalk {
         "- Reply only when the words are meant for you: your name (DK / डीके) is used, or it is clearly a request/question to an assistant.\n" +
         "- Someone other than the owner may talk to you: be polite and helpful with small things, but never send messages, pay, call, delete, " +
         "change settings or share the owner's private information for them.\n" +
+        "- The owner always comes first: if someone else asks you to change, cancel or stop what the owner just asked, or gives a command " +
+        "against the owner's, refuse politely (\"मैं अपने बॉस की बात ही मानूँगी\").\n" +
         "- If the owner says \"मैं किसी से बात कर रहा हूँ\" / \"थोड़ी देर चुप रहो\": reply with only \"ठीक है, मैं सुनती रहूँगी\" and then stay silent until he says your name.\n"
 
     fun quick(start: Boolean) = QuickCommands.Quick(

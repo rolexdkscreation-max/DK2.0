@@ -157,6 +157,12 @@ object WebsiteForgeClient {
         throw lastErr ?: ForgeHttpException(401, "API_KEY_INVALID")
     }
 
+    /** 14 नवंबर 2026 (मालिक): AI दिमाग में वेबसाइट का मॉडल खुद चुना ([com.dk.assistant.BrainPin]) = सिर्फ़ वही key + मॉडल, कोई fallback नहीं */
+    suspend fun streamPinned(apiKey: String, model: String, prompt: String, onModel: (String) -> Unit = {}, onText: (String) -> Unit): String? {
+        var got = false
+        return streamOnce(apiKey, model.trim().removePrefix("models/"), prompt) { t -> if (!got) onModel(model); got = true; onText(t) }
+    }
+
     /** pure: इस गलती पर वेबसाइट की बैकअप key आज़माएँ? (key गलत/बंद, limit, भीड़, कोई मॉडल नहीं) */
     fun nextKey(code: Int, reason: String?): Boolean =
         code == 400 || code == 401 || code == 403 || code == 429 || code == 0 || tryNextModel(code, reason)

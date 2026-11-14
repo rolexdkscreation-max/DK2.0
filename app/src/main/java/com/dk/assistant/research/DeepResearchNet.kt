@@ -19,10 +19,15 @@ object DeepResearchNet {
         com.dk.assistant.NetFix.builder().connectTimeout(8, TimeUnit.SECONDS)
             .readTimeout(30, TimeUnit.SECONDS).callTimeout(45, TimeUnit.SECONDS).build()
     }
+    /** 14 नवंबर 2026 (मालिक: "डीप रिसर्च बहुत देर लगाता है"): पेज पढ़ना / छोटा AI काम = छोटी समय-सीमा, एक धीमा पेज सबको न रोके */
+    private val quick by lazy {
+        com.dk.assistant.NetFix.builder().connectTimeout(6, TimeUnit.SECONDS)
+            .readTimeout(18, TimeUnit.SECONDS).callTimeout(22, TimeUnit.SECONDS).build()
+    }
     private val JSON = "application/json".toMediaType()
 
-    private fun post(url: String, auth: Pair<String, String>, body: JSONObject): String =
-        http.newCall(Request.Builder().url(url).header(auth.first, auth.second)
+    private fun post(url: String, auth: Pair<String, String>, body: JSONObject, fast: Boolean = false): String =
+        (if (fast) quick else http).newCall(Request.Builder().url(url).header(auth.first, auth.second)
             .post(body.toString().toRequestBody(JSON)).build()).execute().use { r ->
             val b = r.body?.string().orEmpty()
             if (!r.isSuccessful) throw AiException(r.code, WebSearch.errorText(b).ifBlank { "HTTP ${r.code}" })
@@ -32,22 +37,26 @@ object DeepResearchNet {
     private fun bearer(k: String) = "Authorization" to "Bearer $k"
 
     // ------------------------------------------------------------------ खोज
-    fun exa(key: String, q: String, n: Int = 8): List<DeepResearch.Hit> = DeepResearch.parseExa(
+    /** [since] = "yyyy-MM-dd" से नए पेज ही (ताज़ा सवाल - "आज / नया / launch"); खाली = कोई सीमा नहीं */
+    fun exa(key: String, q: String, n: Int = 8, since: String = ""): List<DeepResearch.Hit> = DeepResearch.parseExa(
         post("https://api.exa.ai/search", "x-api-key" to key, JSONObject().put("query", q).put("numResults", n).put("type", "auto")
-            .put("contents", JSONObject().put("text", JSONObject().put("maxCharacters", 600)))))
+            .put("contents", JSONObject().put("text", JSONObject().put("maxCharacters", 600)))
+            .also { if (since.isNotBlank()) it.put("startPublishedDate", since + "T00:00:00.000Z") }, fast = true))
 
-    fun tavily(key: String, q: String, news: Boolean, n: Int = 8): List<DeepResearch.Hit> = DeepResearch.parseTavily(
+    fun tavily(key: String, q: String, news: Boolean, n: Int = 8, since: String = ""): List<DeepResearch.Hit> = DeepResearch.parseTavily(
         post("https://api.tavily.com/search", bearer(key), JSONObject().put("query", q).put("max_results", n)
-            .put("search_depth", "basic").put("topic", if (news) "news" else "general")))
+            .put("search_depth", "basic").put("topic", if (news) "news" else "general")
+            .also { if (since.isNotBlank()) it.put("time_range", "month") }, fast = true))
 
-    fun linkup(key: String, q: String, n: Int = 8): List<DeepResearch.Hit> = DeepResearch.parseLinkup(
+    fun linkup(key: String, q: String, n: Int = 8, since: String = ""): List<DeepResearch.Hit> = DeepResearch.parseLinkup(
         post("https://api.linkup.so/v1/search", bearer(key), JSONObject().put("q", q).put("depth", "standard")
-            .put("outputType", "searchResults").put("maxResults", n)))
+            .put("outputType", "searchResults").put("maxResults", n)
+            .also { if (since.isNotBlank()) it.put("fromDate", since) }, fast = true))
 
     // ------------------------------------------------------------------ पूरा पेज
     fun firecrawl(key: String, url: String): Triple<String, String, String>? = DeepResearch.parseFirecrawl(
         post("https://api.firecrawl.dev/v2/scrape", bearer(key), JSONObject().put("url", url)
-            .put("formats", JSONArray().put("markdown")).put("onlyMainContent", true)))
+            .put("formats", JSONArray().put("markdown")).put("onlyMainContent", true).put("timeout", 15000), fast = true))
 
     fun tavilyExtract(key: String, urls: List<String>): Map<String, String> = DeepResearch.parseTavilyExtract(
         post("https://api.tavily.com/extract", bearer(key), JSONObject().put("urls", JSONArray(urls))))
@@ -57,13 +66,15 @@ object DeepResearchNet {
             .put("text", JSONObject().put("maxCharacters", DeepResearch.PAGE_CHARS * 2))))
 
     // ------------------------------------------------------------------ Gemini (लंबा जवाब, सादा text)
-    fun gemini(key: String, model: String, prompt: String, maxTokens: Int, json: Boolean = false): String {
+    /** [fast] = छोटा काम (सवाल तोड़ना / कमी देखना): कम सोच + छोटी समय-सीमा */
+    fun gemini(key: String, model: String, prompt: String, maxTokens: Int, json: Boolean = false, fast: Boolean = false): String {
         val gen = JSONObject().put("maxOutputTokens", maxTokens).put("temperature", 0.3)
         if (json) gen.put("responseMimeType", "application/json")
+        if (fast && model.startsWith("gemini-3")) gen.put("thinkingConfig", JSONObject().put("thinkingLevel", "minimal"))
         val body = JSONObject()
             .put("contents", JSONArray().put(JSONObject().put("role", "user").put("parts", JSONArray().put(JSONObject().put("text", prompt)))))
             .put("generationConfig", gen)
-        val raw = post("https://generativelanguage.googleapis.com/v1beta/models/$model:generateContent", "x-goog-api-key" to key, body)
+        val raw = post("https://generativelanguage.googleapis.com/v1beta/models/$model:generateContent", "x-goog-api-key" to key, body, fast = fast)
         val parts = JSONObject(raw).optJSONArray("candidates")?.optJSONObject(0)?.optJSONObject("content")?.optJSONArray("parts") ?: JSONArray()
         val t = (0 until parts.length()).mapNotNull { parts.optJSONObject(it) }.filter { !it.optBoolean("thought") }
             .joinToString("") { it.optString("text") }.trim()

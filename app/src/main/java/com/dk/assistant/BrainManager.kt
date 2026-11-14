@@ -44,8 +44,13 @@ class BrainManager(private val ctx: Context) {
     }
 
     /** DK चैट की अपनी key (हर हिस्से की अलग - देखें [ApiScopes]); limit पर उसी key के दूसरे मॉडल */
-    private fun clientFor(p: Provider, scope: String = ApiScopes.CHAT): AiClient? =
-        override?.let { (id, c) -> if (p.id == id) c else null } ?: if (override != null) null else scopedClient(ctx, p, scope)
+    private fun clientFor(p: Provider, scope: String = ApiScopes.CHAT, pin: Boolean = true): AiClient? {
+        override?.let { (id, c) -> return if (p.id == id) c else null }
+        // 14 नवंबर 2026 (मालिक): Settings → AI दिमाग में चैट का मॉडल खुद चुना = सिर्फ़ वही key + मॉडल, कोई fallback नहीं
+        if (pin && scope == ApiScopes.CHAT) BrainPin.chatClient(ctx)?.let { (id, c) -> return if (p.id == id) c else null }
+        // मालिक: "जो भी key डाली है सब पर fallback" - चैट में इस कंपनी की key नहीं तो AI दिमाग में कहीं और डली उसी कंपनी की
+        return scopedClient(ctx, p, scope) ?: if (pin && scope == ApiScopes.CHAT) BrainPin.borrowed(ctx, p) else null
+    }
 
     /**
      * ऑटोनोमस मोड की अपनी key (कंपनी id -> client). null = पहले जैसा (DK की मुख्य key).
@@ -56,6 +61,7 @@ class BrainManager(private val ctx: Context) {
     /** सिर्फ़ चुनी हुई कंपनी (दूसरी कंपनी पर अपने-आप जाना बंद - [Prefs.fallback]). */
     private fun orderedProviders(chat: Boolean = false): List<Provider> {
         override?.let { (id, _) -> return listOfNotNull(Providers.byId(id)) }
+        BrainPin.chatClient(ctx)?.let { (id, _) -> return listOfNotNull(Providers.byId(id)) }
         val active = Providers.byId(Prefs.activeProvider(ctx))
         val rest = Providers.all.filter { it.id != active?.id }
         // v4.3: Always include all for fail-back; fallback setting only affects Groq priority
@@ -72,6 +78,7 @@ class BrainManager(private val ctx: Context) {
 
     /** Baatcheet: jinki key hai, unme chalti hui + sabse tez pehle. Limit/galti wali sabse aakhir me. */
     private fun rankedForChat(): List<Provider> {
+        if (override == null) BrainPin.get(ctx, BrainPin.CHAT)?.let { pin -> if (BrainPin.resolve(ctx, BrainPin.CHAT) != null) return listOfNotNull(Providers.byId(pin.provider)) }
         val withKey = Providers.all.filter { clientFor(it) != null }
         // v4.3: Always include all providers with keys for immediate fail-back
         val active = Prefs.activeProvider(ctx)
@@ -596,7 +603,7 @@ class BrainManager(private val ctx: Context) {
 
     /** Settings me "टेस्ट" button ke liye. */
     suspend fun test(p: Provider, scope: String = ApiScopes.CHAT): String = withContext(Dispatchers.IO) {
-        val client = clientFor(p, scope) ?: return@withContext "पहले API key और model डालिए"
+        val client = clientFor(p, scope, pin = false) ?: return@withContext "पहले API key और model डालिए"
         try {
             val r = client.complete("Reply in one short Hindi sentence.", emptyList(), "नमस्ते, क्या तुम काम कर रहे हो?", null)
             "✓ चल रहा है: ${r.take(80)}"
@@ -640,7 +647,7 @@ class BrainManager(private val ctx: Context) {
             append("\n" + SearchPolicy.rules("{\"need_search\": true}"))
             append("\nEverything else (talk, general knowledge, how/why, advice, explanations, maths) -> answer IMMEDIATELY yourself from your own knowledge, short and warm. Do NOT ask for search for things you already know.")
             append("\nIf the user tells you a personal fact or preference worth remembering (names, numbers, likes, plans), add \"remember\": \"<the fact in short Hindi>\" to the JSON.")
-            append(AssistantBrand.IDENTITY_RULE).append("\n")
+            append(AssistantBrand.IDENTITY_RULE).append("\n").append(NameRule.block(Prefs.userName(ctx), Prefs.assistantName(ctx)))
             append("\n" + NowClock.line())
             append(TALK_RULES)
             append(TalkStyle.CHAT)   // v3.51: इंसान जैसी बात, झूठा "कर दिया" नहीं, notification/रुकने के नियम
@@ -668,7 +675,7 @@ class BrainManager(private val ctx: Context) {
             append("\n- The input says SEARCH AVAILABLE and the question needs search under the WEB SEARCH POLICY below: reply exactly [SEARCH]")
             append("\n- The question is genuinely HARD and needs careful multi-step reasoning (multi-step maths/word problems, logic puzzles, writing or fixing code, detailed comparison, planning, deep why/how explanation, exam-level questions) and the input says THINK AVAILABLE: reply exactly [THINK]. Do NOT use it for simple chat or easy facts.")
             append("\nLEARN from the user every day: if they tell a personal fact, preference, habit, or how they like answers, add at the very end a new line: [YAAD] <that fact in short Hindi>")
-            append(AssistantBrand.IDENTITY_RULE).append("\n")
+            append(AssistantBrand.IDENTITY_RULE).append("\n").append(NameRule.block(Prefs.userName(ctx), Prefs.assistantName(ctx)))
             append("\n" + NowClock.line())
             append("\n" + SearchPolicy.rules("[SEARCH]"))
             append(TALK_RULES)
@@ -820,7 +827,7 @@ class BrainManager(private val ctx: Context) {
             // v3.6 (owner: "DK सीखता रहे, जिससे बात करे उससे सीखे, बोली बात याद रखे")
             append("\nKEEP LEARNING (owner's rule): whenever the user or anyone talking to you tells something lasting - a name, a relation (family/friends), a preference, a plan/date, a correction of you, or explicitly says याद रखना / remember - call remember_fact right away in the same turn (short, third person, include who said it if not the owner). Use what you learned in later replies.")
             append("\nIf the user interrupts you, stop and listen. If their new words are about the same topic, give one combined answer; if it is a different question, briefly finish the earlier point, then answer the new one.")
-            append(AssistantBrand.IDENTITY_RULE).append("\n")
+            append(AssistantBrand.IDENTITY_RULE).append("\n").append(NameRule.block(Prefs.userName(ctx), Prefs.assistantName(ctx)))
             append("\n" + NowClock.line())
             append("\nTIME: the line above was exact when this call started, but time keeps moving during the call. Whenever the user asks the time, date or day, or you need it (greeting, how late it is), call current_time and say exactly what it returns - never guess or reuse an old time.")
             append(TALK_RULES)
@@ -861,7 +868,7 @@ class BrainManager(private val ctx: Context) {
             append(TALK_RULES).append("\n")
             append(TaskSense.PROMPT).append("\n").append(ActFirstRule.TEXT).append("\n")   // नवंबर 2026: काम / सवाल / जवाब / बातचीत - पहले पहचानो
             if (Prefs.friendMode(ctx)) append(FriendStyle.persona(dkFemale(), user)).append(FriendTalk.block(ctx)).append("\n")
-            append(AssistantBrand.IDENTITY_RULE).append("\n")
+            append(AssistantBrand.IDENTITY_RULE).append("\n").append(NameRule.block(Prefs.userName(ctx), Prefs.assistantName(ctx)))
         }
         return intro + BASE_PROMPT
     }

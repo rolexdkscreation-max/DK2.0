@@ -43,8 +43,16 @@ object DeepResearch {
     )
     private val AUTO = listOf(
         "तुलना", "compare", "comparison", " vs ", " vs. ", "versus", "अलग-अलग राय", "अलग अलग राय", "सभी स्रोत", "कई वेबसाइट",
-        "विस्तार से", "पूरी जानकारी", "pros and cons", "फायदे और नुकसान", "फ़ायदे और नुकसान", "रिपोर्ट बनाओ", "विश्लेषण", "analysis"
+        "विस्तार से", "पूरी जानकारी", "pros and cons", "फायदे और नुकसान", "फ़ायदे और नुकसान", "रिपोर्ट बनाओ", "विश्लेषण", "analysis",
+        // 14 नवंबर 2026 (मालिक: "मैं डीप रिसर्च न भी बोलूँ तो अपना दिमाग लगाए"): सबसे अच्छा चुनना / नए लॉन्च / टियर-प्लान वाले सवाल
+        "सबसे अच्छा", "सबसे अच्छी", "बेस्ट", " best ", "top 5", "top 10", "टॉप 5", "टॉप 10", "कौन-कौन से", "कौन कौन से", "ओपन सोर्स", "open source",
+        "लॉन्च", "लांच", "launch", "टियर", " tier", "pricing", "प्राइसिंग", "प्लान में क्या", "recommend", "सुझाव दो"
     )
+    /** "आज / कल / नया / latest / launch" = ताज़ा जानकारी चाहिए: खोज में तारीख़ की सीमा + आज की तारीख़ */
+    private val FRESH = listOf("आज", "कल ", "अभी", "नया", "नई", "नए", "ताज़ा", "ताजा", "लेटेस्ट", "लॉन्च", "लांच", "इस हफ्ते", "इस महीने",
+        "latest", "new ", "newest", "today", "yesterday", "this week", "launch", "released", "current", "abhi", "naya", "nayi")
+
+    fun fresh(q: String): Boolean { val l = " " + q.lowercase() + " "; return FRESH.any { l.contains(it) } }
 
     /** यूज़र ने साफ़ "डीप रिसर्च" माँगा? */
     fun asked(q: String): Boolean { val l = " " + q.lowercase() + " "; return ASK.any { l.contains(it) } }
@@ -81,7 +89,9 @@ object DeepResearch {
         Kind.STATS to "$topic statistics data numbers"
     )
 
-    fun planPrompt(question: String): String =
+    fun planPrompt(question: String, today: String = ""): String =
+        (if (today.isBlank()) "" else "Today is $today. Use this date: for latest/new/launch/current questions put the current month and year in the queries, " +
+            "and add one query aimed at the official source (company docs, pricing or changelog page). ") +
         "Break this research question into 3-5 web search sub-questions: main facts, latest news, different opinions, statistics/data. " +
             "Write each as a short English search query. Reply ONLY JSON: {\"subs\":[{\"kind\":\"main|news|opinion|stats\",\"q\":\"...\"}]}\n" +
             "Question: $question"
