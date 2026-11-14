@@ -13,7 +13,7 @@ class PcTypingTest {
         assertTrue(TypingStyles.ALL.any { it.first == TypingStyles.COMPUTER })
         assertEquals(TypingStyles.COMPUTER, TypingStyles.valid(TypingStyles.COMPUTER))
         assertEquals(TypingStyles.COMPUTER, TypingStyles.validAgent(null))
-        assertEquals(TypingStyles.BARS, TypingStyles.valid(null))
+        assertEquals(TypingStyles.COMPUTER, TypingStyles.valid(null))
     }
 
     @Test fun computerMovesWhileWorking_staysInside() {
@@ -33,6 +33,7 @@ class PcTypingTest {
         assertTrue(src("CodingActivity.kt").contains("DKInlineReply(list, scroll, 0.82f, agent = true)"))
         assertTrue(src("ChatActivity.kt").contains("DKInlineReply(list, scroll, 0.78f)"))
         assertTrue(src("DKWorkingIndicator.kt").contains("if (agent) Prefs.typingStyleAgent(context) else Prefs.typingStyle(context)"))
+        assertTrue(src("Prefs.kt").contains("getString(\"typing_style\", TypingStyles.COMPUTER)"))
         assertTrue(src("Prefs.kt").contains("getString(\"typing_style_agent\", TypingStyles.COMPUTER)"))
         val st = src("SettingsLook.kt")
         assertTrue(st.contains("putString(\"typing_style_agent\", v)"))

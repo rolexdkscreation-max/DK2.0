@@ -141,10 +141,6 @@ class ComputerActivity : AppCompatActivity() {
             smallBtn("स्टूडियो") { com.dk.assistant.studio.StudioSession.open(this, null) }))
         FutureViews.glassTopBar(top)      // संदर्भ चित्र: ऊपर काँच की पट्टी (सिर्फ़ नाम)
         col.addView(top)
-        // 14 नवंबर 2026 (मालिक): होम जैसा छोटा कंप्यूटर-चित्र + एक लाइन में अभी का असली काम
-        col.addView(WorkLineStrip(this) {
-            ComputerSession.busy to WorkLine.pick(ComputerSession.busy, ComputerSession.now, ComputerSession.lines.lastOrNull { it.role == "s" }?.text)
-        }, LinearLayout.LayoutParams(-1, -2).apply { topMargin = (8 * dp).toInt() })
         col.addView(buildWork(), LinearLayout.LayoutParams(-1, -2).apply { topMargin = (10 * dp).toInt() })
 
         scroll = ScrollView(this).apply { isFillViewport = true }
