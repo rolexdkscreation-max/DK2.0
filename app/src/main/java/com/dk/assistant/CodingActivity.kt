@@ -301,6 +301,8 @@ class CodingActivity : AppCompatActivity() {
         titles.addView(headSlot, LinearLayout.LayoutParams(-1, -2))
         val top = UiFit.header(this, back, titles, listOf(
             smallBtn("रिपो") { if (Prefs.coderSeven(this)) sevenPicker() else chooseRepo() },
+            // 14 नवंबर 2026 (मालिक): रिपो clone / जाँच - कोडिंग एजेंट के अंदर ही एक जगह
+            smallBtn("Clone") { RepoClone(this, onWork = { t -> edt.setText(t); doSend() }, onUse = { newSession() }).open() },
             smallBtn("इतिहास") { showHistory() },
             smallBtn("नया") { newSession() },
             smallBtn(CodeLivePanel.label(0)) { codePanel.toggle() }.also { codeBtn = it },
@@ -580,6 +582,44 @@ class CodingActivity : AppCompatActivity() {
             val ck = if (last == "e") CoderHistory.checkpoint(this) else null
             FollowUp.coder(SevenRunner.pending?.u, CoderSession.agent?.pr != null, last, ck != null && ck.stage != "pending")
         })
+    }
+
+    /**
+     * 14 नवंबर 2026 (मालिक): काम देते ही एजेंट ने जो समझा वह तुरंत popup में - "✅ हाँ, सही समझा", सुझाए बदलाव,
+     * "✏️ कुछ बदलना है", "❌ रद्द". हर नई समझ पर एक ही बार (बंद करने पर नीचे वही बटन बने रहते हैं).
+     */
+    private var poppedFor: SevenPlus.Understanding? = null
+    private var understandDlg: android.app.Dialog? = null
+    private fun popUnderstanding() {
+        val p = SevenRunner.pending
+        if (p == null) { poppedFor = null; understandDlg?.dismiss(); understandDlg = null; return }
+        val u = p.u
+        if (u === poppedFor || CoderSession.busy || isFinishing || isDestroyed || u.answer.isNotBlank()) return
+        poppedFor = u
+        val choices = FollowUp.coder(u, false, null, false)
+        val box = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; val ph = (20 * dp).toInt(); setPadding(ph, (8 * dp).toInt(), ph, (4 * dp).toInt()) }
+        box.addView(TextView(this).apply {
+            text = CoderConfirm.message(u.understood, u.brief, u.wants, u.questions); textSize = 14.5f
+            setTextColor(0xF2FFFFFF.toInt()); setLineSpacing(0f, 1.15f); UiLang.keep(this)
+        })
+        var dlg: android.app.Dialog? = null
+        choices.forEach { ch ->
+            box.addView(TextView(this).apply {
+                text = ch.label; textSize = 15f; setTextColor(0xFFFFFFFF.toInt()); maxLines = 2
+                setBackgroundResource(if (ch.act == FollowUp.Act.TYPE) R.drawable.glass_pill else R.drawable.glass_card)
+                val ph = (14 * dp).toInt(); val pv = (11 * dp).toInt(); setPadding(ph, pv, ph, pv)
+                isClickable = true; isFocusable = true; contentDescription = ch.label
+                setOnClickListener {
+                    dlg?.dismiss()
+                    if (ch.act == FollowUp.Act.TYPE) { edt.setText(""); keepTyping() } else { edt.setText(ch.text); doSend() }
+                    render()
+                }
+            }, LinearLayout.LayoutParams(-1, -2).apply { topMargin = (8 * dp).toInt() })
+        }
+        dlg = UiDialog(this, Glass.DIALOG).setTitle(CoderConfirm.title(u.questions.isNotEmpty()))
+            .setView(ScrollView(this).apply { addView(box) })
+            .setNegativeButton("बाद में", null).show()
+        understandDlg = dlg
     }
 
     /** Pending सुझाव: क्या, क्यों, और हाँ/नहीं */
@@ -997,6 +1037,7 @@ class CodingActivity : AppCompatActivity() {
         ChoiceBar.icon(edt, send, CoderSession.busy)
         showBusy(CoderSession.busy)
         renderChoices()
+        popUnderstanding()
         val lines = CoderSession.lines
         // नवंबर 2026 (बग): 300 लाइन के बाद आगे से हटी लाइनें गिनो - पहले यहीं अटककर नए संदेश दिखना बंद हो जाते थे
         val drop = CoderSession.dropped
