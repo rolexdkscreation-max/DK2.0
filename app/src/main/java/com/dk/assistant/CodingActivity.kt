@@ -317,6 +317,10 @@ class CodingActivity : AppCompatActivity() {
             setOnClickListener { codespaceDetail() }
         }
         col.addView(csMeter, LinearLayout.LayoutParams(-1, -2))
+        // 14 नवंबर 2026 (मालिक): DK Computer जैसा - छोटा कंप्यूटर-चित्र + एक लाइन ("PR चेक कर रहा हूँ", "CI टेस्टिंग चला रहा हूँ"…)
+        col.addView(WorkLineStrip(this) {
+            CoderSession.busy to WorkLine.pick(CoderSession.busy, null, CoderSession.lines.lastOrNull { it.role == "s" }?.text)
+        }, LinearLayout.LayoutParams(-1, -2).apply { topMargin = (6 * dp).toInt() })
 
         // नवंबर 2026 (मालिक): बड़ा "मौजूदा काम" कार्ड हटाया - वह अब ऊपर हेडर में; उसकी जगह (बटनों के नीचे) एजेंट स्टेटस पट्टी
         // v5.1: कौन सा एजेंट काम कर रहा है - सारे एजेंट मैनेजर के नीचे, चलता हुआ चमकता है

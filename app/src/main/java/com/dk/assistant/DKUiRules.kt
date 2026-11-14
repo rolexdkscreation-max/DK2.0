@@ -103,6 +103,15 @@ object DictationRules {
         else -> Next.STOP_MESSAGE
     }
 
+    /**
+     * 14 नवंबर 2026 (मालिक): "जब तक मैं चाहूँ तब तक लिखता जाए" - चुप्पी पर कभी अपने-आप बंद नहीं,
+     * बस फिर सुनो (stop/भेजें/X दबाने तक). बाकी गलतियाँ पहले जैसी (next).
+     */
+    fun nextKeep(code: Int, silentRuns: Int, busyRuns: Int, hasText: Boolean): Next = when (code) {
+        ERR_SPEECH_TIMEOUT, ERR_NO_MATCH -> Next.RESTART
+        else -> next(code, silentRuns, busyRuns, hasText)
+    }
+
     const val NO_SERVICE = "इस फ़ोन में बोलकर लिखने की सुविधा (Google आवाज़-पहचान) नहीं मिली। Google ऐप चालू/अपडेट करके फिर माइक दबाइए, या लिखकर भेजिए।"
     const val NO_PERMISSION = "माइक की इजाज़त नहीं है। फ़ोन की Settings → Apps → DK → Permissions में माइक चालू कीजिए।"
 

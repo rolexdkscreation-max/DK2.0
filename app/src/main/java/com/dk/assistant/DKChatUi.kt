@@ -266,6 +266,7 @@ class InlineDictation(
         if (active) return
         active = true
         DKMic.begin()
+        QuietMic.on(ctx)   // 14 नवंबर 2026 (मालिक): बार-बार "टू-टू" बीप नहीं - लिखवाते समय बिना आवाज़
         // DK का अपना माइक छूटने दो, फिर सुनो
         h.postDelayed(listenNow, 250)
     }
@@ -282,6 +283,8 @@ class InlineDictation(
         // लिखवाते समय सोचने के ठहराव पर तुरंत न रुके
         putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, 2500L)
         putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS, 2000L)
+        // लंबा लिखवाना (Google: बीच में कम बार रुके = कम बार फिर शुरू)
+        putExtra("android.speech.extra.DICTATION_MODE", true)
     }
 
     private val listener = object : RecognitionListener {
@@ -311,8 +314,9 @@ class InlineDictation(
         override fun onError(error: Int) {
             if (!active) return
             if (partial.isNotBlank()) { committed = DictationRules.join(committed, partial); partial = "" }
-            when (DictationRules.next(error, silent, busy, text.isNotBlank())) {
-                DictationRules.Next.RESTART -> { silent++; h.postDelayed(listenNow, 150) }
+            // 14 नवंबर 2026 (मालिक): जब तक मैं न रोकूँ तब तक लिखता जाए - चुप्पी पर अपने-आप बंद नहीं
+            when (DictationRules.nextKeep(error, silent, busy, text.isNotBlank())) {
+                DictationRules.Next.RESTART -> { silent = (silent + 1).coerceAtMost(DictationRules.MAX_SILENT); h.postDelayed(listenNow, 150) }
                 DictationRules.Next.RETRY_SOON -> {
                     busy++
                     try { sr?.destroy() } catch (_: Exception) {}
@@ -355,6 +359,7 @@ class InlineDictation(
         try { r?.destroy() } catch (_: Exception) {}
         onLevel(0f)
         DKMic.end()
+        QuietMic.off(ctx)
     }
 }
 

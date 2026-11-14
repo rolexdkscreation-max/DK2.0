@@ -14,11 +14,15 @@ object DkaiHomeCore {
     fun inputAction(hasText: Boolean, hasFiles: Boolean, dictating: Boolean): InputAction =
         if (hasText || hasFiles || dictating) InputAction.SEND else InputAction.VOICE
 
-    enum class SendRoute { CHAT, COMPUTER, COMPUTER_FILES }
+    enum class SendRoute { CHAT, COMPUTER, COMPUTER_FILES, CHAT_FILES }
 
-    /** फोटो / फ़ाइल जुड़ी = हमेशा DK Computer (वही पढ़ / देख सकता है); 🖥 चुना = DK Computer; नहीं तो चैट */
+    /**
+     * 14 नवंबर 2026 (मालिक): "चैट में अपलोड किया तो चैट में ही अपलोड हो, सीधे कंप्यूटर में नहीं"।
+     * फोटो / फ़ाइल + चैट = चैट में ही (AI फोटो देखकर जवाब दे); 🖥 चुना हो तभी DK Computer.
+     */
     fun sendRoute(computer: Boolean, files: Int): SendRoute = when {
-        files > 0 -> SendRoute.COMPUTER_FILES
+        files > 0 && computer -> SendRoute.COMPUTER_FILES
+        files > 0 -> SendRoute.CHAT_FILES
         computer -> SendRoute.COMPUTER
         else -> SendRoute.CHAT
     }
