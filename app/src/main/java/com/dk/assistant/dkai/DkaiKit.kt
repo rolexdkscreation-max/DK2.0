@@ -504,7 +504,8 @@ object DkaiKit {
         val m = model.lowercase(Locale.ROOT).removePrefix("models/").trim()
         if (m.isEmpty() || NOT_CHAT.containsMatchIn(m)) return false
         return when (provider) {
-            "gemini" -> m.contains("flash") && !Regex("pro|ultra|argon").containsMatchIn(m)
+            // 14 नवंबर 2026: Omni Flash / Cyber = पेड (free tier में नहीं); Gemma = फ्री
+            "gemini" -> (m.contains("flash") && !Regex("pro|ultra|argon|omni|cyber").containsMatchIn(m)) || m.startsWith("gemma-")
             "openrouter" -> m == "openrouter/free" || m.endsWith(":free")
             "zai" -> m.contains("flash")
             "groq", "nvidia" -> true
@@ -517,7 +518,7 @@ object DkaiKit {
      * Paid (Gemini Pro) सिर्फ़ तब जब AI दिमाग में "मेरी Gemini key paid है" चालू हो.
      */
     fun homeModels(hasKey: (String) -> Boolean, geminiPaid: Boolean, cached: (String) -> List<String>,
-                   fallback: (String) -> List<String>, name: (String) -> String, maxEach: Int = 5): List<HomeModel> {
+                   fallback: (String) -> List<String>, name: (String) -> String, maxEach: Int = DkaiModelList.MAX_EACH): List<HomeModel> {
         val out = ArrayList<HomeModel>()
         if (hasKey("gemini")) {
             for (c in MODEL_CARDS) {
@@ -526,10 +527,15 @@ object DkaiKit {
                 if (free) out.add(HomeModel("gemini", m, c.title, c.sub + " • Free"))
                 else if (geminiPaid) out.add(HomeModel("gemini", m, c.title, c.sub + " • Paid key", paid = true))
             }
+            // 14 नवंबर 2026 (मालिक: "3.6 / 3.5 Flash Lite / नए फ्री मॉडल क्यों नहीं दिखते"): पहले सिर्फ़ ऊपर के 4 कार्ड थे.
+            // अब जाने-माने फ्री मॉडल + Google की ताज़ा सूची (cache, अपने-आप refresh - [DkaiModelList]) के सारे फ्री मॉडल भी
+            val have = out.map { it.model }.toHashSet()
+            DkaiModelList.extraGemini(cached("gemini"), have).take(maxEach)
+                .forEach { out.add(HomeModel("gemini", it, name(it), "Google Gemini • Free")) }
         }
-        for (id in listOf("groq", "openrouter", "zai", "nvidia")) {
+        for (id in DkaiModelList.OTHER_PROVIDERS) {
             if (!hasKey(id)) continue
-            (fallback(id) + cached(id)).map { it.trim() }.filter { isFreeModel(id, it) }.distinct().take(maxEach)
+            DkaiModelList.ordered(fallback(id), cached(id)).filter { isFreeModel(id, it) }.take(maxEach)
                 .forEach { out.add(HomeModel(id, it, name(it), providerName(id) + " • Free")) }
         }
         return out

@@ -16,7 +16,7 @@ object NearbyPlaces {
         fun isEmpty() = text().isBlank()
     }
 
-    data class Spot(val name: String, val kind: String, val distM: Int)
+    data class Spot(val name: String, val kind: String, val distM: Int, val lat: Double = 0.0, val lon: Double = 0.0)
 
     const val RADIUS_M = 600
     const val UA = "DK-Assistant (Android)"
@@ -170,7 +170,7 @@ object NearbyPlaces {
         "hairdresser" to "सैलून", "beauty" to "ब्यूटी पार्लर", "car_repair" to "गैरेज", "motorcycle_repair" to "बाइक गैरेज",
         "tyres" to "टायर / पंक्चर की दुकान", "motorcycle" to "बाइक शोरूम", "car" to "कार शोरूम", "optician" to "चश्मे की दुकान",
         "furniture" to "फ़र्नीचर की दुकान", "gift" to "गिफ़्ट शॉप", "variety_store" to "वैरायटी स्टोर", "kiosk" to "छोटी दुकान / गुमटी",
-        "mall" to "मॉल", "department_store" to "डिपार्टमेंट स्टोर", "paint" to "पेंट की दुकान", "alcohol" to "शराब की दुकान",
+        "mall" to "मॉल", "department_store" to "डिपार्टमेंट स्टोर", "boutique" to "बुटीक (कपड़े)", "fashion" to "फैशन / कपड़े", "paint" to "पेंट की दुकान", "alcohol" to "शराब की दुकान",
     )
 
     /** KINDS के अलावा "पास में X" में ढूँढने लायक जगहें */
@@ -203,7 +203,10 @@ object NearbyPlaces {
         listOf("किराना", "kirana", "grocery", "ग्रोसरी", "जनरल स्टोर", "general store", "सुपरमार्केट", "supermarket", "राशन") to
             listOf("shop=supermarket", "shop=convenience", "shop=general", "shop=grocery"),
         listOf("सब्ज़ी", "सब्जी", "vegetable") to listOf("shop=greengrocer", "amenity=marketplace"),
-        listOf("कपड़", "कपड़", "clothes", "cloth", "garment", "दर्ज़ी", "दर्जी", "tailor") to listOf("shop=clothes", "shop=tailor"),
+        listOf("दर्ज़ी", "दर्जी", "tailor") to listOf("shop=tailor"),
+        // 14 नवंबर 2026 (मालिक: "कपड़े लेना है, पास की दुकान/मॉल ढूँढो") - कपड़े की दुकान + बुटीक + मॉल / बड़ा स्टोर
+        listOf("कपड़", "कपड़", "clothes", "cloth", "garment", "kapde", "kapda", "ड्रेस", "dress", "शर्ट", "shirt", "साड़ी", "saree", "बुटीक", "boutique", "fashion", "फैशन") to
+            listOf("shop=clothes", "shop=boutique", "shop=fashion", "shop=department_store", "shop=mall"),
         listOf("मोबाइल", "mobile", "फ़ोन की दुकान", "phone shop", "रिचार्ज", "recharge") to listOf("shop=mobile_phone", "shop=electronics"),
         listOf("इलेक्ट्रॉनिक", "electronic", "कंप्यूटर", "computer", "लैपटॉप", "laptop") to listOf("shop=electronics", "shop=computer"),
         listOf("मिठाई", "sweet", "केक", "cake") to listOf("shop=confectionery", "shop=sweets", "shop=pastry", "shop=bakery"),
@@ -222,12 +225,15 @@ object NearbyPlaces {
         listOf("पार्क", "park", "गार्डन", "garden", "बगीचा") to listOf("leisure=park"),
         listOf("स्कूल", "school") to listOf("amenity=school"),
         listOf("कॉलेज", "college") to listOf("amenity=college"),
-        listOf("मॉल", "mall") to listOf("shop=mall"),
+        listOf("मॉल", "mall") to listOf("shop=mall", "shop=department_store"),
         listOf("बाज़ार", "बाजार", "market", "मार्केट", "मंडी") to listOf("amenity=marketplace", "shop=mall"),
         listOf("शौचालय", "toilet", "washroom", "बाथरूम") to listOf("amenity=toilets"),
         listOf("पोस्ट", "post office", "डाकघर") to listOf("amenity=post_office"),
         listOf("सिनेमा", "cinema", "theatre", "थिएटर", "movie") to listOf("amenity=cinema"),
         listOf("पार्किंग", "parking") to listOf("amenity=parking"),
+        // "कुछ खरीदना है / शॉपिंग" (कोई खास चीज़ नहीं) = मॉल, बड़े स्टोर, सुपरमार्केट, कपड़े - खास चीज़ों के बाद, "दुकान" से पहले
+        listOf("शॉपिंग", "shopping", "खरीद", "kharid") to
+            listOf("shop=mall", "shop=department_store", "shop=supermarket", "shop=clothes"),
         listOf("दुकान", "dukan", "shop", "store", "स्टोर") to listOf("shop=*"),
     )
 
@@ -268,7 +274,7 @@ object NearbyPlaces {
             val la = if (e.has("lat")) e.optDouble("lat") else c?.optDouble("lat") ?: continue
             val lo = if (e.has("lon")) e.optDouble("lon") else c?.optDouble("lon") ?: continue
             if (la.isNaN() || lo.isNaN()) continue
-            all.add(Spot(name, kind, distM(lat, lon, la, lo)))
+            all.add(Spot(name, kind, distM(lat, lon, la, lo), la, lo))
         }
         val seen = HashSet<String>()
         return all.sortedBy { it.distM }.filter { seen.add(it.name.lowercase()) }.take(max)

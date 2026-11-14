@@ -21,7 +21,7 @@ object LockedWork {
     private val SCREEN = setOf(
         "open_app", "youtube_search", "youtube_play", "wa_call", "gallery_latest", "steps", "web_search", "open_url", "browser_search",
         "app_search", "click", "long_click", "type", "enter", "scroll", "tap", "swipe", "back", "home", "recents", "notifications",
-        "quick_settings", "shop_search", "open_settings", "panel", "directions", "navigate", "map_search", "screen_view",
+        "quick_settings", "shop_search", "open_settings", "panel", "directions", "navigate", "map_search", "nearby_go", "screen_view",
         "open_dialer", "call_log", "close_app", "close_all_apps", "screenshot_save",
     )
 

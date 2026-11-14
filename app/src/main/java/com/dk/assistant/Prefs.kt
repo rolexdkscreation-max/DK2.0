@@ -528,6 +528,8 @@ object Prefs {
 
     /** v5: DK लाइव का dk_settings tool कोई भी ऑन-ऑफ सेटिंग पढ़ सके */
     fun bool(c: Context, key: String, def: Boolean): Boolean = sp(c).getBoolean(key, def)
+    /** 14 नवंबर 2026: समय/गिनती वाली सेटिंग पढ़ना (जैसे मॉडल सूची कब ताज़ा हुई) */
+    fun long(c: Context, key: String, def: Long): Long = try { sp(c).getLong(key, def) } catch (_: Exception) { def }
     /** नवंबर 2026: कोई भी text setting (जैसे सोचने का स्तर, मॉडल के नाम) */
     fun str(c: Context, key: String, def: String): String = sp(c).getString(key, def) ?: def
 

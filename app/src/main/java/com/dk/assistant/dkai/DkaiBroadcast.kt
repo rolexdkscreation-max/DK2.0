@@ -377,9 +377,9 @@ class DkaiBroadcast(private val s: DkaiScreen) {
     } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (e: Exception) { DKLog.d("Broadcast research: ${e.message?.take(80)}"); null }
 
     /** लंबी स्क्रिप्ट: कहानी वाली AI (8k token) - न मिले तो छोटा तेज़ रास्ता */
-    private suspend fun writeScript(sys: String, topic: String): String = withContext(Dispatchers.IO) {
-        try { StoryAi.fromPrefs(c)?.write(sys, listOf("user" to topic))?.text?.takeIf { it.isNotBlank() } } catch (e: Exception) { DKLog.d("Broadcast script: ${e.message?.take(80)}"); null }
-    } ?: BrainManager(c).quickText(sys, topic) ?: throw IllegalStateException("AI ने स्क्रिप्ट नहीं लिखी (AI की key / limit देखें)")
+    // 14 नवंबर 2026 (मालिक): होम पर चुना मॉडल हो तो वही पहले ([DkaiPick]); नहीं तो पहले जैसा कहानी वाली AI
+    private suspend fun writeScript(sys: String, topic: String): String =
+        DkaiPick.ask(c, sys, topic, preferStory = true) ?: BrainManager(c).quickText(sys, topic) ?: throw IllegalStateException("AI ने स्क्रिप्ट नहीं लिखी (AI की key / limit देखें)")
 
     /** एक टुकड़ा (<= 2 बोलने वाले) - 14 नवंबर 2026: साझा इंजन ([DkaiCastTts]) - हर लाइन का अंदाज़ भी */
     private fun segmentPcm(keys: List<String>, seg: List<DkaiKit.Line>, cast: Map<String, DkaiKit.StudioVoice>, style: String): Pair<ByteArray, Int> =

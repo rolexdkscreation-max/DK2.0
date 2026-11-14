@@ -170,6 +170,10 @@ object Maps {
         val t0 = t
         NOISE.forEach { t = t.replace(it, " ") }
         t = t.replace(Regex("\\s+"), " ").trim()
+        // 14 नवंबर 2026 (मालिक): "कपड़े लेना है, पास की दुकान ढूँढो और रास्ता लगा दो" = सबसे पास वाली ढूँढकर तुरंत navigation ([NearbyGo]).
+        // "और" वाली जाँच से पहले - यह एक ही काम है (ढूँढो + रास्ता)
+        if (NearbyGo.wantsGo(t) && !WORD_CALL.containsMatchIn(t) && !t.contains("मैसेज") && !t.contains("whatsapp"))
+            return QuickCommands.Quick(a("nearby_go", "find" to t, "mode" to modeOf(t)), "")
         if (listOf(" और ", " फिर ", " then ", " उसके बाद ").any { " $t ".contains(it) }) return null
         // v4: पूरा शब्द "कॉल" - "कॉलेज रोड" / "कॉलोनी" जगह का नाम है, कॉल नहीं
         if (WORD_CALL.containsMatchIn(t) || t.contains("मैसेज") || t.contains("whatsapp")) return null

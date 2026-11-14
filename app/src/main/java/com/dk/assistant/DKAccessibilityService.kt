@@ -1167,6 +1167,7 @@ class DKAccessibilityService : AccessibilityService() {
                 "directions" -> Maps.directions(this, a.optString("to"), a.optString("from"), a.optString("mode", "driving"))
                 "navigate" -> Maps.navigate(this, a.optString("to"), a.optString("mode", "driving"))
                 "map_search" -> Maps.search(this, a.optString("query"))
+                "nearby_go" -> NearbyGo.goSay(this, a.optString("find"), a.optString("mode", "driving"))   // 14 नवंबर 2026: पास की दुकान का रास्ता तुरंत
                 "alarm_off" -> AlarmOff.run(this, AlarmOff.fromJson(a))
                 "distance" -> distance(a.optString("to"), a.optString("from"), a.optString("mode", "driving"))
                 "media" -> DeviceActions.media(this, a.optString("key", "play_pause"))
