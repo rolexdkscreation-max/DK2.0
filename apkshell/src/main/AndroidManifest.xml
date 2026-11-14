@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- DK का APK साँचा. android:label का यह शब्द फ़ोन पर ऐप के असली नाम से बदला जाता है (DkaiApk.PLACEHOLDER_LABEL) -->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <uses-permission android:name="android.permission.VIBRATE" />
+    <application
+        android:allowBackup="false"
+        android:icon="@mipmap/ic_launcher"
+        android:label="DK_APP_LABEL_PLACEHOLDER"
+        android:hardwareAccelerated="true"
+        android:supportsRtl="true"
+        android:theme="@android:style/Theme.Material.NoActionBar">
+        <activity
+            android:name="com.dk.apkshell.Main"
+            android:configChanges="orientation|screenSize|screenLayout|keyboardHidden|keyboard|uiMode|smallestScreenSize|density"
+            android:exported="true"
+            android:windowSoftInputMode="adjustResize">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+    </application>
+</manifest>

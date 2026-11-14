@@ -291,12 +291,19 @@ class DkaiScreen(val activity: ComponentActivity, val host: DkaiHost) : DkaiNav 
             setOnClickListener { DkaiSheets.models(this@DkaiScreen) }
             setOnLongClickListener { pickModel(it); true }
         }
-        row.addView(modelPill, LinearLayout.LayoutParams(-2, -2).apply { leftMargin = d(8f) })
+        // 14 नवंबर 2026 (मालिक): "Pipeline / Broadcast चुनते ही माइक (आवाज़ वाला बटन) साइड होकर छिप जाता है - कोई भी मोड चुनें,
+        // हर बटन अपनी जगह पर रहे". जड़: मोड वाली गोली wrap_content थी - "Broadcast ▾" / "Pipeline ▾" चौड़े होकर पंक्ति भर देते थे
+        // और आख़िरी बटन (माइक) को स्क्रीन से बाहर धकेल देते थे (LinearLayout पहले वालों को पूरी जगह देता है).
+        // अब: मॉडल गोली बची हुई जगह में (weight, लंबा नाम "…"), मोड गोली की चौड़ाई पक्की (DkaiCore.MODE_PILL_DP) -> + / मोड / भेजें / माइक कभी नहीं हिलते.
+        val modelBox = LinearLayout(c).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
+        modelBox.addView(modelPill, LinearLayout.LayoutParams(-2, -2))
+        row.addView(modelBox, LinearLayout.LayoutParams(0, -2, 1f).apply { leftMargin = d(8f) })
         modePill = DkaiTheme.pill(c, mode.label + " ▾", DkaiTheme.PILL, DkaiTheme.SUB, 12f).apply {
             minHeight = d(34f); contentDescription = "मोड चुनें"; setOnClickListener { v -> DkaiSheets.modes(this@DkaiScreen, v) }
+            maxLines = 1; ellipsize = android.text.TextUtils.TruncateAt.END; gravity = Gravity.CENTER
+            setPadding(d(8f), d(7f), d(8f), d(7f))
         }
-        row.addView(modePill, LinearLayout.LayoutParams(-2, -2).apply { leftMargin = d(6f) })
-        row.addView(View(c), LinearLayout.LayoutParams(0, 1, 1f))
+        row.addView(modePill, LinearLayout.LayoutParams(d(DkaiCore.MODE_PILL_DP), -2).apply { leftMargin = d(6f); rightMargin = d(6f) })
         sendBtn = DkaiUi.iconBtn(c, DkaiIcon.Kind.SEND, "भेजें", DkaiTheme.ICON_CYAN, 42f) { send() }.apply { alpha = 0.4f }
         row.addView(sendBtn, LinearLayout.LayoutParams(d(42f), d(42f)).apply { rightMargin = d(4f) })
         micBtn = FrameLayout(c).apply {

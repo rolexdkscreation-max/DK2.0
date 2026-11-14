@@ -100,6 +100,22 @@ class DkaiTermTest {
         assertTrue(DkaiTerm.HELP.contains("DK लाइव"))
     }
 
+    /** 14 नवंबर 2026 (मालिक): Terminal से ऐप बनाना - `apk` कमांड, और DK लाइव को पता हो कि ऐप ऐसे बनता है */
+    @Test fun apkCommandKnown() {
+        assertTrue(DkaiTerm.isBuiltin("apk make कैलकुलेटर ऐप"))
+        assertTrue("apk" in DkaiTerm.BUILTINS)
+        assertTrue(DkaiTerm.HELP.contains("apk make"))
+        for (w in listOf("apk make", "apk build", "apk install", "apk list")) assertTrue(w, DkaiTerm.APK_HELP.contains(w))
+        val k = DkaiTerm.KNOWLEDGE
+        assertTrue(k.contains("apk make")); assertTrue(k.contains("install screen")); assertTrue(k.contains("never try to write the files with echo or run gradle"))
+        assertFalse("apk make खतरनाक नहीं (कुछ मिटाती नहीं) - DK लाइव बिना पूछे चलाए", DkaiTerm.risky("apk make कैलकुलेटर ऐप"))
+        assertFalse(DkaiTerm.risky("apk build calc Calculator"))
+        assertEquals(listOf("build", "calc", "Calc Pro"), DkaiTerm.words("build calc \"Calc Pro\""))
+        assertEquals(listOf("make", "a", "b c"), DkaiTerm.words(" make a 'b c' "))
+        val shell = src("dkai/DkaiShell.kt")
+        assertTrue(shell.contains("\"apk\" -> DkaiApk.command(c, arg, d)"))
+    }
+
     @Test fun liveToolWired() {
         val setup = src("GeminiLiveSetup.kt")
         assertTrue(setup.contains("put(\"name\", \"terminal\")"))
