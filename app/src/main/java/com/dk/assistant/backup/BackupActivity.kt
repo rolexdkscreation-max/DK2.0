@@ -62,6 +62,7 @@ class BackupActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_settings)
+        com.dk.assistant.PlainLook.install(this)   // 14 नवंबर 2026 (मालिक): होम (DKAI) जैसा सपाट रूप, काँच/ग्लासी नहीं
         Glass.install(this)
         container = findViewById(R.id.container)
         findViewById<OrbView>(R.id.miniOrb).mini = true

@@ -229,7 +229,7 @@ class SettingsActivity : AppCompatActivity() {
                     }
                 }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, (48 * dp).toInt()).apply { marginStart = (6 * dp).toInt() })
             } else box.addView(TextView(this).apply { text = "›"; textSize = 28f; setTextColor(0x99FFFFFF.toInt()) })
-            if (id == "ui" && searchHit == null) txt.addView(MenuQuick.glassSlider(this), LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, (40 * dp).toInt()).apply { topMargin = (4 * dp).toInt() })
+            // 14 नवंबर 2026 (मालिक): काँच (ग्लासी) हर जगह से हटा - इसलिए "दिखावट" पर काँच वाला slider भी नहीं
             // 14 नवंबर 2026 (मालिक): डार्क / लाइट मोड सेटिंग खोलते ही दिखे (अंदर जाए बिना)
             if (id == "ui" && searchHit == null) txt.addView(SwitchCompat(this).apply {
                 text = "लाइट मोड (बंद = डार्क)"; textSize = 13f; setTextColor(0xCCFFFFFF.toInt())

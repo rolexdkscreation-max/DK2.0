@@ -108,6 +108,10 @@ object PlainLook {
         if (light && bg is ColorDrawable && darkSolid(bg.color)) {
             val d = ColorDrawable(L_BG); v.background = d; v.setTag(TAG, d); return
         }
+        // 14 नवंबर 2026 (मालिक: "सारी स्क्रीन होम जैसी"): डार्क में भी पूरी स्क्रीन की गहरी-नीली पृष्ठभूमि (#0A1033 आदि) -> होम वाला रंग
+        if (!light && bg is ColorDrawable && darkSolid(bg.color) && bg.color != BG && fillsScreen(v)) {
+            val d = ColorDrawable(BG); v.background = d; v.setTag(TAG, d); return
+        }
         val dp = v.resources.displayMetrics.density
         val kind = glassKind(bg)
         val flat: Drawable? = when {
@@ -143,6 +147,14 @@ object PlainLook {
             v.setColorFilter(0xFF000000.toInt() or L_TEXT, android.graphics.PorterDuff.Mode.SRC_IN); v.setTag(ICON_TAG, true)
         }
     }
+    /** view लगभग पूरी स्क्रीन घेरता है (पृष्ठभूमि वाला) */
+    private fun fillsScreen(v: View): Boolean {
+        val r = v.rootView ?: return false
+        return r.width > 0 && r.height > 0 && fills(v.width, v.height, r.width, r.height)
+    }
+    /** pure (JVM test): चौड़ाई 90%+ और ऊँचाई 60%+ */
+    fun fills(w: Int, h: Int, rw: Int, rh: Int): Boolean = rw > 0 && rh > 0 && w * 10 >= rw * 9 && h * 10 >= rh * 6
+
     private val ACCENT_TAG = R.id.plain_look_accent
     private val ICON_TAG = R.id.plain_look_icon
 

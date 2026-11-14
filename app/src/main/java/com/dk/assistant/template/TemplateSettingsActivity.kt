@@ -31,6 +31,7 @@ class TemplateSettingsActivity : AppCompatActivity() {
         val scroll = ScrollView(this)
         col = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; val p = (16 * dp).toInt(); setPadding(p, p, p, p) }
         scroll.addView(col); root.addView(scroll, FrameLayout.LayoutParams(-1, -1)); setContentView(root)
+        com.dk.assistant.PlainLook.install(this)   // 14 नवंबर 2026 (मालिक): होम (DKAI) जैसा सपाट रूप, काँच/ग्लासी नहीं
         header()
 
         val mine = card("मेरे साँचे", "अपने बनाए साँचे सबसे पहले मिलाए जाते हैं. खाली जगह के लिए ___ लिखें")
