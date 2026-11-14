@@ -344,7 +344,7 @@ object Prefs {
     /** v3.65: हटाया गया आकार (dna/tesseract/wormhole/sphere3d) या अनजान -> earth */
     /** v4: जिसने कभी आकार नहीं चुना उसे नया नियॉन ओर्ब; पहले चुना हुआ आकार वैसा ही */
     /** v4.x: जवाब वाले बुलबुले का "लिख रही है" एनीमेशन (TypingStyles) */
-    fun typingStyle(c: Context): String = TypingStyles.valid(sp(c).getString("typing_style", TypingStyles.BARS))
+    fun typingStyle(c: Context): String = TypingStyles.valid(sp(c).getString("typing_style", TypingStyles.COMPUTER))
     /** 14 नवंबर 2026 (मालिक): DK कंप्यूटर + कोडिंग एजेंट का बुलबुला - डिफ़ॉल्ट छोटा कंप्यूटर */
     fun typingStyleAgent(c: Context): String = TypingStyles.validAgent(sp(c).getString("typing_style_agent", TypingStyles.COMPUTER))
     fun orbStyle(c: Context) = Shapes.valid(sp(c).getString("orb_style", Shapes.NEON))

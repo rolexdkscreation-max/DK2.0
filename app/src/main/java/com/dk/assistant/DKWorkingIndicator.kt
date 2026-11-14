@@ -45,7 +45,7 @@ class DKWorkingIndicator(context: Context) : View(context) {
     /** DK कंप्यूटर / कोडिंग एजेंट का बुलबुला = उनका अलग टाइपिंग एनीमेशन (डिफ़ॉल्ट छोटा कंप्यूटर) */
     var agent = false
         set(v) { if (field != v) { field = v; styleT = 0L; invalidate() } }
-    private var typing = TypingStyles.BARS
+    private var typing = TypingStyles.COMPUTER
     private val pcBox = FloatArray(4)
     private val pcLine = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE; strokeCap = Paint.Cap.ROUND; strokeJoin = Paint.Join.ROUND }
     private val pcFill = Paint(Paint.ANTI_ALIAS_FLAG)

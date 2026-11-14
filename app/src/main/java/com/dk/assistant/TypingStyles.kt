@@ -26,7 +26,7 @@ object TypingStyles {
     /** Settings में दिखने वाली पूरी सूची = पुराने 6 + कंप्यूटर वाला */
     val ALL = STYLES + (COMPUTER to "छोटा कंप्यूटर (DK कंप्यूटर वाला)")
 
-    fun valid(s: String?): String = if (s != null && ALL.any { it.first == s }) s else BARS
+    fun valid(s: String?): String = if (s != null && ALL.any { it.first == s }) s else COMPUTER
     fun validAgent(s: String?): String = if (s != null && ALL.any { it.first == s }) s else COMPUTER
 
     /**

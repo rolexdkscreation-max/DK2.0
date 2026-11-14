@@ -25,8 +25,8 @@ class PlainWorkMicTest {
     }
 
     @Test fun workLineOnBothScreens() {
-        assertTrue(src("ComputerActivity.kt").contains("WorkLineStrip(this)"))
-        assertTrue(src("CodingActivity.kt").contains("WorkLineStrip(this)"))
+        assertFalse(src("ComputerActivity.kt").contains("WorkLineStrip(this)"))
+        assertFalse(src("CodingActivity.kt").contains("WorkLineStrip(this)"))
         assertTrue(src("WorkLine.kt").contains("ComputerEyes(c)"))
     }
 

@@ -81,7 +81,7 @@ class FutureOrbsTypingTest {
     @Test fun typing_fiveNewDotStyles_plusOldBars() {
         val keys = TypingStyles.STYLES.map { it.first }
         assertEquals(6, keys.size); assertEquals(TypingStyles.BARS, keys.first())
-        assertEquals(TypingStyles.BARS, TypingStyles.valid(null)); assertEquals(TypingStyles.BARS, TypingStyles.valid("xyz"))
+        assertEquals(TypingStyles.COMPUTER, TypingStyles.valid(null)); assertEquals(TypingStyles.COMPUTER, TypingStyles.valid("xyz"))
         val out = FloatArray(TypingStyles.MAX * 4)
         assertEquals(0, TypingStyles.dots(TypingStyles.BARS, 1.0, 1f, out))
         for (k in keys.drop(1)) {
