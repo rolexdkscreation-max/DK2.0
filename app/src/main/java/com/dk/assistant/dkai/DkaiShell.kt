@@ -39,6 +39,8 @@ object DkaiShell {
     @Volatile private var loaded = false
     /** DK लाइव की खतरनाक कमांड जो मालिक की "हाँ" का इंतज़ार कर रही है ([DkaiTerm.liveGate]) */
     @Volatile private var pending: DkaiTerm.Pending? = null
+    /** मालिक की "हाँ" से शुरू हुआ टर्मिनल काम - उसी काम की अगली / ठीक करने वाली कमांड बिना दोबारा पूछे ([DkaiTermFix]) */
+    @Volatile private var job: DkaiTermFix.Job? = null
 
     const val MAX_HISTORY = 300
     const val LIVE_TIMEOUT_MS = 30_000L
@@ -256,8 +258,12 @@ object DkaiShell {
         val cmd = args.optString("command").trim()
         val ok = args.optBoolean("confirmed", false)
         if (cmd.isBlank() || cmd == "help") return@withContext "TERMINAL INFO: " + DkaiTerm.KNOWLEDGE + "\nNow at: ${prompt(c)}. Explain to the user in short simple Hindi what he wants to know."
+        val now = System.currentTimeMillis()
+        // 14 नवंबर 2026: हाँ मिल चुकी है (चल रहा काम) और कमांड खतरनाक नहीं = बिना दोबारा पूछे (ठीक करने वाली कमांड भी)
+        val inJob = DkaiTermFix.canContinue(job, DkaiTerm.risky(cmd), now)
+        if (!inJob && job != null && now - job!!.startedAt > DkaiTermFix.JOB_WINDOW_MS) job = null
         // ऑडिट 13 नवंबर 2026: "हाँ" ऐप खुद मालिक की बात से जाँचता है - AI का confirmed=true अकेले काफ़ी नहीं
-        when (DkaiTerm.liveGate(cmd, ok, pending, com.dk.assistant.DKState.lastUserAt, com.dk.assistant.DKState.lastUser, System.currentTimeMillis())) {
+        if (!inJob) when (DkaiTerm.liveGate(cmd, ok, pending, com.dk.assistant.DKState.lastUserAt, com.dk.assistant.DKState.lastUser, System.currentTimeMillis())) {
             DkaiTerm.Gate.Ask -> {
                 pending = DkaiTerm.Pending(cmd, System.currentTimeMillis())
                 DKLog.d("terminal (लाइव): पुष्टि माँगी - ${cmd.take(80)}")
@@ -270,15 +276,26 @@ object DkaiShell {
                 return@withContext "NOT_RUN: the app did not hear the user himself say a clear yes after the question, so `$cmd` was NOT run. " +
                     "Ask him again in one short Hindi line (हाँ या ना) and wait for his answer. Never say it ran."
             }
-            DkaiTerm.Gate.Run -> pending = null
+            DkaiTerm.Gate.Run -> {
+                // मालिक की हाँ से चली (सिर्फ़ देखने वाली नहीं) = नया काम शुरू
+                if (pending != null && !DkaiTerm.readOnly(cmd)) job = DkaiTermFix.Job(now)
+                pending = null
+            }
         }
         val before = prompt(c)
         listeners.forEach { l -> try { l("🎤 DK लाइव: $before \$ $cmd\n") } catch (_: Exception) {} }
         val r = runAll(c, cmd)
         listeners.forEach { l -> try { l(r.out + (if (r.timedOut) "[30 सेकंड - रोका]\n" else if (r.code != 0) "[exit ${r.code}]\n" else "")) } catch (_: Exception) {} }
         DKLog.d("terminal (लाइव): ${cmd.take(80)} -> exit ${r.code}${if (r.timedOut) " (समय खत्म)" else ""}")
+        // 14 नवंबर 2026 (मालिक: "error खुद ठीक करो और हर कदम बताओ")
+        val bad = r.timedOut || DkaiTermFix.failed(r.code, r.out)
+        val diag = if (bad) DkaiTermFix.diagnose(cmd, r.out + if (r.timedOut) "\n[30 सेकंड" else "") else null
+        val j = job?.let { DkaiTermFix.after(it, bad) }?.also { job = if (it.fails >= DkaiTermFix.MAX_FIXES) null else it }
+        val line = DkaiTermFix.stepLine(j, bad, diag)
+        listeners.forEach { l -> try { l(line) } catch (_: Exception) {} }
         "TERMINAL RESULT (real, from the phone): command `$cmd` in $before -> exit ${r.code}${if (r.timedOut) " (stopped after 30 s)" else ""}, now in ${prompt(c)}.\n" +
-            "OUTPUT:\n" + DkaiTerm.clip(r.out.ifBlank { "(कुछ नहीं छपा)" }, 2_500) +
-            "\nTell the user briefly in Hindi what happened (summarise long output, never read paths character by character, never invent output). It is also shown in the Terminal tab."
+            "OUTPUT:\n" + DkaiTerm.clip(r.out.ifBlank { "(कुछ नहीं छपा)" }, 2_500) + "\n" +
+            DkaiTermFix.stepNote(cmd, bad, j, diag) +
+            " Summarise long output, never read paths character by character, never invent output. It is also shown in the Terminal tab."
     }
 }

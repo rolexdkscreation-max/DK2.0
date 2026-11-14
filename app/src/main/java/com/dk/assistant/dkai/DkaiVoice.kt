@@ -181,7 +181,7 @@ class DkaiVoice(private val s: DkaiScreen) {
         // 13 नवंबर 2026 (मालिक): चुना हुआ मोड आसमानी रंग में चमके (नीचे चमकती लकीर + हल्की आसमानी पृष्ठभूमि)
         addView(View(c).apply { background = DkaiTheme.round(c, CYAN_ON, 2f); elevation = d(3f).toFloat() }, LinearLayout.LayoutParams(d(26f), d(3f)).apply { topMargin = d(5f) })
         setOnClickListener { pickTab(m) }
-        // 14 नवंबर 2026: Broadcast टैब अब Broadcast का काम है; स्क्रीन शेयर = उसी टैब को देर तक दबाएँ (या "स्क्रीन देखो" बोलें)
+        // 14 नवंबर 2026: Broadcast टैब अब Broadcast का काम है; लगातार स्क्रीन शेयर = उसी टैब को देर तक दबाएँ ("स्क्रीन देखो" बोलने पर DK एक बार तुरंत देख लेता है)
         if (m == DkaiMode.BROADCAST) setOnLongClickListener { toggleScreenShare(); true }
     }
 

@@ -237,8 +237,9 @@ object SevenRunner {
     private fun teamEvents(c: Context, shown: Shown? = null, sound: Boolean = true): (Seven.Agent, String) -> Unit = { ag, t ->
         val m = shown?.of(ag) ?: ag.member
         CoderSession.activeAgent = m; CoderSession.activeNote = t       // v5.1: स्क्रीन पर "कौन काम कर रहा है"
-        say("s", "${m.icon} ${m.hi}: $t")
-        if (sound && ag == Seven.Agent.TESTER && t.startsWith("✗")) CoderSound.notify(c, CoderSound.BUG, "कोडिंग टीम: बग मिला — ठीक कर रहा हूँ", t.lines().first().take(120))
+        // 14 नवंबर 2026 (मालिक): एक दिमाग (Solo) = हर संदेश "🧠 DK एजेंट: …", पदों के नाम नहीं
+        say("s", if (Prefs.coderSolo(c)) SoloVoice.line(t) else "${m.icon} ${m.hi}: $t")
+        if (sound && ag == Seven.Agent.TESTER && t.startsWith("✗")) CoderSound.notify(c, CoderSound.BUG, (if (Prefs.coderSolo(c)) SoloVoice.NAME else "कोडिंग टीम") + ": बग मिला — ठीक कर रहा हूँ", SoloVoice.clean(t.lines().first().take(120)))
     }
 
     /**
@@ -321,7 +322,7 @@ object SevenRunner {
             CoderSession.listener?.invoke(); CoderSession.runNext(c); return null
         }
         val (task, approved, normal) = r
-        if (approved != null) say("s", if (Prefs.coderSolo(c)) "✅ आपकी मंज़ूरी मिली — कोडर काम शुरू कर रहा है (पूरा होने तक)" else "✅ आपकी मंज़ूरी मिली — अब 7 एजेंट की टीम (+ समझाने वाला) काम शुरू कर रही है")
+        if (approved != null) say("s", if (Prefs.coderSolo(c)) "✅ आपकी मंज़ूरी मिली — ${SoloVoice.NAME} काम शुरू कर रहा है (पूरा होने तक)" else "✅ आपकी मंज़ूरी मिली — अब 7 एजेंट की टीम (+ समझाने वाला) काम शुरू कर रही है")
         launchTeam(c, ai, task, approved, normal, allMedia, null)
         CoderSession.listener?.invoke()
         return null

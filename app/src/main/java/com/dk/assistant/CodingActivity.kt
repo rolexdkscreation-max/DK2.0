@@ -46,7 +46,9 @@ object CoderSession {
     /** नवंबर 2026 (स्मूथ): 300 से ऊपर होने पर आगे से कितनी लाइनें हटीं - स्क्रीन इसी से नई लाइनें पहचानती है */
     @Volatile var dropped = 0L
         private set
-    fun add(role: String, t: String) {
+    fun add(role: String, t0: String) {
+        // 14 नवंबर 2026 (मालिक): कोडिंग एजेंट एक दिमाग - DK की लिखी हर बात से पुराने पद (मैनेजर / कोडर / टीम…) हटें. मालिक की अपनी बात ("u") वैसी ही
+        val t = if (role == "u") t0 else SoloVoice.clean(t0)
         // नवंबर 2026 (crash): lines सिर्फ़ main thread पर बदले (स्क्रीन उसी समय पढ़ती है - दो thread = crash/स्क्रीन डूबना)
         val main = try { android.os.Looper.getMainLooper() } catch (_: Throwable) { null }
         if (main != null && android.os.Looper.myLooper() != main) { android.os.Handler(main).post { add(role, t) }; return }
@@ -128,7 +130,7 @@ object CoderSession {
     fun launch(c: Context, task: String? = null, block: suspend CoroutineScope.() -> Unit): Job {
         appCtx = c.applicationContext
         // task = कोडिंग का असली काम (live status में दिखे). merge/push जैसे छोटे काम: null
-        if (task != null) TaskStatus.start(TaskStatus.CODER, "कोडिंग टीम", "the coding team", task)
+        if (task != null) TaskStatus.start(TaskStatus.CODER, "${SoloVoice.NAME} (कोडिंग)", "the DK coding agent", task)
         this.task = task
         if (task != null) current = task
         val from = lines.size
