@@ -81,7 +81,7 @@ class VoiceActivity : AppCompatActivity() {
             setOnClickListener { click() }
         }.also { top.addView(it, LinearLayout.LayoutParams((46 * dp).toInt(), (46 * dp).toInt()).apply { marginEnd = (8 * dp).toInt() }) }
         shareBtn = topBtn(R.drawable.ic_screen_share, "स्क्रीन शेयर चालू/बंद") { onShareTap() }
-        camBtn = topBtn(R.drawable.ic_camera, "कैमरा चालू/बंद") { onCamTap() }
+        camBtn = topBtn(R.drawable.ic_camera, "DK लेंस चालू/बंद") { onCamTap() }
         val faceBtn = ImageButton(this).apply {
             setImageResource(R.drawable.ic_face); setBackgroundResource(R.drawable.glass_circle)
             val p = (13 * dp).toInt(); setPadding(p, p, p, p); scaleType = android.widget.ImageView.ScaleType.FIT_CENTER
@@ -123,7 +123,7 @@ class VoiceActivity : AppCompatActivity() {
         camBox.addView(ImageButton(this).apply {
             setImageResource(R.drawable.ic_flip); setBackgroundResource(R.drawable.glass_circle)
             val p = (10 * dp).toInt(); setPadding(p, p, p, p); scaleType = android.widget.ImageView.ScaleType.FIT_CENTER
-            contentDescription = "कैमरा बदलें (आगे/पीछे)"
+            contentDescription = "DK लेंस बदलें (आगे/पीछे)"
             setOnClickListener { LiveVision.flipCamera(this@VoiceActivity) }
         }, FrameLayout.LayoutParams((42 * dp).toInt(), (42 * dp).toInt(), Gravity.BOTTOM or Gravity.END).apply {
             val m = (10 * dp).toInt(); setMargins(m, m, m, m)
@@ -244,7 +244,7 @@ class VoiceActivity : AppCompatActivity() {
     private fun handle(i: Intent?) {
         if (i?.getBooleanExtra("camera", false) == true) { syncCamera(); return }   // Live ने कैमरा माँगा (Live पहले से चालू)
         // v3.102: होम का कैमरा / स्क्रीन शेयर बटन - DK लाइव चालू करो, जुड़ते ही वही चालू
-        i?.getStringExtra(EXTRA_WANT)?.let { w -> i.removeExtra(EXTRA_WANT); wantVision(w, "back"); return }
+        i?.getStringExtra(EXTRA_WANT)?.let { w -> i.removeExtra(EXTRA_WANT); wantVision(w, if (i.getBooleanExtra(EXTRA_FRONT, false)) "front" else "back"); return }
         if (i?.getBooleanExtra("face", false) == true) {
             if (System.currentTimeMillis() >= DKState.faceUntil) DKState.showFace()
             return     // chehra dekhne aaye hain: mic apne aap chalu nahi
@@ -318,7 +318,7 @@ class VoiceActivity : AppCompatActivity() {
     private fun wantVision(what: String, facing: String) {
         wantJob?.let { orb.removeCallbacks(it) }; wantJob = null
         if (liveReady()) { doVision(what, facing); return }
-        UiLang.toast(this, "DK लाइव चालू हो रही है… जुड़ते ही " + (if (what == WANT_SCREEN) "स्क्रीन शेयर" else "कैमरा") + " चालू होगा", Toast.LENGTH_SHORT).show()
+        UiLang.toast(this, "DK लाइव चालू हो रही है… जुड़ते ही " + (if (what == WANT_SCREEN) "स्क्रीन शेयर" else "DK लेंस") + " चालू होगा", Toast.LENGTH_SHORT).show()
         if (!DKState.live) startLiveIfReady()
         val until = System.currentTimeMillis() + 20_000
         val r = object : Runnable {
@@ -392,7 +392,7 @@ class VoiceActivity : AppCompatActivity() {
         val front = LiveVision.cameraFront
         feed2.start(front,
             onOk = { LiveVision.onCameraStarted(front) },
-            onFail = { why -> UiLang.toast(this, "कैमरा नहीं खुला: $why", Toast.LENGTH_LONG).show(); LiveVision.onCameraStopped(why) })
+            onFail = { why -> UiLang.toast(this, "DK लेंस नहीं खुला: $why", Toast.LENGTH_LONG).show(); LiveVision.onCameraStopped(why) })
         renderVision()
     }
 
@@ -452,6 +452,8 @@ class VoiceActivity : AppCompatActivity() {
         const val EXTRA_WANT = "want_vision"
         const val WANT_CAMERA = "camera"
         const val WANT_SCREEN = "screen"
+        /** 14 नवंबर 2026: होम के DK लेंस बटन को लंबा दबाया = आगे वाला लेंस (आपको देखे) */
+        const val EXTRA_FRONT = "lens_front"
         /** आवाज़ स्क्रीन सामने है (कैमरा सिर्फ़ तभी) */
         @Volatile var visible = false
             private set
