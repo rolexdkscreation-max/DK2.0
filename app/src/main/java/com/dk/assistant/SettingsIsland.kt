@@ -10,7 +10,7 @@ import kotlinx.coroutines.withContext
 /**
  * 12 नवंबर 2026 (मालिक):
  *  - Settings → ओर्ब और चेहरा → "DK Island"  [DKIsland]
- *  - Settings → स्क्रीन गार्ड → "DK Privacy (बगल से न दिखे)"  [PrivacyScreen] - 13 नवंबर 2026 से सिर्फ़ notification का ताला
+ *  - Settings → टच मोड → "DK Privacy (बगल से न दिखे)"  [PrivacyScreen] - 13 नवंबर 2026 से सिर्फ़ notification का ताला
  * 13 नवंबर 2026 (मालिक): नाम सिर्फ़ "DK Island" / "DK Privacy"; island में सारे notification, चार्जिंग, रील गिनती.
  * नई menu row नहीं (ControlCenterTest) - पुराने section में ही नया card.
  */

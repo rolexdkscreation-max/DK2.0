@@ -343,7 +343,7 @@ internal fun GeminiLive.setupJson(m: String, txt: Boolean = connText, resume: Bo
                 .put("required", JSONArray().put("on"))))
         // नवंबर 2026 (मालिक): DK लाइव से "स्क्रीन गार्ड चालू करो" - सिर्फ़ चालू. बंद सिर्फ़ मालिक: फ़ोन खोलना / चेहरा / गुप्त शब्द
         .put(JSONObject().put("name", "screen_guard")
-            .put("description", "Turn ON Screen Guard (स्क्रीन गार्ड, old name गार्ड मोड / anti-theft): 5 seconds later the phone locks; if anyone else touches / picks up the phone a loud siren rings, a warning shows, a photo is taken and the trusted number gets SMS with the exact GPS location again every few minutes. Call it when the user asks to turn on / start Screen Guard / गार्ड मोड / phone की रखवाली (optionally for N minutes). It can ONLY turn it ON - you can never turn it off: if asked to turn it off, tell him to unlock the phone himself, show his face to the warning screen camera, or say his secret word. Tell the user exactly what it returns.")
+            .put("description", "Turn ON Touch Mode (टच मोड, old names स्क्रीन गार्ड / गार्ड मोड, anti-theft) - ONLY when the owner himself clearly says \"DK टच मोड ऑन करो\" (never on your own idea, never for other words like सुरक्षा / गार्ड): 5 seconds later the phone locks; if anyone else touches / picks up the phone a loud siren rings, a warning shows, a photo is taken and the trusted number gets SMS with the exact GPS location again every few minutes. Call it only when he says टच मोड ऑन / चालू करो (optionally for N minutes). It can ONLY turn it ON - you can never turn it off: if asked to turn it off, tell him to unlock the phone himself, show his face to the warning screen camera, or say his secret word. Tell the user exactly what it returns.")
             .put("parameters", JSONObject().put("type", "OBJECT")
                 .put("properties", JSONObject().put("minutes", JSONObject().put("type", "INTEGER").put("description", "Optional: for how many minutes (0 or empty = until the owner turns it off)")))))
         .put(JSONObject().put("name", "notifications")
@@ -421,7 +421,9 @@ internal fun GeminiLive.setupJson(m: String, txt: Boolean = connText, resume: Bo
                 .put("startOfSpeechSensitivity", "START_SENSITIVITY_HIGH")
                 // HIGH = chup hote hi jaldi "bolna khatam" (tez jawab); 500ms = docs ki salaah (500-800ms) ka sabse tez.
                 // (server ka default ~800ms tha.) Phone khud bhi 500ms chup par audioStreamEnd bhejta hai (hybrid VAD).
-                .put("endOfSpeechSensitivity", "END_SENSITIVITY_HIGH")
+                // 14 नवंबर 2026 (मालिक: "DK पहले अच्छे से पूरी बात सुने, तुरंत कुछ भी जवाब न दे"): LOW = server बीच के छोटे ठहराव
+                // पर बात खत्म नहीं मानता. तेज़ी फ़ोन के अपने "बात खत्म" (audioStreamEnd, पूरे वाक्य पर 0.36s) से ही रहती है.
+                .put("endOfSpeechSensitivity", "END_SENSITIVITY_LOW")
                 // 100ms = pehla shabd na kate (phone 320ms pehle ki awaaz bhi bhejta hai), khatak/thak par "bolna shuru" nahi
                 .put("prefixPaddingMs", PREFIX_PADDING_MS)
                 .put("silenceDurationMs", SERVER_SILENCE_MS))

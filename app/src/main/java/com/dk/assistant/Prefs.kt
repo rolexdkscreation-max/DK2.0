@@ -41,7 +41,9 @@ object Prefs {
 
     // ---- हर हिस्से (DK लाइव / DK चैट / कोडिंग एजेंट / DK कंप्यूटर) की अपनी API - देखें [ApiScopes]
     /** इस हिस्से की मुख्य कंपनी (DK लाइव = हमेशा Gemini) */
-    fun scopeActive(c: Context, scope: String): String = if (oneKeyOn(c)) "gemini" else scopeActiveRaw(c, scope)
+    fun scopeActive(c: Context, scope: String): String = if (oneKeyOn(c)) "gemini"
+        // 14 नवंबर 2026 (मालिक): चुनी कंपनी की key कहीं नहीं डली = जिस कंपनी की key (अपनी या दूसरे हिस्से की) है उसी से काम
+        else ApiScopes.pickActive(scope, scopeActiveRaw(c, scope)) { scopeKey(c, scope, it).isNotBlank() }
     /**
      * v3.91: "एक key से सब" चालू = हर हिस्सा सिर्फ़ उसी एक Gemini key से (Groq/बाक़ी कंपनियाँ नहीं).
      * अलग-अलग keys की settings मिटती नहीं - बटन बंद करते ही वही पुरानी keys फिर चलती हैं.
@@ -56,7 +58,15 @@ object Prefs {
         return if (Providers.byId(id) != null) id else activeProviderRaw(c)
     }
     fun scopeKey(c: Context, scope: String, id: String): String =
-        if (oneKeyOn(c)) ApiScopes.oneKeyFor(id, oneKey(c)) else scopeKeyRaw(c, scope, id)
+        if (oneKeyOn(c)) ApiScopes.oneKeyFor(id, oneKey(c)).ifBlank { if (id == "gemini") borrowKey(c, scope, id) else "" }
+        else borrowKey(c, scope, id)
+    /**
+     * 14 नवंबर 2026 (मालिक: "किसी काम के लिए key नहीं डाली तो दूसरे काम वाली key से वह भी चले"): अपनी key पहले,
+     * खाली = दूसरे हिस्से (चैट / कोडिंग / कंप्यूटर / एक-key / वेबसाइट / DK लाइव) की उसी कंपनी की key. देखें [ApiScopes.borrowKey]
+     */
+    fun borrowKey(c: Context, scope: String, id: String): String =
+        ApiScopes.borrowKey(scope, id, { sc, slot -> scopeKeyRaw(c, sc, slot) },
+            listOf(oneKey(c)) + listOf(FORGE_KEY, FORGE_KEY2).map { sp(c).getString(it, "")?.trim().orEmpty() })?.second.orEmpty()
     fun scopeKeyRaw(c: Context, scope: String, id: String) = (sp(c).getString(ApiScopes.pref(scope, "key", id), "") ?: "").trim()
     fun scopeModel(c: Context, scope: String, id: String): String {
         // नवंबर 2026 (मालिक): "3.8 Flash सिर्फ़ कोडिंग एजेंट और DK कंप्यूटर के लिए" - दोनों का Gemini default 3.8 Flash
@@ -105,7 +115,7 @@ object Prefs {
 
     // ---- AI providers
     /** Hata di gayi company (Mistral, Z.ai, OpenAI, xAI) chuni thi to Gemini */
-    fun activeProvider(c: Context): String = if (oneKeyOn(c)) "gemini" else activeProviderRaw(c)
+    fun activeProvider(c: Context): String = scopeActive(c, ApiScopes.CHAT)
     fun activeProviderRaw(c: Context): String {
         val id = sp(c).getString("active_provider", "gemini") ?: "gemini"
         return if (Providers.byId(id) != null) id else "gemini"
@@ -116,7 +126,7 @@ object Prefs {
      */
     @Suppress("UNUSED_PARAMETER")
     fun fallback(c: Context) = false
-    fun key(c: Context, id: String): String = if (oneKeyOn(c)) ApiScopes.oneKeyFor(id, oneKey(c)) else keyRaw(c, id)
+    fun key(c: Context, id: String): String = scopeKey(c, ApiScopes.CHAT, id)
     fun keyRaw(c: Context, id: String) = sp(c).getString("key_$id", "") ?: ""
     fun model(c: Context, id: String): String {
         val def = Providers.byId(id)?.defaultModel ?: ""
@@ -191,6 +201,8 @@ object Prefs {
     const val FORGE_MODELS = "forge_models"
     fun forgeKeys(c: Context): List<String> = forgeKeysFor(listOf(FORGE_KEY, FORGE_KEY2).map { sp(c).getString(it, "")?.trim().orEmpty() },
         oneKeyOn(c), oneKey(c))
+        // 14 नवंबर 2026 (मालिक): वेबसाइट की अपनी key नहीं = किसी और हिस्से की Gemini key से भी वेबसाइट बने
+        .ifEmpty { listOf(borrowKey(c, ApiScopes.CHAT, "gemini")).filter { it.isNotBlank() } }
     /**
      * नवंबर 2026 (मालिक: "एक key डालेगा तो सारे काम"): वेबसाइट बिल्डर की अपनी key पहले; अपनी key नहीं डली और "एक key से सब"
      * चालू = वही एक key. अलग-अलग keys वाले मोड में पहले जैसा - सिर्फ़ अपनी key. Pure - JUnit से जाँच.

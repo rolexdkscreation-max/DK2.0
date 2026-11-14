@@ -18,20 +18,24 @@ class GuardModeTest {
 
     // ------------------------------------------------------------ बोलकर चालू / बंद
 
+    // 14 नवंबर 2026 (मालिक): नाम "टच मोड", चालू सिर्फ़ "टच मोड ऑन करो" से - पुराने नाम (गार्ड / सिक्योरिटी / एंटी थेफ्ट) से चालू नहीं
     @Test fun armByVoice() {
-        listOf("DK गार्ड मोड चालू करो", "गार्ड मोड ऑन करो", "डीके गार्ड मोड ऑन कर दो", "guard mode on", "DK guard mode chalu karo",
-            "सिक्योरिटी मोड चालू करो", "गार्ड मोड लगाओ", "एंटी थेफ्ट मोड चालू करो", "गार्ड मोड करो").forEach {
+        listOf("DK टच मोड चालू करो", "टच मोड ऑन करो", "डीके टच मोड ऑन कर दो", "touch mode on", "DK touch mode chalu karo",
+            "टच मोड लगाओ", "टचमोड स्टार्ट करो").forEach {
             assertEquals(it, GuardRules.Cmd.On(0), GuardRules.parse(it))
+        }
+        listOf("DK गार्ड मोड चालू करो", "गार्ड मोड ऑन करो", "guard mode on", "सिक्योरिटी मोड चालू करो", "एंटी थेफ्ट मोड चालू करो", "गार्ड मोड करो").forEach {
+            assertNull(it, GuardRules.parse(it))
         }
     }
 
     @Test fun armWithTimer() {
-        assertEquals(GuardRules.Cmd.On(60), GuardRules.parse("1 घंटे के लिए गार्ड मोड चालू करो"))
-        assertEquals(GuardRules.Cmd.On(120), GuardRules.parse("दो घंटे के लिए गार्ड मोड ऑन करो"))
-        assertEquals(GuardRules.Cmd.On(30), GuardRules.parse("30 मिनट के लिए गार्ड मोड चालू करो"))
-        assertEquals(GuardRules.Cmd.On(90), GuardRules.parse("डेढ़ घंटे के लिए गार्ड मोड चालू करो"))
-        assertEquals(GuardRules.Cmd.On(30), GuardRules.parse("आधे घंटे के लिए गार्ड मोड चालू करो"))
-        assertEquals(0, GuardRules.minutes("गार्ड मोड चालू करो"))
+        assertEquals(GuardRules.Cmd.On(60), GuardRules.parse("1 घंटे के लिए टच मोड चालू करो"))
+        assertEquals(GuardRules.Cmd.On(120), GuardRules.parse("दो घंटे के लिए टच मोड ऑन करो"))
+        assertEquals(GuardRules.Cmd.On(30), GuardRules.parse("30 मिनट के लिए टच मोड चालू करो"))
+        assertEquals(GuardRules.Cmd.On(90), GuardRules.parse("डेढ़ घंटे के लिए टच मोड चालू करो"))
+        assertEquals(GuardRules.Cmd.On(30), GuardRules.parse("आधे घंटे के लिए टच मोड चालू करो"))
+        assertEquals(0, GuardRules.minutes("टच मोड चालू करो"))
     }
 
     @Test fun disarmByVoice() {
@@ -151,7 +155,7 @@ class GuardModeTest {
         assertFalse(GuardRules.expired(2_000, 1_000))
         assertEquals("1 घंटे", GuardRules.label(60))
         assertEquals("1 घंटे 30 मिनट", GuardRules.label(90))
-        assertTrue(GuardRules.armSay(60, true).startsWith("1 घंटे के लिए स्क्रीन गार्ड"))   // नवंबर 2026: नाम बदला (मालिक)
+        assertTrue(GuardRules.armSay(60, true).startsWith("1 घंटे के लिए टच मोड"))   // 14 नवंबर 2026: नाम बदला (मालिक)
         assertTrue(GuardRules.armSay(0, false).contains("गुप्त शब्द"))
         assertTrue(GuardRules.SAY.contains("यह फ़ोन आपका नहीं है"))
     }
@@ -184,7 +188,7 @@ class GuardModeTest {
         val manifest = src("../../../../AndroidManifest.xml")
         assertTrue(manifest.contains(".GuardAlarmActivity"))
         val set = SetSrc.all()
-        assertTrue(set.contains("\"guard\" -> { title.text = \"स्क्रीन गार्ड\""))   // नवंबर 2026: नाम बदला (मालिक)
+        assertTrue(set.contains("\"guard\" -> { title.text = \"टच मोड\""))   // 14 नवंबर 2026: नाम बदला (मालिक)
         assertTrue(set.contains("secGuard()"))
         assertTrue(SettingsSearch.SECTIONS.containsKey("guard"))
     }

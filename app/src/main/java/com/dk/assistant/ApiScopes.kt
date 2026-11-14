@@ -7,8 +7,9 @@ package com.dk.assistant
  *  - कोडिंग एजेंट (CODER): Gemini / Groq / OpenRouter / Z.ai / NVIDIA
  *  - DK कंप्यूटर (PC)  : Gemini / Groq / OpenRouter / Z.ai / NVIDIA
  *
- * नियम: हर हिस्सा सिर्फ़ अपनी चुनी API को कॉल करता है - किसी दूसरे हिस्से की key या दूसरी कंपनी पर नहीं जाता.
- * Limit (429) / मॉडल बंद होने पर सिर्फ़ उसी key के दूसरे (फ्री) मॉडल पर अपने-आप स्विच.
+ * नियम: हर हिस्सा पहले अपनी चुनी API / अपनी key. Limit (429) / मॉडल बंद होने पर उसी key के दूसरे (फ्री) मॉडल पर अपने-आप स्विच.
+ * 14 नवंबर 2026 (मालिक: "किसी काम की अपनी key नहीं डली तो दूसरे हिस्से की key से वह काम चले"): किसी हिस्से की अपनी key खाली =
+ * दूसरे हिस्से की उसी कंपनी की key उधार ([borrowKey]); चुनी कंपनी की key कहीं नहीं = जिस कंपनी की key है वही ([pickActive]).
  */
 object ApiScopes {
     const val LIVE = "live"
@@ -151,6 +152,47 @@ object ApiScopes {
             }
         }
         return out
+    }
+
+    /**
+     * 14 नवंबर 2026 (मालिक): उधार का क्रम - पहले अपना हिस्सा, फिर चैट / कोडिंग / कंप्यूटर, फिर [extras] (एक-key / वेबसाइट की key),
+     * DK लाइव की key सबसे आख़िर में (ताकि Live की free limit कम खर्च हो और वह कटे नहीं).
+     */
+    val BORROW_ORDER = listOf(CHAT, CODER, PC, LIVE)
+
+    /** उधार के लिए किस हिस्से के कौन-से slot (Gemini की बैकअप keys भी) */
+    fun borrowSlots(scope: String, id: String): List<String> = when {
+        id == "gemini" && scope == CODER -> listOf("gemini", "gemini2", "gemini3", "gemini4", "gemini5")
+        id == "gemini" && scope == LIVE -> listOf("gemini", "gemini2", "gemini3")
+        else -> listOf(id)
+    }
+
+    /** यह हिस्सा इस कंपनी की key रख सकता है? (DK लाइव: Gemini, Groq + गहरी सोच वाली Z.ai / NVIDIA) */
+    fun holds(scope: String, id: String): Boolean = id in providers(scope) || (scope == LIVE && id in LIVE_TEXT)
+
+    /**
+     * [scope] को कंपनी [id] की key चाहिए: अपनी डली हो = वही. नहीं = [BORROW_ORDER] के हिस्सों से उसी कंपनी की पहली key,
+     * Gemini हो तो [extras] (एक-key / वेबसाइट बिल्डर की key) भी. [get] = (हिस्सा, slot) की सेव key.
+     * @return (किस हिस्से से, key) - कहीं नहीं = null. Pure - JUnit से जाँच.
+     */
+    fun borrowKey(scope: String, id: String, get: (String, String) -> String, extras: List<String> = emptyList()): Pair<String, String>? {
+        get(scope, id).trim().takeIf { it.isNotBlank() }?.let { return scope to it }
+        // सिर्फ़ असली कंपनी के लिए उधार - "gemini2" जैसे बैकअप slot अपने ही रहते हैं (दोहराई key नहीं)
+        if (id !in PROVIDERS) return null
+        val order = (listOf(scope) + BORROW_ORDER).distinct()
+        for (sc in order.filter { it != LIVE }) {
+            if (!holds(sc, id)) continue
+            for (slot in borrowSlots(sc, id)) get(sc, slot).trim().takeIf { it.isNotBlank() }?.let { return sc to it }
+        }
+        if (id == "gemini") extras.map { it.trim() }.firstOrNull { it.isNotBlank() }?.let { return "extra" to it }
+        if (holds(LIVE, id)) for (slot in borrowSlots(LIVE, id)) get(LIVE, slot).trim().takeIf { it.isNotBlank() }?.let { return LIVE to it }
+        return null
+    }
+
+    /** चुनी कंपनी की key (अपनी या उधार) कहीं नहीं = [crossOrder] में जिसकी key मिले वही. किसी की नहीं = चुनी ही. Pure */
+    fun pickActive(scope: String, active: String, has: (String) -> Boolean): String {
+        if (has(active)) return active
+        return crossOrder(active).filter { holds(scope, it) && (scope != LIVE || it == "gemini") }.firstOrNull { has(it) } ?: active
     }
 
     fun crossOrder(active: String): List<String> =
