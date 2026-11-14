@@ -466,7 +466,12 @@ acceptance must only cover what the user asked. suggestions: ONLY things the use
     }
 
     /** 7-एजेंट सिस्टम: notification + आवाज़ (रिपोर्ट स्क्रीन पर पहले ही लिखी जा चुकी) */
-    fun announce(c: Context, title: String, text: String, voice: String, kind: String = CoderSound.DONE) {
+    fun announce(c: Context, title0: String, text0: String, voice0: String, kind: String = CoderSound.DONE) {
+        // 14 नवंबर 2026: सूचना और आवाज़ में भी "कोडिंग टीम / मैनेजर" नहीं - सिर्फ़ DK एजेंट ([SoloVoice])
+        val solo = Prefs.coderSolo(c)
+        val title = if (solo) SoloVoice.clean(title0) else title0
+        val text = if (solo) SoloVoice.clean(text0) else text0
+        val voice = if (solo) SoloVoice.clean(voice0) else voice0
         CoderSound.notify(c, kind, title, text.lines().first().take(120))
         DKState.reply(voice)
         val svc = DKAccessibilityService.instance
