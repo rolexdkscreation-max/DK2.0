@@ -38,8 +38,21 @@ object LiveVision {
     private fun liveReady() = DKState.live && live()?.canTalk() == true
     private fun note(t: String) { live()?.visionNote(t) }
 
+    /** 14 नवंबर 2026 (मालिक): DK लेंस खुलते ही जो दिखे तुरंत बोले - पहली तस्वीर जाते ही यह बताओ */
+    @Volatile private var describeFirst = false
+
     /** तस्वीर Gemini को. false = अभी नहीं गई (Live नहीं जुड़ा / network भरा) */
-    fun frame(jpeg: ByteArray): Boolean = live()?.sendFrame(jpeg) == true
+    fun frame(jpeg: ByteArray): Boolean {
+        val ok = live()?.sendFrame(jpeg) == true
+        if (ok && describeFirst && cameraOn) { describeFirst = false; note(LENS_SEE_NOW) }
+        return ok
+    }
+
+    /** DK लेंस की पहली तस्वीर पहुँच गई - बिना पूछे तुरंत बोलो क्या दिख रहा है */
+    const val LENS_SEE_NOW = "SYSTEM NOTE: DK Lens (DK लेंस - DK's camera) is ON and the first camera image has just reached you. " +
+        "RIGHT NOW, without waiting for the user, say in 1-2 short sentences what you see in it, in the user's language " +
+        "(e.g. \"हाँ, सामने एक लाल कप है और पीछे खिड़की।\"). If the user already asked something about it, answer that from the image instead. " +
+        "Keep watching: you get a new image about once a second."
 
     // ---------------------------------------------------------------- स्क्रीन
     fun setScreen(c: Context, on: Boolean): String {
@@ -107,24 +120,31 @@ object LiveVision {
             } catch (e: Exception) { DKLog.d("कैमरा: आवाज़ स्क्रीन नहीं खुली: ${e.message}") }
         }
         val perm = c.checkSelfPermission(android.Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED
-        return "Turning the ${if (front) "front" else "back"} camera ON on DK's voice screen" +
+        return "Turning DK Lens (DK लेंस, the ${if (front) "front" else "back"} camera) ON on DK's voice screen" +
             (if (perm) "" else " (the user must first allow the Camera permission)") +
-            ". You will get a SYSTEM NOTE when images start - do not describe anything before that. Tell the user briefly."
+            ". You will get a SYSTEM NOTE the moment the first image arrives - do not describe anything before that. " +
+            "Say at most 3-4 words now (e.g. \"DK लेंस खोल रहा हूँ\") so you can describe quickly."
     }
 
     fun toggleCamera(c: Context): String = setCamera(c, !(cameraWanted || cameraOn))
     fun flipCamera(c: Context): String = setCamera(c, true, if (cameraFront) "back" else "front")
 
     fun onCameraStarted(front: Boolean) {
-        val was = cameraOn
         cameraOn = true; cameraFront = front; changed()
-        DKLog.d("कैमरा चालू (${if (front) "आगे" else "पीछे"})")
-        note(if (was) "SYSTEM NOTE: Switched to the ${if (front) "front (selfie)" else "back"} camera."
-            else "SYSTEM NOTE: The ${if (front) "front (selfie)" else "back"} camera is ON now. From now on you receive a camera image about once a second. " +
-                "Say in one short sentence that you can see now and ask what to look at - unless the user already asked something, then answer that.")
+        DKLog.d("DK लेंस चालू (${if (front) "आगे" else "पीछे"})")
+        // पहली तस्वीर जाते ही LENS_SEE_NOW (आगे/पीछे बदलने पर भी नया नज़ारा तुरंत). 3 सेकंड में तस्वीर न जाए तो पुराना छोटा नोट
+        describeFirst = true
+        main.postDelayed({
+            if (describeFirst && cameraOn) {
+                describeFirst = false
+                note("SYSTEM NOTE: DK Lens (DK लेंस - the ${if (front) "front (selfie)" else "back"} camera) is ON now. You will receive a camera image about once a second. " +
+                    "As soon as you have an image, say in 1-2 short sentences what you see - unless the user already asked something, then answer that.")
+            }
+        }, 3000)
     }
 
     fun onCameraStopped(why: String) {
+        describeFirst = false
         val was = cameraOn
         cameraOn = false; cameraWanted = false; changed()
         if (was) {

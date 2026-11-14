@@ -182,6 +182,14 @@ class DkaiScreen(val activity: ComponentActivity, val host: DkaiHost) {
     private fun headIcon(kind: DkaiIcon.Kind, desc: String, tint: Int = DkaiTheme.GRAY, fill: Int = 0, go: (View) -> Unit): ImageView =
         DkaiUi.iconBtn(c, kind, desc, tint, 38f, fill) {}.apply { setOnClickListener { v -> go(v) } }
 
+    /** DK लेंस: आवाज़ स्क्रीन खुले, DK लाइव जुड़ते ही लेंस चालू और जो दिखे तुरंत बोले */
+    private fun openLens(front: Boolean) {
+        if (!host.ready()) return
+        c.startActivity(Intent(c, com.dk.assistant.VoiceActivity::class.java)
+            .putExtra(com.dk.assistant.VoiceActivity.EXTRA_WANT, com.dk.assistant.VoiceActivity.WANT_CAMERA)
+            .putExtra(com.dk.assistant.VoiceActivity.EXTRA_FRONT, front))
+    }
+
     private fun buildHeader() {
         // ☰  [DK लोगो] DKAI          ▶  ⚙
         val head = LinearLayout(c).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; setPadding(d(4f), d(6f), d(6f), 0) }
@@ -198,6 +206,10 @@ class DkaiScreen(val activity: ComponentActivity, val host: DkaiHost) {
             LinearLayout.LayoutParams(0, -2, 1f))
         // 14 नवंबर 2026 (मालिक): आवाज़ वाला बटन अब नीचे "Ask anything" डिब्बे में (Perplexity जैसा) - ऊपर सिर्फ़ ⚙
         // 14 नवंबर 2026 (मालिक): ⚙ दबाते ही सीधे Settings खुले. लंबा दबाओ = पुरानी छोटी सूची (प्रोफ़ाइल / थीम / बाकी रास्ते)
+        // 14 नवंबर 2026 (मालिक): DK लेंस - दबाओ = पीछे वाला लेंस (चीज़ दिखाओ), लंबा दबाओ = आगे वाला (आपको देखे)
+        head.addView(headIcon(DkaiIcon.Kind.CAMERA, "DK लेंस - दबाएँ: पीछे वाला, लंबा दबाएँ: आगे वाला") { openLens(false) }.apply {
+            setOnLongClickListener { openLens(true); true }
+        })
         head.addView(headIcon(DkaiIcon.Kind.GEAR, "Settings - सब कुछ एक जगह") { openSettings() }.apply {
             setOnLongClickListener { settingsList(); true }
         })
