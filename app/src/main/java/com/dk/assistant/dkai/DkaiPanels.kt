@@ -967,6 +967,9 @@ class GithubPanel(nav: DkaiNav) : DkaiPanel(nav) {
 
     override fun build(box: LinearLayout) {
         val (row, _) = bar("GitHub")
+        // 14 नवंबर 2026 (मालिक: "GitHub वाले ऑप्शन में रेपो क्लोन होता है, नहीं होता है - चेक करो"): पहले यहाँ Clone था ही नहीं
+        // (सिर्फ़ token वाले अपने रिपो). अब किसी भी public रिपो का पता डालकर Clone - token के बिना भी
+        row.addView(iconBtn(DkaiIcon.Kind.DOWNLOAD, "Clone (URL से)", DkaiTheme.GREEN) { cloneUrl() })
         row.addView(iconBtn(DkaiIcon.Kind.REFRESH, "रिपो फिर से लाएँ", DkaiTheme.CYAN) { repos = emptyList(); load() })
         box.addView(row)
         who = DkaiTheme.text(c, "", 12f, DkaiTheme.GRAY).apply { setPadding(d(16f), 0, d(16f), d(6f)) }
@@ -995,6 +998,7 @@ class GithubPanel(nav: DkaiNav) : DkaiPanel(nav) {
             list.addView(empty("GitHub से जोड़ने के लिए token चाहिए।\nसेटिंग्स → कोडिंग एजेंट में GitHub token डालिए।", "token जोड़ें") {
                 c.startActivity(Intent(c, SettingsActivity::class.java).putExtra("section", "coder"))
             })
+            list.addView(empty("Public रिपो बिना token के भी Clone हो सकता है।", "Clone (URL से)") { cloneUrl() })
             return
         }
         search.visibility = View.VISIBLE
@@ -1041,6 +1045,12 @@ class GithubPanel(nav: DkaiNav) : DkaiPanel(nav) {
         addView(ImageView(c).apply { setImageDrawable(DkaiIcon(DkaiIcon.Kind.CHEVRON_RIGHT, DkaiTheme.GRAY)) }, LinearLayout.LayoutParams(d(18f), d(18f)))
         setOnClickListener { onTap() }
         layoutParams = LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = d(8f) }
+    }
+
+    /** किसी भी रिपो का पता -> DKAIProjects में Clone (वही [DkaiModals.clone] जो Root Project में) */
+    private fun cloneUrl() {
+        val sc = nav as? DkaiScreen ?: run { nav.toast("Clone यहाँ नहीं खुला"); return }
+        DkaiModals.clone(sc) { dir -> nav.openFiles(dir) }
     }
 
     private fun askImport(r: GitHub.Repo) {

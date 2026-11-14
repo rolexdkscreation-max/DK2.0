@@ -157,8 +157,8 @@ class DkaiBehaviorTest {
             assertTrue("सभी चैट" in t)
             val iNew = t.lastIndexOf("अभी की बात"); val iOld = t.lastIndexOf("पुरानी बेकरी वाली चैट")      // (आख़िरी = सूची वाली, होम का बुलबुला नहीं)
             assertTrue(t.toString(), iNew >= 0 && iOld > iNew)                      // सबसे नई ऊपर
-            assertTrue(byDescStart(s.root, "Chat #5, अभी की बात")!!.contentDescription.contains("अभी खुली"))
-            byDescStart(s.root, "Chat #2, ")!!.performClick(); idle()
+            assertTrue(byDescStart(s.root, "Chat 5, अभी की बात")!!.contentDescription.contains("अभी खुली"))
+            byDescStart(s.root, "Chat 2, ")!!.performClick(); idle()
             assertEquals(2, Dkai.chatNo(a))
             assertEquals(listOf("पुरानी बेकरी वाली चैट", "पुराना जवाब"), com.dk.assistant.DKState.messages.map { it.text })
             assertTrue("पुराना जवाब" in texts(s.root))                               // पूरी पुरानी बातचीत स्क्रीन पर

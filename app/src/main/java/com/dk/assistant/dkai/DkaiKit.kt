@@ -186,7 +186,18 @@ object DkaiKit {
     fun needsPureHindi(lang: String, lines: List<Line>) = normLang(lang) == HINDI && latinShare(lines) > 0.12f
     const val ALL_VOICES = "All Voices"
 
-    data class Line(val speaker: String, val female: Boolean, val text: String)
+    /** [tone] = 14 नवंबर 2026 (मालिक): वह लाइन किस अंदाज़ में बोली जाए (excited / रोते हुए / धीरे से …) - खाली = सामान्य */
+    data class Line(val speaker: String, val female: Boolean, val text: String, val tone: String = "")
+
+    private val GENDER_WORDS = Regex("""^(female|woman|girl|f|male|man|boy|m|महिला|स्त्री|लड़की|पुरुष|लड़का)$""")
+
+    /** "(female, excited)" / "(रोते हुए)" / "(male)" -> (लिंग का शब्द, अंदाज़) */
+    fun splitParen(p: String): Pair<String, String> {
+        val parts = p.split(',', ';', '/', '|').map { it.trim() }.filter { it.isNotEmpty() }
+        val g = parts.firstOrNull { GENDER_WORDS.matches(it.lowercase(Locale.ROOT)) }.orEmpty()
+        val tone = parts.filter { it != g }.joinToString(", ")
+        return g to tone
+    }
 
     /**
      * AI से लिखवाई स्क्रिप्ट की हर लाइन: "Name (female): बोलने वाली बात".
@@ -194,22 +205,29 @@ object DkaiKit {
      */
     fun parseScript(raw: String): List<Line> {
         val out = ArrayList<Line>()
-        val re = Regex("""^\s*[*\-•]*\s*\**([^:()\n*]{1,40}?)\**\s*(?:\(([^)]{1,20})\))?\s*\**\s*[:：]\s*(.+)$""")
+        // 14 नवंबर 2026: "Name (female, excited): …", "Name (male) [whispering]: …", "रामू (रोते हुए): …" - अंदाज़ भी
+        val re = Regex("""^\s*[*\-•]*\s*\**([^:()\[\]{}\n*]{1,40}?)\**\s*(?:\(([^)]{1,60})\))?\s*(?:[\[{]([^\]}]{1,40})[\]}])?\s*\**\s*[:：]\s*(.+)$""")
         for (l0 in raw.lines()) {
             val l = l0.trim().trim('*').trim()
             if (l.isEmpty() || l.startsWith("#") || l.startsWith("```")) continue
             val m = re.find(l)
             if (m != null) {
                 val name = m.groupValues[1].trim().ifBlank { "Narrator" }
-                val g = m.groupValues[2].lowercase(Locale.ROOT)
-                val text = cleanSpeech(m.groupValues[3])
+                val (g0, tone0) = splitParen(m.groupValues[2])
+                val g = g0.lowercase(Locale.ROOT)
+                // बोलने वाली बात की शुरुआत में "(धीरे से)" लिखा हो = वह भी अंदाज़
+                val body = m.groupValues[4]
+                val lead = Regex("""^\s*[(\[]([^)\]]{1,30})[)\]]\s*""").find(body)
+                val tone = listOf(tone0, m.groupValues[3].trim(), lead?.groupValues?.get(1)?.trim().orEmpty())
+                    .filter { it.isNotBlank() }.distinct().joinToString(", ")
+                val text = cleanSpeech(if (lead != null) body.substring(lead.range.last + 1) else body)
                 if (text.isEmpty()) continue
                 val female = when {
-                    g.contains("female") || g.contains("woman") || g == "f" || g.contains("महिला") || g.contains("स्त्री") -> true
-                    g.contains("male") || g.contains("man") || g == "m" || g.contains("पुरुष") -> false
+                    g.contains("female") || g.contains("woman") || g == "f" || g.contains("girl") || g.contains("महिला") || g.contains("स्त्री") || g.contains("लड़की") -> true
+                    g.contains("male") || g.contains("man") || g == "m" || g.contains("boy") || g.contains("पुरुष") || g.contains("लड़का") -> false
                     else -> guessFemale(name)
                 }
-                out.add(Line(name, female, text))
+                out.add(Line(name, female, text, tone))
             } else {
                 val text = cleanSpeech(l)
                 if (text.isEmpty()) continue
@@ -222,7 +240,7 @@ object DkaiKit {
         return out
     }
 
-    private fun cleanSpeech(s: String) = s.replace(Regex("""\[[^\]]{0,40}\]"""), " ").replace(Regex("[*_#`]"), "").replace(Regex("\\s+"), " ").trim()
+    private fun cleanSpeech(s: String) = s.replace(Regex("""\[[^\]]{0,40}\]"""), " ").replace(Regex("""\([^)]{0,30}\)"""), " ").replace(Regex("[*_#`]"), "").replace(Regex("\\s+"), " ").trim()
 
     private val FEMALE_HINT = listOf("narrator", "anchor", "host", "she", "girl", "woman", "mother", "maa", "mom", "queen", "rani", "didi", "priya",
         "ananya", "swara", "emma", "sita", "radha", "neha", "pooja", "riya", "aisha", "sara", "sarah", "meera", "kavya", "दीदी", "माँ", "रानी", "लड़की")
@@ -271,7 +289,7 @@ object DkaiKit {
 
     /** उपयोगकर्ता ने खुद स्क्रिप्ट लिखी? (कम-से-कम 2 लाइन "Name: बात") - तब AI से नहीं लिखवाते */
     fun ownScript(text: String): List<Line> {
-        val named = text.lines().count { Regex("""^\s*[A-Za-z\u0900-\u097F][\w\u0900-\u097F .]{0,30}(\([^)]{1,20}\))?\s*[:：]\s*\S""").containsMatchIn(it) }
+        val named = text.lines().count { Regex("""^\s*[A-Za-z\u0900-\u097F][\w\u0900-\u097F .]{0,30}(\([^)]{1,60}\))?\s*([\[{][^\]}]{1,40}[\]}])?\s*[:：]\s*\S""").containsMatchIn(it) }
         return if (named >= 2) parseScript(text) else emptyList()
     }
 
@@ -294,8 +312,16 @@ object DkaiKit {
         append("You are DK AI Broadcast Studio, a script writer for an AUDIO-ONLY ").append(format.lowercase(Locale.ROOT)).append(". ")
         append("Write ONLY the spoken script, no titles, no music cues, no stage directions, no markdown. ")
         append("Every line must be exactly: Name (female): text   or   Name (male): text. ")
+        // 14 नवंबर 2026 (मालिक): हर लाइन का बोलने का अंदाज़ भी लिखा हो - आवाज़ उसी हिसाब से
+        append("Also write HOW each line is spoken, after the gender inside the brackets, like Name (female, excited): text  or  Name (male, whispering): text - ")
+        append("1 to 3 English words such as warm, excited, curious, serious, sad, crying, angry, scared, laughing, whispering, proud, calm. ")
         append("Speaker names before the colon must be in English letters. ")
-        if (multi) {
+        if (multi && format == "Story") {
+            // कहानी = नाटक जैसा: Narrator + 2-5 किरदार, हर किरदार की अपनी आवाज़ (ऐप हर नाम को अलग आवाज़ देता है)
+            append("Write it as a full AUDIO DRAMA: a Narrator plus 2 to 5 story characters (as many as the story really needs, at most 6 speakers in total), ")
+            append("each with a distinct name and a fixed gender. The Narrator describes the scenes; the characters speak their own dialogue in turns, with real emotions. ")
+            append("Never let one speaker talk for the whole story. At least 14 lines in total. ")
+        } else if (multi) {
             val (h, g) = duo(l)
             append("Write a natural, engaging CONVERSATION (never a monologue) between exactly TWO characters: ")
             append("$h (female) - the warm, knowledgeable host who explains clearly, and ")
@@ -315,7 +341,7 @@ object DkaiKit {
         })
         if (facts.isNotBlank()) append("Base the content on these researched facts (stay accurate, do not invent numbers or claims):\n").append(facts.trim().take(6000)).append("\n")
         else append("Use only accurate, well-known facts; do not invent numbers or claims. ")
-        append(if (multi) "Keep it about 300 to 550 words in total." else "Keep it about 250 to 450 words in total.")
+        append(if (multi && format == "Story") "Keep it about 450 to 800 words in total." else if (multi) "Keep it about 300 to 550 words in total." else "Keep it about 250 to 450 words in total.")
         if (strict.isNotBlank()) append(" IMPORTANT: ").append(strict)
     }
 
@@ -532,22 +558,73 @@ object DkaiKit {
         StudioVoice("Emma", "Sulafat", true), StudioVoice("Ava", "Aoede", true), StudioVoice("Brian", "Fenrir", false),
         // 13 नवंबर 2026 (मालिक): Anaya, Aarav, Rohan भी
         StudioVoice("Anaya", "Leda", true), StudioVoice("Aarav", "Charon", false), StudioVoice("Rohan", "Alnilam", false),
+        // 14 नवंबर 2026 (मालिक: "कहानी में 4-5 किरदार हों तो हर किरदार की अलग आवाज़") - Gemini की बाकी सारी आवाज़ें
+        StudioVoice("Zoya", "Zephyr", true), StudioVoice("Meera", "Callirrhoe", true), StudioVoice("Kavya", "Autonoe", true),
+        StudioVoice("Riya", "Despina", true), StudioVoice("Isha", "Erinome", true), StudioVoice("Tara", "Laomedeia", true),
+        StudioVoice("Nisha", "Achernar", true), StudioVoice("Dadi", "Gacrux", true), StudioVoice("Pari", "Pulcherrima", true),
+        StudioVoice("Sanya", "Vindemiatrix", true),
+        StudioVoice("Kabir", "Enceladus", false), StudioVoice("Vihaan", "Iapetus", false), StudioVoice("Arjun", "Umbriel", false),
+        StudioVoice("Dev", "Algieba", false), StudioVoice("Ishaan", "Algenib", false), StudioVoice("Raghav", "Rasalgethi", false),
+        StudioVoice("Vikram", "Schedar", false), StudioVoice("Neel", "Achird", false), StudioVoice("Dadaji", "Zubenelgenubi", false),
+        StudioVoice("Yash", "Sadachbia", false), StudioVoice("Kunal", "Sadaltager", false),
     )
 
     /** स्टूडियो के लिए cast: "All Voices" = लिंग से बारी-बारी; एक नाम = सब उसी आवाज़ में */
-    fun studioCast(lines: List<Line>, pick: String): Map<String, StudioVoice> {
+    fun studioCast(lines: List<Line>, pick: String, keep: Map<String, StudioVoice> = emptyMap()): Map<String, StudioVoice> {
         val single = STUDIO_VOICES.firstOrNull { it.name == pick }
+        val speakers = LinkedHashMap<String, Boolean>()
+        for (l in lines) if (!speakers.containsKey(l.speaker)) speakers[l.speaker] = l.female
         val out = LinkedHashMap<String, StudioVoice>()
+        if (single != null) { for (n in speakers.keys) out[n] = single; return out }
+        val used = HashSet<String>()
+        // 1) कहानी के पिछले भाग में तय आवाज़ = वही; 2) किरदार का नाम ही किसी आवाज़ का नाम (Swara / Aarav ...) = वही
+        for ((n, f) in speakers) {
+            val v = keep[n]?.takeIf { it.female == f && it.api !in used }
+                ?: STUDIO_VOICES.firstOrNull { it.name.equals(n.trim(), true) && it.female == f && it.api !in used }
+            if (v != null) { out[n] = v; used.add(v.api) }
+        }
+        // 3) बाकी हर किरदार = अपनी लिंग की अगली अनछुई आवाज़ (14 नवंबर 2026: 30 आवाज़ें - कोई दो किरदार एक आवाज़ में नहीं)
         val fem = STUDIO_VOICES.filter { it.female }; val mal = STUDIO_VOICES.filter { !it.female }
         var fi = 0; var mi = 0
-        for (l in lines) {
-            if (out.containsKey(l.speaker)) continue
-            // किरदार का नाम ही किसी आवाज़ का नाम (Swara / Aarav ...) = वही आवाज़
-            val named = STUDIO_VOICES.firstOrNull { it.name.equals(l.speaker.trim(), true) && it.female == l.female }
-            out[l.speaker] = single ?: named ?: if (l.female) fem[fi++ % fem.size] else mal[mi++ % mal.size]
+        for ((n, f) in speakers) {
+            if (out.containsKey(n)) continue
+            val v = (if (f) fem else mal).firstOrNull { it.api !in used } ?: if (f) fem[fi++ % fem.size] else mal[mi++ % mal.size]
+            out[n] = v; used.add(v.api)
         }
-        return out
+        return LinkedHashMap<String, StudioVoice>().apply { for (n in speakers.keys) out[n]?.let { put(n, it) } }
     }
+
+    /**
+     * 14 नवंबर 2026 (मालिक): हर लाइन के अंदाज़ के साथ TTS का निर्देश. Gemini बातचीत की सारी लाइनें एक साथ बोलता है,
+     * इसलिए क्रम से बताते हैं कि कौन-सी लाइन किस अंदाज़ में. कोई अंदाज़ नहीं = सिर्फ़ format वाला style.
+     */
+    fun toneStyle(style: String, seg: List<Line>): String {
+        val tones = seg.mapIndexedNotNull { i, l -> l.tone.takeIf { it.isNotBlank() }?.let { "line ${i + 1} (${l.speaker}) $it" } }
+        if (tones.isEmpty()) return style
+        val base = style.trim().trimEnd('.')
+        return (if (base.isEmpty()) "" else "$base. ") + "Give every line its own emotion - " + tones.joinToString("; ")
+    }
+
+    /** एक लाइन अकेले बोलनी हो: format का style + उस लाइन का अंदाज़ */
+    fun lineStyle(style: String, l: Line): String = if (l.tone.isBlank()) style else listOf(style.trim(), l.tone.trim()).filter { it.isNotEmpty() }.joinToString(", ")
+
+    /** 14 नवंबर 2026: होम पर लिखा / बोला विषय -> कौन-सा format (कहानी / पॉडकास्ट / खबर / भाषण / लेक्चर) */
+    fun formatFor(topic: String): String {
+        val t = topic.lowercase(Locale.ROOT)
+        fun has(vararg w: String) = w.any { t.contains(it) }
+        return when {
+            has("कहानी", "story", "कथा", "kahani", "किस्सा", "नाटक", "drama", "स्क्रिप्ट", "script") -> "Story"
+            has("खबर", "समाचार", "news", "बुलेटिन", "bulletin") -> "News Bulletin"
+            has("भाषण", "speech", "स्पीच") -> "Speech"
+            has("लेक्चर", "lecture", "पढ़ाओ", "समझाओ", "क्लास") -> "Lecture"
+            else -> "Podcast"
+        }
+    }
+
+    /** स्क्रिप्ट दिखाने के लिए: "Swara · Kore · महिला · अंदाज़: excited" */
+    fun castLine(name: String, v: StudioVoice?, tone: String): String =
+        listOfNotNull(name, v?.let { "${it.name} की आवाज़" }, v?.let { if (it.female) "महिला" else "पुरुष" }, tone.takeIf { it.isNotBlank() }?.let { "अंदाज़: $it" })
+            .joinToString(" · ")
 
     /** आवाज़ चुनने की सूची का क्रम (मालिक के बताए पहले) */
     val VOICE_MENU = listOf("Emma", "Swara", "Anaya", "Aarav", "Rohan", "Madhur", "Andrew", "Ava", "Brian")

@@ -261,7 +261,7 @@ object DkaiShell {
             DkaiTerm.Gate.Ask -> {
                 pending = DkaiTerm.Pending(cmd, System.currentTimeMillis())
                 DKLog.d("terminal (लाइव): पुष्टि माँगी - ${cmd.take(80)}")
-                return@withContext "CONFIRM_NEEDED: the command `$cmd` can delete / move / overwrite files or reach outside the DKAI workspace (in ${prompt(c)}). " +
+                return@withContext "CONFIRM_NEEDED: the command `$cmd` changes, creates or runs something (or can delete / overwrite files) in ${prompt(c)} - the owner wants every such command confirmed first. " +
                     "Tell the user in one short Hindi line exactly what it will do and ask हाँ या ना. Only after he himself clearly says yes, call terminal again with the same command and confirmed=true. " +
                     "The app checks his own words - it will not run without his yes."
             }

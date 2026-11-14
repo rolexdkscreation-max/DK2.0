@@ -82,6 +82,25 @@ object DkaiTerm {
         return RISKY.any { it.containsMatchIn(c) }
     }
 
+    private val LOOK = setOf("ls", "ll", "la", "cat", "pwd", "echo", "head", "tail", "wc", "grep", "egrep", "fgrep", "rg", "stat", "du", "df", "date",
+        "whoami", "id", "tree", "which", "type", "file", "uname", "uptime", "less", "more", "sort", "uniq", "basename", "dirname", "realpath", "help", "history", "clear", "md5sum", "sha1sum", "sha256sum")
+    private val GIT_LOOK = Regex("""^git\s+(status|log|diff|show|remote(\s+-v)?|branch(\s+-[av]+)?)(\s|$)""")
+
+    /** सिर्फ़ देखने वाली कमांड? (कुछ बनाती / बदलती / चलाती नहीं) - हर हिस्सा (; && || |) देखने वाला हो */
+    fun readOnly(cmd: String): Boolean {
+        val t = cmd.trim()
+        if (t.isEmpty() || t.contains('`') || t.contains("$(") || Regex("""(^|[^>])>""").containsMatchIn(t)) return false
+        return t.split(Regex("""\s*(;|&&|\|\||\||\n)\s*""")).filter { it.isNotBlank() }.all { part ->
+            val p = part.trim()
+            val w = p.split(Regex("\\s+")).first()
+            when {
+                w == "git" -> GIT_LOOK.containsMatchIn(p)
+                w == "find" -> !Regex("""\s-(delete|exec|execdir|ok|fprint)""").containsMatchIn(p)
+                else -> w in LOOK
+            }
+        }
+    }
+
     /** DK लाइव की खतरनाक कमांड जो मालिक की "हाँ" का इंतज़ार कर रही है */
     data class Pending(val cmd: String, val askedAt: Long)
 
@@ -102,7 +121,9 @@ object DkaiTerm {
      * अपनी आवाज़/लिखी बात (DKState.lastUser) में साफ़ "हाँ" हो ([com.dk.assistant.agent.core.ConfirmGate]).
      */
     fun liveGate(cmd: String, aiConfirmed: Boolean, pending: Pending?, userAt: Long, userText: String, now: Long): Gate {
-        if (!risky(cmd)) return Gate.Run
+        // 14 नवंबर 2026 (मालिक: "टर्मिनल में कोई भी काम बिना इजाज़त के ना करेगा"): सिर्फ़ देखने वाली कमांड (ls / cat / pwd …)
+        // बिना पूछे; बनाने / बदलने / चलाने वाली हर कमांड (git clone, apk, npm, mkdir, touch …) पहले मालिक की "हाँ"
+        if (!risky(cmd) && readOnly(cmd)) return Gate.Run
         if (!aiConfirmed || pending == null || pending.cmd != cmd.trim() || now - pending.askedAt > CONFIRM_WINDOW_MS) return Gate.Ask
         return if (com.dk.assistant.agent.core.ConfirmGate.accept(pending.askedAt, userAt, userText)) Gate.Run else Gate.NotHeard
     }

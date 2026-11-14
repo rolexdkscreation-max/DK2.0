@@ -25,9 +25,13 @@ import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
+import androidx.lifecycle.lifecycleScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 /**
- * Story Writer Agent ki apni screen (sirf text - koi awaaz/mic nahi).
+ * Story Writer Agent ki apni screen (text; 14 नवंबर 2026 से हर भाग के नीचे "इस भाग की आवाज़ बनाएँ" बटन - अपने-आप नहीं).
  * Vishay + lambai (10-30 min) -> "कहानी लिखो" -> kahani bhaag-dar-bhaag (Part 3 of 9) neeche aati hai.
  * Copy (poori / yeh bhaag), Save (phone: Download/DK Stories), galti par "यह भाग फिर से लिखो".
  * Kaam StorySession me chalta hai - screen band karke wapas aao to bhi kahani wahin milegi.
@@ -268,8 +272,88 @@ class StoryWriterActivity : AppCompatActivity() {
             this.text = text; textSize = 16f; setTextColor(0xF2FFFFFF.toInt()); setLineSpacing(0f, 1.3f)
             setTextIsSelectable(true); setPadding(0, (10 * dp).toInt(), 0, 0)
         })
+        box.addView(voiceRow(i, text))
         if (i == s.parts.size - 1 && i > 0) scroll.post { scroll.smoothScrollTo(0, box.top) }
     }
+
+    // ================================================================== 14 नवंबर 2026: हर भाग की आवाज़ (बटन से, अपने-आप नहीं)
+    private var player: android.media.MediaPlayer? = null
+    private var playingPart = -1
+    private var playBtnNow: Button? = null
+    private val voiceBusy = HashSet<Int>()
+
+    /** भाग के आख़िर में: "इस भाग की आवाज़ बनाएँ" -> किरदार · आवाज़ · अंदाज़ -> ▶ चलाएँ / शेयर */
+    private fun voiceRow(i: Int, text: String): View {
+        val col = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(0, (12 * dp).toInt(), 0, 0) }
+        val info = TextView(this).apply { textSize = 12.5f; setTextColor(0xB3FFFFFF.toInt()); visibility = View.GONE; setLineSpacing(0f, 1.2f) }
+        val row = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
+        lateinit var make: Button
+        val play = pill("▶ चलाएँ") { b -> togglePlay(i, b as Button) }
+        val share = pill("शेयर") { shareVoice(i) }
+        fun showReady(ready: Boolean) { play.visibility = if (ready) View.VISIBLE else View.GONE; share.visibility = play.visibility; make.text = if (ready) "आवाज़ फिर से बनाएँ" else "इस भाग की आवाज़ बनाएँ" }
+        make = pill("इस भाग की आवाज़ बनाएँ") {
+            if (i in voiceBusy) return@pill
+            voiceBusy.add(i); make.isEnabled = false; make.text = "किरदार बना रहा हूँ…"
+            if (playingPart == i) stopPlay()
+            lifecycleScope.launch {
+                try {
+                    val lines = StoryVoice.script(this@StoryWriterActivity, text)
+                    val (_, cast) = StoryVoice.render(this@StoryWriterActivity, i, lines) { a, n -> runOnUiThread { make.text = "आवाज़ $a / $n बन रही है…" } }
+                    val tones = lines.groupBy { it.speaker }.mapValues { (_, ls) -> ls.map { it.tone }.firstOrNull { it.isNotBlank() }.orEmpty() }
+                    info.text = "किरदार (${cast.size}):\n" + cast.entries.joinToString("\n") { (n, v) -> "• " + com.dk.assistant.dkai.DkaiKit.castLine(n, v, tones[n].orEmpty()) }
+                    info.visibility = View.VISIBLE
+                    showReady(true)
+                    toast("भाग ${i + 1} की आवाज़ तैयार")
+                } catch (e: kotlinx.coroutines.CancellationException) { throw e
+                } catch (e: Throwable) {
+                    toast("आवाज़ नहीं बनी: ${e.message?.take(120)}")
+                    showReady(StoryVoice.file(this@StoryWriterActivity, i) != null)
+                } finally { voiceBusy.remove(i); make.isEnabled = true }
+            }
+        }
+        row.addView(make, LinearLayout.LayoutParams(-2, (38 * dp).toInt()))
+        row.addView(play, LinearLayout.LayoutParams(-2, (38 * dp).toInt()).apply { leftMargin = (8 * dp).toInt() })
+        row.addView(share, LinearLayout.LayoutParams(-2, (38 * dp).toInt()).apply { leftMargin = (8 * dp).toInt() })
+        showReady(StoryVoice.file(this, i) != null)
+        col.addView(HorizontalScrollView(this).apply { isHorizontalScrollBarEnabled = false; addView(row) }); col.addView(info)
+        return col
+    }
+
+    private fun stopPlay() {
+        try { player?.release() } catch (_: Exception) {}
+        player = null; playingPart = -1; playBtnNow?.text = "▶ चलाएँ"; playBtnNow = null
+    }
+
+    private fun togglePlay(i: Int, b: Button) {
+        val p = player
+        if (p != null && playingPart == i) {
+            if (p.isPlaying) { p.pause(); b.text = "▶ चलाएँ" } else { p.start(); b.text = "❚❚ रोकें" }
+            return
+        }
+        stopPlay()
+        val f = StoryVoice.file(this, i) ?: run { toast("पहले आवाज़ बनाएँ"); return }
+        try {
+            player = android.media.MediaPlayer().apply {
+                setDataSource(f.absolutePath); prepare()
+                setOnCompletionListener { b.text = "▶ चलाएँ" }
+                start()
+            }
+            playingPart = i; playBtnNow = b; b.text = "❚❚ रोकें"
+        } catch (e: Exception) { toast("चल नहीं पाया: ${e.message?.take(80)}") }
+    }
+
+    private fun shareVoice(i: Int) {
+        val f = StoryVoice.file(this, i) ?: run { toast("पहले आवाज़ बनाएँ"); return }
+        toast("ऑडियो तैयार हो रहा है…")
+        lifecycleScope.launch {
+            try {
+                val out = withContext(Dispatchers.IO) { com.dk.assistant.dkai.DkaiCastTts.shareable(f, java.io.File(StoryVoice.dir(this@StoryWriterActivity), "share")) }
+                com.dk.assistant.dkai.DkaiCastTts.share(this@StoryWriterActivity, out, StorySession.title.ifBlank { "कहानी" } + " - भाग ${i + 1}")
+            } catch (e: Exception) { toast("शेयर नहीं हुआ: ${e.message?.take(80)}") }
+        }
+    }
+
+    override fun onDestroy() { stopPlay(); super.onDestroy() }
 
     private fun paintLengths() {
         for (i in 0 until lengthRow.childCount) {

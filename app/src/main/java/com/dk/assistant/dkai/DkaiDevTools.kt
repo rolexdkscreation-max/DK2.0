@@ -68,7 +68,7 @@ class DkaiDevTools(private val s: DkaiScreen) {
         // Creator & Community
         col.addView(DkaiUi.label(c, "Creator & Community"))
         col.addView(card(DkaiIcon.Kind.USERS, "DK • ${DkaiKit.BRAND}", "OFFICIAL • GitHub पर code, issues और updates", DkaiTheme.VIOLET, "OFFICIAL") {
-            try { c.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(COMMUNITY))) } catch (_: Exception) { s.toast("ब्राउज़र नहीं खुला") }
+            creator()
         })
 
         layer = DkaiUi.open(s.root, page, DkaiUi.Place.FULL, onClose = {
@@ -76,6 +76,23 @@ class DkaiDevTools(private val s: DkaiScreen) {
         })
         DkaiServer.listeners.add(onServer)
         ticker.post(tick)
+    }
+
+    /**
+     * 14 नवंबर 2026 (मालिक: "क्रिएटर वाले में GitHub पे मारता हूँ, तो डायरेक्ट GitHub पे खुल जाता है… ऐसा नहीं होना चाहिए"):
+     * पहले ऐप के अंदर विकल्प - DKAI में Clone / लिंक शेयर; GitHub (बाहर) सिर्फ़ पूछकर.
+     */
+    private fun creator() {
+        val items = arrayOf("DKAI में Clone करें (code यहीं खुलेगा)", "लिंक शेयर करें", "GitHub पर खोलें (ऐप से बाहर)")
+        android.app.AlertDialog.Builder(c).setTitle("DK • ${DkaiKit.BRAND}").setItems(items) { _, i ->
+            when (i) {
+                0 -> DkaiModals.clone(s, COMMUNITY) { dir -> s.openFiles(dir) }
+                1 -> DkaiUi.shareText(c, "${DkaiKit.BRAND} - $COMMUNITY", "DKAI शेयर करें")
+                else -> android.app.AlertDialog.Builder(c).setTitle("GitHub खोलें?").setMessage("यह ऐप से बाहर ब्राउज़र में खुलेगा:\n$COMMUNITY")
+                    .setPositiveButton("हाँ, खोलें") { _, _ -> try { c.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(COMMUNITY))) } catch (_: Exception) { s.toast("ब्राउज़र नहीं खुला") } }
+                    .setNegativeButton("रद्द", null).show()
+            }
+        }.show()
     }
 
     private fun card(k: DkaiIcon.Kind, title: String, sub: String, tint: Int, tag: String? = null, go: () -> Unit): View = LinearLayout(c).apply {
