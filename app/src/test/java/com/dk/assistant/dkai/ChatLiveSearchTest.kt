@@ -21,7 +21,7 @@ class ChatLiveSearchTest {
         assertEquals(listOf("ndtv.com", "espn.in"), s.sites); assertTrue(s.found); assertEquals(2, s.visited)
         DkaiSearchLive.cancel()
         // डीप रिसर्च: कार्ड लंबे समय तक
-        DkaiSearchLive.start("deep", 0, DkaiSearchLive.DEEP_MS)
+        DkaiSearchLive.start("deep", 1, DkaiSearchLive.DEEP_MS)
         assertTrue(DkaiSearchLive.snap(DkaiSearchLive.MAX_MS + 10).on)
         assertFalse(DkaiSearchLive.snap(DkaiSearchLive.DEEP_MS + 10).on)
         DkaiSearchLive.cancel()
