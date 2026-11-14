@@ -11,7 +11,7 @@ import java.io.File
 object DkaiTerm {
     /** DK की अपनी कमांड (Android के sh में नहीं होतीं / ऐप के अंदर की) */
     val BUILTINS = linkedSetOf("help", "clear", "cd", "open", "preview", "export", "unset", "env", "alias", "unalias", "history",
-        "tree", "unzip", "zip", "wget", "curl", "sysinfo", "dkhelp")
+        "tree", "unzip", "zip", "wget", "curl", "sysinfo", "dkhelp", "apk")
 
     val DEFAULT_ALIASES = linkedMapOf("ll" to "ls -la", "la" to "ls -A", "l" to "ls -l", ".." to "cd ..", "h" to "history")
 
@@ -200,13 +200,29 @@ object DkaiTerm {
         "  curl <url> [-o नाम]         पेज / API का जवाब दिखाएँ (या सेव)\n" +
         "  unzip <file.zip> [फ़ोल्डर]   zip खोलें;  zip <out.zip> <फ़ाइल/फ़ोल्डर…>  zip बनाएँ\n" +
         "  sysinfo                     फ़ोन: मॉडल, Android, बैटरी, RAM, जगह\n" +
+        "  apk make <क्या बनाना है>     असली ऐप (APK) बनाओ + इंस्टॉल का बटन  (जैसे: apk make कैलकुलेटर ऐप)\n" +
+        "  apk build [फ़ोल्डर] [नाम]    index.html वाले फ़ोल्डर से APK;  apk install <file.apk>;  apk list\n" +
         "  export A=1 / unset A / env  अपने variable (याद रहते हैं)\n" +
         "  alias ll='ls -la' / unalias  छोटे नाम (ll, la, l, .., h पहले से)\n" +
         "  history / history -c / !! / !3   पिछली कमांड\n" +
         "  clear                       स्क्रीन साफ़\n\n" +
         "बटन: Tab = नाम पूरा करें, ↑ ↓ = पिछली कमांड, ■ = चलती कमांड रोकें (Ctrl+C), कोई कमांड जवाब माँगे तो नीचे लिखकर भेजें.\n" +
         "DK लाइव से बोलें: \"टर्मिनल में ls चलाओ\", \"Workspace में test फ़ोल्डर बनाओ\" - DK खुद चलाकर बताएगी (मिटाने वाली कमांड से पहले पूछेगी).\n" +
-        "नहीं होता: git, python, node, npm, apt, root (Android इजाज़त नहीं देता); vi / top जैसी पूरी स्क्रीन वाली कमांड.\n\n"
+        "नहीं होता: git, python, node, npm, apt, gradle, javac, root (Android इजाज़त नहीं देता); vi / top जैसी पूरी स्क्रीन वाली कमांड.\n" +
+        "  (ऐप बनाने के लिए gradle की ज़रूरत नहीं - 'apk' कमांड फ़ोन पर ही APK बनाती है)\n\n"
+
+    /** 14 नवंबर 2026: `apk` कमांड की मदद */
+    const val APK_HELP = "apk - फ़ोन पर ही असली Android ऐप (APK), बिना कंप्यूटर / gradle के\n" +
+        "  apk make <क्या बनाना है>    AI ऐप लिखता है -> APK बनता है -> इंस्टॉल की स्क्रीन अपने-आप खुलती है\n" +
+        "                              जैसे: apk make कैलकुलेटर ऐप   /   apk make todo list ऐप\n" +
+        "  apk build [फ़ोल्डर] [नाम]   जिस फ़ोल्डर में index.html हो उससे APK (खाली = अभी वाला फ़ोल्डर)\n" +
+        "  apk install <file.apk>      बना हुआ APK इंस्टॉल करें (apks/ फ़ोल्डर में रहते हैं)\n" +
+        "  apk list                    बने हुए APK\n" +
+        "ऐप HTML + CSS + JavaScript से बनता है (बिना इंटरनेट चलता है). वही नाम दोबारा बनाओ = पुराने ऐप के ऊपर अपडेट.\n"
+
+    /** "build my app 'Calc Pro'" -> [build, my, app, Calc Pro] (उद्धरण के अंदर की जगह एक शब्द) */
+    fun words(s: String): List<String> = Regex("\"([^\"]*)\"|'([^']*)'|(\\S+)").findAll(s.trim())
+        .map { m -> m.groups[1]?.value ?: m.groups[2]?.value ?: m.value }.toList()
 
     /** DK लाइव को: Terminal की पूरी जानकारी (tool के description + prompt में) */
     const val KNOWLEDGE = "DKAI Terminal (the DKAI home -> Terminal tab; same session for you and the user: same folder, history, aliases, variables). " +
@@ -214,6 +230,10 @@ object DkaiTerm {
         "Normal commands: ls, cat, echo, mkdir, cp, mv, rm, grep, sed, find, wc, head, tail, sort, du, df, ps, date, sh script.sh, pipes | > >> && ; and \$VARS. " +
         "DK built-ins: cd (also cd -, cd ~), tree, wget URL (download a file), curl URL (show a page / API reply, -o saves), unzip / zip, sysinfo (model, Android, battery, RAM, storage), " +
         "export / unset / env, alias / unalias (ll, la, l, .., h ready), history, !!, !N, help, open FILE (opens the Editor) and preview FILE.html (Preview tab) - open/preview/clear work only on the Terminal screen. " +
+        "BUILD A REAL INSTALLABLE ANDROID APP (APK) right on the phone, no gradle needed: `apk make <what app, in the user's words>` (e.g. apk make कैलकुलेटर ऐप) - " +
+        "the App Studio AI writes the app (HTML/CSS/JS), then the APK is built and signed automatically and the Android install screen opens by itself (it takes about a minute; tell the user it has started, the install button comes when it is ready). " +
+        "`apk build [folder] [name]` turns a folder that has index.html into an APK and opens install; `apk install apks/NAME.apk`; `apk list`. " +
+        "Whenever the user asks to make / build an app or APK with the terminal (टर्मिनल से ऐप बनाओ, इंस्टॉल करने लायक ऐप), use `apk make ...` - never try to write the files with echo or run gradle. " +
         "The screen also has Tab completion, up/down history, a stop button (Ctrl+C), quick chips, copy output, and you can type input for a command that asks for it. " +
-        "NOT available: git, python, node, npm, apt, root, full-screen programs like vi or top; GitHub work is the GitHub tab. Outside the app's folders is not allowed."
+        "NOT available: git, python, node, npm, apt, gradle, javac, root, full-screen programs like vi or top; GitHub work is the GitHub tab. Outside the app's folders is not allowed."
 }

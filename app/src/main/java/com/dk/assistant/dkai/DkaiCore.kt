@@ -43,6 +43,18 @@ enum class DkaiTab(val label: String) { HOME("Home"), FILES("Files"), EDITOR("Ed
 
 object DkaiCore {
 
+    // ------------------------------------------------------------------ होम का लिखने वाला डिब्बा
+    /**
+     * 14 नवंबर 2026 (मालिक): मोड वाली गोली ("Chat ▾" … "Broadcast ▾") की पक्की चौड़ाई (dp). सबसे लंबा नाम भी इसमें आए,
+     * और कोई भी मोड चुनें - माइक / भेजें बटन अपनी जगह से न हिलें, न छिपें.
+     */
+    const val MODE_PILL_DP = 100f
+    /** पंक्ति के पक्के हिस्से (dp): + (40) + मोड गोली + उसके दोनों ओर 6+6 + भेजें (42 + 4) + माइक (48) */
+    const val INPUT_ROW_FIXED_DP = 40f + MODE_PILL_DP + 12f + 46f + 48f
+
+    /** इस चौड़ाई (dp) के फ़ोन पर पंक्ति के सारे पक्के बटन दिखेंगे? (डिब्बे के margin 12+12, padding 14+8) */
+    fun inputRowFits(screenDp: Float): Boolean = screenDp - 24f - 22f >= INPUT_ROW_FIXED_DP
+
     // ------------------------------------------------------------------ हालत बदलना
     fun next(s: VoiceSessionState, e: VoiceEvent): VoiceSessionState = when (e) {
         VoiceEvent.MIC_TAP -> VoiceSessionState.ACTIVE_FULL

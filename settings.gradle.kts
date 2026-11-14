@@ -14,3 +14,5 @@ dependencyResolutionManagement {
 }
 rootProject.name = "DK"
 include(":app")
+// 14 नवंबर 2026: फ़ोन पर APK बनाने का साँचा (DKAI Terminal की `apk` कमांड)
+include(":apkshell")

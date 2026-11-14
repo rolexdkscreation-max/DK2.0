@@ -36,6 +36,8 @@ object StudioSession {
     @Volatile var onDone: ((who: String, text: String, ok: Boolean) -> Unit)? = null
     /** बनने के बाद preview में गलती आई = एक बार अपने-आप ठीक करो (हर काम पर) */
     @Volatile var autoFixLeft = 0
+    /** [start] का [after] - सिर्फ़ उसी काम के पूरा होने पर, एक बार */
+    @Volatile private var afterOnce: ((StudioProject, Boolean) -> Unit)? = null
 
     private fun step(t: String) {
         synchronized(steps) { steps.add(t); while (steps.size > 60) steps.removeAt(0) }
@@ -85,11 +87,17 @@ object StudioSession {
     }
 
     /** नया ऐप. return = गलती का संदेश (काम शुरू नहीं हुआ) या null */
-    fun start(c: Context, request: String, who: String, openScreen: Boolean = true): String? {
+    /**
+     * 14 नवंबर 2026: [kind] = प्रकार पहले से तय (Terminal की `apk make` = हमेशा वेब/गेम, ताकि फ़ोन पर APK बन सके);
+     * [after] = यह काम पूरा होते ही एक बार (project, ठीक हुआ?) - `apk make` यहीं से APK बनाता है.
+     */
+    fun start(c: Context, request: String, who: String, openScreen: Boolean = true, kind: StudioCore.Kind? = null,
+              after: ((StudioProject, Boolean) -> Unit)? = null): String? {
         val ctx = c.applicationContext
         if (busy) return "ऐप स्टूडियो में अभी एक काम चल रहा है — पूरा होने दें या वहाँ \"रोकें\" दबाएँ।"
         aiFor(ctx, who) ?: return "ऐप बनाने के लिए AI key नहीं है — Settings → AI दिमाग → ${if (who == WHO_CODER) "कोडिंग एजेंट" else "DK कंप्यूटर"} में key डालें।"
-        val kind = StudioCore.kindOf(request)
+        afterOnce = after
+        val kind = kind ?: StudioCore.kindOf(request)
         val p = StudioProject.create(ctx, StudioCore.slug(request, System.currentTimeMillis()))
         p.title = request.take(60); p.kind = kind; p.who = who; p.request = request; p.saveMeta()
         project = p
@@ -141,6 +149,7 @@ object StudioSession {
             }, r.first.lineSequence().first())
             try { report(r.first, r.second) } catch (_: Exception) {}
             try { onDone?.invoke(p.who, r.first, r.second) } catch (_: Exception) {}
+            afterOnce?.let { a -> afterOnce = null; try { withContext(Dispatchers.IO) { a(p, r.second && !cancelled) } } catch (e: Exception) { DKLog.d("स्टूडियो after: ${e.message}") } }
             listener?.invoke()
         }
         listener?.invoke()

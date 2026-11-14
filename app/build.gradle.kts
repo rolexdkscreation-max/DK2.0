@@ -97,6 +97,8 @@ dependencies {
     implementation("androidx.camera:camera-view:1.3.4")
     // v3.72: कनेक्टर हब - Google login (Drive/Gmail/Calendar...) बिना client secret, token Play services देता है
     implementation("com.google.android.gms:play-services-auth:21.2.0")
+    // 14 नवंबर 2026: DKAI Terminal की `apk` कमांड - फ़ोन पर ही बने ऐप को sign करना (Google की अपनी apksig, pure Java)
+    implementation("com.android.tools.build:apksig:8.5.2")
     testImplementation("junit:junit:4.13.2")
     // Android ka org.json unit test me khali (stub) hota hai - asli wala
     testImplementation("org.json:json:20240303")
@@ -115,4 +117,24 @@ tasks.withType<Test>().configureEach {
         showCauses = true
         showStackTraces = true
     }
+}
+
+// 14 नवंबर 2026 (मालिक): "Terminal से ऐप बनाओ और इंस्टॉल करने लायक बनाओ". `:apkshell` (छोटा WebView साँचा) का
+// बिना-sign APK हर build में DK के assets में `dk_apkshell.apk` नाम से जाता है - फ़ोन पर DkaiApk इसी से असली APK बनाता है.
+abstract class DkShellApkTask : DefaultTask() {
+    @get:InputFile abstract val apk: RegularFileProperty
+    @get:OutputDirectory abstract val outDir: DirectoryProperty
+    @TaskAction fun copy() {
+        val d = outDir.get().asFile
+        d.deleteRecursively(); d.mkdirs()
+        apk.get().asFile.copyTo(File(d, "dk_apkshell.apk"), overwrite = true)
+    }
+}
+val dkShellApk = tasks.register<DkShellApkTask>("dkShellApk") {
+    dependsOn(":apkshell:assembleRelease")
+    apk.set(rootProject.layout.projectDirectory.file("apkshell/build/outputs/apk/release/apkshell-release-unsigned.apk"))
+    outDir.set(layout.buildDirectory.dir("generated/dkshell"))
+}
+androidComponents {
+    onVariants { v -> v.sources.assets?.addGeneratedSourceDirectory(dkShellApk, DkShellApkTask::outDir) }
 }

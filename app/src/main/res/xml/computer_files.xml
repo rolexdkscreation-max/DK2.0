@@ -15,4 +15,6 @@
     <external-path name="storage" path="." />
     <!-- 13 नवंबर 2026: DK AI Broadcast Studio की बनी आवाज़ (filesDir/dkai_broadcast) शेयर -->
     <files-path name="dkai_broadcast" path="dkai_broadcast/" />
+    <!-- 14 नवंबर 2026: DKAI Terminal की `apk` कमांड से बने ऐप (filesDir/dkai/apks) - इंस्टॉल करने के लिए -->
+    <files-path name="dkai_apks" path="dkai/apks/" />
 </paths>

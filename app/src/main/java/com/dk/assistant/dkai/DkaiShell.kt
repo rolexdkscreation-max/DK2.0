@@ -114,6 +114,8 @@ object DkaiShell {
             "wget", "curl" -> fetch(c, t, d)
             "unzip" -> unzip(c, arg, d)
             "zip" -> zip(c, arg, d)
+            // 14 नवंबर 2026: फ़ोन पर ही असली ऐप (APK) - make / build / install / list
+            "apk" -> DkaiApk.command(c, arg, d)
             else -> null
         }
     }
