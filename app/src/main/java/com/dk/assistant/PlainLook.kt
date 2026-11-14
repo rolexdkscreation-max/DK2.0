@@ -133,20 +133,119 @@ object PlainLook {
     }
 
     /** लाइट: लिखावट गहरी (नीले बटन के ऊपर की सफ़ेद लिखावट नहीं), गोल बटन का सफ़ेद चिह्न गहरा */
+    // 14 नवंबर 2026 (मालिक: "लाइट में सिर्फ़ बैकग्राउंड सफ़ेद, अक्षर/आइकन/रंग वैसे ही पूरे दिखें"):
+    // अब असली पीछे वाला रंग (view + उसके ऊपर वाले) देखकर - उजले पर हो तभी सफ़ेद लिखावट/चिह्न गहरा;
+    // रंगीन लिखावट/आइकन कभी नहीं बदलते; गहरे डिब्बे (कोड में बने) भी उजले.
     private fun lighten(v: View) {
-        val bg = v.background
-        val ours = bg != null && v.getTag(TAG) === bg
-        val accent = ours && v.getTag(ACCENT_TAG) == true
-        if (v is android.widget.TextView && (bg == null || (ours && !accent))) {
+        lightBox(v)
+        val under = underLight(v)
+        if (v is android.widget.TextView && under == true) {
             val c = v.currentTextColor; val n = lightText(c)
             if (n != c) v.setTextColor(n)
             val h = v.currentHintTextColor; val nh = lightText(h)
             if (nh != h) v.setHintTextColor(nh)
+            v.compoundDrawableTintList?.defaultColor?.let { t -> if (lightText(t) != t) v.compoundDrawableTintList = ColorStateList.valueOf(lightText(t)) }
         }
-        if (v is android.widget.ImageView && ours && !accent && v.getTag(ICON_TAG) != true) {
-            v.setColorFilter(0xFF000000.toInt() or L_TEXT, android.graphics.PorterDuff.Mode.SRC_IN); v.setTag(ICON_TAG, true)
-        }
+        if (v is android.widget.ImageView && under == true) lightIcon(v)
     }
+
+    /** लाइट: कोड में बना ऐप वाला गहरा डिब्बा (GradientDrawable) -> उजला कार्ड + किनारा */
+    private fun lightBox(v: View) {
+        val bg = v.background ?: return
+        if (v.getTag(TAG) === bg) return
+        val g = (if (bg is RippleDrawable && bg.numberOfLayers > 0) bg.getDrawable(0) else bg) as? GradientDrawable ?: return
+        val c = try { g.color?.defaultColor } catch (_: Exception) { null } ?: return
+        if (!appDark(c)) return
+        val dp = v.resources.displayMetrics.density
+        val fill = if (c == PILL || c == ME) pill() else card()
+        val flat = GradientDrawable().apply {
+            shape = g.shape
+            if (g.shape != GradientDrawable.OVAL) cornerRadius = try { g.cornerRadius } catch (_: Exception) { 16 * dp }
+            setColor(fill); setStroke(dp.toInt().coerceAtLeast(1), border())
+        }
+        val d = if (v.isClickable) RippleDrawable(ColorStateList.valueOf(0x220F172A), flat, null) else flat
+        val l = v.paddingLeft; val t = v.paddingTop; val r = v.paddingRight; val b = v.paddingBottom
+        v.background = d; v.setPadding(l, t, r, b); v.setTag(TAG, d)
+    }
+
+    /** ऐप के अपने गहरे डिब्बे वाले रंग (pure, JVM test) - बाकी (रंगीन/काले कैमरा वगैरह) नहीं छूते */
+    fun appDark(argb: Int): Boolean = argb in APP_DARK
+    private val APP_DARK = setOf(BG, CARD, PILL, FIELD, ME, 0xFF0A1033.toInt(), 0xFF040711.toInt(), 0xFF090D1A.toInt(),
+        0xFF0A0F3A.toInt(), 0xFF050A1F.toInt(), 0xFF0E1440.toInt(), 0xFF0D1324.toInt(), 0xFF101634.toInt(), 0xFF0D1440.toInt())
+
+    /** pure: रंग उजला है? */
+    fun isLightColor(argb: Int): Boolean {
+        val r = (argb shr 16) and 0xFF; val g = (argb shr 8) and 0xFF; val b = argb and 0xFF
+        return r * 299 + g * 587 + b * 114 >= 160_000
+    }
+
+    /** pure: पीछे का रंग चुनो - null = पता नहीं, alpha कम = पारदर्शी (ऊपर वाले को देखो) */
+    fun opaqueEnough(argb: Int): Boolean = ((argb ushr 24) and 0xFF) >= 0x80
+
+    /** drawable का भरा रंग: 0 = पारदर्शी, null = पता नहीं (फ़ोटो/चित्र) */
+    private fun colorOf(d: Drawable?): Int? = when (d) {
+        null -> 0
+        is ColorDrawable -> d.color
+        is GradientDrawable -> try { d.color?.defaultColor ?: d.colors?.firstOrNull() } catch (_: Exception) { null }
+        is LayerDrawable -> {
+            var c: Int? = 0
+            for (i in 0 until d.numberOfLayers) {
+                val x = colorOf(d.getDrawable(i))
+                if (x == null) { c = null; break }
+                if (opaqueEnough(x)) { c = x; break }
+            }
+            c
+        }
+        is android.graphics.drawable.InsetDrawable -> colorOf(d.drawable)
+        is android.graphics.drawable.DrawableContainer -> colorOf(d.current)
+        else -> null
+    }
+
+    /** लाइट में view उजले रंग के ऊपर है? (true/false, null = पता नहीं -> मत छुओ) */
+    private fun underLight(v: View): Boolean? {
+        var cur: View? = v
+        while (cur != null) {
+            val c = colorOf(cur.background) ?: return null
+            if (opaqueEnough(c)) return isLightColor(c)
+            cur = cur.parent as? View
+        }
+        return true   // खिड़की की पृष्ठभूमि = L_BG
+    }
+
+    /** उजले पर रखा सफ़ेद-सा चिह्न -> गहरा. रंगीन चिह्न, फ़ोटो, कैमरा - वैसे ही */
+    private fun lightIcon(v: android.widget.ImageView) {
+        val d = v.drawable ?: return
+        val tint = v.imageTintList?.defaultColor
+        val key = listOf(System.identityHashCode(d), tint)
+        if (v.getTag(ICON_TAG) == key) return
+        v.setTag(ICON_TAG, key)
+        if (tint != null) {
+            if (lightText(tint) != tint) v.imageTintList = ColorStateList.valueOf(lightText(tint))
+            return
+        }
+        if (d is android.graphics.drawable.BitmapDrawable) return
+        val dp = v.resources.displayMetrics.density
+        if (v.width > 96 * dp || v.height > 96 * dp) return
+        if (whiteIcon(d)) v.setColorFilter(0xFF000000.toInt() or L_TEXT, android.graphics.PorterDuff.Mode.SRC_IN)
+    }
+
+    /** drawable की प्रति 24px पर बनाकर: दिखते pixel लगभग सब सफ़ेद? */
+    private fun whiteIcon(d: Drawable): Boolean = try {
+        val copy = d.constantState?.newDrawable()?.mutate() ?: throw IllegalStateException()
+        val bmp = android.graphics.Bitmap.createBitmap(24, 24, android.graphics.Bitmap.Config.ARGB_8888)
+        copy.setBounds(0, 0, 24, 24); copy.draw(android.graphics.Canvas(bmp))
+        var seen = 0; var white = 0
+        for (y in 0 until 24) for (x in 0 until 24) {
+            val p = bmp.getPixel(x, y)
+            if (((p ushr 24) and 0xFF) < 0x80) continue
+            seen++; if (lightText(p) != p) white++
+        }
+        bmp.recycle()
+        whiteShare(white, seen)
+    } catch (_: Exception) { false }
+
+    /** pure: 80%+ दिखते pixel सफ़ेद-से = सफ़ेद चिह्न */
+    fun whiteShare(white: Int, seen: Int): Boolean = seen > 0 && white * 10 >= seen * 8
     /** view लगभग पूरी स्क्रीन घेरता है (पृष्ठभूमि वाला) */
     private fun fillsScreen(v: View): Boolean {
         val r = v.rootView ?: return false

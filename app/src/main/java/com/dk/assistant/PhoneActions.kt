@@ -13,6 +13,7 @@ import android.provider.MediaStore
 import androidx.core.content.ContextCompat
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 /**
@@ -99,6 +100,9 @@ object PhoneActions {
             while (System.currentTimeMillis() - t0 < 4000) {
                 if (svc.calls.inCall) {
                     DKLog.d("जाँच: कॉल शुरू हुई (${System.currentTimeMillis() - t0} ms)")
+                    // 14 नवंबर 2026 (मालिक): Bluetooth नहीं = speaker पर, Bluetooth = उसी पर
+                    if (CallRoute.wantSpeaker(CallRoute.btConnected(svc))) svc.scope.launch { delay(800); svc.setSpeaker(true) }
+                    else CallRoute.toBt(svc)
                     return "CALLING: $label को कॉल लग रही है।"
                 }
                 delay(200)
