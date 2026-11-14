@@ -183,7 +183,12 @@ class SettingsActivity : AppCompatActivity() {
             Triple("debug", "डिबग लॉग", "माइक, कनेक्शन, देरी और गलतियों का पूरा हाल"),
             Triple("about", "ऐप के बारे में", "version • बनाने वाले • निजता (privacy)")
         )
-        if (cat == null) { SettingsSearch.CATEGORIES.forEach { (c, _) -> menuRow(c.first, c.second, c.third) }; return }
+        if (cat == null) {
+            SettingsSearch.CATEGORIES.forEach { (c, _) -> menuRow(c.first, c.second, c.third) }
+            // 14 नवंबर 2026 (मालिक: "अपडेट अंदर न रहे, सेटिंग खोलें तो सबसे नीचे दिखे"): मुख्य पन्ने पर सबसे नीचे भी
+            items.firstOrNull { it.first == "update" }?.let { (id, t, sub) -> menuRow(id, t, sub) }
+            return
+        }
         val ids = SettingsSearch.CATEGORIES.firstOrNull { it.first.first == cat }?.second.orEmpty()
         items.filter { it.first in ids }.sortedBy { ids.indexOf(it.first) }.forEach { (id, t, sub) -> menuRow(id, t, sub) }
     }

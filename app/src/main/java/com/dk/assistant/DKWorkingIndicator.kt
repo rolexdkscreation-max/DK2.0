@@ -182,26 +182,29 @@ class DKWorkingIndicator(context: Context) : View(context) {
         else { running = false; last = 0L }
     }
 
-    /** छोटा रंगीन कंप्यूटर (स्क्रीन + कर्सर + स्टैंड) - काम चलते समय इधर-उधर हिलता, रुकते ही फीका */
+    /**
+     * छोटा रंगीन कंप्यूटर (स्क्रीन + स्टैंड + दो छोटी आँखें). 14 नवंबर 2026 (मालिक): कंप्यूटर स्थिर - न हिले, न झुके;
+     * सिर्फ़ आँखें इधर-उधर, और वह भी सिर्फ़ काम चलते समय. काम नहीं = आँखें बीच में, कुछ नहीं हिलता.
+     */
     private fun drawComputer(c: Canvas, cx: Float, cy: Float, s: Float) {
         val act = (amp / 0.38f).coerceIn(0f, 1f)
         TypingStyles.computer(phase, act, pcBox)
-        val a = (255 * (0.3f + 0.7f * act)).toInt().coerceIn(0, 255)
+        val a = (255 * (0.45f + 0.55f * act)).toInt().coerceIn(0, 255)
         pcLine.alpha = a
         c.save()
-        c.translate(cx + pcBox[0] * s, cy + pcBox[1] * s)
-        c.rotate(pcBox[2])
+        c.translate(cx, cy)
         val sw = s * 0.30f; val sh = s * 0.21f; val top = -s * 0.26f
         r.set(-sw, top, sw, top + sh * 2)
         c.drawRoundRect(r, s * 0.07f, s * 0.07f, pcLine)
-        // स्क्रीन के अंदर लिखता कर्सर (बाएँ से दाएँ)
-        pcFill.alpha = (a * (0.55f + 0.45f * sin(phase * 2.2).toFloat())).toInt().coerceIn(0, 255)
-        val lx = -sw * 0.62f; val ly = top + sh * 0.85f
-        val len = sw * 1.24f * pcBox[3]
-        r.set(lx, ly, lx + len.coerceAtLeast(s * 0.04f), ly + s * 0.05f)
-        c.drawRoundRect(r, s * 0.025f, s * 0.025f, pcFill)
-        r.set(lx, ly + s * 0.09f, lx + sw * 0.7f, ly + s * 0.14f)
-        pcFill.alpha = (a * 0.45f).toInt(); c.drawRoundRect(r, s * 0.025f, s * 0.025f, pcFill)
+        // दो छोटी आँखें (स्क्रीन के बीच) - सिर्फ़ यही चलती हैं
+        pcFill.alpha = a
+        val ew = s * 0.075f; val eh = s * 0.10f
+        val ey = top + sh + pcBox[1] * s
+        for (ex0 in floatArrayOf(-sw * 0.36f, sw * 0.36f)) {
+            val ex = ex0 + pcBox[0] * s
+            r.set(ex - ew / 2f, ey - eh / 2f, ex + ew / 2f, ey + eh / 2f)
+            c.drawRoundRect(r, ew / 2f, ew / 2f, pcFill)
+        }
         // स्टैंड
         val by = top + sh * 2
         c.drawLine(0f, by, 0f, by + s * 0.1f, pcLine)

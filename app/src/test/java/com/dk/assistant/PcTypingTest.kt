@@ -1,6 +1,7 @@
 package com.dk.assistant
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.io.File
@@ -26,6 +27,25 @@ class PcTypingTest {
             assertTrue(kotlin.math.abs(a[0]) <= 0.1f && kotlin.math.abs(a[1]) <= 0.06f && a[3] in 0f..1f)
         }
         TypingStyles.computer(3.0, 0f, a); assertEquals(0f, a[0], 1e-6f); assertEquals(0f, a[1], 1e-6f)
+    }
+
+    // 14 नवंबर 2026 (मालिक): कंप्यूटर स्थिर, सिर्फ़ दो आँखें इधर-उधर - और सिर्फ़ काम चलते समय
+    @Test fun computerStill_onlyEyesMove() {
+        val a = FloatArray(4)
+        for (p in 0 until 60) {
+            TypingStyles.computer(p * 0.37, 1f, a)
+            assertEquals(0f, a[2], 0f)                                   // झुकाव कभी नहीं
+            assertTrue(kotlin.math.abs(a[0]) <= TypingStyles.EYE_X && kotlin.math.abs(a[1]) <= TypingStyles.EYE_Y)
+        }
+        val d = src("DKWorkingIndicator.kt")
+        assertTrue(d.contains("c.translate(cx, cy)"))                  // कंप्यूटर अपनी जगह
+        assertFalse(d.contains("c.rotate(pcBox[2])"))
+        val eyes = src("dkai/DkaiHomeViews.kt")
+        assertTrue(eyes.contains("if (!working || !ValueAnimator.areAnimatorsEnabled())"))   // खाली = कोई animation नहीं
+        assertEquals(0f to 0f, com.dk.assistant.dkai.EyesMath.look(0.3f, false))
+        // ऊपर की पट्टी में कंप्यूटर का निशान नहीं
+        assertFalse(src("ComputerActivity.kt").contains("WorkLineStrip(this)"))
+        assertFalse(src("CodingActivity.kt").contains("WorkLineStrip(this)"))
     }
 
     @Test fun agentScreensUseIt() {
