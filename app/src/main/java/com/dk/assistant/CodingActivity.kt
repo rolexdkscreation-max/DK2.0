@@ -378,6 +378,7 @@ class CodingActivity : AppCompatActivity() {
             override fun handleOnBackPressed() { if (codePanel.isOpen) codePanel.close() else { isEnabled = false; onBackPressedDispatcher.onBackPressed() } }
         })
         setContentView(root)
+        com.dk.assistant.PlainLook.install(this)   // 14 नवंबर 2026 (मालिक): होम (DKAI) जैसा सपाट रूप, काँच/ग्लासी नहीं
         Glass.install(this)
         CoderHistory.init(this)                                     // पिछली बातचीत वापस (ऐप बंद होकर खुली हो तो)
         if (CoderSession.lines.isEmpty()) CoderSession.add("d", welcome())

@@ -221,6 +221,7 @@ class VoiceActivity : AppCompatActivity() {
         col.addView(bar, LinearLayout.LayoutParams(-1, -2).apply { topMargin = (14 * dp).toInt() })
 
         setContentView(root)
+        com.dk.assistant.PlainLook.install(this)   // 14 नवंबर 2026 (मालिक): होम (DKAI) जैसा सपाट रूप, काँच/ग्लासी नहीं
         Glass.install(this)
         applyOrbMin()
 

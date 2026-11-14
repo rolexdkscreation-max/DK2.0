@@ -68,4 +68,16 @@ class LiveNov14FixTest {
         val g = src("GeminiLive.kt")
         assertTrue(g.contains("delay(LiveRecover.RECOVER_MS)") && g.contains("if (!ready && !stopped) LiveChime.disconnected("))
     }
+
+    @Test fun everyScreen_flatLikeHome_noGlass() {
+        for (f in listOf("CodingActivity.kt", "StoryWriterActivity.kt", "studio/StudioActivity.kt", "MemoryActivity.kt", "ChatActivity.kt",
+                "connect/ConnectorsActivity.kt", "backup/BackupActivity.kt", "auto/AutoSettingsActivity.kt",
+                "template/TemplateSettingsActivity.kt", "VoiceActivity.kt", "SettingsActivity.kt", "ComputerActivity.kt"))
+            assertTrue(f, src(f).contains("PlainLook.install(this)"))
+        assertFalse(src("SettingsLook.kt").contains("card(\"काँच और चमक\""))
+        assertFalse(src("SettingsActivity.kt").contains("MenuQuick.glassSlider(this)"))
+        assertTrue(PlainLook.fills(1080, 2000, 1080, 2400))
+        assertFalse(PlainLook.fills(500, 2000, 1080, 2400))
+        assertFalse(PlainLook.fills(1080, 300, 1080, 2400))
+    }
 }

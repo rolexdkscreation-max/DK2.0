@@ -188,6 +188,7 @@ class StoryWriterActivity : AppCompatActivity() {
         body.addView(actions, LinearLayout.LayoutParams(-1, -2))
 
         setContentView(root)
+        com.dk.assistant.PlainLook.install(this)   // 14 नवंबर 2026 (मालिक): होम (DKAI) जैसा सपाट रूप, काँच/ग्लासी नहीं
         paintLengths()
         render()
     }

@@ -108,12 +108,7 @@ internal fun SettingsActivity.secUi() {
         }
         box.addView(sb, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, (48 * dp).toInt()))
     }
-    card("काँच और चमक", "पैनल कितने पारदर्शी हों, किनारों की नियॉन चमक कितनी हो", startOpen = true) { box ->
-        slider(box, "काँच की पारदर्शिता", T.look.glass) { T.look.copy(glass = it) }
-        slider(box, "नियॉन चमक", T.look.glow) { T.look.copy(glow = it) }
-        hint(box, "ज़्यादा पारदर्शिता पर भी अक्षर पढ़ने लायक रहें, इसलिए काँच कभी पूरा गायब नहीं होता। " +
-            "पीछे का असली धुंधलापन (blur) Android 12+ पर सिर्फ़ dialog के पीछे; बाकी जगह हल्का काँच-जैसा रंग।")
-    }
+    // 14 नवंबर 2026 (मालिक: "ग्लासी इफेक्ट वाला सब हटा दो, सभी जगह से"): काँच और चमक वाला कार्ड हटाया - हर स्क्रीन अब होम जैसी सपाट (PlainLook)
     card("एनिमेशन", "ओर्ब के छल्ले, पृष्ठभूमि की रोशनी और मेनू का खुलना", startOpen = true) { box ->
         val g = radios(box, T.MOTIONS, T.look.motion, 6300)
         g.setOnCheckedChangeListener { _, id ->

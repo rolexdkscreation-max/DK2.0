@@ -40,6 +40,7 @@ class AutoSettingsActivity : AppCompatActivity() {
         scroll.addView(col)
         root.addView(scroll, FrameLayout.LayoutParams(-1, -1))
         setContentView(root)
+        com.dk.assistant.PlainLook.install(this)   // 14 नवंबर 2026 (मालिक): होम (DKAI) जैसा सपाट रूप, काँच/ग्लासी नहीं
 
         header()
 
