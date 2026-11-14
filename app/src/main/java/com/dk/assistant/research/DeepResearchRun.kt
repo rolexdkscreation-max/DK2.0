@@ -25,7 +25,7 @@ import java.util.concurrent.ConcurrentHashMap
  * कोई टूल error / 429 / क्रेडिट खत्म = इस रिसर्च में छोड़ो, यूज़र को रोको मत.
  * चारों न चलें = Gemini की अपनी Google खोज, साफ़ लिखकर कि गहरी खोज नहीं हो पाई.
  */
-class DeepResearchRun(private val c: Context, private val step: (String) -> Unit) {
+class DeepResearchRun(private val c: Context, private val sites: (List<String>) -> Unit = {}, private val step: (String) -> Unit) {
     class Result(val text: String, val sources: List<Pair<String, String>>, val deep: Boolean)
 
     private val dead = ConcurrentHashMap<Tool, String>()
@@ -93,13 +93,15 @@ class DeepResearchRun(private val c: Context, private val step: (String) -> Unit
             step(if (round == 1) "$names पर एक साथ खोज रहा हूँ…" else "कमी पूरी करने के लिए फिर खोज रहा हूँ (चक्कर $round/${DeepResearch.MAX_ROUNDS})…")
             val hits = search(subs)
             if (hits.isEmpty()) break
+            // 14 नवंबर 2026: खोज में मिली असली वेबसाइटें - चैट के लाइव कार्ड में
+            sites(hits.map { it.url })
             // 3. duplicate हटाओ, चुनो, पूरा पढ़ो
             val links = DeepResearch.merge(hits)
             val want = if (round == 1) DeepResearch.MAX_PAGES.coerceAtMost(budget).coerceAtLeast(minOf(DeepResearch.MIN_PICK, budget)) else minOf(5, budget)
             val chosen = DeepResearch.pick(links, seen, budget, nowYear, want)
             if (chosen.isEmpty()) break
             chosen.forEach { seen.add(DeepResearch.normalize(it.url)) }
-            step("${chosen.size} वेबसाइटें पूरी पढ़ रहा हूँ…")
+            step("${chosen.size} वेबसाइटें पूरी पढ़ रहा हूँ: " + chosen.take(4).joinToString(", ") { DeepResearch.domain(it.url) } + if (chosen.size > 4) "…" else "")
             pages.addAll(read(chosen))
             // 5. कमी हो तो फिर (ज़्यादा से ज़्यादा 3 चक्कर)
             if (round == DeepResearch.MAX_ROUNDS || pages.size >= DeepResearch.MAX_PAGES) break
@@ -152,6 +154,7 @@ class DeepResearchRun(private val c: Context, private val step: (String) -> Unit
                     try {
                         DeepResearchNet.firecrawl(fireKey, l.url)?.let { (t, md, d) ->
                             got[DeepResearch.normalize(l.url)] = DeepResearch.Page(t.ifBlank { l.title }, l.url, md, l.date.ifBlank { d }, true)
+                            step("पढ़ लिया: ${DeepResearch.domain(l.url)} (${got.size}/${links.size})")
                         }
                     } catch (e: Exception) { val code = (e as? AiException)?.code ?: 0; if (code == 401 || code == 402 || code == 403 || code == 429) kill(Tool.FIRECRAWL, e) }
                 }

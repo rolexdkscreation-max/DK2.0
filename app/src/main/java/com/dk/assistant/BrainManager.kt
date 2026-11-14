@@ -315,9 +315,10 @@ class BrainManager(private val ctx: Context) {
      * v3.80: ताज़ा जानकारी (deep/thorough/think नहीं) = [liveSearch] - कई तरफ़ से खोज, मिलाकर पक्का जवाब.
      * बाकी पहले जैसा एक गहरी खोज.
      */
-    suspend fun search(question: String, deep: Boolean, thorough: Boolean = false, think: Boolean = false): SearchResult =
+    suspend fun search(question: String, deep: Boolean, thorough: Boolean = false, think: Boolean = false, asked: Boolean = false): SearchResult =
         if (think) searchOnce(question, deep, thorough, think)   // deep_think = सोच, इंटरनेट खोज का क्रम नहीं
-        else chainSearch(question, explicit = deep || thorough) { geminiSearch(question, deep, thorough) }
+        // 14 नवंबर 2026 (मालिक: "सर्च करो बोला तो सच में खोजे, और जल्दी"): [asked] = यूज़र ने ख़ुद माँगा -> तेज़ खोज पर भी छोड़ें नहीं
+        else chainSearch(question, explicit = deep || thorough || asked) { geminiSearch(question, deep, thorough) }
 
     /** पहले जैसी Gemini + Google Search (क्रम की आख़िरी सेवा) */
     private suspend fun geminiSearch(question: String, deep: Boolean, thorough: Boolean): SearchResult =
@@ -353,6 +354,9 @@ class BrainManager(private val ctx: Context) {
                 val query = if (order.isEmpty()) "" else rewriteQuery(question, news)
                 searchQuery = query
                 for (p in order) {
+                    // 14 नवंबर 2026: चैट के लाइव सर्च कार्ड में असली कदम
+                    val stage = "${WebCite.nameOf(p)} पर खोज रहा है: ${query.take(60)}"
+                    com.dk.assistant.dkai.DkaiSearchLive.stage(stage); if (!fromLive) DKState.hint(stage)
                     try {
                         val r = when (p) {
                             // 14 नवंबर 2026 (मालिक: "लेटेस्ट जानकारी नहीं निकाल पाता"): ख़बर वाले सवाल पर सिर्फ़ पिछले 1 दिन का फ़िल्टर था -
@@ -437,6 +441,11 @@ class BrainManager(private val ctx: Context) {
             throw AiException(0, "empty")
         }
         val sources = srcs.map { it.title to it.url }
+        // 14 नवंबर 2026 (मालिक: "कौन-कौन सी वेबसाइट पर जा रहा है"): असली नतीजों की साइटें - जवाब लिखते समय ही कार्ड में
+        val found = Grounding.sites(sources)
+        com.dk.assistant.dkai.DkaiSearchLive.add(found)
+        val stage = "${sources.size} वेबसाइटें मिलीं: " + com.dk.assistant.dkai.DkaiSearchLive.hosts(found).take(3).joinToString(", ") + " — पढ़कर जवाब लिख रहा है…"
+        com.dk.assistant.dkai.DkaiSearchLive.stage(stage); if (!fromLive) DKState.hint(stage)
         val g = WebCite.toG(srcs, provider, failed.toList(), live = fromLive)
         if (fromLive) return SearchResult(WebCite.liveReport(srcs), sources, g)
         val sys = WebCite.answerSystem(NowClock.line(), Prefs.assistantName(ctx), Prefs.userName(ctx)) + Memory.factsBlock(ctx)
