@@ -931,7 +931,7 @@ class AgentRunner(
         const val MAX_STEPS = 20
         /** Ye actions naya app/screen kholte hain - agle kadam se pehle uske khulne ka intezaar */
         val APP_OPENERS = setOf("open_app", "youtube_search", "youtube_play", "web_search", "open_url", "shop_search",
-            "directions", "navigate", "map_search", "open_settings", "dial")
+            "directions", "navigate", "map_search", "nearby_go", "open_settings", "dial")
         const val CREATOR_ANSWER = AssistantBrand.CREATOR_ANSWER
     }
 }

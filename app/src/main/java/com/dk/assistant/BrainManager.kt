@@ -77,7 +77,10 @@ class BrainManager(private val ctx: Context) {
         val active = Prefs.activeProvider(ctx)
         val (good, bad) = withKey.partition { ProviderHealth.usable(it.id) }
         // रोज़ की limit / गलत key वाली को बिल्कुल मत आज़माओ (हर बार वही 429 = देर); थोड़ी देर वाली सिर्फ़ आख़िर में
-        return good.sortedBy { ProviderHealth.speed(it.id) - (if (it.id == active) 150 else 0) } + bad.filter { ProviderHealth.retryable(it.id) }
+        val fast = good.sortedBy { ProviderHealth.speed(it.id) - (if (it.id == active) 150 else 0) }
+        // 14 नवंबर 2026 (मालिक): DKAI होम पर मॉडल चुना = वही कंपनी सबसे पहले (पहले तेज़ वाली जीत जाती थी). न चले = बाकी अपने-आप
+        val ordered = if (com.dk.assistant.dkai.DkaiPick.on(ctx)) com.dk.assistant.dkai.DkaiPick.activeFirst(fast, active) { it.id } else fast
+        return ordered + bad.filter { ProviderHealth.retryable(it.id) }
     }
 
     /** कोई key आज़माने लायक नहीं बची - साफ़ कारण के साथ (बिना नेट पर गए) */
@@ -784,6 +787,7 @@ class BrainManager(private val ctx: Context) {
             append("\nBackground work (DK Computer / coding team): when the user asks how far it has got or whether it is done, call task_status and say only what it returns. Never invent progress or percentages, and never say a task is done before a SYSTEM NOTE or task_status says FINISHED.")
             append("\nHONESTY (most important): never lie and never make a false promise. Say something is done (opened, played, sent, saved, set) ONLY if the tool result says DONE / ALREADY DONE / FINISHED. If it says FAILED - say honestly it did not work. If it says STILL RUNNING - say you are doing it and will tell when done (you will get a SYSTEM NOTE). Never promise to do something later (remind, call back, check later) unless a tool really does it (computer_task can do things later). Never invent facts, numbers, names or dates; if you do not know, search; if you still cannot find it, say honestly that you could not find reliable information.")
             append("\n" + TaskSense.PROMPT)
+            append("\n" + ActFirstRule.TEXT)   // 14 नवंबर 2026: पहले काम, फिर बात (पास की दुकान -> रास्ता तुरंत)
             append("\nIf the user wants anything DONE on the phone (open app, call, message, WhatsApp, YouTube, settings, torch, volume, maps, shopping, read the screen), call the function phone_task with their exact request, then tell the result in one short sentence.")
             // v4.1: Live कभी-कभी function call को text में लिख देता था ("phone_task{request:…}<ctrl43>") - काम होता ही नहीं था
             append("\nFUNCTION CALLS: always use the real function-calling mechanism. NEVER write or speak a function name, braces, arguments or tokens like <ctrl43> in your reply (wrong: phone_task{request:YouTube खोलो}). Do the call silently; the user should only hear the short result.")
@@ -836,7 +840,7 @@ class BrainManager(private val ctx: Context) {
             append(personaLine(persona).trim()).append("\n")
             append(Memory.factsBlock(ctx)).append("\n")
             append(TALK_RULES).append("\n")
-            append(TaskSense.PROMPT).append("\n")   // नवंबर 2026: काम / सवाल / जवाब / बातचीत - पहले पहचानो
+            append(TaskSense.PROMPT).append("\n").append(ActFirstRule.TEXT).append("\n")   // नवंबर 2026: काम / सवाल / जवाब / बातचीत - पहले पहचानो
             if (Prefs.friendMode(ctx)) append(FriendStyle.persona(dkFemale(), user)).append(FriendTalk.block(ctx)).append("\n")
             append(AssistantBrand.IDENTITY_RULE).append("\n")
         }
@@ -905,6 +909,7 @@ Available actions:
 {"type":"directions","to":"<place>","from":"<place or empty = my location>","mode":"driving|two_wheeler|walking|transit"}  open Google Maps route
 {"type":"navigate","to":"<place>","mode":"driving|two_wheeler|walking"}   start turn-by-turn navigation in Google Maps
 {"type":"map_search","query":"<place / 'petrol pump near me'>"}         show a place or nearby places on the map
+{"type":"nearby_go","find":"<कपड़े / मॉल / ATM ...>","mode":"driving"}  find the NEAREST such place and start Google Maps navigation at once (shopping near him / "पास की दुकान का रास्ता लगा दो")
 {"type":"distance","to":"<place>","from":"<place or empty = my location>","mode":"driving"}  measure road distance + travel time (result comes back as text)
 {"type":"wait","ms":1500}
 {"type":"ask","question":"..."}                   ask the user by voice; their answer arrives next turn

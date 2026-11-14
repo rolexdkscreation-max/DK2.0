@@ -75,7 +75,7 @@ object OfflineListen {
     }
 
     /** ये काम बिना इंटरनेट नहीं होते - ऑफलाइन में इन्हें नहीं चलाते (वरना ऐप खुलकर "नेट नहीं" दिखाता) */
-    val NEEDS_NET = setOf("youtube_play", "youtube_search", "browser_search", "shop_search", "map_search", "directions", "navigate", "distance")
+    val NEEDS_NET = setOf("youtube_play", "youtube_search", "browser_search", "shop_search", "map_search", "nearby_go", "directions", "navigate", "distance")
 
     /** पूरी बात फ़ोन पर ही (LocalRouter) हो सकती है और उसमें नेट नहीं चाहिए? */
     fun localCmd(text: String, names: List<String>, fg: String = ""): Boolean {

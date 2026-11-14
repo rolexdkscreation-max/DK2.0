@@ -215,6 +215,19 @@ object LocalInfo {
     }
 
     /**
+     * 14 नवंबर 2026 (मालिक: "सबसे पास वाली दुकान ढूँढो और रास्ता लगा दो") - [NearbyGo] के लिए:
+     * ताज़ा लोकेशन (तेज़ - sharpen नहीं, रास्ते के लिए काफ़ी) + [what] वाली जगहें नज़दीक से दूर. null = लोकेशन नहीं मिली.
+     */
+    suspend fun nearest(c: Context, what: String): Pair<Location, List<NearbyPlaces.Spot>>? {
+        val l = fresh(c, 8_000) ?: return null
+        val tags = NearbyPlaces.findTags(what)
+        val found = if (tags.isEmpty()) emptyList() else overpass(NearbyPlaces.findQuery(l.latitude, l.longitude, tags)) {
+            NearbyPlaces.parseFound(it, l.latitude, l.longitude, tags)
+        }
+        return l to found
+    }
+
+    /**
      * नवंबर 2026 (मालिक): "मेरे पास पेट्रोल पंप / ATM / मेडिकल / किराना दुकान कहाँ है" - ताज़ा लोकेशन से 3 km में, सबसे पास वाले पहले.
      * null = लोकेशन नहीं मिली.
      */

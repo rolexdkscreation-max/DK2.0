@@ -268,11 +268,8 @@ class DkaiPipeline(private val s: DkaiScreen) {
 
     // ================================================================== काम
     private suspend fun ask(system: String, prompt: String): String? {
-        val app = c.applicationContext
-        return withContext(Dispatchers.IO) {
-            try { CoderAi.fromPrefs(app)?.chat(system, listOf("user" to prompt)) } catch (e: Exception) { say("Coder AI: ${e.message?.take(100)}"); null }
-                ?: try { StoryAi.fromPrefs(app)?.write(system, listOf("user" to prompt))?.text } catch (_: Exception) { null }
-        } ?: BrainManager(app).quickText(system, prompt)
+        // 14 नवंबर 2026 (मालिक): होम पर चुना मॉडल ही काम करे, नाम/गलती सामने नहीं ([DkaiPick])
+        return DkaiPick.ask(c, system, prompt)
     }
 
     private fun fileList(p: File): List<String> = p.walkTopDown().maxDepth(6)

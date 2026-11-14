@@ -194,6 +194,17 @@ internal suspend fun GeminiLive.preparedSearch(query: String): SearchResult? {
 /** v4.3: user ने जगह/आसपास पूछा (सिर्फ़ मौसम नहीं) - तब पूरा पता + आसपास की जगहें */
 internal fun GeminiLive.wantsWhere(): Boolean = NearbyPlaces.wantsWhere(DKState.lastUser)
 
+/**
+ * 14 नवंबर 2026 (मालिक): "सबसे पास वाली दुकान/मॉल का रास्ता लगा दो" = ढूँढो + Google Maps navigation तुरंत ([NearbyGo]), कोई सवाल नहीं.
+ * इजाज़त/GPS बंद हो तो वही साफ़ संदेश जो [localInfoTool] देता है.
+ */
+internal suspend fun GeminiLive.localGoTool(find: String): String {
+    if (find.isBlank() || !LocalInfo.hasPermission(svc) || !LocalInfo.locationOn(svc)) return localInfoTool(find)
+    DKState.set(Mode.WORKING)
+    return NearbyGo.go(svc, find)
+        ?: "Could not get a fresh location fix right now (weak GPS/network). Tell him honestly; suggest stepping near a window/open area with Location ON and asking again."
+}
+
 internal suspend fun GeminiLive.localInfoTool(find: String = ""): String {
     // v4.3 (मालिक): इजाज़त नहीं / GPS बंद = साफ़ बताओ कि क्या चालू करना है
     if (!LocalInfo.hasPermission(svc)) {
@@ -375,7 +386,10 @@ internal fun GeminiLive.runTools(calls: JSONArray) {
             // नवंबर 2026: आवाज़ बॉस की नहीं = पैसे / भेजना / कॉल / डिलीट / सेटिंग नहीं
             val result = try { SideTalk.blockFor(name, args, sideWho())?.also { log("tool $name - आवाज़ बॉस की नहीं, रोका") }
                 // 14 नवंबर 2026: DKAI पर चुना टैब + बड़े काम से पहले मालिक की हाँ ([workGate])
-                ?: workGate(name, args) ?: when (name) {
+                ?: workGate(name, args)
+                // 14 नवंबर 2026 (मालिक): "पास की दुकान/मॉल का रास्ता लगा दो" = ढूँढो + Maps navigation तुरंत ([localGoTool])
+                ?: (if (name == "local_info" && args.optBoolean("go")) localGoTool(args.optString("find")) else null)
+                ?: when (name) {
                 "phone_task" -> phoneTask(args.optString("request"))
                 "task_status" -> TaskStatus.summary()
                 "look_screen" -> ScreenLook.liveTool(svc, args.optString("question").ifBlank { DKState.lastUser.trimEnd('…') })

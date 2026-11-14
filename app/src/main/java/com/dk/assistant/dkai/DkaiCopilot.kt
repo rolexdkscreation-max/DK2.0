@@ -69,10 +69,8 @@ object DkaiCopilot {
                 val ctx = withContext(Dispatchers.IO) { context(project) }
                 val prompt = "PROJECT: ${project.name}\n\n" + (if (ctx.isBlank()) "(project is empty - create the needed files)\n" else ctx) + "\nCOMMAND: $command"
                 say("${DkaiKit.COPILOT} सोच रहा है…")
-                val raw = withContext(Dispatchers.IO) {
-                    try { CoderAi.fromPrefs(app)?.chat(DkaiKit.COPILOT_SYSTEM, listOf("user" to prompt)) } catch (e: Exception) { say("Coder AI: ${e.message?.take(100)}"); null }
-                        ?: try { StoryAi.fromPrefs(app)?.write(DkaiKit.COPILOT_SYSTEM, listOf("user" to prompt))?.text } catch (e: Exception) { null }
-                } ?: BrainManager(app).quickText(DkaiKit.COPILOT_SYSTEM, prompt)
+                // 14 नवंबर 2026 (मालिक): होम पर चुना मॉडल ही काम करे, नाम/गलती सामने नहीं ([DkaiPick])
+                val raw = DkaiPick.ask(app, DkaiKit.COPILOT_SYSTEM, prompt)
                 if (raw.isNullOrBlank()) throw IllegalStateException("AI से जवाब नहीं मिला (Settings → AI दिमाग / कोडिंग एजेंट की key देखें)")
                 val edits = DkaiKit.parseEdits(raw)
                 val summary = DkaiKit.summaryOf(raw)
