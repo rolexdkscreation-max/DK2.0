@@ -340,6 +340,8 @@ object Prefs {
     /** v4: जिसने कभी आकार नहीं चुना उसे नया नियॉन ओर्ब; पहले चुना हुआ आकार वैसा ही */
     /** v4.x: जवाब वाले बुलबुले का "लिख रही है" एनीमेशन (TypingStyles) */
     fun typingStyle(c: Context): String = TypingStyles.valid(sp(c).getString("typing_style", TypingStyles.BARS))
+    /** 14 नवंबर 2026 (मालिक): DK कंप्यूटर + कोडिंग एजेंट का बुलबुला - डिफ़ॉल्ट छोटा कंप्यूटर */
+    fun typingStyleAgent(c: Context): String = TypingStyles.validAgent(sp(c).getString("typing_style_agent", TypingStyles.COMPUTER))
     fun orbStyle(c: Context) = Shapes.valid(sp(c).getString("orb_style", Shapes.NEON))
     /** v3.71: ORB की जगह क्या दिखे - "orb" (डिफ़ॉल्ट) या "girl" (लड़की अवतार) */
     /** v3.57: DK सुन/बोल रहा हो तो स्क्रीन के किनारों पर चमक */

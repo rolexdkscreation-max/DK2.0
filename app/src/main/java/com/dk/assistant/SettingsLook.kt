@@ -159,12 +159,24 @@ internal fun SettingsActivity.secUi() {
         val cur = Prefs.typingStyle(this)
         val prev = DKWorkingIndicator(this).apply { bare = true; state = WorkState.THINKING; typingPreview = cur }
         box.addView(prev, LinearLayout.LayoutParams((56 * dp).toInt(), (56 * dp).toInt()).apply { gravity = Gravity.CENTER_HORIZONTAL })
-        val g = radios(box, TypingStyles.STYLES, cur, 6400)
+        val g = radios(box, TypingStyles.ALL, cur, 6400)
         g.setOnCheckedChangeListener { _, id ->
-            val v = TypingStyles.STYLES.getOrNull(id - 6400)?.first ?: return@setOnCheckedChangeListener
+            val v = TypingStyles.ALL.getOrNull(id - 6400)?.first ?: return@setOnCheckedChangeListener
             Prefs.edit(this) { putString("typing_style", v) }
             prev.typingPreview = v
         }
+        // 14 नवंबर 2026 (मालिक): DK कंप्यूटर + कोडिंग एजेंट का अलग चुनाव (डिफ़ॉल्ट छोटा कंप्यूटर)
+        hint(box, "DK कंप्यूटर और कोडिंग एजेंट में (\"काम Running…\" वाला बुलबुला):")
+        val curA = Prefs.typingStyleAgent(this)
+        val prevA = DKWorkingIndicator(this).apply { bare = true; agent = true; state = WorkState.WORKING; typingPreview = curA }
+        box.addView(prevA, LinearLayout.LayoutParams((56 * dp).toInt(), (56 * dp).toInt()).apply { gravity = Gravity.CENTER_HORIZONTAL })
+        val ga = radios(box, TypingStyles.ALL, curA, 6500)
+        ga.setOnCheckedChangeListener { _, id ->
+            val v = TypingStyles.ALL.getOrNull(id - 6500)?.first ?: return@setOnCheckedChangeListener
+            Prefs.edit(this) { putString("typing_style_agent", v) }
+            prevA.typingPreview = v
+        }
+        hint(box, "हर जगह एक जैसा चाहिए तो ऊपर वाली सूची में भी \"छोटा कंप्यूटर\" चुन लें — तब चैट में भी वही दिखेगा।")
     }
     card("दिखावट पहले जैसी करें", "सिर्फ़ रंग-रूप शुरुआती जैसा — बातचीत, यादें, key और आवाज़ की सेटिंग नहीं मिटतीं", startOpen = true) { box ->
         row(box, button("दिखावट रीसेट करें") {

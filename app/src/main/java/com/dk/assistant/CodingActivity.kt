@@ -363,7 +363,7 @@ class CodingActivity : AppCompatActivity() {
         }
         col.addView(mediaScroll, LinearLayout.LayoutParams(-1, -2).apply { topMargin = (6 * dp).toInt() })
         col.addView(composer, LinearLayout.LayoutParams(-1, -2).apply { topMargin = (8 * dp).toInt() })
-        inline = DKInlineReply(list, scroll, 0.82f)
+        inline = DKInlineReply(list, scroll, 0.82f, agent = true)
 
         // बटन: काम चलते समय = रोकें; keyboard/माइक का भेजें = हमेशा भेजना (doSend खुद तय करता है)
         // नवंबर 2026: काम चलते समय डिब्बा खाली = रोकें; कुछ लिखा = भेजें (उसी काम का = साथ में, अलग = बाद में)

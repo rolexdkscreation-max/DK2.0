@@ -175,7 +175,7 @@ class ComputerActivity : AppCompatActivity() {
         edt = composer.edt
         send = composer.send
         col.addView(composer, LinearLayout.LayoutParams(-1, -2).apply { topMargin = (8 * dp).toInt() })
-        inline = DKInlineReply(list, scroll, 0.86f)
+        inline = DKInlineReply(list, scroll, 0.86f, agent = true)
         composer.onSend = { doSend() }
 
         // काम चलते समय: डिब्बा खाली = रोकें; कुछ लिखा = भेजें (उसी काम का = साथ में, अलग = बाद में)

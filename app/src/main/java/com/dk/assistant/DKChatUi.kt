@@ -125,7 +125,9 @@ class DKReplyBubble(ctx: Context) : LinearLayout(ctx) {
 }
 
 /** सूची के सबसे नीचे एक ही \"लिख रहा है\" बुलबुला. जवाब आए तो उसी को भरो (नया बुलबुला नहीं) */
-class DKInlineReply(private val list: LinearLayout, private val scroll: ScrollView?, private val widthFrac: Float = 0.82f) {
+class DKInlineReply(private val list: LinearLayout, private val scroll: ScrollView?, private val widthFrac: Float = 0.82f,
+                    /** DK कंप्यूटर / कोडिंग एजेंट: बुलबुले में उनका अलग टाइपिंग एनीमेशन (डिफ़ॉल्ट छोटा कंप्यूटर) */
+                    private val agent: Boolean = false) {
     private val ctx = list.context
     private val dp = ctx.resources.displayMetrics.density
     var bubble: DKReplyBubble? = null
@@ -139,6 +141,7 @@ class DKInlineReply(private val list: LinearLayout, private val scroll: ScrollVi
     /** तरंग वाला बुलबुला दिखाओ/ताज़ा करो (हमेशा सूची के आख़िर में) */
     fun show(label: String, st: WorkState = WorkState.THINKING) {
         val b = bubble ?: DKReplyBubble(ctx).also {
+            it.wave.agent = agent
             it.setMaxTextWidth((ctx.resources.displayMetrics.widthPixels * widthFrac).toInt())
             bubble = it
             it.alpha = 0f
