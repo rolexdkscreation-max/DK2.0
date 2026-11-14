@@ -40,22 +40,15 @@ class CoderAllApiFallbackTest {
         assertTrue(s.contains("ApiScopes.crossOrder(Prefs.scopeActive(c, ApiScopes.CODER))"))
     }
 
-    @Test fun newUi_switch_inSettings_andByVoice_notInMenu() {
+    /** 14 नवंबर 2026 (मालिक: "नया UI पूरा हटाओ, पुराना रखो"): नया/क्लासिक बदलने वाला स्विच हटा - एक ही होम */
+    @Test fun oneHome_switchRemoved() {
         val look = src("SettingsLook.kt")
-        assertTrue(look.contains("card(\"होम का रूप (नया UI)\""))
-        assertTrue(look.contains("com.dk.assistant.dkai.Dkai.set(this, on)"))
-        assertTrue(SettingsSearch.search("नया UI").any { it.section == "ui" && it.card == "होम का रूप (नया UI)" })
-        val item = DkSettings.ITEMS.first { it.id == "dkai_home" }
-        assertEquals(com.dk.assistant.dkai.Dkai.PREF, item.pref)
-        assertTrue(item.def)
-        assertEquals("dkai_home", DkSettings.find("नया UI बंद कर दो")?.id)
-        assertEquals("dkai_home", DkSettings.find("क्लासिक होम कर दो")?.id)
-        assertTrue(src("DkSettingsApply.kt").contains("MainActivity.homeChanged()"))
+        assertFalse(look.contains("card(\"होम का रूप (नया UI)\""))
+        assertFalse(look.contains("Dkai.set("))
+        assertTrue(DkSettings.ITEMS.none { it.id == "dkai_home" })
+        assertTrue(SettingsSearch.search("नया UI").none { it.card == "होम का रूप (नया UI)" })
+        assertTrue(src("dkai/DkaiScreen.kt").contains("fun on(c: android.content.Context) = true"))
         val main = src("MainActivity.kt")
-        assertFalse(main.contains("\"क्लासिक होम\", \"पुराना orb वाला होम"))
-        assertFalse(main.contains("\"DKAI होम\", \"नया होम:"))
         assertFalse(main.contains("Dkai.set("))
-        assertTrue(main.contains("fun homeChanged()"))
-        assertTrue(main.contains("if (com.dk.assistant.dkai.Dkai.on(this) != (dkai != null)) { recreate(); return }"))
     }
 }

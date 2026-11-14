@@ -23,7 +23,7 @@ class DkaiKitTest {
 
     @Test fun noVideoNoRoot() {
         // spec: वीडियो बनाना नहीं, root नहीं - नई फ़ाइलों में ऐसा कुछ न हो
-        for (f in listOf("dkai/DkaiBroadcast.kt", "dkai/DkaiDevTools.kt", "dkai/DkaiCopilot.kt", "dkai/DkaiSheets.kt")) {
+        for (f in listOf("dkai/DkaiZip.kt", "dkai/DkaiHomeViews.kt", "dkai/DkaiScreen.kt", "dkai/DkaiSheets.kt")) {
             val s = src(f)
             assertFalse(f, s.contains("\"su\""))
             assertFalse(f, s.contains("MediaRecorder.VideoSource"))
@@ -217,10 +217,12 @@ class DkaiKitTest {
 
     @Test fun screenWiring() {
         val sc = src("dkai/DkaiScreen.kt")
-        assertTrue(sc.contains("DkaiSheets.modes(")); assertTrue(sc.contains("DkaiSheets.models(")); assertTrue(sc.contains("DkaiSheets.attach("))
-        assertTrue(sc.contains("DkaiSettings(this).open()")); assertTrue(sc.contains("DkaiDevTools(this).open()"))
+        assertTrue(sc.contains("DkaiSheets.models(")); assertTrue(sc.contains("DkaiSheets.attach("))
+        // 14 नवंबर 2026 (मालिक): मोड / IDE टैब / Dev Tools हटे - ⚙ = एक सूची, नीचे Perplexity जैसा डिब्बा
+        assertFalse(sc.contains("DkaiSheets.modes(")); assertFalse(sc.contains("DkaiDevTools")); assertFalse(sc.contains("gitTab"))
+        assertTrue(sc.contains("settingsList()")); assertTrue(sc.contains("host.settingsItems()"))
+        assertTrue(sc.contains("Logo3D(c, R.drawable.ic_dk)")); assertTrue(sc.contains("ComputerEyes(c)")); assertTrue(sc.contains("InlineDictation(c,"))
         assertTrue(sc.contains("DkaiUi.closeTop(root)")); assertTrue(sc.contains("DkaiTheme.load(c)"))
-        assertTrue(sc.contains("gitTab.root"))
         assertTrue(src("dkai/DkaiViews.kt").contains("R.drawable.ic_dk"))
         assertTrue(src("dkai/DkaiVoice.kt").contains("Voices & Speed"))
     }

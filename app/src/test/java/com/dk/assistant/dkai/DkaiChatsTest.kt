@@ -75,22 +75,24 @@ class DkaiChatsTest {
         assertEquals(0xFF161E31.toInt(), DkaiTheme.LOGO_TILE)
         val sc = src("dkai/DkaiScreen.kt")
         assertTrue(sc.contains("DkaiTheme.round(c, DkaiTheme.LOGO_TILE, 10f"))     // लोगो के पीछे सफ़ेद डिब्बा नहीं
-        assertTrue(sc.contains("DkaiIcon.Kind.SEND, \"भेजें\", DkaiTheme.ICON_CYAN"))
-        assertTrue(sc.contains("DkaiIcon(DkaiIcon.Kind.MIC, DkaiTheme.ON)"))
+        assertTrue(sc.contains("DkaiIcon(DkaiIcon.Kind.WAVE, DkaiTheme.ON)"))       // नीले बटन पर हमेशा सफ़ेद
+        assertTrue(sc.contains("micIcon.setImageDrawable(DkaiIcon(want, DkaiTheme.ON))"))
         assertFalse(sc.contains("0xFF0D1324"))                                    // नीचे की पट्टी अब थीम से
         val v = src("dkai/DkaiViews.kt")
         assertTrue(v.contains("intArrayOf(DkaiTheme.BADGE_CORE, DkaiTheme.LOGO_TILE)"))
         assertFalse(v.contains("0xFFE8EEFF"))
     }
 
-    @Test fun modeRowGoneButDropdownKeepsAllModes() {
+    /** 14 नवंबर 2026 (मालिक: "नया UI हटाओ"): मोड की पंक्ति और "Chat ▾" वाला dropdown दोनों हटे - नीचे सिर्फ़ 🔍 / 🖥 */
+    @Test fun modeRowAndDropdownGone() {
         val sc = src("dkai/DkaiScreen.kt")
         assertFalse(sc.contains("cardRow"))
         assertFalse(sc.contains("for (m in DkaiMode.CARDS)"))
-        assertTrue(sc.contains("DkaiSheets.modes(this@DkaiScreen, v)"))
-        for (m in listOf(DkaiMode.CHAT, DkaiMode.BUILDER, DkaiMode.AGENT, DkaiMode.PIPELINE)) assertTrue(m.label, m in DkaiKit.HOME_MODES)
-        assertTrue(src("dkai/DkaiSheets.kt").contains("for (m in DkaiKit.HOME_MODES)"))
+        assertFalse(sc.contains("DkaiSheets.modes("))
+        assertFalse(src("dkai/DkaiSheets.kt").contains("for (m in DkaiKit.HOME_MODES)"))
+        assertTrue(sc.contains("fun setComputer(on: Boolean)"))
     }
+
 
     @Test fun chatLabelOpensHistory() {
         val sc = src("dkai/DkaiScreen.kt")

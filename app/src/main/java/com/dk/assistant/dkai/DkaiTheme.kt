@@ -128,6 +128,8 @@ class DkaiIcon(val kind: Kind, tint: Int, private val strokeW: Float = 2f) : Dra
         DOWN("M6 9l6 6 6-6"),
         UP("M18 15l-6-6-6 6"),
         SEND("M12 19V5 M5 12l7-7 7 7"),
+        // 14 नवंबर 2026: Perplexity जैसा आवाज़-तरंग बटन (सीधी बातचीत = DK लाइव)
+        WAVE("M4 10v4 M8 7v10 M12 4v16 M16 7v10 M20 10v4"),
         MENU("M3 12h18 M3 6h18 M3 18h18"),
         FEMALE("M17 8a5 5 0 1 1-10 0a5 5 0 1 1 10 0z M12 13v9 M9 19h6"),
         MALE("M15 14a5 5 0 1 1-10 0a5 5 0 1 1 10 0z M13.5 10.5L20 4 M15 4h5v5"),

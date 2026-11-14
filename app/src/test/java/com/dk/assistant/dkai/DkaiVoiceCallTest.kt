@@ -68,7 +68,6 @@ class DkaiVoiceCallTest {
         // सामान्य सवाल (खोज नहीं) पर कार्ड नहीं: start, skip वाली लाइन के बाद
         assertTrue(tools.indexOf("NO_SEARCH_NEEDED") < tools.indexOf("DkaiSearchLive.start(q)"))
         assertTrue(src("GeminiLiveChecks.kt").contains("DkaiSearchLive.start(user)"))
-        assertFalse(src("dkai/DkaiBroadcast.kt").contains("DkaiSearchLive"))
         assertTrue(src("dkai/DkaiScreen.kt").contains("DkaiSearchCard(c)"))
         val card = src("dkai/DkaiSearchCard.kt")
         for (k in listOf("\"Processing\"", "Searching", "Researching: Live Research…", "Exploring live web sources", "visited")) assertTrue(k, card.contains(k))

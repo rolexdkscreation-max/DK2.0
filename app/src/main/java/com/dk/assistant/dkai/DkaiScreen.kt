@@ -40,10 +40,12 @@ class DkaiHost(
 )
 
 object Dkai {
-    const val PREF = "dkai_home"
-    /** DKAI होम चालू (डिफ़ॉल्ट हाँ). बंद = पुराना (क्लासिक) होम */
-    fun on(c: android.content.Context) = Prefs.bool(c, PREF, true)
-    fun set(c: android.content.Context, on: Boolean) = Prefs.edit(c) { putBoolean(PREF, on) }
+    /**
+     * 14 नवंबर 2026 (मालिक: "नया UI पूरा हटाओ, पुराना रखो - पर होम Perplexity जैसा"): अब एक ही होम.
+     * नया/क्लासिक बदलने वाला स्विच हटा - होम हमेशा यही (चैट + चैट-सूची + आवाज़), IDE टैब / मोड / Terminal नहीं.
+     */
+    @Suppress("UNUSED_PARAMETER")
+    fun on(c: android.content.Context) = true
     /** चैट नंबर ("Chat #3") - "+ New" दबाने पर +1 */
     fun chatNo(c: android.content.Context) = Prefs.str(c, "dkai_chat_no", "1").toIntOrNull() ?: 1
     fun nextChat(c: android.content.Context) = setChat(c, DkaiChats.nextNo(DkaiChats.dir(c), chatNo(c)))
@@ -52,19 +54,20 @@ object Dkai {
 }
 
 /**
- * DKAI स्क्रीन: State 1 (होम + चैट + IDE टैब), State 2 (पूरी आवाज़), State 3 (छोटी तैरती पट्टी).
+ * DK होम: State 1 (होम + चैट, Perplexity जैसा नीचे "Ask anything" डिब्बा), State 2 (पूरी आवाज़), State 3 (छोटी तैरती पट्टी).
  * MainActivity के ऊपर addContentView से - पुराना होम नीचे वैसा ही (क्लासिक होम पर वापस जा सकते हैं).
  */
-class DkaiScreen(val activity: ComponentActivity, val host: DkaiHost) : DkaiNav {
-    override val act get() = activity
+class DkaiScreen(val activity: ComponentActivity, val host: DkaiHost) {
     private val c = activity
     private val ui = Handler(Looper.getMainLooper())
     private fun d(v: Float) = dp(c, v)
 
     // ------------------------------------------------------------------ हालत
     var voiceSessionState = VoiceSessionState.INACTIVE; private set
-    var tab = DkaiTab.HOME; private set
-    var mode = DkaiMode.CHAT; private set
+    /** आवाज़ वाले हिस्से के लिए - मोड हटे, हमेशा Chat */
+    val mode = DkaiMode.CHAT
+    /** 🔍 (खोज / चैट) या 🖥 (DK Computer) - नीचे वाला दो-हिस्सों का बटन */
+    var computerMode = false; private set
 
     // ------------------------------------------------------------------ views
     lateinit var root: FrameLayout; private set
@@ -80,26 +83,23 @@ class DkaiScreen(val activity: ComponentActivity, val host: DkaiHost) : DkaiNav 
     lateinit var input: EditText; private set
     private lateinit var inputBox: LinearLayout
     private lateinit var modelPill: TextView
-    private lateinit var modePill: TextView
-    private lateinit var sendBtn: ImageView
-    private lateinit var quickGrid: LinearLayout
     private lateinit var micBtn: FrameLayout
     private lateinit var micIcon: ImageView
-    private lateinit var nav: LinearLayout
-    private val navItems = HashMap<DkaiTab, Pair<ImageView, TextView>>()
+    private lateinit var dictBtn: ImageView
+    private lateinit var searchSeg: ImageView
+    private lateinit var compSeg: FrameLayout
+    private lateinit var compEyes: ComputerEyes
+    private lateinit var attachRow: LinearLayout
+    private lateinit var attachScroll: HorizontalScrollView
+    private lateinit var heroBox: LinearLayout
+    private lateinit var hero: Logo3D
     lateinit var voice: DkaiVoice; private set
-    private lateinit var castBox: LinearLayout
-    /** 14 नवंबर 2026: होम पर Broadcast कार्ड */
-    lateinit var cast: DkaiCastCard; private set
 
-    val files by lazy { FilesPanel(this) }
-    val editor by lazy { EditorPanel(this) }
-    val terminal by lazy { TerminalPanel(this) }
-    val preview by lazy { PreviewPanel(this) }
-    val github by lazy { GithubPanel(this) }
-    /** 13 नवंबर 2026 (मालिक - M6): GitHub टैब = GitHub | Root Project (DKAI Copilot) */
-    val rootProject by lazy { RootProjectPanel(this) }
-    val gitTab by lazy { GitTab(this, github, rootProject) }
+    /** + से चुनी फोटो / फ़ाइल (भेजने तक यहीं, ✕ से हटाओ) */
+    private val attached = ArrayList<android.net.Uri>()
+    /** 🎤 लिखवाना चालू (null = नहीं) */
+    private var dictation: InlineDictation? = null
+    private var dictBase = ""
 
     private var shownMsgs = -1
     private var shownLive = ""
@@ -110,9 +110,9 @@ class DkaiScreen(val activity: ComponentActivity, val host: DkaiHost) : DkaiNav 
         root = FrameLayout(c).apply { setBackgroundColor(DkaiTheme.BG); isClickable = true; id = R.id.dkai_root; tag = this@DkaiScreen }
         content = LinearLayout(c).apply { orientation = LinearLayout.VERTICAL }
         root.addView(content, FrameLayout.LayoutParams(-1, -1))
-        buildHeader(); buildHome(); buildInput(); buildNav()
+        buildHeader(); buildHome(); buildInput()
         voice = DkaiVoice(this)
-        pickMode(mode)                                          // hint + "Chat ▾" शुरू से सही
+        setComputer(false)
         root.addView(voice.mini, voice.miniParams())
         root.addView(voice.sheet, FrameLayout.LayoutParams(-1, -1))
         c.addContentView(root, ViewGroup.LayoutParams(-1, -1))
@@ -132,8 +132,9 @@ class DkaiScreen(val activity: ComponentActivity, val host: DkaiHost) : DkaiNav 
         activity.onBackPressedDispatcher.addCallback(activity, back)
         DkaiLive.attach(this)
         renumberChats()
-        showTab(DkaiTab.HOME, animate = false)
+        panelHost.addView(homeScroll, FrameLayout.LayoutParams(-1, -1))
         render()
+        hero.post { hero.spin() }                               // ऐप खुलते ही लोगो 3D में एक चक्कर
         return this
     }
 
@@ -194,10 +195,8 @@ class DkaiScreen(val activity: ComponentActivity, val host: DkaiHost) : DkaiNav 
             LinearLayout.LayoutParams(d(32f), d(32f)).apply { leftMargin = d(2f) })
         head.addView(DkaiTheme.text(c, "DKAI", 21f, DkaiTheme.WHITE, DkaiTheme.SANS_BOLD).apply { letterSpacing = 0.04f; setPadding(d(8f), 0, 0, 0); maxLines = 1 },
             LinearLayout.LayoutParams(0, -2, 1f))
-        head.addView(headIcon(DkaiIcon.Kind.PLAY_FILL, "आवाज़ से बात शुरू करें", DkaiTheme.ON, DkaiTheme.BLUE) { micTap() },
-            LinearLayout.LayoutParams(d(36f), d(36f)).apply { rightMargin = d(4f) })
-        // 14 नवंबर 2026 (मालिक: "इधर-उधर जो बिखरा हुआ है, वो सारे चीज़ें सेटिंग के अंदर"): Dev Tools / प्रोफ़ाइल / शेयर अब ⚙ Settings में
-        head.addView(headIcon(DkaiIcon.Kind.GEAR, "Settings - सब कुछ एक जगह") { DkaiSettings(this).open() })
+        // 14 नवंबर 2026 (मालिक): आवाज़ वाला बटन अब नीचे "Ask anything" डिब्बे में (Perplexity जैसा) - ऊपर सिर्फ़ ⚙
+        head.addView(headIcon(DkaiIcon.Kind.GEAR, "Settings - सब कुछ एक जगह") { settingsList() })
         content.addView(head, LinearLayout.LayoutParams(-1, d(52f)))
 
         // Chat #1  • READY            🔍  ⧉  ↗  + New
@@ -237,83 +236,48 @@ class DkaiScreen(val activity: ComponentActivity, val host: DkaiHost) : DkaiNav 
         content.addView(panelHost, LinearLayout.LayoutParams(-1, 0, 1f))
     }
 
-    // ================================================================== State 1: बीच (hero + कार्ड + चैट)
+    /** ⚙: पूरी DK सेटिंग्स + बाकी रास्ते (फ़ोन कंट्रोल, माइक, Story Writer, टीचर, Forge…) + प्रोफ़ाइल + थीम */
+    private fun settingsList() {
+        val items = ArrayList<Pair<String, () -> Unit>>()
+        try { for ((t, sub, go) in host.settingsItems()) items.add("$t — $sub" to go) } catch (_: Exception) {}
+        if (items.isEmpty()) items.add("पूरी DK सेटिंग्स" to { c.startActivity(Intent(c, SettingsActivity::class.java)) })
+        items.add("प्रोफ़ाइल (आपका नाम)" to { DkaiSheets.profile(this) })
+        items.add((if (DkaiTheme.light) "डार्क थीम पर जाएँ" else "लाइट थीम पर जाएँ") to { DkaiTheme.setLight(c, !DkaiTheme.light); activity.recreate() })
+        android.app.AlertDialog.Builder(c).setTitle("Settings")
+            .setItems(items.map { it.first }.toTypedArray()) { _, i -> items.getOrNull(i)?.second?.invoke() }.show()
+    }
+
+    // ================================================================== State 1: बीच (3D लोगो + चैट)
     private fun buildHome() {
-        homeCol = LinearLayout(c).apply { orientation = LinearLayout.VERTICAL; setPadding(0, d(18f), 0, d(16f)) }
-        homeCol.addView(AiBadgeView(c), LinearLayout.LayoutParams(d(92f), d(92f)).apply { gravity = Gravity.CENTER_HORIZONTAL })
-        homeCol.addView(DkaiTheme.text(c, "What would you like to build or explore?", 21f, DkaiTheme.WHITE, DkaiTheme.SANS_MED).apply {
-            gravity = Gravity.CENTER; setLineSpacing(0f, 1.15f); setPadding(d(28f), d(14f), d(28f), d(18f))
-        }, LinearLayout.LayoutParams(-1, -2))
-        // 2x2 quick कार्ड (Deep Web Research / Landing Page / Expense Tracker / Voice Assistant)
-        quickGrid = LinearLayout(c).apply { orientation = LinearLayout.VERTICAL; setPadding(d(16f), 0, d(16f), d(10f)) }
-        for (r in 0 until 2) {
-            val row = LinearLayout(c).apply { orientation = LinearLayout.HORIZONTAL }
-            for (k in 0 until 2) row.addView(quick(DkaiKit.QUICK[r * 2 + k]), LinearLayout.LayoutParams(0, -2, 1f).apply { if (k == 0) rightMargin = d(10f) })
-            quickGrid.addView(row, LinearLayout.LayoutParams(-1, -2).apply { if (r == 0) bottomMargin = d(10f) })
-        }
-        homeCol.addView(quickGrid)
-        // 13 नवंबर 2026 (मालिक): Chat / Builder / Agent / Pipeline वाली कार्ड-पंक्ति होम से हटी - मोड अब सिर्फ़ नीचे "Chat ▾" से
+        homeCol = LinearLayout(c).apply { orientation = LinearLayout.VERTICAL; setPadding(0, d(8f), 0, d(16f)) }
+        // 14 नवंबर 2026 (मालिक: "Perplexity जैसा"): चैट खाली = बीच में घूमता 3D DK लोगो (टैप = फिर घूमे). quick कार्ड / Broadcast हटे
+        heroBox = LinearLayout(c).apply { orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER }
+        hero = Logo3D(c, R.drawable.ic_dk).apply { setOnClickListener { spin() } }
+        heroBox.addView(hero, LinearLayout.LayoutParams(d(120f), d(120f)))
+        homeCol.addView(heroBox, LinearLayout.LayoutParams(-1, 0, 1f))
         chatList = LinearLayout(c).apply { orientation = LinearLayout.VERTICAL; setPadding(d(14f), d(14f), d(14f), 0) }
         UiLang.keep(chatList)
         homeCol.addView(chatList)
-        // 14 नवंबर 2026 (मालिक): Broadcast यहीं होम पर बनता दिखे (स्क्रिप्ट लाइव लिखती, फिर आवाज़ अपने-आप)
-        castBox = LinearLayout(c).apply { orientation = LinearLayout.VERTICAL }
-        homeCol.addView(castBox)
-        cast = DkaiCastCard(this, castBox)
         homeScroll = ScrollView(c).apply { isFillViewport = true; clipToPadding = false; addView(homeCol) }
     }
 
-    private fun quick(q: DkaiKit.Quick): View {
-        val kind = when (q.icon) { "search" -> DkaiIcon.Kind.SEARCH; "globe" -> DkaiIcon.Kind.GLOBE; "wallet" -> DkaiIcon.Kind.WALLET; else -> DkaiIcon.Kind.MIC }
-        val tint = when (q.icon) { "search" -> DkaiTheme.ICON_CYAN; "globe" -> DkaiTheme.VIOLET; "wallet" -> DkaiKit.EMERALD; else -> DkaiTheme.PINK }
-        return LinearLayout(c).apply {
-            orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER; minimumHeight = d(92f)
-            setPadding(d(10f), d(14f), d(10f), d(12f))
-            background = DkaiTheme.press(DkaiTheme.round(c, DkaiTheme.CARD, 18f, DkaiTheme.BORDER))
-            isClickable = true; isFocusable = true; contentDescription = q.title + ", " + q.sub
-            addView(ImageView(c).apply { setImageDrawable(DkaiIcon(kind, tint)) }, LinearLayout.LayoutParams(d(24f), d(24f)))
-            addView(DkaiTheme.text(c, q.title, 13.5f, DkaiTheme.WHITE, DkaiTheme.SANS_MED).apply { setPadding(0, d(8f), 0, 0); gravity = Gravity.CENTER; maxLines = 1 })
-            addView(DkaiTheme.text(c, q.sub, 11f, DkaiTheme.GRAY).apply { setPadding(0, d(2f), 0, 0); gravity = Gravity.CENTER; maxLines = 2 })
-            setOnClickListener { useQuick(q) }
-        }
-    }
-
-    /** quick कार्ड = सच में काम: सही मोड + prompt (अधूरा हो तो आप पूरा करें, पूरा हो तो भेजो) */
-    private fun useQuick(q: DkaiKit.Quick) {
-        val m = q.mode ?: run { micTap(); return }
-        pickMode(m)
-        input.setText(q.prompt); input.setSelection(input.text.length)
-        if (DkaiKit.needsMore(q)) {
-            input.requestFocus()
-            try { (c.getSystemService(android.content.Context.INPUT_METHOD_SERVICE) as InputMethodManager).showSoftInput(input, 0) } catch (_: Exception) {}
-        } else send()
-    }
-
-    fun pickMode(m: DkaiMode) {
-        mode = m
-        input.hint = when (m) {
-            DkaiMode.BUILDER -> "Describe the app or website to build..."
-            DkaiMode.AGENT -> "Give DK Computer a multi-step task..."
-            DkaiMode.PIPELINE -> "Describe a big goal - Pipeline plans it step by step..."
-            DkaiMode.BROADCAST -> "Broadcast topic - news, podcast, story, lecture..."
-            else -> "Build apps, create websites, or write code..."
-        }
-        if (::modePill.isInitialized) modePill.text = m.label + " ▾"
-        if (::voice.isInitialized) voice.follow(m)          // आवाज़ वाला टैब भी वही
-        if (tab != DkaiTab.HOME) showTab(DkaiTab.HOME)
-    }
-
-    // ================================================================== State 1: नीचे लिखने का डिब्बा
+    // ================================================================== State 1: नीचे "Ask anything" डिब्बा (Perplexity जैसा)
+    // [फोटो चिप ✕ ✕ ✕]
+    // Ask anything…
+    // [+] [🔍|🖥] [Model ▾]                [🎤] [〰 / ↑]
     private fun buildInput() {
         inputBox = LinearLayout(c).apply {
             orientation = LinearLayout.VERTICAL
-            background = DkaiTheme.round(c, DkaiTheme.CARD, 22f, DkaiTheme.BORDER)
-            setPadding(d(14f), d(6f), d(8f), d(8f))
+            background = DkaiTheme.round(c, DkaiTheme.CARD, 24f, DkaiTheme.BORDER)
+            setPadding(d(12f), d(6f), d(8f), d(8f))
         }
+        attachRow = LinearLayout(c).apply { orientation = LinearLayout.HORIZONTAL; setPadding(0, d(4f), 0, d(2f)) }
+        attachScroll = HorizontalScrollView(c).apply { isHorizontalScrollBarEnabled = false; visibility = View.GONE; addView(attachRow) }
+        inputBox.addView(attachScroll, LinearLayout.LayoutParams(-1, -2))
         input = EditText(c).apply {
-            hint = "Build apps, create websites, or write code..."; textSize = 15f
+            hint = "Ask anything…"; textSize = 15.5f
             setTextColor(DkaiTheme.WHITE); setHintTextColor(DkaiTheme.HINT); background = null
-            setPadding(d(2f), d(10f), d(2f), d(6f)); maxLines = 5; minHeight = d(44f)
+            setPadding(d(4f), d(10f), d(4f), d(6f)); maxLines = 6; minHeight = d(44f)
             inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_MULTI_LINE or InputType.TYPE_TEXT_FLAG_CAP_SENTENCES
             imeOptions = EditorInfo.IME_ACTION_SEND or EditorInfo.IME_FLAG_NO_EXTRACT_UI
             setOnEditorActionListener { _, a, _ -> if (a == EditorInfo.IME_ACTION_SEND) { send(); true } else false }
@@ -325,141 +289,207 @@ class DkaiScreen(val activity: ComponentActivity, val host: DkaiHost) : DkaiNav 
         }
         UiLang.keep(input)
         inputBox.addView(input, LinearLayout.LayoutParams(-1, -2))
+
         val row = LinearLayout(c).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
+        // + = एक बार में 5 तक फोटो (या फ़ाइल)
         row.addView(ImageView(c).apply {
             setImageDrawable(DkaiIcon(DkaiIcon.Kind.PLUS, DkaiTheme.WHITE)); scaleType = ImageView.ScaleType.CENTER_INSIDE
-            val p = d(10f); setPadding(p, p, p, p); contentDescription = "फोटो / फ़ाइल जोड़ें"
+            val p = d(9f); setPadding(p, p, p, p); contentDescription = "फोटो / फ़ाइल जोड़ें (5 तक)"
             background = DkaiTheme.press(DkaiTheme.oval(DkaiTheme.PILL, DkaiTheme.BORDER, 1)); isClickable = true
             setOnClickListener { v -> DkaiSheets.attach(this@DkaiScreen, v) }
-            setOnLongClickListener { v -> host.attachMenu(v); true }
-        }, LinearLayout.LayoutParams(d(40f), d(40f)))
-        modelPill = DkaiTheme.pill(c, "Gemini Flash ▾", DkaiTheme.PILL, DkaiTheme.SUB, 12f).apply {
-            minHeight = d(34f); contentDescription = "AI मॉडल चुनें"; maxLines = 1; ellipsize = android.text.TextUtils.TruncateAt.END; maxWidth = d(130f)
+            setOnLongClickListener { pickImages(); true }
+        }, LinearLayout.LayoutParams(d(38f), d(38f)))
+        // 🔍 | 🖥  - खोज / चैट या DK Computer
+        val seg = LinearLayout(c).apply {
+            orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; setPadding(d(3f), d(3f), d(3f), d(3f))
+            background = DkaiTheme.round(c, DkaiTheme.PILL, 19f, DkaiTheme.BORDER)
+        }
+        searchSeg = ImageView(c).apply {
+            scaleType = ImageView.ScaleType.CENTER_INSIDE; val p = d(7f); setPadding(p, p, p, p)
+            contentDescription = "खोज / चैट"; isClickable = true; setOnClickListener { setComputer(false) }
+        }
+        seg.addView(searchSeg, LinearLayout.LayoutParams(d(34f), d(32f)))
+        compSeg = FrameLayout(c).apply {
+            contentDescription = "DK Computer (टैप = चालू)"; isClickable = true; isFocusable = true
+            setOnClickListener { setComputer(!computerMode) }
+            setOnLongClickListener { c.startActivity(Intent(c, ComputerActivity::class.java)); true }
+        }
+        compEyes = ComputerEyes(c)
+        compSeg.addView(compEyes, FrameLayout.LayoutParams(d(22f), d(22f), Gravity.CENTER))
+        seg.addView(compSeg, LinearLayout.LayoutParams(d(34f), d(32f)).apply { leftMargin = d(2f) })
+        row.addView(seg, LinearLayout.LayoutParams(-2, -2).apply { leftMargin = d(8f) })
+        modelPill = DkaiTheme.pill(c, "Model ▾", DkaiTheme.PILL, DkaiTheme.SUB, 12f).apply {
+            minHeight = d(34f); contentDescription = "AI मॉडल चुनें"; maxLines = 1; ellipsize = android.text.TextUtils.TruncateAt.END; maxWidth = d(120f)
             setOnClickListener { DkaiSheets.models(this@DkaiScreen) }
             setOnLongClickListener { pickModel(it); true }
         }
-        // 14 नवंबर 2026 (मालिक): "Pipeline / Broadcast चुनते ही माइक (आवाज़ वाला बटन) साइड होकर छिप जाता है - कोई भी मोड चुनें,
-        // हर बटन अपनी जगह पर रहे". जड़: मोड वाली गोली wrap_content थी - "Broadcast ▾" / "Pipeline ▾" चौड़े होकर पंक्ति भर देते थे
-        // और आख़िरी बटन (माइक) को स्क्रीन से बाहर धकेल देते थे (LinearLayout पहले वालों को पूरी जगह देता है).
-        // अब: मॉडल गोली बची हुई जगह में (weight, लंबा नाम "…"), मोड गोली की चौड़ाई पक्की (DkaiCore.MODE_PILL_DP) -> + / मोड / भेजें / माइक कभी नहीं हिलते.
+        // मॉडल गोली बची जगह में (लंबा नाम "…") - दाईं ओर के 🎤 / 〰 कभी बाहर न धकेले जाएँ
         val modelBox = LinearLayout(c).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
         modelBox.addView(modelPill, LinearLayout.LayoutParams(-2, -2))
         row.addView(modelBox, LinearLayout.LayoutParams(0, -2, 1f).apply { leftMargin = d(8f) })
-        modePill = DkaiTheme.pill(c, mode.label + " ▾", DkaiTheme.PILL, DkaiTheme.SUB, 12f).apply {
-            minHeight = d(34f); contentDescription = "मोड चुनें"; setOnClickListener { v -> DkaiSheets.modes(this@DkaiScreen, v) }
-            maxLines = 1; ellipsize = android.text.TextUtils.TruncateAt.END; gravity = Gravity.CENTER
-            setPadding(d(8f), d(7f), d(8f), d(7f))
-        }
-        row.addView(modePill, LinearLayout.LayoutParams(d(DkaiCore.MODE_PILL_DP), -2).apply { leftMargin = d(6f); rightMargin = d(6f) })
-        sendBtn = DkaiUi.iconBtn(c, DkaiIcon.Kind.SEND, "भेजें", DkaiTheme.ICON_CYAN, 42f) { send() }.apply { alpha = 0.4f }
-        row.addView(sendBtn, LinearLayout.LayoutParams(d(42f), d(42f)).apply { rightMargin = d(4f) })
+        // 🎤 = लिखवाना (जितना चाहें बोलें, शब्द डिब्बे में; ✓ = पूरा, भेजो)
+        dictBtn = DkaiUi.iconBtn(c, DkaiIcon.Kind.MIC, "बोलकर लिखें", DkaiTheme.GRAY, 40f) { dictTap() }
+        row.addView(dictBtn, LinearLayout.LayoutParams(d(40f), d(40f)).apply { rightMargin = d(6f) })
+        // 〰 = सीधी आवाज़ में बातचीत (DK लाइव). कुछ लिखा हो तो यही ↑ भेजें
         micBtn = FrameLayout(c).apply {
             background = DkaiTheme.press(DkaiTheme.oval(DkaiTheme.BLUE), DkaiTheme.oval(0xFFFFFFFF.toInt()))
-            elevation = d(4f).toFloat(); isClickable = true; isFocusable = true; contentDescription = "माइक - आवाज़ से बात"
-            setOnClickListener { micTap() }
+            elevation = d(3f).toFloat(); isClickable = true; isFocusable = true
+            setOnClickListener { if (input.text.isNotBlank() || attached.isNotEmpty()) send() else micTap() }
         }
-        micIcon = ImageView(c).apply { setImageDrawable(DkaiIcon(DkaiIcon.Kind.MIC, DkaiTheme.ON)) }      // नीले बटन पर हमेशा सफ़ेद
+        micIcon = ImageView(c).apply { setImageDrawable(DkaiIcon(DkaiIcon.Kind.WAVE, DkaiTheme.ON)) }      // नीले बटन पर हमेशा सफ़ेद
         micBtn.addView(micIcon, FrameLayout.LayoutParams(d(22f), d(22f), Gravity.CENTER))
-        row.addView(micBtn, LinearLayout.LayoutParams(d(48f), d(48f)))
+        row.addView(micBtn, LinearLayout.LayoutParams(d(44f), d(44f)))
         inputBox.addView(row, LinearLayout.LayoutParams(-1, -2))
-        content.addView(inputBox, LinearLayout.LayoutParams(-1, -2).apply { setMargins(d(12f), d(6f), d(12f), d(8f)) })
+        content.addView(inputBox, LinearLayout.LayoutParams(-1, -2).apply { setMargins(d(12f), d(6f), d(12f), d(10f)) })
+        micOrSend()
     }
 
-    /** 13 नवंबर 2026 (मालिक - M1): माइक और भेजें अलग - माइक हमेशा आवाज़, भेजें लिखा होने पर चमके */
+    /** 〰 बटन: कुछ लिखा / फोटो जुड़ी = ↑ भेजें, खाली = आवाज़ से बात */
     private fun micOrSend() {
-        val typing = input.text.isNotBlank()
-        if (::sendBtn.isInitialized) { sendBtn.alpha = if (typing) 1f else 0.4f; sendBtn.background = DkaiTheme.press(DkaiTheme.oval(if (typing) DkaiTheme.SEL else 0)) }
-        micBtn.contentDescription = "माइक - आवाज़ से बात"
+        if (!::micBtn.isInitialized) return
+        val k = DkaiHomeCore.inputAction(input.text.isNotBlank(), attached.isNotEmpty(), dictation != null)
+        val want = if (k == DkaiHomeCore.InputAction.SEND) DkaiIcon.Kind.SEND else DkaiIcon.Kind.WAVE
+        if ((micIcon.drawable as? DkaiIcon)?.kind != want) micIcon.setImageDrawable(DkaiIcon(want, DkaiTheme.ON))
+        micBtn.contentDescription = if (k == DkaiHomeCore.InputAction.SEND) "भेजें" else "आवाज़ से बात (DK लाइव)"
     }
 
-    // ================================================================== State 1: 6 टैब
-    private fun buildNav() {
-        content.addView(View(c).apply { setBackgroundColor(DkaiTheme.BORDER) }, LinearLayout.LayoutParams(-1, 1))
-        nav = LinearLayout(c).apply { orientation = LinearLayout.HORIZONTAL; setBackgroundColor(DkaiTheme.NAV); setPadding(d(4f), d(6f), d(4f), d(6f)) }
-        for (t in DkaiTab.values()) {
-            val kind = when (t) {
-                DkaiTab.HOME -> DkaiIcon.Kind.HOME; DkaiTab.FILES -> DkaiIcon.Kind.FILES; DkaiTab.EDITOR -> DkaiIcon.Kind.EDITOR
-                DkaiTab.TERMINAL -> DkaiIcon.Kind.TERMINAL; DkaiTab.PREVIEW -> DkaiIcon.Kind.PREVIEW; DkaiTab.GITHUB -> DkaiIcon.Kind.GITHUB
-            }
-            val col = LinearLayout(c).apply {
-                orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER; minimumHeight = d(48f)
-                background = DkaiTheme.press(DkaiTheme.round(c, 0, 12f), DkaiTheme.round(c, 0xFFFFFFFF.toInt(), 12f))
-                isClickable = true; isFocusable = true; contentDescription = t.label
-                setOnClickListener { showTab(t) }
-            }
-            val ic = ImageView(c).apply { setImageDrawable(DkaiIcon(kind, DkaiTheme.GRAY)) }
-            col.addView(ic, LinearLayout.LayoutParams(d(21f), d(21f)))
-            val lb = DkaiTheme.text(c, t.label, 10.5f, DkaiTheme.GRAY, DkaiTheme.SANS_MED).apply { setPadding(0, d(4f), 0, 0); maxLines = 1; gravity = Gravity.CENTER }
-            col.addView(lb, LinearLayout.LayoutParams(-2, -2))
-            navItems[t] = ic to lb
-            nav.addView(col, LinearLayout.LayoutParams(0, -2, 1f))
-        }
-        content.addView(nav, LinearLayout.LayoutParams(-1, -2))
+    /** 🔍 / 🖥 चुनो: रंग + hint */
+    fun setComputer(on: Boolean) {
+        computerMode = on
+        if (!::searchSeg.isInitialized) return
+        searchSeg.setImageDrawable(DkaiIcon(DkaiIcon.Kind.SEARCH, if (on) DkaiTheme.GRAY else DkaiTheme.ON))
+        searchSeg.background = if (on) null else DkaiTheme.round(c, DkaiTheme.BLUE, 16f)
+        compSeg.background = if (on) DkaiTheme.round(c, DkaiTheme.BLUE, 16f) else null
+        compEyes.color = if (on) DkaiTheme.ON else DkaiTheme.GRAY
+        input.hint = if (on) "DK Computer को काम दीजिए…" else "Ask anything…"
     }
 
-    fun showTab(t: DkaiTab, animate: Boolean = true) {
-        if (t != DkaiTab.EDITOR && tab == DkaiTab.EDITOR && editor.dirty) { editor.confirmLeave { showTab(t, animate) }; return }
-        tab = t
-        val v: View = when (t) {
-            DkaiTab.HOME -> homeScroll
-            DkaiTab.FILES -> files.root
-            DkaiTab.EDITOR -> editor.root
-            DkaiTab.TERMINAL -> terminal.root
-            DkaiTab.PREVIEW -> preview.root
-            DkaiTab.GITHUB -> gitTab.root
-        }
-        if (v.parent !== panelHost) { (v.parent as? ViewGroup)?.removeView(v); panelHost.addView(v, FrameLayout.LayoutParams(-1, -1)) }
-        for (i in 0 until panelHost.childCount) panelHost.getChildAt(i).let { it.visibility = if (it === v) View.VISIBLE else View.GONE }
-        if (animate) { v.alpha = 0f; v.animate().alpha(1f).setDuration(160).start() }
-        DkaiTheme.gone(inputBox, t != DkaiTab.HOME)
-        if (t != DkaiTab.HOME) hideKeyboard()
-        for ((k, p) in navItems) {
-            val on = k == t
-            (p.first.drawable as? DkaiIcon)?.color = if (on) DkaiTheme.BLUE else DkaiTheme.GRAY
-            p.second.setTextColor(if (on) DkaiTheme.BLUE else DkaiTheme.GRAY)
-            p.first.parent?.let { (it as View).isSelected = on }
-        }
-        when (t) {
-            DkaiTab.FILES -> files.onShow(); DkaiTab.EDITOR -> editor.onShow(); DkaiTab.TERMINAL -> terminal.onShow()
-            DkaiTab.PREVIEW -> preview.onShow(); DkaiTab.GITHUB -> gitTab.onShow(); DkaiTab.HOME -> {}
-        }
-        root.post { placeMini() }
+    // ================================================================== 🎤 लिखवाना
+    private fun dictTap() {
+        val d0 = dictation
+        if (d0 != null) { finishDictation(send = true); return }
+        if (!Setup.hasMic(c)) { host.ready(); return }
+        dictBase = input.text.toString().trimEnd()
+        val dd = InlineDictation(c,
+            onText = { t -> input.setText(DkaiHomeCore.joinDictation(dictBase, t)); input.setSelection(input.text.length) },
+            onLevel = { lv -> dictBtn.scaleX = 1f + lv * 0.25f; dictBtn.scaleY = dictBtn.scaleX },
+            onEnd = { msg -> if (msg != null) toast(msg); finishDictation(send = false) })
+        dictation = dd
+        dictBtn.setImageDrawable(DkaiIcon(DkaiIcon.Kind.CHECK, DkaiTheme.ON))
+        dictBtn.background = DkaiTheme.oval(DkaiKit.EMERALD)
+        dictBtn.contentDescription = "✓ पूरा - भेजें"
+        hideKeyboard()
+        dd.start()
+        micOrSend()
     }
 
-    // ================================================================== DkaiNav
-    override fun openInEditor(f: File) {
-        val go = { if (editor.open(f)) showTab(DkaiTab.EDITOR) }
-        if (editor.dirty && editor.file != f) editor.confirmLeave(go) else go()
+    /** ✓ दबाया = रुककर भेजो; अपने-आप रुका = लिखा हुआ डिब्बे में ही रहे */
+    private fun finishDictation(send: Boolean) {
+        val dd = dictation ?: return
+        dictation = null
+        val t = try { dd.stop() } catch (_: Exception) { "" }
+        if (t.isNotBlank()) { input.setText(DkaiHomeCore.joinDictation(dictBase, t)); input.setSelection(input.text.length) }
+        dictBtn.setImageDrawable(DkaiIcon(DkaiIcon.Kind.MIC, DkaiTheme.GRAY)); dictBtn.background = null
+        dictBtn.scaleX = 1f; dictBtn.scaleY = 1f; dictBtn.contentDescription = "बोलकर लिखें"
+        micOrSend()
+        if (send && input.text.isNotBlank()) send()
     }
-    override fun openPreview(f: File) { preview.open(f); showTab(DkaiTab.PREVIEW) }
-    override fun openFiles(dir: File) { files.open(dir); showTab(DkaiTab.FILES) }
-    override fun runInTerminal(cmd: String, cwd: File) { showTab(DkaiTab.TERMINAL); terminal.run(cmd, cwd) }
-    override fun toast(s: String) { UiLang.toast(c, s, Toast.LENGTH_SHORT).show() }
 
-    // ================================================================== भेजना (मोड के हिसाब से असली काम)
+    fun toast(s: String) { UiLang.toast(c, s, Toast.LENGTH_SHORT).show() }
+
+    // ================================================================== भेजना
     fun send() {
+        if (dictation != null) { finishDictation(send = false) }
         val t = input.text.toString().trim()
-        if (t.isEmpty()) return
-        when (mode) {
-            DkaiMode.CHAT -> { if (!sendChat(t)) return }
-            // 13 नवंबर 2026 (मालिक): Broadcast चुना = लिखा विषय सीधे Broadcast का काम (रिसर्च -> स्क्रिप्ट -> आवाज़), Pipeline की तरह.
-            // 14 नवंबर 2026 (मालिक: "वहीं पे वही स्क्रीन पे स्टोरी बनेगी"): अलग पन्ना नहीं - होम पर कार्ड, स्क्रिप्ट लाइव, आवाज़ अपने-आप
-            DkaiMode.BROADCAST -> cast.start(t)?.let { toast(it); return }
-            DkaiMode.BUILDER -> {
-                val err = com.dk.assistant.studio.StudioSession.start(c, t, com.dk.assistant.studio.StudioSession.WHO_COMPUTER)
-                if (err != null) { toast(err); return }
-                toast("Builder: ऐप स्टूडियो में बन रहा है…")
+        val pics = ArrayList(attached)
+        if (t.isEmpty() && pics.isEmpty()) return
+        when (DkaiHomeCore.sendRoute(computerMode, pics.size)) {
+            DkaiHomeCore.SendRoute.CHAT -> { if (!sendChat(t)) return }
+            DkaiHomeCore.SendRoute.COMPUTER -> c.startActivity(Intent(c, ComputerActivity::class.java).putExtra("task", t))
+            DkaiHomeCore.SendRoute.COMPUTER_FILES -> sendFiles(pics, t)
+        }
+        input.setText(""); clearAttached()
+    }
+
+    /** फोटो / फ़ाइल -> DK Computer के फ़ोल्डर में कॉपी -> वहीं काम (लिखा हो तो वही सवाल) */
+    private fun sendFiles(pics: List<android.net.Uri>, t: String) {
+        val app = c.applicationContext
+        Thread {
+            val names = pics.take(DkaiHomeCore.MAX_ATTACH).mapNotNull { u -> try { ComputerActivity.copyIn(app, u) } catch (_: Throwable) { null } }
+            activity.runOnUiThread {
+                if (activity.isFinishing || activity.isDestroyed) return@runOnUiThread
+                if (names.isEmpty()) { toast("फ़ाइल नहीं जुड़ पाई (30MB तक की फोटो / PDF / text)"); return@runOnUiThread }
+                val i = Intent(c, ComputerActivity::class.java)
+                if (t.isNotBlank()) i.putExtra("task", ComputerActivity.attachNote(names) + t)
+                else i.putStringArrayListExtra(ComputerActivity.EXTRA_ATTACHED, ArrayList(names))
+                c.startActivity(i)
             }
-            DkaiMode.AGENT -> {
-                c.startActivity(Intent(c, ComputerActivity::class.java).putExtra("task", t))
+        }.start()
+    }
+
+    // ================================================================== + : फोटो चिप
+    private var pickSeq = 0
+
+    /** एक बार में 5 तक फोटो (गैलरी) */
+    fun pickImages() {
+        val left = DkaiHomeCore.MAX_ATTACH - attached.size
+        if (left <= 0) { toast("एक बार में ${DkaiHomeCore.MAX_ATTACH} तक"); return }
+        lateinit var l: androidx.activity.result.ActivityResultLauncher<androidx.activity.result.PickVisualMediaRequest>
+        val contract = if (left >= 2) androidx.activity.result.contract.ActivityResultContracts.PickMultipleVisualMedia(left) else null
+        if (contract != null) {
+            l = activity.activityResultRegistry.register("dkai_imgs_${pickSeq++}", contract) { us ->
+                try { l.unregister() } catch (_: Exception) {}
+                addAttached(us)
             }
-            DkaiMode.PIPELINE -> {
-                // 13 नवंबर 2026 (मालिक): पहले Blueprint (कदम) -> एक-एक कदम + जाँच -> Final Build Check -> Keep All / Preview.
-                // पुराना रास्ता (CoderSession.queue + CodingActivity = GitHub कोडिंग एजेंट) Pipeline पन्ने के GitHub बटन में.
-                DkaiPipeline(this).open(t)
+        } else {
+            l = activity.activityResultRegistry.register("dkai_img_${pickSeq++}", androidx.activity.result.contract.ActivityResultContracts.PickVisualMedia()) { u ->
+                try { l.unregister() } catch (_: Exception) {}
+                if (u != null) addAttached(listOf(u))
             }
         }
-        input.setText("")
+        try { l.launch(androidx.activity.result.PickVisualMediaRequest(androidx.activity.result.contract.ActivityResultContracts.PickVisualMedia.ImageOnly)) }
+        catch (_: Exception) { try { l.unregister() } catch (_: Exception) {}; toast("गैलरी नहीं खुली") }
+    }
+
+    /** PDF / text / फोटो फ़ाइल */
+    fun pickFiles() {
+        lateinit var l: androidx.activity.result.ActivityResultLauncher<Array<String>>
+        l = activity.activityResultRegistry.register("dkai_files_${pickSeq++}", androidx.activity.result.contract.ActivityResultContracts.OpenMultipleDocuments()) { us ->
+            try { l.unregister() } catch (_: Exception) {}
+            addAttached(us)
+        }
+        try { l.launch(ComputerActivity.PICK_TYPES) } catch (_: Exception) { try { l.unregister() } catch (_: Exception) {}; toast("फ़ाइल चुनने वाला नहीं खुला") }
+    }
+
+    private fun addAttached(us: List<android.net.Uri>) {
+        val (keep, over) = DkaiHomeCore.addUpTo(attached, us, DkaiHomeCore.MAX_ATTACH)
+        attached.clear(); attached.addAll(keep)
+        if (over > 0) toast("एक बार में ${DkaiHomeCore.MAX_ATTACH} तक - $over छोड़ दीं")
+        renderAttached()
+    }
+
+    private fun clearAttached() { attached.clear(); renderAttached() }
+
+    private fun renderAttached() {
+        if (!::attachRow.isInitialized) return
+        attachRow.removeAllViews()
+        for (u in attached.toList()) {
+            val box = FrameLayout(c)
+            box.addView(ImageView(c).apply {
+                scaleType = ImageView.ScaleType.CENTER_CROP; background = DkaiTheme.round(c, DkaiTheme.FIELD, 12f, DkaiTheme.BORDER)
+                clipToOutline = true; contentDescription = "जुड़ी फ़ाइल"
+                try { setImageURI(u) } catch (_: Exception) {}
+                if (drawable == null) { setImageDrawable(DkaiIcon(DkaiIcon.Kind.DOC, DkaiTheme.GRAY)); scaleType = ImageView.ScaleType.CENTER_INSIDE; val p = d(16f); setPadding(p, p, p, p) }
+            }, FrameLayout.LayoutParams(d(58f), d(58f)).apply { topMargin = d(5f); rightMargin = d(5f) })
+            box.addView(ImageView(c).apply {
+                setImageDrawable(DkaiIcon(DkaiIcon.Kind.X, DkaiTheme.ON)); val p = d(3f); setPadding(p, p, p, p)
+                background = DkaiTheme.oval(0xCC111827.toInt()); contentDescription = "हटाएँ"; isClickable = true
+                setOnClickListener { attached.remove(u); renderAttached() }
+            }, FrameLayout.LayoutParams(d(20f), d(20f), Gravity.TOP or Gravity.END))
+            attachRow.addView(box, LinearLayout.LayoutParams(-2, -2).apply { rightMargin = d(6f) })
+        }
+        attachScroll.visibility = if (attached.isEmpty()) View.GONE else View.VISIBLE
+        micOrSend()
     }
 
     private var localJob: kotlinx.coroutines.Job? = null
@@ -524,18 +554,18 @@ class DkaiScreen(val activity: ComponentActivity, val host: DkaiHost) : DkaiNav 
 
     /** नई चैट: अभी वाली सूची में सेव, फिर अगला नंबर (सबसे बड़े + 1) */
     fun startNewChat() {
-        if (DKState.messages.isEmpty()) { showTab(DkaiTab.HOME); input.requestFocus(); return }      // खाली चैट पर दोबारा नई नहीं
+        if (DKState.messages.isEmpty()) { input.requestFocus(); return }      // खाली चैट पर दोबारा नई नहीं
         localJob?.cancel()
         DkaiChats.save(DkaiChats.dir(c), Dkai.chatNo(c), DKState.messages.toList())
         DKState.clearChat(); Dkai.nextChat(c)
         chatLabel.text = DkaiCore.chatLabel(Dkai.chatNo(c)); shownMsgs = -1; render()
-        showTab(DkaiTab.HOME); input.setText(""); input.requestFocus()
+        input.setText(""); input.requestFocus(); hero.spin()
     }
 
     /** पुरानी चैट खोलो: अभी वाली सेव, वह चैट स्क्रीन पर (पूरी बातचीत), आगे उसी में बात */
     fun openChat(n: Int) {
         val cur = Dkai.chatNo(c)
-        if (n == cur) { showTab(DkaiTab.HOME); return }
+        if (n == cur) return
         if (DKState.mode == Mode.THINKING) { toast("DK अभी जवाब लिख रहा है - पूरा होने दें, फिर चैट बदलें"); return }
         localJob?.cancel()
         val dir = DkaiChats.dir(c)
@@ -543,7 +573,7 @@ class DkaiScreen(val activity: ComponentActivity, val host: DkaiHost) : DkaiNav 
         DKState.replaceChat(DkaiChats.load(dir, n))
         Dkai.setChat(c, n)
         chatLabel.text = DkaiCore.chatLabel(n); shownMsgs = -1; render()
-        showTab(DkaiTab.HOME); input.setText("")
+        input.setText("")
         homeScroll.post { homeScroll.scrollTo(0, homeCol.height) }
     }
 
@@ -571,31 +601,23 @@ class DkaiScreen(val activity: ComponentActivity, val host: DkaiHost) : DkaiNav 
     // ================================================================== आवाज़ (State 2/3)
     fun micTap() {
         if (!host.ready()) return
+        if (dictation != null) finishDictation(send = false)       // 🎤 लिखवाना और 〰 बातचीत एक साथ नहीं
         hideKeyboard()
         voice.newSession()
         setState(DkaiCore.next(voiceSessionState, VoiceEvent.MIC_TAP))
         startLive()
     }
 
-    /** DK लाइव के लिए: अभी किस टैब का काम (DKAI आवाज़ सत्र चालू न हो = null = पुराना रास्ता) */
-    /** 14 नवंबर 2026: Dev Tools का header icon हटा - अब सेटिंग्स → "सब कुछ एक जगह" से */
-    fun devTools() = DkaiDevTools(this).open()
+    /** 14 नवंबर 2026 (मालिक): मोड टैब हटे - DK लाइव हमेशा अपने पुराने रास्ते से (null) */
+    fun liveMode(): DkaiMode? = null
 
-    fun liveMode(): DkaiMode? = if (::voice.isInitialized && voiceSessionState.active) voice.voiceTab else null
-
-    fun scrollHomeEnd() { if (tab != DkaiTab.HOME) showTab(DkaiTab.HOME); homeScroll.post { homeScroll.smoothScrollTo(0, homeCol.height) } }
+    fun scrollHomeEnd() { homeScroll.post { homeScroll.smoothScrollTo(0, homeCol.height) } }
 
     /** आवाज़ की बड़ी स्क्रीन छोटी पट्टी बने - ताकि पीछे बनता काम दिखे */
     private fun peek() { if (voiceSessionState == VoiceSessionState.ACTIVE_FULL) setState(DkaiCore.next(voiceSessionState, VoiceEvent.MINIMIZE)) }
 
-    /** DK लाइव (Broadcast टैब): कहानी / पॉडकास्ट होम पर ही लाइव लिखो, फिर आवाज़ अपने-आप. null = शुरू हुआ */
-    fun castFromLive(topic: String): String? { peek(); pickMode(DkaiMode.BROADCAST); return cast.start(topic) }
-
-    /** DK लाइव (Pipeline टैब) */
-    fun pipelineFromLive(goal: String) { peek(); DkaiPipeline(this).open(goal) }
-
     /** DK लाइव (Chat टैब): कहानी चैट में लिखी जाए */
-    fun chatFromLive(t: String): Boolean { peek(); showTab(DkaiTab.HOME); return sendChat(t) }
+    fun chatFromLive(t: String): Boolean { peek(); return sendChat(t) }
 
     fun startLive() {
         val svc = DKAccessibilityService.instance
@@ -630,7 +652,7 @@ class DkaiScreen(val activity: ComponentActivity, val host: DkaiHost) : DkaiNav 
     private fun placeMini() {
         if (!::root.isInitialized || !::voice.isInitialized) return
         val h = root.height; if (h <= 0) return
-        val anchor: View = if (inputBox.visibility == View.VISIBLE) inputBox else nav
+        val anchor: View = inputBox
         val loc = IntArray(2); val rl = IntArray(2)
         anchor.getLocationInWindow(loc); root.getLocationInWindow(rl)
         val top = loc[1] - rl[1]
@@ -644,17 +666,26 @@ class DkaiScreen(val activity: ComponentActivity, val host: DkaiHost) : DkaiNav 
     private val visionL: () -> Unit = { voice.render() }
     private var resumed = false
 
+    /** DK Computer काम कर रहा हो तो 🖥 की आँखें घूमें */
+    private val eyesTick = object : Runnable {
+        override fun run() {
+            if (!resumed) return
+            if (::compEyes.isInitialized) compEyes.working = ComputerSession.busy
+            ui.postDelayed(this, 1000)
+        }
+    }
+
     fun onResume() {
         resumed = true
+        ui.removeCallbacks(eyesTick); ui.post(eyesTick)
         DKState.listen(stateL); com.dk.assistant.LiveVision.listen(visionL)
         renderModel(); render()
-        if (tab == DkaiTab.FILES) files.refresh()
     }
 
     fun onPause() {
         resumed = false
         DKState.unlisten(stateL); com.dk.assistant.LiveVision.unlisten(visionL)
-        if (editor.dirty) editor.save()          // ऐप से बाहर = अपने-आप सेव (बदलाव खोते नहीं)
+        if (dictation != null) finishDictation(send = false)      // ऐप से बाहर = माइक छोड़ो, लिखा हुआ डिब्बे में रहे
     }
 
     private var liveSeen = false
@@ -723,7 +754,8 @@ class DkaiScreen(val activity: ComponentActivity, val host: DkaiHost) : DkaiNav 
             layoutParams = LinearLayout.LayoutParams(minOf((c.resources.displayMetrics.widthPixels * 0.86f).toInt(), d(520f)), -2).apply { gravity = Gravity.START; bottomMargin = d(10f) }
         })
         else if (thinking) chatList.addView(bubble(false, DKState.hintText.ifBlank { "सोच रहा हूँ…" }, faint = true))
-        if (tab == DkaiTab.HOME && msgs.isNotEmpty()) homeScroll.post { homeScroll.smoothScrollTo(0, homeCol.height) }
+        DkaiTheme.gone(heroBox, msgs.isNotEmpty() || liveR.isNotBlank())
+        if (msgs.isNotEmpty()) homeScroll.post { homeScroll.smoothScrollTo(0, homeCol.height) }
     }
 
     /** खोज वाला कार्ड हटा: आख़िरी स्रोत-डिब्बा सिकुड़ा-सा आकर अपनी जगह बैठे (कार्ड से चिप बनने जैसा) */
@@ -777,8 +809,7 @@ class DkaiScreen(val activity: ComponentActivity, val host: DkaiHost) : DkaiNav 
         layoutParams = LinearLayout.LayoutParams(-2, -2).apply { gravity = if (user) Gravity.END else Gravity.START; bottomMargin = d(10f) }
     }
 
-    // ================================================================== + sheet: Attach Audio / Import Zip Project
-    private var pickSeq = 0
+    // ================================================================== + sheet: Attach Audio
 
     /** एक बार का फ़ाइल-चुनाव (MainActivity के बाहर से भी - registry से, काम के बाद हटता है) */
     private fun pickOne(types: Array<String>, got: (android.net.Uri) -> Unit) {
@@ -797,35 +828,10 @@ class DkaiScreen(val activity: ComponentActivity, val host: DkaiHost) : DkaiNav 
             val r = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { try { Result.success(DkaiAudio.transcribe(c, u)) } catch (e: Throwable) { Result.failure(e) } }
             r.onSuccess { t ->
                 if (t.isBlank()) { toast("ऑडियो में कुछ समझ नहीं आया"); return@onSuccess }
-                showTab(DkaiTab.HOME)
                 val cur = input.text.toString().trim()
                 input.setText(if (cur.isEmpty()) t else "$cur\n$t"); input.setSelection(input.text.length); input.requestFocus()
             }.onFailure { e -> toast("ऑडियो नहीं पढ़ पाया: ${e.message?.take(120)}") }
         }
-    }
-
-    /** Import Zip Project: zip -> /DKAIProjects/<नाम> (zip-slip सुरक्षित) -> Files में खुले */
-    fun pickZip() = pickOne(arrayOf("application/zip", "application/x-zip-compressed", "application/octet-stream")) { u ->
-        toast("Zip खोल रहा हूँ…")
-        Thread {
-            val r = try {
-                val name = DkaiAudio.nameOf(c, u)?.substringBeforeLast('.')?.replace(Regex("[^A-Za-z0-9._-]+"), "-")?.trim('-')?.ifBlank { null } ?: "project"
-                var dest = File(DkaiWorkspace.projectsRoot(c), name); var i = 2
-                while (dest.exists()) dest = File(DkaiWorkspace.projectsRoot(c), "$name-${i++}")
-                val tmp = File(c.cacheDir, "import_${System.currentTimeMillis()}.zip")
-                try {
-                    c.contentResolver.openInputStream(u)?.use { inp -> tmp.outputStream().use { inp.copyTo(it) } } ?: throw IllegalStateException("फ़ाइल नहीं खुली")
-                    val n = DkaiZip.unzip(tmp, dest)
-                    if (n == 0) { dest.deleteRecursively(); throw IllegalStateException("zip खाली है") }
-                    DkaiWorkspace.setProject(c, dest)
-                    Result.success(dest to n)
-                } finally { tmp.delete() }
-            } catch (e: Throwable) { Result.failure(e) }
-            activity.runOnUiThread {
-                if (activity.isDestroyed) return@runOnUiThread
-                r.onSuccess { (d, n) -> toast("✓ ${d.name}: $n फ़ाइलें"); openFiles(d) }.onFailure { e -> toast("Zip नहीं खुला: ${e.message?.take(120)}") }
-            }
-        }.start()
     }
 
     fun hideKeyboard() {
@@ -839,10 +845,8 @@ class DkaiScreen(val activity: ComponentActivity, val host: DkaiHost) : DkaiNav 
                 DkaiUi.closeTop(root) -> {}                       // पहले खुला sheet / modal / page बंद
                 voice.closeMenu() -> {}
                 DkaiCore.handlesBack(voiceSessionState) -> setState(DkaiCore.next(voiceSessionState, VoiceEvent.BACK))
-                tab != DkaiTab.HOME -> {
-                    val handled = when (tab) { DkaiTab.FILES -> files.onBack(); DkaiTab.PREVIEW -> preview.onBack(); else -> false }
-                    if (!handled) showTab(DkaiTab.HOME)
-                }
+                dictation != null -> finishDictation(send = false)
+                attached.isNotEmpty() -> clearAttached()
                 else -> { isEnabled = false; activity.onBackPressedDispatcher.onBackPressed(); isEnabled = true }
             }
         }

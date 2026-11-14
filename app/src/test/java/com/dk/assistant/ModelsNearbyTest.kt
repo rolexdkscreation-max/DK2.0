@@ -48,11 +48,6 @@ class ModelsNearbyTest {
     @Test fun pickedModelFirstAndQuiet() {
         assertEquals(listOf("zai", "groq", "gemini"), DkaiPick.activeFirst(listOf("groq", "zai", "gemini"), "zai") { it })
         assertTrue(src("BrainManager.kt").contains("DkaiPick.activeFirst(fast, active)"))
-        for (f in listOf("dkai/DkaiPipeline.kt", "dkai/DkaiCopilot.kt")) {
-            val s = src(f)
-            assertTrue(f, s.contains("DkaiPick.ask("))
-            assertFalse("मॉडल की गलती सामने नहीं: $f", s.contains("say(\"Coder AI:"))
-        }
         assertFalse(src("dkai/DkaiSheets.kt").contains("s.toast(\"मॉडल: "))
     }
 

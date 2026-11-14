@@ -17,7 +17,7 @@ import org.robolectric.annotation.Config
 import android.os.Looper
 import java.io.File
 
-/** DKAI होम असल में खुलता है: बटन, 6 टैब, 3 हालत, और नीचे का लिखना बंद नहीं होता */
+/** DK होम असल में खुलता है: Perplexity जैसा डिब्बा, 3 हालत, और नीचे का लिखना बंद नहीं होता */
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [34], application = android.app.Application::class)
 class DkaiBehaviorTest {
@@ -47,12 +47,12 @@ class DkaiBehaviorTest {
         assertTrue("DKAI" in t)
         assertTrue(t.any { it.contains("READY") || it.contains("SETUP") })
         assertTrue("+ New" in t || t.any { it.trim() == "New" })
-        assertTrue("What would you like to build or explore?" in t)
-        // 13 नवंबर 2026 (मालिक): Chat/Builder/Agent/Pipeline कार्ड-पंक्ति होम से हटी - मोड नीचे "Chat ▾" से (modeOnlyFromDropdown)
-        for (c in listOf("Builder", "Agent", "Pipeline")) assertFalse("कार्ड $c अब होम पर नहीं होना चाहिए", c in t)
-        assertTrue("Chat ▾" in t)
-        for (tab in listOf("Home", "Files", "Editor", "Terminal", "Preview", "GitHub")) assertTrue("टैब $tab नहीं", tab in t)
-        assertEquals("Build apps, create websites, or write code...", s.input.hint.toString())
+        // 14 नवंबर 2026 (मालिक: "नया UI हटाओ, होम Perplexity जैसा"): मोड, quick कार्ड, 6 टैब (Terminal समेत) नहीं
+        for (c in listOf("Builder", "Agent", "Pipeline", "Broadcast", "Chat ▾")) assertFalse("$c अब होम पर नहीं होना चाहिए", c in t)
+        for (tab in listOf("Files", "Editor", "Terminal", "Preview", "GitHub")) assertFalse("टैब $tab अब नहीं होना चाहिए", tab in t)
+        assertEquals("Ask anything…", s.input.hint.toString())
+        for (d in listOf("फोटो / फ़ाइल जोड़ें (5 तक)", "खोज / चैट", "DK Computer (टैप = चालू)", "AI मॉडल चुनें", "बोलकर लिखें", "आवाज़ से बात (DK लाइव)", "DK लोगो"))
+            assertNotNull("$d बटन नहीं", byDesc(s.root, d))
         assertEquals(VoiceSessionState.INACTIVE, s.voiceSessionState)
         assertEquals(View.GONE, s.voice.sheet.visibility); assertEquals(View.GONE, s.voice.mini.visibility)
     }
@@ -63,7 +63,9 @@ class DkaiBehaviorTest {
         assertEquals(View.VISIBLE, s.voice.sheet.visibility)
         val full = texts(s.voice.sheet)
         assertTrue(full.any { it.contains("Emma") }); assertTrue(full.any { Regex("[12]\\.[0-9]x").containsMatchIn(it) })
-        for (m in listOf("Chat", "Builder", "Agent", "Pipeline", "Broadcast")) assertTrue("मोड $m नहीं", m in full)
+        // 14 नवंबर 2026 (मालिक): आवाज़ वाली स्क्रीन पर भी मोड टैब नहीं
+        for (m in listOf("Builder", "Agent", "Pipeline", "Broadcast")) assertFalse("मोड $m अब नहीं होना चाहिए", m in full)
+        assertNull(s.liveMode())
 
         s.setState(DkaiCore.next(s.voiceSessionState, VoiceEvent.MINIMIZE), animate = false)
         assertEquals(VoiceSessionState.ACTIVE_MINIMIZED, s.voiceSessionState)
@@ -98,29 +100,7 @@ class DkaiBehaviorTest {
         assertFalse(a.isFinishing)
     }
 
-    @Test fun tabsOpenPanels() {
-        val (_, s) = open()
-        for (t in listOf("Files", "Editor", "Terminal", "Preview", "GitHub", "Home")) {
-            val v = byDesc(s.root, t); assertNotNull("टैब $t", v)
-            v!!.performClick()
-            shadowOf(Looper.getMainLooper()).idle()
-            assertEquals(t, s.tab.label)
-        }
-        assertEquals(View.VISIBLE, s.files.root.let { if (it.parent != null) View.VISIBLE else View.GONE })
-    }
 
-    @Test fun filesCreateAndTerminalRuns() {
-        val (a, s) = open()
-        val ws = DkaiWorkspace.workspace(a)
-        val f = DkaiWorkspace.create(ws, "hello.txt", folder = false)
-        assertNotNull(f); assertTrue(File(ws, "hello.txt").exists())
-        s.showTab(DkaiTab.FILES, animate = false)
-        shadowOf(Looper.getMainLooper()).idle()
-        assertTrue(texts(s.files.root).any { it.contains("hello.txt") } || DkaiWorkspace.list(ws).any { it.name == "hello.txt" })
-        // शेल न हो (कुछ JVM) तो बस खुलना जाँचो
-        s.runInTerminal("echo dkai-ok", ws)
-        assertEquals(DkaiTab.TERMINAL, s.tab)
-    }
 
     private fun byDescStart(v: View, d: String): View? {
         if (v.visibility == View.VISIBLE && v.contentDescription?.toString()?.startsWith(d) == true) return v
@@ -129,20 +109,18 @@ class DkaiBehaviorTest {
     }
     private fun idle() = shadowOf(Looper.getMainLooper()).idle()
 
-    // 13 नवंबर 2026 (मालिक): मोड सिर्फ़ नीचे वाले dropdown से - चारों वहाँ, चुनना वही काम करे
-    @Test fun modeOnlyFromDropdown() {
+    // 14 नवंबर 2026 (मालिक): 🔍 / 🖥 - DK Computer आइकन टैप = DK Computer चालू, 🔍 = वापस चैट
+    @Test fun searchOrComputerToggle() {
         val (_, s) = open()
-        byDesc(s.root, "मोड चुनें")!!.performClick(); idle()
-        val shown = texts(s.root)
-        for (m in listOf("Chat", "Builder", "Agent", "Pipeline")) assertTrue("dropdown में $m नहीं", m in shown)
-        byDescStart(s.root, "Builder, ")!!.performClick(); idle()
-        assertEquals(DkaiMode.BUILDER, s.mode)
-        assertEquals("Describe the app or website to build...", s.input.hint.toString())
-        assertTrue("Builder ▾" in texts(s.root))
-        byDesc(s.root, "मोड चुनें")!!.performClick(); idle()
-        byDescStart(s.root, "Chat, ")!!.performClick(); idle()
-        assertEquals(DkaiMode.CHAT, s.mode)
+        assertFalse(s.computerMode)
+        byDesc(s.root, "DK Computer (टैप = चालू)")!!.performClick(); idle()
+        assertTrue(s.computerMode)
+        assertEquals("DK Computer को काम दीजिए…", s.input.hint.toString())
+        byDesc(s.root, "खोज / चैट")!!.performClick(); idle()
+        assertFalse(s.computerMode)
+        assertEquals("Ask anything…", s.input.hint.toString())
     }
+
 
     // 13 नवंबर 2026 (मालिक): "Chat #N" टैप = सारी चैट (सबसे नई ऊपर); टैप = वह चैट पूरी खुले; "+ New" सूची में जुड़े
     @Test fun chatHistoryListAndOpen() {
