@@ -160,7 +160,10 @@ object BrainPin {
         return if (p.isGemini) GeminiClient(key, Prefs.scopeModel(c, ApiScopes.CHAT, p.id).ifBlank { p.defaultModel })
         else {
             val base = Prefs.scopeBase(c, sc, p.id).ifBlank { p.baseUrl }
-            val model = Prefs.scopeModel(c, sc, p.id).ifBlank { p.defaultModel }
+            // 14 नवंबर 2026: DK लाइव की Groq key का मॉडल Whisper (सुनना) हो सकता है - चैट में वह 400 देता था.
+            // चैट का अपना चुना मॉडल, न हो तो उस हिस्से का, वह भी चैट वाला न हो = कंपनी का default
+            val model = ApiScopes.chatModel(Prefs.scopeModel(c, ApiScopes.CHAT, p.id).takeIf { ApiScopes.chatCapable(it) }
+                ?: Prefs.scopeModel(c, sc, p.id), p.defaultModel)
             if (base.isBlank() || model.isBlank()) null
             else OpenAiCompatClient(p.name, base, key, model).apply { backups = ApiScopes.backupModels(p.id, model, emptyList(), Prefs.models(c, p.id)) }
         }

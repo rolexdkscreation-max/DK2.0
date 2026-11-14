@@ -200,6 +200,12 @@ object ApiScopes {
 
     private val notChat = listOf("whisper", "tts", "guard", "safeguard", "playai", "orpheus", "distil", "embed", "image", "audio", "transcribe", "compound")
 
+    /** 14 नवंबर 2026: सुनने/आवाज़/जाँच वाला मॉडल (जैसे DK लाइव की Groq Whisper) चैट नहीं लेता */
+    fun chatCapable(model: String): Boolean = model.isNotBlank() && notChat.none { model.lowercase().contains(it) }
+
+    /** चैट के लिए मॉडल: यह न चले (खाली / Whisper / TTS) = कंपनी का default */
+    fun chatModel(model: String, def: String): String = if (chatCapable(model)) model.trim() else def
+
     /**
      * उसी key के बैकअप मॉडल (Groq / OpenRouter / Custom): मुख्य मॉडल की limit (429) खत्म या मॉडल बंद हो तो
      * इन पर अपने-आप - दूसरी कंपनी/दूसरी key पर नहीं. Gemini के बैकअप GeminiClient खुद संभालता है.

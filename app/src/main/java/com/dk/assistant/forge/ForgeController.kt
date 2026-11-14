@@ -87,7 +87,7 @@ object ForgeController {
     }
 
     /** वेबसाइट की key कहाँ डालनी है (संदेशों में) */
-    const val KEY_PLACE = "Settings → AI दिमाग → वेबसाइट बिल्डर"
+    const val KEY_PLACE = "Settings → AI दिमाग → कोडिंग एजेंट"
 
     fun partialHtml(): String = synchronized(partial) { partial.toString() }
 
@@ -136,13 +136,13 @@ object ForgeController {
         // वेबसाइट की अपनी key डली हो = "एक key से सब" की key खर्च नहीं होती, इसलिए एक-key मोड में भी चलेगा
         val pinned = com.dk.assistant.BrainPin.resolve(c, com.dk.assistant.BrainPin.SITE)
         if (pinned == null) if (apiKey(c).isBlank()) OneKeyGate.check(c, OneKeyGate.Work.WEBSITE)?.let {
-            return StartResult.MissingKey(it + " या " + KEY_PLACE + " में वेबसाइट की अपनी Gemini key डालिए।")
+            return StartResult.MissingKey(it + " या " + KEY_PLACE + " में Gemini key डालिए।")
         }
         if (text.isBlank()) return StartResult.NothingToEdit(Lang.pick("कैसी वेबसाइट बनानी है, यह बताइए।", "Tell me what website to build."))
         if (_state.value.phase == ForgePhase.BUILDING) return StartResult.Busy(Lang.pick("एक वेबसाइट अभी बन रही है, पहले वह पूरी होने दें।", "A website is already being built; let it finish first."))
         val key = apiKey(c).ifBlank { pinned?.key.orEmpty() }
-        if (key.isBlank()) return StartResult.MissingKey(Lang.pick("वेबसाइट बनाने के लिए $KEY_PLACE में वेबसाइट की अपनी Gemini key डालें — DK दूसरी कोई key इस्तेमाल नहीं करता।",
-            "Add the Website Builder's own Gemini key in Settings → AI Brain → Website Builder. DK never uses any other key for websites."))
+        if (key.isBlank()) return StartResult.MissingKey(Lang.pick("वेबसाइट बनाने के लिए $KEY_PLACE में Gemini key डालें — वेबसाइट कोडिंग एजेंट की API से बनती है।",
+            "Add a Gemini key in Settings → AI Brain → Coding Agent. Websites are built with the coding agent's API."))
         if (!online(c)) return StartResult.Offline(Lang.pick("इंटरनेट नहीं है, वेबसाइट नहीं बन सकती।", "No internet, the website can't be built."))
         val current = if (isEdit) _state.value.file?.takeIf { it.exists() }?.readText() else null
         if (isEdit && current == null) return StartResult.NothingToEdit(Lang.pick("बदलने के लिए अभी कोई वेबसाइट खुली नहीं है।", "There is no website open to edit."))

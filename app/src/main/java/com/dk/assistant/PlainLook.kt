@@ -55,6 +55,36 @@ object PlainLook {
         return a >= 0xF0 && r < 0x30 && g < 0x30 && b < 0x40
     }
 
+    /*
+     * 14 नवंबर 2026 (मालिक): "डार्क थीम में एकदम प्यारा, पूरा कलरफुल दिखता है - वैसा ही लाइट में भी, बल्कि लाइट में रंग
+     * और भी ज़्यादा, डार्क से भी खूबसूरत." लाइट में हर डिब्बा (कार्ड) अपने रंग का हल्का-सा रंगीन (pastel) - सफ़ेद-सपाट नहीं.
+     */
+    val LIGHT_TINTS = intArrayOf(0xFF6366F1.toInt(), 0xFF06B6D4.toInt(), 0xFFA855F7.toInt(), 0xFF10B981.toInt(),
+        0xFFF59E0B.toInt(), 0xFF0EA5E9.toInt(), 0xFFEC4899.toInt())
+    /** pure: रंग को सफ़ेद में मिलाओ - amount 0 = सफ़ेद, 1 = पूरा रंग */
+    fun pastel(tint: Int, amount: Float): Int {
+        val a = amount.coerceIn(0f, 1f)
+        fun mix(ch: Int) = (255 + ((ch - 255) * a)).toInt().coerceIn(0, 255)
+        return (0xFF shl 24) or (mix((tint shr 16) and 0xFF) shl 16) or (mix((tint shr 8) and 0xFF) shl 8) or mix(tint and 0xFF)
+    }
+    /** pure: रंग का गहरा रूप (लिखावट के लिए) - amount = कितना काला मिलाना */
+    fun deep(tint: Int, amount: Float = 0.35f): Int {
+        val k = 1f - amount.coerceIn(0f, 1f)
+        fun d(ch: Int) = (ch * k).toInt().coerceIn(0, 255)
+        return (0xFF shl 24) or (d((tint shr 16) and 0xFF) shl 16) or (d((tint shr 8) and 0xFF) shl 8) or d(tint and 0xFF)
+    }
+    /** pure: n-वाँ डिब्बा = कौन-सा रंग */
+    fun lightTint(i: Int): Int = LIGHT_TINTS[Math.floorMod(i, LIGHT_TINTS.size)]
+    /** लाइट का रंगीन कार्ड: ऊपर-बाएँ से नीचे-दाएँ हल्का रंग + रंगीन किनारा */
+    fun colorCard(tint: Int, radiusPx: Float, strokePx: Int): GradientDrawable =
+        GradientDrawable(GradientDrawable.Orientation.TL_BR, intArrayOf(pastel(tint, 0.20f), pastel(tint, 0.07f))).apply {
+            cornerRadius = radiusPx; setStroke(strokePx.coerceAtLeast(1), pastel(tint, 0.50f))
+        }
+    private fun tintFor(v: View): Int {
+        val p = v.parent as? ViewGroup ?: return lightTint(0)
+        return lightTint(p.indexOfChild(v))
+    }
+
     private val TAG = R.id.plain_look   // अलग निशान (सिर्फ़ इसी काम का)
     const val GAP_MS = 150L
 
@@ -115,6 +145,7 @@ object PlainLook {
         val dp = v.resources.displayMetrics.density
         val kind = glassKind(bg)
         val flat: Drawable? = when {
+            light && kind == Kind.CARD -> colorCard(tintFor(v), 18 * dp, dp.toInt())
             kind != null -> make(kind, dp)
             bg is GradientDrawable && glassyGradient(bg) ->
                 GradientDrawable().apply {
@@ -158,9 +189,11 @@ object PlainLook {
         if (!appDark(c)) return
         val dp = v.resources.displayMetrics.density
         val fill = if (c == PILL || c == ME) pill() else card()
-        val flat = GradientDrawable().apply {
+        val rad = if (g.shape != GradientDrawable.OVAL) (try { g.cornerRadius } catch (_: Exception) { 16 * dp }) else 0f
+        val flat = if (fill == card() && g.shape != GradientDrawable.OVAL) colorCard(tintFor(v), rad, dp.toInt())
+        else GradientDrawable().apply {
             shape = g.shape
-            if (g.shape != GradientDrawable.OVAL) cornerRadius = try { g.cornerRadius } catch (_: Exception) { 16 * dp }
+            if (g.shape != GradientDrawable.OVAL) cornerRadius = rad
             setColor(fill); setStroke(dp.toInt().coerceAtLeast(1), border())
         }
         val d = if (v.isClickable) RippleDrawable(ColorStateList.valueOf(0x220F172A), flat, null) else flat

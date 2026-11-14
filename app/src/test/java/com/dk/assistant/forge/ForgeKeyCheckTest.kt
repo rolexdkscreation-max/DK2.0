@@ -65,11 +65,10 @@ class ForgeKeyCheckTest {
         val c = src("forge/ForgeController.kt")
         assertTrue(c.contains("onModel = { m -> rememberModel(c, m) }"))
         assertTrue(c.contains("putString(Prefs.FORGE_AUTO_MODEL, m)"))
+        // 14 नवंबर 2026: अलग "वेबसाइट बिल्डर" key वाला हिस्सा (और उसका जाँचें/सबसे अच्छा मॉडल) मालिक के कहने पर हटाया -
+        // वेबसाइट अब कोडिंग एजेंट की key से बनती है; key डालते ही जाँच अब हर key-खाने में (KeyTick) होती है
         val s = src("SettingsBrain.kt")
-        assertTrue(s.contains("✓ key चल रही है • सबसे अच्छा मॉडल: \$best"))
-        assertTrue(s.contains("WebsiteForgeClient.probeLabel(c)"))
-        assertTrue(s.contains("ed.postDelayed(autoCheck, 1200)"))
-        assertTrue(s.contains("कोडिंग/चैट वाली Gemini key यहाँ लगाएँ"))
-        assertTrue(s.contains("वेबसाइट बनाने की key अलग है: AI दिमाग → वेबसाइट बिल्डर"))
+        assertTrue(s.contains("DK से वेबसाइट बनवाएँगे तो वह भी यहीं की Gemini key से बनेगी"))
+        assertTrue(src("KeyTick.kt").contains("postDelayed(check, WAIT_MS)") || src("KeyTick.kt").contains("WAIT_MS"))
     }
 }

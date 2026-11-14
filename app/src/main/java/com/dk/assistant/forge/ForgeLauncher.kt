@@ -29,7 +29,7 @@ object ForgeLauncher {
 
     fun openKeySettings(c: Context) {
         try {
-            c.startActivity(Intent(c, com.dk.assistant.SettingsActivity::class.java).putExtra("section", "brain_web")
+            c.startActivity(Intent(c, com.dk.assistant.SettingsActivity::class.java).putExtra("section", "brain_coder")
                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP))
         } catch (e: Exception) { DKLog.d("Forge: Settings नहीं खुली - ${e.javaClass.simpleName}") }
     }

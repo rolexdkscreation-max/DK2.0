@@ -72,6 +72,9 @@ object Transcriber {
 
     @Volatile private var groqModel = "whisper-large-v3"
 
+    /** 14 नवंबर 2026: DK लाइव की बात दोबारा - हमेशा सबसे सही [LiveWhisper.MODEL] (turbo पर नहीं गिरता), छोटा timeout */
+    fun accurate(key: String, wav: ByteArray, timeoutMs: Long): String = groqWhisper(key, wav, LiveWhisper.MODEL, clientFor(timeoutMs))
+
     private fun groqWhisper(key: String, wav: ByteArray, client: OkHttpClient = http): String = try { groqWhisper(key, wav, groqModel, client) } catch (e: AiException) {
         // model band/limit -> turbo
         if (groqModel != "whisper-large-v3-turbo" && (e.code == 404 || e.code == 400 || e.code == 429)) {

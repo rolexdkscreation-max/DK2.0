@@ -162,7 +162,7 @@ internal fun GeminiLive.scheduleFast() {
         // v3.41: 300+350 ms -> ghanti me 150 ms; baaki 200 ms (+250 sirf jab caption ne text pakka nahi kiya)
         val ringing = svc.callRinging()
         delay(if (ringing) 150 else 200); val a = cur()
-        val b = if (ringing || (a.isNotBlank() && a == capFinal)) a else { delay(250); cur() }
+        var b = if (ringing || (a.isNotBlank() && a == capFinal)) a else { delay(250); cur() }
         if (b.isBlank() || a != b || turnDet.inSpeech || isPlaying() || stopped) return@launch
         // v3.40: घंटी बज रही है -> "हाँ / उठाओ / स्पीकर पर / काट दो" फ़ोन तुरंत करे (Gemini के tool का इंतज़ार नहीं)
         if (svc.callRinging()) {
@@ -173,6 +173,16 @@ internal fun GeminiLive.scheduleFast() {
         // यहाँ नहीं (पहले वही बात दोबारा बोलने पर कुछ नहीं होता था); दो बार चलने से Memo की छोटी खिड़की रोकती है
         PhoneLockVoice.instant(b, Prefs.wakeWords(svc), needName = dkOnlyNow)?.let { act ->
             runLockNow(PhoneLockVoice.quick(act), b, "बोलना खत्म"); return@launch
+        }
+        // 14 नवंबर 2026 (मालिक): Groq key हो तो वही आवाज़ Whisper large-v3 से भी - सही शब्दों पर काम (देर = caption वाला).
+        // लॉक / अनलॉक / घंटी ऊपर caption से तुरंत (उनमें देर नहीं)
+        val cap = b
+        if (!ringing && LiveWhisper.on(svc)) {
+            val chunks = whisperUtt.snapshot(System.currentTimeMillis()); val ms = whisperUtt.speechMs(); whisperUtt.clear()
+            val w = LiveWhisper.hear(svc, chunks, ms)
+            if (turnDet.inSpeech || isPlaying() || stopped) return@launch
+            b = LiveWhisper.pick(w, cap, dkHeardNow())
+            if (b != cap) log("Whisper ने सही सुना: \"${b.take(50)}\" (caption: \"${cap.take(30)}\")")
         }
         // v3.46: वही बात दोबारा router में नहीं (हर ठहराव/शोर पर वही caption दोबारा जाता था)
         if (!routeDedupe.fresh(b, System.currentTimeMillis())) return@launch
@@ -190,7 +200,7 @@ internal fun GeminiLive.scheduleFast() {
         val settle = LiveFast.settleMs(q.action.optString("type"))
         if (settle > 0) {
             delay(settle)
-            if (cur() != b || turnDet.inSpeech || stopped) {
+            if (cur() != cap || turnDet.inSpeech || stopped) {
                 log("तुरंत काम रुका (${q.action.optString("type")}) - आप आगे बोल रहे थे, पूरी बात पर फिर से"); routeDedupe.reset(); return@launch
             }
         }

@@ -103,112 +103,19 @@ internal fun SettingsActivity.secBrainMenu() {
         hint(box, "अभी: " + (if (Prefs.oneKey(this).isNotBlank()) "✓ सारे काम (बात, चैट, खोज, फ़ोन, कोडिंग, स्टोरी, DK कंप्यूटर, वेबसाइट) इसी एक key से" else "✗ key नहीं डाली") +
             " • सुनना भी Gemini से (Groq की ज़रूरत नहीं)। एक free key की limit सब कामों में बँटती है — limit जल्दी खत्म हो तो बटन बंद करके अलग-अलग keys डालें।")
     }
-    brainPinCard()
-    // v3.167 (मालिक): वेबसाइट बिल्डर की अपनी अलग key - एक-key मोड में भी दिखे और चले (नवंबर 2026: न डाली हो तो एक key से)
-    menuRow("brain_web", "वेबसाइट बिल्डर (Website Forge)", forgeStatus() + "\nवेबसाइट बनाने के लिए अलग Gemini key (ज़रूरी नहीं) — डली हो तो पहले यही" +
-        (if (one) ", नहीं तो ऊपर की एक key" else ""), "computer")
-    if (one) {
-        card("अलग-अलग key वाले हिस्से — बंद", "ऊपर \"एक key से सब\" चालू है, इसलिए DK लाइव / चैट / कोडिंग / कंप्यूटर / स्टोरी सब उसी एक key से — उनकी अलग keys अभी इस्तेमाल नहीं हो रहीं") { box ->
-            hint(box, "अलग-अलग key चाहिए तो ऊपर वाला बटन बंद करें — पहले डाली हुई अलग keys वैसी ही सुरक्षित हैं।")
-        }
-        return
-    }
-    card("हर हिस्से की अपनी API", "हर हिस्सा सिर्फ़ अपनी डाली हुई key से जवाब लेता है — किसी दूसरे की key इस्तेमाल नहीं करता") { box ->
-        hint(box, "किसी मॉडल का फ्री कोटा खत्म (limit) हो तो उसी key के दूसरे फ्री मॉडल पर अपने-आप स्विच होता है। दूसरी कंपनी पर नहीं जाता।")
-    }
+    // 14 नवंबर 2026 (मालिक): ऊपर वाला "हर काम का मॉडल — खुद चुनें" हटा (अब हर हिस्से - DK लाइव / चैट / कोडिंग / कंप्यूटर -
+    // के अंदर उसका अपना). वेबसाइट बिल्डर की अलग key वाली पंक्ति हटी - वेबसाइट कोडिंग एजेंट की API से बनती है.
+    // "एक key से सब" चालू = नीचे के अलग-अलग key वाले हिस्से दिखते ही नहीं (एक बार में एक ही तरीका दिखे)
+    if (one) return
     menuRow("brain_live", "DK लाइव", scopeStatus(ApiScopes.LIVE) + "\nआवाज़ से बातचीत (Gemini Live), बोलना, सुनना", "voice")
     menuRow("brain_chat", "DK चैट", scopeStatus(ApiScopes.CHAT) + "\nलिखकर चैट, जवाब, Google search, गहरी सोच, कहानी", "brain")
-    menuRow("brain_coder", "कोडिंग एजेंट", scopeStatus(ApiScopes.CODER) + "\nकोडिंग टीम: बिल्डर, रिव्यूअर, कोऑर्डिनेटर", "coder")
+    menuRow("brain_coder", "कोडिंग एजेंट", scopeStatus(ApiScopes.CODER) + "\nकोडिंग टीम: बिल्डर, रिव्यूअर, कोऑर्डिनेटर • वेबसाइट भी इसी की API से", "coder")
     menuRow("brain_pc", "DK कंप्यूटर", scopeStatus(ApiScopes.PC) + "\nDK कंप्यूटर के काम और उसकी web search", "computer")
-}
-
-internal fun SettingsActivity.forgeStatus(): String {
-    if (Prefs.forgeKey(this).isBlank()) return "✗ key नहीं डाली — वेबसाइट नहीं बनेगी"
-    // नवंबर 2026: अपनी key नहीं, पर "एक key से सब" वाली key है = वेबसाइट उसी से
-    if (Prefs.forgeRaw(this, Prefs.FORGE_KEY).isBlank() && Prefs.forgeRaw(this, Prefs.FORGE_KEY2).isBlank())
-        return "✓ \"एक key से सब\" वाली key से • मॉडल: " + Prefs.forgeModelToUse(this).ifBlank { "अपने-आप" }
-    val m = Prefs.forgeModel(this).ifBlank { Prefs.forgeAutoModel(this).ifBlank { "अपने-आप" } }
-    return "✓ अपनी key • मॉडल: $m"
-}
-
-/** v3.167: वेबसाइट बिल्डर (Website Forge) - अपनी अलग Gemini key + अपने-आप सबसे अच्छा मॉडल */
-internal fun SettingsActivity.secBrainWeb() {
-    card("वेबसाइट बिल्डर — अपनी Gemini key", "यहाँ key डली हो तो वेबसाइट सिर्फ़ इसी से बनेगी — DK लाइव, चैट, कोडिंग की key नहीं। खाली छोड़ें और \"एक key से सब\" चालू हो तो वही एक key") { box ->
-        val ed = field(box, "Gemini API Key (वेबसाइट बिल्डर की अपनी)", Prefs.forgeRaw(this, Prefs.FORGE_KEY), "AIza… यहाँ पेस्ट करें", secret = true)
-        keyFields[Prefs.FORGE_KEY] = ed
-        keyFields[Prefs.FORGE_KEY2] = field(box, "Gemini API Key 2 (बैकअप, ज़रूरी नहीं)",
-            Prefs.forgeRaw(this, Prefs.FORGE_KEY2), "दूसरी Gemini key (दूसरे Google account की)", secret = true)
-        val res = TextView(this).apply { setTextColor(0xB3FFFFFF.toInt()); textSize = 13f; setPadding((4 * dp).toInt(), (6 * dp).toInt(), 0, 0) }
-        val modelTv = TextView(this).apply { setTextColor(0xFFFFFFFF.toInt()); textSize = 15f; setPadding((4 * dp).toInt(), (10 * dp).toInt(), 0, 0) }
-        fun showModel() {
-            val auto = Prefs.forgeAutoModel(this)
-            val own = Prefs.forgeModel(this)
-            modelTv.text = if (own.isNotBlank()) "मॉडल: $own (आपका चुना)" + (if (auto.isNotBlank() && auto != own) "\nसबसे अच्छा (अपने-आप): $auto" else "")
-                else if (auto.isNotBlank()) "मॉडल: $auto ✓ (वेबसाइट के लिए सबसे अच्छा — अपने-आप चुना)"
-                else "मॉडल: key डालकर \"जाँचें\" दबाएँ — सबसे अच्छा मॉडल अपने-आप आ जाएगा"
-        }
-        var models: List<String> = Prefs.forgeRaw(this, Prefs.FORGE_MODELS).split("\n").filter { it.isNotBlank() }
-        fun check(silent: Boolean) {
-            val k = ed.text.toString().trim()
-            if (k.isBlank()) { if (!silent) res.text = "✗ पहले वेबसाइट बिल्डर की Gemini key डालें"; return }
-            if (ApiScopes.detect(k).let { it != null && it != "gemini" }) { res.text = "✗ यह Gemini की key नहीं लगती (AIza… से शुरू होती है)"; return }
-            save(false); res.text = "⏳ key जाँच रहा हूँ — Pro, Flash, Lite एक साथ आज़मा रहा हूँ…"
-            lifecycleScope.launch {
-                try {
-                    val r = com.dk.assistant.forge.WebsiteForgeClient.pickBest(k)
-                    val best = r.best; val all = r.all
-                    models = all
-                    Prefs.edit(this@secBrainWeb) {
-                        putString(Prefs.FORGE_MODELS, all.joinToString("\n"))
-                        if (best != null) putString(Prefs.FORGE_AUTO_MODEL, best)
-                    }
-                    // v3.169: हर जाँचे मॉडल का साफ़ नतीजा - मालिक को दिखे key चल रही है या नहीं, और क्यों
-                    val lines = r.tried.joinToString("\n") { (m, c) -> "• $m: " + com.dk.assistant.forge.WebsiteForgeClient.probeLabel(c) }
-                    res.text = (if (best != null) "✓ key चल रही है • सबसे अच्छा मॉडल: $best (${all.size} मॉडल मिले)"
-                        else "✗ key सही है, पर अभी किसी मॉडल की free limit नहीं बची — थोड़ी देर बाद या Key 2 डालकर फिर जाँचें") + "\n" + lines
-                    showModel()
-                } catch (e: Exception) {
-                    val m = e.message.orEmpty()
-                    res.text = "✗ " + (if ((e as? com.dk.assistant.forge.WebsiteForgeClient.ForgeHttpException)?.code.let { it == 400 || it == 401 || it == 403 }) "यह key गलत/बंद है — Google AI Studio से नई key लें"
-                        else m.ifBlank { "key नहीं चली (नेट जाँचें)" }).take(160)
-                }
-            }
-        }
-        // v3.169: key पेस्ट करते ही अपने-आप जाँच (जाँचें दबाना भूलें तो भी नतीजा दिखे)
-        var lastChecked = ed.text.toString().trim()
-        val autoCheck = Runnable { val k = ed.text.toString().trim(); if (k != lastChecked && k.startsWith("AIza") && k.length >= 35) { lastChecked = k; check(true) } }
-        ed.addTextChangedListener(object : TextWatcher {
-            override fun beforeTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) {}
-            override fun onTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) {}
-            override fun afterTextChanged(s: Editable?) { ed.removeCallbacks(autoCheck); ed.postDelayed(autoCheck, 1200) }
-        })
-        row(box, showButton(ed), button("जाँचें") { check(false) }, button("Key लें") { Setup.openUrl(this, Providers.byId("gemini")!!.keyUrl) })
-        box.addView(res)
-        // v3.169: खोलते ही दिखे key सेव है या नहीं
-        res.text = if (ed.text.isNotBlank()) "✓ key सेव है" + (if (Prefs.forgeAutoModel(this).isNotBlank()) " — चल रही है या नहीं देखने को \"जाँचें\" दबाएँ" else " — जाँच रहा हूँ…")
-            else "✗ वेबसाइट बिल्डर की key नहीं डली — यहाँ Gemini key डालें (कोडिंग/चैट वाली key यहाँ नहीं चलती)"
-        val other = listOf(Prefs.scopeKey(this, ApiScopes.CODER, "gemini"), Prefs.scopeKey(this, ApiScopes.CHAT, "gemini"), Prefs.ttsGeminiKey(this))
-            .firstOrNull { it.isNotBlank() }
-        if (ed.text.isBlank() && other != null) row(box, button("कोडिंग/चैट वाली Gemini key यहाँ लगाएँ") { ed.setText(other); check(false) })
-        box.addView(modelTv); showModel()
-        row(box, button("मॉडल बदलें") {
-            if (models.isEmpty()) { toast("पहले \"जाँचें\" दबाएँ — मॉडल की सूची आ जाएगी"); return@button }
-            val items = (listOf("अपने-आप (सबसे अच्छा)") + models).toTypedArray()
-            androidx.appcompat.app.AlertDialog.Builder(this).setTitle(UiLang.s("वेबसाइट का मॉडल"))
-                .setItems(items) { _, i ->
-                    Prefs.edit(this) { putString(Prefs.FORGE_MODEL, if (i == 0) "" else models[i - 1]) }
-                    showModel()
-                }.show()
-        }, button("वेबसाइट बिल्डर खोलें") { com.dk.assistant.forge.ForgeLauncher.open(this) })
-        hint(box, "सबसे अच्छा मॉडल अपने-आप: नया Pro → नया Flash → Lite (जो इस key पर सच में चले)। वेबसाइट बनाते समय उस मॉडल की limit खत्म हो तो " +
-            "इसी key के अगले मॉडल पर, फिर भी न चले तो Key 2 पर — यहाँ key डली हो तो DK की दूसरी कोई key नहीं।" +
-            if (Prefs.oneKeyOn(this)) "\n\"एक key से सब\" चालू है: यहाँ key डली हो तो वेबसाइट इसी से, नहीं तो उसी एक key से बनेगी।" else "")
-        if (ed.text.isNotBlank() && Prefs.forgeAutoModel(this).isBlank()) check(true)
-    }
 }
 
 /** DK लाइव: सिर्फ़ Google Gemini (Live + बोलना + सुनना) और सुनने के लिए चाहें तो Groq */
 internal fun SettingsActivity.secBrainLive() {
+    brainPinCard(listOf(BrainPin.LIVE))
     card("DK लाइव — Google Gemini", "Gemini Live बातचीत, Gemini नेचुरल आवाज़ और सुनना — सिर्फ़ इसी key से") { box ->
         val ed = field(box, "Gemini API Key (DK लाइव की अपनी)", Prefs.scopeKeyRaw(this, ApiScopes.LIVE, "gemini"), "AIza… यहाँ पेस्ट करें", secret = true)
         keyFields[ApiScopes.pref(ApiScopes.LIVE, "key", "gemini")] = ed
@@ -377,8 +284,10 @@ internal fun SettingsActivity.showButton(key: EditText) = button("दिखा�
 internal fun SettingsActivity.scopeRadioBase(scope: String) = if (scope == ApiScopes.CODER) 6000 else 6100
 
 internal fun SettingsActivity.secBrainScope(scope: String) {
+    brainPinCard(if (scope == ApiScopes.CODER) listOf(BrainPin.CODER, BrainPin.SITE) else listOf(BrainPin.PC))
     card("${ApiScopes.title(scope)} की AI", "${ApiScopes.title(scope)} सिर्फ़ यहाँ डाली key से चलेगा — DK चैट या किसी और की key नहीं") { box ->
-        if (scope == ApiScopes.CODER) hint(box, "वेबसाइट बनाने की key अलग है: AI दिमाग → वेबसाइट बिल्डर (यहाँ की key से वेबसाइट नहीं बनती)")
+        // 14 नवंबर 2026 (मालिक): "वेबसाइट कोडिंग एजेंट की API से बने" - अलग वेबसाइट बिल्डर key हटी
+        if (scope == ApiScopes.CODER) hint(box, "DK से वेबसाइट बनवाएँगे तो वह भी यहीं की Gemini key से बनेगी — यहाँ न हो तो AI दिमाग में डली कोई भी Gemini key।")
         val cur = Prefs.scopeActiveRaw(this, scope)
         val rg = RadioGroup(this).apply { orientation = RadioGroup.VERTICAL }
         Providers.all.forEachIndexed { i, p ->
@@ -398,6 +307,7 @@ internal fun SettingsActivity.secBrainScope(scope: String) {
 
 internal fun SettingsActivity.secBrain() {
     quickSetupCard()
+    brainPinCard(listOf(BrainPin.CHAT, BrainPin.STORY))
     card("DK चैट की AI", "चैट, आम जवाब, बिना-Live आवाज़ मोड का जवाब, search, गहरी सोच और कहानी — सिर्फ़ इसी की key से") { box ->
         rgProvider = RadioGroup(this).apply { orientation = RadioGroup.VERTICAL }
         Providers.all.forEachIndexed { i, p ->
@@ -656,10 +566,14 @@ internal fun SettingsActivity.geminiPaidSwitch(box: LinearLayout) {
  * वही यहाँ चुनने को आए, उसके मॉडल हमेशा ताज़ा (नया लॉन्च हुआ फ्री वाला भी). चुना = सिर्फ़ उसी पर काम, fallback नहीं.
  * हटाया = पहले जैसा fallback." देखें [BrainPin].
  */
-internal fun SettingsActivity.brainPinCard() {
-    card("हर काम का मॉडल — खुद चुनें", "डिफ़ॉल्ट खाली = अपने-आप (सारी डली keys पर fallback, क्रम से)। चुनें = सिर्फ़ वही key + वही मॉडल, कोई fallback नहीं") { box ->
+/**
+ * 14 नवंबर 2026 (मालिक): "हर काम का मॉडल खुद चुने" ऊपर (AI दिमाग के पहले पन्ने पर) नहीं - DK लाइव / DK चैट / कोडिंग एजेंट /
+ * DK कंप्यूटर खोलो तो उसी के अंदर सिर्फ़ उसका. [features] = इस हिस्से के काम (कोडिंग एजेंट = वेबसाइट भी, चैट = कहानी भी).
+ */
+internal fun SettingsActivity.brainPinCard(features: List<String>) {
+    card(PIN_CARD, "डिफ़ॉल्ट खाली = अपने-आप (सारी डली keys पर fallback, क्रम से)। चुनें = वही key + वही मॉडल सबसे पहले") { box ->
         hint(box, "AI दिमाग में डली हर key (Gemini, Groq, OpenRouter, Z.ai, NVIDIA — किसी भी हिस्से की) यहाँ चुनने को आती है। key चुनते ही उस key के सारे मॉडल अभी-अभी की सूची से आते हैं — नया लॉन्च हुआ मॉडल भी। \"हटाओ\" दबाते ही वह काम फिर पहले जैसा fallback से चलेगा।")
-        BrainPin.FEATURES.forEach { (f, name) ->
+        BrainPin.FEATURES.filter { it.first in features }.forEach { (f, name) ->
             label(box, name)
             val line = TextView(this).apply { setTextColor(0xFFFFFFFF.toInt()); textSize = 13f; setPadding((4 * dp).toInt(), (2 * dp).toInt(), 0, (2 * dp).toInt()) }
             fun show() {
@@ -674,6 +588,8 @@ internal fun SettingsActivity.brainPinCard() {
         }
     }
 }
+
+internal const val PIN_CARD = "इस हिस्से का मॉडल — खुद चुनें"
 
 private fun SettingsActivity.pickPin(f: String, done: () -> Unit) {
     save(false)   // अभी डाली key भी सूची में आए

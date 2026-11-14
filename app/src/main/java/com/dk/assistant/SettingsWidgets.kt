@@ -142,6 +142,7 @@ internal fun SettingsActivity.field(box: LinearLayout, title: String, value: Str
         addTextChangedListener(watcher)
     }
     box.addView(e, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+    if (secret) keyTick(box, e)          // 14 नवंबर 2026: सही key = हरा ✓ (आवाज़ में भी), फिर गायब
     return e
 }
 

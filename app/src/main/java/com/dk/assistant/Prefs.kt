@@ -199,10 +199,15 @@ object Prefs {
     const val FORGE_KEY2 = "forge_key_gemini2"
     const val FORGE_MODEL = "forge_model"
     const val FORGE_MODELS = "forge_models"
-    fun forgeKeys(c: Context): List<String> = forgeKeysFor(listOf(FORGE_KEY, FORGE_KEY2).map { sp(c).getString(it, "")?.trim().orEmpty() },
-        oneKeyOn(c), oneKey(c))
-        // 14 नवंबर 2026 (मालिक): वेबसाइट की अपनी key नहीं = किसी और हिस्से की Gemini key से भी वेबसाइट बने
-        .ifEmpty { listOf(borrowKey(c, ApiScopes.CHAT, "gemini")).filter { it.isNotBlank() } }
+    fun forgeKeys(c: Context): List<String> = forgeOrder(
+        // 14 नवंबर 2026 (मालिक): "वेबसाइट कोडिंग एजेंट के पास जो API है उससे बने" - अलग-अलग key वाले मोड में पहले कोडिंग
+        // एजेंट की अपनी Gemini keys (1-5), फिर पुरानी वेबसाइट key / एक key, फिर AI दिमाग में कहीं भी डली Gemini key
+        if (oneKeyOn(c)) emptyList() else listOf("gemini", "gemini2", "gemini3", "gemini4", "gemini5").map { scopeKeyRaw(c, ApiScopes.CODER, it) },
+        forgeKeysFor(listOf(FORGE_KEY, FORGE_KEY2).map { sp(c).getString(it, "")?.trim().orEmpty() }, oneKeyOn(c), oneKey(c)),
+        listOf(borrowKey(c, ApiScopes.CODER, "gemini"), borrowKey(c, ApiScopes.CHAT, "gemini")))
+    /** वेबसाइट की keys का क्रम: कोडिंग एजेंट की → वेबसाइट/एक key → उधार. खाली/दोहराई नहीं. Pure - JUnit से जाँच */
+    fun forgeOrder(coder: List<String>, forge: List<String>, borrowed: List<String>): List<String> =
+        (coder + forge + borrowed).map { it.trim() }.filter { it.isNotBlank() }.distinct()
     /**
      * नवंबर 2026 (मालिक: "एक key डालेगा तो सारे काम"): वेबसाइट बिल्डर की अपनी key पहले; अपनी key नहीं डली और "एक key से सब"
      * चालू = वही एक key. अलग-अलग keys वाले मोड में पहले जैसा - सिर्फ़ अपनी key. Pure - JUnit से जाँच.

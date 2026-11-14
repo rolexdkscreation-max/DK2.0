@@ -235,7 +235,7 @@ internal fun GeminiLive.sendAudio(pcm: ByteArray, silent: Boolean = false): Unit
     if (w.queueSize() > (if (silent) 32 * 1024 else 256 * 1024)) { dropped++; return@synchronized }
     val msg = "{\"realtimeInput\":{\"audio\":{\"mimeType\":\"audio/pcm;rate=$IN_RATE\",\"data\":\"" +
         Base64.encodeToString(pcm, Base64.NO_WRAP) + "\"}}}"
-    if (w.tx(msg)) { sent++; sentBytes += pcm.size; utt.add(pcm, !silent, System.currentTimeMillis()) } else dropped++
+    if (w.tx(msg)) { sent++; sentBytes += pcm.size; utt.add(pcm, !silent, System.currentTimeMillis()); whisperUtt.add(pcm, !silent, System.currentTimeMillis()) } else dropped++
     // 1s khaamoshi bheji -> stream band (docs: audioStreamEnd), ab asli awaaz aane tak upload nahi
     if (end && endGate.onSilenceEnd()) try { w.tx("{\"realtimeInput\":{\"audioStreamEnd\":true}}") } catch (_: Exception) {}
 }

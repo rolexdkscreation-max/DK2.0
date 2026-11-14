@@ -145,8 +145,7 @@ class GeminiClient(private val key: String, private val model: String) : AiClien
             } catch (e: AiException) {
                 if (last == null || GeminiModels.isGone(last.code, last.message.orEmpty())) last = e
                 val tryNext = e.code == 404 || e.code == 429 || e.code >= 500 ||
-                    (e.code == 400 && (e.message ?: "").contains("model", ignoreCase = true) &&
-                        !(e.message ?: "").contains("API key", ignoreCase = true))
+                    (e.code == 400 && !(e.message ?: "").contains("API key", ignoreCase = true))
                 if (!tryNext) throw e
             }
         }
@@ -202,7 +201,7 @@ class GeminiClient(private val key: String, private val model: String) : AiClien
                 }
                 if (last == null || GeminiModels.isGone(last.code, last.message.orEmpty())) last = e
                 val tryNext = e.code == 404 || e.code == 429 || e.code >= 500 ||
-                    (e.code == 400 && (e.message ?: "").contains("model", true) && !(e.message ?: "").contains("API key", true))
+                    (e.code == 400 && !(e.message ?: "").contains("API key", true))
                 if (!tryNext) throw e
             }
         }
@@ -360,7 +359,9 @@ class OpenAiCompatClient(
         private set
 
     private fun tryNext(e: AiException) = !RateLimit.accountWide(e) && (e.code == 404 || e.code == 429 || e.code == 413 || e.code >= 500) ||
-        (e.code == 400 && (e.message.orEmpty().contains("model", true) || e.message.orEmpty().contains("decommission", true)))
+        // 14 नवंबर 2026 (मालिक: "चैट में Groq: मॉडल ने सवाल नहीं लिया - बार-बार"): कोई भी 400 (मॉडल चैट वाला नहीं / कोई
+        // setting न ले) = उसी key का अगला मॉडल. सिर्फ़ key की गलती पर नहीं (वह हर मॉडल पर वही)
+        (e.code == 400 && !e.message.orEmpty().contains("api key", true) && !e.message.orEmpty().contains("api_key", true))
 
     private fun mKey(m: String) = "m429_${name}_$m"
     private fun models(): List<String> {
@@ -387,7 +388,8 @@ class OpenAiCompatClient(
 
     private fun completeOnce(model: String, system: String, history: List<Turn>, prompt: String, imageB64: String?): String {
         val msgs = JSONArray().put(JSONObject().put("role", "system").put("content", Lang.sys(system)))
-        history.forEach {
+        // खाली पुरानी बात (जवाब नहीं आया था) कई सर्वर 400 से लौटाते हैं - भेजो ही मत
+        history.filter { it.text.isNotBlank() }.forEach {
             msgs.put(JSONObject().put("role", if (it.role == "user") "user" else "assistant").put("content", it.text))
         }
         if (imageB64 != null) {
@@ -439,7 +441,7 @@ class OpenAiCompatClient(
 
     private fun streamOnce(model: String, system: String, history: List<Turn>, prompt: String, onDelta: (String) -> Unit): String {
         val msgs = JSONArray().put(JSONObject().put("role", "system").put("content", Lang.sys(system)))
-        history.forEach { msgs.put(JSONObject().put("role", if (it.role == "user") "user" else "assistant").put("content", it.text)) }
+        history.filter { it.text.isNotBlank() }.forEach { msgs.put(JSONObject().put("role", if (it.role == "user") "user" else "assistant").put("content", it.text)) }
         msgs.put(JSONObject().put("role", "user").put("content", prompt))
         val body = JSONObject().put("model", model).put("messages", msgs).put("stream", true).put("max_tokens", 900 + ThinkLevel.extraTokens(think))
         val thought = ThinkLevel.applyOpenAi(body, baseUrl, model, think, "low")
