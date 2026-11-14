@@ -32,7 +32,7 @@ object WorkLine {
         val low = t.lowercase()
         val said = when {
             Regex("\\bpr\\b|pull request|merge").containsMatchIn(low) -> "हाँ, PR चेक कर रहा हूँ…"
-            Regex("\\bci\\b|build|test|टेस्ट|बिल्ड|apk|workflow").containsMatchIn(low) -> "हाँ, CI टेस्टिंग चला रहा हूँ…"
+            Regex("\\bci\\b|build|test|टेस्ट|बिल्ड(?!र)|apk|workflow").containsMatchIn(low) -> "हाँ, CI टेस्टिंग चला रहा हूँ…"
             Regex("push|commit").containsMatchIn(low) -> "GitHub पर बदलाव भेज रहा हूँ…"
             Regex("backup").containsMatchIn(low) -> "पहले backup ले रहा हूँ…"
             Regex("branch").containsMatchIn(low) -> "काम की branch बना रहा हूँ…"

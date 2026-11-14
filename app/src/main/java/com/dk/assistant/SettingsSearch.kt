@@ -103,6 +103,7 @@ object SettingsSearch {
         E("brain_live", "DK लाइव — Google Gemini", "Gemini Live बातचीत, Gemini नेचुरल आवाज़ और सुनना — सिर्फ़ इसी key से"),
         E("brain_live", "लिखना (\"आप:\" वाली लाइन) — अपनी अलग Gemini key", "आप जो बोलते हैं उसे लिखने वाला (gemini-3.5-transcribe-live) इसी key से चलेगा, ताकि बोलने वाले Live की free limit इसमें खर्च न हो"),
         E("brain_live", "खोज — Tavily, Exa, Gemini (बैकअप क्रम)", "DK लाइव और चैट की इंटरनेट खोज पहले Tavily से; न चले तो अपने-आप Exa; वह भी न चले तो Gemini + Google Search"),
+        E("brain_live", "गहरी खोज (डीप रिसर्च) — Exa, Tavily, Linkup, Firecrawl", "डीप रिसर्च, गहरी खोज, Linkup key, Firecrawl key, कई वेबसाइटों से हिंदी रिपोर्ट"),
         E("brain_live", "सुनना (आवाज़ → text) — Groq, चाहें तो", "Groq Whisper सबसे तेज़ सुनता है। खाली छोड़ें = ऊपर वाली Gemini key से सुनेगा"),
         E("brain_chat", "मेरी Gemini key paid है", "DKAI होम पर सिर्फ़ फ्री मॉडल - paid key हो तो Pro जैसे paid मॉडल भी दिखें"),
         E("brain_chat", "DK चैट की AI", "चैट, आम जवाब, बिना-Live आवाज़ मोड का जवाब, search, गहरी सोच और कहानी — सिर्फ़ इसी की key से"),
