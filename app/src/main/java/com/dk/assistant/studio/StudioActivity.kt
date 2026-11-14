@@ -137,6 +137,7 @@ class StudioActivity : AppCompatActivity() {
         })
         setContentView(frame)
         Glass.install(this)
+        com.dk.assistant.PlainLook.install(this)   // 14 नवंबर 2026 (मालिक): होम (DKAI) जैसा सपाट रूप, काँच/ग्लासी नहीं
         intent.getStringExtra("slug")?.let { s -> StudioProject.open(this, s)?.let { StudioSession.project = it } }
     }
 
