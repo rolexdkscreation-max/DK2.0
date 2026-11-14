@@ -1,5 +1,6 @@
 package com.dk.assistant.backup
 
+import com.dk.assistant.DkMind
 import com.dk.assistant.LearnedWays
 import org.json.JSONArray
 import org.json.JSONObject
@@ -17,6 +18,7 @@ import java.util.zip.GZIPOutputStream
  *  - facts   = "याद रखो" वाली पक्की बातें
  *  - history = AI का पिछला context, chat = चैट स्क्रीन के संदेश
  *  - learned = दूसरे AI से सीखे तरीके
+ *  - brain   = DK के अपने दिमाग ने रोज़ जो सीखा (सवाल -> जवाब) - रिस्टोर पर वापस, कुछ नहीं मिटता
  *
  * जगह: user के Google Drive का छिपा "appDataFolder" (WhatsApp जैसा) - सिर्फ़ DK पढ़-लिख सकता है,
  * user की दूसरी Drive फ़ाइलें DK को नहीं दिखतीं (scope drive.appdata).
@@ -44,9 +46,11 @@ object MemoryBackup {
         val points: List<P> = emptyList(),
         val days: List<String> = emptyList(),
         val dropped: List<String> = emptyList(),
+        /** 14 नवंबर 2026: DK के अपने दिमाग ने जो सीखा (सवाल -> जवाब) - [com.dk.assistant.DkMind] */
+        val brain: String = "[]",
     ) {
         val talkCount get() = turns.size
-        val keptCount get() = facts.size + points.size + LearnedWays.fromJson(learned).size
+        val keptCount get() = facts.size + points.size + LearnedWays.fromJson(learned).size + DkMind.fromJson(brain).size
     }
 
     // ------------------------------------------------------------------ ईमेल
@@ -62,6 +66,7 @@ object MemoryBackup {
         .put("turns", JSONArray().apply { s.turns.forEach { put(JSONObject().put("w", it.who).put("t", it.text).put("a", it.at).put("s", it.src).put("d", it.day)) } })
         .put("points", JSONArray().apply { s.points.forEach { put(JSONObject().put("d", it.day).put("t", it.text).put("a", it.at)) } })
         .put("days", JSONArray(s.days)).put("dropped", JSONArray(s.dropped))
+        .put("brain", arr(s.brain))
         .toString()
 
     /** ग़लत / किसी और ऐप की फ़ाइल = null */
@@ -79,6 +84,7 @@ object MemoryBackup {
             points = objs(o.optJSONArray("points")).mapNotNull { j -> P(j.optString("d"), j.optString("t"), j.optLong("a")).takeIf { it.text.isNotBlank() } },
             days = strs(o.optJSONArray("days")),
             dropped = strs(o.optJSONArray("dropped")),
+            brain = (o.optJSONArray("brain") ?: JSONArray()).toString(),   // पुराने बैकअप में नहीं = खाली
         )
     } catch (_: Exception) { null }
 
@@ -105,6 +111,7 @@ object MemoryBackup {
         val newPoints: List<P>,
         val days: List<String>,
         val dropped: List<String>,
+        val brain: String = "[]",
     )
 
     fun turnKey(t: T) = t.who + "|" + t.at + "|" + t.text
@@ -130,6 +137,7 @@ object MemoryBackup {
             newTurns = newTurns, newPoints = newPoints,
             days = (local.days + backup.days).distinct(),
             dropped = (local.dropped + backup.dropped).distinct(),
+            brain = DkMind.toJson(DkMind.merge(DkMind.fromJson(local.brain), DkMind.fromJson(backup.brain))),
         )
     }
 

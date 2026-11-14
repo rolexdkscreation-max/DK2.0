@@ -482,7 +482,7 @@ class AgentRunner(
         // DK ka apna dimaag: samay, tareekh, battery, namaste, hisaab = ek pal me (bina internet)
         if (note.isBlank()) LocalBrain.instant(svc, goal)?.let { say(it); return }
         if (!brain.hasUsableProvider()) {
-            LocalBrain.recall(svc, goal, exact = false)?.let { say(it); return }
+            ownMind(goal)?.let { say(it); return }
             say("पहले सेटिंग्स में किसी AI की API key डालकर सेव कीजिए।")
             return
         }
@@ -818,8 +818,8 @@ class AgentRunner(
             ch.close()
             speakJob?.join()
             if (shown.isNotEmpty()) { DKState.reply(shown.toString().trim()); return ChatOut.DONE }
-            // AI nahi chala: pehle seekha hua milta-julta jawab, warna DK khud bataye kya dikkat hai
-            LocalBrain.recall(svc, goal, exact = false)?.let { say(it); return ChatOut.DONE }
+            // AI nahi chala: pehle DK का अपना दिमाग (सीखा हुआ / आम बातें), warna DK khud bataye kya dikkat hai
+            ownMind(goal)?.let { say(it); return ChatOut.DONE }
             val why = brain.explainAll(e)
             DKState.replyFailed(why); if (!silent) speaker.speak(why)
             return ChatOut.DONE
@@ -854,6 +854,17 @@ class AgentRunner(
         if (note.isBlank() && ground == null) scope.launch(Dispatchers.IO) { LocalBrain.learn(svc, goal, answer) }
         speakJob?.join()
         return ChatOut.DONE
+    }
+
+    /**
+     * 14 नवंबर 2026 (मालिक): कोई key / AI न चले = DK का अपना दिमाग - पहले रोज़ का सीखा जवाब ([DkMind], इसी फ़ोन में),
+     * फिर आम बोलचाल ([OfflineTalk.casual]). खोज / ताज़ा जानकारी वाली बात पर कुछ नहीं (अंदाज़ा = गलत जवाब) - null.
+     */
+    private fun ownMind(goal: String): String? {
+        if (OfflineTalk.needsNet(goal)) return null
+        try { LocalBrain.recall(svc, goal, exact = false) } catch (_: Exception) { null }?.let { DKLog.d("DK का अपना दिमाग: सीखा जवाब"); return it }
+        val x = OfflineTalk.Ctx(Prefs.userName(svc), Prefs.assistantName(svc), java.util.Calendar.getInstance().get(java.util.Calendar.HOUR_OF_DAY), (System.nanoTime() / 1000).toInt())
+        return try { OfflineTalk.casual(goal, x) } catch (_: Exception) { null }?.also { DKLog.d("DK का अपना दिमाग: आम बात") }
     }
 
     /** Mushkil sawaal: sabse taakatwar model se soch-samajhkar jawab (orb "soch raha" rang dikhata hai) */

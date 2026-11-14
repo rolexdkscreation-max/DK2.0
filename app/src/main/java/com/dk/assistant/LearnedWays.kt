@@ -53,7 +53,8 @@ object LearnedWays {
 
     fun fromJson(s: String?): List<Way> = try {
         val a = JSONArray(s ?: "[]")
-        (0 until a.length()).mapNotNull { i -> a.optJSONObject(i)?.let { Way(it.optString("t"), it.optString("f"), it.optString("p"), it.optLong("a")) }?.takeIf { it.text.isNotBlank() } }
+        // 14 नवंबर 2026: पुरानी साझा फ़ाइल में LocalBrain के सवाल-जवाब ("q") भी पड़े हो सकते हैं - वे तरीके नहीं
+        (0 until a.length()).mapNotNull { i -> a.optJSONObject(i)?.takeIf { !it.has("q") }?.let { Way(it.optString("t"), it.optString("f"), it.optString("p"), it.optLong("a")) }?.takeIf { it.text.isNotBlank() } }
     } catch (_: Exception) { emptyList() }
 
     // ------------------------------------------------------------------ फ़ोन पर
