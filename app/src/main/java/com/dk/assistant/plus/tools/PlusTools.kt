@@ -3,6 +3,7 @@ package com.dk.assistant.plus.tools
 import android.content.Context
 import com.dk.assistant.plus.FeatureFlags
 import com.dk.assistant.plus.ImageGen
+import com.dk.assistant.plus.Termux
 import com.dk.assistant.plus.YtChannel
 import org.json.JSONObject
 
@@ -27,7 +28,7 @@ interface PlusTool {
 }
 
 object PlusTools {
-    val ALL: List<PlusTool> = listOf(ImageTool, YouTubeTool)
+    val ALL: List<PlusTool> = listOf(ImageTool, YouTubeTool, TermuxTool)
 
     fun byName(name: String): PlusTool? = ALL.firstOrNull { it.name == name }
 
@@ -38,7 +39,8 @@ object PlusTools {
     /** हमारा tool और चालू = चलाओ; हमारा नहीं = null (पुराना रास्ता) */
     suspend fun runOrNull(c: Context, name: String, args: JSONObject): String? {
         val t = byName(name) ?: return null
-        if (!FeatureFlags.on(c, t.flag)) return "This ability is turned OFF. Tell the user to turn it on in DK Settings (image: DK कंप्यूटर -> इमेज बनाना; YouTube: सोशल रिव्यू -> YouTube चैनल जाँच)."
+        if (!FeatureFlags.on(c, t.flag)) return "This ability is turned OFF. Tell the user and offer to turn it ON for him with dk_settings (two-step confirmation) - " +
+            "or he can do it in DK Settings (image: DK कंप्यूटर -> इमेज बनाना; YouTube: सोशल रिव्यू -> YouTube चैनल जाँच; Termux: कोडिंग एजेंट -> Termux ऑटोमेशन)."
         return try { t.run(c, args) } catch (e: Exception) { "ERROR: ${e.message ?: "failed"}" }
     }
 
@@ -80,5 +82,26 @@ object YouTubeTool : PlusTool {
     override suspend fun run(c: Context, args: JSONObject): String {
         val r = YtChannel.check(c, args.optString("channel"))
         return r.error?.let { "ERROR: $it" } ?: YtChannel.text(r.report!!)
+    }
+}
+
+/** 15 नवंबर 2026: DK लाइव बोलकर Termux में कमांड चलाए (Termux ऑटोमेशन चालू हो तब) - खतरनाक कमांड नहीं */
+object TermuxTool : PlusTool {
+    override val name = "termux_run"
+    override val flag = FeatureFlags.TERMUX
+    override fun declaration() = PlusTools.decl(name,
+        "Run a shell command in the Termux app on this phone (Termux automation). Use it when the user asks to run a command / script / " +
+            "install a package in Termux (\"Termux में python चलाओ\", \"pkg install git करो\"). Before running, tell the user the exact command in one line. " +
+            "Never run commands that delete data, format, reboot or use su - those are blocked. Output shows inside Termux (background=false opens its window).",
+        org.json.JSONObject().put("command", PlusTools.str("the exact bash command"))
+            .put("background", org.json.JSONObject().put("type", "BOOLEAN").put("description", "true = run silently (default), false = open Termux window")),
+        listOf("command"))
+
+    override suspend fun run(c: Context, args: JSONObject): String {
+        val cmd = args.optString("command").trim()
+        if (cmd.isBlank()) return "ERROR: no command. Ask the user what to run."
+        if (Termux.Rules.dangerous(cmd)) return "BLOCKED: this command can delete data or harm the phone. Tell the user DK will not run it by voice - he can run it himself in Termux."
+        return Termux.run(c, cmd, background = args.optBoolean("background", true))?.let { "ERROR: $it Tell the user briefly." }
+            ?: "SENT: the command is running in Termux. Tell the user briefly."
     }
 }

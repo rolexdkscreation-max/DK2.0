@@ -119,7 +119,7 @@ internal fun SettingsActivity.secImageGen() {
         flagSwitch(box, "बोलकर तस्वीर बनाना चालू", FeatureFlags.IMAGE_GEN)
         flagSwitch(box, "बनी तस्वीरें गैलरी में नहीं, DK के प्राइवेट हिस्से में रखें", FeatureFlags.FACE_VAULT)
         label(box, "पहले कौन सा रास्ता आज़माएँ (न चले तो बाकी, जिनकी key भरी है):")
-        val opts = listOf(ImageGen.AUTO to "अपने-आप (जिसकी key है)") + ImageGen.Provider.values().map { it.id to it.title }
+        val opts = listOf(ImageGen.AUTO to "अपने-आप (जिसकी key है)") + ImageGen.Provider.values().filter { it != ImageGen.Provider.CUSTOM }.map { it.id to it.title }
         val cur = Prefs.str(this, ImageGen.PROVIDER, ImageGen.AUTO)
         val rg = RadioGroup(this)
         opts.forEachIndexed { i, (id, t) ->
@@ -133,14 +133,9 @@ internal fun SettingsActivity.secImageGen() {
             if (p.keyUrl.isNotBlank()) row(box, button("${p.title}: मुफ़्त key लें") { openLink(p.keyUrl) })
         }
         val hf = field(box, "Hugging Face model (खाली = ${ImageGen.HF_DEFAULT_MODEL})", Prefs.str(this, ImageGen.HF_MODEL, ""), ImageGen.HF_DEFAULT_MODEL)
-        label(box, "अपनी OpenAI-compatible images API (वैकल्पिक):")
-        val b = field(box, "Base URL", Prefs.str(this, ImageGen.BASE, ""), "https://…/v1")
-        val k = field(box, "API key", Prefs.str(this, ImageGen.KEY, ""), "key", secret = true)
-        val m = field(box, "Model", Prefs.str(this, ImageGen.MODEL, ""), "model का नाम")
         fun saveImg() = Prefs.edit(this) {
             keys.forEach { (p, e) -> putString(p.keyPref, e.text.toString().trim()) }
             putString(ImageGen.HF_MODEL, hf.text.toString().trim())
-            putString(ImageGen.BASE, b.text.toString().trim().trimEnd('/')); putString(ImageGen.KEY, k.text.toString().trim()); putString(ImageGen.MODEL, m.text.toString().trim())
         }
         val out = status(box)
         row(box, button("सेव करें") { saveImg(); toast("सेव हो गया") }, button("जाँच: एक इमेज बनाओ") {

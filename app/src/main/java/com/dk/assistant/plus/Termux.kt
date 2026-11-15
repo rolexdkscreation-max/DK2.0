@@ -33,6 +33,18 @@ object Termux {
         /** फ़ोल्डर का नाम - सिर्फ़ अक्षर/अंक/_/- (path बाहर न जाए) */
         fun safeName(s: String) = s.trim().matches(Regex("^[A-Za-z0-9_-]{1,40}$"))
 
+        /**
+         * 15 नवंबर 2026: DK लाइव बोलकर Termux कमांड चलाए - फ़ोन/डेटा मिटाने या हमेशा अटकाने वाली कमांड कभी नहीं
+         * (वह यूज़र खुद Termux में चलाए).
+         */
+        private val DANGER = listOf(
+            Regex("""\brm\s+(-\S*\s+)*-\S*[rRf]\S*\s+(\S+\s+)*((/|~/?|${'$'}HOME/?|\*|\.)(\s|$)|/(sdcard|storage|data)\b)"""),
+            Regex("""\bmkfs\b"""), Regex("""\bdd\s+[^|]*of=/dev/"""), Regex(""":\(\)\s*\{"""),
+            Regex("""\b(reboot|shutdown|poweroff)\b"""), Regex("""\bchmod\s+-R\s+0*\s*/(\s|$)"""),
+            Regex("""(curl|wget)[^|]*\|\s*(ba)?sh\b"""), Regex("""\bsu\b"""),
+        )
+        fun dangerous(cmd: String): Boolean = DANGER.any { it.containsMatchIn(cmd) }
+
         enum class Kind { STATIC, PYTHON, NODE }
 
         /** पीछे चलने वाला सर्वर (nohup) + PID फ़ाइल + 2 सेकंड बाद curl से जाँच */

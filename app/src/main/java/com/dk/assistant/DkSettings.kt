@@ -1,5 +1,7 @@
 package com.dk.assistant
 
+import com.dk.assistant.plus.FeatureFlags
+
 /**
  * v5 (मालिक): "DK के अंदर जितनी भी सेटिंग है, वह सब DK को पता हो और DK उन्हें ऑन-ऑफ कर सके.
  * ऑन-ऑफ के लिए यूज़र बोले तो DK लाइव दो बार पक्का करे - पहले 'ठीक है बॉस', फिर 'सर, क्या सच में आप यह ऑन/ऑफ करना चाहते हैं?'
@@ -17,7 +19,13 @@ object DkSettings {
         val id: String, val name: String, val section: String, val pref: String, val def: Boolean,
         val words: List<String>, val inverted: Boolean = false,
         val alsoOn: List<Pair<String, Boolean>> = emptyList(), val alsoOff: List<Pair<String, Boolean>> = emptyList(),
+        /** 15 नवंबर 2026: pref कहाँ है - [STORE_MAIN] (Prefs), [STORE_FLAGS] (plus.FeatureFlags), [STORE_CUSTOM] (अपनी सुविधा का setter) */
+        val store: String = STORE_MAIN,
     )
+
+    const val STORE_MAIN = "main"
+    const val STORE_FLAGS = "flags"
+    const val STORE_CUSTOM = "custom"
 
     val ITEMS: List<Item> = listOf(
         Item("wake", "हमेशा सुनो (जगाने वाला शब्द)", "voice", "wake_mode", false,
@@ -70,7 +78,47 @@ object DkSettings {
             listOf("मल्टी एजेंट", "multi agent", "एजेंट टीम", "टीम")),
         Item("default_assistant", "डिफ़ॉल्ट असिस्टेंट", "system", "default_assistant", false,
             listOf("डिफ़ॉल्ट असिस्टेंट", "default assistant", "डिफ़ॉल्ट असिस्टेंट", "main assistant", "मुख्य असिस्टेंट")),
+        // 15 नवंबर 2026 (मालिक: "DK के अंदर जो भी फीचर है, DK लाइव को पता हो और बोलकर चालू-बंद कर सके") - वही दो-बार-पक्का नियम
+        Item("sos", "इमरजेंसी SOS सुविधा", "guard", FeatureFlags.SOS_ON, false,
+            listOf("sos सुविधा", "sos सेटिंग", "sos फीचर", "sos feature", "एसओएस सुविधा", "एसओएस सेटिंग", "इमरजेंसी sos", "emergency sos"), store = STORE_FLAGS),
+        Item("driving", "ड्राइविंग मोड", "access", FeatureFlags.DRIVING_MODE, false,
+            listOf("ड्राइविंग मोड", "ड्राइविंग", "driving mode", "driving", "ड्राइव मोड", "गाड़ी चला"), store = STORE_FLAGS),
+        Item("events", "ऑटो इवेंट ट्रिगर", "access", FeatureFlags.EVENTS_ON, false,
+            listOf("इवेंट ट्रिगर", "ऑटो इवेंट", "event trigger", "इवेंट", "चार्जर लगने पर", "वाईफाई जुड़ने पर"), store = STORE_FLAGS),
+        Item("ev_charger_on", "चार्जर लगा तो बताओ", "access", FeatureFlags.EV_CHARGER_ON, false,
+            listOf("चार्जर लगा", "charger connected", "चार्जर लगने"), store = STORE_FLAGS),
+        Item("ev_charger_off", "चार्जर हटा तो बताओ", "access", FeatureFlags.EV_CHARGER_OFF, false,
+            listOf("चार्जर हटा", "चार्जर निकला", "charger disconnected"), store = STORE_FLAGS),
+        Item("ev_wifi_on", "Wi-Fi जुड़ा तो बताओ", "access", FeatureFlags.EV_WIFI_ON, false,
+            listOf("wifi जुड़ा", "वाईफाई जुड़ा", "wifi connected"), store = STORE_FLAGS),
+        Item("ev_wifi_off", "Wi-Fi टूटा तो बताओ", "access", FeatureFlags.EV_WIFI_OFF, false,
+            listOf("wifi टूटा", "वाईफाई टूटा", "wifi disconnected"), store = STORE_FLAGS),
+        Item("ev_battery", "बैटरी सेवर बदला तो बताओ", "access", FeatureFlags.EV_BATTERY_SAVER, false,
+            listOf("बैटरी सेवर बदला", "battery saver changed"), store = STORE_FLAGS),
+        Item("boot", "फ़ोन चालू होते ही ट्रिगर फिर शुरू", "access", FeatureFlags.START_ON_BOOT, false,
+            listOf("फ़ोन चालू होते", "फोन चालू होते", "start on boot", "boot", "बूट"), store = STORE_FLAGS),
+        Item("termux", "Termux ऑटोमेशन", "coder", FeatureFlags.TERMUX, false,
+            listOf("termux", "टर्मक्स", "टर्मुक्स", "टर्मिनल ऑटोमेशन"), store = STORE_FLAGS),
+        Item("image_gen", "बोलकर तस्वीर बनाना (मुफ़्त API)", "computer", FeatureFlags.IMAGE_GEN, false,
+            listOf("इमेज बनाना", "तस्वीर बनाना", "फोटो बनाना", "image generation", "image gen", "इमेज जनरेशन"), store = STORE_FLAGS),
+        Item("vault", "बनी तस्वीरें प्राइवेट वॉल्ट में", "computer", FeatureFlags.FACE_VAULT, false,
+            listOf("प्राइवेट वॉल्ट", "private vault", "वॉल्ट", "vault"), store = STORE_FLAGS),
+        Item("youtube", "बोलकर YouTube चैनल जाँच", "social", FeatureFlags.YT_CHANNEL, false,
+            listOf("youtube चैनल", "यूट्यूब चैनल", "चैनल जाँच", "चैनल जांच", "youtube channel"), store = STORE_FLAGS),
+        Item("incognito", "इनकॉग्निटो मोड (कुछ याद न रखे)", "voice", FeatureFlags.INCOGNITO, false,
+            listOf("इनकॉग्निटो", "incognito", "गुप्त मोड", "प्राइवेट मोड", "कुछ याद मत रखो"), store = STORE_FLAGS),
+        Item("autoreply", "ऑटो रिप्लाई (मैसेज का अपने-आप जवाब)", "autoreply", "autoreply_on", false,
+            listOf("ऑटो रिप्लाई", "auto reply", "autoreply", "ऑटो जवाब", "अपने आप जवाब"), store = STORE_CUSTOM),
+        Item("autonomous", "ऑटोनोमस मोड", SettingsSearch.ACT_AUTO, "auto_on", false,
+            listOf("ऑटोनोमस", "ऑटोनॉमस", "autonomous", "खुद तय करे"), store = STORE_CUSTOM),
     )
+
+    /** DK लाइव इन सुविधाओं को चालू होने पर सीधे चला भी सकता है (catalog में बताया जाता है) */
+    const val RUN_HELP = "Features you can also RUN for the user (the feature must be ON first - if it is OFF, offer to turn it ON with dk_settings): " +
+        "SOS = the phone runs it when the user clearly says 'SOS भेजो / activate SOS' (10-second countdown, 'SOS रोको' cancels); " +
+        "driving mode = switch [driving]; event triggers = [events] + the event switches; " +
+        "Termux = tool termux_run; free image = tool free_image; YouTube channel = tool youtube_channel; " +
+        "touch mode = 'टच मोड चालू करो'; phone lock = 'फ़ोन लॉक करो'; teacher mode = tool teacher_mode."
 
     private fun n(s: String) = s.lowercase().replace("़", "").replace("ॉ", "ो").replace(Regex("\\s+"), " ").trim()
 
@@ -121,6 +169,7 @@ object DkSettings {
         appendLine("DK settings you can switch ON/OFF (always with the two-step confirmation):")
         ITEMS.forEach { appendLine("- ${it.name} [${it.id}]: ${if (state(it)) "ON" else "OFF"}") }
         appendLine("Other parts of Settings you can OPEN for the user (action=open): " + SettingsSearch.SECTIONS.values.joinToString(", ") + ".")
+        appendLine(RUN_HELP)
         append("API keys, voice choice and model choice are changed by the user himself on the Settings screen - open that part for him.")
     }
 }

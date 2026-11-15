@@ -170,7 +170,9 @@ internal fun GeminiLive.setupJson(m: String, txt: Boolean = connText, resume: Bo
                 "action=open: open that part of Settings on screen (setting = what to open, e.g. 'आवाज़', 'DK कंप्यूटर', 'API key'). " +
                 "action=set: switch a setting ON (on=true) or OFF (on=false). Owner's rule - TWO confirmations: the first set call never changes anything, it tells you to say " +
                 "\"ठीक है बॉस\" and ask \"सर, क्या आप सच में ... ऑन/ऑफ करना चाहते हैं?\"; only after his clear yes call set again with confirmed=true. Use it whenever the user asks " +
-                "about DK's settings or says 'यह सेटिंग ऑन/ऑफ कर दो' / 'सेटिंग खोलो'.")
+                "about DK's settings or says 'यह सेटिंग ऑन/ऑफ कर दो' / 'सेटिंग खोलो'. It covers EVERY DK feature switch too - SOS, driving mode, event triggers, " +
+                "Termux, image making, private vault, YouTube channel check, incognito, auto reply, autonomous mode - so when the user asks for a feature that is OFF, " +
+                "say so and offer to turn it ON with this tool. If unsure what DK has, call action=list first.")
             .put("parameters", JSONObject().put("type", "OBJECT")
                 .put("properties", JSONObject()
                     .put("action", JSONObject().put("type", "STRING").put("enum", JSONArray().put("list").put("open").put("set")))

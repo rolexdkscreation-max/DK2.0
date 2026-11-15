@@ -9,8 +9,43 @@ import org.json.JSONObject
  * नियम और दो-बार-पक्का [DkSettings] में (JVM test).
  */
 object DkSettingsApply {
-    private fun prefOn(c: Context, it: DkSettings.Item): Boolean =
-        DkSettings.isOn(it, Prefs.bool(c, it.pref, it.def))
+    /** 15 नवंबर 2026: हर सुविधा अपनी असली जगह से पढ़ी जाती है (Prefs / FeatureFlags / अपना setter) */
+    private fun prefOn(c: Context, it: DkSettings.Item): Boolean = try {
+        when (it.store) {
+            DkSettings.STORE_FLAGS -> com.dk.assistant.plus.FeatureFlags.on(c, it.pref)
+            DkSettings.STORE_CUSTOM -> when (it.id) {
+                "autoreply" -> com.dk.assistant.autoreply.AutoReply.on(c)
+                "autonomous" -> com.dk.assistant.auto.AutoPrefs.on(c)
+                else -> false
+            }
+            else -> DkSettings.isOn(it, Prefs.bool(c, it.pref, it.def))
+        }
+    } catch (_: Exception) { false }
+
+    /** एक ही जगह लिखना - बोलकर बदलना और मेनू का स्विच दोनों यही इस्तेमाल करते हैं */
+    private fun write(c: Context, it: DkSettings.Item, on: Boolean) {
+        when (it.store) {
+            DkSettings.STORE_FLAGS -> com.dk.assistant.plus.FeatureFlags.set(c, it.pref, on)
+            DkSettings.STORE_CUSTOM -> when (it.id) {
+                "autoreply" -> com.dk.assistant.autoreply.AutoReply.setOn(c, on)
+                "autonomous" -> com.dk.assistant.auto.AutoPrefs.setOn(c, on)
+            }
+            else -> Prefs.edit(c) {
+                putBoolean(it.pref, DkSettings.prefFor(it, on))
+                (if (on) it.alsoOn else it.alsoOff).forEach { (k, v) -> putBoolean(k, v) }
+            }
+        }
+    }
+
+    /** चालू करने के बाद फ़ोन की कौन-सी इजाज़त अभी बाकी है (सर्विस से इजाज़त माँगी नहीं जा सकती - यूज़र को बताओ) */
+    private fun missingPerms(c: Context, it: DkSettings.Item): List<String> {
+        val need = when (it.id) {
+            "sos" -> listOf(android.Manifest.permission.SEND_SMS, android.Manifest.permission.CALL_PHONE, android.Manifest.permission.ACCESS_FINE_LOCATION)
+            "driving" -> listOf(android.Manifest.permission.ANSWER_PHONE_CALLS, android.Manifest.permission.SEND_SMS, android.Manifest.permission.READ_PHONE_STATE)
+            else -> emptyList()
+        }
+        return need.filter { p -> c.checkSelfPermission(p) != android.content.pm.PackageManager.PERMISSION_GRANTED }
+    }
 
     fun run(c: Context, args: JSONObject): String {
         val action = args.optString("action", "list").lowercase().trim()
@@ -25,17 +60,16 @@ object DkSettingsApply {
                 val now = System.currentTimeMillis()
                 if (!args.optBoolean("confirmed", false) || !DkSettings.confirmOk(item, on, now)) return DkSettings.ask(item, on, now)
                 apply(c, item, on)
-                "done: '${item.name}' अब ${DkSettings.onOff(on)} है। Tell the user briefly that it is done."
+                val miss = if (on) missingPerms(c, item) else emptyList()
+                "done: '${item.name}' अब ${DkSettings.onOff(on)} है। Tell the user briefly that it is done." +
+                    (if (miss.isEmpty()) "" else " Phone permission still missing (${miss.joinToString { p -> p.substringAfterLast('.') }}) - tell the user and offer to open Settings (action=open, setting='${item.id}') where touching the switch asks for it.")
             }
             else -> DkSettings.catalog { prefOn(c, it) }
         }
     }
 
     private fun apply(c: Context, it: DkSettings.Item, on: Boolean) {
-        Prefs.edit(c) {
-            putBoolean(it.pref, DkSettings.prefFor(it, on))
-            (if (on) it.alsoOn else it.alsoOff).forEach { (k, v) -> putBoolean(k, v) }
-        }
+        write(c, it, on)
         DKLog.d("DK ने सेटिंग बदली (यूज़र ने दो बार पक्का किया): ${it.name} -> ${DkSettings.onOff(on)}")
         try { if (it.pref == "duck_media" && !on) Ducker.releaseNow() } catch (_: Exception) {}
         try { DKAccessibilityService.instance?.startWakeLoopIfEnabled() } catch (_: Exception) {}
@@ -47,10 +81,7 @@ object DkSettingsApply {
      */
     fun setFromUi(c: Context, id: String, on: Boolean): Boolean {
         val it = DkSettings.ITEMS.firstOrNull { x -> x.id == id } ?: return false
-        Prefs.edit(c) {
-            putBoolean(it.pref, DkSettings.prefFor(it, on))
-            (if (on) it.alsoOn else it.alsoOff).forEach { (k, v) -> putBoolean(k, v) }
-        }
+        write(c, it, on)
         DKLog.d("Settings मेनू से बदली: ${it.name} -> ${DkSettings.onOff(on)}")
         try { DKAccessibilityService.instance?.startWakeLoopIfEnabled() } catch (_: Exception) {}
         return true
