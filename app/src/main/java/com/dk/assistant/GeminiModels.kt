@@ -71,6 +71,15 @@ object GeminiModels {
     fun isGone(code: Int, msg: String): Boolean =
         code == 404 || msg.contains("no longer available", true) || msg.contains("not found for API version", true)
 
+    /**
+     * 15 नवंबर 2026: 403 सिर्फ़ इस मॉडल के लिए (\"permission denied ... model\", preview मॉडल इस key को नहीं) = अगला मॉडल.
+     * key ही गलत / बंद (API key, service account, API not enabled) = नहीं - वह असली key की गलती है. Pure
+     */
+    fun modelDenied(code: Int, msg: String): Boolean =
+        code == 403 && !msg.contains("API key", true) && !msg.contains("API_KEY", true) && !msg.contains("service account", true) &&
+            !msg.contains("has not been used", true) && !msg.contains("is disabled", true) && !msg.contains("SERVICE_DISABLED", true) &&
+            !msg.contains("blocked", true)
+
     /** Google का \"retryDelay\": \"37s\" या \"Please retry in 37.2s\" -> सेकंड (0 = पता नहीं) */
     fun retryDelaySec(raw: String): Int {
         Regex("\"retryDelay\"\\s*:\\s*\"(\\d+)(?:\\.\\d+)?s\"").find(raw)?.let { return it.groupValues[1].toInt() }

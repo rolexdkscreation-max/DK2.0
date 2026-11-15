@@ -173,7 +173,8 @@ class ChatActivity : AppCompatActivity() {
                 }, emptyList(), b.lastGround)
             } catch (e: kotlinx.coroutines.CancellationException) { throw e
             } catch (e: Exception) {
-                DKState.replyFailed(b.explainAll(e))
+                // 15 नवंबर 2026: AI न चला = पहले DK का अपना दिमाग (सीखा / आम बात), फिर सच्ची गलती
+                OwnMind.answer(this@ChatActivity, t)?.let { DKState.reply(it) } ?: DKState.replyFailed(b.explainAll(e))
             } finally { DKState.set(Mode.IDLE) }
         }
     }

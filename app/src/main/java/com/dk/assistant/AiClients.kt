@@ -144,7 +144,7 @@ class GeminiClient(private val key: String, private val model: String) : AiClien
                 return r
             } catch (e: AiException) {
                 if (last == null || GeminiModels.isGone(last.code, last.message.orEmpty())) last = e
-                val tryNext = e.code == 404 || e.code == 429 || e.code >= 500 ||
+                val tryNext = e.code == 404 || e.code == 429 || e.code >= 500 || GeminiModels.modelDenied(e.code, e.message.orEmpty()) ||
                     (e.code == 400 && !(e.message ?: "").contains("API key", ignoreCase = true))
                 if (!tryNext) throw e
             }
@@ -200,7 +200,7 @@ class GeminiClient(private val key: String, private val model: String) : AiClien
                     }
                 }
                 if (last == null || GeminiModels.isGone(last.code, last.message.orEmpty())) last = e
-                val tryNext = e.code == 404 || e.code == 429 || e.code >= 500 ||
+                val tryNext = e.code == 404 || e.code == 429 || e.code >= 500 || GeminiModels.modelDenied(e.code, e.message.orEmpty()) ||
                     (e.code == 400 && !(e.message ?: "").contains("API key", true))
                 if (!tryNext) throw e
             }

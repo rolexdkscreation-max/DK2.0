@@ -31,6 +31,16 @@ object ProviderHealth {
     /** limit/गलती वाली key: अभी दोबारा आज़माना ठीक है? (रोज़ की limit / गलत key = नहीं) */
     fun retryable(id: String): Boolean = !dailyOut(id) && !h(id).reason.startsWith("key")
 
+    /**
+     * 15 नवंबर 2026 (मालिक: "नॉर्मल चैट में भी 'जवाब नहीं आया'"): अटकी keys में से किन्हें फिर आज़माएँ. पहले "key" वाली गलती
+     * (जैसे एक बार का 403) के बाद अकेली key 30 मिनट तक छोड़ दी जाती थी - और बची सिर्फ़ कोई पुरानी छिपी key = झूठा कारण.
+     * अब: चलती key कोई न बची हो तो रोज़ की limit वाली छोड़कर बाकी सब एक बार. Pure
+     */
+    fun <T> spareTry(noneGood: Boolean, bad: List<T>, retry: (T) -> Boolean, daily: (T) -> Boolean): List<T> {
+        val r = bad.filter(retry)
+        return if (r.isNotEmpty() || !noneGood) r else bad.filter { !daily(it) }
+    }
+
     private fun dailyReason(at: Long) = "आज की फ्री लिमिट खत्म (${RateLimit.clock(at)} फिर मिलेगी)"
     fun speed(id: String): Double = h(id).let { if (it.ok == 0) prior(id) else it.ema }
 

@@ -126,6 +126,8 @@ object BrainPin {
         val p = get(c, f) ?: return null
         val prov = Providers.byId(p.provider) ?: return null
         if (geminiOnly(f) && !prov.isGemini) return null
+        // 15 नवंबर 2026: एक-key मोड = सिर्फ़ Gemini; पहले कभी चुना Groq / OpenRouter मॉडल अब बीच में नहीं
+        if (ApiScopes.oneKeySkip(Prefs.oneKeyOn(c), prov.id)) return null
         val key = keyFor(c, p.ref)
         if (key.isBlank()) return null
         val sc = split(p.ref).first
@@ -154,6 +156,7 @@ object BrainPin {
      * तो AI दिमाग में कहीं और डली उसी कंपनी की पहली key ([ApiScopes.spareKeys] का क्रम). null = कहीं नहीं.
      */
     fun borrowed(c: Context, p: Provider): AiClient? {
+        if (ApiScopes.oneKeySkip(Prefs.oneKeyOn(c), p.id)) return null
         val spare = ApiScopes.spareKeys({ sc, slot -> Prefs.scopeKeyRaw(c, sc, slot) }, emptySet())
             .firstOrNull { it.second == p.id && it.first != ApiScopes.CHAT } ?: return null
         val (sc, _, key) = spare

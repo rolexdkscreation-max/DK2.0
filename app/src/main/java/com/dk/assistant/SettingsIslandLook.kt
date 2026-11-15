@@ -18,9 +18,23 @@ internal fun SettingsActivity.islandLook(box: LinearLayout) {
         { v -> UiLang.s("ऊपर से दूरी") + ": $v dp" }) { DKIsland.setTopDp(this, it) }
     val side = islandSlider(box, IslandCore.SIDE_MIN, IslandCore.SIDE_MAX, DKIsland.sideDp(this),
         { v -> UiLang.s("बाएँ / दाएँ") + ": " + (if (v == 0) UiLang.s("बीच में") else "$v dp") }) { DKIsland.setSideDp(this, it) }
-    row(box, button("नमूना देखें") { DKIsland.preview() }, button("पहले जैसा") {
+    // 15 नवंबर 2026 (मालिक): "नोज को राउंड भी, स्क्वायर भी, जितना छोटा-बड़ा - फ्रंट कैमरे पर सेट; नोटिफिकेशन पर अपने-आप बड़ा, फिर छोटा"
+    label(box, "नॉच (कैमरे पर छोटा island)")
+    val notch = switch(box, "नॉच चालू: कुछ न चले तब भी कैमरे जितना छोटा island — सूचना आते ही पूरा चौड़ा, जाते ही फिर छोटा", DKIsland.notchOn(this))
+    notch.setOnCheckedChangeListener { _, v -> DKIsland.setNotchOn(this, v); DKIsland.preview() }
+    val round = islandSlider(box, IslandCore.ROUND_MIN, IslandCore.ROUND_MAX, DKIsland.roundPct(this),
+        { v -> UiLang.s("आकार (गोल / चौकोर)") + ": ${UiLang.s(IslandCore.roundLabel(v))} ($v%)" }) { DKIsland.setRoundPct(this, it) }
+    val nw = islandSlider(box, IslandCore.NOTCH_W_MIN, IslandCore.NOTCH_W_MAX, DKIsland.notchW(this),
+        { v -> UiLang.s("नॉच की चौड़ाई") + ": $v dp" }) { DKIsland.setNotchW(this, it) }
+    val nh = islandSlider(box, IslandCore.NOTCH_H_MIN, IslandCore.NOTCH_H_MAX, DKIsland.notchH(this),
+        { v -> UiLang.s("नॉच की ऊँचाई") + ": $v dp" }) { DKIsland.setNotchH(this, it) }
+    hint(box, "कैमरे के गोल छेद पर बैठाने के लिए: चौड़ाई = ऊँचाई रखें, आकार \"पूरा गोल\", फिर \"ऊपर से दूरी\" और \"बाएँ / दाएँ\" से ठीक कैमरे पर लाएँ। " +
+        "चौकोर चाहिए तो आकार 0% करें।")
+    row(box, button("नमूना देखें") { DKIsland.preview() }, button("सूचना वाला नमूना") { DKIsland.previewPeek() })
+    row(box, button("पहले जैसा") {
         DKIsland.resetLook(this)
         size.progress = IslandCore.SIZE_DEF - IslandCore.SIZE_MIN; top.progress = IslandCore.TOP_DEF - IslandCore.TOP_MIN; side.progress = 0 - IslandCore.SIDE_MIN
+        round.progress = IslandCore.ROUND_DEF - IslandCore.ROUND_MIN; nw.progress = IslandCore.NOTCH_W_DEF - IslandCore.NOTCH_W_MIN; nh.progress = IslandCore.NOTCH_H_DEF - IslandCore.NOTCH_H_MIN
     })
 }
 

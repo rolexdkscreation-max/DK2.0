@@ -80,6 +80,11 @@ object DKIsland {
     private const val P_TOP = "island_y"
     private const val P_SIDE = "island_x"
     private const val P_PEEK = "island_peek"
+    // 15 नवंबर 2026 (मालिक): नॉच - कैमरे जितना छोटा island (गोल / चौकोर, चौड़ाई-ऊँचाई), सूचना पर पूरा चौड़ा, फिर वापस
+    private const val P_NOTCH = "island_notch"
+    private const val P_NW = "island_notch_w"
+    private const val P_NH = "island_notch_h"
+    private const val P_ROUND = "island_round"
     fun sizePct(c: Context) = IslandCore.size(sp(c).getInt(P_SIZE, IslandCore.SIZE_DEF))
     fun setSizePct(c: Context, v: Int) { sp(c).edit().putInt(P_SIZE, IslandCore.size(v)).apply(); relayout() }
     fun topDp(c: Context) = IslandCore.top(sp(c).getInt(P_TOP, IslandCore.TOP_DEF))
@@ -88,7 +93,15 @@ object DKIsland {
     fun setSideDp(c: Context, v: Int) { sp(c).edit().putInt(P_SIDE, IslandCore.side(v)).apply(); relayout() }
     fun peekOn(c: Context) = sp(c).getBoolean(P_PEEK, true)
     fun setPeekOn(c: Context, v: Boolean) { sp(c).edit().putBoolean(P_PEEK, v).apply(); poke() }
-    fun resetLook(c: Context) { sp(c).edit().remove(P_SIZE).remove(P_TOP).remove(P_SIDE).apply(); relayout() }
+    fun resetLook(c: Context) { sp(c).edit().remove(P_SIZE).remove(P_TOP).remove(P_SIDE).remove(P_NW).remove(P_NH).remove(P_ROUND).apply(); relayout() }
+    fun notchOn(c: Context) = sp(c).getBoolean(P_NOTCH, false)
+    fun setNotchOn(c: Context, v: Boolean) { sp(c).edit().putBoolean(P_NOTCH, v).apply(); relayout() }
+    fun notchW(c: Context) = IslandCore.notchW(sp(c).getInt(P_NW, IslandCore.NOTCH_W_DEF))
+    fun setNotchW(c: Context, v: Int) { sp(c).edit().putInt(P_NW, IslandCore.notchW(v)).apply(); relayout() }
+    fun notchH(c: Context) = IslandCore.notchH(sp(c).getInt(P_NH, IslandCore.NOTCH_H_DEF))
+    fun setNotchH(c: Context, v: Int) { sp(c).edit().putInt(P_NH, IslandCore.notchH(v)).apply(); relayout() }
+    fun roundPct(c: Context) = IslandCore.round(sp(c).getInt(P_ROUND, IslandCore.ROUND_DEF))
+    fun setRoundPct(c: Context, v: Int) { sp(c).edit().putInt(P_ROUND, IslandCore.round(v)).apply(); relayout() }
 
     private val main = Handler(Looper.getMainLooper())
     @Volatile private var svc: DKAccessibilityService? = null
@@ -124,7 +137,6 @@ object DKIsland {
     private var bubSig = ""
     private var touchedAt = 0L
     private var callSince = 0L
-    private var history: List<IslandCore.Task> = emptyList()
     private var historyAt = 0L
     private var lastSig = ""
     private val updaters = ArrayList<(IslandCore.Snap, Long) -> Unit>()
@@ -183,7 +195,7 @@ object DKIsland {
             val s = svc ?: return@post
             k = sizePct(s) / 100f
             lp?.let { p -> p.y = dpx(s, topDp(s).toFloat()); p.x = dpx(s, sideDp(s).toFloat()); root?.let { r -> try { wm?.updateViewLayout(r, p) } catch (_: Exception) {} } }
-            (root?.background as? GradientDrawable)?.cornerRadius = px(s, if (expanded || peeking) 30f else 22f).toFloat()
+            applyShape(s, expanded || peeking)
             lastSig = ""; bubSig = ""
             poke()
         }
@@ -191,6 +203,37 @@ object DKIsland {
 
     /** Settings में "नमूना देखें": कुछ सेकंड island दिखे (DK खुला हो तब भी) ताकि आकार / दूरी देखकर सेट करें */
     fun preview() { previewUntil = SystemClock.uptimeMillis() + 6_000L; relayout() }
+
+    /** 15 नवंबर 2026: "सूचना आने पर कैसा दिखेगा" - नमूना: छोटा -> पूरा चौड़ा (कुछ सेकंड) -> फिर छोटा */
+    @Volatile private var demoPeekUntil = 0L
+    fun previewPeek() {
+        val up = SystemClock.uptimeMillis()
+        previewUntil = up + 9_000L; demoPeekUntil = up + 1_200L + IslandCore.PEEK_MS
+        main.postDelayed({ demoPeekFrom = SystemClock.uptimeMillis(); poke() }, 1_200L)
+        relayout()
+    }
+    @Volatile private var demoPeekFrom = Long.MAX_VALUE
+    private fun demoPeek(up: Long) = up in demoPeekFrom until demoPeekUntil
+
+    /** नॉच वाला छोटा रूप अभी? (नॉच चालू, न फैला, न थोड़ी देर का बड़ा) */
+    private fun notchNow(s: Context) = notchOn(s) && !expanded && !peeking
+
+    /**
+     * island का आकार: फैला / बड़ा = पहले जैसे बड़े कोने × गोलाई; नॉच = कैमरे जितना (गोल / चौकोर), बिना किनारी-छाया;
+     * गोली = पहले जैसे कोने × गोलाई. गोलाई 100 (default) = बिल्कुल पहले जैसा.
+     */
+    private fun applyShape(s: Context, wide: Boolean) {
+        val r = root ?: return
+        val g = r.background as? GradientDrawable ?: return
+        val round = roundPct(s)
+        if (!wide && notchOn(s)) {
+            val w = dpx(s, notchW(s).toFloat()); val h = dpx(s, notchH(s).toFloat())
+            g.cornerRadius = IslandCore.notchCorner(round, w, h); g.setStroke(0, 0); r.elevation = 0f
+        } else {
+            g.cornerRadius = IslandCore.corner(round, px(s, if (wide) 30f else 22f).toFloat())
+            g.setStroke(dpx(s, 1f), 0x22FFFFFF); r.elevation = px(s, 8f).toFloat()
+        }
+    }
 
     // ------------------------------------------------------------ रील गिनती (ReelWatch) - पहले अलग पट्टी, अब island में
     @Volatile private var reel: IslandCore.Reel? = null
@@ -266,13 +309,12 @@ object DKIsland {
         } catch (_: Exception) { emptyList() }
         // DK लाइव / फ़ोन पर DK का काम (बिना Live भी)
         val live = if (liveOn(s) && (DKState.live || DKState.mode == Mode.WORKING)) IslandCore.Live(DKState.shownMode(), DKState.micMuted) else null
-        // काम: चलते (TaskStatus) + फ़ोन में सेव इतिहास (TaskHistory) - इतिहास हर 5 सेकंड या बदलाव पर ही पढ़ो
-        if (now - historyAt > 5_000L) {
-            historyAt = now
-            history = try { TaskHistory.all(s).take(12).map { e -> IslandCore.fromHistory(e.id, e.who, e.task, e.state, e.last, e.steps, e.started, e.ended) } } catch (_: Exception) { emptyList() }
-        }
-        val jobs = TaskStatus.all().map { IslandCore.fromJob(it) }
-        val tasks = IslandCore.recent(jobs.filter { it.active }, jobs.filter { !it.active } + history.filter { h -> jobs.none { it.id == h.id } })
+        // काम: सिर्फ़ अभी सच में चलते (TaskStatus). 15 नवंबर 2026 (मालिक): बंद / रुका / पुराना इतिहास island में नहीं
+        val tasks = TaskStatus.all()
+            .filter { j -> IslandCore.showJob(j.state == TaskStatus.State.RUNNING, j.state == TaskStatus.State.WAITING, j.lastAt, now) }
+            .filter { j -> j.key != com.dk.assistant.studio.StudioLink.KEY || com.dk.assistant.studio.StudioSession.busy }
+            .map { IslandCore.fromJob(it) }
+            .let { IslandCore.recent(it, emptyList()) }
         val media = if (!mediaOn(s)) { mediaCtl = null; null }
             else { if (now - mediaAt > 1_500L) { mediaAt = now; lastMedia = readMedia(s) }; lastMedia }
         // 13 नवंबर 2026: YouTube / फेसबुक / इंस्टाग्राम / WhatsApp का काम (SocialAgent) भी island के काम में
@@ -282,7 +324,7 @@ object DKIsland {
                     com.dk.assistant.agent.android.SocialAgent.startedAt, com.dk.assistant.agent.android.SocialAgent.endedAt)
             }
         } catch (_: Exception) { null }
-        val allTasks = if (social == null) tasks else IslandCore.recent((tasks + social).filter { it.active }, (tasks + social).filter { !it.active })
+        val allTasks = if (social?.active != true) tasks else IslandCore.recent(tasks + social, emptyList())
         val notifs = if (notifsOn(s)) IslandFeed.list() else emptyList()
         val charge = if (chargeOn(s)) chargeNow(s) else null
         val all = IslandCore.Snap(calls.firstOrNull(), live, allTasks, media, PrivacyLocked.list(), notifs, charge, reel?.takeIf { IslandCore.reelOn(it, now) }, calls)
@@ -329,7 +371,7 @@ object DKIsland {
         val up = SystemClock.uptimeMillis()
         val sn = snap(s, now)
         val demo = up < previewUntil && on(s)
-        if (!demo && !IslandCore.wanted(on(s), AppVisible.visible, sn, now)) {
+        if (!demo && !IslandCore.wanted(on(s), AppVisible.visible, sn, now, notchOn(s))) {
             // छिपे रहते भी देखे notification याद रहें - बाद में island आए तो पुराना notification "नया" बनकर न उछले
             seenFirst = false; seenNotifs.clear(); sn.notifs.forEach { seenNotifs.add(it.key) }
             remove(); main.postDelayed(ticker, 1_500L); return
@@ -359,7 +401,7 @@ object DKIsland {
             if (fresh != null && !ring) { peekNotif = fresh; peekTask = null; peekUntil = up + IslandCore.PEEK_MS }
             else if (done != null && !ring) { peekTask = done; peekNotif = null; peekUntil = up + IslandCore.PEEK_MS }
         }
-        val want = ring || (peekOn(s) && up < peekUntil && (peekNotif != null || peekTask != null))
+        val want = ring || (peekOn(s) && up < peekUntil && (peekNotif != null || peekTask != null)) || demoPeek(up)
         if (want != peeking) { if (want) setWide(s, true) else setWide(s, false); peeking = want; lastSig = "" }
         if (!want) { peekNotif = null; peekTask = null }
     }
@@ -437,6 +479,7 @@ object DKIsland {
         box.alpha = 0f; box.scaleX = 0.5f; box.scaleY = 0.6f
         try { w.addView(box, p) } catch (e: Exception) { DKLog.d("island नहीं लगा: ${e.javaClass.simpleName}"); return }
         root = box; lp = p; expanded = false; peeking = false; fingerDown = false; lastSig = ""
+        applyShape(s, false)
         box.post { box.pivotX = box.width / 2f; box.pivotY = 0f
             box.animate().alpha(1f).scaleX(1f).scaleY(1f).setDuration(320).setInterpolator(OvershootInterpolator(1.2f)).start() }
     }
@@ -456,7 +499,7 @@ object DKIsland {
         // चौड़ा island बीच में; बाएँ-दाएँ खिसकाना सिर्फ़ गोली पर
         p.x = if (wide) 0 else dpx(s, sideDp(s).toFloat())
         try { wm?.updateViewLayout(r, p) } catch (_: Exception) {}
-        (r.background as? GradientDrawable)?.cornerRadius = px(s, if (wide) 30f else 22f).toFloat()
+        applyShape(s, wide)
         if (wide) removeBubble()
     }
 
@@ -507,7 +550,8 @@ object DKIsland {
 
     @SuppressLint("ClickableViewAccessibility")
     private fun renderBubble(s: DKAccessibilityService, sn: IslandCore.Snap, now: Long) {
-        val it2 = if (expanded || peeking || root == null) null else IslandCore.bubble(sn, now)
+        // नॉच में दूसरा बुलबुला नहीं (कैमरे के पास सिर्फ़ एक छोटा आकार) - टैप करके फैलाने पर सब दिखता है
+        val it2 = if (expanded || peeking || root == null || notchOn(s)) null else IslandCore.bubble(sn, now)
         if (it2 == null) { removeBubble(); return }
         val calls = IslandCore.allCalls(sn)
         val c2 = if (it2.kind == IslandCore.Kind.CALL) calls.getOrNull(it2.idx) else null
@@ -601,7 +645,8 @@ object DKIsland {
     private fun render(s: DKAccessibilityService, sn: IslandCore.Snap, now: Long) {
         val r = root ?: return
         val mode = if (replyTo != null && expanded) "R|" else if (expanded) "E|" else if (peeking) "P|" else "C|"
-        val sig = mode + sig(sn, now) + "|b${IslandCore.bubble(sn, now)}|f$focus|pk${peekNotif?.key}${peekTask?.id}|k$k"
+        val sig = mode + sig(sn, now) + "|b${IslandCore.bubble(sn, now)}|f$focus|pk${peekNotif?.key}${peekTask?.id}|k$k" +
+            "|n${notchOn(s)}${notchW(s)}x${notchH(s)}r${roundPct(s)}"
         // छूते समय / छूने के ठीक बाद ढाँचा न बदले (वरना बटन उँगली के नीचे से हट जाता था, स्क्रॉल ऊपर कूदता था = "अटक गया").
         // खुलना / बंद होना (mode बदला) हमेशा तुरंत.
         val hold = holding() || SystemClock.uptimeMillis() - touchedAt < IslandCore.TOUCH_HOLD_MS
@@ -649,6 +694,11 @@ object DKIsland {
 
     /** छोटा island: [निशान] लाइन ............ दाईं ओर (समय / कदम / +2). दूसरी चीज़ अलग बुलबुले में */
     private fun small(s: DKAccessibilityService, sn: IslandCore.Snap, now: Long): View {
+        // 15 नवंबर 2026 (मालिक): नॉच = सिर्फ़ कैमरे जितना काला आकार (कुछ लिखा नहीं). टैप = फैलकर सब; सूचना = अपने-आप पूरा चौड़ा
+        if (notchOn(s)) return View(s).apply {
+            layoutParams = FrameLayout.LayoutParams(dpx(s, notchW(s).toFloat()), dpx(s, notchH(s).toFloat()))
+            contentDescription = UiLang.s("DK Island - टैप = खोलें")
+        }
         val row = LinearLayout(s).apply {
             orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
             setPadding(px(s, 8f), px(s, 6f), px(s, 14f), px(s, 6f))
@@ -698,6 +748,11 @@ object DKIsland {
         }
         peekNotif?.let { n -> col.addView(notifRow(s, n).apply { (layoutParams as? LinearLayout.LayoutParams)?.topMargin = 0 }); return col }
         peekTask?.let { t -> col.addView(taskRow(s, 1, t).apply { (layoutParams as? LinearLayout.LayoutParams)?.topMargin = 0 }); return col }
+        if (demoPeek(SystemClock.uptimeMillis())) {
+            col.addView(tv(s, 14f, 0xFFFFFFFF.toInt(), bold = true).apply { text = UiLang.s("नमूना सूचना") })
+            col.addView(tv(s, 13f, 0xFFA5B4FC.toInt(), lines = 2).apply { text = UiLang.s("सूचना आने पर island ऐसे पूरा चौड़ा होगा, फिर अपने-आप छोटा"); setPadding(0, px(s, 4f), 0, 0) })
+            return col
+        }
         return small(s, sn, now)
     }
 

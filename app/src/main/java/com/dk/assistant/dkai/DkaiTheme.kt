@@ -48,6 +48,9 @@ object DkaiTheme {
     /** ऊपर की सूचना-पट्टी (अपडेट / key) */
     val ALERT_BG get() = t(0xFF2A1F0A, 0xFFFEF3C7)
     val ALERT_TEXT get() = t(0xFFF59E0B, 0xFF92400E)
+    /** 15 नवंबर 2026: नया अपडेट वाली चमकती पट्टी (हरा - दूर से दिखे) */
+    val UPDATE_BG get() = t(0xFF064E3B, 0xFFD1FAE5)
+    val UPDATE_TEXT get() = t(0xFF6EE7B7, 0xFF065F46)
 
     /*
      * 13 नवंबर 2026 (मालिक): फ़ोन की Settings जैसा - Light/Dark में सिर्फ़ पृष्ठभूमि और लिखावट बदले,
