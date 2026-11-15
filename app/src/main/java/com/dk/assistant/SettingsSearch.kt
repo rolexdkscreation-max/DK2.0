@@ -147,8 +147,8 @@ object SettingsSearch {
         E("social", "YouTube चैनल जाँच", "\"मेरे चैनल का हाल बताओ\" - subscribers, views, नए वीडियो, comments (सिर्फ़ पढ़ना)", "youtube यूट्यूब channel चैनल subscriber सब्सक्राइबर views"),
         // 15 नवंबर 2026: नई सुविधाएँ (मालिक की सूची) - हर card सर्च में
         E("guard", "टच मोड का रूप", "नॉर्मल • गॉड मोड (सबसे सख़्त) • स्टेल्थ मोड (चुपचाप)", "god गॉड stealth स्टेल्थ silent चुपचाप mode मोड"),
-        E("face", "चेहरा पहचान", "Boss का चेहरा सेट करें — DK और टच मोड आपको पहचानें", "face फ़ेस चेहरा boss बॉस register रजिस्टर"),
-        E("face", "जान-पहचान वाले चेहरे", "परिवार / दोस्त — नाम के साथ चेहरा सेव करें", "family परिवार friend दोस्त कौन who name नाम"),
+        E("face", "चेहरा पहचान", "Boss का चेहरा सेट करें — DK और टच मोड आपको पहचानें", "face फ़ेस चेहरा boss बॉस register रजिस्टर anti-spoof स्पूफ फ़ोटो वीडियो lens लेंस scan स्कैन"),
+        E("face", "जान-पहचान वाले चेहरे", "परिवार / दोस्त — नाम के साथ चेहरा सेव करें", "family परिवार friend दोस्त कौन who name नाम रिश्ता relation मम्मी पापा भाई बहन"),
         E("voice", "FRIDAY / VENOM मोड", "असिस्टेंट का दूसरा रूप — FRIDAY (काम की बात) • VENOM (मज़ाकिया पुरुष आवाज़)", "friday फ्राइडे venom वेनम persona पर्सोना jarvis"),
         E("computer", "ईमेल (IMAP/SMTP)", "DK आपके ईमेल पढ़े, जवाब भेजे, स्पैम हटाए — App Password से", "email ईमेल mail मेल gmail जीमेल inbox इनबॉक्स imap smtp app password signature हस्ताक्षर"),
         E("autoreply", "WhatsApp ग्रुप रिपोर्ट", "रोज़ की रिपोर्ट का टेम्पलेट - बोलकर भरो, ग्रुप में भेजो", "group ग्रुप report रिपोर्ट template टेम्पलेट whatsapp व्हाट्सएप"),

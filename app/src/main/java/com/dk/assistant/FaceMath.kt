@@ -59,6 +59,51 @@ object FaceMath {
     }
 
     /**
+     * 15 नवंबर 2026 (मालिक: "एक साथ दो-चार आदमी भी पहचाने"): फ़्रेम के सारे चेहरे (सबसे भरोसेमंद पहले), NMS से एक चेहरे पर
+     * एक ही डिब्बा. ज़्यादा से ज़्यादा [max]. [decode] (एक सबसे अच्छा चेहरा) पहले जैसा ही रहता है.
+     */
+    fun decodeAll(out: Map<Int, Array<FloatArray>>, scale: Float, minScore: Float = MIN_SCORE, max: Int = MAX_FACES): List<Det> {
+        val all = ArrayList<Det>()
+        for (s in STRIDES) {
+            val o = out[s] ?: continue
+            val cls = o[0]; val obj = o[1]; val bb = o[2]; val kp = o[3]
+            val cols = DET / s
+            for (i in cls.indices) {
+                val sc = sqrt(cls[i].coerceIn(0f, 1f) * obj[i].coerceIn(0f, 1f))
+                if (sc < minScore) continue
+                val r = i / cols; val c = i % cols
+                val cx = (c + bb[i * 4]) * s; val cy = (r + bb[i * 4 + 1]) * s
+                val w = exp(bb[i * 4 + 2]) * s; val h = exp(bb[i * 4 + 3]) * s
+                val k = FloatArray(10) { j -> ((kp[i * 10 + j] + if (j % 2 == 0) c else r) * s) / scale }
+                all.add(Det(sc, (cx - w / 2) / scale, (cy - h / 2) / scale, w / scale, h / scale, k))
+            }
+        }
+        return nms(all, max)
+    }
+
+    /** एक ही चेहरे के कई डिब्बे -> एक (IoU > [NMS_IOU] वाले हटाओ) */
+    fun nms(list: List<Det>, max: Int = MAX_FACES): List<Det> {
+        val keep = ArrayList<Det>()
+        for (d in list.sortedByDescending { it.score }) {
+            if (keep.size >= max) break
+            if (keep.none { iou(it, d) > NMS_IOU }) keep.add(d)
+        }
+        return keep
+    }
+
+    fun iou(a: Det, b: Det): Float {
+        val x1 = maxOf(a.x, b.x); val y1 = maxOf(a.y, b.y)
+        val x2 = minOf(a.x + a.w, b.x + b.w); val y2 = minOf(a.y + a.h, b.y + b.h)
+        val inter = maxOf(0f, x2 - x1) * maxOf(0f, y2 - y1)
+        val uni = a.w * a.h + b.w * b.h - inter
+        return if (uni <= 0f) 0f else inter / uni
+    }
+
+    /** एक फ़्रेम में ज़्यादा से ज़्यादा इतने चेहरे पहचानो (CPU) */
+    const val MAX_FACES = 5
+    const val NMS_IOU = 0.3f
+
+    /**
      * 5 बिंदुओं (src) को REF पर लाने वाला similarity transform (घुमाव+पैमाना+खिसकाव, उल्टा नहीं), least squares.
      * @return android Matrix.setValues वाले 9 अंक [a,-b,tx, b,a,ty, 0,0,1]
      */
@@ -111,6 +156,14 @@ object FaceMath {
         var l = ox + x * sc; var r = ox + (x + w) * sc
         if (mirror) { val nl = vw - r; r = vw - l; l = nl }
         return floatArrayOf(l, oy + y * sc, r, oy + (y + h) * sc)
+    }
+
+    /**
+     * फ़्रेम -> स्क्रीन का पैमाना [sc, ox, oy] ([toView] वाला ही, FILL_CENTER). mirror अलग से (vw - x).
+     */
+    fun viewMap(fw: Int, fh: Int, vw: Int, vh: Int): FloatArray {
+        val sc = maxOf(vw.toFloat() / maxOf(fw, 1), vh.toFloat() / maxOf(fh, 1))
+        return floatArrayOf(sc, (vw - fw * sc) / 2f, (vh - fh * sc) / 2f)
     }
 
     /** मिलान का फ़ैसला */

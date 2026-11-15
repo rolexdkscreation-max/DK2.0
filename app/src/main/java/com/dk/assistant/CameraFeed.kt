@@ -29,6 +29,12 @@ class CameraFeed(private val act: AppCompatActivity, private val view: PreviewVi
     var running = false
         private set
     var onFrameAnalyzed: ((Bitmap) -> Unit)? = null
+    /**
+     * 15 नवंबर 2026 (मालिक: "DK के लेंस में भी फ़्यूचरिस्टिक स्कैन, Boss और दोस्त/परिवार पहचाने"): चेहरा स्कैन ([LensFaces]) को
+     * तेज़ फ़्रेम (~[FACE_MS]) - Gemini को फ़्रेम भेजने की रफ़्तार (900 ms) वैसी ही. फ़्रेम सीधा (घुमाया), बिना शीशे वाला.
+     */
+    @Volatile var onFace: ((Bitmap) -> Unit)? = null
+    @Volatile private var lastFace = 0L
 
     fun start(front: Boolean, onOk: () -> Unit, onFail: (String) -> Unit) {
         val f = ProcessCameraProvider.getInstance(act)
@@ -60,8 +66,9 @@ class CameraFeed(private val act: AppCompatActivity, private val view: PreviewVi
     private fun analyze(img: ImageProxy) {
         try {
             val now = System.currentTimeMillis()
-            if (now - lastTry < 900) return          // बाकी frame बिना बदले छोड़ो (CPU/बैटरी)
-            lastTry = now
+            val faceDue = onFace != null && now - lastFace >= FACE_MS
+            val sendDue = now - lastTry >= 900
+            if (!faceDue && !sendDue) return          // बाकी frame बिना बदले छोड़ो (CPU/बैटरी)
             val raw = img.toBitmap()
             val rot = img.imageInfo.rotationDegrees
             val (fw, fh) = FrameGate.fit(raw.width, raw.height, 1024)
@@ -70,6 +77,9 @@ class CameraFeed(private val act: AppCompatActivity, private val view: PreviewVi
                 val m = Matrix().apply { postRotate(rot.toFloat()) }
                 b = Bitmap.createBitmap(b, 0, 0, b.width, b.height, m, true)
             }
+            if (faceDue) { lastFace = now; try { onFace?.invoke(b) } catch (_: Throwable) {} }
+            if (!sendDue) return
+            lastTry = now
             onFrameAnalyzed?.invoke(b)
             val sig = ScreenShareService.signature(b)
             if (!gate.shouldSend(now, sig)) return
@@ -90,4 +100,6 @@ class CameraFeed(private val act: AppCompatActivity, private val view: PreviewVi
     }
 
     fun release() { stop(); exec.shutdown() }
+
+    companion object { const val FACE_MS = 330L }
 }

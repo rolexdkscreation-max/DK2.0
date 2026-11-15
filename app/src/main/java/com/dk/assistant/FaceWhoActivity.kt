@@ -28,13 +28,19 @@ class FaceWhoActivity : AppCompatActivity() {
     @Volatile private var done = false
     private val votes = HashMap<String, Int>()
     private lateinit var tv: TextView
+    private var holo: HoloScanView? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         val d = resources.displayMetrics.density
         val root = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER; setBackgroundColor(0xFF0B1020.toInt()) }
         val pv = PreviewView(this).apply { implementationMode = PreviewView.ImplementationMode.COMPATIBLE }
-        root.addView(pv, LinearLayout.LayoutParams((260 * d).toInt(), (320 * d).toInt()))
+        // 15 नवंबर 2026: futuristic स्कैनर + एक साथ कई चेहरे (नाम + रिश्ता)
+        holo = HoloScanView(this).also { it.show(HoloScanView.Mode.SEARCH, emptyList()) }
+        root.addView(android.widget.FrameLayout(this).apply {
+            setBackgroundColor(0xFF000000.toInt())
+            addView(pv, android.widget.FrameLayout.LayoutParams(-1, -1)); addView(holo, android.widget.FrameLayout.LayoutParams(-1, -1))
+        }, LinearLayout.LayoutParams((260 * d).toInt(), (320 * d).toInt()))
         tv = TextView(this).apply { textSize = 17f; setTextColor(0xFFFFFFFF.toInt()); gravity = Gravity.CENTER; setPadding(0, (14 * d).toInt(), 0, 0); text = UiLang.s("कैमरे में देखें… DK पहचान रही है") }
         root.addView(tv)
         setContentView(root)
@@ -52,23 +58,29 @@ class FaceWhoActivity : AppCompatActivity() {
         val copy = try { b.copy(Bitmap.Config.ARGB_8888, false) } catch (_: Throwable) { busy = false; return }
         work.execute {
             try {
-                val det = FaceAI.detect(this, copy, minScore = 0.6f) ?: return@execute
-                val e = FaceAI.embed(this, copy, det) ?: return@execute
-                val w = FacePeople.who(this, e)
-                last = w
-                val key = when { w.boss -> FacePeople.BOSS; w.name != null && w.sure -> w.name; else -> "?" }
+                val dets = FaceAI.detectAll(this, copy, minScore = 0.6f)
+                if (dets.isEmpty()) { holo?.show(HoloScanView.Mode.SEARCH, emptyList()); return@execute }
+                val ws = FacePeople.whoAll(this, dets.map { FaceAI.embed(this, copy, it) })
+                if (ws.isEmpty()) return@execute
+                last = ws
+                val seen = ws.map { LensFaces.Rules.Seen(it, fake = false, real = true) }
+                holo?.let { h -> h.show(HoloScanView.Mode.SCAN, dets.indices.mapNotNull { i ->
+                    h.place(dets[i], copy.width, copy.height, true, LensFaces.Rules.title(seen[i], Prefs.userName(this)), LensFaces.Rules.sub(seen[i]), LensFaces.Rules.tone(seen[i])) }) }
+                val key = ws.map { w -> when { w.boss -> FacePeople.BOSS; w.name != null && w.sure -> w.name; else -> "?" } }.sorted().joinToString(",")
                 val n = (votes[key] ?: 0) + 1
                 votes[key] = n
-                runOnUiThread { tv.text = UiLang.s(w.say(Prefs.userName(this))) }
+                runOnUiThread { tv.text = UiLang.s(say(ws)) }
                 // 2 बार एक जैसा पक्का नतीजा = बस
-                if (n >= 2) finishWith(result(w))
+                if (n >= 2) finishWith(result(ws))
             } catch (_: Throwable) {
             } finally { copy.recycle(); busy = false }
         }
     }
 
-    @Volatile private var last: FacePeople.Who? = null
-    private fun result(w: FacePeople.Who): String = "RESULT: " + w.say(Prefs.userName(this)) + ". Tell the user exactly this in one short line."
+    @Volatile private var last: List<FacePeople.Who>? = null
+    private fun say(ws: List<FacePeople.Who>) = ws.joinToString("\n") { it.say(Prefs.userName(this)) }
+    private fun result(ws: List<FacePeople.Who>): String = "RESULT (${ws.size} face${if (ws.size > 1) "s" else ""}): " + ws.joinToString("; ") { it.say(Prefs.userName(this)) } +
+        ". Tell the user exactly this in one or two short lines (name + relation)."
     private fun verdict(): String? = last?.let { result(it) }
 
     private fun finishWith(r: String) {
