@@ -161,6 +161,8 @@ object FeatureFlags {
         FACE_WATCHMAN,
         // 15 नवंबर 2026: टूल एजेंट (AI दिमाग)
         TOOL_AGENT,
+        // 15 नवंबर 2026: वॉइस गार्डियन (हिस्सा 2)
+        VOICE_GUARDIAN, VG_OWNER_ONLY, VG_AWAY,
     )
     fun ready(key: String): Boolean = key in READY
 
