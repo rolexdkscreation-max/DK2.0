@@ -396,7 +396,11 @@ object SevenRunner {
                         say("s", "🌿 GitHub मोड: $repo (${Prefs.ghBranch(c)}) — backup, नई branch, PR, और आपकी मंज़ूरी से merge")
                         a.teamLoad { say("s", it) }
                         val files = RepoFiles(a, c)
-                        resume?.staged?.forEach { (p, content) -> files.stage(p, content) }
+                        // 15 नवंबर 2026: पिछली बार बिना जाँच stage हुआ "फ़ाइल हटाओ" (जो अभी भी इस्तेमाल है) checkpoint से वापस न आए -
+                        // वरना हर "आगे करो" पर वही "push रोका" ([resumeDeleteBlocked])
+                        val keep = resumeDeleteBlocked(resume?.staged.orEmpty()) { p -> withContext(Dispatchers.IO) { try { a.deleteBlock(p, a.baseRead(p)) } catch (_: Exception) { null } } }
+                        keep.second.forEach { p -> say("s", "↩ पिछली बार की गलती हटाई: $p नहीं हटेगी (अभी भी इस्तेमाल हो रही है) — सिर्फ़ ज़रूरी कोड बदलेगा") }
+                        keep.first.forEach { (p, content) -> files.stage(p, content) }
                         val shown = Shown()
                         team = SevenTeam(Ai(ai, Prefs.coderLightModel(c), CoderAi.forStrong(c, ai)).scoped(Prefs.coderStrongScope(c)).lite(Prefs.coderLiteSide(c)), files, Git(a, task, c, resume?.backup.orEmpty()).also { hands = it }, full = true, aiResult = true, fast = true, ev = teamEvents(c, shown)).also { shown.team = it }
                         // "आगे करो": टीम कहाँ तक पहुँची थी - वहीं से (पूरे हुए हिस्से दोबारा नहीं)
@@ -553,6 +557,16 @@ object SevenRunner {
     }
 
     /** रुका काम छोड़ दें (branch/PR GitHub पर जैसे हैं वैसे रहते हैं) */
+    /**
+     * 15 नवंबर 2026: "आगे करो" पर checkpoint के बदलाव वापस लाते समय - जो "फ़ाइल हटाओ" [blocked] रोके (फ़ाइल अभी इस्तेमाल है), वे छोड़ो.
+     * @return (वापस लाने वाले बदलाव, छोड़ी गई फ़ाइलें)
+     */
+    internal suspend fun resumeDeleteBlocked(staged: Map<String, String?>, blocked: suspend (String) -> String?): Pair<Map<String, String?>, List<String>> {
+        val keep = LinkedHashMap<String, String?>(); val dropped = ArrayList<String>()
+        for ((p, c) in staged) if (c == null && blocked(p) != null) dropped.add(p) else keep[p] = c
+        return keep to dropped
+    }
+
     fun dropResume(ctx: Context) {
         CoderHistory.clearCheckpoint(ctx.applicationContext)
         pending = null
