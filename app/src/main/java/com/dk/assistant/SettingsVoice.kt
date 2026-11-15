@@ -146,6 +146,17 @@ internal fun SettingsActivity.secVoice() {
         val ps = DkPersona.P.values().toList()
         radios(box, ps.map { it.id to "${it.title} — ${it.sub}" }, DkPersona.get(this).id, 2800)
             .setOnCheckedChangeListener { _, id -> ps.getOrNull(id - 2800)?.let { DkPersona.set(this, it); toast("स्वभाव: ${it.title}") } }
+        // 15 नवंबर 2026 (मालिक): "गर्लफ्रेंड मोड में बाबू, जान करके बुलाएगा, बाकी में बॉस, सर" - हर स्वभाव का अपना संबोधन
+        label(box, "हर स्वभाव में DK आपको क्या बुलाए (कॉमा से अलग, पहला सबसे ज़्यादा)")
+        val addr = ps.map { p -> p to field(box, p.title, DkPersona.address(this, p), DkPersona.defaultAddress(p)) }
+        row(box, button("संबोधन सेव करें") {
+            addr.forEach { (p, e) -> DkPersona.setAddress(this, p, e.text.toString()) }
+            toast("सेव हो गया — DK चुप होते ही नए संबोधन से बोलेगी")
+        }, button("डिफ़ॉल्ट") {
+            addr.forEach { (p, e) -> e.setText(DkPersona.defaultAddress(p)); DkPersona.setAddress(this, p, DkPersona.defaultAddress(p)) }
+            toast("डिफ़ॉल्ट संबोधन लगा दिए")
+        })
+        hint(box, "डिफ़ॉल्ट: गर्लफ्रेंड = बाबू, जान • प्रोफ़ेशनल = सर, बॉस • बाकी = बॉस, सर. किसी स्वभाव का खाना खाली छोड़ें = प्रोफ़ाइल वाला \"जी <आपका नाम>\". स्वभाव या संबोधन बदलते ही चलती DK लाइव बातचीत में (DK चुप होते ही) नया अंदाज़ लगता है — किसी भी आवाज़ इंजन पर.")
         hint(box, "बोलकर भी: \"DK, नटखट मोड ऑन करो\" / \"प्रोफ़ेशनल मोड\" / \"गर्लफ्रेंड मोड\" / \"शांत मोड\" / \"नॉर्मल मोड\". JARVIS चालू हो तो पहले वह (स्वभाव चुनते ही JARVIS बंद).")
         switch(box, "बगल की बातचीत पहचानो (सुनेगी, जवाब नहीं देगी)", SideTalk.on(this))
             .setOnCheckedChangeListener { _, on -> Prefs.edit(this) { putBoolean(SideTalk.PREF, on) }; com.dk.assistant.voice.engine.VoiceEngines.liveChanged() }

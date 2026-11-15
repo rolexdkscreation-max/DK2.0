@@ -18,6 +18,7 @@ class DKApp : Application() {
         DKLog.toLogcat = (applicationInfo.flags and android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE) != 0
         DKBug.init(this)      // नवंबर 2026: DK Inspector पूरे ऐप से जुड़ा - लॉग + हर हिस्से की गलती फ़ाइल में (सबसे पहले)
         DKState.init(this)
+        NameRule.personaCall = { DkPersona.callWord(this) }   // 15 नवंबर 2026: हर स्वभाव का अपना संबोधन (बाबू / बॉस / सर)
         ModeTrack.sink = { DKLog.d(it) }   // नवंबर 2026: [LIVE] / [TEXT] / [PROBE] की कॉल और गलतियाँ अलग-अलग लॉग में
         NetFix.install(this)  // नवंबर 2026: एक नेटवर्क पर न चलना - IPv4 पहले + DoH, नेटवर्क बदले तो याद साफ़
         Prefs.loadLang(this)

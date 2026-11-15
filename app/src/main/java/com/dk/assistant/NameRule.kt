@@ -41,9 +41,15 @@ object NameRule {
     private val ADDRESS = Regex("(?<!मेरे )(?<!आपके )(?<!उनके )(?<!तुम्हारे )बॉस(?!\\s*(ने|का|की|के|को|से|हैं|है|थे|था)(?![\\p{L}\\p{M}]))")
 
     /** पहले से लिखी लाइन में यूज़र को "बॉस" कहा = "जी <नाम>" ("हाँ बॉस" -> "हाँ जी धीरज"). नाम खाली = वैसी ही */
-    fun swap(text: String, userName: String): String {
+    fun swap(text: String, userName: String, persona: String = personaCall()): String {
+        // 15 नवंबर 2026 (मालिक): "गर्लफ्रेंड मोड में बाबू/जान, बाकी में बॉस/सर" - चुने स्वभाव का संबोधन सबसे पहले
+        val p = persona.trim()
+        if (p.isNotBlank()) return if (!text.contains("बॉस") || p == "बॉस") text else ADDRESS.replace(text, p)
         val c = call(userName)
         if (c.isBlank() || !text.contains("बॉस")) return text
         return ADDRESS.replace(text, c).replace("जी जी ", "जी ")
     }
+
+    /** 15 नवंबर 2026: अभी के स्वभाव का पहला संबोधन ("बाबू" / "सर" / "बॉस"); "" = पुराना "जी <नाम>". DKApp जोड़ता है, JVM test में "" */
+    @Volatile var personaCall: () -> String = { "" }
 }

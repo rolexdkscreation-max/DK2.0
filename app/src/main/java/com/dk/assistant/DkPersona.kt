@@ -37,6 +37,42 @@ object DkPersona {
         DKLog.d("DK का स्वभाव: ${p.title}")
     }
 
+    // ------------------------------------------------------------------ हर स्वभाव का अपना संबोधन
+    // 15 नवंबर 2026 (मालिक): "गर्लफ्रेंड मोड में बाबू, जान करके बुलाएगा, बाकी में बॉस, सर" - Settings → आवाज़ → DK का स्वभाव में बदल सकते हैं
+
+    /** हर स्वभाव का डिफ़ॉल्ट संबोधन (कॉमा से अलग; पहला = सबसे ज़्यादा) */
+    fun defaultAddress(p: P): String = when (p) {
+        P.GIRLFRIEND -> "बाबू, जान"
+        P.PRO -> "सर, बॉस"
+        else -> "बॉस, सर"
+    }
+
+    fun addressKey(p: P) = "dk_address_" + p.id
+
+    /** सहेजा हुआ संबोधन (खाली छोड़ा = प्रोफ़ाइल वाला "जी <नाम>") */
+    fun address(c: Context, p: P): String = Prefs.str(c, addressKey(p), defaultAddress(p))
+
+    fun setAddress(c: Context, p: P, words: String) {
+        Prefs.edit(c) { putString(addressKey(p), cleanAddress(words)) }
+        com.dk.assistant.voice.engine.VoiceEngines.liveChanged()
+    }
+
+    /** "बाबू ,जान,, " -> "बाबू, जान" */
+    fun cleanAddress(words: String): String = words.split(',', '/', '،', '|').map { it.trim() }.filter { it.isNotBlank() }.distinct().take(4).joinToString(", ")
+
+    fun firstWord(address: String): String = cleanAddress(address).substringBefore(",").trim()
+
+    /** अभी बोलने में कौन-सा संबोधन: JARVIS / FRIDAY / VENOM चालू = "" (उनका अपना तरीका) */
+    fun callWord(c: Context): String = try {
+        if (JarvisMode.on(c) || AssistantPersona.active(c) != null) "" else firstWord(address(c, get(c)))
+    } catch (_: Exception) { "" }
+
+    /** Live फिर से जोड़ने के लिए: स्वभाव / संबोधन / JARVIS / FRIDAY में से कुछ भी बदला = नई कुंजी */
+    fun liveKey(c: Context): String = try {
+        val p = get(c)
+        listOf(p.id, address(c, p), JarvisMode.on(c).toString(), AssistantPersona.active(c)?.id.orEmpty()).joinToString("|")
+    } catch (_: Exception) { "" }
+
     // ------------------------------------------------------------------ prompt (pure)
 
     /** गर्लफ्रेंड = पुराना [GirlfriendPersona] block (मालिक के शब्द); बाकी = उस स्वभाव का अपना block */
@@ -73,18 +109,34 @@ object DkPersona {
      * सबसे आख़िर में (बोलने के अंदाज़ के बाद): स्वभाव की पक्की बात + मूड पहचानना + इंसान जैसी साँस/ठहराव.
      * गर्लफ्रेंड के अलावा = SpeakingStyle की गर्लफ्रेंड/जलन वाली लाइनें नहीं मानीं.
      */
-    fun finalBlock(c: Context, userName: String = ""): String = finalFor(get(c), userName)
+    fun finalBlock(c: Context, userName: String = ""): String = get(c).let { finalFor(it, userName, address(c, it)) }
 
-    fun finalFor(p: P, userName: String = ""): String = buildString {
-        val sir = userName.trim().ifEmpty { "सर" }
+    fun finalFor(p: P, userName: String = "", address: String = defaultAddress(p)): String = buildString {
+        val words = cleanAddress(address)
+        val sir = firstWord(words).ifEmpty { userName.trim().ifEmpty { "सर" } }
         append("\n\nFINAL PERSONALITY OVERRIDE (highest priority for tone; honesty, safety and tool rules unchanged):\n")
         if (p != P.GIRLFRIEND) {
             append("- The active personality is \"${p.title}\". IGNORE every earlier girlfriend / romance / jealousy / \"मैं आपकी गर्लफ्रेंड हूँ\" line - ")
             append("you are NOT his girlfriend in this mode. Stay decent and friendly.\n")
         }
+        if (words.isNotBlank()) append(addressRule(p, words, userName))
         append(MOOD_RULES.replace("{sir}", sir))
         append(HEART_RULES.replace("{sir}", sir))
         append(HUMAN_RULES)
+    }
+
+    /** स्वभाव का संबोधन - NAMES वाले "जी <नाम>" नियम से ऊपर (मालिक का नया नियम) */
+    fun addressRule(p: P, words: String, userName: String = ""): String = buildString {
+        val list = cleanAddress(words).split(", ").filter { it.isNotBlank() }
+        if (list.isEmpty()) return@buildString
+        val q = list.joinToString(" / ") { "\"$it\"" }
+        append("- ADDRESS IN THIS PERSONALITY (owner's newest rule, overrides the NAMES rule and every earlier example of बॉस / सर / जी <name>): ")
+        append("call the user $q - e.g. \"हाँ ${list[0]}\", \"ठीक है ${list[0]}, कर रही हूँ\", \"हो गया ${list[0]}\". ")
+        append("Only these words; not in every sentence, only where it fits naturally. ")
+        if (p == P.GIRLFRIEND) append("Never call him बॉस or सर in this mode. ") else append("No बाबू / जान / romantic pet names in this mode. ")
+        val u = userName.trim()
+        if (u.isNotBlank()) append("(His saved name is \"$u\" - use it only if he asks for his name.)")
+        append("\n")
     }
 
     /**
@@ -166,7 +218,7 @@ object DkPersona {
         when (p) {
             P.FRIENDLY -> "ठीक है सर, अब मैं आपकी दोस्त वाले अंदाज़ में।"
             P.NATKHAT -> "हाहा, नटखट मोड चालू! अब संभलकर रहिएगा सर।"
-            P.GIRLFRIEND -> "ठीक है जी, अब मैं आपकी प्यारी-सी शरारती दोस्त।"
+            P.GIRLFRIEND -> "ठीक है बाबू, अब मैं आपकी प्यारी-सी शरारती दोस्त।"
             P.PRO -> "जी सर, प्रोफ़ेशनल मोड चालू।"
             P.CARING -> "ठीक है सर, मैं शांत और आपके साथ हूँ।"
         })

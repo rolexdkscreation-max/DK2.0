@@ -341,6 +341,37 @@ internal fun SettingsActivity.secAccess() {
         })
         hint(box, "कॉल के दौरान Android दूसरे ऐप्स को माइक नहीं देता — कॉल काटने के लिए स्क्रीन पर तैरता DK बुलबुला एक बार दबाएँ।")
     }
+    // 15 नवंबर 2026 (मालिक): "DK कॉल उठाए, जैसे बोलूँ तो. और कॉलिंग की अपनी सेटिंग - कौन-सी रिंग, कितनी तेज़"
+    card("DK कॉलिंग", "बोलकर कॉल उठाना • रिंग कौन-सी और कितनी तेज़ • DK कितनी देर सुने") { box ->
+        fun ok(p: String) = androidx.core.content.ContextCompat.checkSelfPermission(this, p) == android.content.pm.PackageManager.PERMISSION_GRANTED
+        val checks = CallTune.checks(
+            announce = Prefs.announceCalls(this),
+            phoneState = ok(android.Manifest.permission.READ_PHONE_STATE),
+            answer = android.os.Build.VERSION.SDK_INT < 26 || ok(android.Manifest.permission.ANSWER_PHONE_CALLS),
+            a11y = DKAccessibilityService.instance != null)
+        hint(box, checks)
+        row(box, button("कॉल परमिशन दें") { androidx.core.app.ActivityCompat.requestPermissions(this, CallManager.PERMS, 11) },
+            button("Accessibility खोलें") { try { startActivity(android.content.Intent(android.provider.Settings.ACTION_ACCESSIBILITY_SETTINGS)) } catch (_: Exception) { toast("फ़ोन की Settings → Accessibility में DK चालू करें") } })
+        label(box, "घंटी कितनी तेज़ बजे")
+        val modes = listOf(CallTune.FULL to "पूरी आवाज़ (कम हो तो फुल — पहले जैसा)", CallTune.KEEP to "जितनी फ़ोन में रखी है, उतनी ही", CallTune.LEVEL to "मेरी तय आवाज़ (नीचे वाली पट्टी)")
+        radios(box, modes, CallTune.ringMode(this), 7100)
+            .setOnCheckedChangeListener { _, id -> modes.getOrNull(id - 7100)?.let { Prefs.edit(this) { putString(CallTune.K_MODE, it.first) }; toast("घंटी: ${it.second.substringBefore(" (")}") } }
+        callPct(box, "तय आवाज़", CallTune.ringPct(this)) { CallTune.setNum(this, CallTune.K_PCT, it) }
+        switch(box, "DK जब तक जवाब सुन रही है, घंटी धीमी करो (ताकि \"DK उठा लो\" सुनाई दे)", CallTune.listenQuiet(this))
+            .setOnCheckedChangeListener { _, on -> Prefs.edit(this) { putBoolean(CallTune.K_QUIET, on) } }
+        callPct(box, "सुनते समय घंटी", CallTune.listenPct(this)) { CallTune.setNum(this, CallTune.K_QPCT, it) }
+        label(box, "घंटी के समय DK कितनी देर सुने")
+        val secs = CallTune.SECONDS.map { it.toString() to "$it सेकंड" }
+        radios(box, secs, (CallTune.listenMs(this) / 1000).toString(), 7150)
+            .setOnCheckedChangeListener { _, id -> CallTune.SECONDS.getOrNull(id - 7150)?.let { CallTune.setNum(this, CallTune.K_SEC, it); toast("DK $it सेकंड सुनेगी") } }
+        row(box, button("रिंग चुनें") { startActivity(android.content.Intent(this, CallRingPickActivity::class.java)) },
+            button("डिफ़ॉल्ट") {
+                Prefs.edit(this) { putString(CallTune.K_MODE, CallTune.FULL); putBoolean(CallTune.K_QUIET, true) }
+                CallTune.setNum(this, CallTune.K_PCT, CallTune.DEF_PCT); CallTune.setNum(this, CallTune.K_QPCT, CallTune.DEF_QPCT); CallTune.setNum(this, CallTune.K_SEC, CallTune.DEF_SEC)
+                toast("डिफ़ॉल्ट लगा दिया — सेटिंग दोबारा खोलें")
+            })
+        hint(box, "घंटी के समय बोलें: \"DK उठा लो\" / \"कॉल उठाओ\" / \"उठाकर स्पीकर पर डालो\" / \"काट दो\" / \"कौन है\" / \"घंटी धीमी करो\". कॉल ख़त्म होते ही घंटी की पुरानी आवाज़ वापस. फ़ोन साइलेंट/वाइब्रेट पर हो तो DK घंटी नहीं छेड़ती. रिंग बदलने के लिए एक बार \"सिस्टम सेटिंग बदलें\" की इजाज़त माँगी जाएगी.")
+    }
     val crash = DKApp.lastCrash(this)
     if (crash.isNotBlank()) card("गड़बड़ी रिपोर्ट", "पिछली बार DK किस वजह से बंद हुआ") { box ->
         box.addView(TextView(this).apply {
@@ -428,4 +459,20 @@ internal fun SettingsActivity.refreshPerms() {
         (if (ok(PhoneActions.PHOTO_PERM)) "✓" else "✗") + " फ़ोटो (सबसे नई फ़ोटो खोलना)\n" +
         (if (MediaDelete.canManage(this)) "✓" else "✗") + " मीडिया मैनेजमेंट (फ़ोटो / स्क्रीनशॉट बिना Allow पूछे मिटाना)\n" +
         (if (Updater.canInstall(this)) "✓" else "✗") + " ऐप इंस्टॉल (अपडेट)"
+}
+
+/** 15 नवंबर 2026: DK कॉलिंग की % पट्टी (छोड़ते ही सेव) */
+internal fun SettingsActivity.callPct(box: LinearLayout, title: String, value: Int, save: (Int) -> Unit) {
+    val lab = TextView(this).apply { textSize = 13f; setTextColor(0xB3FFFFFF.toInt()); setPadding((4 * dp).toInt(), (10 * dp).toInt(), 0, (4 * dp).toInt()) }
+    fun show(v: Int) { lab.text = UiLang.s(title) + ": $v%" }
+    show(value); box.addView(lab)
+    val sb = SeekBar(this).apply {
+        max = 100; progress = value.coerceIn(0, 100); contentDescription = UiLang.s(title)
+        setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
+            override fun onProgressChanged(b: SeekBar?, p: Int, fromUser: Boolean) { show(p) }
+            override fun onStartTrackingTouch(b: SeekBar?) {}
+            override fun onStopTrackingTouch(b: SeekBar?) { save(progress) }
+        })
+    }
+    box.addView(sb, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, (48 * dp).toInt()))
 }

@@ -1292,7 +1292,7 @@ class DKAccessibilityService : AccessibilityService() {
                 } else { CallCmd.doneMessage(); sendRejectMessage(target, text) }
             }
             CallCmd.MUTE, CallCmd.UNMUTE -> if (c.action == CallCmd.MUTE && calls.ringing && !calls.inCall) {
-                calls.quietRinger(); "सर, घंटी धीमी कर दी।"   // कॉल ख़त्म होते ही पुरानी आवाज़ वापस (RingGuard)
+                calls.quietRinger(force = true); "सर, घंटी धीमी कर दी।"   // कॉल ख़त्म होते ही पुरानी आवाज़ वापस (RingGuard)
             } else muteCall(c.action == CallCmd.MUTE)
             CallCmd.CANCEL -> "ठीक है सर, मैसेज नहीं भेजा।"
             CallCmd.END -> {
