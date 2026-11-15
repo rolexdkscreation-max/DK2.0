@@ -136,6 +136,8 @@ class DKWorkingIndicator(context: Context) : View(context) {
         // v4.x: बुलबुले में चुना हुआ टाइपिंग एनीमेशन (डॉट वाला) - बार की जगह
         if (bare) {
             if (now - styleT > 1000) { styleT = now; typing = typingPreview ?: if (agent) Prefs.typingStyleAgent(context) else Prefs.typingStyle(context) }
+            // 15 नवंबर 2026: टाइपिंग एनीमेशन "बंद" = कुछ नहीं बनता, कुछ नहीं चलता
+            if (typing == TypingStyles.OFF) { running = false; last = 0L; return }
             if (typing == TypingStyles.COMPUTER) {
                 drawComputer(c, cx, cy, s)
                 val idle = state == WorkState.IDLE && amp < 0.004f
@@ -212,7 +214,9 @@ class DKWorkingIndicator(context: Context) : View(context) {
         c.restore()
     }
 
-    private fun canAnimate() = isAttachedToWindow && isShown && windowVisibility == VISIBLE && ValueAnimator.areAnimatorsEnabled()
+    private fun canAnimate() = isAttachedToWindow && isShown && windowVisibility == VISIBLE && ValueAnimator.areAnimatorsEnabled() &&
+        // 15 नवंबर 2026: दिखावट में "कम एनिमेशन" = बुलबुले का टाइपिंग एनीमेशन भी रुका (एक स्थिर झलक)
+        !(bare && com.dk.assistant.ui.NeonTheme.reducedMotion())
 
     /** animation (फिर से) शुरू - सिर्फ़ जब ज़रूरत हो */
     private fun kick() {

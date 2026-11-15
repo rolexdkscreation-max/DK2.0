@@ -54,7 +54,7 @@ internal fun SettingsActivity.secUi() {
         val orbs = com.dk.assistant.dkai.DkaiOrbs.ORBS
         val g = radios(box, orbs, com.dk.assistant.dkai.DkaiOrbs.get(this), 6600)
         g.setOnCheckedChangeListener { _, id -> orbs.getOrNull(id - 6600)?.let { com.dk.assistant.dkai.DkaiOrbs.set(this, it.first) } }
-        hint(box, "पुराना DK orb चुना = उसका आकार \"ओर्ब और चेहरा\" वाले हिस्से से। DKAI में orb पर टैप करके भी बदल सकते हैं।")
+        hint(box, "पुराना DK orb चुना = उसका आकार \"ओर्ब और चेहरा\" वाले हिस्से से। orb सिर्फ़ यहीं से बदलता है — DKAI में orb पर टैप करने से कुछ नहीं खुलता।")
     }
     card("झलक", "बदलाव यहीं तुरंत दिखता है", startOpen = true) { box ->
         box.addView(OrbView(this).apply { previewStyle = Shapes.NEON; importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO },
@@ -67,7 +67,6 @@ internal fun SettingsActivity.secUi() {
             button("काँच का बटन") {}.apply { isClickable = false })
     }
     themeGallery()
-    wallpaperGallery()
     card("थीम", "पृष्ठभूमि का रंग", startOpen = true) { box ->
         val g = radios(box, T.THEMES, T.look.theme, 6100)
         g.setOnCheckedChangeListener { _, id ->
@@ -165,6 +164,7 @@ internal fun SettingsActivity.secUi() {
             Prefs.edit(this) { putString("typing_style", v) }
             prev.typingPreview = v
         }
+        hint(box, "यही एनीमेशन \"सोच रहा हूँ…\" वाले बुलबुले और ऊपर के THINKING पर भी चलता है — जवाब आना शुरू होते ही रुक जाता है। \"बंद\" चुनें या ऊपर \"कम एनिमेशन\" करें तो वहाँ भी कुछ नहीं हिलता।")
         // 14 नवंबर 2026 (मालिक): DK कंप्यूटर + कोडिंग एजेंट का अलग चुनाव (डिफ़ॉल्ट छोटा कंप्यूटर)
         hint(box, "DK कंप्यूटर और कोडिंग एजेंट में (\"काम Running…\" वाला बुलबुला):")
         val curA = Prefs.typingStyleAgent(this)
@@ -291,85 +291,8 @@ internal fun SettingsActivity.themeGallery() {
 }
 
 
-// ------------------------------------------------------------ नवंबर 2026: वॉलपेपर (पूरे ऐप के पीछे का चित्र)
-/**
- * थीम वाला (शुरुआती) + ऐप के अंदर 5 वॉलपेपर + गैलरी से अपना. चुनते ही होम, सेटिंग और हर स्क्रीन के पीछे वही चित्र.
- * थीम के रंग/काँच/ओर्ब नहीं बदलते. अपना चित्र फ़ोन में ही रहता है (filesDir/wallpaper).
- */
-internal fun SettingsActivity.wallpaperGallery() {
-    val W = com.dk.assistant.ui.Wallpapers
-    card("वॉलपेपर", "पूरे ऐप के पीछे का चित्र - 5 तैयार या गैलरी से अपना", startOpen = true) { box ->
-        val cur = W.selectedId(this)
-        val accent = com.dk.assistant.ui.NeonTheme.look.main
-        val tw = (78 * dp).toInt(); val th = (138 * dp).toInt()
-        val strip = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; setPadding(0, (4 * dp).toInt(), 0, (4 * dp).toInt()) }
-        val items = listOf(W.NONE to "थीम वाला") + W.BUILT_IN.map { it.id to it.name } +
-            (if (W.customFile(this).isFile) listOf(W.CUSTOM to "मेरा चित्र") else emptyList())
-        for ((id, name) in items) {
-            val on = id == cur
-            val cell = LinearLayout(this).apply {
-                orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER_HORIZONTAL
-                isClickable = true; isFocusable = true
-                contentDescription = UiLang.s(name) + if (on) " - " + UiLang.s("लागू है") else ""
-                setOnClickListener {
-                    if (id == W.selectedId(this@wallpaperGallery)) return@setOnClickListener
-                    W.select(this@wallpaperGallery, id)
-                    com.dk.assistant.ui.NeonRefresh.bars(this@wallpaperGallery)
-                    toast("वॉलपेपर लागू हो गया")
-                    recreate()
-                }
-            }
-            val img = android.widget.ImageView(this).apply {
-                scaleType = android.widget.ImageView.ScaleType.CENTER_CROP
-                importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
-                W.thumb(this@wallpaperGallery, id, tw)?.let { setImageBitmap(it) }
-                clipToOutline = true
-                background = android.graphics.drawable.GradientDrawable().apply {
-                    cornerRadius = 14 * dp; setColor(0xFF0A1033.toInt())
-                    setStroke(((if (on) 3 else 1) * dp).toInt(), if (on) accent else 0x44FFFFFF)
-                }
-                val pad = ((if (on) 3 else 1) * dp).toInt(); setPadding(pad, pad, pad, pad)
-            }
-            cell.addView(img, LinearLayout.LayoutParams(tw, th))
-            cell.addView(TextView(this).apply {
-                text = UiLang.s(name); textSize = 11f; gravity = Gravity.CENTER; maxLines = 2
-                setTextColor(if (on) 0xFFFFFFFF.toInt() else 0xB3FFFFFF.toInt())
-                if (on) setTypeface(typeface, Typeface.BOLD)
-                importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
-            }, LinearLayout.LayoutParams(tw, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = (4 * dp).toInt() })
-            strip.addView(cell, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT)
-                .apply { marginEnd = (10 * dp).toInt() })
-        }
-        box.addView(android.widget.HorizontalScrollView(this).apply {
-            isHorizontalScrollBarEnabled = false; addView(strip)
-        }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
-        val pick = button("गैलरी से चुनें (कस्टम)") {
-            pickWall.launch(androidx.activity.result.PickVisualMediaRequest(
-                androidx.activity.result.contract.ActivityResultContracts.PickVisualMedia.ImageOnly))
-        }.apply { minHeight = (44 * dp).toInt() }
-        val dlBtn = button("वॉलपेपर डाउनलोड करें") {
-            val app = applicationContext
-            Thread {
-                val err = W.downloadWallpaper(app, cur)
-                runOnUiThread {
-                    if (isFinishing || isDestroyed) return@runOnUiThread
-                    if (err == null) toast("वॉलपेपर डाउनलोड हो गया")
-                    else toast("डाउनलोड विफल: $err")
-                }
-            }.start()
-        }.apply { minHeight = (44 * dp).toInt() }
-        if (W.customFile(this).isFile) {
-            row(box, pick, button("अपना चित्र हटाएँ") {
-                W.removeCustom(this); com.dk.assistant.ui.NeonRefresh.bars(this); toast("अपना चित्र हटा दिया"); recreate()
-            }.apply { minHeight = (44 * dp).toInt() })
-            if (cur != W.NONE) box.addView(dlBtn)
-        } else {
-            if (cur != W.NONE) row(box, pick, dlBtn) else box.addView(pick)
-        }
-        hint(box, "वॉलपेपर पूरे ऐप में एक साथ लगता है: होम, सेटिंग, चैट, DK कंप्यूटर - हर स्क्रीन के पीछे. " +
-            "थीम के रंग और काँच वैसे ही रहते हैं. गैलरी वाला चित्र फ़ोन में ही रहता है, कहीं भेजा नहीं जाता.")
-    }
-}
+// 15 नवंबर 2026 (मालिक: "Wallpaper section पूरी तरह हटाओ"): वॉलपेपर का कार्ड, चित्र, गैलरी-picker और download - सब हटा.
+// पीछे सिर्फ़ थीम का सादा रंग. पुराना सेव "ui_wallpaper" मान चुपचाप अनदेखा (NeonTheme.LEGACY_WALL).
 
 /** 14 नवंबर 2026: सेटिंग का डार्क / लाइट मोड (pure, JUnit) */
 object SettingsThemeMode {

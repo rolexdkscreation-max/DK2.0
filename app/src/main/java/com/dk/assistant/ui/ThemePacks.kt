@@ -190,11 +190,10 @@ object ThemePacks {
     /** पृष्ठभूमि चित्र (छोटा करके, एक ही बार) - AuroraView इस्तेमाल करता है */
     @Volatile private var bmpKey = ""
     @Volatile private var bmp: android.graphics.Bitmap? = null
-    fun background(c: Context, p: ThemePack, maxW: Int, wallpaper: String = Wallpapers.NONE): android.graphics.Bitmap? {
-        val key = "${p.id}:${p.version}|$wallpaper"
+    fun background(c: Context, p: ThemePack, maxW: Int): android.graphics.Bitmap? {
+        val key = "${p.id}:${p.version}"
         bmp?.let { if (bmpKey == key) return it }
-        // वॉलपेपर चुना है तो वही (न खुले तो थीम वाला चित्र)
-        val b = (if (wallpaper != Wallpapers.NONE) Wallpapers.decode(c, wallpaper, maxW) else null) ?: try {
+        val b = try {
             val o = android.graphics.BitmapFactory.Options().apply { inPreferredConfig = android.graphics.Bitmap.Config.ARGB_8888 }
             if (p.id == DEFAULT_ID) {
                 o.inScaled = false

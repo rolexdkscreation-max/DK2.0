@@ -38,10 +38,10 @@ class DkaiSearchCard(c: Context) : LinearLayout(c) {
         val head = LinearLayout(c).apply { orientation = HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
         head.addView(LinearLayout(c).apply {
             orientation = HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
-            background = DkaiTheme.round(c, if (DkaiTheme.light) 0xFFEDE9FE.toInt() else 0x337C3AED, 999f)
+            background = DkaiTheme.round(c, com.dk.assistant.ui.NeonTheme.over(0x337C3AED, com.dk.assistant.ui.ThemeVars.DARK.card), 999f)   // 15 नवंबर 2026: दोनों मोड में वही ठोस
             setPadding(d(8f), d(3f), d(10f), d(3f))
             addView(PulseDot(c).apply { color = 0xFF8B5CF6.toInt() }, LayoutParams(d(9f), d(9f)))
-            addView(DkaiTheme.text(c, "Processing", 11f, if (DkaiTheme.light) 0xFF5B21B6.toInt() else 0xFFD8B4FE.toInt(), DkaiTheme.SANS_BOLD).apply { setPadding(d(5f), 0, 0, 0) })
+            addView(DkaiTheme.text(c, "Processing", 11f, 0xFFD8B4FE.toInt(), DkaiTheme.SANS_BOLD).apply { setPadding(d(5f), 0, 0, 0) })
         })
         searching = DkaiTheme.text(c, "Searching…", 13f, DkaiTheme.SUB, DkaiTheme.SANS_MED).apply { setPadding(d(8f), 0, 0, 0) }
         head.addView(searching, LayoutParams(0, -2, 1f))

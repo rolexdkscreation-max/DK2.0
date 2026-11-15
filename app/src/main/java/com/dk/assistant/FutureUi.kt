@@ -191,11 +191,19 @@ object FutureViews {
     }
 
     /** सेटिंग्स के रंगीन squircle आइकन का पीछे का हिस्सा */
+    // 15 नवंबर 2026 (मालिक: "icon box का shade दोनों मोड में dark जैसा, फीका/pastel नहीं"): पहले पारदर्शी था - सफ़ेद कार्ड
+    // पर pastel दिखता. अब dark कार्ड के ऊपर वाला असली (ठोस) रंग - दोनों मोड में बिल्कुल एक जैसा
     fun squircle(c: Context, color: Int): GradientDrawable = GradientDrawable(
-        GradientDrawable.Orientation.TL_BR, intArrayOf((color and 0x00FFFFFF) or 0x55000000, (color and 0x00FFFFFF) or 0x14000000)
+        GradientDrawable.Orientation.TL_BR, squircleColors(color)
     ).apply {
         val d = dp(c); cornerRadius = 14 * d
-        setStroke((1 * d).toInt().coerceAtLeast(1), (color and 0x00FFFFFF) or 0x77000000)
+        setStroke((1 * d).toInt().coerceAtLeast(1), com.dk.assistant.ui.NeonTheme.over((color and 0x00FFFFFF) or 0x77000000, com.dk.assistant.ui.ThemeVars.DARK.card))
+    }
+    /** pure: icon box के दो ठोस रंग (dark कार्ड पर रखे रंग जैसे) */
+    fun squircleColors(color: Int): IntArray {
+        val base = com.dk.assistant.ui.ThemeVars.DARK.card
+        return intArrayOf(com.dk.assistant.ui.NeonTheme.over((color and 0x00FFFFFF) or 0x55000000, base),
+            com.dk.assistant.ui.NeonTheme.over((color and 0x00FFFFFF) or 0x14000000, base))
     }
 
     /** IDE जैसा कोड पैनल: ऊपर भाषा + कॉपी, नीचे लाइन नंबर + रंगीन कोड */

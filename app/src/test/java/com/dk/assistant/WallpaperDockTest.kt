@@ -1,10 +1,8 @@
 package com.dk.assistant
 
 import com.dk.assistant.ui.NeonTheme
-import com.dk.assistant.ui.Wallpapers
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
-import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -14,87 +12,29 @@ import java.io.File
 class WallpaperDockTest {
     private fun f(p: String) = listOf(File("src/main/$p"), File("app/src/main/$p")).first { it.exists() }
 
-    @Test fun builtInWallpapers_shipInsideApp() {
-        assertEquals(5, Wallpapers.BUILT_IN.size)
-        assertEquals(5, Wallpapers.BUILT_IN.map { it.id }.toSet().size)
-        assertEquals("wp_dk_badge", Wallpapers.DEFAULT_ID)
-        assertTrue(Wallpapers.BUILT_IN.any { it.id == "wp_dk_badge" })
-        assertTrue(Wallpapers.BUILT_IN.any { it.id == "wp_cyber1" })
-        assertTrue(Wallpapers.BUILT_IN.any { it.id == "wp_cyber2" })
-        for (i in 1..5) {
-            val w = f("res/drawable-nodpi/dk_wp_$i.webp")
-            assertTrue("dk_wp_$i बहुत बड़ी (APK भारी)", w.length() in 2_000..200_000)
-        }
-    }
-
-    @Test fun downloadWallpaper_isAvailable() {
-        val wallpapersCode = f("java/com/dk/assistant/ui/Wallpapers.kt").readText()
-        assertTrue(wallpapersCode.contains("fun downloadWallpaper"))
-    }
-
-    @Test fun validAndResolve_fallBackToTheme() {
-        assertTrue(Wallpapers.valid(Wallpapers.NONE)); assertTrue(Wallpapers.valid("wp_1")); assertTrue(Wallpapers.valid(Wallpapers.CUSTOM))
-        assertFalse(Wallpapers.valid("wp_9")); assertFalse(Wallpapers.valid("../x")); assertFalse(Wallpapers.valid(null))
-        assertEquals(Wallpapers.NONE, Wallpapers.resolve("wp_9", true))
-        assertEquals(Wallpapers.NONE, Wallpapers.resolve(null, true))
-        assertEquals("wp_1", Wallpapers.resolve("wp_1", false))
-        // गैलरी वाला चित्र मिट गया हो तो खाली स्क्रीन नहीं - थीम वाला चित्र
-        assertEquals(Wallpapers.NONE, Wallpapers.resolve(Wallpapers.CUSTOM, false))
-        assertEquals(Wallpapers.CUSTOM, Wallpapers.resolve(Wallpapers.CUSTOM, true))
-    }
-
-    @Test fun wallpaperDecoding_usesARGB8888_highQuality() {
-        val wallpapersCode = f("java/com/dk/assistant/ui/Wallpapers.kt").readText()
-        assertTrue(wallpapersCode.contains("Bitmap.Config.ARGB_8888"))
-        assertFalse(wallpapersCode.contains("Bitmap.Config.RGB_565"))
-        val themePacksCode = f("java/com/dk/assistant/ui/ThemePacks.kt").readText()
-        assertTrue(themePacksCode.contains("Bitmap.Config.ARGB_8888"))
-        assertFalse(themePacksCode.contains("Bitmap.Config.RGB_565"))
-    }
-
-    @Test fun newCustomPhoto_changesLook_soEveryScreenRedraws() {
-        val a = Wallpapers.key(Wallpapers.CUSTOM, 100L); val b = Wallpapers.key(Wallpapers.CUSTOM, 200L)
-        assertNotEquals(a, b)
-        assertEquals(Wallpapers.CUSTOM, Wallpapers.idOf(a))
-        assertEquals("wp_1", Wallpapers.key("wp_1", 999L))
-        // Look बदला = NeonTheme.version++ (AuroraView हर स्क्रीन पर नया चित्र बनाता है)
-        assertNotEquals(NeonTheme.Look(wallpaper = a), NeonTheme.Look(wallpaper = b))
-        assertNotEquals(NeonTheme.Look(), NeonTheme.Look(wallpaper = "wp_4"))
-        assertEquals(Wallpapers.NONE, NeonTheme.Look().wallpaper)
-    }
-
-    @Test fun dimAndBlobs_keepTextReadable_andHideOldBlue() {
-        assertEquals(0.3f, Wallpapers.dim(Wallpapers.NONE, 0.3f), 0f)
-        assertTrue(Wallpapers.dim(Wallpapers.key(Wallpapers.CUSTOM, 1L), 0.3f) > Wallpapers.dim("wp_1", 0.3f))
-        assertTrue(Wallpapers.dim("wp_1", 0.3f) > 0.1f)
-        assertEquals(1f, Wallpapers.blobFactor("wp_1", false), 0f)
-        assertEquals(0.55f, Wallpapers.blobFactor(Wallpapers.NONE, true), 0f)
-        assertTrue(Wallpapers.blobFactor("wp_1", true) < 0.3f)
-    }
-
-    @Test fun customPhoto_isShrunk() {
-        assertEquals(1, Wallpapers.sampleSize(1080, 1920, 1920))
-        assertEquals(2, Wallpapers.sampleSize(3000, 4000, 1920))
-        assertEquals(4, Wallpapers.sampleSize(8000, 8000, 1920))
-        assertEquals(1, Wallpapers.sampleSize(0, 0, 1920))
-        assertEquals(1f, Wallpapers.scaleFor(1080, 1920, 1920), 0f)
-        assertEquals(0.5f, Wallpapers.scaleFor(1920, 3840, 1920), 0.0001f)
-    }
-
-    @Test fun wallpaperPref_isAppearanceKey_resetClearsIt() {
-        assertTrue(Wallpapers.K_WALL.startsWith("ui_"))
-        assertTrue(Wallpapers.K_WALL in NeonTheme.KEYS)
-    }
-
-    @Test fun settingsHasWallpaperGallery_withCustomPicker_andSearch() {
+    /**
+     * 15 नवंबर 2026 (मालिक: "Wallpaper section पूरी तरह हटाओ - button, पेज, विकल्प, code, state, storage, styles"):
+     * पहले यहाँ 5 वॉलपेपर + गैलरी picker + download की जाँच थी. मालिक का फ़ैसला बदला - अब जाँच यह कि कुछ न बचे
+     * और पुराना सेव मान crash न करे (सिर्फ़ रीसेट पर मिटे, कभी पढ़ा न जाए).
+     */
+    @Test fun wallpaper_removedCompletely() {
+        assertFalse(File("src/main/java/com/dk/assistant/ui/Wallpapers.kt").exists() || File("app/src/main/java/com/dk/assistant/ui/Wallpapers.kt").exists())
+        for (i in 1..5) assertFalse(listOf(File("src/main/res/drawable-nodpi/dk_wp_$i.webp"), File("app/src/main/res/drawable-nodpi/dk_wp_$i.webp")).any { it.exists() })
         val look = f("java/com/dk/assistant/SettingsLook.kt").readText()
-        assertTrue(look.contains("wallpaperGallery()"))
-        assertTrue(look.contains("pickWall.launch"))
+        assertFalse(look.contains("wallpaperGallery()"))
+        assertFalse(look.contains("card(\"वॉलपेपर\""))
+        assertFalse(look.contains("pickWall"))
         val act = f("java/com/dk/assistant/SettingsActivity.kt").readText()
-        assertTrue(act.contains("PickVisualMedia()") && act.contains("Wallpapers.saveCustom"))
-        assertTrue(f("java/com/dk/assistant/SettingsSearch.kt").readText().contains("E(\"ui\", \"वॉलपेपर\""))
-        // हर स्क्रीन का पीछे का चित्र (AuroraView) वॉलपेपर लेता है
-        assertTrue(f("java/com/dk/assistant/AuroraView.kt").readText().contains("look.wallpaper"))
+        assertFalse(act.contains("pickWall") || act.contains("Wallpapers."))
+        assertFalse(f("java/com/dk/assistant/SettingsSearch.kt").readText().contains("E(\"ui\", \"वॉलपेपर\""))
+        assertFalse(f("java/com/dk/assistant/AuroraView.kt").readText().contains("wallpaper"))
+        val neon = f("java/com/dk/assistant/ui/NeonTheme.kt").readText()
+        assertFalse(neon.contains("val wallpaper"))
+        // पुराना मान: रीसेट पर मिटे, पर कभी पढ़ा न जाए (crash नहीं)
+        assertEquals("ui_wallpaper", NeonTheme.LEGACY_WALL)
+        assertTrue(NeonTheme.LEGACY_WALL in NeonTheme.KEYS)
+        assertFalse(neon.contains("getString(LEGACY_WALL"))
+        assertTrue(f("java/com/dk/assistant/plus/PlusBoot.kt").readText().contains("LEGACY_WALL_DIR).deleteRecursively()"))
     }
 
     @Test fun homeDock_noKeyboardPill_plusFirst_opensUploadMenu() {

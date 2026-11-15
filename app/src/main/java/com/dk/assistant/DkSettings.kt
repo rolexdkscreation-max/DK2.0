@@ -118,8 +118,6 @@ object DkSettings {
             listOf("ईमेल", "इमेल", "email", "gmail", "जीमेल", "मेल पढ़ना"), store = STORE_FLAGS),
         Item("wa_report", "WhatsApp ग्रुप रिपोर्ट", "autoreply", FeatureFlags.WA_GROUP_REPORT, false,
             listOf("ग्रुप रिपोर्ट", "group report", "ग्रुप में रिपोर्ट", "रिपोर्ट टेम्पलेट"), store = STORE_FLAGS),
-        Item("char3d", "3D कैरेक्टर", "ui", FeatureFlags.CHARACTER_3D, false,
-            listOf("3d कैरेक्टर", "3d character", "3डी कैरेक्टर", "कैरेक्टर", "character", "3d"), store = STORE_FLAGS),
         // 15 नवंबर 2026 (मालिक: "अलग 5-टैब वाली नीचे की पट्टी") - pref उल्टा: HIDE_HOME_TABS true = छुपी
         Item("home_tabs", "नीचे की 5-टैब पट्टी", "ui", FeatureFlags.HIDE_HOME_TABS, false,
             listOf("टैब पट्टी", "टैब वाली पट्टी", "नीचे की पट्टी", "टैब बार", "tab bar", "bottom bar", "bottom nav", "5 टैब", "पांच टैब", "पाँच टैब"),
@@ -143,7 +141,7 @@ object DkSettings {
         "phone lock = 'फ़ोन लॉक करो'; teacher mode = tool teacher_mode; " +
         "face = tool face_who ('देखो कौन है' - Boss / saved person / unknown; faces are registered in Settings → चेहरा पहचान); " +
         "email = tools email_read / email_send / email_delete (send and delete only after reading it back and a clear yes); " +
-        "WhatsApp group report = tool group_report (list / fill / send); 3D character = tool show_character; " +
+        "WhatsApp group report = tool group_report (list / fill / send); " +
         "FRIDAY / VENOM = switches [friday] / [venom] (one at a time, JARVIS goes off) or 'फ्राइडे मोड ऑन करो'. " +
         "Always call the user by his saved name (e.g. 'जी बॉस', 'हेलो बॉस')."
 

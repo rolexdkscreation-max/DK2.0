@@ -67,24 +67,6 @@ class SettingsActivity : AppCompatActivity() {
 
     internal val dp get() = resources.displayMetrics.density
 
-    /** वॉलपेपर: गैलरी से अपना चित्र (SettingsLook.wallpaperGallery) - फ़ोन में ही सेव, फिर पूरे ऐप में लागू */
-    internal val pickWall = registerForActivityResult(androidx.activity.result.contract.ActivityResultContracts.PickVisualMedia()) { uri ->
-        if (uri == null) return@registerForActivityResult
-        toast("वॉलपेपर लग रहा है…")
-        val app = applicationContext
-        Thread {
-            val err = com.dk.assistant.ui.Wallpapers.saveCustom(app, uri)
-            runOnUiThread {
-                if (isFinishing || isDestroyed) return@runOnUiThread
-                if (err != null) { toast(err); return@runOnUiThread }
-                com.dk.assistant.ui.Wallpapers.select(this, com.dk.assistant.ui.Wallpapers.CUSTOM)
-                com.dk.assistant.ui.NeonRefresh.bars(this)
-                toast("वॉलपेपर लागू हो गया")
-                recreate()
-            }
-        }.start()
-    }
-
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         window.setSoftInputMode(android.view.WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE)
@@ -150,7 +132,7 @@ class SettingsActivity : AppCompatActivity() {
             "about" -> { title.text = "ऐप के बारे में"; secAbout() }
         }
         // 15 नवंबर 2026: नई सुविधाएँ अपने पुराने section के नीचे (पुरानी लाइनें वैसी ही)
-        when (section) { "ui" -> { sec3D(); secHomeTabs() }; "computer" -> secEmail(); "autoreply" -> secGroupReport() }
+        when (section) { "ui" -> secHomeTabs(); "computer" -> secEmail(); "autoreply" -> secGroupReport() }
         space(container, 8)
         FutureViews.goldShader(title)          // नवंबर 2026: शीर्षक धातु जैसा सुनहरा (Control Center रूप)
     }
@@ -223,13 +205,11 @@ class SettingsActivity : AppCompatActivity() {
                 setImageResource(menuIcon(icon)); background = FutureViews.squircle(this@SettingsActivity, menuTint(icon))
                 val ip = (10 * dp).toInt(); setPadding(ip, ip, ip, ip); importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
             }, LinearLayout.LayoutParams((44 * dp).toInt(), (44 * dp).toInt()).apply { marginEnd = (14 * dp).toInt() })
-            // 14 नवंबर 2026 (मालिक): लाइट में भी पूरा रंगीन - हर पंक्ति अपने रंग के हल्के डिब्बे में, नाम उसी रंग में गहरा
-            val light = com.dk.assistant.dkai.DkaiTheme.light
-            if (light) box.background = android.graphics.drawable.RippleDrawable(android.content.res.ColorStateList.valueOf(0x220F172A),
-                PlainLook.colorCard(menuTint(icon), 20 * dp, (1.2f * dp).toInt()), null).also { (18 * dp).toInt().let { pd -> box.setPadding(pd, pd, pd, pd) } }
+            // 15 नवंबर 2026 (मालिक: "light में भी dark वाला ही design"): pastel रंगीन डिब्बा और रंगीन नाम हटे -
+            // दोनों मोड में वही कार्ड; light में PlainLook बस कार्ड सफ़ेद और लिखावट गहरी करता है
             val txt = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
             txt.addView(TextView(this).apply { text = t; textSize = 17f; setTypeface(typeface, Typeface.BOLD)
-                setTextColor(if (light) PlainLook.deep(menuTint(icon)) else 0xFFFFFFFF.toInt()) })
+                setTextColor(0xFFFFFFFF.toInt()) })
             val subTv = TextView(this).apply { text = sub; textSize = 12.5f; setTextColor(0x99FFFFFF.toInt()); setPadding(0, (3 * dp).toInt(), 0, 0) }
             txt.addView(subTv)
             box.addView(txt, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))

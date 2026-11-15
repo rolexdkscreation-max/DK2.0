@@ -2,16 +2,16 @@ package com.dk.assistant.plus.models
 
 /**
  * 15 नवंबर 2026 (मालिक: "कोई भारी फ़ाइल ऐप के अंदर नहीं - APK का MB न बढ़े, सब इंटरनेट से"):
- * भारी मॉडल / 3D कैरेक्टर की सूची. कोई भी फ़ाइल APK (assets / res/raw) में नहीं जाती -
+ * भारी मॉडल की सूची. कोई भी फ़ाइल APK (assets / res/raw) में नहीं जाती -
  * [ModelManager] इन्हें तभी डाउनलोड करता है जब मालिक वह सुविधा चालू करे, और `filesDir/models/` में रखता है.
  *
  * हर फ़ाइल का SHA-256 पहले से तय (pinned) - डाउनलोड के बाद मिलाया जाता है, न मिले तो फ़ाइल मिटा दी जाती है.
- * URL सिर्फ़ https और खुले (free) स्रोत: Hugging Face, GitHub (opencv_zoo, KhronosGroup, three.js).
+ * URL सिर्फ़ https और खुले (free) स्रोत: Hugging Face, GitHub (opencv_zoo).
  * Android import नहीं -> JVM test ([ModelCatalogTest]).
  */
 object ModelCatalog {
 
-    enum class Kind(val title: String) { VOICE("आवाज़-पहचान"), FACE("चेहरा-पहचान"), CHARACTER("3D कैरेक्टर"), LIB("3D लाइब्रेरी") }
+    enum class Kind(val title: String) { VOICE("आवाज़-पहचान"), FACE("चेहरा-पहचान") }
 
     data class Asset(
         val id: String,
@@ -58,36 +58,13 @@ object ModelCatalog {
         "8f2383e4dd3cfbb4553ea8718107fc0423210dc964f9f4280604804ed2552fa4", 232_589L, "MIT",
     )
 
-    private const val KHRONOS = "https://raw.githubusercontent.com/KhronosGroup/glTF-Sample-Assets/main/Models"
-    val CHARACTERS = listOf(
-        Asset("char_robot", Kind.CHARACTER, "DK रोबोट", "हाथ हिलाना, नाचना, चलना - 14 एनिमेशन", "robot_expressive.glb",
-            listOf("https://raw.githubusercontent.com/mrdoob/three.js/r170/examples/models/gltf/RobotExpressive/RobotExpressive.glb"),
-            "047f5e5fb3bb6d378bd1df16ca6137f2a596c99b3a1b5690b4020c05aaf6f319", 463_988L, "CC0 (Tomás Laulhé)"),
-        Asset("char_cesium_man", Kind.CHARACTER, "चलता आदमी", "सादा चलने वाला कैरेक्टर", "cesium_man.glb",
-            listOf("$KHRONOS/CesiumMan/glTF-Binary/CesiumMan.glb"),
-            "b7001eaeea8254bd44773bcd247e78696d94169388fbb2a1800fc69434e777d9", 438_044L, "CC-BY 4.0 (Cesium)"),
-        Asset("char_brainstem", Kind.CHARACTER, "ब्रेनस्टेम रोबोट", "नाचता हुआ रोबोट", "brainstem.glb",
-            listOf("$KHRONOS/BrainStem/glTF-Binary/BrainStem.glb"),
-            "ddda3a53b5c9771f992463034a430340ba2bac571e5869c723f7cba4976e9174", 3_194_848L, "CC-BY 4.0 (Keith Hunter)"),
-        Asset("char_fox", Kind.CHARACTER, "लोमड़ी", "प्यारी लोमड़ी - दौड़ना / चलना", "fox.glb",
-            listOf("$KHRONOS/Fox/glTF-Binary/Fox.glb"),
-            "d97044e701822bac5a62696459b27d7b375aada5de8574ed4362edbba94771f7", 162_852L, "CC0 / CC-BY 4.0 (PixelMannen, tomkranis)"),
-    )
-
     /**
-     * 15 नवंबर 2026: 3D कैरेक्टर दिखाने वाला GLTFLoader (three.js r160, MIT) भी APK में नहीं - पहले कैरेक्टर के साथ डाउनलोड.
-     * three.module.min.js (r160) पहले से assets/forge में है (DK Forge) - वही इस्तेमाल होती है.
+     * 15 नवंबर 2026 (मालिक: "3D कैरेक्टर पूरी तरह हटा दो, अच्छा नहीं है"): कैरेक्टर (.glb) और GLTFLoader सूची से हटे.
+     * जिन फ़ोन में पहले डाउनलोड हो चुके थे, वहाँ से ये फ़ाइलें [ModelManager.cleanupRemoved] चुपचाप मिटाता है (जगह खाली हो).
      */
-    private const val THREE_JSM = "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm"
-    val GLTF_LOADER = Asset("lib_gltf_loader", Kind.LIB, "GLTFLoader (three.js r160)", ".glb पढ़ने वाला", "three_gltf_loader.js",
-        listOf("$THREE_JSM/loaders/GLTFLoader.js", "https://unpkg.com/three@0.160.0/examples/jsm/loaders/GLTFLoader.js"),
-        "d073b438e6a07e1359741dd5d6c76c953420cc0d4fd84eb1bdde94315540e6a3", 108_522L, "MIT (three.js)")
-    val GEOMETRY_UTILS = Asset("lib_bg_utils", Kind.LIB, "BufferGeometryUtils (three.js r160)", "GLTFLoader का साथी", "three_bg_utils.js",
-        listOf("$THREE_JSM/utils/BufferGeometryUtils.js", "https://unpkg.com/three@0.160.0/examples/jsm/utils/BufferGeometryUtils.js"),
-        "9be041e96308775d00e2695cc607645b9a9b64fd7c0e759dd8f7c00a8d92becb", 31_906L, "MIT (three.js)")
-    val VIEWER_LIBS = listOf(GLTF_LOADER, GEOMETRY_UTILS)
+    val REMOVED_FILES = listOf("robot_expressive.glb", "cesium_man.glb", "brainstem.glb", "fox.glb", "three_gltf_loader.js", "three_bg_utils.js")
 
-    val ALL: List<Asset> = listOf(REDIMNET_HEAVY, REDIMNET_LIGHT, FACE_EMBED, FACE_DETECT) + CHARACTERS + VIEWER_LIBS
+    val ALL: List<Asset> = listOf(REDIMNET_HEAVY, REDIMNET_LIGHT, FACE_EMBED, FACE_DETECT)
 
     fun byId(id: String): Asset? = ALL.firstOrNull { it.id == id }
     fun ofKind(k: Kind): List<Asset> = ALL.filter { it.kind == k }

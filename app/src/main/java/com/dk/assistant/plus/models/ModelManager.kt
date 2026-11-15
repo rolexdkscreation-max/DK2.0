@@ -22,7 +22,7 @@ import java.security.MessageDigest
 import java.util.concurrent.TimeUnit
 
 /**
- * 15 नवंबर 2026: सारे भारी मॉडल / 3D कैरेक्टर का एक ही डाउनलोडर ([ModelCatalog]).
+ * 15 नवंबर 2026: सारे भारी मॉडल का एक ही डाउनलोडर ([ModelCatalog]).
  *  - WorkManager: स्क्रीन बंद हो या ऐप पीछे चला जाए तब भी डाउनलोड चलता रहे (सिर्फ़ इंटरनेट हो तब)
  *  - Resume: आधी फ़ाइल `.part` में रहती है, अगली बार `Range` से वहीं से आगे
  *  - SHA-256: पूरी फ़ाइल मिलाई जाती है, न मिले = मिटाकर गलती
@@ -49,8 +49,16 @@ object ModelManager {
     /** फ़ाइल फ़ोन में है और साइज़ सही (SHA डाउनलोड के समय एक बार जाँचा जा चुका) */
     fun ready(c: Context, a: ModelCatalog.Asset): Boolean = file(c, a).let { it.isFile && it.length() == a.bytes }
 
-    fun refresh(c: Context) = ModelCatalog.ALL.forEach { a ->
-        if (state(a.id).value !is St.Running) put(a.id, if (ready(c, a)) St.Ready else St.None)
+    fun refresh(c: Context) {
+        cleanupRemoved(c)
+        ModelCatalog.ALL.forEach { a -> if (state(a.id).value !is St.Running) put(a.id, if (ready(c, a)) St.Ready else St.None) }
+    }
+
+    /** हटाई गई सुविधा (3D कैरेक्टर) की पुरानी डाउनलोड फ़ाइलें मिटाओ - न मिलें / न मिटें तो भी कोई crash नहीं */
+    fun cleanupRemoved(c: Context) {
+        for (n in ModelCatalog.REMOVED_FILES) try { File(dir(c), n).delete(); File(dir(c), "$n.part").delete() } catch (_: Exception) {}
+        try { listOf("dk_model_char_robot", "dk_model_char_cesium_man", "dk_model_char_brainstem", "dk_model_char_fox", "dk_model_lib_gltf_loader", "dk_model_lib_bg_utils")
+            .forEach { WorkManager.getInstance(c).cancelUniqueWork(it) } } catch (_: Exception) {}
     }
 
     fun usedBytes(c: Context): Long = dir(c).listFiles()?.sumOf { it.length() } ?: 0L

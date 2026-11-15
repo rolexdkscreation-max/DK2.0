@@ -113,10 +113,10 @@ v3.99 वाला "चेहरा पहचान हटाओ" फ़ैस�
 | God / Stealth | सुरक्षा → टच मोड → टच मोड का रूप | `GuardModes.kt` | सामान्य |
 | ईमेल (IMAP/SMTP, app password) | दिमाग और आवाज़ → DK कंप्यूटर | `plus/Mail.kt` | बंद |
 | WhatsApp ग्रुप रिपोर्ट | ऑटोमेशन → ऑटो रिप्लाई | `plus/GroupReport.kt` | बंद |
-| 3D कैरेक्टर (GLB + three.js loader डाउनलोड, SHA-256) | रूप → 3D कैरेक्टर, होम मेनू | `plus/Character3D.kt`, `Character3DActivity.kt` | बंद |
+| ~~3D कैरेक्टर~~ (PR E में मालिक के कहने पर पूरी तरह हटा) | - | ~~`plus/Character3D.kt`, `Character3DActivity.kt` | बंद |
 
 DK लाइव: हर नई चीज़ `dk_settings` से चालू/बंद (बदलने पर दो बार पक्का), और tools `face_who`, `email_read`, `email_send`,
-`email_delete`, `group_report`, `show_character` से चलती है. भेजना / हटाना = पहले सुनाकर "हाँ" पर ही.
+`email_delete`, `group_report` से चलती है (`show_character` PR E में हटा). भेजना / हटाना = पहले सुनाकर "हाँ" पर ही.
 
 ## PR D (15 नवंबर 2026) - सच्चा DK + नीचे की 5-टैब पट्टी
 
@@ -135,3 +135,21 @@ DK लाइव: हर नई चीज़ `dk_settings` से चालू/�
 5-टैब पट्टी (`ui/HomeTabs.kt`): होम • स्कैन (DK लेंस) • माइक (DK लाइव) • चैट • मेमोरी, सब पहले से बने रास्तों पर।
 पट्टी शुरू से दिखती है, क्योंकि मालिक ने ख़ुद माँगी। छुपाने का स्विच `plus_hide_home_tabs` शुरू में बंद रहता है।
 आवाज़ से: "DK, नीचे की पट्टी बंद करो" (दो बार पक्का पूछता है)। Tests: `TruthCheckTest` (12)।
+
+## PR E (15 नवंबर 2026) - 3D कैरेक्टर हटा, ORB ठीक, "सोच रहा हूँ…" एनीमेशन, light = dark design, वॉलपेपर हटा
+
+मालिक के फ़ैसले (पुराने tests इन्हीं के हिसाब से बदले, हटाए नहीं):
+- **3D कैरेक्टर पूरी तरह हटा:** activity, `Character3D.kt`, `assets/character/`, मेनू, सेटिंग, flags, `show_character` tool, मॉडल सूची।
+  जिन फ़ोन में पहले से फ़ाइलें आ चुकी थीं, वहाँ से `ModelManager.cleanupRemoved` उन्हें पीछे से चुपचाप मिटाता है।
+- **ORB:** DKAI में orb पर टैप करने से अब orb बदलने वाली सूची नहीं खुलती। orb सिर्फ़ सेटिंग › दिखावट › "DKAI का orb" से बदलता है।
+  छोटा (minimize) orb अब बड़े वाला ही orb दिखाता है, पुराना DK orb भी।
+- **"सोच रहा हूँ…" एनीमेशन:** DKAI चैट का "सोच रहा हूँ…" बुलबुला और header का THINKING अब वही टाइपिंग एनीमेशन चलाते हैं जो
+  दिखावट › "टाइपिंग एनीमेशन" में चुना है। यह उसी `typing_style` से हर render पर पढ़ा जाता है। नया विकल्प "बंद" है। "कम एनिमेशन" चुनने पर भी यह रुकता है।
+- **Light = dark design:** सारे रंग अब एक फ़ाइल `ui/ThemeVars.kt` में हैं। light में सिर्फ़ पृष्ठभूमि (बहुत हल्का धूसर), कार्ड (सफ़ेद) और लिखावट (गहरी) बदलते हैं।
+  बाकी सब, यानी accent, icon, icon box, सियान, सूचना-पट्टी और सुनहरा शीर्षक, दोनों मोड में एक जैसा है। pastel / रंगीन light कार्ड
+  (`PlainLook.colorCard/pastel/LIGHT_TINTS`) और light-only रंग (`DkaiVoice`, `DkaiViews`, `DkaiSearchCard`) हटा दिए। icon box अब ठोस है।
+- **वॉलपेपर पूरी तरह हटा:** कार्ड, गैलरी picker, download, `Wallpapers.kt`, 8 चित्र, खोज की entry और अनुवाद। पुराना सेव `ui_wallpaper` कभी पढ़ा नहीं जाता,
+  सिर्फ़ "दिखावट रीसेट" पर मिटता है। पुराना गैलरी वाला चित्र (`filesDir/wallpaper`) पीछे से मिटता है। अब पीछे सिर्फ़ थीम का सादा रंग है।
+
+Tests: `ThemeThinkingNov15Test` (नया), `WallpaperDockTest.wallpaper_removedCompletely`, `DkBrainChatEmotionTest.lightThemeIsSameDesignSolidCards`,
+`AllFeaturesNov15Test.character3d_removedCompletely`, `DkaiTermTest.orbs`, `DkaiChatsTest.iconColorsSameInBothThemes`।

@@ -47,6 +47,7 @@ class DkaiVoice(private val s: DkaiScreen) {
     private lateinit var menuLayer: FrameLayout
 
     private lateinit var miniOrb: FluidOrbView
+    private lateinit var miniClassic: OrbView
     private lateinit var miniDot: PulseDot
     private lateinit var miniStatus: TextView
     private lateinit var miniText: TextView
@@ -79,7 +80,7 @@ class DkaiVoice(private val s: DkaiScreen) {
     private fun buildSheet() {
         sheet.visibility = View.GONE
         sheet.isClickable = true; sheet.isFocusable = true           // नीचे की स्क्रीन पर छूना न जाए
-        sheet.background = GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM, intArrayOf(DkaiTheme.BG, if (DkaiTheme.light) 0xFFE6ECFA.toInt() else 0xFF101634.toInt(), DkaiTheme.BG))
+        sheet.background = GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM, intArrayOf(DkaiTheme.BG, if (DkaiTheme.light) DkaiTheme.BG else 0xFF101634.toInt(), DkaiTheme.BG))
         col = LinearLayout(c).apply { orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER_HORIZONTAL }
         sheet.addView(col, FrameLayout.LayoutParams(-1, -1))
 
@@ -113,13 +114,13 @@ class DkaiVoice(private val s: DkaiScreen) {
         val dm = c.resources.displayMetrics
         val size = minOf((dm.widthPixels * 0.72f).toInt(), (dm.heightPixels * 0.34f).toInt(), d(320f))
         val boxW = minOf(dm.widthPixels - d(40f), d(560f))
-        // 13 नवंबर 2026 (मालिक): orb बदल सकें - orb पर टैप = सूची (5+ नए orb या पुराना DK orb)
+        // 15 नवंबर 2026 (मालिक): "ORB पे टैप करने पे बदलने का ऑप्शन नहीं आना चाहिए, सेटिंग से ही एक बार चेंज होगा" -
+        // orb अब सिर्फ़ दिखता है; बदलना Settings › दिखावट › "DKAI का orb" में (SettingsLook.kt)
         orb = FluidOrbView(c).apply { level = this@DkaiVoice.level; active = this@DkaiVoice.active; style = { DkaiOrbs.get(c) }; call = callInt }
         classicOrb = OrbView(c).apply { importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO }
         orbBox = FrameLayout(c).apply {
-            isClickable = true; contentDescription = "DK orb - बदलने के लिए टैप"
+            isClickable = false; contentDescription = "DK orb"
             addView(orb, FrameLayout.LayoutParams(-1, -1)); addView(classicOrb, FrameLayout.LayoutParams(-1, -1))
-            setOnClickListener { DkaiOrbs.pick(c) { orbStyle() } }
         }
         orbStyle()
         col.addView(orbBox, LinearLayout.LayoutParams(size, size))
@@ -129,7 +130,7 @@ class DkaiVoice(private val s: DkaiScreen) {
         // 13 नवंबर 2026 (मालिक): सफ़ेद, गोल कोनों वाला टेक्स्ट बॉक्स - ऊपर हालत ("Listening…"), नीचे जो अभी बोल रहा उसकी बात
         box = LinearLayout(c).apply {
             orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER_HORIZONTAL
-            background = DkaiTheme.press(DkaiTheme.round(c, 0xFFFFFFFF.toInt(), 22f, if (DkaiTheme.light) 0xFFE2E8F0.toInt() else 0), DkaiTheme.round(c, 0xFFF1F5F9.toInt(), 22f))
+            background = DkaiTheme.press(DkaiTheme.round(c, 0xFFFFFFFF.toInt(), 22f, DkaiTheme.BORDER.takeIf { DkaiTheme.light } ?: 0), DkaiTheme.round(c, 0xFFF1F5F9.toInt(), 22f))
             elevation = d(6f).toFloat(); setPadding(d(18f), d(12f), d(18f), d(14f))
             isClickable = true; isFocusable = true; contentDescription = "बातचीत - टैप करें"
             setOnClickListener { boxTap() }
@@ -185,8 +186,8 @@ class DkaiVoice(private val s: DkaiScreen) {
         if (m == DkaiMode.BROADCAST) setOnLongClickListener { toggleScreenShare(); true }
     }
 
-    private val CYAN_ON get() = if (DkaiTheme.light) 0xFF0284C7.toInt() else 0xFF22D3EE.toInt()
-    private fun tabOn() = DkaiTheme.round(c, if (DkaiTheme.light) 0x1F0284C7 else 0x2622D3EE, 12f, if (DkaiTheme.light) 0x660284C7 else 0x8822D3EE.toInt())
+    private val CYAN_ON get() = 0xFF22D3EE.toInt()   // 15 नवंबर 2026: दोनों मोड में वही (साझा accent)
+    private fun tabOn() = DkaiTheme.round(c, com.dk.assistant.ui.NeonTheme.over(0x2622D3EE, com.dk.assistant.ui.ThemeVars.DARK.bg), 12f, 0x8822D3EE.toInt())   // ठोस - light में फीका नहीं
 
     private fun roundBtn(k: DkaiIcon.Kind, tint: Int, fill: Int, desc: String, stroke: Int = DkaiTheme.BORDER, onTap: () -> Unit) = FrameLayout(c).apply {
         background = DkaiTheme.press(DkaiTheme.oval(fill, stroke, d(1f)), DkaiTheme.oval(0xFFFFFFFF.toInt()))
@@ -207,9 +208,15 @@ class DkaiVoice(private val s: DkaiScreen) {
         mini.isClickable = true
         mini.setOnClickListener { s.event(VoiceEvent.EXPAND) }
         mini.contentDescription = "DK बातचीत - बड़ा करने के लिए टैप"
+        // 15 नवंबर 2026 (मालिक: "जो बड़े में दिखेगा, वही मिनिमाइज होने में वही ORB सेम दिखना चाहिए"):
+        // पहले छोटी पट्टी में "पुराना DK orb" चुना हो तब भी Fluid दिखता था - अब बड़े वाला ही orb (वही style / वही पुराना orb)
         miniOrb = FluidOrbView(c).apply { glow = false; level = this@DkaiVoice.level; active = this@DkaiVoice.active; call = callInt
-            style = { DkaiOrbs.get(c).let { if (it == DkaiOrbs.CLASSIC) DkaiOrbs.FLUID else it } } }
-        mini.addView(miniOrb, LinearLayout.LayoutParams(d(46f), d(46f)))
+            style = { DkaiOrbs.get(c) } }
+        miniClassic = OrbView(c).apply { mini = true; importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO }
+        val miniBox = FrameLayout(c).apply {
+            addView(miniOrb, FrameLayout.LayoutParams(-1, -1)); addView(miniClassic, FrameLayout.LayoutParams(-1, -1))
+        }
+        mini.addView(miniBox, LinearLayout.LayoutParams(d(46f), d(46f)))
         val mid = LinearLayout(c).apply { orientation = LinearLayout.VERTICAL; setPadding(d(10f), 0, d(6f), 0) }
         val st = LinearLayout(c).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
         miniDot = PulseDot(c).apply { color = DkaiTheme.GREEN }
@@ -352,7 +359,12 @@ class DkaiVoice(private val s: DkaiScreen) {
         val classic = DkaiOrbs.get(c) == DkaiOrbs.CLASSIC
         classicOrb.visibility = if (classic) View.VISIBLE else View.GONE
         orb.visibility = if (classic) View.INVISIBLE else View.VISIBLE
-        orb.invalidate(); classicOrb.invalidate(); if (::miniOrb.isInitialized) miniOrb.invalidate()
+        if (::miniOrb.isInitialized) {
+            miniClassic.visibility = if (classic) View.VISIBLE else View.GONE
+            miniOrb.visibility = if (classic) View.INVISIBLE else View.VISIBLE
+            miniOrb.invalidate(); miniClassic.invalidate()
+        }
+        orb.invalidate(); classicOrb.invalidate()
     }
 
     // ------------------------------------------------------------------ dropdown

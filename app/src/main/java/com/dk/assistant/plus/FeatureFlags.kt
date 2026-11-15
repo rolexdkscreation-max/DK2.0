@@ -25,7 +25,7 @@ object FeatureFlags {
         SOCIAL("सोशल मीडिया", false),
         BATTERY("बैटरी सेवर पैनल", false),
         CREATE("इमेज और YouTube (बोलकर)", false),
-        APPEARANCE("दिखावट • 3D कैरेक्टर", true),
+        APPEARANCE("दिखावट", true),
         BEHAVIOR("व्यवहार (Behavior)", true),
         VOICE_GUARDIAN("वॉइस गार्डियन", true),
         FACE("फ़ेस रिकग्निशन", true),
@@ -57,8 +57,6 @@ object FeatureFlags {
     const val BS_WAKE_WORD = "plus_bs_wake_word"
     const val BS_SCREEN_AWARE = "plus_bs_screen_aware"
     const val BS_VOICE_GUARDIAN = "plus_bs_voice_guardian"
-    const val BS_3D = "plus_bs_3d"
-    const val CHARACTER_OVERLAY = "plus_character_overlay"
     /** 15 नवंबर 2026 (मालिक: "अलग 5-टैब वाली नीचे की पट्टी भी बनाओ"): पट्टी दिखती है; यह स्विच सिर्फ़ छुपाने का (बंद = दिखे) */
     const val HIDE_HOME_TABS = "plus_hide_home_tabs"
     const val FLOAT_ORB = "plus_float_orb"
@@ -91,9 +89,8 @@ object FeatureFlags {
     const val TERMUX = "plus_termux"
     const val IMAGE_GEN = "plus_image_gen"
     const val YT_CHANNEL = "plus_yt_channel"
-    // 15 नवंबर 2026 (मालिक की सूची): WhatsApp ग्रुप रिपोर्ट + 3D कैरेक्टर (डाउनलोड वाला)
+    // 15 नवंबर 2026 (मालिक की सूची): WhatsApp ग्रुप रिपोर्ट (3D कैरेक्टर बाद में मालिक के कहने पर हटाया)
     const val WA_GROUP_REPORT = "plus_wa_group_report"
-    const val CHARACTER_3D = "plus_character_3d"
 
     val ALL: List<Flag> = listOf(
         Flag(AUTO_SAVE_MEMORIES, "बातों से याददाश्त अपने-आप सेव", "बातचीत में मिली नई बात DK खुद याद रखे", Section.MEMORY),
@@ -113,9 +110,6 @@ object FeatureFlags {
         Flag(BS_WAKE_WORD, "Wake Word रोको", "बैटरी सेवर में \"Hey DK\" सुनना बंद", Section.BATTERY),
         Flag(BS_SCREEN_AWARE, "स्क्रीन देखना रोको", "बैटरी सेवर में स्क्रीन पढ़ना बंद", Section.BATTERY),
         Flag(BS_VOICE_GUARDIAN, "वॉइस गार्डियन रोको", "बैटरी सेवर में आवाज़-पहचान बंद", Section.BATTERY),
-        Flag(BS_3D, "3D कैरेक्टर रोको", "बैटरी सेवर में 3D रेंडर बंद", Section.BATTERY),
-        Flag(CHARACTER_3D, "3D कैरेक्टर", "कैरेक्टर + GLTFLoader इंटरनेट से डाउनलोड (APK में नहीं)", Section.APPEARANCE),
-        Flag(CHARACTER_OVERLAY, "होम स्क्रीन पर 3D कैरेक्टर", "फ़्लोटिंग ओवरले (Display over other apps)", Section.APPEARANCE),
         Flag(HIDE_HOME_TABS, "नीचे की 5-टैब पट्टी छुपाएँ", "होम • स्कैन • माइक • चैट • मेमोरी (बंद = पट्टी दिखे)", Section.APPEARANCE),
         Flag(FLOAT_ORB, "फ़्लोटिंग ओर्ब", "हर ऐप के ऊपर छोटा DK ओर्ब", Section.BEHAVIOR),
         Flag(EDGE_GLOW, "किनारे की चमक (Edge Glow)", "DK बोले/सुने तो स्क्रीन के किनारे चमकें", Section.BEHAVIOR),
@@ -158,8 +152,8 @@ object FeatureFlags {
     val READY: Set<String> = setOf(
         INCOGNITO, DRIVING_MODE, SOS_ON, EVENTS_ON, EV_CHARGER_ON, EV_CHARGER_OFF, EV_WIFI_ON, EV_WIFI_OFF,
         EV_BATTERY_SAVER, TERMUX, START_ON_BOOT, FACE_VAULT, IMAGE_GEN, YT_CHANNEL,
-        // 15 नवंबर 2026: चेहरा पहचान (DK लाइव "देखो कौन है"), ईमेल, ग्रुप रिपोर्ट, 3D कैरेक्टर
-        FACE_ON, EMAIL_ON, WA_GROUP_REPORT, CHARACTER_3D,
+        // 15 नवंबर 2026: चेहरा पहचान (DK लाइव "देखो कौन है"), ईमेल, ग्रुप रिपोर्ट
+        FACE_ON, EMAIL_ON, WA_GROUP_REPORT,
     )
     fun ready(key: String): Boolean = key in READY
 

@@ -69,8 +69,12 @@ class DkaiChatsTest {
     @Test fun iconColorsSameInBothThemes() {
         // (DkaiTheme का object Android Typeface छूता है - इसलिए यहाँ सिर्फ़ const + source जाँच)
         val th = src("dkai/DkaiTheme.kt")
-        assertTrue(th.contains("val BG get() = t(0xFF0B101D, 0xFFF4F6FB)"))                 // पृष्ठभूमि बदलती है
-        assertTrue(th.contains("val CARD get() = t(0xFF161E31, 0xFFFFFFFF)"))
+        // 15 नवंबर 2026 (मालिक): रंग अब एक ही theme variables फ़ाइल (ThemeVars) से - पृष्ठभूमि / कार्ड वहीं से बदलते हैं
+        assertTrue(th.contains("val BG get() = m.bg"))                 // पृष्ठभूमि बदलती है
+        assertTrue(th.contains("val CARD get() = m.card"))
+        assertEquals(0xFF0B101D.toInt(), com.dk.assistant.ui.ThemeVars.DARK.bg)
+        assertEquals(0xFF161E31.toInt(), com.dk.assistant.ui.ThemeVars.DARK.card)
+        assertEquals(0xFFFFFFFF.toInt(), com.dk.assistant.ui.ThemeVars.LIGHT.card)
         assertEquals(0xFF00E5FF.toInt(), DkaiTheme.ICON_CYAN)
         assertEquals(0xFF161E31.toInt(), DkaiTheme.LOGO_TILE)
         val sc = src("dkai/DkaiScreen.kt")

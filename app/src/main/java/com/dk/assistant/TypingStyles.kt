@@ -23,8 +23,16 @@ object TypingStyles {
 
     /** 14 नवंबर 2026 (मालिक): छोटा रंगीन कंप्यूटर जो काम चलते समय इधर-उधर हिलता रहे (DK कंप्यूटर / कोडिंग एजेंट का डिफ़ॉल्ट) */
     const val COMPUTER = "computer"
-    /** Settings में दिखने वाली पूरी सूची = पुराने 6 + कंप्यूटर वाला */
-    val ALL = STYLES + (COMPUTER to "छोटा कंप्यूटर (DK कंप्यूटर वाला)")
+    /** 15 नवंबर 2026 (मालिक): "animation off हो तो यहाँ भी off" - बंद = सिर्फ़ "सोच रहा हूँ…" लिखा, कुछ नहीं हिलता */
+    const val OFF = "off"
+    /** Settings में दिखने वाली पूरी सूची = पुराने 6 + कंप्यूटर वाला + बंद */
+    val ALL = STYLES + (COMPUTER to "छोटा कंप्यूटर (DK कंप्यूटर वाला)") + (OFF to "बंद — कोई एनीमेशन नहीं")
+
+    /**
+     * 15 नवंबर 2026: "सोच रहा हूँ…" बुलबुला और header का THINKING - animation चले? (pure, JUnit)
+     * बंद चुना हो, या दिखावट में "कम एनिमेशन" / फ़ोन में animation बंद = नहीं.
+     */
+    fun animates(style: String, reducedMotion: Boolean): Boolean = style != OFF && !reducedMotion
 
     fun valid(s: String?): String = if (s != null && ALL.any { it.first == s }) s else COMPUTER
     fun validAgent(s: String?): String = if (s != null && ALL.any { it.first == s }) s else COMPUTER

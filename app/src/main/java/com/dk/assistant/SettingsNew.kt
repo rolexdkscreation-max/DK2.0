@@ -4,14 +4,10 @@ import android.widget.LinearLayout
 import android.widget.TextView
 import androidx.appcompat.app.AlertDialog
 import androidx.lifecycle.lifecycleScope
-import com.dk.assistant.plus.Character3D
 import com.dk.assistant.plus.FeatureFlags
 import com.dk.assistant.plus.GroupReport
 import com.dk.assistant.plus.Mail
-import com.dk.assistant.plus.models.ModelCatalog
-import com.dk.assistant.plus.models.ModelManager
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
@@ -19,7 +15,6 @@ import kotlinx.coroutines.withContext
  * 15 नवंबर 2026 (मालिक की सूची, Market / Marketing Suite छोड़कर): नई सुविधाओं के Settings कार्ड - अपनी सही पुरानी जगह पर.
  *  - ईमेल (IMAP/SMTP)       → DK कंप्यूटर
  *  - WhatsApp ग्रुप रिपोर्ट  → ऑटो रिप्लाई
- *  - 3D कैरेक्टर            → दिखावट
  * हर स्विच शुरू में बंद; DK लाइव इन्हें dk_settings से (दो बार पक्का करके) चालू-बंद कर सकता है और tools से चला सकता है.
  */
 internal fun SettingsActivity.secEmail() {
@@ -85,41 +80,6 @@ internal fun SettingsActivity.secGroupReport() {
         })
         hint(box, "बोलें: \"DK, बिक्री रिपोर्ट भरो - कुल 5000, नकद 2000\"। {तारीख} अपने-आप आज की। कागज़ / स्क्रीन पर लिखे आँकड़े DK लाइव कैमरे से पढ़कर भी भर सकती है। " +
             "भेजने से पहले DK पूरी रिपोर्ट सुनाकर पूछती है; भेजना Accessibility से होता है।")
-    }
-}
-
-internal fun SettingsActivity.sec3D() {
-    card("3D कैरेक्टर", "DK का चलता-फिरता 3D कैरेक्टर — इंटरनेट से डाउनलोड, APK में नहीं") { box ->
-        flagSwitch(box, "3D कैरेक्टर चालू", FeatureFlags.CHARACTER_3D)
-        val cur = Character3D.selected(this)
-        for (a in ModelCatalog.CHARACTERS) {
-            val st = TextView(this).apply { textSize = 13f; setTextColor(0xB3FFFFFF.toInt()); setPadding((4 * dp).toInt(), (10 * dp).toInt(), 0, 0) }
-            box.addView(st)
-            fun show() {
-                val s = ModelManager.state(a.id).value
-                st.text = (if (a.id == Character3D.selected(this).id) "● " else "○ ") + "${a.title} — ${a.sub} (${a.mb}, ${a.license}) • " + when {
-                    Character3D.ready(this, a) -> UiLang.s("डाउनलोड हो चुका ✓")
-                    s is ModelManager.St.Running -> DlText.progress(s.pct, a.bytes)
-                    s is ModelManager.St.Failed -> UiLang.s("नहीं हुआ: ") + s.why
-                    else -> UiLang.s("डाउनलोड नहीं")
-                }
-            }
-            show()
-            row(box, button("दिखाएँ") {
-                if (!FeatureFlags.on(this, FeatureFlags.CHARACTER_3D)) { toast("पहले \"3D कैरेक्टर चालू\" करें"); return@button }
-                Character3DActivity.open(this, a.id); show()
-            }, button("डाउनलोड") {
-                lifecycleScope.launch {
-                    val job = launch { while (true) { show(); delay(500) } }
-                    val err = Character3D.ensure(this@sec3D, a)
-                    job.cancel(); show()
-                    toast(err?.let { "नहीं हुआ: $it" } ?: "${a.title} तैयार")
-                }
-            }, button("मिटाएँ") { ModelManager.delete(this, a); show() })
-            if (a.id == cur.id) st.setTextColor(0xFFFFFFFF.toInt())
-        }
-        hint(box, "पहली बार \"दिखाएँ\" दबाने पर कैरेक्टर + 3D लाइब्रेरी (~0.1 MB) डाउनलोड होती है, SHA-256 जाँच के साथ (MB में प्रगति)। " +
-            "छूकर घुमाएँ, टैप = अगला एनिमेशन; DK बोले तो कैरेक्टर साथ में हिलता है। बोलें: \"DK, 3D रोबोट दिखाओ\"। बैटरी सेवर में यह रुक सकता है।")
     }
 }
 

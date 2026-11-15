@@ -185,7 +185,7 @@ class FluidOrbView(c: Context) : DkaiAnimView(c) {
             val grow = when (cs) { SPEAK -> 0.06f + lv * 0.16f; THINK -> 0.08f + sin(t * 4f) * 0.015f; else -> 0.08f + breathe }
             val rr = min(R * (1.12f + grow), min(w, h) / 2f * 0.97f)
             ring.strokeWidth = DkaiTheme.dpf(context, 1.6f)
-            ring.color = if (DkaiTheme.light) 0xFF38BDF8.toInt() else 0xFF7DD3FC.toInt()
+            ring.color = 0xFF7DD3FC.toInt()   // 15 नवंबर 2026: दोनों मोड में वही
             ring.alpha = (150 + lv * 90).toInt().coerceAtMost(240)
             canvas.drawCircle(cx, cy, rr, ring)
         }
@@ -319,8 +319,8 @@ class WaveformView(c: Context) : DkaiAnimView(c) {
         val dotR = min(bw * 0.5f, DkaiTheme.dpf(context, 2f))
         val mid = h / 2f
         bp.strokeWidth = bw
-        val c1 = if (DkaiTheme.light) 0xFF2563EB.toInt() else 0xFF38BDF8.toInt()
-        val c2 = if (DkaiTheme.light) 0xFF0EA5E9.toInt() else 0xFF3B82F6.toInt()
+        val c1 = 0xFF38BDF8.toInt()   // 15 नवंबर 2026: दोनों मोड में वही
+        val c2 = 0xFF3B82F6.toInt()
         for (i in 0 until n) {
             val x = gap * (i + 0.5f)
             val u = i / (n - 1f)
