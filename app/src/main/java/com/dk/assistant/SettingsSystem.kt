@@ -249,49 +249,10 @@ internal fun SettingsActivity.secProfile() {
             "जैसे: जवाब छोटे रखो, मुझे सर कहकर बुलाओ", multiLine = true)
         edWake = field(it, "जगाने वाले शब्द (कॉमा से अलग)", Prefs.wakeWordsRaw(this), "डीके, dk")
     }
-    secAccessKey()
+    // 15 नवंबर 2026 (मालिक): access key / license हटाया - सब कुछ बिना key के खुला 
 
 }
 
-/** DK AI Part 13: access key (एडमिन ${AssistantBrand.OWNER_NAME}) */
-internal fun SettingsActivity.secAccessKey() {
-    val km = com.dk.assistant.license.AccessKeyManager
-    card("Access key", "DK चलाने की key • एडमिन: ${AssistantBrand.OWNER_NAME}") { box ->
-        val status = TextView(this).apply {
-            textSize = 14f; setTextColor(0xFFFFFFFF.toInt())
-            setPadding((4 * dp).toInt(), (6 * dp).toInt(), 0, (4 * dp).toInt())
-            text = km.refreshInfo(this@secAccessKey).statusText
-        }
-        box.addView(status)
-        if (!km.configured(this)) {
-            hint(box, "लाइसेंस सर्वर इस ऐप में सेट नहीं है, इसलिए key की ज़रूरत नहीं।")
-            return@card
-        }
-        val ed = field(box, "आपकी access key", "", "जैसे: DK-ABCD-1234", secret = true)
-        ed.removeTextChangedListener(watcher)
-        var busy = false
-        val btnOn = button("key चालू करें") {
-            if (busy) return@button
-            busy = true; status.text = UiLang.s("जाँच हो रही है…")
-            lifecycleScope.launch {
-                val msg = km.activate(this@secAccessKey, ed.text.toString())
-                busy = false; status.text = msg; ed.setText("")
-            }
-        }
-        val btnCheck = button("अभी जाँचें") {
-            lifecycleScope.launch { status.text = km.liveCheck(this@secAccessKey, force = true).statusText }
-        }
-        val btnForget = button("key हटाएँ") {
-            androidx.appcompat.app.AlertDialog.Builder(this).setTitle(UiLang.s("इस फ़ोन से key हटाएँ?"))
-                .setMessage(UiLang.s("हटाने के बाद DK तब तक काम नहीं करेगा जब तक नई key न डालें।"))
-                .setPositiveButton(UiLang.s("हटाएँ")) { _, _ -> km.forget(this); status.text = km.refreshInfo(this).statusText }
-                .setNegativeButton(UiLang.s("रहने दो"), null).show()
-        }
-        row(box, btnOn, btnCheck)
-        row(box, btnForget)
-        hint(box, "key हर 3 घंटे में एक बार सर्वर से जाँची जाती है। इंटरनेट न हो तो पिछली हालत चलती रहती है। key रोकने/चालू करने का अधिकार सिर्फ़ एडमिन ${AssistantBrand.OWNER_NAME} के पास है।")
-    }
-}
 
 // ------------------------------------------------------------ v3.58 (Part 11): About + निजता
 internal fun SettingsActivity.secAbout() {

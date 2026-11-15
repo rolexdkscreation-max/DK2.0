@@ -297,8 +297,6 @@ class AgentRunner(
         DKLog.d("Command: $goal")
         heardAt.takeIf { it > 0 && System.currentTimeMillis() - it < 30_000 }?.let { DKLog.d("Deri: सुनना पूरा → रूटर ${System.currentTimeMillis() - it} ms"); heardAt = 0L }
         DKState.user(goal)
-        // DK AI Part 13: access key चालू नहीं = कोई काम नहीं, साफ़ संदेश (लाइसेंस सेट नहीं = पहले जैसा)
-        com.dk.assistant.license.AccessKeyManager.refusalOrNull(svc)?.let { say(it); return }
         // नवंबर 2026 (मालिक): "इंस्टाग्राम / फेसबुक / यूट्यूब खोलो और पूरा रिव्यू करके बताओ - किस रील पर कितने व्यूज़, रीच क्यों गिरी"
         // = सोशल रिव्यू एजेंट: एक बार बोलो, वह API + ऐप की स्क्रीन से आँकड़े लेकर, ट्रेंड खोजकर पूरी रिपोर्ट बताए (यूज़र के सामने स्क्रीन पर, कनेक्टर ज़रूरी नहीं)
         // नवंबर 2026 (मालिक: "रिव्यू रोक दो बोला तो रोक दे"): चल रहा रिव्यू उसी पल बंद, और सच्चा जवाब

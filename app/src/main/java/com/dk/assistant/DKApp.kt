@@ -37,6 +37,8 @@ class DKApp : Application() {
             kotlinx.coroutines.delay(6_000)
             try { A11yWatch.check(this@DKApp, "ऐप शुरू") } catch (_: Exception) {}
         }
+        // 15 नवंबर 2026: DK AI Plus - ऑटो इवेंट ट्रिगर (default बंद = कोई receiver नहीं)
+        try { com.dk.assistant.plus.PlusBoot.init(this) } catch (_: Throwable) {}
         UpdateJob.schedule(this)        // v3.6: हर 6 घंटे अपडेट जाँच + नोटिफ़िकेशन (ऐप बंद हो तब भी)
         OfflineQueue.install(this)
         TaskHistory.install(this)       // v3.88: हर काम और उसकी हालत का इतिहास (फ़ोन में)      // v3.88: नेटवर्क टूटे तो काम कतार में, आते ही आगे

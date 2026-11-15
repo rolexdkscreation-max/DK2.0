@@ -69,6 +69,8 @@ class CallManager(private val ctx: Context, private val onRinging: (String) -> U
                 val prev = state
                 state = s
                 if (s == TelephonyManager.CALL_STATE_RINGING && prev != s) {
+                    // 15 नवंबर 2026: ड्राइविंग मोड चालू = कॉल अपने-आप कटे + SMS जवाब (घोषणा नहीं)
+                    if (try { com.dk.assistant.plus.DrivingMode.onRinging(ctx, number) } catch (_: Exception) { false }) return
                     simNumber = number.orEmpty()
                     simCaller = nameFor(number)
                     onRinging(simCaller)

@@ -21,7 +21,7 @@ object LiveFast {
      * v3.33: बात खत्म होते ही caption से (Gemini से पहले) ये नहीं करते - वापस न होने वाले काम.
      * caption में एक शब्द गलत सुना = गलत आदमी को कॉल. ये Gemini के phone_task से (उसने पूरी आवाज़ सुनी) - फिर भी फ़ोन पर, बिना AgentRunner.
      */
-    private val NOT_SPECULATIVE = setOf("call_contact", "wa_call", "sms_send", "sms_confirm")   // v4.1: SMS = पक्का सुनकर ही
+    private val NOT_SPECULATIVE = setOf("call_contact", "wa_call", "sms_send", "sms_confirm", com.dk.assistant.plus.PlusCommands.SOS)   // v4.1: SMS = पक्का सुनकर ही
 
     /**
      * बात का पक्का text -> तुरंत करने लायक सीधा काम (या null).

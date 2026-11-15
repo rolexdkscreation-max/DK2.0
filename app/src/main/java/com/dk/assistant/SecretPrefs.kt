@@ -27,6 +27,8 @@ object SecretNames {
         "gh_token", "worker_token", "voice_key", "coder_key", "api_key", "one_key_gemini",
         "search_key_tavily", "search_key_exa", "owner_face_v2", "plock_secret",
         "search_key_linkup", "search_key_firecrawl",
+        // 15 नवंबर 2026: DK AI Plus - सब-एजेंट की keys का पूल, ईमेल App Password, इमेज API key
+        "plus_key_pool", "plus_email_pass", "plus_image_key",
     )
     private val SCOPE_KEY = Regex("^(live|coder|pc)_key_.+")
 

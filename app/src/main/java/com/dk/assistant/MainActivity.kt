@@ -386,16 +386,10 @@ class MainActivity : AppCompatActivity() {
     }
 
     /** DK AI Part 13: हर बार खुलने पर key की जाँच (3 घंटे में एक बार backend से; नेटवर्क गलती = पुरानी हालत) */
+    // 15 नवंबर 2026 (मालिक): access key / license पूरी तरह हटाया - chip हमेशा छिपा, कुछ नहीं रुकता
     private fun checkAccessKey() {
-        val chip = findViewById<TextView>(R.id.chipKey)
-        lifecycleScope.launch {
-            val i = com.dk.assistant.license.AccessKeyManager.liveCheck(this@MainActivity)
-            if (!i.active && DKState.live) DKAccessibilityService.instance?.stopLive("access key चालू नहीं")
-            val show = i.status != com.dk.assistant.license.KeyStatus.NOT_CONFIGURED && !i.active
-            chip.visibility = if (show) android.view.View.VISIBLE else android.view.View.GONE
-            if (show) { chip.text = "🔑 " + i.statusText; chip.contentDescription = i.statusText }
-            syncAlertRow()
-        }
+        findViewById<TextView>(R.id.chipKey)?.visibility = android.view.View.GONE
+        syncAlertRow()
     }
 
     /** App khulte hi (har 3 ghante me max ek baar) GitHub par naya version dekho; mila to background me download. */

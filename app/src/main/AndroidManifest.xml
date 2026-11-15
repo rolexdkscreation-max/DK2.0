@@ -18,6 +18,8 @@
     <!-- नवंबर 2026: आवाज़ से अनलॉक - Android 14+ पर स्क्रीन जगाने के लिए -->
     <uses-permission android:name="android.permission.TURN_SCREEN_ON" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+    <!-- 15 नवंबर 2026 (DK AI Plus): Termux में कमांड (सिर्फ़ "Termux ऑटोमेशन" चालू हो तब, शुरू में बंद) -->
+    <uses-permission android:name="com.termux.permission.RUN_COMMAND" />
     <uses-permission android:name="android.permission.READ_PHONE_STATE" />
     <uses-permission android:name="android.permission.READ_CALL_LOG" />
     <uses-permission android:name="android.permission.READ_CONTACTS" />
@@ -88,6 +90,7 @@
         <package android:name="com.instagram.android" />
         <package android:name="com.facebook.katana" />
         <package android:name="com.whatsapp" />
+        <package android:name="com.termux" />
         <package android:name="com.whatsapp.w4b" />
         <!-- नवंबर 2026: ऑटो रिप्लाई - फ़ोन में कौन-से मैसेज ऐप हैं -->
         <package android:name="org.telegram.messenger" />
@@ -424,5 +427,13 @@
             android:exported="false"
             android:foregroundServiceType="microphone|location" />
 
+        <!-- 15 नवंबर 2026 (DK AI Plus): नई सुविधाएँ - सब शुरू में बंद -->
+        <activity android:name=".plus.PlusSettingsActivity" android:exported="false" android:windowSoftInputMode="adjustResize" />
+        <activity android:name=".plus.SmartHomeActivity" android:exported="false" android:windowSoftInputMode="adjustResize" />
+        <receiver android:name=".plus.PlusBoot$Receiver" android:exported="false">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+            </intent-filter>
+        </receiver>
     </application>
 </manifest>

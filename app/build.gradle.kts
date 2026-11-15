@@ -89,6 +89,8 @@ dependencies {
     // v3.66: "सिर्फ़ मेरी आवाज़" - फ़ोन पर ही आवाज़-पहचान (MIT). 1.22 इस मॉडल पर थोड़ा ग़लत नतीजा देता था, 1.31 = Python जैसा
     implementation("com.microsoft.onnxruntime:onnxruntime-android:1.31.0")
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.8.4")
+    // 15 नवंबर 2026 (मालिक): भारी मॉडल / 3D कैरेक्टर APK में नहीं - ModelManager इंटरनेट से (स्क्रीन बंद हो तब भी) डाउनलोड करे
+    implementation("androidx.work:work-runtime-ktx:2.9.1")
     // DK AI Website Forge: 3D scene को app के assets से https पर चलाने के लिए (WebViewAssetLoader)
     implementation("androidx.webkit:webkit:1.11.0")
     // v3.40: DK लाइव का कैमरा (preview + हर सेकंड एक तस्वीर Gemini को)

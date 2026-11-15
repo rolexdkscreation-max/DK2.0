@@ -27,6 +27,8 @@ object QuickCommands {
         FILLER.forEach { t = t.replace(" $it ", " ") }
         t = t.replace(Regex("\\s+"), " ").trim()
         if (t.isEmpty()) return null
+        // 15 नवंबर 2026: DK AI Plus - SOS / ड्राइविंग मोड (default बंद सुविधाएँ, बोलकर)
+        com.dk.assistant.plus.PlusCommands.parse(t)?.let { return it }
         fun has(vararg w: String) = w.any { t.contains(it) }
         val words = t.split(' ').size
         val onW = has("जला", "चालू", "ऑन", " on", "on ", "खोल", "स्टार्ट", "start", "जगा")
