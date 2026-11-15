@@ -56,16 +56,12 @@ object PlainLook {
     }
 
     /*
-     * 14 नवंबर 2026 (मालिक): "डार्क थीम में एकदम प्यारा, पूरा कलरफुल दिखता है - वैसा ही लाइट में भी, बल्कि लाइट में रंग
-     * और भी ज़्यादा, डार्क से भी खूबसूरत." लाइट में हर डिब्बा (कार्ड) अपने रंग का हल्का-सा रंगीन (pastel) - सफ़ेद-सपाट नहीं.
+     * 15 नवंबर 2026: लाइट मोड को डार्क मोड जैसा ठोस (solid) कार्ड लुक दिया गया.
+     * कोई pastel / रंगीन डिब्बे नहीं - हर कार्ड ठोस सफ़ेद या डिफ़ॉल्ट कार्ड रंग.
      */
-    val LIGHT_TINTS = intArrayOf(0xFF6366F1.toInt(), 0xFF06B6D4.toInt(), 0xFFA855F7.toInt(), 0xFF10B981.toInt(),
-        0xFFF59E0B.toInt(), 0xFF0EA5E9.toInt(), 0xFFEC4899.toInt())
-    /** pure: रंग को सफ़ेद में मिलाओ - amount 0 = सफ़ेद, 1 = पूरा रंग */
+    val LIGHT_TINTS = intArrayOf(0xFF3B82F6.toInt())
     fun pastel(tint: Int, amount: Float): Int {
-        val a = amount.coerceIn(0f, 1f)
-        fun mix(ch: Int) = (255 + ((ch - 255) * a)).toInt().coerceIn(0, 255)
-        return (0xFF shl 24) or (mix((tint shr 16) and 0xFF) shl 16) or (mix((tint shr 8) and 0xFF) shl 8) or mix(tint and 0xFF)
+        return L_CARD
     }
     /** pure: रंग का गहरा रूप (लिखावट के लिए) - amount = कितना काला मिलाना */
     fun deep(tint: Int, amount: Float = 0.35f): Int {

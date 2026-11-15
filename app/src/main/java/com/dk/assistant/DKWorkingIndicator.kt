@@ -97,18 +97,24 @@ class DKWorkingIndicator(context: Context) : View(context) {
     }
 
     /** target मान - अवस्था के हिसाब से */
-    private fun targets(): FloatArray = if (bare) when (state) {
-        WorkState.IDLE -> floatArrayOf(0f, 0f, 0f, 0f)
-        WorkState.LISTENING -> floatArrayOf(0.38f, 4.4f, 0f, 0f)
-        WorkState.THINKING -> floatArrayOf(0.38f, 6.0f, 0f, 0f)
-        WorkState.SPEAKING -> floatArrayOf(0.85f, 13.8f, 0f, 0f)
-        WorkState.WORKING -> floatArrayOf(0.42f, 6.5f, 0f, 0f)
-    } else when (state) {
-        WorkState.IDLE -> floatArrayOf(0f, 0f, 0f, 0f)
-        WorkState.LISTENING -> floatArrayOf(0.38f, 4.4f, 0f, 0f)      // धीमी तरंग (~0.7 Hz)
-        WorkState.THINKING -> floatArrayOf(0.12f, 3.0f, 1f, 0f)       // घूमता घेरा
-        WorkState.SPEAKING -> floatArrayOf(0.85f, 13.8f, 0f, 0f)      // तेज़ तरंग (~2.2 Hz)
-        WorkState.WORKING -> floatArrayOf(0.22f, 5.0f, 0.8f, 1f)      // धड़कन + धीमा घेरा
+    private fun targets(): FloatArray {
+        val styleKey = typingPreview ?: Prefs.typingStyle(context)
+        if (styleKey == "off" || styleKey == TypingStyles.OFF) {
+            return floatArrayOf(0f, 0f, 0f, 0f)
+        }
+        return if (bare) when (state) {
+            WorkState.IDLE -> floatArrayOf(0f, 0f, 0f, 0f)
+            WorkState.LISTENING -> floatArrayOf(0.38f, 4.4f, 0f, 0f)
+            WorkState.THINKING -> floatArrayOf(0.38f, 6.0f, 0f, 0f)
+            WorkState.SPEAKING -> floatArrayOf(0.85f, 13.8f, 0f, 0f)
+            WorkState.WORKING -> floatArrayOf(0.42f, 6.5f, 0f, 0f)
+        } else when (state) {
+            WorkState.IDLE -> floatArrayOf(0f, 0f, 0f, 0f)
+            WorkState.LISTENING -> floatArrayOf(0.38f, 4.4f, 0f, 0f)
+            WorkState.THINKING -> floatArrayOf(0.12f, 3.0f, 1f, 0f)
+            WorkState.SPEAKING -> floatArrayOf(0.85f, 13.8f, 0f, 0f)
+            WorkState.WORKING -> floatArrayOf(0.22f, 5.0f, 0.8f, 1f)
+        }
     }
 
     override fun onDraw(c: Canvas) {

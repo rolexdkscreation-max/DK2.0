@@ -267,8 +267,17 @@ class ChatActivity : AppCompatActivity() {
 
     private fun render() {
         // v3.88: सिर्फ़ तीन स्थितियाँ (Listening / Thinking / Speaking); खाली समय में पहले वाली ऑनलाइन जानकारी
-        status.text = ThreeState.label(DKState.mode, false, false) ?: run {
-            if (DKAccessibilityService.instance != null) "ऑनलाइन • फ़ोन कंट्रोल चालू" else "सिर्फ़ बातचीत • फ़ोन कंट्रोल बंद"
+        val rawT = ThreeState.label(DKState.mode, false, false)
+        val animOff = Prefs.typingStyle(this) == TypingStyles.OFF || Prefs.typingStyle(this) == "off"
+        val isThinking = DKState.mode == Mode.THINKING || localJob != null || awaiting
+        val t = if (rawT != null && isThinking && !animOff) "$rawT…" else (rawT ?: if (DKAccessibilityService.instance != null) "ऑनलाइन • फ़ोन कंट्रोल चालू" else "सिर्फ़ बातचीत • फ़ोन कंट्रोल बंद")
+        status.text = t
+        if (isThinking && !animOff) {
+            status.animate().cancel()
+            status.alpha = 0.5f + 0.5f * kotlin.math.abs(kotlin.math.sin(System.currentTimeMillis() / 250.0)).toFloat()
+        } else {
+            status.animate().cancel()
+            status.alpha = 1f
         }
         val msgs = DKState.messages.toList()   // एक पल की कॉपी: बीच में पुराना हटे तो भी गड़बड़ नहीं
         if (awaiting && replyStarted()) awaiting = false
