@@ -1,0 +1,64 @@
+DK AI — Proprietary License (All Rights Reserved)
+
+Copyright (c) 2025-2026 Dheeraj Kumar Singh (धीरज कुमार सिंह). All rights reserved.
+
+This repository, including all source code, compiled applications (APK files),
+designs, user interfaces, graphics, icons, prompts, documentation, screenshots,
+the name "DK" / "DK AI" and its logo (together, the "Software"), is the exclusive
+property of the copyright holder named above.
+
+The Software is NOT open source. Its source code being publicly visible does not
+grant any license or right to use it.
+
+1. NO PERMISSION WITHOUT WRITTEN CONSENT
+   Unless you have obtained prior written permission from the copyright holder,
+   you may NOT, in whole or in part:
+     a) copy, reproduce, download for reuse, or mirror the Software;
+     b) modify, translate, adapt, or create derivative works from it;
+     c) publish, distribute, sell, sublicense, rent, or share it, including on
+        any app store, website, or file-sharing service;
+     d) rebrand it, remove or change this notice, or present the Software, or
+        any part of it, as your own work;
+     e) use it, or any part of it, in another product, app, service, or
+        repository, whether commercial or non-commercial;
+     f) use it to train, fine-tune, or evaluate any AI / machine-learning model;
+     g) decompile, reverse engineer, or tamper with the released APK files,
+        except where applicable law expressly allows this.
+
+2. PERMITTED USE
+   a) You may view the source code on GitHub, as GitHub's Terms of Service
+      require for public repositories.
+   b) You may install the official APK published in this repository's GitHub
+      Releases on your own device for personal, non-commercial use, without
+      modifying it.
+   Nothing in this license grants any other right.
+
+3. THIRD-PARTY COMPONENTS
+   Third-party libraries and models used by the Software (for example AndroidX,
+   OkHttp, ONNX Runtime, and models downloaded at runtime) remain under their own
+   licenses. This license covers only the original work of the copyright holder.
+
+4. TRADEMARKS
+   "DK", "DK AI", and the related names, logos, and visual identity may not be
+   used for any other product, app, or service without written permission.
+
+5. ENFORCEMENT
+   Any use that this license does not allow is copyright infringement and may
+   result in legal action, takedown requests (including DMCA notices), and claims
+   for damages under applicable law, including the Indian Copyright Act, 1957.
+
+6. NO WARRANTY
+   THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+   IMPLIED. IN NO EVENT SHALL THE COPYRIGHT HOLDER BE LIABLE FOR ANY CLAIM,
+   DAMAGES, OR OTHER LIABILITY ARISING FROM THE USE OF THE SOFTWARE.
+
+To request permission (for licensing, collaboration, or commercial use), contact
+the copyright holder through GitHub: https://github.com/rolexdkscreation-max
+
+----------------------------------------------------------------------------
+हिंदी सारांश (कानूनी रूप से ऊपर का अंग्रेज़ी पाठ ही मान्य है):
+यह ऐप और इसका पूरा कोड धीरज कुमार सिंह की निजी संपत्ति है। रिपो public दिखने का
+मतलब यह नहीं है कि कोई इसे इस्तेमाल कर सकता है। मालिक की लिखित अनुमति के बिना कोई भी
+इसे कॉपी, बदल, बेच, बाँट, अपने नाम से दिखा या किसी दूसरे ऐप में इस्तेमाल नहीं कर सकता।
+सिर्फ़ कोड देखना और Releases वाला असली APK अपने फ़ोन पर निजी इस्तेमाल के लिए डालना
+ही मान्य है।
