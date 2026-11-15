@@ -36,7 +36,11 @@ object GuardFaceSetup {
     private fun toast(a: AppCompatActivity, t: String) = UiLang.toast(a, t, Toast.LENGTH_SHORT).show()
 
     /** मालिक का चेहरा सेट (enroll) या जाँचने का कैमरा वाला डायलॉग - पहले वाले "चेहरा पहचान" (v3.91) जैसा */
-    fun dialog(a: AppCompatActivity, enroll: Boolean, done: () -> Unit) {
+    /**
+     * 15 नवंबर 2026 (मालिक: Settings में "चेहरा पहचान" वापस): [person] = उस नाम से जान-पहचान वाले का चेहरा सीखना
+     * ([FacePeople]); [who] = "कौन है?" - Boss / सेव किए लोग / अनजान. दोनों खाली = पहले जैसा (मालिक).
+     */
+    fun dialog(a: AppCompatActivity, enroll: Boolean, person: String? = null, who: Boolean = false, done: () -> Unit) {
         if (!FaceAI.supported) { toast(a, "यह फ़ोन 64-bit ARM नहीं है — चेहरा पहचान यहाँ नहीं चलेगी"); return }
         if (a.checkSelfPermission(Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) {
             a.requestPermissions(arrayOf(Manifest.permission.CAMERA), 16); toast(a, "कैमरा की परमिशन दें, फिर दोबारा दबाएँ"); return
@@ -50,7 +54,7 @@ object GuardFaceSetup {
         wrap.addView(pv, LinearLayout.LayoutParams(-1, (300 * dp).toInt()))
         val tv = TextView(a).apply { textSize = 16f; setTextColor(0xFFFFFFFF.toInt()); setPadding(0, (12 * dp).toInt(), 0, 0) }
         wrap.addView(tv)
-        val dlg = AlertDialog.Builder(a).setTitle(UiLang.s(if (enroll) "मालिक का चेहरा सेट करें" else "चेहरा जाँचें")).setView(wrap)
+        val dlg = AlertDialog.Builder(a).setTitle(UiLang.s(when { enroll && person != null -> "$person का चेहरा सीखें"; enroll -> "मालिक का चेहरा सेट करें"; who -> "कौन है?"; else -> "चेहरा जाँचें" })).setView(wrap)
             .setNegativeButton(UiLang.s("बंद करें"), null).show()
         val ui = { t: String -> a.runOnUiThread { tv.text = UiLang.s(t) } }
         val prints = ArrayList<FloatArray>()
@@ -70,6 +74,12 @@ object GuardFaceSetup {
                     prints.add(e)
                     if (prints.size < FaceMath.ENROLL_FRAMES) { ui("सीख रहा हूँ… ${prints.size}/${FaceMath.ENROLL_FRAMES} — सिर थोड़ा-सा दाएँ-बाएँ घुमाएँ"); return@FaceCam }
                     saved = true
+                    if (person != null) {
+                        FacePeople.add(a, person, FaceMatch.aggregateEmbeddings(prints)!!)
+                        ui("हो गया — $person का चेहरा सेव। अब \"कौन है?\" दबाकर या DK से पूछकर पहचान सकते हैं।")
+                        a.runOnUiThread { cam?.stop(); done() }
+                        return@FaceCam
+                    }
                     FaceAI.save(a, FaceMatch.aggregateEmbeddings(prints)!!)
                     Guard.note(a, "मालिक का चेहरा सेट हुआ")
                     ui("हो गया — मालिक का चेहरा सेट। अब अलार्म में कैमरा आपको देखते ही सायरन बंद करेगा। \"जाँचें\" दबाकर देख सकते हैं।")
@@ -77,6 +87,7 @@ object GuardFaceSetup {
                 } else {
                     if (d == null) { ui("चेहरा नहीं दिखा — सामने आएँ"); return@FaceCam }
                     val e = FaceAI.embed(a, b, d) ?: run { ui(FaceAI.status(a)); return@FaceCam }
+                    if (who) { ui(FacePeople.who(a, e).say(Prefs.userName(a))); return@FaceCam }
                     val sc = FaceAI.score(a, e) ?: return@FaceCam
                     val ok = FaceMath.decide(sc, Prefs.faceStrict(a)) == MatchResult.ACCESS_GRANTED
                     ui((if (ok) "✓ आप हैं — मालिक पहचाने गए (सायरन बंद होगा)" else "✗ यह चेहरा मालिक से नहीं मिला") +

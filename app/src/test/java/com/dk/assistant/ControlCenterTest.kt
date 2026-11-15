@@ -6,8 +6,9 @@ import org.junit.Test
 
 /** नवंबर 2026: Control Center = 6 श्रेणी कार्ड; अंदर वही पुरानी पंक्तियाँ - कोई छूटे नहीं, कोई दो बार नहीं */
 class ControlCenterTest {
+    // 15 नवंबर 2026: "face" (चेहरा पहचान) मालिक के कहने पर वापस - सुरक्षा में
     private val oldRows = listOf(
-        "profile", "lang", "ui", "brain", "voice", "orb", "access", "phonelock", "guard", "perms", "computer",
+        "profile", "lang", "ui", "brain", "voice", "orb", "access", "phonelock", "guard", "face", "perms", "computer",
         "coder", "auto", "templates", "autoreply", "social", "reels", "backup", "connectors", "story", "update", "debug", "about"
     )
 

@@ -31,6 +31,8 @@ object SecretNames {
         "plus_key_pool", "plus_email_pass", "plus_image_key",
         // 15 नवंबर 2026: हर मुफ़्त इमेज रास्ते की अलग key + YouTube Data API key
         "plus_image_key_pollinations", "plus_image_key_horde", "plus_image_key_hf", "plus_yt_key",
+        // 15 नवंबर 2026: जान-पहचान वालों के चेहरे की पहचान (सिर्फ़ अंक, तस्वीर नहीं)
+        "face_people_v1",
     )
     private val SCOPE_KEY = Regex("^(live|coder|pc)_key_.+")
 

@@ -409,6 +409,7 @@ object Prefs {
         if (!sp(c).getBoolean("voice_sulafat_v43", false)) edit(c) { putString("gemini_voice", SpeakingStyle.VOICE); putBoolean("voice_sulafat_v43", true) }
         // नवंबर 2026: JARVIS मोड = उसकी अपनी पुरुष आवाज़ (DK की चुनी आवाज़ वैसी ही सेव रहती है)
         if (JarvisMode.on(c)) return JarvisMode.voice(c)
+        AssistantPersona.voice(c)?.let { return it }   // 15 नवंबर 2026: VENOM = उसकी पुरुष आवाज़
         return LiveVoice.pick(sp(c).getString("gemini_voice", "") ?: "", voiceGender(c))
     }
 

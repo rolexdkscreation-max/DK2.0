@@ -11,7 +11,7 @@ package com.dk.assistant.plus.models
  */
 object ModelCatalog {
 
-    enum class Kind(val title: String) { VOICE("आवाज़-पहचान"), FACE("चेहरा-पहचान"), CHARACTER("3D कैरेक्टर") }
+    enum class Kind(val title: String) { VOICE("आवाज़-पहचान"), FACE("चेहरा-पहचान"), CHARACTER("3D कैरेक्टर"), LIB("3D लाइब्रेरी") }
 
     data class Asset(
         val id: String,
@@ -74,7 +74,20 @@ object ModelCatalog {
             "d97044e701822bac5a62696459b27d7b375aada5de8574ed4362edbba94771f7", 162_852L, "CC0 / CC-BY 4.0 (PixelMannen, tomkranis)"),
     )
 
-    val ALL: List<Asset> = listOf(REDIMNET_HEAVY, REDIMNET_LIGHT, FACE_EMBED, FACE_DETECT) + CHARACTERS
+    /**
+     * 15 नवंबर 2026: 3D कैरेक्टर दिखाने वाला GLTFLoader (three.js r160, MIT) भी APK में नहीं - पहले कैरेक्टर के साथ डाउनलोड.
+     * three.module.min.js (r160) पहले से assets/forge में है (DK Forge) - वही इस्तेमाल होती है.
+     */
+    private const val THREE_JSM = "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm"
+    val GLTF_LOADER = Asset("lib_gltf_loader", Kind.LIB, "GLTFLoader (three.js r160)", ".glb पढ़ने वाला", "three_gltf_loader.js",
+        listOf("$THREE_JSM/loaders/GLTFLoader.js", "https://unpkg.com/three@0.160.0/examples/jsm/loaders/GLTFLoader.js"),
+        "d073b438e6a07e1359741dd5d6c76c953420cc0d4fd84eb1bdde94315540e6a3", 108_522L, "MIT (three.js)")
+    val GEOMETRY_UTILS = Asset("lib_bg_utils", Kind.LIB, "BufferGeometryUtils (three.js r160)", "GLTFLoader का साथी", "three_bg_utils.js",
+        listOf("$THREE_JSM/utils/BufferGeometryUtils.js", "https://unpkg.com/three@0.160.0/examples/jsm/utils/BufferGeometryUtils.js"),
+        "9be041e96308775d00e2695cc607645b9a9b64fd7c0e759dd8f7c00a8d92becb", 31_906L, "MIT (three.js)")
+    val VIEWER_LIBS = listOf(GLTF_LOADER, GEOMETRY_UTILS)
+
+    val ALL: List<Asset> = listOf(REDIMNET_HEAVY, REDIMNET_LIGHT, FACE_EMBED, FACE_DETECT) + CHARACTERS + VIEWER_LIBS
 
     fun byId(id: String): Asset? = ALL.firstOrNull { it.id == id }
     fun ofKind(k: Kind): List<Asset> = ALL.filter { it.kind == k }

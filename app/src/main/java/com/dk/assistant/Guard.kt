@@ -220,6 +220,19 @@ object Guard {
         DKLog.d("टच मोड बंद: $why")
     }
 
+    /**
+     * 15 नवंबर 2026: फ़ोन PIN / फ़िंगरप्रिंट से खुला. GOD मोड में अलार्म बजते समय (चेहरा / गुप्त शब्द सेट हो तो) इससे बंद नहीं -
+     * चोर ने किसी तरह PIN देख लिया हो तब भी सायरन चलता रहे ([GuardModes.pinStops]).
+     */
+    fun pinUnlocked(c: Context) {
+        val app = c.applicationContext
+        if (GuardModes.pinStops(GuardModes.mode(app), alarming, FaceAI.enrolled(app) && FaceAI.ready(app), code(app).length >= GuardRules.MIN_CODE)) {
+            disarm(app, "फ़ोन मालिक ने खोला"); return
+        }
+        note(app, "गॉड मोड: फ़ोन PIN से खुला, पर सायरन चालू - चेहरा या गुप्त शब्द चाहिए")
+        scope.launch { delay(600); GuardAlarmActivity.show(app) }
+    }
+
     /** गार्ड चालू = DK खुद PIN डालकर फ़ोन नहीं खोलेगा (कोई "DK फोन अनलॉक करो" बोलकर न खुलवा ले) */
     fun blocksUnlock(): String? = if (active())
         PhoneLockVoice.UNLOCK_FAIL + " टच मोड चालू है, इसलिए DK फ़ोन नहीं खोलेगा। पहले टच मोड बंद कीजिए - गुप्त शब्द बोलकर या फ़ोन खुद खोलकर।"
@@ -273,7 +286,7 @@ object Guard {
                 override fun onReceive(ctx: Context?, i: Intent?) {
                     when (i?.action) {
                         // फ़ोन असली PIN / फ़िंगरप्रिंट / फ़ेस से खुला = मालिक
-                        Intent.ACTION_USER_PRESENT -> if (secure(app)) disarm(app, "फ़ोन मालिक ने खोला")
+                        Intent.ACTION_USER_PRESENT -> if (secure(app)) pinUnlocked(app)
                         Intent.ACTION_POWER_DISCONNECTED -> if (wasCharging && chargerOn(app)) trigger(app, "चार्जर निकाला")
                         Intent.ACTION_SCREEN_OFF -> if (alarming) scope.launch { delay(400); GuardAlarmActivity.show(app) }
                         "android.intent.action.SIM_STATE_CHANGED" ->
@@ -364,7 +377,8 @@ object Guard {
         note(app, "⚠ $why")
         svcOf(app)?.let { lockNow(it) }
         startAlarm(app, why, test = false)
-        if (smsOn(app)) startTracking(app, why)
+        // 15 नवंबर 2026: GOD मोड = नंबर ठीक हो तो लोकेशन SMS हमेशा
+        if (smsOn(app) || (GuardModes.forceSms(GuardModes.mode(app)) && GuardRules.validNumber(smsNumber(app)))) startTracking(app, why)
     }
 
     /**
@@ -467,6 +481,9 @@ object Guard {
     private fun stopAlarm() { alarmJob?.cancel(); alarmJob = null }
 
     private suspend fun ring(c: Context, st: State, maxMs: Long) {
+        // 15 नवंबर 2026: STEALTH = चुपचाप (न सायरन, न फ़्लैश, न कंपन, न बोलना) - सिर्फ़ काली स्क्रीन, फ़ोटो, SMS
+        val mode = GuardModes.mode(c)
+        if (!GuardModes.loud(mode)) { ringSilent(c, maxMs); return }
         val am = c.getSystemService(Context.AUDIO_SERVICE) as AudioManager
         val maxVol = am.getStreamMaxVolume(AudioManager.STREAM_ALARM)
         try { st.alarmVol = am.getStreamVolume(AudioManager.STREAM_ALARM); am.setStreamVolume(AudioManager.STREAM_ALARM, maxVol, 0) } catch (_: Exception) {}
@@ -485,7 +502,7 @@ object Guard {
         val cm = c.getSystemService(CameraManager::class.java)
         st.torchId = try { cm?.cameraIdList?.firstOrNull { cm.getCameraCharacteristics(it).get(CameraCharacteristics.FLASH_INFO_AVAILABLE) == true } } catch (_: Exception) { null }
         val blink = st.torchId?.let { id ->
-            scope.launch { var on = false; while (isActive) { on = !on; try { cm?.setTorchMode(id, on) } catch (_: Exception) {}; delay(250) } }
+            scope.launch { val gap = GuardModes.strobeMs(mode); var on = false; while (isActive) { on = !on; try { cm?.setTorchMode(id, on) } catch (_: Exception) {}; delay(gap) } }
         }
         // सायरन: एक चक्कर (1.2 s) बार-बार
         val rate = 22_050
@@ -511,6 +528,13 @@ object Guard {
                 GuardAlarmActivity.show(c)                 // किसी ने home / back दबाकर हटाया हो
             }
         } finally { blink?.cancel() }
+    }
+
+    /** STEALTH: कोई आवाज़ नहीं - काली चेतावनी स्क्रीन (चुपके से फ़ोटो) बार-बार ऊपर, समय पूरा होने तक */
+    private suspend fun ringSilent(c: Context, maxMs: Long) {
+        val end = System.currentTimeMillis() + maxMs
+        GuardAlarmActivity.show(c)
+        while (System.currentTimeMillis() < end) { delay(GuardRules.SIREN_MS + GuardRules.LISTEN_GAP_MS); GuardAlarmActivity.show(c) }
     }
 
     private suspend fun say(c: Context, st: State, clip: ByteArray?) {

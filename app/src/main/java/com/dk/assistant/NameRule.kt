@@ -10,7 +10,14 @@ package com.dk.assistant
  */
 object NameRule {
     /** "जी धीरज" (नाम खाली = "") */
-    fun call(userName: String): String = userName.trim().takeIf { it.isNotBlank() }?.let { "जी $it" } ?: ""
+    fun call(userName: String): String = userName.trim().removePrefix("जी ").trim().takeIf { it.isNotBlank() }?.let { "जी $it" } ?: ""
+
+    /** 15 नवंबर 2026 (मालिक): नाम ख़ुद एक संबोधन हो (बॉस / सर / मैडम) - तब "बॉस मत कहो" वाली बात नहीं */
+    val TITLES = setOf("बॉस", "सर", "मैडम", "boss", "sir", "madam", "मालिक", "हुकुम")
+    fun isTitle(userName: String): Boolean = userName.trim().removePrefix("जी ").trim().lowercase() in TITLES
+
+    /** अभिवादन: "हेलो DK" पर "हेलो <नाम>" (नाम खाली = "हेलो") */
+    fun greet(userName: String): String = userName.trim().removePrefix("जी ").trim().takeIf { it.isNotBlank() }?.let { "हेलो $it" } ?: "हेलो"
 
     fun block(userName: String, assistantName: String): String = buildString {
         val u = userName.trim()
@@ -18,8 +25,11 @@ object NameRule {
         append("\nNAMES (owner's rule - overrides every other way of addressing the user written anywhere in these instructions):\n")
         if (u.isNotBlank()) {
             append("- The user's name is \"$u\". Address and acknowledge him/her as \"${call(u)}\" (e.g. \"${call(u)}, बताइए\", \"हाँ ${call(u)}\", ")
-            append("\"ठीक है ${call(u)}, कर रहा हूँ\", \"हो गया ${call(u)}\"). Never say \"बॉस\" or \"boss\" to the user; wherever an example in these ")
-            append("instructions says बॉस / सर, use \"${call(u)}\" instead. Not in every sentence - only where a name fits naturally.\n")
+            append("\"ठीक है ${call(u)}, कर रहा हूँ\", \"हो गया ${call(u)}\"). ");
+            if (!isTitle(u)) append("Never say \"बॉस\" or \"boss\" to the user; ")
+            append("wherever an example in these instructions says बॉस / सर, use \"${call(u)}\" instead. Not in every sentence - only where a name fits naturally.\n")
+            append("- GREETING (owner's rule, 15 Nov 2026): when the user greets you (\"हेलो DK\", \"हाय\", \"नमस्ते\", \"good morning\"), greet back with the saved name: ")
+            append("\"${greet(u)}\" / \"${call(u)}, बताइए\". Never say \"जी जी\".\n")
         }
         if (a != AssistantBrand.NAME) {
             append("- YOUR name is \"$a\". When you introduce yourself or anyone asks your name, say \"मैं $a हूँ\". ")

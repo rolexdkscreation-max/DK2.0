@@ -118,6 +118,15 @@ class OnboardingActivity : AppCompatActivity() {
                     val p = (14 * dp).toInt(); setPadding(p, p, p, p)
                 }
                 body.addView(nameField, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = (16 * dp).toInt() })
+                // 15 नवंबर 2026 (मालिक): "बॉस / सर" एक टैप में - power बटन / Hey DK पर DK यही नाम लेकर बोलेगा ("जी बॉस")
+                val chips = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+                listOf("बॉस", "सर", "मैडम").forEach { n ->
+                    chips.addView(android.widget.Button(this).apply {
+                        text = n; isAllCaps = false; setOnClickListener { nameField?.setText(n); nameField?.setSelection(n.length) }
+                    }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+                }
+                body.addView(chips, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = (8 * dp).toInt() })
+                text("Power बटन / \"हेलो DK\" पर DK इसी नाम से जवाब देगा - जैसे नाम \"बॉस\" = \"जी बॉस\", अभिवादन में \"हेलो बॉस\"।")
                 text("नाम सिर्फ़ इस फ़ोन में रहता है। बाद में सेटिंग्स → प्रोफ़ाइल में बदल सकते हैं।")
             }
         }

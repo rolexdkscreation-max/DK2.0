@@ -244,6 +244,7 @@ internal fun SettingsActivity.secUpdate() {
 internal fun SettingsActivity.secProfile() {
     card("प्रोफ़ाइल", "आपका नाम, असिस्टेंट का नाम और बात करने का तरीका") {
         edUser = field(it, "आपका नाम", Prefs.userName(this), "जैसे: दीपक")
+        hint(it, "DK इसी नाम से बुलाएगा: power बटन / Hey DK पर \"जी <नाम>\" (नाम बॉस = \"जी बॉस\"), \"हेलो DK\" पर \"हेलो <नाम>\"।")
         edName = field(it, "असिस्टेंट का नाम", Prefs.assistantName(this), "DK")
         edPersona = field(it, "बात करने का तरीका (अपनी तरफ़ से)", Prefs.personality(this),
             "जैसे: जवाब छोटे रखो, मुझे सर कहकर बुलाओ", multiLine = true)

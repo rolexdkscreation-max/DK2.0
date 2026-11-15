@@ -22,7 +22,7 @@ object SettingsSearch {
         "profile" to "प्रोफ़ाइल", "lang" to "भाषा / Language", "ui" to "दिखावट (UI कस्टमाइज़ेशन)", "brain" to "AI दिमाग",
         "brain_live" to "AI दिमाग • DK लाइव", "brain_chat" to "AI दिमाग • DK चैट", "brain_coder" to "AI दिमाग • कोडिंग एजेंट",
         "brain_pc" to "AI दिमाग • DK कंप्यूटर", "voice" to "आवाज़", "orb" to "ओर्ब और चेहरा",
-        "access" to "Accessibility", "phonelock" to "फ़ोन लॉक / अनलॉक", "guard" to "टच मोड", "perms" to "परमिशन", "computer" to "DK कंप्यूटर", "coder" to "कोडिंग एजेंट",
+        "access" to "Accessibility", "phonelock" to "फ़ोन लॉक / अनलॉक", "guard" to "टच मोड", "face" to "चेहरा पहचान", "perms" to "परमिशन", "computer" to "DK कंप्यूटर", "coder" to "कोडिंग एजेंट",
         "social" to "सोशल रिव्यू", "reels" to "रील गिनती और लिमिट",
         ACT_AUTO to "ऑटोनोमस मोड", ACT_TEMPLATES to "टेम्पलेट कमांड", ACT_CONNECTORS to "कनेक्टर", ACT_STORY to "स्टोरी राइटर एजेंट", ACT_BACKUP to "बैकअप",
         // नवंबर 2026: ऑटो रिप्लाई (ऑटोनोमस मोड के बाद - "ऑटो" खोजने पर पहले ऑटोनोमस मोड ही आए)
@@ -39,7 +39,7 @@ object SettingsSearch {
         Triple("cat_dk", "मेरा DK", "प्रोफ़ाइल • भाषा • दिखावट • ओर्ब और चेहरा") to listOf("profile", "lang", "ui", "orb"),
         Triple("cat_brain", "दिमाग और आवाज़", "AI दिमाग • आवाज़ • कोडिंग एजेंट • DK कंप्यूटर") to listOf("brain", "voice", "coder", "computer"),
         Triple("cat_auto", "ऑटोमेशन", "ऑटोनोमस मोड • टेम्पलेट कमांड • ऑटो रिप्लाई • Accessibility") to listOf("auto", "templates", "autoreply", "access"),
-        Triple("cat_security", "सुरक्षा", "फ़ोन लॉक • टच मोड • परमिशन") to listOf("phonelock", "guard", "perms"),
+        Triple("cat_security", "सुरक्षा", "फ़ोन लॉक • टच मोड • चेहरा पहचान • परमिशन") to listOf("phonelock", "guard", "face", "perms"),
         Triple("cat_social", "सोशल और कहानी", "सोशल रिव्यू • रील गिनती और लिमिट • स्टोरी राइटर") to listOf("social", "reels", "story"),
         Triple("cat_data", "डेटा और ऐप", "कनेक्टर • बैकअप • डिबग लॉग • ऐप के बारे में") to listOf("connectors", "backup", "debug", "about")
     )
@@ -58,6 +58,8 @@ object SettingsSearch {
         "orb" to "orb ओर्ब चेहरा",
         "access" to "accessibility फ़ोन कंट्रोल control battery बैटरी call कॉल",
         "guard" to "touch mode टच मोड screen guard स्क्रीन गार्ड गार्ड मोड guard गार्ड security सुरक्षा chor चोर चोरी theft anti alarm siren सायरन intruder घुसपैठिया पहरा चौकीदार",
+        // 15 नवंबर 2026 (मालिक): चेहरा पहचान वापस (v3.99 में हटाया था)
+        "face" to "face फ़ेस फेस चेहरा पहचान recognition रजिस्ट्रेशन registration boss बॉस कौन who camera कैमरा परिवार",
         "phonelock" to "lock unlock लॉक अनलॉक फ़ोन फोन phone pin पिन pattern पैटर्न password पासवर्ड screen स्क्रीन खोलो बंद",
         "perms" to "permission परमिशन इजाज़त mic camera notification",
         "computer" to "computer कंप्यूटर reminder रिमाइंडर search",
@@ -144,6 +146,14 @@ object SettingsSearch {
         E("coder", "Termux ऑटोमेशन", "DK, Termux (F-Droid) में कमांड / लोकल सर्वर चला सके - RUN_COMMAND इजाज़त से", "termux टर्मक्स terminal टर्मिनल command कमांड linux server"),
         E("computer", "इमेज बनाना (मुफ़्त API)", "\"एक शेर की तस्वीर बनाओ\" - DK खुद मुफ़्त API से बनाकर गैलरी में सेव करे; key वैकल्पिक", "image इमेज photo फोटो तस्वीर picture चित्र pollinations horde hugging face key"),
         E("social", "YouTube चैनल जाँच", "\"मेरे चैनल का हाल बताओ\" - subscribers, views, नए वीडियो, comments (सिर्फ़ पढ़ना)", "youtube यूट्यूब channel चैनल subscriber सब्सक्राइबर views"),
+        // 15 नवंबर 2026: नई सुविधाएँ (मालिक की सूची) - हर card सर्च में
+        E("guard", "टच मोड का रूप", "नॉर्मल • गॉड मोड (सबसे सख़्त) • स्टेल्थ मोड (चुपचाप)", "god गॉड stealth स्टेल्थ silent चुपचाप mode मोड"),
+        E("face", "चेहरा पहचान", "Boss का चेहरा सेट करें — DK और टच मोड आपको पहचानें", "face फ़ेस चेहरा boss बॉस register रजिस्टर"),
+        E("face", "जान-पहचान वाले चेहरे", "परिवार / दोस्त — नाम के साथ चेहरा सेव करें", "family परिवार friend दोस्त कौन who name नाम"),
+        E("voice", "FRIDAY / VENOM मोड", "असिस्टेंट का दूसरा रूप — FRIDAY (काम की बात) • VENOM (मज़ाकिया पुरुष आवाज़)", "friday फ्राइडे venom वेनम persona पर्सोना jarvis"),
+        E("computer", "ईमेल (IMAP/SMTP)", "DK आपके ईमेल पढ़े, जवाब भेजे, स्पैम हटाए — App Password से", "email ईमेल mail मेल gmail जीमेल inbox इनबॉक्स imap smtp app password signature हस्ताक्षर"),
+        E("autoreply", "WhatsApp ग्रुप रिपोर्ट", "रोज़ की रिपोर्ट का टेम्पलेट - बोलकर भरो, ग्रुप में भेजो", "group ग्रुप report रिपोर्ट template टेम्पलेट whatsapp व्हाट्सएप"),
+        E("ui", "3D कैरेक्टर", "DK का चलता-फिरता 3D कैरेक्टर — इंटरनेट से डाउनलोड", "3d character कैरेक्टर robot रोबोट fox लोमड़ी avatar अवतार glb"),
         E("guard", "टच मोड", "कोई और फ़ोन छुए / उठाए तो सायरन + \"यह फ़ोन आपका नहीं है\""),
         E("guard", "गुप्त शब्द और भरोसेमंद नंबर", "बोलकर सायरन बंद • चोरी पर SMS जगह के साथ"),
         E("guard", "मालिक का चेहरा", "पहली बार एक बार चेहरा सेट करें — अलार्म में कैमरा मालिक को पहचानकर सायरन बंद करे"),

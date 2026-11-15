@@ -111,6 +111,23 @@ object DkSettings {
             listOf("ऑटो रिप्लाई", "auto reply", "autoreply", "ऑटो जवाब", "अपने आप जवाब"), store = STORE_CUSTOM),
         Item("autonomous", "ऑटोनोमस मोड", SettingsSearch.ACT_AUTO, "auto_on", false,
             listOf("ऑटोनोमस", "ऑटोनॉमस", "autonomous", "खुद तय करे"), store = STORE_CUSTOM),
+        // 15 नवंबर 2026 (मालिक: "जो भी बना रहे हो, DK को पता हो - चालू-बंद कर सके"): नई सुविधाएँ
+        Item("face", "चेहरा पहचान (DK लाइव: देखो कौन है)", "face", FeatureFlags.FACE_ON, false,
+            listOf("चेहरा पहचान", "चेहरा पहचानना", "फेस पहचान", "फेस रिकग्निशन", "face recognition", "face id", "देखो कौन है"), store = STORE_FLAGS),
+        Item("email", "ईमेल पढ़ना / भेजना", "computer", FeatureFlags.EMAIL_ON, false,
+            listOf("ईमेल", "इमेल", "email", "gmail", "जीमेल", "मेल पढ़ना"), store = STORE_FLAGS),
+        Item("wa_report", "WhatsApp ग्रुप रिपोर्ट", "autoreply", FeatureFlags.WA_GROUP_REPORT, false,
+            listOf("ग्रुप रिपोर्ट", "group report", "ग्रुप में रिपोर्ट", "रिपोर्ट टेम्पलेट"), store = STORE_FLAGS),
+        Item("char3d", "3D कैरेक्टर", "ui", FeatureFlags.CHARACTER_3D, false,
+            listOf("3d कैरेक्टर", "3d character", "3डी कैरेक्टर", "कैरेक्टर", "character", "3d"), store = STORE_FLAGS),
+        Item("friday", "FRIDAY मोड", "voice", AssistantPersona.PREF, false,
+            listOf("फ्राइडे", "फ्राईडे", "फ्रायडे", "friday"), store = STORE_CUSTOM),
+        Item("venom", "VENOM मोड", "voice", AssistantPersona.PREF, false,
+            listOf("वेनम", "वेनोम", "venom"), store = STORE_CUSTOM),
+        Item("god_mode", "टच मोड: गॉड मोड (सबसे सख़्त)", "guard", GuardModes.PREF, false,
+            listOf("गॉड मोड", "god mode", "गॉड", "सबसे सख्त"), store = STORE_CUSTOM),
+        Item("stealth", "टच मोड: स्टेल्थ मोड (चुपचाप)", "guard", GuardModes.PREF, false,
+            listOf("स्टेल्थ", "stealth", "चुपचाप मोड", "साइलेंट गार्ड"), store = STORE_CUSTOM),
     )
 
     /** DK लाइव इन सुविधाओं को चालू होने पर सीधे चला भी सकता है (catalog में बताया जाता है) */
@@ -118,7 +135,13 @@ object DkSettings {
         "SOS = the phone runs it when the user clearly says 'SOS भेजो / activate SOS' (10-second countdown, 'SOS रोको' cancels); " +
         "driving mode = switch [driving]; event triggers = [events] + the event switches; " +
         "Termux = tool termux_run; free image = tool free_image; YouTube channel = tool youtube_channel; " +
-        "touch mode = 'टच मोड चालू करो'; phone lock = 'फ़ोन लॉक करो'; teacher mode = tool teacher_mode."
+        "touch mode = 'टच मोड चालू करो' (its style: [god_mode] = loudest, 10 photos, SMS always; [stealth] = silent, black screen, secret photos + SMS); " +
+        "phone lock = 'फ़ोन लॉक करो'; teacher mode = tool teacher_mode; " +
+        "face = tool face_who ('देखो कौन है' - Boss / saved person / unknown; faces are registered in Settings → चेहरा पहचान); " +
+        "email = tools email_read / email_send / email_delete (send and delete only after reading it back and a clear yes); " +
+        "WhatsApp group report = tool group_report (list / fill / send); 3D character = tool show_character; " +
+        "FRIDAY / VENOM = switches [friday] / [venom] (one at a time, JARVIS goes off) or 'फ्राइडे मोड ऑन करो'. " +
+        "Always call the user by his saved name (e.g. 'जी बॉस', 'हेलो बॉस')."
 
     private fun n(s: String) = s.lowercase().replace("़", "").replace("ॉ", "ो").replace(Regex("\\s+"), " ").trim()
 
