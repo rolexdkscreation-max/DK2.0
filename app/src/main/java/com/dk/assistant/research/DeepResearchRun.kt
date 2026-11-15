@@ -53,7 +53,7 @@ class DeepResearchRun(private val c: Context, private val sites: (List<String>) 
      * अब [fast] काम (सवाल तोड़ना / कमी देखना) = हल्का मॉडल, कम सोच, छोटी समय-सीमा; हर काम की कुल समय-सीमा [limitMs].
      */
     private fun gemini(prompt: String, maxTokens: Int, json: Boolean, fast: Boolean = false, limitMs: Long = 120_000): String? {
-        val models = (if (fast) GeminiClient.BACKUP_MODELS else GeminiClient.DEEP_MODELS + GeminiClient.BACKUP_MODELS.reversed()).distinct()
+        val models = com.dk.assistant.OneKeyLanes.order(com.dk.assistant.OneKeyLanes.Lane.HEAVY, (if (fast) GeminiClient.BACKUP_MODELS else GeminiClient.DEEP_MODELS + GeminiClient.BACKUP_MODELS.reversed()).distinct())   // 15 नवंबर 2026: एक key में भारी लेन
         val until = System.currentTimeMillis() + limitMs
         for (k in geminiKeys) for (m in models) {
             if (System.currentTimeMillis() > until) return null
@@ -119,7 +119,7 @@ class DeepResearchRun(private val c: Context, private val sites: (List<String>) 
         step("${pages.size} स्रोत मिलाकर हिंदी रिपोर्ट लिख रहा हूँ…")
         val prompt = DeepResearch.writerPrompt(question, pages, today, dead.values.toList())
         var report: String? = gemini(prompt, 4096, json = false)
-        if (report == null) report = try { BrainManager(c).quickText("तुम DK AI हो। सिर्फ़ दिए गए स्रोतों से हिंदी रिपोर्ट लिखो।", prompt) }
+        if (report == null) report = try { BrainManager(c).quickText("तुम DK AI हो। सिर्फ़ दिए गए स्रोतों से हिंदी रिपोर्ट लिखो।", prompt, com.dk.assistant.OneKeyLanes.Lane.HEAVY) }
             catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (_: Exception) { null }
         if (report.isNullOrBlank()) return@withContext Result("रिपोर्ट लिखने वाला AI नहीं चला — नीचे पढ़े गए स्रोत हैं।\n\n" + DeepResearch.sourceList(pages) + "\n\nभरोसा: अधूरा",
                 pages.map { it.title.ifBlank { DeepResearch.domain(it.url) } to it.url }, true)

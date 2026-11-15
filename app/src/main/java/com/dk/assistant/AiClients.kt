@@ -132,6 +132,11 @@ class GeminiClient(private val key: String, private val model: String) : AiClien
     var think: String = ThinkLevel.AUTO
     override var label = "Gemini ($model)"
         private set
+    /** 15 नवंबर 2026 (मालिक): एक-key मोड में इस काम की मॉडल-लेन ([OneKeyLanes]) - null = पहले जैसा क्रम */
+    var lane: OneKeyLanes.Lane? = null
+    /** Settings में मालिक ने यही मॉडल खुद चुना = लेन में भी सबसे पहले */
+    var keepFirst = false
+    private fun laned(list: List<String>, l: OneKeyLanes.Lane? = lane) = OneKeyLanes.order(l, list, keepFirst)
 
     companion object {
         val BACKUP_MODELS = listOf("gemini-3.5-flash-lite", "gemini-3.1-flash-lite", "gemini-3.8-flash")
@@ -140,7 +145,7 @@ class GeminiClient(private val key: String, private val model: String) : AiClien
     }
 
     override fun complete(system: String, history: List<Turn>, prompt: String, imageB64: String?): String {
-        val models = if (only) listOf(model) else GeminiModels.order(model, backups)
+        val models = if (only) listOf(model) else laned(GeminiModels.order(model, backups))
         var last: AiException? = null
         for (m in models) {
             try {
@@ -179,7 +184,7 @@ class GeminiClient(private val key: String, private val model: String) : AiClien
     }
 
     private fun streamModels(system: String, history: List<Turn>, prompt: String, onDelta: (String) -> Unit): String {
-        val models = if (only) listOf(model) else GeminiModels.order(model, backups).take(3)
+        val models = if (only) listOf(model) else laned(GeminiModels.order(model, backups)).take(3)
         var last: AiException? = null
         for (m in models) {
             var thinking = true
@@ -309,7 +314,7 @@ class GeminiClient(private val key: String, private val model: String) : AiClien
             think -> (THINK_MODELS + DEEP_MODELS + GeminiModels.order(model, BACKUP_MODELS)).distinct()
             deep -> (DEEP_MODELS + GeminiModels.order(model, BACKUP_MODELS)).distinct()
             else -> GeminiModels.order(model, BACKUP_MODELS)
-        }.take(maxModels.coerceAtLeast(1))
+        }.let { laned(it, if (think || deep) OneKeyLanes.Lane.HEAVY else lane ?: OneKeyLanes.Lane.TALK) }.take(maxModels.coerceAtLeast(1))
         for (m in order) {
             try {
                 val contents = JSONArray()

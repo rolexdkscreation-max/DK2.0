@@ -78,7 +78,7 @@ object ScreenLook {
         if (jpegB64 != null) parts.put(JSONObject().put("inline_data", JSONObject().put("mime_type", "image/jpeg").put("data", jpegB64)))
         val body = JSONObject().put("contents", JSONArray().put(JSONObject().put("role", "user").put("parts", parts)))
             .put("generationConfig", JSONObject().put("maxOutputTokens", 700).put("temperature", 0.2)).toString()
-        val models = (listOf(GeminiModels.CODER) + GeminiModels.LIGHT_CHAIN).distinct().take(4)
+        val models = OneKeyLanes.order(OneKeyLanes.Lane.PHONE, (listOf(GeminiModels.CODER) + GeminiModels.LIGHT_CHAIN).distinct()).take(4)   // 15 नवंबर 2026: फ़ोन के काम की लेन
         for (key in keys.take(2)) for (m in models) {
             try {
                 val req = Request.Builder().url("https://generativelanguage.googleapis.com/v1beta/models/$m:generateContent")

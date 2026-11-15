@@ -21,6 +21,7 @@ class DKApp : Application() {
         ModeTrack.sink = { DKLog.d(it) }   // नवंबर 2026: [LIVE] / [TEXT] / [PROBE] की कॉल और गलतियाँ अलग-अलग लॉग में
         NetFix.install(this)  // नवंबर 2026: एक नेटवर्क पर न चलना - IPv4 पहले + DoH, नेटवर्क बदले तो याद साफ़
         Prefs.loadLang(this)
+        try { Prefs.oneKeyOn(this) } catch (_: Exception) {}   // 15 नवंबर 2026: एक-key की मॉडल-लेन ([OneKeyLanes]) शुरू से
         UiLang.load(this)     // स्क्रीनों की भाषा (शुरुआती English)
         com.dk.assistant.ui.NeonTheme.load(this)          // v4: दिखावट (रंग/काँच/चमक/एनिमेशन) - सिर्फ़ UI
         registerActivityLifecycleCallbacks(com.dk.assistant.ui.NeonRefresh)

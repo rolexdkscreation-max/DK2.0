@@ -49,13 +49,13 @@ object DkaiPick {
         val app = c.applicationContext
         val brain = BrainManager(app)
         if (on(app)) {
-            try { brain.quickText(system, prompt)?.takeIf { it.isNotBlank() }?.let { return it } }
+            try { brain.quickText(system, prompt, com.dk.assistant.OneKeyLanes.Lane.HEAVY)?.takeIf { it.isNotBlank() }?.let { return it } }
             catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (e: Exception) { quiet("चुना मॉडल", e) }
         }
         return withContext(Dispatchers.IO) {
             val coder: () -> String? = { try { CoderAi.fromPrefs(app)?.chat(system, listOf("user" to prompt))?.takeIf { it.isNotBlank() } } catch (e: Exception) { quiet("कोडिंग AI", e); null } }
             val story: () -> String? = { try { StoryAi.fromPrefs(app)?.write(system, listOf("user" to prompt))?.text?.takeIf { it.isNotBlank() } } catch (e: Exception) { quiet("कहानी AI", e); null } }
             if (preferStory) story() ?: coder() else coder() ?: story()
-        } ?: if (on(app)) null else brain.quickText(system, prompt)
+        } ?: if (on(app)) null else brain.quickText(system, prompt, com.dk.assistant.OneKeyLanes.Lane.HEAVY)
     }
 }

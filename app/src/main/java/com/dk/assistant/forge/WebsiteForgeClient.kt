@@ -60,7 +60,7 @@ object WebsiteForgeClient {
                 } else rankModels(JSONObject(b).optJSONArray("models") ?: JSONArray())
             }
         } catch (e: ForgeHttpException) { throw e } catch (e: Exception) { emptyList() }
-        val all = (listed + FALLBACKS).distinct()
+        val all = com.dk.assistant.OneKeyLanes.order(com.dk.assistant.OneKeyLanes.Lane.HEAVY, (listed + FALLBACKS).distinct())   // 15 नवंबर 2026: एक key में भारी लेन
         if (listed.isNotEmpty()) cachedModels[apiKey] = all
         all
     }

@@ -9,6 +9,7 @@ import android.provider.MediaStore
 import com.dk.assistant.BrainManager
 import com.dk.assistant.DKAccessibilityService
 import com.dk.assistant.DKLog
+import com.dk.assistant.OneKeyLanes
 import com.dk.assistant.DKState
 import com.dk.assistant.GeminiModels
 import com.dk.assistant.Prefs
@@ -396,7 +397,7 @@ object InsightsAgent {
         // फटाफट: स्क्रीन के text में ही नंबर हों तो स्क्रीनशॉट नहीं (चार्ट/तस्वीर वाली स्क्रीन पर ही)
         val shot = if (canShot(svc) && InsightsSpeed.wantShot(prompt)) try { svc.screenshotBase64() } catch (_: Exception) { null } else null
         geminiKey(svc)?.let { key ->
-            withContext(Dispatchers.IO) { gemini(key, prompt, shot, json = true, maxTokens = InsightsSpeed.STEP_TOKENS, models = (listOf(GeminiModels.CODER) + GeminiModels.CODER_CHAIN).distinct(), fast = stepHttp) }?.let { return it }
+            withContext(Dispatchers.IO) { gemini(key, prompt, shot, json = true, maxTokens = InsightsSpeed.STEP_TOKENS, models = OneKeyLanes.order(OneKeyLanes.Lane.HEAVY, (listOf(GeminiModels.CODER) + GeminiModels.CODER_CHAIN).distinct()), fast = stepHttp) }?.let { return it }
         }
         // Gemini key नहीं = जो दिमाग़ (Groq / OpenRouter …) लगा है, उसी से
         return try { BrainManager(svc).teach("Reply with ONLY one JSON object.", prompt, shot) } catch (e: Exception) { DKLog.d("सोशल रिव्यू AI: ${e.message?.take(80)}"); null }
@@ -407,7 +408,7 @@ object InsightsAgent {
         reportCut = false
         val job = svc.scope.async(Dispatchers.IO) {
             geminiKey(svc)?.let { key ->
-                gemini(key, prompt, null, json = false, maxTokens = InsightsSpeed.REPORT_TOKENS, models = InsightsSpeed.reportModels(GeminiModels.LIGHT_CHAIN, GeminiModels.CODER_CHAIN), fast = reportHttp)
+                gemini(key, prompt, null, json = false, maxTokens = InsightsSpeed.REPORT_TOKENS, models = OneKeyLanes.order(OneKeyLanes.Lane.HEAVY, InsightsSpeed.reportModels(GeminiModels.LIGHT_CHAIN, GeminiModels.CODER_CHAIN)), fast = reportHttp)
             } ?: try { BrainManager(svc).teach("You write clear Hindi social media analytics reports.", prompt, null) } catch (e: Exception) { DKLog.d("रिपोर्ट AI: ${e.message?.take(80)}"); null }
         }
         val r = withTimeoutOrNull(InsightsSpeed.REPORT_WAIT_MS) { job.await() }
