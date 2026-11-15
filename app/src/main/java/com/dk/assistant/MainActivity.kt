@@ -413,6 +413,9 @@ class MainActivity : AppCompatActivity() {
             }
             chip.visibility = android.view.View.VISIBLE
             syncAlertRow()
+            // 15 नवंबर 2026 (मालिक): नया अपडेट = पट्टी चमकती रहे + popup (हर version पर एक बार, "बाद में" = 12 घंटे बाद फिर)
+            UpdatePrompt.pulse(chip)
+            UpdatePrompt.maybeShow(this, rel)
         }
         if (System.currentTimeMillis() - Prefs.lastUpdateCheck(this) < 3 * 60 * 60 * 1000L) {
             // 3 ghante ke andar dobara GitHub nahi - yaad rakha hua update; adhoora download ho to aage badhao

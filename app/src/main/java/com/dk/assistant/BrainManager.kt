@@ -48,6 +48,9 @@ class BrainManager(private val ctx: Context) {
         override?.let { (id, c) -> return if (p.id == id) c else null }
         // 14 नवंबर 2026 (मालिक): Settings → AI दिमाग में चैट का मॉडल खुद चुना = सिर्फ़ वही key + मॉडल, कोई fallback नहीं
         if (pin && scope == ApiScopes.CHAT) BrainPin.chatClient(ctx)?.let { (id, c) -> return if (p.id == id) c else null }
+        // 15 नवंबर 2026 (मालिक: "एक ही ऑल-राउंडर key डाली है, फिर भी 'Groq: मॉडल का नाम गलत है' आता है"): एक-key मोड में
+        // चैट सिर्फ़ उसी Gemini key से - पहले की छिपी पुरानी Groq / OpenRouter keys (सबसे तेज़ मानकर पहले) बीच में नहीं आतीं
+        if (scope == ApiScopes.CHAT && ApiScopes.oneKeySkip(Prefs.oneKeyOn(ctx), p.id)) return null
         // मालिक: "जो भी key डाली है सब पर fallback" - चैट में इस कंपनी की key नहीं तो AI दिमाग में कहीं और डली उसी कंपनी की
         return scopedClient(ctx, p, scope) ?: if (pin && scope == ApiScopes.CHAT) BrainPin.borrowed(ctx, p) else null
     }
@@ -87,7 +90,8 @@ class BrainManager(private val ctx: Context) {
         val fast = good.sortedBy { ProviderHealth.speed(it.id) - (if (it.id == active) 150 else 0) }
         // 14 नवंबर 2026 (मालिक): DKAI होम पर मॉडल चुना = वही कंपनी सबसे पहले (पहले तेज़ वाली जीत जाती थी). न चले = बाकी अपने-आप
         val ordered = if (com.dk.assistant.dkai.DkaiPick.on(ctx)) com.dk.assistant.dkai.DkaiPick.activeFirst(fast, active) { it.id } else fast
-        return ordered + bad.filter { ProviderHealth.retryable(it.id) }
+        // 15 नवंबर 2026: अकेली key (जैसे एक-key वाली Gemini) थोड़ी देर पहले अटकी थी = फिर भी एक बार आज़माओ, बिना कोशिश गलती नहीं
+        return ordered + ProviderHealth.spareTry(ordered.isEmpty(), bad, { ProviderHealth.retryable(it.id) }, { ProviderHealth.dailyOut(it.id) })
     }
 
     /**
@@ -98,10 +102,12 @@ class BrainManager(private val ctx: Context) {
     private fun chatSpares(): List<Pair<Provider, AiClient>> {
         if (override != null || BrainPin.chatClient(ctx) == null) return emptyList()
         val pinned = BrainPin.get(ctx, BrainPin.CHAT)?.provider
-        val withKey = Providers.all.mapNotNull { p -> (scopedClient(ctx, p, ApiScopes.CHAT) ?: BrainPin.borrowed(ctx, p))?.let { p to it } }
+        val one = Prefs.oneKeyOn(ctx)
+        val withKey = Providers.all.filter { !ApiScopes.oneKeySkip(one, it.id) }
+            .mapNotNull { p -> (scopedClient(ctx, p, ApiScopes.CHAT) ?: BrainPin.borrowed(ctx, p))?.let { p to it } }
         val (good, bad) = withKey.partition { ProviderHealth.usable(it.first.id) }
         return good.sortedBy { ProviderHealth.speed(it.first.id) - (if (it.first.id == pinned) 150 else 0) } +
-            bad.filter { ProviderHealth.retryable(it.first.id) }
+            ProviderHealth.spareTry(good.isEmpty(), bad, { ProviderHealth.retryable(it.first.id) }, { ProviderHealth.dailyOut(it.first.id) })
     }
 
     /** कोई key आज़माने लायक नहीं बची - साफ़ कारण के साथ (बिना नेट पर गए) */
@@ -208,6 +214,8 @@ class BrainManager(private val ctx: Context) {
                 e.errors.all { (it.second as? AiException)?.code == 429 } -> "थोड़ी देर बाद पूछिए, या सेटिंग्स में कोई दूसरी फ्री key डालिए, जैसे Groq।"
                 e.errors.any { val c = (it.second as? AiException)?.code; c == 401 || c == 403 } -> "सेटिंग्स में key दोबारा डालकर टेस्ट दबाइए।"
                 // 14 नवंबर 2026: मॉडल ने सवाल लिया ही नहीं (400/404) = "फिर से बोलिए" से कुछ नहीं बदलता - सही जगह बताओ
+                // 15 नवंबर 2026 (मालिक): एक-key मोड में "दूसरी key डालें" गलत सलाह - वहाँ सिर्फ़ एक ही key है
+                e.errors.all { val c = (it.second as? AiException)?.code; c == 400 || c == 404 } && Prefs.oneKeyOn(ctx) -> "थोड़ी देर बाद फिर भेजिए।"
                 e.errors.all { val c = (it.second as? AiException)?.code; c == 400 || c == 404 } -> "सेटिंग्स → AI दिमाग → DK चैट में दूसरा मॉडल चुनें, या कोई और key डालें।"
                 else -> "फिर से बोलिए।"
             }

@@ -183,10 +183,10 @@ class SettingsActivity : AppCompatActivity() {
             Triple("about", "ऐप के बारे में", "version • बनाने वाले • निजता (privacy)")
         )
         if (cat == null) {
-            // 14 नवंबर 2026 (मालिक: "डाउनलोड अपडेट वाला एक ही जगह, ऊपर ही दिखे - अंदर नहीं"): मुख्य पन्ने पर सबसे ऊपर,
-            // किसी श्रेणी के अंदर नहीं
-            items.firstOrNull { it.first == "update" }?.let { (id, t, sub) -> menuRow(id, t, sub) }
+            // 15 नवंबर 2026 (मालिक: "अपडेट का सेक्शन सबसे नीचे दिखना चाहिए"): मुख्य पन्ने पर एक ही जगह, सबसे नीचे
+            // (किसी श्रेणी के अंदर नहीं). नया अपडेट आया हो तो होम पर चमकती पट्टी + popup ([UpdatePrompt])
             SettingsSearch.CATEGORIES.forEach { (c, _) -> menuRow(c.first, c.second, c.third) }
+            items.firstOrNull { it.first == "update" }?.let { (id, t, sub) -> menuRow(id, t, sub) }
             return
         }
         val ids = SettingsSearch.CATEGORIES.firstOrNull { it.first.first == cat }?.second.orEmpty()

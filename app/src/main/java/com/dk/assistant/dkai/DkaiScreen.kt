@@ -588,7 +588,7 @@ class DkaiScreen(val activity: ComponentActivity, val host: DkaiHost) {
                     else -> cl.ifBlank { "…" }
                 }, emptyList(), b.lastGround)
             } catch (e: kotlinx.coroutines.CancellationException) { throw e
-            } catch (e: Exception) { DKState.replyFailed(b.explainAll(e))
+            } catch (e: Exception) { com.dk.assistant.OwnMind.answer(c, t)?.let { DKState.reply(it) } ?: DKState.replyFailed(b.explainAll(e))
             } finally { DKState.set(Mode.IDLE) }
         }
         return true
@@ -782,12 +782,24 @@ class DkaiScreen(val activity: ComponentActivity, val host: DkaiHost) {
         voice.render()
     }
 
+    private var alertSig = ""
     private fun renderAlerts() {
         val a = try { host.alerts() } catch (_: Exception) { emptyList() }
+        // 15 नवंबर 2026: वही सूचना = दोबारा न बनाओ (वरना अपडेट वाली पट्टी की चमक हर बार टूटती)
+        val sig = a.joinToString("|") { it.first } + DkaiTheme.light
+        if (sig == alertSig && alertRow.childCount == a.size) return
+        alertSig = sig
         alertRow.removeAllViews()
         alertRow.visibility = if (a.isEmpty()) View.GONE else View.VISIBLE
-        for ((t, go) in a) alertRow.addView(DkaiTheme.pill(c, t, DkaiTheme.ALERT_BG, DkaiTheme.ALERT_TEXT, 12f).apply { setOnClickListener { go() } },
-            LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = d(6f) })
+        for ((t, go) in a) {
+            // 15 नवंबर 2026 (मालिक): नया अपडेट = होम पर चमकती (हाईलाइट) पट्टी, टैप = अपडेट स्क्रीन
+            val upd = com.dk.assistant.UpdatePrompt.isUpdateAlert(t)
+            val pill = if (upd) DkaiTheme.pill(c, t, DkaiTheme.UPDATE_BG, DkaiTheme.UPDATE_TEXT, 13f).apply { setTypeface(typeface, android.graphics.Typeface.BOLD) }
+                else DkaiTheme.pill(c, t, DkaiTheme.ALERT_BG, DkaiTheme.ALERT_TEXT, 12f)
+            pill.setOnClickListener { go() }
+            alertRow.addView(pill, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = d(6f) })
+            if (upd) com.dk.assistant.UpdatePrompt.pulse(pill)
+        }
     }
 
     private fun renderChat() {

@@ -121,6 +121,9 @@ object ApiScopes {
     /** एक-key मोड में किस कंपनी की key: Gemini = वही एक key; Groq/OpenRouter/Custom/बैकअप keys = कोई नहीं (सब Gemini से) */
     fun oneKeyFor(id: String, oneKey: String): String = if (id == "gemini") oneKey.trim() else ""
 
+    /** 15 नवंबर 2026: एक-key मोड में यह कंपनी चैट / उधार / चुने मॉडल में न आए (Gemini के सिवा कोई नहीं). Pure */
+    fun oneKeySkip(oneKeyOn: Boolean, id: String): Boolean = oneKeyOn && id != "gemini"
+
     /** नवंबर 2026 (मालिक): एक API के कितने बैकअप फ्री मॉडल आज़माएँ (उसके बाद अगली API) */
     const val BACKUP_MAX = 6
 

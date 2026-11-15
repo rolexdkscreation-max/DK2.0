@@ -356,18 +356,48 @@ object IslandCore {
         if (first) null else cur.filter { it.key !in seen && !it.ongoing }.maxByOrNull { it.at }
 
     /** island का आकार (% में) और जगह (dp में) - Settings की पट्टी कुछ भी दे, यहाँ सही दायरे में */
-    const val SIZE_MIN = 80
-    const val SIZE_MAX = 130
+    // 15 नवंबर 2026 (मालिक: "जितना छोटा करना है उतना छोटा, जितना बड़ा उतना बड़ा"): 80-130% से 40-200%
+    const val SIZE_MIN = 40
+    const val SIZE_MAX = 200
     const val SIZE_DEF = 100
     const val TOP_MIN = 0
     const val TOP_MAX = 80
     const val TOP_DEF = 8
-    const val SIDE_MIN = -120
-    const val SIDE_MAX = 120
+    // 15 नवंबर 2026: कोने वाले कैमरे (बाएँ / दाएँ ऊपर) तक भी खिसके
+    const val SIDE_MIN = -200
+    const val SIDE_MAX = 200
     fun size(v: Int) = v.coerceIn(SIZE_MIN, SIZE_MAX)
     fun top(v: Int) = v.coerceIn(TOP_MIN, TOP_MAX)
     fun side(v: Int) = v.coerceIn(SIDE_MIN, SIDE_MAX)
     fun sizeLabel(v: Int): String = when (size(v)) { in SIZE_MIN..90 -> "छोटा"; in 91..110 -> "मध्यम"; else -> "बड़ा" }
+
+    // ------------------------------------------------------------ 15 नवंबर 2026 (मालिक): नॉच (कैमरे वाला छोटा island)
+    // "नोज को राउंड शेप में भी कर सकूँ और स्क्वायर भी, जितना छोटा-बड़ा... फ्रंट कैमरा जहाँ है वहाँ सेट हो जाए. छोटा रहेगा,
+    // नोटिफिकेशन आएगा तो अपने-आप बड़ा (पूरे फ़ोन जितना), जाने के बाद फिर उतना छोटा."
+    const val NOTCH_W_MIN = 6
+    const val NOTCH_W_MAX = 260
+    const val NOTCH_W_DEF = 30
+    const val NOTCH_H_MIN = 6
+    const val NOTCH_H_MAX = 60
+    const val NOTCH_H_DEF = 30
+    /** गोलाई: 0 = चौकोर, 100 = पूरा गोल (गोल कैमरे जैसा / गोली) */
+    const val ROUND_MIN = 0
+    const val ROUND_MAX = 100
+    const val ROUND_DEF = 100
+    fun notchW(v: Int) = v.coerceIn(NOTCH_W_MIN, NOTCH_W_MAX)
+    fun notchH(v: Int) = v.coerceIn(NOTCH_H_MIN, NOTCH_H_MAX)
+    fun round(v: Int) = v.coerceIn(ROUND_MIN, ROUND_MAX)
+    fun roundLabel(v: Int): String = when (round(v)) { in 0..10 -> "चौकोर"; in 11..89 -> "गोल कोने"; else -> "पूरा गोल" }
+
+    /** नॉच के कोने (px): पूरा गोल = छोटी भुजा का आधा, चौकोर = 0. Pure */
+    fun notchCorner(roundPct: Int, wPx: Int, hPx: Int): Float = minOf(wPx, hPx) / 2f * round(roundPct) / 100f
+
+    /** गोली / फैले island के कोने (px): पहले जैसा नाप ([basePx]) × गोलाई. 100 = पहले जैसा. Pure */
+    fun corner(roundPct: Int, basePx: Float): Float = basePx * round(roundPct) / 100f
+
+    /** नॉच चालू = कुछ न चल रहा हो तब भी कैमरे पर छोटा island (DK ऐप सामने हो तो नहीं). Pure */
+    fun wanted(prefOn: Boolean, inApp: Boolean, s: Snap, now: Long, notch: Boolean): Boolean =
+        prefOn && !inApp && (notch || lead(s, now) != null)
 
     /** बुलबुला गोली के दाएँ: गोली के बीच से कितनी दूर (px) */
     fun bubbleX(centerX: Int, mainW: Int, gap: Int, bubbleW: Int): Int = centerX + mainW / 2 + gap + bubbleW / 2
