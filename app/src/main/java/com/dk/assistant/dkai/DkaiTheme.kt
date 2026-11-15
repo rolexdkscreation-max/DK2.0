@@ -18,39 +18,44 @@ object DkaiTheme {
     @Volatile var light = false
     fun load(c: Context) { light = com.dk.assistant.Prefs.str(c, PREF_THEME, "dark") == "light" }
     fun setLight(c: Context, on: Boolean) { com.dk.assistant.Prefs.edit(c) { putString(PREF_THEME, if (on) "light" else "dark") }; light = on }
-    private fun t(dark: Long, lite: Long): Int = (if (light) lite else dark).toInt()
+    /** 15 नवंबर 2026: सारे रंग एक ही जगह से ([com.dk.assistant.ui.ThemeVars]) - Light/Dark में सिर्फ़ bg / card / text */
+    private val m get() = com.dk.assistant.ui.ThemeVars.mode(light)
+    private val V = com.dk.assistant.ui.ThemeVars
 
-    val BG get() = t(0xFF0B101D, 0xFFF4F6FB)            // Deep Space / Luminous
-    val CARD get() = t(0xFF161E31, 0xFFFFFFFF)
-    val BORDER get() = t(0xFF26324D, 0xFFDCE3EE)
+    val BG get() = m.bg
+    val CARD get() = m.card
+    val BORDER get() = m.border
     const val BLUE = 0xFF3B82F6.toInt()
-    val CYAN get() = t(0xFF00E5FF, 0xFF0891B2)
+    /** साझा - दोनों मोड में वही चमकीला सियान (पहले light में फीका था) */
+    val CYAN get() = V.CYAN
     const val VIOLET = 0xFFA855F7.toInt()
     /** लिखावट का मुख्य रंग (अँधेरे में सफ़ेद, उजाले में गहरा) */
-    val WHITE get() = t(0xFFFFFFFF, 0xFF0F172A)
+    val WHITE get() = m.text
     /** नीले/लाल बटन के ऊपर - हमेशा सफ़ेद */
     const val ON = 0xFFFFFFFF.toInt()
-    val GRAY get() = t(0xFF94A3B8, 0xFF475569)             // उजाले में थोड़ा और गहरा - साफ़ पढ़ा जाए
+    val GRAY get() = m.gray
     const val GREEN = 0xFF22C55E.toInt()
     const val MINT = 0xFFA7F3D0.toInt()
     const val MINT_TEXT = 0xFF065F46.toInt()
     const val AMBER = 0xFFF59E0B.toInt()
     const val RED = 0xFFEF4444.toInt()
-    val RED_BG get() = t(0xFF1E1218, 0xFFFDECEC)
-    val PILL get() = t(0xFF1F2940, 0xFFEEF2F7)
+    val RED_BG get() = V.RED_BG
+    val PILL get() = m.pill
     const val PINK = 0xFFF472B6.toInt()
     /** नीचे की टैब-पट्टी / गहरा डिब्बा / चुनी पंक्ति / हल्की लिखावट / hint */
-    val NAV get() = t(0xFF0D1324, 0xFFFFFFFF)
-    val FIELD get() = t(0xFF0B1324, 0xFFF1F5F9)
-    val SEL get() = t(0xFF1E2A47, 0xFFE0E7FF)
-    val SUB get() = t(0xFFCBD5E1, 0xFF334155)
-    val HINT get() = t(0xFF64748B, 0xFF94A3B8)
-    /** ऊपर की सूचना-पट्टी (अपडेट / key) */
-    val ALERT_BG get() = t(0xFF2A1F0A, 0xFFFEF3C7)
-    val ALERT_TEXT get() = t(0xFFF59E0B, 0xFF92400E)
-    /** 15 नवंबर 2026: नया अपडेट वाली चमकती पट्टी (हरा - दूर से दिखे) */
-    val UPDATE_BG get() = t(0xFF064E3B, 0xFFD1FAE5)
-    val UPDATE_TEXT get() = t(0xFF6EE7B7, 0xFF065F46)
+    val NAV get() = m.nav
+    val FIELD get() = m.field
+    val SEL get() = m.sel
+    val SUB get() = m.sub
+    val HINT get() = m.hint
+    /** छूने की चमक - उजले पर गहरी */
+    val PRESS get() = m.press
+    /** ऊपर की सूचना-पट्टी (अपडेट / key) - साझा */
+    val ALERT_BG get() = V.ALERT_BG
+    val ALERT_TEXT get() = V.ALERT_TEXT
+    /** 15 नवंबर 2026: नया अपडेट वाली चमकती पट्टी (हरा - दूर से दिखे) - साझा */
+    val UPDATE_BG get() = V.UPDATE_BG
+    val UPDATE_TEXT get() = V.UPDATE_TEXT
 
     /*
      * 13 नवंबर 2026 (मालिक): फ़ोन की Settings जैसा - Light/Dark में सिर्फ़ पृष्ठभूमि और लिखावट बदले,
@@ -82,7 +87,7 @@ object DkaiTheme {
     }
 
     /** छूने पर हल्की चमक (Material ripple) */
-    fun press(d: Drawable, mask: Drawable? = null, color: Int = 0x33FFFFFF): RippleDrawable = RippleDrawable(ColorStateList.valueOf(color), d, mask ?: d)
+    fun press(d: Drawable, mask: Drawable? = null, color: Int = PRESS): RippleDrawable = RippleDrawable(ColorStateList.valueOf(color), d, mask ?: d)
 
     fun text(c: Context, s: String, sizeSp: Float, color: Int = WHITE, face: Typeface = SANS): TextView = TextView(c).apply {
         text = s; textSize = sizeSp; setTextColor(color); typeface = face; includeFontPadding = false

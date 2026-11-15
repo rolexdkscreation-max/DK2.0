@@ -16,23 +16,25 @@ import android.view.ViewGroup
  * पीछे की चमकती Aurora छिपी. सिर्फ़ दिखावट बदलती है - कोई बटन/काम नहीं छूटता.
  */
 object PlainLook {
-    // होम (DkaiTheme अँधेरा) वाले रंग - हमेशा यही, ताकि सफ़ेद लिखावट साफ़ पढ़ी जाए
-    const val BG = 0xFF0B101D.toInt()
-    const val CARD = 0xFF161E31.toInt()
-    const val BORDER = 0xFF26324D.toInt()
-    const val PILL = 0xFF1F2940.toInt()
-    const val FIELD = 0xFF0B1324.toInt()
+    // होम (DkaiTheme अँधेरा) वाले रंग - 15 नवंबर 2026: अब सब एक ही theme variables फ़ाइल (ui/ThemeVars) से
+    private val D = com.dk.assistant.ui.ThemeVars.DARK
+    private val L = com.dk.assistant.ui.ThemeVars.LIGHT
+    val BG = D.bg
+    val CARD = D.card
+    val BORDER = D.border
+    val PILL = D.pill
+    val FIELD = D.field
     const val BLUE = 0xFF3B82F6.toInt()
-    const val ME = 0xFF1E2A47.toInt()
+    val ME = D.sel
     const val PRESS = 0x33FFFFFF
 
-    // 14 नवंबर 2026 (मालिक: "डार्क / लाइट मोड दिखे और काम करे"): लाइट चुनी हो ([com.dk.assistant.dkai.DkaiTheme.light]) = होम जैसे उजले रंग
-    const val L_BG = 0xFFF4F6FB.toInt()
-    const val L_CARD = 0xFFFFFFFF.toInt()
-    const val L_BORDER = 0xFFDCE3EE.toInt()
-    const val L_PILL = 0xFFEEF2F7.toInt()
-    const val L_FIELD = 0xFFF1F5F9.toInt()
-    const val L_ME = 0xFFE0E7FF.toInt()
+    // लाइट चुनी हो ([com.dk.assistant.dkai.DkaiTheme.light]) = वही design, सिर्फ़ पृष्ठभूमि / कार्ड / लिखावट उजले-गहरे
+    val L_BG = L.bg
+    val L_CARD = L.card
+    val L_BORDER = L.border
+    val L_PILL = L.pill
+    val L_FIELD = L.field
+    val L_ME = L.sel
     const val L_TEXT = 0x0F172A
     private val light get() = com.dk.assistant.dkai.DkaiTheme.light
     private fun bg() = if (light) L_BG else BG
@@ -56,33 +58,13 @@ object PlainLook {
     }
 
     /*
-     * 14 नवंबर 2026 (मालिक): "डार्क थीम में एकदम प्यारा, पूरा कलरफुल दिखता है - वैसा ही लाइट में भी, बल्कि लाइट में रंग
-     * और भी ज़्यादा, डार्क से भी खूबसूरत." लाइट में हर डिब्बा (कार्ड) अपने रंग का हल्का-सा रंगीन (pastel) - सफ़ेद-सपाट नहीं.
+     * 15 नवंबर 2026 (मालिक: "light mode के pastel gradient और गुलाबी-नीले कार्ड हटाओ - हर कार्ड solid"):
+     * पहले यहाँ light के रंगीन (pastel) कार्ड बनते थे (LIGHT_TINTS / pastel / colorCard). सब हटा - light में
+     * हर कार्ड ठोस सफ़ेद + वही हल्का किनारा, बिल्कुल dark वाले कार्ड जैसा आकार.
      */
-    val LIGHT_TINTS = intArrayOf(0xFF6366F1.toInt(), 0xFF06B6D4.toInt(), 0xFFA855F7.toInt(), 0xFF10B981.toInt(),
-        0xFFF59E0B.toInt(), 0xFF0EA5E9.toInt(), 0xFFEC4899.toInt())
-    /** pure: रंग को सफ़ेद में मिलाओ - amount 0 = सफ़ेद, 1 = पूरा रंग */
-    fun pastel(tint: Int, amount: Float): Int {
-        val a = amount.coerceIn(0f, 1f)
-        fun mix(ch: Int) = (255 + ((ch - 255) * a)).toInt().coerceIn(0, 255)
-        return (0xFF shl 24) or (mix((tint shr 16) and 0xFF) shl 16) or (mix((tint shr 8) and 0xFF) shl 8) or mix(tint and 0xFF)
-    }
-    /** pure: रंग का गहरा रूप (लिखावट के लिए) - amount = कितना काला मिलाना */
-    fun deep(tint: Int, amount: Float = 0.35f): Int {
-        val k = 1f - amount.coerceIn(0f, 1f)
-        fun d(ch: Int) = (ch * k).toInt().coerceIn(0, 255)
-        return (0xFF shl 24) or (d((tint shr 16) and 0xFF) shl 16) or (d((tint shr 8) and 0xFF) shl 8) or d(tint and 0xFF)
-    }
-    /** pure: n-वाँ डिब्बा = कौन-सा रंग */
-    fun lightTint(i: Int): Int = LIGHT_TINTS[Math.floorMod(i, LIGHT_TINTS.size)]
-    /** लाइट का रंगीन कार्ड: ऊपर-बाएँ से नीचे-दाएँ हल्का रंग + रंगीन किनारा */
-    fun colorCard(tint: Int, radiusPx: Float, strokePx: Int): GradientDrawable =
-        GradientDrawable(GradientDrawable.Orientation.TL_BR, intArrayOf(pastel(tint, 0.20f), pastel(tint, 0.07f))).apply {
-            cornerRadius = radiusPx; setStroke(strokePx.coerceAtLeast(1), pastel(tint, 0.50f))
-        }
-    private fun tintFor(v: View): Int {
-        val p = v.parent as? ViewGroup ?: return lightTint(0)
-        return lightTint(p.indexOfChild(v))
+    /** pure: ठोस कार्ड (कोई gradient नहीं) */
+    fun solidCard(fill: Int, radiusPx: Float, strokePx: Int, stroke: Int): GradientDrawable = GradientDrawable().apply {
+        cornerRadius = radiusPx; setColor(fill); setStroke(strokePx.coerceAtLeast(1), stroke)
     }
 
     private val TAG = R.id.plain_look   // अलग निशान (सिर्फ़ इसी काम का)
@@ -145,7 +127,6 @@ object PlainLook {
         val dp = v.resources.displayMetrics.density
         val kind = glassKind(bg)
         val flat: Drawable? = when {
-            light && kind == Kind.CARD -> colorCard(tintFor(v), 18 * dp, dp.toInt())
             kind != null -> make(kind, dp)
             bg is GradientDrawable && glassyGradient(bg) ->
                 GradientDrawable().apply {
@@ -190,8 +171,7 @@ object PlainLook {
         val dp = v.resources.displayMetrics.density
         val fill = if (c == PILL || c == ME) pill() else card()
         val rad = if (g.shape != GradientDrawable.OVAL) (try { g.cornerRadius } catch (_: Exception) { 16 * dp }) else 0f
-        val flat = if (fill == card() && g.shape != GradientDrawable.OVAL) colorCard(tintFor(v), rad, dp.toInt())
-        else GradientDrawable().apply {
+        val flat = GradientDrawable().apply {
             shape = g.shape
             if (g.shape != GradientDrawable.OVAL) cornerRadius = rad
             setColor(fill); setStroke(dp.toInt().coerceAtLeast(1), border())

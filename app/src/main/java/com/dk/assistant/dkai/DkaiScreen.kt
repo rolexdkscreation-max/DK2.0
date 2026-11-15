@@ -76,6 +76,8 @@ class DkaiScreen(val activity: ComponentActivity, val host: DkaiHost) {
     private lateinit var content: LinearLayout
     private lateinit var chatLabel: TextView
     private lateinit var readyDot: PulseDot
+    /** 15 नवंबर 2026 (मालिक): header के THINKING पर भी वही टाइपिंग एनीमेशन (Settings › दिखावट वाला) */
+    private lateinit var readyAnim: com.dk.assistant.DKWorkingIndicator
     private lateinit var readyTxt: TextView
     private lateinit var alertRow: LinearLayout
     private lateinit var panelHost: FrameLayout
@@ -233,6 +235,8 @@ class DkaiScreen(val activity: ComponentActivity, val host: DkaiHost) {
         val mid = LinearLayout(c).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; setPadding(d(10f), 0, 0, 0) }
         readyDot = PulseDot(c)
         mid.addView(readyDot, LinearLayout.LayoutParams(d(14f), d(14f)))
+        readyAnim = com.dk.assistant.DKWorkingIndicator(c).apply { bare = true; state = com.dk.assistant.WorkState.IDLE; visibility = View.GONE }
+        mid.addView(readyAnim, LinearLayout.LayoutParams(d(20f), d(16f)))
         readyTxt = DkaiTheme.text(c, "READY", 12f, DkaiKit.EMERALD, DkaiTheme.SANS_BOLD).apply { letterSpacing = 0.12f; setPadding(d(6f), 0, 0, 0) }
         mid.addView(readyTxt)
         mid.setOnClickListener { if (!Prefs.hasAnyKey(c)) host.ready() }
@@ -811,6 +815,10 @@ class DkaiScreen(val activity: ComponentActivity, val host: DkaiHost) {
         val st = DkaiCore.homeStatus(Prefs.hasAnyKey(c), DKState.shownMode(), DKState.live, DKState.working())
         val col = when (st) { DkaiCore.Status.READY -> DkaiKit.EMERALD; DkaiCore.Status.SETUP -> DkaiTheme.AMBER; DkaiCore.Status.SPEAKING -> DkaiTheme.CYAN; else -> DkaiTheme.VIOLET }
         readyTxt.text = st.label; readyTxt.setTextColor(col); readyDot.color = col; readyDot.invalidate()
+        // THINKING = बिंदु की जगह चुना हुआ टाइपिंग एनीमेशन (बंद / कम एनिमेशन = पहले जैसा बिंदु)
+        val thinkAnim = st == DkaiCore.Status.THINKING && thinkAnimOn()
+        DkaiTheme.gone(readyAnim, !thinkAnim); DkaiTheme.gone(readyDot, thinkAnim)
+        readyAnim.state = if (thinkAnim) com.dk.assistant.WorkState.THINKING else com.dk.assistant.WorkState.IDLE
         renderAlerts()
         renderChat()
         voice.render()
@@ -847,7 +855,7 @@ class DkaiScreen(val activity: ComponentActivity, val host: DkaiHost) {
             DkaiSearchLive.cancel(); searchDone = true
         }
         val searchOn = DkaiSearchLive.active()
-        val sig = "${msgs.size}|${msgs.lastOrNull()?.time}|${msgs.lastOrNull()?.text?.length}|${msgs.lastOrNull()?.src?.size}|${msgs.lastOrNull()?.g?.chunks?.size}|$thinking|${DKState.hintText}|$searchOn".hashCode()
+        val sig = "${msgs.size}|${msgs.lastOrNull()?.time}|${msgs.lastOrNull()?.text?.length}|${msgs.lastOrNull()?.src?.size}|${msgs.lastOrNull()?.g?.chunks?.size}|$thinking|${DKState.hintText}|$searchOn|${if (thinking) thinkStyle() else ""}".hashCode()
         if (sig == shownMsgs && liveR == shownLive) return
         shownMsgs = sig; shownLive = liveR
         chatList.removeAllViews()
@@ -869,7 +877,7 @@ class DkaiScreen(val activity: ComponentActivity, val host: DkaiHost) {
         else if (searchOn) chatList.addView(DkaiSearchCard(c).apply {
             layoutParams = LinearLayout.LayoutParams(minOf((c.resources.displayMetrics.widthPixels * 0.86f).toInt(), d(520f)), -2).apply { gravity = Gravity.START; bottomMargin = d(10f) }
         })
-        else if (thinking) chatList.addView(bubble(false, DKState.hintText.ifBlank { "सोच रहा हूँ…" }, faint = true))
+        else if (thinking) chatList.addView(thinkingBubble(DKState.hintText.ifBlank { "सोच रहा हूँ…" }))
         DkaiTheme.gone(heroBox, msgs.isNotEmpty() || liveR.isNotBlank())
         if (msgs.isNotEmpty()) homeScroll.post { homeScroll.smoothScrollTo(0, homeCol.height) }
     }
@@ -912,6 +920,27 @@ class DkaiScreen(val activity: ComponentActivity, val host: DkaiHost) {
         return box.apply {
             layoutParams = LinearLayout.LayoutParams((c.resources.displayMetrics.widthPixels * 0.86f).toInt(), -2).apply { gravity = Gravity.START; bottomMargin = d(10f) }
         }
+    }
+
+    /** 15 नवंबर 2026: अभी का टाइपिंग एनीमेशन (Settings › दिखावट से, हर render पर ताज़ा) + "कम एनिमेशन" */
+    private fun thinkStyle() = com.dk.assistant.Prefs.typingStyle(c) + "|" + com.dk.assistant.ui.NeonTheme.reducedMotion()
+    private fun thinkAnimOn() = com.dk.assistant.TypingStyles.animates(com.dk.assistant.Prefs.typingStyle(c), com.dk.assistant.ui.NeonTheme.reducedMotion())
+
+    /**
+     * 15 नवंबर 2026 (मालिक: "सोच रहा हूँ… वाला bubble static है"): अब बुलबुले में वही टाइपिंग एनीमेशन जो Settings › दिखावट
+     * में चुना है - जवाब का पहला अक्षर आते ही यह बुलबुला हटकर असली जवाब (renderChat). बंद / कम एनिमेशन = सिर्फ़ लिखा, कुछ नहीं हिलता.
+     */
+    private fun thinkingBubble(text: String): View = LinearLayout(c).apply {
+        orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
+        setPadding(d(14f), d(10f), d(14f), d(10f))
+        background = DkaiTheme.round(c, DkaiTheme.CARD, 18f, DkaiTheme.BORDER)
+        contentDescription = text
+        if (thinkAnimOn()) addView(com.dk.assistant.DKWorkingIndicator(c).apply { bare = true; state = com.dk.assistant.WorkState.THINKING },
+            LinearLayout.LayoutParams(d(26f), d(20f)).apply { marginEnd = d(8f) })
+        addView(DkaiTheme.text(c, text, 15f, DkaiTheme.GRAY).apply {
+            maxWidth = (c.resources.displayMetrics.widthPixels * 0.66f).toInt(); importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
+        })
+        layoutParams = LinearLayout.LayoutParams(-2, -2).apply { gravity = Gravity.START; bottomMargin = d(10f) }
     }
 
     private fun bubble(user: Boolean, text: String, faint: Boolean = false, ground: com.dk.assistant.GroundCite.G? = null): View = TextView(c).apply {

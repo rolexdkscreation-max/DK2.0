@@ -67,19 +67,21 @@ class DkBrainChatEmotionTest {
         assertTrue(k.contains("KeyTick.SHOW_MS"))
     }
 
-    @Test fun lightThemeIsColourful() {
-        assertEquals(0xFFFFFFFF.toInt(), PlainLook.pastel(0xFF6366F1.toInt(), 0f))
-        assertEquals(0xFF6366F1.toInt(), PlainLook.pastel(0xFF6366F1.toInt(), 1f))
-        val p = PlainLook.pastel(0xFF6366F1.toInt(), 0.2f)
-        assertTrue((p shr 16 and 0xFF) > 0xD0 && (p and 0xFF) > (p shr 8 and 0xFF))   // हल्का, पर नीला-बैंगनी झलक
-        assertEquals(0xFF000000.toInt(), PlainLook.deep(0xFF6366F1.toInt(), 1f))
-        assertTrue(PlainLook.LIGHT_TINTS.size >= 6)
-        assertEquals(PlainLook.lightTint(0), PlainLook.lightTint(PlainLook.LIGHT_TINTS.size))
-        assertTrue(PlainLook.LIGHT_TINTS.toSet().size == PlainLook.LIGHT_TINTS.size)
-        assertTrue(src("PlainLook.kt").contains("light && kind == Kind.CARD -> colorCard(tintFor(v), 18 * dp, dp.toInt())"))
+    /**
+     * 15 नवंबर 2026 (मालिक का फ़ैसला बदला: "light mode के pastel gradient और गुलाबी-नीले glass कार्ड हटाओ,
+     * light में dark वाला ही design - हर कार्ड solid"). पहले यह test light के रंगीन (pastel) कार्ड माँगता था;
+     * अब जाँच यह कि pastel/रंगीन कार्ड का code ही न बचे और light कार्ड ठोस सफ़ेद हो.
+     */
+    @Test fun lightThemeIsSameDesignSolidCards() {
+        val pl = src("PlainLook.kt")
+        assertFalse(pl.contains("fun pastel("))
+        assertFalse(pl.contains("LIGHT_TINTS ="))
+        assertFalse(pl.contains("fun colorCard("))
+        assertFalse(pl.contains("colorCard(tintFor(v)"))
+        assertEquals(0xFFFFFFFF.toInt(), PlainLook.L_CARD)
         val a = src("SettingsActivity.kt")
-        assertTrue(a.contains("PlainLook.colorCard(menuTint(icon), 20 * dp"))
-        assertTrue(a.contains("PlainLook.deep(menuTint(icon))"))
+        assertFalse(a.contains("PlainLook.colorCard("))
+        assertFalse(a.contains("PlainLook.deep(menuTint(icon))"))
     }
 
     @Test fun brainMenuHasNoTopPinAndOneKeyHidesParts() {

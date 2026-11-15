@@ -14,6 +14,12 @@ object PlusBoot {
     fun init(c: Context) {
         val app = c.applicationContext
         EventTriggers.sync(app)
+        // 15 नवंबर 2026: हटाए गए 3D कैरेक्टर की पुरानी डाउनलोड फ़ाइलें चुपचाप मिटाओ (पीछे, ऐप खुलने में देर नहीं)
+        Thread {
+            try { com.dk.assistant.plus.models.ModelManager.cleanupRemoved(app) } catch (_: Throwable) {}
+            // 15 नवंबर 2026 (मालिक): वॉलपेपर हटा - पुराना गैलरी वाला चित्र (filesDir/wallpaper) चुपचाप मिटाओ, crash नहीं
+            try { java.io.File(app.filesDir, com.dk.assistant.ui.NeonTheme.LEGACY_WALL_DIR).deleteRecursively() } catch (_: Throwable) {}
+        }.start()
         if (!hooked) {
             hooked = true
             FeatureFlags.listen { key, _ -> if (key == FeatureFlags.EVENTS_ON || key.startsWith("plus_ev_")) EventTriggers.sync(app) }

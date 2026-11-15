@@ -34,7 +34,11 @@ class DkaiTermTest {
         assertEquals(0x80123456.toInt(), DkaiOrbs.a(0xFF123456.toInt(), 0x80))
         val views = src("dkai/DkaiViews.kt")
         for (f in listOf("fun reactor(", "fun solar(", "fun crystal(", "fun swarm(")) assertTrue(f, views.contains(f))
-        assertTrue(src("dkai/DkaiVoice.kt").contains("DkaiOrbs.pick"))
+        // 15 नवंबर 2026 (मालिक): "ORB पे टैप करने पे बदलने का ऑप्शन नहीं आना चाहिए, सेटिंग से ही" + छोटी पट्टी में वही orb
+        val voice = src("dkai/DkaiVoice.kt")
+        assertFalse(voice.contains("DkaiOrbs.pick"))
+        assertFalse(voice.contains("if (it == DkaiOrbs.CLASSIC) DkaiOrbs.FLUID"))
+        assertTrue(voice.contains("miniClassic = OrbView(c)") && voice.contains("style = { DkaiOrbs.get(c) } }"))
         // 13 नवंबर 2026 (मालिक): orb बदलना ☰ मेनू से हटकर Settings → दिखावट में
         assertTrue(src("SettingsLook.kt").contains("card(\"DKAI का orb\""))
         assertTrue(src("SettingsLook.kt").contains("DkaiOrbs.ORBS"))

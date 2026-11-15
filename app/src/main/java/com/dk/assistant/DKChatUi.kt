@@ -78,9 +78,13 @@ class DKReplyBubble(ctx: Context) : LinearLayout(ctx) {
     }
 
     /** तरंग चलती रहे + बगल में हल्का संदेश ("" = सिर्फ़ तरंग) */
-    fun working(label: String, st: WorkState = WorkState.THINKING) {
+    fun working(label0: String, st: WorkState = WorkState.THINKING) {
         if (!isWorking) return
         wave.state = st
+        // 15 नवंबर 2026: टाइपिंग एनीमेशन "बंद" = तरंग की खाली जगह भी नहीं
+        val off = (if (wave.agent) Prefs.typingStyleAgent(context) else Prefs.typingStyle(context)) == TypingStyles.OFF
+        wave.visibility = if (off) GONE else VISIBLE
+        val label = if (off && label0.isEmpty()) "सोच रहा हूँ…" else label0
         if (shownLabel == label) return
         val old = shownLabel
         shownLabel = label

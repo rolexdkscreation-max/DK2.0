@@ -1,6 +1,5 @@
 package com.dk.assistant
 
-import com.dk.assistant.plus.Character3D
 import com.dk.assistant.plus.FeatureFlags
 import com.dk.assistant.plus.GroupReport
 import com.dk.assistant.plus.Mail
@@ -141,21 +140,21 @@ class AllFeaturesNov15Test {
         assertTrue(GroupReport.Rules.catalog(emptyList()).startsWith("NO_TEMPLATES"))
     }
 
-    // ---------------------------------------------------------------- 3D
-    @Test fun character3d_downloadOnly_andSafePaths() {
+    // ---------------------------------------------------------------- 3D (मालिक का नया फ़ैसला, 15 नवंबर 2026)
+    /** मालिक: "3D कैरेक्टर जो बनाया था, उसे हटा दो पूरी तरह से। वो अच्छा नहीं है" - कहीं कुछ न बचे, पुरानी फ़ाइलें मिटें */
+    @Test fun character3d_removedCompletely() {
         assertEquals(emptyList<String>(), ModelCatalog.problems())
-        assertEquals("char_fox", Character3D.Rules.find("लोमड़ी वाला दिखाओ")?.id)
-        assertEquals("char_robot", Character3D.Rules.find("रोबोट")?.id)
-        assertEquals(ModelCatalog.GLTF_LOADER, Character3D.Rules.fileFor("lib/loaders/GLTFLoader.js"))
-        assertEquals(ModelCatalog.GEOMETRY_UTILS, Character3D.Rules.fileFor("/lib/utils/BufferGeometryUtils.js"))
-        assertEquals("fox.glb", Character3D.Rules.fileFor("fox.glb")?.fileName)
-        assertNull(Character3D.Rules.fileFor("../shared_prefs/dk_prefs.xml"))
-        assertNull(Character3D.Rules.fileFor("sface_2021dec_int8.onnx"))     // सिर्फ़ 3D फ़ाइलें
-        val robot = ModelCatalog.CHARACTERS.first()
-        assertEquals(robot.bytes + ModelCatalog.VIEWER_LIBS.sumOf { it.bytes }, Character3D.Rules.needBytes(robot) { false })
-        assertEquals(0L, Character3D.Rules.needBytes(robot) { true })
-        val js = src("../../../../assets/character/character.js")
-        assertTrue(js.contains("/models/lib/loaders/GLTFLoader.js") && js.contains("Char"))
+        val main = listOf(File("src/main"), File("app/src/main")).first { it.exists() }
+        val code = main.walkTopDown().filter { it.isFile && (it.extension == "kt" || it.name == "AndroidManifest.xml") }.joinToString("\n") { it.readText() }
+        for (gone in listOf("Character3DActivity", "object Character3D", "CHARACTER_3D", "CHARACTER_OVERLAY", "BS_3D", "show_character", "sec3D()", "ModelCatalog.CHARACTERS"))
+            assertFalse(gone, code.contains(gone))
+        assertFalse(File(main, "assets/character").exists())
+        assertTrue(ModelCatalog.ALL.none { it.fileName.endsWith(".glb") })
+        assertTrue(ModelCatalog.REMOVED_FILES.containsAll(listOf("fox.glb", "robot_expressive.glb", "three_gltf_loader.js")))
+        assertTrue(src("plus/PlusBoot.kt").contains("ModelManager.cleanupRemoved(app)"))
+        assertTrue(DkSettings.find("3D कैरेक्टर चालू करो")?.id != "char3d")
+        assertNull(PlusTools.byName("show_character"))
+        assertTrue(SettingsSearch.ENTRIES.none { it.card == "3D कैरेक्टर" })
     }
 
     // ---------------------------------------------------------------- DK को सब पता
@@ -163,24 +162,23 @@ class AllFeaturesNov15Test {
         assertEquals("face", DkSettings.find("चेहरा पहचान चालू करो")?.id)
         assertEquals("email", DkSettings.find("ईमेल वाला चालू करो")?.id)
         assertEquals("wa_report", DkSettings.find("ग्रुप रिपोर्ट ऑन करो")?.id)
-        assertEquals("char3d", DkSettings.find("3D कैरेक्टर चालू करो")?.id)
         assertEquals("friday", DkSettings.find("फ्राइडे ऑन")?.id)
         assertEquals("venom", DkSettings.find("venom")?.id)
         assertEquals("god_mode", DkSettings.find("गॉड मोड")?.id)
         assertEquals("stealth", DkSettings.find("स्टेल्थ मोड")?.id)
-        for (k in listOf(FeatureFlags.FACE_ON, FeatureFlags.EMAIL_ON, FeatureFlags.WA_GROUP_REPORT, FeatureFlags.CHARACTER_3D)) {
+        for (k in listOf(FeatureFlags.FACE_ON, FeatureFlags.EMAIL_ON, FeatureFlags.WA_GROUP_REPORT)) {
             assertTrue(k, FeatureFlags.ready(k)); assertFalse(k, FeatureFlags.defaultOf(k))
         }
-        for (t in listOf("face_who", "email_read", "email_send", "email_delete", "group_report", "show_character")) {
+        for (t in listOf("face_who", "email_read", "email_send", "email_delete", "group_report")) {
             assertNotNull(t, PlusTools.byName(t)); assertTrue(t, DkSettings.RUN_HELP.contains(t))
         }
         val apply = src("DkSettingsApply.kt")
         assertTrue(apply.contains("AssistantPersona.set(c, a)") && apply.contains("GuardModes.set(c, m)"))
         assertTrue(src("GeminiLiveSetup.kt").contains("FRIDAY / VENOM mode"))
-        for (card in listOf("FRIDAY / VENOM मोड", "टच मोड का रूप", "ईमेल (IMAP/SMTP)", "WhatsApp ग्रुप रिपोर्ट", "3D कैरेक्टर"))
+        for (card in listOf("FRIDAY / VENOM मोड", "टच मोड का रूप", "ईमेल (IMAP/SMTP)", "WhatsApp ग्रुप रिपोर्ट"))
             assertTrue(card, SettingsSearch.ENTRIES.any { it.card == card })
         val all = SetSrc.all()
-        assertTrue(all.contains("secEmail()") && all.contains("secGroupReport()") && all.contains("sec3D()"))
+        assertTrue(all.contains("secEmail()") && all.contains("secGroupReport()") && !all.contains("sec3D()"))
     }
 
     @Test fun noMarket_noMarketingSuite() {

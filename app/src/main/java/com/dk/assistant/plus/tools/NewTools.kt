@@ -1,14 +1,11 @@
 package com.dk.assistant.plus.tools
 
 import android.content.Context
-import com.dk.assistant.Character3DActivity
 import com.dk.assistant.DKAccessibilityService
 import com.dk.assistant.FaceWhoActivity
-import com.dk.assistant.plus.Character3D
 import com.dk.assistant.plus.FeatureFlags
 import com.dk.assistant.plus.GroupReport
 import com.dk.assistant.plus.Mail
-import com.dk.assistant.plus.models.ModelCatalog
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
@@ -128,22 +125,5 @@ object GroupReportTool : PlusTool {
             return "confirm_needed: NOT sent. Read this to the user and ask 'भेज दूँ?':\n$text\nOn yes call action=send again with the same values and confirmed=true."
         val svc = c as? DKAccessibilityService ?: DKAccessibilityService.instance ?: return "ERROR: DK phone control (Accessibility) is off - it is needed to send in WhatsApp."
         return GroupReport.send(svc, t.group, text)?.let { "ERROR: $it. Tell the user." } ?: "SENT: report sent to WhatsApp group '${t.group}'. Tell the user briefly."
-    }
-}
-
-object CharacterTool : PlusTool {
-    override val name = "show_character"
-    override val flag = FeatureFlags.CHARACTER_3D
-    override fun declaration() = PlusTools.decl(name,
-        "Open DK's 3D character on the screen (downloaded from the internet the first time, MB progress shown). Use for '3D कैरेक्टर दिखाओ', " +
-            "'रोबोट दिखाओ', 'लोमड़ी वाला कैरेक्टर'. Characters: " + ModelCatalog.CHARACTERS.joinToString { "${it.title} (${it.mb})" } + ".",
-        JSONObject().put("character", PlusTools.str("which one (empty = the last chosen)")))
-
-    override suspend fun run(c: Context, args: JSONObject): String {
-        val a = Character3D.Rules.find(args.optString("character")) ?: Character3D.selected(c)
-        return withContext(Dispatchers.Main) {
-            try { Character3DActivity.open(c, a.id); "OPENED: ${a.title}" + (if (Character3D.ready(c, a)) "" else " - downloading first (${a.mb})") + ". Tell the user briefly." }
-            catch (e: Exception) { "ERROR: ${e.message}" }
-        }
     }
 }
