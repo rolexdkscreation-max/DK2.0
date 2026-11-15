@@ -54,8 +54,40 @@ object OpenSearch {
         }.sortedBy { it.second }.map { it.first }
     } catch (_: Exception) { emptyList() }
 
+    /**
+     * 15 नवंबर 2026 (मालिक: "DuckDuckGo का फ़्री API हो तो ही"): DuckDuckGo Instant Answer API - मुफ़्त, बिना key
+     * (api.duckduckgo.com, format=json). सीधा जवाब (Answer / Definition) या सार (Abstract) + पास के विषय.
+     */
+    fun ddgUrl(q: String) = "https://api.duckduckgo.com/?q=${enc(q)}&format=json&no_html=1&skip_disambig=1&no_redirect=1&t=dkai"
+
+    fun parseDdg(json: String, max: Int = 3): List<Hit> = try {
+        val o = JSONObject(json)
+        val out = mutableListOf<Hit>()
+        val heading = o.optString("Heading").trim()
+        val answer = o.optString("Answer").trim()
+        if (answer.isNotBlank()) out += Hit(heading.ifBlank { "DuckDuckGo" }, "duckduckgo.com", "https://duckduckgo.com/", "", answer.take(500))
+        val abs = o.optString("AbstractText").ifBlank { o.optString("Abstract") }.trim()
+        if (abs.length >= 30) out += Hit(heading.ifBlank { "DuckDuckGo" }, o.optString("AbstractSource").ifBlank { "duckduckgo.com" },
+            o.optString("AbstractURL"), "", abs.take(700))
+        val def = o.optString("Definition").trim()
+        if (def.length >= 20) out += Hit(heading.ifBlank { "Definition" }, o.optString("DefinitionSource").ifBlank { "duckduckgo.com" },
+            o.optString("DefinitionURL"), "", def.take(400))
+        val rel = o.optJSONArray("RelatedTopics")
+        if (rel != null) for (i in 0 until rel.length()) {
+            if (out.size >= max) break
+            val r = rel.optJSONObject(i) ?: continue
+            val t = r.optString("Text").trim()
+            if (t.length >= 30) out += Hit(t.substringBefore(" - ").take(80), "duckduckgo.com", r.optString("FirstURL"), "", t.take(300))
+        }
+        out.distinctBy { it.text.lowercase() }.take(max)
+    } catch (_: Exception) { emptyList() }
+
     /** Live मॉडल को देने लायक: हर बात के साथ वेबसाइट और तारीख़ */
-    fun compose(news: List<Hit>, wiki: List<Hit>): String = buildString {
+    fun compose(news: List<Hit>, wiki: List<Hit>, ddg: List<Hit> = emptyList()): String = buildString {
+        if (ddg.isNotEmpty()) {
+            append("INSTANT ANSWER (DuckDuckGo):\n")
+            ddg.forEach { append("- ").append(it.title).append(": ").append(it.text.replace('\n', ' ')).append(" (").append(it.site).append(")\n") }
+        }
         if (news.isNotEmpty()) {
             append("LATEST NEWS HEADLINES (newest first):\n")
             news.forEach { append("- ").append(it.title).append(" (").append(it.site.ifBlank { "news" }).append(if (it.date.isNotBlank()) ", ${it.date}" else "").append(")\n") }
@@ -66,6 +98,6 @@ object OpenSearch {
         }
     }.trim()
 
-    fun sources(news: List<Hit>, wiki: List<Hit>): List<Pair<String, String>> =
-        (news.take(5) + wiki.take(2)).filter { it.url.isNotBlank() }.map { it.site.ifBlank { it.title } to it.url }
+    fun sources(news: List<Hit>, wiki: List<Hit>, ddg: List<Hit> = emptyList()): List<Pair<String, String>> =
+        (news.take(5) + wiki.take(2) + ddg.take(2)).distinctBy { it.url }.filter { it.url.isNotBlank() }.map { it.site.ifBlank { it.title } to it.url }
 }

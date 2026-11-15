@@ -19,17 +19,19 @@ object OpenSearchNet {
     fun search(question: String): SearchResult? {
         val q = question.trim()
         if (q.length < 2) return null
-        val pool = java.util.concurrent.Executors.newFixedThreadPool(3)
+        val pool = java.util.concurrent.Executors.newFixedThreadPool(4)
         try {
             val fn = pool.submit<List<Hit>> { get(OpenSearch.newsUrl(q))?.let { OpenSearch.parseNews(it) } ?: emptyList() }
             val fh = pool.submit<List<Hit>> { get(OpenSearch.wikiUrl(q, "hi"))?.let { OpenSearch.parseWiki(it, "hi") } ?: emptyList() }
+            val fd = pool.submit<List<Hit>> { get(OpenSearch.ddgUrl(q))?.let { OpenSearch.parseDdg(it) } ?: emptyList() }   // 15 नवंबर 2026: DuckDuckGo (मुफ़्त, बिना key)
             val fe = pool.submit<List<Hit>> { get(OpenSearch.wikiUrl(q, "en"))?.let { OpenSearch.parseWiki(it, "en") } ?: emptyList() }
             fun <T> f(x: java.util.concurrent.Future<List<T>>): List<T> = try { x.get(10, java.util.concurrent.TimeUnit.SECONDS) } catch (_: Exception) { emptyList() }
             val news = f(fn)
             val wiki = (f(fh).take(1) + f(fe).take(1))
-            val text = OpenSearch.compose(news, wiki)
-            DKLog.d("बिना-key खोज: ${news.size} ख़बरें, ${wiki.size} Wikipedia")
-            return if (text.isBlank()) null else SearchResult(text, OpenSearch.sources(news, wiki))
+            val ddg = f(fd)
+            val text = OpenSearch.compose(news, wiki, ddg)
+            DKLog.d("बिना-key खोज: ${news.size} ख़बरें, ${wiki.size} Wikipedia, ${ddg.size} DuckDuckGo")
+            return if (text.isBlank()) null else SearchResult(text, OpenSearch.sources(news, wiki, ddg))
         } finally { pool.shutdownNow() }
     }
 }

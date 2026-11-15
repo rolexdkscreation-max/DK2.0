@@ -103,10 +103,14 @@ object LocalRouter {
         // नवंबर 2026: Settings → फ़ोन लॉक / अनलॉक - मालिक के अपने वाक्य (DK पहले से बुलाया हुआ, इसलिए नाम ज़रूरी नहीं)
         PhoneLockVoice.match(raw, needName = false)?.let { return Split(PhoneLockVoice.quick(it), null) }
         // नवंबर 2026: गार्ड मोड - "DK गार्ड मोड चालू करो" / अलार्म बजते समय गुप्त शब्द = बंद (तुरंत, बिना AI)
+        // 15 नवंबर 2026 (मालिक): "गॉड मोड ऑन करो" / "स्टेल्थ मोड ऑन करो" = टच मोड उसी रूप में (तुरंत, बिना AI)
+        GuardModes.parse(raw)?.let { return Split(GuardModes.quick(it), null) }
         GuardRules.parse(raw, Guard.alarming)?.let { return Split(Guard.quick(it), null) }
         if (Guard.active() && GuardRules.codeOk(raw, Guard.codeNow)) return Split(Guard.quick(GuardRules.Cmd.Off(raw)), null)
         // नवंबर 2026 (मालिक): "जार्विस मोड ऑन करो" / "डीके मोड ऑन करो" - तुरंत, बिना AI
         JarvisMode.parse(raw)?.let { return Split(JarvisMode.quick(it), null) }
+        // 15 नवंबर 2026 (मालिक): "फ्राइडे मोड ऑन करो" / "वेनम मोड ऑन करो" - तुरंत, बिना AI
+        AssistantPersona.parse(raw)?.let { return Split(AssistantPersona.quick(it), null) }
         // नवंबर 2026 (मालिक): "नटखट मोड ऑन करो" / "प्रोफ़ेशनल मोड" / "नॉर्मल मोड" = DK का स्वभाव (तुरंत)
         DkPersona.parse(raw)?.let { return Split(DkPersona.quick(it), null) }
         // नवंबर 2026: "DK, मैं किसी से बात कर रहा हूँ" = सुनो पर जवाब नहीं; "DK वापस आओ" = फिर से

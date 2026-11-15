@@ -130,8 +130,8 @@ class ScreenGuardModeTest {
         val f = src("GuardFaceSetup.kt")
         assertTrue(f.contains("FaceAI.save(") && f.contains("FaceAI.download(") && f.contains("FaceAI.forget("))
         assertTrue(SettingsSearch.ENTRIES.any { it.section == "guard" && it.card == "मालिक का चेहरा" })
-        // पुराना \"चेहरा पहचान\" अलग section वापस नहीं (मालिक ने हटवाया था)
-        assertTrue("face" !in SettingsSearch.SECTIONS)
+        // 15 नवंबर 2026: मालिक ने खुद "चेहरा पहचान" section वापस माँगा (v3.99 में हटवाया था) - टच मोड वाला "मालिक का चेहरा" भी वैसा ही रहे
+        assertTrue("face" in SettingsSearch.SECTIONS)
     }
 
     @Test fun alarmScreen_recognisesOwner() {

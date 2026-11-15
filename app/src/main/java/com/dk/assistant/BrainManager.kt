@@ -698,6 +698,7 @@ class BrainManager(private val ctx: Context) {
             if (Prefs.friendMode(ctx)) append("\n" + FriendStyle.persona(dkFemale(), user)).append(FriendTalk.block(ctx))
             append(CareTime.block()).append(LiveSearch.memoryBlock())   // v3.80: समय देखकर फ़िक्र + पिछली खोज के स्रोत
             if (JarvisMode.on(ctx)) append(JarvisMode.block(Prefs.userName(ctx))) else append(CalmPersona.block()).append(DkPersona.pick(ctx, GirlfriendPersona.block(Prefs.userName(ctx)))).append(SpeakingStyle.block(Prefs.userName(ctx))).append(DkPersona.finalBlock(ctx, Prefs.userName(ctx)))   // v3.76: मालिक का तय स्वभाव - हमेशा
+            append(AssistantPersona.block(ctx))   // 15 नवंबर 2026: FRIDAY / VENOM (चालू न हो = कुछ नहीं)
             append(WorkChatMode.block(live = false)).append(TeacherBoard.block()).append(LocalMemory.promptBlock(ctx)).append(NetProbe.refresh(ctx).let { NetSpeed.promptNote() })   // v3.88: लोकल याददाश्त का छोटा सार | v3.87: काम/बातचीत मोड + टीचर बोर्ड (स्वभाव वही)
         }
     }
@@ -725,6 +726,7 @@ class BrainManager(private val ctx: Context) {
             append(Memory.factsBlock(ctx))
             append(CareTime.block()).append(LiveSearch.memoryBlock())   // v3.80: समय देखकर फ़िक्र + पिछली खोज के स्रोत
             if (JarvisMode.on(ctx)) append(JarvisMode.block(Prefs.userName(ctx))) else append(CalmPersona.block()).append(DkPersona.pick(ctx, GirlfriendPersona.block(Prefs.userName(ctx)))).append(SpeakingStyle.block(Prefs.userName(ctx))).append(DkPersona.finalBlock(ctx, Prefs.userName(ctx)))   // v3.76: मालिक का तय स्वभाव - classic आवाज़ में भी
+            append(AssistantPersona.block(ctx))   // 15 नवंबर 2026: FRIDAY / VENOM (चालू न हो = कुछ नहीं)
             append(WorkChatMode.block(live = false)).append(TeacherBoard.block()).append(LocalMemory.promptBlock(ctx)).append(NetProbe.refresh(ctx).let { NetSpeed.promptNote() })   // v3.88: लोकल याददाश्त का छोटा सार | v3.87: काम/बातचीत मोड + टीचर बोर्ड (स्वभाव वही)
         }
     }
@@ -824,7 +826,7 @@ class BrainManager(private val ctx: Context) {
     }
 
     /** DK = लड़की (चुनी आवाज़ से); JARVIS मोड = हमेशा पुरुष */
-    private fun dkFemale(): Boolean = !JarvisMode.on(ctx) && GirlfriendPersona.female(Prefs.voiceGender(ctx))
+    private fun dkFemale(): Boolean = !JarvisMode.on(ctx) && GirlfriendPersona.female(Prefs.voiceGender(ctx)) && !AssistantPersona.male(ctx)
 
     /**
      * v5.1 (मालिक: "Live का setup message छोटा रहे"): withMemory=false = सिर्फ़ नियम/स्वभाव (setup में);
@@ -881,6 +883,7 @@ class BrainManager(private val ctx: Context) {
             if (Prefs.friendMode(ctx)) append("\n").append(FriendStyle.persona(f, user)).append(if (withMemory) FriendTalk.block(ctx) else "")
             append(CareTime.block()).append(if (withMemory) LiveSearch.memoryBlock() else "")   // v3.80: समय देखकर फ़िक्र + पिछली खोज के स्रोत
             if (JarvisMode.on(ctx)) append(JarvisMode.block(Prefs.userName(ctx))) else append(CalmPersona.block()).append(DkPersona.pick(ctx, GirlfriendPersona.block(Prefs.userName(ctx)))).append(SpeakingStyle.block(Prefs.userName(ctx))).append(DkPersona.finalBlock(ctx, Prefs.userName(ctx)))   // v3.76: मालिक का तय स्वभाव - Live (सीधी आवाज़ / Gemini TTS / Edge) सब में
+            append(AssistantPersona.block(ctx))   // 15 नवंबर 2026: FRIDAY / VENOM (चालू न हो = कुछ नहीं)
             append(WorkChatMode.block(live = true)).append(TeacherBoard.block()).append(if (withMemory) LocalMemory.liveBlock(ctx) + (if (!Prefs.localMemoryOn(ctx)) MsgDraft.recentBlock(MsgDraft.turnsFromState(), System.currentTimeMillis()) else "") else "")
             if (Prefs.dkOnly(ctx)) append(DkOnly.PROMPT)   // v4.1: सिर्फ़ "DK ..." वाली बात का जवाब
             if (SideTalk.on(ctx)) append(SideTalk.PROMPT)   // नवंबर 2026: बॉस किसी और से बात करे = DK सुने, जवाब नहीं

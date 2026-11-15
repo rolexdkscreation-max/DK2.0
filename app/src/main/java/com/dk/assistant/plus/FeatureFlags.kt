@@ -89,6 +89,9 @@ object FeatureFlags {
     const val TERMUX = "plus_termux"
     const val IMAGE_GEN = "plus_image_gen"
     const val YT_CHANNEL = "plus_yt_channel"
+    // 15 नवंबर 2026 (मालिक की सूची): WhatsApp ग्रुप रिपोर्ट + 3D कैरेक्टर (डाउनलोड वाला)
+    const val WA_GROUP_REPORT = "plus_wa_group_report"
+    const val CHARACTER_3D = "plus_character_3d"
 
     val ALL: List<Flag> = listOf(
         Flag(AUTO_SAVE_MEMORIES, "बातों से याददाश्त अपने-आप सेव", "बातचीत में मिली नई बात DK खुद याद रखे", Section.MEMORY),
@@ -109,6 +112,7 @@ object FeatureFlags {
         Flag(BS_SCREEN_AWARE, "स्क्रीन देखना रोको", "बैटरी सेवर में स्क्रीन पढ़ना बंद", Section.BATTERY),
         Flag(BS_VOICE_GUARDIAN, "वॉइस गार्डियन रोको", "बैटरी सेवर में आवाज़-पहचान बंद", Section.BATTERY),
         Flag(BS_3D, "3D कैरेक्टर रोको", "बैटरी सेवर में 3D रेंडर बंद", Section.BATTERY),
+        Flag(CHARACTER_3D, "3D कैरेक्टर", "कैरेक्टर + GLTFLoader इंटरनेट से डाउनलोड (APK में नहीं)", Section.APPEARANCE),
         Flag(CHARACTER_OVERLAY, "होम स्क्रीन पर 3D कैरेक्टर", "फ़्लोटिंग ओवरले (Display over other apps)", Section.APPEARANCE),
         Flag(FLOAT_ORB, "फ़्लोटिंग ओर्ब", "हर ऐप के ऊपर छोटा DK ओर्ब", Section.BEHAVIOR),
         Flag(EDGE_GLOW, "किनारे की चमक (Edge Glow)", "DK बोले/सुने तो स्क्रीन के किनारे चमकें", Section.BEHAVIOR),
@@ -131,6 +135,7 @@ object FeatureFlags {
         Flag(SCREEN_UNLOCK, "स्क्रीन ऑटो-अनलॉक", "PIN/पैटर्न Android Keystore में - तय काम के लिए अनलॉक, फिर लॉक", Section.SCREEN_LOCK),
         Flag(WA_AUTO_REPLY, "WhatsApp ऑटो रिप्लाई", "Notification से जवाब (DK सोया हो तब भी)", Section.WA_REPLY),
         Flag(WA_GROUPS, "ग्रुप में भी जवाब", "बंद = सिर्फ़ निजी चैट", Section.WA_REPLY),
+        Flag(WA_GROUP_REPORT, "WhatsApp ग्रुप रिपोर्ट", "सेव टेम्पलेट में बोलकर भरो, सुनकर हाँ पर ग्रुप में भेजो", Section.WA_REPLY),
         Flag(EVENTS_ON, "ऑटो इवेंट ट्रिगर (मुख्य स्विच)", "नीचे चुनी घटनाओं पर DK बोलकर बताए", Section.EVENTS),
         Flag(EV_CHARGER_ON, "चार्जर लगा", "", Section.EVENTS),
         Flag(EV_CHARGER_OFF, "चार्जर हटा", "", Section.EVENTS),
@@ -150,6 +155,8 @@ object FeatureFlags {
     val READY: Set<String> = setOf(
         INCOGNITO, DRIVING_MODE, SOS_ON, EVENTS_ON, EV_CHARGER_ON, EV_CHARGER_OFF, EV_WIFI_ON, EV_WIFI_OFF,
         EV_BATTERY_SAVER, TERMUX, START_ON_BOOT, FACE_VAULT, IMAGE_GEN, YT_CHANNEL,
+        // 15 नवंबर 2026: चेहरा पहचान (DK लाइव "देखो कौन है"), ईमेल, ग्रुप रिपोर्ट, 3D कैरेक्टर
+        FACE_ON, EMAIL_ON, WA_GROUP_REPORT, CHARACTER_3D,
     )
     fun ready(key: String): Boolean = key in READY
 

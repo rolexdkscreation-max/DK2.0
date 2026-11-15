@@ -65,6 +65,7 @@ internal fun SettingsActivity.heyDkCard(box: LinearLayout) {
     }
     val edAcks = field(box, "जागते ही क्या बोले (कॉमा से अलग, बदल-बदलकर बोलेगा)", Prefs.heyDkAcks(this),
         com.dk.assistant.voice.WakeMatch.DEFAULT_ACKS.joinToString(", "))
+    hint(box, "खाली छोड़ें = प्रोफ़ाइल का नाम लेकर \"जी <नाम>\" (नाम न हो तो \"Yes Boss\")।")
     row(box,
         button("Hey DK सिखाओ") { enrollHeyDk { swOn.isChecked = Prefs.heyDkOn(this); refresh() } },
         button("जवाब सेव करो") {
@@ -130,6 +131,14 @@ internal fun SettingsActivity.secVoice() {
         radios(box, jv, JarvisMode.voice(this), 2600)
             .setOnCheckedChangeListener { _, id -> jv.getOrNull(id - 2600)?.let { JarvisMode.setVoice(this, it.first) } }
         hint(box, "सिर्फ़ आवाज़ और बात करने का अंदाज़ बदलता है (\"जी सर\", शांत, सधा हुआ) — फ़ोन का कंट्रोल, keys, एजेंट, वेबसाइट, कॉल, WhatsApp सब वैसे ही चलते हैं. चलती बातचीत में DK चुप होते ही नई आवाज़ लगती है. Gemini की अपनी आवाज़ें हैं — फ़िल्म वाले JARVIS की हू-ब-हू नकल नहीं, उसके सबसे करीब.")
+    }
+
+    // 15 नवंबर 2026 (मालिक, मास्टर प्रॉम्प्ट): FRIDAY / VENOM - JARVIS जैसे, काम सब वही
+    card("FRIDAY / VENOM मोड", "असिस्टेंट का दूसरा रूप (डिफ़ॉल्ट: DK). बोलें: \"फ्राइडे मोड ऑन करो\" / \"वेनम मोड ऑन करो\" / \"डीके मोड ऑन करो\"") { box ->
+        val opts = listOf("" to "DK (डिफ़ॉल्ट)") + AssistantPersona.A.values().map { it.id to "${it.title} — ${it.sub}" }
+        radios(box, opts, Prefs.str(this, AssistantPersona.PREF, "").takeIf { AssistantPersona.of(it) != null } ?: "", 2650)
+            .setOnCheckedChangeListener { _, id -> opts.getOrNull(id - 2650)?.let { o -> AssistantPersona.set(this, AssistantPersona.of(o.first)); toast(if (o.first.isEmpty()) "DK मोड" else "${o.second.substringBefore(" —")} मोड चालू") } }
+        hint(box, "सिर्फ़ नाम, अंदाज़ और (VENOM में) आवाज़ बदलती है — फ़ोन का कंट्रोल, keys, एजेंट, कॉल, WhatsApp सब वैसे ही। इनमें से कोई चालू करने पर JARVIS बंद हो जाता है।")
     }
 
     // नवंबर 2026 (मालिक): DK का स्वभाव + मूड समझकर बात + बगल की बातचीत

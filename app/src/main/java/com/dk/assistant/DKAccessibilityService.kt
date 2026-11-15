@@ -1116,7 +1116,14 @@ class DKAccessibilityService : AccessibilityService() {
                 }
                 JarvisMode.TYPE -> {
                     // नवंबर 2026: JARVIS ⇄ DK मोड (काम/tools वही; DK लाइव चुप होते ही नई आवाज़ से जुड़ता है)
+                    // 15 नवंबर 2026: JARVIS / DK मोड = FRIDAY / VENOM बंद
+                    if (AssistantPersona.active(this) != null || Prefs.str(this, AssistantPersona.PREF, "").isNotEmpty()) Prefs.edit(this) { putString(AssistantPersona.PREF, "") }
                     JarvisMode.set(this, a.optBoolean("jarvis", true))
+                    "ok"
+                }
+                AssistantPersona.TYPE -> {
+                    // 15 नवंबर 2026 (मालिक): FRIDAY / VENOM मोड (खाली = DK)
+                    AssistantPersona.set(this, AssistantPersona.of(a.optString("persona")))
                     "ok"
                 }
                 "screen_view" -> {
@@ -1180,6 +1187,13 @@ class DKAccessibilityService : AccessibilityService() {
                 "find_phone" -> FindPhone.start(this, "कमांड")
                 "find_phone_stop" -> { FindPhone.stop("कमांड"); "ठीक है" }
                 GuardRules.TYPE -> Guard.run(this, a)   // नवंबर 2026: गार्ड मोड चालू / बंद
+                GuardModes.TYPE -> {
+                    // 15 नवंबर 2026 (मालिक): गॉड / स्टेल्थ मोड = वह रूप चुनकर टच मोड चालू; "बंद" = वापस नॉर्मल (टच मोड बंद गुप्त शब्द / फ़ोन खोलकर ही)
+                    val m = GuardModes.Mode.of(a.optString("mode"))
+                    GuardModes.set(this, m)
+                    if (m == GuardModes.Mode.NORMAL) "SAID: ठीक है, टच मोड अब नॉर्मल रूप में।"
+                    else "SAID: ${m.hi} चुना। " + Guard.arm(this, a.optInt("minutes", 0).coerceIn(0, 24 * 60), "आवाज़ (${m.hi})")
+                }
                 "lock" -> if (Build.VERSION.SDK_INT >= 28) global(GLOBAL_ACTION_LOCK_SCREEN) else NativeActionEngine.lockOld()
                 "screenshot_save" -> if (Build.VERSION.SDK_INT >= 28) global(GLOBAL_ACTION_TAKE_SCREENSHOT) else "ERROR"
                 "power_menu" -> global(GLOBAL_ACTION_POWER_DIALOG)

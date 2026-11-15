@@ -294,7 +294,7 @@ object HeyDk {
 
     @Volatile private var lastAck = ""
 
-    fun acks(c: Context) = WakeMatch.parseAcks(Prefs.heyDkAcks(c))
+    fun acks(c: Context) = WakeMatch.acksFor(Prefs.heyDkAcks(c), Prefs.userName(c))
 
     fun nextAck(c: Context): String = WakeMatch.nextAck(acks(c), lastAck).also { lastAck = it }
 

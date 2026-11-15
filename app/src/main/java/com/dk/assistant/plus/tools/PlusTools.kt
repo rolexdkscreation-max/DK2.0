@@ -28,7 +28,9 @@ interface PlusTool {
 }
 
 object PlusTools {
-    val ALL: List<PlusTool> = listOf(ImageTool, YouTubeTool, TermuxTool)
+    val ALL: List<PlusTool> = listOf(ImageTool, YouTubeTool, TermuxTool,
+        // 15 नवंबर 2026: चेहरा, ईमेल, ग्रुप रिपोर्ट, 3D कैरेक्टर (NewTools.kt)
+        FaceWhoTool, EmailReadTool, EmailSendTool, EmailDeleteTool, GroupReportTool, CharacterTool)
 
     fun byName(name: String): PlusTool? = ALL.firstOrNull { it.name == name }
 
@@ -40,7 +42,8 @@ object PlusTools {
     suspend fun runOrNull(c: Context, name: String, args: JSONObject): String? {
         val t = byName(name) ?: return null
         if (!FeatureFlags.on(c, t.flag)) return "This ability is turned OFF. Tell the user and offer to turn it ON for him with dk_settings (two-step confirmation) - " +
-            "or he can do it in DK Settings (image: DK कंप्यूटर -> इमेज बनाना; YouTube: सोशल रिव्यू -> YouTube चैनल जाँच; Termux: कोडिंग एजेंट -> Termux ऑटोमेशन)."
+            "or he can do it in DK Settings (image: DK कंप्यूटर -> इमेज बनाना; YouTube: सोशल रिव्यू -> YouTube चैनल जाँच; Termux: कोडिंग एजेंट -> Termux ऑटोमेशन; " +
+            "face: सुरक्षा -> चेहरा पहचान; email: DK कंप्यूटर -> ईमेल; group report: ऑटो रिप्लाई -> WhatsApp ग्रुप रिपोर्ट; 3D: दिखावट -> 3D कैरेक्टर)."
         return try { t.run(c, args) } catch (e: Exception) { "ERROR: ${e.message ?: "failed"}" }
     }
 

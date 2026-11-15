@@ -40,6 +40,7 @@ internal fun SettingsActivity.menuIcon(id: String) = when (id) {
     "ui" -> R.drawable.ic_s_ui
     "access" -> R.drawable.ic_s_access
     "perms" -> R.drawable.ic_s_perms
+    "face" -> R.drawable.ic_s_orb
     "coder" -> R.drawable.ic_s_coder
     "computer" -> R.drawable.ic_s_computer
     "story" -> R.drawable.ic_s_story
@@ -68,7 +69,7 @@ internal fun SettingsActivity.menuTint(id: String): Int = when (id) {
     "autoreply" -> 0xFF22C55E.toInt()
     "brain", "auto", "coder" -> 0xFF6366F1.toInt()
     "ui", "orb", "reels" -> 0xFFEC4899.toInt()
-    "access", "perms", "phonelock", "guard", "backup" -> 0xFF34D399.toInt()
+    "access", "perms", "phonelock", "guard", "face", "backup" -> 0xFF34D399.toInt()
     "computer", "connectors", "lang" -> 0xFF38BDF8.toInt()
     "update", "story", "social" -> 0xFFFBBF24.toInt()
     else -> 0xFF94A3B8.toInt()

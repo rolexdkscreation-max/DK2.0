@@ -138,6 +138,7 @@ class SettingsActivity : AppCompatActivity() {
             "access" -> { title.text = "Accessibility"; secAccess(); secPayGuard(); secDriving(); secEvents() }
             "phonelock" -> { title.text = "फ़ोन लॉक / अनलॉक"; secPhoneLock(); secVoiceCmds() }
             "guard" -> { title.text = "टच मोड"; secGuard(); secPrivacy(); secSos() }
+            "face" -> { title.text = "चेहरा पहचान"; secFace() }
             "perms" -> { title.text = "परमिशन"; secPerms() }
             "update" -> { title.text = "अपडेट"; secUpdate() }
             "debug" -> { title.text = "डिबग लॉग"; secDebug() }
@@ -148,6 +149,8 @@ class SettingsActivity : AppCompatActivity() {
             "autoreply" -> { title.text = "ऑटो रिप्लाई"; secAutoReply() }
             "about" -> { title.text = "ऐप के बारे में"; secAbout() }
         }
+        // 15 नवंबर 2026: नई सुविधाएँ अपने पुराने section के नीचे (पुरानी लाइनें वैसी ही)
+        when (section) { "ui" -> sec3D(); "computer" -> secEmail(); "autoreply" -> secGroupReport() }
         space(container, 8)
         FutureViews.goldShader(title)          // नवंबर 2026: शीर्षक धातु जैसा सुनहरा (Control Center रूप)
     }
@@ -167,6 +170,7 @@ class SettingsActivity : AppCompatActivity() {
             Triple("access", "Accessibility", (Setup.a11yMark(this) + when { Setup.accessibilityOn() -> "चालू"; Setup.enabledInSettings(this) -> "रुका है"; else -> "बंद" }) + " • फ़ोन कंट्रोल • हमेशा सुनना • कॉल • बैटरी • ड्राइविंग मोड • इवेंट ट्रिगर"),
             Triple("phonelock", "फ़ोन लॉक / अनलॉक", (if (PhoneLockStore.lockOn(this) || PhoneLockStore.unlockOn(this)) "✓ चालू" else "✗ बंद") + " • \"हे DK फोन लॉक करो\" • अपना नाम और वाक्य • PIN / पैटर्न"),
             Triple("guard", "टच मोड", (if (Guard.active()) "✓ चालू" else "✗ बंद") + " • कोई फ़ोन छुए तो सायरन • फ़ोटो • SMS • इमरजेंसी SOS"),
+            Triple("face", "चेहरा पहचान", (if (FaceAI.enrolled(this)) "✓ Boss का चेहरा सेट" else "✗ सेट नहीं") + " • जान-पहचान वाले (${FacePeople.all(this).size}) • कौन है? • DK से पूछकर पहचान"),
             Triple("perms", "परमिशन", "माइक • स्क्रीन देखना • नोटिफ़िकेशन • कॉल • ऐप इंस्टॉल"),
             Triple("computer", "DK कंप्यूटर", (if (Prefs.computerOn(this)) "✓ चालू" else "✗ बंद") + " • कोई भी काम: खोज, रिसर्च, फ़ाइल/PDF, हिसाब, फ़ोन, रिमाइंडर, मुफ़्त इमेज"),
             Triple("coder", "कोडिंग एजेंट", (if (Prefs.coderOn(this)) "✓ चालू" else "✗ बंद") + " • GitHub से जुड़ें • कोड लिखें/बदलें/हटाएँ • push • अलग AI key • Termux"),

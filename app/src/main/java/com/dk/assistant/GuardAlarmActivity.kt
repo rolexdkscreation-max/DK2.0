@@ -43,6 +43,8 @@ class GuardAlarmActivity : AppCompatActivity() {
     private lateinit var root: LinearLayout
     private var faceTv: TextView? = null
     @Volatile private var lastFaceUi = 0L
+    private var stealth = false
+    @Volatile private var mode = GuardModes.Mode.NORMAL
 
     @Suppress("DEPRECATION")
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -54,6 +56,18 @@ class GuardAlarmActivity : AppCompatActivity() {
         else window.addFlags(WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED or WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON)
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON or WindowManager.LayoutParams.FLAG_FULLSCREEN)
         val d = resources.displayMetrics.density
+        // 15 नवंबर 2026: STEALTH = काली, चुप स्क्रीन (कोई लिखावट नहीं) - कैमरा चुपके से फ़ोटो लेता है, चेहरा मिले तो बंद
+        stealth = !GuardModes.loud(GuardModes.mode(this))
+        mode = GuardModes.mode(this)
+        if (stealth) {
+            window.attributes = window.attributes.apply { screenBrightness = 0.01f }
+            root = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setBackgroundColor(0xFF000000.toInt()) }
+            val pv = PreviewView(this)
+            root.addView(pv, LinearLayout.LayoutParams((2 * d).toInt().coerceAtLeast(2), (2 * d).toInt().coerceAtLeast(2)))
+            setContentView(root)
+            startCam(pv)
+            return
+        }
         root = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER; setBackgroundColor(0xFFB00020.toInt()) }
         fun tv(t: String, size: Float, color: Int = Color.WHITE) = TextView(this).apply {
             text = UiLang.s(t); textSize = size; setTextColor(color); gravity = Gravity.CENTER
@@ -81,7 +95,7 @@ class GuardAlarmActivity : AppCompatActivity() {
     }
 
     private fun blink() {
-        if (isFinishing) return
+        if (isFinishing || stealth) return
         blinkOn = !blinkOn
         root.setBackgroundColor(if (blinkOn) 0xFFB00020.toInt() else 0xFF000000.toInt())
         root.postDelayed({ blink() }, 500)
@@ -116,7 +130,7 @@ class GuardAlarmActivity : AppCompatActivity() {
                 val now = System.currentTimeMillis()
                 val det = if (face || photo) try { FaceAI.detect(this, copy) } catch (_: Throwable) { null } else null
                 // फ़ोटो: चेहरा दिखे तो तुरंत, वरना 1.5 s बाद एक; हर अलार्म में ज़्यादा से ज़्यादा 3
-                if (photo && shots < 3 && now - lastShot > 2_500 && (det != null || (shots == 0 && now - startedAt > 1_500))) {
+                if (photo && shots < GuardModes.photoMax(mode) && now - lastShot > GuardModes.photoGapMs(mode) && (det != null || (shots == 0 && now - startedAt > 1_500))) {
                     if (Guard.savePhoto(this, copy) != null) { shots++; lastShot = now }
                 }
                 if (face) {
@@ -165,7 +179,7 @@ class GuardAlarmActivity : AppCompatActivity() {
     private fun askUnlock() {
         val km = getSystemService(KeyguardManager::class.java) ?: return
         if (Build.VERSION.SDK_INT >= 26) km.requestDismissKeyguard(this, object : KeyguardManager.KeyguardDismissCallback() {
-            override fun onDismissSucceeded() { if (Guard.secure(this@GuardAlarmActivity)) Guard.disarm(this@GuardAlarmActivity, "फ़ोन मालिक ने खोला") }
+            override fun onDismissSucceeded() { if (Guard.secure(this@GuardAlarmActivity)) Guard.pinUnlocked(this@GuardAlarmActivity) }
         })
     }
 

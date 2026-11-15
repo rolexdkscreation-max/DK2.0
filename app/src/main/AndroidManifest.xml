@@ -376,6 +376,19 @@
             android:theme="@android:style/Theme.Black.NoTitleBar.Fullscreen"
             tools:targetApi="27" />
 
+        <!-- 15 नवंबर 2026: 3D कैरेक्टर (WebView + three.js; .glb इंटरनेट से डाउनलोड, APK में नहीं) -->
+        <activity
+            android:name=".Character3DActivity"
+            android:exported="false"
+            android:hardwareAccelerated="true" />
+
+        <!-- 15 नवंबर 2026: DK लाइव का "देखो कौन है" (face_who) - कैमरा ~10 s, फिर अपने-आप बंद -->
+        <activity
+            android:name=".FaceWhoActivity"
+            android:exported="false"
+            android:excludeFromRecents="true"
+            android:screenOrientation="portrait" />
+
         <!-- नवंबर 2026: गार्ड मोड - कोई फ़ोन छुए तो लॉक स्क्रीन के ऊपर लाल चेतावनी + सायरन (छूने से बंद नहीं) -->
         <activity
             android:name=".GuardAlarmActivity"

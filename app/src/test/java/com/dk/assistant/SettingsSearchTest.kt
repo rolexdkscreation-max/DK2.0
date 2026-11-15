@@ -67,11 +67,17 @@ class SettingsSearchTest {
         assertTrue(s.contains("AutoSettingsActivity::class.java"))
     }
 
-    /** v3.99: चेहरा पहचान ऐप से हटी - सेटिंग्स में न मेनू, न card, न सर्च */
+    /**
+     * v3.99: चेहरा पहचान ऐप से हटी थी.
+     * 15 नवंबर 2026 - मालिक का नया फ़ैसला: "सेटिंग में जो चेहरा पहचानने वाला है… फ़ेस रजिस्ट्रेशन… वो चाहिए, एग्ज़ैक्ट. पहचानना चाहिए."
+     * इसलिए Settings वाला हिस्सा अब वापस होना चाहिए (सुरक्षा → चेहरा पहचान). VoiceActivity वाला पुराना चेहरा-overlay अब भी नहीं (नीचे वैसा ही).
+     * पुराना हाल: branch backup/dk-face-settings-1115.
+     */
     @Test fun faceRecognition_removedFromSettings() {
         val s = com.dk.assistant.SetSrc.all()
-        assertTrue(!s.contains("FaceAI.") && !s.contains("secFace") && !s.contains("Triple(\"face\""))
-        assertTrue(SettingsSearch.ENTRIES.none { it.section == "face" } && "face" !in SettingsSearch.SECTIONS)
+        assertTrue(s.contains("secFace()") && s.contains("Triple(\"face\", \"चेहरा पहचान\""))
+        assertTrue(SettingsSearch.ENTRIES.any { it.section == "face" && it.card == "चेहरा पहचान" } && "face" in SettingsSearch.SECTIONS)
+        assertTrue(SettingsSearch.CATEGORIES.first { it.first.first == "cat_security" }.second.contains("face"))
         val v = src("src/main/java/com/dk/assistant/VoiceActivity.kt")
         assertTrue(!v.contains("FaceRecognitionEngine") && !v.contains("FaceScanOverlayView"))
     }

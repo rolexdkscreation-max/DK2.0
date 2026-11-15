@@ -319,6 +319,17 @@ object WakeMatch {
     val OLD_DEFAULT_ACKS = listOf("हाँ सर", "बोलिए सर", "हाँ बॉस", "जी, बोलिए")
 
     /** "हाँ सर, बोलिए सर" -> सूची (कॉमा/नई लाइन से). खाली या पुराना default = "Yes Boss" */
+    /**
+     * 15 नवंबर 2026 (मालिक): "जो यूज़र का नाम सेव रहेगा, power बटन / Hey DK पर उसी नाम से - नाम 'बॉस' = 'जी बॉस'".
+     * अपने ack (Settings) लिखे हों = वही. नहीं तो नाम हो = "जी <नाम>", नाम भी न हो = "Yes Boss".
+     */
+    fun acksFor(raw: String?, userName: String): List<String> {
+        val own = parseAcks(raw)
+        if (own != DEFAULT_ACKS) return own
+        val call = com.dk.assistant.NameRule.call(userName)
+        return if (call.isBlank()) DEFAULT_ACKS else listOf(call)
+    }
+
     fun parseAcks(raw: String?): List<String> {
         val l = raw.orEmpty().split(',', '\n', '|').map { it.trim() }.filter { it.isNotBlank() }.distinct().take(8)
         // Settings का खाना पुराना default दिखाकर वैसा ही सेव हुआ था ("हाँ सर, बोलिए सर, हाँ बॉस, जी, बोलिए") = नया default

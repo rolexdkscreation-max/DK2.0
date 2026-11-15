@@ -28,22 +28,22 @@ import kotlinx.coroutines.launch
  * हर स्विच वही pref ([FeatureFlags]) जो सुविधा का code पढ़ता है - शुरू में सब बंद. कोई key / paywall नहीं.
  */
 
-private fun SettingsActivity.flagSwitch(box: LinearLayout, t: String, key: String, onChange: (Boolean) -> Unit = {}) =
+internal fun SettingsActivity.flagSwitch(box: LinearLayout, t: String, key: String, onChange: (Boolean) -> Unit = {}) =
     switch(box, t, FeatureFlags.on(this, key)).apply {
         setOnCheckedChangeListener { _, on -> FeatureFlags.set(this@flagSwitch, key, on); onChange(on) }
     }
 
 /** जो इजाज़त अभी नहीं मिली, सिर्फ़ वही माँगो */
-private fun SettingsActivity.askMissing(code: Int, vararg perms: String) {
+internal fun SettingsActivity.askMissing(code: Int, vararg perms: String) {
     val miss = perms.filter { checkSelfPermission(it) != PackageManager.PERMISSION_GRANTED }
     if (miss.isNotEmpty()) requestPermissions(miss.toTypedArray(), code)
 }
 
-private fun SettingsActivity.status(box: LinearLayout): TextView = TextView(this).apply {
+internal fun SettingsActivity.status(box: LinearLayout): TextView = TextView(this).apply {
     textSize = 13f; setTextColor(0xB3FFFFFF.toInt()); setPadding((4 * dp).toInt(), (8 * dp).toInt(), 0, 0)
 }.also { box.addView(it) }
 
-private fun SettingsActivity.openLink(url: String) {
+internal fun SettingsActivity.openLink(url: String) {
     if (url.isBlank()) return
     try { startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(url))) } catch (_: Exception) { toast(url) }
 }

@@ -87,10 +87,33 @@ UI से हटाया (कोड/flag वैसे ही, ताकि प�
 |---|---|
 | मुफ़्त API (Gemini, Groq, OpenRouter, NVIDIA, custom), कोई license/paywall/Hunter TTS नहीं | पहले से (`NoPaywallTest`) |
 | Smart Home नहीं | हटा (`NoSmartHomeTest`) |
-| Personas DK / Jarvis + स्वभाव (दोस्ताना, शरारती, गर्लफ्रेंड, प्रोफ़ेशनल, शांत) | पहले से; Friday / Venom अभी नहीं |
+| Personas DK / Jarvis + स्वभाव (दोस्ताना, शरारती, गर्लफ्रेंड, प्रोफ़ेशनल, शांत) | पहले से; Friday / Venom - PR C (15 नवंबर 2026) |
 | भाषाएँ | Hinglish, हिंदी, English, भोजपुरी, मराठी + Auto (हर भाषा) - मालिक का पिछला फ़ैसला: "बाकी Auto खुद देख लेगा" |
 | Memory, इनकॉग्निटो, बैकअप/रिस्टोर (Drive), अपडेट | पहले से |
 | टच मोड, फ़ोन लॉक/अनलॉक, ऑटो रिप्लाई, SOS, ड्राइविंग, इवेंट ट्रिगर, Termux, इमेज, YouTube | पहले से (ऊपर वाली जगहों पर) |
 | Dynamic tool router (`dk_tool_search`), retry loop | पहले से (`LiveToolSlim`, `plus/RetryLoop.kt`) |
 | चेहरा पहचान वाली सेटिंग / "सिर्फ़ मेरी आवाज़ सुनो" | मालिक ने पहले खुद हटवाई (v3.99, v4.5) - दोबारा नहीं जोड़ी |
-| 5-tab होम + drawer, Market (~32 tools), Marketing Suite, Email (IMAP/SMTP), WhatsApp ग्रुप रिपोर्ट, 3D कैरेक्टर, God/Stealth मोड, Friday/Venom, DuckDuckGo खोज | अभी नहीं - हर एक बड़ा अलग काम, अलग PR में (मालिक की मंज़ूरी से) |
+| Email (IMAP/SMTP), WhatsApp ग्रुप रिपोर्ट, 3D कैरेक्टर, God/Stealth मोड, Friday/Venom, DuckDuckGo खोज, चेहरा पहचान | PR C (15 नवंबर 2026) में बना |
+| Market, Marketing Suite | मालिक ने मना किया - नहीं बनाना |
+| 5-tab होम | होम में पहले से कैमरा/माइक/चैट/मेमोरी; मेनू में "स्कैन" + "3D कैरेक्टर" जोड़े. अलग tab bar नहीं (मालिक चाहें तो अलग PR) |
+
+
+## PR C (15 नवंबर 2026) - बाकी सारी सुविधाएँ (Market / Marketing Suite छोड़कर)
+
+मालिक: "मार्केट और मार्केटिंग सूट मत बनाओ, बाकी सब बनाओ… DuckDuckGo का फ्री API न हो तो मत बनाओ… DK को सब पता होना चाहिए…
+सेटिंग में चेहरा पहचान / फ़ेस रजिस्ट्रेशन चाहिए… जो नाम सेट हो वही 'जी बॉस' / 'हेलो बॉस'… भारी चीज़ इंटरनेट से डाउनलोड।"
+v3.99 वाला "चेहरा पहचान हटाओ" फ़ैसला मालिक ने खुद पलटा; पुराना हाल `backup/dk-face-settings-1115` में।
+
+| सुविधा | कहाँ | फ़ाइल | शुरू में |
+|---|---|---|---|
+| नाम से जवाब ("जी बॉस", "हेलो बॉस") | ऑनबोर्डिंग / सिस्टम → प्रोफ़ाइल | `NameRule.kt`, `WakeMatch.acksFor` | हमेशा (नाम सेट हो तो) |
+| FRIDAY / VENOM | आवाज़ → FRIDAY / VENOM मोड | `AssistantPersona.kt` | बंद |
+| DuckDuckGo (मुफ़्त Instant Answer, बिना key) | खुला वेब खोज के साथ | `OpenSearch.kt` | खोज के साथ |
+| चेहरा पहचान + जान-पहचान वाले चेहरे | सुरक्षा → चेहरा पहचान | `FacePeople.kt`, `SettingsFace.kt`, `FaceWhoActivity.kt` | बंद, मॉडल डाउनलोड |
+| God / Stealth | सुरक्षा → टच मोड → टच मोड का रूप | `GuardModes.kt` | सामान्य |
+| ईमेल (IMAP/SMTP, app password) | दिमाग और आवाज़ → DK कंप्यूटर | `plus/Mail.kt` | बंद |
+| WhatsApp ग्रुप रिपोर्ट | ऑटोमेशन → ऑटो रिप्लाई | `plus/GroupReport.kt` | बंद |
+| 3D कैरेक्टर (GLB + three.js loader डाउनलोड, SHA-256) | रूप → 3D कैरेक्टर, होम मेनू | `plus/Character3D.kt`, `Character3DActivity.kt` | बंद |
+
+DK लाइव: हर नई चीज़ `dk_settings` से चालू/बंद (बदलने पर दो बार पक्का), और tools `face_who`, `email_read`, `email_send`,
+`email_delete`, `group_report`, `show_character` से चलती है. भेजना / हटाना = पहले सुनाकर "हाँ" पर ही.
