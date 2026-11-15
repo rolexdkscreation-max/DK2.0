@@ -269,13 +269,13 @@ class ChatActivity : AppCompatActivity() {
         // v3.88: सिर्फ़ तीन स्थितियाँ (Listening / Thinking / Speaking); खाली समय में पहले वाली ऑनलाइन जानकारी
         val rawT = ThreeState.label(DKState.mode, false, false)
         val animStyle = Prefs.typingStyle(this)
-        val animOff = animStyle == TypingStyles.OFF || animStyle == "off"
+        val animOff = animStyle == "off" || animStyle == "OFF"
         val isThinking = DKState.mode == Mode.THINKING || localJob != null || awaiting
         val suffix = when (animStyle) {
-            TypingStyles.WAVE -> " 🌊"
-            TypingStyles.PULSE -> " 💓"
-            TypingStyles.ORBIT -> " 🪐"
-            TypingStyles.MATRIX -> " ⚡"
+            "wave" -> " 🌊"
+            "pulse" -> " 💓"
+            "orbit" -> " 🪐"
+            "matrix" -> " ⚡"
             TypingStyles.BARS -> " 📊"
             else -> "…"
         }

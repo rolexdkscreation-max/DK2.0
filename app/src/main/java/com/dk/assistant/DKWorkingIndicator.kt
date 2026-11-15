@@ -99,7 +99,7 @@ class DKWorkingIndicator(context: Context) : View(context) {
     /** target मान - अवस्था के हिसाब से */
     private fun targets(): FloatArray {
         val styleKey = typingPreview ?: Prefs.typingStyle(context)
-        if (styleKey == "off" || styleKey == TypingStyles.OFF) {
+        if (styleKey == "off" || styleKey == "OFF") {
             return floatArrayOf(0f, 0f, 0f, 0f)
         }
         return if (bare) when (state) {
