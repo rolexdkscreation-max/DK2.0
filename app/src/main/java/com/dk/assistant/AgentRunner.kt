@@ -536,6 +536,16 @@ class AgentRunner(
                 ChatOut.SCREEN -> chatMode = false
             }
         }
+        // 15 नवंबर 2026 (मालिक, हिस्सा 1): "टूल एजेंट" चालू हो तो लंबा फ़ोन-काम Gemini function calling + Retry Loop से.
+        // सीधे commands ऊपर LocalRouter में ही हो चुके. यह न चल पाए (key / नेटवर्क) = false -> नीचे पुराना loop वैसा ही.
+        if (!chatMode && autoS == null && com.dk.assistant.tools.ToolAgent.enabled(svc)) {
+            DKState.set(Mode.WORKING)
+            val handled = com.dk.assistant.tools.ToolAgent(svc, { say(it) }) { q ->
+                say(q); DKState.set(Mode.LISTENING)
+                svc.hearForAgent()?.also { DKState.user(it); DKState.set(Mode.WORKING) }
+            }.run(goal)
+            if (handled) return
+        }
         while (step < MAX_STEPS) {
             step++
             coroutineContext.ensureActive()

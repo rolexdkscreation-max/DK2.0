@@ -109,7 +109,7 @@ object TemplateRunner {
     }
 
     // ------------------------------------------------------------------ WhatsApp मैसेज
-    private suspend fun waSend(svc: DKAccessibilityService, name: String, msg: String, ask: suspend (String) -> String?): String {
+    internal suspend fun waSend(svc: DKAccessibilityService, name: String, msg: String, ask: suspend (String) -> String?): String {
         val args = JSONObject().put("platform", "whatsapp").put("action", "send_message").put("contact", name).put("message", msg)
         val st = try { JSONObject(SocialAgent.start(svc, args, ownConfirm = true)) } catch (e: Exception) { return "WhatsApp का काम शुरू नहीं हो पाया।" }
         if (st.optString("status") != "started") {

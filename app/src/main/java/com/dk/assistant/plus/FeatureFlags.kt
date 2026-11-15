@@ -91,6 +91,8 @@ object FeatureFlags {
     const val YT_CHANNEL = "plus_yt_channel"
     // 15 नवंबर 2026 (मालिक की सूची): WhatsApp ग्रुप रिपोर्ट (3D कैरेक्टर बाद में मालिक के कहने पर हटाया)
     const val WA_GROUP_REPORT = "plus_wa_group_report"
+    /** 15 नवंबर 2026 (मालिक, हिस्सा 1): AI दिमाग → टूल एजेंट (Gemini function calling + Retry Loop) */
+    const val TOOL_AGENT = "plus_tool_agent"
 
     val ALL: List<Flag> = listOf(
         Flag(AUTO_SAVE_MEMORIES, "बातों से याददाश्त अपने-आप सेव", "बातचीत में मिली नई बात DK खुद याद रखे", Section.MEMORY),
@@ -141,6 +143,7 @@ object FeatureFlags {
         Flag(EV_BATTERY_SAVER, "बैटरी सेवर बदला", "", Section.EVENTS),
         Flag(TERMUX, "Termux ऑटोमेशन", "Termux में कमांड / लोकल सर्वर (RUN_COMMAND इजाज़त)", Section.TOOLS),
         Flag(IMAGE_GEN, "बोलकर तस्वीर बनाना", "\"एक शेर की तस्वीर बनाओ\" - नीचे \"इमेज बनाना\" में चुने मुफ़्त रास्ते से", Section.CREATE),
+        Flag(TOOL_AGENT, "टूल एजेंट (Retry Loop)", "लंबे फ़ोन-काम: Gemini खुद tool चुने (15 कदम तक), हर कदम जाँचकर 3 बार तक दोबारा", Section.BEHAVIOR),
         Flag(YT_CHANNEL, "बोलकर YouTube चैनल जाँच", "\"मेरे चैनल का हाल बताओ\" - subscribers, views, नए वीडियो, comments", Section.CREATE),
     )
 
@@ -156,6 +159,8 @@ object FeatureFlags {
         FACE_ON, EMAIL_ON, WA_GROUP_REPORT,
         // 15 नवंबर 2026: DK वॉचमैन
         FACE_WATCHMAN,
+        // 15 नवंबर 2026: टूल एजेंट (AI दिमाग)
+        TOOL_AGENT,
     )
     fun ready(key: String): Boolean = key in READY
 

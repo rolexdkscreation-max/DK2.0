@@ -67,6 +67,45 @@ object A11yRetry {
         }
     }
 
+    // ---- 15 नवंबर 2026 (हिस्सा 1, टूल एजेंट): अलग-अलग तरीकों के लिए छोटे सार्वजनिक हिस्से (ऊपर का click वैसा ही)
+
+    /** text / contentDescription वाले node के bounds के बीच में असली टैप (coordinates वाला तरीका) */
+    suspend fun tapBounds(svc: DKAccessibilityService, text: String): Boolean {
+        val root = svc.rootInActiveWindow ?: return false
+        val n = find(root, text) ?: return false
+        val r = Rect(); n.getBoundsInScreen(r)
+        return !r.isEmpty && svc.tap(r.exactCenterX(), r.exactCenterY())
+    }
+
+    /** स्क्रीन पर पहला on/off स्विच (Wi-Fi / Bluetooth / एयरप्लेन पैनल) - [label] मिले तो उसी पंक्ति वाला */
+    fun tapSwitch(svc: DKAccessibilityService, label: String = ""): Boolean {
+        val q = ArrayDeque<AccessibilityNodeInfo>(); svc.rootInActiveWindow?.let { q.add(it) }; var seen = 0
+        var first: AccessibilityNodeInfo? = null
+        while (q.isNotEmpty() && seen < 800) {
+            val n = q.removeFirst(); seen++
+            val cls = n.className?.toString().orEmpty()
+            if (n.isCheckable && (cls.contains("Switch") || cls.contains("Toggle"))) {
+                if (first == null) first = n
+                val row = n.parent
+                val txt = (row?.let { rowText(it) } ?: "") + " " + (n.text ?: "") + " " + (n.contentDescription ?: "")
+                if (label.isBlank() || txt.contains(label, true)) { var x: AccessibilityNodeInfo? = n; while (x != null && !x.isClickable) x = x.parent; if (x?.performAction(AccessibilityNodeInfo.ACTION_CLICK) == true) return true }
+            }
+            for (i in 0 until n.childCount) n.getChild(i)?.let { q.add(it) }
+        }
+        val f = first ?: return false
+        var x: AccessibilityNodeInfo? = f; while (x != null && !x.isClickable) x = x.parent
+        return x?.performAction(AccessibilityNodeInfo.ACTION_CLICK) == true
+    }
+
+    private fun rowText(n: AccessibilityNodeInfo): String {
+        val sb = StringBuilder()
+        for (i in 0 until n.childCount) n.getChild(i)?.let { c -> c.text?.let { sb.append(it).append(' ') }; c.contentDescription?.let { sb.append(it).append(' ') } }
+        return sb.toString()
+    }
+
+    /** स्क्रीन बदली या नहीं - जाँच के लिए */
+    fun signature(svc: DKAccessibilityService): String = screenSig(svc)
+
     /** स्क्रीन की छोटी पहचान: package + पहले 40 text - बदली या नहीं */
     private fun screenSig(svc: DKAccessibilityService): String {
         val r = svc.rootInActiveWindow ?: return ""
