@@ -29,6 +29,8 @@ object SecretNames {
         "search_key_linkup", "search_key_firecrawl",
         // 15 नवंबर 2026: DK AI Plus - सब-एजेंट की keys का पूल, ईमेल App Password, इमेज API key
         "plus_key_pool", "plus_email_pass", "plus_image_key",
+        // 15 नवंबर 2026: हर मुफ़्त इमेज रास्ते की अलग key + YouTube Data API key
+        "plus_image_key_pollinations", "plus_image_key_horde", "plus_image_key_hf", "plus_yt_key",
     )
     private val SCOPE_KEY = Regex("^(live|coder|pc)_key_.+")
 

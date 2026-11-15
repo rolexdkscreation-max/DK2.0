@@ -18,7 +18,6 @@
 | ऑटो इवेंट ट्रिगर (चार्जर, Wi-Fi, बैटरी सेवर) | `plus/EventTriggers.kt`, `plus/PlusBoot.kt` | बना |
 | Termux RUN_COMMAND (कमांड, लोकल सर्वर, Chrome में खोलना) | `plus/Termux.kt` | बना |
 | इमेज बनाना (मुफ़्त Pollinations / अपना OpenAI-compatible) | `plus/ImageGen.kt` | बना |
-| DK Home (webhook/LAN relay + बिजली बिल अनुमान) | `plus/SmartHome.kt`, `plus/LanHttp.kt`, `plus/SmartHomeActivity.kt` | बना |
 | इनकॉग्निटो (याद न रखे, न पढ़े) | `Memory.addFact` / `factsBlock` | बना |
 | Settings → "DK AI Plus" (मुख्य + एडवांस्ड) | `plus/PlusSettingsActivity.kt` | बना - जो अभी नहीं जुड़ा वह "अगला चरण" (disabled) |
 
@@ -38,3 +37,16 @@ PDF (ComputerOffice), Live Vision, परमिशन, कोडिंग एज
 - **Phase 5**: Email (IMAP/SMTP), WhatsApp Group Report, Social auto-post, Deepgram / OpenRouter audio, wallpaper.
 
 18+ शैली: सिर्फ़ उम्र-पुष्टि के बाद बोलचाल का अंदाज़; अश्लील सामग्री कभी नहीं बनेगी.
+
+## PR A (15 नवंबर 2026) - मुफ़्त API चरण
+
+| सुविधा | फ़ाइल | हाल |
+|---|---|---|
+| Smart Home (DK Home) पूरी तरह हटाया | - (`NoSmartHomeTest`) | हटा |
+| मुफ़्त इमेज: Pollinations / AI Horde / Hugging Face / अपनी API - हर एक की अलग key | `plus/ImageGen.kt` | बना |
+| YouTube चैनल जाँच (बिना key RSS, key से Data API v3) | `plus/YtChannel.kt` | बना |
+| Plug-in tools (नया फीचर = एक class + एक लाइन) | `plus/tools/PlusTools.kt` | बना |
+| Dynamic Tool Router: 45+ routed tools पर सिर्फ़ नाम + `dk_tool_search` | `LiveToolSlim.kt` | बना |
+| भाषा: भोजपुरी + मराठी; Auto हर भाषा | `Lang.kt` | बना |
+
+नया Live tool जोड़ना: `PlusTool` लागू करो (name, flag, declaration, run), `FeatureFlags` में बंद flag + READY, `PlusTools.ALL` में जोड़ो।

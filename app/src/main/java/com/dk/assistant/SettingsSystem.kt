@@ -55,7 +55,7 @@ internal fun SettingsActivity.secLang() {
     card("DK किस भाषा में जवाब दे", "DK लाइव, DK चैट, बिना-Live आवाज़, DK कंप्यूटर और कोडिंग एजेंट — सब पर एक साथ") { box ->
         val rg = RadioGroup(this).apply { orientation = RadioGroup.VERTICAL }
         val cur = Prefs.replyLang(this)
-        Lang.CHOICES.forEachIndexed { i, (code, label) ->
+        (Lang.CHOICES + Lang.MORE).forEachIndexed { i, (code, label) ->
             rg.addView(RadioButton(this).apply {
                 id = 3000 + i
                 text = label
@@ -66,7 +66,7 @@ internal fun SettingsActivity.secLang() {
             })
         }
         rg.setOnCheckedChangeListener { _, idc ->
-            val code = Lang.CHOICES.getOrNull(idc - 3000)?.first ?: return@setOnCheckedChangeListener
+            val code = (Lang.CHOICES + Lang.MORE).getOrNull(idc - 3000)?.first ?: return@setOnCheckedChangeListener
             Prefs.edit(this) { putString(Lang.KEY, code) }
             Prefs.loadLang(this)
             toast("भाषा: ${Lang.short(code)} — अगले जवाब से लागू")

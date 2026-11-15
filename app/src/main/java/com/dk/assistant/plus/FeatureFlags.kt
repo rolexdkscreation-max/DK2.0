@@ -24,6 +24,7 @@ object FeatureFlags {
         EMAIL("ईमेल", false),
         SOCIAL("सोशल मीडिया", false),
         BATTERY("बैटरी सेवर पैनल", false),
+        CREATE("इमेज और YouTube (बोलकर)", false),
         APPEARANCE("दिखावट • 3D कैरेक्टर", true),
         BEHAVIOR("व्यवहार (Behavior)", true),
         VOICE_GUARDIAN("वॉइस गार्डियन", true),
@@ -33,7 +34,7 @@ object FeatureFlags {
         SCREEN_LOCK("स्क्रीन लॉक / ऑटो-अनलॉक", true),
         WA_REPLY("WhatsApp ऑटो रिप्लाई", true),
         EVENTS("ऑटो इवेंट ट्रिगर", true),
-        TOOLS("टूल्स (Termux • स्मार्ट होम)", true),
+        TOOLS("टूल्स (Termux)", true),
     }
 
     data class Flag(val key: String, val title: String, val sub: String, val section: Section, val default: Boolean = false)
@@ -86,7 +87,8 @@ object FeatureFlags {
     const val EV_WIFI_OFF = "plus_ev_wifi_off"
     const val EV_BATTERY_SAVER = "plus_ev_battery_saver"
     const val TERMUX = "plus_termux"
-    const val SMART_HOME = "plus_smart_home"
+    const val IMAGE_GEN = "plus_image_gen"
+    const val YT_CHANNEL = "plus_yt_channel"
 
     val ALL: List<Flag> = listOf(
         Flag(AUTO_SAVE_MEMORIES, "बातों से याददाश्त अपने-आप सेव", "बातचीत में मिली नई बात DK खुद याद रखे", Section.MEMORY),
@@ -136,7 +138,8 @@ object FeatureFlags {
         Flag(EV_WIFI_OFF, "Wi-Fi टूटा", "", Section.EVENTS),
         Flag(EV_BATTERY_SAVER, "बैटरी सेवर बदला", "", Section.EVENTS),
         Flag(TERMUX, "Termux ऑटोमेशन", "Termux में कमांड / लोकल सर्वर (RUN_COMMAND इजाज़त)", Section.TOOLS),
-        Flag(SMART_HOME, "DK Home (स्मार्ट होम)", "Webhook से लाइट/पंखा/AC/पंप + बिजली बिल अनुमान", Section.TOOLS),
+        Flag(IMAGE_GEN, "बोलकर तस्वीर बनाना", "\"एक शेर की तस्वीर बनाओ\" - नीचे \"इमेज बनाना\" में चुने मुफ़्त रास्ते से", Section.CREATE),
+        Flag(YT_CHANNEL, "बोलकर YouTube चैनल जाँच", "\"मेरे चैनल का हाल बताओ\" - subscribers, views, नए वीडियो, comments", Section.CREATE),
     )
 
     /**
@@ -145,7 +148,7 @@ object FeatureFlags {
      */
     val READY: Set<String> = setOf(
         INCOGNITO, DRIVING_MODE, SOS_ON, EVENTS_ON, EV_CHARGER_ON, EV_CHARGER_OFF, EV_WIFI_ON, EV_WIFI_OFF,
-        EV_BATTERY_SAVER, TERMUX, SMART_HOME, START_ON_BOOT, FACE_VAULT,
+        EV_BATTERY_SAVER, TERMUX, START_ON_BOOT, FACE_VAULT, IMAGE_GEN, YT_CHANNEL,
     )
     fun ready(key: String): Boolean = key in READY
 
