@@ -48,4 +48,17 @@ class CoderAllProvidersTest {
         assertEquals(0, CoderAi.limitWaitSec(emptyList()))
         assertTrue(src("CoderAi.kt").contains("val wait = limitWaitSec(errs.map {"))
     }
+
+    /** 15 नवंबर 2026: कुछ ही API 429 पर हों (बाकी 404/401) तो "सारी की limit खत्म" न कहे */
+    @Test fun limitMessage_onlySomeLimited_notAll() {
+        assertTrue(CoderAi.limitHeadline(true).contains("सारी"))
+        assertFalse(CoderAi.limitHeadline(false).contains("सारी"))
+        val some = CoderAi.allLimitsMessage(60, "GEMINI: 429, NVIDIA: 404", noFallback = false, allLimited = false)
+        assertFalse(some.contains("सारी API keys और मॉडल की limit खत्म"))
+        assertTrue(some.contains("दूसरी वजह"))
+        assertTrue(some.contains("लगातार कोशिश नहीं"))
+        assertTrue(CoderTeam.isLimit(some))
+        assertTrue(CoderAi.allLimitsMessage(60, "GEMINI: 429", noFallback = false).contains("सारी API keys और मॉडल की limit खत्म"))
+        assertTrue(src("CoderAi.kt").contains("allLimitsMessage(wait, tried, fallbacks.isEmpty(), allLimited)"))
+    }
 }
