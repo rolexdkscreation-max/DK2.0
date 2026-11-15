@@ -173,8 +173,9 @@ object FaceAI {
      * यह चेहरा असली इंसान है या फ़ोटो/स्क्रीन - 0..1 (दोनों मॉडल का औसत). null = मॉडल नहीं / बंद.
      * एक फ़्रेम पर भरोसा नहीं - [FaceSpoof.Vote] में कई फ़्रेम जोड़ो.
      */
-    fun realness(c: Context, bmp: Bitmap, d: FaceMath.Det): Float? {
-        if (!Prefs.faceSpoofOn(c) || !openSpoof(c)) return null
+    fun realness(c: Context, bmp: Bitmap, d: FaceMath.Det, force: Boolean = false): Float? {
+        // force = वॉचमैन की Boss जाँच: Settings में anti-spoof बंद हो तब भी
+        if ((!force && !Prefs.faceSpoofOn(c)) || !openSpoof(c)) return null
         val ss = fas ?: return null
         return try {
             val env = OrtEnvironment.getEnvironment()

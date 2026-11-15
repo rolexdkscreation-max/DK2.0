@@ -33,6 +33,8 @@ object SecretNames {
         "plus_image_key_pollinations", "plus_image_key_horde", "plus_image_key_hf", "plus_yt_key",
         // 15 नवंबर 2026: जान-पहचान वालों के चेहरे की पहचान (सिर्फ़ अंक, तस्वीर नहीं)
         "face_people_v1",
+        // 15 नवंबर 2026: DK वॉचमैन - कौन आया-गया (सिर्फ़ Boss को)
+        "watchman_log_v1",
     )
     private val SCOPE_KEY = Regex("^(live|coder|pc)_key_.+")
 

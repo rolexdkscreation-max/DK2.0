@@ -104,6 +104,39 @@ internal fun SettingsActivity.secFace() {
         hint(box, "DK लेंस (DK लाइव का कैमरा) में एक साथ ${FaceMath.MAX_FACES} तक चेहरे स्कैन होते हैं — हर चेहरे पर नाम + रिश्ता, " +
             "आप पर हरा \"BOSS\"; DK बोल भी सकती है \"ये राहुल हैं — आपके दोस्त\"। \"कौन है?\" भी सारे चेहरे बताता है।")
     }
+    watchmanCard()
+}
+
+/**
+ * 15 नवंबर 2026 (मालिक): "DK वॉचमैन - फ़ोन सामने रख दूँ, कौन आया-गया DK देखता रहे, बाद में पूछूँ तो बताए - सिर्फ़ Boss को".
+ * secFace() के आख़िर से बुलाया जाता है.
+ */
+internal fun SettingsActivity.watchmanCard() {
+    card("DK वॉचमैन", "कौन आया, कितनी बार, क्या किया — रिपोर्ट सिर्फ़ Boss के चेहरे से") { box ->
+        flagSwitch(box, "DK वॉचमैन (\"वॉचमैन चालू करो\" / \"कौन आया था?\")", FeatureFlags.FACE_WATCHMAN) { on ->
+            if (on) askMissing(67, android.Manifest.permission.CAMERA)
+        }
+        row(box,
+            button("वॉचमैन शुरू करें") {
+                if (!FeatureFlags.on(this, FeatureFlags.FACE_WATCHMAN)) { toast("पहले ऊपर वाला स्विच चालू करें"); return@button }
+                if (!GuardFaceSetup.enrolled(this)) { toast("पहले Boss का चेहरा सेट करें — रिपोर्ट उसी से खुलती है"); return@button }
+                val r = WatchmanActivity.start(this); if (r.startsWith("ERROR")) toast(r)
+            },
+            button("रिपोर्ट देखें (Boss चेहरा)") {
+                if (!GuardFaceSetup.enrolled(this)) { toast("पहले Boss का चेहरा सेट करें"); return@button }
+                BossCheckActivity.open(this, BossCheckActivity.MODE_REPORT)
+            })
+        row(box, button("रिकॉर्ड मिटाएँ (Boss चेहरा)") {
+            if (!GuardFaceSetup.enrolled(this)) { toast("पहले Boss का चेहरा सेट करें"); return@button }
+            BossCheckActivity.open(this, BossCheckActivity.MODE_CLEAR)
+        })
+        hint(box, "कैसे: वॉचमैन चालू करके फ़ोन ऐसी जगह रखें जहाँ से आने-जाने वालों के चेहरे दिखें (चार्जर लगा दें)। स्क्रीन जागी रहती है, " +
+            "30 सेकंड बाद लगभग काली। DK हर ~1 सेकंड देखती है — Boss / सेव किए दोस्त-परिवार / अनजान (अनजान 1, 2… — वही दोबारा आए तो वही नंबर)। " +
+            "हर आने पर: कब आया, कितनी देर रुका, फ़ोन के पास आया, फ़ोन छुआ, साथ में कौन — और एक फ़ोटो। स्क्रीन पर किसी का नाम नहीं दिखता।")
+        hint(box, "रिपोर्ट / बंद / मिटाना = हर बार सख़्त Boss जाँच: अकेला चेहरा, ${(FaceMath.STRICT * 100).toInt()}% मिलान, हर बार नए क्रम में सिर घुमाना, " +
+            "और AI anti-spoof (Settings में बंद हो तब भी) — फ़ोटो / वीडियो से नहीं खुलता। Boss न निकले तो DK कुछ नहीं बताती, और यह कोशिश भी रिपोर्ट में लिखी जाती है। " +
+            "सब कुछ सिर्फ़ इसी फ़ोन में, ${Watchman.KEEP_DAYS} दिन तक।")
+    }
 }
 
 /** 15 नवंबर 2026: दोस्त / परिवार (कौन-सा रिश्ता) / और कोई - [done] (kind, rel) */

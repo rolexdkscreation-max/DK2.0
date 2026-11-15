@@ -54,7 +54,7 @@ object DkSettingsApply {
     private fun missingPerms(c: Context, it: DkSettings.Item): List<String> {
         val need = when (it.id) {
             "sos" -> listOf(android.Manifest.permission.SEND_SMS, android.Manifest.permission.CALL_PHONE, android.Manifest.permission.ACCESS_FINE_LOCATION)
-            "face" -> listOf(android.Manifest.permission.CAMERA)
+            "face", "watchman" -> listOf(android.Manifest.permission.CAMERA)
             "driving" -> listOf(android.Manifest.permission.ANSWER_PHONE_CALLS, android.Manifest.permission.SEND_SMS, android.Manifest.permission.READ_PHONE_STATE)
             else -> emptyList()
         }

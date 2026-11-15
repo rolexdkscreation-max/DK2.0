@@ -59,7 +59,7 @@ object SettingsSearch {
         "access" to "accessibility फ़ोन कंट्रोल control battery बैटरी call कॉल",
         "guard" to "touch mode टच मोड screen guard स्क्रीन गार्ड गार्ड मोड guard गार्ड security सुरक्षा chor चोर चोरी theft anti alarm siren सायरन intruder घुसपैठिया पहरा चौकीदार",
         // 15 नवंबर 2026 (मालिक): चेहरा पहचान वापस (v3.99 में हटाया था)
-        "face" to "face फ़ेस फेस चेहरा पहचान recognition रजिस्ट्रेशन registration boss बॉस कौन who camera कैमरा परिवार",
+        "face" to "face फ़ेस फेस चेहरा पहचान recognition रजिस्ट्रेशन registration boss बॉस कौन who camera कैमरा परिवार watchman वॉचमैन",
         "phonelock" to "lock unlock लॉक अनलॉक फ़ोन फोन phone pin पिन pattern पैटर्न password पासवर्ड screen स्क्रीन खोलो बंद",
         "perms" to "permission परमिशन इजाज़त mic camera notification",
         "computer" to "computer कंप्यूटर reminder रिमाइंडर search",
@@ -148,6 +148,7 @@ object SettingsSearch {
         // 15 नवंबर 2026: नई सुविधाएँ (मालिक की सूची) - हर card सर्च में
         E("guard", "टच मोड का रूप", "नॉर्मल • गॉड मोड (सबसे सख़्त) • स्टेल्थ मोड (चुपचाप)", "god गॉड stealth स्टेल्थ silent चुपचाप mode मोड"),
         E("face", "चेहरा पहचान", "Boss का चेहरा सेट करें — DK और टच मोड आपको पहचानें", "face फ़ेस चेहरा boss बॉस register रजिस्टर anti-spoof स्पूफ फ़ोटो वीडियो lens लेंस scan स्कैन"),
+        E("face", "DK वॉचमैन", "कौन आया, कितनी बार, क्या किया — रिपोर्ट सिर्फ़ Boss के चेहरे से", "watchman वॉचमैन वाचमैन चौकीदार कौन आया visitor आने जाने रिपोर्ट report"),
         E("face", "जान-पहचान वाले चेहरे", "परिवार / दोस्त — नाम के साथ चेहरा सेव करें", "family परिवार friend दोस्त कौन who name नाम रिश्ता relation मम्मी पापा भाई बहन"),
         E("voice", "FRIDAY / VENOM मोड", "असिस्टेंट का दूसरा रूप — FRIDAY (काम की बात) • VENOM (मज़ाकिया पुरुष आवाज़)", "friday फ्राइडे venom वेनम persona पर्सोना jarvis"),
         E("computer", "ईमेल (IMAP/SMTP)", "DK आपके ईमेल पढ़े, जवाब भेजे, स्पैम हटाए — App Password से", "email ईमेल mail मेल gmail जीमेल inbox इनबॉक्स imap smtp app password signature हस्ताक्षर"),
