@@ -133,6 +133,8 @@ object CallReply {
         r == "ERROR_CALL_PERM" -> "Could not do it: the phone-call permission is missing. Tell the user to allow DK the Phone permission (Settings → Permissions), and to tap the button on the call screen for now."
         r.startsWith("NO_CALL") -> "There is no call ringing or in progress now (it may already be handled). Do not do anything."
         r.startsWith("ERROR") -> "Could not do it ($r). Tell the user to use the call screen."
+        // 15 नवंबर 2026: फ़ोन ने दोबारा देखा - काम नहीं हुआ (कॉल अब भी है / स्पीकर नहीं बदला)
+        TruthCheck.notConfirmed(r) -> "NOT DONE - DK checked twice: ${r.substringAfter(':').trim()} Tell the user honestly in one short line; never say it was done."
         action == ANSWER || action == ANSWER_SPEAKER -> "Done: $r. The call is now connected; the microphone now belongs to the call, so DK Live pauses until the call ends. Say nothing more."
         action == REJECT -> "Done: $r. Tell the user briefly that the call was rejected."
         else -> "Done: $r"

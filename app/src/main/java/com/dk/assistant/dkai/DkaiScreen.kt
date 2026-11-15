@@ -37,6 +37,8 @@ class DkaiHost(
     val pickFile: (() -> Unit)? = null,
     /** 14 नवंबर 2026: ⚙ Settings में "पूरा DK" वाले रास्ते (title, विवरण, टैप) - फ़ोन कंट्रोल, माइक, चैट, टीचर, Forge… */
     val settingsItems: () -> List<Triple<String, String, () -> Unit>> = { emptyList() },
+    /** 15 नवंबर 2026 (मालिक): नीचे की 5-टैब पट्टी - चैट / मेमोरी जैसी अलग स्क्रीनें MainActivity खोलती है (true = संभाल लिया) */
+    val tab: (com.dk.assistant.ui.HomeTabs.Tab) -> Boolean = { false },
 )
 
 object Dkai {
@@ -111,7 +113,7 @@ class DkaiScreen(val activity: ComponentActivity, val host: DkaiHost) {
         root = FrameLayout(c).apply { setBackgroundColor(DkaiTheme.BG); isClickable = true; id = R.id.dkai_root; tag = this@DkaiScreen }
         content = LinearLayout(c).apply { orientation = LinearLayout.VERTICAL }
         root.addView(content, FrameLayout.LayoutParams(-1, -1))
-        buildHeader(); buildHome(); buildInput()
+        buildHeader(); buildHome(); buildInput(); buildTabs()
         voice = DkaiVoice(this)
         setComputer(false)
         root.addView(voice.mini, voice.miniParams())
@@ -125,6 +127,8 @@ class DkaiScreen(val activity: ComponentActivity, val host: DkaiHost) {
             insetBottom = maxOf(bars.bottom, ime.bottom)
             DkaiUi.insetTop = bars.top; DkaiUi.insetBottom = insetBottom
             content.setPadding(bars.left, bars.top, bars.right, insetBottom)
+            // कीबोर्ड खुला = 5-टैब पट्टी छुपी (लिखने की जगह कम न हो)
+            tabsBar?.visibility = if (ime.bottom > bars.bottom || !com.dk.assistant.ui.HomeTabs.visible(c)) View.GONE else View.VISIBLE
             voice.applyInsets(bars.top, bars.bottom)
             placeMini()
             ins
@@ -364,6 +368,30 @@ class DkaiScreen(val activity: ComponentActivity, val host: DkaiHost) {
         content.addView(inputBox, LinearLayout.LayoutParams(-1, -2).apply { setMargins(d(12f), d(6f), d(12f), d(10f)) })
         micOrSend()
     }
+
+    // ================================================================== 15 नवंबर 2026: नीचे की 5-टैब पट्टी
+    /** होम • स्कैन • माइक • चैट • मेमोरी (मालिक: "अलग 5-टैब वाली नीचे की पट्टी भी बनाओ") - सब पहले से बने असली रास्ते */
+    var tabsBar: LinearLayout? = null; private set
+
+    private fun buildTabs() {
+        val bar = com.dk.assistant.ui.HomeTabs.bar(c, DkaiTheme.GRAY, DkaiTheme.BLUE, DkaiTheme.CARD) { t -> onTab(t) }
+        tabsBar = bar
+        com.dk.assistant.ui.HomeTabs.sync(c, bar)
+        content.addView(bar, LinearLayout.LayoutParams(-1, -2).apply { setMargins(d(12f), 0, d(12f), d(8f)) })
+    }
+
+    /** पट्टी का टैब: होम = ऊपर / खुला sheet बंद, स्कैन = DK लेंस, माइक = DK लाइव, चैट/मेमोरी = MainActivity की स्क्रीन */
+    fun onTab(t: com.dk.assistant.ui.HomeTabs.Tab) {
+        when (t) {
+            com.dk.assistant.ui.HomeTabs.Tab.HOME -> { DkaiUi.closeTop(root); hideKeyboard(); homeScroll.post { homeScroll.smoothScrollTo(0, 0) } }
+            com.dk.assistant.ui.HomeTabs.Tab.SCAN -> openLens(false)
+            com.dk.assistant.ui.HomeTabs.Tab.MIC -> micTap()
+            else -> if (!host.tab(t)) toast(t.label + " अभी नहीं खुला")
+        }
+    }
+
+    /** Settings से लौटे - "पट्टी छुपाएँ" बदला हो तो */
+    fun syncTabs() = com.dk.assistant.ui.HomeTabs.sync(c, tabsBar)
 
     /** 〰 बटन: कुछ लिखा / फोटो जुड़ी = ↑ भेजें, खाली = आवाज़ से बात */
     private fun micOrSend() {

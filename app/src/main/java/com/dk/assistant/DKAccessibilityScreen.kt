@@ -169,8 +169,9 @@ internal suspend fun DKAccessibilityService.verifyOpen(r: String): String {
     val pkg = AppLauncher.lastPkg
     if (pkg.isBlank()) return r
     val t0 = System.currentTimeMillis()
-    val ok = waitForeground(2500) { it == pkg }
-    DKLog.d("जाँच: ऐप ${if (ok) "सामने आ गया" else "सामने नहीं दिखा"} (${System.currentTimeMillis() - t0} ms)")
+    // 15 नवंबर 2026 (मालिक: "फिर से चेक करके देखे"): पहली बार न दिखे तो एक बार और देखो (धीमे फ़ोन पर ऐप देर से आता है)
+    val (ok, again) = TruthCheck.twice(2500, 2000) { ms -> waitForeground(ms) { it == pkg } }
+    DKLog.d("जाँच: ऐप ${if (ok) "सामने आ गया" else "दो बार देखा, सामने नहीं दिखा"}${if (again) " (दोबारा जाँचा)" else ""} (${System.currentTimeMillis() - t0} ms)")
     return if (ok) "$r (verified)" else "$r (not confirmed on screen)"
 }
 

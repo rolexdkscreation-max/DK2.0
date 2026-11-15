@@ -160,6 +160,13 @@ class AgentRunner(
             }
         }
         if (r.startsWith("ERROR")) return false
+        // 15 नवंबर 2026 (मालिक: "काम नहीं हुआ तो हाँ ना कहे - दोबारा देखे, हुआ हो तभी हाँ"): फ़ोन ने दो बार देखा, पक्का नहीं
+        if (TruthCheck.notConfirmed(r)) {
+            val say = TruthCheck.honestSay(type, r)
+            DKState.replyFailed(say)
+            if (!silent) speaker.speakQuick(say)
+            return true
+        }
         // seedha video nahi chala (search page khula) -> AI pehla video click karega
         if (type == "youtube_play" && !r.startsWith("PLAYING")) return false
         val msg = when {

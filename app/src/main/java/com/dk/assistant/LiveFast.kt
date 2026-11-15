@@ -53,7 +53,8 @@ object LiveFast {
 
     fun ok(type: String, r: String) = !r.startsWith("ERROR") && !r.startsWith(PhoneLockVoice.UNLOCK_FAIL) && !r.startsWith("ASK:") && !r.startsWith("STEP_FAILED") &&
         !(type == "youtube_play" && !r.startsWith("PLAYING") && !r.startsWith("VIDEO_OPENED")) &&
-        !(type == "delete_media" && !r.startsWith("DELETED:"))
+        !(type == "delete_media" && !r.startsWith("DELETED:")) &&
+        !TruthCheck.notConfirmed(r)      // 15 नवंबर 2026: "पक्का नहीं" = हो गया नहीं
 
     /** Gemini को tool का सच्चा नतीजा (कभी "done" झूठ नहीं) */
     fun quickResult(q: QuickCommands.Quick, r: String, already: Boolean): String {
@@ -65,6 +66,9 @@ object LiveFast {
         if (r.startsWith("ASK:") && type == "sms_send" && OfflineCommands.pending != null) return "NEEDS USER CONFIRMATION (nothing sent yet): ${said ?: r}. " +
             "Ask the user exactly this in their language. If they say yes, call phone_task with exactly \"हाँ, SMS भेजो\"; if no, call phone_task with exactly \"SMS मत भेजो\". Do not send it any other way."
         if (r.startsWith("ASK:")) return "NEEDS USER CHOICE (nothing was done yet): ${said ?: r}. Ask the user exactly this in their language. Do NOT call, open or do anything until they answer."
+        // 15 नवंबर 2026 (मालिक: "दोबारा देखे, हुआ हो तभी हाँ"): फ़ोन ने दो बार देखा, पक्का नहीं हुआ
+        if (TruthCheck.notConfirmed(r)) return "NOT_CONFIRMED - DK checked the phone twice and could NOT confirm it happened ($what: ${(said ?: r).take(120)}). " +
+            "Tell the user honestly in one short line (e.g. \"मैंने दोबारा चेक किया बॉस, पक्का नहीं हुआ - एक बार स्क्रीन देख लीजिए\"). Never say it is done."
         // सच्चा नतीजा, जो फ़ोन ने खुद जाँचा ("डायलर खोला" = कॉल लगी नहीं, "वीडियो खोला" = चल रहा पक्का नहीं)
         if (said != null && ok(type, r)) return (if (already) "ALREADY DONE just now (do not repeat it): " else "DONE: ") +
             "$what. Phone says: \"$said\". Tell the user this honestly in a few words; do not claim more than it says."

@@ -29,7 +29,7 @@ PDF (ComputerOffice), Live Vision, परमिशन, कोडिंग एज
 
 ## आगे के चरण
 
-- **Phase 2**: 5-tab bottom nav (Home/Scan/Mic/Memories/Chat) + side drawer; Friday/Venom personas; 20+ भाषाएँ;
+- **Phase 2**: ~~5-tab bottom nav (Home/Scan/Mic/Memories/Chat)~~ (PR D में बना) + side drawer; Friday/Venom personas; 20+ भाषाएँ;
   Swift/Soul/Mind voice modes; KeyPool को सारे AI कॉल से जोड़ना; Battery Saver panel असली रोक; call announce.
 - **Phase 3**: Voice Guardian (RedimNet, 6-step enrollment, Away mode) + Face (app lock, vault, watchman, morning greeting);
   God/Stealth touch guard; 3D कैरेक्टर (WebView + three.js, GLTFLoader साथ में डाउनलोड).
@@ -117,3 +117,21 @@ v3.99 वाला "चेहरा पहचान हटाओ" फ़ैस�
 
 DK लाइव: हर नई चीज़ `dk_settings` से चालू/बंद (बदलने पर दो बार पक्का), और tools `face_who`, `email_read`, `email_send`,
 `email_delete`, `group_report`, `show_character` से चलती है. भेजना / हटाना = पहले सुनाकर "हाँ" पर ही.
+
+## PR D (15 नवंबर 2026) - सच्चा DK + नीचे की 5-टैब पट्टी
+
+मालिक: "जो काम नहीं हुआ, फिर भी बोलता है हाँ हो गया; कोई कॉल नहीं आ रहा, फिर भी बोलता है कॉल आ रहा है। दोबारा चेक करे, हुआ हो तभी हाँ।"
+
+जड़ और सुधार:
+- घंटी बंद (कटी / छूटी / उठ गई) होने की ख़बर DK लाइव को कभी नहीं जाती थी, इसलिए उसकी याद में "कॉल आ रहा है" बना रहता था।
+  अब घंटी बंद होते ही Live को चुपचाप बताया जाता है (`GeminiLiveTruth.noteCallGone`, `turnComplete=false`, इस पर जवाब नहीं बनता)।
+- फिर भी Live "कॉल आ रहा है" बोले और फ़ोन पर न घंटी हो, न चलती कॉल, तो वह वाक्य वहीं रुकता है और Live सच बोलता है (`falseCallCheck`)।
+- ऐप का "Missed call / छूटी हुई कॉल" notification अब बजती कॉल नहीं माना जाता। 60s से पुराना "बजती" notification भी नहीं (`AppCall.posted`)।
+- `(not confirmed on screen)` और `NOT_CONFIRMED` अब "हो गया" नहीं (`LiveFast.ok`, `DoneGate.notDoneYet`, `CallReply.resultNote`, `AgentRunner`)।
+- कॉल काटना और स्पीकर अब बटन दबाकर दोबारा जाँचते हैं। न हुआ हो तो एक बार और कोशिश करते हैं, फिर सच बताते हैं: "मैंने दोबारा देखा, कॉल अभी कटी नहीं"।
+- ऐप खुलने की जाँच दो बार होती है (`TruthCheck.twice`)। DoneGate को और काम वाले शब्द पहचानने सिखाए (रिमाइंडर, स्क्रीनशॉट, लॉक, स्पीकर, ऑर्डर…)।
+- Live prompt में TRUTH नियम जोड़ा: पक्का न हो तो "एक सेकंड, मैं फिर से चेक करता हूँ" कहकर tool दोबारा चलाए।
+
+5-टैब पट्टी (`ui/HomeTabs.kt`): होम • स्कैन (DK लेंस) • माइक (DK लाइव) • चैट • मेमोरी, सब पहले से बने रास्तों पर।
+पट्टी शुरू से दिखती है, क्योंकि मालिक ने ख़ुद माँगी। छुपाने का स्विच `plus_hide_home_tabs` शुरू में बंद रहता है।
+आवाज़ से: "DK, नीचे की पट्टी बंद करो" (दो बार पक्का पूछता है)। Tests: `TruthCheckTest` (12)।

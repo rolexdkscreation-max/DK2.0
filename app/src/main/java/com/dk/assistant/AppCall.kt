@@ -90,12 +90,15 @@ object AppCall {
     // ------------------------------------------------------------ notification से (DKNotifListener)
 
     /** true = नई बजती कॉल (DK को पूछना है) */
-    fun posted(key: String, pkg: String, app: String, n: Notification, title: String, text: String): Boolean {
+    fun posted(key: String, pkg: String, app: String, n: Notification, title: String, text: String, postedAt: Long = 0L): Boolean {
         val acts = n.actions?.toList().orEmpty()
         val titles = acts.map { it.title?.toString().orEmpty() }
         val ex = n.extras
         val callStyle = Build.VERSION.SDK_INT >= 31 && ex?.getString(Notification.EXTRA_TEMPLATE)?.endsWith("CallStyle") == true
         if (!isCall(pkg, n.category, callStyle, n.fullScreenIntent != null, titles)) return false
+        // 15 नवंबर 2026 (मालिक: "कोई कॉल नहीं आ रहा, फिर भी बोलता है कॉल आ रहा है"): छूटी / ख़त्म कॉल वाला notification बजती कॉल नहीं.
+        // उसी key पर बजती कॉल थी = वह अब ख़त्म.
+        if (TruthCheck.missedCall(title, text)) { if (rings.containsKey(key) || current?.key == key) removed(key); return false }
         @Suppress("DEPRECATION")
         fun extraPi(k: String): PendingIntent? = if (Build.VERSION.SDK_INT >= 31) try { ex?.getParcelable(k) as? PendingIntent } catch (_: Exception) { null } else null
         val ans = extraPi("android.answerIntent") ?: acts.getOrNull(pickAnswer(titles))?.actionIntent
@@ -109,6 +112,8 @@ object AppCall {
             n.fullScreenIntent ?: n.contentIntent,
             if (prev?.key == key && prev.state == state) prev.since else System.currentTimeMillis(),
             mute = acts.getOrNull(pickMute(titles))?.actionIntent, speaker = acts.getOrNull(pickSpeaker(titles))?.actionIntent)
+        // बहुत पुराना "बजती" notification (DK बाद में जुड़ा) = घंटी कब की बंद - न रखो, न एलान
+        if (state == State.RINGING && !TruthCheck.freshRing(postedAt, System.currentTimeMillis())) return false
         current = r
         rings[key] = r
         return state == State.RINGING && !(prev?.key == key && prev.state == State.RINGING)

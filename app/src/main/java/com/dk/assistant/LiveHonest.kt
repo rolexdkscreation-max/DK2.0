@@ -242,6 +242,8 @@ object DoneGate {
     private val ACT = Regex(
         "खोल|चला|प्ले|play|बजा|लगा|भेज|send|मैसेज|मेसेज|message|msg|कॉल|call|फ़ोन लगा|फोन लगा|डायल|dial|डिलीट|delete|मिटा|हटा|" +
             "बंद कर|चालू कर|ऑन कर|ऑफ कर|ऑन|ऑफ|turn on|turn off|सेट|set|सेव|save|शेयर|share|पोस्ट|post|डाउनलोड|download|अलार्म|alarm|" +
+            "रिमाइंडर|reminder|याद दिला|फोटो खींच|फ़ोटो खींच|स्क्रीनशॉट|screenshot|रिकॉर्ड|record|लॉक कर|lock|ऑर्डर|order|बुक कर|पेमेंट|payment|" +
+            "अपलोड|upload|इंस्टॉल|install|कैमरा|camera|स्पीकर|speaker|" +
             "टॉर्च|torch|वॉल्यूम|volume|ब्राइटनेस|brightness|वाई-?फ़ाई|वाईफाई|wifi|ब्लूटूथ|bluetooth|रिप्लाई|reply|जवाब दे|" +
             "open|kholo|chalao|bhejo|bajao|lagao|mita|hata|band karo|chalu karo",
         RegexOption.IGNORE_CASE
@@ -293,7 +295,7 @@ object DoneGate {
         if (listOf("confirmed", "cancelling", "resuming", "waiting_confirmation", "running").any { l.contains("\"status\":\"$it\"") }) return true
         return r.startsWith("Started") || r.startsWith("Queued") || l.contains("\"status\":\"started\"") || l.contains("forge_started") ||
             l.startsWith("not_done") || l.startsWith("tool failed") || r.startsWith("VIDEO_OPENED") || r.startsWith("Could not") ||
-            HonestGuard.actionFailed(r) || l.contains("\"error\"")
+            HonestGuard.actionFailed(r) || l.contains("\"error\"") || TruthCheck.saysFailed(r)
     }
 
     /** Gemini को: काम सिर्फ़ शुरू हुआ / नहीं हुआ और तुमने "हो गया" कहा - वह नहीं बजाया */

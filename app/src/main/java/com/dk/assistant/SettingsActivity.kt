@@ -150,7 +150,7 @@ class SettingsActivity : AppCompatActivity() {
             "about" -> { title.text = "ऐप के बारे में"; secAbout() }
         }
         // 15 नवंबर 2026: नई सुविधाएँ अपने पुराने section के नीचे (पुरानी लाइनें वैसी ही)
-        when (section) { "ui" -> sec3D(); "computer" -> secEmail(); "autoreply" -> secGroupReport() }
+        when (section) { "ui" -> { sec3D(); secHomeTabs() }; "computer" -> secEmail(); "autoreply" -> secGroupReport() }
         space(container, 8)
         FutureViews.goldShader(title)          // नवंबर 2026: शीर्षक धातु जैसा सुनहरा (Control Center रूप)
     }
