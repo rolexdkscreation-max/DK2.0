@@ -35,6 +35,8 @@ object Memory {
 
     /** Nayi baat yaad karo. Milti-julti purani baat ho to use badal do. */
     fun addFact(c: Context, fact: String): Boolean {
+        // 15 नवंबर 2026 (DK AI Plus): इनकॉग्निटो चालू = कुछ भी याद नहीं (default बंद = पहले जैसा)
+        if (com.dk.assistant.plus.FeatureFlags.on(c, com.dk.assistant.plus.FeatureFlags.INCOGNITO)) return false
         val f = fact.trim().trim('.', '।', ' ').take(300)
         if (f.length < 3) return false
         // v3.45: पासवर्ड / PIN / OTP / बैंक-कार्ड-आधार नंबर कभी याद नहीं
@@ -102,6 +104,7 @@ object Memory {
 
     /** AI ke prompt me jodne ke liye. */
     fun factsBlock(c: Context): String {
+        if (com.dk.assistant.plus.FeatureFlags.on(c, com.dk.assistant.plus.FeatureFlags.INCOGNITO)) return ""
         val f = facts(c)
         // नवंबर 2026: दूसरे AI (Claude/ChatGPT/...) से सीखे तरीके भी हर prompt में - DK खुद वैसे काम करे
         val learned = LearnedWays.promptBlock(c)

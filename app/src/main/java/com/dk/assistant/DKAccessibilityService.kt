@@ -200,11 +200,6 @@ class DKAccessibilityService : AccessibilityService() {
         DKLog.d("Live चालू (live=${DKState.live}, wake=$wakeLive)")
         // खुद Live चालू किया (बटन/ओर्ब) = हमेशा वाला, एक बार वाली बातचीत नहीं
         if (sessionLive) { sessionLive = false; gemLive.idleExitMs = 0; Prefs.edit(this) { putBoolean("live_mode", true) } }
-        // DK AI Part 13: access key चालू नहीं = लाइव शुरू नहीं (लाइसेंस सेट नहीं = पहले जैसा चलता है)
-        com.dk.assistant.license.AccessKeyManager.refusalOrNull(this)?.let { msg ->
-            DKLog.d("Live: access key चालू नहीं - शुरू नहीं किया")
-            DKState.reply(msg); return
-        }
         calls.start()     // v3.40: Phone की इजाज़त बाद में दी हो तो भी अब call पता चले (पहले सिर्फ़ service शुरू होते समय)
         if (DKState.live) {
             // wake word se thodi der ka Live chal raha tha -> ab pakka Live (khud band nahi hoga)
@@ -376,7 +371,6 @@ class DKAccessibilityService : AccessibilityService() {
             return
         }
         if (Prefs.micUserOff(this) || GeminiLive.key(this).isBlank() || !Setup.hasMic(this)) return
-        if (com.dk.assistant.license.AccessKeyManager.refusalOrNull(this) != null) return
         DKLog.d("ऐप खुला - DK लाइव तुरंत चालू")
         startLive()
     }
@@ -1196,6 +1190,7 @@ class DKAccessibilityService : AccessibilityService() {
                 "who_calls" -> whoCalls()
                 "close_app" -> closeApp()
                 "close_all_apps" -> closeAllApps()
+                in com.dk.assistant.plus.PlusCommands.TYPES -> com.dk.assistant.plus.PlusCommands.run(this, a)   // 15 नवंबर 2026: SOS / ड्राइविंग मोड
                 in NativeActionEngine.TYPES -> NativeActionEngine.run(this, a)   // नवंबर 2026: ब्राइटनेस / ऑटो रोटेट / DND
                 in OfflineExec.TYPES -> OfflineExec.run(this, a)   // v4.1: अलार्म / टाइमर / कैमरा / समय / टैप / SMS (बिना API)
                 "wait" -> { delay(a.optLong("ms", 1000).coerceIn(100, 8000)); "waited" }

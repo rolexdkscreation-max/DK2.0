@@ -186,6 +186,8 @@ class SettingsActivity : AppCompatActivity() {
             // 15 नवंबर 2026 (मालिक: "अपडेट का सेक्शन सबसे नीचे दिखना चाहिए"): मुख्य पन्ने पर एक ही जगह, सबसे नीचे
             // (किसी श्रेणी के अंदर नहीं). नया अपडेट आया हो तो होम पर चमकती पट्टी + popup ([UpdatePrompt])
             SettingsSearch.CATEGORIES.forEach { (c, _) -> menuRow(c.first, c.second, c.third) }
+            // 15 नवंबर 2026 (मालिक: DK AI मास्टर अपग्रेड): नई सुविधाएँ एक जगह - सब शुरू में बंद
+            menuRow("plus", "DK AI Plus (नई सुविधाएँ)", "SOS • ड्राइविंग मोड • इवेंट ट्रिगर • Termux • DK Home • मॉडल डाउनलोड • सब शुरू में बंद")
             items.firstOrNull { it.first == "update" }?.let { (id, t, sub) -> menuRow(id, t, sub) }
             return
         }
@@ -207,6 +209,7 @@ class SettingsActivity : AppCompatActivity() {
                     else if (id == "backup") startActivity(android.content.Intent(this@SettingsActivity, com.dk.assistant.backup.BackupActivity::class.java))
                     else if (id == "connectors") startActivity(android.content.Intent(this@SettingsActivity, com.dk.assistant.connect.ConnectorsActivity::class.java))
                     else if (id == "auto") startActivity(android.content.Intent(this@SettingsActivity, com.dk.assistant.auto.AutoSettingsActivity::class.java))
+                    else if (id == "plus") startActivity(android.content.Intent(this@SettingsActivity, com.dk.assistant.plus.PlusSettingsActivity::class.java))
                     else if (id == "templates") startActivity(android.content.Intent(this@SettingsActivity, com.dk.assistant.template.TemplateSettingsActivity::class.java))
                     else if (searchHit != null) openHit(searchHit)
                     else startActivity(android.content.Intent(this@SettingsActivity, SettingsActivity::class.java).putExtra("section", id))

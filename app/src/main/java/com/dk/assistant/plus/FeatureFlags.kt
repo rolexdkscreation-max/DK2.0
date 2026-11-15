@@ -1,0 +1,177 @@
+package com.dk.assistant.plus
+
+import android.content.Context
+
+/**
+ * 15 नवंबर 2026 (मालिक: "DK AI मास्टर अपग्रेड"): हर नई सुविधा का एक ही रजिस्टर.
+ *
+ * नियम (मालिक के शब्द): हर नई सुविधा / background listener / auto-reply / trigger / भारी service **पहली बार install पर
+ * बंद (false)**. जब तक मालिक Settings → DK AI Plus में खुद चालू न करे, कुछ भी पीछे से नहीं चलता.
+ * अकेला अपवाद: "Realistic Typing" (मालिक की spec में Default = ON) - यह सिर्फ़ टाइप करने का तरीका है, कोई service नहीं.
+ *
+ * कोई license key / paywall / trial / रोज़ की सीमा नहीं - हर flag सबके लिए खुला.
+ * Pure हिस्सा ([ALL], [byKey], [defaultOf]) JVM test में ([FeatureFlagsTest]).
+ */
+object FeatureFlags {
+    const val PREFS = "dk_plus_flags"
+
+    /** Settings में कहाँ दिखे: मुख्य सेटिंग्स या एडवांस्ड सेटिंग्स का कौन-सा हिस्सा */
+    enum class Section(val title: String, val advanced: Boolean) {
+        MEMORY("याददाश्त और बातचीत", false),
+        CALL_DRIVE("कॉल और ड्राइविंग", false),
+        SECRET("सीक्रेट सेटिंग्स", false),
+        SUB_AGENT("सब-एजेंट (कई API keys)", false),
+        EMAIL("ईमेल", false),
+        SOCIAL("सोशल मीडिया", false),
+        BATTERY("बैटरी सेवर पैनल", false),
+        APPEARANCE("दिखावट • 3D कैरेक्टर", true),
+        BEHAVIOR("व्यवहार (Behavior)", true),
+        VOICE_GUARDIAN("वॉइस गार्डियन", true),
+        FACE("फ़ेस रिकग्निशन", true),
+        SOS("इमरजेंसी SOS", true),
+        TOUCH_GUARD("टच गार्ड (चोरी से बचाव)", true),
+        SCREEN_LOCK("स्क्रीन लॉक / ऑटो-अनलॉक", true),
+        WA_REPLY("WhatsApp ऑटो रिप्लाई", true),
+        EVENTS("ऑटो इवेंट ट्रिगर", true),
+        TOOLS("टूल्स (Termux • स्मार्ट होम)", true),
+    }
+
+    data class Flag(val key: String, val title: String, val sub: String, val section: Section, val default: Boolean = false)
+
+    // ---- keys (बाकी code इन्हीं नामों से पढ़ता है)
+    const val AUTO_SAVE_MEMORIES = "plus_auto_save_memories"
+    const val INCOGNITO = "plus_incognito"
+    const val PROACTIVE_SPEECH = "plus_proactive_speech"
+    const val AUTO_WAKE_WORD = "plus_auto_wake_word"
+    const val MSG_ALERT_READER = "plus_msg_alert_reader"
+    const val INSTA_AD_SKIP = "plus_insta_ad_skip"
+    const val CALL_ANNOUNCE = "plus_call_announce"
+    const val KEEP_RINGTONE = "plus_keep_ringtone"
+    const val DRIVING_MODE = "plus_driving_mode"
+    const val ADULT_STYLE = "plus_adult_style"
+    const val KEY_POOL_ALL = "plus_key_pool_all"
+    const val EMAIL_ON = "plus_email_on"
+    const val SOCIAL_AUTO_POST = "plus_social_auto_post"
+    const val BATTERY_SAVER = "plus_battery_saver"
+    const val BS_WAKE_WORD = "plus_bs_wake_word"
+    const val BS_SCREEN_AWARE = "plus_bs_screen_aware"
+    const val BS_VOICE_GUARDIAN = "plus_bs_voice_guardian"
+    const val BS_3D = "plus_bs_3d"
+    const val CHARACTER_OVERLAY = "plus_character_overlay"
+    const val FLOAT_ORB = "plus_float_orb"
+    const val EDGE_GLOW = "plus_edge_glow"
+    const val EARPIECE = "plus_earpiece"
+    const val ECHO_GUARD = "plus_echo_guard"
+    const val MEDIA_MODE = "plus_media_mode"
+    const val START_ON_BOOT = "plus_start_on_boot"
+    const val REALISTIC_TYPING = "plus_realistic_typing"
+    const val VOICE_GUARDIAN = "plus_voice_guardian"
+    const val VG_OWNER_ONLY = "plus_vg_owner_only"
+    const val VG_AWAY = "plus_vg_away"
+    const val FACE_ON = "plus_face_on"
+    const val FACE_APP_LOCK = "plus_face_app_lock"
+    const val FACE_VAULT = "plus_face_vault"
+    const val FACE_WATCHMAN = "plus_face_watchman"
+    const val FACE_MORNING = "plus_face_morning"
+    const val SOS_ON = "plus_sos_on"
+    const val TOUCH_GUARD = "plus_touch_guard"
+    const val TG_CHARGER = "plus_tg_charger"
+    const val SCREEN_UNLOCK = "plus_screen_unlock"
+    const val WA_AUTO_REPLY = "plus_wa_auto_reply"
+    const val WA_GROUPS = "plus_wa_groups"
+    const val EVENTS_ON = "plus_events_on"
+    const val EV_CHARGER_ON = "plus_ev_charger_on"
+    const val EV_CHARGER_OFF = "plus_ev_charger_off"
+    const val EV_WIFI_ON = "plus_ev_wifi_on"
+    const val EV_WIFI_OFF = "plus_ev_wifi_off"
+    const val EV_BATTERY_SAVER = "plus_ev_battery_saver"
+    const val TERMUX = "plus_termux"
+    const val SMART_HOME = "plus_smart_home"
+
+    val ALL: List<Flag> = listOf(
+        Flag(AUTO_SAVE_MEMORIES, "बातों से याददाश्त अपने-आप सेव", "बातचीत में मिली नई बात DK खुद याद रखे", Section.MEMORY),
+        Flag(INCOGNITO, "इनकॉग्निटो मोड", "इस दौरान DK न कुछ याद रखे, न पुरानी याददाश्त पढ़े", Section.MEMORY),
+        Flag(PROACTIVE_SPEECH, "खुद से बोलना (Proactive)", "बंद = DK सिर्फ़ तब बोले जब आप बुलाएँ", Section.MEMORY),
+        Flag(AUTO_WAKE_WORD, "\"Hey DK\" अपने-आप शुरू", "ऐप खुलते ही जागने वाला शब्द सुनना शुरू", Section.MEMORY),
+        Flag(MSG_ALERT_READER, "मैसेज पढ़कर सुनाना", "WhatsApp के नए मैसेज बोलकर बताए", Section.MEMORY),
+        Flag(INSTA_AD_SKIP, "Instagram ऑटो-स्क्रॉल और ऐड-स्किप", "Sponsored पोस्ट/ऐड अपने-आप आगे (Accessibility)", Section.MEMORY),
+        Flag(CALL_ANNOUNCE, "कॉल की घोषणा", "कॉल करने वाले का नाम बोले, \"Receive\" / \"Reject\" सुने", Section.CALL_DRIVE),
+        Flag(KEEP_RINGTONE, "रिंगटोन भी बजती रहे", "घोषणा के साथ रिंगटोन बंद न हो", Section.CALL_DRIVE),
+        Flag(DRIVING_MODE, "ड्राइविंग मोड", "कॉल अपने-आप काटे और SMS से जवाब भेजे ({user_name})", Section.CALL_DRIVE),
+        Flag(ADULT_STYLE, "18+ बातचीत शैली", "उम्र की पुष्टि के बाद ही; सिर्फ़ बोलचाल खुली, अश्लील सामग्री नहीं", Section.SECRET),
+        Flag(KEY_POOL_ALL, "सारी keys इस्तेमाल करो (Round-Robin)", "एक key की limit (429) पर अगली key - काम नहीं रुकता", Section.SUB_AGENT),
+        Flag(EMAIL_ON, "ईमेल पढ़ना / जवाब देना", "IMAP/SMTP App Password से", Section.EMAIL),
+        Flag(SOCIAL_AUTO_POST, "रोज़ की ऑटो-स्टोरी / ऑटो-पोस्ट", "तय समय पर पोस्ट तैयार करके डालना", Section.SOCIAL),
+        Flag(BATTERY_SAVER, "बैटरी सेवर (मुख्य स्विच)", "चालू = नीचे चुने भारी हिस्से रुकें", Section.BATTERY),
+        Flag(BS_WAKE_WORD, "Wake Word रोको", "बैटरी सेवर में \"Hey DK\" सुनना बंद", Section.BATTERY),
+        Flag(BS_SCREEN_AWARE, "स्क्रीन देखना रोको", "बैटरी सेवर में स्क्रीन पढ़ना बंद", Section.BATTERY),
+        Flag(BS_VOICE_GUARDIAN, "वॉइस गार्डियन रोको", "बैटरी सेवर में आवाज़-पहचान बंद", Section.BATTERY),
+        Flag(BS_3D, "3D कैरेक्टर रोको", "बैटरी सेवर में 3D रेंडर बंद", Section.BATTERY),
+        Flag(CHARACTER_OVERLAY, "होम स्क्रीन पर 3D कैरेक्टर", "फ़्लोटिंग ओवरले (Display over other apps)", Section.APPEARANCE),
+        Flag(FLOAT_ORB, "फ़्लोटिंग ओर्ब", "हर ऐप के ऊपर छोटा DK ओर्ब", Section.BEHAVIOR),
+        Flag(EDGE_GLOW, "किनारे की चमक (Edge Glow)", "DK बोले/सुने तो स्क्रीन के किनारे चमकें", Section.BEHAVIOR),
+        Flag(EARPIECE, "ईयरपीस मोड", "DK की आवाज़ ऊपर वाले कॉल स्पीकर में (निजी बातचीत)", Section.BEHAVIOR),
+        Flag(ECHO_GUARD, "इको गार्ड", "DK अपनी ही स्पीकर की आवाज़ सुनकर जवाब न दे", Section.BEHAVIOR),
+        Flag(MEDIA_MODE, "मीडिया मोड", "YouTube/गाने के साथ आवाज़ संतुलित, स्क्रीन रिकॉर्डर में भी DK की आवाज़", Section.BEHAVIOR),
+        Flag(START_ON_BOOT, "फ़ोन चालू होते ही DK शुरू", "Boot पर", Section.BEHAVIOR),
+        Flag(REALISTIC_TYPING, "असली जैसी टाइपिंग", "लंबा पैराग्राफ़ एक बार में, छोटा अक्षर-अक्षर", Section.BEHAVIOR, default = true),
+        Flag(VOICE_GUARDIAN, "वॉइस गार्डियन (आवाज़-पहचान)", "RedimNet मॉडल इंटरनेट से डाउनलोड होता है", Section.VOICE_GUARDIAN),
+        Flag(VG_OWNER_ONLY, "सिर्फ़ Boss की आवाज़", "अनजान आवाज़ को अनसुना करो", Section.VOICE_GUARDIAN),
+        Flag(VG_AWAY, "Away मोड", "अनजान आवाज़: पहली बार चेतावनी, दूसरी बार फ़ोन लॉक", Section.VOICE_GUARDIAN),
+        Flag(FACE_ON, "फ़ेस रिकग्निशन", "10 MB मॉडल इंटरनेट से डाउनलोड होता है", Section.FACE),
+        Flag(FACE_APP_LOCK, "चेहरे से ऐप/सेक्शन लॉक", "Settings / Chat / Memories / चुने ऐप", Section.FACE),
+        Flag(FACE_VAULT, "प्राइवेट वॉल्ट", "DK की ली फ़ोटो गैलरी में नहीं, ऐप के ताले में", Section.FACE),
+        Flag(FACE_WATCHMAN, "वॉचमैन मोड", "कौन आया, कितनी बार - Boss को रिपोर्ट", Section.FACE),
+        Flag(FACE_MORNING, "सुबह का स्वागत", "दिन के पहले अनलॉक पर चेहरा देखकर नमस्ते", Section.FACE),
+        Flag(SOS_ON, "इमरजेंसी SOS", "\"DK, activate SOS\" - 5 लोगों को लोकेशन + कॉल", Section.SOS),
+        Flag(TOUCH_GUARD, "टच गार्ड", "\"DK, turn on Touch Guard\" - 12 सेकंड बाद चालू", Section.TOUCH_GUARD),
+        Flag(TG_CHARGER, "चार्जर निकालने पर अलार्म", "टच गार्ड चालू हो तब", Section.TOUCH_GUARD),
+        Flag(SCREEN_UNLOCK, "स्क्रीन ऑटो-अनलॉक", "PIN/पैटर्न Android Keystore में - तय काम के लिए अनलॉक, फिर लॉक", Section.SCREEN_LOCK),
+        Flag(WA_AUTO_REPLY, "WhatsApp ऑटो रिप्लाई", "Notification से जवाब (DK सोया हो तब भी)", Section.WA_REPLY),
+        Flag(WA_GROUPS, "ग्रुप में भी जवाब", "बंद = सिर्फ़ निजी चैट", Section.WA_REPLY),
+        Flag(EVENTS_ON, "ऑटो इवेंट ट्रिगर (मुख्य स्विच)", "नीचे चुनी घटनाओं पर DK बोलकर बताए", Section.EVENTS),
+        Flag(EV_CHARGER_ON, "चार्जर लगा", "", Section.EVENTS),
+        Flag(EV_CHARGER_OFF, "चार्जर हटा", "", Section.EVENTS),
+        Flag(EV_WIFI_ON, "Wi-Fi जुड़ा", "", Section.EVENTS),
+        Flag(EV_WIFI_OFF, "Wi-Fi टूटा", "", Section.EVENTS),
+        Flag(EV_BATTERY_SAVER, "बैटरी सेवर बदला", "", Section.EVENTS),
+        Flag(TERMUX, "Termux ऑटोमेशन", "Termux में कमांड / लोकल सर्वर (RUN_COMMAND इजाज़त)", Section.TOOLS),
+        Flag(SMART_HOME, "DK Home (स्मार्ट होम)", "Webhook से लाइट/पंखा/AC/पंप + बिजली बिल अनुमान", Section.TOOLS),
+    )
+
+    /**
+     * इस चरण (Phase 1) में जो flag सच में काम से जुड़े हैं. बाकी Settings में "अगला चरण" लिखकर बंद (disabled) दिखते हैं -
+     * ऐसा स्विच नहीं दिखाते जो दबाने पर कुछ न करे.
+     */
+    val READY: Set<String> = setOf(
+        INCOGNITO, DRIVING_MODE, SOS_ON, EVENTS_ON, EV_CHARGER_ON, EV_CHARGER_OFF, EV_WIFI_ON, EV_WIFI_OFF,
+        EV_BATTERY_SAVER, TERMUX, SMART_HOME, START_ON_BOOT, FACE_VAULT,
+    )
+    fun ready(key: String): Boolean = key in READY
+
+    private val INDEX = ALL.associateBy { it.key }
+
+    fun byKey(key: String): Flag? = INDEX[key]
+    fun defaultOf(key: String): Boolean = INDEX[key]?.default ?: false
+    fun inSection(s: Section): List<Flag> = ALL.filter { it.section == s }
+
+    private fun sp(c: Context) = c.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+
+    fun on(c: Context, key: String): Boolean = try { sp(c).getBoolean(key, defaultOf(key)) } catch (_: Exception) { defaultOf(key) }
+
+    fun set(c: Context, key: String, value: Boolean) {
+        sp(c).edit().putBoolean(key, value).apply()
+        listeners.forEach { try { it(key, value) } catch (_: Exception) {} }
+    }
+
+    /** बैटरी सेवर चालू हो और यह भारी हिस्सा उसमें रुका हो = true (हिस्सा अभी न चले) */
+    fun suspendedByBattery(c: Context, bsKey: String): Boolean = on(c, BATTERY_SAVER) && on(c, bsKey)
+
+    private val listeners = java.util.concurrent.CopyOnWriteArrayList<(String, Boolean) -> Unit>()
+    fun listen(l: (String, Boolean) -> Unit) { listeners.add(l) }
+
+    /** छोटे text/number मान (SOS नंबर, ड्राइविंग संदेश ...) - इसी फ़ाइल में */
+    fun str(c: Context, key: String, def: String = ""): String = try { sp(c).getString(key, def) ?: def } catch (_: Exception) { def }
+    fun putStr(c: Context, key: String, v: String) { sp(c).edit().putString(key, v).apply() }
+
+}
