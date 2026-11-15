@@ -59,9 +59,17 @@ object PlainLook {
      * 15 नवंबर 2026: लाइट मोड को डार्क मोड जैसा ठोस (solid) कार्ड लुक दिया गया.
      * कोई pastel / रंगीन डिब्बे नहीं - हर कार्ड ठोस सफ़ेद या डिफ़ॉल्ट कार्ड रंग.
      */
-    val LIGHT_TINTS = intArrayOf(0xFF3B82F6.toInt())
+    val LIGHT_TINTS = intArrayOf(
+        0xFF6366F1.toInt(), 0xFF3B82F6.toInt(), 0xFF06B6D4.toInt(),
+        0xFF10B981.toInt(), 0xFF8B5CF6.toInt(), 0xFFEC4899.toInt()
+    )
     fun pastel(tint: Int, amount: Float): Int {
-        return L_CARD
+        val a = amount.coerceIn(0f, 1f)
+        val r = (tint shr 16) and 0xFF; val g = (tint shr 8) and 0xFF; val b = tint and 0xFF
+        val nr = (255 * (1f - a) + r * a).toInt().coerceIn(0, 255)
+        val ng = (255 * (1f - a) + g * a).toInt().coerceIn(0, 255)
+        val nb = (255 * (1f - a) + b * a).toInt().coerceIn(0, 255)
+        return 0xFF000000.toInt() or (nr shl 16) or (ng shl 8) or nb
     }
     /** pure: रंग का गहरा रूप (लिखावट के लिए) - amount = कितना काला मिलाना */
     fun deep(tint: Int, amount: Float = 0.35f): Int {
@@ -73,8 +81,8 @@ object PlainLook {
     fun lightTint(i: Int): Int = LIGHT_TINTS[Math.floorMod(i, LIGHT_TINTS.size)]
     /** लाइट का रंगीन कार्ड: ऊपर-बाएँ से नीचे-दाएँ हल्का रंग + रंगीन किनारा */
     fun colorCard(tint: Int, radiusPx: Float, strokePx: Int): GradientDrawable =
-        GradientDrawable(GradientDrawable.Orientation.TL_BR, intArrayOf(pastel(tint, 0.20f), pastel(tint, 0.07f))).apply {
-            cornerRadius = radiusPx; setStroke(strokePx.coerceAtLeast(1), pastel(tint, 0.50f))
+        GradientDrawable(GradientDrawable.Orientation.TL_BR, intArrayOf(L_CARD, L_CARD)).apply {
+            cornerRadius = radiusPx; setStroke(strokePx.coerceAtLeast(1), L_BORDER)
         }
     private fun tintFor(v: View): Int {
         val p = v.parent as? ViewGroup ?: return lightTint(0)

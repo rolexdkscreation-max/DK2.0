@@ -18,7 +18,7 @@ object NeonTheme {
     const val K_GLASS = "ui_glass"
     const val K_GLOW = "ui_glow"
     const val K_MOTION = "ui_motion"
-    val KEYS = listOf(K_THEME, K_ACCENT, K_GLASS, K_GLOW, K_MOTION, ThemePacks.K_PACK)
+    val KEYS = listOf(K_THEME, K_ACCENT, K_GLASS, K_GLOW, K_MOTION, ThemePacks.K_PACK, Wallpapers.K_WALL)
 
     const val THEME_DARK = "dark"
     const val THEME_AMOLED = "amoled"
