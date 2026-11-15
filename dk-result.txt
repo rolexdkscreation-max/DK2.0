@@ -1,0 +1,64 @@
+DK-RESULT OK
+secs=172
+sha=54dab15dc9dfcefa4e6d8d021366714d7cd6d0c1
+-----
+> Task :apkshell:checkReleaseDuplicateClasses UP-TO-DATE
+> Task :apkshell:javaPreCompileRelease UP-TO-DATE
+> Task :apkshell:checkReleaseAarMetadata UP-TO-DATE
+> Task :apkshell:generateReleaseResValues UP-TO-DATE
+> Task :apkshell:mapReleaseSourceSetPaths UP-TO-DATE
+> Task :apkshell:generateReleaseResources UP-TO-DATE
+> Task :apkshell:mergeReleaseResources UP-TO-DATE
+> Task :apkshell:packageReleaseResources UP-TO-DATE
+> Task :apkshell:parseReleaseLocalResources UP-TO-DATE
+> Task :apkshell:createReleaseCompatibleScreenManifests UP-TO-DATE
+> Task :apkshell:extractDeepLinksRelease UP-TO-DATE
+> Task :apkshell:processReleaseMainManifest UP-TO-DATE
+> Task :apkshell:processReleaseManifest UP-TO-DATE
+> Task :apkshell:processReleaseManifestForPackage UP-TO-DATE
+> Task :apkshell:processReleaseResources UP-TO-DATE
+> Task :apkshell:compileReleaseJavaWithJavac UP-TO-DATE
+> Task :apkshell:dexBuilderRelease UP-TO-DATE
+> Task :apkshell:desugarReleaseFileDependencies UP-TO-DATE
+> Task :apkshell:mergeReleaseStartupProfile UP-TO-DATE
+> Task :apkshell:mergeExtDexRelease UP-TO-DATE
+> Task :apkshell:mergeDexRelease UP-TO-DATE
+> Task :apkshell:mergeReleaseArtProfile UP-TO-DATE
+> Task :apkshell:mergeReleaseGlobalSynthetics UP-TO-DATE
+> Task :apkshell:compileReleaseArtProfile UP-TO-DATE
+> Task :apkshell:mergeReleaseShaders UP-TO-DATE
+> Task :apkshell:compileReleaseShaders NO-SOURCE
+> Task :apkshell:generateReleaseAssets UP-TO-DATE
+> Task :apkshell:mergeReleaseAssets UP-TO-DATE
+> Task :apkshell:compressReleaseAssets UP-TO-DATE
+> Task :apkshell:extractReleaseVersionControlInfo
+> Task :apkshell:processReleaseJavaRes NO-SOURCE
+> Task :apkshell:mergeReleaseJavaResource UP-TO-DATE
+> Task :apkshell:optimizeReleaseResources UP-TO-DATE
+> Task :apkshell:collectReleaseDependencies UP-TO-DATE
+> Task :apkshell:sdkReleaseDependencyData UP-TO-DATE
+> Task :apkshell:writeReleaseAppMetadata UP-TO-DATE
+> Task :apkshell:writeReleaseSigningConfigVersions UP-TO-DATE
+> Task :apkshell:packageRelease
+> Task :apkshell:createReleaseApkListingFileRedirect UP-TO-DATE
+> Task :apkshell:assembleRelease
+> Task :app:dkShellApk
+> Task :app:generateDebugAssets UP-TO-DATE
+> Task :app:mergeDebugAssets
+> Task :app:packageDebugUnitTestForUnitTest
+> Task :app:generateDebugUnitTestConfig
+
+> Task :app:compileDebugKotlin
+w: file:///home/vscode/dk-run/app/src/main/java/com/dk/assistant/PlainLook.kt:83:19 Parameter 'tint' is never used
+
+> Task :app:compileDebugJavaWithJavac NO-SOURCE
+> Task :app:bundleDebugClassesToCompileJar
+> Task :app:bundleDebugClassesToRuntimeJar
+> Task :app:processDebugJavaRes UP-TO-DATE
+> Task :app:compileDebugUnitTestKotlin
+> Task :app:compileDebugUnitTestJavaWithJavac NO-SOURCE
+> Task :app:processDebugUnitTestJavaRes UP-TO-DATE
+> Task :app:testDebugUnitTest
+
+BUILD SUCCESSFUL in 2m 50s
+65 actionable tasks: 12 executed, 53 up-to-date
