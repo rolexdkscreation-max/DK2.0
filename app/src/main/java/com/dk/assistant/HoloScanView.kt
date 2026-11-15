@@ -37,6 +37,7 @@ class HoloScanView(context: Context) : View(context) {
     @Volatile private var mode = Mode.IDLE
     @Volatile private var faces: List<Face> = emptyList()
     @Volatile private var steps = -1
+    @Volatile private var stepsTotal = 3
     @Volatile private var bars: List<Pair<String, Float>> = emptyList()
     @Volatile private var banner = ""
     @Volatile private var reason = ""
@@ -58,7 +59,8 @@ class HoloScanView(context: Context) : View(context) {
      * नई हालत (किसी भी thread से). [faces] इस View के निर्देशांक में ([place]). [steps] = -1 (नहीं दिखाना) या 0..3.
      * [bars] = ("MATCH", 0..1) जैसे. [banner] ख़ाली = कोई फ़ैसला नहीं.
      */
-    fun show(mode: Mode, faces: List<Face>, steps: Int = -1, bars: List<Pair<String, Float>> = emptyList(), banner: String = "", reason: String = "") {
+    fun show(mode: Mode, faces: List<Face>, steps: Int = -1, bars: List<Pair<String, Float>> = emptyList(), banner: String = "", reason: String = "", total: Int = 3) {
+        stepsTotal = total.coerceIn(1, 8)
         faces.forEach { f -> f.kps?.let { k -> f.mesh = try { HoloMesh.lines(k) } catch (_: Throwable) { null } } }
         if (banner != this.banner) bannerAt = SystemClock.uptimeMillis()
         this.mode = mode; this.faces = faces; this.steps = steps; this.bars = bars; this.banner = banner; this.reason = reason
@@ -196,8 +198,8 @@ class HoloScanView(context: Context) : View(context) {
             }
         }
         if (steps >= 0) {
-            val sp = 18 * d; val x0 = w / 2 - sp
-            for (i in 0 until 3) {
+            val sp = 18 * d; val x0 = w / 2 - sp * (stepsTotal - 1) / 2f
+            for (i in 0 until stepsTotal) {
                 fill.color = if (i < steps) alpha(OK, 1f) else 0x55FFFFFF
                 c.drawCircle(x0 + i * sp, y - 6 * d, 4.5f * d, fill)
             }
