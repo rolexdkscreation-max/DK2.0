@@ -169,8 +169,10 @@ class CoderAi(val provider: Provider, private val key: String, val model: String
         val tried = errs.joinToString { "${it.first.provider.name}: ${(it.second as? AiException)?.code ?: "network"}" }
         if (wait > 0) {
             DKStatus.post(DKStatus.Kind.LIMIT_ALL)
-            sink("सारी API keys और मॉडल की limit एक साथ खत्म (429)", "limit खुलने तक रुककर फिर कोशिश (कुल ${LIMIT_WAIT_MAX_SEC / 60} मिनट तक) — काम रोका नहीं")
-            throw AiException(429, allLimitsMessage(wait, tried, fallbacks.isEmpty()), wait)
+            // 15 नवंबर 2026: limitWaitSec अब कुछ ही API के 429 पर भी रुकता है (बाकी 404/401) - तब "सारी की limit खत्म" कहना गलत था
+            val allLimited = errs.all { (it.second as? AiException)?.code == 429 }
+            sink(limitHeadline(allLimited), "limit खुलने तक रुककर फिर कोशिश (कुल ${LIMIT_WAIT_MAX_SEC / 60} मिनट तक) — काम रोका नहीं")
+            throw AiException(429, allLimitsMessage(wait, tried, fallbacks.isEmpty(), allLimited), wait)
         }
         // पहले चुने API की असली वजह, साथ में बाकी API का हाल
         val main = errs.firstOrNull { it.first === this } ?: errs.first()
@@ -511,9 +513,16 @@ class CoderAi(val provider: Provider, private val key: String, val model: String
         /** 413 के बाद हर API/मॉडल की request सीमा (अक्षर, maxTokens) - अगली बार पहले से छोटी */
         private val sizeCap = java.util.concurrent.ConcurrentHashMap<String, Pair<Int, Int>>()
 
+        /** सब fail होने पर पहली लाइन: सच में सब 429 हों तभी "सारी" (वरना कुछ API दूसरी वजह 404/401 से नहीं चलीं) */
+        fun limitHeadline(allLimited: Boolean): String =
+            if (allLimited) "सारी API keys और मॉडल की limit एक साथ खत्म (429)"
+            else "कुछ API keys / मॉडल की limit खत्म (429), बाकी दूसरी वजह से नहीं चलीं (नीचे \"आज़माए\" देखें)"
+
         /** सारी keys की limit खत्म: साफ़ हिंदी - क्या हुआ और आगे क्या करें */
-        fun allLimitsMessage(waitSec: Int, tried: String, noFallback: Boolean): String =
-            "सारी API keys और मॉडल की limit खत्म है (429) — ${LIMIT_WAIT_MAX_SEC / 60} मिनट तक रुक-रुककर कोशिश की, फिर भी नहीं खुली (शायद आज की limit)। " +
+        fun allLimitsMessage(waitSec: Int, tried: String, noFallback: Boolean, allLimited: Boolean = true): String =
+            (if (allLimited) "सारी API keys और मॉडल की limit खत्म है (429)" else "जिन API keys / मॉडल की limit खत्म (429) थी, वे") +
+                " — ${LIMIT_WAIT_MAX_SEC / 60} मिनट तक रुक-रुककर कोशिश की, फिर भी नहीं खुली (शायद आज की limit)। " +
+                (if (allLimited) "" else "बाकी API दूसरी वजह से नहीं चलीं (key गलत / मॉडल नहीं मिला) — Settings → AI दिमाग में उनकी key और मॉडल जाँचें। ") +
                 "बेवजह लगातार कोशिश नहीं की।\n" +
                 "किया हुआ काम बचा है (इतिहास में)। आगे: लगभग ${if (waitSec >= 60) "${waitSec / 60} मिनट" else "$waitSec सेकंड"} बाद \"वहीं से आगे\" दबाएँ या काम फिर भेजें" +
                 (if (noFallback) ", या Settings → AI दिमाग → कोडिंग एजेंट में Gemini key 2 से key 5 (दूसरे Google project की) या दूसरी फ्री key (जैसे Groq / OpenRouter) डालें" else "") + "।" +
