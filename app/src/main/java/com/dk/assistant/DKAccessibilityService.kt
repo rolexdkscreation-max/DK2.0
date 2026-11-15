@@ -1111,6 +1111,10 @@ class DKAccessibilityService : AccessibilityService() {
                     DkPersona.set(this, DkPersona.of(a.optString("persona")))
                     "ok"
                 }
+                RomanticPersona.TYPE -> {
+                    RomanticPersona.disable(this, minor = a.optBoolean("minor"))
+                    "ok"
+                }
                 SideTalk.TYPE -> {
                     SideTalk.apply(a.optBoolean("on", true))
                     "ok"

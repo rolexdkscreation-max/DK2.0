@@ -163,6 +163,8 @@ object FeatureFlags {
         TOOL_AGENT,
         // 15 नवंबर 2026: वॉइस गार्डियन (हिस्सा 2)
         VOICE_GUARDIAN, VG_OWNER_ONLY, VG_AWAY,
+        // 15 नवंबर 2026: रोमांटिक (18+) - सहमति के बाद (हिस्सा 3)
+        ADULT_STYLE,
     )
     fun ready(key: String): Boolean = key in READY
 

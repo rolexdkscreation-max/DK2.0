@@ -112,6 +112,8 @@ object LocalRouter {
         // 15 नवंबर 2026 (मालिक): "फ्राइडे मोड ऑन करो" / "वेनम मोड ऑन करो" - तुरंत, बिना AI
         AssistantPersona.parse(raw)?.let { return Split(AssistantPersona.quick(it), null) }
         // नवंबर 2026 (मालिक): "नटखट मोड ऑन करो" / "प्रोफ़ेशनल मोड" / "नॉर्मल मोड" = DK का स्वभाव (तुरंत)
+        // 15 नवंबर 2026 (हिस्सा 3): रोमांटिक (18+) चालू हो तो - "रुको" / "बंद करो" / 18 से कम का इशारा = तुरंत बंद
+        if (RomanticPersona.live) RomanticPersona.detect(raw)?.let { return Split(RomanticPersona.quick(it), null) }
         DkPersona.parse(raw)?.let { return Split(DkPersona.quick(it), null) }
         // नवंबर 2026: "DK, मैं किसी से बात कर रहा हूँ" = सुनो पर जवाब नहीं; "DK वापस आओ" = फिर से
         SideTalk.parse(raw)?.let { return Split(SideTalk.quick(it), null) }
