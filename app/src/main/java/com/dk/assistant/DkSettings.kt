@@ -120,6 +120,17 @@ object DkSettings {
             listOf("ईमेल", "इमेल", "email", "gmail", "जीमेल", "मेल पढ़ना"), store = STORE_FLAGS),
         Item("wa_report", "WhatsApp ग्रुप रिपोर्ट", "autoreply", FeatureFlags.WA_GROUP_REPORT, false,
             listOf("ग्रुप रिपोर्ट", "group report", "ग्रुप में रिपोर्ट", "रिपोर्ट टेम्पलेट"), store = STORE_FLAGS),
+        // 15 नवंबर 2026 (मालिक: 4 हिस्से) - टूल एजेंट, वॉइस गार्डियन, SOS सबको पूरी कॉल. (रोमांटिक 18+ बोलकर नहीं - सहमति सिर्फ़ Settings में)
+        Item("tool_agent", "टूल एजेंट (Retry Loop)", "brain", FeatureFlags.TOOL_AGENT, false,
+            listOf("टूल एजेंट", "tool agent", "retry loop", "रिट्राई लूप"), store = STORE_FLAGS),
+        Item("voice_guardian", "वॉइस गार्डियन (आवाज़-पहचान)", "voice", FeatureFlags.VOICE_GUARDIAN, false,
+            listOf("वॉइस गार्डियन", "वाइस गार्डियन", "voice guardian", "आवाज़ पहचान", "आवाज पहचान"), store = STORE_FLAGS),
+        Item("vg_owner", "सिर्फ़ Boss की आवाज़", "voice", FeatureFlags.VG_OWNER_ONLY, false,
+            listOf("सिर्फ़ boss की आवाज़", "सिर्फ boss की आवाज", "सिर्फ़ बॉस की आवाज़", "सिर्फ बॉस की आवाज", "owner only"), store = STORE_FLAGS),
+        Item("vg_away", "Away मोड (अनजान आवाज़ पर चेतावनी, फिर लॉक)", "voice", FeatureFlags.VG_AWAY, false,
+            listOf("away मोड", "अवे मोड", "away mode"), store = STORE_FLAGS),
+        Item("sos_call_all", "SOS: सबको पूरी 5 बार कॉल", "guard", FeatureFlags.SOS_CALL_ALL, false,
+            listOf("सबको पूरी 5 बार", "सबको पांच बार", "सबको पाँच बार", "sos call all"), store = STORE_FLAGS),
         // 15 नवंबर 2026 (मालिक: "अलग 5-टैब वाली नीचे की पट्टी") - pref उल्टा: HIDE_HOME_TABS true = छुपी
         Item("home_tabs", "नीचे की 5-टैब पट्टी", "ui", FeatureFlags.HIDE_HOME_TABS, false,
             listOf("टैब पट्टी", "टैब वाली पट्टी", "नीचे की पट्टी", "टैब बार", "tab bar", "bottom bar", "bottom nav", "5 टैब", "पांच टैब", "पाँच टैब"),

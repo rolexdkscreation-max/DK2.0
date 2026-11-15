@@ -49,16 +49,21 @@ internal fun GeminiLive.ownerSaysOwner(held: Collection<ByteArray>): Boolean {
         val out = java.io.ByteArrayOutputStream(); held.forEach { out.write(it) }
         val audio = out.toByteArray()
         if (audio.size < IN_RATE * 2 / 2) return true
-        val sc = com.dk.assistant.voice.OwnerVoice.score(svc, audio) ?: return true
+        val sc = ownerScore(audio) ?: return true
         sc >= ownerTh
     } catch (_: Throwable) { true }
 }
 
+/** 15 नवंबर 2026 (हिस्सा 2): वॉइस गार्डियन चालू = उसका मॉडल, वरना पुराना (वैसा ही) */
+internal fun GeminiLive.ownerScore(audio: ByteArray): Float? =
+    if (vgOn) com.dk.assistant.voice.VoiceGuardian.score(svc, audio) else com.dk.assistant.voice.OwnerVoice.score(svc, audio)
+
 // ================================================================ v3.66: सिर्फ़ मालिक की आवाज़
 internal fun GeminiLive.refreshOwnerCfg(now: Long) {
     ownerCfgAt = now
-    ownerOn = com.dk.assistant.voice.OwnerVoice.active(svc)
-    ownerTh = com.dk.assistant.voice.VoicePrint.threshold(Prefs.ownerVoiceStrict(svc))
+    vgOn = com.dk.assistant.voice.VoiceGuardian.gateOn(svc)
+    ownerOn = com.dk.assistant.voice.OwnerVoice.active(svc) || vgOn
+    ownerTh = if (vgOn) com.dk.assistant.voice.VoiceGuardian.threshold(svc) else com.dk.assistant.voice.VoicePrint.threshold(Prefs.ownerVoiceStrict(svc))
     val wasWho = whoOn
     whoOn = !ownerOn && SideTalk.on(svc) && com.dk.assistant.voice.OwnerVoice.ready(svc)
     if (whoOn && !wasWho) com.dk.assistant.voice.OwnerVoice.warmAny(svc)
@@ -92,7 +97,7 @@ internal fun GeminiLive.checkOwnerAsync() {
     try {
         com.dk.assistant.voice.OwnerVoice.exec.execute {
             val t0 = System.currentTimeMillis()
-            val sc = try { com.dk.assistant.voice.OwnerVoice.score(svc, audio) } catch (_: Throwable) { null }
+            val sc = try { ownerScore(audio) } catch (_: Throwable) { null }
             ownerResult = OwnerResult(gen, sc, ms, System.currentTimeMillis() - t0)
         }
     } catch (_: Exception) { owner.onFailed(System.currentTimeMillis()) }
@@ -114,6 +119,7 @@ internal fun GeminiLive.onOwnerVerdict(now: Long, score: Float?, ms: Int, tookMs
         com.dk.assistant.voice.OwnerGate.Verdict.OWNER -> {
             if (owner.checks <= 1 && owner.lastScore.isFinite()) DKLog.d("Live: आवाज़ मिलान $sc - मालिक (${ms} ms आवाज़, $tookMs ms)")
             if (muteTurn && !generating) muteTurn = false
+            if (vgOn) com.dk.assistant.voice.VoiceGuardian.onOwner()
             if (ownerHolding) {
                 ownerHolding = false
                 synchronized(sendLock) { ownerHold.forEach { sendAudio(it) } }
@@ -123,6 +129,7 @@ internal fun GeminiLive.onOwnerVerdict(now: Long, score: Float?, ms: Int, tookMs
         com.dk.assistant.voice.OwnerGate.Verdict.OTHER -> {
             othersIgnored++
             log("किसी और की आवाज़ (मिलान $sc, ${ms} ms) - अनसुनी, जवाब नहीं (#$othersIgnored)")
+            if (vgOn) com.dk.assistant.voice.VoiceGuardian.onStranger(svc)
             val held = ownerHolding
             ownerHolding = false; ownerHold.clear()
             caption?.discard()
@@ -145,7 +152,7 @@ internal fun GeminiLive.ownerEnd(now: Long) {
         if (owner.needFinalCheck(now)) {
             val audio = owner.takeAudio(); val ms = audio.size * 1000 / (IN_RATE * 2)
             val t0 = System.currentTimeMillis()
-            val sc = try { com.dk.assistant.voice.OwnerVoice.score(svc, audio) } catch (_: Throwable) { null }
+            val sc = try { ownerScore(audio) } catch (_: Throwable) { null }
             if (sc == null) owner.onFailed(now) else owner.onScore(sc, ownerTh, now, ms, atEnd = true)
             ownerGen++; ownerResult = null           // बीच वाला (अगर चल रहा था) अब बेकार
             if (owner.verdict != before) onOwnerVerdict(now, sc, ms, System.currentTimeMillis() - t0)

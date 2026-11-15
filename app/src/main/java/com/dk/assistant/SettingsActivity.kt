@@ -114,7 +114,7 @@ class SettingsActivity : AppCompatActivity() {
             "brain_chat" -> { title.text = "AI दिमाग • DK चैट"; secBrain() }
             "brain_coder" -> { title.text = "AI दिमाग • कोडिंग एजेंट"; secBrainScope(ApiScopes.CODER) }
             "brain_pc" -> { title.text = "AI दिमाग • DK कंप्यूटर"; secBrainScope(ApiScopes.PC) }
-            "voice" -> { title.text = "आवाज़"; secVoice() }
+            "voice" -> { title.text = "आवाज़"; secVoice(); voiceGuardianCard() }
             "orb" -> { title.text = "ओर्ब और चेहरा"; secOrb(); secIsland() }
             "ui" -> { title.text = "दिखावट"; secUi() }
             "access" -> { title.text = "Accessibility"; secAccess(); secPayGuard(); secDriving(); secEvents() }
@@ -491,6 +491,13 @@ class SettingsActivity : AppCompatActivity() {
         if (requestCode == 12) Setup.startKeepAlive(this)
         if (requestCode == 11) toast(if (grantResults.all { it == android.content.pm.PackageManager.PERMISSION_GRANTED }) "✓ कॉल परमिशन मिल गई"
             else "कुछ परमिशन नहीं मिलीं — App info → Permissions से दें (Android 13+: पहले ⋮ → Allow restricted settings)")
+    }
+
+    @Deprecated("Contacts picker (SOS)")
+    @Suppress("DEPRECATION")
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: android.content.Intent?) {
+        super.onActivityResult(requestCode, resultCode, data)
+        sosPicked(requestCode, resultCode, data)   // 15 नवंबर 2026 (हिस्सा 4)
     }
 
     override fun onPause() { save(false); stopVoiceCmdPlay(); super.onPause() }

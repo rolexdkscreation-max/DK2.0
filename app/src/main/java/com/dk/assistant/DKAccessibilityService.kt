@@ -525,22 +525,23 @@ class DKAccessibilityService : AccessibilityService() {
 
     /** v3.66: आवाज़ मालिक की है? (पहचान बंद / मॉडल गड़बड़ = हाँ, आवाज़ मत खोओ) */
     internal suspend fun ownerHeard(pcm: ByteArray): Boolean {
-        if (!com.dk.assistant.voice.OwnerVoice.active(this)) return true
+        val vg = com.dk.assistant.voice.VoiceGuardian.gateOn(this)
+        if (!vg && !com.dk.assistant.voice.OwnerVoice.active(this)) return true
         val G = com.dk.assistant.voice.OwnerGate.Companion
         val cut = pcm.copyOf(minOf(pcm.size, G.RATE * 2 * G.MAX_MS / 1000))
         val ms = cut.size * 1000 / (G.RATE * 2)
         if (ms < G.MIN_CHECK_MS) return System.currentTimeMillis() - ownerSeenAt < G.RECENT_OWNER_MS
         val t0 = System.currentTimeMillis()
-        val sc = withContext(Dispatchers.Default) { try { com.dk.assistant.voice.OwnerVoice.score(this@DKAccessibilityService, cut) } catch (_: Throwable) { null } }
+        val sc = withContext(Dispatchers.Default) { try { if (vg) com.dk.assistant.voice.VoiceGuardian.score(this@DKAccessibilityService, cut) else com.dk.assistant.voice.OwnerVoice.score(this@DKAccessibilityService, cut) } catch (_: Throwable) { null } }
             ?: return true
         val now = System.currentTimeMillis()
-        var th = com.dk.assistant.voice.VoicePrint.threshold(Prefs.ownerVoiceStrict(this))
+        var th = if (vg) com.dk.assistant.voice.VoiceGuardian.threshold(this) else com.dk.assistant.voice.VoicePrint.threshold(Prefs.ownerVoiceStrict(this))
         if (ms < G.SHORT_MS) th -= G.SHORT_SLACK
         if (now - ownerSeenAt < G.RECENT_OWNER_MS) th -= G.RECENT_SLACK
         val ok = sc >= th
         val txt = String.format(java.util.Locale.US, "%.2f", sc)
-        if (ok) { ownerSeenAt = now; DKLog.d("आवाज़ मिलान $txt - मालिक (${now - t0} ms)") }
-        else { othersIgnored++; DKLog.d("किसी और की आवाज़ (मिलान $txt) - अनसुनी (#$othersIgnored)") }
+        if (ok) { ownerSeenAt = now; DKLog.d("आवाज़ मिलान $txt - मालिक (${now - t0} ms)"); if (vg) com.dk.assistant.voice.VoiceGuardian.onOwner() }
+        else { othersIgnored++; DKLog.d("किसी और की आवाज़ (मिलान $txt) - अनसुनी (#$othersIgnored)"); if (vg) com.dk.assistant.voice.VoiceGuardian.onStranger(this) }
         return ok
     }
 
@@ -1108,6 +1109,10 @@ class DKAccessibilityService : AccessibilityService() {
                 }
                 DkPersona.TYPE -> {
                     DkPersona.set(this, DkPersona.of(a.optString("persona")))
+                    "ok"
+                }
+                RomanticPersona.TYPE -> {
+                    RomanticPersona.disable(this, minor = a.optBoolean("minor"))
                     "ok"
                 }
                 SideTalk.TYPE -> {

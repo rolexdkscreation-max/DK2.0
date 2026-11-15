@@ -456,6 +456,8 @@ class GeminiLive(internal val svc: DKAccessibilityService, internal val agent: A
     /** इस बात का फ़ैसला (mic thread पर ही) */
     internal val owner = com.dk.assistant.voice.OwnerGate(CHUNK_MS)
     @Volatile internal var ownerOn = false
+    /** 15 नवंबर 2026 (हिस्सा 2): वॉइस गार्डियन से मिलान */
+    @Volatile internal var vgOn = false
     /** नवंबर 2026: आवाज़ सीखी हुई पर "सिर्फ़ मेरी आवाज़" बंद = सिर्फ़ पहचान (बॉस / कोई और), बगल की बातचीत के लिए */
     @Volatile internal var whoOn = false
     @Volatile internal var whoSeq = 0
@@ -1033,7 +1035,8 @@ class GeminiLive(internal val svc: DKAccessibilityService, internal val agent: A
         timeline.reset(); liveGate.reset(); capGate.reset(); resendText = null; lastServerAt = 0L
         owner.reset(); ownerGen++; ownerResult = null; ownerHolding = false; ownerHold.clear(); muteTurn = false; ownerCfgAt = 0L
         refreshOwnerCfg(System.currentTimeMillis())
-        if (ownerOn) { com.dk.assistant.voice.OwnerVoice.warm(svc); log("सिर्फ़ मालिक की आवाज़: चालू (" + (if (Prefs.ownerVoiceStrict(svc)) "सख़्त" else "सामान्य") + ")") }
+        if (vgOn) { com.dk.assistant.voice.VoiceGuardian.warm(svc); log("वॉइस गार्डियन: चालू (सीमा ${com.dk.assistant.voice.VgRules.pct(ownerTh)}%)") }
+        else if (ownerOn) { com.dk.assistant.voice.OwnerVoice.warm(svc); log("सिर्फ़ मालिक की आवाज़: चालू (" + (if (Prefs.ownerVoiceStrict(svc)) "सख़्त" else "सामान्य") + ")") }
         if (turnDet.startFloor > 0) log("दूर की आवाज़ अनसुनी: चालू (${turnDet.startFloor.toInt()} RMS से धीमी नहीं)")
         coroutineScope {
             val mic = launch(Dispatchers.IO) { micLoop() }

@@ -29,6 +29,9 @@ object DkPersona {
 
     fun get(c: Context): P = of(Prefs.str(c, PREF, DEFAULT.id))
 
+    /** 15 नवंबर 2026 (हिस्सा 3): बोलने में असल स्वभाव - "रोमांटिक (18+)" चालू = गर्लफ्रेंड वाला अंदाज़ + [RomanticPersona.BLOCK] */
+    fun effective(c: Context): P = if (RomanticPersona.on(c)) P.GIRLFRIEND else get(c)
+
     /** बदलना + चलते Live को नए स्वभाव से जोड़ना. JARVIS चालू हो तो वह बंद (स्वभाव DK का है) */
     fun set(c: Context, p: P) {
         Prefs.edit(c) { putString(PREF, p.id) }
@@ -64,19 +67,19 @@ object DkPersona {
 
     /** अभी बोलने में कौन-सा संबोधन: JARVIS / FRIDAY / VENOM चालू = "" (उनका अपना तरीका) */
     fun callWord(c: Context): String = try {
-        if (JarvisMode.on(c) || AssistantPersona.active(c) != null) "" else firstWord(address(c, get(c)))
+        if (JarvisMode.on(c) || AssistantPersona.active(c) != null) "" else firstWord(address(c, effective(c)))
     } catch (_: Exception) { "" }
 
     /** Live फिर से जोड़ने के लिए: स्वभाव / संबोधन / JARVIS / FRIDAY में से कुछ भी बदला = नई कुंजी */
     fun liveKey(c: Context): String = try {
-        val p = get(c)
-        listOf(p.id, address(c, p), JarvisMode.on(c).toString(), AssistantPersona.active(c)?.id.orEmpty()).joinToString("|")
+        val p = effective(c)
+        listOf(p.id, address(c, p), RomanticPersona.live.toString(), JarvisMode.on(c).toString(), AssistantPersona.active(c)?.id.orEmpty()).joinToString("|")
     } catch (_: Exception) { "" }
 
     // ------------------------------------------------------------------ prompt (pure)
 
     /** गर्लफ्रेंड = पुराना [GirlfriendPersona] block (मालिक के शब्द); बाकी = उस स्वभाव का अपना block */
-    fun pick(c: Context, girlfriendBlock: String): String = pickFor(get(c), girlfriendBlock)
+    fun pick(c: Context, girlfriendBlock: String): String = pickFor(effective(c), girlfriendBlock)
 
     fun pickFor(p: P, girlfriendBlock: String): String = if (p == P.GIRLFRIEND) girlfriendBlock else block(p)
 
@@ -109,7 +112,7 @@ object DkPersona {
      * सबसे आख़िर में (बोलने के अंदाज़ के बाद): स्वभाव की पक्की बात + मूड पहचानना + इंसान जैसी साँस/ठहराव.
      * गर्लफ्रेंड के अलावा = SpeakingStyle की गर्लफ्रेंड/जलन वाली लाइनें नहीं मानीं.
      */
-    fun finalBlock(c: Context, userName: String = ""): String = get(c).let { finalFor(it, userName, address(c, it)) }
+    fun finalBlock(c: Context, userName: String = ""): String = effective(c).let { finalFor(it, userName, address(c, it)) + (if (RomanticPersona.live) RomanticPersona.BLOCK else "") }
 
     fun finalFor(p: P, userName: String = "", address: String = defaultAddress(p)): String = buildString {
         val words = cleanAddress(address)
@@ -175,7 +178,7 @@ object DkPersona {
         "- Never read out symbols, tags or stage directions (do not say \"pause\" or \"breath\") - just sound like it.\n"
 
     /** Gemini TTS के अंदाज़ में स्वभाव का छोटा निर्देश (JARVIS में नहीं - वहाँ सीधे JARVIS की आवाज़) */
-    fun ttsStyle(c: Context, base: String): String = ttsFor(get(c), base)
+    fun ttsStyle(c: Context, base: String): String = ttsFor(effective(c), base)
 
     fun ttsFor(p: P, base: String): String {
         val hint = when (p) {

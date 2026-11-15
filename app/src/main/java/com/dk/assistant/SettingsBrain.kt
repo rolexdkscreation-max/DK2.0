@@ -104,6 +104,7 @@ internal fun SettingsActivity.secBrainMenu() {
         hint(box, "अभी: " + (if (Prefs.oneKey(this).isNotBlank()) "✓ सारे काम (बात, चैट, खोज, फ़ोन, कोडिंग, स्टोरी, DK कंप्यूटर, वेबसाइट) इसी एक key से" else "✗ key नहीं डाली") +
             " • सुनना भी Gemini से (Groq की ज़रूरत नहीं)। एक free key की limit सब कामों में बँटती है — limit जल्दी खत्म हो तो बटन बंद करके अलग-अलग keys डालें।")
     }
+    toolAgentCard()   // 15 नवंबर 2026 (हिस्सा 1): दोनों तरीकों (एक key / अलग keys) में दिखे
     // 14 नवंबर 2026 (मालिक): ऊपर वाला "हर काम का मॉडल — खुद चुनें" हटा (अब हर हिस्से - DK लाइव / चैट / कोडिंग / कंप्यूटर -
     // के अंदर उसका अपना). वेबसाइट बिल्डर की अलग key वाली पंक्ति हटी - वेबसाइट कोडिंग एजेंट की API से बनती है.
     // "एक key से सब" चालू = नीचे के अलग-अलग key वाले हिस्से दिखते ही नहीं (एक बार में एक ही तरीका दिखे)
@@ -614,4 +615,15 @@ private fun SettingsActivity.pickPin(f: String, done: () -> Unit) {
                     }.setNegativeButton(UiLang.s("रद्द"), null).show()
             }
         }.setNegativeButton(UiLang.s("रद्द"), null).show()
+}
+
+/** 15 नवंबर 2026 (मालिक, हिस्सा 1): टूल एजेंट (Retry Loop) - चालू/बंद, शुरू में बंद */
+internal fun SettingsActivity.toolAgentCard() {
+    card("टूल एजेंट (Retry Loop)", "लंबे फ़ोन-काम के लिए: Gemini खुद ${com.dk.assistant.tools.ToolRegistry.PHONE_TOOLS.size} tools में से सही चुने, एक काम में ${com.dk.assistant.tools.ToolPolicy.MAX_STEPS} कदम तक") { box ->
+        flagSwitch(box, "टूल एजेंट चालू", com.dk.assistant.plus.FeatureFlags.TOOL_AGENT)
+        hint(box, "हर कदम के बाद DK स्क्रीन पढ़कर जाँचती है। काम न हुआ हो तो दूसरा तरीका: बटन दबाना → लिखा ढूँढकर दबाना → उसी जगह टैप → सिस्टम पेज (Intent)। " +
+            "ज़्यादा से ज़्यादा ${com.dk.assistant.tools.ToolPolicy.MAX_TRIES} बार, फिर साफ़ बोलकर बताती है कि कहाँ अटकी। कॉल / मैसेज / SMS एक ही बार (दोबारा नहीं जाते)।")
+        hint(box, "सीधे काम (ऐप खोलो, कॉल करो, टॉर्च, आवाज़ …) पहले की तरह फ़ोन पर ही, बिना AI। बंद = पुराना एजेंट, कोई बदलाव नहीं। Gemini key चाहिए।")
+        hint(box, "Tools: " + com.dk.assistant.tools.ToolRegistry.PHONE_TOOLS.joinToString(", ") { com.dk.assistant.tools.ToolPolicy.hindi(it.name) })
+    }
 }

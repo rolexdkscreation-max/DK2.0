@@ -75,6 +75,8 @@ object FeatureFlags {
     const val FACE_WATCHMAN = "plus_face_watchman"
     const val FACE_MORNING = "plus_face_morning"
     const val SOS_ON = "plus_sos_on"
+    /** 15 नवंबर 2026 (हिस्सा 4): कोई उठा ले तब भी सबको पूरी 5 बार कॉल (बंद = उठाते ही रुको, पहले जैसा) */
+    const val SOS_CALL_ALL = "plus_sos_call_all"
     const val TOUCH_GUARD = "plus_touch_guard"
     const val TG_CHARGER = "plus_tg_charger"
     const val SCREEN_UNLOCK = "plus_screen_unlock"
@@ -91,6 +93,8 @@ object FeatureFlags {
     const val YT_CHANNEL = "plus_yt_channel"
     // 15 नवंबर 2026 (मालिक की सूची): WhatsApp ग्रुप रिपोर्ट (3D कैरेक्टर बाद में मालिक के कहने पर हटाया)
     const val WA_GROUP_REPORT = "plus_wa_group_report"
+    /** 15 नवंबर 2026 (मालिक, हिस्सा 1): AI दिमाग → टूल एजेंट (Gemini function calling + Retry Loop) */
+    const val TOOL_AGENT = "plus_tool_agent"
 
     val ALL: List<Flag> = listOf(
         Flag(AUTO_SAVE_MEMORIES, "बातों से याददाश्त अपने-आप सेव", "बातचीत में मिली नई बात DK खुद याद रखे", Section.MEMORY),
@@ -127,6 +131,7 @@ object FeatureFlags {
         Flag(FACE_WATCHMAN, "वॉचमैन मोड", "कौन आया, कितनी बार - Boss को रिपोर्ट", Section.FACE),
         Flag(FACE_MORNING, "सुबह का स्वागत", "दिन के पहले अनलॉक पर चेहरा देखकर नमस्ते", Section.FACE),
         Flag(SOS_ON, "इमरजेंसी SOS", "\"DK, activate SOS\" - 5 लोगों को लोकेशन + कॉल", Section.SOS),
+        Flag(SOS_CALL_ALL, "सबको पूरी 5 बार कॉल", "कोई उठा ले तब भी बाकी नंबरों पर कॉल जारी", Section.SOS),
         Flag(TOUCH_GUARD, "टच गार्ड", "\"DK, turn on Touch Guard\" - 12 सेकंड बाद चालू", Section.TOUCH_GUARD),
         Flag(TG_CHARGER, "चार्जर निकालने पर अलार्म", "टच गार्ड चालू हो तब", Section.TOUCH_GUARD),
         Flag(SCREEN_UNLOCK, "स्क्रीन ऑटो-अनलॉक", "PIN/पैटर्न Android Keystore में - तय काम के लिए अनलॉक, फिर लॉक", Section.SCREEN_LOCK),
@@ -141,6 +146,7 @@ object FeatureFlags {
         Flag(EV_BATTERY_SAVER, "बैटरी सेवर बदला", "", Section.EVENTS),
         Flag(TERMUX, "Termux ऑटोमेशन", "Termux में कमांड / लोकल सर्वर (RUN_COMMAND इजाज़त)", Section.TOOLS),
         Flag(IMAGE_GEN, "बोलकर तस्वीर बनाना", "\"एक शेर की तस्वीर बनाओ\" - नीचे \"इमेज बनाना\" में चुने मुफ़्त रास्ते से", Section.CREATE),
+        Flag(TOOL_AGENT, "टूल एजेंट (Retry Loop)", "लंबे फ़ोन-काम: Gemini खुद tool चुने (15 कदम तक), हर कदम जाँचकर 3 बार तक दोबारा", Section.BEHAVIOR),
         Flag(YT_CHANNEL, "बोलकर YouTube चैनल जाँच", "\"मेरे चैनल का हाल बताओ\" - subscribers, views, नए वीडियो, comments", Section.CREATE),
     )
 
@@ -156,6 +162,12 @@ object FeatureFlags {
         FACE_ON, EMAIL_ON, WA_GROUP_REPORT,
         // 15 नवंबर 2026: DK वॉचमैन
         FACE_WATCHMAN,
+        // 15 नवंबर 2026: टूल एजेंट (AI दिमाग)
+        TOOL_AGENT,
+        // 15 नवंबर 2026: वॉइस गार्डियन (हिस्सा 2)
+        VOICE_GUARDIAN, VG_OWNER_ONLY, VG_AWAY,
+        // 15 नवंबर 2026: SOS - सबको पूरी 5 बार (हिस्सा 4)
+        SOS_CALL_ALL,
     )
     fun ready(key: String): Boolean = key in READY
 

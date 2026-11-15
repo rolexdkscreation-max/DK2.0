@@ -68,12 +68,24 @@ object Sos {
         }
 
         /** 15 नवंबर 2026 (ऑडिट): SMS/कॉल से पहले इतने सेकंड - गलती से चालू हुआ हो तो "SOS रोको" बोलकर रद्द */
-        const val COUNTDOWN_SEC = 10
+        const val COUNTDOWN_SEC = 5   // 15 नवंबर 2026 (मालिक, हिस्सा 4): 10 -> 5 सेकंड
 
         fun countdownSpeech(sec: Int = COUNTDOWN_SEC): String =
             "$sec सेकंड में इमरजेंसी SOS भेजूँगी। गलती से हुआ हो तो बोलें: SOS रोको।"
 
         /** कॉल का क्रम: (नंबर, कोशिश) - पहले नंबर की 5 कोशिश, फिर दूसरे की ... */
+        /** 15 नवंबर 2026 (हिस्सा 4): सूची में जोड़ना / बदलना / हटाना - साफ़, दोहराव नहीं, 5 तक */
+        fun add(list: List<String>, n: String): List<String> = parse((list + n).joinToString(","))
+        fun replace(list: List<String>, i: Int, n: String): List<String> =
+            if (i !in list.indices) add(list, n) else parse(list.toMutableList().also { it[i] = n }.joinToString(","))
+        fun remove(list: List<String>, i: Int): List<String> = list.filterIndexed { k, _ -> k != i }
+
+        const val EMPTY_SPEECH = "पहले emergency नंबर जोड़ो। सेटिंग्स → टच मोड → इमरजेंसी SOS में 5 नंबर तक डाल सकते हैं।"
+        const val NO_A11Y = "Accessibility में DK बंद है - WhatsApp अपने-आप नहीं जाएगा, सिर्फ़ SMS और कॉल।"
+
+        /** कोई उठा ले तो रुको? "सबको पूरी 5 बार" चालू = नहीं रुकना */
+        fun stopOnAnswer(callAll: Boolean) = !callAll
+
         fun callPlan(contacts: List<String>, tries: Int = TRIES_PER_CONTACT): List<Pair<String, Int>> =
             contacts.flatMap { n -> (1..tries).map { n to it } }
     }
@@ -89,8 +101,10 @@ object Sos {
         val app = c.applicationContext
         if (!FeatureFlags.on(app, FeatureFlags.SOS_ON)) return "इमरजेंसी SOS बंद है। सेटिंग्स → टच मोड → इमरजेंसी SOS में चालू करें।"
         val list = contacts(app)
-        if (list.isEmpty()) return "SOS के लिए कोई नंबर नहीं डाला है। सेटिंग्स में 5 इमरजेंसी नंबर डालें।"
+        // 15 नवंबर 2026 (हिस्सा 4): खाली सूची = DK बोलकर भी बताए (पहले सिर्फ़ text लौटता था)
+        if (list.isEmpty()) { PlusVoice.say(app, Rules.EMPTY_SPEECH); return Rules.EMPTY_SPEECH }
         if (running) return "SOS पहले से चल रहा है।"
+        val noA11y = DKAccessibilityService.instance == null
         // उल्टी गिनती की घोषणा फ़ोन की अपनी आवाज़ से - Live/चैट चाहे जो भी चल रहा हो, मालिक को सुनाई दे
         PlusVoice.say(app, Rules.countdownSpeech())
         job = scope.launch {
@@ -100,13 +114,14 @@ object Sos {
             PlusVoice.say(app, "SOS भेज रही हूँ।")
             runSos(app, list)
         }
-        return Rules.countdownSpeech() + " फिर ${list.size} लोगों को लोकेशन भेजकर कॉल करूँगी।"
+        return Rules.countdownSpeech() + " फिर ${list.size} लोगों को लोकेशन भेजकर कॉल करूँगी।" + (if (noA11y) " " + Rules.NO_A11Y else "")
     }
 
     @Synchronized fun stop(): String { val was = running; job?.cancel(); job = null; return if (was) "SOS रोक दिया।" else "SOS चल नहीं रहा था।" }
 
     private suspend fun runSos(c: Context, list: List<String>) {
-        val loc = location(c)
+        // 15 नवंबर 2026 (हिस्सा 4): ताज़ा GPS (10 सेकंड तक), न मिले तो आख़िरी याद वाली
+        val loc = try { LocNow.get(c, 10_000L) } catch (_: Exception) { null } ?: location(c)
         val msg = Rules.message(com.dk.assistant.Prefs.userName(c), loc?.latitude, loc?.longitude)
         // 1) SMS - सबको
         if (granted(c, Manifest.permission.SEND_SMS)) list.forEach { n ->
@@ -143,7 +158,7 @@ object Sos {
             } catch (e: Exception) { DKLog.d("SOS call: ${e.message}"); continue }
             waitCallEnd(c)
             delay(2000)
-            if (answered(c, n, started)) { PlusVoice.say(c, "SOS कॉल उठा ली गई।"); return }
+            if (answered(c, n, started) && Rules.stopOnAnswer(FeatureFlags.on(c, FeatureFlags.SOS_CALL_ALL))) { PlusVoice.say(c, "SOS कॉल उठा ली गई।"); return }
         }
     }
 

@@ -146,6 +146,8 @@ internal fun SettingsActivity.secVoice() {
         val ps = DkPersona.P.values().toList()
         radios(box, ps.map { it.id to "${it.title} — ${it.sub}" }, DkPersona.get(this).id, 2800)
             .setOnCheckedChangeListener { _, id -> ps.getOrNull(id - 2800)?.let { DkPersona.set(this, it); toast("स्वभाव: ${it.title}") } }
+        // 15 नवंबर 2026 (मालिक, हिस्सा 3): रोमांटिक (18+) - सहमति के बाद ही, सभ्य; "रुको" / "बंद करो" = तुरंत बंद
+        romanticSwitch(box)
         // 15 नवंबर 2026 (मालिक): "गर्लफ्रेंड मोड में बाबू, जान करके बुलाएगा, बाकी में बॉस, सर" - हर स्वभाव का अपना संबोधन
         label(box, "हर स्वभाव में DK आपको क्या बुलाए (कॉमा से अलग, पहला सबसे ज़्यादा)")
         val addr = ps.map { p -> p to field(box, p.title, DkPersona.address(this, p), DkPersona.defaultAddress(p)) }
@@ -259,4 +261,21 @@ internal fun SettingsActivity.playFace(v: OrbView, back: String) {
     if (v.previewStyle == face && back != face) { v.previewStyle = back; return }
     v.previewStyle = face
     v.postDelayed({ if (v.previewStyle == face && back != face) v.previewStyle = back }, 9000)
+}
+
+/** 15 नवंबर 2026 (हिस्सा 3): "रोमांटिक (18+)" स्विच - पहली बार चालू करते ही सहमति ([RomanticPersona.CONSENT_TEXT]) */
+internal fun SettingsActivity.romanticSwitch(box: LinearLayout) {
+    val sw = switch(box, "रोमांटिक (18+) — प्यार भरी, परवाह वाली, हल्की flirty बात (अश्लील कुछ नहीं)", RomanticPersona.on(this))
+    var busy = false
+    sw.setOnCheckedChangeListener { _, on ->
+        if (busy) return@setOnCheckedChangeListener
+        if (!on) { RomanticPersona.disable(this); toast("रोमांटिक मोड बंद"); return@setOnCheckedChangeListener }
+        if (RomanticPersona.consented(this)) { RomanticPersona.enable(this); toast("रोमांटिक मोड चालू"); return@setOnCheckedChangeListener }
+        androidx.appcompat.app.AlertDialog.Builder(this).setTitle(UiLang.s("रोमांटिक (18+) — सहमति"))
+            .setMessage(UiLang.s("यह मोड सिर्फ़ 18 साल या उससे ज़्यादा उम्र वालों के लिए है. DK प्यार और परवाह से, हल्की flirty बात करेगी — अश्लील या explicit कुछ नहीं. उम्र 18 से कम होने का कोई भी इशारा मिला तो यह अपने-आप बंद हो जाएगा. \"रुको\" / \"बंद करो\" बोलते ही भी बंद. आपकी सहमति सिर्फ़ इसी फ़ोन में रहती है."))
+            .setPositiveButton(UiLang.s(RomanticPersona.CONSENT_TEXT)) { _, _ -> RomanticPersona.enable(this); toast("रोमांटिक मोड चालू") }
+            .setNegativeButton(UiLang.s("नहीं")) { _, _ -> busy = true; sw.isChecked = false; busy = false }
+            .setOnCancelListener { busy = true; sw.isChecked = false; busy = false }
+            .show()
+    }
 }
