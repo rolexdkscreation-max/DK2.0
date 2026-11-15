@@ -493,6 +493,13 @@ class SettingsActivity : AppCompatActivity() {
             else "कुछ परमिशन नहीं मिलीं — App info → Permissions से दें (Android 13+: पहले ⋮ → Allow restricted settings)")
     }
 
+    @Deprecated("Contacts picker (SOS)")
+    @Suppress("DEPRECATION")
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: android.content.Intent?) {
+        super.onActivityResult(requestCode, resultCode, data)
+        sosPicked(requestCode, resultCode, data)   // 15 नवंबर 2026 (हिस्सा 4)
+    }
+
     override fun onPause() { save(false); stopVoiceCmdPlay(); super.onPause() }
     override fun onDestroy() { if (section == "debug") DKLog.listener = null; speaker?.shutdown(); super.onDestroy() }
 

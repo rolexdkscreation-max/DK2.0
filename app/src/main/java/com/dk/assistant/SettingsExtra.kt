@@ -50,23 +50,83 @@ internal fun SettingsActivity.openLink(url: String) {
 
 // ------------------------------------------------------------------ सुरक्षा → टच मोड
 internal fun SettingsActivity.secSos() {
-    card("इमरजेंसी SOS", "\"DK, activate SOS\" - 10 सेकंड की गिनती, फिर 5 लोगों को लोकेशन SMS + WhatsApp और कॉल") { box ->
+    card("इमरजेंसी SOS", "\"DK, activate SOS\" या \"SOS अभी शुरू करें\" - ${Sos.Rules.COUNTDOWN_SEC} सेकंड की गिनती, फिर 5 लोगों को लोकेशन WhatsApp + SMS और कॉल") { box ->
+        val sosPerms = arrayOf(Manifest.permission.SEND_SMS, Manifest.permission.CALL_PHONE, Manifest.permission.ACCESS_FINE_LOCATION,
+            Manifest.permission.READ_CALL_LOG, Manifest.permission.READ_PHONE_STATE, Manifest.permission.READ_CONTACTS)
         flagSwitch(box, "इमरजेंसी SOS चालू", FeatureFlags.SOS_ON) { on ->
-            if (on) askMissing(61, Manifest.permission.SEND_SMS, Manifest.permission.CALL_PHONE, Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.READ_CALL_LOG)
+            if (on) askMissing(61, *sosPerms)
         }
+        // 15 नवंबर 2026 (मालिक, हिस्सा 4): 5 नंबरों की सूची - हर नंबर पर बदलें / हटाएँ, Contacts से चुनें
+        label(box, "इमरजेंसी नंबर (${Sos.MAX_CONTACTS} तक) — सिर्फ़ इसी फ़ोन में")
+        val list = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        box.addView(list)
         val ed = field(box, "SOS नंबर (कॉमा से अलग, ज़्यादा से ज़्यादा ${Sos.MAX_CONTACTS})", FeatureFlags.str(this, Sos.CONTACTS), "98xxxxxx01, 98xxxxxx02")
         ed.inputType = InputType.TYPE_CLASS_PHONE
         val st = status(box)
-        fun show() { st.text = Sos.contacts(this).let { if (it.isEmpty()) "अभी कोई नंबर नहीं" else "सेव नंबर: ${it.size}" } }
+        lateinit var show: () -> Unit
+        fun save(l: List<String>) { FeatureFlags.putStr(this, Sos.CONTACTS, l.joinToString(", ")); ed.setText(l.joinToString(", ")); show() }
+        fun ask(title: String, cur: String, done: (String) -> Unit) {
+            val e = android.widget.EditText(this).apply { inputType = InputType.TYPE_CLASS_PHONE; setText(cur) }
+            androidx.appcompat.app.AlertDialog.Builder(this).setTitle(UiLang.s(title)).setView(e)
+                .setPositiveButton(UiLang.s("सेव")) { _, _ -> done(e.text.toString()) }.setNegativeButton(UiLang.s("रद्द"), null).show()
+        }
+        show = {
+            list.removeAllViews()
+            val cur = Sos.contacts(this)
+            cur.forEachIndexed { i, n ->
+                val r = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = android.view.Gravity.CENTER_VERTICAL }
+                r.addView(TextView(this).apply { text = "${i + 1}. $n"; textSize = 15f; setTextColor(0xFFFFFFFF.toInt()) },
+                    LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
+                r.addView(button("बदलें") { ask("नंबर बदलें", n) { v -> save(Sos.Rules.replace(Sos.contacts(this), i, v)) } })
+                r.addView(button("हटाएँ") { save(Sos.Rules.remove(Sos.contacts(this), i)); toast("हटा दिया") })
+                list.addView(r)
+            }
+            st.text = UiLang.s(if (cur.isEmpty()) "अभी कोई नंबर नहीं — पहले emergency नंबर जोड़ो" else "सेव नंबर: ${cur.size}/${Sos.MAX_CONTACTS}")
+        }
         show()
+        row(box, button("Contacts से चुनें") {
+            if (Sos.contacts(this).size >= Sos.MAX_CONTACTS) { toast("5 नंबर पूरे — पहले कोई हटाएँ"); return@button }
+            sosPick = { n -> val l = Sos.Rules.add(Sos.contacts(this), n); save(l); toast("जुड़ गया: $n") }
+            try {
+                @Suppress("DEPRECATION")
+                startActivityForResult(android.content.Intent(android.content.Intent.ACTION_PICK, android.provider.ContactsContract.CommonDataKinds.Phone.CONTENT_URI), SOS_PICK)
+            } catch (_: Exception) { toast("Contacts नहीं खुले — नंबर टाइप करें") }
+        }, button("नंबर टाइप करें") {
+            if (Sos.contacts(this).size >= Sos.MAX_CONTACTS) { toast("5 नंबर पूरे — पहले कोई हटाएँ"); return@button }
+            ask("नया नंबर", "") { v -> val before = Sos.contacts(this).size; val l = Sos.Rules.add(Sos.contacts(this), v); save(l); toast(if (l.size > before) "जुड़ गया" else "नंबर सही नहीं (कम से कम 10 अंक) या पहले से है") }
+        })
         row(box, button("नंबर सेव करें") {
-            val list = Sos.Rules.parse(ed.text.toString())
-            FeatureFlags.putStr(this, Sos.CONTACTS, list.joinToString(", ")); ed.setText(list.joinToString(", ")); show()
-            toast("${list.size} नंबर सेव")
+            val l = Sos.Rules.parse(ed.text.toString())
+            save(l)
+            toast("${l.size} नंबर सेव")
         }, button("SOS रोकें") { toast(Sos.stop()) })
-        hint(box, "बोलकर: \"DK, activate SOS\" / \"SOS बंद करो\"। गिनती के 10 सेकंड में \"SOS बंद करो\" बोलें तो कुछ नहीं जाता। " +
-            "SMS, कॉल और लोकेशन की इजाज़त चाहिए - चालू करते ही माँगी जाती है।")
+        // "चालू करते ही कुछ नहीं होता" - अब सीधे यहाँ से भी शुरू, और गिनती में बड़ा रद्द बटन
+        row(box, button("SOS अभी शुरू करें") {
+            if (!FeatureFlags.on(this, FeatureFlags.SOS_ON)) { toast("पहले ऊपर \"इमरजेंसी SOS चालू\" करें"); return@button }
+            askMissing(61, *sosPerms)
+            toast(Sos.start(this))
+        }, button("रद्द करें (गिनती में)") { toast(Sos.stop()) })
+        flagSwitch(box, "सबको पूरी 5 बार कॉल (बंद = कोई उठा ले तो वहीं रुको)", FeatureFlags.SOS_CALL_ALL)
+        hint(box, "क्रम: ${Sos.Rules.COUNTDOWN_SEC} सेकंड की गिनती (\"SOS रोको\" बोलें या \"रद्द करें\" दबाएँ तो कुछ नहीं जाता) → ताज़ा GPS लोकेशन (10 सेकंड तक) → सबको SMS + WhatsApp → फिर हर नंबर पर क्रम से 5-5 बार कॉल. " +
+            "SMS, कॉल, लोकेशन, फ़ोन-स्थिति, call log और Contacts की इजाज़त चाहिए - चालू करते ही माँगी जाती है. WhatsApp अपने-आप भेजने के लिए Accessibility में DK चालू हो. " +
+            "WhatsApp पर Google Maps का लिंक जाता है (असली \"लाइव लोकेशन\" शेयर नहीं).")
     }
+}
+
+/** 15 नवंबर 2026 (हिस्सा 4): Contacts picker का नतीजा ([SettingsActivity.onActivityResult]) */
+internal const val SOS_PICK = 6107
+internal var sosPick: ((String) -> Unit)? = null
+
+internal fun SettingsActivity.sosPicked(requestCode: Int, resultCode: Int, data: android.content.Intent?) {
+    if (requestCode != SOS_PICK) return
+    val cb = sosPick; sosPick = null
+    if (resultCode != android.app.Activity.RESULT_OK || cb == null) return
+    val uri = data?.data ?: return
+    try {
+        contentResolver.query(uri, arrayOf(android.provider.ContactsContract.CommonDataKinds.Phone.NUMBER), null, null, null)?.use { c ->
+            if (c.moveToFirst()) c.getString(0)?.let { cb(it) }
+        }
+    } catch (_: Exception) { toast("नंबर नहीं पढ़ पाई — टाइप करें") }
 }
 
 // ------------------------------------------------------------------ ऑटोमेशन → Accessibility

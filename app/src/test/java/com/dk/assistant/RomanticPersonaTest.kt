@@ -36,7 +36,7 @@ class RomanticPersonaTest {
 
     @Test fun flagOffByDefaultAndWired() {
         assertFalse(FeatureFlags.byKey(FeatureFlags.ADULT_STYLE)!!.default)
-        assertTrue(FeatureFlags.ADULT_STYLE in FeatureFlags.READY)
+        assertFalse(FeatureFlags.ADULT_STYLE in FeatureFlags.READY)   // बोलकर नहीं बदलता - सहमति सिर्फ़ Settings के अपने स्विच से
         assertEquals(5, DkPersona.P.values().size)        // पुराने स्वभाव वैसे ही
         assertEquals(DkPersona.P.GIRLFRIEND, DkPersona.parse("रोमांटिक मोड ऑन करो"))
         assertTrue(src("DkPersona.kt").contains("RomanticPersona.BLOCK"))
