@@ -43,6 +43,9 @@ class GuardAlarmActivity : AppCompatActivity() {
     @Volatile private var busy = false
     @Volatile private var shots = 0
     @Volatile private var lastShot = 0L
+    @Volatile private var snapping = false
+    @Volatile private var snapFailed = false
+    @Volatile private var dueSince = 0L
     @Volatile private var ownerHits = 0
     private var startedAt = 0L
     private var blinkOn = false
@@ -130,9 +133,17 @@ class GuardAlarmActivity : AppCompatActivity() {
         if (why != null && faceOn) { Guard.note(this, "चेहरे से सायरन बंद नहीं होगा: $why"); faceUi("चेहरा पहचान बंद: $why") }
         // 15 नवंबर 2026: हर बार नया क्रम (पहले बाएँ / पहले दाएँ) - रिकॉर्ड किया वीडियो नहीं जानता
         else if (face) { liveness.challenge(FaceLiveness.randomSide()); faceUi("मालिक का चेहरा देख रहा हूँ…\n" + (if (liveness.first == 0) FaceLiveness.GUIDE else liveness.guide())) }
+        if (face && !FaceAI.hasSpoof(this) && Prefs.faceSpoofOn(this)) Guard.note(this, "AI anti-spoof मॉडल अभी फ़ोन में नहीं - इस बार सिर्फ़ सिर घुमाने वाली जाँच; डाउनलोड हो रहा है")
         if (face && !FaceAI.hasSpoof(this) && Prefs.faceSpoofOn(this)) Thread { FaceAI.downloadSpoof(applicationContext) }.apply { isDaemon = true }.start()
         if (!photo && !face) return
-        cam = FaceCam(this, preview) { b -> onFrame(b, photo, face) }.also { it.start { w -> DKLog.d("टच मोड: कैमरा नहीं खुला ($w)"); faceUi("कैमरा नहीं खुला: $w") } }
+        cam = FaceCam(this, preview, capture = photo) { b -> onFrame(b, photo, face) }.also { it.start { w -> DKLog.d("टच मोड: कैमरा नहीं खुला ($w)"); faceUi("कैमरा नहीं खुला: $w") } }
+    }
+
+    /** बीच का [SHARP_BOX]² हिस्सा (तेज़ी नापने को) */
+    private fun centerPx(b: Bitmap): IntArray {
+        val n = minOf(SHARP_BOX, b.width, b.height); val px = IntArray(SHARP_BOX * SHARP_BOX)
+        if (n < SHARP_BOX) return px
+        b.getPixels(px, 0, SHARP_BOX, (b.width - n) / 2, (b.height - n) / 2, n, n); return px
     }
 
     private fun onFrame(b: Bitmap, photo: Boolean, face: Boolean) {
@@ -144,8 +155,24 @@ class GuardAlarmActivity : AppCompatActivity() {
                 val now = System.currentTimeMillis()
                 val det = if (face || photo) try { FaceAI.detect(this, copy) } catch (_: Throwable) { null } else null
                 // फ़ोटो: चेहरा दिखे तो तुरंत, वरना 1.5 s बाद एक; हर अलार्म में ज़्यादा से ज़्यादा 3
-                if (photo && shots < GuardModes.photoMax(mode) && now - lastShot > GuardModes.photoGapMs(mode) && (det != null || (shots == 0 && now - startedAt > 1_500))) {
-                    if (Guard.savePhoto(this, copy) != null) { shots++; lastShot = now }
+                if (photo && !snapping && shots < GuardModes.photoMax(mode) && now - lastShot > GuardModes.photoGapMs(mode) && (det != null || (shots == 0 && now - startedAt > 1_500))) {
+                    // 15 नवंबर 2026: अच्छी फ़ोटो - हिलता/धुँधला फ़्रेम छोड़ो (2 s तक), फिर असली कैमरा फ़ोटो (पूरा resolution)
+                    if (dueSince == 0L) dueSince = now
+                    val sharp = GuardPhotos.sharpness(centerPx(copy), SHARP_BOX, SHARP_BOX)
+                    if (sharp >= GuardPhotos.SHARP_MIN || now - dueSince > GuardPhotos.WAIT_SHARP_MS) {
+                        val c = cam
+                        if (c != null && c.canSnap && !snapFailed) {
+                            snapping = true; lastShot = now
+                            c.snap { full ->
+                                work.execute {
+                                    try {
+                                        if (full != null && Guard.savePhoto(this, full) != null) { shots++; dueSince = 0L }
+                                        else { snapFailed = true; lastShot = 0L }   // अगली बार पहचान वाला फ़्रेम
+                                    } finally { full?.recycle(); snapping = false }
+                                }
+                            }
+                        } else if (Guard.savePhoto(this, copy) != null) { shots++; lastShot = now; dueSince = 0L }
+                    }
                 }
                 if (face) {
                     // असली इंसान? (फ़ोटो / फ़ोन की स्क्रीन वाली फ़ोटो सिर घुमाने पर नहीं बदलती) - चेहरा न हो तब भी गिनती चले
@@ -177,9 +204,10 @@ class GuardAlarmActivity : AppCompatActivity() {
                     if (s != null && s < TURNED_MIN) liveness.reset()
                     if (owner && live && front) {
                         // 15 नवंबर 2026: AI anti-spoof मॉडल हो तो वह भी "असली" बोले (सिर घुमाता वीडियो भी न चले)
-                        if (spoofOn && !spoof.real()) {
+                        // 15 नवंबर 2026: सख़्त - कई फ़्रेम, औसत ऊँचा, एक भी "नकली" फ़्रेम नहीं ([FaceSpoof.Vote.sure])
+                        if (spoofOn && !(spoof.real() && spoof.sure())) {
                             ownerHits = 0; scan(copy, det, s)
-                            faceUi("मालिक का चेहरा मिला — AI जाँच रहा है कि सामने असली इंसान है (फ़ोटो/वीडियो नहीं)…")
+                            faceUi("मालिक का चेहरा मिला — AI पूरी जाँच कर रहा है: असली इंसान है या फ़ोटो / वीडियो / स्क्रीन (${spoof.count()}/${FaceSpoof.SURE_FRAMES})… सीधे देखते रहिए")
                             return@execute
                         }
                         ownerHits++
@@ -268,6 +296,7 @@ class GuardAlarmActivity : AppCompatActivity() {
     }
 
     companion object {
+        const val SHARP_BOX = 256
         /** घूमे चेहरे का मालिक से कम-से-कम इतना मिलना (वरना कोई और) */
         const val TURNED_MIN = 0.20f
         /** इतने फ़्रेम सिर्फ़ सीधा चेहरा (कोई घुमाव नहीं) = फ़ोटो की चेतावनी */

@@ -5,6 +5,7 @@ import android.content.pm.PackageManager
 import android.graphics.BitmapFactory
 import android.text.InputType
 import android.widget.ImageView
+import android.widget.LinearLayout
 import android.widget.TextView
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.widget.SwitchCompat
@@ -131,7 +132,12 @@ internal fun SettingsActivity.secGuard() {
     card("घुसपैठिए का रिकॉर्ड", "फ़ोटो और क्या-क्या हुआ") { box ->
         val info = TextView(this).apply { textSize = 13f; setTextColor(0xCCFFFFFF.toInt()); setPadding((4 * dp).toInt(), (8 * dp).toInt(), 0, 0) }
         box.addView(info)
+        // 15 नवंबर 2026: सारी फ़ोटो दिखें (सिर्फ़ गिनती/टाइम नहीं) - छूकर बड़ी, ← / →, शेयर, गैलरी, मिटाएँ
+        val photosBox = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        box.addView(photosBox, 0)
         fun show() {
+            photosBox.removeAllViews()
+            GuardPhotos.strip(this, photosBox) { show() }
             val p = Guard.photos(this).size
             val l = Guard.log(this).take(15)
             info.text = "फ़ोटो: $p\n" + (if (l.isEmpty()) "अभी कुछ नहीं हुआ" else l.joinToString("\n"))
@@ -141,10 +147,7 @@ internal fun SettingsActivity.secGuard() {
             button("आख़िरी फ़ोटो देखें") {
                 val f = Guard.photos(this).firstOrNull()
                 if (f == null) toast("अभी कोई फ़ोटो नहीं")
-                else {
-                    val iv = ImageView(this).apply { adjustViewBounds = true; setImageBitmap(BitmapFactory.decodeFile(f.absolutePath)) }
-                    AlertDialog.Builder(this).setTitle(f.name).setView(iv).setPositiveButton("ठीक है", null).show()
-                }
+                else GuardPhotos.viewer(this, Guard.photos(this), 0) { show() }
             },
             button("सब मिटाएँ") {
                 AlertDialog.Builder(this).setMessage("सारी फ़ोटो और रिकॉर्ड मिटा दें?")

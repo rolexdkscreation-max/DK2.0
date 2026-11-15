@@ -60,6 +60,8 @@ object GuardFaceSetup {
         holo.show(HoloScanView.Mode.SEARCH, emptyList())
         wrap.addView(box, LinearLayout.LayoutParams(-1, (320 * dp).toInt()))
         val spoof = FaceSpoof.Vote()
+        val flow = FaceEnroll()
+        var badRun = 0
         val tv = TextView(a).apply { textSize = 16f; setTextColor(0xFFFFFFFF.toInt()); setPadding(0, (12 * dp).toInt(), 0, 0) }
         wrap.addView(tv)
         val dlg = AlertDialog.Builder(a).setTitle(UiLang.s(when { enroll && person != null -> "$person का चेहरा सीखें"; enroll -> "मालिक का चेहरा सेट करें"; who -> "कौन है?"; else -> "चेहरा जाँचें" })).setView(wrap)
@@ -68,7 +70,7 @@ object GuardFaceSetup {
         val prints = ArrayList<FloatArray>()
         var saved = false
         fun startCam() {
-            ui(if (enroll) "फ़ोन आँखों के सामने रखें, रोशनी में सीधे कैमरे में देखें…" else "कैमरे में देखें…")
+            ui(if (enroll) "करीब 30 सेकंड लगेंगे — DK बताएगी: सीधे, बाएँ, दाएँ, ऊपर, नीचे, फिर सीधे। रोशनी में, फ़ोन आँखों के सामने…" else "कैमरे में देखें…")
             val fc = FaceCam(a, pv) { b ->
                 if (saved) return@FaceCam
                 // "कौन है?" = एक साथ कई चेहरे (Boss / दोस्त / परिवार / अनजान)
@@ -85,16 +87,42 @@ object GuardFaceSetup {
                 val d = FaceAI.detect(a, b, minScore = 0.6f)
                 if (d == null) holo.show(HoloScanView.Mode.SEARCH, emptyList())
                 if (enroll) {
-                    d?.let { holo.place(it, b.width, b.height, true, "LEARNING", "${prints.size}/${FaceMath.ENROLL_FRAMES}")?.let { f ->
-                        holo.show(HoloScanView.Mode.SCAN, listOf(f), bars = listOf("PROGRESS" to prints.size / FaceMath.ENROLL_FRAMES.toFloat())) } }
-                    FaceMath.enrollProblem(d, b.width)?.let { ui(it + "  (${prints.size}/${FaceMath.ENROLL_FRAMES})"); return@FaceCam }
-                    val e = FaceAI.embed(a, b, d!!) ?: run { ui(FaceAI.status(a)); return@FaceCam }
-                    val mean = FaceMatch.aggregateEmbeddings(prints)
-                    if (mean != null && FaceMatch.cosineSimilarity(mean, e) < FaceMath.ENROLL_SAME) {
-                        prints.clear(); ui("बीच में चेहरा बदल गया — फिर से शुरू, अकेले कैमरे में देखें"); return@FaceCam
+                    // 15 नवंबर 2026 (मालिक: "कम से कम 30 सेकंड, इधर-उधर घुमाकर पूरा चेहरा"): [FaceEnroll] - 6 कदम, हर एक ≥ 5 s
+                    val now = System.currentTimeMillis()
+                    val pose = flow.pose
+                    val inPose = d != null && d.kps.size >= 10 && flow.inPose(d.kps)
+                    val secs = "${flow.elapsed(now) / 1000}s / ${FaceEnroll.MIN_TOTAL_MS / 1000}s"
+                    d?.let { holo.place(it, b.width, b.height, true, "LEARNING ${flow.step() + 1}/${flow.total()}", pose.hint.drop(2).trim())?.let { f ->
+                        holo.show(HoloScanView.Mode.SCAN, listOf(f), flow.step(), listOf("PROGRESS" to flow.progress(now), "CAPTURED" to (prints.size / 30f).coerceAtMost(1f)), total = flow.total()) } }
+                    FaceEnroll.problem(d, b.width, pose)?.let { ui("$it\n${pose.hint}  ($secs)"); return@FaceCam }
+                    // सीखते समय भी: फ़ोटो / स्क्रीन से चेहरा नहीं सिखा सकते
+                    val spoofOn = FaceAI.spoofReady(a)
+                    if (spoofOn && (pose == FaceEnroll.Pose.CENTER || pose == FaceEnroll.Pose.FINAL)) FaceAI.realness(a, b, d!!)?.let { spoof.add(it) }
+                    if (spoofOn && spoof.fake()) {
+                        prints.clear(); flow.reset(); spoof.reset()
+                        holo.place(d!!, b.width, b.height, true, tone = HoloScanView.BAD)?.let { f ->
+                            holo.show(HoloScanView.Mode.DECLINED, listOf(f), banner = HoloScanView.DECLINED, reason = "फ़ोटो / स्क्रीन — असली इंसान नहीं") }
+                        ui("✗ फ़ोटो / वीडियो / स्क्रीन से चेहरा नहीं सिखा सकते — असली इंसान सामने आए। फिर से शुरू…"); return@FaceCam
                     }
-                    prints.add(e)
-                    if (prints.size < FaceMath.ENROLL_FRAMES) { ui("सीख रहा हूँ… ${prints.size}/${FaceMath.ENROLL_FRAMES} — सिर थोड़ा-सा दाएँ-बाएँ घुमाएँ"); return@FaceCam }
+                    when (flow.feed(d!!.kps, now)) {
+                        FaceEnroll.Act.WAIT, FaceEnroll.Act.NEXT -> { ui("${flow.hint(now, inPose)}\n($secs, ${prints.size} फ़्रेम)"); return@FaceCam }
+                        FaceEnroll.Act.TAKE -> {
+                            val e = FaceAI.embed(a, b, d) ?: run { ui(FaceAI.status(a)); return@FaceCam }
+                            val mean = FaceMatch.aggregateEmbeddings(prints)
+                            val need = if (pose == FaceEnroll.Pose.CENTER || pose == FaceEnroll.Pose.FINAL) FaceMath.ENROLL_SAME else FaceEnroll.SAME_TURNED
+                            if (mean != null && FaceMatch.cosineSimilarity(mean, e) < need) {
+                                if (++badRun >= 4) { prints.clear(); flow.reset(); spoof.reset(); badRun = 0; ui("बीच में चेहरा बदल गया — फिर से शुरू, अकेले कैमरे में देखें") }
+                                return@FaceCam
+                            }
+                            badRun = 0; prints.add(e)
+                            ui("${flow.hint(now, true)}\n($secs, ${prints.size} फ़्रेम)"); return@FaceCam
+                        }
+                        FaceEnroll.Act.DONE -> {}
+                    }
+                    if (prints.size < FaceMath.ENROLL_FRAMES) { prints.clear(); flow.reset(); ui("पूरे फ़्रेम नहीं मिले — फिर से शुरू"); return@FaceCam }
+                    if (spoofOn && spoof.count() >= FaceSpoof.MIN_FRAMES && !spoof.real()) {
+                        prints.clear(); flow.reset(); spoof.reset(); ui("AI पक्का नहीं कर पाया कि सामने असली इंसान है — रोशनी में फिर से"); return@FaceCam
+                    }
                     saved = true
                     if (person != null) {
                         FacePeople.add(a, person, FaceMatch.aggregateEmbeddings(prints)!!, kind, rel)
@@ -122,7 +150,7 @@ object GuardFaceSetup {
                     when {
                         fake -> holo.show(HoloScanView.Mode.DECLINED, listOfNotNull(f), bars = bars, banner = HoloScanView.DECLINED, reason = "फ़ोटो / वीडियो / स्क्रीन — असली नहीं")
                         !ok -> holo.show(HoloScanView.Mode.DECLINED, listOfNotNull(f), bars = bars, banner = HoloScanView.DECLINED, reason = "यह चेहरा Boss का नहीं")
-                        !spoofOn || spoof.real() -> holo.show(HoloScanView.Mode.AUTHORIZED, listOfNotNull(f), bars = bars, banner = HoloScanView.AUTHORIZED)
+                        !spoofOn || spoof.sure() -> holo.show(HoloScanView.Mode.AUTHORIZED, listOfNotNull(f), bars = bars, banner = HoloScanView.AUTHORIZED)
                         else -> holo.show(HoloScanView.Mode.SCAN, listOfNotNull(f), bars = bars)
                     }
                     if (fake) { ui("✗ फ़ोटो / वीडियो / स्क्रीन पकड़ी गई — असली इंसान नहीं (AI ${(spoof.mean() * 100).toInt()}%)"); return@FaceCam }

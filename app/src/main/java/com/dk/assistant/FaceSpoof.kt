@@ -28,6 +28,9 @@ object FaceSpoof {
     /** फ़ैसले से पहले कम से कम इतने फ़्रेम */
     const val MIN_FRAMES = 3
     const val WINDOW = 6
+    const val SURE_FRAMES = 5
+    const val SURE_MEAN = 0.65f
+    const val SURE_FLOOR = 0.30f
 
     /**
      * Silent-Face का बड़ा डिब्बा: चेहरे के बीच से [scale] गुना, फ़्रेम के अंदर खिसकाकर. @return [left, top, right, bottom] (शामिल)
@@ -74,5 +77,11 @@ object FaceSpoof {
         fun mean(): Float = if (q.isEmpty()) 0f else q.sum() / q.size
         fun real(): Boolean = q.size >= MIN_FRAMES && mean() >= REAL_MIN
         fun fake(): Boolean = q.size >= MIN_FRAMES && mean() <= FAKE_MAX
+        /**
+         * 15 नवंबर 2026 (मालिक: "Boss का चेहरा आए तो पूरा पक्का करे - असली है या फ़ोटो / वीडियो - फिर authorize"):
+         * खोलने से पहले सख़्त: कम से कम [SURE_FRAMES] फ़्रेम, औसत [SURE_MEAN] से ऊपर, और कोई भी फ़्रेम [SURE_FLOOR] से नीचे नहीं
+         * (स्क्रीन पर चलता वीडियो बीच-बीच में "नकली" दिखता है - एक भी ऐसा फ़्रेम = अभी नहीं).
+         */
+        fun sure(): Boolean = q.size >= SURE_FRAMES && mean() >= SURE_MEAN && q.min() >= SURE_FLOOR
     }
 }

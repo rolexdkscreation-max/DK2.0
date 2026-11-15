@@ -617,7 +617,11 @@ object Guard {
     fun savePhoto(c: Context, bmp: android.graphics.Bitmap): File? = try {
         val d = photoDir(c).apply { mkdirs() }
         val f = File(d, "intruder_${System.currentTimeMillis()}.jpg")
-        f.outputStream().use { bmp.compress(android.graphics.Bitmap.CompressFormat.JPEG, 85, it) }
+        // 15 नवंबर 2026: अच्छी फ़ोटो - बड़ी (लंबी तरफ़ ≤ 1600 px), JPEG 92 (पहले 85, छोटा फ़्रेम)
+        val big = GuardPhotos.fitSide(bmp.width, bmp.height, GuardPhotos.MAX_SIDE).let { (w, h) ->
+            if (w == bmp.width && h == bmp.height) bmp else android.graphics.Bitmap.createScaledBitmap(bmp, w, h, true) }
+        f.outputStream().use { big.compress(android.graphics.Bitmap.CompressFormat.JPEG, GuardPhotos.QUALITY, it) }
+        if (big !== bmp) big.recycle()
         photos(c).drop(GuardRules.MAX_PHOTOS).forEach { it.delete() }
         note(c, "फ़ोटो ली (${f.name})")
         f

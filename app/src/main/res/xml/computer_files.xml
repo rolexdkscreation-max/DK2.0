@@ -17,4 +17,6 @@
     <files-path name="dkai_broadcast" path="dkai_broadcast/" />
     <!-- 14 नवंबर 2026: DKAI Terminal की `apk` कमांड से बने ऐप (filesDir/dkai/apks) - इंस्टॉल करने के लिए -->
     <files-path name="dkai_apks" path="dkai/apks/" />
+    <!-- 15 नवंबर 2026: टच मोड के घुसपैठिए की फ़ोटो (filesDir/guard) शेयर -->
+    <files-path name="guard_photos" path="guard/" />
 </paths>
