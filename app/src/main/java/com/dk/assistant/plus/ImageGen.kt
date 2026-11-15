@@ -22,7 +22,7 @@ import java.util.concurrent.TimeUnit
 /**
  * 15 नवंबर 2026 (मालिक: "इमेज के लिए हर फ्री API की अलग key डालने का option अंदर ही रहे - डालना है तो डालें, नहीं तो नहीं").
  *
- * मुफ़्त तस्वीर बनाने वाले कई रास्ते, हर एक की अपनी (वैकल्पिक) key - Settings → DK AI Plus → इमेज बनाना:
+ * मुफ़्त तस्वीर बनाने वाले कई रास्ते, हर एक की अपनी (वैकल्पिक) key - Settings → DK कंप्यूटर → इमेज बनाना:
  *  - [Provider.POLLINATIONS] - नवंबर 2026 से हर तस्वीर के लिए मुफ़्त `sk_` key ज़रूरी (enter.pollinations.ai). key नहीं = छोड़ दो.
  *  - [Provider.HORDE] - AI Horde (स्वयंसेवक GPU). बिना key भी (anonymous `0000000000`), पर धीमा/छोटा. अपनी मुफ़्त key = जल्दी.
  *  - [Provider.HUGGINGFACE] - Hugging Face का मुफ़्त token (हर महीने थोड़ा मुफ़्त). token नहीं = छोड़ दो.

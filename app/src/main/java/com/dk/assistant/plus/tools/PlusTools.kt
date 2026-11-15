@@ -9,7 +9,7 @@ import org.json.JSONObject
 /**
  * 15 नवंबर 2026 (मालिक: "ऐसा रेडी करो कि कोई भी फीचर बाद में जोड़ना हो तो जोड़ सकें, पुराना बिगाड़ना न पड़े").
  *
- * DK AI Plus का tool plug-in: नया बोलकर चलने वाला काम = एक [PlusTool] बनाओ और [ALL] में एक लाइन जोड़ो. बस.
+ * DK का tool plug-in: नया बोलकर चलने वाला काम = एक [PlusTool] बनाओ और [ALL] में एक लाइन जोड़ो. बस.
  *  - Live setup ([com.dk.assistant.GeminiLiveSetup]) चालू tools की [declarations] खुद जोड़ता है
  *    (वे [com.dk.assistant.LiveToolSlim] के dk_agent router के पीछे जाते हैं - setup भारी नहीं होता).
  *  - Live का tool runner ([com.dk.assistant.runTools]) पहले [runOrNull] पूछता है - हमारा नहीं तो null, पुराना रास्ता वैसा ही.
@@ -38,7 +38,7 @@ object PlusTools {
     /** हमारा tool और चालू = चलाओ; हमारा नहीं = null (पुराना रास्ता) */
     suspend fun runOrNull(c: Context, name: String, args: JSONObject): String? {
         val t = byName(name) ?: return null
-        if (!FeatureFlags.on(c, t.flag)) return "This ability is turned OFF. Tell the user to turn it on in DK Settings -> DK AI Plus."
+        if (!FeatureFlags.on(c, t.flag)) return "This ability is turned OFF. Tell the user to turn it on in DK Settings (image: DK कंप्यूटर -> इमेज बनाना; YouTube: सोशल रिव्यू -> YouTube चैनल जाँच)."
         return try { t.run(c, args) } catch (e: Exception) { "ERROR: ${e.message ?: "failed"}" }
     }
 
@@ -62,7 +62,7 @@ object ImageTool : PlusTool {
 
     override suspend fun run(c: Context, args: JSONObject): String {
         val r = ImageGen.generate(c, args.optString("prompt"))
-        return r.error?.let { "ERROR: $it. Tell the user briefly; free image keys can be added in DK Settings -> DK AI Plus -> इमेज बनाना." }
+        return r.error?.let { "ERROR: $it. Tell the user briefly; free image keys can be added in DK Settings -> DK कंप्यूटर -> इमेज बनाना." }
             ?: "DONE: image made via ${r.via} and saved ${if (r.file != null) "inside DK (private)" else "in the gallery (Pictures/DK AI)"}."
     }
 }

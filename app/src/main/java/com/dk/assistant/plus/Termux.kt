@@ -65,7 +65,7 @@ object Termux {
 
     /** null = भेज दिया; वरना वजह (बोलने लायक) */
     fun run(c: Context, command: String, background: Boolean = true, workDir: String = HOME): String? {
-        if (!FeatureFlags.on(c, FeatureFlags.TERMUX)) return "Termux ऑटोमेशन बंद है। सेटिंग्स → DK AI Plus में चालू करें।"
+        if (!FeatureFlags.on(c, FeatureFlags.TERMUX)) return "Termux ऑटोमेशन बंद है। सेटिंग्स → कोडिंग एजेंट → Termux ऑटोमेशन में चालू करें।"
         if (!installed(c)) return "Termux इंस्टॉल नहीं है (F-Droid / GitHub वाला Termux डालें)।"
         if (!permitted(c)) return "Termux की RUN_COMMAND इजाज़त नहीं है। सेटिंग्स → परमिशन में दें।"
         val i = Intent(ACTION).apply {

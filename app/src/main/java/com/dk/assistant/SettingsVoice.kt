@@ -217,6 +217,9 @@ internal fun SettingsActivity.secVoice() {
     // ---- v3.88: Memory (फ़ोन की लोकल याददाश्त)
     card("Memory (याददाश्त)", "क्या-क्या सेव है देखें, कोई एक चीज़ या सारी मेमोरी मिटाएँ — सब सिर्फ़ इसी फ़ोन में") { box ->
         row(box, button("मेमोरी खोलें") { startActivity(android.content.Intent(this, MemoryActivity::class.java)) })
+        // 15 नवंबर 2026: इनकॉग्निटो (पहले "DK AI Plus" में) - चालू = न कुछ नया याद, न पुरानी याद पढ़ना (शुरू में बंद)
+        switch(box, "इनकॉग्निटो मोड — इस दौरान DK न कुछ याद रखे, न पुरानी याददाश्त पढ़े", com.dk.assistant.plus.FeatureFlags.on(this, com.dk.assistant.plus.FeatureFlags.INCOGNITO))
+            .setOnCheckedChangeListener { _, on -> com.dk.assistant.plus.FeatureFlags.set(this, com.dk.assistant.plus.FeatureFlags.INCOGNITO, on) }
         hint(box, "हर बातचीत हमेशा इसी फ़ोन में रहती है - अपने-आप कभी नहीं मिटती (ज़रूरी बातों का छोटा सार भी बनता है)। DK पूरी याद में से खोज सकता है। बोलकर भी कह सकते हैं: \"ये भूल जाओ\"। पासवर्ड और बैंक की बातें सेव नहीं होतीं।")
     }
 
