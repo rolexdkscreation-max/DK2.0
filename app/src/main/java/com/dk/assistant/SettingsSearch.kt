@@ -137,6 +137,7 @@ object SettingsSearch {
         E("access", "फ़ोन कंट्रोल (Accessibility)", "एक बार ON करें — फिर ON ही रहेगा"),
         E("access", "बार-बार बंद न हो", "Android बैटरी बचाने के लिए DK को बंद कर देता है — यह रोकें"),
         E("access", "सुनना और कॉल", ""),
+        E("access", "DK कॉलिंग", "बोलकर कॉल उठाना, रिंग कौन-सी और कितनी तेज़", "call कॉल रिंग ring ringtone रिंगटोन घंटी उठाओ answer आवाज़ volume तेज़ धीमी"),
         E("access", "गड़बड़ी रिपोर्ट", "पिछली बार DK किस वजह से बंद हुआ"),
         // 15 नवंबर 2026: पुराने "DK AI Plus" पन्ने की सुविधाएँ अपनी सही जगह (SettingsExtra.kt)
         E("guard", "इमरजेंसी SOS", "\"DK, activate SOS\" - 10 सेकंड की गिनती, फिर 5 लोगों को लोकेशन SMS + WhatsApp और कॉल", "sos एसओएस emergency इमरजेंसी आपातकाल मदद help location लोकेशन"),

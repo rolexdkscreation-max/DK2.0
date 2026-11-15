@@ -41,11 +41,17 @@ import org.json.JSONObject
 // यह code पहले DKAccessibilityService.kt में था; सिर्फ़ जगह बदली है, व्यवहार वही (extension functions, वही state DKAccessibilityService में)।
 
 internal suspend fun DKAccessibilityService.onIncomingCall(who0: String, ask: String? = null) {
-    if (!Prefs.announceCalls(this)) return
+    if (!Prefs.announceCalls(this)) {
+        // 15 नवंबर 2026: एलान बंद हो तब भी DK लाइव "उठा लो" सुनती है - घंटी धीमी, ताकि आवाज़ सुनाई दे
+        if (DKState.live) { calls.quietRinger(); scope.launch { delay(1_000); while (calls.ringing || calls.inCall) delay(500); calls.restoreRinger() } }
+        return
+    }
     callPending = true
-    VolumeKeep.raiseForCall(this)   // मालिक (नवंबर 2026): रिंगटोन / कॉल की आवाज़ कम हो तो फुल, कभी कम नहीं
+    // 15 नवंबर 2026 (मालिक: "रिंग कितनी तेज़ बजे, वो सेटिंग में"): FULL = पहले जैसा, बाकी = Settings → DK कॉलिंग
+    if (CallTune.ringMode(this) == CallTune.FULL) VolumeKeep.raiseForCall(this)   // मालिक (नवंबर 2026): रिंगटोन / कॉल की आवाज़ कम हो तो फुल, कभी कम नहीं
+    else calls.tuneRinger()
     agent.stop()
-    calls.quietRinger()
+    calls.quietRinger()   // DK सुनते समय घंटी धीमी - ताकि "DK उठा लो" सुनाई दे (कॉल ख़त्म = पुरानी आवाज़)
     delay(80)        // v3.156: 200 -> 80ms (मालिक: "जैसे ही फ़ोन बजे, तुरंत बोले")
     var who = who0
     if (who.isBlank() && ask == null) who = callerFromScreen()
@@ -84,7 +90,7 @@ internal suspend fun DKAccessibilityService.onIncomingCall(who0: String, ask: St
             // 15 नवंबर 2026 (मालिक: "कॉल नहीं आ रहा फिर भी बोलता है कॉल आ रहा है"): घंटी बंद = Live को चुपचाप बताओ
             gemLive.noteCallGone(whoNote, if (calls.inCall) TruthCheck.CallEnd.ANSWERED else TruthCheck.CallEnd.ENDED)
         }
-        scope.launch { delay(1_000); while (calls.ringing || calls.inCall) delay(500); speaker.restoreCallVolume() }
+        scope.launch { delay(1_000); while (calls.ringing || calls.inCall) delay(500); speaker.restoreCallVolume(); calls.restoreRinger() }
         return
     }
     callAnnouncing = true
@@ -92,13 +98,13 @@ internal suspend fun DKAccessibilityService.onIncomingCall(who0: String, ask: St
     // अपने माइक (callBargeEar) से साथ-साथ सुनना. Google माइक वाले तरीके में पहले जैसा: एलान पूरा, फिर सुनो
     val announce = scope.launch { try { speaker.speakCall(msg) } finally { callAnnouncing = false } }
     if (!callBargeEar()) announce.join()
-    scope.launch { delay(1_000); while (calls.ringing || calls.inCall) delay(500); speaker.restoreCallVolume() }
+    scope.launch { delay(1_000); while (calls.ringing || calls.inCall) delay(500); speaker.restoreCallVolume(); calls.restoreRinger() }
 
     if (loopJob?.isActive == true) {
         scope.launch { while (calls.ringing) delay(500); callPending = false }
         return
     }
-    val until = System.currentTimeMillis() + 30_000
+    val until = System.currentTimeMillis() + CallTune.listenMs(this)   // 15 नवंबर 2026: Settings → DK कॉलिंग (पहले 30s तय)
     try {
         while (calls.ringing && callPending && System.currentTimeMillis() < until) {
             DKState.set(Mode.LISTENING)

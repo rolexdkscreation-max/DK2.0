@@ -534,6 +534,8 @@ class GeminiLive(internal val svc: DKAccessibilityService, internal val agent: A
     @Volatile private var connEngVer = -1
     /** v3.80: इस connection में Live की आवाज़ / अंदाज़ / मॉडल का version (बदले = चुप होते ही नया connection) */
     @Volatile internal var connLiveVer = -1
+    /** 15 नवंबर 2026 (मालिक: "स्वभाव बदलते ही उसी टाइम बदलना चाहिए"): इस connection का स्वभाव/संबोधन (DkPersona.liveKey) */
+    @Volatile internal var connPersona = ""
     @Volatile internal var splitEngine: com.dk.assistant.voice.engine.VoiceEngine? = null
     /** replyText का कितना हिस्सा pipeline को भेजा जा चुका (DoneGate रोके तो आगे नहीं) */
     @Volatile internal var splitFedTo = 0
@@ -622,6 +624,7 @@ class GeminiLive(internal val svc: DKAccessibilityService, internal val agent: A
         val engines = com.dk.assistant.voice.engine.VoiceEngines
         connEngVer = engines.version
         connLiveVer = engines.liveVersion
+        connPersona = DkPersona.liveKey(svc)
         val chosen = engines.active(svc)
         try { liveVoiceName = if (JarvisMode.on(svc)) JarvisMode.voice(svc) else com.dk.assistant.voice.engine.VoiceEngines.byId(com.dk.assistant.voice.engine.VoiceEngines.LIVE_NATIVE)?.voice(svc).orEmpty() } catch (_: Throwable) {}
         if (chosen != null && chosen.split && System.currentTimeMillis() < splitOffUntil) {
@@ -1240,6 +1243,13 @@ class GeminiLive(internal val svc: DKAccessibilityService, internal val agent: A
                                 handle = null
                                 log("Live की आवाज़ बदली (${Prefs.geminiVoice(svc)}) - नया connection, अब नई आवाज़"); goAway = true; goAwayDrop = true
                             }
+                        }
+                        // 15 नवंबर 2026 (मालिक: "स्वभाव जैसे ही चेंज होगा, उसी टाइम तुरंत चेंज होना चाहिए"): पहले सिर्फ़ Live की
+                        // अपनी आवाज़ वाले connection (!connSplit) ही दोबारा जुड़ते थे - Gemini TTS / Kokoro पर पुराना स्वभाव चलता रहता था.
+                        // अब स्वभाव / संबोधन / JARVIS / FRIDAY बदला = DK चुप होते ही नया सत्र (नया prompt), किसी भी इंजन पर
+                        if (LivePersonaSwitch.due(connPersona, DkPersona.liveKey(svc), turnActive, isPlaying(), toolJobs.isEmpty())) {
+                            connPersona = DkPersona.liveKey(svc); handle = null
+                            log("DK का स्वभाव बदला (${DkPersona.get(svc).title}) - नया connection, अब नए अंदाज़ में"); goAway = true; goAwayDrop = true
                         }
                         // v3.7: बँटवारे वाला इंजन चुप रहा = DK चुप होते ही नया connection, Live की अपनी आवाज़ में (जो छूटा वह दोबारा बोलेगा)
                         if (connSplit && splitSilentAt > 0 && !turnActive && !isPlaying() && toolJobs.isEmpty()) {

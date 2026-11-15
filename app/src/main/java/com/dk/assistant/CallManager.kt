@@ -46,14 +46,17 @@ class CallManager(private val ctx: Context, private val onRinging: (String) -> U
         ctx.getSystemService(TelecomManager::class.java)?.isInCall == true
     } catch (_: Exception) { false }
 
-    fun quietRinger() {
-        if (RingGuard.shouldRestore(ringing || inCall)) {
-            ctx.getSharedPreferences("dk_ring", Context.MODE_PRIVATE)
-        }
+    /** 15 नवंबर 2026 (मालिक: "बोलूँ तो DK कॉल उठाए"): पहले यह खाली था - घंटी पूरी आवाज़ में, माइक को आवाज़ नहीं मिलती थी.
+     *  अब DK सुनते समय घंटी धीमी ([CallTune.quiet]); force = "घंटी धीमी करो" कहा */
+    fun quietRinger(force: Boolean = false) {
+        if (ringing || force) CallTune.quiet(ctx, ctx.getSharedPreferences("dk_ring", Context.MODE_PRIVATE), force)
     }
+    /** घंटी की चुनी तेज़ी (Settings → DK कॉलिंग) */
+    fun tuneRinger() = CallTune.applyRing(ctx, ctx.getSharedPreferences("dk_ring", Context.MODE_PRIVATE))
+    /** घंटी / बात ख़त्म = रिंग की पुरानी आवाज़ (बीच में नहीं - RingGuard) */
     fun restoreRinger() {
         if (RingGuard.shouldRestore(ringing || inCall)) {
-            ctx.getSharedPreferences("dk_ring", Context.MODE_PRIVATE)
+            CallTune.restore(ctx, ctx.getSharedPreferences("dk_ring", Context.MODE_PRIVATE))
         }
     }
     /** SIM कॉल चल रही है, या v4: ऐप वाली कॉल उठ चुकी है */
