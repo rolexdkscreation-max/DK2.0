@@ -163,7 +163,9 @@ class CoderAi(val provider: Provider, private val key: String, val model: String
             }
         }
         // सब fail. सब की limit (429) खत्म = लगातार कोशिश नहीं - रुककर user को बताओ
-        val wait = quotaWaitSec(errs.map { ((it.second as? AiException)?.code ?: -1) to ((it.second as? AiException)?.retryAfter ?: 0) })
+        // 15 नवंबर 2026 (मालिक): "सिर्फ़ Gemini खत्म होते ही काम रुक जाता है" - जड़: किसी एक API का 404/401 भी हो तो पहले
+        // रुकना नहीं होता था (quotaWaitSec = सब 429 चाहिए) और काम बंद. अब जिसकी भी limit (429) खुलने वाली है, उसके लिए रुककर फिर ([limitWaitSec])
+        val wait = limitWaitSec(errs.map { ((it.second as? AiException)?.code ?: -1) to ((it.second as? AiException)?.retryAfter ?: 0) })
         val tried = errs.joinToString { "${it.first.provider.name}: ${(it.second as? AiException)?.code ?: "network"}" }
         if (wait > 0) {
             DKStatus.post(DKStatus.Kind.LIMIT_ALL)
@@ -379,9 +381,16 @@ class CoderAi(val provider: Provider, private val key: String, val model: String
          */
         fun forCoder(c: Context, sink: (String, String) -> Unit): CoderAi? = withSpares(c, coderOwn(c, sink), sink)
 
+        /** इस कंपनी की कोई भी डली key (कोडिंग / कंप्यूटर / चैट / लाइव) - सिर्फ़ मॉडल सूची मँगाने के लिए */
+        private fun anyKey(c: Context, id: String): String =
+            ApiScopes.ALL.asSequence().map { sc -> Prefs.scopeKeyRaw(c, sc, id) }.firstOrNull { it.isNotBlank() } ?: Prefs.key(c, id)
+
         private fun coderOwn(c: Context, sink: (String, String) -> Unit): CoderAi? {
+            // 15 नवंबर 2026: पीछे से हर कंपनी की ताज़ा मॉडल सूची (6 घंटे में एक बार) - ताकि कोडिंग वाले नए मॉडल अपने-आप
+            runCatching { com.dk.assistant.dkai.DkaiModelList.refreshForCoder(c) { id -> anyKey(c, id) } }
             if (Prefs.oneKeyOn(c)) return forScope(c, ApiScopes.CODER, sink)
-            return forScopeChain(c, ApiScopes.CODER, sink, ApiScopes.crossOrder(Prefs.scopeActive(c, ApiScopes.CODER)))
+            // 15 नवंबर 2026 (मालिक): कोडिंग एजेंट का क्रम Gemini → Groq → OpenRouter → Z.ai → NVIDIA ([CoderModels.ORDER]), चुनी API पहले
+            return forScopeChain(c, ApiScopes.CODER, sink, CoderModels.order(ApiScopes.crossOrder(Prefs.scopeActive(c, ApiScopes.CODER))))
                 ?: forScope(c, ApiScopes.CODER, sink)
         }
 
@@ -394,6 +403,7 @@ class CoderAi(val provider: Provider, private val key: String, val model: String
         internal fun withSpares(c: Context, own: CoderAi?, sink: (String, String) -> Unit): CoderAi? {
             val have = own?.let { (listOf(it) + it.fallbackList()).map { a -> a.provider.id to a.keyForChain() }.toSet() }.orEmpty()
             val spare = ApiScopes.spareKeys({ sc, slot -> Prefs.scopeKeyRaw(c, sc, slot).ifBlank { if (sc == ApiScopes.CODER && slot == "gemini") Prefs.oneKey(c) else "" } }, have)
+                .sortedBy { CoderModels.ORDER.indexOf(it.second).let { i -> if (i < 0) 99 else i } }   // 15 नवंबर 2026: Groq Gemini के ठीक बाद
                 .mapNotNull { (sc, id, k) -> spare(c, sc, id, k, sink) }
             if (spare.isEmpty()) return own
             DKLog.d("कोडिंग AI: ${spare.size} और API keys fallback में (${spare.joinToString { it.provider.name }})")
@@ -405,11 +415,14 @@ class CoderAi(val provider: Provider, private val key: String, val model: String
 
         private fun spare(c: Context, scope: String, id: String, key: String, sink: (String, String) -> Unit): CoderAi? {
             val p = Providers.byId(id) ?: return null
-            val model = if (p.isGemini) GeminiModels.CODER else Prefs.scopeModel(c, ApiScopes.CODER, id).ifBlank { p.defaultModel }
+            val chosen = Prefs.scopeModel(c, ApiScopes.CODER, id).ifBlank { p.defaultModel }
+            // 15 नवंबर 2026: बाकी हिस्सों की keys पर भी कोडिंग वाले सबसे अच्छे मॉडल ([CoderModels])
+            val list = if (p.isGemini) emptyList() else CoderModels.chain(id, chosen, chosen != p.defaultModel, Prefs.models(c, id))
+            val model = if (p.isGemini) GeminiModels.CODER else list.firstOrNull() ?: chosen
             val base = Prefs.scopeBase(c, scope, id).ifBlank { p.baseUrl }
             if (model.isBlank() || (!p.isGemini && base.isBlank())) return null
             val note = ", ${ApiScopes.title(scope)} की key"
-            val fb = if (p.isGemini) emptyList() else Prefs.scopeBackups(c, ApiScopes.CODER, id).map { m -> CoderAi(p, key, m, base, note = "$note, दूसरा मॉडल", sink = sink) }
+            val fb = if (p.isGemini) emptyList() else list.drop(1).ifEmpty { Prefs.scopeBackups(c, ApiScopes.CODER, id) }.map { m -> CoderAi(p, key, m, base, note = "$note, दूसरा मॉडल", sink = sink) }
             return CoderAi(p, key, model, base, fb, note = note, sink = sink)
         }
 
@@ -473,8 +486,12 @@ class CoderAi(val provider: Provider, private val key: String, val model: String
             }
             val base = Prefs.scopeBase(c, scope, p.id)
             if (key.isBlank() || model.isBlank() || (!p.isGemini && base.isBlank())) return null
+            // 15 नवंबर 2026 (मालिक): कोडिंग एजेंट में Groq / OpenRouter / Z.ai / NVIDIA के सिर्फ़ कोडिंग वाले सबसे अच्छे मॉडल
+            // (कंपनी की ताज़ा सूची से, [CoderModels]); Settings में खुद चुना मॉडल सबसे पहले
+            val coderList = if (!p.isGemini && scope == ApiScopes.CODER) CoderModels.chain(p.id, model, model != p.defaultModel, Prefs.models(c, p.id)) else emptyList()
+            if (coderList.isNotEmpty()) model = coderList.first()
             val fb = if (p.isGemini) gemKeys.drop(1).mapIndexed { i, k -> CoderAi(p, k, model, base, note = ", Gemini key ${i + 2}", sink = sink) }
-                else Prefs.scopeBackups(c, scope, p.id)
+                else (if (coderList.isNotEmpty()) coderList.drop(1) else Prefs.scopeBackups(c, scope, p.id))
                 .map { m -> CoderAi(p, key, m, base, note = ", उसी key का दूसरा मॉडल", sink = sink) }
             return CoderAi(p, key, model, base, fb, sink = sink).also { it.waitOnLimit = scope == ApiScopes.CODER }.applyThink(ThinkLevel.get(c, scope))
         }
@@ -518,6 +535,17 @@ class CoderAi(val provider: Provider, private val key: String, val model: String
         fun quotaWaitSec(errs: List<Pair<Int, Int>>): Int {
             if (errs.isEmpty() || errs.any { it.first != 429 }) return 0
             val hinted = errs.map { it.second }.filter { it > 0 }
+            return if (hinted.isEmpty()) 60 else hinted.minOrNull()!!.coerceIn(20, 90)
+        }
+
+        /**
+         * 15 नवंबर 2026: सब fail - कोई भी API/मॉडल limit (429) पर है तो रुककर फिर कोशिश (बाकी 404/401 वाले भले बेकार हों,
+         * limit वाला कुछ देर में खुल जाएगा). कोई 429 नहीं = 0 (रुकना बेकार). retryDelay हो तो वह (20..90), वरना 60.
+         */
+        fun limitWaitSec(errs: List<Pair<Int, Int>>): Int {
+            val lim = errs.filter { it.first == 429 }
+            if (lim.isEmpty()) return 0
+            val hinted = lim.map { it.second }.filter { it > 0 }
             return if (hinted.isEmpty()) 60 else hinted.minOrNull()!!.coerceIn(20, 90)
         }
 

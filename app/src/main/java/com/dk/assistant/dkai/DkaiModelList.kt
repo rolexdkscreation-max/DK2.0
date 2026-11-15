@@ -63,6 +63,32 @@ object DkaiModelList {
 
     fun isStale(savedAt: Long, now: Long, maxAgeMs: Long = MAX_AGE_MS) = savedAt <= 0L || now - savedAt > maxAgeMs
 
+    /**
+     * 15 नवंबर 2026 (मालिक: कोडिंग एजेंट हर कंपनी के कोडिंग वाले सबसे अच्छे मॉडल पर): कोडिंग शुरू होते ही पीछे से
+     * Groq / OpenRouter / Z.ai / NVIDIA की ताज़ा सूची (कोई भी डली key - कोडिंग / कंप्यूटर / चैट), 6 घंटे में एक बार. काम नहीं रुकता.
+     */
+    fun refreshForCoder(c: Context, keyOf: (String) -> String) {
+        val now = System.currentTimeMillis()
+        val due = OTHER_PROVIDERS.mapNotNull { id -> keyOf(id).takeIf { it.isNotBlank() && isStale(Prefs.long(c, atPref(id), 0L), now) }?.let { id to it } }
+        if (android.os.Build.FINGERPRINT == "robolectric") return   // JUnit में नेटवर्क नहीं
+        if (due.isEmpty() || !busy.compareAndSet(false, true)) return
+        Thread {
+            try {
+                for ((id, key) in due) {
+                    val p = Providers.byId(id) ?: continue
+                    try {
+                        val list = kotlinx.coroutines.runBlocking { ModelLister.fetch(p, key, Prefs.baseUrl(c, id).ifBlank { p.baseUrl }) }
+                        if (list.isNotEmpty()) Prefs.edit(c) { putString("models_$id", list.joinToString("\n")); putLong(atPref(id), now) }
+                    } catch (e: Exception) {
+                        Prefs.edit(c) { putLong(atPref(id), now - MAX_AGE_MS + 60L * 60 * 1000) }
+                        DKLog.d("कोडिंग: मॉडल सूची ($id) नहीं मिली: ${e.message?.take(60)}")
+                    }
+                }
+            } finally { busy.set(false) }
+        }.apply { isDaemon = true; name = "dk-coder-models" }.start()
+    }
+    private val busy = java.util.concurrent.atomic.AtomicBoolean(false)
+
     /** Gemini की key: चैट/एक-key, नहीं तो DK लाइव वाली (वही नियम जो [DkaiSheets.hasKey] में) */
     private fun keyFor(c: Context, id: String): String =
         Prefs.key(c, id).ifBlank { if (id == "gemini") Prefs.liveGeminiKeys(c).firstOrNull().orEmpty() else "" }
