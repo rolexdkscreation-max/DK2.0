@@ -579,8 +579,12 @@ class AgentRunner(
                     if (!silent) speaker.speak(q)
                     return
                 }
-                val msg = brain.explain(e)
-                DKState.replyFailed(msg + "\n(" + (e.message ?: e.javaClass.simpleName).take(160) + ")")
+                // 15 नवंबर 2026 (मालिक: "चैट में प्रॉब्लम नहीं आना चाहिए"): बातचीत थी तो पहले DK का अपना दिमाग;
+                // गलती का संदेश साफ़ हिंदी में (पहले नीचे अंग्रेज़ी तकनीकी लाइन "(HTTP 404 …)" जुड़ती थी)
+                if (e is kotlinx.coroutines.CancellationException) throw e
+                if (chatMode) ownMind(goal)?.let { say(it); return }
+                val msg = ChatFlow.plain(brain.explainAll(e))
+                DKState.replyFailed(msg)
                 if (!silent) speaker.speak(msg)
                 return
             }

@@ -103,7 +103,7 @@ class ChatOneKeyNotchTest {
 
     @Test fun notch_wiredInIsland_andSettings() {
         val d = src("DKIsland.kt")
-        assertTrue(d.contains("if (notchOn(s)) return View(s).apply {"))
+        assertTrue(d.contains("if (notchEmpty(s)) return View(s).apply {"))   // 15 नवंबर: कुछ चल रहा हो तो पूरी गोली (ChatIslandFixTest)
         assertTrue(d.contains("IslandCore.wanted(on(s), AppVisible.visible, sn, now, notchOn(s))"))
         assertTrue(d.contains("g.cornerRadius = IslandCore.notchCorner(round, w, h)"))
         val l = src("SettingsIslandLook.kt")
