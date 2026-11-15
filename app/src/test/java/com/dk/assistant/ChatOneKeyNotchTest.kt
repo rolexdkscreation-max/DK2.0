@@ -110,4 +110,18 @@ class ChatOneKeyNotchTest {
         assertTrue(l.contains("DKIsland.setNotchOn(this, v)") && l.contains("DKIsland.setRoundPct(this, it)") &&
             l.contains("DKIsland.setNotchW(this, it)") && l.contains("DKIsland.setNotchH(this, it)") && l.contains("DKIsland.previewPeek()"))
     }
+
+    // 15 नवंबर 2026 (मालिक): island में सिर्फ़ अभी चलता काम - बंद / रुका / पुराना इतिहास नहीं
+    @Test fun island_showsOnlyRunningWork() {
+        val now = 100 * 60_000L
+        assertTrue(IslandCore.showJob(running = true, waiting = false, lastAt = 0L, now = now))
+        assertTrue(IslandCore.showJob(running = false, waiting = true, lastAt = now - 60_000L, now = now))
+        assertFalse(IslandCore.showJob(running = false, waiting = true, lastAt = now - IslandCore.WAIT_SHOW_MS - 1, now = now))
+        assertFalse(IslandCore.showJob(running = false, waiting = false, lastAt = now, now = now))   // खत्म / रुका / फ़ेल
+        val i = src("DKIsland.kt")
+        assertFalse(i.contains("TaskHistory.all(s)"))      // फ़ोन में सेव पुराना "चल रहा है" अब island में नहीं
+        assertTrue(i.contains("IslandCore.showJob(j.state == TaskStatus.State.RUNNING, j.state == TaskStatus.State.WAITING, j.lastAt, now)"))
+        assertTrue(i.contains("com.dk.assistant.studio.StudioSession.busy"))
+        assertTrue(i.contains("if (social?.active != true) tasks"))
+    }
 }

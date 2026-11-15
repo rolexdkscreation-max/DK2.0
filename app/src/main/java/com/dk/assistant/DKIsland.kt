@@ -137,7 +137,6 @@ object DKIsland {
     private var bubSig = ""
     private var touchedAt = 0L
     private var callSince = 0L
-    private var history: List<IslandCore.Task> = emptyList()
     private var historyAt = 0L
     private var lastSig = ""
     private val updaters = ArrayList<(IslandCore.Snap, Long) -> Unit>()
@@ -310,13 +309,12 @@ object DKIsland {
         } catch (_: Exception) { emptyList() }
         // DK लाइव / फ़ोन पर DK का काम (बिना Live भी)
         val live = if (liveOn(s) && (DKState.live || DKState.mode == Mode.WORKING)) IslandCore.Live(DKState.shownMode(), DKState.micMuted) else null
-        // काम: चलते (TaskStatus) + फ़ोन में सेव इतिहास (TaskHistory) - इतिहास हर 5 सेकंड या बदलाव पर ही पढ़ो
-        if (now - historyAt > 5_000L) {
-            historyAt = now
-            history = try { TaskHistory.all(s).take(12).map { e -> IslandCore.fromHistory(e.id, e.who, e.task, e.state, e.last, e.steps, e.started, e.ended) } } catch (_: Exception) { emptyList() }
-        }
-        val jobs = TaskStatus.all().map { IslandCore.fromJob(it) }
-        val tasks = IslandCore.recent(jobs.filter { it.active }, jobs.filter { !it.active } + history.filter { h -> jobs.none { it.id == h.id } })
+        // काम: सिर्फ़ अभी सच में चलते (TaskStatus). 15 नवंबर 2026 (मालिक): बंद / रुका / पुराना इतिहास island में नहीं
+        val tasks = TaskStatus.all()
+            .filter { j -> IslandCore.showJob(j.state == TaskStatus.State.RUNNING, j.state == TaskStatus.State.WAITING, j.lastAt, now) }
+            .filter { j -> j.key != com.dk.assistant.studio.StudioLink.KEY || com.dk.assistant.studio.StudioSession.busy }
+            .map { IslandCore.fromJob(it) }
+            .let { IslandCore.recent(it, emptyList()) }
         val media = if (!mediaOn(s)) { mediaCtl = null; null }
             else { if (now - mediaAt > 1_500L) { mediaAt = now; lastMedia = readMedia(s) }; lastMedia }
         // 13 नवंबर 2026: YouTube / फेसबुक / इंस्टाग्राम / WhatsApp का काम (SocialAgent) भी island के काम में
@@ -326,7 +324,7 @@ object DKIsland {
                     com.dk.assistant.agent.android.SocialAgent.startedAt, com.dk.assistant.agent.android.SocialAgent.endedAt)
             }
         } catch (_: Exception) { null }
-        val allTasks = if (social == null) tasks else IslandCore.recent((tasks + social).filter { it.active }, (tasks + social).filter { !it.active })
+        val allTasks = if (social?.active != true) tasks else IslandCore.recent(tasks + social, emptyList())
         val notifs = if (notifsOn(s)) IslandFeed.list() else emptyList()
         val charge = if (chargeOn(s)) chargeNow(s) else null
         val all = IslandCore.Snap(calls.firstOrNull(), live, allTasks, media, PrivacyLocked.list(), notifs, charge, reel?.takeIf { IslandCore.reelOn(it, now) }, calls)

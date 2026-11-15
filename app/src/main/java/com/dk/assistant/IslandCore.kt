@@ -83,6 +83,15 @@ object IslandCore {
     fun chargePop(c: Charge, now: Long) = c.charging && c.plugAt > 0 && now - c.plugAt in 0..CHARGE_POP_MS
     fun reelOn(r: Reel?, now: Long) = r != null && r.text.isNotBlank() && now - r.at in 0..REEL_SHOW_MS
 
+    /**
+     * 15 नवंबर 2026 (मालिक): "ऐप स्टूडियो रनिंग दिखता है जबकि नहीं चल रहा, कंप्यूटर स्टॉप्ड भी दिखता है - जो बंद है वो island में नहीं."
+     * island में सिर्फ़ अभी सच में चलता काम (इसी बार चल रहे DK में, फ़ोन में सेव पुराना इतिहास नहीं - ऐप बंद हुआ तो वहाँ
+     * "चल रहा है" ही रह जाता था). इजाज़त / जवाब का इंतज़ार [WAIT_SHOW_MS] तक, फिर नहीं. खत्म / रुका / फ़ेल = नहीं.
+     */
+    const val WAIT_SHOW_MS = 10 * 60_000L
+    fun showJob(running: Boolean, waiting: Boolean, lastAt: Long, now: Long): Boolean =
+        running || (waiting && now - lastAt in 0..WAIT_SHOW_MS)
+
     fun justEnded(t: Task, now: Long) = !t.active && t.ended > 0 && now - t.ended in 0..DONE_SHOW_MS
 
     /** सबसे ऊपर वाले के अलावा कितनी और चीज़ें (छोटे island के दाएँ "+2") */
