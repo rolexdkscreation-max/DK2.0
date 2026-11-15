@@ -187,7 +187,7 @@ class SettingsActivity : AppCompatActivity() {
             // (किसी श्रेणी के अंदर नहीं). नया अपडेट आया हो तो होम पर चमकती पट्टी + popup ([UpdatePrompt])
             SettingsSearch.CATEGORIES.forEach { (c, _) -> menuRow(c.first, c.second, c.third) }
             // 15 नवंबर 2026 (मालिक: DK AI मास्टर अपग्रेड): नई सुविधाएँ एक जगह - सब शुरू में बंद
-            menuRow("plus", "DK AI Plus (नई सुविधाएँ)", "SOS • ड्राइविंग मोड • इवेंट ट्रिगर • Termux • DK Home • मॉडल डाउनलोड • सब शुरू में बंद")
+            menuRow("plus", "DK AI Plus (नई सुविधाएँ)", "SOS • ड्राइविंग मोड • इवेंट ट्रिगर • Termux • इमेज • YouTube • मॉडल डाउनलोड • सब शुरू में बंद")
             items.firstOrNull { it.first == "update" }?.let { (id, t, sub) -> menuRow(id, t, sub) }
             return
         }

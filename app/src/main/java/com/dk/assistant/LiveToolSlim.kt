@@ -24,6 +24,19 @@ object LiveToolSlim {
         "deep_research", "look_photo",
     )
 
+    /**
+     * 15 नवंबर 2026 (Dynamic Tool Router): routed tools इससे ज़्यादा हों तो router में हर tool की पूरी लाइन नहीं,
+     * सिर्फ़ नाम + एक [SEARCH] tool - मॉडल उससे पूछे "कौन सा tool, कौन से parameter" ([search]: keyword से top [TOP_K]).
+     * आज (~35 tools) यह सीमा नहीं छूती = पहले जैसा ही; सैकड़ों tools जुड़ें तब भी Live setup हल्का रहे.
+     */
+    const val COMPACT_AT = 45
+    const val SEARCH = "dk_tool_search"
+    const val TOP_K = 12
+
+    /** हर routed tool की पूरी लाइन (नाम -> "name(a, b): विवरण") - [apply] भरता है, [search] पढ़ता है */
+    @Volatile var catalog: Map<String, String> = emptyMap()
+        private set
+
     /** router की एक लाइन में विवरण कितना लंबा */
     const val LINE_MAX = 110
 
@@ -34,7 +47,7 @@ object LiveToolSlim {
         val before = tools.toString().length
         if (!on) return Result(tools, -1, emptyList(), before, before)
         val out = JSONArray(); var kept = 0; val routed = mutableListOf<String>(); val lines = StringBuilder()
-        val fp = HashMap<String, String>()
+        val fp = HashMap<String, String>(); val cat = LinkedHashMap<String, String>()
         for (i in 0 until tools.length()) {
             val t = tools.optJSONObject(i)
             val decls = t?.optJSONArray("functionDeclarations")
@@ -44,12 +57,15 @@ object LiveToolSlim {
                 val d = decls.optJSONObject(j) ?: continue
                 val name = d.optString("name")
                 if (name in CORE || name == ROUTER) { keep.put(d); kept++ }
-                else { routed += name; lines.append("\n- ").append(line(d)); firstParamOf(d)?.let { fp[name] = it } }
+                else { routed += name; val l = line(d); cat[name] = l; lines.append("\n- ").append(l); firstParamOf(d)?.let { fp[name] = it } }
             }
-            if (routed.isNotEmpty()) keep.put(router(routed, lines.toString()))
+            if (routed.size > COMPACT_AT) {
+                keep.put(router(routed, "\n" + routed.joinToString(", ") + "\nNot sure which one or its arguments? Call $SEARCH first."))
+                keep.put(searchDecl())
+            } else if (routed.isNotEmpty()) keep.put(router(routed, lines.toString()))
             out.put(JSONObject().put("functionDeclarations", keep))
         }
-        firstParams = fp
+        firstParams = fp; catalog = cat
         return Result(out, kept, routed, before, out.toString().length)
     }
 
@@ -89,6 +105,25 @@ object LiveToolSlim {
                 .put("args_json", JSONObject().put("type", "STRING")
                     .put("description", "JSON object with that ability's arguments, e.g. {\"task\":\"...\"}")))
             .put("required", JSONArray().put("tool")))
+
+    internal fun searchDecl(): JSONObject = JSONObject().put("name", SEARCH)
+        .put("description", "Find which of DK's other abilities (called via $ROUTER) fits a request, with its arguments. Give a few words of what the user wants.")
+        .put("parameters", JSONObject().put("type", "OBJECT")
+            .put("properties", JSONObject().put("query", JSONObject().put("type", "STRING").put("description", "what the user wants, few words")))
+            .put("required", JSONArray().put("query")))
+
+    /** Pure: [catalog] में keyword से सबसे मिलते [k] tools (नाम + parameter + विवरण) */
+    fun search(query: String, k: Int = TOP_K, cat: Map<String, String> = catalog): String {
+        val words = query.lowercase().split(Regex("[^\\p{L}\\p{M}\\p{N}_]+")).filter { it.length > 1 }
+        if (cat.isEmpty()) return "No extra abilities."
+        val scored = cat.entries.map { (n, l) ->
+            val hay = l.lowercase(); val nm = n.lowercase()
+            Triple(n, words.sumOf { w -> (if (nm.contains(w)) 3 else 0) + (if (hay.contains(w)) 1 else 0) }, l)
+        }
+        val top = scored.filter { it.second > 0 }.sortedByDescending { it.second }.take(k)
+        val list = top.ifEmpty { scored.take(k) }
+        return "Call one through $ROUTER(tool=<name>, args_json={...}):\n" + list.joinToString("\n") { "- " + it.third }
+    }
 
     /**
      * Router call -> असली tool. `dk_agent(tool=coding_task, args_json={"task":"..."})` = ("coding_task", {"task":"..."}).

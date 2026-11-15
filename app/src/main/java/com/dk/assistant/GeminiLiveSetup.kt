@@ -387,6 +387,10 @@ internal fun GeminiLive.setupJson(m: String, txt: Boolean = connText, resume: Bo
     com.dk.assistant.connect.ConnectorTool.declaration(svc)?.let { d ->
         tools.optJSONObject(0)?.optJSONArray("functionDeclarations")?.put(d); log("कनेक्टर: connector_task जोड़ा")
     }
+    // 15 नवंबर 2026: DK AI Plus plug-in tools (मुफ़्त इमेज, YouTube चैनल ...) - सिर्फ़ जो Settings में चालू
+    com.dk.assistant.plus.tools.PlusTools.declarations(svc).forEach { d ->
+        tools.optJSONObject(0)?.optJSONArray("functionDeclarations")?.put(d); log("Plus tool: ${d.optString("name")} जोड़ा")
+    }
     // v3.93: Tavily/Exa की key हो तो Live की अपनी Google Search नहीं - हर खोज web_search से (Tavily -> Exa -> Gemini क्रम)
     val ownChain = Prefs.tavilySearchKey(svc).isNotBlank() || Prefs.exaSearchKey(svc).isNotBlank()
     if (useSearch && !ownChain) tools.put(JSONObject().put("googleSearch", JSONObject()))

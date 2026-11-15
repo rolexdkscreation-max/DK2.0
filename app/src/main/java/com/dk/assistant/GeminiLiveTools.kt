@@ -420,6 +420,9 @@ internal fun GeminiLive.runTools(calls: JSONArray) {
                 ?: workGate(name, args)
                 // 14 नवंबर 2026 (मालिक): "पास की दुकान/मॉल का रास्ता लगा दो" = ढूँढो + Maps navigation तुरंत ([localGoTool])
                 ?: (if (name == "local_info" && args.optBoolean("go")) localGoTool(args.optString("find")) else null)
+                // 15 नवंबर 2026: बहुत tools हों तो router की खोज ([LiveToolSlim.SEARCH]) + DK AI Plus plug-in tools (हमारा नहीं = null, पुराना रास्ता)
+                ?: (if (name == LiveToolSlim.SEARCH) LiveToolSlim.search(args.optString("query")) else null)
+                ?: com.dk.assistant.plus.tools.PlusTools.runOrNull(svc, name, args)
                 ?: when (name) {
                 "phone_task" -> phoneTask(args.optString("request"))
                 "task_status" -> TaskStatus.summary()

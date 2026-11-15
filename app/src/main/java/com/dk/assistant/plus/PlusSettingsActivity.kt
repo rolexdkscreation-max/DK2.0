@@ -71,12 +71,12 @@ class PlusSettingsActivity : AppCompatActivity() {
         group("मुख्य सेटिंग्स")
         FeatureFlags.Section.values().filter { !it.advanced }.forEach { section(it) }
         imageCard()
+        ytCard()
 
         group("एडवांस्ड सेटिंग्स")
         FeatureFlags.Section.values().filter { it.advanced }.forEach { section(it) }
         modelsCard()
         termuxCard()
-        col.addView(button("DK Home (स्मार्ट होम) खोलें") { startActivity(Intent(this, SmartHomeActivity::class.java)) })
     }
 
     // ---------------------------------------------------------------- हिस्से
@@ -142,23 +142,71 @@ class PlusSettingsActivity : AppCompatActivity() {
     }
 
     private fun imageCard() {
-        val box = box("इमेज बनाना (वैकल्पिक)", "खाली = मुफ़्त Pollinations (बिना key)")
-        val b = edit(box, "Base URL (OpenAI-compatible, वैकल्पिक)", Prefs.str(this, ImageGen.BASE, ""))
-        val k = edit(box, "API key (वैकल्पिक)", Prefs.str(this, ImageGen.KEY, ""), secret = true)
-        val m = edit(box, "Model (वैकल्पिक)", Prefs.str(this, ImageGen.MODEL, ""))
+        val box = box("इमेज बनाना (मुफ़्त API, हर एक की अलग key)", "key डालनी है तो डालें, नहीं तो खाली छोड़ें - बिना key AI Horde चलता है")
+        hint(box, "पहले कौन सा रास्ता आज़माएँ (न चले तो बाकी, जिनकी key भरी है):")
+        val rg = android.widget.RadioGroup(this)
+        val opts = listOf(ImageGen.AUTO to "अपने-आप (जिसकी key है)") + ImageGen.Provider.values().map { it.id to it.title }
+        val cur = Prefs.str(this, ImageGen.PROVIDER, ImageGen.AUTO)
+        opts.forEachIndexed { i, (id, t) ->
+            rg.addView(android.widget.RadioButton(this).apply { this.id = 5100 + i; text = t; setTextColor(0xFFFFFFFF.toInt()); isChecked = id == cur })
+        }
+        rg.setOnCheckedChangeListener { _, idc -> opts.getOrNull(idc - 5100)?.let { (id, _) -> Prefs.edit(this) { putString(ImageGen.PROVIDER, id) } } }
+        box.addView(rg)
+
+        val keys = HashMap<ImageGen.Provider, EditText>()
+        for (p in ImageGen.Provider.values().filter { it != ImageGen.Provider.CUSTOM }) {
+            keys[p] = edit(box, "${p.title} key" + if (p.keyNeeded) " (मुफ़्त)" else " (वैकल्पिक - बिना key भी चलता है)", Prefs.str(this, p.keyPref, ""), secret = true)
+            box.addView(small("मुफ़्त key यहाँ से") { open(p.keyUrl) })
+        }
+        val hfModel = edit(box, "Hugging Face model (खाली = ${ImageGen.HF_DEFAULT_MODEL})", Prefs.str(this, ImageGen.HF_MODEL, ""))
+        hint(box, "अपनी OpenAI-compatible images API (वैकल्पिक):")
+        val b = edit(box, "Base URL (https://…/v1)", Prefs.str(this, ImageGen.BASE, ""))
+        val k = edit(box, "API key", Prefs.str(this, ImageGen.KEY, ""), secret = true)
+        val m = edit(box, "Model", Prefs.str(this, ImageGen.MODEL, ""))
         box.addView(button("सेव करें") {
-            Prefs.edit(this) { putString(ImageGen.BASE, b.text.toString().trim()); putString(ImageGen.KEY, k.text.toString().trim()); putString(ImageGen.MODEL, m.text.toString().trim()) }
+            Prefs.edit(this) {
+                keys.forEach { (p, e) -> putString(p.keyPref, e.text.toString().trim()) }
+                putString(ImageGen.HF_MODEL, hfModel.text.toString().trim())
+                putString(ImageGen.BASE, b.text.toString().trim()); putString(ImageGen.KEY, k.text.toString().trim()); putString(ImageGen.MODEL, m.text.toString().trim())
+            }
             toast("सेव हो गया")
         })
         val p = edit(box, "जाँच के लिए prompt", "a cute robot reading a book, digital art")
         val out = hint(box, "")
         box.addView(button("जाँच: एक इमेज बनाओ") {
-            out.text = "बन रही है…"
+            out.text = "बन रही है… (AI Horde पर 1-2 मिनट लग सकते हैं)"
             lifecycleScope.launch {
                 val r = ImageGen.generate(this@PlusSettingsActivity, p.text.toString())
-                out.text = r.error ?: "बन गई और सेव हो गई ✓"
+                out.text = r.error ?: "बन गई (${r.via}) और सेव हो गई ✓"
             }
         })
+        hint(box, "बोलकर बनाने के लिए ऊपर \"इमेज और YouTube\" में \"बोलकर तस्वीर बनाना\" चालू करें। Keys फ़ोन के ताले (Keystore) में रहती हैं।")
+    }
+
+    private fun ytCard() {
+        val box = box("YouTube चैनल जाँच", "handle डालें - subscribers, views, नए वीडियो, comments")
+        val h = edit(box, "आपका चैनल (@handle, channel ID या लिंक)", Prefs.str(this, YtChannel.HANDLE, ""))
+        val k = edit(box, "YouTube Data API key (मुफ़्त, वैकल्पिक - पक्के आँकड़े और comments के लिए)", Prefs.str(this, YtChannel.KEY, ""), secret = true)
+        box.addView(small("मुफ़्त key यहाँ से (Google Cloud)") { open(YtChannel.KEY_URL) })
+        box.addView(button("सेव करें") {
+            Prefs.edit(this) { putString(YtChannel.HANDLE, h.text.toString().trim()); putString(YtChannel.KEY, k.text.toString().trim()) }
+            toast("सेव हो गया")
+        })
+        val out = hint(box, "")
+        box.addView(button("अभी जाँचें") {
+            Prefs.edit(this) { putString(YtChannel.HANDLE, h.text.toString().trim()); putString(YtChannel.KEY, k.text.toString().trim()) }
+            out.text = "देख रही हूँ…"
+            lifecycleScope.launch {
+                val r = YtChannel.check(this@PlusSettingsActivity)
+                out.text = r.error ?: YtChannel.text(r.report!!)
+            }
+        })
+        hint(box, "बिना key: नाम, subscriber (जितना पेज पर दिखे) और नए 5 वीडियो के views। key से: पक्के आँकड़े + नए वीडियो के comments। सिर्फ़ पढ़ता है, कुछ पोस्ट नहीं करता।")
+    }
+
+    private fun open(url: String) {
+        if (url.isBlank()) return
+        try { startActivity(Intent(Intent.ACTION_VIEW, android.net.Uri.parse(url))) } catch (_: Exception) { toast(url) }
     }
 
     private fun modelsCard() {
