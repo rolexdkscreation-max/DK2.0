@@ -606,7 +606,7 @@ class DkaiScreen(val activity: ComponentActivity, val host: DkaiHost) {
                     DkaiSearchLive.stage(step); activity.runOnUiThread { DKState.hint(step) } }.run(t)
                 DKState.reply(r.text, r.sources)
             } catch (e: kotlinx.coroutines.CancellationException) { DkaiSearchLive.cancel(); throw e
-            } catch (e: Exception) { DkaiSearchLive.cancel(); DKState.replyFailed("डीप रिसर्च नहीं हो पाई — " + (e.message?.take(120) ?: "गड़बड़ी"))
+            } catch (e: Exception) { DkaiSearchLive.cancel(); DKState.replyFailed("डीप रिसर्च नहीं हो पाई — " + com.dk.assistant.ChatFlow.plain(com.dk.assistant.BrainManager(c).explainAll(e)))   // 15 नवंबर 2026: अंग्रेज़ी तकनीकी गलती नहीं
             } finally { DKState.set(Mode.IDLE) }
         }
     }
