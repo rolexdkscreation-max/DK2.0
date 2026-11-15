@@ -12,7 +12,7 @@ import java.util.concurrent.TimeUnit
 
 /**
  * 15 नवंबर 2026 (मालिक: "YouTube की user ID डालने के बाद उसका सब चीज़ चेक कर दे").
- * Settings → DK AI Plus → YouTube चैनल: handle (@name) / channel ID / लिंक.
+ * Settings → सोशल रिव्यू → YouTube चैनल जाँच: handle (@name) / channel ID / लिंक.
  *
  *  - YouTube Data API v3 की मुफ़्त key डाली = पक्के आँकड़े: subscribers, कुल views, वीडियो गिनती, नए वीडियो के views/likes/comments
  *    और नए वीडियो के ताज़ा comments. (Google Cloud में मुफ़्त, रोज़ 10,000 units - यह जाँच ~10 units)
@@ -167,7 +167,7 @@ object YtChannel {
 
     suspend fun check(c: Context, input: String? = null): Result = withContext(Dispatchers.IO) {
         val w = parse(input?.takeIf { it.isNotBlank() } ?: com.dk.assistant.Prefs.str(c, HANDLE, ""))
-        if (!w.ok) return@withContext Result(null, "पहले Settings → DK AI Plus → YouTube चैनल में अपना @handle या channel ID डालें")
+        if (!w.ok) return@withContext Result(null, "पहले सेटिंग्स → सोशल रिव्यू → YouTube चैनल जाँच में अपना @handle या channel ID डालें")
         val http = com.dk.assistant.NetFix.builder().connectTimeout(15, TimeUnit.SECONDS).readTimeout(25, TimeUnit.SECONDS).build()
         val key = com.dk.assistant.Prefs.str(c, KEY, "").trim()
         try {

@@ -137,6 +137,13 @@ object SettingsSearch {
         E("access", "बार-बार बंद न हो", "Android बैटरी बचाने के लिए DK को बंद कर देता है — यह रोकें"),
         E("access", "सुनना और कॉल", ""),
         E("access", "गड़बड़ी रिपोर्ट", "पिछली बार DK किस वजह से बंद हुआ"),
+        // 15 नवंबर 2026: पुराने "DK AI Plus" पन्ने की सुविधाएँ अपनी सही जगह (SettingsExtra.kt)
+        E("guard", "इमरजेंसी SOS", "\"DK, activate SOS\" - 10 सेकंड की गिनती, फिर 5 लोगों को लोकेशन SMS + WhatsApp और कॉल", "sos एसओएस emergency इमरजेंसी आपातकाल मदद help location लोकेशन"),
+        E("access", "ड्राइविंग मोड", "गाड़ी चलाते समय आने वाली कॉल अपने-आप कटे और उसी नंबर पर आपका SMS जवाब जाए", "driving drive ड्राइविंग गाड़ी car कार call कॉल sms"),
+        E("access", "ऑटो इवेंट ट्रिगर", "चार्जर, Wi-Fi या बैटरी सेवर बदले तो DK बोलकर बताए", "event इवेंट trigger ट्रिगर charger चार्जर wifi वाईफाई battery बैटरी boot"),
+        E("coder", "Termux ऑटोमेशन", "DK, Termux (F-Droid) में कमांड / लोकल सर्वर चला सके - RUN_COMMAND इजाज़त से", "termux टर्मक्स terminal टर्मिनल command कमांड linux server"),
+        E("computer", "इमेज बनाना (मुफ़्त API)", "\"एक शेर की तस्वीर बनाओ\" - DK खुद मुफ़्त API से बनाकर गैलरी में सेव करे; key वैकल्पिक", "image इमेज photo फोटो तस्वीर picture चित्र pollinations horde hugging face key"),
+        E("social", "YouTube चैनल जाँच", "\"मेरे चैनल का हाल बताओ\" - subscribers, views, नए वीडियो, comments (सिर्फ़ पढ़ना)", "youtube यूट्यूब channel चैनल subscriber सब्सक्राइबर views"),
         E("guard", "टच मोड", "कोई और फ़ोन छुए / उठाए तो सायरन + \"यह फ़ोन आपका नहीं है\""),
         E("guard", "गुप्त शब्द और भरोसेमंद नंबर", "बोलकर सायरन बंद • चोरी पर SMS जगह के साथ"),
         E("guard", "मालिक का चेहरा", "पहली बार एक बार चेहरा सेट करें — अलार्म में कैमरा मालिक को पहचानकर सायरन बंद करे"),

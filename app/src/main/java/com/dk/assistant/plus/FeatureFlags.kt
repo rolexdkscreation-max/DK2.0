@@ -6,7 +6,7 @@ import android.content.Context
  * 15 नवंबर 2026 (मालिक: "DK AI मास्टर अपग्रेड"): हर नई सुविधा का एक ही रजिस्टर.
  *
  * नियम (मालिक के शब्द): हर नई सुविधा / background listener / auto-reply / trigger / भारी service **पहली बार install पर
- * बंद (false)**. जब तक मालिक Settings → DK AI Plus में खुद चालू न करे, कुछ भी पीछे से नहीं चलता.
+ * बंद (false)**. जब तक मालिक Settings में (हर सुविधा की अपनी पुरानी जगह, SettingsExtra.kt) खुद चालू न करे, कुछ भी पीछे से नहीं चलता.
  * अकेला अपवाद: "Realistic Typing" (मालिक की spec में Default = ON) - यह सिर्फ़ टाइप करने का तरीका है, कोई service नहीं.
  *
  * कोई license key / paywall / trial / रोज़ की सीमा नहीं - हर flag सबके लिए खुला.
@@ -143,8 +143,9 @@ object FeatureFlags {
     )
 
     /**
-     * इस चरण (Phase 1) में जो flag सच में काम से जुड़े हैं. बाकी Settings में "अगला चरण" लिखकर बंद (disabled) दिखते हैं -
-     * ऐसा स्विच नहीं दिखाते जो दबाने पर कुछ न करे.
+     * जो flag सच में काम से जुड़े हैं - सिर्फ़ इन्हीं के स्विच Settings में दिखते हैं (अपनी पुरानी जगह, SettingsExtra.kt).
+     * 15 नवंबर 2026 (मालिक): बाकी flag Settings में बिल्कुल नहीं दिखते - न "अगला चरण" वाला बंद स्विच, न दोहराव
+     * (जो सुविधा पहले से बनी है - ओर्ब, टच मोड, फ़ोन लॉक, ऑटो रिप्लाई, आवाज़ - वह अपनी पुरानी सेटिंग से ही चलती है).
      */
     val READY: Set<String> = setOf(
         INCOGNITO, DRIVING_MODE, SOS_ON, EVENTS_ON, EV_CHARGER_ON, EV_CHARGER_OFF, EV_WIFI_ON, EV_WIFI_OFF,

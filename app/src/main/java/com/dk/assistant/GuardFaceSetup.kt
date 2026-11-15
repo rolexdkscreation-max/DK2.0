@@ -90,7 +90,7 @@ object GuardFaceSetup {
             if (!FaceAI.hasModels(a)) {
                 tv.text = UiLang.s("चेहरा पहचान मॉडल डाउनलोड हो रहा है (~10 MB, एक बार)…")
                 val err = withContext(Dispatchers.IO) {
-                    FaceAI.download(a) { pct -> a.runOnUiThread { tv.text = UiLang.s("चेहरा पहचान मॉडल डाउनलोड हो रहा है (~10 MB, एक बार)…") + " $pct%" } }
+                    FaceAI.download(a) { pct -> a.runOnUiThread { tv.text = UiLang.s("चेहरा पहचान मॉडल डाउनलोड हो रहा है (~10 MB, एक बार)…") + " " + DlText.progress(pct, FaceAI.DETECTOR.bytes + FaceAI.RECOGNIZER.bytes) } }
                 }
                 if (err != null) { tv.text = UiLang.s(err); return@launch }
             }

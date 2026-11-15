@@ -102,7 +102,7 @@ internal fun SettingsActivity.enrollVoiceCmd(cmd: Cmd, done: () -> Unit) {
             if (cmd.ownerOnly && OV.supported && !OV.hasModel(this@enrollVoiceCmd)) {
                 tv.text = UiLang.s("पहचान वाला मॉडल डाउनलोड हो रहा है…")
                 val err = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
-                    OV.download(this@enrollVoiceCmd) { pct -> runOnUiThread { tv.text = UiLang.s("पहचान वाला मॉडल डाउनलोड हो रहा है…") + " $pct%" } }
+                    OV.download(this@enrollVoiceCmd) { pct -> runOnUiThread { tv.text = UiLang.s("पहचान वाला मॉडल डाउनलोड हो रहा है…") + " " + DlText.progress(pct, OV.MODEL_BYTES) } }
                 }
                 if (err != null) { tv.text = UiLang.s(err); kotlinx.coroutines.delay(2500) }
             }

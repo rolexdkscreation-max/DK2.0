@@ -135,15 +135,15 @@ class SettingsActivity : AppCompatActivity() {
             "voice" -> { title.text = "आवाज़"; secVoice() }
             "orb" -> { title.text = "ओर्ब और चेहरा"; secOrb(); secIsland() }
             "ui" -> { title.text = "दिखावट"; secUi() }
-            "access" -> { title.text = "Accessibility"; secAccess(); secPayGuard() }
+            "access" -> { title.text = "Accessibility"; secAccess(); secPayGuard(); secDriving(); secEvents() }
             "phonelock" -> { title.text = "फ़ोन लॉक / अनलॉक"; secPhoneLock(); secVoiceCmds() }
-            "guard" -> { title.text = "टच मोड"; secGuard(); secPrivacy() }
+            "guard" -> { title.text = "टच मोड"; secGuard(); secPrivacy(); secSos() }
             "perms" -> { title.text = "परमिशन"; secPerms() }
             "update" -> { title.text = "अपडेट"; secUpdate() }
             "debug" -> { title.text = "डिबग लॉग"; secDebug() }
-            "coder" -> { title.text = "कोडिंग एजेंट"; secCoder() }
-            "computer" -> { title.text = "DK कंप्यूटर"; secComputer() }
-            "social" -> { title.text = "सोशल रिव्यू"; secSocial() }
+            "coder" -> { title.text = "कोडिंग एजेंट"; secCoder(); secTermux() }
+            "computer" -> { title.text = "DK कंप्यूटर"; secComputer(); secImageGen() }
+            "social" -> { title.text = "सोशल रिव्यू"; secSocial(); secYouTube() }
             "reels" -> { title.text = "रील गिनती और लिमिट"; secReels() }
             "autoreply" -> { title.text = "ऑटो रिप्लाई"; secAutoReply() }
             "about" -> { title.text = "ऐप के बारे में"; secAbout() }
@@ -164,16 +164,16 @@ class SettingsActivity : AppCompatActivity() {
             Triple("brain", "AI दिमाग", "DK लाइव • DK चैट • कोडिंग एजेंट • DK कंप्यूटर • एक key से सब"),
             Triple("voice", "आवाज़", "बोलने वाला इंजन (Live • Gemini TTS) • सुनना"),
             Triple("orb", "ओर्ब और चेहरा", "पृथ्वी, गैलेक्सी, एटम, छल्ला, पुरुष/महिला HD चेहरा"),
-            Triple("access", "Accessibility", (Setup.a11yMark(this) + when { Setup.accessibilityOn() -> "चालू"; Setup.enabledInSettings(this) -> "रुका है"; else -> "बंद" }) + " • फ़ोन कंट्रोल • हमेशा सुनना • कॉल • बैटरी"),
+            Triple("access", "Accessibility", (Setup.a11yMark(this) + when { Setup.accessibilityOn() -> "चालू"; Setup.enabledInSettings(this) -> "रुका है"; else -> "बंद" }) + " • फ़ोन कंट्रोल • हमेशा सुनना • कॉल • बैटरी • ड्राइविंग मोड • इवेंट ट्रिगर"),
             Triple("phonelock", "फ़ोन लॉक / अनलॉक", (if (PhoneLockStore.lockOn(this) || PhoneLockStore.unlockOn(this)) "✓ चालू" else "✗ बंद") + " • \"हे DK फोन लॉक करो\" • अपना नाम और वाक्य • PIN / पैटर्न"),
-            Triple("guard", "टच मोड", (if (Guard.active()) "✓ चालू" else "✗ बंद") + " • कोई फ़ोन छुए तो सायरन • फ़ोटो • SMS • \"DK टच मोड चालू करो\""),
+            Triple("guard", "टच मोड", (if (Guard.active()) "✓ चालू" else "✗ बंद") + " • कोई फ़ोन छुए तो सायरन • फ़ोटो • SMS • इमरजेंसी SOS"),
             Triple("perms", "परमिशन", "माइक • स्क्रीन देखना • नोटिफ़िकेशन • कॉल • ऐप इंस्टॉल"),
-            Triple("computer", "DK कंप्यूटर", (if (Prefs.computerOn(this)) "✓ चालू" else "✗ बंद") + " • कोई भी काम: खोज, रिसर्च, फ़ाइल/PDF, हिसाब, फ़ोन, रिमाइंडर"),
-            Triple("coder", "कोडिंग एजेंट", (if (Prefs.coderOn(this)) "✓ चालू" else "✗ बंद") + " • GitHub से जुड़ें • कोड लिखें/बदलें/हटाएँ • push • अलग AI key"),
+            Triple("computer", "DK कंप्यूटर", (if (Prefs.computerOn(this)) "✓ चालू" else "✗ बंद") + " • कोई भी काम: खोज, रिसर्च, फ़ाइल/PDF, हिसाब, फ़ोन, रिमाइंडर, मुफ़्त इमेज"),
+            Triple("coder", "कोडिंग एजेंट", (if (Prefs.coderOn(this)) "✓ चालू" else "✗ बंद") + " • GitHub से जुड़ें • कोड लिखें/बदलें/हटाएँ • push • अलग AI key • Termux"),
             Triple("auto", "ऑटोनोमस मोड", (if (com.dk.assistant.auto.AutoPrefs.on(this)) "✓ चालू" else "✗ बंद") + " • DK खुद तय करे और खुद करे • API keys • आपातकालीन STOP"),
             Triple("templates", "टेम्पलेट कमांड", "बिना AI के तय साँचे • WhatsApp • अलार्म • मैप • कॉल"),
             Triple("autoreply", "ऑटो रिप्लाई", (if (com.dk.assistant.autoreply.AutoReply.on(this)) "✓ चालू" else "✗ बंद") + " • WhatsApp • WhatsApp Business • Telegram • Messenger — हर ऐप का अपना स्विच"),
-            Triple("social", "सोशल रिव्यू", "इंस्टाग्राम • फेसबुक • यूट्यूब स्टूडियो — हर रील के व्यूज़, रीच क्यों गिरी, ट्रेंड, ज़्यादा व्यूज़ कैसे"),
+            Triple("social", "सोशल रिव्यू", "इंस्टाग्राम • फेसबुक • यूट्यूब स्टूडियो — हर रील के व्यूज़, रीच क्यों गिरी, ट्रेंड • YouTube चैनल जाँच"),
             Triple("reels", "रील गिनती और लिमिट", "इंस्टाग्राम • YouTube शॉर्ट्स • फेसबुक — ऊपर गिनती की पट्टी • रोज़ की लिमिट • फ़ोन लॉक / ऐप बंद"),
             Triple("backup", "बैकअप", "DK की याददाश्त Google Drive में • अपना ईमेल डालें • बैकअप / रिस्टोर (ऐप दोबारा डालने पर सब वापस)"),
             Triple("connectors", "कनेक्टर", "Gmail • Drive • Calendar • GitHub • Facebook Page • Instagram • MCP — DK लाइव से बोलकर काम"),
@@ -186,8 +186,7 @@ class SettingsActivity : AppCompatActivity() {
             // 15 नवंबर 2026 (मालिक: "अपडेट का सेक्शन सबसे नीचे दिखना चाहिए"): मुख्य पन्ने पर एक ही जगह, सबसे नीचे
             // (किसी श्रेणी के अंदर नहीं). नया अपडेट आया हो तो होम पर चमकती पट्टी + popup ([UpdatePrompt])
             SettingsSearch.CATEGORIES.forEach { (c, _) -> menuRow(c.first, c.second, c.third) }
-            // 15 नवंबर 2026 (मालिक: DK AI मास्टर अपग्रेड): नई सुविधाएँ एक जगह - सब शुरू में बंद
-            menuRow("plus", "DK AI Plus (नई सुविधाएँ)", "SOS • ड्राइविंग मोड • इवेंट ट्रिगर • Termux • इमेज • YouTube • मॉडल डाउनलोड • सब शुरू में बंद")
+            // 15 नवंबर 2026 (मालिक): "DK AI Plus" का अलग पन्ना हटाया - उसकी असली सुविधाएँ अपनी पुरानी जगह ([secSos] वगैरह, SettingsExtra.kt)
             items.firstOrNull { it.first == "update" }?.let { (id, t, sub) -> menuRow(id, t, sub) }
             return
         }
@@ -209,7 +208,6 @@ class SettingsActivity : AppCompatActivity() {
                     else if (id == "backup") startActivity(android.content.Intent(this@SettingsActivity, com.dk.assistant.backup.BackupActivity::class.java))
                     else if (id == "connectors") startActivity(android.content.Intent(this@SettingsActivity, com.dk.assistant.connect.ConnectorsActivity::class.java))
                     else if (id == "auto") startActivity(android.content.Intent(this@SettingsActivity, com.dk.assistant.auto.AutoSettingsActivity::class.java))
-                    else if (id == "plus") startActivity(android.content.Intent(this@SettingsActivity, com.dk.assistant.plus.PlusSettingsActivity::class.java))
                     else if (id == "templates") startActivity(android.content.Intent(this@SettingsActivity, com.dk.assistant.template.TemplateSettingsActivity::class.java))
                     else if (searchHit != null) openHit(searchHit)
                     else startActivity(android.content.Intent(this@SettingsActivity, SettingsActivity::class.java).putExtra("section", id))
@@ -315,7 +313,7 @@ class SettingsActivity : AppCompatActivity() {
                 if (OV.supported && !OV.hasModel(this@SettingsActivity)) {
                     tv.text = UiLang.s("पहचान वाला मॉडल डाउनलोड हो रहा है…")
                     val err = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
-                        OV.download(this@SettingsActivity) { pct -> runOnUiThread { tv.text = UiLang.s("पहचान वाला मॉडल डाउनलोड हो रहा है…") + " $pct%" } }
+                        OV.download(this@SettingsActivity) { pct -> runOnUiThread { tv.text = UiLang.s("पहचान वाला मॉडल डाउनलोड हो रहा है…") + " " + DlText.progress(pct, OV.MODEL_BYTES) } }
                     }
                     if (err != null) { tv.text = UiLang.s(err); kotlinx.coroutines.delay(2500) }
                 }

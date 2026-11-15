@@ -87,7 +87,7 @@ object Sos {
     /** null = शुरू हुआ (बोलने लायक संदेश वापस), वरना वजह */
     @Synchronized fun start(c: Context): String {
         val app = c.applicationContext
-        if (!FeatureFlags.on(app, FeatureFlags.SOS_ON)) return "इमरजेंसी SOS बंद है। सेटिंग्स → DK AI Plus → इमरजेंसी SOS में चालू करें।"
+        if (!FeatureFlags.on(app, FeatureFlags.SOS_ON)) return "इमरजेंसी SOS बंद है। सेटिंग्स → टच मोड → इमरजेंसी SOS में चालू करें।"
         val list = contacts(app)
         if (list.isEmpty()) return "SOS के लिए कोई नंबर नहीं डाला है। सेटिंग्स में 5 इमरजेंसी नंबर डालें।"
         if (running) return "SOS पहले से चल रहा है।"
