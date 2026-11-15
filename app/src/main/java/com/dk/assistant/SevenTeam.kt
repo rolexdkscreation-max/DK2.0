@@ -824,7 +824,14 @@ class SevenTeam(
         return when (a) {
             is Solo.Act.Delete -> {
                 if (cur == null) "OK $path already does not exist"
-                else { files.stage(path, null); changes[path] = "हटाई"; "OK deleted $path" }
+                else {
+                    // 15 नवंबर 2026 (मालिक: "push रोका: ui/Wallpapers.kt is still used by 9 file(s)" बार-बार): Solo कोडर का DELETE
+                    // बिना जाँच stage होता था, फिर push का आख़िरी पहरा पूरा काम रोकता. अब पहले ही वही पक्की जाँच - AI को तुरंत वजह, वह FIND/REPLACE करे
+                    val gone = files.staged().filterValues { it == null }.keys + path
+                    val block = CodeGuard.deleteProblem(path, cur, ws(), gone)
+                    if (block != null) { ev(Agent.REVIEWER, "✗ $path हटाना रोका: यह फ़ाइल अभी भी इस्तेमाल हो रही है"); "REFUSED $path: NOT deleted. $block" }
+                    else { files.stage(path, null); changes[path] = "हटाई"; "OK deleted $path" }
+                }
             }
             is Solo.Act.Write -> {
                 if (cur != null && path !in readSolo && cur.length > 4_000) "REFUSED $path: it already exists and you did not READ it - READ it, then use FIND/REPLACE"
