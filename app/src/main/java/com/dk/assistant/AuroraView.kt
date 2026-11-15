@@ -66,18 +66,7 @@ class AuroraView @JvmOverloads constructor(context: Context, attrs: AttributeSet
         val look = com.dk.assistant.ui.NeonTheme.look
         sky.shader = LinearGradient(0f, 0f, 0f, h, com.dk.assistant.ui.NeonTheme.bg(look),   // v4: नेवी → मिडनाइट → गहरा बैंगनी
             floatArrayOf(0f, 0.55f, 1f), Shader.TileMode.CLAMP)
-        photo = com.dk.assistant.ui.ThemePacks.background(context, look.pack, width, look.wallpaper)
-        photo?.let { b ->
-            val sc = maxOf(w / b.width, h / b.height)
-            photoM.setScale(sc, sc); photoM.postTranslate((w - b.width * sc) / 2f, (h - b.height * sc) / 2f)
-            // ऊपर-नीचे थोड़ा ज़्यादा गहरा (शीर्षक और नीचे की पट्टी साफ़), बीच में चित्र दिखे
-            val d = com.dk.assistant.ui.Wallpapers.dim(look.wallpaper, look.pack.dim)
-            val amoled = look.theme == com.dk.assistant.ui.NeonTheme.THEME_AMOLED
-            val top = ((if (amoled) d + 0.35f else d + 0.12f).coerceAtMost(0.92f) * 255).toInt()
-            val mid = ((if (amoled) d + 0.30f else d).coerceAtMost(0.9f) * 255).toInt()
-            dimPaint.shader = LinearGradient(0f, 0f, 0f, h, intArrayOf(top shl 24, mid shl 24, top shl 24),
-                floatArrayOf(0f, 0.5f, 1f), Shader.TileMode.CLAMP)
-        }
+        photo = null
         val cols = com.dk.assistant.ui.NeonTheme.auroraColors(look)
         // tirchhi roshni ki patti (kaanch par padti dhoop jaisi)
         sheen.shader = LinearGradient(0f, h * 0.05f, w, h * 0.45f,

@@ -67,7 +67,6 @@ internal fun SettingsActivity.secUi() {
             button("काँच का बटन") {}.apply { isClickable = false })
     }
     themeGallery()
-    wallpaperGallery()
     card("थीम", "पृष्ठभूमि का रंग", startOpen = true) { box ->
         val g = radios(box, T.THEMES, T.look.theme, 6100)
         g.setOnCheckedChangeListener { _, id ->

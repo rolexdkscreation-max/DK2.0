@@ -22,7 +22,7 @@ object DkaiTheme {
 
     val BG get() = t(0xFF0B101D, 0xFFF4F6FB)            // Deep Space / Luminous
     val CARD get() = t(0xFF161E31, 0xFFFFFFFF)
-    val BORDER get() = t(0xFF26324D, 0xFFDCE3EE)
+    val BORDER get() = t(0xFF26324D, 0xFFCBD5E1)
     const val BLUE = 0xFF3B82F6.toInt()
     val CYAN get() = t(0xFF00E5FF, 0xFF0891B2)
     const val VIOLET = 0xFFA855F7.toInt()

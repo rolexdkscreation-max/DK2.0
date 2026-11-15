@@ -268,9 +268,18 @@ class ChatActivity : AppCompatActivity() {
     private fun render() {
         // v3.88: सिर्फ़ तीन स्थितियाँ (Listening / Thinking / Speaking); खाली समय में पहले वाली ऑनलाइन जानकारी
         val rawT = ThreeState.label(DKState.mode, false, false)
-        val animOff = Prefs.typingStyle(this) == TypingStyles.OFF || Prefs.typingStyle(this) == "off"
+        val animStyle = Prefs.typingStyle(this)
+        val animOff = animStyle == TypingStyles.OFF || animStyle == "off"
         val isThinking = DKState.mode == Mode.THINKING || localJob != null || awaiting
-        val t = if (rawT != null && isThinking && !animOff) "$rawT…" else (rawT ?: if (DKAccessibilityService.instance != null) "ऑनलाइन • फ़ोन कंट्रोल चालू" else "सिर्फ़ बातचीत • फ़ोन कंट्रोल बंद")
+        val suffix = when (animStyle) {
+            TypingStyles.WAVE -> " 🌊"
+            TypingStyles.PULSE -> " 💓"
+            TypingStyles.ORBIT -> " 🪐"
+            TypingStyles.MATRIX -> " ⚡"
+            TypingStyles.BARS -> " 📊"
+            else -> "…"
+        }
+        val t = if (rawT != null && isThinking && !animOff) "$rawT$suffix" else (rawT ?: if (DKAccessibilityService.instance != null) "ऑनलाइन • फ़ोन कंट्रोल चालू" else "सिर्फ़ बातचीत • फ़ोन Control बंद")
         status.text = t
         if (isThinking && !animOff) {
             status.animate().cancel()
