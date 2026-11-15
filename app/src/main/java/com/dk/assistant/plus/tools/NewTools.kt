@@ -42,6 +42,35 @@ object FaceWhoTool : PlusTool {
     override suspend fun run(c: Context, args: JSONObject): String = FaceWhoActivity.ask(c)
 }
 
+/**
+ * 15 नवंबर 2026 (मालिक): DK वॉचमैन - "कौन आया, कितनी बार, क्या किया" - जानकारी सिर्फ़ Boss को, हर बार पहले सख़्त चेहरा जाँच.
+ */
+object WatchmanTool : PlusTool {
+    override val name = "watchman"
+    override val flag = FeatureFlags.FACE_WATCHMAN
+    override fun declaration() = PlusTools.decl(name,
+        "DK Watchman. action=start: the phone's front camera keeps watching who comes and goes (put the phone facing the room). " +
+            "action=report: who came, how many times, when, how long, what they did (came near the phone / touched it / with whom) - " +
+            "DK FIRST opens a strict Boss face scan; ONLY if it says VERIFIED read the report to the user. If it says DENIED, tell NOTHING about " +
+            "anyone who came (not even how many) - say only 'यह जानकारी सिर्फ़ Boss के लिए है'. action=stop / clear also need the Boss face. " +
+            "Use for 'वॉचमैन चालू करो', 'कौन आया था', 'मेरे पीछे कौन-कौन आया', 'वॉचमैन रिपोर्ट'.",
+        JSONObject().put("action", PlusTools.str("start | report | stop | clear")).put("hours", int("report: only the last N hours (0 = since the watchman was last started)")),
+        listOf("action"))
+
+    override suspend fun run(c: Context, args: JSONObject): String = when (args.optString("action").trim().lowercase()) {
+        "start" -> com.dk.assistant.WatchmanActivity.start(c)
+        "report" -> {
+            val (ok, why) = com.dk.assistant.BossCheckActivity.verify(c)
+            if (ok) "VERIFIED BOSS (strict face scan passed). REPORT:\n" + com.dk.assistant.Watchman.reportFor(c, args.optInt("hours", 0)) +
+                "\nTell the Boss this in short natural Hindi (who, how many times, when, what they did)."
+            else "DENIED: the strict Boss face scan did not pass ($why). Do NOT reveal anything about the watchman log. Say only: 'माफ़ कीजिए, यह जानकारी सिर्फ़ Boss के लिए है — चेहरा पक्का नहीं हुआ।'"
+        }
+        "stop" -> { com.dk.assistant.BossCheckActivity.open(c, com.dk.assistant.BossCheckActivity.MODE_STOP); "OPENED: the Boss face scan is open - the watchman stops only if it passes." }
+        "clear" -> { com.dk.assistant.BossCheckActivity.open(c, com.dk.assistant.BossCheckActivity.MODE_CLEAR); "OPENED: Boss face scan - after it passes the Boss confirms deleting on screen." }
+        else -> "ERROR: action must be start / report / stop / clear"
+    }
+}
+
 object EmailReadTool : PlusTool {
     override val name = "email_read"
     override val flag = FeatureFlags.EMAIL_ON

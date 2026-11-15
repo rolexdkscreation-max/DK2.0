@@ -114,6 +114,8 @@ object DkSettings {
         // 15 नवंबर 2026 (मालिक: "जो भी बना रहे हो, DK को पता हो - चालू-बंद कर सके"): नई सुविधाएँ
         Item("face", "चेहरा पहचान (DK लाइव: देखो कौन है)", "face", FeatureFlags.FACE_ON, false,
             listOf("चेहरा पहचान", "चेहरा पहचानना", "फेस पहचान", "फेस रिकग्निशन", "face recognition", "face id", "देखो कौन है"), store = STORE_FLAGS),
+        Item("watchman", "DK वॉचमैन (कौन आया-गया, सिर्फ़ Boss को रिपोर्ट)", "face", FeatureFlags.FACE_WATCHMAN, false,
+            listOf("वॉचमैन", "वाचमैन", "watchman", "चौकीदार", "कौन आया"), store = STORE_FLAGS),
         Item("email", "ईमेल पढ़ना / भेजना", "computer", FeatureFlags.EMAIL_ON, false,
             listOf("ईमेल", "इमेल", "email", "gmail", "जीमेल", "मेल पढ़ना"), store = STORE_FLAGS),
         Item("wa_report", "WhatsApp ग्रुप रिपोर्ट", "autoreply", FeatureFlags.WA_GROUP_REPORT, false,
@@ -140,6 +142,7 @@ object DkSettings {
         "touch mode = 'टच मोड चालू करो' (its style: [god_mode] = loudest, 10 photos, SMS always; [stealth] = silent, black screen, secret photos + SMS); " +
         "phone lock = 'फ़ोन लॉक करो'; teacher mode = tool teacher_mode; " +
         "face = tool face_who ('देखो कौन है' - Boss / saved person / unknown; faces are registered in Settings → चेहरा पहचान); " +
+        "watchman = tool watchman (start / report / stop / clear) - the report is given ONLY after DK's own strict Boss face scan says VERIFIED, never to anyone else; " +
         "email = tools email_read / email_send / email_delete (send and delete only after reading it back and a clear yes); " +
         "WhatsApp group report = tool group_report (list / fill / send); " +
         "FRIDAY / VENOM = switches [friday] / [venom] (one at a time, JARVIS goes off) or 'फ्राइडे मोड ऑन करो'. " +

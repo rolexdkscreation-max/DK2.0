@@ -62,7 +62,7 @@ object GuardPhotos {
     }
 
     /** "intruder_1731650000000.jpg" -> ms (null = नाम अलग) */
-    fun timeOf(name: String): Long? = Regex("""intruder_(\d{10,})\.jpg""").matchEntire(name)?.groupValues?.get(1)?.toLongOrNull()
+    fun timeOf(name: String): Long? = Regex("""(?:intruder|watch)_(\d{10,})\.jpg""").matchEntire(name)?.groupValues?.get(1)?.toLongOrNull()
 
     fun label(ms: Long): String = SimpleDateFormat("dd MMM, hh:mm:ss a", Locale("hi", "IN")).format(Date(ms))
 
@@ -78,14 +78,13 @@ object GuardPhotos {
     private fun timeText(f: File) = label(timeOf(f.name) ?: f.lastModified())
 
     /** Settings में: सारी फ़ोटो की पट्टी. [changed] = कुछ मिटा तो (गिनती ताज़ा) */
-    fun strip(a: AppCompatActivity, box: LinearLayout, changed: () -> Unit) {
+    fun strip(a: AppCompatActivity, box: LinearLayout, files: List<File> = Guard.photos(a), changed: () -> Unit) {
         val d = a.resources.displayMetrics.density
-        val files = Guard.photos(a)
         val row = LinearLayout(a).apply { orientation = LinearLayout.HORIZONTAL; setPadding(0, (6 * d).toInt(), 0, (6 * d).toInt()) }
         val sc = HorizontalScrollView(a).apply { isHorizontalScrollBarEnabled = true; addView(row) }
         box.addView(sc, LinearLayout.LayoutParams(-1, -2))
         if (files.isEmpty()) {
-            row.addView(TextView(a).apply { text = UiLang.s("अभी कोई फ़ोटो नहीं — टच मोड में कोई फ़ोन छुएगा तो उसकी फ़ोटो यहाँ दिखेगी"); textSize = 13f; setTextColor(0xB3FFFFFF.toInt()) })
+            row.addView(TextView(a).apply { text = UiLang.s("अभी कोई फ़ोटो नहीं"); textSize = 13f; setTextColor(0xB3FFFFFF.toInt()) })
             return
         }
         val w = (96 * d).toInt(); val h = (128 * d).toInt()

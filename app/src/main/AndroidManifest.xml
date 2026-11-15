@@ -383,6 +383,19 @@
             android:excludeFromRecents="true"
             android:screenOrientation="portrait" />
 
+        <!-- 15 नवंबर 2026: DK वॉचमैन (कौन आया-गया) + सख़्त Boss चेहरा जाँच (रिपोर्ट सिर्फ़ Boss को) -->
+        <activity
+            android:name=".WatchmanActivity"
+            android:exported="false"
+            android:excludeFromRecents="true"
+            android:launchMode="singleTask"
+            android:screenOrientation="portrait" />
+        <activity
+            android:name=".BossCheckActivity"
+            android:exported="false"
+            android:excludeFromRecents="true"
+            android:screenOrientation="portrait" />
+
         <!-- नवंबर 2026: गार्ड मोड - कोई फ़ोन छुए तो लॉक स्क्रीन के ऊपर लाल चेतावनी + सायरन (छूने से बंद नहीं) -->
         <activity
             android:name=".GuardAlarmActivity"

@@ -14,7 +14,8 @@ import org.json.JSONObject
 object PlusCommands {
     const val SOS = "plus_sos"
     const val DRIVING = "plus_driving"
-    val TYPES = setOf(SOS, DRIVING)
+    const val WATCH = "plus_watchman"
+    val TYPES = setOf(SOS, DRIVING, WATCH)
 
     private fun a(type: String, on: Boolean) = JSONObject().put("type", type).put("on", on)
 
@@ -30,6 +31,8 @@ object PlusCommands {
             // ("phone") - "SOS क्या होता है" कहते ही 5 लोगों को SMS + कॉल चले जाते. अब सिर्फ़ साफ़ आदेश पर.
             return if (sosStart(t)) QuickCommands.Quick(a(SOS, true), "") else null
         }
+        // 15 नवंबर 2026: DK वॉचमैन - "वॉचमैन चालू करो" / "कौन आया था" (रिपोर्ट = पहले Boss का चेहरा)
+        watch(t, has(*arrayOf("बंद", "रोको", "stop", " off")))?.let { return it }
         if (has("driving mode", "ड्राइविंग मोड", "ड्राइव मोड", "drive mode", "गाड़ी मोड", "गाड़ी चला रहा")) {
             return if (off) QuickCommands.Quick(a(DRIVING, false), "ड्राइविंग मोड बंद")
             else QuickCommands.Quick(a(DRIVING, true), "ड्राइविंग मोड चालू")
@@ -55,7 +58,32 @@ object PlusCommands {
         return tok.all { it in SOS_WORD || it == "एस" || it == "ओ" }
     }
 
+    internal fun watch(t: String, off: Boolean): QuickCommands.Quick? {
+        val w = listOf("वॉचमैन", "वाचमैन", "watchman", "चौकीदार").any { t.contains(it) }
+        val who = listOf("कौन आया था", "कौन कौन आया", "कौन-कौन आया", "कौन-कौन आए", "कौन कौन आए", "मेरे पीछे कौन").any { t.contains(it) }
+        if (!w && !who) return null
+        val report = who || listOf("रिपोर्ट", "report", "बताओ", "क्या हुआ", "कौन आया").any { t.contains(it) }
+        val clear = listOf("मिटा", "डिलीट", "delete", "clear", "साफ").any { t.contains(it) }
+        return when {
+            report -> QuickCommands.Quick(JSONObject().put("type", WATCH).put("do", "report"), "पहले चेहरा जाँच — रिपोर्ट सिर्फ़ Boss के लिए")
+            clear -> QuickCommands.Quick(JSONObject().put("type", WATCH).put("do", "clear"), "पहले Boss का चेहरा जाँच")
+            off -> QuickCommands.Quick(JSONObject().put("type", WATCH).put("do", "stop"), "वॉचमैन सिर्फ़ Boss के चेहरे से बंद होगा")
+            else -> QuickCommands.Quick(JSONObject().put("type", WATCH).put("do", "start"), "DK वॉचमैन चालू")
+        }
+    }
+
+    private fun watchRun(c: Context, what: String): String {
+        if (!FeatureFlags.on(c, FeatureFlags.FACE_WATCHMAN)) return "DK वॉचमैन बंद है — Settings → चेहरा पहचान → \"DK वॉचमैन\" चालू करें"
+        return when (what) {
+            "start" -> com.dk.assistant.WatchmanActivity.start(c)
+            "stop" -> { com.dk.assistant.BossCheckActivity.open(c, com.dk.assistant.BossCheckActivity.MODE_STOP); "OK" }
+            "clear" -> { com.dk.assistant.BossCheckActivity.open(c, com.dk.assistant.BossCheckActivity.MODE_CLEAR); "OK" }
+            else -> { com.dk.assistant.BossCheckActivity.open(c, com.dk.assistant.BossCheckActivity.MODE_REPORT); "OK" }
+        }
+    }
+
     fun run(c: Context, a: JSONObject): String = when (a.optString("type")) {
+        WATCH -> watchRun(c, a.optString("do", "start"))
         SOS -> if (a.optBoolean("on", true)) Sos.start(c) else Sos.stop()
         DRIVING -> DrivingMode.set(c, a.optBoolean("on", true))
         else -> "ERROR: unknown"

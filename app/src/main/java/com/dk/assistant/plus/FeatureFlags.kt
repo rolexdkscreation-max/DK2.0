@@ -154,6 +154,8 @@ object FeatureFlags {
         EV_BATTERY_SAVER, TERMUX, START_ON_BOOT, FACE_VAULT, IMAGE_GEN, YT_CHANNEL,
         // 15 नवंबर 2026: चेहरा पहचान (DK लाइव "देखो कौन है"), ईमेल, ग्रुप रिपोर्ट
         FACE_ON, EMAIL_ON, WA_GROUP_REPORT,
+        // 15 नवंबर 2026: DK वॉचमैन
+        FACE_WATCHMAN,
     )
     fun ready(key: String): Boolean = key in READY
 
