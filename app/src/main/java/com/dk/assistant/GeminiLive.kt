@@ -788,6 +788,9 @@ class GeminiLive(internal val svc: DKAccessibilityService, internal val agent: A
 
     /** नवंबर 2026: कॉल की बात भेजी कब / Live का जवाब (modelTurn) पहली बार कब आया - ताकि Live बोल रहा हो तो बैकअप न टोके */
     @Volatile internal var callNoteAt = 0L
+    /** 15 नवंबर 2026: घंटी आख़िरी बार कब बंद हुई / झूठा कॉल-दावा आख़िरी बार कब रोका (GeminiLiveTruth.kt) */
+    @Volatile internal var lastCallGoneAt = 0L
+    @Volatile internal var falseCallAt = 0L
     @Volatile internal var callAnsweredAt = 0L
     /** घंटी के समय Live ने जो सुना (caption बंद हो / बात खत्म न पकड़ी जाए तब भी "DK कॉल उठा लो" तुरंत) */
     @Volatile internal var callHeard = ""

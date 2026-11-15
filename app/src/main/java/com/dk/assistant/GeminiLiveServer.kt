@@ -171,6 +171,8 @@ internal fun GeminiLive.handleServer(msg: String, setup: CompletableDeferred<Uni
             ?.let { com.dk.assistant.avatar.MoodState.set(it) }
         // v3.68: AUDIO + लिखावट वाला बँटवारा - यही text आवाज़ इंजन बोलता है
         if (connSplit) { replyPartArrived("पहली लिखावट"); splitHoldCheck(); pumpSplit() }
+        // 15 नवंबर 2026: फ़ोन पर कोई कॉल नहीं और DK बोले "कॉल आ रहा है" = वहीं रोको (TruthCheck)
+        soFar?.let { falseCallCheck(it) }
     }
     // v3.9: Gemini ne sach me Google Search kiya -> sources (title, url) is baari ke jawab ke saath
     (sc.optJSONObject("groundingMetadata") ?: o.optJSONObject("groundingMetadata"))?.let { gm ->

@@ -79,7 +79,11 @@ internal suspend fun DKAccessibilityService.onIncomingCall(who0: String, ask: St
                 if (spoke == Speaker.CallSpoke.NONE && calls.ringing && callPending) speaker.speakCall("", generic = true)
             } finally { callAnnouncing = false; quiet.cancel() }
         }
-        scope.launch { while (calls.ringing) delay(500); callPending = false; if (!calls.inCall) gemLive.callAudio(false) }
+        scope.launch {
+            while (calls.ringing) delay(500); callPending = false; if (!calls.inCall) gemLive.callAudio(false)
+            // 15 नवंबर 2026 (मालिक: "कॉल नहीं आ रहा फिर भी बोलता है कॉल आ रहा है"): घंटी बंद = Live को चुपचाप बताओ
+            gemLive.noteCallGone(whoNote, if (calls.inCall) TruthCheck.CallEnd.ANSWERED else TruthCheck.CallEnd.ENDED)
+        }
         scope.launch { delay(1_000); while (calls.ringing || calls.inCall) delay(500); speaker.restoreCallVolume() }
         return
     }
@@ -340,21 +344,38 @@ internal fun DKAccessibilityService.isCallScreen(): Boolean {
 
 internal suspend fun DKAccessibilityService.endCall(): String {
     calls.restoreRinger()
-    if (calls.end()) return "call kaat di"
-    if (clickByText("End call", "Decline", "Reject", "DECLINE", "कॉल समाप्त करें", "कॉल समाप्त", "समाप्त", "अस्वीकार करें", "अस्वीकार", "काटें", "कट करें", "Hang up") ||
-        clickById("decline", "reject", "end_call", "endcall", "hangup")) return "call kaat di"
-    return if (!calls.canAnswer()) "ERROR_CALL_PERM" else "ERROR: call nahi kati"
+    // 15 नवंबर 2026 (मालिक: "काम हुआ हो तभी हाँ"): पहले बटन दबते ही "कट गई" - अब देखते हैं कि घंटी / कॉल सच में बंद हुई
+    val canSee = calls.known || AppCall.active()
+    suspend fun gone(ms: Long) = withTimeoutOrNull(ms) { while (calls.ringing || calls.inCall) delay(100) } != null
+    fun press() = clickByText("End call", "Decline", "Reject", "DECLINE", "कॉल समाप्त करें", "कॉल समाप्त", "समाप्त", "अस्वीकार करें", "अस्वीकार", "काटें", "कट करें", "Hang up") ||
+        clickById("decline", "reject", "end_call", "endcall", "hangup")
+    var tried = calls.end()
+    if (!canSee) return if (tried || press()) "call kaat di" else if (!calls.canAnswer()) "ERROR_CALL_PERM" else "ERROR: call nahi kati"
+    if (tried && gone(1500)) return "call kaat di (verified)"
+    // पहला तरीका नहीं चला / कॉल अब भी है: कॉल स्क्रीन का बटन, फिर दोबारा जाँच
+    tried = press() || tried
+    if (gone(2000)) return "call kaat di (verified)"
+    DKLog.d("जाँच: कॉल काटने के बाद दो बार देखा - कॉल अब भी ${if (calls.ringing) "बज रही" else "चल रही"} है")
+    return if (!tried && !calls.canAnswer()) "ERROR_CALL_PERM"
+    else "${TruthCheck.NOT_CONFIRMED}: कॉल अभी भी ${if (calls.ringing) "बज रही" else "चल रही"} है - कटी नहीं। फ़ोन पर लाल बटन दबाइए।"
 }
 
 internal suspend fun DKAccessibilityService.setSpeaker(on: Boolean): String {
     // Pehle call screen ka "Speaker" button (sabse pakka), phir system tareeka
     // Button TOGGLE hai - bina haalat dekhe dabane se "speaker off" par speaker ON ho jaata tha
     val btn = speakerButton()
-    if (btn == null) { calls.speakerApi(on); return "speaker ${if (on) "on" else "off"}" }
-    val now: Boolean? = if (btn.isCheckable) btn.isChecked else calls.speakerIsOn()
-    if (now == on) return "speaker pehle se ${if (on) "on" else "off"} hai"
-    if (now == null || !btn.performAction(AccessibilityNodeInfo.ACTION_CLICK)) calls.speakerApi(on)
-    return "speaker ${if (on) "on" else "off"}"
+    if (btn == null) calls.speakerApi(on)
+    else {
+        val now: Boolean? = if (btn.isCheckable) btn.isChecked else calls.speakerIsOn()
+        if (now == on) return "speaker pehle se ${if (on) "on" else "off"} hai"
+        if (now == null || !btn.performAction(AccessibilityNodeInfo.ACTION_CLICK)) calls.speakerApi(on)
+    }
+    // 15 नवंबर 2026: सच में हुआ? (पता न चल सके = पहले जैसा जवाब; उलटा दिखे = एक बार और, फिर सच)
+    suspend fun isOk(ms: Long) = withTimeoutOrNull(ms) { while (calls.speakerIsOn().let { it != null && it != on }) delay(100) } != null
+    if (calls.speakerIsOn() == null || isOk(800)) return "speaker ${if (on) "on" else "off"}"
+    calls.speakerApi(on)
+    if (isOk(1000)) return "speaker ${if (on) "on" else "off"} (दोबारा जाँचा)"
+    return "${TruthCheck.NOT_CONFIRMED}: स्पीकर ${if (on) "चालू" else "बंद"} नहीं हुआ - कॉल स्क्रीन पर स्पीकर बटन दबाइए।"
 }
 
 /** Call screen ka "Speaker" button (clickable node) - na mile to null */

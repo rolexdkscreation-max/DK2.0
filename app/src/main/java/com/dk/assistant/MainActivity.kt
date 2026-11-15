@@ -191,6 +191,14 @@ class MainActivity : AppCompatActivity() {
             pickPhoto = { pickPhoto.launch(androidx.activity.result.PickVisualMediaRequest(
                 androidx.activity.result.contract.ActivityResultContracts.PickVisualMedia.ImageOnly)) },
             pickFile = { pickFile.launch(ComputerActivity.PICK_TYPES) },
+            // 15 नवंबर 2026 (मालिक: "अलग 5-टैब वाली नीचे की पट्टी"): चैट / मेमोरी - वही पुरानी स्क्रीनें
+            tab = { t ->
+                when (t) {
+                    com.dk.assistant.ui.HomeTabs.Tab.CHAT -> { openChat(); true }
+                    com.dk.assistant.ui.HomeTabs.Tab.MEMORY -> { startActivity(Intent(this, MemoryActivity::class.java)); true }
+                    else -> false
+                }
+            },
             settingsItems = {
                 listOf(
                     Triple("पूरी DK सेटिंग्स", "दिखावट, आवाज़, AI दिमाग, keys और बाकी सब") { openSettings() },
@@ -391,6 +399,7 @@ class MainActivity : AppCompatActivity() {
         checkAccessKey()
         a11yOnOpen()
         dkai?.onResume()
+        dkai?.syncTabs()
     }
 
     /** DK AI Part 13: हर बार खुलने पर key की जाँच (3 घंटे में एक बार backend से; नेटवर्क गलती = पुरानी हालत) */

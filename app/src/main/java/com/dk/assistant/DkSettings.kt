@@ -120,6 +120,10 @@ object DkSettings {
             listOf("ग्रुप रिपोर्ट", "group report", "ग्रुप में रिपोर्ट", "रिपोर्ट टेम्पलेट"), store = STORE_FLAGS),
         Item("char3d", "3D कैरेक्टर", "ui", FeatureFlags.CHARACTER_3D, false,
             listOf("3d कैरेक्टर", "3d character", "3डी कैरेक्टर", "कैरेक्टर", "character", "3d"), store = STORE_FLAGS),
+        // 15 नवंबर 2026 (मालिक: "अलग 5-टैब वाली नीचे की पट्टी") - pref उल्टा: HIDE_HOME_TABS true = छुपी
+        Item("home_tabs", "नीचे की 5-टैब पट्टी", "ui", FeatureFlags.HIDE_HOME_TABS, false,
+            listOf("टैब पट्टी", "टैब वाली पट्टी", "नीचे की पट्टी", "टैब बार", "tab bar", "bottom bar", "bottom nav", "5 टैब", "पांच टैब", "पाँच टैब"),
+            inverted = true, store = STORE_FLAGS),
         Item("friday", "FRIDAY मोड", "voice", AssistantPersona.PREF, false,
             listOf("फ्राइडे", "फ्राईडे", "फ्रायडे", "friday"), store = STORE_CUSTOM),
         Item("venom", "VENOM मोड", "voice", AssistantPersona.PREF, false,

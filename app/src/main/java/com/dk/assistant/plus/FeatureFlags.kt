@@ -59,6 +59,8 @@ object FeatureFlags {
     const val BS_VOICE_GUARDIAN = "plus_bs_voice_guardian"
     const val BS_3D = "plus_bs_3d"
     const val CHARACTER_OVERLAY = "plus_character_overlay"
+    /** 15 नवंबर 2026 (मालिक: "अलग 5-टैब वाली नीचे की पट्टी भी बनाओ"): पट्टी दिखती है; यह स्विच सिर्फ़ छुपाने का (बंद = दिखे) */
+    const val HIDE_HOME_TABS = "plus_hide_home_tabs"
     const val FLOAT_ORB = "plus_float_orb"
     const val EDGE_GLOW = "plus_edge_glow"
     const val EARPIECE = "plus_earpiece"
@@ -114,6 +116,7 @@ object FeatureFlags {
         Flag(BS_3D, "3D कैरेक्टर रोको", "बैटरी सेवर में 3D रेंडर बंद", Section.BATTERY),
         Flag(CHARACTER_3D, "3D कैरेक्टर", "कैरेक्टर + GLTFLoader इंटरनेट से डाउनलोड (APK में नहीं)", Section.APPEARANCE),
         Flag(CHARACTER_OVERLAY, "होम स्क्रीन पर 3D कैरेक्टर", "फ़्लोटिंग ओवरले (Display over other apps)", Section.APPEARANCE),
+        Flag(HIDE_HOME_TABS, "नीचे की 5-टैब पट्टी छुपाएँ", "होम • स्कैन • माइक • चैट • मेमोरी (बंद = पट्टी दिखे)", Section.APPEARANCE),
         Flag(FLOAT_ORB, "फ़्लोटिंग ओर्ब", "हर ऐप के ऊपर छोटा DK ओर्ब", Section.BEHAVIOR),
         Flag(EDGE_GLOW, "किनारे की चमक (Edge Glow)", "DK बोले/सुने तो स्क्रीन के किनारे चमकें", Section.BEHAVIOR),
         Flag(EARPIECE, "ईयरपीस मोड", "DK की आवाज़ ऊपर वाले कॉल स्पीकर में (निजी बातचीत)", Section.BEHAVIOR),

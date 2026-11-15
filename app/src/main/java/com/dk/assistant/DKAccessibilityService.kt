@@ -1280,7 +1280,9 @@ class DKAccessibilityService : AccessibilityService() {
             CallCmd.REJECT_MSG, CallCmd.REJECT_BUSY -> {
                 val live = calls.ringing || calls.inCall
                 val t = if (live) currentTarget() else rejectTarget ?: currentTarget()
-                if (live) { endCall(); callPending = false }
+                val cut = if (live) endCall().also { callPending = false } else "call kaat di"
+                // 15 नवंबर 2026: कॉल सच में नहीं कटी = "काट दी" नहीं बोलना, मैसेज भी नहीं
+                if (cut.startsWith(TruthCheck.NOT_CONFIRMED) || cut.startsWith("ERROR")) return "सर, मैंने दोबारा देखा - कॉल अभी कटी नहीं। फ़ोन पर लाल बटन दबाइए।"
                 if (t != null) rejectTarget = t
                 val target = rejectTarget ?: return "सर, कॉल काट दी। किसकी कॉल थी पता नहीं चला, इसलिए मैसेज नहीं भेजा।"
                 val text = if (c.action == CallCmd.REJECT_BUSY) Prefs.callBusyMsg(this) else c.text
@@ -1297,7 +1299,8 @@ class DKAccessibilityService : AccessibilityService() {
                 if (!calls.ringing && !calls.inCall && !callPending) return "सर, अभी कोई कॉल नहीं चल रही।"
                 val r = endCall(); callPending = false
                 if (r == "ERROR_CALL_PERM") "सर, कॉल काटने की परमिशन नहीं है। Settings में DK को फ़ोन की परमिशन दीजिए।"
-                else if (r.startsWith("ERROR")) "सर, कॉल नहीं कटी। स्क्रीन पर बटन दबाइए।" else "सर, कॉल काट दी।"
+                else if (r.startsWith("ERROR")) "सर, कॉल नहीं कटी। स्क्रीन पर बटन दबाइए।"
+                else if (r.startsWith(TruthCheck.NOT_CONFIRMED)) "सर, मैंने दोबारा देखा - कॉल अभी कटी नहीं। लाल बटन दबाइए।" else "सर, कॉल काट दी।"
             }
             else -> ""
         }
