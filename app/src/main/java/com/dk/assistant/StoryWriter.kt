@@ -104,7 +104,7 @@ class StoryAi(val provider: Provider, private val key: String, val model: String
 
     private fun gemini(system: String, msgs: List<Pair<String, String>>): Out {
         var last: AiException? = null
-        for (m in if (only) listOf(model) else GeminiModels.order(model, GeminiClient.BACKUP_MODELS)) {
+        for (m in if (only) listOf(model) else OneKeyLanes.order(OneKeyLanes.Lane.HEAVY, GeminiModels.order(model, GeminiClient.BACKUP_MODELS))) {   // 15 नवंबर 2026: कहानी = भारी लेन
             try { return geminiOnce(m, system, msgs) } catch (e: AiException) {
                 if (last == null || GeminiModels.isGone(last.code, last.message.orEmpty())) last = e
                 if (e.code !in listOf(404, 429, 500, 503)) throw e

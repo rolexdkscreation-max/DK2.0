@@ -57,6 +57,7 @@ internal fun SettingsActivity.secBrainMenu() {
         }
         val ed = field(box, "Gemini API Key (सारे काम इसी से)", Prefs.oneKey(this), "AIza… यहाँ पेस्ट करें", secret = true)
         keyFields[ApiScopes.ONE_KEY] = ed
+        hint(box, OneKeyLanes.hindi())   // 15 नवंबर 2026: हर काम का अपना मॉडल - बातचीत की limit बची रहे
         // v3.6: पहली बार माइक दबाया और key नहीं = सीधे यहीं, keyboard खुला
         if (intent.getBooleanExtra(EXTRA_FOCUS_KEY, false) && Prefs.oneKey(this).isBlank()) ed.post {
             ed.requestFocus()

@@ -215,7 +215,9 @@ class CoderAi(val provider: Provider, private val key: String, val model: String
     /** इस key का Gemini मॉडल-क्रम (404 वाले बंद मॉडल हटे) */
     private fun geminiOrder(): List<String> {
         val kt = key.takeLast(6)
-        return GeminiModels.orderSkippingGone(model, chain) { Cooldown.blocked(GeminiModels.goneKey(it, kt)) }
+        val base = GeminiModels.orderSkippingGone(model, chain) { Cooldown.blocked(GeminiModels.goneKey(it, kt)) }
+        // 15 नवंबर 2026 (मालिक): एक key में कोडिंग / कंप्यूटर = भारी लेन (बातचीत वाला Flash-Lite नहीं). खुद पिन किया मॉडल = सिर्फ़ वही
+        return if (pinned) base else OneKeyLanes.order(OneKeyLanes.Lane.HEAVY, base)
     }
     /** इस key पर यह मॉडल limit (429) की वजह से कब तक छोड़ा है */
     private fun coolUntil(m: String): Long = cool["${key.takeLast(6)}|$m"] ?: 0L

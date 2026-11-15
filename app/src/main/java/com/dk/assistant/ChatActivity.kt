@@ -158,6 +158,9 @@ class ChatActivity : AppCompatActivity() {
         localJob = lifecycleScope.launch {
             try {
                 LocalBrain.instant(this@ChatActivity, t)?.let { DKState.reply(it); return@launch }
+                // 15 नवंबर 2026 (मालिक): बिना नेट = DK का अपना दिमाग तुरंत (AI का इंतज़ार / गलती नहीं); पहले पूछा पक्का सवाल = अपना जवाब
+                if (!NetProbe.online(this@ChatActivity)) { DKState.reply(OwnMind.offline(this@ChatActivity, t)); return@launch }
+                OwnMind.saved(this@ChatActivity, t)?.let { DKState.reply(it); return@launch }
                 val sb = StringBuilder()
                 fun clean(x: String) = x.replace(Regex("\\[(SCREEN|SEARCH|THINK)\\]"), "").substringBefore("[YAAD").replace(Regex("[*#`]"), "").trim()
                 val full = b.streamChat("USER SAYS: $t", "USER SAYS: $t") { d ->
@@ -166,11 +169,14 @@ class ChatActivity : AppCompatActivity() {
                     if (c.isNotBlank() && !c.startsWith("{")) DKState.replyLive(c)
                 }
                 val c = clean(full)
-                DKState.reply(when {
+                val out = when {
                     full.contains("[SCREEN]") || full.contains("need_screen") -> "फ़ोन पर काम करने के लिए पहले Accessibility में DK चालू करें।"
                     c.startsWith("{") -> try { org.json.JSONObject(c.substring(0, c.lastIndexOf('}') + 1)).optString("say") } catch (_: Exception) { c }.ifBlank { "…" }
                     else -> c.ifBlank { "…" }
-                }, emptyList(), b.lastGround)
+                }
+                DKState.reply(out, emptyList(), b.lastGround)
+                // 15 नवंबर 2026: हर जवाब से DK का अपना दिमाग सीखे (अगली बार बिना नेट / बिना request भी)
+                if (!c.startsWith("{")) { val g = b.lastGround != null; launch(kotlinx.coroutines.Dispatchers.IO) { OwnMind.learn(this@ChatActivity, t, out, g) } }
             } catch (e: kotlinx.coroutines.CancellationException) { throw e
             } catch (e: Exception) {
                 // 15 नवंबर 2026: AI न चला = पहले DK का अपना दिमाग (सीखा / आम बात), फिर सच्ची गलती

@@ -137,7 +137,7 @@ class BrainManager(private val ctx: Context) {
             else t
         }
         val cands = (rankedForChat().mapNotNull { p -> clientFor(p)?.let { p to it } } + chatSpares()).map { (p, c) ->
-            if (c is GeminiClient) { c.fast = true; c.groundChat = true }     // 13 नवंबर 2026: चैट = googleSearch चालू
+            if (c is GeminiClient) { c.fast = true; c.groundChat = true; c.lane = OneKeyLanes.Lane.TALK }     // 13 नवंबर 2026: चैट = googleSearch चालू
             if (c is OpenAiCompatClient) c.fast = true
             p to c }
         if (cands.isEmpty()) {
@@ -254,15 +254,17 @@ class BrainManager(private val ctx: Context) {
             val system = if (chat) buildChatPrompt() else buildSystemPrompt()
             var lastError: Exception? = null
             // limit/galti wali key ko peeche karo (warna har baar wahi pehle fail hoti hai = der)
-            val (good, bad) = orderedProviders(chat).partition { ProviderHealth.usable(it.id) }
+            // 15 नवंबर 2026 (मालिक): एक key में फ़ोन के काम की अपनी लेन - उसकी limit (429) बातचीत को \"limit खत्म\" न बताए
+            fun hid(p: Provider) = OneKeyLanes.healthId(p.id, if (chat) OneKeyLanes.Lane.TALK else OneKeyLanes.Lane.PHONE)
+            val (good, bad) = orderedProviders(chat).partition { ProviderHealth.usable(hid(it)) }
             // 15 नवंबर 2026: फ़ोन वाले काम में भी - अकेली key (एक-key वाली Gemini) थोड़ी देर पहले अटकी थी तो भी एक बार आज़माओ
-            val tryList = good + ProviderHealth.spareTry(good.none { clientFor(it) != null }, bad, { ProviderHealth.retryable(it.id) }, { ProviderHealth.dailyOut(it.id) })
+            val tryList = good + ProviderHealth.spareTry(good.none { clientFor(it) != null }, bad, { ProviderHealth.retryable(hid(it)) }, { ProviderHealth.dailyOut(hid(it)) })
             if (tryList.isEmpty() && bad.any { clientFor(it) != null }) throw exhausted(bad)
             for (p in tryList) {
                 val client = clientFor(p) ?: continue
                 val img = if (p.vision) imageB64 else null
                 try {
-                    if (client is GeminiClient) client.fast = chat
+                    if (client is GeminiClient) { client.fast = chat; client.lane = if (chat) OneKeyLanes.Lane.TALK else OneKeyLanes.Lane.PHONE }   // फ़ोन के काम = अपनी लेन
                     if (client is OpenAiCompatClient) client.fast = chat
                     val answer = try {
                         // baatcheet me sirf haal ki baatein bhejo = kam data = tez jawab
@@ -273,12 +275,12 @@ class BrainManager(private val ctx: Context) {
                     }
                     lastUsed = client.label
                     DKLog.d("AI: ${client.label}")
-                    ProviderHealth.ok(p.id, 1000)
+                    ProviderHealth.ok(hid(p), 1000)
                     remember(memoryNote, answer)
                     return@withContext parseJson(answer)
                 } catch (e: Exception) {
                     DKLog.d("${client.label} fail: ${e.message}")
-                    ProviderHealth.fail(p.id, e)
+                    ProviderHealth.fail(hid(p), e)
                     lastError = e
                     DKStatus.post(DKStatus.forCode((e as? AiException)?.code ?: -1))
                 }
@@ -776,9 +778,9 @@ class BrainManager(private val ctx: Context) {
     /** फोटो साथ हो = फोटो समझने वाली कंपनियाँ पहले (बाकी क्रम वही) */
     private fun visionFirst(list: List<Provider>, image: Boolean): List<Provider> = if (image) LivePhoto.visionFirst(list) { it.vision } else list
 
-    suspend fun quickText(system: String, prompt: String): String? = withContext(Dispatchers.IO) {
+    suspend fun quickText(system: String, prompt: String, lane: OneKeyLanes.Lane = OneKeyLanes.Lane.PHONE): String? = withContext(Dispatchers.IO) {
         for (p in rankedForChat()) {
-            val c = clientFor(p) ?: continue
+            val c = clientFor(p)?.also { (it as? GeminiClient)?.lane = lane } ?: continue   // 15 नवंबर 2026: छोटे काम (ऑटो-जवाब, सारांश) बातचीत की limit न खाएँ
             try {
                 val r = c.stream(system, emptyList(), prompt) { }
                 if (r.isNotBlank()) return@withContext r
@@ -789,7 +791,7 @@ class BrainManager(private val ctx: Context) {
         try {
             val k = Prefs.ttsGeminiKey(ctx)
             if (k.isBlank()) null
-            else GeminiClient(k, GeminiClient.BACKUP_MODELS.first()).apply { backups = GeminiClient.BACKUP_MODELS }
+            else GeminiClient(k, GeminiClient.BACKUP_MODELS.first()).apply { backups = GeminiClient.BACKUP_MODELS; this.lane = lane }
                 .stream(system, emptyList(), prompt) { }.takeIf { it.isNotBlank() }
         } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (_: Exception) { null }
     }
@@ -798,9 +800,9 @@ class BrainManager(private val ctx: Context) {
      * 14 नवंबर 2026 (मालिक: "स्टोरी उसी टाइम लाइव लिखेगा"): [quickText] जैसा, पर हर नए टुकड़े पर [onText] (अब तक का पूरा text).
      * दूसरी key / provider पर जाते ही text फिर से शुरू (onText("")). IO thread से बुलाया जाता है - UI पर post करें.
      */
-    suspend fun quickStream(system: String, prompt: String, onText: (String) -> Unit): String? = withContext(Dispatchers.IO) {
+    suspend fun quickStream(system: String, prompt: String, lane: OneKeyLanes.Lane = OneKeyLanes.Lane.HEAVY, onText: (String) -> Unit): String? = withContext(Dispatchers.IO) {
         for (p in rankedForChat()) {
-            val c = clientFor(p) ?: continue
+            val c = clientFor(p)?.also { (it as? GeminiClient)?.lane = lane } ?: continue
             val sb = StringBuilder()
             try {
                 onText("")
@@ -814,7 +816,7 @@ class BrainManager(private val ctx: Context) {
             if (k.isBlank()) null
             else {
                 val sb = StringBuilder(); onText("")
-                GeminiClient(k, GeminiClient.BACKUP_MODELS.first()).apply { backups = GeminiClient.BACKUP_MODELS }
+                GeminiClient(k, GeminiClient.BACKUP_MODELS.first()).apply { backups = GeminiClient.BACKUP_MODELS; this.lane = lane }
                     .stream(system, emptyList(), prompt) { d -> sb.append(d); onText(sb.toString()) }
                     .takeIf { it.isNotBlank() }?.also { onText(it) }
             }
@@ -1030,6 +1032,9 @@ fun scopedClient(ctx: Context, p: Provider, scope: String): AiClient? {
     return if (p.isGemini) GeminiClient(key, model).apply {
         Prefs.fastModels(ctx, "gemini").takeIf { it.isNotEmpty() }?.let { backups = it + GeminiClient.BACKUP_MODELS }
         this.think = think
+        // 15 नवंबर 2026: एक key में चैट / लाइव = बातचीत की लेन, कोडिंग / कंप्यूटर = भारी लेन; खुद चुना मॉडल पहले
+        lane = OneKeyLanes.forScope(scope)
+        keepFirst = model != (if (scope == ApiScopes.CODER || scope == ApiScopes.PC) GeminiModels.CODER else p.defaultModel)
     }
     else {
         val base = Prefs.scopeBase(ctx, scope, p.id)

@@ -575,6 +575,9 @@ class DkaiScreen(val activity: ComponentActivity, val host: DkaiHost) {
         localJob = activity.lifecycleScope.launch {
             try {
                 LocalBrain.instant(c, t)?.let { DKState.reply(it); return@launch }
+                // 15 नवंबर 2026 (मालिक): बिना नेट = DK का अपना दिमाग तुरंत; पहले पूछा पक्का सवाल = अपना जवाब (request बचे)
+                if (!com.dk.assistant.NetProbe.online(c)) { DKState.reply(com.dk.assistant.OwnMind.offline(c, t)); return@launch }
+                com.dk.assistant.OwnMind.saved(c, t)?.let { DKState.reply(it); return@launch }
                 val sb = StringBuilder()
                 fun clean(x: String) = x.replace(Regex("\\[(SCREEN|SEARCH|THINK)\\]"), "").substringBefore("[YAAD").replace(Regex("[*#`]"), "").trim()
                 val full = b.streamChat("USER SAYS: $t", "USER SAYS: $t") { dl ->
@@ -582,11 +585,14 @@ class DkaiScreen(val activity: ComponentActivity, val host: DkaiHost) {
                     if (cl.isNotBlank() && !cl.startsWith("{")) DKState.replyLive(cl)
                 }
                 val cl = clean(full)
-                DKState.reply(when {
+                val out = when {
                     full.contains("[SCREEN]") || full.contains("need_screen") -> "फ़ोन पर काम करने के लिए पहले Accessibility में DK चालू करें।"
                     cl.startsWith("{") -> try { org.json.JSONObject(cl.substring(0, cl.lastIndexOf('}') + 1)).optString("say") } catch (_: Exception) { cl }.ifBlank { "…" }
                     else -> cl.ifBlank { "…" }
-                }, emptyList(), b.lastGround)
+                }
+                DKState.reply(out, emptyList(), b.lastGround)
+                // 15 नवंबर 2026: हर जवाब से DK का अपना दिमाग सीखे
+                if (!cl.startsWith("{")) { val g = b.lastGround != null; launch(kotlinx.coroutines.Dispatchers.IO) { com.dk.assistant.OwnMind.learn(c, t, out, g) } }
             } catch (e: kotlinx.coroutines.CancellationException) { throw e
             } catch (e: Exception) { com.dk.assistant.OwnMind.answer(c, t)?.let { DKState.reply(it) } ?: DKState.replyFailed(b.explainAll(e))
             } finally { DKState.set(Mode.IDLE) }

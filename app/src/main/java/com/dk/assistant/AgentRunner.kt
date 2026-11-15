@@ -505,6 +505,8 @@ class AgentRunner(
         // 2) Taaza jaankari (mausam/bhav/score/news) -> Google Search (tez). Baaki sab -> seedha AI = turant jawab.
         //    Gehri research sirf tab jab user khud bole "सर्च/रिसर्च करो" (upar).
         // v3.93: एक सवाल पर एक ही खोज - ऊपर (सर्च करो) खोज हो चुकी हो तो दोबारा नहीं
+        // 15 नवंबर 2026 (मालिक: "ऑफलाइन में भी अच्छे से"): बातचीत + नेट नहीं = तुरंत DK का अपना दिमाग (AI / खोज की कोशिश में देर नहीं)
+        if (chatMode && !NetProbe.online(svc)) { say(OwnMind.offline(svc, goal)); return }
         if (chatMode && !searchFailed && brain.canSearch() && needsSearch(lower)) {
             if (searchAndSay(goal)) return
         }
@@ -855,7 +857,8 @@ class AgentRunner(
         val ground = brain.lastGround
         DKState.reply(answer, emptyList(), ground)
         // roz seekho: agli baar yahi sawaal = turant jawab (ताज़ा खोज वाला जवाब नहीं - कल पुराना हो जाएगा)
-        if (note.isBlank() && ground == null) scope.launch(Dispatchers.IO) { LocalBrain.learn(svc, goal, answer) }
+        // 15 नवंबर 2026: खोज वाला जवाब भी - अगर सवाल न बदलने वाला हो ([OwnMind.learn])
+        if (note.isBlank()) scope.launch(Dispatchers.IO) { OwnMind.learn(svc, goal, answer, ground != null) }
         speakJob?.join()
         return ChatOut.DONE
     }

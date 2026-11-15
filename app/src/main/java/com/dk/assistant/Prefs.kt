@@ -48,7 +48,7 @@ object Prefs {
      * v3.91: "एक key से सब" चालू = हर हिस्सा सिर्फ़ उसी एक Gemini key से (Groq/बाक़ी कंपनियाँ नहीं).
      * अलग-अलग keys की settings मिटती नहीं - बटन बंद करते ही वही पुरानी keys फिर चलती हैं.
      */
-    fun oneKeyOn(c: Context): Boolean = sp(c).getBoolean(ApiScopes.ONE_KEY_ON, false)
+    fun oneKeyOn(c: Context): Boolean = sp(c).getBoolean(ApiScopes.ONE_KEY_ON, false).also { OneKeyLanes.on = it }   // 15 नवंबर 2026: हर काम की अपनी मॉडल-लेन
     fun oneKey(c: Context): String = (sp(c).getString(ApiScopes.ONE_KEY, "") ?: "").trim()
     /** सेटिंग्स स्क्रीन के लिए: अलग-अलग keys असल में जो सेव हैं (एक-key मोड से बदले बिना) */
     fun scopeActiveRaw(c: Context, scope: String): String {

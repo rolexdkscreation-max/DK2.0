@@ -141,7 +141,7 @@ object ComputerTools {
     }
 
     private fun gemini(c: Context, q: String): SearchOut {
-        val r = GeminiClient(Prefs.scopeKey(c, ApiScopes.PC, "gemini"), Prefs.scopeModel(c, ApiScopes.PC, "gemini")).search(
+        val r = GeminiClient(Prefs.scopeKey(c, ApiScopes.PC, "gemini"), Prefs.scopeModel(c, ApiScopes.PC, "gemini")).apply { lane = OneKeyLanes.Lane.HEAVY }.search(
             "You are a web research tool. Search Google and return a dense factual summary (facts, numbers, dates, names) for the query. " +
                 "Keep the language of the query. No chit-chat.", emptyList(), q, deep = false)
         return SearchOut("Google (Gemini)", r.sources.map { (t, u) -> Hit(t, u, "") }, r.text)

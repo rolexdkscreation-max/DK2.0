@@ -46,7 +46,7 @@ object StoryVoice {
     /** भाग -> किरदार-स्क्रिप्ट. AI न चले = पूरा भाग Narrator की आवाज़ में (टुकड़ों में) */
     suspend fun script(c: Context, text: String): List<DkaiKit.Line> {
         sync()
-        val raw = try { BrainManager(c).quickText(castSystem(genders), text) } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (_: Exception) { null }
+        val raw = try { BrainManager(c).quickText(castSystem(genders), text, OneKeyLanes.Lane.HEAVY) } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (_: Exception) { null }
         val lines = raw?.let { DkaiKit.parseScript(it) }.orEmpty()
         val gotWords = lines.sumOf { it.text.length }
         // AI ने कहानी आधी कर दी / कुछ नहीं दिया = अपनी तरफ़ से Narrator
