@@ -1,0 +1,74 @@
+DK-RESULT FAIL
+secs=131
+sha=cf1575da07d368240e4ec42d20dfbfcce661af1f
+e: file:///home/vscode/dk-run/app/src/main/java/com/dk/assistant/ChatActivity.kt:271:63 Unresolved reference: OFF
+e: file:///home/vscode/dk-run/app/src/main/java/com/dk/assistant/DKWorkingIndicator.kt:102:59 Unresolved reference: OFF
+> Task :app:compileDebugKotlin FAILED
+* What went wrong:
+> A failure occurred while executing org.jetbrains.kotlin.compilerRunner.GradleCompilerRunnerWithWorkers$GradleKotlinCompilerWorkAction
+> Run with --stacktrace option to get the stack trace.
+> Run with --info or --debug option to get more log output.
+> Run with --scan to get full insights.
+> Get more help at https://help.gradle.org.
+BUILD FAILED in 2m 4s
+-----
+> Task :apkshell:mergeReleaseResources UP-TO-DATE
+> Task :apkshell:packageReleaseResources UP-TO-DATE
+> Task :apkshell:parseReleaseLocalResources UP-TO-DATE
+> Task :apkshell:createReleaseCompatibleScreenManifests UP-TO-DATE
+> Task :apkshell:extractDeepLinksRelease UP-TO-DATE
+> Task :apkshell:processReleaseMainManifest UP-TO-DATE
+> Task :apkshell:processReleaseManifest UP-TO-DATE
+> Task :apkshell:processReleaseManifestForPackage UP-TO-DATE
+> Task :apkshell:processReleaseResources UP-TO-DATE
+> Task :apkshell:compileReleaseJavaWithJavac UP-TO-DATE
+> Task :apkshell:dexBuilderRelease UP-TO-DATE
+> Task :apkshell:desugarReleaseFileDependencies UP-TO-DATE
+> Task :apkshell:mergeReleaseStartupProfile UP-TO-DATE
+> Task :apkshell:mergeExtDexRelease UP-TO-DATE
+> Task :apkshell:mergeDexRelease UP-TO-DATE
+> Task :apkshell:mergeReleaseArtProfile UP-TO-DATE
+> Task :apkshell:mergeReleaseGlobalSynthetics UP-TO-DATE
+> Task :apkshell:compileReleaseArtProfile UP-TO-DATE
+> Task :apkshell:mergeReleaseShaders UP-TO-DATE
+> Task :apkshell:compileReleaseShaders NO-SOURCE
+> Task :apkshell:generateReleaseAssets UP-TO-DATE
+> Task :apkshell:mergeReleaseAssets UP-TO-DATE
+> Task :apkshell:compressReleaseAssets UP-TO-DATE
+> Task :apkshell:extractReleaseVersionControlInfo
+> Task :apkshell:processReleaseJavaRes NO-SOURCE
+> Task :apkshell:mergeReleaseJavaResource UP-TO-DATE
+> Task :apkshell:optimizeReleaseResources UP-TO-DATE
+> Task :apkshell:collectReleaseDependencies UP-TO-DATE
+> Task :apkshell:sdkReleaseDependencyData UP-TO-DATE
+> Task :apkshell:writeReleaseAppMetadata UP-TO-DATE
+> Task :apkshell:writeReleaseSigningConfigVersions UP-TO-DATE
+> Task :apkshell:packageRelease
+> Task :apkshell:createReleaseApkListingFileRedirect UP-TO-DATE
+> Task :apkshell:assembleRelease
+> Task :app:dkShellApk
+> Task :app:generateDebugAssets UP-TO-DATE
+> Task :app:mergeDebugAssets
+> Task :app:packageDebugUnitTestForUnitTest
+> Task :app:generateDebugUnitTestConfig
+> Task :app:compileDebugKotlin
+e: file:///home/vscode/dk-run/app/src/main/java/com/dk/assistant/ChatActivity.kt:271:63 Unresolved reference: OFF
+e: file:///home/vscode/dk-run/app/src/main/java/com/dk/assistant/DKWorkingIndicator.kt:102:59 Unresolved reference: OFF
+
+> Task :app:compileDebugKotlin FAILED
+
+FAILURE: Build failed with an exception.
+
+* What went wrong:
+Execution failed for task ':app:compileDebugKotlin'.
+> A failure occurred while executing org.jetbrains.kotlin.compilerRunner.GradleCompilerRunnerWithWorkers$GradleKotlinCompilerWorkAction
+   > Compilation error. See log for more details
+
+* Try:
+> Run with --stacktrace option to get the stack trace.
+> Run with --info or --debug option to get more log output.
+> Run with --scan to get full insights.
+> Get more help at https://help.gradle.org.
+
+BUILD FAILED in 2m 4s
+59 actionable tasks: 8 executed, 51 up-to-date
