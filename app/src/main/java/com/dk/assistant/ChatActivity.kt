@@ -201,7 +201,9 @@ class ChatActivity : AppCompatActivity() {
         if (awaiting) {
             val el = System.currentTimeMillis() - awaitSince
             val slowOk = DKState.hintText.isNotBlank() || DKState.mode == Mode.WORKING   // khoj / gehri soch / phone ka kaam
-            val limit = if (slowOk) 90_000L else 30_000L
+            // 15 नवंबर 2026: DK का काम सच में चल रहा है तो रुको (AI की अपनी रोक पहले साफ़ कारण देती है); कुछ नहीं चल रहा = 30 सेकंड
+            val working = (try { DKAccessibilityService.instance?.agent?.isBusy == true } catch (_: Exception) { false }) || localJob?.isActive == true
+            val limit = ChatFlow.waitLimit(working, slowOk)
             if (el > limit && !timedOut) {
                 timedOut = true; awaiting = false
                 DKLog.d("Chat: ${el / 1000}s से जवाब नहीं - timeout")

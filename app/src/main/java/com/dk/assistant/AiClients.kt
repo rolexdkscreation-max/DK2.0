@@ -44,9 +44,18 @@ private val fastHttp = com.dk.assistant.NetFix.builder()
     .retryOnConnectionFailure(true)
     .build()
 
+/**
+ * 15 नवंबर 2026 (मालिक: "नॉर्मल चैट में भी प्रॉब्लम"): चैट में Gemini पहले Google पर खोजता है, फिर पहला शब्द भेजता है -
+ * 12 सेकंड की रोक में धीमे नेट पर यह टूट जाता था ("सर्वर बहुत धीमा है"). खोज वाले चैट जवाब को ज़्यादा समय.
+ */
+private val groundHttp = fastHttp.newBuilder()
+    .readTimeout(25, TimeUnit.SECONDS)
+    .callTimeout(55, TimeUnit.SECONDS)
+    .build()
+
 /** SSE (data: ...) lines padho. */
-private fun sse(req: Request, onData: (String) -> Unit) {
-    val call = fastHttp.newCall(req)
+private fun sse(req: Request, http: okhttp3.OkHttpClient = fastHttp, onData: (String) -> Unit) {
+    val call = http.newCall(req)
     call.execute().use { r ->
         if (!r.isSuccessful) {
             val body = r.body?.string() ?: ""
@@ -179,6 +188,7 @@ class GeminiClient(private val key: String, private val model: String) : AiClien
                 val full = StringBuilder()
                 streamOnce(m, system, history, prompt, thinking) { gotAny = true; full.append(it); onDelta(it) }
                 label = "Gemini ($m)"
+                continueCut(m, system, history, prompt, full, onDelta)
                 return full.toString()
             } catch (e: AiException) {
                 if (gotAny) throw e
@@ -189,6 +199,7 @@ class GeminiClient(private val key: String, private val model: String) : AiClien
                         val full = StringBuilder()
                         streamOnce(m, system, history, prompt, false) { gotAny = true; full.append(it); onDelta(it) }
                         label = "Gemini ($m)"
+                        continueCut(m, system, history, prompt, full, onDelta)
                         return full.toString()
                     } catch (e2: AiException) {
                         if (gotAny) throw e2
@@ -208,7 +219,29 @@ class GeminiClient(private val key: String, private val model: String) : AiClien
         throw last ?: AiException(0, "Gemini fail")
     }
 
-    /** googleSearch के साथ; मॉडल/खाता tool न माने (400) तो उसी मॉडल से बिना tool एक बार (जवाब रुके नहीं) */
+    /** आख़िरी stream क्यों रुका (Gemini finishReason: STOP / MAX_TOKENS …) */
+    @Volatile private var lastFinish: String? = null
+
+    /**
+     * 15 नवंबर 2026 (मालिक): लंबा जवाब (कहानी / चिट्ठी / कोड) token की सीमा पर बीच वाक्य में कट जाता था, बताता भी नहीं था.
+     * कटा ([ChatFlow.cutOff]) = वहीं से आगे का हिस्सा उसी बुलबुले में (ज़्यादा से ज़्यादा [ChatFlow.MAX_CONTINUE] बार).
+     */
+    private fun continueCut(m: String, system: String, history: List<Turn>, prompt: String, full: StringBuilder, onDelta: (String) -> Unit) {
+        var n = 0
+        while (ChatFlow.cutOff(lastFinish) && n < ChatFlow.MAX_CONTINUE && full.isNotBlank()) {
+            n++
+            DKLog.d("Gemini ($m): जवाब लंबाई पर कटा - आगे का हिस्सा ($n)")
+            val h = history + Turn("user", prompt) + Turn("model", full.toString())
+            try { streamRaw(m, system, h, ChatFlow.CONTINUE_PROMPT, false, false) { full.append(it); onDelta(it) } }
+            catch (e: Exception) { if (e is LoserException) throw e; DKLog.d("आगे का हिस्सा नहीं आया: ${e.message}"); return }
+        }
+    }
+
+    /**
+     * googleSearch के साथ; मॉडल/खाता tool न माने (400) तो उसी मॉडल से बिना tool एक बार (जवाब रुके नहीं).
+     * 15 नवंबर 2026: धीमा नेट / खोज में देर ([ChatFlow.slowNet]) और अभी कुछ नहीं आया = एक बार बिना खोज के (जल्दी जवाब) -
+     * एक-key मोड में दूसरी key नहीं होती, पहले यहीं "जवाब नहीं आ पाया" आ जाता था.
+     */
     private fun streamOnce(m: String, system: String, history: List<Turn>, prompt: String, thinking: Boolean, onDelta: (String) -> Unit) {
         streamMeta = null
         if (!groundChat) { streamRaw(m, system, history, prompt, thinking, false, onDelta); return }
@@ -219,10 +252,16 @@ class GeminiClient(private val key: String, private val model: String) : AiClien
             DKLog.d("Gemini ($m): googleSearch tool नहीं चला (${e.code}) - बिना खोज वाला जवाब")
             streamMeta = null
             streamRaw(m, system, history, prompt, thinking, false, onDelta)
+        } catch (e: java.io.IOException) {
+            if (got || !ChatFlow.slowNet(e)) throw e
+            DKLog.d("Gemini ($m): खोज के साथ देर (${e.javaClass.simpleName}) - एक बार बिना खोज")
+            streamMeta = null
+            streamRaw(m, system, history, prompt, thinking, false, onDelta)
         }
     }
 
     private fun streamRaw(m: String, system: String, history: List<Turn>, prompt: String, thinking: Boolean, search: Boolean, onDelta: (String) -> Unit) {
+        lastFinish = null
         val contents = JSONArray()
         history.forEach {
             contents.put(JSONObject().put("role", if (it.role == "user") "user" else "model")
@@ -247,10 +286,11 @@ class GeminiClient(private val key: String, private val model: String) : AiClien
             .url("https://generativelanguage.googleapis.com/v1beta/models/$m:streamGenerateContent?alt=sse")
             .header("x-goog-api-key", key)
             .post(body.toString().toRequestBody(JSON_TYPE)).build()
-        sse(req) { d ->
+        sse(req, if (search) groundHttp else fastHttp) { d ->
             val o = try { JSONObject(d) } catch (_: Exception) { return@sse }
             o.optJSONObject("error")?.let { throw AiException(it.optInt("code", 0), it.optString("message")) }
             val cand = o.optJSONArray("candidates")?.optJSONObject(0) ?: return@sse
+            cand.optString("finishReason").takeIf { it.isNotBlank() }?.let { lastFinish = it }
             cand.optJSONObject("groundingMetadata")?.let { streamMeta = it }       // आख़िरी टुकड़े में पूरा आता है
             val p = cand.optJSONObject("content")?.optJSONArray("parts") ?: return@sse
             for (i in 0 until p.length()) {
@@ -460,9 +500,9 @@ class OpenAiCompatClient(
             val txt = if (c is String) c else ""
             if (txt.isNotEmpty()) { val clean = tf.feed(txt); if (clean.isNotEmpty()) { full.append(clean); onDelta(clean) } }
         }
-        try { sse(req(), onData) } catch (e: AiException) {
+        try { sse(req(), onData = onData) } catch (e: AiException) {
             // मॉडल ने सोचने का स्तर नहीं समझा (400, कुछ भी आने से पहले) = उसी मॉडल से बिना उसके
-            if (thought && full.isEmpty() && ThinkLevel.rejected(e.code, e.message.orEmpty())) { ThinkLevel.strip(body); sse(req(), onData) } else throw e
+            if (thought && full.isEmpty() && ThinkLevel.rejected(e.code, e.message.orEmpty())) { ThinkLevel.strip(body); sse(req(), onData = onData) } else throw e
         }
         return full.toString()
     }

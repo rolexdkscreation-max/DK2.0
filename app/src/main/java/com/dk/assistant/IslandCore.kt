@@ -405,6 +405,24 @@ object IslandCore {
     fun corner(roundPct: Int, basePx: Float): Float = basePx * round(roundPct) / 100f
 
     /** नॉच चालू = कुछ न चल रहा हो तब भी कैमरे पर छोटा island (DK ऐप सामने हो तो नहीं). Pure */
+    /**
+     * 15 नवंबर 2026 (मालिक: "काम चल रहा है, कॉल चल रही है, नोटिफिकेशन नहीं देखा - तो दिखना चाहिए"): नॉच सिर्फ़ तब खाली
+     * कैमरे जितना जब दिखाने को कुछ नहीं. कुछ है (कॉल / चलता काम / बिना देखा नोटिफिकेशन / गाना / लाइव) = पूरी गोली, लिखा हुआ.
+     */
+    fun notchIdle(s: Snap, now: Long): Boolean = lead(s, now) == null
+
+    /**
+     * island में कौन से notification: बिना देखे ही. देखा = ऐप खोला / island से खोला / island फैलाकर देखा ([SEEN_VIEW_MS]) -
+     * उसी key पर बाद में नया (at बड़ा) आए तो फिर दिखे. चलते (ongoing - download / VPN / "चल रहा है" वाले) नहीं - वे "नया
+     * notification" नहीं, island हमेशा भरा रहता था. कॉल वाला रहता है (कॉल का अपना कार्ड उसी से).
+     */
+    fun unseen(all: List<Notif>, seen: Map<String, Long>): List<Notif> =
+        all.filter { (it.call || !it.ongoing) && it.at > (seen[it.key] ?: Long.MIN_VALUE) }
+
+    /** फैले island में notification कम से कम इतनी देर दिखे = देख लिया */
+    const val SEEN_VIEW_MS = 1_500L
+    fun viewed(expandedMs: Long): Boolean = expandedMs >= SEEN_VIEW_MS
+
     fun wanted(prefOn: Boolean, inApp: Boolean, s: Snap, now: Long, notch: Boolean): Boolean =
         prefOn && !inApp && (notch || lead(s, now) != null)
 

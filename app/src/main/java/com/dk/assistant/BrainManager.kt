@@ -148,14 +148,18 @@ class BrainManager(private val ctx: Context) {
         val lock = Any()
         var winner: String? = null
         var next = 0; var running = 0
+        val runningIds = mutableListOf<String>()
         val errors = mutableListOf<Pair<Provider, Exception>>()
         val result = CompletableDeferred<String>()
 
         coroutineScope {
             val scope = this
-            fun start() {
+            // 15 नवंबर 2026: समय वाली "साथ में अगली" सिर्फ़ दूसरी कंपनी की ([ChatFlow.raceOk]); उसी key की दूसरी कोशिश फ़ेल होने पर ही
+            fun start(byTimer: Boolean = false) {
                 val pc = synchronized(lock) {
-                    if (winner != null || next >= cands.size || result.isCompleted) null else { running++; cands[next++] }
+                    if (winner != null || next >= cands.size || result.isCompleted) null
+                    else if (!ChatFlow.raceOk(byTimer, cands[next].first.id, runningIds)) null
+                    else { running++; cands[next++].also { runningIds.add(it.first.id) } }
                 } ?: return
                 val (p, client) = pc
                 scope.launch(Dispatchers.IO) {
@@ -172,18 +176,18 @@ class BrainManager(private val ctx: Context) {
                                 DKLog.d("Pehla shabd ${System.currentTimeMillis() - t0}ms: ${client.label}") }
                             onDelta(d)
                         }
-                        val won = synchronized(lock) { running--; counted = true; if (winner == null && full.isNotBlank()) winner = p.id; winner == p.id }
+                        val won = synchronized(lock) { running--; counted = true; runningIds.remove(p.id); if (winner == null && full.isNotBlank()) winner = p.id; winner == p.id }
                         if (won) { lastUsed = client.label; lastGround = (client as? GeminiClient)?.lastGround; result.complete(full) }
                         else if (full.isBlank()) throw AiException(0, "khali jawab")
                     } catch (e: LoserException) {
-                        synchronized(lock) { if (!counted) { running--; counted = true } }
+                        synchronized(lock) { if (!counted) { running--; counted = true; runningIds.remove(p.id) } }
                     } catch (e: kotlinx.coroutines.CancellationException) {
                         throw e
                     } catch (e: Exception) {
                         DKLog.d("${client.label} fail: ${e.message}")
                         ProviderHealth.fail(p.id, e)
                         val (wasWinner, noneLeft) = synchronized(lock) {
-                            if (winner != p.id) { errors.add(p to e); if (!counted) { running--; counted = true } }
+                            if (winner != p.id) { errors.add(p to e); if (!counted) { running--; counted = true; runningIds.remove(p.id) } }
                             Pair(winner == p.id, winner == null && next >= cands.size && running == 0)
                         }
                         when {
@@ -195,7 +199,7 @@ class BrainManager(private val ctx: Context) {
                 }
             }
             start()
-            launch { delay(1000); start(); delay(2000); start() }   // dheemi ho to saath me agli key (v3.7: 1 sec)
+            launch { delay(1000); start(byTimer = true); delay(2000); start(byTimer = true) }   // dheemi ho to saath me agli key (v3.7: 1 sec)
             try {
                 val text = result.await()
                 remember(if (note.isNotBlank()) note else "USER SAYS: $prompt", text)
@@ -238,7 +242,9 @@ class BrainManager(private val ctx: Context) {
                 "API key गलत है या उसे इजाज़त नहीं है। सेटिंग्स में key दोबारा पेस्ट करके टेस्ट कीजिए।"
             code == 404 -> "यह मॉडल नहीं मिला। सेटिंग्स में मॉडल का नाम ठीक कीजिए।"
             msg == "NO_KEY" -> "पहले सेटिंग्स में किसी AI की API key डालकर सेव कीजिए।"
-            else -> "AI से जवाब नहीं मिला (गलती $code)।"
+            // 15 नवंबर 2026: "(गलती 0)" जैसा तकनीकी अंक नहीं - साफ़ बात
+            e is java.io.IOException -> "नेटवर्क में रुकावट आई। एक बार फिर भेजिए।"
+            else -> "AI से जवाब नहीं मिला। एक बार फिर भेजिए।"
         }
     }
 
@@ -249,7 +255,8 @@ class BrainManager(private val ctx: Context) {
             var lastError: Exception? = null
             // limit/galti wali key ko peeche karo (warna har baar wahi pehle fail hoti hai = der)
             val (good, bad) = orderedProviders(chat).partition { ProviderHealth.usable(it.id) }
-            val tryList = good + bad.filter { ProviderHealth.retryable(it.id) }
+            // 15 नवंबर 2026: फ़ोन वाले काम में भी - अकेली key (एक-key वाली Gemini) थोड़ी देर पहले अटकी थी तो भी एक बार आज़माओ
+            val tryList = good + ProviderHealth.spareTry(good.none { clientFor(it) != null }, bad, { ProviderHealth.retryable(it.id) }, { ProviderHealth.dailyOut(it.id) })
             if (tryList.isEmpty() && bad.any { clientFor(it) != null }) throw exhausted(bad)
             for (p in tryList) {
                 val client = clientFor(p) ?: continue

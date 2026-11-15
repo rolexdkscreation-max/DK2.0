@@ -215,8 +215,13 @@ object DKIsland {
     @Volatile private var demoPeekFrom = Long.MAX_VALUE
     private fun demoPeek(up: Long) = up in demoPeekFrom until demoPeekUntil
 
-    /** नॉच वाला छोटा रूप अभी? (नॉच चालू, न फैला, न थोड़ी देर का बड़ा) */
-    private fun notchNow(s: Context) = notchOn(s) && !expanded && !peeking
+    /** 15 नवंबर 2026: नॉच चालू और दिखाने को कुछ नहीं ([IslandCore.notchIdle]) = खाली कैमरे जितना; कुछ है = पूरी गोली */
+    @Volatile private var notchIdle = true
+    private fun notchEmpty(s: Context) = notchOn(s) && notchIdle
+
+    /** island कब फैला (notification देखे गए गिनने के लिए) और आख़िरी बार कौन से दिखे */
+    private var expandedAt = 0L
+    @Volatile private var lastNotifKeys: List<String> = emptyList()
 
     /**
      * island का आकार: फैला / बड़ा = पहले जैसे बड़े कोने × गोलाई; नॉच = कैमरे जितना (गोल / चौकोर), बिना किनारी-छाया;
@@ -226,7 +231,7 @@ object DKIsland {
         val r = root ?: return
         val g = r.background as? GradientDrawable ?: return
         val round = roundPct(s)
-        if (!wide && notchOn(s)) {
+        if (!wide && notchEmpty(s)) {
             val w = dpx(s, notchW(s).toFloat()); val h = dpx(s, notchH(s).toFloat())
             g.cornerRadius = IslandCore.notchCorner(round, w, h); g.setStroke(0, 0); r.elevation = 0f
         } else {
@@ -325,7 +330,9 @@ object DKIsland {
             }
         } catch (_: Exception) { null }
         val allTasks = if (social?.active != true) tasks else IslandCore.recent(tasks + social, emptyList())
-        val notifs = if (notifsOn(s)) IslandFeed.list() else emptyList()
+        // 15 नवंबर 2026 (मालिक): सिर्फ़ बिना देखे notification; सामने वाला ऐप = उसके देख लिए
+        frontPkg(s).let { fg -> if (fg.isNotBlank() && !IslandCore.noApp(fg)) IslandFeed.seenApp(fg) }
+        val notifs = if (notifsOn(s)) IslandFeed.shown() else emptyList()
         val charge = if (chargeOn(s)) chargeNow(s) else null
         val all = IslandCore.Snap(calls.firstOrNull(), live, allTasks, media, PrivacyLocked.list(), notifs, charge, reel?.takeIf { IslandCore.reelOn(it, now) }, calls)
         // 13 नवंबर 2026 (मालिक): सिर्फ़ पीछे चलती चीज़ें - जो ऐप सामने खुला है उसका गाना / वीडियो / notification / कॉल island में नहीं
@@ -377,6 +384,9 @@ object DKIsland {
             remove(); main.postDelayed(ticker, 1_500L); return
         }
         if (root == null) show(s)
+        lastNotifKeys = sn.notifs.map { it.key }
+        val idle = IslandCore.notchIdle(sn, now)
+        if (idle != notchIdle) { notchIdle = idle; lastSig = ""; applyShape(s, expanded || peeking) }
         // अपने-आप छोटा: कॉल चलते समय भी (पहले कॉल में कभी छोटा नहीं होता था = island अटका रहता था). बजती कॉल = बड़ा रहे
         // जवाब लिखते समय अपने-आप छोटा नहीं (लिखा हुआ न मिटे)
         if (replyTo == null && IslandCore.autoCollapse(expanded, up - touchedAt, holding(), sn)) collapse()
@@ -507,6 +517,7 @@ object DKIsland {
         val r = root ?: return; val s = svc ?: return
         focus = f
         expanded = true; peeking = false; peekUntil = 0L; touchedAt = SystemClock.uptimeMillis(); lastSig = ""
+        expandedAt = SystemClock.uptimeMillis()
         setWide(s, true)
         historyAt = 0L
         tick()
@@ -521,6 +532,8 @@ object DKIsland {
     private fun collapse() {
         val r = root ?: return; val s = svc ?: return
         val was = expanded || peeking
+        // 15 नवंबर 2026 (मालिक: "देख लेगा तो हट जाएगा"): फैलाकर notification देखे = अब island में नहीं
+        if (expanded && IslandCore.viewed(SystemClock.uptimeMillis() - expandedAt)) IslandFeed.seenKeys(lastNotifKeys)
         endReply(s)
         // थोड़ी देर वाला बड़ा रूप बंद = वही दोबारा न उछले (बजती कॉल गोली में रहे, कटने / उठने तक)
         if (peeking) IslandCore.allCalls(snap(s, System.currentTimeMillis())).filter { it.ringing }.forEach { ringClosed.add(it.key.ifBlank { it.who }) }
@@ -551,7 +564,7 @@ object DKIsland {
     @SuppressLint("ClickableViewAccessibility")
     private fun renderBubble(s: DKAccessibilityService, sn: IslandCore.Snap, now: Long) {
         // नॉच में दूसरा बुलबुला नहीं (कैमरे के पास सिर्फ़ एक छोटा आकार) - टैप करके फैलाने पर सब दिखता है
-        val it2 = if (expanded || peeking || root == null || notchOn(s)) null else IslandCore.bubble(sn, now)
+        val it2 = if (expanded || peeking || root == null || notchEmpty(s)) null else IslandCore.bubble(sn, now)
         if (it2 == null) { removeBubble(); return }
         val calls = IslandCore.allCalls(sn)
         val c2 = if (it2.kind == IslandCore.Kind.CALL) calls.getOrNull(it2.idx) else null
@@ -646,7 +659,7 @@ object DKIsland {
         val r = root ?: return
         val mode = if (replyTo != null && expanded) "R|" else if (expanded) "E|" else if (peeking) "P|" else "C|"
         val sig = mode + sig(sn, now) + "|b${IslandCore.bubble(sn, now)}|f$focus|pk${peekNotif?.key}${peekTask?.id}|k$k" +
-            "|n${notchOn(s)}${notchW(s)}x${notchH(s)}r${roundPct(s)}"
+            "|n${notchEmpty(s)}${notchW(s)}x${notchH(s)}r${roundPct(s)}"
         // छूते समय / छूने के ठीक बाद ढाँचा न बदले (वरना बटन उँगली के नीचे से हट जाता था, स्क्रॉल ऊपर कूदता था = "अटक गया").
         // खुलना / बंद होना (mode बदला) हमेशा तुरंत.
         val hold = holding() || SystemClock.uptimeMillis() - touchedAt < IslandCore.TOUCH_HOLD_MS
@@ -694,8 +707,9 @@ object DKIsland {
 
     /** छोटा island: [निशान] लाइन ............ दाईं ओर (समय / कदम / +2). दूसरी चीज़ अलग बुलबुले में */
     private fun small(s: DKAccessibilityService, sn: IslandCore.Snap, now: Long): View {
-        // 15 नवंबर 2026 (मालिक): नॉच = सिर्फ़ कैमरे जितना काला आकार (कुछ लिखा नहीं). टैप = फैलकर सब; सूचना = अपने-आप पूरा चौड़ा
-        if (notchOn(s)) return View(s).apply {
+        // 15 नवंबर 2026 (मालिक): नॉच = सिर्फ़ कैमरे जितना काला आकार (कुछ लिखा नहीं). टैप = फैलकर सब; सूचना = अपने-आप पूरा चौड़ा.
+        // कुछ चल रहा हो (कॉल / काम / बिना देखा notification / गाना) = नीचे वाली पूरी गोली ([notchEmpty])
+        if (notchEmpty(s)) return View(s).apply {
             layoutParams = FrameLayout.LayoutParams(dpx(s, notchW(s).toFloat()), dpx(s, notchH(s).toFloat()))
             contentDescription = UiLang.s("DK Island - टैप = खोलें")
         }

@@ -61,12 +61,35 @@ object IslandFeed {
     /** फ़ोन से हटा (किसी ने भी हटाया) */
     fun removed(key: String) {
         val had = synchronized(this) { items.remove(key) != null }
-        intents.remove(key); autoCancel.remove(key); hidden.remove(key)
+        intents.remove(key); autoCancel.remove(key); hidden.remove(key); seen.remove(key)
         if (had) DKIsland.poke()
     }
 
     /** उस ऐप के सारे island वाले notification (ऐप खुला = Android से हटाए हुए भी island से हटें) */
     fun keysOf(pkg: String): List<String> = synchronized(this) { items.values.filter { it.pkg == pkg }.map { it.key } }
+
+    /** देखे हुए notification: key -> किस notification (at) तक देखा. 15 नवंबर 2026 (मालिक: "देख लेगा तो हट जाएगा") */
+    private val seen = ConcurrentHashMap<String, Long>()
+
+    /** यह ऐप खोला (सामने है) = उसके सारे (कॉल छोड़कर) देखे गए */
+    fun seenApp(pkg: String) {
+        if (pkg.isBlank()) return
+        val l = synchronized(this) { items.values.filter { it.pkg == pkg && !it.call && (seen[it.key] ?: Long.MIN_VALUE) < it.at } }
+        if (l.isEmpty()) return
+        l.forEach { seen[it.key] = it.at }
+        DKIsland.poke()
+    }
+
+    /** island फैलाकर देखे / टैप करके खोले */
+    fun seenKeys(keys: Collection<String>) {
+        var any = false
+        synchronized(this) { keys.forEach { k -> items[k]?.let { n -> if (!n.call && (seen[k] ?: Long.MIN_VALUE) < n.at) { seen[k] = n.at; any = true } } } }
+        if (seen.size > 500) synchronized(this) { seen.keys.retainAll(items.keys) }
+        if (any) DKIsland.poke()
+    }
+
+    /** island में दिखने वाले: बिना देखे, चलते (ongoing) नहीं - [IslandCore.unseen] */
+    fun shown(): List<IslandCore.Notif> = IslandCore.unseen(list(), seen)
 
     /** island की सूची (island से छिपाए हुए नहीं) */
     fun list(): List<IslandCore.Notif> = synchronized(this) { IslandCore.notifOrder(items.values.filter { it.key !in hidden }) }
@@ -109,6 +132,7 @@ object IslandFeed {
     fun open(c: Context, key: String): Boolean {
         val n = synchronized(this) { items[key] }
         val pi = intents[key]
+        seenKeys(listOf(key))      // island से खोला = देख लिया
         if (pi != null && send(c, pi)) {
             // ऐप ने "टैप पर हटो" कहा था - हमने खोला, तो हम ही हटाएँ (जैसे notification shade करता है)
             if (n != null && !n.ongoing && key in autoCancel) try { DKNotifListener.instance?.cancelNotification(key) } catch (_: Exception) {}
