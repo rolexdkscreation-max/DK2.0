@@ -27,6 +27,7 @@ import kotlinx.coroutines.withContext
  * 15 नवंबर 2026 (मालिक, Advanced → Emergency SOS, default बंद):
  * "DK, activate SOS" -> ऊपर के 5 इमरजेंसी नंबरों को तुरंत (1) SMS (2) WhatsApp पर Google Maps लोकेशन लिंक,
  * फिर (3) क्रम से कॉल - हर नंबर पर 5 बार तक, जो उठा ले वहीं रुकना (कॉल-लॉग की duration > 0 = उठाया).
+ * शुरू होने से पहले [Rules.COUNTDOWN_SEC] सेकंड की उल्टी गिनती (गलती से चालू हुआ हो तो रद्द करने का समय).
  * "SOS बंद" / "SOS रोको" = तुरंत सब रुकता है. नियम (pure) [Rules] में - JVM test ([SosTest]).
  */
 object Sos {
@@ -66,6 +67,12 @@ object Sos {
             append(" - DK AI")
         }
 
+        /** 15 नवंबर 2026 (ऑडिट): SMS/कॉल से पहले इतने सेकंड - गलती से चालू हुआ हो तो "SOS रोको" बोलकर रद्द */
+        const val COUNTDOWN_SEC = 10
+
+        fun countdownSpeech(sec: Int = COUNTDOWN_SEC): String =
+            "$sec सेकंड में इमरजेंसी SOS भेजूँगी। गलती से हुआ हो तो बोलें: SOS रोको।"
+
         /** कॉल का क्रम: (नंबर, कोशिश) - पहले नंबर की 5 कोशिश, फिर दूसरे की ... */
         fun callPlan(contacts: List<String>, tries: Int = TRIES_PER_CONTACT): List<Pair<String, Int>> =
             contacts.flatMap { n -> (1..tries).map { n to it } }
@@ -78,17 +85,25 @@ object Sos {
     fun contacts(c: Context): List<String> = Rules.parse(FeatureFlags.str(c, CONTACTS))
 
     /** null = शुरू हुआ (बोलने लायक संदेश वापस), वरना वजह */
-    fun start(c: Context): String {
+    @Synchronized fun start(c: Context): String {
         val app = c.applicationContext
         if (!FeatureFlags.on(app, FeatureFlags.SOS_ON)) return "इमरजेंसी SOS बंद है। सेटिंग्स → DK AI Plus → इमरजेंसी SOS में चालू करें।"
         val list = contacts(app)
         if (list.isEmpty()) return "SOS के लिए कोई नंबर नहीं डाला है। सेटिंग्स में 5 इमरजेंसी नंबर डालें।"
         if (running) return "SOS पहले से चल रहा है।"
-        job = scope.launch { runSos(app, list) }
-        return "SOS चालू। ${list.size} लोगों को लोकेशन भेज रही हूँ और कॉल कर रही हूँ।"
+        // उल्टी गिनती की घोषणा फ़ोन की अपनी आवाज़ से - Live/चैट चाहे जो भी चल रहा हो, मालिक को सुनाई दे
+        PlusVoice.say(app, Rules.countdownSpeech())
+        job = scope.launch {
+            // पहले उल्टी गिनती: इस बीच "SOS रोको" = stop() = job रद्द, कोई SMS/कॉल नहीं जाता
+            delay(Rules.COUNTDOWN_SEC * 1000L)
+            if (!currentCoroutineContext().isActive) return@launch
+            PlusVoice.say(app, "SOS भेज रही हूँ।")
+            runSos(app, list)
+        }
+        return Rules.countdownSpeech() + " फिर ${list.size} लोगों को लोकेशन भेजकर कॉल करूँगी।"
     }
 
-    fun stop(): String { val was = running; job?.cancel(); job = null; return if (was) "SOS रोक दिया।" else "SOS चल नहीं रहा था।" }
+    @Synchronized fun stop(): String { val was = running; job?.cancel(); job = null; return if (was) "SOS रोक दिया।" else "SOS चल नहीं रहा था।" }
 
     private suspend fun runSos(c: Context, list: List<String>) {
         val loc = location(c)

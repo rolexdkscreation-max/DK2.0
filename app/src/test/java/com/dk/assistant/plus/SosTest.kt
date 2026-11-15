@@ -27,4 +27,11 @@ class SosTest {
         val p = Sos.Rules.callPlan(listOf("1", "2"))
         assertEquals(10, p.size); assertEquals("1" to 1, p.first()); assertEquals("2" to 5, p.last()); assertEquals("2" to 1, p[5])
     }
+
+    // 15 नवंबर 2026 (ऑडिट): SMS/कॉल से पहले रद्द करने का समय
+    @Test fun countdown_beforeSending() {
+        assertTrue(Sos.Rules.COUNTDOWN_SEC in 5..15)
+        val s = Sos.Rules.countdownSpeech()
+        assertTrue(s, s.contains("${Sos.Rules.COUNTDOWN_SEC} सेकंड") && s.contains("SOS रोको"))
+    }
 }
