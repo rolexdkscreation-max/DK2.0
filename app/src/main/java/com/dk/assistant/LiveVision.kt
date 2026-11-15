@@ -37,6 +37,8 @@ object LiveVision {
     private fun live(): GeminiLive? = DKAccessibilityService.instance?.gemLive
     private fun liveReady() = DKState.live && live()?.canTalk() == true
     private fun note(t: String) { live()?.visionNote(t) }
+    /** 15 नवंबर 2026: DK लेंस के चेहरा स्कैन ([LensFaces]) से - सामने कौन है (Boss / दोस्त / परिवार), सिर्फ़ लेंस चालू हो तब */
+    fun facesNote(t: String) { if (cameraOn) note(t) }
 
     /** 14 नवंबर 2026 (मालिक): DK लेंस खुलते ही जो दिखे तुरंत बोले - पहली तस्वीर जाते ही यह बताओ */
     @Volatile private var describeFirst = false

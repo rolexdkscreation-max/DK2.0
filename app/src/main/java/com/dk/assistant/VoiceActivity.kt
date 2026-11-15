@@ -40,6 +40,9 @@ class VoiceActivity : AppCompatActivity() {
     private lateinit var camBtn: ImageButton
     private lateinit var camBox: FrameLayout
     private lateinit var camView: PreviewView
+    /** 15 नवंबर 2026: DK लेंस पर futuristic चेहरा स्कैन (Boss / दोस्त / परिवार) */
+    private var lensHolo: HoloScanView? = null
+    private var lensFaces: LensFaces? = null
     private var feed: CameraFeed? = null
     private var camAsked = false
     private val visionListener: () -> Unit = { renderVision(); syncCamera() }
@@ -120,6 +123,7 @@ class VoiceActivity : AppCompatActivity() {
         }
         camView = PreviewView(this).apply { implementationMode = PreviewView.ImplementationMode.COMPATIBLE; scaleType = PreviewView.ScaleType.FILL_CENTER }
         camBox.addView(camView, FrameLayout.LayoutParams(-1, -1))
+        HoloScanView(this).also { h -> lensHolo = h; lensFaces = LensFaces(applicationContext, h); camBox.addView(h, FrameLayout.LayoutParams(-1, -1)) }
         camBox.addView(ImageButton(this).apply {
             setImageResource(R.drawable.ic_flip); setBackgroundResource(R.drawable.glass_circle)
             val p = (10 * dp).toInt(); setPadding(p, p, p, p); scaleType = android.widget.ImageView.ScaleType.FIT_CENTER
@@ -308,7 +312,7 @@ class VoiceActivity : AppCompatActivity() {
         if (feed?.running == true || LiveVision.cameraWanted) { feed?.stop(); LiveVision.onCameraStopped("आवाज़ स्क्रीन छोड़ी") }
         super.onStop()
     }
-    override fun onDestroy() { feed?.release(); feed = null; super.onDestroy() }
+    override fun onDestroy() { lensFaces?.stop(); lensFaces = null; feed?.release(); feed = null; super.onDestroy() }
 
     // ---------------------------------------------------------------- v3.40: स्क्रीन शेयर / कैमरा
     private fun liveReady() = DKState.live && DKAccessibilityService.instance?.gemLive?.canTalk() == true
@@ -379,6 +383,7 @@ class VoiceActivity : AppCompatActivity() {
         val f = feed
         if (!LiveVision.cameraWanted) {
             if (f?.running == true) { f.stop(); LiveVision.onCameraStopped("बंद किया") }
+            lensHolo?.clear()
             renderVision(); return
         }
         if (!visible) return
@@ -389,6 +394,8 @@ class VoiceActivity : AppCompatActivity() {
         if (f?.running == true && f.front == LiveVision.cameraFront) return
         val feed2 = f ?: CameraFeed(this, camView).also { feed = it }
         feed2.onFrameAnalyzed = null      // v3.99: कैमरे पर चेहरा पहचान हटाई
+        // 15 नवंबर 2026 (मालिक): नया - अलग तेज़ hook, Gemini को फ़्रेम भेजना पहले जैसा
+        feed2.onFace = { b -> lensFaces?.frame(b, LiveVision.cameraFront) }
         val front = LiveVision.cameraFront
         feed2.start(front,
             onOk = { LiveVision.onCameraStarted(front) },

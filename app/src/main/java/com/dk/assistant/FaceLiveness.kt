@@ -44,6 +44,16 @@ class FaceLiveness(
         step = Step.NEED_FACE
     }
 
+    /**
+     * 15 नवंबर 2026 (मालिक: "फ़ोटो या वीडियो दिखाए फिर भी न खुले"): हर बार नया क्रम. +1 = पहले बाएँ, -1 = पहले दाएँ, 0 = कोई भी
+     * (पुराना तरीका). पहले से रिकॉर्ड किया वीडियो नहीं जानता कि इस बार कौन-सी तरफ़ पहले माँगी जाएगी - गलत तरफ़ पहले घूमा तो गिना नहीं जाता.
+     * (बिना शीशे वाले फ़्रेम में yaw > 0 = इंसान अपनी बाईं तरफ़ घूमा.)
+     */
+    @Volatile var first: Int = 0
+        private set
+
+    fun challenge(firstSide: Int) { first = firstSide.coerceIn(-1, 1); reset() }
+
     /** इस बार कितने फ़्रेम सामने वाले नाप में रहे (फ़ोटो लगभग हमेशा सामने रहती है) */
     fun flatCount() = flatFrames
 
@@ -70,8 +80,8 @@ class FaceLiveness(
         val y = yaw(det.kps) ?: return step == Step.LIVE
         lastYaw = y
         if (abs(y) <= center) { centerSeen = true; flatFrames++ }
-        if (y >= turn) sawPos = true
-        if (y <= -turn) sawNeg = true
+        if (y >= turn && (first >= 0 || sawNeg)) sawPos = true
+        if (y <= -turn && (first <= 0 || sawPos)) sawNeg = true
         step = when {
             centerSeen && sawPos && sawNeg && abs(y) <= center -> Step.LIVE
             step == Step.LIVE -> Step.LIVE
@@ -86,13 +96,22 @@ class FaceLiveness(
      * 14 नवंबर 2026 (मालिक: "पहले से सेट हो कि कैसे घुमाना है, फिर आई कॉन्टैक्ट"): तय क्रम ① एक तरफ़ ② दूसरी तरफ़ ③ सीधे कैमरे में आँख -
      * स्क्रीन पर पहले से दिखता है ([GUIDE]), और हर कदम पर अगला कदम ([hint]). बाएँ / दाएँ किसी से भी शुरू करें, चलेगा.
      */
-    fun hint(): String = when (step) {
+    fun hint(): String = if (first != 0) when (step) {
+        Step.NEED_FACE -> "चेहरा कैमरे के सामने करें"
+        Step.TURN_ONE -> "① सिर धीरे से ${side(first)} घुमाइए"
+        Step.TURN_OTHER -> "② अब ${side(-first)} घुमाइए"
+        Step.LOOK_CENTER -> "③ अब सीधे कैमरे में आँख मिलाइए"
+        Step.LIVE -> "✓ असली इंसान"
+    } else when (step) {
         Step.NEED_FACE -> "चेहरा कैमरे के सामने करें"
         Step.TURN_ONE -> "① सिर धीरे से एक तरफ़ (बाएँ) घुमाइए"
         Step.TURN_OTHER -> "② अब दूसरी तरफ़ (दाएँ) घुमाइए"
         Step.LOOK_CENTER -> "③ अब सीधे कैमरे में आँख मिलाइए"
         Step.LIVE -> "✓ असली इंसान"
     }
+
+    /** इस बार का क्रम (स्क्रीन पर पहले से). random नहीं = पुराना [GUIDE] */
+    fun guide(): String = if (first == 0) GUIDE else "जाँच का क्रम: ① सिर ${side(first)} ② सिर ${side(-first)} ③ सीधे कैमरे में आँख मिलाइए"
 
     /** कितने कदम पूरे (0-3) - स्क्रीन पर ●●○ */
     fun done(): Int = when (step) { Step.NEED_FACE, Step.TURN_ONE -> 0; Step.TURN_OTHER -> 1; Step.LOOK_CENTER -> 2; Step.LIVE -> 3 }
@@ -122,6 +141,10 @@ class FaceLiveness(
         const val JUMP = 0.6f
         /** एक फ़्रेम में आकार इतने गुना बदला = फ़ोटो बदली */
         const val RESIZE = 1.5f
+
+        fun side(s: Int) = if (s > 0) "बाएँ" else "दाएँ"
+        /** हर बार नया क्रम (+1 / -1) */
+        fun randomSide(): Int = if (kotlin.random.Random.nextBoolean()) 1 else -1
 
         /**
          * नाक का आँखों की रेखा के साथ (बाएँ-दाएँ) नाप, आँखों और होंठ के बीच वाले affine आधार में:

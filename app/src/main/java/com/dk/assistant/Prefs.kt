@@ -316,6 +316,8 @@ object Prefs {
     /** DK लाइव के कैमरे पर चेहरा पहचान का निशान (पहले से चालू था - वैसा ही) */
     fun faceHudOn(c: Context) = sp(c).getBoolean("face_hud_on", true)
     fun faceStrict(c: Context) = sp(c).getBoolean("face_strict", false)
+    /** 15 नवंबर 2026: AI anti-spoof (फ़ोटो/वीडियो/स्क्रीन वाला चेहरा न माने) - पहले से चालू */
+    fun faceSpoofOn(c: Context) = sp(c).getBoolean("face_spoof_on", true)
     fun hasOwnerFace(c: Context): Boolean =
         !sp(c).getString(FACE_PREF, null).isNullOrBlank() || !sp(c).getString(FACE_PREF_OLD, null).isNullOrBlank()
 
