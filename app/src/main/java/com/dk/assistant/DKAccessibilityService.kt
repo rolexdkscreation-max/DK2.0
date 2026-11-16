@@ -820,7 +820,7 @@ class DKAccessibilityService : AccessibilityService() {
                         DKLog.d("\"${hit.word.hi}\" -> Gemini Live (${hit.latencyMs} ms" + (if (hit.locked) ", फ़ोन लॉक" else "") + ")")
                         wakeLive = true; LiveChime.arm()
                         com.dk.assistant.wake.WakeWord.sessionLocked = hit.locked
-                        gemLive.idleExitMs = com.dk.assistant.wake.WakeWord.silenceMs(me)
+                        gemLive.idleExitMs = com.dk.assistant.wake.WakeWord.silenceMs(me).toLong()
                         gemLive.firstText = null
                         DKState.set(Mode.LISTENING)
                         DKState.setLive(true)

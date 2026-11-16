@@ -31,25 +31,12 @@ class DKVoiceInteractionService : VoiceInteractionService() {
         }
     }
 
-    private var hotword: android.service.voice.AlwaysOnHotwordDetector? = null
-
-    /** Android का अपना (DSP) hotword: सिर्फ़ फ़ोन बनाने वाले के सिस्टम ऐप को मिलता है - आम ऐप पर ज़्यादातर "उपलब्ध नहीं" */
-    @Suppress("DEPRECATION")
+    /**
+     * Android का अपना (DSP) hotword (AlwaysOnHotwordDetector) Android 11+ में @SystemApi है - public SDK में यह class ही नहीं दिखती,
+     * सिर्फ़ फ़ोन बनाने वाले के system ऐप (जैसे Google ऐप) को मिलता है. इसलिए आम ऐप DK के लिए यह "उपलब्ध नहीं" - हमारा मॉडल चलता है.
+     */
     private fun probeHotword() {
-        val cb = object : android.service.voice.AlwaysOnHotwordDetector.Callback() {
-            override fun onAvailabilityChanged(status: Int) {
-                com.dk.assistant.wake.WakeWord.setHotwordState(this@DKVoiceInteractionService, com.dk.assistant.wake.WakeRules.hotwordState(status))
-            }
-            override fun onDetected(eventPayload: android.service.voice.AlwaysOnHotwordDetector.EventPayload) {}
-            override fun onError() { com.dk.assistant.wake.WakeWord.setHotwordState(this@DKVoiceInteractionService, "error") }
-            override fun onRecognitionPaused() {}
-            override fun onRecognitionResumed() {}
-        }
-        try {
-            hotword = createAlwaysOnHotwordDetector("Hey DK", java.util.Locale.forLanguageTag("hi-IN"), cb)
-        } catch (t: Throwable) {
-            com.dk.assistant.wake.WakeWord.setHotwordState(this, "denied")
-            DKLog.d("Android का अपना hotword: नहीं मिला (${t.javaClass.simpleName}) - DK का अपना मॉडल चलेगा")
-        }
+        com.dk.assistant.wake.WakeWord.setHotwordState(this, com.dk.assistant.wake.WakeRules.hotwordState(-1))
+        DKLog.d("Android का अपना hotword: आम ऐप के लिए उपलब्ध नहीं (SystemApi) - DK का अपना मॉडल (फ़ोन पर ही) चलेगा")
     }
 }
