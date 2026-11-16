@@ -18,6 +18,9 @@ class FakeScreenDriver(
     /** (स्क्रीन, element का label) -> अगली स्क्रीन */
     val onClick = mutableMapOf<Pair<String, String>, String>()
     val clicks = mutableListOf<String>()
+    /** स्क्रीन -> back दबाने पर कौन सी (न हो तो वहीं) */
+    val onBack = mutableMapOf<String, String>()
+    var backs = 0
     val typed = mutableListOf<String>()
     var gestureTaps = 0
     var clickWorks = true
@@ -61,6 +64,6 @@ class FakeScreenDriver(
     }
 
     override suspend fun scroll(down: Boolean) = DriverResult.OK
-    override suspend fun back(): DriverResult = DriverResult.OK
+    override suspend fun back(): DriverResult { backs++; onBack[current]?.let { current = it }; return DriverResult.OK }
     override suspend fun pause(ms: Long) {}
 }

@@ -1,5 +1,6 @@
 package com.dk.assistant.agent.social
 
+import com.dk.assistant.agent.core.TargetSpec
 import java.net.URLEncoder
 
 /** request -> कदमों की सूची (pure). media / फ़ोन नंबर पहले से तय (Android हिस्सा देता है) */
@@ -18,9 +19,14 @@ object SocialPlanner {
                         ask(r, "Instagram स्टोरी में यह ${kind(m)} डाल दूँ?"))
                     else -> {
                         val hint = if (r.action == SocialAction.POST_REEL) S.IG_REEL_HINT else S.IG_FEED_HINT
+                        val reel = r.action == SocialAction.POST_REEL
                         val steps = buildList {
+                            // reel: गाना editor में ही (Next से पहले)
+                            if (reel) songStep(r, S.IG_REEL_AUDIO, S.IG_NEXT)?.let { add(it) }
                             add(PlanStep.AdvanceUntil(S.IG_NEXT, S.IG_CAPTION, max = 3))
                             if (cap.isNotEmpty()) add(PlanStep.Type(S.IG_CAPTION, cap))
+                            if (!reel) songStep(r, S.IG_ADD_MUSIC, S.IG_SHARE)?.let { add(it) }
+                            addAll(tagSteps(r, S.IG_TAG_PEOPLE, S.IG_SHARE, photoTap = !reel && !m.mime.startsWith("video/")))
                             add(PlanStep.Final(S.IG_SHARE, S.IG_DONE, S.IG_CAPTION))
                         }
                         SocialTask(id, r.platform, r.action, r.mode, OpenSpec.ShareMedia(r.platform.pkg, m.mime, m.uri, hint), steps,
@@ -43,6 +49,8 @@ object SocialPlanner {
                     val steps = buildList {
                         add(PlanStep.Tap(S.FB_NEXT, optional = true))
                         if (cap.isNotEmpty()) add(PlanStep.Type(S.FB_TEXT, cap, optional = true))
+                        addAll(tagSteps(r, S.FB_TAG, S.FB_POST, photoTap = false))
+                        songStep(r, S.FB_MUSIC, S.FB_POST)?.let { add(it) }
                         add(PlanStep.Final(S.FB_POST, S.FB_DONE, S.FB_POST))
                     }
                     SocialTask(id, r.platform, r.action, r.mode, OpenSpec.ShareMedia(r.platform.pkg, m.mime, m.uri, S.FB_FEED_HINT, cap), steps,
@@ -53,6 +61,7 @@ object SocialPlanner {
             Platform.YOUTUBE -> {
                 val m = media!!
                 val steps = buildList {
+                    songStep(r, S.YT_ADD_SOUND, S.YT_NEXT)?.let { add(it) }
                     add(PlanStep.AdvanceUntil(S.YT_NEXT, S.YT_TITLE, max = 4))
                     if (cap.isNotEmpty()) add(PlanStep.Type(S.YT_TITLE, cap))
                     add(PlanStep.Final(S.YT_UPLOAD, S.YT_DONE, S.YT_UPLOAD))
@@ -108,6 +117,42 @@ object SocialPlanner {
             r.platform == Platform.YOUTUBE -> "Short अपलोड (पब्लिक) कर दूँ?"
             else -> "पब्लिक (शेयर) कर दूँ?"
         }
+
+    /** गाना सिर्फ़ तब जब मालिक ने कहा हो ("auto" यहाँ तक आते-आते असली नाम बन चुका होता है) */
+    fun songStep(r: SocialRequest, open: TargetSpec, anchor: TargetSpec): PlanStep.Soft? {
+        val song = r.song.trim()
+        if (song.isEmpty() || song == "auto") return null
+        val title = song.substringBefore(" - ").trim().ifEmpty { song }
+        return PlanStep.Soft(listOf(
+            PlanStep.Tap(open),
+            PlanStep.Type(Selectors.MUSIC_SEARCH, song.replace(" - ", " ")),
+            PlanStep.PickResult(title),
+            PlanStep.Tap(Selectors.PICK_DONE, optional = true),
+        ), "गाना \"${short(song)}\" नहीं लग पाया", anchor, "गाना: {pick}", name = "गाना")
+    }
+
+    /** हर नाम के लिए अलग कोशिश - जो चुना गया वह \"हाँ\" से पहले सुनाया जाता है (ग़लत व्यक्ति हो तो मना कर सकें) */
+    fun tagSteps(r: SocialRequest, open: TargetSpec, anchor: TargetSpec, photoTap: Boolean): List<PlanStep> =
+        r.tags.map { it.trim().removePrefix("@") }.filter { it.isNotEmpty() }.distinct().take(10).map { name ->
+            PlanStep.Soft(buildList {
+                add(PlanStep.Tap(open))
+                if (photoTap) add(PlanStep.TapAt(0.5f, 0.4f))
+                add(PlanStep.Type(Selectors.PEOPLE_SEARCH, name))
+                add(PlanStep.PickResult(name))
+                add(PlanStep.Tap(Selectors.PICK_DONE, optional = true))
+            }, "\"$name\" को टैग नहीं कर पाया", anchor, "टैग: {pick}", name = "टैग")
+        }
+
+    /** जो इस ऐप/तरीके में होता ही नहीं - पहले ही साफ़ बता दो (झूठा वादा नहीं) */
+    fun unsupported(r: SocialRequest): List<String> = buildList {
+        val song = r.song.isNotBlank()
+        val tags = r.tags.isNotEmpty()
+        if (r.action == SocialAction.POST_STORY && song) add("स्टोरी में गाना मैं नहीं लगा पाता")
+        if (r.action == SocialAction.POST_STORY && tags) add("स्टोरी में टैग मैं नहीं कर पाता")
+        if (r.platform == Platform.YOUTUBE && tags) add("YouTube Shorts पर लोगों को टैग नहीं होता")
+        if (r.platform == Platform.FACEBOOK && r.action == SocialAction.POST_TEXT && song) add("सिर्फ़ लिखी पोस्ट में गाना नहीं लगता")
+        if (r.platform == Platform.FACEBOOK && r.action == SocialAction.POST_TEXT && tags) add("सिर्फ़ लिखी पोस्ट में टैग मैं नहीं करता")
+    }
 
     private fun kind(m: SharedItem) = if (m.mime.startsWith("video/")) "वीडियो" else "फोटो"
     private fun short(s: String) = if (s.length > 80) s.take(77) + "…" else s

@@ -78,6 +78,34 @@ sealed class PlanStep {
     data class Final(val spec: TargetSpec, val successWords: List<String>, val goneSpec: TargetSpec, val requireBoth: Boolean = false,
                      override val optional: Boolean = false, override val name: String = spec.name) : PlanStep()
     data class Read(val maxLines: Int = 20, override val optional: Boolean = false, override val name: String = "read") : PlanStep()
+    /**
+     * 16 नवंबर 2026 (गाना / टैग): हो जाए तो अच्छा - न हो तो पोस्ट नहीं रुकती, पर आख़िरी सवाल और नतीजे में साफ़ बताया जाता है (warn).
+     * गड़बड़ हो तो back दबाकर anchor (जैसे Share बटन) वाली स्क्रीन पर लौटो. okNote में {pick} = जो नतीजा चुना गया.
+     */
+    data class Soft(val steps: List<PlanStep>, val warn: String, val anchor: TargetSpec?, val okNote: String = "",
+                    override val optional: Boolean = true, override val name: String = "soft") : PlanStep()
+    /** स्क्रीन के हिस्से पर टैप (0..1) - जैसे "फोटो पर टैप करके टैग करें" */
+    data class TapAt(val xFrac: Float, val yFrac: Float, override val optional: Boolean = false, override val name: String = "tap") : PlanStep()
+    /** खोज के नतीजों में से वह जिसमें query लिखा हो (लिखने का खाना नहीं) */
+    data class PickResult(val query: String, override val optional: Boolean = false, override val name: String = query) : PlanStep()
+}
+
+/** खोज के नतीजों में से सही वाला (pure) */
+object ResultPick {
+    private val CHROME = listOf("search", "खोज", "cancel", "रद्द", "clear", "done", "हो गया", "back", "पीछे", "see all", "सभी देखें")
+
+    fun choose(obs: com.dk.assistant.agent.core.ScreenObservation, query: String): com.dk.assistant.agent.core.UiElement? {
+        val q = query.trim().lowercase()
+        if (q.length < 2) return null
+        val words = q.split(Regex("[^\\p{L}\\p{M}\\p{N}_.]+")).filter { it.length >= 2 }
+        val below = obs.elements.filter { it.editable }.minByOrNull { it.bounds.top }?.bounds?.bottom ?: 0
+        val hits = obs.elements.filter { e ->
+            e.enabled && !e.editable && e.bounds.width > 0 && e.bounds.height > 0 && e.bounds.centerY > below &&
+                CHROME.none { c -> e.label.startsWith(c) } &&
+                (e.label.contains(q) || (words.isNotEmpty() && words.all { e.label.contains(it) }))
+        }
+        return (hits.filter { it.clickable }.ifEmpty { hits }).minByOrNull { it.bounds.top }
+    }
 }
 
 data class SocialTask(
@@ -216,6 +244,17 @@ object Selectors {
     val FB_DONE = listOf("posting", "posted", "your post is", "your post", "uploading", "पोस्ट हो", "पोस्ट किया जा रहा")
     val FB_FEED_HINT = listOf("feed", "news feed", "post", "फ़ेसबुक", "facebook")
     val FB_STORY_HINT = listOf("stor", "स्टोरी")
+
+    // गाना / टैग (16 नवंबर 2026) - न मिले तो Soft कदम चेतावनी देता है, काम नहीं रुकता
+    val IG_ADD_MUSIC = TargetSpec(listOf("add music", "add audio", "music", "संगीत जोड़ें", "म्यूज़िक जोड़ें", "संगीत"), listOf("music_row", "add_music", "music_picker_button"), name = "Add music")
+    val IG_REEL_AUDIO = TargetSpec(listOf("add audio", "audio", "music", "ऑडियो जोड़ें", "ऑडियो", "संगीत"), listOf("clips_action_bar_music_button", "music_button", "audio_button"), name = "Audio")
+    val MUSIC_SEARCH = TargetSpec(listOf("search music", "search", "संगीत खोजें", "खोजें"), listOf("search_edit_text", "row_search_edit_text", "action_bar_search_edit_text", "search_box"), editable = true, name = "music search")
+    val PICK_DONE = TargetSpec(listOf("done", "add", "use this sound", "हो गया", "जोड़ें", "इस साउंड का इस्तेमाल करें"), listOf("done_button", "select_button", "action_bar_button_action"), exact = true, name = "Done")
+    val IG_TAG_PEOPLE = TargetSpec(listOf("tag people", "लोगों को टैग करें", "टैग करें"), listOf("tag_people", "people_tagging_button", "tag_people_row"), name = "Tag people")
+    val PEOPLE_SEARCH = TargetSpec(listOf("search for a person", "search for friends", "search", "व्यक्ति खोजें", "दोस्त खोजें", "खोजें"), listOf("row_search_edit_text", "search_edit_text"), editable = true, name = "search")
+    val FB_TAG = TargetSpec(listOf("tag people", "tag friends", "लोगों को टैग करें", "दोस्तों को टैग करें"), emptyList(), name = "Tag people")
+    val FB_MUSIC = TargetSpec(listOf("add music", "music", "संगीत जोड़ें", "संगीत"), emptyList(), name = "Music")
+    val YT_ADD_SOUND = TargetSpec(listOf("add sound", "sound", "साउंड जोड़ें", "ध्वनि जोड़ें", "साउंड"), listOf("shorts_camera_music_button", "music_button"), name = "Add sound")
 
     // YouTube Shorts (16 नवंबर 2026)
     val YT_NEXT = TargetSpec(listOf("next", "done", "आगे", "अगला", "हो गया"), listOf("shorts_trim_finish_trim_button", "shorts_camera_next_button", "next_button"), exact = true, name = "Next")
