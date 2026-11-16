@@ -57,7 +57,7 @@ class CoderAllProvidersTest {
         assertFalse(some.contains("सारी API keys और मॉडल की limit खत्म"))
         assertTrue(some.contains("दूसरी वजह"))
         assertTrue(some.contains("लगातार कोशिश नहीं"))
-        assertTrue(CoderTeam.isLimit(some))
+        assertTrue(CoderReport.advice(some).contains("free limit"))   // पुराना CoderTeam.isLimit हटा - अब असली रिपोर्ट की सलाह जाँचते हैं
         assertTrue(CoderAi.allLimitsMessage(60, "GEMINI: 429", noFallback = false).contains("सारी API keys और मॉडल की limit खत्म"))
         assertTrue(src("CoderAi.kt").contains("allLimitsMessage(wait, tried, fallbacks.isEmpty(), allLimited)"))
     }

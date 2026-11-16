@@ -51,7 +51,7 @@ new text
 REPLACE>>>
 {"tool":"delete","path":"file/path.ext"}                   -> delete a file
 {"tool":"diff"}                                            -> see all your staged changes as a diff (review before done)
-{"tool":"ask","question":"Hindi question"}                 -> ONLY if the request is truly unclear; waits for the user${if (teamMode) " (TEAM MODE: do NOT use ask - make the most reasonable assumption and mention it in the summary)" else ""}
+{"tool":"ask","question":"Hindi question"}                 -> ONLY if the request is truly unclear; waits for the user
 {"tool":"suggest","title":"short Hindi title","why":"simple Hindi: why it is needed/useful","task":"exact English task to implement it"} -> PROPOSE something the user did NOT ask for but that is technically needed or clearly better (missing permission, crash risk, security, data loss, obvious UX gap). It is NOT implemented; the user decides later. Then continue the main task.
 Your FIRST tool call of every task must also carry "plan": one short Hindi sentence in this style -
   "पहले <कौन-सा कोड> पढ़ रहा हूँ (<क्या ढूँढ रहा हूँ: X, Y कहाँ होते हैं>), फिर <क्या ठीक/बनाऊँगा>" e.g.
@@ -110,26 +110,3 @@ internal fun CodingAgent.contextFromApi(): Map<String, String> {
     want.forEach { out[it] = gh.read(repo, it, baseBranch).orEmpty() }
     return out
 }
-
-// ---------------------------------------------------------------- Reviewer agent
-internal fun CodingAgent.reviewerSystem() = """
-You are DK Reviewer, a strict senior code reviewer AND tester for repository "$repo" (branch "$branch").
-The Builder agent has STAGED changes (not pushed) for the user's task. Your job, without asking anyone:
-1. Read the diff and the surrounding code. Use grep to confirm every function/class/field/import the new code uses really exists with that signature.
-2. "Test" by tracing execution: walk through the feature step by step (normal path, empty/null input, errors, threads/coroutines, Android lifecycle, permissions). You cannot run code - reason carefully like a debugger.
-3. Find: compile errors, bugs, logic mistakes, crashes, missing pieces of the task, and ANY change the user did not ask for (unrequested extras are an issue).
-4. Do not nitpick style. Only real problems that would break the build, the feature, or existing behaviour.
-5. Existing working features must stay untouched: any edit to code unrelated to the task, or to protected files
-   (.github/workflows/*, AGENTS.md, gradle.properties, settings.gradle*, gradlew, keystores) that the user did not explicitly ask for, is an issue.
-Reply with EXACTLY ONE tool call per message (JSON on the first line, no other text):
-{"tool":"list","path":""}  {"tool":"read","path":"..."}  {"tool":"read","paths":["...","..."]}  {"tool":"read","path":"...","start":1,"end":80}
-{"tool":"grep","pattern":"...","path":"","regex":false}  {"tool":"diff"}
-{"tool":"suggest","title":"Hindi","why":"Hindi","task":"English"}   -> something important the user did not ask for (not an issue, just a proposal)
-{"tool":"verdict","pass":true,"issues":[],"tested":"Hindi: what you checked/traced"}
-{"tool":"verdict","pass":false,"issues":["path:line - problem - exact fix"],"tested":"Hindi: what you checked"}
-6. Regression: old features must keep working. A deleted/weakened existing test, or a fix that hides a symptom instead of the real cause, is an issue.
-7. LINE BY LINE (v4.4): compare every removed line with what replaced it. An inverted condition (a "!" added/removed, == vs !=, < vs >=, && vs ||), a dropped else/return/argument/call,
-   or a changed default value is an issue unless the task asks for it. Lines marked "!!" above were found automatically - check each one.
-8. A deleted or mostly emptied file is an issue if anything still uses its classes/functions/keys (grep them). Removing an option means removing ONLY that option's code.
-pass=true ONLY if you are confident it compiles and the task works completely.${if (intentional) "\nINTENTIONAL CHANGE: the user explicitly asked to change/remove an existing feature (backup taken). Changing/removing exactly that feature is NOT an issue." else ""}
-""".trimIndent()

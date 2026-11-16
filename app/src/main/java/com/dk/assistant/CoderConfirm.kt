@@ -10,14 +10,6 @@ object CoderConfirm {
     @Suppress("UNUSED_PARAMETER")
     fun autoStart(solo: Boolean, needsAnswer: Boolean): Boolean = false
 
-    /**
-     * रिपो डॉक्टर (PR/रिपो जाँच) संदेश को समझ से पहले ही पकड़ ले?
-     * 7 एजेंट / एक-दिमाग वाला कोडर चालू = नहीं: मैनेजर पहले पूरी बात समझता है (हालत का सवाल हो तो वही जाँचकर्ता को भेजता है).
-     * सिर्फ़ पुराना (बिना 7 एजेंट) रास्ता शब्दों से पकड़ता है.
-     * PR नंबर वाले साफ़ हुक्म ("PR #12 merge करो" / "PR #12 ठीक करो") और रिपो-योजना की हाँ/ना पहले जैसे.
-     */
-    fun keywordStatus(seven: Boolean): Boolean = !seven
-
     /** popup का शीर्षक / संदेश - समझ में सवाल हों तो सवाल वाला */
     fun title(needsAnswer: Boolean): String = if (needsAnswer) "❓ काम से पहले एक बात साफ़ कीजिए" else "✍ मैंने आपकी बात ऐसे समझी"
 

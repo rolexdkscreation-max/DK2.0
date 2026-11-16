@@ -74,8 +74,6 @@ object DkSettings {
             listOf("ऑटो पुश", "auto push", "बिना पूछे push", "पुश")),
         Item("coder_fix", "Push के बाद tests + build जाँचो और खुद ठीक करो", "coder", "coder_buildfix", true,
             listOf("बिल्ड फिक्स", "build fix", "टेस्ट जाँचो", "build जाँचो")),
-        Item("coder_team", "मल्टी-एजेंट टीम", "coder", "coder_team", true,
-            listOf("मल्टी एजेंट", "multi agent", "एजेंट टीम", "टीम")),
         Item("default_assistant", "डिफ़ॉल्ट असिस्टेंट", "system", "default_assistant", false,
             listOf("डिफ़ॉल्ट असिस्टेंट", "default assistant", "डिफ़ॉल्ट असिस्टेंट", "main assistant", "मुख्य असिस्टेंट")),
         // 15 नवंबर 2026 (मालिक: "DK के अंदर जो भी फीचर है, DK लाइव को पता हो और बोलकर चालू-बंद कर सके") - वही दो-बार-पक्का नियम

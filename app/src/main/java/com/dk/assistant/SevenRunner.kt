@@ -238,8 +238,8 @@ object SevenRunner {
         val m = shown?.of(ag) ?: ag.member
         CoderSession.activeAgent = m; CoderSession.activeNote = t       // v5.1: स्क्रीन पर "कौन काम कर रहा है"
         // 14 नवंबर 2026 (मालिक): एक दिमाग (Solo) = हर संदेश "🧠 DK एजेंट: …", पदों के नाम नहीं
-        say("s", if (Prefs.coderSolo(c)) SoloVoice.line(t) else "${m.icon} ${m.hi}: $t")
-        if (sound && ag == Seven.Agent.TESTER && t.startsWith("✗")) CoderSound.notify(c, CoderSound.BUG, (if (Prefs.coderSolo(c)) SoloVoice.NAME else "कोडिंग टीम") + ": बग मिला — ठीक कर रहा हूँ", SoloVoice.clean(t.lines().first().take(120)))
+        say("s", SoloVoice.line(t))
+        if (sound && ag == Seven.Agent.TESTER && t.startsWith("✗")) CoderSound.notify(c, CoderSound.BUG, SoloVoice.NAME + ": बग मिला — ठीक कर रहा हूँ", SoloVoice.clean(t.lines().first().take(120)))
     }
 
     /**
@@ -322,7 +322,7 @@ object SevenRunner {
             CoderSession.listener?.invoke(); CoderSession.runNext(c); return null
         }
         val (task, approved, normal) = r
-        if (approved != null) say("s", if (Prefs.coderSolo(c)) "✅ आपकी मंज़ूरी मिली — ${SoloVoice.NAME} काम शुरू कर रहा है (पूरा होने तक)" else "✅ आपकी मंज़ूरी मिली — अब 7 एजेंट की टीम (+ समझाने वाला) काम शुरू कर रही है")
+        if (approved != null) say("s", "✅ आपकी मंज़ूरी मिली — ${SoloVoice.NAME} काम शुरू कर रहा है (पूरा होने तक)")
         launchTeam(c, ai, task, approved, normal, allMedia, null)
         CoderSession.listener?.invoke()
         return null
@@ -420,7 +420,7 @@ object SevenRunner {
                     team.media = allMedia
                     team.inbox = CoderSession.inbox
                     // नवंबर 2026 (मालिक): एक-दिमाग वाला कोडर (default) - एक ही एजेंट पूरा काम, हाथ-बदली नहीं
-                    team.solo = Prefs.coderSolo(c)
+                    team.solo = true
                     var runTask = workTask
                     if (approved == null) {
                         // चरण 1: सिर्फ़ समझ (कोई branch / बदलाव नहीं) - user को दिखाकर "हाँ" का इंतज़ार

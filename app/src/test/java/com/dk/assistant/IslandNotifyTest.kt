@@ -124,7 +124,9 @@ class IslandNotifyTest {
 
     @Test fun coder_singleAgentOnly_seesMedia() {
         val p = main("Prefs.kt")
-        assertTrue(p.contains("fun coderSeven(c: Context): Boolean = true") && p.contains("fun coderSolo(c: Context): Boolean = true"))
+        // नवंबर 2026: पुराने switch पूरी तरह हटे - अब कोई "बंद" नहीं कर सकता, हर काम सीधे एक-एजेंट (SevenRunner) पर
+        assertFalse(p.contains("fun coderSeven(") || p.contains("fun coderSolo(") || p.contains("fun coderTeam("))
+        assertTrue(main("CoderTeam.kt").contains("return SevenRunner.start(c, task, fromVoice)"))
         val set = main("SettingsCoder.kt")
         assertFalse(set.contains("swSeven") || set.contains("swSolo") || set.contains("swTeam"))
         assertTrue(set.contains("सिंगल एजेंट"))

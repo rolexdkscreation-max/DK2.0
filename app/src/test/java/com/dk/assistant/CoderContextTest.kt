@@ -106,7 +106,7 @@ class CoderContextTest {
         assertTrue(m.contains("लगातार कोशिश नहीं"))
         assertTrue(m.contains("वहीं से आगे"))
         assertTrue(m.contains("2 मिनट"))
-        assertTrue(CoderTeam.isLimit(m))
+        assertTrue(CoderReport.advice(m).contains("free limit"))   // पुराना CoderTeam.isLimit हटा - अब असली रिपोर्ट की सलाह जाँचते हैं
         assertTrue(CoderAi.allLimitsMessage(30, "", true).contains("Groq"))
     }
 

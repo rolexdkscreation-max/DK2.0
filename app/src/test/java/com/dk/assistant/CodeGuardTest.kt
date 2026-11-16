@@ -80,7 +80,7 @@ class CodeGuardTest {
         assertTrue(st.contains("files.restoreDamaged(t.log)"))
         assertTrue(st.contains("files.footprint()"))
         assertTrue(st.contains("CodeGuard.flips(cur, after)"))
-        assertTrue(src("CoderTeam.kt").contains("a.restoreDamaged(b.log)"))
+        // (पुरानी टीम वाली pipeline हटी - restoreDamaged अब सिर्फ़ SevenRunner/SevenTeam में, नीचे जाँच)
         assertTrue(src("SevenRunner.kt").contains("override suspend fun restoreDamaged"))
         assertTrue(SevenDebug.EXTRA.contains("NEVER re-create its pieces one by one"))
         assertTrue(Seven.Prompts.PLANNER.contains("NEVER plan \"delete\" for a shared file"))
