@@ -15,7 +15,7 @@ object SocialPlanner {
                     SocialAction.POST_STORY -> SocialTask(id, r.platform, r.action, r.mode,
                         OpenSpec.ShareMedia(r.platform.pkg, m.mime, m.uri, S.IG_STORY_HINT),
                         listOf(PlanStep.Final(S.IG_STORY_SHARE, S.IG_STORY_DONE, S.IG_STORY_SHARE)),
-                        "Instagram स्टोरी में यह ${kind(m)} डाल दूँ?")
+                        ask(r, "Instagram स्टोरी में यह ${kind(m)} डाल दूँ?"))
                     else -> {
                         val hint = if (r.action == SocialAction.POST_REEL) S.IG_REEL_HINT else S.IG_FEED_HINT
                         val steps = buildList {
@@ -24,7 +24,7 @@ object SocialPlanner {
                             add(PlanStep.Final(S.IG_SHARE, S.IG_DONE, S.IG_CAPTION))
                         }
                         SocialTask(id, r.platform, r.action, r.mode, OpenSpec.ShareMedia(r.platform.pkg, m.mime, m.uri, hint), steps,
-                            "Instagram पर यह ${kind(m)}" + captionPart(cap) + " पोस्ट कर दूँ?")
+                            ask(r, "Instagram पर यह ${kind(m)}" + captionPart(cap) + " पोस्ट कर दूँ?"))
                     }
                 }
             }
@@ -36,7 +36,7 @@ object SocialPlanner {
                 SocialAction.POST_STORY -> {
                     val m = media!!
                     SocialTask(id, r.platform, r.action, r.mode, OpenSpec.ShareMedia(r.platform.pkg, m.mime, m.uri, S.FB_STORY_HINT),
-                        listOf(PlanStep.Final(S.FB_STORY_SHARE, S.FB_DONE, S.FB_STORY_SHARE)), "Facebook स्टोरी में यह ${kind(m)} डाल दूँ?")
+                        listOf(PlanStep.Final(S.FB_STORY_SHARE, S.FB_DONE, S.FB_STORY_SHARE)), ask(r, "Facebook स्टोरी में यह ${kind(m)} डाल दूँ?"))
                 }
                 else -> {
                     val m = media!!
@@ -46,8 +46,19 @@ object SocialPlanner {
                         add(PlanStep.Final(S.FB_POST, S.FB_DONE, S.FB_POST))
                     }
                     SocialTask(id, r.platform, r.action, r.mode, OpenSpec.ShareMedia(r.platform.pkg, m.mime, m.uri, S.FB_FEED_HINT, cap), steps,
-                        "Facebook पर यह ${kind(m)}" + captionPart(cap) + " पोस्ट कर दूँ?")
+                        ask(r, "Facebook पर यह ${kind(m)}" + captionPart(cap) + " पोस्ट कर दूँ?"))
                 }
+            }
+            // 16 नवंबर 2026 (मालिक): YouTube Shorts - वीडियो share -> (Next) -> शीर्षक/कैप्शन -> "हाँ" -> Upload
+            Platform.YOUTUBE -> {
+                val m = media!!
+                val steps = buildList {
+                    add(PlanStep.AdvanceUntil(S.YT_NEXT, S.YT_TITLE, max = 4))
+                    if (cap.isNotEmpty()) add(PlanStep.Type(S.YT_TITLE, cap))
+                    add(PlanStep.Final(S.YT_UPLOAD, S.YT_DONE, S.YT_UPLOAD))
+                }
+                SocialTask(id, r.platform, r.action, r.mode, OpenSpec.ShareMedia(r.platform.pkg, m.mime, m.uri, S.YT_HINT), steps,
+                    ask(r, "YouTube Shorts पर यह वीडियो" + captionPart(cap) + " अपलोड (पब्लिक) कर दूँ?"))
             }
             Platform.WHATSAPP -> {
                 val chat = phoneDigits?.let { OpenSpec.Url("https://wa.me/$it", r.platform.pkg) }
@@ -90,6 +101,14 @@ object SocialPlanner {
     }
 
     private fun enc(s: String) = URLEncoder.encode(s, "UTF-8").replace("+", "%20")
+    /** 16 नवंबर 2026: स्पेशलिस्ट ने जो चुना/लिखा (फोटो, कैप्शन, हैशटैग, गाना, टैग) - वह सब सुनाकर आख़िर में "हाँ" पूछो */
+    private fun ask(r: SocialRequest, plain: String): String = if (r.confirmExtra.isBlank()) plain
+        else "${r.platform.label} पर सब तैयार है - ${r.confirmExtra}। " + when {
+            r.action == SocialAction.POST_STORY -> "स्टोरी में डाल दूँ?"
+            r.platform == Platform.YOUTUBE -> "Short अपलोड (पब्लिक) कर दूँ?"
+            else -> "पब्लिक (शेयर) कर दूँ?"
+        }
+
     private fun kind(m: SharedItem) = if (m.mime.startsWith("video/")) "वीडियो" else "फोटो"
     private fun short(s: String) = if (s.length > 80) s.take(77) + "…" else s
     private fun captionPart(c: String) = if (c.isEmpty()) "" else " (कैप्शन: \"${short(c)}\")"
