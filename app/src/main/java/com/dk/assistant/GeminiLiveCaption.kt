@@ -103,7 +103,7 @@ internal fun GeminiLive.onCaption(t: String, final: Boolean) {
             val now = System.currentTimeMillis()
             synchronized(sendLock) { bargeGate.hold(now) }
             holdCap = t; holdCapAt = now; holdLoudAt = now; holdFinal = final
-            track?.let { try { it.setVolume(1f) } catch (_: Exception) {} }
+            track?.let { try { it.setVolume(1f) } catch (e: Exception) { Quiet.note(e) } }
             log("यूज़र ने बीच में कुछ पूछा (\"${t.take(30)}\") - जवाब नहीं रोका, सवाल सुन रहा हूँ")
             DKState.hint(HOLD_HINT)
             return

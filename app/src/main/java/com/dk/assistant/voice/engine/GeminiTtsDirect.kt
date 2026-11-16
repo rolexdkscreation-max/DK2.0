@@ -80,7 +80,7 @@ object GeminiTtsDirect {
             when (o) {
                 is JSONObject -> {
                     if (o.optString("type") == "audio" && o.optString("data").isNotEmpty()) {
-                        try { out.write(stripWav(java.util.Base64.getMimeDecoder().decode(o.optString("data")))) } catch (_: Exception) {}
+                        try { out.write(stripWav(java.util.Base64.getMimeDecoder().decode(o.optString("data")))) } catch (e: Exception) { com.dk.assistant.Quiet.note(e) }
                     }
                     for (k in o.keys()) walk(o.opt(k))
                 }

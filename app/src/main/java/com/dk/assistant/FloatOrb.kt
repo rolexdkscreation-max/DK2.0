@@ -199,8 +199,8 @@ class FloatOrb(private val c: Context, private val onTap: () -> Unit) {
         root = null; orb = null; lp = null
         if (animated && ov != null) {
             ov.animate().alpha(0f).scaleX(0.4f).scaleY(0.4f).setDuration(220)
-                .withEndAction { try { wm.removeView(r) } catch (_: Exception) {} }.start()
-        } else try { wm.removeView(r) } catch (_: Exception) {}
+                .withEndAction { try { wm.removeView(r) } catch (e: Exception) { Quiet.note(e) } }.start()
+        } else try { wm.removeView(r) } catch (e: Exception) { Quiet.note(e) }
     }
 
     /** animation के बाद खिड़की = सिर्फ़ ORB (बीच वहीं) - ताकि आस-पास की स्क्रीन छूना चले */
@@ -209,7 +209,7 @@ class FloatOrb(private val c: Context, private val onTap: () -> Unit) {
         val w = winPx(px(curDp)); if (p.width == w) return
         val cx = p.x + p.width / 2; val cy = p.y + p.height / 2
         p.width = w; p.height = w; p.x = cx - w / 2; p.y = cy - w / 2
-        try { wm.updateViewLayout(r, p) } catch (_: Exception) {}
+        try { wm.updateViewLayout(r, p) } catch (e: Exception) { Quiet.note(e) }
     }
 
     /** नया आकार - ORB का बीच वहीं रहे */
@@ -222,7 +222,7 @@ class FloatOrb(private val c: Context, private val onTap: () -> Unit) {
         p.width = w; p.height = w; p.x = cx - w / 2; p.y = cy - w / 2
         ov.layoutParams = (ov.layoutParams as FrameLayout.LayoutParams).apply { width = o; height = o }
         curDp = nd
-        try { wm.updateViewLayout(r, p) } catch (_: Exception) {}
+        try { wm.updateViewLayout(r, p) } catch (e: Exception) { Quiet.note(e) }
         if (save) Prefs.setFloatOrbDp(c, nd.roundToInt())
     }
 
@@ -232,7 +232,7 @@ class FloatOrb(private val c: Context, private val onTap: () -> Unit) {
         val dm = c.resources.displayMetrics
         val (nx, ny) = OrbRules.clampPos(x, y, p.width, p.height, dm.widthPixels, dm.heightPixels)
         p.x = nx; p.y = ny
-        try { wm.updateViewLayout(r, p) } catch (_: Exception) {}
+        try { wm.updateViewLayout(r, p) } catch (e: Exception) { Quiet.note(e) }
     }
 
     /** ORB का बीच = स्क्रीन का कौन-सा हिस्सा (0..1) - घुमाने / आकार बदलने पर भी वही जगह */
@@ -303,7 +303,7 @@ object OrbNotify {
     } catch (e: Exception) { DKLog.d("ORB notification नहीं लगी: ${e.message}") }
 
     fun cancel(c: Context) {
-        try { (c.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager).cancel(ID) } catch (_: Exception) {}
+        try { (c.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager).cancel(ID) } catch (e: Exception) { Quiet.note(e) }
     }
 }
 

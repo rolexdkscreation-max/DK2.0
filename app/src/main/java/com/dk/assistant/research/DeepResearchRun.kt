@@ -190,7 +190,7 @@ class DeepResearchRun(private val c: Context, private val sites: (List<String>) 
                     "तुम DK AI हो। हिंदी में जवाब दो: 1. सीधा जवाब 2. मुख्य बातें 3. अलग राय 4. स्रोत [n] 5. भरोसा। हर खबर के साथ तारीख़।",
                     emptyList(), DeepResearch.topic(question), deep = true)
                 if (r.text.isNotBlank()) return Result(r.text.trim() + "\n\n" + DeepResearch.SHALLOW_NOTE + " ($why)", r.sources, false)
-            } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (_: Exception) {}
+            } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (e: Exception) { com.dk.assistant.Quiet.note(e) }
         }
         return Result("गहरी खोज नहीं हो पाई ($why) और Gemini की Google खोज भी नहीं चली। Settings → AI दिमाग → \"गहरी खोज\" में Exa / Tavily / Linkup / Firecrawl की key डालें।\nभरोसा: अधूरा", emptyList(), false)
     }

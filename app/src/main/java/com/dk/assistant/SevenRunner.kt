@@ -270,7 +270,7 @@ object SevenRunner {
             return out
         } finally {
             a.draftPr = false; a.prLater = false
-            withContext(NonCancellable) { try { a.dropEmptyBranch() } catch (_: Exception) {} }
+            withContext(NonCancellable) { try { a.dropEmptyBranch() } catch (e: Exception) { Quiet.note(e) } }
         }
     }
 
@@ -505,10 +505,10 @@ object SevenRunner {
                     }
                 }
                 // नवंबर 2026: कैसे भी ख़त्म हो (पास / fail / रोका) - codespace बंद, फ़्री घंटे न जलें
-                hands?.let { h -> withContext(NonCancellable + Dispatchers.IO) { try { h.close() } catch (_: Exception) {} } }
+                hands?.let { h -> withContext(NonCancellable + Dispatchers.IO) { try { h.close() } catch (e: Exception) { Quiet.note(e) } } }
                 agent?.let { a ->
                     a.draftPr = false; a.prLater = false
-                    withContext(NonCancellable) { try { a.dropEmptyBranch() } catch (_: Exception) {} }
+                    withContext(NonCancellable) { try { a.dropEmptyBranch() } catch (e: Exception) { Quiet.note(e) } }
                 }
             }
         }

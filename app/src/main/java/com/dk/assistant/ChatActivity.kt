@@ -213,7 +213,7 @@ class ChatActivity : AppCompatActivity() {
             if (el > limit && !timedOut) {
                 timedOut = true; awaiting = false
                 DKLog.d("Chat: ${el / 1000}s से जवाब नहीं - timeout")
-                DKAccessibilityService.instance?.let { try { it.agent.stop() } catch (_: Exception) {} }
+                DKAccessibilityService.instance?.let { try { it.agent.stop() } catch (e: Exception) { Quiet.note(e) } }
                 localJob?.cancel()
                 DKState.replyFailed("जवाब आने में बहुत देर हो रही है (${el / 1000} सेकंड) - नेटवर्क धीमा लगता है। नीचे \"फिर से भेजें\" दबाइए।")
                 DKState.set(Mode.IDLE)

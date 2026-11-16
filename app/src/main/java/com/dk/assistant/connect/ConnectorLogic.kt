@@ -194,7 +194,7 @@ object Args {
     fun row(v: Any?): JSONArray {
         if (v is JSONArray) return v
         val s = v?.toString()?.trim().orEmpty()
-        if (s.startsWith("[")) try { return JSONArray(s) } catch (_: Exception) {}
+        if (s.startsWith("[")) try { return JSONArray(s) } catch (e: Exception) { com.dk.assistant.Quiet.note(e) }
         return JSONArray().apply { s.split(',').map { it.trim() }.filter { it.isNotEmpty() }.forEach { put(it) } }
     }
 }
@@ -223,10 +223,10 @@ object Mcp {
             try {
                 if (t.startsWith("[")) { val a = JSONArray(t); for (i in 0 until a.length()) a.optJSONObject(i)?.let { msgs += it } }
                 else msgs += JSONObject(t)
-            } catch (_: Exception) {}
+            } catch (e: Exception) { com.dk.assistant.Quiet.note(e) }
         } else {
             val buf = StringBuilder()
-            fun flush() { if (buf.isNotEmpty()) { try { msgs += JSONObject(buf.toString()) } catch (_: Exception) {}; buf.setLength(0) } }
+            fun flush() { if (buf.isNotEmpty()) { try { msgs += JSONObject(buf.toString()) } catch (e: Exception) { com.dk.assistant.Quiet.note(e) }; buf.setLength(0) } }
             for (ln in t.lines()) {
                 when {
                     ln.startsWith("data:") -> { if (buf.isNotEmpty()) buf.append('\n'); buf.append(ln.removePrefix("data:").trimStart()) }

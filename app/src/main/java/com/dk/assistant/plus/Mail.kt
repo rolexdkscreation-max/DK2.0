@@ -245,7 +245,7 @@ object Mail {
             cmd("EXPUNGE")
         }
 
-        override fun close() { try { cmd("LOGOUT") } catch (_: Exception) {}; try { sock.close() } catch (_: Exception) {} }
+        override fun close() { try { cmd("LOGOUT") } catch (e: Exception) { com.dk.assistant.Quiet.note(e) }; try { sock.close() } catch (e: Exception) { com.dk.assistant.Quiet.note(e) } }
     }
 
     // ------------------------------------------------------------------ SMTP
@@ -284,8 +284,8 @@ object Mail {
                 // dot-stuffing (base64 में "." से शुरू लाइन नहीं होती, फिर भी)
                 out.write(msg.split("\r\n").joinToString("\r\n") { if (it.startsWith(".")) ".$it" else it }.toByteArray(Charsets.UTF_8))
                 say("\r\n.", "250")
-                try { say("QUIT", "221") } catch (_: Exception) {}
-            } finally { try { sock.close() } catch (_: Exception) {} }
+                try { say("QUIT", "221") } catch (e: Exception) { com.dk.assistant.Quiet.note(e) }
+            } finally { try { sock.close() } catch (e: Exception) { com.dk.assistant.Quiet.note(e) } }
         }
     }
 

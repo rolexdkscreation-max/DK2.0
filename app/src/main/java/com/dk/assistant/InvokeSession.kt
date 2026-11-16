@@ -150,6 +150,6 @@ object LiveChime {
             if (n < pcm.size) throw IllegalStateException("AudioTrack ने सिर्फ़ $n/${pcm.size} लिया")
             t.play()
             Thread.sleep(LEAD_MS + durMs + 80L)
-        } finally { try { t.stop() } catch (_: Exception) {}; t.release() }
+        } finally { try { t.stop() } catch (e: Exception) { Quiet.note(e) }; t.release() }
     }
 }

@@ -90,7 +90,7 @@ object DKWork {
     private val listeners = CopyOnWriteArrayList<() -> Unit>()
     @Volatile private var bridged = false
     private val main by lazy { android.os.Handler(android.os.Looper.getMainLooper()) }
-    private val notify = Runnable { listeners.forEach { try { it() } catch (_: Exception) {} } }
+    private val notify = Runnable { listeners.forEach { try { it() } catch (e: Exception) { Quiet.note(e) } } }
 
     /** नया काम शुरू (कोई भी फ़ीचर). लौटा id `end` में दो. */
     fun begin(label: String, state: WorkState = WorkState.WORKING): Long {

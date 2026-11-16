@@ -48,7 +48,7 @@ object LocalInfo {
                 val listeners = mutableListOf<LocationListener>()
                 fun done(l: Location?) {
                     if (!cont.isActive) return
-                    listeners.forEach { try { lm.removeUpdates(it) } catch (_: Exception) {} }
+                    listeners.forEach { try { lm.removeUpdates(it) } catch (e: Exception) { Quiet.note(e) } }
                     cont.resume(l)
                 }
                 try {
@@ -64,7 +64,7 @@ object LocalInfo {
                             listeners.add(ll)
                             @Suppress("DEPRECATION") lm.requestSingleUpdate(p, ll, Looper.getMainLooper())
                         }
-                        cont.invokeOnCancellation { listeners.forEach { try { lm.removeUpdates(it) } catch (_: Exception) {} } }
+                        cont.invokeOnCancellation { listeners.forEach { try { lm.removeUpdates(it) } catch (e: Exception) { Quiet.note(e) } } }
                     }
                 } catch (e: Exception) { DKLog.d("लोकेशन नहीं मिली: ${e.message}"); done(null) }
             }
@@ -78,7 +78,7 @@ object LocalInfo {
             val a = Geocoder(c, Locale("hi", "IN")).getFromLocation(lat, lon, 1)?.firstOrNull()
             val n = listOfNotNull(a?.subLocality, a?.locality ?: a?.subAdminArea, a?.adminArea).distinct().joinToString(", ")
             if (n.isNotBlank()) return@withContext n
-        } catch (_: Exception) {}
+        } catch (e: Exception) { Quiet.note(e) }
         try {
             val url = "https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=$lat&longitude=$lon&localityLanguage=hi"
             http.newCall(Request.Builder().url(url).build()).execute().use { r ->
@@ -128,7 +128,7 @@ object LocalInfo {
                     full = try { a.getAddressLine(0) ?: "" } catch (_: Exception) { "" })
                 if (ad.area.isNotBlank() || ad.street.isNotBlank()) return@withContext ad
             }
-        } catch (_: Exception) {}
+        } catch (e: Exception) { Quiet.note(e) }
         try {
             http.newCall(Request.Builder().url(NearbyPlaces.nominatimUrl(lat, lon)).header("User-Agent", NearbyPlaces.UA).build()).execute().use { r ->
                 if (r.isSuccessful) NearbyPlaces.parseAddr(r.body?.string() ?: "") else NearbyPlaces.Addr("", "", "", "")
@@ -195,7 +195,7 @@ object LocalInfo {
                     }
                 }
             }
-        } finally { listeners.forEach { try { lm.removeUpdates(it) } catch (_: Exception) {} } }
+        } finally { listeners.forEach { try { lm.removeUpdates(it) } catch (e: Exception) { Quiet.note(e) } } }
         return best
     }
 

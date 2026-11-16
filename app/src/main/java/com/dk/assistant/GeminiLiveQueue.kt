@@ -71,8 +71,8 @@ internal fun GeminiLive.stopQueue(why: String) {
     q.stop()
     log("कतार तुरंत रोकी: $why")
     queueAnswer?.complete("")
-    try { if (agent.isBusy) agent.stop() } catch (_: Exception) {}
-    try { if (com.dk.assistant.agent.android.SocialAgent.busy()) com.dk.assistant.agent.android.SocialAgent.control(JSONObject().put("command", "cancel")) } catch (_: Exception) {}
+    try { if (agent.isBusy) agent.stop() } catch (e: Exception) { Quiet.note(e) }
+    try { if (com.dk.assistant.agent.android.SocialAgent.busy()) com.dk.assistant.agent.android.SocialAgent.control(JSONObject().put("command", "cancel")) } catch (e: Exception) { Quiet.note(e) }
 }
 
 /** अगले काम से पहले फ़ोन ठीक हालत में: अगला काम स्क्रीन पर चलेगा (AI एजेंट) या पिछला अटका = होम */
@@ -80,7 +80,7 @@ internal suspend fun GeminiLive.queuePrepare(prev: TaskQueue.Item, next: TaskQue
     val direct = next.kind == TaskQueue.Kind.WHATSAPP_SEND || MediaPick.quick(next.text) is MediaPick.Out.Go ||
         LiveFast.pick(next.text, Prefs.wakeWords(svc), svc.currentPackage()) != null
     if (!prevOk || !direct) {
-        try { svc.perform(JSONObject().put("type", "home")) } catch (e: CancellationException) { throw e } catch (_: Exception) {}
+        try { svc.perform(JSONObject().put("type", "home")) } catch (e: CancellationException) { throw e } catch (e: Exception) { Quiet.note(e) }
         log("कतार: \"${prev.text.take(20)}\" के बाद होम (${if (!prevOk) "पिछला अटका" else "अगला स्क्रीन पर"})")
         delay(800)
     } else delay(350)
@@ -255,7 +255,7 @@ internal suspend fun GeminiLive.phoneTaskOne(req: String, queued: Boolean = fals
             if (stopped || !ready) return@launch
             val bad = !done || DKState.failedAt != failBefore
             lastEvidenceAt = System.currentTimeMillis()
-            try { ws?.tx(JSONObject().put("realtimeInput", JSONObject().put("text", LiveFast.lateNote(req, rep, bad))).toString()) } catch (_: Exception) {}
+            try { ws?.tx(JSONObject().put("realtimeInput", JSONObject().put("text", LiveFast.lateNote(req, rep, bad))).toString()) } catch (e: Exception) { Quiet.note(e) }
             log("phone_task बाद में पूरा (${if (done) "हुआ" else "रोका"}) - Gemini को बताया")
         }
     }

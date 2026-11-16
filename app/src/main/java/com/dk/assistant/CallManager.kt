@@ -102,7 +102,7 @@ class CallManager(private val ctx: Context, private val onRinging: (String) -> U
                 ctx.contentResolver.query(uri, arrayOf(ContactsContract.PhoneLookup.DISPLAY_NAME), null, null, null)?.use {
                     if (it.moveToFirst()) return it.getString(0)
                 }
-            } catch (_: Exception) {}
+            } catch (e: Exception) { Quiet.note(e) }
         }
         return number.chunked(5).joinToString(" ")   // number ko tukdon me bolo
     }

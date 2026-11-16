@@ -382,6 +382,7 @@ class MainActivity : AppCompatActivity() {
         // 13 नवंबर 2026: Settings / DK लाइव से नया UI ↔ क्लासिक बदला = लौटते ही वही होम
         if (com.dk.assistant.dkai.Dkai.on(this) != (dkai != null)) { recreate(); return }
         DKState.listen(stateListener)
+        CrashUi.maybeAsk(this)   // 16 नवंबर 2026: सिर्फ़ जब मालिक ने "पूछो" चालू किया हो
         VoiceWarm.onAppOpen(this)      // v3.71: ऐप खुलते ही Worker/TTS का कनेक्शन तैयार
         Setup.startKeepAlive(this)
         checkMicPerm(force = intent?.getBooleanExtra("ask_mic", false) == true)
@@ -389,7 +390,7 @@ class MainActivity : AppCompatActivity() {
         if (intent?.getBooleanExtra("ask_location", false) == true) { intent?.removeExtra("ask_location"); askLocationNow() }
         friendOnOpen()
         // v4.6 (मालिक): ऐप खुलते ही DK लाइव जुड़े - बंद हो तो चालू, टूटा पड़ा हो तो तुरंत फिर (आपने माइक बंद किया हो तो नहीं)
-        try { DKAccessibilityService.instance?.appOpened() } catch (_: Exception) {}
+        try { DKAccessibilityService.instance?.appOpened() } catch (e: Exception) { Quiet.note(e) }
         render()
         checkUpdate()
         checkAccessKey()

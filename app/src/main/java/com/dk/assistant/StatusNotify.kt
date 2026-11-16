@@ -51,5 +51,5 @@ object StatusNotify {
             }
         }
         Unit
-    } catch (_: Exception) {}
+    } catch (e: Exception) { Quiet.note(e) }
 }

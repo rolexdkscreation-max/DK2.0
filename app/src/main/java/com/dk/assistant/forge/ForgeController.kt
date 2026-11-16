@@ -247,6 +247,6 @@ object ForgeController {
             val b = if (Build.VERSION.SDK_INT >= 26) android.app.Notification.Builder(c, CH) else android.app.Notification.Builder(c)
             nm.notify(NOTIF_ID, b.setSmallIcon(R.drawable.ic_dk).setContentTitle(Lang.pick("आपकी वेबसाइट तैयार है", "Your website is ready"))
                 .setContentText(_state.value.prompt.take(80)).setAutoCancel(true).setContentIntent(pi).build())
-        } catch (_: Exception) { }
+        } catch (e: Exception) { com.dk.assistant.Quiet.note(e) }
     }
 }

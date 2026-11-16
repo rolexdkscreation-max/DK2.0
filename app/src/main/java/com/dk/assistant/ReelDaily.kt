@@ -83,7 +83,7 @@ object ReelDaily {
                 val text = lines.joinToString(" ")
                 DKLog.d("रील हिसाब (DK बोला): $text")
                 PhoneVoice.say(c.applicationContext, text)
-            } catch (_: Exception) {} finally { speaking = false }
+            } catch (e: Exception) { Quiet.note(e) } finally { speaking = false }
         }
     }
 }

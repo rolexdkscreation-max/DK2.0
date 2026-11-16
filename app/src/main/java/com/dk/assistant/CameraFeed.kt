@@ -95,7 +95,7 @@ class CameraFeed(private val act: AppCompatActivity, private val view: PreviewVi
     }
 
     fun stop() {
-        try { provider?.unbindAll() } catch (_: Exception) {}
+        try { provider?.unbindAll() } catch (e: Exception) { Quiet.note(e) }
         running = false
     }
 

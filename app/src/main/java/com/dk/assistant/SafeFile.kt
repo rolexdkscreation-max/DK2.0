@@ -20,7 +20,7 @@ object SafeFile {
     fun write(f: File, text: String) {
         f.parentFile?.mkdirs()
         val t = tmp(f)
-        FileOutputStream(t).use { o -> o.write(text.toByteArray(Charsets.UTF_8)); o.flush(); try { o.fd.sync() } catch (_: Exception) {} }
+        FileOutputStream(t).use { o -> o.write(text.toByteArray(Charsets.UTF_8)); o.flush(); try { o.fd.sync() } catch (e: Exception) { Quiet.note(e) } }
         if (f.exists()) {
             val b = bak(f)
             if (b.exists()) b.delete()

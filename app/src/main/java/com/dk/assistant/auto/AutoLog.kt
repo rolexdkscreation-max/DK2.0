@@ -24,13 +24,13 @@ object AutoLog {
                 val file = f(c)
                 val old = if (file.exists()) file.readLines() else emptyList()
                 file.writeText((old.takeLast(MAX_LINES - 1) + line).joinToString("\n") + "\n")
-            } catch (_: Exception) { }
+            } catch (e: Exception) { com.dk.assistant.Quiet.note(e) }
         }
     }
 
     fun read(c: Context): String = synchronized(lock) { try { f(c).takeIf { it.exists() }?.readText().orEmpty() } catch (_: Exception) { "" } }
 
-    fun clear(c: Context) = synchronized(lock) { try { f(c).delete() } catch (_: Exception) { }; Unit }
+    fun clear(c: Context) = synchronized(lock) { try { f(c).delete() } catch (e: Exception) { com.dk.assistant.Quiet.note(e) }; Unit }
 }
 
 /** शुद्ध (JVM test): लॉग में जाने से पहले key / token / निजी नंबर हटाओ */

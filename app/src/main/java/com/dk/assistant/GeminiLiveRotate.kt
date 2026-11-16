@@ -35,7 +35,7 @@ internal fun GeminiLive.sendFrozenEnd() {
     if (!freezeReal) return
     freezeReal = false
     if (turnDet.inSpeech) return               // अभी भी बोल रहे = संकेत अपने समय पर (माइक वाला रास्ता)
-    try { ws?.tx("{\"realtimeInput\":{\"audioStreamEnd\":true}}") } catch (_: Exception) {}
+    try { ws?.tx("{\"realtimeInput\":{\"audioStreamEnd\":true}}") } catch (e: Exception) { Quiet.note(e) }
     log("थामे समय कही बात: जमा आवाज़ के बाद बात-खत्म का संकेत भेजा")
 }
 

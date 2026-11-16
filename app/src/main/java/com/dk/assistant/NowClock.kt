@@ -82,7 +82,7 @@ object NowClock {
                 val off = net?.let { offsetFrom(t0, t1, it) }
                 if (off != null) { accept(off, t1); return }
             }
-        } catch (_: Exception) {}
+        } catch (e: Exception) { Quiet.note(e) }
         try {
             val t0 = System.currentTimeMillis()
             http.newCall(okhttp3.Request.Builder().url("https://www.google.com/generate_204").head().build()).execute().use { r ->
@@ -90,7 +90,7 @@ object NowClock {
                 // Date सिर्फ़ सेकंड तक -> आधा सेकंड जोड़ो (औसत)
                 r.header("Date")?.let { parseHttpDate(it) }?.let { accept(offsetFrom(t0, t1, it + 500), t1) }
             }
-        } catch (_: Exception) {}
+        } catch (e: Exception) { Quiet.note(e) }
     }
 
     /** पीछे से मिलाओ (कभी रुकाओ नहीं) */

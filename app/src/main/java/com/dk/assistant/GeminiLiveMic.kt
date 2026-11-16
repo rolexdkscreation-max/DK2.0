@@ -39,7 +39,7 @@ internal fun GeminiLive.openMic(): AudioRecord? {
             val r = AudioRecord(src, IN_RATE, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT, maxOf(min * 2, CHUNK_SAMPLES * 2 * 6))
             if (r.state != AudioRecord.STATE_INITIALIZED) { r.release(); continue }
             // Bluetooth जुड़ा = headset का माइक (कॉल वाला तरीका)
-            if (btOn) BtAudio.btInput?.let { d -> try { r.setPreferredDevice(d) } catch (_: Exception) {} }
+            if (btOn) BtAudio.btInput?.let { d -> try { r.setPreferredDevice(d) } catch (e: Exception) { Quiet.note(e) } }
             val sid = r.audioSessionId
             val aec = try { AcousticEchoCanceler.isAvailable() && AcousticEchoCanceler.create(sid)?.apply { enabled = true } != null } catch (_: Exception) { false }
             val ns = try { NoiseSuppressor.isAvailable() && NoiseSuppressor.create(sid)?.apply { enabled = true } != null } catch (_: Exception) { false }
@@ -119,8 +119,8 @@ internal suspend fun GeminiLive.micLoop() = coroutineScope {
         while (isActive && !stopped) {
             // इनपुट बार में बोलकर लिखना: माइक छोड़ो (Google पहचान को आवाज़ मिले), खत्म होते ही वापस
             if (DKMic.dictating) {
-                try { r.stop() } catch (_: Exception) {}
-                try { r.release() } catch (_: Exception) {}
+                try { r.stop() } catch (e: Exception) { Quiet.note(e) }
+                try { r.release() } catch (e: Exception) { Quiet.note(e) }
                 log("माइक छोड़ा: आप इनपुट बार में बोलकर लिख रहे हैं")
                 while (isActive && !stopped && DKMic.dictating) delay(200)
                 r = openMic() ?: throw Fatal("माइक दोबारा नहीं खुला (बोलकर लिखने के बाद)", recoverable = true)
@@ -132,11 +132,11 @@ internal suspend fun GeminiLive.micLoop() = coroutineScope {
             // जड़: पहले माइक खुला रहता था और सिर्फ़ Gemini को खाली आवाज़ जाती थी - पर caption वाले को असली
             // आवाज़ जाती थी, बीच में टोकना (barge) भी चलता था, और फ़ोन "माइक चालू" ही दिखाता था।
             if (DKState.micMuted) {
-                try { r.stop() } catch (_: Exception) {}
-                try { r.release() } catch (_: Exception) {}
+                try { r.stop() } catch (e: Exception) { Quiet.note(e) }
+                try { r.release() } catch (e: Exception) { Quiet.note(e) }
                 log("माइक म्यूट: माइक छोड़ दिया - अनम्यूट तक कुछ नहीं सुनूँगा")
-                synchronized(sendLock) { try { ws?.tx("{\"realtimeInput\":{\"audioStreamEnd\":true}}") } catch (_: Exception) {} }
-                try { caption?.endOfSpeech() } catch (_: Exception) {}
+                synchronized(sendLock) { try { ws?.tx("{\"realtimeInput\":{\"audioStreamEnd\":true}}") } catch (e: Exception) { Quiet.note(e) } }
+                try { caption?.endOfSpeech() } catch (e: Exception) { Quiet.note(e) }
                 synchronized(bargeBuf) { bargeBuf.clear() }
                 preroll.clear(); turnDet.reset(); DKState.level = 0f
                 while (isActive && !stopped && DKState.micMuted) delay(150)
@@ -150,7 +150,7 @@ internal suspend fun GeminiLive.micLoop() = coroutineScope {
             // v3.39: Bluetooth जुड़ा/हटा -> माइक नए रास्ते पर दोबारा खोलो
             if (routeChanged) {
                 routeChanged = false
-                try { r.stop() } catch (_: Exception) {}; try { r.release() } catch (_: Exception) {}
+                try { r.stop() } catch (e: Exception) { Quiet.note(e) }; try { r.release() } catch (e: Exception) { Quiet.note(e) }
                 r = openMic() ?: throw Fatal("माइक दोबारा नहीं खुला (Bluetooth बदला)", recoverable = true)
                 r.startRecording()
                 log("माइक नए रास्ते पर: " + if (btOn) "Bluetooth headset" else "फ़ोन का माइक")
@@ -165,7 +165,7 @@ internal suspend fun GeminiLive.micLoop() = coroutineScope {
             if (got < CHUNK_SAMPLES) {
                 log("माइक पढ़ने में गलती ($errRun)")
                 if (errRun >= 5) {           // mic atak gaya -> dobara kholo
-                    try { r.stop() } catch (_: Exception) {}; r.release()
+                    try { r.stop() } catch (e: Exception) { Quiet.note(e) }; r.release()
                     delay(300)
                     r = openMic() ?: throw Fatal("माइक दोबारा नहीं खुला", recoverable = true)
                     r.startRecording(); errRun = 0
@@ -220,7 +220,7 @@ internal suspend fun GeminiLive.micLoop() = coroutineScope {
                             // SHAK: tez awaaz. DK ki awaaz halki (rokna nahi), caption model ko suno - shabd hain?
                             bargeGate.suspect(now); barging = true; loudMs = 0L; overEchoMs = 0L; duplex.reset(); speakerBarge.reset()
                             // मालिक (नवंबर 2026): DK की आवाज़ अपने-आप धीमी-तेज़ नहीं - शक के समय भी पूरी (रोकना पक्के शब्दों पर ही)
-                            if (VolumeRule.AUTO_CHANGE) track?.let { try { it.setVolume(SpeakerBoost.SUSPECT_VOLUME) } catch (_: Exception) {} }
+                            if (VolumeRule.AUTO_CHANGE) track?.let { try { it.setVolume(SpeakerBoost.SUSPECT_VOLUME) } catch (e: Exception) { Quiet.note(e) } }
                             log("तेज़ आवाज़ (rms=${rms.toInt()}, गूँज=${bargeDet.echoLevel().toInt()}, शोर=${bargeDet.ambient.toInt()}) - यूज़र है? शब्द सुन रहा हूँ (DK की आवाज़ नहीं बदली)")
                             synchronized(bargeBuf) { bargeBuf.clear(); bargeBuf.addAll(preroll); bargeBuf.addLast(chunk) }
                             preroll.forEach { capSend(it) }; preroll.clear()
@@ -251,7 +251,7 @@ internal suspend fun GeminiLive.micLoop() = coroutineScope {
                             // shabd nahi aaye = shor/TV/log. DK ka jawab poori awaaz me chalta rahe
                             falseAlarms++
                             log("शब्द नहीं मिले - पीछे का शोर था, जवाब जारी (#$falseAlarms)")
-                            track?.let { try { it.setVolume(1f) } catch (_: Exception) {} }
+                            track?.let { try { it.setVolume(1f) } catch (e: Exception) { Quiet.note(e) } }
                             bargeDet.rearm(rms); barging = false
                             synchronized(bargeBuf) { bargeBuf.clear() }
                         } else if (bargeGate.state == BargeGate.State.CONFIRMED) confirmBarge(
@@ -277,7 +277,7 @@ internal suspend fun GeminiLive.micLoop() = coroutineScope {
                 // (Peeche ka lagatar shor bhejne par server "user abhi bol raha" maan kar jawab rokta tha.)
                 if (barging) bargeUntil = now + 1500
                 barging = false; bargeDet.reset(); bargeDet.ambient = 0.0
-                if (bargeGate.state != BargeGate.State.IDLE) { bargeGate.reset(); track?.let { try { it.setVolume(1f) } catch (_: Exception) {} } }
+                if (bargeGate.state != BargeGate.State.IDLE) { bargeGate.reset(); track?.let { try { it.setVolume(1f) } catch (e: Exception) { Quiet.note(e) } } }
                 // v3.5+: जवाब पूरा, DK चुप -> बीच में पूछा सवाल अब (उसका भी जवाब)
                 if (!askQueue.isEmpty()) {
                     if (now - askAt > ASK_KEEP_MS) { askQueue.clear(); log("बीच में पूछा सवाल बहुत पुराना हो गया - छोड़ा") }
@@ -303,6 +303,7 @@ internal suspend fun GeminiLive.micLoop() = coroutineScope {
                     if (ready && ws != null && !turnDet.inSpeech && now <= wakeEndBy && !generating && !turnActive) {
                         log(LiveVadFix.summary(endRule, turnDet.lastSpeechMs, (now - turnDet.lastVoiceAt).toInt(), turnDet.endNeedMs.takeIf { it > 0 } ?: CLIENT_END_MS,
                             prob >= 0f, heard.src, turnDet.noise, true))
+                        com.dk.assistant.voice.UnlockGuard.heard(cmdBuf.toByteArray(), now)   // 16 नवंबर 2026: आवाज़ से अनलॉक की जाँच
                         liveVoiceCmd(cmdBuf.toByteArray()); cmdBuf.reset()
                         onLocalEndOfSpeech(now)
                     }
@@ -432,6 +433,7 @@ internal suspend fun GeminiLive.micLoop() = coroutineScope {
                         endRule = ""; speechFromWake = false
                         if (!other) capHealth.onSpeechEnd(speechStartAt, turnDet.lastSpeechMs, now)
                         if (whoOn) whoCheckAsync(cmdBuf.toByteArray(), now, whoSeq)   // नवंबर 2026: बॉस या कोई और (बगल की बातचीत)
+                        if (!other) com.dk.assistant.voice.UnlockGuard.heard(cmdBuf.toByteArray(), now)   // 16 नवंबर 2026: आवाज़ से अनलॉक की जाँच
                         liveVoiceCmd(cmdBuf.toByteArray()); cmdBuf.reset()
                         learnNear()
                         startHold.userEnded(now, BargeGate.realWords(caption?.text().orEmpty()))
@@ -444,9 +446,9 @@ internal suspend fun GeminiLive.micLoop() = coroutineScope {
             }
         }
     } finally {
-        try { r.stop() } catch (_: Exception) {}
-        try { r.release() } catch (_: Exception) {}
-        try { if (ready) ws?.tx("{\"realtimeInput\":{\"audioStreamEnd\":true}}") } catch (_: Exception) {}
+        try { r.stop() } catch (e: Exception) { Quiet.note(e) }
+        try { r.release() } catch (e: Exception) { Quiet.note(e) }
+        try { if (ready) ws?.tx("{\"realtimeInput\":{\"audioStreamEnd\":true}}") } catch (e: Exception) { Quiet.note(e) }
         DKState.level = 0f
     }
 }

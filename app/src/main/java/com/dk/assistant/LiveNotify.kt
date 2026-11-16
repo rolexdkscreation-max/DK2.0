@@ -74,7 +74,7 @@ object LiveNotify {
     fun cancel(c: Context) {
         if (shown == null) return
         shown = null
-        try { (c.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager).cancel(ID) } catch (_: Exception) {}
+        try { (c.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager).cancel(ID) } catch (e: Exception) { Quiet.note(e) }
     }
 }
 
@@ -86,7 +86,7 @@ class LiveNotifyReceiver : BroadcastReceiver() {
                 DKLog.d("सूचना से: लाइव बात काटी")
                 if (DKState.micMuted) DKState.setMicMuted(false)
                 val svc = DKAccessibilityService.instance
-                if (svc != null) try { svc.stopLive("सूचना से कॉल काटा") } catch (_: Exception) {}
+                if (svc != null) try { svc.stopLive("सूचना से कॉल काटा") } catch (e: Exception) { Quiet.note(e) }
                 else DKState.setLive(false)
                 LiveNotify.cancel(c)
             }

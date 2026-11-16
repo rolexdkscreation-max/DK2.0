@@ -19,12 +19,12 @@ class DKVoiceInteractionService : VoiceInteractionService() {
             // नवंबर 2026: assistant सेवा Android खुद जोड़ता है - DK की रुकी Accessibility (Not working) यहीं से फिर जोड़ो
             // boot पर Android Accessibility अपने-आप जोड़ रहा होता है - तुरंत off/on करने से वह टूटे. थोड़ा रुककर, तब भी न जुड़ी हो तभी
             android.os.Handler(android.os.Looper.getMainLooper()).postDelayed(
-                { try { Setup.healAccessibility(this) } catch (_: Exception) {} }, Setup.HEAL_DELAY_MS)
+                { try { Setup.healAccessibility(this) } catch (e: Exception) { Quiet.note(e) } }, Setup.HEAL_DELAY_MS)
             // 16 नवंबर 2026 (मालिक: "पहले Android का अपना hotword आज़माओ, न चले तो हमारा मॉडल"):
             // जाँच करके नतीजा Settings में दिखाओ. डिफ़ॉल्ट असिस्टेंट होने पर Android 14+ में भी माइक वाली सेवा यहीं से शुरू हो सकती है
             probeHotword()
             if (com.dk.assistant.wake.WakeWord.on(this) && !Prefs.micUserOff(this)) {
-                try { Setup.startKeepAlive(this) } catch (_: Exception) {}
+                try { Setup.startKeepAlive(this) } catch (e: Exception) { Quiet.note(e) }
             }
         } catch (e: Exception) {
             Log.e("DKAssist", "Error in DKVoiceInteractionService.onReady", e); com.dk.assistant.DKBug.report("assistant", e, "Error in DKVoiceInteractionService.onReady", alsoLog = true)

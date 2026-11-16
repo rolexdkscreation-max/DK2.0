@@ -19,11 +19,23 @@ object ReleaseFeed {
     fun apkUrl(repo: String, tag: String) = "https://github.com/$repo/releases/download/$tag/$APK_NAME"
 
     /** feed का पहला (सबसे नया) release. गड़बड़ feed = null */
-    fun parseAtom(xml: String): Entry? {
-        val start = xml.indexOf("<entry")
-        if (start < 0) return null
-        val end = xml.indexOf("</entry>", start).takeIf { it > 0 } ?: return null
-        val e = xml.substring(start, end)
+    fun parseAtom(xml: String): Entry? = parseAtomAll(xml, 1).firstOrNull()
+
+    /** 16 नवंबर 2026: feed की सारी entries (नई पहले) - स्टेबल चैनल बीटा को छोड़कर पहली स्टेबल लेता है */
+    fun parseAtomAll(xml: String, max: Int = 20): List<Entry> {
+        val out = ArrayList<Entry>()
+        var from = 0
+        while (out.size < max) {
+            val start = xml.indexOf("<entry", from)
+            if (start < 0) break
+            val end = xml.indexOf("</entry>", start).takeIf { it > 0 } ?: break
+            from = end + 8
+            entry(xml.substring(start, end))?.let { out += it }
+        }
+        return out
+    }
+
+    private fun entry(e: String): Entry? {
         val page = Regex("<link[^>]*href=\"([^\"]+)\"").find(e)?.groupValues?.get(1)?.let(::unescape).orEmpty()
         val tag = page.substringAfter("/releases/tag/", "").substringBefore('"').trim()
             .ifBlank { Regex("<id>[^<]*/([^/<]+)</id>").find(e)?.groupValues?.get(1).orEmpty() }

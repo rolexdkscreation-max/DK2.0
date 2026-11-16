@@ -39,7 +39,7 @@ object OfflineExec {
         try {
             svc.startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:" + svc.packageName))
                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
-        } catch (_: Exception) {}
+        } catch (e: Exception) { Quiet.note(e) }
         return "ERROR_PERM: सर, $what की परमिशन नहीं है। मैंने DK का परमिशन वाला पेज खोल दिया है, वहाँ Permissions में $what चालू कर दीजिए।"
     }
 

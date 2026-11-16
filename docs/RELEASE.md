@@ -85,3 +85,12 @@ gradle :app:assembleDebug
 `build.yml` के emulator step में `adb shell am start -n com.dk.app/.MainActivity` लिखा है, जबकि package
 `com.dk.assistant` है (`|| true` की वजह से step पास दिखता है, पर ऐप असल में खुलता नहीं)। workflow मालिक की
 मंज़ूरी से ही बदलेगा — सही command: `adb shell am start -n com.dk.assistant/.MainActivity`।
+
+## स्टेबल और बीटा (16 नवंबर 2026)
+
+- main में हर merge = सीधे **स्टेबल** release ("Latest", body में `CHANNEL: stable` और `SHA256: …`) - सबके फ़ोन पर सामान्य अपडेट.
+- **बीटा** (अलग से, अपनी मर्ज़ी से): Actions → "Build DK APK & UAAG Android Emulator Check" → Run workflow → branch चुनें →
+  "beta" ✓ → Run. उस branch का build "Pre-release" बनता है (नाम में "(बीटा)", body में `CHANNEL: beta`).
+- ऐप: Settings → अपडेट → "बीटा अपडेट भी लो" (शुरू से बंद = सिर्फ़ स्टेबल). बीटा चालू = स्टेबल और बीटा में जो सबसे नया.
+- पुराने ऐप सिर्फ़ "Latest" पढ़ते हैं - उन्हें बीटा कभी नहीं मिलता, स्टेबल मिलता रहता है.
+- ऐप download के बाद APK का SHA-256 release वाले से मिलाता है; न मिले = फ़ाइल हटाकर दोबारा.

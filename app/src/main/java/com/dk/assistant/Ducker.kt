@@ -104,8 +104,8 @@ object Ducker {
                     savedMusicVol = -1
                 }
             }
-        } catch (_: Exception) {}
-        try { req?.let { am?.abandonAudioFocusRequest(it) } } catch (_: Exception) {}
+        } catch (e: Exception) { Quiet.note(e) }
+        try { req?.let { am?.abandonAudioFocusRequest(it) } } catch (e: Exception) { Quiet.note(e) }
         DKLog.d("Background awaaz wapas (${(System.currentTimeMillis() - since) / 1000}s dheemi rahi)")
     }
 }

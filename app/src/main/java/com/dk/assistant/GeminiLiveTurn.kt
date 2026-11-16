@@ -55,7 +55,7 @@ internal fun GeminiLive.sendOpener() {
         ws?.tx(JSONObject().put("realtimeInput", JSONObject().put("text", t)).toString())
         lastAct = now
         log("DK ने खुद बात शुरू की (ऐप खुला)")
-    } catch (_: Exception) {}
+    } catch (e: Exception) { Quiet.note(e) }
 }
 
 internal fun GeminiLive.sendFirstText() {
@@ -70,7 +70,7 @@ internal fun GeminiLive.sendFirstText() {
         beginTimeline(eosAt, eosAt, "wake word की बात (text)")
         ws?.tx(JSONObject().put("realtimeInput", JSONObject().put("text", t)).toString())
         log("पहली बात भेजी: $t")
-    } catch (_: Exception) {}
+    } catch (e: Exception) { Quiet.note(e) }
 }
 
 /** Tootne se pehle ki unanswered baat - naye connection par ek baar text me (UI line dobara nahi) */
@@ -184,7 +184,7 @@ internal fun GeminiLive.finishTurn(close: Boolean = true) {
     // वाली बारी नहीं (वह ताज़ा / काम है, याद से पक्की नहीं)
     val searched = synchronized(turnLock) { turnSources.isNotEmpty() || turnGround != null || toolSources.isNotEmpty() || toolGround != null }
     if (DkMind.liveTeach(u, r, searched, toolJobs.isNotEmpty(), System.currentTimeMillis() - lastToolAt))
-        svc.scope.launch(kotlinx.coroutines.Dispatchers.IO) { try { LocalBrain.learn(svc, u, r) } catch (_: Exception) {} }
+        svc.scope.launch(kotlinx.coroutines.Dispatchers.IO) { try { LocalBrain.learn(svc, u, r) } catch (e: Exception) { Quiet.note(e) } }
     // jawab: awaaz abhi baj rahi hai to revealTick() saath-saath poora karega
     synchronized(turnLock) {
         if (r.isNotBlank()) { pendingReply = r; pendingSources = Grounding.merge(turnSources, toolSources); toolSources = emptyList()

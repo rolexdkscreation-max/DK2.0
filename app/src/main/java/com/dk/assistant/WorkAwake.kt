@@ -61,7 +61,7 @@ class WorkAwake(private val svc: DKAccessibilityService) {
             gravity = Gravity.TOP or Gravity.START
             this.x = (x - size / 2).coerceAtLeast(0); this.y = (y - size / 2).coerceAtLeast(0)
         }
-        try { wm.addView(v, p); main.postDelayed({ try { wm.removeView(v) } catch (_: Exception) {} }, 650) } catch (_: Exception) {}
+        try { wm.addView(v, p); main.postDelayed({ try { wm.removeView(v) } catch (e: Exception) { Quiet.note(e) } }, 650) } catch (e: Exception) { Quiet.note(e) }
     }
 
     fun release() {
@@ -124,9 +124,9 @@ class WorkAwake(private val svc: DKAccessibilityService) {
         val v = View(svc).apply { importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO }
         val p = WindowManager.LayoutParams(1, 1, WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY, flags(), PixelFormat.TRANSLUCENT)
             .apply { gravity = Gravity.TOP or Gravity.START }
-        try { wm.addView(v, p); keepOnly = v } catch (_: Exception) {}
+        try { wm.addView(v, p); keepOnly = v } catch (e: Exception) { Quiet.note(e) }
     }
 
-    private fun removeBanner() { root?.let { try { wm.removeView(it) } catch (_: Exception) {} }; root = null }
-    private fun removeKeep() { keepOnly?.let { try { wm.removeView(it) } catch (_: Exception) {} }; keepOnly = null }
+    private fun removeBanner() { root?.let { try { wm.removeView(it) } catch (e: Exception) { Quiet.note(e) } }; root = null }
+    private fun removeKeep() { keepOnly?.let { try { wm.removeView(it) } catch (e: Exception) { Quiet.note(e) } }; keepOnly = null }
 }

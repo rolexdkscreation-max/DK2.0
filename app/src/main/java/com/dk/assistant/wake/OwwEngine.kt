@@ -63,7 +63,7 @@ class OwwEngine private constructor(
     }
 
     override fun close() {
-        (headS.values + melS + embS).forEach { try { it.close() } catch (_: Exception) {} }
+        (headS.values + melS + embS).forEach { try { it.close() } catch (e: Exception) { com.dk.assistant.Quiet.note(e) } }
     }
 
     companion object {
@@ -85,7 +85,7 @@ class OwwEngine private constructor(
                 lastError = null
                 OwwEngine(env, m, e, h)
             } catch (t: Throwable) {
-                opened.forEach { try { it.close() } catch (_: Exception) {} }
+                opened.forEach { try { it.close() } catch (e: Exception) { com.dk.assistant.Quiet.note(e) } }
                 lastError = t.javaClass.simpleName + ": " + (t.message ?: "")
                 null
             }

@@ -114,7 +114,7 @@ object ComputerJobs {
     @Synchronized fun cancelAll(c: Context): Int {
         val jobs = all(c)
         val am = c.getSystemService(AlarmManager::class.java)
-        jobs.forEach { j -> try { am?.cancel(pending(c, j, late = false)) } catch (_: Exception) {} }
+        jobs.forEach { j -> try { am?.cancel(pending(c, j, late = false)) } catch (e: Exception) { Quiet.note(e) } }
         save(c, emptyList())
         return jobs.size
     }
@@ -146,7 +146,7 @@ class ComputerBoot : BroadcastReceiver() {
     override fun onReceive(c: Context, i: Intent) {
         when (i.action) {
             Intent.ACTION_BOOT_COMPLETED, Intent.ACTION_MY_PACKAGE_REPLACED, "android.intent.action.QUICKBOOT_POWERON" ->
-                try { val n = ComputerJobs.rearm(c.applicationContext); DKLog.d("DK कंप्यूटर: $n तय काम फिर से लगाए") } catch (_: Exception) {}
+                try { val n = ComputerJobs.rearm(c.applicationContext); DKLog.d("DK कंप्यूटर: $n तय काम फिर से लगाए") } catch (e: Exception) { Quiet.note(e) }
         }
     }
 }

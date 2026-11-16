@@ -72,7 +72,7 @@ object VoiceTune {
         if (v == appliedVer) return v
         try {
             t.playbackParams = PlaybackParams().allowDefaults().setSpeed(speed()).setPitch(pitch())
-        } catch (_: Exception) {}
+        } catch (e: Exception) { com.dk.assistant.Quiet.note(e) }
         return v
     }
 }

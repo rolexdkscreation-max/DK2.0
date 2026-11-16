@@ -223,13 +223,13 @@ return JSON.stringify(out);})()"""
             Canvas(bmp).also { it.drawColor(Color.WHITE); v.draw(it) }
             out.outputStream().use { bmp.compress(Bitmap.CompressFormat.PNG, 95, it) }
             bmp.recycle(); out
-        } catch (_: Exception) { null } finally { try { v.destroy() } catch (_: Exception) {} }
+        } catch (_: Exception) { null } finally { try { v.destroy() } catch (e: Exception) { Quiet.note(e) } }
     }
 
     /** काम खत्म = ब्राउज़र बंद (memory खाली) */
     fun close() {
         val w = web ?: return
         web = null
-        android.os.Handler(android.os.Looper.getMainLooper()).post { try { w.stopLoading(); w.destroy() } catch (_: Exception) {} }
+        android.os.Handler(android.os.Looper.getMainLooper()).post { try { w.stopLoading(); w.destroy() } catch (e: Exception) { Quiet.note(e) } }
     }
 }

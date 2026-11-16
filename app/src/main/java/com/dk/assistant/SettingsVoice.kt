@@ -33,7 +33,7 @@ internal fun SettingsActivity.startTalking() {
     if (!Setup.hasMic(this)) { requestPermissions(arrayOf(android.Manifest.permission.RECORD_AUDIO), 12); return }
     svc.startLive()
     toast("✓ तैयार — बोलिए, DK सुन रहा है")
-    try { startActivity(android.content.Intent(this, VoiceActivity::class.java)) } catch (_: Exception) {}
+    try { startActivity(android.content.Intent(this, VoiceActivity::class.java)) } catch (e: Exception) { Quiet.note(e) }
 }
 
 internal fun SettingsActivity.heyDkCard(box: LinearLayout) {
@@ -47,7 +47,7 @@ internal fun SettingsActivity.heyDkCard(box: LinearLayout) {
     hint(box, "खाली छोड़ें = प्रोफ़ाइल का नाम लेकर \"जी <नाम>\" (नाम न हो तो \"Yes Boss\")। इंटरनेट हो तो DK सीधे Live में सुनता है - जुड़ते ही हल्की आवाज़।")
     row(box, button("जवाब सेव करो") {
         Prefs.edit(this) { putString("hey_dk_acks", edAcks.text.toString().trim()) }
-        lifecycleScope.launch(kotlinx.coroutines.Dispatchers.IO) { try { HD.prepareAcks(this@heyDkCard) } catch (_: Exception) {} }
+        lifecycleScope.launch(kotlinx.coroutines.Dispatchers.IO) { try { HD.prepareAcks(this@heyDkCard) } catch (e: Exception) { Quiet.note(e) } }
         toast("सेव हो गया")
     })
     // power बटन = एक बार की बातचीत (चुप = वापस वेक वर्ड)

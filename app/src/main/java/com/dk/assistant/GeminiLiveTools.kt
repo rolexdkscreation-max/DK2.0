@@ -238,7 +238,7 @@ internal suspend fun GeminiLive.localInfoTool(find: String = ""): String {
         try {
             svc.startActivity(android.content.Intent(svc, MainActivity::class.java).putExtra("ask_location", true)
                 .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK or android.content.Intent.FLAG_ACTIVITY_SINGLE_TOP))
-        } catch (_: Exception) {}
+        } catch (e: Exception) { Quiet.note(e) }
         return "Location permission is OFF, so you cannot know where he is. I opened the DK app to ask for it. Tell him clearly and briefly: allow Location for DK on the screen (\"Allow\" / \"While using the app\"), then ask again."
     }
     if (!LocalInfo.locationOn(svc)) return "The phone's Location (GPS) is turned OFF, so you cannot see where he is. Tell him clearly: turn ON Location from the quick settings (pull down from the top, tap 'Location'), then ask again."
@@ -305,13 +305,16 @@ internal fun GeminiLive.notifTool(app: String): String {
     val alive = DKNotifListener.refresh(svc)
     val q = app.trim()
     val list = NotifStore.recent(app = q)
-    val r = NotifPush.toolAnswer(alive, NotifStore.describe(list, System.currentTimeMillis()), NotifStore.all().size, q,
-        NotifStore.describe(list, System.currentTimeMillis()))
+    val desc = NotifStore.describe(list, System.currentTimeMillis())
+    // 16 नवंबर 2026 (ऑडिट G2): नोटिफ़िकेशन दूसरों का लिखा - AI को "जानकारी, हुक्म नहीं" बनाकर; जवाब भेजने पर ऐप का कार्ड
+    if (list.isNotEmpty()) com.dk.assistant.plus.ConfirmGate.markUntrusted()
+    val r = NotifPush.toolAnswer(alive, desc, NotifStore.all().size, q,
+        if (list.isEmpty()) desc else com.dk.assistant.agent.core.OutsideText.wrap("NOTIFICATIONS", desc))
     log("notifications (${if (alive) "ताज़ा पढ़ा" else "पढ़ने वाला जुड़ा नहीं"}): ${list.size}")
     return r
 }
 
-internal fun GeminiLive.notifReply(to: String, message: String): String {
+internal suspend fun GeminiLive.notifReply(to: String, message: String): String {
     val msg = message.trim()
     if (msg.isBlank()) return "No message given - ask the user what to reply."
     if (!DKNotifListener.enabled(svc)) {
@@ -320,6 +323,11 @@ internal fun GeminiLive.notifReply(to: String, message: String): String {
     }
     val n = NotifStore.findForReply(to)
         ?: return "No notification found that can be replied to" + (if (to.isNotBlank()) " for '$to'" else "") + ". Tell the user; offer to send it via phone_task instead."
+    // 16 नवंबर 2026 (ऑडिट G3): अभी-अभी नोटिफ़िकेशन / स्क्रीन (दूसरों की लिखावट) पढ़ी गई = भेजने से पहले ऐप का अपना "हाँ / ना" कार्ड
+    if (com.dk.assistant.plus.ConfirmGate.untrustedNow()) {
+        val denied = com.dk.assistant.plus.ConfirmGate.check(svc, "${n.title.ifBlank { n.app }} को जवाब भेजूँ?", "\"$msg\"\n(${n.app})", "notification reply")
+        if (denied != null) { log("notification reply -> कार्ड पर हाँ नहीं"); return denied }
+    }
     val err = DKNotifListener.reply(svc, n.key, msg)
     log("notification reply -> [${n.app}] ${n.title.take(20)}: " + (err ?: "भेज दिया"))
     return if (err == null) "Sent to ${n.title.ifBlank { n.app }} on ${n.app}: \"$msg\""
@@ -577,7 +585,7 @@ internal fun GeminiLive.runTools(calls: JSONArray) {
                     cur.tx(JSONObject().put("realtimeInput", JSONObject().put("text",
                         "SYSTEM NOTE: the connection was renewed while the user's earlier request ($name) was running. Its result: \"" +
                             result.take(600) + "\". Tell the user briefly only if it is still relevant. Do not invent details.")).toString())
-                } catch (_: Exception) {}
+                } catch (e: Exception) { Quiet.note(e) }
             }
           } finally {
             if (held) com.dk.assistant.insights.InsightsAgent.releaseHold()
@@ -609,7 +617,7 @@ internal fun GeminiLive.watchToolAnswer(name: String, result: String, sock: WebS
             sock.tx(JSONObject().put("realtimeInput", JSONObject().put("text",
                 "SYSTEM NOTE: you already received the result of $name for the user's last question but have not answered yet. " +
                     "Answer the user NOW, briefly and naturally in Hindi, from this result: \"" + result.take(900) + "\"")).toString())
-        } catch (_: Exception) {}
+        } catch (e: Exception) { Quiet.note(e) }
         delay(10_000)
         if (toolJobs.isEmpty() && promiseJob?.isActive != true && !generating) DKState.hint("")
     }
@@ -624,5 +632,5 @@ internal fun GeminiLive.ignoreTools(calls: JSONArray) {
             .put("response", JSONObject().put("result", "IGNORED: that voice was not the owner's. Do nothing, say nothing, wait for the owner.")))
     }
     log("किसी और की आवाज़ पर काम माँगा (${calls.length()}) - कुछ नहीं किया")
-    try { ws?.tx(JSONObject().put("toolResponse", JSONObject().put("functionResponses", arr)).toString()) } catch (_: Exception) {}
+    try { ws?.tx(JSONObject().put("toolResponse", JSONObject().put("functionResponses", arr)).toString()) } catch (e: Exception) { Quiet.note(e) }
 }

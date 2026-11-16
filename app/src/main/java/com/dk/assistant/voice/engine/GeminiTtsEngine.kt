@@ -78,7 +78,7 @@ object GeminiTtsEngine : VoiceEngine {
     override fun warm(c: Context) {
         if (notReady(c) != null) return
         val r = Request.Builder().url(GeminiTtsDirect.HOST).get().build()
-        try { http.newCall(r).execute().close() } catch (_: Exception) {}
+        try { http.newCall(r).execute().close() } catch (e: Exception) { com.dk.assistant.Quiet.note(e) }
     }
 
     override fun speak(c: Context, text: String, voice: String, out: PcmOut) {

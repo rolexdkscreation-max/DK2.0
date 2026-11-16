@@ -57,7 +57,7 @@ object LiveNet {
             override fun onReceive(ctx: Context, i: Intent) {
                 when (i.action) {
                     Intent.ACTION_SCREEN_ON -> warm(ctx, "स्क्रीन चालू")
-                    Intent.ACTION_USER_PRESENT -> { warm(ctx, "स्क्रीन चालू"); try { PhoneLockStore.userUnlocked(ctx) } catch (_: Exception) {} }
+                    Intent.ACTION_USER_PRESENT -> { warm(ctx, "स्क्रीन चालू"); try { PhoneLockStore.userUnlocked(ctx) } catch (e: Exception) { Quiet.note(e) } }
                     Intent.ACTION_SCREEN_OFF -> screenOff()
                 }
             }
@@ -72,7 +72,7 @@ object LiveNet {
     }
 
     fun unregister(c: Context) {
-        receiver?.let { try { c.unregisterReceiver(it) } catch (_: Exception) {} }
+        receiver?.let { try { c.unregisterReceiver(it) } catch (e: Exception) { Quiet.note(e) } }
         receiver = null
         screenOff()
     }
@@ -115,6 +115,6 @@ object LiveNet {
     private fun screenOff() {
         warmedThisScreen = false
         warmCall?.cancel(); warmCall = null
-        try { warmHttp.connectionPool.evictAll() } catch (_: Exception) {}
+        try { warmHttp.connectionPool.evictAll() } catch (e: Exception) { Quiet.note(e) }
     }
 }

@@ -131,19 +131,20 @@ object ToolExec {
             ToolRegistry.TIMER -> listOf(Way("घड़ी ऐप") { p(a("timer_set", "seconds" to g.optInt("seconds", 0))) })
             ToolRegistry.READ_SCREEN -> listOf(Way("स्क्रीन") {
                 val s = svc.readScreen()
-                "APP: ${s.packageName}\n" + s.text.take(3500).ifBlank { "(स्क्रीन पर कुछ नहीं पढ़ा गया)" }
+                com.dk.assistant.plus.ConfirmGate.markUntrusted()   // 16 नवंबर 2026 (G2): स्क्रीन की लिखावट = जानकारी, हुक्म नहीं
+                "APP: ${s.packageName}\n" + com.dk.assistant.agent.core.OutsideText.wrap("SCREEN", s.text.take(3500).ifBlank { "(स्क्रीन पर कुछ नहीं पढ़ा गया)" })
             })
             ToolRegistry.TYPE -> listOf(Way("टाइप") { p(a("type", "text" to g.optString("text"))) })
             ToolRegistry.NOTIFICATIONS -> listOf(
                 Way("नोटिफ़िकेशन सूची") {
                     val list = NotifStore.all().take(10)
                     if (list.isEmpty()) "STEP_FAILED: DK की सूची में कोई नोटिफ़िकेशन नहीं"
-                    else "SAID: " + list.joinToString("\n") { "${it.app}: ${it.title} — ${it.text.take(120)}" }
+                    else { com.dk.assistant.plus.ConfirmGate.markUntrusted(); "SAID: " + com.dk.assistant.agent.core.OutsideText.wrap("NOTIFICATIONS", list.joinToString("\n") { "${it.app}: ${it.title} — ${it.text.take(120)}" }) }
                 },
                 Way("नोटिफ़िकेशन पट्टी") {
                     p(a("notifications")); delay(900)
                     val t = svc.readScreen().text.take(3000); p(a("back"))
-                    if (t.isBlank()) "STEP_FAILED: पट्टी पढ़ी नहीं गई" else "SAID: $t"
+                    if (t.isBlank()) "STEP_FAILED: पट्टी पढ़ी नहीं गई" else { com.dk.assistant.plus.ConfirmGate.markUntrusted(); "SAID: " + com.dk.assistant.agent.core.OutsideText.wrap("NOTIFICATIONS", t) }
                 },
             )
             ToolRegistry.LOCATION -> listOf(Way("लोकेशन") {

@@ -228,7 +228,7 @@ object CoderHistory {
 
     private fun put(c: Context, t: Thread) = synchronized(lock) {
         val all = Logic.upsert(list(c), t)
-        try { SafeFile.write(idxFile(c), Logic.indexJson(all)) } catch (_: Exception) {}
+        try { SafeFile.write(idxFile(c), Logic.indexJson(all)) } catch (e: Exception) { Quiet.note(e) }
         // 100 से पुराने धागों की फ़ाइलें हटाओ
         val keep = all.map { "t_${it.id}.json" }.toSet()
         dir(c).listFiles()?.filter { it.name.startsWith("t_") && it.name !in keep }?.forEach { it.delete() }
@@ -247,7 +247,7 @@ object CoderHistory {
     fun flush(c: Context) {
         val id = current.ifBlank { return }
         val snap = try { CoderSession.lines.toList() } catch (_: Exception) { return }
-        try { SafeFile.write(linesFile(c, id), Logic.linesJson(snap)) } catch (_: Exception) {}
+        try { SafeFile.write(linesFile(c, id), Logic.linesJson(snap)) } catch (e: Exception) { Quiet.note(e) }
         val a = CoderSession.agent
         val pr = a?.pr
         val busy = CoderSession.busy
@@ -285,7 +285,7 @@ object CoderHistory {
 
     fun delete(c: Context, id: String) = synchronized(lock) {
         val all = list(c).filter { it.id != id }
-        try { SafeFile.write(idxFile(c), Logic.indexJson(all)) } catch (_: Exception) {}
+        try { SafeFile.write(idxFile(c), Logic.indexJson(all)) } catch (e: Exception) { Quiet.note(e) }
         SafeFile.delete(linesFile(c, id))
         if (current == id) { current = ""; Prefs.edit(c) { putString("coder_thread", "") } }
     }
@@ -312,7 +312,7 @@ object CoderHistory {
         val f = ckFile(c)
         val json = Logic.ckJson(k.copy(at = System.currentTimeMillis()))
         ckMem = Logic.ck(json); ckPath = f.path
-        try { SafeFile.write(f, json) } catch (_: Exception) {}
+        try { SafeFile.write(f, json) } catch (e: Exception) { Quiet.note(e) }
     }
 
     /** चौकी में बदलाव (staged, branch, आख़िरी कदम) - background में */

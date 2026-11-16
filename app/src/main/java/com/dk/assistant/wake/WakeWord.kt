@@ -79,7 +79,7 @@ object WakeWord {
     private fun engineFor(c: Context, ws: List<WakeRules.Word>): OwwEngine? {
         val key = WakeModels.version(c).toString() + ":" + ws.joinToString { it.id }
         engine?.takeIf { engineKey == key }?.let { return it }
-        try { engine?.close() } catch (_: Exception) {}
+        try { engine?.close() } catch (e: Exception) { com.dk.assistant.Quiet.note(e) }
         engine = null
         val e = OwwEngine.open(WakeModels.melFile(c), WakeModels.embFile(c), ws.associate { it.id to WakeModels.headFile(c, it) })
         if (e == null) DKLog.d("वेक वर्ड: मॉडल नहीं खुला - ${OwwEngine.lastError}")
@@ -87,7 +87,7 @@ object WakeWord {
         return e
     }
 
-    fun closeEngine() { try { engine?.close() } catch (_: Exception) {}; engine = null; engineKey = "" }
+    fun closeEngine() { try { engine?.close() } catch (e: Exception) { com.dk.assistant.Quiet.note(e) }; engine = null; engineKey = "" }
 
     class Hit(
         val word: WakeRules.Word, val score: Float, val owner: Float?, val latencyMs: Long, val ownerMs: Long?,
@@ -111,7 +111,7 @@ object WakeWord {
                 val r = AudioRecord(src, WakeRules.RATE, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT, maxOf(min * 2, WakeRules.STEP * 2 * 4))
                 if (r.state == AudioRecord.STATE_INITIALIZED) return r
                 r.release()
-            } catch (_: Exception) {}
+            } catch (e: Exception) { com.dk.assistant.Quiet.note(e) }
         }
         return null
     }
@@ -167,6 +167,7 @@ object WakeWord {
                     // चुप्पी: मॉडल नहीं चलता (बैटरी). अभी-अभी बंद हुआ हो तो रुकी बात से आवाज़-कमांड
                     if (seg.isNotEmpty()) {
                         val whole = pcm(seg); seg.clear()
+                        com.dk.assistant.voice.UnlockGuard.heard(whole)   // 16 नवंबर 2026: आवाज़ से अनलॉक की जाँच (सिर्फ़ मेमोरी में)
                         if (cmdsOn) VoiceCmds.match(c, whole)?.let { ch ->
                             return@withContext Hit(ws.first(), 0f, null, 0, null, locked(c), cmd = ch)
                         }
@@ -240,7 +241,7 @@ object WakeWord {
         } catch (e: Exception) {
             DKLog.d("वेक वर्ड: गलती ${e.javaClass.simpleName} ${e.message}"); null
         } finally {
-            if (!handed) { try { r.stop() } catch (_: Exception) {}; try { r.release() } catch (_: Exception) {} }
+            if (!handed) { try { r.stop() } catch (e: Exception) { com.dk.assistant.Quiet.note(e) }; try { r.release() } catch (e: Exception) { com.dk.assistant.Quiet.note(e) } }
         }
     }
 }

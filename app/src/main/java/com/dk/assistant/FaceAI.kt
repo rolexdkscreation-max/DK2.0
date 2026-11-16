@@ -65,7 +65,7 @@ object FaceAI {
     private val lock = Any()
 
     /** onnxruntime सिर्फ़ 64-bit ARM फ़ोनों के लिए APK में है (आवाज़-पहचान जैसा) */
-    val supported: Boolean get() = com.dk.assistant.voice.OwnerVoice.supported
+    val supported: Boolean get() = com.dk.assistant.voice.VoiceExec.supported
 
     private fun file(c: Context, m: Model) = File(File(c.filesDir, "face"), m.file)
     private fun has(c: Context, m: Model) = file(c, m).let { f -> f.exists() && f.length() == m.bytes }

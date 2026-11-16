@@ -62,7 +62,7 @@ object CallSpeaker {
             active = true
             log("चालू - echo-cancel पक्का (फ़ोन का माइक + speaker कॉल वाले तरीके पर)")
         } catch (e: Exception) {
-            log("नहीं लगा: ${e.message}"); try { m.mode = prevMode } catch (_: Exception) {}
+            log("नहीं लगा: ${e.message}"); try { m.mode = prevMode } catch (e: Exception) { Quiet.note(e) }
             active = false
         }
         return active
@@ -79,7 +79,7 @@ object CallSpeaker {
             try {
                 if (Build.VERSION.SDK_INT >= 31) m.clearCommunicationDevice() else m.isSpeakerphoneOn = prevSpeaker
                 if (m.mode == AudioManager.MODE_IN_COMMUNICATION) m.mode = if (prevMode == AudioManager.MODE_IN_COMMUNICATION) AudioManager.MODE_NORMAL else prevMode
-            } catch (_: Exception) {}
+            } catch (e: Exception) { Quiet.note(e) }
         }
         log("फ़ोन कॉल - रुका (कॉल के बाद फिर)")
     }
@@ -94,7 +94,7 @@ object CallSpeaker {
             try {
                 if (Build.VERSION.SDK_INT >= 31) m.clearCommunicationDevice() else m.isSpeakerphoneOn = prevSpeaker
                 if (m.mode == AudioManager.MODE_IN_COMMUNICATION) m.mode = if (prevMode == AudioManager.MODE_IN_COMMUNICATION) AudioManager.MODE_NORMAL else prevMode
-            } catch (_: Exception) {}
+            } catch (e: Exception) { Quiet.note(e) }
         }
         log("बंद - आवाज़ वापस normal (media)")
     }

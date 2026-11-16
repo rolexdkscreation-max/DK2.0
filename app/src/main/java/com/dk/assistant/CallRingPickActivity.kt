@@ -19,7 +19,7 @@ class CallRingPickActivity : Activity() {
         if (b != null) return
         if (Build.VERSION.SDK_INT >= 23 && !Settings.System.canWrite(this)) {
             UiLang.toast(this, "पहले \"सिस्टम सेटिंग बदलें\" की इजाज़त दें, फिर दोबारा रिंग चुनें", android.widget.Toast.LENGTH_LONG).show()
-            try { startActivity(Intent(Settings.ACTION_MANAGE_WRITE_SETTINGS, Uri.parse("package:$packageName"))) } catch (_: Exception) {}
+            try { startActivity(Intent(Settings.ACTION_MANAGE_WRITE_SETTINGS, Uri.parse("package:$packageName"))) } catch (e: Exception) { Quiet.note(e) }
             finish(); return
         }
         val cur = try { RingtoneManager.getActualDefaultRingtoneUri(this, RingtoneManager.TYPE_RINGTONE) } catch (_: Exception) { null }

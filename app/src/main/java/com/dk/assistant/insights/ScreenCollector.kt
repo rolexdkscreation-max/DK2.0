@@ -110,7 +110,7 @@ class ScreenCollector(
             var cur = sig
             for (a in reply.actions.take(InsightsSpeed.ACTIONS_PER_REPLY)) {
                 progress("${p.hi} • कदम $step: " + InsightsPlan.actHi(a, obs))
-                InsightsPlan.point(a, obs)?.let { (x, y) -> try { mark(x, y) } catch (_: Exception) {} }
+                InsightsPlan.point(a, obs)?.let { (x, y) -> try { mark(x, y) } catch (e: Exception) { com.dk.assistant.Quiet.note(e) } }
                 val r = run(obs, a)
                 history.addLast(a.describe() + (if (r == DriverResult.OK) "" else " [failed]"))
                 while (history.size > 8) history.removeFirst()

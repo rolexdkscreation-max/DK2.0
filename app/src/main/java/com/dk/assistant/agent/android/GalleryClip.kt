@@ -50,7 +50,7 @@ object GalleryClip {
     @Volatile var broken: String? = null
         private set
 
-    val supported: Boolean get() = com.dk.assistant.voice.OwnerVoice.supported
+    val supported: Boolean get() = com.dk.assistant.voice.VoiceExec.supported
 
     fun modelsReady(c: Context) = ModelCatalog.SOCIAL_CLIP.all { ModelManager.ready(c, it) }
 
@@ -63,7 +63,7 @@ object GalleryClip {
     else mediaPermission(c)
 
     fun close() = synchronized(lock) {
-        try { vision?.close() } catch (_: Exception) {}; try { text?.close() } catch (_: Exception) {}
+        try { vision?.close() } catch (e: Exception) { com.dk.assistant.Quiet.note(e) }; try { text?.close() } catch (e: Exception) { com.dk.assistant.Quiet.note(e) }
         vision = null; text = null; tok = null; broken = null
     }
 
@@ -82,7 +82,7 @@ object GalleryClip {
             } catch (e: Throwable) {
                 broken = e.javaClass.simpleName
                 DKLog.d("गैलरी पहचान: मॉडल नहीं खुला (${e.javaClass.simpleName})")
-                try { vision?.close() } catch (_: Exception) {}; try { text?.close() } catch (_: Exception) {}
+                try { vision?.close() } catch (e: Exception) { com.dk.assistant.Quiet.note(e) }; try { text?.close() } catch (e: Exception) { com.dk.assistant.Quiet.note(e) }
                 vision = null; text = null; tok = null; false
             }
         }

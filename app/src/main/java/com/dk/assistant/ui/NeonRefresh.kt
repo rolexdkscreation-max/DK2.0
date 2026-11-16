@@ -18,7 +18,7 @@ object NeonRefresh : Application.ActivityLifecycleCallbacks {
             val bg = NeonTheme.bg()
             a.window?.statusBarColor = bg[0]
             a.window?.navigationBarColor = bg[2]
-        } catch (_: Exception) {}
+        } catch (e: Exception) { com.dk.assistant.Quiet.note(e) }
     }
 
     fun invalidateAll(v: View?) {

@@ -54,9 +54,9 @@ internal fun GeminiLive.ownerSaysOwner(held: Collection<ByteArray>): Boolean {
     } catch (_: Throwable) { true }
 }
 
-/** 15 नवंबर 2026 (हिस्सा 2): वॉइस गार्डियन चालू = उसका मॉडल, वरना पुराना (वैसा ही) */
+/** 16 नवंबर 2026: पहचान का एक ही इंजन - वॉइस गार्डियन (पुराना CAM++ हटाया). बंद = null (आवाज़ नहीं खोती) */
 internal fun GeminiLive.ownerScore(audio: ByteArray): Float? =
-    if (vgOn) com.dk.assistant.voice.VoiceGuardian.score(svc, audio) else com.dk.assistant.voice.OwnerVoice.score(svc, audio)
+    if (vgOn) com.dk.assistant.voice.VoiceGuardian.score(svc, audio) else null
 
 // ================================================================ v3.66: सिर्फ़ मालिक की आवाज़
 internal fun GeminiLive.refreshOwnerCfg(now: Long) {
@@ -64,13 +64,13 @@ internal fun GeminiLive.refreshOwnerCfg(now: Long) {
     vgOn = com.dk.assistant.voice.VoiceGuardian.gateOn(svc)
     vgStrict = vgOn && com.dk.assistant.voice.VoiceGuardian.strictOn(svc)
     owner.fast = vgStrict
-    ownerOn = com.dk.assistant.voice.OwnerVoice.active(svc) || vgOn
-    ownerTh = if (vgOn) com.dk.assistant.voice.VoiceGuardian.threshold(svc) else com.dk.assistant.voice.VoicePrint.threshold(Prefs.ownerVoiceStrict(svc))
+    ownerOn = vgOn
+    ownerTh = com.dk.assistant.voice.VoiceGuardian.threshold(svc)
     val wasWho = whoOn
-    whoOn = !ownerOn && SideTalk.on(svc) && com.dk.assistant.voice.OwnerVoice.ready(svc)
-    if (whoOn && !wasWho) com.dk.assistant.voice.OwnerVoice.warmAny(svc)
+    whoOn = !ownerOn && SideTalk.on(svc) && com.dk.assistant.voice.VoiceGuardian.ready(svc)
+    if (whoOn && !wasWho) com.dk.assistant.voice.VoiceGuardian.prime(svc)
     // v3.6: "दूर की आवाज़ अनसुनी" सिर्फ़ जब "सिर्फ़ मेरी आवाज़" चालू हो - वरना धीमी बोली हुई बात भी फेंक देता था
-    turnDet.startFloor = LiveHear.farFloor(ownerOn, com.dk.assistant.voice.OwnerVoice.farFloor(svc, btOn))
+    turnDet.startFloor = LiveHear.farFloor(ownerOn, com.dk.assistant.voice.OwnerLevel.farFloor(svc, btOn))
     // v4.7: बिना आवाज़ सिखाए भी दूर की आवाज़ अनसुनी - आपकी पास वाली आवाज़ से सीखा (Bluetooth पर बंद: माइक मुँह के पास)
     if (!ownerOn && !btOn && Prefs.ownerFarOn(svc)) turnDet.startFloor = near.floor()
     val fb = turnDet.farBlocked
@@ -87,7 +87,7 @@ internal fun GeminiLive.learnNear() {
     if (btOn || lv <= 0 || turnDet.lastSpeechMs < 500 || !BargeGate.realWords(caption?.text().orEmpty())) return
     val before = near.floor()
     near.learn(lv)
-    if (++nearLearned % 5 == 1) try { Prefs.edit(svc) { putString("near_levels", near.save()) } } catch (_: Exception) {}
+    if (++nearLearned % 5 == 1) try { Prefs.edit(svc) { putString("near_levels", near.save()) } } catch (e: Exception) { Quiet.note(e) }
     if (before <= 0 && near.floor() > 0) log("आपकी पास वाली आवाज़ सीख ली (स्तर ${near.level.toInt()}) - इससे बहुत धीमी (दूर की) आवाज़ अब अनसुनी")
 }
 
@@ -97,7 +97,7 @@ internal fun GeminiLive.checkOwnerAsync() {
     val audio = owner.takeAudio()
     val ms = audio.size * 1000 / (IN_RATE * 2)
     try {
-        com.dk.assistant.voice.OwnerVoice.exec.execute {
+        com.dk.assistant.voice.VoiceExec.exec.execute {
             val t0 = System.currentTimeMillis()
             val sc = try { ownerScore(audio) } catch (_: Throwable) { null }
             ownerResult = OwnerResult(gen, sc, ms, System.currentTimeMillis() - t0)
@@ -163,7 +163,7 @@ internal fun GeminiLive.ownerEnd(now: Long) {
     val isOwner = owner.verdict == com.dk.assistant.voice.OwnerGate.Verdict.OWNER
     if (isOwner) {
         val lv = com.dk.assistant.voice.VoicePrint.speechLevel(owner.rms(), turnDet.noise)
-        if (lv > 0) try { com.dk.assistant.voice.OwnerVoice.learnLevel(svc, lv) } catch (_: Exception) {}
+        if (lv > 0) try { com.dk.assistant.voice.OwnerLevel.learnLevel(svc, lv) } catch (e: Exception) { Quiet.note(e) }
     }
     owner.finish()
     if (isOwner) onLocalEndOfSpeech(now)

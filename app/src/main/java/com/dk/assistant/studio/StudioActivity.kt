@@ -323,7 +323,7 @@ class StudioActivity : AppCompatActivity() {
 
     override fun onPause() { StudioSession.listener = null; ui.removeCallbacks(tick); super.onPause() }
 
-    override fun onDestroy() { try { web.destroy() } catch (_: Exception) {}; super.onDestroy() }
+    override fun onDestroy() { try { web.destroy() } catch (e: Exception) { com.dk.assistant.Quiet.note(e) }; super.onDestroy() }
 
     companion object { const val HOST = "appassets.androidplatform.net" }
 }

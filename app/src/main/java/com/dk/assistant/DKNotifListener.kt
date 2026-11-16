@@ -34,7 +34,7 @@ class DKNotifListener : NotificationListenerService() {
             try {
                 c.startActivity(Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
             } catch (_: Exception) {
-                try { c.startActivity(Intent(Settings.ACTION_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) } catch (_: Exception) {}
+                try { c.startActivity(Intent(Settings.ACTION_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) } catch (e: Exception) { Quiet.note(e) }
             }
         }
 
@@ -62,7 +62,7 @@ class DKNotifListener : NotificationListenerService() {
         fun refresh(c: Context): Boolean {
             val l = instance
             if (l == null) {
-                try { if (android.os.Build.VERSION.SDK_INT >= 24) NotificationListenerService.requestRebind(ComponentName(c, DKNotifListener::class.java)) } catch (_: Exception) {}
+                try { if (android.os.Build.VERSION.SDK_INT >= 24) NotificationListenerService.requestRebind(ComponentName(c, DKNotifListener::class.java)) } catch (e: Exception) { Quiet.note(e) }
                 return false
             }
             return try { l.activeNotifications?.forEach { l.take(it, push = false) }; true } catch (_: Exception) { false }
@@ -78,13 +78,13 @@ class DKNotifListener : NotificationListenerService() {
     override fun onListenerConnected() {
         instance = this
         // पहले से पड़े notification भी ले लो (DK लाइव शुरू होने से पहले वाले)
-        try { activeNotifications?.forEach { take(it, push = false) } } catch (_: Exception) {}
+        try { activeNotifications?.forEach { take(it, push = false) } } catch (e: Exception) { Quiet.note(e) }
         // 13 नवंबर 2026: DK Island - फ़ोन पर पहले से पड़े सारे notification भी
-        try { activeNotifications?.forEach { IslandFeed.posted(this, it) } } catch (_: Exception) {}
+        try { activeNotifications?.forEach { IslandFeed.posted(this, it) } } catch (e: Exception) { Quiet.note(e) }
         // v4: अलग रहने के दौरान ख़त्म हुई ऐप कॉल अटकी न रहे
-        try { AppCall.current?.key?.let { k -> if (activeNotifications?.none { it.key == k } != false) AppCall.removed(k) } } catch (_: Exception) {}
+        try { AppCall.current?.key?.let { k -> if (activeNotifications?.none { it.key == k } != false) AppCall.removed(k) } } catch (e: Exception) { Quiet.note(e) }
         // 13 नवंबर 2026: एक से ज़्यादा ऐप कॉल - जो notification अब नहीं, वह कॉल island में अटकी न रहे
-        try { activeNotifications?.let { a -> AppCall.prune(a.map { it.key }.toSet()) } } catch (_: Exception) {}
+        try { activeNotifications?.let { a -> AppCall.prune(a.map { it.key }.toSet()) } } catch (e: Exception) { Quiet.note(e) }
     }
 
     override fun onListenerDisconnected() { if (instance === this) instance = null }
@@ -159,6 +159,6 @@ class DKNotifListener : NotificationListenerService() {
                 fresh
             }
             if (push && isNew && DKState.live) DKAccessibilityService.instance?.gemLive?.pushNotif(app, title.trim(), text.trim())
-        } catch (_: Exception) {}
+        } catch (e: Exception) { Quiet.note(e) }
     }
 }

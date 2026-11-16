@@ -94,7 +94,7 @@ object InsightsAgent {
         if (j?.isActive == true) {
             j.cancel()
             // नवंबर 2026: AI की चलती कॉल भी अभी काटो - वरना रोकने के बाद भी 25 सेकंड तक कदम चलता रहता
-            try { liveCall?.cancel() } catch (_: Exception) {}
+            try { liveCall?.cancel() } catch (e: Exception) { com.dk.assistant.Quiet.note(e) }
             holds.set(0)
             stoppedAt = System.currentTimeMillis()
             return true
@@ -212,7 +212,7 @@ object InsightsAgent {
                 withContext(Dispatchers.Main) {
                     DKState.reply(r.report)
                     // बैकग्राउंड = मालिक दूसरा काम कर रहा है - DK चैट बीच में नहीं खोलते (रिपोर्ट चैट में पड़ी है, सूचना में "पूरा")
-                    if (!bg) try { svc.startActivity(Intent(svc, com.dk.assistant.ChatActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_REORDER_TO_FRONT)) } catch (_: Exception) {}
+                    if (!bg) try { svc.startActivity(Intent(svc, com.dk.assistant.ChatActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_REORDER_TO_FRONT)) } catch (e: Exception) { com.dk.assistant.Quiet.note(e) }
                 }
                 if (DKState.live) spokenForLive = r.spoken
                 else speak?.invoke(r.spoken)
@@ -307,7 +307,7 @@ object InsightsAgent {
             took += p.hi to (System.currentTimeMillis() - tp)
             startTrends()
         }
-        if (usedScreen) try { svc.performGlobalAction(android.accessibilityservice.AccessibilityService.GLOBAL_ACTION_HOME) } catch (_: Exception) {}
+        if (usedScreen) try { svc.performGlobalAction(android.accessibilityservice.AccessibilityService.GLOBAL_ACTION_HOME) } catch (e: Exception) { com.dk.assistant.Quiet.note(e) }
         val analyses = all.map { Insights.analyze(it) }
         val anyData = all.any { !it.empty }
 
@@ -414,7 +414,7 @@ object InsightsAgent {
         val r = withTimeoutOrNull(InsightsSpeed.REPORT_WAIT_MS) { job.await() }
         if (r == null && !job.isCompleted) {
             reportCut = true; job.cancel()
-            try { liveCall?.cancel() } catch (_: Exception) {}
+            try { liveCall?.cancel() } catch (e: Exception) { com.dk.assistant.Quiet.note(e) }
             DKLog.d("सोशल रिव्यू: रिपोर्ट का AI ${InsightsSpeed.REPORT_WAIT_MS / 1000} सेकंड में नहीं आया - DK की अपनी रिपोर्ट")
         }
         return r

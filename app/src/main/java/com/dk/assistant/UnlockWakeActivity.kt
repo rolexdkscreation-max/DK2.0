@@ -55,7 +55,7 @@ class UnlockWakeActivity : Activity() {
     }
 
     @Suppress("DEPRECATION")
-    private fun overridePendingTransitionCompat() { try { overridePendingTransition(0, 0) } catch (_: Exception) {} }
+    private fun overridePendingTransitionCompat() { try { overridePendingTransition(0, 0) } catch (e: Exception) { Quiet.note(e) } }
 
     override fun onDestroy() { main.removeCallbacksAndMessages(null); super.onDestroy() }
 

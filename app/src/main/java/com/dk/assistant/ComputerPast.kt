@@ -61,7 +61,7 @@ object ComputerPast {
         try {
             val l = (all(c) + Item(System.currentTimeMillis(), task.take(1200), answer.take(4000), files.take(20))).takeLast(MAX)
             SafeFile.write(file(c), encode(l))
-        } catch (_: Exception) {}
+        } catch (e: Exception) { Quiet.note(e) }
     }
 
     @Synchronized fun clear(c: Context) { SafeFile.delete(file(c)) }

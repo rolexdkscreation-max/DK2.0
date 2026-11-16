@@ -54,5 +54,5 @@ object CoderSound {
             .setSmallIcon(android.R.drawable.stat_notify_sync_noanim).setContentTitle(title).setContentText(text)
             .setStyle(android.app.Notification.BigTextStyle().bigText(text)).setContentIntent(pi).setAutoCancel(true)
         nm.notify(NOTIFY_ID, b.build())
-    } catch (_: Exception) {}
+    } catch (e: Exception) { Quiet.note(e) }
 }

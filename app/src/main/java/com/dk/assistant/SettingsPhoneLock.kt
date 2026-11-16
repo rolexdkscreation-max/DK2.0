@@ -50,8 +50,17 @@ internal fun SettingsActivity.secPhoneLock() {
         hint(box, "लॉक और अनलॉक का वाक्य नीचे \"आवाज़ रिकॉर्ड करके सिखाएँ\" में अलग-अलग 30 सेकंड रिकॉर्ड करें — उसी आवाज़ से फ़ोन लॉक / अनलॉक होगा, इंटरनेट हो या न हो।")
         hint(box, "ध्यान दें: PIN फ़ोन से बाहर कहीं नहीं जाता " +
             "(न इंटरनेट, न AI)। फ़ोन का PIN बदलें तो यहाँ भी नया सेव करें। लगातार ${PhoneLockStore.MAX_FAILS} बार न खुले तो DK अपने-आप रुक जाता है।")
+        // 16 नवंबर 2026 (ऑडिट G1): आवाज़ से अनलॉक की सुरक्षा साफ़-साफ़
+        if (!com.dk.assistant.voice.VoiceGuardian.ready(this)) hint(box, "⚠ आवाज़ से अनलॉक के लिए पहले Settings → वॉइस गार्डियन में अपनी आवाज़ सिखाइए — उसके बिना DK PIN नहीं डालेगा।")
+        hint(box, UNLOCK_SAFETY_NOTE)
         swUnlock.setOnCheckedChangeListener { _, on ->
             txtSaved?.text = "बदलाव सेव नहीं हुए — सेव दबाएँ"
+            if (on && PhoneLockStore.hasSecret(this) && !PhoneLockStore.unlockOn(this)) {
+                AlertDialog.Builder(this).setTitle(UiLang.s("आवाज़ से अनलॉक — ध्यान दें")).setMessage(UiLang.s(UNLOCK_SAFETY_NOTE))
+                    .setPositiveButton(UiLang.s("समझ गया, चालू करो"), null)
+                    .setNegativeButton(UiLang.s("बंद रखो")) { _, _ -> swUnlock.isChecked = false }
+                    .setCancelable(false).show()
+            }
             if (on && !PhoneLockStore.hasSecret(this)) askPhoneSecret { ok -> refresh(); if (!ok) swUnlock.isChecked = false else plSave?.invoke() }
         }
     }
@@ -145,3 +154,8 @@ internal fun SettingsActivity.askPhoneSecret(done: (Boolean) -> Unit) {
     d.setOnDismissListener { done(saved) }
     d.show()
 }
+
+/** 16 नवंबर 2026: आवाज़ से अनलॉक की सच्ची सुरक्षा (Settings में और चालू करते समय) */
+internal const val UNLOCK_SAFETY_NOTE = "सुरक्षा: DK PIN तभी डालेगा जब आपने खुद \"अनलॉक\" कहा हो और उसी बात की आवाज़ कड़ी जाँच में आपकी निकले " +
+    "(वॉइस गार्डियन)। AI या स्क्रीन / नोटिफ़िकेशन की लिखावट से अनलॉक नहीं होगा। पुरानी रिकॉर्डिंग हूबहू बजाने पर रोक, और 3 बार गलत आवाज़ = 30 मिनट रोक। " +
+    "फिर भी आवाज़ PIN जितनी पक्की नहीं — कोई आपकी आवाज़ की अच्छी नकल या रिकॉर्डिंग कर सकता है। ज़रूरत न हो तो यह बंद रखें।"

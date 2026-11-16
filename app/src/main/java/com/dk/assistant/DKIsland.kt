@@ -168,7 +168,7 @@ object DKIsland {
 
     fun stop() {
         TaskStatus.unlisten(onTask); DKState.unlisten(onState)
-        if (battReg) { try { svc?.unregisterReceiver(battRx) } catch (_: Exception) {}; battReg = false }
+        if (battReg) { try { svc?.unregisterReceiver(battRx) } catch (e: Exception) { Quiet.note(e) }; battReg = false }
         main.removeCallbacks(ticker)
         main.post { remove() }
         svc = null
@@ -194,7 +194,7 @@ object DKIsland {
         main.post {
             val s = svc ?: return@post
             k = sizePct(s) / 100f
-            lp?.let { p -> p.y = dpx(s, topDp(s).toFloat()); p.x = dpx(s, sideDp(s).toFloat()); root?.let { r -> try { wm?.updateViewLayout(r, p) } catch (_: Exception) {} } }
+            lp?.let { p -> p.y = dpx(s, topDp(s).toFloat()); p.x = dpx(s, sideDp(s).toFloat()); root?.let { r -> try { wm?.updateViewLayout(r, p) } catch (e: Exception) { Quiet.note(e) } } }
             applyShape(s, expanded || peeking)
             lastSig = ""; bubSig = ""
             poke()
@@ -291,7 +291,7 @@ object DKIsland {
         val b = batt ?: return null
         if (!b.charging) return b
         var ms = -1L
-        if (Build.VERSION.SDK_INT >= 28) try { ms = c.getSystemService(BatteryManager::class.java)?.computeChargeTimeRemaining() ?: -1L } catch (_: Exception) {}
+        if (Build.VERSION.SDK_INT >= 28) try { ms = c.getSystemService(BatteryManager::class.java)?.computeChargeTimeRemaining() ?: -1L } catch (e: Exception) { Quiet.note(e) }
         if (ms < 0) ms = synchronized(battSamples) { IslandCore.estimateFullMs(battSamples.toList(), b.pct) }
         return b.copy(fullInMs = if (b.full) 0L else ms)
     }
@@ -499,7 +499,7 @@ object DKIsland {
         val r = root ?: return
         root = null; lp = null; expanded = false; peeking = false; fingerDown = false; focus = null; lastSig = ""; updaters.clear()
         replyTo = null; replyEdit = null; replyMsg = null
-        r.animate().alpha(0f).scaleX(0.5f).scaleY(0.6f).setDuration(200).withEndAction { try { wm?.removeView(r) } catch (_: Exception) {} }.start()
+        r.animate().alpha(0f).scaleX(0.5f).scaleY(0.6f).setDuration(200).withEndAction { try { wm?.removeView(r) } catch (e: Exception) { Quiet.note(e) } }.start()
     }
 
     /** चौड़ा (फैला / थोड़ी देर का बड़ा) या वापस गोली */
@@ -508,7 +508,7 @@ object DKIsland {
         p.width = if (wide) s.resources.displayMetrics.widthPixels - dpx(s, 16f) else WindowManager.LayoutParams.WRAP_CONTENT
         // चौड़ा island बीच में; बाएँ-दाएँ खिसकाना सिर्फ़ गोली पर
         p.x = if (wide) 0 else dpx(s, sideDp(s).toFloat())
-        try { wm?.updateViewLayout(r, p) } catch (_: Exception) {}
+        try { wm?.updateViewLayout(r, p) } catch (e: Exception) { Quiet.note(e) }
         applyShape(s, wide)
         if (wide) removeBubble()
     }
@@ -551,14 +551,14 @@ object DKIsland {
     private fun removeBubble() {
         val b = bub ?: return
         bub = null; bubLp = null; bubSig = ""
-        b.animate().alpha(0f).scaleX(0.4f).scaleY(0.4f).setDuration(160).withEndAction { try { wm?.removeView(b) } catch (_: Exception) {} }.start()
+        b.animate().alpha(0f).scaleX(0.4f).scaleY(0.4f).setDuration(160).withEndAction { try { wm?.removeView(b) } catch (e: Exception) { Quiet.note(e) } }.start()
     }
 
     private fun placeBubble(s: DKAccessibilityService, mainW: Int) {
         val b = bub ?: return; val p = bubLp ?: return
         val bw = b.width.takeIf { it > 0 } ?: px(s, 34f)
         val nx = IslandCore.bubbleX(dpx(s, sideDp(s).toFloat()), mainW, px(s, 6f), bw)
-        if (p.x != nx || p.y != (lp?.y ?: p.y)) { p.x = nx; p.y = lp?.y ?: p.y; try { wm?.updateViewLayout(b, p) } catch (_: Exception) {} }
+        if (p.x != nx || p.y != (lp?.y ?: p.y)) { p.x = nx; p.y = lp?.y ?: p.y; try { wm?.updateViewLayout(b, p) } catch (e: Exception) { Quiet.note(e) } }
     }
 
     @SuppressLint("ClickableViewAccessibility")
@@ -672,7 +672,7 @@ object DKIsland {
             r.addView(when { expanded -> big(s, sn, now); peeking -> peekView(s, sn, now); else -> small(s, sn, now) })
             if (sameMode && sy > 0) r.findViewWithTag<ScrollView>("island_scroll")?.let { v -> v.post { v.scrollTo(0, sy) } }
         }
-        updaters.forEach { try { it(sn, now) } catch (_: Exception) {} }
+        updaters.forEach { try { it(sn, now) } catch (e: Exception) { Quiet.note(e) } }
     }
 
     private fun sig(sn: IslandCore.Snap, now: Long): String = buildString {
@@ -954,14 +954,14 @@ object DKIsland {
         typingWindow(s, true)
         if (!expanded) expand(IslandCore.Item(IslandCore.Kind.NOTIF)) else { lastSig = ""; tick() }
         main.postDelayed({
-            replyEdit?.let { e -> e.requestFocus(); try { s.getSystemService(InputMethodManager::class.java)?.showSoftInput(e, InputMethodManager.SHOW_IMPLICIT) } catch (_: Exception) {} }
+            replyEdit?.let { e -> e.requestFocus(); try { s.getSystemService(InputMethodManager::class.java)?.showSoftInput(e, InputMethodManager.SHOW_IMPLICIT) } catch (e: Exception) { Quiet.note(e) } }
         }, 180L)
     }
 
     /** जवाब बंद (भेजा / ✕ / Back / छोटा किया): कीबोर्ड हटे, island फिर से बिना-focus (दूसरे ऐप में टाइप न रुके) */
     private fun endReply(s: DKAccessibilityService) {
         if (replyTo == null) return
-        try { replyEdit?.let { e -> s.getSystemService(InputMethodManager::class.java)?.hideSoftInputFromWindow(e.windowToken, 0) } } catch (_: Exception) {}
+        try { replyEdit?.let { e -> s.getSystemService(InputMethodManager::class.java)?.hideSoftInputFromWindow(e.windowToken, 0) } } catch (e: Exception) { Quiet.note(e) }
         replyTo = null; replyEdit = null; replyMsg = null
         typingWindow(s, false)
     }

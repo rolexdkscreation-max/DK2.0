@@ -136,19 +136,35 @@ object BlockerDetector {
  * यूज़र ने सच में हाँ कहा हो.
  */
 object ConfirmGate {
-    private val YES = listOf("हाँ", "हां", "हा", "जी", "ठीक है", "कर दो", "कर दीजिए", "भेज दो", "डाल दो", "पोस्ट कर", "शेयर कर",
-        "haan", "han", "ha", "haa", "ji", "theek hai", "thik hai", "kar do", "bhej do", "daal do", "dal do", "post kar", "share kar",
-        "yes", "yeah", "yep", "ok", "okay", "sure", "confirm", "go ahead", "do it", "send it", "post it")
+    /**
+     * 16 नवंबर 2026 (ऑडिट G4): पहले कोई भी हाँ-जैसा शब्द लंबी बात में कहीं भी हो = हाँ ("ok पहले बताओ किसको जा रहा है" = भेज दिया!),
+     * और "हा" / "ha" / "ok" जैसे छोटे शब्द (आम बोलचाल में भराव) भी हाँ गिने जाते थे.
+     * अब: पक्का हाँ ([STRONG]) छोटी बात ([MAX_WORDS] शब्द तक) में; छोटे शब्द ([WEAK]) सिर्फ़ तब जब पूरी बात बस हाँ ही हो
+     * ("ok", "जी", "ha ji", "ok sir"). सवाल ("?") / ना वाला शब्द = कभी हाँ नहीं.
+     */
+    private val STRONG = listOf("हाँ", "हां", "ठीक है", "कर दो", "कर दीजिए", "भेज दो", "डाल दो", "पोस्ट कर", "शेयर कर",
+        "haan", "theek hai", "thik hai", "kar do", "bhej do", "daal do", "dal do", "post kar", "share kar",
+        "yes", "confirm", "go ahead", "do it", "send it", "post it")
+    private val WEAK = setOf("हा", "जी", "han", "ha", "haa", "ji", "yeah", "yep", "ok", "okay", "sure")
+    /** सिर्फ़ संबोधन - हाँ के साथ हों तो चलता है ("ok sir") */
+    private val FILLER = setOf("sir", "boss", "bhai", "please", "plz", "dk", "सर", "बॉस", "भाई", "प्लीज़", "प्लीज", "डीके", "जी")
     private val NO = listOf("नहीं", "नही", "मत", "रुको", "रुक", "रद्द", "nahi", "nahin", "mat", "ruko", "ruk", "cancel", "no", "don't", "dont", "stop", "wait")
+    const val MAX_WORDS = 6
 
     private fun words(t: String) = t.lowercase().split(Regex("[^\\p{L}\\p{M}']+")).filter { it.isNotEmpty() }
 
     fun isYes(utterance: String): Boolean {
-        val low = " " + utterance.lowercase().trim() + " "
-        val w = words(utterance)
+        val t = utterance.trim()
+        if (t.isEmpty() || t.contains('?')) return false
+        val low = " " + t.lowercase() + " "
+        val w = words(t)
+        if (w.isEmpty()) return false
         val no = NO.any { n -> if (n.contains(' ')) low.contains(" $n ") else n in w }
         if (no) return false
-        return YES.any { y -> if (y.contains(' ')) low.contains(" $y") else y in w }
+        // पूरी बात बस हाँ (+ संबोधन) = हाँ
+        if (w.all { it in WEAK || it in FILLER || STRONG.any { s -> !s.contains(' ') && s == it } } && w.any { it !in FILLER || it == "जी" }) return true
+        if (w.size > MAX_WORDS) return false
+        return STRONG.any { y -> if (y.contains(' ')) low.contains(" $y") else y in w }
     }
 
     /** confirm सिर्फ़ तब: पूछा गया था, जवाब पूछने के बाद आया, और जवाब "हाँ" है */

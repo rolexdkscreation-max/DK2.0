@@ -116,7 +116,7 @@ object PrivacyScreen {
                 pi.send(c, 0, null, null, null, null, o.toBundle())
             } else pi.send()
             ok = true
-        } catch (_: Exception) {}
+        } catch (e: Exception) { Quiet.note(e) }
         if (!ok) try {
             c.packageManager.getLaunchIntentForPackage(pkg)?.let { c.startActivity(it.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }
         } catch (e: Exception) { DKLog.d("प्राइवेसी: ऐप नहीं खुला: ${e.message}") }

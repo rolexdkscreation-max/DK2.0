@@ -56,9 +56,9 @@ object ModelManager {
 
     /** हटाई गई सुविधा (3D कैरेक्टर) की पुरानी डाउनलोड फ़ाइलें मिटाओ - न मिलें / न मिटें तो भी कोई crash नहीं */
     fun cleanupRemoved(c: Context) {
-        for (n in ModelCatalog.REMOVED_FILES) try { File(dir(c), n).delete(); File(dir(c), "$n.part").delete() } catch (_: Exception) {}
+        for (n in ModelCatalog.REMOVED_FILES) try { File(dir(c), n).delete(); File(dir(c), "$n.part").delete() } catch (e: Exception) { com.dk.assistant.Quiet.note(e) }
         try { listOf("dk_model_char_robot", "dk_model_char_cesium_man", "dk_model_char_brainstem", "dk_model_char_fox", "dk_model_lib_gltf_loader", "dk_model_lib_bg_utils")
-            .forEach { WorkManager.getInstance(c).cancelUniqueWork(it) } } catch (_: Exception) {}
+            .forEach { WorkManager.getInstance(c).cancelUniqueWork(it) } } catch (e: Exception) { com.dk.assistant.Quiet.note(e) }
     }
 
     fun usedBytes(c: Context): Long = dir(c).listFiles()?.sumOf { it.length() } ?: 0L

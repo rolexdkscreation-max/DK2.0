@@ -329,7 +329,7 @@ class DkaiVoice(private val s: DkaiScreen) {
     private fun boxTap() {
         if (!DKState.live) { s.startLive(); return }
         if (callNow == DkaiCore.Call.SPEAKING) {
-            try { DKAccessibilityService.instance?.gemLive?.bargeIn("बॉक्स पर टैप") } catch (_: Exception) {}
+            try { DKAccessibilityService.instance?.gemLive?.bargeIn("बॉक्स पर टैप") } catch (e: Exception) { com.dk.assistant.Quiet.note(e) }
             render(); return
         }
         micToggle()

@@ -36,7 +36,7 @@ object Glass {
         // नवंबर 2026 (स्मूथ): पहले हर layout पर (टाइप करना, हर सेकंड का status) पूरी स्क्रीन का हर view दोबारा जाँचा जाता था.
         // अब कई layout मिलकर एक जाँच, थोड़ा रुककर - press animation वैसी ही, बस बेवजह का काम नहीं
         var queued = false
-        val pass = Runnable { queued = false; try { decorate(root) } catch (_: Exception) {} }
+        val pass = Runnable { queued = false; try { decorate(root) } catch (e: Exception) { Quiet.note(e) } }
         root.viewTreeObserver.addOnGlobalLayoutListener { if (!queued) { queued = true; root.postDelayed(pass, DECORATE_GAP_MS) } }
         root.post { decorate(root) }
     }
@@ -46,7 +46,7 @@ object Glass {
         if (v.isClickable && v.getTag(TAG_KEY) == null && v !is EditText && v !is CompoundButton &&
             v !is ScrollView && v !is HorizontalScrollView && !(v is android.widget.TextView && v.isTextSelectable) && v.stateListAnimator == null) {
             v.setTag(TAG_KEY, true)
-            try { v.stateListAnimator = AnimatorInflater.loadStateListAnimator(v.context, R.animator.press_scale) } catch (_: Exception) {}
+            try { v.stateListAnimator = AnimatorInflater.loadStateListAnimator(v.context, R.animator.press_scale) } catch (e: Exception) { Quiet.note(e) }
         }
         if (v is ViewGroup) for (i in 0 until v.childCount) decorate(v.getChildAt(i))
     }

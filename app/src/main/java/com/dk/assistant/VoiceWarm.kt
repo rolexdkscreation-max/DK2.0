@@ -24,7 +24,7 @@ object VoiceWarm {
                 if (e.notReady(app) == null) e.warm(app)
                 // बँटवारे में इंजन न चले तो जो सहारा बजेगा, वह भी तैयार
                 VoiceEngines.fallback()?.takeIf { it.id != e.id && it.notReady(app) == null }?.warm(app)
-            } catch (_: Exception) {}
+            } catch (e: Exception) { Quiet.note(e) }
         }, "dk-warm-open").apply { isDaemon = true; start() }
     }
 }

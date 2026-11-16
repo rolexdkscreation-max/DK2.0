@@ -100,7 +100,7 @@ object LocalMemory {
                 d.rawQuery("SELECT id FROM turns WHERE who='u' ORDER BY id DESC LIMIT 1", null).use { cur ->
                     if (cur.moveToFirst()) d.update("turns", ContentValues().apply { put("text", t) }, "id=?", arrayOf(cur.getLong(0).toString()))
                 }
-            } catch (_: Exception) {}
+            } catch (e: Exception) { Quiet.note(e) }
         }
     }
 
@@ -270,7 +270,7 @@ object LocalMemory {
         }.get(300, java.util.concurrent.TimeUnit.SECONDS)
 
     suspend fun clearAll(c: Context) = withContext(dispatcher) {
-        try { val d = db(c); d.delete("turns", null, null); d.delete("points", null, null); d.delete("days", null, null); d.delete("dropped", null, null) } catch (_: Exception) {}
+        try { val d = db(c); d.delete("turns", null, null); d.delete("points", null, null); d.delete("days", null, null); d.delete("dropped", null, null) } catch (e: Exception) { Quiet.note(e) }
         blockCache = 0L to ""
     }
 
@@ -375,6 +375,6 @@ class LocalMemoryReceiver : BroadcastReceiver() {
     override fun onReceive(c: Context, i: Intent) {
         val p = goAsync()
         LocalMemory.maintain(c, "रोज़")
-        android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({ try { p.finish() } catch (_: Exception) {} }, 4000)
+        android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({ try { p.finish() } catch (e: Exception) { Quiet.note(e) } }, 4000)
     }
 }

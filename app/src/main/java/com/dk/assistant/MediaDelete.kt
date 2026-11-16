@@ -123,7 +123,7 @@ object MediaDelete {
     } catch (e: Exception) { DKLog.d("मिटाना: सूचना नहीं गई ${e.javaClass.simpleName}"); false }
 
     private fun cancelTap(svc: DKAccessibilityService) {
-        try { svc.getSystemService(android.app.NotificationManager::class.java).cancel(NOTE_ID) } catch (_: Exception) {}
+        try { svc.getSystemService(android.app.NotificationManager::class.java).cancel(NOTE_ID) } catch (e: Exception) { Quiet.note(e) }
     }
     private const val CH = "dk_media_delete"
 

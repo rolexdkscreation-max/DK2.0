@@ -58,7 +58,7 @@ class WakeLockActivity : Activity() {
     private fun done() {
         main.removeCallbacksAndMessages(null)
         if (!isFinishing) finish()
-        try { overridePendingTransition(0, 0) } catch (_: Exception) {}
+        try { overridePendingTransition(0, 0) } catch (e: Exception) { com.dk.assistant.Quiet.note(e) }
     }
 
     override fun onDestroy() { main.removeCallbacksAndMessages(null); super.onDestroy() }

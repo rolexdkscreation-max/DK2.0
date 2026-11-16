@@ -293,7 +293,7 @@ private fun SettingsActivity.openMakerBattery(): Boolean {
         Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).setData(Uri.parse("package:$pkg")),
     )
     for (i in list) {
-        try { startActivity(i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)); return true } catch (_: Exception) {}
+        try { startActivity(i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)); return true } catch (e: Exception) { com.dk.assistant.Quiet.note(e) }
     }
     return false
 }

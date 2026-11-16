@@ -107,7 +107,7 @@ class SpeechPipeline(private val ctx: Context, private val hooks: Hooks) {
         val now = System.currentTimeMillis()
         if (e == null || now - lastWarmAt < 20_000) return
         lastWarmAt = now
-        Thread({ try { e.warm(ctx) } catch (_: Exception) {} }, "dk-tts-warm").apply { isDaemon = true; start() }
+        Thread({ try { e.warm(ctx) } catch (e: Exception) { com.dk.assistant.Quiet.note(e) } }, "dk-tts-warm").apply { isDaemon = true; start() }
     }
 
     /** नया जवाब शुरू */
@@ -141,10 +141,10 @@ class SpeechPipeline(private val ctx: Context, private val hooks: Hooks) {
         synchronized(chunker) { chunker.reset() }
         val dropped = ArrayList<Seg>(); segs.drainTo(dropped)
         if (dropped.isNotEmpty()) pending.addAndGet(-dropped.size)
-        try { engine?.stop() } catch (_: Exception) {}
-        VoiceEngines.fallback()?.let { if (it !== engine) try { it.stop() } catch (_: Exception) {} }
-        try { hooks.phoneStop() } catch (_: Exception) {}
-        track?.let { try { it.pause(); it.flush(); it.play() } catch (_: Exception) {} }
+        try { engine?.stop() } catch (e: Exception) { com.dk.assistant.Quiet.note(e) }
+        VoiceEngines.fallback()?.let { if (it !== engine) try { it.stop() } catch (e: Exception) { com.dk.assistant.Quiet.note(e) } }
+        try { hooks.phoneStop() } catch (e: Exception) { com.dk.assistant.Quiet.note(e) }
+        track?.let { try { it.pause(); it.flush(); it.play() } catch (e: Exception) { com.dk.assistant.Quiet.note(e) } }
         playUntil = 0L; firstPending = false
         VoiceLevel.clear()
     }
@@ -160,7 +160,7 @@ class SpeechPipeline(private val ctx: Context, private val hooks: Hooks) {
         stop()
         player.interrupt()
         synth.shutdownNow()
-        track?.let { try { it.stop() } catch (_: Exception) {}; try { it.release() } catch (_: Exception) {} }
+        track?.let { try { it.stop() } catch (e: Exception) { com.dk.assistant.Quiet.note(e) }; try { it.release() } catch (e: Exception) { com.dk.assistant.Quiet.note(e) } }
         track = null
     }
 
@@ -204,7 +204,7 @@ class SpeechPipeline(private val ctx: Context, private val hooks: Hooks) {
                 if (s.gen != gen) break
                 VoiceEngines.markFailed(e.id, ex.message ?: ex.javaClass.simpleName)
                 hooks.log("आवाज़ इंजन ${e.title} में दिक़्क़त: ${(ex.message ?: ex.javaClass.simpleName).take(90)}")
-                if (e.id == chosen.id) try { hooks.onEngineError(e.title, ex.message ?: ex.javaClass.simpleName) } catch (_: Exception) {}
+                if (e.id == chosen.id) try { hooks.onEngineError(e.title, ex.message ?: ex.javaClass.simpleName) } catch (e: Exception) { com.dk.assistant.Quiet.note(e) }
                 // आधा बज चुका हो तो दोबारा शुरू से नहीं (वही शब्द दो बार) - जितना बना उतना
                 if (s.firstPcmAt > 0) { s.engine = e.id; ok = true; break }
             }
@@ -241,7 +241,7 @@ class SpeechPipeline(private val ctx: Context, private val hooks: Hooks) {
     private fun ensureTrack(): AudioTrack {
         val u = hooks.usage()
         track?.let { if (trackUsage == u) return it }
-        track?.let { try { it.stop() } catch (_: Exception) {}; try { it.release() } catch (_: Exception) {} }
+        track?.let { try { it.stop() } catch (e: Exception) { com.dk.assistant.Quiet.note(e) }; try { it.release() } catch (e: Exception) { com.dk.assistant.Quiet.note(e) } }
         val min = AudioTrack.getMinBufferSize(VoiceEngine.RATE, AudioFormat.CHANNEL_OUT_MONO, AudioFormat.ENCODING_PCM_16BIT)
         val t = AudioTrack.Builder()
             .setAudioAttributes(AudioAttributes.Builder().setUsage(u).setContentType(AudioAttributes.CONTENT_TYPE_SPEECH).build())
@@ -264,7 +264,7 @@ class SpeechPipeline(private val ctx: Context, private val hooks: Hooks) {
             if (rescue(s, SplitRescueWhy.FAILED, 0L)) return
             // v3.74: Gemini/इंजन की आवाज़ नहीं बनी -> फ़ोन TTS नहीं, बस text स्क्रीन पर (चुप)
             noteSpoken(s.text)
-            try { hooks.onSilent(s.text) } catch (_: Exception) {}
+            try { hooks.onSilent(s.text) } catch (e: Exception) { com.dk.assistant.Quiet.note(e) }
             return
         }
         val tr = ensureTrack()
@@ -379,7 +379,7 @@ class SpeechPipeline(private val ctx: Context, private val hooks: Hooks) {
 
         /** नवंबर 2026: आवाज़ इंजन बदला - जो भी pipeline बोल रही हो, उसी पल चुप (कतार भी) */
         private val alive = java.util.WeakHashMap<SpeechPipeline, Boolean>()
-        fun stopAll() { synchronized(alive) { alive.keys.toList() }.forEach { try { it.stop() } catch (_: Exception) {} } }
+        fun stopAll() { synchronized(alive) { alive.keys.toList() }.forEach { try { it.stop() } catch (e: Exception) { com.dk.assistant.Quiet.note(e) } } }
 
         /** टुकड़े के बाद ठहराव - हर बार एक-सा (आवाज़ की लय बनी रहे) */
         fun pauseMs(t: String): Int {

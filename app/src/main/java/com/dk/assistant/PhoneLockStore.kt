@@ -48,6 +48,7 @@ object PhoneLockStore {
         if (!PhoneLockVoice.valid(kind, secret)) return false
         val sealed = codec.seal(secret)?.takeIf { SecretNames.isSealed(it) } ?: return false
         if (codec.open(sealed) != secret) return false          // खोलकर पक्का - बाद में गलत PIN न डले
+        com.dk.assistant.voice.UnlockGuard.reset()   // 16 नवंबर 2026: नया PIN = आवाज़ वाली रोक भी हटी
         return raw(c).edit().putString(K_KIND, kind.id).putString(K_SECRET, sealed).putInt(K_FAILS, 0).commit()
     }
 

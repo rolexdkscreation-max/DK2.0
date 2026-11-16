@@ -289,7 +289,7 @@ class GuardAlarmActivity : AppCompatActivity() {
 
     override fun onDestroy() {
         shown = false
-        try { cam?.stop() } catch (_: Exception) {}
+        try { cam?.stop() } catch (e: Exception) { Quiet.note(e) }
         work.shutdown()
         if (current?.get() === this) current = null
         super.onDestroy()
@@ -318,7 +318,7 @@ class GuardAlarmActivity : AppCompatActivity() {
                     @Suppress("DEPRECATION")
                     pm.newWakeLock(android.os.PowerManager.SCREEN_BRIGHT_WAKE_LOCK or android.os.PowerManager.ACQUIRE_CAUSES_WAKEUP, "dk:guard-screen").acquire(3_000)
                 }
-            } catch (_: Exception) {}
+            } catch (e: Exception) { Quiet.note(e) }
             if (shown && current?.get()?.let { !it.isFinishing && !it.isDestroyed } == true) return
             try {
                 c.startActivity(Intent(c, GuardAlarmActivity::class.java).addFlags(

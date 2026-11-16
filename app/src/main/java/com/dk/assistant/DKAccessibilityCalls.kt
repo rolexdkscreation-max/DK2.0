@@ -62,7 +62,7 @@ internal suspend fun DKAccessibilityService.onIncomingCall(who0: String, ask: St
     // v3.156 मालिक: "कॉल आया तो तुरंत फटाक से बोले" - पहले यहाँ "सवाल चल रहा है तो पहले जवाब" का इंतज़ार था;
     // Live में DK हमेशा सुन रहा (LISTENING) होता है, तो कॉल का एलान बहुत देर से (या घंटी ख़त्म होने पर) होता था.
     // अब कॉल सबसे पहले: जो बोल रहा था वह रोको, तुरंत बताओ.
-    if (speaker.busy) try { speaker.stop() } catch (_: Exception) { }
+    if (speaker.busy) try { speaker.stop() } catch (e: Exception) { Quiet.note(e) }
 
     DKState.reply(msg)
     if (DKState.live && gemLive.canTalk()) {
@@ -169,12 +169,12 @@ internal suspend fun DKAccessibilityService.sendRejectMessage(t: CallTarget, tex
     if (item != null && DKNotifListener.reply(this, item.key, text) == null) return "सर, कॉल काट दी और ${t.app} पर $who को मैसेज भेज दिया।"
     try {
         getSystemService(android.content.ClipboardManager::class.java)?.setPrimaryClip(android.content.ClipData.newPlainText("DK", text))
-    } catch (_: Exception) {}
+    } catch (e: Exception) { Quiet.note(e) }
     var opened = false
-    try { t.open?.let { it.send(); opened = true } } catch (_: Exception) {}
+    try { t.open?.let { it.send(); opened = true } } catch (e: Exception) { Quiet.note(e) }
     if (!opened) try {
         packageManager.getLaunchIntentForPackage(t.pkg)?.let { startActivity(it.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)); opened = true }
-    } catch (_: Exception) {}
+    } catch (e: Exception) { Quiet.note(e) }
     return if (opened) "सर, कॉल काट दी। ${t.app} में सीधे भेजने का रास्ता नहीं मिला, ऐप खोल दिया है और मैसेज कॉपी कर दिया है, $who की चैट में चिपकाकर भेज दीजिए।"
         else "सर, कॉल काट दी, पर ${t.app} पर मैसेज नहीं भेज पाया।"
 }
@@ -188,7 +188,7 @@ internal fun DKAccessibilityService.openSmsDraft(number: String, text: String) {
 
 /** v4.6: कॉल का एलान बीच में रोको (उठाना/काटना पहले, बोलना बाद में) */
 internal fun DKAccessibilityService.hushForCall() {
-    if (speaker.busy) try { speaker.stop() } catch (_: Exception) {}
+    if (speaker.busy) try { speaker.stop() } catch (e: Exception) { Quiet.note(e) }
 }
 
 /**

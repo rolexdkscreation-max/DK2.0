@@ -76,7 +76,7 @@ object StudioSession {
             // नवंबर 2026: Live चालू = TaskStatus के खत्म होने पर GeminiLive खुद SYSTEM NOTE भेजता है (StudioLink.liveNote) - दो बार नहीं
             if (!com.dk.assistant.DKState.live) {
                 com.dk.assistant.DKState.reply(say)
-                com.dk.assistant.DKAccessibilityService.instance?.let { svc -> svc.scope.launch { try { svc.speaker.speak(say) } catch (_: Exception) {} } }
+                com.dk.assistant.DKAccessibilityService.instance?.let { svc -> svc.scope.launch { try { svc.speaker.speak(say) } catch (e: Exception) { com.dk.assistant.Quiet.note(e) } } }
             }
         }
     }
@@ -147,8 +147,8 @@ object StudioSession {
                 r.second -> com.dk.assistant.TaskStatus.State.DONE
                 else -> com.dk.assistant.TaskStatus.State.FAILED
             }, r.first.lineSequence().first())
-            try { report(r.first, r.second) } catch (_: Exception) {}
-            try { onDone?.invoke(p.who, r.first, r.second) } catch (_: Exception) {}
+            try { report(r.first, r.second) } catch (e: Exception) { com.dk.assistant.Quiet.note(e) }
+            try { onDone?.invoke(p.who, r.first, r.second) } catch (e: Exception) { com.dk.assistant.Quiet.note(e) }
             afterOnce?.let { a -> afterOnce = null; try { withContext(Dispatchers.IO) { a(p, r.second && !cancelled) } } catch (e: Exception) { DKLog.d("स्टूडियो after: ${e.message}") } }
             listener?.invoke()
         }

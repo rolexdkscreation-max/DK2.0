@@ -58,7 +58,7 @@ object MediaPrep {
             val m = CoderMedia(CoderMedia.VIDEO, "video $n", frames, full, mime.ifBlank { "video/mp4" }, dur)
             return Prepared(m, thumb)
         } finally {
-            try { mr.release() } catch (_: Exception) {}
+            try { mr.release() } catch (e: Exception) { Quiet.note(e) }
         }
     }
 

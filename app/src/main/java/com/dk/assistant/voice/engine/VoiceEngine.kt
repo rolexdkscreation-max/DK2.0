@@ -80,7 +80,7 @@ interface VoiceUi {
 object PreviewPlayer {
     @Volatile private var cur: AudioTrack? = null
 
-    fun stop() { cur?.let { try { it.pause(); it.flush(); it.stop() } catch (_: Exception) {} } }
+    fun stop() { cur?.let { try { it.pause(); it.flush(); it.stop() } catch (e: Exception) { com.dk.assistant.Quiet.note(e) } } }
 
     /** synth को PcmOut दो, जो आए तुरंत बजाओ. लौटाता: शुरू से पहली आवाज़ तक ms (-1 = कुछ नहीं बजा) */
     fun play(c: Context, synth: (PcmOut) -> Unit): Long {
@@ -115,8 +115,8 @@ object PreviewPlayer {
                 Thread.sleep(40)
             }
         } finally {
-            try { tr.stop() } catch (_: Exception) {}
-            try { tr.release() } catch (_: Exception) {}
+            try { tr.stop() } catch (e: Exception) { com.dk.assistant.Quiet.note(e) }
+            try { tr.release() } catch (e: Exception) { com.dk.assistant.Quiet.note(e) }
             if (cur === tr) cur = null
         }
         return first

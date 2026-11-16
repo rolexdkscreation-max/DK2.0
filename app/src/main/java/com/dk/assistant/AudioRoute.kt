@@ -77,7 +77,7 @@ object BtAudio {
         if (users.remove(owner) == null || users.isNotEmpty()) return
         watching = false
         h.removeCallbacks(recheck); h.removeCallbacks(verify)
-        try { am?.unregisterAudioDeviceCallback(cb) } catch (_: Exception) {}
+        try { am?.unregisterAudioDeviceCallback(cb) } catch (e: Exception) { Quiet.note(e) }
         if (bluetooth) leave()
     }
 
@@ -94,7 +94,7 @@ object BtAudio {
     /** उस headset का माइक (इनपुट) */
     private fun inputFor(m: AudioManager, d: AudioDeviceInfo): AudioDeviceInfo? = try {
         m.getDevices(AudioManager.GET_DEVICES_INPUTS).let { ins ->
-            ins.firstOrNull { it.type == d.type && it.address == d.address } ?: ins.firstOrNull { it.type == d.type }
+            ins.firstOrNull { it.type == d.type && addr(it) == addr(d) } ?: ins.firstOrNull { it.type == d.type }
         }
     } catch (_: Exception) { null }
 
@@ -109,7 +109,7 @@ object BtAudio {
             d != null && !bluetooth -> enter(m, d)
             d == null && bluetooth -> { log("Bluetooth हट गया - फ़ोन के माइक और speaker पर वापस"); leave() }
         }
-        if (notify && was != bluetooth) users.values.toList().forEach { try { it(bluetooth) } catch (_: Exception) {} }
+        if (notify && was != bluetooth) users.values.toList().forEach { try { it(bluetooth) } catch (e: Exception) { Quiet.note(e) } }
     }
 
     @Suppress("DEPRECATION")
@@ -119,7 +119,7 @@ object BtAudio {
             if (Build.VERSION.SDK_INT >= 31) m.setCommunicationDevice(d)
             else { m.startBluetoothSco(); m.isBluetoothScoOn = true; true }
         } catch (e: Exception) { log("Bluetooth पर नहीं ले जा पाया: ${e.message}"); false }
-        if (!ok) { try { m.mode = AudioManager.MODE_NORMAL } catch (_: Exception) {}; log("Bluetooth headset ने बात का रास्ता नहीं लिया - फ़ोन का माइक/speaker"); return }
+        if (!ok) { try { m.mode = AudioManager.MODE_NORMAL } catch (e: Exception) { Quiet.note(e) }; log("Bluetooth headset ने बात का रास्ता नहीं लिया - फ़ोन का माइक/speaker"); return }
         bluetooth = true
         btInput = inputFor(m, d)
         btDev = d
@@ -131,7 +131,9 @@ object BtAudio {
     }
 
     private var btDev: AudioDeviceInfo? = null
-    private fun id(d: AudioDeviceInfo) = "${d.type}|${d.address}|${d.productName}"
+    private fun id(d: AudioDeviceInfo) = "${d.type}|${addr(d)}|${d.productName}"
+    /** 16 नवंबर 2026 (Android Lint, NewApi): address Android 9+ में - पहले Android 8 पर NoSuchMethodError (catch से नहीं रुकता) */
+    private fun addr(d: AudioDeviceInfo): String = if (android.os.Build.VERSION.SDK_INT >= 28) d.address.orEmpty() else ""
 
     @Suppress("DEPRECATION")
     private fun routedNow(m: AudioManager): Boolean = try {
@@ -153,12 +155,12 @@ object BtAudio {
         log("Bluetooth headset ने कॉल वाला रास्ता नहीं लिया - आवाज़ earpiece में न जाए, इसलिए फ़ोन के माइक और speaker पर")
         refused = d?.let { id(it) }
         leave()
-        users.values.toList().forEach { try { it(false) } catch (_: Exception) {} }
+        users.values.toList().forEach { try { it(false) } catch (e: Exception) { Quiet.note(e) } }
     }
 
     @Suppress("DEPRECATION")
     private fun retryRoute(m: AudioManager, d: AudioDeviceInfo) {
-        try { if (Build.VERSION.SDK_INT >= 31) m.setCommunicationDevice(d) else m.startBluetoothSco() } catch (_: Exception) {}
+        try { if (Build.VERSION.SDK_INT >= 31) m.setCommunicationDevice(d) else m.startBluetoothSco() } catch (e: Exception) { Quiet.note(e) }
     }
 
     @Suppress("DEPRECATION")
@@ -174,7 +176,7 @@ object BtAudio {
             if (Build.VERSION.SDK_INT >= 33) c.registerReceiver(r, IntentFilter(AudioManager.ACTION_SCO_AUDIO_STATE_UPDATED), Context.RECEIVER_NOT_EXPORTED)
             else c.registerReceiver(r, IntentFilter(AudioManager.ACTION_SCO_AUDIO_STATE_UPDATED))
             scoWatch = r
-        } catch (_: Exception) {}
+        } catch (e: Exception) { Quiet.note(e) }
     }
 
     @Suppress("DEPRECATION")
@@ -188,7 +190,7 @@ object BtAudio {
         try {
             if (Build.VERSION.SDK_INT >= 31) m.clearCommunicationDevice()
             else { m.isBluetoothScoOn = false; m.stopBluetoothSco() }
-        } catch (_: Exception) {}
-        try { if (m.mode == AudioManager.MODE_IN_COMMUNICATION) m.mode = AudioManager.MODE_NORMAL } catch (_: Exception) {}
+        } catch (e: Exception) { Quiet.note(e) }
+        try { if (m.mode == AudioManager.MODE_IN_COMMUNICATION) m.mode = AudioManager.MODE_NORMAL } catch (e: Exception) { Quiet.note(e) }
     }
 }

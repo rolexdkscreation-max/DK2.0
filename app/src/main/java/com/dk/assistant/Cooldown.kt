@@ -26,12 +26,12 @@ object Cooldown {
     fun block(key: String, ms: Long) {
         val t = System.currentTimeMillis() + ms
         mem[key] = t
-        try { sp()?.edit()?.putLong(key, t)?.apply() } catch (_: Exception) {}
+        try { sp()?.edit()?.putLong(key, t)?.apply() } catch (e: Exception) { Quiet.note(e) }
     }
 
     fun clear(key: String) {
         mem[key] = 0L
-        try { sp()?.edit()?.remove(key)?.apply() } catch (_: Exception) {}
+        try { sp()?.edit()?.remove(key)?.apply() } catch (e: Exception) { Quiet.note(e) }
     }
 
     /** Aaj kitni baar fail hua (din badalte hi 0) */
@@ -41,7 +41,7 @@ object Cooldown {
         val k = "strike:$key"
         val saved = try { p?.getString(k, "") ?: "" } catch (_: Exception) { "" }
         val n = if (saved.startsWith("$day:")) (saved.substringAfter(':').toIntOrNull() ?: 0) + 1 else 1
-        try { p?.edit()?.putString(k, "$day:$n")?.apply() } catch (_: Exception) {}
+        try { p?.edit()?.putString(k, "$day:$n")?.apply() } catch (e: Exception) { Quiet.note(e) }
         return n
     }
 

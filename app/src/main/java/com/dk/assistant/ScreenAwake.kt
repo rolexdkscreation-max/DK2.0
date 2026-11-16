@@ -19,7 +19,7 @@ object ScreenAwake : Application.ActivityLifecycleCallbacks {
             val w = a.window ?: return
             if (on) w.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
             else w.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
-        } catch (_: Exception) {}
+        } catch (e: Exception) { Quiet.note(e) }
     }
 
     override fun onActivityResumed(a: Activity) = set(a, keepOn("resumed"))

@@ -259,7 +259,7 @@ object Guard {
             wake = app.getSystemService(PowerManager::class.java)?.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "dk:guard")?.apply {
                 setReferenceCounted(false); acquire(if (until > 0) (until - System.currentTimeMillis()).coerceAtLeast(60_000L) else 24 * 3_600_000L)
             }
-        } catch (_: Exception) {}
+        } catch (e: Exception) { Quiet.note(e) }
         try {
             val sm = app.getSystemService(SensorManager::class.java)
             val s = sm?.getDefaultSensor(Sensor.TYPE_ACCELEROMETER, true) ?: sm?.getDefaultSensor(Sensor.TYPE_ACCELEROMETER)
@@ -312,11 +312,11 @@ object Guard {
 
     @Synchronized
     private fun stopWatch(app: Context) {
-        try { sensorL?.let { app.getSystemService(SensorManager::class.java)?.unregisterListener(it) } } catch (_: Exception) {}
+        try { sensorL?.let { app.getSystemService(SensorManager::class.java)?.unregisterListener(it) } } catch (e: Exception) { Quiet.note(e) }
         sensorL = null; motion = null
-        try { recv?.let { app.unregisterReceiver(it) } } catch (_: Exception) {}
+        try { recv?.let { app.unregisterReceiver(it) } } catch (e: Exception) { Quiet.note(e) }
         recv = null
-        try { wake?.let { if (it.isHeld) it.release() } } catch (_: Exception) {}
+        try { wake?.let { if (it.isHeld) it.release() } } catch (e: Exception) { Quiet.note(e) }
         wake = null
     }
 
@@ -328,7 +328,7 @@ object Guard {
         if (pkg == svc.packageName || (pkg != "android" && pkg != "com.android.systemui" && !pkg.contains("systemui"))) return
         val texts = ArrayList<String>()
         e.text?.forEach { it?.toString()?.let(texts::add) }
-        try { (e.source ?: svc.rootInActiveWindow)?.let { collect(it, texts, 0) } } catch (_: Exception) {}
+        try { (e.source ?: svc.rootInActiveWindow)?.let { collect(it, texts, 0) } } catch (e: Exception) { Quiet.note(e) }
         if (texts.isEmpty()) return
         val app = svc.applicationContext
         when {
@@ -355,7 +355,7 @@ object Guard {
         try {
             if (Build.VERSION.SDK_INT >= 31) svc.performGlobalAction(AccessibilityService.GLOBAL_ACTION_DISMISS_NOTIFICATION_SHADE)
             svc.performGlobalAction(AccessibilityService.GLOBAL_ACTION_BACK)
-        } catch (_: Exception) {}
+        } catch (e: Exception) { Quiet.note(e) }
     }
 
     private fun locked(c: Context) = try { c.getSystemService(KeyguardManager::class.java)?.isKeyguardLocked == true } catch (_: Exception) { true }
@@ -425,7 +425,7 @@ object Guard {
                 @Suppress("DEPRECATION")
                 android.provider.Settings.Secure.putInt(c.contentResolver, android.provider.Settings.Secure.LOCATION_MODE, android.provider.Settings.Secure.LOCATION_MODE_HIGH_ACCURACY)
                 delay(1_500)
-            } catch (_: Exception) {}
+            } catch (e: Exception) { Quiet.note(e) }
         }
         val providers = buildList {
             add(LocationManager.GPS_PROVIDER); add(LocationManager.NETWORK_PROVIDER)
@@ -444,7 +444,7 @@ object Guard {
             } catch (e: Exception) { DKLog.d("टच मोड: $p लोकेशन नहीं (${e.message})") }
         }
         try { kotlinx.coroutines.withTimeoutOrNull(waitMs) { done.await() } }
-        finally { withContext(kotlinx.coroutines.NonCancellable + Dispatchers.Main) { try { lm.removeUpdates(listener) } catch (_: Exception) {} } }
+        finally { withContext(kotlinx.coroutines.NonCancellable + Dispatchers.Main) { try { lm.removeUpdates(listener) } catch (e: Exception) { Quiet.note(e) } } }
         return GuardRules.pickBest(synchronized(got) { got.toList() })
     }
 
@@ -486,23 +486,23 @@ object Guard {
         if (!GuardModes.loud(mode)) { ringSilent(c, maxMs); return }
         val am = c.getSystemService(Context.AUDIO_SERVICE) as AudioManager
         val maxVol = am.getStreamMaxVolume(AudioManager.STREAM_ALARM)
-        try { st.alarmVol = am.getStreamVolume(AudioManager.STREAM_ALARM); am.setStreamVolume(AudioManager.STREAM_ALARM, maxVol, 0) } catch (_: Exception) {}
+        try { st.alarmVol = am.getStreamVolume(AudioManager.STREAM_ALARM); am.setStreamVolume(AudioManager.STREAM_ALARM, maxVol, 0) } catch (e: Exception) { Quiet.note(e) }
         try {
             val nm = c.getSystemService(NotificationManager::class.java)
             if (nm != null && nm.isNotificationPolicyAccessGranted && nm.currentInterruptionFilter != NotificationManager.INTERRUPTION_FILTER_ALL) {
                 st.filter = nm.currentInterruptionFilter; nm.setInterruptionFilter(NotificationManager.INTERRUPTION_FILTER_ALL)
             }
-        } catch (_: Exception) {}
+        } catch (e: Exception) { Quiet.note(e) }
         GuardAlarmActivity.show(c)
         try {
             val v = if (Build.VERSION.SDK_INT >= 31) c.getSystemService(VibratorManager::class.java)?.defaultVibrator
                 else @Suppress("DEPRECATION") (c.getSystemService(Context.VIBRATOR_SERVICE) as? Vibrator)
             v?.vibrate(VibrationEffect.createWaveform(longArrayOf(0, 900, 300), 0), ALARM); st.vib = v
-        } catch (_: Exception) {}
+        } catch (e: Exception) { Quiet.note(e) }
         val cm = c.getSystemService(CameraManager::class.java)
         st.torchId = try { cm?.cameraIdList?.firstOrNull { cm.getCameraCharacteristics(it).get(CameraCharacteristics.FLASH_INFO_AVAILABLE) == true } } catch (_: Exception) { null }
         val blink = st.torchId?.let { id ->
-            scope.launch { val gap = GuardModes.strobeMs(mode); var on = false; while (isActive) { on = !on; try { cm?.setTorchMode(id, on) } catch (_: Exception) {}; delay(gap) } }
+            scope.launch { val gap = GuardModes.strobeMs(mode); var on = false; while (isActive) { on = !on; try { cm?.setTorchMode(id, on) } catch (e: Exception) { Quiet.note(e) }; delay(gap) } }
         }
         // सायरन: एक चक्कर (1.2 s) बार-बार
         val rate = 22_050
@@ -519,10 +519,10 @@ object Guard {
         val end = System.currentTimeMillis() + maxMs
         try {
             while (System.currentTimeMillis() < end) {
-                try { if (am.getStreamVolume(AudioManager.STREAM_ALARM) < maxVol) am.setStreamVolume(AudioManager.STREAM_ALARM, maxVol, 0) } catch (_: Exception) {}
-                try { st.track?.let { it.reloadStaticData(); it.play() } } catch (_: Exception) {}
+                try { if (am.getStreamVolume(AudioManager.STREAM_ALARM) < maxVol) am.setStreamVolume(AudioManager.STREAM_ALARM, maxVol, 0) } catch (e: Exception) { Quiet.note(e) }
+                try { st.track?.let { it.reloadStaticData(); it.play() } } catch (e: Exception) { Quiet.note(e) }
                 delay(GuardRules.SIREN_MS)
-                try { st.track?.pause() } catch (_: Exception) {}
+                try { st.track?.pause() } catch (e: Exception) { Quiet.note(e) }
                 say(c, st, clip)
                 delay(GuardRules.LISTEN_GAP_MS)            // थोड़ा चुप: मालिक का गुप्त शब्द सुनाई दे
                 GuardAlarmActivity.show(c)                 // किसी ने home / back दबाकर हटाया हो
@@ -547,12 +547,12 @@ object Guard {
             } catch (_: Exception) { null }
             if (tr != null) {
                 st.voice?.release(); st.voice = tr
-                try { tr.write(clip, 0, clip.size); tr.play(); delay(clip.size * 1000L / (rate * 2) + 200); tr.stop() } catch (_: Exception) {}
+                try { tr.write(clip, 0, clip.size); tr.play(); delay(clip.size * 1000L / (rate * 2) + 200); tr.stop() } catch (e: Exception) { Quiet.note(e) }
                 return
             }
         }
         val t = st.tts ?: return
-        try { t.speak(GuardRules.SAY, TextToSpeech.QUEUE_FLUSH, null, "dk_guard"); delay(5_000) } catch (_: Exception) {}
+        try { t.speak(GuardRules.SAY, TextToSpeech.QUEUE_FLUSH, null, "dk_guard"); delay(5_000) } catch (e: Exception) { Quiet.note(e) }
     }
 
     private fun phoneTts(c: Context): TextToSpeech? = try {
@@ -562,15 +562,15 @@ object Guard {
     } catch (_: Exception) { null }
 
     private fun restore(c: Context, st: State) {
-        try { st.track?.stop() } catch (_: Exception) {}
-        try { st.track?.release() } catch (_: Exception) {}
-        try { st.voice?.release() } catch (_: Exception) {}
-        try { st.tts?.stop(); st.tts?.shutdown() } catch (_: Exception) {}
-        try { st.vib?.cancel() } catch (_: Exception) {}
-        st.torchId?.let { id -> try { c.getSystemService(CameraManager::class.java)?.setTorchMode(id, false) } catch (_: Exception) {} }
+        try { st.track?.stop() } catch (e: Exception) { Quiet.note(e) }
+        try { st.track?.release() } catch (e: Exception) { Quiet.note(e) }
+        try { st.voice?.release() } catch (e: Exception) { Quiet.note(e) }
+        try { st.tts?.stop(); st.tts?.shutdown() } catch (e: Exception) { Quiet.note(e) }
+        try { st.vib?.cancel() } catch (e: Exception) { Quiet.note(e) }
+        st.torchId?.let { id -> try { c.getSystemService(CameraManager::class.java)?.setTorchMode(id, false) } catch (e: Exception) { Quiet.note(e) } }
         val am = c.getSystemService(Context.AUDIO_SERVICE) as AudioManager
-        if (st.alarmVol >= 0) try { am.setStreamVolume(AudioManager.STREAM_ALARM, st.alarmVol, 0) } catch (_: Exception) {}
-        if (st.filter >= 0) try { c.getSystemService(NotificationManager::class.java)?.setInterruptionFilter(st.filter) } catch (_: Exception) {}
+        if (st.alarmVol >= 0) try { am.setStreamVolume(AudioManager.STREAM_ALARM, st.alarmVol, 0) } catch (e: Exception) { Quiet.note(e) }
+        if (st.filter >= 0) try { c.getSystemService(NotificationManager::class.java)?.setInterruptionFilter(st.filter) } catch (e: Exception) { Quiet.note(e) }
     }
 
     // ------------------------------------------------------------------ SMS / रिकॉर्ड
@@ -602,7 +602,7 @@ object Guard {
             val keep = JSONArray(); val from = maxOf(0, arr.length() - 40)
             for (i in from until arr.length()) keep.put(arr.getString(i))
             Prefs.edit(c) { putString(P_LOG, keep.toString()) }
-        } catch (_: Exception) {}
+        } catch (e: Exception) { Quiet.note(e) }
     }
 
     fun log(c: Context): List<String> = try {

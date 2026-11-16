@@ -29,7 +29,7 @@ class VoiceListener(private val context: Context) {
         private val STREAMS = intArrayOf(AudioManager.STREAM_MUSIC, AudioManager.STREAM_NOTIFICATION, AudioManager.STREAM_SYSTEM)
         fun forceUnmute(audio: AudioManager) {
             if (!beepMuted) return
-            for (st in STREAMS) try { audio.adjustStreamVolume(st, AudioManager.ADJUST_UNMUTE, 0) } catch (_: Exception) {}
+            for (st in STREAMS) try { audio.adjustStreamVolume(st, AudioManager.ADJUST_UNMUTE, 0) } catch (e: Exception) { Quiet.note(e) }
             beepMuted = false
         }
     }
@@ -49,7 +49,7 @@ class VoiceListener(private val context: Context) {
         recognizer ?: SpeechRecognizer.createSpeechRecognizer(context).also { recognizer = it }
 
     private fun reset() {
-        try { recognizer?.destroy() } catch (_: Exception) {}
+        try { recognizer?.destroy() } catch (e: Exception) { Quiet.note(e) }
         recognizer = null
     }
 
@@ -63,7 +63,7 @@ class VoiceListener(private val context: Context) {
         if (on && audio.isMusicActive && !ownVoice) return   // gaana/video chal raha ho to awaaz mat chheduo
         val dir = if (on) AudioManager.ADJUST_MUTE else AudioManager.ADJUST_UNMUTE
         for (stream in STREAMS) {
-            try { audio.adjustStreamVolume(stream, dir, 0) } catch (_: Exception) {}
+            try { audio.adjustStreamVolume(stream, dir, 0) } catch (e: Exception) { Quiet.note(e) }
         }
         beepMuted = on
     }
@@ -173,7 +173,7 @@ class VoiceListener(private val context: Context) {
             }
             cont.invokeOnCancellation {
                 android.os.Handler(android.os.Looper.getMainLooper()).post {
-                    try { recognizer?.cancel() } catch (_: Exception) {}
+                    try { recognizer?.cancel() } catch (e: Exception) { Quiet.note(e) }
                     finish(null)
                 }
             }

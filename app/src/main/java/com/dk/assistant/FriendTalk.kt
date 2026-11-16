@@ -65,7 +65,7 @@ object FriendTalk {
         val now = System.currentTimeMillis()
         if (now - lastTouch < 30_000L) return
         lastTouch = now
-        try { edit(c.applicationContext) { it.lastSeen = maxOf(it.lastSeen, now) } } catch (_: Exception) {}
+        try { edit(c.applicationContext) { it.lastSeen = maxOf(it.lastSeen, now) } } catch (e: Exception) { Quiet.note(e) }
     }
 
     /**

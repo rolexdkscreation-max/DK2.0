@@ -108,7 +108,7 @@ object DeepResearch {
                 val k = when (s.optString("kind").lowercase()) { "news" -> Kind.NEWS; "opinion" -> Kind.OPINION; "stats" -> Kind.STATS; else -> Kind.MAIN }
                 if (out.none { it.second.equals(q, true) }) out.add(k to q)
             }
-        } catch (_: Exception) {}
+        } catch (e: Exception) { com.dk.assistant.Quiet.note(e) }
         if (out.size < 3) return fallbackSubs(topic)
         return out.take(MAX_SUBS)
     }

@@ -201,7 +201,7 @@ class VoiceEngineCard private constructor(private val a: Activity, private val d
 
     private fun stopAll() {
         PreviewPlayer.stop()
-        VoiceEngines.all.forEach { try { it.stop() } catch (_: Exception) {} }
+        VoiceEngines.all.forEach { try { it.stop() } catch (e: Exception) { com.dk.assistant.Quiet.note(e) } }
     }
 
     private fun refreshLatency() { latency.forEach { (id, tv) -> tv.text = VoiceEngines.latencyLine(a, id) } }

@@ -45,7 +45,7 @@ object CodeLive {
             while (items.size > MAX_ITEMS) items.removeAt(0)
             x
         }
-        listeners.forEach { try { it(w) } catch (_: Exception) {} }
+        listeners.forEach { try { it(w) } catch (e: Exception) { Quiet.note(e) } }
         return w
     }
 
@@ -57,7 +57,7 @@ object CodeLive {
             while (items.size > MAX_ITEMS) items.removeAt(0)
             x
         }
-        listeners.forEach { try { it(w) } catch (_: Exception) {} }
+        listeners.forEach { try { it(w) } catch (e: Exception) { Quiet.note(e) } }
         return w
     }
 

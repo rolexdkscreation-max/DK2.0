@@ -41,7 +41,7 @@ object OwnMind {
         val q = goal.removePrefix("USER SAYS:").trim(); val a = WebCite.strip(answer).trim()
         if (!worth(a)) return
         if (searched && DkMind.changing(LocalBrain.norm(q))) return
-        try { LocalBrain.learn(c, q, a) } catch (_: Exception) {}
+        try { LocalBrain.learn(c, q, a) } catch (e: Exception) { Quiet.note(e) }
     }
 
     /** सीखने लायक जवाब? (फ़ोन के काम वाला / JSON / "…" नहीं). Pure */

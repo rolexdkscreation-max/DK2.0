@@ -95,16 +95,16 @@ object PlainLook {
 
     fun install(a: Activity) {
         val root = a.window?.decorView ?: return
-        try { com.dk.assistant.dkai.DkaiTheme.load(a) } catch (_: Exception) {}
-        try { a.window?.setBackgroundDrawable(ColorDrawable(bg())) } catch (_: Exception) {}
+        try { com.dk.assistant.dkai.DkaiTheme.load(a) } catch (e: Exception) { Quiet.note(e) }
+        try { a.window?.setBackgroundDrawable(ColorDrawable(bg())) } catch (e: Exception) { Quiet.note(e) }
         var queued = false
-        val pass = Runnable { queued = false; try { walk(root) } catch (_: Exception) {} }
+        val pass = Runnable { queued = false; try { walk(root) } catch (e: Exception) { Quiet.note(e) } }
         root.viewTreeObserver.addOnGlobalLayoutListener { if (!queued) { queued = true; root.postDelayed(pass, GAP_MS) } }
-        root.post { try { walk(root) } catch (_: Exception) {} }
+        root.post { try { walk(root) } catch (e: Exception) { Quiet.note(e) } }
     }
 
     /** एक बार (जैसे PopupWindow / dialog का view) */
-    fun apply(v: View) { try { walk(v) } catch (_: Exception) {} }
+    fun apply(v: View) { try { walk(v) } catch (e: Exception) { Quiet.note(e) } }
 
     private fun walk(v: View) {
         if (v is AuroraView) { if (v.visibility != View.GONE) v.visibility = View.GONE; return }

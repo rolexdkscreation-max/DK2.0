@@ -88,7 +88,7 @@ object Inspector {
     fun inspect(c: Context, auto: Boolean, onStep: ((Int, String) -> Unit)? = null): Result {
         if (running) return Result(false, 0, 0, 0, "जाँच पहले से चल रही है", false)
         running = true
-        fun p(n: Int, t: String) { step = t; try { onStep?.invoke(n, t) } catch (_: Exception) {} }
+        fun p(n: Int, t: String) { step = t; try { onStep?.invoke(n, t) } catch (e: Exception) { com.dk.assistant.Quiet.note(e) } }
         try {
             val ctx = c.applicationContext
             val now = System.currentTimeMillis()

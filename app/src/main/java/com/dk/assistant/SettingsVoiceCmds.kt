@@ -66,8 +66,8 @@ internal fun voiceTapeText(cmd: Cmd, t: VoiceTapeRec.Tick?): String {
 private var voiceCmdPlayer: android.media.MediaPlayer? = null
 
 internal fun stopVoiceCmdPlay() {
-    try { voiceCmdPlayer?.stop() } catch (_: Exception) {}
-    try { voiceCmdPlayer?.release() } catch (_: Exception) {}
+    try { voiceCmdPlayer?.stop() } catch (e: Exception) { Quiet.note(e) }
+    try { voiceCmdPlayer?.release() } catch (e: Exception) { Quiet.note(e) }
     voiceCmdPlayer = null
 }
 
@@ -94,17 +94,14 @@ internal fun SettingsActivity.playVoiceCmd(cmd: Cmd) {
 
 internal fun SettingsActivity.enrollVoiceCmd(cmd: Cmd, done: () -> Unit) {
     val HD = com.dk.assistant.voice.HeyDk
-    val OV = com.dk.assistant.voice.OwnerVoice
     if (!Setup.hasMic(this)) { requestPermissions(arrayOf(android.Manifest.permission.RECORD_AUDIO), 12); return }
     val (dlg, tv) = ownerDialog("आवाज़ रिकॉर्ड करें")
     ownerRun {
         try {
-            if (cmd.ownerOnly && OV.supported && !OV.hasModel(this@enrollVoiceCmd)) {
-                tv.text = UiLang.s("पहचान वाला मॉडल डाउनलोड हो रहा है…")
-                val err = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
-                    OV.download(this@enrollVoiceCmd) { pct -> runOnUiThread { tv.text = UiLang.s("पहचान वाला मॉडल डाउनलोड हो रहा है…") + " " + DlText.progress(pct, OV.MODEL_BYTES) } }
-                }
-                if (err != null) { tv.text = UiLang.s(err); kotlinx.coroutines.delay(2500) }
+            // 16 नवंबर 2026: पुराना CAM++ मॉडल हटा - मालिक वाली कमांड की पहचान वॉइस गार्डियन की सीखी आवाज़ से
+            if (cmd.ownerOnly && !com.dk.assistant.voice.VoiceGuardian.ready(this@enrollVoiceCmd)) {
+                tv.text = UiLang.s("यह कमांड सिर्फ़ आपकी आवाज़ पर चलेगी - पहले Settings → वॉइस गार्डियन में अपनी आवाज़ सिखाइए। रिकॉर्डिंग अभी सेव हो जाएगी।")
+                kotlinx.coroutines.delay(2500)
             }
             val src = android.media.MediaRecorder.AudioSource.VOICE_RECOGNITION
             var takes: List<ByteArray> = emptyList()
@@ -139,8 +136,8 @@ internal fun SettingsActivity.enrollVoiceCmd(cmd: Cmd, done: () -> Unit) {
                 (if (warn != null) "\n\n⚠ " + UiLang.s(warn) else "")
             done()
             kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
-                try { HD.prepareAcks(this@enrollVoiceCmd) } catch (_: Exception) {}
-                try { com.dk.assistant.voice.LiveAckMaker.ensureAsync(this@enrollVoiceCmd, "voice cmd") } catch (_: Exception) {}
+                try { HD.prepareAcks(this@enrollVoiceCmd) } catch (e: Exception) { Quiet.note(e) }
+                try { com.dk.assistant.voice.LiveAckMaker.ensureAsync(this@enrollVoiceCmd, "voice cmd") } catch (e: Exception) { Quiet.note(e) }
             }
         } catch (e: kotlinx.coroutines.CancellationException) { throw e
         } catch (e: Exception) { DKLog.d("आवाज़-कमांड सिखाना: ${e.javaClass.simpleName} ${e.message?.take(160)}"); tv.text = UiLang.s("गड़बड़ हुई, फिर से कोशिश करें") }

@@ -44,7 +44,7 @@ object McpClient {
         cn.session = ""
         val init = post(cn, Mcp.request(1, "initialize", Mcp.initParams()), 1)
         init?.optJSONObject("error")?.let { throw IllegalStateException("MCP initialize: " + it.optString("message")) }
-        try { post(cn, Mcp.notification("notifications/initialized"), null) } catch (_: Exception) {}
+        try { post(cn, Mcp.notification("notifications/initialized"), null) } catch (e: Exception) { com.dk.assistant.Quiet.note(e) }
         return init?.optJSONObject("result")
     }
 

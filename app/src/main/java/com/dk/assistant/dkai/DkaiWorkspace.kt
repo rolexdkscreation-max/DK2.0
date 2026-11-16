@@ -71,7 +71,7 @@ object DkaiWorkspace {
             File(dir, "js/app.js").writeText("document.getElementById('t').textContent = 'Hello from ${'$'}{document.title}';\n")
             File(dir, "meta/manifest.json").writeText(JSONObject().put("name", name.trim()).put("start_url", "/index.html").toString(2))
             File(dir, "index.html").writeText("<!doctype html>\n<html lang=\"en\">\n<head>\n  <meta charset=\"utf-8\">\n  <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\n  <title>${name.trim()}</title>\n  <link rel=\"stylesheet\" href=\"style/style.css\">\n</head>\n<body>\n  <h1 id=\"t\">${name.trim()}</h1>\n  <script src=\"js/app.js\"></script>\n</body>\n</html>\n")
-        } catch (_: Exception) {}
+        } catch (e: Exception) { com.dk.assistant.Quiet.note(e) }
         setProject(c, dir)
         return dir
     }

@@ -231,6 +231,14 @@ object Prefs {
     fun wakeMode(c: Context) = sp(c).getBoolean("wake_mode", false)
     fun autoUpdate(c: Context) = sp(c).getBoolean("auto_update", true)
     fun lastUpdateCheck(c: Context) = sp(c).getLong("upd_checked", 0L)
+    /** 16 नवंबर 2026 (मालिक): अपडेट चैनल - false = स्टेबल (शुरू से), true = बीटा (हर नया build) */
+    fun betaUpdates(c: Context) = sp(c).getBoolean("upd_beta", false)
+    fun setBetaUpdates(c: Context, on: Boolean) = sp(c).edit().putBoolean("upd_beta", on).apply()
+    /** 16 नवंबर 2026 (मालिक): crash के बाद अगली बार पूछना - शुरू से बंद ([CrashReport]) */
+    fun crashAsk(c: Context) = sp(c).getBoolean(CrashReport.ASK_KEY, false)
+    fun setCrashAsk(c: Context, on: Boolean) = sp(c).edit().putBoolean(CrashReport.ASK_KEY, on).apply()
+    fun crashAskedAt(c: Context) = sp(c).getLong(CrashReport.ASKED_KEY, 0L)
+    fun setCrashAskedAt(c: Context, at: Long) = sp(c).edit().putLong(CrashReport.ASKED_KEY, at).apply()
     fun liveMode(c: Context) = sp(c).getBoolean("live_mode", false)
     /** orb ka aakaar: earth, galaxy, atom, torus, geodesic, knot, dyson, face_male, face_female */
     /** Beech ka orb chhota (minimize) kiya hua hai? */

@@ -121,7 +121,14 @@ internal fun SettingsActivity.secDebug() {
                 cm?.setPrimaryClip(android.content.ClipData.newPlainText("DK log", GeminiLive.stats + "\n\n" + DKLog.all()))
                 toast("लॉग कॉपी हो गया")
             },
-            button("साफ़ करें") { DKLog.clear() })
+            button("साफ़ करें") { DKLog.clear(); Quiet.clear() })
+        // 16 नवंबर 2026 (ऑडिट Q1): जो गलतियाँ पहले चुपचाप निगली जाती थीं - अब गिनती + जगह
+        row(box, button("दबी गलतियाँ") {
+            val t = Quiet.summary()
+            val cm = getSystemService(android.content.ClipboardManager::class.java)
+            cm?.setPrimaryClip(android.content.ClipData.newPlainText("DK quiet", t))
+            android.app.AlertDialog.Builder(this).setTitle("दबी गलतियाँ").setMessage(t.take(3000)).setPositiveButton("ठीक", null).show()
+        })
     }
 }
 
@@ -235,6 +242,10 @@ internal fun SettingsActivity.secUpdate() {
         row(box, btnAct)
         swAutoUpd = switch(box, "ऐप खुलते ही अपडेट चेक करो और बैकग्राउंड में डाउनलोड करो", Prefs.autoUpdate(this))
         hint(box, "सॉफ़्टवेयर अपडेट = नया डिज़ाइन / नए फ़ीचर  •  सिक्योरिटी पैच = गड़बड़ियाँ और सुरक्षा ठीक")
+        // 16 नवंबर 2026 (मालिक: "बीटा और स्टेबल अपडेट"): शुरू से स्टेबल; बीटा = चालू करने वाले को ही, अलग से
+        val swBeta = switch(box, "बीटा अपडेट भी लो (नए फ़ीचर स्टेबल से पहले — कभी-कभी कोई कमी रह सकती है)", Prefs.betaUpdates(this))
+        swBeta.setOnCheckedChangeListener { _, on -> Prefs.setBetaUpdates(this, on); btnCheck.performClick() }
+        hint(box, "स्टेबल = सबके लिए सामान्य अपडेट  •  बीटा = आज़माइशी build, सिर्फ़ यह चालू करने वालों को  •  हर डाउनलोड का SHA-256 मिलाया जाता है")
         // Settings khulte hi ek baar chupchap check
         btnCheck.performClick()
     }
@@ -265,14 +276,12 @@ internal fun SettingsActivity.secAbout() {
         })
         hint(box, "असिस्टेंट का नाम: " + Prefs.assistantName(this) + " (बदलने के लिए सेटिंग्स → प्रोफ़ाइल)")
     }
-    card("निजता (Privacy)", "आपका डेटा कहाँ जाता है") { box ->
-        hint(box, "• आपकी API keys और सेटिंग्स सिर्फ़ इस फ़ोन में सेव रहती हैं (फ़ोन के backup में भी नहीं जातीं)। हर key सिर्फ़ अपनी सेवा को भेजी जाती है, और आपका सवाल उसी AI सेवा को जाता है जिसकी key आपने डाली है।")
-        hint(box, "• स्क्रीन देखना चालू हो तभी स्क्रीनशॉट AI को जाता है (सेटिंग्स → परमिशन)।")
-        hint(box, "• Notification सिर्फ़ फ़ोन की memory में रहते हैं।")
-        hint(box, "• DK की याददाश्त (बातचीत) फ़ोन में रहती है; आप खुद सेटिंग्स → बैकअप में अपना ईमेल डालकर बैकअप करें तभी आपके अपने Google Drive में जाती है (सिर्फ़ याददाश्त, और कुछ नहीं)।")
-        hint(box, "• मौसम/इलाके के लिए ली गई लोकेशन कहीं सेव नहीं होती।")
-        hint(box, "• कैमरा permission सिर्फ़ टॉर्च के लिए है; DK फ़ोटो नहीं लेता।")
-        hint(box, "• Instagram / Facebook / WhatsApp पर पोस्ट या मैसेज भेजने से पहले DK आपसे \"हाँ\" पूछता है।")
+    // 16 नवंबर 2026 (मालिक: "असली डेटा कहाँ है, privacy पेज में लिखो") - पूरा: docs/PRIVACY.md
+    card("निजता (Privacy)", "आपका डेटा असल में कहाँ जाता है") { box ->
+        PrivacyText.LINES.forEach { hint(box, it) }
+        row(box, button("पूरा निजता पेज") {
+            try { startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(PrivacyText.URL))) } catch (_: Exception) { toast(PrivacyText.URL) }
+        })
     }
     card("और विकल्प", null) { box ->
         row(box,
@@ -285,8 +294,9 @@ internal fun SettingsActivity.secAccess() {
     card("फ़ोन कंट्रोल (Accessibility)", "एक बार ON करें — फिर ON ही रहेगा") { box ->
         accStatus = TextView(this).apply { textSize = 15f; setTextColor(0xFFFFFFFF.toInt()); setPadding((4 * dp).toInt(), (6 * dp).toInt(), 0, 0) }
         box.addView(accStatus)
-        val roleManager = getSystemService(android.app.role.RoleManager::class.java)
-        val isAssistantRoleHeld = roleManager?.isRoleHeld(android.app.role.RoleManager.ROLE_ASSISTANT) == true
+        // 16 नवंबर 2026 (Android Lint, NewApi): RoleManager Android 10+ में ही - पहले Android 8/9 पर यह स्क्रीन खुलते ही बंद होती
+        val isAssistantRoleHeld = android.os.Build.VERSION.SDK_INT >= 29 &&
+            getSystemService(android.app.role.RoleManager::class.java)?.isRoleHeld(android.app.role.RoleManager.ROLE_ASSISTANT) == true
         val roleStatusView = TextView(this).apply {
             textSize = 14f
             setTextColor(if (isAssistantRoleHeld) 0xFF00FF00.toInt() else 0xFFFF5555.toInt())
@@ -385,6 +395,16 @@ internal fun SettingsActivity.secAccess() {
                 cm.setPrimaryClip(android.content.ClipData.newPlainText("DK crash", all)); toast("कॉपी हो गया — मुझे भेज दें")
             },
             button("हटाएँ") { DKApp.clearCrash(this); toast("हटा दिया") })
+        // 16 नवंबर 2026 (मालिक: "क्रैश रिपोर्ट मेरी मर्ज़ी से"): भेजना सिर्फ़ आपके दबाने पर, छिपाकर
+        row(box,
+            button("रिपोर्ट भेजें") { CrashUi.openIssue(this, DKApp.crashHistory(this).ifBlank { crash }) },
+            button("शेयर करें") { CrashUi.share(this, DKApp.crashHistory(this).ifBlank { crash }) })
+        hint(box, "DK खुद कुछ नहीं भेजता। \"रिपोर्ट भेजें\" = GitHub पर नया issue खुलेगा (key / token / नंबर / OTP छिपाकर) — पढ़कर आप खुद Submit करें।")
+    }
+    card("क्रैश रिपोर्ट", "आपकी मर्ज़ी से — शुरू से बंद") { box ->
+        val sw = switch(box, "DK बंद हो जाए तो अगली बार खुलते समय पूछो कि रिपोर्ट भेजूँ", Prefs.crashAsk(this))
+        sw.setOnCheckedChangeListener { _, on -> Prefs.setCrashAsk(this, on) }
+        hint(box, "बंद = crash सिर्फ़ इसी फ़ोन में रहता है (यहीं Settings में दिखता है)। चालू = सिर्फ़ पूछेगा; बिना आपके \"हाँ\" कुछ नहीं जाता।")
     }
 
     refreshAccess()

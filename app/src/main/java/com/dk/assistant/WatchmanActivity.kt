@@ -137,7 +137,7 @@ class WatchmanActivity : AppCompatActivity() {
 
     /** Boss जाँच का कैमरा खुल सके - वॉचमैन का कैमरा थोड़ी देर बंद, लौटने पर फिर ([onStart]) */
     private fun askStop() {
-        try { cam?.stop() } catch (_: Exception) {}
+        try { cam?.stop() } catch (e: Exception) { Quiet.note(e) }
         cam = null; checking = System.currentTimeMillis()
         BossCheckActivity.open(this, BossCheckActivity.MODE_STOP)
     }
@@ -164,7 +164,7 @@ class WatchmanActivity : AppCompatActivity() {
     }
 
     override fun onDestroy() {
-        try { cam?.stop() } catch (_: Exception) {}
+        try { cam?.stop() } catch (e: Exception) { Quiet.note(e) }
         if (Watchman.running && !bossStop) {
             val now = System.currentTimeMillis()
             Watchman.book(this).stop(now, "वॉचमैन की स्क्रीन बंद हो गई — Boss ने बंद नहीं किया")

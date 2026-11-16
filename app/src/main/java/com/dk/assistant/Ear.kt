@@ -73,10 +73,10 @@ class Ear(
             val r = AudioRecord(MediaRecorder.AudioSource.VOICE_RECOGNITION, RATE,
                 AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT, maxOf(min, FRAME * 2 * 8))
             if (r.state != AudioRecord.STATE_INITIALIZED) { r.release(); problem = "busy"; return null }
-            if (bt) BtAudio.btInput?.let { d -> try { r.setPreferredDevice(d) } catch (_: Exception) {} }
+            if (bt) BtAudio.btInput?.let { d -> try { r.setPreferredDevice(d) } catch (e: Exception) { Quiet.note(e) } }
             DKLog.d("Ear माइक: " + if (bt) "Bluetooth headset" else "फ़ोन")
-            try { if (AcousticEchoCanceler.isAvailable()) aec = AcousticEchoCanceler.create(r.audioSessionId)?.apply { enabled = true } } catch (_: Exception) {}
-            try { if (NoiseSuppressor.isAvailable()) ns = NoiseSuppressor.create(r.audioSessionId)?.apply { enabled = true } } catch (_: Exception) {}
+            try { if (AcousticEchoCanceler.isAvailable()) aec = AcousticEchoCanceler.create(r.audioSessionId)?.apply { enabled = true } } catch (e: Exception) { Quiet.note(e) }
+            try { if (NoiseSuppressor.isAvailable()) ns = NoiseSuppressor.create(r.audioSessionId)?.apply { enabled = true } } catch (e: Exception) { Quiet.note(e) }
             rec = r; r
         } catch (e: Exception) {
             DKLog.d("Mic nahi khula: ${e.message}"); problem = if (e is SecurityException) "perm" else "busy"; null
@@ -92,9 +92,9 @@ class Ear(
     }
 
     private fun closeRec() {
-        try { rec?.stop() } catch (_: Exception) {}
-        try { aec?.release(); ns?.release() } catch (_: Exception) {}
-        try { rec?.release() } catch (_: Exception) {}
+        try { rec?.stop() } catch (e: Exception) { Quiet.note(e) }
+        try { aec?.release(); ns?.release() } catch (e: Exception) { Quiet.note(e) }
+        try { rec?.release() } catch (e: Exception) { Quiet.note(e) }
         rec = null; aec = null; ns = null
     }
 
@@ -124,7 +124,7 @@ class Ear(
                 // Bluetooth जुड़ा/हटा (बात के बीच नहीं): माइक नए रास्ते पर
                 if (routeChanged && !talking) {
                     routeChanged = false
-                    try { r.stop() } catch (_: Exception) {}
+                    try { r.stop() } catch (e: Exception) { Quiet.note(e) }
                     closeRec()
                     r = open() ?: return@withContext null
                     try { r.startRecording() } catch (_: Exception) { release(); problem = "busy"; return@withContext null }
@@ -162,17 +162,17 @@ class Ear(
                     if (rms > startTh) loud++ else { loud = 0; if (!dkTalking) noise = if (rms < noise) noise * 0.9 + rms * 0.1 else noise * 0.995 + rms * 0.005 }
                     if (loud >= startFrames) {
                         talking = true; capturing = true
-                        pre.forEach { writeShorts(speech, it, it.size); try { onFrame?.invoke(it, it.size) } catch (_: Exception) {} }
+                        pre.forEach { writeShorts(speech, it, it.size); try { onFrame?.invoke(it, it.size) } catch (e: Exception) { Quiet.note(e) } }
                         pre.clear()
                         frames = 0; silent = 0; speechFrames = loud
-                        try { onSpeechStart() } catch (_: Exception) {}
-                        try { onStart?.invoke() } catch (_: Exception) {}
+                        try { onSpeechStart() } catch (e: Exception) { Quiet.note(e) }
+                        try { onStart?.invoke() } catch (e: Exception) { Quiet.note(e) }
                         if (vadOnly) return@withContext ByteArray(0)
                     }
                 } else {
                     DKState.level = (rms / 3500.0).toFloat().coerceIn(0f, 1f)
                     writeShorts(speech, buf, n)
-                    try { onFrame?.invoke(buf, n) } catch (_: Exception) {}
+                    try { onFrame?.invoke(buf, n) } catch (e: Exception) { Quiet.note(e) }
                     frames++
                     if (rms < stopTh) silent++ else { silent = 0; speechFrames++ }
                     val endAfter = if (speechFrames > LONG_AFTER) END_SILENCE_LONG else END_SILENCE_SHORT
@@ -181,13 +181,13 @@ class Ear(
                         if (speechFrames >= MIN_SPEECH_FRAMES) return@withContext MicBoost.normalize(speech.toByteArray())
                         // bahut chhota = khaansi/khatak -> phir se suno
                         talking = false; capturing = false; speech.reset(); loud = 0
-                        try { onDiscard?.invoke() } catch (_: Exception) {}
+                        try { onDiscard?.invoke() } catch (e: Exception) { Quiet.note(e) }
                     }
                 }
             }
             @Suppress("UNREACHABLE_CODE") null
         } finally {
-            try { r.stop() } catch (_: Exception) {}
+            try { r.stop() } catch (e: Exception) { Quiet.note(e) }
             capturing = false
             DKState.level = 0f
         }

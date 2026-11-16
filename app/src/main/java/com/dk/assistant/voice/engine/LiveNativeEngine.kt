@@ -112,10 +112,10 @@ object LiveNativeEngine : VoiceEngine {
             if (!done.await(20, TimeUnit.SECONDS) && !got) throw IOException("Live ने 20 s में आवाज़ नहीं दी")
             if (!got && cur === ws) throw IOException(err ?: "Live ने आवाज़ नहीं दी")
         } finally {
-            try { ws.close(1000, "bye") } catch (_: Exception) {}
+            try { ws.close(1000, "bye") } catch (e: Exception) { com.dk.assistant.Quiet.note(e) }
             if (cur === ws) cur = null
         }
     }
 
-    override fun stop() { cur?.let { try { it.cancel() } catch (_: Exception) {} }; cur = null }
+    override fun stop() { cur?.let { try { it.cancel() } catch (e: Exception) { com.dk.assistant.Quiet.note(e) } }; cur = null }
 }

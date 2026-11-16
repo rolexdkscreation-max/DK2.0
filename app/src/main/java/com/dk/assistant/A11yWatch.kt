@@ -81,7 +81,7 @@ object A11yWatch {
     /** एक बार जाँचो और जो ठीक हो करो. लौटाता है हालत (log/test) */
     suspend fun check(c: Context, why: String): State {
         val app = c.applicationContext
-        try { PayGuard.recover(app) } catch (_: Exception) {}   // पेमेंट के लिए रुका हो तो देखने वाला फिर चालू
+        try { PayGuard.recover(app) } catch (e: Exception) { Quiet.note(e) }   // पेमेंट के लिए रुका हो तो देखने वाला फिर चालू
         var s = state(DKAccessibilityService.instance != null, Setup.enabledInSettings(app), Setup.canWriteSecure(app))
         if (s == State.HEAL || s == State.ASK_USER) {
             delay(SETTLE_MS)
@@ -123,7 +123,7 @@ object A11yWatch {
         } catch (e: Exception) { DKLog.d("a11y notification: ${e.message}") }
     }
 
-    fun cancel(c: Context) = try { c.getSystemService(NotificationManager::class.java)?.cancel(ID); Unit } catch (_: Exception) {}
+    fun cancel(c: Context) = try { c.getSystemService(NotificationManager::class.java)?.cancel(ID); Unit } catch (e: Exception) { Quiet.note(e) }
 }
 
 /** हर ~15 मिनट (Android का सबसे छोटा) - Active apps से Stop के बाद भी चलता है (Android का नियम), restart के बाद भी */

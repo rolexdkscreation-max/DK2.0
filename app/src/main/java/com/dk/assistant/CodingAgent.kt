@@ -325,7 +325,7 @@ class CodingAgent(internal val gh: GitHub, var repo: String, var branch: String,
                 gh.createBranch(repo, name, baseBranch)
             }
             backupBranch = name
-            pr?.let { p -> try { gh.editPullBody(repo, p.number, SafePr.prBody(lastSummary, changeList().ifBlank { lastChangeText }, SafePr.protectedIn(staged.keys), backupBranch, rootCause, workNote)) } catch (_: Exception) {} }
+            pr?.let { p -> try { gh.editPullBody(repo, p.number, SafePr.prBody(lastSummary, changeList().ifBlank { lastChangeText }, SafePr.protectedIn(staged.keys), backupBranch, rootCause, workNote)) } catch (e: Exception) { Quiet.note(e) } }
             name
         } catch (e: Exception) { DKLog.d("Coder: backup branch नहीं बनी: ${e.message}"); "" }
     }
@@ -621,7 +621,7 @@ class CodingAgent(internal val gh: GitHub, var repo: String, var branch: String,
         val sha = gh.mergePull(repo, p.number, "${lastTask.ifBlank { p.head.ifBlank { "DK changes" } }.take(90)} (#${p.number})")
         lastMergeSha = sha
         val br = branch
-        try { gh.deleteBranch(repo, br) } catch (_: Exception) {}
+        try { gh.deleteBranch(repo, br) } catch (e: Exception) { Quiet.note(e) }
         reset()
         "✓ PR #${p.number} $baseBranch में merge हो गया (${sha.take(7)}), branch $br हटा दी"
     }

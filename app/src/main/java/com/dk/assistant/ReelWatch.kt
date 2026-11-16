@@ -142,7 +142,7 @@ class ReelWatch(private val svc: DKAccessibilityService) {
         val t = now()
         if (seenMs <= 0L || (!force && t - lastFlush < 10_000)) return
         lastFlush = t
-        try { ReelDaily.addSeen(svc.applicationContext, a, seenMs) } catch (_: Exception) {}
+        try { ReelDaily.addSeen(svc.applicationContext, a, seenMs) } catch (e: Exception) { Quiet.note(e) }
         seenMs = 0L
     }
 
@@ -182,7 +182,7 @@ class ReelWatch(private val svc: DKAccessibilityService) {
                     out += ReelRules.Node(id, txt, desc, r.exactCenterX() / w, r.exactCenterY() / h, r.width() / w, r.height() / h)
                 }
                 for (i in 0 until n.childCount) n.getChild(i)?.let { stack.add(it) }
-            } catch (_: Exception) {}
+            } catch (e: Exception) { Quiet.note(e) }
         }
         return out
     }
@@ -218,7 +218,7 @@ class ReelWatch(private val svc: DKAccessibilityService) {
         return try { wm.addView(tv, p); pill = tv; tv } catch (e: Exception) { DKLog.d("रील पट्टी नहीं लगी: ${e.javaClass.simpleName}"); null }
     }
 
-    private fun removePill() { pill?.let { try { wm.removeView(it) } catch (_: Exception) {} }; pill = null }
+    private fun removePill() { pill?.let { try { wm.removeView(it) } catch (e: Exception) { Quiet.note(e) } }; pill = null }
 }
 
 /** रील गिनती की सेटिंग / आज की गिनती ("dk_prefs") */

@@ -166,8 +166,8 @@ object Memory {
     /** रिस्टोर: जोड़ी हुई facts + (फ़ोन में खाली हो तो) बैकअप वाला context और चैट */
     fun restoreFiles(c: Context, facts: List<String>, history: String, chat: String) {
         writeArr(c, "dk_facts.json", JSONArray(facts))
-        try { val h = JSONArray(history); synchronized(historyLock) { writeArr(c, "dk_history.json", h); historyVersion++ } } catch (_: Exception) {}
-        try { writeArr(c, "dk_chat.json", JSONArray(chat)) } catch (_: Exception) {}
+        try { val h = JSONArray(history); synchronized(historyLock) { writeArr(c, "dk_history.json", h); historyVersion++ } } catch (e: Exception) { Quiet.note(e) }
+        try { writeArr(c, "dk_chat.json", JSONArray(chat)) } catch (e: Exception) { Quiet.note(e) }
     }
 
     // ------------------------------------------------------------ bolkar yaad karana / bhulana

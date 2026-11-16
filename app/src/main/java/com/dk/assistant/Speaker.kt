@@ -143,7 +143,7 @@ class Speaker(context: Context) {
     private fun warmLine(text: String) {
         kotlinx.coroutines.CoroutineScope(Dispatchers.IO).launch {
             val keys = keys(); if (keys.isEmpty() || !online()) return@launch
-            try { synth(keys, text, Prefs.geminiVoice(appCtx)) } catch (_: Exception) { }
+            try { synth(keys, text, Prefs.geminiVoice(appCtx)) } catch (e: Exception) { Quiet.note(e) }
         }
     }
 
@@ -169,14 +169,14 @@ class Speaker(context: Context) {
             if (am <= 0) return
             val cur = audio.getStreamVolume(a)
             if (cur < am) { if (accBefore < 0) accBefore = cur; VolumeKeep.keepMedia(audio) { audio.setStreamVolume(a, am, 0) } }   // मीडिया जितना था उतना (नवंबर 2026)
-        } catch (_: Exception) {}
+        } catch (e: Exception) { Quiet.note(e) }
     }
 
     /** कॉल खत्म - accessibility आवाज़ पहले जितनी */
     fun restoreCallVolume() {
         val b = accBefore; accBefore = -1
         if (b < 0 || Build.VERSION.SDK_INT < 26) return
-        try { VolumeKeep.keepMedia(audio) { audio.setStreamVolume(CallVoice.STREAM_ACCESSIBILITY, b, 0) } } catch (_: Exception) {}
+        try { VolumeKeep.keepMedia(audio) { audio.setStreamVolume(CallVoice.STREAM_ACCESSIBILITY, b, 0) } } catch (e: Exception) { Quiet.note(e) }
     }
 
     /**
@@ -307,7 +307,7 @@ class Speaker(context: Context) {
         val msg = VoicePolicy.message(w)
         DKLog.d(msg)
         android.os.Handler(android.os.Looper.getMainLooper()).post {
-            try { UiLang.toast(appCtx, msg, android.widget.Toast.LENGTH_LONG).show() } catch (_: Exception) {}
+            try { UiLang.toast(appCtx, msg, android.widget.Toast.LENGTH_LONG).show() } catch (e: Exception) { Quiet.note(e) }
         }
     }
 
@@ -391,7 +391,7 @@ class Speaker(context: Context) {
             // Sirf NORMAL ringer me - silent/vibrate (user ya "volume silent" command) me notification/system ko mat chhuo,
             // warna DK ke bolte hi phone wapas ring mode me chala jaata tha
             if (Build.VERSION.SDK_INT >= 23 && audio.ringerMode == android.media.AudioManager.RINGER_MODE_NORMAL) for (st in intArrayOf(android.media.AudioManager.STREAM_NOTIFICATION, android.media.AudioManager.STREAM_SYSTEM))
-                try { if (audio.isStreamMute(st)) audio.adjustStreamVolume(st, android.media.AudioManager.ADJUST_UNMUTE, 0) } catch (_: Exception) {}
+                try { if (audio.isStreamMute(st)) audio.adjustStreamVolume(st, android.media.AudioManager.ADJUST_UNMUTE, 0) } catch (e: Exception) { Quiet.note(e) }
             if (Build.VERSION.SDK_INT >= 23 && audio.isStreamMute(s)) audio.adjustStreamVolume(s, android.media.AudioManager.ADJUST_UNMUTE, 0)
             val max = audio.getStreamMaxVolume(s)
             if (audio.getStreamVolume(s) == 0 && max > 0) audio.setStreamVolume(s, (max * 0.5).toInt().coerceAtLeast(1), 0)
@@ -399,7 +399,7 @@ class Speaker(context: Context) {
             if (Build.VERSION.SDK_INT >= 26 && (try { callNow() } catch (_: Exception) { false })) try {
                 val a = CallVoice.STREAM_ACCESSIBILITY; val am = audio.getStreamMaxVolume(a)
                 if (am > 0 && audio.getStreamVolume(a) < am / 2) audio.setStreamVolume(a, (am * 0.8).toInt().coerceAtLeast(1), 0)
-            } catch (_: Exception) {}
+            } catch (e: Exception) { Quiet.note(e) }
         } catch (e: Exception) { DKLog.d("awaaz unmute: ${e.message}") }
     }
 
@@ -426,7 +426,7 @@ class Speaker(context: Context) {
             mp.setOnErrorListener { _, _, _ -> done.complete(Unit); true }
             try { mp.prepare() } catch (e: Exception) { DKLog.d("play: ${e.message}"); done.complete(Unit); mp.release(); return@withContext }
             if (Build.VERSION.SDK_INT >= 23) {
-                try { mp.playbackParams = mp.playbackParams.setSpeed(Prefs.ttsRate(appCtx).coerceIn(0.6f, 1.8f)) } catch (_: Exception) {}
+                try { mp.playbackParams = mp.playbackParams.setSpeed(Prefs.ttsRate(appCtx).coerceIn(0.6f, 1.8f)) } catch (e: Exception) { Quiet.note(e) }
             }
             player = mp; playDone = done
             mp.start()
@@ -436,7 +436,7 @@ class Speaker(context: Context) {
     }
 
     private fun stopPlayer() {
-        player?.let { try { it.stop() } catch (_: Exception) {}; try { it.release() } catch (_: Exception) {} }
+        player?.let { try { it.stop() } catch (e: Exception) { Quiet.note(e) }; try { it.release() } catch (e: Exception) { Quiet.note(e) } }
         player = null
         playDone?.complete(Unit); playDone = null
     }

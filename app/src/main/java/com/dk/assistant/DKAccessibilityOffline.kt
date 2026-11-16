@@ -54,6 +54,7 @@ internal suspend fun DKAccessibilityService.hearOfflineCmds(): String? {
         if (ear.problem != null) { ear.release(); delay(400) }   // Google माइक पर नहीं जाते (वहाँ बीप)
         return null
     }
+    if (pcm.isNotEmpty()) com.dk.assistant.voice.UnlockGuard.heard(pcm)   // 16 नवंबर 2026: आवाज़ से अनलॉक की जाँच (सिर्फ़ मेमोरी में)
     if (pcm.isNotEmpty() && com.dk.assistant.voice.VoiceCmds.anyOn(this)) {
         val vc = withContext(Dispatchers.Default) { com.dk.assistant.voice.VoiceCmds.match(me, pcm) }
         if (vc != null && runVoiceCmd(vc, "ऑफलाइन")) { DKState.user(""); DKState.set(Mode.IDLE); return null }
@@ -80,7 +81,7 @@ internal suspend fun DKAccessibilityService.hearOfflineCmds(): String? {
             if (bare != null && bare.isBlank()) {
                 offlineNameAt = System.currentTimeMillis()
                 DKState.set(Mode.IDLE); DKState.reply("जी, बोलिए")
-                try { speaker.speak("जी, बोलिए।") } catch (e: CancellationException) { throw e } catch (_: Exception) {}
+                try { speaker.speak("जी, बोलिए।") } catch (e: CancellationException) { throw e } catch (e: Exception) { Quiet.note(e) }
                 offlineNameAt = System.currentTimeMillis()
                 return null
             }
@@ -104,7 +105,7 @@ internal suspend fun DKAccessibilityService.hearOfflineCmds(): String? {
             if (reply != null) {
                 DKLog.d("ऑफलाइन बातचीत: \"${said.take(40)}\" -> \"${reply.take(40)}\"")
                 DKState.user(said); DKState.reply(reply)
-                try { speaker.speak(reply) } catch (e: CancellationException) { throw e } catch (_: Exception) {}
+                try { speaker.speak(reply) } catch (e: CancellationException) { throw e } catch (e: Exception) { Quiet.note(e) }
                 offlineTalkAt = System.currentTimeMillis()
                 DKState.set(Mode.IDLE)
                 return null
