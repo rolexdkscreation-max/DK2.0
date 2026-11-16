@@ -41,6 +41,8 @@
     <uses-permission android:name="android.permission.CALL_PHONE" />
     <!-- v3.33 (वैकल्पिक): "सबसे नई फ़ोटो दिखाओ" (न दें तो सिर्फ़ गैलरी खुलती है). सिर्फ़ फ़ोटो पढ़ना - मिटाना नहीं -->
     <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
+    <!-- 16 नवंबर 2026: सोशल पोस्ट स्पेशलिस्ट - बोले गए वर्णन से गैलरी का वीडियो/रील खुद चुनना (सिर्फ़ पढ़ना) -->
+    <uses-permission android:name="android.permission.READ_MEDIA_VIDEO" />
     <!-- नवंबर 2026: फ़ोटो / स्क्रीनशॉट मिटाते समय हर बार Allow न पूछे (Android 12+, सेटिंग्स से मालिक चालू करे) -->
     <uses-permission android:name="android.permission.MANAGE_MEDIA" tools:ignore="ProtectedPermissions" />
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="32" />
