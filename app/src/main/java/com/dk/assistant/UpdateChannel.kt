@@ -3,9 +3,9 @@ package com.dk.assistant
 /**
  * 16 नवंबर 2026 (मालिक: "बीटा और स्टेबल अपडेट जो लगाने हो, लगाओ").
  *
- * - main में हर merge = **बीटा** release (GitHub "prerelease", body में `CHANNEL: beta`).
- * - मालिक Actions → "Promote beta to stable" चलाए = वही build **स्टेबल** ("Latest", body में `CHANNEL: stable`).
- * - ऐप: Settings → अपडेट → "बीटा अपडेट" बंद (शुरू से) = सिर्फ़ स्टेबल; चालू = हर नया build.
+ * - (मालिक: "बीटा नहीं, सीधे स्टेबल") main में हर merge = **स्टेबल** release ("Latest", body में `CHANNEL: stable`) - सबके फ़ोन पर.
+ * - बीटा अलग: Actions → build workflow → Run → branch + "beta" ✓ = GitHub "prerelease", body में `CHANNEL: beta`.
+ * - ऐप: Settings → अपडेट → "बीटा अपडेट" बंद (शुरू से) = सिर्फ़ स्टेबल; चालू = बीटा भी (जो सबसे नया).
  * - हर release में `SHA256: <hash>` - download के बाद मिलान ([Updater]).
  * Pure (JVM test: UpdateChannelTest).
  */

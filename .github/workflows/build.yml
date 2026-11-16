@@ -6,6 +6,14 @@ on:
   pull_request:
     branches: [ main ]
   workflow_dispatch:
+    # 16 नवंबर 2026 (मालिक: "main = सीधे स्टेबल, बीटा अलग"): Actions → इस workflow → Run → branch चुनें → "beta" ✓
+    # = उस branch का build बीटा release (Pre-release) - सिर्फ़ वे फ़ोन लेंगे जिनमें DK Settings → "बीटा अपडेट" चालू है
+    inputs:
+      beta:
+        description: "इस branch का build बीटा release बनाओ (सिर्फ़ बीटा चालू वाले फ़ोन)"
+        type: boolean
+        required: false
+        default: false
 
 permissions:
   contents: write   # Release banane ke liye
@@ -19,10 +27,13 @@ jobs:
     # (इंतज़ार में तीसरा आए तो बीच वाला छोड़ दिया जाता है - नया build उसके सारे बदलाव भी ले लेता है)
     # PR / हाथ से चलाए build पहले जैसे साथ-साथ (हर एक का अपना group)
     concurrency:
-      group: ${{ (github.event_name == 'push' && github.ref == 'refs/heads/main') && 'dk-release-main' || format('dk-build-{0}', github.run_id) }}
+      group: ${{ ((github.event_name == 'push' && github.ref == 'refs/heads/main') || (github.event_name == 'workflow_dispatch' && inputs.beta)) && 'dk-release-main' || format('dk-build-{0}', github.run_id) }}
       cancel-in-progress: false
     env:
       VERSION_CODE: ${{ github.run_number }}
+      # main में merge = स्टेबल (सबके फ़ोन पर); हाथ से "beta" ✓ = बीटा; PR build = कोई release नहीं
+      CHANNEL: ${{ (github.event_name == 'workflow_dispatch' && inputs.beta) && 'beta' || 'stable' }}
+      DO_RELEASE: ${{ (github.event_name == 'push' && github.ref == 'refs/heads/main') || (github.event_name == 'workflow_dispatch' && inputs.beta) }}
     steps:
       - name: Code checkout
         uses: actions/checkout@v4
@@ -48,7 +59,7 @@ jobs:
           if [ -n "$KS_B64" ]; then
             echo "$KS_B64" | base64 -d > "$RUNNER_TEMP/dk.jks"
             echo "DK_KEYSTORE=$RUNNER_TEMP/dk.jks" >> "$GITHUB_ENV"
-          elif [ "${{ github.event_name }}" = "push" ] && [ "${{ github.ref }}" = "refs/heads/main" ]; then
+          elif [ "$DO_RELEASE" = "true" ]; then
             # सुरक्षा: main की release कभी debug key से नहीं - वरना फ़ोन पर पुराने ऐप के ऊपर update नहीं होगा
             echo "::error::DK_KEYSTORE_B64 secret nahi mila - main ki release debug key se nahi banegi (secret wapas daalein)"
             exit 1
@@ -62,11 +73,14 @@ jobs:
         run: |
           set -e
           git fetch --tags --force >/dev/null 2>&1 || true
-          # 16 नवंबर 2026: बीटा (prerelease) भी गिनो - वरना दो बीटा एक ही version ले लेते (Latest सिर्फ़ स्टेबल दिखाता है)
+          # 16 नवंबर 2026: version के लिए बीटा (prerelease) भी गिनो - वरना बीटा और अगला स्टेबल एक ही version ले लेते
           PREV_TAG="$(gh release list --limit 1 --exclude-drafts --json tagName -q '.[0].tagName' 2>/dev/null || true)"
           PREV_BODY="$( [ -n "$PREV_TAG" ] && gh release view "$PREV_TAG" --json body -q .body 2>/dev/null || true)"
           PREV_VER="$(printf '%s\n' "$PREV_BODY" | sed -n 's/^VERSION: *\([0-9.]*\).*/\1/p' | head -1)"
-          if [ -n "$PREV_TAG" ] && git rev-parse -q --verify "refs/tags/$PREV_TAG" >/dev/null; then RANGE="$PREV_TAG..HEAD"; else RANGE="HEAD~1..HEAD"; fi
+          # "क्या नया" स्टेबल के लिए पिछले स्टेबल से (बीटा किसी दूसरी branch का हो सकता है)
+          NOTE_TAG="$PREV_TAG"
+          if [ "$CHANNEL" = "stable" ]; then NOTE_TAG="$(gh release list --limit 1 --exclude-drafts --exclude-pre-releases --json tagName -q '.[0].tagName' 2>/dev/null || true)"; fi
+          if [ -n "$NOTE_TAG" ] && git rev-parse -q --verify "refs/tags/$NOTE_TAG" >/dev/null; then RANGE="$NOTE_TAG..HEAD"; else RANGE="HEAD~1..HEAD"; fi
           MSGS="$(git log --pretty=%B $RANGE)"
           FILES="$(git diff --name-only $RANGE)"
           NEWKT="$(git diff --diff-filter=A --name-only $RANGE | grep -E '\.kt$' || true)"
@@ -89,7 +103,7 @@ jobs:
           {
             echo "TYPE: $TYPE"
             echo "VERSION: $NEW"
-            echo "CHANNEL: beta"
+            echo "CHANNEL: $CHANNEL"
             echo "SHA256: @@SHA256@@"
             echo "---"
             # v3.6: सिर्फ़ असली बदलाव - PR का "## अपडेट में क्या नया" (Merge/टेस्ट/बैकअप/काम-विवरण नहीं)
@@ -160,7 +174,7 @@ jobs:
           path: screenshots/
 
       - name: GitHub Release (app ke andar update ke liye)
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        if: env.DO_RELEASE == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -178,9 +192,18 @@ jobs:
             echo "::error::नया version ${VERSION_NAME} पिछली release ${LATEST_VER} से बड़ा नहीं - release रोकी"; exit 1
           fi
           # टैग उसी commit पर जिससे यह APK बना (बिना --target टैग main की नई नोक पर लग जाता था)
-          gh release create "v${VERSION_CODE}" DK.apk \
-            --target "$GITHUB_SHA" \
-            --title "DK ${VERSION_NAME}" \
-            --notes-file release_notes.txt \
-            --prerelease
-          # 16 नवंबर 2026 (मालिक: बीटा और स्टेबल): हर merge = बीटा. स्टेबल बनाने के लिए Actions → "Promote beta to stable"
+          # 16 नवंबर 2026 (मालिक: "बीटा नहीं, सीधे स्टेबल रिलीज़"): main = स्टेबल ("Latest", सबके फ़ोन पर).
+          # बीटा = Pre-release, सिर्फ़ DK Settings में "बीटा अपडेट" चालू वाले फ़ोन लेते हैं.
+          if [ "$CHANNEL" = "beta" ]; then
+            gh release create "v${VERSION_CODE}" DK.apk \
+              --target "$GITHUB_SHA" \
+              --title "DK ${VERSION_NAME} (बीटा)" \
+              --notes-file release_notes.txt \
+              --prerelease
+          else
+            gh release create "v${VERSION_CODE}" DK.apk \
+              --target "$GITHUB_SHA" \
+              --title "DK ${VERSION_NAME}" \
+              --notes-file release_notes.txt \
+              --latest
+          fi

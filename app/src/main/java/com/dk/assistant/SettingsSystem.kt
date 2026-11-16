@@ -242,10 +242,10 @@ internal fun SettingsActivity.secUpdate() {
         row(box, btnAct)
         swAutoUpd = switch(box, "ऐप खुलते ही अपडेट चेक करो और बैकग्राउंड में डाउनलोड करो", Prefs.autoUpdate(this))
         hint(box, "सॉफ़्टवेयर अपडेट = नया डिज़ाइन / नए फ़ीचर  •  सिक्योरिटी पैच = गड़बड़ियाँ और सुरक्षा ठीक")
-        // 16 नवंबर 2026 (मालिक: "बीटा और स्टेबल अपडेट"): शुरू से स्टेबल; बीटा = हर नया build जल्दी
-        val swBeta = switch(box, "बीटा अपडेट भी लो (हर नया build सबसे पहले — कभी-कभी कोई कमी रह सकती है)", Prefs.betaUpdates(this))
+        // 16 नवंबर 2026 (मालिक: "बीटा और स्टेबल अपडेट"): शुरू से स्टेबल; बीटा = चालू करने वाले को ही, अलग से
+        val swBeta = switch(box, "बीटा अपडेट भी लो (नए फ़ीचर स्टेबल से पहले — कभी-कभी कोई कमी रह सकती है)", Prefs.betaUpdates(this))
         swBeta.setOnCheckedChangeListener { _, on -> Prefs.setBetaUpdates(this, on); btnCheck.performClick() }
-        hint(box, "स्टेबल = जाँचा हुआ version (मालिक के पक्का करने के बाद)  •  बीटा = main में जुड़ते ही नया build  •  हर डाउनलोड का SHA-256 मिलाया जाता है")
+        hint(box, "स्टेबल = सबके लिए सामान्य अपडेट  •  बीटा = आज़माइशी build, सिर्फ़ यह चालू करने वालों को  •  हर डाउनलोड का SHA-256 मिलाया जाता है")
         // Settings khulte hi ek baar chupchap check
         btnCheck.performClick()
     }

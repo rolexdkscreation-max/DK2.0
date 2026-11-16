@@ -39,11 +39,15 @@ class UpdateChannelCrashPrivacyTest {
         assertTrue(u.contains("releases?per_page=15"))
         assertTrue(u.contains("UpdateChannel.shaMatches(rel.sha256, sha256Of(part))"))
         val wf = root(".github/workflows/build.yml")
-        assertTrue(wf.contains("echo \"CHANNEL: beta\""))
+        // मालिक: main में merge = सीधे स्टेबल ("Latest"); बीटा सिर्फ़ हाथ से ("beta" ✓) = Pre-release
+        assertTrue(wf.contains("echo \"CHANNEL: \$CHANNEL\""))
+        assertTrue(wf.contains("inputs.beta) && 'beta' || 'stable'"))
         assertTrue(wf.contains("--prerelease"))
+        assertTrue(wf.contains("--latest"))
         assertTrue(wf.contains("sha256sum DK.apk"))
-        val promote = root(".github/workflows/promote.yml")
-        assertTrue(promote.contains("--prerelease=false --latest"))
+        val b = wf.indexOf("if [ \"\$CHANNEL\" = \"beta\" ]; then"); val e = wf.indexOf("else", b)
+        assertTrue(b > 0 && wf.indexOf("--prerelease", b) in b..e && wf.indexOf("--latest", e) > e)
+        assertTrue(listOf(File("../.github/workflows/promote.yml"), File(".github/workflows/promote.yml")).none { it.exists() })
         assertTrue(src("SettingsSystem.kt").contains("Prefs.setBetaUpdates(this, on)"))
     }
 
