@@ -18,7 +18,9 @@ class DlTextTest {
     }
 
     @Test fun existingDownloads_useMbProgress() {
-        val s = SetSrc.all()
+        // 16 नवंबर 2026: पुराना Hey DK सिखाओ (SettingsActivity) हटा - वही MB-progress अब आवाज़-कमांड सिखाने में (SettingsVoiceCmds)
+        val vc = listOf(java.io.File("src/main/java/com/dk/assistant/SettingsVoiceCmds.kt"), java.io.File("app/src/main/java/com/dk/assistant/SettingsVoiceCmds.kt")).first { it.exists() }.readText()
+        val s = SetSrc.all() + "\n" + vc
         assertTrue(s.contains("DlText.progress(pct, OV.MODEL_BYTES)"))
     }
 }

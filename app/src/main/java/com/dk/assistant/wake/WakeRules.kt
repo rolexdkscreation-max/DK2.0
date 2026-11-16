@@ -145,7 +145,7 @@ object WakeRules {
      * लगातार वाला नियम गलत जागना बहुत घटाता है (बातचीत / TV में एक-आध कदम का उछाल अनदेखा) - देरी सिर्फ़ ~80-160 ms.
      */
     class Decider {
-        private var lastHit = 0L
+        private var lastHit = Long.MIN_VALUE / 2     // शुरू में कोई पिछला जागना नहीं
         private var run = 0
         fun hit(score: Float, th: Float, now: Long, need: Int = 1): Boolean {
             if (!score.isFinite() || score < th) { run = 0; return false }
@@ -154,7 +154,7 @@ object WakeRules {
             if (now - lastHit < REFRACTORY_MS) return false
             lastHit = now; run = 0; return true
         }
-        fun reset() { lastHit = 0L; run = 0 }
+        fun reset() { lastHit = Long.MIN_VALUE / 2; run = 0 }
     }
 
     /** भरोसेमंद शब्द-अंत: VAD में आख़िरी तेज़ आवाज़ कब थी (जागने का समय = पहचान - शब्द-अंत) */
