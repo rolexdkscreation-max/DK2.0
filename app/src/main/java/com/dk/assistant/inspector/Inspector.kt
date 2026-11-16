@@ -111,7 +111,9 @@ object Inspector {
             p(85, "पुरानी रिपोर्टों से मिला रहा हूँ (दोहराव नहीं)…")
             // नवंबर 2026: लॉग से पक्की मिली गड़बड़ी की "Live हाल" वाली दोहरी रिपोर्ट नहीं
             val (uniq, old) = InspectorCore.dropDupStats(found, incidents(ctx))
-            val m = InspectorCore.merge(old, uniq, now, appVersion(ctx))
+            val ver = appVersion(ctx)
+            // नवंबर 2026 (बीटा जाँच): हर गड़बड़ी पर "किस version / चैनल में पहली बार" का ठप्पा
+            val m = InspectorCore.merge(old, uniq, now, ver, BetaCheckStore.channelName())
             // कुछ नहीं बदला (अपने-आप वाली जाँच) = वही रिपोर्ट दोबारा नहीं लिखनी
             val sig = InspectorCore.hash(m.incidents.joinToString("|") { it.id + it.status + it.count + it.severity })
             val changed = sig != sp(ctx).getString(K_LAST_SIG, "")
@@ -123,6 +125,7 @@ object Inspector {
                 putLong(K_FEED, src.feedAt); putLong(K_CRASH, src.crashAt); putLong(K_EXIT, src.exitAt)
                 putLong(K_NEXT, now + SCAN_MS)
             }.apply()
+            BetaCheckStore.record(ctx, m, now, ver)
             p(95, "ज़रूरी बातें DK Live को भेज रहा हूँ…")
             deliverPending(ctx)
             val open = m.incidents.count { isOpen(it) }

@@ -122,8 +122,8 @@ class SettingsActivity : AppCompatActivity() {
             "guard" -> { title.text = "टच मोड"; secGuard(); secPrivacy(); secSos() }
             "face" -> { title.text = "चेहरा पहचान"; secFace() }
             "perms" -> { title.text = "परमिशन"; secPerms() }
-            "update" -> { title.text = "अपडेट"; secUpdate() }
-            "debug" -> { title.text = "डिबग लॉग"; secDebug() }
+            "update" -> { title.text = "अपडेट"; secUpdate(); secBetaCheck() }
+            "debug" -> { title.text = "डिबग लॉग"; secBetaCheck(); secDebug() }
             "coder" -> { title.text = "कोडिंग एजेंट"; secCoder(); secTermux() }
             "computer" -> { title.text = "DK कंप्यूटर"; secComputer(); secImageGen() }
             "social" -> { title.text = "सोशल रिव्यू"; secSocial(); secYouTube() }
