@@ -45,7 +45,7 @@ class LiveVadAuditTest {
 
     @Test fun s2_speakerBarge_turnsOffAfterTwoWrongStops() {
         val b = SpeakerBarge()
-        b.onConfirm(0L); assertFalse(b.tick(1_000L)); assertFalse(b.tick(2_600L)); assertEquals(1, b.misses)
+        b.onConfirm(100L); assertFalse(b.tick(1_000L)); assertFalse(b.tick(2_700L)); assertEquals(1, b.misses)
         b.onConfirm(3_000L); b.onWords(); assertFalse(b.tick(6_000L)); assertEquals(1, b.misses)   // शब्द आए = सही रोका
         b.onConfirm(7_000L); assertTrue(b.tick(9_600L)); assertTrue(b.disabled)
         for (i in 1..20) assertFalse(b.feed(0.99f, 9000.0, 100.0, 100.0, 40))
