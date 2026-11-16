@@ -199,7 +199,7 @@ object CoderHistory {
     private fun linesFile(c: Context, id: String) = File(dir(c), "t_$id.json")
     private fun ckFile(c: Context) = File(dir(c), "checkpoint.json")
 
-    fun list(c: Context): List<Thread> = synchronized(lock) { Logic.index(try { idxFile(c).readText() } catch (_: Exception) { null }) }
+    fun list(c: Context): List<Thread> = synchronized(lock) { Logic.index(SafeFile.read(idxFile(c))) }
     fun thread(c: Context, id: String): Thread? = list(c).firstOrNull { it.id == id }
 
     /** ऐप खुलते ही: पिछली बातचीत वापस (CoderSession.lines खाली हो तो) */
@@ -215,7 +215,7 @@ object CoderHistory {
     }
 
     fun load(c: Context, id: String): List<CoderSession.Line> =
-        Logic.lines(try { linesFile(c, id).readText() } catch (_: Exception) { null })
+        Logic.lines(SafeFile.read(linesFile(c, id)))
 
     /** नया धागा (पहला संदेश आने पर) */
     private fun ensureThread(c: Context, firstUser: String) {
@@ -228,7 +228,7 @@ object CoderHistory {
 
     private fun put(c: Context, t: Thread) = synchronized(lock) {
         val all = Logic.upsert(list(c), t)
-        try { idxFile(c).writeText(Logic.indexJson(all)) } catch (_: Exception) {}
+        try { SafeFile.write(idxFile(c), Logic.indexJson(all)) } catch (_: Exception) {}
         // 100 से पुराने धागों की फ़ाइलें हटाओ
         val keep = all.map { "t_${it.id}.json" }.toSet()
         dir(c).listFiles()?.filter { it.name.startsWith("t_") && it.name !in keep }?.forEach { it.delete() }
@@ -247,7 +247,7 @@ object CoderHistory {
     fun flush(c: Context) {
         val id = current.ifBlank { return }
         val snap = try { CoderSession.lines.toList() } catch (_: Exception) { return }
-        try { linesFile(c, id).writeText(Logic.linesJson(snap)) } catch (_: Exception) {}
+        try { SafeFile.write(linesFile(c, id), Logic.linesJson(snap)) } catch (_: Exception) {}
         val a = CoderSession.agent
         val pr = a?.pr
         val busy = CoderSession.busy
@@ -285,8 +285,8 @@ object CoderHistory {
 
     fun delete(c: Context, id: String) = synchronized(lock) {
         val all = list(c).filter { it.id != id }
-        try { idxFile(c).writeText(Logic.indexJson(all)) } catch (_: Exception) {}
-        linesFile(c, id).delete()
+        try { SafeFile.write(idxFile(c), Logic.indexJson(all)) } catch (_: Exception) {}
+        SafeFile.delete(linesFile(c, id))
         if (current == id) { current = ""; Prefs.edit(c) { putString("coder_thread", "") } }
     }
 
@@ -303,7 +303,7 @@ object CoderHistory {
         return synchronized(lock) {
             if (ckPath != null) return@synchronized ckMem
             val path = ckFile(c).path
-            val k = Logic.ck(try { File(path).takeIf { it.exists() }?.readText() } catch (_: Exception) { null })
+            val k = Logic.ck(SafeFile.read(File(path)))
             ckMem = k; ckPath = path; k
         }
     }
@@ -312,7 +312,7 @@ object CoderHistory {
         val f = ckFile(c)
         val json = Logic.ckJson(k.copy(at = System.currentTimeMillis()))
         ckMem = Logic.ck(json); ckPath = f.path
-        try { f.writeText(json) } catch (_: Exception) {}
+        try { SafeFile.write(f, json) } catch (_: Exception) {}
     }
 
     /** चौकी में बदलाव (staged, branch, आख़िरी कदम) - background में */
@@ -320,5 +320,5 @@ object CoderHistory {
         io.execute { checkpoint(c)?.let { saveCheckpoint(c, f(it)) } }
     }
 
-    fun clearCheckpoint(c: Context) = synchronized(lock) { val f = ckFile(c); f.delete(); ckMem = null; ckPath = f.path; Unit }
+    fun clearCheckpoint(c: Context) = synchronized(lock) { val f = ckFile(c); SafeFile.delete(f); ckMem = null; ckPath = f.path; Unit }
 }

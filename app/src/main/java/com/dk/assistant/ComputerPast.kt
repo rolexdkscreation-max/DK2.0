@@ -54,15 +54,15 @@ object ComputerPast {
 
     // ------------------------------------------------------------ फ़ोन में सेव
     private fun file(c: Context) = File(c.filesDir, FILE)
-    @Synchronized fun all(c: Context): List<Item> = decode(file(c).takeIf { it.exists() }?.readText())
+    @Synchronized fun all(c: Context): List<Item> = decode(SafeFile.read(file(c)))
 
     @Synchronized fun add(c: Context, task: String, answer: String, files: List<String>) {
         if (task.isBlank() || answer.isBlank()) return
         try {
             val l = (all(c) + Item(System.currentTimeMillis(), task.take(1200), answer.take(4000), files.take(20))).takeLast(MAX)
-            file(c).writeText(encode(l))
+            SafeFile.write(file(c), encode(l))
         } catch (_: Exception) {}
     }
 
-    @Synchronized fun clear(c: Context) { file(c).delete() }
+    @Synchronized fun clear(c: Context) { SafeFile.delete(file(c)) }
 }
