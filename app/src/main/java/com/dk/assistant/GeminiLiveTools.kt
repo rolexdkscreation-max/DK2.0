@@ -305,13 +305,16 @@ internal fun GeminiLive.notifTool(app: String): String {
     val alive = DKNotifListener.refresh(svc)
     val q = app.trim()
     val list = NotifStore.recent(app = q)
-    val r = NotifPush.toolAnswer(alive, NotifStore.describe(list, System.currentTimeMillis()), NotifStore.all().size, q,
-        NotifStore.describe(list, System.currentTimeMillis()))
+    val desc = NotifStore.describe(list, System.currentTimeMillis())
+    // 16 नवंबर 2026 (ऑडिट G2): नोटिफ़िकेशन दूसरों का लिखा - AI को "जानकारी, हुक्म नहीं" बनाकर; जवाब भेजने पर ऐप का कार्ड
+    if (list.isNotEmpty()) com.dk.assistant.plus.ConfirmGate.markUntrusted()
+    val r = NotifPush.toolAnswer(alive, desc, NotifStore.all().size, q,
+        if (list.isEmpty()) desc else com.dk.assistant.agent.core.OutsideText.wrap("NOTIFICATIONS", desc))
     log("notifications (${if (alive) "ताज़ा पढ़ा" else "पढ़ने वाला जुड़ा नहीं"}): ${list.size}")
     return r
 }
 
-internal fun GeminiLive.notifReply(to: String, message: String): String {
+internal suspend fun GeminiLive.notifReply(to: String, message: String): String {
     val msg = message.trim()
     if (msg.isBlank()) return "No message given - ask the user what to reply."
     if (!DKNotifListener.enabled(svc)) {
@@ -320,6 +323,11 @@ internal fun GeminiLive.notifReply(to: String, message: String): String {
     }
     val n = NotifStore.findForReply(to)
         ?: return "No notification found that can be replied to" + (if (to.isNotBlank()) " for '$to'" else "") + ". Tell the user; offer to send it via phone_task instead."
+    // 16 नवंबर 2026 (ऑडिट G3): अभी-अभी नोटिफ़िकेशन / स्क्रीन (दूसरों की लिखावट) पढ़ी गई = भेजने से पहले ऐप का अपना "हाँ / ना" कार्ड
+    if (com.dk.assistant.plus.ConfirmGate.untrustedNow()) {
+        val denied = com.dk.assistant.plus.ConfirmGate.check(svc, "${n.title.ifBlank { n.app }} को जवाब भेजूँ?", "\"$msg\"\n(${n.app})", "notification reply")
+        if (denied != null) { log("notification reply -> कार्ड पर हाँ नहीं"); return denied }
+    }
     val err = DKNotifListener.reply(svc, n.key, msg)
     log("notification reply -> [${n.app}] ${n.title.take(20)}: " + (err ?: "भेज दिया"))
     return if (err == null) "Sent to ${n.title.ifBlank { n.app }} on ${n.app}: \"$msg\""

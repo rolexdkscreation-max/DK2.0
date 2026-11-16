@@ -58,6 +58,8 @@ object ConfirmGate {
     @Volatile internal var pending: CompletableDeferred<Answer>? = null
 
     fun markUntrusted(now: Long = System.currentTimeMillis()) { untrustedAt = now }
+    /** 16 नवंबर 2026: बाहर की लिखावट अभी-अभी ([UNTRUSTED_MS]) पढ़ी गई? */
+    fun untrustedNow(now: Long = System.currentTimeMillis()) = Rules.untrustedRecent(untrustedAt, now)
 
     /** स्क्रीन पर कार्ड - YES सिर्फ़ जब यूज़र ने खुद "हाँ" दबाया */
     suspend fun ask(c: Context, title: String, detail: String): Answer {

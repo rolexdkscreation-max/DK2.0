@@ -542,6 +542,7 @@ class AgentRunner(
             }.run(goal)
             if (handled) return
         }
+        var seenScreen = ""; var seenPkg = ""   // 16 नवंबर 2026 (G3): आख़िरी पढ़ी स्क्रीन - वापस न होने वाले कदम की पहचान के लिए
         while (step < MAX_STEPS) {
             step++
             coroutineContext.ensureActive()
@@ -553,6 +554,8 @@ class AgentRunner(
                 prompt = "CHAT MODE (no screen info).\nUSER SAYS: $goal"
             } else {
                 val screen = svc.readScreen()
+                seenScreen = screen.text; seenPkg = screen.packageName
+                com.dk.assistant.plus.ConfirmGate.markUntrusted()   // 16 नवंबर 2026 (G2): दूसरों की लिखावट अभी-अभी AI ने पढ़ी
                 // ऑटोनोमस: पासवर्ड / OTP / बैंक / भुगतान वाली स्क्रीन पर कुछ नहीं - रुककर बताओ
                 autoS?.let { s ->
                     s.screen = screen.text; s.pkg = screen.packageName
@@ -571,6 +574,7 @@ class AgentRunner(
                     append(feedback)
                     append("\n\nSTEP: $step\nFOREGROUND APP: ${screen.packageName}")
                     append("\nSCREEN SIZE: ${screen.width}x${screen.height}")
+                    append("\n").append(com.dk.assistant.agent.core.OutsideText.SCREEN_NOTE)   // 16 नवंबर 2026 (G2)
                     append("\nSCREEN ELEMENTS:\n")
                     append(screen.text.ifBlank { "(kuch nahi mila)" })
                 }
@@ -666,6 +670,20 @@ class AgentRunner(
                             val yes = com.dk.assistant.auto.AutoSafety.yes(ans)
                             com.dk.assistant.auto.AutoLog.add(svc, "पुष्टि माँगी ($what): " + if (yes) "हाँ" else "नहीं / जवाब नहीं")
                             if (!yes) { say("ठीक है, यह कदम नहीं किया। काम यहीं रोक दिया।"); return }
+                            DKState.set(Mode.WORKING)
+                        }
+                    }
+                    // 16 नवंबर 2026 (ऑडिट G3): भुगतान / ऑर्डर / डिलीट, और बिना कहे भेजना / पोस्ट = ऐप का अपना "हाँ / ना" कार्ड.
+                    // AI का "पूछ लिया / हाँ मिल गया" नहीं चलता - स्क्रीन की कोई लिखावट AI को बहका भी दे तो उंगली से "हाँ" चाहिए.
+                    if (autoS == null) {
+                        val k = com.dk.assistant.agent.core.OutsideText.kind(a, seenScreen, seenPkg)
+                        if (com.dk.assistant.agent.core.OutsideText.needsCard(k, goal)) {
+                            speakJob?.join()
+                            val what = com.dk.assistant.auto.AutoSafety.describe(a, seenScreen)
+                            val denied = com.dk.assistant.plus.ConfirmGate.check(svc, "DK ${k.hi} करने वाला है — पक्का?",
+                                "$what\nऐप: $seenPkg\nआपका काम: ${goal.take(120)}", "${k.hi}: $what")
+                            DKLog.d("पुष्टि कार्ड (${k.name}): " + if (denied == null) "हाँ दबाया" else "नहीं / जवाब नहीं")
+                            if (denied != null) { say("ठीक है, यह कदम नहीं किया — काम यहीं रोक दिया।"); return }
                             DKState.set(Mode.WORKING)
                         }
                     }
