@@ -84,6 +84,10 @@ object InspectorCore {
         val dismissedAt: Long = 0,
         /** "Live हाल" जैसी कुल गिनती का पिछली जाँच वाला अंक (-1 = पता नहीं) - बढ़े तभी नई घटना */
         val lastRaw: Int = -1,
+        /** नवंबर 2026 (बीटा जाँच): पहली बार किस version / चैनल में दिखी ("3.307/943", "beta") */
+        val firstVer: String = "", val firstChan: String = "",
+        /** आख़िरी बार किस version में दिखी */
+        val lastVer: String = "",
     )
 
     // ------------------------------------------------------------------ गुप्त जानकारी छिपाना
@@ -509,7 +513,7 @@ object InspectorCore {
 
     data class Merge(val incidents: List<Incident>, val fresh: List<Incident>, val reopened: List<Incident>)
 
-    fun merge(old: List<Incident>, found: List<Finding>, now: Long, appVersion: String): Merge {
+    fun merge(old: List<Incident>, found: List<Finding>, now: Long, appVersion: String, channel: String = ""): Merge {
         val byFp = old.associateBy { it.fingerprint }.toMutableMap()
         val fresh = ArrayList<Incident>(); val reopened = ArrayList<Incident>()
         val touched = HashSet<String>()
@@ -525,7 +529,8 @@ object InspectorCore {
                 val n = Incident(bugId(f.fingerprint), f.fingerprint, f.rule.id, f.rule.title, f.rule.component, f.severity,
                     f.rule.certainty, now, now, f.count, Status.NEW, f.message, f.evidence, f.sequence,
                     f.rule.cause, f.rule.impact, f.rule.fix, f.rule.code, f.rule.test,
-                    lastRaw = if (cumulative(f.fingerprint)) f.count else -1)
+                    lastRaw = if (cumulative(f.fingerprint)) f.count else -1,
+                    firstVer = appVersion, firstChan = channel, lastVer = appVersion)
                 byFp[f.fingerprint] = n; fresh += n
             } else {
                 val wasResolved = o.status == Status.RESOLVED || o.status == Status.QUIET || o.status == Status.DISMISSED
@@ -550,7 +555,7 @@ object InspectorCore {
                         Status.RESOLVED -> "पहले हल माना गया था (${o.resolvedNote}) पर फिर आया।"
                         else -> o.resolvedNote
                     }, dismissedAt = 0, snoozeUntil = 0,
-                    notifiedAt = if (wasResolved) 0 else o.notifiedAt)
+                    notifiedAt = if (wasResolved) 0 else o.notifiedAt, lastVer = appVersion)
                 byFp[f.fingerprint] = n
                 if (wasResolved) reopened += n
             }
@@ -681,6 +686,14 @@ object InspectorCore {
     private fun fmt(t: Long): String = if (t <= 0) "--" else
         java.text.SimpleDateFormat("dd MMM yyyy, HH:mm:ss", java.util.Locale.US).format(java.util.Date(t))
 
+    /** "3.307/943" + "beta" → "DK 3.307 (बीटा)" */
+    fun verLabel(v: String, chan: String): String {
+        if (v.isBlank()) return "पता नहीं"
+        val name = v.substringBefore('/')
+        val ch = when (chan.lowercase()) { "beta" -> " (बीटा)"; "stable" -> " (स्टेबल)"; "local" -> " (लोकल)"; else -> "" }
+        return "DK $name$ch"
+    }
+
     fun fullReport(i: Incident): String = buildString {
         appendLine("DK INSPECTOR BUG REPORT")
         appendLine("Bug ID: ${i.id}")
@@ -691,6 +704,7 @@ object InspectorCore {
         appendLine("Type: ${i.certainty.hi}")
         appendLine("Status: ${i.status.hi}")
         if (i.linkedTo.isNotBlank()) appendLine("Linked to: ${i.linkedTo}")
+        if (i.firstVer.isNotBlank()) appendLine("पहली बार किस version में: ${verLabel(i.firstVer, i.firstChan)} • आख़िरी: ${verLabel(i.lastVer, "")}")
         appendLine("Fingerprint: ${i.fingerprint.take(120)}")
         appendLine()
         appendLine("Actual error message:"); appendLine("  ${i.message}")
@@ -808,6 +822,7 @@ object InspectorCore {
         put("notified", i.notifiedAt); put("notSev", i.notifiedSeverity); put("reopen", i.reopenCount)
         put("fixVer", i.fixVersion); put("quiet", i.quietChecks); put("resolvedAt", i.resolvedAt)
         put("resolvedNote", i.resolvedNote); put("linked", i.linkedTo); put("snooze", i.snoozeUntil); put("dismissed", i.dismissedAt); put("raw", i.lastRaw)
+        put("fVer", i.firstVer); put("fChan", i.firstChan); put("lVer", i.lastVer)
     }
 
     private fun JSONArray?.strings(): List<String> = if (this == null) emptyList() else (0 until length()).map { optString(it) }
@@ -820,7 +835,8 @@ object InspectorCore {
             o.optJSONArray("seq").strings(), o.optString("cause"), o.optString("impact"), o.optString("fix"),
             o.optString("code"), o.optString("test"), o.optLong("notified"), o.optInt("notSev"), o.optInt("reopen"),
             o.optString("fixVer"), o.optInt("quiet"), o.optLong("resolvedAt"), o.optString("resolvedNote"), o.optString("linked"),
-            o.optLong("snooze"), o.optLong("dismissed"), o.optInt("raw", -1))
+            o.optLong("snooze"), o.optLong("dismissed"), o.optInt("raw", -1),
+            o.optString("fVer"), o.optString("fChan"), o.optString("lVer"))
     } catch (e: Exception) { null }
 
     fun listToJson(xs: List<Incident>): String = JSONArray().apply { xs.forEach { put(toJson(it)) } }.toString()

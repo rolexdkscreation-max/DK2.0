@@ -121,7 +121,8 @@ object InspectorCard {
         })
         if (i.status == Status.QUIET) v.alpha = 0.6f
         v.addView(TextView(a).apply {
-            text = "${i.severity.hi} • ${i.status.hi} • ${i.component.hi} • ${i.count} बार • ${i.certainty.name}"
+            text = "${i.severity.hi} • ${i.status.hi} • ${i.component.hi} • ${i.count} बार • ${i.certainty.name}" +
+                (if (i.firstVer.isNotBlank()) "\nपहली बार: " + InspectorCore.verLabel(i.firstVer, i.firstChan) else "")
             textSize = 11f; setTextColor(0xB3FFFFFF.toInt())
         })
         val full = TextView(a).apply {
