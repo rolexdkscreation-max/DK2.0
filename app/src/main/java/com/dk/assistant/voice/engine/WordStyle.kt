@@ -1,7 +1,7 @@
 package com.dk.assistant.voice.engine
 
 /**
- * v3.69 (नवंबर 2026 से नाम WordStyle, पहले Edge TTS के लिए था - अब Kokoro TTS के लिए): जो इंजन भावना का निर्देश
+ * v3.69 (नवंबर 2026 से नाम WordStyle, पहले Edge TTS के लिए था - फिर Kokoro, 16 नवंबर 2026 से फ़ोन की आवाज़ PhoneVoice के लिए): जो इंजन भावना का निर्देश
  * नहीं समझता, उसके "भावना / स्टाइल" बॉक्स के शब्दों से सिर्फ़ गति (%) और पिच (Hz) बदलती है.
  * "धीमी", "कोमल" = गति कम, पिच नीचा; "तेज़", "जोश" = गति ज़्यादा. नतीजा स्लाइडर के मान में जुड़ता है.
  * Android import नहीं -> JVM test.
@@ -39,5 +39,17 @@ object WordStyle {
         if (r == 0 && p == 0) return "बॉक्स से कोई बदलाव नहीं"
         fun sg(v: Int) = (if (v > 0) "+" else "") + v
         return "बॉक्स से: गति ${sg(r)}%, पिच ${sg(p)} Hz"
+    }
+
+    /**
+     * 16 नवंबर 2026 (मालिक: "भावुक / स्टाइल वाला कोड जुड़ना चाहिए"): Kokoro हटने के बाद भावना का निर्देश न समझने वाला
+     * इंजन = फ़ोन की अपनी आवाज़ ([com.dk.assistant.PhoneVoice]). स्लाइडर (गति/पिच %, 100 = सामान्य) × बॉक्स के शब्द =
+     * Android TextToSpeech की setSpeechRate / setPitch (1.0 = सामान्य, 0.5..2.0).
+     */
+    fun phone(speedPct: Int, pitchPct: Int, style: String): Pair<Float, Float> {
+        val (dr, dp) = adjust(style)
+        val rate = (speedPct / 100f) * (1f + dr / 100f)
+        val pitch = (pitchPct / 100f) * (1f + dp / 100f)
+        return rate.coerceIn(0.5f, 2f) to pitch.coerceIn(0.5f, 2f)
     }
 }

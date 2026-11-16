@@ -75,6 +75,28 @@ object KeyPool {
         else -> "fatal"
     }
 
+    /**
+     * 16 नवंबर 2026 (मालिक: "सारी keys इस्तेमाल करो वाला स्विच दबाने पर इस्तेमाल हो"): एक ही कंपनी की कई keys (कोडिंग एजेंट की
+     * Gemini key 1-5) का क्रम. स्विच बंद = वैसा ही (मुख्य key पहले, limit पर अगली). चालू = हर नया काम अगली key से शुरू
+     * (Round-Robin) - बाकी keys उसके बाद बचाव में, यानी 429 पर काम फिर भी नहीं रुकता. [turn] = यह कौन-सा काम है (0, 1, 2...).
+     * Pure - JVM test.
+     */
+    fun rotate(keys: List<String>, useAll: Boolean, turn: Int): List<String> {
+        if (!useAll || keys.size < 2) return keys
+        val start = Math.floorMod(turn, keys.size)
+        return keys.drop(start) + keys.take(start)
+    }
+
+    private val turns = java.util.concurrent.ConcurrentHashMap<String, java.util.concurrent.atomic.AtomicInteger>()
+
+    /** [tag] (जैसे "coder") की keys - स्विच चालू हो तो हर बुलावे पर अगली key सबसे आगे */
+    fun spread(c: Context, tag: String, keys: List<String>): List<String> {
+        val on = try { FeatureFlags.on(c, FeatureFlags.KEY_POOL_ALL) } catch (_: Exception) { false }
+        if (!on || keys.size < 2) return keys
+        val n = turns.getOrPut(tag) { java.util.concurrent.atomic.AtomicInteger(0) }.getAndIncrement()
+        return rotate(keys, true, n)
+    }
+
     // ---------------------------------------------------------------- store
     private const val PREF = "plus_key_pool"
     fun load(c: Context): List<Entry> = try {

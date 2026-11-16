@@ -52,11 +52,24 @@ object PhoneVoice {
         val t = tts ?: return false
         val done = CompletableDeferred<Unit>()
         cur = done
-        val r = t.speak(text, TextToSpeech.QUEUE_FLUSH, Bundle(), "dk-${System.nanoTime()}")
+        // 16 नवंबर 2026 (मालिक): हिंदी आवाज़ रोमन शब्दों को English पढ़ती थी -> हिंग्लिश के हिंदी शब्द देवनागरी में ([HinglishText]).
+        // भावना / स्टाइल बॉक्स + गति/पिच स्लाइडर -> फ़ोन की आवाज़ की गति और पिच ([WordStyle.phone]).
+        try { com.dk.assistant.voice.engine.VoiceTune.load(c) } catch (_: Exception) {}
+        val (rate, pitch) = com.dk.assistant.voice.engine.WordStyle.phone(
+            com.dk.assistant.voice.engine.VoiceTune.speedPct, com.dk.assistant.voice.engine.VoiceTune.pitchPct, styleText(c))
+        try { t.setSpeechRate(rate); t.setPitch(pitch) } catch (_: Exception) {}
+        val spoken = com.dk.assistant.voice.engine.HinglishText.toSpeakable(text)
+        val r = t.speak(spoken, TextToSpeech.QUEUE_FLUSH, Bundle(), "dk-${System.nanoTime()}")
         if (r != TextToSpeech.SUCCESS) return false
         withTimeoutOrNull(30_000L + text.length * 120L) { done.await() }
         return true
     }
+
+    /** बोलने का अंदाज़: Jarvis / Venom-Friday का अपना, वरना Settings का "भावना / स्टाइल" बॉक्स + अभी का मूड */
+    private fun styleText(c: Context): String = try {
+        if (JarvisMode.on(c)) JarvisMode.VOICE_STYLE
+        else AssistantPersona.voiceStyle(c) ?: com.dk.assistant.avatar.MoodState.voiceStyle(com.dk.assistant.voice.engine.GeminiTtsEngine.style(c))
+    } catch (_: Exception) { "" }
 
     fun stop() {
         try { tts?.stop() } catch (_: Exception) {}

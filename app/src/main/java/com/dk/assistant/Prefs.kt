@@ -86,9 +86,9 @@ object Prefs {
      * कोडिंग एजेंट की Gemini keys: पहली (मुख्य) + key 2 + key 3 + key 4 + key 5. एक key के सारे मॉडल की limit खत्म -> अगली key.
      * खाली और दोहराई keys नहीं.
      */
-    fun coderGeminiKeys(c: Context): List<String> = GeminiModels.distinctKeys(listOf(
+    fun coderGeminiKeys(c: Context): List<String> = com.dk.assistant.plus.KeyPool.spread(c, "coder", GeminiModels.distinctKeys(listOf(
         scopeKey(c, ApiScopes.CODER, "gemini"), scopeKey(c, ApiScopes.CODER, "gemini2"), scopeKey(c, ApiScopes.CODER, "gemini3"),
-        scopeKey(c, ApiScopes.CODER, "gemini4"), scopeKey(c, ApiScopes.CODER, "gemini5")))
+        scopeKey(c, ApiScopes.CODER, "gemini4"), scopeKey(c, ApiScopes.CODER, "gemini5"))))   // 16 नवंबर 2026: "सारी keys इस्तेमाल करो" स्विच
     fun scopeBase(c: Context, scope: String, id: String): String {
         val def = Providers.byId(id)?.baseUrl ?: ""
         return (sp(c).getString(ApiScopes.pref(scope, "base", id), def) ?: def).ifBlank { def }

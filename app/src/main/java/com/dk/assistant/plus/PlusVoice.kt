@@ -16,6 +16,8 @@ object PlusVoice {
 
     fun say(c: Context, text: String) {
         if (text.isBlank()) return
+        // 16 नवंबर 2026: हिंदी आवाज़ में रोमन हिंग्लिश शब्द टूटे नहीं
+        @Suppress("NAME_SHADOWING") val text = com.dk.assistant.voice.engine.HinglishText.toSpeakable(text)
         val t = tts
         if (t != null && ready) { t.speak(text, TextToSpeech.QUEUE_ADD, null, "dk_plus_${System.nanoTime()}"); return }
         synchronized(pending) { pending += text }
