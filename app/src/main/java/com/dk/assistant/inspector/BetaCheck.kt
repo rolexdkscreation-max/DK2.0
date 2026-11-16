@@ -167,10 +167,18 @@ object BetaCheck {
         checks.forEachIndexed { n, t -> appendLine("- [${if (n in s.checked) "x" else " "}] $t") }
     }.let { InspectorCore.redact(it) }
 
-    /** GitHub नया issue (label: beta). बाकी label repo में न हों तो GitHub उन्हें छोड़ देता है */
-    fun issueUrl(repo: String, title: String, body: String, maxBody: Int = 5000): String {
+    /** ⛔ असली रोक = क्रैश या नई गंभीर (सिर्फ़ "24 घंटे नहीं हुए" से रोक नहीं) */
+    fun isBlocker(v: Verdict): Boolean = v.crashes > 0 || v.newSerious > 0
+
+    /**
+     * GitHub नया issue (label: beta; [blocker] हो तो beta-blocker भी)।
+     * beta-blocker वाला खुला issue = main के हर PR पर beta-gate check लाल (.github/workflows/beta-gate.yml)।
+     * label सिर्फ़ repo पर अधिकार वाले (मालिक) के भेजने पर लगते हैं; version label (v3.307) workflow लगाता है।
+     */
+    fun issueUrl(repo: String, title: String, body: String, maxBody: Int = 5000, blocker: Boolean = false): String {
         fun enc(x: String) = java.net.URLEncoder.encode(x, "UTF-8")
-        return "https://github.com/$repo/issues/new?labels=beta&title=${enc(title)}&body=${enc(body.take(maxBody))}"
+        val labels = if (blocker) "beta,beta-blocker" else "beta"
+        return "https://github.com/$repo/issues/new?labels=${enc(labels)}&title=${enc(title)}&body=${enc(body.take(maxBody))}"
     }
 
     // ------------------------------------------------------------------ JSON
