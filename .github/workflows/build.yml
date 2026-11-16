@@ -27,7 +27,7 @@ jobs:
     # (इंतज़ार में तीसरा आए तो बीच वाला छोड़ दिया जाता है - नया build उसके सारे बदलाव भी ले लेता है)
     # PR / हाथ से चलाए build पहले जैसे साथ-साथ (हर एक का अपना group)
     concurrency:
-      group: ${{ ((github.event_name == 'push' && github.ref == 'refs/heads/main') || (github.event_name == 'workflow_dispatch' && inputs.beta)) && 'dk-release-main' || format('dk-build-{0}', github.run_id) }}
+      group: ${{ (github.event_name == 'push' && github.ref == 'refs/heads/main') && 'dk-release-main' || (github.event_name == 'workflow_dispatch' && inputs.beta) && 'dk-release-main' || format('dk-build-{0}', github.run_id) }}
       cancel-in-progress: false
     env:
       VERSION_CODE: ${{ github.run_number }}
