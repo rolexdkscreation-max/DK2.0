@@ -31,6 +31,8 @@ object VoiceGuardian {
     private fun kPrint(id: String) = "vg_print_$id"
     /** 16 नवंबर 2026: हर सैंपल की अलग पहचान (15 सैंपल वाली पहचान) */
     private fun kTpl(id: String) = "vg_tpl_$id"
+    /** 16 नवंबर 2026: "हे डीके" वाले छोटे सैंपल (सिर्फ़ वेक वर्ड के आवाज़-मिलान में) */
+    private fun kWake(id: String) = "vg_wake_$id"
 
     private fun sp(c: Context) = c.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
 
@@ -46,8 +48,8 @@ object VoiceGuardian {
     // 16 नवंबर 2026 (वेक वर्ड): voiceprint अब Android Keystore से बंद (encrypted) - पुराना सादा भी पढ़ा जाता है ([vaultRead])
     fun print(c: Context): FloatArray? = VoicePrint.decode(vaultRead(c, kPrint(modelId(c))))
     fun enrolled(c: Context) = print(c) != null
-    fun savePrint(c: Context, v: FloatArray) { sp(c).edit().putString(kPrint(modelId(c)), com.dk.assistant.wake.VoiceVault.seal(VoicePrint.encode(VoicePrint.normalize(v)))).apply() }
-    fun forget(c: Context) { sp(c).edit().apply { VgRules.MODELS.forEach { remove(kPrint(it.id)); remove(kTpl(it.id)) } }.apply(); away.reset() }
+    fun savePrint(c: Context, v: FloatArray) { wakeRef = null; sp(c).edit().putString(kPrint(modelId(c)), com.dk.assistant.wake.VoiceVault.seal(VoicePrint.encode(VoicePrint.normalize(v)))).apply() }
+    fun forget(c: Context) { wakeRef = null; sp(c).edit().apply { VgRules.MODELS.forEach { remove(kPrint(it.id)); remove(kTpl(it.id)); remove(kWake(it.id)) } }.apply(); away.reset() }
 
     // ------------------------------------------------------------ 16 नवंबर 2026: 15 सैंपल
     fun templates(c: Context): List<FloatArray> = VgRules.decodeAll(vaultRead(c, kTpl(modelId(c))))
@@ -65,11 +67,39 @@ object VoiceGuardian {
 
     /** सैंपल सेव + उन्हीं का औसत (पुराना रास्ता भी वैसा ही चले) */
     fun saveTemplates(c: Context, list: List<FloatArray>) {
+        wakeRef = null
         val keep = list.takeLast(VgRules.MAX_TEMPLATES).map { VoicePrint.normalize(it) }
         val m = VoicePrint.mean(keep) ?: return
         sp(c).edit().putString(kTpl(modelId(c)), com.dk.assistant.wake.VoiceVault.seal(VgRules.encodeAll(keep)))
             .putString(kPrint(modelId(c)), com.dk.assistant.wake.VoiceVault.seal(VoicePrint.encode(m))).apply()
     }
+
+    /** 16 नवंबर 2026: "हे डीके" के छोटे सैंपल (ताले में बंद, सिर्फ़ इसी फ़ोन में) */
+    fun wakeTemplates(c: Context): List<FloatArray> = VgRules.decodeAll(vaultRead(c, kWake(modelId(c))))
+    fun saveWakeTemplates(c: Context, list: List<FloatArray>) {
+        wakeRef = null
+        val keep = list.takeLast(VgRules.MAX_TEMPLATES).map { VoicePrint.normalize(it) }
+        sp(c).edit().putString(kWake(modelId(c)), com.dk.assistant.wake.VoiceVault.seal(VgRules.encodeAll(keep))).apply()
+    }
+
+    /**
+     * 16 नवंबर 2026 (मालिक: "हे डीके पर तुरंत चालू नहीं होता"): वेक वर्ड वाला मिलान.
+     * पहले सिर्फ़ लंबे वाक्यों के औसत से मिलाता था - छोटे "हे डीके" पर score बहुत कम आता था (मालिक भी अनसुना).
+     * अब: आगे-पीछे की चुप्पी काटकर, सारे सैंपल (छोटे "हे डीके" वाले भी) से [VgRules.multiScore].
+     */
+    fun scoreWake(c: Context, pcm: ByteArray): Float? {
+        val id = modelId(c)
+        // सैंपल हर बार ताले (Keystore) से खोलना = देर; एक बार खोलकर मेमोरी में (नया सीखा / मिटाया = फिर से)
+        val ref = wakeRef?.takeIf { it.first == id }?.second
+            ?: (print(c)?.let { it to (templates(c) + wakeTemplates(c)) })?.also { wakeRef = id to it }
+            ?: return null
+        val e = embed(c, VgRules.trimSilence(pcm)) ?: return null
+        return if (ref.second.isNotEmpty()) VgRules.multiScore(ref.first, ref.second, e) else VoicePrint.cosine(ref.first, e)
+    }
+    @Volatile private var wakeRef: Pair<String, Pair<FloatArray, List<FloatArray>>>? = null
+
+    /** वेक वर्ड का "सिर्फ़ मालिक" मोड: मॉडल पहले से खोलकर रखो (पहले "हे डीके" पर मॉडल खुलने में देर = मालिक भी अनसुना होता था) */
+    fun prime(c: Context) { if (supported && session == null && enrolled(c) && hasModel(c)) OwnerVoice.exec.execute { try { open(c) } catch (_: Throwable) {} } }
 
     /** 16 नवंबर 2026: पक्की रोक (हर बात पहचान तक रुकी) */
     fun strictOn(c: Context): Boolean = try { FeatureFlags.on(c, FeatureFlags.VG_STRICT) } catch (_: Exception) { false }

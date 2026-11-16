@@ -126,7 +126,7 @@ object WakeWord {
      * वेक वर्ड का इंतज़ार. null = रुकने को कहा ([stop]) / मोड बदला / माइक नहीं.
      * [handoff] = true: मिलने पर माइक बंद नहीं, [WakeHandoff] को (Live तक बिना कटे). जाँच वाले में false.
      */
-    suspend fun listen(c: Context, handoff: Boolean = true, stop: () -> Boolean): Hit? = withContext(Dispatchers.IO) {
+    suspend fun listen(c: Context, handoff: Boolean = true, near: () -> Unit = {}, stop: () -> Boolean): Hit? = withContext(Dispatchers.IO) {
         val ws = words(c)
         if (ws.isEmpty()) return@withContext null
         val eng = engineFor(c, ws) ?: return@withContext null
@@ -143,6 +143,8 @@ object WakeWord {
             var cfgAt = 0L; var sense = sense(c); var ownerOn = ownerOnly(c); var ownerTh = ownerTh(c)
             var lastLoudAt = 0L
             var early: Future<Float?>? = null; var earlyAt = 0L
+            var nearSent = false                            // इस बोल में Live पहले से तैयार करने को कहा?
+            if (ownerOn) VoiceGuardian.prime(c)             // आवाज़-मिलान का मॉडल पहले से खुला (पहले "हे डीके" पर देर नहीं)
             val buf = ShortArray(WakeRules.STEP)
             DKLog.d("वेक वर्ड: सुन रहा हूँ (${ws.joinToString { it.hi }}) • संवेदनशीलता ${sense.hi} • " +
                 (if (ownerOn) "सिर्फ़ मालिक" else "सबकी आवाज़") + " • ${listenMode(c).hi}")
@@ -169,7 +171,7 @@ object WakeWord {
                             return@withContext Hit(ws.first(), 0f, null, 0, null, locked(c), cmd = ch)
                         }
                     }
-                    agc.reset(); continue
+                    agc.reset(); nearSent = false; continue
                 }
                 if (seg.size < 90) seg.add(raw)              // ~7 s तक
                 // हर score वाले कदम पर फ़ैसला (Decider लगातार कदम गिनता है)
@@ -189,10 +191,12 @@ object WakeWord {
                     val x = raw.copyOf(); agc.apply(x, true); judge(st.feed(x))
                 }
                 val word = best ?: continue
+                // शब्द बोलते-बोलते ही Live का connection पीछे से (सिर्फ़ connection - वेक वर्ड से पहले की कोई आवाज़ नहीं जाती)
+                if (handoff && !nearSent && WakeRules.warmLive(sc, sense.th)) { nearSent = true; try { near() } catch (_: Throwable) {} }
                 // मालिक-जाँच पहले से (शब्द पूरा होने का इंतज़ार नहीं) - वेक वर्ड और आवाज़-मिलान साथ-साथ
                 if (ownerOn && early == null && WakeRules.earlyOwner(sc, sense.th)) {
                     val snap = pcm(ring.toList().takeLast(18)); earlyAt = now
-                    early = ownerExec.submit<Float?> { try { VoiceGuardian.score(c, snap) } catch (_: Throwable) { null } }
+                    early = ownerExec.submit<Float?> { try { VoiceGuardian.scoreWake(c, snap) } catch (_: Throwable) { null } }
                 }
                 if (early != null && now - earlyAt > 2_500) early = null
                 if (!fired) continue
@@ -200,11 +204,19 @@ object WakeWord {
                 var owner: Float? = null; var ownerMs: Long? = null
                 if (ownerOn) {
                     val t0 = System.currentTimeMillis()
-                    val full = pcm(ring.toList().takeLast(18))
-                    val fin = ownerExec.submit<Float?> { try { VoiceGuardian.score(c, full) } catch (_: Throwable) { null } }
-                    val a = try { early?.get(400, TimeUnit.MILLISECONDS) } catch (_: Exception) { null }
-                    val b = try { fin.get(600, TimeUnit.MILLISECONDS) } catch (_: Exception) { null }
-                    owner = b ?: a
+                    // पहले वाला मिलान (शब्द बोलते समय शुरू हुआ) पास = तुरंत; नहीं तो पूरे शब्द पर (चुप्पी काटकर, छोटे सैंपल से भी)
+                    val a = try { early?.takeIf { it.isDone }?.get() } catch (_: Exception) { null }
+                    if (WakeRules.ownerFast(a, ownerTh)) owner = a
+                    else {
+                        val full = pcm(ring.toList().takeLast(18))
+                        val a2 = a ?: try { early?.get(400, TimeUnit.MILLISECONDS) } catch (_: Exception) { null }
+                        if (WakeRules.ownerFast(a2, ownerTh)) owner = a2
+                        else {
+                            val fin = ownerExec.submit<Float?> { try { VoiceGuardian.scoreWake(c, full) } catch (_: Throwable) { null } }
+                            val b = try { fin.get(700, TimeUnit.MILLISECONDS) } catch (_: Exception) { null }
+                            owner = listOfNotNull(a2, b).maxOrNull()
+                        }
+                    }
                     ownerMs = System.currentTimeMillis() - t0
                     early = null
                     if (!WakeRules.ownerOk(owner, ownerTh)) {

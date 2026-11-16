@@ -77,6 +77,18 @@ object WakeRules {
     fun ownerOk(score: Float?, th: Float): Boolean = score != null && score.isFinite() && score >= th
     /** इस score पर मालिक की जाँच पहले से शुरू (शब्द पूरा होने का इंतज़ार नहीं - साथ-साथ) */
     fun earlyOwner(score: Float, th: Float) = score >= th * 0.5f
+
+    /**
+     * 16 नवंबर 2026 (मालिक: "हे डीके बोलने पर तुरंत चालू नहीं होता"): जड़ - शब्द पूरा पहचानने के *बाद* Live का नया
+     * connection खुलता था (1-3 सेकंड). अब score सीमा के 40% पार होते ही (शब्द बोलते-बोलते) पीछे से connection तैयार -
+     * सिर्फ़ connection, कोई आवाज़ नहीं जाती. एक बार में एक, [WARM_GAP_MS] में एक से ज़्यादा नहीं (डेटा/बैटरी).
+     */
+    fun warmLive(score: Float, th: Float) = score >= th * 0.4f
+    const val WARM_GAP_MS = 45_000L
+    fun warmGapOk(now: Long, lastAt: Long, ready: Boolean, busy: Boolean) = !ready && !busy && now - lastAt >= WARM_GAP_MS
+
+    /** पहले वाला (शब्द बोलते समय का) मिलान पास = पूरे का इंतज़ार नहीं (तुरंत जागो) */
+    fun ownerFast(early: Float?, th: Float) = ownerOk(early, th)
     /** मालिक की आवाज़ दर्ज करने के 5 वाक्य (दो में वेक वर्ड भी - छोटे शब्द पर मिलान बेहतर) */
     val ENROLL_PHRASES = listOf(
         "हे डीके, आज मौसम कैसा रहेगा, मुझे ज़रा बताओ।",

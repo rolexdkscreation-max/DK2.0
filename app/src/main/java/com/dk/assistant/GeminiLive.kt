@@ -624,7 +624,7 @@ class GeminiLive(internal val svc: DKAccessibilityService, internal val agent: A
     internal fun pipeStop() { if (pipelineLazy.isInitialized()) pipeline.stop() }
 
     /** नए connection से पहले: कौन बोलेगा (बँटवारा या Live की सीधी आवाज़) */
-    private fun planSplit(m: String) {
+    internal fun planSplit(m: String) {
         val engines = com.dk.assistant.voice.engine.VoiceEngines
         connEngVer = engines.version
         connLiveVer = engines.liveVersion
@@ -1047,6 +1047,7 @@ class GeminiLive(internal val svc: DKAccessibilityService, internal val agent: A
             try {
                 while (!stopped && isActive) {
                     if (svc.callTakesMic()) return@coroutineScope      // v3.40: घंटी पर नहीं, call उठने पर ही
+                    awaitWakeWarm()                  // 16 नवंबर 2026: "हे डीके" बोलते-बोलते शुरू हुई तैयारी - उसे काटो मत
                     // v5.1: standby वाला गर्म connection (wake word) किसी भी मॉडल/key का हो - वही लो
                     val pk = parked; parked = null
                     val pkOk = pk != null && !pk.closed.isCompleted && System.currentTimeMillis() - pk.at < PARK_MS
