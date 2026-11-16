@@ -117,6 +117,8 @@ internal fun SettingsActivity.secBrainLive() {
             Prefs.scopeKeyRaw(this, ApiScopes.LIVE, "gemini2"), "दूसरी Gemini key", secret = true)
         keyFields[ApiScopes.pref(ApiScopes.LIVE, "key", "gemini3")] = field(box, "Gemini API Key 3 (बैकअप, ज़रूरी नहीं)",
             Prefs.scopeKeyRaw(this, ApiScopes.LIVE, "gemini3"), "तीसरी Gemini key", secret = true)
+        // 16 नवंबर 2026 (मालिक): वही "सारी keys" स्विच यहाँ भी - हर नई बातचीत अगली key से
+        flagSwitch(box, "सारी keys इस्तेमाल करो (Round-Robin): हर नई बातचीत अगली key से", com.dk.assistant.plus.FeatureFlags.KEY_POOL_ALL)
         val res = TextView(this).apply { setTextColor(0xB3FFFFFF.toInt()); textSize = 13f; setPadding((4 * dp).toInt(), (6 * dp).toInt(), 0, 0) }
         row(box, button("पूरा DK लाइव टेस्ट (मॉडल के साथ)") {
             save(false); res.text = "टेस्ट हो रहा है…"

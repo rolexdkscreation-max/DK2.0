@@ -89,6 +89,9 @@ object KeyPool {
 
     private val turns = java.util.concurrent.ConcurrentHashMap<String, java.util.concurrent.atomic.AtomicInteger>()
 
+    /** [tag] की अगली बारी का नंबर (0, 1, 2...) - DK लाइव हर नई बातचीत पर एक बार लेता है */
+    fun turn(tag: String): Int = turns.getOrPut(tag) { java.util.concurrent.atomic.AtomicInteger(0) }.getAndIncrement()
+
     /** [tag] (जैसे "coder") की keys - स्विच चालू हो तो हर बुलावे पर अगली key सबसे आगे */
     fun spread(c: Context, tag: String, keys: List<String>): List<String> {
         val on = try { FeatureFlags.on(c, FeatureFlags.KEY_POOL_ALL) } catch (_: Exception) { false }
