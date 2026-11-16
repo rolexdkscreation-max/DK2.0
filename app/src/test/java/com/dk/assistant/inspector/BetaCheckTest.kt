@@ -80,7 +80,7 @@ class BetaCheckTest {
     private fun session(start: Long = 0) = BetaCheck.ensure(null, "3.307", 943, Channel.BETA, start)
 
     @Test fun newVersionStartsFreshSession() {
-        val s = BetaCheck.record(session(), listOf(inc()), emptySet(), "3.307/943", 10)
+        val s = BetaCheck.record(session(start = 5), listOf(inc()), emptySet(), "3.307/943", 10)
         assertEquals(1, s.items.size)
         assertEquals(s, BetaCheck.ensure(s, "3.307", 943, Channel.BETA, 99))
         assertTrue(BetaCheck.ensure(s, "3.308", 944, Channel.BETA, 99).items.isEmpty())
