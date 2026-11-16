@@ -60,7 +60,7 @@ object LearnedWays {
     // ------------------------------------------------------------------ फ़ोन पर
     private fun file(c: Context) = File(c.applicationContext.filesDir, FILE)
 
-    fun all(c: Context): List<Way> = synchronized(lock) { try { fromJson(file(c).takeIf { it.exists() }?.readText()) } catch (_: Exception) { emptyList() } }
+    fun all(c: Context): List<Way> = synchronized(lock) { try { fromJson(SafeFile.read(file(c))) } catch (_: Exception) { emptyList() } }
 
     /** नए सबक जोड़ो - कितने सच में नए थे */
     fun add(c: Context, lessons: List<String>, from: String, topic: String): Int = synchronized(lock) {
@@ -69,7 +69,7 @@ object LearnedWays {
         val merged = merge(old, lessons.map { Way(it, from, topic.take(120), now) })
         val added = merged.size - old.size
         if (added > 0) {
-            try { file(c).writeText(toJson(merged)) } catch (e: Exception) { DKLog.d("सीखा हुआ सेव नहीं हुआ: ${e.message}"); return 0 }
+            try { SafeFile.write(file(c), toJson(merged)) } catch (e: Exception) { DKLog.d("सीखा हुआ सेव नहीं हुआ: ${e.message}"); return 0 }
             merged.takeLast(added).forEach { LocalMemory.keepPoint(c, "DK ने $from से सीखा: ${it.text}") }
         }
         added
@@ -81,14 +81,14 @@ object LearnedWays {
         if (words.isEmpty()) return 0
         val old = all(c)
         val keep = old.filterNot { w -> val n = norm(w.text + " " + w.from); words.all { n.contains(it) } }
-        if (keep.size != old.size) try { file(c).writeText(toJson(keep)) } catch (_: Exception) { return 0 }
+        if (keep.size != old.size) try { SafeFile.write(file(c), toJson(keep)) } catch (_: Exception) { return 0 }
         old.size - keep.size
     }
 
     /** नवंबर 2026: Drive बैकअप - फ़ाइल जैसी है वैसी / रिस्टोर पर जोड़ी हुई पूरी सूची */
     fun rawJson(c: Context): String = synchronized(lock) { toJson(all(c)) }
     fun replaceAll(c: Context, json: String) = synchronized(lock) {
-        try { file(c).writeText(toJson(fromJson(json))) } catch (e: Exception) { DKLog.d("सीखा हुआ रिस्टोर नहीं हुआ: ${e.message}") }
+        try { SafeFile.write(file(c), toJson(fromJson(json))) } catch (e: Exception) { DKLog.d("सीखा हुआ रिस्टोर नहीं हुआ: ${e.message}") }
     }
 
     fun promptBlock(c: Context): String = try { block(all(c)) } catch (_: Exception) { "" }

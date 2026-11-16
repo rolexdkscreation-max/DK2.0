@@ -19,12 +19,12 @@ object Memory {
     private fun file(c: Context, name: String) = File(c.applicationContext.filesDir, name)
 
     @Synchronized private fun readArr(c: Context, name: String): JSONArray = try {
-        val f = file(c, name)
-        if (f.exists()) JSONArray(f.readText()) else JSONArray()
+        // 16 नवंबर 2026 (ऑडिट P0-3): टूटी फ़ाइल = .bak (पिछली सही) से, चुपचाप सब खाली नहीं
+        SafeFile.read(file(c, name))?.let { JSONArray(it) } ?: JSONArray()
     } catch (e: Exception) { JSONArray() }
 
     @Synchronized private fun writeArr(c: Context, name: String, a: JSONArray) {
-        try { file(c, name).writeText(a.toString()) } catch (e: Exception) { DKLog.d("Memory save: ${e.message}") }
+        try { SafeFile.write(file(c, name), a.toString()) } catch (e: Exception) { DKLog.d("Memory save: ${e.message}") }
     }
 
     // ------------------------------------------------------------ pakki baatein (facts)
