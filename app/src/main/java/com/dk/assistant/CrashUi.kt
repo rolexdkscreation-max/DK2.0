@@ -10,7 +10,7 @@ import java.io.File
 /** 16 नवंबर 2026: क्रैश रिपोर्ट का Android हिस्सा - सिर्फ़ मालिक के दबाने पर ([CrashReport]) */
 object CrashUi {
     private fun body(c: Context, crash: String) =
-        CrashReport.body(crash, Updater.currentName(c), Build.VERSION.SDK_INT, Build.MANUFACTURER + " " + Build.MODEL)
+        CrashReport.body(crash + "\n\n" + Quiet.summary(10), Updater.currentName(c), Build.VERSION.SDK_INT, Build.MANUFACTURER + " " + Build.MODEL)
 
     fun openIssue(c: Context, crash: String) {
         try {

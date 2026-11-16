@@ -42,18 +42,18 @@ object LocalSite {
                 thread(name = "dk-local-site", isDaemon = true) { loop(s) }
                 DKLog.d("लोकल वेबसाइट सर्वर चालू: port $p")
                 return p
-            } catch (_: Exception) {}
+            } catch (e: Exception) { com.dk.assistant.Quiet.note(e) }
         }
         DKLog.d("लोकल वेबसाइट सर्वर नहीं चला (port $PORT-${PORT + 9} व्यस्त)")
         return 0
     }
 
-    @Synchronized fun stop() { try { server?.close() } catch (_: Exception) {}; server = null; port = 0 }
+    @Synchronized fun stop() { try { server?.close() } catch (e: Exception) { com.dk.assistant.Quiet.note(e) }; server = null; port = 0 }
 
     private fun loop(s: ServerSocket) {
         while (!s.isClosed) {
             val sock = try { s.accept() } catch (_: Exception) { break }
-            thread(isDaemon = true) { try { serve(sock) } catch (_: Exception) {} finally { try { sock.close() } catch (_: Exception) {} } }
+            thread(isDaemon = true) { try { serve(sock) } catch (e: Exception) { com.dk.assistant.Quiet.note(e) } finally { try { sock.close() } catch (e: Exception) { com.dk.assistant.Quiet.note(e) } } }
         }
     }
 

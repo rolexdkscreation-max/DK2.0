@@ -93,8 +93,8 @@ object AutoMode {
     /** इमरजेंसी स्टॉप: फ़ोन वाला काम + कोडिंग एजेंट का काम तुरंत बंद */
     fun emergencyStop(c: Context) {
         codingUntil = 0L
-        try { com.dk.assistant.DKAccessibilityService.instance?.agent?.stop() } catch (_: Exception) { }
-        try { com.dk.assistant.CoderSession.job?.cancel() } catch (_: Exception) { }
+        try { com.dk.assistant.DKAccessibilityService.instance?.agent?.stop() } catch (e: Exception) { com.dk.assistant.Quiet.note(e) }
+        try { com.dk.assistant.CoderSession.job?.cancel() } catch (e: Exception) { com.dk.assistant.Quiet.note(e) }
         AutoLog.add(c, "इमरजेंसी स्टॉप दबाया — सारा ऑटोनोमस काम रोक दिया")
     }
 

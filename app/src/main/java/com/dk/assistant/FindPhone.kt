@@ -91,14 +91,14 @@ object FindPhone {
         try {
             st.alarmVol = am.getStreamVolume(AudioManager.STREAM_ALARM)
             am.setStreamVolume(AudioManager.STREAM_ALARM, am.getStreamMaxVolume(AudioManager.STREAM_ALARM), 0)
-        } catch (_: Exception) {}
+        } catch (e: Exception) { Quiet.note(e) }
         try {
             val nm = c.getSystemService(NotificationManager::class.java)
             if (nm != null && nm.isNotificationPolicyAccessGranted && nm.currentInterruptionFilter != NotificationManager.INTERRUPTION_FILTER_ALL) {
                 st.filter = nm.currentInterruptionFilter
                 nm.setInterruptionFilter(NotificationManager.INTERRUPTION_FILTER_ALL)
             }
-        } catch (_: Exception) {}
+        } catch (e: Exception) { Quiet.note(e) }
         // 2. स्क्रीन जले - लॉक स्क्रीन के ऊपर "मैं यहाँ हूँ" (छूते ही बंद). power बटन (स्क्रीन बंद) = बजना बंद
         FindPhoneActivity.show(c)
         try {
@@ -107,14 +107,14 @@ object FindPhone {
             }
             androidx.core.content.ContextCompat.registerReceiver(c, r, android.content.IntentFilter(Intent.ACTION_SCREEN_OFF), androidx.core.content.ContextCompat.RECEIVER_NOT_EXPORTED)
             st.screenOff = r
-        } catch (_: Exception) {}
+        } catch (e: Exception) { Quiet.note(e) }
         // 3. vibrate
         try {
             val v = if (Build.VERSION.SDK_INT >= 31) c.getSystemService(VibratorManager::class.java)?.defaultVibrator
                 else @Suppress("DEPRECATION") (c.getSystemService(Context.VIBRATOR_SERVICE) as? Vibrator)
             v?.vibrate(VibrationEffect.createWaveform(longArrayOf(0, 700, 500), 0), ALARM)
             st.vib = v
-        } catch (_: Exception) {}
+        } catch (e: Exception) { Quiet.note(e) }
         // 4. flashlight टिमटिमाए
         val cm = c.getSystemService(CameraManager::class.java)
         st.torchId = try {
@@ -125,7 +125,7 @@ object FindPhone {
                 var on = false
                 while (isActive) {
                     on = !on
-                    try { cm?.setTorchMode(id, on) } catch (_: Exception) {}      // कैमरा कोई और चला रहा हो - छोड़ो
+                    try { cm?.setTorchMode(id, on) } catch (e: Exception) { Quiet.note(e) }      // कैमरा कोई और चला रहा हो - छोड़ो
                     delay(BLINK_MS)
                 }
             }
@@ -169,7 +169,7 @@ object FindPhone {
                     tr.write(clip, 0, clip.size); tr.play()
                     delay(clip.size * 1000L / (rate * 2) + 200)
                     tr.stop()
-                } catch (_: Exception) {}
+                } catch (e: Exception) { Quiet.note(e) }
                 return
             }
         }
@@ -177,7 +177,7 @@ object FindPhone {
         try {
             t.speak(SAY, TextToSpeech.QUEUE_FLUSH, null, "dk_find")
             delay(2_600)
-        } catch (_: Exception) {}
+        } catch (e: Exception) { Quiet.note(e) }
     }
 
     private fun phoneTts(c: Context): TextToSpeech? = try {
@@ -192,15 +192,15 @@ object FindPhone {
     } catch (_: Exception) { null }
 
     private fun restore(c: Context, st: State) {
-        st.screenOff?.let { try { c.unregisterReceiver(it) } catch (_: Exception) {} }
-        try { st.player?.stop() } catch (_: Exception) {}
-        try { st.player?.release() } catch (_: Exception) {}
-        try { st.track?.release() } catch (_: Exception) {}
-        try { st.tts?.stop(); st.tts?.shutdown() } catch (_: Exception) {}
-        try { st.vib?.cancel() } catch (_: Exception) {}
-        st.torchId?.let { id -> try { c.getSystemService(CameraManager::class.java)?.setTorchMode(id, false) } catch (_: Exception) {} }
+        st.screenOff?.let { try { c.unregisterReceiver(it) } catch (e: Exception) { Quiet.note(e) } }
+        try { st.player?.stop() } catch (e: Exception) { Quiet.note(e) }
+        try { st.player?.release() } catch (e: Exception) { Quiet.note(e) }
+        try { st.track?.release() } catch (e: Exception) { Quiet.note(e) }
+        try { st.tts?.stop(); st.tts?.shutdown() } catch (e: Exception) { Quiet.note(e) }
+        try { st.vib?.cancel() } catch (e: Exception) { Quiet.note(e) }
+        st.torchId?.let { id -> try { c.getSystemService(CameraManager::class.java)?.setTorchMode(id, false) } catch (e: Exception) { Quiet.note(e) } }
         val am = c.getSystemService(Context.AUDIO_SERVICE) as AudioManager
-        if (st.alarmVol >= 0) try { am.setStreamVolume(AudioManager.STREAM_ALARM, st.alarmVol, 0) } catch (_: Exception) {}
-        if (st.filter >= 0) try { c.getSystemService(NotificationManager::class.java)?.setInterruptionFilter(st.filter) } catch (_: Exception) {}
+        if (st.alarmVol >= 0) try { am.setStreamVolume(AudioManager.STREAM_ALARM, st.alarmVol, 0) } catch (e: Exception) { Quiet.note(e) }
+        if (st.filter >= 0) try { c.getSystemService(NotificationManager::class.java)?.setInterruptionFilter(st.filter) } catch (e: Exception) { Quiet.note(e) }
     }
 }

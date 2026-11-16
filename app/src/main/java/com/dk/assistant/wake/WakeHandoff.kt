@@ -42,7 +42,7 @@ object WakeHandoff {
                         clear(); stopRec(r); break
                     }
                 }
-            } catch (_: Exception) {}
+            } catch (e: Exception) { com.dk.assistant.Quiet.note(e) }
         }, "dk-wake-handoff").apply { isDaemon = true; start() }
     }
 
@@ -61,15 +61,15 @@ object WakeHandoff {
 
     private fun stopRec(r: AudioRecord) {
         if (rec === r) rec = null
-        try { r.stop() } catch (_: Exception) {}
-        try { r.release() } catch (_: Exception) {}
+        try { r.stop() } catch (e: Exception) { com.dk.assistant.Quiet.note(e) }
+        try { r.release() } catch (e: Exception) { com.dk.assistant.Quiet.note(e) }
     }
 
     /** Live का माइक खोलने से ठीक पहले: हमारा माइक छोड़ो (thread रुकने तक इंतज़ार, 300 ms तक) */
     fun releaseMic() {
         val r = rec ?: return
         rec = null
-        try { th?.join(300) } catch (_: Exception) {}
+        try { th?.join(300) } catch (e: Exception) { com.dk.assistant.Quiet.note(e) }
         th = null
         stopRec(r)
         lastHandoffMs = System.currentTimeMillis() - startedAt

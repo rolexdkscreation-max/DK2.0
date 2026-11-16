@@ -27,7 +27,7 @@ internal fun GeminiLive.sendReplay() {
     for (c in a) if (w.tx(liveAudioMsg(c))) n++
     val quiet = ByteArray(a.first().size)
     repeat(LiveRecover.REPLAY_TAIL_MS / CHUNK_MS) { w.tx(liveAudioMsg(quiet)) }
-    try { w.tx("{\"realtimeInput\":{\"audioStreamEnd\":true}}") } catch (_: Exception) {}
+    try { w.tx("{\"realtimeInput\":{\"audioStreamEnd\":true}}") } catch (e: Exception) { Quiet.note(e) }
     replayedN++
     // पुरानी बात की समय-रेखा "कुछ नहीं आया" में न गिने - वही बात अब यहाँ से
     timeline.reset()

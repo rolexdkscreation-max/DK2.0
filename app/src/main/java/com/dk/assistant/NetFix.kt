@@ -116,7 +116,7 @@ object DkDns : Dns {
                 }
                 if (out.isNotEmpty()) return out
             }
-        } catch (_: Exception) {}
+        } catch (e: Exception) { Quiet.note(e) }
         return emptyList()
     }
 

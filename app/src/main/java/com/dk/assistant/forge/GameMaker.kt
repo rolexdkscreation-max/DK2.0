@@ -129,6 +129,6 @@ object GameMaker {
         DKState.reply(say)
         if (!voice) return
         val svc = DKAccessibilityService.instance ?: return
-        svc.scope.launch { try { svc.speaker.speak(say) } catch (_: Exception) {} }
+        svc.scope.launch { try { svc.speaker.speak(say) } catch (e: Exception) { com.dk.assistant.Quiet.note(e) } }
     }
 }

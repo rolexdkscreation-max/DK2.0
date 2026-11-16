@@ -77,7 +77,7 @@ object Setup {
             c.startActivity(Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS, Uri.parse("package:" + c.packageName))
                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
         } catch (e: Exception) {
-            try { c.startActivity(Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) } catch (_: Exception) {}
+            try { c.startActivity(Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) } catch (e: Exception) { Quiet.note(e) }
         }
     }
 
@@ -95,12 +95,12 @@ object Setup {
         try {
             c.startActivity(Intent(ACTION_A11Y_DETAILS).putExtra(Intent.EXTRA_COMPONENT_NAME, me)
                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)); return
-        } catch (_: Exception) {}
+        } catch (e: Exception) { Quiet.note(e) }
         try {
             val args = android.os.Bundle().apply { putString(":settings:fragment_args_key", me) }
             c.startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS).putExtra(":settings:fragment_args_key", me)
                 .putExtra(":settings:show_fragment_args", args).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)); return
-        } catch (_: Exception) {}
+        } catch (e: Exception) { Quiet.note(e) }
         try { openAccessibility(c) } catch (e: Exception) { DKLog.d("Accessibility नहीं खुली: ${e.message}") }
     }
 

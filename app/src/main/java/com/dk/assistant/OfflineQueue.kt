@@ -56,7 +56,7 @@ object OfflineQueue {
                 drain(c.applicationContext)
                 // DK कंप्यूटर का नेटवर्क की वजह से रुका काम
                 android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
-                    try { if (NetProbe.online(c)) ComputerSession.resumeIfNetPaused(c.applicationContext) } catch (_: Exception) {}
+                    try { if (NetProbe.online(c)) ComputerSession.resumeIfNetPaused(c.applicationContext) } catch (e: Exception) { Quiet.note(e) }
                 }, 3_000)
             }
             })

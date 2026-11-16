@@ -135,7 +135,7 @@ object CoderTeam {
         DKState.reply(voice)
 
         val svc = DKAccessibilityService.instance
-        if (svc != null && !DKState.live) svc.scope.launch { try { svc.speaker.speak(if (title != null && spoken == null) "कोडिंग वाला जवाब तैयार है।" else voice) } catch (_: Exception) {} }
+        if (svc != null && !DKState.live) svc.scope.launch { try { svc.speaker.speak(if (title != null && spoken == null) "कोडिंग वाला जवाब तैयार है।" else voice) } catch (e: Exception) { Quiet.note(e) } }
     }
 
     /** 7-एजेंट सिस्टम: notification + आवाज़ (रिपोर्ट स्क्रीन पर पहले ही लिखी जा चुकी) */
@@ -147,7 +147,7 @@ object CoderTeam {
         CoderSound.notify(c, kind, title, text.lines().first().take(120))
         DKState.reply(voice)
         val svc = DKAccessibilityService.instance
-        if (svc != null && !DKState.live) svc.scope.launch { try { svc.speaker.speak(voice) } catch (_: Exception) {} }
+        if (svc != null && !DKState.live) svc.scope.launch { try { svc.speaker.speak(voice) } catch (e: Exception) { Quiet.note(e) } }
     }
 
     // v3.89: पुराना "dk_coder" (फ़ोन की आम tone) हटा - अब CoderSound की अलग आवाज़ें (काम पूरा / बग / रुका)

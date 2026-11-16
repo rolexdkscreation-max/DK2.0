@@ -89,7 +89,7 @@ object CallTune {
             VolumeKeep.keepMedia(am) { am.setStreamVolume(AudioManager.STREAM_RING, t, 0) }
             DKLog.d("घंटी: $why ($cur -> $t / ${am.getStreamMaxVolume(AudioManager.STREAM_RING)})")
         } catch (e: SecurityException) { DKLog.d("घंटी की आवाज़ नहीं बदली (DND इजाज़त): ${e.message}") }
-        catch (_: Exception) {}
+        catch (e: Exception) { Quiet.note(e) }
     }
 
     /** घंटी बजते ही: चुनी हुई तेज़ी (FULL = पुराना VolumeKeep.raiseForCall, वहीं से बुलाया जाता है) */
@@ -104,7 +104,7 @@ object CallTune {
         try {
             val vc = am.getStreamVolume(AudioManager.STREAM_VOICE_CALL); val vm = am.getStreamMaxVolume(AudioManager.STREAM_VOICE_CALL)
             val t = VolumeKeep.upTarget(vc, vm, true); if (t > vc) VolumeKeep.keepMedia(am) { am.setStreamVolume(AudioManager.STREAM_VOICE_CALL, t, 0) }
-        } catch (_: Exception) {}
+        } catch (e: Exception) { Quiet.note(e) }
     }
 
     /** DK जवाब सुन रही है = घंटी धीमी (force = यूज़र ने "घंटी धीमी करो" कहा: सबसे धीमी) */
@@ -125,6 +125,6 @@ object CallTune {
         val now = try { am.getStreamVolume(AudioManager.STREAM_RING) } catch (_: Exception) { return }
         val t = restoreTo(saved, now) ?: return
         try { VolumeKeep.keepMedia(am) { am.setStreamVolume(AudioManager.STREAM_RING, t, 0) }; DKLog.d("घंटी: पुरानी आवाज़ वापस ($now -> $t)") }
-        catch (_: Exception) {}
+        catch (e: Exception) { Quiet.note(e) }
     }
 }

@@ -32,7 +32,7 @@ object LiveVision {
     private val listeners = CopyOnWriteArraySet<() -> Unit>()
     fun listen(l: () -> Unit) { listeners.add(l) }
     fun unlisten(l: () -> Unit) { listeners.remove(l) }
-    private fun changed() { main.post { listeners.forEach { try { it() } catch (_: Exception) {} } } }
+    private fun changed() { main.post { listeners.forEach { try { it() } catch (e: Exception) { Quiet.note(e) } } } }
 
     private fun live(): GeminiLive? = DKAccessibilityService.instance?.gemLive
     private fun liveReady() = DKState.live && live()?.canTalk() == true

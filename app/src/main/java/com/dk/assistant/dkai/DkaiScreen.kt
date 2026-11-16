@@ -153,7 +153,7 @@ class DkaiScreen(val activity: ComponentActivity, val host: DkaiHost) {
             val n = DkaiChats.renumber(dir, cur)
             if (n != cur) Dkai.setChat(c, n)
             if (::chatLabel.isInitialized) chatLabel.text = DkaiCore.chatLabel(n)
-        } catch (_: Exception) {}
+        } catch (e: Exception) { com.dk.assistant.Quiet.note(e) }
     }
 
     /** 14 नवंबर 2026 (मालिक): पुरानी चैट मिटाओ (अभी वाली हो तो स्क्रीन खाली) - फिर नंबर 1 से */
@@ -268,7 +268,7 @@ class DkaiScreen(val activity: ComponentActivity, val host: DkaiHost) {
     /** ⚙ लंबा दबाना: पूरी DK सेटिंग्स + बाकी रास्ते (फ़ोन कंट्रोल, माइक, Story Writer, टीचर, Forge…) + प्रोफ़ाइल + थीम */
     private fun settingsList() {
         val items = ArrayList<Pair<String, () -> Unit>>()
-        try { for ((t, sub, go) in host.settingsItems()) items.add("$t — $sub" to go) } catch (_: Exception) {}
+        try { for ((t, sub, go) in host.settingsItems()) items.add("$t — $sub" to go) } catch (e: Exception) { com.dk.assistant.Quiet.note(e) }
         if (items.isEmpty()) items.add("पूरी DK सेटिंग्स" to { c.startActivity(Intent(c, SettingsActivity::class.java)) })
         items.add("प्रोफ़ाइल (आपका नाम)" to { DkaiSheets.profile(this) })
         items.add((if (DkaiTheme.light) "डार्क थीम पर जाएँ" else "लाइट थीम पर जाएँ") to { DkaiTheme.setLight(c, !DkaiTheme.light); activity.recreate() })
@@ -516,27 +516,27 @@ class DkaiScreen(val activity: ComponentActivity, val host: DkaiHost) {
         val contract = if (left >= 2) androidx.activity.result.contract.ActivityResultContracts.PickMultipleVisualMedia(left) else null
         if (contract != null) {
             l = activity.activityResultRegistry.register("dkai_imgs_${pickSeq++}", contract) { us ->
-                try { l.unregister() } catch (_: Exception) {}
+                try { l.unregister() } catch (e: Exception) { com.dk.assistant.Quiet.note(e) }
                 addAttached(us)
             }
         } else {
             l = activity.activityResultRegistry.register("dkai_img_${pickSeq++}", androidx.activity.result.contract.ActivityResultContracts.PickVisualMedia()) { u ->
-                try { l.unregister() } catch (_: Exception) {}
+                try { l.unregister() } catch (e: Exception) { com.dk.assistant.Quiet.note(e) }
                 if (u != null) addAttached(listOf(u))
             }
         }
         try { l.launch(androidx.activity.result.PickVisualMediaRequest(androidx.activity.result.contract.ActivityResultContracts.PickVisualMedia.ImageOnly)) }
-        catch (_: Exception) { try { l.unregister() } catch (_: Exception) {}; toast("गैलरी नहीं खुली") }
+        catch (_: Exception) { try { l.unregister() } catch (e: Exception) { com.dk.assistant.Quiet.note(e) }; toast("गैलरी नहीं खुली") }
     }
 
     /** PDF / text / फोटो फ़ाइल */
     fun pickFiles() {
         lateinit var l: androidx.activity.result.ActivityResultLauncher<Array<String>>
         l = activity.activityResultRegistry.register("dkai_files_${pickSeq++}", androidx.activity.result.contract.ActivityResultContracts.OpenMultipleDocuments()) { us ->
-            try { l.unregister() } catch (_: Exception) {}
+            try { l.unregister() } catch (e: Exception) { com.dk.assistant.Quiet.note(e) }
             addAttached(us)
         }
-        try { l.launch(ComputerActivity.PICK_TYPES) } catch (_: Exception) { try { l.unregister() } catch (_: Exception) {}; toast("फ़ाइल चुनने वाला नहीं खुला") }
+        try { l.launch(ComputerActivity.PICK_TYPES) } catch (_: Exception) { try { l.unregister() } catch (e: Exception) { com.dk.assistant.Quiet.note(e) }; toast("फ़ाइल चुनने वाला नहीं खुला") }
     }
 
     private fun addAttached(us: List<android.net.Uri>) {
@@ -556,7 +556,7 @@ class DkaiScreen(val activity: ComponentActivity, val host: DkaiHost) {
             box.addView(ImageView(c).apply {
                 scaleType = ImageView.ScaleType.CENTER_CROP; background = DkaiTheme.round(c, DkaiTheme.FIELD, 12f, DkaiTheme.BORDER)
                 clipToOutline = true; contentDescription = "जुड़ी फ़ाइल"
-                try { setImageURI(u) } catch (_: Exception) {}
+                try { setImageURI(u) } catch (e: Exception) { com.dk.assistant.Quiet.note(e) }
                 if (drawable == null) { setImageDrawable(DkaiIcon(DkaiIcon.Kind.DOC, DkaiTheme.GRAY)); scaleType = ImageView.ScaleType.CENTER_INSIDE; val p = d(16f); setPadding(p, p, p, p) }
             }, FrameLayout.LayoutParams(d(58f), d(58f)).apply { topMargin = d(5f); rightMargin = d(5f) })
             box.addView(ImageView(c).apply {
@@ -960,10 +960,10 @@ class DkaiScreen(val activity: ComponentActivity, val host: DkaiHost) {
     private fun pickOne(types: Array<String>, got: (android.net.Uri) -> Unit) {
         lateinit var l: androidx.activity.result.ActivityResultLauncher<Array<String>>
         l = activity.activityResultRegistry.register("dkai_pick_${pickSeq++}", androidx.activity.result.contract.ActivityResultContracts.OpenDocument()) { u ->
-            try { l.unregister() } catch (_: Exception) {}
+            try { l.unregister() } catch (e: Exception) { com.dk.assistant.Quiet.note(e) }
             if (u != null) got(u)
         }
-        try { l.launch(types) } catch (e: Exception) { try { l.unregister() } catch (_: Exception) {}; toast("फ़ाइल चुनने वाला नहीं खुला") }
+        try { l.launch(types) } catch (e: Exception) { try { l.unregister() } catch (e: Exception) { com.dk.assistant.Quiet.note(e) }; toast("फ़ाइल चुनने वाला नहीं खुला") }
     }
 
     /** Attach Audio: आवाज़ की फ़ाइल -> Gemini से लिखा हुआ text -> लिखने के डिब्बे में */
@@ -980,7 +980,7 @@ class DkaiScreen(val activity: ComponentActivity, val host: DkaiHost) {
     }
 
     fun hideKeyboard() {
-        try { (c.getSystemService(android.content.Context.INPUT_METHOD_SERVICE) as InputMethodManager).hideSoftInputFromWindow(root.windowToken, 0) } catch (_: Exception) {}
+        try { (c.getSystemService(android.content.Context.INPUT_METHOD_SERVICE) as InputMethodManager).hideSoftInputFromWindow(root.windowToken, 0) } catch (e: Exception) { com.dk.assistant.Quiet.note(e) }
     }
 
     // ================================================================== back

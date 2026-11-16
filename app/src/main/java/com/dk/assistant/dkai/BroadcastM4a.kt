@@ -40,8 +40,8 @@ object BroadcastM4a {
             }
             if (!done) throw IllegalStateException("AAC पूरा नहीं बना")
         } finally {
-            try { codec.stop() } catch (_: Exception) {}; try { codec.release() } catch (_: Exception) {}
-            try { if (started) mux.stop() } catch (_: Exception) {}; try { mux.release() } catch (_: Exception) {}
+            try { codec.stop() } catch (e: Exception) { com.dk.assistant.Quiet.note(e) }; try { codec.release() } catch (e: Exception) { com.dk.assistant.Quiet.note(e) }
+            try { if (started) mux.stop() } catch (e: Exception) { com.dk.assistant.Quiet.note(e) }; try { mux.release() } catch (e: Exception) { com.dk.assistant.Quiet.note(e) }
         }
     }
 }

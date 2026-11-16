@@ -39,7 +39,7 @@ internal fun GeminiLive.buildTrack(): AudioTrack? {
         } catch (e: Exception) { LiveAudioDebug.w("AudioTrack बना नहीं (usage $u): ${e.javaClass.simpleName} ${e.message}"); null } ?: continue
         if (!LiveAudioGuard.canPlay(t.state)) {
             LiveAudioDebug.w("AudioTrack STATE_UNINITIALIZED (usage $u, buffer ${min * (2 + i)}) - दूसरा तरीका")
-            try { t.release() } catch (_: Exception) {}
+            try { t.release() } catch (e: Exception) { Quiet.note(e) }
             continue
         }
         com.dk.assistant.voice.engine.VoiceTune.load(svc)
@@ -47,7 +47,7 @@ internal fun GeminiLive.buildTrack(): AudioTrack? {
         // v3.6: speaker पर DK की आवाज़ फ़ोन की बाकी आवाज़ से धीमी थी - थोड़ा boost (Bluetooth पर नहीं)
         SpeakerBoost.release(spkBoost)
         spkBoost = SpeakerBoost.attach(t.audioSessionId, btOn)
-        try { t.play() } catch (e: Exception) { LiveAudioDebug.w("AudioTrack.play() गलती: ${e.message}"); try { t.release() } catch (_: Exception) {}; continue }
+        try { t.play() } catch (e: Exception) { LiveAudioDebug.w("AudioTrack.play() गलती: ${e.message}"); try { t.release() } catch (e: Exception) { Quiet.note(e) }; continue }
         log((if (btOn) "आवाज़: Bluetooth headset" else "स्पीकर" + (if (spkBoost != null) " (+${SpeakerBoost.GAIN_MB / 100} dB)" else "")) + ": $OUT_RATE Hz PCM16 mono stream • " +
             com.dk.assistant.voice.engine.VoiceTune.label() + if (i > 0) " • (मीडिया वाला तरीका)" else "")
         LiveAudioDebug.d("AudioTrack तैयार: $OUT_RATE Hz mono PCM16, usage $u, session ${t.audioSessionId}")
@@ -64,7 +64,7 @@ internal fun GeminiLive.rebuildTrack(why: String): AudioTrack? {
     val old = track
     val t = buildTrack()
     track = t
-    old?.let { try { it.pause(); it.flush() } catch (_: Exception) {}; try { it.release() } catch (_: Exception) {} }
+    old?.let { try { it.pause(); it.flush() } catch (e: Exception) { Quiet.note(e) }; try { it.release() } catch (e: Exception) { Quiet.note(e) } }
     LiveAudioDebug.w("AudioTrack दोबारा बना ($why) - कतार में ${playQ.size} टुकड़े बचे" + if (t == null) " • नहीं बना" else "")
     if (playThread?.isAlive != true) startPlayThread()
     return t
@@ -178,7 +178,7 @@ internal fun GeminiLive.flushPlayback() {
     playQ.clear()
     playEnd = 0L
     JarvisFx.reset()                             // टोका = पुरानी JARVIS गूँज भी नहीं
-    track?.let { try { it.pause(); it.flush(); it.play() } catch (_: Exception) {} }
+    track?.let { try { it.pause(); it.flush(); it.play() } catch (e: Exception) { Quiet.note(e) } }
     pipeStop()                                   // v3.68: आवाज़ इंजन की कतार + चलती आवाज़ भी तुरंत
     dropLiveKeep()                               // नवंबर 2026: टोका = रखी हुई Live आवाज़ भी नहीं बजेगी
     com.dk.assistant.voice.engine.VoiceLevel.clear()
@@ -195,7 +195,7 @@ internal fun GeminiLive.stopPlayer() {
     playThread?.interrupt(); playThread = null
     playQ.clear(); playEnd = 0L
     pipeStop(); com.dk.assistant.voice.engine.VoiceLevel.clear()
-    track?.let { try { it.stop() } catch (_: Exception) {}; try { it.release() } catch (_: Exception) {} }
+    track?.let { try { it.stop() } catch (e: Exception) { Quiet.note(e) }; try { it.release() } catch (e: Exception) { Quiet.note(e) } }
     track = null
     SpeakerBoost.release(spkBoost); spkBoost = null
 }

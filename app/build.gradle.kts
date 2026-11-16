@@ -6,6 +6,13 @@ plugins {
 }
 
 android {
+    // 16 नवंबर 2026 (मालिक: "कोड जाँच टूल लगाओ"): Android Lint - पुरानी गलतियाँ baseline में, नई error = CI लाल
+    lint {
+        baseline = file("lint-baseline.xml")
+        abortOnError = true
+        warningsAsErrors = false
+        checkDependencies = false
+    }
     namespace = "com.dk.assistant"
     compileSdk = 34
 

@@ -121,7 +121,14 @@ internal fun SettingsActivity.secDebug() {
                 cm?.setPrimaryClip(android.content.ClipData.newPlainText("DK log", GeminiLive.stats + "\n\n" + DKLog.all()))
                 toast("लॉग कॉपी हो गया")
             },
-            button("साफ़ करें") { DKLog.clear() })
+            button("साफ़ करें") { DKLog.clear(); Quiet.clear() })
+        // 16 नवंबर 2026 (ऑडिट Q1): जो गलतियाँ पहले चुपचाप निगली जाती थीं - अब गिनती + जगह
+        row(box, button("दबी गलतियाँ") {
+            val t = Quiet.summary()
+            val cm = getSystemService(android.content.ClipboardManager::class.java)
+            cm?.setPrimaryClip(android.content.ClipData.newPlainText("DK quiet", t))
+            android.app.AlertDialog.Builder(this).setTitle("दबी गलतियाँ").setMessage(t.take(3000)).setPositiveButton("ठीक", null).show()
+        })
     }
 }
 
@@ -287,8 +294,9 @@ internal fun SettingsActivity.secAccess() {
     card("फ़ोन कंट्रोल (Accessibility)", "एक बार ON करें — फिर ON ही रहेगा") { box ->
         accStatus = TextView(this).apply { textSize = 15f; setTextColor(0xFFFFFFFF.toInt()); setPadding((4 * dp).toInt(), (6 * dp).toInt(), 0, 0) }
         box.addView(accStatus)
-        val roleManager = getSystemService(android.app.role.RoleManager::class.java)
-        val isAssistantRoleHeld = roleManager?.isRoleHeld(android.app.role.RoleManager.ROLE_ASSISTANT) == true
+        // 16 नवंबर 2026 (Android Lint, NewApi): RoleManager Android 10+ में ही - पहले Android 8/9 पर यह स्क्रीन खुलते ही बंद होती
+        val isAssistantRoleHeld = android.os.Build.VERSION.SDK_INT >= 29 &&
+            getSystemService(android.app.role.RoleManager::class.java)?.isRoleHeld(android.app.role.RoleManager.ROLE_ASSISTANT) == true
         val roleStatusView = TextView(this).apply {
             textSize = 14f
             setTextColor(if (isAssistantRoleHeld) 0xFF00FF00.toInt() else 0xFFFF5555.toInt())

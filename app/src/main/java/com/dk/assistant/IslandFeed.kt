@@ -135,7 +135,7 @@ object IslandFeed {
         seenKeys(listOf(key))      // island से खोला = देख लिया
         if (pi != null && send(c, pi)) {
             // ऐप ने "टैप पर हटो" कहा था - हमने खोला, तो हम ही हटाएँ (जैसे notification shade करता है)
-            if (n != null && !n.ongoing && key in autoCancel) try { DKNotifListener.instance?.cancelNotification(key) } catch (_: Exception) {}
+            if (n != null && !n.ongoing && key in autoCancel) try { DKNotifListener.instance?.cancelNotification(key) } catch (e: Exception) { Quiet.note(e) }
             return true
         }
         val pkg = n?.pkg ?: return false

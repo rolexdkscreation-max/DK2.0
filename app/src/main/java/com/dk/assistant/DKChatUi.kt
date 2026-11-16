@@ -236,14 +236,14 @@ object DKMic {
         if (dictating) return
         dictating = true
         DKLog.d("बोलकर लिखना शुरू - DK का अपना माइक रुका")
-        try { DKAccessibilityService.instance?.onDictation(true) } catch (_: Exception) {}
+        try { DKAccessibilityService.instance?.onDictation(true) } catch (e: Exception) { Quiet.note(e) }
     }
 
     fun end() {
         if (!dictating) return
         dictating = false
         DKLog.d("बोलकर लिखना खत्म - DK का माइक वापस")
-        try { DKAccessibilityService.instance?.onDictation(false) } catch (_: Exception) {}
+        try { DKAccessibilityService.instance?.onDictation(false) } catch (e: Exception) { Quiet.note(e) }
     }
 }
 
@@ -326,7 +326,7 @@ class InlineDictation(
                 DictationRules.Next.RESTART -> { silent = (silent + 1).coerceAtMost(DictationRules.MAX_SILENT); h.postDelayed(listenNow, 150) }
                 DictationRules.Next.RETRY_SOON -> {
                     busy++
-                    try { sr?.destroy() } catch (_: Exception) {}
+                    try { sr?.destroy() } catch (e: Exception) { Quiet.note(e) }
                     sr = null
                     h.postDelayed(listenNow, 400)
                 }
@@ -362,8 +362,8 @@ class InlineDictation(
     private fun release() {
         h.removeCallbacks(listenNow)
         val r = sr; sr = null
-        try { r?.cancel() } catch (_: Exception) {}
-        try { r?.destroy() } catch (_: Exception) {}
+        try { r?.cancel() } catch (e: Exception) { Quiet.note(e) }
+        try { r?.destroy() } catch (e: Exception) { Quiet.note(e) }
         onLevel(0f)
         DKMic.end()
         QuietMic.off(ctx)

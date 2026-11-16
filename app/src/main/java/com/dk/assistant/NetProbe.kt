@@ -11,7 +11,7 @@ object NetProbe {
             val cm = c.getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager ?: return NetSpeed.level
             val caps = cm.getNetworkCapabilities(cm.activeNetwork) ?: return NetSpeed.level
             NetSpeed.onBandwidth(caps.linkDownstreamBandwidthKbps)
-        } catch (_: Exception) {}
+        } catch (e: Exception) { Quiet.note(e) }
         return NetSpeed.level
     }
 

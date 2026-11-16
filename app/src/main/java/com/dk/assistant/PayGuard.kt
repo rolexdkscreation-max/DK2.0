@@ -174,7 +174,7 @@ object PayGuard {
     private fun watch(app: Context, payPkg: String?) {
         if (watchJob?.isActive == true) return
         watchJob = scope.launch {
-            if (apps.isEmpty()) try { scan(app) } catch (_: Exception) {}
+            if (apps.isEmpty()) try { scan(app) } catch (e: Exception) { Quiet.note(e) }
             var fg: String? = payPkg; var since = System.currentTimeMillis()
             var from = since - 2_000L
             var sawOff = DKAccessibilityService.instance == null
@@ -230,7 +230,7 @@ object PayGuard {
         } catch (e: Exception) { DKLog.d("पेमेंट notification: ${e.message}") }
     }
 
-    private fun cancelNote(c: Context) = try { c.getSystemService(NotificationManager::class.java)?.cancel(ID); Unit } catch (_: Exception) {}
+    private fun cancelNote(c: Context) = try { c.getSystemService(NotificationManager::class.java)?.cancel(ID); Unit } catch (e: Exception) { Quiet.note(e) }
 }
 
 /** notification के शब्द (pure) */

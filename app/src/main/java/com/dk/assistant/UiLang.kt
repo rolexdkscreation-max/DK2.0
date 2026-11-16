@@ -97,7 +97,7 @@ object UiLang {
         // कोडिंग/कंप्यूटर का कदम) पर पूरा card ऊपर-नीचे झटका. अब text बदला तो वह frame draw नहीं (Android अगला
         // layout खुद करता है) - सिर्फ़ सही नाप वाला frame दिखता है.
         val skip = DrawSkip()
-        root.viewTreeObserver.addOnGlobalLayoutListener { try { if (apply(root)) skip.changed() } catch (_: Exception) {} }
+        root.viewTreeObserver.addOnGlobalLayoutListener { try { if (apply(root)) skip.changed() } catch (e: Exception) { Quiet.note(e) } }
         root.viewTreeObserver.addOnPreDrawListener { skip.draw() }
     }
 

@@ -22,21 +22,21 @@ class DKApp : Application() {
         ModeTrack.sink = { DKLog.d(it) }   // नवंबर 2026: [LIVE] / [TEXT] / [PROBE] की कॉल और गलतियाँ अलग-अलग लॉग में
         NetFix.install(this)  // नवंबर 2026: एक नेटवर्क पर न चलना - IPv4 पहले + DoH, नेटवर्क बदले तो याद साफ़
         Prefs.loadLang(this)
-        try { Prefs.oneKeyOn(this) } catch (_: Exception) {}   // 15 नवंबर 2026: एक-key की मॉडल-लेन ([OneKeyLanes]) शुरू से
+        try { Prefs.oneKeyOn(this) } catch (e: Exception) { Quiet.note(e) }   // 15 नवंबर 2026: एक-key की मॉडल-लेन ([OneKeyLanes]) शुरू से
         UiLang.load(this)     // स्क्रीनों की भाषा (शुरुआती English)
         com.dk.assistant.ui.NeonTheme.load(this)          // v4: दिखावट (रंग/काँच/चमक/एनिमेशन) - सिर्फ़ UI
         registerActivityLifecycleCallbacks(com.dk.assistant.ui.NeonRefresh)
         registerActivityLifecycleCallbacks(ScreenAwake)   // v4.1: DK सामने = स्क्रीन जगी (wake lock नहीं)
         StatusNotify.install(this)
         // v3.88: लोकल याददाश्त - ऐप खुलते ही सार, और रोज़ एक बार (नवंबर 2026: कुछ भी अपने-आप नहीं मिटता)
-        try { LocalMemory.maintain(this, "ऐप खुला"); LocalMemory.scheduleDaily(this) } catch (_: Exception) {}
+        try { LocalMemory.maintain(this, "ऐप खुला"); LocalMemory.scheduleDaily(this) } catch (e: Exception) { Quiet.note(e) }
         // v5.1: DK Inspector - हर 20 मिनट जाँच (inexact, फ़ोन नहीं जगाता; Accessibility चालू हो तो पक्का timer भी)
         try { com.dk.assistant.inspector.Inspector.schedule(this) } catch (_: Throwable) {}
         // नवंबर 2026: Active apps से Stop के बाद रुका फ़ोन कंट्रोल - हर ~15 मिनट जाँच + ऐप शुरू होते ही (A11yWatch)
         A11yWatchJob.schedule(this)
         kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.Default).launch {
             kotlinx.coroutines.delay(6_000)
-            try { A11yWatch.check(this@DKApp, "ऐप शुरू") } catch (_: Exception) {}
+            try { A11yWatch.check(this@DKApp, "ऐप शुरू") } catch (e: Exception) { Quiet.note(e) }
             com.dk.assistant.voice.OwnerLevel.cleanupOldEngine(this@DKApp)   // 16 नवंबर 2026: पुराना CAM++ इंजन हटा - उसका ~28 MB मॉडल भी
         }
         // 15 नवंबर 2026: DK AI Plus - ऑटो इवेंट ट्रिगर (default बंद = कोई receiver नहीं)
@@ -76,7 +76,7 @@ class DKApp : Application() {
         }
 
         registerActivityLifecycleCallbacks(object : ActivityLifecycleCallbacks {
-            override fun onActivityResumed(a: Activity) { top = java.lang.ref.WeakReference(a); AppVisible.set(true); try { UiLang.onResumed(a) } catch (_: Exception) {} }
+            override fun onActivityResumed(a: Activity) { top = java.lang.ref.WeakReference(a); AppVisible.set(true); try { UiLang.onResumed(a) } catch (e: Exception) { Quiet.note(e) } }
             override fun onActivityPaused(a: Activity) { AppVisible.set(false) }
             override fun onActivityCreated(a: Activity, b: Bundle?) {}
             override fun onActivityStarted(a: Activity) {}
@@ -113,20 +113,20 @@ class DKApp : Application() {
                 getSystemService(android.app.NotificationManager::class.java)
                     ?.deleteNotificationChannel("anti_theft_guard_channel")
             }
-        } catch (_: Exception) {}
+        } catch (e: Exception) { Quiet.note(e) }
         try {
             val oldAdmin = android.content.ComponentName(
                 packageName, "$packageName.antitheft.GuardDeviceAdminReceiver"
             )
             val dpm = getSystemService(android.app.admin.DevicePolicyManager::class.java)
             if (dpm?.isAdminActive(oldAdmin) == true) dpm.removeActiveAdmin(oldAdmin)
-        } catch (_: Exception) {}
+        } catch (e: Exception) { Quiet.note(e) }
     }
 
     companion object {
         fun lastCrash(c: android.content.Context): String =
             try { File(c.filesDir, "last_crash.txt").takeIf { it.exists() }?.readText() ?: "" } catch (e: Exception) { "" }
-        fun clearCrash(c: android.content.Context) { try { File(c.filesDir, "last_crash.txt").delete(); File(c.filesDir, "crash_history.txt").delete() } catch (_: Exception) {} }
+        fun clearCrash(c: android.content.Context) { try { File(c.filesDir, "last_crash.txt").delete(); File(c.filesDir, "crash_history.txt").delete() } catch (e: Exception) { Quiet.note(e) } }
         /** पिछली कई गलतियाँ (नई सबसे ऊपर) */
         fun crashHistory(c: android.content.Context): String =
             try { File(c.filesDir, "crash_history.txt").takeIf { it.exists() }?.readText() ?: "" } catch (e: Exception) { "" }

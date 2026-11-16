@@ -251,7 +251,7 @@ object RepoDoctorRunner {
         return when (i.act) {
             RepoDoctor.Act.RESTART -> {
                 val run = i.run ?: return Triple(false, false, "run नहीं मिला")
-                withContext(Dispatchers.IO) { try { gh.cancelRun(repo, run.id) } catch (_: Exception) {}; kotlinx.coroutines.delay(8000); gh.rerunAll(repo, run.id) }
+                withContext(Dispatchers.IO) { try { gh.cancelRun(repo, run.id) } catch (e: Exception) { Quiet.note(e) }; kotlinx.coroutines.delay(8000); gh.rerunAll(repo, run.id) }
                 say("s", "🧊 अटका run रोककर दोबारा चलाया: ${run.url}")
                 when (watch(run.sha)) {
                     true -> if (pull != null) mergeIt() else Triple(true, false, "दोबारा चलाने पर पास ✓")

@@ -106,8 +106,8 @@ class LiveCaption(
     fun stop() {
         stopped = true
         ready = false
-        try { ws?.close(1000, "bye") } catch (_: Exception) {}
-        try { next?.close(1000, "bye") } catch (_: Exception) {}
+        try { ws?.close(1000, "bye") } catch (e: Exception) { Quiet.note(e) }
+        try { next?.close(1000, "bye") } catch (e: Exception) { Quiet.note(e) }
         ws = null; next = null
     }
 
@@ -143,7 +143,7 @@ class LiveCaption(
     fun endOfSpeech() {
         val w = ws ?: return
         if (!ready || dead || stopped) return
-        try { w.send("{\"realtimeInput\":{\"audioStreamEnd\":true}}") } catch (_: Exception) {}
+        try { w.send("{\"realtimeInput\":{\"audioStreamEnd\":true}}") } catch (e: Exception) { Quiet.note(e) }
     }
 
     private fun flushPending(w: WebSocket) {
@@ -175,7 +175,7 @@ class LiveCaption(
         override fun onMessage(webSocket: WebSocket, text: String) = route(webSocket, text, m)
         override fun onMessage(webSocket: WebSocket, bytes: ByteString) = route(webSocket, bytes.utf8(), m)
         override fun onClosing(webSocket: WebSocket, code: Int, reason: String) {
-            try { webSocket.close(1000, null) } catch (_: Exception) {}
+            try { webSocket.close(1000, null) } catch (e: Exception) { Quiet.note(e) }
             if (webSocket === ws) dropped(code, reason)
             else if (webSocket === next) { next = null; log("नया जुड़ाव नहीं बना (code=$code) - पुराना चलता रहेगा") }
         }
@@ -192,7 +192,7 @@ class LiveCaption(
             val old = ws
             ws = webSocket; next = null
             ready = true; upAt = System.currentTimeMillis(); fails = 0; rotations++
-            try { old?.close(1000, "rotate") } catch (_: Exception) {}
+            try { old?.close(1000, "rotate") } catch (e: Exception) { Quiet.note(e) }
             log("जुड़ाव चुपचाप बदला (#$rotations, ${CaptionRotate.AT_MS / 1000}s पर - सर्वर ~61s पर काटता है)")
             flushPending(webSocket)
             scheduleRotate(webSocket, m)
@@ -255,7 +255,7 @@ class LiveCaption(
             // server naya connection chahta hai. Khud band karne par onClosing nahi aata -> yahin dobara judo
             val old = ws
             ws = null; ready = false
-            try { old?.close(1000, "goAway") } catch (_: Exception) {}
+            try { old?.close(1000, "goAway") } catch (e: Exception) { Quiet.note(e) }
             log("goAway - नया connection")
             if (!stopped) connect()
             return

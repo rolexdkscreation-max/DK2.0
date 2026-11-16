@@ -91,8 +91,8 @@ class DKAccessibilityService : AccessibilityService() {
     override fun onServiceConnected() {
         super.onServiceConnected()
         instance = this
-        try { PayGuard.onServiceBack(this) } catch (_: Exception) {}
-        try { PhoneLockStore.reload(this) } catch (_: Exception) {}
+        try { PayGuard.onServiceBack(this) } catch (e: Exception) { Quiet.note(e) }
+        try { PhoneLockStore.reload(this) } catch (e: Exception) { Quiet.note(e) }
         try { Guard.resume(this) } catch (e: Exception) { DKLog.d("गार्ड: ${e.message}") }   // नवंबर 2026: गार्ड मोड चालू था तो फिर से पहरा
         // power बटन वाला "Yes Boss" पहले से बना लो (Live चालू हो तो नहीं - तब Live बंद होने पर)
         com.dk.assistant.voice.LiveAckMaker.ensureAsync(this, "DK शुरू", 15_000L)   // आवाज़ से फ़ोन लॉक / अनलॉक के नाम-वाक्य
@@ -108,7 +108,7 @@ class DKAccessibilityService : AccessibilityService() {
             if (::calls.isInitialized && calls.ringing) calls.quietRinger()
             // v4.6 मालिक: कॉल का एलान चल रहा हो और आप बोल पड़ें ("डीके फोन उठा लो") - DK तुरंत चुप, आपकी बात सुने
             callBargeAt = if (callBargeEar()) System.currentTimeMillis() else 0L
-            if (callBargeAt > 0) try { speaker.stop() } catch (_: Exception) {}
+            if (callBargeAt > 0) try { speaker.stop() } catch (e: Exception) { Quiet.note(e) }
         }
         ear.bargeWhen = { callBargeEar() }
         agent = AgentRunner(this, scope, speaker)
@@ -145,7 +145,7 @@ class DKAccessibilityService : AccessibilityService() {
         if (com.dk.assistant.wake.WakeWord.on(this) && !Prefs.micUserOff(this)) Setup.startKeepAlive(this)
         if (Prefs.liveMode(this)) startLive() else ensureLoop()
         // v4.6: नेट लौटते ही टूटा Live फिर जोड़ो (इंतज़ार नहीं)
-        try { (getSystemService(CONNECTIVITY_SERVICE) as android.net.ConnectivityManager).registerDefaultNetworkCallback(netBack) } catch (_: Exception) {}
+        try { (getSystemService(CONNECTIVITY_SERVICE) as android.net.ConnectivityManager).registerDefaultNetworkCallback(netBack) } catch (e: Exception) { Quiet.note(e) }
         // v5.1: स्क्रीन चालू होते ही Gemini Live के host का DNS+TLS पहले से (Live सत्र नहीं, माइक नहीं; हर स्क्रीन-चालू में एक बार)
         LiveNet.register(this)
         // नवंबर 2026: DK Inspector - service चालू रहे तब तक पक्का हर 20 मिनट पूरे ऐप की जाँच (alarm Android टाल सकता है)
@@ -167,14 +167,14 @@ class DKAccessibilityService : AccessibilityService() {
     override fun onInterrupt() { agent.stop() }
 
     override fun onDestroy() {
-        try { (getSystemService(CONNECTIVITY_SERVICE) as android.net.ConnectivityManager).unregisterNetworkCallback(netBack) } catch (_: Exception) {}
+        try { (getSystemService(CONNECTIVITY_SERVICE) as android.net.ConnectivityManager).unregisterNetworkCallback(netBack) } catch (e: Exception) { Quiet.note(e) }
         LiveNet.unregister(this)
         com.dk.assistant.inspector.Inspector.stopTimer()
         exitBackup("सेवा बंद")
         instance = null
         AppVisible.onChange = null
         floatOrb?.release(); floatOrb = null
-        try { DKIsland.stop(); PrivacyScreen.stop(); LiveNotify.release(this) } catch (_: Exception) {}
+        try { DKIsland.stop(); PrivacyScreen.stop(); LiveNotify.release(this) } catch (e: Exception) { Quiet.note(e) }
         workAwake?.release(); workAwake = null
         reelWatch?.release(); reelWatch = null
         removeEdgeGlow()
@@ -247,7 +247,7 @@ class DKAccessibilityService : AccessibilityService() {
         DKLog.d("DK बुलाया ($why) - Live तुरंत, पीछे से")
         // नवंबर 2026 (मालिक, Siri जैसा): नेट का रास्ता (DNS + TLS) अभी गरम करो, Live उसी पल जुड़ना शुरू,
         // और साथ-साथ फ़ोन में बना छोटा "Yes Boss" / टिंग तुरंत (InvokeAck) - जुड़ने का इंतज़ार कभी चुप्पी में नहीं
-        try { LiveNet.warm(this, "DK बुलाया") } catch (_: Exception) {}
+        try { LiveNet.warm(this, "DK बुलाया") } catch (e: Exception) { Quiet.note(e) }
         val wasConnected = DKState.live && gemLive.ready
         InvokeAck.expect()
         LiveChime.arm()
@@ -304,7 +304,7 @@ class DKAccessibilityService : AccessibilityService() {
         if (InvokeEntry.keepAsIs(DKState.live, gemLive.ready, gemLive.running)) {
             keepLiveOn(why); DKLog.d("$why - Live पहले से जुड़ा, कुछ नहीं दोहराया"); return
         }
-        try { LiveNet.warm(this, why) } catch (_: Exception) {}
+        try { LiveNet.warm(this, why) } catch (e: Exception) { Quiet.note(e) }
         if (InvokeEntry.chimeInApp(inAppChimed)) { inAppChimed = true; LiveChime.arm() }
         if (DKState.live) appOpened() else startLive()
     }
@@ -381,7 +381,7 @@ class DKAccessibilityService : AccessibilityService() {
     /** v4.6: नेट वापस आया - Live टूटा पड़ा हो तो इंतज़ार नहीं, अभी जोड़ो */
     private val netBack = object : android.net.ConnectivityManager.NetworkCallback() {
         override fun onAvailable(network: android.net.Network) {
-            try { gemLive.netBack() } catch (_: Exception) {}     // v5.1: नेट की वजह से रुकी जोड़ियाँ फिर आज़माओ
+            try { gemLive.netBack() } catch (e: Exception) { Quiet.note(e) }     // v5.1: नेट की वजह से रुकी जोड़ियाँ फिर आज़माओ
             if (DKState.live && !wakeLive && liveOffSoft && liveOffUntil > System.currentTimeMillis()) liveNow("नेट वापस आया")
         }
     }
@@ -685,7 +685,7 @@ class DKAccessibilityService : AccessibilityService() {
             if (NetProbe.online(this@DKAccessibilityService)) OfflineStt.prepare(this@DKAccessibilityService)
             // v3.81: "हाँ सर" वगैरह पहले से बना लो (एक बार) - जागते ही बिना इंटरनेट-इंतज़ार के बोले
             if (wakeWanted()) launch(Dispatchers.IO) {
-                try { com.dk.assistant.voice.HeyDk.prepareAcks(this@DKAccessibilityService) } catch (_: Exception) {}
+                try { com.dk.assistant.voice.HeyDk.prepareAcks(this@DKAccessibilityService) } catch (e: Exception) { Quiet.note(e) }
             }
             var misses = 0
             while (isActive && (DKState.live || (wakeWanted() && !Prefs.micUserOff(this@DKAccessibilityService)))) {
@@ -774,8 +774,8 @@ class DKAccessibilityService : AccessibilityService() {
                         else if (userLive) liveTroubleSay(LiveConnectNotice.TROUBLE)
                     }
                     // v3.45: बातचीत खत्म -> कब, कितनी देर, सारांश, अधूरी बातें (फ़ोन पर)
-                    try { FriendTalk.sessionEnd(this@DKAccessibilityService, liveStart, scope) } catch (_: Exception) {}
-                    try { LocalMemory.maintain(this@DKAccessibilityService, "बातचीत खत्म") } catch (_: Exception) {}   // v3.88: आज का सार
+                    try { FriendTalk.sessionEnd(this@DKAccessibilityService, liveStart, scope) } catch (e: Exception) { Quiet.note(e) }
+                    try { LocalMemory.maintain(this@DKAccessibilityService, "बातचीत खत्म") } catch (e: Exception) { Quiet.note(e) }   // v3.88: आज का सार
                     if (wakeLive) {
                         // wake word wala chhota Live khatam -> wapas wake word sunna
                         wakeLive = false; gemLive.idleExitMs = 0
@@ -977,7 +977,7 @@ class DKAccessibilityService : AccessibilityService() {
                         val played = try { withContext(Dispatchers.IO) { com.dk.assistant.voice.HeyDk.playAck(me, ack) } } catch (_: Exception) { false }
                         if (!played) {
                             speaker.speak(ack)
-                            scope.launch(Dispatchers.IO) { try { com.dk.assistant.voice.HeyDk.prepareAcks(me) } catch (_: Exception) {} }
+                            scope.launch(Dispatchers.IO) { try { com.dk.assistant.voice.HeyDk.prepareAcks(me) } catch (e: Exception) { Quiet.note(e) } }
                         }
                     }
                     if (liveReady() && !callBusy() && checkMic()) {
@@ -1048,7 +1048,7 @@ class DKAccessibilityService : AccessibilityService() {
             windows.filter {
                 it.type == AccessibilityWindowInfo.TYPE_APPLICATION || it.type == AccessibilityWindowInfo.TYPE_SYSTEM
             }.forEach { w -> w.root?.let { roots.add(it) } }
-        } catch (_: Exception) { }
+        } catch (e: Exception) { Quiet.note(e) }
         if (roots.isEmpty()) rootInActiveWindow?.let { roots.add(it) }
 
         val raw = mutableListOf<Element>()
@@ -1111,7 +1111,7 @@ class DKAccessibilityService : AccessibilityService() {
                         startActivity(android.content.Intent(this, VoiceActivity::class.java)
                             .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK or android.content.Intent.FLAG_ACTIVITY_SINGLE_TOP)
                             .putExtra("face", true))
-                    } catch (_: Exception) {}
+                    } catch (e: Exception) { Quiet.note(e) }
                     "ok"
                 }
                 DkPersona.TYPE -> {

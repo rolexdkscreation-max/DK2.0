@@ -321,7 +321,7 @@ class StoryWriterActivity : AppCompatActivity() {
     }
 
     private fun stopPlay() {
-        try { player?.release() } catch (_: Exception) {}
+        try { player?.release() } catch (e: Exception) { Quiet.note(e) }
         player = null; playingPart = -1; playBtnNow?.text = "▶ चलाएँ"; playBtnNow = null
     }
 

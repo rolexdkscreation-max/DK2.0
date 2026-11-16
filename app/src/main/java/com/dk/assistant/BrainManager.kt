@@ -659,12 +659,12 @@ class BrainManager(private val ctx: Context) {
     private fun remember(note: String, answer: String) {
         // File se taaza history lekar usme jodo - warna doosre BrainManager (chat/Live/deep_think) ki baatein mit jaati thi
         synchronized(Memory.historyLock) {
-            if (ver != Memory.historyVersion) try { val fresh = Memory.loadHistory(ctx); history.clear(); history.addAll(fresh) } catch (_: Exception) {}
+            if (ver != Memory.historyVersion) try { val fresh = Memory.loadHistory(ctx); history.clear(); history.addAll(fresh) } catch (e: Exception) { Quiet.note(e) }
             history.add(Turn("user", note.take(1500)))
             history.add(Turn("model", answer.take(1500)))
             while (history.size > 24) history.removeAt(0)
             if (history.firstOrNull()?.role == "model") history.removeAt(0)
-            try { Memory.saveHistory(ctx, history.toList()) } catch (_: Exception) {}
+            try { Memory.saveHistory(ctx, history.toList()) } catch (e: Exception) { Quiet.note(e) }
             ver = Memory.historyVersion
         }
     }

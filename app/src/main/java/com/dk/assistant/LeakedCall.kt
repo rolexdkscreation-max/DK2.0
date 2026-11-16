@@ -124,7 +124,7 @@ object LeakedCall {
                     buf.setLength(0); buf.append(rest)
                     return out.toString()
                 }
-                if (!opened) { opened = true; try { onOpen() } catch (_: Exception) {} }
+                if (!opened) { opened = true; try { onOpen() } catch (e: Exception) { Quiet.note(e) } }
                 out.append(buf, 0, m.range.first)
                 val name = m.groupValues[1].replace(Regex("""\s+"""), "").lowercase()
                 val close = closeOf(buf, m.range.last)
@@ -152,7 +152,7 @@ object LeakedCall {
         private fun emit(c: Call) {
             if (!runnable(c)) return
             found.add(c)
-            try { onCall(c) } catch (_: Exception) {}
+            try { onCall(c) } catch (e: Exception) { Quiet.note(e) }
         }
     }
 

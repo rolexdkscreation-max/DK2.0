@@ -118,7 +118,7 @@ object WakeModels {
         val old = assets(c)
         Prefs.edit(c) { putString(P_MANIFEST, toJson(m)) }
         WakeWord.closeEngine()
-        old.filter { o -> m.assets.none { it.fileName == o.fileName } }.forEach { try { ModelManager.file(c, it).delete() } catch (_: Exception) {} }
+        old.filter { o -> m.assets.none { it.fileName == o.fileName } }.forEach { try { ModelManager.file(c, it).delete() } catch (e: Exception) { com.dk.assistant.Quiet.note(e) } }
         DKLog.d("वेक वर्ड: मॉडल v${m.version} लगा")
         return null
     }

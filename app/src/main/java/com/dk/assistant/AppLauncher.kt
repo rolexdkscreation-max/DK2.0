@@ -102,7 +102,7 @@ object AppLauncher {
                         .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
                     return "opened $g app search for '$q' (screen dekh kar result check karo)"
                 } catch (_: ActivityNotFoundException) {
-                } catch (_: Exception) {}
+                } catch (e: Exception) { Quiet.note(e) }
             }
         }
         val r = open(ctx, app)

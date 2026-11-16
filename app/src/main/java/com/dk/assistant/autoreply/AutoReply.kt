@@ -193,7 +193,7 @@ object AutoReply {
                     }
                 }
             }
-        } catch (_: Exception) {}
+        } catch (e: Exception) { com.dk.assistant.Quiet.note(e) }
     }
 
 

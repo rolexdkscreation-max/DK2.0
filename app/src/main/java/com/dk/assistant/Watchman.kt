@@ -125,7 +125,7 @@ object Watchman {
                     o.optJSONArray("sessions")?.let { a -> for (i in 0 until a.length()) { val s = a.getJSONObject(i); b.sessions += Session(s.getLong("s"), s.getLong("e")) } }
                     o.optJSONObject("unknown")?.let { u -> u.keys().forEach { id -> val ps = u.getJSONArray(id)
                         b.unknown[id] = MutableList(ps.length()) { i -> val p = ps.getJSONArray(i); FloatArray(p.length()) { j -> p.getDouble(j).toFloat() } } } }
-                } catch (_: Exception) {}
+                } catch (e: Exception) { Quiet.note(e) }
                 return b
             }
         }

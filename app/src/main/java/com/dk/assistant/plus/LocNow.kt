@@ -51,7 +51,7 @@ object LocNow {
                 suspendCancellableCoroutine<Location?> { cont ->
                     val listeners = ArrayList<LocationListener>()
                     fun done(l: Location?) {
-                        listeners.forEach { try { lm.removeUpdates(it) } catch (_: Exception) {} }
+                        listeners.forEach { try { lm.removeUpdates(it) } catch (e: Exception) { com.dk.assistant.Quiet.note(e) } }
                         listeners.clear()
                         if (cont.isActive) cont.resume(l)
                     }
@@ -64,9 +64,9 @@ object LocNow {
                                 listeners.add(ls)
                                 @Suppress("DEPRECATION") lm.requestSingleUpdate(p, ls, Looper.getMainLooper())
                             }
-                        } catch (_: Exception) {}
+                        } catch (e: Exception) { com.dk.assistant.Quiet.note(e) }
                     }
-                    cont.invokeOnCancellation { listeners.forEach { try { lm.removeUpdates(it) } catch (_: Exception) {} } }
+                    cont.invokeOnCancellation { listeners.forEach { try { lm.removeUpdates(it) } catch (e: Exception) { com.dk.assistant.Quiet.note(e) } } }
                 }
             }
         }

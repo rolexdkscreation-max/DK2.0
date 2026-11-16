@@ -234,7 +234,7 @@ internal fun GeminiLive.confirmBarge(why: String) {
     synchronized(sendLock) {
         val buf = synchronized(bargeBuf) { bargeBuf.toList().also { bargeBuf.clear() } }
         bargeIn(why)
-        track?.let { try { it.setVolume(1f) } catch (_: Exception) {} }
+        track?.let { try { it.setVolume(1f) } catch (e: Exception) { Quiet.note(e) } }
         turnDet.forceSpeech(System.currentTimeMillis())     // gate khula: user ki baaki baat bhi jaye
         replyWatch.onSpeechStart()                         // nayi baat: iska apna "suna / jawab" hisaab
         buf.forEach { sendAudio(it) }
@@ -254,7 +254,7 @@ internal fun GeminiLive.finishHold(now: Long) {
     synchronized(bargeBuf) { bargeBuf.clear() }
     synchronized(sendLock) { bargeGate.reset() }
     barging = false; bargeDet.reset(); holdCap = ""; holdCapAt = 0L; holdLoudAt = 0L; holdFinal = false
-    track?.let { try { it.setVolume(1f) } catch (_: Exception) {} }
+    track?.let { try { it.setVolume(1f) } catch (e: Exception) { Quiet.note(e) } }
     when {
         !BargeGate.realWords(t) || BargeGate.isEcho(t, dkHeardNow()) || BargeGate.isRepeat(t, turnUser) -> {
             log("बीच की आवाज़ (\"${t.take(30)}\") DK की गूँज / पुरानी बात थी - छोड़ी"); DKState.hint("")
@@ -286,7 +286,7 @@ internal fun GeminiLive.flushAsks(now: Long) {
         ws?.tx(JSONObject().put("realtimeInput", JSONObject().put("text", t)).toString())
         lastAct = now
         log("बीच में पूछा सवाल अब भेजा: ${t.take(60)}")
-    } catch (_: Exception) {}
+    } catch (e: Exception) { Quiet.note(e) }
 }
 
 /**

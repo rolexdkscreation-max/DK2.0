@@ -63,7 +63,7 @@ object DkaiChatFiles {
             if (end > 0) try {
                 val s = org.json.JSONObject(t.substring(0, end + 1)).optString("say")
                 if (s.isNotBlank()) return s.trim()
-            } catch (_: Exception) {}
+            } catch (e: Exception) { com.dk.assistant.Quiet.note(e) }
             Regex("\"say\"\\s*:\\s*\"((?:[^\"\\\\]|\\\\.)*)\"").find(t)?.let { return it.groupValues[1].replace("\\n", "\n").replace("\\\"", "\"").trim() }
         }
         return t
@@ -93,7 +93,7 @@ object DkaiChatFiles {
         }
         val pics = bmps.take(DkaiHomeCore.MAX_ATTACH)
         val b64 = if (pics.isEmpty()) null else try { collage(pics) } catch (_: Throwable) { null }
-        bmps.forEach { try { it.recycle() } catch (_: Exception) {} }
+        bmps.forEach { try { it.recycle() } catch (e: Exception) { com.dk.assistant.Quiet.note(e) } }
         return Ready(b64, names, texts, pics.size)
     }
 
@@ -131,7 +131,7 @@ object DkaiChatFiles {
                 }
             }
         }
-        try { f.delete() } catch (_: Exception) {}
+        try { f.delete() } catch (e: Exception) { com.dk.assistant.Quiet.note(e) }
         return out
     }
 

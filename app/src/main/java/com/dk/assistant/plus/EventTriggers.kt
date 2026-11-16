@@ -79,9 +79,9 @@ object EventTriggers {
     }
 
     fun stop(c: Context) {
-        receiver?.let { try { c.applicationContext.unregisterReceiver(it) } catch (_: Exception) {} }
+        receiver?.let { try { c.applicationContext.unregisterReceiver(it) } catch (e: Exception) { com.dk.assistant.Quiet.note(e) } }
         receiver = null
-        netCb?.let { try { c.applicationContext.getSystemService(ConnectivityManager::class.java).unregisterNetworkCallback(it) } catch (_: Exception) {} }
+        netCb?.let { try { c.applicationContext.getSystemService(ConnectivityManager::class.java).unregisterNetworkCallback(it) } catch (e: Exception) { com.dk.assistant.Quiet.note(e) } }
         netCb = null
     }
 

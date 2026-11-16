@@ -1,0 +1,56 @@
+# 16 नवंबर 2026 (मालिक: "कोड जाँच टूल लगाओ"): detekt - सिर्फ़ असली गड़बड़ी वाले नियम (स्टाइल नहीं).
+# पुरानी गलतियाँ baseline.xml में; नई = CI लाल. चलाना: .github/workflows/code-check.yml
+build:
+  maxIssues: 0
+
+config:
+  validation: true
+  warningsAsErrors: false
+
+comments:
+  active: false
+complexity:
+  active: false
+naming:
+  active: false
+performance:
+  active: false
+style:
+  active: false
+
+empty-blocks:
+  active: true
+  EmptyCatchBlock:
+    active: true
+    allowedExceptionNameRegex: '(ignore|expected).*'
+
+exceptions:
+  active: true
+  TooGenericExceptionCaught:
+    active: false
+  TooGenericExceptionThrown:
+    active: false
+  SwallowedException:
+    active: false
+  PrintStackTrace:
+    active: true
+  ThrowingExceptionsWithoutMessageOrCause:
+    active: true
+  RethrowCaughtException:
+    active: true
+
+coroutines:
+  active: true
+  InjectDispatcher:
+    active: false
+  GlobalCoroutineUsage:
+    active: true
+  RedundantSuspendModifier:
+    active: true
+  SleepInsteadOfDelay:
+    active: true
+  SuspendFunWithCoroutineScopeReceiver:
+    active: true
+
+potential-bugs:
+  active: true

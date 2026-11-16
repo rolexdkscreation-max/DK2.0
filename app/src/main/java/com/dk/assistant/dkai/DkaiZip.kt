@@ -51,7 +51,7 @@ object DkaiZip {
                 File(dest, DkaiKit.CONFIG_DIR).mkdirs()
                 File(dest, DkaiKit.CONFIG_DIR + "/config.json").writeText(org.json.JSONObject().put("name", folder).put("repo", "$owner/$repo")
                     .put("brand", DkaiKit.BRAND).put("port", DkaiKit.PORT).put("cloned", System.currentTimeMillis()).toString(2))
-            } catch (_: Exception) {}
+            } catch (e: Exception) { com.dk.assistant.Quiet.note(e) }
             DkaiWorkspace.setProject(c, dest)
             return dest to n
         } finally { tmp.delete() }

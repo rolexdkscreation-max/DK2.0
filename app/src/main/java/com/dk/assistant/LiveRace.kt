@@ -213,7 +213,7 @@ object LiveRace {
                             "o" -> h.lastOk[p[1]] = p[2].toLong()
                             "t" -> h.time(p[1].toLong())
                         }
-                    } catch (_: Exception) {}
+                    } catch (e: Exception) { Quiet.note(e) }
                 }
                 return h
             }

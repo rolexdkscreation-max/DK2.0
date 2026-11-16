@@ -125,7 +125,7 @@ class SevenTeam(
     private fun save(f: (TeamProgress) -> TeamProgress) {
         prog = f(prog).copy(changes = LinkedHashMap(changes), backup = backup, qaOk = qaOk,
             commit = commitMsg?.first.orEmpty(), title = commitMsg?.second.orEmpty())
-        try { onProgress?.invoke(prog) } catch (_: Exception) {}
+        try { onProgress?.invoke(prog) } catch (e: Exception) { Quiet.note(e) }
     }
 
     val mode get() = if (git != null) Seven.Mode.GITHUB else Seven.Mode.NORMAL
@@ -166,7 +166,7 @@ class SevenTeam(
         val g = git ?: return
         val md = note.markdown()
         if (md == noteSaved) return
-        try { g.saveNote(md); noteSaved = md } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (_: Exception) {}
+        try { g.saveNote(md); noteSaved = md } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (e: Exception) { Quiet.note(e) }
     }
 
     /** प्लानर/डिबगर के लिए काम-कॉपी (नोट वाली फ़ाइलें बदली हैं या नहीं - अभी की content से) */
@@ -1583,7 +1583,7 @@ class SevenTeam(
                 if (p.types.isNotEmpty()) " (on ${p.types.joinToString()})" else "")
             ev(Agent.REVIEWER, "CI ने ये नाम गढ़े हुए पकड़े: ${p.names.take(8).joinToString()}" +
                 (if (p.types.isNotEmpty()) " — अब ${p.types.joinToString()} पर कोई भी अनजाना नाम push से पहले ही रुकेगा" else ""))
-        } catch (_: Exception) {}
+        } catch (e: Exception) { Quiet.note(e) }
     }
 
     private suspend fun readMap(paths: Collection<String>): Map<String, String?> {

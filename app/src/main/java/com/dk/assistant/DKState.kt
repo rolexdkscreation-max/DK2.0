@@ -144,7 +144,7 @@ object DKState {
     fun init(c: android.content.Context) {
         if (appCtx != null) return
         appCtx = c.applicationContext
-        if (messages.isEmpty()) try { messages.addAll(Memory.loadChat(c)) } catch (_: Exception) {}
+        if (messages.isEmpty()) try { messages.addAll(Memory.loadChat(c)) } catch (e: Exception) { Quiet.note(e) }
     }
     private fun persist() { main.removeCallbacks(saver); main.postDelayed(saver, 1500) }
     fun clearChat() { messages.clear(); persist(); emit() }
@@ -176,7 +176,7 @@ object DKState {
             Thread {
                 try {
                     Memory.saveChat(c, emptyList())
-                } catch (_: Exception) {}
+                } catch (e: Exception) { Quiet.note(e) }
             }.start()
         }
         emit()
@@ -195,7 +195,7 @@ object DKState {
         emitPending.set(false)
         lastEmit = android.os.SystemClock.uptimeMillis()
         val copy = synchronized(listeners) { listeners.toList() }
-        copy.forEach { try { it() } catch (_: Exception) {} }
+        copy.forEach { try { it() } catch (e: Exception) { Quiet.note(e) } }
     }
     private fun emit() {
         if (!emitPending.compareAndSet(false, true)) return

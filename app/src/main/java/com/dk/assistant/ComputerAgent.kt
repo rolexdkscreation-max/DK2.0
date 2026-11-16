@@ -239,7 +239,7 @@ object ComputerSession {
     private fun speak(t: String) {
         val svc = DKAccessibilityService.instance ?: return
         if (DKState.live || t.isBlank()) return
-        svc.scope.launch { try { svc.speaker.speak(t) } catch (_: Exception) {} }
+        svc.scope.launch { try { svc.speaker.speak(t) } catch (e: Exception) { Quiet.note(e) } }
     }
 
     fun notifyUser(c: Context, title: String, text: String) = try {
@@ -252,7 +252,7 @@ object ComputerSession {
             .setSmallIcon(android.R.drawable.stat_notify_sync_noanim).setContentTitle(title).setContentText(text)
             .setStyle(android.app.Notification.BigTextStyle().bigText(text)).setContentIntent(pi).setAutoCancel(true)
         nm.notify(7401, b.build())
-    } catch (_: Exception) {}
+    } catch (e: Exception) { Quiet.note(e) }
 }
 
 /**

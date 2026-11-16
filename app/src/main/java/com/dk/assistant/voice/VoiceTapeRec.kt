@@ -73,7 +73,7 @@ object VoiceTapeRec {
             }
             if (takes.size < want) cut.flush()?.let { if (ok(it)) takes += it }
         } finally {
-            try { r.stop() } catch (_: Exception) {}
+            try { r.stop() } catch (e: Exception) { com.dk.assistant.Quiet.note(e) }
             r.release()
         }
         DKLog.d("आवाज़-कमांड 30s: ${takes.size}/$want बार, छोटे ${cut.tooShort}, लंबे ${cut.tooLong}, साफ़ नहीं $skipped, ${ms / 1000}s")

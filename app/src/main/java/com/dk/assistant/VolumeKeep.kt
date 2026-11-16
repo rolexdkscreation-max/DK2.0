@@ -50,7 +50,7 @@ object VolumeKeep {
             val t = upTarget(cur, max, allowed)
             if (t > cur) { am.setStreamVolume(stream, t, 0); DKLog.d("$name कम थी ($cur/$max) - फुल की") }
         } catch (e: SecurityException) { DKLog.d("$name फुल नहीं हुई (DND इजाज़त): ${e.message}") }
-        catch (_: Exception) {}
+        catch (e: Exception) { Quiet.note(e) }
     }
 
     /** [block] DK का कोई आवाज़-काम; उससे मीडिया वॉल्यूम बदला = वापस वहीं */
@@ -67,6 +67,6 @@ object VolumeKeep {
             val back = mediaRestore(before, now, userAsked()) ?: return
             am.setStreamVolume(AudioManager.STREAM_MUSIC, back, 0)
             DKLog.d("मीडिया वॉल्यूम DK के काम से बदला था ($before -> $now) - वापस $back")
-        } catch (_: Exception) {}
+        } catch (e: Exception) { Quiet.note(e) }
     }
 }

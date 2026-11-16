@@ -197,7 +197,7 @@ class OnboardingActivity : AppCompatActivity() {
                 val hasName = Prefs.userName(a).isNotBlank()
                 if (OnboardingRules.shouldShow(onboarded, fresh, hasName)) a.startActivity(Intent(a, OnboardingActivity::class.java))
                 else markDone(a)
-            } catch (_: Exception) { }
+            } catch (e: Exception) { com.dk.assistant.Quiet.note(e) }
         }
     }
 }

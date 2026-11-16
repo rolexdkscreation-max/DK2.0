@@ -157,7 +157,7 @@ class ForgeActivity : AppCompatActivity() {
 
     override fun onDestroy() {
         ui.removeCallbacksAndMessages(null)
-        scene?.let { w -> try { w.evaluateJavascript("window.Forge&&Forge.dispose()", null) } catch (_: Exception) {}; w.destroy() }
+        scene?.let { w -> try { w.evaluateJavascript("window.Forge&&Forge.dispose()", null) } catch (e: Exception) { com.dk.assistant.Quiet.note(e) }; w.destroy() }
         scene = null
         site.destroy()
         super.onDestroy()

@@ -88,8 +88,8 @@ object DkSettingsApply {
     private fun apply(c: Context, it: DkSettings.Item, on: Boolean) {
         write(c, it, on)
         DKLog.d("DK ने सेटिंग बदली (यूज़र ने दो बार पक्का किया): ${it.name} -> ${DkSettings.onOff(on)}")
-        try { if (it.pref == "duck_media" && !on) Ducker.releaseNow() } catch (_: Exception) {}
-        try { DKAccessibilityService.instance?.startWakeLoopIfEnabled() } catch (_: Exception) {}
+        try { if (it.pref == "duck_media" && !on) Ducker.releaseNow() } catch (e: Exception) { Quiet.note(e) }
+        try { DKAccessibilityService.instance?.startWakeLoopIfEnabled() } catch (e: Exception) { Quiet.note(e) }
     }
 
     /**
@@ -100,7 +100,7 @@ object DkSettingsApply {
         val it = DkSettings.ITEMS.firstOrNull { x -> x.id == id } ?: return false
         write(c, it, on)
         DKLog.d("Settings मेनू से बदली: ${it.name} -> ${DkSettings.onOff(on)}")
-        try { DKAccessibilityService.instance?.startWakeLoopIfEnabled() } catch (_: Exception) {}
+        try { DKAccessibilityService.instance?.startWakeLoopIfEnabled() } catch (e: Exception) { Quiet.note(e) }
         return true
     }
 

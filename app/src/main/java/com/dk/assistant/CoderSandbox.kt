@@ -83,7 +83,7 @@ class CoderSandbox(
     /** काम ख़त्म: codespace बंद (फ़्री घंटे बचें). disk/SDK बचा रहता है */
     fun stop() {
         val n = name.ifEmpty { return }
-        try { api.call("POST", "/user/codespaces/$n/stop", null) } catch (_: Exception) {}
+        try { api.call("POST", "/user/codespaces/$n/stop", null) } catch (e: Exception) { Quiet.note(e) }
         meter?.down()
     }
 
@@ -103,7 +103,7 @@ class CoderSandbox(
 
     private fun request(sha: String, key: String) {
         // पिछली बार का बचा नतीजा (उसी commit का) = पहले हटाओ, ताकि पुराना न पढ़ें
-        try { api.call("DELETE", "/repos/$repo/git/refs/heads/${Sandbox.RESULT}$key", null) } catch (_: Exception) {}
+        try { api.call("DELETE", "/repos/$repo/git/refs/heads/${Sandbox.RESULT}$key", null) } catch (e: Exception) { Quiet.note(e) }
         try { api.call("POST", "/repos/$repo/git/refs", JSONObject().put("ref", "refs/heads/${Sandbox.RUN}$key").put("sha", sha)) }
         catch (e: GitHub.Err) { if (e.code != 422) throw e }   // पहले से माँगा हुआ = ठीक
     }
@@ -113,7 +113,7 @@ class CoderSandbox(
     } catch (e: GitHub.Err) { if (e.code == 404) null else throw e }
 
     private fun cleanup(key: String) {
-        for (r in listOf(Sandbox.RUN, Sandbox.RESULT)) try { api.call("DELETE", "/repos/$repo/git/refs/heads/$r$key", null) } catch (_: Exception) {}
+        for (r in listOf(Sandbox.RUN, Sandbox.RESULT)) try { api.call("DELETE", "/repos/$repo/git/refs/heads/$r$key", null) } catch (e: Exception) { Quiet.note(e) }
     }
 
     private fun disable(e: Exception) {

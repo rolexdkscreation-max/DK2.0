@@ -59,11 +59,11 @@ object OfflineStt {
                             try { rec.triggerModelDownload(i); DKLog.d("ऑफलाइन पहचान: $lang मॉडल डाउनलोड शुरू") } catch (e: Exception) { DKLog.d("ऑफलाइन पहचान: $lang डाउनलोड नहीं - ${e.message}") }
                         } else DKLog.d("ऑफलाइन पहचान: $lang मॉडल " + if (has) "फ़ोन में है" else "डाउनलोड हो रहा है")
                         if (base == "hi") lastProblem = if (has) "" else "हिंदी का बिना-नेट मॉडल अभी फ़ोन में नहीं (डाउनलोड हो रहा है)"
-                        android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({ try { rec.destroy() } catch (_: Exception) {} }, 5000)
+                        android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({ try { rec.destroy() } catch (e: Exception) { Quiet.note(e) } }, 5000)
                     }
                     override fun onError(error: Int) {
                         DKLog.d("ऑफलाइन पहचान: $lang जाँच गलती $error")
-                        try { rec.destroy() } catch (_: Exception) {}
+                        try { rec.destroy() } catch (e: Exception) { Quiet.note(e) }
                     }
                 })
             } catch (e: Exception) { DKLog.d("ऑफलाइन पहचान: जाँच ${e.message}") }
@@ -130,13 +130,13 @@ object OfflineStt {
                         }
                     } catch (e: Exception) { DKLog.d("ऑफलाइन पहचान: पाइप ${e.message}") }
                 }.start()
-                cont.invokeOnCancellation { try { rec.cancel() } catch (_: Exception) {} }
+                cont.invokeOnCancellation { try { rec.cancel() } catch (e: Exception) { Quiet.note(e) } }
             }
         } catch (e: Exception) {
             DKLog.d("ऑफलाइन पहचान: ${e.message}"); Res(null, -1)
         } finally {
-            try { rec.destroy() } catch (_: Exception) {}
-            try { pipe[0].close() } catch (_: Exception) {}
+            try { rec.destroy() } catch (e: Exception) { Quiet.note(e) }
+            try { pipe[0].close() } catch (e: Exception) { Quiet.note(e) }
         }
     }
 }

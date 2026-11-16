@@ -225,7 +225,7 @@ class GeminiLive(internal val svc: DKAccessibilityService, internal val agent: A
             val note = (if (job.key == com.dk.assistant.insights.InsightsAgent.KEY) com.dk.assistant.insights.InsightsAgent.liveNote(job) else null)
                 ?: com.dk.assistant.agent.android.AiTalkAgent.liveNote(job)   // नवंबर 2026: AI ऐप से बातचीत का पूरा सार
                 ?: com.dk.assistant.studio.StudioLink.liveNote(job) ?: TaskStatus.endNote(job)
-            try { ws?.tx(JSONObject().put("realtimeInput", JSONObject().put("text", note)).toString()) } catch (_: Exception) {}
+            try { ws?.tx(JSONObject().put("realtimeInput", JSONObject().put("text", note)).toString()) } catch (e: Exception) { Quiet.note(e) }
             log("${job.whoEn} का काम खत्म (${job.state.en}) - Gemini को असली नतीजा बताया")
         }
     }
@@ -327,7 +327,7 @@ class GeminiLive(internal val svc: DKAccessibilityService, internal val agent: A
         longSpeechMs = TurnEnd.LONG_SPEECH_MS, longEndSilenceMs = TurnEnd.LONG_END_SILENCE_MS, steadyResetMs = 6_000,
         keepFactor = LiveHear.KEEP_FACTOR, keepMin = LiveHear.KEEP_MIN, tailFactor = LiveHear.TAIL_FACTOR)
     /** v4.7: आपकी पास वाली आवाज़ (अपने आप सीखी) - दूर की आवाज़ अनसुनी */
-    internal val near = NearVoice().also { try { it.load(Prefs.nearLevels(svc)) } catch (_: Exception) {} }
+    internal val near = NearVoice().also { try { it.load(Prefs.nearLevels(svc)) } catch (e: Exception) { Quiet.note(e) } }
     internal val nearRms = ArrayList<Double>()
     /** वही पहचानी बात router में बार-बार न जाए (हर छोटी चुप्पी पर पूरा caption दोबारा जाँचा जाता था) */
     internal val routeDedupe = RouteDedupe()
@@ -607,7 +607,7 @@ class GeminiLive(internal val svc: DKAccessibilityService, internal val agent: A
         override fun onSpoken(soFar: String) { if (connSplit && soFar.isNotBlank()) { shownReply = soFar; DKState.replyLive(soFar) } }
         /** v3.74: फ़ोन की अपनी आवाज़ बंद - Live में सिर्फ़ Gemini की आवाज़; न बने तो चुप (text दिखता रहता है) */
         override suspend fun phoneSay(text: String) { DKLog.d("Live: आवाज़ नहीं बनी - फ़ोन TTS नहीं चलाया, सिर्फ़ लिखा") }
-        override fun phoneStop() { try { svc.speaker.stop() } catch (_: Exception) {} }
+        override fun phoneStop() { try { svc.speaker.stop() } catch (e: Exception) { Quiet.note(e) } }
         // v3.7: "बोला तो दिखा, जवाब भी दिखा, पर आवाज़ नहीं" - बँटवारे वाला इंजन (Gemini TTS) चुप रहा. अब: Gemini Live की अपनी आवाज़ पर
         override fun onEngineError(title: String, why: String) {
             val now = System.currentTimeMillis()
@@ -881,7 +881,7 @@ class GeminiLive(internal val svc: DKAccessibilityService, internal val agent: A
             if (!waitQuiet(20_000)) { log("Gemini चुप नहीं हुआ (20s) - SYSTEM NOTE नहीं भेजा: ${t.take(50)}"); return@launch }
             if (!canTalk()) return@launch
             if (evidence) lastEvidenceAt = System.currentTimeMillis()
-            try { ws?.tx(JSONObject().put("realtimeInput", JSONObject().put("text", t)).toString()) } catch (_: Exception) {}
+            try { ws?.tx(JSONObject().put("realtimeInput", JSONObject().put("text", t)).toString()) } catch (e: Exception) { Quiet.note(e) }
             log("Gemini को बताया: ${t.take(70)}")
         }
     }
@@ -897,7 +897,7 @@ class GeminiLive(internal val svc: DKAccessibilityService, internal val agent: A
     internal fun closeWs(w: WebSocket?, why: String) {
         if (w == null) return
         ourClose[w] = why
-        try { w.close(1000, "bye") } catch (_: Exception) {}      // reason ASCII hi (123 byte se zyada = close hi nahi hota)
+        try { w.close(1000, "bye") } catch (e: Exception) { Quiet.note(e) }      // reason ASCII hi (123 byte se zyada = close hi nahi hota)
     }
 
     /** Quota khatam wala model: aaj dobara mat maango (pehli baar 30 min, dobara = Pacific aadhi raat tak) */
@@ -918,7 +918,7 @@ class GeminiLive(internal val svc: DKAccessibilityService, internal val agent: A
     internal val broken1011: LiveStay.Broken1011 by lazy { LiveStay.Broken1011.decode(try { raceSp.getString("b1011", "") } catch (_: Exception) { "" }) }
     internal fun markBroken1011(m: String) {
         broken1011.mark(m)
-        try { raceSp.edit().putString("b1011", broken1011.encode()).apply() } catch (_: Exception) {}
+        try { raceSp.edit().putString("b1011", broken1011.encode()).apply() } catch (e: Exception) { Quiet.note(e) }
     }
     private fun dropModel1011(keys: List<String>, models: List<String>, where: String): String? {
         val m = model
@@ -1500,7 +1500,7 @@ class GeminiLive(internal val svc: DKAccessibilityService, internal val agent: A
 
     /** Wake word wala Live chup hone par: connection band nahi, 5 min standby (agli baar judne ki deri = 0) */
     private fun park(w: WebSocket, c: CompletableDeferred<Pair<Int, String>>) {
-        try { w.tx("{\"realtimeInput\":{\"audioStreamEnd\":true}}") } catch (_: Exception) {}     // atki awaaz flush
+        try { w.tx("{\"realtimeInput\":{\"audioStreamEnd\":true}}") } catch (e: Exception) { Quiet.note(e) }     // atki awaaz flush
         val p = Parked(w, c, model, System.currentTimeMillis(), connSplit, connText, connLiveVer, keyIdx)
         parked = p
         log("connection बंद नहीं किया - ${PARK_MS / 60_000} मिनट standby (अगली बार तुरंत जुड़ेगा)")
@@ -1540,7 +1540,7 @@ class GeminiLive(internal val svc: DKAccessibilityService, internal val agent: A
     // मालिक: "DK लाइव 1-2 सेकंड में जुड़े; धीमे नेट / गलत key / मॉडल बंद पर भी". नियम LiveRace में (JVM test).
     private val raceSp by lazy { svc.getSharedPreferences("dk_live_race", android.content.Context.MODE_PRIVATE) }
     internal val health: LiveRace.Health by lazy { LiveRace.Health.decode(try { raceSp.getString("h", "") } catch (_: Exception) { "" }) }
-    internal fun saveHealth() { try { raceSp.edit().putString("h", health.encode()).apply() } catch (_: Exception) {} }
+    internal fun saveHealth() { try { raceSp.edit().putString("h", health.encode()).apply() } catch (e: Exception) { Quiet.note(e) } }
     internal val raceLock = Any()
 
     /** दौड़ की एक जोड़ी (अपना WebSocket, अपना closed/setup) - key सिर्फ़ URL में, log में कभी नहीं */

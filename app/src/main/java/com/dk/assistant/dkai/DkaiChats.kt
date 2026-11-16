@@ -57,7 +57,7 @@ object DkaiChats {
             val f = file(dir, no); val tmp = File(dir, "chat_$no.json.tmp")
             tmp.writeText(toJson(no, msgs).toString())
             if (!tmp.renameTo(f)) { f.writeText(tmp.readText()); tmp.delete() }
-        } catch (_: Exception) {}
+        } catch (e: Exception) { com.dk.assistant.Quiet.note(e) }
     }
 
     fun load(dir: File, no: Int): List<DKState.Msg> = try {
@@ -93,7 +93,7 @@ object DkaiChats {
         if (moves.isNotEmpty()) try {
             for (o in moves.keys) file(dir, o).renameTo(File(dir, "chat_$o.json.mv"))
             for ((o, n) in moves) File(dir, "chat_$o.json.mv").renameTo(file(dir, n))
-        } catch (_: Exception) {}
+        } catch (e: Exception) { com.dk.assistant.Quiet.note(e) }
         return plan[cur] ?: (plan.size + 1)
     }
 

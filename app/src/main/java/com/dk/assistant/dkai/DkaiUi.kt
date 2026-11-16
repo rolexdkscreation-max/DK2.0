@@ -257,11 +257,11 @@ object DkaiUi {
             val cm = c.getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
             cm.setPrimaryClip(android.content.ClipData.newPlainText(label, s))
             UiLang.toast(c, "कॉपी हो गया", Toast.LENGTH_SHORT).show()
-        } catch (_: Exception) {}
+        } catch (e: Exception) { com.dk.assistant.Quiet.note(e) }
     }
 
     fun shareText(c: Context, s: String, title: String = "शेयर करें") {
-        try { c.startActivity(android.content.Intent.createChooser(android.content.Intent(android.content.Intent.ACTION_SEND).setType("text/plain").putExtra(android.content.Intent.EXTRA_TEXT, s), title)) } catch (_: Exception) {}
+        try { c.startActivity(android.content.Intent.createChooser(android.content.Intent(android.content.Intent.ACTION_SEND).setType("text/plain").putExtra(android.content.Intent.EXTRA_TEXT, s), title)) } catch (e: Exception) { com.dk.assistant.Quiet.note(e) }
     }
 }
 

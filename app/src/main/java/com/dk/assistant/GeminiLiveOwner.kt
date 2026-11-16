@@ -87,7 +87,7 @@ internal fun GeminiLive.learnNear() {
     if (btOn || lv <= 0 || turnDet.lastSpeechMs < 500 || !BargeGate.realWords(caption?.text().orEmpty())) return
     val before = near.floor()
     near.learn(lv)
-    if (++nearLearned % 5 == 1) try { Prefs.edit(svc) { putString("near_levels", near.save()) } } catch (_: Exception) {}
+    if (++nearLearned % 5 == 1) try { Prefs.edit(svc) { putString("near_levels", near.save()) } } catch (e: Exception) { Quiet.note(e) }
     if (before <= 0 && near.floor() > 0) log("आपकी पास वाली आवाज़ सीख ली (स्तर ${near.level.toInt()}) - इससे बहुत धीमी (दूर की) आवाज़ अब अनसुनी")
 }
 
@@ -163,7 +163,7 @@ internal fun GeminiLive.ownerEnd(now: Long) {
     val isOwner = owner.verdict == com.dk.assistant.voice.OwnerGate.Verdict.OWNER
     if (isOwner) {
         val lv = com.dk.assistant.voice.VoicePrint.speechLevel(owner.rms(), turnDet.noise)
-        if (lv > 0) try { com.dk.assistant.voice.OwnerLevel.learnLevel(svc, lv) } catch (_: Exception) {}
+        if (lv > 0) try { com.dk.assistant.voice.OwnerLevel.learnLevel(svc, lv) } catch (e: Exception) { Quiet.note(e) }
     }
     owner.finish()
     if (isOwner) onLocalEndOfSpeech(now)

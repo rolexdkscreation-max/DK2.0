@@ -76,7 +76,7 @@ object VoiceEnroll {
                 if (ev == TurnDetector.Event.SPEECH_END || ms > 14_000 || out.size() >= rate * 2 * 8) break
             }
         } finally {
-            try { r.stop() } catch (_: Exception) {}
+            try { r.stop() } catch (e: Exception) { com.dk.assistant.Quiet.note(e) }
             r.release()
         }
         if (!started) return@withContext null

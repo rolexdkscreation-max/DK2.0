@@ -204,7 +204,7 @@ object SocialAgent {
             TaskStatus.SUBMITTED_UNVERIFIED -> " Tell the user honestly it was submitted but not confirmed."
             else -> ""
         }
-        try { svc.gemLive.visionNote("SYSTEM NOTE: social task update " + rep.toJson().toString() + extra) } catch (_: Exception) {}
+        try { svc.gemLive.visionNote("SYSTEM NOTE: social task update " + rep.toJson().toString() + extra) } catch (e: Exception) { com.dk.assistant.Quiet.note(e) }
         if (rep.status.finished) DKLog.d("Social ${rep.taskId}: खत्म")
     }
 

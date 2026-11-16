@@ -43,7 +43,7 @@ object TaskStatus {
     fun listen(l: Listener) { listeners.addIfAbsent(l) }
     fun unlisten(l: Listener) { listeners.remove(l) }
 
-    private fun emit(j: Job, ended: Boolean) = listeners.forEach { try { it.changed(j, ended) } catch (_: Exception) {} }
+    private fun emit(j: Job, ended: Boolean) = listeners.forEach { try { it.changed(j, ended) } catch (e: Exception) { Quiet.note(e) } }
 
     private fun clean(t: String, max: Int = 200) = t.replace(Regex("\\s+"), " ").trim().take(max)
 

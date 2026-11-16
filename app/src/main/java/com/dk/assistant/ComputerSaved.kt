@@ -77,6 +77,6 @@ object ComputerSaved {
     fun clear() {
         val c = app
         running = false; netPaused = false
-        if (c != null) io.execute { try { file(c).delete() } catch (_: Exception) {} }
+        if (c != null) io.execute { try { file(c).delete() } catch (e: Exception) { Quiet.note(e) } }
     }
 }

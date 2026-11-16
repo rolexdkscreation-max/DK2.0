@@ -79,7 +79,7 @@ class MicOffReceiver : android.content.BroadcastReceiver() {
     override fun onReceive(c: android.content.Context, i: Intent?) {
         DKLog.d("सूचना से: माइक बंद (ऐप और फ़ोन कंट्रोल चालू)")
         Prefs.edit(c) { putBoolean("live_mode", false); putBoolean("mic_user_off", true) }
-        try { DKAccessibilityService.instance?.stopLive("सूचना से माइक बंद") } catch (_: Exception) {}
-        try { c.stopService(Intent(c, KeepAliveService::class.java)) } catch (_: Exception) {}
+        try { DKAccessibilityService.instance?.stopLive("सूचना से माइक बंद") } catch (e: Exception) { Quiet.note(e) }
+        try { c.stopService(Intent(c, KeepAliveService::class.java)) } catch (e: Exception) { Quiet.note(e) }
     }
 }

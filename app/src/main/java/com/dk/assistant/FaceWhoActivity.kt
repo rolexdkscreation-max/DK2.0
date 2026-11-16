@@ -91,7 +91,7 @@ class FaceWhoActivity : AppCompatActivity() {
     }
 
     override fun onDestroy() {
-        try { cam?.stop() } catch (_: Exception) {}
+        try { cam?.stop() } catch (e: Exception) { Quiet.note(e) }
         work.shutdown()
         if (!done) { done = true; pending?.complete("CANCELLED: the camera screen was closed") }
         super.onDestroy()

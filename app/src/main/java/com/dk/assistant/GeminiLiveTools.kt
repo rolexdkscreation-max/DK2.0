@@ -238,7 +238,7 @@ internal suspend fun GeminiLive.localInfoTool(find: String = ""): String {
         try {
             svc.startActivity(android.content.Intent(svc, MainActivity::class.java).putExtra("ask_location", true)
                 .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK or android.content.Intent.FLAG_ACTIVITY_SINGLE_TOP))
-        } catch (_: Exception) {}
+        } catch (e: Exception) { Quiet.note(e) }
         return "Location permission is OFF, so you cannot know where he is. I opened the DK app to ask for it. Tell him clearly and briefly: allow Location for DK on the screen (\"Allow\" / \"While using the app\"), then ask again."
     }
     if (!LocalInfo.locationOn(svc)) return "The phone's Location (GPS) is turned OFF, so you cannot see where he is. Tell him clearly: turn ON Location from the quick settings (pull down from the top, tap 'Location'), then ask again."
@@ -585,7 +585,7 @@ internal fun GeminiLive.runTools(calls: JSONArray) {
                     cur.tx(JSONObject().put("realtimeInput", JSONObject().put("text",
                         "SYSTEM NOTE: the connection was renewed while the user's earlier request ($name) was running. Its result: \"" +
                             result.take(600) + "\". Tell the user briefly only if it is still relevant. Do not invent details.")).toString())
-                } catch (_: Exception) {}
+                } catch (e: Exception) { Quiet.note(e) }
             }
           } finally {
             if (held) com.dk.assistant.insights.InsightsAgent.releaseHold()
@@ -617,7 +617,7 @@ internal fun GeminiLive.watchToolAnswer(name: String, result: String, sock: WebS
             sock.tx(JSONObject().put("realtimeInput", JSONObject().put("text",
                 "SYSTEM NOTE: you already received the result of $name for the user's last question but have not answered yet. " +
                     "Answer the user NOW, briefly and naturally in Hindi, from this result: \"" + result.take(900) + "\"")).toString())
-        } catch (_: Exception) {}
+        } catch (e: Exception) { Quiet.note(e) }
         delay(10_000)
         if (toolJobs.isEmpty() && promiseJob?.isActive != true && !generating) DKState.hint("")
     }
@@ -632,5 +632,5 @@ internal fun GeminiLive.ignoreTools(calls: JSONArray) {
             .put("response", JSONObject().put("result", "IGNORED: that voice was not the owner's. Do nothing, say nothing, wait for the owner.")))
     }
     log("किसी और की आवाज़ पर काम माँगा (${calls.length()}) - कुछ नहीं किया")
-    try { ws?.tx(JSONObject().put("toolResponse", JSONObject().put("functionResponses", arr)).toString()) } catch (_: Exception) {}
+    try { ws?.tx(JSONObject().put("toolResponse", JSONObject().put("functionResponses", arr)).toString()) } catch (e: Exception) { Quiet.note(e) }
 }

@@ -146,7 +146,7 @@ internal fun GeminiLive.cancelRace(r: Race, why: String) {
 
 internal fun GeminiLive.killAttempt(a: Attempt, why: String) {
     a.dead = true
-    a.w?.let { ourClose[it] = why; try { it.cancel() } catch (_: Exception) {} }
+    a.w?.let { ourClose[it] = why; try { it.cancel() } catch (e: Exception) { Quiet.note(e) } }
 }
 
 internal fun GeminiLive.attemptFailed(r: Race, a: Attempt, code: Int, reason: String, queue: MutableList<LiveRace.Combo>) {
@@ -203,7 +203,7 @@ internal fun GeminiLive.openAttempt(r: Race, a: Attempt) {
                 else log("server ने बंद किया [${a.c.label}] code=$code reason=${reason.ifBlank { "-" }}")
             }
             a.closed.complete(code to reason)
-            try { webSocket.close(1000, null) } catch (_: Exception) {}
+            try { webSocket.close(1000, null) } catch (e: Exception) { Quiet.note(e) }
         }
         override fun onClosed(webSocket: WebSocket, code: Int, reason: String) { ourClose.remove(webSocket); a.closed.complete(code to reason) }
         override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
@@ -327,7 +327,7 @@ internal fun GeminiLive.connect(key: String, m: String, closed: CompletableDefer
             if (ours != null) log("हमने बंद किया ($ours) code=$code")
             else log("server ने बंद किया code=$code reason=${reason.ifBlank { "-" }}")
             closed.complete(code to reason)
-            try { webSocket.close(1000, null) } catch (_: Exception) {}
+            try { webSocket.close(1000, null) } catch (e: Exception) { Quiet.note(e) }
         }
         override fun onClosed(webSocket: WebSocket, code: Int, reason: String) { ourClose.remove(webSocket); closed.complete(code to reason) }
         override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {

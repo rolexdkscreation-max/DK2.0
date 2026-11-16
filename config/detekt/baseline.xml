@@ -1,0 +1,221 @@
+<?xml version="1.0" ?>
+<SmellBaseline>
+  <ManuallySuppressedIssues></ManuallySuppressedIssues>
+  <CurrentIssues>
+    <ID>EmptyCatchBlock:AppLauncher.kt$AppLauncher${ }</ID>
+    <ID>EmptyCatchBlock:AudioFix.kt$SpeakerBoost${}</ID>
+    <ID>EmptyCatchBlock:BossCheckActivity.kt$BossCheckActivity${ }</ID>
+    <ID>EmptyCatchBlock:CameraFeed.kt$CameraFeed${}</ID>
+    <ID>EmptyCatchBlock:CoderTeam.kt$CoderTeam${}</ID>
+    <ID>EmptyCatchBlock:DKApp.kt$DKApp${}</ID>
+    <ID>EmptyCatchBlock:DKBug.kt$DKBug${}</ID>
+    <ID>EmptyCatchBlock:DKBug.kt$DKBug.Feed${}</ID>
+    <ID>EmptyCatchBlock:DKLog.kt$DKLog${}</ID>
+    <ID>EmptyCatchBlock:DeepResearchRun.kt$DeepResearchRun${}</ID>
+    <ID>EmptyCatchBlock:DkaiChatFiles.kt$DkaiChatFiles${}</ID>
+    <ID>EmptyCatchBlock:DkaiUi.kt$DkaiUi${}</ID>
+    <ID>EmptyCatchBlock:FaceCam.kt$FaceCam${ }</ID>
+    <ID>EmptyCatchBlock:FaceWhoActivity.kt$FaceWhoActivity${ }</ID>
+    <ID>EmptyCatchBlock:ForgeActivity.kt$ForgeActivity.&lt;no name provided&gt;${}</ID>
+    <ID>EmptyCatchBlock:GeminiLive.kt$GeminiLive${}</ID>
+    <ID>EmptyCatchBlock:GuardAlarmActivity.kt$GuardAlarmActivity${ }</ID>
+    <ID>EmptyCatchBlock:Inspector.kt$Inspector${}</ID>
+    <ID>EmptyCatchBlock:Inspector.kt$InspectorReceiver${}</ID>
+    <ID>EmptyCatchBlock:LensFaces.kt$LensFaces${}</ID>
+    <ID>EmptyCatchBlock:LiveAudioDebug.kt$LiveAudioDebug${}</ID>
+    <ID>EmptyCatchBlock:LiveHealth.kt$ModeTrack${}</ID>
+    <ID>EmptyCatchBlock:NetFix.kt$DkDns${}</ID>
+    <ID>EmptyCatchBlock:PlusBoot.kt$PlusBoot${}</ID>
+    <ID>EmptyCatchBlock:ProviderHealth.kt$ProviderHealth${}</ID>
+    <ID>EmptyCatchBlock:SocialCaption.kt$SocialCaption${}</ID>
+    <ID>EmptyCatchBlock:Speaker.kt$Speaker${}</ID>
+    <ID>EmptyCatchBlock:SpeechPipeline.kt$SpeechPipeline${}</ID>
+    <ID>EmptyCatchBlock:VoiceEngines.kt$VoiceEngines${}</ID>
+    <ID>EmptyCatchBlock:VoiceGuardian.kt$VoiceGuardian${}</ID>
+    <ID>EmptyCatchBlock:VoiceNow.kt$VoiceNow${}</ID>
+    <ID>EmptyCatchBlock:WakeWord.kt$WakeWord${}</ID>
+    <ID>EmptyCatchBlock:WatchmanActivity.kt$WatchmanActivity${ }</ID>
+    <ID>EmptyElseBlock:AgentRunner.kt$AgentRunner$if (!silent) speaker.speak(m)</ID>
+    <ID>EmptyElseBlock:AgentRunner.kt$AgentRunner$if (!silent) speaker.speakQuick(m)</ID>
+    <ID>EmptyElseBlock:AgentRunner.kt$AgentRunner$if (brain.canThink() &amp;&amp; thinkAndSay(goal)) return</ID>
+    <ID>EmptyElseBlock:AgentRunner.kt$AgentRunner$if (chatStream(goal, "Deep thinking is unavailable right now: do NOT reply [THINK]. Answer it yourself, carefully and correctly.") != ChatOut.SCREEN) return</ID>
+    <ID>EmptyElseBlock:AgentRunner.kt$AgentRunner$if (chatStream(goal, SEARCH_FAILED_NOTE) != ChatOut.SCREEN) return</ID>
+    <ID>EmptyElseBlock:AgentRunner.kt$AgentRunner$if (shown.isEmpty()) tag = t</ID>
+    <ID>EmptyElseBlock:AiClients.kt$GeminiClient$if (e is LoserException) throw e</ID>
+    <ID>EmptyElseBlock:AiClients.kt$ThinkFilter$if (pend.length &gt; 8) pend.delete(0, pend.length - 8)</ID>
+    <ID>EmptyElseBlock:AiTalk.kt$AiTalk$if (m.say.isBlank()) break</ID>
+    <ID>EmptyElseBlock:AppCall.kt$AppCall$if (rings.containsKey(key) || current?.key == key) removed(key)</ID>
+    <ID>EmptyElseBlock:BossCheckActivity.kt$BossCheckActivity$if (s != null) add("MATCH" to s)</ID>
+    <ID>EmptyElseBlock:BrainManager.kt$BrainManager$if (winner == null &amp;&amp; full.isNotBlank()) winner = p.id</ID>
+    <ID>EmptyElseBlock:CodeLive.kt$CodeLive$if (line[j] == '\\') j++</ID>
+    <ID>EmptyElseBlock:CoderShots.kt$Shots$if (isNotEmpty()) append(" • ")</ID>
+    <ID>EmptyElseBlock:CodespaceMeter.kt$CodespaceMeter$if (apiWhy.isNotBlank()) append("\nवजह: $apiWhy")</ID>
+    <ID>EmptyElseBlock:CodingActivity.kt$CoderSession$if (lines.size &gt; 300) { lines.removeAt(0); dropped++ }</ID>
+    <ID>EmptyElseBlock:CodingActivity.kt$CodingActivity$if (i &lt; CoderSession.media.size) CoderSession.media.removeAt(i)</ID>
+    <ID>EmptyElseBlock:CodingActivity.kt$CodingActivity$if (renderQueued) return</ID>
+    <ID>EmptyElseBlock:CodingAgent.kt$CodingAgent$if (gh.isDraft(repo, p.number)) gh.markReady(repo, p.number)</ID>
+    <ID>EmptyElseBlock:CodingAgentTools.kt$if (e &lt; 0) break</ID>
+    <ID>EmptyElseBlock:CodingAgentTools.kt$if (e &lt; 0) return "unclosed /* comment (line $line)"</ID>
+    <ID>EmptyElseBlock:CodingAgentTools.kt$if (e &lt; 0) return "unclosed \"\"\" string (line $line)"</ID>
+    <ID>EmptyElseBlock:CodingAgentTools.kt$if (gap) sb.append("@@ line ${t.first}\n")</ID>
+    <ID>EmptyElseBlock:ComputerActivity.kt$ComputerActivity$if (renderQueued) return</ID>
+    <ID>EmptyElseBlock:ComputerAgent.kt$ComputerAgent$if (t.length &gt; 1500) { m[i] = r to t.take(1200) + "\n…"; tot -= t.length - 1201 }</ID>
+    <ID>EmptyElseBlock:ComputerAgent.kt$ComputerSession$if (queue.isNotEmpty()) add("s", "कतार के ${queue.size} काम भी हटा दिए")</ID>
+    <ID>EmptyElseBlock:ComputerBrowser.kt$ComputerBrowser$if (unquote(js(w, "document.readyState")) == "complete") return</ID>
+    <ID>EmptyElseBlock:ComputerBrowser.kt$ComputerBrowser$if (w.canGoBack()) waitLoad(w) { w.goBack() }</ID>
+    <ID>EmptyElseBlock:ComputerOffice.kt$ComputerOffice$if (!isTableSep(lines[i])) rows += cells(lines[i])</ID>
+    <ID>EmptyElseBlock:ComputerOffice.kt$ComputerOffice$if (p.isNotEmpty()) out += p to bold</ID>
+    <ID>EmptyElseBlock:ComputerTools.kt$ComputerTools$if (hasExa) add("exa")</ID>
+    <ID>EmptyElseBlock:ComputerTools.kt$ComputerTools$if (hasTavily) add("tavily")</ID>
+    <ID>EmptyElseBlock:ComputerTools.kt$ComputerTools$if (k &lt;= 0) break</ID>
+    <ID>EmptyElseBlock:ConfirmGate.kt$ConfirmActivity$if (!answered) { answered = true; mine?.complete(ConfirmGate.Answer.NO) }</ID>
+    <ID>EmptyElseBlock:ConfirmGate.kt$ConfirmGate$if (pending === p) pending = null</ID>
+    <ID>EmptyElseBlock:ConnectorLogic.kt$Mcp$if (buf.isNotEmpty()) buf.append('\n')</ID>
+    <ID>EmptyElseBlock:DKAccessibilityCalls.kt$if (gemLive.isPlaying()) gemLive.flushPlayback()</ID>
+    <ID>EmptyElseBlock:DKChatUi.kt$DKComposer$if (micActive) stopMic()</ID>
+    <ID>EmptyElseBlock:DKIsland.kt$DKIsland$if (AppCall.muteKey(s, c.key)) appMuted[c.key] = on</ID>
+    <ID>EmptyElseBlock:DKIsland.kt$DKIsland$if (AppCall.speakerKey(s, c.key)) appSpeaker[c.key] = on</ID>
+    <ID>EmptyElseBlock:DKIsland.kt$DKIsland$if (DKState.micMuted) DKState.setMicMuted(false)</ID>
+    <ID>EmptyElseBlock:DKIsland.kt$DKIsland$if (now - mediaAt &gt; 1_500L) { mediaAt = now; lastMedia = readMedia(s) }</ID>
+    <ID>EmptyElseBlock:DKIsland.kt$DKIsland$if (replyTo == null &amp;&amp; (expanded || peeking)) closeBig()</ID>
+    <ID>EmptyElseBlock:DKNotifListener.kt$DKNotifListener$if (!PrivacyScreen.hidByUs(it)) replyActions.remove(it)</ID>
+    <ID>EmptyElseBlock:DKNotifListener.kt$DKNotifListener$if (instance === this) instance = null</ID>
+    <ID>EmptyElseBlock:DKState.kt$DKState$if (liveReply.isEmpty()) { lastSources = emptyList(); lastGround = null }</ID>
+    <ID>EmptyElseBlock:DKState.kt$DKState$if (m != Mode.LISTENING) level = 0f</ID>
+    <ID>EmptyElseBlock:DkaiAudio.kt$DkaiAudio$if (r.code == 400 || r.code == 413) throw IllegalStateException(last)</ID>
+    <ID>EmptyElseBlock:DkaiHomeCore.kt$DkaiHomeCore$if (x in out) continue</ID>
+    <ID>EmptyElseBlock:DkaiHomeViews.kt$ComputerEyes$if (field == v) return</ID>
+    <ID>EmptyElseBlock:DkaiKit.kt$DkaiKit$if (v &gt; peak) peak = v</ID>
+    <ID>EmptyElseBlock:DkaiScreen.kt$DkaiScreen$if (msg != null) toast(msg)</ID>
+    <ID>EmptyElseBlock:DkaiSearchCard.kt$DkaiSearchCard.&lt;no name provided&gt;$if (!attached) return</ID>
+    <ID>EmptyElseBlock:Ear.kt$Ear$if (n &lt; 0) return@withContext null</ID>
+    <ID>EmptyElseBlock:EventTriggers.kt$EventTriggers.&lt;no name provided&gt;$if (wifiUp == false) fire(app, Ev.WIFI_ON)</ID>
+    <ID>EmptyElseBlock:EventTriggers.kt$EventTriggers.&lt;no name provided&gt;$if (wifiUp == true) fire(app, Ev.WIFI_OFF)</ID>
+    <ID>EmptyElseBlock:FaceAI.kt$FaceAI$if (small !== crop) small.recycle()</ID>
+    <ID>EmptyElseBlock:FacePeople.kt$FacePeople$if (p.kind.isNotBlank()) put("k", p.kind)</ID>
+    <ID>EmptyElseBlock:FileMatch.kt$FileMatch$if (kind == null) kind = k</ID>
+    <ID>EmptyElseBlock:FormFillAgent.kt$FormFillAgent$if (d.scroll(false) != DriverResult.OK) return@repeat</ID>
+    <ID>EmptyElseBlock:FutureUi.kt$FutureUi$if (line[j] == '\\') j++</ID>
+    <ID>EmptyElseBlock:GalleryClip.kt$GalleryClip$if (crop !== scaled) crop.recycle()</ID>
+    <ID>EmptyElseBlock:GeminiLive.kt$GeminiLive$if (firstText != null) openerText = null</ID>
+    <ID>EmptyElseBlock:GeminiLive.kt$GeminiLive$if (notifFlushing) return</ID>
+    <ID>EmptyElseBlock:GeminiLivePlayer.kt$if (b0 != null) LiveAudioDebug.w("टुकड़ा छूटा (${b0.size} bytes) - AudioTrack नहीं")</ID>
+    <ID>EmptyElseBlock:GeminiLiveRace.kt$if (w === ws) onServer(text, a.setup)</ID>
+    <ID>EmptyElseBlock:GeminiLiveServer.kt$if (firstText != null) openerText = null</ID>
+    <ID>EmptyElseBlock:GeminiLiveTools.kt$if (it.sources.isNotEmpty()) toolSources = Grounding.merge(toolSources, it.sources)</ID>
+    <ID>EmptyElseBlock:GeminiTts.kt$GeminiTts$if (workingModel == m) workingModel = null</ID>
+    <ID>EmptyElseBlock:Guard.kt$Guard$if (e is kotlinx.coroutines.CancellationException) throw e</ID>
+    <ID>EmptyElseBlock:GuardAlarmActivity.kt$GuardAlarmActivity$if (now &gt; declinedUntil &amp;&amp; !authorized) holo?.show(HoloScanView.Mode.SEARCH, emptyList())</ID>
+    <ID>EmptyElseBlock:ImageGen.kt$ImageGen$if (!r.isSuccessful) throw IOException(why(r.code))</ID>
+    <ID>EmptyElseBlock:ImageGenFlow.kt$ImageGenFlow$if (sentOk(text, typedVisible)) return true</ID>
+    <ID>EmptyElseBlock:InsightsCore.kt$Account$if (handle.isNotBlank()) put("handle", handle)</ID>
+    <ID>EmptyElseBlock:InsightsCore.kt$Account$if (monetization.isNotBlank()) put("monetization", monetization)</ID>
+    <ID>EmptyElseBlock:InsightsCore.kt$Account$if (name.isNotBlank()) put("name", name)</ID>
+    <ID>EmptyElseBlock:InsightsCore.kt$Account$if (period.isNotBlank()) put("period", period)</ID>
+    <ID>EmptyElseBlock:InsightsCore.kt$Account$if (status.isNotBlank()) put("status", status)</ID>
+    <ID>EmptyElseBlock:InsightsCore.kt$Post$if (date.isNotBlank()) put("date", date)</ID>
+    <ID>EmptyElseBlock:InsightsCore.kt$Post$if (notes.isNotBlank()) put("notes", notes)</ID>
+    <ID>EmptyElseBlock:InsightsCore.kt$Post$if (traffic.isNotBlank()) put("traffic", traffic)</ID>
+    <ID>EmptyElseBlock:Inspector.kt$Inspector$if (ok) save(c, InspectorCore.dismiss(xs, id, System.currentTimeMillis()))</ID>
+    <ID>EmptyElseBlock:Inspector.kt$Inspector$if (ok) save(c, InspectorCore.later(xs, id, System.currentTimeMillis()))</ID>
+    <ID>EmptyElseBlock:LiveCaption.kt$LiveCaption$if (it.isNotBlank()) onLate(it)</ID>
+    <ID>EmptyElseBlock:LiveFixes.kt$StreamEndGate$if (ended) return false</ID>
+    <ID>EmptyElseBlock:LiveNativeEngine.kt$LiveNativeEngine.&lt;no name provided&gt;$if (!got &amp;&amp; err == null) err = "Live ने बंद किया ($code ${reason.take(60)})"</ID>
+    <ID>EmptyElseBlock:Mail.kt$Mail$if (r &lt; 0) break</ID>
+    <ID>EmptyElseBlock:MediaPrep.kt$MediaPrep$if (s !== f) s.recycle()</ID>
+    <ID>EmptyElseBlock:ModelManager.kt$ModelManager$if (n &lt; 0) break</ID>
+    <ID>EmptyElseBlock:PhoneUnlocker.kt$PhoneUnlocker$if (!km.isKeyguardLocked) return true</ID>
+    <ID>EmptyElseBlock:PhoneUnlocker.kt$PhoneUnlocker$if (n == null || !press(svc, n)) { typed = false; break }</ID>
+    <ID>EmptyElseBlock:PlainLook.kt$PlainLook$if (v.visibility != View.GONE) v.visibility = View.GONE</ID>
+    <ID>EmptyElseBlock:Prefs.kt$Prefs$if (GeminiModels.oldCoderDefault(cur)) putString("coder_light_model", GeminiModels.CODER)</ID>
+    <ID>EmptyElseBlock:Prefs.kt$Prefs$if (GeminiModels.oldCoderDefault(cur)) putString(ApiScopes.pref(scope, "model", id), GeminiModels.CODER)</ID>
+    <ID>EmptyElseBlock:ProviderHealth.kt$ProviderHealth$if (x.reason.isBlank()) x.reason = dailyReason(u)</ID>
+    <ID>EmptyElseBlock:ReelRules.kt$ReelRules.Counter$if (leftAt == 0L) leftAt = now</ID>
+    <ID>EmptyElseBlock:RepoClone.kt$RepoClone$if (r &lt; 0) break</ID>
+    <ID>EmptyElseBlock:ScreenShare.kt$ScreenShareService$if (data == null) { LiveVision.onScreenDenied("इजाज़त का data नहीं"); stopSelf() }</ID>
+    <ID>EmptyElseBlock:SettingsActivity.kt$SettingsActivity$if (section == "debug") DKLog.listener = null</ID>
+    <ID>EmptyElseBlock:SevenCore.kt$Seven$if (body.isNotEmpty()) body.append('\n')</ID>
+    <ID>EmptyElseBlock:SevenCore.kt$Seven$if (pendingFind != null) errs.add("FIND के बाद REPLACE नहीं आया")</ID>
+    <ID>EmptyElseBlock:SevenCore.kt$Seven$if (pendingFind == null) errs.add("REPLACE बिना FIND के भेजा — FIND (फ़ाइल का सटीक पुराना कोड) ज़रूरी है")</ID>
+    <ID>EmptyElseBlock:SevenCore.kt$Syntax$if (e &lt; 0) break</ID>
+    <ID>EmptyElseBlock:SevenCore.kt$Syntax$if (e &lt; 0) return "/* comment बंद नहीं (line $line)"</ID>
+    <ID>EmptyElseBlock:SevenCore.kt$Syntax$if (e &lt; 0) return "` string बंद नहीं (line $line)"</ID>
+    <ID>EmptyElseBlock:SevenPlus.kt$SevenPlus.Where$if (cur != null) out.add("कदम $n: ${s.file} पहले से मौजूद है — create नहीं, edit करें (पुराना code न मिटे)")</ID>
+    <ID>EmptyElseBlock:SevenRunner.kt$SevenRunner$if (e is kotlinx.coroutines.CancellationException) throw e</ID>
+    <ID>EmptyElseBlock:SevenSymbols.kt$SevenSymbols$if (ch == '\n') out.append('\n')</ID>
+    <ID>EmptyElseBlock:SevenTeam.kt$SevenTeam$if (e is kotlinx.coroutines.CancellationException) throw e</ID>
+    <ID>EmptyElseBlock:SharedMedia.kt$SharedMedia$if (n &gt; MAX_BYTES) error("बहुत बड़ी फ़ाइल")</ID>
+    <ID>EmptyElseBlock:SharedMedia.kt$SharedMedia$if (r &lt; 0) break</ID>
+    <ID>EmptyElseBlock:SoloCore.kt$Solo$if (at &gt;= 0) return null</ID>
+    <ID>EmptyElseBlock:SoloCore.kt$Solo$if (n &gt; 1) return n</ID>
+    <ID>EmptyElseBlock:Speaker.kt$Speaker$if (accBefore &lt; 0) accBefore = cur</ID>
+    <ID>EmptyElseBlock:Speaker.kt$Speaker$if (first) DKLog.d("Gemini आवाज़ नहीं चली ($code) - ${(geminiCooldownUntil - System.currentTimeMillis()) / 60_000} मिनट DK चुप (फ़ोन की आवाज़ नहीं)")</ID>
+    <ID>EmptyElseBlock:SpeechPipeline.kt$Joint$if (kotlin.math.abs(s(b, i)) &gt; thr) return i</ID>
+    <ID>EmptyElseBlock:SpeechPipeline.kt$SpeechPipeline$if (System.currentTimeMillis() &gt; deadline) break</ID>
+    <ID>EmptyElseBlock:SpeechPipeline.kt$SpeechPipeline$if (spoken.isNotEmpty()) spoken.append(' ')</ID>
+    <ID>EmptyElseBlock:StoryWriter.kt$StorySession$if (i &gt; 0) append("\n\n")</ID>
+    <ID>EmptyElseBlock:StoryWriterActivity.kt$StoryWriterActivity$if (edtTopic.text.isEmpty()) edtTopic.setText(StorySession.topic)</ID>
+    <ID>EmptyElseBlock:StudioCore.kt$StudioCore$if (j &gt; i + 1) body.append('\n')</ID>
+    <ID>EmptyElseBlock:StudioSession.kt$StudioSession$if (autoFixLeft &lt;= 0) return null</ID>
+    <ID>EmptyElseBlock:TaskQueue.kt$TaskQueue$if (sb.isNotEmpty()) sb.append(", पर ")</ID>
+    <ID>EmptyElseBlock:TaskQueue.kt$TaskQueue$if (sb.isNotEmpty()) sb.append("। ")</ID>
+    <ID>EmptyElseBlock:TemplateRunner.kt$TemplateRunner$if (bad(r)) return "नहीं हो पाया: ${tail(r)}"</ID>
+    <ID>EmptyElseBlock:TypingStyles.kt$TypingStyles$if (d &lt; -2f) d += 4f</ID>
+    <ID>EmptyElseBlock:Updater.kt$Updater$if (headIsApk(part) &amp;&amp; have == rel.size) return@coroutineScope</ID>
+    <ID>EmptyElseBlock:Updater.kt$Updater$if (n &lt; 0) break</ID>
+    <ID>EmptyElseBlock:VoiceActivity.kt$VoiceActivity$if (::permBtn.isInitialized) permBtn.visibility = android.view.View.GONE</ID>
+    <ID>EmptyElseBlock:VoiceEngineCard.kt$VoiceEngineCard$if (i &gt; 0) divider(box)</ID>
+    <ID>EmptyElseBlock:VoiceEngineCard.kt$VoiceEngineCard.&lt;no name provided&gt;$if (!tv.isAttachedToWindow) return</ID>
+    <ID>EmptyElseBlock:VoicePrint.kt$VoicePrint$if (!x.isFinite()) return null</ID>
+    <ID>EmptyElseBlock:VoiceTurn.kt$TurnDetector$if (silenceMs &gt; 0) notePause(silenceMs)</ID>
+    <ID>EmptyElseBlock:WaAutoChat.kt$WaAutoChat$if (canReply) onChat(c, it, key, title, h, isGroup)</ID>
+    <ID>EmptyElseBlock:WaAutoChat.kt$WaAutoChat$if (chat === s) chat = null</ID>
+    <ID>EmptyElseBlock:WaAutoChat.kt$WaAutoChat$if (d.why == "time over") { session = null; DKLog.d("WhatsApp अपने-आप बात: समय पूरा, बंद") }</ID>
+    <ID>EmptyElseBlock:WaDeleteRunner.kt$WaDeleteRunner$if (want.isEmpty()) want = recent.text</ID>
+    <ID>EmptyElseBlock:WakeWord.kt$WakeWord$if (n &lt; 0) return@withContext null</ID>
+    <ID>EmptyElseBlock:WebCite.kt$WebCite$if (s.date.isNotBlank()) append(", ").append(s.date)</ID>
+    <ID>EmptyElseBlock:WebSearch.kt$WebSearch$if (h.date.isNotBlank()) append(", ").append(h.date.take(10))</ID>
+    <ID>EmptyElseBlock:WebsiteForgeClient.kt$WebsiteForgeClient$if (!got) onModel(model)</ID>
+    <ID>EmptyElseBlock:WebsiteForgeClient.kt$WebsiteForgeClient$if (!gotText) onModel(model)</ID>
+    <ID>EmptyFunctionBlock:ChoiceBar.kt$ChoiceBar.Companion.&lt;no name provided&gt;${}</ID>
+    <ID>EmptyFunctionBlock:CodingActivity.kt$CodingActivity.&lt;no name provided&gt;${}</ID>
+    <ID>EmptyFunctionBlock:DKApp.kt$DKApp.&lt;no name provided&gt;${}</ID>
+    <ID>EmptyFunctionBlock:DKChatUi.kt$InlineDictation.&lt;no name provided&gt;${}</ID>
+    <ID>EmptyFunctionBlock:DkaiScreen.kt$DkaiScreen.&lt;no name provided&gt;${}</ID>
+    <ID>EmptyFunctionBlock:DkaiSheets.kt$DkaiSheets.&lt;no name provided&gt;${}</ID>
+    <ID>EmptyFunctionBlock:Guard.kt$Guard.&lt;no name provided&gt;${}</ID>
+    <ID>EmptyFunctionBlock:GuardAlarmActivity.kt$GuardAlarmActivity${}</ID>
+    <ID>EmptyFunctionBlock:KeyTick.kt$&lt;no name provided&gt;${}</ID>
+    <ID>EmptyFunctionBlock:LocalMemory.kt$LocalMemory.Db${}</ID>
+    <ID>EmptyFunctionBlock:NeonRefresh.kt$NeonRefresh${}</ID>
+    <ID>EmptyFunctionBlock:OfflineStt.kt$OfflineStt.&lt;no name provided&gt;${}</ID>
+    <ID>EmptyFunctionBlock:OrbView.kt$OrbView${ }</ID>
+    <ID>EmptyFunctionBlock:PhoneVoice.kt$PhoneVoice.&lt;no name provided&gt;${}</ID>
+    <ID>EmptyFunctionBlock:ScreenAwake.kt$ScreenAwake${}</ID>
+    <ID>EmptyFunctionBlock:SettingsActivity.kt$SettingsActivity.&lt;no name provided&gt;${}</ID>
+    <ID>EmptyFunctionBlock:SettingsBrain.kt$&lt;no name provided&gt;${}</ID>
+    <ID>EmptyFunctionBlock:SettingsIslandLook.kt$&lt;no name provided&gt;${}</ID>
+    <ID>EmptyFunctionBlock:SettingsLook.kt$&lt;no name provided&gt;${}</ID>
+    <ID>EmptyFunctionBlock:SettingsMenuQuick.kt$MenuQuick.&lt;no name provided&gt;${}</ID>
+    <ID>EmptyFunctionBlock:SettingsSystem.kt$&lt;no name provided&gt;${}</ID>
+    <ID>EmptyFunctionBlock:SettingsVoiceGuardian.kt$&lt;no name provided&gt;${}</ID>
+    <ID>EmptyFunctionBlock:SettingsWake.kt$&lt;no name provided&gt;${}</ID>
+    <ID>EmptyFunctionBlock:UpdatePrompt.kt$UpdatePrompt.&lt;no name provided&gt;${}</ID>
+    <ID>EmptyFunctionBlock:VoiceEngineCard.kt$VoiceEngineCard.&lt;no name provided&gt;${}</ID>
+    <ID>EmptyFunctionBlock:VoiceListener.kt$VoiceListener.&lt;no name provided&gt;${}</ID>
+    <ID>EmptyWhileBlock:Shapes.kt$Cloud${}</ID>
+    <ID>ImplicitDefaultLocale:ForgeFallbackView.kt$ForgeTheme$String.format("#%06X", c and 0xFFFFFF)</ID>
+    <ID>InstanceOfCheckForException:AgentRunner.kt$AgentRunner$e !is kotlinx.coroutines.CancellationException</ID>
+    <ID>InstanceOfCheckForException:AgentRunner.kt$AgentRunner$e is kotlinx.coroutines.CancellationException</ID>
+    <ID>InstanceOfCheckForException:AiClients.kt$GeminiClient$e is LoserException</ID>
+    <ID>InstanceOfCheckForException:BrainManager.kt$BrainManager$e is java.io.IOException</ID>
+    <ID>InstanceOfCheckForException:BrainManager.kt$BrainManager$e is java.io.InterruptedIOException</ID>
+    <ID>InstanceOfCheckForException:Ear.kt$Ear$e is SecurityException</ID>
+    <ID>InstanceOfCheckForException:Guard.kt$Guard$e !is kotlinx.coroutines.CancellationException</ID>
+    <ID>InstanceOfCheckForException:Guard.kt$Guard$e is kotlinx.coroutines.CancellationException</ID>
+    <ID>InstanceOfCheckForException:SevenRunner.kt$SevenRunner$e is kotlinx.coroutines.CancellationException</ID>
+    <ID>InstanceOfCheckForException:SevenTeam.kt$SevenTeam$e is kotlinx.coroutines.CancellationException</ID>
+    <ID>InstanceOfCheckForException:Updater.kt$Updater$e is kotlinx.coroutines.CancellationException</ID>
+    <ID>ThrowingExceptionsWithoutMessageOrCause:PlainLook.kt$PlainLook$IllegalStateException()</ID>
+  </CurrentIssues>
+</SmellBaseline>

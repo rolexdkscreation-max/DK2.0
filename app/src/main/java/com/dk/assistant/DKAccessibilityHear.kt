@@ -126,7 +126,7 @@ internal suspend fun DKAccessibilityService.liveTroubleSay(msg: String) {
     liveTroubleSpoken = true; liveTroubleShown = true
     DKLog.d("Live न जुड़ा - यूज़र को बताया: $msg")
     DKState.reply(msg)
-    try { speaker.speak(msg) } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (_: Exception) {}
+    try { speaker.speak(msg) } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (e: Exception) { Quiet.note(e) }
 }
 
 internal suspend fun DKAccessibilityService.warn(id: String, msg: String) {
@@ -259,6 +259,6 @@ internal fun DKAccessibilityService.showEdgeGlow() {
 }
 
 internal fun DKAccessibilityService.removeEdgeGlow() {
-    edgeGlow?.let { try { (getSystemService(WINDOW_SERVICE) as WindowManager).removeView(it) } catch (_: Exception) {} }
+    edgeGlow?.let { try { (getSystemService(WINDOW_SERVICE) as WindowManager).removeView(it) } catch (e: Exception) { Quiet.note(e) } }
     edgeGlow = null
 }

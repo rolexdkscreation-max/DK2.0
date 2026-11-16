@@ -81,7 +81,7 @@ internal suspend fun DKAccessibilityService.hearOfflineCmds(): String? {
             if (bare != null && bare.isBlank()) {
                 offlineNameAt = System.currentTimeMillis()
                 DKState.set(Mode.IDLE); DKState.reply("जी, बोलिए")
-                try { speaker.speak("जी, बोलिए।") } catch (e: CancellationException) { throw e } catch (_: Exception) {}
+                try { speaker.speak("जी, बोलिए।") } catch (e: CancellationException) { throw e } catch (e: Exception) { Quiet.note(e) }
                 offlineNameAt = System.currentTimeMillis()
                 return null
             }
@@ -105,7 +105,7 @@ internal suspend fun DKAccessibilityService.hearOfflineCmds(): String? {
             if (reply != null) {
                 DKLog.d("ऑफलाइन बातचीत: \"${said.take(40)}\" -> \"${reply.take(40)}\"")
                 DKState.user(said); DKState.reply(reply)
-                try { speaker.speak(reply) } catch (e: CancellationException) { throw e } catch (_: Exception) {}
+                try { speaker.speak(reply) } catch (e: CancellationException) { throw e } catch (e: Exception) { Quiet.note(e) }
                 offlineTalkAt = System.currentTimeMillis()
                 DKState.set(Mode.IDLE)
                 return null

@@ -40,7 +40,7 @@ object BackupPhone {
         LearnedWays.replaceAll(c, m.learned)
         val brain = com.dk.assistant.LocalBrain.importJson(c, m.brain)   // DK के अपने दिमाग की सीखी बातें भी वापस
         // चैट स्क्रीन खाली हो (नया install) - बैकअप वाले संदेश तुरंत दिखें
-        if (com.dk.assistant.DKState.messages.isEmpty()) try { com.dk.assistant.DKState.messages.addAll(Memory.loadChat(c)) } catch (_: Exception) {}
+        if (com.dk.assistant.DKState.messages.isEmpty()) try { com.dk.assistant.DKState.messages.addAll(Memory.loadChat(c)) } catch (e: Exception) { com.dk.assistant.Quiet.note(e) }
         DKLog.d("बैकअप रिस्टोर: $nt बातें, $np सार, ${m.facts.size} पक्की बातें, दिमाग में $brain सीखी बातें")
         return nt to (np + m.facts.size)
     }

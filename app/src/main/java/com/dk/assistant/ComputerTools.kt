@@ -247,7 +247,7 @@ object ComputerTools {
                     wv.evaluateJavascript(wrapJs(code)) { r -> if (cont.isActive) cont.resume(jsResult(r)) }
                 }
             } ?: "ERROR: ${timeoutMs / 1000}s में पूरा नहीं हुआ (लंबा loop?)"
-        } finally { try { wv.destroy() } catch (_: Exception) {} }
+        } finally { try { wv.destroy() } catch (e: Exception) { Quiet.note(e) } }
     }
 
     // ------------------------------------------------------------------ फ़ाइलें
@@ -381,7 +381,7 @@ class ComputerAlarm : BroadcastReceiver() {
     override fun onReceive(c: Context, i: Intent) {
         val ctx = c.applicationContext
         val id = i.getIntExtra("id", -1)
-        if (id >= 0) try { ComputerJobs.fired(ctx, id) } catch (_: Exception) {}
+        if (id >= 0) try { ComputerJobs.fired(ctx, id) } catch (e: Exception) { Quiet.note(e) }
         val t = i.getStringExtra("task")?.takeIf { it.isNotBlank() } ?: return
         val late = if (i.getBooleanExtra("late", false)) " (फ़ोन बंद/restart था, इसलिए देर से चला)" else ""
         ComputerSession.start(ctx, "⏰ तय किया हुआ काम$late: $t", background = true)

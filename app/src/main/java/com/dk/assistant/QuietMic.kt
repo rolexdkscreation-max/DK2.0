@@ -31,7 +31,7 @@ object QuietMic {
                 if (am.isStreamMute(s)) continue
                 am.adjustStreamVolume(s, AudioManager.ADJUST_MUTE, 0)
                 muted.add(s)
-            } catch (_: Exception) {}
+            } catch (e: Exception) { Quiet.note(e) }
         }
     }
 
@@ -44,7 +44,7 @@ object QuietMic {
         val r = Runnable {
             synchronized(this) {
                 if (count == 0) {
-                    for (s in muted) try { am?.adjustStreamVolume(s, AudioManager.ADJUST_UNMUTE, 0) } catch (_: Exception) {}
+                    for (s in muted) try { am?.adjustStreamVolume(s, AudioManager.ADJUST_UNMUTE, 0) } catch (e: Exception) { Quiet.note(e) }
                     muted.clear()
                 }
                 pending = null

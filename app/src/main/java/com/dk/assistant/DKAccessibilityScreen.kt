@@ -359,7 +359,7 @@ private suspend fun waitScreenOn(pm: android.os.PowerManager?, maxMs: Long) {
 /** Saari windows (notification popup, call screen) me button dhoondo aur dabao. */
 internal fun DKAccessibilityService.allRoots(): List<AccessibilityNodeInfo> {
     val out = mutableListOf<AccessibilityNodeInfo>()
-    try { windows.forEach { w -> w.root?.let { out.add(it) } } } catch (_: Exception) {}
+    try { windows.forEach { w -> w.root?.let { out.add(it) } } } catch (e: Exception) { Quiet.note(e) }
     rootInActiveWindow?.let { if (out.none { r -> r == it }) out.add(0, it) }
     return out
 }

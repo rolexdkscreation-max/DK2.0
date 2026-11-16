@@ -215,7 +215,7 @@ object ConnectorRunner {
 
     private fun contacts(g: G, x: JSONObject): String {
         val base = "https://people.googleapis.com/v1/people:searchContacts?readMask=names,phoneNumbers,emailAddresses&pageSize=10&query="
-        try { g.get(base) } catch (_: Exception) {}   // Google की सलाह: पहले खाली खोज (cache गरम)
+        try { g.get(base) } catch (e: Exception) { com.dk.assistant.Quiet.note(e) }   // Google की सलाह: पहले खाली खोज (cache गरम)
         val r = g.get(base + enc(x.optString("query"))).optJSONArray("results") ?: JSONArray()
         if (r.length() == 0) return "No contact found."
         return (0 until r.length()).joinToString("\n") { i ->

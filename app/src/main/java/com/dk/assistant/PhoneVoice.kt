@@ -54,10 +54,10 @@ object PhoneVoice {
         cur = done
         // 16 नवंबर 2026 (मालिक): हिंदी आवाज़ रोमन शब्दों को English पढ़ती थी -> हिंग्लिश के हिंदी शब्द देवनागरी में ([HinglishText]).
         // भावना / स्टाइल बॉक्स + गति/पिच स्लाइडर -> फ़ोन की आवाज़ की गति और पिच ([WordStyle.phone]).
-        try { com.dk.assistant.voice.engine.VoiceTune.load(c) } catch (_: Exception) {}
+        try { com.dk.assistant.voice.engine.VoiceTune.load(c) } catch (e: Exception) { Quiet.note(e) }
         val (rate, pitch) = com.dk.assistant.voice.engine.WordStyle.phone(
             com.dk.assistant.voice.engine.VoiceTune.speedPct, com.dk.assistant.voice.engine.VoiceTune.pitchPct, styleText(c))
-        try { t.setSpeechRate(rate); t.setPitch(pitch) } catch (_: Exception) {}
+        try { t.setSpeechRate(rate); t.setPitch(pitch) } catch (e: Exception) { Quiet.note(e) }
         val spoken = com.dk.assistant.voice.engine.HinglishText.toSpeakable(text)
         val r = t.speak(spoken, TextToSpeech.QUEUE_FLUSH, Bundle(), "dk-${System.nanoTime()}")
         if (r != TextToSpeech.SUCCESS) return false
@@ -72,7 +72,7 @@ object PhoneVoice {
     } catch (_: Exception) { "" }
 
     fun stop() {
-        try { tts?.stop() } catch (_: Exception) {}
+        try { tts?.stop() } catch (e: Exception) { Quiet.note(e) }
         cur?.complete(Unit)
     }
 }

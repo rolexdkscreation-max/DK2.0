@@ -17,7 +17,7 @@ internal fun GeminiLive.whoCheckAsync(pcm: ByteArray, now: Long, seq: Int) {
             SideTalk.global.voice(w, now, seq)
             if (w == SideTalk.Who.OTHER) log("आवाज़ बॉस की नहीं लगी (मिलान ${sc?.let { String.format(java.util.Locale.US, "%.2f", it) }}) - बड़े काम नहीं होंगे")
         }
-    } catch (_: Exception) {}
+    } catch (e: Exception) { Quiet.note(e) }
 }
 
 /**

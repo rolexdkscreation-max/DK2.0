@@ -213,7 +213,7 @@ object ImageGenAgent {
         }
         val jpeg = withContext(Dispatchers.IO) { if (r.downloaded) fileJpeg(svc, start) else null }
             ?: (if (canSee(svc)) svc.screenshotBase64()?.let { Base64.decode(it, Base64.NO_WRAP) } else null)
-        jpeg?.let { try { show(it) } catch (_: Exception) {} }
+        jpeg?.let { try { show(it) } catch (e: Exception) { com.dk.assistant.Quiet.note(e) } }
         val seen = jpeg?.let { withContext(Dispatchers.IO) { describe(svc, it, prompt) } }
         val dl = when {
             !download -> "not asked"

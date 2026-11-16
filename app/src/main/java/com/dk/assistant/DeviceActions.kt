@@ -24,7 +24,7 @@ object DeviceActions {
                 cm.registerTorchCallback(object : CameraManager.TorchCallback() {
                     override fun onTorchModeChanged(cameraId: String, enabled: Boolean) { torchOn = enabled }
                 }, android.os.Handler(android.os.Looper.getMainLooper()))
-            } catch (_: Exception) {}
+            } catch (e: Exception) { Quiet.note(e) }
         }
         val id = cm.cameraIdList.firstOrNull {
             cm.getCameraCharacteristics(it).get(CameraCharacteristics.FLASH_INFO_AVAILABLE) == true

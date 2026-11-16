@@ -180,15 +180,15 @@ class ScreenShareService : Service() {
 
     private fun cleanup() {
         running = false
-        try { display?.release() } catch (_: Exception) {}
+        try { display?.release() } catch (e: Exception) { Quiet.note(e) }
         display = null
-        try { reader?.close() } catch (_: Exception) {}
+        try { reader?.close() } catch (e: Exception) { Quiet.note(e) }
         reader = null
         val p = projection; projection = null
-        try { p?.stop() } catch (_: Exception) {}
+        try { p?.stop() } catch (e: Exception) { Quiet.note(e) }
         thread?.quitSafely(); thread = null; handler = null
         if (instance === this) instance = null
-        try { stopForeground(STOP_FOREGROUND_REMOVE) } catch (_: Exception) {}
+        try { stopForeground(STOP_FOREGROUND_REMOVE) } catch (e: Exception) { Quiet.note(e) }
         stopSelf()
     }
 

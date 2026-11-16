@@ -125,7 +125,7 @@ class BossCheckActivity : AppCompatActivity() {
     private fun pass() {
         if (done) return
         passedAt = System.currentTimeMillis()
-        try { cam?.stop() } catch (_: Exception) {}
+        try { cam?.stop() } catch (e: Exception) { Quiet.note(e) }
         when (mode) {
             MODE_REPORT -> showReport()
             MODE_STOP -> { WatchmanActivity.stopByBoss(); finishWith(true, "OK") }
@@ -164,7 +164,7 @@ class BossCheckActivity : AppCompatActivity() {
     }
 
     override fun onDestroy() {
-        try { cam?.stop() } catch (_: Exception) {}
+        try { cam?.stop() } catch (e: Exception) { Quiet.note(e) }
         work.shutdown()
         if (result == null) { result = false; pending?.complete(false to "CANCELLED") }
         super.onDestroy()

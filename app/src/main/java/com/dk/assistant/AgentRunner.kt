@@ -272,7 +272,7 @@ class AgentRunner(
     private suspend fun computerFromVoice(cmd: ComputerVoice.Cmd): Boolean {
         if (!Prefs.computerOn(svc)) return false
         if (cmd.open) {
-            try { svc.startActivity(android.content.Intent(svc, ComputerActivity::class.java).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)) } catch (_: Exception) {}
+            try { svc.startActivity(android.content.Intent(svc, ComputerActivity::class.java).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)) } catch (e: Exception) { Quiet.note(e) }
             say("DK कंप्यूटर खोल दिया। बोलिए या लिखिए, क्या काम करना है।")
             return true
         }
@@ -937,7 +937,7 @@ class AgentRunner(
                 val d = async(Dispatchers.IO) { brain.search(goal, deep, thorough, asked = asked) }
                 if (!silent && !fillerSaid) {
                     val ack = Lang.pick("एक सेकंड, सर्च करके " + (if (Prefs.voiceGender(svc) != "male") "बताती हूँ।" else "बताता हूँ।"), "One second, let me search and tell you.")
-                    try { speaker.speakQuick(ack) } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (_: Exception) {}
+                    try { speaker.speakQuick(ack) } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (e: Exception) { Quiet.note(e) }
                 }
                 d.await()
             }

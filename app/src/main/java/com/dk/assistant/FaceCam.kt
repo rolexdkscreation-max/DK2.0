@@ -91,7 +91,7 @@ class FaceCam(private val act: AppCompatActivity, private val view: PreviewView,
 
     fun stop() {
         stopped = true
-        try { provider?.unbind(*useCases) } catch (_: Exception) {}
+        try { provider?.unbind(*useCases) } catch (e: Exception) { Quiet.note(e) }
         exec.shutdown()
     }
 }

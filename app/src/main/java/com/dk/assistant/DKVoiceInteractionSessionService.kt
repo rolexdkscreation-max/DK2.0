@@ -117,7 +117,7 @@ class DKVoiceInteractionSession(context: android.content.Context) : VoiceInterac
         // (UI के किसी कदम का इंतज़ार नहीं). माइक की इजाज़त न हो = Live नहीं, नीचे वाला बटन दिखता है.
         // Accessibility यहाँ नई चालू नहीं की जाती - सिर्फ़ पहले से चालू (Not working) वाली फिर जोड़ी जाती है.
         // नवंबर 2026: पहले से चालू पर "Not working" वाली सेवा फिर जोड़ो (सिर्फ़ adb इजाज़त हो तो; नई इजाज़त नहीं)
-        try { Setup.healAccessibility(context) } catch (_: Exception) {}
+        try { Setup.healAccessibility(context) } catch (e: Exception) { Quiet.note(e) }
         try { DKAccessibilityService.instance?.invokedNow("power बटन / assistant", session = true) }
         catch (e: Exception) { android.util.Log.e("DKAssist", "Live शुरू नहीं हुआ", e); com.dk.assistant.DKBug.report("assistant", e, "Live शुरू नहीं हुआ", alsoLog = true) }
         try {
@@ -188,7 +188,7 @@ class DKVoiceInteractionSession(context: android.content.Context) : VoiceInterac
         leaving = true
         h.removeCallbacks(watch)
         val o = orbView
-        val done = { try { hide() } catch (_: Exception) {} }
+        val done = { try { hide() } catch (e: Exception) { Quiet.note(e) } }
         if (o == null) { done(); return }
         val d = context.resources.displayMetrics.density
         o.animate().alpha(0f).scaleX(0.7f).scaleY(0.7f).translationY(160f * d).setDuration(380)

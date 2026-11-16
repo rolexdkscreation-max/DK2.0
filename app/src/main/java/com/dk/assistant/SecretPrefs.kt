@@ -100,7 +100,7 @@ class SecretPrefs(val base: SharedPreferences, private val codec: SecretCodec) :
         fun of(raw: SharedPreferences): SecretPrefs = synchronized(cache) {
             cache[raw] ?: SecretPrefs(raw, KeystoreCodec).also { sp ->
                 cache[raw] = sp
-                try { sp.sealAll().takeIf { it > 0 }?.let { DKLog.d("सुरक्षा: $it keys/token ताले में रखीं") } } catch (_: Exception) {}
+                try { sp.sealAll().takeIf { it > 0 }?.let { DKLog.d("सुरक्षा: $it keys/token ताले में रखीं") } } catch (e: Exception) { Quiet.note(e) }
             }
         }
     }

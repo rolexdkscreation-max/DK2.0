@@ -63,7 +63,7 @@ object GalleryClip {
     else mediaPermission(c)
 
     fun close() = synchronized(lock) {
-        try { vision?.close() } catch (_: Exception) {}; try { text?.close() } catch (_: Exception) {}
+        try { vision?.close() } catch (e: Exception) { com.dk.assistant.Quiet.note(e) }; try { text?.close() } catch (e: Exception) { com.dk.assistant.Quiet.note(e) }
         vision = null; text = null; tok = null; broken = null
     }
 
@@ -82,7 +82,7 @@ object GalleryClip {
             } catch (e: Throwable) {
                 broken = e.javaClass.simpleName
                 DKLog.d("गैलरी पहचान: मॉडल नहीं खुला (${e.javaClass.simpleName})")
-                try { vision?.close() } catch (_: Exception) {}; try { text?.close() } catch (_: Exception) {}
+                try { vision?.close() } catch (e: Exception) { com.dk.assistant.Quiet.note(e) }; try { text?.close() } catch (e: Exception) { com.dk.assistant.Quiet.note(e) }
                 vision = null; text = null; tok = null; false
             }
         }

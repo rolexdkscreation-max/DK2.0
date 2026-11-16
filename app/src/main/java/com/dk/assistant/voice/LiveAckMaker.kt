@@ -39,7 +39,7 @@ object LiveAckMaker {
                 val now = System.currentTimeMillis()
                 if (!LiveAckRules.shouldMake(missing(app), DKState.live, Prefs.liveGeminiKeys(app).isNotEmpty(), now - failAt, busy.get())) return@Thread
                 make(app, why)
-            } catch (_: Exception) {}
+            } catch (e: Exception) { com.dk.assistant.Quiet.note(e) }
         }.start()
     }
 
@@ -83,8 +83,8 @@ object LiveAckMaker {
         val closed = JSONObject().put("_closed", true)
         val req = Request.Builder().url(GeminiLive.URL).header("x-goog-api-key", key).build()
         val ws = com.dk.assistant.LiveNet.http.newWebSocket(req, object : WebSocketListener() {
-            override fun onMessage(webSocket: WebSocket, text: String) { try { ev.put(JSONObject(text)) } catch (_: Exception) {} }
-            override fun onMessage(webSocket: WebSocket, bytes: okio.ByteString) { try { ev.put(JSONObject(bytes.utf8())) } catch (_: Exception) {} }
+            override fun onMessage(webSocket: WebSocket, text: String) { try { ev.put(JSONObject(text)) } catch (e: Exception) { com.dk.assistant.Quiet.note(e) } }
+            override fun onMessage(webSocket: WebSocket, bytes: okio.ByteString) { try { ev.put(JSONObject(bytes.utf8())) } catch (e: Exception) { com.dk.assistant.Quiet.note(e) } }
             override fun onClosed(webSocket: WebSocket, code: Int, reason: String) { ev.put(closed) }
             override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) { ev.put(closed) }
         })
@@ -119,6 +119,6 @@ object LiveAckMaker {
                 } else DKLog.d("'$t' की आवाज़ ठीक नहीं बनी (बोला: '${said.toString().trim()}', ${clip.size * 1000L / (LiveAckRules.RATE * 2)} ms) - छोड़ी")
             }
             return made
-        } finally { try { ws.close(1000, "ack बना") } catch (_: Exception) {} }
+        } finally { try { ws.close(1000, "ack बना") } catch (e: Exception) { com.dk.assistant.Quiet.note(e) } }
     }
 }

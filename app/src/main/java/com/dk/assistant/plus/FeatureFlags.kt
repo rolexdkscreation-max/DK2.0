@@ -198,7 +198,7 @@ object FeatureFlags {
 
     fun set(c: Context, key: String, value: Boolean) {
         sp(c).edit().putBoolean(key, value).apply()
-        listeners.forEach { try { it(key, value) } catch (_: Exception) {} }
+        listeners.forEach { try { it(key, value) } catch (e: Exception) { com.dk.assistant.Quiet.note(e) } }
     }
 
     /** बैटरी सेवर चालू हो और यह भारी हिस्सा उसमें रुका हो = true (हिस्सा अभी न चले) */

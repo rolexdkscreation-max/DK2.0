@@ -114,7 +114,7 @@ object LocalBrain {
         try {
             val f = File(c.filesDir, FILE); val tmp = File(c.filesDir, "$FILE.tmp")
             tmp.writeText(DkMind.toJson(list)); if (!tmp.renameTo(f)) { f.writeText(tmp.readText()); tmp.delete() }
-        } catch (_: Exception) {}
+        } catch (e: Exception) { Quiet.note(e) }
     }
 
     /** अच्छा जवाब मिला (AI से, बिना खोज / बिना फ़ोन के काम) -> सीख लो. अगली बार key न चले तब भी यही */

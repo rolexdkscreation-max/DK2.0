@@ -79,5 +79,5 @@ class SileroVad private constructor(private val session: OrtSession) {
         null
     }
 
-    fun close() { try { session.close() } catch (_: Exception) {} }
+    fun close() { try { session.close() } catch (e: Exception) { com.dk.assistant.Quiet.note(e) } }
 }

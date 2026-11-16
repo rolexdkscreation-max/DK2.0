@@ -66,8 +66,8 @@ internal fun voiceTapeText(cmd: Cmd, t: VoiceTapeRec.Tick?): String {
 private var voiceCmdPlayer: android.media.MediaPlayer? = null
 
 internal fun stopVoiceCmdPlay() {
-    try { voiceCmdPlayer?.stop() } catch (_: Exception) {}
-    try { voiceCmdPlayer?.release() } catch (_: Exception) {}
+    try { voiceCmdPlayer?.stop() } catch (e: Exception) { Quiet.note(e) }
+    try { voiceCmdPlayer?.release() } catch (e: Exception) { Quiet.note(e) }
     voiceCmdPlayer = null
 }
 
@@ -136,8 +136,8 @@ internal fun SettingsActivity.enrollVoiceCmd(cmd: Cmd, done: () -> Unit) {
                 (if (warn != null) "\n\n⚠ " + UiLang.s(warn) else "")
             done()
             kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
-                try { HD.prepareAcks(this@enrollVoiceCmd) } catch (_: Exception) {}
-                try { com.dk.assistant.voice.LiveAckMaker.ensureAsync(this@enrollVoiceCmd, "voice cmd") } catch (_: Exception) {}
+                try { HD.prepareAcks(this@enrollVoiceCmd) } catch (e: Exception) { Quiet.note(e) }
+                try { com.dk.assistant.voice.LiveAckMaker.ensureAsync(this@enrollVoiceCmd, "voice cmd") } catch (e: Exception) { Quiet.note(e) }
             }
         } catch (e: kotlinx.coroutines.CancellationException) { throw e
         } catch (e: Exception) { DKLog.d("आवाज़-कमांड सिखाना: ${e.javaClass.simpleName} ${e.message?.take(160)}"); tv.text = UiLang.s("गड़बड़ हुई, फिर से कोशिश करें") }

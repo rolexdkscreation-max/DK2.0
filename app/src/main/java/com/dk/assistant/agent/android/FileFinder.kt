@@ -57,7 +57,7 @@ object FileFinder {
         try {
             c.startActivity(Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION, Uri.parse("package:" + c.packageName)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
         } catch (_: Exception) {
-            try { c.startActivity(Intent(Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) } catch (_: Exception) {}
+            try { c.startActivity(Intent(Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) } catch (e: Exception) { com.dk.assistant.Quiet.note(e) }
         }
     }
 
@@ -69,7 +69,7 @@ object FileFinder {
             try {
                 val uri = FileProvider.getUriForFile(c, c.packageName + ".files", f).toString()
                 out.add(FileMatch.Cand(f.name, mimeOf(f.name), uri, f.lastModified()))
-            } catch (_: Exception) {}
+            } catch (e: Exception) { com.dk.assistant.Quiet.note(e) }
         }
         return out
     }

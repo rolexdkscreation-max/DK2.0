@@ -69,7 +69,7 @@ object UnlockGuard {
         val replay = r != null && UnlockRules.isReplay(r.second, seen)
         val v = UnlockRules.judge(r?.first, UnlockRules.threshold(VoiceGuardian.threshold(c)), replay, ms)
         when {
-            v.ok -> { strikes.ok(); try { VoiceGuardian.rememberUnlock(c, r!!.second) } catch (_: Exception) {} }
+            v.ok -> { strikes.ok(); try { VoiceGuardian.rememberUnlock(c, r!!.second) } catch (e: Exception) { com.dk.assistant.Quiet.note(e) } }
             v == UnlockRules.Verdict.LOW || v == UnlockRules.Verdict.REPLAY -> strikes.fail(now)
             else -> {}
         }

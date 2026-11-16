@@ -135,7 +135,7 @@ object VoiceGuardian {
     @Volatile private var sessionFor = ""
     private val lock = Any()
 
-    fun close() { synchronized(lock) { try { session?.close() } catch (_: Exception) {}; session = null; sessionFor = ""; broken = null } }
+    fun close() { synchronized(lock) { try { session?.close() } catch (e: Exception) { com.dk.assistant.Quiet.note(e) }; session = null; sessionFor = ""; broken = null } }
 
     fun warm(c: Context) { if (gateOn(c) && session == null) VoiceExec.exec.execute { try { open(c) } catch (_: Throwable) {} } }
 
@@ -144,7 +144,7 @@ object VoiceGuardian {
         session?.takeIf { sessionFor == a.id }?.let { return it }
         synchronized(lock) {
             session?.takeIf { sessionFor == a.id }?.let { return it }
-            try { session?.close() } catch (_: Exception) {}
+            try { session?.close() } catch (e: Exception) { com.dk.assistant.Quiet.note(e) }
             session = null
             if (!supported || !ModelManager.ready(c, a)) return null
             return try {
@@ -216,7 +216,7 @@ object VoiceGuardian {
                 DKLog.d("वॉइस गार्डियन (Away): अनजान आवाज़ दोबारा - फ़ोन लॉक")
                 PlusVoice.say(c, VgRules.LOCK_SPEECH)
                 val svc = DKAccessibilityService.instance
-                if (svc != null && Build.VERSION.SDK_INT >= 28) try { svc.performGlobalAction(AccessibilityService.GLOBAL_ACTION_LOCK_SCREEN) } catch (_: Exception) {}
+                if (svc != null && Build.VERSION.SDK_INT >= 28) try { svc.performGlobalAction(AccessibilityService.GLOBAL_ACTION_LOCK_SCREEN) } catch (e: Exception) { com.dk.assistant.Quiet.note(e) }
             }
             else -> {}
         }

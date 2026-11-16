@@ -17,5 +17,5 @@ object DkaiLive {
     fun liveMode(): DkaiMode? = screen()?.liveMode()
 
     /** DK लाइव को चुपचाप बताओ (जुड़ा हो तो) */
-    fun note(t: String) { try { DKAccessibilityService.instance?.gemLive?.pushNote(t) } catch (_: Exception) {} }
+    fun note(t: String) { try { DKAccessibilityService.instance?.gemLive?.pushNote(t) } catch (e: Exception) { com.dk.assistant.Quiet.note(e) } }
 }

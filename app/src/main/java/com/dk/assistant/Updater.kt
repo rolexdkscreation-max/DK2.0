@@ -329,8 +329,8 @@ object Updater {
                 notifyFail(c, rel)
             } finally {
                 if (downloadingCode == rel.code) downloadingCode = 0
-                try { if (wl.isHeld) wl.release() } catch (_: Exception) {}
-                try { wifi?.release() } catch (_: Exception) {}
+                try { if (wl.isHeld) wl.release() } catch (e: Exception) { Quiet.note(e) }
+                try { wifi?.release() } catch (e: Exception) { Quiet.note(e) }
             }
         }
     }
@@ -433,21 +433,21 @@ object Updater {
             .setContentTitle(UiLang.s("${rel.typeLabel} डाउनलोड हो रहा है • DK ${rel.version}"))
             .setContentText(UiLang.s("$p% • ${rel.sizeMb} — बैकग्राउंड में चल रहा है"))
             .setProgress(100, p, p == 0).setOngoing(true).setOnlyAlertOnce(true).build())
-    } catch (_: Exception) {}
+    } catch (e: Exception) { Quiet.note(e) }
 
     private fun notifyReady(c: Context, rel: Release) = try {
         nm(c).notify(NOTIF_ID, builder(c).setSmallIcon(android.R.drawable.stat_sys_download_done)
             .setContentTitle(UiLang.s("${rel.typeLabel} तैयार • DK ${rel.version}"))
             .setContentText(UiLang.s("डाउनलोड हो गया — इंस्टॉल करने के लिए टैप करें"))
             .setAutoCancel(true).build())
-    } catch (_: Exception) {}
+    } catch (e: Exception) { Quiet.note(e) }
 
     private fun notifyFail(c: Context, rel: Release) = try {
         nm(c).notify(NOTIF_ID, builder(c).setSmallIcon(android.R.drawable.stat_notify_error)
             .setContentTitle(UiLang.s("अपडेट डाउनलोड रुक गया • DK ${rel.version}"))
             .setContentText(UiLang.s("इंटरनेट आने पर टैप करें — जहाँ रुका था वहीं से आगे होगा"))
             .setAutoCancel(true).build())
-    } catch (_: Exception) {}
+    } catch (e: Exception) { Quiet.note(e) }
 
     // v3.6: नया अपडेट आया - 6 घंटे वाली जाँच से (ऐप बंद हो तब भी)
     private const val CH_NEW = "dk_update_new"
@@ -471,7 +471,7 @@ object Updater {
         } catch (e: Exception) { DKLog.d("update notify: ${e.message}"); DKBug.report("update", e, "update notification") }
     }
 
-    fun clearNotification(c: Context) = try { nm(c).cancel(NOTIF_ID) } catch (_: Exception) {}
+    fun clearNotification(c: Context) = try { nm(c).cancel(NOTIF_ID) } catch (e: Exception) { Quiet.note(e) }
 }
 
 /** Android installer ka jawab: "Install" dabane wali screen dikhao, ya nateeja batao. */

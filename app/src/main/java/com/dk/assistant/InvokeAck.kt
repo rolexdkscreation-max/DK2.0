@@ -61,7 +61,7 @@ object InvokeAck {
         // ack फ़ोन में नहीं बना (पहली बार / आवाज़ बदली) = तुरंत टिंग, ack अगली बार के लिए पीछे से बनाओ
         deafUntil = System.currentTimeMillis() + TONE_DEAF_MS
         tone()
-        Thread { try { HeyDk.prepareAcks(c) } catch (_: Exception) {} }.start()
+        Thread { try { HeyDk.prepareAcks(c) } catch (e: Exception) { Quiet.note(e) } }.start()
         // Live की अपनी आवाज़ वाला "Yes Boss" - Live बंद होते ही बनेगा (अभी Live जुड़ रहा है, उससे टकराव नहीं)
         com.dk.assistant.voice.LiveAckMaker.ensureAsync(c, "power बटन (टिंग बजी)")
         return "tone"
@@ -71,8 +71,8 @@ object InvokeAck {
         try {
             val t = ToneGenerator(AudioManager.STREAM_MUSIC, 70)
             t.startTone(ToneGenerator.TONE_PROP_ACK, TONE_MS)
-            Thread { try { Thread.sleep(TONE_MS + 120L) } catch (_: Exception) {}; t.release() }.start()
-        } catch (_: Exception) {}
+            Thread { try { Thread.sleep(TONE_MS + 120L) } catch (e: Exception) { Quiet.note(e) }; t.release() }.start()
+        } catch (e: Exception) { Quiet.note(e) }
     }
 }
 
