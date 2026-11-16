@@ -121,4 +121,18 @@ object SocialSmart {
         if (song.isNotBlank()) append(", गाना: ").append(song)
         if (people.isNotEmpty()) append(", टैग: ").append(people.joinToString(", "))
     }.trim().trimStart(',').trim()
+
+    /** गैलरी से चुनी फ़ाइल को कैसे बताएँ: "आपकी आज की फोटो", "आपका कल का वीडियो", "आपकी 5 दिन पुरानी फोटो" */
+    fun mediaLabel(at: Long, now: Long, video: Boolean): String {
+        val (thing, ki, ka) = if (video) Triple("वीडियो", "का", "पुराना") else Triple("फोटो", "की", "पुरानी")
+        val mine = if (video) "आपका" else "आपकी"
+        if (at <= 0L || at > now + 60_000) return "$mine $thing"
+        val d = ((now - at) / 86_400_000L).toInt()
+        return when {
+            d <= 0 -> "$mine आज $ki $thing"
+            d == 1 -> "$mine कल $ki $thing"
+            d < 60 -> "$mine $d दिन $ka $thing"
+            else -> "$mine $ka $thing"
+        }
+    }
 }
