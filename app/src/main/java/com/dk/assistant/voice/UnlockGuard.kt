@@ -14,6 +14,25 @@ import com.dk.assistant.DKLog
 object UnlockGuard {
     private class Utter(val pcm: ByteArray, val at: Long)
 
+    /** आवाज़-पहचान का हिस्सा (असल में [VoiceGuardian]; JVM simulation test में नकली - UnlockFlowTest) */
+    internal interface Voice {
+        fun ready(c: Context): Boolean
+        fun score(c: Context, pcm: ByteArray): Pair<Float, FloatArray>?
+        fun baseThreshold(c: Context): Float
+        fun seen(c: Context): List<FloatArray>
+        fun remember(c: Context, e: FloatArray)
+    }
+
+    private object RealVoice : Voice {
+        override fun ready(c: Context) = VoiceGuardian.ready(c)
+        override fun score(c: Context, pcm: ByteArray) = VoiceGuardian.unlockScore(c, pcm)
+        override fun baseThreshold(c: Context) = VoiceGuardian.threshold(c)
+        override fun seen(c: Context) = VoiceGuardian.templates(c) + VoiceGuardian.unlockSeen(c)
+        override fun remember(c: Context, e: FloatArray) = VoiceGuardian.rememberUnlock(c, e)
+    }
+
+    @Volatile internal var voice: Voice = RealVoice
+
     @Volatile private var last: Utter? = null
     @Volatile private var intentAt = 0L
     @Volatile private var grantAt = 0L
@@ -64,12 +83,13 @@ object UnlockGuard {
         if (strikes.paused(now)) return UnlockRules.Verdict.PAUSED.also { log(it, null) }
         val trimmed = try { VgRules.trimSilence(pcm) } catch (_: Exception) { pcm }
         val ms = trimmed.size * 1000 / (OwnerGate.RATE * 2)
-        val r = if (ms >= UnlockRules.MIN_MS && VoiceGuardian.ready(c)) try { VoiceGuardian.unlockScore(c, trimmed) } catch (_: Throwable) { null } else null
-        val seen = if (r != null) VoiceGuardian.templates(c) + VoiceGuardian.unlockSeen(c) else emptyList()
+        val vo = voice
+        val r = if (ms >= UnlockRules.MIN_MS && vo.ready(c)) try { vo.score(c, trimmed) } catch (_: Throwable) { null } else null
+        val seen = if (r != null) vo.seen(c) else emptyList()
         val replay = r != null && UnlockRules.isReplay(r.second, seen)
-        val v = UnlockRules.judge(r?.first, UnlockRules.threshold(VoiceGuardian.threshold(c)), replay, ms)
+        val v = UnlockRules.judge(r?.first, UnlockRules.threshold(vo.baseThreshold(c)), replay, ms)
         when {
-            v.ok -> { strikes.ok(); try { VoiceGuardian.rememberUnlock(c, r!!.second) } catch (e: Exception) { com.dk.assistant.Quiet.note(e) } }
+            v.ok -> { strikes.ok(); try { vo.remember(c, r!!.second) } catch (e: Exception) { com.dk.assistant.Quiet.note(e) } }
             v == UnlockRules.Verdict.LOW || v == UnlockRules.Verdict.REPLAY -> strikes.fail(now)
             else -> {}
         }
