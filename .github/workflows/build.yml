@@ -62,8 +62,9 @@ jobs:
         run: |
           set -e
           git fetch --tags --force >/dev/null 2>&1 || true
-          PREV_TAG="$(gh release view --json tagName -q .tagName 2>/dev/null || true)"
-          PREV_BODY="$(gh release view --json body -q .body 2>/dev/null || true)"
+          # 16 नवंबर 2026: बीटा (prerelease) भी गिनो - वरना दो बीटा एक ही version ले लेते (Latest सिर्फ़ स्टेबल दिखाता है)
+          PREV_TAG="$(gh release list --limit 1 --exclude-drafts --json tagName -q '.[0].tagName' 2>/dev/null || true)"
+          PREV_BODY="$( [ -n "$PREV_TAG" ] && gh release view "$PREV_TAG" --json body -q .body 2>/dev/null || true)"
           PREV_VER="$(printf '%s\n' "$PREV_BODY" | sed -n 's/^VERSION: *\([0-9.]*\).*/\1/p' | head -1)"
           if [ -n "$PREV_TAG" ] && git rev-parse -q --verify "refs/tags/$PREV_TAG" >/dev/null; then RANGE="$PREV_TAG..HEAD"; else RANGE="HEAD~1..HEAD"; fi
           MSGS="$(git log --pretty=%B $RANGE)"
@@ -88,6 +89,8 @@ jobs:
           {
             echo "TYPE: $TYPE"
             echo "VERSION: $NEW"
+            echo "CHANNEL: beta"
+            echo "SHA256: @@SHA256@@"
             echo "---"
             # v3.6: सिर्फ़ असली बदलाव - PR का "## अपडेट में क्या नया" (Merge/टेस्ट/बैकअप/काम-विवरण नहीं)
             NOTES="$(python3 .github/scripts/release_notes.py "$RANGE" 2>/dev/null || true)"
@@ -103,6 +106,10 @@ jobs:
         run: |
           gradle assembleRelease --no-daemon
           cp app/build/outputs/apk/release/app-release.apk DK.apk
+          # 16 नवंबर 2026 (ऑडिट): ऐप download के बाद यही SHA-256 मिलाता है
+          SHA="$(sha256sum DK.apk | cut -d' ' -f1)"
+          sed -i "s/@@SHA256@@/$SHA/" release_notes.txt
+          echo "SHA256: $SHA"
 
       - name: APK upload (Actions artifact)
         uses: actions/upload-artifact@v4
@@ -160,7 +167,8 @@ jobs:
           set -e
           # नवंबर 2026: आख़िरी जाँच - यही version पहले से release में है, या नया version पिछले से छोटा = release नहीं
           # (एक नाम की दो release से app का update गड़बड़ाता था)
-          LATEST_BODY="$(gh release view --json body -q .body 2>/dev/null || true)"
+          LATEST_TAG="$(gh release list --limit 1 --exclude-drafts --json tagName -q '.[0].tagName' 2>/dev/null || true)"
+          LATEST_BODY="$( [ -n "$LATEST_TAG" ] && gh release view "$LATEST_TAG" --json body -q .body 2>/dev/null || true)"
           LATEST_VER="$(printf '%s\n' "$LATEST_BODY" | sed -n 's/^VERSION: *\([0-9.]*\).*/\1/p' | head -1)"
           NAMES="$(gh release list --limit 200 --json name -q '.[].name' 2>/dev/null || true)"
           if printf '%s\n' "$NAMES" | grep -qxF "DK ${VERSION_NAME}"; then
@@ -174,4 +182,5 @@ jobs:
             --target "$GITHUB_SHA" \
             --title "DK ${VERSION_NAME}" \
             --notes-file release_notes.txt \
-            --latest
+            --prerelease
+          # 16 नवंबर 2026 (मालिक: बीटा और स्टेबल): हर merge = बीटा. स्टेबल बनाने के लिए Actions → "Promote beta to stable"

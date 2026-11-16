@@ -45,6 +45,10 @@ object Updater {
         val version: String = "",
         /** नवंबर 2026: GitHub API का asset पता - सीधा पता 504 दे तो दूसरा रास्ता ([UpdateRetry]) */
         val assetApi: String = "",
+        /** 16 नवंबर 2026 (ऑडिट): release में लिखा APK का SHA-256 - download के बाद मिलान (खाली = पुरानी release, जाँच नहीं) */
+        val sha256: String = "",
+        /** 16 नवंबर 2026: बीटा (prerelease) या स्टेबल */
+        val beta: Boolean = false,
     ) {
         val isSecurity get() = type == "security"
         /** "सॉफ़्टवेयर अपडेट" / "सिक्योरिटी पैच" */
@@ -78,7 +82,7 @@ object Updater {
             if (a.optString("name").endsWith(".apk")) { url = a.optString("browser_download_url"); size = a.optLong("size"); api = a.optString("url"); break }
         }
         return build(tag, o.optString("name", tag), o.optString("body", ""), url, size, o.optString("html_url"))
-            ?.copy(assetApi = if (UpdateRetry.isApiAsset(api)) api else "")
+            ?.let { it.copy(assetApi = if (UpdateRetry.isApiAsset(api)) api else "", beta = it.beta || o.optBoolean("prerelease")) }
     }
 
     /** API और feed दोनों से एक ही तरह का Release (TYPE:/VERSION: लाइनें, notes) */
@@ -95,7 +99,9 @@ object Updater {
         val raw = if (body.contains("\n---\n")) body.substringAfter("\n---\n").trim()
             else lines.filterNot { it.startsWith("TYPE:") || it.startsWith("VERSION:") }.joinToString("\n").trim()
         val notes = ReleaseNotes.clean(raw)     // v3.6: सिर्फ़ असली बदलाव (Merge/टेस्ट/बैकअप/लंबा काम-विवरण नहीं)
-        return Release(code, title, notes, url, size, page, type, ver)
+        val head = if (body.contains("\n---\n")) body.substringBefore("\n---\n").lines().map { it.trim() } else lines
+        return Release(code, title, notes, url, size, page, type, ver,
+            sha256 = UpdateChannel.sha(head), beta = UpdateChannel.isBetaBody(head))
     }
 
     /** GitHub का HTTP जवाब ठीक नहीं (403 = घंटे की सीमा, 429, 5xx...) - साफ़ हिंदी वजह के साथ */
@@ -114,11 +120,13 @@ object Updater {
     }
 
     /** API न मिले तो: github.com का releases.atom feed + सीधा APK पता (API की घंटे वाली सीमा नहीं) */
-    private fun fromFeed(): Release? {
+    private fun fromFeed(beta: Boolean = false): Release? {
         val req = Request.Builder().url(ReleaseFeed.feedUrl(REPO)).header("User-Agent", "DK-Assistant").build()
+        // 16 नवंबर 2026: feed में बीटा भी होते हैं - स्टेबल वाले को सिर्फ़ स्टेबल (body में CHANNEL: beta नहीं)
         val e = http.newCall(req).execute().use { r ->
             if (!r.isSuccessful) throw GhHttp(r.code)
-            ReleaseFeed.parseAtom(r.body?.string().orEmpty())
+            ReleaseFeed.parseAtomAll(r.body?.string().orEmpty())
+                .firstOrNull { beta || !UpdateChannel.isBetaBody(it.body.lines().map { l -> l.trim() }) }
         } ?: return null
         val url = ReleaseFeed.apkUrl(REPO, e.tag)
         // APK का आकार (download पूरा हुआ या नहीं, यह जाँचने के लिए). न मिले तो 0 = आकार की जाँच नहीं
@@ -132,12 +140,12 @@ object Updater {
     }
 
     /** GitHub se sabse naya release. token = Settings वाला GitHub token (हो तो घंटे में 5000 बार) */
-    suspend fun latest(token: String = ""): Release? = withContext(Dispatchers.IO) {
+    suspend fun latest(token: String = "", beta: Boolean = false): Release? = withContext(Dispatchers.IO) {
         // नवंबर 2026 (मालिक: "504 आता है"): GitHub का अस्थायी 5xx / टूटा connection = थोड़ा रुककर खुद दोबारा (3 बार तक)
         var n = 0
         var out: Release? = null
         while (true) {
-            try { out = latestOnce(token); break }
+            try { out = latestOnce(token, beta); break }
             catch (e: java.io.IOException) {
                 val code = (e as? GhHttp)?.code ?: 0
                 n++
@@ -149,16 +157,31 @@ object Updater {
         out
     }
 
-    private fun latestOnce(token: String): Release? {
+    private fun latestOnce(token: String, beta: Boolean = false): Release? {
         return try {
-            getJson("https://api.github.com/repos/$REPO/releases/latest", token)?.let { parse(it) }
+            if (beta) betaOnce(token)
+            else getJson("https://api.github.com/repos/$REPO/releases/latest", token)?.let { parse(it) }
         } catch (e: GhHttp) {
             if (!ReleaseFeed.shouldFallback(e.code)) throw e
-            try { fromFeed() } catch (_: Exception) { throw e }
+            try { fromFeed(beta) } catch (_: Exception) { throw e }
         } catch (e: java.io.IOException) {
             // API तक नहीं पहुँचा (DNS/नेटवर्क) - github.com शायद मिल जाए
-            try { fromFeed() } catch (_: Exception) { throw java.io.IOException(ReleaseFeed.friendly(0), e) }
+            try { fromFeed(beta) } catch (_: Exception) { throw java.io.IOException(ReleaseFeed.friendly(0), e) }
         }
+    }
+
+    /** 16 नवंबर 2026 (मालिक: "बीटा और स्टेबल अपडेट"): बीटा चैनल = नई releases की सूची (prerelease भी) में सबसे बड़ा build */
+    private fun betaOnce(token: String): Release? {
+        val rb = Request.Builder().url("https://api.github.com/repos/$REPO/releases?per_page=15")
+            .header("Accept", "application/vnd.github+json").header("User-Agent", "DK-Assistant")
+        if (token.isNotBlank()) rb.header("Authorization", "Bearer $token")
+        val arr = http.newCall(rb.build()).execute().use { r ->
+            if (r.code == 401 && token.isNotBlank()) return betaOnce("")
+            if (!r.isSuccessful) throw GhHttp(r.code)
+            org.json.JSONArray(r.body?.string() ?: "[]")
+        }
+        val all = (0 until arr.length()).mapNotNull { arr.optJSONObject(it) }.filterNot { it.optBoolean("draft") }.mapNotNull { parse(it) }
+        return all.maxByOrNull { it.code }
     }
 
     /** Kisi khaas build ka release (update ke baad "क्या नया है" dikhane ke liye) */
@@ -168,7 +191,7 @@ object Updater {
 
     /** Naya update hai? (null = nahi hai) */
     suspend fun check(c: Context): Release? {
-        val rel = latest(Prefs.ghToken(c)) ?: return null
+        val rel = latest(Prefs.ghToken(c), Prefs.betaUpdates(c)) ?: return null
         Prefs.edit(c) {
             putLong("upd_checked", System.currentTimeMillis())
             putInt("upd_latest", rel.code)
@@ -178,6 +201,7 @@ object Updater {
             // poora release yaad rakho: bina internet ke bhi chip/download/install sahi chale
             putString("upd_url", rel.apkUrl); putLong("upd_size", rel.size); putString("upd_name", rel.name)
             putString("upd_asset", rel.assetApi)
+            putString("upd_sha", rel.sha256); putBoolean("upd_is_beta", rel.beta)
         }
         return if (rel.code > currentCode(c)) rel else null
     }
@@ -190,7 +214,7 @@ object Updater {
         if (code <= currentCode(c) || url.isBlank()) return null
         return Release(code, sp.getString("upd_name", "").orEmpty(), ReleaseNotes.clean(sp.getString("upd_notes_$code", "").orEmpty()), url,
             sp.getLong("upd_size", 0L), "", sp.getString("upd_type", "software") ?: "software", sp.getString("upd_version", "").orEmpty(),
-            sp.getString("upd_asset", "").orEmpty())
+            sp.getString("upd_asset", "").orEmpty(), sp.getString("upd_sha", "").orEmpty(), sp.getBoolean("upd_is_beta", false))
     }
 
     fun canInstall(c: Context) =
@@ -287,6 +311,10 @@ object Updater {
                 if (!isActive) return@launch
                 if (rel.size > 0 && part.length() != rel.size) throw java.io.IOException("अधूरा download (${part.length()}/${rel.size})")
                 if (!headIsApk(part)) { part.delete(); throw java.io.IOException("डाउनलोड हुई फ़ाइल APK नहीं थी - फिर दबाएँ") }
+                // 16 नवंबर 2026 (ऑडिट): release में लिखे SHA-256 से मिलान - बदली / टूटी फ़ाइल install नहीं होगी
+                if (rel.sha256.isNotBlank() && !UpdateChannel.shaMatches(rel.sha256, sha256Of(part))) {
+                    part.delete(); throw java.io.IOException("डाउनलोड हुई फ़ाइल की जाँच (SHA-256) नहीं मिली - फ़ाइल हटा दी, फिर दबाएँ")
+                }
                 val apk = apkFile(c, rel.code)
                 apk.delete(); part.renameTo(apk)
                 progress = 100
@@ -305,6 +333,12 @@ object Updater {
                 try { wifi?.release() } catch (_: Exception) {}
             }
         }
+    }
+
+    private fun sha256Of(f: java.io.File): String {
+        val md = java.security.MessageDigest.getInstance("SHA-256")
+        f.inputStream().use { ins -> val b = ByteArray(64 * 1024); while (true) { val n = ins.read(b); if (n < 0) break; md.update(b, 0, n) } }
+        return md.digest().joinToString("") { "%02x".format(it) }
     }
 
     private fun headIsApk(f: java.io.File): Boolean = try {

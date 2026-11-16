@@ -382,6 +382,7 @@ class MainActivity : AppCompatActivity() {
         // 13 नवंबर 2026: Settings / DK लाइव से नया UI ↔ क्लासिक बदला = लौटते ही वही होम
         if (com.dk.assistant.dkai.Dkai.on(this) != (dkai != null)) { recreate(); return }
         DKState.listen(stateListener)
+        CrashUi.maybeAsk(this)   // 16 नवंबर 2026: सिर्फ़ जब मालिक ने "पूछो" चालू किया हो
         VoiceWarm.onAppOpen(this)      // v3.71: ऐप खुलते ही Worker/TTS का कनेक्शन तैयार
         Setup.startKeepAlive(this)
         checkMicPerm(force = intent?.getBooleanExtra("ask_mic", false) == true)
