@@ -25,6 +25,8 @@ class MicBoost(
         private set
     @Volatile var gain = 1.0
         private set
+    /** 16 नवंबर 2026 (ऑडिट S4): फ़ोन का AGC चालू = इससे ज़्यादा गुना नहीं ([LiveVadFix.boostLimit]). बड़ा = पहले जैसा */
+    @Volatile var gainLimit = Double.MAX_VALUE
 
     /** buf ke pehle n samples ko jagah par hi tez karo. Wapas: asli (bina badhaye) rms. */
     fun apply(buf: ShortArray, n: Int): Double {
@@ -36,7 +38,7 @@ class MicBoost(
         noise = if (rms < noise) noise * 0.85 + rms * 0.15 else noise * 0.997 + rms * 0.003
         if (noise < 20.0) noise = 20.0
         // shor ko 450 se upar mat le jao (pankha/TV tez na ho)
-        val cap = (noiseCap / noise).coerceIn(1.0, maxGain)
+        val cap = (noiseCap / noise).coerceIn(1.0, minOf(maxGain, gainLimit))
         val speech = rms > maxOf(noise * 1.6, 60.0)
         val want = if (speech) (target / rms).coerceIn(1.0, cap) else minOf(gain, cap)
         gain = if (want < gain) want else gain + (want - gain) * 0.08

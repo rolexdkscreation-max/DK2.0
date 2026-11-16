@@ -440,6 +440,8 @@ internal fun GeminiLive.setupJson(m: String, txt: Boolean = connText, resume: Bo
                 // (server ka default ~800ms tha.) Phone khud bhi 500ms chup par audioStreamEnd bhejta hai (hybrid VAD).
                 // 14 नवंबर 2026 (मालिक: "DK पहले अच्छे से पूरी बात सुने, तुरंत कुछ भी जवाब न दे"): LOW = server बीच के छोटे ठहराव
                 // पर बात खत्म नहीं मानता. तेज़ी फ़ोन के अपने "बात खत्म" (audioStreamEnd, पूरे वाक्य पर 0.36s) से ही रहती है.
+                // 16 नवंबर 2026 (ऑडिट S8, सिर्फ़ टिप्पणी): ऊपर की "HIGH / 500ms" वाली पंक्तियाँ पुरानी हैं - अभी का असली मान
+                // LOW + SERVER_SILENCE_MS (800 ms). तेज़ी फ़ोन के audioStreamEnd से आती है.
                 .put("endOfSpeechSensitivity", "END_SENSITIVITY_LOW")
                 // 100ms = pehla shabd na kate (phone 320ms pehle ki awaaz bhi bhejta hai), khatak/thak par "bolna shuru" nahi
                 .put("prefixPaddingMs", PREFIX_PADDING_MS)

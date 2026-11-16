@@ -86,8 +86,11 @@ class GeminiLive(internal val svc: DKAccessibilityService, internal val agent: A
          * बात कटना 24/60 -> 5/60; server 500 पर फ़ोन का कोई सुधार असर नहीं करता (196/240 = 196/240).
          */
         const val SERVER_SILENCE_MS = 800   // पहले v5.1 (मालिक: "बोलना बंद होते ही जवाब"): 800 -> 500 (Google की सलाह 500-800 का सबसे तेज़). पहले v3.46: 550 -> 800. छोटी बात पर फ़ोन खुद 550ms पर "खत्म" भेजता है; यह सिर्फ़ तब जब वाक्य अधूरा लगे ("और…", "तो…")
+        // 16 नवंबर 2026 (ऑडिट S8, सिर्फ़ टिप्पणी): अभी का असली मान 800 ms है (ऊपर की 500 वाली पंक्तियाँ पुराना इतिहास हैं).
+        // server का "बात खत्म" = END_SENSITIVITY_LOW + 800 ms; फ़ोन अपने आप 0.36 / 0.5 / 0.8 s पर audioStreamEnd भेजता है.
         /** Phone ka VAD: itni der chup = turant audioStreamEnd (server ka intezaar nahi) */
         const val CLIENT_END_MS = 500     // v5.1: 550 -> 500 (Google: फ़ोन का VAD कम से कम 500ms; पूरे वाक्य पर TurnEnd.EARLY_END_MS पहले जैसा)
+        // (ऑडिट S8: "Server VAD: itni der chup" वाली ऊपर की पहली टिप्पणी SERVER_SILENCE_MS की है, इसकी नहीं)
         /** v3.5+: HOLD - caption इतनी देर न बदले + आवाज़ शांत = यूज़र का अगला सवाल पूरा */
         const val HOLD_END_MS = 1100L
         const val HOLD_QUIET_MS = 700L
@@ -415,6 +418,15 @@ class GeminiLive(internal val svc: DKAccessibilityService, internal val agent: A
     /** नवंबर 2026 (Live जाँच #1): कॉल-mode स्पीकर में DK बोलते समय VAD से तुरंत टोकना (caption का इंतज़ार नहीं) */
     internal val duplex = DuplexBarge()
     @Volatile internal var duplexStops = 0
+    /** 16 नवंबर 2026 (ऑडिट S2): speaker पर (कॉल-mode नहीं) DK बोलते समय VAD + गूँज से बहुत तेज़ आवाज़ = जल्दी टोकना */
+    internal val speakerBarge = SpeakerBarge()
+    @Volatile internal var speakerStops = 0
+    /** ऑडिट S3: caption जुड़ा दिखे पर लिखना बंद = "चुप" माना जाए (तब Live का अपना लिखा + बिना caption वाले नियम) */
+    internal val capHealth = CaptionHealth()
+    /** ऑडिट S7: इस बात का "खत्म" किस नियम से हुआ (VAD सारांश log के लिए) */
+    @Volatile internal var endRule = ""
+    /** ऑडिट S1: यह बात वेक वर्ड के बाद जमा आवाज़ से शुरू हुई */
+    @Volatile internal var speechFromWake = false
     /** नवंबर 2026 (Live जाँच #4): Live का अपना लिखा (inputTranscription) - caption न चले तो बात-खत्म के लिए */
     @Volatile internal var liveHeard = ""
     @Volatile internal var liveHeardAt = 0L
@@ -1572,7 +1584,8 @@ class GeminiLive(internal val svc: DKAccessibilityService, internal val agent: A
     internal fun now0() = System.currentTimeMillis()
 
     /** Caption is key par chal raha hai -> "आप:" sirf usi se (Live model ka der se aaya text screen par nahi, warna text aage-peeche hota) */
-    internal fun captionOn() = caption?.let { it.ready && it.working } == true
+    // 16 नवंबर 2026 (ऑडिट S3): + लगातार लंबी बातों पर एक भी शब्द न लिखा हो (capHealth) = चुप caption पर इंतज़ार नहीं
+    internal fun captionOn() = caption?.let { it.ready && it.working && !capHealth.stale(it.textAt) } == true
 
     @Volatile internal var micOffSent = false
 

@@ -101,6 +101,7 @@ internal fun GeminiLive.handleServer(msg: String, setup: CompletableDeferred<Uni
         Ducker.duck(svc, "Live: user बोल रहा")
         suspectAt = 0L                     // user ki baat ka text aaya = rokna sahi tha (goonj nahi)
         duplex.onWords()
+        speakerBarge.onWords()             // ऑडिट S2
         val u = synchronized(turnLock) { userText.append(t); userText.toString().trim() }
         liveHeard = u; liveHeardAt = System.currentTimeMillis()     // नवंबर 2026 (#4): caption न चले तो बात-खत्म इसी से
         Lang.noteUser(u)                   // DK AI: "Auto" भाषा - यूज़र की भाषा याद (तय लाइनें उसी में)
