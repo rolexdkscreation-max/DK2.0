@@ -61,7 +61,7 @@ object DkSettingsApply {
         return need.filter { p -> c.checkSelfPermission(p) != android.content.pm.PackageManager.PERMISSION_GRANTED }
     }
 
-    fun run(c: Context, args: JSONObject): String {
+    suspend fun run(c: Context, args: JSONObject): String {
         val action = args.optString("action", "list").lowercase().trim()
         val q = args.optString("setting", "").trim()
         return when (action) {
@@ -73,6 +73,9 @@ object DkSettingsApply {
                 if (prefOn(c, item) == on) return "already_${if (on) "on" else "off"}: '${item.name}' पहले से ${DkSettings.onOff(on)} है। Tell the user."
                 val now = System.currentTimeMillis()
                 if (!args.optBoolean("confirmed", false) || !DkSettings.confirmOk(item, on, now)) return DkSettings.ask(item, on, now)
+                // 16 नवंबर 2026 (ऑडिट P0-2): बोलकर दो बार पक्का होने के बाद भी आख़िरी "हाँ" स्क्रीन के कार्ड पर (AI अकेले नहीं बदल सकता)
+                com.dk.assistant.plus.ConfirmGate.check(c, "'${item.name}' ${DkSettings.onOff(on)} करूँ?", "DK सेटिंग: ${item.name} -> ${DkSettings.onOff(on)}",
+                    "the setting change")?.let { return it }
                 apply(c, item, on)
                 val miss = if (on) missingPerms(c, item) else emptyList()
                 "done: '${item.name}' अब ${DkSettings.onOff(on)} है। Tell the user briefly that it is done." +

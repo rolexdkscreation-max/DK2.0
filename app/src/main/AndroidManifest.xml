@@ -410,6 +410,13 @@
             android:excludeFromRecents="true"
             android:launchMode="singleTask"
             android:screenOrientation="portrait" />
+        <!-- 16 नवंबर 2026: जोखिम वाले काम से पहले ऐप का अपना "हाँ / ना" कार्ड (लॉक स्क्रीन के ऊपर नहीं) -->
+        <activity
+            android:name=".plus.ConfirmActivity"
+            android:exported="false"
+            android:excludeFromRecents="true"
+            android:theme="@android:style/Theme.Material.Dialog.NoActionBar"
+            android:screenOrientation="portrait" />
         <activity
             android:name=".BossCheckActivity"
             android:exported="false"

@@ -13,7 +13,8 @@ import org.json.JSONObject
 /**
  * 15 नवंबर 2026 (मालिक: "जो भी बना रहे हो, उसके बारे में DK को पता हो - बोलूँ तो चला सके").
  * नई सुविधाओं के DK लाइव tools. हर एक का अपना flag (शुरू में बंद) - बंद हो तो Live को दिखता ही नहीं.
- * भेजना / हटाना = पहले यूज़र को सुनाओ, "हाँ" पर ही ([TwoStep]).
+ * भेजना / हटाना = पहले यूज़र को सुनाओ, "हाँ" पर ही ([TwoStep]); फिर ऐप का अपना "हाँ / ना" कार्ड ([com.dk.assistant.plus.ConfirmGate]) -
+ * 16 नवंबर 2026 से आख़िरी फ़ैसला उंगली का, AI का `confirmed` नहीं.
  */
 object TwoStep {
     data class P(val key: String, val at: Long)
@@ -81,7 +82,12 @@ object EmailReadTool : PlusTool {
         JSONObject().put("count", int("how many newest emails, 1-10 (default 5)")).put("unread_only", bool("true = only unread (default true)")))
 
     override suspend fun run(c: Context, args: JSONObject): String = withContext(Dispatchers.IO) {
-        try { Mail.Rules.summary(Mail.read(c, args.optInt("count", 5), args.optBoolean("unread_only", true))) }
+        // 16 नवंबर 2026 (ऑडिट P0-2): ईमेल दूसरों का लिखा है - AI के लिए "निर्देश नहीं, जानकारी"
+        try {
+            val list = Mail.read(c, args.optInt("count", 5), args.optBoolean("unread_only", true))
+            if (list.isEmpty()) Mail.Rules.summary(list)
+            else { com.dk.assistant.plus.ConfirmGate.markUntrusted(); com.dk.assistant.plus.ConfirmGate.Rules.wrapUntrusted("EMAIL", Mail.Rules.summary(list)) }
+        }
         catch (e: Exception) { "ERROR: ${e.message}. Tell the user briefly." }
     }
 }
@@ -103,6 +109,7 @@ object EmailSendTool : PlusTool {
         if (body.isBlank()) return "ERROR: empty email. Ask the user what to write."
         if (!TwoStep.ok("send|$to|$sub|${body.hashCode()}", args.optBoolean("confirmed"), System.currentTimeMillis()))
             return "confirm_needed: NOT sent yet. Read to the user: To $to, subject '$sub', text: $body - then ask 'भेज दूँ?'. Only on a clear yes call email_send again with the same fields and confirmed=true."
+        com.dk.assistant.plus.ConfirmGate.check(c, "यह ईमेल भेजूँ?", "To: $to\nSubject: $sub\n\n$body", "the email")?.let { return it }
         return withContext(Dispatchers.IO) {
             try { Mail.send(c, to, sub, body); "SENT: the email to $to is sent. Tell the user in one short line." }
             catch (e: Exception) { "ERROR: ${e.message}. Not sent - tell the user." }
@@ -124,6 +131,7 @@ object EmailDeleteTool : PlusTool {
         if (uid <= 0) return "ERROR: no uid - call email_read first."
         if (!TwoStep.ok("del|$uid", args.optBoolean("confirmed"), System.currentTimeMillis()))
             return "confirm_needed: NOT deleted yet. Ask the user: 'सर, ${args.optString("what").ifBlank { "यह ईमेल" }} डिलीट कर दूँ?' Only on yes call again with confirmed=true."
+        com.dk.assistant.plus.ConfirmGate.check(c, "यह ईमेल डिलीट करूँ?", args.optString("what").ifBlank { "uid $uid" }, "deleting the email")?.let { return it }
         return withContext(Dispatchers.IO) {
             try { Mail.delete(c, uid); "DELETED: tell the user briefly." } catch (e: Exception) { "ERROR: ${e.message}" }
         }
@@ -152,6 +160,7 @@ object GroupReportTool : PlusTool {
         if (action != "send") return "FILLED (not sent yet) for group '${t.group}':\n$text\nRead it to the user and ask 'ग्रुप में भेज दूँ?'. On yes call action=send with the same values and confirmed=true."
         if (!TwoStep.ok("grp|${t.name}|${text.hashCode()}", args.optBoolean("confirmed"), System.currentTimeMillis()))
             return "confirm_needed: NOT sent. Read this to the user and ask 'भेज दूँ?':\n$text\nOn yes call action=send again with the same values and confirmed=true."
+        com.dk.assistant.plus.ConfirmGate.check(c, "WhatsApp ग्रुप '${t.group}' में भेजूँ?", text, "the group report")?.let { return it }
         val svc = c as? DKAccessibilityService ?: DKAccessibilityService.instance ?: return "ERROR: DK phone control (Accessibility) is off - it is needed to send in WhatsApp."
         return GroupReport.send(svc, t.group, text)?.let { "ERROR: $it. Tell the user." } ?: "SENT: report sent to WhatsApp group '${t.group}'. Tell the user briefly."
     }
