@@ -1,0 +1,80 @@
+name: Beta gate
+
+# नवंबर 2026 (मालिक: "beta-gate बनाओ"): जिस बीटा में बड़ा बग मिला हो वह स्टेबल में न जाए।
+# - खुला issue जिस पर label `beta-blocker` है = main वाले हर PR पर `beta-gate` check लाल = merge नहीं (branch protection)।
+# - issue बंद हो / label हटे = खुले PR का `beta-gate` अपने-आप दोबारा चलता है और हरा होता है।
+# - "[बीटा 3.307] ..." वाले नए issue पर `v3.307` label अपने-आप (न हो तो बनता है)।
+# फ़ोन का "बीटा जाँच" कार्ड ⛔ (क्रैश / नई गंभीर) पर रिपोर्ट में `beta-blocker` माँगता है; किसी और की रिपोर्ट पर हाथ से लगाएँ।
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened, ready_for_review]
+  issues:
+    types: [opened, closed, reopened, labeled, unlabeled, deleted]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  beta-gate:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      issues: read
+    steps:
+      - name: खुले beta-blocker issue देखो
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          open="$(gh issue list -R "$REPO" --label beta-blocker --state open --limit 50 --json number,title -q '.[] | "#\(.number) \(.title)"')"
+          if [ -n "$open" ]; then
+            {
+              echo '### ⛔ बीटा में गंभीर बग खुला है - पहले ठीक करें'
+              echo
+              echo "$open" | sed 's/^/- /'
+              echo
+              echo 'fix वाला नया बीटा जाँचकर issue बंद करें (या label `beta-blocker` हटाएँ) - यह check अपने-आप फिर चलेगा।'
+            } >> "$GITHUB_STEP_SUMMARY"
+            echo "$open" | while IFS= read -r l; do echo "::error title=beta-gate::बीटा में गंभीर बग खुला है: $l"; done
+            exit 1
+          fi
+          echo '### ✅ कोई खुला beta-blocker नहीं' >> "$GITHUB_STEP_SUMMARY"
+
+  recheck:
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      actions: write
+      issues: write
+      pull-requests: read
+    steps:
+      - name: बीटा रिपोर्ट पर version label
+        if: github.event_name == 'issues' && github.event.action == 'opened'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          TITLE: ${{ github.event.issue.title }}
+          NUM: ${{ github.event.issue.number }}
+        run: |
+          set -uo pipefail
+          ver="$(printf '%s' "$TITLE" | sed -nE 's/^\[बीटा ([0-9][0-9.]*)\].*/\1/p' | head -1)"
+          if [ -z "$ver" ]; then echo "बीटा रिपोर्ट नहीं - label नहीं"; exit 0; fi
+          gh label create "v$ver" -R "$REPO" --color BFD4F2 --description "DK $ver बीटा" 2>/dev/null || true
+          gh issue edit "$NUM" -R "$REPO" --add-label "v$ver,beta" || echo "label नहीं लग पाया"
+      - name: खुले PR का beta-gate दोबारा चलाओ
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -uo pipefail
+          gh pr list -R "$REPO" --base main --state open --limit 50 --json headRefName -q '.[].headRefName' | while IFS= read -r b; do
+            [ -n "$b" ] || continue
+            row="$(gh run list -R "$REPO" --workflow beta-gate.yml --branch "$b" --event pull_request --limit 1 --json databaseId,status -q '.[0] | "\(.databaseId) \(.status)"' 2>/dev/null || true)"
+            id="${row%% *}"; st="${row#* }"
+            if [ -z "$row" ] || [ "$id" = "null" ]; then echo "$b: अभी beta-gate नहीं चला (अगले push पर चलेगा)"; continue; fi
+            if [ "$st" != "completed" ]; then echo "$b: beta-gate पहले से चल रहा है"; continue; fi
+            gh run rerun "$id" -R "$REPO" && echo "$b: beta-gate दोबारा चलाया ($id)" || echo "$b: दोबारा नहीं चला पाया ($id)"
+          done
