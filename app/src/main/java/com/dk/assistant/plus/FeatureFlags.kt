@@ -71,6 +71,8 @@ object FeatureFlags {
     const val VOICE_GUARDIAN = "plus_voice_guardian"
     const val VG_OWNER_ONLY = "plus_vg_owner_only"
     const val VG_AWAY = "plus_vg_away"
+    /** 16 नवंबर 2026 (मालिक): 15 सैंपल वाली पहचान - हर सैंपल अलग याद, मिलान सबसे मिलते सैंपल से (बंद = पुराना औसत) */
+    const val VG_DEEP = "plus_vg_deep"
     const val FACE_ON = "plus_face_on"
     const val FACE_APP_LOCK = "plus_face_app_lock"
     const val FACE_VAULT = "plus_face_vault"
@@ -128,6 +130,7 @@ object FeatureFlags {
         Flag(VOICE_GUARDIAN, "वॉइस गार्डियन (आवाज़-पहचान)", "RedimNet मॉडल इंटरनेट से डाउनलोड होता है", Section.VOICE_GUARDIAN),
         Flag(VG_OWNER_ONLY, "सिर्फ़ Boss की आवाज़", "अनजान आवाज़ को अनसुना करो", Section.VOICE_GUARDIAN),
         Flag(VG_AWAY, "Away मोड", "अनजान आवाज़: पहली बार चेतावनी, दूसरी बार फ़ोन लॉक", Section.VOICE_GUARDIAN),
+        Flag(VG_DEEP, "15 सैंपल वाली पक्की पहचान", "हर सैंपल अलग याद, मिलान सबसे मिलते सैंपल से", Section.VOICE_GUARDIAN),
         Flag(FACE_ON, "फ़ेस रिकग्निशन", "10 MB मॉडल इंटरनेट से डाउनलोड होता है", Section.FACE),
         Flag(FACE_APP_LOCK, "चेहरे से ऐप/सेक्शन लॉक", "Settings / Chat / Memories / चुने ऐप", Section.FACE),
         Flag(FACE_VAULT, "प्राइवेट वॉल्ट", "DK की ली फ़ोटो गैलरी में नहीं, ऐप के ताले में", Section.FACE),
@@ -169,6 +172,8 @@ object FeatureFlags {
         TOOL_AGENT,
         // 15 नवंबर 2026: वॉइस गार्डियन (हिस्सा 2)
         VOICE_GUARDIAN, VG_OWNER_ONLY, VG_AWAY,
+        // 16 नवंबर 2026: वॉइस गार्डियन - 15 सैंपल
+        VG_DEEP,
         // 15 नवंबर 2026: SOS - सबको पूरी 5 बार (हिस्सा 4)
         SOS_CALL_ALL,
         // 16 नवंबर 2026: सोशल पोस्ट स्पेशलिस्ट

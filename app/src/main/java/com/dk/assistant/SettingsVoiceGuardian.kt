@@ -20,6 +20,52 @@ import kotlinx.coroutines.launch
  * मॉडल चुनो → डाउनलोड (progress) → 6 वाक्य सिखाओ → सीमा (slider) → लाइव जाँच → स्विच. सब शुरू में बंद.
  */
 private var vgJob: Job? = null
+private var vgSlider: SeekBar? = null
+
+/**
+ * 16 नवंबर 2026: कई वाक्य रिकॉर्ड -> चुप्पी काटो -> पहचान. आपस में कम मिलने वाले सैंपल (शोर / कोई और बोला) छोड़ दो.
+ * keepOld = पुराने सैंपल के साथ जोड़ो. आखिर में सीमा आपकी आवाज़ के हिसाब से ([VgRules.calibrate]).
+ */
+private fun SettingsActivity.vgDeepEnroll(phrases: List<String>, keepOld: Boolean, say: TextView, done: () -> Unit) {
+    if (!Setup.hasMic(this)) { askMissing(31, android.Manifest.permission.RECORD_AUDIO); return }
+    if (!VoiceGuardian.hasModel(this)) { toast("पहले मॉडल डाउनलोड करें"); return }
+    lifecycleScope.launch {
+        val got = ArrayList<FloatArray>()
+        withDkMicPaused {
+            for ((i, p) in phrases.withIndex()) {
+                var e: FloatArray? = null
+                for (attempt in 0 until 2) {
+                    say.text = UiLang.s("(${i + 1}/${phrases.size}) बोलिए: \"$p\"")
+                    val t = VoiceEnroll.record() ?: continue
+                    if (t.speechMs < VgRules.MIN_SPEECH_MS) { say.text = UiLang.s("थोड़ा लंबा बोलिए — फिर से"); continue }
+                    val pcm = VgRules.trimSilence(t.pcm)
+                    e = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) { VoiceGuardian.embed(this@vgDeepEnroll, pcm) }
+                    if (e != null) break
+                }
+                if (e != null) got += e
+            }
+        }
+        val need = (phrases.size * 2 + 2) / 3
+        if (got.size < need) { say.text = UiLang.s("✗ बहुत से वाक्य साफ़ नहीं आए (${got.size}/${phrases.size}) — शांत जगह पर फिर से"); return@launch }
+        val old = if (keepOld) VoiceGuardian.templates(this@vgDeepEnroll) else emptyList()
+        val ref = VoicePrint.mean(old + got) ?: return@launch
+        val good = got.filter { VoicePrint.cosine(it, ref) >= VgRules.MIN_CONSISTENCY }
+        if (good.size < need) { say.text = UiLang.s("✗ सैंपल आपस में कम मिले — शांत जगह पर, सिर्फ़ आप बोलें, फिर से"); return@launch }
+        val all = VgRules.addTemplates(old, good)
+        VoiceGuardian.saveTemplates(this@vgDeepEnroll, all)
+        val th = VgRules.calibrate(all)
+        if (th != null) { VoiceGuardian.setThreshold(this@vgDeepEnroll, th); vgSlider?.progress = VgRules.sliderFromTh(th) }
+        val skipped = got.size - good.size
+        say.text = UiLang.s(buildString {
+            append("✓ ${good.size} सैंपल सीख लिए (कुल ${all.size})")
+            if (skipped > 0) append(", $skipped कम मिलने वाले छोड़े")
+            if (th != null) append(". सीमा आपकी आवाज़ के हिसाब से: ${VgRules.pct(th)}%")
+            append(". यह सिर्फ़ इसी फ़ोन में रहता है")
+        })
+        if (!FeatureFlags.on(this@vgDeepEnroll, FeatureFlags.VG_DEEP)) toast("ऊपर \"15 सैंपल वाली पक्की पहचान चालू\" करें")
+        done()
+    }
+}
 
 internal fun SettingsActivity.voiceGuardianCard() {
     card("वॉइस गार्डियन", "फ़ोन पर ही आपकी आवाज़ की पहचान — अनजान आवाज़ अनसुनी, Away मोड में चेतावनी फिर लॉक. मॉडल APK में नहीं, यहीं से डाउनलोड") { box ->
@@ -100,9 +146,24 @@ internal fun SettingsActivity.voiceGuardianCard() {
             }
         }, button("सीखी आवाज़ मिटाओ") { VoiceGuardian.forget(this); refresh(); toast("सीखी आवाज़ मिटा दी") })
 
+        // 16 नवंबर 2026 (मालिक): 15 सैंपल वाली पक्की पहचान - हर सैंपल अलग याद, सीमा आपकी आवाज़ के हिसाब से
+        label(box, "15 सैंपल वाली पक्की पहचान")
+        flagSwitch(box, "15 सैंपल वाली पक्की पहचान चालू", FeatureFlags.VG_DEEP) { refresh() }
+        val deep = TextView(this).apply { textSize = 15f; setTextColor(0xFFFFFFFF.toInt()) }
+        box.addView(deep)
+        fun deepInfo() { val n = VoiceGuardian.templates(this).size; if (n > 0) deep.text = UiLang.s("सीखे सैंपल: $n (ज़्यादा से ज़्यादा ${VgRules.MAX_TEMPLATES})") }
+        deepInfo()
+        row(box, button("15 वाक्य सिखाओ") {
+            vgDeepEnroll(VgRules.PHRASES_15, keepOld = false, deep) { deepInfo(); refresh() }
+        }, button("${VgRules.ADD_MORE} और सैंपल जोड़ो") {
+            if (VoiceGuardian.templates(this).isEmpty()) { toast("पहले 15 वाक्य सिखाएँ"); return@button }
+            vgDeepEnroll(VgRules.PHRASES_EXTRA.shuffled().take(VgRules.ADD_MORE), keepOld = true, deep) { deepInfo(); refresh() }
+        })
+        hint(box, "हर वाक्य अपनी आम आवाज़ में बोलें; कुछ धीरे, कुछ तेज़ — जैसे आप DK से रोज़ बोलते हैं. \"और सैंपल जोड़ो\" किसी दूसरी जगह (बाहर / शोर / गाड़ी में) करें तो वहाँ भी पहचान अच्छी होगी. सीखने के बाद सीमा अपने-आप आपकी आवाज़ के हिसाब से लगती है (नीचे slider से बदल सकते हैं). सबसे अच्छा: \"सटीक\" मॉडल (RedimNet2-B3) + 15 सैंपल. मॉडल बदलें तो सैंपल फिर से सिखाने होंगे.")
+
         label(box, "कितना सख़्त मिलान (सीमा)")
         val thTxt = TextView(this).apply { textSize = 13f; setTextColor(0xB3FFFFFF.toInt()) }
-        val sb = SeekBar(this).apply { max = 100; progress = VgRules.sliderFromTh(VoiceGuardian.threshold(this@voiceGuardianCard)) }
+        val sb = SeekBar(this).also { vgSlider = it }.apply { max = 100; progress = VgRules.sliderFromTh(VoiceGuardian.threshold(this@voiceGuardianCard)) }
         box.addView(sb); box.addView(thTxt)
         fun showTh() { thTxt.text = UiLang.s("सीमा: ${VgRules.pct(VoiceGuardian.threshold(this))}% (ज़्यादा = सख़्त, कम = ढीला; डिफ़ॉल्ट ${VgRules.pct(VgRules.TH_DEFAULT)}%)") }
         showTh()

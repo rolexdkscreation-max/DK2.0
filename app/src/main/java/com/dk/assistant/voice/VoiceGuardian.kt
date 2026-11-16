@@ -29,6 +29,8 @@ object VoiceGuardian {
     private const val K_MODEL = "vg_model"
     private const val K_TH = "vg_threshold"
     private fun kPrint(id: String) = "vg_print_$id"
+    /** 16 नवंबर 2026: हर सैंपल की अलग पहचान (15 सैंपल वाली पहचान) */
+    private fun kTpl(id: String) = "vg_tpl_$id"
 
     private fun sp(c: Context) = c.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
 
@@ -44,7 +46,19 @@ object VoiceGuardian {
     fun print(c: Context): FloatArray? = VoicePrint.decode(sp(c).getString(kPrint(modelId(c)), null))
     fun enrolled(c: Context) = print(c) != null
     fun savePrint(c: Context, v: FloatArray) { sp(c).edit().putString(kPrint(modelId(c)), VoicePrint.encode(VoicePrint.normalize(v))).apply() }
-    fun forget(c: Context) { sp(c).edit().apply { VgRules.MODELS.forEach { remove(kPrint(it.id)) } }.apply(); away.reset() }
+    fun forget(c: Context) { sp(c).edit().apply { VgRules.MODELS.forEach { remove(kPrint(it.id)); remove(kTpl(it.id)) } }.apply(); away.reset() }
+
+    // ------------------------------------------------------------ 16 नवंबर 2026: 15 सैंपल
+    fun templates(c: Context): List<FloatArray> = VgRules.decodeAll(sp(c).getString(kTpl(modelId(c)), null))
+
+    /** सैंपल सेव + उन्हीं का औसत (पुराना रास्ता भी वैसा ही चले) */
+    fun saveTemplates(c: Context, list: List<FloatArray>) {
+        val keep = list.takeLast(VgRules.MAX_TEMPLATES).map { VoicePrint.normalize(it) }
+        val m = VoicePrint.mean(keep) ?: return
+        sp(c).edit().putString(kTpl(modelId(c)), VgRules.encodeAll(keep)).putString(kPrint(modelId(c)), VoicePrint.encode(m)).apply()
+    }
+
+    fun deepOn(c: Context): Boolean = try { FeatureFlags.on(c, FeatureFlags.VG_DEEP) } catch (_: Exception) { false }
 
     fun hasModel(c: Context) = ModelManager.ready(c, asset(c))
 
@@ -118,6 +132,7 @@ object VoiceGuardian {
     fun score(c: Context, pcm: ByteArray): Float? {
         val p = print(c) ?: return null
         val e = embed(c, pcm) ?: return null
+        if (deepOn(c)) { val t = templates(c); if (t.isNotEmpty()) return VgRules.multiScore(p, t, e) }
         return VoicePrint.cosine(p, e)
     }
 

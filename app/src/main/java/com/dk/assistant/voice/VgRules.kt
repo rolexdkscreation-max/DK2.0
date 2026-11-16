@@ -28,6 +28,93 @@ object VgRules {
         "मैं इस फ़ोन का मालिक हूँ, मेरी आवाज़ अच्छे से पहचान लो।",
     )
 
+    // ------------------------------------------------------------ 16 नवंबर 2026 (मालिक): 15 सैंपल वाली पक्की पहचान
+    /** पुराने 6 के बाद 9 और: अलग-अलग अंदाज़ (तेज़, धीरे, ऊँचा, Hinglish, आदेश) - ताकि हर तरह की आपकी आवाज़ सीखे */
+    val PHRASES_EXTRA = listOf(
+        "डीके, यूट्यूब पर नया गाना लगाओ और आवाज़ थोड़ी बढ़ा दो।",
+        "भाई को मैसेज भेजो कि मैं दस मिनट में पहुँच रहा हूँ।",
+        "आज मेरा कौन-कौन सा काम बाकी है, एक-एक करके बताओ।",
+        "धीरे से बोल रहा हूँ — डीके, स्क्रीन की रोशनी कम कर दो।",
+        "जल्दी से कैमरा खोलो, एक फ़ोटो लेनी है।",
+        "डीके, Instagram खोलो और मेरी last post दिखाओ।",
+        "पास वाली दवाई की दुकान कितनी दूर है, रास्ता बताओ।",
+        "ज़ोर से बोल रहा हूँ — डीके, अभी के अभी गाना बंद करो।",
+        "एक, दो, तीन, चार, पाँच — यह मेरी असली आवाज़ है, इसे याद रखो।",
+    )
+    /** पूरी सीख: 6 + 9 = 15 वाक्य */
+    val PHRASES_15: List<String> = PHRASES + PHRASES_EXTRA
+    /** "5 और सैंपल जोड़ो" एक बार में इतने; कुल इससे ज़्यादा नहीं (पुराने हट जाते हैं) */
+    const val ADD_MORE = 5
+    const val MAX_TEMPLATES = 30
+    /** सबसे ज़्यादा मिलने वाले इतने सैंपल का औसत */
+    const val TOP_K = 3
+
+    /**
+     * कई सैंपल से मिलान: max(औसत-पहचान से मिलान, सबसे मिलते TOP_K सैंपल का औसत).
+     * कंप्यूटर पर नापा (LibriSpeech 40 लोग, 15 सैंपल, 1.5 सेकंड): अकेले औसत से गलती (EER) करीब आधी.
+     */
+    fun multiScore(centroid: FloatArray?, templates: List<FloatArray>, e: FloatArray): Float {
+        val c = centroid?.let { VoicePrint.cosine(it, e) } ?: Float.NEGATIVE_INFINITY
+        if (templates.isEmpty()) return if (c.isFinite()) c else Float.NaN
+        val top = templates.map { VoicePrint.cosine(it, e) }.sortedDescending().take(TOP_K)
+        val k = top.average().toFloat()
+        return maxOf(c, k)
+    }
+
+    /** हर सैंपल को बाकी सैंपल से मिलाकर (leave-one-out) - आपकी आवाज़ आपस में कितनी मिलती है */
+    fun selfScores(templates: List<FloatArray>): List<Float> {
+        if (templates.size < 3) return emptyList()
+        return templates.indices.map { i ->
+            val rest = templates.filterIndexed { j, _ -> j != i }
+            multiScore(VoicePrint.mean(rest), rest, templates[i])
+        }
+    }
+
+    /** सुझाई सीमा के लिए: छोटे (1 सेकंड) टुकड़े पर score लंबे वाक्य से इतना कम आता है */
+    const val CAL_DROP = 0.30f
+    const val CAL_MIN = 0.35f
+    const val CAL_MAX = 0.55f
+
+    /**
+     * आपकी आवाज़ के हिसाब से सीमा: आपस में मिलान का निचला हिस्सा (20%) - CAL_DROP, CAL_MIN..CAL_MAX में.
+     * null = सैंपल कम (3 से कम) - तब पुरानी सीमा ही.
+     */
+    fun calibrate(templates: List<FloatArray>): Float? {
+        val s = selfScores(templates).filter { it.isFinite() }.sorted()
+        if (s.isEmpty()) return null
+        val low = s[(s.size * 0.2).toInt().coerceIn(0, s.size - 1)]
+        return (low - CAL_DROP).coerceIn(CAL_MIN, CAL_MAX)
+    }
+
+    /** नए सैंपल जोड़ो: कुल MAX_TEMPLATES से ज़्यादा हों तो सबसे पुराने हटाओ */
+    fun addTemplates(old: List<FloatArray>, new: List<FloatArray>): List<FloatArray> = (old + new).takeLast(MAX_TEMPLATES)
+
+    fun encodeAll(list: List<FloatArray>): String = list.joinToString(";") { VoicePrint.encode(it) }
+    fun decodeAll(s: String?): List<FloatArray> =
+        if (s.isNullOrBlank()) emptyList() else s.split(";").mapNotNull { VoicePrint.decode(it) }.filter { it.size == VoicePrint.DIM }
+
+    /**
+     * सीखने की आवाज़ से आगे-पीछे की चुप्पी काटो (20 ms टुकड़े; सबसे तेज़ टुकड़े के 10% से धीमे = चुप्पी).
+     * चुप्पी पहचान को कमज़ोर करती है. बहुत कम बचे (0.5 सेकंड से कम) तो जैसी थी वैसी.
+     */
+    fun trimSilence(pcm: ByteArray, rate: Int = 16000): ByteArray {
+        val frame = rate / 50 * 2
+        val n = pcm.size / frame
+        if (n < 3) return pcm
+        val lv = DoubleArray(n) { f ->
+            var s = 0.0
+            for (i in 0 until frame / 2) { val o = f * frame + 2 * i; val v = ((pcm[o].toInt() and 0xff) or (pcm[o + 1].toInt() shl 8)).toShort().toDouble(); s += v * v }
+            kotlin.math.sqrt(s / (frame / 2))
+        }
+        val peak = lv.maxOrNull() ?: return pcm
+        if (peak <= 0) return pcm
+        val first = lv.indexOfFirst { it >= peak * 0.1 }
+        val last = lv.indexOfLast { it >= peak * 0.1 }
+        val a = maxOf(0, first - 2); val b = minOf(n, last + 3)
+        if ((b - a) * 20 < 500) return pcm
+        return pcm.copyOfRange(a * frame, b * frame)
+    }
+
     /** RedimNet: एक ही आदमी ~0.70-0.78, अलग आदमी ≤ 0.30 (हमारी जाँच) -> बीच में 0.50 */
     const val TH_DEFAULT = 0.50f
     const val TH_MIN = 0.30f
