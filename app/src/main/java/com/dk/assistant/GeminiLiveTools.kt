@@ -418,6 +418,9 @@ internal fun GeminiLive.runTools(calls: JSONArray) {
                 ?: SideTalk.ownerFirst(name, args, whoNow, SideTalk.global.bossTaskAt, nowMs)?.also { log("tool $name - मालिक का काम चल रहा, दूसरी आवाज़ का काम रोका") }
                 // 14 नवंबर 2026: DKAI पर चुना टैब + बड़े काम से पहले मालिक की हाँ ([workGate])
                 ?: workGate(name, args)
+                // 16 नवंबर 2026 (मालिक): "हे डीके" से फ़ोन लॉक में जागा = निजी काम (मैसेज / सूचना / फ़ोटो) पहले अनलॉक; इमरजेंसी लॉक पर भी
+                ?: (if (com.dk.assistant.wake.WakeWord.sessionLocked && com.dk.assistant.wake.WakeWord.locked(svc) &&
+                        com.dk.assistant.wake.WakeRules.lockedPrivate(name, args.optString("action"))) com.dk.assistant.wake.WakeRules.LOCKED_PRIVATE_NOTE.also { log("tool $name - फ़ोन लॉक (वेक वर्ड), निजी काम रोका") } else null)
                 // 14 नवंबर 2026 (मालिक): "पास की दुकान/मॉल का रास्ता लगा दो" = ढूँढो + Maps navigation तुरंत ([localGoTool])
                 ?: (if (name == "local_info" && args.optBoolean("go")) localGoTool(args.optString("find")) else null)
                 // 15 नवंबर 2026: बहुत tools हों तो router की खोज ([LiveToolSlim.SEARCH]) + DK AI Plus plug-in tools (हमारा नहीं = null, पुराना रास्ता)

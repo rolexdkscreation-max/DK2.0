@@ -25,13 +25,13 @@ class OwnerVoiceRemovedTest {
 
     @Test fun nothingElseLost() {
         val s = com.dk.assistant.SetSrc.all()
-        assertTrue(s.contains("heyDkCard(box)") && s.contains("enrollHeyDk") && s.contains("fun ownerDialog(") && s.contains("private var ownerJob"))
+        assertTrue(s.contains("heyDkCard(box)") && s.contains("wakeCard(box)") && s.contains("fun ownerDialog(") && s.contains("private var ownerJob"))
         assertTrue(s.lines().size > 1500)
         val p = src("Prefs.kt")
         assertTrue(p.contains("fun wakeWords(") && p.contains("fun heyDkPrint(") && p.lines().size > 400)
         assertTrue(f("assets/ui_en.tsv").readText().lines().size > 1000)
         val hd = src("voice/HeyDk.kt")
-        assertTrue(hd.contains("if (!inSeg) {"))
+        assertTrue(hd.contains("fun featuresOf(") && hd.contains("fun playAck("))   // 16 नवंबर 2026: पुराना Hey DK सुनना हटाया, बाकी हिस्से बचे
         assertTrue(src("AgentRunner.kt").contains("Prefs.wakeWords(svc)"))
     }
 }

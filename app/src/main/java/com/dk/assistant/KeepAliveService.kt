@@ -30,7 +30,7 @@ class KeepAliveService : Service() {
             Notification.Builder(this, "dk") else @Suppress("DEPRECATION") Notification.Builder(this)
         val notif = builder
             .setContentTitle(Prefs.assistantName(this) + " " + UiLang.s("चालू है"))
-            .setContentText(UiLang.s(if (com.dk.assistant.voice.HeyDk.on(this)) "\"Hey DK\" बोलिए - सिर्फ़ आपकी आवाज़ पर जागूँगा" else "गोल ओर्ब पर टैप करके बोलिए"))
+            .setContentText(UiLang.s(if (com.dk.assistant.wake.WakeWord.on(this)) com.dk.assistant.wake.WakeRules.NOTIF_TEXT else "गोल ओर्ब पर टैप करके बोलिए"))
             .setSmallIcon(R.drawable.ic_dk)
             .setContentIntent(open)
             .setOngoing(true)
@@ -58,9 +58,12 @@ class KeepAliveService : Service() {
             }
         } catch (e: Exception) {
             DKLog.d("KeepAlive start nahi hua: ${e.message}")
+            // 16 नवंबर 2026: Android 14+ ने पीछे से माइक वाली service रोकी - Settings में साफ़ हिंदी में बताया जाता है
+            Prefs.edit(this) { putBoolean(com.dk.assistant.wake.WakeWord.P_FGS_BLOCK, true) }
             stopSelf()
             return START_NOT_STICKY
         }
+        if (Prefs.bool(this, com.dk.assistant.wake.WakeWord.P_FGS_BLOCK, false)) Prefs.edit(this) { putBoolean(com.dk.assistant.wake.WakeWord.P_FGS_BLOCK, false) }
         Setup.selfEnableAccessibility(this)
         DKAccessibilityService.instance?.startWakeLoopIfEnabled()
         return START_STICKY

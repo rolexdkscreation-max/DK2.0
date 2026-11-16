@@ -54,6 +54,8 @@ internal fun GeminiLive.openMic(): AudioRecord? {
 }
 
 internal suspend fun GeminiLive.micLoop() = coroutineScope {
+    // 16 नवंबर 2026 (मालिक): "हे डीके" वाला माइक पहले छोड़ो, फिर Live का माइक (एक समय पर एक ही माइक)
+    com.dk.assistant.wake.WakeHandoff.releaseMic()
     var r = openMic() ?: throw Fatal("माइक नहीं खुला (कोई दूसरा ऐप माइक इस्तेमाल कर रहा है?)", recoverable = true)
     // नवंबर 2026 (Live जाँच #3): स्मार्ट VAD - पंखा / TV / खटखट को बात नहीं माने, बात समय पर खत्म
     if (vad == null && Prefs.bool(svc, LiveSmooth.PREF_SMART_VAD, true)) {
@@ -64,6 +66,17 @@ internal suspend fun GeminiLive.micLoop() = coroutineScope {
     try {
         r.startRecording()
         if (r.recordingState != AudioRecord.RECORDSTATE_RECORDING) throw Fatal("माइक रिकॉर्डिंग शुरू नहीं हुई", recoverable = true)
+        // वेक वर्ड के *बाद* बोली गई बात (Live खुलने तक जमा) सबसे पहले - "हे डीके, व्हाट्सऐप खोलो" का "व्हाट्सऐप" न कटे
+        run {
+            var n = 0
+            while (true) {
+                val h = com.dk.assistant.wake.WakeHandoff.next() ?: break
+                val b = ByteArray(h.size * 2)
+                for (i in h.indices) { val v = h[i].toInt(); b[i * 2] = (v and 0xff).toByte(); b[i * 2 + 1] = (v shr 8 and 0xff).toByte() }
+                sendAudio(b); n++
+            }
+            if (n > 0) log("वेक वर्ड के बाद की ${n * CHUNK_MS} ms आवाज़ पहले भेजी (बिना कटे)")
+        }
         val buf = ShortArray(CHUNK_SAMPLES)
         val bytes = ByteArray(CHUNK_SAMPLES * 2)
         val zeros = ByteArray(CHUNK_SAMPLES * 2)

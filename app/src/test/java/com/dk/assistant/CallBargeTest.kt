@@ -62,7 +62,7 @@ class CallBargeTest {
         assertTrue(svc.contains("ear.bargeWhen = { callBargeEar() }"))
         assertTrue(svc.contains("fun callBargeEar(): Boolean"))
         assertTrue("बिना नेट भी एलान के बीच सुनना", svc.contains("!NetProbe.online(this) && OfflineStt.available(this))"))
-        assertTrue("घंटी में Hey DK loop बहरा न रहे", svc.contains("if (!DKState.live && !callRinging() && !offlineEar && com.dk.assistant.voice.HeyDk.on("))
+        assertTrue("घंटी में Hey DK loop बहरा न रहे", svc.contains("if (!DKState.live && !callRinging() && !offlineEar) {"))
         assertTrue("घंटी में wake word ज़रूरी नहीं", svc.contains("hear(wakeGate = !liveBefore && !callRinging())"))
         assertTrue(svc.contains("&& !callBargeEar()) { delay(250); continue }"))
         val ear = src("Ear.kt")

@@ -12,7 +12,7 @@ import java.util.concurrent.ConcurrentHashMap
  * सिखाए नमूने `files/voice/cmd_<id>.json` (अंक) + `cmd_<id>.wav` (v4.7: दोबारा सुनने को, फ़ोन में ही). मिलान [VoiceCmdMatch].
  *
  * तीन जगह से माइक की आवाज़ आती है (एक ही [match]):
- *  1. "Hey DK" वाला सुनना ([HeyDk.listen]) - Live बंद,
+ *  1. "हे डीके" वाला सुनना ([com.dk.assistant.wake.WakeWord.listen]) - Live बंद,
  *  2. पुराना सुनने वाला loop (`hear()`) - "Hey DK" सिखाया न हो,
  *  3. Gemini Live का माइक (`micLoop`) - Live चालू: मिलान होते ही काम फ़ोन पर, Live का जवाब बंद.
  *

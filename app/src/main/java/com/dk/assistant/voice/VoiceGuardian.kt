@@ -43,19 +43,32 @@ object VoiceGuardian {
     fun threshold(c: Context): Float = VgRules.clampTh(sp(c).getFloat(K_TH, VgRules.TH_DEFAULT))
     fun setThreshold(c: Context, t: Float) { sp(c).edit().putFloat(K_TH, VgRules.clampTh(t)).apply() }
 
-    fun print(c: Context): FloatArray? = VoicePrint.decode(sp(c).getString(kPrint(modelId(c)), null))
+    // 16 नवंबर 2026 (वेक वर्ड): voiceprint अब Android Keystore से बंद (encrypted) - पुराना सादा भी पढ़ा जाता है ([vaultRead])
+    fun print(c: Context): FloatArray? = VoicePrint.decode(vaultRead(c, kPrint(modelId(c))))
     fun enrolled(c: Context) = print(c) != null
-    fun savePrint(c: Context, v: FloatArray) { sp(c).edit().putString(kPrint(modelId(c)), VoicePrint.encode(VoicePrint.normalize(v))).apply() }
+    fun savePrint(c: Context, v: FloatArray) { sp(c).edit().putString(kPrint(modelId(c)), com.dk.assistant.wake.VoiceVault.seal(VoicePrint.encode(VoicePrint.normalize(v)))).apply() }
     fun forget(c: Context) { sp(c).edit().apply { VgRules.MODELS.forEach { remove(kPrint(it.id)); remove(kTpl(it.id)) } }.apply(); away.reset() }
 
     // ------------------------------------------------------------ 16 नवंबर 2026: 15 सैंपल
-    fun templates(c: Context): List<FloatArray> = VgRules.decodeAll(sp(c).getString(kTpl(modelId(c)), null))
+    fun templates(c: Context): List<FloatArray> = VgRules.decodeAll(vaultRead(c, kTpl(modelId(c))))
+
+    /** बंद हो तो खोलो; पुराना सादा मिला = पढ़ो और उसी समय बंद करके फिर सेव (एक बार की बदली) */
+    private fun vaultRead(c: Context, k: String): String? {
+        val raw = sp(c).getString(k, null) ?: return null
+        if (!com.dk.assistant.wake.VoiceVault.sealed(raw)) {
+            val s = com.dk.assistant.wake.VoiceVault.seal(raw)
+            if (s != null && s != raw) sp(c).edit().putString(k, s).apply()
+            return raw
+        }
+        return com.dk.assistant.wake.VoiceVault.open(raw)
+    }
 
     /** सैंपल सेव + उन्हीं का औसत (पुराना रास्ता भी वैसा ही चले) */
     fun saveTemplates(c: Context, list: List<FloatArray>) {
         val keep = list.takeLast(VgRules.MAX_TEMPLATES).map { VoicePrint.normalize(it) }
         val m = VoicePrint.mean(keep) ?: return
-        sp(c).edit().putString(kTpl(modelId(c)), VgRules.encodeAll(keep)).putString(kPrint(modelId(c)), VoicePrint.encode(m)).apply()
+        sp(c).edit().putString(kTpl(modelId(c)), com.dk.assistant.wake.VoiceVault.seal(VgRules.encodeAll(keep)))
+            .putString(kPrint(modelId(c)), com.dk.assistant.wake.VoiceVault.seal(VoicePrint.encode(m))).apply()
     }
 
     /** 16 नवंबर 2026: पक्की रोक (हर बात पहचान तक रुकी) */
