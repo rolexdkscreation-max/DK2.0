@@ -295,8 +295,15 @@ object InspectorCore {
     private val HANDLED = Regex("(मिनट हटाया, अब |घंटे सबसे पीछे, अब |यह मॉडल अभी नहीं, अगला तुरंत|वह बातचीत टूटी हुई, अब नई बातचीत|दूसरा मॉडल नहीं बचा, इसी पर कोशिश)")
     fun handled(msg: String) = HANDLED.containsMatchIn(msg)
 
+    /**
+     * 16 नवंबर 2026 (DKI-2FF8B8): Inspector का अपना जवाब ("tool dk_inspector ...: REMOVED ... अगर यह गड़बड़ी फिर आई")
+     * log में आता है - उसमें "गड़बड़ी" शब्द देखकर नई गड़बड़ी बन जाती थी. अपना ही जवाब bug नहीं. Pure
+     */
+    private val SELF = Regex("""\btool:?\s+dk_inspector\b|dk_agent\s*->\s*dk_inspector""")
+    fun selfEcho(msg: String) = SELF.containsMatchIn(msg)
+
     fun ruleFor(msg: String): Rule? {
-        if (handled(msg)) return null
+        if (handled(msg) || selfEcho(msg)) return null
         if (NOT_ERROR.containsMatchIn(msg) && !Regex("(?i)(exception|fail|टूटा|विफल)").containsMatchIn(msg)) return null
         return RULES.firstOrNull { it.match.containsMatchIn(msg) }
     }
