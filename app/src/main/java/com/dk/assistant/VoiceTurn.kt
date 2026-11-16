@@ -85,6 +85,11 @@ class TurnDetector(
      * [TurnEnd.adaptiveEndMs] से भरता है). 0 = पुराना तय तरीका (endSilenceMs / longEndSilenceMs).
      */
     var endNeedMs = 0
+    /**
+     * 16 नवंबर 2026 (ऑडिट S5): VAD (Silero) चलना था पर नहीं चला = सिर्फ़ RMS - तब "बोलना शुरू" का दरवाज़ा इतना गुना
+     * ऊँचा ([LiveVadFix.RMS_ONLY_SCALE]). 1.0 = पहले जैसा (Silero चालू हो तो इसका असर नहीं - prob >= 0)
+     */
+    var rmsOnlyScale = 1.0
     /** बोलते-बोलते रुककर फिर बोले = बीच का ठहराव (ms). आपकी आदत: धीमे बोलने वाले के लंबे ठहराव पर बात न कटे */
     var typicalPauseMs = 0
         private set
@@ -145,7 +150,8 @@ class TurnDetector(
      *  - बात के बीच: [VadLevel.NOISE_P] से कम = चुप्पी (पंखे/TV से "अभी भी बोल रहा" नहीं - बात समय पर खत्म).
      */
     fun feed(rms0: Double, now: Long, prob: Float = -1f): Event {
-        val startThr = max(noise * factorFor(noise), startMin)
+        // 16 नवंबर 2026 (ऑडिट S5): Silero नहीं चला (prob -1) = दरवाज़ा [rmsOnlyScale] गुना ऊँचा
+        val startThr = max(noise * factorFor(noise), startMin) * (if (prob < 0f) rmsOnlyScale else 1.0)
         // bolte samay dheemi awaaz (shabd ke aakhri hisse) ko chup mat samjho: neecha darwaza (hysteresis)
         val keepThr = max(noise * keepFactor, keepMin)
         var rms = rms0
