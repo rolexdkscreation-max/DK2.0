@@ -66,6 +66,8 @@ internal fun GeminiLive.startRace(keys: List<String>, models: List<String>, live
     val stickyId = resumeId ?: health.lastWin.takeIf { it.isNotBlank() }
     val hung = queue.filter { LiveRecover.Demote.demoted(it.model, now) }
     queue = (LiveRace.stickyOrder(queue - hung.toSet(), stickyId) + hung).toMutableList()
+    // 16 नवंबर 2026: "सारी keys इस्तेमाल करो" - नई बातचीत (handle नहीं) में बारी वाली key की जोड़ियाँ सबसे आगे
+    if (resumeId == null && liveStartKey in keys.indices) queue = LiveKeys.preferKey(queue, liveStartKey) { it.keyIdx }.toMutableList()
     var stickyRetried = 0
     log("दौड़${if (live) "" else " (पीछे से, माइक नहीं)"}: ${queue.size} जोड़ियाँ, हर एक का इंतज़ार $tmo ms (हाल के नाप: ${health.recentTimes().joinToString()}) • " +
         queue.take(4).joinToString { it.label })

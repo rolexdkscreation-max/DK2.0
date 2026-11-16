@@ -117,4 +117,39 @@ class KeysWiringNov16Test {
         // तुरंत सेटअप वाले खाने का अपना बटन है - वहाँ कार्ड नहीं
         assertTrue(src("SettingsActivity.kt").contains("secret = true, card = false"))
     }
+
+    // ---------------- DK लाइव की keys पर भी (16 नवंबर 2026, दूसरा हिस्सा)
+    @Test fun liveStartKey_rotatesOnlyWhenOn_andOnlyOwnKeys() {
+        assertEquals(0, LiveKeys.startKey(false, 3, 5))
+        assertEquals(0, LiveKeys.startKey(true, 1, 5))
+        assertEquals(listOf(0, 1, 2, 0, 1), (0..4).map { LiveKeys.startKey(true, 3, it) })
+        assertEquals(listOf(0, 1, 0), (0..2).map { LiveKeys.startKey(true, 2, it) })
+    }
+
+    @Test fun liveNext_wrapsFromStart_everyKeyOnce() {
+        // start=0 = पुराना जैसा
+        assertEquals(1, LiveKeys.next(0, 3, 0)); assertEquals(2, LiveKeys.next(1, 3, 0)); assertEquals(-1, LiveKeys.next(2, 3, 0))
+        for (ki in 0..2) assertEquals(LiveKeys.next(ki, 3), LiveKeys.next(ki, 3, 0))
+        // start=1: 1 -> 2 -> 0 -> खत्म
+        assertEquals(2, LiveKeys.next(1, 3, 1)); assertEquals(0, LiveKeys.next(2, 3, 1)); assertEquals(-1, LiveKeys.next(0, 3, 1))
+        // उधार की keys (size 5, अपनी 3) भी घूमकर सब मिलती हैं
+        var ki = 2; val seen = mutableListOf(ki)
+        while (true) { ki = LiveKeys.next(ki, 5, 2); if (ki < 0) break; seen += ki }
+        assertEquals(listOf(2, 3, 4, 0, 1), seen)
+    }
+
+    @Test fun livePreferKey_keepsOrderInsideKey() {
+        val q = listOf("a" to 0, "b" to 1, "c" to 0, "d" to 2, "e" to 1)
+        assertEquals(listOf("b" to 1, "e" to 1, "a" to 0, "c" to 0, "d" to 2), LiveKeys.preferKey(q, 1) { it.second })
+        assertEquals(q, LiveKeys.preferKey(q, -1) { it.second })
+    }
+
+    @Test fun liveIsWiredToSwitch() {
+        val g = src("GeminiLive.kt")
+        assertTrue(g.contains("FeatureFlags.KEY_POOL_ALL") && g.contains("LiveKeys.startKey(") && g.contains("KeyPool.turn(\"live\")"))
+        assertTrue(g.contains("LiveKeys.next(ki, keys.size, start)"))
+        assertTrue(src("GeminiLiveRace.kt").contains("LiveKeys.preferKey(queue, liveStartKey)"))
+        val b = src("SettingsBrain.kt")
+        assertTrue(b.contains("हर नई बातचीत अगली key से\", com.dk.assistant.plus.FeatureFlags.KEY_POOL_ALL"))
+    }
 }

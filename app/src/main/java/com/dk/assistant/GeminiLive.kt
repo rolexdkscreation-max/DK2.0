@@ -903,6 +903,8 @@ class GeminiLive(internal val svc: DKAccessibilityService, internal val agent: A
     /** Quota khatam wala model: aaj dobara mat maango (pehli baar 30 min, dobara = Pacific aadhi raat tak) */
     /** v3.94: अभी कौन सी key चल रही है (0 = मुख्य) - मॉडल की limit हर key की अलग */
     @Volatile internal var keyIdx = 0
+    /** 16 नवंबर 2026: Round-Robin में इस बातचीत की शुरुआती key (-1 = स्विच बंद, पहले जैसा) */
+    @Volatile internal var liveStartKey = -1
     private fun blockModel(m: String, why: String, reason: String = "") {
         val n = Cooldown.strike(LiveKeys.cooldownName(keyIdx, m))
         // नवंबर 2026: दूसरी बार भी पूरे दिन की रोक सिर्फ़ असली रोज़ की limit पर (पहले हर दूसरी बार = Pacific आधी रात तक)
@@ -979,20 +981,26 @@ class GeminiLive(internal val svc: DKAccessibilityService, internal val agent: A
         val ownKeys = Prefs.liveGeminiKeys(svc)
         val keys = (livePin?.let { listOf(it.key) } ?: (ownKeys + BrainPin.spareGemini(svc, ownKeys))).ifEmpty { throw Fatal("Gemini की key नहीं है", kind = LiveFailWhy.Kind.NO_KEY) }
         if (livePin != null) log("Live: आपका चुना मॉडल ${livePin.model} (सिर्फ़ यही, fallback बंद)")
-        var ki = 0; keyIdx = 0; var mi = 0
-        var key = keys[0]
+        // 16 नवंबर 2026 (मालिक): "सारी keys इस्तेमाल करो" चालू = हर नई बातचीत DK लाइव की अगली अपनी key से (Round-Robin).
+        // सूची का क्रम वही (limit का हिसाब key के नंबर से), सिर्फ़ शुरुआत बदलती है; बाकी keys घूमकर बचाव में.
+        val poolOn = livePin == null && com.dk.assistant.plus.FeatureFlags.on(svc, com.dk.assistant.plus.FeatureFlags.KEY_POOL_ALL)
+        val start = LiveKeys.startKey(poolOn, ownKeys.size.coerceAtMost(keys.size), com.dk.assistant.plus.KeyPool.turn("live"))
+        liveStartKey = if (poolOn && ownKeys.size >= 2) start else -1
+        if (liveStartKey > 0) log("सारी keys (Round-Robin): यह बातचीत key #${start + 1} से")
+        var ki = start; keyIdx = start; var mi = 0
+        var key = keys[start]
         var models: List<String> = emptyList()
         while (true) {
             if (livePin != null) { models = listOf(livePin.model.removePrefix("models/")); break }
             try { models = LiveModelPick.order(LiveModelPick.get(svc), discoverModels(key)); break }   // v3.80: चुना हुआ Live मॉडल पहले
             catch (e: Fatal) {
-                val nk = LiveKeys.next(ki, keys.size); if (nk < 0) throw e
+                val nk = LiveKeys.next(ki, keys.size, start); if (nk < 0) throw e
                 ki = nk; keyIdx = ki; key = keys[ki]; log("key ${ki} नहीं चली (${e.message}) - बैकअप key ${ki + 1} से")
             }
         }
         /** अगली बैकअप key पर चुपचाप - true = बदल गई (मॉडल फिर से पहले से) */
         fun switchKey(why: String): Boolean {
-            val nk = LiveKeys.next(ki, keys.size); if (nk < 0) return false
+            val nk = LiveKeys.next(ki, keys.size, start); if (nk < 0) return false
             ki = nk; keyIdx = ki; key = keys[ki]
             models = try { LiveModelPick.order(LiveModelPick.get(svc), discoverModels(key)) } catch (_: Exception) { FALLBACK_MODELS }
             mi = 0; handle = null

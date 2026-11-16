@@ -113,7 +113,7 @@ object FeatureFlags {
         Flag(KEEP_RINGTONE, "रिंगटोन भी बजती रहे", "घोषणा के साथ रिंगटोन बंद न हो", Section.CALL_DRIVE),
         Flag(DRIVING_MODE, "ड्राइविंग मोड", "कॉल अपने-आप काटे और SMS से जवाब भेजे ({user_name})", Section.CALL_DRIVE),
         Flag(ADULT_STYLE, "18+ बातचीत शैली", "उम्र की पुष्टि के बाद ही; सिर्फ़ बोलचाल खुली, अश्लील सामग्री नहीं", Section.SECRET),
-        Flag(KEY_POOL_ALL, "सारी keys इस्तेमाल करो (Round-Robin)", "कोडिंग एजेंट की Gemini key 1-5: हर नया काम अगली key से, एक key की limit (429) पर अगली key - काम नहीं रुकता", Section.SUB_AGENT),
+        Flag(KEY_POOL_ALL, "सारी keys इस्तेमाल करो (Round-Robin)", "कोडिंग एजेंट की Gemini key 1-5 और DK लाइव की key 1-3: हर नया काम / नई बातचीत अगली key से, एक key की limit (429) पर अगली key - काम नहीं रुकता", Section.SUB_AGENT),
         Flag(EMAIL_ON, "ईमेल पढ़ना / जवाब देना", "IMAP/SMTP App Password से", Section.EMAIL),
         Flag(SOCIAL_AUTO_POST, "रोज़ की ऑटो-स्टोरी / ऑटो-पोस्ट", "तय समय पर पोस्ट तैयार करके डालना", Section.SOCIAL),
         Flag(SOCIAL_SPECIALIST, "सोशल पोस्ट स्पेशलिस्ट", "गैलरी से खुद चुने, देखकर कैप्शन/हैशटैग, कहने पर गाना/टैग, YouTube Shorts - आख़िर में \"हाँ\" पूछकर", Section.SOCIAL),
