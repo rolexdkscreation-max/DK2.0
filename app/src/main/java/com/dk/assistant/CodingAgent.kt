@@ -62,11 +62,7 @@ class CodingAgent(internal val gh: GitHub, var repo: String, var branch: String,
     data class Outcome(val summary: String, val commit: String, val question: Boolean, val stopped: Boolean = false)
     data class Build(val ok: Boolean, val url: String, val log: String)
     data class Call(val o: JSONObject, val file: String?, val finds: List<String>, val replaces: List<String>)
-    /** Reviewer ka faisla */
-    data class Review(val pass: Boolean, val issues: List<String>, val tested: String, val complete: Boolean = true)
 
-    /** Team mode: Builder kabhi user se nahi poochta (khud sahi andaza), aur extra cheez sirf "suggest" karta hai */
-    var teamMode = false
     /** Builder/Reviewer ko koi zaroori/faydemand cheez dikhi jo user ne nahi maangi -> (title, kyun, kaam) */
     var onSuggest: ((String, String, String) -> Unit)? = null
 
@@ -526,50 +522,6 @@ class CodingAgent(internal val gh: GitHub, var repo: String, var branch: String,
                 "~  $p (+${d.count { it.startsWith("+") }} −${d.count { it.startsWith("-") }})"
             }
         }
-    }
-
-    /**
-     * Reviewer: staged badlaav ko bina user se pooche jaanchta hai (padhta, grep, raasta trace) aur faisla deta hai.
-     * Static jaanch (bracket/XML/JSON) pehle se jod di jaati hai.
-     */
-    suspend fun review(task: String, acceptance: List<String>, round: Int, onStep: (String) -> Unit): Review = withContext(Dispatchers.IO) {
-        if (staged.isEmpty()) return@withContext Review(true, emptyList(), "कोई बदलाव नहीं था", true)
-        val rmsgs = mutableListOf<Pair<String, String>>()
-        val static = check()
-        val d = diffAll().let { val m = maxOf(20_000, budget / 3); if (it.length > m) it.take(m) + "\n…(diff cut - use read)" else it }   // v4.4: पूरा diff
-        rmsgs.add("user" to "REVIEW ROUND $round\nUSER TASK: $task\n" +
-            (if (acceptance.isNotEmpty()) "ACCEPTANCE CRITERIA:\n" + acceptance.joinToString("\n") { "- $it" } + "\n" else "") +
-            (if (projectCtx.isNotBlank()) "PROJECT RULES:\n${projectCtx.take(maxOf(5000, budget / 20))}\n" else "") +
-            SafePr.protectedIn(staged.keys).let { if (it.isEmpty()) "" else "PROTECTED FILES CHANGED: ${it.joinToString()} (issue unless the task explicitly asks)\n" } +
-            "STATIC CHECK: " + static.ifBlank { "OK (brackets/XML/JSON fine)" } + "\n" + guardNotes() + "\nSTAGED DIFF:\n$d")
-        var bad = 0
-        for (step in 1..(maxSteps + 2)) {
-            ensureActive()
-            if (step > 1) delay(STEP_DELAY_MS)
-            val reply = try { ai.chat(reviewerSystem(), if (CoderContext.total(rmsgs) > budget) CoderContext.compact(rmsgs, budget) else rmsgs) } catch (e: AiException) { throw AiException(e.code, "Reviewer ${ai.label}: ${e.message}") }
-            rmsgs.add("model" to reply)
-            val call = parse(reply)
-            if (call == null) {
-                if (++bad >= 3) break
-                rmsgs.add("user" to "ERROR: reply with exactly one JSON tool call."); continue
-            }
-            bad = 0
-            val o = call.o; val tool = o.optString("tool"); val path = o.optString("path").trim().trimStart('/')
-            if (tool == "verdict") {
-                val arr = o.optJSONArray("issues") ?: JSONArray()
-                val issues = (0 until arr.length()).map { arr.optString(it) }.filter { it.isNotBlank() }
-                val pass = o.optBoolean("pass", issues.isEmpty()) && issues.isEmpty() && static.isBlank()
-                val allIssues = if (static.isNotBlank()) issues + static.lines().filter { it.isNotBlank() }.map { it.removePrefix("- ") } else issues
-                return@withContext Review(pass, allIssues, o.optString("tested"), true)
-            }
-            val result = when (tool) {
-                "list", "read", "grep", "search", "diff", "suggest" -> try { runTool(tool, path, call) { st -> onStep("रिव्यूअर: $st") } } catch (e: GitHub.Err) { "GITHUB ERROR: ${e.message}" }
-                else -> "ERROR: reviewer is READ-ONLY. Use list/read/grep/diff, then verdict."
-            }
-            rmsgs.add("user" to "RESULT ($tool${if (path.isNotBlank()) " $path" else ""}):\n" + result.take(CoderContext.readChars(budget)))
-        }
-        // Reviewer faisla nahi de paya: static jaanch hi aadhaar
-        Review(static.isBlank(), static.lines().filter { it.isNotBlank() }.map { it.removePrefix("- ") }, "रिव्यूअर पूरा जवाब नहीं दे पाया — सिर्फ़ static जाँच हुई", false)
     }
 
     // ---------------------------------------------------------------- push + build

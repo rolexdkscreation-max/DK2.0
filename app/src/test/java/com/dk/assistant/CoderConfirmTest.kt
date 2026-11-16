@@ -15,8 +15,10 @@ class CoderConfirmTest {
     }
 
     @Test fun repoDoctorKeywordsDoNotHijackSevenAgent() {
-        assertFalse(CoderConfirm.keywordStatus(seven = true))
-        assertTrue(CoderConfirm.keywordStatus(seven = false))
+        // नवंबर 2026: पुराना शब्द-पकड़ रास्ता हटा - रिपो डॉक्टर "रिपो की हालत" जैसे शब्दों से काम कभी नहीं छीनता
+        val src = java.io.File("src/main/java/com/dk/assistant/RepoDoctorRunner.kt").readText()
+        val intercept = src.substringAfter("fun intercept(").substringBefore("\n    }\n")
+        assertFalse(intercept.contains("RepoDoctor.isStatusAsk("))
     }
 
     @Test fun understandingChoicesHaveYesChangeCancel() {

@@ -25,10 +25,10 @@ class CoderHeaderTaskTest {
         assertFalse(s.contains("busyBar"))
         assertFalse(s.contains("text = \"मौजूदा काम\""))
         val top = s.indexOf("col.addView(top)")
-        val strip = s.indexOf("col.addView(agentWork")
         val chat = s.indexOf("col.addView(scroll")
-        assertTrue(top in 0 until strip && strip < chat)
-        assertTrue(s.contains("agentWork.visibility = View.GONE"))
+        assertTrue(top in 0 until chat)
+        // नवंबर 2026: 7-एजेंट वाली स्टेटस पट्टी (AgentWorkView) कभी नहीं दिखती थी (एक-एजेंट हमेशा) - पूरी हटाई
+        assertFalse(s.contains("AgentWorkView") || s.contains("agentWork"))
     }
 
     @Test fun newDefaultWallpaperNotOldBlue() {

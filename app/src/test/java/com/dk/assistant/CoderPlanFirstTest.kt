@@ -15,12 +15,6 @@ class CoderPlanFirstTest {
         assertEquals("", CodingAgent.autoPlan("done", "", emptyList(), ""))
     }
 
-    @Test fun teamFallbackPlan_mentionsNewPr() {
-        assertTrue(CoderTeam.firstPlan(true).contains("पहले कोड पढ़कर"))
-        assertTrue(CoderTeam.firstPlan(true).contains("नई PR"))
-        assertTrue(!CoderTeam.firstPlan(false).contains("PR"))
-    }
-
     @Test fun finalReport_showsPlanFirst() {
         val r = CoderReport.final(true, "हो गया", emptyList(), plan = "पहले X पढ़ रहा हूँ, फिर Y ठीक करूँगा")
         assertTrue(r.startsWith("📋 रिपोर्ट\n🧭 योजना: पहले X पढ़ रहा हूँ"))

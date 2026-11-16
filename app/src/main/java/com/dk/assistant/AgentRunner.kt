@@ -407,14 +407,10 @@ class AgentRunner(
         if (Prefs.coderOn(svc)) {
             CoderTeam.voiceDecision(svc, goal)?.let { say(it); return }
             codingTask(goal)?.let { task ->
-                // 7-एजेंट सिस्टम चालू = पुराना "मल्टी-एजेंट टीम" switch ज़रूरी नहीं (CoderTeam.start खुद 7-एजेंट पर भेजता है)
-                val seven = Prefs.coderSeven(svc)
-                if (!seven && !Prefs.coderTeam(svc)) { say("कोडिंग टीम सेटिंग्स में बंद है। सेटिंग्स → कोडिंग एजेंट में टीम चालू करें।"); return }
                 if (!confirmVoice("कोडिंग का काम: ${task.take(80)}")) return
                 val err = CoderTeam.start(svc, task, fromVoice = true)
-                say(err ?: if (seven) Lang.pick("ठीक है, कोडिंग एजेंट (सिंगल एजेंट) काम समझकर शुरू कर रहा है। कुछ साफ़ नहीं होगा तो पहले आपसे पूछेगा, पूरा होने पर मैं बताऊँगी।",
-                    "Okay, the coding agent (single agent) is understanding the task and starting. If something is unclear it will ask you first; I will tell you when it is done.")
-                    else "ठीक है, कोडिंग टीम काम शुरू कर रही है। बिल्डर लिखेगा, रिव्यूअर जाँचेगा, और पूरा होने पर मैं बताऊँगी।")
+                say(err ?: Lang.pick("ठीक है, कोडिंग एजेंट (सिंगल एजेंट) काम समझकर शुरू कर रहा है। कुछ साफ़ नहीं होगा तो पहले आपसे पूछेगा, पूरा होने पर मैं बताऊँगी।",
+                    "Okay, the coding agent (single agent) is understanding the task and starting. If something is unclear it will ask you first; I will tell you when it is done."))
                 return
             }
         }

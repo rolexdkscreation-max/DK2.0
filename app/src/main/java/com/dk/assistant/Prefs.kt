@@ -508,22 +508,8 @@ object Prefs {
     /** सुरक्षित PR मोड अब हमेशा चालू: main पर कभी सीधे push नहीं (पुरानी "बंद" setting भी नज़रअंदाज़) */
     @Suppress("UNUSED_PARAMETER")
     fun coderSafePr(c: Context) = true
-    /** Multi-agent coding team (Builder -> Reviewer -> Coordinator), ek baar bolo baaki apne-aap */
-    fun coderTeam(c: Context) = sp(c).getBoolean("coder_team", true)
-    /**
-     * 7 एजेंट वाला ढाँचा (SevenRunner: GitHub/नॉर्मल मोड, branch, PR, CI, फ़ोटो/वीडियो देखना, समझाने वाला).
-     * 13 नवंबर 2026 (मालिक: "7 एजेंट वाला हटा दो, सिंगल वाला ही रहने दो, वह बढ़िया काम कर रहा है"): अब हमेशा चालू -
-     * इसके अंदर काम हमेशा एक ही एजेंट ([coderSolo]) करता है. Settings के पुराने switch हटे; पुरानी सेव "बंद" भी नज़रअंदाज़.
-     */
-    @Suppress("UNUSED_PARAMETER")
-    fun coderSeven(c: Context): Boolean = true
-    /**
-     * नवंबर 2026 (मालिक: "एक ही एजेंट सब काम कर लेगा"): एक-दिमाग वाला कोडर ([Solo]) - 7 एजेंट की हाथ-बदली की जगह एक ही
-     * एजेंट पूरा काम (खोज, पढ़ना, बदलाव, जाँच, CI की गलती ठीक करना). 13 नवंबर 2026: हमेशा चालू (7 एजेंट क्रम हटा).
-     */
-    @Suppress("UNUSED_PARAMETER")
-    fun coderSolo(c: Context): Boolean = true
-    const val CODER_SOLO = "coder_solo"
+    // 13-16 नवंबर 2026 (मालिक: "सिंगल वाला ही रहने दो"): कोडिंग एजेंट हमेशा एक ही एजेंट (SevenRunner, solo).
+    // पुराने switch (coder_team / 7 एजेंट / solo) हटाए - वे हमेशा true थे, इसलिए पुराना टीम वाला रास्ता कभी नहीं चलता था.
     /** user ने खुद नॉर्मल मोड चुना (GitHub होते हुए भी गिट के बिना) */
     fun coderNormal(c: Context) = sp(c).getBoolean("coder_normal", false)
     /** Coding agent ka khula PR (app restart ke baad bhi "Merge करें" card ke liye) */

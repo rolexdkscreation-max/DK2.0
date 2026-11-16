@@ -119,8 +119,7 @@ object CoderSession {
         add("s", "▶ कतार का अगला काम शुरू: ${t.lineSequence().first().take(120)}")
         val s = starter
         if (s != null) s(t)
-        else if (Prefs.coderSeven(c)) SevenRunner.start(c, t)?.let { add("e", it) }
-        else queue.addFirst(t)          // पुराना एजेंट: स्क्रीन खुलते ही चलेगा
+        else SevenRunner.start(c, t)?.let { add("e", it) }
     }
 
     /**
@@ -217,14 +216,12 @@ class CodingActivity : AppCompatActivity() {
     private lateinit var edt: EditText
     private lateinit var send: ImageButton
     private lateinit var changes: LinearLayout
-    private lateinit var sugBox: LinearLayout
     /** नवंबर 2026: "आगे क्या करें" के बटन (डिब्बे के ऊपर) */
     private lateinit var choiceBar: ChoiceBar
     // नवंबर 2026 (मालिक): काम चलते समय ऊपर की हेडर पट्टी में ही "मौजूदा काम" (अलग कार्ड नहीं)
     private lateinit var headTitle: TextView
     private lateinit var headTask: LinearLayout
     private lateinit var busyTask: TextView
-    private lateinit var agentWork: AgentWorkView
     private val busyHandler = android.os.Handler(android.os.Looper.getMainLooper())
     private var busyStep = 0
     private var busyOn = false
@@ -234,7 +231,6 @@ class CodingActivity : AppCompatActivity() {
             busyStep++
             if (inline.active) inline.show(busyLabel(), WorkState.WORKING)
             fillTaskCard()
-            showAgent()
             busyHandler.postDelayed(this, BusyLabel.TICK_MS)
         }
     }
@@ -300,7 +296,7 @@ class CodingActivity : AppCompatActivity() {
         }
         titles.addView(headSlot, LinearLayout.LayoutParams(-1, -2))
         val top = UiFit.header(this, back, titles, listOf(
-            smallBtn("रिपो") { if (Prefs.coderSeven(this)) sevenPicker() else chooseRepo() },
+            smallBtn("रिपो") { sevenPicker() },
             // 14 नवंबर 2026 (मालिक): रिपो clone / जाँच - कोडिंग एजेंट के अंदर ही एक जगह
             smallBtn("Clone") { RepoClone(this, onWork = { t -> edt.setText(t); doSend() }, onUse = { newSession() }).open() },
             smallBtn("इतिहास") { showHistory() },
@@ -317,11 +313,7 @@ class CodingActivity : AppCompatActivity() {
             setOnClickListener { codespaceDetail() }
         }
         col.addView(csMeter, LinearLayout.LayoutParams(-1, -2))
-        // नवंबर 2026 (मालिक): बड़ा "मौजूदा काम" कार्ड हटाया - वह अब ऊपर हेडर में; उसकी जगह (बटनों के नीचे) एजेंट स्टेटस पट्टी
-        // v5.1: कौन सा एजेंट काम कर रहा है - सारे एजेंट मैनेजर के नीचे, चलता हुआ चमकता है
-        agentWork = AgentWorkView(this).apply { visibility = View.GONE; setBackgroundResource(R.drawable.glass_card); val p = (8 * dp).toInt(); setPadding(p, p, p, p) }
-        col.addView(agentWork, LinearLayout.LayoutParams(-1, -2).apply { topMargin = (6 * dp).toInt() })
-
+        // नवंबर 2026 (मालिक): बड़ा "मौजूदा काम" कार्ड हटाया - वह अब ऊपर हेडर में
         scroll = ScrollView(this).apply { isFillViewport = true }
         list = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(0, (8 * dp).toInt(), 0, (8 * dp).toInt()) }
         scroll.addView(list)
@@ -334,12 +326,6 @@ class CodingActivity : AppCompatActivity() {
         }
         col.addView(changes, LinearLayout.LayoutParams(-1, -2).apply { topMargin = (6 * dp).toInt() })
 
-        // टीम के सुझाव (जो आपने नहीं माँगे) - हाँ/नहीं
-        sugBox = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL; setBackgroundResource(R.drawable.glass_card)
-            val p = (12 * dp).toInt(); setPadding(p, p, p, p); visibility = View.GONE
-        }
-        col.addView(sugBox, LinearLayout.LayoutParams(-1, -2).apply { topMargin = (6 * dp).toInt() })
         choiceBar = ChoiceBar(this).apply {
             onPick = { ch -> if (ch.act == FollowUp.Act.REROUTE) CoderSession.reroute() else { edt.setText(ch.text); doSend() }; render() }
             onEdit = { t -> edt.setText(t); edt.setSelection(edt.text.length); keepTyping() }
@@ -434,18 +420,14 @@ class CodingActivity : AppCompatActivity() {
 
     private fun welcome(): String {
         // नवंबर 2026 (मालिक): खुलते ही लंबी सूची नहीं - सिर्फ़ एक लाइन; "क्या-क्या कर सकते हो" पूछने पर पूरी (AgentIntro.coderCapabilities)
-        val problems = problems()
-        if (Prefs.coderSeven(this)) return AgentIntro.coderHello(sevenModeLine().substringBefore(" • ").substringBefore(" — "))
-        return if (problems.isEmpty()) AgentIntro.coderHello("${Prefs.ghRepo(this)} (${Prefs.ghBranch(this)})")
-        else "पहले ये ठीक करें (सेटिंग्स → कोडिंग एजेंट):\n• " + problems.joinToString("\n• ")
+        return AgentIntro.coderHello(sevenModeLine().substringBefore(" • ").substringBefore(" — "))
     }
 
     /** "तुम क्या-क्या कर सकते हो" का पूरा जवाब (अभी का मोड देखकर) */
     private fun capabilities(): String {
-        val seven = Prefs.coderSeven(this)
-        val github = Prefs.ghToken(this).isNotBlank() && Prefs.ghRepo(this).contains('/') && !(seven && Prefs.coderNormal(this))
+        val github = Prefs.ghToken(this).isNotBlank() && Prefs.ghRepo(this).contains('/') && !Prefs.coderNormal(this)
         // 13 नवंबर 2026 (मालिक): 7 एजेंट वाली टीम हटी - सिर्फ़ सिंगल एजेंट (टीम की लाइन नहीं)
-        return AgentIntro.coderCapabilities(false, github) + "\n" + SOLO_LINE + (if (seven) "\n" + sevenModeLine() else "") + safeNote()
+        return AgentIntro.coderCapabilities(false, github) + "\n" + SOLO_LINE + "\n" + sevenModeLine() + safeNote()
     }
 
     private companion object {
@@ -467,8 +449,6 @@ class CodingActivity : AppCompatActivity() {
         }
     }
 
-    private fun agent(): CodingAgent? = CoderSession.agentFor(this)
-
     private fun doSend() {
         val typed = edt.text.toString().trim()
         val hasMedia = CoderSession.media.isNotEmpty()
@@ -486,7 +466,7 @@ class CodingActivity : AppCompatActivity() {
         if (CoderSession.busy && !RepoDoctor.isStatusAsk(typed)) {
             if (typed.isEmpty()) return
             edt.setText("")
-            CoderSession.followUp(this, typed, canJoin = Prefs.coderSeven(this) || !Prefs.coderTeam(this))
+            CoderSession.followUp(this, typed, canJoin = true)
             render(); return
         }
         // सिर्फ़ फ़ोटो/वीडियो भेजी: टीम उन्हें देखकर समझे
@@ -503,61 +483,12 @@ class CodingActivity : AppCompatActivity() {
         }
         // रिपो डॉक्टर: रिपो की हालत / किसी PR को ठीक या merge करना / उसकी योजना की हाँ (फ़ोटो के साथ = नया काम)
         if (!hasMedia) RepoDoctorRunner.intercept(this, t, false)?.let { r -> r.err?.let { CoderSession.add("e", it) }; render(); return }
-        // 7 एजेंट वाला नया सिस्टम (चालू हो तो): GitHub मोड / नॉर्मल मोड खुद तय करता है
-        if (Prefs.coderSeven(this)) {
-            val taken = CoderSession.media.toList()
-            CoderSession.media.clear(); renderMedia()
-            SevenRunner.start(this, t, media = taken.map { it.first })?.let {
-                CoderSession.add("u", t); CoderSession.add("e", it)
-                CoderSession.media.addAll(taken); renderMedia()      // काम शुरू नहीं हुआ - फ़ोटो वापस पट्टी में
-            }
-            render(); return
-        }
-        if (hasMedia) {
-            CoderSession.media.clear(); renderMedia()
-            CoderSession.add("s", "📎 फ़ोटो/वीडियो सिर्फ़ 7 एजेंट वाली टीम देखती है (Settings → कोडिंग एजेंट में चालू करें)। अभी सिर्फ़ आपका लिखा भेजा।")
-            if (typed.isEmpty()) { render(); return }
-        }
-        val p = problems()
-        if (p.isNotEmpty()) { CoderSession.add("u", t); CoderSession.add("e", "पहले ठीक करें:\n• " + p.joinToString("\n• ")); return }
-        // टीम मोड: बिल्डर -> रिव्यूअर -> कोऑर्डिनेटर, सब अपने-आप
-        if (Prefs.coderTeam(this)) { CoderTeam.start(this, t)?.let { CoderSession.add("e", it) }; render(); return }
-        val a = agent() ?: return
-        CoderSession.add("u", t)
-        a.inbox = CoderSession.inbox
-        CoderSession.current = t
-        CoderSession.launch(this) {
-            try {
-                CoderReport.begin()
-                // main पर कभी सीधे नहीं: कोड छूने से पहले नई feature branch; पुराना फ़ीचर बदलना/हटाना = पहले backup
-                if (a.safePr) a.ensureBranch(t)
-                a.intentional = SafePr.changesOldFeature(t)
-                if (a.intentional) a.backupOld(t).takeIf { it.isNotBlank() }?.let { CoderSession.add("s", "पुराने फ़ीचर का backup लिया → $it") }
-                fixSigs.clear()
-                val out = a.run(t) { step -> CoderSession.scope.launch { CoderSession.add("s", step) } }
-                CoderSession.lastCommit = out.commit
-                if (out.stopped) {
-                    // एजेंट खुद रुका: अपने-आप push नहीं, वजह एक बार रिपोर्ट में
-                    CoderSession.add("e", ShortReport.text(null, out.summary) + "\n(बदलाव push नहीं किए)")
-                } else {
-                    val partial = out.commit == "DK: partial changes"
-                    CoderSession.add("d", when {
-                        out.question -> out.summary
-                        partial -> ShortReport.text(null, out.summary)
-                        else -> ShortReport.text(true, github = false).lines().first() + "\n\n" + out.summary
-                    })
-                    if (!out.question && a.staged.isNotEmpty() && Prefs.coderAutoPush(applicationContext)) push(applicationContext)
-                }
-            } catch (e: kotlinx.coroutines.CancellationException) {
-                CoderSession.add("e", "रोक दिया।")
-            } catch (e: Exception) {
-                val m = (e.message ?: e.javaClass.simpleName).take(300)
-                CoderSession.add("e", ShortReport.text(false, m))
-                DKLog.d("Coder गलती: ${e.javaClass.simpleName} ${e.message}")
-            } finally {
-                withContext(kotlinx.coroutines.NonCancellable) { try { a.dropEmptyBranch() } catch (_: Exception) {} }
-                CoderSession.listener?.invoke()
-            }
+        // कोडिंग एजेंट (एक ही एजेंट, SevenRunner): GitHub मोड / नॉर्मल मोड खुद तय करता है
+        val taken = CoderSession.media.toList()
+        CoderSession.media.clear(); renderMedia()
+        SevenRunner.start(this, t, media = taken.map { it.first })?.let {
+            CoderSession.add("u", t); CoderSession.add("e", it)
+            CoderSession.media.addAll(taken); renderMedia()      // काम शुरू नहीं हुआ - फ़ोटो वापस पट्टी में
         }
         render()
     }
@@ -620,31 +551,6 @@ class CodingActivity : AppCompatActivity() {
             .setView(ScrollView(this).apply { addView(box) })
             .setNegativeButton("बाद में", null).show()
         understandDlg = dlg
-    }
-
-    /** Pending सुझाव: क्या, क्यों, और हाँ/नहीं */
-    private fun renderSuggestions() {
-        sugBox.removeAllViews()
-        val list = CoderTeam.pending
-        if (list.isEmpty()) { sugBox.visibility = View.GONE; return }
-        sugBox.visibility = View.VISIBLE
-        sugBox.addView(TextView(this).apply {
-            text = "💡 टीम का सुझाव (आपने नहीं माँगा था — हाँ कहें तभी जोड़ेंगे)"; textSize = 13f
-            setTypeface(typeface, Typeface.BOLD); setTextColor(0xFFFFFFFF.toInt())
-        })
-        list.take(3).forEach { sg ->
-            sugBox.addView(TextView(this).apply {
-                text = sg.title; textSize = 15f; setTypeface(typeface, Typeface.BOLD); setTextColor(0xFFFFFFFF.toInt())
-                setPadding(0, (8 * dp).toInt(), 0, 0)
-            })
-            if (sg.why.isNotBlank()) sugBox.addView(TextView(this).apply { text = sg.why; textSize = 13f; setTextColor(0xD9FFFFFF.toInt()) })
-            val row = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; setPadding(0, (6 * dp).toInt(), 0, 0) }
-            row.addView(smallBtn("हाँ, जोड़ो", accent = true) { CoderTeam.decide(applicationContext, sg.id, true); render() },
-                LinearLayout.LayoutParams(0, (38 * dp).toInt(), 1f).apply { marginEnd = (8 * dp).toInt() })
-            row.addView(smallBtn("नहीं") { CoderTeam.decide(applicationContext, sg.id, false); render() },
-                LinearLayout.LayoutParams(0, (38 * dp).toInt(), 1f))
-            sugBox.addView(row)
-        }
     }
 
     private suspend fun push(c: Context, round: Int = 0) {
@@ -743,7 +649,7 @@ class CodingActivity : AppCompatActivity() {
     private fun newSession() {
         if (CoderSession.busy) { toast("पहले चल रहा काम रोकें"); return }
         CoderSession.agent?.reset(); CoderSession.savePr(this); CoderSession.agent = null
-        CoderTeam.suggestions.clear(); SevenRunner.pending = null; RepoDoctorRunner.pending = null
+        SevenRunner.pending = null; RepoDoctorRunner.pending = null
         CoderHistory.newThread(this)                                // पुरानी बातचीत इतिहास में रहती है
         CoderSession.lines.clear(); shown = 0; seenDrop = CoderSession.dropped; list.removeAllViews()
         CoderSession.add("d", welcome())
@@ -819,7 +725,7 @@ class CodingActivity : AppCompatActivity() {
         if (CoderSession.busy) { toast("पहले चल रहा काम पूरा होने दें या रोकें"); return }
         if (t.id == CoderHistory.current) return
         val l = CoderHistory.open(this, t.id)
-        CoderTeam.suggestions.clear(); SevenRunner.pending = null; RepoDoctorRunner.pending = null
+        SevenRunner.pending = null; RepoDoctorRunner.pending = null
         CoderSession.lines.clear(); CoderSession.lines.addAll(l); shown = 0; seenDrop = CoderSession.dropped; inline.drop(); list.removeAllViews()
         // उस बातचीत का PR अभी खुला हो (merge नहीं) तो वही वापस - वरना साफ़ शुरुआत
         CoderSession.agent?.let { a ->
@@ -931,28 +837,6 @@ class CodingActivity : AppCompatActivity() {
             .setNegativeButton("रुको", null).show()
     }
 
-    private fun chooseRepo() {
-        val gh = GitHub.fromPrefs(this) ?: run { toast("पहले सेटिंग्स में GitHub token डालें"); return }
-        toast("Repos ला रहा हूँ…")
-        CoderSession.scope.launch {
-            try {
-                val repos = withContext(Dispatchers.IO) { gh.repos() }
-                if (isFinishing || isDestroyed) return@launch
-                if (repos.isEmpty()) { toast("कोई repo नहीं मिला"); return@launch }
-                val names = repos.map { it.fullName + if (it.private) "  (private)" else "" }.toTypedArray()
-                UiDialog(this@CodingActivity, Glass.DIALOG)
-                    .setTitle("Repo चुनें")
-                    .setItems(names) { _, i ->
-                        val r = repos[i]
-                        if (CoderSession.agent?.staged?.isNotEmpty() == true) toast("पुराने repo के बिना push बदलाव हटा दिए")
-                        Prefs.edit(this@CodingActivity) { putString("gh_repo", r.fullName); putString("gh_branch", r.branch) }
-                        newSession()
-                    }
-                    .setNegativeButton("बंद करें", null).show()
-            } catch (e: Exception) { toast((e.message ?: "गलती").take(120)) }
-        }
-    }
-
     private var csMeter: TextView? = null
     private fun refreshMeter(force: Boolean = false, then: (() -> Unit)? = null) {
         CoderSession.scope.launch {
@@ -977,12 +861,12 @@ class CodingActivity : AppCompatActivity() {
         // app दोबारा खुली हो तो पिछला खुला PR (Merge card) वापस लाओ
         if (CoderSession.agent == null && problems().isEmpty()) CoderSession.agentFor(this)
         // ऐप बंद होने से रुका काम: अपने-आप वहीं से आगे (या "वहीं से आगे" बटन)
-        if (Prefs.coderSeven(this)) SevenRunner.reopen(this)
+        SevenRunner.reopen(this)
         CoderSession.starter = { t -> runOnUiThread { edt.setText(t); doSend() } }
         CoderSession.runNext(this)
         render(); keepTyping()
         // 7-एजेंट: बीच में GitHub जोड़ा (token है, रिपो नहीं, नॉर्मल खुद नहीं चुना) → रिपो चुनने का विकल्प
-        if (Prefs.coderSeven(this) && !pickerShown && Prefs.ghToken(this).isNotBlank() && !Prefs.ghRepo(this).contains('/') && !Prefs.coderNormal(this)) {
+        if (!pickerShown && Prefs.ghToken(this).isNotBlank() && !Prefs.ghRepo(this).contains('/') && !Prefs.coderNormal(this)) {
             pickerShown = true; sevenPicker()
         }
     }
@@ -1001,9 +885,8 @@ class CodingActivity : AppCompatActivity() {
             busySince = System.currentTimeMillis()
             // नवंबर 2026 (मालिक): हेडर में "DK CODING AGENT" की जगह मौजूदा काम (मुलायम बदलाव)
             fillTaskCard(); headMode(true)
-            showAgent()
             busyHandler.postDelayed(busyTick, BusyLabel.TICK_MS)
-        } else { headMode(false); agentWork.visibility = View.GONE; CoderSession.activeAgent = null; CoderSession.activeNote = "" }
+        } else { headMode(false); CoderSession.activeAgent = null; CoderSession.activeNote = "" }
     }
 
     /** हेडर: true = मौजूदा काम + घूमता निशान, false = "DK CODING AGENT". आकार कभी नहीं बदलता (सिर्फ़ alpha) */
@@ -1023,14 +906,6 @@ class CodingActivity : AppCompatActivity() {
     }
 
     /** 7 एजेंट वाली टीम चल रही हो तो: कौन सा एजेंट काम कर रहा है (नाम + animation) */
-    private fun showAgent() {
-        // 13 नवंबर 2026 (मालिक: "7 एजेंट वाला हटा दो"): अब एक ही एजेंट - 7 एजेंट की पंक्ति नहीं दिखती
-        if (!Prefs.coderSeven(this) || Prefs.coderSolo(this)) { agentWork.visibility = View.GONE; return }
-        if (agentWork.visibility != View.VISIBLE) { agentWork.alpha = 0f; agentWork.visibility = View.VISIBLE; agentWork.animate().alpha(1f).setDuration(220).start() }
-        agentWork.active = CoderSession.activeAgent
-        agentWork.note = CoderSession.activeNote
-    }
-
     private fun render() {
         val a = CoderSession.agent
         maybeOfferNormal()
@@ -1058,7 +933,6 @@ class CodingActivity : AppCompatActivity() {
         UiPace.trimCount(list.childCount).let { if (it > 0) list.removeViews(0, it) }
         if (CoderSession.busy) inline.show(busyLabel(), WorkState.WORKING)
         else if (inline.bubble?.isWorking == true) inline.hide()
-        renderSuggestions()
         // badlaav card
         changes.removeAllViews()
         val ck = if (!CoderSession.busy && SevenRunner.pending == null) CoderHistory.checkpoint(this)?.takeIf { it.stage == "pause" || it.stage == "run" } else null

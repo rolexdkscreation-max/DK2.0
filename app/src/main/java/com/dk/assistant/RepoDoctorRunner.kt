@@ -46,7 +46,7 @@ object RepoDoctorRunner {
             return Res(scan(c, focus = n, mergeNow = true), "PR #$n की जाँच करके merge और APK release कर रही हूँ।")
         }
         if (n != null && RepoDoctor.isFixAsk(input)) { say("u", shown); return Res(scan(c, focus = n, question = input), "PR #$n की जाँच कर रही हूँ, योजना बताती हूँ।") }
-        if (CoderConfirm.keywordStatus(Prefs.coderSeven(c)) && RepoDoctor.isStatusAsk(input)) { say("u", shown); return Res(scan(c, focus = n, question = input), "रिपो की जाँच कर रही हूँ — खुले PR, builds, release। नतीजा अभी बताती हूँ।") }
+        // "रिपो की हालत" जैसे शब्द यहाँ नहीं पकड़े जाते: कोडिंग एजेंट पहले पूरी बात समझता है (पुराना शब्द-पकड़ रास्ता हटाया, नवंबर 2026)
         return null
     }
 
