@@ -42,8 +42,34 @@ object Termux {
             Regex("""\bmkfs\b"""), Regex("""\bdd\s+[^|]*of=/dev/"""), Regex(""":\(\)\s*\{"""),
             Regex("""\b(reboot|shutdown|poweroff)\b"""), Regex("""\bchmod\s+-R\s+0*\s*/(\s|$)"""),
             Regex("""(curl|wget)[^|]*\|\s*(ba)?sh\b"""), Regex("""\bsu\b"""),
+            // 16 नवंबर 2026 (ऑडिट): फ़ोन की फ़ोटो/फ़ाइलें relative path या find से मिटाना भी
+            Regex("""\brm\s+(\S+\s+)*-\S*[rRf]\S*\s+(\S+\s+)*(\./)?(~/)?(storage|sdcard)\b"""),
+            Regex("""\bfind\s+(~|/|${'$'}HOME|(\./)?storage|/sdcard)\S*.*\s-(delete\b|exec\s+rm\b)"""),
         )
         fun dangerous(cmd: String): Boolean = DANGER.any { it.containsMatchIn(cmd) }
+
+        /**
+         * 16 नवंबर 2026 (ऑडिट P0-1): बिना पूछे सिर्फ़ ये पढ़ने वाली कमांड. बाकी हर कमांड पर ऐप का अपना
+         * "हाँ / ना" कार्ड ([ConfirmGate]) - blocklist अकेले बायपास हो जाती थी (`python -c "shutil.rmtree"`, `curl -o x && bash x`).
+         * shell के जोड़ (; & | > < $ ` ( ) { } \ नई लाइन) = हमेशा पूछो.
+         */
+        private val META = Regex("""[;&|<>`${'$'}(){}\\\n\r*?!]""")
+        private val READ_ONLY = setOf("ls", "pwd", "cat", "echo", "whoami", "date", "uname", "df", "du", "free", "head", "tail", "wc",
+            "which", "uptime", "id", "tree", "file", "stat", "nproc")
+        private val SUB_OK = mapOf(
+            "git" to setOf("status", "log", "diff", "branch", "show"),
+            "pkg" to setOf("list-installed", "list-all", "search", "show"),
+            "pip" to setOf("list", "--version"), "npm" to setOf("list", "ls", "-v", "--version"),
+            "python" to setOf("--version", "-V"), "python3" to setOf("--version", "-V"), "node" to setOf("--version", "-v"))
+        fun safe(cmd: String): Boolean {
+            val t = cmd.trim()
+            if (t.isEmpty() || t.length > 200 || META.containsMatchIn(t) || dangerous(t)) return false
+            val w = t.split(Regex("\\s+"))
+            if (w[0] in READ_ONLY) return true
+            val sub = SUB_OK[w[0]] ?: return false
+            return w.size >= 2 && w[1] in sub && (w[0] != "git" || w.drop(2).none { it.startsWith("--output") || it == "-o" })
+        }
+        fun needsConfirm(cmd: String): Boolean = !safe(cmd)
 
         enum class Kind { STATIC, PYTHON, NODE }
 
