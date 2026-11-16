@@ -58,6 +58,9 @@ object VoiceGuardian {
         sp(c).edit().putString(kTpl(modelId(c)), VgRules.encodeAll(keep)).putString(kPrint(modelId(c)), VoicePrint.encode(m)).apply()
     }
 
+    /** 16 नवंबर 2026: पक्की रोक (हर बात पहचान तक रुकी) */
+    fun strictOn(c: Context): Boolean = try { FeatureFlags.on(c, FeatureFlags.VG_STRICT) } catch (_: Exception) { false }
+
     fun deepOn(c: Context): Boolean = try { FeatureFlags.on(c, FeatureFlags.VG_DEEP) } catch (_: Exception) { false }
 
     fun hasModel(c: Context) = ModelManager.ready(c, asset(c))

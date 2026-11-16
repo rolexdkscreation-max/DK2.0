@@ -189,6 +189,8 @@ internal fun SettingsActivity.voiceGuardianCard() {
         box.addView(test)
 
         flagSwitch(box, "सिर्फ़ Boss की आवाज़ (अनजान आवाज़ अनसुनी)", FeatureFlags.VG_OWNER_ONLY) { refresh(); com.dk.assistant.voice.engine.VoiceEngines.liveChanged() }
+        flagSwitch(box, "पक्की रोक: पहचान होने तक आवाज़ DK तक नहीं (अनजान आवाज़ यहीं कट)", FeatureFlags.VG_STRICT) { refresh(); com.dk.assistant.voice.engine.VoiceEngines.liveChanged() }
+        hint(box, "पक्की रोक बंद हो तो किसी और की पहली ~1 सेकंड आवाज़ DK तक पहुँच जाती है (सिर्फ़ जवाब रुकता है). चालू हो तो हर बात रुककर जाँची जाती है (ज़्यादातर 0.6 सेकंड, पक्का न हो तो 1.5 सेकंड): Boss = रुकी आवाज़ तुरंत DK को, कोई और = यहीं मिटा दी. \"सिर्फ़ Boss की आवाज़\" भी चालू होना चाहिए.")
         flagSwitch(box, "Away मोड (अनजान आवाज़: पहली बार चेतावनी, दूसरी बार फ़ोन लॉक)", FeatureFlags.VG_AWAY) { refresh(); com.dk.assistant.voice.engine.VoiceEngines.liveChanged() }
         refresh()
         hint(box, "मिलान सिर्फ़ तब चलता है जब कोई बोल रहा हो. मॉडल फेल / आवाज़ बहुत छोटी = DK आवाज़ नहीं खोती (पहले जैसा सुनती है). फ़ोन लॉक के लिए Accessibility में DK चालू होना चाहिए. सीमाएँ: यह पक्का ताला नहीं — रिकॉर्डिंग या मिलती-जुलती आवाज़ से धोखा हो सकता है; शोर में पहचान कमज़ोर. बैटरी सेवर में \"वॉइस गार्डियन रोको\" चालू हो तो पहचान बंद.")

@@ -458,6 +458,8 @@ class GeminiLive(internal val svc: DKAccessibilityService, internal val agent: A
     @Volatile internal var ownerOn = false
     /** 15 नवंबर 2026 (हिस्सा 2): वॉइस गार्डियन से मिलान */
     @Volatile internal var vgOn = false
+    /** 16 नवंबर 2026: पक्की रोक - हर बात पहचान तक रुकी, अनजान आवाज़ Gemini तक बिल्कुल नहीं */
+    @Volatile internal var vgStrict = false
     /** नवंबर 2026: आवाज़ सीखी हुई पर "सिर्फ़ मेरी आवाज़" बंद = सिर्फ़ पहचान (बॉस / कोई और), बगल की बातचीत के लिए */
     @Volatile internal var whoOn = false
     @Volatile internal var whoSeq = 0

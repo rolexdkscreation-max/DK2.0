@@ -30,7 +30,18 @@ class OwnerGate(private val chunkMs: Int = 40) {
         const val RECENT_SLACK = 0.10f
         /** 3 सेकंड से ज़्यादा जमा नहीं */
         const val MAX_MS = 3000
+        /**
+         * 16 नवंबर 2026 (पक्की रोक): पहला मिलान जल्दी (0.6 s), पक्का न हो तो 1.5 s पर - आवाज़ तब तक रुकी रहती है.
+         * कंप्यूटर पर नापा (LibriSpeech 40 लोग, 15 सैंपल, अपनी सीमा): 0.6 s पर ~2/3 बार मालिक पास; 1.5 s तक
+         * मालिक छूटा ~0.5-2%, दूसरे पास ~0.3%. 0.6 s पर "कोई और" सिर्फ़ जब score बहुत नीचे (FAST_CLEAR_OTHER).
+         */
+        const val FAST_FIRST_MS = 600
+        const val FAST_SECOND_MS = 1500
+        const val FAST_CLEAR_OTHER = 0.30f
     }
+
+    /** 16 नवंबर 2026: पक्की रोक - जल्दी मिलान. छोटी आवाज़ (0.6 s) पर मालिक तभी जब score पूरी सीमा पार करे (कोई ढील नहीं) */
+    @Volatile var fast = false
 
     var verdict = Verdict.PENDING
         private set
@@ -73,7 +84,8 @@ class OwnerGate(private val chunkMs: Int = 40) {
     }
 
     fun wantCheck(): Boolean = active && verdict == Verdict.PENDING && !checking &&
-        ((checks == 0 && speechMs >= FIRST_CHECK_MS) || (checks == 1 && speechMs >= SECOND_CHECK_MS))
+        ((checks == 0 && speechMs >= (if (fast) FAST_FIRST_MS else FIRST_CHECK_MS)) ||
+            (checks == 1 && speechMs >= (if (fast) FAST_SECOND_MS else SECOND_CHECK_MS)))
 
     /** मिलान के लिए आवाज़ की कॉपी (checking = true, onScore तक दोबारा नहीं) */
     fun takeAudio(): ByteArray { checking = true; return buf.copyOf(len) }
@@ -91,6 +103,16 @@ class OwnerGate(private val chunkMs: Int = 40) {
         if (!active || verdict != Verdict.PENDING) return verdict
         checks++
         lastScore = score
+        if (fast && !atEnd && checks == 1 && ms < SHORT_MS && score.isFinite()) {
+            // जल्दी वाला मिलान: पक्का मालिक / पक्का कोई और, बीच वाला = 1.5 s पर दोबारा
+            verdict = when {
+                score >= threshold -> Verdict.OWNER
+                score < threshold - FAST_CLEAR_OTHER -> Verdict.OTHER
+                else -> Verdict.PENDING
+            }
+            if (verdict == Verdict.OWNER) lastOwnerAt = now
+            return verdict
+        }
         val th = if (ms < SHORT_MS) threshold - SHORT_SLACK else threshold
         val recent = lastOwnerAt > 0 && now - lastOwnerAt < RECENT_OWNER_MS
         verdict = when {
