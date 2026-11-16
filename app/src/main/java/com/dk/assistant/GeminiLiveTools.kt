@@ -335,6 +335,22 @@ internal suspend fun GeminiLive.notifReply(to: String, message: String): String 
 }
 
 /**
+ * 16 नवंबर 2026 (ऑडिट A1): DK लाइव का WhatsApp भेजना - ऐप का अपना "हाँ / ना" कार्ड ([com.dk.assistant.agent.core.LiveWaGate]).
+ * null = आगे बढ़ो; वरना AI को लौटने वाली "DENIED…" लाइन (कुछ नहीं भेजा). WhatsApp चैट पढ़ना = बाहर की लिखावट पर निशान.
+ * डिलीट का कार्ड WaDeleteRunner में (असली मैसेज दिखाकर).
+ */
+internal suspend fun GeminiLive.waCardDenied(act: String, args: JSONObject): String? {
+    val gate = com.dk.assistant.agent.core.LiveWaGate
+    if (gate.readsOthers(act)) { com.dk.assistant.plus.ConfirmGate.markUntrusted(); return null }
+    val untrusted = com.dk.assistant.plus.ConfirmGate.untrustedNow()
+    if (!gate.sendNeedsCard(act, DKState.lastUser, untrusted)) return null
+    val denied = com.dk.assistant.plus.ConfirmGate.check(svc, gate.sendTitle(args.optString("contact")),
+        gate.sendDetail(act, args.optString("message"), untrusted), "WhatsApp $act")
+    log("WhatsApp $act -> कार्ड: ${if (denied == null) "हाँ" else "नहीं"}")
+    return denied
+}
+
+/**
  * v3.5+: एजेंट वाले tool (कहानी / वेबसाइट / DK कंप्यूटर / कोडिंग) एक जगह - Gemini के tool call से भी और
  * [agentCheck] से भी (Gemini ने "हाँ कर दिया" कहा पर tool नहीं बुलाया). काम सच में सौंपा गया = उस एजेंट की स्क्रीन
  * खुलती है और वहाँ "🎤 DK लाइव से मिला काम" दिखता है.
@@ -481,7 +497,7 @@ internal fun GeminiLive.runTools(calls: JSONArray) {
                 // v3.156: "मुझे शर्ट देखनी है" - फ़ोन में जो shopping ऐप हैं उनमें से (पूछकर) उसी चीज़ को खोजो
                 "shop_search" -> com.dk.assistant.ShopOpen.tool(svc, args)
                 // नवंबर 2026 (मालिक): फ़ोन लॉक हो तब भी - पहले खोलो (PIN सेव हो तो खुद), काम के बाद फिर लॉक
-                "whatsapp_task" -> com.dk.assistant.agent.android.LockedWork.wa(svc, args.optString("action")) { when (val act = args.optString("action").trim().lowercase()) {
+                "whatsapp_task" -> com.dk.assistant.agent.android.LockedWork.wa(svc, args.optString("action")) { val act = args.optString("action").trim().lowercase(); waCardDenied(act, args) ?: when (act) {
                     // नवंबर 2026 (मालिक: "WhatsApp खोल के ही बताएगा"): स्क्रीन पढ़कर; न पढ़ पाए तो पहले जैसा notification से
                     in setOf("read_unread", "unread", "read", "screen_chats", "chats", "screen") -> {
                         DKState.set(Mode.WORKING)

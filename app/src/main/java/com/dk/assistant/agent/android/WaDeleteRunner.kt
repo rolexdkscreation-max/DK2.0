@@ -51,8 +51,21 @@ object WaDeleteRunner {
             if (c.pkg.startsWith(Platform.WHATSAPP.pkg) && WaDelete.target(c, want) != null) { o = c; break }
         }
         val obs = o ?: return "FAILED: ${if (who.isNotBlank()) "$who की " else ""}चैट में आपका भेजा कोई मैसेज स्क्रीन पर नहीं दिखा - कुछ डिलीट नहीं किया।"
-        val bubble = WaDelete.target(obs, want)!!
-        val gone = bubble.text
+        val first = WaDelete.target(obs, want)!!
+        val gone = first.text
+        // 16 नवंबर 2026 (ऑडिट A1, मालिक): डिलीट = वापस नहीं आता -> ऐप का अपना "हाँ / ना" कार्ड, मिटने वाला असली मैसेज दिखाकर
+        // (AI का "हाँ" नहीं चलता; फ़ोन लॉक / 45 सेकंड / कार्ड बंद = "ना")
+        com.dk.assistant.plus.ConfirmGate.check(svc, com.dk.assistant.agent.core.LiveWaGate.deleteTitle(who),
+            com.dk.assistant.agent.core.LiveWaGate.deleteDetail(gone, forMe), "WhatsApp message delete")?.let { return it }
+        // कार्ड बंद होने के बाद चैट फिर से देखो (कार्ड के बीच स्क्रीन हिल सकती है)
+        var again: com.dk.assistant.agent.core.UiElement? = null
+        for (i in 0 until 8) {
+            delay(300)
+            val c = d.capture() ?: continue
+            val t = if (c.pkg.startsWith(Platform.WHATSAPP.pkg)) WaDelete.target(c, gone) else null
+            if (t != null && t.text == gone) { again = t; break }
+        }
+        val bubble = again ?: return "FAILED: कार्ड के बाद वही मैसेज स्क्रीन पर नहीं दिखा - कुछ डिलीट नहीं किया।"
         // लंबा दबाओ = मैसेज चुनो
         svc.swipe(bubble.bounds.centerX.toFloat(), bubble.bounds.centerY.toFloat(), bubble.bounds.centerX.toFloat(), bubble.bounds.centerY.toFloat(), 850)
         var del: Pair<ScreenObservation, com.dk.assistant.agent.core.UiElement>? = null
