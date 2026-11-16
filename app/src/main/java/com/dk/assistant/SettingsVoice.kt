@@ -21,6 +21,7 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.appcompat.widget.SwitchCompat
 import androidx.lifecycle.lifecycleScope
 import kotlinx.coroutines.launch
+import com.dk.assistant.wake.wakeCard
 
 // SettingsActivity का हिस्सा: आवाज़: Hey DK, आवाज़ सिखाना, बोलने वाला इंजन, बात शुरू करना.
 // यह code पहले SettingsActivity.kt में था; सिर्फ़ जगह बदली है, व्यवहार वही (extension functions, वही state SettingsActivity में)।
@@ -36,76 +37,25 @@ internal fun SettingsActivity.startTalking() {
 }
 
 internal fun SettingsActivity.heyDkCard(box: LinearLayout) {
+    // 16 नवंबर 2026 (मालिक): पुराना "Hey DK" (खुद सिखाने वाला) और इंटरनेट वाला "बिना सिखाए चलाओ" हटे -
+    // नया "हे डीके / हेलो डीके" (openWakeWord, फ़ोन पर ही). backup: backup/dk-old-heydk-wake
+    com.dk.assistant.wake.WakeWord.migrate(this)
+    wakeCard(box)
     val HD = com.dk.assistant.voice.HeyDk
-    val status = TextView(this).apply { textSize = 14f; setTextColor(0xFFFFFFFF.toInt()); setPadding((4 * dp).toInt(), (4 * dp).toInt(), 0, (4 * dp).toInt()) }
-    box.addView(status)
-    val swOn = switch(box, "\"Hey DK\" पर जागो", Prefs.heyDkOn(this))
-    fun refresh() {
-        status.text = UiLang.s(HD.status(this)) + if (!Setup.batteryExempt(this)) "\n" + UiLang.s("बैटरी की रोक लगी है — नीचे \"बैटरी की रोक हटाओ\" दबाइए, वरना फ़ोन कुछ देर बाद DK को सुला सकता है") else ""
-        swOn.isEnabled = HD.trained(this)
-    }
-    swOn.setOnCheckedChangeListener { _, on ->
-        val ok = on && HD.trained(this)
-        Prefs.edit(this) {
-            putBoolean("hey_dk_on", ok)
-            if (ok) { putBoolean("wake_mode", true); putBoolean("mic_user_off", false) }
-        }
-        if (ok) {
-            if (swWakeReady) swWake.isChecked = true
-            Setup.startKeepAlive(this)
-            DKAccessibilityService.instance?.startWakeLoopIfEnabled()
-        }
-        refresh()
-    }
-    label(box, "पहचान कितनी आसानी से हो")
-    val senses = com.dk.assistant.voice.WakeMatch.Sense.values().toList()
-    val rgSense = radios(box, senses.map { it.name to it.label }, Prefs.heyDkSense(this).name, 2750)
-    rgSense.setOnCheckedChangeListener { _, _ ->
-        Prefs.edit(this) { putString("hey_dk_sense", radioValue(rgSense, senses.map { it.name }, 2750)) }
-    }
-    val edAcks = field(box, "जागते ही क्या बोले (कॉमा से अलग, बदल-बदलकर बोलेगा)", Prefs.heyDkAcks(this),
+    val edAcks = field(box, "जागते ही क्या बोले (बिना इंटरनेट वाले रास्ते में; कॉमा से अलग)", Prefs.heyDkAcks(this),
         com.dk.assistant.voice.WakeMatch.DEFAULT_ACKS.joinToString(", "))
-    hint(box, "खाली छोड़ें = प्रोफ़ाइल का नाम लेकर \"जी <नाम>\" (नाम न हो तो \"Yes Boss\")।")
-    row(box,
-        button("Hey DK सिखाओ") { enrollHeyDk { swOn.isChecked = Prefs.heyDkOn(this); refresh() } },
-        button("जवाब सेव करो") {
-            Prefs.edit(this) { putString("hey_dk_acks", edAcks.text.toString().trim()) }
-            lifecycleScope.launch(kotlinx.coroutines.Dispatchers.IO) { try { HD.prepareAcks(this@heyDkCard) } catch (_: Exception) {} }
-            toast("सेव हो गया")
-        })
-    // v3.81: सिखाना न चले तो - "हे डीके / हेलो डीके" बोलकर (पुराना इंटरनेट वाला सुनना + "हाँ सर")
-    row(box, button("बिना सिखाए चलाओ") {
-        Prefs.edit(this) { putBoolean("wake_mode", true); putBoolean("mic_user_off", false); putBoolean("hey_dk_on", false) }
-        if (swWakeReady) swWake.isChecked = true
-        swOn.isChecked = false
-        Setup.startKeepAlive(this)
-        DKAccessibilityService.instance?.startWakeLoopIfEnabled()
-        refresh()
-        toast("अब \"Hey DK\", \"OK DK\" या \"Hello DK\" बोलिए")
+    hint(box, "खाली छोड़ें = प्रोफ़ाइल का नाम लेकर \"जी <नाम>\" (नाम न हो तो \"Yes Boss\")। इंटरनेट हो तो DK सीधे Live में सुनता है - जुड़ते ही हल्की आवाज़।")
+    row(box, button("जवाब सेव करो") {
+        Prefs.edit(this) { putString("hey_dk_acks", edAcks.text.toString().trim()) }
+        lifecycleScope.launch(kotlinx.coroutines.Dispatchers.IO) { try { HD.prepareAcks(this@heyDkCard) } catch (_: Exception) {} }
+        toast("सेव हो गया")
     })
-    // नवंबर 2026 (मालिक): कुछ भी बोलने पर न जागे - सिर्फ़ पूरा "Hey DK / OK DK / Hello DK"
-    val swStrict = switch(box, "सिर्फ़ \"Hey DK / OK DK / Hello DK\" पर जागो", Prefs.wakeStrict(this))
-    swStrict.setOnCheckedChangeListener { _, on -> Prefs.edit(this) { putBoolean("wake_strict", on) } }
-    hint(box, "चालू = बात की शुरुआत में पूरा \"Hey DK\", \"OK DK\", \"Hello DK\" या \"Hi DK\" बोलने पर ही जागेगा। बाकी कोई भी बात (जिसमें बीच में DK आ जाए) अनसुनी। बंद = पुराना तरीका।")
-    // power बटन = एक बार की बातचीत (चुप = वापस Hey DK)
+    // power बटन = एक बार की बातचीत (चुप = वापस वेक वर्ड)
     val swSession = switch(box, "power बटन = एक बार की बातचीत", Prefs.invokeSession(this))
     swSession.setOnCheckedChangeListener { _, on -> Prefs.edit(this) { putBoolean("invoke_session", on) } }
-    hint(box, "चालू = power बटन से DK खुले तो \"Yes Boss\" बोलकर सुनेगा, और ${InvokeSession.IDLE_MS / 1000} सेकंड चुप रहने पर Live बंद करके फिर सिर्फ़ \"Hey DK\" का इंतज़ार करेगा (माइक चालू दिखेगा पर कुछ भी बोलने पर जवाब नहीं देगा)। Live का बटन खुद दबाएँ = हमेशा वाला Live, पहले जैसा।")
+    hint(box, "चालू = power बटन से DK खुले तो \"Yes Boss\" बोलकर सुनेगा, और ${InvokeSession.IDLE_MS / 1000} सेकंड चुप रहने पर Live बंद करके फिर सिर्फ़ \"हे डीके\" का इंतज़ार करेगा। Live का बटन खुद दबाएँ = हमेशा वाला Live, पहले जैसा।")
     val swChime = switch(box, "Live जुड़ते ही हल्की आवाज़", Prefs.bool(this, "live_chime", true))
     swChime.setOnCheckedChangeListener { _, on -> Prefs.edit(this) { putBoolean("live_chime", on) } }
-    row(box,
-        button("बैटरी की रोक हटाओ") { Setup.requestBatteryExempt(this) },
-        button("मिटाओ") {
-            androidx.appcompat.app.AlertDialog.Builder(this).setTitle(UiLang.s("Hey DK मिटाएँ?"))
-                .setMessage(UiLang.s("सीखे हुए नमूने मिट जाएँगे। दोबारा चालू करने के लिए फिर से सिखाना होगा।"))
-                .setPositiveButton(UiLang.s("मिटाओ")) { _, _ -> HD.forget(this); swOn.isChecked = false; refresh(); toast("Hey DK मिटा दिया") }
-                .setNegativeButton(UiLang.s("रहने दो"), null).show()
-        })
-    refresh()
-    hint(box, "कैसे काम करता है: आप 5 बार \"Hey DK\" बोलते हैं (या \"Hello DK\" — जो भी चुनें, पाँचों बार वही)। फ़ोन उससे आपके बोलने का तरीका और आपकी आवाज़ की पहचान बनाता है। सुनते समय हर छोटी बात फ़ोन के अंदर ही मिलाई जाती है — न मिले तो भूल जाता है, कहीं भेजता नहीं।")
-    hint(box, "\"Hey DK, WhatsApp खोलो\" एक साँस में भी बोल सकते हैं — तब DK सीधे वही करेगा। सिर्फ़ \"Hey DK\" कहा तो \"Yes Boss\" बोलकर सुनेगा, और करीब 30 सेकंड चुप रहने पर फिर सो जाएगा।")
-    hint(box, "सिखाना न हो पाए तो \"बिना सिखाए चलाओ\" दबाइए: तब \"हे डीके, मौसम बताओ\" या सिर्फ़ \"हेलो डीके\" बोलने पर DK \"Yes Boss\" बोलकर सुनेगा। पर यह तरीका आपकी बात इंटरनेट (Groq/Gemini) से पहचानता है, थोड़ा धीमा है और किसी की भी आवाज़ पर जाग सकता है।")
-    hint(box, "सीमाएँ: ऊपर DK की notification हमेशा दिखेगी (Android का नियम)। बैटरी थोड़ी ज़्यादा लगती है। Force stop करने या फ़ोन बंद होने पर नहीं सुनेगा। कॉल के दौरान माइक कॉल का होता है। यह फ़ोन का ताला नहीं है — आपकी आवाज़ की रिकॉर्डिंग से धोखा हो सकता है।")
 }
 
 /** DK का माइक थोड़ी देर बंद (Live/सुनना माइक छोड़े), फिर जैसा था */
@@ -215,7 +165,7 @@ internal fun SettingsActivity.secVoice() {
     }
 
     // ---- v3.81: "Hey DK" - फ़ोन के अंदर, सिर्फ़ मालिक की आवाज़ पर जागना
-    card("Hey DK (फ़ोन के अंदर)", "ऐप बंद हो तब भी \"Hey DK\" बोलिए — DK \"हाँ सर\" बोलकर सुनने लगेगा. इंटरनेट पर कुछ नहीं जाता") { box -> heyDkCard(box) }
+    card("वेक वर्ड: हे डीके / हेलो डीके (फ़ोन के अंदर)", "ऐप बंद या फ़ोन लॉक हो तब भी \"हे डीके\" या \"हेलो डीके\" बोलिए - तुरंत DK लाइव. वेक वर्ड से पहले कुछ भी इंटरनेट पर नहीं जाता") { box -> heyDkCard(box) }
 
     // ---- v3.67: WhatsApp तुरंत भेजो (मालिक की मर्ज़ी, default बंद)
     card("WhatsApp संदेश", "\"राहुल को WhatsApp पर लिखो …\" कहने पर DK खुद भेजता है और भेजने के बाद ही \"भेज दिया\" बोलता है") { box ->

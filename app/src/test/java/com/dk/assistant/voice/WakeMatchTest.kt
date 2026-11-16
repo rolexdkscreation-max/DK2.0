@@ -148,16 +148,17 @@ class WakeMatchTest {
     private fun src(path: String): String = listOf(File("src/main/$path"), File("app/src/main/$path")).first { it.exists() }.readText()
 
     @Test fun wiring_localWakeBeforeCloudAndBootAndSettings() {
+        // 16 नवंबर 2026: पुराना Hey DK हटाया - वही जाँच नए वेक वर्ड (wake/WakeWord.kt) पर
         val svc = com.dk.assistant.AccSrc.all()
-        val local = svc.indexOf("com.dk.assistant.voice.HeyDk.listen(")
+        val local = svc.indexOf("com.dk.assistant.wake.WakeWord.listen(")
         assertTrue(local > 0 && local < svc.indexOf("val heard = hear(wakeGate = !liveBefore && !callRinging())"))
-        assertTrue(svc.contains("HeyDk.playAck(") && svc.contains("gemLive.idleExitMs = 30_000"))
-        assertTrue(svc.contains("HeyDk.on(this) && !Prefs.micUserOff(this)) Setup.startKeepAlive(this)"))
-        val hd = src("java/com/dk/assistant/voice/HeyDk.kt")
-        assertTrue(hd.contains("VoicePrint.threshold(") && hd.contains("AudioRecord(source(c), RATE"))
-        assertFalse("आवाज़ इंटरनेट पर नहीं", hd.contains("okhttp") || hd.contains("Transcriber"))
+        assertTrue(svc.contains("HeyDk.playAck(") && svc.contains("gemLive.idleExitMs = com.dk.assistant.wake.WakeWord.silenceMs(me)"))
+        assertTrue(svc.contains("WakeWord.on(this) && !Prefs.micUserOff(this)) Setup.startKeepAlive(this)"))
+        val ww = src("java/com/dk/assistant/wake/WakeWord.kt")
+        assertTrue(ww.contains("AudioRecord("))
+        assertFalse("आवाज़ इंटरनेट पर नहीं", ww.contains("okhttp") || ww.contains("Transcriber"))
         val set = com.dk.assistant.SetSrc.all()
-        assertTrue(set.contains("heyDkCard(box)") && set.contains("enrollHeyDk"))
+        assertTrue(set.contains("heyDkCard(box)") && set.contains("wakeCard(box)"))
         val ui = src("assets/ui_en.tsv")
         assertTrue(ui.contains("Hey DK सिखाओ\tTeach Hey DK"))
     }

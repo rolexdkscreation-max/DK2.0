@@ -139,7 +139,10 @@ class DKAccessibilityService : AccessibilityService() {
             speaker.speak(hello)
         }
         // v3.81: "Hey DK" चालू = फ़ोन restart / ऐप बंद के बाद भी सुनने वाली notification-service फिर से
-        if (com.dk.assistant.voice.HeyDk.on(this) && !Prefs.micUserOff(this)) Setup.startKeepAlive(this)
+        // 16 नवंबर 2026: नया वेक वर्ड ("हे डीके / हेलो डीके") - पुराना चालू था तो नया भी; मॉडल न हों तो पीछे से डाउनलोड
+        com.dk.assistant.wake.WakeWord.migrate(this)
+        if (com.dk.assistant.wake.WakeWord.on(this)) com.dk.assistant.wake.WakeModels.ensure(this)
+        if (com.dk.assistant.wake.WakeWord.on(this) && !Prefs.micUserOff(this)) Setup.startKeepAlive(this)
         if (Prefs.liveMode(this)) startLive() else ensureLoop()
         // v4.6: नेट लौटते ही टूटा Live फिर जोड़ो (इंतज़ार नहीं)
         try { (getSystemService(CONNECTIVITY_SERVICE) as android.net.ConnectivityManager).registerDefaultNetworkCallback(netBack) } catch (_: Exception) {}
@@ -421,7 +424,7 @@ class DKAccessibilityService : AccessibilityService() {
         // और ऐप खोलते ही "दोस्त" वाला अभिवादन Live खुद चालू कर देता था। अब यूज़र के चालू करने तक माइक बंद।
         // v3.81: "Hey DK" चालू = Live बंद होने पर भी फ़ोन के अंदर सिर्फ़ "Hey DK" का इंतज़ार (कुछ बाहर नहीं जाता).
         // पूरा माइक बंद = होम का म्यूट बटन या सेटिंग में "Hey DK" बंद.
-        val heyDk = com.dk.assistant.voice.HeyDk.on(this)
+        val heyDk = com.dk.assistant.wake.WakeWord.on(this)
         Prefs.edit(this) { putBoolean("live_mode", false); putBoolean("mic_user_off", !heyDk) }
         gemLive.stop(why)
         // मालिक (नवंबर 2026): power बटन वाला "Yes Boss" DK की Live आवाज़ में - Live बंद हुआ = अब एक छोटा अलग connection ठीक
@@ -433,7 +436,7 @@ class DKAccessibilityService : AccessibilityService() {
         DKState.set(Mode.IDLE)
         scope.launch {
             if (heyDk) {
-                speaker.speak("ठीक है। ज़रूरत हो तो Hey DK बोलिए।")
+                speaker.speak("ठीक है। ज़रूरत हो तो हे डीके बोलिए।")
                 delay(800); ensureLoop()
                 return@launch
             }
@@ -548,7 +551,9 @@ class DKAccessibilityService : AccessibilityService() {
     /** Ek baat suno -> text. Bina beep (apna mic + Groq/Gemini) ya Google mic. Har dikkat DK bolkar batata hai. */
     /** @param wakeGate wake word वाला सुनना (Live बंद): caption में DK का नाम न हो तो Groq को मत भेजो */
     /** v4.8: Live बंद, पर DK का wake वाला सुनना चालू (user ने माइक बंद नहीं किया) */
-    internal fun offlineWakeOn(): Boolean = !DKState.live && Prefs.wakeMode(this) && !Prefs.micUserOff(this)
+    internal fun offlineWakeOn(): Boolean = !DKState.live && wakeWanted() && !Prefs.micUserOff(this)
+    /** 16 नवंबर 2026: सुनने वाला loop चले? (पुराना "हमेशा सुनो" या नया वेक वर्ड). Live बंद हो तो माइक सिर्फ़ फ़ोन वाले वेक वर्ड का */
+    internal fun wakeWanted(): Boolean = Prefs.wakeMode(this) || com.dk.assistant.wake.WakeWord.on(this)
 
     /** v4.8: DK सुन रहा है (Live या wake) - ऑफलाइन माइक तब तक नहीं छूटता */
     internal fun listeningWanted(): Boolean = DKState.live || offlineWakeOn()
@@ -669,7 +674,7 @@ class DKAccessibilityService : AccessibilityService() {
 
     /** Ek hi sunne wala loop: live mode me har baat command hai, wake mode me sirf wake word ke baad. */
     private fun ensureLoop() {
-        val wanted = DKState.live || (Prefs.wakeMode(this) && !Prefs.micUserOff(this))
+        val wanted = DKState.live || (wakeWanted() && !Prefs.micUserOff(this))
         if (::calls.isInitialized) calls.start()      // इजाज़त बाद में मिली हो तो अब (पहले से चालू हो तो कुछ नहीं)
         if (!wanted || loopJob?.isActive == true) return
         loopJob = scope.launch {
@@ -678,11 +683,11 @@ class DKAccessibilityService : AccessibilityService() {
             // नवंबर 2026: नेट रहते ही फ़ोन की बिना-नेट हिंदी पहचान (on-device) डाउनलोड करवा लो - वरना ऑफलाइन में कुछ नहीं सुनता
             if (NetProbe.online(this@DKAccessibilityService)) OfflineStt.prepare(this@DKAccessibilityService)
             // v3.81: "हाँ सर" वगैरह पहले से बना लो (एक बार) - जागते ही बिना इंटरनेट-इंतज़ार के बोले
-            if (Prefs.wakeMode(this@DKAccessibilityService)) launch(Dispatchers.IO) {
+            if (wakeWanted()) launch(Dispatchers.IO) {
                 try { com.dk.assistant.voice.HeyDk.prepareAcks(this@DKAccessibilityService) } catch (_: Exception) {}
             }
             var misses = 0
-            while (isActive && (DKState.live || (Prefs.wakeMode(this@DKAccessibilityService) && !Prefs.micUserOff(this@DKAccessibilityService)))) {
+            while (isActive && (DKState.live || (wakeWanted() && !Prefs.micUserOff(this@DKAccessibilityService)))) {
                 // v3.59: म्यूट (wake word वाले सुनने में) = माइक छोड़ दो
                 if (DKState.micMuted && !DKState.live) { ear.release(); listener.release(); earCaptionOff(); delay(400); continue }
                 if ((agent.isBusy || speaker.busy || DKState.mode == Mode.SPEAKING || callAnnouncing) && !callBargeEar()) { delay(250); continue }
@@ -773,6 +778,8 @@ class DKAccessibilityService : AccessibilityService() {
                     if (wakeLive) {
                         // wake word wala chhota Live khatam -> wapas wake word sunna
                         wakeLive = false; gemLive.idleExitMs = 0
+                        com.dk.assistant.wake.WakeWord.sessionLocked = false
+                        com.dk.assistant.wake.WakeHandoff.releaseMic(); com.dk.assistant.wake.WakeHandoff.clear()
                         DKState.setLive(false); DKState.set(Mode.IDLE)
                         val left = gemLive.firstText; gemLive.firstText = null
                         if (failed && !left.isNullOrBlank()) agent.run(left).join()   // Live nahi chala to purane tareeke se jawab
@@ -783,64 +790,58 @@ class DKAccessibilityService : AccessibilityService() {
                     val why = liveWhyNot()
                     if (why != lastWhyNot) { lastWhyNot = why; DKLog.d("Gemini Live इस्तेमाल नहीं हो रहा: $why") }
                 }
-                // v3.81: "Hey DK" फ़ोन के अंदर (cloud STT नहीं) - सिर्फ़ मालिक की आवाज़ में "Hey DK" पर जागो
-                // v4.6: घंटी बजते समय "Hey DK" loop रुका रहता था (stop = ringing) और कोई नहीं सुनता था - "डीके फोन उठा लो"
-                // अनसुना. घंटी के समय सीधे नीचे वाला hear() (कॉल का जवाब, आवाज़-कमांड, बिना wake word)
-                // v4.8: बिना नेट (फ़ोन की अपनी पहचान हो तो) "Hey DK" नहीं - सीधे "डीके ..." वाला लगातार सुनना (नीचे hear())
-                val offlineEar = !NetProbe.online(this@DKAccessibilityService) && OfflineStt.available(this@DKAccessibilityService)
-                if (!DKState.live && !callRinging() && !offlineEar && com.dk.assistant.voice.HeyDk.on(this@DKAccessibilityService)) {
+                // 16 नवंबर 2026 (मालिक): नया वेक वर्ड "हे डीके / हेलो डीके" - openWakeWord, फ़ोन पर ही.
+                // पुराना Hey DK और Live बंद में cloud STT वाला "हमेशा सुनो" हटाया: वेक वर्ड से पहले कोई आवाज़ इंटरनेट पर नहीं.
+                // घंटी बजते समय पहले जैसा नीचे वाला hear() (कॉल का जवाब) - सिर्फ़ उसी समय.
+                // v4.8 का "बिना नेट डीके ..." (फ़ोन की अपनी पहचान, इंटरनेट नहीं) सिर्फ़ तब, जब पुराना "हमेशा सुनो" भी चालू हो
+                val offlineEar = Prefs.wakeMode(this@DKAccessibilityService) && !NetProbe.online(this@DKAccessibilityService) && OfflineStt.available(this@DKAccessibilityService)
+                if (!DKState.live && !callRinging() && !offlineEar) {
+                    val me = this@DKAccessibilityService
+                    if (!com.dk.assistant.wake.WakeWord.active(me)) {
+                        // मोड (स्क्रीन बंद / चार्जिंग नहीं / सिर्फ़ बटन) या मॉडल नहीं = माइक पूरा बंद
+                        ear.release(); listener.release(); earCaptionOff()
+                        if (DKState.mode == Mode.LISTENING) DKState.set(Mode.IDLE)
+                        delay(1000); continue
+                    }
                     if (!checkMic()) { delay(2000); continue }
                     ear.release(); listener.release(); earCaptionOff()
                     if (DKState.mode == Mode.LISTENING) DKState.set(Mode.IDLE)
-                    val me = this@DKAccessibilityService
-                    val hit = com.dk.assistant.voice.HeyDk.listen(me) {
+                    val hit = com.dk.assistant.wake.WakeWord.listen(me) {
                         DKState.live || DKState.micMuted || agent.isBusy || speaker.busy || callAnnouncing || calls.inCall ||
-                            calls.ringing || DKMic.dictating || Prefs.micUserOff(me) || !Prefs.heyDkOn(me) || !Prefs.wakeMode(me)
+                            calls.ringing || DKMic.dictating || Prefs.micUserOff(me) || !com.dk.assistant.wake.WakeWord.on(me)
                     }
                     if (hit == null) { delay(if (calls.ringing || calls.inCall) 800 else 200); continue }
-                    // नवंबर 2026: लॉक / अनलॉक / किधर हो - फ़ोन पर ही पहचाना (इंटरनेट / STT / Live नहीं)
+                    // लॉक / अनलॉक / किधर हो - फ़ोन पर ही पहचाना (इंटरनेट / Live नहीं)
                     if (hit.cmd != null) { runVoiceCmd(hit.cmd, "Hey DK"); continue }
                     agent.heardAt = System.currentTimeMillis()
-                    Ducker.duck(me, "Hey DK")
-                    var cmd = ""
-                    if (hit.rest != null) {
-                        DKState.set(Mode.THINKING)
-                        // नवंबर 2026: बिना नेट cloud STT नहीं चलता - फ़ोन की on-device पहचान (Android 13+)
-                        val said = if (!NetProbe.online(me) && OfflineStt.available(me)) OfflineStt.transcribe(me, hit.rest) else Transcriber.transcribe(me, hit.rest)
-                        cmd = com.dk.assistant.voice.WakeMatch.stripWake(said ?: "", Prefs.wakeWords(me))
-                    }
-                    if (cmd.isBlank()) {
-                        val ack = com.dk.assistant.voice.HeyDk.nextAck(me)
-                        DKState.reply(ack)
-                        val played = try { withContext(Dispatchers.IO) { com.dk.assistant.voice.HeyDk.playAck(me, ack) } } catch (_: Exception) { false }
-                        if (!played) {
-                            speaker.speak(ack)
-                            scope.launch(Dispatchers.IO) { try { com.dk.assistant.voice.HeyDk.prepareAcks(me) } catch (_: Exception) {} }
-                        }
-                    }
-                    // नवंबर 2026 (मालिक: ऑफलाइन में "डीके फोन लॉक / अनलॉक करो" नहीं होता): बिना नेट यह बात Gemini Live को जाती थी,
-                    // जो जुड़ ही नहीं सकता = कुछ नहीं. अब बिना नेट लॉक / अनलॉक सीधे फ़ोन पर, बाकी बात फ़ोन वाले रास्ते (agent) से.
-                    val offlineHey = cmd.isNotBlank() && !NetProbe.online(me)
-                    if (offlineHey) {
-                        val act = PhoneLockVoice.instant(cmd, Prefs.wakeWords(me), needName = false)
-                        if (act != null) {
-                            DKState.user(cmd); DKLog.d("ऑफलाइन Hey DK: आवाज़ से ${act.type}")
-                            agent.runQuick(PhoneLockVoice.quick(act)); Ducker.releaseWhenQuiet({ !speaker.busy }); continue
-                        }
-                    }
-                    if (!offlineHey && liveReady() && !callBusy() && checkMic()) {
-                        DKLog.d("Hey DK -> Gemini Live" + if (cmd.isNotBlank()) " (बात: $cmd)" else "")
+                    Ducker.duck(me, "हे डीके")
+                    if (NetProbe.online(me) && liveReady() && !callBusy()) {
+                        // तुरंत Live: वेक वर्ड वाला माइक चलता रहता है (WakeHandoff), Live का माइक खुलते ही वह छूटता है - बात नहीं कटती
+                        DKLog.d("\"${hit.word.hi}\" -> Gemini Live (${hit.latencyMs} ms" + (if (hit.locked) ", फ़ोन लॉक" else "") + ")")
                         wakeLive = true; LiveChime.arm()
-                        gemLive.idleExitMs = 30_000
-                        gemLive.firstText = cmd.ifBlank { null }
-                        if (cmd.isBlank()) DKState.set(Mode.LISTENING)
+                        com.dk.assistant.wake.WakeWord.sessionLocked = hit.locked
+                        gemLive.idleExitMs = com.dk.assistant.wake.WakeWord.silenceMs(me).toLong()
+                        gemLive.firstText = null
+                        DKState.set(Mode.LISTENING)
                         DKState.setLive(true)
+                        if (hit.locked) com.dk.assistant.wake.WakeLockActivity.start(me)
                         continue
                     }
-                    if (cmd.isBlank()) {
-                        DKState.set(Mode.LISTENING)
-                        cmd = hear() ?: ""
-                        DKState.set(Mode.IDLE)
+                    // बिना नेट / Live तैयार नहीं: वेक वर्ड वाला माइक छोड़ो, पुराने तरीके से एक बात (बिना नेट = फ़ोन की अपनी पहचान)
+                    com.dk.assistant.wake.WakeHandoff.releaseMic(); com.dk.assistant.wake.WakeHandoff.clear()
+                    val ack = com.dk.assistant.voice.HeyDk.nextAck(me)
+                    DKState.reply(ack)
+                    val played = try { withContext(Dispatchers.IO) { com.dk.assistant.voice.HeyDk.playAck(me, ack) } } catch (_: Exception) { false }
+                    if (!played) speaker.speak(ack)
+                    DKState.set(Mode.LISTENING)
+                    val cmd = hear() ?: ""
+                    DKState.set(Mode.IDLE)
+                    if (cmd.isNotBlank() && !NetProbe.online(me)) {
+                        val act = PhoneLockVoice.instant(cmd, Prefs.wakeWords(me), needName = false)
+                        if (act != null) {
+                            DKState.user(cmd); DKLog.d("ऑफलाइन हे डीके: आवाज़ से ${act.type}")
+                            agent.runQuick(PhoneLockVoice.quick(act)); Ducker.releaseWhenQuiet({ !speaker.busy }); continue
+                        }
                     }
                     if (cmd.isNotBlank()) agent.run(cmd).join()
                     Ducker.releaseWhenQuiet({ !speaker.busy })

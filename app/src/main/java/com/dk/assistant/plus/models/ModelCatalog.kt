@@ -11,7 +11,7 @@ package com.dk.assistant.plus.models
  */
 object ModelCatalog {
 
-    enum class Kind(val title: String) { VOICE("आवाज़-पहचान"), FACE("चेहरा-पहचान"), SOCIAL("सोशल पोस्ट (गैलरी पहचान)") }
+    enum class Kind(val title: String) { VOICE("आवाज़-पहचान"), FACE("चेहरा-पहचान"), SOCIAL("सोशल पोस्ट (गैलरी पहचान)"), WAKE("वेक वर्ड") }
 
     data class Asset(
         val id: String,
@@ -87,6 +87,39 @@ object ModelCatalog {
         "clip_bpe_simple_vocab_16e6.txt.gz", listOf(MC2_TEXT + "bpe_simple_vocab_16e6.txt.gz"),
         "924691ac288e54409236115652ad4aa250f48203de50a9e4722a6ecd48d6804a", 1_356_917L, "MIT",
     )
+    /**
+     * 16 नवंबर 2026 (मालिक: "हे डीके" / "हेलो डीके" - मॉडल ऐप में नहीं, इंटरनेट से): openWakeWord.
+     * दो साझा मॉडल (आवाज़ -> अंक) openWakeWord v0.5.1 release से (Apache-2.0), और हमारे अपने दो छोटे classifier
+     * जो DK2.0 रिपो की `models/wake/v1/` में हैं (APK के बाहर). नया संस्करण = [com.dk.assistant.wake.WakeModels].
+     */
+    const val WAKE_VERSION = 1
+    private const val WAKE_REPO = "https://raw.githubusercontent.com/rolexdkscreation-max/DK2.0/main/models/wake/v1/"
+    /** merge से पहले (PR वाला APK) - वही फ़ाइलें इस branch से */
+    private const val WAKE_BRANCH = "https://raw.githubusercontent.com/rolexdkscreation-max/DK2.0/feature/dk-wake-word-v2/models/wake/v1/"
+    val WAKE_MEL = Asset(
+        "oww_mel", Kind.WAKE, "openWakeWord आवाज़-चित्र", "16 kHz आवाज़ -> mel (फ़ोन पर ही)",
+        "oww_melspectrogram_v051.onnx",
+        listOf("https://github.com/dscripka/openWakeWord/releases/download/v0.5.1/melspectrogram.onnx", WAKE_REPO + "melspectrogram.onnx", WAKE_BRANCH + "melspectrogram.onnx"),
+        "ba2b0e0f8b7b875369a2c89cb13360ff53bac436f2895cced9f479fa65eb176f", 1_087_958L, "Apache-2.0",
+    )
+    val WAKE_EMB = Asset(
+        "oww_emb", Kind.WAKE, "openWakeWord आवाज़-अंक", "mel -> 96 अंक (हर 80 ms)",
+        "oww_embedding_v051.onnx",
+        listOf("https://github.com/dscripka/openWakeWord/releases/download/v0.5.1/embedding_model.onnx", WAKE_REPO + "embedding_model.onnx", WAKE_BRANCH + "embedding_model.onnx"),
+        "70d164290c1d095d1d4ee149bc5e00543250a7316b59f31d056cff7bd3075c1f", 1_326_578L, "Apache-2.0",
+    )
+    val WAKE_HEY = Asset(
+        "hey_dk", Kind.WAKE, "\"हे डीके\" पहचान", "हमारा छोटा classifier (v1)",
+        "hey_dk_v1.onnx", listOf(WAKE_REPO + "hey_dk.onnx", WAKE_BRANCH + "hey_dk.onnx"),
+        "de1f411a0592ecb6c825b04dd45a6630c4be135a14348a2a54e300da19870b36", 413_948L, "Apache-2.0",
+    )
+    val WAKE_HELLO = Asset(
+        "hello_dk", Kind.WAKE, "\"हेलो डीके\" पहचान", "हमारा छोटा classifier (v1)",
+        "hello_dk_v1.onnx", listOf(WAKE_REPO + "hello_dk.onnx", WAKE_BRANCH + "hello_dk.onnx"),
+        "c66ab9b6af95971d1b0488046e646e6cfdffba96689042807f3c7aad7ea556b9", 413_948L, "Apache-2.0",
+    )
+    val WAKE: List<Asset> = listOf(WAKE_MEL, WAKE_EMB, WAKE_HEY, WAKE_HELLO)
+
     val SOCIAL_CLIP: List<Asset> = listOf(CLIP_VISION, CLIP_TEXT, CLIP_WORDS, CLIP_BPE)
 
     /**
@@ -95,7 +128,7 @@ object ModelCatalog {
      */
     val REMOVED_FILES = listOf("robot_expressive.glb", "cesium_man.glb", "brainstem.glb", "fox.glb", "three_gltf_loader.js", "three_bg_utils.js")
 
-    val ALL: List<Asset> = listOf(REDIMNET_HEAVY, REDIMNET_LIGHT, FACE_EMBED, FACE_DETECT) + SOCIAL_CLIP
+    val ALL: List<Asset> = listOf(REDIMNET_HEAVY, REDIMNET_LIGHT, FACE_EMBED, FACE_DETECT) + SOCIAL_CLIP + WAKE
 
     fun byId(id: String): Asset? = ALL.firstOrNull { it.id == id }
     fun ofKind(k: Kind): List<Asset> = ALL.filter { it.kind == k }

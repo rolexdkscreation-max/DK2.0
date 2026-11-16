@@ -68,16 +68,12 @@ class WakeStrongTest {
         assertEquals(10, WakeMatch.Model.fromJson(aug.toJson())!!.templates.size)
     }
 
-    @Test fun wiring_30sTape_farListen_retry() {
-        val hd = src("voice/HeyDk.kt")
-        assertTrue(hd.contains("WakeMatch.Vad(CHUNK_MS, endMs = 350, far = true)"))
-        assertTrue(hd.contains("WakeMatch.Model.buildAug(feats, far)") && hd.contains("VoiceAug.far("))
-        assertTrue(hd.contains("WakeMatch.liveThreshold(") && hd.contains("WakeMatch.ownerThreshold("))
-        assertTrue(hd.contains("VoicePrint.threshold(") && hd.contains("AudioRecord(source(c), RATE"))
+    @Test fun wiring_newWakeNeedsNoTeaching() {
+        // 16 नवंबर 2026: पुराना 30 सेकंड वाला "Hey DK सिखाओ" हटाया (backup/dk-old-heydk-wake) - नया वेक वर्ड सिखाना नहीं माँगता
         val set = src("SettingsActivity.kt")
-        val i = set.indexOf("internal fun enrollHeyDk(")
-        val body = set.substring(i, set.indexOf("internal fun ownerDialog(", i).coerceAtLeast(i + 1))
-        assertTrue(body.contains("VoiceTapeRec.record(") && body.contains("HD.save(this@SettingsActivity, keep, sources[srcIdx], noise)"))
-        assertFalse("एक-एक नमूने वाला पुराना तरीका हटा", body.contains("HD.recordTake("))
+        assertFalse(set.contains("internal fun enrollHeyDk("))
+        assertFalse("एक-एक नमूने वाला पुराना तरीका हटा", set.contains("HD.recordTake("))
+        val ww = src("wake/WakeWord.kt")
+        assertTrue(ww.contains("WakeHandoff.begin("))
     }
 }

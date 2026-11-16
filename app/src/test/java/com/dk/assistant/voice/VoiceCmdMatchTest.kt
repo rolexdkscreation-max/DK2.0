@@ -114,7 +114,7 @@ class VoiceCmdMatchTest {
         assertTrue(hear > 0 && hear < svc.indexOf("ownerHeard(pcm)", hear))
         assertTrue(svc.contains("runVoiceCmd(hit.cmd, \"Hey DK\")"))
         assertTrue(src("GeminiLiveMic.kt").contains("liveVoiceCmd(cmdBuf.toByteArray())"))
-        assertTrue(src("voice/HeyDk.kt").contains("VoiceCmds.match"))
+        assertTrue(src("wake/WakeWord.kt").contains("VoiceCmds.match"))   // 16 नवंबर 2026: वेक वर्ड अब wake/WakeWord.kt में
         val run = src("VoiceCmdRun.kt")
         assertTrue(run.contains("PhoneLockVoice.quick"))
         val man = listOf(File("src/main/AndroidManifest.xml"), File("app/src/main/AndroidManifest.xml")).first { it.exists() }.readText()

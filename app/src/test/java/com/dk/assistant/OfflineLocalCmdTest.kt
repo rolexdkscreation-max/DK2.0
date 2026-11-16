@@ -65,6 +65,6 @@ class OfflineLocalCmdTest {
         assertTrue(off.contains("ownerOk = false"))
         val svc = src("DKAccessibilityService.kt")
         assertTrue(svc.contains("internal suspend fun ownerHeard"))
-        assertTrue(svc.contains("OfflineStt.transcribe(me, hit.rest)"))
+        assertTrue(svc.contains("PhoneLockVoice.instant(cmd, Prefs.wakeWords(me), needName = false)"))   // 16 नवंबर 2026: नए वेक वर्ड के बाद बिना नेट
     }
 }

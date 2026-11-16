@@ -58,8 +58,9 @@ class OfflineLockFixTest {
     @Test fun wiring() {
         val s = src("DKAccessibilityService.kt")
         assertTrue(s.contains("?.takeIf { it == PhoneLockVoice.Act.UNLOCK || offlineNow }"))
-        assertTrue(s.contains("val offlineHey = cmd.isNotBlank() && !NetProbe.online(me)"))
-        assertTrue(s.contains("if (!offlineHey && liveReady() && !callBusy() && checkMic())"))
+        // 16 नवंबर 2026: पुराना Hey DK हटा - नया वेक वर्ड: बिना नेट Live नहीं, लॉक / अनलॉक सीधे फ़ोन पर
+        assertTrue(s.contains("if (cmd.isNotBlank() && !NetProbe.online(me)) {"))
+        assertTrue(s.contains("if (NetProbe.online(me) && liveReady() && !callBusy()) {"))
         assertTrue(s.contains("OfflineStt.prepare(this@DKAccessibilityService)"))
         val o = src("OfflineStt.kt")
         assertTrue(o.contains("triggerModelDownload"))

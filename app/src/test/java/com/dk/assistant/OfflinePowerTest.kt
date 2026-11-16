@@ -60,7 +60,7 @@ class OfflinePowerTest {
     @Test fun micStaysOnAndCallsWorkOffline() {
         val s = src("DKAccessibilityService.kt")
         assertTrue(s.contains("NetProbe.online(this), offlineWakeOn())) return hearOfflineCmds()"))
-        assertTrue(s.contains("!offlineEar && com.dk.assistant.voice.HeyDk.on"))
+        assertTrue(s.contains("!callRinging() && !offlineEar) {"))
         val o = src("DKAccessibilityOffline.kt")
         assertTrue(o.contains("me.listeningWanted()"))
         assertTrue(o.contains("(calls.ringing || callPending) && !raw.isNullOrBlank()"))

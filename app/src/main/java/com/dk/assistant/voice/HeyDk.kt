@@ -1,294 +1,30 @@
 package com.dk.assistant.voice
 
-import android.annotation.SuppressLint
 import android.content.Context
-import android.media.AudioFormat
-import android.media.AudioRecord
-import android.media.MediaRecorder
 import com.dk.assistant.DKLog
 import com.dk.assistant.Prefs
 import com.dk.assistant.voice.engine.PreviewPlayer
 import com.dk.assistant.voice.engine.VoiceEngines
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.isActive
-import kotlinx.coroutines.withContext
 import java.io.ByteArrayOutputStream
 import java.io.File
-import kotlin.math.sqrt
 
 /**
- * v3.81: "Hey DK" / "Hello DK" - ऐप बंद हो तब भी (KeepAlive + Accessibility), पूरी तरह फ़ोन के अंदर.
+ * v3.81: "Hey DK" के साथ के हिस्से - अब सिर्फ़ "हाँ सर" (ack) आवाज़ें और आवाज़-कमांड के अंक (16 नवंबर 2026 से पहचान [com.dk.assistant.wake.WakeWord] में).
  *
  *  - माइक की आवाज़ कहीं नहीं जाती: बोलना शुरू -> छोटी बात -> [WakeMatch] (शब्द) + [OwnerVoice] (आवाज़) -> नहीं मिला = भूल जाओ.
  *  - मिला = तुरंत "हाँ सर" (पहले से बना रखा, इंटरनेट का इंतज़ार नहीं) -> Gemini Live -> चुप्पी पर वापस सो जाओ.
  *  - "Hey DK, WhatsApp खोलो" एक साँस में = बिना "हाँ सर" के सीधे वही काम.
  */
 object HeyDk {
-    private const val RATE = WakeMatch.RATE
-    private const val CHUNK_MS = 40
 
-    fun modelFile(c: Context) = File(File(c.filesDir, "voice"), "hey_dk.json")
+    // 16 नवंबर 2026 (मालिक): पुराना "Hey DK" पहचानना (खुद सिखाने वाला DTW + CAM++) हटाया - नया वेक वर्ड
+    // [com.dk.assistant.wake.WakeWord] ("हे डीके / हेलो डीके", openWakeWord). backup: backup/dk-old-heydk-wake.
+    // यहाँ सिर्फ़ वह बचा जो दूसरी सुविधाएँ इस्तेमाल करती हैं: आवाज़-कमांड के अंक और "हाँ सर" वाली आवाज़ें.
 
-    @Volatile private var cached: WakeMatch.Model? = null
-    @Volatile private var cachedAt = -1L
-
-    fun model(c: Context): WakeMatch.Model? {
-        val f = modelFile(c)
-        if (!f.exists()) { cached = null; cachedAt = -1L; return null }
-        if (cached != null && cachedAt == f.lastModified()) return cached
-        return WakeMatch.Model.fromJson(try { f.readText() } catch (_: Exception) { null }).also { cached = it; cachedAt = f.lastModified() }
-    }
-
-    fun trained(c: Context) = model(c) != null
-    /** चालू + सीखा हुआ */
-    fun on(c: Context) = Prefs.heyDkOn(c) && trained(c)
-    /** आवाज़-पहचान भी लगेगी? (नहीं = सिर्फ़ शब्द मिलान, जो आपकी आवाज़ के नमूनों से ही बना है) */
-    fun ownerCheck(c: Context) = OwnerVoice.supported && OwnerVoice.hasModel(c) && Prefs.heyDkPrint(c) != null && OwnerVoice.broken == null
-
-    fun status(c: Context): String = when {
-        !trained(c) && Prefs.wakeMode(c) -> "बिना सिखाए वाला तरीका चालू: \"हे डीके\" / \"हेलो डीके\" बोलिए (इंटरनेट से पहचान, हर आवाज़ पर)"
-        !trained(c) -> "अभी सिखाया नहीं - नीचे \"Hey DK सिखाओ\" दबाइए"
-        !Prefs.heyDkOn(c) -> "सीखा हुआ है, पर बंद है"
-        ownerCheck(c) -> "चालू: \"Hey DK\" + सिर्फ़ आपकी आवाज़ (फ़ोन के अंदर)"
-        else -> "चालू: \"Hey DK\" (आवाज़-पहचान मॉडल नहीं - दूसरे की आवाज़ पर भी कभी जाग सकता है)"
-    }
-
-    // ------------------------------------------------------------------ सीखना
-
-    /**
-     * कौन-सा माइक-रास्ता: पहले VOICE_RECOGNITION (कम बदलाव), पर कई फ़ोन पर वह बहुत धीमा/खाली आता है
-     * (सिखाते समय "आवाज़ नहीं पकड़ी") -> तब VOICE_COMMUNICATION (Live वाला). जो सीखते समय चला, सुनते समय वही.
-     */
-    fun source(c: Context) = Prefs.heyDkSource(c)
-
-    class Take(val pcm: ByteArray, val speechMs: Int, val peak: Double, val noise: Double)
-
-    /** पिछली रिकॉर्डिंग का हाल (सिखाते समय दिखाने को): शोर / सबसे तेज़ */
-    @Volatile var lastInfo = ""
-        private set
-
-    /**
-     * एक बार "Hey DK" रिकॉर्ड: बोलना शुरू होने का 7 s इंतज़ार, फिर 0.5 s चुप्पी या 3.5 s पर बंद.
-     * @param onLevel 0..1 मीटर (IO thread से)
-     */
-    @SuppressLint("MissingPermission")
-    suspend fun recordTake(source: Int, maxMs: Int = 3_500, endMs: Int = 500, onLevel: (Float) -> Unit): Take? = withContext(Dispatchers.IO) {
-        val chunk = RATE * CHUNK_MS / 1000
-        val min = AudioRecord.getMinBufferSize(RATE, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT)
-        val r = try {
-            AudioRecord(source, RATE, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT, maxOf(min * 2, RATE * 2))
-                .takeIf { it.state == AudioRecord.STATE_INITIALIZED }
-        } catch (_: Exception) { null }
-        if (r == null) { lastInfo = "माइक नहीं खुला"; return@withContext null }
-        val vad = WakeMatch.Vad(CHUNK_MS, endMs = endMs)       // आवाज़-कमांड: "हे डीके, ..." के बीच रुकना भी चले (900)
-        val pre = ArrayDeque<ByteArray>(); val out = ByteArrayOutputStream()
-        val buf = ShortArray(chunk); val bytes = ByteArray(chunk * 2)
-        var started = false; var ms = 0; var peak = 0.0
-        try {
-            r.startRecording()
-            while (isActive) {
-                val n = r.read(buf, 0, chunk)
-                if (n <= 0) { Thread.sleep(10); continue }
-                var sum = 0.0
-                for (i in 0 until n) { val v = buf[i].toInt(); sum += (v * v).toDouble(); bytes[i * 2] = (v and 0xff).toByte(); bytes[i * 2 + 1] = (v shr 8 and 0xff).toByte() }
-                val lv = sqrt(sum / n)
-                peak = maxOf(peak, lv); ms += CHUNK_MS
-                onLevel((lv / maxOf(vad.startThr() * 3, 600.0)).toFloat().coerceIn(0f, 1f))
-                val ev = vad.feed(lv)
-                val piece = bytes.copyOf(n * 2)
-                if (!started) {
-                    pre.addLast(piece); while (pre.size > 8) pre.removeFirst()
-                    if (ev == WakeMatch.Vad.Ev.START) { started = true; pre.forEach { out.write(it) }; pre.clear() }
-                    else if (ms > 7_000) break
-                    continue
-                }
-                out.write(piece)
-                if (ev == WakeMatch.Vad.Ev.END || out.size() >= RATE * 2 * maxMs / 1000) break
-            }
-        } finally {
-            try { r.stop() } catch (_: Exception) {}
-            r.release()
-        }
-        lastInfo = "शोर ${vad.noise.toInt()}, सबसे तेज़ ${peak.toInt()}"
-        DKLog.d("Hey DK नमूना: ${if (started) "${out.size() / 32} ms" else "कोई नहीं बोला"} ($lastInfo, माइक $source)")
-        if (!started) null else Take(out.toByteArray(), vad.speechMs, peak, vad.noise)
-    }
-
-    /** रिकॉर्ड में से सिर्फ़ बोला हुआ हिस्सा कितने फ़्रेम (10 ms) - VAD की गिनती पर भरोसा नहीं (शोर में लंबी/छोटी गिनती) */
+    /** रिकॉर्ड में से सिर्फ़ बोला हुआ हिस्सा कितने फ़्रेम (10 ms) - आवाज़-कमांड सिखाने में */
     fun spokenFrames(pcm: ByteArray): Int = featuresOf(pcm).size
 
     fun featuresOf(pcm: ByteArray): Array<FloatArray> = WakeMatch.features(SpeakerFbank.pcm16(pcm))
-
-    /**
-     * नमूने सेव. @return null = ठीक, वरना हिंदी कारण
-     * आवाज़ (PCM) सेव नहीं होती - सिर्फ़ अंक (MFCC + पहचान).
-     */
-    fun save(c: Context, takes: List<ByteArray>, source: Int = MediaRecorder.AudioSource.VOICE_RECOGNITION, noise: ByteArray? = null): String? {
-        val good = takes.map { it to featuresOf(it) }.filter { it.second.size >= 15 }
-        val feats = good.map { it.second }
-        if (feats.size < 3) return "आवाज़ साफ़ नहीं आई - शांत जगह पर दोबारा सिखाइए"
-        // नवंबर 2026 (मालिक: "दूर रखे फ़ोन से भी सुने"): हर असली नमूने से एक "कमरे के उस पार से" वाला नमूना (कमरे का असली शोर मिलाकर).
-        // सीमा असली नमूनों से ही - सख़्ती वही, दूर की आवाज़ पर पकड़ ज़्यादा
-        val nz = noise?.takeIf { it.size > RATE / 5 }?.let { VoiceAug.toFloat(it) }
-        val far = good.mapIndexed { i, (pcm, _) ->
-            try { featuresOf(VoiceAug.toPcm(VoiceAug.far(VoiceAug.toFloat(pcm), nz, seed = i + 1))) } catch (_: Exception) { emptyArray() }
-        }.filter { it.size >= 15 }
-        val m = WakeMatch.Model.buildAug(feats, far) ?: return "नमूने आपस में नहीं मिले - हर बार एक ही तरह \"Hey DK\" बोलिए"
-        modelFile(c).parentFile?.mkdirs()
-        modelFile(c).writeText(m.toJson())
-        cached = null
-        val prints = if (OwnerVoice.supported && OwnerVoice.hasModel(c)) takes.mapNotNull { OwnerVoice.embed(c, it) } else emptyList()
-        val print = VoicePrint.mean(prints)
-        Prefs.edit(c) {
-            if (print != null) putString("hey_dk_print", VoicePrint.encode(print)) else remove("hey_dk_print")
-            putBoolean("hey_dk_on", true)
-            putInt("hey_dk_src", source)
-            putBoolean("wake_mode", true)       // सुनने वाला loop चले
-        }
-        DKLog.d("Hey DK सीखा: ${feats.size} नमूने (+${m.templates.size - feats.size} दूर वाले), सीमा ${"%.2f".format(m.base)}, आवाज़-पहचान ${if (print != null) "हाँ" else "नहीं"}")
-        return null
-    }
-
-    fun forget(c: Context) {
-        modelFile(c).delete(); cached = null
-        File(c.filesDir, "voice/ack").deleteRecursively()
-        Prefs.edit(c) { remove("hey_dk_print"); putBoolean("hey_dk_on", false) }
-    }
-
-    // ------------------------------------------------------------------ सुनना
-
-    /** @param rest "Hey DK" के साथ एक साँस में बोली बाकी बात (पूरी आवाज़, शुरू के "Hey DK" समेत) - null = सिर्फ़ "Hey DK" */
-    class Hit(val distance: Float, val owner: Float?, val rest: ByteArray?, val cmd: VoiceCmds.Hit? = null)
-
-    /** दो जागने के बीच कम से कम (एक ही बात दो बार न पकड़े) */
-    @Volatile private var lastHitAt = 0L
-
-    /**
-     * "Hey DK" का इंतज़ार. [stop] true होते ही (Live चालू / म्यूट / call / बंद) माइक छोड़कर null.
-     * मालिक की आवाज़ में "Hey DK" = [Hit].
-     */
-    @SuppressLint("MissingPermission")
-    suspend fun listen(c: Context, stop: () -> Boolean): Hit? = withContext(Dispatchers.IO) {
-        val model = model(c) ?: return@withContext null
-        val chunk = RATE * CHUNK_MS / 1000
-        val min = AudioRecord.getMinBufferSize(RATE, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT)
-        val r = try {
-            AudioRecord(source(c), RATE, AudioFormat.CHANNEL_IN_MONO,
-                AudioFormat.ENCODING_PCM_16BIT, maxOf(min * 2, RATE * 2)).takeIf { it.state == AudioRecord.STATE_INITIALIZED }
-        } catch (_: Exception) { null } ?: return@withContext null
-        // नवंबर 2026: दूर की धीमी आवाज़ भी "बोलना शुरू" (far) - असली फ़ैसला शब्द + आवाज़ की जाँच से
-        val det = WakeMatch.Vad(CHUNK_MS, endMs = 350, far = true)
-        val pre = ArrayDeque<ByteArray>()
-        val seg = ByteArrayOutputStream()
-        // बात चलती रहे तो शुरू के कुछ कटों पर जाँचो (एक साँस में "Hey DK, ..." भी पकड़ में आए)
-        val cuts = model.prefixCuts().map { it * 2 }
-        val maxSeg = RATE * 2 * WakeMatch.MAX_MS / 1000 + 8 * chunk * 2
-        var inSeg = false; var preBytes = 0; var cutIdx = 0; var checkedUpTo = 0
-        val buf = ShortArray(chunk); val bytes = ByteArray(chunk * 2)
-        val sense = Prefs.heyDkSense(c)
-        // नवंबर 2026: बिना इंटरनेट वाली आवाज़-कमांड (लॉक / अनलॉक / किधर हो) - "Hey DK" के साथ एक साँस में, या रुककर
-        val cmdsOn = VoiceCmds.anyOn(c)
-        var prevSeg: ByteArray? = null; var prevEndAt = 0L
-        try {
-            r.startRecording()
-            while (isActive && !stop()) {
-                val n = r.read(buf, 0, chunk)
-                if (n <= 0) { Thread.sleep(20); continue }
-                var sum = 0.0
-                for (i in 0 until n) { val s = buf[i].toInt(); sum += (s * s).toDouble(); bytes[i * 2] = (s and 0xff).toByte(); bytes[i * 2 + 1] = (s shr 8 and 0xff).toByte() }
-                val ev = det.feed(sqrt(sum / n))
-                val piece = bytes.copyOf(n * 2)
-                if (!inSeg) {
-                    pre.addLast(piece); while (pre.size > 8) pre.removeFirst()
-                    if (ev == WakeMatch.Vad.Ev.START) {
-                        inSeg = true; cutIdx = 0; checkedUpTo = 0; seg.reset(); pre.forEach { seg.write(it) }; preBytes = seg.size(); pre.clear()
-                    }
-                    continue
-                }
-                seg.write(piece)
-                val ended = ev == WakeMatch.Vad.Ev.END || !det.inSpeech
-                if (ended && cmdsOn) {
-                    val whole = seg.toByteArray()
-                    val joined = prevSeg?.takeIf { System.currentTimeMillis() - prevEndAt < VoiceCmdMatch.JOIN_GAP_MS }?.let { it + whole }
-                    val ch = VoiceCmds.match(c, whole) ?: joined?.let { VoiceCmds.match(c, it) }
-                    if (ch != null) { lastHitAt = System.currentTimeMillis(); return@withContext Hit(0f, ch.owner, null, ch) }
-                }
-                var probe = -1
-                if (cutIdx < cuts.size && seg.size() >= preBytes + cuts[cutIdx]) { probe = preBytes + cuts[cutIdx]; cutIdx++ }
-                else if (ended && seg.size() > checkedUpTo && seg.size() <= maxSeg) probe = seg.size()
-                if (probe > 0) {
-                    checkedUpTo = probe
-                    val hit = check(c, model, sense, seg.toByteArray().copyOf(probe))
-                    if (hit != null && System.currentTimeMillis() - lastHitAt > 1500) {
-                        lastHitAt = System.currentTimeMillis()
-                        if (ended) return@withContext hit
-                        // एक साँस में आगे की बात: पूरी होने तक सुनो (0.7 s चुप्पी / 8 s)
-                        val rest = ByteArrayOutputStream(); rest.write(seg.toByteArray())
-                        var quiet = 0; val t0 = System.currentTimeMillis()
-                        while (isActive && quiet < 700 && System.currentTimeMillis() - t0 < 8_000) {
-                            val k = r.read(buf, 0, chunk); if (k <= 0) continue
-                            var s2 = 0.0
-                            for (i in 0 until k) { val v = buf[i].toInt(); s2 += (v * v).toDouble(); bytes[i * 2] = (v and 0xff).toByte(); bytes[i * 2 + 1] = (v shr 8 and 0xff).toByte() }
-                            rest.write(bytes, 0, k * 2)
-                            det.feed(sqrt(s2 / k))
-                            quiet = if (det.inSpeech) 0 else quiet + CHUNK_MS
-                        }
-                        // "Hey DK" के बाद बस थोड़ा-सा (साँस/हम्म) = सिर्फ़ "Hey DK"
-                        val extra = rest.size() - probe
-                        val all = rest.toByteArray()
-                        val ch = if (cmdsOn && extra > RATE * 2 * 3 / 10) VoiceCmds.match(c, all) else null
-                        return@withContext Hit(hit.distance, hit.owner, if (extra > RATE * 2 * 4 / 10) all else null, ch)
-                    }
-                }
-                if (ended || seg.size() > maxSeg * 3) {
-                    if (nearSeen) { nearSeen = false; nearAt = System.currentTimeMillis() }
-                    if (ended) { prevSeg = seg.toByteArray(); prevEndAt = System.currentTimeMillis() } else prevSeg = null
-                    inSeg = false; seg.reset(); det.reset()
-                }
-            }
-            null
-        } finally {
-            try { r.stop() } catch (_: Exception) {}
-            r.release()
-        }
-    }
-
-    /** पिछला "लगभग Hey DK" कब ([WakeMatch.RETRY_MS] तक अगली बार आसान) */
-    @Volatile private var nearAt = 0L
-    /** इस बात में "लगभग" सुना - बात खत्म होने पर [nearAt] बनता है (उसी बात में सीमा ढीली नहीं, सिर्फ़ अगली बार) */
-    @Volatile private var nearSeen = false
-
-    /** शब्द + आवाज़ जाँच (माइक thread पर ही - छोटा काम, बोलने के बाद एक बार) */
-    private fun check(c: Context, model: WakeMatch.Model, sense: WakeMatch.Sense, pcm: ByteArray): Hit? {
-        val ms = pcm.size / 2 * 1000 / RATE
-        if (ms < WakeMatch.MIN_MS) return null
-        val f = featuresOf(pcm)
-        if (f.size < 15) return null
-        val (d1, d2) = model.distances(f)
-        // नवंबर 2026 (मालिक: "अनसुना नहीं करना"): अभी-अभी "लगभग Hey DK" सुना था = दूसरी बार सीमा थोड़ी ढीली
-        val now = System.currentTimeMillis()
-        val th = WakeMatch.liveThreshold(model.threshold(sense), nearAt, now)
-        if (!(d1 <= th && d2 <= th * 1.15f)) {
-            if (WakeMatch.nearMiss(d1, th) && !nearSeen) { nearSeen = true; DKLog.d("Hey DK लगभग सुना (दूरी ${"%.2f".format(d1)}/${"%.2f".format(th)}) - दोबारा बोलें तो पकड़ लूँगा") }
-            return null
-        }
-        var owner: Float? = null
-        if (ownerCheck(c)) {
-            val print = Prefs.heyDkPrint(c)
-            val e = OwnerVoice.embed(c, pcm)
-            if (print != null && e != null) {
-                owner = VoicePrint.cosine(print, e)
-                val oth = WakeMatch.ownerThreshold(VoicePrint.threshold(Prefs.ownerVoiceStrict(c)), strongWord = d1 <= model.base)
-                if (owner < oth) {
-                    DKLog.d("Hey DK जैसा सुना, पर आवाज़ आपकी नहीं (${"%.2f".format(owner)}/${"%.2f".format(oth)}) - नहीं जागा")
-                    return null
-                }
-            }
-        }
-        nearAt = 0L; nearSeen = false
-        DKLog.d("Hey DK सुना (दूरी ${"%.2f".format(d1)}/${"%.2f".format(th)}${owner?.let { ", आवाज़ %.2f".format(it) } ?: ""})")
-        return Hit(d1, owner, null)
-    }
 
     // ------------------------------------------------------------------ "हाँ सर" - तुरंत
 

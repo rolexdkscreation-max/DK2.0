@@ -359,6 +359,17 @@
             android:exported="false"
             android:windowSoftInputMode="adjustResize" />
 
+        <!-- 16 नवंबर 2026: "हे डीके" फ़ोन लॉक में - स्क्रीन जगाकर छोटी लाइन (अनलॉक नहीं करती, खुद बंद) -->
+        <activity
+            android:name=".wake.WakeLockActivity"
+            android:exported="false"
+            android:excludeFromRecents="true"
+            android:noHistory="true"
+            android:taskAffinity=""
+            android:launchMode="singleInstance"
+            android:showWhenLocked="true"
+            android:turnScreenOn="true"
+            android:theme="@android:style/Theme.Translucent.NoTitleBar" />
         <!-- नवंबर 2026: आवाज़ से अनलॉक - लॉक स्क्रीन पर स्क्रीन जगाकर Android से PIN वाला हिस्सा माँगती है (पारदर्शी, खुद बंद) -->
         <activity
             android:name=".UnlockWakeActivity"
