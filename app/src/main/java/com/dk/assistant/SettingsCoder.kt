@@ -49,10 +49,8 @@ internal fun SettingsActivity.secComputer() {
             })
         }
         box.addView(rgPcSearch)
-        edTavily = field(box, "Tavily API Key", Prefs.tavilyKey(this), "tvly-…", secret = true)
-        row(box, button("Tavily key बनाएँ") { Setup.openUrl(this, "https://app.tavily.com/home") })
-        edExa = field(box, "Exa API Key", Prefs.exaSearchKey(this), "Exa key", secret = true)
-        row(box, button("Exa key बनाएँ") { Setup.openUrl(this, WebSearch.EXA_KEY_URL) })
+        edTavily = field(box, "Tavily API Key", Prefs.tavilyKey(this), "tvly-…", secret = true, keyUrl = "https://app.tavily.com/home")
+        edExa = field(box, "Exa API Key", Prefs.exaSearchKey(this), "Exa key", secret = true, keyUrl = WebSearch.EXA_KEY_URL)
         hint(box, "Keys सिर्फ़ इसी फ़ोन में रहती हैं। एक search fail हो तो DK अपने-आप अगला आज़माता है।")
     }
     card("कंप्यूटर के टूल", "जो बंद करेंगे, वह DK कंप्यूटर इस्तेमाल नहीं करेगा") { box ->
@@ -169,8 +167,9 @@ internal fun SettingsActivity.strongModelBox(box: LinearLayout) {
         "बाकी एजेंट ऊपर वाले मॉडल पर ही रहेंगे (खर्च कम)। Key खाली = बंद।")
     val cur = StrongAi.choice(Prefs.coderStrongProvider(this))
     rgStrong = radios(box, StrongAi.CHOICES.map { it.id to it.label }, cur.id, STRONG_RADIO)
-    edStrongKey = field(box, "मज़बूत मॉडल की API key", Prefs.coderStrongKey(this), "sk-ant-… / sk-… / AIza… / sk-or-…", secret = true)
-    row(box, showButton(edStrongKey), button("Key बनाएँ") {
+    edStrongKey = field(box, "मज़बूत मॉडल की API key", Prefs.coderStrongKey(this), "sk-ant-… / sk-… / AIza… / sk-or-…", secret = true, keyUrl = "",
+        tip = "Claude / OpenAI / Gemini / OpenRouter - किसी की भी paid key. Gemini / OpenRouter की key यहीं टेस्ट होती है।")
+    row(box, button("चुनी कंपनी की Key बनाएँ") {
         val ch = StrongAi.CHOICES.getOrElse(rgStrong.checkedRadioButtonId - STRONG_RADIO) { StrongAi.CHOICES.first() }
         Setup.openUrl(this, ch.provider.keyUrl)
     })

@@ -136,6 +136,9 @@ object DkSettings {
         // 16 नवंबर 2026 (मालिक): सोशल पोस्ट स्पेशलिस्ट
         Item("social_specialist", "सोशल पोस्ट स्पेशलिस्ट", "social", FeatureFlags.SOCIAL_SPECIALIST, false,
             listOf("सोशल पोस्ट स्पेशलिस्ट", "सोशल स्पेशलिस्ट", "social specialist", "पोस्ट स्पेशलिस्ट", "सोशल मीडिया स्पेशलिस्ट"), store = STORE_FLAGS),
+        // 16 नवंबर 2026 (मालिक): सारी keys इस्तेमाल करो (Round-Robin)
+        Item("key_pool_all", "सारी keys इस्तेमाल करो (Round-Robin)", "brain", FeatureFlags.KEY_POOL_ALL, false,
+            listOf("सारी keys इस्तेमाल करो", "सारी की इस्तेमाल करो", "सब keys इस्तेमाल", "round robin", "राउंड रॉबिन", "use all keys"), store = STORE_FLAGS),
         // 15 नवंबर 2026 (मालिक: "अलग 5-टैब वाली नीचे की पट्टी") - pref उल्टा: HIDE_HOME_TABS true = छुपी
         Item("home_tabs", "नीचे की 5-टैब पट्टी", "ui", FeatureFlags.HIDE_HOME_TABS, false,
             listOf("टैब पट्टी", "टैब वाली पट्टी", "नीचे की पट्टी", "टैब बार", "tab bar", "bottom bar", "bottom nav", "5 टैब", "पांच टैब", "पाँच टैब"),

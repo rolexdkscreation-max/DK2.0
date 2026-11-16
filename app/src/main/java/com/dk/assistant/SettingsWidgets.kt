@@ -125,7 +125,11 @@ internal fun SettingsActivity.hint(box: LinearLayout, t: String) = box.addView(T
 })
 
 internal fun SettingsActivity.field(box: LinearLayout, title: String, value: String, hint: String,
-                  secret: Boolean = false, multiLine: Boolean = false): EditText {
+                  secret: Boolean = false, multiLine: Boolean = false,
+                  // 16 नवंबर 2026 (मालिक, तस्वीर जैसा): हर API key / token = अपना कार्ड (ताला, सेव + टेस्ट, हरा ✓)
+                  card: Boolean = secret && KeyTick.isKeyTitle(title), keyUrl: String? = null, tip: String? = null,
+                  onSave: ((String) -> Unit)? = null, check: (suspend (String) -> String)? = null): EditText {
+    if (card) return keyCard(box, title, value, hint, keyUrl, tip, onSave, check)
     label(box, title)
     val e = EditText(this).apply {
         setText(value)

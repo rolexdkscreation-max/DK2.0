@@ -455,7 +455,7 @@ class TeacherActivity : AppCompatActivity() {
 
         // DK Live चल रहा हो तो फ़ोन की दूसरी आवाज़ नहीं (DK की अपनी आवाज़ ही)
         if (cleanText.isNotEmpty() && !DKState.live) {
-            tts?.speak(cleanText, TextToSpeech.QUEUE_FLUSH, null, "TeacherTTS")
+            tts?.speak(com.dk.assistant.voice.engine.HinglishText.toSpeakable(cleanText), TextToSpeech.QUEUE_FLUSH, null, "TeacherTTS")
         }
     }
 

@@ -189,8 +189,8 @@ internal fun SettingsActivity.secImageGen() {
         box.addView(rg)
         val keys = LinkedHashMap<ImageGen.Provider, android.widget.EditText>()
         for (p in ImageGen.Provider.values().filter { it != ImageGen.Provider.CUSTOM }) {
-            keys[p] = field(box, "${p.title} key" + if (p.keyNeeded) " (मुफ़्त)" else " (वैकल्पिक - बिना key भी चलता है)", Prefs.str(this, p.keyPref, ""), "key पेस्ट करें", secret = true)
-            if (p.keyUrl.isNotBlank()) row(box, button("${p.title}: मुफ़्त key लें") { openLink(p.keyUrl) })
+            keys[p] = field(box, "${p.title} key" + if (p.keyNeeded) " (मुफ़्त)" else " (वैकल्पिक - बिना key भी चलता है)", Prefs.str(this, p.keyPref, ""), "key पेस्ट करें", secret = true,
+                keyUrl = p.keyUrl, onSave = { k -> Prefs.edit(this) { putString(p.keyPref, k) } })
         }
         val hf = field(box, "Hugging Face model (खाली = ${ImageGen.HF_DEFAULT_MODEL})", Prefs.str(this, ImageGen.HF_MODEL, ""), ImageGen.HF_DEFAULT_MODEL)
         fun saveImg() = Prefs.edit(this) {
@@ -215,7 +215,8 @@ internal fun SettingsActivity.secYouTube() {
     card("YouTube चैनल जाँच", "\"मेरे चैनल का हाल बताओ\" - subscribers, views, नए वीडियो, comments (सिर्फ़ पढ़ना)") { box ->
         flagSwitch(box, "बोलकर चैनल जाँच चालू", FeatureFlags.YT_CHANNEL)
         val h = field(box, "आपका चैनल (@handle, channel ID या लिंक)", Prefs.str(this, YtChannel.HANDLE, ""), "@mychannel")
-        val k = field(box, "YouTube Data API key (मुफ़्त, वैकल्पिक)", Prefs.str(this, YtChannel.KEY, ""), "पक्के आँकड़े और comments के लिए", secret = true)
+        val k = field(box, "YouTube Data API key (मुफ़्त, वैकल्पिक)", Prefs.str(this, YtChannel.KEY, ""), "पक्के आँकड़े और comments के लिए", secret = true,
+            keyUrl = YtChannel.KEY_URL, onSave = { key -> Prefs.edit(this) { putString(YtChannel.KEY, key) } })
         fun saveYt() = Prefs.edit(this) { putString(YtChannel.HANDLE, h.text.toString().trim()); putString(YtChannel.KEY, k.text.toString().trim()) }
         val out = status(box)
         row(box, button("सेव करें") { saveYt(); toast("सेव हो गया") }, button("अभी जाँचें") {
@@ -225,7 +226,6 @@ internal fun SettingsActivity.secYouTube() {
                 out.text = r.error ?: r.report?.let { YtChannel.text(it) } ?: "कुछ नहीं मिला"
             }
         })
-        row(box, button("मुफ़्त key लें (Google Cloud)") { openLink(YtChannel.KEY_URL) })
         hint(box, "बिना key: नाम, subscriber (जितना पेज पर दिखे) और नए 5 वीडियो के views। key से: पक्के आँकड़े + नए वीडियो के comments।")
     }
 }

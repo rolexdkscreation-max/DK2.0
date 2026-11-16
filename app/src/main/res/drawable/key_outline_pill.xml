@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 16 नवंबर 2026: API key कार्ड का "टेस्ट करें" बटन - पारदर्शी, पतला चमकता किनारा -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="rectangle">
+    <solid android:color="#14FFFFFF"/>
+    <stroke android:width="1dp" android:color="#59FFFFFF"/>
+    <corners android:radius="999dp"/>
+</shape>

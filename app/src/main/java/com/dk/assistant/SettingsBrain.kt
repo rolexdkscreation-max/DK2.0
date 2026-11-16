@@ -55,7 +55,10 @@ internal fun SettingsActivity.secBrainMenu() {
             hint(box, "अभी बंद है — हर हिस्सा नीचे अपनी अलग key से चल रहा है। चालू करें तो सारे काम ऊपर की एक key से होंगे (अलग keys मिटेंगी नहीं, बंद करते ही फिर चलेंगी)।")
             return@card
         }
-        val ed = field(box, "Gemini API Key (सारे काम इसी से)", Prefs.oneKey(this), "AIza… यहाँ पेस्ट करें", secret = true)
+        val ed = field(box, "Gemini API Key (सारे काम इसी से)", Prefs.oneKey(this), "AIza… यहाँ पेस्ट करें", secret = true) { k ->
+            if (ApiScopes.detect(k).let { it != null && it != "gemini" }) "✗ यह Gemini की key नहीं लगती — यहाँ सिर्फ़ Gemini key (AIza…) चलेगी"
+            else kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { checkSearchKey(k) }.replace("Google खोज चली", "जवाब और Google खोज चले")
+        }
         keyFields[ApiScopes.ONE_KEY] = ed
         hint(box, OneKeyLanes.hindi())   // 15 नवंबर 2026: हर काम का अपना मॉडल - बातचीत की limit बची रहे
         // v3.6: पहली बार माइक दबाया और key नहीं = सीधे यहीं, keyboard खुला
@@ -63,18 +66,6 @@ internal fun SettingsActivity.secBrainMenu() {
             ed.requestFocus()
             (getSystemService(INPUT_METHOD_SERVICE) as? android.view.inputmethod.InputMethodManager)?.showSoftInput(ed, 0)
         }
-        val res = TextView(this).apply { setTextColor(0xB3FFFFFF.toInt()); textSize = 13f; setPadding((4 * dp).toInt(), (6 * dp).toInt(), 0, 0) }
-        row(box, showButton(ed), button("जाँचें") {
-            val k = ed.text.toString().trim()
-            if (k.isBlank()) { res.text = "पहले Gemini key पेस्ट करें (AIza… से शुरू)"; return@button }
-            if (ApiScopes.detect(k).let { it != null && it != "gemini" }) { res.text = "यह Gemini की key नहीं लगती — यहाँ सिर्फ़ Gemini key (AIza…) चलेगी"; return@button }
-            res.text = "जवाब और Google खोज से जाँच रहा हूँ…"
-            lifecycleScope.launch {
-                res.text = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { checkSearchKey(k) }.replace("Google खोज चली", "जवाब और Google खोज चले")
-                save(false)
-            }
-        }, button("Key लें") { Setup.openUrl(this, Providers.byId("gemini")!!.keyUrl) })
-        box.addView(res)
         // नवंबर 2026 (मालिक): एक-key मोड में भी मॉडल (नाम + विवरण) और सोचने का स्तर यहीं
         val gem = Providers.byId("gemini")!!
         val chatModel = ApiScopes.pref(ApiScopes.CHAT, "model", "gemini")
@@ -127,29 +118,20 @@ internal fun SettingsActivity.secBrainLive() {
         keyFields[ApiScopes.pref(ApiScopes.LIVE, "key", "gemini3")] = field(box, "Gemini API Key 3 (बैकअप, ज़रूरी नहीं)",
             Prefs.scopeKeyRaw(this, ApiScopes.LIVE, "gemini3"), "तीसरी Gemini key", secret = true)
         val res = TextView(this).apply { setTextColor(0xB3FFFFFF.toInt()); textSize = 13f; setPadding((4 * dp).toInt(), (6 * dp).toInt(), 0, 0) }
-        row(box, showButton(ed), button("टेस्ट करें") {
+        row(box, button("पूरा DK लाइव टेस्ट (मॉडल के साथ)") {
             save(false); res.text = "टेस्ट हो रहा है…"
             lifecycleScope.launch { res.text = BrainManager(this@secBrainLive).test(Providers.byId("gemini")!!, ApiScopes.LIVE) }
-        }, button("Key लें") { Setup.openUrl(this, Providers.byId("gemini")!!.keyUrl) })
+        })
         box.addView(res)
         hint(box, "Limit खत्म हो तो इसी key के दूसरे Gemini Live / आवाज़ मॉडल पर अपने-आप। फिर भी न चले (key बंद/गलत या सारे मॉडल की limit खत्म) → " +
             "बातचीत के बीच ही चुपचाप Key 2, फिर Key 3। हर key अलग Google account/project की हो, तभी limit अलग मिलती है। DK चैट या किसी और हिस्से की key यहाँ इस्तेमाल नहीं होती।")
     }
     card("लिखना (\"आप:\" वाली लाइन) — अपनी अलग Gemini key", "आप जो बोलते हैं उसे लिखने वाला (gemini-3.5-transcribe-live) इसी key से चलेगा, ताकि बोलने वाले Live की free limit इसमें खर्च न हो") { box ->
-        val ed = field(box, "Gemini API Key (सिर्फ़ लिखने के लिए)", Prefs.captionOwnKeyRaw(this), "AIza… (ज़रूरी नहीं — दूसरे Google account की key बेहतर)", secret = true)
+        val ed = field(box, "Gemini API Key (सिर्फ़ लिखने के लिए)", Prefs.captionOwnKeyRaw(this), "AIza… (ज़रूरी नहीं — दूसरे Google account की key बेहतर)", secret = true) { k ->
+            if (ApiScopes.detect(k).let { it != null && it != "gemini" }) "✗ यह Gemini की key नहीं लगती (AIza… से शुरू होती है)"
+            else kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { checkCaptionKey(k) }
+        }
         keyFields[Prefs.CAPTION_KEY] = ed
-        val res = TextView(this).apply { setTextColor(0xB3FFFFFF.toInt()); textSize = 13f; setPadding((4 * dp).toInt(), (6 * dp).toInt(), 0, 0) }
-        row(box, showButton(ed), button("जाँचें") {
-            val k = ed.text.toString().trim()
-            if (k.isBlank()) { res.text = "खाली है — लिखना ऊपर वाली DK लाइव key से होगा"; return@button }
-            if (ApiScopes.detect(k).let { it != null && it != "gemini" }) { res.text = "यह Gemini की key नहीं लगती (AIza… से शुरू होती है)"; return@button }
-            res.text = "जाँच रहा हूँ…"
-            lifecycleScope.launch {
-                res.text = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { checkCaptionKey(k) }
-                save(false)
-            }
-        }, button("Key लें") { Setup.openUrl(this, Providers.byId("gemini")!!.keyUrl) })
-        box.addView(res)
         hint(box, "अभी: " + (if (Prefs.captionOwnKeyRaw(this).isNotBlank()) "लिखना अपनी अलग key से" else "लिखना DK लाइव वाली key से (अलग key नहीं डाली)") +
             ". एक ही Google account की दो keys की limit अक्सर साझा होती है — limit सच में बचानी हो तो दूसरे account की key डालें।")
         val lat = Prefs.liveLatency(this)
@@ -159,19 +141,11 @@ internal fun SettingsActivity.secBrainLive() {
     // v3.93: खोज का बैकअप क्रम - Tavily (मुख्य) -> Exa (दूसरा) -> Gemini + Google Search (आख़िरी). कोई भी key खाली रह सकती है.
     card("खोज — Tavily, Exa, Gemini (बैकअप क्रम)", "DK लाइव और चैट की इंटरनेट खोज पहले Tavily से; न चले तो अपने-आप Exa; वह भी न चले तो Gemini + Google Search") { box ->
         fun searchKey(title: String, pref: String, value: String, ph: String, url: String, check: (String) -> String) {
-            val ed = field(box, title, value, ph, secret = true)
+            // 16 नवंबर 2026: अपना कार्ड - सेव + टेस्ट + हरा ✓ (खाली = खोज इसे छोड़कर अगली सेवा से)
+            val ed = field(box, title, value, ph, secret = true, keyUrl = url) { k ->
+                kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { check(k) }
+            }
             keyFields[pref] = ed
-            val res = TextView(this).apply { setTextColor(0xB3FFFFFF.toInt()); textSize = 13f; setPadding((4 * dp).toInt(), (6 * dp).toInt(), 0, 0) }
-            row(box, showButton(ed), button("जाँचें") {
-                val k = ed.text.toString().trim()
-                if (k.isBlank()) { res.text = "खाली है — खोज इसे छोड़कर अगली सेवा से होगी"; return@button }
-                res.text = "जाँच रहा हूँ…"
-                lifecycleScope.launch {
-                    res.text = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { check(k) }
-                    save(false)
-                }
-            }, button("Key लें") { Setup.openUrl(this, url) })
-            box.addView(res)
         }
         searchKey("Tavily API Key (मुख्य)", Prefs.TAVILY_SEARCH_KEY, Prefs.tavilySearchKey(this), "tvly-… (ज़रूरी नहीं)",
             WebSearch.TAVILY_KEY_URL) { WebSearchNet.checkTavily(it) }
@@ -193,19 +167,11 @@ internal fun SettingsActivity.secBrainLive() {
     // 14 नवंबर 2026 (मालिक): डीप रिसर्च (गहरी खोज) - Exa + Tavily + Linkup एक साथ, Firecrawl से पूरे पेज, Gemini की हिंदी रिपोर्ट
     card("गहरी खोज (डीप रिसर्च) — Exa, Tavily, Linkup, Firecrawl", "चैट में \"डीप रिसर्च …\" लिखें: कई वेबसाइटों से पूरा पढ़कर हिंदी रिपोर्ट (स्रोत + भरोसा के साथ)") { box ->
         fun deepKey(title: String, pref: String, value: String, ph: String, url: String, tool: com.dk.assistant.research.DeepResearch.Tool) {
-            val ed = field(box, title, value, ph, secret = true)
+            // 16 नवंबर 2026: अपना कार्ड - सेव + टेस्ट + हरा ✓ (खाली = डीप रिसर्च इसे छोड़कर बाकी टूल से)
+            val ed = field(box, title, value, ph, secret = true, keyUrl = url) { k ->
+                kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { com.dk.assistant.research.DeepResearchNet.check(tool, k) }
+            }
             keyFields[pref] = ed
-            val res = TextView(this).apply { setTextColor(0xB3FFFFFF.toInt()); textSize = 13f; setPadding((4 * dp).toInt(), (6 * dp).toInt(), 0, 0) }
-            row(box, showButton(ed), button("जाँचें") {
-                val k = ed.text.toString().trim()
-                if (k.isBlank()) { res.text = "खाली है — डीप रिसर्च इसे छोड़कर बाकी टूल से चलेगी"; return@button }
-                res.text = "जाँच रहा हूँ…"
-                lifecycleScope.launch {
-                    res.text = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { com.dk.assistant.research.DeepResearchNet.check(tool, k) }
-                    save(false)
-                }
-            }, button("Key लें") { Setup.openUrl(this, url) })
-            box.addView(res)
         }
         hint(box, "Exa और Tavily की key ऊपर वाले \"खोज\" डिब्बे से ही ली जाती है (वहीं डालें)। यहाँ बाकी दो:")
         deepKey("Linkup API Key (तीसरा खोजी)", Prefs.LINKUP_KEY, Prefs.linkupKey(this), "Linkup key (ज़रूरी नहीं)",
@@ -224,21 +190,15 @@ internal fun SettingsActivity.secBrainLive() {
             "साधारण सवाल पर गहरी खोज नहीं चलती (क्रेडिट बचे)।")
     }
     card("सुनना (आवाज़ → text) — Groq, चाहें तो", "Groq Whisper सबसे तेज़ सुनता है। खाली छोड़ें = ऊपर वाली Gemini key से सुनेगा") { box ->
-        val ed = field(box, "Groq API Key (सिर्फ़ सुनने के लिए)", Prefs.scopeKeyRaw(this, ApiScopes.LIVE, "groq"), "gsk_… (ज़रूरी नहीं)", secret = true)
-        keyFields[ApiScopes.pref(ApiScopes.LIVE, "key", "groq")] = ed
-        val res = TextView(this).apply { setTextColor(0xB3FFFFFF.toInt()); textSize = 13f; setPadding((4 * dp).toInt(), (6 * dp).toInt(), 0, 0) }
-        row(box, showButton(ed), button("जाँचें") {
-            val k = ed.text.toString().trim()
-            if (k.isBlank()) { res.text = "खाली है — सुनना Gemini key से होगा"; return@button }
-            if (ApiScopes.detect(k).let { it != null && it != "groq" }) { res.text = "यह Groq की key नहीं लगती — Gemini key ऊपर वाले खाने में डालें"; return@button }
-            res.text = "जाँच रहा हूँ…"
-            lifecycleScope.launch {
+        val ed = field(box, "Groq API Key (सिर्फ़ सुनने के लिए)", Prefs.scopeKeyRaw(this, ApiScopes.LIVE, "groq"), "gsk_… (ज़रूरी नहीं)", secret = true) { k ->
+            if (ApiScopes.detect(k).let { it != null && it != "groq" }) "✗ यह Groq की key नहीं लगती — Gemini key ऊपर वाले खाने में डालें"
+            else {
                 val r = KeySetup.setupVoice(this@secBrainLive, k)
-                res.text = r.msg
                 if (r.ok) DKAccessibilityService.instance?.startWakeLoopIfEnabled()
+                (if (r.ok) "✓ " else "✗ ") + r.msg.trimStart('✓', '✗', ' ')
             }
-        }, button("Groq key लें") { Setup.openUrl(this, "https://console.groq.com/keys") })
-        box.addView(res)
+        }
+        keyFields[ApiScopes.pref(ApiScopes.LIVE, "key", "groq")] = ed
         hint(box, "अभी: " + when {
             Prefs.scopeKeyRaw(this, ApiScopes.LIVE, "groq").isNotBlank() -> "Groq Whisper से सुन रहा है"
             Prefs.scopeKeyRaw(this, ApiScopes.LIVE, "gemini").isNotBlank() -> "Gemini से सुन रहा है"
@@ -337,7 +297,7 @@ internal fun SettingsActivity.providerCard(p: Provider, scope: String = ApiScope
     val kName = ApiScopes.pref(scope, "key", p.id); val mName = ApiScopes.pref(scope, "model", p.id); val bName = ApiScopes.pref(scope, "base", p.id)
     card(p.name + if (scope == ApiScopes.CHAT) "" else " — ${ApiScopes.title(scope)}", p.note) { box ->
         // v5 (मालिक): Base URL वाला खाना नहीं - key से कंपनी अपने-आप (पता छुपे खाने में सेव), फिर मॉडल चुनें
-        val key = field(box, "API Key", Prefs.scopeKeyRaw(this, scope, p.id), "यहाँ key पेस्ट करें", secret = true)
+        val key = field(box, "${p.name} API Key", Prefs.scopeKeyRaw(this, scope, p.id), "यहाँ key पेस्ट करें", secret = true, keyUrl = p.keyUrl)
         keyFields[kName] = key
         if (p.isGemini && scope == ApiScopes.CODER) {
             // कोडिंग एजेंट: 5 Gemini keys - एक के सारे मॉडल की limit खत्म = अपने-आप अगली
@@ -354,6 +314,8 @@ internal fun SettingsActivity.providerCard(p: Provider, scope: String = ApiScope
                     "सबकी limit खत्म हो तो काम रुकता नहीं — limit खुलने तक रुककर फिर चलता है। ध्यान दें: Google limit project पर लगाता है, इसलिए हर key अलग Google project की हो।"
                 textSize = 12f; setTextColor(0xB3FFFFFF.toInt()); setPadding((4 * dp).toInt(), (4 * dp).toInt(), 0, (4 * dp).toInt())
             })
+            // 16 नवंबर 2026 (मालिक: "सारी keys इस्तेमाल करो वाला स्विच दबाने पर इस्तेमाल हो")
+            flagSwitch(box, "सारी keys इस्तेमाल करो (Round-Robin): हर नया काम अगली key से", com.dk.assistant.plus.FeatureFlags.KEY_POOL_ALL)
         }
         if (p.isGemini && scope == ApiScopes.CHAT) geminiPaidSwitch(box)
         val model = field(box, "मॉडल", Prefs.scopeModel(this, scope, p.id), (if (p.isGemini && scope == ApiScopes.CODER) GeminiModels.CODER else p.defaultModel).ifBlank { "model-name" })
@@ -413,20 +375,12 @@ internal fun SettingsActivity.providerCard(p: Provider, scope: String = ApiScope
         // नवंबर 2026 (मालिक): सोचने का स्तर (Thinking level) - Low / Medium / High, इसी हिस्से का अपना
         if (scope != ApiScopes.LIVE) thinkRow(box, scope, withHint = p.isGemini)
         val buttons = mutableListOf<View>()
-        buttons.add(button("दिखाओ") { v ->
-            val show = key.inputType != (InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_VISIBLE_PASSWORD)
-            key.inputType = if (show) InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_VISIBLE_PASSWORD
-            else InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD
-            key.setSelection(key.text.length)
-            (v as Button).text = if (show) "छुपाओ" else "दिखाओ"
-        })
-        buttons.add(button("टेस्ट करें") {
+        buttons.add(button("पूरा टेस्ट (मॉडल के साथ)") {
             save(false)
             result.visibility = View.VISIBLE
             result.text = "टेस्ट हो रहा है…"
             lifecycleScope.launch { result.text = BrainManager(this@providerCard).test(p, scope) }
         })
-        if (p.keyUrl.isNotBlank()) buttons.add(button("Key लें") { Setup.openUrl(this, p.keyUrl) })
         row(box, *buttons.toTypedArray())
         box.addView(result)
     }
