@@ -806,7 +806,10 @@ class DKAccessibilityService : AccessibilityService() {
                     if (!checkMic()) { delay(2000); continue }
                     ear.release(); listener.release(); earCaptionOff()
                     if (DKState.mode == Mode.LISTENING) DKState.set(Mode.IDLE)
-                    val hit = com.dk.assistant.wake.WakeWord.listen(me) {
+                    // 16 नवंबर 2026: "हे डीके" बोलते-बोलते ही Live का connection पीछे से तैयार (सिर्फ़ connection, आवाज़ नहीं)
+                    val hit = com.dk.assistant.wake.WakeWord.listen(me, near = {
+                        if (NetProbe.online(me) && liveReady() && !callBusy()) gemLive.wakeWarm("हे डीके")
+                    }) {
                         DKState.live || DKState.micMuted || agent.isBusy || speaker.busy || callAnnouncing || calls.inCall ||
                             calls.ringing || DKMic.dictating || Prefs.micUserOff(me) || !com.dk.assistant.wake.WakeWord.on(me)
                     }
@@ -817,7 +820,8 @@ class DKAccessibilityService : AccessibilityService() {
                     Ducker.duck(me, "हे डीके")
                     if (NetProbe.online(me) && liveReady() && !callBusy()) {
                         // तुरंत Live: वेक वर्ड वाला माइक चलता रहता है (WakeHandoff), Live का माइक खुलते ही वह छूटता है - बात नहीं कटती
-                        DKLog.d("\"${hit.word.hi}\" -> Gemini Live (${hit.latencyMs} ms" + (if (hit.locked) ", फ़ोन लॉक" else "") + ")")
+                        DKLog.d("\"${hit.word.hi}\" -> Gemini Live (${hit.latencyMs} ms" + (if (hit.locked) ", फ़ोन लॉक" else "") +
+                            (if (gemLive.warmReady()) ", connection पहले से तैयार" else if (gemLive.raceBusy()) ", connection बन रहा" else ", connection अभी शुरू") + ")")
                         wakeLive = true; LiveChime.arm()
                         com.dk.assistant.wake.WakeWord.sessionLocked = hit.locked
                         gemLive.idleExitMs = com.dk.assistant.wake.WakeWord.silenceMs(me).toLong()

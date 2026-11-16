@@ -26,7 +26,9 @@ import com.dk.assistant.row
 import com.dk.assistant.switch
 import com.dk.assistant.toast
 import com.dk.assistant.voice.VgRules
-import com.dk.assistant.voice.VoiceEnroll
+import com.dk.assistant.voice.VgStyle
+import com.dk.assistant.styledTakes
+import com.dk.assistant.consistentTakes
 import com.dk.assistant.voice.VoiceGuardian
 import com.dk.assistant.voice.VoicePrint
 import com.dk.assistant.withDkMicPaused
@@ -197,24 +199,26 @@ internal fun SettingsActivity.wakeCard(box: LinearLayout) {
             if (!Setup.hasMic(c)) { askMissing(31, android.Manifest.permission.RECORD_AUDIO); return@button }
             if (!VoiceGuardian.supported || !VoiceGuardian.hasModel(c)) { toast("पहले वॉइस गार्डियन का मॉडल डाउनलोड करें"); return@button }
             lifecycleScope.launch {
-                val prints = ArrayList<FloatArray>()
-                withDkMicPaused {
-                    for ((i, p) in WakeRules.ENROLL_PHRASES.withIndex()) {
-                        for (attempt in 0 until 2) {
-                            say.text = UiLang.s("(${i + 1}/${WakeRules.ENROLL_PHRASES.size}) बोलिए: \"$p\"")
-                            val t = VoiceEnroll.record(source = android.media.MediaRecorder.AudioSource.VOICE_RECOGNITION) ?: continue
-                            if (t.speechMs < VgRules.MIN_SPEECH_MS) { say.text = UiLang.s("थोड़ा लंबा बोलिए - फिर से"); continue }
-                            val e = withContext(Dispatchers.Default) { VoiceGuardian.embed(c, VgRules.trimSilence(t.pcm)) }
-                            if (e != null) { prints += e; break }
-                        }
-                    }
-                }
-                if (prints.size < 3) { say.text = UiLang.s("✗ बहुत से वाक्य साफ़ नहीं आए (${prints.size}/${WakeRules.ENROLL_PHRASES.size}) - शांत कमरे में फिर से"); return@launch }
-                val cons = VoicePrint.consistency(prints)
-                if (cons < VgRules.MIN_CONSISTENCY) { say.text = UiLang.s("✗ वाक्य आपस में कम मिले (${VgRules.pct(cons)}%) - सिर्फ़ आप बोलें, फिर से"); return@launch }
-                val m = VoicePrint.mean(prints) ?: return@launch
-                VoiceGuardian.savePrint(c, m)
-                say.text = UiLang.s("✓ आवाज़ दर्ज हो गई (${prints.size} वाक्य, आपस में मिलान ${VgRules.pct(cons)}%). सिर्फ़ इसी फ़ोन में, ताले में बंद।")
+                // 16 नवंबर 2026 (मालिक: "आवाज़ सही से सेट नहीं"): 5 वाक्य अलग-अलग अंदाज़ में (कुछ भी बोल सकते हैं) +
+                // 4 छोटे "हे डीके / हेलो डीके" - वेक वर्ड के बाद मिलान इतने ही छोटे टुकड़े पर होता है. पहले सिर्फ़ लंबे वाक्यों
+                // का औसत था -> छोटे "हे डीके" पर मालिक का score भी कम आता था और DK अनसुना कर देता था.
+                val src = android.media.MediaRecorder.AudioSource.VOICE_RECOGNITION
+                val prompts = VgStyle.plan(WakeRules.ENROLL_PHRASES) + VgStyle.wakePlan()
+                val takes = withDkMicPaused { styledTakes(prompts, say, source = src) }
+                val longN = WakeRules.ENROLL_PHRASES.size
+                if (takes.count { !it.prompt.short } < 3) { say.text = UiLang.s("✗ बहुत से वाक्य साफ़ नहीं आए (${takes.count { !it.prompt.short }}/$longN) - शांत कमरे में फिर से"); return@launch }
+                val good = consistentTakes(takes)
+                val sent = good.filter { !it.prompt.short }.map { it.emb }
+                val shorts = good.filter { it.prompt.short }.map { it.emb }
+                if (sent.size < 3) { say.text = UiLang.s("✗ वाक्य आपस में कम मिले - सिर्फ़ आप बोलें, फिर से"); return@launch }
+                VoiceGuardian.saveTemplates(c, sent)                 // औसत पहचान (वॉइस गार्डियन वाली भी) इसी में
+                VoiceGuardian.saveWakeTemplates(c, shorts)
+                val p0 = VoiceGuardian.print(c)
+                val wth = if (p0 != null && shorts.size >= 2) VgStyle.wakeTh(VgStyle.wakeSelf(p0, sent, shorts)) else null
+                if (wth != null) { Prefs.edit(c) { putLong(WakeWord.P_OWNER_TH, (wth * 100).toLong()) }; sb.progress = WakeRules.ownerToSlider(wth); showTh() }
+                val cons = VoicePrint.consistency(sent)
+                say.text = UiLang.s("✓ आवाज़ दर्ज हो गई (${sent.size} वाक्य + ${shorts.size} छोटे \"हे डीके\", आपस में मिलान ${VgRules.pct(cons)}%" +
+                    (if (wth != null) ", मालिक-सीमा ${(wth * 100).toInt()}%" else "") + "). सिर्फ़ इसी फ़ोन में, ताले में बंद।")
                 ownerRefresh(); refresh()
             }
         },
