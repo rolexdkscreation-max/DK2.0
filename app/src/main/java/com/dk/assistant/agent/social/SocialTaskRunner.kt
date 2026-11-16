@@ -4,6 +4,7 @@ import com.dk.assistant.agent.core.ActionResult
 import com.dk.assistant.agent.core.Blocker
 import com.dk.assistant.agent.core.BlockerDetector
 import com.dk.assistant.agent.core.ExecPhase
+import com.dk.assistant.agent.core.DriverResult
 import com.dk.assistant.agent.core.Expectation
 import com.dk.assistant.agent.core.FailureReason
 import com.dk.assistant.agent.core.ScreenDriver
@@ -25,7 +26,7 @@ class SocialTaskRunner(
     private val confirmWaitMs: Long = 180_000,
     private val userWaitMs: Long = 180_000,
     private val pollMs: Long = 500,
-    settleMs: Long = 700,
+    private val settleMs: Long = 700,
 ) {
     enum class Control { CONFIRM, CANCEL, RESUME }
 
@@ -62,8 +63,22 @@ class SocialTaskRunner(
         }
     }
 
+    /** 16 नवंबर 2026: गाना / टैग - क्या हुआ (notes) और क्या नहीं हो पाया (warnings), ईमानदारी से सुनाने के लिए */
+    private val notes = mutableListOf<String>()
+    private val warnings = mutableListOf<String>()
+    private var lastPick = ""
+
+    /** आख़िरी सवाल के बाद जोड़ने वाली बात (खाली = कुछ नहीं) */
+    private fun extraNote(): String {
+        val all = notes + warnings
+        return if (all.isEmpty()) "" else " (ध्यान दें: " + all.joinToString("; ") + ")"
+    }
+
+    private fun withWarnings(msg: String): String = if (warnings.isEmpty()) msg else msg + " - पर " + warnings.joinToString("; ")
+
     suspend fun run(t: SocialTask): TaskReport {
         task = t
+        notes.clear(); warnings.clear(); lastPick = ""
         report(TaskStatus.RUNNING, "${t.platform.label} पर काम शुरू")
         if (t.open != OpenSpec.None) {
             sm.go(ExecPhase.OPENING_APP)
@@ -157,6 +172,59 @@ class SocialTaskRunner(
                 StepOut.Done
             }
             is PlanStep.Final -> StepOut.Finished(final(step))
+            is PlanStep.TapAt -> {
+                val o = driver.capture() ?: return StepOut.Fail("स्क्रीन पढ़ी नहीं जा सकी")
+                sm.go(ExecPhase.VALIDATING_TARGET); sm.go(ExecPhase.EXECUTING_ACTION)
+                val r = driver.tapAt((o.width * step.xFrac).toInt(), (o.height * step.yFrac).toInt())
+                driver.pause(settleMs)
+                if (r == DriverResult.OK) { sm.go(ExecPhase.VERIFYING); StepOut.Done }
+                else if (step.optional) StepOut.Skip else StepOut.Fail("स्क्रीन पर टैप नहीं हो पाया")
+            }
+            is PlanStep.PickResult -> {
+                sm.go(ExecPhase.VALIDATING_TARGET); sm.go(ExecPhase.EXECUTING_ACTION)
+                repeat(5) {
+                    val o = driver.capture()
+                    val e = o?.let { ResultPick.choose(it, step.query) }
+                    if (o != null && e != null) {
+                        var r = driver.click(o, e)
+                        if (r != DriverResult.OK) r = driver.tapAt(e.bounds.centerX, e.bounds.centerY)
+                        if (r == DriverResult.OK) {
+                            lastPick = (e.text.ifBlank { e.desc }).trim().take(60)
+                            driver.pause(settleMs)
+                            sm.go(ExecPhase.VERIFYING)
+                            return StepOut.Done
+                        }
+                    }
+                    driver.pause(700)
+                }
+                if (step.optional) StepOut.Skip else StepOut.Fail("नतीजों में \"${step.query}\" नहीं मिला")
+            }
+            is PlanStep.Soft -> {
+                lastPick = ""
+                var ok = true
+                for (sub in step.steps) {
+                    if (sm.phase != ExecPhase.OBSERVING) sm.go(ExecPhase.OBSERVING)
+                    when (val r = runStep(sub, read)) {
+                        is StepOut.Done, is StepOut.Skip -> {}
+                        is StepOut.Blocked -> return r
+                        else -> { ok = false }
+                    }
+                    if (!ok) break
+                }
+                if (ok) {
+                    if (step.okNote.isNotBlank()) notes += step.okNote.replace("{pick}", lastPick.ifBlank { "?" })
+                } else {
+                    warnings += step.warn
+                    // वापस उसी स्क्रीन पर जहाँ से आगे का काम होता है
+                    for (k in 0 until 3) {
+                        if (step.anchor == null || exec.find(step.anchor, 0, 1) != null) break
+                        driver.back(); driver.pause(settleMs)
+                    }
+                }
+                if (sm.phase != ExecPhase.OBSERVING) sm.go(ExecPhase.OBSERVING)
+                sm.go(ExecPhase.VERIFYING)
+                StepOut.Done
+            }
         }
     }
 
@@ -169,13 +237,13 @@ class SocialTaskRunner(
         }
         if (task.mode == TaskMode.DRAFT) {
             sm.go(ExecPhase.VALIDATING_TARGET); sm.go(ExecPhase.COMPLETED)
-            return report(TaskStatus.DRAFT_READY, "सब तैयार है, पर पोस्ट नहीं किया (draft) - स्क्रीन पर देखकर आप खुद \"${step.name}\" दबा सकते हैं")
+            return report(TaskStatus.DRAFT_READY, "सब तैयार है, पर पोस्ट नहीं किया (draft) - स्क्रीन पर देखकर आप खुद \"${step.name}\" दबा सकते हैं" + extraNote())
         }
         sm.go(ExecPhase.VALIDATING_TARGET); sm.go(ExecPhase.WAITING_FOR_CONFIRMATION)
         while (controls.tryReceive().getOrNull()?.also { if (it == Control.CANCEL) cancelled = true } != null) { /* पुराने संदेश हटाओ */ }
         if (cancelled) return cancel()
         askedAt = now()
-        report(TaskStatus.WAITING_CONFIRMATION, task.confirmText)
+        report(TaskStatus.WAITING_CONFIRMATION, task.confirmText + extraNote())
         var yes = false
         var waited = 0L
         while (waited < confirmWaitMs) {
@@ -205,7 +273,7 @@ class SocialTaskRunner(
                 sm.go(ExecPhase.VERIFYING)
                 val sure = step.requireBoth || (words.isNotEmpty() && r.obs?.hasText(*words.toTypedArray()) == true)
                 sm.go(ExecPhase.COMPLETED)
-                if (sure) report(TaskStatus.COMPLETED, doneMessage())
+                if (sure) report(TaskStatus.COMPLETED, withWarnings(doneMessage()))
                 else report(TaskStatus.SUBMITTED_UNVERIFIED, "\"${step.name}\" दबा दिया, पर पक्का नहीं दिखा कि हो गया - कृपया ${task.platform.label} में एक बार देख लें")
             }
             is ActionResult.Failed -> if (r.reason == FailureReason.NOT_VERIFIED) {

@@ -53,6 +53,8 @@ object FeatureFlags {
     const val KEY_POOL_ALL = "plus_key_pool_all"
     const val EMAIL_ON = "plus_email_on"
     const val SOCIAL_AUTO_POST = "plus_social_auto_post"
+    /** 16 नवंबर 2026 (मालिक): सोशल पोस्ट स्पेशलिस्ट - गैलरी से खुद चुनना, कैप्शन/हैशटैग, कहने पर गाना/टैग, YouTube Shorts */
+    const val SOCIAL_SPECIALIST = "plus_social_specialist"
     const val BATTERY_SAVER = "plus_battery_saver"
     const val BS_WAKE_WORD = "plus_bs_wake_word"
     const val BS_SCREEN_AWARE = "plus_bs_screen_aware"
@@ -110,6 +112,7 @@ object FeatureFlags {
         Flag(KEY_POOL_ALL, "सारी keys इस्तेमाल करो (Round-Robin)", "एक key की limit (429) पर अगली key - काम नहीं रुकता", Section.SUB_AGENT),
         Flag(EMAIL_ON, "ईमेल पढ़ना / जवाब देना", "IMAP/SMTP App Password से", Section.EMAIL),
         Flag(SOCIAL_AUTO_POST, "रोज़ की ऑटो-स्टोरी / ऑटो-पोस्ट", "तय समय पर पोस्ट तैयार करके डालना", Section.SOCIAL),
+        Flag(SOCIAL_SPECIALIST, "सोशल पोस्ट स्पेशलिस्ट", "गैलरी से खुद चुने, देखकर कैप्शन/हैशटैग, कहने पर गाना/टैग, YouTube Shorts - आख़िर में \"हाँ\" पूछकर", Section.SOCIAL),
         Flag(BATTERY_SAVER, "बैटरी सेवर (मुख्य स्विच)", "चालू = नीचे चुने भारी हिस्से रुकें", Section.BATTERY),
         Flag(BS_WAKE_WORD, "Wake Word रोको", "बैटरी सेवर में \"Hey DK\" सुनना बंद", Section.BATTERY),
         Flag(BS_SCREEN_AWARE, "स्क्रीन देखना रोको", "बैटरी सेवर में स्क्रीन पढ़ना बंद", Section.BATTERY),
@@ -168,6 +171,8 @@ object FeatureFlags {
         VOICE_GUARDIAN, VG_OWNER_ONLY, VG_AWAY,
         // 15 नवंबर 2026: SOS - सबको पूरी 5 बार (हिस्सा 4)
         SOS_CALL_ALL,
+        // 16 नवंबर 2026: सोशल पोस्ट स्पेशलिस्ट
+        SOCIAL_SPECIALIST,
     )
     fun ready(key: String): Boolean = key in READY
 

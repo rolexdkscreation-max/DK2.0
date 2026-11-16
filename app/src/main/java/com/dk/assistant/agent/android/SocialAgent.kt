@@ -11,12 +11,16 @@ import com.dk.assistant.NameMatch
 import com.dk.assistant.PhoneActions
 import com.dk.assistant.Prefs
 import com.dk.assistant.agent.core.ConfirmGate
+import com.dk.assistant.plus.FeatureFlags
 import com.dk.assistant.agent.social.MediaPolicy
 import com.dk.assistant.agent.social.OpenSpec
 import com.dk.assistant.agent.social.Platform
 import com.dk.assistant.agent.social.SocialAction
 import com.dk.assistant.agent.social.SocialPlanner
+import com.dk.assistant.agent.social.SharedItem
+import com.dk.assistant.agent.social.SocialRequest
 import com.dk.assistant.agent.social.SocialRequestParser
+import com.dk.assistant.agent.social.SocialSmart
 import com.dk.assistant.agent.social.SocialTaskRunner
 import com.dk.assistant.agent.social.TaskReport
 import com.dk.assistant.agent.social.TaskStatus
@@ -59,8 +63,29 @@ object SocialAgent {
         }
         if (req.action != SocialAction.READ_UNREAD && !installed(svc, req.platform.pkg))
             return err("app_not_installed", "${req.platform.label} इस फ़ोन में इंस्टॉल नहीं है")
-        // media: सिर्फ़ जो यूज़र ने DK को share की
-        val media = if (req.action.needsMedia) {
+        // 16 नवंबर 2026: सोशल पोस्ट स्पेशलिस्ट (YouTube Shorts / गैलरी से खुद चुनना / कैप्शन / गाना / टैग) - Settings का स्विच चालू हो तभी
+        val smartOn = FeatureFlags.on(svc, FeatureFlags.SOCIAL_SPECIALIST)
+        if (req.smart && !smartOn)
+            return err("specialist_off", "यह काम \"सोशल पोस्ट स्पेशलिस्ट\" से होता है - Settings > सोशल मीडिया में \"सोशल पोस्ट स्पेशलिस्ट\" चालू कीजिए")
+        val fromGallery = smartOn && req.action.needsMedia && (req.mediaQuery.isNotEmpty() || req.media.trim().lowercase() == "latest_gallery")
+        val wantGallery = when {
+            req.platform == Platform.YOUTUBE -> true
+            req.action == SocialAction.POST_VIDEO || req.action == SocialAction.POST_REEL -> true
+            req.action == SocialAction.POST_PHOTO -> false
+            else -> null
+        }
+        // media: सिर्फ़ जो यूज़र ने DK को share की (या स्पेशलिस्ट चालू हो और बोला हो तो गैलरी से)
+        val media = if (fromGallery) {
+            if (req.mediaQuery.isNotEmpty()) when (val f = withContext(Dispatchers.IO) { GalleryClip.find(svc, req.mediaQuery, wantGallery, req.mediaDays) }) {
+                is GalleryClip.Result.Found -> f.item
+                is GalleryClip.Result.Ask -> return err(f.code, f.msg)
+            } else {
+                if (!(if (wantGallery == true) GalleryClip.videoPermission(svc) else GalleryClip.mediaPermission(svc)))
+                    return err("gallery_permission", "गैलरी की इजाज़त नहीं है - Settings > सोशल मीडिया > सोशल पोस्ट स्पेशलिस्ट में \"गैलरी की इजाज़त दो\" दबाइए")
+                withContext(Dispatchers.IO) { GalleryClip.latest(svc, wantGallery) }
+                    ?: return err("gallery_empty", "गैलरी में कोई ${if (wantGallery == true) "वीडियो" else "फोटो"} नहीं मिली")
+            }
+        } else if (req.action.needsMedia) {
             val want = when (req.action) { SocialAction.POST_VIDEO, SocialAction.POST_REEL -> true; SocialAction.POST_PHOTO -> false; else -> null }
             MediaPolicy.resolve(req.media, SharedMedia.all(svc), want)
                 ?: return err("media_not_allowed", "DK के पास कोई ${if (want == true) "वीडियो" else "फोटो"} नहीं है। गैलरी में फ़ाइल खोलकर Share -> DK दबाइए, फिर दोबारा कहिए।")
@@ -83,7 +108,7 @@ object SocialAgent {
         sending = if (req.platform == Platform.WHATSAPP && req.action == SocialAction.SEND_MESSAGE && phone != null) Triple(who, phone, req.message) else null
         autoSend = !ownConfirm && req.platform == Platform.WHATSAPP && (req.action == SocialAction.SEND_MESSAGE || req.action == SocialAction.SEND_FILE) && Prefs.waAutoSend(svc)
         val id = "social-" + (++seq) + "-" + (System.currentTimeMillis() % 100000)
-        val task = SocialPlanner.plan(id, req, media, phone, who)
+        val task = SocialPlanner.plan(id, if (smartOn && req.smart && media != null) smart(svc, req, media, fromGallery) else req, media, phone, who)
         val driver = AccessibilityScreenDriver(svc)
         val r = SocialTaskRunner(driver, { open(svc, it) }, { rep -> onUpdate(svc, rep) })
         runner = r
@@ -96,6 +121,37 @@ object SocialAgent {
         return JSONObject().put("status", "started").put("task_id", id)
             .put("message", "Started. You will get SYSTEM NOTEs as it progresses. Before anything is posted/sent you get status waiting_confirmation: then ask the user exactly that question and wait for their answer. Never say it is done before the SYSTEM NOTE says completed.")
             .toString()
+    }
+
+    /**
+     * 16 नवंबर 2026: फोटो/वीडियो देखकर कैप्शन + हैशटैग (+ "auto" गाना), और आख़िरी सवाल में सुनाने वाली बात.
+     * Gemini न चले तो पोस्ट नहीं रुकती - पर सवाल में साफ़ बताया जाता है कि कैप्शन नहीं बना.
+     */
+    private suspend fun smart(svc: DKAccessibilityService, req: SocialRequest, media: SharedItem, fromGallery: Boolean): SocialRequest {
+        val video = media.mime.startsWith("video/")
+        val notes = SocialPlanner.unsupported(req).toMutableList()
+        var caption = req.caption; var about = ""; var tags = emptyList<String>(); var song = req.song; var shown = req.caption
+        if (req.autoCaption || req.song == SocialSmart.SONG_AUTO) {
+            val ask = SocialSmart.Ask(autoCaption = req.autoCaption, captionGiven = req.caption, hint = req.captionHint,
+                song = req.song, tags = req.tags, language = req.captionLanguage.ifBlank { "hinglish" })
+            val seen = withContext(Dispatchers.IO) { SocialCaption.make(svc, media, req.platform, req.action, ask) }
+            val o = seen.out
+            if (o == null) {
+                if (req.autoCaption) notes += "कैप्शन अपने-आप नहीं बन पाया (${seen.why})"
+                if (req.song == SocialSmart.SONG_AUTO) { notes += "गाना नहीं चुन पाया"; song = "" }
+            } else {
+                about = o.about
+                if (req.autoCaption) { shown = o.caption; tags = o.hashtags; caption = SocialSmart.compose(req.platform, o.caption, o.hashtags) }
+                if (req.song == SocialSmart.SONG_AUTO) { song = o.song; if (song.isBlank()) notes += "गाना नहीं चुन पाया" }
+            }
+            if (req.platform == Platform.YOUTUBE && seen.durationMs > 180_000) notes += "वीडियो 3 मिनट से लंबा है - YouTube इसे Short नहीं मानेगा"
+        } else if (req.platform == Platform.YOUTUBE && caption.isNotBlank()) caption = SocialSmart.compose(req.platform, caption, emptyList())
+        val label = if (fromGallery) SocialSmart.mediaLabel(media.at, System.currentTimeMillis(), video) else if (video) "यह वीडियो" else "यह फोटो"
+        val canTag = req.platform != Platform.YOUTUBE && req.action != SocialAction.POST_STORY
+        val canSong = req.action != SocialAction.POST_STORY
+        val extra = SocialSmart.summary(label, about, shown, tags, if (canSong) song else "", if (canTag) req.tags else emptyList()) + notes.joinToString("") { "; $it" }
+        DKLog.d("Social: स्पेशलिस्ट तैयार (${tags.size} हैशटैग, गाना ${if (song.isBlank()) "नहीं" else "हाँ"}, ${req.tags.size} टैग)")
+        return req.copy(caption = caption, song = song, confirmExtra = extra)
     }
 
     /** टेम्पलेट कमांड: DK ने खुद यूज़र से पूछ लिया (या पुष्टि वाला switch बंद है) -> भेजो. false = कोई काम पुष्टि के इंतज़ार में नहीं */

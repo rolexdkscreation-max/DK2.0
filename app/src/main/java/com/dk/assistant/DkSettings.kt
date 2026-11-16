@@ -131,6 +131,9 @@ object DkSettings {
             listOf("away मोड", "अवे मोड", "away mode"), store = STORE_FLAGS),
         Item("sos_call_all", "SOS: सबको पूरी 5 बार कॉल", "guard", FeatureFlags.SOS_CALL_ALL, false,
             listOf("सबको पूरी 5 बार", "सबको पांच बार", "सबको पाँच बार", "sos call all"), store = STORE_FLAGS),
+        // 16 नवंबर 2026 (मालिक): सोशल पोस्ट स्पेशलिस्ट
+        Item("social_specialist", "सोशल पोस्ट स्पेशलिस्ट", "social", FeatureFlags.SOCIAL_SPECIALIST, false,
+            listOf("सोशल पोस्ट स्पेशलिस्ट", "सोशल स्पेशलिस्ट", "social specialist", "पोस्ट स्पेशलिस्ट", "सोशल मीडिया स्पेशलिस्ट"), store = STORE_FLAGS),
         // 15 नवंबर 2026 (मालिक: "अलग 5-टैब वाली नीचे की पट्टी") - pref उल्टा: HIDE_HOME_TABS true = छुपी
         Item("home_tabs", "नीचे की 5-टैब पट्टी", "ui", FeatureFlags.HIDE_HOME_TABS, false,
             listOf("टैब पट्टी", "टैब वाली पट्टी", "नीचे की पट्टी", "टैब बार", "tab bar", "bottom bar", "bottom nav", "5 टैब", "पांच टैब", "पाँच टैब"),
