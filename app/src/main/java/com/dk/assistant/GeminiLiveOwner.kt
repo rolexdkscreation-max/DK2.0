@@ -62,6 +62,8 @@ internal fun GeminiLive.ownerScore(audio: ByteArray): Float? =
 internal fun GeminiLive.refreshOwnerCfg(now: Long) {
     ownerCfgAt = now
     vgOn = com.dk.assistant.voice.VoiceGuardian.gateOn(svc)
+    vgStrict = vgOn && com.dk.assistant.voice.VoiceGuardian.strictOn(svc)
+    owner.fast = vgStrict
     ownerOn = com.dk.assistant.voice.OwnerVoice.active(svc) || vgOn
     ownerTh = if (vgOn) com.dk.assistant.voice.VoiceGuardian.threshold(svc) else com.dk.assistant.voice.VoicePrint.threshold(Prefs.ownerVoiceStrict(svc))
     val wasWho = whoOn

@@ -129,6 +129,10 @@ object DkSettings {
             listOf("सिर्फ़ boss की आवाज़", "सिर्फ boss की आवाज", "सिर्फ़ बॉस की आवाज़", "सिर्फ बॉस की आवाज", "owner only"), store = STORE_FLAGS),
         Item("vg_away", "Away मोड (अनजान आवाज़ पर चेतावनी, फिर लॉक)", "voice", FeatureFlags.VG_AWAY, false,
             listOf("away मोड", "अवे मोड", "away mode"), store = STORE_FLAGS),
+        Item("vg_deep", "15 सैंपल वाली पक्की पहचान", "voice", FeatureFlags.VG_DEEP, false,
+            listOf("15 सैंपल", "पंद्रह सैंपल", "पक्की पहचान", "ज़्यादा सैंपल", "voice samples"), store = STORE_FLAGS),
+        Item("vg_strict", "पक्की रोक (अनजान आवाज़ DK तक बिल्कुल नहीं)", "voice", FeatureFlags.VG_STRICT, false,
+            listOf("पक्की रोक", "अनजान आवाज़ मत भेजो", "दूसरे की आवाज़ रोको", "strict gate", "आवाज़ रोक"), store = STORE_FLAGS),
         Item("sos_call_all", "SOS: सबको पूरी 5 बार कॉल", "guard", FeatureFlags.SOS_CALL_ALL, false,
             listOf("सबको पूरी 5 बार", "सबको पांच बार", "सबको पाँच बार", "sos call all"), store = STORE_FLAGS),
         // 16 नवंबर 2026 (मालिक): सोशल पोस्ट स्पेशलिस्ट

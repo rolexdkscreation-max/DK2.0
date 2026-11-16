@@ -324,7 +324,7 @@ internal suspend fun GeminiLive.micLoop() = coroutineScope {
                     // v3.66: नई बात - मालिक की पहचान शुरू. DK सोच/काम कर रहा हो तो पहचान तक आवाज़ रोको
                     ownerGen++; ownerResult = null; ownerHold.clear()
                     if (ownerOn) owner.start(preroll) else owner.finish()
-                    ownerHolding = ownerOn && (generating || toolJobs.isNotEmpty() || (turnActive && now - eosAt < 8_000))
+                    ownerHolding = ownerOn && (vgStrict || generating || toolJobs.isNotEmpty() || (turnActive && now - eosAt < 8_000))
                     if (ownerHolding) { preroll.forEach { ownerHold.addLast(it) }; preroll.clear() }
                     else { preroll.forEach { sendAudio(it); capSend(it) }; preroll.clear() }
                 }
@@ -336,7 +336,7 @@ internal suspend fun GeminiLive.micLoop() = coroutineScope {
                 // (khaamoshi 1s tak jaati hai, phir audioStreamEnd aur upload band - SilenceStreamGate)
                 if ((turnDet.inSpeech || ev == TurnDetector.Event.SPEECH_END) && !other) {
                     if (ownerHolding) {
-                        ownerHold.addLast(chunk); while (ownerHold.size > 75) ownerHold.removeFirst()
+                        ownerHold.addLast(chunk); while (ownerHold.size > (if (vgStrict) 125 else 75)) ownerHold.removeFirst()
                         sendAudio(zeros, silent = true); capSend(zeros, silent = true)
                     } else { sendAudio(chunk); capSend(chunk) }
                     if (owner.active && turnDet.inSpeech && owner.add(chunk, rms)) checkOwnerAsync()
