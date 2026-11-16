@@ -54,6 +54,7 @@ internal suspend fun DKAccessibilityService.hearOfflineCmds(): String? {
         if (ear.problem != null) { ear.release(); delay(400) }   // Google माइक पर नहीं जाते (वहाँ बीप)
         return null
     }
+    if (pcm.isNotEmpty()) com.dk.assistant.voice.UnlockGuard.heard(pcm)   // 16 नवंबर 2026: आवाज़ से अनलॉक की जाँच (सिर्फ़ मेमोरी में)
     if (pcm.isNotEmpty() && com.dk.assistant.voice.VoiceCmds.anyOn(this)) {
         val vc = withContext(Dispatchers.Default) { com.dk.assistant.voice.VoiceCmds.match(me, pcm) }
         if (vc != null && runVoiceCmd(vc, "ऑफलाइन")) { DKState.user(""); DKState.set(Mode.IDLE); return null }

@@ -167,6 +167,7 @@ object WakeWord {
                     // चुप्पी: मॉडल नहीं चलता (बैटरी). अभी-अभी बंद हुआ हो तो रुकी बात से आवाज़-कमांड
                     if (seg.isNotEmpty()) {
                         val whole = pcm(seg); seg.clear()
+                        com.dk.assistant.voice.UnlockGuard.heard(whole)   // 16 नवंबर 2026: आवाज़ से अनलॉक की जाँच (सिर्फ़ मेमोरी में)
                         if (cmdsOn) VoiceCmds.match(c, whole)?.let { ch ->
                             return@withContext Hit(ws.first(), 0f, null, 0, null, locked(c), cmd = ch)
                         }

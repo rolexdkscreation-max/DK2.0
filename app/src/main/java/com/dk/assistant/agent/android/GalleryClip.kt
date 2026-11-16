@@ -50,7 +50,7 @@ object GalleryClip {
     @Volatile var broken: String? = null
         private set
 
-    val supported: Boolean get() = com.dk.assistant.voice.OwnerVoice.supported
+    val supported: Boolean get() = com.dk.assistant.voice.VoiceExec.supported
 
     fun modelsReady(c: Context) = ModelCatalog.SOCIAL_CLIP.all { ModelManager.ready(c, it) }
 

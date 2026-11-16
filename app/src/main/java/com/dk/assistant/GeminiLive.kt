@@ -1058,7 +1058,6 @@ class GeminiLive(internal val svc: DKAccessibilityService, internal val agent: A
         owner.reset(); ownerGen++; ownerResult = null; ownerHolding = false; ownerHold.clear(); muteTurn = false; ownerCfgAt = 0L
         refreshOwnerCfg(System.currentTimeMillis())
         if (vgOn) { com.dk.assistant.voice.VoiceGuardian.warm(svc); log("वॉइस गार्डियन: चालू (सीमा ${com.dk.assistant.voice.VgRules.pct(ownerTh)}%)") }
-        else if (ownerOn) { com.dk.assistant.voice.OwnerVoice.warm(svc); log("सिर्फ़ मालिक की आवाज़: चालू (" + (if (Prefs.ownerVoiceStrict(svc)) "सख़्त" else "सामान्य") + ")") }
         if (turnDet.startFloor > 0) log("दूर की आवाज़ अनसुनी: चालू (${turnDet.startFloor.toInt()} RMS से धीमी नहीं)")
         coroutineScope {
             val mic = launch(Dispatchers.IO) { micLoop() }

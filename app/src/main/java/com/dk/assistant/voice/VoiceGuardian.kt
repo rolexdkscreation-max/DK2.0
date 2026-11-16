@@ -33,10 +33,12 @@ object VoiceGuardian {
     private fun kTpl(id: String) = "vg_tpl_$id"
     /** 16 नवंबर 2026: "हे डीके" वाले छोटे सैंपल (सिर्फ़ वेक वर्ड के आवाज़-मिलान में) */
     private fun kWake(id: String) = "vg_wake_$id"
+    /** 16 नवंबर 2026: पिछले सफल आवाज़-अनलॉक की पहचान (replay पकड़ने को, [UnlockRules.REPLAY_COS]) */
+    private fun kSeen(id: String) = "vg_unlock_seen_$id"
 
     private fun sp(c: Context) = c.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
 
-    val supported: Boolean get() = OwnerVoice.supported
+    val supported: Boolean get() = VoiceExec.supported
 
     fun modelId(c: Context): String = sp(c).getString(K_MODEL, VgRules.DEFAULT_MODEL) ?: VgRules.DEFAULT_MODEL
     fun asset(c: Context): ModelCatalog.Asset = VgRules.model(modelId(c))
@@ -49,7 +51,7 @@ object VoiceGuardian {
     fun print(c: Context): FloatArray? = VoicePrint.decode(vaultRead(c, kPrint(modelId(c))))
     fun enrolled(c: Context) = print(c) != null
     fun savePrint(c: Context, v: FloatArray) { wakeRef = null; sp(c).edit().putString(kPrint(modelId(c)), com.dk.assistant.wake.VoiceVault.seal(VoicePrint.encode(VoicePrint.normalize(v)))).apply() }
-    fun forget(c: Context) { wakeRef = null; sp(c).edit().apply { VgRules.MODELS.forEach { remove(kPrint(it.id)); remove(kTpl(it.id)); remove(kWake(it.id)) } }.apply(); away.reset() }
+    fun forget(c: Context) { wakeRef = null; sp(c).edit().apply { VgRules.MODELS.forEach { remove(kPrint(it.id)); remove(kTpl(it.id)); remove(kWake(it.id)); remove(kSeen(it.id)) } }.apply(); away.reset() }
 
     // ------------------------------------------------------------ 16 नवंबर 2026: 15 सैंपल
     fun templates(c: Context): List<FloatArray> = VgRules.decodeAll(vaultRead(c, kTpl(modelId(c))))
@@ -72,6 +74,13 @@ object VoiceGuardian {
         val m = VoicePrint.mean(keep) ?: return
         sp(c).edit().putString(kTpl(modelId(c)), com.dk.assistant.wake.VoiceVault.seal(VgRules.encodeAll(keep)))
             .putString(kPrint(modelId(c)), com.dk.assistant.wake.VoiceVault.seal(VoicePrint.encode(m))).apply()
+    }
+
+    /** 16 नवंबर 2026: पिछले सफल आवाज़-अनलॉक (ताले में, सिर्फ़ इसी फ़ोन में) */
+    fun unlockSeen(c: Context): List<FloatArray> = VgRules.decodeAll(vaultRead(c, kSeen(modelId(c))))
+    fun rememberUnlock(c: Context, e: FloatArray) {
+        val keep = (unlockSeen(c) + VoicePrint.normalize(e)).takeLast(UnlockRules.SEEN_MAX)
+        sp(c).edit().putString(kSeen(modelId(c)), com.dk.assistant.wake.VoiceVault.seal(VgRules.encodeAll(keep))).apply()
     }
 
     /** 16 नवंबर 2026: "हे डीके" के छोटे सैंपल (ताले में बंद, सिर्फ़ इसी फ़ोन में) */
@@ -99,7 +108,7 @@ object VoiceGuardian {
     @Volatile private var wakeRef: Pair<String, Pair<FloatArray, List<FloatArray>>>? = null
 
     /** वेक वर्ड का "सिर्फ़ मालिक" मोड: मॉडल पहले से खोलकर रखो (पहले "हे डीके" पर मॉडल खुलने में देर = मालिक भी अनसुना होता था) */
-    fun prime(c: Context) { if (supported && session == null && enrolled(c) && hasModel(c)) OwnerVoice.exec.execute { try { open(c) } catch (_: Throwable) {} } }
+    fun prime(c: Context) { if (supported && session == null && enrolled(c) && hasModel(c)) VoiceExec.exec.execute { try { open(c) } catch (_: Throwable) {} } }
 
     /** 16 नवंबर 2026: पक्की रोक (हर बात पहचान तक रुकी) */
     fun strictOn(c: Context): Boolean = try { FeatureFlags.on(c, FeatureFlags.VG_STRICT) } catch (_: Exception) { false }
@@ -128,7 +137,7 @@ object VoiceGuardian {
 
     fun close() { synchronized(lock) { try { session?.close() } catch (_: Exception) {}; session = null; sessionFor = ""; broken = null } }
 
-    fun warm(c: Context) { if (gateOn(c) && session == null) OwnerVoice.exec.execute { try { open(c) } catch (_: Throwable) {} } }
+    fun warm(c: Context) { if (gateOn(c) && session == null) VoiceExec.exec.execute { try { open(c) } catch (_: Throwable) {} } }
 
     private fun open(c: Context): OrtSession? {
         val a = asset(c)
@@ -180,6 +189,17 @@ object VoiceGuardian {
         val e = embed(c, pcm) ?: return null
         if (deepOn(c)) { val t = templates(c); if (t.isNotEmpty()) return VgRules.multiScore(p, t, e) }
         return VoicePrint.cosine(p, e)
+    }
+
+    /**
+     * 16 नवंबर 2026: आवाज़ से अनलॉक वाला मिलान - हमेशा सारे सैंपल से ([VgRules.multiScore], "गहरी जाँच" स्विच हो या न हो).
+     * @return अंक + उसी बात की पहचान (replay जाँच के लिए); null = मिलान नहीं हो पाया
+     */
+    fun unlockScore(c: Context, pcm: ByteArray): Pair<Float, FloatArray>? {
+        val p = print(c) ?: return null
+        val e = embed(c, pcm) ?: return null
+        val t = templates(c)
+        return (if (t.isNotEmpty()) VgRules.multiScore(p, t, e) else VoicePrint.cosine(p, e)) to e
     }
 
     // ------------------------------------------------------------ Away मोड

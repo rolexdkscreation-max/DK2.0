@@ -529,22 +529,22 @@ class DKAccessibilityService : AccessibilityService() {
     /** v3.66: आवाज़ मालिक की है? (पहचान बंद / मॉडल गड़बड़ = हाँ, आवाज़ मत खोओ) */
     internal suspend fun ownerHeard(pcm: ByteArray): Boolean {
         val vg = com.dk.assistant.voice.VoiceGuardian.gateOn(this)
-        if (!vg && !com.dk.assistant.voice.OwnerVoice.active(this)) return true
+        if (!vg) return true   // 16 नवंबर 2026: पहचान का एक ही इंजन (वॉइस गार्डियन) - बंद/तैयार नहीं = सब सुनो
         val G = com.dk.assistant.voice.OwnerGate.Companion
         val cut = pcm.copyOf(minOf(pcm.size, G.RATE * 2 * G.MAX_MS / 1000))
         val ms = cut.size * 1000 / (G.RATE * 2)
         if (ms < G.MIN_CHECK_MS) return System.currentTimeMillis() - ownerSeenAt < G.RECENT_OWNER_MS
         val t0 = System.currentTimeMillis()
-        val sc = withContext(Dispatchers.Default) { try { if (vg) com.dk.assistant.voice.VoiceGuardian.score(this@DKAccessibilityService, cut) else com.dk.assistant.voice.OwnerVoice.score(this@DKAccessibilityService, cut) } catch (_: Throwable) { null } }
+        val sc = withContext(Dispatchers.Default) { try { com.dk.assistant.voice.VoiceGuardian.score(this@DKAccessibilityService, cut) } catch (_: Throwable) { null } }
             ?: return true
         val now = System.currentTimeMillis()
-        var th = if (vg) com.dk.assistant.voice.VoiceGuardian.threshold(this) else com.dk.assistant.voice.VoicePrint.threshold(Prefs.ownerVoiceStrict(this))
+        var th = com.dk.assistant.voice.VoiceGuardian.threshold(this)
         if (ms < G.SHORT_MS) th -= G.SHORT_SLACK
         if (now - ownerSeenAt < G.RECENT_OWNER_MS) th -= G.RECENT_SLACK
         val ok = sc >= th
         val txt = String.format(java.util.Locale.US, "%.2f", sc)
-        if (ok) { ownerSeenAt = now; DKLog.d("आवाज़ मिलान $txt - मालिक (${now - t0} ms)"); if (vg) com.dk.assistant.voice.VoiceGuardian.onOwner() }
-        else { othersIgnored++; DKLog.d("किसी और की आवाज़ (मिलान $txt) - अनसुनी (#$othersIgnored)"); if (vg) com.dk.assistant.voice.VoiceGuardian.onStranger(this) }
+        if (ok) { ownerSeenAt = now; DKLog.d("आवाज़ मिलान $txt - मालिक (${now - t0} ms)"); com.dk.assistant.voice.VoiceGuardian.onOwner() }
+        else { othersIgnored++; DKLog.d("किसी और की आवाज़ (मिलान $txt) - अनसुनी (#$othersIgnored)"); com.dk.assistant.voice.VoiceGuardian.onStranger(this) }
         return ok
     }
 
@@ -590,6 +590,7 @@ class DKAccessibilityService : AccessibilityService() {
             delay(400); return null
         }
         micFails = 0
+        com.dk.assistant.voice.UnlockGuard.heard(pcm)   // 16 नवंबर 2026: आवाज़ से अनलॉक की जाँच के लिए (सिर्फ़ मेमोरी में)
         // नवंबर 2026: बिना इंटरनेट वाली आवाज़-कमांड पहले (STT से पहले; "किधर हो" किसी की भी आवाज़ पर - इसलिए मालिक-जाँच से पहले)
         if (com.dk.assistant.voice.VoiceCmds.anyOn(this)) {
             val vc = withContext(Dispatchers.Default) { com.dk.assistant.voice.VoiceCmds.match(this@DKAccessibilityService, pcm) }
@@ -899,6 +900,7 @@ class DKAccessibilityService : AccessibilityService() {
                         ?.takeIf { it == PhoneLockVoice.Act.UNLOCK || offlineNow }
                 if (lockAct != null) {
                     DKState.user(heard); DKLog.d("फ़ोन लॉक: आवाज़ से ${lockAct.type}")
+                    if (lockAct == PhoneLockVoice.Act.UNLOCK) com.dk.assistant.voice.UnlockGuard.intent()   // इसी बात की आवाज़ PIN से पहले जाँची जाएगी
                     agent.runQuick(PhoneLockVoice.quick(lockAct)); continue
                 }
                 // नवंबर 2026: "DK किधर हो" (लिखी बात से - आवाज़ वाला नमूना न सिखाया हो तब) / बजते समय "मिल गया"

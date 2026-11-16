@@ -37,6 +37,7 @@ class DKApp : Application() {
         kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.Default).launch {
             kotlinx.coroutines.delay(6_000)
             try { A11yWatch.check(this@DKApp, "ऐप शुरू") } catch (_: Exception) {}
+            com.dk.assistant.voice.OwnerLevel.cleanupOldEngine(this@DKApp)   // 16 नवंबर 2026: पुराना CAM++ इंजन हटा - उसका ~28 MB मॉडल भी
         }
         // 15 नवंबर 2026: DK AI Plus - ऑटो इवेंट ट्रिगर (default बंद = कोई receiver नहीं)
         try { com.dk.assistant.plus.PlusBoot.init(this) } catch (_: Throwable) {}

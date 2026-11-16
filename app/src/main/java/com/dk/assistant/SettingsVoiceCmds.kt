@@ -94,17 +94,14 @@ internal fun SettingsActivity.playVoiceCmd(cmd: Cmd) {
 
 internal fun SettingsActivity.enrollVoiceCmd(cmd: Cmd, done: () -> Unit) {
     val HD = com.dk.assistant.voice.HeyDk
-    val OV = com.dk.assistant.voice.OwnerVoice
     if (!Setup.hasMic(this)) { requestPermissions(arrayOf(android.Manifest.permission.RECORD_AUDIO), 12); return }
     val (dlg, tv) = ownerDialog("आवाज़ रिकॉर्ड करें")
     ownerRun {
         try {
-            if (cmd.ownerOnly && OV.supported && !OV.hasModel(this@enrollVoiceCmd)) {
-                tv.text = UiLang.s("पहचान वाला मॉडल डाउनलोड हो रहा है…")
-                val err = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
-                    OV.download(this@enrollVoiceCmd) { pct -> runOnUiThread { tv.text = UiLang.s("पहचान वाला मॉडल डाउनलोड हो रहा है…") + " " + DlText.progress(pct, OV.MODEL_BYTES) } }
-                }
-                if (err != null) { tv.text = UiLang.s(err); kotlinx.coroutines.delay(2500) }
+            // 16 नवंबर 2026: पुराना CAM++ मॉडल हटा - मालिक वाली कमांड की पहचान वॉइस गार्डियन की सीखी आवाज़ से
+            if (cmd.ownerOnly && !com.dk.assistant.voice.VoiceGuardian.ready(this@enrollVoiceCmd)) {
+                tv.text = UiLang.s("यह कमांड सिर्फ़ आपकी आवाज़ पर चलेगी - पहले Settings → वॉइस गार्डियन में अपनी आवाज़ सिखाइए। रिकॉर्डिंग अभी सेव हो जाएगी।")
+                kotlinx.coroutines.delay(2500)
             }
             val src = android.media.MediaRecorder.AudioSource.VOICE_RECOGNITION
             var takes: List<ByteArray> = emptyList()

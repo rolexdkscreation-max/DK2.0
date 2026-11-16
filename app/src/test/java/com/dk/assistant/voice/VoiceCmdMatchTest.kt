@@ -104,7 +104,8 @@ class VoiceCmdMatchTest {
 
     @Test fun wiring() {
         val cmds = src("voice/VoiceCmds.kt")
-        assertTrue(cmds.contains("Cmd.UNLOCK) VoicePrint.TH_STRICT"))
+        // 16 नवंबर 2026: पुराना CAM++ (TH_STRICT) हटा - अनलॉक अब वॉइस गार्डियन + कड़ी सीमा + replay जाँच ([UnlockRules])
+        assertTrue(cmds.contains("if (p.cmd == Cmd.UNLOCK) {") && cmds.contains("UnlockGuard.checkCommand(c, pcm)"))
         val fp = src("FindPhone.kt")
         assertTrue(fp.contains("RING_MS = 60_000"))
         assertTrue(fp.contains("setTorchMode"))

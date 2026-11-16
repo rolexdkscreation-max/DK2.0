@@ -20,7 +20,8 @@ class OwnerVoiceRemovedTest {
 
     @Test fun neverGatesVoiceEvenIfOnBefore() {
         assertTrue(src("Prefs.kt").contains("fun ownerVoiceOn(c: Context) = false"))
-        assertTrue(src("voice/OwnerVoice.kt").contains("Prefs.ownerVoiceOn(c)"))   // active() इसी से - Live/Accessibility दोनों में बंद
+        // 16 नवंबर 2026: पूरा पुराना CAM++ इंजन (OwnerVoice.kt) हटाया (मालिक) - पहचान का एक ही इंजन, वॉइस गार्डियन
+        assertFalse(listOf(File("src/main/java/com/dk/assistant/voice/OwnerVoice.kt"), File("app/src/main/java/com/dk/assistant/voice/OwnerVoice.kt")).any { it.exists() })
     }
 
     @Test fun nothingElseLost() {

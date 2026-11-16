@@ -337,7 +337,9 @@ private suspend fun DKAccessibilityService.unlockNow(): String {
         !km.isKeyguardLocked -> "phone unlock ho gaya"
         // नवंबर 2026: मालिक ने Settings → फ़ोन लॉक / अनलॉक में PIN / पैटर्न सेव किया हो तभी DK खुद डालता है
         // (गलत की गिनती पूरी हो तो enter खुद बताता है कि क्यों रुका - PIN नहीं डालता)
-        canPin -> PhoneUnlocker.enter(this, km, asked)
+        // 16 नवंबर 2026 (ऑडिट G1): PIN सिर्फ़ तब जब मालिक ने खुद अनलॉक कहा और उसी बात की आवाज़ पक्की मालिक की
+        // (वॉइस गार्डियन, कड़ी सीमा, पुरानी रिकॉर्डिंग नहीं). AI / बाहर की लिखावट / किसी और की आवाज़ = PIN नहीं, बस स्क्रीन जगी.
+        canPin -> com.dk.assistant.voice.UnlockGuard.allow(this) ?: PhoneUnlocker.enter(this, km, asked)
         // v3.151: पहले यह "हो गया" गिना जाता था (LiveFast.ok) - DK चुप या "खुल गया" बोलता, फ़ोन बंद ही रहता।
         // अब सच्चा कारण + क्या करना है (Settings में PIN सेव)
         km.isKeyguardSecure -> PhoneLockVoice.noPinReason(PhoneLockStore.unlockOn(this), PhoneLockStore.hasSecret(this))

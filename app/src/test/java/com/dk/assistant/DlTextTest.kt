@@ -18,9 +18,8 @@ class DlTextTest {
     }
 
     @Test fun existingDownloads_useMbProgress() {
-        // 16 नवंबर 2026: पुराना Hey DK सिखाओ (SettingsActivity) हटा - वही MB-progress अब आवाज़-कमांड सिखाने में (SettingsVoiceCmds)
-        val vc = listOf(java.io.File("src/main/java/com/dk/assistant/SettingsVoiceCmds.kt"), java.io.File("app/src/main/java/com/dk/assistant/SettingsVoiceCmds.kt")).first { it.exists() }.readText()
-        val s = SetSrc.all() + "\n" + vc
-        assertTrue(s.contains("DlText.progress(pct, OV.MODEL_BYTES)"))
+        // 16 नवंबर 2026: पुराना CAM++ इंजन (OwnerVoice) और उसका डाउनलोड हटाया (मालिक) - MB-progress अब चेहरा-पहचान के डाउनलोड में
+        val gf = listOf(java.io.File("src/main/java/com/dk/assistant/GuardFaceSetup.kt"), java.io.File("app/src/main/java/com/dk/assistant/GuardFaceSetup.kt")).first { it.exists() }.readText()
+        assertTrue(gf.contains("DlText.progress(pct, "))
     }
 }

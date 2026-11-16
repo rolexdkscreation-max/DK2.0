@@ -298,6 +298,8 @@ internal fun GeminiLive.flushAsks(now: Long) {
 internal fun GeminiLive.runLockNow(q: QuickCommands.Quick, heard: String, from: String) {
     if (stopped || !fastMemo.begin(q, System.currentTimeMillis())) return
     val type = q.action.optString("type")
+    // 16 नवंबर 2026 (ऑडिट G1): फ़ोन के अपने सुनने ने "अनलॉक" पहचाना - PIN से पहले इसी बात की आवाज़ जाँची जाएगी
+    if (type == PhoneLockVoice.Act.UNLOCK.type) com.dk.assistant.voice.UnlockGuard.intent()
     // 14 नवंबर 2026 (मालिक: "अनलॉक करो बोलूँ तो 'सर, मैं अनलॉक नहीं कर सकूँगा' न बोले"): इस बात का Gemini वाला जवाब बंद -
     // काम फ़ोन करेगा, फिर Gemini ठीक वही एक लाइन बोलेगा जो फ़ोन ने सच में किया (PhoneLockVoice.liveSay)
     muteTurn = true; muteAt = System.currentTimeMillis()

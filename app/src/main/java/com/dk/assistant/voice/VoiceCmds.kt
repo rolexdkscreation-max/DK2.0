@@ -84,10 +84,10 @@ object VoiceCmds {
         file(c, cmd).writeText(m.toJson())
         cache.remove(cmd)
         try { audioFile(c, cmd).writeBytes(tapeWav(good.map { it.first })) } catch (e: Exception) { DKLog.d("आवाज़-कमांड: ऑडियो सेव नहीं हुआ (${e.javaClass.simpleName})") }
-        val prints = if (OwnerVoice.supported && OwnerVoice.hasModel(c)) takes.mapNotNull { OwnerVoice.embed(c, it) } else emptyList()
-        val print = VoicePrint.mean(prints)
+        // 16 नवंबर 2026: आवाज़-पहचान अब वॉइस गार्डियन की सीखी आवाज़ से (पुराना CAM++ इंजन और हर कमांड का अलग नमूना हटाया)
+        val print = if (cmd.ownerOnly && VoiceGuardian.ready(c)) VoiceGuardian.print(c) else null
         Prefs.edit(c) {
-            if (print != null) putString("voice_cmd_print_${cmd.id}", VoicePrint.encode(print)) else remove("voice_cmd_print_${cmd.id}")
+            remove("voice_cmd_print_${cmd.id}")
             putBoolean("voice_cmd_on_${cmd.id}", true)
         }
         val clash = Cmd.values().filter { it != cmd }.firstOrNull { o -> model(c, o)?.let { VoiceCmdMatch.confusable(m, it) } == true }
@@ -105,7 +105,7 @@ object VoiceCmds {
     fun status(c: Context, cmd: Cmd): String = when {
         !trained(c, cmd) -> "अभी रिकॉर्ड नहीं की"
         !Prefs.voiceCmdOn(c, cmd.id) -> "सिखाया है • बंद"
-        cmd.ownerOnly && Prefs.voiceCmdPrint(c, cmd.id) == null && Prefs.heyDkPrint(c) == null -> "⚠ सिखाया है, पर आवाज़-पहचान नहीं - दोबारा सिखाइए (मॉडल डाउनलोड होगा)"
+        cmd.ownerOnly && !VoiceGuardian.ready(c) -> "⚠ सिखाया है, पर आवाज़-पहचान नहीं - Settings → वॉइस गार्डियन में अपनी आवाज़ सिखाइए"
         else -> "✓ रिकॉर्ड सेव है • चालू" + if (cmd.ownerOnly) " • सिर्फ़ आपकी आवाज़" else " • कोई भी बोले"
     }
 
@@ -123,7 +123,7 @@ object VoiceCmds {
 
     /**
      * पूरी बोली बात (16 kHz PCM) किस कमांड की. फ़ोन पर, ~20-60 ms. बहुत छोटी/लंबी या पक्का न हो = null.
-     * मालिक वाली कमांड पर आवाज़-पहचान: अनलॉक पर कड़ी सीमा ([VoicePrint.TH_STRICT]).
+     * मालिक वाली कमांड पर आवाज़-पहचान: अनलॉक पर कड़ी सीमा + replay जाँच ([UnlockGuard], [UnlockRules]).
      */
     fun match(c: Context, pcm: ByteArray): Hit? {
         val ms = pcm.size / 2 * 1000 / WakeMatch.RATE
@@ -135,17 +135,21 @@ object VoiceCmds {
         val p = VoiceCmdMatch.pick(models, f, Prefs.heyDkSense(c)) ?: return null
         var owner: Float? = null
         if (p.cmd.ownerOnly) {
-            val print = Prefs.voiceCmdPrint(c, p.cmd.id) ?: Prefs.heyDkPrint(c)
-            if (!OwnerVoice.supported || !OwnerVoice.hasModel(c) || print == null) {
-                DKLog.d("आवाज़-कमांड \"${p.cmd.hi}\" सुनी, पर आवाज़-पहचान नहीं (मॉडल/नमूना) - सुरक्षा के लिए नहीं की")
+            if (!VoiceGuardian.ready(c)) {
+                DKLog.d("आवाज़-कमांड \"${p.cmd.hi}\" सुनी, पर आवाज़-पहचान नहीं (वॉइस गार्डियन में आवाज़ सिखाई नहीं) - सुरक्षा के लिए नहीं की")
                 return null
             }
-            val e = OwnerVoice.embed(c, pcm) ?: return null
-            owner = VoicePrint.cosine(print, e)
-            val th = if (p.cmd == Cmd.UNLOCK) VoicePrint.TH_STRICT else VoicePrint.threshold(Prefs.ownerVoiceStrict(c))
-            if (owner < th) {
-                DKLog.d("आवाज़-कमांड \"${p.cmd.hi}\" जैसा सुना, पर आवाज़ आपकी नहीं (${"%.2f".format(owner)} < ${"%.2f".format(th)}) - नहीं की")
-                return null
+            if (p.cmd == Cmd.UNLOCK) {
+                // 16 नवंबर 2026 (ऑडिट G1): अनलॉक = कड़ी सीमा + पुरानी रिकॉर्डिंग (replay) की जाँच + लगातार गलत पर रोक
+                val v = UnlockGuard.checkCommand(c, pcm)
+                if (!v.ok) { DKLog.d("आवाज़-कमांड \"${p.cmd.hi}\" जैसा सुना, पर ${v.hi} - नहीं की"); return null }
+            } else {
+                owner = VoiceGuardian.score(c, pcm) ?: return null
+                val th = VoiceGuardian.threshold(c)
+                if (owner < th) {
+                    DKLog.d("आवाज़-कमांड \"${p.cmd.hi}\" जैसा सुना, पर आवाज़ आपकी नहीं (${"%.2f".format(owner)} < ${"%.2f".format(th)}) - नहीं की")
+                    return null
+                }
             }
         }
         DKLog.d("आवाज़-कमांड (बिना इंटरनेट): ${p.cmd.hi} • मिलान ${"%.2f".format(p.ratio)}${owner?.let { " • आवाज़ %.2f".format(it) } ?: ""} • ${ms} ms")
