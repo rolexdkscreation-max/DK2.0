@@ -136,7 +136,13 @@ object Prefs {
         val def = Providers.byId(id)?.baseUrl ?: ""
         return (sp(c).getString("base_$id", def) ?: def).ifBlank { def }
     }
-    fun hasAnyKey(c: Context) = Providers.all.any { key(c, it.id).isNotBlank() }
+    /**
+     * बात हो सकती है? कोई AI key डली हो - या (17 नवंबर 2026) DK का सर्वर इस ऐप में जुड़ा हो ([AiRouter]).
+     * सर्वर हो तो बिना key वाला मेहमान भी रोज़ के मुफ़्त समय में बात कर सकता है - key डालने की ज़बरदस्ती नहीं.
+     */
+    fun hasAnyKey(c: Context) = hasOwnKey(c) || AiRouter.backendReady()
+    /** सिर्फ़ अपनी AI key (सर्वर नहीं) */
+    fun hasOwnKey(c: Context) = Providers.all.any { key(c, it.id).isNotBlank() }
 
     /** Auto-setup ne jo free models sabse tez paaye (tez pehle) - backup ke liye */
     fun fastModels(c: Context, id: String): List<String> =

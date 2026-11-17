@@ -26,7 +26,8 @@ object Transcriber {
     private val JUNK = listOf("धन्यवाद", "शुक्रिया", "thank you", "thanks for watching", "सब्सक्राइब", "subscribe",
         "please subscribe", "you", "बाय", "ok.", "...", "।")
 
-    fun available(c: Context) = Prefs.sttKeys(c).isNotEmpty()
+    /** 17 नवंबर 2026: अपनी Groq/Gemini key नहीं तो भी DK सर्वर का Whisper ([AiRouter]) */
+    fun available(c: Context) = Prefs.sttKeys(c).isNotEmpty() || AiRouter.backendReady()
 
     /** Pichhli baar sunne me key ki galti (null = sab theek / bas chup tha). DK isse bolkar batata hai. */
     @Volatile var lastError: String? = null
@@ -54,6 +55,15 @@ object Transcriber {
                 null
             }
             if (text != null) break
+        }
+        // 17 नवंबर 2026 ([AiRouter]): अपनी keys नहीं/फ़ेल = DK सर्वर (Cloudflare Workers AI Whisper)
+        if (text == null && AiRouter.fallback(null)) {
+            text = try { AiRouter.stt(c, wav, "hi") } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (e: Exception) {
+                DKLog.d("DK सर्वर STT: ${e.message?.take(80)}")
+                if (AiRouter.stopsTalk(e)) { AiRouter.stopped(e, speak = true); lastError = null; return@withContext null }
+                errs.add(AiRouter.LABEL + ": " + (AiRouter.say(e) ?: ProviderHealth.short(e)))
+                null
+            }
         }
         lastError = if (text == null && errs.isNotEmpty()) errs.joinToString(", ") else null
         val t = text?.trim()?.trim('"')?.takeIf { it.isNotBlank() } ?: return@withContext null

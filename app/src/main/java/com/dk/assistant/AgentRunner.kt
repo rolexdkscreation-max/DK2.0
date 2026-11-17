@@ -599,6 +599,8 @@ class AgentRunner(
                 // 15 नवंबर 2026 (मालिक: "चैट में प्रॉब्लम नहीं आना चाहिए"): बातचीत थी तो पहले DK का अपना दिमाग;
                 // गलती का संदेश साफ़ हिंदी में (पहले नीचे अंग्रेज़ी तकनीकी लाइन "(HTTP 404 …)" जुड़ती थी)
                 if (e is kotlinx.coroutines.CancellationException) throw e
+                // 17 नवंबर 2026: आज की मुफ़्त बातचीत पूरी = DK तय शब्द बोले-लिखे और रुके (अपना दिमाग़ भी नहीं)
+                if (AiRouter.stopsTalk(e)) { AiRouter.stopped(e, speak = !silent); return }
                 if (chatMode) ownMind(goal)?.let { say(it); return }
                 val msg = ChatFlow.plain(brain.explainAll(e))
                 DKState.replyFailed(msg)
@@ -854,6 +856,7 @@ class AgentRunner(
             speakJob?.join()
             if (shown.isNotEmpty()) { DKState.reply(shown.toString().trim()); return ChatOut.DONE }
             // AI nahi chala: pehle DK का अपना दिमाग (सीखा हुआ / आम बातें), warna DK khud bataye kya dikkat hai
+            if (AiRouter.stopsTalk(e)) { AiRouter.stopped(e, speak = !silent); return ChatOut.DONE }
             ownMind(goal)?.let { say(it); return ChatOut.DONE }
             val why = brain.explainAll(e)
             DKState.replyFailed(why); if (!silent) speaker.speak(why)
@@ -889,6 +892,8 @@ class AgentRunner(
         // 15 नवंबर 2026: खोज वाला जवाब भी - अगर सवाल न बदलने वाला हो ([OwnMind.learn])
         if (note.isBlank()) scope.launch(Dispatchers.IO) { OwnMind.learn(svc, goal, answer, ground != null) }
         speakJob?.join()
+        // 17 नवंबर 2026 (DK बैकएंड): मुफ़्त बातचीत का 1 मिनट बचा = जवाब के बाद एक बार बताओ
+        AiRouter.takeWarn()?.let { w -> DKState.hint(w); if (!silent) speaker.speak(w) }
         return ChatOut.DONE
     }
 

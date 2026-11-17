@@ -1,0 +1,21 @@
+# DK backend (Cloudflare Worker). असली IDs यहाँ कभी नहीं - deploy workflow GitHub Secrets से
+# सिर्फ़ runner पर sed से भरता है. Worker secrets (keys) `wrangler secret bulk` से जाते हैं.
+name = "dk-backend"
+main = "src/index.js"
+compatibility_date = "2026-11-01"
+compatibility_flags = ["nodejs_compat"]
+workers_dev = true
+
+[ai]
+binding = "AI"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "dk-db"
+database_id = "__D1_DATABASE_ID__"
+
+[vars]
+FIREBASE_PROJECT_ID = "__FIREBASE_PROJECT_ID__"
+
+[observability]
+enabled = true

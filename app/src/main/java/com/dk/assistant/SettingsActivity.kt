@@ -123,6 +123,7 @@ class SettingsActivity : AppCompatActivity() {
             "face" -> { title.text = "चेहरा पहचान"; secFace() }
             "perms" -> { title.text = "परमिशन"; secPerms() }
             "update" -> { title.text = "अपडेट"; secUpdate(); secBetaCheck() }
+            "license" -> { title.text = "लाइसेंस की"; secLicense() }
             "debug" -> { title.text = "डिबग लॉग"; secBetaCheck(); secDebug() }
             "coder" -> { title.text = "कोडिंग एजेंट"; secCoder(); secTermux() }
             "computer" -> { title.text = "DK कंप्यूटर"; secComputer(); secImageGen() }
@@ -165,6 +166,8 @@ class SettingsActivity : AppCompatActivity() {
             Triple("connectors", "कनेक्टर", "Gmail • Drive • Calendar • GitHub • Facebook Page • Instagram • MCP — DK लाइव से बोलकर काम"),
             Triple("story", "स्टोरी राइटर एजेंट", "लंबी हिंदी कहानियाँ (10–30 मिनट) • भाग-दर-भाग • कॉपी • फ़ोन में सेव"),
             Triple("update", "अपडेट", "अभी: ${Updater.displayVersion(this)} • नया version चेक करें"),
+            // 17 नवंबर 2026 (DK बैकएंड): लाइसेंस की - मुख्य पन्ने पर अपडेट के ठीक ऊपर (किसी श्रेणी में नहीं)
+            Triple("license", "लाइसेंस की", "की डालें • स्तर और आज का बचा समय • लाइसेंस की पाएँ (WhatsApp)"),
             Triple("debug", "डिबग लॉग", "माइक, कनेक्शन, देरी और गलतियों का पूरा हाल"),
             Triple("about", "ऐप के बारे में", "version • बनाने वाले • निजता (privacy)")
         )
@@ -173,6 +176,7 @@ class SettingsActivity : AppCompatActivity() {
             // (किसी श्रेणी के अंदर नहीं). नया अपडेट आया हो तो होम पर चमकती पट्टी + popup ([UpdatePrompt])
             SettingsSearch.CATEGORIES.forEach { (c, _) -> menuRow(c.first, c.second, c.third) }
             // 15 नवंबर 2026 (मालिक): "DK AI Plus" का अलग पन्ना हटाया - उसकी असली सुविधाएँ अपनी पुरानी जगह ([secSos] वगैरह, SettingsExtra.kt)
+            items.firstOrNull { it.first == "license" }?.let { (id, t, sub) -> menuRow(id, t, sub) }
             items.firstOrNull { it.first == "update" }?.let { (id, t, sub) -> menuRow(id, t, sub) }
             return
         }
@@ -422,6 +426,7 @@ class SettingsActivity : AppCompatActivity() {
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: android.content.Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
         sosPicked(requestCode, resultCode, data)   // 15 नवंबर 2026 (हिस्सा 4)
+        licenseGoogleResult(requestCode, data)       // 17 नवंबर 2026: लाइसेंस की → Google से लॉगिन
     }
 
     override fun onPause() { save(false); stopVoiceCmdPlay(); super.onPause() }

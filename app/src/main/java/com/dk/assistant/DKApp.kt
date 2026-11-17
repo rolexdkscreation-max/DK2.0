@@ -43,6 +43,8 @@ class DKApp : Application() {
         try { com.dk.assistant.plus.PlusBoot.init(this) } catch (_: Throwable) {}
         UpdateJob.schedule(this)        // v3.6: हर 6 घंटे अपडेट जाँच + नोटिफ़िकेशन (ऐप बंद हो तब भी)
         OfflineQueue.install(this)
+        AiRouter.install(this)          // 17 नवंबर 2026: DK सर्वर (keys के बाद) - ऐप का context
+        TaskSync.install(this)          // 17 नवंबर 2026: कोडिंग/कंप्यूटर के काम सर्वर पर (premium/मालिक) - History में, बाद में वहीं से
         TaskHistory.install(this)       // v3.88: हर काम और उसकी हालत का इतिहास (फ़ोन में)      // v3.88: नेटवर्क टूटे तो काम कतार में, आते ही आगे
         removeLegacyAntiTheftState()
         // कोडिंग एजेंट: फ़ोन/Android ने ऐप बीच काम में बंद कर दी थी = थोड़ी देर बाद वहीं से अपने-आप आगे (बार-बार crash हो तो 3 बार बाद रुकता है)

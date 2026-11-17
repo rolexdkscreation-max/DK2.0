@@ -126,7 +126,37 @@ class BrainManager(private val ctx: Context) {
     @Volatile var lastGround: GroundCite.G? = null
         private set
 
+    /**
+     * 17 नवंबर 2026 ([AiRouter]): पहले अपनी keys (नीचे [streamChatOwn], पहले जैसा). कुछ भी बोला नहीं गया और keys नहीं/फ़ेल
+     * = DK का सर्वर. आधा जवाब आ चुका हो तो वहीं (दोबारा शुरू नहीं).
+     */
     suspend fun streamChat(prompt: String, note: String, onDelta: (String) -> Unit): String = withContext(Dispatchers.IO) {
+        var said = false
+        try {
+            streamChatOwn(prompt, note) { d -> said = true; onDelta(d) }
+        } catch (e: Exception) {
+            if (said || !AiRouter.fallback(e)) throw e
+            DKLog.d("चैट: अपनी keys से नहीं (${e.message?.take(60)}) - DK सर्वर")
+            try {
+                val text = AiRouter.client(ctx, if (fromLive) AiRouter.Task.LIVE else AiRouter.Task.CHAT)
+                    .stream(buildChatStreamPrompt(), chatHist(), prompt, onDelta)
+                if (text.isBlank()) throw AiException(0, "khali jawab")
+                lastUsed = AiRouter.LABEL; lastGround = null
+                remember(if (note.isNotBlank()) note else "USER SAYS: $prompt", text)
+                text
+            } catch (b: kotlinx.coroutines.CancellationException) { throw b
+            } catch (b: Exception) { DKLog.d("DK सर्वर: ${b.message?.take(80)}"); throw AiRouter.pick(e, b) }
+        }
+    }
+
+    /** पुराने JSON जवाब को सादा text बनाकर (AI सादा text ही लिखे) */
+    private fun chatHist(): List<Turn> = history.takeLast(10).map { t ->
+        if (t.role == "model" && t.text.trimStart().startsWith("{"))
+            Turn("model", try { JSONObject(t.text).optString("say").ifBlank { "(phone par kaam kiya)" } } catch (_: Exception) { t.text })
+        else t
+    }
+
+    private suspend fun streamChatOwn(prompt: String, note: String, onDelta: (String) -> Unit): String = withContext(Dispatchers.IO) {
         syncEpoch()
         lastGround = null
         val system = buildChatStreamPrompt()
@@ -230,6 +260,8 @@ class BrainManager(private val ctx: Context) {
 
     /** Galti ko aasaan Hindi me samjhao (bolne + screen par dikhane ke liye). */
     fun explain(e: Exception): String {
+        // 17 नवंबर 2026: DK सर्वर की गलती (लाइसेंस / प्रीमियम / सीमा) - सर्वर के अपने हिंदी शब्द, बिल्कुल वही
+        AiRouter.say(e)?.let { return it }
         val msg = e.message ?: ""
         val code = (e as? AiException)?.code ?: 0
         return when {
@@ -284,6 +316,18 @@ class BrainManager(private val ctx: Context) {
                     lastError = e
                     DKStatus.post(DKStatus.forCode((e as? AiException)?.code ?: -1))
                 }
+            }
+            // 17 नवंबर 2026 ([AiRouter]): अपनी keys नहीं/फ़ेल = DK का सर्वर (फ़ोन के काम = premium; बातचीत = मुफ़्त सीमा में)
+            if (AiRouter.fallback(lastError)) {
+                try {
+                    val answer = AiRouter.client(ctx, if (chat) (if (fromLive) AiRouter.Task.LIVE else AiRouter.Task.CHAT) else AiRouter.Task.COMPUTER)
+                        .complete(system, if (chat) history.takeLast(10) else history, prompt, null)
+                    if (answer.isBlank()) throw AiException(0, "khali jawab")
+                    lastUsed = AiRouter.LABEL
+                    remember(memoryNote, answer)
+                    return@withContext parseJson(answer)
+                } catch (b: kotlinx.coroutines.CancellationException) { throw b
+                } catch (b: Exception) { DKLog.d("DK सर्वर: ${b.message?.take(80)}"); throw AiRouter.pick(lastError, b) }
             }
             throw lastError ?: AiException(-1, "NO_KEY")
         }
@@ -358,7 +402,9 @@ class BrainManager(private val ctx: Context) {
         if (!deep && !thorough) liveSearch(question) else searchOnce(question, deep, thorough, false)
 
     /** खोज की कोई सेवा है? (Tavily / Exa / Gemini में से कोई key) */
-    fun anySearch(): Boolean = Prefs.tavilySearchKey(ctx).isNotBlank() || Prefs.exaSearchKey(ctx).isNotBlank() || searchKeys().isNotEmpty()
+    fun anySearch(): Boolean = Prefs.tavilySearchKey(ctx).isNotBlank() || Prefs.exaSearchKey(ctx).isNotBlank() || searchKeys().isNotEmpty() ||
+        // 17 नवंबर 2026: अपनी key नहीं पर DK सर्वर पर खोज का लाइसेंस (basic/premium/मालिक) है
+        (AiRouter.backendReady() && com.dk.assistant.backend.BackendApi.lastLevel in setOf("basic", "premium", "owner"))
 
     /**
      * v3.93: इंटरनेट खोज का बैकअप क्रम - Tavily -> Exa -> Gemini + Google Search ([WebSearch]). DK Live और चैट दोनों यहीं से.
@@ -428,6 +474,23 @@ class BrainManager(private val ctx: Context) {
                     }
                 }
                 if (order.isEmpty()) lastFail = WebSearch.downReason() ?: SearchGuard.Fail.NO_KEY
+                // 17 नवंबर 2026 ([AiRouter]): अपनी खोज keys नहीं/फ़ेल = DK के सर्वर की खोज (basic लाइसेंस से). स्रोत-चिप पुराने तरीके से
+                if (AiRouter.fallback(last)) {
+                    try {
+                        val q = query.ifBlank { question }
+                        com.dk.assistant.dkai.DkaiSearchLive.stage("${AiRouter.LABEL} पर खोज रहा है: ${q.take(60)}")
+                        val (label, raw) = withContext(Dispatchers.IO) { AiRouter.search(ctx, q, deep = false) }
+                        val cite = when (label) { "Exa" -> WebCite.EXA; "Google" -> WebCite.GOOGLE; else -> WebCite.TAVILY }
+                        val r = fromRaw(question, q, cite, failed, raw)
+                        if (r.text.isNotBlank()) {
+                            DKLog.d("खोज: DK सर्वर से (${r.sources.size} स्रोत)")
+                            WebSearch.put(question, r); LiveSearch.remember(question, r.sources)
+                            return@run r
+                        }
+                    } catch (e: kotlinx.coroutines.CancellationException) { throw e
+                    } catch (e: com.dk.assistant.backend.BackendException) { DKLog.d("खोज: DK सर्वर नहीं चला (${e.reason})"); if (e.final) last = e
+                    } catch (e: Exception) { DKLog.d("खोज: DK सर्वर नहीं चला (${e.message?.take(60)})") }
+                }
                 lastSearchFail = lastFail
                 throw last ?: AiException(0, if (lastFail == SearchGuard.Fail.NO_KEY) "NO_KEY" else "all_down")
             }
@@ -749,7 +812,7 @@ class BrainManager(private val ctx: Context) {
             val keys = (Prefs.liveGeminiKeys(ctx) + searchKeys()).filter { it.isNotBlank() }.distinct()
             if (keys.isNotEmpty()) ScreenLook.vision(keys, system + "\n\n" + prompt, imageB64)?.let { lastUsed = "Google Gemini"; return@withContext it }
         }
-        if (list.isEmpty()) {
+        if (list.isEmpty() && !AiRouter.backendReady()) {
             val all = Providers.all.filter { clientFor(it) != null }
             throw if (all.isEmpty()) AiException(-1, "NO_KEY") else exhausted(all)
         }
@@ -774,6 +837,13 @@ class BrainManager(private val ctx: Context) {
                 lastError = e
             }
         }
+        if (AiRouter.fallback(lastError)) {
+            try {
+                return@withContext AiRouter.client(ctx, AiRouter.Task.CHAT).complete(system, emptyList(), prompt, null)
+                    .ifBlank { throw AiException(0, "khali jawab") }.also { lastUsed = AiRouter.LABEL }
+            } catch (b: kotlinx.coroutines.CancellationException) { throw b
+            } catch (b: Exception) { throw AiRouter.pick(lastError, b) }
+        }
         throw lastError ?: AiException(-1, "NO_KEY")
     }
 
@@ -796,6 +866,17 @@ class BrainManager(private val ctx: Context) {
             else GeminiClient(k, GeminiClient.BACKUP_MODELS.first()).apply { backups = GeminiClient.BACKUP_MODELS; this.lane = lane }
                 .stream(system, emptyList(), prompt) { }.takeIf { it.isNotBlank() }
         } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (_: Exception) { null }
+            ?: routerText(system, prompt, null)   // 17 नवंबर 2026: आख़िर में DK का सर्वर ([AiRouter])
+    }
+
+    /** छोटे काम (सारांश, कहानी): अपनी keys न चलें तो DK का सर्वर; वह भी न चले = null (पहले जैसा) */
+    private fun routerText(system: String, prompt: String, onText: ((String) -> Unit)?): String? {
+        if (!AiRouter.fallback(null)) return null
+        return try {
+            val sb = StringBuilder(); onText?.invoke("")
+            AiRouter.client(ctx, AiRouter.Task.CHAT).stream(system, emptyList(), prompt) { d -> sb.append(d); onText?.invoke(sb.toString()) }
+                .takeIf { it.isNotBlank() }?.also { onText?.invoke(it); lastUsed = AiRouter.LABEL }
+        } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (e: Exception) { DKLog.d("DK सर्वर (छोटा काम): ${e.message?.take(80)}"); null }
     }
 
     /**
@@ -823,6 +904,7 @@ class BrainManager(private val ctx: Context) {
                     .takeIf { it.isNotBlank() }?.also { onText(it) }
             }
         } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (_: Exception) { null }
+            ?: routerText(system, prompt, onText)
     }
 
     /** DK = लड़की (चुनी आवाज़ से); JARVIS मोड = हमेशा पुरुष */

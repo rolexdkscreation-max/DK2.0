@@ -112,6 +112,11 @@ class DKAccessibilityService : AccessibilityService() {
         }
         ear.bargeWhen = { callBargeEar() }
         agent = AgentRunner(this, scope, speaker)
+        // 17 नवंबर 2026 (DK बैकएंड): आज की मुफ़्त बातचीत पूरी = तय शब्द बोलो और Live बंद (मालिक: "बोले और लिखे, फिर रुके")
+        AiRouter.onStop = { say, talk -> scope.launch(kotlinx.coroutines.Dispatchers.Main) {
+            try { if (talk) speaker.speak(say) } catch (e: Exception) { Quiet.note(e) }
+            if (DKState.live) stopLive("आज की मुफ़्त बातचीत पूरी (लाइसेंस)")
+        } }
         OfflineQueue.drain(this)        // v3.88: पिछली बार नेटवर्क न होने से रुका काम
         calls = CallManager(this) { who -> scope.launch { onIncomingCall(who) } }
         CallCmd.liveCheck = { calls.ringing || calls.inCall }   // v4.1: घंटी/कॉल में कॉल-कमांड बिना DK
@@ -167,6 +172,7 @@ class DKAccessibilityService : AccessibilityService() {
     override fun onInterrupt() { agent.stop() }
 
     override fun onDestroy() {
+        AiRouter.onStop = null
         try { (getSystemService(CONNECTIVITY_SERVICE) as android.net.ConnectivityManager).unregisterNetworkCallback(netBack) } catch (e: Exception) { Quiet.note(e) }
         LiveNet.unregister(this)
         com.dk.assistant.inspector.Inspector.stopTimer()

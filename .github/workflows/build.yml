@@ -34,6 +34,13 @@ jobs:
       # main में merge = स्टेबल (सबके फ़ोन पर); हाथ से "beta" ✓ = बीटा; PR build = कोई release नहीं
       CHANNEL: ${{ (github.event_name == 'workflow_dispatch' && inputs.beta) && 'beta' || 'stable' }}
       DO_RELEASE: ${{ (github.event_name == 'push' && github.ref == 'refs/heads/main') || (github.event_name == 'workflow_dispatch' && inputs.beta) }}
+      # 17 नवंबर 2026 (DK बैकएंड): सिर्फ़ ये 5 सार्वजनिक-जैसी चीज़ें build के समय ऐप में (BuildConfig). कोई Cloudflare ID,
+      # token, WEBHOOK_SECRET या ALLOWED_EMAILS ऐप में नहीं जाता. secret न हो तो खाली = ऐप पुराने तरीके (अपनी key) पर
+      VITE_FIREBASE_PROJECT_ID: ${{ secrets.FIREBASE_PROJECT_ID }}
+      VITE_FIREBASE_API_KEY: ${{ secrets.FIREBASE_WEB_API_KEY }}
+      VITE_FIREBASE_AUTH_DOMAIN: ${{ secrets.FIREBASE_AUTH_DOMAIN }}
+      VITE_BACKEND_URL: ${{ secrets.BACKEND_URL }}
+      VITE_WHATSAPP_NUMBER: ${{ secrets.WHATSAPP_NUMBER }}
     steps:
       - name: Code checkout
         uses: actions/checkout@v4
@@ -207,3 +214,19 @@ jobs:
               --notes-file release_notes.txt \
               --latest
           fi
+
+      # 17 नवंबर 2026 (DK बैकएंड): build पूरा (पास या फेल) = backend को branch/हालत/लिंक. यह कदम फेल हो तो भी build फेल नहीं
+      - name: Backend को build की ख़बर
+        if: always()
+        continue-on-error: true
+        env:
+          BACKEND_URL: ${{ secrets.BACKEND_URL }}
+          WEBHOOK_SECRET: ${{ secrets.WEBHOOK_SECRET }}
+          BUILD_STATUS: ${{ job.status }}
+          BRANCH: ${{ github.head_ref || github.ref_name }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          if [ -z "$BACKEND_URL" ] || [ -z "$WEBHOOK_SECRET" ]; then echo "BACKEND_URL/WEBHOOK_SECRET नहीं - ख़बर छोड़ी"; exit 0; fi
+          BODY="$(jq -nc --arg b "$BRANCH" --arg s "$BUILD_STATUS" --arg u "$RUN_URL" '{branch:$b,status:$s,run_url:$u}')"
+          curl -sS -m 20 -o /dev/null -w "webhook: %{http_code}\n" -X POST "${BACKEND_URL%/}/webhook/build" \
+            -H "content-type: application/json" -H "x-dk-webhook-secret: $WEBHOOK_SECRET" -d "$BODY" || true

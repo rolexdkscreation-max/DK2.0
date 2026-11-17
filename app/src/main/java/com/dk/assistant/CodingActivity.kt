@@ -659,10 +659,14 @@ class CodingActivity : AppCompatActivity() {
     private fun showHistory() {
         CoderHistory.flush(this)
         val all = CoderHistory.list(this)
+        val server = AiRouter.backendReady() && com.dk.assistant.backend.BackendApi.lastLevel in setOf("premium", "owner")
+        if (all.isEmpty() && server) { showServerTasks(); return }
         if (all.isEmpty()) { if (LocalNotes.all(filesDir).isNotEmpty()) showNotes() else toast("अभी कोई इतिहास नहीं — पहला काम लिखें"); return }
         val fmt = java.text.SimpleDateFormat("d MMM, h:mm a", java.util.Locale("hi", "IN"))
         val box = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; val p = (6 * dp).toInt(); setPadding(p, p, p, p) }
         var dlg: android.app.Dialog? = null
+        if (server) box.addView(smallBtn("☁ सर्वर पर काम (दूसरे फ़ोन/ऐप बंद होने के बाद भी)") { dlg?.dismiss(); showServerTasks() },
+            LinearLayout.LayoutParams(-1, (42 * dp).toInt()).apply { bottomMargin = (8 * dp).toInt() })
         all.forEach { t ->
             val row = LinearLayout(this).apply {
                 orientation = LinearLayout.VERTICAL; setBackgroundResource(R.drawable.glass_card)
@@ -691,6 +695,44 @@ class CodingActivity : AppCompatActivity() {
             .setMessage("किसी पर टैप = वही बातचीत खुलेगी, उसी में आगे लिखें। लंबा दबाएँ = हटाएँ।")
             .setView(sc).setNegativeButton("बंद करें", null)
             .setNeutralButton("📒 काम-कॉपी") { _, _ -> showNotes() }.show()
+    }
+
+    /**
+     * 17 नवंबर 2026 (DK बैकएंड): सर्वर (/tasks) पर रखे काम - हालत, आख़िरी कदम, branch/PR, build.
+     * टैप = इस फ़ोन में वही काम बीच में रुका हो तो वहीं से आगे; वरना PR खुले; वरना पूरी जानकारी.
+     */
+    private fun showServerTasks() {
+        toast("सर्वर से काम ला रहा हूँ…")
+        Thread {
+            val r = try { Result.success(com.dk.assistant.backend.BackendApi.tasks(applicationContext)) } catch (e: Exception) { Result.failure(e) }
+            runOnUiThread {
+                if (isFinishing) return@runOnUiThread
+                val l = r.getOrElse { e -> toast("सर्वर से काम नहीं आए: " + (AiRouter.say(e) ?: e.message.orEmpty()).take(80)); return@runOnUiThread }
+                if (l.isEmpty()) { toast("सर्वर पर अभी कोई काम नहीं"); return@runOnUiThread }
+                val fmt = java.text.SimpleDateFormat("d MMM, h:mm a", java.util.Locale("hi", "IN"))
+                val names = l.map { t ->
+                    "${CoderHistory.Logic.title(t.title)}\n${com.dk.assistant.backend.BackendWire.statusHi(t.status)} • ${t.progress}% • ${fmt.format(java.util.Date(t.updatedAt))}" +
+                        (if (t.branch.isNotBlank()) "\nbranch: ${t.branch}" else "") + (if (t.buildStatus.isNotBlank()) " • build: ${t.buildStatus}" else "") +
+                        (if (t.step.isNotBlank()) "\n" + t.step.take(120) else "")
+                }
+                UiDialog(this, Glass.DIALOG).setTitle("☁ सर्वर पर काम")
+                    .setItems(names.toTypedArray()) { _, i -> openServerTask(l[i]) }.setNegativeButton("बंद करें", null).show()
+            }
+        }.start()
+    }
+
+    private fun openServerTask(t: com.dk.assistant.backend.BackendWire.Task) {
+        val ck = CoderHistory.checkpoint(this)?.takeIf { it.stage == "pause" || it.stage == "run" }
+        val same = ck != null && !CoderSession.busy && SevenRunner.pending == null &&
+            (CoderHistory.Logic.title(ck.task) == CoderHistory.Logic.title(t.title) || (t.branch.isNotBlank() && ck.branch == t.branch))
+        when {
+            same -> { SevenRunner.resume(this, auto = false)?.let { toast(it) }; render() }
+            t.prUrl.startsWith("https://") -> try { startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(t.prUrl))) } catch (e: Exception) { toast(e.message.orEmpty()) }
+            else -> UiDialog(this, Glass.DIALOG).setTitle(CoderHistory.Logic.title(t.title))
+                .setMessage("${com.dk.assistant.backend.BackendWire.statusHi(t.status)} • ${t.progress}%\n${t.step}" +
+                    (if (t.error.isNotBlank()) "\n\nगलती: ${t.error}" else "") + (if (t.branch.isNotBlank()) "\n\nbranch: ${t.branch}" else ""))
+                .setNegativeButton("बंद करें", null).show()
+        }
     }
 
     /**

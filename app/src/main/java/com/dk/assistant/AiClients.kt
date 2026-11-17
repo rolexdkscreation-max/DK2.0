@@ -17,7 +17,7 @@ data class SearchResult(val text: String, val sources: List<Pair<String, String>
                         val g: GroundCite.G? = null)
 
 /** retryAfter = Google ne kitne second baad dobara bola (429), 0 = pata nahi */
-class AiException(val code: Int, message: String, val retryAfter: Int = 0) : IOException(message)
+open class AiException(val code: Int, message: String, val retryAfter: Int = 0) : IOException(message)
 
 /** Har AI company se baat karne ka ek hi tareeka. */
 interface AiClient {

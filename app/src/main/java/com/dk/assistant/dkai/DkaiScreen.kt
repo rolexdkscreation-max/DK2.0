@@ -102,7 +102,7 @@ class DkaiScreen(val activity: ComponentActivity, val host: DkaiHost) {
     /** + से चुनी फोटो / फ़ाइल (भेजने तक यहीं, ✕ से हटाओ) */
     private val attached = ArrayList<android.net.Uri>()
     /** 🎤 लिखवाना चालू (null = नहीं) */
-    private var dictation: InlineDictation? = null
+    private var dictation: com.dk.assistant.Dictation? = null
     private var dictBase = ""
 
     private var shownMsgs = -1
@@ -423,10 +423,12 @@ class DkaiScreen(val activity: ComponentActivity, val host: DkaiHost) {
         if (d0 != null) { finishDictation(send = true); return }
         if (!Setup.hasMic(c)) { host.ready(); return }
         dictBase = input.text.toString().trimEnd()
-        val dd = InlineDictation(c,
+        // पहले DK सर्वर (/stt), न चले तो फ़ोन की पहचान (InlineDictation, पहले जैसा)
+        val dd = com.dk.assistant.BackendDictation.pick(c,
             onText = { t -> input.setText(DkaiHomeCore.joinDictation(dictBase, t)); input.setSelection(input.text.length) },
             onLevel = { lv -> dictBtn.scaleX = 1f + lv * 0.25f; dictBtn.scaleY = dictBtn.scaleX },
-            onEnd = { msg -> if (msg != null) toast(msg); finishDictation(send = false) })
+            onEnd = { msg -> if (msg != null) toast(msg); finishDictation(send = false) },
+            phone = { t, l, e -> InlineDictation(c, onText = t, onLevel = l, onEnd = e) })
         dictation = dd
         dictBtn.setImageDrawable(DkaiIcon(DkaiIcon.Kind.CHECK, DkaiTheme.ON))
         dictBtn.background = DkaiTheme.oval(DkaiKit.EMERALD)
