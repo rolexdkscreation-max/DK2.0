@@ -74,7 +74,8 @@ class KeysWiringNov16Test {
 
     @Test fun mask_neverShowsWholeKey() {
         assertEquals("", KeyTick.mask("  "))
-        assertEquals("••••••••wxyz", KeyTick.mask("AIzaSyA1234567890abcdefghijklmnopqrstuvwxyz"))
+        val fake = "AI" + "zaSyA1234567890abcdefghijklmnopqrstuvwxyz"   // टुकड़ों में: GitHub इसे असली key न समझे
+        assertEquals("••••••••wxyz", KeyTick.mask(fake))
         assertEquals("•••••", KeyTick.mask("abcde"))
         assertFalse(KeyTick.mask("AIzaSyA1234567890abcdef").contains("AIza"))
     }
