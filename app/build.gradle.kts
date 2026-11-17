@@ -25,6 +25,9 @@ android {
         versionCode = vc
         // Sirf version (3.1 / 3.1.1) - build number nahi. GitHub workflow update ke prakar se banata hai
         versionName = System.getenv("VERSION_NAME") ?: file("../version.txt").readText().trim()
+        // नवंबर 2026 (बीटा जाँच): GitHub build.yml का CHANNEL (beta / stable) APK में छपता है; अपने कंप्यूटर पर = local
+        val ch = (System.getenv("CHANNEL") ?: "local").trim().lowercase().ifBlank { "local" }
+        buildConfigField("String", "DK_CHANNEL", "\"$ch\"")
     }
 
     // Hamesha ek hi key se sign -> purane app ke upar naya update install ho sake
@@ -67,6 +70,7 @@ android {
     }
     buildFeatures {
         viewBinding = false
+        buildConfig = true
     }
     // नवंबर 2026 (मालिक): Kokoro TTS पूरी तरह हटाया (APK ~140 MB -> छोटा). बैकअप: branch backup/dk-kokoro-default
     // व्यवहार वाले tests (Robolectric) को असली layout / theme / strings चाहिए
