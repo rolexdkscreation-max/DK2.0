@@ -56,8 +56,10 @@ class UpdateChannelCrashPrivacyTest {
         assertTrue(CrashReport.shouldAsk(true, 100, 0))
         assertFalse(CrashReport.shouldAsk(true, 100, 100))         // यही crash पूछ चुके
         assertFalse(CrashReport.shouldAsk(true, 0, 0))
-        val b = CrashReport.body("12 Nov main version 3.1\njava.lang.IllegalStateException: key AIzaSyA1234567890abcdefghijklmnopqrstuv", "3.1", 34, "Moto")
-        assertFalse(b.contains("AIzaSyA1234567890abcdefghijklmnopqrstuv"))
+        // 17 नवंबर 2026: नकली key टुकड़ों में - पूरा "AIza…" रूप repo में लिखा हो तो GitHub उसे असली key मानकर चेतावनी देता है
+        val fakeKey = "AI" + "za" + "TEST_ONLY_NOT_A_REAL_KEY".padEnd(35, '0')
+        val b = CrashReport.body("12 Nov main version 3.1\njava.lang.IllegalStateException: key $fakeKey", "3.1", 34, "Moto")
+        assertFalse(b.contains(fakeKey))
         val url = CrashReport.issueUrl("rolexdkscreation-max/DK2.0", "Crash: x", b)
         assertTrue(url.startsWith("https://github.com/rolexdkscreation-max/DK2.0/issues/new?"))
         assertTrue(src("Prefs.kt").contains("getBoolean(CrashReport.ASK_KEY, false)"))
