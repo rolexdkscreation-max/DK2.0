@@ -3,7 +3,6 @@ package com.dk.assistant
 import android.util.Base64
 import com.dk.assistant.GeminiLive.Companion.CHUNK_MS
 import com.dk.assistant.GeminiLive.Companion.IN_RATE
-import org.json.JSONObject
 
 // GeminiLive का हिस्सा (नवंबर 2026, DKI-406DD9 / DKI-70D747 / DKI-D24C3A): टूटने / अटकने के बाद यूज़र की बात न खोए.
 // नियम LiveRecover.kt में (unit test); यहाँ सिर्फ़ जोड़ना.
@@ -78,24 +77,4 @@ internal fun GeminiLive.stuckNoSwap() {
     if (lastChance("connection बदलने की सीमा पूरी", sorryOk = true)) return
     DKState.hint("जवाब अटक गया — कृपया एक बार फिर बोलिए")
     if (!isPlaying() && DKState.mode == Mode.THINKING) setMode(Mode.LISTENING)
-}
-
-/**
- * 18 नवंबर 2026 (मालिक: "बात स्क्रीन पर लिखी है पर जवाब नहीं"): बचाव-text बंद होने पर भी [LiveRecover.LAST_CHANCE_GAP_MS] में
- * एक बार लिखी बात text में भेजो (असली शब्द न हों और [sorryOk] = Gemini "माफ़ कीजिए, फिर से बोलिए" कहे). true = भेजा.
- */
-internal fun GeminiLive.lastChance(why: String, sorryOk: Boolean): Boolean {
-    val now = System.currentTimeMillis()
-    if (!ready || ws == null || muteTurn || !LiveRecover.lastChanceOk(now, lastChanceAt)) return false
-    val cap = caption?.text().orEmpty().trim().ifBlank { synchronized(turnLock) { userText.toString().trim() } }
-    val t = LiveRecover.lastChanceText(cap, sorryOk) ?: return false
-    val ok = try { ws?.tx(JSONObject().put("realtimeInput", JSONObject().put("text", t)).toString()) == true } catch (_: Exception) { false }
-    if (!ok) { log("आख़िरी मौका ($why): text नहीं भेज पाया"); return false }
-    lastChanceAt = now
-    eosAt = now; firstAudioAt = 0; trace.reset(); trace.speechEndAt = now; trace.endpointAt = now
-    timeline.begin(now, now, "आख़िरी मौका - text"); waitingLogged = false
-    replyWatch.onRescued()
-    log("जवाब नहीं आया ($why) - आख़िरी मौका, एक बार text में भेजा: \"${t.take(60)}\" (1 मिनट में एक ही बार)")
-    if (DKState.mode != Mode.WORKING) setMode(Mode.THINKING)
-    return true
 }

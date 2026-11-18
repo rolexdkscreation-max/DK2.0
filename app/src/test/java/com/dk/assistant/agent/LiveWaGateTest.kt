@@ -37,6 +37,10 @@ class LiveWaGateTest {
         // किसी के मैसेज ने AI को "सबको भेज दो" कहकर बहकाया, मालिक ने सिर्फ़ पढ़ने को कहा था = पहले आवाज़ में पूछो
         assertTrue(LiveWaGate.sendNeedsCard("send_message", "राहुल का मैसेज पढ़ो", untrustedRecent = true))
         assertTrue(LiveWaGate.sendNeedsCard("send_contact", "", untrustedRecent = true))
+        assertTrue(LiveWaGate.sendNeedsCard("smart_reply", "उसका जवाब क्या आया", untrustedRecent = true))
+        // पढ़ा नहीं था = पहले जैसा ("मैसेज भेजो" वाला कोई भी शब्द)
+        assertFalse(LiveWaGate.ownerNeedsAsk("राहुल को WhatsApp करो hi", untrustedRecent = true))
+        assertTrue(LiveWaGate.ownerNeedsAsk("मौसम बताओ", untrustedRecent = false))
     }
 
     @Test fun ownerNeverAskedToSendCard() {

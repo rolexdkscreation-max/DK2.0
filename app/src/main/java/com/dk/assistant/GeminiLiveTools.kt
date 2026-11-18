@@ -325,7 +325,7 @@ internal suspend fun GeminiLive.notifReply(to: String, message: String): String 
         ?: return "No notification found that can be replied to" + (if (to.isNotBlank()) " for '$to'" else "") + ". Tell the user; offer to send it via phone_task instead."
     // 18 नवंबर 2026 (मालिक: "मैंने खुद कहा हो तो तुरंत भेजो, अनजान हो तो एक बार आवाज़ में पूछो - कार्ड नहीं"):
     // मालिक की हाल की बातों में जवाब भेजने को कहा = सीधे भेजो. नहीं कहा (जैसे किसी के मैसेज ने AI को बहकाया) = पहले आवाज़ में "हाँ"
-    if (com.dk.assistant.agent.core.OutsideText.needsCard(com.dk.assistant.agent.core.OutsideText.Kind.SEND, ownerWordsNow())) {
+    if (com.dk.assistant.agent.core.LiveWaGate.ownerNeedsAsk(ownerWordsNow(), com.dk.assistant.plus.ConfirmGate.untrustedNow())) {
         val denied = com.dk.assistant.plus.ConfirmGate.check(svc, "${n.title.ifBlank { n.app }} को जवाब भेजूँ?", "\"$msg\" (${n.app})", "notification reply")
         if (denied != null) { log("notification reply -> पहले आवाज़ में पूछो / हाँ नहीं सुनी"); return denied }
     }

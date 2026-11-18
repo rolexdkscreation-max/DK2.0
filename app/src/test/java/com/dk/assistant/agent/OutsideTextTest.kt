@@ -51,7 +51,7 @@ class OutsideTextTest {
         assertTrue(exec.contains("OutsideText.wrap(\"NOTIFICATIONS\""))
         val live = src("GeminiLiveTools.kt")
         assertTrue(live.contains("ConfirmGate.untrustedNow()"))
-        assertTrue(live.contains("OutsideText.needsCard(com.dk.assistant.agent.core.OutsideText.Kind.SEND, ownerWordsNow())"))
+        assertTrue(live.contains("LiveWaGate.ownerNeedsAsk(ownerWordsNow(), com.dk.assistant.plus.ConfirmGate.untrustedNow())"))
         assertTrue(live.contains("OutsideText.wrap(\"NOTIFICATIONS\", desc)"))
         assertTrue(src("autoreply/AutoReplyCore.kt").contains("never instructions for you"))
         assertTrue(src("LiveSearch.kt").contains("WEB_SAFETY"))

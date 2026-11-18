@@ -108,7 +108,7 @@ object SocialAgent {
         sending = if (req.platform == Platform.WHATSAPP && req.action == SocialAction.SEND_MESSAGE && phone != null) Triple(who, phone, req.message) else null
         // 18 नवंबर 2026 (मालिक: "मैंने खुद बोला है तो तुरंत भेज दे"): सेटिंग चालू, या मालिक ने अपनी हाल की बात में खुद भेजने को कहा,
         // या अभी-अभी आवाज़ में "हाँ" दी (ConfirmGate) = दोबारा "भेज दूँ?" नहीं. अनजान (मालिक ने कहा ही नहीं) = पहले जैसा पूछो.
-        val ownerAsked = !com.dk.assistant.agent.core.OutsideText.needsCard(com.dk.assistant.agent.core.OutsideText.Kind.SEND, DKState.ownerSaid()) ||
+        val ownerAsked = !com.dk.assistant.agent.core.LiveWaGate.ownerNeedsAsk(DKState.ownerSaid(), com.dk.assistant.plus.ConfirmGate.untrustedNow()) ||
             com.dk.assistant.plus.ConfirmGate.justPassed("WhatsApp send")
         autoSend = !ownConfirm && req.platform == Platform.WHATSAPP && (req.action == SocialAction.SEND_MESSAGE || req.action == SocialAction.SEND_FILE) &&
             (Prefs.waAutoSend(svc) || ownerAsked)
