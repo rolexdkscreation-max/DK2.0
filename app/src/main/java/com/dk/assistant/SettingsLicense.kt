@@ -24,6 +24,7 @@ internal const val LICENSE_CARD = "लाइसेंस की"
 internal const val LICENSE_ADMIN_CARD = "लाइसेंस की बनाएँ (मालिक)"
 internal const val LICENSE_LOGIN_CARD = "Google से लॉगिन"
 internal const val RC_LICENSE_GOOGLE = 41
+internal const val RC_LICENSE_PICK = 43
 
 internal fun SettingsActivity.secLicense() {
     if (!BackendConfig.ready()) {
@@ -103,10 +104,10 @@ private fun SettingsActivity.loginBody(box: LinearLayout) {
             else "अभी मेहमान (बिना लॉगिन)। मालिक Google से लॉगिन करें।"
     }
     box.addView(st)
-    row(box, button("Google से लॉगिन") { googleLogin() }, button("लॉग आउट") {
+    row(box, button(if (BackendSession.google(this)) "दूसरा Google खाता" else "Google से लॉगिन") { googleLogin() }, button("लॉग आउट") {
         BackendSession.signOut(this); toast("लॉग आउट - अब मेहमान"); recreate()
     })
-    hint(box, "Google सिर्फ़ मालिक के लिए (जिसका ईमेल सर्वर की सूची में हो)। बाकी लोग बिना लॉगिन चलाते हैं।")
+    hint(box, "टैप करने पर फ़ोन के सारे Google खाते दिखेंगे - जिससे चाहें लॉगिन करें। मालिक वही ईमेल चुनें जो सर्वर की मालिक-सूची में है। लॉगिन न करें तो भी ऐप चलता है।")
     // 18 नवंबर 2026: लॉगिन में "8: Unknown error" = Cloud Console में यही package + SHA-1 वाला Android client चाहिए - यहीं दिखे
     val sha = GoogleAuth.signingSha1(this)
     hint(box, "लॉगिन न हो (code 8 / 10) तो Firebase वाले Google Cloud project में Android client बनाइए:\nPackage: $packageName\nSHA-1: ${sha ?: "नहीं मिला"}")
@@ -118,9 +119,16 @@ private fun SettingsActivity.copyText(label: String, v: String) {
     cm.setPrimaryClip(android.content.ClipData.newPlainText(label, v)); toast("कॉपी हुआ: $label")
 }
 
-/** Play services से Google (openid/email) - UI चाहिए तो Google की स्क्रीन, फिर [licenseGoogleResult] */
+/** 18 नवंबर 2026: पहले फ़ोन के सारे Google खाते (popup), चुने खाते से [googleLoginAs] - [licenseGoogleResult] */
 private fun SettingsActivity.googleLogin() {
-    bg({ GoogleAuth.tokenBlocking(this, BackendSession.GOOGLE_SCOPES) }) { r ->
+    @Suppress("DEPRECATION")
+    try { startActivityForResult(GoogleAuth.chooseAccountIntent(BackendSession.email(this)), RC_LICENSE_PICK) }
+    catch (e: Exception) { googleLoginAs(null) }     // popup न खुले (बहुत पुराना फ़ोन) = पहले जैसा
+}
+
+/** Play services से Google (openid/email) - UI चाहिए तो Google की स्क्रीन, फिर [licenseGoogleResult] */
+private fun SettingsActivity.googleLoginAs(account: String?) {
+    bg({ GoogleAuth.tokenBlocking(this, BackendSession.GOOGLE_SCOPES, account) }) { r ->
         when (val res = r.getOrElse { e -> toast(GoogleAuth.explain(e)); return@bg }) {
             is GoogleAuth.Res.Token -> finishGoogle(res.value)
             is GoogleAuth.Res.NeedsUi -> {
@@ -147,6 +155,10 @@ private fun SettingsActivity.finishGoogle(accessToken: String) {
 
 /** [SettingsActivity.onActivityResult] से */
 internal fun SettingsActivity.licenseGoogleResult(requestCode: Int, data: Intent?) {
+    if (requestCode == RC_LICENSE_PICK) {
+        GoogleAuth.pickedAccount(data)?.let { googleLoginAs(it) } ?: toast("कोई खाता नहीं चुना")
+        return
+    }
     if (requestCode != RC_LICENSE_GOOGLE) return
     try {
         val t = com.google.android.gms.auth.api.identity.Identity.getAuthorizationClient(this).getAuthorizationResultFromIntent(data).accessToken

@@ -177,8 +177,14 @@ class OnboardingActivity : AppCompatActivity() {
         android.widget.Toast.makeText(this, msg, android.widget.Toast.LENGTH_LONG).show(); then()
     }
 
-    private fun googleLogin() = bg {
-        when (val r = com.dk.assistant.connect.GoogleAuth.tokenBlocking(this, com.dk.assistant.backend.BackendSession.GOOGLE_SCOPES)) {
+    /** 18 नवंबर 2026: पहले फ़ोन के सारे Google खाते (popup) - जिससे चाहें */
+    private fun googleLogin() {
+        @Suppress("DEPRECATION")
+        try { startActivityForResult(com.dk.assistant.connect.GoogleAuth.chooseAccountIntent(), RC_PICK) } catch (e: Exception) { googleLoginAs(null) }
+    }
+
+    private fun googleLoginAs(account: String?) = bg {
+        when (val r = com.dk.assistant.connect.GoogleAuth.tokenBlocking(this, com.dk.assistant.backend.BackendSession.GOOGLE_SCOPES, account)) {
             is com.dk.assistant.connect.GoogleAuth.Res.Token -> finishGoogle(r.value)
             is com.dk.assistant.connect.GoogleAuth.Res.NeedsUi -> runOnUiThread {
                 val pi = r.intent ?: return@runOnUiThread ui("Google की स्क्रीन नहीं खुली")
@@ -206,6 +212,10 @@ class OnboardingActivity : AppCompatActivity() {
     @Deprecated("Deprecated in Java")
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         @Suppress("DEPRECATION") super.onActivityResult(requestCode, resultCode, data)
+        if (requestCode == RC_PICK) {
+            com.dk.assistant.connect.GoogleAuth.pickedAccount(data)?.let { googleLoginAs(it) } ?: ui("कोई खाता नहीं चुना")
+            return
+        }
         if (requestCode != RC_GOOGLE) return
         try {
             val t = com.google.android.gms.auth.api.identity.Identity.getAuthorizationClient(this).getAuthorizationResultFromIntent(data).accessToken
@@ -241,6 +251,7 @@ class OnboardingActivity : AppCompatActivity() {
     companion object {
         private const val KEY = "onboarded"
         private const val RC_GOOGLE = 42
+        private const val RC_PICK = 44
         const val KEY_ASK = "अब अपनी Gemini API key डालें — DK के सारे काम इसी एक key से चलेंगे"
 
         fun markDone(c: Context) = Prefs.edit(c) { putBoolean(KEY, true) }

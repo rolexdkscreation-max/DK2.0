@@ -23,12 +23,30 @@ object GoogleAuth {
         data class Fail(val message: String) : Res()
     }
 
-    fun request(scopes: List<String>): AuthorizationRequest =
-        AuthorizationRequest.builder().setRequestedScopes(scopes.map { Scope(it) }).build()
+    /**
+     * 18 नवंबर 2026 (मालिक: "Google लॉगिन पर एक ही ईमेल दिखता है, फ़ोन के बाकी खाते नहीं"):
+     * [account] न दो तो Play services चुपचाप फ़ोन का पहला/पिछला खाता ले लेता है - चुनने का मौका ही नहीं.
+     * लॉगिन में पहले [chooseAccountIntent] (फ़ोन के सारे Google खाते + "खाता जोड़ें"), फिर वही खाता यहाँ.
+     */
+    fun request(scopes: List<String>, account: String? = null): AuthorizationRequest =
+        AuthorizationRequest.builder().setRequestedScopes(scopes.map { Scope(it) })
+            .apply { account?.takeIf { it.isNotBlank() }?.let { setAccount(android.accounts.Account(it, GOOGLE_TYPE)) } }.build()
+
+    const val GOOGLE_TYPE = "com.google"
+
+    /** Android का अपना खाता चुनने वाला popup - फ़ोन के सारे Google खाते (एक ही हो तब भी दिखे, ताकि दूसरा जोड़ सकें) */
+    @Suppress("DEPRECATION")
+    fun chooseAccountIntent(current: String? = null): android.content.Intent = android.accounts.AccountManager.newChooseAccountIntent(
+        current?.takeIf { it.isNotBlank() }?.let { android.accounts.Account(it, GOOGLE_TYPE) }, null, arrayOf(GOOGLE_TYPE),
+        true, "DK में किस Google खाते से लॉगिन करें?", null, null, null)
+
+    /** popup से चुना खाता (ईमेल); रद्द = null */
+    fun pickedAccount(data: android.content.Intent?): String? =
+        data?.getStringExtra(android.accounts.AccountManager.KEY_ACCOUNT_NAME)?.takeIf { it.isNotBlank() }
 
     /** बिना UI (Live tool से, background thread पर). UI चाहिए = NeedsUi */
-    fun tokenBlocking(c: Context, scopes: List<String>): Res = try {
-        val r: AuthorizationResult = Tasks.await(Identity.getAuthorizationClient(c).authorize(request(scopes)), 20, TimeUnit.SECONDS)
+    fun tokenBlocking(c: Context, scopes: List<String>, account: String? = null): Res = try {
+        val r: AuthorizationResult = Tasks.await(Identity.getAuthorizationClient(c).authorize(request(scopes, account)), 20, TimeUnit.SECONDS)
         read(r)
     } catch (e: Exception) {
         com.dk.assistant.DKBug.report("connector", e, "Google से अनुमति लेना")
