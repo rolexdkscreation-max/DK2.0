@@ -52,3 +52,9 @@ CREATE TABLE IF NOT EXISTS usage (
   chat_count INTEGER NOT NULL DEFAULT 0,
   PRIMARY KEY (uid, day)
 );
+
+-- DK लाइव (बिना अपनी key): मुफ़्त वाले का आख़िरी टिकट कब तक चलेगा. उस समय तक नया टिकट = फिर से नहीं गिना जाता.
+CREATE TABLE IF NOT EXISTS live_grants (
+  uid TEXT PRIMARY KEY,
+  until_ms INTEGER NOT NULL
+);

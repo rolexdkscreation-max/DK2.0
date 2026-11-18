@@ -153,7 +153,8 @@ internal fun GeminiLive.attemptFailed(r: Race, a: Attempt, code: Int, reason: St
     val now = System.currentTimeMillis(); val ms = now - a.t0
     r.lastFail = code to reason; r.lastFailCombo = a.c
     when (LiveRace.classify(code, reason)) {
-        LiveRace.Fail.KEY -> if (LiveRace.quotaOnlyForCombo(code, reason)) {
+        // DK सर्वर का टिकट: "key" खराब नहीं होती (हर बार नया टिकट) - सिर्फ़ यह जोड़ी, टिकट भूलो
+        LiveRace.Fail.KEY -> if (LiveRace.quotaOnlyForCombo(code, reason) || LiveDkServer.isServer(a.key).also { if (it) LiveDkServer.forget() }) {
             // limit/quota = सिर्फ़ यही (मॉडल × key) रुके; उसी key के बाकी मॉडल आज़माओ (पहले पूरी key 10 मिनट बंद)
             health.comboFail(a.c, now)
             log("दौड़: [${a.c.label}] $ms ms - इस मॉडल की limit (code=$code) - यह जोड़ी 2 मिनट नहीं, उसी key का अगला मॉडल तुरंत")
@@ -186,7 +187,12 @@ internal fun GeminiLive.attemptFailed(r: Race, a: Attempt, code: Int, reason: St
 }
 
 internal fun GeminiLive.openAttempt(r: Race, a: Attempt) {
-    val req = Request.Builder().url(URL).header("x-goog-api-key", a.key).build()
+    // 18 नवंबर 2026: अपनी key नहीं = DK सर्वर का टिकट ([LiveDkServer]); अपनी key = पहले जैसा
+    val req = if (!LiveDkServer.isServer(a.key)) Request.Builder().url(URL).header("x-goog-api-key", a.key).build()
+    else try { LiveDkServer.serverRequest(svc) } catch (e: Exception) {
+        log("DK सर्वर से Live का टिकट नहीं मिला: ${e.message}")
+        a.closed.complete(0 to "DK सर्वर का टिकट नहीं मिला (${e.message})"); return
+    }
     a.w = http.newWebSocket(req, object : WebSocketListener() {
         override fun onOpen(webSocket: WebSocket, response: Response) {
             a.sentAt = System.currentTimeMillis()
@@ -312,7 +318,10 @@ internal fun GeminiLive.sendContext(w: WebSocket?) {
 
 internal fun GeminiLive.connect(key: String, m: String, closed: CompletableDeferred<Pair<Int, String>>, setup: CompletableDeferred<Unit>) {
     ready = false
-    val req = Request.Builder().url(URL).header("x-goog-api-key", key).build()
+    val req = if (!LiveDkServer.isServer(key)) Request.Builder().url(URL).header("x-goog-api-key", key).build()
+    else try { LiveDkServer.serverRequest(svc) } catch (e: Exception) {
+        closed.complete(0 to "DK सर्वर का टिकट नहीं मिला (${e.message})"); return
+    }
     ws = http.newWebSocket(req, object : WebSocketListener() {
         override fun onOpen(webSocket: WebSocket, response: Response) {
             setupSentAt = System.currentTimeMillis()

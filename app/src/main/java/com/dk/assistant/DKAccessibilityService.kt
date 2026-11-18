@@ -379,7 +379,7 @@ class DKAccessibilityService : AccessibilityService() {
             ensureLoop()
             return
         }
-        if (Prefs.micUserOff(this) || GeminiLive.key(this).isBlank() || !Setup.hasMic(this)) return
+        if (Prefs.micUserOff(this) || GeminiLive.key(this).isBlank() && !LiveDkServer.on() || !Setup.hasMic(this)) return
         DKLog.d("ऐप खुला - DK लाइव तुरंत चालू")
         startLive()
     }
@@ -508,7 +508,7 @@ class DKAccessibilityService : AccessibilityService() {
     fun useGeminiLive(): Boolean = DKState.live && liveReady()
     /** Gemini Live chal sakta hai? (sunne ka tareeka "auto" + Gemini key + abhi ruka nahi) */
     fun liveReady(): Boolean = Prefs.listenEngine(this) == "auto" &&
-        GeminiLive.available(this) && System.currentTimeMillis() > liveOffUntil
+        GeminiLive.canRun(this) && System.currentTimeMillis() > liveOffUntil
     /** Wake word sunke thodi der ke liye Live chalu kiya (chup rahne par wapas wake mode) */
     @Volatile private var wakeLive = false
     private var lastWhyNot = ""
@@ -704,7 +704,7 @@ class DKAccessibilityService : AccessibilityService() {
                 if (calls.inCall && !calls.ringing) { ear.release(); listener.release(); DKState.set(Mode.IDLE); delay(1000); continue }
                 // v4.6: Live थोड़ी देर के लिए टूटा (नेट/connection) - पुराने तरीके (दूसरा STT + chat) पर नहीं जाना:
                 // वहाँ बोला हुआ लिखा जाता था (कभी ग़लत) पर जवाब अक्सर नहीं आता था. बस इंतज़ार और तुरंत फिर Live
-                if (DKState.live && !wakeLive && liveOffSoft && System.currentTimeMillis() <= liveOffUntil && GeminiLive.available(this@DKAccessibilityService)) {
+                if (DKState.live && !wakeLive && liveOffSoft && System.currentTimeMillis() <= liveOffUntil && GeminiLive.canRun(this@DKAccessibilityService)) {
                     ear.release(); listener.release(); earCaptionOff()
                     delay(250); continue
                 }

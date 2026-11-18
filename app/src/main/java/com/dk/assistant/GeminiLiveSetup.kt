@@ -43,6 +43,8 @@ internal fun GeminiLive.fetchModels(key: String): List<String> {
 
 /** Is key par kaun se Live models hain (bidiGenerateContent) - sabse naya/tez pehle */
 internal fun GeminiLive.discoverModels(key: String): List<String> {
+    // DK सर्वर का टिकट सिर्फ़ Live WebSocket पर चलता है (models list नहीं) - जाने-माने Live मॉडल
+    if (LiveDkServer.isServer(key)) return GeminiLive.FALLBACK_MODELS
     val found = mutableListOf<String>()
     // wake word par har baar list mat mango (deri). Cache ab phone me bhi save - app restart ke baad bhi
     // connect se pehle 3-4s ki list wali deri nahi (log 07:51:50); 1 ghante se purani ho to nayi peeche se.

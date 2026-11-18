@@ -84,6 +84,22 @@ object BackendWire {
         return Stt(o.optString("text").trim(), o.optInt("seconds"), o.optString("voice_ticket").ifBlank { null }, quota(o.optJSONObject("quota")))
     }
 
+    /**
+     * 18 नवंबर 2026: DK लाइव बिना अपनी key - /live/token का टिकट (Google का ephemeral token, असली key नहीं).
+     * पता सिर्फ़ Google का Live WebSocket माना जाता है - कोई और पता = टिकट नहीं (आवाज़ कहीं और न जाए).
+     */
+    data class LiveTicket(val token: String, val wsUrl: String, val expiresAt: Long, val quota: Quota?)
+
+    const val LIVE_WS_PREFIX = "wss://generativelanguage.googleapis.com/ws/"
+
+    fun liveTicket(body: String): LiveTicket {
+        val o = JSONObject(body)
+        val t = o.optString("token")
+        val u = o.optString("ws_url")
+        if (t.isBlank() || !u.startsWith(LIVE_WS_PREFIX)) throw BackendException(0, "BAD_TICKET", "सर्वर से Live का सही टिकट नहीं मिला")
+        return LiveTicket(t, u, o.optLong("expires_at"), quota(o.optJSONObject("quota")))
+    }
+
     data class Status(val level: String, val expiresAt: Long, val owner: Boolean, val quota: Quota?)
 
     fun status(body: String): Status {
