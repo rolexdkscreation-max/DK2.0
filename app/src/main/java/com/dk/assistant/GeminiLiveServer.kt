@@ -38,6 +38,13 @@ internal fun GeminiLive.handleServer(msg: String, setup: CompletableDeferred<Uni
         if (it.optBoolean("resumable") && it.optString("newHandle").isNotBlank()) handleAt = System.currentTimeMillis()   // नवंबर 2026: handle कब ताज़ा हुआ (LiveSpare.handleFresh)
     }
     o.optJSONObject("goAway")?.let { onGoAway(it.optString("timeLeft")) }
+    // 18 नवंबर 2026 (ऑडिट G6): लंबी बातचीत में context कितना बड़ा हुआ - Inspector / लॉग में दिखे (32k पर छँटाई चल रही है?)
+    // promptTokenCount = इस जवाब के लिए server ने जितना context पढ़ा (न हो तो totalTokenCount)
+    o.optJSONObject("usageMetadata")?.let { u -> u.optLong("promptTokenCount", 0L).takeIf { it > 0 } ?: u.optLong("totalTokenCount", 0L) }?.takeIf { it > 0 }?.let { t ->
+        ctxTokens = t
+        val b = t / 8_000L
+        if (b != ctxLoggedBucket) { ctxLoggedBucket = b; log("Live: context अब ${t / 1000}k token") }
+    }
     o.optJSONObject("voiceActivity")?.optString("type")?.let { t ->
         lastAnyServerAt = System.currentTimeMillis()      // नवंबर 2026: server ने सुना = session ज़िंदा (अटका नहीं)
         if (t == "ACTIVITY_START" || t == "ACTIVITY_END") replyWatch.onServerHeard()

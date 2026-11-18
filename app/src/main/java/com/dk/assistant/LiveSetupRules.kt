@@ -14,6 +14,44 @@ package com.dk.assistant
 object LiveSetupRules {
     const val MODALITY = "AUDIO"
 
+    /**
+     * 18 नवंबर 2026 (ऑडिट G2, मालिक: "1 घंटा+ बिना रुके बातचीत"): पहले `slidingWindow: {}` (Google default संख्या नहीं बताता)
+     * -> context 128k तक बढ़ता, हर नई बात पर पूरा दोबारा गिना जाता = लंबी बात में जवाब धीमे, मुफ़्त quota जल्दी खत्म.
+     * अब: 32k token (~20 मिनट की आवाज़) पर पुरानी बातें हटें, ~16k (~10 मिनट) ताज़ा याद बचे. पुरानी बातें DK की
+     * अपनी याद (memory / LiveCarry) से. setup मना करे = पहले जैसा खाली (GeminiLive.compressLimits).
+     * https://ai.google.dev/gemini-api/docs/live-api/best-practices
+     */
+    const val COMPRESS_TRIGGER_TOKENS = 32_000L
+    const val COMPRESS_TARGET_TOKENS = 16_000L
+
+    fun compression(limits: Boolean): org.json.JSONObject =
+        if (!limits) org.json.JSONObject().put("slidingWindow", org.json.JSONObject())
+        else org.json.JSONObject()
+            .put("triggerTokens", COMPRESS_TRIGGER_TOKENS)
+            .put("slidingWindow", org.json.JSONObject().put("targetTokens", COMPRESS_TARGET_TOKENS))
+
+    /**
+     * 18 नवंबर 2026 (ऑडिट G3): gemini-3.8-live पर function calling का default NON_BLOCKING (async) है - tool चलते-चलते
+     * मॉडल "हो गया" बोल सकता है / नतीजा बीच बात में टोकता है. DK का पूरा tool-flow (LivePromise, ActHold, AGENT_WAIT)
+     * blocking मानकर बना है (2.5 / 3.1 जैसा) -> 3.8 पर हर tool पर साफ़ `behavior: BLOCKING`. बाकी मॉडल पर कुछ नहीं भेजते.
+     * https://ai.google.dev/gemini-api/docs/models/gemini-3.8-live
+     */
+    const val TOOL_BEHAVIOR = "BLOCKING"
+    fun blockingTools(model: String): Boolean = model.lowercase().startsWith("gemini-3.8-live")
+
+    /** tools array की हर functionDeclaration पर behavior लगाओ (जो पहले से लिखा हो उसे नहीं छेड़ते). लौटाता है कितनों पर लगा */
+    fun stampBehavior(tools: org.json.JSONArray, behavior: String = TOOL_BEHAVIOR): Int {
+        var n = 0
+        for (i in 0 until tools.length()) {
+            val decl = tools.optJSONObject(i)?.optJSONArray("functionDeclarations") ?: continue
+            for (j in 0 until decl.length()) {
+                val d = decl.optJSONObject(j) ?: continue
+                if (!d.has("behavior")) { d.put("behavior", behavior); n++ }
+            }
+        }
+        return n
+    }
+
     /** Live (native audio) मॉडल? - नाम में "live" / "native-audio" */
     fun isLiveAudioModel(model: String): Boolean {
         val m = model.lowercase()
