@@ -387,8 +387,8 @@ class GeminiLive(internal val svc: DKAccessibilityService, internal val agent: A
     @Volatile internal var unheardSwapAt = 0L
     /** 18 नवंबर 2026: आख़िरी मौके वाला text आख़िरी बार कब ([GeminiLive.lastChance]) */
     @Volatile internal var lastChanceAt = 0L
-    /** 18 नवंबर 2026: अभी लागू आवाज़ का अंदाज़ ([applyTalkStyle]) */
-    @Volatile internal var talkStyleNow: TalkStyle? = null
+    /** 18 नवंबर 2026: अभी लागू आवाज़ का अंदाज़ ([applyMicStyle]) */
+    @Volatile internal var micStyleNow: MicStyle? = null
     @Volatile internal var zombieN = 0
     @Volatile internal var replayedN = 0
     /** गड़बड़ी (टूटा / अटका) कब और क्या - अगला जवाब आने पर "संभल गया" */

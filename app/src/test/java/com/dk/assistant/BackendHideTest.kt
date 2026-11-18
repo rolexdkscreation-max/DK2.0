@@ -29,7 +29,7 @@ class BackendHideTest {
             assertTrue(k, back.contains(k))
         // इस्तेमाल वाले विकल्प सामने ही रहें
         val front = v.substringBefore("backend(box) { b ->")
-        for (k in listOf("Prefs.duckMedia(this)", "Prefs.ownerFarRaw(this)", "Prefs.bargeHold(this)", "TalkStyle.PREF")) assertTrue(k, front.contains(k))
+        for (k in listOf("Prefs.duckMedia(this)", "Prefs.ownerFarRaw(this)", "Prefs.bargeHold(this)", "MicStyle.PREF")) assertTrue(k, front.contains(k))
     }
 
     @Test fun noRawErrorTextOnScreen() {

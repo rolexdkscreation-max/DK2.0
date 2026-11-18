@@ -137,10 +137,10 @@ internal fun SettingsActivity.secVoice() {
         // v4.7: दूर की आवाज़ अनसुनी (बिना आवाज़ सिखाए) + जवाब के बीच बोलें तो DK रुके
         // 18 नवंबर 2026 (मालिक): "आप कैसे बोलते हैं" - user अपने हिसाब से (आम / धीरे / ज़ोर से / दूर से)
         hint(box, "आप कैसे बोलते हैं? DK उसी हिसाब से सुनेगा, बात खत्म मानेगा और बीच में बोलने पर रुकेगा (बदलते ही लागू):")
-        radios(box, TalkStyle.entries.map { it.key to it.label }, Prefs.talkStyle(this).key, TALK_STYLE_RADIO)
+        radios(box, MicStyle.entries.map { it.key to it.label }, Prefs.micStyle(this).key, MIC_STYLE_RADIO)
             .setOnCheckedChangeListener { _, id ->
-                val st = TalkStyle.entries.getOrNull(id - TALK_STYLE_RADIO) ?: return@setOnCheckedChangeListener
-                Prefs.edit(this) { putString(TalkStyle.PREF, st.key) }
+                val st = MicStyle.entries.getOrNull(id - MIC_STYLE_RADIO) ?: return@setOnCheckedChangeListener
+                Prefs.edit(this) { putString(MicStyle.PREF, st.key) }
             }
         hint(box, "\"दूर से\" चुनने पर \"दूर की आवाज़ अनसुनी करो\" अपने-आप बंद रहता है। Bluetooth headset पर हमेशा आम।")
         switch(box, "दूर की आवाज़ अनसुनी करो (फ़ोन के पास धीरे या ज़ोर से - दोनों सुनेगा)", Prefs.ownerFarRaw(this))
@@ -239,4 +239,4 @@ internal fun SettingsActivity.romanticSwitch(box: LinearLayout) {
 }
 
 /** 18 नवंबर 2026: "आप कैसे बोलते हैं" वाले radio के id (2300-2303) */
-internal const val TALK_STYLE_RADIO = 2300
+internal const val MIC_STYLE_RADIO = 2300
