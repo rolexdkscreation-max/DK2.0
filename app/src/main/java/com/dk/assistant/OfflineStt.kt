@@ -85,12 +85,35 @@ object OfflineStt {
         return null
     }
 
+    /**
+     * 18 नवंबर 2026 (मालिक: "सुनना अलग" वाला तरीका, Whisper न हो तो Android की पहचान): DK के माइक की पकड़ी बात, सिर्फ़ हिंदी.
+     * नेट हो = Google की (ज़्यादा सटीक) पहचान, न हो / गलती = फ़ोन की on-device पहचान. null = पहचान नहीं हुई ([lastProblem]).
+     */
+    suspend fun transcribeHindi(c: Context, pcm: ByteArray, online: Boolean, timeoutMs: Long = TIMEOUT_MS): String? {
+        if (!available(c) || pcm.isEmpty()) { lastProblem = "Android 13 से पुराने फ़ोन पर यह पहचान नहीं चलती"; return null }
+        if (online) {
+            val r = withTimeoutOrNull(timeoutMs) { once(c, pcm, "hi-IN", cloud = true) }
+            if (r?.text != null) { lastProblem = ""; return r.text }
+            DKLog.d("Android पहचान (नेट): " + if (r == null) "देर" else "गलती ${r.err}" + " - फ़ोन वाली पहचान आज़माई")
+            if (r != null && r.err == SpeechRecognizer.ERROR_NO_MATCH) { lastProblem = "बात समझ नहीं आई"; return null }
+        }
+        val r = withTimeoutOrNull(timeoutMs) { once(c, pcm, "hi-IN") }
+        if (r?.text != null) { lastProblem = ""; return r.text }
+        lastProblem = when {
+            r == null -> "पहचान में देर"
+            r.err == SpeechRecognizer.ERROR_LANGUAGE_NOT_SUPPORTED || r.err == SpeechRecognizer.ERROR_LANGUAGE_UNAVAILABLE -> "हिंदी का बिना-नेट मॉडल फ़ोन में नहीं"
+            r.err == SpeechRecognizer.ERROR_NO_MATCH -> "बात समझ नहीं आई"
+            else -> "पहचान में गलती (${r.err})"
+        }
+        return null
+    }
+
     private class Res(val text: String?, val err: Int)
 
-    private suspend fun once(c: Context, pcm: ByteArray, lang: String): Res = withContext(Dispatchers.Main) {
+    private suspend fun once(c: Context, pcm: ByteArray, lang: String, cloud: Boolean = false): Res = withContext(Dispatchers.Main) {
         if (Build.VERSION.SDK_INT < 33) return@withContext Res(null, -1)
         val pipe = ParcelFileDescriptor.createPipe()
-        val rec = if (SpeechRecognizer.isOnDeviceRecognitionAvailable(c)) SpeechRecognizer.createOnDeviceSpeechRecognizer(c)
+        val rec = if (!cloud && SpeechRecognizer.isOnDeviceRecognitionAvailable(c)) SpeechRecognizer.createOnDeviceSpeechRecognizer(c)
             else SpeechRecognizer.createSpeechRecognizer(c)
         try {
             suspendCancellableCoroutine { cont ->
@@ -115,7 +138,7 @@ object OfflineStt {
                 val i = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH)
                     .putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
                     .putExtra(RecognizerIntent.EXTRA_LANGUAGE, lang)
-                    .putExtra(RecognizerIntent.EXTRA_PREFER_OFFLINE, true)
+                    .putExtra(RecognizerIntent.EXTRA_PREFER_OFFLINE, !cloud)
                     .putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
                     .putExtra(RecognizerIntent.EXTRA_AUDIO_SOURCE, pipe[0])
                     .putExtra(RecognizerIntent.EXTRA_AUDIO_SOURCE_CHANNEL_COUNT, 1)

@@ -36,6 +36,23 @@ android {
         buildConfigField("String", "FIREBASE_AUTH_DOMAIN", "\"${pub("VITE_FIREBASE_AUTH_DOMAIN")}\"")
         buildConfigField("String", "BACKEND_URL", "\"${pub("VITE_BACKEND_URL")}\"")
         buildConfigField("String", "WHATSAPP_NUMBER", "\"${pub("VITE_WHATSAPP_NUMBER")}\"")
+        // 18 नवंबर 2026 (मालिक: "सुनना अलग, सोचना-बोलना अलग"): फ़ोन पर ऑफलाइन Whisper (whisper.cpp) - सिर्फ़ arm64
+        // (ONNX जैसा). 32-bit / x86 फ़ोन पर .so नहीं = Whisper अपने-आप बंद, Android की बोली-पहचान चलती है.
+        externalNativeBuild {
+            cmake {
+                abiFilters += "arm64-v8a"
+                arguments += listOf("-DANDROID_STL=c++_static")
+            }
+        }
+    }
+
+    // GitHub runner (ubuntu-24.04) पर पहले से यही NDK / CMake - अपने कंप्यूटर पर Android Studio अपने-आप उतार लेता है
+    ndkVersion = "27.3.13750724"
+    externalNativeBuild {
+        cmake {
+            path = file("src/main/cpp/CMakeLists.txt")
+            version = "3.31.5"
+        }
     }
 
     // Hamesha ek hi key se sign -> purane app ke upar naya update install ho sake
