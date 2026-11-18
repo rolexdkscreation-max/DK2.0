@@ -22,8 +22,10 @@ class OneKeyLanesTest {
         assertFalse(OneKeyLanes.TALK_MODEL in OneKeyLanes.order(H, GeminiModels.LIGHT_CHAIN, enabled = true))
         assertFalse(OneKeyLanes.TALK_MODEL in OneKeyLanes.order(H, GeminiClient.BACKUP_MODELS, enabled = true))
         assertFalse(OneKeyLanes.PHONE_MODEL in OneKeyLanes.order(H, GeminiClient.BACKUP_MODELS, enabled = true))
-        // गहरी सोच का क्रम बना रहे (Argon / Pro पहले)
-        assertEquals("gemini-4-argon", OneKeyLanes.order(H, GeminiClient.THINK_MODELS + GeminiClient.BACKUP_MODELS, enabled = true).first())
+        // गहरी सोच का क्रम बना रहे (18 नवंबर 2026 मालिक: Hydrogen सबसे पहले, फिर Argon / Pro)
+        val th = OneKeyLanes.order(H, GeminiClient.THINK_MODELS + GeminiClient.BACKUP_MODELS, enabled = true)
+        assertEquals("gemini-4-hydrogen", th.first())
+        assertEquals("gemini-4-argon", th[1])
     }
 
     @Test fun phoneWork_ownModels_notTalk() {

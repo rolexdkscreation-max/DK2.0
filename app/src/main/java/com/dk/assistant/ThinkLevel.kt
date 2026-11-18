@@ -64,6 +64,16 @@ object ThinkLevel {
         return JSONObject().put("thinkingLevel", l)
     }
 
+    /**
+     * 18 नवंबर 2026 (मालिक): खोज वाली गहरी सोच / डीप रिसर्च में Gemini 4 Hydrogen का स्तर (Settings में AUTO हो तभी):
+     * गहरी सोच = high, डीप रिसर्च = medium (तेज़ भी, गहरा भी). बाकी मॉडल / आम खोज / मालिक का चुना स्तर = null (पहले जैसा).
+     */
+    fun searchLevel(model: String, think: Boolean, deep: Boolean, chosen: String = AUTO): String? {
+        if (norm(chosen) != AUTO || !(think || deep)) return null
+        if (!model.lowercase().removePrefix("models/").startsWith("gemini-4-hydrogen")) return null
+        return if (think) HIGH else MEDIUM
+    }
+
     /** सोचने के tokens भी maxOutputTokens में गिने जाते हैं - ऊँचे स्तर पर जवाब कट न जाए, इसलिए इतने extra */
     fun extraTokens(level: String) = when (norm(level)) { LOW -> 1024; MEDIUM -> 4096; HIGH -> 8192; else -> 0 }
 

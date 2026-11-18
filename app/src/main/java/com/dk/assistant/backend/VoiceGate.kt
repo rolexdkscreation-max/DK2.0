@@ -47,7 +47,7 @@ object VoiceGate {
      */
     fun ensure(c: Context, now: Long = System.currentTimeMillis()): BackendException? {
         if (!metered(c)) return null
-        if (doneToday(c, now)) return BackendException(402, BackendWire.LICENSE_REQUIRED, BackendWire.VOICE_DONE)
+        if (doneToday(c, now)) return toChat()
         if (until - now > RENEW_BEFORE_MS) return null
         return try {
             val g = BackendApi.voiceGrant(c.applicationContext)
@@ -58,7 +58,8 @@ object VoiceGate {
             until = 0L
             if (e.stopsTalk) Prefs.edit(c) { putString(DONE_DAY, AiRouter.istDay(now)) }
             if (e.reason == BackendWire.NOT_CONFIGURED) null
-            else if (e.code == 0 || (e.code >= 500 && !e.final)) offline() else e
+            else if (e.code == 0 || (e.code >= 500 && !e.final)) offline()
+            else if (e.reason == BackendWire.LICENSE_REQUIRED) toChat() else e
         } catch (e: Exception) {
             until = 0L
             offline()
@@ -67,6 +68,16 @@ object VoiceGate {
 
     private fun offline() = BackendException(0, CODE_OFFLINE, OFFLINE_HI)
 
-    /** रुकावट: DK बोले/लिखे और Live बंद ([AiRouter.onStop]) */
-    fun deny(e: BackendException) = AiRouter.stopped(e, speak = true)
+    /** आवाज़ के 10 मिनट पूरे = चैट में भेजने वाली रुकावट ([BackendWire.VOICE_DONE_CHAT]) */
+    fun toChat() = BackendException(402, BackendWire.LICENSE_REQUIRED, BackendWire.VOICE_DONE_CHAT)
+
+    /** यह रुकावट "अब चैट में बात करें" वाली है? */
+    fun isChatHandoff(e: Throwable?): Boolean = (e as? BackendException)?.say == BackendWire.VOICE_DONE_CHAT
+
+    /**
+     * रुकावट: DK बोले/लिखे और Live बंद ([AiRouter.onStop]).
+     * 10 मिनट पूरे = "अब चैट में बात करें" + चैट अपने-आप खुले ([AiRouter.toChat]) - चैट Live से जुड़ी नहीं.
+     */
+    fun deny(e: BackendException) = if (isChatHandoff(e)) AiRouter.toChat(BackendWire.VOICE_DONE_CHAT, speak = true)
+        else AiRouter.stopped(e, speak = true)
 }

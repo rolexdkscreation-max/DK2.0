@@ -140,8 +140,14 @@ class GeminiClient(private val key: String, private val model: String) : AiClien
 
     companion object {
         val BACKUP_MODELS = listOf("gemini-3.5-flash-lite", "gemini-3.1-flash-lite", "gemini-3.8-flash")
-        val DEEP_MODELS = listOf("gemini-3.8-flash")
-        val THINK_MODELS = listOf("gemini-4-argon", "gemini-3.1-pro-preview", "gemini-3.8-flash")
+        /**
+         * 18 नवंबर 2026 (मालिक): डीप रिसर्च / गहरी सोच में सबसे पहले Gemini 4 Hydrogen - नया (12 नवंबर 2026),
+         * free tier में भी चलता है और Argon से तेज़/बेहतर. वह न चले (limit/न मिले) तो पुराना क्रम वैसा ही.
+         * Argon / 3.1 Pro free tier में नहीं - लाइसेंस वाले की paid key हो तो वे भी आज़माए जाते हैं.
+         */
+        const val HYDROGEN = "gemini-4-hydrogen"
+        val DEEP_MODELS = listOf(HYDROGEN, "gemini-3.8-flash")
+        val THINK_MODELS = listOf(HYDROGEN, "gemini-4-argon", "gemini-3.1-pro-preview", "gemini-3.8-flash")
     }
 
     override fun complete(system: String, history: List<Turn>, prompt: String, imageB64: String?): String {
@@ -324,6 +330,11 @@ class GeminiClient(private val key: String, private val model: String) : AiClien
                 }
                 contents.put(JSONObject().put("role", "user").put("parts", JSONArray().put(JSONObject().put("text", question))))
                 val gen = JSONObject().put("maxOutputTokens", if (think) 6000 else if (deep) 3000 else 1024)
+                // Hydrogen अपने-आप गहरा सोचता है (सोच के tokens भी गिने जाते हैं) - जवाब कट न जाए: तय स्तर + extra tokens
+                ThinkLevel.searchLevel(m, think, deep, this.think)?.let { lv ->
+                    gen.put("thinkingConfig", JSONObject().put("thinkingLevel", lv))
+                        .put("maxOutputTokens", (if (think) 6000 else 3000) + ThinkLevel.extraTokens(lv))
+                }
                 val body = JSONObject()
                     .put("system_instruction", JSONObject().put("parts", JSONArray().put(JSONObject().put("text", Lang.sys(system)))))
                     .put("contents", contents)

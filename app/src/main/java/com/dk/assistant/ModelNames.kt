@@ -47,7 +47,7 @@ object ModelNames {
             m == "openrouter/free" -> "जो फ्री मॉडल खाली हो, वही अपने-आप"
             m.contains("flash-lite") || m.contains("-lite") || m.contains("nano") || m.contains("instant") -> "सबसे तेज़ जवाब (Fastest answers)"
             m.contains("argon") || m.contains("ultra") || m.contains("opus") || m.contains("deep-think") -> "मुश्किल काम (Complex tasks)"
-            m.contains("pro") || m.contains("thinking") || m.contains("reason") || m.contains("-r1") ||
+            m.contains("hydrogen") || m.contains("pro") || m.contains("thinking") || m.contains("reason") || m.contains("-r1") ||
                 Regex("(^|/)o[1-9]").containsMatchIn(m) || m.contains("magistral") || m.contains("qwq") -> "गहरी सोच (Advanced reasoning)"
             m.contains("coder") || m.contains("codestral") || m.contains("devstral") || m.contains("code") -> "कोडिंग के लिए (Coding)"
             m.contains("flash") || m.contains("sonnet") || m.contains("gpt-5") || m.contains("gpt-4") -> "हर काम में मदद (All-around help)"
