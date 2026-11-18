@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { afterEach, beforeEach, describe, it } from "node:test";
 import { googleKeys, resetKeyCache, verifyIdToken } from "../src/auth.js";
-import { AI_CHAIN, FREE_CHAT_MESSAGES, FREE_VOICE_SECONDS, SEARCH_CHAIN, SECRET_NAMES } from "../src/config.js";
+import { AI_CHAIN, FREE_CHAT_MESSAGES, FREE_VOICE_SECONDS, RESEARCH_CHAIN, SEARCH_CHAIN, SECRET_NAMES } from "../src/config.js";
 import { handle } from "../src/index.js";
 import { MSG, clearLevelCache } from "../src/license.js";
 import { istDay, safeEqual, sha256Hex } from "../src/util.js";
@@ -255,6 +255,8 @@ describe("/ai/chat", () => {
       assert.equal(b.error, MSG.NEED_PREMIUM);
     }
     assert.equal((await body(await call(e, req("/search", { method: "POST", tok: t, body: { query: "x" } })))).code, "NEED_PREMIUM");
+    assert.equal((await call(e, req("/search", { method: "POST", tok: t, body: { query: "x", deep: true } }))).status, 403);
+    assert.equal((await call(e, req("/search/read", { method: "POST", tok: t, body: { urls: ["https://a.example"] } }))).status, 403);
     const { license } = await body(await call(e, req("/admin/licenses", { method: "POST", tok: await token(OWNER), body: { level: "basic", days: 5 } })));
     await call(e, req("/license/activate", { method: "POST", tok: t, body: { key: license.key } }));
     assert.equal((await call(e, req("/ai/chat", { method: "POST", tok: t, body: { task: "research", messages: [{ role: "user", content: "hi" }] } }))).status, 200);
@@ -425,6 +427,40 @@ describe("/search", () => {
     const r = await body(await call(env(), req("/search", { method: "POST", tok: await token(OWNER), body: { query: "dk" } })));
     assert.equal(r.provider, "google");
     assert.equal(r.results[0].url, "https://g.example");
+  });
+
+  it("डीप रिसर्च (deep): Google कभी नहीं - सिर्फ़ Tavily/Exa/Linkup/Firecrawl", async () => {
+    assert.deepEqual(RESEARCH_CHAIN, ["tavily", "exa", "linkup", "firecrawl"]);
+    fx = mockFetch((url) => {
+      assert.ok(!url.includes("generateContent"), "डीप रिसर्च में Gemini Google Search नहीं");
+      throw new Error("x");
+    });
+    const r = await call(env(), req("/search", { method: "POST", tok: await token(OWNER), body: { query: "dk", deep: true } }));
+    assert.equal(r.status, 503);
+    assert.equal((await body(r)).code, "NOT_CONFIGURED");
+  });
+
+  it("only = सिर्फ़ वही कंपनी (Exa), Tavily को छुए बिना", async () => {
+    fx = mockFetch((url) => {
+      assert.ok(url.includes("exa.ai"));
+      return Response.json({ results: [{ title: "E", url: "https://e.example", text: "एक्सा" }] });
+    });
+    const r = await body(await call(env({ TAVILY_API_KEY: "t", EXA_API_KEY: "x" }), req("/search", { method: "POST", tok: await token(OWNER), body: { query: "dk", deep: true, only: "exa" } })));
+    assert.equal(r.provider, "exa");
+  });
+
+  it("/search/read: Tavily extract → बचे पेज Exa contents से", async () => {
+    const long = "पाठ ".repeat(60);
+    fx = mockFetch((url, init) => {
+      if (url.includes("tavily.com/extract")) return Response.json({ results: [{ url: "https://a.example", raw_content: long }] });
+      if (url.includes("exa.ai/contents")) {
+        assert.deepEqual(JSON.parse(init.body).urls, ["https://b.example"]);
+        return Response.json({ results: [{ url: "https://b.example", text: long }] });
+      }
+      throw new Error("x");
+    });
+    const r = await body(await call(env({ TAVILY_API_KEY: "t", EXA_API_KEY: "x" }), req("/search/read", { method: "POST", tok: await token(OWNER), body: { urls: ["https://a.example", "https://b.example", "javascript:1"] } })));
+    assert.deepEqual(r.pages.map((p) => p.url), ["https://a.example", "https://b.example"]);
   });
 });
 

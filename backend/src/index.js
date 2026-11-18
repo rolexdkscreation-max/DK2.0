@@ -9,7 +9,7 @@ import {
 } from "./license.js";
 import { onLiveToken } from "./live.js";
 import { onVoiceGrant } from "./voice.js";
-import { PROVIDERS as SEARCH_PROVIDERS, search } from "./search.js";
+import { PROVIDERS as SEARCH_PROVIDERS, read, search } from "./search.js";
 import { readAudio, transcribe } from "./stt.js";
 import { CODES, HttpError, errorResponse, json, readJson, safeEqual } from "./util.js";
 
@@ -232,9 +232,17 @@ export async function handle(req, env, ctx, opts = {}) {
   if (path === "/search" && M === "POST") {
     const now = opts.now?.() ?? Date.now();
     const lv = ident.owner ? { level: "owner" } : await levelFor(new Db(env.DB), ident, now);
-    requireLevel(lv.level, taskLevel("search"));
     const b = await readJson(req, 8_000);
-    return json({ ok: true, ...(await search(env, b.query, b.n)) });
+    // 18 नवंबर 2026: deep = डीप रिसर्च (उसका अपना स्तर, Google वाली खोज नहीं); only = सिर्फ़ एक कंपनी
+    requireLevel(lv.level, taskLevel(b.deep === true ? "research" : "search"));
+    return json({ ok: true, ...(await search(env, b.query, b.n, b.deep === true, typeof b.only === "string" ? b.only : "")) });
+  }
+  if (path === "/search/read" && M === "POST") {
+    const now = opts.now?.() ?? Date.now();
+    const lv = ident.owner ? { level: "owner" } : await levelFor(new Db(env.DB), ident, now);
+    requireLevel(lv.level, taskLevel("research"));
+    const b = await readJson(req, 8_000);
+    return json({ ok: true, ...(await read(env, b.urls)) });
   }
   if (path === "/models/health" && M === "GET") {
     let health = [];

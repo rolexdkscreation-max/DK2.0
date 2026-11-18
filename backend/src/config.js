@@ -81,6 +81,15 @@ export const AI_CHAIN = [
 
 /** /search का क्रम: Tavily → Exa → Linkup → Firecrawl → Google (Gemini की Google Search) - जिसकी key हो (ऐप की सारी खोज कंपनियाँ) */
 export const SEARCH_CHAIN = ["tavily", "exa", "linkup", "firecrawl", "google"];
+/**
+ * 18 नवंबर 2026 (मालिक: "डीप रिसर्च में Google नहीं, सीधे Exa / Tavily से"): गहरी खोज (deep: true) का क्रम.
+ * Gemini की Google Search मुफ़्त key पर चलती ही नहीं (429) - इसलिए इसमें नहीं.
+ */
+export const RESEARCH_CHAIN = ["tavily", "exa", "linkup", "firecrawl"];
+/** /search/read: एक बार में ज़्यादा से ज़्यादा इतने पेज, हर पेज का इतना पाठ */
+export const READ_MAX_URLS = 8;
+export const READ_MAX_CHARS = 12_000;
+export const READ_TIMEOUT_MS = 20_000;
 export const SEARCH_GOOGLE_MODEL = "gemini-3.5-flash-lite";
 export const SEARCH_TIMEOUT_MS = 8_000;
 

@@ -64,6 +64,10 @@ class DeepResearchRun(private val c: Context, private val sites: (List<String>) 
         return null
     }
 
+    /** ऐप में अपनी खोज key नहीं, DK सर्वर से खोज/पढ़ाई */
+    @Volatile private var server = false
+    private val SERVER = "@dk-server"
+
     /** ताज़ा सवाल = इस तारीख़ ("yyyy-MM-dd") से नए पेज; खाली = कोई सीमा नहीं */
     @Volatile private var since = ""
 
@@ -71,7 +75,10 @@ class DeepResearchRun(private val c: Context, private val sites: (List<String>) 
         val topic = DeepResearch.topic(question)
         val nowYear = Calendar.getInstance().get(Calendar.YEAR)
         val today = SimpleDateFormat("d MMMM yyyy", Locale("hi", "IN")).format(Date())
-        val searchers = listOf(Tool.EXA to exaKey, Tool.TAVILY to tavilyKey, Tool.LINKUP to linkupKey).filter { it.second.isNotBlank() }
+        var searchers = listOf(Tool.EXA to exaKey, Tool.TAVILY to tavilyKey, Tool.LINKUP to linkupKey).filter { it.second.isNotBlank() }
+        // 18 नवंबर 2026 (मालिक): ऐप में अपनी Exa / Tavily key नहीं = पहले DK सर्वर (Worker) की keys; वहाँ भी नहीं = सामान्य जवाब
+        server = searchers.isEmpty() && com.dk.assistant.AiRouter.backendReady() && com.dk.assistant.AiRouter.serverAiOk()
+        if (server) { searchers = DeepResearch.SERVER_TOOLS.map { it to SERVER }; DKLog.d("डीप रिसर्च: अपनी खोज key नहीं - DK सर्वर से") }
 
         if (searchers.isEmpty()) return@withContext shallow(question, "खोज की कोई key नहीं (Exa / Tavily / Linkup)")
 
@@ -129,6 +136,13 @@ class DeepResearchRun(private val c: Context, private val sites: (List<String>) 
     /** हर उप-सवाल x हर ज़िंदा टूल - सब एक साथ */
     private suspend fun search(subs: List<Pair<DeepResearch.Kind, String>>): List<DeepResearch.Hit> = coroutineScope {
         val jobs = ArrayList<kotlinx.coroutines.Deferred<List<DeepResearch.Hit>>>()
+        if (server) {
+            for ((kind, q) in subs) for (t in DeepResearch.SERVER_TOOLS) if (alive(t, SERVER)) jobs.add(async {
+                try { DeepResearch.parseServer(com.dk.assistant.backend.BackendApi.search(c, DeepResearch.phrase(t, kind, q), deep = true, only = DeepResearch.serverId(t)), t) }
+                catch (e: Exception) { kill(t, e); emptyList() }
+            })
+            return@coroutineScope jobs.awaitAll().flatten()
+        }
         for ((kind, q) in subs) {
             if (alive(Tool.EXA, exaKey)) jobs.add(async {
                 try { DeepResearchNet.exa(exaKey, DeepResearch.phrase(Tool.EXA, kind, q), since = since) } catch (e: Exception) { kill(Tool.EXA, e); emptyList() }
@@ -146,6 +160,14 @@ class DeepResearchRun(private val c: Context, private val sites: (List<String>) 
     /** पढ़ने का क्रम: Firecrawl -> Tavily extract -> Exa contents -> (कुछ न चले) खोज का छोटा अंश */
     private suspend fun read(links: List<DeepResearch.Link>): List<DeepResearch.Page> = coroutineScope {
         val got = ConcurrentHashMap<String, DeepResearch.Page>()
+        // 18 नवंबर 2026: सर्वर वाली खोज = पेज भी सर्वर से पढ़ो (Tavily extract / Exa contents / Firecrawl)
+        if (server) try {
+            links.chunked(8).forEach { part ->
+                val m = com.dk.assistant.backend.BackendApi.read(c, part.map { it.url })
+                for (l in part) m[l.url]?.let { got[DeepResearch.normalize(l.url)] = DeepResearch.Page(l.title, l.url, it, l.date, true) }
+                step("पढ़ लिया: ${got.size}/${links.size} वेबसाइटें")
+            }
+        } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (e: Exception) { DKLog.d("डीप रिसर्च: सर्वर से पेज नहीं पढ़े (${e.message?.take(60)})") }
         if (alive(Tool.FIRECRAWL, fireKey)) {
             val gate = Semaphore(8)   // तेज़: 8 पेज एक साथ (हर पेज की सीमा 22 सेकंड)
             links.map { l -> async {
@@ -180,18 +202,20 @@ class DeepResearchRun(private val c: Context, private val sites: (List<String>) 
         links.mapNotNull { got[DeepResearch.normalize(it.url)] }
     }
 
-    /** चारों टूल फेल / key नहीं = Gemini की अपनी Google खोज */
+    /**
+     * चारों टूल फेल / key नहीं = सामान्य जवाब (DK की अपनी जानकारी से).
+     * 18 नवंबर 2026 (मालिक: "Google डीप रिसर्च वाले नहीं देगा, हटा दो"): पहले यहाँ Gemini की Google Search थी - मुफ़्त key पर
+     * वह 429 देती है, इसलिए अब बिना खोज वाला सादा Gemini (HYDROGEN पहले) / बाकी AI, साफ़ लिखकर कि गहरी खोज नहीं हो पाई.
+     */
     private suspend fun shallow(question: String, why: String): Result {
-        step("गहरी खोज नहीं हो पाई — Gemini की Google खोज से जवाब ला रहा हूँ…")
+        step("गहरी खोज नहीं हो पाई — अपनी जानकारी से जवाब लिख रहा हूँ…")
         DKLog.d("डीप रिसर्च: shallow ($why)")
-        for (k in geminiKeys) {
-            try {
-                val r = GeminiClient(k, GeminiClient.DEEP_MODELS.first()).search(
-                    "तुम DK AI हो। हिंदी में जवाब दो: 1. सीधा जवाब 2. मुख्य बातें 3. अलग राय 4. स्रोत [n] 5. भरोसा। हर खबर के साथ तारीख़।",
-                    emptyList(), DeepResearch.topic(question), deep = true)
-                if (r.text.isNotBlank()) return Result(r.text.trim() + "\n\n" + DeepResearch.SHALLOW_NOTE + " ($why)", r.sources, false)
-            } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (e: Exception) { com.dk.assistant.Quiet.note(e) }
-        }
-        return Result("गहरी खोज नहीं हो पाई ($why) और Gemini की Google खोज भी नहीं चली। Settings → AI दिमाग → \"गहरी खोज\" में Exa / Tavily / Linkup / Firecrawl की key डालें।\nभरोसा: अधूरा", emptyList(), false)
+        val ask = "तुम DK AI हो। हिंदी में अपनी जानकारी से पूरा जवाब दो: 1. सीधा जवाब 2. मुख्य बातें 3. अलग राय 4. भरोसा। " +
+            "आज का भाव / स्कोर / ताज़ा आँकड़े मत गढ़ो - वहाँ साफ़ कहो कि अभी जाँच नहीं हो पाई।\n\nसवाल: " + DeepResearch.topic(question)
+        var text = gemini(ask, 2048, json = false, limitMs = 60_000)
+        if (text.isNullOrBlank()) text = try { BrainManager(c).quickText("तुम DK AI हो। हिंदी में जवाब दो।", ask, com.dk.assistant.OneKeyLanes.Lane.HEAVY) }
+            catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (e: Exception) { com.dk.assistant.Quiet.note(e); null }
+        if (!text.isNullOrBlank()) return Result(text.trim() + "\n\n" + DeepResearch.SHALLOW_NOTE + " ($why)", emptyList(), false)
+        return Result("गहरी खोज नहीं हो पाई ($why) और जवाब लिखने वाला AI भी अभी नहीं चला। Settings → AI दिमाग → \"गहरी खोज\" में Exa / Tavily / Linkup / Firecrawl की key डालें।\nभरोसा: अधूरा", emptyList(), false)
     }
 }

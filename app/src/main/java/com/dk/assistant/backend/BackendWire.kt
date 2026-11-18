@@ -148,6 +148,18 @@ object BackendWire {
         return provider to JSONObject().put("results", results).put("items", items).toString()
     }
 
+    /** /search/read का जवाब: url -> पूरा पाठ (खाली पाठ छोड़ो) */
+    fun readPages(body: String): Map<String, String> {
+        val arr = JSONObject(body).optJSONArray("pages") ?: JSONArray()
+        val out = LinkedHashMap<String, String>()
+        for (i in 0 until arr.length()) {
+            val p = arr.optJSONObject(i) ?: continue
+            val u = p.optString("url"); val t = p.optString("text").trim()
+            if (u.startsWith("http") && t.isNotBlank()) out[u] = t
+        }
+        return out
+    }
+
     /** Settings में की डालते समय रूप की जाँच (असली जाँच backend पर) */
     fun keyShape(k: String): Boolean = Regex("^DK-[A-Z2-9]{4}-[A-Z2-9]{4}-[A-Z2-9]{4}$").matches(k.uppercase().replace(Regex("\\s+"), ""))
 

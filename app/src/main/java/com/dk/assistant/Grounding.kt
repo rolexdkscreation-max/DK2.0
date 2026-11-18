@@ -92,8 +92,33 @@ object SearchPolicy {
         "परिभाषा", "समझाओ", "explain", "कैसे लिखें", "कैसे लिखते", "कहानी", "story", "कविता", "poem", "translate", "अनुवाद"
     )
 
+    /**
+     * 18 नवंबर 2026 (मालिक: "हेलो, क्या कर रहे हो, कैसे हो, और सब बताओ - ये सब DK खुद समझे"): सिर्फ़ नमस्ते / हाल-चाल वाली बात?
+     * = सामान्य चैट, कभी खोज / डीप रिसर्च नहीं. हाल-चाल वाले शब्द हटाने के बाद 2 से ज़्यादा शब्द बचें = असली सवाल भी है (उसका फ़ैसला बाकी नियम करें).
+     */
+    private val SMALL_TALK = listOf(
+        "क्या कर रहे हो", "क्या कर रहे हैं", "क्या कर रही हो", "क्या कर रहा है", "क्या चल रहा है", "क्या चल रहा", "क्या हाल है", "क्या हाल",
+        "हाल चाल", "हालचाल", "कैसे हो", "कैसे हैं", "कैसी हो", "और बताओ", "सब बताओ", "कुछ बताओ", "सब ठीक", "ठीक हो", "ठीक हूँ",
+        "हेलो", "हैलो", "हेल्लो", "हाय", "नमस्ते", "नमस्कार", "राम राम", "प्रणाम", "सुप्रभात", "शुभ रात्रि", "सुनो", "डीके", "भाई", "यार",
+        "how are you", "what are you doing", "what's up", "whats up", "good morning", "good night", "hello", "hey", "hi", "dk", "kaise ho",
+        "kya kar rahe ho", "kya haal", "aur batao", "namaste"
+    ).sortedByDescending { it.length }
+    private val FILLER = setOf("और", "अभी", "आज", "जी", "तो", "तुम", "आप", "भी", "अच्छे", "से", "बढ़िया", "मैं", "हम", "बस", "हाँ", "ok", "and", "you")
+
+    fun smallTalk(text: String): Boolean {
+        var t = " " + text.lowercase().replace(Regex("[\\p{Punct}।॥?!,.]+"), " ") + " "
+        var hit = false
+        for (w in SMALL_TALK) {
+            val r = Regex("(?<=\\s)" + Regex.escape(w) + "(?=\\s)")
+            if (r.containsMatchIn(t)) { hit = true; t = t.replace(r, " ") }
+        }
+        if (!hit || fresh(t)) return false   // "आज का मौसम कैसा है" = असली ताज़ा सवाल
+        return t.split(Regex("\\s+")).filter { it.isNotBlank() && it !in FILLER }.size <= 2
+    }
+
     fun needsSearch(text: String): Boolean {
         val t = text.lowercase()
+        if (smallTalk(t)) return false
         if (TIMELESS.any { t.contains(it) } && !t.contains("news") && !t.contains("खबर") && !t.contains("न्यूज")) return false
         if (Regex("^[\\d\\s+\\-*/x×÷().=?]+(कितना|कितने|kitna)?").matches(t.replace("होता है", "").replace("होते हैं", "").trim())) return false
         return FRESH.any { t.contains(it) }
@@ -125,5 +150,6 @@ object SearchPolicy {
         "- The current date and time are given below: answer date/time questions from them, never search for them.\n" +
         "- If you are not sure your knowledge is still current for such a changing fact, then use $searchName.\n" +
         "- If you simply do not know the answer, or are not sure it is correct, do NOT guess or make it up - use $searchName.\n" +
-        "- If the user asks where the information came from, name the websites the search used - honestly, never invent a source.\n"
+        "- If the user asks where the information came from, name the websites the search used - honestly, never invent a source.\n" +
+        "- Greetings and small talk (hello, how are you, what are you doing, tell me more) are normal chat: never $searchName for them.\n"
 }
