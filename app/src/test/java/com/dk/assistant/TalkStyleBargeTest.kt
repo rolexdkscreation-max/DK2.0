@@ -11,7 +11,7 @@ import java.io.File
  * 18 नवंबर 2026 (मालिक): (1) DK बोलते समय बीच में बोलूँ तो रुके, (2) बात लिखी दिखे तो जवाब ज़रूर आए,
  * (3) Settings → "आप कैसे बोलते हैं" (आम / धीरे / ज़ोर से / दूर से).
  */
-class VoiceStyleBargeTest {
+class TalkStyleBargeTest {
     private fun src(n: String) = listOf(File("src/main/java/com/dk/assistant/$n"), File("app/src/main/java/com/dk/assistant/$n")).first { it.exists() }.readText()
     private val chunk = 40L
 
@@ -41,9 +41,9 @@ class VoiceStyleBargeTest {
     @Test fun barge_styleScale() {
         val b = BargeDetector(needChunks = 5, minRms = 900.0); b.ambient = 200.0
         val base = b.threshold()
-        b.scale = VoiceStyle.FAR.bargeScale
+        b.scale = TalkStyle.FAR.bargeScale
         assertTrue(b.threshold() < base)
-        b.scale = VoiceStyle.LOUD.bargeScale
+        b.scale = TalkStyle.LOUD.bargeScale
         assertTrue(b.threshold() > base)
     }
 
@@ -80,16 +80,16 @@ class VoiceStyleBargeTest {
 
     // ------------------------------------------------------------ आप कैसे बोलते हैं
     @Test fun style_values() {
-        assertEquals(VoiceStyle.NORMAL, VoiceStyle.of(null))
-        assertEquals(VoiceStyle.NORMAL, VoiceStyle.of("???"))
-        assertEquals(VoiceStyle.FAR, VoiceStyle.of("far"))
-        val n = VoiceStyle.NORMAL
+        assertEquals(TalkStyle.NORMAL, TalkStyle.of(null))
+        assertEquals(TalkStyle.NORMAL, TalkStyle.of("???"))
+        assertEquals(TalkStyle.FAR, TalkStyle.of("far"))
+        val n = TalkStyle.NORMAL
         assertEquals(1.0, n.startScale, 0.0); assertEquals(1.0, n.bargeScale, 0.0); assertEquals(0, n.endExtraMs); assertEquals(1.0, n.gainScale, 0.0)
-        assertTrue(VoiceStyle.SOFT.startScale < 1.0 && VoiceStyle.SOFT.gainScale > 1.0)
-        assertTrue(VoiceStyle.LOUD.startScale > 1.0 && VoiceStyle.LOUD.bargeScale > 1.0)
-        assertTrue(VoiceStyle.FAR.startScale < VoiceStyle.SOFT.startScale && VoiceStyle.FAR.endExtraMs > VoiceStyle.SOFT.endExtraMs)
-        assertFalse("दूर से = दूर की आवाज़ की रोक बंद", VoiceStyle.FAR.farFilterOk)
-        assertEquals(4, VoiceStyle.entries.map { it.key }.distinct().size)
+        assertTrue(TalkStyle.SOFT.startScale < 1.0 && TalkStyle.SOFT.gainScale > 1.0)
+        assertTrue(TalkStyle.LOUD.startScale > 1.0 && TalkStyle.LOUD.bargeScale > 1.0)
+        assertTrue(TalkStyle.FAR.startScale < TalkStyle.SOFT.startScale && TalkStyle.FAR.endExtraMs > TalkStyle.SOFT.endExtraMs)
+        assertFalse("दूर से = दूर की आवाज़ की रोक बंद", TalkStyle.FAR.farFilterOk)
+        assertEquals(4, TalkStyle.entries.map { it.key }.distinct().size)
     }
 
     @Test fun style_softVoiceStartsSpeech() {
@@ -100,7 +100,7 @@ class VoiceStyleBargeTest {
             return started
         }
         assertFalse("आम: धीमी आवाज़ (500) पर शुरू नहीं", starts(1.0))
-        assertTrue("दूर से: वही आवाज़ = बात शुरू", starts(VoiceStyle.FAR.startScale))
+        assertTrue("दूर से: वही आवाज़ = बात शुरू", starts(TalkStyle.FAR.startScale))
     }
 
     @Test fun style_farWaitsLongerPause() {
@@ -112,17 +112,17 @@ class VoiceStyleBargeTest {
             while (ms < 3000) { if (d.feed(100.0, t) == TurnDetector.Event.SPEECH_END) return ms; t += chunk; ms += chunk.toInt() }
             return -1
         }
-        val n = endsAfter(0); val f = endsAfter(VoiceStyle.FAR.endExtraMs)
-        assertTrue("n=$n f=$f", n > 0 && f >= n + VoiceStyle.FAR.endExtraMs - 40)
+        val n = endsAfter(0); val f = endsAfter(TalkStyle.FAR.endExtraMs)
+        assertTrue("n=$n f=$f", n > 0 && f >= n + TalkStyle.FAR.endExtraMs - 40)
     }
 
     @Test fun style_wiring() {
         val o = src("GeminiLiveOwner.kt")
-        assertTrue(o.contains("applyVoiceStyle(Prefs.voiceStyle(svc))"))
+        assertTrue(o.contains("applyTalkStyle(Prefs.talkStyle(svc))"))
         assertTrue(o.contains("bargeDet.scale = s.bargeScale; speakerBarge.scale = s.bargeScale"))
         val p = src("Prefs.kt")
-        assertTrue(p.contains("fun ownerFarOn(c: Context) = ownerFarRaw(c) && voiceStyle(c).farFilterOk"))
+        assertTrue(p.contains("fun ownerFarOn(c: Context) = ownerFarRaw(c) && talkStyle(c).farFilterOk"))
         val sv = src("SettingsVoice.kt")
-        assertTrue(sv.contains("आप कैसे बोलते हैं") && sv.contains("putString(VoiceStyle.PREF, st.key)"))
+        assertTrue(sv.contains("आप कैसे बोलते हैं") && sv.contains("putString(TalkStyle.PREF, st.key)"))
     }
 }

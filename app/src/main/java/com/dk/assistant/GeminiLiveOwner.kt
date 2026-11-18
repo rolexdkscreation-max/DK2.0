@@ -73,7 +73,7 @@ internal fun GeminiLive.refreshOwnerCfg(now: Long) {
     turnDet.startFloor = LiveHear.farFloor(ownerOn, com.dk.assistant.voice.OwnerLevel.farFloor(svc, btOn))
     // v4.7: बिना आवाज़ सिखाए भी दूर की आवाज़ अनसुनी - आपकी पास वाली आवाज़ से सीखा (Bluetooth पर बंद: माइक मुँह के पास)
     if (!ownerOn && !btOn && Prefs.ownerFarOn(svc)) turnDet.startFloor = near.floor()
-    applyVoiceStyle(Prefs.voiceStyle(svc))
+    applyTalkStyle(Prefs.talkStyle(svc))
     val fb = turnDet.farBlocked
     if (fb > 0 && fb % 10 == 1 && fb != farLogged) { farLogged = fb; log("दूर की / धीमी आवाज़ अनसुनी (#$fb)") }
 }
@@ -171,13 +171,13 @@ internal fun GeminiLive.ownerEnd(now: Long) {
 }
 
 /**
- * 18 नवंबर 2026 (मालिक): Settings → "आप कैसे बोलते हैं" ([VoiceStyle]) - हर 3 s ([refreshOwnerCfg]) पर, बदलते ही बातचीत में लागू.
+ * 18 नवंबर 2026 (मालिक): Settings → "आप कैसे बोलते हैं" ([TalkStyle]) - हर 3 s ([refreshOwnerCfg]) पर, बदलते ही बातचीत में लागू.
  * Bluetooth headset पर माइक मुँह के पास - वहाँ हमेशा आम.
  */
-internal fun GeminiLive.applyVoiceStyle(s0: VoiceStyle) {
-    val s = if (btOn) VoiceStyle.NORMAL else s0
+internal fun GeminiLive.applyTalkStyle(s0: TalkStyle) {
+    val s = if (btOn) TalkStyle.NORMAL else s0
     turnDet.styleScale = s.startScale; turnDet.endExtraMs = s.endExtraMs
     bargeDet.scale = s.bargeScale; speakerBarge.scale = s.bargeScale
     boost.gainScale = s.gainScale
-    if (s != voiceStyleNow) { voiceStyleNow = s; log(VoiceStyle.describe(s)) }
+    if (s != talkStyleNow) { talkStyleNow = s; log(TalkStyle.describe(s)) }
 }

@@ -50,7 +50,7 @@ object LiveVadFix {
  * बचाव: रोका पर [WORDS_WAIT_MS] में कोई शब्द नहीं आया = गलत रोका.
  * 18 नवंबर 2026 (मालिक: "बीच में बोलूँ तो रुकता नहीं"): पहले 2 गलत रोक = पूरे session में बंद (फिर टोकना 1-1.5s वाला caption
  * तरीका ही). अब बंद नहीं - हर गलत रोक पर सीमा [STRICT_STEP] सख़्त ([STRICT_MAX] तक), सही रोक पर धीरे-धीरे वापस.
- * [scale] = [VoiceStyle] (धीरे / दूर से बोलने वाले के लिए नीची सीमा).
+ * [scale] = [TalkStyle] (धीरे / दूर से बोलने वाले के लिए नीची सीमा).
  */
 class SpeakerBarge {
     companion object {
@@ -70,7 +70,7 @@ class SpeakerBarge {
     var misses = 0; private set
     /** गलत रोक के बाद की सख़्ती (1.0 = आम). कभी बंद नहीं होता */
     var strict = 1.0; private set
-    /** [VoiceStyle] का गुणक (Settings → "आप कैसे बोलते हैं") */
+    /** [TalkStyle] का गुणक (Settings → "आप कैसे बोलते हैं") */
     var scale = 1.0
     private var pendingAt = 0L
 

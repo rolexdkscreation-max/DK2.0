@@ -27,7 +27,7 @@ class MicBoost(
         private set
     /** 16 नवंबर 2026 (ऑडिट S4): फ़ोन का AGC चालू = इससे ज़्यादा गुना नहीं ([LiveVadFix.boostLimit]). बड़ा = पहले जैसा */
     @Volatile var gainLimit = Double.MAX_VALUE
-    /** 18 नवंबर 2026: [VoiceStyle.gainScale] - धीरे/दूर से बोलने वाले के लिए ज़्यादा तेज़, ज़ोर से बोलने वाले के लिए कम. 1.0 = पहले जैसा */
+    /** 18 नवंबर 2026: [TalkStyle.gainScale] - धीरे/दूर से बोलने वाले के लिए ज़्यादा तेज़, ज़ोर से बोलने वाले के लिए कम. 1.0 = पहले जैसा */
     @Volatile var gainScale = 1.0
 
     /** buf ke pehle n samples ko jagah par hi tez karo. Wapas: asli (bina badhaye) rms. */

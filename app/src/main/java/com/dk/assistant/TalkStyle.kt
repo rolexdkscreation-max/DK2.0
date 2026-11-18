@@ -9,7 +9,7 @@ package com.dk.assistant
  *  - [LOUD] ज़ोर से बोलता हूँ: दरवाज़ा ऊपर (पंखा / TV / गूँज कम पकड़े), DK गलती से कम रुके, माइक कम तेज़.
  *  - [FAR] दूर से / धीरे-धीरे: सबसे संवेदनशील, वाक्यों के बीच लंबे ठहराव पर भी बात खत्म नहीं, "दूर की आवाज़ अनसुनी" अपने-आप बंद.
  */
-enum class VoiceStyle(
+enum class TalkStyle(
     val key: String,
     val label: String,
     /** "बोलना शुरू / अभी बोल रहा" वाले दरवाज़े का गुणक ([TurnDetector.styleScale]) */
@@ -29,12 +29,12 @@ enum class VoiceStyle(
     FAR("far", "दूर से / धीरे-धीरे बोलता हूँ — सबसे संवेदनशील, लंबे ठहराव पर भी इंतज़ार", 0.6, 0.7, 350, 1.8, false);
 
     companion object {
-        const val PREF = "voice_style"
+        const val PREF = "talk_style"
 
-        fun of(key: String?): VoiceStyle = entries.firstOrNull { it.key == key } ?: NORMAL
+        fun of(key: String?): TalkStyle = entries.firstOrNull { it.key == key } ?: NORMAL
 
         /** हर बार चलने वाली छोटी log लाइन */
-        fun describe(s: VoiceStyle): String =
+        fun describe(s: TalkStyle): String =
             "आवाज़ का अंदाज़: ${s.key} (दरवाज़ा x${s.startScale}, टोकना x${s.bargeScale}, ठहराव +${s.endExtraMs} ms, माइक x${s.gainScale})"
     }
 }
