@@ -25,6 +25,13 @@ internal const val LICENSE_ADMIN_CARD = "लाइसेंस की बना�
 internal const val LICENSE_LOGIN_CARD = "Google से लॉगिन"
 internal const val RC_LICENSE_GOOGLE = 41
 internal const val RC_LICENSE_PICK = 43
+/** इस बार Google लॉगिन नहीं हो पाया = SHA-1 वाली मदद दिखाओ */
+@Volatile internal var googleLoginFailed = false
+
+private fun SettingsActivity.loginFail(msg: String) { toast(msg); if (!googleLoginFailed) { googleLoginFailed = true; recreate() } }
+
+internal const val LOGIN_HINT = "टैप करने पर फ़ोन के सारे Google खाते दिखेंगे - जिससे चाहें लॉगिन करें। लॉगिन न करें तो भी ऐप चलता है।"
+internal const val OWNER_LINE = "Welcome Boss • सब कुछ चालू, कोई सीमा नहीं"
 
 internal fun SettingsActivity.secLicense() {
     if (!BackendConfig.ready()) {
@@ -35,7 +42,8 @@ internal fun SettingsActivity.secLicense() {
         }
         return
     }
-    card(LICENSE_CARD, "मुफ़्त: रोज़ 10 मिनट बातचीत • बेसिक: खोज और रिसर्च • प्रीमियम: सब कुछ", startOpen = true) { box -> licenseBody(box) }
+    // 18 नवंबर 2026 (मालिक: "मालिक से लॉगिन किया, फिर भी 10 मिनट दिखा रहा है") - मालिक को सीमा वाली बात नहीं
+    card(LICENSE_CARD, if (BackendSession.owner(this)) OWNER_LINE else "मुफ़्त: रोज़ 10 मिनट बातचीत • बेसिक: खोज और रिसर्च • प्रीमियम: सब कुछ", startOpen = true) { box -> licenseBody(box) }
     card(LICENSE_LOGIN_CARD, if (BackendSession.google(this)) "✓ " + BackendSession.email(this) else "चाहें तो • नाम अपने-आप • बिना लॉगिन भी सब शर्तों के साथ चलता है") { box -> loginBody(box) }
     if (BackendSession.owner(this)) card(LICENSE_ADMIN_CARD, "नई की • सूची • बंद करें") { box -> adminBody(box) }
 }
@@ -93,22 +101,25 @@ private fun SettingsActivity.licenseBody(box: LinearLayout) {
         }
     }, button("ताज़ा करें") { refresh() })
     BackendConfig.whatsappLink()?.let { l -> row(box, button("लाइसेंस की पाएँ") { openWa(l) }) }
-    hint(box, "बिना लाइसेंस: अपनी Gemini key (AI दिमाग में) से लिखकर चैट जितनी चाहें; बोलकर बात रोज़ 10 मिनट " +
+    if (!BackendSession.owner(this)) hint(box, "बिना लाइसेंस: अपनी Gemini key (AI दिमाग में) से लिखकर चैट जितनी चाहें; बोलकर बात रोज़ 10 मिनट " +
         "(रात 12 बजे भारत के समय से फिर, इंटरनेट ज़रूरी)। बेसिक: बिना सीमा बात + डीप रिसर्च। प्रीमियम: सब कुछ + अलग-अलग keys।")
 }
 
 private fun SettingsActivity.loginBody(box: LinearLayout) {
     val st = TextView(this).apply {
         textSize = 13f; setTextColor(0xCCFFFFFF.toInt()); setPadding((4 * dp).toInt(), (6 * dp).toInt(), 0, (4 * dp).toInt())
-        text = if (BackendSession.google(this@loginBody)) "Google से जुड़े: ${BackendSession.email(this@loginBody)}" + (if (BackendSession.owner(this@loginBody)) " (मालिक)" else "")
-            else "अभी मेहमान (बिना लॉगिन)। मालिक Google से लॉगिन करें।"
+        // 18 नवंबर 2026: लॉगिन वाले हिस्से में किसी खास पहचान / जाँच की बात नहीं - सिर्फ़ ईमेल
+        text = if (BackendSession.google(this@loginBody)) "Google से जुड़े: ${BackendSession.email(this@loginBody)}"
+            else "अभी बिना लॉगिन"
     }
     box.addView(st)
     row(box, button(if (BackendSession.google(this)) "दूसरा Google खाता" else "Google से लॉगिन") { googleLogin() }, button("लॉग आउट") {
         BackendSession.signOut(this); toast("लॉग आउट - अब मेहमान"); recreate()
     })
-    hint(box, "टैप करने पर फ़ोन के सारे Google खाते दिखेंगे - जिससे चाहें लॉगिन करें। मालिक वही ईमेल चुनें जो सर्वर की मालिक-सूची में है। लॉगिन न करें तो भी ऐप चलता है।")
+    hint(box, LOGIN_HINT)
     // 18 नवंबर 2026: लॉगिन में "8: Unknown error" = Cloud Console में यही package + SHA-1 वाला Android client चाहिए - यहीं दिखे
+    // (सिर्फ़ लॉगिन न हो पाने पर - आम यूज़र को सेटअप/जाँच वाली बात नहीं)
+    if (!googleLoginFailed) return
     val sha = GoogleAuth.signingSha1(this)
     hint(box, "लॉगिन न हो (code 8 / 10) तो Firebase वाले Google Cloud project में Android client बनाइए:\nPackage: $packageName\nSHA-1: ${sha ?: "नहीं मिला"}")
     row(box, button("SHA-1 कॉपी करें") { copyText("SHA-1", sha.orEmpty()) }, button("Package कॉपी करें") { copyText("package", packageName) })
@@ -129,14 +140,14 @@ private fun SettingsActivity.googleLogin() {
 /** Play services से Google (openid/email) - UI चाहिए तो Google की स्क्रीन, फिर [licenseGoogleResult] */
 private fun SettingsActivity.googleLoginAs(account: String?) {
     bg({ GoogleAuth.tokenBlocking(this, BackendSession.GOOGLE_SCOPES, account) }) { r ->
-        when (val res = r.getOrElse { e -> toast(GoogleAuth.explain(e)); return@bg }) {
+        when (val res = r.getOrElse { e -> loginFail(GoogleAuth.explain(e)); return@bg }) {
             is GoogleAuth.Res.Token -> finishGoogle(res.value)
             is GoogleAuth.Res.NeedsUi -> {
                 val pi = res.intent ?: run { toast("Google की स्क्रीन नहीं खुली"); return@bg }
                 @Suppress("DEPRECATION")
-                try { startIntentSenderForResult(pi.intentSender, RC_LICENSE_GOOGLE, null, 0, 0, 0) } catch (e: Exception) { toast(GoogleAuth.explain(e)) }
+                try { startIntentSenderForResult(pi.intentSender, RC_LICENSE_GOOGLE, null, 0, 0, 0) } catch (e: Exception) { loginFail(GoogleAuth.explain(e)) }
             }
-            is GoogleAuth.Res.Fail -> toast(res.message)
+            is GoogleAuth.Res.Fail -> loginFail(res.message)
         }
     }
 }
@@ -147,7 +158,7 @@ private fun SettingsActivity.finishGoogle(accessToken: String) {
         r.onSuccess { s ->
             // 18 नवंबर 2026 (मालिक): Google का नाम अपने-आप (नाम पहले से हो तो वही; Settings → प्रोफ़ाइल में बदल सकते हैं)
             BackendSession.displayName(this).takeIf { it.isNotBlank() && Prefs.userName(this).isBlank() }?.let { n -> Prefs.edit(this) { putString("user_name", n) } }
-            toast(if (s.owner) "✓ मालिक के रूप में लॉगिन" else "✓ लॉगिन हुआ"); recreate()
+            if (s.owner) WelcomeBoss.show(this) { recreate() } else { toast("✓ लॉगिन हुआ"); recreate() }
         }
             .onFailure { e -> toast(licenseError(e)) }
     }
@@ -163,7 +174,7 @@ internal fun SettingsActivity.licenseGoogleResult(requestCode: Int, data: Intent
     try {
         val t = com.google.android.gms.auth.api.identity.Identity.getAuthorizationClient(this).getAuthorizationResultFromIntent(data).accessToken
         if (!t.isNullOrBlank()) finishGoogle(t) else toast("Google ने इजाज़त नहीं दी")
-    } catch (e: Exception) { toast(GoogleAuth.explain(e)) }
+    } catch (e: Exception) { loginFail(GoogleAuth.explain(e)) }
 }
 
 private fun SettingsActivity.adminBody(box: LinearLayout) {

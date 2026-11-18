@@ -99,7 +99,9 @@ object BackendApi {
         postJson(c, "/search", JSONObject().put("query", q).put("n", if (deep) 8 else 5))
 
     fun status(c: Context): BackendWire.Status = BackendWire.status(getJson(c, "/license/status")).also {
+        val wasOwner = BackendSession.owner(c)
         lastLevel = it.level; it.quota?.let { q -> lastQuota = q }; BackendSession.markOwner(c, it.owner)
+        WelcomeBoss.noteStatus(c, wasOwner, BackendSession.owner(c))
         Plan.note(c, it.level, it.expiresAt)
     }
 
