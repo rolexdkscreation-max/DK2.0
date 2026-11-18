@@ -448,7 +448,10 @@ class DKAccessibilityService : AccessibilityService() {
         listener.release()
         ear.release()
         DKState.set(Mode.IDLE)
-        if (quiet) { if (heyDk) scope.launch { delay(800); ensureLoop() }; return }
+        if (quiet) {
+            if (heyDk) scope.launch { delay(800); ensureLoop() }
+            return
+        }
         scope.launch {
             if (heyDk) {
                 speaker.speak("ठीक है। ज़रूरत हो तो हे डीके बोलिए।")

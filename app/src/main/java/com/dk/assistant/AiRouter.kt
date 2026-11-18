@@ -145,8 +145,10 @@ object AiRouter {
         chatAt = now
         if (!again) DKState.reply(say)
         val cb = onChat
-        if (cb == null) { if (!again) try { onStop?.invoke(say, speak) } catch (x: Exception) { Quiet.note(x) }; return }
-        try { cb(say, speak && !again) } catch (x: Exception) { Quiet.note(x) }
+        try {
+            if (cb != null) cb(say, speak && !again)
+            else if (!again) onStop?.invoke(say, speak)
+        } catch (x: Exception) { Quiet.note(x) }
     }
 
     /** DK यह बोले/लिखे (लाइसेंस वाली गलती में मालिक के तय शब्द) */

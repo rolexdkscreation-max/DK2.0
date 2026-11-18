@@ -46,14 +46,12 @@ class VoiceToChatTest {
         assertFalse(AiRouter.voiceDoneToChat(BackendException(402, BackendWire.LICENSE_REQUIRED, "x", BackendWire.VOICE_DONE)))
     }
 
-    @Test fun toChatCallsServiceOnceThenQuiet() {
-        val got = mutableListOf<Pair<String, Boolean>>()
-        AiRouter.onChat = { s, t -> got.add(s to t) }
-        AiRouter.toChat(BackendWire.VOICE_DONE_CHAT, speak = true)
-        AiRouter.toChat(BackendWire.VOICE_DONE_CHAT, speak = true)
-        assertEquals(2, got.size)                         // चैट हर बार खुले
-        assertTrue(got[0].second); assertFalse(got[1].second)   // पर बोले एक ही बार
-        assertEquals(BackendWire.VOICE_DONE_CHAT, got[0].first)
+    @Test fun toChatSpeaksOnceOpensChatEveryTime() {
+        val r = src("AiRouter.kt")
+        assertTrue(r.contains("val again = now - chatAt < 30_000"))
+        assertTrue(r.contains("if (!again) DKState.reply(say)"))          // लिखा भी (चैट में दिखे)
+        assertTrue(r.contains("if (cb != null) cb(say, speak && !again)"))   // चैट हर बार खुले, बोले एक बार
+        assertTrue(r.contains("if (voiceDoneToChat(e)) { toChat(BackendWire.VOICE_DONE_CHAT, speak); return }"))
     }
 
     @Test fun freeChatNeverFallsToServerAi() {
