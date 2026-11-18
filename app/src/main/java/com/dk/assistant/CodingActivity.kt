@@ -471,6 +471,7 @@ class CodingActivity : AppCompatActivity() {
         }
         // सिर्फ़ फ़ोटो/वीडियो भेजी: टीम उन्हें देखकर समझे
         val t = typed.ifEmpty { "इस फ़ोटो/वीडियो को ध्यान से देखकर समझो कि क्या ठीक करना / बदलना है" }
+        OneKeyGate.planCheck(this, OneKeyGate.Work.CODING)?.let { CoderSession.add("u", t); CoderSession.add("e", it); render(); return }
         OneKeyGate.check(this, OneKeyGate.Work.CODING)?.let { CoderSession.add("u", t); CoderSession.add("e", it); render(); return }
         edt.setText("")
         keepTyping()

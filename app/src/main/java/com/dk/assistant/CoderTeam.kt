@@ -15,6 +15,7 @@ object CoderTeam {
 
     fun start(ctx: Context, task: String, fromVoice: Boolean = false): String? {
         val c = ctx.applicationContext
+        OneKeyGate.planCheck(c, OneKeyGate.Work.CODING)?.let { return it }     // 18 नवंबर 2026: प्रीमियम लाइसेंस / मालिक
         OneKeyGate.check(c, OneKeyGate.Work.CODING)?.let { return it }
         // रिपो डॉक्टर: "रिपो चेक करो" / "PR #N ठीक करो" / "PR #N merge करो" / उसकी योजना की हाँ
         RepoDoctorRunner.intercept(c, task, fromVoice)?.let { return it.err }

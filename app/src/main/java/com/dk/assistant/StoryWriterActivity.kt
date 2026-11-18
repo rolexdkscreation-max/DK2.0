@@ -204,6 +204,7 @@ class StoryWriterActivity : AppCompatActivity() {
     private fun onWrite() {
         val s = StorySession
         if (s.busy) { s.stop(); return }
+        OneKeyGate.planCheck(this, OneKeyGate.Work.STORY)?.let { toast(it); return }
         OneKeyGate.check(this, OneKeyGate.Work.STORY)?.let { toast(it); OneKeyGate.openSettings(this); return }
         if (StoryAi.fromPrefs(this) == null) {
             toast("पहले सेटिंग्स → AI दिमाग → DK चैट में AI key डालें")

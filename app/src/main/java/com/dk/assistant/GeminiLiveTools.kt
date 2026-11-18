@@ -358,6 +358,8 @@ internal suspend fun GeminiLive.waCardDenied(act: String, args: JSONObject): Str
 internal fun GeminiLive.agentTool(name: String, args: JSONObject): String {
     val agent = LiveAgentRoute.byTool(name) ?: return "unknown function"
     // नवंबर 2026 (मालिक): एक key = सारे काम. रुकता सिर्फ़ तब जब एक-key मोड में key डाली ही नहीं - DK साफ़ बताए + Settings खुले (झूठा "हो गया" नहीं)
+    // 18 नवंबर 2026 (मालिक): ये एजेंट प्रीमियम लाइसेंस (या मालिक) के साथ - मुफ़्त/बेसिक = साफ़ बताओ, "हो गया" नहीं
+    OneKeyGate.LIVE_TOOLS[name]?.let { w -> OneKeyGate.planCheck(svc, w)?.let { log("लाइसेंस: ${w.hi} नहीं चलेगा"); return com.dk.assistant.backend.Plan.liveNote(OneKeyGate.planWork(w)) } }
     OneKeyGate.LIVE_TOOLS[name]?.takeIf { OneKeyGate.blocked(svc, it) }
         ?.takeIf { !(name == "build_website" && Prefs.forgeKey(svc).isNotBlank()) }?.let { w -> // वेबसाइट की अपनी key = एक-key मोड में भी
         log("एक key मोड: key नहीं डली, ${w.hi} नहीं चलेगा - Settings खोली"); OneKeyGate.openSettings(svc)

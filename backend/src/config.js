@@ -7,6 +7,14 @@ export const FREE_CHAT_MESSAGES = 30;
 /** इतने सेकंड बचें तो DK चेतावनी दे */
 export const WARN_SECONDS_LEFT = 60;
 
+/**
+ * मालिक (18 नवंबर 2026): "मुफ़्त वाला अपनी Gemini key डालेगा, उसके बाद ही 10 मिनट वाली सेवा - सब उसी की key पे".
+ * false = बिना लाइसेंस वाले को सर्वर की AI keys (/ai/chat, /stt, /live/token) नहीं मिलतीं - वह अपनी key से चलता है,
+ * सर्वर सिर्फ़ उसकी आवाज़ वाली बात का रोज़ का समय गिनता है (/voice/grant). true = पहले जैसा (सर्वर की keys से मुफ़्त सीमा).
+ * लाइसेंस वाले और मालिक पर इसका कोई असर नहीं.
+ */
+export const FREE_SERVER_AI = false;
+
 /** स्तर - बड़ा अंक = ज़्यादा सुविधा */
 export const LEVELS = { free: 0, basic: 1, premium: 2, owner: 3 };
 

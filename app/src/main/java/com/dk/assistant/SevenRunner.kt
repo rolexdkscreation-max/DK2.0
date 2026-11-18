@@ -283,6 +283,7 @@ object SevenRunner {
     fun start(ctx: Context, input: String, fromVoice: Boolean = false, forceNormal: Boolean = false, media: List<CoderMedia> = emptyList()): String? {
         val c = ctx.applicationContext
         CoderHistory.init(c)
+        OneKeyGate.planCheck(c, OneKeyGate.Work.CODING)?.let { return it }     // 18 नवंबर 2026: प्रीमियम लाइसेंस / मालिक
         OneKeyGate.check(c, OneKeyGate.Work.CODING)?.let { return it }
         if (!Prefs.coderOn(c)) return "कोडिंग एजेंट बंद है — Settings में चालू करें"
         val ai = CoderAi.fromPrefs(c) ?: return "कोडिंग एजेंट की AI key नहीं — Settings → AI दिमाग → कोडिंग एजेंट में डालें"

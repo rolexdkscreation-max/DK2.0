@@ -24,6 +24,8 @@ object AutoMode {
 
     fun plan(c: Context, goal: String): AutoPlan.Plan? {
         if (!AutoPrefs.on(c)) return null
+        // 18 नवंबर 2026 (मालिक): ऑटोनोमस = प्रीमियम लाइसेंस (या मालिक). मुफ़्त/बेसिक = आम बातचीत की तरह
+        if (com.dk.assistant.backend.Plan.check(c, com.dk.assistant.backend.Plan.Work.AUTO) != null) return null
         return AutoPlan.classify(goal, AutoPrefs.enabledKinds(c), AutoPrefs.customTasks(c))
     }
 

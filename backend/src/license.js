@@ -1,7 +1,7 @@
 // लाइसेंस, स्तर और रोज़ की मुफ़्त सीमा - सब यहीं तय होता है (ऐप पर भरोसा नहीं).
 
 import {
-  FREE_CHAT_MESSAGES, FREE_VOICE_SECONDS, LEVEL_CACHE_MS, LEVELS, TASK_LEVEL, VOICE_TICKET_MS, WARN_SECONDS_LEFT,
+  FREE_CHAT_MESSAGES, FREE_SERVER_AI, FREE_VOICE_SECONDS, LEVEL_CACHE_MS, LEVELS, TASK_LEVEL, VOICE_TICKET_MS, WARN_SECONDS_LEFT,
 } from "./config.js";
 import { CODES, HttpError, hmac, istDay, isLicenseKeyShape, newLicenseKey, normalizeKey, safeEqual, sha256Hex } from "./util.js";
 
@@ -11,6 +11,7 @@ export const MSG = {
   WARN: "आज की मुफ़्त बातचीत का बस एक मिनट बचा है।",
   NEED_PREMIUM: "यह सुविधा प्रीमियम लाइसेंस के साथ मिलती है।",
   NEED_BASIC: "यह सुविधा लाइसेंस के साथ मिलती है।",
+  NEED_OWN_KEY: "मुफ़्त में DK आपकी अपनी Gemini key से चलता है। Settings → AI दिमाग में अपनी Gemini key डालें, या लाइसेंस की लें।",
   INVALID: "यह लाइसेंस की सही नहीं है, बंद है या इसकी मियाद खत्म हो गई।",
   FULL: "इस लाइसेंस की पर तय गिनती के फ़ोन पहले से चालू हैं।",
 };
@@ -53,6 +54,12 @@ export function taskLevel(task) {
 export function requireLevel(have, need) {
   if ((LEVELS[have] ?? 0) >= (LEVELS[need] ?? 0)) return;
   throw new HttpError(403, CODES.NEED_PREMIUM, need === "basic" ? MSG.NEED_BASIC : MSG.NEED_PREMIUM, { need, level: have });
+}
+
+/** मुफ़्त वाला + सर्वर की AI = मना (config FREE_SERVER_AI). env.FREE_SERVER_AI = "1" से चालू (test / मालिक) */
+export function requireServerAi(env, level) {
+  if (level !== "free" || FREE_SERVER_AI || env?.FREE_SERVER_AI === "1") return;
+  throw new HttpError(402, CODES.NEED_OWN_KEY, MSG.NEED_OWN_KEY, { kind: "own_key", say: MSG.NEED_OWN_KEY });
 }
 
 export function quota(usage) {

@@ -96,6 +96,8 @@ export function env(extra = {}) {
     GEMINI_API_KEY: "g-test",
     MISTRAL_API_KEY: "m-test",
     DB: new FakeD1(),
+    // पुराने test सर्वर-key वाली मुफ़्त सीमा जाँचते हैं - वह रास्ता चालू रखो. बंद वाला (असली default) test/voice.test.js में
+    FREE_SERVER_AI: "1",
     ...extra,
   };
 }

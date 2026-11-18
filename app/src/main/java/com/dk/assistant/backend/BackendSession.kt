@@ -22,6 +22,7 @@ object BackendSession {
     private const val KIND = "be_kind"          // "google" / "anon"
     private const val EMAIL = "be_email"
     private const val OWNER = "be_owner"
+    private const val NAME = "be_name"
     private val http by lazy {
         com.dk.assistant.NetFix.builder().connectTimeout(8, TimeUnit.SECONDS).readTimeout(15, TimeUnit.SECONDS).build()
     }
@@ -31,11 +32,13 @@ object BackendSession {
     fun kind(c: Context) = Prefs.str(c, KIND, "")
     fun email(c: Context) = Prefs.str(c, EMAIL, "")
     fun google(c: Context) = kind(c) == "google"
+    /** Google खाते का नाम (लॉगिन पर Firebase से) - परिचय / प्रोफ़ाइल में नाम अपने-आप; यूज़र बदल सकता है */
+    fun displayName(c: Context) = Prefs.str(c, NAME, "")
     /** backend ने मालिक माना? (आख़िरी /license/status से) - admin वाला हिस्सा सिर्फ़ तब */
     fun owner(c: Context) = google(c) && Prefs.str(c, OWNER, "") == "1"
     fun markOwner(c: Context, yes: Boolean) = Prefs.edit(c) { putString(OWNER, if (yes) "1" else "") }
 
-    fun signOut(c: Context) = Prefs.edit(c) { remove(ID); remove(REFRESH); remove(EXP); remove(KIND); remove(EMAIL); remove(OWNER) }
+    fun signOut(c: Context) = Prefs.edit(c) { remove(ID); remove(REFRESH); remove(EXP); remove(KIND); remove(EMAIL); remove(OWNER); remove(NAME) }
 
     /** जाँचा हुआ ID token (5 मिनट से कम बचा = नया). कोई पहचान नहीं = मेहमान (Anonymous) अपने-आप */
     @Synchronized fun idToken(c: Context, force: Boolean = false): String {
@@ -107,8 +110,13 @@ object BackendSession {
             .put("requestUri", "https://$dom").put("returnSecureToken", true).put("returnIdpCredential", true)
         val o = post(idt("accounts:signInWithIdp"), body.toString().toRequestBody(JSON))
         save(c, o.getString("idToken"), o.optString("refreshToken"), o.optLong("expiresIn", 3600), "google", o.optString("email"))
+        googleName(o).takeIf { it.isNotBlank() }?.let { n -> Prefs.edit(c) { putString(NAME, n) } }
         return o.optString("email")
     }
+
+    /** signInWithIdp के जवाब से नाम: displayName → fullName → firstName (+ lastName) */
+    internal fun googleName(o: JSONObject): String = o.optString("displayName").trim().ifBlank { o.optString("fullName").trim() }
+        .ifBlank { (o.optString("firstName").trim() + " " + o.optString("lastName").trim()).trim() }.take(60)
 
     val GOOGLE_SCOPES = listOf("openid", "email", "profile")
 }

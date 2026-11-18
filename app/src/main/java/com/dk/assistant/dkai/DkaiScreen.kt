@@ -635,6 +635,8 @@ class DkaiScreen(val activity: ComponentActivity, val host: DkaiHost) {
     }
 
     private fun deepResearch(t: String) {
+        // 18 नवंबर 2026 (मालिक): डीप रिसर्च = लाइसेंस (बेसिक से). मुफ़्त = आम चैट चलती रहे, बस यह नहीं
+        com.dk.assistant.backend.Plan.check(c, com.dk.assistant.backend.Plan.Work.RESEARCH)?.let { DKState.replyFailed(it); return }
         localJob?.cancel()
         localJob = activity.lifecycleScope.launch {
             try {

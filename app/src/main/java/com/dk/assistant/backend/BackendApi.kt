@@ -91,16 +91,22 @@ object BackendApi {
     fun liveToken(c: Context): BackendWire.LiveTicket =
         BackendWire.liveTicket(postJson(c, "/live/token", JSONObject())).also { t -> t.quota?.let { lastQuota = it } }
 
+    /** मुफ़्त वाले की आवाज़ (अपनी key) का समय - [VoiceGate] ही बुलाता है */
+    fun voiceGrant(c: Context): BackendWire.VoiceGrant =
+        BackendWire.voiceGrant(postJson(c, "/voice/grant", JSONObject())).also { g -> lastLevel = g.level; g.quota?.let { lastQuota = it } }
+
     fun search(c: Context, q: String, deep: Boolean): String =
         postJson(c, "/search", JSONObject().put("query", q).put("n", if (deep) 8 else 5))
 
     fun status(c: Context): BackendWire.Status = BackendWire.status(getJson(c, "/license/status")).also {
         lastLevel = it.level; it.quota?.let { q -> lastQuota = q }; BackendSession.markOwner(c, it.owner)
+        Plan.note(c, it.level, it.expiresAt)
     }
 
     fun activate(c: Context, key: String): BackendWire.Status {
         postJson(c, "/license/activate", JSONObject().put("key", key.trim().uppercase()))
         com.dk.assistant.LiveDkServer.clearStop()      // नया लाइसेंस = आज की रोक हटी, Live फिर
+        VoiceGate.clear(c)
         return status(c)
     }
 
