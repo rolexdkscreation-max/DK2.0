@@ -900,7 +900,10 @@ class DKAccessibilityService : AccessibilityService() {
                     if (!voiceOk()) { com.dk.assistant.wake.WakeHandoff.releaseMic(); com.dk.assistant.wake.WakeHandoff.clear(); continue }
                     agent.heardAt = System.currentTimeMillis()
                     Ducker.duck(me, "हे डीके")
-                    if (!callBusy() && (talkWanted() || NetProbe.online(me) && liveReady())) {
+                    // "अलग-अलग" तरीका: नेट / Live की ज़रूरत नहीं - वही माइक-सौंपना, ऊपर वाली शाखा उठाती है
+                    var goLive = !callBusy() && talkWanted()
+                    if (NetProbe.online(me) && liveReady() && !callBusy()) { goLive = true }
+                    if (goLive) {
                         // तुरंत Live (या "अलग-अलग" तरीका - वही माइक-सौंपना, ऊपर वाली शाखा उठाती है): वेक वर्ड वाला माइक चलता रहता है (WakeHandoff), Live का माइक खुलते ही वह छूटता है - बात नहीं कटती
                         DKLog.d("\"${hit.word.hi}\" -> Gemini Live (${hit.latencyMs} ms" + (if (hit.locked) ", फ़ोन लॉक" else "") +
                             (if (gemLive.warmReady()) ", connection पहले से तैयार" else if (gemLive.raceBusy()) ", connection बन रहा" else ", connection अभी शुरू") + ")")
