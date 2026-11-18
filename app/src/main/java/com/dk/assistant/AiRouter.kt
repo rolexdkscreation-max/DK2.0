@@ -5,6 +5,8 @@ import com.dk.assistant.backend.BackendApi
 import com.dk.assistant.backend.BackendConfig
 import com.dk.assistant.backend.BackendException
 import com.dk.assistant.backend.BackendWire
+import com.dk.assistant.backend.Plan
+import com.dk.assistant.backend.VoiceGate
 
 /**
  * 17 नवंबर 2026 (मालिक का "DK बैकएंड मास्टर प्रॉम्प्ट"): AI का क्रम - सिर्फ़ यही एक परत.
@@ -36,10 +38,23 @@ object AiRouter {
      * अपनी keys से नहीं हुआ (गलती [e], या key ही नहीं = null) - अब backend आज़माएँ?
      * रुकावट (cancel) / backend की अपनी गलती / race हारना = नहीं.
      */
-    fun fallback(e: Throwable?): Boolean = backendReady() && when (e) {
+    fun fallback(e: Throwable?): Boolean = backendReady() && serverAiOk() && when (e) {
         is kotlinx.coroutines.CancellationException, is LoserException, is BackendException -> false
         else -> true
     }
+
+    /**
+     * 18 नवंबर 2026 (मालिक): मुफ़्त वाला (बिना लाइसेंस) सिर्फ़ अपनी key से चलता है - सर्वर उसे AI नहीं देता
+     * (NEED_OWN_KEY). जड़: अपनी key एक बार अटकी (429/नेट) तो DK सर्वर पर जाता, वहाँ से "अपनी Gemini key डालें"
+     * आता और चैट/Live रुक जाते. अब मुफ़्त वाले के लिए सर्वर वाला AI आज़माया ही नहीं जाता - अपनी key की असली गलती
+     * दिखती है और चैट कभी बंद नहीं होती. लाइसेंस वाले / मालिक / बिना सर्वर वाला build = पहले जैसा.
+     */
+    fun serverAiOk(): Boolean = freeOverride?.let { !it } ?: app?.let { Plan.level(it) != Plan.Level.FREE } ?: true
+
+    /** test बदल सके (true = मुफ़्त वाला) */
+    @Volatile var freeOverride: Boolean? = null
+
+    private fun isFree(): Boolean = freeOverride ?: app?.let { Plan.level(it) == Plan.Level.FREE } ?: false
 
     /** दोनों गलतियों में से कौन सी बताएँ: लाइसेंस वाली हमेशा; key नहीं थी = backend की; वरना अपनी key वाली (ज़्यादा काम की) */
     fun pick(own: Exception?, backend: Exception): Exception = when {
@@ -102,12 +117,36 @@ object AiRouter {
     @Volatile var onStop: ((String, Boolean) -> Unit)? = null
     @Volatile private var stoppedAt = 0L
     fun stopped(e: Throwable, speak: Boolean) {
+        if (voiceDoneToChat(e)) { toChat(BackendWire.VOICE_DONE_CHAT, speak); return }
         val say = say(e) ?: BackendWire.VOICE_DONE
         val now = System.currentTimeMillis()
         val again = now - stoppedAt < 30_000
         stoppedAt = now
         DKState.replyFailed(say)
         try { onStop?.invoke(say, speak && !again) } catch (x: Exception) { Quiet.note(x) }
+    }
+
+    /** मुफ़्त वाले की आवाज़ का समय पूरा (लाइसेंस चाहिए) = रोकने की जगह चैट में भेजो */
+    fun voiceDoneToChat(e: Throwable?): Boolean {
+        val b = (e as? BackendException) ?: (e?.cause as? BackendException) ?: return false
+        return VoiceGate.isChatHandoff(b) || (b.reason == BackendWire.LICENSE_REQUIRED && isFree())
+    }
+
+    /**
+     * 18 नवंबर 2026 (मालिक): मुफ़्त वाले के 10 मिनट की आवाज़ पूरी = DK बोले/लिखे "अब चैट में बात कर सकते हैं",
+     * आवाज़ (Live) चुपचाप बंद हो और चैट अपने-आप खुले. चैट Live/सर्वर से जुड़ी नहीं - अपनी key से बिना सीमा.
+     * [onChat] को DK की सेवा भरती है (say, बोलना है?). 30 सेकंड में दोबारा = न बोले, न लिखे, बस चैट.
+     */
+    @Volatile var onChat: ((String, Boolean) -> Unit)? = null
+    @Volatile private var chatAt = 0L
+    fun toChat(say: String, speak: Boolean) {
+        val now = System.currentTimeMillis()
+        val again = now - chatAt < 30_000
+        chatAt = now
+        if (!again) DKState.reply(say)
+        val cb = onChat
+        if (cb == null) { if (!again) try { onStop?.invoke(say, speak) } catch (x: Exception) { Quiet.note(x) }; return }
+        try { cb(say, speak && !again) } catch (x: Exception) { Quiet.note(x) }
     }
 
     /** DK यह बोले/लिखे (लाइसेंस वाली गलती में मालिक के तय शब्द) */

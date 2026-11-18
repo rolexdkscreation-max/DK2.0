@@ -117,6 +117,14 @@ class DKAccessibilityService : AccessibilityService() {
             try { if (talk) speaker.speak(say) } catch (e: Exception) { Quiet.note(e) }
             if (DKState.live) stopLive("आज की मुफ़्त बातचीत पूरी (लाइसेंस)")
         } }
+        // 18 नवंबर 2026 (मालिक): मुफ़्त वाले की 10 मिनट वाली आवाज़ पूरी = Live चुपचाप बंद (चल रही चैट न कटे, "माइक बंद" न बोले),
+        // DK बोले "अब आप मुझसे चैट में बात कर सकते हैं" और चैट स्क्रीन अपने-आप खुले
+        AiRouter.onChat = { say, talk -> scope.launch(kotlinx.coroutines.Dispatchers.Main) {
+            if (DKState.live) stopLive("मुफ़्त आवाज़ पूरी - अब चैट", quiet = true)
+            try { startActivity(android.content.Intent(this@DKAccessibilityService, ChatActivity::class.java)
+                .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK or android.content.Intent.FLAG_ACTIVITY_REORDER_TO_FRONT)) } catch (e: Exception) { Quiet.note(e) }
+            try { if (talk) speaker.speak(say) } catch (e: Exception) { Quiet.note(e) }
+        } }
         OfflineQueue.drain(this)        // v3.88: पिछली बार नेटवर्क न होने से रुका काम
         calls = CallManager(this) { who -> scope.launch { onIncomingCall(who) } }
         CallCmd.liveCheck = { calls.ringing || calls.inCall }   // v4.1: घंटी/कॉल में कॉल-कमांड बिना DK
@@ -421,7 +429,7 @@ class DKAccessibilityService : AccessibilityService() {
         }
     }
 
-    fun stopLive(why: String = "?") {
+    fun stopLive(why: String = "?", quiet: Boolean = false) {
         DKLog.d("Live बंद किया: $why")
         wakeLive = false; sessionLive = false; gemLive.idleExitMs = 0
         DKState.setLive(false)
@@ -435,11 +443,12 @@ class DKAccessibilityService : AccessibilityService() {
         gemLive.stop(why)
         // मालिक (नवंबर 2026): power बटन वाला "Yes Boss" DK की Live आवाज़ में - Live बंद हुआ = अब एक छोटा अलग connection ठीक
         com.dk.assistant.voice.LiveAckMaker.ensureAsync(this, "Live बंद", 3_000L)
-        agent.stop()
+        if (!quiet) agent.stop()   // quiet = आवाज़ पूरी होकर चैट में आए: लिखी हुई चल रही बात न कटे
         loopJob?.cancel(); loopJob = null
         listener.release()
         ear.release()
         DKState.set(Mode.IDLE)
+        if (quiet) { if (heyDk) scope.launch { delay(800); ensureLoop() }; return }
         scope.launch {
             if (heyDk) {
                 speaker.speak("ठीक है। ज़रूरत हो तो हे डीके बोलिए।")
