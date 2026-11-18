@@ -138,6 +138,17 @@ object LiveHold {
     /** DK ने सवाल पूछा: जवाब सोचने का समय */
     const val ASKED_MS = 2 * 60_000L
 
+    /**
+     * 18 नवंबर 2026 (ऑडिट G7, मालिक: "लंबी बातचीत चलती रहे"): "हे डीके" वाली छोटी बातचीत 45s चुप = बंद. यूज़र कहे
+     * "लंबी बात करनी है / बात करते रहो / लाइव चालू रखो / फ़ोन मत काटना" = यह बातचीत हमेशा वाला Live (✕ तक).
+     */
+    private val LONG_TALK = Regex(
+        "लंबी\\s*(बात|बातचीत|गपशप)|लम्बी\\s*(बात|बातचीत)|बात(चीत)?\\s*करते\\s*रह|बात(चीत)?\\s*चलती\\s*रह|" +
+            "(लाइव|live)\\s*(चालू|on)\\s*(रख|रहने)|(लाइव|live|बातचीत)\\s*(बंद\\s*)?मत\\s*(करना|करो|काटना|काटो)|" +
+            "lambi\\s*baat|baat\\s*karte\\s*raho|keep\\s*(talking|the\\s*live|live)|don'?t\\s*(hang\\s*up|disconnect)"
+    )
+    fun isLongTalk(userText: String): Boolean = LONG_TALK.containsMatchIn(userText.lowercase())
+
     /** wake word वाले छोटे Live का असली idle समय (0 = कभी खुद बंद नहीं) */
     fun idleMs(base: Long, lastUser: String, lastDk: String): Long = when {
         base <= 0 -> base

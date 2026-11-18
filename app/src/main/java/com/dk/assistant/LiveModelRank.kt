@@ -15,6 +15,9 @@ object LiveModelRank {
     const val ALPHA = 0.3
     /** इससे ज़्यादा देरी = नेटवर्क/tool की गड़बड़ी, मॉडल की नहीं -> मत गिनो */
     const val MAX_SAMPLE_MS = 8_000L
+    /** बिना नापे: Google का सुझाया मॉडल (gemini-3.8-live) / पुराना legacy मॉडल */
+    const val PREFERRED_GUESS_MS = 700L
+    const val LEGACY_GUESS_MS = 1_200L
 
     /** ये मॉडल बातचीत नहीं करते (सिर्फ़ लिखना / अनुवाद / robot) */
     fun usable(m: String) = !m.contains("translat") && !m.contains("transcri") && !m.contains("robotic")
@@ -24,6 +27,11 @@ object LiveModelRank {
     /** बिना नापे मॉडल का अंदाज़ा (ms) - सिर्फ़ क्रम के लिए */
     fun guessMs(m: String): Long = when {
         m.contains("thinking") -> 3000
+        // 18 नवंबर 2026 (ऑडिट G1): Google का default GA Live मॉडल ("बिना सोचने की देरी") - नाम में "flash" नहीं, इसलिए
+        // पहले 1100 माना जाता था और पुराना (legacy) 3.1-flash-live आगे लग जाता था. अब बिना नापे यही सबसे पहले.
+        m.startsWith("gemini-3.8-live") -> PREFERRED_GUESS_MS
+        // legacy preview - Google 3.8-live पर जाने को कहता है: बिना नापे सिर्फ़ बैकअप
+        m.startsWith("gemini-3.1-flash-live") -> LEGACY_GUESS_MS
         m.contains("flash-lite") || m.contains("lite") -> 750
         m.contains("flash") -> 900
         m.contains("native-audio") -> 1000

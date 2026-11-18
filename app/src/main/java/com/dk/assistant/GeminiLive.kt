@@ -239,6 +239,7 @@ class GeminiLive(internal val svc: DKAccessibilityService, internal val agent: A
     @Volatile internal var goAway = false
     @Volatile private var goAwayDrop = false          // server ne khud naya connection maanga (galti nahi)
     internal var handle: String? = null
+        set(v) { val changed = field != v; field = v; if (changed) saveHandle(v) }
     /** नवंबर 2026: बीच बातचीत का बचाव-text (caption/अटका/टूटने से पहले की बात/बीच का सवाल) - डिफ़ॉल्ट बंद (1011 की जड़) */
     @Volatile internal var textRescue = false
     /** goAway पर पहले से तैयार connection किस handle से बना (useParked) */
@@ -520,6 +521,12 @@ class GeminiLive(internal val svc: DKAccessibilityService, internal val agent: A
     internal var capSeen = ""; internal var capSeenAt = 0L
     /** 2.5 model ka "sochna" band (pehle awaaz tez) - setup mana kare to wapas */
     @Volatile internal var thinkOff = true
+    /** 18 नवंबर 2026 (ऑडिट G2/G3): context की सीमा (32k/16k) और 3.8 पर BLOCKING tools - setup मना करे तो उसके बिना */
+    @Volatile internal var compressLimits = true
+    /** 18 नवंबर 2026 (ऑडिट G6): server का usageMetadata - इस बातचीत का context अभी कितने token; आख़िरी लॉग किस 8k पर */
+    @Volatile internal var ctxTokens = 0L
+    @Volatile internal var ctxLoggedBucket = -1L
+    @Volatile internal var toolBehavior = true
     /** v3.59: इस Live की आवाज़/भाषा/affective (setup पर एक बार तय - बीच में अपने-आप नहीं बदलती) */
     @Volatile private var extras: LiveVoice.Extras? = null
     @Volatile private var extrasModel = ""
@@ -991,6 +998,7 @@ class GeminiLive(internal val svc: DKAccessibilityService, internal val agent: A
             (if (handlerErrors > 0) " • server संदेश की गलती: $handlerErrors" else "") +
             (if (droppedOld > 0) " • पुराने जवाब के फेंके टुकड़े: $droppedOld" else "") +
             (if (lastLatency >= 0) " • पिछली देरी: $lastLatency ms" else "") +
+            (if (ctxTokens > 0) " • context: ${ctxTokens / 1000}k token (सीमा ${LiveSetupRules.COMPRESS_TRIGGER_TOKENS / 1000}k पर छँटाई" + (if (compressLimits) ")" else " बंद - default)") else "") +
             (if (lastBreakdown.isNotBlank()) " • $lastBreakdown" else "")
     }
 
@@ -1004,6 +1012,7 @@ class GeminiLive(internal val svc: DKAccessibilityService, internal val agent: A
         stopped = false; goAway = false; idleExit = false; lastAct = System.currentTimeMillis(); callAudioOn = false; lastUserLine = ""; lastDkLine = ""
         sent = 0; sentBytes = 0; dropped = 0; gaps = 0; readErr = 0; recvAudio = 0; reconnects = 0; slowReconnects = 0; zombieN = 0; rotFreezes = 0; rotSwitches = 0; rotFallbacks = 0; rotFreezeAt = 0L; freezeReal = false; freezeEndAt = 0L; handleAt = 0L; lastReplyDoneAt = 0L; replayedN = 0
         textRescue = LiveStay.textRescueOn(svc); weakNetTold = false
+        ctxTokens = 0L; ctxLoggedBucket = -1L
         log("बीच बातचीत का बचाव-text: " + if (textRescue) "चालू (सेटिंग)" else "बंद (डिफ़ॉल्ट - 1011 से बचाव)")
         if (!Setup.hasMic(svc)) throw Fatal("माइक की परमिशन नहीं है", kind = LiveFailWhy.Kind.MIC)
         // v3.94: मुख्य key + बैकअप keys - एक बंद/गलत/limit खत्म = चुपचाप अगली (user को पता न चले)
@@ -1051,6 +1060,7 @@ class GeminiLive(internal val svc: DKAccessibilityService, internal val agent: A
         curKeys = keys; curModels = models
         if (stopped) return@withContext "जुड़ने से पहले बंद"
         mi = 0; var fails = 0
+        restoreHandle(keys, key, models, dkServer)?.let { mi = it }
         var softQuota = 0                                 // 14 नवंबर 2026: एक key पर छोटी रोक (प्रति मिनट / एक साथ सत्र) कितनी बार
         /** एक key पर छोटी रोक: मॉडल बंद नहीं - लिखने वाला (उसी key पर दूसरा सत्र) बंद करके जगह, थोड़ा रुककर उसी से फिर ([LiveOneKey]) */
         suspend fun softWait(where: String) {
@@ -1227,6 +1237,10 @@ class GeminiLive(internal val svc: DKAccessibilityService, internal val agent: A
                                 handle = null; continue
                             }
                             thinkOff && r.contains("think") -> { thinkOff = false; log("यह मॉडल thinkingBudget नहीं लेता - उसके बिना"); continue }
+                            compressLimits && (r.contains("trigger") || r.contains("target") || r.contains("compression")) -> {
+                                compressLimits = false; log("यह मॉडल context की सीमा (triggerTokens) नहीं लेता - पहले जैसा default"); continue
+                            }
+                            toolBehavior && r.contains("behavior") -> { toolBehavior = false; log("यह मॉडल tool behavior नहीं लेता - उसके बिना"); continue }
                             handle != null && (r.contains("handle") || r.contains("resum") || r.contains("session")) -> { handle = null; continue }
                             r.contains("model") || r.contains("not found") || r.contains("not supported") || code == 1008 || code == 404 || code == 1007 ->
                                 if (mi + 1 < models.size) { mi++; handle = null; continue }
@@ -1265,6 +1279,9 @@ class GeminiLive(internal val svc: DKAccessibilityService, internal val agent: A
                     // ab chalne do jab tak band/toote/goAway/call
                     while (!stopped && isActive) {
                         if (closed.isCompleted) break
+                        if (idleExitMs > 0 && LiveHold.isLongTalk(lastUserLine)) {
+                            idleExitMs = 0; log("Live: आपने लंबी बातचीत कही - अब चुप रहने पर भी बंद नहीं (✕ तक)")
+                        }
                         val idleMs = LiveHold.idleMs(idleExitMs, lastUserLine, lastDkLine)
                         if (idleMs > 0 && !turnActive && !isPlaying() && toolJobs.isEmpty() &&
                             System.currentTimeMillis() - lastAct > idleMs) {
@@ -1598,6 +1615,34 @@ class GeminiLive(internal val svc: DKAccessibilityService, internal val agent: A
 
     // ================================================================ v5.1: (मॉडल × key) की दौड़
     // मालिक: "DK लाइव 1-2 सेकंड में जुड़े; धीमे नेट / गलत key / मॉडल बंद पर भी". नियम LiveRace में (JVM test).
+    /**
+     * 18 नवंबर 2026 (ऑडिट G4): handle फ़ोन में save ([LiveHandleStore]) - service / ऐप दोबारा शुरू हो तब भी वही बातचीत.
+     * null = save वाला भी मिटाओ (अटका / ज़हरीला handle वापस न आए).
+     */
+    private fun saveHandle(v: String?) {
+        try {
+            val e = raceSp.edit()
+            val kh = curKeys.getOrNull(keyIdx)?.takeIf { !LiveDkServer.isServer(it) }?.hashCode()
+            if (v == null || kh == null || model.isBlank()) e.remove(LiveHandleStore.PREF)
+            else e.putString(LiveHandleStore.PREF, LiveHandleStore.encode(LiveHandleStore.Saved(v, model, kh, System.currentTimeMillis())))
+            e.apply()
+        } catch (ex: Exception) { Quiet.note(ex) }
+    }
+
+    /** run() की शुरुआत: RAM में handle नहीं + save वाला ताज़ा (उसी key / मौजूद मॉडल) = उसी से जारी. लौटाता है मॉडल का index */
+    private fun restoreHandle(keys: List<String>, key: String, models: List<String>, dkServer: Boolean): Int? {
+        if (handle != null || dkServer || keys.isEmpty()) return null
+        return try {
+            val sv = LiveHandleStore.decode(raceSp.getString(LiveHandleStore.PREF, null))
+            if (!LiveHandleStore.usable(sv, System.currentTimeMillis(), key.hashCode(), models)) return null
+            model = sv!!.model; handle = sv.handle; handleAt = sv.at
+            // setter ने "अभी" का समय लिख दिया - असली (पुराना) समय वापस, ताकि बार-बार restart पर handle की उम्र न बढ़े-घटे
+            raceSp.edit().putString(LiveHandleStore.PREF, LiveHandleStore.encode(sv)).apply()
+            log("Live: पिछली बातचीत (${(System.currentTimeMillis() - sv.at) / 60_000} मिनट पहले की) फ़ोन में save थी - वहीं से जारी [${sv.model}]")
+            models.indexOf(sv.model)
+        } catch (ex: Exception) { Quiet.note(ex); null }
+    }
+
     private val raceSp by lazy { svc.getSharedPreferences("dk_live_race", android.content.Context.MODE_PRIVATE) }
     internal val health: LiveRace.Health by lazy { LiveRace.Health.decode(try { raceSp.getString("h", "") } catch (_: Exception) { "" }) }
     internal fun saveHealth() { try { raceSp.edit().putString("h", health.encode()).apply() } catch (e: Exception) { Quiet.note(e) } }

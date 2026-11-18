@@ -62,7 +62,10 @@ class LiveStayTest {
         assertTrue(g.contains("startRace(curKeys, listOf(m) + curModels.filter { it != m }, live = false, resumeId = LiveRace.Combo(m, k).id)"))
         // resumption + compression बने रहें
         assertTrue(g.contains(".put(\"sessionResumption\", if (resume && handle != null) JSONObject().put(\"handle\", handle) else JSONObject())"))
-        assertTrue(g.contains(".put(\"contextWindowCompression\", JSONObject().put(\"slidingWindow\", JSONObject()))"))
+        // 18 नवंबर 2026 (ऑडिट G2): compression अब सीमा के साथ (32k/16k); setup मना करे तो पहले जैसा खाली slidingWindow
+        assertTrue(g.contains(".put(\"contextWindowCompression\", LiveSetupRules.compression(compressLimits))"))
+        assertTrue(LiveSetupRules.compression(false).has("slidingWindow"))
+        assertTrue(LiveSetupRules.compression(true).has("slidingWindow"))
         assertTrue(g.contains("if (it.optBoolean(\"resumable\") && it.optString(\"newHandle\").isNotBlank()) handle = it.optString(\"newHandle\")"))
         // handle वाली जोड़ी दौड़ में सबसे पहले
         assertTrue(g.contains("queue.add(0, queue.removeAt(it))"))

@@ -413,6 +413,8 @@ internal fun GeminiLive.setupJson(m: String, txt: Boolean = connText, resume: Bo
     LiveToolSlim.slimInPlace(tools, Prefs.bool(svc, LiveSmooth.PREF_SLIM_TOOLS, true)).let { r ->
         if (r.kept >= 0) log("हल्के tools: ${r.kept} सीधे + ${r.routed.size} dk_agent के पीछे (${r.charsBefore} -> ${r.charsAfter} अक्षर)")
     }
+    // 18 नवंबर 2026 (ऑडिट G3): 3.8-live का default async tools - DK का flow blocking मानकर बना है -> साफ़ BLOCKING
+    if (toolBehavior && LiveSetupRules.blockingTools(m)) LiveSetupRules.stampBehavior(tools).let { n -> if (n > 0) log("Live: $n tools पर behavior=BLOCKING ($m का default async)") }
     val setup = JSONObject()
         .put("model", "models/$m")
         .put("generationConfig", JSONObject()
@@ -452,6 +454,6 @@ internal fun GeminiLive.setupJson(m: String, txt: Boolean = connText, resume: Bo
         .put("inputAudioTranscription", JSONObject())
         .apply { if (!txt) put("outputAudioTranscription", JSONObject()) }
         .put("sessionResumption", if (resume && handle != null) JSONObject().put("handle", handle) else JSONObject())
-        .put("contextWindowCompression", JSONObject().put("slidingWindow", JSONObject()))
+        .put("contextWindowCompression", LiveSetupRules.compression(compressLimits))
     return JSONObject().put("setup", setup).toString()
 }
