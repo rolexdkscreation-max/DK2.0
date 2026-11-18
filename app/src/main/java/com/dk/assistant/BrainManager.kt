@@ -979,11 +979,17 @@ class BrainManager(private val ctx: Context) {
     }
 
     /** v5.1: Live जुड़ने के बाद भेजी जाने वाली याद (वही हिस्से जो पहले setup में जाते थे) */
-    fun liveMemoryContext(): String = buildString {
-        append(Memory.factsBlock(ctx))
+    fun liveMemoryContext(): String = liveMemoryContext(carriedFrom = 0L)
+
+    /**
+     * 18 नवंबर 2026 (मालिक: "Gemini को उतना ज़्यादा न भेजे"): पक्की बातों का ताज़ा हिस्सा ([Memory.liveFactsBlock]),
+     * और [carriedFrom] > 0 = उस समय से नई बातें setup ([LiveCarry]) में जा चुकीं - दोबारा नहीं.
+     */
+    fun liveMemoryContext(carriedFrom: Long): String = buildString {
+        append(Memory.liveFactsBlock(ctx))
         if (Prefs.friendMode(ctx)) append(FriendTalk.block(ctx))
         append(LiveSearch.memoryBlock())
-        append(LocalMemory.liveBlock(ctx))
+        append(if (carriedFrom > 0L) LocalMemory.liveBlock(ctx, carriedFrom) else LocalMemory.liveBlock(ctx))
         // v3.151: लोकल याददाश्त बंद हो तब भी नया connection अभी की बातचीत न भूले
         if (!Prefs.localMemoryOn(ctx)) append(MsgDraft.recentBlock(MsgDraft.turnsFromState(), System.currentTimeMillis()))
     }.trim()

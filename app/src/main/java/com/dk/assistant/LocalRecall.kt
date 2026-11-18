@@ -155,12 +155,12 @@ object LocalRecall {
         val who = if (q.dk) "d" else "u"
         val inTime = turns.filter { it.at in q.from..q.to && it.id !in skip && it.who == who && it.text.isNotBlank() }
         val tHits = if (q.words.isEmpty()) inTime.takeLast(max)
-        else inTime.map { it to score(q.words, it.text) }.filter { it.second > 0 }
+        else inTime.map { it to meaningScore(q.words, it.text) }.filter { it.second > 0 }
             .sortedWith(compareByDescending<Pair<Turn, Int>> { it.second }.thenByDescending { it.first.at })
             .take(max).map { it.first }.sortedBy { it.at }
         val pHits = if (q.words.isEmpty()) {
             if (q.recent || tHits.isNotEmpty()) emptyList() else points.filter { it.at in q.from..q.to || q.label.isBlank() }.takeLast(max)
-        } else points.map { it to score(q.words, it.text) }.filter { it.second > 0 }
+        } else points.map { it to meaningScore(q.words, it.text) }.filter { it.second > 0 }
             .sortedWith(compareByDescending<Pair<Point, Int>> { it.second }.thenByDescending { it.first.at })
             .take(max).map { it.first }
         return Hits(tHits, pHits)
@@ -171,6 +171,34 @@ object LocalRecall {
         val n = norm(text)
         val toks = WORD.findAll(n).map { it.value }.toList()
         return words.count { w -> n.contains(w) || (w.length >= 4 && toks.any { it.startsWith(w.dropLast(1)) || w.startsWith(it) && it.length >= 4 }) }
+    }
+
+    /**
+     * 18 नवंबर 2026 (मालिक: "मतलब समझकर ढूँढे"): वही शब्द = 2 अंक ([score] वाला मिलान), एक-मतलब वाला शब्द या
+     * दूसरी लिपि में वही नाम ([MemoryMeaning]: "गाड़ी"→"बाइक", "राहुल"→"rahul") = 1 अंक. सीधा मिलान हमेशा ऊपर.
+     */
+    fun meaningScore(words: List<String>, text: String): Int {
+        val toks = MemoryMeaning.tokens(text)
+        return words.map { w -> if (score(listOf(w), text) > 0) 2 else if (MemoryMeaning.related(w, toks)) 1 else 0 }.sum()
+    }
+
+    /** पक्की बातें (facts) में भी वही खोज - Live में facts का सिर्फ़ ताज़ा हिस्सा जाता है, बाकी यहीं से */
+    fun matchFacts(question: String, facts: List<String>, max: Int = 3): List<String> {
+        val w = keywords(question)
+        if (w.isEmpty()) return emptyList()
+        return facts.withIndex().map { (i, f) -> Triple(f, meaningScore(w, f), i) }.filter { it.second > 0 }
+            .sortedWith(compareByDescending<Triple<String, Int, Int>> { it.second }.thenByDescending { it.third })
+            .take(max).map { it.first }
+    }
+
+    /** recall_conversation का नतीजा (Gemini के लिए) - बातचीत + पक्की बातें, दोनों फ़ोन पर ढूँढी हुई */
+    fun toolReply(a: String, facts: List<String>): String {
+        if (a == NOT_FOUND && facts.isEmpty()) return "NOT FOUND in the phone's saved conversation. Say exactly: $NOT_FOUND"
+        return buildString {
+            append("FOUND on the phone (saved conversation). Tell the user this briefly, in your voice, keep the quoted words exact:")
+            if (facts.isNotEmpty()) append("\nSaved facts: ").append(facts.joinToString(" | "))
+            if (a != NOT_FOUND) append("\n").append(a)
+        }
     }
 
     // ------------------------------------------------------------------ जवाब (फ़ोन पर बना)

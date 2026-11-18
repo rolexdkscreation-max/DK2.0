@@ -115,6 +115,14 @@ object Memory {
             f.joinToString("\n") { "- $it" } + learned
     }
 
+    /** 18 नवंबर 2026: DK लाइव के लिए - सारी नहीं, सिर्फ़ ताज़ा पक्की बातें ([LiveMemoryBudget]); बाकी फ़ोन पर recall_conversation से */
+    fun liveFactsBlock(c: Context): String {
+        if (com.dk.assistant.plus.FeatureFlags.on(c, com.dk.assistant.plus.FeatureFlags.INCOGNITO)) return ""
+        val learned = LearnedWays.promptBlock(c)
+        if (!personalOn(c)) return learned
+        return LiveMemoryBudget.factsBlock(facts(c)) + learned
+    }
+
     // ------------------------------------------------------------ baatcheet ka itihaas
     fun loadHistory(c: Context): MutableList<Turn> {
         val a = readArr(c, "dk_history.json")

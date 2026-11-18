@@ -1683,6 +1683,8 @@ class GeminiLive(internal val svc: DKAccessibilityService, internal val agent: A
     @Volatile internal var lastProbeAt = 0L
     /** इस connection पर पुरानी बातचीत (handle) चली = याद दोबारा नहीं भेजनी */
     @Volatile internal var connResumed = false
+    /** 18 नवंबर 2026: नए सत्र के setup में [LiveCarry] ने इस समय से नई बातें भेजीं (0 = कुछ नहीं) - [sendContext] दोबारा न भेजे */
+    @Volatile internal var carriedFrom = 0L
     internal val ctxSent = java.util.Collections.newSetFromMap(java.util.WeakHashMap<WebSocket, Boolean>())
 
     /** v5.1: पीछे की दौड़ से जीता (या wake word वाला) connection standby में तैयार */

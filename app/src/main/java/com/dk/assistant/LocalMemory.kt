@@ -137,7 +137,7 @@ object LocalMemory {
         recent.reverse()
         if (recent.size < RECENT_SCAN || q.words.isEmpty()) return recent
         val oldest = recent.first().at
-        val ws = q.words.take(6)
+        val ws = MemoryMeaning.expand(q.words.take(6))   // 18 नवंबर 2026: एक-मतलब वाले शब्द भी (गाड़ी → बाइक)
         val like = ws.joinToString(" OR ") { "text LIKE ?" }
         val args = arrayOf(oldest.toString()) + ws.map { "%$it%" }
         val old = ArrayList<LocalRecall.Turn>()
@@ -198,7 +198,7 @@ object LocalMemory {
      * v3.6: DK लाइव शुरू होते समय - पुराने दिनों का सार + पिछले कुछ घंटों की असली बातें. ताज़ा पढ़ो (पहली बार
      * cache खाली होने से कुछ नहीं जाता था), पर ज़्यादा से ज़्यादा ~400ms रुककर.
      */
-    fun liveBlock(c: Context): String {
+    fun liveBlock(c: Context, skipFrom: Long = 0L): String {
         if (!Prefs.localMemoryOn(c)) return promptBlock(c)
         val ctx = c.applicationContext
         return try {
@@ -206,7 +206,10 @@ object LocalMemory {
                 val d = db(ctx); val now = System.currentTimeMillis()
                 val pts = LocalRecall.promptBlock(allPoints(d).takeLast(30))
                 blockCache = now to pts
-                pts + LocalRecall.recentBlock(turnsSince(d, now - 6 * 3_600_000L), now)
+                // 18 नवंबर 2026: छोटा ([LiveMemoryBudget]) + setup में जा चुकी बातें ([skipFrom] के बाद) दोबारा नहीं
+                val recent = LiveMemoryBudget.recentFor(turnsSince(d, now - LiveMemoryBudget.RECENT_WINDOW_MS), skipFrom)
+                pts + LocalRecall.recentBlock(recent, now, maxTurns = LiveMemoryBudget.RECENT_TURNS,
+                    windowMs = LiveMemoryBudget.RECENT_WINDOW_MS, maxChars = LiveMemoryBudget.RECENT_CHARS)
             }.get(400, java.util.concurrent.TimeUnit.MILLISECONDS)
         } catch (_: Exception) { promptBlock(c) }
     }

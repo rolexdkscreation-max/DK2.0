@@ -307,7 +307,7 @@ internal fun GeminiLive.parkRaced(a: Attempt, w: WebSocket) {
 internal fun GeminiLive.sendContext(w: WebSocket?) {
     if (w == null || connResumed) return
     synchronized(ctxSent) { if (!ctxSent.add(w)) return }
-    val t = try { BrainManager(svc).liveMemoryContext() } catch (e: Exception) { log("याद नहीं बनी: ${e.message}"); "" }
+    val t = try { BrainManager(svc).liveMemoryContext(carriedFrom) } catch (e: Exception) { log("याद नहीं बनी: ${e.message}"); "" }
     if (t.isBlank()) return
     val msg = JSONObject().put("clientContent", JSONObject()
         .put("turns", JSONArray().put(JSONObject().put("role", "user")
