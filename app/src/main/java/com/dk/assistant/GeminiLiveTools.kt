@@ -475,9 +475,11 @@ internal fun GeminiLive.runTools(calls: JSONArray) {
                 "dk_inspector" -> com.dk.assistant.inspector.Inspector.liveTool(svc, args)
                 "remember_fact" -> if (Memory.addFact(svc, args.optString("fact"))) "saved" else "NOT saved: private info (passwords, PIN, OTP, bank/card/Aadhaar numbers) is never stored. If the user asked you to remember it, tell them gently you do not save such private details." 
                 "recall_conversation" -> {
-                    val a = LocalMemory.answer(svc, args.optString("question").ifBlank { DKState.lastUser.trimEnd('…') })
-                    if (a == LocalRecall.NOT_FOUND) "NOT FOUND in the phone's saved conversation. Say exactly: बॉस, मुझे ये याद नहीं मिल रहा।"
-                    else "FOUND on the phone (saved conversation). Tell the user this briefly, in your voice, keep the quoted words exact:\n$a"
+                    val q = args.optString("question").ifBlank { DKState.lastUser.trimEnd('…') }
+                    val a = LocalMemory.answer(svc, q)
+                    // 18 नवंबर 2026: Live में पक्की बातों का सिर्फ़ ताज़ा हिस्सा जाता है - बाकी यहाँ फ़ोन पर ढूँढो
+                    val f = if (Memory.personalOn(svc)) LocalRecall.matchFacts(q, Memory.facts(svc)) else emptyList()
+                    LocalRecall.toolReply(a, f)
                 }
                 "forget_memory" -> { val n = Memory.forget(svc, args.optString("about")); if (n > 0) "Forgotten ($n place(s) deleted)." else "Nothing saved about that - tell the user it is not in memory." }
                 "local_info" -> localInfoTool(args.optString("find"))

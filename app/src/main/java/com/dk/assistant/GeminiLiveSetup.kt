@@ -75,7 +75,10 @@ internal fun GeminiLive.discoverModels(key: String): List<String> {
 internal fun GeminiLive.carryNote(resume: Boolean): String {
     if (resume && handle != null) return ""
     return try {
-        LiveCarry.note(DKState.messages.map { LiveCarry.Turn(it.role, it.text, it.time) }, System.currentTimeMillis())
+        val turns = DKState.messages.map { LiveCarry.Turn(it.role, it.text, it.time) }
+        val now = System.currentTimeMillis()
+        carriedFrom = LiveMemoryBudget.carriedFrom(turns, now)   // 18 नवंबर 2026: याद वाले संदेश में ये बातें दोबारा नहीं
+        LiveCarry.note(turns, now)
             .also { if (it.isNotEmpty()) log("Live: नया सत्र (handle नहीं) - पिछली बातचीत prompt में जोड़ी (${it.length} अक्षर)") }
     } catch (_: Exception) { "" }
 }
@@ -378,7 +381,7 @@ internal fun GeminiLive.setupJson(m: String, txt: Boolean = connText, resume: Bo
                 .put("properties", JSONObject().put("about", JSONObject().put("type", "STRING").put("description", "The topic to forget, a few words")))
                 .put("required", JSONArray().put("about"))))
         .put(JSONObject().put("name", "recall_conversation")
-            .put("description", "The user asks what HE said earlier or what you two talked about (मैंने क्या बोला था / अभी मैंने क्या कहा था / कल क्या बात हुई थी / मैंने उस बारे में क्या बताया था / तुमने क्या कहा था). Searches the conversation saved ONLY on this phone (ALL of it, from the very first day - nothing is ever auto-deleted - + permanent short notes) - no internet. question = the user's question in his own words (include the time like अभी/कल/आज and the topic). Then say the result to the user briefly in your own voice; if it says it was not found, say exactly 'बॉस, मुझे ये याद नहीं मिल रहा।' - never invent.")
+            .put("description", "The user asks what HE said earlier or what you two talked about (मैंने क्या बोला था / अभी मैंने क्या कहा था / कल क्या बात हुई थी / मैंने उस बारे में क्या बताया था / तुमने क्या कहा था). Searches the conversation saved ONLY on this phone (ALL of it, from the very first day - nothing is ever auto-deleted - + permanent short notes + ALL saved personal facts, matched by meaning: गाड़ी = बाइक, राहुल = rahul) - no internet. Also call it before saying you don't know something personal about the user. question = the user's question in his own words (include the time like अभी/कल/आज and the topic). Then say the result to the user briefly in your own voice; if it says it was not found, say exactly 'बॉस, मुझे ये याद नहीं मिल रहा।' - never invent.")
             .put("parameters", JSONObject().put("type", "OBJECT")
                 .put("properties", JSONObject().put("question", JSONObject().put("type", "STRING").put("description", "The user's question, his words")))
                 .put("required", JSONArray().put("question"))))
