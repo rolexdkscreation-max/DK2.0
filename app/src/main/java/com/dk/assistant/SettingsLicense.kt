@@ -107,6 +107,15 @@ private fun SettingsActivity.loginBody(box: LinearLayout) {
         BackendSession.signOut(this); toast("लॉग आउट - अब मेहमान"); recreate()
     })
     hint(box, "Google सिर्फ़ मालिक के लिए (जिसका ईमेल सर्वर की सूची में हो)। बाकी लोग बिना लॉगिन चलाते हैं।")
+    // 18 नवंबर 2026: लॉगिन में "8: Unknown error" = Cloud Console में यही package + SHA-1 वाला Android client चाहिए - यहीं दिखे
+    val sha = GoogleAuth.signingSha1(this)
+    hint(box, "लॉगिन न हो (code 8 / 10) तो Firebase वाले Google Cloud project में Android client बनाइए:\nPackage: $packageName\nSHA-1: ${sha ?: "नहीं मिला"}")
+    row(box, button("SHA-1 कॉपी करें") { copyText("SHA-1", sha.orEmpty()) }, button("Package कॉपी करें") { copyText("package", packageName) })
+}
+
+private fun SettingsActivity.copyText(label: String, v: String) {
+    val cm = getSystemService(android.content.ClipboardManager::class.java) ?: return
+    cm.setPrimaryClip(android.content.ClipData.newPlainText(label, v)); toast("कॉपी हुआ: $label")
 }
 
 /** Play services से Google (openid/email) - UI चाहिए तो Google की स्क्रीन, फिर [licenseGoogleResult] */
