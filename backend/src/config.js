@@ -38,6 +38,17 @@ export const VOICE_TICKET_MS = 2 * 60_000;
 /** /stt में एक बार में अधिकतम आवाज़ (बाइट) - 16 kHz WAV ≈ 60 सेकंड */
 export const STT_MAX_BYTES = 2_000_000;
 
+/**
+ * DK लाइव (Gemini Live) बिना अपनी key: ऐप सीधे Google से WebSocket पर जुड़ता है, पर सर्वर की key की जगह
+ * छोटी मियाद वाला टिकट (ephemeral token) - असली key कभी फ़ोन पर नहीं जाती, Worker पर आवाज़ का बोझ नहीं (मुफ़्त plan).
+ * मुफ़्त वाले: हर टिकट इतने सेकंड का (उतना समय पहले ही गिना जाता है; मियाद पर Google खुद रोकता है).
+ * लाइसेंस/मालिक: टिकट इतने मिनट का (फिर नया).
+ */
+export const LIVE_FREE_BLOCK_SECONDS = 60;
+export const LIVE_PAID_MINUTES = 30;
+export const LIVE_TOKEN_URL = "https://generativelanguage.googleapis.com/v1beta/auth_tokens";
+export const LIVE_WS_URL = "wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContentConstrained";
+
 /** Whisper (Cloudflare Workers AI) - नाम बदले तो सिर्फ़ यहाँ */
 export const STT_MODEL = "@cf/openai/whisper-large-v3-turbo";
 

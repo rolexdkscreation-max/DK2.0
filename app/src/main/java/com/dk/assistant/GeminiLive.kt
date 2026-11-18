@@ -163,6 +163,8 @@ class GeminiLive(internal val svc: DKAccessibilityService, internal val agent: A
             return listOf("मत", "नहीं", "नही", "ना करो", "न करो", "don't", "mat ").none { after.contains(it) }
         }
         fun available(c: android.content.Context) = key(c).isNotBlank()
+        /** 18 नवंबर 2026: Live चल सकता है - अपनी key, या (key नहीं तो) DK सर्वर का टिकट */
+        fun canRun(c: android.content.Context) = available(c) || LiveDkServer.on()
 
         /** Debug screen ke liye taaza aankde */
         @Volatile var stats: String = "Gemini Live अभी नहीं चला"
@@ -979,7 +981,11 @@ class GeminiLive(internal val svc: DKAccessibilityService, internal val agent: A
         // न चुना = Live की keys, फिर AI दिमाग में कहीं और डली Gemini keys (सब पर fallback, क्रम से)
         val livePin = BrainPin.resolve(svc, BrainPin.LIVE)
         val ownKeys = Prefs.liveGeminiKeys(svc)
-        val keys = (livePin?.let { listOf(it.key) } ?: (ownKeys + BrainPin.spareGemini(svc, ownKeys))).ifEmpty { throw Fatal("Gemini की key नहीं है", kind = LiveFailWhy.Kind.NO_KEY) }
+        // 18 नवंबर 2026: कोई Gemini key नहीं = DK सर्वर का टिकट ([LiveDkServer]) - वरना पहले जैसा "key नहीं"
+        val keys = (livePin?.let { listOf(it.key) } ?: (ownKeys + BrainPin.spareGemini(svc, ownKeys)))
+            .ifEmpty { if (LiveDkServer.on()) listOf(LiveDkServer.KEY) else throw Fatal("Gemini की key नहीं है", kind = LiveFailWhy.Kind.NO_KEY) }
+        val dkServer = keys.size == 1 && LiveDkServer.isServer(keys[0])
+        if (dkServer) log("Live: अपनी Gemini key नहीं - ${AiRouter.LABEL} के टिकट से (असली key फ़ोन पर नहीं)")
         if (livePin != null) log("Live: आपका चुना मॉडल ${livePin.model} (सिर्फ़ यही, fallback बंद)")
         // 16 नवंबर 2026 (मालिक): "सारी keys इस्तेमाल करो" चालू = हर नई बातचीत DK लाइव की अगली अपनी key से (Round-Robin).
         // सूची का क्रम वही (limit का हिसाब key के नंबर से), सिर्फ़ शुरुआत बदलती है; बाकी keys घूमकर बचाव में.
@@ -1067,6 +1073,15 @@ class GeminiLive(internal val svc: DKAccessibilityService, internal val agent: A
                 while (!stopped && isActive) {
                     if (svc.callTakesMic()) return@coroutineScope      // v3.40: घंटी पर नहीं, call उठने पर ही
                     awaitWakeWarm()                  // 16 नवंबर 2026: "हे डीके" बोलते-बोलते शुरू हुई तैयारी - उसे काटो मत
+                    // 18 नवंबर 2026: DK सर्वर = जुड़ने से पहले चालू टिकट (मियाद पूरी = नया). आज का समय पूरा = तय शब्द + Live बंद
+                    if (dkServer) try { LiveDkServer.ensure(svc) } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (e: Exception) {
+                        if (AiRouter.stopsTalk(e)) {
+                            log("DK सर्वर: आज की मुफ़्त बातचीत पूरी - Live बंद")
+                            LiveDkServer.stopToday(); stopped = true
+                            AiRouter.stopped(e, speak = true); break
+                        }
+                        throw Fatal("${AiRouter.LABEL} से Live का टिकट नहीं मिला (${e.message})", recoverable = true, kind = LiveFailWhy.Kind.SERVER)
+                    }
                     // v5.1: standby वाला गर्म connection (wake word) किसी भी मॉडल/key का हो - वही लो
                     val pk = parked; parked = null
                     val pkOk = pk != null && !pk.closed.isCompleted && System.currentTimeMillis() - pk.at < PARK_MS
@@ -1410,6 +1425,12 @@ class GeminiLive(internal val svc: DKAccessibilityService, internal val agent: A
                     goAway = false
                     reconnects++
                     log("टूटने से पहले भेजे: ${wire.summary()}")
+                    // 18 नवंबर 2026: DK सर्वर के टिकट की मियाद पूरी (Google ने रोका) = key/limit की गलती नहीं - नया टिकट, बातचीत वहीं से
+                    if (dkServer && LiveDkServer.expired()) {
+                        if (turnActive) finishTurn()
+                        log("DK सर्वर का टिकट पूरा (code=$code) - नए टिकट से फिर जोड़ रहा हूँ" + if (handle != null) " (बातचीत वहीं से)" else "")
+                        continue
+                    }
                     if (code == 1007 && lastFrameAt > 0 && System.currentTimeMillis() - lastFrameAt < 6_000) {
                         val n = synchronized(vision1007) {
                             val t = System.currentTimeMillis(); vision1007.addLast(t)

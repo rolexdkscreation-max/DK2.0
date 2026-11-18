@@ -7,6 +7,7 @@ import { Db } from "./db.js";
 import {
   activate, createLicense, levelFor, quota, requireChatLeft, requireLevel, requireVoiceLeft, taskLevel, today, useVoiceTicket, voiceTicket,
 } from "./license.js";
+import { onLiveToken } from "./live.js";
 import { PROVIDERS as SEARCH_PROVIDERS, search } from "./search.js";
 import { readAudio, transcribe } from "./stt.js";
 import { CODES, HttpError, errorResponse, json, readJson, safeEqual } from "./util.js";
@@ -223,6 +224,7 @@ export async function handle(req, env, ctx, opts = {}) {
 
   if (path === "/ai/chat" && M === "POST") return onChat(req, env, ctx, ident, opts);
   if (path === "/stt" && M === "POST") return onStt(req, env, ctx, ident, opts);
+  if (path === "/live/token" && M === "POST") return onLiveToken(env, ident, opts);
   if (path === "/search" && M === "POST") {
     const now = opts.now?.() ?? Date.now();
     const lv = ident.owner ? { level: "owner" } : await levelFor(new Db(env.DB), ident, now);
@@ -243,6 +245,7 @@ export async function handle(req, env, ctx, opts = {}) {
       active: planChain(env).map((c) => c.id),
       search: SEARCH_CHAIN.map((id) => ({ provider: id, configured: !!env[SEARCH_PROVIDERS[id].secret] })),
       stt: !!env.AI,
+      live: !!env.GEMINI_API_KEY,
       health,
     });
   }

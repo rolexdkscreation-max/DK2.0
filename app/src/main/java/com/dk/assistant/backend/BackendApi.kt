@@ -87,6 +87,10 @@ object BackendApi {
         return BackendWire.stt(b).also { s -> s.quota?.let { lastQuota = it } }
     }
 
+    /** DK लाइव का टिकट (अपनी Gemini key नहीं) - [com.dk.assistant.LiveDkServer] ही बुलाता है */
+    fun liveToken(c: Context): BackendWire.LiveTicket =
+        BackendWire.liveTicket(postJson(c, "/live/token", JSONObject())).also { t -> t.quota?.let { lastQuota = it } }
+
     fun search(c: Context, q: String, deep: Boolean): String =
         postJson(c, "/search", JSONObject().put("query", q).put("n", if (deep) 8 else 5))
 
@@ -96,6 +100,7 @@ object BackendApi {
 
     fun activate(c: Context, key: String): BackendWire.Status {
         postJson(c, "/license/activate", JSONObject().put("key", key.trim().uppercase()))
+        com.dk.assistant.LiveDkServer.clearStop()      // नया लाइसेंस = आज की रोक हटी, Live फिर
         return status(c)
     }
 

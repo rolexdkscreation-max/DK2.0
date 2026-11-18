@@ -29,7 +29,8 @@ internal fun GeminiLive.wakeWarm(why: String): Boolean {
             val livePin = BrainPin.resolve(svc, BrainPin.LIVE)
             val own = Prefs.liveGeminiKeys(svc)
             val keys = livePin?.let { listOf(it.key) } ?: curKeys.ifEmpty { own + BrainPin.spareGemini(svc, own) }
-            if (keys.isEmpty()) return@launch
+            // DK सर्वर (मुफ़्त समय गिनता है) = सिर्फ़ आहट पर पहले से connection नहीं
+            if (keys.isEmpty() || keys.all { LiveDkServer.isServer(it) }) return@launch
             val models = livePin?.let { listOf(it.model.removePrefix("models/")) }
                 ?: curModels.ifEmpty { LiveModelPick.order(LiveModelPick.get(svc), discoverModels(keys[0])) }
             if (models.isEmpty() || DKState.live || warmReady() || raceBusy()) return@launch

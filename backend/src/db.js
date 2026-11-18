@@ -53,6 +53,28 @@ export class Db {
     );
   }
 
+  // ---------- DK लाइव के टिकट (मुफ़्त वाले) ----------
+  liveUntil(uid) {
+    return run(async () => {
+      const r = await this.d1.prepare("SELECT until_ms FROM live_grants WHERE uid = ?").bind(uid).first();
+      return r?.until_ms ?? 0;
+    });
+  }
+
+  /** पिछला टिकट खत्म हो चुका हो तभी नया समय लिखो. @returns true = इसी बुलावे ने लिखा (दो साथ आए तो एक ही गिना जाए) */
+  claimLive(uid, now, until) {
+    return run(async () => {
+      const r = await this.d1
+        .prepare(
+          "INSERT INTO live_grants (uid, until_ms) VALUES (?, ?) " +
+            "ON CONFLICT(uid) DO UPDATE SET until_ms = excluded.until_ms WHERE live_grants.until_ms <= ?",
+        )
+        .bind(uid, until, now)
+        .run();
+      return (r?.meta?.changes ?? 0) > 0;
+    });
+  }
+
   // ---------- licenses ----------
   insertLicense(l) {
     return run(() =>
