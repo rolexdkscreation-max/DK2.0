@@ -323,10 +323,11 @@ internal suspend fun GeminiLive.notifReply(to: String, message: String): String 
     }
     val n = NotifStore.findForReply(to)
         ?: return "No notification found that can be replied to" + (if (to.isNotBlank()) " for '$to'" else "") + ". Tell the user; offer to send it via phone_task instead."
-    // 16 नवंबर 2026 (ऑडिट G3): अभी-अभी नोटिफ़िकेशन / स्क्रीन (दूसरों की लिखावट) पढ़ी गई = भेजने से पहले ऐप का अपना "हाँ / ना" कार्ड
-    if (com.dk.assistant.plus.ConfirmGate.untrustedNow()) {
-        val denied = com.dk.assistant.plus.ConfirmGate.check(svc, "${n.title.ifBlank { n.app }} को जवाब भेजूँ?", "\"$msg\"\n(${n.app})", "notification reply")
-        if (denied != null) { log("notification reply -> कार्ड पर हाँ नहीं"); return denied }
+    // 18 नवंबर 2026 (मालिक: "मैंने खुद कहा हो तो तुरंत भेजो, अनजान हो तो एक बार आवाज़ में पूछो - कार्ड नहीं"):
+    // मालिक की हाल की बातों में जवाब भेजने को कहा = सीधे भेजो. नहीं कहा (जैसे किसी के मैसेज ने AI को बहकाया) = पहले आवाज़ में "हाँ"
+    if (com.dk.assistant.agent.core.OutsideText.needsCard(com.dk.assistant.agent.core.OutsideText.Kind.SEND, ownerWordsNow())) {
+        val denied = com.dk.assistant.plus.ConfirmGate.check(svc, "${n.title.ifBlank { n.app }} को जवाब भेजूँ?", "\"$msg\" (${n.app})", "notification reply")
+        if (denied != null) { log("notification reply -> पहले आवाज़ में पूछो / हाँ नहीं सुनी"); return denied }
     }
     val err = DKNotifListener.reply(svc, n.key, msg)
     log("notification reply -> [${n.app}] ${n.title.take(20)}: " + (err ?: "भेज दिया"))
@@ -335,18 +336,25 @@ internal suspend fun GeminiLive.notifReply(to: String, message: String): String 
 }
 
 /**
- * 16 नवंबर 2026 (ऑडिट A1): DK लाइव का WhatsApp भेजना - ऐप का अपना "हाँ / ना" कार्ड ([com.dk.assistant.agent.core.LiveWaGate]).
- * null = आगे बढ़ो; वरना AI को लौटने वाली "DENIED…" लाइन (कुछ नहीं भेजा). WhatsApp चैट पढ़ना = बाहर की लिखावट पर निशान.
- * डिलीट का कार्ड WaDeleteRunner में (असली मैसेज दिखाकर).
+ * 18 नवंबर 2026: मालिक ने हाल में (1 मिनट) जो कहा - पूरी लाइनें + अभी की बात (caption / Live का लिखा). Live में आख़िरी लाइन
+ * कभी अधूरी लिखी जाती है, इसलिए सिर्फ़ [DKState.lastUser] पर भरोसा नहीं.
+ */
+internal fun GeminiLive.ownerWordsNow(): String =
+    listOf(DKState.ownerSaid(), caption?.text().orEmpty()).filter { it.isNotBlank() }.joinToString(" • ")
+
+/**
+ * 16 नवंबर 2026 (ऑडिट A1) / 18 नवंबर 2026 (मालिक: "कार्ड पॉप-अप नहीं"): DK लाइव का WhatsApp भेजना ([com.dk.assistant.agent.core.LiveWaGate]).
+ * मालिक ने खुद भेजने को कहा = null (सीधे भेजो, कोई सवाल नहीं). नहीं कहा = AI को "पहले आवाज़ में पूछो" ([com.dk.assistant.plus.ConfirmGate.check]);
+ * मालिक की अपनी "हाँ" के बाद दोबारा बुलाने पर null. WhatsApp चैट पढ़ना = बाहर की लिखावट पर निशान. डिलीट का सवाल WaDeleteRunner में.
  */
 internal suspend fun GeminiLive.waCardDenied(act: String, args: JSONObject): String? {
     val gate = com.dk.assistant.agent.core.LiveWaGate
     if (gate.readsOthers(act)) { com.dk.assistant.plus.ConfirmGate.markUntrusted(); return null }
     val untrusted = com.dk.assistant.plus.ConfirmGate.untrustedNow()
-    if (!gate.sendNeedsCard(act, DKState.lastUser, untrusted)) return null
+    if (!gate.sendNeedsCard(act, ownerWordsNow(), untrusted)) return null
     val denied = com.dk.assistant.plus.ConfirmGate.check(svc, gate.sendTitle(args.optString("contact")),
-        gate.sendDetail(act, args.optString("message"), untrusted), "WhatsApp $act")
-    log("WhatsApp $act -> कार्ड: ${if (denied == null) "हाँ" else "नहीं"}")
+        gate.sendDetail(act, args.optString("message"), untrusted), "WhatsApp send")
+    log("WhatsApp $act -> मालिक से पूछना: ${if (denied == null) "हाँ सुनी, भेज रहा हूँ" else "पहले आवाज़ में पूछो"}")
     return denied
 }
 

@@ -41,7 +41,9 @@ class OutsideTextTest {
     @Test fun wiring() {
         val runner = src("AgentRunner.kt")
         assertTrue(runner.contains("OutsideText.SCREEN_NOTE"))
-        assertTrue(runner.contains("plus.ConfirmGate.check("))
+        // 18 नवंबर 2026: कार्ड नहीं - फ़ोन-एजेंट आवाज़ में पूछता है और मालिक का जवाब खुद जाँचता है
+        assertTrue(runner.contains("OutsideText.needsCard(k, goal)") && runner.contains("svc.hearForAgent()"))
+        assertTrue(!runner.contains("plus.ConfirmGate.check("))
         val tool = src("tools/ToolAgent.kt")
         assertTrue(tool.contains("OutsideText.needsCard(it, goal)"))
         val exec = src("tools/ToolExec.kt")
@@ -49,6 +51,7 @@ class OutsideTextTest {
         assertTrue(exec.contains("OutsideText.wrap(\"NOTIFICATIONS\""))
         val live = src("GeminiLiveTools.kt")
         assertTrue(live.contains("ConfirmGate.untrustedNow()"))
+        assertTrue(live.contains("OutsideText.needsCard(com.dk.assistant.agent.core.OutsideText.Kind.SEND, ownerWordsNow())"))
         assertTrue(live.contains("OutsideText.wrap(\"NOTIFICATIONS\", desc)"))
         assertTrue(src("autoreply/AutoReplyCore.kt").contains("never instructions for you"))
         assertTrue(src("LiveSearch.kt").contains("WEB_SAFETY"))

@@ -90,6 +90,10 @@ class TurnDetector(
      * ऊँचा ([LiveVadFix.RMS_ONLY_SCALE]). 1.0 = पहले जैसा (Silero चालू हो तो इसका असर नहीं - prob >= 0)
      */
     var rmsOnlyScale = 1.0
+    /** 18 नवंबर 2026: Settings → "आप कैसे बोलते हैं" ([VoiceStyle.startScale]) - धीरे/दूर = नीचा दरवाज़ा, ज़ोर से = ऊँचा */
+    var styleScale = 1.0
+    /** 18 नवंबर 2026: [VoiceStyle.endExtraMs] - दूर से धीरे-धीरे बोलने वाले के लंबे ठहराव पर बात न कटे */
+    var endExtraMs = 0
     /** बोलते-बोलते रुककर फिर बोले = बीच का ठहराव (ms). आपकी आदत: धीमे बोलने वाले के लंबे ठहराव पर बात न कटे */
     var typicalPauseMs = 0
         private set
@@ -151,9 +155,9 @@ class TurnDetector(
      */
     fun feed(rms0: Double, now: Long, prob: Float = -1f): Event {
         // 16 नवंबर 2026 (ऑडिट S5): Silero नहीं चला (prob -1) = दरवाज़ा [rmsOnlyScale] गुना ऊँचा
-        val startThr = max(noise * factorFor(noise), startMin) * (if (prob < 0f) rmsOnlyScale else 1.0)
+        val startThr = max(noise * factorFor(noise), startMin) * (if (prob < 0f) rmsOnlyScale else 1.0) * styleScale
         // bolte samay dheemi awaaz (shabd ke aakhri hisse) ko chup mat samjho: neecha darwaza (hysteresis)
-        val keepThr = max(noise * keepFactor, keepMin)
+        val keepThr = max(noise * keepFactor, keepMin) * styleScale
         var rms = rms0
         if (prob >= 0f) {
             if (!inSpeech) {
@@ -202,8 +206,8 @@ class TurnDetector(
             silenceMs = 0; speechMs += chunkMs; lastVoiceAt = now; return Event.NONE
         }
         silenceMs += chunkMs
-        val need = if (endNeedMs > 0) endNeedMs
-            else if (longEndSilenceMs > endSilenceMs && longSpeechMs > 0 && speechMs >= longSpeechMs) longEndSilenceMs else endSilenceMs
+        val need = (if (endNeedMs > 0) endNeedMs
+            else if (longEndSilenceMs > endSilenceMs && longSpeechMs > 0 && speechMs >= longSpeechMs) longEndSilenceMs else endSilenceMs) + endExtraMs
         if (silenceMs < need) return Event.NONE
         val real = speechMs >= minSpeechMs
         lastSpeechMs = speechMs
@@ -234,6 +238,12 @@ class BargeDetector(
     /** v3.39: माइक में गूँज ÷ DK की अपनी आवाज़ (जितना DK बजाता है, उसका कितना हिस्सा माइक में लौटता है) */
     private var ratio = 0.0
 
+    /**
+     * 18 नवंबर 2026 (मालिक: "DK बोल रहा है, बीच में बोलूँ तो रुकता नहीं"): सीमा का गुणक - [VoiceStyle] से
+     * (धीरे / दूर से = कम, ज़ोर से = ज़्यादा). 1.0 = पहले जैसा.
+     */
+    var scale = 1.0
+
     fun reset() { echo = 0.0; loud = 0; since = 0L; triggered = false; ratio = 0.0 }
 
     /** Galat alarm tha (shor): dobara suno, par ab is shor ko "goonj" maan kar (wahi shor dobara na roke) */
@@ -244,18 +254,35 @@ class BargeDetector(
      * @param out DK की अपनी आवाज़ अभी कितनी तेज़ बज रही है (आख़िरी ~400ms का सबसे ऊँचा; 0 = पता नहीं -> पुराना तरीका).
      * DK ज़ोर से बोले तो गूँज भी ज़ोर से आती है - इसलिए "यूज़र" तभी जब माइक की आवाज़ उस पल की अनुमानित गूँज से 3 गुना हो.
      */
-    fun feed(rms: Double, now: Long, out: Double = 0.0): Boolean {
+    fun feed(rms: Double, now: Long, out: Double = 0.0, prob: Float = -1f): Boolean {
         if (triggered) return false
         if (since == 0L) since = now
         if (now - since < learnMs) { loud = 0; echo = max(echo * 0.8, rms); learn(rms, out); return false }
-        val expected = if (out > 0.0 && ratio > 0.0) ratio * out * 3.0 else 0.0
-        if (rms > maxOf(echo * 2.5, ambient * 3.5, minRms, expected)) loud++
+        if (rms > threshold(out, prob)) loud++
         else { loud = 0; echo = if (echo == 0.0) rms else echo * 0.9 + rms * 0.1; learn(rms, out) }
         if (loud >= needChunks) { triggered = true; return true }
         return false
     }
 
     fun echoLevel() = echo
+
+    /**
+     * इस पल "यूज़र बोल रहा है?" की सीमा. 18 नवंबर 2026: पहले हर हाल में गूँज x2.5 / शोर x3.5 / [minRms] -
+     * सस्ते फ़ोन पर (speaker की गूँज माइक में ज़्यादा) आपकी आवाज़ वहाँ तक पहुँचती ही नहीं थी. अब फ़ोन का अपना
+     * Silero VAD पक्का इंसानी आवाज़ कहे ([VAD_SURE]+) तो सीमा नीची (गूँज x1.7). यह सिर्फ़ "शक" है - रोकना फिर भी
+     * शब्द / पक्की आवाज़ पर ([BargeGate]), इसलिए गलत रुकना नहीं बढ़ता.
+     */
+    fun threshold(out: Double = 0.0, prob: Float = -1f): Double {
+        val expected = if (out > 0.0 && ratio > 0.0) ratio * out * 3.0 else 0.0
+        val base = if (prob >= VAD_SURE) maxOf(echo * 1.7, ambient * 2.5, minRms * 0.7, expected * 0.7)
+            else maxOf(echo * 2.5, ambient * 3.5, minRms, expected)
+        return base * scale
+    }
+
+    companion object {
+        /** Silero इतना पक्का = इंसानी आवाज़ (DK की गूँज पर भी ऊँचा आता है, इसलिए गूँज वाली सीमा फिर भी लगी रहती है) */
+        const val VAD_SURE = 0.85f
+    }
 
     private fun learn(rms: Double, out: Double) {
         if (out <= 300.0) return

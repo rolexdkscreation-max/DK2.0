@@ -106,7 +106,12 @@ object SocialAgent {
         }
         // नवंबर 2026: "गलती से चला गया, डिलीट करो" के लिए याद रखो किसे क्या भेजा (भेजना पूरा होने पर)
         sending = if (req.platform == Platform.WHATSAPP && req.action == SocialAction.SEND_MESSAGE && phone != null) Triple(who, phone, req.message) else null
-        autoSend = !ownConfirm && req.platform == Platform.WHATSAPP && (req.action == SocialAction.SEND_MESSAGE || req.action == SocialAction.SEND_FILE) && Prefs.waAutoSend(svc)
+        // 18 नवंबर 2026 (मालिक: "मैंने खुद बोला है तो तुरंत भेज दे"): सेटिंग चालू, या मालिक ने अपनी हाल की बात में खुद भेजने को कहा,
+        // या अभी-अभी आवाज़ में "हाँ" दी (ConfirmGate) = दोबारा "भेज दूँ?" नहीं. अनजान (मालिक ने कहा ही नहीं) = पहले जैसा पूछो.
+        val ownerAsked = !com.dk.assistant.agent.core.OutsideText.needsCard(com.dk.assistant.agent.core.OutsideText.Kind.SEND, DKState.ownerSaid()) ||
+            com.dk.assistant.plus.ConfirmGate.justPassed("WhatsApp send")
+        autoSend = !ownConfirm && req.platform == Platform.WHATSAPP && (req.action == SocialAction.SEND_MESSAGE || req.action == SocialAction.SEND_FILE) &&
+            (Prefs.waAutoSend(svc) || ownerAsked)
         val id = "social-" + (++seq) + "-" + (System.currentTimeMillis() % 100000)
         val task = SocialPlanner.plan(id, if (smartOn && req.smart && media != null) smart(svc, req, media, fromGallery) else req, media, phone, who)
         val driver = AccessibilityScreenDriver(svc)
@@ -196,7 +201,7 @@ object SocialAgent {
         if (rep.status == TaskStatus.RUNNING && rep.step > 0) return   // बीच की हर बात नहीं
         // मालिक ने सेटिंग में पहले ही "हाँ" दे रखी है -> सवाल नहीं, सीधा भेजो (पूरा होने का SYSTEM NOTE बाद में आता है)
         if (rep.status == TaskStatus.WAITING_CONFIRMATION && autoSend) {
-            runner?.let { autoSend = false; DKLog.d("Social ${rep.taskId}: बिना पूछे भेजो (सेटिंग)"); it.control(SocialTaskRunner.Control.CONFIRM); return }
+            runner?.let { autoSend = false; DKLog.d("Social ${rep.taskId}: बिना पूछे भेजो (सेटिंग / मालिक ने खुद कहा)"); it.control(SocialTaskRunner.Control.CONFIRM); return }
         }
         val extra = when (rep.status) {
             TaskStatus.WAITING_CONFIRMATION -> " Ask the user exactly this question now and wait. If they say yes call social_media_task_control(command=confirm); if no, command=cancel."

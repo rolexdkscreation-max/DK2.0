@@ -132,9 +132,14 @@ internal fun GeminiLive.onNoReply() {
  */
 internal fun GeminiLive.onStalled() {
     if (!ready) return
-    if (!textRescue) { log("Gemini ने सुना पर जवाब धीमा - वही बात text में दोबारा नहीं भेजी (बचाव-text बंद), इंतज़ार"); return }
     if ((generating && !dropOld) || isPlaying() || toolJobs.isNotEmpty() || turnDet.inSpeech) {
         if (!turnDet.inSpeech && !isPlaying() && !(generating && !dropOld)) replyWatch.deferAnswer(System.currentTimeMillis())
+        return
+    }
+    if (!textRescue) {
+        // 18 नवंबर 2026 (मालिक: "लिखा दिखता है पर जवाब नहीं"): पहले यहाँ सिर्फ़ इंतज़ार = DK चुप. अब मिनट में एक बार लिखी बात text में
+        if (!lastChance("Gemini ने सुना पर जवाब शुरू नहीं किया", sorryOk = false))
+            log("Gemini ने सुना पर जवाब धीमा - text पिछले 1 मिनट में भेज चुका (बचाव-text बंद), इंतज़ार; न आया तो नया connection")
         return
     }
     val t = caption?.text().orEmpty().trim().ifBlank { synchronized(turnLock) { userText.toString().trim() } }

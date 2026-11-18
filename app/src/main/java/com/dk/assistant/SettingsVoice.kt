@@ -135,7 +135,15 @@ internal fun SettingsActivity.secVoice() {
             .setOnCheckedChangeListener { _, on -> Prefs.edit(this) { putBoolean("duck_media", on) }; if (!on) Ducker.releaseNow() }
         hint(box, "आवाज़ धीरे से (fade) कम-ज़्यादा होती है। फ़ोन की volume नहीं बदलती। कुछ ऐप (जैसे podcast) धीमे होने की जगह थोड़ी देर रुक जाते हैं।")
         // v4.7: दूर की आवाज़ अनसुनी (बिना आवाज़ सिखाए) + जवाब के बीच बोलें तो DK रुके
-        switch(box, "दूर की आवाज़ अनसुनी करो (फ़ोन के पास धीरे या ज़ोर से - दोनों सुनेगा)", Prefs.ownerFarOn(this))
+        // 18 नवंबर 2026 (मालिक): "आप कैसे बोलते हैं" - user अपने हिसाब से (आम / धीरे / ज़ोर से / दूर से)
+        hint(box, "आप कैसे बोलते हैं? DK उसी हिसाब से सुनेगा, बात खत्म मानेगा और बीच में बोलने पर रुकेगा (बदलते ही लागू):")
+        radios(box, VoiceStyle.entries.map { it.key to it.label }, Prefs.voiceStyle(this).key, VOICE_STYLE_RADIO)
+            .setOnCheckedChangeListener { _, id ->
+                val st = VoiceStyle.entries.getOrNull(id - VOICE_STYLE_RADIO) ?: return@setOnCheckedChangeListener
+                Prefs.edit(this) { putString(VoiceStyle.PREF, st.key) }
+            }
+        hint(box, "\"दूर से\" चुनने पर \"दूर की आवाज़ अनसुनी करो\" अपने-आप बंद रहता है। Bluetooth headset पर हमेशा आम।")
+        switch(box, "दूर की आवाज़ अनसुनी करो (फ़ोन के पास धीरे या ज़ोर से - दोनों सुनेगा)", Prefs.ownerFarRaw(this))
             .setOnCheckedChangeListener { _, on -> Prefs.edit(this) { putBoolean("owner_far_on", on) } }
         hint(box, "DK आपकी पहली कुछ बातों से आपकी पास वाली आवाज़ अपने आप सीखता है। उससे बहुत धीमी (दूसरे कमरे / दूर की) आवाज़ पर जवाब नहीं देगा। Bluetooth headset पर यह रोक बंद रहती है।")
         switch(box, "DK के जवाब के बीच बोलूँ तो DK रुककर मेरी बात सुने", !Prefs.bargeHold(this))
@@ -229,3 +237,6 @@ internal fun SettingsActivity.romanticSwitch(box: LinearLayout) {
             .show()
     }
 }
+
+/** 18 नवंबर 2026: "आप कैसे बोलते हैं" वाले radio के id (2300-2303) */
+internal const val VOICE_STYLE_RADIO = 2300

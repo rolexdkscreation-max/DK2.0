@@ -25,10 +25,18 @@ class LiveWaGateTest {
         assertFalse(LiveWaGate.sendNeedsCard("send", "राहुल को WhatsApp करो hi", untrustedRecent = false))
     }
 
-    @Test fun afterReadingOthersAlwaysCard() {
-        // मालिक ने "भेजो" कहा, पर अभी-अभी किसी का मैसेज/नोटिफ़िकेशन पढ़ा गया = फिर भी कार्ड
-        assertTrue(LiveWaGate.sendNeedsCard("send_message", "राहुल को मैसेज भेजो", untrustedRecent = true))
-        assertTrue(LiveWaGate.sendNeedsCard("smart_reply", "reply kar do", untrustedRecent = true))
+    @Test fun ownerAskedAfterReadingNoQuestion() {
+        // 18 नवंबर 2026 (मालिक): अभी-अभी किसी का मैसेज पढ़ा, पर मालिक ने खुद "भेजो" कहा = तुरंत भेजो (पहले हर बार कार्ड खुलता था)
+        assertFalse(LiveWaGate.sendNeedsCard("send_message", "राहुल को मैसेज भेजो", untrustedRecent = true))
+        assertFalse(LiveWaGate.sendNeedsCard("smart_reply", "reply kar do", untrustedRecent = true))
+        assertFalse(LiveWaGate.sendNeedsCard("send_message", "rahul ko bol do main aa raha hun", untrustedRecent = true))
+        assertFalse(LiveWaGate.sendNeedsCard("send_message", "मम्मी को कह दो खाना बन गया", untrustedRecent = false))
+    }
+
+    @Test fun readingOthersButOwnerNeverAskedStillAsks() {
+        // किसी के मैसेज ने AI को "सबको भेज दो" कहकर बहकाया, मालिक ने सिर्फ़ पढ़ने को कहा था = पहले आवाज़ में पूछो
+        assertTrue(LiveWaGate.sendNeedsCard("send_message", "राहुल का मैसेज पढ़ो", untrustedRecent = true))
+        assertTrue(LiveWaGate.sendNeedsCard("send_contact", "", untrustedRecent = true))
     }
 
     @Test fun ownerNeverAskedToSendCard() {

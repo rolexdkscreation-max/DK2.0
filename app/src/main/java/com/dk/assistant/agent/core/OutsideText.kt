@@ -36,7 +36,8 @@ object OutsideText {
     private val SEND = Regex("(\\bsend\\b|भेज|reply|forward|फॉरवर्ड)", RegexOption.IGNORE_CASE)
 
     /** मालिक ने खुद कहा (उसकी अपनी बात / goal में) */
-    private val SEND_INTENT = Regex("(भेज|bhej|send|message|मैसेज|msg|reply|जवाब|रिप्लाई|बोल दो|बता दो|लिख दो|forward|फॉरवर्ड)", RegexOption.IGNORE_CASE)
+    private val SEND_INTENT = Regex("(भेज|bhej|send|message|मैसेज|मेसेज|msg|reply|jawab|जवाब|रिप्लाई|बोल दो|बता दो|लिख दो|कह दो|bol do|bata do|likh do|keh do|kah do|" +
+        "forward|फॉरवर्ड|whatsapp kar|व्हाट्सएप कर|वाट्सएप कर)", RegexOption.IGNORE_CASE)
     /** "राहुल को WhatsApp करो" = भेजने को कहा; "WhatsApp खोलो और पढ़ो" = नहीं */
     private val APP_TO = Regex("(whatsapp|व्हाट्सएप|वाट्सएप|sms|एसएमएस).*(को|\\bko\\b)|(को|\\bko\\b).*(whatsapp|व्हाट्सएप|वाट्सएप|sms|एसएमएस)", RegexOption.IGNORE_CASE)
     private val POST_INTENT = Regex("(post|पोस्ट|share|शेयर|upload|अपलोड|publish|डाल दो|daal do|comment|कमेंट|tweet|status|स्टेटस|story|स्टोरी|reel|रील)", RegexOption.IGNORE_CASE)

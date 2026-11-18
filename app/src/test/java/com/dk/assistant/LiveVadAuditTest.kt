@@ -43,13 +43,20 @@ class LiveVadAuditTest {
         assertEquals(0L, b.speechMs)
     }
 
-    @Test fun s2_speakerBarge_turnsOffAfterTwoWrongStops() {
+    @Test fun s2_speakerBarge_getsStricterNotOff() {
+        // 18 नवंबर 2026 (मालिक): गलत रोक पर बंद नहीं - बस सख़्त
         val b = SpeakerBarge()
-        b.onConfirm(100L); assertFalse(b.tick(1_000L)); assertFalse(b.tick(2_700L)); assertEquals(1, b.misses)
+        b.onConfirm(100L); assertFalse(b.tick(1_000L)); assertTrue(b.tick(2_700L)); assertEquals(1, b.misses)
+        assertEquals(1.25, b.strict, 0.001)
         b.onConfirm(3_000L); b.onWords(); assertFalse(b.tick(6_000L)); assertEquals(1, b.misses)   // शब्द आए = सही रोका
-        b.onConfirm(7_000L); assertTrue(b.tick(9_600L)); assertTrue(b.disabled)
-        for (i in 1..20) assertFalse(b.feed(0.99f, 9000.0, 100.0, 100.0, 40))
-        b.resetSession(); assertFalse(b.disabled)
+        assertEquals(1.125, b.strict, 0.001)
+        repeat(6) { i -> b.onConfirm(7_000L + i * 3_000L); b.tick(9_600L + i * 3_000L) }
+        assertEquals(SpeakerBarge.STRICT_MAX, b.strict, 0.001)
+        // सख़्त होने पर भी पास से साफ़ तेज़ आवाज़ = अब भी रुकता है
+        var hit = false
+        for (i in 1..10) hit = hit || b.feed(0.99f, 9000.0, 100.0, 100.0, 40)
+        assertTrue(hit)
+        b.resetSession(); assertEquals(1.0, b.strict, 0.001)
     }
 
     @Test fun s2_wiring() {

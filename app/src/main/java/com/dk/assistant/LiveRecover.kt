@@ -57,6 +57,25 @@ object LiveRecover {
     fun unheardWorthSwap(caption: String, speechMs: Int): Boolean =
         BargeGate.realWords(caption) && speechMs >= MIN_SPEECH_MS
 
+    /**
+     * 18 नवंबर 2026 (मालिक: "बात लिखी दिखती है पर DK जवाब नहीं देता"): बचाव-text डिफ़ॉल्ट बंद (1011 से बचाव) - इसलिए
+     * Gemini ने सुना पर जवाब शुरू नहीं किया / connection बदलने की सीमा पूरी = DK हमेशा चुप रहता था.
+     * अब आख़िरी मौका: इतनी देर में एक ही बार लिखी बात text में (एक text से 1011 का खतरा बहुत कम; हर बात पर नहीं).
+     */
+    const val LAST_CHANCE_GAP_MS = 60_000L
+    /** लिखी बात में असली शब्द नहीं (या बहुत पुरानी) = Gemini खुद माफ़ी माँगकर फिर से पूछे - DK कभी चुप नहीं */
+    const val SORRY_TEXT = "(SYSTEM NOTE: you did not hear the user clearly. Say only this one short line in his language: " +
+        "\"माफ़ कीजिए, फिर से बोलिए\")"
+
+    /** आख़िरी मौका: अभी भेजें? ([LAST_CHANCE_GAP_MS] में एक बार) */
+    fun lastChanceOk(now: Long, lastAt: Long): Boolean = lastAt <= 0L || now - lastAt >= LAST_CHANCE_GAP_MS
+
+    /** आख़िरी मौके पर क्या भेजें: लिखी बात (असली शब्द हों) वरना माफ़ी वाली लाइन; [sorryOk] = false पर सिर्फ़ लिखी बात */
+    fun lastChanceText(caption: String, sorryOk: Boolean): String? {
+        val t = caption.trim().trimEnd('…').trim()
+        return if (BargeGate.realWords(t)) t else if (sorryOk) SORRY_TEXT else null
+    }
+
     /** [MAX_SWAPS] / [SWAP_WINDOW_MS] की सीमा - true = अभी बदल सकते हैं (और गिनती में जुड़ गया) */
     class SwapLimit(private val max: Int = MAX_SWAPS, private val windowMs: Long = SWAP_WINDOW_MS) {
         private val at = ArrayDeque<Long>()

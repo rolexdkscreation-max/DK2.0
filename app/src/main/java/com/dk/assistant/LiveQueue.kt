@@ -21,6 +21,7 @@ object LiveStop {
         "नहीं", "हो", "भी", "बस", "ok", "okay", "arey", "are", "yaar", "abhi", "ek", "minute", "second", "karo", "do", "jao", "nahi", "ho",
         "اوکے", "ٹھیک", "ہے", "یار", "ابھی", "ایک", "منٹ", "کرو", "دو", "جاؤ", "نہیں",
     )
+    private val PAUSE = setOf("मिनट", "सेकंड", "minute", "minut", "second", "sec", "min", "منٹ")
     private val NOT_STOP = listOf("मत रुको", "रुको मत", "रुकना मत", "mat ruko", "ruko mat", "don't stop", "dont stop", "do not stop",
         "never stop", "मत रुकना", "مت رکو", "رکو مت")
     private val SPLIT = Regex("[^\\p{L}\\p{M}\\p{N}]+")
@@ -40,6 +41,8 @@ object LiveStop {
         // लंबी बात भी "रुको ..." से शुरू हो तो रोकना
         if (STRONG.any { joined.startsWith(" $it ") }) return true
         if (w.any { it in WEAK } && w.size <= 5 && w.all { it in WEAK || it in FILLER || STRONG.contains(it) }) return true
+        // 18 नवंबर 2026 (मालिक: "रुको / बस / एक मिनट"): पूरी बात बस "एक मिनट" / "one second" = रोको ("एक मिनट में बताओ" नहीं)
+        if (w.size <= 4 && w.any { it in PAUSE } && w.all { it in PAUSE || it in FILLER || it == "one" || it == "just" }) return true
         return false
     }
 }

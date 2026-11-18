@@ -188,7 +188,7 @@ internal suspend fun GeminiLive.micLoop() = coroutineScope {
             val prob = vad?.feed(buf, CHUNK_SAMPLES) ?: -1f
             vadProb = prob
             if (duplex.tick(now)) log("कॉल-mode टोकना: 2 बार बिना शब्द रुका - इस बार पुराना (caption वाला) तरीका")
-            if (speakerBarge.tick(now)) log("speaker पर जल्दी टोकना: 2 बार बिना शब्द रुका - इस session में पुराना (caption वाला) तरीका")
+            if (speakerBarge.tick(now)) log("speaker पर जल्दी टोकना: बिना शब्द रुका (${speakerBarge.misses} बार) - अब थोड़ा सख़्त (x${"%.2f".format(speakerBarge.strict)}), बंद नहीं")
             if (capHealth.tick(caption?.textAt ?: 0L, now)) log("caption जुड़ा है पर ${CaptionHealth.NEED_MISSES} लंबी बातों पर कुछ नहीं लिखा - अब Live के अपने लिखे और बिना caption वाले नियमों पर (caption फिर लिखे तो अपने-आप वापस)")
             // नवंबर 2026: सच में बज रहा हो तभी "DK बोल रहा" (Gemini TTS का टुकड़ा सिर्फ़ बन रहा हो तो आपकी आवाज़ जाए)
             val playing = isAudible()
@@ -216,7 +216,7 @@ internal suspend fun GeminiLive.micLoop() = coroutineScope {
                 if (bargeDet.ambient == 0.0) bargeDet.ambient = turnDet.noise
                 when (bargeGate.state) {
                     BargeGate.State.IDLE -> {
-                        if (bargeDet.feed(rms, now, outLevel(now))) {
+                        if (bargeDet.feed(rms, now, outLevel(now), prob)) {
                             // SHAK: tez awaaz. DK ki awaaz halki (rokna nahi), caption model ko suno - shabd hain?
                             bargeGate.suspect(now); barging = true; loudMs = 0L; overEchoMs = 0L; duplex.reset(); speakerBarge.reset()
                             // मालिक (नवंबर 2026): DK की आवाज़ अपने-आप धीमी-तेज़ नहीं - शक के समय भी पूरी (रोकना पक्के शब्दों पर ही)
@@ -226,6 +226,13 @@ internal suspend fun GeminiLive.micLoop() = coroutineScope {
                             preroll.forEach { capSend(it) }; preroll.clear()
                             capSend(chunk)
                         } else {
+                            // 18 नवंबर 2026: "क्यों नहीं रुका" - इंसानी आवाज़ थी पर सीमा से नीचे (हर जवाब में एक बार log)
+                            bargeNearMs = if (prob >= BargeDetector.VAD_SURE && rms > bargeDet.ambient * 2.0) bargeNearMs + CHUNK_MS else 0L
+                            if (bargeNearMs >= 400 && !bargeNearLogged) {
+                                bargeNearLogged = true
+                                log("DK नहीं रुका: इंसानी आवाज़ (VAD ${"%.2f".format(prob)}) पर rms=${rms.toInt()} < सीमा ${bargeDet.threshold(outLevel(now), prob).toInt()} " +
+                                    "(गूँज=${bargeDet.echoLevel().toInt()}) - फ़ोन के पास बोलें या Settings → \"आप कैसे बोलते हैं\" → धीरे")
+                            }
                             preroll.addLast(chunk); while (preroll.size > PREROLL_CHUNKS) preroll.removeFirst()
                             capSend(zeros, silent = true)
                         }
@@ -276,7 +283,7 @@ internal suspend fun GeminiLive.micLoop() = coroutineScope {
                 // Gemini/caption ko sirf user ki awaaz (320ms pehle se); baaki samay khaamoshi.
                 // (Peeche ka lagatar shor bhejne par server "user abhi bol raha" maan kar jawab rokta tha.)
                 if (barging) bargeUntil = now + 1500
-                barging = false; bargeDet.reset(); bargeDet.ambient = 0.0
+                barging = false; bargeDet.reset(); bargeDet.ambient = 0.0; bargeNearMs = 0L; bargeNearLogged = false
                 if (bargeGate.state != BargeGate.State.IDLE) { bargeGate.reset(); track?.let { try { it.setVolume(1f) } catch (e: Exception) { Quiet.note(e) } } }
                 // v3.5+: जवाब पूरा, DK चुप -> बीच में पूछा सवाल अब (उसका भी जवाब)
                 if (!askQueue.isEmpty()) {

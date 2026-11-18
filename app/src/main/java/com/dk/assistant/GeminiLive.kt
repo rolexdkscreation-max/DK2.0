@@ -335,6 +335,9 @@ class GeminiLive(internal val svc: DKAccessibilityService, internal val agent: A
     internal val routeDedupe = RouteDedupe()
     // v4.7 (मालिक: "जवाब देते समय बोलूँ तो रुककर सुने"): 200ms / 900 RMS (पहले 240ms / 1200) - पक्का caption के शब्दों से
     internal val bargeDet = BargeDetector(needChunks = 5, minRms = 900.0)
+    /** 18 नवंबर 2026: DK बोलते समय इंसानी आवाज़ थी पर सीमा से नीचे - log में "क्यों नहीं रुका" (हर जवाब में एक बार) */
+    internal var bargeNearMs = 0L
+    internal var bargeNearLogged = false
     internal val trace = LatencyTrace()
     /** Har baari ki poori samay-rekha (end of speech -> upload -> pehla event -> audio -> awaaz -> turn khatam) */
     internal val timeline = TurnTimeline()
@@ -382,6 +385,10 @@ class GeminiLive(internal val svc: DKAccessibilityService, internal val agent: A
     internal val zombieSwaps = LiveRecover.SwapLimit()
     /** नवंबर 2026: caption में बात लिखी गई पर Gemini ने नहीं सुना (बचाव-text बंद) = loop नया connection + वही आवाज़ */
     @Volatile internal var unheardSwapAt = 0L
+    /** 18 नवंबर 2026: आख़िरी मौके वाला text आख़िरी बार कब ([GeminiLive.lastChance]) */
+    @Volatile internal var lastChanceAt = 0L
+    /** 18 नवंबर 2026: अभी लागू आवाज़ का अंदाज़ ([applyVoiceStyle]) */
+    @Volatile internal var voiceStyleNow: VoiceStyle? = null
     @Volatile internal var zombieN = 0
     @Volatile internal var replayedN = 0
     /** गड़बड़ी (टूटा / अटका) कब और क्या - अगला जवाब आने पर "संभल गया" */

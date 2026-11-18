@@ -82,11 +82,11 @@ class ToolAgent(
                 }
                 steps++
                 if (steps > ToolPolicy.MAX_STEPS) { say(ToolPolicy.limitSpeech()); return true }
-                // 16 नवंबर 2026 (ऑडिट G3): बिना कहे भेजना / भुगतान / डिलीट = ऐप का अपना "हाँ / ना" कार्ड (AI का हाँ नहीं)
+                // 16 नवंबर 2026 (ऑडिट G3): बिना कहे भेजना / भुगतान / डिलीट = मालिक की अपनी "हाँ" (AI का हाँ नहीं).
+                // 18 नवंबर 2026 (मालिक: कार्ड पॉप-अप नहीं): आवाज़ में एक बार पूछो, ऐप मालिक का जवाब खुद जाँचे
                 cardKind(c.name, c.args).takeIf { com.dk.assistant.agent.core.OutsideText.needsCard(it, goal) }?.let { k ->
-                    val denied = com.dk.assistant.plus.ConfirmGate.check(svc, "DK ${k.hi} करने वाला है — पक्का?",
-                        "${c.name}: ${argLine(c.args)}\nआपका काम: ${goal.take(120)}", "${k.hi}: ${c.name}")
-                    if (denied != null) { say("ठीक है, यह कदम नहीं किया — काम यहीं रोक दिया।"); return true }
+                    val ans = ask("${k.hi} वाला कदम: ${argLine(c.args).take(120)}। क्या मैं करूँ? हाँ या ना बोलिए।")
+                    if (!com.dk.assistant.agent.core.ConfirmGate.isYes(ans.orEmpty())) { say("ठीक है, यह कदम नहीं किया — काम यहीं रोक दिया।"); return true }
                 }
                 val out = ToolExec.run(svc, c.name, c.args, ask)
                 DKLog.d("टूल एजेंट कदम $steps: ${c.name} ${c.args} -> ${if (out.ok) "✓" else "✗"} (${out.tries} बार, ${out.by})")
