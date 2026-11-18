@@ -179,7 +179,7 @@ object LocalRecall {
      */
     fun meaningScore(words: List<String>, text: String): Int {
         val toks = MemoryMeaning.tokens(text)
-        return words.sumOf { w -> if (score(listOf(w), text) > 0) 2 else if (MemoryMeaning.related(w, toks)) 1 else 0 }
+        return words.map { w -> if (score(listOf(w), text) > 0) 2 else if (MemoryMeaning.related(w, toks)) 1 else 0 }.sum()
     }
 
     /** पक्की बातें (facts) में भी वही खोज - Live में facts का सिर्फ़ ताज़ा हिस्सा जाता है, बाकी यहीं से */

@@ -77,7 +77,7 @@ object MemoryMeaning {
     /** पुरानी (बहुत बड़ी याद वाली) SQL LIKE खोज के लिए: शब्द + उनके एक-मतलब वाले (कुल [max] तक) */
     fun expand(words: List<String>, max: Int = 12): List<String> {
         val out = LinkedHashSet<String>(words)
-        for (w in words) for (s in synonyms(w)) { if (out.size >= max) break; out.add(s) }
+        for (w in words) out.addAll(synonyms(w))
         return out.toList().take(max)
     }
 
