@@ -1094,6 +1094,9 @@ Instagram (निजी अकाउंट)	Instagram (personal account)
 फ़ोन-एजेंट से: Instagram ऐप खोलकर पोस्ट/स्टोरी/मैसेज	Through the phone agent: posts/stories/messages by opening the Instagram app
 Google सेटअप अधूरा (DEVELOPER_ERROR): Cloud Console में Android OAuth client - package com.dk.assistant और ऊपर दिखा SHA-1 - बनाइए	Google setup incomplete (DEVELOPER_ERROR): create an Android OAuth client in Cloud Console with package com.dk.assistant and the SHA-1 shown above
 आपने Google स्क्रीन बंद कर दी	You closed the Google screen
+Google सेटअप अधूरा (code 8): Firebase वाले Google Cloud project में Clients → Create client → Android बनाइए - package com.dk.assistant और नीचे दिखा SHA-1. Firebase → Authentication → Sign-in method में Google चालू करें. 5-10 मिनट बाद फिर लॉगिन करें (फ़ोन में Google खाता जुड़ा हो, Play services अपडेट हों)	Google setup incomplete (code 8): in the Google Cloud project of your Firebase project, go to Clients → Create client → Android - package com.dk.assistant and the SHA-1 shown below. In Firebase → Authentication → Sign-in method, enable Google. Try login again after 5-10 minutes (Google account added on the phone, Play services updated)
+लॉगिन न हो (code 8 / 10) तो Firebase वाले Google Cloud project में Android client बनाइए:	If login fails (code 8 / 10), create an Android client in the Google Cloud project of your Firebase project:
+कॉपी हुआ:	Copied:
 Google से जवाब नहीं आया (timeout)	No reply from Google (timeout)
 Google login नहीं हुआ:	Google login failed:
 Gmail • Drive • Calendar • GitHub • Facebook Page • Instagram • MCP — DK लाइव से बोलकर काम	Gmail • Drive • Calendar • GitHub • Facebook Page • Instagram • MCP — work by voice in DK Live
