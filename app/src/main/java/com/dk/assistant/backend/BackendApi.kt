@@ -98,7 +98,10 @@ object BackendApi {
     /** [deep] = डीप रिसर्च: सर्वर Google वाली खोज नहीं करता (सिर्फ़ Tavily/Exa/Linkup/Firecrawl). [only] = सिर्फ़ यह एक कंपनी */
     fun search(c: Context, q: String, deep: Boolean, only: String = ""): String =
         postJson(c, "/search", JSONObject().put("query", q).put("n", if (deep) 8 else 5)
-            .apply { if (deep) put("deep", true); if (only.isNotBlank()) put("only", only) })
+            .apply {
+                if (deep) put("deep", true)
+                if (only.isNotBlank()) put("only", only)
+            })
 
     /** 18 नवंबर 2026: डीप रिसर्च में वेबसाइटें पूरी पढ़ना (सर्वर की Tavily/Exa/Firecrawl) - url -> पाठ */
     fun read(c: Context, urls: List<String>): Map<String, String> =
