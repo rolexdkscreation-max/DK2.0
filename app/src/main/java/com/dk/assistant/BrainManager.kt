@@ -150,7 +150,7 @@ class BrainManager(private val ctx: Context) {
     }
 
     /** पुराने JSON जवाब को सादा text बनाकर (AI सादा text ही लिखे) */
-    private fun chatHist(): List<Turn> = history.takeLast(10).map { t ->
+    private fun chatHist(): List<Turn> = history.takeLast(CHAT_TURNS).map { t ->
         if (t.role == "model" && t.text.trimStart().startsWith("{"))
             Turn("model", try { JSONObject(t.text).optString("say").ifBlank { "(phone par kaam kiya)" } } catch (_: Exception) { t.text })
         else t
@@ -161,7 +161,7 @@ class BrainManager(private val ctx: Context) {
         lastGround = null
         val system = buildChatStreamPrompt()
         // purane JSON jawab ko saada text bana ke bhejo (AI saada text hi likhe)
-        val hist = history.takeLast(10).map { t ->
+        val hist = history.takeLast(CHAT_TURNS).map { t ->
             if (t.role == "model" && t.text.trimStart().startsWith("{"))
                 Turn("model", try { JSONObject(t.text).optString("say").ifBlank { "(phone par kaam kiya)" } } catch (_: Exception) { t.text })
             else t
@@ -300,10 +300,10 @@ class BrainManager(private val ctx: Context) {
                     if (client is OpenAiCompatClient) client.fast = chat
                     val answer = try {
                         // baatcheet me sirf haal ki baatein bhejo = kam data = tez jawab
-                        client.complete(system, if (chat) history.takeLast(10) else history, prompt, img)
+                        client.complete(system, if (chat) history.takeLast(CHAT_TURNS) else history.takeLast(PHONE_TURNS), prompt, img)
                     } catch (e: AiException) {
                         // kuch model photo nahi lete - bina photo dobara try
-                        if (img != null && e.code == 400) client.complete(system, history, prompt, null) else throw e
+                        if (img != null && e.code == 400) client.complete(system, if (chat) history.takeLast(CHAT_TURNS) else history.takeLast(PHONE_TURNS), prompt, null) else throw e
                     }
                     lastUsed = client.label
                     DKLog.d("AI: ${client.label}")
@@ -321,7 +321,7 @@ class BrainManager(private val ctx: Context) {
             if (AiRouter.fallback(lastError)) {
                 try {
                     val answer = AiRouter.client(ctx, if (chat) (if (fromLive) AiRouter.Task.LIVE else AiRouter.Task.CHAT) else AiRouter.Task.COMPUTER)
-                        .complete(system, if (chat) history.takeLast(10) else history, prompt, null)
+                        .complete(system, if (chat) history.takeLast(CHAT_TURNS) else history.takeLast(PHONE_TURNS), prompt, null)
                     if (answer.isBlank()) throw AiException(0, "khali jawab")
                     lastUsed = AiRouter.LABEL
                     remember(memoryNote, answer)
@@ -699,7 +699,7 @@ class BrainManager(private val ctx: Context) {
             Prefs.personality(ctx).let { if (it.isNotBlank()) append(" Extra: $it") }
             append(Memory.factsBlock(ctx))
         }
-        val r = kotlinx.coroutines.runInterruptible { client.search(sys, history, question, deep || thorough, think, maxModels) }
+        val r = kotlinx.coroutines.runInterruptible { client.search(sys, history.takeLast(PHONE_TURNS), question, deep || thorough, think, maxModels) }
         // 13 नवंबर 2026: Google ग्राउंडिंग = बाइट (endIndex) से [n] खुद डालो, फिर markdown हटाओ - आगे बाकी प्रदाताओं जैसा
         val g = r.g
         val ans = WebCite.sanitize((if (g != null) WebCite.markGoogle(r.text, g) else WebCite.strip(r.text)).replace(Regex("[*#`]"), "").trim(),
@@ -729,7 +729,7 @@ class BrainManager(private val ctx: Context) {
             if (ver != Memory.historyVersion) try { val fresh = Memory.loadHistory(ctx); history.clear(); history.addAll(fresh) } catch (e: Exception) { Quiet.note(e) }
             history.add(Turn("user", note.take(1500)))
             history.add(Turn("model", answer.take(1500)))
-            while (history.size > 24) history.removeAt(0)
+            while (history.size > KEEP_TURNS) history.removeAt(0)
             if (history.firstOrNull()?.role == "model") history.removeAt(0)
             try { Memory.saveHistory(ctx, history.toList()) } catch (e: Exception) { Quiet.note(e) }
             ver = Memory.historyVersion
@@ -854,7 +854,8 @@ class BrainManager(private val ctx: Context) {
     /** फोटो साथ हो = फोटो समझने वाली कंपनियाँ पहले (बाकी क्रम वही) */
     private fun visionFirst(list: List<Provider>, image: Boolean): List<Provider> = if (image) LivePhoto.visionFirst(list) { it.vision } else list
 
-    suspend fun quickText(system: String, prompt: String, lane: OneKeyLanes.Lane = OneKeyLanes.Lane.PHONE): String? = withContext(Dispatchers.IO) {
+    /** [router] = false: अपनी keys न चलें तो DK का सर्वर नहीं (पीछे वाले काम जैसे [MemoryDigest] मुफ़्त सीमा न खाएँ) */
+    suspend fun quickText(system: String, prompt: String, lane: OneKeyLanes.Lane = OneKeyLanes.Lane.PHONE, router: Boolean = true): String? = withContext(Dispatchers.IO) {
         for (p in rankedForChat()) {
             val c = clientFor(p)?.also { (it as? GeminiClient)?.lane = lane } ?: continue   // 15 नवंबर 2026: छोटे काम (ऑटो-जवाब, सारांश) बातचीत की limit न खाएँ
             try {
@@ -870,7 +871,7 @@ class BrainManager(private val ctx: Context) {
             else GeminiClient(k, GeminiClient.BACKUP_MODELS.first()).apply { backups = GeminiClient.BACKUP_MODELS; this.lane = lane }
                 .stream(system, emptyList(), prompt) { }.takeIf { it.isNotBlank() }
         } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (_: Exception) { null }
-            ?: routerText(system, prompt, null)   // 17 नवंबर 2026: आख़िर में DK का सर्वर ([AiRouter])
+            ?: (if (router) routerText(system, prompt, null) else null)   // 17 नवंबर 2026: आख़िर में DK का सर्वर ([AiRouter])
     }
 
     /** छोटे काम (सारांश, कहानी): अपनी keys न चलें तो DK का सर्वर; वह भी न चले = null (पहले जैसा) */
@@ -1012,6 +1013,14 @@ class BrainManager(private val ctx: Context) {
     }
 
     companion object {
+        /**
+         * 18 नवंबर 2026 (मालिक: "चैट की बातें ज़्यादातर याद रहें, बाकी का सार"): चैट में हाल की 20 बातें (पहले 10) AI को जाती हैं,
+         * फ़ोन में 40 तक (पहले 24). फ़ोन के काम (स्क्रीन वाले) को पहले जितनी ही 24 - वहाँ prompt पहले से बड़ा है.
+         * इससे पुरानी बातें फ़ोन में पूरी रहती हैं, और उनमें से याद रखने लायक [MemoryDigest] चुनता है.
+         */
+        const val CHAT_TURNS = 20
+        const val PHONE_TURNS = 24
+        const val KEEP_TURNS = 40
         /** App ke maalik ke diye baatcheet ke niyam - har jawab me laagu */
         val TALK_RULES = """
 CONVERSATION RULES (always follow):
