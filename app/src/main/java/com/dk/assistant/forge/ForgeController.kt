@@ -134,6 +134,7 @@ object ForgeController {
 
     private fun begin(c: Context, text: String, isEdit: Boolean): StartResult {
         // वेबसाइट की अपनी key डली हो = "एक key से सब" की key खर्च नहीं होती, इसलिए एक-key मोड में भी चलेगा
+        OneKeyGate.planCheck(c, OneKeyGate.Work.WEBSITE)?.let { return StartResult.MissingKey(it) }   // 18 नवंबर 2026: प्रीमियम लाइसेंस / मालिक
         val pinned = com.dk.assistant.BrainPin.resolve(c, com.dk.assistant.BrainPin.SITE)
         if (pinned == null) if (apiKey(c).isBlank()) OneKeyGate.check(c, OneKeyGate.Work.WEBSITE)?.let {
             return StartResult.MissingKey(it + " या " + KEY_PLACE + " में Gemini key डालिए।")

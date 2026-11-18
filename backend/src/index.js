@@ -5,9 +5,10 @@ import { authenticate } from "./auth.js";
 import { AI_CHAIN, SEARCH_CHAIN } from "./config.js";
 import { Db } from "./db.js";
 import {
-  activate, createLicense, levelFor, quota, requireChatLeft, requireLevel, requireVoiceLeft, taskLevel, today, useVoiceTicket, voiceTicket,
+  activate, createLicense, levelFor, quota, requireChatLeft, requireLevel, requireServerAi, requireVoiceLeft, taskLevel, today, useVoiceTicket, voiceTicket,
 } from "./license.js";
 import { onLiveToken } from "./live.js";
+import { onVoiceGrant } from "./voice.js";
 import { PROVIDERS as SEARCH_PROVIDERS, search } from "./search.js";
 import { readAudio, transcribe } from "./stt.js";
 import { CODES, HttpError, errorResponse, json, readJson, safeEqual } from "./util.js";
@@ -73,6 +74,7 @@ async function onChat(req, env, ctx, ident, opts) {
   const db = env.DB ? new Db(env.DB) : null;
   const lv = ident.owner ? { level: "owner", expires_at: null } : await levelFor(db ?? new Db(env.DB), ident, now);
   requireLevel(lv.level, taskLevel(task));
+  requireServerAi(env, lv.level);
 
   let add = { voice: 0, chat: 0 };
   let q = null;
@@ -115,6 +117,7 @@ async function onStt(req, env, ctx, ident, opts) {
   const now = opts.now?.() ?? Date.now();
   const db = new Db(env.DB);
   const lv = ident.owner ? { level: "owner" } : await levelFor(db, ident, now);
+  requireServerAi(env, lv.level);
   const day = today(now);
   let q = null;
   if (lv.level === "free") {
@@ -225,6 +228,7 @@ export async function handle(req, env, ctx, opts = {}) {
   if (path === "/ai/chat" && M === "POST") return onChat(req, env, ctx, ident, opts);
   if (path === "/stt" && M === "POST") return onStt(req, env, ctx, ident, opts);
   if (path === "/live/token" && M === "POST") return onLiveToken(env, ident, opts);
+  if (path === "/voice/grant" && M === "POST") return onVoiceGrant(env, ident, opts);
   if (path === "/search" && M === "POST") {
     const now = opts.now?.() ?? Date.now();
     const lv = ident.owner ? { level: "owner" } : await levelFor(new Db(env.DB), ident, now);

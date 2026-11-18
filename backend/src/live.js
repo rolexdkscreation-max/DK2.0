@@ -7,7 +7,7 @@
 
 import { LIVE_FREE_BLOCK_SECONDS, LIVE_PAID_MINUTES, LIVE_TOKEN_URL, LIVE_WS_URL } from "./config.js";
 import { Db } from "./db.js";
-import { levelFor, quota, requireLevel, requireVoiceLeft, taskLevel, today } from "./license.js";
+import { levelFor, quota, requireLevel, requireServerAi, requireVoiceLeft, taskLevel, today } from "./license.js";
 import { CODES, HttpError, json } from "./util.js";
 
 /** पिछला टिकट इतनी देर से कम बचा हो तो उसे दोबारा न दो (नया लो) */
@@ -40,6 +40,7 @@ export async function onLiveToken(env, ident, opts = {}) {
   const db = env.DB ? new Db(env.DB) : null;
   const lv = ident.owner ? { level: "owner" } : await levelFor(db ?? new Db(env.DB), ident, now);
   requireLevel(lv.level, taskLevel("live"));
+  requireServerAi(env, lv.level);
 
   if (lv.level !== "free") {
     const expires_at = now + LIVE_PAID_MINUTES * 60_000;

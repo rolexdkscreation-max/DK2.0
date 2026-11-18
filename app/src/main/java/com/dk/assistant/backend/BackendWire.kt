@@ -10,15 +10,17 @@ import org.json.JSONObject
  */
 class BackendException(status: Int, val reason: String, message: String, val say: String = message) : AiException(status, message) {
     /** यह गलती = बातचीत रोक दो (आज का मुफ़्त समय/संदेश पूरे) */
-    val stopsTalk get() = reason == BackendWire.LICENSE_REQUIRED
+    val stopsTalk get() = reason == BackendWire.LICENSE_REQUIRED || reason == BackendWire.NEED_OWN_KEY
     /** दोबारा कोशिश बेकार (लाइसेंस/स्तर) */
-    val final get() = reason in setOf(BackendWire.LICENSE_REQUIRED, BackendWire.NEED_PREMIUM, BackendWire.CHAT_LIMIT)
+    val final get() = reason in setOf(BackendWire.LICENSE_REQUIRED, BackendWire.NEED_PREMIUM, BackendWire.CHAT_LIMIT, BackendWire.NEED_OWN_KEY)
 }
 
 /** backend के जवाब पढ़ना - बिना Android (JVM tests) */
 object BackendWire {
     const val LICENSE_REQUIRED = "LICENSE_REQUIRED"
     const val NEED_PREMIUM = "NEED_PREMIUM"
+    /** मुफ़्त वाले को सर्वर की AI नहीं - अपनी Gemini key डालें (18 नवंबर 2026, मालिक) */
+    const val NEED_OWN_KEY = "NEED_OWN_KEY"
     const val CHAT_LIMIT = "CHAT_LIMIT"
     const val STT_LIMIT = "STT_LIMIT"
     const val DB_LIMIT = "DB_LIMIT"
@@ -36,7 +38,7 @@ object BackendWire {
         val code = o?.optString("code").orEmpty().ifBlank { if (status == 401) AUTH_INVALID else "HTTP_$status" }
         val msg = o?.optString("error").orEmpty().ifBlank { "सर्वर से जवाब नहीं मिला ($status)" }
         val say = when (code) {
-            LICENSE_REQUIRED -> o?.optString("say").orEmpty().ifBlank { msg }
+            LICENSE_REQUIRED, NEED_OWN_KEY -> o?.optString("say").orEmpty().ifBlank { msg }
             NEED_PREMIUM -> if (o?.optString("need") == "basic") msg else PREMIUM_HI
             else -> msg
         }
@@ -98,6 +100,15 @@ object BackendWire {
         val u = o.optString("ws_url")
         if (t.isBlank() || !u.startsWith(LIVE_WS_PREFIX)) throw BackendException(0, "BAD_TICKET", "सर्वर से Live का सही टिकट नहीं मिला")
         return LiveTicket(t, u, o.optLong("expires_at"), quota(o.optJSONObject("quota")))
+    }
+
+    /** /voice/grant: मुफ़्त वाले की आवाज़ का अगला हिस्सा. now/until = सर्वर की घड़ी */
+    data class VoiceGrant(val level: String, val metered: Boolean, val now: Long, val until: Long, val quota: Quota?)
+
+    fun voiceGrant(body: String): VoiceGrant {
+        val o = JSONObject(body)
+        return VoiceGrant(o.optString("level", "free"), o.optBoolean("metered", true), o.optLong("now"), o.optLong("until"),
+            quota(o.optJSONObject("quota")))
     }
 
     data class Status(val level: String, val expiresAt: Long, val owner: Boolean, val quota: Quota?)

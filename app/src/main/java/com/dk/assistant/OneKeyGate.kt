@@ -47,4 +47,9 @@ object OneKeyGate {
 
     /** UI/सर्विस: रोकना हो तो संदेश, वरना null */
     fun check(c: Context, w: Work): String? = if (blocked(c, w)) message(w).also { DKLog.d("एक key मोड: ${w.hi} रोका") } else null
+
+    /** 18 नवंबर 2026 (मालिक): कोडिंग / स्टोरी / DK कंप्यूटर / वेबसाइट = प्रीमियम लाइसेंस (या मालिक) - [com.dk.assistant.backend.Plan] */
+    fun planWork(w: Work): com.dk.assistant.backend.Plan.Work = com.dk.assistant.backend.Plan.Work.valueOf(w.name)
+    fun planCheck(c: Context, w: Work): String? =
+        com.dk.assistant.backend.Plan.check(c, planWork(w))?.also { DKLog.d("लाइसेंस: ${w.hi} रोका (स्तर ${com.dk.assistant.backend.Plan.level(c)})") }
 }

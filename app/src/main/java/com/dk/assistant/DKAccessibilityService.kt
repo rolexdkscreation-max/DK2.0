@@ -680,6 +680,19 @@ class DKAccessibilityService : AccessibilityService() {
     }
 
     /** Ek hi sunne wala loop: live mode me har baat command hai, wake mode me sirf wake word ke baad. */
+    /**
+     * 18 नवंबर 2026 (मालिक): मुफ़्त वाला (बिना लाइसेंस) = आवाज़ से बात रोज़ 10 मिनट, समय सर्वर पर ([VoiceGate]).
+     * false = DK ने वजह बोल दी (समय पूरा / नेट नहीं) - यह बात मत लो. लाइसेंस / मालिक = हमेशा true.
+     */
+    private suspend fun voiceOk(): Boolean {
+        val vg = com.dk.assistant.backend.VoiceGate
+        if (!vg.metered(this)) return true
+        val e = withContext(Dispatchers.IO) { vg.ensure(this@DKAccessibilityService) } ?: return true
+        DKLog.d("मुफ़्त आवाज़: ${e.reason} - बात नहीं ली")
+        vg.deny(e)
+        return false
+    }
+
     private fun ensureLoop() {
         val wanted = DKState.live || (wakeWanted() && !Prefs.micUserOff(this))
         if (::calls.isInitialized) calls.start()      // इजाज़त बाद में मिली हो तो अब (पहले से चालू हो तो कुछ नहीं)
@@ -712,6 +725,7 @@ class DKAccessibilityService : AccessibilityService() {
                 // नवंबर 2026: नेट नहीं (बैकअप) = Live जोड़ने के लिए माइक बंद-चालू नहीं; नेट लौटते ही फिर Live
                 if (useGeminiLive() && !callBusy() && !OfflineListen.cmdsOnly(backupMode, DKState.live, NetProbe.online(this@DKAccessibilityService))) {
                     if (!checkMic()) { delay(2000); continue }
+                    if (!voiceOk()) { delay(800); continue }   // 18 नवंबर 2026: मुफ़्त वाले का आज का समय पूरा / नेट नहीं = Live नहीं
                     ear.release(); listener.release(); earCaptionOff()
                     lastWhyNot = ""
                     var failed = false
@@ -823,6 +837,7 @@ class DKAccessibilityService : AccessibilityService() {
                     if (hit == null) { delay(if (calls.ringing || calls.inCall) 800 else 200); continue }
                     // लॉक / अनलॉक / किधर हो - फ़ोन पर ही पहचाना (इंटरनेट / Live नहीं)
                     if (hit.cmd != null) { runVoiceCmd(hit.cmd, "Hey DK"); continue }
+                    if (!voiceOk()) { com.dk.assistant.wake.WakeHandoff.releaseMic(); com.dk.assistant.wake.WakeHandoff.clear(); continue }
                     agent.heardAt = System.currentTimeMillis()
                     Ducker.duck(me, "हे डीके")
                     if (NetProbe.online(me) && liveReady() && !callBusy()) {
@@ -942,6 +957,7 @@ class DKAccessibilityService : AccessibilityService() {
                         cmdText = heard.substring((low.indexOf(w) + w.length).coerceAtMost(heard.length)).trim(' ', ',', '.', '!')
                         if (cmdText.isBlank()) continue
                     }
+                    if (!voiceOk()) continue        // 18 नवंबर 2026: मुफ़्त वाले का रोज़ का आवाज़ वाला समय
                     Ducker.duck(this@DKAccessibilityService, "बात शुरू")
                     runWithBarge(agent.run(cmdText))
                     Ducker.releaseWhenQuiet({ !speaker.busy })
@@ -956,6 +972,7 @@ class DKAccessibilityService : AccessibilityService() {
                             DKLog.d("ऑफलाइन: DK नाम से शुरू नहीं - अनसुना: \"${heard.take(40)}\""); null
                         } ?: continue
                         if (cmd.isBlank()) continue      // अकेला "डीके" - hearOfflineCmds ने "जी" बोलकर अगली बात खोली
+                        if (!voiceOk()) continue
                         DKState.user(heard)
                         agent.run(cmd).join()
                         Ducker.releaseWhenQuiet({ !speaker.busy })
@@ -972,6 +989,7 @@ class DKAccessibilityService : AccessibilityService() {
                         // v4.1: "सिर्फ़ DK बोलने पर सुनो" - नाम बात की शुरुआत में हो तभी (बीच में आया नाम = अनदेखा)
                         if (Prefs.dkOnly(this@DKAccessibilityService) || SideTalk.global.listening(System.currentTimeMillis())) cmd = DkOnly.filter(heard) ?: continue
                     }
+                    if (!voiceOk()) continue
                     // naam suna = user DK se baat kar raha hai -> peeche ka gaana/video dheema (Live ho to jawab ke baad wahi wapas badhayega)
                     Ducker.duck(this@DKAccessibilityService, "wake word")
                     // naam suna -> Gemini Live (asli awaaz, turant jawab); 45s chup = wapas wake word

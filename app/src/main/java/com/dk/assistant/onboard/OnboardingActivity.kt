@@ -110,8 +110,13 @@ class OnboardingActivity : AppCompatActivity() {
             }
             else -> {
                 title("आपको क्या बुलाऊँ?")
+                // 18 नवंबर 2026 (मालिक): Google लॉगिन चाहें तो - नाम अपने-आप आ जाता है (बदल सकते हैं). न करें तो भी ऐप वैसे ही चलता है
+                if (com.dk.assistant.backend.BackendConfig.ready()) {
+                    if (com.dk.assistant.backend.BackendSession.google(this)) text("✓ Google से जुड़े: " + com.dk.assistant.backend.BackendSession.email(this))
+                    else action("Google से लॉगिन (चाहें तो)") { googleLogin() }
+                }
                 nameField = EditText(this).apply {
-                    setText(Prefs.userName(this@OnboardingActivity)); hint = "आपका नाम"
+                    setText(Prefs.userName(this@OnboardingActivity).ifBlank { com.dk.assistant.backend.BackendSession.displayName(this@OnboardingActivity) }); hint = "आपका नाम"
                     setBackgroundResource(R.drawable.glass_input)
                     setTextColor(0xFFFFFFFF.toInt()); setHintTextColor(0x66FFFFFF.toInt()); textSize = 17f
                     inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_CAP_WORDS; isSingleLine = true
@@ -154,7 +159,58 @@ class OnboardingActivity : AppCompatActivity() {
     private fun finishOnboarding() {
         if (page == 3) saveName()
         markDone(this)
+        // 18 नवंबर 2026 (मालिक): नाम के बाद एक ही key का option - ऑल-राउंडर Gemini key (मालिक को ज़रूरी नहीं, सर्वर की keys)
+        if (OnboardingRules.askKey(hasKey(), com.dk.assistant.backend.Plan.level(this) == com.dk.assistant.backend.Plan.Level.OWNER)) try {
+            startActivity(Intent(this, com.dk.assistant.SettingsActivity::class.java).putExtra("section", "brain")
+                .putExtra(com.dk.assistant.SettingsActivity.EXTRA_FOCUS_KEY, true))
+            android.widget.Toast.makeText(this, KEY_ASK, android.widget.Toast.LENGTH_LONG).show()
+        } catch (e: Exception) { android.util.Log.w("DK", "onboard", e) }
         finish()
+    }
+
+    private fun hasKey() = Prefs.oneKey(this).isNotBlank() || Prefs.liveGeminiKeys(this).isNotEmpty()
+
+    // ---- Google लॉगिन (चाहें तो) - Settings → लाइसेंस की वाला ही तरीका
+    private fun bg(work: () -> Unit) = Thread { try { work() } catch (e: Exception) { ui(com.dk.assistant.connect.GoogleAuth.explain(e)) } }.start()
+    private fun ui(msg: String, then: () -> Unit = {}) = runOnUiThread {
+        if (isFinishing || isDestroyed) return@runOnUiThread
+        android.widget.Toast.makeText(this, msg, android.widget.Toast.LENGTH_LONG).show(); then()
+    }
+
+    private fun googleLogin() = bg {
+        when (val r = com.dk.assistant.connect.GoogleAuth.tokenBlocking(this, com.dk.assistant.backend.BackendSession.GOOGLE_SCOPES)) {
+            is com.dk.assistant.connect.GoogleAuth.Res.Token -> finishGoogle(r.value)
+            is com.dk.assistant.connect.GoogleAuth.Res.NeedsUi -> runOnUiThread {
+                val pi = r.intent ?: return@runOnUiThread ui("Google की स्क्रीन नहीं खुली")
+                @Suppress("DEPRECATION")
+                try { startIntentSenderForResult(pi.intentSender, RC_GOOGLE, null, 0, 0, 0) } catch (e: Exception) { ui(com.dk.assistant.connect.GoogleAuth.explain(e)) }
+            }
+            is com.dk.assistant.connect.GoogleAuth.Res.Fail -> ui(r.message)
+        }
+    }
+
+    private fun finishGoogle(token: String) = bg {
+        com.dk.assistant.backend.BackendSession.signInGoogle(this, token)
+        try { com.dk.assistant.backend.BackendApi.status(this) } catch (e: Exception) { android.util.Log.w("DK", "onboard", e) }
+        val n = com.dk.assistant.backend.BackendSession.displayName(this)
+        ui("✓ Google से लॉगिन हुआ") {
+            if (page == 3) {
+                val typed = nameField?.text?.toString()?.trim().orEmpty()
+                show()
+                if (typed.isNotBlank()) nameField?.setText(typed)
+                else if (n.isNotBlank()) nameField?.let { it.setText(n); it.setSelection(n.length) }
+            }
+        }
+    }
+
+    @Deprecated("Deprecated in Java")
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        @Suppress("DEPRECATION") super.onActivityResult(requestCode, resultCode, data)
+        if (requestCode != RC_GOOGLE) return
+        try {
+            val t = com.google.android.gms.auth.api.identity.Identity.getAuthorizationClient(this).getAuthorizationResultFromIntent(data).accessToken
+            if (!t.isNullOrBlank()) finishGoogle(t) else ui("Google ने इजाज़त नहीं दी")
+        } catch (e: Exception) { ui(com.dk.assistant.connect.GoogleAuth.explain(e)) }
     }
 
     private fun title(t: String) = body.addView(TextView(this).apply {
@@ -184,6 +240,8 @@ class OnboardingActivity : AppCompatActivity() {
 
     companion object {
         private const val KEY = "onboarded"
+        private const val RC_GOOGLE = 42
+        const val KEY_ASK = "अब अपनी Gemini API key डालें — DK के सारे काम इसी एक key से चलेंगे"
 
         fun markDone(c: Context) = Prefs.edit(c) { putBoolean(KEY, true) }
 
@@ -197,7 +255,7 @@ class OnboardingActivity : AppCompatActivity() {
                 val hasName = Prefs.userName(a).isNotBlank()
                 if (OnboardingRules.shouldShow(onboarded, fresh, hasName)) a.startActivity(Intent(a, OnboardingActivity::class.java))
                 else markDone(a)
-            } catch (e: Exception) { com.dk.assistant.Quiet.note(e) }
+            } catch (e: Exception) { android.util.Log.w("DK", "onboard", e) }
         }
     }
 }

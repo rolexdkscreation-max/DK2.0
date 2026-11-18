@@ -97,6 +97,10 @@ class AutoSettingsActivity : AppCompatActivity() {
 
     /** चालू करते समय ही Accessibility की इजाज़त - और क्यों चाहिए, साफ़ बताकर */
     private fun askEnable() {
+        com.dk.assistant.backend.Plan.check(this, com.dk.assistant.backend.Plan.Work.AUTO)?.let {
+            master.isChecked = false
+            android.widget.Toast.makeText(this, it, android.widget.Toast.LENGTH_LONG).show(); return
+        }
         if (Setup.accessibilityOn(this)) { AutoPrefs.setOn(this, true); return }
         master.isChecked = false
         UiDialog(this).setTitle("एक इजाज़त चाहिए")

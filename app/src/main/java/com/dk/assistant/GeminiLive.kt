@@ -761,6 +761,29 @@ class GeminiLive(internal val svc: DKAccessibilityService, internal val agent: A
     @Volatile internal var lastDkLine = ""
     @Volatile internal var modelCache: Triple<Int, Long, List<String>>? = null
 
+    /**
+     * 18 नवंबर 2026: मुफ़्त वाले की आवाज़ का समय - Live चलते हर हिस्से (60s) की मियाद से पहले सर्वर से अगला.
+     * आख़िरी हिस्सा = एक बार "बस एक मिनट बचा है" (Live खुद बोले). न मिला = तय शब्द, Live बंद.
+     */
+    private suspend fun voiceMeter() {
+        val vg = com.dk.assistant.backend.VoiceGate
+        while (!stopped) {
+            AiRouter.takeWarn()?.let { w ->
+                DKState.hint(w)
+                val note = "SYSTEM NOTE (not from the user): tell the user right now, briefly and exactly: \"$w\" Then continue normally."
+                try { ws?.tx(JSONObject().put("realtimeInput", JSONObject().put("text", note)).toString()) } catch (x: Exception) { Quiet.note(x) }
+                log("मुफ़्त आवाज़: एक मिनट बचा - बताया")
+            }
+            delay(vg.waitMs())
+            if (stopped) break
+            val e = vg.ensure(svc)
+            if (e != null) {
+                log("मुफ़्त आवाज़: ${e.reason} - Live बंद"); stopped = true
+                closeWs(ws, "free voice over"); vg.deny(e); break
+            }
+        }
+    }
+
     fun stop(why: String = "user stop") {
         stopped = true
         curRace?.let { cancelRace(it, why) }      // v5.1: चलती दौड़ (पीछे वाली भी) बंद
@@ -1069,6 +1092,9 @@ class GeminiLive(internal val svc: DKAccessibilityService, internal val agent: A
             val mic = launch(Dispatchers.IO) { micLoop() }
             // DK ka text awaaz ke saath-saath (har 80ms)
             val reveal = launch(Dispatchers.IO) { while (isActive && !stopped) { revealTick(); delay(80) } }
+            // 18 नवंबर 2026 (मालिक): मुफ़्त वाला अपनी key से = रोज़ 10 मिनट (सर्वर गिनता है). हर हिस्से की मियाद से पहले अगला;
+            // समय पूरा / नेट नहीं = तय शब्द और Live बंद ([com.dk.assistant.backend.VoiceGate])
+            val meter = if (com.dk.assistant.backend.VoiceGate.metered(svc)) launch(Dispatchers.IO) { voiceMeter() } else null
             try {
                 while (!stopped && isActive) {
                     if (svc.callTakesMic()) return@coroutineScope      // v3.40: घंटी पर नहीं, call उठने पर ही
@@ -1081,6 +1107,10 @@ class GeminiLive(internal val svc: DKAccessibilityService, internal val agent: A
                             AiRouter.stopped(e, speak = true); break
                         }
                         throw Fatal("${AiRouter.LABEL} से Live का टिकट नहीं मिला (${e.message})", recoverable = true, kind = LiveFailWhy.Kind.SERVER)
+                    }
+                    if (meter != null) com.dk.assistant.backend.VoiceGate.ensure(svc)?.let { e ->
+                        log("मुफ़्त आवाज़: ${e.reason} - Live बंद"); stopped = true
+                        com.dk.assistant.backend.VoiceGate.deny(e); break
                     }
                     // v5.1: standby वाला गर्म connection (wake word) किसी भी मॉडल/key का हो - वही लो
                     val pk = parked; parked = null
@@ -1493,6 +1523,7 @@ class GeminiLive(internal val svc: DKAccessibilityService, internal val agent: A
             } finally {
                 stopped = true
                 reveal.cancel()
+                meter?.cancel()
                 // pehle mic band (woh aakhri audioStreamEnd bhejta hai) - phir socket. NonCancellable: beech me na ruke
                 withContext(NonCancellable) { mic.cancelAndJoin() }
                 val w = ws; val c = curClosed

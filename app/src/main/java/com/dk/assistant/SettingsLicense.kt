@@ -35,7 +35,7 @@ internal fun SettingsActivity.secLicense() {
         return
     }
     card(LICENSE_CARD, "मुफ़्त: रोज़ 10 मिनट बातचीत • बेसिक: खोज और रिसर्च • प्रीमियम: सब कुछ", startOpen = true) { box -> licenseBody(box) }
-    card(LICENSE_LOGIN_CARD, if (BackendSession.google(this)) "✓ " + BackendSession.email(this) else "मालिक के लिए • बाकी सब बिना लॉगिन (मेहमान)") { box -> loginBody(box) }
+    card(LICENSE_LOGIN_CARD, if (BackendSession.google(this)) "✓ " + BackendSession.email(this) else "चाहें तो • नाम अपने-आप • बिना लॉगिन भी सब शर्तों के साथ चलता है") { box -> loginBody(box) }
     if (BackendSession.owner(this)) card(LICENSE_ADMIN_CARD, "नई की • सूची • बंद करें") { box -> adminBody(box) }
 }
 
@@ -92,8 +92,8 @@ private fun SettingsActivity.licenseBody(box: LinearLayout) {
         }
     }, button("ताज़ा करें") { refresh() })
     BackendConfig.whatsappLink()?.let { l -> row(box, button("लाइसेंस की पाएँ") { openWa(l) }) }
-    hint(box, "बिना लाइसेंस: रोज़ 10 मिनट बोलकर बात और 30 संदेश (रात 12 बजे भारत के समय से फिर)। " +
-        "आपकी अपनी AI key (AI दिमाग में) से बात की कोई सीमा नहीं - सर्वर सिर्फ़ तब, जब key न हो या न चले।")
+    hint(box, "बिना लाइसेंस: अपनी Gemini key (AI दिमाग में) से लिखकर चैट जितनी चाहें; बोलकर बात रोज़ 10 मिनट " +
+        "(रात 12 बजे भारत के समय से फिर, इंटरनेट ज़रूरी)। बेसिक: बिना सीमा बात + डीप रिसर्च। प्रीमियम: सब कुछ + अलग-अलग keys।")
 }
 
 private fun SettingsActivity.loginBody(box: LinearLayout) {
@@ -127,7 +127,11 @@ private fun SettingsActivity.googleLogin() {
 private fun SettingsActivity.finishGoogle(accessToken: String) {
     toast("Google से जुड़ रहा हूँ…")
     bg({ BackendSession.signInGoogle(this, accessToken); BackendApi.status(this) }) { r ->
-        r.onSuccess { s -> toast(if (s.owner) "✓ मालिक के रूप में लॉगिन" else "✓ लॉगिन हुआ (यह ईमेल मालिक की सूची में नहीं)"); recreate() }
+        r.onSuccess { s ->
+            // 18 नवंबर 2026 (मालिक): Google का नाम अपने-आप (नाम पहले से हो तो वही; Settings → प्रोफ़ाइल में बदल सकते हैं)
+            BackendSession.displayName(this).takeIf { it.isNotBlank() && Prefs.userName(this).isBlank() }?.let { n -> Prefs.edit(this) { putString("user_name", n) } }
+            toast(if (s.owner) "✓ मालिक के रूप में लॉगिन" else "✓ लॉगिन हुआ"); recreate()
+        }
             .onFailure { e -> toast(licenseError(e)) }
     }
 }

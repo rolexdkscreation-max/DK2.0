@@ -17,6 +17,9 @@ object OnboardingRules {
 
     /** अगले पेज का नंबर; आख़िरी के बाद null = परिचय खत्म */
     fun next(page: Int): Int? = if (page + 1 < PAGES) page + 1 else null
+
+    /** 18 नवंबर 2026 (मालिक): परिचय के बाद Gemini key वाला पन्ना - key नहीं और मालिक नहीं (मालिक सर्वर की keys से चलता है) */
+    fun askKey(hasKey: Boolean, owner: Boolean): Boolean = !hasKey && !owner
 }
 
 /** घर की स्क्रीन पर समय के हिसाब से अभिवादन */

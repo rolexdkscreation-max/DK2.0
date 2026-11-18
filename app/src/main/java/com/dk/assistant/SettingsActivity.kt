@@ -88,6 +88,8 @@ class SettingsActivity : AppCompatActivity() {
     companion object { const val EXTRA_FOCUS_KEY = "focus_key" }
 
     private val section: String? get() = intent.getStringExtra("section")
+    /** 18 नवंबर 2026 (मालिक): अलग keys / कोडिंग / DK कंप्यूटर वाले पन्ने = प्रीमियम लाइसेंस या मालिक ([com.dk.assistant.backend.Plan]) */
+    internal fun planKeys(): Boolean = com.dk.assistant.backend.Plan.separateKeys(this)
 
     private fun build() {
         val title = findViewById<TextView>(R.id.txtTitle)
@@ -110,10 +112,10 @@ class SettingsActivity : AppCompatActivity() {
             "profile" -> { title.text = "प्रोफ़ाइल"; secProfile() }
             "lang" -> { title.text = "भाषा / Language"; secLang() }
             "brain" -> { title.text = "AI दिमाग"; secBrainMenu() }
-            "brain_live" -> { title.text = "AI दिमाग • DK लाइव"; secBrainLive() }
-            "brain_chat" -> { title.text = "AI दिमाग • DK चैट"; secBrain() }
-            "brain_coder" -> { title.text = "AI दिमाग • कोडिंग एजेंट"; secBrainScope(ApiScopes.CODER) }
-            "brain_pc" -> { title.text = "AI दिमाग • DK कंप्यूटर"; secBrainScope(ApiScopes.PC) }
+            "brain_live" -> { title.text = "AI दिमाग • DK लाइव"; if (planKeys()) secBrainLive() else planLockCard("अलग key (DK लाइव)") }
+            "brain_chat" -> { title.text = "AI दिमाग • DK चैट"; if (planKeys()) secBrain() else planLockCard("अलग key (DK चैट)") }
+            "brain_coder" -> { title.text = "AI दिमाग • कोडिंग एजेंट"; if (planKeys()) secBrainScope(ApiScopes.CODER) else planLockCard("कोडिंग एजेंट") }
+            "brain_pc" -> { title.text = "AI दिमाग • DK कंप्यूटर"; if (planKeys()) secBrainScope(ApiScopes.PC) else planLockCard("DK कंप्यूटर") }
             "voice" -> { title.text = "आवाज़"; secVoice(); voiceGuardianCard() }
             "orb" -> { title.text = "ओर्ब और चेहरा"; secOrb(); secIsland() }
             "ui" -> { title.text = "दिखावट"; secUi() }
@@ -125,15 +127,15 @@ class SettingsActivity : AppCompatActivity() {
             "update" -> { title.text = "अपडेट"; secUpdate(); secBetaCheck() }
             "license" -> { title.text = "लाइसेंस की"; secLicense() }
             "debug" -> { title.text = "डिबग लॉग"; secBetaCheck(); secDebug() }
-            "coder" -> { title.text = "कोडिंग एजेंट"; secCoder(); secTermux() }
-            "computer" -> { title.text = "DK कंप्यूटर"; secComputer(); secImageGen() }
+            "coder" -> { title.text = "कोडिंग एजेंट"; if (planKeys()) { secCoder(); secTermux() } else planLockCard("कोडिंग एजेंट") }
+            "computer" -> { title.text = "DK कंप्यूटर"; if (planKeys()) { secComputer(); secImageGen() } else planLockCard("DK कंप्यूटर") }
             "social" -> { title.text = "सोशल रिव्यू"; secSocial(); secYouTube() }
             "reels" -> { title.text = "रील गिनती और लिमिट"; secReels() }
             "autoreply" -> { title.text = "ऑटो रिप्लाई"; secAutoReply() }
             "about" -> { title.text = "ऐप के बारे में"; secAbout() }
         }
         // 15 नवंबर 2026: नई सुविधाएँ अपने पुराने section के नीचे (पुरानी लाइनें वैसी ही)
-        when (section) { "ui" -> secHomeTabs(); "computer" -> secEmail(); "autoreply" -> secGroupReport() }
+        when (section) { "ui" -> secHomeTabs(); "computer" -> if (planKeys()) secEmail(); "autoreply" -> secGroupReport() }
         space(container, 8)
         FutureViews.goldShader(title)          // नवंबर 2026: शीर्षक धातु जैसा सुनहरा (Control Center रूप)
     }

@@ -17,6 +17,7 @@ object LiveReport {
     }
 
     fun startStory(c: Context, topic: String, minutes: Int): String {
+        OneKeyGate.planCheck(c, OneKeyGate.Work.STORY)?.let { return it }      // 18 नवंबर 2026: प्रीमियम लाइसेंस / मालिक
         OneKeyGate.check(c, OneKeyGate.Work.STORY)?.let { return it }
         if (StorySession.busy) return LiveConnect.STORY_BUSY
         val m = LiveConnect.storyMinutes(minutes)

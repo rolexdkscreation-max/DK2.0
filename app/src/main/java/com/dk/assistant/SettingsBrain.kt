@@ -39,13 +39,38 @@ internal fun SettingsActivity.scopeStatus(scope: String): String {
     return (if (ok) "✓ " else "✗ ") + KeySetup.name(id) + (if (ok) " • ${Prefs.scopeModel(this, scope, id)}" else " की key नहीं") + " • अपनी अलग key"
 }
 
+/** मुफ़्त / बेसिक: एक-key मोड चालू; एक key खाली हो तो पहले से डली कोई Gemini key (Live / चैट) उसमें */
+private fun SettingsActivity.planOneKey() {
+    val keep = Prefs.oneKey(this).ifBlank { Prefs.liveGeminiKeys(this).firstOrNull().orEmpty().ifBlank { Prefs.borrowKey(this, ApiScopes.CHAT, "gemini") } }
+    if (Prefs.oneKeyOn(this) && keep == Prefs.oneKey(this)) return
+    Prefs.edit(this) { putBoolean(ApiScopes.ONE_KEY_ON, true); if (keep.isNotBlank()) putString(ApiScopes.ONE_KEY, keep) }
+}
+
+/** प्रीमियम वाले हिस्से (अलग keys / कोडिंग / DK कंप्यूटर) मुफ़्त-बेसिक में: साफ़ संदेश + लाइसेंस वाला पन्ना */
+internal fun SettingsActivity.planLockCard(what: String) {
+    card(what, "प्रीमियम लाइसेंस के साथ", startOpen = true) { box ->
+        hint(box, "$what प्रीमियम लाइसेंस (या मालिक) के साथ खुलता है। Settings → लाइसेंस की में की डालें — की न हो तो वहीं \"लाइसेंस की पाएँ\" दबाएँ।")
+        row(box, button("लाइसेंस की खोलें") {
+            startActivity(android.content.Intent(this, SettingsActivity::class.java).putExtra("section", "license"))
+        })
+        // मालिक: "लाइसेंस की के लिए जो गेट करेगा, वहाँ से सीधे" WhatsApp
+        com.dk.assistant.backend.BackendConfig.whatsappLink()?.let { l -> row(box, button("लाइसेंस की पाएँ") {
+            try { startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(l))) } catch (e: Exception) { toast("WhatsApp नहीं खुला") }
+        }) }
+    }
+}
+
 internal fun SettingsActivity.secBrainMenu() {
     // v3.91: "एक key से सब" - नया install = चालू (एक Gemini key से सारे काम); अलग-अलग keys वाले हिस्से बंद (मिटते नहीं)
+    // 18 नवंबर 2026 (मालिक): अलग-अलग keys वाले हिस्से सिर्फ़ प्रीमियम / मालिक को. बाकी सब (मुफ़्त, बेसिक) = सिर्फ़ एक ऑल-राउंडर
+    // Gemini key - एक-key मोड अपने-आप चालू (पहले से डली Gemini key हो तो वही ऊपर आ जाती है)
+    val separate = com.dk.assistant.backend.Plan.separateKeys(this)
+    if (!separate) planOneKey()
     val one = Prefs.oneKeyOn(this)
     // नवंबर 2026 (मालिक): "एक key डालेगा तो सारे काम" - कोडिंग, स्टोरी, DK कंप्यूटर, वेबसाइट भी इसी एक key से
     card("एक key से सब (ऑल-राउंडर)", "सिर्फ़ एक Gemini key — DK लाइव में बात, चैट, सुनना-लिखना, Google खोज, फ़ोन के काम, फ़ोटो बनाना, कोडिंग एजेंट, स्टोरी मोड, DK कंप्यूटर और वेबसाइट — सारे काम इसी एक key से", startOpen = one) { box ->
-        val sw = switch(box, "एक key से सब चलाओ", one)
-        sw.setOnCheckedChangeListener { _, on ->
+        if (!separate) hint(box, "आपके प्लान में एक ही key: यही Gemini key DK के सारे काम चलाती है। अलग-अलग keys वाले हिस्से प्रीमियम लाइसेंस में खुलते हैं।")
+        if (separate) switch(box, "एक key से सब चलाओ", one).setOnCheckedChangeListener { _, on ->
             save(false)
             Prefs.edit(this) { putBoolean(ApiScopes.ONE_KEY_ON, on) }
             container.removeAllViews(); secBrainMenu(); space(container, 8)
@@ -99,6 +124,7 @@ internal fun SettingsActivity.secBrainMenu() {
     // 14 नवंबर 2026 (मालिक): ऊपर वाला "हर काम का मॉडल — खुद चुनें" हटा (अब हर हिस्से - DK लाइव / चैट / कोडिंग / कंप्यूटर -
     // के अंदर उसका अपना). वेबसाइट बिल्डर की अलग key वाली पंक्ति हटी - वेबसाइट कोडिंग एजेंट की API से बनती है.
     // "एक key से सब" चालू = नीचे के अलग-अलग key वाले हिस्से दिखते ही नहीं (एक बार में एक ही तरीका दिखे)
+    if (!separate) return      // 18 नवंबर 2026: मुफ़्त / बेसिक = अलग-अलग keys वाले हिस्से नहीं
     if (one) return
     menuRow("brain_live", "DK लाइव", scopeStatus(ApiScopes.LIVE) + "\nआवाज़ से बातचीत (Gemini Live), बोलना, सुनना", "voice")
     menuRow("brain_chat", "DK चैट", scopeStatus(ApiScopes.CHAT) + "\nलिखकर चैट, जवाब, Google search, गहरी सोच, कहानी", "brain")
