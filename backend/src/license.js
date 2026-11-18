@@ -126,10 +126,12 @@ export async function createLicense(db, body, now = Date.now()) {
 
 // ---------- आवाज़ का टिकट ----------
 // /stt के बाद मिलता है: उसी बात का /ai/chat फिर से चैट-गिनती में नहीं जुड़ता (समय /stt में जुड़ चुका).
-const isolateSecret = crypto.randomUUID();
+// Cloudflare: global scope में random नहीं बन सकता (deploy पर error 10021) - पहली request पर बनता है
+let isolateSecret = "";
 const usedTickets = new Map();
 
 function ticketSecret(env) {
+  if (!env.WEBHOOK_SECRET && !isolateSecret) isolateSecret = crypto.randomUUID();
   return (env.WEBHOOK_SECRET || isolateSecret) + ":voice";
 }
 
