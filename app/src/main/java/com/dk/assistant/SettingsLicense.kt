@@ -158,7 +158,7 @@ private fun SettingsActivity.finishGoogle(accessToken: String) {
         r.onSuccess { s ->
             // 18 नवंबर 2026 (मालिक): Google का नाम अपने-आप (नाम पहले से हो तो वही; Settings → प्रोफ़ाइल में बदल सकते हैं)
             BackendSession.displayName(this).takeIf { it.isNotBlank() && Prefs.userName(this).isBlank() }?.let { n -> Prefs.edit(this) { putString("user_name", n) } }
-            if (s.owner) WelcomeBoss.show(this) { recreate() } else { toast("✓ लॉगिन हुआ"); recreate() }
+            if (s.owner) com.dk.assistant.backend.WelcomeBoss.show(this) { recreate() } else { toast("✓ लॉगिन हुआ"); recreate() }
         }
             .onFailure { e -> toast(licenseError(e)) }
     }
