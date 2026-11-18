@@ -1543,7 +1543,10 @@ DK का सर्वर इस ऐप में नहीं जुड़ा	D
 आपकी अपनी AI keys से सब पहले जैसा चलता है। सर्वर जुड़ा नया APK आने पर यहाँ लाइसेंस की डाल सकेंगे।	Everything works as before with your own AI keys. Once a new APK with the server arrives, you can enter a license key here.
 Google से लॉगिन	Sign in with Google
 मालिक के लिए • बाकी सब बिना लॉगिन (मेहमान)	For the owner • everyone else without login (guest)
-Google सिर्फ़ मालिक के लिए (जिसका ईमेल सर्वर की सूची में हो)। बाकी लोग बिना लॉगिन चलाते हैं।	Google is only for the owner (whose email is on the server list). Others use DK without login.
+टैप करने पर फ़ोन के सारे Google खाते दिखेंगे - जिससे चाहें लॉगिन करें। मालिक वही ईमेल चुनें जो सर्वर की मालिक-सूची में है। लॉगिन न करें तो भी ऐप चलता है।	Tap to see all Google accounts on this phone and sign in with any. The owner should pick the email on the server's owner list. DK also works without login.
+दूसरा Google खाता	Another Google account
+कोई खाता नहीं चुना	No account selected
+Google से लॉगिन (चाहें तो)	Sign in with Google (optional)
 अभी मेहमान (बिना लॉगिन)। मालिक Google से लॉगिन करें।	Guest now (no login). Owner: sign in with Google.
 Google से जुड़ रहा हूँ…	Connecting to Google…
 Google की स्क्रीन नहीं खुली	Google screen did not open
