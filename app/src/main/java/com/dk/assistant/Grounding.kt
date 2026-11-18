@@ -98,7 +98,7 @@ object SearchPolicy {
      */
     private val SMALL_TALK = listOf(
         "क्या कर रहे हो", "क्या कर रहे हैं", "क्या कर रही हो", "क्या कर रहा है", "क्या चल रहा है", "क्या चल रहा", "क्या हाल है", "क्या हाल",
-        "हाल चाल", "हालचाल", "कैसे हो", "कैसे हैं", "कैसी हो", "कैसा है", "और बताओ", "सब बताओ", "कुछ बताओ", "सब ठीक", "ठीक हो", "ठीक हूँ",
+        "हाल चाल", "हालचाल", "कैसे हो", "कैसे हैं", "कैसी हो", "और बताओ", "सब बताओ", "कुछ बताओ", "सब ठीक", "ठीक हो", "ठीक हूँ",
         "हेलो", "हैलो", "हेल्लो", "हाय", "नमस्ते", "नमस्कार", "राम राम", "प्रणाम", "सुप्रभात", "शुभ रात्रि", "सुनो", "डीके", "भाई", "यार",
         "how are you", "what are you doing", "what's up", "whats up", "good morning", "good night", "hello", "hey", "hi", "dk", "kaise ho",
         "kya kar rahe ho", "kya haal", "aur batao", "namaste"
@@ -112,7 +112,7 @@ object SearchPolicy {
             val r = Regex("(?<=\\s)" + Regex.escape(w) + "(?=\\s)")
             if (r.containsMatchIn(t)) { hit = true; t = t.replace(r, " ") }
         }
-        if (!hit) return false
+        if (!hit || fresh(t)) return false   // "आज का मौसम कैसा है" = असली ताज़ा सवाल
         return t.split(Regex("\\s+")).filter { it.isNotBlank() && it !in FILLER }.size <= 2
     }
 

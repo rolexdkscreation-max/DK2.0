@@ -60,7 +60,7 @@ class ResearchDirectTest {
                 assertFalse(it, SearchPolicy.needsSearch(it))
                 assertTrue(it, WebSearch.skip(it))
             }
-        listOf("हेलो, आज सोने का भाव क्या है", "आज की ताज़ा खबर क्या है", "भारत की राजधानी क्या है", "मोदी जी के बारे में डीप रिसर्च करो")
+        listOf("हेलो, आज सोने का भाव क्या है", "आज का मौसम कैसा है", "हेलो आज का मौसम", "आज की ताज़ा खबर क्या है", "भारत की राजधानी क्या है", "मोदी जी के बारे में डीप रिसर्च करो")
             .forEach { assertFalse(it, SearchPolicy.smallTalk(it)) }
         assertTrue(SearchPolicy.needsSearch("हेलो, आज सोने का भाव क्या है"))
         assertTrue(SearchPolicy.rules("[SEARCH]").contains("Greetings and small talk"))
