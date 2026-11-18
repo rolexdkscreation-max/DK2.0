@@ -255,14 +255,18 @@ class GeminiClient(private val key: String, private val model: String) : AiClien
      */
     private fun streamOnce(m: String, system: String, history: List<Turn>, prompt: String, thinking: Boolean, onDelta: (String) -> Unit) {
         streamMeta = null
-        if (!groundChat) { streamRaw(m, system, history, prompt, thinking, false, onDelta); return }
+        // 18 नवंबर 2026: यह key खोज नहीं ले सकती (मुफ़्त Gemini key) = सीधे बिना खोज ([SearchBlock])
+        if (!groundChat || SearchBlock.blocked(key)) { streamRaw(m, system, history, prompt, thinking, false, onDelta); return }
         var got = false
         try { streamRaw(m, system, history, prompt, thinking, true) { got = true; onDelta(it) } }
         catch (e: AiException) {
-            if (got || !GroundCite.toolRejected(e.code, e.message.orEmpty())) throw e
+            val quota = SearchBlock.retryWithout(e.code)
+            if (got || !(GroundCite.toolRejected(e.code, e.message.orEmpty()) || quota)) throw e
             DKLog.d("Gemini ($m): googleSearch tool नहीं चला (${e.code}) - बिना खोज वाला जवाब")
             streamMeta = null
             streamRaw(m, system, history, prompt, thinking, false, onDelta)
+            // बिना खोज चल गया = 429 खोज का था (मॉडल की limit नहीं) - कुछ घंटे इस key पर चैट बिना खोज
+            if (quota) { SearchBlock.mark(key); DKLog.d("Gemini: इस key पर Google खोज नहीं चलती (मुफ़्त key) - कुछ घंटे चैट बिना खोज") }
         } catch (e: java.io.IOException) {
             if (got || !ChatFlow.slowNet(e)) throw e
             DKLog.d("Gemini ($m): खोज के साथ देर (${e.javaClass.simpleName}) - एक बार बिना खोज")
@@ -321,7 +325,14 @@ class GeminiClient(private val key: String, private val model: String) : AiClien
             deep -> (DEEP_MODELS + GeminiModels.order(model, BACKUP_MODELS)).distinct()
             else -> GeminiModels.order(model, BACKUP_MODELS)
         }.let { laned(it, if (think || deep) OneKeyLanes.Lane.HEAVY else lane ?: OneKeyLanes.Lane.TALK) }.take(maxModels.coerceAtLeast(1))
-        for (m in order) {
+        // 18 नवंबर 2026: यह key Google खोज नहीं ले सकती ([SearchBlock]) = हर मॉडल पर बेकार 429 नहीं, सीधे अगली खोज-सेवा
+        // गहरी सोच (think) को खोज ज़रूरी नहीं - वहाँ बिना खोज वही सवाल
+        var useTool = !SearchBlock.blocked(key)
+        if (!useTool && !think) throw AiException(429, SearchBlock.MSG)
+        for (m in order) { var retryNow = false; for (attempt in 0..1) {
+            if (attempt == 1 && !retryNow) break
+            retryNow = false
+            val tried = useTool
             try {
                 val contents = JSONArray()
                 history.takeLast(if (deep) 8 else 6).forEach {
@@ -338,8 +349,8 @@ class GeminiClient(private val key: String, private val model: String) : AiClien
                 val body = JSONObject()
                     .put("system_instruction", JSONObject().put("parts", JSONArray().put(JSONObject().put("text", Lang.sys(system)))))
                     .put("contents", contents)
-                    .put("tools", JSONArray().put(JSONObject().put("google_search", JSONObject())))
                     .put("generationConfig", gen)
+                if (useTool) body.put("tools", JSONArray().put(JSONObject().put("google_search", JSONObject())))
                 val req = Request.Builder()
                     .url("https://generativelanguage.googleapis.com/v1beta/models/$m:generateContent")
                     .header("x-goog-api-key", key)
@@ -353,13 +364,16 @@ class GeminiClient(private val key: String, private val model: String) : AiClien
                 val sources = if (g != null) GroundCite.unique(g) else Grounding.sources(gm)
                 label = (if (think) "Gemini गहरी सोच" else "Gemini+Search") + " ($m)"
                 if (sb.isBlank()) throw AiException(0, "khali jawab")
+                if (attempt == 1) SearchBlock.mark(key)   // खोज के साथ 429, बिना खोज चला = key खोज नहीं ले सकती
                 return SearchResult(sb.toString(), sources, g)
             } catch (e: AiException) {
+                // गहरी सोच: खोज के साथ 429 = उसी मॉडल से बिना खोज एक बार (attempt 1)
+                if (think && tried && attempt == 0 && SearchBlock.retryWithout(e.code)) { useTool = false; retryNow = true; continue }
                 if (last == null || GeminiModels.isGone(last.code, last.message.orEmpty())) last = e
                 val msg = (e.message ?: "").lowercase()
                 if (e.code == 401 || ((e.code == 403 || e.code == 400) && (msg.contains("api key") || msg.contains("api_key")))) throw e
             }
-        }
+        } }
         throw last ?: AiException(0, "search fail")
     }
 
