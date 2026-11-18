@@ -1,6 +1,6 @@
 // खोज: Tavily → Exa → Linkup → Firecrawl → Google (Gemini की Google Search). नतीजे एक ही रूप में: {title, url, snippet}.
 
-import { SEARCH_CHAIN, SEARCH_GOOGLE_MODEL, SEARCH_TIMEOUT_MS } from "./config.js";
+import { READ_MAX_CHARS, READ_MAX_URLS, READ_TIMEOUT_MS, RESEARCH_CHAIN, SEARCH_CHAIN, SEARCH_GOOGLE_MODEL, SEARCH_TIMEOUT_MS } from "./config.js";
 import { CODES, HttpError } from "./util.js";
 
 const clip = (s, n) => String(s ?? "").replace(/\s+/g, " ").trim().slice(0, n);
@@ -73,12 +73,20 @@ export const PROVIDERS = {
   },
 };
 
-export async function search(env, query, n = 5) {
+/**
+ * [deep] = डीप रिसर्च: सिर्फ़ [RESEARCH_CHAIN] (Google नहीं). [only] = सिर्फ़ यह एक कंपनी (ऐप एक साथ Tavily और Exa दोनों से माँगता है).
+ */
+export function chainFor(deep, only) {
+  const base = deep ? RESEARCH_CHAIN : SEARCH_CHAIN;
+  return only ? base.filter((id) => id === only) : base;
+}
+
+export async function search(env, query, n = 5, deep = false, only = "") {
   const q = clip(query, 500);
   if (!q) throw new HttpError(400, CODES.BAD_REQUEST, "खोजने के लिए कुछ लिखें");
   const count = Math.min(Math.max(Number(n) || 5, 1), 10);
   const tried = [];
-  for (const id of SEARCH_CHAIN) {
+  for (const id of chainFor(deep, only)) {
     const p = PROVIDERS[id];
     const key = env[p.secret];
     if (!key) continue;
@@ -100,4 +108,49 @@ export async function search(env, query, n = 5) {
   }
   if (!tried.length) throw new HttpError(503, CODES.NOT_CONFIGURED, "बैकएंड में कोई खोज key नहीं डली");
   throw new HttpError(503, CODES.ALL_FAILED, "अभी खोज नहीं हो पाई। थोड़ी देर बाद कोशिश करें।", { tried });
+}
+
+/**
+ * 18 नवंबर 2026: डीप रिसर्च के लिए वेबसाइटें पूरी पढ़ना (ऐप में अपनी key न हो तब). क्रम: Tavily extract → Exa contents → Firecrawl.
+ * नतीजा: { pages: [{ url, text }], tried }. कोई पेज न खुले = pages खाली (ऐप फिर खोज का छोटा अंश लेता है).
+ */
+export async function read(env, urls) {
+  const list = [...new Set((Array.isArray(urls) ? urls : []).map((u) => String(u || "").trim()).filter(okUrl))].slice(0, READ_MAX_URLS);
+  if (!list.length) throw new HttpError(400, CODES.BAD_REQUEST, "पढ़ने के लिए कोई वेबसाइट नहीं");
+  const got = new Map();
+  const tried = [];
+  const left = () => list.filter((u) => !got.has(u));
+  const put = (u, t) => { const x = clip(t, READ_MAX_CHARS); if (u && x.length > 80 && list.includes(u) && !got.has(u)) got.set(u, x); };
+  const steps = [
+    ["tavily", "TAVILY_API_KEY", async (key, us, signal) => {
+      const j = await post("https://api.tavily.com/extract", { authorization: "Bearer " + key }, { urls: us }, signal);
+      for (const r of j.results ?? []) put(r.url, r.raw_content);
+    }],
+    ["exa", "EXA_API_KEY", async (key, us, signal) => {
+      const j = await post("https://api.exa.ai/contents", { "x-api-key": key }, { urls: us, text: { maxCharacters: READ_MAX_CHARS } }, signal);
+      for (const r of j.results ?? []) put(r.url || r.id, r.text);
+    }],
+    ["firecrawl", "FIRECRAWL_API_KEY", async (key, us, signal) => {
+      for (const u of us.slice(0, 3)) {
+        const j = await post("https://api.firecrawl.dev/v2/scrape", { authorization: "Bearer " + key }, { url: u, formats: ["markdown"] }, signal);
+        put(u, j.data?.markdown);
+      }
+    }],
+  ];
+  for (const [id, secret, run] of steps) {
+    const key = env[secret];
+    if (!key || !left().length) continue;
+    const ac = new AbortController();
+    const t = setTimeout(() => ac.abort(), READ_TIMEOUT_MS);
+    try {
+      await run(key, left(), ac.signal);
+      tried.push({ provider: id, ok: true });
+    } catch (e) {
+      tried.push({ provider: id, ok: false, error: e?.name === "AbortError" ? "timeout" : String(e?.message || "network").slice(0, 40) });
+    } finally {
+      clearTimeout(t);
+    }
+  }
+  if (!tried.length) throw new HttpError(503, CODES.NOT_CONFIGURED, "बैकएंड में पढ़ने वाली कोई key नहीं डली");
+  return { pages: list.filter((u) => got.has(u)).map((u) => ({ url: u, text: got.get(u) })), tried };
 }

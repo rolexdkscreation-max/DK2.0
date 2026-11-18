@@ -194,7 +194,7 @@ class AgentRunner(
     private fun needsSearch(t: String): Boolean = SearchPolicy.needsSearch(t)
 
     /** "रिसर्च / गहराई से / पूरी जानकारी" = गहरी खोज; सिर्फ़ "सर्च करो / खोजो" = तेज़ */
-    private fun strongResearch(t: String): Boolean = listOf("रिसर्च", "research", "खंगाल", "गहराई से", "गहराई में", "पूरी जानकारी", "डीटेल में", "डिटेल में", "अच्छे से पता", "अच्छी तरह पता").any { t.contains(it) }
+    private fun strongResearch(t: String): Boolean = listOf("रिसर्च", "research", "खंगाल", "गहराई से", "गहराई में", "पूरी जानकारी", "डीटेल में", "डिटेल में", "अच्छे से पता", "अच्छी तरह पता", "विस्तार से पता", "पूरी डिटेल", "डीप में").any { t.contains(it) }
 
     /** User ne saaf kaha "सर्च/रिसर्च करो"? (YouTube/Amazon jaise app me search wali command nahi) */
     private fun explicitResearch(t: String): Boolean {
@@ -202,8 +202,9 @@ class AgentRunner(
             "व्हाट्सएप", "whatsapp", "मैप", "map", "स्पॉटिफाई", "spotify", "प्ले स्टोर", "play store", "playstore", "कॉन्टैक्ट", "contact",
             "गैलरी", "gallery", "फोटो", "photo", "गाना", "song", "वीडियो", "video", "मीशो", "meesho", "मिंत्रा", "myntra", "ज़ोमैटो", "zomato", "स्विगी", "swiggy")
         if (apps.any { t.contains(it) }) return false
+        if (SearchPolicy.smallTalk(t)) return false   // 18 नवंबर 2026: हेलो / कैसे हो = सामान्य चैट
         val strong = listOf("रिसर्च", "research", "डीप रिसर्च", "deep research", "खंगाल", "गहराई से", "गहराई में", "अच्छे से पता", "अच्छी तरह पता",
-            "पूरी जानकारी निकाल", "पूरी जानकारी खोज", "रिसर्च करके", "डीटेल में पता", "डिटेल में पता")
+            "पूरी जानकारी निकाल", "पूरी जानकारी खोज", "रिसर्च करके", "डीटेल में पता", "डिटेल में पता", "विस्तार से पता", "पूरी डिटेल", "डीप में")
         if (strong.any { t.contains(it) }) return true
         val ask = listOf("सर्च करो", "सर्च कर", "सर्च करके", "search करो", "search kar", "search karo", "खोजो", "खोज कर", "खोजकर", "खोज के",
             "ढूंढकर बताओ", "ढूँढकर बताओ", "ढूंढ कर बताओ", "ढूँढ कर बताओ", "पता करके बताओ", "पता करो", "पता लगाओ", "इंटरनेट पर देख", "गूगल पर देख", "गूगल करके")

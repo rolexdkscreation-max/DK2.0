@@ -324,7 +324,24 @@ object DeepResearch {
     }
 
     /** Gemini की अपनी Google खोज वाला जवाब - साफ़ लिखो कि गहरी खोज नहीं हो पाई */
-    const val SHALLOW_NOTE = "ध्यान दें: गहरी खोज (Exa / Tavily / Linkup / Firecrawl) नहीं हो पाई — यह जवाब Gemini की अपनी Google खोज से है। भरोसा: अधूरा"
+    // 18 नवंबर 2026 (मालिक): Gemini की Google खोज मुफ़्त key पर नहीं चलती - अब खोज न हो पाए तो DK अपनी जानकारी से सामान्य जवाब देता है
+    const val SHALLOW_NOTE = "ध्यान दें: गहरी खोज (Exa / Tavily / Linkup / Firecrawl) नहीं हो पाई — यह जवाब DK की अपनी जानकारी से है, हो सकता है सबसे नया न हो। भरोसा: अधूरा"
+
+    /** 18 नवंबर 2026: ऐप में अपनी खोज key नहीं = DK सर्वर (Worker) की इन कंपनियों से, हर एक अलग (`only`) - एक साथ */
+    val SERVER_TOOLS = listOf(Tool.TAVILY, Tool.EXA, Tool.LINKUP)
+
+    /** सर्वर का /search नाम */
+    fun serverId(t: Tool): String = t.name.lowercase()
+
+    /** DK सर्वर के /search का जवाब ({results:[{title,url,snippet}]}) -> खोज के नतीजे */
+    fun parseServer(raw: String, tool: Tool): List<Hit> {
+        val arr = org.json.JSONObject(raw).optJSONArray("results") ?: return emptyList()
+        return (0 until arr.length()).mapNotNull { i ->
+            val r = arr.optJSONObject(i) ?: return@mapNotNull null
+            val u = r.optString("url"); if (!u.startsWith("http")) return@mapNotNull null
+            Hit(r.optString("title").trim(), u, r.optString("snippet").trim(), "", tool)
+        }
+    }
 
     fun clean(t: String): String = t.replace(Regex("!\\[[^\\]]*\\]\\([^)]*\\)"), "")
         .replace(Regex("\\[([^\\]]*)\\]\\((https?://[^)]*)\\)"), "$1")

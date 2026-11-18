@@ -395,7 +395,7 @@ class BrainManager(private val ctx: Context) {
     suspend fun search(question: String, deep: Boolean, thorough: Boolean = false, think: Boolean = false, asked: Boolean = false): SearchResult =
         if (think) searchOnce(question, deep, thorough, think)   // deep_think = सोच, इंटरनेट खोज का क्रम नहीं
         // 14 नवंबर 2026 (मालिक: "सर्च करो बोला तो सच में खोजे, और जल्दी"): [asked] = यूज़र ने ख़ुद माँगा -> तेज़ खोज पर भी छोड़ें नहीं
-        else chainSearch(question, explicit = deep || thorough || asked) { geminiSearch(question, deep, thorough) }
+        else chainSearch(question, explicit = deep || thorough || asked, research = deep || thorough) { geminiSearch(question, deep, thorough) }
 
     /** पहले जैसी Gemini + Google Search (क्रम की आख़िरी सेवा) */
     private suspend fun geminiSearch(question: String, deep: Boolean, thorough: Boolean): SearchResult =
@@ -411,7 +411,11 @@ class BrainManager(private val ctx: Context) {
      * खाली key = छोड़ो; फेल = चुपचाप अगली (यूज़र से कुछ नहीं पूछते) और वह सेवा 1 घंटे बंद; नतीजा 10 मिनट याद;
      * एक सवाल पर एक ही सफल खोज. सामान्य ज्ञान / गणित / कहानी (ताज़ा शब्द नहीं) = खोज नहीं (यूज़र ने ख़ुद "सर्च करो" न कहा हो).
      */
-    private suspend fun chainSearch(question: String, explicit: Boolean, gemini: suspend () -> SearchResult): SearchResult {
+    /**
+     * 18 नवंबर 2026 (मालिक: "डीप रिसर्च में Google नहीं, सीधे Exa / Tavily"): [research] = गहरी खोज - Gemini की Google Search
+     * (मुफ़्त key पर चलती ही नहीं) क्रम में नहीं: अपनी Tavily -> अपनी Exa -> DK सर्वर (Tavily/Exa/Linkup/Firecrawl) -> कुछ नहीं = सामान्य जवाब.
+     */
+    private suspend fun chainSearch(question: String, explicit: Boolean, research: Boolean = false, gemini: suspend () -> SearchResult): SearchResult {
         if (!explicit && WebSearch.skip(question)) {
             DKLog.d("खोज: सामान्य/बिना-बदलाव वाला सवाल - खोज नहीं, अपनी जानकारी से")
             lastSearchFail = SearchGuard.Fail.OTHER
@@ -421,7 +425,7 @@ class BrainManager(private val ctx: Context) {
         return WebSearch.once(question) {
             WebSearch.cached(question) ?: run {
                 val tKey = Prefs.tavilySearchKey(ctx); val eKey = Prefs.exaSearchKey(ctx)
-                val order = WebSearch.order(tKey.isNotBlank(), eKey.isNotBlank(), searchKeys().isNotEmpty())
+                val order = WebSearch.order(tKey.isNotBlank(), eKey.isNotBlank(), WebSearch.googleOk(research, searchKeys().isNotEmpty()))
                 var last: Exception? = null
                 var lastFail = SearchGuard.Fail.NO_KEY
                 // 13 नवंबर 2026: फ़ॉलबैक के साथ नाम याद - key है पर 1 घंटे बंद (पिछली बार फ़ेल) / अभी फ़ेल = हेडर में "(Tavily फ़ेल)"
@@ -479,7 +483,7 @@ class BrainManager(private val ctx: Context) {
                     try {
                         val q = query.ifBlank { question }
                         com.dk.assistant.dkai.DkaiSearchLive.stage("${AiRouter.LABEL} पर खोज रहा है: ${q.take(60)}")
-                        val (label, raw) = withContext(Dispatchers.IO) { AiRouter.search(ctx, q, deep = false) }
+                        val (label, raw) = withContext(Dispatchers.IO) { AiRouter.search(ctx, q, deep = research) }
                         val cite = when (label) { "Exa" -> WebCite.EXA; "Google" -> WebCite.GOOGLE; else -> WebCite.TAVILY }
                         val r = fromRaw(question, q, cite, failed, raw)
                         if (r.text.isNotBlank()) {

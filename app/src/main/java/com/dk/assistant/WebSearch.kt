@@ -38,6 +38,9 @@ object WebSearch {
         listOfNotNull(Provider.TAVILY.takeIf { tavily }, Provider.EXA.takeIf { exa }, Provider.GEMINI.takeIf { gemini })
             .filter { !isDown(it, now) }
 
+    /** 18 नवंबर 2026: डीप रिसर्च (research) में Gemini की Google Search नहीं - सीधे Tavily / Exa (अपनी या DK सर्वर की) */
+    fun googleOk(research: Boolean, hasGeminiKey: Boolean): Boolean = hasGeminiKey && !research
+
     fun isDown(p: Provider, now: Long = System.currentTimeMillis()): Boolean = (downUntil[p] ?: 0L) > now
     private val downWhy = ConcurrentHashMap<Provider, SearchGuard.Fail>()
     fun markDown(p: Provider, f: SearchGuard.Fail = SearchGuard.Fail.OTHER, now: Long = System.currentTimeMillis()) {
@@ -93,7 +96,7 @@ object WebSearch {
      * सामान्य ज्ञान / पढ़ाई / कहानी / गणित / बातचीत = खोज नहीं. आज की तारीख़, ख़बर, भाव, मौसम, स्कोर, ताज़ा जानकारी = खोज.
      * [SearchPolicy.needsSearch] वाले शब्द ही इस्तेमाल - अलग नियम नहीं बनाया.
      */
-    fun skip(q: String): Boolean = SearchPolicy.timeless(q) && !SearchPolicy.fresh(q)
+    fun skip(q: String): Boolean = (SearchPolicy.timeless(q) && !SearchPolicy.fresh(q)) || SearchPolicy.smallTalk(q)
 
     // ---------- Tavily ----------
     /** [news] = ख़बर वाला सवाल: topic "news" + time_range "day" (पिछला एक दिन); बाकी में तारीख़ भी साथ ([WebCite.normalizeResults]) */
