@@ -58,4 +58,26 @@ class ConfirmGateTest {
         val act = m.substringAfter("android:name=\".plus.ConfirmActivity\"").substringBefore("/>")
         assertTrue(act.contains("android:exported=\"false\"") && !act.contains("showWhenLocked"))
     }
+
+    // 18 नवंबर 2026 (मालिक: "कार्ड पॉप-अप नहीं, आवाज़ में एक बार पूछो"): पूछने के *बाद* मालिक की अपनी हाँ/ना
+    @Test fun voiceConfirm_rules() {
+        assertEquals(ConfirmGate.Voice.YES, ConfirmGate.Rules.voice(1_000, 2_000, "हाँ भेज दो"))
+        assertEquals(ConfirmGate.Voice.YES, ConfirmGate.Rules.voice(1_000, 2_000, "haan"))
+        assertEquals(ConfirmGate.Voice.YES, ConfirmGate.Rules.voice(1_000, 2_000, "हाँ…"))
+        assertEquals(ConfirmGate.Voice.NO, ConfirmGate.Rules.voice(1_000, 2_000, "नहीं मत भेजो"))
+        assertEquals(ConfirmGate.Voice.NO, ConfirmGate.Rules.voice(1_000, 2_000, "rehne do"))
+        // पूछने से पहले की "हाँ" नहीं चलती (बहका AI तुरंत दोबारा बुलाए तो भी)
+        assertEquals(ConfirmGate.Voice.WAIT, ConfirmGate.Rules.voice(1_000, 900, "हाँ"))
+        assertEquals(ConfirmGate.Voice.WAIT, ConfirmGate.Rules.voice(0, 2_000, "हाँ"))
+        assertEquals(ConfirmGate.Voice.WAIT, ConfirmGate.Rules.voice(1_000, 2_000, "किसको जा रहा है?"))
+        val note = ConfirmGate.Rules.askNote("राहुल को भेजूँ?", "\"hi\"", "WhatsApp send")
+        assertTrue(note.startsWith("CONFIRM_BY_VOICE") && note.contains("राहुल को भेजूँ?") && note.contains("never tell him to press"))
+    }
+
+    @Test fun voiceConfirm_noCardOpened() {
+        val g = src("plus/ConfirmGate.kt")
+        val check = g.substringAfter("fun check(").substringBefore("\n    }\n")
+        assertTrue("check() स्क्रीन का कार्ड नहीं खोलता", !check.contains("ask(c") && !check.contains("startActivity"))
+        assertTrue(check.contains("Rules.voice(at, com.dk.assistant.DKState.lastUserAt, com.dk.assistant.DKState.lastUser)"))
+    }
 }

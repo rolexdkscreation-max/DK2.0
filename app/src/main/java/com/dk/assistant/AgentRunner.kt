@@ -676,17 +676,21 @@ class AgentRunner(
                             DKState.set(Mode.WORKING)
                         }
                     }
-                    // 16 नवंबर 2026 (ऑडिट G3): भुगतान / ऑर्डर / डिलीट, और बिना कहे भेजना / पोस्ट = ऐप का अपना "हाँ / ना" कार्ड.
-                    // AI का "पूछ लिया / हाँ मिल गया" नहीं चलता - स्क्रीन की कोई लिखावट AI को बहका भी दे तो उंगली से "हाँ" चाहिए.
+                    // 16 नवंबर 2026 (ऑडिट G3): भुगतान / ऑर्डर / डिलीट, और बिना कहे भेजना / पोस्ट = मालिक की अपनी "हाँ".
+                    // AI का "पूछ लिया / हाँ मिल गया" नहीं चलता - स्क्रीन की कोई लिखावट AI को बहका भी दे तो मालिक की "हाँ" चाहिए.
+                    // 18 नवंबर 2026 (मालिक: कार्ड पॉप-अप नहीं): स्क्रीन का कार्ड नहीं - DK आवाज़ में एक बार पूछता है, ऐप मालिक का जवाब खुद सुनता है.
                     if (autoS == null) {
                         val k = com.dk.assistant.agent.core.OutsideText.kind(a, seenScreen, seenPkg)
                         if (com.dk.assistant.agent.core.OutsideText.needsCard(k, goal)) {
                             speakJob?.join()
                             val what = com.dk.assistant.auto.AutoSafety.describe(a, seenScreen)
-                            val denied = com.dk.assistant.plus.ConfirmGate.check(svc, "DK ${k.hi} करने वाला है — पक्का?",
-                                "$what\nऐप: $seenPkg\nआपका काम: ${goal.take(120)}", "${k.hi}: $what")
-                            DKLog.d("पुष्टि कार्ड (${k.name}): " + if (denied == null) "हाँ दबाया" else "नहीं / जवाब नहीं")
-                            if (denied != null) { say("ठीक है, यह कदम नहीं किया — काम यहीं रोक दिया।"); return }
+                            say("${k.hi} वाला कदम: $what। क्या मैं करूँ? हाँ या ना बोलिए।")
+                            DKState.set(Mode.LISTENING)
+                            val ans = svc.hearForAgent()
+                            ans?.let { DKState.user(it) }
+                            val yes = com.dk.assistant.agent.core.ConfirmGate.isYes(ans.orEmpty())
+                            DKLog.d("पुष्टि (आवाज़, ${k.name}): " + if (yes) "हाँ कहा" else "नहीं / जवाब नहीं")
+                            if (!yes) { say("ठीक है, यह कदम नहीं किया — काम यहीं रोक दिया।"); return }
                             DKState.set(Mode.WORKING)
                         }
                     }

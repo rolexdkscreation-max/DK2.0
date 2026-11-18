@@ -97,7 +97,7 @@ object TermuxTool : PlusTool {
     override fun declaration() = PlusTools.decl(name,
         "Run a shell command in the Termux app on this phone (Termux automation). Use it when the user asks to run a command / script / " +
             "install a package in Termux (\"Termux में python चलाओ\", \"pkg install git करो\"). Before running, tell the user the exact command in one line. " +
-            "Never run commands that delete data, format, reboot or use su - those are blocked. Anything except simple read-only commands (ls, cat, git status...) shows DK's own 'हाँ / ना' card on screen first - tell the user to press 'हाँ, करो'. Output shows inside Termux (background=false opens its window).",
+            "Never run commands that delete data, format, reboot or use su - those are blocked. Anything except simple read-only commands (ls, cat, git status...) first returns CONFIRM_BY_VOICE: ask the user by voice (हाँ या ना), and call again only after he himself says yes. Output shows inside Termux (background=false opens its window).",
         org.json.JSONObject().put("command", PlusTools.str("the exact bash command"))
             .put("background", org.json.JSONObject().put("type", "BOOLEAN").put("description", "true = run silently (default), false = open Termux window")),
         listOf("command"))
@@ -106,7 +106,7 @@ object TermuxTool : PlusTool {
         val cmd = args.optString("command").trim()
         if (cmd.isBlank()) return "ERROR: no command. Ask the user what to run."
         if (Termux.Rules.dangerous(cmd)) return "BLOCKED: this command can delete data or harm the phone. Tell the user DK will not run it by voice - he can run it himself in Termux."
-        // 16 नवंबर 2026 (ऑडिट P0-1): पढ़ने वाली आम कमांड के अलावा हर कमांड पर ऐप का अपना "हाँ / ना" कार्ड
+        // 16 नवंबर 2026 (ऑडिट P0-1): पढ़ने वाली आम कमांड के अलावा हर कमांड पर मालिक की अपनी "हाँ" (18 नवंबर 2026 से आवाज़ में, कार्ड नहीं)
         if (Termux.Rules.needsConfirm(cmd))
             com.dk.assistant.plus.ConfirmGate.check(c, "Termux में यह कमांड चलाऊँ?", cmd, "the Termux command")?.let { return it }
         return Termux.run(c, cmd, background = args.optBoolean("background", true))?.let { "ERROR: $it Tell the user briefly." }

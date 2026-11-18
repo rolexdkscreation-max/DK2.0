@@ -31,14 +31,24 @@ object LiveWaGate {
 
     fun readsOthers(act: String) = act.trim().lowercase() in READ_ACTS
 
-    /** DK लाइव के भेजने से पहले कार्ड चाहिए? (डिलीट का कार्ड WaDeleteRunner में) */
+    /**
+     * DK लाइव के भेजने से पहले मालिक से (आवाज़ में) पूछना है? (डिलीट वाला पूछना WaDeleteRunner में)
+     * 18 नवंबर 2026 (मालिक: "मालिक ने खुद बोला है तो तुरंत भेज दे; अनजान हो तो एक बार 'हाँ भेज दूँ?' पूछे"):
+     * पहले अभी-अभी कोई नोटिफ़िकेशन / चैट पढ़ी हो तो मालिक के "भेज दो" कहने पर भी हर बार कार्ड खुलता था. अब सिर्फ़ तब पूछो
+     * जब मालिक की अपनी हाल की बातों ([ownerSaid]) में भेजने को कहा ही न गया हो. [untrustedRecent] (अभी किसी और का लिखा पढ़ा) =
+     * "मैसेज" शब्द काफ़ी नहीं, भेजने वाली क्रिया चाहिए ([OutsideText.ownerAskedToSend]) - "राहुल का मैसेज पढ़ो" पर बहका AI बिना पूछे न भेजे.
+     */
     fun sendNeedsCard(act: String, ownerSaid: String, untrustedRecent: Boolean): Boolean =
-        kind(act) == OutsideText.Kind.SEND && (untrustedRecent || OutsideText.needsCard(OutsideText.Kind.SEND, ownerSaid))
+        kind(act) == OutsideText.Kind.SEND && ownerNeedsAsk(ownerSaid, untrustedRecent)
 
-    /** कार्ड का शीर्षक */
+    /** भेजने से पहले मालिक से पूछना है? (WhatsApp / नोटिफ़िकेशन जवाब / फ़ोन-एजेंट - सब एक नियम) */
+    fun ownerNeedsAsk(ownerSaid: String, untrustedRecent: Boolean): Boolean =
+        if (untrustedRecent) !OutsideText.ownerAskedToSend(ownerSaid) else OutsideText.needsCard(OutsideText.Kind.SEND, ownerSaid)
+
+    /** आवाज़ वाले सवाल का शीर्षक */
     fun sendTitle(contact: String) = "WhatsApp पर ${contact.trim().ifBlank { "किसी" }} को भेजूँ?"
 
-    /** कार्ड पर क्या जाएगा */
+    /** सवाल में क्या जाएगा */
     fun sendDetail(act: String, message: String, untrustedRecent: Boolean): String = buildString {
         val m = message.trim()
         append(if (m.isNotEmpty()) "\"${m.take(300)}\"" else "(${act.trim().lowercase()})")

@@ -47,7 +47,10 @@ object LiveVadFix {
  * S2 (ऑडिट G1): DK speaker पर बोल रहा है (कॉल-mode नहीं) और आप बीच में टोकते हैं - पहले caption के शब्दों का इंतज़ार
  * (0.7-1.5s). अब: Silero पक्का इंसानी आवाज़ (0.85+) और आवाज़ DK की गूँज से बहुत तेज़ (2.2x+) लगातार [CONFIRM_MS] = तुरंत रुको.
  * DK की अपनी गूँज भी "इंसानी आवाज़" है, इसलिए दरवाज़ा [DuplexBarge] से सख़्त.
- * बचाव: रोका पर [WORDS_WAIT_MS] में कोई शब्द नहीं आया = गलत रोका. [MAX_MISSES] बार = इस session में बंद (पुराना caption तरीका).
+ * बचाव: रोका पर [WORDS_WAIT_MS] में कोई शब्द नहीं आया = गलत रोका.
+ * 18 नवंबर 2026 (मालिक: "बीच में बोलूँ तो रुकता नहीं"): पहले 2 गलत रोक = पूरे session में बंद (फिर टोकना 1-1.5s वाला caption
+ * तरीका ही). अब बंद नहीं - हर गलत रोक पर सीमा [STRICT_STEP] सख़्त ([STRICT_MAX] तक), सही रोक पर धीरे-धीरे वापस.
+ * [scale] = [MicStyle] (धीरे / दूर से बोलने वाले के लिए नीची सीमा).
  */
 class SpeakerBarge {
     companion object {
@@ -57,39 +60,48 @@ class SpeakerBarge {
         const val MIN_RMS = 1200.0
         const val CONFIRM_MS = 320L
         const val WORDS_WAIT_MS = 2_500L
-        const val MAX_MISSES = 2
+        const val STRICT_STEP = 0.25
+        const val STRICT_MAX = 1.75
         const val PREF = "vad_fast_barge"
     }
 
     var speechMs = 0L; private set
     var confirms = 0; private set
     var misses = 0; private set
-    var disabled = false; private set
+    /** गलत रोक के बाद की सख़्ती (1.0 = आम). कभी बंद नहीं होता */
+    var strict = 1.0; private set
+    /** [MicStyle] का गुणक (Settings → "आप कैसे बोलते हैं") */
+    var scale = 1.0
     private var pendingAt = 0L
 
     fun reset() { speechMs = 0L }
-    fun resetSession() { reset(); confirms = 0; misses = 0; disabled = false; pendingAt = 0L }
+    fun resetSession() { reset(); confirms = 0; misses = 0; strict = 1.0; pendingAt = 0L }
 
     /** आवाज़ DK की गूँज और पीछे के शोर से इतनी ऊपर = पास से कोई बोल रहा */
     fun loudOver(rms: Double, echo: Double, ambient: Double): Boolean =
-        rms > maxOf(echo * ECHO_X, ambient * AMBIENT_X, MIN_RMS)
+        rms > maxOf(echo * ECHO_X, ambient * AMBIENT_X, MIN_RMS) * strict * scale
 
     /** DK बोलते समय (शक वाली हालत) हर chunk: true = अभी रोको */
     fun feed(prob: Float, rms: Double, echo: Double, ambient: Double, chunkMs: Long): Boolean {
-        if (disabled || prob < 0f) { speechMs = 0L; return false }
+        if (prob < 0f) { speechMs = 0L; return false }
         speechMs = if (prob >= SPEECH_P && loudOver(rms, echo, ambient)) speechMs + chunkMs else 0L
         return speechMs >= CONFIRM_MS
     }
 
     fun onConfirm(now: Long) { confirms++; pendingAt = now; speechMs = 0L }
-    fun onWords() { pendingAt = 0L }
 
-    /** हर chunk. true = अभी-अभी बंद हुआ (log के लिए) */
+    /** रोकने के बाद शब्द आए = सही रोका -> सख़्ती धीरे-धीरे वापस */
+    fun onWords() {
+        if (pendingAt != 0L) strict = maxOf(1.0, strict - STRICT_STEP / 2)
+        pendingAt = 0L
+    }
+
+    /** हर chunk. true = अभी-अभी गलत रोक मानी, सीमा सख़्त हुई (log के लिए) */
     fun tick(now: Long): Boolean {
         if (pendingAt == 0L || now - pendingAt < WORDS_WAIT_MS) return false
         pendingAt = 0L; misses++
-        if (misses >= MAX_MISSES && !disabled) { disabled = true; return true }
-        return false
+        strict = minOf(STRICT_MAX, strict + STRICT_STEP)
+        return true
     }
 }
 

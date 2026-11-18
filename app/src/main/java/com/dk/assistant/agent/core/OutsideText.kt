@@ -36,7 +36,14 @@ object OutsideText {
     private val SEND = Regex("(\\bsend\\b|भेज|reply|forward|फॉरवर्ड)", RegexOption.IGNORE_CASE)
 
     /** मालिक ने खुद कहा (उसकी अपनी बात / goal में) */
-    private val SEND_INTENT = Regex("(भेज|bhej|send|message|मैसेज|msg|reply|जवाब|रिप्लाई|बोल दो|बता दो|लिख दो|forward|फॉरवर्ड)", RegexOption.IGNORE_CASE)
+    private val SEND_INTENT = Regex("(भेज|bhej|send|message|मैसेज|मेसेज|msg|reply|jawab|जवाब|रिप्लाई|बोल दो|बता दो|लिख दो|कह दो|bol do|bata do|likh do|keh do|kah do|" +
+        "forward|फॉरवर्ड|whatsapp kar|व्हाट्सएप कर|वाट्सएप कर)", RegexOption.IGNORE_CASE)
+    /**
+     * 18 नवंबर 2026: अभी-अभी किसी और का लिखा (नोटिफ़िकेशन / चैट) पढ़ा गया हो तो "मैसेज" / "जवाब" जैसा संज्ञा शब्द काफ़ी नहीं
+     * ("राहुल का मैसेज पढ़ो" = भेजने को नहीं कहा). तब मालिक के मुँह से भेजने वाली क्रिया चाहिए ([ownerAskedToSend]).
+     */
+    private val SEND_VERB = Regex("(भेज|bhej|\\bsend\\b|\\breply\\b|रिप्लाई|forward|फॉरवर्ड|बोल दो|लिख दो|कह दो|bol do|likh do|keh do|kah do|" +
+        "jawab de|जवाब दे|जवाब भेज|whatsapp kar|व्हाट्सएप कर|वाट्सएप कर)", RegexOption.IGNORE_CASE)
     /** "राहुल को WhatsApp करो" = भेजने को कहा; "WhatsApp खोलो और पढ़ो" = नहीं */
     private val APP_TO = Regex("(whatsapp|व्हाट्सएप|वाट्सएप|sms|एसएमएस).*(को|\\bko\\b)|(को|\\bko\\b).*(whatsapp|व्हाट्सएप|वाट्सएप|sms|एसएमएस)", RegexOption.IGNORE_CASE)
     private val POST_INTENT = Regex("(post|पोस्ट|share|शेयर|upload|अपलोड|publish|डाल दो|daal do|comment|कमेंट|tweet|status|स्टेटस|story|स्टोरी|reel|रील)", RegexOption.IGNORE_CASE)
@@ -80,4 +87,7 @@ object OutsideText {
         Kind.SEND -> !SEND_INTENT.containsMatchIn(goal) && !APP_TO.containsMatchIn(goal)
         Kind.POST -> !POST_INTENT.containsMatchIn(goal)
     }
+
+    /** मालिक ने साफ़ भेजने वाली क्रिया कही ("भेज दो", "reply kar do", "कह दो", "राहुल को WhatsApp करो") - सिर्फ़ "मैसेज" शब्द नहीं */
+    fun ownerAskedToSend(goal: String): Boolean = SEND_VERB.containsMatchIn(goal) || APP_TO.containsMatchIn(goal)
 }

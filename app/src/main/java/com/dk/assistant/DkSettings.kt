@@ -203,11 +203,15 @@ object DkSettings {
             "call dk_settings again with action=set, the same setting, on=$on and confirmed=true. If he says no, leave it and tell him it was not changed."
     }
 
+    /** 18 नवंबर 2026: पास हुआ सवाल कब पूछा गया था (उसके बाद की मालिक की आवाज़ वाली "हाँ" ConfirmGate देखता है) */
+    @Volatile var okAskedAt = 0L
+        private set
+
     /** दूसरी बार (confirmed=true) - सच में पहले पूछा गया था, वही सेटिंग, वही ऑन/ऑफ, 2 मिनट के अंदर? */
     fun confirmOk(it: Item, on: Boolean, now: Long): Boolean {
         val p = pending ?: return false
         val ok = p.id == it.id && p.on == on && now - p.at in 0..CONFIRM_WINDOW_MS
-        if (ok) pending = null
+        if (ok) { pending = null; okAskedAt = p.at }
         return ok
     }
 

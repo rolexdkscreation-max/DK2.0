@@ -73,6 +73,8 @@ internal fun GeminiLive.swapForStuck(now: Long, why: String): Boolean {
  * ("सोच रहा हूँ" पर अटका भी दिखता). अब: स्क्रीन पर साफ़ बताओ कि फिर बोलें, और सुनने पर लौटो - चुप्पी नहीं.
  */
 internal fun GeminiLive.stuckNoSwap() {
+    // 18 नवंबर 2026 (मालिक): सिर्फ़ स्क्रीन का इशारा काफ़ी नहीं - आख़िरी मौका: लिखी बात text में (या DK खुद "फिर से बोलिए" कहे)
+    if (lastChance("connection बदलने की सीमा पूरी", sorryOk = true)) return
     DKState.hint("जवाब अटक गया — कृपया एक बार फिर बोलिए")
     if (!isPlaying() && DKState.mode == Mode.THINKING) setMode(Mode.LISTENING)
 }

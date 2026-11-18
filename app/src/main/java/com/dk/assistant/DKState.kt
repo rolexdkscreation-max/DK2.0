@@ -66,9 +66,28 @@ object DKState {
                    val g: GroundCite.G? = null)
     val messages = java.util.concurrent.CopyOnWriteArrayList<Msg>()
 
+    /**
+     * 18 नवंबर 2026 (मालिक: "मैंने खुद बोला हो तो तुरंत भेज दे"): मालिक की पिछली कुछ पूरी बातें (समय के साथ).
+     * Live में आख़िरी लाइन कभी अधूरी लिखी जाती है ("राहुल को…") - तब "भेजो" वाला हिस्सा पिछली लाइन में होता है.
+     */
+    private val recentUser = java.util.ArrayDeque<Pair<String, Long>>()
+
+    /** पिछले [withinMs] में मालिक ने जो-जो कहा (पुरानी से नई, एक लाइन में) - भेजने का इरादा पहचानने के लिए */
+    fun ownerSaid(withinMs: Long = OWNER_SAID_MS, now: Long = System.currentTimeMillis()): String = synchronized(recentUser) {
+        val parts = recentUser.filter { now - it.second in 0..withinMs }.map { it.first }.toMutableList()
+        val last = lastUser.removeSuffix("…").trim()
+        if (last.isNotBlank() && now - lastUserAt in 0..withinMs && parts.lastOrNull() != last) parts += last
+        parts.joinToString(" • ")
+    }
+    const val OWNER_SAID_MS = 60_000L
+
     fun user(t: String) {
         lastUser = t
         if (t.isNotBlank()) lastUserAt = System.currentTimeMillis()
+        if (t.isNotBlank() && !t.endsWith("…")) synchronized(recentUser) {
+            if (recentUser.peekLast()?.first != t) recentUser.addLast(t to lastUserAt)
+            while (recentUser.size > 8) recentUser.removeFirst()
+        }
         // v3.87: पढ़ाई की बात = टीचर वाला पन्ना अपने-आप (आधी "…" बात पर भी, ताकि जवाब शुरू होते ही दिखे)
         if (t.isNotBlank()) TeacherLink.onUser(appCtx, t)
         if (t.isBlank()) { emit(); return }
@@ -89,6 +108,9 @@ object DKState {
         hintText = ""
         lastUser = t
         sentAt = System.currentTimeMillis()
+        // 18 नवंबर 2026: चैट में लिखी "हाँ" भी मालिक की अपनी हाँ (आवाज़ वाली पुष्टि [com.dk.assistant.plus.ConfirmGate.check])
+        lastUserAt = sentAt
+        synchronized(recentUser) { recentUser.addLast(t to sentAt); while (recentUser.size > 8) recentUser.removeFirst() }
         optimistic = t to sentAt
         messages.add(Msg("u", t)); trim()
         LocalMemory.record(appCtx, "u", t, "text")     // v3.88: लोकल याददाश्त - तुरंत
@@ -110,6 +132,7 @@ object DKState {
     fun fixLastUser(t: String) {
         if (t.isBlank()) return
         lastUser = t
+        synchronized(recentUser) { if (recentUser.isNotEmpty()) { val at = recentUser.removeLast().second; recentUser.addLast(t to at) } }
         val i = messages.indexOfLast { it.role == "u" }
         if (i >= 0) { messages[i] = messages[i].copy(text = t); persist() }
         LocalMemory.fixLastUser(appCtx, t)

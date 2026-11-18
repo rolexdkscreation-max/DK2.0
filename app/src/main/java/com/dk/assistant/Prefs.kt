@@ -274,7 +274,11 @@ object Prefs {
     /** सख़्त = दूसरे लगभग कभी पास नहीं, मालिक को कभी-कभी दोबारा बोलना पड़े */
     fun ownerVoiceStrict(c: Context) = sp(c).getBoolean("owner_voice_strict", false)
     /** परत 4: दूर की / बहुत धीमी आवाज़ अनसुनी */
-    fun ownerFarOn(c: Context) = sp(c).getBoolean("owner_far_on", true)
+    fun ownerFarOn(c: Context) = ownerFarRaw(c) && micStyle(c).farFilterOk
+    /** Settings का switch (आवाज़ के अंदाज़ "दूर से" में असर बंद रहता है - [ownerFarOn]) */
+    fun ownerFarRaw(c: Context) = sp(c).getBoolean("owner_far_on", true)
+    /** 18 नवंबर 2026: Settings → "आप कैसे बोलते हैं" */
+    fun micStyle(c: Context): MicStyle = MicStyle.of(sp(c).getString(MicStyle.PREF, MicStyle.NORMAL.key))
     /** v4.7: आपकी पास वाली आवाज़ के सीखे स्तर (NearVoice) */
     fun nearLevels(c: Context) = sp(c).getString("near_levels", "").orEmpty()
     /** v4.7: DK के जवाब के बीच बोलें तो DK रुककर सुने (false, नया) / जवाब चलता रहे और सवाल बाद में (true, पुराना) */
