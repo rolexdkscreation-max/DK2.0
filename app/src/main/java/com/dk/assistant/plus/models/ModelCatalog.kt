@@ -11,7 +11,7 @@ package com.dk.assistant.plus.models
  */
 object ModelCatalog {
 
-    enum class Kind(val title: String) { VOICE("आवाज़-पहचान"), FACE("चेहरा-पहचान"), SOCIAL("सोशल पोस्ट (गैलरी पहचान)"), WAKE("वेक वर्ड") }
+    enum class Kind(val title: String) { VOICE("आवाज़-पहचान"), FACE("चेहरा-पहचान"), SOCIAL("सोशल पोस्ट (गैलरी पहचान)"), WAKE("वेक वर्ड"), STT("बोली से लिखना (Whisper)") }
 
     data class Asset(
         val id: String,
@@ -120,6 +120,19 @@ object ModelCatalog {
     )
     val WAKE: List<Asset> = listOf(WAKE_MEL, WAKE_EMB, WAKE_HEY, WAKE_HELLO)
 
+    /**
+     * 18 नवंबर 2026 (मालिक: "सुनना अलग, सोचना-बोलना अलग - Whisper फ़ोन पर, ऐप के साथ मत बाँधो, स्रोत भरोसेमंद"):
+     * whisper.cpp का आधिकारिक ggml मॉडल (Hugging Face `ggerganov/whisper.cpp`), small, q5_1.
+     * साइज़ और SHA-256 Hugging Face API (`/api/models/ggerganov/whisper.cpp/tree/main` -> lfs.oid) से जाँचे गए;
+     * server Range देता है (accept-ranges: bytes) = रुका डाउनलोड वहीं से आगे. License MIT (OpenAI Whisper weights).
+     */
+    val WHISPER_SMALL = Asset(
+        "whisper_small_q5_1", Kind.STT, "Whisper small (q5_1)", "फ़ोन पर ही हिंदी बोली -> लिखावट (इंटरनेट नहीं चाहिए)",
+        "ggml_small_q5_1.bin",
+        listOf("https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-small-q5_1.bin"),
+        "ae85e4a935d7a567bd102fe55afc16bb595bdb618e11b2fc7591bc08120411bb", 190_085_487L, "MIT",
+    )
+
     val SOCIAL_CLIP: List<Asset> = listOf(CLIP_VISION, CLIP_TEXT, CLIP_WORDS, CLIP_BPE)
 
     /**
@@ -128,7 +141,7 @@ object ModelCatalog {
      */
     val REMOVED_FILES = listOf("robot_expressive.glb", "cesium_man.glb", "brainstem.glb", "fox.glb", "three_gltf_loader.js", "three_bg_utils.js")
 
-    val ALL: List<Asset> = listOf(REDIMNET_HEAVY, REDIMNET_LIGHT, FACE_EMBED, FACE_DETECT) + SOCIAL_CLIP + WAKE
+    val ALL: List<Asset> = listOf(REDIMNET_HEAVY, REDIMNET_LIGHT, FACE_EMBED, FACE_DETECT) + SOCIAL_CLIP + WAKE + WHISPER_SMALL
 
     fun byId(id: String): Asset? = ALL.firstOrNull { it.id == id }
     fun ofKind(k: Kind): List<Asset> = ALL.filter { it.kind == k }

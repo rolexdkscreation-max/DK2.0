@@ -36,7 +36,12 @@ object ModelManager {
         data class Running(val done: Long, val total: Long) : St() { val pct get() = if (total > 0) (done * 100 / total).toInt() else 0 }
         object Ready : St()
         data class Failed(val why: String) : St()
+        /** 18 नवंबर 2026: मालिक ने रोका - आधी फ़ाइल `.part` में सुरक्षित, "फिर शुरू" = वहीं से आगे */
+        data class Paused(val done: Long, val total: Long) : St() { val pct get() = if (total > 0) (done * 100 / total).toInt() else 0 }
     }
+
+    /** जिन मॉडल को मालिक ने रोका है (डाउनलोड का loop इसे देखकर चुपचाप रुकता है, गलती नहीं दिखाता) */
+    private val paused = java.util.Collections.synchronizedSet(HashSet<String>())
 
     private val states = HashMap<String, MutableStateFlow<St>>()
     fun state(id: String): StateFlow<St> = synchronized(states) { states.getOrPut(id) { MutableStateFlow(St.None) } }
@@ -51,7 +56,9 @@ object ModelManager {
 
     fun refresh(c: Context) {
         cleanupRemoved(c)
-        ModelCatalog.ALL.forEach { a -> if (state(a.id).value !is St.Running) put(a.id, if (ready(c, a)) St.Ready else St.None) }
+        ModelCatalog.ALL.forEach { a ->
+            if (state(a.id).value !is St.Running) put(a.id, restState(ready(c, a), part(c, a).length(), a.bytes))
+        }
     }
 
     /** हटाई गई सुविधा (3D कैरेक्टर) की पुरानी डाउनलोड फ़ाइलें मिटाओ - न मिलें / न मिटें तो भी कोई crash नहीं */
@@ -64,8 +71,18 @@ object ModelManager {
     fun usedBytes(c: Context): Long = dir(c).listFiles()?.sumOf { it.length() } ?: 0L
 
     fun delete(c: Context, a: ModelCatalog.Asset) {
+        paused.add(a.id)                                           // चलता डाउनलोड हो तो वह भी रुके
+        try { WorkManager.getInstance(c).cancelUniqueWork(work(a)) } catch (e: Exception) { com.dk.assistant.Quiet.note(e) }
         file(c, a).delete(); part(c, a).delete(); put(a.id, St.None)
-        WorkManager.getInstance(c).cancelUniqueWork(work(a))
+        // paused में ही रहे: पुराना (रद्द हो रहा) loop फ़ाइल फिर न लिखे. अगला enqueue / download इसे हटाता है
+    }
+
+    /** 18 नवंबर 2026: डाउनलोड रोको - आधी फ़ाइल रहती है ([enqueue] = वहीं से आगे, Range से) */
+    fun pause(c: Context, a: ModelCatalog.Asset) {
+        if (ready(c, a)) { put(a.id, St.Ready); return }
+        paused.add(a.id)
+        try { WorkManager.getInstance(c).cancelUniqueWork(work(a)) } catch (e: Exception) { com.dk.assistant.Quiet.note(e) }
+        put(a.id, St.Paused(part(c, a).length(), a.bytes))
     }
 
     private fun work(a: ModelCatalog.Asset) = "dk_model_${a.id}"
@@ -73,6 +90,7 @@ object ModelManager {
     /** WorkManager से डाउनलोड (पहले से चल रहा हो तो वही रहे) */
     fun enqueue(c: Context, a: ModelCatalog.Asset) {
         if (ready(c, a)) { put(a.id, St.Ready); return }
+        paused.remove(a.id)
         put(a.id, St.Running(part(c, a).length(), a.bytes))
         val req = OneTimeWorkRequestBuilder<Worker>()
             .setInputData(workDataOf("id" to a.id))
@@ -84,6 +102,7 @@ object ModelManager {
     /** सीधा (suspend) डाउनलोड - Worker और वह code जो मॉडल तुरंत चाहता है, दोनों यही बुलाते हैं. null = सफल */
     suspend fun download(c: Context, a: ModelCatalog.Asset): String? = withContext(Dispatchers.IO) {
         if (ready(c, a)) { put(a.id, St.Ready); return@withContext null }
+        paused.remove(a.id)
         val http = com.dk.assistant.NetFix.builder().connectTimeout(20, TimeUnit.SECONDS).readTimeout(60, TimeUnit.SECONDS).build()
         var last = "डाउनलोड नहीं हुआ"
         for (url in a.urls) for (attempt in 1..3) {
@@ -102,6 +121,7 @@ object ModelManager {
                         body.byteStream().use { inp ->
                             val buf = ByteArray(64 * 1024); var tick = 0L
                             while (true) {
+                                if (a.id in paused) throw PausedEx()
                                 val n = inp.read(buf); if (n < 0) break
                                 out.write(buf, 0, n); done += n
                                 if (done - tick > 256 * 1024) { tick = done; put(a.id, St.Running(done, a.bytes)) }
@@ -117,7 +137,14 @@ object ModelManager {
                 put(a.id, St.Ready)
                 DKLog.d("ModelManager: ${a.id} तैयार (${a.mb})")
                 return@withContext null
+            } catch (e: PausedEx) {
+                put(a.id, St.Paused(part(c, a).length(), a.bytes)); return@withContext PAUSED
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                // WorkManager ने रोका (रोकें / हटाएँ / Wi-Fi गया) - आधी फ़ाइल रहे, गलती नहीं
+                if (a.id in paused) put(a.id, St.Paused(part(c, a).length(), a.bytes))
+                throw e
             } catch (e: Exception) {
+                if (a.id in paused) { put(a.id, St.Paused(part(c, a).length(), a.bytes)); return@withContext PAUSED }
                 last = e.message ?: e.javaClass.simpleName
                 DKLog.d("ModelManager: ${a.id} कोशिश $attempt ($url): $last")
                 kotlinx.coroutines.delay(backoffMs(attempt))
@@ -127,10 +154,15 @@ object ModelManager {
         last
     }
 
+    /** [download] का जवाब जब मालिक ने खुद रोका (गलती नहीं) */
+    const val PAUSED = "रोका गया"
+    private class PausedEx : Exception("paused")
+
     class Worker(ctx: Context, p: WorkerParameters) : CoroutineWorker(ctx, p) {
         override suspend fun doWork(): Result {
             val a = ModelCatalog.byId(inputData.getString("id").orEmpty()) ?: return Result.failure()
-            return if (download(applicationContext, a) == null) Result.success() else Result.retry()
+            val r = download(applicationContext, a)
+            return when (r) { null -> Result.success(); PAUSED -> Result.failure(); else -> Result.retry() }
         }
     }
 
@@ -139,6 +171,12 @@ object ModelManager {
     fun rangeHeader(have: Long): String? = if (have > 0) "bytes=$have-" else null
     /** server ने 206 दिया = जोड़ते जाओ; 200 = server ने पूरी फ़ाइल फिर से भेजी, शुरू से लिखो */
     fun resumeAccepted(have: Long, code: Int): Boolean = have > 0 && code == 206
+    /** डाउनलोड न चलते समय क्या दिखे: पूरा = Ready, आधा = Paused (वहीं से आगे), कुछ नहीं = None */
+    fun restState(ready: Boolean, partBytes: Long, total: Long): St = when {
+        ready -> St.Ready
+        partBytes in 1 until total -> St.Paused(partBytes, total)
+        else -> St.None
+    }
     fun backoffMs(attempt: Int): Long = (1000L shl (attempt - 1).coerceIn(0, 4))
 
     fun sha256(f: File): String {

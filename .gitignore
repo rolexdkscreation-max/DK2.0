@@ -18,3 +18,6 @@ __pycache__/
 
 # Piper TTS: sherpa-onnx AAR + आवाज़ों की फ़ाइलें build के समय GitHub से आती हैं (app/build.gradle.kts)
 .dk-cache/
+
+# 18 नवंबर 2026: whisper.cpp (CMake/NDK) का build कचरा
+app/.cxx/
