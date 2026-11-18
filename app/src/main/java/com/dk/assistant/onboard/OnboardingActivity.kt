@@ -199,7 +199,9 @@ class OnboardingActivity : AppCompatActivity() {
         com.dk.assistant.backend.BackendSession.signInGoogle(this, token)
         try { com.dk.assistant.backend.BackendApi.status(this) } catch (e: Exception) { android.util.Log.w("DK", "onboard", e) }
         val n = com.dk.assistant.backend.BackendSession.displayName(this)
+        val boss = com.dk.assistant.backend.BackendSession.owner(this)
         ui("✓ Google से लॉगिन हुआ") {
+            if (boss) com.dk.assistant.backend.WelcomeBoss.show(this)
             if (page == 3) {
                 val typed = nameField?.text?.toString()?.trim().orEmpty()
                 show()

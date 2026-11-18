@@ -383,6 +383,7 @@ class MainActivity : AppCompatActivity() {
         if (com.dk.assistant.dkai.Dkai.on(this) != (dkai != null)) { recreate(); return }
         DKState.listen(stateListener)
         CrashUi.maybeAsk(this)   // 16 नवंबर 2026: सिर्फ़ जब मालिक ने "पूछो" चालू किया हो
+        com.dk.assistant.backend.WelcomeBoss.showIfDue(this)   // 18 नवंबर 2026: मालिक पहली बार पहचाना गया
         VoiceWarm.onAppOpen(this)      // v3.71: ऐप खुलते ही Worker/TTS का कनेक्शन तैयार
         Setup.startKeepAlive(this)
         checkMicPerm(force = intent?.getBooleanExtra("ask_mic", false) == true)
@@ -475,7 +476,8 @@ class MainActivity : AppCompatActivity() {
         val user = Prefs.userName(this)
         UiLang.setText(txtName, name)
         // v3.58: समय के हिसाब से - सुप्रभात / नमस्ते / शुभ संध्या
-        UiLang.setText(txtHello, com.dk.assistant.onboard.Greeting.of(java.util.Calendar.getInstance().get(java.util.Calendar.HOUR_OF_DAY), user))
+        UiLang.setText(txtHello, if (com.dk.assistant.backend.BackendSession.owner(this)) com.dk.assistant.backend.WelcomeBoss.TEXT
+            else com.dk.assistant.onboard.Greeting.of(java.util.Calendar.getInstance().get(java.util.Calendar.HOUR_OF_DAY), user))
 
         // v3.88: सिर्फ़ तीन स्थितियाँ (Listening / Thinking / Speaking); कुछ न चले तो "Tap the orb and speak"
         val st = ThreeState.label(DKState.mode, DKState.live, DKState.micMuted, DKState.working())
