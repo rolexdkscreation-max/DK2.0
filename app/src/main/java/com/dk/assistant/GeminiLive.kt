@@ -1108,9 +1108,10 @@ class GeminiLive(internal val svc: DKAccessibilityService, internal val agent: A
                         }
                         throw Fatal("${AiRouter.LABEL} से Live का टिकट नहीं मिला (${e.message})", recoverable = true, kind = LiveFailWhy.Kind.SERVER)
                     }
-                    if (meter != null) com.dk.assistant.backend.VoiceGate.ensure(svc)?.let { e ->
-                        log("मुफ़्त आवाज़: ${e.reason} - Live बंद"); stopped = true
-                        com.dk.assistant.backend.VoiceGate.deny(e); break
+                    val vDeny = if (meter != null) com.dk.assistant.backend.VoiceGate.ensure(svc) else null
+                    if (vDeny != null) {
+                        log("मुफ़्त आवाज़: ${vDeny.reason} - Live बंद"); stopped = true
+                        com.dk.assistant.backend.VoiceGate.deny(vDeny); break
                     }
                     // v5.1: standby वाला गर्म connection (wake word) किसी भी मॉडल/key का हो - वही लो
                     val pk = parked; parked = null
