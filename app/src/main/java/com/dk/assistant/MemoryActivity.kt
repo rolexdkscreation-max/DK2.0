@@ -106,6 +106,18 @@ class MemoryActivity : AppCompatActivity() {
             setPadding(0, (8 * dp).toInt(), 0, (8 * dp).toInt())
             setOnCheckedChangeListener { _, on -> Prefs.edit(this@MemoryActivity) { putBoolean("local_memory_on", on) } }
         })
+        // 18 नवंबर 2026 (मालिक: "जो DK को लगेगा कि याद रखना है, वही याद रखेगी")
+        localCard.addView(androidx.appcompat.widget.SwitchCompat(this).apply {
+            text = "DK खुद तय करे क्या याद रखना है"; setTextColor(0xFFFFFFFF.toInt()); textSize = 15f
+            isChecked = MemoryDigest.on(this@MemoryActivity)
+            setPadding(0, (8 * dp).toInt(), 0, (2 * dp).toInt())
+            setOnCheckedChangeListener { _, on -> MemoryDigest.setOn(this@MemoryActivity, on) }
+        })
+        localCard.addView(TextView(this).apply {
+            text = "हर ~20 बातों पर और बातचीत खत्म होने पर DK (आपका AI) नई बातें पढ़कर सिर्फ़ याद रखने लायक चुनता है - पसंद, लोग, काम, तारीख, वादे। " +
+                "गपशप और एक बार के हुक्म नहीं। चुनी बातें नीचे \"हमेशा वाले सार\" में दिखती हैं, आप मिटा सकते हैं। पूरी बातचीत फ़ोन में वैसे ही रहती है।"
+            textSize = 12.5f; setTextColor(0x99FFFFFF.toInt()); UiLang.keep(this)
+        })
         localCard.addView(TextView(this).apply { text = "हमेशा वाले सार"; textSize = 15f; setTypeface(typeface, Typeface.BOLD); setTextColor(0xFFFFFFFF.toInt()); setPadding(0, (10 * dp).toInt(), 0, 0) })
         pointList = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         localCard.addView(pointList)

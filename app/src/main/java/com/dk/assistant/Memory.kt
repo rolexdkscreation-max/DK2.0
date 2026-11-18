@@ -13,7 +13,7 @@ import java.io.File
  */
 object Memory {
     private const val MAX_FACTS = 60
-    private const val MAX_HISTORY = 30
+    private const val MAX_HISTORY = 40   // 18 नवंबर 2026: BrainManager.KEEP_TURNS जितनी (पहले 30)
     private const val MAX_CHAT = 200
 
     private fun file(c: Context, name: String) = File(c.applicationContext.filesDir, name)

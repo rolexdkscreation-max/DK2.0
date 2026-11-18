@@ -65,6 +65,7 @@ object LocalMemory {
                 })
             } catch (e: Exception) { DKLog.d("याददाश्त: सेव नहीं हुआ - ${e.message}") }
         }
+        MemoryDigest.noteTurn(ctx)   // 18 नवंबर 2026: हर ~20 नई बातों पर DK खुद चुने क्या याद रखना है
     }
 
     /**
@@ -214,6 +215,42 @@ object LocalMemory {
         } catch (_: Exception) { promptBlock(c) }
     }
 
+    // ------------------------------------------------------------------ DK खुद चुने क्या याद रखना है ([MemoryDigest])
+    /** [MemoryDigest] के लिए: [afterId] के बाद की बातें (पुरानी पहले, ज़्यादा से ज़्यादा [limit]), कुल कितनी बाकी, आख़िरी id, पहले के सार, मिटाए हुए */
+    class DigestIn(val turns: List<LocalRecall.Turn>, val pending: Int, val lastId: Long, val known: List<String>, val dropped: Set<String>)
+
+    suspend fun digestInput(c: Context, afterId: Long, limit: Int): DigestIn? = withContext(dispatcher) {
+        try {
+            val d = db(c)
+            val last = d.rawQuery("SELECT IFNULL(MAX(id), 0) FROM turns", null).use { if (it.moveToFirst()) it.getLong(0) else 0L }
+            val pending = d.rawQuery("SELECT COUNT(*) FROM turns WHERE id>?", arrayOf(afterId.toString())).use { if (it.moveToFirst()) it.getInt(0) else 0 }
+            val turns = ArrayList<LocalRecall.Turn>()
+            d.rawQuery("SELECT id, who, text, at, src FROM turns WHERE id>? ORDER BY id LIMIT $limit", arrayOf(afterId.toString())).use { k ->
+                while (k.moveToNext()) turns.add(LocalRecall.Turn(k.getLong(0), k.getString(1), k.getString(2), k.getLong(3), k.getString(4)))
+            }
+            val known = allPoints(d).takeLast(40).map { it.text }
+            val dropped = HashSet<String>(); d.rawQuery("SELECT norm FROM dropped", null).use { k -> while (k.moveToNext()) dropped.add(k.getString(0)) }
+            DigestIn(turns, pending, last, known, dropped)
+        } catch (e: Exception) { DKLog.d("याददाश्त: नई बातें नहीं पढ़ीं - ${e.message}"); null }
+    }
+
+    /** DK की चुनी यादें - हमेशा वाले सार में (आज की तारीख). पहले से हो / यूज़र ने मिटाई हो = नहीं. वापस: कितनी जुड़ीं */
+    suspend fun keepDigest(c: Context, items: List<String>): Int = withContext(dispatcher) {
+        try {
+            val d = db(c); val now = System.currentTimeMillis(); var n = 0
+            val dropped = HashSet<String>(); d.rawQuery("SELECT norm FROM dropped", null).use { k -> while (k.moveToNext()) dropped.add(k.getString(0)) }
+            for (raw in items) {
+                val t = LocalRecall.storable(raw) ?: continue
+                if (LocalRecall.norm(t) in dropped) continue
+                val dup = d.rawQuery("SELECT 1 FROM points WHERE text=? LIMIT 1", arrayOf(t)).use { it.moveToFirst() }
+                if (dup) continue
+                d.insert("points", null, ContentValues().apply { put("day", LocalRecall.dayOf(now)); put("text", t); put("at", now) }); n++
+            }
+            if (n > 0) blockCache = 0L to ""
+            n
+        } catch (e: Exception) { DKLog.d("याददाश्त: DK की चुनी याद सेव नहीं हुई - ${e.message}"); 0 }
+    }
+
     // ------------------------------------------------------------------ मिटाना (यूज़र के कहने पर)
     suspend fun deleteTurn(c: Context, id: Long) = withContext(dispatcher) { try { db(c).delete("turns", "id=?", arrayOf(id.toString())) } catch (_: Exception) { 0 } }
 
@@ -358,6 +395,7 @@ object LocalMemory {
                 DKLog.d("याददाश्त ($why): $added नए सार - सारी बातें सुरक्षित, कुछ नहीं मिटाया")
             } catch (e: Exception) { DKLog.d("याददाश्त सफ़ाई गड़बड़: ${e.message}") }
         }
+        MemoryDigest.kick(ctx, why, force = true)   // 18 नवंबर 2026: बातचीत खत्म / ऐप खुला / रोज़ = बची हुई बातों से याद लायक
     }
 
     /** रोज़ एक बार पीछे सफ़ाई (फ़ोन restart के बाद ऐप खुलते ही फिर से लगती है) */

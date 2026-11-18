@@ -180,6 +180,8 @@ class SettingsActivity : AppCompatActivity() {
             // 15 नवंबर 2026 (मालिक): "DK AI Plus" का अलग पन्ना हटाया - उसकी असली सुविधाएँ अपनी पुरानी जगह ([secSos] वगैरह, SettingsExtra.kt)
             items.firstOrNull { it.first == "license" }?.let { (id, t, sub) -> menuRow(id, t, sub) }
             items.firstOrNull { it.first == "update" }?.let { (id, t, sub) -> menuRow(id, t, sub) }
+            // 18 नवंबर 2026 (मालिक: "अपडेट के नीचे Google से लॉग इन, Google के फोटो के साथ, टैप करते ही साइन इन")
+            googleMenuRow()
             return
         }
         val ids = SettingsSearch.CATEGORIES.firstOrNull { it.first.first == cat }?.second.orEmpty()

@@ -248,3 +248,52 @@ private fun SettingsActivity.showNewKey(key: String) {
             toast("कॉपी हो गई")
         }.setNegativeButton("बंद करें", null).show()
 }
+
+// ------------------------------------------------------------ मुख्य पन्ने पर Google वाली पंक्ति
+internal const val GOOGLE_ROW_TITLE = "Google से साइन इन करें"
+internal const val GOOGLE_ROW_SUB = "टैप करें • फ़ोन के Google खाते से साइन इन • नाम अपने-आप"
+internal const val GOOGLE_NO_SERVER = "इस ऐप में DK का सर्वर नहीं जुड़ा है, इसलिए अभी Google से साइन इन नहीं हो सकता। ऐप बाकी सब पहले जैसा चलता है।"
+
+/** पंक्ति का शीर्षक और नीचे की लाइन (जुड़े हों तो ईमेल) - अलग इसलिए कि test हो सके */
+internal fun googleRowText(signedIn: Boolean, email: String): Pair<String, String> =
+    if (signedIn) "Google खाता" to ("✓ " + email.ifBlank { "जुड़ा है" } + " • टैप करें: दूसरा खाता / लॉग आउट")
+    else GOOGLE_ROW_TITLE to GOOGLE_ROW_SUB
+
+/**
+ * 18 नवंबर 2026 (मालिक): Settings के मुख्य पन्ने पर «अपडेट» के ठीक नीचे - Google का रंगीन G + "Google से साइन इन करें".
+ * टैप = सीधे फ़ोन के Google खातों वाला popup ([googleLogin]); जुड़े हों तो दूसरा खाता / लॉग आउट.
+ * लॉगिन का असली काम वही पुराना ([googleLoginAs] → [finishGoogle]) - «लाइसेंस की» पन्ने वाला कार्ड भी पहले जैसा.
+ */
+internal fun SettingsActivity.googleMenuRow() {
+    val signed = BackendSession.google(this)
+    val (t, sub) = googleRowText(signed, BackendSession.email(this))
+    val box = LinearLayout(this).apply {
+        orientation = LinearLayout.HORIZONTAL; gravity = android.view.Gravity.CENTER_VERTICAL
+        setBackgroundResource(R.drawable.glass_card)
+        val pd = (18 * dp).toInt(); setPadding(pd, pd, pd, pd)
+        isClickable = true; contentDescription = t
+        setOnClickListener { googleRowTap() }
+    }
+    // Google का अपना रंगीन G - सफ़ेद गोल पर (रंग बदले बिना, जैसा Google का साइन-इन बटन)
+    box.addView(android.widget.ImageView(this).apply {
+        setImageResource(R.drawable.ic_google_g)
+        background = android.graphics.drawable.GradientDrawable().apply { shape = android.graphics.drawable.GradientDrawable.OVAL; setColor(0xFFFFFFFF.toInt()) }
+        val ip = (10 * dp).toInt(); setPadding(ip, ip, ip, ip)
+        importantForAccessibility = android.view.View.IMPORTANT_FOR_ACCESSIBILITY_NO
+    }, LinearLayout.LayoutParams((44 * dp).toInt(), (44 * dp).toInt()).apply { marginEnd = (14 * dp).toInt() })
+    val txt = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+    txt.addView(TextView(this).apply { text = t; textSize = 17f; setTypeface(typeface, android.graphics.Typeface.BOLD); setTextColor(0xFFFFFFFF.toInt()) })
+    txt.addView(TextView(this).apply { text = sub; textSize = 12.5f; setTextColor(0x99FFFFFF.toInt()); setPadding(0, (3 * dp).toInt(), 0, 0) })
+    box.addView(txt, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+    box.addView(TextView(this).apply { text = "›"; textSize = 28f; setTextColor(0x99FFFFFF.toInt()) })
+    container.addView(box, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = (12 * dp).toInt() })
+}
+
+private fun SettingsActivity.googleRowTap() {
+    if (!BackendConfig.ready()) { toast(GOOGLE_NO_SERVER); return }
+    if (!BackendSession.google(this)) { googleLogin(); return }
+    UiDialog(this, Glass.DIALOG).setTitle("Google खाता").setMessage("अभी जुड़े: " + BackendSession.email(this))
+        .setPositiveButton("दूसरा खाता") { _, _ -> googleLogin() }
+        .setNeutralButton("लॉग आउट") { _, _ -> BackendSession.signOut(this); toast("लॉग आउट - अब मेहमान"); recreate() }
+        .setNegativeButton("रहने दें", null).show()
+}
