@@ -1514,3 +1514,70 @@ DK लेंस	DK Lens
 DK लेंस चालू/बंद	DK Lens on/off
 DK लेंस बदलें (आगे/पीछे)	Switch DK Lens (front/back)
 DK लेंस - दबाएँ: पीछे वाला, लंबा दबाएँ: आगे वाला	DK Lens - tap: back, long-press: front
+# 17 नवंबर 2026: लाइसेंस की / DK सर्वर
+लाइसेंस की	License key
+चालू करें	Activate
+लाइसेंस की पाएँ	Get a license key
+लाइसेंस की (जैसे DK-ABCD-EFGH-JKLM)	License key (like DK-ABCD-EFGH-JKLM)
+अभी पता नहीं चला: 	Could not check yet: 
+की ऐसी दिखती है: DK-XXXX-XXXX-XXXX	A key looks like: DK-XXXX-XXXX-XXXX
+की जाँच रहा हूँ…	Checking the key…
+✓ लाइसेंस चालू: 	✓ License active: 
+स्तर: 	Level: 
+कब तक: 	Valid till: 
+ दिन बाकी)	 days left)
+आज बातचीत का समय बचा: 	Talk time left today: 
+आज के संदेश बचे: 	Messages left today: 
+मुफ़्त (रोज़ 10 मिनट बातचीत)	Free (10 minutes of talk a day)
+बेसिक (चैट, खोज, डीप रिसर्च)	Basic (chat, search, deep research)
+प्रीमियम (सब कुछ)	Premium (everything)
+मालिक (सब कुछ, कोई सीमा नहीं)	Owner (everything, no limits)
+मुफ़्त: रोज़ 10 मिनट बातचीत • बेसिक: खोज और रिसर्च • प्रीमियम: सब कुछ	Free: 10 minutes of talk a day • Basic: search and research • Premium: everything
+बिना लाइसेंस: रोज़ 10 मिनट बोलकर बात और 30 संदेश (रात 12 बजे भारत के समय से फिर)। 	Without a license: 10 minutes of voice and 30 messages a day (resets at midnight India time). 
+आपकी अपनी AI key (AI दिमाग में) से बात की कोई सीमा नहीं - सर्वर सिर्फ़ तब, जब key न हो या न चले।	Your own AI key (in AI brain) has no limit - the server is used only when there is no key or it fails.
+DK का सर्वर इस ऐप में नहीं जुड़ा	DK server is not connected in this app
+यह ऐप बिना सर्वर के बना है (GitHub Secrets में BACKEND_URL / Firebase नहीं थे)। 	This app was built without the server (BACKEND_URL / Firebase were not in GitHub Secrets). 
+आपकी अपनी AI keys से सब पहले जैसा चलता है। सर्वर जुड़ा नया APK आने पर यहाँ लाइसेंस की डाल सकेंगे।	Everything works as before with your own AI keys. Once a new APK with the server arrives, you can enter a license key here.
+Google से लॉगिन	Sign in with Google
+मालिक के लिए • बाकी सब बिना लॉगिन (मेहमान)	For the owner • everyone else without login (guest)
+Google सिर्फ़ मालिक के लिए (जिसका ईमेल सर्वर की सूची में हो)। बाकी लोग बिना लॉगिन चलाते हैं।	Google is only for the owner (whose email is on the server list). Others use DK without login.
+अभी मेहमान (बिना लॉगिन)। मालिक Google से लॉगिन करें।	Guest now (no login). Owner: sign in with Google.
+Google से जुड़ रहा हूँ…	Connecting to Google…
+Google की स्क्रीन नहीं खुली	Google screen did not open
+✓ मालिक के रूप में लॉगिन	✓ Signed in as owner
+✓ लॉगिन हुआ (यह ईमेल मालिक की सूची में नहीं)	✓ Signed in (this email is not on the owner list)
+लॉग आउट	Log out
+लॉग आउट - अब मेहमान	Logged out - guest now
+लाइसेंस की बनाएँ (मालिक)	Create license keys (owner)
+नई की • सूची • बंद करें	New key • list • revoke
+स्तर चुनें	Choose level
+कितने दिन	How many days
+कितने फ़ोन पर	On how many phones
+नोट (किसके लिए)	Note (for whom)
+जैसे: रमेश	e.g. Ramesh
+की बनाएँ	Create key
+दिन 1–3650 और फ़ोन 1–100	Days 1–3650 and phones 1–100
+नई लाइसेंस की (सिर्फ़ अभी दिखेगी)	New license key (shown only now)
+नई की सिर्फ़ एक बार दिखती है - उसी समय कॉपी करके भेजें। सर्वर में सिर्फ़ उसकी छाप (SHA-256) रहती है।	A new key is shown only once - copy and send it right away. The server keeps only its fingerprint (SHA-256).
+कॉपी हो गई	Copied
+सूची ताज़ा करें	Refresh list
+सूची नहीं आई: 	List did not load: 
+अभी कोई की नहीं बनी	No keys created yet
+यह की बंद करें?	Revoke this key?
+इस की वाले फ़ोन मुफ़्त स्तर पर आ जाएँगे।	Phones with this key will go back to the free level.
+की बंद	Key revoked
+WhatsApp नहीं खुला	WhatsApp did not open
+सर्वर ने समय पर जवाब नहीं दिया	The server did not reply in time
+सर्वर से बात नहीं हो पाई	Could not reach the server
+Firebase की web API key गलत है (GitHub Secret FIREBASE_WEB_API_KEY देखें)	Firebase web API key is wrong (check GitHub Secret FIREBASE_WEB_API_KEY)
+Firebase में यह login तरीका चालू नहीं (Authentication → Sign-in method)	This login method is not on in Firebase (Authentication → Sign-in method)
+Google ने पहचान नहीं दी - Firebase में Google login चालू करें	Google gave no identity - turn on Google login in Firebase
+आज की मुफ़्त बातचीत पूरी हो गई। इससे ज़्यादा बात करने के लिए पहले लाइसेंस की लें।	Today's free talk is over. To talk more, first get a license key.
+आज की मुफ़्त बातचीत का बस एक मिनट बचा है।	Only one minute of today's free talk is left.
+यह सुविधा प्रीमियम लाइसेंस के साथ मिलती है। Settings → लाइसेंस की में की डालें।	This feature comes with a premium license. Enter a key in Settings → License key.
+की डालें • स्तर और आज का बचा समय • लाइसेंस की पाएँ (WhatsApp)	Enter key • level and time left today • get a license key (WhatsApp)
+☁ सर्वर पर काम	☁ Work on the server
+☁ सर्वर पर काम (दूसरे फ़ोन/ऐप बंद होने के बाद भी)	☁ Work on the server (even from another phone / after the app closes)
+सर्वर पर अभी कोई काम नहीं	No work on the server yet
+सर्वर से काम ला रहा हूँ…	Loading work from the server…
+सर्वर से काम नहीं आए: 	Could not load work from the server: 

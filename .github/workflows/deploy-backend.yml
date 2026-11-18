@@ -1,0 +1,139 @@
+name: Deploy DK Backend (Cloudflare)
+
+# 17 नवंबर 2026 (मालिक का "DK बैकएंड मास्टर प्रॉम्प्ट"): main में backend/ बदले या हाथ से Run = Cloudflare पर deploy.
+# PR में backend/ बदले = सिर्फ़ test (deploy नहीं).
+# सारे IDs/keys सिर्फ़ GitHub Secrets से; wrangler.toml में placeholder हैं जो यहीं runner पर sed से भरते हैं.
+
+on:
+  push:
+    branches: [ main ]
+    paths: [ "backend/**", ".github/workflows/deploy-backend.yml" ]
+  pull_request:
+    branches: [ main ]
+    paths: [ "backend/**", ".github/workflows/deploy-backend.yml" ]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: dk-backend-${{ github.event_name == 'pull_request' && github.run_id || 'deploy' }}
+  cancel-in-progress: false
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: backend/package-lock.json
+      - run: npm ci
+      - name: Backend tests
+        run: npm test
+      - name: Wrangler dry-run (बिना Cloudflare के bundle जाँच)
+        run: npx wrangler deploy --dry-run --outdir dist
+
+  deploy:
+    needs: test
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: backend/package-lock.json
+      - run: npm ci
+
+      - name: ज़रूरी secrets हैं?
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          D1_DATABASE_ID: ${{ secrets.D1_DATABASE_ID }}
+          FIREBASE_PROJECT_ID: ${{ secrets.FIREBASE_PROJECT_ID }}
+          ALLOWED_EMAILS: ${{ secrets.ALLOWED_EMAILS }}
+        run: |
+          miss=""
+          for n in CLOUDFLARE_ACCOUNT_ID CLOUDFLARE_API_TOKEN D1_DATABASE_ID FIREBASE_PROJECT_ID ALLOWED_EMAILS; do
+            [ -n "${!n}" ] || miss="$miss $n"
+          done
+          if [ -n "$miss" ]; then echo "::error::GitHub Secrets में ये नहीं हैं:$miss"; exit 1; fi
+
+      - name: wrangler.toml में IDs भरो (सिर्फ़ इस runner पर)
+        env:
+          D1_DATABASE_ID: ${{ secrets.D1_DATABASE_ID }}
+          FIREBASE_PROJECT_ID: ${{ secrets.FIREBASE_PROJECT_ID }}
+        run: |
+          sed -i "s|__D1_DATABASE_ID__|${D1_DATABASE_ID}|; s|__FIREBASE_PROJECT_ID__|${FIREBASE_PROJECT_ID}|" wrangler.toml
+          if grep -q "__[A-Z0-9_]*__" wrangler.toml; then echo "::error::wrangler.toml में placeholder बचा"; exit 1; fi
+
+      - name: D1 टेबल (schema.sql)
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          workingDirectory: backend
+          packageManager: npm
+          command: d1 execute dk-db --remote --file=./schema.sql
+
+      - name: Worker deploy
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          workingDirectory: backend
+          packageManager: npm
+          command: deploy
+
+      # जो key GitHub Secrets में नहीं है वह छोड़ दी जाती है (deploy नहीं रुकता). फ़ाइल runner पर बनती है और तुरंत मिटती है
+      - name: Worker secrets की फ़ाइल (सिर्फ़ भरे हुए)
+        env:
+          ALLOWED_EMAILS: ${{ secrets.ALLOWED_EMAILS }}
+          WEBHOOK_SECRET: ${{ secrets.WEBHOOK_SECRET }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          MISTRAL_API_KEY: ${{ secrets.MISTRAL_API_KEY }}
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          ZAI_API_KEY: ${{ secrets.ZAI_API_KEY }}
+          NVIDIA_API_KEY: ${{ secrets.NVIDIA_API_KEY }}
+          TAVILY_API_KEY: ${{ secrets.TAVILY_API_KEY }}
+          EXA_API_KEY: ${{ secrets.EXA_API_KEY }}
+          LINKUP_API_KEY: ${{ secrets.LINKUP_API_KEY }}
+          FIRECRAWL_API_KEY: ${{ secrets.FIRECRAWL_API_KEY }}
+          DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          umask 077
+          echo '{}' > "$RUNNER_TEMP/dk-secrets.json"
+          for n in ALLOWED_EMAILS WEBHOOK_SECRET GEMINI_API_KEY MISTRAL_API_KEY GROQ_API_KEY OPENROUTER_API_KEY ZAI_API_KEY NVIDIA_API_KEY DEEPSEEK_API_KEY OPENAI_API_KEY ANTHROPIC_API_KEY TAVILY_API_KEY EXA_API_KEY LINKUP_API_KEY FIRECRAWL_API_KEY; do
+            if [ -n "${!n}" ]; then
+              jq --arg k "$n" --arg v "${!n}" '. + {($k): $v}' "$RUNNER_TEMP/dk-secrets.json" > "$RUNNER_TEMP/s.tmp" && mv "$RUNNER_TEMP/s.tmp" "$RUNNER_TEMP/dk-secrets.json"
+              echo "✓ $n"
+            else
+              echo "– $n (नहीं डाला, छोड़ा)"
+            fi
+          done
+
+      - name: Worker secrets भेजो
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          workingDirectory: backend
+          packageManager: npm
+          command: secret bulk ${{ runner.temp }}/dk-secrets.json
+
+      - name: Secrets फ़ाइल मिटाओ
+        if: always()
+        run: rm -f "$RUNNER_TEMP/dk-secrets.json" "$RUNNER_TEMP/s.tmp"

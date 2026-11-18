@@ -196,6 +196,8 @@ class CoderAi(val provider: Provider, private val key: String, val model: String
         while (true) {
             val room = (budget - system.length).coerceAtLeast(CoderContext.MIN_BUDGET)
             val send = if (CoderContext.total(msgs) > room) CoderContext.compact(msgs, room) else msgs
+            // 17 नवंबर 2026 ([AiRouter]): सारी keys के बाद DK का सर्वर (premium लाइसेंस / मालिक) - key नहीं भेजी जाती
+            if (provider.id == AiRouter.PROVIDER_ID) return AiRouter.coderChat(model, system, send)
             try {
                 return if (provider.isGemini) gemini(system, send, parts, only) else openAi(system, send, maxTok, parts)
             } catch (e: AiException) {
@@ -402,7 +404,19 @@ class CoderAi(val provider: Provider, private val key: String, val model: String
          * DK कंप्यूटर / DK चैट / DK लाइव की keys. मॉडल = कोडिंग एजेंट वाला (Gemini = 3.8 Flash क्रम), उसी API के फ्री बैकअप मॉडल भी.
          * कोडिंग एजेंट की अपनी कोई key नहीं = यही बाकी keys से काम (पहले "key नहीं" कहकर रुक जाता था).
          */
-        internal fun withSpares(c: Context, own: CoderAi?, sink: (String, String) -> Unit): CoderAi? {
+        internal fun withSpares(c: Context, own: CoderAi?, sink: (String, String) -> Unit, task: String = AiRouter.Task.CODER): CoderAi? =
+            withServer(withKeys(c, own, sink), sink, task)
+
+        /** 17 नवंबर 2026 ([AiRouter]): सारी keys (अपनी + ऑलराउंड + बाकी हिस्से) के बाद आख़िर में DK का सर्वर */
+        internal fun withServer(chain: CoderAi?, sink: (String, String) -> Unit, task: String): CoderAi? {
+            if (!AiRouter.backendReady() || chain?.pinned == true) return chain
+            val server = CoderAi(AiRouter.provider, "", task, "", note = "", sink = sink)
+            if (chain == null) return server.also { it.waitOnLimit = false }
+            return CoderAi(chain.provider, chain.keyForChain(), chain.model, chain.baseForChain(), chain.fallbackList() + server, sink = sink)
+                .also { it.waitOnLimit = chain.waitOnLimit; it.think = chain.think }
+        }
+
+        private fun withKeys(c: Context, own: CoderAi?, sink: (String, String) -> Unit): CoderAi? {
             val have = own?.let { (listOf(it) + it.fallbackList()).map { a -> a.provider.id to a.keyForChain() }.toSet() }.orEmpty()
             val spare = ApiScopes.spareKeys({ sc, slot -> Prefs.scopeKeyRaw(c, sc, slot).ifBlank { if (sc == ApiScopes.CODER && slot == "gemini") Prefs.oneKey(c) else "" } }, have)
                 .sortedBy { CoderModels.ORDER.indexOf(it.second).let { i -> if (i < 0) 99 else i } }   // 15 नवंबर 2026: Groq Gemini के ठीक बाद

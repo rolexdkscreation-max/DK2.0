@@ -257,7 +257,7 @@ class InlineDictation(
     private val onText: (String) -> Unit,
     private val onLevel: (Float) -> Unit,
     private val onEnd: (String?) -> Unit
-) {
+) : Dictation {
     private var sr: SpeechRecognizer? = null
     private var active = false
     private var committed = ""
@@ -267,9 +267,9 @@ class InlineDictation(
     private val h = Handler(Looper.getMainLooper())
     private val listenNow = Runnable { listen() }
 
-    val text: String get() = DictationRules.join(committed, partial)
+    override val text: String get() = DictationRules.join(committed, partial)
 
-    fun start() {
+    override fun start() {
         if (active) return
         active = true
         DKMic.begin()
@@ -352,10 +352,10 @@ class InlineDictation(
     }
 
     /** रोको, अब तक का लिखा रखो */
-    fun stop(): String { val t = text; active = false; release(); return t }
+    override fun stop(): String { val t = text; active = false; release(); return t }
 
     /** रद्द */
-    fun cancel() { active = false; release() }
+    override fun cancel() { active = false; release() }
 
     private fun finish(msg: String?) { active = false; release(); onEnd(msg) }
 
@@ -392,7 +392,7 @@ class DKComposer(
     private val micRow: LinearLayout
     private val wave = MicWaveView(act)
     private val note: TextView
-    private var dict: InlineDictation? = null
+    private var dict: Dictation? = null
     private var before = ""
     private val prefs = act.getSharedPreferences("dk_prefs", Context.MODE_PRIVATE)
     private val askMic = act.registerForActivityResult(ActivityResultContracts.RequestPermission()) { ok ->
@@ -487,10 +487,12 @@ class DKComposer(
         if (micActive) return
         removeCallbacks(hideNote); note.visibility = GONE
         before = edt.text.toString().trim()
-        val d = InlineDictation(act,
+        // पहले DK सर्वर (/stt), न चले तो फ़ोन की पहचान
+        val d = BackendDictation.pick(act,
             onText = { t -> setLive(DictationRules.join(before, t)) },
             onLevel = { wave.push(it) },
-            onEnd = { msg -> dict = null; setMicMode(false); if (msg != null) showNote(msg) })
+            onEnd = { msg -> dict = null; setMicMode(false); if (msg != null) showNote(msg) },
+            phone = { t, l, e -> InlineDictation(act, onText = t, onLevel = l, onEnd = e) })
         dict = d
         setMicMode(true)
         d.start()

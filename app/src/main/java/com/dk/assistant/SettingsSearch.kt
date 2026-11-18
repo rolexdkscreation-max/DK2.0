@@ -28,6 +28,8 @@ object SettingsSearch {
         // नवंबर 2026: ऑटो रिप्लाई (ऑटोनोमस मोड के बाद - "ऑटो" खोजने पर पहले ऑटोनोमस मोड ही आए)
         "autoreply" to "ऑटो रिप्लाई",
         "update" to "अपडेट", "debug" to "डिबग लॉग", "about" to "ऐप के बारे में",
+        // 17 नवंबर 2026: DK बैकएंड का लाइसेंस
+        "license" to "लाइसेंस की",
         // नवंबर 2026: Control Center के 6 श्रेणी कार्ड (आख़िर में, ताकि पुराने नतीजों का क्रम न बदले)
         "cat_dk" to "मेरा DK", "cat_brain" to "दिमाग और आवाज़", "cat_auto" to "ऑटोमेशन",
         "cat_security" to "सुरक्षा", "cat_social" to "सोशल और कहानी", "cat_data" to "डेटा और ऐप"
@@ -73,6 +75,7 @@ object SettingsSearch {
         ACT_BACKUP to "backup बैकअप restore रिस्टोर drive ड्राइव google गूगल email ईमेल याददाश्त memory बातचीत",
         "autoreply" to "auto reply ऑटो रिप्लाई autoreply जवाब अपने-आप खुद-ब-खुद whatsapp व्हाट्सएप business बिजनेस telegram टेलीग्राम messenger मैसेंजर message मैसेज signal sms instagram reply रिप्लाई",
         "update" to "update अपडेट version वर्ज़न",
+        "license" to "license लाइसेंस की key चाबी premium प्रीमियम basic बेसिक free मुफ़्त whatsapp व्हाट्सएप login लॉगिन google गूगल admin मालिक",
         "debug" to "debug log लॉग गलती error",
         "about" to "about privacy निजता version"
     )
@@ -173,6 +176,7 @@ object SettingsSearch {
         E("perms", "स्क्रीन देखना", "DK आपकी स्क्रीन देखकर काम करे (स्क्रीनशॉट AI को जाता है)"),
         E("perms", "ज़रूरी परमिशन", ""),
         E("update", "अपडेट", ""),
+        E("license", LICENSE_CARD, ""), E("license", LICENSE_LOGIN_CARD, ""), E("license", LICENSE_ADMIN_CARD, ""),
         E("debug", "DK Inspector", "Run Deep Inspection • Ask DK Inspector • Bug Reports • हर 20 मिनट अपने-आप जाँच", "inspector bug report जाँच गड़बड़ी debugger"),
         E("debug", "Gemini Live हाल", "माइक से भेजे टुकड़े, गिरे टुकड़े, दोबारा जुड़ना, देरी"),
         E("debug", "देरी का हिसाब", "आपका बोलना ख़त्म → पहला टुकड़ा आया → पहले वाक्य की आवाज़ बनी → आवाज़ बजी"),

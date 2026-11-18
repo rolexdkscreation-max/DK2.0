@@ -28,6 +28,14 @@ android {
         // नवंबर 2026 (बीटा जाँच): GitHub build.yml का CHANNEL (beta / stable) APK में छपता है; अपने कंप्यूटर पर = local
         val ch = (System.getenv("CHANNEL") ?: "local").trim().lowercase().ifBlank { "local" }
         buildConfigField("String", "DK_CHANNEL", "\"$ch\"")
+        // 17 नवंबर 2026 (DK बैकएंड): GitHub Secrets से build के समय (सिर्फ़ ये 5; कोई Cloudflare ID/token/Worker key नहीं).
+        // न हों (अपने कंप्यूटर पर) = खाली = ऐप पहले जैसा, सिर्फ़ अपनी keys से. `"` / `\` हटाकर ताकि Java string न टूटे
+        fun pub(n: String) = (System.getenv(n) ?: "").trim().replace("\\", "").replace("\"", "")
+        buildConfigField("String", "FIREBASE_PROJECT_ID", "\"${pub("VITE_FIREBASE_PROJECT_ID")}\"")
+        buildConfigField("String", "FIREBASE_API_KEY", "\"${pub("VITE_FIREBASE_API_KEY")}\"")
+        buildConfigField("String", "FIREBASE_AUTH_DOMAIN", "\"${pub("VITE_FIREBASE_AUTH_DOMAIN")}\"")
+        buildConfigField("String", "BACKEND_URL", "\"${pub("VITE_BACKEND_URL")}\"")
+        buildConfigField("String", "WHATSAPP_NUMBER", "\"${pub("VITE_WHATSAPP_NUMBER")}\"")
     }
 
     // Hamesha ek hi key se sign -> purane app ke upar naya update install ho sake

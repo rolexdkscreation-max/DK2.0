@@ -35,6 +35,8 @@ object SecretNames {
         "face_people_v1",
         // 15 नवंबर 2026: DK वॉचमैन - कौन आया-गया (सिर्फ़ Boss को)
         "watchman_log_v1",
+        // 17 नवंबर 2026: DK बैकएंड की Firebase पहचान (login token) - ताले में
+        "be_id_token", "be_refresh_token",
     )
     private val SCOPE_KEY = Regex("^(live|coder|pc)_key_.+")
 
