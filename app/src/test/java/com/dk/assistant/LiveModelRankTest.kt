@@ -17,10 +17,11 @@ class LiveModelRankTest {
         assertEquals(3, o.size)
     }
 
-    @Test fun withoutMeasurements_flashBeforeBigNewest() {
+    @Test fun withoutMeasurements_recommendedLiveFirst_legacyLast() {
         val o = LiveModelRank.order(found, emptyList(), emptyMap())
-        // पहले "3.8" सबसे ऊपर था; अब flash (तेज़) ऊपर
-        assertEquals("gemini-3.1-flash-live-preview", o.first())
+        // 18 नवंबर 2026 (ऑडिट G1): बिना नापे Google का default GA मॉडल पहले, legacy 3.1 सबसे पीछे
+        assertEquals(listOf("gemini-3.8-live", "gemini-2.5-flash-native-audio-preview-12-2025", "gemini-3.1-flash-live-preview"), o)
+        assertTrue(LiveModelRank.guessMs("gemini-3.8-live-extended-thinking") > LiveModelRank.guessMs("gemini-3.1-flash-live-preview"))
     }
 
     @Test fun measuredFastestWins() {
@@ -41,8 +42,8 @@ class LiveModelRankTest {
         val o = LiveModelRank.order(listOf("gemini-3.8-live"), listOf("gemini-3.1-flash-live-preview"), emptyMap())
         assertEquals(listOf("gemini-3.8-live", "gemini-3.1-flash-live-preview"), o)
         // list नहीं आई = docs वाले ही, सबसे तेज़ पहले
-        val f = LiveModelRank.order(emptyList(), listOf("gemini-3.8-live", "gemini-3.1-flash-live-preview"), emptyMap())
-        assertEquals("gemini-3.1-flash-live-preview", f.first())
+        val f = LiveModelRank.order(emptyList(), listOf("gemini-3.1-flash-live-preview", "gemini-3.8-live"), emptyMap())
+        assertEquals("gemini-3.8-live", f.first())
     }
 
     @Test fun blendIgnoresCrazySamples() {
