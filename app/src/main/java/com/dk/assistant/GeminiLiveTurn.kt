@@ -42,6 +42,8 @@ import org.json.JSONObject
 // यह code पहले GeminiLive.kt में था; सिर्फ़ जगह बदली है, व्यवहार वही (extension functions, वही state GeminiLive में)।
 
 internal fun GeminiLive.sendOpener() {
+    // 19 नवंबर 2026 (मालिक): नई / पुरानी चैट में Live पहली बार जुड़ा = एक ही बार अभिवादन (नई = सिर्फ़ नमस्ते, फिर चुप)
+    if (openerText == null) try { com.dk.assistant.dkai.ChatFresh.note(svc)?.let { openerText = it; log("चैट का अभिवादन (एक बार)") } } catch (e: Exception) { Quiet.note(e) }
     val t = openerText ?: return
     // 90s से पुराना (Live नहीं जुड़ा था) = बासी; अगली बार ऐप खुलने पर नया
     if (System.currentTimeMillis() - openerAt > 90_000) { openerText = null; return }

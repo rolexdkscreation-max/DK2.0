@@ -83,6 +83,7 @@ object DKState {
 
     fun user(t: String) {
         lastUser = t
+        if (t.isNotBlank()) ChatGreet.disarm()     // 19 नवंबर 2026: यूज़र पहले बोला = अलग से "नमस्ते" नहीं
         if (t.isNotBlank()) lastUserAt = System.currentTimeMillis()
         if (t.isNotBlank() && !t.endsWith("…")) synchronized(recentUser) {
             if (recentUser.peekLast()?.first != t) recentUser.addLast(t to lastUserAt)
@@ -105,6 +106,7 @@ object DKState {
         private set
     fun userNow(t: String) {
         if (t.isBlank()) return
+        ChatGreet.disarm()     // 19 नवंबर 2026: यूज़र पहले ही बोला / लिखा = Live जुड़ने पर अलग से "नमस्ते" नहीं
         hintText = ""
         lastUser = t
         sentAt = System.currentTimeMillis()

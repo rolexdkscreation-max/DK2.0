@@ -22,7 +22,25 @@ object LiveCarry {
     fun note(turns: List<Turn>, now: Long): String {
         val recent = turns.filter { it.text.isNotBlank() && now - it.time in 0..WINDOW_MS && (it.role == "u" || it.role == "d") }
             .takeLast(MAX_TURNS)
-        if (recent.isEmpty()) return ""
+        val lines = lines(recent)
+        if (lines.isEmpty()) return ""
+        return "\n\nRECENT CONVERSATION (the voice connection was renewed - this is the SAME conversation, continue it naturally; " +
+            "do NOT greet again, do NOT repeat old answers, do NOT redo old tasks unless the user asks again):\n" + lines.joinToString("\n")
+    }
+
+    /**
+     * 19 नवंबर 2026 (मालिक: "पिछला सेशन खोलकर कनेक्ट करेगा तो उसके हिसाब से बात करेगा"): सूची से खोली पुरानी चैट -
+     * उसकी आख़िरी बातें (समय कितना भी पुराना हो). कुछ न हो तो "".
+     */
+    fun reopened(turns: List<Turn>): String {
+        val lines = lines(turns.filter { it.text.isNotBlank() && (it.role == "u" || it.role == "d") }.takeLast(MAX_TURNS))
+        if (lines.isEmpty()) return ""
+        return "\n\nEARLIER CONVERSATION IN THIS CHAT (the user re-opened this saved chat; continue from it naturally when relevant; " +
+            "do NOT repeat old answers, do NOT redo old tasks unless the user asks again):\n" + lines.joinToString("\n")
+    }
+
+    private fun lines(recent: List<Turn>): List<String> {
+        if (recent.isEmpty()) return emptyList()
         val lines = ArrayDeque<String>()
         var total = 0
         for (t in recent.asReversed()) {
@@ -31,8 +49,6 @@ object LiveCarry {
             if (total + line.length > MAX_CHARS) break
             lines.addFirst(line); total += line.length + 1
         }
-        if (lines.isEmpty()) return ""
-        return "\n\nRECENT CONVERSATION (the voice connection was renewed - this is the SAME conversation, continue it naturally; " +
-            "do NOT greet again, do NOT repeat old answers, do NOT redo old tasks unless the user asks again):\n" + lines.joinToString("\n")
+        return lines.toList()
     }
 }

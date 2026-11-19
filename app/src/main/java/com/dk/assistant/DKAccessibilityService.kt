@@ -419,7 +419,8 @@ class DKAccessibilityService : AccessibilityService() {
         FriendTalk.markGreeted(this)
         scope.launch {
             try {
-                val note = FriendTalk.openerNote(this@DKAccessibilityService)
+                // 19 नवंबर 2026 (मालिक): नई चैट = सिर्फ़ "नमस्ते <संबोधन>"; पुरानी चैट = उसी की एक-दो काम की बात (लंबा opener नहीं)
+                val note = com.dk.assistant.dkai.ChatFresh.note(this@DKAccessibilityService) ?: com.dk.assistant.dkai.ChatFresh.greetFor(this@DKAccessibilityService)
                 if (!DKState.live) startLive()
                 else if (wakeLive) { wakeLive = false; gemLive.idleExitMs = 0 }
                 val sent = gemLive.greetNow(note)

@@ -568,6 +568,8 @@ class GeminiLive(internal val svc: DKAccessibilityService, internal val agent: A
     @Volatile internal var connLiveVer = -1
     /** 15 नवंबर 2026 (मालिक: "स्वभाव बदलते ही उसी टाइम बदलना चाहिए"): इस connection का स्वभाव/संबोधन (DkPersona.liveKey) */
     @Volatile internal var connPersona = ""
+    /** 19 नवंबर 2026: यह connection किस चैट (नंबर) के लिए बना - चैट बदली = नया सत्र ([ChatGreet.switchDue]) */
+    @Volatile internal var connChat = 0
     @Volatile internal var splitEngine: com.dk.assistant.voice.engine.VoiceEngine? = null
     /** replyText का कितना हिस्सा pipeline को भेजा जा चुका (DoneGate रोके तो आगे नहीं) */
     @Volatile internal var splitFedTo = 0
@@ -657,6 +659,7 @@ class GeminiLive(internal val svc: DKAccessibilityService, internal val agent: A
         connEngVer = engines.version
         connLiveVer = engines.liveVersion
         connPersona = DkPersona.liveKey(svc)
+        connChat = try { com.dk.assistant.dkai.Dkai.chatNo(svc) } catch (_: Exception) { 0 }
         val chosen = engines.active(svc)
         try { liveVoiceName = if (JarvisMode.on(svc)) JarvisMode.voice(svc) else com.dk.assistant.voice.engine.VoiceEngines.byId(com.dk.assistant.voice.engine.VoiceEngines.LIVE_NATIVE)?.voice(svc).orEmpty() } catch (_: Throwable) {}
         if (chosen != null && chosen.split && System.currentTimeMillis() < splitOffUntil) {
@@ -1345,6 +1348,12 @@ class GeminiLive(internal val svc: DKAccessibilityService, internal val agent: A
                         if (LivePersonaSwitch.due(connPersona, DkPersona.liveKey(svc), turnActive, isPlaying(), toolJobs.isEmpty())) {
                             connPersona = DkPersona.liveKey(svc); handle = null
                             log("DK का स्वभाव बदला (${DkPersona.get(svc).title}) - नया connection, अब नए अंदाज़ में"); goAway = true; goAwayDrop = true
+                        }
+                        // 19 नवंबर 2026 (मालिक): नई चैट / पुरानी चैट खोली = DK चुप होते ही नया सत्र (नई में पुरानी बात नहीं, पुरानी में उसी की बातें)
+                        val nowChat = try { com.dk.assistant.dkai.Dkai.chatNo(svc) } catch (_: Exception) { connChat }
+                        if (ChatGreet.switchDue(connChat, nowChat, turnActive, isPlaying(), toolJobs.isEmpty())) {
+                            connChat = nowChat; handle = null
+                            log("चैट बदली (चैट $nowChat) - नया connection, उसी चैट की बातचीत"); goAway = true; goAwayDrop = true
                         }
                         // v3.7: बँटवारे वाला इंजन चुप रहा = DK चुप होते ही नया connection, Live की अपनी आवाज़ में (जो छूटा वह दोबारा बोलेगा)
                         if (connSplit && splitSilentAt > 0 && !turnActive && !isPlaying() && toolJobs.isEmpty()) {
