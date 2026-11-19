@@ -78,7 +78,8 @@ internal fun GeminiLive.carryNote(resume: Boolean): String {
         val turns = DKState.messages.map { LiveCarry.Turn(it.role, it.text, it.time) }
         val now = System.currentTimeMillis()
         carriedFrom = LiveMemoryBudget.carriedFrom(turns, now)   // 18 नवंबर 2026: याद वाले संदेश में ये बातें दोबारा नहीं
-        LiveCarry.note(turns, now)
+        // 19 नवंबर 2026 (मालिक): सूची से खोली पुरानी चैट = उसकी बातें (कितनी भी पुरानी), ताकि उसी के हिसाब से बात हो
+        LiveCarry.note(turns, now).ifEmpty { if (ChatGreet.reopenedChat != 0 && ChatGreet.reopenedChat == com.dk.assistant.dkai.Dkai.chatNo(svc)) LiveCarry.reopened(turns) else "" }
             .also { if (it.isNotEmpty()) log("Live: नया सत्र (handle नहीं) - पिछली बातचीत prompt में जोड़ी (${it.length} अक्षर)") }
     } catch (_: Exception) { "" }
 }

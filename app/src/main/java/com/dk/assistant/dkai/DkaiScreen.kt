@@ -665,6 +665,7 @@ class DkaiScreen(val activity: ComponentActivity, val host: DkaiHost) {
         localJob?.cancel()
         DkaiChats.save(DkaiChats.dir(c), Dkai.chatNo(c), DKState.messages.toList())
         DKState.clearChat(); Dkai.nextChat(c)
+        ChatFresh.changed(c, Dkai.chatNo(c), reopened = false)    // 19 नवंबर 2026: नई चैट = नई Live बातचीत, जुड़ते ही सिर्फ़ नमस्ते
         chatLabel.text = DkaiCore.chatLabel(Dkai.chatNo(c)); shownMsgs = -1; render()
         input.setText(""); input.requestFocus(); hero.spin()
     }
@@ -679,6 +680,7 @@ class DkaiScreen(val activity: ComponentActivity, val host: DkaiHost) {
         DkaiChats.save(dir, cur, DKState.messages.toList())
         DKState.replaceChat(DkaiChats.load(dir, n))
         Dkai.setChat(c, n)
+        ChatFresh.changed(c, n, reopened = true)                   // 19 नवंबर 2026: पुरानी चैट = Live उसी के हिसाब से बात करे
         chatLabel.text = DkaiCore.chatLabel(n); shownMsgs = -1; render()
         input.setText("")
         homeScroll.post { homeScroll.scrollTo(0, homeCol.height) }

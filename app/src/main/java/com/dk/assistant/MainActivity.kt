@@ -44,6 +44,8 @@ class MainActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
         Glass.install(this)
+        // 19 नवंबर 2026 (मालिक): ऐप background से हटाकर फिर खोला = नई चैट (पुरानी "सभी चैट" सूची में सेव) - DKAI होम बनने से पहले
+        com.dk.assistant.dkai.ChatFresh.onLaunch(this, savedInstanceState != null, intent)
         dkaiAttach()                                            // नवंबर 2026: DKAI होम (पुराना होम नीचे वैसा ही - मेन्यू से क्लासिक)
         if (savedInstanceState == null) DKSplash.show(this)     // ऐप खुलते ही DK logo (overlay, ~1.2s)
         if (savedInstanceState == null) com.dk.assistant.onboard.OnboardingActivity.maybeShow(this)   // v3.58: सिर्फ़ नए install पर परिचय
