@@ -116,7 +116,8 @@ class SettingsActivity : AppCompatActivity() {
             "brain_chat" -> { title.text = "AI दिमाग • DK चैट"; if (planKeys()) secBrain() else planLockCard("अलग key (DK चैट)") }
             "brain_coder" -> { title.text = "AI दिमाग • कोडिंग एजेंट"; if (planKeys()) secBrainScope(ApiScopes.CODER) else planLockCard("कोडिंग एजेंट") }
             "brain_pc" -> { title.text = "AI दिमाग • DK कंप्यूटर"; if (planKeys()) secBrainScope(ApiScopes.PC) else planLockCard("DK कंप्यूटर") }
-            "voice" -> { title.text = "आवाज़"; secVoice(); secTalk(); voiceGuardianCard() }
+            "voice" -> { title.text = "आवाज़"; secVoice(); secTalk(); st3Entry(); voiceGuardianCard() }
+            "st3" -> { title.text = "आवाज़ें (Supertonic 3)"; secSt3() }
             "orb" -> { title.text = "ओर्ब और चेहरा"; secOrb(); secIsland() }
             "ui" -> { title.text = "दिखावट"; secUi() }
             "access" -> { title.text = "Accessibility"; secAccess(); secPayGuard(); secDriving(); secEvents() }
