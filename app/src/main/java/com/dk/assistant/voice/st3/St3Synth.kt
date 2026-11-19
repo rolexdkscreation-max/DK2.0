@@ -42,8 +42,8 @@ class St3Synth private constructor(
 
     data class Files(val dp: File, val enc: File, val vec: File, val voc: File, val cfg: File, val indexer: File)
 
-    /** टुकड़े का नतीजा: आवाज़ (-1..1) और मॉडल का बताया समय (सेकंड) */
-    class Out(val wav: FloatArray, val seconds: Float)
+    /** टुकड़े का नतीजा: आवाज़ (-1..1) और मॉडल का बताया समय (सेकंड). [stageMs] = लंबाई, समझ, सारे कदम, लहर (ms) - कौन सा हिस्सा धीमा */
+    class Out(val wav: FloatArray, val seconds: Float, val stageMs: LongArray = LongArray(4))
 
     private val rng = Random()
 
@@ -82,15 +82,20 @@ class St3Synth private constructor(
         val tMask = OnnxTensor.createTensor(env, FloatBuffer.wrap(FloatArray(len) { 1f }), longArrayOf(1, 1, len.toLong()))
         val opened = ArrayList<AutoCloseable>()
         opened.add(tIds); opened.add(tMask)
+        val stage = LongArray(4)
+        var t0 = System.nanoTime()
+        fun lap(i: Int) { val t = System.nanoTime(); stage[i] = (t - t0) / 1_000_000; t0 = t }
         try {
             if (stop()) return null
             val dur = dp.run(mapOf("text_ids" to tIds, "style_dp" to style.dp, "text_mask" to tMask)).use { r ->
                 (r.get(0) as OnnxTensor).floatBuffer.get(0)
             } / speed
+            lap(0)
             if (stop()) return null
             val encR = enc.run(mapOf("text_ids" to tIds, "style_ttl" to style.ttl, "text_mask" to tMask))
             opened.add(encR)
             val textEmb = encR.get(0) as OnnxTensor
+            lap(1)
 
             // शोर (noise) से शुरू
             val wavLen = (dur * sampleRate).toLong()
@@ -118,6 +123,7 @@ class St3Synth private constructor(
                     }
                 }
             }
+            lap(2)
             if (stop()) return null
             val wav = OnnxTensor.createTensor(env, FloatBuffer.wrap(xt), latShape).use { tX ->
                 voc.run(mapOf("latent" to tX)).use { r ->
@@ -126,8 +132,9 @@ class St3Synth private constructor(
                 }
             }
             // मॉडल के बताए समय तक ही (पीछे की खाली जगह काटो) - आधिकारिक call() जैसा
+            lap(3)
             val keep = (sampleRate * dur).toInt().coerceIn(0, wav.size)
-            return Out(if (keep == wav.size) wav else wav.copyOf(keep), dur)
+            return Out(if (keep == wav.size) wav else wav.copyOf(keep), dur, stage)
         } finally {
             for (x in opened.asReversed()) try { x.close() } catch (ignored: Exception) {}
         }
@@ -144,15 +151,22 @@ class St3Synth private constructor(
 
     companion object {
         /** मॉडल खोलो (भारी - पीछे के धागे पर बुलाओ). [threads] = कितने CPU core */
-        fun open(f: Files, threads: Int): St3Synth {
+        fun open(f: Files, threads: Int, xnn: Boolean = false): St3Synth {
             val env = OrtEnvironment.getEnvironment()
             val cfg = JSONObject(f.cfg.readText())
             val ae = cfg.getJSONObject("ae"); val ttl = cfg.getJSONObject("ttl")
             val idx = parseIndexer(f.indexer.readText())
+            // 19 नवंबर 2026 (फ़ोन का नाप: 9 अक्षर भी 2.3 s, कंप्यूटर पर 0.35 s): [xnn] = ARM के लिए तेज़ गणित (XNNPACK),
+            // थ्रेड वही गिनती; ORT के अपने धागे 1 (दो thread-pool आपस में न लड़ें) और इंतज़ार में CPU न घेरें (spinning
+            // बंद - उसी समय Live / माइक / VAD भी चल रहे होते हैं). सादा तरीका ([xnn] = false) बिल्कुल पहले जैसा.
             fun opts() = OrtSession.SessionOptions().apply {
                 setOptimizationLevel(OrtSession.SessionOptions.OptLevel.ALL_OPT)
-                setIntraOpNumThreads(threads.coerceIn(1, 8))
                 setInterOpNumThreads(1)
+                if (xnn) {
+                    setIntraOpNumThreads(1)
+                    addConfigEntry("session.intra_op.allow_spinning", "0")
+                    addXnnpack(mapOf("intra_op_num_threads" to threads.coerceIn(1, 8).toString()))
+                } else setIntraOpNumThreads(threads.coerceIn(1, 8))
             }
             val sessions = ArrayList<OrtSession>()
             try {

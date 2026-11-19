@@ -24,11 +24,17 @@ object St3Store {
      */
     fun threads(c: Context): Int {
         val cores = Runtime.getRuntime().availableProcessors()
-        return if (p(c).getInt("threads_cores", 0) == cores) p(c).getInt("threads", 0) else 0
+        val ok = p(c).getInt("threads_cores", 0) == cores && p(c).getInt("bench_v", 1) == BENCH_V
+        return if (ok) p(c).getInt("threads", 0) else 0
     }
-    fun setThreads(c: Context, n: Int) {
-        p(c).edit().putInt("threads", n).putInt("threads_cores", Runtime.getRuntime().availableProcessors()).apply()
+    /** नापने में XNNPACK (ARM का तेज़ गणित) जीता */
+    fun xnn(c: Context): Boolean = threads(c) > 0 && p(c).getBoolean("xnn", false)
+    fun setThreads(c: Context, n: Int, xnn: Boolean = false) {
+        p(c).edit().putInt("threads", n).putBoolean("xnn", xnn).putInt("bench_v", BENCH_V)
+            .putInt("threads_cores", Runtime.getRuntime().availableProcessors()).apply()
     }
+    /** 19 नवंबर 2026: नाप का तरीका बदला (XNNPACK + धागों का इंतज़ार बंद) - पुराना नाप फिर से */
+    private const val BENCH_V = 2
 
     /** मुख्य मॉडल (चारों + दो json) फ़ोन में पूरे */
     fun coreReady(c: Context): Boolean = St3Config.CORE.all { ModelManager.ready(c, it) }

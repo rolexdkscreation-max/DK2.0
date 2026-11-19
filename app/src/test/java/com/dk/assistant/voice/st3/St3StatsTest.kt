@@ -17,6 +17,15 @@ class St3StatsTest {
         assertTrue(St3Stats.line(ok).contains("बनी 600 ms") && St3Stats.line(ok).contains("आवाज़ 2400 ms"))
     }
 
+    @Test fun lineShowsWhichPartIsSlow_andXnn() {
+        val r = St3Stats.Row(9, 2_351, 1_367, 5, 5, xnn = true, stepsMs = 1_900, wavMs = 300)
+        val l = St3Stats.line(r)
+        assertTrue(l, l.contains("5 थ्रेड XNN") && l.contains("[कदम 1900 ms, लहर 300 ms]") && l.contains("धीमा"))
+        assertFalse(St3Stats.line(St3Stats.Row(9, 1, 2, 5, 5)).contains("XNN"))
+        // कदम पहले से 5 = "कदम कम करें" वाली सलाह नहीं
+        assertTrue(St3Stats.summary(listOf(r)).contains("थ्रेड फिर से जाँचें"))
+    }
+
     @Test fun summaryTellsWhatToDo() {
         assertTrue(St3Stats.summary(emptyList()).contains("अभी कोई नाप नहीं"))
         assertTrue(St3Stats.summary(listOf(St3Stats.Row(30, 600, 2_400, 5, 4))).contains("✓"))

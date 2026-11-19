@@ -32,11 +32,23 @@ object St3Engine {
     /** अभी खुले मॉडल के थ्रेड */
     @Volatile var openThreads = 0
         private set
+    /** अभी खुला मॉडल XNNPACK पर */
+    @Volatile var openXnn = false
+        private set
     /** इस बार खुलने के बाद एक छोटा वाक्य बन चुका (वार्म-अप) */
     @Volatile private var warmedUp = false
     /** थ्रेड जाँच चल रही है (Settings में दिखे) */
     @Volatile var benching = false
         private set
+
+    /** XNNPACK माँगा पर इस फ़ोन पर न खुले = सादा तरीका (आवाज़ बंद न हो) */
+    private fun openBest(c: Context, n: Int, xnn: Boolean): St3Synth {
+        if (xnn) {
+            try { return St3Synth.open(St3Store.files(c), n, xnn = true).also { openXnn = true } } catch (e: Throwable) { Quiet.note(e) }
+        }
+        openXnn = false
+        return St3Synth.open(St3Store.files(c), n)
+    }
 
     /** lock के अंदर: मॉडल + आवाज़ तैयार. null = ठीक, वरना हिंदी कारण */
     private fun ensure(c: Context, wantVoice: String?): String? {
@@ -44,7 +56,7 @@ object St3Engine {
         val vid = wantVoice?.takeIf { St3Store.voiceReady(c, it) } ?: St3Store.usableVoice(c)
             ?: return "कोई आवाज़ (आवाज़ 1-5) अभी डाउनलोड नहीं हुई"
         return try {
-            val s = synth ?: threads(c).let { n -> St3Synth.open(St3Store.files(c), n).also { synth = it; openThreads = n; warmedUp = false } }
+            val s = synth ?: threads(c).let { n -> openBest(c, n, St3Store.xnn(c)).also { synth = it; openThreads = n; warmedUp = false } }
             if (style?.id != vid) {
                 style?.close(); style = null
                 val f = com.dk.assistant.plus.models.ModelManager.file(c, St3Config.voice(vid).asset)
@@ -78,7 +90,8 @@ object St3Engine {
                 if (gen.get() != my) return
                 warmedUp = true
                 // हर वाक्य: बनने का समय और आवाज़ की लंबाई (मालिक का नियम - धीमा हो तो दिखे)
-                val row = St3Stats.Row(piece.length, System.currentTimeMillis() - t0, out.wav.size * 1000L / s.sampleRate, steps, openThreads)
+                val row = St3Stats.Row(piece.length, System.currentTimeMillis() - t0, out.wav.size * 1000L / s.sampleRate, steps, openThreads,
+                    openXnn, out.stageMs[2], out.stageMs[3])
                 St3Stats.add(row)
                 com.dk.assistant.DKLog.d(St3Stats.line(row))
                 onPiece(out.wav)
@@ -103,7 +116,7 @@ object St3Engine {
                         val t0 = System.currentTimeMillis()
                         synth?.let { s -> style?.let { st -> s.synth(WARM_LINE, st, 2, 1.05f) } }
                         warmedUp = true
-                        com.dk.assistant.DKLog.d("ऑफ़लाइन आवाज़: मॉडल गरम (${openThreads} थ्रेड, ${System.currentTimeMillis() - t0} ms)")
+                        com.dk.assistant.DKLog.d("ऑफ़लाइन आवाज़: मॉडल गरम (${openThreads} थ्रेड${if (openXnn) " XNN" else ""}, ${System.currentTimeMillis() - t0} ms)")
                     }
                 }
             } catch (e: Throwable) { Quiet.note(e) } finally { warming = false }
@@ -120,26 +133,34 @@ object St3Engine {
         benching = true
         try {
             val times = LinkedHashMap<Int, Long>()
+            val xTimes = LinkedHashMap<Int, Long>()
             val vid = St3Store.usableVoice(c) ?: return
-            for (n in St3Stats.threadChoices(Runtime.getRuntime().availableProcessors())) lock.withLock {
+            val combos = St3Stats.threadChoices(Runtime.getRuntime().availableProcessors()).flatMap { listOf(it to false, it to true) }
+            for ((n, xnn) in combos) lock.withLock {
                 releaseNow()
-                val s = St3Synth.open(St3Store.files(c), n)
+                // XNNPACK इस फ़ोन पर न खुले = बस वह जोड़ी छोड़ो
+                val s = try { St3Synth.open(St3Store.files(c), n, xnn) } catch (e: Throwable) { Quiet.note(e); null } ?: return@withLock
                 try {
                     val st = s.loadStyle(vid, com.dk.assistant.plus.models.ModelManager.file(c, St3Config.voice(vid).asset).readText())
                     try {
                         s.synth(WARM_LINE, st, 2, 1.05f)                          // पहला चलना हमेशा धीमा - गिनती में नहीं
                         var best = Long.MAX_VALUE
-                        repeat(2) {
+                        repeat(1) {                                                // 6 जोड़ियाँ - धीमे फ़ोन पर भी ~1 मिनट
                             val t0 = System.currentTimeMillis(); s.synth(BENCH_LINE, st, 5, 1.05f)
                             best = minOf(best, System.currentTimeMillis() - t0)
                         }
-                        times[n] = best
+                        if (xnn) xTimes[n] = best else times[n] = best
                     } finally { st.close() }
                 } finally { s.close() }
             }
-            val pick = St3Stats.fastest(times) ?: return
-            St3Store.setThreads(c, pick)
-            com.dk.assistant.DKLog.d("ऑफ़लाइन आवाज़: थ्रेड जाँच ${times.entries.joinToString { "${it.key} = ${it.value} ms" }} -> $pick चुना")
+            val plain = St3Stats.fastest(times)
+            val fast = St3Stats.fastest(xTimes)
+            // XNNPACK तभी जब सच में तेज़ (5% से ज़्यादा)
+            val useX = fast != null && (plain == null || xTimes.getValue(fast) < times.getValue(plain) * 0.95)
+            val pick = (if (useX) fast else plain) ?: return
+            St3Store.setThreads(c, pick, useX)
+            com.dk.assistant.DKLog.d("ऑफ़लाइन आवाज़: थ्रेड जाँच ${times.entries.joinToString { "${it.key} = ${it.value} ms" }}" +
+                " • XNN ${xTimes.entries.joinToString { "${it.key} = ${it.value} ms" }.ifEmpty { "नहीं खुला" }} -> $pick${if (useX) " XNN" else ""} चुना")
         } catch (e: Throwable) {
             Quiet.note(e)
         } finally { benching = false }
