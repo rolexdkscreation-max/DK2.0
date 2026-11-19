@@ -71,7 +71,10 @@ object St3Engine {
                 }
                 launch(Dispatchers.IO) {
                     var total = 0L
-                    for (b in q) { if (!p.write(b)) break; total += b.size }
+                    for (b in q) {
+                        if (!p.write(b)) break
+                        total += b.size
+                    }
                     p.drain(total)
                 }
             }
@@ -83,8 +86,8 @@ object St3Engine {
     fun stop() { stopFlag = true; player?.stop() }
 
     private fun releaseNow() {
-        try { style?.close() } catch (_: Exception) {}; style = null
-        try { synth?.close() } catch (_: Exception) {}; synth = null
+        try { style?.close() } catch (ignored: Exception) {}; style = null
+        try { synth?.close() } catch (ignored: Exception) {}; synth = null
     }
 
     /** RAM खाली करो (मॉडल हटाते समय) */

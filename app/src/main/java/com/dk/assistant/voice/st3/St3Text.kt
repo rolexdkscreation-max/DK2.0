@@ -75,7 +75,10 @@ object St3Text {
             if (para.isEmpty()) continue
             if (para.length <= maxLen) { out.add(para); continue }
             val cur = StringBuilder()
-            fun flush() { if (cur.isNotBlank()) out.add(cur.toString().trim()); cur.setLength(0) }
+            fun flush() {
+                if (cur.isNotBlank()) out.add(cur.toString().trim())
+                cur.setLength(0)
+            }
             fun addPiece(p: String, sep: String) {
                 if (cur.isNotEmpty() && cur.length + sep.length + p.length > maxLen) flush()
                 if (cur.isNotEmpty()) cur.append(sep)

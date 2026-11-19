@@ -37,7 +37,7 @@ class St3Synth private constructor(
 
     /** एक आवाज़ (F1...) के style अंक */
     class Style internal constructor(val id: String, internal val ttl: OnnxTensor, internal val dp: OnnxTensor) : AutoCloseable {
-        override fun close() { try { ttl.close() } catch (_: Exception) {}; try { dp.close() } catch (_: Exception) {} }
+        override fun close() { try { ttl.close() } catch (ignored: Exception) {}; try { dp.close() } catch (ignored: Exception) {} }
     }
 
     data class Files(val dp: File, val enc: File, val vec: File, val voc: File, val cfg: File, val indexer: File)
@@ -57,7 +57,10 @@ class St3Synth private constructor(
             fun walk(x: Any?) {
                 when (x) {
                     is JSONArray -> for (k in 0 until x.length()) walk(x.get(k))
-                    is Number -> { if (i < n) flat[i] = x.toFloat(); i++ }
+                    is Number -> {
+                        if (i < n) flat[i] = x.toFloat()
+                        i++
+                    }
                 }
             }
             walk(s.get("data"))
@@ -126,7 +129,7 @@ class St3Synth private constructor(
             val keep = (sampleRate * dur).toInt().coerceIn(0, wav.size)
             return Out(if (keep == wav.size) wav else wav.copyOf(keep), dur)
         } finally {
-            for (x in opened.asReversed()) try { x.close() } catch (_: Exception) {}
+            for (x in opened.asReversed()) try { x.close() } catch (ignored: Exception) {}
         }
     }
 
@@ -136,7 +139,7 @@ class St3Synth private constructor(
     }
 
     override fun close() {
-        for (s in listOf(dp, enc, vec, voc)) try { s.close() } catch (_: Exception) {}
+        for (s in listOf(dp, enc, vec, voc)) try { s.close() } catch (ignored: Exception) {}
     }
 
     companion object {
@@ -155,7 +158,7 @@ class St3Synth private constructor(
             try {
                 for (m in listOf(f.dp, f.enc, f.vec, f.voc)) sessions.add(env.createSession(m.path, opts()))
             } catch (e: Throwable) {
-                sessions.forEach { try { it.close() } catch (_: Exception) {} }
+                sessions.forEach { try { it.close() } catch (ignored: Exception) {} }
                 throw e
             }
             return St3Synth(env, sessions[0], sessions[1], sessions[2], sessions[3], idx,

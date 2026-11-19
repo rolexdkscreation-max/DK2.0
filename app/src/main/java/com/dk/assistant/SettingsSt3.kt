@@ -40,7 +40,7 @@ private fun mbs(b: Long): String = if (b >= 1_048_576) String.format(java.util.L
     else String.format(java.util.Locale.US, "%.0f KB", b / 1024.0)
 
 private fun SettingsActivity.metered(): Boolean = try {
-    (getSystemService(CONNECTIVITY_SERVICE) as ConnectivityManager).isActiveNetworkMetered
+    (getSystemService(android.content.Context.CONNECTIVITY_SERVICE) as ConnectivityManager).isActiveNetworkMetered
 } catch (_: Exception) { false }
 
 /** बचे bytes (आधी फ़ाइल हो तो उसे घटाकर) */

@@ -51,7 +51,7 @@ class St3Player(private val rate: Int = St3Config.SAMPLE_RATE) {
     fun stop() {
         stopped = true
         val t = track; track = null
-        try { t?.pause(); t?.flush(); t?.stop() } catch (_: Exception) {}
-        try { t?.release() } catch (_: Exception) {}
+        try { t?.pause(); t?.flush(); t?.stop() } catch (ignored: Exception) {}
+        try { t?.release() } catch (ignored: Exception) {}
     }
 }
