@@ -114,6 +114,8 @@ object LocalRouter {
         // नवंबर 2026 (मालिक): "नटखट मोड ऑन करो" / "प्रोफ़ेशनल मोड" / "नॉर्मल मोड" = DK का स्वभाव (तुरंत)
         // 15 नवंबर 2026 (हिस्सा 3): रोमांटिक (18+) चालू हो तो - "रुको" / "बंद करो" / 18 से कम का इशारा = तुरंत बंद
         if (RomanticPersona.live) RomanticPersona.detect(raw)?.let { return Split(RomanticPersona.quick(it), null) }
+        // 19 नवंबर 2026: डिफ़ॉल्ट अब प्यार वाला स्वभाव - 18 से कम का इशारा = तुरंत दोस्ताना ("रुको" यहाँ बोलना रोकना ही रहे)
+        if (!RomanticPersona.live && DkPersona.loving && RomanticPersona.detect(raw) == RomanticPersona.Hit.MINOR) return Split(RomanticPersona.quick(RomanticPersona.Hit.MINOR), null)
         DkPersona.parse(raw)?.let { return Split(DkPersona.quick(it), null) }
         // नवंबर 2026: "DK, मैं किसी से बात कर रहा हूँ" = सुनो पर जवाब नहीं; "DK वापस आओ" = फिर से
         SideTalk.parse(raw)?.let { return Split(SideTalk.quick(it), null) }
