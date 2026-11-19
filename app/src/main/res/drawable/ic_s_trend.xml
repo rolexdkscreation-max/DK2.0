@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 19 नवंबर 2026: Settings आइकन - सोशल रिव्यू (Google Material Icons "trending_up", Apache 2.0) -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android" android:width="24dp" android:height="24dp" android:viewportWidth="24" android:viewportHeight="24">
+    <path android:fillColor="#FFFFD27A" android:pathData="m 16,6 l 2.29,2.29 l -4.88,4.88 l -4,-4 L 2,16.59 L 3.41,18 l 6,-6 l 4,4 l 6.3,-6.29 L 22,12 L 22,6 z" />
+</vector>

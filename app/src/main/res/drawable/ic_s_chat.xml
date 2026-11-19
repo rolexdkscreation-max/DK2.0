@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 19 नवंबर 2026: Settings आइकन - DK चैट (Google Material Icons "chat", Apache 2.0) -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android" android:width="24dp" android:height="24dp" android:viewportWidth="24" android:viewportHeight="24">
+    <path android:fillColor="#FFDCC2FF" android:pathData="M 20,2 L 4,2 c -1.1,0 -1.99,0.9 -1.99,2 L 2,22 l 4,-4 l 14,0 c 1.1,0 2,-0.9 2,-2 L 22,4 c 0,-1.1 -0.9,-2 -2,-2 z M 6,9 l 12,0 l 0,2 L 6,11 L 6,9 z m 8,5 L 6,14 l 0,-2 l 8,0 l 0,2 z m 4,-6 L 6,8 L 6,6 l 12,0 l 0,2 z" />
+</vector>

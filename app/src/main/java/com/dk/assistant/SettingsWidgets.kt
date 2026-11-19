@@ -25,40 +25,56 @@ import kotlinx.coroutines.launch
 // SettingsActivity का हिस्सा: सेटिंग पेज बनाने के छोटे हिस्से (card, label, field, switch, button ...).
 // यह code पहले SettingsActivity.kt में था; सिर्फ़ जगह बदली है, व्यवहार वही (extension functions, वही state SettingsActivity में)।
 
-internal fun SettingsActivity.menuIcon(id: String) = when (id) {
-    "cat_dk" -> R.drawable.ic_s_profile
-    "cat_brain" -> R.drawable.ic_s_brain
-    "cat_auto" -> R.drawable.ic_s_access
+/**
+ * 19 नवंबर 2026 (मालिक: "Settings की हर चीज़ पर उसी के हिसाब से इमेज"): हर section / श्रेणी का अपना आइकन
+ * (पहले फ़ोन लॉक, टच मोड वगैरह पर डिबग वाला कीड़ा, और कई पर दूसरे section का आइकन था).
+ * "brain_live" जैसे अंदर वाले पन्ने: अपना न हो तो पहले हिस्से ("brain") वाला.
+ */
+internal fun SettingsActivity.menuIcon(id: String): Int = settingsIcon(id)
+
+internal fun settingsIcon(id: String): Int = when (id) {
+    "cat_dk" -> R.drawable.ic_s_cat_dk
+    "cat_brain" -> R.drawable.ic_s_cat_brain
+    "cat_auto" -> R.drawable.ic_s_bolt
     "cat_security" -> R.drawable.ic_s_perms
-    "cat_social" -> R.drawable.ic_s_story
-    "cat_data" -> R.drawable.ic_s_connect
+    "cat_social" -> R.drawable.ic_s_groups
+    "cat_data" -> R.drawable.ic_s_storage
     "profile" -> R.drawable.ic_s_profile
     "lang" -> R.drawable.ic_s_lang
     "brain" -> R.drawable.ic_s_brain
+    "brain_live" -> R.drawable.ic_s_mic
+    "brain_chat" -> R.drawable.ic_s_chat
+    "brain_coder" -> R.drawable.ic_s_coder
+    "brain_pc" -> R.drawable.ic_s_computer
     "voice" -> R.drawable.ic_s_voice
     "orb" -> R.drawable.ic_s_orb
     "ui" -> R.drawable.ic_s_ui
     "access" -> R.drawable.ic_s_access
-    "perms" -> R.drawable.ic_s_perms
-    "face" -> R.drawable.ic_s_orb
+    "phonelock" -> R.drawable.ic_s_lock
+    "guard" -> R.drawable.ic_s_touch
+    "face" -> R.drawable.ic_s_face
+    "perms" -> R.drawable.ic_s_shield_ok
     "coder" -> R.drawable.ic_s_coder
     "computer" -> R.drawable.ic_s_computer
     "story" -> R.drawable.ic_s_story
     "connectors" -> R.drawable.ic_s_connect
-    "backup" -> R.drawable.ic_s_update
-    "license" -> R.drawable.ic_s_perms
-    "social" -> R.drawable.ic_s_story
-    "reels" -> R.drawable.ic_s_ui
-    "auto" -> R.drawable.ic_s_brain
-    "templates" -> R.drawable.ic_s_voice
-    "autoreply" -> R.drawable.ic_s_connect
+    "backup" -> R.drawable.ic_s_backup
+    "license" -> R.drawable.ic_s_key
+    "social" -> R.drawable.ic_s_trend
+    "reels" -> R.drawable.ic_s_movie
+    "auto" -> R.drawable.ic_s_robot
+    "templates" -> R.drawable.ic_s_template
+    "autoreply" -> R.drawable.ic_s_reply
     "update" -> R.drawable.ic_s_update
-    "about" -> R.drawable.ic_s_profile
-    else -> R.drawable.ic_s_debug
+    "debug" -> R.drawable.ic_s_debug
+    "about" -> R.drawable.ic_s_about
+    else -> if ('_' in id) settingsIcon(id.substringBefore('_')) else R.drawable.ic_s_debug
 }
 
 /** नवंबर 2026: squircle आइकन का निऑन रंग (हर section अलग, ताकि मेनू में पहचान आसान) */
-internal fun SettingsActivity.menuTint(id: String): Int = when (id) {
+internal fun SettingsActivity.menuTint(id: String): Int = settingsTint(id)
+
+internal fun settingsTint(id: String): Int = when (id) {
     "cat_dk" -> 0xFF22D3EE.toInt()
     "cat_brain" -> 0xFF6366F1.toInt()
     "cat_auto" -> 0xFFA855F7.toInt()
@@ -66,14 +82,15 @@ internal fun SettingsActivity.menuTint(id: String): Int = when (id) {
     "cat_social" -> 0xFFFBBF24.toInt()
     "cat_data" -> 0xFF38BDF8.toInt()
     "profile", "about" -> 0xFF22D3EE.toInt()
-    "voice", "templates" -> 0xFFA855F7.toInt()
+    "voice", "templates", "brain_live" -> 0xFFA855F7.toInt()
     "autoreply" -> 0xFF22C55E.toInt()
-    "brain", "auto", "coder" -> 0xFF6366F1.toInt()
+    "brain", "auto", "coder", "brain_chat", "brain_coder" -> 0xFF6366F1.toInt()
     "ui", "orb", "reels" -> 0xFFEC4899.toInt()
     "access", "perms", "phonelock", "guard", "face", "backup" -> 0xFF34D399.toInt()
-    "computer", "connectors", "lang" -> 0xFF38BDF8.toInt()
-    "update", "story", "social" -> 0xFFFBBF24.toInt()
-    else -> 0xFF94A3B8.toInt()
+    "computer", "connectors", "lang", "brain_pc" -> 0xFF38BDF8.toInt()
+    "update", "story", "social", "license" -> 0xFFFBBF24.toInt()
+    "debug" -> 0xFFF87171.toInt()
+    else -> if ('_' in id && !id.startsWith("cat_")) settingsTint(id.substringBefore('_')) else 0xFF94A3B8.toInt()
 }
 
 internal fun SettingsActivity.radios(box: LinearLayout, items: List<Pair<String, String>>, current: String, base: Int): RadioGroup {
