@@ -126,8 +126,8 @@ internal fun SettingsActivity.secBrainMenu() {
     // "एक key से सब" चालू = नीचे के अलग-अलग key वाले हिस्से दिखते ही नहीं (एक बार में एक ही तरीका दिखे)
     if (!separate) return      // 18 नवंबर 2026: मुफ़्त / बेसिक = अलग-अलग keys वाले हिस्से नहीं
     if (one) return
-    menuRow("brain_live", "DK लाइव", scopeStatus(ApiScopes.LIVE) + "\nआवाज़ से बातचीत (Gemini Live), बोलना, सुनना", "voice")
-    menuRow("brain_chat", "DK चैट", scopeStatus(ApiScopes.CHAT) + "\nलिखकर चैट, जवाब, Google search, गहरी सोच, कहानी", "brain")
+    menuRow("brain_live", "DK लाइव", scopeStatus(ApiScopes.LIVE) + "\nआवाज़ से बातचीत (Gemini Live), बोलना, सुनना", "brain_live")   // 19 नवंबर 2026: माइक आइकन
+    menuRow("brain_chat", "DK चैट", scopeStatus(ApiScopes.CHAT) + "\nलिखकर चैट, जवाब, Google search, गहरी सोच, कहानी", "brain_chat")   // चैट आइकन
     menuRow("brain_coder", "कोडिंग एजेंट", scopeStatus(ApiScopes.CODER) + "\nकोडिंग टीम: बिल्डर, रिव्यूअर, कोऑर्डिनेटर • वेबसाइट भी इसी की API से", "coder")
     menuRow("brain_pc", "DK कंप्यूटर", scopeStatus(ApiScopes.PC) + "\nDK कंप्यूटर के काम और उसकी web search", "computer")
 }

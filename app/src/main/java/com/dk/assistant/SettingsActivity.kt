@@ -476,7 +476,7 @@ class SettingsActivity : AppCompatActivity() {
                 }
                 hits.forEach { e ->
                     val icon = when (e.section) { SettingsSearch.ACT_AUTO -> "auto"; SettingsSearch.ACT_TEMPLATES -> "templates"
-                        SettingsSearch.ACT_CONNECTORS -> "connectors"; SettingsSearch.ACT_STORY -> "story"; SettingsSearch.ACT_BACKUP -> "backup"; else -> e.section.substringBefore('_') }
+                        SettingsSearch.ACT_CONNECTORS -> "connectors"; SettingsSearch.ACT_STORY -> "story"; SettingsSearch.ACT_BACKUP -> "backup"; else -> e.section }   // 19 नवंबर 2026: अंदर वाले पन्ने का अपना आइकन ([settingsIcon])
                     if (e.card.isBlank()) menuRow(e.section, SettingsSearch.SECTIONS[e.section].orEmpty(), e.words.split(' ').take(5).joinToString(" • "), icon, e)
                     else menuRow(e.section, e.card, SettingsSearch.place(e) + if (e.sub.isNotBlank()) " • " + e.sub.take(70) else "", icon, e)
                 }

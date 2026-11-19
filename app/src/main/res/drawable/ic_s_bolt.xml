@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 19 नवंबर 2026: Settings आइकन - श्रेणी: ऑटोमेशन (Google Material Icons "bolt", Apache 2.0) -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android" android:width="24dp" android:height="24dp" android:viewportWidth="24" android:viewportHeight="24">
+    <path android:fillColor="#FFFFD27A" android:pathData="M 11,21 l -1,0 l 1,-7 L 7.5,14 c -0.58,0 -0.57,-0.32 -0.38,-0.66 c 0.19,-0.34 0.05,-0.08 0.07,-0.12 C 8.48,10.94 10.42,7.54 13,3 l 1,0 l -1,7 l 3.5,0 c 0.49,0 0.56,0.33 0.47,0.51 l -0.07,0.15 C 12.96,17.55 11,21 11,21 z" />
+</vector>

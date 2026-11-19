@@ -90,10 +90,10 @@ class MainActivity : AppCompatActivity() {
                 // v3.88: होम की ऊपर वाली पट्टी के बटन अब यहाँ (फ़ीचर वही, बस जगह बदली)
                 com.dk.assistant.ui.HomeMenu.Item(R.drawable.ic_s_access, Setup.a11yMark(this) + "फ़ोन कंट्रोल",
                     when { Setup.accessibilityOn() -> "चालू है"; Setup.enabledInSettings(this) -> "रुका है — ठीक करने के लिए टैप करें"; else -> "चालू करने के लिए टैप करें" }) { openPhoneControl() },
-                com.dk.assistant.ui.HomeMenu.Item(R.drawable.ic_s_perms, (if (Setup.hasMic(this)) "✓ " else "✗ ") + "माइक",
+                com.dk.assistant.ui.HomeMenu.Item(R.drawable.ic_s_mic, (if (Setup.hasMic(this)) "✓ " else "✗ ") + "माइक",
                     if (Setup.hasMic(this)) "अनुमति मिली हुई है" else "माइक की अनुमति दें") { askPerms() },
                 com.dk.assistant.ui.HomeMenu.Item(R.drawable.ic_s_computer, "DK कंप्यूटर", "कोई भी काम कदम-दर-कदम") { startActivity(Intent(this, ComputerActivity::class.java)) },
-                com.dk.assistant.ui.HomeMenu.Item(R.drawable.ic_s_story, "DK टीचर", "व्हाइटबोर्ड पर कदम-दर-कदम पढ़ाई") { startActivity(Intent(this, TeacherActivity::class.java)) },
+                com.dk.assistant.ui.HomeMenu.Item(R.drawable.ic_s_teacher, "DK टीचर", "व्हाइटबोर्ड पर कदम-दर-कदम पढ़ाई") { startActivity(Intent(this, TeacherActivity::class.java)) },
                 // 15 नवंबर 2026: स्कैन (कैमरे से पढ़ना/पहचानना). 3D कैरेक्टर मालिक के कहने पर पूरा हटाया
                 com.dk.assistant.ui.HomeMenu.Item(R.drawable.ic_camera, "स्कैन", "कैमरे से कॉपी, स्क्रीन या चीज़ पढ़वाएँ") { openVoice(VoiceActivity.WANT_CAMERA) },
                 com.dk.assistant.ui.HomeMenu.Item(R.drawable.ic_globe, "वेबसाइट", "वेबसाइट बनाने वाला Forge") { startActivity(Intent(this, com.dk.assistant.forge.ForgeActivity::class.java)) },
@@ -170,9 +170,9 @@ class MainActivity : AppCompatActivity() {
                     com.dk.assistant.ui.HomeMenu.Item(R.drawable.ic_memory, "मेमोरी", "यादें देखें") { startActivity(Intent(this, MemoryActivity::class.java)) },
                     com.dk.assistant.ui.HomeMenu.Item(R.drawable.ic_s_access, Setup.a11yMark(this) + "फ़ोन कंट्रोल",
                         when { Setup.accessibilityOn() -> "चालू है"; Setup.enabledInSettings(this) -> "रुका है — ठीक करने के लिए टैप करें"; else -> "चालू करने के लिए टैप करें" }) { openPhoneControl() },
-                    com.dk.assistant.ui.HomeMenu.Item(R.drawable.ic_s_perms, (if (Setup.hasMic(this)) "✓ " else "✗ ") + "माइक",
+                    com.dk.assistant.ui.HomeMenu.Item(R.drawable.ic_s_mic, (if (Setup.hasMic(this)) "✓ " else "✗ ") + "माइक",
                         if (Setup.hasMic(this)) "अनुमति मिली हुई है" else "माइक की अनुमति दें") { askPerms() },
-                    com.dk.assistant.ui.HomeMenu.Item(R.drawable.ic_s_story, "DK टीचर", "व्हाइटबोर्ड पर कदम-दर-कदम पढ़ाई") { startActivity(Intent(this, TeacherActivity::class.java)) },
+                    com.dk.assistant.ui.HomeMenu.Item(R.drawable.ic_s_teacher, "DK टीचर", "व्हाइटबोर्ड पर कदम-दर-कदम पढ़ाई") { startActivity(Intent(this, TeacherActivity::class.java)) },
                 // 15 नवंबर 2026: स्कैन (कैमरे से पढ़ना/पहचानना). 3D कैरेक्टर मालिक के कहने पर पूरा हटाया
                 com.dk.assistant.ui.HomeMenu.Item(R.drawable.ic_camera, "स्कैन", "कैमरे से कॉपी, स्क्रीन या चीज़ पढ़वाएँ") { openVoice(VoiceActivity.WANT_CAMERA) },
                     com.dk.assistant.ui.HomeMenu.Item(R.drawable.ic_globe, "वेबसाइट", "वेबसाइट बनाने वाला Forge") { startActivity(Intent(this, com.dk.assistant.forge.ForgeActivity::class.java)) },
