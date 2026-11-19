@@ -18,6 +18,18 @@ object St3Store {
     fun steps(c: Context): Int = St3Config.cleanSteps(p(c).getInt("steps", St3Config.STEPS_DEF))
     fun setSteps(c: Context, n: Int) { p(c).edit().putInt("steps", St3Config.cleanSteps(n)).apply() }
 
+    /**
+     * 19 नवंबर 2026: इस फ़ोन पर सबसे तेज़ थ्रेड-गिनती (4-6 में से नापकर चुनी, [St3Engine.warm]). 0 = अभी नहीं नापा.
+     * core की गिनती साथ में - फ़ोन/सेटिंग बदले तो फिर से नापो.
+     */
+    fun threads(c: Context): Int {
+        val cores = Runtime.getRuntime().availableProcessors()
+        return if (p(c).getInt("threads_cores", 0) == cores) p(c).getInt("threads", 0) else 0
+    }
+    fun setThreads(c: Context, n: Int) {
+        p(c).edit().putInt("threads", n).putInt("threads_cores", Runtime.getRuntime().availableProcessors()).apply()
+    }
+
     /** मुख्य मॉडल (चारों + दो json) फ़ोन में पूरे */
     fun coreReady(c: Context): Boolean = St3Config.CORE.all { ModelManager.ready(c, it) }
     fun voiceReady(c: Context, id: String): Boolean = ModelManager.ready(c, St3Config.voice(id).asset)

@@ -11,6 +11,7 @@ import com.dk.assistant.plus.models.ModelCatalog
 import com.dk.assistant.plus.models.ModelManager
 import com.dk.assistant.voice.st3.St3Config
 import com.dk.assistant.voice.st3.St3Engine
+import com.dk.assistant.voice.st3.St3Stats
 import com.dk.assistant.voice.st3.St3Store
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.collectLatest
@@ -28,8 +29,8 @@ private val st3Jobs = ArrayList<Job>()
 
 /** "आवाज़" वाले हिस्से में छोटा कार्ड - बटन दबाओ तो "आवाज़ें" स्क्रीन (यहाँ पुराने इंजन की सूची नहीं बदलती) */
 internal fun SettingsActivity.st3Entry() {
-    card("आवाज़ें (फ़ोन पर बनने वाली नई आवाज़)", "महिला आवाज़ें 1-5 • डाउनलोड • टेस्ट वाक्य • अभी सिर्फ़ टेस्ट, बातचीत पहले जैसी") { box ->
-        hint(box, "नई आवाज़ इंटरनेट के बिना फ़ोन पर ही बनती है. मॉडल ऐप में नहीं - वहाँ से डाउनलोड करें. अभी इसे सुनकर जाँचें; DK की बातचीत अभी पुरानी आवाज़ में ही चलेगी.")
+    card("आवाज़ें (फ़ोन पर बनने वाली नई आवाज़)", "महिला आवाज़ें 1-5 • डाउनलोड • टेस्ट वाक्य • नाप") { box ->
+        hint(box, "नई आवाज़ इंटरनेट के बिना फ़ोन पर ही बनती है. मॉडल ऐप में नहीं - वहाँ से डाउनलोड करें. बातचीत में इसे चलाने के लिए ऊपर इंजन की सूची में \"DK ऑफ़लाइन आवाज़\" चालू करें.")
         row(box, button("आवाज़ें खोलें") {
             startActivity(android.content.Intent(this, SettingsActivity::class.java).putExtra("section", "st3"))
         })
@@ -184,6 +185,8 @@ internal fun SettingsActivity.secSt3() {
         hint(box, St3Config.TEST_LINE)
         val st = status(box)
         st.text = UiLang.s("मॉडल और एक आवाज़ डाउनलोड होने के बाद दबाएँ")
+        val stats = status(box)
+        var showStats: () -> Unit = {}
         row(box, button("टेस्ट वाक्य सुनाओ") {
             if (!St3Store.coreReady(this)) { st.text = UiLang.s("✗ पहले \"मुख्य आवाज़-मॉडल\" डाउनलोड करें"); return@button }
             if (St3Store.usableVoice(this) == null) { st.text = UiLang.s("✗ पहले कोई एक आवाज़ (जैसे आवाज़ 1) डाउनलोड करें"); return@button }
@@ -192,9 +195,35 @@ internal fun SettingsActivity.secSt3() {
                 val t0 = System.currentTimeMillis()
                 val err = try { withDkMicPaused { St3Engine.say(this@secSt3, St3Config.TEST_LINE) } } catch (e: kotlinx.coroutines.CancellationException) { throw e
                 } catch (e: Throwable) { Quiet.note(e); e.message ?: "अनजानी गलती" }
-                st.text = UiLang.s(if (err == null) "✓ बोल दिया (${(System.currentTimeMillis() - t0) / 100 / 10.0} सेकंड) • आवाज़ ${St3Store.usableVoice(this@secSt3)}"
+                st.text = UiLang.s(if (err == null) "✓ बोल दिया (${(System.currentTimeMillis() - t0) / 100 / 10.0} सेकंड) • आवाज़ ${St3Store.usableVoice(this@secSt3)}" +
+                    " • पहली आवाज़ ${St3Stats.lastTestFirstMs} ms में"
                     else "✗ $err")
+                showStats()
             }
         }, button("रोकें") { St3Engine.stop() })
+
+        // 19 नवंबर 2026 (मालिक: "हर वाक्य का समय नापो, बनना आवाज़ से धीमा हो तो बताओ")
+        label(box, "नाप (हर वाक्य: बनने का समय / आवाज़ की लंबाई)")
+        box.removeView(stats); box.addView(stats)
+        showStats = {
+            val first = St3Stats.lastFirstMs
+            stats.text = UiLang.s(St3Stats.summary(St3Stats.recent()) +
+                (if (first > 0) "\nपिछली बातचीत: जवाब का text आने से पहली आवाज़ $first ms में" else "") +
+                (if (St3Engine.benching) "\nथ्रेड जाँच चल रही है..." else ""))
+        }
+        showStats()
+        row(box, button("नाप ताज़ा करें") { showStats() }, button("थ्रेड फिर से जाँचें") {
+            if (!St3Store.ready(this)) { stats.text = UiLang.s("✗ पहले मॉडल और एक आवाज़ डाउनलोड करें"); return@button }
+            stats.text = UiLang.s("थ्रेड जाँच चल रही है (4-6 थ्रेड, 10-30 सेकंड)...")
+            lifecycleScope.launch {
+                kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                    St3Engine.rebench(this@secSt3)
+                    var waited = 0
+                    while ((St3Engine.benching || St3Store.threads(this@secSt3) == 0) && waited < 120) { kotlinx.coroutines.delay(500); waited++ }
+                }
+                val n = St3Store.threads(this@secSt3)
+                stats.text = UiLang.s(if (n > 0) "✓ इस फ़ोन पर $n थ्रेड सबसे तेज़ - वही चलेंगे" else "✗ थ्रेड जाँच पूरी नहीं हुई - फिर से दबाएँ")
+            }
+        })
     }
 }

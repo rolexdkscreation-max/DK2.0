@@ -26,7 +26,17 @@ object St3Engine {
     private val gen = AtomicInteger(0)
     @Volatile private var warming = false
 
-    private fun threads(): Int = (Runtime.getRuntime().availableProcessors() / 2).coerceIn(2, 4)
+    /** नापी हुई सबसे तेज़ गिनती; अभी नहीं नापी = 4 (या जितने core) */
+    private fun threads(c: Context): Int = St3Store.threads(c).takeIf { it > 0 }
+        ?: minOf(4, Runtime.getRuntime().availableProcessors()).coerceAtLeast(1)
+    /** अभी खुले मॉडल के थ्रेड */
+    @Volatile var openThreads = 0
+        private set
+    /** इस बार खुलने के बाद एक छोटा वाक्य बन चुका (वार्म-अप) */
+    @Volatile private var warmedUp = false
+    /** थ्रेड जाँच चल रही है (Settings में दिखे) */
+    @Volatile var benching = false
+        private set
 
     /** lock के अंदर: मॉडल + आवाज़ तैयार. null = ठीक, वरना हिंदी कारण */
     private fun ensure(c: Context, wantVoice: String?): String? {
@@ -34,7 +44,7 @@ object St3Engine {
         val vid = wantVoice?.takeIf { St3Store.voiceReady(c, it) } ?: St3Store.usableVoice(c)
             ?: return "कोई आवाज़ (आवाज़ 1-5) अभी डाउनलोड नहीं हुई"
         return try {
-            val s = synth ?: St3Synth.open(St3Store.files(c), threads()).also { synth = it }
+            val s = synth ?: threads(c).let { n -> St3Synth.open(St3Store.files(c), n).also { synth = it; openThreads = n; warmedUp = false } }
             if (style?.id != vid) {
                 style?.close(); style = null
                 val f = com.dk.assistant.plus.models.ModelManager.file(c, St3Config.voice(vid).asset)
@@ -61,27 +71,90 @@ object St3Engine {
             val steps = minOf(St3Store.steps(c), maxSteps); val speed = St3Store.speed(c)
             for (piece in St3Text.chunk(text)) {
                 if (gen.get() != my) return
+                val t0 = System.currentTimeMillis()
                 val out = s.synth(piece, st, steps, speed) { gen.get() != my } ?: continue
                 if (gen.get() != my) return
+                warmedUp = true
+                // हर वाक्य: बनने का समय और आवाज़ की लंबाई (मालिक का नियम - धीमा हो तो दिखे)
+                val row = St3Stats.Row(piece.length, System.currentTimeMillis() - t0, out.wav.size * 1000L / s.sampleRate, steps, openThreads)
+                St3Stats.add(row)
+                com.dk.assistant.DKLog.d(St3Stats.line(row))
                 onPiece(out.wav)
             }
         }
     }
 
-    /** मॉडल पहले से खोल लो (पहला जवाब जल्दी). सस्ता: खुला हो / खुल रहा हो तो कुछ नहीं */
+    /**
+     * मॉडल पहले से खोल लो + एक छोटा वाक्य बनाकर गरम करो (पहला जवाब जल्दी). ऐप खुलते ही / बातचीत जुड़ते ही बुलाया जाता है.
+     * इस फ़ोन पर थ्रेड अभी नहीं नापे = पहले 4-6 थ्रेड आज़माकर सबसे तेज़ चुनो (एक ही बार, ~10-20 s, पीछे).
+     * सस्ता: खुला + गरम हो / चल रहा हो तो कुछ नहीं.
+     */
     fun warm(c: Context) {
-        if (synth != null || warming || !St3Store.ready(c)) return
+        if ((synth != null && warmedUp && St3Store.threads(c) > 0) || warming || !St3Store.ready(c)) return
         warming = true
         val app = c.applicationContext
         Thread({
-            try { lock.withLock { ensure(app, St3Store.voice(app)) } } catch (e: Throwable) { Quiet.note(e) } finally { warming = false }
+            try {
+                if (St3Store.threads(app) <= 0) bench(app)
+                lock.withLock {
+                    if (ensure(app, St3Store.voice(app)) == null && !warmedUp) {
+                        val t0 = System.currentTimeMillis()
+                        synth?.let { s -> style?.let { st -> s.synth(WARM_LINE, st, 2, 1.05f) } }
+                        warmedUp = true
+                        com.dk.assistant.DKLog.d("ऑफ़लाइन आवाज़: मॉडल गरम (${openThreads} थ्रेड, ${System.currentTimeMillis() - t0} ms)")
+                    }
+                }
+            } catch (e: Throwable) { Quiet.note(e) } finally { warming = false }
         }, "dk-st3-warm").apply { isDaemon = true; start() }
+    }
+
+    /** वार्म-अप का छोटा वाक्य (सुनाया नहीं जाता) */
+    private const val WARM_LINE = "हाँ।"
+    /** थ्रेड जाँच का वाक्य - आम जवाब जितना */
+    private const val BENCH_LINE = "नमस्ते, मैं आपकी मदद के लिए तैयार हूँ।"
+
+    /** 4-6 थ्रेड आज़माओ, सबसे तेज़ सेव करो. एक बार में एक ही मॉडल RAM में (कमज़ोर फ़ोन पर दो साथ भारी) */
+    private fun bench(c: Context) {
+        benching = true
+        try {
+            val times = LinkedHashMap<Int, Long>()
+            val vid = St3Store.usableVoice(c) ?: return
+            for (n in St3Stats.threadChoices(Runtime.getRuntime().availableProcessors())) lock.withLock {
+                releaseNow()
+                val s = St3Synth.open(St3Store.files(c), n)
+                try {
+                    val st = s.loadStyle(vid, com.dk.assistant.plus.models.ModelManager.file(c, St3Config.voice(vid).asset).readText())
+                    try {
+                        s.synth(WARM_LINE, st, 2, 1.05f)                          // पहला चलना हमेशा धीमा - गिनती में नहीं
+                        var best = Long.MAX_VALUE
+                        repeat(2) {
+                            val t0 = System.currentTimeMillis(); s.synth(BENCH_LINE, st, 5, 1.05f)
+                            best = minOf(best, System.currentTimeMillis() - t0)
+                        }
+                        times[n] = best
+                    } finally { st.close() }
+                } finally { s.close() }
+            }
+            val pick = St3Stats.fastest(times) ?: return
+            St3Store.setThreads(c, pick)
+            com.dk.assistant.DKLog.d("ऑफ़लाइन आवाज़: थ्रेड जाँच ${times.entries.joinToString { "${it.key} = ${it.value} ms" }} -> $pick चुना")
+        } catch (e: Throwable) {
+            Quiet.note(e)
+        } finally { benching = false }
+    }
+
+    /** Settings: "थ्रेड फिर से जाँचें" */
+    fun rebench(c: Context) {
+        St3Store.setThreads(c, 0)
+        lock.withLock { releaseNow() }
+        warm(c)
     }
 
     /** Settings का टेस्ट: [text] सीधे speaker पर. null = पूरा बोला (या रोका गया), वरना हिंदी में गलती */
     suspend fun say(c: Context, text: String): String? {
         stop()
         val my = gen.get()
+        val askedAt = System.currentTimeMillis()
         val p = St3Player().also { player = it }
         val q = Channel<ByteArray>(capacity = 2)
         var failure: String? = null
@@ -91,6 +164,7 @@ object St3Engine {
                     try {
                         var first = true
                         synthBlocking(c, text, St3Store.voice(c)) { wav ->
+                            if (first) St3Stats.testFirstAudio(System.currentTimeMillis() - askedAt)
                             if (!first) kotlinx.coroutines.runBlocking { q.send(St3Synth.silence(300)) }
                             first = false
                             kotlinx.coroutines.runBlocking { q.send(St3Synth.pcm16(wav)) }
@@ -120,6 +194,7 @@ object St3Engine {
         style = null
         try { synth?.close() } catch (ignored: Exception) {}
         synth = null
+        openThreads = 0; warmedUp = false
     }
 
     /** RAM खाली करो (मॉडल हटाते समय) - रुककर, पीछे के धागे पर */

@@ -5,6 +5,7 @@ import android.widget.LinearLayout
 import com.dk.assistant.voice.st3.St3Config
 import com.dk.assistant.voice.st3.St3Engine
 import com.dk.assistant.voice.st3.St3Store
+import com.dk.assistant.voice.st3.St3Stats
 import com.dk.assistant.voice.st3.St3Synth
 import com.dk.assistant.voice.st3.St3Text
 
@@ -42,18 +43,18 @@ object St3VoiceEngine : VoiceEngine {
             var first = true
             val user = St3Store.steps(c)
             val auto = autoSteps(user, perStep)
-            val steps = if (firstFast.getAndSet(false)) minOf(auto, FIRST_STEPS) else auto
-            val t0 = System.currentTimeMillis(); var samples = 0
+            val firstOfAnswer = firstFast.getAndSet(false)
+            val steps = if (firstOfAnswer) minOf(auto, FIRST_STEPS) else auto
+            var samples = 0
             St3Engine.synthBlocking(c, St3Text.onlyTags(text), voice, steps) { wav ->
                 if (!first) out.write(ByteArray(St3Synth.SILENCE_24K_BYTES))
                 first = false
+                if (firstOfAnswer && samples == 0) St3Stats.firstAudio(System.currentTimeMillis() - answerAt)
                 samples += wav.size
                 out.write(St3Synth.pcm16(St3Synth.to24k(wav)))
             }
-            val ms = System.currentTimeMillis() - t0
-            val audioMs = samples * 1000L / 44_100
-            if (audioMs > 300) perStep = learn(perStep, ms.toDouble() / audioMs / steps)
-            com.dk.assistant.DKLog.d("ऑफ़लाइन आवाज़: ${text.length} अक्षर, $steps कदम, बनी $ms ms में, आवाज़ $audioMs ms")
+            // सिर्फ़ बनने का असली समय (कतार में रुकना नहीं) - St3Engine हर वाक्य का नाप रखता है + लॉग लिखता है
+            St3Stats.recent(1).lastOrNull()?.let { if (samples > 0 && it.audioMs > 300 && it.steps > 0) perStep = learn(perStep, it.rtf / it.steps) }
         } catch (e: IllegalStateException) {
             throw java.io.IOException("ऑफ़लाइन आवाज़: ${e.message}", e)
         }
@@ -83,7 +84,9 @@ object St3VoiceEngine : VoiceEngine {
     /** पिछले नाप से थोड़ा-थोड़ा सीखो (एक अटका टुकड़ा सब न बिगाड़े) */
     fun learn(old: Double, now: Double): Double = if (old <= 0.0) now else old * 0.6 + now * 0.4
     private val firstFast = java.util.concurrent.atomic.AtomicBoolean(false)
-    fun newAnswer() { firstFast.set(true) }
+    @Volatile private var answerAt = 0L
+    /** नया जवाब (Live का पहला text आया): पहला टुकड़ा जल्दी + यहाँ से पहली आवाज़ तक का समय नापो */
+    fun newAnswer() { answerAt = System.currentTimeMillis(); firstFast.set(true) }
 
     override fun settings(c: Context, box: LinearLayout, ui: VoiceUi) {
         ui.hint(box, "मॉडल और आवाज़ें डाउनलोड: Settings → आवाज़ → \"आवाज़ें खोलें\". जवाब Gemini Live लिखता है, आवाज़ फ़ोन पर बनती है.")
