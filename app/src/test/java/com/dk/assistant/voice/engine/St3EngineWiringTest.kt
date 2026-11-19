@@ -69,12 +69,27 @@ class St3EngineWiringTest {
     @Test fun slowPhoneGetsFewerSteps_fastPhoneKeepsSetting() {
         assertEquals(8, St3VoiceEngine.autoSteps(8, 0.0))      // अभी नापा नहीं
         assertEquals(8, St3VoiceEngine.autoSteps(8, 0.03))     // तेज़ फ़ोन: 8 कदम = 0.24 (आधे से कम) - Settings वाला
-        assertEquals(6, St3VoiceEngine.autoSteps(8, 0.08))     // 0.5 / 0.08 = 6
+        assertEquals(7, St3VoiceEngine.autoSteps(8, 0.1))      // 0.7 / 0.1 = 7
         assertEquals(5, St3VoiceEngine.autoSteps(8, 0.15))     // धीमा: 5 से नीचे नहीं...
-        assertEquals(4, St3VoiceEngine.autoSteps(8, 0.25))     // ...बहुत धीमा हो तभी 4
+        assertEquals(5, St3VoiceEngine.autoSteps(8, 0.25))     // ...बहुत धीमा हो तब भी 5 (19 नवंबर 2026, मालिक: 4 पर रोबोटिक गूंज)
         assertEquals(3, St3VoiceEngine.autoSteps(3, 0.25))     // खुद कम रखा तो वही
         assertEquals(0.5, St3VoiceEngine.learn(0.0, 0.5), 1e-9)
         assertEquals(0.6 * 0.1 + 0.4 * 0.2, St3VoiceEngine.learn(0.1, 0.2), 1e-9)
+    }
+
+    @Test fun noPauseAfterFirstSentence() {
+        // 19 नवंबर 2026 (मालिक: "पहला वाक्य बोलकर रुकता है"): दूसरा टुकड़ा भी छोटा + जल्दी वाले कदम, और शुरू में एक आगे तैयार
+        assertTrue(TextChunker.ST3.secondMax <= 8)
+        // कदम बारी पर: आगे बहुत आवाज़ तैयार = Settings वाले (साफ़); कम = 5 तक, उससे नीचे नहीं
+        assertEquals(8, St3VoiceEngine.leadSteps(8, leadMs = 6_000, perStepRtf = 0.05, estAudioMs = 2_000.0))
+        assertEquals(6, St3VoiceEngine.leadSteps(8, leadMs = 1_600, perStepRtf = 0.1, estAudioMs = 2_000.0))   // (1360 - 120) / 200 = 6
+        assertEquals(5, St3VoiceEngine.leadSteps(8, leadMs = 300, perStepRtf = 0.1, estAudioMs = 2_000.0))
+        assertEquals(8, St3VoiceEngine.leadSteps(8, leadMs = 0, perStepRtf = 0.0, estAudioMs = 2_000.0))      // अभी नापा नहीं
+        assertTrue(SpeechPipeline.PREROLL_MS in 300L..1_000L)
+        assertEquals(St3VoiceEngine.MIN_AUTO_STEPS, St3VoiceEngine.FIRST_STEPS)
+        val root = listOf(java.io.File("src/main/java"), java.io.File("app/src/main/java")).first { it.exists() }
+        val pipe = java.io.File(root, "com/dk/assistant/voice/engine/SpeechPipeline.kt").readText()
+        assertTrue(pipe.contains("if (firstPending && engine?.id == St3VoiceEngine.ID) preroll(s)"))   // सिर्फ़ फ़ोन वाली आवाज़
     }
 
     @Test fun nextPieceStartsBeforeSentenceEnds_onlyForSt3() {

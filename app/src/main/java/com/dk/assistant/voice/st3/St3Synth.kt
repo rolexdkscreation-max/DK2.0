@@ -182,9 +182,13 @@ class St3Synth private constructor(
         /** बातचीत की कतार 24 kHz पर चलती है - टुकड़ों के बीच 0.2 सेकंड की चुप्पी (24 kHz, 16-bit) */
         const val SILENCE_24K_BYTES = 24_000 / 5 * 2
 
-        /** low-pass के गुणांक (windowed-sinc, 11 kHz पर कटाव @44.1 kHz) - नीचे लाने पर खड़खड़ाहट (aliasing) न आए */
+        /**
+         * low-pass के गुणांक (windowed-sinc @44.1 kHz) - नीचे लाने पर खड़खड़ाहट (aliasing) न आए.
+         * 19 नवंबर 2026 (मालिक: "रोबोटिक गूंज"): 31 गुणांक / 11 kHz पर 12-13 kHz की आवाज़ भी आधी निकल जाती थी और 24 kHz में
+         * उलटकर (10-12 kHz) सरसराहट बनती थी. अब 63 गुणांक, 10.5 kHz - सारा कटाव 12 kHz से नीचे.
+         */
         private val LP: FloatArray by lazy {
-            val taps = 31; val fc = 11_000.0 / 44_100.0; val m = (taps - 1) / 2.0
+            val taps = 63; val fc = 10_500.0 / 44_100.0; val m = (taps - 1) / 2.0
             val h = DoubleArray(taps) { i ->
                 val x = i - m
                 val sinc = if (x == 0.0) 2 * fc else Math.sin(2 * Math.PI * fc * x) / (Math.PI * x)

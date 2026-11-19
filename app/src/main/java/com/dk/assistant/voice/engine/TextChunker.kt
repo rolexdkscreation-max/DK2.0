@@ -211,11 +211,12 @@ class TextChunker(
         )
         /**
          * 19 नवंबर 2026 (मालिक): फ़ोन पर बनने वाली आवाज़ (Supertonic 3). शब्द-दर-शब्द नहीं - पहला टुकड़ा ~25-40 अक्षर
-         * (4-7 शब्द), फिर ~60 अक्षर (अल्पविराम पर ~10 शब्द) तक; । ? ! . पर हमेशा कटे. छोटे टुकड़े इस मॉडल में अटपटे लगते हैं.
+         * (4-7 शब्द), दूसरा भी छोटा (3-8 शब्द - पहला बजते-बजते बन जाए; 19 नवंबर 2026: पहले 11 तक = पहले वाक्य के बाद चुप्पी),
+         * फिर ~60 अक्षर (अल्पविराम पर ~10 शब्द) तक; । ? ! . पर हमेशा कटे. छोटे टुकड़े इस मॉडल में अटपटे लगते हैं.
          */
         val ST3 = Profile(
             firstSoft = 3, firstMax = 6,
-            secondMin = 4, secondSoft = 7, secondMax = 11,
+            secondMin = 3, secondSoft = 5, secondMax = 8,
             nextMin = 5, nextSoft = 9, nextMax = 15,
             stallMs = 150L, stallMin = 2,
             smartCut = true, keepTags = true, refillMs = 1_500L, refillMin = 3,

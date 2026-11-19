@@ -61,14 +61,16 @@ object St3Engine {
      * एक text बोलने लायक आवाज़ बनाओ (रुककर - पीछे के धागे पर बुलाओ). हर टुकड़ा (~300 अक्षर तक) बनते ही [onPiece].
      * गलती = exception (हिंदी में). [stop] हुआ = चुपचाप लौटे.
      */
-    fun synthBlocking(c: Context, text: String, voice: String?, maxSteps: Int = 99, onPiece: (FloatArray) -> Unit) {
+    fun synthBlocking(c: Context, text: String, voice: String?, maxSteps: Int = 99, pick: ((Int) -> Int)? = null, onPiece: (FloatArray) -> Unit) {
         val my = gen.get()
         lock.withLock {
             if (gen.get() != my) return
             ensure(c, voice)?.let { throw IllegalStateException(it) }
             val s = synth ?: throw IllegalStateException("आवाज़ का मॉडल तैयार नहीं")
             val st = style ?: throw IllegalStateException("आवाज़ तैयार नहीं")
-            val steps = minOf(St3Store.steps(c), maxSteps); val speed = St3Store.speed(c)
+            // [pick]: बारी आने पर (lock मिलने के बाद) तय हो - तब पता है आगे कितनी आवाज़ तैयार रखी है
+            val base = minOf(St3Store.steps(c), maxSteps)
+            val steps = pick?.invoke(base)?.coerceIn(St3Config.STEPS_MIN, base) ?: base; val speed = St3Store.speed(c)
             for (piece in St3Text.chunk(text)) {
                 if (gen.get() != my) return
                 val t0 = System.currentTimeMillis()

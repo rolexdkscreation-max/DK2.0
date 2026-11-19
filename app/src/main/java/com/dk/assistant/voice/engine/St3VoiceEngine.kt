@@ -44,9 +44,13 @@ object St3VoiceEngine : VoiceEngine {
             val user = St3Store.steps(c)
             val auto = autoSteps(user, perStep)
             val firstOfAnswer = firstFast.getAndSet(false)
-            val steps = if (firstOfAnswer) minOf(auto, FIRST_STEPS) else auto
+            val ahead = lead
+            val chars = St3Text.onlyTags(text).length
+            // पहला: जल्दी वाले कदम. बाकी: कदम बारी आने पर - आगे जितनी आवाज़ तैयार है उसमें यह बन जाए (समय हो = पूरे कदम, साफ़)
+            val maxSteps = when { firstOfAnswer -> minOf(auto, FIRST_STEPS); ahead != null -> user; else -> auto }
+            val pick: ((Int) -> Int)? = if (firstOfAnswer || ahead == null) null else { cfg -> leadSteps(cfg, ahead(), freshPerStep(), chars * msPerChar()) }
             var samples = 0
-            St3Engine.synthBlocking(c, St3Text.onlyTags(text), voice, steps) { wav ->
+            St3Engine.synthBlocking(c, St3Text.onlyTags(text), voice, maxSteps, pick) { wav ->
                 if (!first) out.write(ByteArray(St3Synth.SILENCE_24K_BYTES))
                 first = false
                 if (firstOfAnswer && samples == 0) St3Stats.firstAudio(System.currentTimeMillis() - answerAt)
@@ -67,19 +71,43 @@ object St3VoiceEngine : VoiceEngine {
      * ~40% जल्दी बनता है, साफ़ी लगभग वही (जाँचा: 5 कदम पर भी Whisper पूरा वाक्य सही पढ़ता है). बाकी टुकड़े Settings वाले कदमों में.
      */
     const val FIRST_STEPS = 5
+    /**
+     * 19 नवंबर 2026 (मालिक: "पहला वाक्य बोलकर 1-2 सेकंड रुकता है, फिर लगातार"): जड़ - दूसरा टुकड़ा पहले से दोगुना बड़ा
+     * और पूरे कदमों में बनता था; पहला (छोटा) बजकर ख़त्म, दूसरा अभी बन रहा = चुप्पी. अब हर टुकड़े के कदम उसकी बारी पर:
+     * आगे जितनी आवाज़ बजने को तैयार है ([lead]), उसके 85% में यह बन जाए - समय कम = 5 कदम, समय ज़्यादा = Settings वाले (साफ़).
+     * pure - JVM test. [perStepRtf] अभी नहीं नापा = Settings वाले.
+     */
+    fun leadSteps(user: Int, leadMs: Long, perStepRtf: Double, estAudioMs: Double): Int {
+        if (perStepRtf <= 0.0 || estAudioMs <= 0.0) return user
+        val fit = ((leadMs * 0.85 - SYNTH_OVERHEAD_MS) / (perStepRtf * estAudioMs)).toInt()
+        return fit.coerceIn(minOf(MIN_AUTO_STEPS, user), user)
+    }
+    /** हर टुकड़े का बँधा खर्च (text -> अंक, आवाज़-मॉडल) - नापा: ~100-150 ms */
+    const val SYNTH_OVERHEAD_MS = 120.0
+    /** [SpeechPipeline] बताती है: अभी कितने ms की आवाज़ बजने को तैयार (बज रही + कतार में बनी) */
+    @Volatile var lead: (() -> Long)? = null
+    /** lock के अंदर: पिछले टुकड़े का नाप अभी-अभी जुड़ा ([perStep] बाद में बदलता है) - दोनों में जो धीमा, वही (सावधानी) */
+    private fun freshPerStep(): Double {
+        val r = St3Stats.recent(1).lastOrNull()?.takeIf { it.audioMs > 300 && it.steps > 0 } ?: return perStep
+        return maxOf(perStep, r.rtf / r.steps)
+    }
+    /** एक अक्षर ≈ कितने ms आवाज़ (पिछले नाप से; अभी नहीं = 75) */
+    private fun msPerChar(): Double = St3Stats.recent(1).lastOrNull()?.takeIf { it.chars > 5 && it.audioMs > 0 }
+        ?.let { it.audioMs.toDouble() / it.chars } ?: 75.0
 
     /**
      * 19 नवंबर 2026 (मालिक: "बीच में रुकना नहीं चाहिए"): फ़ोन धीमा हो तो कदम अपने-आप कम - हर टुकड़ा अपनी आवाज़ के
-     * आधे समय में बन जाए ([TARGET_RTF]), तभी बीच में चुप्पी नहीं. [perStep] = पिछला नाप (बनने का समय / आवाज़ / कदम).
-     * Settings वाले कदम ऊपरी हद; 5 से कम सिर्फ़ बहुत धीमे फ़ोन पर (4 पर भी साफ़ समझ आता है). pure - JVM test.
+     * [TARGET_RTF] समय में बन जाए. [perStep] = पिछला नाप (बनने का समय / आवाज़ / कदम). Settings वाले कदम ऊपरी हद. pure - JVM test.
+     * 19 नवंबर 2026 (मालिक: "लगातार बोलते समय रोबोटिक गूंज"): जड़ - धीमे फ़ोन पर कदम 4 तक गिरते थे (4 पर आवाज़ धातु-सी /
+     * गूंजती). अब 5 से नीचे कभी नहीं, और 0.5 की जगह 0.7. (बातचीत में अब [leadSteps] चलता है; यह तब जब pipeline नाप न दे.)
      */
-    const val TARGET_RTF = 0.5
+    const val TARGET_RTF = 0.7
+    const val MIN_AUTO_STEPS = 5
     @Volatile private var perStep = 0.0
     fun autoSteps(user: Int, perStepRtf: Double): Int {
         if (perStepRtf <= 0.0) return user
         val fit = (TARGET_RTF / perStepRtf).toInt()
-        val floor = if (perStepRtf * 5 > 0.9) 4 else 5
-        return fit.coerceIn(minOf(floor, user), user)
+        return fit.coerceIn(minOf(MIN_AUTO_STEPS, user), user)
     }
     /** पिछले नाप से थोड़ा-थोड़ा सीखो (एक अटका टुकड़ा सब न बिगाड़े) */
     fun learn(old: Double, now: Double): Double = if (old <= 0.0) now else old * 0.6 + now * 0.4
