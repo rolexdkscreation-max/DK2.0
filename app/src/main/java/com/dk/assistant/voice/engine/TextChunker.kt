@@ -201,10 +201,10 @@ class TextChunker(
          * (4-7 शब्द), फिर ~60 अक्षर (अल्पविराम पर ~10 शब्द) तक; । ? ! . पर हमेशा कटे. छोटे टुकड़े इस मॉडल में अटपटे लगते हैं.
          */
         val ST3 = Profile(
-            firstSoft = 4, firstMax = 7,
+            firstSoft = 3, firstMax = 6,
             secondMin = 5, secondSoft = 8, secondMax = 14,
             nextMin = 6, nextSoft = 10, nextMax = 20,
-            stallMs = 250L, stallMin = 3,
+            stallMs = 150L, stallMin = 2,
             smartCut = true, keepTags = true,
         )
         /** इस शब्द से पहले काटना ठीक (नया उपवाक्य शुरू होता है). "पर / तो" नहीं - वे "मेज़ पर", "मैं तो" भी होते हैं */

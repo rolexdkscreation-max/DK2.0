@@ -19,7 +19,7 @@ class St3EngineWiringTest {
     @Test fun chunksAreSentencePieces_notWordByWord() {
         val p = SpeechPipeline.profileFor(St3VoiceEngine.ID)
         assertEquals(TextChunker.ST3, p)
-        assertTrue(p.firstSoft >= 4 && p.firstMax <= 8)      // ~25-40 अक्षर
+        assertTrue(p.firstSoft >= 3 && p.firstMax <= 7)      // ~20-40 अक्षर, जल्दी शुरू
         assertTrue(p.nextSoft >= 8)                          // ~60 अक्षर अल्पविराम पर
         // पुराने इंजनों के नाप वही
         assertEquals(TextChunker.FAST_NET, SpeechPipeline.profileFor(VoiceEngines.GEMINI_TTS))
@@ -46,11 +46,24 @@ class St3EngineWiringTest {
         // पुराने नाप (Gemini TTS) बिल्कुल वही
         assertTrue(SplitRescue.firstTooSlow(now = 1_900, liveSince = 1_000, ttsStarted = false, open = true))
         assertTrue(SplitRescue.stuck(SplitRescue.FIRST_STUCK_MS, first = true))
-        // नई आवाज़: 900 ms पर नहीं, सच में अटके तब
-        assertFalse(SplitRescue.firstTooSlow(now = 1_900, liveSince = 1_000, ttsStarted = false, open = true, local = true))
-        assertTrue(SplitRescue.firstTooSlow(now = 1_000 + SplitRescue.LOCAL_FIRST_BUDGET_MS, liveSince = 1_000, ttsStarted = false, open = true, local = true))
-        assertFalse(SplitRescue.stuck(SplitRescue.FIRST_STUCK_MS, first = true, local = true))
-        assertTrue(SplitRescue.stuck(SplitRescue.LOCAL_NEXT_STUCK_MS, first = false, local = true))
+        // 19 नवंबर 2026 (मालिक: "चुना, फिर भी Gemini बोलता है"): फ़ोन वाली आवाज़ से समय-दौड़ नहीं - कितनी भी देर हो
+        assertFalse(SplitRescue.firstTooSlow(now = 60_000, liveSince = 1_000, ttsStarted = false, open = true, local = true))
+        assertFalse(SplitRescue.stuck(SplitRescue.NEXT_STUCK_MS * 3, first = true, local = true))
+        assertFalse(SplitRescue.stuck(SplitRescue.NEXT_STUCK_MS * 3, first = false, local = true))
+        // सच में अटके (मॉडल रुका) तब ही Live
+        assertTrue(SplitRescue.stuck(SplitRescue.LOCAL_STUCK_MS, first = true, local = true))
+    }
+
+    @Test fun firstPieceOfEachAnswerIsFaster_andInOrder() {
+        assertTrue(St3VoiceEngine.FIRST_STEPS in 5..6)       // 4 पर शब्द धुँधले (Whisper से जाँचा)
+        val root = listOf(java.io.File("src/main/java"), java.io.File("app/src/main/java")).first { it.exists() }
+        val pipe = java.io.File(root, "com/dk/assistant/voice/engine/SpeechPipeline.kt").readText()
+        assertTrue(pipe.contains("if (e.id == St3VoiceEngine.ID) St3VoiceEngine.newAnswer()"))
+        assertTrue(pipe.contains("e.id != St3VoiceEngine.ID && VoiceEngines.isFailed(e.id)"))
+        val eng = java.io.File(root, "com/dk/assistant/voice/st3/St3Engine.kt").readText()
+        assertTrue(eng.contains("ReentrantLock(true)"))      // पहला टुकड़ा पहले बने
+        val live = java.io.File(root, "com/dk/assistant/GeminiLiveRescue.kt").readText()
+        assertTrue(live.contains("SplitRescue.firstTooSlow(now, since, started, open, local)"))
     }
 
     @Test fun resampleTo24k_keepsSpeech_dropsHiss() {

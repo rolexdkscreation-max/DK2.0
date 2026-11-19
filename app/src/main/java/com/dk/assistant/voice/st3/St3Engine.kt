@@ -7,6 +7,7 @@ import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
 import java.util.concurrent.atomic.AtomicInteger
+import kotlin.concurrent.withLock
 
 /**
  * 19 नवंबर 2026: Supertonic 3 से फ़ोन पर ही बोलना.
@@ -16,7 +17,8 @@ import java.util.concurrent.atomic.AtomicInteger
  * - [stop]: अभी जो बन रहा है वह तुरंत रुके (कदमों के बीच देखा जाता है).
  */
 object St3Engine {
-    private val lock = Any()
+    /** fair = जो टुकड़ा पहले आया वही पहले बने (दूसरा टुकड़ा पहले वाले से आगे न निकले - पहली आवाज़ देर से न हो) */
+    private val lock = java.util.concurrent.locks.ReentrantLock(true)
     @Volatile private var synth: St3Synth? = null
     private var style: St3Synth.Style? = null
     @Volatile private var player: St3Player? = null
@@ -49,14 +51,14 @@ object St3Engine {
      * एक text बोलने लायक आवाज़ बनाओ (रुककर - पीछे के धागे पर बुलाओ). हर टुकड़ा (~300 अक्षर तक) बनते ही [onPiece].
      * गलती = exception (हिंदी में). [stop] हुआ = चुपचाप लौटे.
      */
-    fun synthBlocking(c: Context, text: String, voice: String?, onPiece: (FloatArray) -> Unit) {
+    fun synthBlocking(c: Context, text: String, voice: String?, maxSteps: Int = 99, onPiece: (FloatArray) -> Unit) {
         val my = gen.get()
-        synchronized(lock) {
+        lock.withLock {
             if (gen.get() != my) return
             ensure(c, voice)?.let { throw IllegalStateException(it) }
             val s = synth ?: throw IllegalStateException("आवाज़ का मॉडल तैयार नहीं")
             val st = style ?: throw IllegalStateException("आवाज़ तैयार नहीं")
-            val steps = St3Store.steps(c); val speed = St3Store.speed(c)
+            val steps = minOf(St3Store.steps(c), maxSteps); val speed = St3Store.speed(c)
             for (piece in St3Text.chunk(text)) {
                 if (gen.get() != my) return
                 val out = s.synth(piece, st, steps, speed) { gen.get() != my } ?: continue
@@ -72,7 +74,7 @@ object St3Engine {
         warming = true
         val app = c.applicationContext
         Thread({
-            try { synchronized(lock) { ensure(app, St3Store.voice(app)) } } catch (e: Throwable) { Quiet.note(e) } finally { warming = false }
+            try { lock.withLock { ensure(app, St3Store.voice(app)) } } catch (e: Throwable) { Quiet.note(e) } finally { warming = false }
         }, "dk-st3-warm").apply { isDaemon = true; start() }
     }
 
@@ -121,5 +123,5 @@ object St3Engine {
     }
 
     /** RAM खाली करो (मॉडल हटाते समय) - रुककर, पीछे के धागे पर */
-    fun release() { stop(); synchronized(lock) { releaseNow() } }
+    fun release() { stop(); lock.withLock { releaseNow() } }
 }

@@ -113,6 +113,7 @@ class SpeechPipeline(private val ctx: Context, private val hooks: Hooks) {
     /** नया जवाब शुरू */
     fun begin(e: VoiceEngine) {
         engine = e
+        if (e.id == St3VoiceEngine.ID) St3VoiceEngine.newAnswer()     // 19 नवंबर 2026: पहला टुकड़ा जल्दी
         synchronized(chunker) { chunker.reset(profileFor(e.id)) }
         synchronized(spoken) { spoken.setLength(0) }
         firstPending = true
@@ -184,7 +185,8 @@ class SpeechPipeline(private val ctx: Context, private val hooks: Hooks) {
         for ((i, e) in chain.withIndex()) {
             if (s.gen != gen) break
             val last = i == chain.lastIndex
-            if (!last && VoiceEngines.isFailed(e.id)) continue          // अभी-अभी टूटा था - सीधा अगला
+            // 19 नवंबर 2026: फ़ोन वाली आवाज़ (St3) एक गलती पर 2 मिनट नहीं छोड़ी जाती - हर टुकड़े पर फिर कोशिश (गलती हो तो तुरंत अगला)
+            if (!last && e.id != St3VoiceEngine.ID && VoiceEngines.isFailed(e.id)) continue          // अभी-अभी टूटा था - सीधा अगला
             val why = e.notReady(ctx)
             if (why != null) { VoiceEngines.markFailed(e.id, why); continue }     // जैसे Worker का पता नहीं - अगला
             try {

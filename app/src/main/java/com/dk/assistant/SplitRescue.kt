@@ -25,21 +25,21 @@ object SplitRescue {
     const val BACK_MS = 600
 
     /**
-     * 19 नवंबर 2026 (मालिक: "बातचीत में वही नई आवाज़ बोले"): फ़ोन पर बनने वाली आवाज़ (St3) को ज़्यादा समय -
-     * वह पूरा टुकड़ा बनाकर ही बजती है. 900 ms पर Live अपनी आवाज़ में बोल देता तो नई आवाज़ कभी सुनाई ही न देती.
-     * सच में अटके (मॉडल रुका) तब भी Live बचाता है. Gemini TTS के नाप वही पुराने.
+     * 19 नवंबर 2026 (मालिक: "नई आवाज़ चुनी, फिर भी Gemini ही बोलता है"): जड़ - Live अपनी आवाज़ साथ-साथ बनाता है और
+     * फ़ोन वाली आवाज़ (St3) तय समय (पहले 0.9 s, फिर 4 s) में न बजे तो Live की आवाज़ बचा जवाब बोल देती थी. फ़ोन पर
+     * आवाज़ बनने में (Live की लिखावट की देर + मॉडल) अक्सर इससे ज़्यादा लगता है -> हर बार Gemini की आवाज़.
+     * अब: चुनी हुई फ़ोन वाली आवाज़ से कोई समय-दौड़ नहीं. Live सिर्फ़ तब बोले जब यह आवाज़ सच में न बने (गलती) या
+     * [LOCAL_STUCK_MS] तक कुछ न बने (मॉडल अटका). Gemini TTS के नाप वही पुराने.
      */
-    const val LOCAL_FIRST_BUDGET_MS = 4_000L
-    const val LOCAL_FIRST_STUCK_MS = 4_500L
-    const val LOCAL_NEXT_STUCK_MS = 6_000L
+    const val LOCAL_STUCK_MS = 10_000L
 
     /** पहली आवाज़ की दौड़: Live तैयार ([liveSince] से), TTS अब तक चुप, रास्ता खुला (कोई रोक नहीं) */
     fun firstTooSlow(now: Long, liveSince: Long, ttsStarted: Boolean, open: Boolean, local: Boolean = false): Boolean =
-        open && !ttsStarted && liveSince > 0 && now - liveSince >= if (local) LOCAL_FIRST_BUDGET_MS else FIRST_BUDGET_MS
+        !local && open && !ttsStarted && liveSince > 0 && now - liveSince >= FIRST_BUDGET_MS
 
     /** टुकड़ा कितनी देर से बिना आवाज़ अटका है - Live पर जाएँ? */
     fun stuck(waitedMs: Long, first: Boolean, local: Boolean = false): Boolean = waitedMs >= when {
-        local -> if (first) LOCAL_FIRST_STUCK_MS else LOCAL_NEXT_STUCK_MS
+        local -> LOCAL_STUCK_MS
         else -> if (first) FIRST_STUCK_MS else NEXT_STUCK_MS
     }
 

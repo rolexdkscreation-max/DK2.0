@@ -40,7 +40,8 @@ object St3VoiceEngine : VoiceEngine {
         notReady(c)?.let { throw java.io.IOException("ऑफ़लाइन आवाज़: $it") }
         try {
             var first = true
-            St3Engine.synthBlocking(c, St3Text.onlyTags(text), voice) { wav ->
+            val steps = if (firstFast.getAndSet(false)) FIRST_STEPS else 99
+            St3Engine.synthBlocking(c, St3Text.onlyTags(text), voice, steps) { wav ->
                 if (!first) out.write(ByteArray(St3Synth.SILENCE_24K_BYTES))
                 first = false
                 out.write(St3Synth.pcm16(St3Synth.to24k(wav)))
@@ -51,6 +52,14 @@ object St3VoiceEngine : VoiceEngine {
     }
 
     override fun stop() { St3Engine.stop() }
+
+    /**
+     * 19 नवंबर 2026 (मालिक: "जवाब आते ही तुरंत बोलना शुरू हो"): हर जवाब का पहला टुकड़ा कम कदमों ([FIRST_STEPS]) में -
+     * ~40% जल्दी बनता है, साफ़ी लगभग वही (जाँचा: 5 कदम पर भी Whisper पूरा वाक्य सही पढ़ता है). बाकी टुकड़े Settings वाले कदमों में.
+     */
+    const val FIRST_STEPS = 5
+    private val firstFast = java.util.concurrent.atomic.AtomicBoolean(false)
+    fun newAnswer() { firstFast.set(true) }
 
     override fun settings(c: Context, box: LinearLayout, ui: VoiceUi) {
         ui.hint(box, "मॉडल और आवाज़ें डाउनलोड: Settings → आवाज़ → \"आवाज़ें खोलें\". जवाब Gemini Live लिखता है, आवाज़ फ़ोन पर बनती है.")
