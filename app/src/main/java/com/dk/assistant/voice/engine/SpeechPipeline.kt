@@ -83,6 +83,9 @@ class SpeechPipeline(private val ctx: Context, private val hooks: Hooks) {
 
     init {
         player = Thread({ loop() }, "dk-tts-play").apply { isDaemon = true; start() }
+        // 19 नवंबर 2026: बजते समय भी देखो - अगला टुकड़ा समय पर बनना शुरू हो (सिर्फ़ refillMs वाले इंजन, जैसे St3)
+        Thread({ while (!released) { try { Thread.sleep(40) } catch (_: InterruptedException) { break }; refillCheck() } },
+            "dk-tts-refill").apply { isDaemon = true; start() }
         synchronized(alive) { alive[this] = true }
     }
 
@@ -231,6 +234,20 @@ class SpeechPipeline(private val ctx: Context, private val hooks: Hooks) {
         val pr = chunker.profile
         if (!firstPending || System.currentTimeMillis() - lastFeedAt < pr.stallMs) return
         val p = synchronized(chunker) { chunker.flushFirstIfStalled(pr.stallMin) } ?: return
+        enqueue(p)
+    }
+
+    /**
+     * 19 नवंबर 2026 (मालिक: "एक वाक्य बोलता है, फिर रुकता है"): जड़ - अगला टुकड़ा तभी बनता था जब उसका पूरा वाक्य
+     * (। ? !) आ जाए; Live की लिखावट लगभग बोलने की रफ़्तार से आती है, तो पिछला ख़त्म होते-होते ही अगला बनना शुरू होता
+     * = हर वाक्य के बीच बनने जितनी चुप्पी. अब: पिछला ख़त्म होने वाला है और अगला कुछ नहीं बन रहा -> जितना text है अभी.
+     */
+    private fun refillCheck() {
+        val pr = chunker.profile
+        if (pr.refillMs <= 0 || firstPending || handed || released) return
+        if (segs.isNotEmpty() || pending.get() > 1) return          // अगला पहले से बन रहा / कतार में
+        if (playUntil - System.currentTimeMillis() > pr.refillMs) return
+        val p = synchronized(chunker) { chunker.flushIfAtLeast(pr.refillMin) } ?: return
         enqueue(p)
     }
 

@@ -66,6 +66,31 @@ class St3EngineWiringTest {
         assertTrue(live.contains("SplitRescue.firstTooSlow(now, since, started, open, local)"))
     }
 
+    @Test fun slowPhoneGetsFewerSteps_fastPhoneKeepsSetting() {
+        assertEquals(8, St3VoiceEngine.autoSteps(8, 0.0))      // अभी नापा नहीं
+        assertEquals(8, St3VoiceEngine.autoSteps(8, 0.03))     // तेज़ फ़ोन: 8 कदम = 0.24 (आधे से कम) - Settings वाला
+        assertEquals(6, St3VoiceEngine.autoSteps(8, 0.08))     // 0.5 / 0.08 = 6
+        assertEquals(5, St3VoiceEngine.autoSteps(8, 0.15))     // धीमा: 5 से नीचे नहीं...
+        assertEquals(4, St3VoiceEngine.autoSteps(8, 0.25))     // ...बहुत धीमा हो तभी 4
+        assertEquals(3, St3VoiceEngine.autoSteps(3, 0.25))     // खुद कम रखा तो वही
+        assertEquals(0.5, St3VoiceEngine.learn(0.0, 0.5), 1e-9)
+        assertEquals(0.6 * 0.1 + 0.4 * 0.2, St3VoiceEngine.learn(0.1, 0.2), 1e-9)
+    }
+
+    @Test fun nextPieceStartsBeforeSentenceEnds_onlyForSt3() {
+        assertTrue(TextChunker.ST3.refillMs in 800L..2_500L)
+        assertEquals(0L, TextChunker.STANDARD.refillMs)
+        assertEquals(0L, TextChunker.FAST_NET.refillMs)
+        val c = TextChunker().apply { reset(TextChunker.ST3) }
+        assertEquals(null, c.flushIfAtLeast(3))                // पहला टुकड़ा अभी नहीं निकला - यह रास्ता नहीं
+        c.feed("नमस्ते जी, आज हम बात करते हैं ")
+        c.flush()
+        c.feed("कि मौसम ")
+        assertEquals(null, c.flushIfAtLeast(3))                // 2 शब्द - अभी नहीं
+        c.feed("कैसा रहेगा ")
+        assertEquals("कि मौसम कैसा रहेगा", c.flushIfAtLeast(3))   // वाक्य पूरा होने का इंतज़ार नहीं
+    }
+
     @Test fun resampleTo24k_keepsSpeech_dropsHiss() {
         val n = 44_100
         val tone = { hz: Double -> FloatArray(n) { (0.5 * Math.sin(2 * Math.PI * hz * it / 44_100.0)).toFloat() } }

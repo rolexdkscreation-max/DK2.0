@@ -37,6 +37,13 @@ class TextChunker(
         val smartCut: Boolean = false,
         /** 19 नवंबर 2026: फ़ोन वाली आवाज़ (St3) `<laugh>` / `<breath>` / `<sigh>` समझती है - उनका `>` मत मिटाओ */
         val keepTags: Boolean = false,
+        /**
+         * 19 नवंबर 2026 (मालिक: "एक वाक्य बोलकर रुकता है, फिर अगला"): >0 = पिछला टुकड़ा ख़त्म होने में इतने ms बचे और
+         * अगला कुछ बन नहीं रहा -> वाक्य पूरा होने का इंतज़ार नहीं, जितना text आया ([refillMin] शब्द+) अभी बनाओ.
+         * 0 = बंद (पुराने इंजन वैसे ही).
+         */
+        val refillMs: Long = 0L,
+        val refillMin: Int = 3,
     )
 
     var profile = Profile(firstSoft, firstMax, nextMin, nextSoft, nextMax, nextMin, nextSoft, nextMax, STALL_MS, STALL_MIN)
@@ -78,6 +85,12 @@ class TextChunker(
     fun flushFirstIfStalled(min: Int = 3): String? {
         if (emitted > 0) return null
         if (words(buf.toString()) < min) return null
+        return flush()
+    }
+
+    /** बीच का टुकड़ा: कम से कम [min] शब्द हों तो जो है अभी दे दो ([Profile.refillMs]) */
+    fun flushIfAtLeast(min: Int): String? {
+        if (emitted == 0 || words(buf.toString()) < min) return null
         return flush()
     }
 
@@ -202,10 +215,10 @@ class TextChunker(
          */
         val ST3 = Profile(
             firstSoft = 3, firstMax = 6,
-            secondMin = 5, secondSoft = 8, secondMax = 14,
-            nextMin = 6, nextSoft = 10, nextMax = 20,
+            secondMin = 4, secondSoft = 7, secondMax = 11,
+            nextMin = 5, nextSoft = 9, nextMax = 15,
             stallMs = 150L, stallMin = 2,
-            smartCut = true, keepTags = true,
+            smartCut = true, keepTags = true, refillMs = 1_500L, refillMin = 3,
         )
         /** इस शब्द से पहले काटना ठीक (नया उपवाक्य शुरू होता है). "पर / तो" नहीं - वे "मेज़ पर", "मैं तो" भी होते हैं */
         val BREAK_BEFORE = setOf(

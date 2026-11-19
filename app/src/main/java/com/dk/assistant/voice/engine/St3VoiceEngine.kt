@@ -40,12 +40,20 @@ object St3VoiceEngine : VoiceEngine {
         notReady(c)?.let { throw java.io.IOException("ऑफ़लाइन आवाज़: $it") }
         try {
             var first = true
-            val steps = if (firstFast.getAndSet(false)) FIRST_STEPS else 99
+            val user = St3Store.steps(c)
+            val auto = autoSteps(user, perStep)
+            val steps = if (firstFast.getAndSet(false)) minOf(auto, FIRST_STEPS) else auto
+            val t0 = System.currentTimeMillis(); var samples = 0
             St3Engine.synthBlocking(c, St3Text.onlyTags(text), voice, steps) { wav ->
                 if (!first) out.write(ByteArray(St3Synth.SILENCE_24K_BYTES))
                 first = false
+                samples += wav.size
                 out.write(St3Synth.pcm16(St3Synth.to24k(wav)))
             }
+            val ms = System.currentTimeMillis() - t0
+            val audioMs = samples * 1000L / 44_100
+            if (audioMs > 300) perStep = learn(perStep, ms.toDouble() / audioMs / steps)
+            com.dk.assistant.DKLog.d("ऑफ़लाइन आवाज़: ${text.length} अक्षर, $steps कदम, बनी $ms ms में, आवाज़ $audioMs ms")
         } catch (e: IllegalStateException) {
             throw java.io.IOException("ऑफ़लाइन आवाज़: ${e.message}", e)
         }
@@ -58,6 +66,22 @@ object St3VoiceEngine : VoiceEngine {
      * ~40% जल्दी बनता है, साफ़ी लगभग वही (जाँचा: 5 कदम पर भी Whisper पूरा वाक्य सही पढ़ता है). बाकी टुकड़े Settings वाले कदमों में.
      */
     const val FIRST_STEPS = 5
+
+    /**
+     * 19 नवंबर 2026 (मालिक: "बीच में रुकना नहीं चाहिए"): फ़ोन धीमा हो तो कदम अपने-आप कम - हर टुकड़ा अपनी आवाज़ के
+     * आधे समय में बन जाए ([TARGET_RTF]), तभी बीच में चुप्पी नहीं. [perStep] = पिछला नाप (बनने का समय / आवाज़ / कदम).
+     * Settings वाले कदम ऊपरी हद; 5 से कम सिर्फ़ बहुत धीमे फ़ोन पर (4 पर भी साफ़ समझ आता है). pure - JVM test.
+     */
+    const val TARGET_RTF = 0.5
+    @Volatile private var perStep = 0.0
+    fun autoSteps(user: Int, perStepRtf: Double): Int {
+        if (perStepRtf <= 0.0) return user
+        val fit = (TARGET_RTF / perStepRtf).toInt()
+        val floor = if (perStepRtf * 5 > 0.9) 4 else 5
+        return fit.coerceIn(minOf(floor, user), user)
+    }
+    /** पिछले नाप से थोड़ा-थोड़ा सीखो (एक अटका टुकड़ा सब न बिगाड़े) */
+    fun learn(old: Double, now: Double): Double = if (old <= 0.0) now else old * 0.6 + now * 0.4
     private val firstFast = java.util.concurrent.atomic.AtomicBoolean(false)
     fun newAnswer() { firstFast.set(true) }
 
