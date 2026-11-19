@@ -178,6 +178,39 @@ class St3Synth private constructor(
             return b
         }
 
+
+        /** बातचीत की कतार 24 kHz पर चलती है - टुकड़ों के बीच 0.2 सेकंड की चुप्पी (24 kHz, 16-bit) */
+        const val SILENCE_24K_BYTES = 24_000 / 5 * 2
+
+        /** low-pass के गुणांक (windowed-sinc, 11 kHz पर कटाव @44.1 kHz) - नीचे लाने पर खड़खड़ाहट (aliasing) न आए */
+        private val LP: FloatArray by lazy {
+            val taps = 31; val fc = 11_000.0 / 44_100.0; val m = (taps - 1) / 2.0
+            val h = DoubleArray(taps) { i ->
+                val x = i - m
+                val sinc = if (x == 0.0) 2 * fc else Math.sin(2 * Math.PI * fc * x) / (Math.PI * x)
+                sinc * (0.54 - 0.46 * Math.cos(2 * Math.PI * i / (taps - 1)))      // Hamming
+            }
+            val sum = h.sum(); FloatArray(taps) { (h[it] / sum).toFloat() }
+        }
+
+        /** pure: 44.1 kHz -> 24 kHz (पहले low-pass, फिर linear). [from] = स्रोत की rate */
+        fun to24k(wav: FloatArray, from: Int = St3Config.SAMPLE_RATE): FloatArray {
+            if (wav.isEmpty() || from == 24_000) return wav
+            val lp = LP; val half = lp.size / 2
+            val f = FloatArray(wav.size)
+            for (i in wav.indices) {
+                var acc = 0f
+                for (k in lp.indices) { val j = i + k - half; if (j in wav.indices) acc += wav[j] * lp[k] }
+                f[i] = acc
+            }
+            val outN = (wav.size.toLong() * 24_000 / from).toInt()
+            return FloatArray(outN) { o ->
+                val pos = o.toDouble() * from / 24_000
+                val a = pos.toInt().coerceAtMost(f.size - 1); val b = (a + 1).coerceAtMost(f.size - 1); val t = (pos - a).toFloat()
+                f[a] + (f[b] - f[a]) * t
+            }
+        }
+
         /** pure: बीच में [ms] की चुप्पी (टुकड़ों के बीच) */
         fun silence(ms: Int, rate: Int = St3Config.SAMPLE_RATE): ByteArray = ByteArray((rate.toLong() * ms / 1000).toInt() * 2)
     }

@@ -25,10 +25,12 @@ object VoiceEngines {
     const val LIVE_NATIVE = "live_native"
     const val DEFAULT_SAMPLE = "मुझे तुम्हारी बहुत याद आ रही थी"
 
-    /** क्रम = स्क्रीन पर क्रम: पहले DK लाइव (Direct Gemini Live Voice, डिफ़ॉल्ट), फिर Gemini TTS (बैकअप) */
+    /** क्रम = स्क्रीन पर क्रम: पहले DK लाइव (Direct Gemini Live Voice, डिफ़ॉल्ट), फिर Gemini TTS (बैकअप), फिर फ़ोन पर बनने वाली आवाज़ */
     private val CLASSES = listOf(
         "com.dk.assistant.voice.engine.LiveNativeEngine",
         "com.dk.assistant.voice.engine.GeminiTtsEngine",
+        // 19 नवंबर 2026 (मालिक: "उस TTS को चुन सकूँ, बातचीत उसी से बोले"): फ़ोन पर बनने वाली आवाज़ - चुनने पर ही चलती है
+        "com.dk.assistant.voice.engine.St3VoiceEngine",
     )
 
     /** एक बार का बदलाव: पुराना डिफ़ॉल्ट (Gemini TTS) सेव था -> DK लाइव. इसके बाद यूज़र जो चुने वही रहे */

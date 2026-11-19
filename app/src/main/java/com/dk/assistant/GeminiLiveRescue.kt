@@ -70,5 +70,6 @@ internal fun GeminiLive.splitRaceCheck(now: Long) {
     if (liveRaceFrom == 0L) liveRaceFrom = now
     val since = maxOf(liveKeepFirstAt, liveRaceFrom)
     val started = pipelineLazy.isInitialized() && pipeline.audioStarted
-    if (SplitRescue.firstTooSlow(now, since, started, open)) rescueWithLive(0, "Gemini TTS की पहली आवाज़ ${now - since} ms में नहीं आई")
+    val local = splitEngine?.id == com.dk.assistant.voice.engine.St3VoiceEngine.ID
+    if (SplitRescue.firstTooSlow(now, since, started, open, local)) rescueWithLive(0, "Gemini TTS की पहली आवाज़ ${now - since} ms में नहीं आई")
 }

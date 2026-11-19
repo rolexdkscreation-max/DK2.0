@@ -102,7 +102,7 @@ internal fun SettingsActivity.secSt3() {
         row(box, button("डाउनलोड") { dl() }, button("रोकें") {
             St3Config.CORE.forEach { ModelManager.pause(this, it) }; toast("डाउनलोड रोका - आधी फ़ाइल सुरक्षित")
         }, button("हटाएँ") {
-            lifecycleScope.launch { try { St3Engine.release() } catch (e: Exception) { Quiet.note(e) }
+            lifecycleScope.launch { try { kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { St3Engine.release() } } catch (e: Exception) { Quiet.note(e) }
                 St3Config.CORE.forEach { ModelManager.delete(this@secSt3, it) }; toast("मुख्य मॉडल हटाया (जगह खाली)") }
         })
         row(box, retry)

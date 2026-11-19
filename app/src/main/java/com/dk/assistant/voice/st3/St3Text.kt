@@ -104,4 +104,8 @@ object St3Text {
 
     /** टैग पूरे हैं? (`<laugh` जैसा आधा टैग टुकड़े के अंत में नहीं होना चाहिए) - test के लिए */
     fun tagsWhole(chunk: String): Boolean = chunk.count { it == '<' } == chunk.count { it == '>' } && TAG.findAll(chunk).count() == chunk.count { it == '<' }
+
+    private val STRAY = Regex("<(?![a-z]{1,12}>)|(?<!<[a-z]{1,12})>")
+    /** सिर्फ़ पूरे टैग (`<laugh>`) रहें - markdown वाला बचा-खुचा `<` / `>` हटाओ */
+    fun onlyTags(s: String): String = STRAY.replace(s, " ").replace(SPACES, " ").trim()
 }

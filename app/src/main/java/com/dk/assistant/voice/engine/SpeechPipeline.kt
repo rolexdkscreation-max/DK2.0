@@ -299,7 +299,9 @@ class SpeechPipeline(private val ctx: Context, private val hooks: Hooks) {
             if (s.q.isNotEmpty()) return s.phone
             val waited = System.currentTimeMillis() - from
             // नवंबर 2026: टुकड़ा अटका (धीमा नेट / TTS देर) - Live की अपनी आवाज़ बचा जवाब बोले
-            val late = com.dk.assistant.SplitRescue.stuck(waited, first)
+            // 19 नवंबर 2026: फ़ोन पर बनने वाली आवाज़ (St3) को ज़्यादा समय - वह पूरा टुकड़ा बनाकर ही बजती है
+            val late = com.dk.assistant.SplitRescue.stuck(waited, first) &&
+                (engine?.id != St3VoiceEngine.ID || com.dk.assistant.SplitRescue.stuck(waited, first, local = true))
             if (!asked && late) {
                 asked = true
                 if (rescue(s, SplitRescueWhy.STUCK, waited)) return false
@@ -374,8 +376,11 @@ class SpeechPipeline(private val ctx: Context, private val hooks: Hooks) {
 
         /** इंजन के हिसाब से टुकड़ों का नाप (नवंबर 2026: Kokoro हटाया - अब सब इंजन STANDARD; LOCAL फ़ोन में बनने वाली आवाज़ के लिए रखा) */
         /** नवंबर 2026 (मालिक: "बात खत्म होते ही जवाब शुरू"): Gemini TTS = पहला टुकड़ा छोटा (2-6 शब्द, 150 ms रुका तो तुरंत) */
-        fun profileFor(engineId: String): TextChunker.Profile =
-            if (engineId == VoiceEngines.GEMINI_TTS) TextChunker.FAST_NET else TextChunker.STANDARD
+        fun profileFor(engineId: String): TextChunker.Profile = when (engineId) {
+            VoiceEngines.GEMINI_TTS -> TextChunker.FAST_NET
+            St3VoiceEngine.ID -> TextChunker.ST3        // 19 नवंबर 2026: फ़ोन पर बनने वाली आवाज़ - शब्द-दर-शब्द नहीं, वाक्य के टुकड़े
+            else -> TextChunker.STANDARD
+        }
 
         /** नवंबर 2026: आवाज़ इंजन बदला - जो भी pipeline बोल रही हो, उसी पल चुप (कतार भी) */
         private val alive = java.util.WeakHashMap<SpeechPipeline, Boolean>()

@@ -1,0 +1,61 @@
+package com.dk.assistant.voice.engine
+
+import android.content.Context
+import android.widget.LinearLayout
+import com.dk.assistant.voice.st3.St3Config
+import com.dk.assistant.voice.st3.St3Engine
+import com.dk.assistant.voice.st3.St3Store
+import com.dk.assistant.voice.st3.St3Synth
+import com.dk.assistant.voice.st3.St3Text
+
+/**
+ * इंजन 3 (19 नवंबर 2026, मालिक: "उस TTS को चुन सकूँ, फिर बातचीत में उसी से आवाज़ बने"):
+ * फ़ोन पर ही बनने वाली आवाज़ (Supertone का मॉडल, सिर्फ़ महिला आवाज़ें 1-5). इंटरनेट के बिना आवाज़.
+ *
+ * बातचीत: Gemini Live सुनता + जवाब लिखता है (पहले जैसा), जवाब के टुकड़े यह इंजन बोलता है.
+ * यह न चले (मॉडल डाउनलोड नहीं / गलती) = वही पुराना रास्ता: Gemini TTS, फिर फ़ोन की आवाज़ ([SpeechPipeline]).
+ * मॉडल / आवाज़ें: Settings -> आवाज़ -> "आवाज़ें खोलें".
+ */
+object St3VoiceEngine : VoiceEngine {
+    const val ID = "st3_offline"
+    override val id = ID
+    override val title = "DK ऑफ़लाइन आवाज़ (फ़ोन पर बनती है)"
+    override val note = "इंटरनेट के बिना, फ़ोन पर ही • महिला आवाज़ें 1-5 • मॉडल \"आवाज़ें खोलें\" से डाउनलोड • न चले तो Gemini TTS"
+    override val split = true
+    override val defaultOn = false
+
+    override fun voices(): List<Pair<String, String>> = St3Config.VOICES.map { it.id to "${it.name} (${it.id})" }
+    override fun voice(c: Context): String = St3Store.voice(c)
+    override fun setVoice(c: Context, v: String) { St3Store.setVoice(c, v) }
+
+    override fun notReady(c: Context): String? = when {
+        !St3Store.coreReady(c) -> "मुख्य आवाज़-मॉडल डाउनलोड नहीं हुआ - Settings → आवाज़ → \"आवाज़ें खोलें\""
+        St3Store.usableVoice(c) == null -> "कोई आवाज़ डाउनलोड नहीं हुई - \"आवाज़ें खोलें\" में आवाज़ 1 डाउनलोड करें"
+        else -> null
+    }
+
+    override fun warm(c: Context) { if (notReady(c) == null) St3Engine.warm(c) }
+
+    override fun speak(c: Context, text: String, voice: String, out: PcmOut) {
+        notReady(c)?.let { throw java.io.IOException("ऑफ़लाइन आवाज़: $it") }
+        try {
+            var first = true
+            St3Engine.synthBlocking(c, St3Text.onlyTags(text), voice) { wav ->
+                if (!first) out.write(ByteArray(St3Synth.SILENCE_24K_BYTES))
+                first = false
+                out.write(St3Synth.pcm16(St3Synth.to24k(wav)))
+            }
+        } catch (e: IllegalStateException) {
+            throw java.io.IOException("ऑफ़लाइन आवाज़: ${e.message}", e)
+        }
+    }
+
+    override fun stop() { St3Engine.stop() }
+
+    override fun settings(c: Context, box: LinearLayout, ui: VoiceUi) {
+        ui.hint(box, "मॉडल और आवाज़ें डाउनलोड: Settings → आवाज़ → \"आवाज़ें खोलें\". जवाब Gemini Live लिखता है, आवाज़ फ़ोन पर बनती है.")
+        ui.slider(box, "रफ़्तार", (St3Config.SPEED_MIN * 100).toInt(), Math.round(St3Config.SPEED_MAX * 100),
+            Math.round(St3Store.speed(c) * 100), { String.format(java.util.Locale.US, "%.2f", it / 100f) }) { St3Store.setSpeed(c, it / 100f) }
+        ui.slider(box, "कदम (ज़्यादा = साफ़ पर धीमी)", St3Config.STEPS_MIN, St3Config.STEPS_MAX, St3Store.steps(c), { "$it" }) { St3Store.setSteps(c, it) }
+    }
+}
