@@ -24,12 +24,24 @@ object SplitRescue {
     /** बीच से Live आवाज़ पर जाएँ तो थोड़ा पीछे से (Live की लिखावट आवाज़ से पीछे चलती है - शब्द छूटे नहीं) */
     const val BACK_MS = 600
 
+    /**
+     * 19 नवंबर 2026 (मालिक: "नई आवाज़ चुनी, फिर भी Gemini ही बोलता है"): जड़ - Live अपनी आवाज़ साथ-साथ बनाता है और
+     * फ़ोन वाली आवाज़ (St3) तय समय (पहले 0.9 s, फिर 4 s) में न बजे तो Live की आवाज़ बचा जवाब बोल देती थी. फ़ोन पर
+     * आवाज़ बनने में (Live की लिखावट की देर + मॉडल) अक्सर इससे ज़्यादा लगता है -> हर बार Gemini की आवाज़.
+     * अब: चुनी हुई फ़ोन वाली आवाज़ से कोई समय-दौड़ नहीं. Live सिर्फ़ तब बोले जब यह आवाज़ सच में न बने (गलती) या
+     * [LOCAL_STUCK_MS] तक कुछ न बने (मॉडल अटका). Gemini TTS के नाप वही पुराने.
+     */
+    const val LOCAL_STUCK_MS = 10_000L
+
     /** पहली आवाज़ की दौड़: Live तैयार ([liveSince] से), TTS अब तक चुप, रास्ता खुला (कोई रोक नहीं) */
-    fun firstTooSlow(now: Long, liveSince: Long, ttsStarted: Boolean, open: Boolean): Boolean =
-        open && !ttsStarted && liveSince > 0 && now - liveSince >= FIRST_BUDGET_MS
+    fun firstTooSlow(now: Long, liveSince: Long, ttsStarted: Boolean, open: Boolean, local: Boolean = false): Boolean =
+        !local && open && !ttsStarted && liveSince > 0 && now - liveSince >= FIRST_BUDGET_MS
 
     /** टुकड़ा कितनी देर से बिना आवाज़ अटका है - Live पर जाएँ? */
-    fun stuck(waitedMs: Long, first: Boolean): Boolean = waitedMs >= if (first) FIRST_STUCK_MS else NEXT_STUCK_MS
+    fun stuck(waitedMs: Long, first: Boolean, local: Boolean = false): Boolean = waitedMs >= when {
+        local -> LOCAL_STUCK_MS
+        else -> if (first) FIRST_STUCK_MS else NEXT_STUCK_MS
+    }
 
     /**
      * बचा जवाब लिखावट के [at] अक्षर से शुरू होता है: रखी हुई Live आवाज़ के किस टुकड़े से बजाएँ.

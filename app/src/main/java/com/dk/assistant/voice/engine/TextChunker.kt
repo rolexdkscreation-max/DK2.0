@@ -35,6 +35,15 @@ class TextChunker(
          * वाक्य का अंत मानकर सुर गिराता है -> बीच से कटे टुकड़े रोबोट जैसे लगते थे. STANDARD में बंद (पुराना वही).
          */
         val smartCut: Boolean = false,
+        /** 19 नवंबर 2026: फ़ोन वाली आवाज़ (St3) `<laugh>` / `<breath>` / `<sigh>` समझती है - उनका `>` मत मिटाओ */
+        val keepTags: Boolean = false,
+        /**
+         * 19 नवंबर 2026 (मालिक: "एक वाक्य बोलकर रुकता है, फिर अगला"): >0 = पिछला टुकड़ा ख़त्म होने में इतने ms बचे और
+         * अगला कुछ बन नहीं रहा -> वाक्य पूरा होने का इंतज़ार नहीं, जितना text आया ([refillMin] शब्द+) अभी बनाओ.
+         * 0 = बंद (पुराने इंजन वैसे ही).
+         */
+        val refillMs: Long = 0L,
+        val refillMin: Int = 3,
     )
 
     var profile = Profile(firstSoft, firstMax, nextMin, nextSoft, nextMax, nextMin, nextSoft, nextMax, STALL_MS, STALL_MIN)
@@ -53,7 +62,7 @@ class TextChunker(
     /** नया text जोड़ो, जो टुकड़े पूरे हो गए वे लौटाओ */
     fun feed(t: String): List<String> {
         if (t.isEmpty()) return emptyList()
-        buf.append(clean(t))
+        buf.append(if (profile.keepTags) cleanKeepTags(t) else clean(t))
         val out = ArrayList<String>(2)
         while (true) {
             val cut = findCut(final = false)
@@ -76,6 +85,12 @@ class TextChunker(
     fun flushFirstIfStalled(min: Int = 3): String? {
         if (emitted > 0) return null
         if (words(buf.toString()) < min) return null
+        return flush()
+    }
+
+    /** बीच का टुकड़ा: कम से कम [min] शब्द हों तो जो है अभी दे दो ([Profile.refillMs]) */
+    fun flushIfAtLeast(min: Int): String? {
+        if (emitted == 0 || words(buf.toString()) < min) return null
         return flush()
     }
 
@@ -194,6 +209,18 @@ class TextChunker(
             stallMs = 150L, stallMin = 2,
             smartCut = true,
         )
+        /**
+         * 19 नवंबर 2026 (मालिक): फ़ोन पर बनने वाली आवाज़ (Supertonic 3). शब्द-दर-शब्द नहीं - पहला टुकड़ा ~25-40 अक्षर
+         * (4-7 शब्द), दूसरा भी छोटा (3-8 शब्द - पहला बजते-बजते बन जाए; 19 नवंबर 2026: पहले 11 तक = पहले वाक्य के बाद चुप्पी),
+         * फिर ~60 अक्षर (अल्पविराम पर ~10 शब्द) तक; । ? ! . पर हमेशा कटे. छोटे टुकड़े इस मॉडल में अटपटे लगते हैं.
+         */
+        val ST3 = Profile(
+            firstSoft = 3, firstMax = 6,
+            secondMin = 3, secondSoft = 5, secondMax = 8,
+            nextMin = 5, nextSoft = 9, nextMax = 15,
+            stallMs = 150L, stallMin = 2,
+            smartCut = true, keepTags = true, refillMs = 1_500L, refillMin = 3,
+        )
         /** इस शब्द से पहले काटना ठीक (नया उपवाक्य शुरू होता है). "पर / तो" नहीं - वे "मेज़ पर", "मैं तो" भी होते हैं */
         val BREAK_BEFORE = setOf(
             "और", "एवं", "लेकिन", "परंतु", "परन्तु", "मगर", "किंतु", "किन्तु", "कि", "क्योंकि", "जो", "जब", "जहाँ",
@@ -212,5 +239,8 @@ class TextChunker(
 
         /** बोलने में न आने वाले निशान (markdown) हटाओ */
         fun clean(t: String): String = MARKDOWN.replace(t, " ")
+        private val MARKDOWN_NO_GT = Regex("[*#`_~|]+")
+        /** [clean] जैसा, पर `>` रहने दो (टैग पूरे रहें; बचे-खुचे `>` St3Text.onlyTags हटाता है) */
+        fun cleanKeepTags(t: String): String = MARKDOWN_NO_GT.replace(t, " ")
     }
 }

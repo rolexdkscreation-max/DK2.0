@@ -47,6 +47,7 @@ internal fun settingsIcon(id: String): Int = when (id) {
     "brain_coder" -> R.drawable.ic_s_coder
     "brain_pc" -> R.drawable.ic_s_computer
     "voice" -> R.drawable.ic_s_voice
+    "st3" -> R.drawable.ic_s_st3
     "orb" -> R.drawable.ic_s_orb
     "ui" -> R.drawable.ic_s_ui
     "access" -> R.drawable.ic_s_access
@@ -82,7 +83,7 @@ internal fun settingsTint(id: String): Int = when (id) {
     "cat_social" -> 0xFFFBBF24.toInt()
     "cat_data" -> 0xFF38BDF8.toInt()
     "profile", "about" -> 0xFF22D3EE.toInt()
-    "voice", "templates", "brain_live" -> 0xFFA855F7.toInt()
+    "voice", "templates", "brain_live", "st3" -> 0xFFA855F7.toInt()
     "autoreply" -> 0xFF22C55E.toInt()
     "brain", "auto", "coder", "brain_chat", "brain_coder" -> 0xFF6366F1.toInt()
     "ui", "orb", "reels" -> 0xFFEC4899.toInt()

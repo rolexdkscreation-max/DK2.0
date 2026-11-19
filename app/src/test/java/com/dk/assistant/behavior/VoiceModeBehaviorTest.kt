@@ -106,7 +106,9 @@ class VoiceModeBehaviorTest {
         assertFalse(Ui.hasText(s, "Kokoro"))
         assertFalse(Ui.hasText(s, "Supertonic"))
         // सिर्फ़ दो इंजन: डायरेक्ट Live + Gemini TTS
-        assertEquals(listOf(VoiceEngines.LIVE_NATIVE, VoiceEngines.GEMINI_TTS), VoiceEngines.all.map { it.id })
+        // 19 नवंबर 2026 (मालिक: "उस TTS को चुन सकूँ, बातचीत उसी से बोले"): तीसरा - फ़ोन पर बनने वाली आवाज़ (बंद, खुद चुनो तो ही)
+        assertEquals(listOf(VoiceEngines.LIVE_NATIVE, VoiceEngines.GEMINI_TTS, com.dk.assistant.voice.engine.St3VoiceEngine.ID), VoiceEngines.all.map { it.id })
+        assertFalse(Ui.switch(s, com.dk.assistant.voice.engine.St3VoiceEngine.title).isChecked)
     }
 
     /**

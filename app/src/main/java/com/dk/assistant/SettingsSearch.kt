@@ -30,6 +30,8 @@ object SettingsSearch {
         "update" to "अपडेट", "debug" to "डिबग लॉग", "about" to "ऐप के बारे में",
         // 17 नवंबर 2026: DK बैकएंड का लाइसेंस
         "license" to "लाइसेंस की",
+        // 19 नवंबर 2026: फ़ोन पर बनने वाली नई आवाज़ें (Supertonic 3) - "आवाज़" के कार्ड से भी खुलता है
+        "st3" to "आवाज़ें (Supertonic 3)",
         // नवंबर 2026: Control Center के 6 श्रेणी कार्ड (आख़िर में, ताकि पुराने नतीजों का क्रम न बदले)
         "cat_dk" to "मेरा DK", "cat_brain" to "दिमाग और आवाज़", "cat_auto" to "ऑटोमेशन",
         "cat_security" to "सुरक्षा", "cat_social" to "सोशल और कहानी", "cat_data" to "डेटा और ऐप"
@@ -77,7 +79,8 @@ object SettingsSearch {
         "update" to "update अपडेट version वर्ज़न",
         "license" to "license लाइसेंस की key चाबी premium प्रीमियम basic बेसिक free मुफ़्त whatsapp व्हाट्सएप login लॉगिन google गूगल admin मालिक",
         "debug" to "debug log लॉग गलती error",
-        "about" to "about privacy निजता version"
+        "about" to "about privacy निजता version",
+        "st3" to "supertonic सुपरटोनिक आवाज़ें voices महिला female offline ऑफ़लाइन फ़ोन पर tts डाउनलोड download f1 टेस्ट वाक्य"
     )
 
     val ENTRIES: List<E> = SECTIONS.keys.map { E(it, "", "", SECTION_WORDS[it].orEmpty()) } + listOf(
@@ -101,6 +104,10 @@ object SettingsSearch {
         E("lang", "DK किस भाषा में जवाब दे", "DK लाइव, DK चैट, बिना-Live आवाज़, DK कंप्यूटर और कोडिंग एजेंट — सब पर एक साथ"),
         E("brain", "एक key से सब (ऑल-राउंडर)", "सिर्फ़ एक Gemini key — DK लाइव में बात, चैट, सुनना-लिखना, Google खोज और फ़ोन के काम। कोडिंग एजेंट, स्टोरी मोड, DK कंप्यूटर, वेबसाइट के लिए इसे बंद करके अलग-अलग keys डालें"),
         E("voice", "रोमांटिक (18+)", "DK का स्वभाव में: सहमति के बाद प्यार भरी, सभ्य बात; रुको / बंद करो = तुरंत बंद", "romantic 18+ adult रोमांटिक गर्लफ्रेंड"),
+        E("voice", "आवाज़ें (फ़ोन पर बनने वाली नई आवाज़)", "महिला आवाज़ें 1-5 • डाउनलोड • टेस्ट वाक्य", "offline ऑफ़लाइन नई आवाज़ voices tts"),
+        E("st3", "1. मुख्य आवाज़-मॉडल (एक बार)", "डाउनलोड / रोकें / हटाएँ • SHA-256 जाँच", "model मॉडल download डाउनलोड"),
+        E("st3", "2. आवाज़ें (महिला)", "आवाज़ 1-5 • डाउनलोड करके चुनें", "voice f1 f2 f3 f4 f5 चुनें"),
+        E("st3", "3. रफ़्तार, साफ़ी और टेस्ट", "रफ़्तार • कदम (steps) • टेस्ट वाक्य सुनाओ", "speed रफ़्तार steps कदम test टेस्ट"),
         E("voice", "बातचीत का तरीका (सुनना अलग, सोचना-बोलना अलग)", "Gemini Live या अलग-अलग तरीका • Whisper (फ़ोन पर) / Android पहचान • चुप्पी का समय • बीच में टोकना • Whisper मॉडल डाउनलोड / रोकें / हटाएँ", "whisper stt speech to text व्हिस्पर पहचान लिखना split अलग तरीका silence चुप्पी vad download डाउनलोड model मॉडल barge टोकना"),
         E("voice", "वॉइस गार्डियन", "फ़ोन पर ही आवाज़-पहचान: मॉडल डाउनलोड, 6 वाक्य सिखाना, 15 सैंपल वाली पक्की पहचान, पक्की रोक, सीमा, सिर्फ़ Boss की आवाज़, Away मोड", "voice guardian speaker verification owner away आवाज़ पहचान 15 सैंपल voice samples पक्की पहचान पक्की रोक strict"),
         E("brain", "टूल एजेंट (Retry Loop)", "लंबे फ़ोन-काम: Gemini खुद tool चुने, 15 कदम तक, हर कदम जाँचकर 3 बार तक दोबारा", "tool agent retry function calling टूल"),

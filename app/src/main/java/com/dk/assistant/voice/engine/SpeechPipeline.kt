@@ -69,6 +69,8 @@ class SpeechPipeline(private val ctx: Context, private val hooks: Hooks) {
     @Volatile private var lastWarmAt = 0L
     /** नवंबर 2026: इस जवाब का बाकी हिस्सा Live की अपनी आवाज़ बोल रही है - नया text नहीं लेना */
     @Volatile private var handed = false
+    /** इस जवाब का पूरा text आ चुका ([endTurn]) */
+    @Volatile private var ended = false
     /** इस जवाब में अब तक टुकड़ों का कितना text (अक्षर) - Live आवाज़ पर जाएँ तो कहाँ से */
     @Volatile private var segAt = 0
     /** v3.71: इस बारी के पहले वाक्य की आवाज़ इंजन से कब बनकर आई (देरी का हिसाब) */
@@ -83,6 +85,9 @@ class SpeechPipeline(private val ctx: Context, private val hooks: Hooks) {
 
     init {
         player = Thread({ loop() }, "dk-tts-play").apply { isDaemon = true; start() }
+        // 19 नवंबर 2026: बजते समय भी देखो - अगला टुकड़ा समय पर बनना शुरू हो (सिर्फ़ refillMs वाले इंजन, जैसे St3)
+        Thread({ while (!released) { try { Thread.sleep(40) } catch (_: InterruptedException) { break }; refillCheck() } },
+            "dk-tts-refill").apply { isDaemon = true; start() }
         synchronized(alive) { alive[this] = true }
     }
 
@@ -113,10 +118,12 @@ class SpeechPipeline(private val ctx: Context, private val hooks: Hooks) {
     /** नया जवाब शुरू */
     fun begin(e: VoiceEngine) {
         engine = e
+        if (e.id == St3VoiceEngine.ID) St3VoiceEngine.newAnswer()     // 19 नवंबर 2026: पहला टुकड़ा जल्दी
+        if (e.id == St3VoiceEngine.ID) St3VoiceEngine.lead = { leadMs() }   // बाकी टुकड़ों के कदम: आगे कितनी आवाज़ तैयार
         synchronized(chunker) { chunker.reset(profileFor(e.id)) }
         synchronized(spoken) { spoken.setLength(0) }
         firstPending = true
-        handed = false; segAt = 0
+        handed = false; segAt = 0; ended = false
         turnAt = System.currentTimeMillis(); lastFeedAt = turnAt
     }
 
@@ -130,6 +137,7 @@ class SpeechPipeline(private val ctx: Context, private val hooks: Hooks) {
 
     /** जवाब पूरा लिखा गया - बचा text आख़िरी टुकड़ा */
     fun endTurn() {
+        ended = true
         if (handed) return
         val rest = synchronized(chunker) { chunker.flush() }
         if (rest != null) enqueue(rest)
@@ -184,7 +192,8 @@ class SpeechPipeline(private val ctx: Context, private val hooks: Hooks) {
         for ((i, e) in chain.withIndex()) {
             if (s.gen != gen) break
             val last = i == chain.lastIndex
-            if (!last && VoiceEngines.isFailed(e.id)) continue          // अभी-अभी टूटा था - सीधा अगला
+            // 19 नवंबर 2026: फ़ोन वाली आवाज़ (St3) एक गलती पर 2 मिनट नहीं छोड़ी जाती - हर टुकड़े पर फिर कोशिश (गलती हो तो तुरंत अगला)
+            if (!last && e.id != St3VoiceEngine.ID && VoiceEngines.isFailed(e.id)) continue          // अभी-अभी टूटा था - सीधा अगला
             val why = e.notReady(ctx)
             if (why != null) { VoiceEngines.markFailed(e.id, why); continue }     // जैसे Worker का पता नहीं - अगला
             try {
@@ -219,7 +228,9 @@ class SpeechPipeline(private val ctx: Context, private val hooks: Hooks) {
             val s = try { segs.poll(30, TimeUnit.MILLISECONDS) } catch (_: InterruptedException) { break }
             stallCheck()
             if (s == null) { idleCheck(); continue }
+            playing = s
             try { if (s.gen == gen) play(s) } catch (e: Exception) { hooks.log("आवाज़ बजाने में गलती: ${e.message}") }
+            playing = null
             pending.decrementAndGet()
         }
     }
@@ -229,6 +240,20 @@ class SpeechPipeline(private val ctx: Context, private val hooks: Hooks) {
         val pr = chunker.profile
         if (!firstPending || System.currentTimeMillis() - lastFeedAt < pr.stallMs) return
         val p = synchronized(chunker) { chunker.flushFirstIfStalled(pr.stallMin) } ?: return
+        enqueue(p)
+    }
+
+    /**
+     * 19 नवंबर 2026 (मालिक: "एक वाक्य बोलता है, फिर रुकता है"): जड़ - अगला टुकड़ा तभी बनता था जब उसका पूरा वाक्य
+     * (। ? !) आ जाए; Live की लिखावट लगभग बोलने की रफ़्तार से आती है, तो पिछला ख़त्म होते-होते ही अगला बनना शुरू होता
+     * = हर वाक्य के बीच बनने जितनी चुप्पी. अब: पिछला ख़त्म होने वाला है और अगला कुछ नहीं बन रहा -> जितना text है अभी.
+     */
+    private fun refillCheck() {
+        val pr = chunker.profile
+        if (pr.refillMs <= 0 || firstPending || handed || released) return
+        if (segs.isNotEmpty() || pending.get() > 1) return          // अगला पहले से बन रहा / कतार में
+        if (playUntil - System.currentTimeMillis() > pr.refillMs) return
+        val p = synchronized(chunker) { chunker.flushIfAtLeast(pr.refillMin) } ?: return
         enqueue(p)
     }
 
@@ -267,7 +292,11 @@ class SpeechPipeline(private val ctx: Context, private val hooks: Hooks) {
             try { hooks.onSilent(s.text) } catch (e: Exception) { com.dk.assistant.Quiet.note(e) }
             return
         }
+        if (firstPending && engine?.id == St3VoiceEngine.ID) preroll(s)
+        if (g != gen) return
         val tr = ensureTrack()
+        val prevEnd = playUntil
+        val wasFirst = firstPending
         val shape = Joint()
         val even = PcmEven()
         var announced = false
@@ -278,12 +307,61 @@ class SpeechPipeline(private val ctx: Context, private val hooks: Hooks) {
             if (b === end) break
             val p = even.take(b) ?: continue
             for (piece in shape.push(p)) {
-                if (!announced) { announced = true; noteSpoken(s.text); showVoice(s) }
+                if (!announced) { announced = true; noteSpoken(s.text); showVoice(s); if (!wasFirst) noteGap(s, prevEnd) }
                 write(tr, piece, g, s)
             }
         }
         if (g != gen) return
         for (piece in shape.finish(pauseMs(s.text))) write(tr, piece, g, s)
+    }
+
+    /**
+     * 19 नवंबर 2026 (मालिक: "पहला वाक्य बोलकर 1-2 सेकंड रुकता है, फिर लगातार"): फ़ोन वाली आवाज़ (St3) का पहला टुकड़ा
+     * बन गया - बजाने से पहले ज़्यादा से ज़्यादा [PREROLL_MS] देखो कि दूसरा भी बन जाए (कतार में एक आगे तैयार). छोटा-सा
+     * इंतज़ार शुरू में, ताकि पहले वाक्य के बाद चुप्पी न हो. पहला टुकड़ा लंबा हो / जवाब इतना ही हो = तुरंत.
+     */
+    private fun preroll(s: Seg) {
+        if (pcmMs(s) >= PREROLL_SKIP_MS) return
+        val t0 = System.currentTimeMillis()
+        var asked = false
+        while (s.gen == gen && System.currentTimeMillis() - t0 < PREROLL_MS) {
+            val next = segs.peek()
+            if (next != null && (next.q.isNotEmpty() || next.phone)) return       // दूसरा भी तैयार
+            if (next == null && ended) {                       // पूरा जवाब आ चुका: बचा text आख़िरी टुकड़ा, नहीं बचा = यही अकेला
+                val rest = synchronized(chunker) { chunker.flush() } ?: return
+                enqueue(rest)
+            }
+            if (next == null && !asked && System.currentTimeMillis() - t0 > 100) {
+                asked = true                                       // अगला वाक्य अधूरा - जितना है (3+ शब्द) अभी बनाओ
+                synchronized(chunker) { chunker.flushIfAtLeast(chunker.profile.refillMin) }?.let { enqueue(it) }
+            }
+            Thread.sleep(10)
+        }
+    }
+
+    /** अभी बज रहा टुकड़ा ([lead] का हिसाब) */
+    @Volatile private var playing: Seg? = null
+
+    /** अभी कितने ms की आवाज़ बजने को तैयार: speaker पर बाकी + बजते टुकड़े का बचा + कतार में बने टुकड़े */
+    fun leadMs(): Long {
+        val now = System.currentTimeMillis()
+        var ms = maxOf(0L, playUntil - now)
+        playing?.let { if (it.gen == gen) ms += pcmMs(it) }
+        for (x in segs) if (x.gen == gen && x.q.isNotEmpty()) ms += pcmMs(x)
+        return ms
+    }
+
+    /** कतार में रखी (बनी हुई) आवाज़ कितने ms की */
+    private fun pcmMs(s: Seg): Long = s.q.sumOf { it.size.toLong() } * 1000L / (VoiceEngine.RATE * 2L)
+
+    /** दो टुकड़ों के बीच चुप्पी हुई = लॉग में कारण (बनने में देर या text देर से) */
+    private fun noteGap(s: Seg, prevEnd: Long) {
+        if (prevEnd <= 0) return
+        val gap = System.currentTimeMillis() - prevEnd
+        if (gap < GAP_LOG_MS) return
+        val build = if (s.firstPcmAt > 0) s.firstPcmAt - s.createdAt else -1
+        val why = if (s.createdAt >= prevEnd - 200) "जवाब का text देर से आया" else "बनने में $build ms लगे"
+        hooks.log("आवाज़ में चुप्पी $gap ms (\"${s.text.take(30)}\" से पहले): $why")
     }
 
     /** इंजन फ़ेल होकर phone पर आया हो तो END तक रुककर पता चलता है */
@@ -299,7 +377,9 @@ class SpeechPipeline(private val ctx: Context, private val hooks: Hooks) {
             if (s.q.isNotEmpty()) return s.phone
             val waited = System.currentTimeMillis() - from
             // नवंबर 2026: टुकड़ा अटका (धीमा नेट / TTS देर) - Live की अपनी आवाज़ बचा जवाब बोले
-            val late = com.dk.assistant.SplitRescue.stuck(waited, first)
+            // 19 नवंबर 2026: फ़ोन पर बनने वाली आवाज़ (St3) को ज़्यादा समय - वह पूरा टुकड़ा बनाकर ही बजती है
+            val late = com.dk.assistant.SplitRescue.stuck(waited, first) &&
+                (engine?.id != St3VoiceEngine.ID || com.dk.assistant.SplitRescue.stuck(waited, first, local = true))
             if (!asked && late) {
                 asked = true
                 if (rescue(s, SplitRescueWhy.STUCK, waited)) return false
@@ -371,11 +451,20 @@ class SpeechPipeline(private val ctx: Context, private val hooks: Hooks) {
     companion object {
         /** जवाब के बीच दो टुकड़ों का ठहराव इतना तक = अब भी "बोल रहा है" (गूँज को आपकी आवाज़ न समझे) */
         const val GAP_HOLD_MS = 1_200L
+        /** फ़ोन वाली आवाज़: पहला टुकड़ा बजाने से पहले दूसरे का ज़्यादा से ज़्यादा इतना इंतज़ार */
+        const val PREROLL_MS = 400L
+        /** पहला टुकड़ा इतना लंबा = दूसरे को बनने का समय पहले से है, इंतज़ार नहीं */
+        const val PREROLL_SKIP_MS = 3_000L
+        /** इससे लंबी चुप्पी लॉग में */
+        const val GAP_LOG_MS = 250L
 
         /** इंजन के हिसाब से टुकड़ों का नाप (नवंबर 2026: Kokoro हटाया - अब सब इंजन STANDARD; LOCAL फ़ोन में बनने वाली आवाज़ के लिए रखा) */
         /** नवंबर 2026 (मालिक: "बात खत्म होते ही जवाब शुरू"): Gemini TTS = पहला टुकड़ा छोटा (2-6 शब्द, 150 ms रुका तो तुरंत) */
-        fun profileFor(engineId: String): TextChunker.Profile =
-            if (engineId == VoiceEngines.GEMINI_TTS) TextChunker.FAST_NET else TextChunker.STANDARD
+        fun profileFor(engineId: String): TextChunker.Profile = when (engineId) {
+            VoiceEngines.GEMINI_TTS -> TextChunker.FAST_NET
+            St3VoiceEngine.ID -> TextChunker.ST3        // 19 नवंबर 2026: फ़ोन पर बनने वाली आवाज़ - शब्द-दर-शब्द नहीं, वाक्य के टुकड़े
+            else -> TextChunker.STANDARD
+        }
 
         /** नवंबर 2026: आवाज़ इंजन बदला - जो भी pipeline बोल रही हो, उसी पल चुप (कतार भी) */
         private val alive = java.util.WeakHashMap<SpeechPipeline, Boolean>()

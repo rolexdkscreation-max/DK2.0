@@ -11,7 +11,9 @@ package com.dk.assistant.plus.models
  */
 object ModelCatalog {
 
-    enum class Kind(val title: String) { VOICE("आवाज़-पहचान"), FACE("चेहरा-पहचान"), SOCIAL("सोशल पोस्ट (गैलरी पहचान)"), WAKE("वेक वर्ड"), STT("बोली से लिखना (Whisper)") }
+    enum class Kind(val title: String) { VOICE("आवाज़-पहचान"), FACE("चेहरा-पहचान"), SOCIAL("सोशल पोस्ट (गैलरी पहचान)"), WAKE("वेक वर्ड"), STT("बोली से लिखना (Whisper)"),
+        /** 19 नवंबर 2026: Supertonic 3 - फ़ोन पर बनने वाली आवाज़ ([com.dk.assistant.voice.st3.St3Config]) */
+        TTS("बोलने वाली आवाज़ (Supertonic 3)") }
 
     data class Asset(
         val id: String,
@@ -141,7 +143,8 @@ object ModelCatalog {
      */
     val REMOVED_FILES = listOf("robot_expressive.glb", "cesium_man.glb", "brainstem.glb", "fox.glb", "three_gltf_loader.js", "three_bg_utils.js")
 
-    val ALL: List<Asset> = listOf(REDIMNET_HEAVY, REDIMNET_LIGHT, FACE_EMBED, FACE_DETECT) + SOCIAL_CLIP + WAKE + WHISPER_SMALL
+    val ALL: List<Asset> = listOf(REDIMNET_HEAVY, REDIMNET_LIGHT, FACE_EMBED, FACE_DETECT) + SOCIAL_CLIP + WAKE + WHISPER_SMALL +
+        com.dk.assistant.voice.st3.St3Config.ALL
 
     fun byId(id: String): Asset? = ALL.firstOrNull { it.id == id }
     fun ofKind(k: Kind): List<Asset> = ALL.filter { it.kind == k }
