@@ -118,7 +118,8 @@ class SpeechPipeline(private val ctx: Context, private val hooks: Hooks) {
     /** नया जवाब शुरू */
     fun begin(e: VoiceEngine) {
         engine = e
-        if (e.id == St3VoiceEngine.ID) { St3VoiceEngine.newAnswer(); St3VoiceEngine.lead = { leadMs() } }   // 19 नवंबर 2026: पहला टुकड़ा जल्दी
+        if (e.id == St3VoiceEngine.ID) St3VoiceEngine.newAnswer()     // 19 नवंबर 2026: पहला टुकड़ा जल्दी
+        if (e.id == St3VoiceEngine.ID) St3VoiceEngine.lead = { leadMs() }   // बाकी टुकड़ों के कदम: आगे कितनी आवाज़ तैयार
         synchronized(chunker) { chunker.reset(profileFor(e.id)) }
         synchronized(spoken) { spoken.setLength(0) }
         firstPending = true

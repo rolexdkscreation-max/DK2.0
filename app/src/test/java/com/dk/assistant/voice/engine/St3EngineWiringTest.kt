@@ -69,7 +69,7 @@ class St3EngineWiringTest {
     @Test fun slowPhoneGetsFewerSteps_fastPhoneKeepsSetting() {
         assertEquals(8, St3VoiceEngine.autoSteps(8, 0.0))      // अभी नापा नहीं
         assertEquals(8, St3VoiceEngine.autoSteps(8, 0.03))     // तेज़ फ़ोन: 8 कदम = 0.24 (आधे से कम) - Settings वाला
-        assertEquals(7, St3VoiceEngine.autoSteps(8, 0.1))      // 0.7 / 0.1 = 7
+        assertEquals(6, St3VoiceEngine.autoSteps(8, 0.11))     // 0.7 / 0.11 = 6.4
         assertEquals(5, St3VoiceEngine.autoSteps(8, 0.15))     // धीमा: 5 से नीचे नहीं...
         assertEquals(5, St3VoiceEngine.autoSteps(8, 0.25))     // ...बहुत धीमा हो तब भी 5 (19 नवंबर 2026, मालिक: 4 पर रोबोटिक गूंज)
         assertEquals(3, St3VoiceEngine.autoSteps(3, 0.25))     // खुद कम रखा तो वही
