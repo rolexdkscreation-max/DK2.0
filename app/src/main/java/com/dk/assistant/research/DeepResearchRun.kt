@@ -59,7 +59,10 @@ class DeepResearchRun(private val c: Context, private val sites: (List<String>) 
         for (k in geminiKeys) for (m in models) {
             if (System.currentTimeMillis() > until) return null
             try { return DeepResearchNet.gemini(k, m, prompt, maxTokens, json, fast) }
-            catch (e: AiException) { if (!fast) com.dk.assistant.dkai.SelectedModel.failedIf(c, m, e); if (e.code == 401 || e.code == 403) break }
+            catch (e: AiException) {
+                if (!fast) com.dk.assistant.dkai.SelectedModel.failedIf(c, m, e)
+                if (e.code == 401 || e.code == 403) break
+            }
             catch (e: Exception) { if (!fast) com.dk.assistant.dkai.SelectedModel.failedIf(c, m, e) }
         }
         return null
