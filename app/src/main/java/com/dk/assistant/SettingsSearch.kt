@@ -33,15 +33,19 @@ object SettingsSearch {
         // 19 नवंबर 2026: फ़ोन पर बनने वाली नई आवाज़ें (Supertonic 3) - "आवाज़" के कार्ड से भी खुलता है
         "st3" to "आवाज़ें (Supertonic 3)",
         // नवंबर 2026: Control Center के 6 श्रेणी कार्ड (आख़िर में, ताकि पुराने नतीजों का क्रम न बदले)
-        "cat_dk" to "मेरा DK", "cat_brain" to "दिमाग और आवाज़", "cat_auto" to "ऑटोमेशन",
+        // 20 नवंबर 2026 (मालिक): "मेरा DK" = प्रोफ़ाइल • नया DK लाइव पैनल • आवाज़ दिमाग से अलग
+        "persona" to "DK का स्वभाव और मोड", "memory" to "याददाश्त और सच्चा दोस्त",
+        "cat_dk" to "प्रोफ़ाइल", "cat_live" to "DK लाइव", "cat_voice" to "आवाज़", "cat_brain" to "AI दिमाग", "cat_auto" to "ऑटोमेशन",
         "cat_security" to "सुरक्षा", "cat_social" to "सोशल और कहानी", "cat_data" to "डेटा और ऐप"
     )
 
     /** नवंबर 2026: Control Center का मुख्य पेज = ये 6 कार्ड (id, नाम, छोटा विवरण, अंदर की पुरानी पंक्तियाँ - इसी क्रम में).
      *  हर पुरानी पंक्ति ठीक एक कार्ड में - CategoriesTest जाँचता है कि कोई छूटी नहीं. */
     val CATEGORIES: List<Pair<Triple<String, String, String>, List<String>>> = listOf(
-        Triple("cat_dk", "मेरा DK", "प्रोफ़ाइल • भाषा • दिखावट • ओर्ब और चेहरा") to listOf("profile", "lang", "ui", "orb"),
-        Triple("cat_brain", "दिमाग और आवाज़", "AI दिमाग • आवाज़ • कोडिंग एजेंट • DK कंप्यूटर") to listOf("brain", "voice", "coder", "computer"),
+        Triple("cat_dk", "प्रोफ़ाइल", "आपका और DK का नाम • भाषा • दिखावट • ओर्ब और चेहरा") to listOf("profile", "lang", "ui", "orb"),
+        Triple("cat_live", "DK लाइव", "JARVIS • FRIDAY / VENOM • DK का स्वभाव • याददाश्त • सच्चा दोस्त") to listOf("persona", "memory"),
+        Triple("cat_voice", "आवाज़", "बोलने वाला इंजन • सुनना • वेक वर्ड • आवाज़ें (Supertonic 3) • वॉइस गार्डियन") to listOf("voice", "st3"),
+        Triple("cat_brain", "AI दिमाग", "AI दिमाग • कोडिंग एजेंट • DK कंप्यूटर") to listOf("brain", "coder", "computer"),
         Triple("cat_auto", "ऑटोमेशन", "ऑटोनोमस मोड • टेम्पलेट कमांड • ऑटो रिप्लाई • Accessibility") to listOf("auto", "templates", "autoreply", "access"),
         Triple("cat_security", "सुरक्षा", "फ़ोन लॉक • टच मोड • चेहरा पहचान • परमिशन") to listOf("phonelock", "guard", "face", "perms"),
         Triple("cat_social", "सोशल और कहानी", "सोशल रिव्यू • रील गिनती और लिमिट • स्टोरी राइटर") to listOf("social", "reels", "story"),
@@ -58,7 +62,9 @@ object SettingsSearch {
         "brain_chat" to "chat चैट key api openai groq openrouter z.ai zai glm nvidia एनवीडिया nim",
         "brain_coder" to "coder coding कोडिंग key api",
         "brain_pc" to "computer कंप्यूटर key api z.ai zai glm nvidia एनवीडिया nim",
-        "voice" to "voice आवाज़ बोलना सुनना mic माइक tts whatsapp memory याददाश्त dost दोस्त",
+        "voice" to "voice आवाज़ बोलना सुनना mic माइक tts whatsapp",
+        "persona" to "jarvis जार्विस friday फ्राइडे venom वेनम स्वभाव persona पर्सोना mood मूड girlfriend गर्लफ्रेंड romantic रोमांटिक नटखट professional संबोधन",
+        "memory" to "memory मेमोरी याददाश्त याद dost दोस्त सच्चा दोस्त incognito इनकॉग्निटो पुरानी बातचीत",
         "orb" to "orb ओर्ब चेहरा",
         "access" to "accessibility फ़ोन कंट्रोल control battery बैटरी call कॉल",
         "guard" to "touch mode टच मोड screen guard स्क्रीन गार्ड गार्ड मोड guard गार्ड security सुरक्षा chor चोर चोरी theft anti alarm siren सायरन intruder घुसपैठिया पहरा चौकीदार",
@@ -103,7 +109,7 @@ object SettingsSearch {
         E("lang", "ऐप की भाषा (स्क्रीन)", "पूरे ऐप के बटन, Settings, संदेश — English या हिंदी"),
         E("lang", "DK किस भाषा में जवाब दे", "DK लाइव, DK चैट, बिना-Live आवाज़, DK कंप्यूटर और कोडिंग एजेंट — सब पर एक साथ"),
         E("brain", "एक key से सब (ऑल-राउंडर)", "सिर्फ़ एक Gemini key — DK लाइव में बात, चैट, सुनना-लिखना, Google खोज और फ़ोन के काम। कोडिंग एजेंट, स्टोरी मोड, DK कंप्यूटर, वेबसाइट के लिए इसे बंद करके अलग-अलग keys डालें"),
-        E("voice", "रोमांटिक (18+)", "DK का स्वभाव में: सहमति के बाद प्यार भरी, सभ्य बात; रुको / बंद करो = तुरंत बंद", "romantic 18+ adult रोमांटिक गर्लफ्रेंड"),
+        E("persona", "रोमांटिक (18+)", "DK का स्वभाव में: सहमति के बाद प्यार भरी, सभ्य बात; रुको / बंद करो = तुरंत बंद", "romantic 18+ adult रोमांटिक गर्लफ्रेंड"),
         E("voice", "आवाज़ें (फ़ोन पर बनने वाली नई आवाज़)", "महिला आवाज़ें 1-5 • डाउनलोड • टेस्ट वाक्य", "offline ऑफ़लाइन नई आवाज़ voices tts"),
         E("st3", "1. मुख्य आवाज़-मॉडल (एक बार)", "डाउनलोड / रोकें / हटाएँ • SHA-256 जाँच", "model मॉडल download डाउनलोड"),
         E("st3", "2. आवाज़ें (महिला)", "आवाज़ 1-5 • डाउनलोड करके चुनें", "voice f1 f2 f3 f4 f5 चुनें"),
@@ -124,16 +130,16 @@ object SettingsSearch {
         E("brain_chat", "मेरी Gemini key paid है", "DKAI होम पर सिर्फ़ फ्री मॉडल - paid key हो तो Pro जैसे paid मॉडल भी दिखें"),
         E("brain_chat", "DK चैट की AI", "चैट, आम जवाब, बिना-Live आवाज़ मोड का जवाब, search, गहरी सोच और कहानी — सिर्फ़ इसी की key से"),
         E("brain_chat", "तुरंत सेटअप — कोई भी फ्री key डालें", "DK खुद पहचानेगा कि key किस कंपनी की है, उसके फ्री मॉडल जाँचकर सबसे तेज़ चुनेगा और बात शुरू कर देगा"),
-        E("voice", "JARVIS मोड", "JARVIS जैसी आवाज़ और अंदाज़ — काम सारे वही जो DK करता है. बोलें: \"जार्विस मोड ऑन करो\" / \"डीके मोड ऑन करो\""),
-        E("voice", "DK का स्वभाव", "दोस्ताना / नटखट शरारती / गर्लफ्रेंड / प्रोफ़ेशनल / शांत — मूड समझकर बात, बगल की बातचीत (सुनेगी, जवाब नहीं)", "persona natkhat naughty professional girlfriend mood side talk personality स्वभाव मूड"),
+        E("persona", "JARVIS मोड", "JARVIS जैसी आवाज़ और अंदाज़ — काम सारे वही जो DK करता है. बोलें: \"जार्विस मोड ऑन करो\" / \"डीके मोड ऑन करो\""),
+        E("persona", "DK का स्वभाव", "दोस्ताना / नटखट शरारती / गर्लफ्रेंड / प्रोफ़ेशनल / शांत — मूड समझकर बात, बगल की बातचीत (सुनेगी, जवाब नहीं)", "persona natkhat naughty professional girlfriend mood side talk personality स्वभाव मूड"),
         E("voice", "बोलने वाला इंजन (DK Live)", "DK लाइव (Direct Gemini Live Voice, डिफ़ॉल्ट) • Gemini TTS (बैकअप) — एक समय में एक"),
         E("voice", "सुनना (माइक)", "लगातार सुनना — बिना बीप की आवाज़"),
         E("voice", "वेक वर्ड: हे डीके / हेलो डीके (फ़ोन के अंदर)", "ऐप बंद या फ़ोन लॉक हो तब भी \"हे डीके\" (Hey DK) या \"हेलो डीके\" (Hello DK) बोलिए — तुरंत DK लाइव. वेक वर्ड से पहले कुछ भी इंटरनेट पर नहीं जाता"),
         E("voice", "WhatsApp संदेश", "\"राहुल को WhatsApp पर लिखो …\" कहने पर DK खुद भेजता है और भेजने के बाद ही \"भेज दिया\" बोलता है"),
         E("voice", "टेम्पलेट कमांड", "\"व्हाट्सएप ओपन करो ___ को ___ मैसेज भेज दो\" जैसे साँचे — बिना API key, बिना AI"),
         E("voice", "ऑटोनोमस मोड", "DK खुद तय करे कि काम कोडिंग का है या फ़ोन के ऐप का, और खुद करे — शुरू में बंद"),
-        E("voice", "Memory (याददाश्त)", "क्या-क्या सेव है देखें, कोई एक चीज़ या सारी मेमोरी मिटाएँ — सब सिर्फ़ इसी फ़ोन में"),
-        E("voice", "सच्चा दोस्त", "DK करीबी दोस्त की तरह अपनेपन से बात करे, पिछली बातें याद रखे"),
+        E("memory", "Memory (याददाश्त)", "क्या-क्या सेव है देखें, कोई एक चीज़ या सारी मेमोरी मिटाएँ — सब सिर्फ़ इसी फ़ोन में"),
+        E("memory", "सच्चा दोस्त", "DK करीबी दोस्त की तरह अपनेपन से बात करे, पिछली बातें याद रखे"),
         E("orb", "झलक", "ओर्ब पर टैप = चेहरा बनने वाला एनीमेशन"),
         E("orb", "ओर्ब का आकार", "सब छोटे-छोटे 3D डॉट से बने हैं — जो पसंद हो चुनें"),
         E("orb", "किनारों की चमक", "DK सुन या बोल रहा हो तो स्क्रीन के किनारे चमकें"),
@@ -167,7 +173,7 @@ object SettingsSearch {
         E("face", "चेहरा पहचान", "Boss का चेहरा सेट करें — DK और टच मोड आपको पहचानें", "face फ़ेस चेहरा boss बॉस register रजिस्टर anti-spoof स्पूफ फ़ोटो वीडियो lens लेंस scan स्कैन"),
         E("face", "DK वॉचमैन", "कौन आया, कितनी बार, क्या किया — रिपोर्ट सिर्फ़ Boss के चेहरे से", "watchman वॉचमैन वाचमैन चौकीदार कौन आया visitor आने जाने रिपोर्ट report"),
         E("face", "जान-पहचान वाले चेहरे", "परिवार / दोस्त — नाम के साथ चेहरा सेव करें", "family परिवार friend दोस्त कौन who name नाम रिश्ता relation मम्मी पापा भाई बहन"),
-        E("voice", "FRIDAY / VENOM मोड", "असिस्टेंट का दूसरा रूप — FRIDAY (काम की बात) • VENOM (मज़ाकिया पुरुष आवाज़)", "friday फ्राइडे venom वेनम persona पर्सोना jarvis"),
+        E("persona", "FRIDAY / VENOM मोड", "असिस्टेंट का दूसरा रूप — FRIDAY (काम की बात) • VENOM (मज़ाकिया पुरुष आवाज़)", "friday फ्राइडे venom वेनम persona पर्सोना jarvis"),
         E("computer", "ईमेल (IMAP/SMTP)", "DK आपके ईमेल पढ़े, जवाब भेजे, स्पैम हटाए — App Password से", "email ईमेल mail मेल gmail जीमेल inbox इनबॉक्स imap smtp app password signature हस्ताक्षर"),
         E("autoreply", "WhatsApp ग्रुप रिपोर्ट", "रोज़ की रिपोर्ट का टेम्पलेट - बोलकर भरो, ग्रुप में भेजो", "group ग्रुप report रिपोर्ट template टेम्पलेट whatsapp व्हाट्सएप"),
         E("ui", "नीचे की 5-टैब पट्टी", "होम • स्कैन • माइक • चैट • मेमोरी", "tab bar bottom nav टैब पट्टी नीचे की पट्टी होम स्कैन माइक चैट मेमोरी"),

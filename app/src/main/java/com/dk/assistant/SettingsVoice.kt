@@ -67,7 +67,8 @@ internal suspend fun <T> SettingsActivity.withDkMicPaused(block: suspend () -> T
 
 // v3.99: चेहरा पहचान (फ़ेस वेरिफ़िकेशन) ऐप से हटाई - मालिक की माँग. FaceAI वगैरह की फ़ाइलें/tests अंदर हैं, कहीं से चलती नहीं.
 
-internal fun SettingsActivity.secVoice() {
+/** 20 नवंबर 2026 (मालिक: "JARVIS, FRIDAY / VENOM, DK का स्वभाव - ये सब DK लाइव पैनल में, आवाज़ अलग"): DK लाइव → स्वभाव और मोड */
+internal fun SettingsActivity.secDkLive() {
     // v3.69: पुराना "आवाज़" हिस्सा (महिला/पुरुष, आवाज़ का प्रकार, सूची, अंदाज़, स्पीड, पिच, फ़ोन TTS) हटाया -
     // बैकअप: branch backup/dk-before-backup-folder-cleanup-1102, फ़ोल्डर backup/v3.69-settings/. अब सिर्फ़ DK लाइव का बोलने वाला इंजन.
     // नवंबर 2026 (मालिक): JARVIS मोड - बोलकर भी, यहाँ से भी
@@ -115,6 +116,10 @@ internal fun SettingsActivity.secVoice() {
         hint(box, "बोलें \"DK, मैं किसी से बात कर रहा हूँ\" / \"थोड़ी देर चुप रहो\" = DK सुनती रहेगी, जवाब सिर्फ़ जब आप \"DK…\" कहें (या \"DK वापस आओ\"). 3 मिनट शांति = अपने-आप वापस. \"मेरी आवाज़ सिखाओ\" किया हो तो DK आपकी और दूसरों की आवाज़ भी पहचानती है — दूसरों के कहने पर पैसे, मैसेज भेजना, कॉल, डिलीट, सेटिंग जैसे बड़े काम नहीं.")
     }
 
+}
+
+/** आवाज़ (अपनी अलग श्रेणी): बोलने वाला इंजन, सुनना, वेक वर्ड … */
+internal fun SettingsActivity.secVoice() {
     card("बोलने वाला इंजन (DK Live)", "DK लाइव (Direct Gemini Live Voice, डिफ़ॉल्ट) • Gemini TTS (बैकअप) — एक समय में एक") { box ->
         com.dk.assistant.voice.engine.VoiceEngineCard.build(this, box, dp)
         // नवंबर 2026 (मालिक): सच में आख़िरी बार किस इंजन ने बोला
@@ -194,6 +199,10 @@ internal fun SettingsActivity.secVoice() {
         hint(box, "यहाँ से चालू/बंद, कौन-से काम, अपने काम, पुष्टि, अलग API keys, इमरजेंसी स्टॉप और हर कदम का लॉग।")
     }
 
+}
+
+/** 20 नवंबर 2026 (मालिक: "याददाश्त और सच्चा दोस्त भी DK लाइव में"): DK लाइव → याददाश्त और सच्चा दोस्त */
+internal fun SettingsActivity.secDkMemory() {
     // ---- v3.88: Memory (फ़ोन की लोकल याददाश्त)
     card("Memory (याददाश्त)", "क्या-क्या सेव है देखें, कोई एक चीज़ या सारी मेमोरी मिटाएँ — सब सिर्फ़ इसी फ़ोन में") { box ->
         row(box, button("मेमोरी खोलें") { startActivity(android.content.Intent(this, MemoryActivity::class.java)) })

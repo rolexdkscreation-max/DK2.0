@@ -103,8 +103,11 @@ class SettingsActivity : AppCompatActivity() {
                     FutureViews.goldShader(title)
                 }
                 setupSearch(); menu() }
-            "cat_dk" -> { title.text = "मेरा DK"; menu("cat_dk") }
-            "cat_brain" -> { title.text = "दिमाग और आवाज़"; menu("cat_brain") }
+            "cat_dk" -> { title.text = "प्रोफ़ाइल"; menu("cat_dk") }
+            // 20 नवंबर 2026 (मालिक): "मेरा DK" = प्रोफ़ाइल; नया DK लाइव पैनल (स्वभाव, मोड, याददाश्त); आवाज़ दिमाग से अलग
+            "cat_live" -> { title.text = "DK लाइव"; menu("cat_live") }
+            "cat_voice" -> { title.text = "आवाज़"; menu("cat_voice") }
+            "cat_brain" -> { title.text = "AI दिमाग"; menu("cat_brain") }
             "cat_auto" -> { title.text = "ऑटोमेशन"; menu("cat_auto") }
             "cat_security" -> { title.text = "सुरक्षा"; menu("cat_security") }
             "cat_social" -> { title.text = "सोशल और कहानी"; menu("cat_social") }
@@ -117,6 +120,8 @@ class SettingsActivity : AppCompatActivity() {
             "brain_coder" -> { title.text = "AI दिमाग • कोडिंग एजेंट"; if (planKeys()) secBrainScope(ApiScopes.CODER) else planLockCard("कोडिंग एजेंट") }
             "brain_pc" -> { title.text = "AI दिमाग • DK कंप्यूटर"; if (planKeys()) secBrainScope(ApiScopes.PC) else planLockCard("DK कंप्यूटर") }
             "voice" -> { title.text = "आवाज़"; secVoice(); secTalk(); st3Entry(); voiceGuardianCard() }
+            "persona" -> { title.text = "DK का स्वभाव और मोड"; secDkLive() }
+            "memory" -> { title.text = "याददाश्त और सच्चा दोस्त"; secDkMemory() }
             "st3" -> { title.text = "आवाज़ें (Supertonic 3)"; secSt3() }
             "orb" -> { title.text = "ओर्ब और चेहरा"; secOrb(); secIsland() }
             "ui" -> { title.text = "दिखावट"; secUi() }
@@ -152,6 +157,9 @@ class SettingsActivity : AppCompatActivity() {
             Triple("ui", "दिखावट (UI कस्टमाइज़ेशन)", "थीम • मुख्य रंग • काँच की पारदर्शिता • चमक • एनिमेशन"),
             Triple("brain", "AI दिमाग", "DK लाइव • DK चैट • कोडिंग एजेंट • DK कंप्यूटर • एक key से सब"),
             Triple("voice", "आवाज़", "बोलने वाला इंजन (Live • Gemini TTS) • सुनना"),
+            Triple("persona", "DK का स्वभाव और मोड", "JARVIS • FRIDAY / VENOM • DK का स्वभाव (${DkPersona.get(this).title}) • रोमांटिक • संबोधन"),
+            Triple("memory", "याददाश्त और सच्चा दोस्त", "Memory (याददाश्त) • इनकॉग्निटो • पुरानी बातचीत • सच्चा दोस्त"),
+            Triple("st3", "आवाज़ें (Supertonic 3)", "फ़ोन पर बनने वाली आवाज़ें • डाउनलोड • रफ़्तार • टेस्ट"),
             Triple("orb", "ओर्ब और चेहरा", "पृथ्वी, गैलेक्सी, एटम, छल्ला, पुरुष/महिला HD चेहरा"),
             Triple("access", "Accessibility", (Setup.a11yMark(this) + when { Setup.accessibilityOn() -> "चालू"; Setup.enabledInSettings(this) -> "रुका है"; else -> "बंद" }) + " • फ़ोन कंट्रोल • हमेशा सुनना • कॉल • बैटरी • ड्राइविंग मोड • इवेंट ट्रिगर"),
             Triple("phonelock", "फ़ोन लॉक / अनलॉक", (if (PhoneLockStore.lockOn(this) || PhoneLockStore.unlockOn(this)) "✓ चालू" else "✗ बंद") + " • \"हे DK फोन लॉक करो\" • अपना नाम और वाक्य • PIN / पैटर्न"),

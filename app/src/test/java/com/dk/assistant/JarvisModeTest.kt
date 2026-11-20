@@ -102,7 +102,7 @@ class JarvisModeTest {
         val s = src("SettingsVoice.kt")
         assertTrue(s.contains("JARVIS मोड चालू (बंद = DK मोड)"))
         assertTrue(s.contains("JarvisMode.set(this, on)"))
-        assertTrue(src("SettingsSearch.kt").contains("E(\"voice\", \"JARVIS मोड\""))
+        assertTrue(src("SettingsSearch.kt").contains("E(\"persona\", \"JARVIS मोड\""))   // 20 नवंबर 2026: DK लाइव → स्वभाव और मोड
     }
 
     @Test fun jarvisVoiceLayer() {

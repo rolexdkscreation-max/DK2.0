@@ -9,12 +9,15 @@ class ControlCenterTest {
     // 15 नवंबर 2026: "face" (चेहरा पहचान) मालिक के कहने पर वापस - सुरक्षा में
     private val oldRows = listOf(
         "profile", "lang", "ui", "brain", "voice", "orb", "access", "phonelock", "guard", "face", "perms", "computer",
-        "coder", "auto", "templates", "autoreply", "social", "reels", "backup", "connectors", "story", "update", "debug", "about"
+        "coder", "auto", "templates", "autoreply", "social", "reels", "backup", "connectors", "story", "update", "debug", "about",
+        // 20 नवंबर 2026 (मालिक): DK लाइव पैनल (स्वभाव और मोड, याददाश्त) + आवाज़ की श्रेणी में Supertonic आवाज़ें
+        "persona", "memory", "st3"
     )
 
     @Test fun sixCategories_inOrder() {
         assertEquals(
-            listOf("cat_dk", "cat_brain", "cat_auto", "cat_security", "cat_social", "cat_data"),
+            // 20 नवंबर 2026 (मालिक): "मेरा DK" = प्रोफ़ाइल, नया "DK लाइव", "आवाज़" दिमाग से अलग = 8 श्रेणियाँ
+            listOf("cat_dk", "cat_live", "cat_voice", "cat_brain", "cat_auto", "cat_security", "cat_social", "cat_data"),
             SettingsSearch.CATEGORIES.map { it.first.first }
         )
     }
