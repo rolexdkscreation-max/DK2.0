@@ -35,7 +35,29 @@ object St3VoiceEngine : VoiceEngine {
         else -> null
     }
 
-    override fun warm(c: Context) { if (notReady(c) == null) St3Engine.warm(c) }
+    override fun warm(c: Context) {
+        if (notReady(c) != null) return
+        fetchFast(c)
+        St3Engine.warm(c)
+    }
+
+    /**
+     * 20 नवंबर 2026 (मालिक का 3.338 लॉग: हर टुकड़ा अपनी आवाज़ का 160-350% समय = वाक्यों के बीच 3-6 s चुप्पी):
+     * पुराना (धीमा) मॉडल चल रहा है और Wi-Fi (बिना गिनती वाला नेट) है = तेज़ मॉडल ([com.dk.assistant.voice.st3.St3Config.FAST],
+     * ~150 MB) पीछे से डाउनलोड. पूरा होते ही अगला वाक्य उसी से (पुराना भी फ़ोन में रहता है - अपने-आप कुछ नहीं मिटता).
+     * मोबाइल डेटा पर नहीं; Settings → आवाज़ें में हाथ से भी.
+     */
+    private fun fetchFast(c: Context) {
+        if (St3Store.fastFiles(c) || St3Store.fastBad(c)) return
+        val metered = try {
+            (c.getSystemService(Context.CONNECTIVITY_SERVICE) as android.net.ConnectivityManager).isActiveNetworkMetered
+        } catch (e: Exception) { com.dk.assistant.Quiet.note(e); true }
+        if (metered) return
+        val todo = com.dk.assistant.voice.st3.St3Config.FAST.filterNot { com.dk.assistant.plus.models.ModelManager.ready(c, it) }
+        if (todo.none { com.dk.assistant.plus.models.ModelManager.state(it.id).value !is com.dk.assistant.plus.models.ModelManager.St.Running }) return
+        com.dk.assistant.DKLog.d("ऑफ़लाइन आवाज़: तेज़ मॉडल (Android के लिए, ~150 MB) Wi-Fi पर पीछे से डाउनलोड शुरू")
+        todo.forEach { com.dk.assistant.plus.models.ModelManager.enqueue(c.applicationContext, it) }
+    }
 
     override fun speak(c: Context, text: String, voice: String, out: PcmOut) {
         notReady(c)?.let { throw java.io.IOException("ऑफ़लाइन आवाज़: $it") }
