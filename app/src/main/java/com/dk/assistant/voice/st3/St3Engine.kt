@@ -73,8 +73,15 @@ object St3Engine {
      * एक text बोलने लायक आवाज़ बनाओ (रुककर - पीछे के धागे पर बुलाओ). हर टुकड़ा (~300 अक्षर तक) बनते ही [onPiece].
      * गलती = exception (हिंदी में). [stop] हुआ = चुपचाप लौटे.
      */
-    fun synthBlocking(c: Context, text: String, voice: String?, maxSteps: Int = 99, pick: ((Int) -> Int)? = null, onPiece: (FloatArray) -> Unit) {
+    fun synthBlocking(c: Context, text: String, voice: String?, maxSteps: Int = 99, pick: ((Int) -> Int)? = null,
+                      split: ((String, Int) -> List<String>)? = null, onPiece: (FloatArray) -> Unit) {
         val my = gen.get()
+        val oldPrio = boost()
+        try { synthLocked(c, text, voice, maxSteps, pick, split, onPiece, my) } finally { restore(oldPrio) }
+    }
+
+    private fun synthLocked(c: Context, text: String, voice: String?, maxSteps: Int, pick: ((Int) -> Int)?,
+                            split: ((String, Int) -> List<String>)?, onPiece: (FloatArray) -> Unit, my: Int) {
         lock.withLock {
             if (gen.get() != my) return
             ensure(c, voice)?.let { throw IllegalStateException(it) }
@@ -83,7 +90,9 @@ object St3Engine {
             // [pick]: बारी आने पर (lock मिलने के बाद) तय हो - तब पता है आगे कितनी आवाज़ तैयार रखी है
             val base = minOf(St3Store.steps(c), maxSteps)
             val steps = pick?.invoke(base)?.coerceIn(St3Config.STEPS_MIN, base) ?: base; val speed = St3Store.speed(c)
-            for (piece in St3Text.chunk(text)) {
+            // 20 नवंबर 2026 ([split]): लंबा टुकड़ा + आगे कम आवाज़ तैयार = अल्पविराम / "और, लेकिन" पर दो-तीन हिस्से (बारी पर तय)
+            val pieces = St3Text.chunk(text).let { l -> if (split == null) l else l.flatMap { split(it, steps) } }
+            for (piece in pieces) {
                 if (gen.get() != my) return
                 val t0 = System.currentTimeMillis()
                 val out = s.synth(piece, st, steps, speed) { gen.get() != my } ?: continue
@@ -110,17 +119,36 @@ object St3Engine {
         val app = c.applicationContext
         Thread({
             try {
+                boost()                        // इस धागे पर खुले मॉडल के ORT/XNNPACK धागे भी यही प्राथमिकता लेते हैं
                 if (St3Store.threads(app) <= 0) bench(app)
                 lock.withLock {
                     if (ensure(app, St3Store.voice(app)) == null && !warmedUp) {
                         val t0 = System.currentTimeMillis()
                         synth?.let { s -> style?.let { st -> s.synth(WARM_LINE, st, 2, 1.05f) } }
                         warmedUp = true
-                        com.dk.assistant.DKLog.d("ऑफ़लाइन आवाज़: मॉडल गरम (${openThreads} थ्रेड${if (openXnn) " XNN" else ""}, ${System.currentTimeMillis() - t0} ms)")
+                        com.dk.assistant.DKLog.d("ऑफ़लाइन आवाज़: मॉडल गरम (${openThreads} थ्रेड${if (openXnn) " XNN" else ""}, ${System.currentTimeMillis() - t0} ms, प्राथमिकता ${prio()})")
                     }
                 }
             } catch (e: Throwable) { Quiet.note(e) } finally { warming = false }
         }, "dk-st3-warm").apply { isDaemon = true; start() }
+    }
+
+    /**
+     * 20 नवंबर 2026 (मालिक का 3.335 लॉग): ChatGPT खुलते ही (DK पीछे गया) हर कदम 0.14 -> 0.20 (आवाज़ के हर सेकंड पर) =
+     * ~40% धीमा, और ChatGPT सामने रहने तक वैसा ही. आवाज़ बनाने वाला धागा सामने वाले ऐप से CPU के लिए बराबरी पर लड़ता था.
+     * अब बनाते समय धागा [SYNTH_PRIORITY] पर (Android: URGENT_DISPLAY = -8; माइक/speaker के -16/-19 से नीचे, यानी
+     * सुनना-बजाना नहीं रुकता). मॉडल इसी प्राथमिकता वाले धागे पर खुलता है, तो उसके अपने (native) धागे भी यही लेते हैं.
+     */
+    const val SYNTH_PRIORITY = -8
+    private fun prio(): Int = try { android.os.Process.getThreadPriority(android.os.Process.myTid()) } catch (e: Throwable) { Quiet.note(e); 0 }
+    /** ऊँची प्राथमिकता; लौटाता है पुरानी (वापस रखने को) */
+    private fun boost(): Int {
+        val old = prio()
+        if (old > SYNTH_PRIORITY) try { android.os.Process.setThreadPriority(SYNTH_PRIORITY) } catch (e: Throwable) { Quiet.note(e) }
+        return old
+    }
+    private fun restore(old: Int) {
+        if (old > SYNTH_PRIORITY) try { android.os.Process.setThreadPriority(old) } catch (e: Throwable) { Quiet.note(e) }
     }
 
     /** वार्म-अप का छोटा वाक्य (सुनाया नहीं जाता) */

@@ -179,6 +179,16 @@ class AiTalkTest {
         assertEquals("", ImageGenFlow.answerText(o, "मेरा नया सवाल यहाँ है भाई"))
     }
 
+    @Test fun appStatusLineIsNotTheAnswer() {
+        // 20 नवंबर 2026 (मालिक का 3.335 लॉग): ChatGPT replied: "Sending" - यह हालत है, जवाब नहीं
+        for (t in listOf("Sending", "Sending…", "Thinking", "Searching the web", "सोच रहा है...")) assertTrue(t, ImageGenFlow.placeholder(t))
+        for (t in listOf("", "DK एक भरोसेमंद सहायक है जो फ़ोन के काम करता है।", "Hello! How can I help you today?")) assertFalse(t, ImageGenFlow.placeholder(t))
+        val root = listOf(java.io.File("src/main/java"), java.io.File("app/src/main/java")).first { it.exists() }
+        val flow = java.io.File(root, "com/dk/assistant/agent/core/ImageGenFlow.kt").readText()
+        assertTrue(flow.contains("if (placeholder(rep)) { sawBusy = true; same = 0; prev = \"\"; continue }"))
+        assertTrue(flow.contains(".takeUnless { placeholder(it) }"))
+    }
+
     // ------------------------------------------------------------------ सीखा हुआ - हमेशा, बिना दोहराव, हर prompt में
     @Test fun learnedWays_mergeNeverDropsAndBlock() {
         val old = (1..300).map { LearnedWays.Way("पुराना तरीका नंबर $it", "Claude", "t", it.toLong()) }

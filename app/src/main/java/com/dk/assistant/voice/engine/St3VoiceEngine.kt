@@ -48,9 +48,17 @@ object St3VoiceEngine : VoiceEngine {
             val chars = St3Text.onlyTags(text).length
             // पहला: जल्दी वाले कदम. बाकी: कदम बारी आने पर - आगे जितनी आवाज़ तैयार है उसमें यह बन जाए (समय हो = पूरे कदम, साफ़)
             val maxSteps = when { firstOfAnswer -> minOf(auto, FIRST_STEPS); ahead != null -> user; else -> auto }
-            val pick: ((Int) -> Int)? = if (firstOfAnswer || ahead == null) null else { cfg -> leadSteps(cfg, ahead(), freshPerStep(), chars * msPerChar()) }
+            // 20 नवंबर 2026: कदम ऊपर से [autoSteps] पर भी बँधे - धीमे फ़ोन पर 7-8 कदम वाला टुकड़ा अगले की चुप्पी बनता था
+            val pick: ((Int) -> Int)? = if (firstOfAnswer || ahead == null) null else { cfg -> steadySteps(cfg, ahead(), freshPerStep(), chars * msPerChar()) }
+            val split: ((String, Int) -> List<String>)? = if (firstOfAnswer || ahead == null) null else { piece, steps ->
+                val perChar = msPerChar()
+                fitSplit(piece, ahead(), freshPerStep() * steps * perChar, perChar).also { parts ->
+                    if (parts.size > 1) com.dk.assistant.DKLog.d("ऑफ़लाइन आवाज़: ${piece.length} अक्षर का टुकड़ा ${parts.size} हिस्सों में " +
+                        "(${parts.joinToString(" + ") { it.length.toString() }}) - आगे ${ahead()} ms ही तैयार, बीच में लंबी चुप्पी न हो")
+                }
+            }
             var samples = 0
-            St3Engine.synthBlocking(c, St3Text.onlyTags(text), voice, maxSteps, pick) { wav ->
+            St3Engine.synthBlocking(c, St3Text.onlyTags(text), voice, maxSteps, pick, split) { wav ->
                 if (!first) out.write(ByteArray(St3Synth.SILENCE_24K_BYTES))
                 first = false
                 if (firstOfAnswer && samples == 0) St3Stats.firstAudio(System.currentTimeMillis() - answerAt)
@@ -82,6 +90,53 @@ object St3VoiceEngine : VoiceEngine {
         val fit = ((leadMs * 0.85 - SYNTH_OVERHEAD_MS) / (perStepRtf * estAudioMs)).toInt()
         return fit.coerceIn(minOf(MIN_AUTO_STEPS, user), user)
     }
+    /** [leadSteps], पर [autoSteps] से ऊपर नहीं: फ़ोन जितने कदम लगातार निभा सके (आगे की तैयार आवाज़ एक टुकड़ा न खा जाए). pure */
+    fun steadySteps(user: Int, leadMs: Long, perStepRtf: Double, estAudioMs: Double): Int =
+        minOf(leadSteps(user, leadMs, perStepRtf, estAudioMs), autoSteps(user, perStepRtf))
+
+    /**
+     * 20 नवंबर 2026 (मालिक का 3.335 लॉग: "आवाज़ में चुप्पी 5363 ms" एक 82 अक्षर वाले टुकड़े से पहले): टुकड़ा अपनी बारी पर
+     * बनना शुरू होता है; आगे बजने को सिर्फ़ [leadMs] की आवाज़ तैयार हो और यह पूरा बनने में उससे बहुत ज़्यादा ले, तो बीच
+     * में उतनी लंबी चुप्पी. अब ऐसे टुकड़े को प्राकृतिक जगह (अल्पविराम / "और, लेकिन, क्योंकि..." से पहले) पर हिस्सों में:
+     * पहला हिस्सा तैयार आवाज़ के अंदर बन जाए, फिर हर अगला पिछले के बजते-बजते. ऐसी जगह न मिले = पूरा वैसे ही (बीच से नहीं).
+     * [synthMsPerChar] = एक अक्षर बनने में कितने ms, [audioMsPerChar] = एक अक्षर कितने ms बजता है. pure - JVM test.
+     */
+    fun fitSplit(text: String, leadMs: Long, synthMsPerChar: Double, audioMsPerChar: Double): List<String> {
+        if (synthMsPerChar <= 0.0 || audioMsPerChar <= 0.0 || text.length < MIN_PART * 2) return listOf(text)
+        val out = ArrayList<String>()
+        var rest = text.trim()
+        var budget = leadMs.toDouble()
+        while (rest.length >= MIN_PART * 2 && out.size < MAX_PARTS - 1) {
+            val fit = ((budget * 0.9 - SYNTH_OVERHEAD_MS) / synthMsPerChar).toInt()
+            if (rest.length <= fit) break                                  // पूरा बचा हिस्सा समय में बन जाएगा
+            val cut = naturalCut(rest, maxOf(fit, MIN_PART)) ?: break
+            val part = rest.substring(0, cut).trim()
+            out += part
+            rest = rest.substring(cut).trim()
+            // यह हिस्सा बनते समय तैयार आवाज़ घटी, बनकर उतनी ही जुड़ी (+ बीच की 0.2 s चुप्पी)
+            budget = maxOf(0.0, budget - part.length * synthMsPerChar - SYNTH_OVERHEAD_MS) + part.length * audioMsPerChar + 200.0
+        }
+        if (rest.isNotEmpty()) out += rest
+        return out
+    }
+    /** इससे छोटा हिस्सा नहीं (छोटे टुकड़े इस मॉडल में अटपटे) */
+    const val MIN_PART = 15
+    const val MAX_PARTS = 4
+    /**
+     * [limit] तक की सबसे पीछे की प्राकृतिक जगह (उसके बाद काटो); दोनों तरफ़ कम से कम [MIN_PART] अक्षर.
+     * [limit] तक न मिले = उसके बाद की पहली (पर टुकड़े के 60% से पहले - वरना फ़ायदा नहीं). null = नहीं मिली.
+     */
+    private fun naturalCut(t: String, limit: Int): Int? {
+        val cuts = (MIN_PART..(t.length - MIN_PART)).filter { isCut(t, it) }
+        return cuts.lastOrNull { it <= limit } ?: cuts.firstOrNull { it <= t.length * 0.6 }
+    }
+    private fun isCut(t: String, i: Int): Boolean {
+        if (t[i - 1] in SOFT_MARKS && t[i].isWhitespace()) return true
+        if (!t[i - 1].isWhitespace() || t[i].isWhitespace()) return false
+        return t.substring(i).substringBefore(' ').lowercase() in TextChunker.BREAK_BEFORE
+    }
+    private val SOFT_MARKS = setOf(',', ';', ':', '।', '.', '!', '?', '—', '–')
+
     /** हर टुकड़े का बँधा खर्च (text -> अंक, आवाज़-मॉडल) - नापा: ~100-150 ms */
     const val SYNTH_OVERHEAD_MS = 120.0
     /** [SpeechPipeline] बताती है: अभी कितने ms की आवाज़ बजने को तैयार (बज रही + कतार में बनी) */

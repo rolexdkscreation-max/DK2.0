@@ -175,9 +175,9 @@ object ImageGenAgent {
             (if (r.blocker != null) ". The user must finish that screen himself, then ask again." else "") +
             " Tell the user exactly this reason in one short Hindi line."
         if (r.appReply.isBlank()) return "SENT: the prompt was typed AND sent in ${r.app?.hi}, but DK could not read the answer. " +
-            "Tell the user it is sent and the answer is on the screen in ${r.app?.hi}."
+            "Tell the user it is sent and the answer is on the screen in ${r.app?.hi}. Never guess or make up what ${r.app?.hi} answered."
         return "SENT_AND_ANSWERED: DK typed and sent the prompt in ${r.app?.hi}. ${r.app?.hi} replied: \"${r.appReply}\". " +
-            "Tell the user the gist of this reply in short Hindi (do not invent anything beyond it). The app stays open on the screen in the SAME chat - " +
+            "Tell the user the gist of this reply in short Hindi, using ONLY these words (never invent or guess anything beyond them; later, if he asks what it said, repeat only this, or call ai_talk action=read to read the screen again). The app stays open on the screen in the SAME chat - " +
             "for the user's next question to ${r.app?.hi} call ai_app_prompt again (it continues this chat)."
     }
 
