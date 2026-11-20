@@ -1061,7 +1061,9 @@ class GeminiLive(internal val svc: DKAccessibilityService, internal val agent: A
         // 16 नवंबर 2026 (मालिक): "सारी keys इस्तेमाल करो" चालू = हर नई बातचीत DK लाइव की अगली अपनी key से (Round-Robin).
         // सूची का क्रम वही (limit का हिसाब key के नंबर से), सिर्फ़ शुरुआत बदलती है; बाकी keys घूमकर बचाव में.
         val poolOn = livePin == null && com.dk.assistant.plus.FeatureFlags.on(svc, com.dk.assistant.plus.FeatureFlags.KEY_POOL_ALL)
-        val start = LiveKeys.startKey(poolOn, ownKeys.size.coerceAtMost(keys.size), com.dk.assistant.plus.KeyPool.turn("live"))
+        // 20 नवंबर 2026 (लॉग: "Gemini key गलत है" हर बार पहले): पहले से गलत निकली key से शुरुआत नहीं ([LiveBadKeys])
+        val badKey = { i: Int -> LiveBadKeys.bad(svc, keys[i]) }
+        val start = LiveBadKeys.firstGood(LiveKeys.startKey(poolOn, ownKeys.size.coerceAtMost(keys.size), com.dk.assistant.plus.KeyPool.turn("live")), keys.size, badKey)
         liveStartKey = if (poolOn && ownKeys.size >= 2) start else -1
         if (liveStartKey > 0) log("सारी keys (Round-Robin): यह बातचीत key #${start + 1} से")
         var ki = start; keyIdx = start; var mi = 0
@@ -1071,13 +1073,14 @@ class GeminiLive(internal val svc: DKAccessibilityService, internal val agent: A
             if (livePin != null) { models = listOf(livePin.model.removePrefix("models/")); break }
             try { models = LiveModelPick.order(LiveModelPick.get(svc), discoverModels(key)); break }   // v3.80: चुना हुआ Live मॉडल पहले
             catch (e: Fatal) {
-                val nk = LiveKeys.next(ki, keys.size, start); if (nk < 0) throw e
+                if (e.message == "Gemini key गलत है") LiveBadKeys.mark(svc, key)
+                val nk = LiveBadKeys.after(LiveKeys.next(ki, keys.size, start), keys.size, start, badKey); if (nk < 0) throw e
                 ki = nk; keyIdx = ki; key = keys[ki]; log("key ${ki} नहीं चली (${e.message}) - बैकअप key ${ki + 1} से")
             }
         }
         /** अगली बैकअप key पर चुपचाप - true = बदल गई (मॉडल फिर से पहले से) */
         fun switchKey(why: String): Boolean {
-            val nk = LiveKeys.next(ki, keys.size, start); if (nk < 0) return false
+            val nk = LiveBadKeys.after(LiveKeys.next(ki, keys.size, start), keys.size, start, badKey); if (nk < 0) return false
             ki = nk; keyIdx = ki; key = keys[ki]
             models = try { LiveModelPick.order(LiveModelPick.get(svc), discoverModels(key)) } catch (_: Exception) { FALLBACK_MODELS }
             mi = 0; handle = null
@@ -1249,7 +1252,7 @@ class GeminiLive(internal val svc: DKAccessibilityService, internal val agent: A
                         when {
                             stopped -> break
                             r.contains("api key") || r.contains("api_key") || code == 401 || code == 403 ->
-                                if (switchKey("key गलत/बंद (code=$code)")) continue else throw Fatal("Gemini key गलत है या Live की इजाज़त नहीं (${LiveFailWhy.detail(code, reason)})", kind = LiveFailWhy.Kind.KEY)
+                                if (run { LiveBadKeys.mark(svc, key); switchKey("key गलत/बंद (code=$code)") }) continue else throw Fatal("Gemini key गलत है या Live की इजाज़त नहीं (${LiveFailWhy.detail(code, reason)})", kind = LiveFailWhy.Kind.KEY)
                             LiveRace.shouldBlockModel(code, r, tried = rc.lastFailCombo != null) -> {
                                 if (LiveOneKey.soft(keys.size, r, softQuota)) { softWait("setup"); continue }
                                 blockModel(model, "setup", r)

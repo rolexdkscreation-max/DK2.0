@@ -68,6 +68,8 @@ internal fun GeminiLive.startRace(keys: List<String>, models: List<String>, live
     queue = (LiveRace.stickyOrder(queue - hung.toSet(), stickyId) + hung).toMutableList()
     // 16 नवंबर 2026: "सारी keys इस्तेमाल करो" - नई बातचीत (handle नहीं) में बारी वाली key की जोड़ियाँ सबसे आगे
     if (resumeId == null && liveStartKey in keys.indices) queue = LiveKeys.preferKey(queue, liveStartKey) { it.keyIdx }.toMutableList()
+    // 20 नवंबर 2026 (लॉग: "Gemini key गलत है"): गलत निकली key की जोड़ियाँ सबसे पीछे ([LiveBadKeys])
+    queue = LiveBadKeys.last(queue) { it.keyIdx in keys.indices && LiveBadKeys.bad(svc, keys[it.keyIdx]) }.toMutableList()
     var stickyRetried = 0
     log("दौड़${if (live) "" else " (पीछे से, माइक नहीं)"}: ${queue.size} जोड़ियाँ, हर एक का इंतज़ार $tmo ms (हाल के नाप: ${health.recentTimes().joinToString()}) • " +
         queue.take(4).joinToString { it.label })
@@ -160,6 +162,7 @@ internal fun GeminiLive.attemptFailed(r: Race, a: Attempt, code: Int, reason: St
             log("दौड़: [${a.c.label}] $ms ms - इस मॉडल की limit (code=$code) - यह जोड़ी 2 मिनट नहीं, उसी key का अगला मॉडल तुरंत")
         } else {
             health.keyBad(a.c.keyIdx, now)
+            if (LiveBadKeys.badKeyError(code, reason)) LiveBadKeys.mark(svc, a.key)   // 20 नवंबर 2026: 24 घंटे याद
             queue.removeAll { it.keyIdx == a.c.keyIdx }
             log("दौड़: [${a.c.label}] $ms ms - key #${a.c.keyIdx + 1} नहीं चली (code=$code${if (LiveRace.isQuota(code, reason)) ", limit" else ""}) - 10 मिनट तक यह key नहीं, अगली तुरंत")
         }
