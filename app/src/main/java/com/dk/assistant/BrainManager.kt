@@ -999,7 +999,7 @@ class BrainManager(private val ctx: Context) {
             append(TalkStyle.FRIEND_HI)   // मालिक का लिखा "करीबी दोस्त" हिस्सा (शब्दशः)
             if (Prefs.friendMode(ctx)) append("\n").append(FriendStyle.persona(f, user))
             append(CareTime.block())
-            if (JarvisMode.on(ctx)) append(JarvisMode.block(user)) else append(CalmPersona.block()).append(DkPersona.pick(ctx, GirlfriendPersona.block(user))).append(SpeakingStyle.block(user)).append(DkPersona.finalBlock(ctx, user))
+            if (JarvisMode.on(ctx)) append(JarvisMode.block(user)) else append(CalmPersona.block()).append(DkPersona.pick(ctx, GirlfriendPersona.block(user))).append(SpeakingStyle.block(user)).append(DkPersona.finalBlock(ctx, Prefs.userName(ctx)))
             append(AssistantPersona.block(ctx))
             if (Prefs.dkOnly(ctx)) append(DkOnly.PROMPT)
             if (SideTalk.on(ctx)) append(SideTalk.PROMPT)

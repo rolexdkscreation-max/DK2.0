@@ -42,7 +42,7 @@ class GirlfriendPersonaTest {
 
     @Test fun appliedInAllVoicePrompts() {
         val bm = src("BrainManager.kt")
-        assertEquals(3, Regex("GirlfriendPersona\\.block\\(").findAll(bm).count())
+        assertEquals(4, Regex("GirlfriendPersona\\.block\\(").findAll(bm).count())  // 20 नवंबर 2026: + छोटे निर्देश (LivePromptLite)
         assertFalse(bm.contains("Prefs.voiceGender(ctx) != \"male\""))
     }
 }

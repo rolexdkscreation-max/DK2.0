@@ -67,7 +67,7 @@ class LiveInfoTest {
     @Test fun prompts_useExactClockAndCare() {
         val bm = src("BrainManager.kt")
         assertFalse("पुरानी अंग्रेज़ी 'Today:' वाली तारीख़ नहीं", bm.contains("\"\\nToday: \""))
-        assertEquals(3, Regex("CareTime\\.block\\(\\)").findAll(bm).count())
+        assertEquals(4, Regex("CareTime\\.block\\(\\)").findAll(bm).count())  // 20 नवंबर 2026: + छोटे निर्देश (LivePromptLite)
         assertTrue(bm.contains("call current_time"))
         val live = LiveSrc.all()
         assertTrue(live.contains("\"current_time\" -> { NowClock.syncAsync(); NowClock.toolAnswer() }"))
