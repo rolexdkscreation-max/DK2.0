@@ -37,6 +37,7 @@ internal fun GeminiLive.fetchModels(key: String): List<String> {
         val now = System.currentTimeMillis()
         modelCache = Triple(key.hashCode(), now, found.toList())
         Prefs.saveLiveModelCache(svc, LiveModelCache.encode(key.hashCode(), now, found))
+        LiveBadKeys.clear(svc, key)   // 20 नवंबर 2026: key फिर चली = "गलत" वाली याद हटाओ
     }
     return found
 }
