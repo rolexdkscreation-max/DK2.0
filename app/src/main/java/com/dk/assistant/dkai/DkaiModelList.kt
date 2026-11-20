@@ -154,7 +154,10 @@ object DkaiModelList {
     }
 
     /** चिप की लिस्ट (group, सबसे नया ऊपर) - cache से; अभी cache नहीं = जाने-माने मॉडल */
-    fun groups(c: Context): List<ModelCatalog.Group> = ModelCatalog.build(
+    fun groups(c: Context): List<ModelCatalog.Group> = ModelCatalog.onlyFree(allGroups(c), Prefs.bool(c, DkaiKit.PREF_GEMINI_PAID, false))
+
+    /** 20 नवंबर 2026: पूरी लिस्ट (free + paid) - चिप [groups] इसमें से सिर्फ़ फ्री दिखाता है */
+    fun allGroups(c: Context): List<ModelCatalog.Group> = ModelCatalog.build(
         providers = keyedProviders(c), tier = { tier(c, it) },
         lists = { id -> catalog(c, id).ifEmpty { Prefs.models(c, id).map { ModelCatalog.Meta(it) } } },
         fallback = { id -> Providers.fallbackModels(id).ifEmpty { if (id == "gemini") KNOWN_FREE_GEMINI + DkaiKit.MODEL_CARDS.mapNotNull { it.model } else listOfNotNull(SelectedModel.strong(c)?.takeIf { s -> s.provider.id == id }?.model) } },

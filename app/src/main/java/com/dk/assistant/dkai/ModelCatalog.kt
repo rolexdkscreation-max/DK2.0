@@ -130,6 +130,18 @@ object ModelCatalog {
         }
     }
 
+    /**
+     * 20 नवंबर 2026 (मालिक: "फ्री मॉडल ही सिर्फ़ वहाँ दिखना चाहिए, लेकिन पेड वाले भी दिख रहे"): [build] key का tier
+     * UNKNOWN / PAID होने पर सब मॉडल देता है (Claude / OpenAI / DeepSeek हमेशा PAID). चिप में अब सिर्फ़ फ्री वाले.
+     * जानी-मानी कंपनियों ([ORDER]) के paid मॉडल हटते हैं; अपनी (custom) API के नहीं (उनका free/paid पता नहीं).
+     * Gemini: AI दिमाग में "मेरी Gemini key paid है" खुद चालू किया हो ([geminiPaid]) तभी उसके paid मॉडल.
+     * कोई group खाली हो जाए = पूरा group नहीं दिखता.
+     */
+    fun onlyFree(groups: List<Group>, geminiPaid: Boolean): List<Group> = groups.mapNotNull { g ->
+        val keep = g.entries.filter { e -> !e.paid || e.provider !in ORDER || (geminiPaid && e.provider == "gemini") }
+        if (keep.isEmpty()) null else g.copy(entries = keep)
+    }
+
     // ------------------------------------------------------------------ cache का रूप (Prefs में एक string)
     fun encode(list: List<Meta>): String = list.joinToString("\n") { m ->
         listOf(m.id, m.created.toString(), if (m.voice) "1" else "0", if (m.deprecated) "1" else "0", m.name.replace('\t', ' ').replace('\n', ' ')).joinToString("\t")
