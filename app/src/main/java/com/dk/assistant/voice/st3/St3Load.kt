@@ -21,8 +21,13 @@ object St3Load {
     const val LIGHT_STEPS = 5
     /** हल्के तरीके में हिस्से बनाते समय आगे की तैयार आवाज़ का इतना ही भरोसा (= छोटे हिस्से) */
     const val LIGHT_LEAD = 0.6
-    /** Android PowerManager.THERMAL_STATUS_SEVERE (3) से - इतना गर्म = सीधे हल्का */
-    const val HOT_STATUS = 3
+    /** Android PowerManager.THERMAL_STATUS_MODERATE (2) से - इतना गर्म = सीधे हल्का + कम थ्रेड.
+     *  20 नवंबर 2026 (मालिक का लॉग: गर्म फ़ोन पर बनी 6362 ms बनाम आवाज़ 2075 ms): पहले SEVERE (3) से था - देर से जागता */
+    const val HOT_STATUS = 2
+    /** गर्म फ़ोन पर इतने ही थ्रेड - गर्म (धीमे किए गए) CPU पर ज़्यादा धागे आपस में लड़ते हैं और फ़ोन और गर्म होता है */
+    const val HOT_THREADS = 2
+    /** एक ही टुकड़ा इतना धीमा (बनी/आवाज़ 200%+) = दूसरे का इंतज़ार नहीं, सीधे हल्का */
+    const val VERY_SLOW_RTF = 2.0
 
     @Volatile var mode = Mode.NORMAL
         private set
@@ -39,21 +44,21 @@ object St3Load {
         if (r.audioMs <= 300) return null                // बहुत छोटा टुकड़ा - नाप भरोसे लायक नहीं
         if (r.slow) { slowRun++; goodRun = 0 } else { slowRun = 0; if (r.rtf < GOOD_RTF) goodRun++ else goodRun = 0 }
         val before = mode
-        mode = next(mode, slowRun, goodRun, heatStatus)
+        mode = next(mode, slowRun, goodRun, heatStatus, if (r.slow) r.rtf else 0.0)
         if (mode != before) { slowRun = 0; goodRun = 0 }
         return if (mode == before) null else change(before, mode, r)
     }
 
     /** तरीका कैसे बदले. pure */
-    fun next(m: Mode, slowRun: Int, goodRun: Int, heat: Int): Mode = when {
-        m == Mode.NORMAL && (slowRun >= SLOW_RUN || heat >= HOT_STATUS) -> Mode.LIGHT
+    fun next(m: Mode, slowRun: Int, goodRun: Int, heat: Int, lastRtf: Double = 0.0): Mode = when {
+        m == Mode.NORMAL && (slowRun >= SLOW_RUN || heat >= HOT_STATUS || lastRtf >= VERY_SLOW_RTF) -> Mode.LIGHT
         m == Mode.LIGHT && slowRun >= SLOW_RUN -> Mode.GEMINI
         m == Mode.LIGHT && goodRun >= GOOD_RUN && heat < HOT_STATUS -> Mode.NORMAL
         else -> m
     }
 
     private fun change(from: Mode, to: Mode, r: St3Stats.Row): String = "ऑफ़लाइन आवाज़: तरीका ${from.hi} -> ${to.hi} (" + when (to) {
-        Mode.LIGHT -> "लगातार $SLOW_RUN टुकड़े बजने से धीमे / फ़ोन गर्म - अब $LIGHT_STEPS कदम, छोटे हिस्से"
+        Mode.LIGHT -> "लगातार $SLOW_RUN टुकड़े बजने से धीमे / एक टुकड़ा बहुत धीमा / फ़ोन गर्म - अब $LIGHT_STEPS कदम, छोटे हिस्से"
         Mode.GEMINI -> "हल्के तरीके में भी धीमा - इस जवाब का बाकी Gemini की आवाज़ से"
         Mode.NORMAL -> "लगातार $GOOD_RUN टुकड़े तेज़ - फिर से आम कदम"
     } + ", आख़िरी ${St3Stats.pct(r.rtf)}, फ़ोन: ${heatName(heatStatus)})"
@@ -63,6 +68,12 @@ object St3Load {
 
     /** हल्के तरीके में हिस्से बाँटते समय आगे की तैयार आवाज़ कम मानो (= छोटे हिस्से). pure */
     fun leadFor(m: Mode, leadMs: Long): Long = if (m == Mode.NORMAL) leadMs else (leadMs * LIGHT_LEAD).toLong()
+
+    /** गर्म फ़ोन = कम थ्रेड ([HOT_THREADS]), ठंडा = नापी हुई गिनती. pure */
+    fun threadsFor(base: Int, heat: Int): Int = if (heat >= HOT_STATUS) minOf(base, HOT_THREADS).coerceAtLeast(1) else base
+
+    /** इस जवाब का अभी कोई टुकड़ा नहीं बना (मॉडल दोबारा खोलना हो तो बस यहीं - बीच जवाब में नहीं) */
+    val freshAnswer: Boolean get() = synchronized(this) { answerRows.isEmpty() }
 
     /** इस जवाब का बाकी Gemini की आवाज़ से? */
     val toGemini: Boolean get() = mode == Mode.GEMINI
