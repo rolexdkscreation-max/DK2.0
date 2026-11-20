@@ -118,7 +118,10 @@ internal fun GeminiLive.startRace(keys: List<String>, models: List<String>, live
                 if (ni >= 0 && LiveRace.shouldLaunch(inFlight.size, queue.size, t, lastLaunch) &&
                     !LiveRace.holdForSticky(inFlight.map { it.c.id }, stickyId)) {
                     val c = queue.removeAt(ni)
-                    val a = Attempt(c, keys[c.keyIdx], textFor(c.model), resume = c.id == resumeId)
+                    // 20 नवंबर 2026 (1007): handle सिर्फ़ उसी मॉडल की जोड़ी को - दूसरा मॉडल = नया सत्र
+                    val sameM = LiveHandleStore.sameModel(handleModel, c.model)
+                    if (c.id == resumeId && !sameM) log("दौड़: [${c.label}] handle दूसरे मॉडल ($handleModel) का - नहीं भेजा, नया सत्र")
+                    val a = Attempt(c, keys[c.keyIdx], textFor(c.model), resume = c.id == resumeId && sameM)
                     inFlight.add(a); r.atts.add(a); lastLaunch = t
                     log("जुड़ रहा हूँ: [${c.label}]" + (if (inFlight.size > 1) " (साथ में ${inFlight.size - 1} और चल रही)" else "") + if (a.resume) " (पुरानी बातचीत)" else "")
                     if (r.live) DKState.setLink("जुड़ रहा है… ${c.label}")
@@ -283,7 +286,8 @@ internal fun GeminiLive.prepareSpare(why: String, idle: Boolean, force: Boolean 
     if (force) { if (stopped || (handle == null && !newChat) || curKeys.isEmpty() || fresh) return fresh }
     else if (!LiveSpare.shouldPrepare(stopped, handle != null, curKeys.isNotEmpty(), fresh, stale, idle, now - spareTriedAt)) return false
     if (p != null) { parked = null; closeWs(p.ws, "standby पुराना (बातचीत आगे बढ़ी)") }
-    val h = handle; val m = model; val k = keyIdx
+    // 20 नवंबर 2026 (1007): resume उसी (मॉडल, key) पर जिसका handle है
+    val h = handle; val hc = LiveHandleStore.comboFor(handleModel, handleKey, model, keyIdx); val m = if (newChat) model else hc.first; val k = if (newChat) keyIdx else hc.second
     parkHandle = h; spareTriedAt = now; spareWanted = true
     log(if (newChat) "$why: पीछे से नई (हल्की) बातचीत का connection पहले से तैयार कर रहा हूँ (बिना रुकावट बदलेगा)"
         else "$why: पीछे से उसी बातचीत का दूसरा connection पहले से तैयार कर रहा हूँ (बिना रुकावट बदलेगा)")
@@ -335,7 +339,10 @@ internal fun GeminiLive.connect(key: String, m: String, closed: CompletableDefer
         override fun onOpen(webSocket: WebSocket, response: Response) {
             setupSentAt = System.currentTimeMillis()
             wire.reset()
-            if (!webSocket.tx(setupJson(m))) closed.complete(0 to "setup नहीं भेज पाया")
+            // 20 नवंबर 2026 (1007): handle दूसरे मॉडल का = नहीं भेजो (नया सत्र)
+            val sameM = handle == null || LiveHandleStore.sameModel(handleModel, m)
+            if (!sameM) log("handle दूसरे मॉडल ($handleModel) का - $m को नहीं भेजा, नया सत्र")
+            if (!webSocket.tx(setupJson(m, resume = sameM))) closed.complete(0 to "setup नहीं भेज पाया")
         }
         override fun onMessage(webSocket: WebSocket, text: String) { if (webSocket === ws) onServer(text, setup) }
         // Gemini JSON ko binary frame me bhi bhejta hai
