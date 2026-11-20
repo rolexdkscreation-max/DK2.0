@@ -239,7 +239,15 @@ class GeminiLive(internal val svc: DKAccessibilityService, internal val agent: A
     @Volatile internal var goAway = false
     @Volatile private var goAwayDrop = false          // server ne khud naya connection maanga (galti nahi)
     internal var handle: String? = null
-        set(v) { val changed = field != v; field = v; if (changed) saveHandle(v) }
+        set(v) {
+            val changed = field != v; field = v
+            // 20 नवंबर 2026 (लॉग: 1007 "Invalid session handle"): handle किस मॉडल / key का है - दूसरे मॉडल को नहीं भेजना
+            if (v == null) { handleModel = ""; handleKey = -1 } else if (changed) { handleModel = model.removePrefix("models/"); handleKey = keyIdx }
+            if (changed) saveHandle(v)
+        }
+    /** 20 नवंबर 2026: [handle] जिस मॉडल / key नंबर पर बना ("" / -1 = कोई handle नहीं) */
+    @Volatile internal var handleModel = ""
+    @Volatile internal var handleKey = -1
     /** नवंबर 2026: बीच बातचीत का बचाव-text (caption/अटका/टूटने से पहले की बात/बीच का सवाल) - डिफ़ॉल्ट बंद (1011 की जड़) */
     @Volatile internal var textRescue = false
     /** goAway पर पहले से तैयार connection किस handle से बना (useParked) */
@@ -1207,7 +1215,7 @@ class GeminiLive(internal val svc: DKAccessibilityService, internal val agent: A
                     // फिर भी नहीं = साफ़ कारण के साथ बैकअप मोड (सेवा में)
                     ready = false
                     spareWanted = false                  // यह दौड़ असली connection के लिए (standby वाली नहीं)
-                    val rc = startRace(keys, models, live = true, resumeId = if (handle != null) LiveRace.Combo(model, ki).id else null)
+                    val rc = startRace(keys, models, live = true, resumeId = if (handle != null) LiveHandleStore.comboFor(handleModel, handleKey, model, ki).let { LiveRace.Combo(it.first, it.second).id } else null)
                     withTimeoutOrNull(LiveRace.CONNECT_WAIT_MS) {
                         while (!rc.winner.isCompleted && !rc.over) delay(25)
                     }

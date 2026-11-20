@@ -12,6 +12,15 @@ package com.dk.assistant
  * Pure logic - Android import नहीं -> JVM test ([LiveHandleStoreTest]).
  */
 object LiveHandleStore {
+    /**
+     * 20 नवंबर 2026 (लॉग: "Invalid session handle", code 1007): handle उसी मॉडल का है जिससे जुड़ रहे हैं? दूसरा मॉडल =
+     * पुराना handle मत भेजो, नई बातचीत (नया सत्र). [handleModel] खाली = पता नहीं = मत भेजो. Pure
+     */
+    fun sameModel(handleModel: String, m: String): Boolean = handleModel.isNotBlank() && handleModel == m.removePrefix("models/")
+
+    /** handle किस (मॉडल, key) जोड़ी का है - दौड़ में resume वही जोड़ी. पता नहीं = अभी वाली. Pure */
+    fun comboFor(handleModel: String, handleKey: Int, model: String, ki: Int): Pair<String, Int> =
+        (handleModel.ifBlank { model }) to (if (handleKey >= 0) handleKey else ki)
     const val PREF = "live_handle_v1"
     /** Google: 2 घंटे. हम 90 मिनट (घड़ी का फ़र्क / server की देरी के लिए गुंजाइश) */
     const val MAX_AGE_MS = 90 * 60_000L
