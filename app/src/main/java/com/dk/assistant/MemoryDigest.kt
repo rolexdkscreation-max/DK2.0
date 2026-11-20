@@ -133,7 +133,14 @@ If nothing is worth remembering, reply {"keep":[]}."""
         try { if (!allowed(ctx)) return } catch (e: Exception) { Quiet.note(e); return }
         if (!running.compareAndSet(false, true)) return
         scope.launch {
-            try { runOnce(ctx, why, force) } catch (e: Exception) { DKLog.d("DK की याद (सार) गड़बड़: ${e.message?.take(80)}") }
+            // 20 नवंबर 2026 (मालिक: आवाज़ बजते समय भारी काम टालो): ऑफ़लाइन आवाज़ बन/बज रही = चुप होने तक (ज़्यादा से ज़्यादा 60 s)
+            val t0 = System.currentTimeMillis()
+            try {
+                while (!force && com.dk.assistant.voice.st3.St3Load.shouldDefer(System.currentTimeMillis(), System.currentTimeMillis() - t0, com.dk.assistant.voice.st3.St3Load.MEMORY_DEFER_MS)) {
+                    kotlinx.coroutines.delay(500)
+                }
+                runOnce(ctx, why, force)
+            } catch (e: Exception) { DKLog.d("DK की याद (सार) गड़बड़: ${e.message?.take(80)}") }
             finally { running.set(false) }
         }
     }

@@ -1347,7 +1347,8 @@ class GeminiLive(internal val svc: DKAccessibilityService, internal val agent: A
                             beginFreeze("इतिहास: तरीका B (context ${ctxTokens / 1000}k, $turnsSinceFresh बारियाँ)", nowL)
                             if (rotFreezeAt > 0L) { delay(50); continue }
                         }
-                        if (LiveSpare.due(goAway, nowL - upAt)) prepareSpare(if (goAway) "goAway" else "${(nowL - upAt) / 60_000} मिनट चला", idleNow)
+                        // 20 नवंबर 2026 (मालिक: आवाज़ बजते समय भारी काम टालो): goAway नहीं = ऑफ़लाइन आवाज़ बन/बज रही हो तो standby ज़्यादा से ज़्यादा 30 s बाद
+                        if (LiveSpare.due(goAway, nowL - upAt) && (goAway || !com.dk.assistant.voice.st3.St3Load.shouldDefer(nowL, nowL - upAt - LiveSpare.PREPARE_AT_MS, com.dk.assistant.voice.st3.St3Load.SPARE_DEFER_MS))) prepareSpare(if (goAway) "goAway" else "${(nowL - upAt) / 60_000} मिनट चला", idleNow)
                         if (goAway && !turnActive && !isPlaying()) {
                             if (LiveSpare.waitForSpare(spareReady(), nowL - spareTriedAt, goAwayDeadline - nowL)) { delay(100); continue }
                             // DK अभी-अभी चुप हुआ (ताज़ा handle आ रहा) और समय बचा = थामने तक रुको, अभी तोड़कर gap नहीं

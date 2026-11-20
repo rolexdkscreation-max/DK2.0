@@ -37,6 +37,8 @@ object St3Engine {
         private set
     /** इस बार खुलने के बाद एक छोटा वाक्य बन चुका (वार्म-अप) */
     @Volatile private var warmedUp = false
+    /** 20 नवंबर 2026: आख़िरी बार आवाज़ कब बनी - देर से खाली = फिर गरम करो (पहली आवाज़ 8.5 s वाला लॉग) */
+    @Volatile private var lastUseAt = 0L
     /** थ्रेड जाँच चल रही है (Settings में दिखे) */
     @Volatile var benching = false
         private set
@@ -138,7 +140,8 @@ object St3Engine {
             val st = style ?: throw IllegalStateException("आवाज़ तैयार नहीं")
             // [pick]: बारी आने पर (lock मिलने के बाद) तय हो - तब पता है आगे कितनी आवाज़ तैयार रखी है
             val base = minOf(St3Store.steps(c), maxSteps)
-            val steps = pick?.invoke(base)?.coerceIn(St3Config.STEPS_MIN, base) ?: base; val speed = St3Config.cleanSpeed(St3Store.speed(c) * speedMul)
+            // 20 नवंबर 2026: लगातार धीमा = हल्का तरीका ([St3Load]) - कदम [St3Load.LIGHT_STEPS] तक
+            val steps = St3Load.stepsFor(St3Load.mode, pick?.invoke(base)?.coerceIn(St3Config.STEPS_MIN, base) ?: base); val speed = St3Config.cleanSpeed(St3Store.speed(c) * speedMul)
             // 20 नवंबर 2026 ([split]): लंबा टुकड़ा + आगे कम आवाज़ तैयार = अल्पविराम / "और, लेकिन" पर दो-तीन हिस्से (बारी पर तय)
             val pieces = St3Text.chunk(text).let { l -> if (split == null) l else l.flatMap { split(it, steps) } }
             for (piece in pieces) {
@@ -151,7 +154,10 @@ object St3Engine {
                 val row = St3Stats.Row(piece.length, System.currentTimeMillis() - t0, out.wav.size * 1000L / s.sampleRate, steps, openThreads,
                     openXnn, out.stageMs[2], out.stageMs[3])
                 St3Stats.add(row)
-                com.dk.assistant.DKLog.d(St3Stats.line(row))
+                lastUseAt = System.currentTimeMillis()
+                heatCheck(c)
+                com.dk.assistant.DKLog.d(St3Stats.line(row) + " • फ़ोन: ${St3Load.heatName(St3Load.heatStatus)}")
+                St3Load.onRow(row)?.let { com.dk.assistant.DKLog.d(it) }   // 20 नवंबर 2026: लगातार धीमा = हल्का / Gemini
                 onPiece(out.wav)
             }
         }
@@ -163,7 +169,9 @@ object St3Engine {
      * सस्ता: खुला + गरम हो / चल रहा हो तो कुछ नहीं.
      */
     fun warm(c: Context) {
-        if ((synth != null && warmedUp && St3Store.threads(c) > 0) || warming || !St3Store.ready(c)) return
+        // 20 नवंबर 2026: गरम था पर [REWARM_IDLE_MS] से खाली = फिर एक छोटा वाक्य (CPU/कैश ठंडे - पहली आवाज़ 8.5 s वाला लॉग)
+        val idle = System.currentTimeMillis() - lastUseAt >= REWARM_IDLE_MS
+        if ((synth != null && warmedUp && St3Store.threads(c) > 0 && !idle) || warming || !St3Store.ready(c)) return
         warming = true
         val app = c.applicationContext
         Thread({
@@ -171,11 +179,13 @@ object St3Engine {
                 boost()                        // इस धागे पर खुले मॉडल के ORT/XNNPACK धागे भी यही प्राथमिकता लेते हैं
                 if (St3Store.threads(app) <= 0) bench(app)
                 lock.withLock {
-                    if (ensure(app, St3Store.voice(app)) == null && !warmedUp) {
+                    if (ensure(app, St3Store.voice(app)) == null && (!warmedUp || idle)) {
                         val t0 = System.currentTimeMillis()
                         synth?.let { s -> style?.let { st -> s.synth(WARM_LINE, st, 2, 1.05f) } }
                         warmedUp = true
-                        com.dk.assistant.DKLog.d("ऑफ़लाइन आवाज़: मॉडल गरम (${if (openFast) "तेज़ मॉडल" else "पुराना मॉडल"}, ${openThreads} थ्रेड${if (openXnn) " XNN" else ""}, ${System.currentTimeMillis() - t0} ms, प्राथमिकता ${prio()})")
+                        lastUseAt = System.currentTimeMillis()
+                        heatCheck(app)
+                        com.dk.assistant.DKLog.d("ऑफ़लाइन आवाज़: मॉडल गरम (${if (idle) "फिर से, " else ""}${if (openFast) "तेज़ मॉडल" else "पुराना मॉडल"}, ${openThreads} थ्रेड${if (openXnn) " XNN" else ""}, ${System.currentTimeMillis() - t0} ms, प्राथमिकता ${prio()})")
                     }
                 }
             } catch (e: Throwable) { Quiet.note(e) } finally { warming = false }
@@ -198,6 +208,27 @@ object St3Engine {
     }
     private fun restore(old: Int) {
         if (old > SYNTH_PRIORITY) try { android.os.Process.setThreadPriority(old) } catch (e: Throwable) { Quiet.note(e) }
+    }
+
+    /** इतनी देर खाली रहा = बातचीत शुरू होने पर फिर गरम करो */
+    const val REWARM_IDLE_MS = 60_000L
+
+    /**
+     * 20 नवंबर 2026 (मालिक: thermal throttling जाँचो, लॉग में दिखाओ): फ़ोन कितना गर्म ([St3Load.heatStatus]) - हर
+     * [HEAT_EVERY_MS] में एक बार पढ़ो (सस्ता). बदला = लॉग. Android 10 से पहले = पता नहीं.
+     */
+    private const val HEAT_EVERY_MS = 5_000L
+    @Volatile private var heatAt = 0L
+    private fun heatCheck(c: Context) {
+        val now = System.currentTimeMillis()
+        if (now - heatAt < HEAT_EVERY_MS) return
+        heatAt = now
+        try {
+            if (android.os.Build.VERSION.SDK_INT < 29) return
+            val pm = c.getSystemService(android.os.PowerManager::class.java) ?: return
+            val room = if (android.os.Build.VERSION.SDK_INT >= 30) pm.getThermalHeadroom(10) else Float.NaN
+            St3Load.onHeat(pm.currentThermalStatus, room)?.let { com.dk.assistant.DKLog.d(it) }
+        } catch (e: Throwable) { Quiet.note(e) }
     }
 
     /** वार्म-अप का छोटा वाक्य (सुनाया नहीं जाता) */

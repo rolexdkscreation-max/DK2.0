@@ -57,6 +57,18 @@ class SpeechPipeline(private val ctx: Context, private val hooks: Hooks) {
     private val segs = LinkedBlockingQueue<Seg>()
     private val pending = AtomicInteger(0)
     private val synth = Executors.newFixedThreadPool(2) { r -> Thread(r, "dk-tts-synth").apply { isDaemon = true } }
+    /**
+     * 20 नवंबर 2026 (मालिक का लॉग: 14:24 के बाद बनना बजने से धीमा): फ़ोन वाली आवाज़ (St3) का अपना एक धागा, शुरू से ऊँची
+     * प्राथमिकता ([St3Engine.SYNTH_PRIORITY], माइक/speaker से नीचे) पर - बाकी इंजनों के धागों से अलग, क्रम से एक-एक टुकड़ा.
+     */
+    private val st3Synth = Executors.newSingleThreadExecutor { r ->
+        Thread({
+            try { android.os.Process.setThreadPriority(com.dk.assistant.voice.st3.St3Engine.SYNTH_PRIORITY) } catch (e: Throwable) { com.dk.assistant.Quiet.note(e) }
+            r.run()
+        }, "dk-st3-synth").apply { isDaemon = true }
+    }
+    /** इस जवाब में ऑफ़लाइन आवाज़ धीमी होकर Gemini की आवाज़ पर गए - लॉग एक बार */
+    @Volatile private var geminiNoted = false
     private val chunker = TextChunker()
     @Volatile private var gen = 0
     @Volatile private var engine: VoiceEngine? = null
@@ -118,6 +130,9 @@ class SpeechPipeline(private val ctx: Context, private val hooks: Hooks) {
     /** नया जवाब शुरू */
     fun begin(e: VoiceEngine) {
         engine = e
+        // 20 नवंबर 2026: पिछले जवाब का सार (बनी/आवाज़ अनुपात, पहली आवाज़, तरीका, फ़ोन की गर्मी) - पहले/बाद मिलाने को
+        if (e.id == St3VoiceEngine.ID) com.dk.assistant.voice.st3.St3Load.newAnswer(com.dk.assistant.voice.st3.St3Stats.lastFirstMs)?.let { hooks.log(it) }
+        geminiNoted = false
         if (e.id == St3VoiceEngine.ID) St3VoiceEngine.newAnswer()     // 19 नवंबर 2026: पहला टुकड़ा जल्दी
         if (e.id == St3VoiceEngine.ID) St3VoiceEngine.lead = { leadMs() }   // बाकी टुकड़ों के कदम: आगे कितनी आवाज़ तैयार
         synchronized(chunker) { chunker.reset(profileFor(e.id)) }
@@ -168,6 +183,7 @@ class SpeechPipeline(private val ctx: Context, private val hooks: Hooks) {
         stop()
         player.interrupt()
         synth.shutdownNow()
+        st3Synth.shutdownNow()
         track?.let { try { it.stop() } catch (e: Exception) { com.dk.assistant.Quiet.note(e) }; try { it.release() } catch (e: Exception) { com.dk.assistant.Quiet.note(e) } }
         track = null
     }
@@ -180,14 +196,20 @@ class SpeechPipeline(private val ctx: Context, private val hooks: Hooks) {
         segAt += text.length + 1
         pending.incrementAndGet()
         segs.put(s)
-        try { synth.execute { make(s, e) } } catch (_: Exception) { s.phone = true; s.q.put(end) }
+        val ex = if (e.id == St3VoiceEngine.ID) st3Synth else synth
+        try { ex.execute { make(s, e) } } catch (_: Exception) { s.phone = true; s.q.put(end) }
     }
 
     private fun make(s: Seg, chosen: VoiceEngine) {
-        val chain = buildList {
+        val all = buildList {
             add(chosen)
             addAll(VoiceEngines.fallbacks(chosen.id))   // 20 नवंबर 2026: Gemini TTS, फिर ऑफ़लाइन आवाज़ (St3)
         }
+        // 20 नवंबर 2026 (मालिक): ऑफ़लाइन आवाज़ हल्के तरीके में भी लगातार धीमी ([com.dk.assistant.voice.st3.St3Load]) = इस जवाब का बाकी Gemini की आवाज़ से
+        val toGemini = chosen.id == St3VoiceEngine.ID && com.dk.assistant.voice.st3.St3Load.toGemini
+        val chain = if (toGemini) all.sortedBy { if (it.id == VoiceEngines.GEMINI_TTS) 0 else 1 } else all
+        if (toGemini && !geminiNoted) { geminiNoted = true; hooks.log("आवाज़ इंजन: ऑफ़लाइन आवाज़ लगातार धीमी - इस जवाब का बाकी Gemini की आवाज़ से (Gemini न चले तो फिर ऑफ़लाइन)") }
+        if (chosen.id == St3VoiceEngine.ID) com.dk.assistant.voice.st3.St3Load.mark(System.currentTimeMillis() + BUSY_HOLD_MS)
         var ok = false
         for ((i, e) in chain.withIndex()) {
             if (s.gen != gen) break
@@ -207,7 +229,7 @@ class SpeechPipeline(private val ctx: Context, private val hooks: Hooks) {
                 if (s.gen != gen) break
                 if (!got) throw IllegalStateException("कोई आवाज़ नहीं आई")
                 s.engine = e.id; ok = true
-                if (e.id != chosen.id) hooks.log("आवाज़ इंजन: ${chosen.title} नहीं चला - यह टुकड़ा ${e.title} से")
+                if (e.id != chosen.id && !toGemini) hooks.log("आवाज़ इंजन: ${chosen.title} नहीं चला - यह टुकड़ा ${e.title} से")
                 break
             } catch (ex: Exception) {
                 if (s.gen != gen) break
@@ -315,6 +337,8 @@ class SpeechPipeline(private val ctx: Context, private val hooks: Hooks) {
         // 20 नवंबर 2026 (मालिक: "ठहराव नहीं दिखता"): फ़ोन वाली आवाज़ में इंसान जैसे अलग-अलग ठहराव ([St3Prosody.pauseMs])
         val rest = if (engine?.id == St3VoiceEngine.ID && com.dk.assistant.voice.st3.St3Store.natural(ctx)) com.dk.assistant.voice.st3.St3Prosody.pauseMs(s.text) else pauseMs(s.text)
         for (piece in shape.finish(rest)) write(tr, piece, g, s)
+        // 20 नवंबर 2026: ऑफ़लाइन आवाज़ बज रही है - तब तक पीछे के भारी काम रुकें ([com.dk.assistant.voice.st3.St3Load.busy])
+        if (engine?.id == St3VoiceEngine.ID) com.dk.assistant.voice.st3.St3Load.mark(playUntil + BUSY_HOLD_MS)
     }
 
     /**
@@ -326,12 +350,17 @@ class SpeechPipeline(private val ctx: Context, private val hooks: Hooks) {
         if (pcmMs(s) >= PREROLL_SKIP_MS) return
         val t0 = System.currentTimeMillis()
         var asked = false
-        while (s.gen == gen && System.currentTimeMillis() - t0 < PREROLL_MS) {
+        // 20 नवंबर 2026 (मालिक: "बजना तभी शुरू करो जब कम से कम 1.5-2 सेकंड की आवाज़ तैयार हो"): पहले दूसरे टुकड़े का
+        // ज़रा-सा हिस्सा बनते ही बजना शुरू होता था - धीमे पल में फिर भी 1.4-3 s चुप्पी. अब [PREROLL_READY_MS] तैयार हो
+        // (या [PREROLL_WAIT_MS] बीत जाए / इससे ज़्यादा आवाज़ आनी ही नहीं) तब शुरू.
+        while (s.gen == gen && System.currentTimeMillis() - t0 < PREROLL_WAIT_MS) {
             val next = segs.peek()
-            if (next != null && (next.q.isNotEmpty() || next.phone)) return       // दूसरा भी तैयार
+            if (next != null && next.phone) return
+            if (readyMs(s) >= PREROLL_READY_MS) return                   // काफ़ी आवाज़ तैयार
             if (next == null && ended) {                       // पूरा जवाब आ चुका: बचा text आख़िरी टुकड़ा, नहीं बचा = यही अकेला
-                val rest = synchronized(chunker) { chunker.flush() } ?: return
-                enqueue(rest)
+                val rest = synchronized(chunker) { chunker.flush() }
+                if (rest == null && s.q.contains(end)) return        // यही अकेला, पूरा बन चुका
+                if (rest != null) enqueue(rest)
             }
             if (next == null && !asked && System.currentTimeMillis() - t0 > 100) {
                 asked = true                                       // अगला वाक्य अधूरा - जितना है (3+ शब्द) अभी बनाओ
@@ -350,6 +379,13 @@ class SpeechPipeline(private val ctx: Context, private val hooks: Hooks) {
         var ms = maxOf(0L, playUntil - now)
         playing?.let { if (it.gen == gen) ms += pcmMs(it) }
         for (x in segs) if (x.gen == gen && x.q.isNotEmpty()) ms += pcmMs(x)
+        return ms
+    }
+
+    /** बजने को तैयार: यह टुकड़ा + कतार में अगले टुकड़ों का बना हिस्सा (ms) */
+    private fun readyMs(s: Seg): Long {
+        var ms = pcmMs(s)
+        for (x in segs) if (x.gen == s.gen) ms += pcmMs(x)
         return ms
     }
 
@@ -457,6 +493,12 @@ class SpeechPipeline(private val ctx: Context, private val hooks: Hooks) {
         const val PREROLL_MS = 400L
         /** पहला टुकड़ा इतना लंबा = दूसरे को बनने का समय पहले से है, इंतज़ार नहीं */
         const val PREROLL_SKIP_MS = 3_000L
+        /** 20 नवंबर 2026: पहला टुकड़ा बजाने से पहले कम से कम इतनी आवाज़ तैयार हो (यह + अगले) */
+        const val PREROLL_READY_MS = 1_500L
+        /** ...पर इतने से ज़्यादा इंतज़ार नहीं (पहली आवाज़ बहुत देर से न आए) */
+        const val PREROLL_WAIT_MS = 1_200L
+        /** ऑफ़लाइन आवाज़ बनना/बजना ख़त्म होने के बाद इतनी देर और पीछे के भारी काम रुकें */
+        const val BUSY_HOLD_MS = 1_500L
         /** इससे लंबी चुप्पी लॉग में */
         const val GAP_LOG_MS = 250L
 

@@ -4,6 +4,7 @@ import android.content.Context
 import android.widget.LinearLayout
 import com.dk.assistant.voice.st3.St3Config
 import com.dk.assistant.voice.st3.St3Engine
+import com.dk.assistant.voice.st3.St3Load
 import com.dk.assistant.voice.st3.St3Prosody
 import com.dk.assistant.voice.st3.St3Store
 import com.dk.assistant.voice.st3.St3Stats
@@ -42,6 +43,11 @@ object St3VoiceEngine : VoiceEngine {
         St3Engine.warm(c)
     }
 
+    /** 20 नवंबर 2026 (मालिक: पहली आवाज़ 8.5 s - इंजन ठंडा): ऐप खुलते ही गरम, अगर बातचीत की आवाज़ यही चुनी है */
+    fun warmIfChosen(c: Context) {
+        if (VoiceEngines.activeId(c) == ID) warm(c)
+    }
+
     /**
      * 20 नवंबर 2026 (मालिक का 3.338 लॉग: हर टुकड़ा अपनी आवाज़ का 160-350% समय = वाक्यों के बीच 3-6 s चुप्पी):
      * पुराना (धीमा) मॉडल चल रहा है और Wi-Fi (बिना गिनती वाला नेट) है = तेज़ मॉडल ([com.dk.assistant.voice.st3.St3Config.FAST],
@@ -78,7 +84,7 @@ object St3VoiceEngine : VoiceEngine {
             val pick: ((Int) -> Int)? = if (firstOfAnswer || ahead == null) null else { cfg -> steadySteps(cfg, ahead(), freshPerStep(), chars * msPerChar()) }
             val split: ((String, Int) -> List<String>)? = if (firstOfAnswer || ahead == null) null else { piece, steps ->
                 val perChar = msPerChar()
-                fitSplit(piece, ahead(), freshPerStep() * steps * perChar, perChar).let { l -> if (natural) l.map(St3Prosody::softEnd) else l }.also { parts ->
+                fitSplit(piece, St3Load.leadFor(St3Load.mode, ahead()), freshPerStep() * steps * perChar, perChar).let { l -> if (natural) l.map(St3Prosody::softEnd) else l }.also { parts ->
                     if (parts.size > 1) com.dk.assistant.DKLog.d("ऑफ़लाइन आवाज़: ${piece.length} अक्षर का टुकड़ा ${parts.size} हिस्सों में " +
                         "(${parts.joinToString(" + ") { it.length.toString() }}) - आगे ${ahead()} ms ही तैयार, बीच में लंबी चुप्पी न हो")
                 }
@@ -87,7 +93,10 @@ object St3VoiceEngine : VoiceEngine {
             St3Engine.synthBlocking(c, said, voice, maxSteps, pick, split, if (natural) St3Prosody.speedMul(said) else 1f) { wav ->
                 if (!first) out.write(ByteArray(St3Synth.SILENCE_24K_BYTES))
                 first = false
-                if (firstOfAnswer && samples == 0) St3Stats.firstAudio(System.currentTimeMillis() - answerAt)
+                if (firstOfAnswer && samples == 0) {
+                    St3Stats.firstAudio(System.currentTimeMillis() - answerAt)
+                    com.dk.assistant.DKLog.d("ऑफ़लाइन आवाज़: जवाब की पहली आवाज़ ${St3Stats.lastFirstMs} ms में बनी (तरीका ${St3Load.mode.hi})")
+                }
                 samples += wav.size
                 out.write(St3Synth.pcm16(St3Synth.to24k(wav)))
             }
