@@ -430,7 +430,8 @@ class OpenAiCompatClient(
     @Volatile var usedModel: String = model
         private set
 
-    private fun tryNext(e: AiException) = !RateLimit.accountWide(e) && (e.code == 404 || e.code == 429 || e.code == 413 || e.code >= 500) ||
+    // 20 नवंबर 2026 (मालिक: "NVIDIA का llama 410 Gone"): 410 = कंपनी ने मॉडल बंद किया -> उसी key का अगला मॉडल (पहले पूरी API रुक जाती थी)
+    private fun tryNext(e: AiException) = !RateLimit.accountWide(e) && (e.code == 404 || e.code == 410 || e.code == 429 || e.code == 413 || e.code >= 500) ||
         // 14 नवंबर 2026 (मालिक: "चैट में Groq: मॉडल ने सवाल नहीं लिया - बार-बार"): कोई भी 400 (मॉडल चैट वाला नहीं / कोई
         // setting न ले) = उसी key का अगला मॉडल. सिर्फ़ key की गलती पर नहीं (वह हर मॉडल पर वही)
         (e.code == 400 && !e.message.orEmpty().contains("api key", true) && !e.message.orEmpty().contains("api_key", true))
@@ -445,6 +446,8 @@ class OpenAiCompatClient(
         if (e.code == 429 && !RateLimit.accountWide(e)) Cooldown.block(mKey(m), RateLimit.backoffMs(1, e.retryAfter))
         // नवंबर 2026: मॉडल मौजूद नहीं (404) = 6 घंटे उसे आख़िर में, अगला फ्री मॉडल पहले
         if (e.code == 404) Cooldown.block(mKey(m), 6 * 60 * 60 * 1000L)
+        // 410 = हमेशा के लिए बंद मॉडल - 24 घंटे आख़िर में (हर बार उस पर समय न जाए)
+        if (e.code == 410) Cooldown.block(mKey(m), 24 * 60 * 60 * 1000L)
     }
 
     override fun complete(system: String, history: List<Turn>, prompt: String, imageB64: String?): String {
