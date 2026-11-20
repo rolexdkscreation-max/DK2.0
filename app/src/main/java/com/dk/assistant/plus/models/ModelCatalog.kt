@@ -144,7 +144,8 @@ object ModelCatalog {
     val REMOVED_FILES = listOf("robot_expressive.glb", "cesium_man.glb", "brainstem.glb", "fox.glb", "three_gltf_loader.js", "three_bg_utils.js")
 
     val ALL: List<Asset> = listOf(REDIMNET_HEAVY, REDIMNET_LIGHT, FACE_EMBED, FACE_DETECT) + SOCIAL_CLIP + WAKE + WHISPER_SMALL +
-        com.dk.assistant.voice.st3.St3Config.ALL + com.dk.assistant.voice.st3.St3Config.FAST
+        com.dk.assistant.voice.st3.St3Config.ALL + com.dk.assistant.voice.st3.St3Config.FAST +
+        com.dk.assistant.voice.st3.St3Config.MALE.map { it.asset }
 
     fun byId(id: String): Asset? = ALL.firstOrNull { it.id == id }
     fun ofKind(k: Kind): List<Asset> = ALL.filter { it.kind == k }

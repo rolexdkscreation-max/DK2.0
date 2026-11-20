@@ -82,7 +82,7 @@ object St3Engine {
             val s = synth ?: threads(c).let { n -> openBest(c, n, St3Store.xnn(c)).also { synth = it; openThreads = n; warmedUp = false } }
             if (style?.id != vid) {
                 style?.close(); style = null
-                val f = com.dk.assistant.plus.models.ModelManager.file(c, St3Config.voice(vid).asset)
+                val f = com.dk.assistant.plus.models.ModelManager.file(c, St3Config.castVoice(vid).asset)
                 style = s.loadStyle(vid, f.readText())
             }
             null
@@ -97,14 +97,36 @@ object St3Engine {
      * गलती = exception (हिंदी में). [stop] हुआ = चुपचाप लौटे.
      */
     fun synthBlocking(c: Context, text: String, voice: String?, maxSteps: Int = 99, pick: ((Int) -> Int)? = null,
-                      split: ((String, Int) -> List<String>)? = null, onPiece: (FloatArray) -> Unit) {
+                      split: ((String, Int) -> List<String>)? = null, speedMul: Float = 1f, onPiece: (FloatArray) -> Unit) {
         val my = gen.get()
         val oldPrio = boost()
-        try { synthLocked(c, text, voice, maxSteps, pick, split, onPiece, my) } finally { restore(oldPrio) }
+        try { synthLocked(c, text, voice, maxSteps, pick, split, onPiece, my, speedMul) } finally { restore(oldPrio) }
+    }
+
+    /**
+     * 20 नवंबर 2026 (मालिक: कहानी की डबिंग): एक लाइन, ठीक इसी आवाज़ ([voice], M1-M5 भी) में, [speed] और [steps] पर.
+     * बातचीत का [stop] इसे नहीं काटता ([stop] सिर्फ़ इसके [cancel] से). आवाज़ फ़ोन में न हो = exception. 44.1 kHz.
+     */
+    fun renderLine(c: Context, text: String, voice: String, speed: Float, steps: Int, cancel: () -> Boolean = { false }): FloatArray {
+        val oldPrio = boost()
+        try {
+            lock.withLock {
+                if (!St3Store.voiceReady(c, voice)) throw IllegalStateException("आवाज़ $voice अभी डाउनलोड नहीं हुई")
+                ensure(c, voice)?.let { throw IllegalStateException(it) }
+                val s = synth ?: throw IllegalStateException("आवाज़ का मॉडल तैयार नहीं")
+                val st = style ?: throw IllegalStateException("आवाज़ तैयार नहीं")
+                val parts = St3Text.chunk(text).mapNotNull { s.synth(it, st, St3Config.cleanSteps(steps), St3Config.cleanSpeed(speed), cancel)?.wav }
+                val gap = St3Config.SAMPLE_RATE * 12 / 100
+                val out = FloatArray(parts.sumOf { it.size } + gap * maxOf(0, parts.size - 1))
+                var at = 0
+                for ((i, w) in parts.withIndex()) { if (i > 0) at += gap; System.arraycopy(w, 0, out, at, w.size); at += w.size }
+                return out
+            }
+        } finally { restore(oldPrio) }
     }
 
     private fun synthLocked(c: Context, text: String, voice: String?, maxSteps: Int, pick: ((Int) -> Int)?,
-                            split: ((String, Int) -> List<String>)?, onPiece: (FloatArray) -> Unit, my: Int) {
+                            split: ((String, Int) -> List<String>)?, onPiece: (FloatArray) -> Unit, my: Int, speedMul: Float = 1f) {
         lock.withLock {
             if (gen.get() != my) return
             ensure(c, voice)?.let { throw IllegalStateException(it) }
@@ -112,7 +134,7 @@ object St3Engine {
             val st = style ?: throw IllegalStateException("आवाज़ तैयार नहीं")
             // [pick]: बारी आने पर (lock मिलने के बाद) तय हो - तब पता है आगे कितनी आवाज़ तैयार रखी है
             val base = minOf(St3Store.steps(c), maxSteps)
-            val steps = pick?.invoke(base)?.coerceIn(St3Config.STEPS_MIN, base) ?: base; val speed = St3Store.speed(c)
+            val steps = pick?.invoke(base)?.coerceIn(St3Config.STEPS_MIN, base) ?: base; val speed = St3Config.cleanSpeed(St3Store.speed(c) * speedMul)
             // 20 नवंबर 2026 ([split]): लंबा टुकड़ा + आगे कम आवाज़ तैयार = अल्पविराम / "और, लेकिन" पर दो-तीन हिस्से (बारी पर तय)
             val pieces = St3Text.chunk(text).let { l -> if (split == null) l else l.flatMap { split(it, steps) } }
             for (piece in pieces) {

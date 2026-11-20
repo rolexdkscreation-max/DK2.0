@@ -9,7 +9,9 @@ import com.dk.assistant.plus.models.ModelCatalog
  *    ([COMMIT]) - GitHub वाली रिपॉज़िटरी (supertone-inc/supertonic) आर्काइव हो चुकी है, आगे कुछ बदले तो भी हमारी फ़ाइलें वही रहें.
  *  - साइज़ और SHA-256: बड़ी (.onnx) फ़ाइलों के Hugging Face API (lfs.oid) से; छोटी JSON फ़ाइलें उसी commit से उतारकर
  *    sha256sum से निकाले (19 नवंबर 2026). डाउनलोड के बाद [com.dk.assistant.plus.models.ModelManager] फिर मिलाता है.
- *  - सिर्फ़ महिला आवाज़ें F1-F5. पुरुष (M1-M5) न सूची में, न डाउनलोड.
+ *  - बातचीत में सिर्फ़ महिला आवाज़ें F1-F5 ([VOICES], [ALL]).
+ *  - 20 नवंबर 2026 (मालिक: "ऑफ़लाइन TTS में मेल वॉइस भी सब ऐड कर दो" - कहानी की डबिंग): पुरुष M1-M5 अलग सूची
+ *    [MALE] में - सिर्फ़ कहानी की आवाज़ (किरदार) के लिए; बातचीत वाली सूची / [cleanVoice] में नहीं. ज़रूरत पड़ने पर ही डाउनलोड.
  *  - फ़ाइलें `filesDir/models/st3_*` में ([ModelManager] की जगह). नाम "supertonic..." से शुरू नहीं - पुराने हटाए गए
  *    Supertonic की एक-बार वाली सफ़ाई ([com.dk.assistant.voice.engine.VoiceEngines.wipeOldOffline]) इन्हें नहीं छूती.
  *
@@ -92,8 +94,8 @@ object St3Config {
 
     data class Voice(val id: String, val name: String, val asset: ModelCatalog.Asset)
 
-    private fun v(id: String, name: String, sha: String, bytes: Long) =
-        Voice(id, name, ModelCatalog.Asset("st3_voice_${id.lowercase()}", K, "Supertonic 3 आवाज़ $id ($name)", "महिला आवाज़",
+    private fun v(id: String, name: String, sha: String, bytes: Long, kind: String = "महिला आवाज़") =
+        Voice(id, name, ModelCatalog.Asset("st3_voice_${id.lowercase()}", K, "Supertonic 3 आवाज़ $id ($name)", kind,
             "st3_voice_${id.lowercase()}.json", listOf(BASE + "voice_styles/$id.json"), sha, bytes, LICENSE))
 
     /** सिर्फ़ महिला आवाज़ें (क्रम = स्क्रीन पर क्रम) */
@@ -107,7 +109,20 @@ object St3Config {
 
     val ALL: List<ModelCatalog.Asset> = CORE + VOICES.map { it.asset }
 
+    /** 20 नवंबर 2026: पुरुष आवाज़ें - सिर्फ़ कहानी (किरदार). SHA-256 / साइज़ उसी [COMMIT] से उतारकर sha256sum से */
+    val MALE: List<Voice> = listOf(
+        v("M1", "पुरुष आवाज़ 1", "e35604687f5d23694b8e91593a93eec0e4eca6c0b02bb8ed69139ab2ea6b0a5b", 291_748L, "पुरुष आवाज़ (कहानी)"),
+        v("M2", "पुरुष आवाज़ 2", "b76cbf62bac707c710cf0ae5aba5e31eea1a6339a9734bfae33ab98499534a50", 292_055L, "पुरुष आवाज़ (कहानी)"),
+        v("M3", "पुरुष आवाज़ 3", "ea1ac35ccb91b0d7ecad533a2fbd0eec10c91513d8951e3b25fbba99954e159b", 290_198L, "पुरुष आवाज़ (कहानी)"),
+        v("M4", "पुरुष आवाज़ 4", "ca8eefad4fcd989c9379032ff3e50738adc547eeb5e221b82593a6d7b3bac303", 291_522L, "पुरुष आवाज़ (कहानी)"),
+        v("M5", "पुरुष आवाज़ 5", "dd22b92740314321f8ae11c5e87f8dd60d060f15dd3a632b5adf77f471f77af2", 291_469L, "पुरुष आवाज़ (कहानी)"),
+    )
+    /** कहानी में चल सकने वाली सारी आवाज़ें (महिला + पुरुष) */
+    val CAST: List<Voice> = VOICES + MALE
+
     fun voice(id: String?): Voice = VOICES.firstOrNull { it.id == id } ?: VOICES.first { it.id == DEFAULT_VOICE }
+    /** कहानी के लिए: M1-M5 भी (न मिले = [voice]) */
+    fun castVoice(id: String?): Voice = CAST.firstOrNull { it.id == id } ?: voice(id)
     fun coreBytes(): Long = CORE.sumOf { it.bytes }
 
     /** pure: जो आवाज़ सूची में नहीं (या पुरुष) -> डिफ़ॉल्ट F1 */
