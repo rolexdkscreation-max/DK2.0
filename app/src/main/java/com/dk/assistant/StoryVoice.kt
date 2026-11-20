@@ -114,7 +114,7 @@ object StoryVoice {
             for ((i, l) in lines.withIndex()) {
                 step(i + 1, lines.size)
                 val m = St3Story.mood(l.tone, l.speaker == St3Story.NARRATOR)
-                val said = St3Text.onlyTags(St3Story.lineText(HinglishText.toSpeakable(l.text), m))
+                val said = St3Text.onlyTags(St3Story.lineText(com.dk.assistant.voice.st3.St3Numbers.speak(HinglishText.toSpeakable(l.text)), m))
                 if (said.isBlank()) continue
                 val w = St3Engine.renderLine(c, said, cast.getValue(l.speaker), St3Store.speed(c) * m.speed, steps)
                 pcm.write(St3Synth.pcm16(St3Story.applyGain(w, m.gain)))

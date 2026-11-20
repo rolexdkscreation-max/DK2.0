@@ -46,7 +46,7 @@ object OfflineVoice {
         if (text.isBlank()) return false
         val app = c.applicationContext
         if (!ready(app)) return false
-        val clean = St3Text.onlyTags(com.dk.assistant.voice.engine.HinglishText.toSpeakable(text))
+        val clean = St3Text.onlyTags(St3Numbers.speak(com.dk.assistant.voice.engine.HinglishText.toSpeakable(text)))   // 20 नवंबर 2026: अंक -> हिंदी शब्द
         if (clean.isBlank()) return false
         return lock.withLock {
             val my = gen.get()
