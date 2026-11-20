@@ -262,9 +262,33 @@ internal fun SettingsActivity.secProfile() {
         edWake = field(it, "जगाने वाले शब्द (कॉमा से अलग)", Prefs.wakeWordsRaw(this), "डीके, dk")
     }
     // 15 नवंबर 2026 (मालिक): access key / license हटाया - सब कुछ बिना key के खुला 
+    secProfileMore()
 
 }
 
+
+/** 20 नवंबर 2026 (मालिक): "नंबर, अच्छे गाने (लिंक या नाम), Instagram / Facebook का हैंडल, और कुछ भी - DK को सब पता हो, कहूँ तो खोले" */
+internal fun SettingsActivity.secProfileMore() {
+    card("आपकी और जानकारी", "जो भी भरेंगे, DK को पता रहेगा — पूछें तो बताएगा, कहें तो सीधा खोलेगा। सब सिर्फ़ इसी फ़ोन में") { box ->
+        profileFields[OwnerProfile.PHONE] = field(box, "आपका मोबाइल नंबर", Prefs.str(this, OwnerProfile.PHONE, ""), "जैसे: 98XXXXXXXX")
+            .apply { inputType = android.text.InputType.TYPE_CLASS_PHONE }
+        profileFields[OwnerProfile.SONGS] = field(box, "पसंद के गाने (हर लाइन में एक — YouTube लिंक या गाने का नाम)", Prefs.str(this, OwnerProfile.SONGS, ""),
+            "जैसे: तुम ही हो - अरिजीत सिंह\nhttps://youtu.be/...", multiLine = true)
+        profileFields[OwnerProfile.INSTAGRAM] = field(box, "Instagram id / हैंडल (या प्रोफ़ाइल लिंक कॉपी करके)", Prefs.str(this, OwnerProfile.INSTAGRAM, ""), "जैसे: @aapka_naam")
+        profileFields[OwnerProfile.FACEBOOK] = field(box, "Facebook id / प्रोफ़ाइल लिंक", Prefs.str(this, OwnerProfile.FACEBOOK, ""), "जैसे: facebook.com/aapka.naam")
+        profileFields[OwnerProfile.YOUTUBE] = field(box, "YouTube चैनल (हैंडल या लिंक)", Prefs.str(this, OwnerProfile.YOUTUBE, ""), "जैसे: @aapka_channel")
+        profileFields[OwnerProfile.EXTRA] = field(box, "अपने बारे में और कुछ (शहर, जन्मदिन, काम, पसंद …)", Prefs.str(this, OwnerProfile.EXTRA, ""),
+            "जैसे: नासिक में रहता हूँ, जन्मदिन 5 मार्च", multiLine = true)
+        fun open(u: String) { if (u.isBlank()) toast("पहले ऊपर भरें") else Setup.openUrl(this, u) }
+        row(box,
+            button("Instagram खोलें") { open(OwnerProfile.instagramUrl(profileFields[OwnerProfile.INSTAGRAM]?.text?.toString().orEmpty())) },
+            button("Facebook खोलें") { open(OwnerProfile.facebookUrl(profileFields[OwnerProfile.FACEBOOK]?.text?.toString().orEmpty())) })
+        row(box,
+            button("YouTube खोलें") { open(OwnerProfile.youtubeUrl(profileFields[OwnerProfile.YOUTUBE]?.text?.toString().orEmpty())) },
+            button("पहला गाना चलाएँ") { open(OwnerProfile.songsOf(profileFields[OwnerProfile.SONGS]?.text?.toString().orEmpty()).firstOrNull()?.let { OwnerProfile.songUrl(it) }.orEmpty()) })
+        hint(box, "पीछे जाते ही सेव। फिर DK से बोलें: \"मेरा नंबर क्या है\" • \"मेरा Instagram खोलो\" • \"मेरा पसंदीदा गाना चलाओ\" • \"मेरी Facebook प्रोफ़ाइल चेक करो\"। DK आपका नंबर या ये बातें किसी और को खुद से नहीं भेजती — सिर्फ़ आपके कहने पर। अगली बार DK लाइव जुड़ने पर लागू।")
+    }
+}
 
 // ------------------------------------------------------------ v3.58 (Part 11): About + निजता
 internal fun SettingsActivity.secAbout() {
