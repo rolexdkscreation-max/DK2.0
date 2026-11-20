@@ -23,6 +23,7 @@ internal suspend fun GeminiLive.careLoop() {
             if (ok) HamdardClock.mark(key)
             lastAct = System.currentTimeMillis()
             log("हमदर्द मोड: $key (${HamdardClock.minutes(now)} मिनट बात) - DK को एक बार बताने को कहा" + if (ok) "" else " (भेज नहीं पाया)")
-        } catch (e: Exception) { if (e is kotlinx.coroutines.CancellationException) throw e; Quiet.note(e) }
+        } catch (e: kotlinx.coroutines.CancellationException) { throw e
+        } catch (e: Exception) { Quiet.note(e) }
     }
 }

@@ -77,7 +77,7 @@ class HamdardModeTest {
 
     @Test fun sessionResetsAfterLongSilence() {
         val t0 = 1_000_000_000L
-        HamdardClock.touch(t0); HamdardClock.touch(t0 + 30 * 60_000L)
+        for (m in 0..30 step 10) HamdardClock.touch(t0 + m * 60_000L)                  // हर 10 मिनट बात = एक ही बातचीत
         assertEquals(30, HamdardClock.minutes(t0 + 30 * 60_000L))
         HamdardClock.touch(t0 + 60 * 60_000L)                                           // 30 मिनट चुप्पी = नई बातचीत
         assertEquals(0, HamdardClock.minutes(t0 + 60 * 60_000L))
