@@ -18,6 +18,7 @@ object DkSettingsApply {
                 "autonomous" -> com.dk.assistant.auto.AutoPrefs.on(c)
                 "friday" -> AssistantPersona.active(c) == AssistantPersona.A.FRIDAY
                 "venom" -> AssistantPersona.active(c) == AssistantPersona.A.VENOM
+                "hamdard" -> AssistantPersona.active(c) == AssistantPersona.A.HAMDARD
                 "god_mode" -> GuardModes.mode(c) == GuardModes.Mode.GOD
                 "stealth" -> GuardModes.mode(c) == GuardModes.Mode.STEALTH
                 else -> false
@@ -34,8 +35,8 @@ object DkSettingsApply {
                 "autoreply" -> com.dk.assistant.autoreply.AutoReply.setOn(c, on)
                 "autonomous" -> com.dk.assistant.auto.AutoPrefs.setOn(c, on)
                 // 15 नवंबर 2026: एक समय में एक ही रूप - बंद करने पर सिर्फ़ वही बंद जो चालू था
-                "friday", "venom" -> {
-                    val a = if (it.id == "friday") AssistantPersona.A.FRIDAY else AssistantPersona.A.VENOM
+                "friday", "venom", "hamdard" -> {
+                    val a = AssistantPersona.of(it.id) ?: AssistantPersona.A.VENOM
                     if (on) AssistantPersona.set(c, a) else if (AssistantPersona.active(c) == a) AssistantPersona.set(c, null)
                 }
                 "god_mode", "stealth" -> {
