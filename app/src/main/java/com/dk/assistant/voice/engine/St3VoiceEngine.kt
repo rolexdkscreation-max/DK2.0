@@ -4,6 +4,7 @@ import android.content.Context
 import android.widget.LinearLayout
 import com.dk.assistant.voice.st3.St3Config
 import com.dk.assistant.voice.st3.St3Engine
+import com.dk.assistant.voice.st3.St3Prosody
 import com.dk.assistant.voice.st3.St3Store
 import com.dk.assistant.voice.st3.St3Stats
 import com.dk.assistant.voice.st3.St3Synth
@@ -67,7 +68,9 @@ object St3VoiceEngine : VoiceEngine {
             val auto = autoSteps(user, perStep)
             val firstOfAnswer = firstFast.getAndSet(false)
             val ahead = lead
-            val said = speakable(text)
+            // 20 नवंबर 2026 (मालिक: "उतार-चढ़ाव, ठहराव, बीच में साँस"): नरम अंत + लंबे जवाब में कभी-कभी साँस ([St3Prosody])
+            val natural = St3Store.natural(c)
+            val said = if (natural) shaper.shape(speakable(text)) else speakable(text)
             val chars = said.length
             // पहला: जल्दी वाले कदम. बाकी: कदम बारी आने पर - आगे जितनी आवाज़ तैयार है उसमें यह बन जाए (समय हो = पूरे कदम, साफ़)
             val maxSteps = when { firstOfAnswer -> minOf(auto, FIRST_STEPS); ahead != null -> user; else -> auto }
@@ -75,13 +78,13 @@ object St3VoiceEngine : VoiceEngine {
             val pick: ((Int) -> Int)? = if (firstOfAnswer || ahead == null) null else { cfg -> steadySteps(cfg, ahead(), freshPerStep(), chars * msPerChar()) }
             val split: ((String, Int) -> List<String>)? = if (firstOfAnswer || ahead == null) null else { piece, steps ->
                 val perChar = msPerChar()
-                fitSplit(piece, ahead(), freshPerStep() * steps * perChar, perChar).also { parts ->
+                fitSplit(piece, ahead(), freshPerStep() * steps * perChar, perChar).let { l -> if (natural) l.map(St3Prosody::softEnd) else l }.also { parts ->
                     if (parts.size > 1) com.dk.assistant.DKLog.d("ऑफ़लाइन आवाज़: ${piece.length} अक्षर का टुकड़ा ${parts.size} हिस्सों में " +
                         "(${parts.joinToString(" + ") { it.length.toString() }}) - आगे ${ahead()} ms ही तैयार, बीच में लंबी चुप्पी न हो")
                 }
             }
             var samples = 0
-            St3Engine.synthBlocking(c, said, voice, maxSteps, pick, split) { wav ->
+            St3Engine.synthBlocking(c, said, voice, maxSteps, pick, split, if (natural) St3Prosody.speedMul(said) else 1f) { wav ->
                 if (!first) out.write(ByteArray(St3Synth.SILENCE_24K_BYTES))
                 first = false
                 if (firstOfAnswer && samples == 0) St3Stats.firstAudio(System.currentTimeMillis() - answerAt)
@@ -200,12 +203,15 @@ object St3VoiceEngine : VoiceEngine {
     private val firstFast = java.util.concurrent.atomic.AtomicBoolean(false)
     @Volatile private var answerAt = 0L
     /** नया जवाब (Live का पहला text आया): पहला टुकड़ा जल्दी + यहाँ से पहली आवाज़ तक का समय नापो */
-    fun newAnswer() { answerAt = System.currentTimeMillis(); firstFast.set(true) }
+    fun newAnswer() { answerAt = System.currentTimeMillis(); firstFast.set(true); shaper.reset() }
+    /** 20 नवंबर 2026: इस जवाब में कब साँस ([St3Prosody.Shaper]) */
+    private val shaper = St3Prosody.Shaper()
 
     override fun settings(c: Context, box: LinearLayout, ui: VoiceUi) {
         ui.hint(box, "मॉडल और आवाज़ें डाउनलोड: Settings → आवाज़ → \"आवाज़ें खोलें\". जवाब Gemini Live लिखता है, आवाज़ फ़ोन पर बनती है.")
         ui.slider(box, "रफ़्तार", (St3Config.SPEED_MIN * 100).toInt(), Math.round(St3Config.SPEED_MAX * 100),
             Math.round(St3Store.speed(c) * 100), { String.format(java.util.Locale.US, "%.2f", it / 100f) }) { St3Store.setSpeed(c, it / 100f) }
         ui.slider(box, "कदम (ज़्यादा = साफ़ पर धीमी)", St3Config.STEPS_MIN, St3Config.STEPS_MAX, St3Store.steps(c), { "$it" }) { St3Store.setSteps(c, it) }
+        ui.slider(box, "इंसान जैसी लय (ठहराव + साँस)", 0, 1, if (St3Store.natural(c)) 1 else 0, { if (it == 1) "चालू" else "बंद" }) { St3Store.setNatural(c, it == 1) }
     }
 }

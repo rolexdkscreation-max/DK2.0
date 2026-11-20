@@ -312,7 +312,9 @@ class SpeechPipeline(private val ctx: Context, private val hooks: Hooks) {
             }
         }
         if (g != gen) return
-        for (piece in shape.finish(pauseMs(s.text))) write(tr, piece, g, s)
+        // 20 नवंबर 2026 (मालिक: "ठहराव नहीं दिखता"): फ़ोन वाली आवाज़ में इंसान जैसे अलग-अलग ठहराव ([St3Prosody.pauseMs])
+        val rest = if (engine?.id == St3VoiceEngine.ID && com.dk.assistant.voice.st3.St3Store.natural(ctx)) com.dk.assistant.voice.st3.St3Prosody.pauseMs(s.text) else pauseMs(s.text)
+        for (piece in shape.finish(rest)) write(tr, piece, g, s)
     }
 
     /**

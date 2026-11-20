@@ -17,6 +17,9 @@ object St3Store {
     fun setSpeed(c: Context, s: Float) { p(c).edit().putFloat("speed", St3Config.cleanSpeed(s)).apply() }
     fun steps(c: Context): Int = St3Config.cleanSteps(p(c).getInt("steps", St3Config.STEPS_DEF))
     fun setSteps(c: Context, n: Int) { p(c).edit().putInt("steps", St3Config.cleanSteps(n)).apply() }
+    /** 20 नवंबर 2026 (मालिक): इंसान जैसी लय - अलग ठहराव, नरम अंत, लंबे जवाब में साँस ([St3Prosody]). शुरू से चालू */
+    fun natural(c: Context): Boolean = p(c).getBoolean("natural", true)
+    fun setNatural(c: Context, on: Boolean) { p(c).edit().putBoolean("natural", on).apply() }
 
     /**
      * 19 नवंबर 2026: इस फ़ोन पर सबसे तेज़ थ्रेड-गिनती (4-6 में से नापकर चुनी, [St3Engine.warm]). 0 = अभी नहीं नापा.
@@ -52,7 +55,7 @@ object St3Store {
     fun fastOn(c: Context): Boolean = fastFiles(c) && !fastBad(c)
     /** Settings का "डाउनलोड" बटन क्या लाए: तेज़ ठीक = तेज़ वाला सेट (~150 MB), इस फ़ोन पर तेज़ नहीं खुला = पुराना पूरा */
     fun neededSet(c: Context): List<com.dk.assistant.plus.models.ModelCatalog.Asset> = if (fastBad(c)) St3Config.CORE else St3Config.FAST_SET
-    fun voiceReady(c: Context, id: String): Boolean = ModelManager.ready(c, St3Config.voice(id).asset)
+    fun voiceReady(c: Context, id: String): Boolean = ModelManager.ready(c, St3Config.castVoice(id).asset)
     /** चुनी हुई आवाज़ डाउनलोड न हो तो जो पहली डाउनलोड है वह; कोई नहीं तो null */
     fun usableVoice(c: Context): String? = voice(c).takeIf { voiceReady(c, it) } ?: St3Config.VOICES.firstOrNull { voiceReady(c, it.id) }?.id
     fun ready(c: Context): Boolean = coreReady(c) && usableVoice(c) != null
