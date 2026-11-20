@@ -89,7 +89,8 @@ class SettingsSaveTest {
     /** हर Settings हिस्सा बिना crash के खुले और बंद हो */
     @Test fun everySectionOpens() {
         val sections = listOf(null, "profile", "lang", "brain", "brain_live", "brain_chat", "brain_coder", "brain_pc",
-            "voice", "orb", "ui", "access", "perms", "update", "debug", "coder", "computer", "about")
+            "voice", "orb", "ui", "access", "perms", "update", "debug", "coder", "computer", "about",
+            "persona", "memory", "cat_dk", "cat_live", "cat_voice", "cat_brain")
         for (sec in sections) {
             val i = Intent(c, SettingsActivity::class.java).also { if (sec != null) it.putExtra("section", sec) }
             val a = try { Robolectric.buildActivity(SettingsActivity::class.java, i).setup() }

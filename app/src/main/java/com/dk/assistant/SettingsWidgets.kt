@@ -35,6 +35,10 @@ internal fun SettingsActivity.menuIcon(id: String): Int = settingsIcon(id)
 internal fun settingsIcon(id: String): Int = when (id) {
     "cat_dk" -> R.drawable.ic_s_cat_dk
     "cat_brain" -> R.drawable.ic_s_cat_brain
+    "cat_live" -> R.drawable.ic_s_cat_live
+    "cat_voice" -> R.drawable.ic_s_cat_voice
+    "persona" -> R.drawable.ic_s_persona
+    "memory" -> R.drawable.ic_s_memory
     "cat_auto" -> R.drawable.ic_s_bolt
     "cat_security" -> R.drawable.ic_s_perms
     "cat_social" -> R.drawable.ic_s_groups
@@ -78,6 +82,10 @@ internal fun SettingsActivity.menuTint(id: String): Int = settingsTint(id)
 internal fun settingsTint(id: String): Int = when (id) {
     "cat_dk" -> 0xFF22D3EE.toInt()
     "cat_brain" -> 0xFF6366F1.toInt()
+    "cat_live" -> 0xFFEC4899.toInt()
+    "cat_voice" -> 0xFFF472B6.toInt()
+    "persona" -> 0xFFEC4899.toInt()
+    "memory" -> 0xFF22C55E.toInt()
     "cat_auto" -> 0xFFA855F7.toInt()
     "cat_security" -> 0xFF34D399.toInt()
     "cat_social" -> 0xFFFBBF24.toInt()
