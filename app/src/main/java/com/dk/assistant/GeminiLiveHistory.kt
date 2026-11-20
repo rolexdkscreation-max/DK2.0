@@ -3,9 +3,17 @@ package com.dk.assistant
 // GeminiLive का हिस्सा (20 नवंबर 2026, मालिक: "Gemini को सिर्फ़ मेरा नया सवाल जाए"): हर turn का context लॉग,
 // स्थिर हिस्से की server वाली असली गिनती, तरीका A (तंग compression) / B (सत्र चुपचाप नया) का फ़ैसला. नियम [HistoryOnDemand] में.
 
-/** server का usageMetadata (promptTokenCount) आया - हर turn पर एक बार आता है */
-internal fun GeminiLive.histUsage(t: Long) {
-    if (!histOn) { log("इस turn पर context $t token (~${t / 1000}k)"); return }
+/**
+ * server का usageMetadata (promptTokenCount) आया - हर turn पर एक बार आता है.
+ * 20 नवंबर 2026 (फ़ोन log): tool वाले turn में Gemini 2+ बार सोचता है (tool से पहले + बाद) और server सबकी गिनती जोड़कर
+ * भेजता है (17.5k स्थिर → 35-37k दिखा, नए सत्र की पहली web_search बारी पर भी). इसलिए बारियों से भाग = एक बार का असली context.
+ * लौटाता है वही एक बार वाला context (status line के लिए).
+ */
+internal fun GeminiLive.histUsage(raw: Long): Long {
+    val rounds = histToolRounds; histToolRounds = 0
+    val t = HistoryOnDemand.perGeneration(raw, rounds)
+    val note = if (rounds > 0) " (tool के साथ ${rounds + 1} बार सोचा - server की जोड़ी गिनती $raw)" else ""
+    if (!histOn) { log("इस turn पर context $t token (~${t / 1000}k)$note"); return t }
     // नए (बिना handle वाले) सत्र की पहली गिनती = स्थिर हिस्सा (निर्देश + tools + ज़रूरी बातें + पूँछ) + पहला सवाल
     if (!histFixedReal && !connResumed && turnsSinceFresh <= 1) {
         histFixedReal = true
@@ -30,9 +38,10 @@ internal fun GeminiLive.histUsage(t: Long) {
             else -> "मॉडल ने छोटी सीमा मान ली (${histTrigger} token पर छँटाई) - बात बिना रुके, सत्र नहीं बदलता"
         })
     }
-    log("इस turn पर context $t token (स्थिर ~$histFixed${if (histFixedReal) " असली" else " अंदाज़ा"}, सीमा ${if (compressLimits) histTrigger else 0}) [तरीका ${if (histMethod == HistoryOnDemand.Method.A_COMPRESSION) "A" else "B"}]")
+    log("इस turn पर context $t token (स्थिर ~$histFixed${if (histFixedReal) " असली" else " अंदाज़ा"}, सीमा ${if (compressLimits) histTrigger else 0}) [तरीका ${if (histMethod == HistoryOnDemand.Method.A_COMPRESSION) "A" else "B"}]$note")
     if (!freshRotateDue && HistoryOnDemand.rotateDue(histMethod, t, turnsSinceFresh, histFixed)) {
         freshRotateDue = true
         log("इतिहास: तरीका B - context $t token / $turnsSinceFresh बारियाँ: अगले शांत पल में सत्र चुपचाप नया")
     }
+    return t
 }

@@ -539,6 +539,8 @@ class GeminiLive(internal val svc: DKAccessibilityService, internal val agent: A
     @Volatile internal var histMethod = HistoryOnDemand.Method.A_COMPRESSION
     @Volatile internal var histMethodLogged = ""
     internal val histCtx = java.util.ArrayDeque<Long>()
+    /** इस turn में अब तक आए toolCall (हर एक के बाद Gemini फिर सोचता है - usage की गिनती उतनी बार जुड़ती है) */
+    @Volatile internal var histToolRounds = 0
     @Volatile internal var freshRotateDue = false
     /** तरीका B: अभी जो दूसरा connection बन रहा / तैयार है वह नई (बिना handle) बातचीत है */
     @Volatile internal var freshRotate = false
@@ -1034,7 +1036,7 @@ class GeminiLive(internal val svc: DKAccessibilityService, internal val agent: A
         sent = 0; sentBytes = 0; dropped = 0; gaps = 0; readErr = 0; recvAudio = 0; reconnects = 0; slowReconnects = 0; zombieN = 0; rotFreezes = 0; rotSwitches = 0; rotFallbacks = 0; rotFreezeAt = 0L; freezeReal = false; freezeEndAt = 0L; handleAt = 0L; lastReplyDoneAt = 0L; replayedN = 0
         textRescue = LiveStay.textRescueOn(svc); weakNetTold = false
         ctxTokens = 0L; ctxLoggedBucket = -1L
-        histOn = Prefs.historyOnDemand(svc); histFixedReal = false; synchronized(histCtx) { histCtx.clear() }; freshRotateDue = false; freshRotate = false; turnsSinceFresh = 0; histMethodLogged = ""
+        histOn = Prefs.historyOnDemand(svc); histFixedReal = false; synchronized(histCtx) { histCtx.clear() }; histToolRounds = 0; freshRotateDue = false; freshRotate = false; turnsSinceFresh = 0; histMethodLogged = ""
         histMethod = HistoryOnDemand.method(compressLimits, false)
         LocalMemory.session = "s" + System.currentTimeMillis().toString(36)
         log("इतिहास: पुरानी बातचीत सिर्फ़ माँगने पर = " + (if (histOn) "चालू (सिर्फ़ नया सवाल + ${HistoryOnDemand.HISTORY_TAIL} संदेश की पूँछ, पुरानी बात search_history से)" else "बंद (पहले जैसा)") + " • सत्र ${LocalMemory.session}")

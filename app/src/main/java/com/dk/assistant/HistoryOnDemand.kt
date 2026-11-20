@@ -85,6 +85,9 @@ object HistoryOnDemand {
     fun ineffective(recent: List<Long>, trigger: Long): Boolean =
         recent.size >= OVER_TURNS && recent.takeLast(OVER_TURNS).all { it > trigger + 2_500L }
 
+    /** tool वाले turn की जोड़ी गिनती → एक बार सोचने का context (rounds = इस turn में आए toolCall) */
+    fun perGeneration(raw: Long, rounds: Int): Long = if (rounds <= 0 || raw <= 0) raw else raw / (rounds + 1)
+
     /** तरीका B: नया सत्र कब (शांत पल का फ़ैसला GeminiLive करता है) */
     fun rotateDue(method: Method, ctxTokens: Long, turnsSinceFresh: Int, fixed: Long = 0L): Boolean =
         method == Method.B_ROTATE && (ctxTokens > maxOf(ROTATE_AT_TOKENS, (if (fixed > 0) fixed else FIXED_GUESS) + 4_000L) || turnsSinceFresh >= ROTATE_TURNS)

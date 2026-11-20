@@ -41,9 +41,9 @@ internal fun GeminiLive.handleServer(msg: String, setup: CompletableDeferred<Uni
     // 18 नवंबर 2026 (ऑडिट G6): लंबी बातचीत में context कितना बड़ा हुआ - Inspector / लॉग में दिखे (32k पर छँटाई चल रही है?)
     // promptTokenCount = इस जवाब के लिए server ने जितना context पढ़ा (न हो तो totalTokenCount)
     o.optJSONObject("usageMetadata")?.let { u -> u.optLong("promptTokenCount", 0L).takeIf { it > 0 } ?: u.optLong("totalTokenCount", 0L) }?.takeIf { it > 0 }?.let { t ->
-        ctxTokens = t
         // 20 नवंबर 2026 (मालिक): हर turn पर context का log (पहले हर 8k पर) + पहली बारी = स्थिर हिस्से की असली गिनती
-        histUsage(t)
+        // (tool वाले turn में server हर बार सोचने की गिनती जोड़कर भेजता है - histUsage एक बार का context लौटाता है)
+        ctxTokens = histUsage(t)
     }
     o.optJSONObject("voiceActivity")?.optString("type")?.let { t ->
         lastAnyServerAt = System.currentTimeMillis()      // नवंबर 2026: server ने सुना = session ज़िंदा (अटका नहीं)
@@ -64,6 +64,7 @@ internal fun GeminiLive.handleServer(msg: String, setup: CompletableDeferred<Uni
         }
     }
     o.optJSONObject("toolCall")?.optJSONArray("functionCalls")?.let {
+        histToolRounds++                         // 20 नवंबर 2026: tool के बाद Gemini फिर सोचेगा = इस turn की गिनती में एक बार और
         lastServerAt = System.currentTimeMillis(); lastAnyServerAt = lastServerAt; utt.clear(); onRecovered(); toolCallAt = lastServerAt
         // v3.66: किसी और की आवाज़ पर बना काम - कुछ मत करो (फ़ोन पर कोई काम नहीं), Gemini को बता दो
         sideTalkCheck()                          // नवंबर 2026: बॉस किसी और से बात कर रहे = कोई काम नहीं
