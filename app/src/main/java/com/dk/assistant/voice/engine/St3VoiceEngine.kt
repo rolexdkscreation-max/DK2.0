@@ -67,7 +67,8 @@ object St3VoiceEngine : VoiceEngine {
             val auto = autoSteps(user, perStep)
             val firstOfAnswer = firstFast.getAndSet(false)
             val ahead = lead
-            val chars = St3Text.onlyTags(text).length
+            val said = speakable(text)
+            val chars = said.length
             // पहला: जल्दी वाले कदम. बाकी: कदम बारी आने पर - आगे जितनी आवाज़ तैयार है उसमें यह बन जाए (समय हो = पूरे कदम, साफ़)
             val maxSteps = when { firstOfAnswer -> minOf(auto, FIRST_STEPS); ahead != null -> user; else -> auto }
             // 20 नवंबर 2026: कदम ऊपर से [autoSteps] पर भी बँधे - धीमे फ़ोन पर 7-8 कदम वाला टुकड़ा अगले की चुप्पी बनता था
@@ -80,7 +81,7 @@ object St3VoiceEngine : VoiceEngine {
                 }
             }
             var samples = 0
-            St3Engine.synthBlocking(c, St3Text.onlyTags(text), voice, maxSteps, pick, split) { wav ->
+            St3Engine.synthBlocking(c, said, voice, maxSteps, pick, split) { wav ->
                 if (!first) out.write(ByteArray(St3Synth.SILENCE_24K_BYTES))
                 first = false
                 if (firstOfAnswer && samples == 0) St3Stats.firstAudio(System.currentTimeMillis() - answerAt)
@@ -95,6 +96,14 @@ object St3VoiceEngine : VoiceEngine {
     }
 
     override fun stop() { St3Engine.stop() }
+
+    /**
+     * 20 नवंबर 2026 (मालिक: "HinglishText को बातचीत वाले Supertonic रास्ते में भी लगाओ"): जड़ - बातचीत का टुकड़ा सीधे
+     * [St3Text.onlyTags] से मॉडल को जाता था; मॉडल `<hi>` में रोमन शब्द ("main theek hoon") English जैसे पढ़ता है.
+     * घोषणाएँ ([com.dk.assistant.voice.st3.OfflineVoice]) पहले से [HinglishText.toSpeakable] लगाती थीं - अब बातचीत भी वैसे ही
+     * (वही क्रम: पहले हिंग्लिश -> देवनागरी, फिर बचे-खुचे `<`/`>` हटाओ). `<laugh>` जैसे टैग वैसे ही रहते हैं. pure - JVM test.
+     */
+    fun speakable(text: String): String = St3Text.onlyTags(HinglishText.toSpeakable(text))
 
     /**
      * 19 नवंबर 2026 (मालिक: "जवाब आते ही तुरंत बोलना शुरू हो"): हर जवाब का पहला टुकड़ा कम कदमों ([FIRST_STEPS]) में -
