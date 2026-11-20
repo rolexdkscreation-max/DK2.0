@@ -247,8 +247,8 @@ class Speaker(context: Context) {
                             else System.currentTimeMillis() + 60_000L
                         val first = System.currentTimeMillis() > geminiCooldownUntil
                         geminiCooldownUntil = maxOf(geminiCooldownUntil, until)
-                        if (first) DKLog.d("Gemini आवाज़ नहीं चली ($code) - ${(geminiCooldownUntil - System.currentTimeMillis()) / 60_000} मिनट " +
-                            if (offlineOk) "DK की ऑफ़लाइन आवाज़" else "DK चुप (ऑफ़लाइन आवाज़ डाउनलोड नहीं)"); null
+                        val then = if (offlineOk) "DK की ऑफ़लाइन आवाज़" else "DK चुप (ऑफ़लाइन आवाज़ डाउनलोड नहीं)"
+                        if (first) DKLog.d("Gemini आवाज़ नहीं चली ($code) - ${(geminiCooldownUntil - System.currentTimeMillis()) / 60_000} मिनट $then"); null
                     }
                 }
             }
