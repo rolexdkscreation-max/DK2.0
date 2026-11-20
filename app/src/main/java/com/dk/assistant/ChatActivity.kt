@@ -151,7 +151,7 @@ class ChatActivity : AppCompatActivity() {
         render()
         // 2) request bina kisi debounce/delay ke usi pal (background me)
         val svc = DKAccessibilityService.instance
-        if (svc != null) { svc.runCommand(t, speak = swSpeak.isChecked); return }
+        if (svc != null) { svc.runCommand(t, speak = swSpeak.isChecked, typed = true); return }
         // Accessibility band hai -> sirf baatcheet (phone ke kaam nahi) - jawab tukdon me turant dikhe
         val b = localBrain ?: BrainManager(this).also { localBrain = it }
         localJob?.cancel()

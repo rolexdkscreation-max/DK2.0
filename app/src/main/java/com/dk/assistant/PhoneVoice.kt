@@ -12,6 +12,9 @@ import java.util.Locale
  * मालिक (नवंबर 2026, log 11:09): बैकअप मोड में Edge TTS भी नहीं जुड़ा (फ़ोन से Microsoft के server तक रास्ता अटका)
  * तो DK पूरी तरह चुप था. अब सिर्फ़ बैकअप मोड में, Kokoro (नवंबर 2026 से Edge की जगह) न चले तो आख़िरी सहारा = फ़ोन की अपनी हिंदी आवाज़
  * (Android TextToSpeech, बिना इंटरनेट भी). आम (DK लाइव) मोड में यह कभी नहीं बजता.
+ *
+ * 20 नवंबर 2026 (मालिक: "फ़ोन के TTS की जगह यही ऑफ़लाइन वाला TTS बोले"): [say] पहले DK की ऑफ़लाइन आवाज़
+ * ([com.dk.assistant.voice.st3.OfflineVoice], Supertonic 3, फ़ोन पर बनती है). वह डाउनलोड नहीं / न चले = तभी Android TTS.
  */
 object PhoneVoice {
     @Volatile private var tts: TextToSpeech? = null
@@ -44,8 +47,15 @@ object PhoneVoice {
         return d
     }
 
-    /** बोलो और खत्म होने तक रुको. false = फ़ोन की आवाज़ भी नहीं चली */
+    /** बोलो और खत्म होने तक रुको: पहले ऑफ़लाइन आवाज़, फिर Android TTS. false = दोनों नहीं चलीं */
     suspend fun say(c: Context, text: String): Boolean {
+        if (text.isBlank()) return false
+        if (com.dk.assistant.voice.st3.OfflineVoice.say(c, text)) return true
+        return android(c, text)
+    }
+
+    /** सिर्फ़ फ़ोन की अपनी (Android) आवाज़ - ऑफ़लाइन आवाज़ डाउनलोड न हो तब का आख़िरी सहारा */
+    suspend fun android(c: Context, text: String): Boolean {
         if (text.isBlank()) return false
         val ok = withTimeoutOrNull(4_000) { init(c).await() } ?: false
         if (!ok) { ready = null; return false }
@@ -72,6 +82,7 @@ object PhoneVoice {
     } catch (_: Exception) { "" }
 
     fun stop() {
+        com.dk.assistant.voice.st3.OfflineVoice.stop()
         try { tts?.stop() } catch (e: Exception) { Quiet.note(e) }
         cur?.complete(Unit)
     }

@@ -92,6 +92,39 @@ class St3EngineWiringTest {
         assertTrue(pipe.contains("if (firstPending && engine?.id == St3VoiceEngine.ID) preroll(s)"))   // सिर्फ़ फ़ोन वाली आवाज़
     }
 
+    @Test fun slowPhoneNeverPicksExtraSteps() {
+        // 20 नवंबर 2026 (3.335 लॉग): आगे आवाज़ तैयार थी तो 7-8 कदम चुने (161-205% समय) = अगले टुकड़े से पहले चुप्पी
+        assertEquals(5, St3VoiceEngine.steadySteps(8, leadMs = 6_000, perStepRtf = 0.18, estAudioMs = 2_000.0))
+        assertEquals(8, St3VoiceEngine.steadySteps(8, leadMs = 6_000, perStepRtf = 0.05, estAudioMs = 2_000.0))   // तेज़ फ़ोन वैसा ही
+        assertEquals(5, St3VoiceEngine.steadySteps(8, leadMs = 300, perStepRtf = 0.05, estAudioMs = 2_000.0))
+    }
+
+    @Test fun longPieceSplitsAtNaturalPlace_whenLittleAudioIsReady() {
+        // 3.335 लॉग: 82 अक्षर का टुकड़ा, बनने में 7.9 s, आगे ~2.5 s तैयार = 5.4 s चुप्पी
+        val t = "जैसे ऐप्स खोलना, सेटिंग्स बदलना, मैसेज भेजना और गूगल पर खोज करना, सब कुछ मैं कर सकती हूँ।"
+        val parts = St3VoiceEngine.fitSplit(t, leadMs = 2_500, synthMsPerChar = 95.0, audioMsPerChar = 85.0)
+        assertTrue(parts.toString(), parts.size >= 2)
+        parts.forEach { assertTrue(it, it.length >= St3VoiceEngine.MIN_PART) }
+        assertEquals(t.replace(" ", ""), parts.joinToString("").replace(" ", ""))   // कुछ छूटा / दोहराया नहीं
+        assertTrue(parts.first().endsWith(",") || parts[1].split(' ').first() in TextChunker.BREAK_BEFORE)
+        // काफ़ी आवाज़ तैयार / छोटा टुकड़ा / कोई प्राकृतिक जगह नहीं = वैसे ही पूरा
+        assertEquals(listOf(t), St3VoiceEngine.fitSplit(t, leadMs = 20_000, synthMsPerChar = 95.0, audioMsPerChar = 85.0))
+        assertEquals(listOf("जी, बिल्कुल ठीक है।"), St3VoiceEngine.fitSplit("जी, बिल्कुल ठीक है।", 0, 95.0, 85.0))
+        val plain = "मैं आपके फ़ोन पर ऐप्स खोल सकती हूँ बहुत आराम से हर दिन"
+        assertEquals(listOf(plain), St3VoiceEngine.fitSplit(plain, 500, 95.0, 85.0))
+        assertEquals(listOf(t), St3VoiceEngine.fitSplit(t, 500, 0.0, 85.0))          // अभी नापा नहीं
+    }
+
+    @Test fun synthThreadRunsAtHigherPriority() {
+        // 3.335 लॉग: ChatGPT सामने आते ही हर कदम ~40% धीमा
+        assertEquals(-8, com.dk.assistant.voice.st3.St3Engine.SYNTH_PRIORITY)
+        val root = listOf(java.io.File("src/main/java"), java.io.File("app/src/main/java")).first { it.exists() }
+        val eng = java.io.File(root, "com/dk/assistant/voice/st3/St3Engine.kt").readText()
+        assertTrue(eng.contains("val oldPrio = boost()"))
+        assertTrue(eng.contains("finally { restore(oldPrio) }"))
+        assertTrue(eng.contains("boost()                        // इस धागे पर खुले मॉडल"))
+    }
+
     @Test fun nextPieceStartsBeforeSentenceEnds_onlyForSt3() {
         assertTrue(TextChunker.ST3.refillMs in 800L..2_500L)
         assertEquals(0L, TextChunker.STANDARD.refillMs)

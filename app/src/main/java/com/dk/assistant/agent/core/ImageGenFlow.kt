@@ -195,6 +195,15 @@ class ImageGenFlow(
             .filter { it.isNotBlank() }.distinct()
             .joinToString("\n").take(max)
 
+        /** ऐप जवाब की जगह कुछ देर ये हालत लिखता है (ChatGPT: "Sending", "Thinking", "Searching the web") - यह जवाब नहीं */
+        val PENDING = listOf("sending", "thinking", "searching", "reasoning", "analyzing", "analysing", "writing", "loading",
+            "just a sec", "one moment", "generating", "भेजा जा रहा", "भेज रहा", "सोच रहा", "सोच रही", "खोज रहा", "खोज रही", "लिख रहा", "लिख रही")
+        /** pure: [rep] बस एक छोटी हालत-पंक्ति है (असली जवाब नहीं) */
+        fun placeholder(rep: String): Boolean {
+            val t = rep.lowercase().trim().trimEnd('.', '…', ' ')
+            return t.isNotEmpty() && t.length <= 40 && PENDING.any { t.contains(it) }
+        }
+
         fun busy(o: ScreenObservation): Boolean = o.elements.any { e ->
             val l = e.label
             (e.clickable && STOP.any { l == it || l.startsWith(it) }) || BUSY.any { l.contains(it) }
@@ -343,12 +352,14 @@ class ImageGenFlow(
             BlockerDetector.detect(o)?.let { return ImageGenResult(false, app.known, blocker = it, error = "${app.hi} में ${it.hi}") }
             if (busy(o)) { sawBusy = true; same = 0; continue }
             val rep = answerText(o, prompt)
+            // 20 नवंबर 2026 (मालिक का 3.335 लॉग: ChatGPT replied: "Sending"): जवाब की जगह अभी हालत लिखी है = अभी लिख रहा है
+            if (placeholder(rep)) { sawBusy = true; same = 0; prev = ""; continue }
             same = if (rep.isNotBlank() && rep == prev) same + 1 else 0
             prev = rep
             // जवाब लिखना बंद (2 बार वही) = पूरा
             if (rep.isNotBlank() && same >= 2 && (sawBusy || waited >= pollMs * 3)) break
         }
-        val reply = last?.let { answerText(it, prompt) }.orEmpty()
+        val reply = last?.let { answerText(it, prompt) }.orEmpty().takeUnless { placeholder(it) }.orEmpty()
         return if (reply.isNotBlank()) ImageGenResult(true, app.known, appReply = reply, how = how.joinToString(), appName = app.hi)
         else ImageGenResult(true, app.known, how = how.joinToString(), screenDump = dump(last), error = "भेज दिया, पर जवाब पढ़ नहीं पाया", appName = app.hi)
     }

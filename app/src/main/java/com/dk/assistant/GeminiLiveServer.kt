@@ -222,6 +222,7 @@ internal fun GeminiLive.handleServer(msg: String, setup: CompletableDeferred<Uni
         Ducker.releaseWhenQuiet({ !isPlaying() && !generating })
     } else if (sc.optBoolean("turnComplete")) {
         val wasDropping = dropOld
+        val wasMuted = leakMute
         dropOld = false
         if (actHold) endActHold()
         // v4.1: रुका हुआ बचा हिस्सा (अधूरी लिखी call भी हो तो अभी चलेगी)
@@ -232,6 +233,7 @@ internal fun GeminiLive.handleServer(msg: String, setup: CompletableDeferred<Uni
         com.dk.assistant.avatar.MoodState.replyDone()         // v3.71: बोलना ख़त्म होने के कुछ सेकंड बाद चेहरा सामान्य
         startHold.turnComplete()                 // नवंबर 2026: रुका जवाब पूरा (आप चुप होने पर बजे या फेंका जाए)
         if (connSplit && !wasDropping && !startHold.active) { pumpSplit(); if (pipelineLazy.isInitialized()) pipeline.endTurn() }   // v3.68: बचा text आख़िरी टुकड़ा
+        offlineTextOnly(wasDropping, wasMuted)   // 20 नवंबर 2026: सीधी आवाज़ में लिखावट आई, आवाज़ नहीं = ऑफ़लाइन आवाज़ बोले
         if (timeline.active) { timeline.done(System.currentTimeMillis()); LatencyBoard.timeline(timeline); log("turn पूरा: ${timeline.summary()}") }
         if (!wasDropping && socialCheck()) Unit   // सोशल रिव्यू की सच-जाँच पहले (InsightsTruth)
         else if (!wasDropping && !agentCheck()) promiseCheck()

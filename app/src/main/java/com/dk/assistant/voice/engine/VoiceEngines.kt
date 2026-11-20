@@ -23,6 +23,8 @@ object VoiceEngines {
     /** नवंबर 2026: हटाया गया Microsoft Edge TTS - सिर्फ़ पुरानी सेव पसंद पहचानने के लिए (migration) */
     const val OLD_EDGE_ID = "edge_tts"
     const val LIVE_NATIVE = "live_native"
+    /** [St3VoiceEngine.ID] - नाम से (इंजन की फ़ाइल हटे तो सूची से अपने-आप गायब) */
+    const val ST3_OFFLINE = "st3_offline"
     const val DEFAULT_SAMPLE = "मुझे तुम्हारी बहुत याद आ रही थी"
 
     /** क्रम = स्क्रीन पर क्रम: पहले DK लाइव (Direct Gemini Live Voice, डिफ़ॉल्ट), फिर Gemini TTS (बैकअप), फिर फ़ोन पर बनने वाली आवाज़ */
@@ -161,6 +163,15 @@ object VoiceEngines {
 
     /** इंजन फ़ेल हो तो लौटने की जगह */
     fun fallback(): VoiceEngine? = byId(GEMINI_TTS)
+
+    /**
+     * 20 नवंबर 2026 (मालिक: "Live → Gemini TTS → फिर फ़ोन में लगा ऑफ़लाइन TTS"): पीछे लौटने का पूरा क्रम -
+     * पहले Gemini TTS, वह भी न चले (limit / नेट / गलती) = DK की ऑफ़लाइन आवाज़ (St3). [chosen] खुद सूची में नहीं आता.
+     */
+    fun fallbacks(chosen: String? = null): List<VoiceEngine> = FALLBACK_ORDER.filter { it != chosen }.mapNotNull { byId(it) }
+
+    /** पीछे लौटने का क्रम (pure - JVM test) */
+    val FALLBACK_ORDER = listOf(GEMINI_TTS, ST3_OFFLINE)
 
     // ---------------------------------------------------------------- अभी-अभी टूटे इंजन (2 मिनट तक सीधे अगला)
     private val failed = ConcurrentHashMap<String, Pair<Long, String>>()

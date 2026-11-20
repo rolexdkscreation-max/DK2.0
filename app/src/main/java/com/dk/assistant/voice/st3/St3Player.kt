@@ -8,7 +8,7 @@ import android.media.AudioTrack
  * 19 नवंबर 2026: 44.1 kHz, mono, 16-bit आवाज़ को धारा (stream) में बजाने वाला छोटा player.
  * [write] रुककर (blocking) लिखता है - इसे IO धागे पर बुलाओ. [stop] किसी भी धागे से - तुरंत चुप.
  */
-class St3Player(private val rate: Int = St3Config.SAMPLE_RATE) {
+class St3Player(private val rate: Int = St3Config.SAMPLE_RATE, private val usage: Int = AudioAttributes.USAGE_ASSISTANT) {
     @Volatile private var track: AudioTrack? = null
     @Volatile private var stopped = false
 
@@ -16,7 +16,7 @@ class St3Player(private val rate: Int = St3Config.SAMPLE_RATE) {
         track?.let { return it }
         val min = AudioTrack.getMinBufferSize(rate, AudioFormat.CHANNEL_OUT_MONO, AudioFormat.ENCODING_PCM_16BIT)
         val t = AudioTrack.Builder()
-            .setAudioAttributes(AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_ASSISTANT)
+            .setAudioAttributes(AudioAttributes.Builder().setUsage(usage)
                 .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH).build())
             .setAudioFormat(AudioFormat.Builder().setSampleRate(rate).setEncoding(AudioFormat.ENCODING_PCM_16BIT)
                 .setChannelMask(AudioFormat.CHANNEL_OUT_MONO).build())
