@@ -7,6 +7,7 @@ import com.dk.assistant.plus.models.ModelManager
 import com.dk.assistant.voice.engine.HinglishText
 import com.dk.assistant.voice.st3.St3Config
 import com.dk.assistant.voice.st3.St3Engine
+import com.dk.assistant.voice.st3.St3Load
 import com.dk.assistant.voice.st3.St3Store
 import com.dk.assistant.voice.st3.St3Story
 import com.dk.assistant.voice.st3.St3Synth
@@ -95,6 +96,8 @@ object StoryVoice {
 
     /** कहानी में ज़्यादा कदम (साफ़ आवाज़) - यह बातचीत नहीं, थोड़ा धीमा चलेगा */
     const val STORY_STEPS = 10
+    /** बातचीत में DK बोल रहा हो तो कहानी की एक लाइन ज़्यादा से ज़्यादा इतना रुके */
+    const val STORY_DEFER_MS = 60_000L
 
     /**
      * 20 नवंबर 2026 (मालिक: "नरेशन के लिए अलग, हर कैरेक्टर के लिए अलग आवाज़... जोर से, चिल्ला के, धीमे से, डरा हुआ, हाँफते
@@ -111,8 +114,19 @@ object StoryVoice {
             }
             val pcm = java.io.ByteArrayOutputStream()
             val steps = maxOf(St3Store.steps(c), STORY_STEPS)
+            var waitedNote = false
             for ((i, l) in lines.withIndex()) {
                 step(i + 1, lines.size)
+                // 20 नवंबर 2026 (मालिक का 16:20 लॉग): कहानी की लाइनें (10 कदम, हर एक कुछ सेकंड) उसी मॉडल पर बातचीत के बीच बनती रहीं =
+                // DK के जवाब में 5-8 s चुप्पी, पहली आवाज़ 8.9 s. अब DK बोल रहा हो तो अगली लाइन रुके (ज़्यादा से ज़्यादा STORY_DEFER_MS)
+                val t0 = System.currentTimeMillis()
+                while (St3Load.shouldDefer(System.currentTimeMillis(), System.currentTimeMillis() - t0, STORY_DEFER_MS)) {
+                    if (!waitedNote) {
+                        waitedNote = true
+                        DKLog.d("कहानी की आवाज़: DK बातचीत में बोल रहा है - कहानी की अगली लाइन तब तक रुकी")
+                    }
+                    kotlinx.coroutines.delay(250)
+                }
                 val m = St3Story.mood(l.tone, l.speaker == St3Story.NARRATOR)
                 val said = St3Text.onlyTags(St3Story.lineText(HinglishText.toSpeakable(l.text), m))
                 if (said.isBlank()) continue
