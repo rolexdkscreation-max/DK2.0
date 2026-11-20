@@ -69,6 +69,26 @@ class Speaker(context: Context) {
      * सेवा (DKAccessibilityService.enterBackup) चालू/बंद करती है.
      */
     @Volatile var localOnly = false
+
+    /**
+     * 20 नवंबर 2026 (मालिक: "टेक्स्ट में बात करता है और 'बोलकर भी' चालू है, तब भी यही ऑफ़लाइन TTS बोले, Gemini वाला नहीं"):
+     * true = यह जवाब सीधे DK की ऑफ़लाइन आवाज़ में (मॉडल डाउनलोड हो तो). AgentRunner टेक्स्ट चैट के जवाब पर चालू करता है.
+     */
+    @Volatile var offlineFirst = false
+    @Volatile private var offlineShownAt = 0L
+
+    /** एक वाक्य ऑफ़लाइन आवाज़ में (कॉल के समय accessibility वाली आवाज़). true = बजा */
+    private suspend fun sayOffline(text: String): Boolean {
+        if (aborted || paused) return false
+        DKState.set(Mode.SPEAKING)
+        val now = System.currentTimeMillis()
+        if (now - offlineShownAt > 5_000) {
+            offlineShownAt = now
+            try { com.dk.assistant.voice.engine.VoiceNow.played(com.dk.assistant.voice.engine.VoiceEngines.ST3_OFFLINE, "DK ऑफ़लाइन आवाज़",
+                com.dk.assistant.voice.st3.St3Store.voice(appCtx), if (offlineFirst) "टेक्स्ट चैट" else "Gemini की आवाज़ नहीं चली") } catch (e: Exception) { Quiet.note(e) }
+        }
+        return com.dk.assistant.voice.st3.OfflineVoice.say(appCtx, text, voiceAttrs().usage)
+    }
     /** बैकअप मोड में Gemini TTS अभी-अभी नहीं चला = कुछ देर हर वाक्य पर इंतज़ार नहीं, सीधे फ़ोन की आवाज़ */
     @Volatile private var localDownUntil = 0L
     private val LOCAL_DOWN = "आवाज़: फ़ोन की (Gemini TTS नहीं चला)"
@@ -182,7 +202,8 @@ class Speaker(context: Context) {
     /**
      * Vakya jaise-jaise aate hain (AI abhi likh hi raha ho), waise-waise bolta hai.
      * Beech me user bole -> pause() ; goonj thi -> resume() (wahi vakya dobara) ; asli baat -> stop().
-     * Sirf Gemini awaaz. Gemini na chale to us vakya par chup (phone TTS par NAHI jaata).
+     * Gemini awaaz; Gemini na chale = DK ki offline awaaz (St3, 20 नवंबर 2026); woh bhi download nahi = chup.
+     * [offlineFirst] (text chat) = seedha offline awaaz.
      */
     suspend fun speakStream(ch: kotlinx.coroutines.channels.ReceiveChannel<String>, quick: Boolean = false): Boolean {
         mutex.lock()
@@ -204,12 +225,16 @@ class Speaker(context: Context) {
             val voice = Prefs.geminiVoice(appCtx)
             val w0 = why(keys)
             var gem = w0 == VoicePolicy.Why.OK
-            if (!gem) warnNoVoice(w0)
+            // 20 नवंबर 2026 (मालिक): Gemini की आवाज़ न चले / टेक्स्ट चैट का "बोलकर भी" = DK की ऑफ़लाइन आवाज़ (St3, फ़ोन पर बनती है)
+            var offlineOk = com.dk.assistant.voice.st3.OfflineVoice.ready(appCtx)
+            var offline = offlineOk && offlineFirst
+            if (!gem && !offlineOk) warnNoVoice(w0)
             val pendingWav = HashMap<String, kotlinx.coroutines.Deferred<ByteArray?>>()
             val bg = kotlinx.coroutines.CoroutineScope(Dispatchers.IO + kotlinx.coroutines.SupervisorJob())
             // बैकअप मोड: एक बार फ़ोन की आवाज़ पर गए तो इस जवाब के बाकी वाक्य भी उसी आवाज़ में (बीच में आवाज़ न बदले)
             var phoneOnly = localOnly && BackupVoice.phoneFirst(keys.isNotEmpty(), online(), System.currentTimeMillis(), localDownUntil)
             fun prefetch(t: String) {
+                if (offline) return                       // ऑफ़लाइन आवाज़ बोल रही है - Gemini की limit न खर्च हो
                 if (gem && !localOnly && System.currentTimeMillis() <= geminiCooldownUntil) gem = false
                 if (!gem || phoneOnly || pendingWav.containsKey(t)) return
                 pendingWav[t] = bg.async {
@@ -222,7 +247,8 @@ class Speaker(context: Context) {
                             else System.currentTimeMillis() + 60_000L
                         val first = System.currentTimeMillis() > geminiCooldownUntil
                         geminiCooldownUntil = maxOf(geminiCooldownUntil, until)
-                        if (first) DKLog.d("Gemini आवाज़ नहीं चली ($code) - ${(geminiCooldownUntil - System.currentTimeMillis()) / 60_000} मिनट DK चुप (फ़ोन की आवाज़ नहीं)"); null
+                        if (first) DKLog.d("Gemini आवाज़ नहीं चली ($code) - ${(geminiCooldownUntil - System.currentTimeMillis()) / 60_000} मिनट " +
+                            if (offlineOk) "DK की ऑफ़लाइन आवाज़" else "DK चुप (ऑफ़लाइन आवाज़ डाउनलोड नहीं)"); null
                     }
                 }
             }
@@ -237,22 +263,32 @@ class Speaker(context: Context) {
                     while (replay && !aborted) {
                         replay = false
                         currentChunk = chunk
-                        if (gem) {
+                        if (offline) {
+                            // 20 नवंबर 2026: ऑफ़लाइन आवाज़ (टेक्स्ट चैट / Gemini की आवाज़ न चली). न बोली = पुराना रास्ता (Gemini TTS / फ़ोन)
+                            if (!sayOffline(chunk)) { if (!paused && !aborted) { offline = false; offlineOk = false; prefetch(chunk) } }
+                            else played = true
+                        }
+                        if (!offline && gem) {
                             val wait = if (localOnly) BackupVoice.waitMs(played) else VoicePolicy.waitMs(quick)
                             val wav = if (phoneOnly) null else withTimeoutOrNull(wait) { pendingWav[chunk]?.await() }
                             if (wav != null) { DKState.set(Mode.SPEAKING); playWav(wav); played = true }
                             else if (localOnly && !aborted && !paused) {
-                                // बैकअप मोड: Gemini TTS नहीं चला / देर हुई = तुरंत फ़ोन की अपनी (Google / Android) आवाज़ (चुप नहीं)
+                                // बैकअप मोड: Gemini TTS नहीं चला / देर हुई = तुरंत DK की ऑफ़लाइन आवाज़ (20 नवंबर 2026), वह न हो तो फ़ोन की (चुप नहीं)
                                 if (!phoneOnly) { phoneOnly = true; markPhoneVoice() }
                                 DKState.set(Mode.SPEAKING)
                                 if (PhoneVoice.say(appCtx, chunk)) played = true
-                                else { gem = false; DKLog.d("बैकअप मोड: Gemini TTS और फ़ोन की आवाज़ दोनों नहीं चलीं - जवाब सिर्फ़ लिखा") }
+                                else { gem = false; DKLog.d("बैकअप मोड: Gemini TTS, ऑफ़लाइन आवाज़ और फ़ोन की आवाज़ - कोई नहीं चली - जवाब सिर्फ़ लिखा") }
                             }
                             else if (!aborted && !paused) {
-                                // Gemini ne awaaz nahi di -> chup (phone TTS nahi). Baaki jawab bhi likha hi rahega.
+                                // Gemini ने आवाज़ नहीं दी (limit / नेट / गलती). 20 नवंबर 2026 (मालिक): अब चुप नहीं - DK की ऑफ़लाइन आवाज़
                                 gem = false
-                                warnNoVoice(why(keys).takeIf { it != VoicePolicy.Why.OK } ?: VoicePolicy.Why.LIMIT)
+                                if (offlineOk) { offline = true; DKLog.d("Gemini TTS नहीं बोला - बाकी जवाब DK की ऑफ़लाइन आवाज़ में"); if (sayOffline(chunk)) played = true }
+                                else warnNoVoice(why(keys).takeIf { it != VoicePolicy.Why.OK } ?: VoicePolicy.Why.LIMIT)
                             }
+                        } else if (!offline && offlineOk && !aborted && !paused) {
+                            // Gemini TTS शुरू से ही नहीं (key नहीं / limit का इंतज़ार) = ऑफ़लाइन आवाज़
+                            offline = true
+                            if (sayOffline(chunk)) played = true
                         }
                         if (paused && !aborted) {
                             // user bol raha hai - sun lo; goonj nikli to wahi vakya dobara

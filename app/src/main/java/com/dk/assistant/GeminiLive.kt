@@ -674,7 +674,7 @@ class GeminiLive(internal val svc: DKAccessibilityService, internal val agent: A
             com.dk.assistant.voice.engine.VoiceNow.plan(com.dk.assistant.voice.engine.VoiceNow.LIVE_TITLE, "")
             return
         }
-        val usable = listOfNotNull(chosen, engines.fallback())
+        val usable = (listOf(chosen) + engines.fallbacks(chosen.id))
             .firstOrNull { it.notReady(svc) == null }
         if (usable == null) {
             connSplit = false; connText = false; splitEngine = null

@@ -16,7 +16,7 @@ import java.util.concurrent.atomic.AtomicInteger
  *
  * - जोड़ पर झटका नहीं: हर टुकड़े की शुरू/अंत की ख़ाली चुप्पी काटी जाती है, 5 ms fade-in, और
  *   विराम-चिह्न के हिसाब से छोटा, एक-सा ठहराव (। = 140 ms, , = 60 ms).
- * - इंजन फ़ेल: वही टुकड़ा Gemini TTS से; वह भी फ़ेल = फ़ोन की अपनी आवाज़ (ऐप चुप/अटके नहीं).
+ * - इंजन फ़ेल: वही टुकड़ा Gemini TTS से; वह भी फ़ेल = DK की ऑफ़लाइन आवाज़ (St3, 20 नवंबर 2026); वह भी नहीं = चुप/Live की आवाज़.
  * - [stop] (user बोलने लगा): कतार, बनते टुकड़े और बजती आवाज़ - सब उसी पल बंद.
  */
 class SpeechPipeline(private val ctx: Context, private val hooks: Hooks) {
@@ -150,7 +150,7 @@ class SpeechPipeline(private val ctx: Context, private val hooks: Hooks) {
         val dropped = ArrayList<Seg>(); segs.drainTo(dropped)
         if (dropped.isNotEmpty()) pending.addAndGet(-dropped.size)
         try { engine?.stop() } catch (e: Exception) { com.dk.assistant.Quiet.note(e) }
-        VoiceEngines.fallback()?.let { if (it !== engine) try { it.stop() } catch (e: Exception) { com.dk.assistant.Quiet.note(e) } }
+        VoiceEngines.fallbacks().forEach { if (it !== engine) try { it.stop() } catch (e: Exception) { com.dk.assistant.Quiet.note(e) } }
         try { hooks.phoneStop() } catch (e: Exception) { com.dk.assistant.Quiet.note(e) }
         track?.let { try { it.pause(); it.flush(); it.play() } catch (e: Exception) { com.dk.assistant.Quiet.note(e) } }
         playUntil = 0L; firstPending = false
@@ -186,7 +186,7 @@ class SpeechPipeline(private val ctx: Context, private val hooks: Hooks) {
     private fun make(s: Seg, chosen: VoiceEngine) {
         val chain = buildList {
             add(chosen)
-            VoiceEngines.fallback()?.let { if (it.id != chosen.id) add(it) }
+            addAll(VoiceEngines.fallbacks(chosen.id))   // 20 नवंबर 2026: Gemini TTS, फिर ऑफ़लाइन आवाज़ (St3)
         }
         var ok = false
         for ((i, e) in chain.withIndex()) {

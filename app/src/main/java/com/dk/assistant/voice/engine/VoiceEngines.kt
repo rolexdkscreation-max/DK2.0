@@ -162,6 +162,17 @@ object VoiceEngines {
     /** इंजन फ़ेल हो तो लौटने की जगह */
     fun fallback(): VoiceEngine? = byId(GEMINI_TTS)
 
+    /**
+     * 20 नवंबर 2026 (मालिक: "Live → Gemini TTS → फिर फ़ोन में लगा ऑफ़लाइन TTS"): पीछे लौटने का पूरा क्रम -
+     * पहले Gemini TTS, वह भी न चले (limit / नेट / गलती) = DK की ऑफ़लाइन आवाज़ (St3). [chosen] खुद सूची में नहीं आता.
+     */
+    fun fallbacks(chosen: String? = null): List<VoiceEngine> = FALLBACK_ORDER.filter { it != chosen }.mapNotNull { byId(it) }
+
+    /** पीछे लौटने का क्रम (pure - JVM test) */
+    val FALLBACK_ORDER = listOf(GEMINI_TTS, ST3_OFFLINE)
+    /** [St3VoiceEngine.ID] - नाम से (इंजन की फ़ाइल हटे तो सूची से अपने-आप गायब) */
+    const val ST3_OFFLINE = "st3_offline"
+
     // ---------------------------------------------------------------- अभी-अभी टूटे इंजन (2 मिनट तक सीधे अगला)
     private val failed = ConcurrentHashMap<String, Pair<Long, String>>()
     const val FAIL_MS = 120_000L

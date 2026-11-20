@@ -468,7 +468,7 @@ class DKAccessibilityService : AccessibilityService() {
     fun listenAndRun() = toggleLive()
 
     /** Text command (app ki likhne wali bar se). */
-    fun runCommand(text: String, speak: Boolean = true) { agent.run(text, speak) }
+    fun runCommand(text: String, speak: Boolean = true, typed: Boolean = false) { agent.run(text, speak, typed = typed) }
 
     /** Settings save hone par: "hamesha suno (wake word)" mode chalu/band. */
     fun startWakeLoopIfEnabled() { ensureLoop() }

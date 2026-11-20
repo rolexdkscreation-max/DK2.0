@@ -42,16 +42,21 @@ class AgentRunner(
         private set
     private val currentAnswer = StringBuilder()
 
-    fun run(command: String, speak: Boolean = true, note: String = ""): Job {
+    /**
+     * [typed] = टेक्स्ट चैट से लिखा सवाल. 20 नवंबर 2026 (मालिक): वहाँ "बोलकर भी" चालू हो तो जवाब DK की ऑफ़लाइन आवाज़ में
+     * (Gemini TTS नहीं) - [Speaker.offlineFirst]. मॉडल डाउनलोड न हो = पहले जैसा.
+     */
+    fun run(command: String, speak: Boolean = true, note: String = "", typed: Boolean = false): Job {
         job?.cancel()
         silent = !speak
+        speaker.offlineFirst = typed && speak
         Lang.noteUser(command)   // DK AI: "Auto" भाषा - यूज़र की इस बात की भाषा याद
         val j = scope.launch {
             try { execute(command, note) } finally {
                 if (job === coroutineContext[Job]) {
                     autoS?.let { com.dk.assistant.auto.AutoLog.add(svc, "काम खत्म: ${it.plan.task.take(80)}") }
                     autoS = null; brain.override = null
-                    DKState.set(Mode.IDLE); silent = false; currentGoal = null
+                    DKState.set(Mode.IDLE); silent = false; currentGoal = null; speaker.offlineFirst = false
                 }
             }
         }
