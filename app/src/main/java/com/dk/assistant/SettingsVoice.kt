@@ -85,11 +85,13 @@ internal fun SettingsActivity.secDkLive() {
     }
 
     // 15 नवंबर 2026 (मालिक, मास्टर प्रॉम्प्ट): FRIDAY / VENOM - JARVIS जैसे, काम सब वही
-    card("FRIDAY / VENOM मोड", "असिस्टेंट का दूसरा रूप (डिफ़ॉल्ट: DK). बोलें: \"फ्राइडे मोड ऑन करो\" / \"वेनम मोड ऑन करो\" / \"डीके मोड ऑन करो\"") { box ->
+    card("FRIDAY / VENOM मोड", "असिस्टेंट का दूसरा रूप (डिफ़ॉल्ट: DK). बोलें: \"फ्राइडे मोड ऑन करो\" / \"वेनम मोड ऑन करो\" / \"हमदर्द मोड ऑन करो\" / \"डीके मोड ऑन करो\"") { box ->
         val opts = listOf("" to "DK (डिफ़ॉल्ट)") + AssistantPersona.A.values().map { it.id to "${it.title} — ${it.sub}" }
         radios(box, opts, Prefs.str(this, AssistantPersona.PREF, "").takeIf { AssistantPersona.of(it) != null } ?: "", 2650)
             .setOnCheckedChangeListener { _, id -> opts.getOrNull(id - 2650)?.let { o -> AssistantPersona.set(this, AssistantPersona.of(o.first)); toast(if (o.first.isEmpty()) "DK मोड" else "${o.second.substringBefore(" —")} मोड चालू") } }
         hint(box, "सिर्फ़ नाम, अंदाज़ और (VENOM में) आवाज़ बदलती है — फ़ोन का कंट्रोल, keys, एजेंट, कॉल, WhatsApp सब वैसे ही। इनमें से कोई चालू करने पर JARVIS बंद हो जाता है।")
+        // 20 नवंबर 2026 (मालिक): हमदर्द मोड
+        hint(box, "हमदर्द: DK आपसे दिल से जुड़ती है — ख़ुशी में मुस्कान, उदासी में कोमल आवाज़, रूठें तो मनाए, आपकी बात से अगला सवाल खुद पूछे. समय की बात खुद नहीं छेड़ती — सिर्फ़ जब देर रात (11 बजे के बाद 45 मिनट से ज़्यादा), दिन में 2 घंटे से ज़्यादा लगातार, या खाने के समय बात चल रही हो, तब एक बार प्यार से बताती है. आपकी ज़रूरी बातें चुपचाप याद रखती है (आपके फ़ोन में) — पूछने पर ही बताती है.")
     }
 
     // नवंबर 2026 (मालिक): DK का स्वभाव + मूड समझकर बात + बगल की बातचीत

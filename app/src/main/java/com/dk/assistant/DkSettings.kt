@@ -147,6 +147,8 @@ object DkSettings {
             listOf("फ्राइडे", "फ्राईडे", "फ्रायडे", "friday"), store = STORE_CUSTOM),
         Item("venom", "VENOM मोड", "voice", AssistantPersona.PREF, false,
             listOf("वेनम", "वेनोम", "venom"), store = STORE_CUSTOM),
+        Item("hamdard", "हमदर्द मोड", "voice", AssistantPersona.PREF, false,
+            listOf("हमदर्द", "हमदर्दी", "hamdard"), store = STORE_CUSTOM),
         Item("god_mode", "टच मोड: गॉड मोड (सबसे सख़्त)", "guard", GuardModes.PREF, false,
             listOf("गॉड मोड", "god mode", "गॉड", "सबसे सख्त"), store = STORE_CUSTOM),
         Item("stealth", "टच मोड: स्टेल्थ मोड (चुपचाप)", "guard", GuardModes.PREF, false,
@@ -164,7 +166,7 @@ object DkSettings {
         "watchman = tool watchman (start / report / stop / clear) - the report is given ONLY after DK's own strict Boss face scan says VERIFIED, never to anyone else; " +
         "email = tools email_read / email_send / email_delete (send and delete only after reading it back and a clear yes); " +
         "WhatsApp group report = tool group_report (list / fill / send); " +
-        "FRIDAY / VENOM = switches [friday] / [venom] (one at a time, JARVIS goes off) or 'फ्राइडे मोड ऑन करो'. " +
+        "FRIDAY / VENOM / हमदर्द = switches [friday] / [venom] / [hamdard] (one at a time, JARVIS goes off) or 'फ्राइडे मोड ऑन करो' / 'हमदर्द मोड ऑन करो'. " +
         "Always call the user by his saved name (e.g. 'जी बॉस', 'हेलो बॉस')."
 
     private fun n(s: String) = s.lowercase().replace("़", "").replace("ॉ", "ो").replace(Regex("\\s+"), " ").trim()

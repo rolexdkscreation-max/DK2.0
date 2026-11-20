@@ -1144,6 +1144,7 @@ class GeminiLive(internal val svc: DKAccessibilityService, internal val agent: A
             // 18 नवंबर 2026 (मालिक): मुफ़्त वाला अपनी key से = रोज़ 10 मिनट (सर्वर गिनता है). हर हिस्से की मियाद से पहले अगला;
             // समय पूरा / नेट नहीं = तय शब्द और Live बंद ([com.dk.assistant.backend.VoiceGate])
             val meter = if (com.dk.assistant.backend.VoiceGate.metered(svc)) launch(Dispatchers.IO) { voiceMeter() } else null
+            val care = launch(Dispatchers.IO) { careLoop() }   // 20 नवंबर 2026: हमदर्द मोड - देर रात / लंबी बात / खाने का समय ([HamdardClock])
             try {
                 while (!stopped && isActive) {
                     if (svc.callTakesMic()) return@coroutineScope      // v3.40: घंटी पर नहीं, call उठने पर ही
@@ -1603,6 +1604,7 @@ class GeminiLive(internal val svc: DKAccessibilityService, internal val agent: A
                 stopped = true
                 reveal.cancel()
                 meter?.cancel()
+                care.cancel()
                 // pehle mic band (woh aakhri audioStreamEnd bhejta hai) - phir socket. NonCancellable: beech me na ruke
                 withContext(NonCancellable) { mic.cancelAndJoin() }
                 val w = ws; val c = curClosed
