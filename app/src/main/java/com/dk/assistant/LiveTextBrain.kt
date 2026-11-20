@@ -3,7 +3,6 @@ package com.dk.assistant
 import android.content.Context
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import kotlinx.coroutines.withTimeoutOrNull
 
 /**
  * नवंबर 2026 (मालिक): DK लाइव में Z.ai / NVIDIA का विकल्प. आवाज़ Gemini Live ही बनाता है; "गहरी सोच" (deep_think)
@@ -26,23 +25,30 @@ object LiveTextBrain {
      */
     fun order(key: (String) -> String): List<String> = (ApiScopes.LIVE_TEXT + "groq").distinct().filter { key(it).isNotBlank() }
 
-    suspend fun answer(c: Context, question: String): String? {
+    /** [deadline] = पूरे deep_think tool का आख़िरी पल ([ThinkTime]) - हर कोशिश ज़्यादा से ज़्यादा [ThinkTime.STEP_MS] */
+    suspend fun answer(c: Context, question: String, deadline: Long = System.currentTimeMillis() + ThinkTime.TOTAL_MS): String? {
         if (question.isBlank()) return null
         // 20 नवंबर 2026 (मालिक): चिप में चुना मॉडल पहले; न चले = बताकर पहले जैसा रास्ता
-        withTimeoutOrNull(TIMEOUT_MS) { BrainManager(c).chipAsk(SYSTEM, question) }?.let { DKLog.d("deep_think: चिप के चुने मॉडल से जवाब"); return it }
+        // 20 नवंबर 2026 (लॉग: 41 s रुकावट): पहले 20 s + blocking call नहीं रुकती थी -> अब [ThinkTime.within] (8 s में अगला)
+        try { ThinkTime.within(ThinkTime.stepMs(deadline, System.currentTimeMillis())) { BrainManager(c).chipAsk(SYSTEM, question) } }
+            catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (e: Exception) { DKLog.d("deep_think: चिप वाला मॉडल नहीं चला (${e.message?.take(60)})"); null }
+            ?.let { DKLog.d("deep_think: चिप के चुने मॉडल से जवाब"); return it }
         val ids = order { Prefs.scopeKey(c, ApiScopes.LIVE, it) }
         if (ids.isEmpty()) return null
-        // सब मिलाकर [TIMEOUT_MS] - बातचीत ज़्यादा न रुके
-        return withTimeoutOrNull(TIMEOUT_MS) {
+        // हर API को ज़्यादा से ज़्यादा 8 s, सब मिलाकर पूरे tool का बचा समय - बातचीत ज़्यादा न रुके
+        return run {
             for (id in ids) {
                 val p = Providers.byId(id) ?: continue
                 val base = Prefs.scopeBase(c, ApiScopes.LIVE, id); val model = Prefs.scopeModel(c, ApiScopes.LIVE, id)
                 if (base.isBlank() || model.isBlank()) continue
                 val client = OpenAiCompatClient(p.name, base, Prefs.scopeKey(c, ApiScopes.LIVE, id), model)
                     .apply { fast = true; backups = Providers.fallbackModels(id) }
+                val ms = ThinkTime.stepMs(deadline, System.currentTimeMillis())
+                if (ms <= 0L) { DKLog.d("deep_think: ${ThinkTime.TOTAL_MS / 1000} s पूरे - आगे की API नहीं"); break }
                 try {
-                    val r = withContext(Dispatchers.IO) { client.complete(SYSTEM, emptyList(), question, null) }.trim()
-                    if (r.isNotBlank()) { DKLog.d("deep_think: ${client.label} से जवाब"); return@withTimeoutOrNull r }
+                    val r = ThinkTime.within(ms) { withContext(Dispatchers.IO) { client.complete(SYSTEM, emptyList(), question, null) } }?.trim()
+                    if (r == null) { DKLog.d("deep_think: ${p.name} ने ${ms / 1000} s में जवाब नहीं दिया - अगली API"); continue }
+                    if (r.isNotBlank()) { DKLog.d("deep_think: ${client.label} से जवाब"); return@run r }
                 } catch (e: kotlinx.coroutines.CancellationException) { throw e
                 } catch (e: Exception) {
                     DKLog.d("deep_think: ${p.name} के सारे मॉडल नहीं चले (${e.message?.take(80)}) - अगली API")

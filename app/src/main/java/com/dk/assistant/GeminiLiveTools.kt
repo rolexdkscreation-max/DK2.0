@@ -577,8 +577,10 @@ internal fun GeminiLive.runTools(calls: JSONArray) {
                 "current_time" -> { NowClock.syncAsync(); NowClock.toolAnswer() }
                 "deep_think" -> {
                     DKState.set(Mode.THINKING)
-                    LiveTextBrain.answer(svc, args.optString("question")) ?: try {
-                        withTimeoutOrNull(45_000) { BrainManager(svc).also { it.fromLive = true }.think(args.optString("question")) }
+                    // 20 नवंबर 2026 (लॉग: 41 s रुकावट): पूरा tool ज़्यादा से ज़्यादा 12 s, हर कोशिश 8 s ([ThinkTime])
+                    val thinkEnd = System.currentTimeMillis() + ThinkTime.TOTAL_MS
+                    LiveTextBrain.answer(svc, args.optString("question"), thinkEnd) ?: try {
+                        ThinkTime.within(ThinkTime.stepMs(thinkEnd, System.currentTimeMillis())) { BrainManager(svc).also { it.fromLive = true }.think(args.optString("question")) }
                             ?.takeIf { it.text.isNotBlank() }
                             ?.also { if (it.sources.isNotEmpty()) toolSources = Grounding.merge(toolSources, it.sources); it.g?.let { g -> toolGround = GroundCite.merge(toolGround, g) } }
                             ?.text?.let { WebCite.strip(it) } ?: "Deep thinking timed out - answer it yourself carefully."
