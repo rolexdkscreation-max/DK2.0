@@ -20,8 +20,8 @@ object DkaiSheets {
         val c = s.activity
         lateinit var layer: DkaiUi.Layer
         // 20 नवंबर 2026 (मालिक): कंपनी के हिसाब से group, सबसे नया ऊपर; सिर्फ़ उन्हीं कंपनियों के जिनकी key ऐप में सेव है.
-        // फ्री key = फ्री मॉडल, पेड key = पेड भी; पता न चले = दिखाओ (चलाते समय गलती आई तो साफ़ संदेश - [SelectedModel.failed])
-        val (card, body) = DkaiUi.sheet(c, "Select AI Model", "कंपनी के हिसाब से • सबसे नया ऊपर • जिनकी key ऐप में सेव है") { DkaiUi.close(s.root, layer) }
+        // 20 नवंबर 2026 (मालिक): सिर्फ़ फ्री मॉडल ([ModelCatalog.onlyFree]); Gemini के paid तभी जब "मेरी Gemini key paid है" चालू
+        val (card, body) = DkaiUi.sheet(c, "Select AI Model", "सिर्फ़ फ्री मॉडल • कंपनी के हिसाब से • सबसे नया ऊपर") { DkaiUi.close(s.root, layer) }
         val rows = LinearLayout(c).apply { orientation = LinearLayout.VERTICAL }
         body.addView(rows, LinearLayout.LayoutParams(-1, -2))
         fun fill() {
