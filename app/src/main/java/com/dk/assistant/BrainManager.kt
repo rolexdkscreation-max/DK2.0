@@ -821,7 +821,7 @@ class BrainManager(private val ctx: Context) {
             append("\n" + SearchPolicy.rules("{\"need_search\": true}"))
             append("\nEverything else (talk, general knowledge, how/why, advice, explanations, maths) -> answer IMMEDIATELY yourself from your own knowledge, short and warm. Do NOT ask for search for things you already know.")
             append("\nIf the user tells you a personal fact or preference worth remembering (names, numbers, likes, plans), add \"remember\": \"<the fact in short Hindi>\" to the JSON.")
-            append(AssistantBrand.IDENTITY_RULE).append("\n").append(NameRule.block(Prefs.userName(ctx), Prefs.assistantName(ctx)))
+            append(AssistantBrand.IDENTITY_RULE).append("\n").append(NameRule.block(Prefs.userName(ctx), Prefs.assistantName(ctx))).append(OwnerProfile.block(ctx))
             append("\n" + NowClock.line())
             append(TALK_RULES)
             append(TalkStyle.CHAT)   // v3.51: इंसान जैसी बात, झूठा "कर दिया" नहीं, notification/रुकने के नियम
@@ -850,7 +850,7 @@ class BrainManager(private val ctx: Context) {
             append("\n- The input says SEARCH AVAILABLE and the question needs search under the WEB SEARCH POLICY below: reply exactly [SEARCH]")
             append("\n- The question is genuinely HARD and needs careful multi-step reasoning (multi-step maths/word problems, logic puzzles, writing or fixing code, detailed comparison, planning, deep why/how explanation, exam-level questions) and the input says THINK AVAILABLE: reply exactly [THINK]. Do NOT use it for simple chat or easy facts.")
             append("\nLEARN from the user every day: if they tell a personal fact, preference, habit, or how they like answers, add at the very end a new line: [YAAD] <that fact in short Hindi>")
-            append(AssistantBrand.IDENTITY_RULE).append("\n").append(NameRule.block(Prefs.userName(ctx), Prefs.assistantName(ctx)))
+            append(AssistantBrand.IDENTITY_RULE).append("\n").append(NameRule.block(Prefs.userName(ctx), Prefs.assistantName(ctx))).append(OwnerProfile.block(ctx))
             append("\n" + NowClock.line())
             append("\n" + SearchPolicy.rules("[SEARCH]"))
             append(TALK_RULES)
@@ -1030,7 +1030,7 @@ class BrainManager(private val ctx: Context) {
             // v3.6 (owner: "DK सीखता रहे, जिससे बात करे उससे सीखे, बोली बात याद रखे")
             append("\nKEEP LEARNING (owner's rule): whenever the user or anyone talking to you tells something lasting - a name, a relation (family/friends), a preference, a plan/date, a correction of you, or explicitly says याद रखना / remember - call remember_fact right away in the same turn (short, third person, include who said it if not the owner). Use what you learned in later replies.")
             append("\nIf the user interrupts you, stop and listen. If their new words are about the same topic, give one combined answer; if it is a different question, briefly finish the earlier point, then answer the new one.")
-            append(AssistantBrand.IDENTITY_RULE).append("\n").append(NameRule.block(Prefs.userName(ctx), Prefs.assistantName(ctx)))
+            append(AssistantBrand.IDENTITY_RULE).append("\n").append(NameRule.block(Prefs.userName(ctx), Prefs.assistantName(ctx))).append(OwnerProfile.block(ctx))
             append("\n" + NowClock.line())
             append("\nTIME: the line above was exact when this call started, but time keeps moving during the call. Whenever the user asks the time, date or day, or you need it (greeting, how late it is), call current_time and say exactly what it returns - never guess or reuse an old time.")
             append(TALK_RULES)
@@ -1063,7 +1063,7 @@ class BrainManager(private val ctx: Context) {
             if (user.isNotBlank()) append(" The user's name is $user.")
             append(personaLine(persona))
             append(LivePromptLite.rules(f, Prefs.oneKeyOn(ctx)))
-            append("\n").append(AssistantBrand.IDENTITY_RULE).append("\n").append(NameRule.block(user, name))
+            append("\n").append(AssistantBrand.IDENTITY_RULE).append("\n").append(NameRule.block(user, name)).append(OwnerProfile.block(ctx))
             append("\n" + NowClock.line())
             append(TalkStyle.FRIEND_HI)   // मालिक का लिखा "करीबी दोस्त" हिस्सा (शब्दशः)
             // 20 नवंबर 2026 (मालिक: context छोटा): गर्लफ्रेंड वाला स्वभाव FRIEND MODE से ऊपर है (उसी में लिखा) = छोटे निर्देशों में दोनों नहीं
@@ -1118,7 +1118,7 @@ class BrainManager(private val ctx: Context) {
             append(TALK_RULES).append("\n")
             append(TaskSense.PROMPT).append("\n").append(ActFirstRule.TEXT).append("\n")   // नवंबर 2026: काम / सवाल / जवाब / बातचीत - पहले पहचानो
             if (Prefs.friendMode(ctx)) append(FriendStyle.persona(dkFemale(), user)).append(FriendTalk.block(ctx)).append("\n")
-            append(AssistantBrand.IDENTITY_RULE).append("\n").append(NameRule.block(Prefs.userName(ctx), Prefs.assistantName(ctx)))
+            append(AssistantBrand.IDENTITY_RULE).append("\n").append(NameRule.block(Prefs.userName(ctx), Prefs.assistantName(ctx))).append(OwnerProfile.block(ctx))
         }
         return intro + BASE_PROMPT
     }

@@ -50,6 +50,8 @@ class SettingsActivity : AppCompatActivity() {
     internal lateinit var edName: EditText
     internal lateinit var edPersona: EditText
     internal lateinit var edWake: EditText
+    /** 20 नवंबर 2026 (मालिक): प्रोफ़ाइल की और जानकारी (नंबर, गाने, Instagram …) - key -> खाना */
+    internal val profileFields = mutableMapOf<String, EditText>()
     internal lateinit var rgProvider: RadioGroup
     internal lateinit var swWake: SwitchCompat
     /** lateinit की जाँच class के बाहर (SettingsVoice.kt) से नहीं होती - वही जाँच यहाँ से */
@@ -147,7 +149,7 @@ class SettingsActivity : AppCompatActivity() {
     private fun menu(cat: String? = null) {
         val name = Prefs.assistantName(this)
         val items = listOf(
-            Triple("profile", "प्रोफ़ाइल", "आपका नाम • असिस्टेंट का नाम ($name) • बात करने का तरीका"),
+            Triple("profile", "प्रोफ़ाइल", "आपका नाम • असिस्टेंट का नाम ($name) • नंबर • गाने • Instagram / Facebook • और जानकारी"),
             Triple("lang", "भाषा / Language", "ऐप: ${if (UiLang.en()) "English" else "हिंदी"} • DK के जवाब: ${Lang.short(Prefs.replyLang(this))}"),
             Triple("ui", "दिखावट (UI कस्टमाइज़ेशन)", "थीम • मुख्य रंग • काँच की पारदर्शिता • चमक • एनिमेशन"),
             Triple("brain", "AI दिमाग", "DK लाइव • DK चैट • कोडिंग एजेंट • DK कंप्यूटर • एक key से सब"),
@@ -357,6 +359,7 @@ class SettingsActivity : AppCompatActivity() {
                 putString("personality", edPersona.text.toString().trim())
                 putString("wake_words", edWake.text.toString().trim())
             }
+            profileFields.forEach { (k, e) -> putString(k, e.text.toString().trim()) }
             if (::rgProvider.isInitialized) {
                 putString("active_provider", active)
                 putBoolean("web_answers", swWeb.isChecked)
