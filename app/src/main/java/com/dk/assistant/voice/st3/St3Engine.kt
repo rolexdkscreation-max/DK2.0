@@ -119,7 +119,11 @@ object St3Engine {
                 val gap = St3Config.SAMPLE_RATE * 12 / 100
                 val out = FloatArray(parts.sumOf { it.size } + gap * maxOf(0, parts.size - 1))
                 var at = 0
-                for ((i, w) in parts.withIndex()) { if (i > 0) at += gap; System.arraycopy(w, 0, out, at, w.size); at += w.size }
+                for ((i, w) in parts.withIndex()) {
+                    if (i > 0) at += gap
+                    System.arraycopy(w, 0, out, at, w.size)
+                    at += w.size
+                }
                 return out
             }
         } finally { restore(oldPrio) }
