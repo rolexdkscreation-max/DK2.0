@@ -238,7 +238,9 @@ class AgentRunner(
         if (LocalRecall.isRecall(goal)) { say(LocalMemory.answer(svc, goal)); return true }
         val m = Memory.parse(goal) ?: return false
         when (m.kind) {
-            "remember" -> { Memory.addFact(svc, m.text); say("ठीक है, याद रख लिया।") }
+            // 20 नवंबर 2026: न सेव हुआ (पासवर्ड/OTP जैसी निजी बात, या इनकॉग्निटो) तो "याद रख लिया" झूठ न बोले
+            "remember" -> say(if (Memory.addFact(svc, m.text)) "ठीक है, याद रख लिया। जब भी पूछेंगे, बता दूँगा।"
+                else "यह मैंने याद नहीं रखा - पासवर्ड, PIN, OTP या बैंक जैसी निजी बातें मैं सेव नहीं करता, और इनकॉग्निटो में कुछ भी नहीं।")
             "forget" -> {
                 val n = Memory.forget(svc, m.text)
                 say(if (n > 0) "ठीक है, वो बात भूल गया।" else "इस बारे में मुझे कुछ याद नहीं था।")

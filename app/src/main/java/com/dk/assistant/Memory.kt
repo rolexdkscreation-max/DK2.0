@@ -181,8 +181,14 @@ object Memory {
     // ------------------------------------------------------------ bolkar yaad karana / bhulana
     data class Cmd(val kind: String, val text: String)   // kind: remember | forget | forget_all | recall
 
-    private val REMEMBER = Regex("^(?:(?:डीके|dk|दीके)[, ]+)?(?:ये |यह |यह बात |ये बात |एक बात )?(?:याद रखो|याद रखना|याद कर लो|याद कर लेना|remember)(?: कि| की|:|,)?\\s*(.*)$")
-    private val REMEMBER_END = Regex("^(.*?)[, ]*(?:ये |यह )?(?:याद रखो|याद रखना|याद कर लो|याद कर लेना)$")
+    // 20 नवंबर 2026 (मालिक: "कोई भी चीज़ बोलूँ कि याद करके रख लो, तो रख ले"): "याद रख लो", "याद करके रख लो", "नोट कर लो"
+    // पहले पकड़ में नहीं आते थे
+    private val REMEMBER = Regex("^(?:(?:डीके|dk|दीके)[, ]+)?(?:ये |यह |यह बात |ये बात |एक बात |इसे |इस बात को )?(?:याद रखो|याद रखना|याद रख लो|याद रख लेना|याद कर लो|याद कर लेना|याद करके रख लो|याद करके रखो|याद करके रखना|याद करके रख लेना|याद कर के रख लो|याद कर के रखो|याद कर के रखना|नोट कर लो|नोट कर लेना|remember)(?: कि| की|:|,)?\\s*(.*)$")
+    private val REMEMBER_END = Regex("^(.*?)[, ]*(?:ये |यह |इसे |इसको |ये बात |यह बात )?(?:याद रखो|याद रखना|याद रख लो|याद रख लेना|याद कर लो|याद कर लेना|याद करके रख लो|याद करके रखो|याद करके रखना|याद करके रख लेना|याद कर के रख लो|याद कर के रखो|याद कर के रखना|नोट कर लो|नोट कर लेना)$")
+    /** सिर्फ़ "हाँ इसे" जैसा बचा = असली बात पिछले संदेश में - AI खुद समझे (कूड़ा याद न बने) */
+    private val FILLER = setOf("हाँ", "हां", "हा", "जी", "इसे", "इसको", "ये", "यह", "वो", "वह", "बात", "इस", "को", "भी", "ok", "okay", "ठीक", "है",
+        "dk", "डीके", "प्लीज़", "प्लीज", "please", "अच्छा", "तो", "और")
+    internal fun onlyFiller(s: String): Boolean = s.lowercase().split(Regex("[\\s,.!?।]+")).filter { it.isNotBlank() }.all { it in FILLER }
 
     fun parse(raw: String): Cmd? {
         val t = raw.trim().trim('.', '।', '!', '?').trim()
@@ -193,11 +199,11 @@ object Memory {
             return Cmd("recall", "")
         REMEMBER.find(low)?.let { m ->
             val s = t.substring(t.length - m.groupValues[1].length).trim()
-            if (s.length >= 3) return Cmd("remember", s)
+            if (s.length >= 3 && !onlyFiller(s)) return Cmd("remember", s)
         }
         REMEMBER_END.find(low)?.let { m ->
             val s = t.substring(0, m.groupValues[1].length).trim()
-            if (s.length >= 3) return Cmd("remember", s)
+            if (s.length >= 3 && !onlyFiller(s)) return Cmd("remember", s)
         }
         Regex("^(.+?)\\s+(?:वाली बात |के बारे में |की बात )?(?:भूल जाओ|भूल जाना|भुला दो)$").find(low)?.let { m ->
             val s = m.groupValues[1].trim()

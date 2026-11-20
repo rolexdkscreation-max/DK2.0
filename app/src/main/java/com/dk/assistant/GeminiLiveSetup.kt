@@ -406,7 +406,9 @@ internal fun GeminiLive.setupJson(m: String, txt: Boolean = connText, resume: Bo
                 .put("find", JSONObject().put("type", "STRING").put("description", "Only when he asks for one kind of place near him: that kind in his words, e.g. 'पेट्रोल पंप', 'ATM', 'medical', 'किराना दुकान', 'hotel'. Empty for 'मैं कहाँ हूँ' / 'आसपास क्या है'."))
                 .put("go", JSONObject().put("type", "BOOLEAN").put("description", "true = he wants to go there (route / रास्ता / ले चलो / जाना है): DK starts Google Maps navigation to the nearest one immediately. Needs find."))))) 
         .put(JSONObject().put("name", "remember_fact")
-            .put("description", "Save a personal fact or preference the user told about themselves.")
+            .put("description", "Save a personal fact or preference the user told about themselves. ALWAYS call it when the user says " +
+                "याद रखो / याद रख लो / याद करके रख लो / नोट कर लो - save that thing (number, date, place, name, plan) in their words, " +
+                "so it can be found any time later.")
             .put("parameters", JSONObject().put("type", "OBJECT")
                 .put("properties", JSONObject().put("fact", JSONObject().put("type", "STRING")))
                 .put("required", JSONArray().put("fact"))))))

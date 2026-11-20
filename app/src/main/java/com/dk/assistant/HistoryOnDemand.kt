@@ -123,7 +123,10 @@ object HistoryOnDemand {
     const val RULE = "\n\nPAST CONVERSATION (owner's rule): you are NOT given the old conversation. Answer ONLY the user's newest words - " +
         "never bring up, continue or summarise older topics on your own. When the user asks about an earlier conversation " +
         "(कल क्या कहा था, पहले क्या बात हुई थी, याद है क्या, पिछली बार क्या पूछा था, what did I say yesterday), call $TOOL and answer only " +
-        "from its results (say the date/time naturally); if it returns nothing, say honestly that you do not find it. NEVER call $TOOL for normal questions."
+        "from its results (say the date/time naturally); if it returns nothing, say honestly that you do not find it. NEVER call $TOOL for normal questions." +
+        // 20 नवंबर 2026 (मालिक: "याद रखने को कहा हो तो कभी भी पूछूँ, ढूँढकर बताए"): ऊपर की सूची में सिर्फ़ 20 बातें जाती हैं
+        " Exception: if the user asks about something personal they once told you to remember (मेरी बाइक का नंबर क्या है, " +
+        "मैंने क्या याद रखने को कहा था) and it is not in IMPORTANT FACTS, call $TOOL - it also searches every saved fact on the phone."
 
     /** ज़रूरी बातें: पहले पक्की बातें (नई पहले चुनो), फिर DK का सीखा - कुल [FACTS_MAX] बातें, [FACTS_CHARS] अक्षर */
     fun compactFacts(facts: List<String>, learned: List<String> = emptyList(), maxItems: Int = FACTS_MAX, maxChars: Int = FACTS_CHARS): String {
@@ -154,7 +157,8 @@ object HistoryOnDemand {
         "इसे सिर्फ़ तब बुलाओ जब यूज़र पुरानी बातचीत के बारे में पूछे, जैसे कल क्या कहा था, पहले क्या बात हुई थी, याद है क्या। आम सवाल पर कभी मत बुलाओ। " +
         "Call it ONLY when the user asks about a past conversation (what did I say / ask yesterday, what did we talk about, do you remember, " +
         "पिछली बार क्या पूछा था). NEVER call it for normal questions. Keep time words (कल, आज, 2 दिन पहले, पिछले हफ़्ते) inside query - " +
-        "the phone understands them - or pass from_date/to_date. Empty/only time words query = the most recent earlier turns."
+        "the phone understands them - or pass from_date/to_date. Empty/only time words query = the most recent earlier turns. " +
+        "It also searches EVERY fact the user asked DK to remember - call it for a personal detail (number, date, place, name) not in the list you have."
 
     fun toolDeclaration(): JSONObject = JSONObject().put("name", "search_history")
         .put("description", TOOL_DESC)
@@ -248,6 +252,18 @@ object HistoryOnDemand {
     private val FMT = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm", Locale.US)
 
     /** Gemini को tool का जवाब: हर नतीजा तारीख़-समय, किसने कहा, text (300 अक्षर तक) */
+    /**
+     * 20 नवंबर 2026: [reply] + "याद रखो" वाली पक्की बातें जो सवाल से मिलीं ([LocalRecall.matchFacts]).
+     * बातचीत में कुछ न मिले पर पक्की बात मिले = "मिला" (Gemini "नहीं मिला" न बोले).
+     */
+    fun withFacts(reply: String, facts: List<String>): String {
+        if (facts.isEmpty()) return reply
+        val o = try { JSONObject(reply) } catch (_: Exception) { JSONObject() }
+        o.put("saved_facts", JSONArray().apply { facts.forEach { put(it) } })
+        o.put("note", "SAVED FACTS found - the user asked DK to remember these. Answer from saved_facts (and results, if any), exactly; never invent.")
+        return o.toString()
+    }
+
     fun reply(rows: List<Row>, req: Req, zone: ZoneId = ZoneId.systemDefault()): String {
         val arr = JSONArray()
         rows.take(MAX_LIMIT).forEach { r ->

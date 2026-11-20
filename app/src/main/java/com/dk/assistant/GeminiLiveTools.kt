@@ -482,8 +482,15 @@ internal fun GeminiLive.runTools(calls: JSONArray) {
                     LocalRecall.toolReply(a, f)
                 }
                 // 20 नवंबर 2026 ([HistoryOnDemand]): पुरानी बातचीत सिर्फ़ पूछने पर - फ़ोन के SQLite (FTS4) से, offline
-                "search_history" -> LocalMemory.searchHistory(svc, args.optString("query"), args.optString("from_date").ifBlank { null },
-                    args.optString("to_date").ifBlank { null }, args.optInt("limit", HistoryOnDemand.DEFAULT_LIMIT), current = DKState.lastUser)
+                "search_history" -> {
+                    val r = LocalMemory.searchHistory(svc, args.optString("query"), args.optString("from_date").ifBlank { null },
+                        args.optString("to_date").ifBlank { null }, args.optInt("limit", HistoryOnDemand.DEFAULT_LIMIT), current = DKState.lastUser)
+                    // 20 नवंबर 2026 (मालिक: "याद रखने को कहा हो तो कभी भी पूछूँ, ढूँढकर बताए"): Live में सिर्फ़ 20 पक्की बातें जाती हैं -
+                    // बाकी (और छोटी सूची से बाहर हुई पुरानी, LocalMemory की points में) यहीं फ़ोन पर ढूँढो
+                    val q = args.optString("query").ifBlank { DKState.lastUser.trimEnd('…') }
+                    val f = if (Memory.personalOn(svc)) LocalRecall.matchFacts(q, LocalMemory.points(svc).map { it.text }.reversed() + Memory.facts(svc)) else emptyList()
+                    HistoryOnDemand.withFacts(r, f)
+                }
                 "forget_memory" -> { val n = Memory.forget(svc, args.optString("about")); if (n > 0) "Forgotten ($n place(s) deleted)." else "Nothing saved about that - tell the user it is not in memory." }
                 "local_info" -> localInfoTool(args.optString("find"))
                 "reel_stats" -> withContext(Dispatchers.IO) { ReelDaily.liveTool(svc) }   // नवंबर 2026: रील का 7 दिन का हिसाब
