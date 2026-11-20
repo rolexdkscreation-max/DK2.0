@@ -62,7 +62,8 @@ class LiveSmoothTest {
 
     @Test fun slim_realLiveTools_smaller() {
         // असली Live के सारे नाम: हर CORE नाम सच में Live में है (गलत नाम = tool गायब हो जाता)
-        val setup = src("GeminiLiveSetup.kt")
+        // 20 नवंबर 2026: search_history की घोषणा HistoryOnDemand.kt में (स्विच चालू पर recall_conversation की जगह)
+        val setup = src("GeminiLiveSetup.kt") + src("HistoryOnDemand.kt")
         LiveToolSlim.CORE.forEach { assertTrue("CORE में अनजान tool: $it", setup.contains("\"name\", \"$it\"")) }
         assertTrue(setup.contains("LiveToolSlim.slimInPlace(tools, Prefs.bool(svc, LiveSmooth.PREF_SLIM_TOOLS, true))"))
     }

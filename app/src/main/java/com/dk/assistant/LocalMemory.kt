@@ -114,7 +114,7 @@ object LocalMemory {
 
     /** सिर्फ़ test के लिए: DB बंद करके अगली बार फिर से खोलो (ऐप बंद-खोलना) */
     internal fun resetForTest() {
-        io.submit<Unit> { try { helper?.close() } catch (_: Exception) {}; helper = null; saved = -1L; fts = null; lastRec = null }.get()
+        io.submit<Unit> { try { helper?.close() } catch (e: Exception) { DKLog.d("इतिहास: test DB बंद नहीं हुआ: ${e.message}") }; helper = null; saved = -1L; fts = null; lastRec = null }.get()
     }
 
     // ------------------------------------------------------------------ लिखना (हर बात तुरंत)

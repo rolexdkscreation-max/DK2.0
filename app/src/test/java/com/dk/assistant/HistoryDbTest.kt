@@ -80,7 +80,7 @@ class HistoryDbTest {
     @Test fun thousandMessagesUnder50ms() {
         val now = System.currentTimeMillis()
         for (i in 0 until 1000) LocalMemory.insertForTest(c, if (i % 2 == 0) "u" else "d",
-            if (i == 123) "मेरी दवाई का समय रात 9 बजे है" else "आम बात नंबर $i कुछ शब्द hello world", now - (1000 - i) * 30_000L)
+            if (i == 124) "मेरी दवाई का समय रात 9 बजे है" else "आम बात नंबर $i कुछ शब्द hello world", now - (1000 - i) * 30_000L)
         all("दवाई", now)                                                         // पहली बार (warm-up)
         val req = HistoryOnDemand.request("दवाई के बारे में मैंने क्या बताया था", null, null, 5, now)
         val t0 = System.nanoTime()

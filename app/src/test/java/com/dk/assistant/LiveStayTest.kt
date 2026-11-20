@@ -59,7 +59,7 @@ class LiveStayTest {
         assertTrue(LiveStay.useParked("h1", "h2", false))      // पुराना मर गया = तैयार वाला तुरंत
         val g = LiveSrc.all()
         assertTrue(g.contains("o.optJSONObject(\"goAway\")?.let { onGoAway(it.optString(\"timeLeft\")) }"))
-        assertTrue(g.contains("startRace(curKeys, listOf(m) + curModels.filter { it != m }, live = false, resumeId = LiveRace.Combo(m, k).id)"))
+        assertTrue(g.contains("startRace(curKeys, listOf(m) + curModels.filter { it != m }, live = false, resumeId = if (newChat) null else LiveRace.Combo(m, k).id)"))
         // resumption + compression बने रहें
         assertTrue(g.contains(".put(\"sessionResumption\", if (resume && handle != null) JSONObject().put(\"handle\", handle) else JSONObject())"))
         // 18 नवंबर 2026 (ऑडिट G2): compression अब सीमा के साथ (32k/16k); setup मना करे तो पहले जैसा खाली slidingWindow

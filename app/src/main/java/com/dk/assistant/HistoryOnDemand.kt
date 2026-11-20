@@ -149,7 +149,7 @@ object HistoryOnDemand {
         "पिछली बार क्या पूछा था). NEVER call it for normal questions. Keep time words (कल, आज, 2 दिन पहले, पिछले हफ़्ते) inside query - " +
         "the phone understands them - or pass from_date/to_date. Empty/only time words query = the most recent earlier turns."
 
-    fun toolDeclaration(): JSONObject = JSONObject().put("name", TOOL)
+    fun toolDeclaration(): JSONObject = JSONObject().put("name", "search_history")
         .put("description", TOOL_DESC)
         .put("parameters", JSONObject().put("type", "OBJECT")
             .put("properties", JSONObject()
