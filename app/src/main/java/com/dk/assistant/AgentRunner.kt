@@ -426,6 +426,8 @@ class AgentRunner(
         ComputerVoice.parse(goal)?.let { cmd -> if (computerFromVoice(cmd)) return }
         // "tumhe kisne banaya?" - sirf poochhne par
         if (asksCreator(lower)) { say(CREATOR_ANSWER); return }
+        // 20 नवंबर 2026 (मालिक): "मेरा डेटा कहाँ रखते हो / लीक होता है क्या" = हमेशा वही पक्का, सच्चा जवाब (बिना AI के भी)
+        if (PrivacyText.asks(lower)) { say(PrivacyText.ANSWER); return }
         // टेम्पलेट कमांड (साँचे): बिना API key / AI के - पहला मिला साँचा चलता है; न मिले तो नीचे पहले जैसा रास्ता
         if (!note.contains(LocalRouter.DONE_NOTE)) {
             var tg = goal.trim()
