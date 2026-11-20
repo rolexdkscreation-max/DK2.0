@@ -80,7 +80,8 @@ object Prefs {
             p.edit().apply { if (GeminiModels.oldCoderDefault(cur)) putString(ApiScopes.pref(scope, "model", id), GeminiModels.CODER); putBoolean(flag, true) }.apply()
             if (GeminiModels.oldCoderDefault(cur)) return GeminiModels.CODER
         }
-        return (p.getString(ApiScopes.pref(scope, "model", id), def) ?: def).ifBlank { def }
+        // 20 नवंबर 2026: कंपनी ने बंद किया मॉडल सहेजा हो तो उसकी जगह वाला चालू मॉडल (Providers.current)
+        return Providers.current(id, (p.getString(ApiScopes.pref(scope, "model", id), def) ?: def).ifBlank { def })
     }
     /**
      * कोडिंग एजेंट की Gemini keys: पहली (मुख्य) + key 2 + key 3 + key 4 + key 5. एक key के सारे मॉडल की limit खत्म -> अगली key.

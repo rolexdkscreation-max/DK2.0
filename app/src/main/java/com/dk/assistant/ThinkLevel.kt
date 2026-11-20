@@ -90,6 +90,10 @@ object ThinkLevel {
         if (baseUrl.contains("api.z.ai") || baseUrl.contains("bigmodel.cn")) {
             body.put("thinking", JSONObject().put("type", if (l == MEDIUM || l == HIGH) "enabled" else "disabled")); return true
         }
+        // 20 नवंबर 2026: NVIDIA के नए Nemotron 3.x अपने-आप सोचते हैं (धीमा / खाली जवाब) - AUTO/LOW पर सोच बंद
+        if (baseUrl.contains("integrate.api.nvidia.com") && m.contains("nemotron-3") && (l == AUTO || l == LOW)) {
+            body.put("chat_template_kwargs", JSONObject().put("enable_thinking", false)); return true
+        }
         if (l == AUTO) {
             if (autoEffort != null && m.contains("gpt-oss")) { body.put("reasoning_effort", autoEffort); return true }
             return false
@@ -111,5 +115,5 @@ object ThinkLevel {
         code == 400 && (msg.contains("reasoning", true) || msg.contains("think", true)) && !msg.contains("API key", true)
 
     /** body से सोचने वाला हिस्सा हटाओ (दोबारा भेजने से पहले) */
-    fun strip(body: JSONObject) { body.remove("reasoning_effort"); body.remove("reasoning"); body.remove("thinking") }
+    fun strip(body: JSONObject) { body.remove("reasoning_effort"); body.remove("reasoning"); body.remove("thinking"); body.remove("chat_template_kwargs") }
 }
