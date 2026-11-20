@@ -39,7 +39,8 @@ class ToolAgent(
         fun keys(c: Context): List<String> = GeminiModels.distinctKeys(
             listOf(Prefs.scopeKey(c, ApiScopes.CHAT, "gemini"), Prefs.key(c, "gemini")) + Prefs.liveGeminiKeys(c))
 
-        fun models(c: Context): List<String> = listOf(Prefs.scopeModel(c, ApiScopes.CHAT, "gemini"), GeminiModels.CODER, GeminiModels.LIGHT)
+        fun models(c: Context): List<String> = com.dk.assistant.dkai.SelectedModel.geminiOrder(c, "tools वाले काम",   // 20 नवंबर 2026: चिप का Gemini पहले
+            listOf(Prefs.scopeModel(c, ApiScopes.CHAT, "gemini"), GeminiModels.CODER, GeminiModels.LIGHT))
             .map { it.trim().removePrefix("models/") }.filter { it.startsWith("gemini") && !GeminiModels.isLegacy(it) }.distinct()
 
         private val JSON_T = "application/json; charset=utf-8".toMediaType()
@@ -121,6 +122,7 @@ class ToolAgent(
                     val txt = r.body?.string().orEmpty()
                     if (r.isSuccessful) return@withContext JSONObject(txt)
                     lastErr = "$m HTTP ${r.code}"   // 400/403 (गलत key) भी: अगली key / मॉडल
+                    if (k == keys.last()) com.dk.assistant.dkai.SelectedModel.failedIf(svc, m, com.dk.assistant.AiException(r.code, txt.take(300)))
                 }
             } catch (e: Exception) { lastErr = "$m ${e.javaClass.simpleName}" }
         }

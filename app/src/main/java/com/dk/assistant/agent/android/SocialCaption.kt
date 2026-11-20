@@ -43,13 +43,15 @@ object SocialCaption {
         frames.forEach { parts.put(JSONObject().put("inline_data", JSONObject().put("mime_type", "image/jpeg").put("data", it))) }
         val body = JSONObject().put("contents", JSONArray().put(JSONObject().put("role", "user").put("parts", parts)))
             .put("generationConfig", JSONObject().put("maxOutputTokens", 900).put("temperature", 0.6).put("responseMimeType", "application/json")).toString()
-        val models = OneKeyLanes.order(OneKeyLanes.Lane.PHONE, (listOf(GeminiModels.CODER) + GeminiModels.LIGHT_CHAIN).distinct()).take(4)
+        val models = com.dk.assistant.dkai.SelectedModel.geminiOrder(c, "सोशल कैप्शन (फोटो/वीडियो देखना)",
+            OneKeyLanes.order(OneKeyLanes.Lane.PHONE, (listOf(GeminiModels.CODER) + GeminiModels.LIGHT_CHAIN).distinct()).take(4))   // 20 नवंबर 2026: चिप का Gemini पहले
         for (key in keys.take(2)) for (model in models) {
             try {
                 val req = Request.Builder().url("https://generativelanguage.googleapis.com/v1beta/models/$model:generateContent")
                     .header("x-goog-api-key", key).post(body.toRequestBody("application/json".toMediaType())).build()
                 val txt = http.newCall(req).execute().use { r ->
-                    if (!r.isSuccessful) null else JSONObject(r.body?.string().orEmpty()).optJSONArray("candidates")?.optJSONObject(0)
+                    if (!r.isSuccessful) { com.dk.assistant.dkai.SelectedModel.failedIf(c, model, com.dk.assistant.AiException(r.code, r.message)); null }
+                    else JSONObject(r.body?.string().orEmpty()).optJSONArray("candidates")?.optJSONObject(0)
                         ?.optJSONObject("content")?.optJSONArray("parts")?.let { ps -> (0 until ps.length()).joinToString("") { ps.optJSONObject(it)?.takeIf { o -> !o.optBoolean("thought") }?.optString("text").orEmpty() } }
                 }
                 SocialSmart.parse(txt, p, ask)?.let { DKLog.d("सोशल कैप्शन: $model से बना (${it.hashtags.size} हैशटैग)"); return Seen(it, dur) }

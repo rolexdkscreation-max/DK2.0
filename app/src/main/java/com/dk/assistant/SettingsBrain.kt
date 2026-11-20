@@ -543,6 +543,17 @@ internal fun SettingsActivity.geminiPaidSwitch(box: LinearLayout) {
         toast(if (on) "✓ होम पर paid Gemini मॉडल भी दिखेंगे" else "✓ होम पर सिर्फ़ फ्री मॉडल")
     }
     hint(box, "बंद (default) = होम के मॉडल चुनने में सिर्फ़ फ्री मॉडल। फ्री key पर paid मॉडल चुनने से गलती आती है, इसलिए वे छिपे रहते हैं।")
+    // 20 नवंबर 2026 (मालिक): मॉडल चिप की लिस्ट हर 24 घंटे में अपने-आप ताज़ा; यहाँ से अभी
+    box.addView(button("मॉडल लिस्ट अभी ताज़ा करें") { v ->
+        v.isEnabled = false
+        lifecycleScope.launch {
+            val changed = try { com.dk.assistant.dkai.DkaiModelList.refreshCatalog(this@geminiPaidSwitch, force = true) }
+                catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (e: Exception) { DKLog.d("मॉडल लिस्ट: ${e.message?.take(60)}"); false }
+            v.isEnabled = true
+            val n = com.dk.assistant.dkai.DkaiModelList.groups(this@geminiPaidSwitch).sumOf { it.entries.size }
+            toast(if (changed) "✓ मॉडल लिस्ट ताज़ा हुई ($n मॉडल)" else "✓ लिस्ट पहले से ताज़ा है ($n मॉडल)")
+        }
+    })
 }
 
 /**

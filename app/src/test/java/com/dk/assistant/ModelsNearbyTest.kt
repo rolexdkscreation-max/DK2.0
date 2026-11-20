@@ -41,7 +41,7 @@ class ModelsNearbyTest {
         assertEquals(9, g.size)
         assertEquals(listOf("a", "b", "c"), DkaiModelList.ordered(listOf("a", "b"), listOf("b", "c")))
         assertTrue(DkaiModelList.isStale(0L, 10L)); assertFalse(DkaiModelList.isStale(1_000L, 2_000L))
-        assertTrue(src("dkai/DkaiSheets.kt").contains("DkaiModelList.refreshStale(c)"))
+        assertTrue(src("dkai/DkaiSheets.kt").contains("DkaiModelList.refreshCatalog(c)"))
     }
 
     // ------------------------------------------------------------ चुना मॉडल ही काम करे

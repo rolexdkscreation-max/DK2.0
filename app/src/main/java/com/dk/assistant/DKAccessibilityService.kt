@@ -486,7 +486,7 @@ class DKAccessibilityService : AccessibilityService() {
     val talk by lazy { com.dk.assistant.talk.TalkLoop(this, agent, speaker) }
     /** अलग तरीका इस समय तक नहीं (कोई पहचान नहीं चली) - तब तक पहले जैसा Gemini Live */
     @Volatile private var talkBlockedUntil = 0L
-    fun talkWanted(): Boolean = com.dk.assistant.talk.TalkPrefs.split(this) && System.currentTimeMillis() > talkBlockedUntil
+    fun talkWanted(): Boolean = com.dk.assistant.talk.TalkPrefs.wanted(this) && System.currentTimeMillis() > talkBlockedUntil
     @Volatile internal var liveOffUntil = 0L
     /** Lagatar kitni baar Live network/mic ki thodi-der wali dikkat se ruka (backoff ke liye) */
     @Volatile internal var liveSoftFails = 0
@@ -742,7 +742,7 @@ class DKAccessibilityService : AccessibilityService() {
                     val talkStart = System.currentTimeMillis()
                     val r = try {
                         talk.run(
-                            stop = { !DKState.live || !com.dk.assistant.talk.TalkPrefs.split(me) || callBusy() },
+                            stop = { !DKState.live || !com.dk.assistant.talk.TalkPrefs.wanted(me) || callBusy() },
                             hold = { DKMic.dictating || calls.inCall },
                         )
                     } catch (e: kotlinx.coroutines.CancellationException) { throw e

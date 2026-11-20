@@ -66,25 +66,27 @@ object ScreenLook {
         val keys = Prefs.liveGeminiKeys(svc)
         if (keys.isEmpty())
             return "SCREEN TEXT ONLY (no Gemini key for vision; colours cannot be seen). Answer from this text only, never guess:$ownNote\n" + text.take(3000)
-        val ans = withContext(Dispatchers.IO) { vision(keys, prompt(question.ifBlank { DKState.lastUser }, pkg, text, img != null), img) }
+        val ans = withContext(Dispatchers.IO) { vision(keys, prompt(question.ifBlank { DKState.lastUser }, pkg, text, img != null), img, svc) }
             ?: return if (text.isNotBlank()) "VISION FAILED - SCREEN TEXT ONLY (colours unknown). Answer from this text only, never guess:$ownNote\n" + text.take(3000)
             else "COULD NOT SEE: the vision model did not answer. Tell the user honestly."
         return "SCREEN SEEN JUST NOW" + (if (img == null) " (text only - no screenshot, colours unknown)" else "") + " (app: ${pkg.ifBlank { "?" }}). " +
             "Tell the user exactly this, briefly, in his language; do not add anything:$ownNote\n$ans"
     }
 
-    internal fun vision(keys: List<String>, ask: String, jpegB64: String?): String? {
+    /** [c] = चिप का चुना Gemini मॉडल पहले (20 नवंबर 2026); null = पहले जैसा क्रम */
+    internal fun vision(keys: List<String>, ask: String, jpegB64: String?, c: android.content.Context? = null): String? {
         val parts = JSONArray().put(JSONObject().put("text", ask))
         if (jpegB64 != null) parts.put(JSONObject().put("inline_data", JSONObject().put("mime_type", "image/jpeg").put("data", jpegB64)))
         val body = JSONObject().put("contents", JSONArray().put(JSONObject().put("role", "user").put("parts", parts)))
             .put("generationConfig", JSONObject().put("maxOutputTokens", 700).put("temperature", 0.2)).toString()
-        val models = OneKeyLanes.order(OneKeyLanes.Lane.PHONE, (listOf(GeminiModels.CODER) + GeminiModels.LIGHT_CHAIN).distinct()).take(4)   // 15 नवंबर 2026: फ़ोन के काम की लेन
+        val models = com.dk.assistant.dkai.SelectedModel.geminiOrder(c, "स्क्रीन/फ़ोटो देखना",
+            OneKeyLanes.order(OneKeyLanes.Lane.PHONE, (listOf(GeminiModels.CODER) + GeminiModels.LIGHT_CHAIN).distinct()).take(4))   // 15 नवंबर 2026: फ़ोन के काम की लेन
         for (key in keys.take(2)) for (m in models) {
             try {
                 val req = Request.Builder().url("https://generativelanguage.googleapis.com/v1beta/models/$m:generateContent")
                     .header("x-goog-api-key", key).post(body.toRequestBody("application/json".toMediaType())).build()
                 val txt = http.newCall(req).execute().use { r ->
-                    if (!r.isSuccessful) null else JSONObject(r.body?.string().orEmpty()).optJSONArray("candidates")?.optJSONObject(0)
+                    if (!r.isSuccessful) { c?.let { com.dk.assistant.dkai.SelectedModel.failedIf(it, m, AiException(r.code, r.message)) }; null } else JSONObject(r.body?.string().orEmpty()).optJSONArray("candidates")?.optJSONObject(0)
                         ?.optJSONObject("content")?.optJSONArray("parts")?.let { p -> (0 until p.length()).joinToString("") { p.optJSONObject(it)?.takeIf { o -> !o.optBoolean("thought") }?.optString("text").orEmpty() } }
                 }
                 if (!txt.isNullOrBlank()) return txt.trim()

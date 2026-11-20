@@ -37,7 +37,7 @@ class CoderAi(val provider: Provider, private val key: String, val model: String
     internal fun withThink(level: String): CoderAi {
         if (level == think) return this
         return CoderAi(provider, key, model, base, fallbacks.map { it.withThink(level) }, note, sink).also {
-            it.waitOnLimit = waitOnLimit; it.chain = chain; it.think = level; it.pinned = pinned
+            it.waitOnLimit = waitOnLimit; it.chain = chain; it.think = level; it.pinned = pinned; it.chip = chip
         }
     }
     internal fun keyForChain(): String = key
@@ -64,6 +64,13 @@ class CoderAi(val provider: Provider, private val key: String, val model: String
     @Volatile var pinned = false
         private set
     internal fun pinOnly(): CoderAi { pinned = true; chain = emptyList(); return this }
+
+    /** 20 नवंबर 2026: चिप का चुना मॉडल ([com.dk.assistant.dkai.SelectedModel]) - सिर्फ़ वही मॉडल इस कड़ी में; न चले = पीछे की पूरी chain */
+    @Volatile var chip = false
+        private set
+    internal fun chipOnly(): CoderAi { chip = true; chain = emptyList(); return this }
+    /** [alone] जैसा, पर इसी का मॉडल-क्रम / pin / रुकना वैसा ही (चिप के पीछे पुरानी chain बिल्कुल पहले जैसी) */
+    internal fun aloneSame(): CoderAi = alone().also { it.chain = chain; it.pinned = pinned; it.waitOnLimit = waitOnLimit; it.chip = chip }
 
     /**
      * v3.6 (owner का नियम): हल्के एजेंटों के लिए वही keys (5 तक, वही fallback), पर हल्का मॉडल.
@@ -356,7 +363,10 @@ class CoderAi(val provider: Provider, private val key: String, val model: String
         /** DK कंप्यूटर की AI: सिर्फ़ Settings → AI दिमाग → DK कंप्यूटर की अपनी key. [sink] = कंप्यूटर की अपनी रिपोर्ट. */
         // v5 (मालिक): "DK कंप्यूटर पहले Gemini से कोशिश करे, फिर Groq, फिर OpenRouter, फिर Z.ai, फिर NVIDIA - जिससे भी बने, उससे काम हो".
         // DK कंप्यूटर की अपनी keys (Settings → AI दिमाग → DK कंप्यूटर) में से जिसकी भी key डली है, सब इसी क्रम में एक chain में.
-        fun forComputer(c: Context, sink: (String, String) -> Unit): CoderAi? {
+        fun forComputer(c: Context, sink: (String, String) -> Unit): CoderAi? = withChip(c, ApiScopes.PC, sink, forComputerAuto(c, sink))
+
+        /** चिप में Auto (कुछ नहीं चुना) = यही पुराना क्रम */
+        private fun forComputerAuto(c: Context, sink: (String, String) -> Unit): CoderAi? {
             // 14 नवंबर 2026 (मालिक): Settings → AI दिमाग में DK कंप्यूटर का मॉडल खुद चुना = सिर्फ़ वही, कोई fallback नहीं
             BrainPin.coder(c, BrainPin.PC, sink)?.let { return it }
             val own = if (Prefs.oneKeyOn(c)) forScope(c, ApiScopes.PC, sink)
@@ -448,6 +458,7 @@ class CoderAi(val provider: Provider, private val key: String, val model: String
          */
         fun forStrong(c: Context, backup: CoderAi?, sink: (String, String) -> Unit = { p, f -> DKLog.d("मज़बूत मॉडल: $p → $f") }): CoderAi? {
             if (backup?.pinned == true) return null   // खुद चुना मॉडल = सिर्फ़ वही (मज़बूत मॉडल भी नहीं)
+            if (backup?.chip == true) return null     // 20 नवंबर 2026: चिप में चुना मॉडल = वही पहले (मज़बूत मॉडल बीच में नहीं)
             val st = StrongAi.setup(Prefs.coderStrongProvider(c), Prefs.coderStrongKey(c), Prefs.coderStrongModel(c)) ?: return null
             return strong(st, backup, sink).applyThink(ThinkLevel.get(c, ApiScopes.CODER))
         }
@@ -470,7 +481,28 @@ class CoderAi(val provider: Provider, private val key: String, val model: String
         // API/मॉडल बदलना, retry, request छोटी करना = अंदर की बात: यूज़र की रिपोर्ट में नहीं, सिर्फ़ डिबग लॉग में
         // ऑटोनोमस मोड ने कोडिंग शुरू की हो: उसकी अपनी key -> (खाली) कोडिंग एजेंट की key -> (वो भी नहीं) DK की मुख्य key.
         // ऑटोनोमस बंद / उसका काम नहीं = पहले जैसा, सिर्फ़ कोडिंग एजेंट की key.
-        fun fromPrefs(c: Context): CoderAi? = com.dk.assistant.auto.AutoMode.coderOverride(c)
+        fun fromPrefs(c: Context): CoderAi? = withChip(c, ApiScopes.CODER, { p, f -> DKLog.d("कोडिंग AI (चिप): $p → $f") }, fromPrefsAuto(c))
+
+        /**
+         * 20 नवंबर 2026 (मालिक: "चिप में चुना मॉडल हर दिमाग के काम में"): चुना मॉडल chain में सबसे आगे (अकेला, सोचने का
+         * स्तर वही), पीछे [rest] की पूरी पुरानी chain. चुना न चले = यूज़र को छोटा संदेश + पीछे वाली chain (चुपचाप नहीं).
+         * Auto / उस कंपनी की key नहीं / ऑटोनोमस मोड की अपनी key = [rest] वैसी ही.
+         */
+        internal fun withChip(c: Context, scope: String, sink: (String, String) -> Unit, rest: CoderAi?): CoderAi? {
+            if (rest?.autoTag?.isNotBlank() == true) return rest
+            val r = com.dk.assistant.dkai.SelectedModel.resolve(c) ?: return rest
+            if (ApiScopes.oneKeySkip(Prefs.oneKeyOn(c), r.provider.id) && Providers.byId(r.provider.id) != null) return rest
+            val tell: (String, String) -> Unit = { p, f ->
+                sink(p, f)
+                if (p.contains(r.model, ignoreCase = true)) com.dk.assistant.dkai.SelectedModel.failedWhy(c, r.model, p.substringAfter(": ", p), null)
+            }
+            val fb = rest?.let { listOf(it.aloneSame()) + it.fallbackList() }.orEmpty()
+            return CoderAi(r.provider, r.key, r.model, r.base, fb, note = ", चिप में चुना", sink = tell).chipOnly()
+                .also { it.waitOnLimit = rest?.waitOnLimit ?: false; it.think = rest?.think ?: ThinkLevel.get(c, scope) }
+        }
+
+        /** चिप में Auto = पहले जैसा क्रम */
+        private fun fromPrefsAuto(c: Context): CoderAi? = com.dk.assistant.auto.AutoMode.coderOverride(c)
             ?: BrainPin.coder(c, BrainPin.CODER) { p, f -> DKLog.d("कोडिंग AI (चुना): $p → $f") }
             ?: forCoder(c) { p, f -> DKLog.d("कोडिंग AI: $p → $f") }
             ?: com.dk.assistant.auto.AutoMode.coderMainFallback(c)

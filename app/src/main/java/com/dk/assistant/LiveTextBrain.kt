@@ -28,6 +28,8 @@ object LiveTextBrain {
 
     suspend fun answer(c: Context, question: String): String? {
         if (question.isBlank()) return null
+        // 20 नवंबर 2026 (मालिक): चिप में चुना मॉडल पहले; न चले = बताकर पहले जैसा रास्ता
+        withTimeoutOrNull(TIMEOUT_MS) { BrainManager(c).chipAsk(SYSTEM, question) }?.let { DKLog.d("deep_think: चिप के चुने मॉडल से जवाब"); return it }
         val ids = order { Prefs.scopeKey(c, ApiScopes.LIVE, it) }
         if (ids.isEmpty()) return null
         // सब मिलाकर [TIMEOUT_MS] - बातचीत ज़्यादा न रुके

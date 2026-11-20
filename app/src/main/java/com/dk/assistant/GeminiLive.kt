@@ -1163,6 +1163,8 @@ class GeminiLive(internal val svc: DKAccessibilityService, internal val agent: A
                     model = if (pkOk) pk!!.model else models[mi]
                     if (pkOk && pk!!.keyIdx in keys.indices) { ki = pk.keyIdx; keyIdx = ki; key = keys[ki] }
                     planSplit(model)                 // v3.68: इस connection में कौन बोलेगा (बँटवारा / सीधी आवाज़)
+                    // 20 नवंबर 2026: चिप का आवाज़ वाला मॉडल नहीं चला (दूसरा लगा) = यूज़र को बताओ, चुपचाप नहीं
+                    com.dk.assistant.dkai.SelectedModel.voiceModel(svc)?.let { com.dk.assistant.dkai.SelectedModel.usedInstead(svc, it, model) }
                     // v3.8: wake word ke baad garam rakha connection abhi zinda hai -> naya mat banao (0 ms)
                     val reuse = pkOk && pk!!.model == model && pk.split == connSplit && pk.text == connText &&
                         pk.liveVer == connLiveVer &&  // v3.80: बीच में आवाज़/मॉडल बदला = पुराना गर्म connection नहीं

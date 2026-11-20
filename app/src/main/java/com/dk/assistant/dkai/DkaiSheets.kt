@@ -19,31 +19,38 @@ object DkaiSheets {
     fun models(s: DkaiScreen) {
         val c = s.activity
         lateinit var layer: DkaiUi.Layer
-        // 13 नवंबर 2026 (मालिक): सिर्फ़ फ्री मॉडल, और सिर्फ़ उन्हीं कंपनियों के जिनकी key AI दिमाग में डली है. Paid = सिर्फ़ paid key बताई हो तब
-        val (card, body) = DkaiUi.sheet(c, "Select AI Model", "सिर्फ़ फ्री मॉडल • जिनकी key AI दिमाग में डली है") { DkaiUi.close(s.root, layer) }
+        // 20 नवंबर 2026 (मालिक): कंपनी के हिसाब से group, सबसे नया ऊपर; सिर्फ़ उन्हीं कंपनियों के जिनकी key ऐप में सेव है.
+        // फ्री key = फ्री मॉडल, पेड key = पेड भी; पता न चले = दिखाओ (चलाते समय गलती आई तो साफ़ संदेश - [SelectedModel.failed])
+        val (card, body) = DkaiUi.sheet(c, "Select AI Model", "कंपनी के हिसाब से • सबसे नया ऊपर • जिनकी key ऐप में सेव है") { DkaiUi.close(s.root, layer) }
         val rows = LinearLayout(c).apply { orientation = LinearLayout.VERTICAL }
         body.addView(rows, LinearLayout.LayoutParams(-1, -2))
         fun fill() {
             rows.removeAllViews()
-            val list = DkaiKit.homeModels(hasKey = { hasKey(c, it) }, geminiPaid = Prefs.bool(c, DkaiKit.PREF_GEMINI_PAID, false),
-                cached = { Prefs.models(c, it) }, fallback = { Providers.fallbackModels(it) }, name = { ModelNames.fromId(it) })
-            val pid = Prefs.activeProvider(c); val curModel = Prefs.model(c, pid)
-            if (list.isEmpty()) rows.addView(DkaiTheme.text(c, "अभी कोई फ्री key नहीं डली - सेटिंग्स → AI दिमाग में Gemini / Groq / OpenRouter / Z.ai / NVIDIA की फ्री key डालें।",
+            val groups = DkaiModelList.groups(c)
+            val cur = SelectedModel.get(c)
+            // Auto = कुछ न चुनना = पहले जैसी routing (काम के हिसाब से मॉडल)
+            rows.addView(DkaiUi.row(c, DkaiIcon.Kind.AGENT, "Auto", "काम के हिसाब से अपने-आप मॉडल (पहले जैसा)", cur == null, DkaiTheme.CYAN) {
+                DkaiUi.close(s.root, layer); SelectedModel.set(c, null); s.renderModel()
+            })
+            if (groups.isEmpty()) rows.addView(DkaiTheme.text(c, "अभी कोई key नहीं डली - सेटिंग्स → AI दिमाग में Gemini / Groq / OpenRouter / Z.ai / NVIDIA की key डालें।",
                 13f, DkaiTheme.SUB).apply { setPadding(DkaiUi.d(c, 6f), DkaiUi.d(c, 6f), DkaiUi.d(c, 6f), DkaiUi.d(c, 10f)) })
-            for (m in list) {
-                val on = m.provider == pid && m.model.equals(curModel.removePrefix("models/"), true)
-                rows.addView(DkaiUi.row(c, DkaiIcon.Kind.ZAP, m.title, m.sub, on, if (m.paid) DkaiTheme.VIOLET else DkaiTheme.CYAN) {
-                    DkaiUi.close(s.root, layer)
-                    // 14 नवंबर 2026 (मालिक): चुना मॉडल ही काम करे ([DkaiPick]) - "मॉडल: …" वाला संदेश नहीं, चुपचाप
-                    DkaiPick.choose(c, m.provider, m.model)
-                    s.renderModel()
-                })
+            for (g in groups) {
+                rows.addView(DkaiTheme.text(c, g.title, 12f, DkaiTheme.SUB).apply { setPadding(DkaiUi.d(c, 6f), DkaiUi.d(c, 10f), DkaiUi.d(c, 6f), DkaiUi.d(c, 4f)) })
+                for (m in g.entries) {
+                    val on = cur != null && cur.provider == m.provider && SelectedModel.same(cur.model, m.model)
+                    rows.addView(DkaiUi.row(c, DkaiIcon.Kind.ZAP, m.title, m.sub, on, if (m.paid) DkaiTheme.VIOLET else DkaiTheme.CYAN) {
+                        DkaiUi.close(s.root, layer)
+                        // 14 नवंबर 2026 (मालिक): चुना मॉडल ही काम करे ([DkaiPick] → [SelectedModel]) - "मॉडल: …" वाला संदेश नहीं, चुपचाप
+                        DkaiPick.choose(c, m.provider, m.model, m.supportsVoice)
+                        s.renderModel()
+                    })
+                }
             }
         }
         fill()
-        // 14 नवंबर 2026: नया फ्री मॉडल अपने-आप - पीछे से कंपनियों की ताज़ा सूची ([DkaiModelList]); बदली तो सूची फिर से
+        // नया मॉडल अपने-आप: पीछे से हर कंपनी की लाइव सूची (24 घंटे की cache, [DkaiModelList.refreshCatalog]); बदली तो सूची फिर से
         s.activity.lifecycleScope.launch {
-            if (DkaiModelList.refreshStale(c) && rows.isAttachedToWindow) fill()
+            if (DkaiModelList.refreshCatalog(c) && rows.isAttachedToWindow) fill()
         }
         body.addView(DkaiUi.button(c, "और AI / key (सेटिंग्स → AI दिमाग)…", DkaiTheme.FIELD, DkaiTheme.SUB) {
             DkaiUi.close(s.root, layer); c.startActivity(Intent(c, SettingsActivity::class.java).putExtra("section", "brain"))

@@ -95,7 +95,7 @@ class DkaiBroadcastPipelineTest {
         val or = DkaiKit.homeModels({ it == "openrouter" }, false, { listOf("openai/gpt-4o", "x/y:free") }, { emptyList() }, { it })
         assertEquals(listOf("x/y:free"), or.map { it.model })
         assertEquals(listOf("gemini-2.5-flash"), DkaiKit.pickable("gemini", listOf("gemini-2.5-flash", "gemini-2.5-pro"), false))
-        assertTrue(src("dkai/DkaiSheets.kt").contains("homeModels("))
+        assertTrue(src("dkai/DkaiSheets.kt").contains("DkaiModelList.groups(c)"))
         assertTrue(src("dkai/DkaiScreen.kt").contains("DkaiKit.pickable("))
     }
 
