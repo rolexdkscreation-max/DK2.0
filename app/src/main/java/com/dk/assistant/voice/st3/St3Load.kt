@@ -118,6 +118,12 @@ object St3Load {
 
     fun shouldDefer(now: Long, waitedMs: Long, maxWaitMs: Long): Boolean = busy(now) && waitedMs < maxWaitMs
 
+    /**
+     * 20 नवंबर 2026 (मालिक का 15:53 लॉग): थ्रेड जाँच (6 बार मॉडल खोलना-बंद, ~15-25 s lock) अभी चलाएँ? मॉडल पहले से खुला
+     * (बातचीत चल रही) या आवाज़ बन/बज रही = नहीं. pure
+     */
+    fun benchNow(modelOpen: Boolean, busy: Boolean): Boolean = !modelOpen && !busy
+
     /** (test के लिए) सब साफ़ */
     @Synchronized fun reset() { mode = Mode.NORMAL; slowRun = 0; goodRun = 0; answerRows.clear(); heatStatus = -1; headroom = Float.NaN; busyUntil = 0L }
 }

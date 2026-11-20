@@ -25,6 +25,8 @@ object St3Engine {
     /** हर [stop] पर बढ़ता है - पुराने काम अपने-आप रुकें */
     private val gen = AtomicInteger(0)
     @Volatile private var warming = false
+    /** थ्रेड जाँच टलने का लॉग एक ही बार */
+    @Volatile private var benchDeferNoted = false
 
     /** नापी हुई सबसे तेज़ गिनती; अभी नहीं नापी = 4 (या जितने core) */
     private fun threads(c: Context): Int = St3Store.threads(c).takeIf { it > 0 }
@@ -177,7 +179,15 @@ object St3Engine {
         Thread({
             try {
                 boost()                        // इस धागे पर खुले मॉडल के ORT/XNNPACK धागे भी यही प्राथमिकता लेते हैं
-                if (St3Store.threads(app) <= 0) bench(app)
+                // 20 नवंबर 2026 (मालिक का 15:53 लॉग): जाँच बातचीत के बीच चली = 6 बार मॉडल खोला-बंद, lock पकड़े - पहली आवाज़
+                // 8-10 s. अब मॉडल खुला हो / आवाज़ बन-बज रही हो तो नहीं: अभी वाले थ्रेड, जाँच अगली बार मॉडल खुलते समय
+                if (St3Store.threads(app) <= 0) {
+                    if (St3Load.benchNow(synth != null, St3Load.busy())) bench(app)
+                    else if (!benchDeferNoted) {
+                        benchDeferNoted = true
+                        com.dk.assistant.DKLog.d("ऑफ़लाइन आवाज़: थ्रेड जाँच टली (बातचीत चल रही) - अभी ${openThreads} थ्रेड")
+                    }
+                }
                 lock.withLock {
                     if (ensure(app, St3Store.voice(app)) == null && (!warmedUp || idle)) {
                         val t0 = System.currentTimeMillis()
