@@ -50,8 +50,12 @@ class PromptSizeTest {
             "HistoryOnDemand.RULE" to { HistoryOnDemand.RULE },
         )
         val sb = StringBuilder("### Live निर्देश - हिस्सों का साइज़ (अक्षर • ~token)\n")
+        Prefs.setLivePromptLite(c, false)
         val whole = try { BrainManager(c).liveSystemPrompt(withMemory = false) } catch (e: Throwable) { "ERR ${e.javaClass.simpleName}: ${e.message}" }
-        sb.append("कुल liveSystemPrompt(false): ${whole.length} • ~${HistoryOnDemand.estimateTokens(whole)}\n")
+        Prefs.setLivePromptLite(c, true)
+        val lite = try { BrainManager(c).liveSystemPrompt(withMemory = false) } catch (e: Throwable) { "ERR ${e.javaClass.simpleName}: ${e.message}" }
+        sb.append("कुल liveSystemPrompt(false) पूरे निर्देश: ${whole.length} • ~${HistoryOnDemand.estimateTokens(whole)}\n")
+        sb.append("कुल छोटे निर्देश (LivePromptLite): ${lite.length} • ~${HistoryOnDemand.estimateTokens(lite)}\n")
         val rows = parts.map { (n, f) -> n to (try { f() } catch (e: Throwable) { "ERR ${e.javaClass.simpleName}" }) }
         for ((n, s) in rows.sortedByDescending { it.second.length })
             sb.append("${s.length.toString().padStart(6)} • ~${HistoryOnDemand.estimateTokens(s).toString().padStart(5)}  $n\n")
@@ -64,6 +68,6 @@ class PromptSizeTest {
         for ((k, v) in dup.entries.sortedByDescending { it.key.length * it.value }.take(15)) sb.append("  ×$v ${k.take(110)}\n")
         val out = sb.toString()
         println(out)
-        try { File("build").mkdirs(); File("build/prompt-size.txt").writeText(out); File("build/live-prompt.txt").writeText(whole) } catch (e: Exception) { println(e.message) }
+        try { File("build").mkdirs(); File("build/prompt-size.txt").writeText(out); File("build/live-prompt.txt").writeText(whole); File("build/live-prompt-lite.txt").writeText(lite) } catch (e: Exception) { println(e.message) }
     }
 }

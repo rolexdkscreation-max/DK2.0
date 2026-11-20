@@ -33,7 +33,9 @@ jobs:
         if: always()
         with:
           name: live-prompt
-          path: app/build/live-prompt.txt
+          path: |
+            app/build/live-prompt.txt
+            app/build/live-prompt-lite.txt
           if-no-files-found: ignore
       - name: Debug APK build
         run: gradle :app:assembleDebug --no-daemon

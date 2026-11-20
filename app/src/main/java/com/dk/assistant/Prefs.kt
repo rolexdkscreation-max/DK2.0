@@ -270,6 +270,9 @@ object Prefs {
     /** 20 नवंबर 2026: "पुरानी बातचीत सिर्फ़ माँगने पर" ([HistoryOnDemand]) - शुरू में चालू. बंद = पहले जैसा (पूरी याद + recall_conversation) */
     fun historyOnDemand(c: Context) = sp(c).getBoolean(HistoryOnDemand.PREF, HistoryOnDemand.DEFAULT_ON)
     fun setHistoryOnDemand(c: Context, on: Boolean) = edit(c) { putBoolean(HistoryOnDemand.PREF, on) }
+    /** 20 नवंबर 2026: Live को छोटे निर्देश ([LivePromptLite]) - बंद = पहले वाले पूरे निर्देश */
+    fun livePromptLite(c: Context) = sp(c).getBoolean(LivePromptLite.PREF, LivePromptLite.DEFAULT_ON)
+    fun setLivePromptLite(c: Context, on: Boolean) = edit(c) { putBoolean(LivePromptLite.PREF, on) }
     /** स्थिर हिस्से (निर्देश + tools + याद) की server वाली असली गिनती, मॉडल के हिसाब से (0 = अभी नहीं नापी) */
     fun liveFixedTokens(c: Context, model: String) = sp(c).getLong("live_fixed_tokens_" + model.substringAfterLast('/'), 0L)
     fun setLiveFixedTokens(c: Context, model: String, n: Long) = edit(c) { putLong("live_fixed_tokens_" + model.substringAfterLast('/'), n) }

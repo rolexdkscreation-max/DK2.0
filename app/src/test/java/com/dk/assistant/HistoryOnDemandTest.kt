@@ -153,4 +153,12 @@ class HistoryOnDemandTest {
         assertEquals(25L, HistoryOnDemand.estimateTokens("a".repeat(100)))
         assertEquals(50L, HistoryOnDemand.estimateTokens("क".repeat(100)))
     }
+
+    // 20 नवंबर 2026 (फ़ोन log): tool वाले turn में server हर बार सोचने की गिनती जोड़ता है (17.5k → 35k) - एक बार का context निकले
+    @Test fun perGeneration_toolTurnNotDoubled() {
+        assertEquals(17_645L, HistoryOnDemand.perGeneration(35_291L, 1))
+        assertEquals(17_949L, HistoryOnDemand.perGeneration(17_949L, 0))
+        assertEquals(12_000L, HistoryOnDemand.perGeneration(36_000L, 2))
+        assertFalse(HistoryOnDemand.ineffective(listOf(HistoryOnDemand.perGeneration(37_842L, 1), HistoryOnDemand.perGeneration(37_916L, 1)), 19_467L))
+    }
 }
