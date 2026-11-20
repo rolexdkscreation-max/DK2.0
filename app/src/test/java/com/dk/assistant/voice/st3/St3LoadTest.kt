@@ -96,7 +96,8 @@ class St3LoadTest {
         assertTrue(eng.contains("currentThermalStatus"))
         assertTrue(eng.contains("(!warmedUp || idle)"))
         assertTrue(src("com/dk/assistant/DKApp.kt").contains("St3VoiceEngine.warmIfChosen(this@DKApp)"))
-        assertTrue(src("com/dk/assistant/GeminiLive.kt").contains("St3Load.SPARE_DEFER_MS"))
+        // standby connection (बिना रुकावट बदलना) नहीं छेड़ा - मालिक का नियम; LiveSpareTest वही रहे
+        assertFalse(src("com/dk/assistant/GeminiLive.kt").contains("St3Load.shouldDefer"))
         assertTrue(src("com/dk/assistant/MemoryDigest.kt").contains("St3Load.MEMORY_DEFER_MS"))
     }
 }
