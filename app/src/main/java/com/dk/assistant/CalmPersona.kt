@@ -14,7 +14,7 @@ object CalmPersona {
 
     /** बोलने की गति/ठहराव - हर TTS के स्टाइल में जुड़ता है */
     const val VOICE_STYLE = "soft, tender and warm like a real caring person (natural human breath and intonation, never robotic), " +
-        "calm, gentle and empathetic, at a medium unhurried pace with soft natural pauses between sentences"   // v3.80: और कोमल, इंसान जैसी
+        "calm, gentle and empathetic, at a medium unhurried pace, never dragging, short natural pauses"   // v3.80: और कोमल, इंसान जैसी; 20 नवंबर 2026: धीमी नहीं
 
     /** Kokoro TTS (पहले Edge) भावना नहीं समझता - गति थोड़ी कम = मध्यम, ठहराव वाली */
     const val PLAIN_RATE_DELTA = -8

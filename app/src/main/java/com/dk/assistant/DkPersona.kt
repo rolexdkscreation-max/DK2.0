@@ -233,8 +233,8 @@ object DkPersona {
             P.NATKHAT -> "a playful, cheeky tone with a smile in the voice"
             P.GIRLFRIEND -> "an affectionate, sweet, gently playful tone"
             P.PRO -> "a clear, composed, professional tone"
-            P.CARING -> "a soft, calm, caring tone, slightly slower"
-        } + ", with natural breaths and small pauses between thoughts"
+            P.CARING -> "a soft, calm, caring tone"
+        } + ", with natural breaths, at a normal talking speed"   // 20 नवंबर 2026 (मालिक: आवाज़ एकदम स्लो): "small pauses" हटाया
         val b = base.trim()
         return if (b.isEmpty()) hint else "$b; $hint"
     }

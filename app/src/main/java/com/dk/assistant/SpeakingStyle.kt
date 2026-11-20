@@ -30,7 +30,8 @@ object SpeakingStyle {
 """.trim()
 
     /** TTS के लिए वही तरीका, छोटे English निर्देश में (TTS मॉडल English style निर्देश सबसे अच्छे से मानता है) */
-    const val TTS_STYLE = "a little slower on loving lines; never monotone: questions rise at the end, bright when happy, " +
+    // 20 नवंबर 2026 (मालिक: "आवाज़ अच्छी पर एकदम स्लो"): पहले पूरी रफ़्तार आम बातचीत जैसी, धीमा सिर्फ़ प्यार भरी लाइन पर थोड़ा
+    const val TTS_STYLE = "normal talking pace, never dragging; a bit slower on loving lines; never monotone: questions rise at the end, bright when happy, " +
         "low and soft when sad or worried; tiny pause at commas, longer at full stops, a short beat before emotional words; " +
         "close, intimate soft voice for affectionate lines; clear Hindi, English words in the same easy accent"
 
