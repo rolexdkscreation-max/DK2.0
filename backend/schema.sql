@@ -58,3 +58,11 @@ CREATE TABLE IF NOT EXISTS live_grants (
   uid TEXT PRIMARY KEY,
   until_ms INTEGER NOT NULL
 );
+
+-- इमेज (FLUX, सिर्फ़ मालिक): Cloudflare के रोज़ के 10,000 Neurons का अंदाज़ा. दिन UTC से (00:00 UTC = भारत सुबह 5:30).
+-- limit_hit = 1: Cloudflare ने आज सीमा पूरी बताई (तब बची गिनती 0).
+CREATE TABLE IF NOT EXISTS image_usage (
+  day TEXT PRIMARY KEY,
+  images INTEGER NOT NULL DEFAULT 0,
+  limit_hit INTEGER NOT NULL DEFAULT 0
+);

@@ -598,6 +598,14 @@ class DkaiScreen(val activity: ComponentActivity, val host: DkaiHost) {
 
     /** चैट वाला भेजना (ChatActivity जैसा): Accessibility चालू = DK का पूरा दिमाग़ (फ़ोन के काम भी), नहीं = सिर्फ़ बातचीत */
     private fun sendChat(t: String): Boolean {
+        // 20 नवंबर 2026 (मालिक): "यूज़र इमेज माँगे तो इमेज सीधे चैट में दिखे" - सिर्फ़ DK सर्वर का Cloudflare FLUX (key की ज़रूरत नहीं)
+        if (com.dk.assistant.FluxImage.wanted(t)) {
+            DKState.userNow(t)
+            if (!com.dk.assistant.FluxImage.on(c)) { DKState.reply(com.dk.assistant.FluxImage.OFF_MSG); return true }
+            localJob?.cancel()
+            localJob = activity.lifecycleScope.launch { com.dk.assistant.FluxImage.chat(c, t) }
+            return true
+        }
         if (!Prefs.hasAnyKey(c)) { toast("पहले सेटिंग्स में किसी AI की API key डालकर सेव कीजिए।"); host.ready(); return false }
         DKState.userNow(t)
         // 14 नवंबर 2026 (मालिक): "डीप रिसर्च" - Exa + Tavily + Linkup एक साथ, Firecrawl से पूरे पेज, Gemini की हिंदी रिपोर्ट
@@ -866,7 +874,11 @@ class DkaiScreen(val activity: ComponentActivity, val host: DkaiHost) {
         if (sig == shownMsgs && liveR == shownLive) return
         shownMsgs = sig; shownLive = liveR
         chatList.removeAllViews()
-        for (m in msgs) {
+        val lastImg = msgs.indexOfLast { it.role != "u" && com.dk.assistant.FluxImage.parse(it.text) != null }
+        for ((i, m) in msgs.withIndex()) {
+            // 20 नवंबर 2026 (मालिक): बनी इमेज चैट में ही दिखे (इतिहास में भी), डाउनलोड बटन के साथ
+            val img = if (m.role != "u") com.dk.assistant.FluxImage.parse(m.text) else null
+            if (img != null) { chatList.addView(imageCard(m, img.first, img.second, i == lastImg)); continue }
             // 13 नवंबर 2026 (मालिक): जिस वाक्य को स्रोत मिला उसके ठीक अंत में छोटे चिप (github, wikipedia…), टैप = पूरा link
             chatList.addView(bubble(m.role == "u", m.text, ground = if (m.role != "u") m.g else null).apply {
                 setOnLongClickListener { msgMenu(m); true }        // 14 नवंबर 2026: लंबा दबाओ = कॉपी / मिटाएँ
@@ -948,6 +960,49 @@ class DkaiScreen(val activity: ComponentActivity, val host: DkaiHost) {
             maxWidth = (c.resources.displayMetrics.widthPixels * 0.66f).toInt(); importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
         })
         layoutParams = LinearLayout.LayoutParams(-2, -2).apply { gravity = Gravity.START; bottomMargin = d(10f) }
+    }
+
+    /** 20 नवंबर 2026: चैट की इमेज - टैप = पूरी खुले, डाउनलोड = गैलरी (Pictures/DK AI), लंबा दबाओ = कॉपी / मिटाएँ; सबसे नई के नीचे आज की बची गिनती */
+    private fun imageCard(m: DKState.Msg, name: String, caption: String, newest: Boolean): View {
+        val f = com.dk.assistant.FluxImage.file(c, name)
+        val w = minOf((c.resources.displayMetrics.widthPixels * 0.82f).toInt(), d(520f))
+        val box = LinearLayout(c).apply {
+            orientation = LinearLayout.VERTICAL; setPadding(d(8f), d(8f), d(8f), d(8f))
+            background = DkaiTheme.round(c, DkaiTheme.CARD, 18f, DkaiTheme.BORDER)
+            layoutParams = LinearLayout.LayoutParams(w, -2).apply { gravity = Gravity.START; bottomMargin = d(10f) }
+            setOnLongClickListener { msgMenu(m); true }
+        }
+        val bmp = if (f.exists()) try {
+            val o = android.graphics.BitmapFactory.Options().apply { inJustDecodeBounds = true }
+            android.graphics.BitmapFactory.decodeFile(f.path, o)
+            var s = 1; while (o.outWidth / (s * 2) >= w) s *= 2
+            android.graphics.BitmapFactory.decodeFile(f.path, android.graphics.BitmapFactory.Options().apply { inSampleSize = s })
+        } catch (e: Exception) { com.dk.assistant.Quiet.note(e); null } else null
+        if (bmp != null) box.addView(android.widget.ImageView(c).apply {
+            setImageBitmap(bmp); adjustViewBounds = true; scaleType = android.widget.ImageView.ScaleType.FIT_CENTER
+            contentDescription = "बनी इमेज: $caption, खोलें"
+            setOnClickListener { openImage(f) }
+            setOnLongClickListener { msgMenu(m); true }
+        }, LinearLayout.LayoutParams(-1, -2))
+        else box.addView(DkaiTheme.text(c, "इमेज फ़ाइल नहीं मिली (मिट गई होगी)", 13f, DkaiTheme.GRAY))
+        if (caption.isNotBlank()) box.addView(DkaiTheme.text(c, caption, 12f, DkaiTheme.GRAY).apply { maxLines = 2; ellipsize = android.text.TextUtils.TruncateAt.END; setPadding(d(4f), d(6f), d(4f), 0) })
+        if (bmp != null) box.addView(DkaiUi.button(c, "डाउनलोड") {
+            activity.lifecycleScope.launch {
+                val ok = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { com.dk.assistant.FluxImage.toGallery(c, f) }
+                toast(if (ok) "गैलरी में सेव हो गई (Pictures/DK AI)" else "गैलरी में सेव नहीं हो पाई")
+            }
+        }, LinearLayout.LayoutParams(-2, -2).apply { topMargin = d(6f) })
+        if (newest) box.addView(DkaiTheme.text(c, com.dk.assistant.FluxImage.leftText(com.dk.assistant.FluxImage.leftNow()), 11f, DkaiTheme.GRAY).apply { setPadding(d(4f), d(6f), d(4f), 0) })
+        return box
+    }
+
+    private fun openImage(f: java.io.File) {
+        try {
+            val u = androidx.core.content.FileProvider.getUriForFile(c, c.packageName + ".files", f)
+            val mime = if (f.extension.equals("png", true)) "image/png" else "image/jpeg"
+            c.startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW).setDataAndType(u, mime)
+                .addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION or android.content.Intent.FLAG_ACTIVITY_NEW_TASK))
+        } catch (e: Exception) { com.dk.assistant.Quiet.note(e); toast("इमेज खोलने वाला ऐप नहीं मिला") }
     }
 
     private fun bubble(user: Boolean, text: String, faint: Boolean = false, ground: com.dk.assistant.GroundCite.G? = null): View = TextView(c).apply {

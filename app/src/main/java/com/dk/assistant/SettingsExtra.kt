@@ -4,13 +4,10 @@ import android.Manifest
 import android.content.pm.PackageManager
 import android.text.InputType
 import android.widget.LinearLayout
-import android.widget.RadioButton
-import android.widget.RadioGroup
 import android.widget.TextView
 import androidx.lifecycle.lifecycleScope
 import com.dk.assistant.plus.DrivingMode
 import com.dk.assistant.plus.FeatureFlags
-import com.dk.assistant.plus.ImageGen
 import com.dk.assistant.plus.Sos
 import com.dk.assistant.plus.Termux
 import com.dk.assistant.plus.YtChannel
@@ -175,38 +172,31 @@ internal fun SettingsActivity.secTermux() {
 
 // ------------------------------------------------------------------ दिमाग और आवाज़ → DK कंप्यूटर
 internal fun SettingsActivity.secImageGen() {
-    card("इमेज बनाना (मुफ़्त API)", "\"एक शेर की तस्वीर बनाओ\" - DK खुद मुफ़्त API से बनाकर गैलरी में सेव करे; key वैकल्पिक") { box ->
-        flagSwitch(box, "बोलकर तस्वीर बनाना चालू", FeatureFlags.IMAGE_GEN)
+    // 20 नवंबर 2026 (मालिक: "DK कंप्यूटर में इमेज बनाने के लिए अलग से API डालने का option हटा दो, वो काम नहीं कर रहा"):
+    // अब कोई रास्ता चुनना / key डालना नहीं - सिर्फ़ DK सर्वर का Cloudflare FLUX ([FluxImage]), सिर्फ़ मालिक का Google अकाउंट
+    FluxImage.on(this)
+    card("इमेज बनाना (मुफ़्त API)", "DK सर्वर पर Cloudflare FLUX - चैट, DK लाइव और DK कंप्यूटर तीनों में; कोई key नहीं, सिर्फ़ आपका Google अकाउंट") { box ->
+        flagSwitch(box, "इमेज बनाना चालू (चैट, DK लाइव, DK कंप्यूटर)", FeatureFlags.IMAGE_GEN)
         flagSwitch(box, "बनी तस्वीरें गैलरी में नहीं, DK के प्राइवेट हिस्से में रखें", FeatureFlags.FACE_VAULT)
-        label(box, "पहले कौन सा रास्ता आज़माएँ (न चले तो बाकी, जिनकी key भरी है):")
-        val opts = listOf(ImageGen.AUTO to "अपने-आप (जिसकी key है)") + ImageGen.Provider.values().filter { it != ImageGen.Provider.CUSTOM }.map { it.id to it.title }
-        val cur = Prefs.str(this, ImageGen.PROVIDER, ImageGen.AUTO)
-        val rg = RadioGroup(this)
-        opts.forEachIndexed { i, (id, t) ->
-            rg.addView(RadioButton(this).apply { this.id = 5100 + i; text = t; textSize = 14f; setTextColor(0xFFFFFFFF.toInt()); isChecked = id == cur })
-        }
-        rg.setOnCheckedChangeListener { _, idc -> opts.getOrNull(idc - 5100)?.let { (id, _) -> Prefs.edit(this) { putString(ImageGen.PROVIDER, id) } } }
-        box.addView(rg)
-        val keys = LinkedHashMap<ImageGen.Provider, android.widget.EditText>()
-        for (p in ImageGen.Provider.values().filter { it != ImageGen.Provider.CUSTOM }) {
-            keys[p] = field(box, "${p.title} key" + if (p.keyNeeded) " (मुफ़्त)" else " (वैकल्पिक - बिना key भी चलता है)", Prefs.str(this, p.keyPref, ""), "key पेस्ट करें", secret = true,
-                keyUrl = p.keyUrl, onSave = { k -> Prefs.edit(this) { putString(p.keyPref, k) } })
-        }
-        val hf = field(box, "Hugging Face model (खाली = ${ImageGen.HF_DEFAULT_MODEL})", Prefs.str(this, ImageGen.HF_MODEL, ""), ImageGen.HF_DEFAULT_MODEL)
-        fun saveImg() = Prefs.edit(this) {
-            keys.forEach { (p, e) -> putString(p.keyPref, e.text.toString().trim()) }
-            putString(ImageGen.HF_MODEL, hf.text.toString().trim())
+        val left = status(box).apply { textSize = 12f; text = FluxImage.leftText(FluxImage.leftNow()) }
+        lifecycleScope.launch {
+            val n = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { FluxImage.refreshLeft(this@secImageGen) }
+            left.text = FluxImage.leftText(n)
         }
         val out = status(box)
-        row(box, button("सेव करें") { saveImg(); toast("सेव हो गया") }, button("जाँच: एक इमेज बनाओ") {
-            saveImg()
-            out.text = "बन रही है… (AI Horde पर 1-2 मिनट लग सकते हैं)"
+        row(box, button("जाँच: एक इमेज बनाओ") {
+            out.text = "बन रही है… (5-20 सेकंड)"
             lifecycleScope.launch {
-                val r = ImageGen.generate(this@secImageGen, "a cute robot reading a book, digital art")
-                out.text = r.error ?: "बन गई (${r.via}) और सेव हो गई ✓"
+                out.text = try {
+                    kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { FluxImage.make(this@secImageGen, "a cute robot reading a book in a cozy library, warm light, digital art").file.delete() }
+                    "बन गई ✓ (Cloudflare FLUX) - चैट में इमेज माँगकर देखिए"
+                } catch (e: kotlinx.coroutines.CancellationException) { throw e
+                } catch (e: Exception) { FluxImage.errorHi(e) }
+                left.text = FluxImage.leftText(FluxImage.leftNow())
             }
         })
-        hint(box, "बिना key भी AI Horde से बनती है (थोड़ी धीमी)। Keys फ़ोन के ताले (Android Keystore) में रहती हैं, कहीं भेजी नहीं जातीं।")
+        hint(box, "मॉडल: @cf/black-forest-labs/flux-1-schnell (4 steps)। रोज़ मुफ़्त 10,000 Neurons ≈ 57 इमेज (आवाज़ पहचान भी इसी में से गिनती है) - " +
+            "भारत में सुबह 5:30 पर नई। हिंदी में माँगें तो DK पहले विस्तृत अंग्रेज़ी वर्णन बनाता है; तस्वीर के अंदर हिंदी या लंबा लिखा ठीक नहीं आता।")
     }
 }
 

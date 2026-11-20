@@ -95,6 +95,10 @@ object BackendApi {
     fun voiceGrant(c: Context): BackendWire.VoiceGrant =
         BackendWire.voiceGrant(postJson(c, "/voice/grant", JSONObject())).also { g -> lastLevel = g.level; g.quota?.let { lastQuota = it } }
 
+    /** 20 नवंबर 2026: इमेज - सर्वर पर Cloudflare FLUX (सिर्फ़ मालिक) -> {image: base64, mime, left_approx}. सिर्फ़ [com.dk.assistant.FluxImage] बुलाता है */
+    fun image(c: Context, prompt: String): JSONObject = JSONObject(postJson(c, "/image", JSONObject().put("prompt", prompt)))
+    fun imageStatus(c: Context): JSONObject = JSONObject(getJson(c, "/image/status"))
+
     /** [deep] = डीप रिसर्च: सर्वर Google वाली खोज नहीं करता (सिर्फ़ Tavily/Exa/Linkup/Firecrawl). [only] = सिर्फ़ यह एक कंपनी */
     fun search(c: Context, q: String, deep: Boolean, only: String = ""): String =
         postJson(c, "/search", JSONObject().put("query", q).put("n", if (deep) 8 else 5)

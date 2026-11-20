@@ -159,7 +159,7 @@ object DkSettings {
     const val RUN_HELP = "Features you can also RUN for the user (the feature must be ON first - if it is OFF, offer to turn it ON with dk_settings): " +
         "SOS = the phone runs it when the user clearly says 'SOS भेजो / activate SOS' (10-second countdown, 'SOS रोको' cancels); " +
         "driving mode = switch [driving]; event triggers = [events] + the event switches; " +
-        "Termux = tool termux_run; free image = tool free_image; YouTube channel = tool youtube_channel; " +
+        "Termux = tool termux_run; image = tool generate_image (old name free_image; it makes the picture in the background and saves it in the chat); YouTube channel = tool youtube_channel; " +
         "touch mode = 'टच मोड चालू करो' (its style: [god_mode] = loudest, 10 photos, SMS always; [stealth] = silent, black screen, secret photos + SMS); " +
         "phone lock = 'फ़ोन लॉक करो'; teacher mode = tool teacher_mode; " +
         "face = tool face_who ('देखो कौन है' - Boss / saved person / unknown; faces are registered in Settings → चेहरा पहचान); " +

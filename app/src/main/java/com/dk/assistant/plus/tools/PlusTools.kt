@@ -62,14 +62,13 @@ object ImageTool : PlusTool {
     override val name = "free_image"
     override val flag = FeatureFlags.IMAGE_GEN
     override fun declaration() = PlusTools.decl(name,
-        "Make a picture directly with DK's own free image API (no other app opens) and save it to the phone gallery. " +
-            "Use it when the user asks to make/draw/generate an image or photo (\"एक शेर की तस्वीर बनाओ\"). " +
+        "Old name of generate_image - prefer generate_image. Makes a picture with DK's server (Cloudflare FLUX only, no other app or service) and saves it to the phone gallery. " +
             "Write prompt in English, detailed. After the result, tell the user in one short line that it is saved in the gallery.",
         org.json.JSONObject().put("prompt", PlusTools.str("what to draw, in English, detailed")), listOf("prompt"))
 
     override suspend fun run(c: Context, args: JSONObject): String {
         val r = ImageGen.generate(c, args.optString("prompt"))
-        return r.error?.let { "ERROR: $it. Tell the user briefly; free image keys can be added in DK Settings -> DK कंप्यूटर -> इमेज बनाना." }
+        return r.error?.let { "ERROR: $it Tell the user exactly this in short Hindi. Do not try any other app or service." }
             ?: "DONE: image made via ${r.via} and saved ${if (r.file != null) "inside DK (private)" else "in the gallery (Pictures/DK AI)"}."
     }
 }

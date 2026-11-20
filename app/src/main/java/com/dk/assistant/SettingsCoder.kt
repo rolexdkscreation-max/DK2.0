@@ -59,7 +59,7 @@ internal fun SettingsActivity.secComputer() {
             "phone_task" to "फ़ोन कंट्रोल (ऐप, मैसेज, कॉल)", "coding_task" to "कोडिंग टीम को काम देना", "remember" to "बातें याद रखना",
             "schedule" to "बाद में काम / रिमाइंडर (रोज़ / हर हफ़्ते भी)",
             "browse" to "असली ब्राउज़र (बटन दबाना, खोज-बॉक्स, स्क्रीनशॉट)", "look" to "फ़ोटो / PDF / स्क्रीनशॉट देखना",
-            "make_docx" to "Word फ़ाइल बनाना", "make_xlsx" to "Excel फ़ाइल बनाना", "make_chart" to "चार्ट / ग्राफ़ बनाना",
+            "make_docx" to "Word फ़ाइल बनाना", "make_xlsx" to "Excel फ़ाइल बनाना", "make_chart" to "चार्ट / ग्राफ़ बनाना", "make_image" to "इमेज बनाना (Cloudflare FLUX)",
             "sub_agents" to "कई सहायक एजेंट एक साथ (बड़ी रिसर्च)", "past_tasks" to "पिछले काम याद रखना")
         pcTools.clear()
         ComputerAgent.TOOL_IDS.forEach { id -> pcTools[id] = switch(box, names[id] ?: id, Prefs.computerTool(this, id)) }
