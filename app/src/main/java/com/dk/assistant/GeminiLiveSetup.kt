@@ -63,7 +63,8 @@ internal fun GeminiLive.discoverModels(key: String): List<String> {
     // v3.41: sabse NAYA nahi, sabse TEZ pehle - phone par naapa jawab-samay (LiveModelRank)
     val lat = Prefs.liveLatency(svc)
     // नवंबर 2026: 2.5 native-audio (Google की तरफ़ 1011) सिर्फ़ बैकअप; मालिक ने चुना हो तो LiveModelPick उसे फिर पहले रखता है
-    val all = LiveStay.demoteKnown1011(LiveModelRank.order(found, FALLBACK_MODELS, lat))
+    // 20 नवंबर 2026 (मालिक): 3.1 Flash Live सबसे ऊपर (सबसे तेज़), 2.5 native-audio 09-2025 आख़िर में ([LiveModelRank.ownerPin])
+    val all = LiveModelRank.ownerPin(LiveStay.demoteKnown1011(LiveModelRank.order(found, FALLBACK_MODELS, lat)))
     // limit khatam wale model (aaj) chhodo - har baar 2 bekaar connection = ~1.5s deri + mic ke tukde gire
     val (skip, ok) = all.partition { Cooldown.blocked(LiveKeys.cooldownName(keyIdx, it)) }
     if (skip.isNotEmpty()) log("limit खत्म, छोड़े: " + skip.joinToString { m -> m + " (" + ((Cooldown.until(LiveKeys.cooldownName(keyIdx, m)) - System.currentTimeMillis()) / 60_000).coerceAtLeast(0) + " मिनट बाकी)" })

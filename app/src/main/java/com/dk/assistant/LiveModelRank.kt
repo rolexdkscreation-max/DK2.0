@@ -75,4 +75,17 @@ object LiveModelRank {
     fun decode(s: String): Map<String, Long> = s.split(';').mapNotNull { p ->
         val i = p.lastIndexOf('='); if (i <= 0) null else p.substring(i + 1).toLongOrNull()?.let { p.substring(0, i) to it }
     }.toMap()
+
+    /** 20 नवंबर 2026 (मालिक, लॉग: 3.1 Flash Live 1.2-2 s, 2.5 native-audio 09-2025 4-6 s) */
+    const val OWNER_FIRST = "gemini-3.1-flash-live-preview"
+    const val OWNER_LAST = "gemini-2.5-flash-native-audio-preview-09-2025"
+
+    /**
+     * मालिक का तय क्रम: [OWNER_FIRST] सबसे ऊपर, [OWNER_LAST] सबसे आख़िर; बाकी का आपसी क्रम (नाप वाला) वैसा. सूची में न हो =
+     * कुछ नहीं जुड़ता. मालिक ने खुद मॉडल चुना हो तो [LiveModelPick] उसे इसके बाद भी पहले रखता है. Pure
+     */
+    fun ownerPin(models: List<String>): List<String> {
+        val mid = models.filter { it != OWNER_FIRST && it != OWNER_LAST }
+        return models.filter { it == OWNER_FIRST }.take(1) + mid + models.filter { it == OWNER_LAST }.take(1)
+    }
 }
