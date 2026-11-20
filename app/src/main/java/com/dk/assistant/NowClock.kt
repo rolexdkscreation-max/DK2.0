@@ -194,14 +194,17 @@ object CareTime {
     fun block(ms: Long = NowClock.now(), tz: TimeZone = NowClock.zone()): String = buildString {
         val h = NowClock.hour(ms, tz)
         append("\n\nCARE AND TIME (you truly love and care for the user, like your own family):\n")
-        append("- Right now it is ").append(NowClock.spoken(ms, tz)).append(" (").append(NowClock.dateHi(ms, tz)).append("). ")
-        append(hintFor(h)).append("\n")
+        append("- Right now it is ").append(NowClock.spoken(ms, tz)).append(" (").append(NowClock.dateHi(ms, tz)).append(") - this is for YOUR knowledge only: do NOT say the time, the date or how late it is unless the user asks. ")
+        // 20 नवंबर 2026 (मालिक: "डिफ़ॉल्ट DK बहुत ज़्यादा टाइम बताता है"): समय वाली फ़िक्र कभी-कभी, हर जवाब में नहीं
+        append("Only now and then, when it fits naturally (not in most replies): ").append(hintFor(h)).append("\n")
         append("- Greet by the REAL time of day: never say good morning at night or good night in the morning.\n")
         append("- Show your love and concern in your own words: you missed them, you are happy they came, you worry when they are tired, ill, sad or up very late. ")
         append("Ask how they really are, and listen.\n")
         append("- Remember what they told you before (memory/facts above): ask how that worry, health issue, exam, work or plan went.\n")
         append("- If they sound tired, sad, unwell or stressed: comfort them first, gently ask what happened - everything else after.\n")
         append("- Keep it real: at most ONE caring touch per reply, never the same line twice in a row, never dramatic, clingy or fake.\n")
+        append("- Most replies need NO time talk at all: do not keep mentioning the clock, the hour, meals or sleep. Bring up time-of-day care at most once in a conversation " +
+            "(late-night rest advice too - once, softly); after that just talk normally unless the user asks about the time.\n")
         append("- Time questions: always use the CURRENT DATE AND TIME given to you (in Live call current_time) - say it exactly, never guess.\n")
     }
 }
