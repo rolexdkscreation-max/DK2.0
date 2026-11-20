@@ -78,8 +78,23 @@ object LivePromise {
         val search = has(r, SEARCH_PROMISE)
         val doing = has(r, DOING_PROMISE)
         if (!search && !doing) return if (refuses(r) && asksInfo(user)) Kind.SEARCH else Kind.NONE
-        return if (has(user, PHONE_ASK)) Kind.ACTION else Kind.SEARCH
+        if (has(user, PHONE_ASK)) return Kind.ACTION
+        // 20 नवंबर 2026 (लॉग: "बताओ, क्या कर रहे हो?" -> "आपसे बात कर रही हूँ" पर 16 s की खोज): जड़ - सिर्फ़ "कर रही हूँ" वाला
+        // जवाब (सर्च का कोई शब्द नहीं) भी SEARCH बनता था. अब सर्च सिर्फ़ तब जब DK ने सच में खोजने/देखने की बात कही हो और
+        // सवाल DK से आम बातचीत ([chatWithDk]) न हो. सामान्य ज्ञान वाला वादा = promiseCheck खोज के बिना जवाब दिलवाता है.
+        if (!search && !has(r, SEARCH_DOING)) return Kind.NONE
+        return if (chatWithDk(user)) Kind.NONE else Kind.SEARCH
     }
+
+    /** "सर्च कर रहा हूँ" - DOING में है, पर यह खोज का ही वादा है */
+    private val SEARCH_DOING = listOf("सर्च कर रहा", "सर्च कर रही", "खोज रहा", "खोज रही", "searching", "search kar raha", "search kar rahi")
+
+    /** यूज़र DK से ही आम बात कर रहा है ("क्या कर रहे हो", "कैसे हो") - इंटरनेट पर खोजने लायक कुछ नहीं */
+    private val CHAT_WITH_DK = listOf(
+        "क्या कर रहे", "क्या कर रही", "क्या करते हो", "कैसे हो", "कैसी हो", "क्या हाल", "तुम कौन", "आप कौन", "सुन रहे हो", "सुन रही हो",
+        "kya kar rahe", "kya kar rahi", "kaise ho", "kaisi ho", "kya haal", "what are you doing", "how are you", "who are you"
+    )
+    fun chatWithDk(user: String): Boolean = has(user, CHAT_WITH_DK)
 
     /** screen पर दिखने वाली लाइन - DK अभी क्या कर रहा है */
     fun hintFor(tool: String, arg: String = ""): String {
@@ -116,6 +131,11 @@ object LivePromise {
             "If you said you could not find it, first say one short line like \"रुकिए, मिल गया\". The phone searched the internet for: \"" +
             question.take(200) + "\". RESULT: \"" + result.take(2500) + "\". Now give the user the answer from this result in their language, " +
             "short and clear (2-4 sentences). Do NOT say you will search again and do not invent anything beyond the result."
+
+    /** 20 नवंबर 2026: वादा किया पर सवाल सामान्य ज्ञान का = खोज नहीं, उसी पल अपनी जानकारी से जवाब (कोई देरी/दूसरी कोशिश नहीं) */
+    fun noSearchNote(question: String): String =
+        "SYSTEM NOTE: \"" + question.take(200) + "\" is general knowledge or normal chat (nothing live or changing) - no internet search is needed. " +
+            "Answer it right now from your own knowledge, briefly and naturally. Do not say you are searching and do not call web_search for it."
 
     fun searchFailNote(question: String, why: SearchGuard.Fail = SearchGuard.Fail.OTHER): String =
         "SYSTEM NOTE: you promised to search but did not call any tool, and the phone's own internet search for \"" + question.take(200) +

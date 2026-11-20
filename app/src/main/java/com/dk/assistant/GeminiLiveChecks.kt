@@ -60,6 +60,11 @@ internal fun GeminiLive.promiseCheck() {
     if (actEvidence || toolJobs.isNotEmpty() || sources.isNotEmpty() || fastJob?.isActive == true ||
         now - lastFastOkAt < DoneGate.FAST_EVIDENCE_MS || now - promiseFixAt < 15_000 || promiseJob?.isActive == true) return
     promiseFixAt = now
+    // 20 नवंबर 2026 (लॉग: बेवजह 16 s की खोज): सामान्य ज्ञान / आम बात = खोज नहीं, उसी पल अपनी जानकारी से (कोई दूसरी कोशिश नहीं)
+    if (kind == LivePromise.Kind.SEARCH && WebSearch.skip(user)) {
+        log("वादा-जाँच: \"${user.take(40)}\" सामान्य सवाल - खोज नहीं, Gemini अपनी जानकारी से बताए")
+        visionNote(LivePromise.noSearchNote(user), evidence = false); return
+    }
     log("वादा-जाँच: Gemini ने \"${said.take(50)}\" कहा पर कोई tool नहीं - ${if (kind == LivePromise.Kind.SEARCH) "फ़ोन खुद सर्च कर रहा है" else "phone_task करवा रहा हूँ"}")
     if (kind == LivePromise.Kind.ACTION) {
         // v3.6 (owner: "सुना, लिखा भी दिखा, पर काम नहीं किया"): पहले सिर्फ़ Gemini को याद दिलाते थे - वह फिर भी
@@ -80,8 +85,11 @@ internal fun GeminiLive.promiseCheck() {
         setMode(Mode.THINKING)
         val brain = BrainManager(svc).also { it.fromLive = true }
         var why = SearchGuard.Fail.TIMEOUT
+        var noNeed = false
         var r = try { withTimeoutOrNull(LiveSearch.totalTimeoutMs(Prefs.searchOwnKey(svc).isNotBlank()) + 3_000 + chainExtraMs()) { brain.search(user, deep = false) } }
-            catch (e: CancellationException) { throw e } catch (e: Exception) { why = brain.lastSearchFail; log("वादा-जाँच सर्च fail: ${e.message}"); null }
+            catch (e: CancellationException) { throw e } catch (e: Exception) { why = brain.lastSearchFail; noNeed = e.message == "no_search_needed"; log("वादा-जाँच सर्च fail: ${e.message}"); null }
+        // 20 नवंबर 2026: "no_search_needed" = खोज की ज़रूरत ही नहीं - बचाव वाली दूसरी खोज (देरी) नहीं, सीधे अपनी जानकारी से
+        if (noNeed) { DKState.hint(""); com.dk.assistant.dkai.DkaiSearchLive.cancel(); DKState.refresh(); visionNote(LivePromise.noSearchNote(user), evidence = false); return@launch }
         // v3.90: यहाँ भी बचाव वाली खोज, और fail हो तो असली वजह यूज़र को
         if (r == null || r.text.isBlank()) { val fb = fallbackSearch(user, why, brain); r = fb.first; why = fb.second }
         DKState.hint("")
