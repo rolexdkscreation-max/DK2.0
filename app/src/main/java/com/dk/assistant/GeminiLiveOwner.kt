@@ -106,6 +106,27 @@ internal fun GeminiLive.checkOwnerAsync() {
     } catch (_: Exception) { owner.onFailed(System.currentTimeMillis()) }
 }
 
+/**
+ * 20 नवंबर 2026 ([BargeOwner]): DK बोलते समय आई इंसानी आवाज़ का मिलान (अलग thread, mic नहीं रुकता). मालिक = कुछ देर
+ * टोकने की सीमा गूँज के हिसाब से नीची. आवाज़ पहचान का तरीका/सीमा वही ([ownerScore], [GeminiLive.ownerTh]) - कुछ नहीं बदला.
+ */
+internal fun GeminiLive.checkBargeOwner(now: Long) {
+    val out = java.io.ByteArrayOutputStream(); bargeOwnerBuf.forEach { out.write(it) }
+    val audio = out.toByteArray()
+    if (audio.size < IN_RATE * 2 / 2) return
+    bargeOwnerTriedAt = now; bargeOwnerBusy = true
+    val th = ownerTh
+    try {
+        com.dk.assistant.voice.VoiceExec.exec.execute {
+            val sc = try { ownerScore(audio) } catch (_: Throwable) { null }
+            if (BargeOwner.matched(sc, th)) bargeOwnerAt = System.currentTimeMillis()
+            bargeOwnerBusy = false
+            log("DK बोलते समय इंसानी आवाज़: मिलान ${sc?.let { String.format(java.util.Locale.US, "%.2f", it) } ?: "-"} (सीमा ${String.format(java.util.Locale.US, "%.2f", th)}) - " +
+                if (BargeOwner.matched(sc, th)) "मालिक, टोकने की सीमा गूँज के हिसाब से नीची" else "मालिक नहीं/पक्का नहीं, सीमा वही")
+        }
+    } catch (_: Exception) { bargeOwnerBusy = false }
+}
+
 /** मिलान का नतीजा आया हो तो लागू (mic thread पर) */
 internal fun GeminiLive.applyOwnerResult(now: Long) {
     val r = ownerResult ?: return
