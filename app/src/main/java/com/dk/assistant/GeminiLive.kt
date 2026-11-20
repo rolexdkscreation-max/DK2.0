@@ -139,7 +139,8 @@ class GeminiLive(internal val svc: DKAccessibilityService, internal val agent: A
         /** Docs (Oct 2026): gemini-3.8-live = default; 3.1 flash live = purana preview */
         /** v3.41: phone_task ka lamba kaam (AgentRunner) - itni der baad Gemini ko "chal raha hai" */
         const val AGENT_WAIT_MS = 7_000L
-        val FALLBACK_MODELS = listOf("gemini-3.8-live", "gemini-3.1-flash-live-preview",
+        // 20 नवंबर 2026 (मालिक): 3.1 Flash Live पहले (1.2-2 s), 09-2025 आख़िर में (4-6 s)
+        val FALLBACK_MODELS = listOf("gemini-3.1-flash-live-preview", "gemini-3.8-live",
             "gemini-2.5-flash-native-audio-preview-12-2025", "gemini-2.5-flash-native-audio-preview-09-2025")
 
         fun key(c: android.content.Context) = Prefs.ttsGeminiKey(c)

@@ -66,6 +66,9 @@ internal fun GeminiLive.startRace(keys: List<String>, models: List<String>, live
     val stickyId = resumeId ?: health.lastWin.takeIf { it.isNotBlank() }
     val hung = queue.filter { LiveRecover.Demote.demoted(it.model, now) }
     queue = (LiveRace.stickyOrder(queue - hung.toSet(), stickyId) + hung).toMutableList()
+    // 20 नवंबर 2026 (मालिक: "3.1 Flash Live सबसे ऊपर"): नई बातचीत (handle नहीं) में - मालिक ने दूसरा मॉडल न चुना हो
+    // (सूची में वही पहला) तो पिछली जीत के बावजूद 3.1 की जोड़ियाँ आगे. चल रही बातचीत (resume) का क्रम वैसा ही
+    if (live && resumeId == null && models.firstOrNull() == LiveModelRank.OWNER_FIRST) queue = LiveKeys.preferKey(queue, 0) { if (it.model == LiveModelRank.OWNER_FIRST) 0 else 1 }.toMutableList()
     // 16 नवंबर 2026: "सारी keys इस्तेमाल करो" - नई बातचीत (handle नहीं) में बारी वाली key की जोड़ियाँ सबसे आगे
     if (resumeId == null && liveStartKey in keys.indices) queue = LiveKeys.preferKey(queue, liveStartKey) { it.keyIdx }.toMutableList()
     // 20 नवंबर 2026 (लॉग: "Gemini key गलत है"): गलत निकली key की जोड़ियाँ सबसे पीछे ([LiveBadKeys])
