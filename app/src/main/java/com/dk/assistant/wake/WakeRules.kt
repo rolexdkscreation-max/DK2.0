@@ -174,7 +174,7 @@ object WakeRules {
 
     // ------------------------------------------------------------ लॉक स्क्रीन (मालिक: निजी काम = पहले अनलॉक, इमरजेंसी = लॉक पर भी)
     /** फ़ोन लॉक होने पर वेक वर्ड वाले सत्र में ये काम बिना अनलॉक नहीं (निजी जानकारी पढ़ना / भेजना) */
-    private val PRIVATE_TOOLS = setOf("notifications", "notification_reply", "look_screen", "look_photo", "recall_conversation",
+    private val PRIVATE_TOOLS = setOf("notifications", "notification_reply", "look_screen", "look_photo", "recall_conversation", "search_history",
         "social_insights", "reel_stats", "connector_task", "screen_share", "social_media_task", "chat_pick", "chat_self", "chat_boss",
         "chat_reply", "send_contact")
     /** whatsapp_task में ये लॉक पर भी चलें (कॉल / लोकेशन भेजना = इमरजेंसी) */

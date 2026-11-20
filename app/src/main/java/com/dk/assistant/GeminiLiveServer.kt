@@ -42,8 +42,8 @@ internal fun GeminiLive.handleServer(msg: String, setup: CompletableDeferred<Uni
     // promptTokenCount = इस जवाब के लिए server ने जितना context पढ़ा (न हो तो totalTokenCount)
     o.optJSONObject("usageMetadata")?.let { u -> u.optLong("promptTokenCount", 0L).takeIf { it > 0 } ?: u.optLong("totalTokenCount", 0L) }?.takeIf { it > 0 }?.let { t ->
         ctxTokens = t
-        val b = t / 8_000L
-        if (b != ctxLoggedBucket) { ctxLoggedBucket = b; log("Live: context अब ${t / 1000}k token") }
+        // 20 नवंबर 2026 (मालिक): हर turn पर context का log (पहले हर 8k पर) + पहली बारी = स्थिर हिस्से की असली गिनती
+        histUsage(t)
     }
     o.optJSONObject("voiceActivity")?.optString("type")?.let { t ->
         lastAnyServerAt = System.currentTimeMillis()      // नवंबर 2026: server ने सुना = session ज़िंदा (अटका नहीं)
@@ -216,6 +216,7 @@ internal fun GeminiLive.handleServer(msg: String, setup: CompletableDeferred<Uni
         setMode(Mode.LISTENING)
     }
     if (sc.optBoolean("turnComplete")) lastReplyDoneAt = System.currentTimeMillis()   // नवंबर 2026: इसके बाद आया handle = ताज़ा (LiveSpare.handleFresh)
+    if (sc.optBoolean("turnComplete")) turnsSinceFresh++   // 20 नवंबर 2026 ([HistoryOnDemand] तरीका B): नए सत्र के बाद कितनी बारियाँ
     if (sc.optBoolean("turnComplete") && muteTurn) {
         muteTurn = false; generating = false
         log("दूसरे की आवाज़ का जवाब नहीं बजाया ($mutedParts टुकड़े छोड़े)")

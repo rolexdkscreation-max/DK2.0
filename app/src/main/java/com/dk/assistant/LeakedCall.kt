@@ -14,7 +14,7 @@ package com.dk.assistant
 object LeakedCall {
     /** Live में declare किए गए tools (GeminiLive.kt) */
     val TOOLS = listOf(
-        "social_media_task_control", "social_media_task", "notification_reply", "recall_conversation",
+        "social_media_task_control", "social_media_task", "notification_reply", "recall_conversation", "search_history",
         "computer_task", "build_website", "connector_task", "whatsapp_task", "forget_memory", "remember_fact",
         "screen_share", "teacher_mode", "dk_settings", "dk_inspector", "current_time", "coding_task", "notifications", "dk_features",
         "task_status", "phone_task", "phone_call", "story_task", "web_search", "deep_think", "local_info", "camera", "image_task",
@@ -24,7 +24,7 @@ object LeakedCall {
 
     /** बिना नाम वाला argument (`phone_task{YouTube खोलो}`) किस key में जाए */
     private val MAIN_ARG = mapOf(
-        "phone_task" to "request", "web_search" to "query", "deep_think" to "question", "recall_conversation" to "question",
+        "phone_task" to "request", "web_search" to "query", "deep_think" to "question", "recall_conversation" to "question", "search_history" to "query",
         "coding_task" to "task", "computer_task" to "task", "story_task" to "topic", "build_website" to "prompt",
         "remember_fact" to "fact", "forget_memory" to "about", "notifications" to "app", "phone_call" to "action",
         "whatsapp_task" to "action", "social_media_task" to "action", "social_media_task_control" to "action",

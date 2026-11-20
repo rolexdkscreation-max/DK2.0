@@ -995,6 +995,19 @@ class BrainManager(private val ctx: Context) {
         if (!Prefs.localMemoryOn(ctx)) append(MsgDraft.recentBlock(MsgDraft.turnsFromState(), System.currentTimeMillis()))
     }.trim()
 
+    /**
+     * 20 नवंबर 2026 ([HistoryOnDemand], "पुरानी बातचीत सिर्फ़ माँगने पर"): Live को सिर्फ़ ज़रूरी बातों की छोटी सूची
+     * (20 बातें / ~1500 अक्षर) - पुरानी बातचीत, दिनों का सार, दोस्त वाली पिछली मुलाकात नहीं (पूछने पर search_history).
+     */
+    fun liveCompactContext(): String = buildString {
+        if (!com.dk.assistant.plus.FeatureFlags.on(ctx, com.dk.assistant.plus.FeatureFlags.INCOGNITO)) {
+            val facts = if (Memory.personalOn(ctx)) Memory.facts(ctx) else emptyList()
+            val learned = try { LearnedWays.all(ctx).map { it.text } } catch (_: Exception) { emptyList() }
+            append(HistoryOnDemand.compactFacts(facts, learned))
+        }
+        append(LiveSearch.memoryBlock())
+    }.trim()
+
     private fun buildSystemPrompt(): String {
         val name = Prefs.assistantName(ctx)
         val user = Prefs.userName(ctx)

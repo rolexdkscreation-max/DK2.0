@@ -63,7 +63,8 @@ class LiveStayTest {
         // resumption + compression बने रहें
         assertTrue(g.contains(".put(\"sessionResumption\", if (resume && handle != null) JSONObject().put(\"handle\", handle) else JSONObject())"))
         // 18 नवंबर 2026 (ऑडिट G2): compression अब सीमा के साथ (32k/16k); setup मना करे तो पहले जैसा खाली slidingWindow
-        assertTrue(g.contains(".put(\"contextWindowCompression\", LiveSetupRules.compression(compressLimits))"))
+        // 20 नवंबर 2026 (HistoryOnDemand): "पुरानी बातचीत सिर्फ़ माँगने पर" चालू = तंग सीमा (तरीका A); बंद / मॉडल मना करे = पहले जैसा
+        assertTrue(g.contains(".put(\"contextWindowCompression\", if (histOn && compressLimits) histCompression(m, setup) else LiveSetupRules.compression(compressLimits))"))
         assertTrue(LiveSetupRules.compression(false).has("slidingWindow"))
         assertTrue(LiveSetupRules.compression(true).has("slidingWindow"))
         assertTrue(g.contains("if (it.optBoolean(\"resumable\") && it.optString(\"newHandle\").isNotBlank()) handle = it.optString(\"newHandle\")"))

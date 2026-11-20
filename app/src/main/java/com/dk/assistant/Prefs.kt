@@ -267,6 +267,12 @@ object Prefs {
     }
     /** v3.88: हर बातचीत फ़ोन की लोकल याददाश्त (SQLite) में - नवंबर 2026: हमेशा (अपने-आप कभी नहीं मिटती) + सार */
     fun localMemoryOn(c: Context) = sp(c).getBoolean("local_memory_on", true)
+    /** 20 नवंबर 2026: "पुरानी बातचीत सिर्फ़ माँगने पर" ([HistoryOnDemand]) - शुरू में चालू. बंद = पहले जैसा (पूरी याद + recall_conversation) */
+    fun historyOnDemand(c: Context) = sp(c).getBoolean(HistoryOnDemand.PREF, HistoryOnDemand.DEFAULT_ON)
+    fun setHistoryOnDemand(c: Context, on: Boolean) = edit(c) { putBoolean(HistoryOnDemand.PREF, on) }
+    /** स्थिर हिस्से (निर्देश + tools + याद) की server वाली असली गिनती, मॉडल के हिसाब से (0 = अभी नहीं नापी) */
+    fun liveFixedTokens(c: Context, model: String) = sp(c).getLong("live_fixed_tokens_" + model.substringAfterLast('/'), 0L)
+    fun setLiveFixedTokens(c: Context, model: String, n: Long) = edit(c) { putLong("live_fixed_tokens_" + model.substringAfterLast('/'), n) }
     // ---- v3.66: सिर्फ़ मालिक की आवाज़ (voiceprint सिर्फ़ इसी फ़ोन में - backup बंद है, GitHub/इंटरनेट पर नहीं)
     /** परत 3: सिर्फ़ मालिक की आवाज़ पर जवाब */
     // v4.5: "सिर्फ़ मेरी आवाज़ सुनो" option हटाया (मालिक की माँग) - पहले चालू किया हो तब भी अब DK सबकी आवाज़ सुनेगा
