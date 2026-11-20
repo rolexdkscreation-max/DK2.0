@@ -157,6 +157,13 @@ object DKState {
         if (t.isNotBlank()) { messages.add(Msg("d", t, src = src, g = g)); trim(); LocalMemory.record(appCtx, "d", WebCite.strip(t), if (live) "voice" else "text") }
         emit()
     }
+    /** 20 नवंबर 2026 ([FluxImage]): बनी इमेज / छोटी सूचना चैट में - lastReply, बोलना, DK लाइव की कतार कुछ नहीं छूता */
+    fun addQuiet(t: String) {
+        if (t.isBlank()) return
+        hintText = ""
+        messages.add(Msg("d", t)); trim()
+        emit()
+    }
     /** Jawab abhi ban raha hai (tukdon me) - screen par dikhao, chat list me abhi mat jodo */
     /** 13 नवंबर 2026: टुकड़ों में आते जवाब में [n] निशान (और आख़िर का अधूरा "[1") नहीं दिखते - चिप जवाब पूरा होने पर */
     fun replyLive(t0: String) { val t = WebCite.streamSafe(t0); if (liveReply.isEmpty()) { lastSources = emptyList(); lastGround = null }; lastReply = t; liveReply = t; TeacherBoard.onReply(t, final = false); emit() }

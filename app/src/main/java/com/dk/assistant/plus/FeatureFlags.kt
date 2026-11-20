@@ -154,7 +154,7 @@ object FeatureFlags {
         Flag(EV_WIFI_OFF, "Wi-Fi टूटा", "", Section.EVENTS),
         Flag(EV_BATTERY_SAVER, "बैटरी सेवर बदला", "", Section.EVENTS),
         Flag(TERMUX, "Termux ऑटोमेशन", "Termux में कमांड / लोकल सर्वर (RUN_COMMAND इजाज़त)", Section.TOOLS),
-        Flag(IMAGE_GEN, "बोलकर तस्वीर बनाना", "\"एक शेर की तस्वीर बनाओ\" - नीचे \"इमेज बनाना\" में चुने मुफ़्त रास्ते से", Section.CREATE),
+        Flag(IMAGE_GEN, "बोलकर तस्वीर बनाना", "\"एक शेर की तस्वीर बनाओ\" - DK सर्वर का Cloudflare FLUX (चैट, DK लाइव, DK कंप्यूटर)", Section.CREATE),
         Flag(TOOL_AGENT, "टूल एजेंट (Retry Loop)", "लंबे फ़ोन-काम: Gemini खुद tool चुने (15 कदम तक), हर कदम जाँचकर 3 बार तक दोबारा", Section.BEHAVIOR),
         Flag(YT_CHANNEL, "बोलकर YouTube चैनल जाँच", "\"मेरे चैनल का हाल बताओ\" - subscribers, views, नए वीडियो, comments", Section.CREATE),
     )

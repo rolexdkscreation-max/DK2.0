@@ -247,9 +247,21 @@ internal fun GeminiLive.setupJson(m: String, txt: Boolean = connText, resume: Bo
                     .put("action", JSONObject().put("type", "STRING").put("enum", JSONArray().put("start").put("stop").put("ask")))
                     .put("background", JSONObject().put("type", "BOOLEAN").put("description", "true ONLY if the user himself said to do it in the background / without opening the app"))))
         )
+        // 20 नवंबर 2026 (मालिक): इमेज = DK सर्वर का Cloudflare FLUX ([FluxImage]) - पीछे बनती है, बातचीत नहीं रुकती, चैट में सेव
+        .put(JSONObject().put("name", "generate_image")
+            .put("description", "Make a picture with DK's own server (Cloudflare FLUX). Use it whenever the user asks to make / generate / create / draw an image, photo, picture, logo, poster or wallpaper " +
+                "(इमेज बनाओ, फोटो बनाओ, तस्वीर बनाओ, एक शेर की तस्वीर बनाओ). It runs in the BACKGROUND: say only one short line and keep talking - never wait silently. " +
+                "When it is ready a SYSTEM NOTE comes; then say exactly: \"इमेज बन गई है, चैट खोलकर देख लीजिए।\" The picture is saved in the DK chat section. " +
+                "If the user wants Hindi or long text written INSIDE the picture, first tell him in one short Hindi line that this model cannot write Hindi or long text correctly (only 1-3 short English words). " +
+                "If it says the daily limit is over, say exactly what it returns and never try any other app or service.")
+            .put("parameters", JSONObject().put("type", "OBJECT")
+                .put("properties", JSONObject()
+                    .put("prompt", JSONObject().put("type", "STRING").put("description", "YOU write a detailed ENGLISH image description from the user's idea (never just copy Hindi words): subject + every detail he gave (colours, numbers, clothes, exact short text in quotes), setting/background, style, composition/camera angle, lighting, colour palette, mood, quality. 50-110 words. Do not add subjects he did not ask for."))
+                    .put("user_words", JSONObject().put("type", "STRING").put("description", "The user's own words for the picture, exactly as he said them")))
+                .put("required", JSONArray().put("prompt"))))
         .put(JSONObject().put("name", "image_task")
             .put("description", "Generate a picture with the REAL ChatGPT or Gemini app on the phone (DK opens the app, types the prompt, waits until the image is made, taps Download, then really looks at the image). " +
-                "Use whenever the user asks to make / generate / create an image, photo, picture, logo, poster or wallpaper (इमेज बनाओ, फोटो बनाओ, ChatGPT/Gemini में इमेज बनाओ). " +
+                "Use ONLY when the user himself names the ChatGPT or Gemini APP for the picture (ChatGPT में इमेज बनाओ, Gemini ऐप से फोटो बनाओ). For every other image request use generate_image. " +
                 "DK itself turns the idea into a professional prompt. Takes 30-120 seconds - first say one short line like 'बना रहा हूँ, थोड़ा समय लगेगा'. After it returns, tell ONLY what the result says the image shows - never invent it. " +
                 "Not for editing a photo from the gallery.")
             .put("parameters", JSONObject().put("type", "OBJECT")
@@ -419,7 +431,8 @@ internal fun GeminiLive.setupJson(m: String, txt: Boolean = connText, resume: Bo
         tools.optJSONObject(0)?.optJSONArray("functionDeclarations")?.put(d); log("कनेक्टर: connector_task जोड़ा")
     }
     // 15 नवंबर 2026: DK AI Plus plug-in tools (मुफ़्त इमेज, YouTube चैनल ...) - सिर्फ़ जो Settings में चालू
-    com.dk.assistant.plus.tools.PlusTools.declarations(svc).forEach { d ->
+    // 20 नवंबर 2026: free_image = generate_image का पुराना नाम (वही Cloudflare FLUX) - Live में दो बार नहीं
+    com.dk.assistant.plus.tools.PlusTools.declarations(svc).filter { it.optString("name") != "free_image" }.forEach { d ->
         tools.optJSONObject(0)?.optJSONArray("functionDeclarations")?.put(d); log("Plus tool: ${d.optString("name")} जोड़ा")
     }
     // v3.93: Tavily/Exa की key हो तो Live की अपनी Google Search नहीं - हर खोज web_search से (Tavily -> Exa -> Gemini क्रम)

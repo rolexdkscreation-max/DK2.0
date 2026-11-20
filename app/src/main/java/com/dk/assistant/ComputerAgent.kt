@@ -572,6 +572,21 @@ class ComputerAgent(private val c: Context) {
                 if (out.name !in files) files.add(out.name)
                 step("📊 चार्ट बनाया: ${out.name}"); "saved ${out.name}" + (if (png != null) " (+ ${sv.name})" else "")
             }
+            // 20 नवंबर 2026 (मालिक): DK कंप्यूटर को इमेज चाहिए = वही DK सर्वर का Cloudflare FLUX (/image), फ़ाइल्स में सेव
+            "make_image" -> {
+                if (!FluxImage.on(c)) return "ERROR: ${FluxImage.OFF_MSG}"
+                val raw = a.optString("prompt").trim().ifBlank { return "ERROR: prompt (detailed English description) दें" }
+                val made = try {
+                    val p = if (FluxImage.hasHindi(raw) || raw.length < 40) FluxImage.english(c, raw) else FluxImage.cleanPrompt(raw)
+                    withContext(Dispatchers.IO) { FluxImage.make(c, p) }
+                } catch (e: kotlinx.coroutines.CancellationException) { throw e
+                } catch (e: Exception) { return "ERROR: ${FluxImage.errorHi(e)} (कोई दूसरी सेवा मत आज़माओ)" }
+                val ext = "." + made.file.extension.ifBlank { "jpg" }
+                val base = a.optString("name").ifBlank { "image" }.substringBeforeLast('.')
+                val f = withContext(Dispatchers.IO) { ComputerTools.writeBytes(c, base, ext, made.bytes) }
+                if (f.name !in files) files.add(f.name)
+                step("🖼 इमेज बनाई (Cloudflare FLUX): ${f.name}"); "saved ${f.name}" + FluxImage.leftNow().let { if (it >= 0) " (about $it images left today)" else "" }
+            }
             "sub_agents" -> {
                 val arr = a.optJSONArray("tasks") ?: return "ERROR: tasks [\"...\"] दें"
                 val ts = (0 until arr.length()).map { arr.optString(it).trim() }.filter { it.isNotBlank() }.take(SUB_MAX)
@@ -716,7 +731,7 @@ RULES:
 - WIDE / BIG RESEARCH (compare many products, companies, places, people, options; several independent questions): split the work and use sub_agents {"tasks":[...]} — each helper researches one item in parallel; then you combine their findings, check gaps, and present tables.
 - Pages that need JavaScript, buttons, search boxes, filters, "load more", or several clicks: use browse (a real browser). It shows numbered elements [n]; act with {"click":n}, {"type":[n,"text"]}, {"enter":n}. Never type passwords, OTP, card or UPI details; never buy, pay, book or post — guide the user to do that themselves.
 - Photos, screenshots, scanned documents, PDF files: use look (it can see images and PDF pages). The user's attached files are in the files folder (list_files).
-- Office files: make_docx for Word documents (letters, reports, applications, resumes), make_xlsx for Excel sheets (lists, budgets, comparisons, data), make_chart for graphs (bar / line / pie) — then mention the file names.
+- Office files: make_docx for Word documents (letters, reports, applications, resumes), make_xlsx for Excel sheets (lists, budgets, comparisons, data), make_chart for graphs (bar / line / pie), make_image for a picture / illustration (detailed English prompt) — then mention the file names.
 - When the user refers to earlier work ("पिछली बार", "वो रिपोर्ट", "कल वाला"), search it with past_tasks.
 - Recurring work ("रोज़ सुबह", "हर हफ़्ते"): schedule with "every":"daily" / "weekly" / "hourly".
 - GUIDE THE USER: if the task is something the user must do themselves (how-to, setup, a form, an app/website process, a government service, repair, study plan), give exact numbered steps: where to go / what to tap, what to type, what they will see, common mistakes, and what to do if a step fails. Check the CURRENT process with web_search first (apps and websites change).
@@ -738,7 +753,9 @@ ${if (facts.isNotBlank()) "\nWHAT YOU KNOW ABOUT THE USER:\n$facts" else ""}
         val TOOL_IDS = listOf("web_search", "read_url", "run_js", "write_file", "make_pdf", "read_file", "list_files",
             "phone_task", "coding_task", "remember", "schedule",
             // v5: Perplexity Computer जैसे
-            "browse", "look", "make_docx", "make_xlsx", "make_chart", "sub_agents", "past_tasks")
+            "browse", "look", "make_docx", "make_xlsx", "make_chart", "sub_agents", "past_tasks",
+            // 20 नवंबर 2026: DK सर्वर का Cloudflare FLUX
+            "make_image")
 
         /** v5: सहायक एजेंट */
         const val SUB_MAX = 6
@@ -764,6 +781,7 @@ ${if (facts.isNotBlank()) "\nWHAT YOU KNOW ABOUT THE USER:\n$facts" else ""}
             "make_docx" to "make_docx {\"name\":\"letter.docx\",\"title\":\"...\",\"content\":\"markdown: # headings, - bullets, **bold**, | tables |\"} — create a Word document",
             "make_xlsx" to "make_xlsx {\"name\":\"data.xlsx\",\"sheets\":[{\"name\":\"Sheet1\",\"rows\":[[\"नाम\",\"कीमत\"],[\"A\",1200]]}]} (or \"csv\":\"...\") — create an Excel file (first row = header; numbers stay numbers)",
             "make_chart" to "make_chart {\"name\":\"chart\",\"type\":\"bar|line|pie\",\"title\":\"...\",\"labels\":[\"Jan\",\"Feb\"],\"series\":[{\"name\":\"बिक्री\",\"values\":[10,20]}]} — create a chart image (PNG)",
+            "make_image" to "make_image {\"name\":\"img\",\"prompt\":\"detailed ENGLISH description: subject, details, setting, style, lighting, mood\"} — create a picture with DK's Cloudflare FLUX (saved in files as .jpg). It cannot write Hindi or long text inside the picture. If it says the daily limit is over, tell the user and do not try any other service",
             "sub_agents" to "sub_agents {\"tasks\":[\"research item 1 ...\",\"research item 2 ...\"]} — up to $SUB_MAX helper agents work IN PARALLEL (each searches + reads sources) and return their findings; best for wide research / comparisons",
             "past_tasks" to "past_tasks {\"query\":\"...\"} — search what DK Computer did for the user before (tasks, answers, files)"
         )

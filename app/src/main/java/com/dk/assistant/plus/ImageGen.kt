@@ -6,18 +6,12 @@ import android.net.Uri
 import android.os.Build
 import android.provider.MediaStore
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
-import okhttp3.MediaType.Companion.toMediaType
-import okhttp3.OkHttpClient
-import okhttp3.Request
-import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
 import java.io.IOException
 import java.net.URLEncoder
-import java.util.concurrent.TimeUnit
 
 /**
  * 15 नवंबर 2026 (मालिक: "इमेज के लिए हर फ्री API की अलग key डालने का option अंदर ही रहे - डालना है तो डालें, नहीं तो नहीं").
@@ -28,7 +22,7 @@ import java.util.concurrent.TimeUnit
  *  - [Provider.HUGGINGFACE] - Hugging Face का मुफ़्त token (हर महीने थोड़ा मुफ़्त). token नहीं = छोड़ दो.
  *  - [Provider.CUSTOM] - कोई भी OpenAI-compatible images API (base URL + key + model). पुरानी सेटिंग ([BASE]/[KEY]/[MODEL]) वही.
  *
- * चुना रास्ता पहले, न चले तो बाकी जिनकी key है (Horde हमेशा आख़िरी सहारा). कोई भारी फ़ाइल ऐप में नहीं.
+ * 20 नवंबर 2026 (मालिक): ये सब रास्ते अब बंद - [generate] सिर्फ़ DK सर्वर का Cloudflare FLUX ([com.dk.assistant.FluxImage]).
  * तस्वीर: Gallery (Pictures/DK AI) में, या "प्राइवेट वॉल्ट" चालू हो तो ऐप के अंदर (filesDir/vault).
  */
 object ImageGen {
@@ -109,67 +103,18 @@ object ImageGen {
         else -> key(c, p).isNotBlank()
     }
 
+    /**
+     * 20 नवंबर 2026 (मालिक: "कोई दूसरा provider और कोई fallback मत जोड़ो", "अलग API वाला option हटा दो"):
+     * अब सिर्फ़ DK सर्वर का Cloudflare FLUX ([com.dk.assistant.FluxImage]) - Pollinations / Horde / HF / अपनी API अब नहीं चलतीं
+     * (ऊपर के pure हिस्से सिर्फ़ पुराने tests के लिए हैं). बनी इमेज Gallery (या प्राइवेट वॉल्ट) में, जैसे पहले.
+     */
     suspend fun generate(c: Context, prompt: String): Out = withContext(Dispatchers.IO) {
         if (prompt.isBlank()) return@withContext Out(null, null, "क्या बनाना है, बताइए")
-        val http = com.dk.assistant.NetFix.builder().connectTimeout(20, TimeUnit.SECONDS).readTimeout(120, TimeUnit.SECONDS).build()
-        val fails = mutableListOf<String>()
-        for (p in order(com.dk.assistant.Prefs.str(c, PROVIDER, AUTO), { usable(c, it) })) {
-            try {
-                val bytes = when (p) {
-                    Provider.CUSTOM -> custom(c, http, prompt)
-                    Provider.POLLINATIONS -> get(http, Request.Builder().url(pollinationsUrl(prompt, key = key(c, p))).build())
-                    Provider.HUGGINGFACE -> get(http, Request.Builder().url(hfUrl(com.dk.assistant.Prefs.str(c, HF_MODEL, "")))
-                        .header("Authorization", "Bearer ${key(c, p)}").header("Accept", "image/png")
-                        .post(JSONObject().put("inputs", prompt.take(1000)).toString().toRequestBody(JSON)).build())
-                    Provider.HORDE -> horde(http, prompt, key(c, p).ifBlank { HORDE_ANON })
-                }
-                if (bytes.size < 200) throw IOException("खाली तस्वीर")
-                return@withContext save(c, bytes).copy(via = p.title)
-            } catch (e: Exception) {
-                fails += "${p.title}: ${e.message ?: "नहीं चला"}"
-            }
-        }
-        Out(null, null, "तस्वीर नहीं बनी - " + fails.joinToString("; "))
-    }
-
-    private val JSON = "application/json".toMediaType()
-
-    private fun get(http: OkHttpClient, req: Request): ByteArray = http.newCall(req).execute().use { r ->
-        if (!r.isSuccessful) throw IOException(why(r.code))
-        r.body?.bytes() ?: throw IOException("खाली")
-    }
-
-    private fun custom(c: Context, http: OkHttpClient, prompt: String): ByteArray {
-        val base = com.dk.assistant.Prefs.str(c, BASE, "").trim().trimEnd('/')
-        val body = JSONObject().put("prompt", prompt).put("n", 1).put("size", "1024x1024").put("response_format", "b64_json")
-            .apply { com.dk.assistant.Prefs.str(c, MODEL, "").takeIf { it.isNotBlank() }?.let { put("model", it) } }
-        val raw = http.newCall(Request.Builder().url("$base/images/generations").header("Authorization", "Bearer ${key(c, Provider.CUSTOM)}")
-            .post(body.toString().toRequestBody(JSON)).build()).execute().use { r ->
-            if (!r.isSuccessful) throw IOException(why(r.code)); r.body?.string().orEmpty()
-        }
-        val (b64, url) = openAiImage(raw)
-        if (b64 != null) return android.util.Base64.decode(b64, 0)
-        if (url != null) return get(http, Request.Builder().url(url).build())
-        throw IOException("जवाब में तस्वीर नहीं")
-    }
-
-    private suspend fun horde(http: OkHttpClient, prompt: String, key: String): ByteArray {
-        val api = "https://aihorde.net/api/v2"
-        fun req(path: String) = Request.Builder().url("$api$path").header("apikey", key).header("Client-Agent", "DKAI:1.0:github.com/rolexdkscreation-max")
-        val raw = http.newCall(req("/generate/async").post(hordeBody(prompt).toString().toRequestBody(JSON)).build()).execute().use { r ->
-            if (!r.isSuccessful) throw IOException(why(r.code)); r.body?.string().orEmpty()
-        }
-        val id = hordeId(raw) ?: throw IOException("काम नहीं मिला")
-        val until = System.currentTimeMillis() + 150_000
-        while (System.currentTimeMillis() < until) {
-            delay(4_000)
-            val chk = http.newCall(req("/generate/check/$id").build()).execute().use { it.body?.string().orEmpty() }
-            if (!hordeDone(chk)) continue
-            val st = http.newCall(req("/generate/status/$id").build()).execute().use { it.body?.string().orEmpty() }
-            val img = hordeImg(st) ?: throw IOException("तस्वीर नहीं मिली")
-            return if (img.startsWith("http")) get(http, Request.Builder().url(img).build()) else android.util.Base64.decode(img, 0)
-        }
-        throw IOException("बहुत देर (कतार लंबी) - अपनी मुफ़्त Horde key डालें")
+        try {
+            val m = com.dk.assistant.FluxImage.make(c, com.dk.assistant.FluxImage.english(c, prompt))
+            save(c, m.bytes).copy(via = "Cloudflare FLUX")
+        } catch (e: kotlinx.coroutines.CancellationException) { throw e
+        } catch (e: Exception) { Out(null, null, com.dk.assistant.FluxImage.errorHi(e)) }
     }
 
     /** Pure: बाइट से असली प्रकार (PNG / WEBP / JPEG) -> (ext, mime) */

@@ -38,6 +38,7 @@ object AgentIntro {
         "make_docx" to "Word फ़ाइल (चिट्ठी, आवेदन, रिज़्यूमे)",
         "make_xlsx" to "Excel शीट (बजट, लिस्ट, तुलना)",
         "make_chart" to "चार्ट / ग्राफ़ (bar, line, pie)",
+        "make_image" to "इमेज बनाना (Cloudflare FLUX)",
         "phone_task" to "फ़ोन के काम — ऐप खोलना, मैसेज, कॉल (पहले आपसे पूछकर)",
         "coding_task" to "GitHub पर कोड बदलवाना (कोडिंग टीम)",
         "remember" to "आपकी बातें याद रखना",

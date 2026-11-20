@@ -7,6 +7,7 @@ import { Db } from "./db.js";
 import {
   activate, createLicense, levelFor, quota, requireChatLeft, requireLevel, requireServerAi, requireVoiceLeft, taskLevel, today, useVoiceTicket, voiceTicket,
 } from "./license.js";
+import { onImage, onImageStatus } from "./image.js";
 import { onLiveToken } from "./live.js";
 import { onVoiceGrant } from "./voice.js";
 import { PROVIDERS as SEARCH_PROVIDERS, read, search } from "./search.js";
@@ -229,6 +230,9 @@ export async function handle(req, env, ctx, opts = {}) {
   if (path === "/stt" && M === "POST") return onStt(req, env, ctx, ident, opts);
   if (path === "/live/token" && M === "POST") return onLiveToken(env, ident, opts);
   if (path === "/voice/grant" && M === "POST") return onVoiceGrant(env, ident, opts);
+  // 20 नवंबर 2026 (मालिक): इमेज - सिर्फ़ Cloudflare FLUX, सिर्फ़ मालिक ([onImage])
+  if (path === "/image" && M === "POST") return onImage(req, env, ctx, ident, opts, later);
+  if (path === "/image/status" && M === "GET") return onImageStatus(env, ident, opts);
   if (path === "/search" && M === "POST") {
     const now = opts.now?.() ?? Date.now();
     const lv = ident.owner ? { level: "owner" } : await levelFor(new Db(env.DB), ident, now);
@@ -257,6 +261,7 @@ export async function handle(req, env, ctx, opts = {}) {
       active: planChain(env).map((c) => c.id),
       search: SEARCH_CHAIN.map((id) => ({ provider: id, configured: !!env[SEARCH_PROVIDERS[id].secret] })),
       stt: !!env.AI,
+      image: !!env.AI,
       live: !!env.GEMINI_API_KEY,
       health,
     });

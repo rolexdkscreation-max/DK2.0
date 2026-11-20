@@ -53,6 +53,27 @@ export class Db {
     );
   }
 
+  // ---------- इमेज की रोज़ की गिनती (UTC दिन) ----------
+  getImageUsage(day) {
+    return run(async () => {
+      const r = await this.d1.prepare("SELECT images, limit_hit FROM image_usage WHERE day = ?").bind(day).first();
+      return { images: r?.images ?? 0, limit_hit: r?.limit_hit ?? 0 };
+    });
+  }
+
+  /** full = Cloudflare ने सीमा पूरी बताई; नहीं = एक इमेज और बनी */
+  addImage(day, full = false) {
+    return run(() =>
+      this.d1
+        .prepare(
+          "INSERT INTO image_usage (day, images, limit_hit) VALUES (?, ?, ?) " +
+            "ON CONFLICT(day) DO UPDATE SET images = images + excluded.images, limit_hit = MAX(limit_hit, excluded.limit_hit)",
+        )
+        .bind(day, full ? 0 : 1, full ? 1 : 0)
+        .run(),
+    );
+  }
+
   // ---------- DK लाइव के टिकट (मुफ़्त वाले) ----------
   liveUntil(uid) {
     return run(async () => {

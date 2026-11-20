@@ -61,6 +61,17 @@ export const LIVE_WS_URL = "wss://generativelanguage.googleapis.com/ws/google.ai
 export const STT_MODEL = "@cf/openai/whisper-large-v3-turbo";
 
 /**
+ * 20 नवंबर 2026 (मालिक): इमेज = सिर्फ़ Cloudflare Workers AI का FLUX-1 schnell (कोई दूसरी कंपनी / fallback नहीं), सिर्फ़ मालिक.
+ * मुफ़्त: रोज़ 10,000 Neurons, 00:00 UTC (भारत सुबह 5:30) पर नया. Cloudflare का भाव: 512x512 के हर टुकड़े पर 4.8 + हर step पर 9.6.
+ * 1024x1024 = 4 टुकड़े, 4 steps: 4 x 4.8 + 4 x 4 x 9.6 = 172.8 Neurons => लगभग 57 इमेज रोज़ (Whisper भी इसी में से खाता है - इसलिए "लगभग").
+ */
+export const IMAGE_MODEL = "@cf/black-forest-labs/flux-1-schnell";
+export const IMAGE_STEPS = 4;
+export const IMAGE_PROMPT_MAX = 2048;
+export const DAILY_NEURONS = 10_000;
+export const NEURONS_PER_IMAGE = 172.8;
+
+/**
  * /ai/chat का क्रम. हर कंपनी तभी आज़माई जाती है जब उसकी key Worker secret में हो.
  * मालिक का क्रम: Gemini → हल्का Gemini → Mistral, फिर बाकी सारी कंपनियाँ जो ऐप में भी हैं.
  * kind: gemini = Google का अपना format, openai = OpenAI जैसा /chat/completions.

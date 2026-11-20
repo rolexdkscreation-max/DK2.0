@@ -501,6 +501,9 @@ internal fun GeminiLive.runTools(calls: JSONArray) {
                 // v3.152: असली ChatGPT / Gemini ऐप में इमेज - बनाओ, डाउनलोड, और सच में देखकर बताओ
                 // नवंबर 2026: सोशल रिव्यू (यूज़र के सामने स्क्रीन पर; नतीजा SYSTEM NOTE से)
                 "social_insights" -> com.dk.assistant.insights.InsightsAgent.liveTool(svc, args)
+                // 20 नवंबर 2026 (मालिक): इमेज - DK सर्वर का Cloudflare FLUX, पीछे बनती है (बातचीत नहीं रुकती), तैयार = चैट में + SYSTEM NOTE
+                "generate_image" -> if (FluxImage.on(svc)) FluxImage.liveTool(svc, args)
+                    else "This ability is turned OFF. Tell the user: \"${FluxImage.OFF_MSG}\" and offer to turn it ON with dk_settings [image_gen] (two-step confirmation)."
                 "image_task" -> {
                     DKState.set(Mode.WORKING)
                     withTimeoutOrNull(IMAGE_TASK_MS) { com.dk.assistant.agent.android.ImageGenAgent.run(svc, args) }

@@ -168,7 +168,7 @@ object SettingsSearch {
         E("access", "ड्राइविंग मोड", "गाड़ी चलाते समय आने वाली कॉल अपने-आप कटे और उसी नंबर पर आपका SMS जवाब जाए", "driving drive ड्राइविंग गाड़ी car कार call कॉल sms"),
         E("access", "ऑटो इवेंट ट्रिगर", "चार्जर, Wi-Fi या बैटरी सेवर बदले तो DK बोलकर बताए", "event इवेंट trigger ट्रिगर charger चार्जर wifi वाईफाई battery बैटरी boot"),
         E("coder", "Termux ऑटोमेशन", "DK, Termux (F-Droid) में कमांड / लोकल सर्वर चला सके - RUN_COMMAND इजाज़त से", "termux टर्मक्स terminal टर्मिनल command कमांड linux server"),
-        E("computer", "इमेज बनाना (मुफ़्त API)", "\"एक शेर की तस्वीर बनाओ\" - DK खुद मुफ़्त API से बनाकर गैलरी में सेव करे; key वैकल्पिक", "image इमेज photo फोटो तस्वीर picture चित्र pollinations horde hugging face key"),
+        E("computer", "इमेज बनाना (मुफ़्त API)", "DK सर्वर पर Cloudflare FLUX - चैट, DK लाइव, DK कंप्यूटर; कोई key नहीं, आज की बची गिनती", "image इमेज photo फोटो तस्वीर picture चित्र flux cloudflare फ्लक्स लिमिट"),
         E("social", "YouTube चैनल जाँच", "\"मेरे चैनल का हाल बताओ\" - subscribers, views, नए वीडियो, comments (सिर्फ़ पढ़ना)", "youtube यूट्यूब channel चैनल subscriber सब्सक्राइबर views"),
         // 15 नवंबर 2026: नई सुविधाएँ (मालिक की सूची) - हर card सर्च में
         E("guard", "टच मोड का रूप", "नॉर्मल • गॉड मोड (सबसे सख़्त) • स्टेल्थ मोड (चुपचाप)", "god गॉड stealth स्टेल्थ silent चुपचाप mode मोड"),

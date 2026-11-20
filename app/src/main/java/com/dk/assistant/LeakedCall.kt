@@ -19,7 +19,7 @@ object LeakedCall {
         "screen_share", "teacher_mode", "dk_settings", "dk_inspector", "current_time", "coding_task", "notifications", "dk_features",
         "task_status", "phone_task", "phone_call", "story_task", "web_search", "deep_think", "local_info", "camera", "image_task",
         "ai_app_prompt", "shop_search", "website_action", "make_game", "social_insights", "reel_stats",
-        "look_screen", "app_studio", "ai_talk", "form_fill", "deep_research", "look_photo"
+        "look_screen", "app_studio", "ai_talk", "form_fill", "deep_research", "look_photo", "generate_image"
     )
 
     /** बिना नाम वाला argument (`phone_task{YouTube खोलो}`) किस key में जाए */
@@ -31,7 +31,7 @@ object LeakedCall {
         "connector_task" to "action", "image_task" to "prompt", "ai_app_prompt" to "prompt", "shop_search" to "item",
         "website_action" to "action", "make_game" to "description", "social_insights" to "request",
         "look_screen" to "question", "app_studio" to "action", "ai_talk" to "goal", "form_fill" to "action",
-        "deep_research" to "query", "look_photo" to "question"
+        "deep_research" to "query", "look_photo" to "question", "generate_image" to "prompt"
     )
 
     /** "phone_task" के अलावा जिन tools को बिना किसी argument के भी चलाया जा सकता है */
