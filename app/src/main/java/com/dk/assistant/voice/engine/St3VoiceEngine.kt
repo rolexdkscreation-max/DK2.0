@@ -115,7 +115,8 @@ object St3VoiceEngine : VoiceEngine {
      * घोषणाएँ ([com.dk.assistant.voice.st3.OfflineVoice]) पहले से [HinglishText.toSpeakable] लगाती थीं - अब बातचीत भी वैसे ही
      * (वही क्रम: पहले हिंग्लिश -> देवनागरी, फिर बचे-खुचे `<`/`>` हटाओ). `<laugh>` जैसे टैग वैसे ही रहते हैं. pure - JVM test.
      */
-    fun speakable(text: String): String = St3Text.onlyTags(HinglishText.toSpeakable(text))
+    // 20 नवंबर 2026 (मालिक: "245, 4 बजकर 24 मिनट सही से नहीं बोलता"): अंक -> हिंदी शब्द ([com.dk.assistant.voice.st3.St3Numbers])
+    fun speakable(text: String): String = St3Text.onlyTags(com.dk.assistant.voice.st3.St3Numbers.speak(HinglishText.toSpeakable(text)))
 
     /**
      * 19 नवंबर 2026 (मालिक: "जवाब आते ही तुरंत बोलना शुरू हो"): हर जवाब का पहला टुकड़ा कम कदमों ([FIRST_STEPS]) में -
