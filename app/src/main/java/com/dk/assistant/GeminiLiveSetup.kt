@@ -496,5 +496,7 @@ internal fun GeminiLive.logSetupSize(m: String, setup: JSONObject) {
     val saved = Prefs.liveFixedTokens(svc, m)
     log("इतिहास: setup [$m] - निर्देश ${sys.length} अक्षर + tools ${tl.length} अक्षर ≈ $est token" +
         (if (saved > 0) " (server की पिछली असली गिनती $saved)" else "") +
-        if (compressLimits) " • तरीका A: ${histTrigger} token पर छँटाई" else " • तरीका B: मॉडल सीमा नहीं लेता - भारी होने पर सत्र चुपचाप नया")
+        // 20 नवंबर 2026 (मालिक: पहले/बाद के आँकड़े लॉग में): स्थिर हिस्सा + असली बातचीत के लिए कितनी जगह
+        if (compressLimits) " • तरीका A: ${histTrigger} token पर छँटाई • स्थिर हिस्सा ≈ $histFixed token, बातचीत के लिए ≈ " +
+            "${histTrigger - histFixed} token (छँटाई के बाद हाल की ≈ ${HistoryOnDemand.tightCompression(histFixed).target - histFixed})" else " • तरीका B: मॉडल सीमा नहीं लेता - भारी होने पर सत्र चुपचाप नया")
 }

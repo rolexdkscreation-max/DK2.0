@@ -50,6 +50,8 @@ object HistoryOnDemand {
     const val TRIGGER_MIN = 5_000L
     /** मालिक की शर्त: 20 बातों के बाद भी context 10k के नीचे */
     const val TRIGGER_MAX = 9_000L
+    /** इससे बड़े स्थिर हिस्से पर भी छँटाई के बाद हाल की [TARGET_EXTRA] बातें बचें */
+    const val RECENT_FROM = 5_500L
     const val CONTEXT_LIMIT = 10_000L
     /** तरीका A के बावजूद context इतनी बार लगातार सीमा से ऊपर = छँटाई असर नहीं कर रही -> तरीका B */
     const val OVER_TURNS = 2
@@ -68,7 +70,9 @@ object HistoryOnDemand {
      */
     fun tightCompression(fixed: Long): Compression {
         val f = if (fixed > 0) fixed else FIXED_GUESS
-        val trigger = maxOf(TRIGGER_MIN, minOf(TRIGGER_MAX, f + TRIGGER_EXTRA), f + 2_000L)
+        // 20 नवंबर 2026 (मालिक: छँटाई में हाल की बातें बचें): स्थिर हिस्सा बड़ा (≥ 5.5k) = पहले f + 2k पर छँटाई और
+        // ~1k ही ताज़ा बचता था; अब f + 3.5k पर छँटाई, f + 1.5k तक (हाल की ~1.5k token बातें बचें). छोटा स्थिर = पहले जैसा
+        val trigger = maxOf(TRIGGER_MIN, minOf(TRIGGER_MAX, f + TRIGGER_EXTRA), f + if (f >= RECENT_FROM) TRIGGER_EXTRA else 2_000L)
         val target = minOf(f + TARGET_EXTRA, trigger - 1_000L).coerceAtLeast(2_000L)
         return Compression(trigger, target)
     }

@@ -1066,9 +1066,10 @@ class BrainManager(private val ctx: Context) {
             append("\n").append(AssistantBrand.IDENTITY_RULE).append("\n").append(NameRule.block(user, name))
             append("\n" + NowClock.line())
             append(TalkStyle.FRIEND_HI)   // मालिक का लिखा "करीबी दोस्त" हिस्सा (शब्दशः)
-            if (Prefs.friendMode(ctx)) append("\n").append(FriendStyle.persona(f, user))
+            // 20 नवंबर 2026 (मालिक: context छोटा): गर्लफ्रेंड वाला स्वभाव FRIEND MODE से ऊपर है (उसी में लिखा) = छोटे निर्देशों में दोनों नहीं
+            if (Prefs.friendMode(ctx) && (JarvisMode.on(ctx) || DkPersona.effective(ctx) != DkPersona.P.GIRLFRIEND)) append("\n").append(FriendStyle.persona(f, user))
             append(CareTime.block())
-            if (JarvisMode.on(ctx)) append(JarvisMode.block(user)) else append(CalmPersona.block()).append(DkPersona.pick(ctx, GirlfriendPersona.block(user))).append(SpeakingStyle.block(user)).append(DkPersona.finalBlock(ctx, Prefs.userName(ctx)))
+            if (JarvisMode.on(ctx)) append(JarvisMode.block(user)) else append(CalmPersona.block()).append(DkPersona.pick(ctx, GirlfriendPersona.block(user, lite = true))).append(SpeakingStyle.block(user)).append(DkPersona.finalBlock(ctx, Prefs.userName(ctx)))
             append(AssistantPersona.block(ctx))
             if (Prefs.dkOnly(ctx)) append(DkOnly.PROMPT)
             if (SideTalk.on(ctx)) append(SideTalk.PROMPT)

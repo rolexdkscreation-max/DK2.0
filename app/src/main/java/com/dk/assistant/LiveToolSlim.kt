@@ -19,9 +19,11 @@ object LiveToolSlim {
     /** बातचीत में सबसे ज़्यादा और तुरंत चाहिए - इनका पूरा विवरण Live में रहे */
     val CORE: Set<String> = setOf(
         "phone_task", "web_search", "current_time", "deep_think", "whatsapp_task", "phone_call",
-        "task_status", "notifications", "notification_reply", "local_info", "remember_fact",
-        "recall_conversation", "search_history", "screen_share", "camera", "social_media_task_control", "look_screen",
+        "task_status", "notifications", "local_info", "remember_fact",
+        "recall_conversation", "search_history", "look_screen",
         "deep_research", "look_photo",
+        // 20 नवंबर 2026 (मालिक का लॉग: निर्देश + tools ≈ 14100 token): कम चलने वाले notification_reply, screen_share,
+        // camera, social_media_task_control अब dk_agent के पीछे (बुलाने पर वही काम, सिर्फ़ setup हल्का)
     )
 
     /**
@@ -38,7 +40,7 @@ object LiveToolSlim {
         private set
 
     /** router की एक लाइन में विवरण कितना लंबा */
-    const val LINE_MAX = 110
+    const val LINE_MAX = 90
 
     data class Result(val tools: JSONArray, val kept: Int, val routed: List<String>, val charsBefore: Int, val charsAfter: Int)
 
