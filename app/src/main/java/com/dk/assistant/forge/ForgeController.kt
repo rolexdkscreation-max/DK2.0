@@ -196,10 +196,9 @@ object ForgeController {
                 // 20 नवंबर 2026 (मालिक): चिप का चुना Gemini मॉडल पहले; न चला (दूसरा लगा) = बताओ. दूसरी कंपनी का = एक बार बताओ कि वेबसाइट Gemini से
                 val chip = com.dk.assistant.dkai.SelectedModel.geminiText(c)
                 if (chip == null) com.dk.assistant.dkai.SelectedModel.geminiOrder(c, "वेबसाइट बनाना", emptyList())
-                val keys = Prefs.forgeKeys(c).ifEmpty { listOf(key) } + com.dk.assistant.BrainPin.spareGemini(c, Prefs.forgeKeys(c) + key)
-                if (chip == null) WebsiteForgeClient.streamKeys(keys, Prefs.forgeModelToUse(c), prompt,
+                if (chip == null) WebsiteForgeClient.streamKeys(Prefs.forgeKeys(c).ifEmpty { listOf(key) } + com.dk.assistant.BrainPin.spareGemini(c, Prefs.forgeKeys(c) + key), Prefs.forgeModelToUse(c), prompt,
                     onModel = { m -> rememberModel(c, m) }) { t -> synchronized(partial) { partial.append(t) }; emit(false) }
-                else WebsiteForgeClient.streamKeys(keys, chip, prompt,
+                else WebsiteForgeClient.streamKeys(Prefs.forgeKeys(c).ifEmpty { listOf(key) } + com.dk.assistant.BrainPin.spareGemini(c, Prefs.forgeKeys(c) + key), chip, prompt,
                     onModel = { m -> com.dk.assistant.dkai.SelectedModel.usedInstead(c, chip, m) }) { t -> synchronized(partial) { partial.append(t) }; emit(false) }
             }
             return partialHtml() to fr
