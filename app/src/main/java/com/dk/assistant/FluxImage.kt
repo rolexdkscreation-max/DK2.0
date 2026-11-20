@@ -191,7 +191,8 @@ object FluxImage {
 
     /** IO thread: आज की लगभग बची गिनती सर्वर से (Settings / चैट की छोटी लाइन) */
     fun refreshLeft(c: Context): Int = try {
-        if (BackendConfig.ready()) noteLeft(BackendApi.imageStatus(c)); leftNow()
+        if (BackendConfig.ready()) noteLeft(BackendApi.imageStatus(c))
+        leftNow()
     } catch (e: Exception) { Quiet.note(e); leftNow() }
 
     /** इमेज Gallery (Pictures/DK AI) में - चैट का डाउनलोड बटन */
