@@ -244,7 +244,10 @@ class BargeDetector(
      */
     var scale = 1.0
 
-    fun reset() { echo = 0.0; loud = 0; since = 0L; triggered = false; ratio = 0.0 }
+    /** 20 नवंबर 2026 ([BargeOwner]): अभी की इंसानी आवाज़ मालिक की निकली (ताज़ा) = पक्की आवाज़ पर सीमा गूँज के हिसाब से नीची */
+    var ownerNear = false
+
+    fun reset() { echo = 0.0; loud = 0; since = 0L; triggered = false; ratio = 0.0; ownerNear = false }
 
     /** Galat alarm tha (shor): dobara suno, par ab is shor ko "goonj" maan kar (wahi shor dobara na roke) */
     fun rearm(noiseRms: Double) { loud = 0; triggered = false; echo = max(echo, noiseRms * 0.6) }
@@ -273,6 +276,7 @@ class BargeDetector(
      * शब्द / पक्की आवाज़ पर ([BargeGate]), इसलिए गलत रुकना नहीं बढ़ता.
      */
     fun threshold(out: Double = 0.0, prob: Float = -1f): Double {
+        if (ownerNear && prob >= BargeOwner.VAD_P) return BargeOwner.threshold(echo, ambient, minRms) * scale
         val expected = if (out > 0.0 && ratio > 0.0) ratio * out * 3.0 else 0.0
         val base = if (prob >= VAD_SURE) maxOf(echo * 1.7, ambient * 2.5, minRms * 0.7, expected * 0.7)
             else maxOf(echo * 2.5, ambient * 3.5, minRms, expected)

@@ -339,6 +339,11 @@ class GeminiLive(internal val svc: DKAccessibilityService, internal val agent: A
     /** 18 नवंबर 2026: DK बोलते समय इंसानी आवाज़ थी पर सीमा से नीचे - log में "क्यों नहीं रुका" (हर जवाब में एक बार) */
     internal var bargeNearMs = 0L
     internal var bargeNearLogged = false
+    /** 20 नवंबर 2026 ([BargeOwner]): DK बोलते समय की इंसानी आवाज़ - मालिक का मिलान कब हुआ / चल रहा / आख़िरी कोशिश / आवाज़ */
+    @Volatile internal var bargeOwnerAt = 0L
+    @Volatile internal var bargeOwnerBusy = false
+    internal var bargeOwnerTriedAt = 0L
+    internal val bargeOwnerBuf = ArrayDeque<ByteArray>()
     internal val trace = LatencyTrace()
     /** Har baari ki poori samay-rekha (end of speech -> upload -> pehla event -> audio -> awaaz -> turn khatam) */
     internal val timeline = TurnTimeline()

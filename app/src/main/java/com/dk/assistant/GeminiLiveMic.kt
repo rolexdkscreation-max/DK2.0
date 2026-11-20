@@ -216,6 +216,7 @@ internal suspend fun GeminiLive.micLoop() = coroutineScope {
                 if (bargeDet.ambient == 0.0) bargeDet.ambient = turnDet.noise
                 when (bargeGate.state) {
                     BargeGate.State.IDLE -> {
+                        bargeDet.ownerNear = BargeOwner.fresh(bargeOwnerAt, now)
                         if (bargeDet.feed(rms, now, outLevel(now), prob)) {
                             // SHAK: tez awaaz. DK ki awaaz halki (rokna nahi), caption model ko suno - shabd hain?
                             bargeGate.suspect(now); barging = true; loudMs = 0L; overEchoMs = 0L; duplex.reset(); speakerBarge.reset()
@@ -228,10 +229,19 @@ internal suspend fun GeminiLive.micLoop() = coroutineScope {
                         } else {
                             // 18 नवंबर 2026: "क्यों नहीं रुका" - इंसानी आवाज़ थी पर सीमा से नीचे (हर जवाब में एक बार log)
                             bargeNearMs = if (prob >= BargeDetector.VAD_SURE && rms > bargeDet.ambient * 2.0) bargeNearMs + CHUNK_MS else 0L
+                            // 20 नवंबर 2026 ([BargeOwner]): यह इंसानी आवाज़ मालिक की है? (DK की अपनी आवाज़ कभी नहीं मिलती)
+                            if (bargeNearMs == 0L) {
+                                bargeOwnerBuf.clear()
+                            } else {
+                                bargeOwnerBuf.addLast(chunk)
+                                while (bargeOwnerBuf.size > BargeOwner.MAX_CHUNKS) bargeOwnerBuf.removeFirst()
+                            }
+                            if (BargeOwner.wantCheck(vgOn, prob, bargeNearMs, bargeOwnerBusy, now - bargeOwnerTriedAt)) checkBargeOwner(now)
                             if (bargeNearMs >= 400 && !bargeNearLogged) {
                                 bargeNearLogged = true
                                 log("DK नहीं रुका: इंसानी आवाज़ (VAD ${"%.2f".format(prob)}) पर rms=${rms.toInt()} < सीमा ${bargeDet.threshold(outLevel(now), prob).toInt()} " +
-                                    "(गूँज=${bargeDet.echoLevel().toInt()}) - फ़ोन के पास बोलें या Settings → \"आप कैसे बोलते हैं\" → धीरे")
+                                    "(गूँज=${bargeDet.echoLevel().toInt()}, ${if (!vgOn) "आवाज़ पहचान बंद" else if (bargeDet.ownerNear) "मालिक मिला - नीची सीमा" else "मालिक का मिलान बाकी/नहीं"})" +
+                                    " - फ़ोन के पास बोलें या Settings → \"आप कैसे बोलते हैं\" → धीरे")
                             }
                             preroll.addLast(chunk); while (preroll.size > PREROLL_CHUNKS) preroll.removeFirst()
                             capSend(zeros, silent = true)
@@ -283,7 +293,7 @@ internal suspend fun GeminiLive.micLoop() = coroutineScope {
                 // Gemini/caption ko sirf user ki awaaz (320ms pehle se); baaki samay khaamoshi.
                 // (Peeche ka lagatar shor bhejne par server "user abhi bol raha" maan kar jawab rokta tha.)
                 if (barging) bargeUntil = now + 1500
-                barging = false; bargeDet.reset(); bargeDet.ambient = 0.0; bargeNearMs = 0L; bargeNearLogged = false
+                barging = false; bargeDet.reset(); bargeDet.ambient = 0.0; bargeNearMs = 0L; bargeNearLogged = false; bargeOwnerBuf.clear()
                 if (bargeGate.state != BargeGate.State.IDLE) { bargeGate.reset(); track?.let { try { it.setVolume(1f) } catch (e: Exception) { Quiet.note(e) } } }
                 // v3.5+: जवाब पूरा, DK चुप -> बीच में पूछा सवाल अब (उसका भी जवाब)
                 if (!askQueue.isEmpty()) {
