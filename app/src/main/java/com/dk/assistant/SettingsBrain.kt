@@ -100,7 +100,7 @@ internal fun SettingsActivity.secBrainMenu() {
         row(box, button("मॉडल चुनें") {
             val k = Prefs.oneKey(this)
             val pick: (List<String>) -> Unit = { list ->
-                pickModelThen(gem, Prefs.scopeModel(this, ApiScopes.CHAT, "gemini"), list, ThinkLevel.ONE) { id ->
+                pickModelThen(gem, Prefs.scopeModel(this, ApiScopes.CHAT, "gemini"), freeList(gem, list), ThinkLevel.ONE) { id ->
                     Prefs.edit(this) { putString(chatModel, id) }; showModel()
                 }
             }
@@ -416,10 +416,19 @@ internal fun SettingsActivity.providerCard(p: Provider, scope: String = ApiScope
 
 /** मॉडल चुनने का खाना: [target] में चुना id + सेव ([scope] = किस हिस्से का सोचने का स्तर साथ में दिखे) */
 internal fun SettingsActivity.pickModel(p: Provider, target: EditText, list: List<String>, scope: String = ApiScopes.CHAT) {
-    pickModelThen(p, target.text.toString().trim(), list, if (Prefs.oneKeyOn(this)) ThinkLevel.ONE else scope) { id ->
+    pickModelThen(p, target.text.toString().trim(), freeList(p, list), if (Prefs.oneKeyOn(this)) ThinkLevel.ONE else scope) { id ->
         target.setText(id); save(false)
     }
 }
+
+/**
+ * 20 नवंबर 2026 (मालिक: "सिर्फ़ फ्री मॉडल दिखें"): जिन कंपनियों में फ्री tier है (Gemini / OpenRouter / Z.ai) उनकी सूची में
+ * सिर्फ़ फ्री मॉडल ([com.dk.assistant.dkai.DkaiKit.pickable]; Gemini paid तभी जब "मेरी Gemini key paid है" चालू).
+ * Groq / NVIDIA सब फ्री; Claude / OpenAI / DeepSeek / अपनी API = वही पूरी सूची (वहाँ फ्री मॉडल होते ही नहीं).
+ */
+internal fun SettingsActivity.freeList(p: Provider, list: List<String>): List<String> =
+    if (p.id !in listOf("gemini", "openrouter", "zai")) list
+    else com.dk.assistant.dkai.DkaiKit.pickable(p.id, list, Prefs.bool(this, com.dk.assistant.dkai.DkaiKit.PREF_GEMINI_PAID, false))
 
 /** नवंबर 2026: API से आए साफ़ नाम (Gemini displayName / OpenRouter name) फ़ोन में - अगली बार बिना इंटरनेट भी दिखें */
 internal fun SettingsActivity.saveModelNames(p: Provider, list: List<String>) {
