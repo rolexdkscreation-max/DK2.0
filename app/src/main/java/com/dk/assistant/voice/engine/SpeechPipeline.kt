@@ -208,7 +208,7 @@ class SpeechPipeline(private val ctx: Context, private val hooks: Hooks) {
         // 20 नवंबर 2026 (मालिक): ऑफ़लाइन आवाज़ हल्के तरीके में भी लगातार धीमी ([com.dk.assistant.voice.st3.St3Load]) = इस जवाब का बाकी Gemini की आवाज़ से
         val toGemini = chosen.id == St3VoiceEngine.ID && com.dk.assistant.voice.st3.St3Load.toGemini
         val chain = if (toGemini) all.sortedBy { if (it.id == VoiceEngines.GEMINI_TTS) 0 else 1 } else all
-        if (toGemini && !geminiNoted) { geminiNoted = true; hooks.log("आवाज़ इंजन: ऑफ़लाइन आवाज़ लगातार धीमी - इस जवाब का बाकी Gemini की आवाज़ से (Gemini न चले तो फिर ऑफ़लाइन)") }
+        if (toGemini && !geminiNoted) { geminiNoted = true; hooks.log("आवाज़ इंजन: ऑफ़लाइन आवाज़ लगातार धीमी - इस जवाब का बाकी Live की अपनी आवाज़ से (वह न हो तो Gemini TTS, फिर ऑफ़लाइन)") }
         if (chosen.id == St3VoiceEngine.ID) com.dk.assistant.voice.st3.St3Load.mark(System.currentTimeMillis() + BUSY_HOLD_MS)
         var ok = false
         for ((i, e) in chain.withIndex()) {
@@ -305,6 +305,9 @@ class SpeechPipeline(private val ctx: Context, private val hooks: Hooks) {
 
     private fun play(s: Seg) {
         val g = s.gen
+        // 20 नवंबर 2026 (मालिक का 15:52 लॉग): ऑफ़लाइन आवाज़ लगातार धीमी होने पर Gemini TTS (REST) और धीमा निकला -
+        // चुप्पी 1.4-4.3 s, टुकड़े 15-36 s में बने. अब पहले Live की अपनी (पहले से आ चुकी) आवाज़; वह न हो तो पुराना रास्ता
+        if (engine?.id == St3VoiceEngine.ID && com.dk.assistant.voice.st3.St3Load.toGemini && liveFirst(s)) return
         if (s.phone || waitPhone(s)) {
             if (g != gen) return
             // नवंबर 2026: आवाज़ नहीं बनी -> पहले Live की अपनी आवाज़ (वही जवाब, वही आवाज़) - चुप नहीं
@@ -429,6 +432,16 @@ class SpeechPipeline(private val ctx: Context, private val hooks: Hooks) {
 
     private enum class SplitRescueWhy { FAILED, STUCK }
 
+    /** ऑफ़लाइन आवाज़ धीमी: [s] से आगे Live की अपनी आवाज़. हाँ = pipeline चुप; ना (Live की आवाज़ रखी नहीं) = आम रास्ता */
+    private fun liveFirst(s: Seg): Boolean {
+        if (s.gen != gen || released) return false
+        val ok = try { hooks.takeOver(s.at, LIVE_FIRST_WHY) } catch (_: Exception) { false }
+        if (!ok) return false
+        noteSpoken(s.text)
+        handOff()
+        return true
+    }
+
     /** Live की अपनी आवाज़ से कहो: [s] से आगे का जवाब तुम बोलो. हाँ = pipeline चुप ([handOff]) */
     private fun rescue(s: Seg, why: SplitRescueWhy, waited: Long): Boolean {
         if (s.gen != gen || released) return false
@@ -499,6 +512,8 @@ class SpeechPipeline(private val ctx: Context, private val hooks: Hooks) {
         const val PREROLL_WAIT_MS = 1_200L
         /** ऑफ़लाइन आवाज़ बनना/बजना ख़त्म होने के बाद इतनी देर और पीछे के भारी काम रुकें */
         const val BUSY_HOLD_MS = 1_500L
+        /** 20 नवंबर 2026: ऑफ़लाइन आवाज़ धीमी - बचा जवाब Live की अपनी आवाज़ में (लॉग का कारण) */
+        const val LIVE_FIRST_WHY = "ऑफ़लाइन आवाज़ हल्के तरीके में भी धीमी (फ़ोन गर्म) - Gemini TTS से पहले"
         /** इससे लंबी चुप्पी लॉग में */
         const val GAP_LOG_MS = 250L
 
