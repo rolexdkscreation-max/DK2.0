@@ -6,6 +6,7 @@ import com.dk.assistant.dkai.DkaiKit
 import com.dk.assistant.plus.models.ModelManager
 import com.dk.assistant.voice.engine.HinglishText
 import com.dk.assistant.voice.st3.St3Config
+import com.dk.assistant.voice.st3.St3Emotion
 import com.dk.assistant.voice.st3.St3Engine
 import com.dk.assistant.voice.st3.St3Load
 import com.dk.assistant.voice.st3.St3Store
@@ -128,10 +129,13 @@ object StoryVoice {
                     kotlinx.coroutines.delay(250)
                 }
                 val m = St3Story.mood(l.tone, l.speaker == St3Story.NARRATOR)
-                val said = St3Text.onlyTags(St3Story.lineText(com.dk.assistant.voice.st3.St3Numbers.speak(HinglishText.toSpeakable(l.text)), m))
+                // 20 नवंबर 2026 (मालिक: "डर, चीख, रोना - सुनने में पता नहीं चलता"): शब्दों में भाव ([St3Story.act]) + आवाज़ पर
+                // सुर / काँपना / चीख / फुसफुसाहट ([St3Emotion.perform]). सुर बदलने से लंबाई न बदले = मॉडल से पहले ही speed / ratio
+                val said = St3Text.onlyTags(St3Story.lineText(St3Story.act(com.dk.assistant.voice.st3.St3Numbers.speak(HinglishText.toSpeakable(l.text)), m), m))
                 if (said.isBlank()) continue
-                val w = St3Engine.renderLine(c, said, cast.getValue(l.speaker), St3Store.speed(c) * m.speed, steps)
-                pcm.write(St3Synth.pcm16(St3Story.applyGain(w, m.gain)))
+                val ratio = St3Emotion.pitchRatio(m.pitch)
+                val w = St3Engine.renderLine(c, said, cast.getValue(l.speaker), St3Store.speed(c) * m.speed / ratio, steps)
+                pcm.write(St3Synth.pcm16(St3Emotion.perform(w, m)))
                 pcm.write(St3Synth.silence(m.pauseMs))
             }
             if (pcm.size() == 0) throw IllegalStateException("कहानी में बोलने लायक कुछ नहीं")
