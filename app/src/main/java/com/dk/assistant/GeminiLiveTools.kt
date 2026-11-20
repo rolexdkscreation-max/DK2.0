@@ -481,6 +481,9 @@ internal fun GeminiLive.runTools(calls: JSONArray) {
                     val f = if (Memory.personalOn(svc)) LocalRecall.matchFacts(q, Memory.facts(svc)) else emptyList()
                     LocalRecall.toolReply(a, f)
                 }
+                // 20 नवंबर 2026 ([HistoryOnDemand]): पुरानी बातचीत सिर्फ़ पूछने पर - फ़ोन के SQLite (FTS4) से, offline
+                "search_history" -> LocalMemory.searchHistory(svc, args.optString("query"), args.optString("from_date").ifBlank { null },
+                    args.optString("to_date").ifBlank { null }, args.optInt("limit", HistoryOnDemand.DEFAULT_LIMIT), current = DKState.lastUser)
                 "forget_memory" -> { val n = Memory.forget(svc, args.optString("about")); if (n > 0) "Forgotten ($n place(s) deleted)." else "Nothing saved about that - tell the user it is not in memory." }
                 "local_info" -> localInfoTool(args.optString("find"))
                 "reel_stats" -> withContext(Dispatchers.IO) { ReelDaily.liveTool(svc) }   // नवंबर 2026: रील का 7 दिन का हिसाब

@@ -24,5 +24,18 @@ jobs:
         if: always()
         run: |
           if [ -f app/build/turn-golden.txt ]; then cat app/build/turn-golden.txt >> "$GITHUB_STEP_SUMMARY"; else echo "turn-golden.txt नहीं बना" >> "$GITHUB_STEP_SUMMARY"; fi
+      # 20 नवंबर 2026: Live निर्देशों के हिस्सों का साइज़ (context छोटा करने के लिए) - log + summary + पूरा prompt artifact में
+      - name: Live prompt size
+        if: always()
+        run: |
+          if [ -f app/build/prompt-size.txt ]; then cat app/build/prompt-size.txt; cat app/build/prompt-size.txt >> "$GITHUB_STEP_SUMMARY"; fi
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: live-prompt
+          path: |
+            app/build/live-prompt.txt
+            app/build/live-prompt-lite.txt
+          if-no-files-found: ignore
       - name: Debug APK build
         run: gradle :app:assembleDebug --no-daemon

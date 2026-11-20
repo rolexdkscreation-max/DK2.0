@@ -35,7 +35,7 @@ class CalmPersonaTest {
     }
 
     @Test fun appliedInAllVoicePromptsAndEngines() {
-        assertEquals(3, Regex("append\\(CalmPersona.block\\(\\)\\)").findAll(src("BrainManager.kt")).count())
+        assertEquals(4, Regex("append\\(CalmPersona.block\\(\\)\\)").findAll(src("BrainManager.kt")).count())  // 20 नवंबर 2026: + छोटे निर्देश (LivePromptLite)
         assertTrue(src("voice/engine/GeminiTtsEngine.kt").contains("CalmPersona.ttsStyle("))
         assertTrue(src("voice/engine/LiveNativeEngine.kt").contains("मध्यम गति"))
     }

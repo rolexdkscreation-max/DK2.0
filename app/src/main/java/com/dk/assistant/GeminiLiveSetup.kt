@@ -74,6 +74,14 @@ internal fun GeminiLive.discoverModels(key: String): List<String> {
 /** नवंबर 2026: handle के बिना नया सत्र (नई बातचीत) = पिछली कुछ बातें prompt में ([LiveCarry]); handle हो तो server याद रखता है - कुछ नहीं */
 internal fun GeminiLive.carryNote(resume: Boolean): String {
     if (resume && handle != null) return ""
+    // 20 नवंबर 2026 ([HistoryOnDemand]): चालू = पुरानी बातचीत नहीं, सिर्फ़ HISTORY_TAIL (2) संदेश की पूँछ (0 = कुछ नहीं)
+    if (histOn) return try {
+        val turns = DKState.messages.map { HistoryOnDemand.Turn(it.role, it.text, it.time) }
+        val reopened = ChatGreet.reopenedChat != 0 && ChatGreet.reopenedChat == com.dk.assistant.dkai.Dkai.chatNo(svc)
+        carriedFrom = 0L
+        HistoryOnDemand.tail(turns, System.currentTimeMillis(), HistoryOnDemand.HISTORY_TAIL, reopened)
+            .also { log("इतिहास: नया सत्र - पिछली बातचीत नहीं भेजी, सिर्फ़ पूँछ ${if (it.isEmpty()) "0" else "${HistoryOnDemand.HISTORY_TAIL}"} संदेश (${it.length} अक्षर)") }
+    } catch (_: Exception) { "" }
     return try {
         val turns = DKState.messages.map { LiveCarry.Turn(it.role, it.text, it.time) }
         val now = System.currentTimeMillis()
@@ -402,6 +410,8 @@ internal fun GeminiLive.setupJson(m: String, txt: Boolean = connText, resume: Bo
             .put("parameters", JSONObject().put("type", "OBJECT")
                 .put("properties", JSONObject().put("fact", JSONObject().put("type", "STRING")))
                 .put("required", JSONArray().put("fact"))))))
+    // 20 नवंबर 2026 ([HistoryOnDemand]): चालू = recall_conversation की जगह search_history (बंद = पहले जैसा)
+    if (histOn && HistoryOnDemand.swapRecallTool(tools)) log("इतिहास: tool search_history (recall_conversation की जगह)")
     // v3.72: जुड़े कनेक्टर (Gmail, Drive, GitHub, FB Page, MCP...) - कोई नहीं जुड़ा = कुछ नहीं जुड़ता
     com.dk.assistant.connect.ConnectorTool.declaration(svc)?.let { d ->
         tools.optJSONObject(0)?.optJSONArray("functionDeclarations")?.put(d); log("कनेक्टर: connector_task जोड़ा")
@@ -434,7 +444,7 @@ internal fun GeminiLive.setupJson(m: String, txt: Boolean = connText, resume: Bo
             .apply { if (!txt) put("speechConfig", JSONObject().put("voiceConfig", JSONObject()
                 .put("prebuiltVoiceConfig", JSONObject().put("voiceName", ex.voice)))
                 .apply { if (ex.lang && LiveSetupRules.sendLanguageCode(m)) put("languageCode", LiveVoice.LANGUAGE) }) })
-        .put("systemInstruction", JSONObject().put("parts", JSONArray().put(JSONObject().put("text", Lang.sys(brain.liveSystemPrompt(withMemory = false)) + FAST_START + NetSpeed.promptNote() + carryNote(resume) + (if (connSplit) SPLIT_NOTE + (if (txt) MOOD_TAG_NOTE else "") else
+        .put("systemInstruction", JSONObject().put("parts", JSONArray().put(JSONObject().put("text", Lang.sys(brain.liveSystemPrompt(withMemory = false)) + FAST_START + NetSpeed.promptNote() + carryNote(resume) + historyRule() + (if (connSplit) SPLIT_NOTE + (if (txt) MOOD_TAG_NOTE else "") else
             com.dk.assistant.voice.engine.LiveNativeEngine.styleNote(com.dk.assistant.voice.engine.LiveNativeEngine.style(svc).ifBlank { CalmPersona.VOICE_STYLE }))))))
         .put("tools", LiveStay.cleanTools(tools))
         .put("realtimeInputConfig", JSONObject()
@@ -458,6 +468,33 @@ internal fun GeminiLive.setupJson(m: String, txt: Boolean = connText, resume: Bo
         .put("inputAudioTranscription", JSONObject())
         .apply { if (!txt) put("outputAudioTranscription", JSONObject()) }
         .put("sessionResumption", if (resume && handle != null) JSONObject().put("handle", handle) else JSONObject())
-        .put("contextWindowCompression", LiveSetupRules.compression(compressLimits))
+    // 20 नवंबर 2026 ([HistoryOnDemand] तरीका A): चालू = स्थिर हिस्से के हिसाब से तंग सीमा (निर्देश/tools देखकर, इसलिए आख़िर में)
+    setup.put("contextWindowCompression", if (histOn && compressLimits) histCompression(m, setup) else LiveSetupRules.compression(compressLimits))
+    if (histOn) logSetupSize(m, setup)
     return JSONObject().put("setup", setup).toString()
+}
+
+/** 20 नवंबर 2026 ([HistoryOnDemand]): systemInstruction में "पुरानी बात सिर्फ़ पूछने पर, search_history से" */
+internal fun GeminiLive.historyRule(): String = if (histOn) HistoryOnDemand.RULE else ""
+
+/** तरीका A: स्थिर हिस्से (server की पिछली असली गिनती, न हो तो इसी setup का अंदाज़ा + ज़रूरी बातें) के हिसाब से तंग सीमा */
+internal fun GeminiLive.histCompression(m: String, setup: JSONObject): JSONObject {
+    val saved = Prefs.liveFixedTokens(svc, m)
+    val guess = HistoryOnDemand.estimateTokens(setup.optJSONObject("systemInstruction")?.toString().orEmpty() + setup.optJSONArray("tools")?.toString().orEmpty()) + 500L
+    val fixed = if (saved > 0) saved else guess
+    histFixed = fixed
+    val c = HistoryOnDemand.tightCompression(fixed)
+    histTrigger = c.trigger
+    return HistoryOnDemand.compressionJson(c)
+}
+
+/** हर setup पर: स्थिर हिस्सा कितना (अक्षर + token अंदाज़ा) और कौन-सा तरीका */
+internal fun GeminiLive.logSetupSize(m: String, setup: JSONObject) {
+    val sys = setup.optJSONObject("systemInstruction")?.toString().orEmpty()
+    val tl = setup.optJSONArray("tools")?.toString().orEmpty()
+    val est = HistoryOnDemand.estimateTokens(sys) + HistoryOnDemand.estimateTokens(tl)
+    val saved = Prefs.liveFixedTokens(svc, m)
+    log("इतिहास: setup [$m] - निर्देश ${sys.length} अक्षर + tools ${tl.length} अक्षर ≈ $est token" +
+        (if (saved > 0) " (server की पिछली असली गिनती $saved)" else "") +
+        if (compressLimits) " • तरीका A: ${histTrigger} token पर छँटाई" else " • तरीका B: मॉडल सीमा नहीं लेता - भारी होने पर सत्र चुपचाप नया")
 }

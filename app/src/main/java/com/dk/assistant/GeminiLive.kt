@@ -527,6 +527,26 @@ class GeminiLive(internal val svc: DKAccessibilityService, internal val agent: A
     @Volatile internal var ctxTokens = 0L
     @Volatile internal var ctxLoggedBucket = -1L
     @Volatile internal var toolBehavior = true
+    /**
+     * 20 नवंबर 2026 ([HistoryOnDemand]): "पुरानी बातचीत सिर्फ़ माँगने पर" - इस Live में चालू? (run() पर एक बार पढ़ा)
+     * histFixed = स्थिर हिस्सा (निर्देश + tools + याद) token में (server की गिनती; न हो तो अंदाज़ा)
+     * histFixedReal = इस सत्र में server ने असली गिनती दे दी; histMethod = तरीका A/B; histCtx = हर turn का context
+     * freshRotateDue = तरीका B: शांत पल में बिना handle का नया सत्र; turnsSinceFresh = नए सत्र के बाद कितनी बारियाँ
+     */
+    @Volatile internal var histOn = false
+    @Volatile internal var histFixed = 0L
+    @Volatile internal var histFixedReal = false
+    @Volatile internal var histMethod = HistoryOnDemand.Method.A_COMPRESSION
+    @Volatile internal var histMethodLogged = ""
+    internal val histCtx = java.util.ArrayDeque<Long>()
+    /** इस turn में अब तक आए toolCall (हर एक के बाद Gemini फिर सोचता है - usage की गिनती उतनी बार जुड़ती है) */
+    @Volatile internal var histToolRounds = 0
+    @Volatile internal var freshRotateDue = false
+    /** तरीका B: अभी जो दूसरा connection बन रहा / तैयार है वह नई (बिना handle) बातचीत है */
+    @Volatile internal var freshRotate = false
+    @Volatile internal var turnsSinceFresh = 0
+    /** context की छँटाई सीमा (तरीका A) जो अभी setup में गई */
+    @Volatile internal var histTrigger = 0L
     /** v3.59: इस Live की आवाज़/भाषा/affective (setup पर एक बार तय - बीच में अपने-आप नहीं बदलती) */
     @Volatile private var extras: LiveVoice.Extras? = null
     @Volatile private var extrasModel = ""
@@ -740,7 +760,7 @@ class GeminiLive(internal val svc: DKAccessibilityService, internal val agent: A
     /** Garam (standby) connection: wake word ke baad chup hone par band nahi kiya */
     internal class Parked(val ws: WebSocket, val closed: CompletableDeferred<Pair<Int, String>>, val model: String, val at: Long,
                          val split: Boolean = false, val text: Boolean = false, val liveVer: Int = -1, val keyIdx: Int = -1,
-                         val resumedFrom: String? = null)
+                         val resumedFrom: String? = null, val fresh: Boolean = false)
     @Volatile internal var parked: Parked? = null
     @Volatile private var curClosed: CompletableDeferred<Pair<Int, String>>? = null
 
@@ -1001,7 +1021,7 @@ class GeminiLive(internal val svc: DKAccessibilityService, internal val agent: A
             (if (handlerErrors > 0) " • server संदेश की गलती: $handlerErrors" else "") +
             (if (droppedOld > 0) " • पुराने जवाब के फेंके टुकड़े: $droppedOld" else "") +
             (if (lastLatency >= 0) " • पिछली देरी: $lastLatency ms" else "") +
-            (if (ctxTokens > 0) " • context: ${ctxTokens / 1000}k token (सीमा ${LiveSetupRules.COMPRESS_TRIGGER_TOKENS / 1000}k पर छँटाई" + (if (compressLimits) ")" else " बंद - default)") else "") +
+            (if (ctxTokens > 0) " • context: ${ctxTokens / 1000}k token (सीमा ${(if (histOn && histTrigger > 0) histTrigger else LiveSetupRules.COMPRESS_TRIGGER_TOKENS) / 1000}k पर छँटाई" + (if (compressLimits) ")" else " बंद - default)") else "") +
             (if (lastBreakdown.isNotBlank()) " • $lastBreakdown" else "")
     }
 
@@ -1016,6 +1036,10 @@ class GeminiLive(internal val svc: DKAccessibilityService, internal val agent: A
         sent = 0; sentBytes = 0; dropped = 0; gaps = 0; readErr = 0; recvAudio = 0; reconnects = 0; slowReconnects = 0; zombieN = 0; rotFreezes = 0; rotSwitches = 0; rotFallbacks = 0; rotFreezeAt = 0L; freezeReal = false; freezeEndAt = 0L; handleAt = 0L; lastReplyDoneAt = 0L; replayedN = 0
         textRescue = LiveStay.textRescueOn(svc); weakNetTold = false
         ctxTokens = 0L; ctxLoggedBucket = -1L
+        histOn = Prefs.historyOnDemand(svc); histFixedReal = false; synchronized(histCtx) { histCtx.clear() }; histToolRounds = 0; freshRotateDue = false; freshRotate = false; turnsSinceFresh = 0; histMethodLogged = ""
+        histMethod = HistoryOnDemand.method(compressLimits, false)
+        LocalMemory.session = "s" + System.currentTimeMillis().toString(36)
+        log("इतिहास: पुरानी बातचीत सिर्फ़ माँगने पर = " + (if (histOn) "चालू (सिर्फ़ नया सवाल + ${HistoryOnDemand.HISTORY_TAIL} संदेश की पूँछ, पुरानी बात search_history से)" else "बंद (पहले जैसा)") + " • सत्र ${LocalMemory.session}")
         log("बीच बातचीत का बचाव-text: " + if (textRescue) "चालू (सेटिंग)" else "बंद (डिफ़ॉल्ट - 1011 से बचाव)")
         if (!Setup.hasMic(svc)) throw Fatal("माइक की परमिशन नहीं है", kind = LiveFailWhy.Kind.MIC)
         // v3.94: मुख्य key + बैकअप keys - एक बंद/गलत/limit खत्म = चुपचाप अगली (user को पता न चले)
@@ -1142,13 +1166,18 @@ class GeminiLive(internal val svc: DKAccessibilityService, internal val agent: A
                     // v3.8: wake word ke baad garam rakha connection abhi zinda hai -> naya mat banao (0 ms)
                     val reuse = pkOk && pk!!.model == model && pk.split == connSplit && pk.text == connText &&
                         pk.liveVer == connLiveVer &&  // v3.80: बीच में आवाज़/मॉडल बदला = पुराना गर्म connection नहीं
-                        LiveStay.useParked(pk.resumedFrom, handle, oldAlive = prevAlive)
+                        (pk.fresh || LiveStay.useParked(pk.resumedFrom, handle, oldAlive = prevAlive))
                     if (pk != null && !reuse) closeWs(pk.ws, "standby purana")
                     val closed: CompletableDeferred<Pair<Int, String>>
                     val t0 = System.currentTimeMillis()
                     if (reuse) {
                         closed = pk!!.closed; curClosed = closed
-                        ws = pk.ws; warmReuses++; connResumed = pk.resumedFrom != null    // goAway वाला = वही बातचीत (याद दोबारा नहीं)
+                        ws = pk.ws; warmReuses++; connResumed = pk.resumedFrom != null && !pk.fresh    // goAway वाला = वही बातचीत (याद दोबारा नहीं)
+                        if (pk.fresh) {
+                            // 20 नवंबर 2026 (तरीका B): नई बातचीत पर बदले - पुराना handle नहीं (उसमें पुराना भारी context है)
+                            handle = null; freshRotate = false; freshRotateDue = false; turnsSinceFresh = 0; synchronized(histCtx) { histCtx.clear() }; ctxTokens = 0L; ctxLoggedBucket = -1L
+                            log("इतिहास: तरीका B - सत्र चुपचाप नया किया (पहले से तैयार connection, 0 ms) - server पर पुरानी बातचीत नहीं, सिर्फ़ निर्देश + ज़रूरी बातें + ${HistoryOnDemand.HISTORY_TAIL} संदेश")
+                        }
                         synchronized(sendLock) { sendContext(ws); ready = true; flushPending(); sendReplay() }
                         if (pk.resumedFrom != null && frozeLast >= 0) {
                             rotSwitches++
@@ -1241,7 +1270,9 @@ class GeminiLive(internal val svc: DKAccessibilityService, internal val agent: A
                             }
                             thinkOff && r.contains("think") -> { thinkOff = false; log("यह मॉडल thinkingBudget नहीं लेता - उसके बिना"); continue }
                             compressLimits && (r.contains("trigger") || r.contains("target") || r.contains("compression")) -> {
-                                compressLimits = false; log("यह मॉडल context की सीमा (triggerTokens) नहीं लेता - पहले जैसा default"); continue
+                                compressLimits = false; log("यह मॉडल context की सीमा (triggerTokens) नहीं लेता - पहले जैसा default")
+                                if (histOn) { histMethod = HistoryOnDemand.Method.B_ROTATE; log("इतिहास: इसलिए तरीका B चुना - भारी होने पर सत्र चुपचाप नया (पहले से तैयार connection)") }
+                                continue
                             }
                             toolBehavior && r.contains("behavior") -> { toolBehavior = false; log("यह मॉडल tool behavior नहीं लेता - उसके बिना"); continue }
                             handle != null && (r.contains("handle") || r.contains("resum") || r.contains("session")) -> { handle = null; continue }
@@ -1305,6 +1336,13 @@ class GeminiLive(internal val svc: DKAccessibilityService, internal val agent: A
                         if (LiveSpare.startFreeze(LiveSpare.freezeDue(goAway, nowL - upAt), idleQuiet, rotFreezeAt > 0L, spareReady(), handle != null,
                                 curKeys.isNotEmpty(), LiveSpare.handleFresh(handleAt, lastReplyDoneAt), nowL - quietFrom, nowL - freezeEndAt)) {
                             beginFreeze(if (goAway) "goAway" else "connection ${(nowL - upAt) / 60_000} मिनट चला", nowL)
+                            if (rotFreezeAt > 0L) { delay(50); continue }
+                        }
+                        // 20 नवंबर 2026 ([HistoryOnDemand] तरीका B): context भारी = शांत पल में नई (बिना handle) बातचीत पर चुपचाप बदलो
+                        if (histOn && freshRotateDue && !goAway && rotFreezeAt == 0L && idleQuiet && curKeys.isNotEmpty() &&
+                            nowL - quietFrom >= 700L && nowL - freezeEndAt >= LiveSpare.FREEZE_RETRY_MS) {
+                            freshRotate = true
+                            beginFreeze("इतिहास: तरीका B (context ${ctxTokens / 1000}k, $turnsSinceFresh बारियाँ)", nowL)
                             if (rotFreezeAt > 0L) { delay(50); continue }
                         }
                         if (LiveSpare.due(goAway, nowL - upAt)) prepareSpare(if (goAway) "goAway" else "${(nowL - upAt) / 60_000} मिनट चला", idleNow)

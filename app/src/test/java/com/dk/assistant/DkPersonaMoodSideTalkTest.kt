@@ -189,8 +189,8 @@ class DkPersonaMoodSideTalkTest {
     // ------------------------------------------------------------------ wiring
     @Test fun wiring() {
         val bm = src("BrainManager.kt")
-        assertEquals(3, Regex(Regex.escape("DkPersona.pick(ctx, GirlfriendPersona.block(")).findAll(bm).count())
-        assertEquals(3, Regex(Regex.escape(".append(DkPersona.finalBlock(ctx, Prefs.userName(ctx)))")).findAll(bm).count())
+        assertEquals(4, Regex(Regex.escape("DkPersona.pick(ctx, GirlfriendPersona.block(")).findAll(bm).count())  // 20 नवंबर 2026: + छोटे निर्देश (LivePromptLite)
+        assertEquals(4, Regex(Regex.escape(".append(DkPersona.finalBlock(ctx, Prefs.userName(ctx)))")).findAll(bm).count())  // 20 नवंबर 2026: + छोटे निर्देश (LivePromptLite)
         assertTrue(bm.contains("if (SideTalk.on(ctx)) append(SideTalk.PROMPT)"))
         val lr = src("LocalRouter.kt")
         assertTrue(lr.indexOf("JarvisMode.parse(raw)") < lr.indexOf("DkPersona.parse(raw)"))

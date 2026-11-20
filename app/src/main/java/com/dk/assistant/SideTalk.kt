@@ -173,7 +173,7 @@ object SideTalk {
 
     /** सिर्फ़ जानकारी वाले tool (कुछ बदलते नहीं) - कोई और भी पूछ सकता है */
     private val INFO_TOOLS = setOf("current_time", "deep_research", "deep_think", "dk_features", "dk_inspector", "look_photo", "look_screen",
-        "notifications", "recall_conversation", "reel_stats", "remember_fact", "shop_search", "social_insights", "task_status", "web_search")
+        "notifications", "recall_conversation", "reel_stats", "search_history", "remember_fact", "shop_search", "social_insights", "task_status", "web_search")
 
     /** यह tool फ़ोन पर कुछ करता/बदलता है? (जानकारी = नहीं) */
     fun isAction(tool: String, args: JSONObject): Boolean =

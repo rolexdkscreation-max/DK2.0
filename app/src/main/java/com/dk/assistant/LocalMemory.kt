@@ -31,21 +31,90 @@ object LocalMemory {
     @Volatile private var helper: Db? = null
     @Volatile private var lastRec: Triple<String, String, Long>? = null
 
-    private class Db(c: Context) : SQLiteOpenHelper(c, "dk_local_memory.db", null, 1) {
+    const val DB_NAME = "dk_local_memory.db"
+    const val DB_VERSION = 2
+    const val BACKUP_NAME = "dk_local_memory_v1_backup.db"
+
+    /**
+     * 20 नवंबर 2026 (मालिक: "पुरानी बातचीत सिर्फ़ माँगने पर" - [HistoryOnDemand]):
+     * v2 = turns में session कॉलम (हर Live सत्र की आईडी) + FTS4 खोज-टेबल turns_fts (docid = turns.id).
+     * बदलते समय कुछ नहीं मिटता: पहले फ़ाइल का बैकअप ([BACKUP_NAME]), फिर DB के अंदर turns_backup_v1, फिर सारी पुरानी बातें FTS में.
+     * FTS triggers से turns में जोड़ना/बदलना/मिटाना (याददाश्त स्क्रीन, "भूल जाओ", बैकअप रिस्टोर) अपने-आप खोज में भी.
+     */
+    private const val CLEAN_OPEN = "replace(replace(replace(replace(replace(replace(replace(replace(replace(replace(replace(lower("
+    private const val CLEAN_CLOSE = "), '\u093C', ''), '\u0901', '\u0902'), '\u0964', ' '), '\u0965', ' '), '\u2026', ' '), '\u201C', ' '), '\u201D', ' '), '\u2018', ' '), '\u2019', ' '), '\u2014', ' '), '\u2013', ' ')"
+    private fun clean(col: String) = CLEAN_OPEN + col + CLEAN_CLOSE
+
+    private fun createFts(db: SQLiteDatabase): Boolean = try {
+        db.execSQL("CREATE VIRTUAL TABLE IF NOT EXISTS turns_fts USING fts4(text, tokenize=simple)")
+        db.execSQL("CREATE TRIGGER IF NOT EXISTS turns_fts_ai AFTER INSERT ON turns BEGIN INSERT INTO turns_fts(docid, text) VALUES (new.id, ${clean("new.text")}); END")
+        db.execSQL("CREATE TRIGGER IF NOT EXISTS turns_fts_au AFTER UPDATE OF text ON turns BEGIN DELETE FROM turns_fts WHERE docid=old.id; INSERT INTO turns_fts(docid, text) VALUES (new.id, ${clean("new.text")}); END")
+        db.execSQL("CREATE TRIGGER IF NOT EXISTS turns_fts_ad AFTER DELETE ON turns BEGIN DELETE FROM turns_fts WHERE docid=old.id; END")
+        true
+    } catch (e: Exception) { DKLog.d("इतिहास: FTS नहीं बनी (${e.message}) - खोज LIKE से चलेगी"); false }
+
+    private class Db(c: Context) : SQLiteOpenHelper(c, DB_NAME, null, DB_VERSION) {
         override fun onCreate(db: SQLiteDatabase) {
-            db.execSQL("CREATE TABLE turns(id INTEGER PRIMARY KEY AUTOINCREMENT, who TEXT NOT NULL, text TEXT NOT NULL, at INTEGER NOT NULL, src TEXT NOT NULL DEFAULT '', day TEXT NOT NULL)")
+            db.execSQL("CREATE TABLE turns(id INTEGER PRIMARY KEY AUTOINCREMENT, who TEXT NOT NULL, text TEXT NOT NULL, at INTEGER NOT NULL, src TEXT NOT NULL DEFAULT '', day TEXT NOT NULL, session TEXT NOT NULL DEFAULT '')")
             db.execSQL("CREATE INDEX turns_at ON turns(at)")
             db.execSQL("CREATE INDEX turns_day ON turns(day)")
+            db.execSQL("CREATE INDEX turns_session ON turns(session)")
             db.execSQL("CREATE TABLE points(id INTEGER PRIMARY KEY AUTOINCREMENT, day TEXT NOT NULL, text TEXT NOT NULL, at INTEGER NOT NULL)")
             db.execSQL("CREATE TABLE days(day TEXT PRIMARY KEY, done INTEGER NOT NULL DEFAULT 1)")
             db.execSQL("CREATE TABLE dropped(norm TEXT PRIMARY KEY)")
+            createFts(db)
         }
-        override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {}
+        override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {
+            if (oldVersion < 2) {
+                // कुछ नहीं मिटता: पहले पूरी turns की एक प्रति इसी DB में
+                db.execSQL("CREATE TABLE IF NOT EXISTS turns_backup_v1 AS SELECT * FROM turns")
+                val hasSession = db.rawQuery("PRAGMA table_info(turns)", null).use { k -> var f = false; while (k.moveToNext()) if (k.getString(1) == "session") f = true; f }
+                if (!hasSession) db.execSQL("ALTER TABLE turns ADD COLUMN session TEXT NOT NULL DEFAULT ''")
+                db.execSQL("CREATE INDEX IF NOT EXISTS turns_session ON turns(session)")
+                if (createFts(db)) {
+                    try {
+                        db.execSQL("DELETE FROM turns_fts")
+                        db.execSQL("INSERT INTO turns_fts(docid, text) SELECT id, ${clean("text")} FROM turns")
+                    } catch (e: Exception) { DKLog.d("इतिहास: पुरानी बातें FTS में नहीं भरीं - ${e.message}") }
+                }
+                val n = db.rawQuery("SELECT COUNT(*) FROM turns", null).use { if (it.moveToFirst()) it.getInt(0) else 0 }
+                DKLog.d("इतिहास: याददाश्त v$oldVersion → v2 - $n पुरानी बातें सुरक्षित (बैकअप + turns_backup_v1) और खोज (FTS) में भरीं")
+            }
+        }
+    }
+
+    /** v1 वाली फ़ाइल को बदलने से पहले उसकी पूरी प्रति (main + -wal + -shm). एक ही बार */
+    private fun backupBeforeUpgrade(c: Context) {
+        try {
+            val f = c.getDatabasePath(DB_NAME)
+            if (!f.exists()) return
+            val b = c.getDatabasePath(BACKUP_NAME)
+            if (b.exists()) return
+            val v = SQLiteDatabase.openDatabase(f.path, null, SQLiteDatabase.OPEN_READONLY).use { it.version }
+            if (v >= DB_VERSION) return
+            for (suf in listOf("", "-wal", "-shm")) {
+                val src = java.io.File(f.path + suf)
+                if (src.exists()) src.copyTo(java.io.File(b.path + suf), overwrite = true)
+            }
+            DKLog.d("इतिहास: बदलाव से पहले याददाश्त का बैकअप बना ($BACKUP_NAME, ${f.length() / 1024} KB)")
+        } catch (e: Exception) { DKLog.d("इतिहास: बैकअप नहीं बना - ${e.message}") }
     }
 
     private fun db(c: Context): SQLiteDatabase {
-        val h = helper ?: synchronized(this) { helper ?: Db(c.applicationContext).also { helper = it } }
+        val h = helper ?: synchronized(this) {
+            helper ?: run { backupBeforeUpgrade(c.applicationContext); Db(c.applicationContext) }.also { helper = it }
+        }
         return h.writableDatabase
+    }
+
+    /** मौजूदा Live सत्र की आईडी (GeminiLive.run शुरू होते ही नई) - हर बात के साथ सेव */
+    @Volatile var session: String = ""
+    @Volatile private var saved = -1L
+    @Volatile private var fts: Boolean? = null
+
+    /** सिर्फ़ test के लिए: DB बंद करके अगली बार फिर से खोलो (ऐप बंद-खोलना) */
+    internal fun resetForTest() {
+        io.submit<Unit> { try { helper?.close() } catch (e: Exception) { DKLog.d("इतिहास: test DB बंद नहीं हुआ: ${e.message}") }; helper = null; saved = -1L; fts = null; lastRec = null }.get()
     }
 
     // ------------------------------------------------------------------ लिखना (हर बात तुरंत)
@@ -60,9 +129,14 @@ object LocalMemory {
         lastRec = Triple(who, t, now)
         io.execute {
             try {
-                db(ctx).insert("turns", null, ContentValues().apply {
-                    put("who", who); put("text", t); put("at", now); put("src", src); put("day", LocalRecall.dayOf(now))
+                val d = db(ctx)
+                val id = d.insert("turns", null, ContentValues().apply {
+                    put("who", who); put("text", t); put("at", now); put("src", src); put("day", LocalRecall.dayOf(now)); put("session", session)
                 })
+                if (id > 0) {
+                    saved = if (saved < 0) d.rawQuery("SELECT COUNT(*) FROM turns", null).use { if (it.moveToFirst()) it.getLong(0) else 0L } else saved + 1
+                    DKLog.d("इतिहास: $saved संदेश सेव")
+                }
             } catch (e: Exception) { DKLog.d("याददाश्त: सेव नहीं हुआ - ${e.message}") }
         }
         MemoryDigest.noteTurn(ctx)   // 18 नवंबर 2026: हर ~20 नई बातों पर DK खुद चुने क्या याद रखना है
@@ -159,6 +233,73 @@ object LocalMemory {
             DKLog.d("याददाश्त खोज: \"${question.take(40)}\" → ${h.turns.size} बातें, ${h.points.size} सार (${q.label.ifBlank { "पूरी याद" }}, शब्द: ${q.words})")
             LocalRecall.answer(q, h, now)
         } catch (e: Exception) { DKLog.d("याददाश्त खोज गड़बड़: ${e.message}"); LocalRecall.NOT_FOUND }
+    }
+
+    /**
+     * 20 नवंबर 2026: search_history tool ([HistoryOnDemand]) - पूरी तरह फ़ोन पर (offline).
+     * FTS4 MATCH (हर शब्द अलग, OR, prefix) + तारीख़ filter; FTS न हो तो LIKE. क्रम: मिलान फिर नयापन.
+     * [current] = अभी पूछा गया सवाल (नतीजों में नहीं आता).
+     */
+    suspend fun searchHistory(c: Context, query: String, fromDate: String?, toDate: String?, limit: Int, current: String = ""): String =
+        withContext(dispatcher) {
+            val t0 = System.nanoTime()
+            val now = System.currentTimeMillis()
+            val req = HistoryOnDemand.request(query, fromDate, toDate, limit, now)
+            val rows = try { historyRows(db(c), req) } catch (e: Exception) { DKLog.d("पुरानी खोज गड़बड़: ${e.message}"); emptyList() }
+            val hits = HistoryOnDemand.rank(rows, req, current)
+            val ms = (System.nanoTime() - t0) / 1_000_000
+            DKLog.d("पुरानी खोज: ${req.words.ifEmpty { listOf("(हाल की बातें)") }.joinToString(" ")}${if (req.label.isNotBlank()) " [${req.label}]" else ""}, ${hits.size} नतीजे, $ms ms")
+            HistoryOnDemand.reply(hits, req)
+        }
+
+    /** test के लिए: वही खोज, नतीजे सीधे (समय नापने को) */
+    internal fun searchRowsBlocking(c: Context, req: HistoryOnDemand.Req): List<HistoryOnDemand.Row> =
+        io.submit<List<HistoryOnDemand.Row>> { HistoryOnDemand.rank(historyRows(db(c.applicationContext), req), req) }.get()
+
+    /** test के लिए: एक बात सीधे (समय के साथ), record() के नियमों के बिना */
+    internal fun insertForTest(c: Context, who: String, text: String, at: Long): Long = io.submit<Long> {
+        db(c.applicationContext).insert("turns", null, ContentValues().apply {
+            put("who", who); put("text", text); put("at", at); put("src", "test"); put("day", LocalRecall.dayOf(at)); put("session", session)
+        })
+    }.get()
+
+    internal fun countForTest(c: Context, table: String): Int = io.submit<Int> {
+        db(c.applicationContext).rawQuery("SELECT COUNT(*) FROM $table", null).use { if (it.moveToFirst()) it.getInt(0) else 0 }
+    }.get()
+
+    internal fun ftsOn(c: Context): Boolean = io.submit<Boolean> { hasFts(db(c.applicationContext)) }.get()
+
+    private fun hasFts(d: SQLiteDatabase): Boolean = fts ?: try {
+        d.rawQuery("SELECT 1 FROM sqlite_master WHERE name='turns_fts'", null).use { it.moveToFirst() }
+    } catch (_: Exception) { false }.also { fts = it }
+
+    private const val HISTORY_SCAN = 400
+
+    private fun readRows(d: SQLiteDatabase, sql: String, args: Array<String>): List<HistoryOnDemand.Row> {
+        val out = ArrayList<HistoryOnDemand.Row>()
+        d.rawQuery(sql, args).use { k -> while (k.moveToNext()) out.add(HistoryOnDemand.Row(k.getLong(0), k.getString(1), k.getString(2), k.getLong(3), k.getString(4).orEmpty())) }
+        return out
+    }
+
+    private fun historyRows(d: SQLiteDatabase, req: HistoryOnDemand.Req): List<HistoryOnDemand.Row> {
+        val cols = "SELECT id, who, text, at, session FROM turns"
+        val time = arrayOf(req.from.toString(), req.to.toString())
+        val match = HistoryOnDemand.ftsQuery(req.words)
+            ?: return readRows(d, "$cols WHERE at BETWEEN ? AND ? ORDER BY at DESC, id DESC LIMIT $HISTORY_SCAN", time)
+        val hits = if (hasFts(d)) try {
+            readRows(d, "$cols WHERE id IN (SELECT docid FROM turns_fts WHERE turns_fts MATCH ?) AND at BETWEEN ? AND ? ORDER BY at DESC, id DESC LIMIT $HISTORY_SCAN",
+                arrayOf(match) + time)
+        } catch (e: Exception) { DKLog.d("पुरानी खोज: FTS गड़बड़ (${e.message}) - LIKE से"); null } else null
+        val found = hits ?: run {
+            val ws = req.words.take(12)
+            val like = ws.joinToString(" OR ") { "text LIKE ?" }
+            readRows(d, "$cols WHERE at BETWEEN ? AND ? AND ($like) ORDER BY at DESC, id DESC LIMIT $HISTORY_SCAN", time + ws.map { "%$it%" })
+        }
+        if (found.isEmpty()) return found
+        // DK के जवाब से ठीक पहले वाला यूज़र सवाल भी (याद वाले सवाल का जवाब नतीजों में न आए)
+        val prev = found.filter { it.who == "d" }.map { it.id - 1 }.filter { p -> found.none { it.id == p } }.take(200)
+        if (prev.isEmpty()) return found
+        return found + readRows(d, "$cols WHERE id IN (${prev.joinToString(",")})", emptyArray())
     }
 
     /** स्क्रीन के लिए (नई पहले) */

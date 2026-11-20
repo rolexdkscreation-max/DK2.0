@@ -200,6 +200,14 @@ internal fun SettingsActivity.secVoice() {
         // 15 नवंबर 2026: इनकॉग्निटो (पहले "DK AI Plus" में) - चालू = न कुछ नया याद, न पुरानी याद पढ़ना (शुरू में बंद)
         switch(box, "इनकॉग्निटो मोड — इस दौरान DK न कुछ याद रखे, न पुरानी याददाश्त पढ़े", com.dk.assistant.plus.FeatureFlags.on(this, com.dk.assistant.plus.FeatureFlags.INCOGNITO))
             .setOnCheckedChangeListener { _, on -> com.dk.assistant.plus.FeatureFlags.set(this, com.dk.assistant.plus.FeatureFlags.INCOGNITO, on) }
+        // 20 नवंबर 2026 (मालिक): Gemini को सिर्फ़ नया सवाल - पुरानी बातचीत तभी जब पूछें (फ़ोन पर खोज). बंद = पहले जैसा
+        switch(box, "पुरानी बातचीत सिर्फ़ माँगने पर", Prefs.historyOnDemand(this))
+            .setOnCheckedChangeListener { _, on -> Prefs.setHistoryOnDemand(this, on) }
+        hint(box, "चालू (शुरू से): DK Live को हर बार सिर्फ़ आपका नया सवाल + ज़रूरी बातों की छोटी सूची जाती है - जवाब तेज़। \"कल मैंने क्या पूछा था\" जैसा पूछें तो DK फ़ोन में सेव बातचीत से ढूँढकर बताता है। बंद = पहले जैसा (पुरानी बातें भी साथ जाती हैं)। अगली बार Live जुड़ने पर लागू।")
+        // 20 नवंबर 2026 (मालिक: "Gemini को कम भेजो"): काम के नियम एक बार, स्वभाव वही. बंद = पहले वाले पूरे निर्देश
+        switch(box, "छोटे निर्देश (Gemini को कम भेजो)", Prefs.livePromptLite(this))
+            .setOnCheckedChangeListener { _, on -> Prefs.setLivePromptLite(this, on) }
+        hint(box, "चालू (शुरू से): DK के काम के नियम एक बार, बिना दोहराव के जाते हैं - स्वभाव, नाम और बोलने का अंदाज़ वही रहता है। हर बार कम token = जवाब तेज़। कुछ अलग लगे तो बंद करें = पहले वाले पूरे निर्देश। अगली बार Live जुड़ने पर लागू।")
         hint(box, "हर बातचीत हमेशा इसी फ़ोन में रहती है - अपने-आप कभी नहीं मिटती (ज़रूरी बातों का छोटा सार भी बनता है)। DK पूरी याद में से खोज सकता है। बोलकर भी कह सकते हैं: \"ये भूल जाओ\"। पासवर्ड और बैंक की बातें सेव नहीं होतीं।")
     }
 

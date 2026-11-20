@@ -54,7 +54,7 @@ class LiveSpareTest {
         assertTrue(g.contains("if (!goAway && LiveSpare.rotateNow(nowL - upAt, spareReady(), idleNow))"))
         assertTrue(g.contains("LiveSpare.waitAfterSwitch(seamless, wait)"))
         // standby वही बातचीत हो (resume), नई बातचीत वाला standby नहीं रखते
-        assertTrue(g.contains("if (spareWanted && !a.resume)"))
+        assertTrue(g.contains("if (spareWanted && !a.resume && !newChat)"))   // 20 नवंबर 2026: तरीका B वाली नई बातचीत ही चाहिए थी = रखो
         // पुराना नियम: सिर्फ़ DK बोलते समय वाला return हटा
         assertFalse(g.contains("if (!busy || stopped || parked != null || handle == null || curKeys.isEmpty()) return"))
     }

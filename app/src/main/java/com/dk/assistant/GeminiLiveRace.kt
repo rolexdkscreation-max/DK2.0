@@ -263,7 +263,8 @@ internal fun GeminiLive.onGoAway(timeLeft: String) {
 
 /** standby (दूसरा connection) उसी ताज़ा बातचीत से बना और ज़िंदा है? */
 internal fun GeminiLive.spareReady(): Boolean = parked?.let {
-    !it.closed.isCompleted && System.currentTimeMillis() - it.at < PARK_MS && it.resumedFrom != null && it.resumedFrom == handle
+    !it.closed.isCompleted && System.currentTimeMillis() - it.at < PARK_MS &&
+        (it.resumedFrom != null && it.resumedFrom == handle || it.fresh && freshRotate)   // 20 नवंबर 2026: तरीका B = नई बातचीत
 } == true
 
 /**
@@ -274,27 +275,32 @@ internal fun GeminiLive.prepareSpare(why: String, idle: Boolean, force: Boolean 
     val now = System.currentTimeMillis()
     val p = parked
     val alive = p != null && !p.closed.isCompleted && now - p.at < PARK_MS
-    val fresh = alive && p!!.resumedFrom != null && p.resumedFrom == handle
+    // 20 नवंबर 2026 ([HistoryOnDemand] तरीका B): freshRotate = दूसरा connection बिना handle (नई बातचीत) - पुराना handle नहीं चाहिए
+    val newChat = freshRotate
+    val fresh = alive && (if (newChat) p!!.fresh else p!!.resumedFrom != null && p.resumedFrom == handle)
     val stale = alive && !fresh
     // force (थामो और बदलो): पिछली तैयारी का 10s इंतज़ार नहीं - अभी के ताज़ा handle से (पुरानी दौड़ startRace में रुकती है)
-    if (force) { if (stopped || handle == null || curKeys.isEmpty() || fresh) return fresh }
+    if (force) { if (stopped || (handle == null && !newChat) || curKeys.isEmpty() || fresh) return fresh }
     else if (!LiveSpare.shouldPrepare(stopped, handle != null, curKeys.isNotEmpty(), fresh, stale, idle, now - spareTriedAt)) return false
     if (p != null) { parked = null; closeWs(p.ws, "standby पुराना (बातचीत आगे बढ़ी)") }
     val h = handle; val m = model; val k = keyIdx
     parkHandle = h; spareTriedAt = now; spareWanted = true
-    log("$why: पीछे से उसी बातचीत का दूसरा connection पहले से तैयार कर रहा हूँ (बिना रुकावट बदलेगा)")
-    return try { startRace(curKeys, listOf(m) + curModels.filter { it != m }, live = false, resumeId = LiveRace.Combo(m, k).id); true }
+    log(if (newChat) "$why: पीछे से नई (हल्की) बातचीत का connection पहले से तैयार कर रहा हूँ (बिना रुकावट बदलेगा)"
+        else "$why: पीछे से उसी बातचीत का दूसरा connection पहले से तैयार कर रहा हूँ (बिना रुकावट बदलेगा)")
+    return try { startRace(curKeys, listOf(m) + curModels.filter { it != m }, live = false, resumeId = if (newChat) null else LiveRace.Combo(m, k).id); true }
     catch (e: Exception) { spareWanted = false; log("$why: पीछे का connection शुरू नहीं हुआ: ${e.message}"); false }
 }
 
 /** दौड़ जीती पर run() इंतज़ार छोड़ चुका था - standby में रखो; अगली बार Live इसे तुरंत (0 ms) लेता है */
 internal fun GeminiLive.parkRaced(a: Attempt, w: WebSocket) {
     // पहले से तैयार किया दूसरा connection (prepareSpare) पुरानी बातचीत से नहीं जुड़ा = नई बातचीत होती (याद टूटती) - मत रखो
-    if (spareWanted && !a.resume) { spareWanted = false; closeWs(w, "standby: बातचीत वहीं से नहीं जुड़ी"); log("पीछे का connection नई बातचीत बनता - छोड़ा (अगली बार फिर)"); return }
+    // 20 नवंबर 2026 (तरीका B): freshRotate = नई बातचीत ही चाहिए थी - रखो
+    val newChat = spareWanted && freshRotate && !a.resume
+    if (spareWanted && !a.resume && !newChat) { spareWanted = false; closeWs(w, "standby: बातचीत वहीं से नहीं जुड़ी"); log("पीछे का connection नई बातचीत बनता - छोड़ा (अगली बार फिर)"); return }
     spareWanted = false
     parked?.let { old -> closeWs(old.ws, "standby बदला") }
     val p = Parked(w, a.closed, a.c.model, System.currentTimeMillis(), connSplit, a.text, connLiveVer, a.c.keyIdx,
-        resumedFrom = if (a.resume) parkHandle else null)
+        resumedFrom = if (a.resume || newChat) parkHandle else null, fresh = newChat)
     parked = p
     log("पीछे से Live तैयार [${a.c.label}] - standby में (DK चुप होते ही Live पर वापस)")
     svc.scope.launch {
@@ -307,7 +313,10 @@ internal fun GeminiLive.parkRaced(a: Attempt, w: WebSocket) {
 internal fun GeminiLive.sendContext(w: WebSocket?) {
     if (w == null || connResumed) return
     synchronized(ctxSent) { if (!ctxSent.add(w)) return }
-    val t = try { BrainManager(svc).liveMemoryContext(carriedFrom) } catch (e: Exception) { log("याद नहीं बनी: ${e.message}"); "" }
+    // 20 नवंबर 2026 ([HistoryOnDemand]): चालू = सिर्फ़ ज़रूरी बातों की छोटी सूची; बंद = पहले जैसा liveMemoryContext(carriedFrom)
+    val t = try { if (histOn) BrainManager(svc).liveCompactContext() else BrainManager(svc).liveMemoryContext(carriedFrom) }
+        catch (e: Exception) { log("याद नहीं बनी: ${e.message}"); "" }
+    if (histOn) log("इतिहास: Gemini को ज़रूरी बातें ${t.length} अक्षर (~${HistoryOnDemand.estimateTokens(t)} token) - पुरानी बातचीत नहीं")
     if (t.isBlank()) return
     val msg = JSONObject().put("clientContent", JSONObject()
         .put("turns", JSONArray().put(JSONObject().put("role", "user")

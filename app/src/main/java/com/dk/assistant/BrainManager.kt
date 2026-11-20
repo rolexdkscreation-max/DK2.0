@@ -920,6 +920,8 @@ class BrainManager(private val ctx: Context) {
      * याद (facts, दोस्त वाली बातें, पिछली खोज, लोकल याददाश्त) जुड़ने के बाद liveMemoryContext() से अलग भेजी जाती है.
      */
     fun liveSystemPrompt(withMemory: Boolean = true): String {
+        // 20 नवंबर 2026 (मालिक: "Gemini को कम भेजो"): Live setup (withMemory=false) + "छोटे निर्देश" चालू = वही नियम एक बार ([LivePromptLite])
+        if (!withMemory && Prefs.livePromptLite(ctx)) return liveLitePrompt()
         val name = Prefs.assistantName(ctx); val user = Prefs.userName(ctx); val persona = Prefs.personality(ctx)
         return buildString {
             append("You are $name, a smart, warm voice assistant on the user's Android phone, talking like a real person in a live voice call.")
@@ -979,6 +981,32 @@ class BrainManager(private val ctx: Context) {
         }
     }
 
+    /**
+     * 20 नवंबर 2026 ([LivePromptLite]): काम के सारे नियम एक बार (पहले कई बार, कुछ उलटे) + स्वभाव शब्दशः वही
+     * (IDENTITY, NAMES, करीबी दोस्त, दोस्त मोड, समय की फ़िक्र, DK PERSONALITY / JARVIS, गर्लफ्रेंड, SPEAKING STYLE, FINAL PERSONALITY, FRIDAY/VENOM).
+     * याद इसमें नहीं (वह जुड़ने के बाद अलग जाती है).
+     */
+    fun liveLitePrompt(): String {
+        val name = Prefs.assistantName(ctx); val user = Prefs.userName(ctx); val persona = Prefs.personality(ctx)
+        val f = dkFemale()
+        return buildString {
+            append("You are $name, a smart, warm voice assistant on the user's Android phone, talking like a real person in a live voice call.")
+            if (user.isNotBlank()) append(" The user's name is $user.")
+            append(personaLine(persona))
+            append(LivePromptLite.rules(f, Prefs.oneKeyOn(ctx)))
+            append("\n").append(AssistantBrand.IDENTITY_RULE).append("\n").append(NameRule.block(user, name))
+            append("\n" + NowClock.line())
+            append(TalkStyle.FRIEND_HI)   // मालिक का लिखा "करीबी दोस्त" हिस्सा (शब्दशः)
+            if (Prefs.friendMode(ctx)) append("\n").append(FriendStyle.persona(f, user))
+            append(CareTime.block())
+            if (JarvisMode.on(ctx)) append(JarvisMode.block(user)) else append(CalmPersona.block()).append(DkPersona.pick(ctx, GirlfriendPersona.block(user))).append(SpeakingStyle.block(user)).append(DkPersona.finalBlock(ctx, Prefs.userName(ctx)))
+            append(AssistantPersona.block(ctx))
+            if (Prefs.dkOnly(ctx)) append(DkOnly.PROMPT)
+            if (SideTalk.on(ctx)) append(SideTalk.PROMPT)
+            append(LivePromptLite.TAIL)
+        }
+    }
+
     /** v5.1: Live जुड़ने के बाद भेजी जाने वाली याद (वही हिस्से जो पहले setup में जाते थे) */
     fun liveMemoryContext(): String = liveMemoryContext(carriedFrom = 0L)
 
@@ -993,6 +1021,19 @@ class BrainManager(private val ctx: Context) {
         append(if (carriedFrom > 0L) LocalMemory.liveBlock(ctx, carriedFrom) else LocalMemory.liveBlock(ctx))
         // v3.151: लोकल याददाश्त बंद हो तब भी नया connection अभी की बातचीत न भूले
         if (!Prefs.localMemoryOn(ctx)) append(MsgDraft.recentBlock(MsgDraft.turnsFromState(), System.currentTimeMillis()))
+    }.trim()
+
+    /**
+     * 20 नवंबर 2026 ([HistoryOnDemand], "पुरानी बातचीत सिर्फ़ माँगने पर"): Live को सिर्फ़ ज़रूरी बातों की छोटी सूची
+     * (20 बातें / ~1500 अक्षर) - पुरानी बातचीत, दिनों का सार, दोस्त वाली पिछली मुलाकात नहीं (पूछने पर search_history).
+     */
+    fun liveCompactContext(): String = buildString {
+        if (!com.dk.assistant.plus.FeatureFlags.on(ctx, com.dk.assistant.plus.FeatureFlags.INCOGNITO)) {
+            val facts = if (Memory.personalOn(ctx)) Memory.facts(ctx) else emptyList()
+            val learned = try { LearnedWays.all(ctx).map { it.text } } catch (_: Exception) { emptyList() }
+            append(HistoryOnDemand.compactFacts(facts, learned))
+        }
+        append(LiveSearch.memoryBlock())
     }.trim()
 
     private fun buildSystemPrompt(): String {
