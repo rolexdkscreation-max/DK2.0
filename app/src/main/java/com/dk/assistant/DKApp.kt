@@ -37,6 +37,8 @@ class DKApp : Application() {
         kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.Default).launch {
             kotlinx.coroutines.delay(6_000)
             try { A11yWatch.check(this@DKApp, "ऐप शुरू") } catch (e: Exception) { Quiet.note(e) }
+            // 20 नवंबर 2026 (मालिक: पहली आवाज़ 8.5 s): ऑफ़लाइन आवाज़ चुनी है = ऐप खुलते ही मॉडल खोलकर गरम (पीछे के धागे पर)
+            try { com.dk.assistant.voice.engine.St3VoiceEngine.warmIfChosen(this@DKApp) } catch (e: Exception) { Quiet.note(e) }
             com.dk.assistant.voice.OwnerLevel.cleanupOldEngine(this@DKApp)   // 16 नवंबर 2026: पुराना CAM++ इंजन हटा - उसका ~28 MB मॉडल भी
             // 18 नवंबर 2026: लाइसेंस का स्तर (मुफ़्त / बेसिक / प्रीमियम / मालिक) सर्वर से ताज़ा - कौन सी सुविधा खुले ([Plan])
             if (com.dk.assistant.backend.BackendConfig.ready() && NetProbe.online(this@DKApp))
