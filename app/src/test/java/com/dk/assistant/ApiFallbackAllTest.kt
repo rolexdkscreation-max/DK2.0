@@ -56,7 +56,8 @@ class ApiFallbackAllTest {
     }
 
     @Test fun liveDeepThink_triesEveryApi() {
-        assertEquals(listOf("zai", "nvidia", "groq"), LiveTextBrain.order { "k" })
+        // 20 नवंबर 2026 (मालिक का नया क्रम): Groq → Z.ai → NVIDIA
+        assertEquals(listOf("groq", "zai", "nvidia"), LiveTextBrain.order { "k" })
         assertEquals(listOf("nvidia"), LiveTextBrain.order { if (it == "nvidia") "nvapi" else "" })
         assertTrue(LiveTextBrain.order { "" }.isEmpty())
         // पुराना pick() वही

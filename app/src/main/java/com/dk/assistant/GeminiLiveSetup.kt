@@ -122,7 +122,7 @@ internal fun GeminiLive.setupJson(m: String, txt: Boolean = connText, resume: Bo
             .put("description", "Get the exact current date, day and time (internet-checked clock, user's time zone). Call it whenever the user asks the time, date or day, or before saying how late/early it is - never guess.")
             .put("parameters", JSONObject().put("type", "OBJECT").put("properties", JSONObject())))
         .put(JSONObject().put("name", "deep_think")
-            .put("description", "Solve a genuinely HARD question with a much stronger reasoning model (multi-step maths, logic puzzles, code, detailed comparisons, planning, exam-level or deep why/how questions). Returns a carefully reasoned answer in Hindi to speak.")
+            .put("description", "Solve a genuinely HARD question with a much stronger reasoning model (multi-step maths, logic puzzles, code, detailed comparisons, planning, exam-level or deep why/how questions). Returns a carefully reasoned answer in Hindi to speak. NEVER for normal chat, greetings, हालचाल (how are you), feelings or emotional talk, jokes or simple facts - answer those yourself at once.")
             .put("parameters", JSONObject().put("type", "OBJECT")
                 .put("properties", JSONObject().put("question", JSONObject().put("type", "STRING").put("description", "The complete question with all details the user gave")))
                 .put("required", JSONArray().put("question"))))

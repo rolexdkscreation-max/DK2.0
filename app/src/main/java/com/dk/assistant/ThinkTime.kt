@@ -4,6 +4,8 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
+import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
 
 /**
@@ -28,5 +30,24 @@ object ThinkTime {
         if (ms <= 0L) return null
         val d = pool.async { block() }
         return withTimeoutOrNull(ms) { d.await() } ?: run { d.cancel(); null }
+    }
+
+    /**
+     * 20 नवंबर 2026 (मालिक: "तीनों API एक साथ, जो पहले जवाब दे वही लो"): [limits] जितने काम एक साथ, हर एक अपने समय तक.
+     * पहला non-null नतीजा (index, नतीजा) - बाकी उसी पल रद्द. सब null/फेल = null
+     */
+    suspend fun <T : Any> firstOf(limits: List<Long>, block: suspend (Int) -> T?): Pair<Int, T>? {
+        if (limits.isEmpty()) return null
+        val ch = Channel<Pair<Int, T?>>(limits.size)
+        val jobs = limits.mapIndexed { i, ms ->
+            pool.launch {
+                val r = try { within(ms) { block(i) } } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (e: Exception) { DKLog.d("firstOf: ${e.message?.take(60)}"); null }
+                ch.send(i to r)
+            }
+        }
+        try {
+            repeat(limits.size) { val (i, r) = ch.receive(); if (r != null) return i to r }
+            return null
+        } finally { jobs.forEach { it.cancel() } }
     }
 }

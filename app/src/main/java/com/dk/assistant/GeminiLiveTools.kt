@@ -585,7 +585,8 @@ internal fun GeminiLive.runTools(calls: JSONArray) {
                 // 14 नवंबर 2026 (मालिक: "DK Live बोलता है फोटो पढ़ने की क्षमता नहीं"): चैट में जोड़ी / गैलरी की ताज़ा फोटो देखो
                 "look_photo" -> LivePhoto.liveTool(svc, args.optString("question").ifBlank { DKState.lastUser.trimEnd('…') })
                 "current_time" -> { NowClock.syncAsync(); NowClock.toolAnswer() }
-                "deep_think" -> {
+                // 20 नवंबर 2026 (मालिक): हालचाल / भावनात्मक / आम बात पर गहरी सोच नहीं - Live खुद तुरंत बोले (देरी बचे)
+                "deep_think" -> if (LiveTextBrain.casual(args.optString("question"))) LiveTextBrain.CASUAL_NOTE.also { log("deep_think: आम बात - नहीं बुलाया") } else {
                     DKState.set(Mode.THINKING)
                     // 20 नवंबर 2026 (लॉग: 41 s रुकावट): पूरा tool ज़्यादा से ज़्यादा 12 s, हर कोशिश 8 s ([ThinkTime])
                     val thinkEnd = System.currentTimeMillis() + ThinkTime.TOTAL_MS
