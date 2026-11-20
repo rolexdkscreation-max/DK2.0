@@ -81,6 +81,16 @@ object LocalMemory {
                 DKLog.d("इतिहास: याददाश्त v$oldVersion → v2 - $n पुरानी बातें सुरक्षित (बैकअप + turns_backup_v1) और खोज (FTS) में भरीं")
             }
         }
+
+        /**
+         * 20 नवंबर 2026 (मालिक का 3.338 लॉग: "याददाश्त: सेव नहीं हुआ - Can't downgrade database from version 2 to 1"):
+         * जड़ - पुराने कोड वाला APK (DB v1) नए DB (v2) पर चढ़ा; Android का डिफ़ॉल्ट onDowngrade गलती फेंकता है = हर बात
+         * सेव होना बंद. अब: कुछ नहीं मिटता, कुछ नहीं बदलता - DB जैसा है वैसा खुलता है (v2 की टेबल v1 कोड के लिए भी ठीक,
+         * session कॉलम का डिफ़ॉल्ट '' है). [onUpgrade] दोबारा चले तो भी सुरक्षित (हर कदम IF NOT EXISTS / कॉलम जाँच).
+         */
+        override fun onDowngrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {
+            DKLog.d("इतिहास: याददाश्त v$oldVersion पर है, यह ऐप v$newVersion जानता है - कुछ नहीं मिटाया, वैसे ही खुली")
+        }
     }
 
     /** v1 वाली फ़ाइल को बदलने से पहले उसकी पूरी प्रति (main + -wal + -shm). एक ही बार */

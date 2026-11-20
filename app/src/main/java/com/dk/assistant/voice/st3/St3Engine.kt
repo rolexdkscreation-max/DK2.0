@@ -41,13 +41,34 @@ object St3Engine {
     @Volatile var benching = false
         private set
 
-    /** XNNPACK माँगा पर इस फ़ोन पर न खुले = सादा तरीका (आवाज़ बंद न हो) */
+    /** अभी खुला मॉडल तेज़ वाला ([St3Config.FAST]) */
+    @Volatile var openFast = false
+        private set
+
+    /**
+     * XNNPACK माँगा पर इस फ़ोन पर न खुले = सादा तरीका (आवाज़ बंद न हो).
+     * 20 नवंबर 2026: तेज़ मॉडल ([St3Store.fastOn]) पहले; वह इस फ़ोन पर खुले ही नहीं = याद रखो ([St3Store.setFastBad])
+     * और पुराना (अगर फ़ोन में है). कुछ नहीं मिटता.
+     */
     private fun openBest(c: Context, n: Int, xnn: Boolean): St3Synth {
+        val fast = St3Store.fastOn(c)
+        try {
+            return openFiles(St3Store.files(c, fast), n, xnn).also { openFast = fast }
+        } catch (e: Throwable) {
+            if (!fast) throw e
+            Quiet.note(e)
+            St3Store.setFastBad(c, true)
+            com.dk.assistant.DKLog.d("ऑफ़लाइन आवाज़: तेज़ मॉडल इस फ़ोन पर नहीं खुला (${e.message?.take(80)}) - पुराना मॉडल")
+            if (!St3Store.slowReady(c)) throw e
+        }
+        return openFiles(St3Store.files(c, false), n, xnn).also { openFast = false }
+    }
+    private fun openFiles(f: St3Synth.Files, n: Int, xnn: Boolean): St3Synth {
         if (xnn) {
-            try { return St3Synth.open(St3Store.files(c), n, xnn = true).also { openXnn = true } } catch (e: Throwable) { Quiet.note(e) }
+            try { return St3Synth.open(f, n, xnn = true).also { openXnn = true } } catch (e: Throwable) { Quiet.note(e) }
         }
         openXnn = false
-        return St3Synth.open(St3Store.files(c), n)
+        return St3Synth.open(f, n)
     }
 
     /** lock के अंदर: मॉडल + आवाज़ तैयार. null = ठीक, वरना हिंदी कारण */
@@ -55,6 +76,8 @@ object St3Engine {
         if (!St3Store.coreReady(c)) return "आवाज़ का मुख्य मॉडल अभी डाउनलोड नहीं हुआ"
         val vid = wantVoice?.takeIf { St3Store.voiceReady(c, it) } ?: St3Store.usableVoice(c)
             ?: return "कोई आवाज़ (आवाज़ 1-5) अभी डाउनलोड नहीं हुई"
+        // तेज़ मॉडल अभी-अभी डाउनलोड हुआ (या इस फ़ोन पर नहीं खुला) = अगली बार नया खोलो
+        if (synth != null && openFast != St3Store.fastOn(c)) releaseNow()
         return try {
             val s = synth ?: threads(c).let { n -> openBest(c, n, St3Store.xnn(c)).also { synth = it; openThreads = n; warmedUp = false } }
             if (style?.id != vid) {
@@ -126,7 +149,7 @@ object St3Engine {
                         val t0 = System.currentTimeMillis()
                         synth?.let { s -> style?.let { st -> s.synth(WARM_LINE, st, 2, 1.05f) } }
                         warmedUp = true
-                        com.dk.assistant.DKLog.d("ऑफ़लाइन आवाज़: मॉडल गरम (${openThreads} थ्रेड${if (openXnn) " XNN" else ""}, ${System.currentTimeMillis() - t0} ms, प्राथमिकता ${prio()})")
+                        com.dk.assistant.DKLog.d("ऑफ़लाइन आवाज़: मॉडल गरम (${if (openFast) "तेज़ मॉडल" else "पुराना मॉडल"}, ${openThreads} थ्रेड${if (openXnn) " XNN" else ""}, ${System.currentTimeMillis() - t0} ms, प्राथमिकता ${prio()})")
                     }
                 }
             } catch (e: Throwable) { Quiet.note(e) } finally { warming = false }

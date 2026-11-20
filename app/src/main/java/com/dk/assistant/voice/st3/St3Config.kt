@@ -59,6 +59,37 @@ object St3Config {
     /** इंजन (सारी आवाज़ों में एक ही) */
     val CORE: List<ModelCatalog.Asset> = listOf(DP, TEXT_ENC, VECTOR, VOCODER, CFG, INDEXER)
 
+    /**
+     * 20 नवंबर 2026 (मालिक का 3.338 लॉग: 5 कदम पर भी हर टुकड़ा अपनी आवाज़ का 160-350% समय लेता था = वाक्यों के बीच
+     * 3-6 s चुप्पी): Android फ़ोन के लिए तेज़ बनाया हुआ वही मॉडल - उसी Supertone commit ([COMMIT]) से. बदलाव:
+     * 1×1 Conv -> MatMul (सारे core इस्तेमाल हों, नतीजा bit-बराबर), आवाज़-ढाँचे (vector estimator) के MatMul int8,
+     * लहर (vocoder) fp32 ही (int8 पर शोर). उनका नाप: Exynos 850 पर 5 कदम RTF 3.0 -> 0.8. यहाँ जाँचा: input/output
+     * नाम वही (drop-in), Whisper वही वाक्य पढ़ता है, आवाज़-ढाँचा ~2.3× तेज़. License वही OpenRAIL-M.
+     * duration_predictor / tts.json / unicode_indexer.json वही पुराने ([DP], [CFG], [INDEXER]).
+     */
+    const val FAST_REPO = "AlexeyNe/supertonic-3-android-onnx"
+    const val FAST_COMMIT = "49100f077ce142d69cbf72c8800881dbbc106001"
+    const val FAST_BASE = "https://huggingface.co/$FAST_REPO/resolve/$FAST_COMMIT/"
+
+    private fun fast(id: String, title: String, sub: String, name: String, sha: String, bytes: Long) =
+        ModelCatalog.Asset(id, K, title, sub, "st3fast_$name", listOf(FAST_BASE + name), sha, bytes, LICENSE)
+
+    val TEXT_FAST = fast("st3fast_text", "तेज़ आवाज़: अक्षर समझ", "text -> अंक (Android के लिए तेज़)", "text_encoder.onnx",
+        "16ae0c53f37330120980fd8103e78f0a52cdc38909d75e15148f97093de462d0", 18_474_644L)
+    val VECTOR_FAST = fast("st3fast_vector", "तेज़ आवाज़: आवाज़ का ढाँचा", "सबसे भारी हिस्सा - Android के लिए ~2-4× तेज़", "vector_estimator.onnx",
+        "cf3d5993e3d736a6c53103a3c0b5112581c4a6f370696188854f26080232cca0", 80_449_124L)
+    val VOCODER_FAST = fast("st3fast_vocoder", "तेज़ आवाज़: आवाज़ की लहर", "ढाँचे -> असली आवाज़ (Android के लिए तेज़)", "vocoder.onnx",
+        "1f42e348929559624fd8c65a7553cc28d87525f79b935d78c86183c701aa293c", 50_819_161L)
+
+    /** तेज़ वाले तीन (पुराने [TEXT_ENC], [VECTOR], [VOCODER] की जगह) */
+    val FAST: List<ModelCatalog.Asset> = listOf(TEXT_FAST, VECTOR_FAST, VOCODER_FAST)
+    /** दोनों तरह में एक जैसे */
+    val SHARED: List<ModelCatalog.Asset> = listOf(DP, CFG, INDEXER)
+    /** पुराने (धीमे) वाले तीन */
+    val SLOW: List<ModelCatalog.Asset> = listOf(TEXT_ENC, VECTOR, VOCODER)
+    /** नए फ़ोन पर डाउनलोड: तेज़ वाला पूरा सेट (~150 MB, पुराना ~400 MB) */
+    val FAST_SET: List<ModelCatalog.Asset> = SHARED + FAST
+
     data class Voice(val id: String, val name: String, val asset: ModelCatalog.Asset)
 
     private fun v(id: String, name: String, sha: String, bytes: Long) =

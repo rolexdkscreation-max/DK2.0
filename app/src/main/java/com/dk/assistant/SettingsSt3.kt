@@ -72,14 +72,15 @@ internal fun SettingsActivity.secSt3() {
     val voiceViews = ArrayList<() -> Unit>()
 
     // ------------------------------------------------------------ 1. मुख्य मॉडल
-    card("1. मुख्य आवाज़-मॉडल (एक बार)", "करीब ${mbs(St3Config.coreBytes())} • सभी आवाज़ों के लिए एक ही", startOpen = true) { box ->
+    card("1. मुख्य आवाज़-मॉडल (एक बार)", "करीब ${mbs(St3Store.neededSet(this).sumOf { it.bytes })} • सभी आवाज़ों के लिए एक ही", startOpen = true) { box ->
         hint(box, "स्रोत: Hugging Face - ${St3Config.REPO} (तय संस्करण ${St3Config.COMMIT.take(7)}) • License ${St3Config.LICENSE}. फ़ोन की ऐप-स्टोरेज में रहता है, कभी भी हटा सकते हैं. रुका / नेट गया = जहाँ रुका वहीं से आगे; पूरा होने पर SHA-256 से जाँच.")
+        hint(box, "तेज़ मॉडल: उसी मॉडल का Android फ़ोन के लिए तेज़ बना रूप (${St3Config.FAST_REPO}, ${St3Config.FAST_COMMIT.take(7)}) - आवाज़ वही, बनना 2-4 गुना जल्दी. पुराना मॉडल फ़ोन में हो तो Wi-Fi पर यह अपने-आप आ जाता है; पुराना अपने-आप नहीं मिटता (\"हटाएँ\" से हटेगा).")
         val bar = ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal).apply { max = 100; visibility = View.GONE }
         box.addView(bar)
         val st = status(box)
         val retry = button("दोबारा कोशिश") { }.apply { visibility = View.GONE }
         fun show() {
-            val list = St3Config.CORE
+            val list = St3Store.neededSet(this)
             val states = list.map { ModelManager.state(it.id).value }
             val total = list.sumOf { it.bytes }
             val done = list.sumOf { a -> if (ModelManager.ready(this, a)) a.bytes else when (val s = ModelManager.state(a.id).value) {
@@ -88,7 +89,13 @@ internal fun SettingsActivity.secSt3() {
             val failed = states.filterIsInstance<ModelManager.St.Failed>().firstOrNull()
             retry.visibility = if (failed != null) View.VISIBLE else View.GONE
             when {
-                St3Store.coreReady(this) -> { bar.visibility = View.GONE; st.text = UiLang.s("✓ मुख्य मॉडल तैयार (जाँच सही)") }
+                St3Store.coreReady(this) -> { bar.visibility = View.GONE
+                    st.text = UiLang.s(when {
+                        St3Store.fastOn(this) -> "✓ मुख्य मॉडल तैयार - तेज़ मॉडल (जाँच सही)"
+                        St3Store.fastBad(this) -> "✓ मुख्य मॉडल तैयार - पुराना (तेज़ वाला इस फ़ोन पर नहीं खुला)"
+                        states.any { it is ModelManager.St.Running } -> "✓ पुराना मॉडल चल रहा है • तेज़ मॉडल डाउनलोड: $pct% (${mbs(done)} / ${mbs(total)})"
+                        else -> "✓ मुख्य मॉडल तैयार - पुराना (तेज़ वाला Wi-Fi पर अपने-आप आएगा, या \"डाउनलोड\" दबाएँ)"
+                    }) }
                 failed != null -> { bar.visibility = View.VISIBLE; bar.progress = pct
                     st.text = UiLang.s("✗ डाउनलोड नहीं हुआ (${failed.why}). इंटरनेट देखकर \"दोबारा कोशिश\" दबाएँ - जहाँ रुका वहीं से चलेगा.") }
                 states.any { it is ModelManager.St.Running } -> { bar.visibility = View.VISIBLE; bar.progress = pct
@@ -98,17 +105,17 @@ internal fun SettingsActivity.secSt3() {
             }
             voiceViews.forEach { it() }
         }
-        val dl = { startDl(St3Config.CORE, "मुख्य आवाज़-मॉडल") { m -> st.text = UiLang.s(m); retry.visibility = View.VISIBLE } }
+        val dl = { startDl(St3Store.neededSet(this), "मुख्य आवाज़-मॉडल") { m -> st.text = UiLang.s(m); retry.visibility = View.VISIBLE } }
         retry.setOnClickListener { dl() }
         row(box, button("डाउनलोड") { dl() }, button("रोकें") {
-            St3Config.CORE.forEach { ModelManager.pause(this, it) }; toast("डाउनलोड रोका - आधी फ़ाइल सुरक्षित")
+            (St3Config.CORE + St3Config.FAST).forEach { ModelManager.pause(this, it) }; toast("डाउनलोड रोका - आधी फ़ाइल सुरक्षित")
         }, button("हटाएँ") {
             lifecycleScope.launch { try { kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { St3Engine.release() } } catch (e: Exception) { Quiet.note(e) }
-                St3Config.CORE.forEach { ModelManager.delete(this@secSt3, it) }; toast("मुख्य मॉडल हटाया (जगह खाली)") }
+                (St3Config.CORE + St3Config.FAST).forEach { ModelManager.delete(this@secSt3, it) }; toast("मुख्य मॉडल हटाया (जगह खाली)") }
         })
         row(box, retry)
         show()
-        for (a in St3Config.CORE) st3Jobs.add(lifecycleScope.launch {
+        for (a in St3Config.CORE + St3Config.FAST) st3Jobs.add(lifecycleScope.launch {
             try { ModelManager.state(a.id).collectLatest { show() } } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (e: Exception) { Quiet.note(e) }
         })
     }
