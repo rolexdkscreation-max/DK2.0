@@ -83,7 +83,13 @@ object St3Engine {
         // तेज़ मॉडल अभी-अभी डाउनलोड हुआ (या इस फ़ोन पर नहीं खुला) = अगली बार नया खोलो
         if (synth != null && openFast != St3Store.fastOn(c)) releaseNow()
         return try {
-            val s = synth ?: threads(c).let { n -> openBest(c, n, St3Store.xnn(c)).also { synth = it; openThreads = n; warmedUp = false } }
+            // 20 नवंबर 2026 (मालिक: गर्म फ़ोन पर आवाज़ बनने में बजने से ज़्यादा समय): गर्म = कम थ्रेड; सिर्फ़ नए जवाब की शुरुआत में दोबारा खोलो
+            val want = St3Load.threadsFor(threads(c), St3Load.heatStatus)
+            if (synth != null && openThreads != want && St3Load.freshAnswer) {
+                com.dk.assistant.DKLog.d("ऑफ़लाइन आवाज़: फ़ोन ${St3Load.heatName(St3Load.heatStatus)} - थ्रेड $openThreads -> $want")
+                releaseNow()
+            }
+            val s = synth ?: want.let { n -> openBest(c, n, St3Store.xnn(c)).also { synth = it; openThreads = n; warmedUp = false } }
             if (style?.id != vid) {
                 style?.close(); style = null
                 val f = com.dk.assistant.plus.models.ModelManager.file(c, St3Config.castVoice(vid).asset)
