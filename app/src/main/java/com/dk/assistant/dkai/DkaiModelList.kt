@@ -39,7 +39,8 @@ object DkaiModelList {
     /** बंद / दूसरे मॉडल पर भेजे जा चुके (दिखाने का फ़ायदा नहीं): 3.5 Flash अब Google खुद 3.6 Flash पर भेजता है */
     val GONE_GEMINI = setOf("gemini-3.5-flash")
 
-    const val MAX_AGE_MS = 6L * 60 * 60 * 1000
+    /** 20 नवंबर 2026 (मालिक): सूची हर 24 घंटे में ताज़ा (या Settings → AI दिमाग → "मॉडल लिस्ट अभी ताज़ा करें") */
+    const val MAX_AGE_MS = 24L * 60 * 60 * 1000
     private fun atPref(id: String) = "models_at_$id"
 
     private fun norm(m: String) = m.trim().removePrefix("models/").lowercase(Locale.ROOT)
@@ -97,12 +98,12 @@ object DkaiModelList {
      * शीट खुलते ही (पीछे से): जिन कंपनियों की key है और सूची 6 घंटे से पुरानी - उनकी सूची कंपनी से ताज़ा मँगाओ.
      * true = कोई सूची बदली (शीट फिर से बनाओ). गलती हो तो चुपचाप पुरानी सूची ही रहती है - कुछ नहीं टूटता.
      */
-    suspend fun refreshStale(c: Context, now: Long = System.currentTimeMillis()): Boolean = withContext(Dispatchers.IO) {
+    suspend fun refreshStale(c: Context, now: Long = System.currentTimeMillis(), force: Boolean = false): Boolean = withContext(Dispatchers.IO) {
         var changed = false
         for (id in listOf("gemini") + OTHER_PROVIDERS) {
             val p = Providers.byId(id) ?: continue
             val key = keyFor(c, id)
-            if (key.isBlank() || !isStale(Prefs.long(c, atPref(id), 0L), now)) continue
+            if (key.isBlank() || (!force && !isStale(Prefs.long(c, atPref(id), 0L), now))) continue
             try {
                 val list = ModelLister.fetch(p, key, Prefs.baseUrl(c, id))
                 if (list.isEmpty()) continue
@@ -118,4 +119,88 @@ object DkaiModelList {
         }
         changed
     }
+
+    // ================================================================== 20 नवंबर 2026: चिप की पूरी लिस्ट ([ModelCatalog])
+    private fun catPref(id: String) = "catalog_$id"
+    private fun catAtPref(id: String) = "catalog_at_$id"
+    private fun tierPref(id: String) = "key_tier_$id"
+    /** tier किस key का है (आख़िरी 6 अक्षर) - key बदली = फिर से जाँच */
+    private fun tierKeyPref(id: String) = "key_tier_key_$id"
+
+    /** चिप की लिस्ट में जिन कंपनियों के मॉडल आ सकते हैं (key हो तब) */
+    val CATALOG_PROVIDERS = listOf("gemini") + OTHER_PROVIDERS + listOf("anthropic", "openai", "deepseek")
+
+    /** इन कंपनियों की key ऐप में सेव है (Gemini: एक-key / चैट / DK लाइव; मज़बूत मॉडल वाली key भी) */
+    fun keyedProviders(c: Context): List<String> = CATALOG_PROVIDERS.filter { id ->
+        when {
+            id == "gemini" -> DkaiSheets.hasKey(c, id)
+            Providers.byId(id) != null -> DkaiSheets.hasKey(c, id)
+            else -> !Prefs.oneKeyOn(c) && SelectedModel.strong(c)?.provider?.id == id
+        }
+    }
+
+    private fun providerOf(c: Context, id: String): com.dk.assistant.Provider? =
+        Providers.byId(id) ?: SelectedModel.strong(c)?.provider?.takeIf { it.id == id }
+
+    fun catalog(c: Context, id: String): List<ModelCatalog.Meta> = ModelCatalog.decode(Prefs.str(c, catPref(id), ""))
+
+    /** key का tier: Gemini में "मेरी key paid है" चालू = PAID; Groq/NVIDIA = सब मॉडल एक जैसे (PAID); मज़बूत (Claude...) = PAID */
+    fun tier(c: Context, id: String): ModelCatalog.Tier {
+        if (id == "gemini" && Prefs.bool(c, DkaiKit.PREF_GEMINI_PAID, false)) return ModelCatalog.Tier.PAID
+        if (id == "groq" || id == "nvidia" || id in listOf("anthropic", "openai", "deepseek")) return ModelCatalog.Tier.PAID
+        val key = SelectedModel.keyFor(c, id)
+        if (Prefs.str(c, tierKeyPref(id), "") != key.takeLast(6)) return ModelCatalog.Tier.UNKNOWN
+        return ModelCatalog.tierOf(Prefs.str(c, tierPref(id), ""))
+    }
+
+    /** चिप की लिस्ट (group, सबसे नया ऊपर) - cache से; अभी cache नहीं = जाने-माने मॉडल */
+    fun groups(c: Context): List<ModelCatalog.Group> = ModelCatalog.build(
+        providers = keyedProviders(c), tier = { tier(c, it) },
+        lists = { id -> catalog(c, id).ifEmpty { Prefs.models(c, id).map { ModelCatalog.Meta(it) } } },
+        fallback = { id -> Providers.fallbackModels(id).ifEmpty { if (id == "gemini") KNOWN_FREE_GEMINI + DkaiKit.MODEL_CARDS.mapNotNull { it.model } else listOfNotNull(SelectedModel.strong(c)?.takeIf { s -> s.provider.id == id }?.model) } },
+        name = { m -> com.dk.assistant.ModelNames.label(m.id, m.name.ifBlank { ModelLister.names[m.id] }) })
+
+    /**
+     * हर कंपनी (जिसकी key है) की लाइव सूची + key का tier. [force] = Settings का refresh बटन (24 घंटे का इंतज़ार नहीं).
+     * true = कुछ बदला. गलती = पुरानी सूची ही रहती है, 1 घंटे बाद फिर कोशिश.
+     */
+    suspend fun refreshCatalog(c: Context, force: Boolean = false, now: Long = System.currentTimeMillis()): Boolean = withContext(Dispatchers.IO) {
+        var changed = false
+        for (id in keyedProviders(c)) {
+            val p = providerOf(c, id) ?: continue
+            val key = SelectedModel.keyFor(c, id)
+            if (key.isBlank() || (!force && !isStale(Prefs.long(c, catAtPref(id), 0L), now))) continue
+            try {
+                val base = if (p.isGemini) "" else Prefs.baseUrl(c, id).ifBlank { p.baseUrl }
+                val list = ModelLister.catalog(p, key, base)
+                if (list.isEmpty()) continue
+                val old = Prefs.str(c, catPref(id), "")
+                val enc = ModelCatalog.encode(list)
+                Prefs.edit(c) { putString(catPref(id), enc); putLong(catAtPref(id), now) }
+                if (old != enc) { changed = true; DKLog.d("चिप: मॉडल सूची ताज़ा $id (${list.size})") }
+                val t = detectTier(id, key, list)
+                if (t != null) Prefs.edit(c) { putString(tierPref(id), ModelCatalog.tierName(t)); putString(tierKeyPref(id), key.takeLast(6)) }
+            } catch (e: kotlinx.coroutines.CancellationException) { throw e
+            } catch (e: Exception) {
+                Prefs.edit(c) { putLong(catAtPref(id), now - MAX_AGE_MS + 60L * 60 * 1000) }
+                DKLog.d("चिप: मॉडल सूची ($id) नहीं मिली: ${e.message?.take(60)}")
+            }
+        }
+        // पुरानी (होम/कोडिंग) सूची भी उसी समय
+        try { if (refreshStale(c, now, force)) changed = true } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (e: Exception) { DKLog.d("सूची: ${e.message?.take(60)}") }
+        changed
+    }
+
+    /** key का tier पता करो. null = नहीं जाँचा (पहले जैसा रहे) */
+    private fun detectTier(id: String, key: String, list: List<ModelCatalog.Meta>): ModelCatalog.Tier? = try {
+        when (id) {
+            "openrouter" -> ModelCatalog.openRouterTier(ModelLister.openRouterKeyInfo(key))
+            "gemini" -> {
+                // paid मॉडल (Pro) पर 1 token: free key = 429 "limit: 0"
+                val pro = list.map { it.id }.firstOrNull { m -> !m.contains("live") && !m.contains("audio") && m.startsWith("gemini-") && m.contains("pro") && !DkaiKit.isFreeModel("gemini", m) }
+                if (pro == null) null else ModelLister.geminiProbe(key, pro).let { (code, body) -> ModelCatalog.geminiProbe(code, body) }
+            }
+            else -> null
+        }
+    } catch (e: Exception) { DKLog.d("tier ($id): ${e.message?.take(60)}"); null }
 }

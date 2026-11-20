@@ -26,9 +26,9 @@ object DkaiPick {
     /** होम के मॉडल शीट से मॉडल चुना गया (तब चुना मॉडल हर काम में पहले) */
     const val PREF = "dkai_model_picked"
 
-    fun choose(c: Context, provider: String, model: String) = Prefs.edit(c) {
-        putString("active_provider", provider); putString("model_$provider", model); putBoolean(PREF, true)
-    }
+    /** 20 नवंबर 2026: अब [SelectedModel] (DataStore + एक केंद्रीय selectedModel) में; पुराने Prefs भी वही लिखता है */
+    fun choose(c: Context, provider: String, model: String, voice: Boolean = ModelCaps.supportsVoice(provider, model)) =
+        SelectedModel.set(c, SelectedModel.Choice(provider, model, voice))
 
     fun on(c: Context) = Prefs.bool(c, PREF, false)
 
@@ -38,7 +38,7 @@ object DkaiPick {
         return a + rest
     }
 
-    /** मॉडल/कंपनी का नाम सामने नहीं - गलती सिर्फ़ log में */
+    /** गलती log में (चुना मॉडल फेल हो तो उसका छोटा संदेश [SelectedModel.failed] पहले ही दिखा चुका) */
     private fun quiet(where: String, e: Exception) = DKLog.d("$where: ${e.message?.take(100)}")
 
     /**

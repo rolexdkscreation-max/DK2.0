@@ -425,6 +425,8 @@ class OpenAiCompatClient(
     var backups: List<String> = emptyList()
     /** नवंबर 2026: Settings → AI दिमाग का "सोचने का स्तर" ([ThinkLevel]). AUTO = पहले जैसा */
     var think: String = ThinkLevel.AUTO
+    /** 20 नवंबर 2026 (चिप में OpenAI के नए मॉडल): जवाब की लंबाई वाला field ([Provider.tokenField]) */
+    var tokenField: String = "max_tokens"
     @Volatile var usedModel: String = model
         private set
 
@@ -513,7 +515,7 @@ class OpenAiCompatClient(
         val msgs = JSONArray().put(JSONObject().put("role", "system").put("content", Lang.sys(system)))
         history.filter { it.text.isNotBlank() }.forEach { msgs.put(JSONObject().put("role", if (it.role == "user") "user" else "assistant").put("content", it.text)) }
         msgs.put(JSONObject().put("role", "user").put("content", prompt))
-        val body = JSONObject().put("model", model).put("messages", msgs).put("stream", true).put("max_tokens", 900 + ThinkLevel.extraTokens(think))
+        val body = JSONObject().put("model", model).put("messages", msgs).put("stream", true).put(tokenField, 900 + ThinkLevel.extraTokens(think))
         val thought = ThinkLevel.applyOpenAi(body, baseUrl, model, think, "low")
         fun req() = Request.Builder()
             .url(baseUrl.trimEnd('/') + "/chat/completions")

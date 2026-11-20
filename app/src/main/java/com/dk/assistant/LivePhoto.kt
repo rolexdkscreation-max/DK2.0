@@ -57,7 +57,7 @@ object LivePhoto {
         val keys = (Prefs.liveGeminiKeys(c) + Prefs.key(c, "gemini")).filter { it.isNotBlank() }.distinct()
         if (keys.isEmpty()) return@withContext "PHOTO FOUND but no Gemini key is saved for vision. Tell the user to add a Gemini key in Settings."
         DKLog.d("फोटो देखना: ${if (src == From.CHAT) "चैट में जोड़ी फोटो" else "गैलरी की नई फोटो"}")
-        val ans = ScreenLook.vision(keys, prompt(question, src), img)
+        val ans = ScreenLook.vision(keys, prompt(question, src), img, c)
             ?: return@withContext "COULD NOT SEE: the vision model did not answer. Tell the user honestly and ask him to try again."
         "PHOTO SEEN JUST NOW (" + (if (src == From.CHAT) "photo attached in chat" else "newest gallery photo") + "). Tell the user exactly this, briefly, in his language:\n" + ans
     }

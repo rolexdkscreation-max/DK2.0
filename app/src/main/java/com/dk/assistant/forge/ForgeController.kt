@@ -192,8 +192,13 @@ object ForgeController {
             // 14 नवंबर 2026 (मालिक): AI दिमाग में खुद चुना मॉडल = सिर्फ़ वही; न चुना = वेबसाइट की keys, फिर बाकी डली Gemini keys
             val pin = com.dk.assistant.BrainPin.resolve(c, com.dk.assistant.BrainPin.SITE)
             val fr = if (pin != null) WebsiteForgeClient.streamPinned(pin.key, pin.model, prompt) { t -> synchronized(partial) { partial.append(t) }; emit(false) }
-            else WebsiteForgeClient.streamKeys(Prefs.forgeKeys(c).ifEmpty { listOf(key) } + com.dk.assistant.BrainPin.spareGemini(c, Prefs.forgeKeys(c) + key), Prefs.forgeModelToUse(c), prompt,
-                onModel = { m -> rememberModel(c, m) }) { t -> synchronized(partial) { partial.append(t) }; emit(false) }
+            else {
+                // 20 नवंबर 2026 (मालिक): चिप का चुना Gemini मॉडल पहले; न चला (दूसरा लगा) = बताओ. दूसरी कंपनी का = एक बार बताओ कि वेबसाइट Gemini से
+                val chip = com.dk.assistant.dkai.SelectedModel.geminiText(c)
+                if (chip == null) com.dk.assistant.dkai.SelectedModel.geminiOrder(c, "वेबसाइट बनाना", emptyList())
+                WebsiteForgeClient.streamKeys(Prefs.forgeKeys(c).ifEmpty { listOf(key) } + com.dk.assistant.BrainPin.spareGemini(c, Prefs.forgeKeys(c) + key), chip ?: Prefs.forgeModelToUse(c), prompt,
+                    onModel = { m -> if (chip == null) rememberModel(c, m) else com.dk.assistant.dkai.SelectedModel.usedInstead(c, chip, m) }) { t -> synchronized(partial) { partial.append(t) }; emit(false) }
+            }
             return partialHtml() to fr
         }
 

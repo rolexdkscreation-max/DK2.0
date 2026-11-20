@@ -393,11 +393,15 @@ object InsightsAgent {
         }
     }
 
+    /** चिप में दूसरी कंपनी (Groq / OpenRouter ...) का मॉडल चुना है और उसकी key भी है */
+    private fun chipOther(svc: DKAccessibilityService): Boolean = com.dk.assistant.dkai.SelectedModel.resolve(svc)?.provider?.isGemini == false
+
     private suspend fun stepBrain(svc: DKAccessibilityService, prompt: String): String? {
         // फटाफट: स्क्रीन के text में ही नंबर हों तो स्क्रीनशॉट नहीं (चार्ट/तस्वीर वाली स्क्रीन पर ही)
         val shot = if (canShot(svc) && InsightsSpeed.wantShot(prompt)) try { svc.screenshotBase64() } catch (_: Exception) { null } else null
-        geminiKey(svc)?.let { key ->
-            withContext(Dispatchers.IO) { gemini(key, prompt, shot, json = true, maxTokens = InsightsSpeed.STEP_TOKENS, models = OneKeyLanes.order(OneKeyLanes.Lane.HEAVY, (listOf(GeminiModels.CODER) + GeminiModels.CODER_CHAIN).distinct()), fast = stepHttp) }?.let { return it }
+        // 20 नवंबर 2026: चिप में दूसरी कंपनी का मॉडल (उसकी key भी) = सीधे वही ([BrainManager.teach] में चिप पहले); Gemini का चुना = वही पहले
+        (if (chipOther(svc)) null else geminiKey(svc))?.let { key ->
+            withContext(Dispatchers.IO) { gemini(key, prompt, shot, json = true, maxTokens = InsightsSpeed.STEP_TOKENS, models = com.dk.assistant.dkai.SelectedModel.firstOf(com.dk.assistant.dkai.SelectedModel.geminiText(svc), OneKeyLanes.order(OneKeyLanes.Lane.HEAVY, (listOf(GeminiModels.CODER) + GeminiModels.CODER_CHAIN).distinct())), fast = stepHttp, chip = svc) }?.let { return it }
         }
         // Gemini key नहीं = जो दिमाग़ (Groq / OpenRouter …) लगा है, उसी से
         return try { BrainManager(svc).teach("Reply with ONLY one JSON object.", prompt, shot) } catch (e: Exception) { DKLog.d("सोशल रिव्यू AI: ${e.message?.take(80)}"); null }
@@ -407,8 +411,8 @@ object InsightsAgent {
         // नवंबर 2026 (फटाफट): रिपोर्ट का AI ज़्यादा से ज़्यादा REPORT_WAIT_MS - देर = अटकी कॉल काटो, DK की अपनी (बिना AI) सच्ची रिपोर्ट
         reportCut = false
         val job = svc.scope.async(Dispatchers.IO) {
-            geminiKey(svc)?.let { key ->
-                gemini(key, prompt, null, json = false, maxTokens = InsightsSpeed.REPORT_TOKENS, models = OneKeyLanes.order(OneKeyLanes.Lane.HEAVY, InsightsSpeed.reportModels(GeminiModels.LIGHT_CHAIN, GeminiModels.CODER_CHAIN)), fast = reportHttp)
+            (if (chipOther(svc)) null else geminiKey(svc))?.let { key ->
+                gemini(key, prompt, null, json = false, maxTokens = InsightsSpeed.REPORT_TOKENS, models = com.dk.assistant.dkai.SelectedModel.firstOf(com.dk.assistant.dkai.SelectedModel.geminiText(svc), OneKeyLanes.order(OneKeyLanes.Lane.HEAVY, InsightsSpeed.reportModels(GeminiModels.LIGHT_CHAIN, GeminiModels.CODER_CHAIN))), fast = reportHttp, chip = svc)
             } ?: try { BrainManager(svc).teach("You write clear Hindi social media analytics reports.", prompt, null) } catch (e: Exception) { DKLog.d("रिपोर्ट AI: ${e.message?.take(80)}"); null }
         }
         val r = withTimeoutOrNull(InsightsSpeed.REPORT_WAIT_MS) { job.await() }
@@ -432,13 +436,16 @@ object InsightsAgent {
     /** इस मॉडल ने thinkingConfig नहीं लिया - उसे बिना भेजो */
     private val noThink = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
 
-    private fun gemini(key: String, ask: String, jpegB64: String?, json: Boolean, maxTokens: Int, models: List<String>, fast: okhttp3.OkHttpClient? = null): String? {
+    /** [chip] = फ़ोन का context: चिप का चुना Gemini मॉडल पहले ही रहे (पिछली बार चला मॉडल उससे आगे नहीं), फेल हो तो संदेश */
+    private fun gemini(key: String, ask: String, jpegB64: String?, json: Boolean, maxTokens: Int, models: List<String>, fast: okhttp3.OkHttpClient? = null,
+                       chip: android.content.Context? = null): String? {
+        val keepFirst = chip != null && com.dk.assistant.dkai.SelectedModel.geminiText(chip) != null
         val parts = JSONArray().put(JSONObject().put("text", ask))
         if (jpegB64 != null) parts.put(JSONObject().put("inline_data", JSONObject().put("mime_type", "image/jpeg").put("data", jpegB64)))
         val cfg = JSONObject().put("maxOutputTokens", maxTokens).put("temperature", if (json) 0.1 else 0.5)
         if (json) cfg.put("responseMimeType", "application/json")
         val client = fast ?: http
-        for (m in InsightsSpeed.order(models, if (json) okStep else okReport)) {
+        for (m in if (keepFirst) models else InsightsSpeed.order(models, if (json) okStep else okReport)) {
             if (!json && reportCut) return null   // रिपोर्ट का समय ख़त्म - अगला मॉडल नहीं
             try {
                 // फटाफट: Gemini 3 की "सोच" कम (कदम = minimal, रिपोर्ट = low)
@@ -453,12 +460,14 @@ object InsightsAgent {
                     if (!r.isSuccessful) {
                         val err = r.body?.string().orEmpty()
                         if (GeminiModels.thinkingRejected(r.code, err, gc.has("thinkingConfig"))) { noThink += m; rejected = true }
-                        DKLog.d("सोशल रिव्यू Gemini $m: HTTP ${r.code}"); null
+                        DKLog.d("सोशल रिव्यू Gemini $m: HTTP ${r.code}")
+                        if (!rejected) chip?.let { com.dk.assistant.dkai.SelectedModel.failedIf(it, m, com.dk.assistant.AiException(r.code, err.take(300))) }
+                        null
                     }
                     else JSONObject(r.body?.string().orEmpty()).optJSONArray("candidates")?.optJSONObject(0)
                         ?.optJSONObject("content")?.optJSONArray("parts")?.let { p -> (0 until p.length()).joinToString("") { p.optJSONObject(it)?.takeIf { o -> !o.optBoolean("thought") }?.optString("text").orEmpty() } }
                 }
-                if (rejected) return gemini(key, ask, jpegB64, json, maxTokens, listOf(m) + models.filter { it != m }, fast)
+                if (rejected) return gemini(key, ask, jpegB64, json, maxTokens, listOf(m) + models.filter { it != m }, fast, chip)
                 if (!txt.isNullOrBlank()) { if (json) okStep = m else okReport = m; return txt.trim() }
             } catch (e: Exception) { DKLog.d("सोशल रिव्यू Gemini $m: ${e.javaClass.simpleName}") }
         }

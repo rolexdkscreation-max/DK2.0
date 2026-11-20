@@ -24,6 +24,12 @@ object TalkPrefs {
     const val SILENCE_MAX = 1500L
 
     fun split(c: Context): Boolean = Prefs.str(c, MODE, MODE_LIVE) == MODE_SPLIT
+
+    /**
+     * 20 नवंबर 2026 (मालिक - वॉइस का नियम): अलग-अलग तरीका (सुनना -> सोचना -> TTS) चाहिए? Settings में "अलग-अलग" चुना,
+     * या चिप में ऐसा मॉडल चुना जो खुद आवाज़ में नहीं बोलता (supportsVoice = false) - तब वही मॉडल जवाब लिखे और मौजूदा TTS बोले.
+     */
+    fun wanted(c: Context): Boolean = split(c) || com.dk.assistant.dkai.SelectedModel.textVoice(c)
     fun stt(c: Context): String = Prefs.str(c, STT, STT_WHISPER).let { if (it == STT_ANDROID) STT_ANDROID else STT_WHISPER }
     fun silenceMs(c: Context): Long = clampSilence(Prefs.long(c, SILENCE, SILENCE_DEF))
     fun fullAccuracy(c: Context): Boolean = Prefs.bool(c, FULL, false)

@@ -11,6 +11,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
+import com.dk.assistant.dkai.SelectedModel
 
 /** Saari keys fail - har key ka kaaran */
 class AllFailedException(val errors: List<Pair<Provider, Exception>>) : java.io.IOException("all failed")
@@ -53,6 +54,61 @@ class BrainManager(private val ctx: Context) {
         if (scope == ApiScopes.CHAT && ApiScopes.oneKeySkip(Prefs.oneKeyOn(ctx), p.id)) return null
         // मालिक: "जो भी key डाली है सब पर fallback" - चैट में इस कंपनी की key नहीं तो AI दिमाग में कहीं और डली उसी कंपनी की
         return scopedClient(ctx, p, scope) ?: if (pin && scope == ApiScopes.CHAT) BrainPin.borrowed(ctx, p) else null
+    }
+
+    /** चिप का चुना मॉडल: कंपनी + उसका अकेला client (अंदर के बैकअप मॉडल नहीं) + मॉडल का नाम */
+    private class Chip(val p: Provider, val client: AiClient, val model: String)
+
+    /**
+     * 20 नवंबर 2026 (मालिक: "चिप में चुना मॉडल हर दिमाग के काम में चले"): [SelectedModel] का मॉडल सबसे पहले.
+     * Auto / कुछ नहीं चुना / उस कंपनी की key नहीं / ऑटोनोमस काम चल रहा = null (पुरानी routing वैसी ही).
+     * अकेला मॉडल (बैकअप बंद) - फेल हो तो [chipFailed] साफ़ बताता है, फिर पुराना fallback चलता है. सोचने का स्तर वही (Settings वाला).
+     */
+    private fun chipPick(): Chip? {
+        if (override != null) return null
+        val r = SelectedModel.resolve(ctx) ?: return null
+        if (ApiScopes.oneKeySkip(Prefs.oneKeyOn(ctx), r.provider.id) && Providers.byId(r.provider.id) != null) return null
+        val think = ThinkLevel.get(ctx, ApiScopes.CHAT)
+        val cl: AiClient = if (r.provider.isGemini) GeminiClient(r.key, r.model).apply { only = true; backups = emptyList(); this.think = think }
+            else OpenAiCompatClient(r.provider.name, r.base, r.key, r.model).apply { backups = emptyList(); this.think = think; tokenField = r.provider.tokenField }
+        return Chip(r.provider, cl, r.model)
+    }
+
+    /** चुना मॉडल फेल: health में दर्ज + यूज़र को छोटा संदेश (नियम: चुपचाप दूसरा मॉडल नहीं) */
+    private fun chipFailed(ch: Chip, e: Exception, next: String?) {
+        if (Providers.byId(ch.p.id) != null) ProviderHealth.fail(ch.p.id, e)
+        SelectedModel.failed(ctx, ch.model, e, next)
+    }
+
+    /** छोटे काम (एक सवाल, बिना इतिहास): चुना मॉडल पहले. null = Auto या फेल (फेल = बता दिया) */
+    private fun chipText(system: String, prompt: String, onText: ((String) -> Unit)?): String? {
+        val ch = chipPick() ?: return null
+        return try {
+            val sb = StringBuilder(); onText?.invoke("")
+            ch.client.stream(system, emptyList(), prompt) { d -> sb.append(d); onText?.invoke(sb.toString()) }
+                .takeIf { it.isNotBlank() }?.also { onText?.invoke(it); lastUsed = ch.client.label }
+                ?: throw AiException(0, "khali jawab")
+        } catch (e: kotlinx.coroutines.CancellationException) { throw e
+        } catch (e: Exception) { chipFailed(ch, e, null); null }
+    }
+
+    /** सिर्फ़ चिप का चुना मॉडल (एक सवाल). null = Auto / फेल (फेल = यूज़र को बता दिया) - DK लाइव की गहरी सोच जैसे काम */
+    suspend fun chipAsk(system: String, prompt: String): String? = withContext(Dispatchers.IO) { chipText(system, prompt, null) }
+
+    /** एक जवाब (इतिहास के साथ): चुना मॉडल पहले. फ़ोटो हो और मॉडल फ़ोटो न समझे = फ़ोटो के बिना. null = Auto या फेल */
+    private fun chipComplete(system: String, hist: List<Turn>, prompt: String, imageB64: String?): String? {
+        val ch = chipPick() ?: return null
+        val img = if (ch.p.vision) imageB64 else null
+        return try {
+            val answer = try { ch.client.complete(system, hist, prompt, img) } catch (e: AiException) {
+                if (img != null && e.code == 400) ch.client.complete(system, hist, prompt, null) else throw e
+            }
+            if (answer.isBlank()) throw AiException(0, "khali jawab")
+            lastUsed = ch.client.label
+            DKLog.d("AI (चिप का चुना): ${ch.client.label}")
+            answer
+        } catch (e: kotlinx.coroutines.CancellationException) { throw e
+        } catch (e: Exception) { chipFailed(ch, e, null); null }
     }
 
     /**
@@ -166,7 +222,9 @@ class BrainManager(private val ctx: Context) {
                 Turn("model", try { JSONObject(t.text).optString("say").ifBlank { "(phone par kaam kiya)" } } catch (_: Exception) { t.text })
             else t
         }
-        val cands = (rankedForChat().mapNotNull { p -> clientFor(p)?.let { p to it } } + chatSpares()).map { (p, c) ->
+        // 20 नवंबर 2026: चिप का चुना मॉडल सबसे पहले (अकेला); न चले = बताकर नीचे वाली पुरानी सूची
+        val chip = chipPick()
+        val cands = listOfNotNull(chip?.let { it.p to it.client }) + (rankedForChat().mapNotNull { p -> clientFor(p)?.let { p to it } } + chatSpares()).map { (p, c) ->
             if (c is GeminiClient) { c.fast = true; c.groundChat = true; c.lane = OneKeyLanes.Lane.TALK }     // 13 नवंबर 2026: चैट = googleSearch चालू
             if (c is OpenAiCompatClient) c.fast = true
             p to c }
@@ -216,6 +274,7 @@ class BrainManager(private val ctx: Context) {
                     } catch (e: Exception) {
                         DKLog.d("${client.label} fail: ${e.message}")
                         ProviderHealth.fail(p.id, e)
+                        if (chip != null && client === chip.client && winner != p.id) SelectedModel.failed(ctx, chip.model, e, cands.getOrNull(1)?.second?.label)
                         val (wasWinner, noneLeft) = synchronized(lock) {
                             if (winner != p.id) { errors.add(p to e); if (!counted) { running--; counted = true; runningIds.remove(p.id) } }
                             Pair(winner == p.id, winner == null && next >= cands.size && running == 0)
@@ -229,7 +288,8 @@ class BrainManager(private val ctx: Context) {
                 }
             }
             start()
-            launch { delay(1000); start(byTimer = true); delay(2000); start(byTimer = true) }   // dheemi ho to saath me agli key (v3.7: 1 sec)
+            // dheemi ho to saath me agli key (v3.7: 1 sec). 20 नवंबर 2026: चिप का चुना मॉडल हो = दूसरा मॉडल चुपचाप साथ में नहीं (सिर्फ़ उसके फेल होने पर)
+            if (chip == null) launch { delay(1000); start(byTimer = true); delay(2000); start(byTimer = true) }
             try {
                 val text = result.await()
                 remember(if (note.isNotBlank()) note else "USER SAYS: $prompt", text)
@@ -291,6 +351,11 @@ class BrainManager(private val ctx: Context) {
             val (good, bad) = orderedProviders(chat).partition { ProviderHealth.usable(hid(it)) }
             // 15 नवंबर 2026: फ़ोन वाले काम में भी - अकेली key (एक-key वाली Gemini) थोड़ी देर पहले अटकी थी तो भी एक बार आज़माओ
             val tryList = good + ProviderHealth.spareTry(good.none { clientFor(it) != null }, bad, { ProviderHealth.retryable(hid(it)) }, { ProviderHealth.dailyOut(hid(it)) })
+            // 20 नवंबर 2026: चिप का चुना मॉडल पहले (न चले = बताकर नीचे वाला पुराना क्रम)
+            chipComplete(system, if (chat) history.takeLast(CHAT_TURNS) else history.takeLast(PHONE_TURNS), prompt, imageB64)?.let { answer ->
+                remember(memoryNote, answer)
+                return@withContext parseJson(answer)
+            }
             if (tryList.isEmpty() && bad.any { clientFor(it) != null }) throw exhausted(bad)
             for (p in tryList) {
                 val client = clientFor(p) ?: continue
@@ -811,10 +876,12 @@ class BrainManager(private val ctx: Context) {
         // 14 नवंबर 2026 (मालिक: फोटो डाली तो "फोटो पढ़ने की क्षमता नहीं"): जड़ - पहली चुनी कंपनी फोटो न समझे (जैसे Groq)
         // तो फोटो हटाकर सिर्फ़ text जाता था. अब फोटो हो तो फोटो समझने वाली कंपनियाँ पहले ([visionFirst]);
         // चैट में कोई ऐसी न हो तो DK Live वाली Gemini key से फोटो देखो.
+        // 20 नवंबर 2026: चिप का चुना मॉडल पहले (फ़ोटो हो तो सिर्फ़ फ़ोटो समझने वाला)
+        if (imageB64 == null || chipPick()?.p?.vision == true) chipComplete(system, emptyList(), prompt, imageB64)?.let { return@withContext it }
         val list = visionFirst(rankedForChat(), imageB64 != null)
         if (imageB64 != null && list.none { it.vision }) {
             val keys = (Prefs.liveGeminiKeys(ctx) + searchKeys()).filter { it.isNotBlank() }.distinct()
-            if (keys.isNotEmpty()) ScreenLook.vision(keys, system + "\n\n" + prompt, imageB64)?.let { lastUsed = "Google Gemini"; return@withContext it }
+            if (keys.isNotEmpty()) ScreenLook.vision(keys, system + "\n\n" + prompt, imageB64, ctx)?.let { lastUsed = "Google Gemini"; return@withContext it }
         }
         if (list.isEmpty() && !AiRouter.backendReady()) {
             val all = Providers.all.filter { clientFor(it) != null }
@@ -856,6 +923,7 @@ class BrainManager(private val ctx: Context) {
 
     /** [router] = false: अपनी keys न चलें तो DK का सर्वर नहीं (पीछे वाले काम जैसे [MemoryDigest] मुफ़्त सीमा न खाएँ) */
     suspend fun quickText(system: String, prompt: String, lane: OneKeyLanes.Lane = OneKeyLanes.Lane.PHONE, router: Boolean = true): String? = withContext(Dispatchers.IO) {
+        chipText(system, prompt, null)?.let { return@withContext it }   // 20 नवंबर 2026: चिप का चुना मॉडल पहले
         for (p in rankedForChat()) {
             val c = clientFor(p)?.also { (it as? GeminiClient)?.lane = lane } ?: continue   // 15 नवंबर 2026: छोटे काम (ऑटो-जवाब, सारांश) बातचीत की limit न खाएँ
             try {
@@ -889,6 +957,7 @@ class BrainManager(private val ctx: Context) {
      * दूसरी key / provider पर जाते ही text फिर से शुरू (onText("")). IO thread से बुलाया जाता है - UI पर post करें.
      */
     suspend fun quickStream(system: String, prompt: String, lane: OneKeyLanes.Lane = OneKeyLanes.Lane.HEAVY, onText: (String) -> Unit): String? = withContext(Dispatchers.IO) {
+        chipText(system, prompt, onText)?.let { return@withContext it }   // 20 नवंबर 2026: चिप का चुना मॉडल पहले
         for (p in rankedForChat()) {
             val c = clientFor(p)?.also { (it as? GeminiClient)?.lane = lane } ?: continue
             val sb = StringBuilder()

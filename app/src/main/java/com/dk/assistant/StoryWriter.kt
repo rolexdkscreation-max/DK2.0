@@ -99,7 +99,19 @@ class StoryAi(val provider: Provider, private val key: String, val model: String
 
     data class Out(val text: String, val cut: Boolean)
 
-    fun write(system: String, msgs: List<Pair<String, String>>): Out =
+    /** 20 नवंबर 2026: यह (चिप में चुना मॉडल) न चले = पीछे वाला पुराना रास्ता; [onFail] यूज़र को बताता है */
+    var next: StoryAi? = null
+    var onFail: ((Exception) -> Unit)? = null
+
+    fun write(system: String, msgs: List<Pair<String, String>>): Out {
+        val after = next ?: return writeOwn(system, msgs)
+        return try { writeOwn(system, msgs) } catch (e: java.io.IOException) {
+            onFail?.invoke(e)
+            after.write(system, msgs)
+        }
+    }
+
+    private fun writeOwn(system: String, msgs: List<Pair<String, String>>): Out =
         if (provider.isGemini) gemini(system, msgs) else openAi(system, msgs, 6000)
 
     private fun gemini(system: String, msgs: List<Pair<String, String>>): Out {
@@ -164,6 +176,17 @@ class StoryAi(val provider: Provider, private val key: String, val model: String
 
         /** "AI दिमाग" wali company. null = key/model nahi */
         fun fromPrefs(c: Context): StoryAi? {
+            val auto = fromPrefsAuto(c)
+            // 20 नवंबर 2026 (मालिक): चिप का चुना मॉडल पहले (अकेला); न चले = बताकर पुराना रास्ता. Auto = पहले जैसा
+            val r = com.dk.assistant.dkai.SelectedModel.resolve(c) ?: return auto
+            return StoryAi(r.provider, r.key, r.model, r.base).also { s ->
+                s.only = true; s.next = auto
+                s.onFail = { e -> com.dk.assistant.dkai.SelectedModel.failed(c, r.model, e, auto?.label) }
+            }
+        }
+
+        /** चिप में Auto = यही पुराना क्रम */
+        private fun fromPrefsAuto(c: Context): StoryAi? {
             BrainPin.resolve(c, BrainPin.STORY)?.let { r -> return StoryAi(r.provider, r.key, r.model, r.base).also { it.only = true } }
             val p = Providers.byId(Prefs.activeProvider(c)) ?: return null
             val key = Prefs.key(c, p.id); val model = Prefs.model(c, p.id); val base = Prefs.baseUrl(c, p.id)

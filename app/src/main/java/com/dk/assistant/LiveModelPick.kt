@@ -9,7 +9,9 @@ import android.content.Context
 object LiveModelPick {
     private const val KEY = "live_model_pick"
 
-    fun get(c: Context): String = com.dk.assistant.voice.engine.VoiceEngines.sp(c).getString(KEY, "") ?: ""
+    /** 20 नवंबर 2026: चिप में आवाज़ वाला (native audio) मॉडल चुना = वही पहले ([com.dk.assistant.dkai.SelectedModel.voiceModel]) */
+    fun get(c: Context): String = com.dk.assistant.dkai.SelectedModel.voiceModel(c)
+        ?: com.dk.assistant.voice.engine.VoiceEngines.sp(c).getString(KEY, "") ?: ""
 
     fun set(c: Context, model: String) {
         if (model.trim() == get(c)) return

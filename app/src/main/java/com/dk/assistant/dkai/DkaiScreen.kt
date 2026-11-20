@@ -697,14 +697,15 @@ class DkaiScreen(val activity: ComponentActivity, val host: DkaiHost) {
         android.app.AlertDialog.Builder(c).setTitle((Providers.byId(id)?.name ?: id) + " मॉडल")
             .setItems(items.toTypedArray()) { _, i ->
                 if (i >= list.size) c.startActivity(Intent(c, SettingsActivity::class.java).putExtra("section", "brain"))
-                else { Prefs.edit(c) { putString("model_$id", list[i]) }; renderModel(); toast("मॉडल: ${ModelNames.fromId(list[i])}") }
+                else { DkaiPick.choose(c, id, list[i]); renderModel(); toast("मॉडल: ${ModelNames.fromId(list[i])}") }
             }.show()
         anchor.isPressed = false
     }
 
     fun renderModel() {
-        val id = Prefs.activeProvider(c)
-        modelPill.text = DkaiCore.modelPill(Providers.byId(id)?.name ?: id, Prefs.model(c, id)) + " ▾"
+        // 20 नवंबर 2026: चिप = केंद्रीय selectedModel ([SelectedModel]); कुछ न चुना = "Auto" (पहले जैसी routing)
+        val ch = SelectedModel.get(c)
+        modelPill.text = (if (ch == null) "Auto" else DkaiCore.modelPill(DkaiKit.providerName(ch.provider), ch.model)) + " ▾"
     }
 
     // ================================================================== आवाज़ (State 2/3)

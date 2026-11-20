@@ -54,12 +54,13 @@ class DeepResearchRun(private val c: Context, private val sites: (List<String>) 
      */
     private fun gemini(prompt: String, maxTokens: Int, json: Boolean, fast: Boolean = false, limitMs: Long = 120_000): String? {
         val models = com.dk.assistant.OneKeyLanes.order(com.dk.assistant.OneKeyLanes.Lane.HEAVY, (if (fast) GeminiClient.BACKUP_MODELS else GeminiClient.DEEP_MODELS + GeminiClient.BACKUP_MODELS.reversed()).distinct())   // 15 नवंबर 2026: एक key में भारी लेन
+            .let { if (fast) it else com.dk.assistant.dkai.SelectedModel.geminiOrder(c, "डीप रिसर्च का जवाब", it) }   // 20 नवंबर 2026: चिप का Gemini पहले
         val until = System.currentTimeMillis() + limitMs
         for (k in geminiKeys) for (m in models) {
             if (System.currentTimeMillis() > until) return null
             try { return DeepResearchNet.gemini(k, m, prompt, maxTokens, json, fast) }
-            catch (e: AiException) { if (e.code == 401 || e.code == 403) break }
-            catch (e: Exception) {}
+            catch (e: AiException) { if (!fast) com.dk.assistant.dkai.SelectedModel.failedIf(c, m, e); if (e.code == 401 || e.code == 403) break }
+            catch (e: Exception) { if (!fast) com.dk.assistant.dkai.SelectedModel.failedIf(c, m, e) }
         }
         return null
     }
