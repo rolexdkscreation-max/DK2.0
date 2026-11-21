@@ -162,6 +162,7 @@ class GeminiClient(key: String, private val model: String) : AiClient {
     private enum class Step { NEXT_MODEL, NEXT_KEY, STOP }
     private fun chainStep(e: AiException, ki: Int, mi: Int, keys: List<String>, models: List<String>): Step {
         val msg = e.message.orEmpty()
+        val code = e.code
         val m = models[mi]
         val lastModel = mi == models.lastIndex
         val nextKey = ki < keys.lastIndex
@@ -170,7 +171,7 @@ class GeminiClient(key: String, private val model: String) : AiClient {
                 if (nextKey) DKLog.d(GeminiChatChain.keySwitchLog(ki + 1, ki + 2, keys.size, "key गलत/बंद (${e.code})"))
                 Step.NEXT_KEY
             }
-            GeminiChatChain.shouldFallback(e.code, msg) || e.code == 404 || e.code >= 500 || GeminiModels.modelDenied(e.code, msg) ||
+            GeminiChatChain.shouldFallback(e.code, msg) || e.code == 404 || e.code >= 500 || GeminiModels.modelDenied(code, msg) ||
                 (e.code == 400 && !msg.contains("API key", true)) -> {
                 when {
                     !lastModel -> DKLog.d(GeminiChatChain.switchLog(e.code, m, models[mi + 1]))
