@@ -1,7 +1,9 @@
 // AI की कड़ी: Gemini → हल्का Gemini → Mistral → (जो-जो key Worker में हो) Groq, OpenRouter, Z.ai, NVIDIA.
 // अगली पर तब जाते हैं: सीमा (429), 5xx/कोई भी गलती, खाली जवाब, या 4 सेकंड में पहला शब्द नहीं.
 
-import { AI_CHAIN, MODEL_TIMEOUT_MS } from "./config.js";
+import {
+  AI_CHAIN, DK_HEAVY_WORDS, DK_LLM, DK_LLM_MAX_CHARS, DK_LLM_MAX_CONTEXT, DK_LLM_PERSONA, DK_LLM_TASKS, MODEL_TIMEOUT_MS,
+} from "./config.js";
 import { CODES, HttpError } from "./util.js";
 
 /** text/event-stream से हर `data:` का हिस्सा */
@@ -49,14 +51,60 @@ export function cleanMessages(messages, system) {
   return { system: sys.filter(Boolean).join("\n\n"), messages: out };
 }
 
-/** कौन-कौन सी कड़ी आज़मानी है. chain = ऐप की पसंद का क्रम (सिर्फ़ ids, keys नहीं) */
-export function planChain(env, chain) {
+/**
+ * कौन-सा रास्ता: "dk" = रोज़ की आम बातचीत (DK LLM पहले), "big" = भारी / ताज़ा जानकारी (सीधे बड़ी कड़ी).
+ * ऐप ने अपना क्रम (chain) भेजा हो या `dk: false` - तो "big".
+ */
+export function pickLane({ task = "chat", messages = [], chain, dk } = {}) {
+  if (dk === false) return "big";
+  if (Array.isArray(chain) && chain.length) return "big";
+  if (!DK_LLM_TASKS.includes(task)) return "big";
+  const users = messages.filter((m) => m.role === "user");
+  const last = String(users[users.length - 1]?.content ?? "");
+  if (!last.trim() || last.length > DK_LLM_MAX_CHARS) return "big";
+  const total = messages.reduce((n, m) => n + String(m.content ?? "").length, 0);
+  if (total > DK_LLM_MAX_CONTEXT) return "big";
+  const low = last.toLowerCase();
+  if (DK_HEAVY_WORDS.some((w) => low.includes(w))) return "big";
+  return "dk";
+}
+
+/** DK LLM चालू है? `AI` binding हो और Worker var DK_LLM "off" न हो */
+export function dkReady(env) {
+  return !!env.AI && String(env.DK_LLM ?? "").toLowerCase() !== "off";
+}
+
+/** कौन-कौन सी कड़ी आज़मानी है. chain = ऐप की पसंद का क्रम (सिर्फ़ ids, keys नहीं). lane "dk" = DK LLM सबसे आगे */
+export function planChain(env, chain, lane = "big") {
   let list = AI_CHAIN;
   if (Array.isArray(chain) && chain.length) {
     const want = chain.map(String);
     list = want.map((id) => AI_CHAIN.find((c) => c.id === id)).filter(Boolean);
   }
-  return list.filter((c) => !!env[c.secret]);
+  const big = list.filter((c) => !!env[c.secret]);
+  if (lane !== "dk" || !dkReady(env)) return big;
+  return [{ ...DK_LLM, lora: String(env.DK_LLM_LORA || DK_LLM.lora || "") }, ...big];
+}
+
+/** DK LLM का system: DK का स्वभाव + आज की तारीख/समय (भारत) + ऐप का system */
+export function dkSystem(system, now = Date.now()) {
+  const when = new Intl.DateTimeFormat("hi-IN", {
+    timeZone: "Asia/Kolkata", weekday: "long", year: "numeric", month: "long", day: "numeric", hour: "2-digit", minute: "2-digit",
+  }).format(new Date(now));
+  return [DK_LLM_PERSONA, "अभी (भारत का समय): " + when + ".", system].filter(Boolean).join("\n\n");
+}
+
+/** Cloudflare Workers AI (DK LLM) - stream को Response जैसा लौटाओ, ताकि बाकी कड़ी जैसा ही चले */
+async function workersRequest(c, env, sys, msgs) {
+  const input = {
+    messages: [{ role: "system", content: dkSystem(sys) }, ...msgs],
+    stream: true,
+    max_tokens: c.maxTokens,
+  };
+  if (c.lora) input.lora = c.lora;
+  const out = await env.AI.run(c.model, input);
+  if (out instanceof Response) return out;
+  return new Response(out, { headers: { "content-type": "text/event-stream" } });
 }
 
 function geminiRequest(c, key, sys, msgs, signal) {
@@ -96,9 +144,23 @@ export async function* deltas(kind, body) {
     const t =
       kind === "gemini"
         ? (j.candidates?.[0]?.content?.parts ?? []).filter((p) => !p.thought).map((p) => p.text ?? "").join("")
-        : textOf(j.choices?.[0]?.delta?.content);
+        : textOf(j.choices?.[0]?.delta?.content) || (kind === "workers" && typeof j.response === "string" ? j.response : "");
     if (t) yield t;
   }
+}
+
+function sendTo(c, env, system, messages, signal) {
+  if (c.kind === "workers") return workersRequest(c, env, system, messages);
+  const req = c.kind === "gemini" ? geminiRequest : openaiRequest;
+  return req(c, env[c.secret], system, messages, signal);
+}
+
+/** गलती का छोटा नाम: timeout / limit (Workers AI 4006 / 429) / network */
+function failWhy(e) {
+  const m = String(e?.message ?? "");
+  if (m === "timeout") return "timeout";
+  if (/4006|neuron|429|quota/i.test(m)) return "limit";
+  return "network";
 }
 
 function withTimeout(p, ms, onTimeout) {
@@ -119,17 +181,16 @@ function withTimeout(p, ms, onTimeout) {
  * @returns {{provider, model, tried, first, rest: AsyncIterator<string>, abort}}
  * tried = [{provider, model, ok, error}]
  */
-export async function openChain(env, { system, messages, chain }, opts = {}) {
+export async function openChain(env, { system, messages, chain, lane }, opts = {}) {
   const timeout = opts.timeoutMs ?? MODEL_TIMEOUT_MS;
-  const plan = planChain(env, chain);
+  const plan = planChain(env, chain, lane);
   if (!plan.length) throw new HttpError(503, CODES.NOT_CONFIGURED, "बैकएंड में कोई AI key नहीं डली");
   const tried = [];
   for (const c of plan) {
     const ac = new AbortController();
     const started = Date.now();
     try {
-      const req = c.kind === "gemini" ? geminiRequest : openaiRequest;
-      const r = await withTimeout(req(c, env[c.secret], system, messages, ac.signal), timeout, () => ac.abort());
+      const r = await withTimeout(sendTo(c, env, system, messages, ac.signal), timeout, () => ac.abort());
       if (!r.ok) {
         const why = r.status === 429 ? "limit" : `http ${r.status}`;
         try {
@@ -152,7 +213,7 @@ export async function openChain(env, { system, messages, chain }, opts = {}) {
       return { provider: c.id, model: c.model, tried, first: first.value, rest: it, abort: () => ac.abort() };
     } catch (e) {
       ac.abort();
-      tried.push({ provider: c.id, model: c.model, ok: false, error: e?.message === "timeout" ? "timeout" : "network" });
+      tried.push({ provider: c.id, model: c.model, ok: false, error: failWhy(e) });
     }
   }
   throw new HttpError(503, CODES.ALL_FAILED, "अभी कोई AI जवाब नहीं दे पाया। थोड़ी देर बाद कोशिश करें।", { tried });

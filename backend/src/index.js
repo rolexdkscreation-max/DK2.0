@@ -1,8 +1,8 @@
 // DK backend - Cloudflare Worker. सारे रास्ते यहीं; असली काम अलग-अलग फ़ाइलों में.
 
-import { cleanMessages, collect, openChain, planChain, streamResponse } from "./ai.js";
+import { cleanMessages, collect, dkReady, openChain, pickLane, planChain, streamResponse } from "./ai.js";
 import { authenticate } from "./auth.js";
-import { AI_CHAIN, SEARCH_CHAIN } from "./config.js";
+import { AI_CHAIN, DK_LLM, SEARCH_CHAIN } from "./config.js";
 import { Db } from "./db.js";
 import {
   activate, createLicense, levelFor, quota, requireChatLeft, requireLevel, requireServerAi, requireVoiceLeft, taskLevel, today, useVoiceTicket, voiceTicket,
@@ -94,9 +94,10 @@ async function onChat(req, env, ctx, ident, opts) {
     }
   }
 
-  const open = await openChain(env, { system, messages, chain: body.chain }, opts);
+  const lane = pickLane({ task, messages, chain: body.chain, dk: body.dk });
+  const open = await openChain(env, { system, messages, chain: body.chain, lane }, opts);
   const left = q ? { voice_left: Math.max(0, q.voice_left - add.voice), chat_left: Math.max(0, q.chat_left - add.chat) } : null;
-  const extra = { level: lv.level, ...(left ? { quota: { ...left, warn: left.voice_left > 0 && left.voice_left <= 60 } } : {}) };
+  const extra = { level: lv.level, lane, ...(left ? { quota: { ...left, warn: left.voice_left > 0 && left.voice_left <= 60 } } : {}) };
   const after = () => {
     if (db && (add.voice || add.chat)) later(ctx, () => db.addUsage(ident.uid, day, add.voice, add.chat));
     if (db) for (const t of open.tried) later(ctx, () => db.recordModel(`${t.provider}/${t.model}`, t.ok, t.error, now));
@@ -106,7 +107,7 @@ async function onChat(req, env, ctx, ident, opts) {
     after();
     return json({ ok: true, ...out, ...extra });
   }
-  const headers = { "x-dk-level": lv.level, "x-dk-provider": open.provider, "x-dk-model": open.model };
+  const headers = { "x-dk-level": lv.level, "x-dk-provider": open.provider, "x-dk-model": open.model, "x-dk-lane": lane };
   if (left) {
     headers["x-dk-voice-left"] = String(left.voice_left);
     headers["x-dk-chat-left"] = String(left.chat_left);
@@ -259,6 +260,7 @@ export async function handle(req, env, ctx, opts = {}) {
       ok: true,
       chain: AI_CHAIN.map((c) => ({ provider: c.id, model: c.model, configured: !!env[c.secret] })),
       active: planChain(env).map((c) => c.id),
+      dk_llm: { on: dkReady(env), model: DK_LLM.model, lora: !!(env.DK_LLM_LORA || DK_LLM.lora) },
       search: SEARCH_CHAIN.map((id) => ({ provider: id, configured: !!env[SEARCH_PROVIDERS[id].secret] })),
       stt: !!env.AI,
       image: !!env.AI,
