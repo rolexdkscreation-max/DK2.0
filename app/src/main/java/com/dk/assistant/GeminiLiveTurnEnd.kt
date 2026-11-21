@@ -196,7 +196,7 @@ internal fun GeminiLive.scheduleFast() {
         val settle = LiveFast.settleMs(q.action.optString("type"))
         if (settle > 0) {
             delay(settle)
-            if (cur() != cap || turnDet.inSpeech || stopped) {
+            if (cur() != b || turnDet.inSpeech || stopped) {
                 log("तुरंत काम रुका (${q.action.optString("type")}) - आप आगे बोल रहे थे, पूरी बात पर फिर से"); routeDedupe.reset(); return@launch
             }
         }
