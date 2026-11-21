@@ -571,7 +571,7 @@ class DKAccessibilityService : AccessibilityService() {
         val ok = sc >= th
         val txt = String.format(java.util.Locale.US, "%.2f", sc)
         if (ok) { ownerSeenAt = now; DKLog.d("आवाज़ मिलान $txt - मालिक (${now - t0} ms)"); com.dk.assistant.voice.VoiceGuardian.onOwner() }
-        else { othersIgnored++; DKLog.d("किसी और की आवाज़ (मिलान $txt) - अनसुनी (#$othersIgnored)"); com.dk.assistant.voice.VoiceGuardian.onStranger(this) }
+        else { othersIgnored++; DKLog.d("किसी और की आवाज़ (मिलान $txt) - अनसुनी (#$othersIgnored)"); if (com.dk.assistant.voice.VgRules.warnOk(ms)) com.dk.assistant.voice.VoiceGuardian.onStranger(this) }
         return ok
     }
 

@@ -110,7 +110,9 @@ internal fun GeminiLive.startPlayThread() {
                     var o = 0; for (p in parts) { System.arraycopy(p, 0, out, o, p.size); o += p.size } }
             } else b0
             // नवंबर 2026 (मालिक): JARVIS मोड = JARVIS वाली मशीनी परत (JarvisFx) - बजने से ठीक पहले
-            val b = if (JarvisFx.enabled(svc)) JarvisFx.process(bRaw) else bRaw
+            val bFx = if (JarvisFx.enabled(svc)) JarvisFx.process(bRaw) else bRaw
+            // 21 नवंबर 2026 (मालिक): DK Live की आवाज़ का slider (Settings → आवाज़, डिफ़ॉल्ट बंद = वही array)
+            val b = LiveVoiceLevel.apply(svc, bFx)
             val g = gen
             // pehla tukda: haalat PEHLE "Speaking" (UI turant), awaaz likhne ke baad baaki kaam
             val first = !speakingSet || DKState.mode != Mode.SPEAKING
