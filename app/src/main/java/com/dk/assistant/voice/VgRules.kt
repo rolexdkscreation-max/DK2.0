@@ -11,10 +11,17 @@ object VgRules {
     val MODELS: List<ModelCatalog.Asset> = listOf(ModelCatalog.REDIMNET_LIGHT, ModelCatalog.REDIMNET_HEAVY)
     val DEFAULT_MODEL = ModelCatalog.REDIMNET_LIGHT.id
 
-    fun model(id: String?): ModelCatalog.Asset = MODELS.firstOrNull { it.id == id } ?: ModelCatalog.REDIMNET_LIGHT
+    /**
+     * 21 नवंबर 2026 (मालिक: "अच्छा मॉडल देख के डालो, जो एकदम सटीकता से पहचाने"): तीसरा विकल्प - सबसे सटीक
+     * (ReDimNet2-B6, VoxBlink2 + VoxCeleb2 + CN-Celeb2: कई भाषाएँ, शोर में सबसे मज़बूत). [MODELS] वैसी ही (पुराने दो).
+     */
+    val MODELS_ALL: List<ModelCatalog.Asset> = MODELS + ModelCatalog.REDIMNET_PRO
+
+    fun model(id: String?): ModelCatalog.Asset = MODELS_ALL.firstOrNull { it.id == id } ?: ModelCatalog.REDIMNET_LIGHT
 
     fun label(a: ModelCatalog.Asset): String = when (a.id) {
         ModelCatalog.REDIMNET_LIGHT.id -> "हल्का (कम CPU) — RedimNet-B2, ${a.mb}, ${a.license}"
+        ModelCatalog.REDIMNET_PRO.id -> "सबसे सटीक (परिवार की पहचान के लिए सबसे अच्छा) — ReDimNet2-B6, ${a.mb}, ${a.license}"
         else -> "सटीक (ज़्यादा CPU) — RedimNet2-B3, ${a.mb}, ${a.license}"
     }
 

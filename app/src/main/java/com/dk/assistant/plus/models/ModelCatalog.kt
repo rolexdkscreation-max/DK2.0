@@ -41,6 +41,17 @@ object ModelCatalog {
         listOf("https://huggingface.co/OpenVoiceOS/redimnet-b2-vox2-onnx/resolve/main/redimnet_b2_vox2.onnx"),
         "a7586b34c8db1bbf32c64efc2b269be54f66787e50320c4472614bbe95218a81", 22_193_734L, "Apache-2.0",
     )
+    /**
+     * 21 नवंबर 2026 (मालिक: "परिवार की आवाज़ भी एकदम सटीक पहचाने"): ReDimNet2-B6, VoxBlinkV2+VoxCeleb2+CN-Celeb2
+     * (कई भाषाएँ) पर सिखाया. Sandbox जाँच (LibriSpeech, 40 लोग, 1.5 s, बकबक-शोर 5 dB): गलती 1.26% - B2 8.1%, B3 6.3%.
+     * Commit-pinned URL (बदल न सके). सिर्फ़ तब डाउनलोड जब मालिक Settings में "सबसे सटीक" चुने.
+     */
+    val REDIMNET_PRO = Asset(
+        "redimnet2_b6", Kind.VOICE, "ReDimNet2-B6 (सबसे सटीक)", "Raw 16 kHz आवाज़ -> 192 अंक का voiceprint, शोर में भी पक्का",
+        "redimnet2_b6_vb2_vox2_cnc2_lm.onnx",
+        listOf("https://huggingface.co/lzrhahahahaha/ReDimNet2-ONNX/resolve/04f41495369d7798eb856999095c2b5f16c7ccc7/fp32/b6-vb2%2Bvox2%2Bcnc2_v0-lm.onnx"),
+        "c297887a8c5a3e8df3fc9368da9ea37e64f0ea87218ec878eba8e9720478fd75", 51_130_836L, "MIT",
+    )
     val FACE_EMBED = Asset(
         "sface_int8", Kind.FACE, "SFace चेहरा-पहचान", "चेहरे का 128 अंक का embedding (int8)",
         "sface_2021dec_int8.onnx",
@@ -143,7 +154,7 @@ object ModelCatalog {
      */
     val REMOVED_FILES = listOf("robot_expressive.glb", "cesium_man.glb", "brainstem.glb", "fox.glb", "three_gltf_loader.js", "three_bg_utils.js")
 
-    val ALL: List<Asset> = listOf(REDIMNET_HEAVY, REDIMNET_LIGHT, FACE_EMBED, FACE_DETECT) + SOCIAL_CLIP + WAKE + WHISPER_SMALL +
+    val ALL: List<Asset> = listOf(REDIMNET_HEAVY, REDIMNET_LIGHT, REDIMNET_PRO, FACE_EMBED, FACE_DETECT) + SOCIAL_CLIP + WAKE + WHISPER_SMALL +
         com.dk.assistant.voice.st3.St3Config.ALL + com.dk.assistant.voice.st3.St3Config.FAST +
         com.dk.assistant.voice.st3.St3Config.MALE.map { it.asset }
 

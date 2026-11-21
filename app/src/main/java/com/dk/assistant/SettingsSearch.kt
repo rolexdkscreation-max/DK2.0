@@ -118,6 +118,7 @@ object SettingsSearch {
         E("st3", "3. रफ़्तार, साफ़ी और टेस्ट", "रफ़्तार • कदम (steps) • टेस्ट वाक्य सुनाओ", "speed रफ़्तार steps कदम test टेस्ट"),
         E("voice", "बातचीत का तरीका (सुनना अलग, सोचना-बोलना अलग)", "Gemini Live या अलग-अलग तरीका • Whisper (फ़ोन पर) / Android पहचान • चुप्पी का समय • बीच में टोकना • Whisper मॉडल डाउनलोड / रोकें / हटाएँ", "whisper stt speech to text व्हिस्पर पहचान लिखना split अलग तरीका silence चुप्पी vad download डाउनलोड model मॉडल barge टोकना"),
         E("voice", "वॉइस गार्डियन", "फ़ोन पर ही आवाज़-पहचान: मॉडल डाउनलोड, 6 वाक्य सिखाना, 15 सैंपल वाली पक्की पहचान, पक्की रोक, सीमा, सिर्फ़ Boss की आवाज़, Away मोड", "voice guardian speaker verification owner away आवाज़ पहचान 15 सैंपल voice samples पक्की पहचान पक्की रोक strict"),
+        E("voice", "परिवार की आवाज़ें और अवेयरनेस मोड", "मम्मी, पापा, भैया या कोई भी नाम - आवाज़ सिखाओ • कौन बोल रहा है (बॉस / परिवार / अनजान) • अवेयरनेस मोड (शुरू में बंद)", "family परिवार awareness अवेयरनेस speaker identification कौन बोल रहा mummy papa bhaiya मम्मी पापा भैया"),
         E("brain", "टूल एजेंट (Retry Loop)", "लंबे फ़ोन-काम: Gemini खुद tool चुने, 15 कदम तक, हर कदम जाँचकर 3 बार तक दोबारा", "tool agent retry function calling टूल"),
         E("brain_live", "इस हिस्से का मॉडल — खुद चुनें", "DK लाइव के लिए कोई भी डली Gemini key और उसका मॉडल चुनें (नया मॉडल भी); खाली = fallback"),
         E("brain_chat", "इस हिस्से का मॉडल — खुद चुनें", "DK चैट और कहानी के लिए कोई भी डली key और उसका मॉडल चुनें; खाली = fallback"),

@@ -51,7 +51,7 @@ object VoiceGuardian {
     fun print(c: Context): FloatArray? = VoicePrint.decode(vaultRead(c, kPrint(modelId(c))))
     fun enrolled(c: Context) = print(c) != null
     fun savePrint(c: Context, v: FloatArray) { wakeRef = null; sp(c).edit().putString(kPrint(modelId(c)), com.dk.assistant.wake.VoiceVault.seal(VoicePrint.encode(VoicePrint.normalize(v)))).apply() }
-    fun forget(c: Context) { wakeRef = null; sp(c).edit().apply { VgRules.MODELS.forEach { remove(kPrint(it.id)); remove(kTpl(it.id)); remove(kWake(it.id)); remove(kSeen(it.id)) } }.apply(); away.reset() }
+    fun forget(c: Context) { wakeRef = null; sp(c).edit().apply { VgRules.MODELS_ALL.forEach { remove(kPrint(it.id)); remove(kTpl(it.id)); remove(kWake(it.id)); remove(kSeen(it.id)) } }.apply(); away.reset() }
 
     // ------------------------------------------------------------ 16 नवंबर 2026: 15 सैंपल
     fun templates(c: Context): List<FloatArray> = VgRules.decodeAll(vaultRead(c, kTpl(modelId(c))))
@@ -200,6 +200,49 @@ object VoiceGuardian {
         val e = embed(c, pcm) ?: return null
         val t = templates(c)
         return (if (t.isNotEmpty()) VgRules.multiScore(p, t, e) else VoicePrint.cosine(p, e)) to e
+    }
+
+    // ------------------------------------------------------------ 21 नवंबर 2026: परिवार की आवाज़ें + अवेयरनेस मोड
+    /** परिवार के सैंपल - हर मॉडल के अलग (मॉडल बदला = फिर से सिखाने होंगे), ताले में बंद */
+    private fun kFam(id: String) = "vg_family_$id"
+    @Volatile private var famCache: Pair<String, List<VoiceFamily.Member>>? = null
+
+    fun family(c: Context): List<VoiceFamily.Member> {
+        val id = modelId(c)
+        famCache?.takeIf { it.first == id }?.let { return it.second }
+        return VoiceFamily.decode(vaultRead(c, kFam(id))).also { famCache = id to it }
+    }
+
+    fun saveFamily(c: Context, list: List<VoiceFamily.Member>) {
+        val id = modelId(c)
+        val keep = list.take(VoiceFamily.MAX_MEMBERS)
+        famCache = id to keep
+        val e = sp(c).edit()
+        if (keep.isEmpty()) e.remove(kFam(id)) else e.putString(kFam(id), com.dk.assistant.wake.VoiceVault.seal(VoiceFamily.encode(keep)))
+        e.apply()
+    }
+
+    /** परिवार के सारे सैंपल मिटाओ (हर मॉडल के) */
+    fun forgetFamily(c: Context) { famCache = null; sp(c).edit().apply { VgRules.MODELS_ALL.forEach { remove(kFam(it.id)) } }.apply(); Awareness.global.reset() }
+
+    /** अवेयरनेस मोड: स्विच चालू + मॉडल + (बॉस या परिवार की सीखी आवाज़); बैटरी सेवर में "वॉइस गार्डियन रोको" = बंद */
+    fun awareOn(c: Context): Boolean = try {
+        FeatureFlags.on(c, FeatureFlags.VG_AWARE) && supported && broken == null && hasModel(c) &&
+            !FeatureFlags.suspendedByBattery(c, FeatureFlags.BS_VOICE_GUARDIAN) && (enrolled(c) || family(c).isNotEmpty())
+    } catch (_: Exception) { false }
+
+    /**
+     * कौन बोल रहा है: एक ही बार पहचान निकालकर बॉस + परिवार सबसे मिलान.
+     * @return (बॉस से मिलान - [score] जैसा ही, सीखा न हो तो null) + फ़ैसला; null = आवाज़ से पहचान नहीं बनी
+     */
+    fun identify(c: Context, pcm: ByteArray): Pair<Float?, VoiceFamily.Pick>? {
+        val e = embed(c, pcm) ?: return null
+        val p = print(c)
+        val own = if (p == null) null else {
+            val t = if (deepOn(c)) templates(c) else emptyList()
+            if (t.isNotEmpty()) VgRules.multiScore(p, t, e) else VoicePrint.cosine(p, e)
+        }
+        return own to VoiceFamily.identify(own, threshold(c), family(c), e)
     }
 
     // ------------------------------------------------------------ Away मोड
