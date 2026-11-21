@@ -84,7 +84,7 @@ class IndicSttTest {
 
     @Test fun segmenter_endpointAfterSilence() {
         val s = SpeechSegmenter()
-        repeat(10) { s.push(100, voiced = false) }
+        repeat(SpeechSegmenter.IDLE_TRIM_MS / 100) { s.push(100, voiced = false) }
         assertFalse(s.hasSpeech); assertFalse(s.endpoint)
         assertTrue(s.trimIdle()); assertEquals(SpeechSegmenter.PREROLL_MS, s.segMs)
         s.push(100, true); assertFalse(s.hasSpeech)          // 100 ms = अभी बोली नहीं मानी
