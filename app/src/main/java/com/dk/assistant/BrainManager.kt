@@ -224,8 +224,12 @@ class BrainManager(private val ctx: Context) {
         }
         // 20 नवंबर 2026: चिप का चुना मॉडल सबसे पहले (अकेला); न चले = बताकर नीचे वाली पुरानी सूची
         val chip = chipPick()
+        var chainKeysSet = false
         val cands = listOfNotNull(chip?.let { it.p to it.client }) + (rankedForChat().mapNotNull { p -> clientFor(p)?.let { p to it } } + chatSpares()).map { (p, c) ->
-            if (c is GeminiClient) { c.fast = true; c.groundChat = true; c.lane = OneKeyLanes.Lane.TALK }     // 13 नवंबर 2026: चैट = googleSearch चालू
+            if (c is GeminiClient) { c.fast = true; c.groundChat = true; c.lane = OneKeyLanes.Lane.TALK     // 13 नवंबर 2026: चैट = googleSearch चालू
+                // 21 नवंबर 2026 (मालिक): पक्का क्रम 3.5 → 3.1 Flash-Lite → Gemma, हर key पर; पहली Gemini को Key 1/2/3 (Live से = Live की keys पहले)
+                c.chatChain = true
+                if (!chainKeysSet) { chainKeysSet = true; c.chainKeys = Prefs.textChatKeys(ctx, fromLive) } }
             if (c is OpenAiCompatClient) c.fast = true
             p to c }
         if (cands.isEmpty()) {
@@ -302,6 +306,10 @@ class BrainManager(private val ctx: Context) {
     fun explainAll(e: Exception): String {
         if (e is AllFailedException) {
             if (e.errors.any { it.second is java.net.UnknownHostException }) return "इंटरनेट नहीं मिल रहा। नेट चालू करके फिर बोलिए।"
+            // 21 नवंबर 2026 (मालिक): सारे मॉडल (3.5 → 3.1 Flash-Lite → Gemma) और सारी keys सिर्फ़ limit / भीड़ (429 / 503) पर रुके =
+            // छोटा दोस्ताना संदेश. आज की रोज़ वाली limit ही खत्म हो तो नीचे वाली साफ़ बात (कब खुलेगी) - "एक मिनट" झूठ होगा
+            if (GeminiChatChain.allBusy(e.errors.map { (it.second as? AiException)?.code ?: -1 }) && !e.errors.all { ProviderHealth.dailyOut(it.first.id) })
+                return Lang.pick(GeminiChatChain.BUSY_HI, GeminiChatChain.BUSY_EN)
             val parts = e.errors.distinctBy { it.first.id }.joinToString("। ") { (p, x) -> "${p.name.removePrefix("Google ")}: ${if (ProviderHealth.dailyOut(p.id)) ProviderHealth.reason(p.id) else ProviderHealth.short(x)}" }
             val fix = when {
                 e.errors.all { ProviderHealth.dailyOut(it.first.id) } -> "आज सब फ्री limit खत्म हैं। सेटिंग्स में कोई दूसरी फ्री key डालिए, जैसे Groq या Gemini।"
@@ -362,6 +370,8 @@ class BrainManager(private val ctx: Context) {
                 val img = if (p.vision) imageB64 else null
                 try {
                     if (client is GeminiClient) { client.fast = chat; client.lane = if (chat) OneKeyLanes.Lane.TALK else OneKeyLanes.Lane.PHONE }   // फ़ोन के काम = अपनी लेन
+                    // 21 नवंबर 2026: चैट वाला JSON जवाब भी वही पक्का क्रम (3.5 → 3.1 Flash-Lite → Gemma) + Key 1/2/3
+                    if (chat && client is GeminiClient) { client.chatChain = true; client.chainKeys = Prefs.textChatKeys(ctx, fromLive) }
                     if (client is OpenAiCompatClient) client.fast = chat
                     val answer = try {
                         // baatcheet me sirf haal ki baatein bhejo = kam data = tez jawab
@@ -405,7 +415,9 @@ class BrainManager(private val ctx: Context) {
 
     /** खोज की keys क्रम में (अपनी पहले, दूसरी Gemini key बचाव में) - [SearchGuard.keys] */
     fun searchKeys(): List<String> =
-        SearchGuard.keys(fromLive, Prefs.key(ctx, "gemini"), Prefs.scopeKey(ctx, ApiScopes.LIVE, "gemini"), Prefs.searchOwnKey(ctx))
+        GeminiModels.distinctKeys(SearchGuard.keys(fromLive, Prefs.key(ctx, "gemini"), Prefs.scopeKey(ctx, ApiScopes.LIVE, "gemini"), Prefs.searchOwnKey(ctx)) +
+            // 21 नवंबर 2026: बैकअप keys भी (हर key पर पूरा मॉडल-क्रम, फिर अगली) - Live से = Live की Key 2/3 फिर चैट की, चैट से = चैट की Key 2/3
+            Prefs.textChatKeys(ctx, fromLive))
 
     fun canSearch() = Prefs.webAnswers(ctx) && anySearch()
 

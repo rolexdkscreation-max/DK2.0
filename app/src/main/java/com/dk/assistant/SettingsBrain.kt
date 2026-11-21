@@ -345,7 +345,16 @@ internal fun SettingsActivity.providerCard(p: Provider, scope: String = ApiScope
             // 16 नवंबर 2026 (मालिक: "सारी keys इस्तेमाल करो वाला स्विच दबाने पर इस्तेमाल हो")
             flagSwitch(box, "सारी keys इस्तेमाल करो (Round-Robin): हर नया काम अगली key से", com.dk.assistant.plus.FeatureFlags.KEY_POOL_ALL)
         }
-        if (p.isGemini && scope == ApiScopes.CHAT) geminiPaidSwitch(box)
+        if (p.isGemini && scope == ApiScopes.CHAT) {
+            // 21 नवंबर 2026 (मालिक): DK चैट में भी 3 Gemini keys - हर key पर 3.5 → 3.1 Flash-Lite → Gemma, फिर अगली key
+            keyFields[ApiScopes.pref(scope, "key", "gemini2")] = field(box, "Gemini API Key 2 (बैकअप, ज़रूरी नहीं)",
+                Prefs.scopeKeyRaw(this, scope, "gemini2"), "दूसरी Gemini key", secret = true)
+            keyFields[ApiScopes.pref(scope, "key", "gemini3")] = field(box, "Gemini API Key 3 (बैकअप, ज़रूरी नहीं)",
+                Prefs.scopeKeyRaw(this, scope, "gemini3"), "तीसरी Gemini key", secret = true)
+            hint(box, "चैट का क्रम: Key 1 पर 3.5 Flash-Lite → 3.1 Flash-Lite → Gemma 4 31B; तीनों की limit (429) / भीड़ (503) = अपने-आप Key 2 पर वही, " +
+                "फिर Key 3। Google limit project पर लगाता है, इसलिए हर key अलग Google project की हो।")
+            geminiPaidSwitch(box)
+        }
         val model = field(box, "मॉडल", Prefs.scopeModel(this, scope, p.id), (if (p.isGemini && scope == ApiScopes.CODER) GeminiModels.CODER else p.defaultModel).ifBlank { "model-name" })
         modelFields[mName] = model
         val result = TextView(this).apply {

@@ -124,7 +124,7 @@ private fun execute(req: Request): String = http.newCall(req).execute().use { r 
 }
 
 /** Google Gemini (apna alag format). Ek model fail ho to dusre Gemini model try karta hai. */
-class GeminiClient(private val key: String, private val model: String) : AiClient {
+class GeminiClient(key: String, private val model: String) : AiClient {
     var fast = false
     var only = false
     var backups: List<String> = BACKUP_MODELS
@@ -137,6 +137,129 @@ class GeminiClient(private val key: String, private val model: String) : AiClien
     /** Settings में मालिक ने यही मॉडल खुद चुना = लेन में भी सबसे पहले */
     var keepFirst = false
     private fun laned(list: List<String>, l: OneKeyLanes.Lane? = lane) = OneKeyLanes.order(l, list, keepFirst)
+
+    /**
+     * 21 नवंबर 2026: चेन ([chatChain]) इसी client से Key 2 / Key 3 पर वही request भेजती है - इसलिए अभी वाली key बदल सकती है.
+     * [homeKey] = बनाते समय वाली key (चेन के बाद वापस वही)
+     */
+    private val homeKey = key
+    private var key: String = key
+    /** stream जवाब की token-सीमा (पहले जैसा 700; चैट चेन में [GeminiChatChain.MAX_OUTPUT]) */
+    private var maxOut = 700
+
+    /**
+     * 21 नवंबर 2026 (मालिक): DK चैट / DK लाइव की text बातचीत = पक्का fallback क्रम [GeminiChatChain]
+     * (3.5 Flash-Lite → 3.1 Flash-Lite → Gemma 4 31B), आख़िरी 10 बातें, जवाब 1024 tokens तक.
+     * [only] (चिप / Settings में पिन किया मॉडल) = यह क्रम नहीं, सिर्फ़ वही मॉडल.
+     */
+    var chatChain = false
+    /** [chatChain] में keys का क्रम (key 1 → 2 → 3). खाली = सिर्फ़ यही key; यह key सूची में न हो तो आख़िर में */
+    var chainKeys: List<String> = emptyList()
+    private fun chainKeyList(): List<String> =
+        GeminiModels.distinctKeys(if (chainKeys.isEmpty()) listOf(homeKey) else chainKeys + homeKey)
+
+    /** चेन में गलती के बाद अगला कदम: अगला मॉडल / अगली key / रुको (असली गलती) - साथ में साफ़ log */
+    private enum class Step { NEXT_MODEL, NEXT_KEY, STOP }
+    private fun chainStep(e: AiException, ki: Int, mi: Int, keys: List<String>, models: List<String>): Step {
+        val msg = e.message.orEmpty()
+        val code = e.code
+        val m = models[mi]
+        val lastModel = mi == models.lastIndex
+        val nextKey = ki < keys.lastIndex
+        return when {
+            GeminiChatChain.keyBroken(e.code, msg) -> {
+                if (nextKey) DKLog.d(GeminiChatChain.keySwitchLog(ki + 1, ki + 2, keys.size, "key गलत/बंद (${e.code})"))
+                Step.NEXT_KEY
+            }
+            GeminiChatChain.shouldFallback(e.code, msg) || e.code == 404 || e.code >= 500 || GeminiModels.modelDenied(code, msg) ||
+                (e.code == 400 && !msg.contains("API key", true)) -> {
+                when {
+                    !lastModel -> DKLog.d(GeminiChatChain.switchLog(e.code, m, models[mi + 1]))
+                    nextKey -> DKLog.d(GeminiChatChain.keySwitchLog(ki + 1, ki + 2, keys.size, "${e.code} hit on ${GeminiChatChain.short(m)} (सारे मॉडल)"))
+                }
+                Step.NEXT_MODEL
+            }
+            else -> Step.STOP
+        }
+    }
+
+    /** चैट वाला non-stream जवाब (JSON) - वही चेन */
+    private fun completeChain(system: String, history: List<Turn>, prompt: String, imageB64: String?): String {
+        val hist = GeminiChatChain.window(history)
+        val keys = chainKeyList()
+        val models = GeminiChatChain.models(model, keepFirst)
+        var last: AiException? = null
+        val codes = mutableListOf<Int>()
+        if (keys.isEmpty()) throw AiException(401, "Gemini API key नहीं")
+        try { keyLoop@ for ((ki, k) in keys.withIndex()) {
+            key = k; maxOut = GeminiChatChain.MAX_OUTPUT
+            for ((mi, m) in models.withIndex()) {
+                val gemma = GeminiChatChain.isGemma(m)
+                try {
+                    val r = try { call(m, system, hist, prompt, imageB64, thinking = !gemma) } catch (e: AiException) {
+                        if (!gemma && GeminiModels.thinkingRejected(e.code, e.message.orEmpty(), ThinkLevel.geminiConfig(m, think) != null))
+                            call(m, system, hist, prompt, imageB64, thinking = false) else throw e
+                    }
+                    label = "Gemini ($m)"
+                    DKLog.d(GeminiChatChain.servedLog(m, ki + 1, keys.size))
+                    return r
+                } catch (e: AiException) {
+                    codes.add(e.code)
+                    if (last == null || GeminiModels.isGone(last.code, last.message.orEmpty())) last = e
+                    when (chainStep(e, ki, mi, keys, models)) {
+                        Step.NEXT_KEY -> continue@keyLoop
+                        Step.NEXT_MODEL -> continue
+                        Step.STOP -> throw e
+                    }
+                }
+            }
+        }
+        } finally { key = homeKey; maxOut = 700 }
+        if (GeminiChatChain.allBusy(codes)) DKLog.d(GeminiChatChain.ALL_FAILED_LOG)
+        throw last ?: AiException(0, "Gemini fail")
+    }
+
+    /** चैट वाला stream जवाब - वही चेन. कुछ भी बोला जा चुका हो तो बीच में मॉडल नहीं बदलता (जितना आया, उतना) */
+    private fun streamChain(system: String, history: List<Turn>, prompt: String, onDelta: (String) -> Unit): String {
+        val hist = GeminiChatChain.window(history)
+        val keys = chainKeyList()
+        val models = GeminiChatChain.models(model, keepFirst)
+        var last: AiException? = null
+        val codes = mutableListOf<Int>()
+        if (keys.isEmpty()) throw AiException(401, "Gemini API key नहीं")
+        try { keyLoop@ for ((ki, k) in keys.withIndex()) {
+            key = k; maxOut = GeminiChatChain.MAX_OUTPUT
+            for ((mi, m) in models.withIndex()) {
+                val gemma = GeminiChatChain.isGemma(m)
+                var gotAny = false
+                val full = StringBuilder()
+                val sink: (String) -> Unit = { gotAny = true; full.append(it); onDelta(it) }
+                try {
+                    try { streamOnce(m, system, hist, prompt, !gemma, sink) } catch (e: AiException) {
+                        // चुना "सोचने का स्तर" यह मॉडल न समझे (400) = उसी मॉडल से बिना thinking एक बार
+                        if (gotAny || gemma || !GeminiModels.thinkingRejected(e.code, e.message.orEmpty(), true)) throw e
+                        streamOnce(m, system, hist, prompt, false, sink)
+                    }
+                    label = "Gemini ($m)"
+                    DKLog.d(GeminiChatChain.servedLog(m, ki + 1, keys.size))
+                    continueCut(m, system, hist, prompt, full, onDelta)
+                    return full.toString()
+                } catch (e: AiException) {
+                    if (gotAny) throw e
+                    codes.add(e.code)
+                    if (last == null || GeminiModels.isGone(last.code, last.message.orEmpty())) last = e
+                    when (chainStep(e, ki, mi, keys, models)) {
+                        Step.NEXT_KEY -> continue@keyLoop
+                        Step.NEXT_MODEL -> continue
+                        Step.STOP -> throw e
+                    }
+                }
+            }
+        }
+        } finally { key = homeKey; maxOut = 700 }
+        if (GeminiChatChain.allBusy(codes)) DKLog.d(GeminiChatChain.ALL_FAILED_LOG)
+        throw last ?: AiException(0, "Gemini fail")
+    }
 
     companion object {
         val BACKUP_MODELS = listOf("gemini-3.5-flash-lite", "gemini-3.1-flash-lite", "gemini-3.8-flash")
@@ -151,6 +274,7 @@ class GeminiClient(private val key: String, private val model: String) : AiClien
     }
 
     override fun complete(system: String, history: List<Turn>, prompt: String, imageB64: String?): String {
+        if (chatChain && !only) return completeChain(system, history, prompt, imageB64)
         val models = if (only) listOf(model) else laned(GeminiModels.order(model, backups))
         var last: AiException? = null
         for (m in models) {
@@ -190,6 +314,7 @@ class GeminiClient(private val key: String, private val model: String) : AiClien
     }
 
     private fun streamModels(system: String, history: List<Turn>, prompt: String, onDelta: (String) -> Unit): String {
+        if (chatChain && !only) return streamChain(system, history, prompt, onDelta)
         val models = if (only) listOf(model) else laned(GeminiModels.order(model, backups)).take(3)
         var last: AiException? = null
         for (m in models) {
@@ -257,6 +382,8 @@ class GeminiClient(private val key: String, private val model: String) : AiClien
         streamMeta = null
         // 18 नवंबर 2026: यह key खोज नहीं ले सकती (मुफ़्त Gemini key) = सीधे बिना खोज ([SearchBlock])
         if (!groundChat || SearchBlock.blocked(key)) { streamRaw(m, system, history, prompt, thinking, false, onDelta); return }
+        // 21 नवंबर 2026: Gemma पर googleSearch tool नहीं ([GeminiChatChain.searchToolOk])
+        if (!GeminiChatChain.searchToolOk(m)) { streamRaw(m, system, history, prompt, thinking, false, onDelta); return }
         var got = false
         try { streamRaw(m, system, history, prompt, thinking, true) { got = true; onDelta(it) } }
         catch (e: AiException) {
@@ -283,11 +410,11 @@ class GeminiClient(private val key: String, private val model: String) : AiClien
                 .put("parts", JSONArray().put(JSONObject().put("text", it.text))))
         }
         contents.put(JSONObject().put("role", "user").put("parts", JSONArray().put(JSONObject().put("text", prompt))))
-        val gen = JSONObject().put("maxOutputTokens", 700)
+        val gen = JSONObject().put("maxOutputTokens", maxOut)
         val chosen = if (thinking) ThinkLevel.geminiConfig(m, think) else null
         if (chosen != null) {
             // Settings में चुना स्तर (Low/Medium/High) - सोच के tokens भी गिने जाते हैं, इसलिए जवाब के लिए जगह बढ़ाई
-            gen.put("thinkingConfig", chosen).put("maxOutputTokens", 700 + ThinkLevel.extraTokens(think))
+            gen.put("thinkingConfig", chosen).put("maxOutputTokens", maxOut + ThinkLevel.extraTokens(think))
         } else {
             if (thinking && m.startsWith("gemini-3")) gen.put("thinkingConfig", JSONObject().put("thinkingLevel", "minimal"))
             if (thinking && m.startsWith("gemini-2.5")) gen.put("thinkingConfig", JSONObject().put("thinkingBudget", 0))
@@ -323,7 +450,8 @@ class GeminiClient(private val key: String, private val model: String) : AiClien
         val order = when {
             think -> (THINK_MODELS + DEEP_MODELS + GeminiModels.order(model, BACKUP_MODELS)).distinct()
             deep -> (DEEP_MODELS + GeminiModels.order(model, BACKUP_MODELS)).distinct()
-            else -> GeminiModels.order(model, BACKUP_MODELS)
+            // 21 नवंबर 2026: आम (तेज़) खोज = चैट वाला क्रम (3.5 → 3.1 Flash-Lite → Gemma), 3.8 Flash नहीं (कम RPD)
+            else -> GeminiModels.order(model, GeminiChatChain.MODELS)
         }.let { laned(it, if (think || deep) OneKeyLanes.Lane.HEAVY else lane ?: OneKeyLanes.Lane.TALK) }.take(maxModels.coerceAtLeast(1))
         // 18 नवंबर 2026: यह key Google खोज नहीं ले सकती ([SearchBlock]) = हर मॉडल पर बेकार 429 नहीं, सीधे अगली खोज-सेवा
         // गहरी सोच (think) को खोज ज़रूरी नहीं - वहाँ बिना खोज वही सवाल
@@ -388,7 +516,9 @@ class GeminiClient(private val key: String, private val model: String) : AiClien
         if (imageB64 != null) parts.put(JSONObject().put("inline_data",
             JSONObject().put("mime_type", "image/jpeg").put("data", imageB64)))
         contents.put(JSONObject().put("role", "user").put("parts", parts))
-        val gen = JSONObject().put("responseMimeType", "application/json").put("maxOutputTokens", if (fast) 600 else 2048)
+        // 21 नवंबर 2026: Gemma पर JSON mode भरोसे का नहीं - prompt में JSON पहले से माँगा है
+        val gen = JSONObject().put("maxOutputTokens", if (fast) 600 else 2048)
+        if (!GeminiChatChain.isGemma(m)) gen.put("responseMimeType", "application/json")
         if (thinking) ThinkLevel.geminiConfig(m, think)?.let {
             gen.put("thinkingConfig", it).put("maxOutputTokens", (if (fast) 600 else 2048) + ThinkLevel.extraTokens(think))
         }
