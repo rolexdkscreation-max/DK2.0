@@ -50,6 +50,23 @@ class DkaiVoice(private val s: DkaiScreen) {
     private lateinit var miniClassic: OrbView
     private lateinit var miniDot: PulseDot
     private lateinit var miniStatus: TextView
+    private lateinit var clockTxt: TextView
+    private val clockTick = object : Runnable { override fun run() { renderClock() } }
+    /** लाइव की घड़ी - हर सेकंड (सिर्फ़ लाइव चलते समय टिकती है) */
+    private fun renderClock() {
+        if (!::clockTxt.isInitialized) return
+        val now = System.currentTimeMillis()
+        val t = if (LiveClock.running()) LiveClock.runningLine(now) else LiveClock.lastLine(now)
+        clockTxt.visibility = if (t.isBlank()) View.GONE else View.VISIBLE
+        if (clockTxt.text.toString() != t) clockTxt.text = t
+        if (::miniStatus.isInitialized && LiveClock.running()) {
+            val base = miniStatus.text.toString().substringBefore(" • ")
+            val m = base + " • " + LiveClock.clock(LiveClock.elapsed(now))
+            if (miniStatus.text.toString() != m) miniStatus.text = m
+        }
+        clockTxt.removeCallbacks(clockTick)
+        if (DKState.live && clockTxt.isAttachedToWindow) clockTxt.postDelayed(clockTick, 1000)
+    }
     private lateinit var miniText: TextView
     private lateinit var miniMic: ImageView
 
@@ -108,6 +125,9 @@ class DkaiVoice(private val s: DkaiScreen) {
         }
         top.addView(speedPill, FrameLayout.LayoutParams(-2, -2, Gravity.END or Gravity.CENTER_VERTICAL))
         col.addView(top, LinearLayout.LayoutParams(-1, -2))
+        // 21 नवंबर 2026 (मालिक): लाइव चालू होने से कितना समय ("लाइव • 03:12"); ख़त्म = "DK लाइव ख़त्म • X मिनट चली"
+        clockTxt = DkaiTheme.text(c, "", 13f, 0xE6FFFFFF.toInt(), DkaiTheme.SANS_BOLD).apply { gravity = Gravity.CENTER; visibility = View.GONE; contentDescription = "लाइव का समय" }
+        col.addView(clockTxt, LinearLayout.LayoutParams(-2, -2).apply { gravity = Gravity.CENTER_HORIZONTAL })
 
         col.addView(View(c), LinearLayout.LayoutParams(1, 0, 1f))
         // 13 नवंबर 2026 (वॉइस-कॉल): फ़ोन और टैबलेट दोनों - orb चौड़ाई और ऊँचाई दोनों से नपे (छोटे फ़ोन पर नीचे के बटन न कटें)
@@ -508,6 +528,7 @@ class DkaiVoice(private val s: DkaiScreen) {
         val text = if (ct.placeholder) shownText() else ct.body
         miniText.text = DkaiCore.preview(if (muteLine) DkaiCore.MUTED_LINE else text, 26)
         miniStatus.text = DkaiCore.callBadge(st)
+        renderClock()
         val miniCol = when (call) { DkaiCore.Call.SPEAKING -> DkaiTheme.CYAN; DkaiCore.Call.PROCESSING -> DkaiTheme.VIOLET; else -> if (DKState.micMuted) DkaiTheme.RED else DkaiTheme.GREEN }
         miniStatus.setTextColor(miniCol); miniDot.color = miniCol; miniDot.invalidate()
         miniMic.setImageDrawable(DkaiIcon(if (DKState.micMuted) DkaiIcon.Kind.MIC_OFF else DkaiIcon.Kind.MIC, if (DKState.micMuted) DkaiTheme.RED else DkaiTheme.WHITE))

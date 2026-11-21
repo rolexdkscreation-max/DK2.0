@@ -184,7 +184,8 @@ class AgentRunner(
                 else -> ""
             }
             type == "open_app" -> ""
-            type == "youtube_play" -> if (r.contains("verified: playing")) "वीडियो चल रहा है" else "वीडियो खोल दिया"
+            type == "youtube_play" -> (if (r.contains("verified: playing")) "वीडियो चल रहा है" else "वीडियो खोल दिया") +
+                YtAssist.noteHi(r).let { if (it.isBlank()) "" else ", $it" }
             type == "call_log" -> "कॉल लिस्ट खोल दी"
             else -> Lang.say(q.ack)
         }

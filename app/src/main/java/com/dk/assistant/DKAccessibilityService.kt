@@ -1240,10 +1240,18 @@ class DKAccessibilityService : AccessibilityService() {
                 "open_app" -> verifyOpen(AppLauncher.open(this, a.optString("name")))
                 "youtube_search" -> AppLauncher.youtubeSearch(this, a.optString("query"))
                 "youtube_play" -> {
-                    val q = a.optString("query")
+                    // 21 नवंबर 2026: "… और फुल स्क्रीन कर देना / ऐड स्किप करना" - खोज से वे शब्द हटाओ, चलने के बाद वह काम भी
+                    val raw = a.optString("query")
+                    val ex = YtAssist.extras(raw)
+                    val q = ex?.text?.takeIf { it.isNotBlank() } ?: raw
+                    val full = a.optBoolean("full", false) || ex?.full == true || YtAssist.wantsFull(DKState.lastUser)
                     val id = kotlinx.coroutines.withContext(Dispatchers.IO) { AppLauncher.youtubeFirstVideo(q) }
-                    verifyYoutube(AppLauncher.youtubePlay(this, q, id))
+                    val r = verifyYoutube(AppLauncher.youtubePlay(this, q, id))
+                    if (r.startsWith("PLAYING") || r.startsWith("VIDEO_OPENED")) r + ytAfterPlay(full) else r
                 }
+                LensCmd.TYPE -> openLens(a.optBoolean("on", true), a.optBoolean("front", false))
+                "yt_full" -> if (ytFullscreen()) "SAID: वीडियो फुल स्क्रीन कर दिया।" else "STEP_FAILED: फुल स्क्रीन का बटन नहीं मिला।"
+                "yt_skip_ad" -> ytSkipNow()
                 // v3.33: फ़ोन के सीधे काम (बिना AI)
                 "call_contact" -> PhoneActions.callContact(this, a.optString("name"))
                 "wa_call" -> WaCall.call(this, a.optString("name"), a.optBoolean("video", false))

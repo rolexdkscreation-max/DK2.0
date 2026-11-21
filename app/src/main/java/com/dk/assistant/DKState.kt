@@ -53,7 +53,15 @@ object DKState {
     fun refresh() = emit()
     /** स्क्रीन पर दिखने वाली हालत: Live में बिना काम का THINKING = LISTENING (असली [mode] नहीं बदलता - अंदर के नियम वैसे ही) */
     fun shownMode(): Mode = if (mode == Mode.THINKING && live && !working()) Mode.LISTENING else mode
-    fun setLive(on: Boolean) { live = on; emit() }
+    fun setLive(on: Boolean) {
+        // 21 नवंबर 2026 (मालिक): लाइव कितनी देर चली - चालू होते ही घड़ी, ख़त्म होते ही "X मिनट चली" (स्क्रीन + छोटा संदेश)
+        val ended = LiveClock.onLive(on, System.currentTimeMillis())
+        live = on; emit()
+        if (ended != null) {
+            DKLog.d(LiveClock.endLine(ended))
+            appCtx?.let { c -> main.post { try { android.widget.Toast.makeText(c, LiveClock.endLine(ended), android.widget.Toast.LENGTH_LONG).show() } catch (_: Exception) {} } }
+        }
+    }
     /** होम स्क्रीन का म्यूट बटन: true = DK का माइक कुछ नहीं भेजता/सुनता (Live में खामोशी जाती है), दोबारा दबाने तक */
     @Volatile var micMuted: Boolean = false
         private set

@@ -73,6 +73,10 @@ object LiveFast {
         if (said != null && ok(type, r)) return (if (already) "ALREADY DONE just now (do not repeat it): " else "DONE: ") +
             "$what. Phone says: \"$said\". Tell the user this honestly in a few words; do not claim more than it says."
         if (said != null) return "FAILED: $said Tell the user honestly; do not try another way unless they ask."
+        // 21 नवंबर 2026: YouTube - ऐड आया/स्किप हुआ, फुल स्क्रीन हुआ या नहीं (फ़ोन ने ख़ुद देखा) - यही बताना
+        val yt = YtAssist.note(r)
+        if (yt.isNotBlank() && ok(type, r)) return (if (already) "ALREADY DONE just now (do not repeat it): " else "DONE: ") +
+            "$what. Phone checked the screen: $yt. Tell the user this honestly in one short line; do not claim more."
         return if (ok(type, r)) (if (already) "ALREADY DONE just now (do not repeat it): " else "DONE: ") + "$what. Tell the user in 2-5 words."
         else "FAILED: could not do it ($what, ${r.take(80)}). Tell the user honestly it did not work."
     }

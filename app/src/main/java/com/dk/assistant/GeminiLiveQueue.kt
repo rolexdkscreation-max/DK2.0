@@ -23,6 +23,8 @@ internal suspend fun GeminiLive.phoneTask(req: String): String {
         log("कतार: नया काम आख़िर में जोड़ा (\"${req.take(30)}\", अब $n बाक़ी)")
         return TaskQueue.addedNote(n)
     }
+    // 21 नवंबर 2026 (मालिक): "DK स्कैन खोलो" Gemini ने phone_task में भेजा = DK लेंस ही (ऐप नहीं खोलना). बिना बोले पीछे वाला
+    LensCmd.parse(req)?.let { c -> log("DK स्कैन: phone_task से कैमरा (${LensCmd.facing(c)}, on=${c.on})"); return LiveVision.setCamera(svc, c.on, LensCmd.facing(c)) }
     val items = TaskQueue.split(req)
     if (items.size >= 2) return startQueue(items)
     return phoneTaskOne(req)
