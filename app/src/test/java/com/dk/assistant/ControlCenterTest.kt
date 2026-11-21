@@ -11,7 +11,9 @@ class ControlCenterTest {
         "profile", "lang", "ui", "brain", "voice", "orb", "access", "phonelock", "guard", "face", "perms", "computer",
         "coder", "auto", "templates", "autoreply", "social", "reels", "backup", "connectors", "story", "update", "debug", "about",
         // 20 नवंबर 2026 (मालिक): DK लाइव पैनल (स्वभाव और मोड, याददाश्त) + आवाज़ की श्रेणी में Supertonic आवाज़ें
-        "persona", "memory", "st3"
+        "persona", "memory", "st3",
+        // 21 नवंबर 2026 (मालिक): DK ऐप लॉक - सुरक्षा में
+        "applock"
     )
 
     @Test fun sixCategories_inOrder() {

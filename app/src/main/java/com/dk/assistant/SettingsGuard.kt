@@ -112,6 +112,9 @@ internal fun SettingsActivity.secGuard() {
         })
     }
 
+    // 21 नवंबर 2026 (मालिक): सीक्रेट PIN से बंद • गलत PIN = फिर लॉक • सायरन में खुला = फिर लॉक (SettingsAppLock.kt)
+    guardPinCard()
+
     card("और सुरक्षा", "फ़ोटो • चेहरा • पावर मेनू • चार्जर • SIM") { box ->
         fun opt(t: String, key: String, on: Boolean) =
             switch(box, t, on).setOnCheckedChangeListener { _, v -> Prefs.edit(this) { putBoolean(key, v) } }
@@ -126,7 +129,7 @@ internal fun SettingsActivity.secGuard() {
             hint(box, "⚠ फ़ोटो, SMS और सटीक जगह (GPS) के लिए परमिशन चाहिए — लोकेशन में \"सटीक\" चुनें")
             row(box, button("परमिशन दें") { androidx.core.app.ActivityCompat.requestPermissions(this, need.toTypedArray(), 15) })
         }
-        hint(box, "ध्यान दें: कुछ फ़ोन में लॉक पर भी पावर बटन लंबा दबाकर फ़ोन बंद हो सकता है — DK हर फ़ोन में इसे पूरा नहीं रोक सकता। टच मोड में बैटरी थोड़ी ज़्यादा लगती है।")
+        hint(box, "ध्यान दें: कुछ फ़ोन में लॉक पर भी पावर बटन लंबा दबाकर फ़ोन बंद हो सकता है — DK हर फ़ोन में इसे पूरा नहीं रोक सकता। टच मोड अब बैटरी बचाता है — फ़ोन रखा रहे तो CPU सोता रहता है, सिर्फ़ छूने / सायरन पर जागता है।")
     }
 
     card("घुसपैठिए का रिकॉर्ड", "फ़ोटो और क्या-क्या हुआ") { box ->

@@ -94,6 +94,7 @@ class DKAccessibilityService : AccessibilityService() {
         try { PayGuard.onServiceBack(this) } catch (e: Exception) { Quiet.note(e) }
         try { PhoneLockStore.reload(this) } catch (e: Exception) { Quiet.note(e) }
         try { Guard.resume(this) } catch (e: Exception) { DKLog.d("गार्ड: ${e.message}") }   // नवंबर 2026: गार्ड मोड चालू था तो फिर से पहरा
+        try { AppLock.start(this) } catch (e: Exception) { Quiet.note(e) }   // 21 नवंबर 2026: DK ऐप लॉक
         // power बटन वाला "Yes Boss" पहले से बना लो (Live चालू हो तो नहीं - तब Live बंद होने पर)
         com.dk.assistant.voice.LiveAckMaker.ensureAsync(this, "DK शुरू", 15_000L)   // आवाज़ से फ़ोन लॉक / अनलॉक के नाम-वाक्य
         // v3.39: Bluetooth माइक अब BtAudio से (सिर्फ़ headset जुड़ा हो तब, सुनते/बात करते समय). पहले (PR #48) यहाँ
@@ -170,6 +171,7 @@ class DKAccessibilityService : AccessibilityService() {
         if (event != null) try { PayGuard.onEvent(this, event) } catch (e: Exception) { DKLog.d("PayGuard: ${e.message}") }
         if (event != null) try { Guard.onEvent(this, event) } catch (e: Exception) { DKLog.d("गार्ड: ${e.message}") }   // नवंबर 2026: लॉक में पावर मेनू / PIN खाना
         if (event != null) try { PrivacyScreen.onEvent(this, event) } catch (e: Exception) { DKLog.d("प्राइवेसी: ${e.message}") }   // सामने वाला ऐप बदला
+        if (event != null) try { AppLock.onEvent(this, event) } catch (e: Exception) { DKLog.d("ऐप लॉक: ${e.message}") }   // 21 नवंबर 2026: ताले वाला ऐप खुला
     }
 
     override fun onUnbind(intent: android.content.Intent?): Boolean {
@@ -189,6 +191,7 @@ class DKAccessibilityService : AccessibilityService() {
         AppVisible.onChange = null
         floatOrb?.release(); floatOrb = null
         try { DKIsland.stop(); PrivacyScreen.stop(); LiveNotify.release(this) } catch (e: Exception) { Quiet.note(e) }
+        try { AppLock.stop(this) } catch (e: Exception) { Quiet.note(e) }
         workAwake?.release(); workAwake = null
         reelWatch?.release(); reelWatch = null
         removeEdgeGlow()

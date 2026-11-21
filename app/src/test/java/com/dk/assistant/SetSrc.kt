@@ -27,6 +27,7 @@ object SetSrc {
         "SettingsExtra.kt",
         "SettingsFace.kt",
         "SettingsNew.kt",
+        "SettingsAppLock.kt",
     )
 
     private fun dir(): File {

@@ -54,6 +54,8 @@
     <uses-permission android:name="android.permission.WRITE_SECURE_SETTINGS" tools:ignore="ProtectedPermissions" />
     <!-- नवंबर 2026: पेमेंट ऐप से बाहर आना पहचानने के लिए (Usage access - आप Settings में देते हैं) -->
     <uses-permission android:name="android.permission.PACKAGE_USAGE_STATS" tools:ignore="ProtectedPermissions" />
+    <!-- 21 नवंबर 2026: ऐप लॉक - फ़ोन का अपना फ़िंगरप्रिंट / फ़ेस (BiometricPrompt) -->
+    <uses-permission android:name="android.permission.USE_BIOMETRIC" />
 
     <!-- Phone ke saare launcher apps ki list dekhne ke liye (open_app के लिए) -->
     <queries>
@@ -422,6 +424,14 @@
             android:exported="false"
             android:excludeFromRecents="true"
             android:screenOrientation="portrait" />
+
+        <!-- 21 नवंबर 2026: DK ऐप लॉक - ताले वाला ऐप खुलते ही ऊपर futuristic ताला (PIN / पैटर्न / फ़िंगरप्रिंट / फ़ेस) -->
+        <activity
+            android:name=".AppLockActivity"
+            android:exported="false"
+            android:excludeFromRecents="true"
+            android:taskAffinity=""
+            android:launchMode="singleTask" />
 
         <!-- नवंबर 2026: गार्ड मोड - कोई फ़ोन छुए तो लॉक स्क्रीन के ऊपर लाल चेतावनी + सायरन (छूने से बंद नहीं) -->
         <activity
