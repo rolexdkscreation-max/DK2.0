@@ -21,6 +21,7 @@ import android.widget.HorizontalScrollView
 import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
+import androidx.activity.OnBackPressedCallback
 import androidx.appcompat.app.AppCompatActivity
 import androidx.camera.view.PreviewView
 import androidx.core.content.ContextCompat
@@ -85,6 +86,10 @@ class AppLockActivity : AppCompatActivity() {
         chips = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER }
         root.addView(HorizontalScrollView(this).apply { isHorizontalScrollBarEnabled = false; addView(chips) }, LinearLayout.LayoutParams(-2, -2))
         setContentView(root)
+        // back = होम पर (ताले वाला ऐप नहीं खुलता)
+        onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
+            override fun handleOnBackPressed() { goHome() }
+        })
         method = AppLockStore.method(this).takeIf { available(it) } ?: AppLockRules.Method.PIN
         buildChips()
         use(method)
@@ -341,9 +346,6 @@ class AppLockActivity : AppCompatActivity() {
         finish()
     }
 
-    @Deprecated("Deprecated in Java")
-    @Suppress("DEPRECATION")
-    override fun onBackPressed() { goHome() }
 
     override fun onStop() {
         super.onStop()
