@@ -38,7 +38,12 @@ object LiveUplink {
         private var clearSince = 0L
         /** लौटाता है: बदला (log के लिए) */
         fun update(queue: Long, now: Long): Boolean {
-            if (queue > HOLD_AT) { clearSince = 0L; if (!on) { on = true; return true }; return false }
+            if (queue > HOLD_AT) {
+                clearSince = 0L
+                val changed = !on
+                on = true
+                return changed
+            }
             if (!on) return false
             if (queue > CLEAR_BYTES) { clearSince = 0L; return false }
             if (clearSince == 0L) clearSince = now
