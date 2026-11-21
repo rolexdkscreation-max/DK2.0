@@ -461,7 +461,7 @@ internal fun GeminiLive.setupJson(m: String, txt: Boolean = connText, resume: Bo
             .apply { if (!txt) put("speechConfig", JSONObject().put("voiceConfig", JSONObject()
                 .put("prebuiltVoiceConfig", JSONObject().put("voiceName", ex.voice)))
                 .apply { if (ex.lang && LiveSetupRules.sendLanguageCode(m)) put("languageCode", LiveVoice.LANGUAGE) }) })
-        .put("systemInstruction", JSONObject().put("parts", JSONArray().put(JSONObject().put("text", Lang.sys(brain.liveSystemPrompt(withMemory = false)) + FAST_START + NetSpeed.promptNote() + carryNote(resume) + historyRule() + (if (connSplit) SPLIT_NOTE + (if (txt) MOOD_TAG_NOTE else "") else
+        .put("systemInstruction", JSONObject().put("parts", JSONArray().put(JSONObject().put("text", Lang.sys(brain.liveSystemPrompt(withMemory = false)) + FAST_START + NetSpeed.promptNote() + carryNote(resume) + historyRule() + LiveDkServer.keyNote(askKey).also { if (it.isNotEmpty()) askKey = false } + (if (connSplit) SPLIT_NOTE + (if (txt) MOOD_TAG_NOTE else "") else
             com.dk.assistant.voice.engine.LiveNativeEngine.styleNote(com.dk.assistant.voice.engine.LiveNativeEngine.style(svc).ifBlank { CalmPersona.VOICE_STYLE }))))))
         .put("tools", LiveStay.cleanTools(tools))
         .put("realtimeInputConfig", JSONObject()

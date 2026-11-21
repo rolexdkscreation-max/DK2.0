@@ -62,6 +62,11 @@ export function requireServerAi(env, level) {
   throw new HttpError(402, CODES.NEED_OWN_KEY, MSG.NEED_OWN_KEY, { kind: "own_key", say: MSG.NEED_OWN_KEY });
 }
 
+/** मुफ़्त वाले को सर्वर की AI मिलती है? (ऐप /license/status में `server_ai` देखकर तय करता है कि बिना key सर्वर से चले) */
+export function serverAiOn(env, level) {
+  return level !== "free" || FREE_SERVER_AI || env?.FREE_SERVER_AI === "1";
+}
+
 export function quota(usage) {
   const voice_left = Math.max(0, FREE_VOICE_SECONDS - (usage.voice_seconds || 0));
   const chat_left = Math.max(0, FREE_CHAT_MESSAGES - (usage.chat_count || 0));
