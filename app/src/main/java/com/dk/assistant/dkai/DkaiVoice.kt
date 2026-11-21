@@ -504,7 +504,10 @@ class DkaiVoice(private val s: DkaiScreen) {
         val connected = liveTalk()
         // Live जुड़ते ही बाकी SYSTEM NOTE भेजो (टैब पहले चुना था)
         pendingNote?.let { n -> if (connected) { pendingNote = null; DKAccessibilityService.instance?.gemLive?.pushNote(n) } }
-        val st = DkaiCore.voiceStatus(DKState.mode, DKState.live, DKState.micMuted, DKState.working(), connected)
+        // 21 नवंबर 2026 (मालिक: "जुड़ने के बाद LISTENING लिखना चाहिए"): अलग तरीका / बैकअप में Gemini Live नहीं जुड़ता,
+        // फिर भी DK सुन रहा है - बैज उसी से
+        val up = connected || try { DKAccessibilityService.instance?.voiceUp() == true } catch (_: Exception) { false }
+        val st = DkaiCore.voiceStatus(DKState.mode, DKState.live, DKState.micMuted, DKState.working(), up)
 
         // 13 नवंबर 2026 (मालिक): सिर्फ़ तीन हालत; बॉक्स में एक समय पर सिर्फ़ वही जो अभी बोल रहा है
         val call = DkaiCore.callState(st)

@@ -58,8 +58,9 @@ class SherpaSttTest {
         assertFalse(File(root(), "../../../../cpp").exists())
         val g = app("build.gradle.kts").readText()
         assertFalse(g.contains("externalNativeBuild")); assertFalse(g.contains("cmake"))
-        assertTrue(g.contains("libs/k2fsa-onnx-stt-2.0.2-arm64.aar"))
-        assertTrue(app("proguard-rules.pro").readText().contains("-keep class com.k2fsa.sherpa.onnx.**"))
+        // 21 नवंबर 2026: Sherpa-ONNX का AAR भी हटा (ऐप का MB) - पहचान अब ऐप के अपने onnxruntime से (IndicConformer)
+        assertFalse(g.contains("k2fsa")); assertFalse(File(app("build.gradle.kts").parentFile, "libs/k2fsa-onnx-stt-2.0.2-arm64.aar").exists())
+        assertFalse(app("proguard-rules.pro").readText().contains("com.k2fsa"))
         assertFalse(src("Transcriber.kt").contains("okhttp")); assertFalse(src("Transcriber.kt").contains("groq"))
     }
 

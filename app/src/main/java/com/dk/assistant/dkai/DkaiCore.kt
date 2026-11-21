@@ -99,6 +99,10 @@ object DkaiCore {
     // ------------------------------------------------------------------ ऊपर का बैज
     enum class Status(val label: String) { READY("READY"), CONNECTING("CONNECTING"), LISTENING("LISTENING"), THINKING("THINKING"), SPEAKING("SPEAKING"), MUTED("MUTED"), SETUP("SETUP"), OFFLINE("OFFLINE") }
 
+    /** 21 नवंबर 2026: DK सच में सुन रहा है = Live चालू और (Gemini Live जुड़ा, या अलग तरीका चल रहा, या बैकअप मोड) */
+    fun voiceUp(live: Boolean, liveReady: Boolean, splitTalking: Boolean, backup: Boolean): Boolean =
+        live && (liveReady || splitTalking || backup)
+
     /** आवाज़ वाली स्क्रीन का बैज - Live की असली हालत से */
     fun voiceStatus(mode: Mode, live: Boolean, muted: Boolean, work: Boolean, connected: Boolean): Status = when {
         mode == Mode.SPEAKING -> Status.SPEAKING

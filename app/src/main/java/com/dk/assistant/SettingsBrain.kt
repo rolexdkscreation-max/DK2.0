@@ -217,7 +217,7 @@ internal fun SettingsActivity.secBrainLive() {
             ". कोई टूल error / 429 / क्रेडिट खत्म बताए तो उस रिसर्च में अपने-आप छूट जाता है। एक रिसर्च में ज़्यादा से ज़्यादा 15 पेज, 3 चक्कर। " +
             "साधारण सवाल पर गहरी खोज नहीं चलती (क्रेडिट बचे)।")
     }
-    card("सुनना (आवाज़ → text) — Groq, चाहें तो", "बोली अब फ़ोन पर Sherpa-ONNX लिखता है (key नहीं)। Groq key डालें तो DK लाइव की गहरी सोच में काम आती है") { box ->
+    card("सुनना (आवाज़ → text) — Groq, चाहें तो", "बोली अब फ़ोन पर IndicConformer लिखता है (key नहीं)। Groq key डालें तो DK लाइव की गहरी सोच में काम आती है") { box ->
         val ed = field(box, "Groq API Key (सिर्फ़ सुनने के लिए)", Prefs.scopeKeyRaw(this, ApiScopes.LIVE, "groq"), "gsk_… (ज़रूरी नहीं)", secret = true) { k ->
             if (ApiScopes.detect(k).let { it != null && it != "groq" }) "✗ यह Groq की key नहीं लगती — Gemini key ऊपर वाले खाने में डालें"
             else {
@@ -228,8 +228,8 @@ internal fun SettingsActivity.secBrainLive() {
         }
         keyFields[ApiScopes.pref(ApiScopes.LIVE, "key", "groq")] = ed
         hint(box, "अभी: " + when {
-            com.dk.assistant.stt.SherpaStt.ready(this) -> "फ़ोन पर Sherpa-ONNX से सुन रहा है (कोई key नहीं)"
-            else -> "Sherpa-ONNX मॉडल नहीं - Google माइक से सुन रहा है (फ्री, बीप आ सकती है)"
+            com.dk.assistant.stt.SherpaStt.ready(this) -> "फ़ोन पर IndicConformer से सुन रहा है (कोई key नहीं)"
+            else -> "IndicConformer मॉडल नहीं - Google माइक से सुन रहा है (फ्री, बीप आ सकती है)"
         } + " • बिना-Live आवाज़ मोड में जवाब का text DK चैट की API से बनता है।")
     }
     // नवंबर 2026 (मालिक): DK लाइव में भी Z.ai और NVIDIA - "गहरी सोच" वाले जवाब के लिए (आवाज़ Gemini Live ही)

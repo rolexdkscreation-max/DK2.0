@@ -23,7 +23,7 @@ private const val TALK_MODE_RADIO = 3900
 private const val TALK_STT_RADIO = 3950
 
 internal fun SettingsActivity.secTalk() {
-    card("बातचीत का तरीका (सुनना अलग, सोचना-बोलना अलग)", "Gemini Live या नया अलग-अलग तरीका • Sherpa-ONNX (फ़ोन पर) / Android पहचान • चुप्पी का समय • Sherpa-ONNX मॉडल डाउनलोड") { box ->
+    card("बातचीत का तरीका (सुनना अलग, सोचना-बोलना अलग)", "Gemini Live या नया अलग-अलग तरीका • IndicConformer (फ़ोन पर) / Android पहचान • चुप्पी का समय • IndicConformer मॉडल डाउनलोड") { box ->
         val st = status(box)
         fun refresh() {
             st.text = UiLang.s(buildString {
@@ -50,12 +50,12 @@ internal fun SettingsActivity.secTalk() {
         hint(box, "अलग-अलग तरीके में: आपकी आवाज़ पहले स्क्रीन पर लिखी जाती है (आपका संदेश), वही text Gemini को जाता है, जवाब text में आता है और DK की आवाज़ (Gemini की आवाज़, न चले तो फ़ोन की आवाज़) में बोला जाता है. DK बोल रहा हो और आप बीच में बोलें तो DK तुरंत रुकता है और आपकी नई बात सुनता है. स्क्रीन पर दिखता है: सुन रहा है / सोच रहा है / बोल रहा है.")
 
         label(box, "आपकी बोली कौन लिखे")
-        val stts = listOf(TalkPrefs.STT_SHERPA to "Sherpa-ONNX - फ़ोन पर ही, हिंदी + English, बोलते-बोलते (इंटरनेट / key नहीं)",
+        val stts = listOf(TalkPrefs.STT_SHERPA to "IndicConformer - फ़ोन पर ही, हिंदी + English, बोलते-बोलते (इंटरनेट / key नहीं)",
             TalkPrefs.STT_ANDROID to "Android की पहचान (Google - Android 13+)")
         radios(box, stts, TalkPrefs.stt(this), TALK_STT_RADIO).setOnCheckedChangeListener { _, id ->
             stts.getOrNull(id - TALK_STT_RADIO)?.let { TalkPrefs.setStt(this, it.first); refresh() }
         }
-        hint(box, "Sherpa-ONNX चुना हो पर मॉडल अभी डाउनलोड नहीं हुआ, या इस फ़ोन पर न चले / अटके / बहुत धीमा हो - तो DK अपने-आप Android की पहचान से सुनता है और स्क्रीन पर बताता है. यही चुनाव माइक बटन (बोलकर लिखना) पर भी चलता है; DK Live की लिखावट (caption) हमेशा Sherpa-ONNX से.")
+        hint(box, "IndicConformer चुना हो पर मॉडल अभी डाउनलोड नहीं हुआ, या इस फ़ोन पर न चले / अटके / बहुत धीमा हो - तो DK अपने-आप Android की पहचान से सुनता है और स्क्रीन पर बताता है. यही चुनाव माइक बटन (बोलकर लिखना) पर भी चलता है; DK Live की लिखावट (caption) हमेशा IndicConformer से.")
 
         label(box, "रुकने के बाद कितनी चुप्पी = बात पूरी")
         val silTxt = TextView(this).apply { textSize = 13f; setTextColor(0xB3FFFFFF.toInt()) }
@@ -100,8 +100,8 @@ internal fun SettingsActivity.secTalk() {
 
         // ---------------------------------------------------------------- Sherpa-ONNX मॉडल डाउनलोड (दो फ़ाइलें, Wi-Fi पर)
         val enc = ModelCatalog.STT_ENCODER
-        label(box, "Sherpa-ONNX मॉडल (डाउनलोड)")
-        hint(box, "${enc.title} • ${mb(sttBytes())} • स्रोत: Hugging Face (mobilebytesensei/betterflow-hindi-streaming-ctc, एक तय संस्करण) • License ${enc.license}. मॉडल ऐप (APK) में नहीं - फ़ोन की ऐप-स्टोरेज में रहता है, कभी भी हटा सकते हैं. सिर्फ़ Wi-Fi पर उतरता है. बीच में रुका / नेट गया = जहाँ रुका वहीं से आगे; पूरा होने पर SHA-256 से जाँच. माइक बटन, अलग तरीका और DK Live की लिखावट - तीनों यही एक मॉडल.")
+        label(box, "IndicConformer मॉडल (डाउनलोड)")
+        hint(box, "${enc.title} • ${mb(sttBytes())} • स्रोत: Hugging Face (AI4Bharat IndicConformer हिंदी, int8: ngiftsun/indicconformer-hi-int8-sherpa, एक तय संस्करण) • License ${enc.license}. मॉडल ऐप (APK) में नहीं - फ़ोन की ऐप-स्टोरेज में रहता है, कभी भी हटा सकते हैं. सिर्फ़ Wi-Fi पर उतरता है. बीच में रुका / नेट गया = जहाँ रुका वहीं से आगे; पूरा होने पर SHA-256 से जाँच. माइक बटन, अलग तरीका और DK Live की लिखावट - तीनों यही एक मॉडल.")
         if (!SherpaStt.supported()) hint(box, "⚠ " + SherpaStt.whyNot(this) + " - DK Android की पहचान से सुनेगा.")
         val bar = ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal).apply { max = 100; visibility = android.view.View.GONE }
         box.addView(bar)
@@ -137,7 +137,7 @@ internal fun SettingsActivity.secTalk() {
         }, button("हटाएँ") {
             try {
                 SherpaStt.assets().forEach { ModelManager.delete(this, it) }
-                toast("Sherpa-ONNX मॉडल हटा दिया (जगह खाली). अब Android की पहचान चलेगी")
+                toast("IndicConformer मॉडल हटा दिया (जगह खाली). अब Android की पहचान चलेगी")
             } catch (e: Exception) { toast("हटा नहीं पाया: ${e.message}") }
         })
 

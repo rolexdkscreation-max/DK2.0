@@ -121,10 +121,8 @@ dependencies {
     implementation("com.google.android.gms:play-services-auth:21.2.0")
     // 14 नवंबर 2026: DKAI Terminal की `apk` कमांड - फ़ोन पर ही बने ऐप को sign करना (Google की अपनी apksig, pure Java)
     implementation("com.android.tools.build:apksig:8.5.2")
-    // 21 नवंबर 2026 (मालिक: "बोली लिखने वाला फ़ोन पर, बिना नेट / key"): k2-fsa का आधिकारिक Android पैकेज v2.0.2
-    // (onnxruntime अंदर ही static जुड़ा - ऊपर वाले onnxruntime-android से टकराव नहीं), सिर्फ़ arm64 हिस्सा रखा.
-    // मॉडल APK में नहीं - ModelManager Wi-Fi पर उतारता है.
-    implementation(files("libs/k2fsa-onnx-stt-2.0.2-arm64.aar"))
+    // 21 नवंबर 2026 (मालिक: "ऐप का MB घटाओ"): k2-fsa का AAR (9.5 MB, अपना अलग onnxruntime) हटा - बोली लिखना अब
+    // ऊपर वाले onnxruntime-android से ही (IndicConformer). मॉडल APK में नहीं - ModelManager Wi-Fi पर उतारता है.
     testImplementation("junit:junit:4.13.2")
     // Android ka org.json unit test me khali (stub) hota hai - asli wala
     testImplementation("org.json:json:20240303")

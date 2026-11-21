@@ -489,6 +489,10 @@ class DKAccessibilityService : AccessibilityService() {
     val talk by lazy { com.dk.assistant.talk.TalkLoop(this, agent, speaker) }
     /** अलग तरीका इस समय तक नहीं (कोई पहचान नहीं चली) - तब तक पहले जैसा Gemini Live */
     @Volatile private var talkBlockedUntil = 0L
+    /** 21 नवंबर 2026: अलग तरीका (अपना माइक + पहचान) अभी चल रहा है - तब Gemini Live नहीं जुड़ता, फिर भी DK सुन रहा है */
+    @Volatile var splitTalking = false; private set
+    /** DK अभी सच में सुन रहा है? (Live जुड़ा, या अलग तरीका, या बैकअप) - सिर्फ़ बैज के लिए */
+    fun voiceUp(): Boolean = com.dk.assistant.dkai.DkaiCore.voiceUp(DKState.live, gemLive.canTalk(), splitTalking, backupMode)
     fun talkWanted(): Boolean = com.dk.assistant.talk.TalkPrefs.wanted(this) && System.currentTimeMillis() > talkBlockedUntil
     @Volatile internal var liveOffUntil = 0L
     /** Lagatar kitni baar Live network/mic ki thodi-der wali dikkat se ruka (backoff ke liye) */
@@ -744,6 +748,7 @@ class DKAccessibilityService : AccessibilityService() {
                     if (wakeLive) LiveChime.connected(me, calls.inCall)
                     val talkStart = System.currentTimeMillis()
                     val r = try {
+                        splitTalking = true; DKState.linkChanged()
                         talk.run(
                             stop = { !DKState.live || !com.dk.assistant.talk.TalkPrefs.wanted(me) || callBusy() },
                             hold = { DKMic.dictating || calls.inCall },
@@ -753,7 +758,7 @@ class DKAccessibilityService : AccessibilityService() {
                         DKLog.d("अलग तरीका गलती: ${e.javaClass.simpleName} ${e.message}")
                         warn("talk", "बातचीत में दिक्कत आई (${e.message ?: "अनजानी गलती"}) - फिर से सुन रहा हूँ।")
                         delay(1000); "गलती"
-                    }
+                    } finally { splitTalking = false; DKState.linkChanged() }
                     DKLog.d("अलग तरीका रुका: $r")
                     if (r.startsWith("पहचान नहीं")) talkBlockedUntil = System.currentTimeMillis() + 60_000L   // तब तक Gemini Live
                     try { FriendTalk.sessionEnd(me, talkStart, scope) } catch (e: Exception) { Quiet.note(e) }

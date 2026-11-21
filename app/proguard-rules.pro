@@ -31,6 +31,3 @@
 -keep class com.dk.assistant.voice.engine.LiveNativeEngine { *; }
 
 
-# 21 नवंबर 2026: फ़ोन पर बोली लिखने वाला (app/libs AAR) - JNI से नाम से बुलाई जाने वाली classes
--keep class com.k2fsa.sherpa.onnx.** { *; }
--dontwarn com.k2fsa.sherpa.onnx.**

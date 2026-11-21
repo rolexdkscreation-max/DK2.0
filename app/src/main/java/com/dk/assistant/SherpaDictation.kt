@@ -96,7 +96,7 @@ class SherpaDictation(
         val min = AudioRecord.getMinBufferSize(DictationChunks.RATE, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT)
         val r = try {
             AudioRecord(MediaRecorder.AudioSource.VOICE_RECOGNITION, DictationChunks.RATE, AudioFormat.CHANNEL_IN_MONO,
-                AudioFormat.ENCODING_PCM_16BIT, maxOf(min, READ * 4))
+                AudioFormat.ENCODING_PCM_16BIT, maxOf(min, READ * 20))   // 2 s: पक्का text पढ़ते समय भी माइक की आवाज़ न खोए
         } catch (e: Exception) { DKLog.d("बोलकर लिखना माइक: ${e.message}"); null }
         if (r == null || r.state != AudioRecord.STATE_INITIALIZED) {
             try { r?.release() } catch (e: Exception) { Quiet.note(e) }
