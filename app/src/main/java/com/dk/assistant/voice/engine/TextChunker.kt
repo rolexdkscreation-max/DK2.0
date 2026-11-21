@@ -44,6 +44,16 @@ class TextChunker(
          */
         val refillMs: Long = 0L,
         val refillMin: Int = 3,
+        /**
+         * 21 नवंबर 2026 (मालिक का log: ऑफ़लाइन आवाज़ के 48-68 अक्षर के टुकड़े, बीच में 1.2-1.3 s चुप्पी; "शाम के 6:" बीच से कटा):
+         * >0 = अक्षरों से नाप - पहला टुकड़ा [firstMinChars]-[firstMaxChars] अक्षर, आगे [nextMinChars]-[nextMaxChars].
+         * विराम चिह्न (, ; :) पर तभी जब कम से कम min अक्षर; max पर बातचीत के मोड़ / शब्द की जगह (संख्या-समय बीच से नहीं).
+         * 0 = बंद (बाकी इंजन वैसे ही, सिर्फ़ शब्द-गिनती).
+         */
+        val firstMinChars: Int = 0, val firstMaxChars: Int = 0,
+        val nextMinChars: Int = 0, val nextMaxChars: Int = 0,
+        /** "6:30", "1,000", "10 बजे" जैसे समय / संख्या को बीच से नहीं काटना (St3) */
+        val numberSafe: Boolean = false,
     )
 
     var profile = Profile(firstSoft, firstMax, nextMin, nextSoft, nextMax, nextMin, nextSoft, nextMax, STALL_MS, STALL_MIN)
@@ -91,7 +101,20 @@ class TextChunker(
     /** बीच का टुकड़ा: कम से कम [min] शब्द हों तो जो है अभी दे दो ([Profile.refillMs]) */
     fun flushIfAtLeast(min: Int): String? {
         if (emitted == 0 || words(buf.toString()) < min) return null
+        // 21 नवंबर 2026: "शाम के 6:" जैसा अधूरा समय/संख्या आख़िर में = उससे पहले तक ही (बाकी अगले टुकड़े में)
+        if (profile.numberSafe && tailIsNumber()) {
+            val t = buf.toString().trimEnd()
+            val cut = t.lastIndexOf(' ').takeIf { it > 0 } ?: return null
+            if (words(t.substring(0, cut)) < min) return null
+            return take(cut)
+        }
         return flush()
+    }
+
+    /** buffer का आख़िरी शब्द संख्या/समय है (आगे "30 बजे" आ सकता है)? */
+    private fun tailIsNumber(): Boolean {
+        val last = buf.toString().trimEnd().substringAfterLast(' ')
+        return last.any { it.isDigit() } || last.endsWith(":")
     }
 
     fun pendingWords(): Int = words(buf.toString())
@@ -120,14 +143,21 @@ class TextChunker(
         var wordsSoFar = 0
         var inWord = false
         val starts = ArrayList<Int>(32)
+        val minC = if (first) p.firstMinChars else p.nextMinChars
+        val maxC = if (first) p.firstMaxChars else p.nextMaxChars
         var i = 0
         while (i < s.length) {
             val ch = s[i]
             if (ch.isWhitespace()) {
                 if (inWord) { wordsSoFar++; inWord = false }
+                // 21 नवंबर 2026: अक्षरों की हद ([Profile.firstMaxChars]) - शब्द की जगह पर, मोड़ देखकर, संख्या/समय बीच से नहीं
+                if (maxC > 0 && i >= maxC && wordsSoFar >= 1) {
+                    val c = charCut(starts, minC, i)
+                    if (c > 0) return c
+                }
                 // ज़बरदस्ती: इतने शब्द हो गए और अगला शब्द शुरू होने वाला है
                 val max = if (first) firstMax else nextMax
-                if (wordsSoFar >= max) return if (p.smartCut) naturalCut(starts, max, i) else i
+                if (maxC <= 0 && wordsSoFar >= max) return if (p.smartCut) naturalCut(starts, max, i) else i
             } else {
                 if (!inWord) starts.add(i)
                 inWord = true
@@ -139,15 +169,55 @@ class TextChunker(
                         if (s[i + 1].isDigit() || s[i + 1] == '.') { i++; continue }
                     }
                     val need = if (first) 1 else nextMin
-                    if (w >= need) return endAfterMarks(i)
+                    // अक्षरों वाले नाप में: वाक्य का अंत हमेशा अच्छी जगह (बहुत छोटा टुकड़ा न बने - आगे के लिए 10 अक्षर)
+                    val ok = if (maxC > 0) first || i + 1 >= SENTENCE_MIN_CHARS else w >= need
+                    if (ok) return endAfterMarks(i)
                 } else if (ch in SOFT) {
+                    // 21 नवंबर 2026: "6:30" / "1,000" - अंक के बाद : या , = आगे देखो (अंक आए तो कटाव नहीं)
+                    if (p.numberSafe && i > 0 && s[i - 1].isDigit() && (ch == ':' || ch == ',')) {
+                        if (i + 1 >= s.length) return if (final) s.length else 0
+                        if (s[i + 1].isDigit()) { i++; continue }
+                    }
                     val need = if (first) firstSoft else nextSoft
-                    if (w >= need) return endAfterMarks(i)
+                    val ok = if (maxC > 0) i + 1 >= minC else w >= need
+                    if (ok) return endAfterMarks(i)
                 }
             }
             i++
         }
         return 0
+    }
+
+    /**
+     * 21 नवंबर 2026: अक्षरों की हद पर कटाव - पीछे ([minC] के बाद) बातचीत का मोड़ ढूँढो, न मिले तो [hard];
+     * [Profile.numberSafe] में संख्या के ठीक बाद / "बजे, मिनट, रुपये..." से पहले कभी नहीं (0 = अभी नहीं, अगली जगह देखो).
+     */
+    private fun charCut(starts: List<Int>, minC: Int, hard: Int): Int {
+        for (j in starts.size - 1 downTo 1) {
+            val at = starts[j]
+            if (at < maxOf(minC, 1)) break
+            if (!numberOk(at)) continue
+            if (wordAt(at) in BREAK_BEFORE || wordAt(starts[j - 1]) in BREAK_AFTER) return at
+        }
+        return if (numberOk(hard)) hard else 0
+    }
+    /** [at] (अगले शब्द की शुरुआत / खाली जगह) पर काटना संख्या को तोड़ेगा? */
+    private fun numberOk(at: Int): Boolean {
+        if (!profile.numberSafe) return true
+        var b = at
+        while (b > 0 && buf[b - 1].isWhitespace()) b--
+        var a = b
+        while (a > 0 && !buf[a - 1].isWhitespace()) a--
+        val prev = buf.substring(a, b)
+        var n = at
+        while (n < buf.length && buf[n].isWhitespace()) n++
+        var e = n
+        while (e < buf.length && !buf[e].isWhitespace()) e++
+        val next = buf.substring(n, e).lowercase().trimEnd(',', '।', '.', '?', '!')
+        if (prev.any { it.isDigit() } || prev.endsWith(":")) return false        // "6:" / "10" के ठीक बाद नहीं
+        if (e >= buf.length && n < buf.length) return false                      // अगला शब्द अधूरा - अभी तय नहीं
+        if (next.isNotEmpty() && (next[0].isDigit() || next in NUMBER_UNITS)) return false
+        return true
     }
 
     /** ज़बरदस्ती कटाव [hard] पर: पीछे (आधे टुकड़े तक) बातचीत का प्राकृतिक मोड़ ढूँढो, न मिले तो [hard] */
@@ -220,6 +290,19 @@ class TextChunker(
             nextMin = 5, nextSoft = 9, nextMax = 15,
             stallMs = 150L, stallMin = 2,
             smartCut = true, keepTags = true, refillMs = 1_500L, refillMin = 3,
+            // 21 नवंबर 2026 (मालिक): पहला 15-20 अक्षर, आगे 25-30 (पहले 48-68 = बीच में 1.2-1.3 s चुप्पी); संख्या/समय पूरे
+            firstMinChars = ST3_FIRST_MIN, firstMaxChars = ST3_FIRST_MAX, nextMinChars = ST3_NEXT_MIN, nextMaxChars = ST3_NEXT_MAX,
+            numberSafe = true,
+        )
+        const val SENTENCE_MIN_CHARS = 10
+        const val ST3_FIRST_MIN = 15
+        const val ST3_FIRST_MAX = 20
+        const val ST3_NEXT_MIN = 25
+        const val ST3_NEXT_MAX = 30
+        /** इन शब्दों से पहले नहीं काटना (संख्या के साथ जाते हैं: "10 बजे", "5 मिनट") */
+        val NUMBER_UNITS = setOf(
+            "बजे", "बजकर", "बज", "मिनट", "सेकंड", "घंटे", "घंटा", "दिन", "साल", "तारीख", "रुपये", "रुपए", "रुपया", "प्रतिशत",
+            "किलो", "किमी", "मीटर", "डिग्री", "%", "am", "pm", "baje", "minute", "minutes", "rs",
         )
         /** इस शब्द से पहले काटना ठीक (नया उपवाक्य शुरू होता है). "पर / तो" नहीं - वे "मेज़ पर", "मैं तो" भी होते हैं */
         val BREAK_BEFORE = setOf(

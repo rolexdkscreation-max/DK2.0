@@ -234,6 +234,7 @@ internal fun GeminiLive.scheduleFast() {
  */
 internal fun GeminiLive.confirmBarge(why: String) {
     realBarges++
+    softBarge.reset()
     log("यूज़र सच में बोल रहा ($why) - DK चुप, सुन रहा हूँ")
     // sendLock: shak ke samay ki (purani) awaaz pehle, mic ka naya tukda uske baad (ulti-pulti awaaz = server na samjhe)
     synchronized(sendLock) {
