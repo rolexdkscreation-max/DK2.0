@@ -163,6 +163,24 @@ object Prefs {
 
     /** Gemini Live और Gemini आवाज़ (बोलना) की key - सिर्फ़ DK लाइव की अपनी Gemini key */
     fun ttsGeminiKey(c: Context): String = scopeKey(c, ApiScopes.LIVE, "gemini")
+    /**
+     * 21 नवंबर 2026 (मालिक): DK चैट की Gemini keys - मुख्य + बैकअप 2 + बैकअप 3. हर key पर पूरा [GeminiChatChain] क्रम
+     * (3.5 → 3.1 Flash-Lite → Gemma), तीनों व्यस्त = अगली key. एक-key (ऑल-राउंडर) मोड = सिर्फ़ वही एक key. खाली/दोहराई नहीं
+     */
+    fun chatGeminiKeys(c: Context): List<String> =
+        if (oneKeyOn(c)) GeminiModels.distinctKeys(listOf(scopeKey(c, ApiScopes.CHAT, "gemini")))
+        else GeminiModels.distinctKeys(listOf(scopeKey(c, ApiScopes.CHAT, "gemini"),
+            scopeKeyRaw(c, ApiScopes.CHAT, "gemini2"), scopeKeyRaw(c, ApiScopes.CHAT, "gemini3")))
+
+    /**
+     * 21 नवंबर 2026: चैट वाली text बातचीत का key-क्रम. DK लाइव से (Live के text काम) = पहले Live की Key 1/2/3, फिर चैट की;
+     * चैट से = सिर्फ़ चैट की Key 1/2/3 (Live की free limit बातचीत के लिए बची रहे). एक-key मोड = वही एक key.
+     */
+    fun textChatKeys(c: Context, fromLive: Boolean): List<String> =
+        if (oneKeyOn(c)) chatGeminiKeys(c)
+        else if (fromLive) GeminiModels.distinctKeys(liveGeminiKeys(c) + chatGeminiKeys(c))
+        else chatGeminiKeys(c)
+
     /** DK लाइव की Gemini keys: मुख्य + बैकअप 2 + बैकअप 3 (एक बंद/limit खत्म = चुपचाप अगली). खाली/दोहराई नहीं */
     fun liveGeminiKeys(c: Context): List<String> = LiveKeys.order(listOf(
         ttsGeminiKey(c), scopeKey(c, ApiScopes.LIVE, "gemini2"), scopeKey(c, ApiScopes.LIVE, "gemini3")))
