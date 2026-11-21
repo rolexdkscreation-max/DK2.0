@@ -255,6 +255,13 @@ class GeminiLive(internal val svc: DKAccessibilityService, internal val agent: A
     @Volatile internal var parkHandle: String? = null
     /** नवंबर 2026 (LiveSpare): goAway में बताया समय कब खत्म; दूसरे connection की पिछली कोशिश कब; अभी वाली दौड़ standby के लिए है? */
     @Volatile internal var goAwayDeadline = 0L
+    /** 21 नवंबर 2026: goAway कब आया ([LiveSpare.goAwayTurnSwap]); पिछली बार जो handle अटका ([LiveRecover.dropHandle]) */
+    @Volatile internal var goAwayAt = 0L
+    @Volatile internal var stuckHandle: String? = null
+    /** 21 नवंबर 2026: Whisper का आखिरी सुना वाक्य और कब (अटके session पर यही भेजते हैं, SYSTEM NOTE नहीं) */
+    @Volatile internal var lastWhisper: String? = null
+    @Volatile internal var lastWhisperAt = 0L
+    @Volatile internal var askAgainAt = 0L
     @Volatile internal var spareTriedAt = 0L
     @Volatile internal var spareWanted = false
     /** नवंबर 2026 (LiveSpare 4, थामो और बदलो): कब से थामा (0 = नहीं); थामे समय आपकी असली आवाज़ जमा हुई?; पिछला थामना कब खत्म */
@@ -1466,6 +1473,17 @@ class GeminiLive(internal val svc: DKAccessibilityService, internal val agent: A
                         // अब हमेशा: 4s में नया connection + वही आवाज़ दोबारा (text नहीं). मिनट में 2 बार तक.
                         val zBusy = generating || isPlaying() || toolJobs.isNotEmpty() || turnDet.inSpeech || muteTurn || ownerHolding || guardHeld
                         val zEnd = if (timeline.active) timeline.endpointAt else 0L
+                        // 21 नवंबर 2026 (मालिक): goAway के बीच बात = 4s अटकने का इंतज़ार नहीं, 1.5s में नए connection पर (handle वही)
+                        if (zEnd > 0L && zEnd != zombieFor &&
+                            LiveSpare.goAwayTurnSwap(goAway, now, zEnd, goAwayAt, timeline.eventAt, zBusy, utt.speechMs())) {
+                            zombieFor = zEnd
+                            replayAudio = utt.snapshot(now); replayAt = now
+                            recoverWhy = "goAway के बीच बात"; recoverAt = now
+                            log("सुधार#1 goAway: आपकी बात goAway के बीच पुराने connection पर अटकी - ${(now - zEnd) / 100 / 10.0}s में ही " +
+                                "नए connection पर${if (handle != null) " (बातचीत वहीं से, handle रखा)" else ""} और वही आवाज़ दोबारा • ${timeline.summary()}")
+                            goAwayDrop = true
+                            break
+                        }
                         if (zEnd > 0L && zEnd != zombieFor &&
                             LiveRecover.zombie(now, zEnd, timeline.eventAt, lastAnyServerAt, zBusy, utt.speechMs(), BargeGate.realWords(caption?.text().orEmpty()))) {
                             zombieFor = zEnd
@@ -1474,9 +1492,13 @@ class GeminiLive(internal val svc: DKAccessibilityService, internal val agent: A
                                 val again = zombieSwaps.recent(now) > 1
                                 replayAudio = utt.snapshot(now); replayAt = now
                                 recoverWhy = "session अटका"; recoverAt = now
-                                if (again) handle = null          // अटका सत्र फिर अटका = नई बातचीत (याद prompt में)
+                                // 21 नवंबर 2026: फिर अटका पर handle अलग = उसी बातचीत से; वही handle दोबारा अटका तभी नई (याद prompt में)
+                                val dropH = LiveRecover.dropHandle(again, handle, stuckHandle)
+                                stuckHandle = handle
+                                if (dropH) handle = null
+                                if (again) log("सुधार#1 handle: फिर अटका - ${if (dropH) "वही handle दोबारा अटका, नई बातचीत (पिछली बातें prompt में)" else "handle रखा, बातचीत वहीं से"}")
                                 log("Live: बात के बाद ${(now - zEnd) / 100 / 10.0}s तक Gemini से कुछ नहीं आया (न लिखावट, न VAD) - session अटका; " +
-                                    "नया connection${if (again) " (नई बातचीत)" else " (बातचीत वहीं से)"} और आपकी वही आवाज़ दोबारा (#$zombieN) • ${timeline.summary()}")
+                                    "नया connection${if (dropH) " (नई बातचीत)" else " (बातचीत वहीं से)"} और आपकी वही आवाज़ दोबारा (#$zombieN) • ${timeline.summary()}")
                                 goAway = true; goAwayDrop = true
                                 break
                             } else { log("Live: session फिर अटका पर 1 मिनट में ${LiveRecover.MAX_SWAPS} बार बदल चुका - इस बार नहीं (चक्कर नहीं) • ${timeline.summary()}"); stuckNoSwap() }

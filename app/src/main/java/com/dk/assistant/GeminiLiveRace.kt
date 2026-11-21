@@ -266,6 +266,7 @@ internal fun GeminiLive.onGoAway(timeLeft: String) {
     val left = LiveStay.timeLeftMs(timeLeft)
     log("goAway: ${timeLeft.ifBlank { "?" }} बाकी" + if (left >= 0) " (${left} ms)" else "")
     goAwayDeadline = System.currentTimeMillis() + LiveSpare.goAwayLeft(left)
+    goAwayAt = System.currentTimeMillis()
     goAway = true
     prepareSpare("goAway", idle = !(turnActive || isPlaying() || toolJobs.isNotEmpty() || generating))
 }

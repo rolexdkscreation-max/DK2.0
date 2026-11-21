@@ -192,6 +192,7 @@ internal fun GeminiLive.scheduleFast() {
         if (q == null && !ringing && LiveWhisper.on(svc)) {
             val chunks = whisperUtt.snapshot(System.currentTimeMillis()); val ms = whisperUtt.speechMs(); whisperUtt.clear()
             val w = LiveWhisper.hear(svc, chunks, ms)
+            if (!w.isNullOrBlank()) { lastWhisper = w; lastWhisperAt = System.currentTimeMillis() }
             if (turnDet.inSpeech || isPlaying() || stopped) return@launch
             b = LiveWhisper.pick(w, cap, dkHeardNow())
             if (b != cap) {
@@ -326,11 +327,11 @@ internal fun GeminiLive.runLockNow(q: QuickCommands.Quick, heard: String, from: 
  * 18 नवंबर 2026 (मालिक: "बात स्क्रीन पर लिखी है पर जवाब नहीं"): बचाव-text बंद होने पर भी [LiveRecover.LAST_CHANCE_GAP_MS] में
  * एक बार लिखी बात text में भेजो (असली शब्द न हों और [sorryOk] = Gemini "माफ़ कीजिए, फिर से बोलिए" कहे). true = भेजा.
  */
-internal fun GeminiLive.lastChance(why: String, sorryOk: Boolean): Boolean {
+internal fun GeminiLive.lastChance(why: String, sorryOk: Boolean, text: String? = null): Boolean {
     val now = System.currentTimeMillis()
     if (!ready || ws == null || muteTurn || !LiveRecover.lastChanceOk(now, lastChanceAt)) return false
     val cap = caption?.text().orEmpty().trim().ifBlank { synchronized(turnLock) { userText.toString().trim() } }
-    val t = LiveRecover.lastChanceText(cap, sorryOk) ?: return false
+    val t = text ?: LiveRecover.lastChanceText(cap, sorryOk) ?: return false
     val ok = try { ws?.tx(JSONObject().put("realtimeInput", JSONObject().put("text", t)).toString()) == true } catch (_: Exception) { false }
     if (!ok) { log("आख़िरी मौका ($why): text नहीं भेज पाया"); return false }
     lastChanceAt = now
