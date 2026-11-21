@@ -451,6 +451,8 @@ class GeminiLive(internal val svc: DKAccessibilityService, internal val agent: A
     @Volatile internal var duplexStops = 0
     /** 16 नवंबर 2026 (ऑडिट S2): speaker पर (कॉल-mode नहीं) DK बोलते समय VAD + गूँज से बहुत तेज़ आवाज़ = जल्दी टोकना */
     internal val speakerBarge = SpeakerBarge()
+    /** 21 नवंबर 2026 (#3): DK बोलते समय तेज़ आवाज़ = पहले duck, पूरा रोकना 1s + मालिक / पक्के शब्द पर ([SoftBarge]) */
+    internal val softBarge = SoftBarge()
     @Volatile internal var speakerStops = 0
     /** ऑडिट S3: caption जुड़ा दिखे पर लिखना बंद = "चुप" माना जाए (तब Live का अपना लिखा + बिना caption वाले नियम) */
     internal val capHealth = CaptionHealth()
@@ -1060,6 +1062,7 @@ class GeminiLive(internal val svc: DKAccessibilityService, internal val agent: A
         histOn = Prefs.historyOnDemand(svc); histFixedReal = false; synchronized(histCtx) { histCtx.clear() }; histToolRounds = 0; freshRotateDue = false; freshRotate = false; turnsSinceFresh = 0; histMethodLogged = ""
         histMethod = HistoryOnDemand.method(compressLimits, false)
         LocalMemory.session = "s" + System.currentTimeMillis().toString(36)
+        com.dk.assistant.voice.st3.St3Load.newSession()     // 21 नवंबर 2026: ऑफ़लाइन आवाज़ का धीमा/Gemini फ़ैसला हर Live session नया
         log("इतिहास: पुरानी बातचीत सिर्फ़ माँगने पर = " + (if (histOn) "चालू (सिर्फ़ नया सवाल + ${HistoryOnDemand.HISTORY_TAIL} संदेश की पूँछ, पुरानी बात search_history से)" else "बंद (पहले जैसा)") + " • सत्र ${LocalMemory.session}")
         log("बीच बातचीत का बचाव-text: " + if (textRescue) "चालू (सेटिंग)" else "बंद (डिफ़ॉल्ट - 1011 से बचाव)")
         if (!Setup.hasMic(svc)) throw Fatal("माइक की परमिशन नहीं है", kind = LiveFailWhy.Kind.MIC)

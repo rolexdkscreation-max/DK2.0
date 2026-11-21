@@ -359,7 +359,9 @@ class SpeechPipeline(private val ctx: Context, private val hooks: Hooks) {
         while (s.gen == gen && System.currentTimeMillis() - t0 < PREROLL_WAIT_MS) {
             val next = segs.peek()
             if (next != null && next.phone) return
-            if (readyMs(s) >= PREROLL_READY_MS) return                   // काफ़ी आवाज़ तैयार
+            // 21 नवंबर 2026 (मालिक: "बजना शुरू करने से पहले कम से कम अगला एक टुकड़ा तैयार"): अगला पूरा बन गया = शुरू
+            if (next != null && next.gen == s.gen && next.q.contains(end)) { hooks.log("सुधार#2 बफ़र: अगला टुकड़ा तैयार (${readyMs(s)} ms आवाज़) - अब बजना शुरू"); return }
+            if (readyMs(s) >= PREROLL_READY_MS && next == null) return   // काफ़ी आवाज़ तैयार (अगला टुकड़ा अभी बना ही नहीं)
             if (next == null && ended) {                       // पूरा जवाब आ चुका: बचा text आख़िरी टुकड़ा, नहीं बचा = यही अकेला
                 val rest = synchronized(chunker) { chunker.flush() }
                 if (rest == null && s.q.contains(end)) return        // यही अकेला, पूरा बन चुका
@@ -507,9 +509,9 @@ class SpeechPipeline(private val ctx: Context, private val hooks: Hooks) {
         /** पहला टुकड़ा इतना लंबा = दूसरे को बनने का समय पहले से है, इंतज़ार नहीं */
         const val PREROLL_SKIP_MS = 3_000L
         /** 20 नवंबर 2026: पहला टुकड़ा बजाने से पहले कम से कम इतनी आवाज़ तैयार हो (यह + अगले) */
-        const val PREROLL_READY_MS = 1_500L
+        const val PREROLL_READY_MS = 2_000L
         /** ...पर इतने से ज़्यादा इंतज़ार नहीं (पहली आवाज़ बहुत देर से न आए) */
-        const val PREROLL_WAIT_MS = 1_200L
+        const val PREROLL_WAIT_MS = 2_000L     // 21 नवंबर 2026: 1.2 -> 2 s (अगला टुकड़ा बन जाए; पहला अब छोटा 15-20 अक्षर)
         /** ऑफ़लाइन आवाज़ बनना/बजना ख़त्म होने के बाद इतनी देर और पीछे के भारी काम रुकें */
         const val BUSY_HOLD_MS = 1_500L
         /** 20 नवंबर 2026: ऑफ़लाइन आवाज़ धीमी - बचा जवाब Live की अपनी आवाज़ में (लॉग का कारण) */
