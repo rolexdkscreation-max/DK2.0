@@ -65,7 +65,7 @@ internal fun GeminiLive.onLocalEndOfSpeech(now: Long) {
     // उस पर "वाक्य अधूरा" मानकर "बात खत्म" रोकना = हर बार जवाब देर से। तब रोको मत।
     val holdEnd = TurnEnd.continues(capNow) && TurnEnd.captionFresh(caption?.textAt ?: 0L, turnDet.lastVoiceAt)
     val endSent = !holdEnd && ready && w != null && endGate.onSpeechEnd(turnDet.lastSpeechMs, words) &&
-        try { w.tx("{\"realtimeInput\":{\"audioStreamEnd\":true}}") } catch (_: Exception) { false }
+        synchronized(sendLock) { flushHeldAudio(w) && try { w.tx("{\"realtimeInput\":{\"audioStreamEnd\":true}}") } catch (_: Exception) { false } }
     caption?.endOfSpeech()
     // DK abhi jawab bana/bol raha hai = server sun chuka; warna 2.5s me kuch na aaye to "nahi suna".
     // dropOld = user ne purana jawab toka tha: woh "generating" PURANE jawab ka hai, is nayi baat ka nahi -

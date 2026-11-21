@@ -401,6 +401,9 @@ class GeminiLive(internal val svc: DKAccessibilityService, internal val agent: A
     internal val utt = LiveRecover.Utterance(CHUNK_MS)
     /** 14 नवंबर 2026: अभी की बात की आवाज़ - बात खत्म होते ही Groq Whisper (large-v3) से सही text ([LiveWhisper]) */
     internal val whisperUtt = LiveRecover.Utterance(CHUNK_MS)
+    /** 21 नवंबर 2026 (सुधार#6): line भरी = असली आवाज़ फ़ोन में थोड़ी देर ([LiveUplink]) */
+    internal val upHold = LiveUplink.Hold()
+    internal val upSlow = LiveUplink.Slow()
     /** नए connection पर दोबारा भेजनी है (null = कुछ नहीं) */
     @Volatile internal var replayAudio: List<ByteArray>? = null
     @Volatile internal var replayAt = 0L
@@ -1062,6 +1065,7 @@ class GeminiLive(internal val svc: DKAccessibilityService, internal val agent: A
         histOn = Prefs.historyOnDemand(svc); histFixedReal = false; synchronized(histCtx) { histCtx.clear() }; histToolRounds = 0; freshRotateDue = false; freshRotate = false; turnsSinceFresh = 0; histMethodLogged = ""
         histMethod = HistoryOnDemand.method(compressLimits, false)
         LocalMemory.session = "s" + System.currentTimeMillis().toString(36)
+        upHold.clear(); upHold.resetCount(); upSlow.reset()   // 21 नवंबर 2026 (सुधार#6): नया session = पूरी quality से
         com.dk.assistant.voice.st3.St3Load.newSession()     // 21 नवंबर 2026: ऑफ़लाइन आवाज़ का धीमा/Gemini फ़ैसला हर Live session नया
         log("इतिहास: पुरानी बातचीत सिर्फ़ माँगने पर = " + (if (histOn) "चालू (सिर्फ़ नया सवाल + ${HistoryOnDemand.HISTORY_TAIL} संदेश की पूँछ, पुरानी बात search_history से)" else "बंद (पहले जैसा)") + " • सत्र ${LocalMemory.session}")
         log("बीच बातचीत का बचाव-text: " + if (textRescue) "चालू (सेटिंग)" else "बंद (डिफ़ॉल्ट - 1011 से बचाव)")

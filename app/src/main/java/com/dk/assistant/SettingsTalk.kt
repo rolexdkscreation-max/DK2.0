@@ -75,6 +75,30 @@ internal fun SettingsActivity.secTalk() {
         switch(box, "Whisper पूरी सटीकता (थोड़ा धीमा)", TalkPrefs.fullAccuracy(this)).setOnCheckedChangeListener { _, on -> TalkPrefs.setFull(this, on) }
         hint(box, "बंद (सुझाया): छोटी बात पर Whisper सिर्फ़ उतना हिस्सा देखता है जितना आप बोले - 2-3 गुना जल्दी. चालू: हर बार पूरी 30 सेकंड की खिड़की.")
 
+        // 21 नवंबर 2026 (मालिक): DK Live की आवाज़ 100 / 50 / 30% - डिफ़ॉल्ट बंद
+        label(box, "DK Live की आवाज़ (कितनी तेज़)")
+        val lvTxt = TextView(this).apply { textSize = 13f; setTextColor(0xB3FFFFFF.toInt()) }
+        val lvBar = SeekBar(this).apply {
+            max = (LiveVoiceLevel.MAX - LiveVoiceLevel.MIN) / LiveVoiceLevel.STEP
+            progress = (LiveVoiceLevel.pct(this@secTalk) - LiveVoiceLevel.MIN) / LiveVoiceLevel.STEP
+            isEnabled = LiveVoiceLevel.on(this@secTalk)
+        }
+        fun showLv() { lvTxt.text = UiLang.s(LiveVoiceLevel.label(LiveVoiceLevel.on(this), LiveVoiceLevel.pct(this))) }
+        switch(box, "DK Live की आवाज़ कम-ज़्यादा करूँ", LiveVoiceLevel.on(this))
+            .setOnCheckedChangeListener { _, on -> LiveVoiceLevel.setOn(this, on); lvBar.isEnabled = on; showLv() }
+        box.addView(lvBar); box.addView(lvTxt)
+        showLv()
+        lvBar.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
+            override fun onProgressChanged(s: SeekBar?, p: Int, fromUser: Boolean) {
+                if (fromUser) { LiveVoiceLevel.setPct(this@secTalk, LiveVoiceLevel.MIN + p * LiveVoiceLevel.STEP); showLv() }
+            }
+            override fun onStartTrackingTouch(s: SeekBar?) { // ज़रूरत नहीं
+            }
+            override fun onStopTrackingTouch(s: SeekBar?) { // ज़रूरत नहीं
+            }
+        })
+        hint(box, "बंद (डिफ़ॉल्ट) = पहले जैसा. चालू करके 100% (पूरी), 50% (आधी) या 30% (धीमी) चुनें - अगले टुकड़े से लागू. फ़ोन का volume नहीं बदलता.")
+
         // ---------------------------------------------------------------- Whisper मॉडल डाउनलोड
         val a = WhisperStt.asset()
         label(box, "Whisper मॉडल (डाउनलोड)")

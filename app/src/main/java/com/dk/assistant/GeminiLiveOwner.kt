@@ -153,7 +153,9 @@ internal fun GeminiLive.onOwnerVerdict(now: Long, score: Float?, ms: Int, tookMs
         com.dk.assistant.voice.OwnerGate.Verdict.OTHER -> {
             othersIgnored++
             log("किसी और की आवाज़ (मिलान $sc, ${ms} ms) - अनसुनी, जवाब नहीं (#$othersIgnored)")
-            if (vgOn) com.dk.assistant.voice.VoiceGuardian.onStranger(svc)
+            // 21 नवंबर 2026 (सुधार#4): 1 s से छोटी आवाज़ पर "अनजान आवाज़" चेतावनी नहीं (0.34 s पर गलत चेतावनी आई थी)
+            if (vgOn && !com.dk.assistant.voice.VgRules.warnOk(ms)) log("सुधार#4 पहचान: ${ms} ms आवाज़ (1 s से कम) - अनजान आवाज़ की चेतावनी नहीं दी")
+            else if (vgOn) com.dk.assistant.voice.VoiceGuardian.onStranger(svc)
             val held = ownerHolding
             ownerHolding = false; ownerHold.clear()
             caption?.discard()

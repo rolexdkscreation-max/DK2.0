@@ -8,6 +8,7 @@ import android.widget.EditText
 import android.widget.LinearLayout
 import android.widget.RadioButton
 import android.widget.RadioGroup
+import android.widget.SeekBar
 import android.widget.TextView
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.widget.SwitchCompat
@@ -53,6 +54,30 @@ internal fun SettingsActivity.secPhoneLock() {
         // 16 नवंबर 2026 (ऑडिट G1): आवाज़ से अनलॉक की सुरक्षा साफ़-साफ़
         if (!com.dk.assistant.voice.VoiceGuardian.ready(this)) hint(box, "⚠ आवाज़ से अनलॉक के लिए पहले Settings → वॉइस गार्डियन में अपनी आवाज़ सिखाइए — उसके बिना DK PIN नहीं डालेगा।")
         hint(box, UNLOCK_SAFETY_NOTE)
+        // 21 नवंबर 2026 (मालिक): हर फ़ोन में PIN वाला हिस्सा अलग दूरी पर आता है - DK कितना ऊपर स्लाइड करे
+        label(box, "अनलॉक: लॉक स्क्रीन पर कितना ऊपर स्लाइड करे")
+        val upTxt = TextView(this).apply { textSize = 13f; setTextColor(0xB3FFFFFF.toInt()) }
+        val upBar = SeekBar(this).apply {
+            max = (UnlockSwipe.MAX - UnlockSwipe.MIN) / UnlockSwipe.STEP
+            progress = (UnlockSwipe.pct(this@secPhoneLock) - UnlockSwipe.MIN) / UnlockSwipe.STEP
+        }
+        box.addView(upBar); box.addView(upTxt)
+        upTxt.text = UiLang.s(UnlockSwipe.label(UnlockSwipe.pct(this)))
+        upBar.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
+            override fun onProgressChanged(b: SeekBar?, p: Int, fromUser: Boolean) {
+                if (!fromUser) return
+                val pct = UnlockSwipe.MIN + p * UnlockSwipe.STEP
+                UnlockSwipe.setPct(this@secPhoneLock, pct); upTxt.text = UiLang.s(UnlockSwipe.label(pct))
+            }
+            override fun onStartTrackingTouch(b: SeekBar?) { // ज़रूरत नहीं
+            }
+            override fun onStopTrackingTouch(b: SeekBar?) { // ज़रूरत नहीं
+            }
+        })
+        switch(box, "PIN न आए तो अगली बार थोड़ा और ऊपर स्लाइड करो", UnlockSwipe.more(this))
+            .setOnCheckedChangeListener { _, on -> UnlockSwipe.setMore(this, on) }
+        hint(box, "जिस फ़ोन में थोड़ा-सा ऊपर करने पर PIN आ जाता है वहाँ कम रखें; जहाँ पूरा खींचना पड़ता है वहाँ ज़्यादा. " +
+            "\"और ऊपर\" चालू = पहली बार PIN न आए तो हर अगली कोशिश ${UnlockSwipe.STEP_UP}% ज़्यादा (${PhoneUnlocker.SWIPE_TRIES} कोशिश तक).")
         swUnlock.setOnCheckedChangeListener { _, on ->
             txtSaved?.text = "बदलाव सेव नहीं हुए — सेव दबाएँ"
             if (on && PhoneLockStore.hasSecret(this) && !PhoneLockStore.unlockOn(this)) {

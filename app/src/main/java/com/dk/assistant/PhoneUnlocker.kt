@@ -147,10 +147,16 @@ internal object PhoneUnlocker {
         if (s == null && !km.isKeyguardLocked) return "phone unlock ho gaya"
         // कुछ फ़ोन: पहली swipe से सिर्फ़ घड़ी हटती है / PIN वाला हिस्सा खुद नहीं खुला.
         // v4.8: एक नहीं, [SWIPE_TRIES] बार ऊपर swipe (हर बार डालने की जगह आने तक रुककर)
+        // 21 नवंबर 2026 (मालिक): कितना ऊपर स्लाइड - Settings से ([UnlockSwipe], डिफ़ॉल्ट 60% = पहले जैसा)
+        val upPct = UnlockSwipe.pct(svc); val upMore = UnlockSwipe.more(svc)
         var tries = 0
-        while (s == null && km.isKeyguardLocked && tries++ < SWIPE_TRIES) {
+        while (s == null && km.isKeyguardLocked && tries < SWIPE_TRIES) {
             val dm = svc.resources.displayMetrics
-            svc.swipe(dm.widthPixels / 2f, dm.heightPixels * 0.85f, dm.widthPixels / 2f, dm.heightPixels * 0.25f, 250)
+            val p = UnlockSwipe.pctFor(upPct, upMore, tries)
+            val (y0, y1) = UnlockSwipe.ys(dm.heightPixels, p)
+            DKLog.d("फ़ोन लॉक: ऊपर स्लाइड ${tries + 1}/$SWIPE_TRIES - स्क्रीन का $p%")
+            svc.swipe(dm.widthPixels / 2f, y0, dm.widthPixels / 2f, y1, 250)
+            tries++
             s = waitBouncer(svc, kind)
         }
         if (s == null && !km.isKeyguardLocked) return "phone unlock ho gaya"

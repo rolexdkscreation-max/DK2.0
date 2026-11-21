@@ -240,12 +240,44 @@ internal fun GeminiLive.sendAudio(pcm: ByteArray, silent: Boolean = false): Unit
     }
     // network dheema: line me atka data. Pehle khaamoshi chhodo (32KB), asli awaaz sirf bahut atakne par (256KB) -
     // OkHttp ki line se purana nahi hata sakte, isliye pehle asli baat ke naye tukde hi gir jaate the.
-    if (w.queueSize() > (if (silent) 32 * 1024 else 256 * 1024)) { dropped++; return@synchronized }
-    val msg = "{\"realtimeInput\":{\"audio\":{\"mimeType\":\"audio/pcm;rate=$IN_RATE\",\"data\":\"" +
-        Base64.encodeToString(pcm, Base64.NO_WRAP) + "\"}}}"
-    if (w.tx(msg)) { sent++; sentBytes += pcm.size; utt.add(pcm, !silent, System.currentTimeMillis()); whisperUtt.add(pcm, !silent, System.currentTimeMillis()) } else dropped++
+    // 21 नवंबर 2026 (मालिक, सुधार#6): line 30 KB+ भरी = असली आवाज़ फ़ोन में रोको (1 s तक, ज़्यादा = सबसे पुराना गिरा);
+    // line खाली होते ही पहले रुकी हुई, फिर नई. धीमे network पर 8 kHz (आधा upload).
+    val q = w.queueSize()
+    val now = System.currentTimeMillis()
+    if (upSlow.update(q, now)) log("सुधार#6 network: " + (if (upSlow.on) "line में ${q / 1024}KB अटका - आवाज़ अब ${LiveUplink.SLOW_RATE / 1000} kHz (आधा upload)" else "line साफ़ - आवाज़ फिर ${IN_RATE / 1000} kHz"))
+    if (LiveUplink.mustHold(silent, q)) {
+        upHold.add(pcm)?.let { old ->
+            dropped++; utt.add(old, true, now); whisperUtt.add(old, true, now)
+            if (upHold.dropped == 1 || upHold.dropped % 25 == 0) log("सुधार#6 network: line ${q / 1024}KB भरी - सबसे पुराना आवाज़ का टुकड़ा गिराया (कुल ${upHold.dropped}), ताज़ी बात रखी")
+        }
+        return@synchronized
+    }
+    if (q <= LiveUplink.HOLD_AT && upHold.size > 0) upHold.drain().forEach { sendPcm(w, it, false) }
+    if (q > (if (silent) 32 * 1024 else 256 * 1024)) { dropped++; return@synchronized }
+    sendPcm(w, pcm, silent)
     // 1s khaamoshi bheji -> stream band (docs: audioStreamEnd), ab asli awaaz aane tak upload nahi
     if (end && endGate.onSilenceEnd()) try { w.tx("{\"realtimeInput\":{\"audioStreamEnd\":true}}") } catch (e: Exception) { Quiet.note(e) }
+}
+
+/** एक टुकड़ा line में (धीमे network पर 8 kHz). utt / whisperUtt को हमेशा असली 16 kHz */
+internal fun GeminiLive.sendPcm(w: okhttp3.WebSocket, pcm: ByteArray, silent: Boolean) {
+    val slow = upSlow.on
+    val body = if (slow) LiveUplink.half(pcm) else pcm
+    val msg = "{\"realtimeInput\":{\"audio\":{\"mimeType\":\"audio/pcm;rate=${if (slow) LiveUplink.SLOW_RATE else IN_RATE}\",\"data\":\"" +
+        Base64.encodeToString(body, Base64.NO_WRAP) + "\"}}}"
+    if (w.tx(msg)) { sent++; sentBytes += body.size; utt.add(pcm, !silent, System.currentTimeMillis()); whisperUtt.add(pcm, !silent, System.currentTimeMillis()) } else dropped++
+}
+
+/**
+ * 21 नवंबर 2026 (सुधार#6): audioStreamEnd से पहले फ़ोन में रुकी आवाज़ भेज दो (end आवाज़ के बाद ही जाए).
+ * sendLock के अंदर बुलाओ. true = रुकी आवाज़ बची नहीं.
+ */
+internal fun GeminiLive.flushHeldAudio(w: okhttp3.WebSocket): Boolean {
+    if (upHold.size == 0) return true
+    val l = upHold.drain()
+    l.forEach { sendPcm(w, it, false) }
+    log("सुधार#6 network: बात खत्म से पहले रुकी ${l.size} आवाज़ के टुकड़े भेजे (line ${w.queueSize() / 1024}KB) - फिर audioStreamEnd")
+    return true
 }
 
 /** Caption socket: asli awaaz hamesha; khaamoshi 1s tak, phir audioStreamEnd aur band */
