@@ -82,8 +82,9 @@ export const AI_CHAIN = [
   { id: "mistral", kind: "openai", secret: "MISTRAL_API_KEY", base: "https://api.mistral.ai/v1", model: "mistral-small-latest" },
   // Groq का Llama 3.3 70B 16 अगस्त 2026 को free पर बंद - gpt-oss-120b (कम सोच = पहला शब्द जल्दी). free: 8K token/मिनट = लंबी बातचीत काटो
   { id: "groq", kind: "openai", secret: "GROQ_API_KEY", base: "https://api.groq.com/openai/v1", model: "openai/gpt-oss-120b", extra: { reasoning_effort: "low" }, maxContextTokens: 6_000 },
-  // 21 नवंबर 2026 (मालिक): Cerebras - Llama 3.3 70B फ़रवरी 2026 में हटा, gpt-oss-120b. free context ~65K - उससे लंबी बात पुरानी लाइनें काटकर
-  { id: "cerebras", kind: "openai", secret: "CEREBRAS_API_KEY", base: "https://api.cerebras.ai/v1", model: "gpt-oss-120b", extra: { reasoning_effort: "low" }, maxContextTokens: 60_000 },
+  // 21 नवंबर 2026 (मालिक): Cohere का OpenAI-जैसा पता (compatibility API), Command A+ (128K context).
+  // reasoning_effort सिर्फ़ "none" / "high" - "none" = सोच बंद, पहला शब्द जल्दी. trial key: 20 रिक्वेस्ट/मिनट, 1,000/महीना
+  { id: "cohere", kind: "openai", secret: "COHERE_API_KEY", base: "https://api.cohere.ai/compatibility/v1", model: "command-a-plus-05-2026", extra: { reasoning_effort: "none" }, maxContextTokens: 120_000 },
   { id: "openrouter", kind: "openai", secret: "OPENROUTER_API_KEY", base: "https://openrouter.ai/api/v1", model: "openrouter/free" },
   { id: "zai", kind: "openai", secret: "ZAI_API_KEY", base: "https://api.z.ai/api/paas/v4", model: "glm-4.7-flash" },
   { id: "nvidia", kind: "openai", secret: "NVIDIA_API_KEY", base: "https://integrate.api.nvidia.com/v1", model: "meta/llama-3.3-70b-instruct" },
@@ -128,9 +129,9 @@ export const DK_LLM_PERSONA =
  * Llama नहीं (मालिक: "Llama हटाओ") - वही gpt-oss-120b. Neurons इमेज/आवाज़ के साथ साझा (रोज़ 10,000, 00:00 UTC पर नया).
  */
 export const WORKERS_AI_CHAT = { id: "cloudflare", kind: "workers", model: "@cf/openai/gpt-oss-120b", maxTokens: 2048, maxContextTokens: 100_000 };
-/** चैट की पूरी कड़ी: AI_CHAIN + Cloudflare (Cerebras के बाद) */
+/** चैट की पूरी कड़ी: AI_CHAIN + Cloudflare (Cohere के बाद) */
 export const CHAT_CHAIN = (() => {
-  const i = AI_CHAIN.findIndex((c) => c.id === "cerebras") + 1;
+  const i = AI_CHAIN.findIndex((c) => c.id === "cohere") + 1;
   return [...AI_CHAIN.slice(0, i), WORKERS_AI_CHAT, ...AI_CHAIN.slice(i)];
 })();
 /** paid key वाली - रफ़्तार कुछ भी हो, हमेशा आख़िर में (मुफ़्त पहले) */
@@ -144,16 +145,16 @@ export const PAID_PROVIDERS = ["deepseek", "openai", "anthropic"];
  * cacheMs = D1 के आँकड़े इतनी देर Worker की याद में (हर रिक्वेस्ट पर D1 न पढ़ें).
  */
 export const SPEED = { order: "fast", alpha: 0.3, explore: 0.1, cooldownMs: 60_000, demoteAt: 0.9, cacheMs: 15_000 };
-/** बंद कंपनियाँ (id). Worker var AI_OFF = "groq,cerebras" से भी */
+/** बंद कंपनियाँ (id). Worker var AI_OFF = "groq,cohere" से भी */
 export const PROVIDER_OFF = [];
 /**
  * हर कंपनी की रोज़ की अनुमानित सीमा (00:00 UTC = भारत सुबह 5:30 पर नई). null = पता नहीं (90% वाला नियम नहीं).
  * Groq free gpt-oss-120b: 1,000 रिक्वेस्ट + 2 लाख token / दिन (Groq docs, नवंबर 2026 - 14,400 वाला Llama 8B का था).
- * Cerebras: 10 लाख token. Cloudflare: 10,000 Neurons (इमेज के Neurons भी इसी में गिने जाते हैं). Gemini: पहले जैसा (null).
+ * Cohere trial: 1,000 रिक्वेस्ट / महीना = ~33 / दिन. Cloudflare: 10,000 Neurons (इमेज के Neurons भी इसी में गिने जाते हैं). Gemini: पहले जैसा (null).
  */
 export const PROVIDER_LIMITS = {
   groq: { requests: 1_000, tokens: 200_000 },
-  cerebras: { tokens: 1_000_000 },
+  cohere: { requests: 33 },
   cloudflare: { neurons: DAILY_NEURONS },
 };
 /** token का अंदाज़ा: इतने अक्षर = 1 token (हिंदी में token ज़्यादा बनते हैं, इसलिए 3) */
@@ -180,7 +181,7 @@ export const SEARCH_TIMEOUT_MS = 8_000;
 /** Worker secrets के नाम - deploy workflow सिर्फ़ भरे हुए भेजता है */
 export const SECRET_NAMES = [
   "ALLOWED_EMAILS", "WEBHOOK_SECRET",
-  "GEMINI_API_KEY", "MISTRAL_API_KEY", "GROQ_API_KEY", "CEREBRAS_API_KEY", "OPENROUTER_API_KEY", "ZAI_API_KEY", "NVIDIA_API_KEY",
+  "GEMINI_API_KEY", "MISTRAL_API_KEY", "GROQ_API_KEY", "COHERE_API_KEY", "OPENROUTER_API_KEY", "ZAI_API_KEY", "NVIDIA_API_KEY",
   "DEEPSEEK_API_KEY", "OPENAI_API_KEY", "ANTHROPIC_API_KEY",
   "TAVILY_API_KEY", "EXA_API_KEY", "LINKUP_API_KEY", "FIRECRAWL_API_KEY",
 ];

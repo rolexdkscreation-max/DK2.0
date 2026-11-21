@@ -20,7 +20,7 @@ FIREBASE_PROJECT_ID = "__FIREBASE_PROJECT_ID__"
 FREE_SERVER_AI = "1"
 # AI का क्रम: "fast" = सबसे तेज़ पहले (डिफ़ॉल्ट), "fixed" = config.js वाला क्रम
 AI_ORDER = "fast"
-# बंद कंपनियाँ, कॉमा से (जैसे "groq,cerebras"). खाली = सब चालू
+# बंद कंपनियाँ, कॉमा से (जैसे "groq,cohere"). खाली = सब चालू
 AI_OFF = ""
 
 # रोज़ भारत सुबह 6:00 (00:30 UTC): 7 दिन से पुराना हिसाब D1 से मिटे (src/index.js cleanup)
