@@ -310,4 +310,38 @@ object GuardRules {
         minutes > 60 -> "${minutes / 60} घंटे ${minutes % 60} मिनट"
         else -> "$minutes मिनट"
     }
+
+    // ------------------------------------------------------------------ 21 नवंबर 2026: बैटरी + फिर से लॉक
+
+    /** wake-up accelerometer: event इतनी देर तक sensor-hub में जमा (batch), फिर एक साथ - CPU हर पल नहीं जागता */
+    const val SENSOR_BATCH_US = 1_000_000
+    /** सायरन / लोकेशन के समय wake lock की ऊपरी सीमा (छूट जाए तब भी अपने-आप छूटे) */
+    const val WAKE_MAX_MS = 6 * 3_600_000L
+    /** सायरन बजते फ़ोन खुला (और सायरन बंद नहीं किया) = इतनी देर में फिर लॉक */
+    const val RELOCK_MS = 1_500L
+    /** गलत PIN देखने की जाँच इससे जल्दी नहीं (content-change बहुत आते हैं) */
+    const val WRONG_CHECK_MS = 250L
+    /** एक बार गलत PIN पर लॉक किया - इतनी देर दोबारा नहीं (वही लिखावट फिर दिखती है) */
+    const val WRONG_GAP_MS = 1_500L
+
+    /** पहरे (बिना अलार्म) में wake lock चाहिए? सिर्फ़ तब जब फ़ोन में wake-up sensor नहीं (स्क्रीन बंद पर हिलना पता न चले) */
+    fun idleWake(hasWakeupSensor: Boolean) = !hasWakeupSensor
+
+    /** CPU जगाए रखो: सायरन बज रहा / लोकेशन भेज रहे / पुराना फ़ोन (wake-up sensor नहीं) */
+    fun needWake(alarming: Boolean, tracking: Boolean, idleWake: Boolean) = alarming || tracking || idleWake
+
+    private val WRONG = listOf("wrong pin", "incorrect pin", "wrong pattern", "incorrect pattern", "wrong password", "incorrect password",
+        "pin didn't match", "pattern didn't match", "password didn't match", "pin did not match", "try again in",
+        "गलत पिन", "ग़लत पिन", "गलत pin", "ग़लत pin", "पिन गलत", "pin गलत", "गलत पैटर्न", "ग़लत पैटर्न", "पैटर्न गलत",
+        "गलत पासवर्ड", "ग़लत पासवर्ड", "पासवर्ड गलत", "गलत पिन कोड", "पुनः प्रयास करें", "कुछ देर बाद फिर से कोशिश")
+
+    /** लॉक स्क्रीन पर "गलत PIN / पैटर्न / पासवर्ड" लिखा आया (टच मोड में = तुरंत फिर से लॉक) */
+    fun isWrongPin(texts: List<String>) = count(texts, WRONG) >= 1
+
+    /**
+     * सायरन बजते समय फ़ोन PIN / फ़िंगरप्रिंट से खुला: फिर से लॉक करें? हाँ, अगर मालिक ने यह चालू रखा है और
+     * बंद करने का कोई दूसरा रास्ता है (चेहरा / गुप्त शब्द / DK सीक्रेट PIN) - वरना मालिक फँस जाए, तो पहले जैसा (बंद).
+     */
+    fun relockOnOpen(alarming: Boolean, on: Boolean, faceReady: Boolean, hasCode: Boolean, hasDkPin: Boolean) =
+        alarming && on && (faceReady || hasCode || hasDkPin)
 }

@@ -22,7 +22,7 @@ object SettingsSearch {
         "profile" to "प्रोफ़ाइल", "lang" to "भाषा / Language", "ui" to "दिखावट (UI कस्टमाइज़ेशन)", "brain" to "AI दिमाग",
         "brain_live" to "AI दिमाग • DK लाइव", "brain_chat" to "AI दिमाग • DK चैट", "brain_coder" to "AI दिमाग • कोडिंग एजेंट",
         "brain_pc" to "AI दिमाग • DK कंप्यूटर", "voice" to "आवाज़", "orb" to "ओर्ब और चेहरा",
-        "access" to "Accessibility", "phonelock" to "फ़ोन लॉक / अनलॉक", "guard" to "टच मोड", "face" to "चेहरा पहचान", "perms" to "परमिशन", "computer" to "DK कंप्यूटर", "coder" to "कोडिंग एजेंट",
+        "access" to "Accessibility", "phonelock" to "फ़ोन लॉक / अनलॉक", "guard" to "टच मोड", "applock" to "ऐप लॉक", "face" to "चेहरा पहचान", "perms" to "परमिशन", "computer" to "DK कंप्यूटर", "coder" to "कोडिंग एजेंट",
         "social" to "सोशल रिव्यू", "reels" to "रील गिनती और लिमिट",
         ACT_AUTO to "ऑटोनोमस मोड", ACT_TEMPLATES to "टेम्पलेट कमांड", ACT_CONNECTORS to "कनेक्टर", ACT_STORY to "स्टोरी राइटर एजेंट", ACT_BACKUP to "बैकअप",
         // नवंबर 2026: ऑटो रिप्लाई (ऑटोनोमस मोड के बाद - "ऑटो" खोजने पर पहले ऑटोनोमस मोड ही आए)
@@ -47,7 +47,7 @@ object SettingsSearch {
         Triple("cat_voice", "आवाज़", "बोलने वाला इंजन • सुनना • वेक वर्ड • आवाज़ें (Supertonic 3) • वॉइस गार्डियन") to listOf("voice", "st3"),
         Triple("cat_brain", "AI दिमाग", "AI दिमाग • कोडिंग एजेंट • DK कंप्यूटर") to listOf("brain", "coder", "computer"),
         Triple("cat_auto", "ऑटोमेशन", "ऑटोनोमस मोड • टेम्पलेट कमांड • ऑटो रिप्लाई • Accessibility") to listOf("auto", "templates", "autoreply", "access"),
-        Triple("cat_security", "सुरक्षा", "फ़ोन लॉक • टच मोड • चेहरा पहचान • परमिशन") to listOf("phonelock", "guard", "face", "perms"),
+        Triple("cat_security", "सुरक्षा", "फ़ोन लॉक • टच मोड • ऐप लॉक • चेहरा पहचान • परमिशन") to listOf("phonelock", "guard", "applock", "face", "perms"),
         Triple("cat_social", "सोशल और कहानी", "सोशल रिव्यू • रील गिनती और लिमिट • स्टोरी राइटर") to listOf("social", "reels", "story"),
         Triple("cat_data", "डेटा और ऐप", "कनेक्टर • बैकअप • डिबग लॉग • ऐप के बारे में") to listOf("connectors", "backup", "debug", "about")
     )
@@ -67,6 +67,7 @@ object SettingsSearch {
         "memory" to "memory मेमोरी याददाश्त याद dost दोस्त सच्चा दोस्त incognito इनकॉग्निटो पुरानी बातचीत",
         "orb" to "orb ओर्ब चेहरा",
         "access" to "accessibility फ़ोन कंट्रोल control battery बैटरी call कॉल",
+        "applock" to "app lock ऐप लॉक एप लॉक applock lock लॉक ताला पिन pin pattern पैटर्न fingerprint फ़िंगरप्रिंट फिंगरप्रिंट face फ़ेस फेस password पासवर्ड locker लॉकर hide छिपाना private",
         "guard" to "touch mode टच मोड screen guard स्क्रीन गार्ड गार्ड मोड guard गार्ड security सुरक्षा chor चोर चोरी theft anti alarm siren सायरन intruder घुसपैठिया पहरा चौकीदार",
         // 15 नवंबर 2026 (मालिक): चेहरा पहचान वापस (v3.99 में हटाया था)
         "face" to "face फ़ेस फेस चेहरा पहचान recognition रजिस्ट्रेशन registration boss बॉस कौन who camera कैमरा परिवार watchman वॉचमैन",
@@ -187,6 +188,12 @@ object SettingsSearch {
         E("guard", "और सुरक्षा", "छूने वाले की फ़ोटो • मालिक का चेहरा • पावर मेनू रोकना • चार्जर • SIM"),
         E("guard", "घुसपैठिए का रिकॉर्ड", "छूने वाले की फ़ोटो और क्या-क्या हुआ"),
         E("guard", "DK Privacy (बगल से न दिखे)", "notification ताले में • सभी ऐप या एक-एक ऐप • ऐप खोलें तब दिखे"),
+        E("guard", "सीक्रेट PIN और फिर से लॉक", "चेतावनी स्क्रीन पर DK सीक्रेट PIN से सायरन बंद • गलत PIN = तुरंत फिर लॉक • सायरन में फ़ोन खुला = फिर लॉक", "secret pin सीक्रेट पिन गुप्त पिन relock फिर लॉक wrong pin गलत पिन"),
+        E("applock", "ऐप लॉक", "DK और कोई भी ऐप — PIN • पैटर्न • फ़िंगरप्रिंट / फ़ेस • DK फ़ेस स्कैन", "app lock ऐप लॉक एप लॉक ताला locker लॉकर"),
+        E("applock", "DK सीक्रेट PIN और पैटर्न", "ताला खोलने का अपना PIN और पैटर्न — टच मोड का सायरन भी इसी से बंद", "pin पिन pattern पैटर्न secret सीक्रेट"),
+        E("applock", "ताला खोलने का तरीका", "PIN • पैटर्न • फ़ोन का फ़िंगरप्रिंट / फ़ेस • DK फ़ेस स्कैन (होलोग्राम)", "fingerprint फ़िंगरप्रिंट फिंगरप्रिंट face फ़ेस फेस biometric"),
+        E("applock", "किन ऐप पर ताला", "DK खुद • WhatsApp • गैलरी • कोई भी ऐप चुनें", "whatsapp व्हाट्सएप gallery गैलरी apps ऐप"),
+        E("applock", "फिर से ताला कब", "ऐप छोड़ते ही • 10 सेकंड • 1 मिनट • स्क्रीन बंद होने पर", "relock grace समय"),
         E("phonelock", "आवाज़ से फ़ोन लॉक / अनलॉक", "\"हे DK फोन लॉक करो\" • \"हे मायरा फोन अनलॉक करो\" — बिना AI, सीधे फ़ोन पर"),
         E("phonelock", "क्या बोलें", "बुलाने के नाम (DK, मायरा, जारवी…) और लॉक / अनलॉक के वाक्य"),
         E("phonelock", "फ़ोन का PIN / पैटर्न / पासवर्ड", "एक बार डालें — फ़ोन के अंदर ताले (Keystore) में सेव, कहीं भेजा नहीं जाता"),

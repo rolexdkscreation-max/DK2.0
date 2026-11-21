@@ -130,6 +130,7 @@ class SettingsActivity : AppCompatActivity() {
             "access" -> { title.text = "Accessibility"; secAccess(); secPayGuard(); secDriving(); secEvents() }
             "phonelock" -> { title.text = "फ़ोन लॉक / अनलॉक"; secPhoneLock(); secVoiceCmds() }
             "guard" -> { title.text = "टच मोड"; secGuard(); secPrivacy(); secSos() }
+            "applock" -> { title.text = "ऐप लॉक"; secAppLock() }
             "face" -> { title.text = "चेहरा पहचान"; secFace() }
             "perms" -> { title.text = "परमिशन"; secPerms() }
             "update" -> { title.text = "अपडेट"; secUpdate(); secBetaCheck() }
@@ -165,6 +166,7 @@ class SettingsActivity : AppCompatActivity() {
             Triple("orb", "ओर्ब और चेहरा", "पृथ्वी, गैलेक्सी, एटम, छल्ला, पुरुष/महिला HD चेहरा"),
             Triple("access", "Accessibility", (Setup.a11yMark(this) + when { Setup.accessibilityOn() -> "चालू"; Setup.enabledInSettings(this) -> "रुका है"; else -> "बंद" }) + " • फ़ोन कंट्रोल • हमेशा सुनना • कॉल • बैटरी • ड्राइविंग मोड • इवेंट ट्रिगर"),
             Triple("phonelock", "फ़ोन लॉक / अनलॉक", (if (PhoneLockStore.lockOn(this) || PhoneLockStore.unlockOn(this)) "✓ चालू" else "✗ बंद") + " • \"हे DK फोन लॉक करो\" • अपना नाम और वाक्य • PIN / पैटर्न"),
+            Triple("applock", "ऐप लॉक", (if (AppLockStore.on(this)) "✓ चालू" else "✗ बंद") + " • DK और कोई भी ऐप • PIN • पैटर्न • फ़िंगरप्रिंट / फ़ेस • DK फ़ेस स्कैन"),
             Triple("guard", "टच मोड", (if (Guard.active()) "✓ चालू" else "✗ बंद") + " • कोई फ़ोन छुए तो सायरन • फ़ोटो • SMS • इमरजेंसी SOS"),
             Triple("face", "चेहरा पहचान", (if (FaceAI.enrolled(this)) "✓ Boss का चेहरा सेट" else "✗ सेट नहीं") + " • जान-पहचान वाले (${FacePeople.all(this).size}) • कौन है? • DK से पूछकर पहचान"),
             Triple("perms", "परमिशन", "माइक • स्क्रीन देखना • नोटिफ़िकेशन • कॉल • ऐप इंस्टॉल"),

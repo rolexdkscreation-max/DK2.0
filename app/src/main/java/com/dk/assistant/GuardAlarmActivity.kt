@@ -102,6 +102,11 @@ class GuardAlarmActivity : AppCompatActivity() {
             text = UiLang.s("मैं मालिक हूँ — फ़ोन खोलें")
             setOnClickListener { askUnlock() }
         })
+        // 21 नवंबर 2026 (मालिक): "फेस वेरिफिकेशन के साथ पिन डालने का भी ऑप्शन - अंदर डाला सीक्रेट PIN, डॉट डॉट में दिखे"
+        if (AppLockStore.hasPin(this)) root.addView(Button(this).apply {
+            text = UiLang.s("DK सीक्रेट PIN डालें")
+            setOnClickListener { askPin() }
+        })
         root.addView(tv("मालिक: फ़ोन खोलें, चेहरा कैमरे के सामने करके सिर धीरे से दाएँ-बाएँ घुमाएँ, या गुप्त शब्द बोलें", 13f, 0xCCFFFFFF.toInt()))
         faceTv = tv("", 13f, 0xEEFFFFFF.toInt()).also { root.addView(it) }
         setContentView(root)
@@ -263,6 +268,29 @@ class GuardAlarmActivity : AppCompatActivity() {
         val h = holo ?: return
         val f = h.place(det, b.width, b.height, true, tone = HoloScanView.BAD)
         h.show(HoloScanView.Mode.DECLINED, listOfNotNull(f), liveness.done(), bars(null), HoloScanView.DECLINED, why)
+    }
+
+    /** 21 नवंबर 2026: DK सीक्रेट PIN ([AppLockStore]) - ● बिंदु, अंक कभी नहीं दिखते. सही = टच मोड बंद ([Guard.pinDisarm]) */
+    private fun askPin() {
+        val d = resources.displayMetrics.density
+        val box = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER_HORIZONTAL
+            setBackgroundColor(0xFF050A18.toInt()); val p = (16 * d).toInt(); setPadding(p, p, p, p)
+        }
+        val msg = TextView(this).apply { text = UiLang.s("DK सीक्रेट PIN डालें, फिर OK"); setTextColor(0xFFB8E9FF.toInt()); textSize = 15f; gravity = Gravity.CENTER }
+        box.addView(msg)
+        val pad = NeonPinPad(this)
+        box.addView(pad, LinearLayout.LayoutParams((280 * d).toInt(), LinearLayout.LayoutParams.WRAP_CONTENT))
+        val dlg = androidx.appcompat.app.AlertDialog.Builder(this).setView(box).setNegativeButton(UiLang.s("रहने दें"), null).create()
+        pad.onDone = { pin ->
+            val wait = AppLockStore.waitLeft(this)
+            when {
+                wait > 0 -> msg.text = UiLang.s("बहुत बार गलत — ${AppLockRules.waitLabel(wait)} बाद")
+                Guard.pinDisarm(this, pin) -> { dlg.dismiss(); finish() }
+                else -> { msg.text = UiLang.s("✗ गलत PIN"); pad.tone = HoloScanView.BAD; pad.postDelayed({ pad.tone = HoloScanView.SCAN }, 600) }
+            }
+        }
+        dlg.show()
     }
 
     /** फ़ोन का अपना PIN / फ़िंगरप्रिंट - खुला = मालिक (USER_PRESENT से [Guard] बंद) */

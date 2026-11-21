@@ -57,6 +57,7 @@ internal fun settingsIcon(id: String): Int = when (id) {
     "access" -> R.drawable.ic_s_access
     "phonelock" -> R.drawable.ic_s_lock
     "guard" -> R.drawable.ic_s_touch
+    "applock" -> R.drawable.ic_s_applock
     "face" -> R.drawable.ic_s_face
     "perms" -> R.drawable.ic_s_shield_ok
     "coder" -> R.drawable.ic_s_coder
@@ -95,7 +96,7 @@ internal fun settingsTint(id: String): Int = when (id) {
     "autoreply" -> 0xFF22C55E.toInt()
     "brain", "auto", "coder", "brain_chat", "brain_coder" -> 0xFF6366F1.toInt()
     "ui", "orb", "reels" -> 0xFFEC4899.toInt()
-    "access", "perms", "phonelock", "guard", "face", "backup" -> 0xFF34D399.toInt()
+    "access", "perms", "phonelock", "guard", "applock", "face", "backup" -> 0xFF34D399.toInt()
     "computer", "connectors", "lang", "brain_pc" -> 0xFF38BDF8.toInt()
     "update", "story", "social", "license" -> 0xFFFBBF24.toInt()
     "debug" -> 0xFFF87171.toInt()
