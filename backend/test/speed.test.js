@@ -72,7 +72,7 @@ describe("नई कंपनियाँ: Groq, Cerebras, Cloudflare (gpt-oss-1
     });
     let got;
     const ai = { run: async (model, input) => ((got = { model, input }), sse([oai("नम"), { response: "स्ते" }, "[DONE]"])) };
-    const s = await readSse(await call(env({ GEMINI_API_KEY: "", MISTRAL_API_KEY: "", AI: ai }), await chat({ system: "DK" })));
+    const s = await readSse(await call(env({ GEMINI_API_KEY: "", MISTRAL_API_KEY: "", AI: ai }), await chat({ system: "DK", dk: false })));
     assert.equal(s.text, "नमस्ते");
     assert.equal(s.done.provider, "cloudflare");
     assert.equal(got.model, "@cf/openai/gpt-oss-120b");
@@ -354,5 +354,21 @@ describe("बिना key वाला ऐप: सर्वर से जवा
     const s = await readSse(await call(env(), await chat()));
     assert.equal(s.done.provider, "gemini");
     assert.match(fx.calls[0].url, /gemini-3\.8-flash:streamGenerateContent/);
+  });
+});
+
+describe("DK LLM (कदम 1) के साथ", () => {
+  it("आम बातचीत: DK LLM फिर भी सबसे आगे, बाकी तेज़ी से; Neurons Cloudflare में जुड़ें", async () => {
+    fx = okFetch();
+    const runs = [];
+    const ai = { run: async (model) => (runs.push(model), sse([oai("dk")])) };
+    const e = fastEnv({ AI: ai });
+    e.DB.db.run("INSERT INTO provider_stats (provider, ewma_ms, samples, updated_at) VALUES ('groq', 50, 5, 1), ('dk', 3000, 5, 1)");
+    const c = ctx();
+    const s = await readSse(await call(e, await chat(), { ctx: c }));
+    assert.equal(s.done.provider, "dk");
+    assert.equal(runs[0], "@cf/google/gemma-4-26b-a4b-it");
+    await c.flush();
+    assert.ok(rows(e, "SELECT neurons FROM provider_daily WHERE provider = 'dk'")[0].neurons > 0);
   });
 });

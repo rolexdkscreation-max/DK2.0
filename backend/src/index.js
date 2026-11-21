@@ -1,8 +1,8 @@
 // DK backend - Cloudflare Worker. सारे रास्ते यहीं; असली काम अलग-अलग फ़ाइलों में.
 
-import { available, cleanMessages, collect, openChain, planChain, streamResponse } from "./ai.js";
+import { available, cleanMessages, collect, dkReady, openChain, pickLane, planChain, streamResponse } from "./ai.js";
 import { authenticate } from "./auth.js";
-import { CHAT_CHAIN, KEEP_DAYS, SEARCH_CHAIN } from "./config.js";
+import { CHAT_CHAIN, DK_LLM, KEEP_DAYS, SEARCH_CHAIN } from "./config.js";
 import { countUse, health as speedHealth, persist, stat as speedState, utcDay } from "./speed.js";
 import { Db } from "./db.js";
 import {
@@ -95,9 +95,10 @@ async function onChat(req, env, ctx, ident, opts) {
     }
   }
 
+  const lane = pickLane({ task, messages, chain: body.chain, dk: body.dk });
   let open;
   try {
-    open = await openChain(env, { system, messages, chain: body.chain }, opts);
+    open = await openChain(env, { system, messages, chain: body.chain, lane }, opts);
   } catch (e) {
     // सब फेल: रफ़्तार/आराम का हिसाब फिर भी D1 में (ऐप को सिर्फ़ साफ़ हिंदी संदेश)
     for (const m of e?.marks ?? []) later(ctx, () => saveMark(env, m, now));
@@ -105,7 +106,7 @@ async function onChat(req, env, ctx, ident, opts) {
   }
   const inChars = (system?.length ?? 0) + messages.reduce((n, m) => n + m.content.length, 0);
   const left = q ? { voice_left: Math.max(0, q.voice_left - add.voice), chat_left: Math.max(0, q.chat_left - add.chat) } : null;
-  const extra = { level: lv.level, ...(left ? { quota: { ...left, warn: left.voice_left > 0 && left.voice_left <= 60 } } : {}) };
+  const extra = { level: lv.level, lane, ...(left ? { quota: { ...left, warn: left.voice_left > 0 && left.voice_left <= 60 } } : {}) };
   const after = (text = "") => {
     if (db && (add.voice || add.chat)) later(ctx, () => db.addUsage(ident.uid, day, add.voice, add.chat));
     if (db) for (const t of open.tried) later(ctx, () => db.recordModel(`${t.provider}/${t.model}`, t.ok, t.error, now));
@@ -117,7 +118,7 @@ async function onChat(req, env, ctx, ident, opts) {
     after(out.text);
     return json({ ok: true, ...out, ...extra });
   }
-  const headers = { "x-dk-level": lv.level, "x-dk-provider": open.provider, "x-dk-model": open.model };
+  const headers = { "x-dk-level": lv.level, "x-dk-provider": open.provider, "x-dk-model": open.model, "x-dk-lane": lane };
   if (left) {
     headers["x-dk-voice-left"] = String(left.voice_left);
     headers["x-dk-chat-left"] = String(left.chat_left);
@@ -275,6 +276,7 @@ export async function handle(req, env, ctx, opts = {}) {
       ok: true,
       chain: CHAT_CHAIN.map((c) => ({ provider: c.id, model: c.model, configured: available(env, c) })),
       active: planChain(env).map((c) => c.id),
+      dk_llm: { on: dkReady(env), model: DK_LLM.model, lora: !!(env.DK_LLM_LORA || DK_LLM.lora) },
       search: SEARCH_CHAIN.map((id) => ({ provider: id, configured: !!env[SEARCH_PROVIDERS[id].secret] })),
       stt: !!env.AI,
       image: !!env.AI,

@@ -70,7 +70,8 @@ export function usedShare(env, id) {
   if (!lim) return 0;
   const s = state(env);
   const c = s.counts.get(id) ?? { requests: 0, tokens: 0, neurons: 0 };
-  const neurons = c.neurons + (id === "cloudflare" ? s.images * NEURONS_PER_IMAGE : 0);
+  const dk = s.counts.get("dk")?.neurons ?? 0;
+  const neurons = c.neurons + (id === "cloudflare" ? s.images * NEURONS_PER_IMAGE + dk : 0);
   let share = 0;
   if (lim.requests) share = Math.max(share, c.requests / lim.requests);
   if (lim.tokens) share = Math.max(share, c.tokens / lim.tokens);
@@ -175,7 +176,8 @@ export function countUse(env, provider, inChars, outChars, now) {
   s.day = day;
   const tin = Math.ceil(inChars / CHARS_PER_TOKEN);
   const tout = Math.ceil(outChars / CHARS_PER_TOKEN);
-  const neurons = provider === "cloudflare" ? (tin / 1000) * WORKERS_NEURONS_PER_1K.input + (tout / 1000) * WORKERS_NEURONS_PER_1K.output : 0;
+  // DK LLM (Gemma, Workers AI) भी उन्हीं 10,000 Neurons से - वही अंदाज़ा
+  const neurons = provider === "cloudflare" || provider === "dk" ? (tin / 1000) * WORKERS_NEURONS_PER_1K.input + (tout / 1000) * WORKERS_NEURONS_PER_1K.output : 0;
   const c = s.counts.get(provider) ?? { requests: 0, tokens: 0, neurons: 0 };
   s.counts.set(provider, { requests: c.requests + 1, tokens: c.tokens + tin + tout, neurons: c.neurons + neurons });
   if (!env?.DB) return Promise.resolve();

@@ -1,7 +1,9 @@
 // AI की कड़ी: Gemini → हल्का Gemini → Mistral → (जो-जो key Worker में हो) Groq, OpenRouter, Z.ai, NVIDIA.
 // अगली पर तब जाते हैं: सीमा (429), 5xx/कोई भी गलती, खाली जवाब, या 4 सेकंड में पहला शब्द नहीं.
 
-import { CHARS_PER_TOKEN, CHAT_CHAIN, MODEL_TIMEOUT_MS } from "./config.js";
+import {
+  CHARS_PER_TOKEN, CHAT_CHAIN, DK_HEAVY_WORDS, DK_LLM, DK_LLM_MAX_CHARS, DK_LLM_MAX_CONTEXT, DK_LLM_PERSONA, DK_LLM_TASKS, MODEL_TIMEOUT_MS,
+} from "./config.js";
 import { load, note, orderPlan } from "./speed.js";
 import { CODES, HttpError } from "./util.js";
 
@@ -50,14 +52,47 @@ export function cleanMessages(messages, system) {
   return { system: sys.filter(Boolean).join("\n\n"), messages: out };
 }
 
-/** कौन-कौन सी कड़ी आज़मानी है. chain = ऐप की पसंद का क्रम (सिर्फ़ ids, keys नहीं) */
-export function planChain(env, chain) {
+/**
+ * कौन-सा रास्ता: "dk" = रोज़ की आम बातचीत (DK LLM पहले), "big" = भारी / ताज़ा जानकारी (सीधे बड़ी कड़ी).
+ * ऐप ने अपना क्रम (chain) भेजा हो या `dk: false` - तो "big".
+ */
+export function pickLane({ task = "chat", messages = [], chain, dk } = {}) {
+  if (dk === false) return "big";
+  if (Array.isArray(chain) && chain.length) return "big";
+  if (!DK_LLM_TASKS.includes(task)) return "big";
+  const users = messages.filter((m) => m.role === "user");
+  const last = String(users[users.length - 1]?.content ?? "");
+  if (!last.trim() || last.length > DK_LLM_MAX_CHARS) return "big";
+  const total = messages.reduce((n, m) => n + String(m.content ?? "").length, 0);
+  if (total > DK_LLM_MAX_CONTEXT) return "big";
+  const low = last.toLowerCase();
+  if (DK_HEAVY_WORDS.some((w) => low.includes(w))) return "big";
+  return "dk";
+}
+
+/** DK LLM चालू है? `AI` binding हो और Worker var DK_LLM "off" न हो */
+export function dkReady(env) {
+  return !!env.AI && String(env.DK_LLM ?? "").toLowerCase() !== "off";
+}
+
+/** कौन-कौन सी कड़ी आज़मानी है. chain = ऐप की पसंद का क्रम (सिर्फ़ ids, keys नहीं). lane "dk" = DK LLM सबसे आगे */
+export function planChain(env, chain, lane = "big") {
   let list = CHAT_CHAIN;
   if (Array.isArray(chain) && chain.length) {
     const want = chain.map(String);
     list = want.map((id) => CHAT_CHAIN.find((c) => c.id === id)).filter(Boolean);
   }
-  return list.filter((c) => available(env, c));
+  const big = list.filter((c) => available(env, c));
+  if (lane !== "dk" || !dkReady(env)) return big;
+  return [{ ...DK_LLM, lora: String(env.DK_LLM_LORA || DK_LLM.lora || "") }, ...big];
+}
+
+/** DK LLM का system: DK का स्वभाव + आज की तारीख/समय (भारत) + ऐप का system */
+export function dkSystem(system, now = Date.now()) {
+  const when = new Intl.DateTimeFormat("hi-IN", {
+    timeZone: "Asia/Kolkata", weekday: "long", year: "numeric", month: "long", day: "numeric", hour: "2-digit", minute: "2-digit",
+  }).format(new Date(now));
+  return [DK_LLM_PERSONA, "अभी (भारत का समय): " + when + ".", system].filter(Boolean).join("\n\n");
 }
 
 /** यह कंपनी चल सकती है? Cloudflare = `AI` binding, बाकी = Worker secret में key */
@@ -112,8 +147,13 @@ function openaiRequest(c, key, sys, msgs, signal) {
 
 /** Cloudflare Workers AI (key नहीं, `AI` binding) - stream को Response जैसा, ताकि बाकी कड़ी जैसा ही चले */
 async function workersRequest(c, env, sys, msgs) {
-  const messages = sys ? [{ role: "system", content: sys }, ...msgs] : msgs;
-  const out = await env.AI.run(c.model, { messages, stream: true, max_tokens: c.maxTokens });
+  // DK LLM = DK का स्वभाव + आज की तारीख (+ LoRA); बाकी Cloudflare मॉडल = ऐप का system जैसा
+  const dk = c.id === DK_LLM.id;
+  const system = dk ? dkSystem(sys) : sys;
+  const messages = system ? [{ role: "system", content: system }, ...msgs] : msgs;
+  const input = { messages, stream: true, max_tokens: c.maxTokens };
+  if (dk && c.lora) input.lora = c.lora;
+  const out = await env.AI.run(c.model, input);
   if (out instanceof Response) return out;
   return new Response(out, { headers: { "content-type": "text/event-stream" } });
 }
@@ -170,14 +210,16 @@ function withTimeout(p, ms, onTimeout) {
  * @returns {{provider, model, tried, first, rest: AsyncIterator<string>, abort}}
  * tried = [{provider, model, ok, error}]
  */
-export async function openChain(env, { system, messages, chain }, opts = {}) {
+export async function openChain(env, { system, messages, chain, lane }, opts = {}) {
   const timeout = opts.timeoutMs ?? MODEL_TIMEOUT_MS;
   const now0 = opts.now?.() ?? Date.now();
-  const base = planChain(env, chain);
+  const base = planChain(env, chain, lane);
   if (!base.length) throw new HttpError(503, CODES.NOT_CONFIGURED, "बैकएंड में कोई AI key नहीं डली");
-  // 21 नवंबर 2026: सबसे तेज़ पहले (ऐप ने अपना क्रम भेजा = वही क्रम, बस आराम वाले पीछे)
+  // 21 नवंबर 2026: सबसे तेज़ पहले (ऐप ने अपना क्रम भेजा = वही क्रम, बस आराम वाले पीछे). DK LLM वाला रास्ता = DK LLM फिर भी सबसे आगे
   await load(env, now0);
-  const { list: plan, explored } = orderPlan(base, env, now0, { fixed: Array.isArray(chain) && chain.length > 0 });
+  const dkFirst = base[0]?.id === DK_LLM.id ? [base[0]] : [];
+  const { list: rest0, explored } = orderPlan(base.slice(dkFirst.length), env, now0, { fixed: Array.isArray(chain) && chain.length > 0 });
+  const plan = [...dkFirst, ...rest0];
   const tried = [];
   const marks = [];
   const mark = (m) => {

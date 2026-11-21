@@ -94,6 +94,36 @@ export const AI_CHAIN = [
 ];
 
 /**
+ * DK LLM (कदम 1): रोज़ की आम बातचीत पहले DK के अपने सर्वर-मॉडल पर (Cloudflare Workers AI, कोई नई key नहीं - `AI` binding).
+ * भारी / ताज़ा जानकारी वाले सवाल (खबर, खोज, कोड, लंबा लेख...) सीधे ऊपर वाली बड़ी कड़ी पर.
+ * DK LLM न चले (सीमा 4006, गलती, 4 सेकंड में पहला शब्द नहीं) तो अपने-आप बड़ी कड़ी पर.
+ * कदम 2: DK की बातचीत से बना LoRA यहाँ `lora` में (नाम/ID) - Worker var `DK_LLM_LORA` से भी.
+ * बंद करना हो: Worker var `DK_LLM = "off"`.
+ */
+export const DK_LLM = { id: "dk", kind: "workers", model: "@cf/google/gemma-4-26b-a4b-it", lora: "", maxTokens: 1024 };
+/** इससे लंबा सवाल = भारी काम, बड़ा मॉडल */
+export const DK_LLM_MAX_CHARS = 600;
+/** पूरी बातचीत इससे लंबी हो तो भी बड़ा मॉडल */
+export const DK_LLM_MAX_CONTEXT = 12_000;
+/** इन कामों (task) पर DK LLM कभी नहीं - सिर्फ़ बातचीत वाले */
+export const DK_LLM_TASKS = ["chat", "voice", "live"];
+/** इनमें से कुछ भी दिखे तो बड़ा मॉडल: ताज़ा जानकारी, खोज, कोड, लंबा लिखना, link */
+export const DK_HEAVY_WORDS = [
+  "news", "खबर", "ख़बर", "समाचार", "न्यूज़", "न्यूज", "latest", "ताज़ा", "ताजा", "breaking",
+  "search", "खोज", "सर्च", "google", "गूगल", "internet", "इंटरनेट",
+  "price", "कीमत", "क़ीमत", "भाव", "rate", "रेट", "stock", "शेयर", "sensex", "nifty", "bitcoin",
+  "score", "स्कोर", "match", "मैच", "weather", "मौसम", "election", "चुनाव",
+  "code", "कोड", "program", "प्रोग्राम", "script", "function", "bug", "error", "app बना", "website",
+  "essay", "निबंध", "लेख", "article", "report", "रिपोर्ट", "summary", "सारांश", "summarize",
+  "research", "रिसर्च", "detail", "विस्तार", "पूरी जानकारी", "compare", "तुलना",
+  "http", "www.", ".com",
+];
+/** DK LLM को हर बार साथ में - ऐप का अपना system इसके बाद आता है */
+export const DK_LLM_PERSONA =
+  "तुम DK हो - मालिक का अपना निजी सहायक. छोटे, साफ़, दोस्ताना जवाब दो, उसी भाषा में जिसमें सवाल है (हिंदी / Hinglish / English). " +
+  "जो पक्का न पता हो, वह मत बनाओ - साफ़ कहो कि पता नहीं.";
+
+/**
  * 21 नवंबर 2026 (मालिक): Cloudflare Workers AI भी चैट की कड़ी में - key नहीं, `AI` binding (wrangler.toml [ai]).
  * Llama नहीं (मालिक: "Llama हटाओ") - वही gpt-oss-120b. Neurons इमेज/आवाज़ के साथ साझा (रोज़ 10,000, 00:00 UTC पर नया).
  */
