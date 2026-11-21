@@ -271,7 +271,10 @@ class AppLockActivity : AppCompatActivity() {
             say("AI anti-spoof मॉडल (~3.5 MB) आ रहा है — पक्की जाँच के लिए ज़रूरी…")
             Thread {
                 val err = FaceAI.downloadSpoof(applicationContext)
-                runOnUiThread { if (isFinishing || method != AppLockRules.Method.FACE) return@runOnUiThread; if (err == null) go() else say("anti-spoof मॉडल नहीं आया ($err) — PIN से खोलें", HoloScanView.WARN) }
+                runOnUiThread {
+                    if (isFinishing || method != AppLockRules.Method.FACE) return@runOnUiThread
+                    if (err == null) go() else say("anti-spoof मॉडल नहीं आया ($err) — PIN से खोलें", HoloScanView.WARN)
+                }
             }.apply { isDaemon = true }.start()
         }
     }
@@ -302,7 +305,7 @@ class AppLockActivity : AppCompatActivity() {
                 if (det != null) holo?.let { h ->
                     val tone = when (v.state) { BossGate.State.PASS -> HoloScanView.OK; BossGate.State.FAIL -> HoloScanView.BAD; else -> HoloScanView.SCAN }
                     h.place(det, copy.width, copy.height, true, tone = tone)?.let { f ->
-                        val bars = buildList { if (s != null) add("MATCH" to s); add("LIVENESS" to liveness.done() / 3f); add("AI ANTI-SPOOF" to spoof.mean()) }
+                        val bars = buildList { s?.let { add("MATCH" to it) }; add("LIVENESS" to liveness.done() / 3f); add("AI ANTI-SPOOF" to spoof.mean()) }
                         when (v.state) {
                             BossGate.State.PASS -> h.show(HoloScanView.Mode.AUTHORIZED, listOf(f), bars = bars, banner = HoloScanView.AUTHORIZED)
                             BossGate.State.FAIL -> h.show(HoloScanView.Mode.DECLINED, listOf(f), bars = bars, banner = HoloScanView.DECLINED)
