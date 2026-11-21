@@ -1058,6 +1058,7 @@ class BrainManager(private val ctx: Context) {
             append(WorkChatMode.block(live = true)).append(TeacherBoard.block()).append(if (withMemory) LocalMemory.liveBlock(ctx) + (if (!Prefs.localMemoryOn(ctx)) MsgDraft.recentBlock(MsgDraft.turnsFromState(), System.currentTimeMillis()) else "") else "")
             if (Prefs.dkOnly(ctx)) append(DkOnly.PROMPT)   // v4.1: सिर्फ़ "DK ..." वाली बात का जवाब
             if (SideTalk.on(ctx)) append(SideTalk.PROMPT)   // नवंबर 2026: बॉस किसी और से बात करे = DK सुने, जवाब नहीं
+            append(awarenessBlock())   // 21 नवंबर 2026: अवेयरनेस मोड (बंद = कुछ नहीं)
             append(TaskFirst.prompt(f))   // v3.7 (मालिक): फ़ोन का काम = पहले काम (चुप), फिर "हो गया सर" + "और कुछ?" - आख़िर में ताकि यही चले   // v3.88: लोकल याददाश्त का छोटा सार | v3.87: काम/बातचीत मोड + कई काम की कतार + टीचर बोर्ड (स्वभाव वही)
         }
     }
@@ -1085,9 +1086,16 @@ class BrainManager(private val ctx: Context) {
             append(AssistantPersona.block(ctx))
             if (Prefs.dkOnly(ctx)) append(DkOnly.PROMPT)
             if (SideTalk.on(ctx)) append(SideTalk.PROMPT)
+            append(awarenessBlock())
             append(LivePromptLite.TAIL)
         }
     }
+
+    /** 21 नवंबर 2026 (मालिक): अवेयरनेस मोड का Live नियम - परिवार के सीखे नाम के साथ. बंद = "" */
+    private fun awarenessBlock(): String = try {
+        val on = com.dk.assistant.voice.VoiceGuardian.awareOn(ctx)
+        com.dk.assistant.voice.Awareness.prompt(on, if (on) com.dk.assistant.voice.VoiceGuardian.family(ctx).map { it.name } else emptyList(), Prefs.userName(ctx))
+    } catch (_: Throwable) { "" }
 
     /** v5.1: Live जुड़ने के बाद भेजी जाने वाली याद (वही हिस्से जो पहले setup में जाते थे) */
     fun liveMemoryContext(): String = liveMemoryContext(carriedFrom = 0L)

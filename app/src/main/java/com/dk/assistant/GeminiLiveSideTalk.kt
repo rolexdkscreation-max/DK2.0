@@ -12,7 +12,11 @@ internal fun GeminiLive.whoCheckAsync(pcm: ByteArray, now: Long, seq: Int) {
     val th = com.dk.assistant.voice.VoiceGuardian.threshold(svc)   // 16 नवंबर 2026: वॉइस गार्डियन की सीमा (पुराना CAM++ हटा)
     try {
         com.dk.assistant.voice.VoiceExec.exec.execute {
-            val sc = try { com.dk.assistant.voice.VoiceGuardian.score(svc, clip) } catch (_: Throwable) { null }
+            // 21 नवंबर 2026 (अवेयरनेस मोड): चालू = एक ही पहचान से बॉस + परिवार (मम्मी, पापा...) सबसे मिलान; बंद = पहले जैसा
+            val aware = awareNow()
+            val id = if (aware) try { com.dk.assistant.voice.VoiceGuardian.identify(svc, clip) } catch (_: Throwable) { null } else null
+            val sc = if (aware) id?.first else try { com.dk.assistant.voice.VoiceGuardian.score(svc, clip) } catch (_: Throwable) { null }
+            if (aware && id != null) onAwareWho(id.second, now)
             val w = SideTalk.classify(sc, th, minOf(ms, 3000))
             SideTalk.global.voice(w, now, seq)
             if (w == SideTalk.Who.OTHER) log("आवाज़ बॉस की नहीं लगी (मिलान ${sc?.let { String.format(java.util.Locale.US, "%.2f", it) }}) - बड़े काम नहीं होंगे")
@@ -37,4 +41,4 @@ internal fun GeminiLive.sideTalkCheck(): Boolean {
 }
 
 /** इस बात की आवाज़ किसी और की (ताज़ा पहचान) - बड़े काम रोकने के लिए */
-internal fun GeminiLive.sideWho(): SideTalk.Who = if (whoOn) SideTalk.global.current(System.currentTimeMillis()) else SideTalk.Who.UNKNOWN
+internal fun GeminiLive.sideWho(): SideTalk.Who = if (whoOn || awareNow()) SideTalk.global.current(System.currentTimeMillis()) else SideTalk.Who.UNKNOWN

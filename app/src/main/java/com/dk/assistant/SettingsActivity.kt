@@ -121,7 +121,7 @@ class SettingsActivity : AppCompatActivity() {
             "brain_chat" -> { title.text = "AI दिमाग • DK चैट"; if (planKeys()) secBrain() else planLockCard("अलग key (DK चैट)") }
             "brain_coder" -> { title.text = "AI दिमाग • कोडिंग एजेंट"; if (planKeys()) secBrainScope(ApiScopes.CODER) else planLockCard("कोडिंग एजेंट") }
             "brain_pc" -> { title.text = "AI दिमाग • DK कंप्यूटर"; if (planKeys()) secBrainScope(ApiScopes.PC) else planLockCard("DK कंप्यूटर") }
-            "voice" -> { title.text = "आवाज़"; secVoice(); secTalk(); st3Entry(); voiceGuardianCard() }
+            "voice" -> { title.text = "आवाज़"; secVoice(); secTalk(); st3Entry(); voiceGuardianCard(); voiceFamilyCard() }
             "persona" -> { title.text = "DK का स्वभाव और मोड"; secDkLive() }
             "memory" -> { title.text = "याददाश्त और सच्चा दोस्त"; secDkMemory() }
             "st3" -> { title.text = "आवाज़ें (Supertonic 3)"; secSt3() }

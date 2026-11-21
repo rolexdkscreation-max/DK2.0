@@ -77,7 +77,7 @@ internal fun SettingsActivity.voiceGuardianCard() {
         flagSwitch(box, "वॉइस गार्डियन चालू", FeatureFlags.VOICE_GUARDIAN) { refresh(); com.dk.assistant.voice.engine.VoiceEngines.liveChanged() }
 
         label(box, "मॉडल चुनें")
-        val opts = VgRules.MODELS.map { it.id to VgRules.label(it) }
+        val opts = VgRules.MODELS_ALL.map { it.id to VgRules.label(it) }   // 21 नवंबर 2026: + सबसे सटीक (ReDimNet2-B6)
         radios(box, opts, VoiceGuardian.modelId(this), 2900).setOnCheckedChangeListener { _, id ->
             opts.getOrNull(id - 2900)?.let { VoiceGuardian.setModel(this, it.first); refresh(); toast("मॉडल बदला — इस मॉडल से आवाज़ फिर से सिखानी होगी (अगर पहले नहीं सिखाई)") }
         }
@@ -141,7 +141,7 @@ internal fun SettingsActivity.voiceGuardianCard() {
             if (VoiceGuardian.templates(this).isEmpty()) { toast("पहले 15 वाक्य सिखाएँ"); return@button }
             vgDeepEnroll(VgRules.PHRASES_EXTRA.shuffled().take(VgRules.ADD_MORE), keepOld = true, deep) { deepInfo(); refresh() }
         })
-        hint(box, "हर सैंपल पर स्क्रीन बताएगी किस अंदाज़ में बोलना है (आम / धीरे / ज़ोर से / उत्साह से / जल्दी / धीमी / दूर से / फुसफुसाकर). लिखा वाक्य सिर्फ़ सुझाव है — आप कुछ भी बोल सकते हैं, पहचान आवाज़ की होती है, शब्दों की नहीं. \"और सैंपल जोड़ो\" किसी दूसरी जगह (बाहर / शोर / गाड़ी में) करें तो वहाँ भी पहचान अच्छी होगी. सीखने के बाद सीमा अपने-आप आपकी आवाज़ के हिसाब से लगती है (नीचे slider से बदल सकते हैं). सबसे अच्छा: \"सटीक\" मॉडल (RedimNet2-B3) + 15 सैंपल. मॉडल बदलें तो सैंपल फिर से सिखाने होंगे.")
+        hint(box, "हर सैंपल पर स्क्रीन बताएगी किस अंदाज़ में बोलना है (आम / धीरे / ज़ोर से / उत्साह से / जल्दी / धीमी / दूर से / फुसफुसाकर). लिखा वाक्य सिर्फ़ सुझाव है — आप कुछ भी बोल सकते हैं, पहचान आवाज़ की होती है, शब्दों की नहीं. \"और सैंपल जोड़ो\" किसी दूसरी जगह (बाहर / शोर / गाड़ी में) करें तो वहाँ भी पहचान अच्छी होगी. सीखने के बाद सीमा अपने-आप आपकी आवाज़ के हिसाब से लगती है (नीचे slider से बदल सकते हैं). सबसे अच्छा: \"सबसे सटीक\" मॉडल (ReDimNet2-B6, शोर में और परिवार की पहचान में सबसे मज़बूत) + 15 सैंपल; पुराने फ़ोन पर \"सटीक\" (RedimNet2-B3). मॉडल बदलें तो सैंपल फिर से सिखाने होंगे.")
 
         label(box, "कितना सख़्त मिलान (सीमा)")
         val thTxt = TextView(this).apply { textSize = 13f; setTextColor(0xB3FFFFFF.toInt()) }

@@ -449,7 +449,7 @@ internal suspend fun GeminiLive.micLoop() = coroutineScope {
                             turnDet.endNeedMs.takeIf { it > 0 } ?: CLIENT_END_MS, prob >= 0f, heard.src, turnDet.noise, speechFromWake))
                         endRule = ""; speechFromWake = false
                         if (!other) capHealth.onSpeechEnd(speechStartAt, turnDet.lastSpeechMs, now)
-                        if (whoOn) whoCheckAsync(cmdBuf.toByteArray(), now, whoSeq)   // नवंबर 2026: बॉस या कोई और (बगल की बातचीत)
+                        if (whoOn || awareNow()) whoCheckAsync(cmdBuf.toByteArray(), now, whoSeq)   // नवंबर 2026: बॉस या कोई और (बगल की बातचीत) • 21 नवंबर: अवेयरनेस - कौन (परिवार भी)
                         if (!other) com.dk.assistant.voice.UnlockGuard.heard(cmdBuf.toByteArray(), now)   // 16 नवंबर 2026: आवाज़ से अनलॉक की जाँच
                         liveVoiceCmd(cmdBuf.toByteArray()); cmdBuf.reset()
                         learnNear()

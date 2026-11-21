@@ -75,6 +75,8 @@ object FeatureFlags {
     const val VG_DEEP = "plus_vg_deep"
     /** 16 नवंबर 2026 (मालिक): पक्की रोक - पहचान होने तक आवाज़ DK तक नहीं; अनजान आवाज़ यहीं कट (बंद = पहले जैसा, सिर्फ़ DK व्यस्त हो तब रुकती) */
     const val VG_STRICT = "plus_vg_strict"
+    /** 21 नवंबर 2026 (मालिक): अवेयरनेस मोड - आवाज़ से कौन बोल रहा (बॉस / परिवार / अनजान), DK उसी हिसाब से ([com.dk.assistant.voice.Awareness]) */
+    const val VG_AWARE = "plus_vg_aware"
     const val FACE_ON = "plus_face_on"
     const val FACE_APP_LOCK = "plus_face_app_lock"
     const val FACE_VAULT = "plus_face_vault"
@@ -134,6 +136,7 @@ object FeatureFlags {
         Flag(VG_AWAY, "Away मोड", "अनजान आवाज़: पहली बार चेतावनी, दूसरी बार फ़ोन लॉक", Section.VOICE_GUARDIAN),
         Flag(VG_DEEP, "15 सैंपल वाली पक्की पहचान", "हर सैंपल अलग याद, मिलान सबसे मिलते सैंपल से", Section.VOICE_GUARDIAN),
         Flag(VG_STRICT, "पक्की रोक (अनजान आवाज़ DK तक बिल्कुल नहीं)", "पहचान होने तक आवाज़ रुकी (~0.6 सेकंड), फिर Boss की आवाज़ तुरंत DK को", Section.VOICE_GUARDIAN),
+        Flag(VG_AWARE, "अवेयरनेस मोड", "आवाज़ से पहचान: बॉस / परिवार (मम्मी, पापा, भैया...) / अनजान - DK उसी हिसाब से बात करे", Section.VOICE_GUARDIAN),
         Flag(FACE_ON, "फ़ेस रिकग्निशन", "10 MB मॉडल इंटरनेट से डाउनलोड होता है", Section.FACE),
         Flag(FACE_APP_LOCK, "चेहरे से ऐप/सेक्शन लॉक", "Settings / Chat / Memories / चुने ऐप", Section.FACE),
         Flag(FACE_VAULT, "प्राइवेट वॉल्ट", "DK की ली फ़ोटो गैलरी में नहीं, ऐप के ताले में", Section.FACE),
