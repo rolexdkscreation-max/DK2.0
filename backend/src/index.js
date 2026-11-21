@@ -1,18 +1,19 @@
 // DK backend - Cloudflare Worker. सारे रास्ते यहीं; असली काम अलग-अलग फ़ाइलों में.
 
-import { cleanMessages, collect, openChain, planChain, streamResponse } from "./ai.js";
+import { available, cleanMessages, collect, openChain, planChain, streamResponse } from "./ai.js";
 import { authenticate } from "./auth.js";
-import { AI_CHAIN, SEARCH_CHAIN } from "./config.js";
+import { CHAT_CHAIN, KEEP_DAYS, SEARCH_CHAIN } from "./config.js";
+import { countUse, health as speedHealth, persist, stat as speedState, utcDay } from "./speed.js";
 import { Db } from "./db.js";
 import {
-  activate, createLicense, levelFor, quota, requireChatLeft, requireLevel, requireServerAi, requireVoiceLeft, taskLevel, today, useVoiceTicket, voiceTicket,
+  activate, createLicense, levelFor, quota, requireChatLeft, requireLevel, requireServerAi, requireVoiceLeft, serverAiOn, taskLevel, today, useVoiceTicket, voiceTicket,
 } from "./license.js";
 import { onImage, onImageStatus } from "./image.js";
 import { onLiveToken } from "./live.js";
 import { onVoiceGrant } from "./voice.js";
 import { PROVIDERS as SEARCH_PROVIDERS, read, search } from "./search.js";
 import { readAudio, transcribe } from "./stt.js";
-import { CODES, HttpError, errorResponse, json, readJson, safeEqual } from "./util.js";
+import { CODES, HttpError, errorResponse, istDay, json, readJson, safeEqual } from "./util.js";
 
 /** पीछे का काम (usage, model_health): गलती हो तो भी असली जवाब न रुके */
 function later(ctx, fn) {
@@ -94,16 +95,26 @@ async function onChat(req, env, ctx, ident, opts) {
     }
   }
 
-  const open = await openChain(env, { system, messages, chain: body.chain }, opts);
+  let open;
+  try {
+    open = await openChain(env, { system, messages, chain: body.chain }, opts);
+  } catch (e) {
+    // सब फेल: रफ़्तार/आराम का हिसाब फिर भी D1 में (ऐप को सिर्फ़ साफ़ हिंदी संदेश)
+    for (const m of e?.marks ?? []) later(ctx, () => saveMark(env, m, now));
+    throw e;
+  }
+  const inChars = (system?.length ?? 0) + messages.reduce((n, m) => n + m.content.length, 0);
   const left = q ? { voice_left: Math.max(0, q.voice_left - add.voice), chat_left: Math.max(0, q.chat_left - add.chat) } : null;
   const extra = { level: lv.level, ...(left ? { quota: { ...left, warn: left.voice_left > 0 && left.voice_left <= 60 } } : {}) };
-  const after = () => {
+  const after = (text = "") => {
     if (db && (add.voice || add.chat)) later(ctx, () => db.addUsage(ident.uid, day, add.voice, add.chat));
     if (db) for (const t of open.tried) later(ctx, () => db.recordModel(`${t.provider}/${t.model}`, t.ok, t.error, now));
+    for (const m of open.marks ?? []) later(ctx, () => saveMark(env, m, now));
+    later(ctx, () => countUse(env, open.provider, inChars, String(text ?? "").length, now));
   };
   if (body.stream === false) {
     const out = await collect(open);
-    after();
+    after(out.text);
     return json({ ok: true, ...out, ...extra });
   }
   const headers = { "x-dk-level": lv.level, "x-dk-provider": open.provider, "x-dk-model": open.model };
@@ -111,7 +122,12 @@ async function onChat(req, env, ctx, ident, opts) {
     headers["x-dk-voice-left"] = String(left.voice_left);
     headers["x-dk-chat-left"] = String(left.chat_left);
   }
-  return streamResponse(open, headers, after, extra);
+  return streamResponse(open, headers, (r) => after(r?.text), extra);
+}
+
+/** एक कोशिश का नतीजा (याद में पहले ही) D1 में */
+function saveMark(env, m, now) {
+  return persist(env, m, speedState(env, m.provider, now), now);
 }
 
 async function onStt(req, env, ctx, ident, opts) {
@@ -211,7 +227,7 @@ async function onLicenseStatus(env, ident, opts) {
   const now = opts.now?.() ?? Date.now();
   const db = new Db(env.DB);
   const lv = ident.owner ? { level: "owner", expires_at: null } : await levelFor(db, ident, now);
-  const out = { ok: true, level: lv.level, expires_at: lv.expires_at ?? null, owner: ident.owner, day: today(now) };
+  const out = { ok: true, level: lv.level, expires_at: lv.expires_at ?? null, owner: ident.owner, day: today(now), server_ai: serverAiOn(env, lv.level) };
   if (lv.level === "free") out.quota = quota(await db.getUsage(ident.uid, today(now)));
   return json(out);
 }
@@ -221,7 +237,7 @@ export async function handle(req, env, ctx, opts = {}) {
   const path = url.pathname.replace(/\/+$/, "") || "/";
   const M = req.method;
 
-  if (path === "/health" && M === "GET") return json({ ok: true, service: "dk-backend" });
+  if (path === "/health" && M === "GET") return onHealth(req, env, opts);
   if (path === "/webhook/build" && M === "POST") return onWebhook(req, env, opts);
 
   const ident = await authenticate(req, env, opts.auth);
@@ -257,7 +273,7 @@ export async function handle(req, env, ctx, opts = {}) {
     }
     return json({
       ok: true,
-      chain: AI_CHAIN.map((c) => ({ provider: c.id, model: c.model, configured: !!env[c.secret] })),
+      chain: CHAT_CHAIN.map((c) => ({ provider: c.id, model: c.model, configured: available(env, c) })),
       active: planChain(env).map((c) => c.id),
       search: SEARCH_CHAIN.map((id) => ({ provider: id, configured: !!env[SEARCH_PROVIDERS[id].secret] })),
       stt: !!env.AI,
@@ -278,6 +294,30 @@ export async function handle(req, env, ctx, opts = {}) {
   throw new HttpError(404, CODES.NOT_FOUND, "रास्ता नहीं मिला");
 }
 
+/**
+ * /health: बिना लॉगिन = बस "चल रहा है". मालिक का token = हर AI कंपनी की हालत, औसत रफ़्तार, आज की गिनती, आख़िरी गलती.
+ * (keys कभी नहीं - सिर्फ़ हाँ/ना)
+ */
+async function onHealth(req, env, opts) {
+  const basic = { ok: true, service: "dk-backend" };
+  if (!req.headers.get("authorization")) return json(basic);
+  let ident;
+  try {
+    ident = await authenticate(req, env, opts.auth);
+  } catch {
+    return json(basic);
+  }
+  if (!ident.owner) return json(basic);
+  const now = opts.now?.() ?? Date.now();
+  return json({ ...basic, ai: await speedHealth(env, CHAT_CHAIN, available, now) });
+}
+
+/** रोज़ की सफ़ाई (cron, wrangler.toml [triggers]): 7 दिन से पुराना हिसाब मिटे. लाइसेंस / tasks नहीं छूते */
+export async function cleanup(env, now = Date.now()) {
+  const cut = now - KEEP_DAYS * 86_400_000;
+  return new Db(env.DB).cleanup(istDay(cut), utcDay(cut), cut);
+}
+
 export default {
   async fetch(req, env, ctx) {
     try {
@@ -285,5 +325,8 @@ export default {
     } catch (e) {
       return errorResponse(e);
     }
+  },
+  async scheduled(event, env, ctx) {
+    ctx.waitUntil(cleanup(env, event?.scheduledTime ?? Date.now()));
   },
 };

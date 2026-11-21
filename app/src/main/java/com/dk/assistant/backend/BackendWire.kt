@@ -113,12 +113,14 @@ object BackendWire {
             quota(o.optJSONObject("quota")))
     }
 
-    data class Status(val level: String, val expiresAt: Long, val owner: Boolean, val quota: Quota?)
+    /** [serverAi] = मुफ़्त वाले को भी सर्वर की AI (21 नवंबर 2026). पुराना सर्वर (field नहीं) = सिर्फ़ लाइसेंस वाले */
+    data class Status(val level: String, val expiresAt: Long, val owner: Boolean, val quota: Quota?, val serverAi: Boolean = false)
 
     fun status(body: String): Status {
         val o = JSONObject(body)
-        return Status(o.optString("level", "free"), if (o.isNull("expires_at")) 0L else o.optLong("expires_at"), o.optBoolean("owner"),
-            quota(o.optJSONObject("quota")))
+        val level = o.optString("level", "free")
+        return Status(level, if (o.isNull("expires_at")) 0L else o.optLong("expires_at"), o.optBoolean("owner"),
+            quota(o.optJSONObject("quota")), o.optBoolean("server_ai", level != "free"))
     }
 
     fun levelHi(level: String): String = when (level) {

@@ -30,6 +30,7 @@ object Plan {
 
     private const val LEVEL = "plan_level"
     private const val UNTIL = "plan_until"
+    private const val SERVER_AI = "plan_server_ai"
 
     /** test बदल सके */
     @Volatile var override: Level? = null
@@ -52,6 +53,17 @@ object Plan {
     /** सर्वर से आया स्तर याद रखो */
     fun note(c: Context, level: String, expiresAt: Long) {
         Prefs.edit(c) { putString(LEVEL, parse(level).name.lowercase()); putLong(UNTIL, expiresAt.coerceAtLeast(0L)) }
+    }
+
+    /**
+     * 21 नवंबर 2026 (मालिक: "ऐप में कोई key न हो तो भी DK backend से जवाब दे"): सर्वर (/license/status का
+     * `server_ai`) बताता है कि मुफ़्त वाले को भी सर्वर की AI मिलती है. पहली बार (अभी पूछा नहीं) = हाँ, ताकि
+     * नया ऐप बिना key भी खाली न लौटे.
+     */
+    fun serverAi(c: Context): Boolean = Prefs.bool(c, SERVER_AI, true)
+
+    fun noteServerAi(c: Context, on: Boolean) {
+        if (serverAi(c) != on) Prefs.edit(c) { putBoolean(SERVER_AI, on) }
     }
 
     /** सिर्फ़ स्तर (बिना मियाद, जैसे /voice/grant से) - बदला हो तभी लिखो; मियाद अगली /license/status से */

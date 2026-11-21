@@ -66,3 +66,27 @@ CREATE TABLE IF NOT EXISTS image_usage (
   images INTEGER NOT NULL DEFAULT 0,
   limit_hit INTEGER NOT NULL DEFAULT 0
 );
+
+-- 21 नवंबर 2026 (मालिक): "सबसे तेज़ पहले". हर AI कंपनी की एक ही row (बढ़ती नहीं, बस बदलती है).
+-- ewma_ms = पहला शब्द आने का औसत समय (पुराना x 0.7 + नया x 0.3). cool_until = 429/5xx/timeout पर 60 सेकंड आराम.
+-- off_until = रोज़ की सीमा पूरी - अगली 00:00 UTC (भारत सुबह 5:30) तक बंद.
+CREATE TABLE IF NOT EXISTS provider_stats (
+  provider TEXT PRIMARY KEY,
+  ewma_ms REAL,
+  samples INTEGER NOT NULL DEFAULT 0,
+  cool_until INTEGER NOT NULL DEFAULT 0,
+  off_until INTEGER NOT NULL DEFAULT 0,
+  last_error TEXT,
+  last_error_at INTEGER,
+  updated_at INTEGER NOT NULL DEFAULT 0
+);
+
+-- हर कंपनी की आज की गिनती (दिन UTC से, जैसे कंपनियाँ गिनती हैं). 7 दिन से पुरानी rows रोज़ अपने-आप मिटती हैं (cron).
+CREATE TABLE IF NOT EXISTS provider_daily (
+  day TEXT NOT NULL,
+  provider TEXT NOT NULL,
+  requests INTEGER NOT NULL DEFAULT 0,
+  tokens INTEGER NOT NULL DEFAULT 0,
+  neurons REAL NOT NULL DEFAULT 0,
+  PRIMARY KEY (day, provider)
+);

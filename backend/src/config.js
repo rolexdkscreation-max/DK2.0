@@ -39,8 +39,8 @@ export const TASK_LEVEL = {
 export const LEVEL_CACHE_MS = 3 * 60_000;
 /** Google की public keys (Cache-Control न मिले तो) कितनी देर याद रहें */
 export const JWKS_CACHE_MS = 6 * 3_600_000;
-/** fallback में हर मॉडल को पहला शब्द भेजने का समय */
-export const MODEL_TIMEOUT_MS = 4_000;
+/** fallback में हर मॉडल को पहला शब्द भेजने का समय (21 नवंबर 2026, मालिक: 8 सेकंड) */
+export const MODEL_TIMEOUT_MS = 8_000;
 /** आवाज़ वाली बातचीत का टिकट (/stt के बाद /ai/chat) कितनी देर चले */
 export const VOICE_TICKET_MS = 2 * 60_000;
 /** /stt में एक बार में अधिकतम आवाज़ (बाइट) - 16 kHz WAV ≈ 60 सेकंड */
@@ -80,7 +80,10 @@ export const AI_CHAIN = [
   { id: "gemini", kind: "gemini", secret: "GEMINI_API_KEY", model: "gemini-3.8-flash" },
   { id: "gemini-lite", kind: "gemini", secret: "GEMINI_API_KEY", model: "gemini-3.5-flash-lite" },
   { id: "mistral", kind: "openai", secret: "MISTRAL_API_KEY", base: "https://api.mistral.ai/v1", model: "mistral-small-latest" },
-  { id: "groq", kind: "openai", secret: "GROQ_API_KEY", base: "https://api.groq.com/openai/v1", model: "openai/gpt-oss-120b" },
+  // Groq का Llama 3.3 70B 16 अगस्त 2026 को free पर बंद - gpt-oss-120b (कम सोच = पहला शब्द जल्दी). free: 8K token/मिनट = लंबी बातचीत काटो
+  { id: "groq", kind: "openai", secret: "GROQ_API_KEY", base: "https://api.groq.com/openai/v1", model: "openai/gpt-oss-120b", extra: { reasoning_effort: "low" }, maxContextTokens: 6_000 },
+  // 21 नवंबर 2026 (मालिक): Cerebras - Llama 3.3 70B फ़रवरी 2026 में हटा, gpt-oss-120b. free context ~65K - उससे लंबी बात पुरानी लाइनें काटकर
+  { id: "cerebras", kind: "openai", secret: "CEREBRAS_API_KEY", base: "https://api.cerebras.ai/v1", model: "gpt-oss-120b", extra: { reasoning_effort: "low" }, maxContextTokens: 60_000 },
   { id: "openrouter", kind: "openai", secret: "OPENROUTER_API_KEY", base: "https://openrouter.ai/api/v1", model: "openrouter/free" },
   { id: "zai", kind: "openai", secret: "ZAI_API_KEY", base: "https://api.z.ai/api/paas/v4", model: "glm-4.7-flash" },
   { id: "nvidia", kind: "openai", secret: "NVIDIA_API_KEY", base: "https://integrate.api.nvidia.com/v1", model: "meta/llama-3.3-70b-instruct" },
@@ -89,6 +92,46 @@ export const AI_CHAIN = [
   { id: "openai", kind: "openai", secret: "OPENAI_API_KEY", base: "https://api.openai.com/v1", model: "gpt-6-astra" },
   { id: "anthropic", kind: "openai", secret: "ANTHROPIC_API_KEY", base: "https://api.anthropic.com/v1", model: "claude-sonnet-5-5" },
 ];
+
+/**
+ * 21 नवंबर 2026 (मालिक): Cloudflare Workers AI भी चैट की कड़ी में - key नहीं, `AI` binding (wrangler.toml [ai]).
+ * Llama नहीं (मालिक: "Llama हटाओ") - वही gpt-oss-120b. Neurons इमेज/आवाज़ के साथ साझा (रोज़ 10,000, 00:00 UTC पर नया).
+ */
+export const WORKERS_AI_CHAT = { id: "cloudflare", kind: "workers", model: "@cf/openai/gpt-oss-120b", maxTokens: 2048, maxContextTokens: 100_000 };
+/** चैट की पूरी कड़ी: AI_CHAIN + Cloudflare (Cerebras के बाद) */
+export const CHAT_CHAIN = (() => {
+  const i = AI_CHAIN.findIndex((c) => c.id === "cerebras") + 1;
+  return [...AI_CHAIN.slice(0, i), WORKERS_AI_CHAT, ...AI_CHAIN.slice(i)];
+})();
+/** paid key वाली - रफ़्तार कुछ भी हो, हमेशा आख़िर में (मुफ़्त पहले) */
+export const PAID_PROVIDERS = ["deepseek", "openai", "anthropic"];
+
+/**
+ * "सबसे तेज़ पहले" (मालिक, 21 नवंबर 2026). order: "fast" (डिफ़ॉल्ट) या "fixed" (ऊपर वाला क्रम). Worker var AI_ORDER से भी.
+ * हर कंपनी की औसत रफ़्तार = पहला शब्द आने का समय, EWMA: नया = पुराना x 0.7 + ताज़ा x 0.3 (D1 provider_stats में).
+ * explore = इतनी रिक्वेस्ट किसी दूसरी (धीमी) कंपनी से, ताकि उसकी रफ़्तार भी नपती रहे.
+ * cooldownMs = 429 / 5xx / timeout पर इतनी देर आराम. demoteAt = आज की सीमा का इतना हिस्सा खर्च = क्रम में सबसे नीचे.
+ * cacheMs = D1 के आँकड़े इतनी देर Worker की याद में (हर रिक्वेस्ट पर D1 न पढ़ें).
+ */
+export const SPEED = { order: "fast", alpha: 0.3, explore: 0.1, cooldownMs: 60_000, demoteAt: 0.9, cacheMs: 15_000 };
+/** बंद कंपनियाँ (id). Worker var AI_OFF = "groq,cerebras" से भी */
+export const PROVIDER_OFF = [];
+/**
+ * हर कंपनी की रोज़ की अनुमानित सीमा (00:00 UTC = भारत सुबह 5:30 पर नई). null = पता नहीं (90% वाला नियम नहीं).
+ * Groq free gpt-oss-120b: 1,000 रिक्वेस्ट + 2 लाख token / दिन (Groq docs, नवंबर 2026 - 14,400 वाला Llama 8B का था).
+ * Cerebras: 10 लाख token. Cloudflare: 10,000 Neurons (इमेज के Neurons भी इसी में गिने जाते हैं). Gemini: पहले जैसा (null).
+ */
+export const PROVIDER_LIMITS = {
+  groq: { requests: 1_000, tokens: 200_000 },
+  cerebras: { tokens: 1_000_000 },
+  cloudflare: { neurons: DAILY_NEURONS },
+};
+/** token का अंदाज़ा: इतने अक्षर = 1 token (हिंदी में token ज़्यादा बनते हैं, इसलिए 3) */
+export const CHARS_PER_TOKEN = 3;
+/** Cloudflare gpt-oss-120b: $0.35 / $0.75 प्रति 10 लाख token, $0.011 = 1,000 Neurons => प्रति 1,000 token Neurons */
+export const WORKERS_NEURONS_PER_1K = { input: 31.8, output: 68.2 };
+/** D1 का पुराना हिसाब (रोज़ की गिनती, health, इमेज...) इतने दिन बाद अपने-आप मिटे (cron, wrangler.toml [triggers]) */
+export const KEEP_DAYS = 7;
 
 /** /search का क्रम: Tavily → Exa → Linkup → Firecrawl → Google (Gemini की Google Search) - जिसकी key हो (ऐप की सारी खोज कंपनियाँ) */
 export const SEARCH_CHAIN = ["tavily", "exa", "linkup", "firecrawl", "google"];
@@ -107,7 +150,7 @@ export const SEARCH_TIMEOUT_MS = 8_000;
 /** Worker secrets के नाम - deploy workflow सिर्फ़ भरे हुए भेजता है */
 export const SECRET_NAMES = [
   "ALLOWED_EMAILS", "WEBHOOK_SECRET",
-  "GEMINI_API_KEY", "MISTRAL_API_KEY", "GROQ_API_KEY", "OPENROUTER_API_KEY", "ZAI_API_KEY", "NVIDIA_API_KEY",
+  "GEMINI_API_KEY", "MISTRAL_API_KEY", "GROQ_API_KEY", "CEREBRAS_API_KEY", "OPENROUTER_API_KEY", "ZAI_API_KEY", "NVIDIA_API_KEY",
   "DEEPSEEK_API_KEY", "OPENAI_API_KEY", "ANTHROPIC_API_KEY",
   "TAVILY_API_KEY", "EXA_API_KEY", "LINKUP_API_KEY", "FIRECRAWL_API_KEY",
 ];

@@ -110,6 +110,7 @@ object BackendApi {
         lastLevel = it.level; it.quota?.let { q -> lastQuota = q }; BackendSession.markOwner(c, it.owner)
         WelcomeBoss.noteStatus(c, wasOwner, BackendSession.owner(c))
         Plan.note(c, it.level, it.expiresAt)
+        Plan.noteServerAi(c, it.serverAi)
     }
 
     fun activate(c: Context, key: String): BackendWire.Status {
