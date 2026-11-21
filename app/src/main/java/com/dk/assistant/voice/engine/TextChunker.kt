@@ -249,6 +249,11 @@ class TextChunker(
         const val NEXT_MAX = 28
         const val STALL_MS = 250L
         const val STALL_MIN = 3
+        const val SENTENCE_MIN_CHARS = 10
+        const val ST3_FIRST_MIN = 15
+        const val ST3_FIRST_MAX = 20
+        const val ST3_NEXT_MIN = 25
+        const val ST3_NEXT_MAX = 30
 
         /** इंटरनेट वाले इंजन (Gemini TTS / Worker): पुराना नाप - हर टुकड़ा = एक request */
         val STANDARD = Profile(FIRST_SOFT, FIRST_MAX, NEXT_MIN, NEXT_SOFT, NEXT_MAX, NEXT_MIN, NEXT_SOFT, NEXT_MAX, STALL_MS, STALL_MIN)
@@ -294,11 +299,6 @@ class TextChunker(
             firstMinChars = ST3_FIRST_MIN, firstMaxChars = ST3_FIRST_MAX, nextMinChars = ST3_NEXT_MIN, nextMaxChars = ST3_NEXT_MAX,
             numberSafe = true,
         )
-        const val SENTENCE_MIN_CHARS = 10
-        const val ST3_FIRST_MIN = 15
-        const val ST3_FIRST_MAX = 20
-        const val ST3_NEXT_MIN = 25
-        const val ST3_NEXT_MAX = 30
         /** इन शब्दों से पहले नहीं काटना (संख्या के साथ जाते हैं: "10 बजे", "5 मिनट") */
         val NUMBER_UNITS = setOf(
             "बजे", "बजकर", "बज", "मिनट", "सेकंड", "घंटे", "घंटा", "दिन", "साल", "तारीख", "रुपये", "रुपए", "रुपया", "प्रतिशत",
